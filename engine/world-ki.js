@@ -30,14 +30,14 @@ export function createWorldKi(snes,mod){
     if(target.id==='mana-fortress'&&fortScreen&&mod.frame-fortScreen.frame<3)return{x:fortScreen.x,y:fortScreen.y};
     return{x:Math.round(128+target.across*128/Math.max(80,target.along)),y:Math.round(84+1600/Math.max(64,target.along))};
   }
-  function fire(){
-    const strength=Math.min(1,mod.charge/(mod.options.superSaiyan?45:90));
-    const mega=mod.beamProfile(strength).mega;
+  function fire(ki=false){
+    const strength=ki ? .2 :Math.min(1,mod.charge/(mod.options.superSaiyan?45:90));
+    const mega=!ki&&mod.beamProfile(strength).mega;
     const at=position(),angle=w(0xf6)*Math.PI/512,range=mega?640:420;
     const target=aim()??{id:'landscape',x:(Math.round(at.x-Math.sin(angle)*range)+4096)&4095,y:(Math.round(at.y-Math.cos(angle)*range)+4096)&4095,along:range,across:0};
-    shot={age:0,strength,mega,max:mega?72:32,super:mod.options.superSaiyan,target:target?{...target,screen:screen(target)}:null,end:target?screen(target):{x:128,y:45},hit:false};
+    shot={age:0,strength,ki,mega,max:ki?12:mega?72:32,super:mod.options.superSaiyan,target:target?{...target,screen:screen(target)}:null,end:target?screen(target):{x:128,y:45},hit:false};
     mod.charging=false;mod.charge=0;mod.action={kind:'airBeam',age:0,duration:shot.max,facing:3,super:mod.options.superSaiyan};
-    mod.playSound('beam');
+    mod.playSound(ki?'blast':'beam');
   }
   c.cycle=function(){
     if(this.cyclesLeft===0&&enabled()){
@@ -69,17 +69,20 @@ export function createWorldKi(snes,mod){
         return;
       }
       if(treeBarrierBroken)r[0xe3]|=0x40;
-      // J is consistently hold/release Kamehameha. X ascends; F supplies the
-      // original held descend input. A beam cannot accidentally initiate a dock.
-      snes.joypad1State&=~1;
+      // Keep Flammie's A ascend / B descend and steering. L+Y charges the
+      // same wave as on foot; neither that chord nor L+B can cause a landing.
+      const wave=!!(input&0x400)&&!!(input&(1<<17));
+      if(input&0x400)snes.joypad1State&=~1;
+      if(mod.action?.kind==='focus'||wave)snes.joypad1State&=~0x100;
       const busy=!!(r[0xfe]&0xc0)||r[0x8c]!==0||!!(r[0xe2]&1)||!!explosion||!!landingQueued;
       if(busy){snes.joypad1State=0;mod.charging=false;mod.charge=0;mod.attackHeld=0;}
       else{
-        if(mod.autoLand&&!mod.charging)snes.joypad1State|=1;
-        if(input&1){
-          mod.autoLand=false;mod.attackHeld++;
-          if(mod.attackHeld>=12&&!mod.charging&&!shot&&(!mod.action||mod.action.kind==='ready'))mod.startCharge();
-        }else if(mod.attackHeld){if(mod.charging)fire();mod.attackHeld=0;}
+        if(!(input&(1<<17)))mod.kiBlocked=false;
+        if(wave){
+          mod.attackHeld++;
+          if(!mod.charging&&!shot&&!mod.kiBlocked&&(!mod.action||['ready','focus'].includes(mod.action.kind)))mod.startCharge();
+        }else if(mod.charging){fire();mod.kiBlocked=!!(input&(1<<17));mod.attackHeld=0;}
+        else if((input&(1<<17))&&!(input&0x400)&&!mod.kiBlocked&&!shot&&!mod.action)fire(true);
         if(mod.charging){
           const cap=mod.options.superSaiyan?45:90;mod.charge=Math.min(cap,mod.charge+1);
           if(mod.charge===cap&&!mod.action.full){mod.action.full=true;mod.playSound('charged');}
@@ -90,7 +93,8 @@ export function createWorldKi(snes,mod){
         shot.age++;
         if(!shot.hit&&shot.target&&shot.age>=12){
           shot.hit=true;
-          if(shot.strength>=.85){
+          if(shot.ki){/* Small aerial ki shots cannot demolish towns. */}
+          else if(shot.strength>=.85){
             lastHit=shot.target.id;explosion={...shot.target,mega:shot.mega,age:0};mod.playSound('impact');
             mod.worldScars?.strike(shot.target,shot.mega);
             if(lastHit==='mana-tree-barrier'){
@@ -114,7 +118,8 @@ export function createWorldKi(snes,mod){
       if(shot){
         const phase=shot.age>>1,t=Math.min(1,shot.age/12),end={x:128+(shot.end.x-128)*t,y:88+(shot.end.y-88)*t};
         const dx=end.x-128,dy=end.y-88,len=Math.hypot(dx,dy)||1,bands=shot.super?5:3;
-        if(shot.mega){
+        if(shot.ki){layer.stamp('charge-orb',Math.max(0,3-Math.floor(t*3)),end.x,end.y);}
+        else if(shot.mega){
           // Keep the blue-white core enormous even at the highest altitude;
           // its streak continues past the target and beyond the world horizon.
           const envelope=Math.min(1,shot.age/6,((shot.max??72)-shot.age)/12);

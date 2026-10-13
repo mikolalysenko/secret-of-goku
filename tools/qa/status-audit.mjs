@@ -22,7 +22,7 @@ try{
     await writeFile(resolve(out,name+'-goku.png'),Buffer.from(png,'base64'));
     report.scenes.push({name,...state,...comparison});console.log(name+': '+comparison.unexpected+' unexpected pixels, species '+state.species);
     if(name==='miniature'){
-      await page.evaluate(()=>{mana.run(120);mana.run(110,[0]);});
+      await page.evaluate(()=>{mana.run(120);mana.run(110,[10,1]);});
       const charge=await page.evaluate(()=>({charging:mana.mod.charging,charge:mana.mod.charge,sprite:mana.mod.spriteLayer.plan.sprite,png:document.querySelector('#screen').toDataURL('image/png').split(',')[1]}));
       await writeFile(resolve(out,'miniature-charge.png'),Buffer.from(charge.png,'base64'));
       if(!charge.charging||charge.sprite.width!==16)throw Error('Miniature did not retain charge control and 16-pixel body.');

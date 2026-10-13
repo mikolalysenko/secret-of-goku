@@ -5,11 +5,11 @@ import {GamepadInput} from '../engine/gamepad.js';
 const pad=(buttons=[],axes=[0,0],index=0)=>({index,id:'test',connected:true,mapping:'standard',axes,buttons:Array.from({length:17},(_,i)=>({pressed:buttons.includes(i),value:buttons.includes(i)?1:0}))});
 test('standard controller maps combat, menus, diagonal sticks and edge-only actions',()=>{
  const input=new GameInput(),events=[],gamepad=new GamepadInput(input,{fly:()=>events.push('fly'),pause:()=>events.push('pause'),start:()=>events.push('start')});
- gamepad.poll([pad([0,4,9],[1,-1])]);assert.equal(input.sample(),1|(1<<8)|(1<<3)|(1<<7)|(1<<4));assert.deepEqual(events,['start']);
+ gamepad.poll([pad([0,4,9],[1,-1])]);assert.equal(input.sample(),1|(1<<10)|(1<<3)|(1<<7)|(1<<4));assert.deepEqual(events,['start']);
  gamepad.poll([pad([0,4,9],[1,-1])]);assert.deepEqual(events,['start']);
- input.clear();gamepad.poll([pad([7,11])]);assert.deepEqual(events,['start','fly','pause']);assert.equal(input.sample(),0);
- gamepad.poll([pad([7,11])]);assert.equal(events.length,3);
- input.clear();gamepad.poll([pad([1,2,3,5,6,8])]);assert.equal(input.sample(),(1<<1)|(1<<17)|(1<<16)|(1<<18)|(1<<19)|(1<<2));
+ input.clear();gamepad.poll([pad([7,11])]);assert.deepEqual(events,['start','pause']);assert.equal(input.sample(),0);
+ gamepad.poll([pad([7,11])]);assert.equal(events.length,2);
+ input.clear();gamepad.poll([pad([1,2,3,5,6,8])]);assert.equal(input.sample(),(1<<8)|(1<<1)|(1<<9)|(1<<11)|(1<<2));
 });
 test('stick dead zone has hysteresis and direction changes do not leave a held opposite input',()=>{
  const input=new GameInput(),gamepad=new GamepadInput(input);

@@ -23,7 +23,7 @@ export function createBeastChallenge(snes,mod){
     return cycle.call(this);
   };
   return{
-    choose(feed){fed=!!feed;started=won=false;wards=feed?(mod.quest?.status.earned??0):0;blocked=hits=clock=wardFlash=grace=0;burst=null;},
+    choose(feed){if(feed&&!mod.quest?.status.canFeed)return false;fed=!!feed;started=won=false;wards=feed?(mod.quest?.status.earned??0):0;blocked=hits=clock=wardFlash=grace=0;burst=null;return true;},
     get dangerous(){return fed&&!won&&mod.read16(0xdc)===253;},
     damage(enemy,amount){return active()&&enemy.species===127?Math.max(1,Math.floor(amount/4)):amount;},
     tick(){

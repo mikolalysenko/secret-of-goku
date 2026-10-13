@@ -10,7 +10,8 @@ class ManaMod {
     this.frame=0;this.facing=0;this.charge=0;this.charging=false;this.attackFrames=0;this.attackCooldown=0;this.attackHeld=0;this.nativeTapFrames=0;this.effects=[];
     this.action=null;this.queuedPunch=false;this.combo=0;this.comboUntil=0;this.blastCooldown=0;this.attackBlocked=false;this.knockbacks=[];this.lastMap=null;this.lastTeleportTarget=-1;
     this.before={x:0,y:0};this.moving=false;this.worldFlight=false;this.nameEditor=false;this.flightTransition=null;this.autoLand=false;this.localFlight=false;this.localLift=0;
-    this.hiddenLastFrame=[];this.input=0;this.lastInput=0;this.flightShadow=null;
+    this.hiddenLastFrame=[];this.input=0;this.lastInput=0;this.padInput=0;this.lastPadInput=0;this.flightShadow=null;
+    this.powerCharge=0;this.powerBlocked=false;this.kiBlocked=false;this.kiHand=0;
     this.motion=window.GokuAnimation?new window.GokuAnimation(this):null;
     this.spriteLayer=new window.ManaSpriteLayer(snes,this);
     this.ready=Promise.all(Object.values(this.images).map(image=>image.decode())).then(()=>this.spriteLayer.load(this.images));
@@ -55,17 +56,35 @@ class ManaMod {
     }
     this.log(`Mod: ${JSON.stringify(this.options)}`);
   }
-  cancelCombat(){this.action=null;this.queuedPunch=false;this.attackHeld=0;this.nativeTapFrames=0;this.charging=false;this.charge=0;this.attackFrames=0;this.attackCooldown=0;this.blastCooldown=0;this.effects=[];if(this.sound?.cancelCombat)this.sound.cancelCombat();else this.sound?.clear();this.plants?.clear();}
-  cancelInput(){this.attackHeld=0;this.nativeTapFrames=0;this.charging=false;this.charge=0;this.queuedPunch=false;this.attackBlocked=false;this.input=0;this.lastInput=0;if(this.action?.kind==='ready'||this.action?.kind==='charge')this.action=null;}
-  reset(){this.frame=0;this.cancelCombat();this.sound?.restore();this.combatSound?.restore();this.ownership?.reset();this.feedback?.restore();this.orbs?.restore();this.story?.restore();this.worldKi?.restore();this.barriers?.restore();this.flight?.restore();this.gapFlight?.restore();this.radio?.restore();this.quest?.restore();this.ceiling?.restore();this.challenge?.restore();this.powerIntro?.restore();this.flightTransition=null;this.autoLand=false;this.localFlight=false;this.localLift=0;this.localFlightHook?.restore();this.teleport?.restore();this.lastTeleportTarget=-1;this.input=0;this.lastInput=0;this.hiddenLastFrame=[];this.flightShadow=null;this.worldFlight=false;this.nameEditor=false;this.spriteLayer.plan=null;this.attackBlocked=false;this.combo=0;this.comboUntil=0;this.knockbacks=[];this.lastMap=null;this.motion?.reset();}
+  cancelCombat(){this.action=null;this.queuedPunch=false;this.attackHeld=0;this.nativeTapFrames=0;this.charging=false;this.charge=0;this.powerCharge=0;this.attackFrames=0;this.attackCooldown=0;this.blastCooldown=0;this.effects=[];if(this.sound?.cancelCombat)this.sound.cancelCombat();else this.sound?.clear();this.plants?.clear();}
+  cancelInput(){this.attackHeld=0;this.nativeTapFrames=0;this.charging=false;this.charge=0;this.powerCharge=0;this.queuedPunch=false;this.attackBlocked=false;this.kiBlocked=false;this.powerBlocked=false;this.input=0;this.lastInput=0;this.padInput=0;this.lastPadInput=0;if(['ready','charge','focus'].includes(this.action?.kind))this.action=null;}
+  requestFlight(){
+    if(!this.options.enabled||!this.gokuActive||this.worldFlight||!this.canAttack||this.ceiling?.busy||this.ceiling?.bossActive)return false;
+    this.cancelCombat();return this.flight?.request()||this.ceiling?.request()||false;
+  }
+  // L holds focus. L+A commits to a transformation at full power; L alone
+  // never changes form. Other L chords take priority over this stance.
+  focus(input){
+    const held=!!(input&0x400),transform=held&&!!(input&0x100);
+    const wasTransform=!!(this.lastInput&0x400)&&!!(this.lastInput&0x100);
+    if(!held){this.powerBlocked=false;this.powerCharge=0;if(this.action?.kind==='focus')this.action=null;return false;}
+    if(transform&&!wasTransform&&this.options.superSaiyan){this.configure({superSaiyan:false});this.action.duration=10;this.powerBlocked=true;return true;}
+    if(this.powerBlocked)return true;
+    if(this.action&&!['focus','ready'].includes(this.action.kind))return true;
+    if(!this.action||this.action.kind!=='focus')this.action={kind:'focus',age:0,duration:0,facing:this.facing,super:this.options.superSaiyan};
+    this.powerCharge=Math.min(96,this.powerCharge+1);
+    if(transform&&this.powerCharge===96&&!this.poisoned){this.configure({superSaiyan:true});this.powerBlocked=true;}
+    return true;
+  }
+  reset(){this.padInput=0;this.lastPadInput=0;this.powerCharge=0;this.powerBlocked=false;this.kiBlocked=false;this.kiHand=0;this.frame=0;this.cancelCombat();this.sound?.restore();this.combatSound?.restore();this.ownership?.reset();this.feedback?.restore();this.orbs?.restore();this.story?.restore();this.worldKi?.restore();this.barriers?.restore();this.flight?.restore();this.gapFlight?.restore();this.radio?.restore();this.quest?.restore();this.ceiling?.restore();this.challenge?.restore();this.powerIntro?.restore();this.flightTransition=null;this.autoLand=false;this.localFlight=false;this.localLift=0;this.localFlightHook?.restore();this.teleport?.restore();this.lastTeleportTarget=-1;this.input=0;this.lastInput=0;this.hiddenLastFrame=[];this.flightShadow=null;this.worldFlight=false;this.nameEditor=false;this.spriteLayer.plan=null;this.attackBlocked=false;this.combo=0;this.comboUntil=0;this.knockbacks=[];this.lastMap=null;this.motion?.reset();}
   snapshot(){
-    const fields=['frame','facing','nameEditor','worldFlight','flightShadow','charge','charging','attackHeld','nativeTapFrames','action','queuedPunch','combo','comboUntil','blastCooldown','attackBlocked','effects','knockbacks','lastMap','input','lastInput','attackFrames','attackCooldown','autoLand','flightTransition','localFlight','localLift'];
+    const fields=['padInput','lastPadInput','powerCharge','powerBlocked','kiBlocked','kiHand','frame','facing','nameEditor','worldFlight','flightShadow','charge','charging','attackHeld','nativeTapFrames','action','queuedPunch','combo','comboUntil','blastCooldown','attackBlocked','effects','knockbacks','lastMap','input','lastInput','attackFrames','attackCooldown','autoLand','flightTransition','localFlight','localLift'];
     return JSON.parse(JSON.stringify({version:1,options:this.options,motion:this.motion?.snapshot(),sound:this.sound?.snapshot(),plants:this.plants?.snapshot(),feedback:this.feedback?.snapshot(),ownership:this.ownership?.snapshot(),flight:this.flight?.snapshot(),localFlightState:this.localFlightHook?.snapshot(),teleportState:this.teleport?.snapshot(),gapFlight:this.gapFlight?.snapshot(),orbs:this.orbs?.snapshot(),story:this.story?.snapshot(),worldKi:this.worldKi?.snapshot(),barriers:this.barriers?.snapshot(),radio:this.radio?.snapshot(),quest:this.quest?.snapshot(),ceiling:this.ceiling?.snapshot(),challenge:this.challenge?.snapshot(),powerIntro:this.powerIntro?.snapshot(),lastTeleportTarget:this.lastTeleportTarget,...Object.fromEntries(fields.map(key=>[key,this[key]]))}));
   }
   restore(saved){
     this.reset();this.worldFlight=this.nativeFlight;this.sound?.restore(saved?.sound);this.plants?.restore(saved?.plants);this.feedback?.restore(saved?.feedback);this.ownership?.restore(saved?.ownership);this.lastTeleportTarget=saved?.lastTeleportTarget??-1;if(saved?.version!==1)return;
     this.flight?.restore(saved?.flight);this.localFlightHook?.restore(saved?.localFlightState);this.teleport?.restore(saved?.teleportState);this.gapFlight?.restore(saved?.gapFlight);this.orbs?.restore(saved?.orbs);this.story?.restore(saved?.story);this.worldKi?.restore(saved?.worldKi);this.barriers?.restore(saved?.barriers);this.radio?.restore(saved?.radio);this.quest?.restore(saved?.quest);this.ceiling?.restore(saved?.ceiling);
-    for(const key of ['frame','facing','nameEditor','worldFlight','flightShadow','charge','charging','attackHeld','nativeTapFrames','action','queuedPunch','combo','comboUntil','blastCooldown','attackBlocked','effects','knockbacks','lastMap','input','lastInput','attackFrames','attackCooldown','autoLand','flightTransition','localFlight','localLift'])if(saved[key]!==undefined)this[key]=JSON.parse(JSON.stringify(saved[key]));
+    for(const key of ['padInput','lastPadInput','powerCharge','powerBlocked','kiBlocked','kiHand','frame','facing','nameEditor','worldFlight','flightShadow','charge','charging','attackHeld','nativeTapFrames','action','queuedPunch','combo','comboUntil','blastCooldown','attackBlocked','effects','knockbacks','lastMap','input','lastInput','attackFrames','attackCooldown','autoLand','flightTransition','localFlight','localLift'])if(saved[key]!==undefined)this[key]=JSON.parse(JSON.stringify(saved[key]));
     Object.assign(this.options,saved.options);this.motion?.restore(saved.motion);
     this.challenge?.restore(saved.challenge);this.powerIntro?.restore(saved.powerIntro);
   }
@@ -93,8 +112,17 @@ class ManaMod {
     const previousLift=this.localLift;
     this.localLift=Math.max(0,Math.min(12,this.localLift+(this.localFlight?3:-3)));
     if(previousLift>0&&this.localLift===0&&!this.localFlight&&!this.flightTransition&&this.options.enabled&&this.gokuActive)this.playSound?.('landing');
-    this.input=input;this.frame++;this.before={x:this.read16(0xe002),y:this.read16(0xe004)};
+    // Optional keyboard/touch shortcuts expand to ordinary SNES chords.
+    if(input&(1<<18))input|=0x500;
+    if(input&(1<<21))input|=0xc00;
+    this.padInput=input;
+    const controlled=this.options.enabled&&this.gokuActive&&(this.canAttack||this.nativeFlight);
     this.snes.joypad1State=(input&0xfff)|((input&(1<<16))?1:0);
+    // X is the ring/back button. Y becomes ki only in active Goku gameplay.
+    if(controlled){input=(input&~2)|((input&2)?1<<17:0);this.snes.joypad1State&=~0xe02;}
+    if(input&0x200)this.snes.joypad1State=(this.snes.joypad1State&~0x200)|2;
+    if(input&0x200)input=(input&~0x200)|2;
+    this.input=input;this.frame++;this.before={x:this.read16(0xe002),y:this.read16(0xe004)};
     if(this.read8(0xe4)!==0||this.read8(0xe5)!==0)this.nameEditor=false;
     // Native interrupt vectors identify the Mode 7 world even during fades;
     // $E4/$E5 are only brightness timers and also occur at ordinary doors.
@@ -115,10 +143,10 @@ class ManaMod {
     if(this.poisoned&&this.options.superSaiyan){
       this.options.superSaiyan=false;this.cancelCombat();this.motion?.reset();
       this.playSound?.('revert');
-      this.attackBlocked=!!(input&1);this.log('Poison knocked Goku out of Super Saiyan.');
+      this.attackBlocked=!!(input&(1|(1<<17)));this.powerBlocked=!!(input&0x400);this.log('Poison knocked Goku out of Super Saiyan.');
     }
     const map=this.read16(0xdc);
-    if(this.lastMap!==null&&map!==this.lastMap){this.cancelCombat();this.knockbacks=[];this.lastTeleportTarget=-1;this.localFlight=false;this.localLift=0;this.attackBlocked=!!(input&1);}
+    if(this.lastMap!==null&&map!==this.lastMap){this.cancelCombat();this.knockbacks=[];this.lastTeleportTarget=-1;this.localFlight=false;this.localLift=0;this.attackBlocked=!!(input&(1|(1<<17)));this.powerBlocked=!!(input&0x400);}
     this.lastMap=map;
     this.challenge?.tick();
     if(this.options.power&&(this.canAttack||this.worldFlight)){
@@ -130,43 +158,46 @@ class ManaMod {
     this.facing=(nativeDirection&0x7f)===0?3:(nativeDirection&0x7f)===1?0:(nativeDirection&0x80)?2:1;
     if(this.ceiling?.tick()){this.localFlight=false;this.localLift=0;return;}
     if(this.teleport?.pending){this.snes.joypad1State=0;this.advanceAction();return;}
-    if((input&(1<<18))&&!(this.lastInput&(1<<18))&&(this.canAttack||this.worldFlight))this.configure({superSaiyan:!this.options.superSaiyan});
+    const takeoff=(this.padInput&0xc00)===0xc00;
+    if(takeoff&&(this.lastPadInput&0xc00)!==0xc00&&this.requestFlight()){this.snes.joypad1State=0;return;}
+    if(!((input&0x400)&&(input&((1<<17)|1|0x800)))){
+      if(controlled&&!(input&(2|(1<<16))))this.focus(input);
+    }else if(this.action?.kind==='focus'){this.action=null;this.powerCharge=0;}
     this.worldKi?.tick(input);
     this.barriers?.tick();
     if(this.worldFlight){this.localFlight=false;this.localLift=0;if(!this.worldKi&&this.autoLand)this.snes.joypad1State|=1;this.advanceAction();return;}
     // Native menus, events, character/status locks and stun own their inputs.
     // A held button must be released after a menu before it can charge again.
-    if(!this.canAttack||(input&((1<<1)|(1<<9)|(1<<16)))||(!this.options.power&&this.read8(0xe011)===0x8d)){
+    if(!this.canAttack||(input&((1<<1)|(1<<16)))||(!this.options.power&&this.read8(0xe011)===0x8d)){
       const heldCombat=this.attackHeld>0||this.charging||this.attackBlocked;
-      this.cancelCombat();this.attackBlocked=heldCombat&&!!(input&1);
-      if(this.attackBlocked&&!(input&(1<<16)))this.snes.joypad1State&=~1;
+      this.cancelCombat();this.attackBlocked=heldCombat&&!!((this.padInput&3)|(input&(1<<17)));this.powerBlocked=!!(input&0x400);
+      if(this.attackBlocked&&!(input&(1<<16))){this.snes.joypad1State&=~3;if(this.padInput&0x200)this.snes.joypad1State|=2;}
       return;
     }
     this.aim(input);
-    const teleport=!!(input&(1<<19))||((input&0x100)!==0&&(input&(1<<17))!==0);
-    const wasTeleport=!!(this.lastInput&(1<<19))||((this.lastInput&0x100)!==0&&(this.lastInput&(1<<17))!==0);
+    const teleport=!!(input&(1<<19))||((input&0x400)!==0&&(input&1)!==0);
+    const wasTeleport=!!(this.lastInput&(1<<19))||((this.lastInput&0x400)!==0&&(this.lastInput&1)!==0);
+    const wave=!!(input&0x400)&&!!(input&(1<<17))&&!teleport;
     if(teleport)this.snes.joypad1State&=~0x100;
     if(teleport&&!wasTeleport)this.instantTransmission();
     const hovering=this.localFlight;
-    this.localFlight=!!this.localFlightHook&&!teleport&&this.action?.kind!=='teleport'&&!!((input&0x100)||(hovering&&!this.localFlightHook.canLand()));
+    this.localFlight=!!this.localFlightHook&&!teleport&&this.action?.kind!=='teleport'&&!!(((input&0x100)&&(!(input&0x400)||wave))||(hovering&&!this.localFlightHook.canLand()));
     if(this.localFlight){this.snes.joypad1State&=~0x100;if(!hovering)this.playSound?.('flight');}
     for(const effect of this.effects)effect.life--;
     this.effects=this.effects.filter(effect=>effect.life>0);
     this.advanceAction();
     if(this.blastCooldown>0)this.blastCooldown--;
     this.updateProjectiles();this.updateKnockbacks();
-    if(!(input&1))this.attackBlocked=false;
+    if(!(input&(1|(1<<17))))this.attackBlocked=false;
+    if(!(input&(1<<17)))this.kiBlocked=false;
     this.snes.joypad1State&=~1;
-    if((input&1)&&!this.attackBlocked){
+    if(wave&&!this.attackBlocked&&!this.kiBlocked&&!this.charging&&(!this.action||['ready','focus','punch','blast'].includes(this.action.kind)))this.startCharge();
+    if(this.charging&&!wave){this.releaseCharge();this.kiBlocked=!!(input&(1<<17));}
+    if((input&1)&&!(input&0x400)&&!teleport&&!this.attackBlocked&&!this.charging){
       this.attackHeld++;
-      if(!this.action)this.action={kind:'ready',age:0,duration:0,facing:this.facing,super:this.options.superSaiyan};
-      if(this.attackHeld>=12&&!this.charging&&(!this.action||['ready','punch'].includes(this.action.kind)))this.startCharge();
-    }else if(this.attackHeld>0){
-      if(this.charging)this.releaseCharge();
-      else if(this.action?.kind==='ready'||!this.action)this.punch();
-      else this.queuedPunch=true;
-      this.attackHeld=0;
-    }
+      if(!this.action)this.punch();
+      else if(this.action.kind==='punch'&&(!(this.lastInput&1)||this.attackHeld>=12))this.queuedPunch=true;
+    }else this.attackHeld=0;
     if(!this.action&&this.queuedPunch){this.queuedPunch=false;this.punch();}
     if(this.charging){
       const cap=this.options.superSaiyan?45:90;
@@ -174,12 +205,12 @@ class ManaMod {
       if(this.charge===cap&&this.action&&!this.action.full){this.action.full=true;this.playSound?.('charged');}
       this.action.facing=this.facing;
     }
-    if((input&(1<<17))&&!teleport&&!this.blastCooldown&&!this.charging&&(!this.action||this.action.kind==='blast'))this.kiBlast();
+    if((input&(1<<17))&&!(input&0x400)&&!teleport&&!this.kiBlocked&&!this.attackBlocked&&!this.blastCooldown&&!this.charging&&(!this.action||this.action.kind==='blast'))this.kiBlast();
     if(this.nativeTapFrames>0){this.snes.joypad1State|=1;this.nativeTapFrames--;}
     // Charging keeps normal movement/collision, including stairs and dashing.
     // Only the brief committed attack/transform poses plant Goku's feet.
     const action=this.action;
-    if(action&&(['transform','revert','beam','teleport'].includes(action.kind)||action.kind==='punch'&&action.age<(action.super?3:6)||action.kind==='blast'&&action.age<(action.super?1:2)))this.snes.joypad1State&=~0x1f0;
+    if(action&&(['focus','transform','revert','beam','teleport'].includes(action.kind)||action.kind==='punch'&&action.age<(action.super?3:6)||action.kind==='blast'&&action.age<(action.super?1:2)))this.snes.joypad1State&=~0x1f0;
     if(action&&!['ready','charge'].includes(action.kind))this.write8(0xe010,[1,2,0x82,0][action.facing]);
     this.attackFrames=action&&['punch','beam','blast'].includes(action.kind)?Math.max(0,action.duration-action.age):0;
     this.attackCooldown=action?.kind==='punch'?this.attackFrames:0;
@@ -188,6 +219,7 @@ class ManaMod {
     if(this.options.enabled&&this.gokuActive)this.localFlightHook?.settle();
     this.moving=this.read16(0xe002)!==this.before.x||this.read16(0xe004)!==this.before.y;
     this.lastInput=this.input;
+    this.lastPadInput=this.padInput;
     this.powerIntro?.tick();
     this.radio?.tick();
   }
@@ -204,7 +236,7 @@ class ManaMod {
     const action=this.action;if(!action)return;
     action.age++;
     if(action.kind==='punch'&&!action.hit&&action.age>=action.impact){action.hit=true;this.strike(action);}
-    if(action.kind==='blast'&&action.shots<3&&action.age>=(action.super?1:2)*(action.shots+1)){
+    if(action.kind==='blast'&&action.shots===0&&action.age>=(action.super?1:2)){
       this.fireKi(action);action.shots++;
     }
     if(action.kind==='teleport'&&!action.arrived&&action.age>=4)this.finishTeleport(action);
@@ -219,7 +251,7 @@ class ManaMod {
   }
   startCharge(){
     if(this.options.enabled&&(this.canAttack||this.worldFlight)){
-      this.charging=true;this.charge=0;this.queuedPunch=false;this.nativeTapFrames=0;
+      this.charging=true;this.charge=0;this.powerCharge=0;this.queuedPunch=false;this.nativeTapFrames=0;
       this.action={kind:'charge',age:0,duration:0,facing:this.facing,super:this.options.superSaiyan};this.playSound?.('charge');
     }
   }
@@ -308,12 +340,12 @@ class ManaMod {
   kiBlast(){
     if(!this.canAttack||!this.options.enabled)return;
     const superForm=this.options.superSaiyan;
-    this.action={kind:'blast',age:0,duration:superForm?5:10,facing:this.facing,super:superForm,shots:0};
+    this.action={kind:'blast',age:0,duration:superForm?5:10,facing:this.facing,super:superForm,shots:0,hand:this.kiHand++&1};
     this.blastCooldown=superForm?5:12;
   }
   fireKi(action){
     const [dx,dy]=[[0,1],[1,0],[-1,0],[0,-1]][action.facing],superForm=action.super;
-    const hand=action.shots&1;
+    const hand=action.hand??0;
     this.effects.push({...this.handOrigin(action.facing,'ki',hand),kind:'ki',dx,dy,life:22,max:22,super:superForm,hand,width:superForm?12:8,damage:Math.round(this.damageScale()*.4),hits:[],range:256});
     this.playSound?.('blast');
   }

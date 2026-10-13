@@ -1,6 +1,8 @@
 // W3C standard layout, independent of the labels printed on the controller.
 // Fresh snapshots are polled every animation frame, including while paused.
-const bindings=new Map([[0,0],[1,1],[2,17],[3,16],[4,8],[5,18],[6,19],[8,2],[9,3],[12,4],[13,5],[14,6],[15,7]]);
+// Physical positions match an SNES pad: south B, west Y, east A, north X,
+// shoulders L/R. No triggers or stick clicks are required to play.
+const bindings=new Map([[0,0],[1,8],[2,1],[3,9],[4,10],[5,11],[8,2],[9,3],[12,4],[13,5],[14,6],[15,7]]);
 const pressed=(pad,index)=>!!pad.buttons[index]?.pressed||(pad.buttons[index]?.value??0)>.5;
 export class GamepadInput{
  constructor(input,{fly=()=>{},pause=()=>{},start=()=>{},disconnect=()=>{},status=()=>{}}={}){
@@ -33,12 +35,11 @@ export class GamepadInput{
    for(const [source,bit]of wanted)this.input.press(source,bit);
    const edges=[...down].filter(button=>!state.previous.has(button));state.previous=down;state.axes=axes;
    if(edges.includes(9))this.actions.start();
-   if(edges.includes(7))this.actions.fly();
    if(edges.includes(11))this.actions.pause();
   }
   for(const [id]of this.pads)if(!seen.has(id)){
-   const hadAttack=this.input.has(0);this.input.releasePrefix(`gamepad:${id}:`);this.pads.delete(id);
-   if(hadAttack&&!this.input.has(0))this.actions.disconnect();
+   const combat=[0,1,8,10].filter(bit=>this.input.has(bit));this.input.releasePrefix(`gamepad:${id}:`);this.pads.delete(id);
+   if(combat.some(bit=>!this.input.has(bit)))this.actions.disconnect();
   }
   const label=names.join(' · ');
   if(label!==this.label){this.label=label;this.actions.status(label);}

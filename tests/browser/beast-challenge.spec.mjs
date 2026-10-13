@@ -12,7 +12,7 @@ test('native Feed seeds choice creates a survivable multi-beam boss, earned ward
   await load(page);
   await page.evaluate(()=>{
     for(const base of[0xe200,0xe400]){mana.write8(base,0);mana.write8(base+0x2c,0);}
-    mana.mod.quest.restore({mask:0,delivered:0});mana.mod.quest.collect(0);mana.mod.quest.collect(2);
+    mana.mod.quest.restore({mask:0,delivered:0});for(let i=0;i<7;i++)mana.mod.quest.collect(i);
     mana.write8(0xcf4e,8);mana.mod.story.request(0x429);
   });
   const signature=[0x50,...encodeText('GOKU:Just one little snack?')];
@@ -28,7 +28,7 @@ test('native Feed seeds choice creates a survivable multi-beam boss, earned ward
     await page.evaluate(()=>{mana.run(2,[16]);mana.run(150);});
   }
   const initial=await page.evaluate(()=>({s:mana.mod.status,c:mana.mod.challenge.status,boss:mana.read16(0xe782),quest:mana.mod.quest.status}));
-  expect(initial.s.canAttack).toBe(true);expect(initial.boss).toBe(65535);expect(initial.c.wards).toBe(2);expect(initial.quest).toMatchObject({count:7,earned:2,delivered:5});
+  expect(initial.s.canAttack).toBe(true);expect(initial.boss).toBe(65535);expect(initial.c.wards).toBe(7);expect(initial.quest).toMatchObject({count:7,earned:7,delivered:0});
   const state=await page.evaluate(()=>mana.snapshot());
   const renderer=await page.evaluate(()=>{
     const saved=mana.snapshot();mana.run(8);const native=mana.hash(mana.snes.ppu.vram);
@@ -39,7 +39,7 @@ test('native Feed seeds choice creates a survivable multi-beam boss, earned ward
   });
   expect(renderer).toEqual({same:true,pending:false,quake:0});
   const beam=await page.evaluate(()=>{
-    mana.mod.options.superSaiyan=true;mana.run(1,[4]);mana.run(60,[0]);mana.run(1);mana.run(65);
+    mana.mod.options.superSaiyan=true;mana.run(1,[4]);mana.run(60,[10,1]);mana.run(1);mana.run(65);
     return{hp:mana.read16(0xe782),flag:mana.read8(0xcf4e),error:mana.mod.story.status.error};
   });
   expect(beam.hp).toBeGreaterThan(0);expect(beam.hp).toBeLessThan(65535);expect(beam.flag).toBe(8);expect(beam.error).toBe(null);
@@ -56,7 +56,7 @@ test('native Feed seeds choice creates a survivable multi-beam boss, earned ward
   // Explicitly choose the same challenge without palace rewards. The real
   // native damage consumer must be able to kill Goku, without auto-rescue.
   const danger=await page.evaluate(()=>{
-    mana.mod.quest.restore({mask:127,delivered:7});mana.mod.challenge.choose(true);mana.run(1);
+    mana.mod.challenge.restore({...mana.mod.challenge.snapshot(),wards:0,grace:0});mana.run(1);
     for(let i=0;i<5&&mana.read16(0xe182);i++){
       mana.write16(0xe1f1,450);mana.write8(0xe1f0,3);mana.write8(0xe1ec,0);mana.run(140);
     }
@@ -69,7 +69,7 @@ test('native Feed seeds choice creates a survivable multi-beam boss, earned ward
   for(let i=0;i<80;i++){
     const result=await page.evaluate(()=>{
       const m=mana.mod;
-      if(m.canAttack){m.instantTransmission();mana.run(15);mana.run(65,[0]);mana.run(1);mana.run(80);}
+      if(m.canAttack){m.instantTransmission();mana.run(15);mana.run(65,[10,1]);mana.run(1);mana.run(80);}
       else{mana.run(2,[16]);mana.run(100);}
       return{won:mana.read8(0xcf4e)>=9,hp:mana.read16(0xe182),error:m.story.status.error};
     });expect(result.error).toBe(null);expect(result.hp).toBeGreaterThan(0);if(result.won){won=true;break;}
@@ -80,9 +80,9 @@ test('native Feed seeds choice creates a survivable multi-beam boss, earned ward
 test('first hover and Super Saiyan reveals preserve controls and replay only once',async({page})=>{
   await load(page);
   const result=await page.evaluate(()=>{
-    const m=mana.mod;mana.run(8,[8,7]);const moved=m.status.x,flight=m.powerIntro.snapshot();mana.run(1);mana.run(2,[18]);
+    const m=mana.mod;mana.run(8,[8,7]);const moved=m.status.x,flight=m.powerIntro.snapshot();mana.run(1);mana.run(96,[10,8]);
     const reveal={...m.action},saved=mana.snapshot();mana.run(24);const image=mana.hash(mana.pixels);mana.restore(saved);mana.run(24);
-    const same=mana.hash(mana.pixels)===image;mana.run(80);mana.run(2,[18]);mana.run(30);mana.run(2,[18]);
+    const same=mana.hash(mana.pixels)===image;mana.run(80);mana.run(2,[18]);mana.run(30);mana.run(96,[10,8]);
     return{moved,flight,reveal,same,repeat:m.action,flags:m.powerIntro.snapshot(),radio:m.radio.snapshot()};
   });
   expect(result.flight.flight).toBe(true);expect(result.reveal).toMatchObject({kind:'transform',duration:72,reveal:true});expect(result.same).toBe(true);

@@ -10,7 +10,7 @@ test('full SSJ beam has a huge blue native-pixel footprint, sustains, hits real 
   const result=await page.evaluate(()=>{
     const saved=mana.snapshot(),shots=[];
     for(const full of[false,true]){
-      mana.restore(saved);mana.run(1,[4]);mana.run(full?65:35,[0]);mana.run(1);mana.run(8);
+      mana.restore(saved);mana.run(1,[4]);mana.run(full?65:35,[10,1]);mana.run(1);mana.run(8);
       const m=mana.mod,e=m.effects.find(e=>e.kind==='beam'),pixels=m.spriteLayer.effectMask.reduce((s,p)=>s+p,0);
       shots.push({mega:e.mega,pixels,width:m.beamGeometry(e).halfWidth,hits:e.hits.slice()});
     }
@@ -30,7 +30,7 @@ test('the giant aerial beam stays blue and enormous at low and space-high Mode 7
     const saved=mana.snapshot(),shots=[];
     for(const altitude of[48,190]){
       mana.restore(saved);mana.write8(0xf8,altitude);mana.write16(0xf6,512);mana.run(10);
-      mana.run(65,[0]);mana.run(1);mana.run(12);
+      mana.run(65,[10,1]);mana.run(1);mana.run(12);
       const m=mana.mod,layer=m.spriteLayer;let blue=0,colors=0;
       for(let i=0;i<layer.surface.length;i++)if(layer.effectMask[i]){
         const c=layer.surface[i]-1,r=c&31,g=c>>5&31,b=c>>10&31;colors++;if(b>r&&b>=g)blue++;

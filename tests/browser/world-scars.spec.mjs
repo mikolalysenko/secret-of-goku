@@ -12,7 +12,7 @@ test('an aerial town blast apologizes and its native-art crater survives travel 
     // Fly south from Potos, then aim back at the village. Its native texture
     // rows stream normally while travelling to the firing position.
     mana.write16(0xf6,512);mana.run(90,[4]);mana.write16(0xf6,0);mana.run(10);
-    mana.run(75,[0]);const target=m.worldKi.aim();mana.run(1);const firing=mana.snapshot();mana.run(110);
+    mana.run(75,[10,1]);const target=m.worldKi.aim();mana.run(1);const firing=mana.snapshot();mana.run(110);
     const expected=JSON.stringify(m.worldKi.snapshot());let shotReplay=true;
     for(let i=0;i<2;i++){mana.restore(firing);mana.run(110);shotReplay&&=JSON.stringify(m.worldKi.snapshot())===expected;}
     const scars=m.worldScars.status,radio=m.radio.snapshot(),saved=mana.snapshot();

@@ -28,7 +28,7 @@ test('three charged gate shortcuts rebuild native maps and persist across return
   for(const[map,x,y,flag,min]of[[300,9,25,23,2],[82,20,38,52,4],[116,16,29,55,1]]){
     await load(page);await enter(page,map,x,y,{[flag]:0});
     expect(await page.evaluate(flag=>mana.read8(0xcf00+flag),flag)).toBe(0);
-    await page.evaluate(()=>{mana.run(1,[4]);mana.run(105,[0]);mana.run(1);mana.run(60);});
+    await page.evaluate(()=>{mana.run(1,[4]);mana.run(105,[10,1]);mana.run(1);mana.run(60);});
     await dismiss(page,()=>mana.mod.barriers.status.completed.length>0&&mana.mod.canAttack,40);
     expect(await page.evaluate(flag=>mana.read8(0xcf00+flag),flag)).toBe(min);
     const after=await page.evaluate(()=>({map:mana.read16(0xdc),grid:mana.hash(mana.snes.ram.slice(0x10000,0x18000)),error:mana.mod.story.status.error}));
@@ -43,13 +43,13 @@ test('early Tree barrier blocks landing, breaks with an aerial charge, then land
   await load(page);await enter(page,198,18,39,{93:1,70:0});
   const result=await page.evaluate(()=>{
     mana.write8(0xe3,0);mana.mod.flight.request();mana.run(700);
-    mana.mod.autoLand=true;mana.run(160);const blocked=mana.mod.worldFlight;mana.mod.autoLand=false;
+    mana.run(160,[0]);const blocked=mana.mod.worldFlight;mana.mod.autoLand=false;
     // Travel away naturally so the native world row stream stays initialized.
     mana.write16(0xf6,512);mana.run(100,[4]);mana.write16(0xf6,0);mana.write16(0xf4,0);
-    mana.run(105,[0]);const held={charge:mana.mod.charge,nativeB:mana.snes.joypad1State&1};mana.run(1);mana.run(100);
+    mana.run(105,[10,1]);const held={charge:mana.mod.charge,nativeB:mana.snes.joypad1State&1};mana.run(1);mana.run(100);
     const hit=mana.mod.worldKi.status.lastHit,saved=mana.snapshot();mana.restore(saved);
-    mana.write16(0xfa,624);mana.write16(0xfc,384);mana.write16(0xf4,0);mana.write8(0xcf5d,0);mana.mod.autoLand=true;
-    const landing=[],backgroundFlyby=[];for(let f=0;f<400;f++){mana.run(1);if(!mana.mod.worldFlight&&!mana.snes.ppu.forcedBlank){backgroundFlyby.push(mana.read8(0x52));const pose=mana.mod.spriteLayer.plan?.sprite;if(pose?.kind==='landing')landing.push(pose.y);}}
+    mana.write16(0xfa,624);mana.write16(0xfc,384);mana.write16(0xf4,0);mana.write8(0xcf5d,0);
+    const landing=[],backgroundFlyby=[];for(let f=0;f<400;f++){mana.run(1,mana.mod.worldFlight?[0]:[]);if(!mana.mod.worldFlight&&!mana.snes.ppu.forcedBlank){backgroundFlyby.push(mana.read8(0x52));const pose=mana.mod.spriteLayer.plan?.sprite;if(pose?.kind==='landing')landing.push(pose.y);}}
     return{blocked,held,hit,map:mana.read16(0xdc),world:mana.mod.worldFlight,gate:mana.read8(0xe3)&64,progress:mana.read8(0xcf46),landing,backgroundFlyby};
   });
   expect(result.blocked).toBe(true);expect(result.held).toEqual({charge:90,nativeB:0});expect(result.hit).toBe('mana-tree-barrier');
@@ -66,7 +66,7 @@ test('aerial Fortress destruction skips the dungeon and starts the native Mana B
     mana.write8(0xf8,190);mana.run(10);
     for(let f=0;f<105;f++){
       const dx=((mana.read16(0x128)-mana.read16(0xfa)+2048)&4095)-2048,dy=((mana.read16(0x12a)-mana.read16(0xfc)+2048)&4095)-2048;
-      mana.write16(0xf6,Math.round(Math.atan2(-dx,-dy)*512/Math.PI)&1023);mana.run(1,[0]);
+      mana.write16(0xf6,Math.round(Math.atan2(-dx,-dy)*512/Math.PI)&1023);mana.run(1,[10,1]);
     }
     mana.run(1);mana.run(17);const hit=mana.mod.worldKi.status.lastHit;mana.run(240);return hit;
   });
@@ -82,7 +82,7 @@ test('Luka shortcut plays both final battles and reaches the ending without recr
   for(let i=0;i<150;i++){
     const s=await page.evaluate(()=>{
       const m=mana.mod,bosses=m.entities().filter(e=>e.index>=3&&e.active&&e.species>=87&&e.species<128&&e.hp);const seen=bosses.map(e=>e.species);
-      if(m.canAttack&&bosses.length){m.instantTransmission();mana.run(15);mana.run(110,[0]);mana.run(1);mana.run(40);}
+      if(m.canAttack&&bosses.length){m.instantTransmission();mana.run(15);mana.run(110,[10,1]);mana.run(1);mana.run(40);}
       else{mana.run(2,[16]);mana.run(95);}
       return{seen,flag:mana.read8(0xcf4e),error:m.story.status.error};
     });s.seen.forEach(id=>seen.add(id));expect(s.error).toBe(null);if(s.flag>=9){ending=true;break;}

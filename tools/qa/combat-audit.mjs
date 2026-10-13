@@ -15,8 +15,8 @@ try{
   const moves={
     walk:[[30,'direction'],[8,[]]],run:[[24,'run'],[8,[]]],
     combo:[[2,[0]],[10,[]],[2,[0]],[10,[]],[2,[0]],[22,[]]],
-    charge:[[112,[0]],[30,[]]],ki:[[45,[17]],[22,[]]],
-    transform:[[1,[18]],[40,[]],[1,[18]],[26,[]]],
+    charge:[[112,[10,1]],[30,[]]],ki:[[45,[1]],[22,[]]],
+    transform:[[96,[10,8]],[80,[]],[2,[10,8]],[14,[]]],
   };
   for(const superSaiyan of [false,true])for(const [direction,button]of [['down',5],['left',6],['right',7],['up',4]])for(const [move,sequence]of Object.entries(moves)){
     if(move==='transform'&&(superSaiyan||direction!=='down'))continue;

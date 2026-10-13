@@ -30,7 +30,7 @@ test('native sword pull hands off once to Goku, survives an impact checkpoint, a
       await new Promise(resolve=>setTimeout(resolve,0));
     }
     const complete=mana.snapshot(),ending={phase:mana.arrival.phase,crater:mana.arrival.crater,name:Array.from(mana.snes.ram.slice(0xcc00,0xcc06)),map:mana.read16(0xdc),event:mana.read8(0xd0),flags:[mana.read8(0xcf00),mana.read8(0xcf10),mana.read8(0xcf0a),mana.read8(0xcfc1)],canAttack:mana.mod.canAttack};
-    mana.run(120,[0]);const charging=mana.mod.charging;mana.run(1);const beams=mana.mod.effects.filter(effect=>effect.kind!=='punch').length;
+    mana.run(120,[10,1]);const charging=mana.mod.charging;mana.run(1);const beams=mana.mod.effects.filter(effect=>effect.kind!=='punch').length;
     mana.restore(complete);mana.run(60);const persistent=mana.arrival.arrived&&mana.arrival.crater&&mana.arrival.phase==='complete';
     return{romUnchanged:mana.hash(mana.snes.cart.data)===romHash,stages,pages:pages.size,replay,earlyGoku,ending,charging,beams,persistent};
   });

@@ -28,7 +28,7 @@ test('every form and direction commits exactly one punch on its active visual fr
   for(const superSaiyan of [false,true])for(let facing=0;facing<4;facing++){
     const {mod,step,enemy,snes}=setup({superSaiyan,facing}),[dx,dy]=[[0,1],[1,0],[-1,0],[0,-1]][facing];
     const target=enemy(3,200+dx*28,200+dy*28),behind=enemy(4,200-dx*40,200-dy*40),npc=enemy(5,200+dx*24,200+dy*24,100,150);
-    step(1);assert.equal(mod.motion.pose().kind,'ready');step();assert.equal(mod.read16(target+0x182),20000);
+    step(1);assert.equal(mod.motion.pose().kind,'punch');assert.equal(mod.read16(target+0x182),20000);
     step(0,superSaiyan?1:2);assert.equal(mod.motion.pose().column,11);assert.ok(mod.read16(target+0x182)<20000);assert.equal(snes.joypad1State&1,0,'a connected punch must not also trigger the hidden sword');
     const hp=mod.read16(target+0x182);step(0,20);assert.equal(mod.read16(target+0x182),hp);assert.equal(mod.read16(behind+0x182),20000);assert.equal(mod.read16(npc+0x182),100);
   }
@@ -56,8 +56,8 @@ test('a missed three-hit combo plays two air swishes and a kick whoosh without i
 
 test('charge preserves directional movement, aims immediately and releases along the locked facing',()=>{
   for(const superSaiyan of [false,true]){
-    const {mod,snes,step}=setup({superSaiyan});step(1,12);assert.equal(mod.charging,true);
-    step(1|(1<<4),100);assert.equal(mod.facing,3);assert.equal(mod.charge,superSaiyan?45:90);assert.equal(snes.joypad1State&0x1f1,1<<4);assert.equal(mod.motion.pose().column,superSaiyan?18:22);
+    const {mod,snes,step}=setup({superSaiyan});step(0x402,12);assert.equal(mod.charging,true);
+    step(0x402|(1<<4),100);assert.equal(mod.facing,3);assert.equal(mod.charge,superSaiyan?45:90);assert.equal(snes.joypad1State&0x1f1,1<<4);assert.equal(mod.motion.pose().column,superSaiyan?18:22);
     step();assert.equal(mod.effects.filter(e=>e.kind==='beam').length,1);assert.equal(mod.motion.pose().column,superSaiyan?19:23);
     step(1<<6,3);assert.equal(mod.action.facing,3);assert.equal(mod.effects[0].dy,-1);assert.equal(mod.motion.pose().row,3);
     step(0,superSaiyan?70:30);assert.equal(mod.action,null);assert.equal(mod.effects.length,0);
@@ -66,7 +66,7 @@ test('charge preserves directional movement, aims immediately and releases along
 
 test('Instant Transmission stays beside one living target without dealing damage, then cycles on the next press',()=>{
   const {mod,step,enemy}=setup(),first=enemy(3,350,200,100),second=enemy(4,480,300,100),npc=enemy(5,205,200,100,150);
-  const combo=0x100|(1<<17);step(combo,16);
+  const combo=0x401;step(combo,16);
   assert.equal(mod.lastTeleportTarget,3);assert.equal(mod.read16(0xe002),324);assert.equal(mod.read16(0xe004),200);
   assert.equal(mod.read16(first+0x182),100);assert.equal(mod.read16(first+0x1f1),0);assert.equal(mod.effects.length,0);
   step(combo,20);assert.equal(mod.read16(0xe002),324,'holding combo must not teleport repeatedly');
@@ -75,21 +75,21 @@ test('Instant Transmission stays beside one living target without dealing damage
   step();step(1);step();step(0,3);assert.ok(mod.read16(second+0x1f1)>0,'player attacks normally after arrival');
 });
 
-test('a released ki burst finishes three alternating palm shots without starting a second burst',()=>{
-  const {mod,step}=setup(),hands=[];const fire=mod.fireKi.bind(mod);mod.fireKi=a=>{hands.push(a.shots&1);fire(a);};
-  step(1<<17);step(0,20);assert.deepEqual(hands,[0,1,0]);
+test('each ki tap fires one shot, alternating hands, without an extra burst',()=>{
+  const {mod,step}=setup(),hands=[];const fire=mod.fireKi.bind(mod);mod.fireKi=a=>{hands.push(a.hand);fire(a);};
+  for(let i=0;i<3;i++){step(2);step(0,20);}assert.deepEqual(hands,[0,1,0]);
 });
 
 test('DBZ cues follow actual strike, palm emission and beam-contact frames',()=>{
   for(const superSaiyan of[false,true]){
     const {mod,step,enemy}=setup({superSaiyan,power:false}),events=[];
     mod.playSound=name=>events.push({name,frame:mod.frame,age:mod.action?.age});
-    enemy(3,228,200,20000);step(1);step();const released=mod.frame;
+    enemy(3,228,200,20000);step(1);const released=mod.frame;
     assert.deepEqual(events.map(e=>e.name),['swing']);
     step(0,superSaiyan?1:2);
     assert.equal(events.at(-1).name,'hit');assert.equal(events.at(-1).frame-released,superSaiyan?1:2);
     step(0,20);events.length=0;step(1<<17);assert.equal(events.length,0);
-    step(0,12);assert.equal(events.filter(e=>e.name==='blast').length,3);
+    step(0,12);assert.equal(events.filter(e=>e.name==='blast').length,1);
     assert.ok(events.filter(e=>e.name==='impact').every(e=>e.frame>events.find(e=>e.name==='blast').frame));
     step(0,20);events.length=0;enemy(3,330,200,20000);mod.startCharge();mod.charge=90;mod.releaseCharge();
     assert.deepEqual(events.map(e=>e.name),['charge','beam']);step(0,10);
@@ -162,8 +162,8 @@ test('held ki blasts use their own release pose and Super Saiyan fires faster',(
 });
 
 test('menus, confirm, switching characters and incapacitation cancel charge without a stray shot',()=>{
-  for(const stop of [(m,s)=>s(1<<1),(m,s)=>s(1<<16),(m,s)=>{m.write8(0xe02c,0);s(1);},(m,s)=>{m.write8(0xe191,0x80);s(1);},(m,s)=>{m.write8(0xe011,0x8d);s(1);},(m,s)=>{m.write8(0xd0,0x83);s(1);}]){
-    const {mod,step}=setup({power:false});step(1,50);assert.equal(mod.charging,true);stop(mod,step);assert.equal(mod.charging,false);assert.equal(mod.effects.length,0);step();assert.equal(mod.effects.length,0);
+  for(const stop of [(m,s)=>s(1<<9),(m,s)=>s(1<<16),(m,s)=>{m.write8(0xe02c,0);s(1);},(m,s)=>{m.write8(0xe191,0x80);s(1);},(m,s)=>{m.write8(0xe011,0x8d);s(1);},(m,s)=>{m.write8(0xd0,0x83);s(1);}]){
+    const {mod,step}=setup({power:false});step(0x402,50);assert.equal(mod.charging,true);stop(mod,step);assert.equal(mod.charging,false);assert.equal(mod.effects.length,0);step();assert.equal(mod.effects.length,0);
   }
   const {mod,step,snes}=setup();step(1<<16,120);assert.equal(mod.charging,false);assert.equal(snes.joypad1State,1);
 });
@@ -179,7 +179,7 @@ test('transform and revert play every authored phase without empty or unrelated 
 
 test('mid-charge and mid-strike snapshots preserve exact animation and projectile timing',()=>{
   for(const charging of [true,false]){
-    const {mod,step}=setup();step(1,charging?36:2);if(!charging){step();step();}
+    const {mod,step}=setup();step(charging?0x402:1,charging?36:2);if(!charging){step();step();}
     const saved=mod.snapshot(),ram=mod.snes.ram.slice();step(0,8);const first=JSON.stringify(mod.snapshot());
     mod.snes.ram.set(ram);mod.restore(saved);step(0,8);assert.equal(JSON.stringify(mod.snapshot()),first);
   }
@@ -201,7 +201,7 @@ test('standing feet stay fixed across source poses and native airborne height is
 });
 
 test('native NMI sync bit does not interrupt charge or lose reward attribution',()=>{
-  const {mod,step,enemy}=setup();step(1,35);mod.write8(0xec,1);step(1,35);
+  const {mod,step,enemy}=setup();step(0x402,35);mod.write8(0xec,1);step(0x402,35);
   assert.equal(mod.charging,true);assert.ok(mod.charge>50);
   const target=enemy(3,230,200,20);mod.write8(target+0x1ec,0xff);mod.write8(target+0x1f0,0xff);
   step();step(0,3);assert.equal(mod.read16(target+0x1f1),999);
@@ -225,7 +225,32 @@ test('scripted falling stays airborne, then native landing and recovery phases u
 
 test('Saiyan charge resists ordinary knockback without losing its pose; normal power can be interrupted',()=>{
   for(const power of [false,true]){
-    const {mod,step}=setup({power});step(1,40);mod.write8(0xe011,0x8d);mod.write8(0xe045,12);step(1);
+    const {mod,step}=setup({power});step(0x402,40);mod.write8(0xe011,0x8d);mod.write8(0xe045,12);step(0x402);
     assert.equal(mod.charging,power);assert.equal(mod.motion.pose().kind,power?'charge':'hurt');
   }
+});
+
+test('SNES L builds focus, L+A commits only at full power, and one tap quickly reverts',()=>{
+  const {mod,step,snes}=setup();step(0x400,120);
+  assert.equal(mod.powerCharge,96);assert.equal(mod.options.superSaiyan,false);assert.equal(mod.action.kind,'focus');
+  assert.equal(snes.joypad1State&0xf00,0,'focus never leaks shoulder actions into the game');
+  step();assert.equal(mod.action,null);assert.equal(mod.powerCharge,0);
+  step(0x500,45);assert.equal(mod.options.superSaiyan,false);step();assert.equal(mod.action,null);
+  step(0x500,96);assert.equal(mod.options.superSaiyan,true);assert.equal(mod.action.kind,'transform');
+  step(0x500,100);assert.equal(mod.options.superSaiyan,true,'holding the chord never toggles back');
+  step();step(0x500);assert.equal(mod.options.superSaiyan,false);assert.equal(mod.action.duration,10);
+  step(0x500,130);assert.equal(mod.options.superSaiyan,false,'revert requires release before another transformation');
+});
+test('L attack chords replace focus without toggling form, and holding B chains a physical combo',()=>{
+  const {mod,step,enemy}=setup({superSaiyan:true});enemy(3,350,200);
+  step(0x400,30);step(0x402,55);assert.equal(mod.charging,true);assert.equal(mod.options.superSaiyan,true);
+  step(2);assert.equal(mod.action.kind,'beam');step(2,100);assert.equal(mod.effects.filter(e=>e.kind==='ki').length,0,'releasing L first does not fire unintended ki');
+  step();step(0x401,20);assert.equal(mod.lastTeleportTarget,3);assert.equal(mod.options.superSaiyan,true);
+  step(0,20);const combos=new Set();for(let i=0;i<50;i++){step(1);if(mod.action?.kind==='punch')combos.add(mod.action.combo);}
+  assert.deepEqual([...combos].sort(),[0,1,2]);assert.equal(mod.charging,false);
+});
+test('focus checkpoints replay the aura clock and transformation precisely',()=>{
+  const {mod,step}=setup();step(0x500,55);const saved=mod.snapshot(),ram=mod.snes.ram.slice();
+  step(0x500,60);const expected=JSON.stringify(mod.snapshot());mod.snes.ram.set(ram);mod.restore(saved);step(0x500,60);
+  assert.equal(JSON.stringify(mod.snapshot()),expected);
 });

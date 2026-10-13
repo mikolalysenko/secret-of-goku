@@ -92,6 +92,7 @@ export function createNativeEffects(bytes,manifest){
   if(manifest.schemaVersion!==1||manifest.format!=='som-effect-3bpp-row')throw Error('Unsupported native effects manifest');
   const groups={};
   const gold=manifest.frames.find(frame=>frame.group==='gold-spark').palette;
+  const blue=manifest.frames.find(frame=>frame.group==='charge-orb').palette;
   function add(frame,group,palette=frame.palette){
     const {rgba}=decodeEffectFrame(bytes,{...frame,palette}),pixels=new Uint16Array(256);
     for(let i=0;i<256;i++)if(rgba[i*4+3])pixels[i]=1+((rgba[i*4]>>3)|((rgba[i*4+1]>>3)<<5)|((rgba[i*4+2]>>3)<<10));
@@ -100,6 +101,7 @@ export function createNativeEffects(bytes,manifest){
   for(const frame of manifest.frames){
     add(frame,frame.group);
     if(['charge-orb','beam-body','beam-head'].includes(frame.group))add(frame,'gold-'+frame.group,gold);
+    if(frame.group==='gold-arc')add(frame,'aura-arc',blue);
   }
   return groups;
 }

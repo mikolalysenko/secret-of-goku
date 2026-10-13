@@ -1,6 +1,6 @@
 // Built locally from the user's ROM. No cartridge bytes or savestates ship
 // with the site. Bump the revision when native virtual script layouts change.
-export const quickStartRevision='opening-seed-challenge-3';
+export const quickStartRevision='snes-focus-seed-challenge-4';
 export const quickStartLabels={title:'After title',sword:'After sword / pod crash'};
 export async function buildQuickStart(kind,{fresh,pump,mod,arrival,capture,cache,progress}){
   if(!(kind in quickStartLabels))throw Error('Unknown quick checkpoint');

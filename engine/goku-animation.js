@@ -67,7 +67,8 @@ class GokuAnimation {
       // Six native pixels per footfall; a blocked walk settles to idle after
       // three stationary frames rather than skating through a running loop.
       result={sheet,row:poseRow,column:(kind==='run'?6:2)+Math.floor(s.distance/6)%4};
-    }else if(kind==='ready')result=this.track(sheet,'chargeWindup',Math.min(action.age,5),poseRow);
+    }else if(kind==='focus')result={sheet,row:0,column:sheet==='ssj'?46:54};
+    else if(kind==='ready')result=this.track(sheet,'chargeWindup',Math.min(action.age,5),poseRow);
     else if(kind==='punch'){
       const columns=action.super?(action.combo===2?14:10):[10,14,18][action.combo];
       const phase=action.super?(action.age<1?0:action.age<2?1:action.age<4?2:3):(action.age<2?0:action.age<4?1:action.age<7?2:3);
@@ -76,7 +77,7 @@ class GokuAnimation {
     else if(kind==='beam')result={sheet,row:[0,2,1,3][action.facing],column:(action.super?18:22)+(action.age<2?1:action.age<action.duration-4?2:3)};
     else if(kind==='blast'){
       const phase=Math.floor(action.age/(action.super?1:2));
-      result={sheet,row:[0,2,1,3][action.facing],column:(action.super?24:28)+(phase===0?0:phase>=4?3:1+(phase-1)%2)};
+      result={sheet,row:[0,2,1,3][action.facing],column:(action.super?24:28)+(phase===0?0:phase>=4?3:1+(action.hand??0))};
     }
     else if(kind==='teleport')result={sheet,row:[0,2,1,3][action.facing],column:(action.super?22:26)+(action.age<4||action.age>=9?0:1)};
     else if(kind==='transform'||kind==='revert'){

@@ -33,7 +33,7 @@ test('Goku walks while charging in both forms and Super Saiyan keeps a blue beam
     const saved=mana.snapshot(),results=[];
     for(const superSaiyan of [false,true]){
       mana.restore(saved);mana.mod.options.superSaiyan=superSaiyan;
-      const before=mana.mod.status;mana.run(35,[0,6]);const after=mana.mod.status;
+      const before=mana.mod.status;mana.run(35,[10,1,6]);const after=mana.mod.status;
       const sprite=mana.mod.spriteLayer.plan.sprite,groups=[],layer=mana.mod.spriteLayer,stamp=layer.stamp;
       layer.stamp=function(group,...args){groups.push(group);return stamp.call(this,group,...args);};
       try{mana.run(1);mana.run(5);}finally{layer.stamp=stamp;}
@@ -48,7 +48,7 @@ test('a charged Kamehameha removes native bushes and opens their collision tiles
   await load(page,'.local/emulator-probe/main-before-grass.json');
   const result=await page.evaluate(()=>{
     const saved=mana.snapshot();mana.run(60,[7]);const blocked=mana.mod.status.x;mana.restore(saved);
-    mana.run(2,[7]);mana.run(104,[0]);mana.run(1);mana.run(35);
+    mana.run(2,[7]);mana.run(104,[10,1]);mana.run(1);mana.run(35);
     const cuts=mana.mod.plants.completed.flatMap(row=>row.tiles).map(tile=>({before:tile.tile,after:mana.read8(tile.address),replacement:tile.replacement}));
     mana.run(60,[7]);return{blocked,opened:mana.mod.status.x,cuts};
   });
@@ -60,9 +60,9 @@ test('Instant Transmission moves beside a real enemy without killing it or retur
   await load(page,'.local/animation-audit/native/rabite-field-b.json');
   const result=await page.evaluate(()=>{
     const player=mana.mod.status;const enemies=mana.mod.entities().filter(e=>e.index>=3&&e.active&&e.species<128&&e.hp);
-    mana.run(14,[8,17]);const first={...mana.mod.status},target=mana.mod.entities()[mana.mod.lastTeleportTarget];
-    mana.run(25,[8,17]);const stayed=mana.mod.status;
-    mana.run(1);mana.run(14,[8,17]);const second=mana.mod.lastTeleportTarget;
+    mana.run(14,[10,0]);const first={...mana.mod.status},target=mana.mod.entities()[mana.mod.lastTeleportTarget];
+    mana.run(25,[10,0]);const stayed=mana.mod.status;
+    mana.run(1);mana.run(14,[10,0]);const second=mana.mod.lastTeleportTarget;
     return{count:enemies.length,moved:Math.hypot(first.x-player.x,first.y-player.y),gap:Math.hypot(first.x-target.x,first.y-target.y),target:target.index,hp:target.hp,beforeHp:enemies.find(e=>e.index===target.index)?.hp,stayed:Math.hypot(first.x-stayed.x,first.y-stayed.y),second};
   });
   expect(result.count).toBeGreaterThan(1);expect(result.moved).toBeGreaterThan(20);expect(result.gap).toBeLessThan(45);expect(result.hp).toBe(result.beforeHp);expect(result.stayed).toBeLessThan(3);expect(result.second).not.toBe(result.target);
@@ -70,15 +70,15 @@ test('Instant Transmission moves beside a real enemy without killing it or retur
 
 test('real input starts and stops charging audio and releases a beam sound',async({page})=>{
   await load(page,'.local/graphics-audit/party.json');
-  await page.evaluate(()=>mana.play());await page.keyboard.down('j');
+  await page.evaluate(()=>mana.play());await page.keyboard.down('Shift');await page.keyboard.down('c');
   await expect.poll(()=>page.evaluate(()=>mana.mod.sound.stats.charge)).toBe(true);
-  await page.keyboard.up('j');
+  await page.keyboard.up('c');await page.keyboard.up('Shift');
   await expect.poll(()=>page.evaluate(()=>mana.mod.sound.stats.last)).toBe('beam');
   expect(await page.evaluate(()=>mana.mod.sound.stats.played)).toBeGreaterThan(1);
   await page.evaluate(()=>mana.pause());expect(await page.evaluate(()=>mana.mod.sound.stats.charge)).toBe(false);
 });
 
-test('Shift flies over bushes, respects the next wall, and waits for safe ground before landing',async({page})=>{
+test('A flies over bushes, respects the next wall, and waits for safe ground before landing',async({page})=>{
   await load(page,'.local/emulator-probe/main-before-grass.json');
   const result=await page.evaluate(()=>{
     const start=mana.mod.status;mana.run(5,[8,7]);const flying={...mana.mod.status},sprite=mana.mod.spriteLayer.plan.sprite;
@@ -93,7 +93,7 @@ test('Shift flies over bushes, respects the next wall, and waits for safe ground
 test('the native item ring offers Fly with a Goku icon and takes off without Flammie',async({page})=>{
   await load(page,'.local/graphics-audit/party.json');
   const result=await page.evaluate(()=>{
-    mana.run(2,[1]);mana.run(90);
+    mana.run(2,[9]);mana.run(90);
     for(let i=0;i<4&&mana.read8(0x1809)!==0;i++){mana.run(2,[4]);mana.run(60);}
     for(let i=0;i<12&&mana.read8(0x180a)!==0;i++){mana.run(2,[6]);mana.run(30);}
     const icon=[...mana.mod.spriteLayer.plan.portraits.values()].some(p=>p.kind==='fly');

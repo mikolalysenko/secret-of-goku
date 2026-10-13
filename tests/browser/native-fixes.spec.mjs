@@ -15,7 +15,7 @@ test('Senzu Beans fully heal injured allies, revive fallen allies and preserve f
    if(target>=0){const b=0xe000+target*512;mana.write16(b+0x182,target===2?0:1);if(target===2)mana.write8(b+0x191,mana.read8(b+0x191)|128);}
    // Let the native death/fall transition finish before opening the item ring.
    mana.run(120);const before=mana.mod.senzu.used;
-   mana.run(2,[1]);mana.run(90);for(let i=0;i<4&&mana.read8(0x1809)!==0;i++){mana.run(2,[4]);mana.run(60);}
+   mana.run(2,[9]);mana.run(90);for(let i=0;i<4&&mana.read8(0x1809)!==0;i++){mana.run(2,[4]);mana.run(60);}
    mana.run(2,[16]);mana.run(55);mana.run(2,[16]);mana.run(220);
    results.push({target,used:mana.mod.senzu.used-before,inventory:mana.read8(0xcc48),party:[0,1,2].map(i=>{const b=0xe000+i*512;return{hp:mana.read16(b+0x182),max:mana.read16(b+0x184),dead:!!(mana.read8(b+0x191)&128)};})});
   }

@@ -9,10 +9,10 @@ const make=()=>{const snes={ram:new Uint8Array(0x20000),joypad1State:0,ppu:{oam:
 const frame=(snes,mod,input=0)=>{snes.joypad1State=input;mod.beforeFrame(input);mod.afterFrame();};
 
 test('native attack stays masked during a hold and fires only after release',()=>{
-  const {snes,mod}=make();for(let i=0;i<120;i++){frame(snes,mod,1);assert.equal(snes.joypad1State&1,0);}
+  const {snes,mod}=make();for(let i=0;i<120;i++){frame(snes,mod,0x402);assert.equal(snes.joypad1State&1,0);}
   assert.equal(mod.charging,true);assert.equal(mod.charge,90);assert.equal(mod.effects.length,0);
   frame(snes,mod,0);assert.equal(mod.charging,false);assert.equal(mod.effects.length,1);assert.ok(mod.effects[0].width>15);
-  mod.reset();frame(snes,mod,1);assert.equal(mod.action.kind,'ready');frame(snes,mod,0);assert.equal(mod.action.kind,'punch');
+  mod.reset();frame(snes,mod,1);assert.equal(mod.action.kind,'punch');frame(snes,mod,0);assert.equal(mod.action.kind,'punch');
   frame(snes,mod);frame(snes,mod);assert.equal(snes.joypad1State&1,1);assert.equal(mod.effects[0].kind,'punch');
 });
 
@@ -48,7 +48,7 @@ test('title, naming, dialogue, ring and ring-opening inputs bypass combat hooks'
     for(let i=0;i<120;i++){frame(snes,mod,1);assert.equal(snes.joypad1State,1);}
     frame(snes,mod,0);assert.equal(mod.charging,false);assert.equal(mod.effects.length,0);
   }
-  const {snes,mod}=make();frame(snes,mod,3);assert.equal(snes.joypad1State,3);assert.equal(mod.attackHeld,0);
+  const {snes,mod}=make();frame(snes,mod,0x201);assert.equal(snes.joypad1State,3);assert.equal(mod.attackHeld,0);
 });
 
 test('native facing drives attacks, including scripted direction changes',()=>{

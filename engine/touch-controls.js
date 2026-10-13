@@ -6,15 +6,17 @@ const icons={
  hover:'<path d="m3 15 9-9 9 9M3 20h18M7 15l5-5 5 5"/>',
  ki:'<circle cx="15" cy="9" r="5"/><path d="m3 14 5-5m-4 9 5-5m-2 9 6-6"/>',
  super:'<path d="m13 2-8 12h6l-1 8 9-13h-7Z"/>',
+ focus:'<circle cx="12" cy="12" r="4"/><path d="M8 3 3 8m13-5 5 5M3 16l5 5m8 0 5-5"/>',
  teleport:'<path d="m14 3 7 5-7 5M21 8H9m1 13-7-5 7-5M3 16h12"/>',
  fly:'<path d="m3 21 6-2L20 4l-4-1L5 15Zm5-6 4 3M2 12l6-6h6m-2 13 6-6v-6"/>',
  attack:'<path d="M6 12V7a2 2 0 0 1 4 0V5a2 2 0 0 1 4 0v1a2 2 0 0 1 4 0v2a2 2 0 0 1 3 1v5l-4 7H9l-6-7a2 2 0 0 1 3-2Z"/>',
+ fast:'<path d="m3 5 8 7-8 7Zm10 0 8 7-8 7Z"/>',
  start:'<path d="m7 4 13 8-13 8Z"/>',pause:'<path d="M8 5v14M16 5v14"/>',party:'<circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3m1-16a3 3 0 0 1 0 6m2 3a5 5 0 0 1 3 5v2"/>',
 };
 export function mountTouchControls(root,input,{ready=()=>true,resume=()=>{},fly=()=>{},pause=()=>{},cancel=()=>{}}={}){
  if(!root)return{clear(){}};
  const button=(icon,label,bit)=>`<button type="button" aria-label="${label}" title="${label}" ${typeof bit==='number'?`data-snes="${bit}"`:`data-action="${bit}"`} data-icon="${icon}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${icons[icon]}</svg></button>`;
- root.innerHTML=`<div class="touch-left"><div class="touch-directions" aria-label="Move">${button('up','Up',4)}${button('left','Left',6)}${button('down','Down',5)}${button('right','Right',7)}</div><div class="touch-utility">${button('start','Start',3)}${button('party','Switch party member',2)}${button('pause','Pause or resume','pause')}</div></div><div class="touch-actions">${button('ring','Ring menu / back',1)}${button('talk','Talk / confirm',16)}${button('hover','Hold to fly fast / ascend',8)}${button('ki','Ki barrage',17)}${button('super','Super Saiyan',18)}${button('teleport','Instant Transmission',19)}${button('fly','World flight / land','fly')}${button('attack','Attack / hold to charge Kamehameha',0)}</div>`;
+ root.innerHTML=`<div class="touch-left"><div class="touch-directions" aria-label="Move">${button('up','Up',4)}${button('left','Left',6)}${button('down','Down',5)}${button('right','Right',7)}</div><div class="touch-utility">${button('start','Start',3)}${button('party','Switch party member',2)}${button('pause','Pause or resume','pause')}</div></div><div class="touch-actions">${button('ring','X: Ring menu / back',9)}${button('talk','Talk / confirm',16)}${button('hover','A: Hold to fly fast / ascend',8)}${button('ki','Y: Ki blast / L + Y charges Kamehameha',1)}${button('super','L + A: Hold to transform / tap to return to normal',18)}${button('focus','L: Focus / hold with B to teleport or Y to charge',10)}${button('fly','L + R: Take off; hold B to descend in flight',21)}${button('attack','B: Punch / hold for combo / confirm',0)}${button('fast','R: Hold to fast-forward dialogue',11)}</div>`;
  const pad=root.querySelector('.touch-directions'),pointers=new Map();
  root.addEventListener('contextmenu',e=>e.preventDefault());
  root.addEventListener('selectstart',e=>e.preventDefault());
@@ -32,7 +34,7 @@ export function mountTouchControls(root,input,{ready=()=>true,resume=()=>{},fly=
   if(pointer.pad)input.releasePrefix(`touch:${e.pointerId}:dir:`);
   else if(aborted)input.cancel(`touch:${e.pointerId}`);else input.release(`touch:${e.pointerId}`);
   pointers.delete(e.pointerId);pointer.button?.classList.remove('is-held');highlight();
-  if(aborted&&!input.has(0))cancel();
+  if(aborted)cancel();
  }
  root.addEventListener('pointerdown',e=>{
   const el=e.target.closest('button');if(!el&&!pad.contains(e.target))return;

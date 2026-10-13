@@ -16,10 +16,10 @@ test('real native Rabites receive punch, travelling beam and ki damage, launch a
       mana.restore(base);mana.run(5,[7]);mana.run(3);
       const enemy=mana.mod.entities().find(e=>e.index===3),before={...enemy},gold=mana.read16(0xcc6a),xp=mana.read16(0xe18d),sounds=mana.mod.combatSound.suppressed;
       if(technique==='beam'){
-        mana.run(110,[0]);
+        mana.run(110,[10,1]);
         const target=mana.mod.entities()[3],player=mana.mod.status,dx=target.x-player.x,dy=target.y-player.y;
         const direction=Math.abs(dx)>Math.abs(dy)?(dx>0?7:6):(dy>0?5:4);
-        mana.run(2,[0,direction]);mana.run(1);
+        mana.run(2,[10,1,direction]);mana.run(1);
       }
       else if(technique==='ki')mana.run(8,[17]);
       else{mana.run(2,[0]);mana.run(1);}
@@ -51,7 +51,7 @@ test('one SSJ beam repeatedly hits a 65535-HP Mantis Ant and still reaches the n
     // input, never relocating the boss or inventing its defeat flag.
     const status=mana.mod.status,dx=boss.x-status.x,dy=boss.y-status.y;
     const button=Math.abs(dx)>Math.abs(dy)?(dx>0?7:6):(dy>0?5:4);
-    mana.run(2,[button]);mana.run(112,[0]);mana.run(1);
+    mana.run(2,[button]);mana.run(112,[10,1]);mana.run(1);
     const beam=mana.mod.effects.find(e=>e.kind==='beam');
     let dead=false,rescue=false;
     for(let i=0;i<60;i++){
@@ -66,33 +66,33 @@ test('one SSJ beam repeatedly hits a 65535-HP Mantis Ant and still reaches the n
 
 test('keyboard aliases, confirm, ring cancellation, party switching and checkpoint replay keep distinct input ownership',async({page})=>{
   await load(page,'.local/graphics-audit/party.json');
-  await page.evaluate(()=>mana.play());await page.keyboard.down('j');await page.keyboard.down('Space');
+  await page.evaluate(()=>mana.play());await page.keyboard.down('Shift');await page.keyboard.down('c');await page.keyboard.down(',');
   await expect.poll(()=>page.evaluate(()=>mana.mod.charging)).toBe(true);
-  await page.keyboard.up('j');await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBe(90);
-  await page.keyboard.up('Space');await expect.poll(()=>page.evaluate(()=>mana.logs.some(line=>line.startsWith('Kamehameha')))).toBe(true);
+  await page.keyboard.up(',');await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBe(90);
+  await page.keyboard.up('c');await page.keyboard.up('Shift');await expect.poll(()=>page.evaluate(()=>mana.logs.some(line=>line.startsWith('Kamehameha')))).toBe(true);
   const result=await page.evaluate(()=>{
     mana.pause();mana.run(40);const base=mana.snapshot();
     mana.run(80,[16]);const confirm={charged:mana.mod.charging,beams:mana.mod.effects.filter(e=>e.kind==='beam').length};
-    mana.restore(base);mana.run(50,[0]);mana.run(2,[0,1]);mana.run(90,[0]);const ring={charge:mana.mod.charge,menu:mana.read8(0xec),nativeB:mana.snes.joypad1State&1};
-    mana.restore(base);mana.run(2,[2]);mana.run(40);const owner=mana.read8(0xe02c);mana.run(90,[0]);const party={owner,charging:mana.mod.charging,nativeB:mana.snes.joypad1State&1};
-    mana.restore(base);mana.run(45,[0]);const saved=mana.snapshot();mana.run(15,[0]);mana.run(7);const hash=mana.hash(mana.pixels),ram=mana.hash(mana.snes.ram);
-    mana.restore(saved);mana.run(15,[0]);mana.run(7);return{confirm,ring,party,replay:hash===mana.hash(mana.pixels)&&ram===mana.hash(mana.snes.ram)};
+    mana.restore(base);mana.run(50,[10,1]);mana.run(2,[10,1,9]);mana.run(90,[10,1]);const ring={charge:mana.mod.charge,menu:mana.read8(0xec),nativeB:mana.snes.joypad1State&1};
+    mana.restore(base);mana.run(2,[2]);mana.run(40);const owner=mana.read8(0xe02c);mana.run(90,[10,1]);const party={owner,charging:mana.mod.charging,nativeB:mana.snes.joypad1State&1};
+    mana.restore(base);mana.run(45,[10,1]);const saved=mana.snapshot();mana.run(15,[10,1]);mana.run(7);const hash=mana.hash(mana.pixels),ram=mana.hash(mana.snes.ram);
+    mana.restore(saved);mana.run(15,[10,1]);mana.run(7);return{confirm,ring,party,replay:hash===mana.hash(mana.pixels)&&ram===mana.hash(mana.snes.ram)};
   });
   expect(result.confirm).toEqual({charged:false,beams:0});expect(result.ring.charge).toBe(0);expect(result.ring.menu).not.toBe(0);expect(result.ring.nativeB).toBe(0);
-  expect(result.party).toEqual({owner:0,charging:false,nativeB:1});expect(result.replay).toBe(true);
+  expect(result.party).toEqual({owner:0,charging:false,nativeB:0});expect(result.replay).toBe(true);
 });
 
 test('on-screen attack and keyboard can overlap, and C/R drive ki and transformation',async({page})=>{
   await load(page,'.local/graphics-audit/party.json');
   // Make the real pointer control visible on the desktop test viewport too.
   await page.locator('.touch-pad').evaluate(element=>element.style.display='flex');
-  const attack=page.locator('[data-snes="0"]');await attack.scrollIntoViewIfNeeded();
+  const attack=page.locator('[data-snes="1"]');await attack.scrollIntoViewIfNeeded();
   const box=await attack.boundingBox();await page.evaluate(()=>mana.play());
-  await page.keyboard.down('j');await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.keyboard.up('j');
+  await page.keyboard.down('Shift');await page.keyboard.down('c');await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.keyboard.up('c');
   await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBe(90);
-  await page.mouse.up();await expect.poll(()=>page.evaluate(()=>mana.logs.some(line=>line.startsWith('Kamehameha')))).toBe(true);
+  await page.mouse.up();await page.keyboard.up('Shift');await expect.poll(()=>page.evaluate(()=>mana.logs.some(line=>line.startsWith('Kamehameha')))).toBe(true);
   await expect.poll(()=>page.evaluate(()=>mana.mod.action===null)).toBe(true);
-  await page.keyboard.press('r');await expect.poll(()=>page.evaluate(()=>mana.mod.options.superSaiyan)).toBe(true);
+  await page.keyboard.down('r');await expect.poll(()=>page.evaluate(()=>mana.mod.options.superSaiyan)).toBe(true);await page.keyboard.up('r');
   await expect.poll(()=>page.evaluate(()=>mana.mod.action===null)).toBe(true);
   await page.keyboard.down('c');await expect.poll(()=>page.evaluate(()=>mana.mod.effects.some(effect=>effect.kind==='ki'))).toBe(true);await page.keyboard.up('c');
   await expect.poll(()=>page.evaluate(()=>mana.mod.effects.length===0)).toBe(true);

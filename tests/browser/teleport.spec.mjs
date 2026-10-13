@@ -22,10 +22,10 @@ test('an offscreen teleport streams the map into view and leaves movement and th
  await load(page);
  const r=await page.evaluate(()=>{
   const m=mana.mod,before=m.status;mana.write8(0xe600,0);mana.write8(0xe800,0);
-  const target=m.entities()[5];mana.run(80,[8,17]);const landed=m.status;
+  const target=m.entities()[5];mana.run(80,[10,0]);const landed=m.status;
   const clear=m.localFlightHook.canLand(),pending=m.teleport.pending,scrolls=m.teleport.scrolls;
   mana.run(1);mana.run(6,[5]);const moved=Math.hypot(m.status.x-landed.x,m.status.y-landed.y);
-  mana.run(2,[1]);mana.run(90);return{before,target,landed,clear,pending,scrolls,moved,ring:mana.read8(0xec),blank:mana.snes.ppu.forcedBlank};
+  mana.run(2,[9]);mana.run(90);return{before,target,landed,clear,pending,scrolls,moved,ring:mana.read8(0xec),blank:mana.snes.ppu.forcedBlank};
  });
  expect(r.target.screenX).toBeLessThan(0);expect(r.scrolls).toBeGreaterThan(4);expect(r.pending).toBe(false);expect(r.clear).toBe(true);
  expect(r.landed.screenX).toBeGreaterThan(48);expect(r.landed.screenX).toBeLessThan(208);expect(r.landed.screenY).toBeGreaterThan(40);expect(r.landed.screenY).toBeLessThan(192);

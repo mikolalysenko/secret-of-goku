@@ -11,7 +11,7 @@ function fixture(earned=0){
     read8:a=>ram[a],read16:a=>ram[a]|ram[a+1]<<8,write8:(a,v)=>ram[a]=v,write16:(a,v)=>{ram[a]=v;ram[a+1]=v>>8;},
     entities:()=>[{index:3,base:0xe600,active:true,species:127,hp:mod.read16(0xe782)}],
     get status(){return position;},
-    quest:{status:{earned}},radio:{say:text=>notices.push(text)}};
+    quest:{status:{earned,canFeed:true}},radio:{say:text=>notices.push(text)}};
   mod.write16(0xdc,253);mod.write16(0xe782,1000);mod.write16(0xe182,999);
   const challenge=createBeastChallenge(snes,mod);mod.challenge=challenge;
   return{mod,challenge,notices,position,cpu,tick:(n=1)=>{for(let i=0;i<n;i++)challenge.tick();}};
@@ -52,4 +52,14 @@ test('flight and gold-hair reveals are one-shot and use valid native three-line 
   const intro=createPowerIntro(mod);intro.tick();intro.tick();assert.equal(notices.length,2);
   intro.transform();intro.transform();assert.equal(notices.length,5);assert.equal(mod.action.duration,72);
   const saved=intro.snapshot();intro.restore(saved);intro.tick();intro.transform();assert.equal(notices.length,5);
+});
+
+test('all seven real seed visits are required; emergency Balls cannot unlock feeding or prevent later collection',()=>{
+  const f=fixture(),q=createDragonQuest(f.mod);f.mod.quest=q;
+  q.collect(0);q.collect(2);q.deliver();assert.equal(q.status.canFeed,false);assert.equal(f.challenge.choose(true),false);
+  assert.equal(f.challenge.status.fed,false);
+  for(const i of[1,3,4,5])q.collect(i);assert.equal(q.status.seedCount,6);assert.equal(f.challenge.choose(true),false);
+  q.collect(6);assert.equal(q.status.canFeed,true);assert.equal(q.status.earned,7);assert.equal(q.status.delivered,0);
+  assert.equal(f.challenge.choose(true),true);assert.equal(f.challenge.status.wards,7);assert.equal(q.collect(6),false);
+  const saved=q.snapshot();q.restore(saved);assert.equal(q.status.canFeed,true);
 });

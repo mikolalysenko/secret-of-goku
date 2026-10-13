@@ -13,11 +13,11 @@ test('original ROM boots Potos with Goku, holds attack, flies, lands and replays
     mana.run(80,[4]);const after=mana.mod.status.y;mana.restore(saved);mana.play();return{before,after};
   });
   expect(movement.before-movement.after).toBeGreaterThan(60);
-  await page.keyboard.down('j');await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBe(90);
+  await page.keyboard.down('Shift');await page.keyboard.down('c');await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBe(90);
   expect(await page.evaluate(()=>({charging:mana.mod.charging,charge:mana.mod.charge,nativeB:mana.snes.joypad1State&1}))).toEqual({charging:true,charge:90,nativeB:0});
-  await page.keyboard.up('j');await expect.poll(()=>page.evaluate(()=>mana.logs.some(l=>l.startsWith('Kamehameha')))).toBe(true);
-  await page.keyboard.press('r');await expect.poll(()=>page.evaluate(()=>mana.mod.status.attack)).toBe(8191);
-  await page.getByRole('button',{name:'Take flight / land'}).click();
+  await page.keyboard.up('c');await page.keyboard.up('Shift');await expect.poll(()=>page.evaluate(()=>mana.logs.some(l=>l.startsWith('Kamehameha')))).toBe(true);
+  await page.keyboard.down('r');await expect.poll(()=>page.evaluate(()=>mana.mod.status.attack)).toBe(8191);await page.keyboard.up('r');
+  await page.getByRole('button',{name:'Take flight'}).click();
   await page.waitForFunction(()=>mana.ready&&mana.mod.worldFlight&&(mana.read8(0xec)&0x80)&&!(mana.read8(0xe2)&1),null,{timeout:20000});
   const flight=await page.evaluate(()=>{
     mana.pause();const saved=mana.snapshot(),poses=[];
@@ -34,8 +34,9 @@ test('original ROM boots Potos with Goku, holds attack, flies, lands and replays
   });
   for(const pose of flight.poses){expect(pose.kind).toBe('flight');expect(pose.column).toBeGreaterThanOrEqual(pose.sheet==='ssj'?36:40);expect(pose.column).toBeLessThanOrEqual(pose.sheet==='ssj'?39:43);expect(pose.mask).toBe(pose.expected);}
   expect(new Set(flight.poses.map(pose=>pose.sheet))).toEqual(new Set(['goku','ssj']));expect(flight.moved).toBe(true);expect(flight.replay).toBe(true);
-  await page.getByRole('button',{name:'Take flight / land'}).click();
+  await page.keyboard.down('j');
   await page.waitForFunction(()=>mana.ready&&!mana.mod.worldFlight&&mana.mod.canAttack,null,{timeout:20000});
+  await page.keyboard.up('j');
   expect(await page.evaluate(()=>mana.mod.status.map)).toBe(131);
   const replay=await page.evaluate(()=>{
     mana.pause();const saved=mana.snapshot(),before=mana.mod.status.y;mana.run(80,[4]);const after=mana.mod.status.y,a=mana.hash(mana.snes.ram);

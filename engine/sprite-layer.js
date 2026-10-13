@@ -219,6 +219,24 @@ class ManaSpriteLayer {
       this.stamp('gold-spark',phase+2,ax+28,ay+22);
       if(m.charging)this.chargeLightning(x+size/2,y+size/2);
     }
+    if(m.action?.kind==='focus'&&(m.canAttack||flight)){
+      const power=m.powerCharge/96,phase=m.frame>>2,cx=x+size/2,cy=y+size/2;
+      const radius=6+power*12,count=4+Math.floor(power*4),gold=superForm;
+      this.plan.power=power;
+      for(let i=0;i<count;i++){
+        const angle=i*Math.PI*2/count,rad=radius+((phase+i)%3-1)*2;
+        const [dx,dy]=[[1,0],[0,1],[-1,0],[0,-1]][Math.floor(i*4/count)];
+        this.stamp(gold?'gold-arc':'aura-arc',phase+i,Math.round(cx+Math.cos(angle)*rad),Math.round(cy+Math.sin(angle)*rad*1.3),dx,dy);
+      }
+      for(let i=0;i<Math.floor(power*6);i++){
+        const rise=(m.frame*2+i*9)%44,side=i&1?1:-1;
+        this.stamp(gold?'gold-spark':'impact-spark',phase+i,cx+side*(10+(i%3)*3),cy+22-rise);
+      }
+      if(power>.65)for(let i=0;i<4;i++){
+        const angle=(i*1.57+m.frame*.19),rad=radius+4;
+        this.stamp('lightning',phase+i,Math.round(cx+Math.cos(angle)*rad),Math.round(cy+Math.sin(angle)*rad));
+      }
+    }
     const shadow=m.flightShadow;
     if(flight&&shadow){const cx=(shadow.minX+shadow.maxX)/2,cy=(shadow.minY+shadow.maxY)/2;for(let yy=-2;yy<=2;yy++)for(let xx=-8;xx<=8;xx++)if(xx*xx/64+yy*yy/4<=1)this.pixel(cx+xx,cy+yy,this.rgb(40,56,48));}
     m.ceiling?.draw(this);

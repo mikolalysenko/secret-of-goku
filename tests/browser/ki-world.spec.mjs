@@ -28,8 +28,8 @@ test('charging halves walking and flying speed in both forms',async({page})=>{
     for(const superSaiyan of [false,true])for(const fly of [false,true]){
       const measure=charge=>{
         mana.restore(saved);mana.mod.options.superSaiyan=superSaiyan;
-        mana.run(20,charge?[0]:[]);const start=mana.mod.status;
-        mana.run(10,[6,...(fly?[8]:[]),...(charge?[0]:[])]);
+        mana.run(20,charge?[10,1]:[]);const start=mana.mod.status;
+        mana.run(10,[6,...(fly?[8]:[]),...(charge?[10,1]:[])]);
         return{distance:start.x-mana.mod.status.x,charge:mana.mod.charging};
       };
       results.push({superSaiyan,fly,normal:measure(false),slow:measure(true)});
@@ -49,11 +49,11 @@ test('flight keeps its speed over river currents and stairs, can land there, and
       mana.write16(0xe002,scene.x);mana.write16(0xe004,scene.y);m.localFlightHook.restore();
       m.teleport.follow({x:scene.x,y:scene.y,terrain:mana.read8(0xe00b),layer:0});mana.run(60);const saved=mana.snapshot();
       for(const superSaiyan of [false,true])for(const charging of [false,true]){
-        mana.restore(saved);m.options.superSaiyan=superSaiyan;mana.run(20,charging?[0]:[]);
-        const from=m.status,points=[];mana.run(1,[8,scene.button,...(charging?[0]:[])]);
-        for(let i=0;i<6;i++){mana.run(1,[8,scene.button,...(charging?[0]:[])]);points.push([m.status.x,m.status.y,m.charging]);}
+        mana.restore(saved);m.options.superSaiyan=superSaiyan;mana.run(20,charging?[10,1]:[]);
+        const from=m.status,points=[];mana.run(1,[8,scene.button,...(charging?[10,1]:[])]);
+        for(let i=0;i<6;i++){mana.run(1,[8,scene.button,...(charging?[10,1]:[])]);points.push([m.status.x,m.status.y,m.charging]);}
         const end=m.status,code=m.localFlightHook.tileAt(end.x,end.y).code;
-        mana.run(10,charging?[0]:[]);const landed=!m.localFlight;
+        mana.run(10,charging?[10,1]:[]);const landed=!m.localFlight;
         rows.push({superSaiyan,charging,from:[from.x,from.y],points,code,landed});
       }
       return rows;
@@ -98,8 +98,8 @@ test('fast flight cannot cross native walls in village, cave and palace maps on 
 test('poison interrupts Super Saiyan charge and blocks transformation until cured',async({page})=>{
   await load(page);
   const result=await page.evaluate(()=>{
-    mana.mod.options.superSaiyan=true;mana.run(30,[0]);
-    mana.write8(0xe191,mana.read8(0xe191)|0x20);mana.run(1,[0]);
+    mana.mod.options.superSaiyan=true;mana.run(30,[10,1]);
+    mana.write8(0xe191,mana.read8(0xe191)|0x20);mana.run(1,[10,1]);
     const poisoned={super:mana.mod.options.superSaiyan,charging:mana.mod.charging,blocked:mana.mod.attackBlocked};
     mana.mod.configure({superSaiyan:true});const denied=!mana.mod.options.superSaiyan;
     mana.run(1);const beams=mana.mod.effects.filter(e=>e.kind==='beam').length;
@@ -125,7 +125,7 @@ test('Kamehameha breaks native axe rocks on both collision layers',async({page})
   for(const scene of [{map:286,x:36,y:35,layer:0},{map:432,x:7,y:14,layer:1}]){
     await enter(page,scene.map,scene.x,scene.y,{},scene.layer);
     const result=await page.evaluate(()=>{
-      mana.run(2,[7]);mana.run(105,[0]);mana.run(1);mana.run(35);
+      mana.run(2,[7]);mana.run(105,[10,1]);mana.run(1);mana.run(35);
       return mana.mod.plants.completed.filter(row=>row.map===mana.read16(0xdc)).flatMap(row=>row.tiles).filter(t=>t.code===0xc2).map(t=>({layer:t.layer,before:t.tile,after:mana.read8(t.address),replacement:t.replacement}));
     });
     expect(result.length).toBeGreaterThan(0);for(const t of result){expect(t.layer).toBe(scene.layer);expect(t.after).toBe(t.replacement);expect(t.after).not.toBe(t.before);}
@@ -135,8 +135,8 @@ test('Kamehameha breaks native axe rocks on both collision layers',async({page})
 test('Super Saiyan lightning changes paths during a full hold and strikes native surfaces',async({page})=>{
   await load(page,'.local/emulator-probe/main-before-grass.json');
   const result=await page.evaluate(()=>{
-    mana.mod.options.superSaiyan=true;mana.run(80,[0]);const paths=[],targets=[];
-    for(let f=0;f<24;f++){mana.run(1,[0]);const arcs=mana.mod.spriteLayer.plan.lightning||[];paths.push(JSON.stringify(arcs.map(a=>a.points)));targets.push(...arcs.map(a=>a.target));}
+    mana.mod.options.superSaiyan=true;mana.run(80,[10,1]);const paths=[],targets=[];
+    for(let f=0;f<24;f++){mana.run(1,[10,1]);const arcs=mana.mod.spriteLayer.plan.lightning||[];paths.push(JSON.stringify(arcs.map(a=>a.points)));targets.push(...arcs.map(a=>a.target));}
     return{variations:new Set(paths).size,surfaces:targets.filter(t=>t.kind==='surface').length,charge:mana.mod.charge};
   });
   expect(result.variations).toBeGreaterThan(6);expect(result.surfaces).toBeGreaterThan(10);expect(result.charge).toBe(45);
@@ -150,7 +150,7 @@ test('Japanese chant keeps its long delivery in both forms and shouts only on re
   await page.evaluate(()=>{const sound=mana.mod.sound;window.kiMeter=sound.output.context.createAnalyser();kiMeter.fftSize=2048;sound.connect(kiMeter);});
   for(const superSaiyan of [false,true]){
     await page.evaluate(superSaiyan=>{mana.mod.options.superSaiyan=superSaiyan;mana.mod.sound.speech.stats.history=[];},superSaiyan);
-    await page.keyboard.down('j');
+    await page.keyboard.down('Shift');await page.keyboard.down('c');
     await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBe(superSaiyan?45:90);
     await expect.poll(()=>page.evaluate(()=>mana.mod.sound.speech.stats.speaking),{timeout:10000}).toBe(false);
     const before=await page.evaluate(()=>({frame:mana.mod.frame,history:mana.mod.sound.speech.stats.history.map(v=>v.name)}));
@@ -163,16 +163,16 @@ test('Japanese chant keeps its long delivery in both forms and shouts only on re
     expect(await page.evaluate(()=>mana.mod.sound.speech.stats.durations.charge)).toBeGreaterThan(3.5);
     await expect.poll(()=>page.evaluate(()=>mana.mod.frame)).toBeGreaterThan(before.frame+20);
     expect(await page.evaluate(()=>mana.mod.sound.speech.stats.history.map(v=>v.name))).toEqual(before.history);
-    await page.keyboard.up('j');
+    await page.keyboard.up('c');await page.keyboard.up('Shift');
     await expect.poll(()=>page.evaluate(()=>mana.mod.sound.speech.stats.last)).toBe('release');
     await expect.poll(()=>page.evaluate(()=>mana.mod.action)).toBe(null);
     await expect.poll(()=>page.evaluate(()=>mana.mod.sound.speech.stats.speaking)).toBe(false);
   }
-  await page.keyboard.down('j');await expect.poll(()=>page.evaluate(()=>mana.mod.charging)).toBe(true);
+  await page.keyboard.down('Shift');await page.keyboard.down('c');await expect.poll(()=>page.evaluate(()=>mana.mod.charging)).toBe(true);
   await page.getByRole('button',{name:'Mute',exact:true}).click();
   expect(await page.evaluate(()=>mana.mod.sound.speech.stats.speaking)).toBe(false);
   expect(await page.evaluate(()=>mana.mod.sound.stats.loops)).toEqual([]);
-  await page.evaluate(()=>mana.pause());await page.keyboard.up('j');
+  await page.evaluate(()=>mana.pause());await page.keyboard.up('c');await page.keyboard.up('Shift');
   expect(await page.evaluate(()=>mana.mod.sound.speech.stats.speaking)).toBe(false);
 });
 
@@ -189,7 +189,7 @@ test('punches, ki shots and Kamehameha activate every native elemental orb puzzl
       mana.run(6,[4]);
       if(i%3===0){mana.run(2,[0]);mana.run(1);}
       else if(i%3===1)mana.run(4,[17]);
-      else{mana.run(105,[0]);mana.run(1);}
+      else{mana.run(105,[10,1]);mana.run(1);}
       mana.run(30);
       for(let f=0;f<300;f++)mana.run(1,f%30<2?[16]:[]);
       return{map:mana.read16(0xdc),before,after:mana.read8(0xcf00+flag),count:mana.mod.orbs.activated,last:mana.mod.orbs.last,error:mana.mod.orbs.error,queuedDamage:mana.read16(orb.base+0x1f1),event:mana.read8(0xd0),gridChanged:grid.some((v,i)=>v!==mana.snes.ram[0x10000+i])};

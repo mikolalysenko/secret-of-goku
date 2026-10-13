@@ -67,9 +67,13 @@ World flight is identified by the installed native interrupt vectors at `$0100..
 
 Addresses are within bank `7E`; helpers mask them into the 128 KiB RAM array. Entities have stride `0x200` starting at `$E000`: party 0–2, enemies 3 onward. Species is `+0x180`, HP `+0x182`, maximum HP `+0x184`, and dead status bit `0x80` is at `+0x191`. Damage excludes inactive records, party slots, NPC species ≥128 and dead enemies.
 
-Ground B is held back until release. A tap starts a punch; a whiff also emits a native B pulse for talking/cutting map obstacles. A connected punch suppresses the hidden sword's extra hit. Holding 12 frames begins Kamehameha; charge caps at 90 frames or 45 in Super Saiyan, and only release fires. Punches have 14/7-frame actions, 2/1-frame impact delays and buffered three-hit combos. C fires travelling ki blasts every 12/5 frames. Base attack is 4095, Super Saiyan 8191; a finishing kick multiplies it by 1.5. Ordinary enemies and their native death effects follow 56/88-pixel launch arcs. Boss bodies remain in their original position so their native defeat events can finish. See [combat implementation and checks](combat.md).
+Ground B starts a punch immediately; holding it chains the combo; a whiff also emits a native B pulse for talking/cutting map obstacles. A connected punch suppresses the hidden sword's extra hit. Holding L+Y begins Kamehameha; charge caps at 90 frames or 45 in Super Saiyan, and only release fires. Punches have 14/7-frame actions, 2/1-frame impact delays and buffered three-hit combos. C fires travelling ki blasts every 12/5 frames. Base attack is 4095, Super Saiyan 8191; a finishing kick multiplies it by 1.5. Ordinary enemies and their native death effects follow 56/88-pixel launch arcs. Boss bodies remain in their original position so their native defeat events can finish. See [combat implementation and checks](combat.md).
 
-J/Space/Z drive B attacks; E uses a separate wrapper confirm bit that reaches native B without charging. Q and X map to native Y (ring/back). In flight, X instead maps to native A (ascend). Shift/K use A for the original boy and world ascent; Goku local flight masks native A so dash cannot lock facing, Tab to Select, comma/period to L/R, and Enter to Start. R toggles Super Saiyan during gameplay. F calls the verified native C1:E76D world dispatcher at the C0:B073 boundary. The common C1:E837 handoff skips Flammie summon choreography for F, the renamed Fly ring item, and scripted departures, preserving native coordinates, saved return map, fade and landing logic. The Fly ring icon follows its inventory index and native OAM allocation. Shift flies over local terrain; Shift+C teleports beside one enemy without dealing damage.
+J/Space/Z supplies B; C supplies Y, K supplies A, Q/X/Backspace supplies X, Shift/comma supplies L, V/period supplies R. X remaps to the native ring/back action. Start and Select retain their original buttons. The original BOY/menu input remains native. E optionally confirms without attacking. Goku uses L focus, L+Y Kamehameha, L+B Instant Transmission, L+A transformation, and L+R takeoff. Keyboard R/F and their touch shortcuts expand into those SNES chords. No analog controls, triggers or extra face buttons are required.
+
+`scene-fast-forward.js` recognizes both native text rendering ($D0=81) and button waits ($D0=83). Holding R runs up to four native frames per wall-clock step and pulses B for prose. It scans complete text windows for native selection commands before confirming, stops at choices, and mutes audio during acceleration. Events still execute every original frame; their map and story writes are preserved.
+
+Takeoff calls the verified native C1:E76D world dispatcher at C0:B073. The C1:E837 handoff skips Flammie summon choreography for direct takeoff, the Fly ring item and scripted departures, preserving coordinates, return map, fade and landing logic. World controls remain Flammie's steering, A ascent and B descent to land; L+Y charges the aerial wave. The Fly ring icon follows its inventory index and native OAM allocation.
 
 ## Console and checkpoints
 
@@ -85,8 +89,8 @@ mana.snes.ppu.oam;
 mana.mod.spriteLayer.plan;
 
 mana.run(60, [7]);          // native right
-mana.run(120, [0]);         // hold attack
-mana.run(1);               // release
+mana.run(120, [10, 1]);     // hold L+Y to charge
+mana.run(1);                // release
 const checkpoint = mana.snapshot();
 mana.run(60, [6]);
 mana.restore(checkpoint);

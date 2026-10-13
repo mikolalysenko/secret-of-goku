@@ -29,6 +29,7 @@ import {createBeastChallenge} from './beast-challenge.js';
 import {createPowerIntro} from './power-intro.js';
 import {buildQuickStart,quickStartLabels,quickStartRevision} from './quick-start.js';
 import {createWorldScars} from './world-scars.js';
+import {createSceneFastForward} from './scene-fast-forward.js';
 const effectsManifest=fetch(new URL('./native-effects.json',import.meta.url)).then(response=>{if(!response.ok)throw Error('Native effect descriptors could not be loaded.');return response.json();});
 const $=id=>document.getElementById(id),snes=new window.Snes(),canvas=$('screen'),context=canvas.getContext('2d'),pixels=context.createImageData(512,480);
 const message=text=>{$('lab-message').textContent=text;};
@@ -71,6 +72,7 @@ mod.ceiling=createCeilingEscape(mod);
 mod.challenge=createBeastChallenge(snes,mod);
 mod.powerIntro=createPowerIntro(mod);
 mod.worldScars=createWorldScars(snes,mod);
+const fastForward=createSceneFastForward(mod);
 let loaded=false,running=false,busy=false,lastTime=0,accumulator=0,checkpoint=null,frameCount=0,fpsTime=performance.now();
 let nameSeeded=false,originalBoot=false;
 let originalRom=null;
@@ -99,6 +101,7 @@ function prefillName(){
   mod.write8(0xa1cc,3);mod.write8(0xa157,0x18);mod.write8(0xa20a,mod.read8(0xa20a)|2);nameSeeded=true;mod.nameEditor=true;
 }
 function step(mask=0,audible=false){
+  mask=fastForward.input(mask);
   snes.joypad1State=mask;arrival.beforeFrame();mod.beforeFrame(mask);snes.runFrame(false);mod.afterFrame();prefillName();
   if(audible&&audioEnabled&&audioContext?.state==='running'){
     const samples=Math.round(audioContext.sampleRate/60),buffer=audioContext.createBuffer(2,samples,audioContext.sampleRate);
@@ -126,7 +129,13 @@ function tick(now){
   if(running&&!busy){
     accumulator+=Math.min(.1,(now-lastTime)/1000);let steps=0;
     while(accumulator>=1/60&&steps<4){
-      step(controls.sample(),true);accumulator-=1/60;steps++;frameCount++;
+      const mask=controls.sample(),fast=fastForward.state(mask).active;
+      step(mask,!fast);frameCount++;
+      if(fast){
+        nextAudio=0;
+        for(let i=0;i<3&&fastForward.state(mask).active;i++){step(mask,false);frameCount++;}
+      }
+      accumulator-=1/60;steps++;
     }
     if(steps)render();
     if(now-fpsTime>=1000){$('fps').textContent=`${Math.round(frameCount*1000/(now-fpsTime))} FPS`;frameCount=0;fpsTime=now;}
@@ -178,7 +187,7 @@ async function bootPotos(source){
     // Original six-byte name field, using the game's own character encoding.
     snes.ram.set([0xa1,0x8f,0x8b,0x95,0,0],0xcc00);configure();step(0);render();
     await enableGameControls();
-    message('Potos is live. Tap J to punch; hold J to charge, release to fire. F opens original world flight.');
+    message('Potos is live. J punches; Shift+C charges Kamehameha. F takes off; V fast-forwards dialogue.');
   }catch(error){loaded=false;$('boot-status').textContent=error.message;message(error.message);throw error;}
   finally{busy=false;$('boot-local').disabled=false;$('rom-file').disabled=false;if(loaded){play();render();}}
 }
@@ -189,11 +198,9 @@ async function fly(){
   if(mod.ceiling.busy)return;
   if(!mod.worldFlight&&mod.ceiling.bossActive){message('Finish the boss fight before taking flight.');return;}
   if(!mod.worldFlight&&!mod.canAttack){message('Finish the current dialogue or close the ring before taking flight.');return;}
+  if(mod.worldFlight){message('Flammie controls: K / A ascends; J / B descends to land. Shift+C / L+Y charges Kamehameha.');return mod.status;}
   clearInput();
-  if(mod.worldFlight){
-    mod.autoLand=!mod.autoLand;message(mod.autoLand?'Descending. Steer over open ground to land; F stops descending.':'Holding altitude.');
-  }else if(mod.flight.request())message('Taking flight! Arrows steer; hold J for Kamehameha, release to fire. X ascends; F lands.');
-  else if(mod.ceiling.request())message('Making an exit! Goku is punching through the ceiling.');
+  if(mod.requestFlight())message('Taking flight! K / A ascends; J / B descends to land. Shift+C / L+Y charges Kamehameha.');
   else{message('Finish this scene before taking flight, or move to the next room.');return mod.status;}
   if(!running)play();render();
   return mod.status;
@@ -276,9 +283,8 @@ $('native-fullscreen')?.addEventListener('click',async()=>{
 $('show-touch')?.addEventListener('change',e=>{document.querySelector('.player').classList.toggle('show-touch',e.target.checked);touch.clear();});
 window.addEventListener('keydown',e=>{
   if(!loaded||busy||e.ctrlKey||e.metaKey||e.altKey||e.target instanceof HTMLInputElement)return;
-  if(keymap[e.code]!==undefined){e.preventDefault();if(running){const bit=e.code==='KeyX'&&mod.worldFlight?8:keymap[e.code];controls.press(e.code,bit);}return;}
-  if(['KeyF','Escape'].includes(e.code)){e.preventDefault();if(e.repeat)return;
-    if(e.code==='KeyF')fly();
+  if(keymap[e.code]!==undefined){e.preventDefault();if(running)controls.press(e.code,keymap[e.code]);return;}
+  if(e.code==='Escape'){e.preventDefault();if(e.repeat)return;
     if(e.code==='Escape')running?pause():play();
   }
 });
@@ -287,7 +293,7 @@ window.addEventListener('blur',()=>{clearInput();if(!busy&&loaded)pause();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){clearInput();if(!busy&&loaded)pause();}});
 window.addEventListener('mana-log',e=>{logs.push(e.detail);if(logs.length>100)logs.shift();});
 
-window.mana={snes,mod,title,arrival,bootOriginal,bootPotos,fly,play,pause,render,configure,logs,controls,gamepads,
+window.mana={snes,mod,title,arrival,bootOriginal,bootPotos,fly,play,pause,render,configure,logs,controls,gamepads,fastForward,
   run(frames=1,buttons=[]){running=false;const mask=buttons.reduce((a,b)=>a|1<<b,0);for(let i=0;i<frames;i++)step(mask);render();return mod.status;},
   snapshot:()=>({...snapshot(snes),arrival:arrival.snapshot(),goku:mod.snapshot(),opening:{nameSeeded,originalBoot}}),restore:state=>{controls.clear();restore(snes,state);mod.restore(state.goku);arrival.restore(state.arrival);nameSeeded=state.opening?.nameSeeded??nameSeeded;originalBoot=state.opening?.originalBoot??originalBoot;render();},
   saveCheckpoint,restoreCheckpoint,quickStart,hash,

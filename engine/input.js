@@ -21,10 +21,12 @@ export class GameInput {
   clear(){this.held.clear();this.pulses.clear();}
 }
 
-// Bits 16+ are wrapper actions. Only the low twelve reach the SNES.
-export const Controls={confirm:16,blast:17,transform:18,teleport:19};
+// Serial SNES order: B Y Select Start Up Down Left Right A X L R.
+// Every gameplay action fits this pad. E is an optional talk-only shortcut;
+// B also talks/confirms through the cartridge's normal interaction handler.
+export const Controls={physical:0,blast:1,modifier:10,ring:9,transform:18,flight:21,fastForward:11,confirm:16};
 export const keymap={
   ArrowUp:4,KeyW:4,ArrowDown:5,KeyS:5,ArrowLeft:6,KeyA:6,ArrowRight:7,KeyD:7,
-  KeyJ:0,Space:0,KeyZ:0,KeyE:16,KeyQ:1,KeyX:1,Backspace:1,Enter:3,
-  ShiftLeft:8,ShiftRight:8,KeyK:8,Tab:2,Comma:10,Period:11,KeyC:17,KeyR:18,
+  KeyJ:0,Space:0,KeyZ:0,KeyE:16,KeyQ:9,KeyX:9,Backspace:9,Enter:3,
+  ShiftLeft:10,ShiftRight:10,KeyK:8,Tab:2,Comma:10,Period:11,KeyC:1,KeyR:18,KeyF:21,KeyV:11,
 };

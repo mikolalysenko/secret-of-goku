@@ -59,7 +59,7 @@ export const cues={
  swing:{clips:['swing','swing-2'],gain:.44,cap:2},kickSwing:{clips:['kick-swing'],gain:.46,cap:2},hit:{clips:['hit-1','hit-2','hit-3'],gain:.64,cap:3},
  kick:{clips:['kick'],gain:.70,cap:2},blast:{clips:['blast'],gain:.38,cap:5},impact:{clips:['impact'],gain:.48,cap:3},
  beam:{clips:['beam'],gain:.80,cap:1},charged:{clips:['charged'],gain:.42,cap:1},
- transform:{clips:['transform'],gain:.72,cap:1},revert:{clips:['revert'],gain:.50,cap:1},
+ transform:{clips:['transform'],gain:.64,cap:1},revert:{clips:['revert'],gain:.50,cap:1},
  teleport:{clips:['teleport'],gain:.74,cap:2},teleportIn:{clips:['teleport'],gain:.46,cap:2},
  flight:{clips:['flight'],gain:.48,cap:1},landing:{clips:['landing'],gain:.36,cap:1},
  charge:{clips:['charge'],gain:.55,loop:true},aura:{clips:['aura'],gain:.30,loop:true},air:{clips:['air'],gain:.25,loop:true},
@@ -135,11 +135,12 @@ export function createKiSound(mod){
       when=Math.max(ctx.currentTime,when??ctx.currentTime);let beam=false;
       for(const item of queue)if(mod.frame-item.frame<5){voice(item.name,when,item.superSaiyan,item.frame);beam||=item.name==='beam';}
       queue=[];speech.update(ctx,true,when,beam);
+      const focusing=mod.action?.kind==='focus',revealing=mod.action?.kind==='transform',focus=Math.min(1,mod.powerCharge/96);
       const charging=mod.charging&&(mod.canAttack||mod.worldFlight),strength=Math.min(1,mod.charge/(mod.options.superSaiyan?45:90));
       // Never key energy to the chant's duration: an indefinite hold keeps its
       // own rumble, with a small pitch rise instead of a sped-up voice/whine.
-      loop('charge',charging,.48+strength*.52,when,.94+strength*.12);
-      loop('aura',charging&&mod.options.superSaiyan&&strength>.35,strength,when);
+      loop('charge',charging||focusing||revealing,focusing?.22+focus*.85:revealing?.85:.48+strength*.52,when,focusing?.72+focus*.3:.94+strength*.12);
+      loop('aura',(focusing&&focus>.4)||revealing||(charging&&mod.options.superSaiyan&&strength>.35),focusing?focus:revealing?1:strength,when,focusing?.8+focus*.2:1);
       loop('air',mod.options.enabled&&mod.gokuActive&&(mod.localFlight||mod.worldFlight||mod.gapFlight?.active),charging?.35:1,when);
       stats.charge=loops.has('charge');stats.loops=[...loops.keys()];
     },

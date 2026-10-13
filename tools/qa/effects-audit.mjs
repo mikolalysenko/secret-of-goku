@@ -21,7 +21,7 @@ try{
   }
   for(const superSaiyan of [false,true])for(const [direction,button]of [['down',5],['left',6],['right',7],['up',4]]){
     const name=(superSaiyan?'super-':'base-')+direction;
-    await page.evaluate(({base,button,superSaiyan})=>{mana.restore(base);mana.mod.configure({enabled:true,power:false,superSaiyan});mana.run(36);mana.run(2,[button]);mana.run(2);mana.run(110,[0]);},{base,button,superSaiyan});
+    await page.evaluate(({base,button,superSaiyan})=>{mana.restore(base);mana.mod.configure({enabled:true,power:false,superSaiyan});mana.run(36);mana.run(2,[button]);mana.run(2);mana.run(110,[10,1]);},{base,button,superSaiyan});
     const charge=await capture(name+'-charge');assert.equal(charge.charging,true);assert.equal(charge.charge,superSaiyan?45:90);assert.ok(charge.fxPixels>0);
     await page.evaluate(()=>{mana.run(1);mana.run(3);});const beam=await capture(name+'-beam');assert.equal(beam.charging,false);assert.equal(beam.effects.filter(effect=>effect.kind==='beam').length,1);assert.ok(beam.fxPixels>0);
     await page.evaluate(()=>{mana.run(30);mana.run(2,[0]);mana.run(3);});const punch=await capture(name+'-punch');assert.ok(punch.effects.some(effect=>effect.kind==='punch'));assert.equal(punch.sprite.kind,'punch');
@@ -29,7 +29,7 @@ try{
     if(!punch.effects.some(effect=>effect.kind==='impact'))assert.equal(punch.fxPixels,0);
     console.log(name+': native charge/beam cells and full punch pose visible');
   }
-  await page.evaluate(()=>{mana.run(30);mana.run(70,[0]);mana.run(2,[1]);mana.run(90);});
+  await page.evaluate(()=>{mana.run(30);mana.run(70,[10,1]);mana.run(2,[9]);mana.run(90);});
   const ring=await capture('ring-cancels-effects');assert.equal(ring.canAttack,false);assert.equal(ring.charging,false);assert.equal(ring.fxPixels,0);
   assert.deepEqual(report.errors,[]);report.passed=true;
 }catch(error){report.passed=false;report.failure=error.stack;process.exitCode=1;}finally{

@@ -1,6 +1,6 @@
 import {parseEvent,eventRange,dialoguePages,encodeText,commandLength} from './event-codec.js';
 import {storyDialogue,soloDialogue} from './story-dialogue.js';
-import {buildStoryEvents,bossReactions,box} from './story-events.js';
+import {buildStoryEvents,bossReactions,box,choice} from './story-events.js';
 import {prepareStoryArea} from './story-areas.js';
 import {renameSenzu} from './native-senzu.js';
 import {potosCommand} from './potos-story.js';
@@ -137,6 +137,7 @@ export function createNativeStory(snes,mod){
     return cycle.call(this);
   };
   return{
+    inspectByte,
     load(){
       cart=snes.cart;read=cart.read;scripts.clear();entries.clear();metadata.clear();grants.clear();next=0xf08000;
       for(let id=0;id<0x800;id++){
@@ -154,9 +155,10 @@ export function createNativeStory(snes,mod){
       entries.set(0xc00000+eventRange(cart.data,0x429).start,()=>customPointers.get(mod.worldKi?.status.fortressDestroyed?0x8f:0x429));
       entries.set(0xc00000+eventRange(cart.data,0x93).start,()=>customPointers.get(mod.quest?.status.count===7?0x94:0x93));
       const wardAdvice=Array.from({length:8},(_,count)=>allocate([
-        ...box(`MANA WARDS: ${count} / 7\nOne hit blocked per ward.\nOnly palace visits earn them.\nKai's deliveries do not.`),...custom.get(0x9a),
+        ...box(`MANA WARDS: ${count} / 7\nOne hit blocked per ward.\nOnly palace visits earn them.\nKai's deliveries do not.`),...(count===7?custom.get(0x9a):[...box(`KING KAI:You touched ${count} of\nseven Mana Seeds. Delivered\nBalls cannot feed the Beast.\nGOKU:Aw. Next time, big guy.`),...choice('Calm the Mana Beast?\n',[{label:'Calm it',x:7,to:0x95}],0x95)]),
       ],0x9a,3));
       entries.set(0xc00000+eventRange(cart.data,0x9a).start,()=>wardAdvice[mod.quest?.status.earned??0]);
+      entries.set(0xc00000+eventRange(cart.data,0x96).start,()=>customPointers.get(mod.quest?.status.canFeed?0x96:0x95));
       const advice=Array.from({length:8},(_,count)=>allocate([0x51,0x01,...box(`DRAGON BALLS: ${count} / 7\n${count===7?'All seven! Calm the Beast,\nthen make the wish.':'Find the Balls inside the\nseven palace Mana Seeds.'}`),...custom.get(0x85).slice(2)],0x85,3));
       entries.set(0xc00000+eventRange(cart.data,0x85).start,()=>advice[mod.quest?.status.count??0]);
       cart.read=storyRead;this.restore();
