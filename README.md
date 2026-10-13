@@ -6,13 +6,15 @@ The original **Secret of Mana (USA)** running in a browser, with Goku in its SNE
 
 **[Play Secret of Goku](https://mikolalysenko.github.io/secret-of-goku/)** · [GitHub repository](https://github.com/mikolalysenko/secret-of-goku)
 
-Choose your own **Secret of Mana (USA)** `.sfc` or `.smc` file. The ROM is read in your browser, never uploaded, and is not included here. A 512-byte copier header is accepted. Other regions, revisions and prepatched ROMs are rejected because the mod depends on verified US offsets.
+The player first checks **`./rom/secret-of-mana-us.sfc`** relative to the site's page. If that file is missing, invalid or unavailable, choose your own **Secret of Mana (USA)** `.sfc` or `.smc` file. The selected file is read in your browser, never uploaded, and is not included here. A 512-byte copier header is accepted. Other regions, revisions and prepatched ROMs are rejected because the mod depends on verified US offsets.
+
+For your own deployment, place the ROM at `rom/secret-of-mana-us.sfc` beside `index.html` after building. Git ignores ROM files, and the public build does not package them. The GitHub Pages demo falls back to the file chooser unless a ROM is supplied at that path. Local development also checks the private `/local-rom` endpoint used by `npm run rom:import`.
 
 Unheadered SHA-256: `4c15013131351e694e05f22e38bb1b3e4031dedac77ec75abecebe8520d82d5f`.
 
 The demo supports keyboard, icon-only multitouch controls, and standard browser-mapped gamepads. Sound unlocks on a tap or key press; if you start with a controller, click **Sound on**. Desktop Chrome is the primary tested browser; phone layouts are checked in portrait and landscape. Emulation speed depends on the device.
 
-The title and opening run from the beginning. The gold title reads **Secret of GOKU**, with **PROGRAMMED BY NASIR AND CHATGPT** in the original credit font. Press **Enter** for Start, then **E / J** to confirm. The original name editor defaults to **BOY** and remains editable. Sound starts on your first key press or click.
+The title and opening run from the beginning. The gold title reads **Secret of GOKU**, with **PROGRAMMED BY NASIR AND CHATGPT** in the original credit font. Press **Space / Enter** for Start, then **X** to confirm. The original name editor defaults to **BOY** and remains editable. Sound starts on your first key press or click.
 
 Your disk ROM remains untouched. Checkpoints stay in this browser; select the same ROM again and choose **Restore checkpoint** to continue.
 
@@ -22,32 +24,32 @@ Every gameplay action fits a standard SNES controller. Browser gamepads use the 
 
 | SNES control | Keyboard | Action |
 | --- | --- | --- |
-| D-pad | WASD / arrows | Move, steer and navigate menus |
-| B | J / Space / Z | Punch; mash or hold for a combo; talk / confirm. In world flight, descend to land |
+| D-pad | Arrows only | Move and steer. In menus, left/right rotates the ring; up/down changes ring levels |
+| B | X | Punch; mash or hold for a combo; talk / confirm. In world flight, descend to land |
 | Y | C | One ki blast per tap; hold for rapid fire |
-| A | K | Fast local flight; ascend in world flight |
-| X | Q / X / Backspace | Ring menu / back; delete a letter when naming |
-| Hold L | Shift / comma | Build a focus aura and rising rumble |
+| A | Z | Hold with a direction for fast local flight; ascend in world flight |
+| X | A | Open/close the ring; back out of submenus; delete a letter when naming |
+| Hold L | Shift | Build a focus aura and rising rumble |
 | L + Y | Shift + C | Hold to charge Kamehameha; release to fire, on foot or in Mode 7 |
-| L + B | Shift + J | Instant Transmission beside one enemy; press again for the next |
-| L + A | Hold R, or Shift + K | Transform at full focus; tap in Super Saiyan to return to normal |
-| L + R | F, or Shift + V | Take off into world flight, including bursting through indoor ceilings |
-| Hold R | V / period | Fast-forward dialogue and cutscenes at up to 4×; auto-advance prose, stop at choices |
-| Start | Enter | Start / accept name |
-| Select | Tab | Switch party member |
-| Optional shortcuts | E / Escape | Talk-only confirm / pause the browser player |
+| L + B | Shift + X | Instant Transmission beside one enemy; press again for the next |
+| L + A | Shift + Z | Transform at full focus; tap in Super Saiyan to return to normal |
+| L + R | Shift + D | Take off into world flight, including bursting through indoor ceilings |
+| Hold R | D | Fast-forward dialogue and cutscenes at up to 12×; auto-advance prose, stop at choices |
+| Start | Space / Enter | Start / accept name; resume if the browser player is paused |
+| Select | S | Switch party member |
+| Browser conveniences | Backspace / Escape | Back or delete a letter / pause the browser player |
 
 L alone charges focus without changing form. Add A when ready, or hold L+A from the start: the aura builds for 1.6 seconds before the gold transformation burst. Let go early to cancel. L attack chords take priority and never accidentally revert Super Saiyan. The transformation has an independent rumble and crackle without the Kamehameha chant. Poison cancels Super Saiyan and prevents transforming until cured.
 
-Move and aim while charging Kamehameha at half speed. A flies over bushes, breakable rocks and short forest riverbanks at three times walking speed (four times in Super Saiyan). Riverbanks require usable ground on both sides; walls, doors and map edges still constrain movement. Release over clear ground to land; over a low obstacle, Goku hovers until you steer clear. Whip pads automatically float the party across. In Mode 7, use Flammie's original steering, A to ascend and B to descend onto land; L+Y fires the aerial wave. R fast-forward runs native events faster and mutes audio while accelerating, without jumping over story flags or choosing answers.
+Move and aim while charging Kamehameha at half speed. A flies over bushes, breakable rocks, Haunted Forest vines and forest ledges at three times walking speed (four times in Super Saiyan). Gaia's Navel supports flying between its stacked levels. Ledges require usable ground on both sides; walls, doors and map edges still constrain movement. Release over clear ground to land; over a low obstacle, Goku hovers until you steer clear. Whip pads automatically float the party across. In Mode 7, use Flammie's original steering, A to ascend and B to descend onto land; L+Y fires the aerial wave. R fast-forward runs native events faster and mutes audio while accelerating, without jumping over story flags or choosing answers.
 
 ### Gamepad and touch
 
 Connect a controller that the browser exposes with the **standard** mapping, then press a button. D-pad and left stick support diagonal movement; the stick has a dead zone. The SNES table above describes all required buttons. Right stick click optionally pauses the browser player.
 
-Touch controls appear on touch devices, or enable **Always show touch controls**. All buttons use icons with accessible labels and disable text selection. Slide the D-pad for diagonals. Fist is B, ki orb is Y, chevrons are A, and ring is X. Hold the focus icon (L) together with ki for Kamehameha or fist for teleportation. The lightning icon is a convenient L+A shortcut; hold it to transform or tap to revert. Rocket supplies L+R for takeoff; double triangles hold R to fast-forward. In world flight, hold fist to descend and chevrons to ascend. Speech bubble confirms; the small triangle starts, people switch party members, and bars pause. Fullscreen keeps controls beside or below the game.
+Touch controls appear on touch devices, or enable **Always show touch controls**. All buttons use icons with accessible labels and disable text selection. The D-pad is on the left; actions are on the right. Slide the D-pad for diagonals, use left/right to rotate the ring and up/down to change ring levels. Fist is B (punch/confirm), ki orb is Y, chevrons are A, and ring is X (open/back/close). Focus and double triangles supply L and R. The beam, teleport arrows, lightning and rocket are dedicated **L+Y, L+B, L+A and L+R** buttons: moving and using a technique needs only two fingers. Hold beam to charge and release to fire. Hold lightning to transform or tap to revert; rocket takes off. In world flight, hold fist to descend and chevrons to ascend. Below the D-pad, the small triangle is Start, people is Select, and bars pauses. Fullscreen keeps controls beside or below the game.
 
-Pausing, switching tabs, disconnecting a controller, or cancelling a touch clears held attacks. A controller must return to neutral after a focus change before it can resume input.
+Pausing, switching apps/tabs, hiding touch controls, rotating the device, changing fullscreen, or cancelling a touch clears held touch attacks without firing a wave. Lifting a finger outside a button still releases it. The icon buttons cannot select text or open a long-press menu. A controller must return to neutral after a focus change before it can resume input. A Start press used to resume is consumed so it cannot also open a native menu. Pausing displays a darkened PAUSED overlay with a resume button.
 
 ## What changes
 
@@ -59,9 +61,12 @@ Pausing, switching tabs, disconnecting a controller, or cancelling a touch clear
 - Charge, beam, impact and aura art comes from original Lucent Beam, Thunderbolt and Lucid Barrier cells decoded at runtime. Super Saiyan charge lightning changes paths and arcs into nearby surfaces and actors. Kamehameha stays blue and breaks plants, rocks and destructible barriers through native tilemap/collision redraw. A continuous, slower Japanese “ka… me… ha… me…” performance keeps its long vowels in both forms, with the final shout on release. The quieter Japanese vocal stem plays independently of a continuous DBZ charging loop, which lasts as long as you hold. Super Saiyan adds electrical crackle. DBZ samples cover punch swings, varied hits, kicks, ki shots, impacts, teleportation, transformation and flight; sound cues follow animation and contact frames, with limited overlap for fast barrages. Goku follows native status palettes; snowman and moogle transformations remain native.
 - **Senzu Beans** replace the Cup of Wishes in the original item table, native ring artwork and dialogue. They revive fallen allies or fully heal living, injured allies through the original item-use animation. Full-health characters cannot waste a bean.
 - Punches, ki blasts and Kamehameha activate elemental crystal orbs using their original puzzle events, including all seven Grand Palace orbs. Orbs receive activation instead of lethal damage.
-- F takes off directly, and the native item ring has an animated Goku **Fly** ability in the former Drum slot. Goku flies through takeoff, the original Mode 7 world, and landing. Scripted Flammie departures use the same handoff. The dragon rescue still progresses normally; a few lines acknowledge that Goku already flies. Landing bypasses the original BG3 dragon fly-by; Goku descends during the visible ground fade. Native landing restrictions remain except for the breakable Mana Tree cloud barrier.
+- L+R / Shift+D takes off directly, and the native item ring has an animated Goku **Fly** ability in the former Drum slot. Goku flies through takeoff, the original Mode 7 world, and landing. Scripted Flammie departures use the same handoff. The dragon rescue still progresses normally; a few lines acknowledge that Goku already flies. Landing bypasses the original BG3 dragon fly-by; Goku descends during the visible ground fade. The Fortress approach uses a curved ki trail and short boost, then places the party on its real deck. Native landing restrictions remain except for the breakable Mana Tree cloud barrier.
+- **Dragon Radar** points toward the next uncollected palace while flying, using a pixel compass and the original dialogue font. It follows out-of-order collection and points toward the finale once all seven Balls are collected.
+- Small aerial ki blasts disappear over the horizon, then explode in the distance. Shots draw in front of Goku.
+- Watts is surprised and delighted when Goku offers him the weapon orbs he does not need; native forging remains available for companions.
 - **King Kai** makes at most one remark per Super Saiyan charge, after full power has been held for another 1.5 seconds. His warnings rotate between charges, on the ground and in Mode 7, with no extra complaint on release. They use the ROM's original font and window art, keep movement/charging live, and yield to real dialogue and menus.
-- **Ceiling escape:** press F, the touch rocket, or gamepad L+R inside a dungeon, palace, house, inn or shop. Goku punches a jagged hole and sends chunks of the roof flying as he blasts upward with the party. Routes cover 253 rooms using original exterior doors, including the Water Palace's peaceful rooms. He stays airborne throughout the transition to world flight. Live bosses, conversations, cutscenes and the Potos rescue retain their locks. Checkpoints preserve holes, debris timing and mid-escape animation.
+- **Ceiling escape:** press Shift+D, the touch rocket, or gamepad L+R inside a dungeon, palace, house, inn or shop. Goku punches a jagged hole and sends chunks of the roof flying as he blasts upward with the party. Routes cover 253 rooms using original exterior doors, including the Water Palace's peaceful rooms. He stays airborne throughout the transition to world flight. Live bosses, conversations, cutscenes and the Potos rescue retain their locks. Checkpoints preserve holes, debris timing and mid-escape animation.
 - **Dragon Ball quest:** the crash scatters seven Balls into the Mana Seeds and breaks the Sword's Fortress seal. Jema and Luka explain why the Fortress wakes early. Collect the Balls from Water, Earth, Wind, Fire, Light, Dark and Moon; the seed cases keep Mana flowing. Dryad is a person, not an eighth Ball. Collection notices and Luka's Advice show progress. Most NPC dialogue remains original. Selected conversations acknowledge Goku, the shattered Sword and the boy sheltered by the Mana Tree. Absent companions do not speak or stall scripted movement; early spell grants are retained for later recruitment. Area entry prerequisites support out-of-order visits without globally completing bosses.
 - **A deliberately bad decision:** before the Mana Beast, choose **Calm it** for the usual overpowered fight. **Feed seeds** unlocks only after personally visiting all seven Mana Seeds, because Goku wants a proper challenge. He offers seed energy while keeping the Dragon Balls for the wish. The fed Beast has 65,535 HP and takes one quarter of Goku's normal damage. Goku stops automatically healing, and glowing circles warn of eruptions; they grow and arrive faster below half boss health. Dash out before committing to a beam, or use Senzu Beans. Native damage, defeat and ending events still apply.
 - **A reason to visit palaces:** each seed personally visited earns one **Mana Ward**, blocking one hit in the fed Beast fight. King Kai's emergency deliveries complete the wish but earn no shields. All seven visits unlock feeding and give seven wards; rushing the finale leaves only the normal fight. Repeated visits cannot farm wards, and checkpoints preserve spent wards and attack timing.
@@ -69,8 +74,8 @@ Pausing, switching tabs, disconnecting a controller, or cancelling a touch clear
 - **Collateral damage:** a strong aerial Kamehameha can hit towns or scar the landscape. Goku apologizes and promises to wish everyone back. Huge craters use the original Potos hole artwork in the Mode 7 surface, rotate with the planet, and persist through travel and checkpoints. The restoration wish brings people back; the craters stay.
 - Local flight ignores water currents and stair guidance, keeps full speed over both, and can land on them. Charging still halves flight speed. Solid walls, shaped corners and scripted doors retain their collision rules.
 - Potos villagers explicitly blame Goku for killing **Randi** and destroying the Mana Sword. Goku apologizes awkwardly, deliberately hops into the Mantis hole to rescue Elliott, and is banished as a very strong menace. The Elder's conversations are about Randi, rather than treating Goku as the child he raised.
-- Fully charge a wave to break Witch Castle’s three-person gate, Northtown Castle’s entrance, or Gold Tower’s lock. These run native events and rebuild the map; returning preserves the opened route.
-- Fly toward the Mana Tree clouds in the northwest, aim and release a fully charged wave to open the Pure Land landing zone early. This does not complete any Pure Land bosses.
+- Punch nearby gates or fire a fully charged wave to break the Haunted Forest rose barrier, open its bridge route, smash Witch Castle’s three-person gate, force Northtown Castle’s entrance, or break Gold Tower’s lock. Haunted Forest vines and flowers can also be punched or blasted into walkable grass. Native hit switches in caves and palaces respond to punches and beams; a strong hit bypasses the Lost Continent button combination. Gates use original events and preserve the opened route. Outer map walls remain boundaries.
+- Fly toward the Mana Tree clouds in the northwest, aim and release a fully charged wave to open the Pure Land landing zone early. King Kai and Luka panic at the blast, and Goku promises to wish it back. This does not complete any Pure Land bosses.
 - Ascend to see the moving Mana Fortress, point toward it and release a fully charged aerial wave. Its destruction frees the captive souls and skips the dungeon straight to the original Mana Beast battle. Luka also offers a native **Shortcut** choice leading through Dark Lich and Mana Beast. Both routes work solo. King Kai shields Mana and rushes in any missing Dragon Balls, grumbling that this is cheaper than replacing a planet. After the Beast calms, Shenron restores Randi, the Sword, the souls and Goku's demolished roofs. The bridge still needs a hammer.
 
 The complete original game runs underneath these hooks. The opening and Potos have controller-driven story checks; a separate graphics audit works through map entry views across the game. This is still a hybrid browser mod, not a standalone SNES Goku ROM patch. Entry-view checks do not cover every story variant, animation or boss phase. The native status screen can recalculate stats; Saiyan combat values are reapplied on returning to gameplay.
@@ -149,7 +154,7 @@ Browser tests use installed Google Chrome through Playwright. Tests requiring th
 
 See [combat and animation](docs/combat.md) for timing, native damage integration and frame-by-frame checks; [graphics audit](docs/graphics-audit.md) for regional coverage; [native effects](docs/native-effects.md) for the spell format; and [Goku's arrival](docs/arrival.md) for the title and sword-event implementation. Reports and screenshots remain local under `.local/`.
 
-`dist/` contains an explicit list of player files, emulator code, mod artwork/audio and credits. It contains no ROM, checkpoint, `.local`, dependency folder, extracted map images, archived prototype, or source sprite sheets. Asset paths are relative, so the build works under a GitHub Pages repository subdirectory.
+`dist/` contains an explicit list of player files, emulator code, mod artwork/audio and credits. It contains no ROM, checkpoint, `.local`, dependency folder, extracted map images, archived prototype, or source sprite sheets. Asset paths are relative, so the build works under a GitHub Pages repository subdirectory. Every build versions its script/module URLs and shows a short build ID in the footer so updates do not reuse stale control code.
 
 ### Publishing
 

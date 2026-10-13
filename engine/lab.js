@@ -21,6 +21,7 @@ import {createNativeStory} from './native-story.js';
 import {createWorldKi} from './world-ki.js';
 import {createNativeBarriers} from './native-barriers.js';
 import {createNativeInteraction} from './native-interaction.js';
+import {createNativeHitRecovery} from './native-hit-recovery.js';
 import {createNativeSenzu} from './native-senzu.js';
 import {createNativeRadio} from './native-radio.js';
 import {createDragonQuest} from './dragon-quest.js';
@@ -29,7 +30,9 @@ import {createBeastChallenge} from './beast-challenge.js';
 import {createPowerIntro} from './power-intro.js';
 import {buildQuickStart,quickStartLabels,quickStartRevision} from './quick-start.js';
 import {createWorldScars} from './world-scars.js';
-import {createSceneFastForward} from './scene-fast-forward.js';
+import {createSceneFastForward,sceneFastForwardRate} from './scene-fast-forward.js';
+import {fetchDefaultRom,validateRom} from './rom-loader.js';
+import {createDragonRadar} from './dragon-radar.js';
 const effectsManifest=fetch(new URL('./native-effects.json',import.meta.url)).then(response=>{if(!response.ok)throw Error('Native effect descriptors could not be loaded.');return response.json();});
 const $=id=>document.getElementById(id),snes=new window.Snes(),canvas=$('screen'),context=canvas.getContext('2d'),pixels=context.createImageData(512,480);
 const message=text=>{$('lab-message').textContent=text;};
@@ -43,13 +46,13 @@ mod.combatSound=createNativeCombatSound(snes,mod);
 mod.gapFlight=createNativeGapFlight(snes,mod);
 mod.feedback=createNativeFeedback(snes);
 mod.ownership=installNativeOamOwnership(snes);
-mod.plants=createNativePlants(snes,{canCut:()=>mod.options.enabled&&mod.canAttack,onCut:result=>{
+mod.plants=createNativePlants(snes,{canCut:()=>mod.options.enabled&&mod.canAttack,sceneryReplacement:tile=>mod.localFlightHook?.breakScenery(tile),onCut:result=>{
   for(const tile of result.tiles)mod.effects.push({kind:'impact',x:tile.tx*16+8,y:tile.ty*16+8,dx:1,dy:0,life:8,max:8,super:false});
   if(result.tiles.length)mod.playSound('impact');
 }});
 mod.flight=createNativeFlight(snes,{enabled:()=>mod.options.enabled&&mod.gokuActive,canTakeOff:()=>mod.canAttack,onStart:()=>{
   mod.localFlight=false;mod.localLift=0;mod.flightTransition={kind:'takeoff',age:0};if(!mod.ceiling?.busy)mod.playSound('flight');
-},onLand:()=>{mod.flightTransition={kind:'landing',age:0};}});
+},onLand:({fortress})=>{mod.flightTransition={kind:'landing',age:0,fortress};},onDock:()=>mod.playSound('flight')});
 mod.localFlightHook=createNativeLocalFlight(snes,{
   active:()=>mod.options.enabled&&mod.gokuActive&&(mod.localFlight||mod.charging)&&mod.canAttack,
   phase:()=>mod.localFlight,
@@ -65,6 +68,7 @@ mod.story=createNativeStory(snes,mod);
 mod.worldKi=createWorldKi(snes,mod);
 mod.barriers=createNativeBarriers(mod);
 mod.interaction=createNativeInteraction(snes,mod);
+mod.hitRecovery=createNativeHitRecovery(snes,mod);
 mod.senzu=createNativeSenzu(snes,mod);
 mod.radio=createNativeRadio(snes,mod);
 mod.quest=createDragonQuest(mod);
@@ -73,6 +77,7 @@ mod.challenge=createBeastChallenge(snes,mod);
 mod.powerIntro=createPowerIntro(mod);
 mod.worldScars=createWorldScars(snes,mod);
 const fastForward=createSceneFastForward(mod);
+mod.radar=createDragonRadar(snes,mod);
 let loaded=false,running=false,busy=false,lastTime=0,accumulator=0,checkpoint=null,frameCount=0,fpsTime=performance.now();
 let nameSeeded=false,originalBoot=false;
 let originalRom=null;
@@ -80,15 +85,14 @@ const quickCache=new Map();
 let flightDialogue=null;
 const controls=new GameInput();
 const gamepads=new GamepadInput(controls,{
-  fly,pause:()=>running?pause():play(),start:()=>{if(loaded&&!busy)play();},
+  fly,pause:()=>running?pause():play(),start:()=>{if(loaded&&!busy&&!running){play();return true;}return false;},
   disconnect:()=>mod.cancelInput(),
   status:label=>{const node=$('gamepad-status');if(node)node.textContent=label||'Connect a controller, then press a button.';},
 });
 const touch=mountTouchControls(document.querySelector('.touch-pad'),controls,{
-  ready:()=>loaded&&!busy,resume:()=>{if(!running)play();},fly,pause:()=>running?pause():play(),cancel:()=>mod.cancelInput(),
+  ready:()=>loaded&&!busy,resume:()=>{if(!running){play();return true;}return false;},fly,pause:()=>running?pause():play(),cancel:()=>mod.cancelInput(),
 });
 let audioContext=null,audioEnabled=false,nextAudio=0;
-const expectedHash='4c15013131351e694e05f22e38bb1b3e4031dedac77ec75abecebe8520d82d5f';
 const nextPaint=()=>new Promise(resolve=>setTimeout(resolve,0));
 
 function configure(){mod.configure({enabled:$('goku-enabled').checked,power:$('power-enabled').checked,superSaiyan:$('super-enabled').checked});}
@@ -100,9 +104,9 @@ function prefillName(){
   [0x205c,0x2090,0x20b8].forEach((tile,i)=>{mod.write16(0x90d2+i*2,tile);mod.write16(0x9112+i*2,tile+2);});
   mod.write8(0xa1cc,3);mod.write8(0xa157,0x18);mod.write8(0xa20a,mod.read8(0xa20a)|2);nameSeeded=true;mod.nameEditor=true;
 }
-function step(mask=0,audible=false){
+function step(mask=0,audible=false,skipPicture=false){
   mask=fastForward.input(mask);
-  snes.joypad1State=mask;arrival.beforeFrame();mod.beforeFrame(mask);snes.runFrame(false);mod.afterFrame();prefillName();
+  snes.joypad1State=mask;arrival.beforeFrame();mod.beforeFrame(mask);snes.runFrame(skipPicture);mod.afterFrame();prefillName();
   if(audible&&audioEnabled&&audioContext?.state==='running'){
     const samples=Math.round(audioContext.sampleRate/60),buffer=audioContext.createBuffer(2,samples,audioContext.sampleRate);
     snes.setSamples(buffer.getChannelData(0),buffer.getChannelData(1),samples);
@@ -130,12 +134,15 @@ function tick(now){
     accumulator+=Math.min(.1,(now-lastTime)/1000);let steps=0;
     while(accumulator>=1/60&&steps<4){
       const mask=controls.sample(),fast=fastForward.state(mask).active;
-      step(mask,!fast);frameCount++;
       if(fast){
         nextAudio=0;
-        for(let i=0;i<3&&fastForward.state(mask).active;i++){step(mask,false);frameCount++;}
+        // CPU, audio processor, DMA and events keep running; render only the
+        // last frame. Bound each batch so touch release/pause stays responsive.
+        const deadline=performance.now()+18;
+        for(let i=1;i<sceneFastForwardRate&&fastForward.state(mask).active&&performance.now()<deadline;i++){step(mask,false,true);frameCount++;}
       }
-      accumulator-=1/60;steps++;
+      step(mask,!fast);frameCount++;
+      accumulator-=1/60;steps++;if(fast){accumulator=0;break;}
     }
     if(steps)render();
     if(now-fpsTime>=1000){$('fps').textContent=`${Math.round(frameCount*1000/(now-fpsTime))} FPS`;frameCount=0;fpsTime=now;}
@@ -144,10 +151,7 @@ function tick(now){
 }
 
 async function loadROM(source,{potos=false}={}){
-  let bytes=source instanceof Uint8Array?source:new Uint8Array(source);
-  if(bytes.length%0x8000===512)bytes=bytes.slice(512);
-  const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));
-  if(Array.from(digest,b=>b.toString(16).padStart(2,'0')).join('')!==expectedHash)throw Error('Use the original Secret of Mana (USA) ROM. This mod has verified offsets for that revision.');
+  const bytes=await validateRom(source);
   originalRom=bytes.slice();
   await mod.ready;mod.spriteLayer.effects=createNativeEffects(bytes,await effectsManifest);mod.worldScars.load(bytes);running=false;clearInput();mod.configure({enabled:false});
   const patched=window.gokuDialoguePatch(potos?window.potosPatch(bytes):window.originalGamePatch(bytes));
@@ -168,7 +172,7 @@ async function bootOriginal(source){
   if(busy)return;busy=true;$('boot-local').disabled=true;$('rom-file').disabled=true;
   try{
     await loadROM(source);configure();await enableGameControls();
-    message('Enter = Start · E / J = confirm. The original opening plays normally.');
+    message('Space / Enter = Start · X = confirm · A = ring / back · Arrows = move / menu.');
   }catch(error){loaded=false;$('boot-status').textContent=error.message;message(error.message);throw error;}
   finally{busy=false;$('boot-local').disabled=false;$('rom-file').disabled=false;if(loaded){play();render();}}
   const requested=new URLSearchParams(location.search).get('start');
@@ -187,7 +191,7 @@ async function bootPotos(source){
     // Original six-byte name field, using the game's own character encoding.
     snes.ram.set([0xa1,0x8f,0x8b,0x95,0,0],0xcc00);configure();step(0);render();
     await enableGameControls();
-    message('Potos is live. J punches; Shift+C charges Kamehameha. F takes off; V fast-forwards dialogue.');
+    message('Potos is live. X punches; Shift+C charges Kamehameha. Shift+D takes off; D fast-forwards dialogue.');
   }catch(error){loaded=false;$('boot-status').textContent=error.message;message(error.message);throw error;}
   finally{busy=false;$('boot-local').disabled=false;$('rom-file').disabled=false;if(loaded){play();render();}}
 }
@@ -198,9 +202,9 @@ async function fly(){
   if(mod.ceiling.busy)return;
   if(!mod.worldFlight&&mod.ceiling.bossActive){message('Finish the boss fight before taking flight.');return;}
   if(!mod.worldFlight&&!mod.canAttack){message('Finish the current dialogue or close the ring before taking flight.');return;}
-  if(mod.worldFlight){message('Flammie controls: K / A ascends; J / B descends to land. Shift+C / L+Y charges Kamehameha.');return mod.status;}
+  if(mod.worldFlight){message('Flight: Z (SNES A) ascends; X (SNES B) descends to land. Shift+C / L+Y charges Kamehameha.');return mod.status;}
   clearInput();
-  if(mod.requestFlight())message('Taking flight! K / A ascends; J / B descends to land. Shift+C / L+Y charges Kamehameha.');
+  if(mod.requestFlight())message('Taking flight! Z (SNES A) ascends; X (SNES B) descends to land. Shift+C / L+Y charges Kamehameha.');
   else{message('Finish this scene before taking flight, or move to the next room.');return mod.status;}
   if(!running)play();render();
   return mod.status;
@@ -252,13 +256,18 @@ async function quickStart(kind){
 }
 
 const boot=originalMode?bootOriginal:bootPotos;
-const localHost=['localhost','127.0.0.1','[::1]'].includes(location.hostname);
-async function loadLocal(){
-  try{const response=await fetch('/local-rom');if(!response.ok)throw Error('Choose your Secret of Mana (USA) ROM below to play.');await boot(new Uint8Array(await response.arrayBuffer()));}
-  catch(error){$('boot-status').textContent=error.message;message(error.message);}
+async function loadDefault(){
+  $('boot-local').disabled=true;$('rom-file').disabled=true;
+  $('boot-status').textContent='Looking for a Secret of Mana (USA) ROM…';
+  const found=await fetchDefaultRom();
+  if(found){try{await boot(found.bytes);return;}catch{/* The boot status explains the error. */}}
+  else $('boot-status').textContent='Choose your Secret of Mana (USA) ROM to play. It stays in this browser.';
+  $('boot-local').textContent='Choose ROM';$('boot-local').disabled=false;$('rom-file').disabled=false;
 }
-if(!localHost){$('boot-local').textContent='Choose ROM';$('boot-status').textContent='Choose your Secret of Mana (USA) ROM to play. It stays in this browser.';}
-$('boot-local').addEventListener('click',()=>localHost?loadLocal():$('rom-file').click());
+// The main player checks automatically; the developer Potos entry checks
+// when Start is pressed because building its shortcut takes several seconds.
+let defaultChecked=originalMode;
+$('boot-local').addEventListener('click',()=>{if(defaultChecked)$('rom-file').click();else{defaultChecked=true;loadDefault();}});
 $('rom-file').addEventListener('change',async e=>{try{if(e.target.files[0])await boot(new Uint8Array(await e.target.files[0].arrayBuffer()));}catch{}});
 for(const id of ['goku-enabled','power-enabled','super-enabled'])$(id).addEventListener('change',configure);
 $('native-fly').addEventListener('click',fly);$('native-toggle').addEventListener('click',()=>running?pause():play());$('native-resume').addEventListener('click',play);
@@ -274,7 +283,7 @@ if(originalMode){
   window.addEventListener('pointerdown',()=>{if(!audioContext)activateAudio();},{once:true});
   window.addEventListener('keydown',()=>{if(!audioContext)activateAudio();},{once:true});
 }
-$('native-start')?.addEventListener('click',()=>{if(loaded&&!busy){if(!running)play();controls.pulse(3);canvas.focus();}});
+$('native-start')?.addEventListener('click',()=>{if(loaded&&!busy){if(!running)play();else controls.pulse(3);canvas.focus();}});
 $('native-fullscreen')?.addEventListener('click',async()=>{
   const player=document.querySelector('.player');
   try{if(document.fullscreenElement)await document.exitFullscreen();else if(player.requestFullscreen)await player.requestFullscreen();else player.classList.toggle('is-expanded');}
@@ -283,7 +292,7 @@ $('native-fullscreen')?.addEventListener('click',async()=>{
 $('show-touch')?.addEventListener('change',e=>{document.querySelector('.player').classList.toggle('show-touch',e.target.checked);touch.clear();});
 window.addEventListener('keydown',e=>{
   if(!loaded||busy||e.ctrlKey||e.metaKey||e.altKey||e.target instanceof HTMLInputElement)return;
-  if(keymap[e.code]!==undefined){e.preventDefault();if(running)controls.press(e.code,keymap[e.code]);return;}
+  if(keymap[e.code]!==undefined){e.preventDefault();if(e.repeat)return;const bit=keymap[e.code];if(!running&&bit===3)play();else if(running)controls.press(e.code,bit);return;}
   if(e.code==='Escape'){e.preventDefault();if(e.repeat)return;
     if(e.code==='Escape')running?pause():play();
   }
@@ -302,4 +311,4 @@ window.mana={snes,mod,title,arrival,bootOriginal,bootPotos,fly,play,pause,render
 };
 requestAnimationFrame(tick);
 
-if(originalMode&&localHost)loadLocal();
+if(originalMode)loadDefault();

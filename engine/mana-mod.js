@@ -76,13 +76,13 @@ class ManaMod {
     if(transform&&this.powerCharge===96&&!this.poisoned){this.configure({superSaiyan:true});this.powerBlocked=true;}
     return true;
   }
-  reset(){this.padInput=0;this.lastPadInput=0;this.powerCharge=0;this.powerBlocked=false;this.kiBlocked=false;this.kiHand=0;this.frame=0;this.cancelCombat();this.sound?.restore();this.combatSound?.restore();this.ownership?.reset();this.feedback?.restore();this.orbs?.restore();this.story?.restore();this.worldKi?.restore();this.barriers?.restore();this.flight?.restore();this.gapFlight?.restore();this.radio?.restore();this.quest?.restore();this.ceiling?.restore();this.challenge?.restore();this.powerIntro?.restore();this.flightTransition=null;this.autoLand=false;this.localFlight=false;this.localLift=0;this.localFlightHook?.restore();this.teleport?.restore();this.lastTeleportTarget=-1;this.input=0;this.lastInput=0;this.hiddenLastFrame=[];this.flightShadow=null;this.worldFlight=false;this.nameEditor=false;this.spriteLayer.plan=null;this.attackBlocked=false;this.combo=0;this.comboUntil=0;this.knockbacks=[];this.lastMap=null;this.motion?.reset();}
+  reset(){this.padInput=0;this.lastPadInput=0;this.powerCharge=0;this.powerBlocked=false;this.kiBlocked=false;this.kiHand=0;this.frame=0;this.hitRecovery?.restore();this.cancelCombat();this.sound?.restore();this.combatSound?.restore();this.ownership?.reset();this.feedback?.restore();this.orbs?.restore();this.story?.restore();this.worldKi?.restore();this.barriers?.restore();this.flight?.restore();this.gapFlight?.restore();this.radio?.restore();this.quest?.restore();this.ceiling?.restore();this.challenge?.restore();this.powerIntro?.restore();this.flightTransition=null;this.autoLand=false;this.localFlight=false;this.localLift=0;this.localFlightHook?.restore();this.teleport?.restore();this.lastTeleportTarget=-1;this.input=0;this.lastInput=0;this.hiddenLastFrame=[];this.flightShadow=null;this.worldFlight=false;this.nameEditor=false;this.spriteLayer.plan=null;this.attackBlocked=false;this.combo=0;this.comboUntil=0;this.knockbacks=[];this.lastMap=null;this.motion?.reset();}
   snapshot(){
     const fields=['padInput','lastPadInput','powerCharge','powerBlocked','kiBlocked','kiHand','frame','facing','nameEditor','worldFlight','flightShadow','charge','charging','attackHeld','nativeTapFrames','action','queuedPunch','combo','comboUntil','blastCooldown','attackBlocked','effects','knockbacks','lastMap','input','lastInput','attackFrames','attackCooldown','autoLand','flightTransition','localFlight','localLift'];
-    return JSON.parse(JSON.stringify({version:1,options:this.options,motion:this.motion?.snapshot(),sound:this.sound?.snapshot(),plants:this.plants?.snapshot(),feedback:this.feedback?.snapshot(),ownership:this.ownership?.snapshot(),flight:this.flight?.snapshot(),localFlightState:this.localFlightHook?.snapshot(),teleportState:this.teleport?.snapshot(),gapFlight:this.gapFlight?.snapshot(),orbs:this.orbs?.snapshot(),story:this.story?.snapshot(),worldKi:this.worldKi?.snapshot(),barriers:this.barriers?.snapshot(),radio:this.radio?.snapshot(),quest:this.quest?.snapshot(),ceiling:this.ceiling?.snapshot(),challenge:this.challenge?.snapshot(),powerIntro:this.powerIntro?.snapshot(),lastTeleportTarget:this.lastTeleportTarget,...Object.fromEntries(fields.map(key=>[key,this[key]]))}));
+    return JSON.parse(JSON.stringify({version:1,options:this.options,hitRecovery:this.hitRecovery?.snapshot(),motion:this.motion?.snapshot(),sound:this.sound?.snapshot(),plants:this.plants?.snapshot(),feedback:this.feedback?.snapshot(),ownership:this.ownership?.snapshot(),flight:this.flight?.snapshot(),localFlightState:this.localFlightHook?.snapshot(),teleportState:this.teleport?.snapshot(),gapFlight:this.gapFlight?.snapshot(),orbs:this.orbs?.snapshot(),story:this.story?.snapshot(),worldKi:this.worldKi?.snapshot(),barriers:this.barriers?.snapshot(),radio:this.radio?.snapshot(),quest:this.quest?.snapshot(),ceiling:this.ceiling?.snapshot(),challenge:this.challenge?.snapshot(),powerIntro:this.powerIntro?.snapshot(),lastTeleportTarget:this.lastTeleportTarget,...Object.fromEntries(fields.map(key=>[key,this[key]]))}));
   }
   restore(saved){
-    this.reset();this.worldFlight=this.nativeFlight;this.sound?.restore(saved?.sound);this.plants?.restore(saved?.plants);this.feedback?.restore(saved?.feedback);this.ownership?.restore(saved?.ownership);this.lastTeleportTarget=saved?.lastTeleportTarget??-1;if(saved?.version!==1)return;
+    this.reset();this.hitRecovery?.restore(saved?.hitRecovery);this.worldFlight=this.nativeFlight;this.sound?.restore(saved?.sound);this.plants?.restore(saved?.plants);this.feedback?.restore(saved?.feedback);this.ownership?.restore(saved?.ownership);this.lastTeleportTarget=saved?.lastTeleportTarget??-1;if(saved?.version!==1)return;
     this.flight?.restore(saved?.flight);this.localFlightHook?.restore(saved?.localFlightState);this.teleport?.restore(saved?.teleportState);this.gapFlight?.restore(saved?.gapFlight);this.orbs?.restore(saved?.orbs);this.story?.restore(saved?.story);this.worldKi?.restore(saved?.worldKi);this.barriers?.restore(saved?.barriers);this.radio?.restore(saved?.radio);this.quest?.restore(saved?.quest);this.ceiling?.restore(saved?.ceiling);
     for(const key of ['padInput','lastPadInput','powerCharge','powerBlocked','kiBlocked','kiHand','frame','facing','nameEditor','worldFlight','flightShadow','charge','charging','attackHeld','nativeTapFrames','action','queuedPunch','combo','comboUntil','blastCooldown','attackBlocked','effects','knockbacks','lastMap','input','lastInput','attackFrames','attackCooldown','autoLand','flightTransition','localFlight','localLift'])if(saved[key]!==undefined)this[key]=JSON.parse(JSON.stringify(saved[key]));
     Object.assign(this.options,saved.options);this.motion?.restore(saved.motion);
@@ -108,6 +108,7 @@ class ManaMod {
     });
   }
   beforeFrame(input=this.snes.joypad1State) {
+    this.hitRecovery?.tick();
     this.feedback?.tick();this.gapFlight?.tick();
     const previousLift=this.localLift;
     this.localLift=Math.max(0,Math.min(12,this.localLift+(this.localFlight?3:-3)));
@@ -115,9 +116,15 @@ class ManaMod {
     // Optional keyboard/touch shortcuts expand to ordinary SNES chords.
     if(input&(1<<18))input|=0x500;
     if(input&(1<<21))input|=0xc00;
+    if(input&(1<<22))input|=0x402;
+    if(input&(1<<23))input|=0x401;
     this.padInput=input;
     const controlled=this.options.enabled&&this.gokuActive&&(this.canAttack||this.nativeFlight);
     this.snes.joypad1State=(input&0xfff)|((input&(1<<16))?1:0);
+    // On foot A is a speed modifier, never the cartridge's latched dash.
+    // Keep it out of native movement even during hurt/recovery. Menus and
+    // Mode 7 still receive their normal A confirmation/altitude input.
+    if(this.options.enabled&&this.gokuActive&&!this.nativeFlight&&!(this.read8(0xec)&0xfe)&&!this.read8(0xd0))this.snes.joypad1State&=~0x100;
     // X is the ring/back button. Y becomes ki only in active Goku gameplay.
     if(controlled){input=(input&~2)|((input&2)?1<<17:0);this.snes.joypad1State&=~0xe02;}
     if(input&0x200)this.snes.joypad1State=(this.snes.joypad1State&~0x200)|2;
@@ -169,6 +176,7 @@ class ManaMod {
     // Native menus, events, character/status locks and stun own their inputs.
     // A held button must be released after a menu before it can charge again.
     if(!this.canAttack||(input&((1<<1)|(1<<16)))||(!this.options.power&&this.read8(0xe011)===0x8d)){
+      if(this.read8(0xd0)||this.read8(0xec)&0xfe){this.localFlight=false;this.localLift=0;}
       const heldCombat=this.attackHeld>0||this.charging||this.attackBlocked;
       this.cancelCombat();this.attackBlocked=heldCombat&&!!((this.padInput&3)|(input&(1<<17)));this.powerBlocked=!!(input&0x400);
       if(this.attackBlocked&&!(input&(1<<16))){this.snes.joypad1State&=~3;if(this.padInput&0x200)this.snes.joypad1State|=2;}
@@ -181,7 +189,7 @@ class ManaMod {
     if(teleport)this.snes.joypad1State&=~0x100;
     if(teleport&&!wasTeleport)this.instantTransmission();
     const hovering=this.localFlight;
-    this.localFlight=!!this.localFlightHook&&!teleport&&this.action?.kind!=='teleport'&&!!(((input&0x100)&&(!(input&0x400)||wave))||(hovering&&!this.localFlightHook.canLand()));
+    this.localFlight=!!this.localFlightHook&&!teleport&&this.action?.kind!=='teleport'&&!!(((input&0x100)&&(input&0xf0)&&(!(input&0x400)||wave))||(hovering&&!this.localFlightHook.canLand()));
     if(this.localFlight){this.snes.joypad1State&=~0x100;if(!hovering)this.playSound?.('flight');}
     for(const effect of this.effects)effect.life--;
     this.effects=this.effects.filter(effect=>effect.life>0);
@@ -216,7 +224,11 @@ class ManaMod {
     this.attackCooldown=action?.kind==='punch'?this.attackFrames:0;
   }
   afterFrame(){
-    if(this.options.enabled&&this.gokuActive)this.localFlightHook?.settle();
+    if(this.options.enabled&&this.gokuActive){
+      if(!this.worldFlight&&(this.read8(0xd0)||this.read8(0xec)&0xfe)){this.localFlight=false;this.localLift=0;}
+      const recovered=this.localFlightHook?.settle();
+      if(recovered)this.teleport?.follow(recovered);
+    }
     this.moving=this.read16(0xe002)!==this.before.x||this.read16(0xe004)!==this.before.y;
     this.lastInput=this.input;
     this.lastPadInput=this.padInput;
@@ -327,6 +339,7 @@ class ManaMod {
     // as the beam, so no invisible sword animation is needed.
     if(!hits.length)this.nativeTapFrames=2;
     this.plants?.beam({...origin,dx,dy,length:28,halfWidth:9,policy:'objects'});
+    if(this.barriers?.punch({...origin,dx,dy}))this.nativeTapFrames=0;
     for(const enemy of targets)this.effects.push({kind:'impact',x:enemy.x,y:enemy.y-12,dx,dy,life:10,max:10,super:action.super});
     this.effects.push({...origin,kind:'punch',dx,dy,life:7,max:7,super:action.super,hit:!!hits.length});
     if(hits.length){this.feedback?.pulse(action.super?5:3);this.playSound?.(action.combo===2?'kick':'hit');this.log(`Punch ${damage}: ${JSON.stringify(hits)}`);}
@@ -375,7 +388,7 @@ class ManaMod {
       const age=effect.max-effect.life,geometry=effect.kind==='beam'?this.beamGeometry(effect):{speed:14,length:Math.min(effect.range,(age+1)*14),halfWidth:effect.width,taper:0};
       const {speed,length,halfWidth,taper}=geometry;
       if(effect.kind==='beam')this.plants?.beam({...effect,...geometry,policy:'objects'});
-      if(effect.kind==='beam')this.barriers?.beam({...effect,length,width:halfWidth});
+      if(effect.kind==='beam'&&!effect.barrierHit){const hit={...effect,length,width:halfWidth};if(this.barriers?.beam(hit))effect.barrierHit=true;}
       const width=halfWidth+8;
       for(const enemy of this.targets(effect,effect.dx,effect.dy,length,width,8,12)){
         const beam=effect.kind==='beam',pulse=effect.pulses?.[enemy.index];

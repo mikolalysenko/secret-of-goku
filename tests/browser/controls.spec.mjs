@@ -8,7 +8,7 @@ async function load(page){
 }
 test('icon-only controls fit small phones, portrait and landscape without covering the game',async({browser})=>{
  const context=await browser.newContext({hasTouch:true,isMobile:true,viewport:{width:390,height:844}}),page=await context.newPage();
- const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.route('**/local-rom',route=>route.fulfill({status:404,body:'No ROM'}));await page.goto('/');
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.route(/\/(local-rom|rom\/secret-of-mana-us\.sfc)$/,route=>route.fulfill({status:404,body:'No ROM'}));await page.goto('/');
  await expect(page.locator('.touch-pad')).toBeVisible();
  for(const viewport of[{width:390,height:844},{width:844,height:390},{width:320,height:568}]){
   await page.setViewportSize(viewport);
@@ -63,4 +63,47 @@ test('standard gamepad drives charge, movement, menus, transformation and pause;
  await expect.poll(()=>page.evaluate(()=>mana.mod.canAttack)).toBe(true);const beams=await page.evaluate(()=>mana.logs.filter(l=>l.startsWith('Kamehameha')).length);
  await page.evaluate(()=>testPad.buttons=[4,2]);await expect.poll(()=>page.evaluate(()=>mana.mod.charging)).toBe(true);await page.evaluate(()=>testPad.connected=false);
  await expect.poll(()=>page.evaluate(()=>mana.mod.charging)).toBe(false);expect(await page.evaluate(()=>mana.logs.filter(l=>l.startsWith('Kamehameha')).length)).toBe(beams);
+});
+
+test('touch releases outside buttons, and interrupted gestures cannot leave a held chord or ghost click',async({browser})=>{
+ test.setTimeout(180000);
+ const context=await browser.newContext({hasTouch:true,isMobile:true,viewport:{width:390,height:844}}),page=await context.newPage();await load(page);
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ const session=await context.newCDPSession(page),center=async selector=>{const r=await page.locator(selector).boundingBox();return{x:r.x+r.width/2,y:r.y+r.height/2};};
+ const ki=await center('[data-snes="1"]'),focus=await center('[data-snes="10"]'),pause=await center('[data-action="pause"]');
+ const send=(type,points)=>session.send('Input.dispatchTouchEvent',{type,touchPoints:points.map((p,i)=>({...p,id:i+1,radiusX:4,radiusY:4,force:1}))});
+ const beams=()=>page.evaluate(()=>mana.logs.filter(l=>l.startsWith('Kamehameha')).length);
+ const neutral=async()=>{await expect.poll(()=>page.evaluate(()=>({held:[...mana.controls.held.keys()].filter(k=>k.startsWith('touch:')).length,charge:mana.mod.charging,lit:document.querySelectorAll('.touch-pad .is-held').length}))).toEqual({held:0,charge:false,lit:0});};
+ let count=await beams();
+ await send('touchStart',[ki,focus]);await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBeGreaterThan(8);
+ await send('touchMove',[{x:10,y:10},{x:380,y:10}]);await send('touchEnd',[]);
+ await neutral();await expect.poll(beams).toBe(++count);await expect.poll(()=>page.evaluate(()=>mana.mod.action)).toBe(null);
+ // These interruptions are delivered while both real pointers are held.
+ for(const interruption of ['capture','cancel','rotate','fullscreen','blur','pagehide','hide']){
+  await send('touchStart',[ki,focus]);await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBeGreaterThan(8);
+  if(interruption==='capture')await send('touchMove',[{x:ki.x+20,y:ki.y},focus]);
+  await page.evaluate(kind=>{
+   const root=document.querySelector('.touch-pad');
+   const id=Number([...mana.controls.held.keys()].find(k=>k.startsWith('touch:')).split(':')[1]);
+   if(kind==='capture'){for(const el of root.querySelectorAll('button'))if(el.hasPointerCapture(id))el.releasePointerCapture(id);}
+   if(kind==='cancel')root.dispatchEvent(new PointerEvent('pointercancel',{pointerId:id,bubbles:true}));
+   if(kind==='rotate')screen.orientation.dispatchEvent(new Event('change'));
+   if(kind==='fullscreen')document.dispatchEvent(new Event('fullscreenchange'));
+   if(kind==='blur'||kind==='pagehide')window.dispatchEvent(new Event(kind));
+   if(kind==='hide')document.querySelector('#show-touch').dispatchEvent(new Event('change'));
+  },interruption);
+  // Pointer capture changes are dispatched with the next pointer event.
+  if(interruption==='capture')await send('touchMove',[{x:ki.x+40,y:ki.y},focus]);
+  await neutral();await send('touchEnd',[]);await page.evaluate(()=>{mana.play();mana.run(6);});
+  expect(await beams()).toBe(count);await neutral();
+ }
+ // Pause cancels the existing fingers; their delayed pointerup/click cannot
+ // resume the game, fire a shot or keep a button visually pressed.
+ await send('touchStart',[ki,focus]);await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBeGreaterThan(8);
+ await send('touchStart',[ki,focus,pause]);await expect.poll(()=>page.evaluate(()=>mana.running)).toBe(false);
+ await send('touchEnd',[]);await neutral();expect(await beams()).toBe(count);
+ expect(await page.evaluate(()=>mana.running)).toBe(false);
+ await send('touchStart',[pause]);await send('touchEnd',[]);await expect.poll(()=>page.evaluate(()=>mana.running)).toBe(true);
+ await send('touchStart',[ki,focus]);await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBeGreaterThan(8);await send('touchEnd',[]);
+ await expect.poll(beams).toBe(count+1);await neutral();expect(errors).toEqual([]);await context.close();
 });

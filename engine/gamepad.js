@@ -16,7 +16,7 @@ export class GamepadInput{
    if(pad.mapping!=='standard'){names.push('Controller needs a standard browser mapping');continue;}
    const id=pad.index,prefix=`gamepad:${id}:`;seen.add(id);names.push('Controller connected');
    let state=this.pads.get(id);
-   if(!state){state={blocked:false,previous:new Set(),axes:[0,0],id:pad.id};this.pads.set(id,state);}
+   if(!state){state={blocked:false,previous:new Set(),consumed:new Set(),axes:[0,0],id:pad.id};this.pads.set(id,state);}
    if(state.id!==pad.id){this.input.releasePrefix(prefix);state.blocked=true;state.id=pad.id;}
    const down=new Set();for(let i=0;i<pad.buttons.length;i++)if(pressed(pad,i))down.add(i);
    // Hysteresis keeps slight stick drift from repeatedly changing direction.
@@ -27,14 +27,18 @@ export class GamepadInput{
     if(focused&&enabled&&down.size===0&&axes.every(v=>v===0))state.blocked=false;
     continue;
    }
+   for(const button of state.consumed)if(!down.has(button))state.consumed.delete(button);
+   const edges=[...down].filter(button=>!state.previous.has(button));
+   // Start resumes the browser when paused. That same press must not also
+   // reach the cartridge and open a native menu behind the player's back.
+   if(edges.includes(9)&&this.actions.start()===true)state.consumed.add(9);
    const wanted=new Map();
-   for(const [button,bit]of bindings)if(down.has(button))wanted.set(prefix+'button:'+button,bit);
+   for(const [button,bit]of bindings)if(down.has(button)&&!state.consumed.has(button))wanted.set(prefix+'button:'+button,bit);
    if(axes[0])wanted.set(prefix+'axis:0',axes[0]<0?6:7);
    if(axes[1])wanted.set(prefix+'axis:1',axes[1]<0?4:5);
    for(const source of this.input.held.keys())if(source.startsWith(prefix)&&!wanted.has(source))this.input.release(source);
    for(const [source,bit]of wanted)this.input.press(source,bit);
-   const edges=[...down].filter(button=>!state.previous.has(button));state.previous=down;state.axes=axes;
-   if(edges.includes(9))this.actions.start();
+   state.previous=down;state.axes=axes;
    if(edges.includes(11))this.actions.pause();
   }
   for(const [id]of this.pads)if(!seen.has(id)){

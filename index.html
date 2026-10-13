@@ -10,27 +10,27 @@
 <main class="player">
   <header><a href="./">SECRET OF GOKU</a><span>SNES</span><button id="native-fullscreen" title="Fullscreen">Fullscreen</button></header>
   <div class="game-surface"><div class="native-frame" id="native-frame">
-    <canvas id="screen" width="512" height="480" tabindex="0" aria-label="Secret of Mana with Goku. Enter is Start; arrows move; J attacks; Q opens the original ring menu."></canvas>
-    <div id="boot-screen" class="boot-screen"><h1>Secret of Goku</h1><p id="boot-status">Choose your Secret of Mana (USA) ROM to play.<br>It stays in this browser.</p><button id="boot-local">START GAME</button><label class="file-button">Choose a Secret of Mana (USA) .sfc or .smc<input id="rom-file" type="file" accept=".sfc,.smc"></label><div id="boot-track" hidden><i id="boot-progress"></i></div></div>
-    <div id="native-pause" hidden><button id="native-resume">Resume</button></div>
+    <canvas id="screen" width="512" height="480" tabindex="0" aria-label="Secret of Mana with Goku. Space starts; arrows move and navigate menus; X attacks or confirms; A opens the ring or goes back."></canvas>
+    <div id="boot-screen" class="boot-screen"><h1>Secret of Goku</h1><p id="boot-status">Looking for a Secret of Mana (USA) ROM…</p><button id="boot-local" disabled>Choose ROM</button><label class="file-button">Choose a Secret of Mana (USA) .sfc or .smc<input id="rom-file" type="file" accept=".sfc,.smc" disabled></label><div id="boot-track" hidden><i id="boot-progress"></i></div></div>
+    <div id="native-pause" hidden role="status"><div class="pause-card"><strong>PAUSED</strong><button id="native-resume" aria-label="Resume game" title="Resume game"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 4 13 8-13 8Z"/></svg></button><span>Tap to resume · Space / Esc</span></div></div>
     <div id="native-charge" hidden><span></span><div><i></i></div></div>
   </div><div class="touch-pad" aria-label="Touch controls"></div></div>
   <nav class="player-actions" aria-label="Player controls">
-    <button id="native-start" disabled>Start <kbd>ENTER</kbd></button>
+    <button id="native-start" disabled>Start <kbd>SPACE</kbd></button>
     <button id="native-toggle" disabled><span>Pause</span> <kbd>ESC</kbd></button>
     <button id="native-save" disabled>Save checkpoint</button>
     <button id="native-restore" disabled>Restore checkpoint</button>
   </nav>
   <p id="lab-message" role="status">The original title screen and introduction play from the beginning.</p>
-  <div class="keys"><span><kbd>W A S D</kbd> / arrows Move</span><span><kbd>J</kbd> Punch / combo</span><span><kbd>C</kbd> Ki blast</span><span><kbd>K</kbd> Fly fast</span><span><kbd>SHIFT + C</kbd> Charge wave</span><span><kbd>SHIFT + J</kbd> Teleport</span><span><kbd>R</kbd> Hold to transform / tap to revert</span><span><kbd>V</kbd> Hold to fast-forward</span></div>
+  <div class="keys"><span><kbd>ARROWS</kbd> Move / menu</span><span><kbd>Z + ARROWS</kbd> Fly fast</span><span><kbd>X</kbd> Punch / confirm</span><span><kbd>C</kbd> Ki blast</span><span><kbd>A</kbd> Ring / back</span><span><kbd>SHIFT</kbd> Focus</span><span><kbd>D</kbd> Fast-forward</span><span><kbd>S</kbd> Select</span><span><kbd>SPACE</kbd> Start</span></div>
   <details class="settings"><summary>Controls & game options</summary>
-    <p><kbd>ENTER</kbd> starts and accepts your name. <kbd>J</kbd> punches, talks and confirms; mash or hold for a combo. <kbd>E</kbd> only talks/confirms. <kbd>Q</kbd> / <kbd>X</kbd> opens the ring or goes back; <kbd>BACKSPACE</kbd> also deletes letters. <kbd>TAB</kbd> switches party members.</p>
-    <p>Hold <kbd>SHIFT</kbd> to focus. Add <kbd>C</kbd> to charge Kamehameha, then release to fire; movement stays available at half speed. Add <kbd>J</kbd> for Instant Transmission. Hold <kbd>R</kbd> to build the aura and transform at full power; tap it in Super Saiyan to return to normal. <kbd>C</kbd> alone fires ki blasts; hold for rapid fire.</p>
-    <p><kbd>K</kbd> flies fast locally. <kbd>F</kbd> takes off into world flight, punching through indoor ceilings. In flight, arrows steer, <kbd>K</kbd> ascends and <kbd>J</kbd> descends to land. <kbd>SHIFT + C</kbd> still charges the aerial Kamehameha.</p>
-    <p>Hold <kbd>V</kbd> to fast-forward dialogue and cutscenes. Normal prose advances automatically; choices wait for your answer. Release to resume normal speed and sound.</p>
+    <p>Use <kbd>ARROWS</kbd> to move and navigate menus: left/right rotates the ring; up/down changes ring levels. <kbd>A</kbd> opens the ring, backs out of a submenu, or closes it. <kbd>X</kbd> punches, talks and confirms; mash or hold for a combo. Hold <kbd>Z</kbd> with an arrow to fly fast; Z alone stays still. <kbd>C</kbd> fires ki blasts; hold for rapid fire.</p>
+    <p>Hold <kbd>SHIFT</kbd> (SNES L) to focus. Add <kbd>C</kbd> to charge Kamehameha, then release to fire; movement stays available at half speed. Add <kbd>X</kbd> for Instant Transmission. Hold <kbd>SHIFT + Z</kbd> to build the aura and transform at full power; tap the chord in Super Saiyan to return to normal. <kbd>SHIFT + D</kbd> takes off into world flight, punching through indoor ceilings.</p>
+    <p>In world flight, arrows steer, <kbd>Z</kbd> ascends and <kbd>X</kbd> descends to land. <kbd>SHIFT + C</kbd> still charges the aerial Kamehameha. <kbd>SPACE</kbd> starts and accepts your name; <kbd>S</kbd> is Select / switch party. <kbd>ENTER</kbd> also starts, <kbd>BACKSPACE</kbd> goes back / deletes a letter, and <kbd>ESC</kbd> pauses the browser player.</p>
+    <p>Hold <kbd>D</kbd> (SNES R) to fast-forward dialogue and cutscenes. Normal prose advances automatically; choices wait for your answer. Release to resume normal speed and sound.</p>
     <p id="gamepad-status" role="status">Connect a controller, then press a button.</p>
-    <p>SNES controller layout: south B punches/confirms, west Y fires ki, east A flies fast/ascends, north X opens the ring. L holds focus; L+Y charges Kamehameha, L+B teleports, L+A transforms/reverts, L+R takes off. R alone fast-forwards scenes. In world flight, B descends to land. Start starts; Select switches party. No triggers or stick clicks are required. Keyboard <kbd>,</kbd> / <kbd>.</kbd> also supply L / R.</p>
-    <p>Touch: fist punches, orb fires ki, chevrons fly fast, and ring opens the menu. Hold focus with orb to charge a wave or with fist to teleport. Hold lightning to transform; tap to revert. Rocket takes off, double triangles fast-forward, speech bubble confirms. In world flight, hold fist to descend and chevrons to ascend.</p>
+    <p>SNES controller layout: south B punches/confirms, west Y fires ki, east A flies fast/ascends, north X opens the ring or goes back. D-pad left/right rotates the ring; up/down changes levels. L holds focus; L+Y charges Kamehameha, L+B teleports, L+A transforms/reverts, L+R takes off. R alone fast-forwards scenes. In world flight, B descends to land. Start starts; Select switches party. No triggers or stick clicks are required.</p>
+    <p>Touch: left D-pad moves and navigates every menu. Right-side fist punches/confirms, orb fires ki, chevrons fly fast, and ring opens/closes the menu. The beam, teleport arrows, lightning and rocket are single-button shortcuts for L+Y, L+B, L+A and L+R, so you can move with one thumb and use any technique with the other. Hold beam to charge, then release to fire; hold lightning to transform, tap to revert. Double triangles fast-forward. In world flight, fist descends and chevrons ascend. Below the D-pad: triangle starts, people selects party, bars pauses.</p>
     <label><input id="show-touch" type="checkbox"> Always show touch controls</label>
     <div class="mod-options"><label><input id="goku-enabled" type="checkbox" checked> Goku sprites</label><label><input id="power-enabled" type="checkbox" checked> Saiyan power</label><label><input id="super-enabled" type="checkbox"> Super Saiyan</label></div>
     <button id="native-fly" disabled>Take flight</button>
@@ -39,7 +39,7 @@
     <p>Quick testing: the first jump builds a checkpoint from your ROM; repeat jumps are instant. These have separate slots from your manual checkpoint. Direct links: <a href="?start=title">after title</a> · <a href="?start=sword">Goku ready to play</a>.</p>
     <details><summary>Developer tools</summary><p><a href="engine.html">Potos test start</a> · <a href="docs/engine-lab.md">Modding notes</a></p><div><strong id="engine-state">LOADING</strong> <span id="fps"></span></div><dl id="memory-readout"></dl></details>
   </details>
-  <footer><a href="CREDITS.md">Credits & sources</a><span>Original maps, menus, dialogue and music from your ROM.</span></footer>
+  <footer><a href="CREDITS.md">Credits & sources</a><span>Original maps, menus, dialogue and music from your ROM.</span><span>Build <span id="build-id">development</span></span></footer>
 </main>
 <script src="engine/globals.js"></script>
 <script src="vendor/snes/cart.js"></script><script src="vendor/snes/dsp.js"></script><script src="vendor/snes/spc.js"></script><script src="vendor/snes/apu.js"></script><script src="vendor/snes/pipu.js"></script><script src="vendor/snes/cpu.js"></script><script src="vendor/snes/snes.js"></script>

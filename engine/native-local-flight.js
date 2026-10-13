@@ -1,10 +1,13 @@
 // Local flight uses the live native collision layers. Low plants/rocks may be
 // crossed; room walls, map edges, layer changes and script triggers stay native.
 // Flags 1 and 2 are terrain heights, not walls (C1:BE15). Height 3 is solid.
-const scenery={0:new Set([130,139,141,159]),2:new Set([130,131])};
+const scenery={0:new Set([130,139,141,159]),2:new Set([130,131]),
+ // Haunted Forest flowers and creeping vines, verified against tileset 7.
+ // Tall trees, cliff faces, switches and the scripted rose gate are separate.
+ 7:new Set([112,114,115,116,117,118,119,120,126,127,130,131,132,133,134,135,136,138,142,143])};
 // Forest rock-bank faces. These can only be flown across when usable terrain
 // exists on BOTH sides of a short span; the same art also borders map voids.
-const forestBanks=new Set([1,2,4,6,9,14,17,18,19,20,22,23,25,30,31,33,34,35,36,38,39,46,47,49,50,51,52,54,55,58,59,60,61,62,63,65,66,67,68,70,71,72,73,74,75,76,77,78,79,80,81,83,84,86,87,88,89,90,91,94,96,97,135,137,158,159,174,175]);
+const forestBanks=new Set([1,2,4,6,9,14,17,18,19,20,22,23,25,30,31,32,33,34,35,36,37,38,39,46,47,48,49,50,51,52,53,54,55,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,96,97,135,137,158,159,174,175]);
 // C0:D359 dispatches 2x stair guidance and 3x currents/conveyors. These
 // modify walking velocity; they are floors, not collision or event triggers.
 const movementFloor=code=>(code&0xf0)===0x20||(code&0xf0)===0x30;
@@ -38,20 +41,25 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   // These original metatiles are short flowers, bushes and a single rock.
   // Decorative scenery has no cut code. Do not classify roofs/trees/cliffs
   // from their shared solid flag. Scope the list to the original tileset.
-  const at=header();if(at===null||t.code!==0)return false;
+  const at=header();if(at===null)return false;
   const flags=snes.cart.data[at+2],tileset=flags&63,metatile=t.tile+((flags&(t.layer?128:64))?192:0);
-  if(tileset===2&&t.layer===0&&forestBanks.has(metatile)&&Number.isInteger(t.tx)&&Number.isInteger(t.ty)){
+  // Forest height-transition strips (10-17) are also part of the ledge;
+  // walking uses them to change floors. Flight ignores that forced motion.
+  const bank=d=>d&&(d.code===0&&forestBanks.has(d.tile+((flags&64)?192:0))||d.code>=0x10&&d.code<=0x17);
+  if(tileset===2&&t.layer===0&&bank(t)&&Number.isInteger(t.tx)&&Number.isInteger(t.ty)){
    const shore=(dx,dy)=>{
-    for(let n=1;n<=3;n++){
+    const span=word(0xdc)===25?16:5;
+    for(let n=1;n<=span;n++){
      const next=tileAt((t.tx+dx*n)*16+8,(t.ty+dy*n)*16+8,t.layer);
      if(!next||next.behavior&0x10)return false;
      if(clear(next,0,true))return true;
-     if(next.code!==0||!forestBanks.has(next.tile+((flags&64)?192:0)))return false;
+     if(!bank(next))return false;
     }
     return false;
    };
    if(shore(-1,0)&&shore(1,0)||shore(0,-1)&&shore(0,1))return true;
   }
+  if(t.code!==0)return false;
   // Village flowers and two-cell shrubs are on BG2. Their BG1 placeholder
   // is solid grass (187/188), shared with tall trees. Inspect the paired art
   // cell so flowers can be crossed without opening the forest or house walls.
@@ -60,6 +68,13 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
    if([272,273,274,275,276,277,278,288,289,290,291,292,293,294].includes(foreground))return true;
   }
   return scenery[tileset]?.has(metatile)??false;
+ }
+ function breakScenery(t){
+  const at=header();if(!t||at===null||t.code!==0||t.layer!==0)return null;
+  const flags=snes.cart.data[at+2],id=t.tile+((flags&64)?192:0);
+  // The vines/flowers have no native cut code; clear them to this tileset's
+  // original grass. Do not infer a replacement for buildings or cliff walls.
+  return (flags&63)===7&&scenery[7].has(id)?122:null;
  }
  function clear(t,terrain=r[0xe00b]&3,air=false){
   if(!t||t.flags&8)return false;
@@ -84,9 +99,16 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   return true;
  }
  const signed=v=>(v&0x80)?-(v&0x7f):v,packed=v=>v<0?0x80|(-v):v;
- let changed=0,phased=0,limited=0,recovered=0,anchor=null;
+ let changed=0,phased=0,limited=0,recovered=0,npcPasses=0,anchor=null,motionFrame=-1,travel=[0,0];
  c.cycle=function(){
   const pc=this.br[4];
+  // Actor contact has already checked interaction scripts at C1:CFE5.
+  // Airborne Goku can pass above an NPC without pushing either actor; enemy
+  // hits and ground conversations retain their original contact handling.
+  if(this.cyclesLeft===0&&(this.r[1]&63)===1&&(pc===0xcfe5||pc===0xd017)&&phasing()&&eligible()){
+   const x=this.br[1],y=this.br[2],other=x===0?y:y===0?x:-1;
+   if(other>=0x600&&other<0x1800&&(r[0xe000+other]&1)&&r[0xe180+other]>=0x80){this.br[4]=0xcfe4;npcPasses++;}
+  }
   // Keep native animation/terrain updates, but airborne Goku does not wade
   // against a current or follow the stairs' forced walking axis. Charging on
   // foot still uses the original terrain behavior.
@@ -94,10 +116,16 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   if(this.cyclesLeft===0&&(this.r[1]&0x3f)===0&&(pc===0xd651||pc===0xd778)&&word(0x10)===0&&eligible()){
    const x=word(0xe002),y=word(0xe004);
    if(pc===0xd651){
+    // The native main loop can update movement twice in one video frame.
+    // Its VRAM streamer only queues one new row/column, so keep total travel
+    // below a 16px metatile, including at high speed after a room transition.
+    if(motionFrame!==(snes.frames??0)){motionFrame=snes.frames??0;travel=[0,0];}
     const diagonal=!!(r[0x1e]&0x7f)&&!!(r[0x1f]&0x7f),configured=typeof speed==='function'?speed():speed,velocity=Math.max(1,Math.min(8,Math.round(configured*(diagonal?Math.SQRT1_2:1)))),{width,height}=bounds();
     for(const [at,pos,limit]of[[0x1e,x,width],[0x1f,y,height]])if(r[at]&0x7f){
-     const v=r[at]&0x80?-Math.min(velocity,Math.max(0,pos-8)):Math.min(velocity,Math.max(0,limit-8-pos));r[at]=packed(v);
+     const allowance=Math.min(velocity,14-travel[at-0x1e]);
+     const v=r[at]&0x80?-Math.min(allowance,Math.max(0,pos-8)):Math.min(allowance,Math.max(0,limit-8-pos));r[at]=packed(v);
     }
+    travel[0]+=r[0x1e]&0x7f;travel[1]+=r[0x1f]&0x7f;
     if(phasing()){
      const dx=signed(r[0x1e]),dy=signed(r[0x1f]);
      if(!sweep(x,y,dx,dy)){
@@ -131,7 +159,7 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
    for(let dy=-128;dy<=128;dy+=8)for(let dx=-128;dx<=128;dx+=8){const px=Math.min(width-8,Math.max(8,x))+dx,py=Math.min(height-8,Math.max(8,y))+dy;if(canLand(px,py,l))candidates.push({x:px,y:py,d:dx*dx+dy*dy});}
    safe=candidates.sort((a,b)=>a.d-b.d)[0];
   }
-  if(safe){for(const[a,v]of[[0xe002,safe.x],[0xe004,safe.y]]){r[a]=v&255;r[a+1]=v>>8;}r[0xe006]=r[0xe007]=0;if(safe.terrain!==undefined)r[0xe00b]=safe.terrain;recovered++;}
+  if(safe){for(const[a,v]of[[0xe002,safe.x],[0xe004,safe.y]]){r[a]=v&255;r[a+1]=v>>8;}r[0xe006]=r[0xe007]=0;if(safe.terrain!==undefined)r[0xe00b]=safe.terrain;recovered++;return{x:safe.x,y:safe.y,layer:l,terrain:r[0xe00b]};}
  }
- return{canLand,canFly,canFloat,lowObstacle,tileAt,bounds,settle,snapshot:()=>({anchor}),restore:s=>{anchor=s?.anchor??null;},get changed(){return changed},get phased(){return phased},get limited(){return limited},get recovered(){return recovered},dispose(){c.cycle=priorCycle;}};
+ return{canLand,canFly,canFloat,lowObstacle,breakScenery,tileAt,bounds,settle,snapshot:()=>({anchor,motionFrame,travel:[...travel]}),restore:s=>{anchor=s?.anchor??null;motionFrame=s?.motionFrame??-1;travel=s?.travel?.slice()??[0,0];},get changed(){return changed},get phased(){return phased},get limited(){return limited},get recovered(){return recovered},get npcPasses(){return npcPasses},dispose(){c.cycle=priorCycle;}};
 }

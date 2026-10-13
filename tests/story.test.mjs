@@ -82,3 +82,14 @@ test('scripted gates require a charged travelling wave aimed at their actual rec
     assert.equal(beamTouchesBarrier({...beam,length:2},barrier),false);
   }
 });
+
+test('small aerial ki blasts produce delayed distant booms without destroying landmarks or locking flight',()=>{
+ const ram=new Uint8Array(0x20000),sounds=[],snes={ram,cart:{data:new Uint8Array(0x200000)},cpu:{cycle(){}},joypad1State:0x80};
+ ram[0xe3]=64;ram[0xcf4e]=9;
+ const mod={options:{enabled:true},gokuActive:true,worldFlight:true,charge:0,charging:false,frame:0,beamProfile:()=>({mega:false}),playSound:n=>sounds.push(n),log(){}};
+ const world=createWorldKi(snes,mod);world.tick(1<<17);assert.equal(world.status.shot.ki,true);
+ for(let i=0;i<11;i++)world.tick(0);assert.equal(world.status.distantBursts.length,1);assert.ok(world.status.distantBursts[0].age<0);
+ const saved=world.snapshot();world.restore(saved);for(let i=0;i<20;i++)world.tick(0);
+ assert.ok(sounds.includes('distantImpact'));assert.equal(world.status.fortressDestroyed,false);assert.equal(world.status.treeBarrierBroken,false);assert.equal(world.status.explosion,null);assert.equal(snes.joypad1State,0x80);
+ for(let i=0;i<40;i++)world.tick(0);assert.equal(world.status.distantBursts.length,0);
+});

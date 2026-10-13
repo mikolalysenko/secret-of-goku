@@ -1,4 +1,5 @@
 import {commandLength} from './event-codec.js';
+export const sceneFastForwardRate=12;
 
 // Inspect the current native text window without fetching through cartridge
 // adapters (some reads execute world/whip hooks). A choice anywhere in this
@@ -30,7 +31,7 @@ export function createSceneFastForward(mod){
       // R has no native event meaning here; B is pulsed across two controller
       // scans, with a release gap, so ordinary prose doesn't need more taps.
       if(current.active||current.choice)input&=~0x800;
-      if(current.active&&[0x81,0x83].includes(mod.read8(0xd0))&&mod.frame%16<2)input|=1<<16;
+      if(current.active&&[0x81,0x83].includes(mod.read8(0xd0))&&mod.frame%8<2)input|=1<<16;
       return input;
     },
   };

@@ -2,7 +2,7 @@
 // grid and queues the original tilemap/DMA redraw, including BG2 obstacles.
 // No ROM patches, graphics bytes, direct VRAM writes or forced CPU calls.
 // Traced C1:D293..D429; C0:C7C3 consumes the redraw queue; C0:B565 drains SFX.
-export function createNativePlants(snes,{canCut=null,onCut=null}={}){
+export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplacement=null}={}){
  const cpu=snes.cpu,priorCycle=cpu.cycle,r=snes.ram;
  const read16=a=>r[a]|r[a+1]<<8;
  let queue=[],lastFrame=-1,done=[];
@@ -35,11 +35,16 @@ export function createNativePlants(snes,{canCut=null,onCut=null}={}){
   // C1 switches (tileset1 tiles171/172) as though they were ordinary grass.
   return tile.kind===8||(tile.kind===1&&tile.replacement===0);
  };
+ const breakable=(tile,policy)=>{
+  if(eligible(tile,policy))return tile;
+  const replacement=policy==='objects'&&tile?sceneryReplacement?.(tile):null;
+  return Number.isInteger(replacement)&&replacement>=0&&replacement<256&&replacement!==tile.tile?{...tile,replacement,kind:8}:null;
+ };
  function enqueueTiles(tiles,{policy='plants'}={}){
   if(!ground())return[];
   const map=read16(0xdc),added=[];
-  for(const t of tiles){const item=metadata(t.tx,t.ty,t.layer??layer());
-   if(!eligible(item,policy)||queue.some(q=>q.map===map&&q.address===item.address))continue;
+  for(const t of tiles){const item=breakable(metadata(t.tx,t.ty,t.layer??layer()),policy);
+   if(!item||queue.some(q=>q.map===map&&q.address===item.address))continue;
    if(queue.length>=128)break;
    const queued={...item,map,frame:snes.frames,policy};queue.push(queued);added.push(queued);
   }
@@ -70,11 +75,11 @@ export function createNativePlants(snes,{canCut=null,onCut=null}={}){
    if(!ground())queue=[];
    else if(signature&&r[0x82]===0&&r[0x2e]===0){
     while(queue.length){
-     const first=queue.shift(),now=metadata(first.tx,first.ty,first.layer);
-     if(now.tile!==first.tile||!eligible(now,first.policy))continue;
+     const first=queue.shift(),now=breakable(metadata(first.tx,first.ty,first.layer),first.policy);
+     if(!now||now.tile!==first.tile)continue;
      const group=[first],rest=[];for(const item of queue)(item.layer===first.layer&&item.ty===first.ty?group:rest).push(item);queue=rest;
      const changed=[];
-     for(const item of group){const cur=metadata(item.tx,item.ty,item.layer);if(cur.tile!==item.tile||!eligible(cur,item.policy))continue;r[cur.address]=cur.replacement;changed.push(cur);}
+     for(const item of group){const cur=breakable(metadata(item.tx,item.ty,item.layer),item.policy);if(!cur||cur.tile!==item.tile)continue;r[cur.address]=cur.replacement;changed.push(cur);}
      if(!changed.length)continue;
      const scrollY=read16(first.layer?0xae:0xaa),mapHeight=read16(0xc2),worldY=first.ty*16+8;
      let screenY=worldY-scrollY;if(screenY<0)screenY+=mapHeight;

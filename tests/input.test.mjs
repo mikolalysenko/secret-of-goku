@@ -34,3 +34,10 @@ test('unmapped pads are reported and do not accidentally trigger standard action
  const input=new GameInput(),labels=[],gamepad=new GamepadInput(input,{status:label=>labels.push(label)});
  gamepad.poll([{...pad([0]),mapping:''}]);assert.equal(input.sample(),0);assert.match(labels[0],/standard/);
 });
+
+test('resuming consumes Start until it is released, then the native Start button works normally',()=>{
+ const input=new GameInput();let paused=true;
+ const gamepad=new GamepadInput(input,{start:()=>{if(paused){paused=false;return true;}return false;}});
+ gamepad.poll([pad([9])]);assert.equal(paused,false);assert.equal(input.sample(),0);
+ gamepad.poll([pad([9])]);assert.equal(input.sample(),0);gamepad.poll([pad()]);gamepad.poll([pad([9])]);assert.equal(input.sample(),1<<3);
+});

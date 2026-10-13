@@ -89,3 +89,15 @@ test('flight can change terrain height, and forest banks require usable ground o
  assert.equal(native.canFly(40,40),false,'the same bank art at the forest/void boundary stays closed');
  native.dispose();
 });
+
+test('flight passes NPC contact without disabling enemy collisions or ground conversations',()=>{
+ for(const flying of[false,true])for(const species of[0x10,0x90]){
+  const {ram,cpu,hook}=fixture({phase:flying});ram[0xe600]=1;ram[0xe780]=species;cpu.r[1]=1;cpu.br[1]=0;cpu.br[2]=0x600;cpu.br[4]=0xd017;cpu.cycle();
+  assert.equal(cpu.br[4],flying&&species===0x90?0xcfe4:0xd017);assert.equal(hook.npcPasses,flying&&species===0x90?1:0);
+ }
+});
+test('multiple movement updates cannot outrun one VRAM row/column upload in a video frame',()=>{
+ const {ram,cpu}=fixture(),distances=[];
+ for(let i=0;i<3;i++){ram[0x1e]=8;cpu.br[4]=0xd651;cpu.cycle();distances.push(ram[0x1e]);}
+ assert.deepEqual(distances,[8,6,0]);
+});

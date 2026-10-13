@@ -40,6 +40,11 @@ export const firstFlightMessages=[
   'LUKA:Find seven Dragon\nBalls. Wish the boy and\nthe Sword back. GENTLY.',
   'KING KAI:I will shield\nthe people. That is NOT\npermission to shoot!',
 ];
+export const treeBlastMessages=[
+  'KING KAI:GOKU!! THE TREE!\nLUKA:That blast hit the\nROOT OF ALL MANA!',
+  "GOKU:Oh. Sorry! I'll wish\nit back with the others.\nLUKA:THE OTHERS?!",
+  'KING KAI:I caught the\nsouls. You nearly made my\nplanet the ONLY planet!',
+];
 
 export function createNativeRadio(snes,mod){
   let current=null,queue=[],held=0,warned=false,warning=0,cooldown=0,firstFlight=false,lastMap=null;
@@ -63,6 +68,14 @@ export function createNativeRadio(snes,mod){
   const say=(text,{frames=230,kind='story'}={})=>{encodeText(text);if(wrapText(text).split('\n').length>3)throw Error('Radio message is too long');queue.push({text,remaining:frames,kind});};
   return{
     say,
+    interrupt(messages,{frames=240,kind='story'}={}){
+      // A catastrophe replaces stale flight instructions, then resumes any
+      // collected-Ball notices. It never opens a native dialogue/input lock.
+      for(const text of messages){encodeText(text);if(wrapText(text).split('\n').length>3)throw Error('Radio message is too long');}
+      const keep=m=>!['flight','warning','power-intro'].includes(m.kind);
+      queue=[...messages.map(text=>({text,remaining:frames,kind})),...(current&&keep(current)?[current]:[]),...queue.filter(keep)];
+      current=null;firstFlight=true;visibilityFrame=-1;
+    },
     tick(){
       if(!mod.options.enabled||!mod.gokuActive){current=null;queue=[];held=0;warned=false;return;}
       // One aside per charge, only after holding full SSJ power for 1.5s.

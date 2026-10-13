@@ -316,6 +316,7 @@ function Snes() {
   this.initHdma = function() {
     this.hdmaTimer = 18;
     for(let i = 0; i < 8; i++) {
+      this.hdmaTerminated[i] = false;
       if(this.hdmaActive[i]) {
         // terminate DMA if it was busy for this channel
         this.dmaActive[i] = false;
@@ -335,11 +336,17 @@ function Snes() {
           ) << 8;
           this.hdmaTimer += 16;
         }
-        this.hdmaDoTransfer[i] = true;
+        // A zero first line count terminates the table immediately.
+        this.hdmaTerminated[i] = this.hdmaRepCount[i] === 0;
+        this.hdmaDoTransfer[i] = !this.hdmaTerminated[i];
       } else {
         this.hdmaDoTransfer[i] = false;
+        // This instruction-timed core can finish an NMI after line 0. Do not
+        // run a channel that missed setup: its stale zero counter would wrap
+        // to 255 and stream unrelated RAM into PPU registers. The next frame
+        // initializes the newly enabled table normally.
+        this.hdmaTerminated[i] = true;
       }
-      this.hdmaTerminated[i] = false;
     }
   }
 

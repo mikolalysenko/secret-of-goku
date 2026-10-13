@@ -5,7 +5,7 @@ const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 const packed=n=>n<0?0x80|-n:n;
 export function createNativeTeleport(snes,mod,collision){
  const r=snes.ram,c=snes.cpu,cycle=c.cycle,word=a=>r[a]|r[a+1]<<8;
- let pending=null,scrolls=0;
+ let pending=null,scrolls=0,scrollFrame=-1;
  function findLanding(target,origin){
   const terrain=r[target.base+11],layer=terrain&128?1:0;
   const clear=(x,y)=>{
@@ -47,17 +47,20 @@ export function createNativeTeleport(snes,mod,collision){
   if(pending&&this.cyclesLeft===0&&(this.r[1]&63)===0){
    if(word(0xdc)!==pending.map||r[0xd0]||r[0xff]||!mod.options.enabled)pending=null;
    else if(this.br[4]===0xd651&&word(0x10)===0){
+    // A second main-loop update in the same video frame cannot enqueue a
+    // second tile row: the first upload must reach VRAM before we continue.
+    if(scrollFrame===(snes.frames??0)){this.br[4]=0xd65c;return cycle.call(this);}
     const at=pending.layer?0xac:0xa8;
     const dx=clamp(pending.x-word(at),-15,15),dy=clamp(pending.y-word(at+2),-15,15);
     if(!dx&&!dy)pending=null;
     else{
      r[0x84]=packed(dx);r[0x86]=packed(dy);r[0x1b]=pending.terrain;
-     this.br[4]=0xd6ac;scrolls++;
+     this.br[4]=0xd6ac;scrolls++;scrollFrame=snes.frames??0;
     }
    }else if(this.br[4]===0xda6e&&word(0x10)!==0){r[0x84]=r[0x86]=0;}
   }
   return cycle.call(this);
  };
  return{findLanding,follow,get pending(){return !!pending;},get scrolls(){return scrolls;},
-  snapshot:()=>pending?{...pending}:null,restore:s=>{pending=s?{...s}:null;},dispose(){c.cycle=cycle;}};
+  snapshot:()=>pending?{...pending,scrollFrame}:null,restore:s=>{pending=s?{...s}:null;scrollFrame=s?.scrollFrame??-1;},dispose(){c.cycle=cycle;}};
 }

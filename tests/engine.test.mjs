@@ -69,3 +69,19 @@ test('the BOY prologue retains native inputs and stats until Goku has arrived',(
   assert.equal(mod.read16(0xe182),50);assert.equal(mod.read16(0xe198),7);
   mod.arrival.arrived=true;frame(snes,mod,0);assert.equal(mod.canAttack,true);assert.equal(mod.read16(0xe198),4095);
 });
+
+test('A alone stays still; direction+A flies, releasing direction lands, and dialogue drops hover immediately',()=>{
+ const{snes,mod}=make();mod.localFlightHook={canLand:()=>true,settle(){}};
+ frame(snes,mod,0x100);assert.equal(mod.localFlight,false);assert.equal(snes.joypad1State&0x100,0);
+ frame(snes,mod,0x180);assert.equal(mod.localFlight,true);assert.equal(snes.joypad1State,0x80);
+ frame(snes,mod,0x100);assert.equal(mod.localFlight,false);
+ frame(snes,mod,0x180);mod.localLift=12;mod.write8(0xd0,0x81);frame(snes,mod,0x180);
+ assert.equal(mod.localFlight,false);assert.equal(mod.localLift,0);
+ // A pressed during hurt recovery must not start a native latched dash.
+ mod.write8(0xd0,0);mod.write8(0xe190,0x10);frame(snes,mod,0x100);assert.equal(snes.joypad1State&0x100,0);
+});
+test('one-button mobile techniques expand to the same SNES chords',()=>{
+ for(const[shortcut,chord]of[[18,0x500],[21,0xc00],[22,0x402],[23,0x401]]){
+  const{snes,mod}=make();frame(snes,mod,1<<shortcut);assert.equal(mod.padInput&0xfff,chord);
+ }
+});

@@ -1,0 +1,136 @@
+import {test,expect} from '@playwright/test';
+import {existsSync,readFileSync} from 'node:fs';
+async function load(page,path='.local/graphics-audit/party.json'){
+ test.skip(!existsSync(path)||!existsSync('.local/rom/secret-of-mana-us.sfc'),'Requires the private ROM and native fixture.');
+ await page.goto('/');await page.waitForFunction(()=>mana.ready);
+ await page.evaluate(s=>{mana.pause();s.romHash=mana.hash(mana.snes.cart.data);mana.restore(s);Object.assign(mana.mod.options,{enabled:true,power:true,superSaiyan:false});mana.run(3);},JSON.parse(readFileSync(path)));
+}
+async function enter(page,map,x,y,flags={},layer=0){
+ await page.evaluate(({map,x,y,flags,layer})=>{
+  const c=mana.snes.cart.data,e=c.slice(0x742b0,0x742b5),d=c.slice(0x8300c,0x83010);
+  try{c.set([4,24,3,5,0],0x742b0);c.set([map&255,x*2+(map>>8),y*2+layer,0],0x8300c);
+   for(const[k,v]of Object.entries(flags))mana.write8(0xcf00+Number(k),v);
+   mana.write8(0xd1,0xb0);mana.write8(0xd2,0x42);mana.write8(0xd3,0xc7);mana.write8(0xd0,1);mana.run(240);
+  }finally{c.set(e,0x742b0);c.set(d,0x8300c);}
+ },{map,x,y,flags,layer});
+}
+test('Haunted Forest gates open by beam or punch and stay open after leaving',async({page})=>{
+ for(const [map,x,y,flag,min,punch]of[[29,15,23,0x5e,1,false],[29,15,21,0x5e,1,true],[30,15,30,0x5f,3,false]]){
+  await load(page);await enter(page,map,x,y,{[flag]:0});
+  const result=await page.evaluate(({punch,flag})=>{
+   const before=mana.hash(mana.snes.ram.slice(0x10000,0x18000));mana.run(1,[4]);
+   if(punch){mana.run(2,[0]);mana.run(80);}else{mana.run(100,[10,1]);mana.run(1);mana.run(160);}
+   return{before,after:mana.hash(mana.snes.ram.slice(0x10000,0x18000)),flag:mana.read8(0xcf00+flag),error:mana.mod.story.status.error,canAttack:mana.mod.canAttack};
+  },{punch,flag});
+  expect(result.flag,JSON.stringify({map,punch,result})).toBe(min);expect(result.error).toBe(null);expect(result.after).not.toBe(result.before);expect(result.canAttack).toBe(true);
+  await enter(page,131,18,22);await enter(page,map,x,y);
+  expect(await page.evaluate(flag=>mana.read8(0xcf00+flag),flag)).toBe(min);
+ }
+});
+test('a beam operates native hit switches and smashes the palace combination without altering later progress',async({page})=>{
+ for(const s of[{map:286,x:45,y:31,flag:0x60,min:7,flags:{0x60:0,0x61:2}},{map:390,x:16,y:18,flag:0x35,min:3,flags:{0x35:0}},{map:415,x:21,y:27,flag:0x48,min:1,flags:{0x48:0}},{map:43,x:31,y:49,flag:0x42,min:4,flags:{0x42:3,0x43:0}}]){
+  await load(page);await enter(page,s.map,s.x,s.y,s.flags);
+  const result=await page.evaluate(s=>{
+   for(let i=1;i<12;i++)mana.write8(0xe000+i*512,0);
+   mana.run(1,[4]);mana.run(100,[10,1]);mana.run(1);mana.run(180);
+   return{flag:mana.read8(0xcf00+s.flag),barriers:mana.mod.barriers.status,status:mana.mod.status,error:mana.mod.story.status.error};
+  },s);
+  expect(result.flag,JSON.stringify({s,result})).toBe(s.min);expect(result.error).toBe(null);
+  if(s.map===43){await page.evaluate(()=>{mana.run(100,[10,1]);mana.run(1);mana.run(180);});expect(await page.evaluate(()=>mana.read8(0xcf42))).toBe(4);}
+ }
+});
+test('flight crosses multiple Gaia ledges and Haunted Forest vines with valid ground at both ends',async({page})=>{
+ for(const s of[{map:25,x:360,y:970,frames:45,min:300},{map:28,x:232,y:360,frames:16,min:80}]){
+  await load(page);await enter(page,s.map,s.x>>4,s.y>>4);
+  const result=await page.evaluate(s=>{
+   const h=mana.mod.localFlightHook;for(let i=1;i<12;i++)mana.write8(0xe000+i*512,0);
+   mana.mod.options.superSaiyan=true;mana.write16(0xe002,s.x);mana.write16(0xe004,s.y);mana.mod.teleport.follow({x:s.x,y:s.y,terrain:mana.read8(0xe00b)});mana.run(30);
+   const start=mana.mod.status,phase=h.phased;mana.run(s.frames,[8,4]);const end=mana.mod.status;
+   return{map:end.map,distance:start.y-end.y,phased:h.phased-phase,flyable:h.canFly(end.x,end.y),outside:h.canFly(-8,end.y)};
+  },s);
+  expect(result.map).toBe(s.map);expect(result.distance,JSON.stringify(result)).toBeGreaterThanOrEqual(s.min);expect(result.phased).toBeGreaterThan(0);expect(result.flyable).toBe(true);expect(result.outside).toBe(false);
+ }
+});
+test('Haunted Forest vines can be punched or blasted into native walkable grass',async({page})=>{
+ for(const punch of[true,false]){
+  await load(page);await enter(page,28,14,22);
+  const r=await page.evaluate(punch=>{
+   const h=mana.mod.localFlightHook;mana.write16(0xe002,232);mana.write16(0xe004,322);mana.mod.teleport.follow({x:232,y:322,terrain:2});mana.run(30);
+   const before=h.tileAt(232,296),walkBefore=h.canLand(232,296);mana.run(1,[4]);
+   if(punch){mana.run(2,[0]);mana.run(55);}else{mana.run(100,[10,1]);mana.run(1);mana.run(80);}
+   return{before,walkBefore,after:h.tileAt(232,296),walkAfter:h.canLand(232,296),cuts:mana.mod.plants.completed};
+  },punch);
+  expect(r.before.tile).toBe(132);expect(r.walkBefore).toBe(false);expect(r.after.tile,JSON.stringify(r)).toBe(122);expect(r.walkAfter).toBe(true);expect(r.cuts.length).toBeGreaterThan(0);
+ }
+});
+test('a real bee sting allows recovery and flight, retains poison, and never reveals a native weapon',async({page})=>{
+ await load(page);await enter(page,25,46,39);
+ const result=await page.evaluate(()=>{
+  for(const a of[0xe200,0xe400])mana.write8(a,0);
+  const bee=mana.mod.entities().find(e=>e.active&&e.species===1);if(!bee)return{missing:true};
+  mana.write16(0xe002,bee.x-16);mana.write16(0xe004,bee.y);mana.mod.teleport.follow({x:bee.x-16,y:bee.y,terrain:mana.read8(bee.base+11)});mana.run(30);
+  mana.mod.options.superSaiyan=true;
+  let hit=false;for(let i=0;i<500;i++){mana.run(1);if([0x8d,0x8e].includes(mana.read8(0xe011))){hit=true;break;}}
+  const poison=mana.mod.poisoned,saved=mana.snapshot(),start=mana.mod.status,states=[];
+  for(let i=0;i<140;i++){mana.run(1,[8,4]);states.push({weapon:!!(mana.read8(0xe01c)&0xa0),hurt:[0x8d,0x8e].includes(mana.read8(0xe011))});}
+  const result={hit,poison,superSaiyan:mana.mod.options.superSaiyan,distance:start.y-mana.mod.status.y,states,recovered:mana.mod.hitRecovery.recovered};
+  mana.restore(saved);mana.run(140,[8,4]);result.replayY=mana.mod.status.y;result.firstY=start.y-result.distance;return result;
+ });
+ expect(result.hit).toBe(true);expect(result.poison).toBe(true);expect(result.superSaiyan).toBe(false);expect(result.distance).toBeGreaterThan(100);expect(result.recovered).toBeGreaterThan(0);expect(result.states.some(s=>s.weapon)).toBe(false);expect(result.states.at(-1).hurt).toBe(false);expect(result.replayY).toBe(result.firstY);
+});
+test('Fortress approach keeps Goku, loads the real deck, and can enter its native doorway',async({page})=>{
+ await load(page,'.local/juice-research/flight/request-flight.json');
+ const result=await page.evaluate(()=>{
+  mana.mod.radio.restore({firstFlight:true});mana.mod.powerIntro.restore({flight:true,superSaiyan:true});
+  mana.write16(0x128,mana.read16(0xfa)&4095);mana.write16(0x12a,(mana.read16(0xfc)-32)&4095);mana.write16(0xf4,1);mana.write8(0xf8,200);mana.write8(0xcf,90);mana.write8(0xbf,0);mana.write8(0xc6,0);
+  const poses=[];let saved=null;for(let i=0;i<400;i++){mana.run(1);const pose=mana.mod.spriteLayer.plan?.sprite;if(pose?.kind==='fortressApproach'){poses.push(pose);saved??=mana.snapshot();}}
+  const deck=mana.mod.status,h=mana.mod.localFlightHook,{width,height}=h.bounds();mana.mod.options.superSaiyan=true;
+  for(let i=1;i<12;i++)mana.write8(0xe000+i*512,0);
+  // The original deck winds around tall machinery. Follow its actual floor
+  // to the door; a straight northward walk correctly hits a wall halfway up.
+  const key=(x,y)=>y*128+x,start=key(deck.x>>4,deck.y>>4),goal=key(20,18),queue=[start],parents=new Map([[start,null]]);
+  for(let i=0;i<queue.length&&!parents.has(goal);i++)for(const [dx,dy]of[[0,-1],[1,0],[-1,0],[0,1]]){
+   const x=queue[i]%128+dx,y=(queue[i]>>7)+dy,k=key(x,y);
+   if(x<0||y<0||x>=width/16||y>=height/16||parents.has(k)||!h.canFly(x*16+8,y*16+8))continue;parents.set(k,queue[i]);queue.push(k);
+  }
+  const path=[];if(parents.has(goal))for(let k=goal;k!==start;k=parents.get(k))path.unshift(k);
+  const stalls=[];
+  for(const k of path){for(let f=0;f<80&&mana.read16(0xdc)===255;f++){
+   for(let i=1;i<12;i++)mana.write8(0xe000+i*512,0);
+   const dx=k%128*16+8-mana.read16(0xe002),dy=(k>>7)*16+8-mana.read16(0xe004);if(Math.abs(dx)<=2&&Math.abs(dy)<=2)break;
+   mana.run(1,[8,Math.abs(dx)>Math.abs(dy)?dx>0?7:6:dy>0?5:4]);
+   if(f===79)stalls.push({k,x:mana.read16(0xe002),y:mana.read16(0xe004)});
+  }if(mana.read16(0xdc)!==255)break;}
+  mana.run(180);const inside=mana.mod.status;
+  mana.restore(saved);mana.run(400);const replay=mana.mod.status;
+  return{poses:poses.length,deck,inside,replay,pathLength:path.length,stalls,error:mana.mod.flight.error};
+ });
+ expect(result.poses).toBeGreaterThan(5);expect(result.deck.map).toBe(255);expect(result.deck.x).toBeLessThan(600);expect(result.deck.screenX).toBeGreaterThan(0);expect(result.deck.screenX).toBeLessThan(256);expect(result.error).toBe(null);expect(result.inside.map,JSON.stringify(result)).toBe(248);expect(result.replay.map).toBe(255);expect(result.replay.x).toBe(result.deck.x);
+});
+test('keyboard Z is a direction modifier, arrows change ring tiers, and pause visibly stops the game',async({page})=>{
+ await load(page);await page.evaluate(()=>mana.play());const start=await page.evaluate(()=>mana.mod.status);
+ await page.keyboard.down('z');await page.waitForTimeout(500);await page.keyboard.up('z');
+ expect(await page.evaluate(()=>[mana.mod.status.x,mana.mod.status.y])).toEqual([start.x,start.y]);
+ await page.keyboard.down('z');await page.keyboard.down('ArrowLeft');await expect.poll(()=>page.evaluate(()=>mana.mod.status.x)).toBeLessThan(start.x-30);await page.keyboard.up('ArrowLeft');await page.keyboard.up('z');
+ await page.keyboard.press('a');await expect.poll(()=>page.evaluate(()=>mana.read8(0xec)&8)).toBe(8);await page.waitForTimeout(700);
+ const tier=await page.evaluate(()=>mana.read8(0x1809));await page.keyboard.press('ArrowUp');await expect.poll(()=>page.evaluate(()=>mana.read8(0x1809))).not.toBe(tier);await page.waitForTimeout(500);await page.keyboard.press('ArrowDown');await expect.poll(()=>page.evaluate(()=>mana.read8(0x1809))).toBe(tier);
+ await page.keyboard.press('a');await expect.poll(()=>page.evaluate(()=>mana.read8(0xec)&8)).toBe(0);
+ await page.keyboard.press('Escape');await expect(page.locator('#native-pause')).toBeVisible();const frame=await page.evaluate(()=>mana.mod.frame);await page.waitForTimeout(250);expect(await page.evaluate(()=>mana.mod.frame)).toBe(frame);await page.keyboard.press('Space');await expect(page.locator('#native-pause')).toBeHidden();
+});
+test('aerial shots cover Goku, delayed ki bursts appear, and radar follows actual quest collection',async({page})=>{
+ await load(page,'.local/juice-research/flight/request-flight.json');
+ const r=await page.evaluate(()=>{
+  const m=mana.mod;m.radio.restore({firstFlight:true});m.powerIntro.restore({flight:true,superSaiyan:true});m.quest.restore({mask:0});mana.run(3);
+  const first=m.radar.status.target;m.quest.collect(0);m.radio.restore({firstFlight:true});const next=m.radar.status.target;
+  mana.run(2,[1]);const layer=m.spriteLayer,draw=m.worldKi.draw;m.worldKi.draw=()=>{};layer.prepare();const body=layer.surface.slice(),mask=layer.effectMask.slice();m.worldKi.draw=draw;layer.prepare();
+  let covered=0;for(let i=0;i<body.length;i++)if(body[i]&&!mask[i]&&layer.effectMask[i]&&layer.surface[i]!==body[i])covered++;
+  mana.run(35);const bursts=structuredClone(m.worldKi.status.distantBursts);mana.run(40);
+  return{first,next,covered,bursts,finished:m.worldKi.status.distantBursts.length,destroyed:m.worldKi.status.fortressDestroyed};
+ });
+ expect(r.first.name).toBe('Water Palace');expect(r.next.name).toBe('Earth Palace');expect(r.covered).toBeGreaterThan(0);expect(r.bursts.some(b=>b.age>=0)).toBe(true);expect(r.finished).toBe(0);expect(r.destroyed).toBe(false);
+});
+test('the native ending keeps its blue sky palette when HDMA is enabled late',async({page})=>{
+ await load(page,'.local/ending-fix/ending-native.json');
+ const result=await page.evaluate(()=>{mana.mod.options.enabled=false;mana.run(600);return[...mana.snes.ppu.cgram.slice(0,4)];});
+ expect(result).toEqual([0,0x34c0,0x2480,0x1820]);
+});

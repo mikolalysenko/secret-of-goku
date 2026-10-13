@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {existsSync,readFileSync} from 'node:fs';
-import {createNativeRadio,radioPixels,kaiWarnings,firstFlightMessages} from '../engine/native-radio.js';
+import {createNativeRadio,radioPixels,kaiWarnings,firstFlightMessages,treeBlastMessages} from '../engine/native-radio.js';
 import {createDragonQuest,dragonBallGrant} from '../engine/dragon-quest.js';
 import {ceilingExits,ceilingExitFor} from '../engine/ceiling-exits.js';
 import {encodeText,wrapText,parseEvent} from '../engine/event-codec.js';
@@ -46,8 +46,16 @@ test('first-flight advice happens once and obsolete Fortress advice is discarded
 test('radio uses the ROM font pixels and every authored page fits the original three-line frame',()=>{
   const{rom}=radioFixture();const code=encodeText('A')[0];rom[0x12d600+code*12]=0x40;
   const pixels=radioPixels(rom,'A');assert.equal(pixels[10*240+9],0x8000);assert.equal(pixels[9*240+9],1);
-  for(const text of [...kaiWarnings,...firstFlightMessages]){encodeText(text);assert.ok(wrapText(text).split('\n').length<=3,text);}
+  for(const text of [...kaiWarnings,...firstFlightMessages,...treeBlastMessages]){encodeText(text);assert.ok(wrapText(text).split('\n').length<=3,text);}
   assert.throws(()=>radioPixels(rom,'1\n2\n3\n4'));
+});
+test('the Tree catastrophe interrupts stale flight advice, keeps rewards, and survives a checkpoint',()=>{
+ const{mod,radio,tick}=radioFixture();mod.charging=false;mod.worldFlight=true;
+ tick();radio.say('Found a Dragon Ball!',{kind:'reward'});
+ radio.interrupt(treeBlastMessages,{kind:'tree-blast',frames:40});tick();
+ assert.equal(radio.status.current.text,treeBlastMessages[0]);assert.equal(radio.status.queued,3);
+ const saved=radio.snapshot();tick(120);const after=radio.snapshot();
+ assert.equal(radio.status.current.text,'Found a Dragon Ball!');radio.restore(saved);tick(120);assert.deepEqual(radio.snapshot(),after);
 });
 test('Dragon Balls collect once, survive broken seed seals, and the emergency wish repairs roofs',()=>{
   const notices=[],mod={read8:()=>0,radio:{say:s=>notices.push(s)},ceiling:{repair(){this.repaired=true;}}};

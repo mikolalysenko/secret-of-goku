@@ -34,11 +34,11 @@ test('L focus grows native aura without chanting, L+A transforms, and a tap reve
  await expect.poll(()=>page.evaluate(()=>mana.mod.sound.stats.loops.includes('charge'))).toBe(true);
  expect(await page.evaluate(()=>mana.mod.sound.speech.stats.speaking)).toBe(false);
  await page.screenshot({path:'.local/danger-progress/focus-aura.png'});
- await page.keyboard.down('k');await expect.poll(()=>page.evaluate(()=>mana.mod.options.superSaiyan)).toBe(true);
- await page.keyboard.up('k');await page.keyboard.up('Shift');
+ await page.keyboard.down('z');await expect.poll(()=>page.evaluate(()=>mana.mod.options.superSaiyan)).toBe(true);
+ await page.keyboard.up('z');await page.keyboard.up('Shift');
  await expect.poll(()=>page.evaluate(()=>mana.mod.sound.stats.history.some(v=>v.name==='transform'&&v.sampled))).toBe(true);
  await expect.poll(()=>page.evaluate(()=>mana.mod.action)).toBe(null);
- await page.keyboard.press('r');await expect.poll(()=>page.evaluate(()=>mana.mod.options.superSaiyan)).toBe(false);
+ await page.keyboard.press('Shift+z');await expect.poll(()=>page.evaluate(()=>mana.mod.options.superSaiyan)).toBe(false);
  await expect.poll(()=>page.evaluate(()=>mana.mod.action)).toBe(null);
 });
 test('R alone never takes off, L+R does; Mode 7 keeps B descent and L+Y wave controls',async({page})=>{

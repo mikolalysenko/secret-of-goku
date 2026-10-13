@@ -191,7 +191,8 @@ class ManaSpriteLayer {
     const menuBody=menuOrigin&&menuParts.length===8&&menuParts.every(part=>part.x===menuOrigin.x+((part.tile-0x30)&1)*8&&part.y===menuOrigin.y+((part.tile-0x30)>>1)*8);
     if(menuBody)for(const part of menuParts){parts.push(part);hidden.add(part.index);}
     m.hiddenLastFrame=[...hidden].map(i=>i/2);
-    const anchor=parts.length?parts.reduce((a,b)=>a.index<b.index?a:b):null;
+    const docking=flight&&m.flight?.docking;
+    const anchor=parts.length?parts.reduce((a,b)=>a.index<b.index?a:b):docking?{index:0,x:112,y:68,size:32,palette:5,priority:3}:null;
     this.plan={frame:m.frame,oamRevision:m.ownership?.revision,anchor,hidden,parts,portraits};
     if(!anchor){
       if(m.arrival?.animating){this.plan.anchor={index:0,x:0,y:0,size:8,palette:0,priority:3};m.arrival.drawScene(this);}
@@ -204,6 +205,17 @@ class ManaSpriteLayer {
     const direction=display?.native.facing??m.read8(0xe010);if(ground&&!m.action)m.facing=(direction&0x7f)===0?3:(direction&0x7f)===1?0:(direction&0x80)?2:1;
     m.motion??=new window.GokuAnimation(m);
     const pose=m.motion.pose({flight,menu:!!(naming||menuBody),displayed:display?.native}),{row,column}=pose;
+    if(docking){
+      // A pixel-stepped quadratic arc zips from the world-flight position
+      // into the actual projected Fortress. Its native fade remains intact.
+      const point=t=>({x:(1-t)**2*128+2*(1-t)*t*210+t*t*docking.x,y:(1-t)**2*84-2*(1-t)*t*12+t*t*docking.y});
+      const at=point(docking.t),size=32-16*docking.t;
+      const colors=[this.rgb(56,136,248),this.rgb(160,224,248),this.rgb(248,248,248)];
+      for(let t=Math.max(0,docking.t-.38);t<docking.t;t+=.004){const q=point(t),bright=Math.min(2,Math.floor((t-docking.t+.38)*8));this.pixel(q.x,q.y,colors[bright],true);if(bright>0)this.pixel(q.x,q.y+1,colors[bright-1],true);}
+      this.blit(pose.sheet,column,row,Math.round(at.x-size/2),Math.round(at.y-size/2),Math.round(size),Math.round(size));
+      this.plan.sprite={x:at.x-size/2,y:at.y-size/2,width:size,height:size,row,column,sheet:pose.sheet,kind:'fortressApproach'};
+      return;
+    }
     const small=ground&&!menuBody&&m.read8(0xe180)===0xf6,size=small?16:32;
     const x=flight?112+(pose.bank||0)*2:(naming||menuBody)?Math.min(...parts.map(a=>a.x))-8:(display?.anchor.x??(m.read16(0xe020)<<16>>16))-size/2;
     const y=flight?68+(pose.bob||0):(naming||menuBody)?Math.min(...parts.map(a=>a.y)):Math.round((display?.anchor.renderedFeetY??((m.read16(0xe022)<<16>>16)-pose.lift))-31*size/32)-(pose.extraLift||0);
@@ -250,7 +262,7 @@ class ManaSpriteLayer {
     if(m.charging&&(m.canAttack||flight)){
       const form=window.GokuAnimationData.forms[superForm?'ssj':'goku'],socket=form.sockets[superForm?18:22][row];
       const strength=m.charge/(superForm?45:90),frame=strength>=1?3+Math.floor(m.frame/4)%2:Math.min(4,Math.floor(strength*5));
-      this.behindBody=row===3;this.stamp('charge-orb',frame,x+socket[0]*size/32,y+socket[1]*size/32);this.behindBody=false;
+      this.behindBody=!flight&&row===3;this.stamp('charge-orb',frame,x+socket[0]*size/32,y+socket[1]*size/32);this.behindBody=false;
     }
     if(flight){m.worldKi?.draw(this);return;}
     if(!m.canAttack)return;

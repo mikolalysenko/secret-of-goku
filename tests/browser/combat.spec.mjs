@@ -66,9 +66,9 @@ test('one SSJ beam repeatedly hits a 65535-HP Mantis Ant and still reaches the n
 
 test('keyboard aliases, confirm, ring cancellation, party switching and checkpoint replay keep distinct input ownership',async({page})=>{
   await load(page,'.local/graphics-audit/party.json');
-  await page.evaluate(()=>mana.play());await page.keyboard.down('Shift');await page.keyboard.down('c');await page.keyboard.down(',');
+  await page.evaluate(()=>mana.play());await page.keyboard.down('Shift');await page.keyboard.down('c');await page.keyboard.down('ShiftRight');
   await expect.poll(()=>page.evaluate(()=>mana.mod.charging)).toBe(true);
-  await page.keyboard.up(',');await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBe(90);
+  await page.keyboard.up('ShiftRight');await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBe(90);
   await page.keyboard.up('c');await page.keyboard.up('Shift');await expect.poll(()=>page.evaluate(()=>mana.logs.some(line=>line.startsWith('Kamehameha')))).toBe(true);
   const result=await page.evaluate(()=>{
     mana.pause();mana.run(40);const base=mana.snapshot();
@@ -82,7 +82,7 @@ test('keyboard aliases, confirm, ring cancellation, party switching and checkpoi
   expect(result.party).toEqual({owner:0,charging:false,nativeB:0});expect(result.replay).toBe(true);
 });
 
-test('on-screen attack and keyboard can overlap, and C/R drive ki and transformation',async({page})=>{
+test('on-screen attack and keyboard can overlap, and C and Shift+Z drive ki and transformation',async({page})=>{
   await load(page,'.local/graphics-audit/party.json');
   // Make the real pointer control visible on the desktop test viewport too.
   await page.locator('.touch-pad').evaluate(element=>element.style.display='flex');
@@ -92,7 +92,7 @@ test('on-screen attack and keyboard can overlap, and C/R drive ki and transforma
   await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBe(90);
   await page.mouse.up();await page.keyboard.up('Shift');await expect.poll(()=>page.evaluate(()=>mana.logs.some(line=>line.startsWith('Kamehameha')))).toBe(true);
   await expect.poll(()=>page.evaluate(()=>mana.mod.action===null)).toBe(true);
-  await page.keyboard.down('r');await expect.poll(()=>page.evaluate(()=>mana.mod.options.superSaiyan)).toBe(true);await page.keyboard.up('r');
+  await page.keyboard.down('Shift');await page.keyboard.down('z');await expect.poll(()=>page.evaluate(()=>mana.mod.options.superSaiyan)).toBe(true);await page.keyboard.up('z');await page.keyboard.up('Shift');
   await expect.poll(()=>page.evaluate(()=>mana.mod.action===null)).toBe(true);
   await page.keyboard.down('c');await expect.poll(()=>page.evaluate(()=>mana.mod.effects.some(effect=>effect.kind==='ki'))).toBe(true);await page.keyboard.up('c');
   await expect.poll(()=>page.evaluate(()=>mana.mod.effects.length===0)).toBe(true);
