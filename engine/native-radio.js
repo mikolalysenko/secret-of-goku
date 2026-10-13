@@ -42,7 +42,7 @@ export const firstFlightMessages=[
 ];
 
 export function createNativeRadio(snes,mod){
-  let current=null,queue=[],held=0,nextWarning=90,warning=0,cooldown=0,firstFlight=false,lastMap=null;
+  let current=null,queue=[],held=0,warned=false,warning=0,cooldown=0,firstFlight=false,lastMap=null;
   let raster=null,key=null,visibilityFrame=-1,frameVisible=false;
   const p=snes.ppu,previous=p.getColor;
   const visible=()=>mod.options.enabled&&mod.gokuActive&&!p.forcedBlank&&
@@ -64,29 +64,28 @@ export function createNativeRadio(snes,mod){
   return{
     say,
     tick(){
-      if(!mod.options.enabled||!mod.gokuActive){current=null;queue=[];held=0;return;}
+      if(!mod.options.enabled||!mod.gokuActive){current=null;queue=[];held=0;warned=false;return;}
+      // One aside per charge, only after holding full SSJ power for 1.5s.
+      // Release/menu cancellation rearms it but never adds a second punchline.
+      if(!mod.charging||!mod.options.superSaiyan){held=0;warned=false;}
       if(mod.worldKi?.status.fortressDestroyed){if(current?.kind==='flight')current=null;queue=queue.filter(m=>m.kind!=='flight');firstFlight=true;}
       const map=mod.read16(0xdc);if(lastMap!==null&&map!==lastMap&&current?.kind==='warning')current=null;lastMap=map;
       if(!visible())return;
       if(mod.worldFlight&&!firstFlight){firstFlight=true;for(const text of firstFlightMessages)say(text,{frames:240,kind:'flight'});}
       if(cooldown>0)cooldown--;
-      if(mod.charging&&mod.options.superSaiyan){
+      if(mod.charging&&mod.options.superSaiyan&&mod.charge>=45){
         held++;
-        if(held>=nextWarning&&!cooldown&&(!current||current.kind!=='warning'&&current.remaining<60)){
+        if(held>=90&&!warned&&!cooldown&&(!current||current.kind!=='warning'&&current.remaining<60)){
           const message={text:kaiWarnings[warning++%kaiWarnings.length],remaining:220,kind:'warning'};
-          if(current)queue.unshift(current);current=message;nextWarning=held+360;cooldown=300;
+          if(current)queue.unshift(current);current=message;warned=true;cooldown=300;
         }
-      }else{
-        if(held>=90&&mod.options.superSaiyan&&['beam','airBeam'].includes(mod.action?.kind)&&current?.kind==='warning')
-          current={text:'KING KAI:THAT WAS A WARNING!\nNOT A COUNTDOWN!',remaining:190,kind:'warning'};
-        held=0;nextWarning=90;
-      }
+      }else held=0;
       if(current&&--current.remaining<=0)current=null;
       if(!current&&queue.length)current=queue.shift();
     },
-    get status(){return{current:current?{...current}:null,queued:queue.length,held,warning,firstFlight,visible:!!current&&visible()};},
-    snapshot(){return structuredClone({current,queue,held,nextWarning,warning,cooldown,firstFlight,lastMap});},
-    restore(saved){const s=saved?structuredClone(saved):null;current=s?.current??null;queue=s?.queue??[];held=s?.held??0;nextWarning=s?.nextWarning??90;warning=s?.warning??0;cooldown=s?.cooldown??0;firstFlight=!!s?.firstFlight;lastMap=s?.lastMap??null;raster=key=null;visibilityFrame=-1;},
+    get status(){return{current:current?{...current}:null,queued:queue.length,held,warned,warning,firstFlight,visible:!!current&&visible()};},
+    snapshot(){return structuredClone({current,queue,held,warned,warning,cooldown,firstFlight,lastMap});},
+    restore(saved){const s=saved?structuredClone(saved):null;current=s?.current??null;queue=s?.queue??[];held=s?.held??0;warned=s?.warned??(s?.nextWarning>90);warning=s?.warning??0;cooldown=s?.cooldown??0;firstFlight=!!s?.firstFlight;lastMap=s?.lastMap??null;raster=key=null;visibilityFrame=-1;},
     dispose(){p.getColor=previous;},
   };
 }

@@ -19,19 +19,19 @@ async function enter(page,map,x,y,flags={}){
 test('telepathy leaves held attacks, movement, release and the native ring in control',async({page})=>{
   await load(page);
   const result=await page.evaluate(()=>{
-    const m=mana.mod;mana.run(125,[0]);const first=m.radio.status,oldX=m.status.x;
+    const m=mana.mod;mana.run(60,[0]);const atFull=m.radio.status;mana.run(100,[0]);const first=m.radio.status,oldX=m.status.x;
     mana.run(8,[0,7]);const moved=m.status.x!==oldX,s=mana.snapshot();mana.run(365,[0]);const next=m.radio.snapshot();
     mana.restore(s);mana.run(365,[0]);const replay=JSON.stringify(next)===JSON.stringify(m.radio.snapshot());
     mana.run(1);const beam=m.effects.find(e=>e.kind==='beam'),after=m.radio.status;
-    mana.run(70);mana.run(2,[1]);mana.run(60);return{first,moved,replay,beam:beam?.mega,after,ring:mana.read8(0xec),visible:m.radio.status.visible};
+    mana.run(70);mana.run(2,[1]);mana.run(60);return{atFull,first,moved,replay,beam:beam?.mega,after,ring:mana.read8(0xec),visible:m.radio.status.visible};
   });
-  expect(result.first.visible).toBe(true);expect(result.first.current.text).toContain('KING KAI');expect(result.moved).toBe(true);expect(result.replay).toBe(true);
-  expect(result.beam).toBe(true);expect(result.after.current.text).toContain('NOT A COUNTDOWN');expect(result.ring&8).toBe(8);expect(result.visible).toBe(false);
+  expect(result.atFull.warning).toBe(0);expect(result.first.visible).toBe(true);expect(result.first.current.text).toContain('KING KAI');expect(result.moved).toBe(true);expect(result.replay).toBe(true);
+  expect(result.beam).toBe(true);expect(result.after.current).toBe(null);expect(result.after.warning).toBe(1);expect(result.ring&8).toBe(8);expect(result.visible).toBe(false);
 });
 test('Mode 7 warnings stay nonblocking during a held aerial beam',async({page})=>{
   await load(page,'.local/juice-research/flight/request-flight.json');
   const result=await page.evaluate(()=>{
-    const m=mana.mod;m.radio.restore({firstFlight:true});mana.run(125,[0]);const before={radio:m.radio.status,charge:m.charge};mana.run(1);
+    const m=mana.mod;m.radio.restore({firstFlight:true});mana.run(160,[0]);const before={radio:m.radio.status,charge:m.charge};mana.run(1);
     return{before,beam:m.worldKi.status.shot?.mega,dialogue:mana.read8(0xd0),nativeB:mana.snes.joypad1State&1};
   });
   expect(result.before.radio.visible).toBe(true);expect(result.before.radio.current.text).toContain('KING KAI');expect(result.before.charge).toBe(45);expect(result.beam).toBe(true);expect(result.dialogue).toBe(0);expect(result.nativeB).toBe(0);

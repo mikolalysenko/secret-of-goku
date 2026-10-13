@@ -12,7 +12,6 @@ const sources={
  beam:['kamehameha-fire/goku-kamehameha-fire-sound-effect.wav','goku/kamehameha-fire'],
  teleport:['goku-instant-transmission/goku-goku-instant-transmission-sound-effect.mp3','goku/goku-instant-transmission'],
  flight:['cell-flying-turbo/cell-cell-flying-turbo-sound-effect.mp3','cell/cell-flying-turbo'],
- power:['son-goku-power-up/Dragon Ball Son Goku Power Up Sound Effect 1.mp3','goku/son-goku-power-up'],
  transform:['son-goku-power-up/Dragon Ball Son Goku Power Up Sound Effect 3.mp3','goku/son-goku-power-up'],
  electric:['son-gohan-ssj2-electricity-aura/son-gohan-son-gohan-ssj2-electricity-aura-sound-effect.mp3','son-gohan/son-gohan-ssj2-electricity-aura'],
  punchA:['punch-fight/Dragon Ball Z Punch Sound Effect N°19.wav','dragon-ball-z-punch-fight'],
@@ -32,22 +31,45 @@ const clips=[
  {name:'impact',source:'beam',start:.03,end:.63,tempo:1.25,rms:.18},
  {name:'beam',source:'beam',start:0,end:1.10,rms:.20,fade:.24},
  {name:'teleport',source:'teleport',start:0,end:.83,rms:.17},
- {name:'flight',source:'flight',start:.73,end:1.32,tempo:1.3,rms:.16},
+ {name:'flight',source:'whoosh',start:.01,end:.37,rms:.15,leadIn:{source:'charge',start:1.6,end:1.82,level:.65,overlap:.025}},
  {name:'landing',source:'flight',start:.86,end:1.30,tempo:1.6,reverse:true,rms:.12},
  {name:'transform',source:'transform',start:.18,end:.89,tempo:1.2,rms:.20},
  {name:'revert',source:'transform',start:.25,end:.87,tempo:1.5,reverse:true,rms:.13},
  {name:'charged',source:'electric',start:5,end:5.28,rms:.12},
  {name:'charge',source:'charge',start:1.6,end:5.15,loop:.24,rms:.20},
  {name:'aura',source:'electric',start:5,end:7.8,loop:.18,rms:.15},
- {name:'air',source:'power',start:.70,end:2.30,loop:.20,rms:.16},
+ // Pure TV-anime air, not a voiced Goku power-up repeated indefinitely.
+ {name:'air',source:'whoosh',start:.04,end:.35,tempo:.5,highpass:140,lowpass:2800,steady:true,loop:.12,rms:.10},
 ];
-const result=[];
-for(const clip of clips){
+const sourceInfo=clip=>{
  const [file,url]=sources[clip.source],source=path.join(root,file);
- const filters=[`atrim=start=${clip.start}:end=${clip.end}`,'asetpts=PTS-STARTPTS','highpass=f=65',`lowpass=f=${snesAudio.lowpass}`];
+ return{sourceFile:file,sourceUrl:url.startsWith('https:')?url:`https://soundsverse.com/dragon-ball-z/${url}`,sha256:createHash('sha256').update(fs.readFileSync(source)).digest('hex')};
+};
+function decode(clip){
+ const source=path.join(root,sources[clip.source][0]);
+ const filters=[`atrim=start=${clip.start}:end=${clip.end}`,'asetpts=PTS-STARTPTS',`highpass=f=${clip.highpass??65}`,`lowpass=f=${clip.lowpass??snesAudio.lowpass}`];
  if(clip.tempo)filters.push(`atempo=${clip.tempo}`);if(clip.reverse)filters.push('areverse');
  const decoded=spawnSync('ffmpeg',['-v','error','-i',source,'-af',filters.join(','),'-ac','1','-ar',String(rate),'-f','f32le','-'],{maxBuffer:20*1024*1024});if(decoded.status)throw Error(decoded.stderr.toString());
- let a=Float32Array.from({length:decoded.stdout.length/4},(_,i)=>decoded.stdout.readFloatLE(i*4));
+ return Float32Array.from({length:decoded.stdout.length/4},(_,i)=>decoded.stdout.readFloatLE(i*4));
+}
+const level=a=>Math.sqrt(a.reduce((s,x)=>s+x*x,0)/a.length);
+const result=[];
+for(const clip of clips){
+ let a=decode(clip);
+ if(clip.steady){
+  // Even the whoosh's envelope before looping, to leave soft moving air
+  // rather than a rhythmic series of new takeoffs. The source has no voice.
+  const window=Math.round(rate*.035),energy=new Float64Array(a.length+1),target=level(a);
+  for(let i=0;i<a.length;i++)energy[i+1]=energy[i]+a[i]*a[i];
+  a=a.map((v,i)=>{const lo=Math.max(0,i-window),hi=Math.min(a.length,i+window+1),rms=Math.sqrt((energy[hi]-energy[lo])/(hi-lo));return v*Math.min(3,target/Math.max(.001,rms));});
+ }
+ if(clip.leadIn){
+  const lead=decode(clip.leadIn),overlap=Math.round(clip.leadIn.overlap*rate),offset=lead.length-overlap;
+  const joined=new Float32Array(offset+a.length),gain=level(a)/level(lead)*clip.leadIn.level;
+  for(let i=0;i<lead.length;i++)joined[i]=lead[i]*gain*Math.min(1,i/(rate*.003),(lead.length-1-i)/overlap);
+  for(let i=0;i<a.length;i++)joined[offset+i]+=a[i]*Math.min(1,i/overlap);
+  a=joined;
+ }
  if(clip.loop){
   const n=Math.round(clip.loop*rate),loop=new Float32Array(a.length-n);loop.set(a.subarray(n,a.length-n));
   for(let i=0;i<n;i++){const u=i/(n-1);loop[loop.length-n+i]=a[a.length-n+i]*Math.cos(u*Math.PI/2)+a[i]*Math.sin(u*Math.PI/2);}
@@ -58,7 +80,7 @@ for(const clip of clips){
  }
  const rms=Math.sqrt(a.reduce((s,x)=>s+x*x,0)/a.length),peak=a.reduce((s,x)=>Math.max(s,Math.abs(x)),0),gain=Math.min(clip.rms/rms,.80/peak);
  a=a.map(x=>x*gain);fs.writeFileSync(`${out}/${clip.name}.wav`,snesWav(a));
- result.push({...clip,file:`${clip.name}.wav`,duration:a.length/rate,sourceFile:file,sourceUrl:url.startsWith('https:')?url:`https://soundsverse.com/dragon-ball-z/${url}`,sha256:createHash('sha256').update(fs.readFileSync(source)).digest('hex'),gain});
+ result.push({...clip,...(clip.leadIn?{leadIn:{...clip.leadIn,...sourceInfo(clip.leadIn)}}:{}),file:`${clip.name}.wav`,duration:a.length/rate,...sourceInfo(clip),gain});
 }
 fs.writeFileSync(`${out}/manifest.json`,JSON.stringify({rate,bits:snesAudio.bits,credit:'Dragon Ball sound effects, selected excerpts shared by Soundsverse / Youtube Sound Effects and Soundeffects Wiki. Original sound rights remain with their owners.',processing:snesAudioDescription+' Trimmed to animation cues and level matched with headroom. Sustained beds use equal-power circular crossfades with no silence or edge fades.',clips:result},null,2)+'\n');
 console.log(`Prepared ${result.length} short DBZ effects and independent looping energy beds.`);

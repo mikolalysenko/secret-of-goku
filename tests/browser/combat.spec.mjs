@@ -38,26 +38,30 @@ test('real native Rabites receive punch, travelling beam and ki damage, launch a
   for(const result of results){expect(result.zero,result.technique).toBe(true);expect(result.inactive,result.technique).toBe(true);expect(result.maxDisplacement,result.technique).toBeGreaterThan(25);expect(result.canAttack).toBe(true);expect(result.gold).toBe(2);expect(result.xp).toBeGreaterThan(0);expect(result.dbzImpacts).toBeGreaterThan(0);}
 });
 
-test('Mantis Ant takes the native lethal damage path and still reaches the original rescue event',async({page})=>{
+test('one SSJ beam repeatedly hits a 65535-HP Mantis Ant and still reaches the native rescue event',async({page})=>{
   const path='.local/emulator-probe/map-260-state.json';test.skip(!existsSync(path),'Requires native boss fixture.');
   await load(page,path);
   const result=await page.evaluate(async()=>{
     const boss=mana.mod.entities().find(e=>e.index>=3&&e.active&&e.species===87),before=boss?.hp;
     if(!boss)return{before};
+    // Stress the real boss's damage/death routines with the largest native
+    // HP value: a one-contact beam cannot possibly finish this encounter.
+    mana.mod.options.superSaiyan=true;mana.write16(boss.base+0x182,65535);mana.write16(boss.base+0x184,65535);
     // Aim using actual actor coordinates; positioning uses normal controller
     // input, never relocating the boss or inventing its defeat flag.
     const status=mana.mod.status,dx=boss.x-status.x,dy=boss.y-status.y;
     const button=Math.abs(dx)>Math.abs(dy)?(dx>0?7:6):(dy>0?5:4);
     mana.run(2,[button]);mana.run(112,[0]);mana.run(1);
+    const beam=mana.mod.effects.find(e=>e.kind==='beam');
     let dead=false,rescue=false;
     for(let i=0;i<60;i++){
       mana.run(20);if(mana.read16(boss.base+0x182)===0)dead=true;
       if(mana.read8(0xd0)!==0||mana.read8(0xcf10)>6)rescue=true;
       if(i%8===0)await new Promise(resolve=>setTimeout(resolve,0));
     }
-    return{before,dead,rescue,flag:mana.read8(0xcf10),event:mana.read8(0xd0)};
+    return{before,dead,rescue,hits:beam?.pulses[boss.index]?.count,flag:mana.read8(0xcf10),event:mana.read8(0xd0)};
   });
-  expect(result.before).toBeGreaterThan(0);expect(result.dead).toBe(true);expect(result.rescue).toBe(true);
+  expect(result.before).toBeGreaterThan(0);expect(result.hits).toBeGreaterThanOrEqual(9);expect(result.dead).toBe(true);expect(result.rescue).toBe(true);
 });
 
 test('keyboard aliases, confirm, ring cancellation, party switching and checkpoint replay keep distinct input ownership',async({page})=>{

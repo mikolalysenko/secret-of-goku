@@ -107,13 +107,26 @@ test('world-flight landing cue waits for the visible descent to reach ground lev
   step(0,10);assert.equal(cues.length,1);
 });
 
-test('beam damage follows the visible front, strikes once, and ignores targets outside its width',()=>{
-  const {mod,step,enemy}=setup({power:false}),near=enemy(3,300,200,1000),far=enemy(4,480,200,1000),outside=enemy(5,320,280,1000);
+test('beam damage follows its visible front, repeats on sustained contact, and ignores targets outside its width',()=>{
+  const {mod,step,enemy}=setup({power:false}),near=enemy(3,300,200,1000,87),far=enemy(4,480,200,1000,87),outside=enemy(5,320,280,1000,87);
   mod.write16(0xe198,30);mod.startCharge();mod.charge=90;mod.releaseCharge();
   step();assert.equal(mod.read16(near+0x182),1000);assert.equal(mod.read16(far+0x182),1000);
   const health=base=>mod.read16(base+0x182)-mod.read16(base+0x1f1);
   step(0,3);assert.equal(health(near),970);assert.equal(health(far),1000);
-  step(0,12);assert.equal(health(near),970);assert.equal(health(far),970);assert.equal(health(outside),1000);
+  step(0,12);assert.equal(health(near),940);assert.equal(health(far),940);assert.equal(health(outside),1000);
+});
+
+test('one full SSJ wave overwhelms a 65535-HP boss but leaves its lethal hit to the native engine',()=>{
+  const {mod,step,enemy}=setup({superSaiyan:true}),boss=enemy(3,300,200,65535,87);
+  const orb=enemy(4,340,200,100,0x55);let orbCalls=0;mod.orbs={hit(){orbCalls++;return true;}};
+  mod.startCharge();mod.charge=45;mod.releaseCharge();step(0,58);
+  assert.equal(mod.read16(boss+0x182),1);assert.equal(mod.read16(boss+0x1f1),999);
+  assert.equal(mod.read16(boss+2),300,'a giant boss is never launched out of its arena');
+  assert.equal(mod.read8(boss+0x191)&0x80,0,'the game, not the beam, starts the death event');
+  assert.equal(orbCalls,1);assert.equal(mod.read16(orb+0x182),100);
+  // Native defeat can consume the queue and reuse the slot for a death OBJ.
+  mod.write16(boss+0x182,0);mod.write16(boss+0x1f1,0);mod.write8(boss+0x180,0xf9);step(0,10);
+  assert.equal(mod.read16(boss+0x1f1),0);assert.equal(orbCalls,1);
 });
 
 test('only a full Super Saiyan beam sweeps a screen-wide path, with travelling damage and a sustained pose',()=>{

@@ -8,18 +8,22 @@ import {encodeText,wrapText,parseEvent} from '../engine/event-codec.js';
 
 function radioFixture(){
   const ram=new Uint8Array(0x20000),rom=new Uint8Array(0x200000),snes={ram,cart:{data:rom},ppu:{forcedBlank:false,getColor(){return[17,0,1];}}};
-  const mod={options:{enabled:true,superSaiyan:true},gokuActive:true,canAttack:true,charging:true,frame:0,read16:()=>131};
+  const mod={options:{enabled:true,superSaiyan:true},gokuActive:true,canAttack:true,charging:true,charge:45,frame:0,read16:()=>131};
   const radio=createNativeRadio(snes,mod),tick=(n=1)=>{for(let i=0;i<n;i++){mod.frame++;radio.tick();}};
   return{mod,snes,rom,radio,tick};
 }
-test('King Kai escalates without touching the charge or native input, and checkpoint timing replays',()=>{
-  const{mod,snes,radio,tick}=radioFixture();mod.charge=45;snes.joypad1State=0x81;
+test('King Kai speaks once after full charge is held, stays quiet on release, and checkpoints preserve that limit',()=>{
+  const{mod,snes,radio,tick}=radioFixture();mod.charge=44;snes.joypad1State=0x81;
+  tick(400);assert.equal(radio.status.warning,0);mod.charge=45;
   tick(89);assert.equal(radio.status.current,null);tick();assert.match(radio.status.current.text,/KING KAI/);
   assert.equal(mod.charge,45);assert.equal(snes.joypad1State,0x81);assert.equal(snes.ram[0xd0],0);
-  const saved=radio.snapshot(),serialized=JSON.stringify(saved);tick(370);const next=radio.snapshot();assert.equal(next.warning,2);
-  radio.restore(saved);tick(370);assert.deepEqual(radio.snapshot(),next);assert.equal(JSON.stringify(saved),serialized);
-  radio.restore(saved);tick(370);assert.deepEqual(radio.snapshot(),next);
-  mod.action={kind:'beam'};mod.charging=false;tick();assert.match(radio.status.current.text,/NOT A COUNTDOWN/);
+  const saved=radio.snapshot(),serialized=JSON.stringify(saved);tick(900);const next=radio.snapshot();assert.equal(next.warning,1);assert.equal(next.current,null);
+  radio.restore(saved);tick(900);assert.deepEqual(radio.snapshot(),next);assert.equal(JSON.stringify(saved),serialized);
+  radio.restore(saved);tick(900);assert.deepEqual(radio.snapshot(),next);
+  radio.restore(saved);mod.action={kind:'beam'};mod.charging=false;tick();
+  assert.equal(radio.status.current.text,saved.current.text,'release does not replace the aside with another complaint');
+  tick(300);assert.equal(radio.status.current,null);assert.equal(radio.status.warning,1);
+  mod.charging=true;mod.action={kind:'charge'};tick(89);assert.equal(radio.status.warning,1);tick();assert.equal(radio.status.warning,2);
 });
 test('native conversations hide and pause telepathy; base Goku does not trigger SSJ warnings',()=>{
   const{mod,snes,radio,tick}=radioFixture();tick(100);const before=radio.snapshot();

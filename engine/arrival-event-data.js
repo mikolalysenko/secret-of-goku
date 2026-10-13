@@ -23,7 +23,7 @@ function glyph(character) {
 
 const encode = text => Uint8Array.from(text, glyph);
 const pages = Object.freeze([
-  'GOKU: Sorry! I thought this\nwas a landing spot.',
+  "GOKU:This isn't Planet\nNamek... Uh, sorry about\nthe parking.",
   'GHOST: That was the chosen\nhero. And the Mana Sword.',
   'GHOST: The boy is dead.\nThe sword is dust.',
   'GOKU:I brought Dragon\nBalls! ...Oh. They went\nEVERYWHERE.',

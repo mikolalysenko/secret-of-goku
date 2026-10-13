@@ -1,5 +1,6 @@
 import {installArrivalEventData} from './arrival-event-data.js';
 import {decodePotosCrater} from './native-crater.js';
+import {drawSaiyanPod,saiyanPodFrames} from './saiyan-pod.js';
 
 // A single hand-off in the native sword event. Text, input waits, sound, ghost,
 // inventory and story flags still execute in the original event interpreter.
@@ -77,17 +78,23 @@ export function createArrival(snes,mod){
       const cameraX=mod.read16(0xe002)-mod.readSigned16(0xe020),cameraY=mod.read16(0xe004)-mod.readSigned16(0xe022);
       const cx=500-cameraX,cy=948-cameraY,age=state.ticks,frame=Math.floor(age/3);
       if(state.phase==='descent'){
-        const t=Math.min(1,age/59),x=Math.round(cx+64*(1-t)-16),y=Math.round(cy-32-220*(1-t));
-        // Native spell cells make a short comet trail behind the flying sprite.
-        for(let i=3;i>=1;i--)layer.stamp('charge-orb',Math.max(0,3-i),x+16+i*5,y+8-i*16);
-        layer.blit('goku',40+frame%4,0,x,y);
-        layer.plan.sprite={x,y,width:32,height:32,row:0,column:40+frame%4,arrival:true};
+        const t=Math.min(1,age/59),x=Math.round(cx+64*(1-t)-24),y=Math.round(cy-48-220*(1-t));
+        // Goku stays inside the red-windowed pod until its hatch opens.
+        // The hot entry trail is still made of original Mana spell cells.
+        for(let i=5;i>=1;i--)layer.stamp('gold-charge-orb',Math.max(0,4-i),x+24+i*5,y+12-i*12);
+        drawSaiyanPod(layer,x,y);
       }else{
+        // The capsule bounces into the back of the crater, opens its hatch,
+        // and Goku hops out toward the unchanged native actor position.
+        const settle=Math.min(1,age/42),podX=Math.round(cx-24+24*settle),podY=Math.round(cy-48-10*settle-Math.sin(settle*Math.PI)*9);
+        const open=age<58?0:age<74?1:2;
+        drawSaiyanPod(layer,podX,podY,open);
         // Keep the actual sprite cells at native resolution. Multiple blasts
         // spread out from the impact instead of stretching one explosion.
-        if(age>22){
-          const rise=Math.max(0,16-Math.floor((age-22)/2)),x=mod.readSigned16(0xe020)-16,y=mod.readSigned16(0xe022)-31+rise;
-          const column=age<52?50:age<58?37:36;
+        if(age>=78){
+          const hop=Math.min(1,(age-78)/32),targetX=mod.readSigned16(0xe020)-16,targetY=mod.readSigned16(0xe022)-31;
+          const x=Math.round((podX+8)*(1-hop)+targetX*hop),y=Math.round((podY+13)*(1-hop)+targetY*hop-Math.sin(hop*Math.PI)*12);
+          const column=hop<1?37:36;
           layer.blit('goku',column,0,x,y);
           layer.plan.sprite={x,y,width:32,height:32,row:0,column,arrival:true};
         }
@@ -140,6 +147,15 @@ export function createArrival(snes,mod){
     if(craterOnScreen&&(result[1]===0||result[1]===1)){
       const px=Math.floor((x-craterX)/2),py=Math.floor((y-craterY)/2);
       if(px>=0&&py>=0&&px<48&&py<32){const color=crater.pixels[py*48+px];if(color)result[0]=craterColors.get(color);}
+      // Once the dust clears, the open capsule stays in the crater as map
+      // scenery, behind every native actor/window. Use opaque OBJ color math
+      // so the river cannot make the metal hull look submerged.
+      if(!api.animating){
+        const pod=saiyanPodFrames[2],px=x-craterX-48,py=y-craterY+26;
+        if(px>=0&&py>=0&&px<pod.width&&py<pod.height){
+          const color=pod.pixels[py*pod.width+px];if(color){result[0]=color-1;result[1]=4;result[2]=0x86;}
+        }
+      }
     }
     return result;
   };

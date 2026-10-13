@@ -318,7 +318,7 @@ class ManaMod {
     const damage=Math.round(this.damageScale()*Math.max(.25,strength));
     const [dx,dy]=[[0,1],[1,0],[-1,0],[0,-1]][this.facing];
     const origin=this.handOrigin(),profile=this.beamProfile(strength);
-    this.effects.push({...origin,...profile,kind:'beam',dx,dy,life:profile.max,strength,super:this.options.superSaiyan,damage,hits:[]});
+    this.effects.push({...origin,...profile,kind:'beam',dx,dy,life:profile.max,strength,super:this.options.superSaiyan,damage,hits:[],pulses:{}});
     this.action={kind:'beam',age:0,duration:profile.max+4,facing:this.facing,super:this.options.superSaiyan};
     this.attackFrames=this.action.duration;this.charge=0;this.queuedPunch=false;
     this.feedback?.pulse(profile.mega?36:this.options.superSaiyan?14:10);this.playSound?.('beam');this.log(`Kamehameha ${damage}`);return [];
@@ -341,12 +341,22 @@ class ManaMod {
       if(effect.kind==='beam')this.barriers?.beam({...effect,length,width:halfWidth});
       const width=halfWidth+8;
       for(const enemy of this.targets(effect,effect.dx,effect.dy,length,width,8,12)){
-        if(effect.hits.includes(enemy.index))continue;
+        const beam=effect.kind==='beam',pulse=effect.pulses?.[enemy.index];
+        // A beam keeps hammering whatever remains inside its visible body.
+        // Ki projectiles and puzzle orbs still receive just one contact.
+        if((!beam||enemy.species===0x55)&&effect.hits.includes(enemy.index))continue;
+        if(beam&&pulse?.species===enemy.species&&age-pulse.age<(effect.mega?6:8))continue;
+        // Let an already-lethal queued hit finish through the original game.
+        // Repeated calls must not restart death, rewards or boss scripts.
+        const pending=this.read16(enemy.base+0x1f1);
+        if(enemy.species!==0x55&&pending>0&&enemy.hp<=pending)continue;
         const along=(enemy.x-effect.x)*effect.dx+(enemy.y-12-effect.y)*effect.dy;
         const across=Math.abs((enemy.x-effect.x)*effect.dy-(enemy.y-12-effect.y)*effect.dx);
         if(taper&&across>halfWidth*Math.min(1,(Math.max(0,along)+8)/taper)+8)continue;
         if(effect.kind==='ki'&&(enemy.x-effect.x)*effect.dx+(enemy.y-12-effect.y)*effect.dy<length-speed-16)continue;
-        effect.hits.push(enemy.index);this.hit(enemy,effect.damage,effect.dx,effect.dy,true);
+        if(!effect.hits.includes(enemy.index))effect.hits.push(enemy.index);
+        if(beam){effect.pulses??={};effect.pulses[enemy.index]={species:enemy.species,age,count:(pulse?.species===enemy.species?pulse.count:0)+1};}
+        this.hit(enemy,effect.damage,effect.dx,effect.dy,true);
         this.playSound?.('impact');
         this.effects.push({kind:'impact',x:enemy.x,y:enemy.y-12,dx:effect.dx,dy:effect.dy,life:12,max:12,super:effect.super});
         if(effect.kind==='ki'){effect.life=0;break;}

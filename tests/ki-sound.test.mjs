@@ -33,13 +33,17 @@ test('every DBZ cue has a bounded prepared sample; sustained beds contain no sil
   }
 });
 
-test('missed strikes use TV-anime air swishes, while vocals share the same sample-bank treatment',()=>{
+test('strikes and flight use TV-anime air without looping power-up vocals; speech keeps its sample-bank treatment',()=>{
   const manifest=JSON.parse(readFileSync(new URL('../assets/audio/dbz/manifest.json',import.meta.url)));
   for(const name of['swing','swing-2','kick-swing']){
     const c=manifest.clips.find(c=>c.name===name);
     assert.match(c.sourceUrl,/Anime_Whoosh_Sound_(16|20)$/);assert.ok(c.duration<.4);
-    assert.notEqual(c.source,manifest.clips.find(c=>c.name==='flight').source);
+    assert.equal(c.leadIn,undefined,'a punch whoosh has no ki power-up');
   }
+  const flight=manifest.clips.find(c=>c.name==='flight'),air=manifest.clips.find(c=>c.name==='air');
+  assert.equal(flight.leadIn.source,'charge');assert.ok(flight.leadIn.end-flight.leadIn.start<.25);
+  assert.match(flight.sourceUrl,/Anime_Whoosh_Sound_20$/);assert.ok(flight.duration<.65);
+  assert.match(air.sourceUrl,/Anime_Whoosh_Sound_20$/);assert.ok(air.loop>0);assert.ok(air.rms<flight.rms);
   for(const name of['charge','release']){
     const b=readFileSync(new URL(`../assets/audio/kamehameha-${name}.wav`,import.meta.url));
     assert.equal(b.readUInt32LE(24),16000);

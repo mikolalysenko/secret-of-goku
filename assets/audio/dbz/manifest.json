@@ -155,17 +155,26 @@
     },
     {
       "name": "flight",
-      "source": "flight",
-      "start": 0.73,
-      "end": 1.32,
-      "tempo": 1.3,
-      "rms": 0.16,
+      "source": "whoosh",
+      "start": 0.01,
+      "end": 0.37,
+      "rms": 0.15,
+      "leadIn": {
+        "source": "charge",
+        "start": 1.6,
+        "end": 1.82,
+        "level": 0.65,
+        "overlap": 0.025,
+        "sourceFile": "kamehameha-charge/goku-kamehameha-charge-sound-effect.wav",
+        "sourceUrl": "https://soundsverse.com/dragon-ball-z/goku/kamehameha-charge",
+        "sha256": "b9c384a4d9e4a742b8a869dc5c472f1cf9e226701de78df3ed1fc7c92e31488c"
+      },
       "file": "flight.wav",
-      "duration": 0.451625,
-      "sourceFile": "cell-flying-turbo/cell-cell-flying-turbo-sound-effect.mp3",
-      "sourceUrl": "https://soundsverse.com/dragon-ball-z/cell/cell-flying-turbo",
-      "sha256": "c6db7112e36a2644af1e016b1e0869f6e41ddd742d4ff980ac979f28670380ad",
-      "gain": 0.6358691217338546
+      "duration": 0.555,
+      "sourceFile": "anime-whoosh/Anime_Whoosh_Sound_20_(High_Quality).ogg",
+      "sourceUrl": "https://soundeffects.fandom.com/wiki/Anime_Whoosh_Sound_20",
+      "sha256": "c10814abb9548d3cc2fa43befa9e308bf0288e565686877133db772df57b732c",
+      "gain": 1.1378203536305513
     },
     {
       "name": "landing",
@@ -254,17 +263,21 @@
     },
     {
       "name": "air",
-      "source": "power",
-      "start": 0.7,
-      "end": 2.3,
-      "loop": 0.2,
-      "rms": 0.16,
+      "source": "whoosh",
+      "start": 0.04,
+      "end": 0.35,
+      "tempo": 0.5,
+      "highpass": 140,
+      "lowpass": 2800,
+      "steady": true,
+      "loop": 0.12,
+      "rms": 0.1,
       "file": "air.wav",
-      "duration": 1.4,
-      "sourceFile": "son-goku-power-up/Dragon Ball Son Goku Power Up Sound Effect 1.mp3",
-      "sourceUrl": "https://soundsverse.com/dragon-ball-z/goku/son-goku-power-up",
-      "sha256": "d5694100662ecf1965af817963f02311d6994c414bc586ee21a234e14d1cbf9d",
-      "gain": 2.5870553711715893
+      "duration": 0.4745625,
+      "sourceFile": "anime-whoosh/Anime_Whoosh_Sound_20_(High_Quality).ogg",
+      "sourceUrl": "https://soundeffects.fandom.com/wiki/Anime_Whoosh_Sound_20",
+      "sha256": "c10814abb9548d3cc2fa43befa9e308bf0288e565686877133db772df57b732c",
+      "gain": 0.7478018707989121
     }
   ]
 }
