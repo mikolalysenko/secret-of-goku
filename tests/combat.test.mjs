@@ -48,13 +48,19 @@ test('rapid taps buffer through recovery and chain two punches into a finishing 
   }
 });
 
+test('a missed three-hit combo plays two air swishes and a kick whoosh without impact or energy cues',()=>{
+  const {mod,step}=setup(),cues=[];mod.playSound=name=>cues.push(name);
+  for(let i=0;i<3;i++){step(1);step();step(0,14);}
+  assert.deepEqual(cues,['swing','swing','kickSwing']);
+});
+
 test('charge preserves directional movement, aims immediately and releases along the locked facing',()=>{
   for(const superSaiyan of [false,true]){
     const {mod,snes,step}=setup({superSaiyan});step(1,12);assert.equal(mod.charging,true);
     step(1|(1<<4),100);assert.equal(mod.facing,3);assert.equal(mod.charge,superSaiyan?45:90);assert.equal(snes.joypad1State&0x1f1,1<<4);assert.equal(mod.motion.pose().column,superSaiyan?18:22);
     step();assert.equal(mod.effects.filter(e=>e.kind==='beam').length,1);assert.equal(mod.motion.pose().column,superSaiyan?19:23);
     step(1<<6,3);assert.equal(mod.action.facing,3);assert.equal(mod.effects[0].dy,-1);assert.equal(mod.motion.pose().row,3);
-    step(0,30);assert.equal(mod.action,null);assert.equal(mod.effects.length,0);
+    step(0,superSaiyan?70:30);assert.equal(mod.action,null);assert.equal(mod.effects.length,0);
   }
 });
 
@@ -108,6 +114,28 @@ test('beam damage follows the visible front, strikes once, and ignores targets o
   const health=base=>mod.read16(base+0x182)-mod.read16(base+0x1f1);
   step(0,3);assert.equal(health(near),970);assert.equal(health(far),1000);
   step(0,12);assert.equal(health(near),970);assert.equal(health(far),970);assert.equal(health(outside),1000);
+});
+
+test('only a full Super Saiyan beam sweeps a screen-wide path, with travelling damage and a sustained pose',()=>{
+  for(const superSaiyan of[false,true])for(const strength of[.95,1]){
+    const {mod}=setup({superSaiyan});mod.startCharge();mod.charge=strength*(superSaiyan?45:90);mod.releaseCharge();
+    assert.equal(mod.effects[0].mega,superSaiyan&&strength===1);
+  }
+  for(let facing=0;facing<4;facing++){
+    const {mod,step,enemy}=setup({superSaiyan:true,facing}),[dx,dy]=[[0,1],[1,0],[-1,0],[0,-1]][facing];
+    // Keep the long-range targets inside unsigned native coordinates.
+    mod.write16(0xe002,800);mod.write16(0xe004,800);
+    const origin=mod.handOrigin(),spawn=(index,along,across,species=0)=>enemy(index,origin.x+dx*along-dy*across,origin.y+dy*along+dx*across+12,20000,species);
+    const wide=spawn(3,140,65),outside=spawn(4,150,110),behind=spawn(5,-60,0),far=spawn(6,550,30),npc=spawn(7,160,0,150);
+    mod.startCharge();mod.charge=45;mod.releaseCharge();const beam=mod.effects[0];
+    step();assert.equal(beam.hits.length,0,'front has not reached the targets');
+    step(0,5);assert.deepEqual(Array.from(beam.hits),[3]);
+    assert.equal(mod.read16(outside+0x182),20000);assert.equal(mod.read16(behind+0x182),20000);assert.equal(mod.read16(npc+0x182),20000);
+    step(0,25);assert.deepEqual(Array.from(beam.hits),[3,6]);assert.equal(mod.motion.pose().column,20,'hands sustain the giant beam');
+    assert.ok(mod.read16(wide+0x182)<20000);assert.ok(mod.read16(far+0x182)<20000);
+    assert.equal(mod.beamGeometry(beam).halfWidth,80);
+    step(0,40);assert.equal(mod.action,null);assert.equal(mod.effects.length,0);
+  }
 });
 
 test('held ki blasts use their own release pose and Super Saiyan fires faster',()=>{

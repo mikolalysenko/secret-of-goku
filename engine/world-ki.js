@@ -21,8 +21,9 @@ export function createWorldKi(snes,mod){
     return result;
   }
   function aim(){
+    const mega=mod.options.superSaiyan&&mod.charge>=45;
     return targets().map(t=>({...t,...worldAim(position(),w(0xf6),t)}))
-      .filter(t=>t.along>=8&&t.along<=512&&Math.abs(t.across)<=t.radius+20)
+      .filter(t=>t.along>=8&&t.along<=(mega?1024:512)&&Math.abs(t.across)<=t.radius+(mega?80:20))
       .sort((a,b)=>a.along-b.along)[0]??null;
   }
   function screen(target){
@@ -31,8 +32,9 @@ export function createWorldKi(snes,mod){
   }
   function fire(){
     const strength=Math.min(1,mod.charge/(mod.options.superSaiyan?45:90)),target=aim();
-    shot={age:0,strength,super:mod.options.superSaiyan,target:target?{...target,screen:screen(target)}:null,end:target?screen(target):{x:128,y:45},hit:false};
-    mod.charging=false;mod.charge=0;mod.action={kind:'airBeam',age:0,duration:32,facing:3,super:mod.options.superSaiyan};
+    const mega=mod.beamProfile(strength).mega;
+    shot={age:0,strength,mega,max:mega?72:32,super:mod.options.superSaiyan,target:target?{...target,screen:screen(target)}:null,end:target?screen(target):{x:128,y:45},hit:false};
+    mod.charging=false;mod.charge=0;mod.action={kind:'airBeam',age:0,duration:shot.max,facing:3,super:mod.options.superSaiyan};
     mod.playSound('beam');
   }
   c.cycle=function(){
@@ -87,7 +89,7 @@ export function createWorldKi(snes,mod){
         if(!shot.hit&&shot.target&&shot.age>=12){
           shot.hit=true;
           if(shot.strength>=.85){
-            lastHit=shot.target.id;explosion={...shot.target,age:0};mod.playSound('impact');
+            lastHit=shot.target.id;explosion={...shot.target,mega:shot.mega,age:0};mod.playSound('impact');
             if(lastHit==='mana-tree-barrier'){
               // AF tests the high byte of $E2: bit 6 in $E3. Preserve every
               // boss, seed and Pure Land flag; this only opens world landing.
@@ -95,7 +97,7 @@ export function createWorldKi(snes,mod){
             }else{fortressDestroyed=true;mod.log('The Fortress is breaking apart. The Mana Beast is coming!');}
           }else mod.log('The wave was too weak. Charge the aerial Kamehameha fully.');
         }
-        if(shot.age>32)shot=null;
+        if(shot.age>(shot.max??32))shot=null;
       }
       if(explosion){explosion.age++;if(explosion.age>80){if(explosion.id==='mana-fortress')landingQueued=true;explosion=null;}}
     },
@@ -108,12 +110,21 @@ export function createWorldKi(snes,mod){
       if(shot){
         const phase=shot.age>>1,t=Math.min(1,shot.age/12),end={x:128+(shot.end.x-128)*t,y:88+(shot.end.y-88)*t};
         const dx=end.x-128,dy=end.y-88,len=Math.hypot(dx,dy)||1,bands=shot.super?5:3;
-        for(let d=0;d<=len;d+=5){const scale=1-d/len*.6;for(let k=-bands;k<=bands;k++)layer.stamp('beam-body',phase,128+dx*d/len+k*2*scale,88+dy*d/len,0,-1);}
-        layer.stamp('beam-head',phase,end.x,end.y,0,-1);layer.stamp('charge-orb',4,128,88);
+        if(shot.mega){
+          // Keep the blue-white core enormous even at the highest altitude;
+          // its streak continues past the target and beyond the world horizon.
+          const envelope=Math.min(1,shot.age/6,((shot.max??72)-shot.age)/12);
+          layer.behindBody=true;
+          layer.giantBeam(128,88,dx/len,dy/len,Math.max(288,len)*t,88*envelope,phase,{taper:30,farScale:.72});
+          layer.behindBody=false;
+        }else{
+          for(let d=0;d<=len;d+=5){const scale=1-d/len*.6;for(let k=-bands;k<=bands;k++)layer.stamp('beam-body',phase,128+dx*d/len+k*2*scale,88+dy*d/len,0,-1);}
+          layer.stamp('beam-head',phase,end.x,end.y,0,-1);layer.stamp('charge-orb',4,128,88);
+        }
       }
       if(explosion){
         const p=explosion.screen,phase=explosion.age>>2;
-        for(let i=0;i<8;i++){const a=i*Math.PI/4+phase*.6,rad=8+(explosion.age+i*7)%30;layer.stamp(i&1?'impact-spark':'charge-orb',phase+i,p.x+Math.cos(a)*rad,p.y+Math.sin(a)*rad);}
+        for(let i=0;i<(explosion.mega?20:8);i++){const a=i*Math.PI/(explosion.mega?10:4)+phase*.6,rad=8+(explosion.age+i*7)%(explosion.mega?78:30);layer.stamp(i&1?'impact-spark':'charge-orb',phase+i,p.x+Math.cos(a)*rad,p.y+Math.sin(a)*rad);}
       }
     },
     get status(){return{shot,explosion,fortressDestroyed,treeBarrierBroken,landingQueued,finaleQueued,lastHit,target:mod.worldFlight?aim():null};},

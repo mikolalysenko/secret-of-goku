@@ -40,6 +40,7 @@ class GokuAnimation {
     else if(status&0x10)kind='sleep';
     else if(status&0x40)kind='idle';
     else if(m.gapFlight?.active)kind='gapFlight';
+    else if(m.story?.status.lastEvent===0x10c&&m.read8(0xcf10)===6&&[131,260].includes(map)&&[0xa0,0xae,0xa2].includes(native))kind='rescueDive';
     else if((native===0x8c||native===0x8d)&&!(m.options.power&&action)){kind='hurt';useNative=!!nativeAction;}
     else if(action)kind=action.kind;
     else if(m.localFlight&&m.canAttack)kind='hover';
@@ -71,7 +72,7 @@ class GokuAnimation {
       const phase=action.super?(action.age<1?0:action.age<2?1:action.age<4?2:3):(action.age<2?0:action.age<4?1:action.age<7?2:3);
       result={sheet,row:[0,2,1,3][action.facing],column:columns+phase};
     }else if(kind==='charge')result=this.track(sheet,'charge',action.age,poseRow);
-    else if(kind==='beam')result={sheet,row:[0,2,1,3][action.facing],column:(action.super?18:22)+(action.age<2?1:action.age<24?2:3)};
+    else if(kind==='beam')result={sheet,row:[0,2,1,3][action.facing],column:(action.super?18:22)+(action.age<2?1:action.age<action.duration-4?2:3)};
     else if(kind==='blast'){
       const phase=Math.floor(action.age/(action.super?1:2));
       result={sheet,row:[0,2,1,3][action.facing],column:(action.super?24:28)+(phase===0?0:phase>=4?3:1+(phase-1)%2)};
@@ -81,7 +82,7 @@ class GokuAnimation {
       const clip=window.GokuAnimationData.forms[sheet].clips[kind];
       const duration=clip.frames.reduce((sum,frame)=>sum+frame.ticks,0);
       result=this.track(sheet,kind,Math.floor(action.age*duration/action.duration),0);
-    }else if(kind==='hover'||kind==='gapFlight'){
+    }else if(kind==='hover'||kind==='gapFlight'||kind==='rescueDive'){
       result=this.track(sheet,'flight',age,poseRow);
       // The original crossing supplies horizontal travel and a jump arc.
       // Cancel only its visual arc for a steady twelve-pixel hover.

@@ -45,9 +45,9 @@ export function createNativePlants(snes,{canCut=null,onCut=null}={}){
   }
   return added;
  }
- function beam({x,y,dx,dy,length=180,halfWidth=12,policy='plants',collisionLayer=layer()}){
+ function beam({x,y,dx,dy,length=180,halfWidth=12,taper=0,policy='plants',collisionLayer=layer()}){
   const norm=Math.hypot(dx,dy);if(!norm||![x,y,dx,dy,length,halfWidth].every(Number.isFinite))return[];
-  dx/=norm;dy/=norm;length=Math.max(0,Math.min(512,length));halfWidth=Math.max(0,Math.min(64,halfWidth));
+  dx/=norm;dy/=norm;length=Math.max(0,Math.min(640,length));halfWidth=Math.max(0,Math.min(80,halfWidth));
   const endX=x+dx*length,endY=y+dy*length,tiles=[];
   const x0=Math.max(0,Math.floor((Math.min(x,endX)-halfWidth-8)/16)),x1=Math.min(127,Math.floor((Math.max(x,endX)+halfWidth+8)/16));
   const y0=Math.max(0,Math.floor((Math.min(y,endY)-halfWidth-8)/16)),y1=Math.min(127,Math.floor((Math.max(y,endY)+halfWidth+8)/16));
@@ -55,7 +55,8 @@ export function createNativePlants(snes,{canCut=null,onCut=null}={}){
    const ox=tx*16+8-x,oy=ty*16+8-y,along=ox*dx+oy*dy,across=Math.abs(ox*dy-oy*dx);
    // Rectangle against a conservative tile bounding box; never expand into
    // non-cuttable tiles. Return accepted tiles for visual debris placement.
-   if(along>=-8&&along<=length+8&&across<=halfWidth+8)tiles.push({tx,ty,layer:collisionLayer,along});
+   const width=halfWidth*(taper?Math.min(1,(Math.max(0,along)+8)/taper):1);
+   if(along>=-8&&along<=length+8&&across<=width+8)tiles.push({tx,ty,layer:collisionLayer,along});
   }
   tiles.sort((a,b)=>a.along-b.along||a.ty-b.ty||a.tx-b.tx);
   return enqueueTiles(tiles,{policy});

@@ -2,9 +2,28 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {partyText} from '../engine/native-story.js';
 import {prepareStoryArea} from '../engine/story-areas.js';
-import {worldAim} from '../engine/world-ki.js';
+import {worldAim,createWorldKi} from '../engine/world-ki.js';
 import {beamTouchesBarrier,kiBarriers} from '../engine/native-barriers.js';
 import {commandLength} from '../engine/event-codec.js';
+import {parseEvent,encodeText,wrapText} from '../engine/event-codec.js';
+import {storyDialogue} from '../engine/story-dialogue.js';
+import {potosCommands,potosCommand} from '../engine/potos-story.js';
+import {existsSync,readFileSync} from 'node:fs';
+
+test('all Potos replacements target actual native text and the rescue edits preserve command boundaries',{
+  skip:!existsSync('.local/rom/secret-of-mana-us.sfc')
+},()=>{
+  const rom=readFileSync('.local/rom/secret-of-mana-us.sfc'),ops=new Map();
+  for(let id=0;id<0x800;id++)for(const op of parseEvent(rom,id).ops)ops.set(op.at,op);
+  for(const [at,text]of Object.entries(storyDialogue)){
+    assert.equal(ops.get(Number(at))?.op,'text',Number(at).toString(16));encodeText(text);
+    assert.ok(wrapText(text).split('\n').every(line=>line.length<=28));
+  }
+  for(const [at,edit]of potosCommands)assert.deepEqual(potosCommand(ops.get(at)),edit.after);
+  const potos=[...Array.from({length:21},(_,i)=>0x107+i),0x4e6,0x4e7].flatMap(id=>parseEvent(rom,id).ops).filter(op=>op.op==='text').map(op=>storyDialogue[op.at]??op.text).join('\n');
+  assert.doesNotMatch(potos,/I took you in|I raised you|Your mother|too young|you yank out the sword/i);
+  for(const phrase of['You killed RANDI!','You destroyed the','Oops. My bad.','you are a menace.','You saved Elliott.'])assert.ok(potos.includes(phrase),phrase);
+});
 
 test('native ASCII credits remain opaque despite letters matching event opcodes',()=>{
   const credits=[0x7d,...Buffer.from('WORLD\nSTAFF 1, 2'),0x7e,0x30,0x68,2];
@@ -37,6 +56,20 @@ test('aerial targeting uses native heading and wraps across world seams',()=>{
     const a=worldAim({x:2,y:2},heading,target);assert.ok(Math.abs(a.along-8)<.001);assert.ok(Math.abs(a.across)<.001);
   }
   assert.ok(worldAim({x:100,y:100},0,{x:100,y:200}).along<0);
+});
+
+test('a full SSJ aerial beam can reach the distant Fortress; lesser charges retain the short range',()=>{
+  const ram=new Uint8Array(0x20000),snes={ram,cart:{data:new Uint8Array(0x200000)},cpu:{cycle(){}},joypad1State:0};
+  const word=(a,v)=>{ram[a]=v&255;ram[a+1]=v>>8;};
+  word(0xfa,1000);word(0xfc,1000);word(0x128,1000);word(0x12a,300);ram[0xe3]=64;
+  const mod={options:{enabled:true,superSaiyan:true},gokuActive:true,worldFlight:true,charge:44,charging:true,attackHeld:1,frame:100,
+    beamProfile:strength=>({mega:strength===1}),playSound(){},log(){}};
+  const world=createWorldKi(snes,mod);assert.equal(world.aim(),null);
+  mod.charge=45;assert.equal(world.aim().id,'mana-fortress');world.tick(0);
+  assert.equal(world.status.shot.mega,true);assert.equal(world.status.shot.strength,1);
+  for(let i=0;i<12;i++)world.tick(0);
+  assert.equal(world.status.fortressDestroyed,true);assert.equal(world.status.lastHit,'mana-fortress');
+  assert.equal(world.status.explosion.mega,true);assert.equal(world.status.treeBarrierBroken,false);
 });
 
 test('scripted gates require a charged travelling wave aimed at their actual rectangle',()=>{

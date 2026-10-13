@@ -42,6 +42,30 @@ class ManaSpriteLayer {
       if(color)this.pixel(x+dx*u-dy*v,y+dy*u+dx*v,color,true);
     }
   }
+  giantBeam(x,y,dx,dy,length,halfWidth,phase,{taper=44,farScale=1}={}){
+    // A solid blue-white core, using only Lucent Beam's original colors.
+    // Work in native pixels: no stretched sprites, alpha glow or canvas layer.
+    const colors=[...new Set((this.effects['beam-body']||[]).flatMap(p=>Array.from(p)))].filter(Boolean).sort((a,b)=>a-b);
+    if(colors.length<4)return;
+    const radius=d=>halfWidth*Math.min(1,(d+8)/taper)*(1-(1-farScale)*d/Math.max(1,length));
+    const x0=Math.max(0,Math.floor(Math.min(x,x+dx*length)-halfWidth-2)),x1=Math.min(255,Math.ceil(Math.max(x,x+dx*length)+halfWidth+2));
+    const y0=Math.max(0,Math.floor(Math.min(y,y+dy*length)-halfWidth-2)),y1=Math.min(223,Math.ceil(Math.max(y,y+dy*length)+halfWidth+2));
+    for(let py=y0;py<=y1;py++)for(let px=x0;px<=x1;px++){
+      const ox=px-x,oy=py-y,d=ox*dx+oy*dy,across=Math.abs(ox*dy-oy*dx);
+      if(d<0||d>length)continue;
+      const edge=radius(d)*Math.min(1,Math.sqrt(Math.max(0,(length-d)/12)));
+      const ripple=((Math.floor(d/8)+phase)%3===0?2:0),distance=edge-across;
+      if(distance<0)continue;
+      const color=distance<3+ripple?colors[0]:distance<9+ripple?colors[1]:distance<17+ripple?colors[2]:colors[3];
+      this.pixel(px,py,color,true);
+    }
+    // Native sparks and short, blue Thunderbolt arcs race down both edges.
+    for(let d=18+(phase*7)%28;d<Math.min(length,360);d+=28)for(const side of[-1,1]){
+      const across=side*(radius(d)-2),px=x+dx*d-dy*across,py=y+dy*d+dx*across;
+      this.stamp((Math.floor(d/28)+phase)%3?'impact-spark':'lightning',phase%2,px,py,dx,dy);
+    }
+    this.stamp('charge-orb',4,x,y,dx,dy);
+  }
   chargeLightning(x,y){
     const m=this.mod,state=m.status,origin={x:x+state.cameraX,y:y+state.cameraY};
     const arcs=m.lightning?.(origin)||[];this.plan.lightning=arcs;
@@ -234,7 +258,9 @@ class ManaSpriteLayer {
         continue;
       }
       // Super Saiyan amplifies the blue Kamehameha; gold belongs to the aura.
-      const prefix='',length=Math.min(320,(age+1)*32),bands=Math.max(1,Math.round(effect.width/4))+(effect.super?2:0);
+      const {length,halfWidth,taper}=m.beamGeometry(effect);
+      if(effect.mega){this.giantBeam(sx,sy,effect.dx,effect.dy,length,halfWidth,phase,{taper});continue;}
+      const prefix='',bands=Math.max(1,Math.round(effect.width/4))+(effect.super?2:0);
       // The native beam strip is 16x4. Tile it at original pixel size; the
       // number of parallel strips reflects charge rather than scaling artwork.
       for(let band=0;band<bands;band++){

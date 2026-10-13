@@ -3,7 +3,7 @@
 import {createKamehamehaVoice} from './kamehameha-voice.js';
 const TAU=Math.PI*2;
 export const durations={swing:.12,hit:.24,blast:.19,beam:1.05,charged:.21,transform:.9,teleport:.16,teleportIn:.13,flight:.24,charge:1};
-export function synthesizeKiSound(name,{rate=22050,superSaiyan=false}={}){
+export function synthesizeKiSound(name,{rate=16000,superSaiyan=false}={}){
   if(!durations[name])throw Error(`Unknown ki sound: ${name}`);
   const data=new Float32Array(Math.ceil(durations[name]*rate));
   let seed=0x6a09e667,low=0,mid=0,phase=0,phase2=0;
@@ -46,8 +46,8 @@ export function synthesizeKiSound(name,{rate=22050,superSaiyan=false}={}){
       phase2+=TAU*(420+1100*u)/rate;
       value=(Math.sin(phase)*.28+Math.sin(phase2+Math.sin(phase)*2)*.18+hiss*.7)*Math.sin(Math.PI*u)**.6;
     }
-    // Headroom for rapid overlapping bolts; 12-bit PCM suits the SNES mix.
-    data[i]=Math.round(Math.tanh(value*1.1)*2047)/2047*.68;
+    // The emergency synth uses the same 10-bit, 16 kHz sample-bank aesthetic.
+    data[i]=Math.round(Math.tanh(value*1.1)*.68*512)/512;
   }
   return data;
 }
@@ -56,7 +56,7 @@ export function synthesizeKiSound(name,{rate=22050,superSaiyan=false}={}){
 // select one-shots; held states own seamless loops. The synth above is only a
 // network-failure fallback so offline failures never leave a charge silent.
 export const cues={
- swing:{clips:['swing'],gain:.36,cap:2},hit:{clips:['hit-1','hit-2','hit-3'],gain:.64,cap:3},
+ swing:{clips:['swing','swing-2'],gain:.44,cap:2},kickSwing:{clips:['kick-swing'],gain:.46,cap:2},hit:{clips:['hit-1','hit-2','hit-3'],gain:.64,cap:3},
  kick:{clips:['kick'],gain:.70,cap:2},blast:{clips:['blast'],gain:.38,cap:5},impact:{clips:['impact'],gain:.48,cap:3},
  beam:{clips:['beam'],gain:.80,cap:1},charged:{clips:['charged'],gain:.42,cap:1},
  transform:{clips:['transform'],gain:.72,cap:1},revert:{clips:['revert'],gain:.50,cap:1},
@@ -64,7 +64,7 @@ export const cues={
  flight:{clips:['flight'],gain:.48,cap:1},landing:{clips:['landing'],gain:.36,cap:1},
  charge:{clips:['charge'],gain:.55,loop:true},aura:{clips:['aura'],gain:.30,loop:true},air:{clips:['air'],gain:.25,loop:true},
 };
-const fallback={kick:'hit',impact:'hit',revert:'transform',landing:'flight',aura:'charge',air:'charge'};
+const fallback={kickSwing:'swing',kick:'hit',impact:'hit',revert:'transform',landing:'flight',aura:'charge',air:'charge'};
 export function createKiSound(mod){
   const speech=createKamehamehaVoice(mod);
   let queue=[],context=null,master=null,compressor=null,decoding=null,buffers=new Map(),fallbackBuffers=new Map();
@@ -89,7 +89,7 @@ export function createKiSound(mod){
   function buffer(clip,name,superSaiyan){
     if(buffers.has(clip))return buffers.get(clip);
     const synth=fallback[name]||name,key=synth+':'+superSaiyan;
-    if(!fallbackBuffers.has(key)){const pcm=synthesizeKiSound(synth,{superSaiyan}),b=context.createBuffer(1,pcm.length,22050);b.copyToChannel(pcm,0);fallbackBuffers.set(key,b);}
+    if(!fallbackBuffers.has(key)){const pcm=synthesizeKiSound(synth,{superSaiyan}),b=context.createBuffer(1,pcm.length,16000);b.copyToChannel(pcm,0);fallbackBuffers.set(key,b);}
     return fallbackBuffers.get(key);
   }
   function voice(name,when,superSaiyan=false,frame=mod.frame){
@@ -126,7 +126,7 @@ export function createKiSound(mod){
         master.connect(compressor);compressor.connect(ctx.destination);
         decoding=data.then(async clips=>{
           const decoded=await Promise.all(clips.map(async([n,b])=>[n,await ctx.decodeAudioData(b.slice(0))]));
-          if(context===ctx){buffers=new Map(decoded);stats.ready=buffers.size===17;
+          if(context===ctx){buffers=new Map(decoded);stats.ready=buffers.size===new Set(Object.values(cues).flatMap(c=>c.clips)).size;
             // Replace a fallback loop if the first gesture preceded decoding.
             for(const name of [...loops.keys()])stopLoop(name,ctx.currentTime,.04);
           }
@@ -147,7 +147,7 @@ export function createKiSound(mod){
     get output(){return compressor;},
     connect(node){compressor?.connect(node);},
     cancelCombat(){
-      queue=queue.filter(v=>!['swing','blast','beam','charged'].includes(v.name));
+      queue=queue.filter(v=>!['swing','kickSwing','blast','beam','charged'].includes(v.name));
       stopLoop('charge');stopLoop('aura');speech.clear();
       for(const v of [...voices])if(v.name==='beam')stopVoice(v,context?.currentTime,.035);
       stats.charge=false;stats.loops=[...loops.keys()];

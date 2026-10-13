@@ -1,9 +1,12 @@
 // Decode only the selected short effects, never entire downloaded packs.
 // Usage: node scripts/prepare-dbz-audio.mjs .local/dbz-audio/source
 import fs from 'node:fs';import path from 'node:path';import {spawnSync} from 'node:child_process';import {createHash} from 'node:crypto';
+import {snesAudio,snesAudioDescription,snesWav} from './snes-audio.mjs';
 const root=process.argv[2];if(!root)throw Error('Provide the local DBZ source directory.');
-const rate=32000,out='assets/audio/dbz';fs.mkdirSync(out,{recursive:true});
+const rate=snesAudio.rate,out='assets/audio/dbz';fs.mkdirSync(out,{recursive:true});
 const sources={
+ whoosh:['anime-whoosh/Anime_Whoosh_Sound_20_(High_Quality).ogg','https://soundeffects.fandom.com/wiki/Anime_Whoosh_Sound_20'],
+ swish:['anime-whoosh/Anime_Whoosh_Sound_16.ogg','https://soundeffects.fandom.com/wiki/Anime_Whoosh_Sound_16'],
  blast:['ki-blast/goku-ki-blast-sound-effect.wav','goku/ki-blast'],
  charge:['kamehameha-charge/goku-kamehameha-charge-sound-effect.wav','goku/kamehameha-charge'],
  beam:['kamehameha-fire/goku-kamehameha-fire-sound-effect.wav','goku/kamehameha-fire'],
@@ -18,7 +21,9 @@ const sources={
  kick:['punch-fight/Dragon Ball Z Punch Sound Effect N°4.mp3','dragon-ball-z-punch-fight'],
 };
 const clips=[
- {name:'swing',source:'flight',start:.76,end:1.29,tempo:2.4,rms:.13},
+ {name:'swing',source:'whoosh',start:.02,end:.29,tempo:1.25,rms:.13},
+ {name:'swing-2',source:'swish',start:.02,end:.29,tempo:1.3,rms:.13},
+ {name:'kick-swing',source:'whoosh',start:.01,end:.37,tempo:1.1,rms:.14},
  {name:'hit-1',source:'punchA',start:0,end:.57,rms:.19},
  {name:'hit-2',source:'punchB',start:0,end:.38,rms:.19},
  {name:'hit-3',source:'punchC',start:0,end:.40,rms:.19},
@@ -36,14 +41,10 @@ const clips=[
  {name:'aura',source:'electric',start:5,end:7.8,loop:.18,rms:.15},
  {name:'air',source:'power',start:.70,end:2.30,loop:.20,rms:.16},
 ];
-function wav(samples){
- const b=Buffer.alloc(44+samples.length*2);b.write('RIFF');b.writeUInt32LE(b.length-8,4);b.write('WAVEfmt ',8);b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(1,22);b.writeUInt32LE(rate,24);b.writeUInt32LE(rate*2,28);b.writeUInt16LE(2,32);b.writeUInt16LE(16,34);b.write('data',36);b.writeUInt32LE(samples.length*2,40);
- samples.forEach((x,i)=>b.writeInt16LE(Math.round(Math.max(-1,Math.min(1,x))*32767),44+i*2));return b;
-}
 const result=[];
 for(const clip of clips){
  const [file,url]=sources[clip.source],source=path.join(root,file);
- const filters=[`atrim=start=${clip.start}:end=${clip.end}`,'asetpts=PTS-STARTPTS','highpass=f=65','lowpass=f=10000'];
+ const filters=[`atrim=start=${clip.start}:end=${clip.end}`,'asetpts=PTS-STARTPTS','highpass=f=65',`lowpass=f=${snesAudio.lowpass}`];
  if(clip.tempo)filters.push(`atempo=${clip.tempo}`);if(clip.reverse)filters.push('areverse');
  const decoded=spawnSync('ffmpeg',['-v','error','-i',source,'-af',filters.join(','),'-ac','1','-ar',String(rate),'-f','f32le','-'],{maxBuffer:20*1024*1024});if(decoded.status)throw Error(decoded.stderr.toString());
  let a=Float32Array.from({length:decoded.stdout.length/4},(_,i)=>decoded.stdout.readFloatLE(i*4));
@@ -56,8 +57,8 @@ for(const clip of clips){
   for(let i=0;i<a.length;i++)a[i]*=Math.min(1,i/(rate*.003))*Math.min(1,(a.length-1-i)/fade);
  }
  const rms=Math.sqrt(a.reduce((s,x)=>s+x*x,0)/a.length),peak=a.reduce((s,x)=>Math.max(s,Math.abs(x)),0),gain=Math.min(clip.rms/rms,.80/peak);
- a=a.map(x=>x*gain);fs.writeFileSync(`${out}/${clip.name}.wav`,wav(a));
- result.push({...clip,file:`${clip.name}.wav`,duration:a.length/rate,sourceFile:file,sourceUrl:`https://soundsverse.com/dragon-ball-z/${url}`,sha256:createHash('sha256').update(fs.readFileSync(source)).digest('hex'),gain});
+ a=a.map(x=>x*gain);fs.writeFileSync(`${out}/${clip.name}.wav`,snesWav(a));
+ result.push({...clip,file:`${clip.name}.wav`,duration:a.length/rate,sourceFile:file,sourceUrl:url.startsWith('https:')?url:`https://soundsverse.com/dragon-ball-z/${url}`,sha256:createHash('sha256').update(fs.readFileSync(source)).digest('hex'),gain});
 }
-fs.writeFileSync(`${out}/manifest.json`,JSON.stringify({rate,credit:'Dragon Ball sound effects, selected excerpts shared by Soundsverse / Youtube Sound Effects. Original sound rights remain with their owners.',processing:'Mono PCM; high/low pass; trimmed to animation cues; level matched with headroom. Sustained beds use equal-power circular crossfades with no silence or edge fades.',clips:result},null,2)+'\n');
+fs.writeFileSync(`${out}/manifest.json`,JSON.stringify({rate,bits:snesAudio.bits,credit:'Dragon Ball sound effects, selected excerpts shared by Soundsverse / Youtube Sound Effects and Soundeffects Wiki. Original sound rights remain with their owners.',processing:snesAudioDescription+' Trimmed to animation cues and level matched with headroom. Sustained beds use equal-power circular crossfades with no silence or edge fades.',clips:result},null,2)+'\n');
 console.log(`Prepared ${result.length} short DBZ effects and independent looping energy beds.`);

@@ -3,6 +3,7 @@ import {storyDialogue,soloDialogue} from './story-dialogue.js';
 import {buildStoryEvents,bossReactions,box} from './story-events.js';
 import {prepareStoryArea} from './story-areas.js';
 import {renameSenzu} from './native-senzu.js';
+import {potosCommand} from './potos-story.js';
 
 // Keep remaining speakers when a text run contains both a missing companion
 // and an NPC. The last speaker carries across native pauses and page clears.
@@ -79,7 +80,7 @@ export function createNativeStory(snes,mod){
         if(op.op===0x58)selection=true;
         if(op.op===0x5b)selection=false;
         if(lastSilent&&!selection&&(op.op===0x52||(op.op===0x28&&op.bytes[1]===0)))continue;
-        out.push(...op.bytes);
+        out.push(...(potosCommand(op)??op.bytes));
       }
     }
     return out;

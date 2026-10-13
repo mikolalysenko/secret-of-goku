@@ -276,7 +276,7 @@ class ManaMod {
     if(!this.options.enabled||!this.canAttack)return [];
     this.combo=this.frame<=this.comboUntil?(this.combo+1)%3:0;this.comboUntil=this.frame+40;
     this.action={kind:'punch',age:0,duration:this.options.superSaiyan?7:14,impact:this.options.superSaiyan?1:2,facing:this.facing,super:this.options.superSaiyan,combo:this.combo};
-    this.playSound?.('swing');return [];
+    this.playSound?.(this.combo===2?'kickSwing':'swing');return [];
   }
   strike(action){
     const [dx,dy]=[[0,1],[1,0],[-1,0],[0,-1]][action.facing],origin={x:this.read16(0xe002),y:this.read16(0xe004)};
@@ -314,21 +314,34 @@ class ManaMod {
     const strength=Math.min(1,this.charge/(this.options.superSaiyan?45:90));
     const damage=Math.round(this.damageScale()*Math.max(.25,strength));
     const [dx,dy]=[[0,1],[1,0],[-1,0],[0,-1]][this.facing];
-    const origin=this.handOrigin(),width=5+strength*14;
-    this.effects.push({...origin,kind:'beam',dx,dy,life:24,max:24,width,strength,super:this.options.superSaiyan,damage,hits:[],range:320});
-    this.action={kind:'beam',age:0,duration:28,facing:this.facing,super:this.options.superSaiyan};
-    this.attackFrames=28;this.charge=0;this.queuedPunch=false;
-    this.feedback?.pulse(this.options.superSaiyan?14:10);this.playSound?.('beam');this.log(`Kamehameha ${damage}`);return [];
+    const origin=this.handOrigin(),profile=this.beamProfile(strength);
+    this.effects.push({...origin,...profile,kind:'beam',dx,dy,life:profile.max,strength,super:this.options.superSaiyan,damage,hits:[]});
+    this.action={kind:'beam',age:0,duration:profile.max+4,facing:this.facing,super:this.options.superSaiyan};
+    this.attackFrames=this.action.duration;this.charge=0;this.queuedPunch=false;
+    this.feedback?.pulse(profile.mega?36:this.options.superSaiyan?14:10);this.playSound?.('beam');this.log(`Kamehameha ${damage}`);return [];
+  }
+  beamProfile(strength){
+    const mega=this.options.superSaiyan&&strength>=1;
+    return{mega,width:mega?80:5+strength*14,range:mega?640:320,max:mega?64:24,speed:mega?48:32};
+  }
+  beamGeometry(effect){
+    const age=effect.max-effect.life,speed=effect.speed||32;
+    return{length:Math.min(effect.range,(age+1)*speed),speed,taper:effect.mega?44:0,
+      halfWidth:effect.width*(effect.mega?Math.min(1,(age+1)/6,effect.life/10):1)};
   }
   updateProjectiles(){
     for(const effect of [...this.effects]){
       if(!['beam','ki'].includes(effect.kind))continue;
-      const age=effect.max-effect.life,speed=effect.kind==='ki'?14:32,length=Math.min(effect.range,(age+1)*speed);
-      if(effect.kind==='beam')this.plants?.beam({...effect,length,halfWidth:effect.width,policy:'objects'});
-      if(effect.kind==='beam')this.barriers?.beam({...effect,length});
-      const width=effect.width+8;
+      const age=effect.max-effect.life,geometry=effect.kind==='beam'?this.beamGeometry(effect):{speed:14,length:Math.min(effect.range,(age+1)*14),halfWidth:effect.width,taper:0};
+      const {speed,length,halfWidth,taper}=geometry;
+      if(effect.kind==='beam')this.plants?.beam({...effect,...geometry,policy:'objects'});
+      if(effect.kind==='beam')this.barriers?.beam({...effect,length,width:halfWidth});
+      const width=halfWidth+8;
       for(const enemy of this.targets(effect,effect.dx,effect.dy,length,width,8,12)){
         if(effect.hits.includes(enemy.index))continue;
+        const along=(enemy.x-effect.x)*effect.dx+(enemy.y-12-effect.y)*effect.dy;
+        const across=Math.abs((enemy.x-effect.x)*effect.dy-(enemy.y-12-effect.y)*effect.dx);
+        if(taper&&across>halfWidth*Math.min(1,(Math.max(0,along)+8)/taper)+8)continue;
         if(effect.kind==='ki'&&(enemy.x-effect.x)*effect.dx+(enemy.y-12-effect.y)*effect.dy<length-speed-16)continue;
         effect.hits.push(enemy.index);this.hit(enemy,effect.damage,effect.dx,effect.dy,true);
         this.playSound?.('impact');

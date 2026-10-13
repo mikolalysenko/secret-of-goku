@@ -1,4 +1,7 @@
 {
+  "rate": 16000,
+  "bits": 10,
+  "processing": "Mono 16 kHz, 5.6 kHz low-pass, 10-bit quantization stored as 16-bit PCM. A consistent SNES-style sample-bank aesthetic; not hardware BRR encoding.",
   "source": "https://www.tonosfrikis.com/melodias/movil/son_goku_kame_hame_ha_original_944.html",
   "title": "Son Goku - Kame Hame Ha [Original]",
   "credit": "Japanese Dragon Ball performance; excerpt shared by Carlos on TonosFrikis (2014-06-05).",

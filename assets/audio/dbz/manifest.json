@@ -1,21 +1,50 @@
 {
-  "rate": 32000,
-  "credit": "Dragon Ball sound effects, selected excerpts shared by Soundsverse / Youtube Sound Effects. Original sound rights remain with their owners.",
-  "processing": "Mono PCM; high/low pass; trimmed to animation cues; level matched with headroom. Sustained beds use equal-power circular crossfades with no silence or edge fades.",
+  "rate": 16000,
+  "bits": 10,
+  "credit": "Dragon Ball sound effects, selected excerpts shared by Soundsverse / Youtube Sound Effects and Soundeffects Wiki. Original sound rights remain with their owners.",
+  "processing": "Mono 16 kHz, 5.6 kHz low-pass, 10-bit quantization stored as 16-bit PCM. A consistent SNES-style sample-bank aesthetic; not hardware BRR encoding. Trimmed to animation cues and level matched with headroom. Sustained beds use equal-power circular crossfades with no silence or edge fades.",
   "clips": [
     {
       "name": "swing",
-      "source": "flight",
-      "start": 0.76,
-      "end": 1.29,
-      "tempo": 2.4,
+      "source": "whoosh",
+      "start": 0.02,
+      "end": 0.29,
+      "tempo": 1.25,
       "rms": 0.13,
       "file": "swing.wav",
-      "duration": 0.209,
-      "sourceFile": "cell-flying-turbo/cell-cell-flying-turbo-sound-effect.mp3",
-      "sourceUrl": "https://soundsverse.com/dragon-ball-z/cell/cell-flying-turbo",
-      "sha256": "c6db7112e36a2644af1e016b1e0869f6e41ddd742d4ff980ac979f28670380ad",
-      "gain": 0.5202765884612376
+      "duration": 0.2285,
+      "sourceFile": "anime-whoosh/Anime_Whoosh_Sound_20_(High_Quality).ogg",
+      "sourceUrl": "https://soundeffects.fandom.com/wiki/Anime_Whoosh_Sound_20",
+      "sha256": "c10814abb9548d3cc2fa43befa9e308bf0288e565686877133db772df57b732c",
+      "gain": 0.9135072750815282
+    },
+    {
+      "name": "swing-2",
+      "source": "swish",
+      "start": 0.02,
+      "end": 0.29,
+      "tempo": 1.3,
+      "rms": 0.13,
+      "file": "swing-2.wav",
+      "duration": 0.2183125,
+      "sourceFile": "anime-whoosh/Anime_Whoosh_Sound_16.ogg",
+      "sourceUrl": "https://soundeffects.fandom.com/wiki/Anime_Whoosh_Sound_16",
+      "sha256": "c278624f5058aac17b6ff1370dc02b6c0af033301fb821bea0af75d105fff452",
+      "gain": 1.2727383722415073
+    },
+    {
+      "name": "kick-swing",
+      "source": "whoosh",
+      "start": 0.01,
+      "end": 0.37,
+      "tempo": 1.1,
+      "rms": 0.14,
+      "file": "kick-swing.wav",
+      "duration": 0.3386875,
+      "sourceFile": "anime-whoosh/Anime_Whoosh_Sound_20_(High_Quality).ogg",
+      "sourceUrl": "https://soundeffects.fandom.com/wiki/Anime_Whoosh_Sound_20",
+      "sha256": "c10814abb9548d3cc2fa43befa9e308bf0288e565686877133db772df57b732c",
+      "gain": 0.9520627847657359
     },
     {
       "name": "hit-1",
@@ -28,7 +57,7 @@
       "sourceFile": "punch-fight/Dragon Ball Z Punch Sound Effect N°19.wav",
       "sourceUrl": "https://soundsverse.com/dragon-ball-z/dragon-ball-z-punch-fight",
       "sha256": "dd37161faa638d00dd897c582847e7ba2484d4b37c90cd94a19c0889653ab276",
-      "gain": 0.9270539320095067
+      "gain": 0.9701333655993791
     },
     {
       "name": "hit-2",
@@ -41,7 +70,7 @@
       "sourceFile": "punch-fight/Dragon Ball Z Punch Sound Effect N°22.wav",
       "sourceUrl": "https://soundsverse.com/dragon-ball-z/dragon-ball-z-punch-fight",
       "sha256": "5712f553635e0a74346f746cf8f52a47c4a7e1291bc209dfa387aab5ab6b2c1e",
-      "gain": 1.4933388638171399
+      "gain": 1.5089056168169266
     },
     {
       "name": "hit-3",
@@ -54,7 +83,7 @@
       "sourceFile": "punch-fight/Dragon Ball Z Punch Sound Effect N°37.mp3",
       "sourceUrl": "https://soundsverse.com/dragon-ball-z/dragon-ball-z-punch-fight",
       "sha256": "6e086d112e8f352308949136ddbb23413e46d30eb36cd170ba2fe9305fab3494",
-      "gain": 0.8599584839717095
+      "gain": 0.8883608201227524
     },
     {
       "name": "kick",
@@ -67,7 +96,7 @@
       "sourceFile": "punch-fight/Dragon Ball Z Punch Sound Effect N°4.mp3",
       "sourceUrl": "https://soundsverse.com/dragon-ball-z/dragon-ball-z-punch-fight",
       "sha256": "9498c1d1c3f192ec6f9b8b50eb28b2210f8b789ebe19ff3f26af167a10093a29",
-      "gain": 2.631942841986639
+      "gain": 2.702960999426053
     },
     {
       "name": "blast",
@@ -77,11 +106,11 @@
       "tempo": 1.15,
       "rms": 0.16,
       "file": "blast.wav",
-      "duration": 0.65615625,
+      "duration": 0.656375,
       "sourceFile": "ki-blast/goku-ki-blast-sound-effect.wav",
       "sourceUrl": "https://soundsverse.com/dragon-ball-z/goku/ki-blast",
       "sha256": "74af6d5441d5a7ec3a830da7527d8ebca0acf01ff444d93d4fe71de4fe11f442",
-      "gain": 1.839564402206725
+      "gain": 1.973674983717148
     },
     {
       "name": "impact",
@@ -91,11 +120,11 @@
       "tempo": 1.25,
       "rms": 0.18,
       "file": "impact.wav",
-      "duration": 0.4850625,
+      "duration": 0.4859375,
       "sourceFile": "kamehameha-fire/goku-kamehameha-fire-sound-effect.wav",
       "sourceUrl": "https://soundsverse.com/dragon-ball-z/goku/kamehameha-fire",
       "sha256": "accc43029cd4db978a95ced818d77d06fe901370138ba04ede8c215d98d2957c",
-      "gain": 0.40433810618176236
+      "gain": 0.4094546698468381
     },
     {
       "name": "beam",
@@ -109,7 +138,7 @@
       "sourceFile": "kamehameha-fire/goku-kamehameha-fire-sound-effect.wav",
       "sourceUrl": "https://soundsverse.com/dragon-ball-z/goku/kamehameha-fire",
       "sha256": "accc43029cd4db978a95ced818d77d06fe901370138ba04ede8c215d98d2957c",
-      "gain": 0.4273366590612739
+      "gain": 0.43159602844409917
     },
     {
       "name": "teleport",
@@ -122,7 +151,7 @@
       "sourceFile": "goku-instant-transmission/goku-goku-instant-transmission-sound-effect.mp3",
       "sourceUrl": "https://soundsverse.com/dragon-ball-z/goku/goku-instant-transmission",
       "sha256": "358d0e550804650e624356514ccbd0f151b45827f097b1d948db5bba3c35fcdc",
-      "gain": 0.6449506634292179
+      "gain": 0.725939011009008
     },
     {
       "name": "flight",
@@ -132,11 +161,11 @@
       "tempo": 1.3,
       "rms": 0.16,
       "file": "flight.wav",
-      "duration": 0.4515,
+      "duration": 0.451625,
       "sourceFile": "cell-flying-turbo/cell-cell-flying-turbo-sound-effect.mp3",
       "sourceUrl": "https://soundsverse.com/dragon-ball-z/cell/cell-flying-turbo",
       "sha256": "c6db7112e36a2644af1e016b1e0869f6e41ddd742d4ff980ac979f28670380ad",
-      "gain": 0.6228795391487458
+      "gain": 0.6358691217338546
     },
     {
       "name": "landing",
@@ -147,11 +176,11 @@
       "reverse": true,
       "rms": 0.12,
       "file": "landing.wav",
-      "duration": 0.276625,
+      "duration": 0.27675,
       "sourceFile": "cell-flying-turbo/cell-cell-flying-turbo-sound-effect.mp3",
       "sourceUrl": "https://soundsverse.com/dragon-ball-z/cell/cell-flying-turbo",
       "sha256": "c6db7112e36a2644af1e016b1e0869f6e41ddd742d4ff980ac979f28670380ad",
-      "gain": 0.4566250118107711
+      "gain": 0.46325213768470075
     },
     {
       "name": "transform",
@@ -161,11 +190,11 @@
       "tempo": 1.2,
       "rms": 0.2,
       "file": "transform.wav",
-      "duration": 0.60378125,
+      "duration": 0.589,
       "sourceFile": "son-goku-power-up/Dragon Ball Son Goku Power Up Sound Effect 3.mp3",
       "sourceUrl": "https://soundsverse.com/dragon-ball-z/goku/son-goku-power-up",
       "sha256": "e9708a3a3a666cc10db4ae702eeb0e51e83009ec291737417571e50c81aae46b",
-      "gain": 2.938495645164186
+      "gain": 3.0052786501587754
     },
     {
       "name": "revert",
@@ -176,11 +205,11 @@
       "reverse": true,
       "rms": 0.13,
       "file": "revert.wav",
-      "duration": 0.42321875,
+      "duration": 0.4233125,
       "sourceFile": "son-goku-power-up/Dragon Ball Son Goku Power Up Sound Effect 3.mp3",
       "sourceUrl": "https://soundsverse.com/dragon-ball-z/goku/son-goku-power-up",
       "sha256": "e9708a3a3a666cc10db4ae702eeb0e51e83009ec291737417571e50c81aae46b",
-      "gain": 2.0644231977209424
+      "gain": 2.0944938307453027
     },
     {
       "name": "charged",
@@ -193,7 +222,7 @@
       "sourceFile": "son-gohan-ssj2-electricity-aura/son-gohan-son-gohan-ssj2-electricity-aura-sound-effect.mp3",
       "sourceUrl": "https://soundsverse.com/dragon-ball-z/son-gohan/son-gohan-ssj2-electricity-aura",
       "sha256": "a90ac19c819be4b1324e72deba65e84e121ae1fb08e9804d3dce8bdd0c52fd56",
-      "gain": 11.439532641720856
+      "gain": 18.44842335746081
     },
     {
       "name": "charge",
@@ -207,7 +236,7 @@
       "sourceFile": "kamehameha-charge/goku-kamehameha-charge-sound-effect.wav",
       "sourceUrl": "https://soundsverse.com/dragon-ball-z/goku/kamehameha-charge",
       "sha256": "b9c384a4d9e4a742b8a869dc5c472f1cf9e226701de78df3ed1fc7c92e31488c",
-      "gain": 0.8667094195447639
+      "gain": 0.8793878277350853
     },
     {
       "name": "aura",
@@ -221,7 +250,7 @@
       "sourceFile": "son-gohan-ssj2-electricity-aura/son-gohan-son-gohan-ssj2-electricity-aura-sound-effect.mp3",
       "sourceUrl": "https://soundsverse.com/dragon-ball-z/son-gohan/son-gohan-ssj2-electricity-aura",
       "sha256": "a90ac19c819be4b1324e72deba65e84e121ae1fb08e9804d3dce8bdd0c52fd56",
-      "gain": 11.982378503449725
+      "gain": 16.51367722867057
     },
     {
       "name": "air",
@@ -235,7 +264,7 @@
       "sourceFile": "son-goku-power-up/Dragon Ball Son Goku Power Up Sound Effect 1.mp3",
       "sourceUrl": "https://soundsverse.com/dragon-ball-z/goku/son-goku-power-up",
       "sha256": "d5694100662ecf1965af817963f02311d6994c414bc586ee21a234e14d1cbf9d",
-      "gain": 2.571229524486215
+      "gain": 2.5870553711715893
     }
   ]
 }
