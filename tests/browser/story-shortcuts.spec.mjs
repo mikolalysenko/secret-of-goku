@@ -73,6 +73,7 @@ test('aerial Fortress destruction skips the dungeon and starts the native Mana B
   expect(hit).toBe('mana-fortress');
   await dismiss(page,()=>mana.read16(0xdc)===253&&mana.mod.canAttack&&mana.mod.entities().some(e=>e.active&&e.species===127),50);
   expect(await page.evaluate(()=>({mode:mana.snes.ppu.mode,flag:mana.read8(0xcf4e),destroyed:mana.mod.worldKi.status.fortressDestroyed,error:mana.mod.story.status.error}))).toEqual({mode:7,flag:8,destroyed:true,error:null});
+  expect(await page.evaluate(()=>mana.mod.quest.status.count)).toBe(7);
 });
 
 test('Luka shortcut plays both final battles and reaches the ending without recruiting anyone',async({page})=>{
@@ -87,6 +88,7 @@ test('Luka shortcut plays both final battles and reaches the ending without recr
     });s.seen.forEach(id=>seen.add(id));expect(s.error).toBe(null);if(s.flag>=9){ending=true;break;}
   }
   expect([...seen]).toContain(121);expect([...seen]).toContain(127);expect(ending).toBe(true);
+  expect(await page.evaluate(()=>mana.mod.quest.status)).toMatchObject({count:7,wished:true});
 });
 
 test('Undine can grant spells solo and native later recruitment keeps both rewards',async({page})=>{

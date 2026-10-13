@@ -4,6 +4,7 @@ import {buildStoryEvents,bossReactions,box} from './story-events.js';
 import {prepareStoryArea} from './story-areas.js';
 import {renameSenzu} from './native-senzu.js';
 import {potosCommand} from './potos-story.js';
+import {dragonBallGrant} from './dragon-quest.js';
 
 // Keep remaining speakers when a text run contains both a missing companion
 // and an NPC. The last speaker carries across native pauses and page clears.
@@ -34,7 +35,7 @@ export function createNativeStory(snes,mod){
   const present=index=>!!(r[0xe000+index*0x200]&1);
   const party=()=>Number(present(1))|Number(present(2))<<1;
   let cart=null,read=null,next=0xf08000;
-  const scripts=new Map(),entries=new Map(),metadata=new Map();
+  const scripts=new Map(),entries=new Map(),metadata=new Map(),grants=new Map();
   function inspectByte(pc){
     if(pc>=0xf08000&&pc<0xf80000)for(const[at,script]of scripts)if(pc>=at&&pc<script.end)return script.bytes[pc-at]??0;
     // Inspection must not execute the cartridge adapters. Whip-pad reads, for
@@ -55,10 +56,12 @@ export function createNativeStory(snes,mod){
     if(next>=0xf80000)throw Error('Native story script banks exhausted');
     const at=next;next+=bytes.length+1;
     scripts.set(at,{bytes:Uint8Array.from(bytes),end:next});metadata.set(at,{id,mask});
+    for(const[offset,index]of bytes.grants??[])grants.set(at+offset,index);
     return at;
   }
   function compile(event,mask){
-    const out=[];let silent=false,lastSilent=false,selection=false,currentMask=mask;
+    const out=bossReactions[event.id]?box(bossReactions[event.id]):[];out.grants=[];
+    let silent=false,lastSilent=false,selection=false,currentMask=mask;
     for(const op of event.ops){
       if(op.op==='text'){
         let text=storyDialogue[op.at]??op.text;
@@ -81,6 +84,7 @@ export function createNativeStory(snes,mod){
         if(op.op===0x5b)selection=false;
         if(lastSilent&&!selection&&(op.op===0x52||(op.op===0x28&&op.bytes[1]===0)))continue;
         out.push(...(potosCommand(op)??op.bytes));
+        const ball=dragonBallGrant(op.at,op.op);if(ball!==null)out.grants.push([out.length,ball]);
       }
     }
     return out;
@@ -113,7 +117,10 @@ export function createNativeStory(snes,mod){
       if(entry){
         const mask=party();setPointer(typeof entry==='function'?entry(mask):entry[mask]);pc=pointer();lastEvent=metadata.get(pc)?.id;relocations++;
         if(lastEvent===0x88)fastTrack=true;
+        if(lastEvent===0x93)mod.quest?.deliver();
+        if(lastEvent===0x42f)mod.quest?.wish();
       }
+      if(grants.has(pc))mod.quest?.collect(grants.get(pc));
       // Native scripts address party actors 1/2/3 explicitly. An absent actor
       // must never acquire a movement wait bit and stall WAIT_FOR_ANIM.
       for(let i=0;i<32;i++){
@@ -130,12 +137,12 @@ export function createNativeStory(snes,mod){
   };
   return{
     load(){
-      cart=snes.cart;read=cart.read;scripts.clear();entries.clear();metadata.clear();next=0xf08000;
+      cart=snes.cart;read=cart.read;scripts.clear();entries.clear();metadata.clear();grants.clear();next=0xf08000;
       for(let id=0;id<0x800;id++){
         if(id>=0x100&&id<=0x106||id===0x400)continue; // BOY prologue and title legend
         const event=parseEvent(cart.data,id);
-        if(!bossReactions[id]&&!event.ops.some(op=>op.op==='text'&&(op.at in storyDialogue||op.at in soloDialogue||/\{[12]\}/.test(op.text)||renameSenzu(op.text)!==op.text)))continue;
-        entries.set(0xc00000+event.start,[0,1,2,3].map(mask=>allocate([...(bossReactions[id]?box(bossReactions[id]):[]),...compile(event,mask)],id,mask)));
+        if(!bossReactions[id]&&!event.ops.some(op=>dragonBallGrant(op.at,op.op)!==null||op.op==='text'&&(op.at in storyDialogue||op.at in soloDialogue||/\{[12]\}/.test(op.text)||renameSenzu(op.text)!==op.text)))continue;
+        entries.set(0xc00000+event.start,[0,1,2,3].map(mask=>allocate(compile(event,mask),id,mask)));
       }
       const custom=buildStoryEvents(cart.data),customPointers=new Map();
       for(const[id,bytes]of custom){
@@ -144,9 +151,13 @@ export function createNativeStory(snes,mod){
       }
       entries.set(0xc00000+eventRange(cart.data,0x88).start,()=>customPointers.get(r[0xcf4e]>=9?0x8a:r[0xcf4e]>=7?0x89:0x88));
       entries.set(0xc00000+eventRange(cart.data,0x429).start,()=>customPointers.get(mod.worldKi?.status.fortressDestroyed?0x8f:0x429));
+      entries.set(0xc00000+eventRange(cart.data,0x93).start,()=>customPointers.get(mod.quest?.status.count===7?0x94:0x93));
+      const advice=Array.from({length:8},(_,count)=>allocate([0x51,0x01,...box(`DRAGON BALLS: ${count} / 7\n${count===7?'All seven! Calm the Beast,\nthen make the wish.':'Find the Balls inside the\nseven palace Mana Seeds.'}`),...custom.get(0x85).slice(2)],0x85,3));
+      entries.set(0xc00000+eventRange(cart.data,0x85).start,()=>advice[mod.quest?.status.count??0]);
       cart.read=storyRead;this.restore();
     },
     request(event){if(!Number.isInteger(event)||event<0||event>=0x800||queued!==null||pending||!enabled()||!mod.canAttack)return false;queued=event;return true;},
+    travel(door){if(!Number.isInteger(door)||door<=0||door>=0x400||queued!==null||pending||!enabled()||!mod.canAttack)return false;queued=0x800|door;return true;},
     get status(){return{lastEvent,relocations,skippedActors,fastTrack,areaChanges:[...areaChanges],queued,error,eventCount:entries.size,scriptCount:scripts.size};},
     snapshot(){return{version:1,lastEvent,relocations,skippedActors,fastTrack,areaChanges,queued,pending,error,spellGrants:spellGrants.map(s=>s.slice())};},
     restore(saved){lastEvent=saved?.lastEvent??null;relocations=saved?.relocations??0;skippedActors=saved?.skippedActors??0;fastTrack=!!saved?.fastTrack;areaChanges=saved?.areaChanges?.slice()||[];queued=saved?.queued??null;pending=saved?.pending??null;error=saved?.error??null;spellGrants=saved?.spellGrants?.map(s=>s.slice())||[Array.from(r.slice(0xe3c8,0xe3d0)),Array.from(r.slice(0xe5c8,0xe5d0))];},

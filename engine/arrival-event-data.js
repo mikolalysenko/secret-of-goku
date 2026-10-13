@@ -26,7 +26,7 @@ const pages = Object.freeze([
   'GOKU: Sorry! I thought this\nwas a landing spot.',
   'GHOST: That was the chosen\nhero. And the Mana Sword.',
   'GHOST: The boy is dead.\nThe sword is dust.',
-  'GOKU: ...I can fix that.\nProbably.',
+  'GOKU:I brought Dragon\nBalls! ...Oh. They went\nEVERYWHERE.',
   'GHOST: You are the chosen\nhero now. Go to Potos.\nTry walking.'
 ]);
 for (const page of pages) {

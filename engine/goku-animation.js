@@ -35,6 +35,7 @@ class GokuAnimation {
     if(s.frame!==m.frame)s.stationary=distance>0?0:(s.stationary||0)+1;
     if(flight)kind='flight';
     else if(menu)kind='idle';
+    else if(m.ceiling?.pose)kind='ceilingEscape';
     else if(m.flightTransition)kind=m.flightTransition.kind;
     else if(status2&0x80)kind='dead';
     else if(status&0x10)kind='sleep';
@@ -87,6 +88,11 @@ class GokuAnimation {
       // The original crossing supplies horizontal travel and a jump arc.
       // Cancel only its visual arc for a steady twelve-pixel hover.
       if(kind==='gapFlight')result.extraLift=12-lift;
+    }
+    else if(kind==='ceilingEscape'){
+      const age=m.ceiling.pose.age;
+      result=age<18?{sheet,row:3,column:(sheet==='ssj'?14:18)+Math.min(3,Math.floor(age/5))}:this.track(sheet,'flight',age,3);
+      result.extraLift=age<18?Math.floor(age/3):Math.min(220,(age-18)*6+6);
     }
     else if(kind==='takeoff'||kind==='landing'){
       result=this.track(sheet,'flight',m.flightTransition.age,kind==='takeoff'?3:poseRow);

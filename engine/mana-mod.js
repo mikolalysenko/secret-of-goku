@@ -56,14 +56,14 @@ class ManaMod {
   }
   cancelCombat(){this.action=null;this.queuedPunch=false;this.attackHeld=0;this.nativeTapFrames=0;this.charging=false;this.charge=0;this.attackFrames=0;this.attackCooldown=0;this.blastCooldown=0;this.effects=[];if(this.sound?.cancelCombat)this.sound.cancelCombat();else this.sound?.clear();this.plants?.clear();}
   cancelInput(){this.attackHeld=0;this.nativeTapFrames=0;this.charging=false;this.charge=0;this.queuedPunch=false;this.attackBlocked=false;this.input=0;this.lastInput=0;if(this.action?.kind==='ready'||this.action?.kind==='charge')this.action=null;}
-  reset(){this.frame=0;this.cancelCombat();this.sound?.restore();this.combatSound?.restore();this.ownership?.reset();this.feedback?.restore();this.orbs?.restore();this.story?.restore();this.worldKi?.restore();this.barriers?.restore();this.flight?.restore();this.gapFlight?.restore();this.flightTransition=null;this.autoLand=false;this.localFlight=false;this.localLift=0;this.localFlightHook?.restore();this.teleport?.restore();this.lastTeleportTarget=-1;this.input=0;this.lastInput=0;this.hiddenLastFrame=[];this.flightShadow=null;this.worldFlight=false;this.nameEditor=false;this.spriteLayer.plan=null;this.attackBlocked=false;this.combo=0;this.comboUntil=0;this.knockbacks=[];this.lastMap=null;this.motion?.reset();}
+  reset(){this.frame=0;this.cancelCombat();this.sound?.restore();this.combatSound?.restore();this.ownership?.reset();this.feedback?.restore();this.orbs?.restore();this.story?.restore();this.worldKi?.restore();this.barriers?.restore();this.flight?.restore();this.gapFlight?.restore();this.radio?.restore();this.quest?.restore();this.ceiling?.restore();this.flightTransition=null;this.autoLand=false;this.localFlight=false;this.localLift=0;this.localFlightHook?.restore();this.teleport?.restore();this.lastTeleportTarget=-1;this.input=0;this.lastInput=0;this.hiddenLastFrame=[];this.flightShadow=null;this.worldFlight=false;this.nameEditor=false;this.spriteLayer.plan=null;this.attackBlocked=false;this.combo=0;this.comboUntil=0;this.knockbacks=[];this.lastMap=null;this.motion?.reset();}
   snapshot(){
     const fields=['frame','facing','worldFlight','charge','charging','attackHeld','nativeTapFrames','action','queuedPunch','combo','comboUntil','blastCooldown','attackBlocked','effects','knockbacks','lastMap','input','lastInput','attackFrames','attackCooldown','autoLand','flightTransition','localFlight','localLift'];
-    return JSON.parse(JSON.stringify({version:1,options:this.options,motion:this.motion?.snapshot(),sound:this.sound?.snapshot(),plants:this.plants?.snapshot(),feedback:this.feedback?.snapshot(),ownership:this.ownership?.snapshot(),flight:this.flight?.snapshot(),localFlightState:this.localFlightHook?.snapshot(),teleportState:this.teleport?.snapshot(),gapFlight:this.gapFlight?.snapshot(),orbs:this.orbs?.snapshot(),story:this.story?.snapshot(),worldKi:this.worldKi?.snapshot(),barriers:this.barriers?.snapshot(),lastTeleportTarget:this.lastTeleportTarget,...Object.fromEntries(fields.map(key=>[key,this[key]]))}));
+    return JSON.parse(JSON.stringify({version:1,options:this.options,motion:this.motion?.snapshot(),sound:this.sound?.snapshot(),plants:this.plants?.snapshot(),feedback:this.feedback?.snapshot(),ownership:this.ownership?.snapshot(),flight:this.flight?.snapshot(),localFlightState:this.localFlightHook?.snapshot(),teleportState:this.teleport?.snapshot(),gapFlight:this.gapFlight?.snapshot(),orbs:this.orbs?.snapshot(),story:this.story?.snapshot(),worldKi:this.worldKi?.snapshot(),barriers:this.barriers?.snapshot(),radio:this.radio?.snapshot(),quest:this.quest?.snapshot(),ceiling:this.ceiling?.snapshot(),lastTeleportTarget:this.lastTeleportTarget,...Object.fromEntries(fields.map(key=>[key,this[key]]))}));
   }
   restore(saved){
     this.reset();this.worldFlight=this.nativeFlight;this.sound?.restore(saved?.sound);this.plants?.restore(saved?.plants);this.feedback?.restore(saved?.feedback);this.ownership?.restore(saved?.ownership);this.lastTeleportTarget=saved?.lastTeleportTarget??-1;if(saved?.version!==1)return;
-    this.flight?.restore(saved?.flight);this.localFlightHook?.restore(saved?.localFlightState);this.teleport?.restore(saved?.teleportState);this.gapFlight?.restore(saved?.gapFlight);this.orbs?.restore(saved?.orbs);this.story?.restore(saved?.story);this.worldKi?.restore(saved?.worldKi);this.barriers?.restore(saved?.barriers);
+    this.flight?.restore(saved?.flight);this.localFlightHook?.restore(saved?.localFlightState);this.teleport?.restore(saved?.teleportState);this.gapFlight?.restore(saved?.gapFlight);this.orbs?.restore(saved?.orbs);this.story?.restore(saved?.story);this.worldKi?.restore(saved?.worldKi);this.barriers?.restore(saved?.barriers);this.radio?.restore(saved?.radio);this.quest?.restore(saved?.quest);this.ceiling?.restore(saved?.ceiling);
     for(const key of ['frame','facing','worldFlight','charge','charging','attackHeld','nativeTapFrames','action','queuedPunch','combo','comboUntil','blastCooldown','attackBlocked','effects','knockbacks','lastMap','input','lastInput','attackFrames','attackCooldown','autoLand','flightTransition','localFlight','localLift'])if(saved[key]!==undefined)this[key]=JSON.parse(JSON.stringify(saved[key]));
     Object.assign(this.options,saved.options);this.motion?.restore(saved.motion);
   }
@@ -125,6 +125,7 @@ class ManaMod {
     }
     const nativeDirection=this.read8(0xe010);
     this.facing=(nativeDirection&0x7f)===0?3:(nativeDirection&0x7f)===1?0:(nativeDirection&0x80)?2:1;
+    if(this.ceiling?.tick()){this.localFlight=false;this.localLift=0;return;}
     if(this.teleport?.pending){this.snes.joypad1State=0;this.advanceAction();return;}
     if((input&(1<<18))&&!(this.lastInput&(1<<18))&&(this.canAttack||this.worldFlight))this.configure({superSaiyan:!this.options.superSaiyan});
     this.worldKi?.tick(input);
@@ -184,6 +185,7 @@ class ManaMod {
     if(this.options.enabled&&this.gokuActive)this.localFlightHook?.settle();
     this.moving=this.read16(0xe002)!==this.before.x||this.read16(0xe004)!==this.before.y;
     this.lastInput=this.input;
+    this.radio?.tick();
   }
   aim(input){
     const vertical=(input&(1<<4))?3:(input&(1<<5))?0:null,horizontal=(input&(1<<6))?2:(input&(1<<7))?1:null;
@@ -203,7 +205,8 @@ class ManaMod {
     }
     if(action.kind==='teleport'&&!action.arrived&&action.age>=4)this.finishTeleport(action);
     if(action.kind==='teleport'&&action.arrived){
-      if(this.teleport?.pending)action.age=4;
+      if(this.ceiling?.tick()){this.localFlight=false;this.localLift=0;return;}
+    if(this.teleport?.pending)action.age=4;
       else if(!action.sounded){action.sounded=true;this.playSound?.('teleportIn');}
     }
     if(action.duration>0&&action.age>=action.duration){this.action=null;return;}

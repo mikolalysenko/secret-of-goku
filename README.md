@@ -30,7 +30,7 @@ Your disk ROM remains untouched. Checkpoints stay in this browser; select the sa
 | R | Super Saiyan toggle during gameplay |
 | Tab | Switch the controlled party member |
 | , / . | Native L / R buttons |
-| F | Native world flight / landing |
+| F | World flight / landing; punch through a dungeon ceiling |
 | Escape | Pause / resume the emulator |
 
 In menus and dialogue, attack is the original confirm button and never charges a beam. E always talks/confirms without charging. Move and aim while charging at half speed. Shift flies over bushes, breakable rocks and short forest riverbanks at three times walking speed (four times in Super Saiyan). Riverbanks require usable ground on both sides; room walls, doors and map edges still constrain movement. Release over clear ground to land; over a low obstacle, Goku hovers until you steer clear. Whip pads automatically float the party across. Rapid taps buffer a combo ending with a kick. Super Saiyan charges twice as fast and fires faster, stronger attacks; poison cancels it and prevents transforming until cured. During world flight, hold J to charge and release to fire, F toggles descent/landing, X ascends, up/down travel and left/right turn. Touch buttons are available on touch devices. Save/Restore checkpoint preserves SNES state, Goku's action timing and projectiles in this browser.
@@ -48,7 +48,7 @@ Connect an Xbox, PlayStation, or other controller that the browser exposes with 
 | Left bumper | Hold for fast local flight / world ascent |
 | Right bumper | Super Saiyan |
 | Left trigger | Instant Transmission |
-| Right trigger | World flight / land |
+| Right trigger | World flight / land; burst through dungeon ceilings |
 | Menu / Start / Options | Start and resume |
 | View / Select / Share | Switch party member |
 | Right stick click | Pause / resume |
@@ -68,11 +68,13 @@ Pausing, switching tabs, disconnecting a controller, or cancelling a touch clear
 - **Senzu Beans** replace the Cup of Wishes in the original item table, native ring artwork and dialogue. They revive fallen allies or fully heal living, injured allies through the original item-use animation. Full-health characters cannot waste a bean.
 - Punches, ki blasts and Kamehameha activate elemental crystal orbs using their original puzzle events, including all seven Grand Palace orbs. Orbs receive activation instead of lethal damage.
 - F takes off directly, and the native item ring has an animated Goku **Fly** ability in the former Drum slot. Goku flies through takeoff, the original Mode 7 world, and landing. Scripted Flammie departures use the same handoff. The dragon rescue still progresses normally; a few lines acknowledge that Goku already flies. Landing bypasses the original BG3 dragon fly-by; Goku descends during the visible ground fade. Native landing restrictions remain except for the breakable Mana Tree cloud barrier.
-- Most NPC dialogue remains original. Selected conversations acknowledge Goku, the shattered Sword and the boy sheltered by the Mana Tree. Absent companions do not speak or stall scripted movement; early spell grants are retained for later recruitment. Area entry prerequisites support out-of-order visits without globally completing bosses.
+- **King Kai** interrupts long Super Saiyan charges with increasingly panicked telepathy, on the ground and in Mode 7. His warnings use the ROM's original font and window art, keep movement/charging live, and yield to real dialogue and menus. Releasing the beam earns another complaint.
+- **Ceiling escape:** press F, the touch rocket, or the gamepad right trigger inside a dungeon. Goku punches a jagged hole, blasts upward with native effects, and carries the party into world flight. Routes cover 185 rooms across 21 regions using original exterior doors; cutscenes, the Potos rescue and final battle arenas retain their locks. Checkpoints preserve holes and mid-escape animation.
+- **Dragon Ball quest:** the crash scatters seven Balls into the Mana Seeds and breaks the Sword's Fortress seal. Jema and Luka explain why the Fortress wakes early. Collect the Balls from Water, Earth, Wind, Fire, Light, Dark and Moon; the seed cases keep Mana flowing. Dryad is a person, not an eighth Ball. Collection notices and Luka's Advice show progress. Most NPC dialogue remains original. Selected conversations acknowledge Goku, the shattered Sword and the boy sheltered by the Mana Tree. Absent companions do not speak or stall scripted movement; early spell grants are retained for later recruitment. Area entry prerequisites support out-of-order visits without globally completing bosses.
 - Potos villagers explicitly blame Goku for killing **Randi** and destroying the Mana Sword. Goku apologizes awkwardly, deliberately hops into the Mantis hole to rescue Elliott, and is banished as a very strong menace. The Elder's conversations are about Randi, rather than treating Goku as the child he raised.
 - Fully charge a wave to break Witch Castle’s three-person gate, Northtown Castle’s entrance, or Gold Tower’s lock. These run native events and rebuild the map; returning preserves the opened route.
 - Fly toward the Mana Tree clouds in the northwest, aim and release a fully charged wave to open the Pure Land landing zone early. This does not complete any Pure Land bosses.
-- Ascend to see the moving Mana Fortress, point toward it and release a fully charged aerial wave. Its destruction frees the captive souls and skips the dungeon straight to the original Mana Beast battle. Luka also offers a native **Shortcut** choice leading through Dark Lich and Mana Beast. Both routes work solo and share a new resolution for the boy and Dyluck.
+- Ascend to see the moving Mana Fortress, point toward it and release a fully charged aerial wave. Its destruction frees the captive souls and skips the dungeon straight to the original Mana Beast battle. Luka also offers a native **Shortcut** choice leading through Dark Lich and Mana Beast. Both routes work solo. King Kai shields Mana and rushes in any missing Dragon Balls, grumbling that this is cheaper than replacing a planet. After the Beast calms, Shenron restores Randi, the Sword, the souls and Goku's demolished roofs. The bridge still needs a hammer.
 
 The complete original game runs underneath these hooks. The opening and Potos have controller-driven story checks; a separate graphics audit works through map entry views across the game. This is still a hybrid browser mod, not a standalone SNES Goku ROM patch. Entry-view checks do not cover every story variant, animation or boss phase. The native status screen can recalculate stats; Saiyan combat values are reapplied on returning to gameplay.
 

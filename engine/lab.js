@@ -22,6 +22,9 @@ import {createWorldKi} from './world-ki.js';
 import {createNativeBarriers} from './native-barriers.js';
 import {createNativeInteraction} from './native-interaction.js';
 import {createNativeSenzu} from './native-senzu.js';
+import {createNativeRadio} from './native-radio.js';
+import {createDragonQuest} from './dragon-quest.js';
+import {createCeilingEscape} from './ceiling-escape.js';
 const effectsManifest=fetch(new URL('./native-effects.json',import.meta.url)).then(response=>{if(!response.ok)throw Error('Native effect descriptors could not be loaded.');return response.json();});
 const $=id=>document.getElementById(id),snes=new window.Snes(),canvas=$('screen'),context=canvas.getContext('2d'),pixels=context.createImageData(512,480);
 const message=text=>{$('lab-message').textContent=text;};
@@ -58,6 +61,9 @@ mod.worldKi=createWorldKi(snes,mod);
 mod.barriers=createNativeBarriers(mod);
 mod.interaction=createNativeInteraction(snes,mod);
 mod.senzu=createNativeSenzu(snes,mod);
+mod.radio=createNativeRadio(snes,mod);
+mod.quest=createDragonQuest(mod);
+mod.ceiling=createCeilingEscape(mod);
 let loaded=false,running=false,busy=false,lastTime=0,accumulator=0,checkpoint=null,frameCount=0,fpsTime=performance.now();
 let nameSeeded=false,originalBoot=false;
 let flightDialogue=null;
@@ -173,7 +179,8 @@ async function fly(){
   if(mod.worldFlight){
     mod.autoLand=!mod.autoLand;message(mod.autoLand?'Descending. Steer over open ground to land; F stops descending.':'Holding altitude.');
   }else if(mod.flight.request())message('Taking flight! Arrows steer; hold J for Kamehameha, release to fire. X ascends; F lands.');
-  else{message('There is no room to take off here. Head outside first.');return mod.status;}
+  else if(mod.ceiling.request())message('Making an exit! Goku is punching through the ceiling.');
+  else{message('Finish this scene or move to an open dungeon room before taking flight.');return mod.status;}
   if(!running)play();render();
   return mod.status;
 }
