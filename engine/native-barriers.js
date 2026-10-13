@@ -20,7 +20,7 @@ export function createNativeBarriers(mod){
       if(pending||!mod.canAttack)return;
       const map=mod.read16(0xdc),barrier=kiBarriers.find(b=>b.map===map&&mod.read8(0xcf00+b.flag)<b.min&&beamTouchesBarrier(beam,b));
       if(!barrier)return;
-      pending={id:barrier.id,map,event:barrier.event,frame:mod.frame};mod.playSound('hit');mod.feedback?.pulse(12);
+      pending={id:barrier.id,map,event:barrier.event,frame:mod.frame};mod.playSound('impact');mod.feedback?.pulse(12);
       const[x,y,w,h]=barrier.rect;for(let i=0;i<6;i++)mod.effects.push({kind:'impact',x:x+(i%3+.5)*w/3,y:y+(Math.floor(i/3)+.5)*h/2,dx:1,dy:0,life:20,max:20,super:false});
     },
     tick(){

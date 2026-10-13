@@ -6,12 +6,14 @@ import {GameInput,keymap} from './input.js';
 import {GamepadInput} from './gamepad.js';
 import {mountTouchControls} from './touch-controls.js';
 import {createKiSound} from './ki-sound.js';
+import {createNativeCombatSound} from './native-combat-sound.js';
 import {createNativePlants} from './native-plants.js';
 import {createNativeFeedback} from './native-feedback.js';
 import {installFlightDialogue} from './flight-dialogue.js';
 import {installNativeOamOwnership} from './native-oam.js';
 import {createNativeFlight} from './native-flight.js';
 import {createNativeLocalFlight} from './native-local-flight.js';
+import {createNativeTeleport} from './native-teleport.js';
 import {createNativeGapFlight} from './native-gap-flight.js';
 import {createChargeLightning} from './charge-lightning.js';
 import {createNativeOrbs} from './native-orbs.js';
@@ -29,11 +31,13 @@ const mod=new window.ManaMod(snes,{gokuUrl:'assets/sprites/goku.png',ssjUrl:'ass
 const title=createTitleLayer(snes.ppu);
 const arrival=createArrival(snes,mod);
 const sound=createKiSound(mod);
+mod.combatSound=createNativeCombatSound(snes,mod);
 mod.gapFlight=createNativeGapFlight(snes,mod);
 mod.feedback=createNativeFeedback(snes);
 mod.ownership=installNativeOamOwnership(snes);
 mod.plants=createNativePlants(snes,{canCut:()=>mod.options.enabled&&mod.canAttack,onCut:result=>{
   for(const tile of result.tiles)mod.effects.push({kind:'impact',x:tile.tx*16+8,y:tile.ty*16+8,dx:1,dy:0,life:8,max:8,super:false});
+  if(result.tiles.length)mod.playSound('impact');
 }});
 mod.flight=createNativeFlight(snes,{enabled:()=>mod.options.enabled&&mod.gokuActive,canTakeOff:()=>mod.canAttack,onStart:()=>{
   mod.localFlight=false;mod.localLift=0;mod.flightTransition={kind:'takeoff',age:0};mod.playSound('flight');
@@ -47,6 +51,7 @@ mod.localFlightHook=createNativeLocalFlight(snes,{
   },
 });
 mod.lightning=createChargeLightning(mod);
+mod.teleport=createNativeTeleport(snes,mod,mod.localFlightHook);
 mod.orbs=createNativeOrbs(snes,mod);
 mod.story=createNativeStory(snes,mod);
 mod.worldKi=createWorldKi(snes,mod);

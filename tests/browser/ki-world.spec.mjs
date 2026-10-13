@@ -113,6 +113,8 @@ test('Japanese chant keeps its long delivery in both forms and shouts only on re
   await load(page);await page.evaluate(()=>mana.play());
   await page.keyboard.press('ArrowLeft');
   await expect.poll(()=>page.evaluate(()=>mana.mod.sound.speech.stats.ready)).toBe(true);
+  await expect.poll(()=>page.evaluate(()=>mana.mod.sound.stats.ready)).toBe(true);
+  await page.evaluate(()=>{const sound=mana.mod.sound;window.kiMeter=sound.output.context.createAnalyser();kiMeter.fftSize=2048;sound.connect(kiMeter);});
   for(const superSaiyan of [false,true]){
     await page.evaluate(superSaiyan=>{mana.mod.options.superSaiyan=superSaiyan;mana.mod.sound.speech.stats.history=[];},superSaiyan);
     await page.keyboard.down('j');
@@ -120,6 +122,11 @@ test('Japanese chant keeps its long delivery in both forms and shouts only on re
     await expect.poll(()=>page.evaluate(()=>mana.mod.sound.speech.stats.speaking),{timeout:10000}).toBe(false);
     const before=await page.evaluate(()=>({frame:mana.mod.frame,history:mana.mod.sound.speech.stats.history.map(v=>v.name)}));
     expect(before.history).toEqual(['charge']);
+    expect(await page.evaluate(()=>mana.mod.sound.stats.charge)).toBe(true);
+    // Measure actual audio from the effects bus after the vocal has ended.
+    await expect.poll(()=>page.evaluate(()=>{const a=new Float32Array(kiMeter.fftSize);kiMeter.getFloatTimeDomainData(a);return Math.sqrt(a.reduce((sum,v)=>sum+v*v,0)/a.length);})).toBeGreaterThan(.008);
+    const loops=await page.evaluate(()=>mana.mod.sound.stats.loops);
+    expect(loops).toContain('charge');expect(loops.includes('aura')).toBe(superSaiyan);
     expect(await page.evaluate(()=>mana.mod.sound.speech.stats.durations.charge)).toBeGreaterThan(3.5);
     await expect.poll(()=>page.evaluate(()=>mana.mod.frame)).toBeGreaterThan(before.frame+20);
     expect(await page.evaluate(()=>mana.mod.sound.speech.stats.history.map(v=>v.name))).toEqual(before.history);
@@ -131,6 +138,7 @@ test('Japanese chant keeps its long delivery in both forms and shouts only on re
   await page.keyboard.down('j');await expect.poll(()=>page.evaluate(()=>mana.mod.charging)).toBe(true);
   await page.getByRole('button',{name:'Mute',exact:true}).click();
   expect(await page.evaluate(()=>mana.mod.sound.speech.stats.speaking)).toBe(false);
+  expect(await page.evaluate(()=>mana.mod.sound.stats.loops)).toEqual([]);
   await page.evaluate(()=>mana.pause());await page.keyboard.up('j');
   expect(await page.evaluate(()=>mana.mod.sound.speech.stats.speaking)).toBe(false);
 });

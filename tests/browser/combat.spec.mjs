@@ -14,7 +14,7 @@ test('real native Rabites receive punch, travelling beam and ki damage, launch a
     const base=mana.snapshot(),results=[];
     for(const technique of ['punch','beam','ki']){
       mana.restore(base);mana.run(5,[7]);mana.run(3);
-      const enemy=mana.mod.entities().find(e=>e.index===3),before={...enemy},gold=mana.read16(0xcc6a),xp=mana.read16(0xe18d);
+      const enemy=mana.mod.entities().find(e=>e.index===3),before={...enemy},gold=mana.read16(0xcc6a),xp=mana.read16(0xe18d),sounds=mana.mod.combatSound.suppressed;
       if(technique==='beam'){
         mana.run(110,[0]);
         const target=mana.mod.entities()[3],player=mana.mod.status,dx=target.x-player.x,dy=target.y-player.y;
@@ -31,11 +31,11 @@ test('real native Rabites receive punch, travelling beam and ki damage, launch a
         const launch=mana.mod.knockbacks.find(hit=>hit.base===e.base);if(launch)launchOrigin={x:launch.x,y:launch.y};
         if(launchOrigin)maxDisplacement=Math.max(maxDisplacement,Math.hypot(e.x-launchOrigin.x,e.y-launchOrigin.y));
       }
-      results.push({technique,zero,inactive,queued,number,maxDisplacement,canAttack:mana.mod.canAttack,gold:mana.read16(0xcc6a)-gold,xp:mana.read16(0xe18d)-xp});
+      results.push({technique,zero,inactive,queued,number,maxDisplacement,dbzImpacts:mana.mod.combatSound.suppressed-sounds,canAttack:mana.mod.canAttack,gold:mana.read16(0xcc6a)-gold,xp:mana.read16(0xe18d)-xp});
     }
     return results;
   });
-  for(const result of results){expect(result.zero,result.technique).toBe(true);expect(result.inactive,result.technique).toBe(true);expect(result.maxDisplacement,result.technique).toBeGreaterThan(25);expect(result.canAttack).toBe(true);expect(result.gold).toBe(2);expect(result.xp).toBeGreaterThan(0);}
+  for(const result of results){expect(result.zero,result.technique).toBe(true);expect(result.inactive,result.technique).toBe(true);expect(result.maxDisplacement,result.technique).toBeGreaterThan(25);expect(result.canAttack).toBe(true);expect(result.gold).toBe(2);expect(result.xp).toBeGreaterThan(0);expect(result.dbzImpacts).toBeGreaterThan(0);}
 });
 
 test('Mantis Ant takes the native lethal damage path and still reaches the original rescue event',async({page})=>{

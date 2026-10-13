@@ -23,7 +23,7 @@ Your disk ROM remains untouched. Checkpoints stay in this browser; select the sa
 | Enter | SNES Start; accepts the name |
 | J / Space / Z | Tap for a three-hit combo; hold to charge Kamehameha; release to fire |
 | C | Hold for a three-shot ki barrage |
-| Shift + C | Teleport beside one enemy and stay there; press again for the next |
+| Shift + C | Teleport onto clear ground beside one enemy; camera follows; press again for the next |
 | E | Native confirm / talk |
 | Q | Original sprite ring; also closes it |
 | X | Native back / cancel; in flight, ascend |
@@ -33,7 +33,7 @@ Your disk ROM remains untouched. Checkpoints stay in this browser; select the sa
 | F | Native world flight / landing |
 | Escape | Pause / resume the emulator |
 
-In menus and dialogue, attack is the original confirm button and never charges a beam. E always talks/confirms without charging. Move and aim while charging at half speed. Shift flies over bushes and breakable rocks at three times walking speed (four times in Super Saiyan); each map's native walls, cliffs, doors and edges still constrain movement. Release over clear ground to land; over a low obstacle, Goku hovers until you steer clear. Whip pads automatically float the party across. Rapid taps buffer a combo ending with a kick. Super Saiyan charges twice as fast and fires faster, stronger attacks; poison cancels it and prevents transforming until cured. During world flight, hold J to charge and release to fire, F toggles descent/landing, X ascends, up/down travel and left/right turn. Touch buttons are available on touch devices. Save/Restore checkpoint preserves SNES state, Goku's action timing and projectiles in this browser.
+In menus and dialogue, attack is the original confirm button and never charges a beam. E always talks/confirms without charging. Move and aim while charging at half speed. Shift flies over bushes, breakable rocks and short forest riverbanks at three times walking speed (four times in Super Saiyan). Riverbanks require usable ground on both sides; room walls, doors and map edges still constrain movement. Release over clear ground to land; over a low obstacle, Goku hovers until you steer clear. Whip pads automatically float the party across. Rapid taps buffer a combo ending with a kick. Super Saiyan charges twice as fast and fires faster, stronger attacks; poison cancels it and prevents transforming until cured. During world flight, hold J to charge and release to fire, F toggles descent/landing, X ascends, up/down travel and left/right turn. Touch buttons are available on touch devices. Save/Restore checkpoint preserves SNES state, Goku's action timing and projectiles in this browser.
 
 ### Gamepad and touch
 
@@ -61,9 +61,9 @@ Pausing, switching tabs, disconnecting a controller, or cancelling a touch clear
 
 - The bridge, fall and approach to the sword use the original boy throughout. During the sword-pull grunt, Goku dives in, obliterates the boy and sword, and leaves a large crater. The original ghost reluctantly recruits him. Native dialogue, quake, flash and sound drive the scene; Goku takes over permanently at impact, including his name, HUD/ring portraits, status and Action Grid sprites. Super Saiyan swaps his artwork and speeds up charging/punching.
 - Goku's pixels enter the native PPU sprite layer, so roofs, tree canopies, NPC depth, dialogue, menu windows, brightness and fades follow the original renderer. Full 32-pixel frames retain his boots. The source sheet's left/right rows are correctly mapped.
-- Punches, ki blasts and travelling beams feed the original damage queue, preserving native hit sounds, damage numbers, XP, gold and boss defeat events. Ordinary enemies and their death explosions follow a launch arc. Boss bodies stay in place for their original event scripts.
+- Punches, ki blasts and travelling beams feed the original damage queue, preserving damage numbers, XP, gold and boss defeat events, with DBZ impact sounds for Goku. Ordinary enemies and their death explosions follow a launch arc. Boss bodies stay in place for their original event scripts.
 - Walk/run cycles follow distance travelled and stop at walls. Attacks start their own animation clocks; damage begins on the striking frame. Full-frame pivots, hand sockets, airborne height and native fall/recovery phases keep his feet, palms and effects aligned. Transformation uses the actual base-to-gold source sequence.
-- Charge, beam, impact and aura art comes from original Lucent Beam, Thunderbolt and Lucid Barrier cells decoded at runtime. Super Saiyan charge lightning changes paths and arcs into nearby surfaces and actors. Kamehameha stays blue and breaks plants, rocks and destructible barriers through native tilemap/collision redraw. A continuous, slower Japanese “ka… me… ha… me…” performance keeps its long vowels in both forms, with the final shout on release. Synthesized ki/impact sounds accompany the native music. Goku follows native status palettes; snowman and moogle transformations remain native.
+- Charge, beam, impact and aura art comes from original Lucent Beam, Thunderbolt and Lucid Barrier cells decoded at runtime. Super Saiyan charge lightning changes paths and arcs into nearby surfaces and actors. Kamehameha stays blue and breaks plants, rocks and destructible barriers through native tilemap/collision redraw. A continuous, slower Japanese “ka… me… ha… me…” performance keeps its long vowels in both forms, with the final shout on release. The quieter Japanese vocal stem plays independently of a continuous DBZ charging loop, which lasts as long as you hold. Super Saiyan adds electrical crackle. DBZ samples cover punch swings, varied hits, kicks, ki shots, impacts, teleportation, transformation and flight; sound cues follow animation and contact frames, with limited overlap for fast barrages. Goku follows native status palettes; snowman and moogle transformations remain native.
 - **Senzu Beans** replace the Cup of Wishes in the original item table, native ring artwork and dialogue. They revive fallen allies or fully heal living, injured allies through the original item-use animation. Full-health characters cannot waste a bean.
 - Punches, ki blasts and Kamehameha activate elemental crystal orbs using their original puzzle events, including all seven Grand Palace orbs. Orbs receive activation instead of lethal damage.
 - F takes off directly, and the native item ring has an animated Goku **Fly** ability in the former Drum slot. Goku flies through takeoff, the original Mode 7 world, and landing. Scripted Flammie departures use the same handoff. The dragon rescue still progresses normally; a few lines acknowledge that Goku already flies. Landing bypasses the original BG3 dragon fly-by; Goku descends during the visible ground fade. Native landing restrictions remain except for the breakable Mana Tree cloud barrier.
@@ -102,7 +102,7 @@ Open **http://127.0.0.1:5173** and select your ROM. Optionally import it with th
 | `engine/mana-mod.js` | State gates, transformation, charged attack and enemy damage |
 | `engine/goku-animation.js` + `goku-animation-data.js` | Pose clocks and verified source cells, pivots and hand sockets |
 | `engine/input.js`, `gamepad.js`, `touch-controls.js` | Shared input ownership, standard gamepads and icon-only multitouch |
-| `engine/ki-sound.js` | Original sampled anime-style combat effects and charge loop |
+| `engine/ki-sound.js` + `native-combat-sound.js` | DBZ sample mixer, sustained energy loops and native impact handoff |
 | `engine/kamehameha-voice.js` | Continuous Japanese charge and separate release voice, with mute/pause cancellation |
 | `engine/charge-lightning.js` | Moving charge bolts with live map/object endpoints |
 | `engine/native-oam.js` | Native actor ownership and displayed sprite generation through DMA |
@@ -111,6 +111,7 @@ Open **http://127.0.0.1:5173** and select your ROM. Optionally import it with th
 | `engine/native-interaction.js` | Talk/confirm without Goku falling through to a native sword swing |
 | `engine/native-plants.js` | Original destructible map tiles and native redraw |
 | `engine/native-flight.js` + `native-local-flight.js` | Direct world flight, local hover, collision and landing |
+| `engine/native-teleport.js` | Clear-ground teleport destinations, terrain handoff, companion gathering and native camera streaming |
 | `engine/native-gap-flight.js` | Native party crossings without whip equipment or fastening |
 | `engine/native-orbs.js` | Physical/ki hits activate each orb's original puzzle script |
 | `engine/flight-dialogue.js` | Bounded native quest text and Fly item label |

@@ -3,7 +3,9 @@
   "title": "Son Goku - Kame Hame Ha [Original]",
   "credit": "Japanese Dragon Ball performance; excerpt shared by Carlos on TonosFrikis (2014-06-05).",
   "sha256": "c5e9869ad3cb8fc5fc4cd1e6f5e60ce38ec35c82bd4d0270346acbbe60854f53",
-  "adaptation": "Continuous dramatic charge, followed by a separately triggered release. Natural vowels retained; pitch-preserving slowdown, gentle denoise/EQ/compression and edge fades. Charge delivery has the same pace in both forms.",
+  "vocalStemSha256": "b5ef1ad31ea9c1d0727a01c0c7d9600fb158fdf4f01aea70d0401148d6ae5d34",
+  "separation": "Demucs htdemucs --two-stems=vocals; voice isolated from the original mixed recording. Some residual effects may remain in the learned vocal stem.",
+  "adaptation": "Continuous dramatic charge, followed by a separately triggered release. Natural vowels retained; pitch-preserving slowdown, EQ/compression and edge fades. Charge delivery has the same pace in both forms. Energy is supplied by a separate looping DBZ effect, not the voice file.",
   "edits": [
     {
       "name": "charge",

@@ -74,6 +74,33 @@ test('a released ki burst finishes three alternating palm shots without starting
   step(1<<17);step(0,20);assert.deepEqual(hands,[0,1,0]);
 });
 
+test('DBZ cues follow actual strike, palm emission and beam-contact frames',()=>{
+  for(const superSaiyan of[false,true]){
+    const {mod,step,enemy}=setup({superSaiyan,power:false}),events=[];
+    mod.playSound=name=>events.push({name,frame:mod.frame,age:mod.action?.age});
+    enemy(3,228,200,20000);step(1);step();const released=mod.frame;
+    assert.deepEqual(events.map(e=>e.name),['swing']);
+    step(0,superSaiyan?1:2);
+    assert.equal(events.at(-1).name,'hit');assert.equal(events.at(-1).frame-released,superSaiyan?1:2);
+    step(0,20);events.length=0;step(1<<17);assert.equal(events.length,0);
+    step(0,12);assert.equal(events.filter(e=>e.name==='blast').length,3);
+    assert.ok(events.filter(e=>e.name==='impact').every(e=>e.frame>events.find(e=>e.name==='blast').frame));
+    step(0,20);events.length=0;enemy(3,330,200,20000);mod.startCharge();mod.charge=90;mod.releaseCharge();
+    assert.deepEqual(events.map(e=>e.name),['charge','beam']);step(0,10);
+    assert.ok(events.find(e=>e.name==='impact').frame>events.find(e=>e.name==='beam').frame);
+  }
+});
+
+test('world-flight landing cue waits for the visible descent to reach ground level',()=>{
+  const {mod,snes,step}=setup(),cues=[];
+  snes.ppu.brightness=15;mod.ownership={ppuOwners:[{base:0xe000,kind:'body'}]};
+  mod.flightTransition={kind:'landing',age:0};mod.playSound=name=>cues.push({name,age:mod.flightTransition?.age});
+  snes.ppu.forcedBlank=true;step(0,10);assert.equal(mod.flightTransition.age,0);assert.deepEqual(cues,[]);
+  snes.ppu.forcedBlank=false;step(0,23);assert.deepEqual(cues,[]);assert.equal(mod.motion.pose().extraLift,3);
+  step();assert.equal(mod.motion.pose().extraLift,0);assert.deepEqual(cues,[{name:'landing',age:24}]);
+  step(0,10);assert.equal(cues.length,1);
+});
+
 test('beam damage follows the visible front, strikes once, and ignores targets outside its width',()=>{
   const {mod,step,enemy}=setup({power:false}),near=enemy(3,300,200,1000),far=enemy(4,480,200,1000),outside=enemy(5,320,280,1000);
   mod.write16(0xe198,30);mod.startCharge();mod.charge=90;mod.releaseCharge();

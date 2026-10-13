@@ -25,8 +25,8 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npx playwright install --with-deps chromium
-      - name: Check public ROM chooser and phone layouts
-        run: npx playwright test tests/browser/release.spec.mjs tests/browser/controls.spec.mjs --grep 'public subdirectory|icon-only'
+      - name: Check public ROM chooser, phone layouts and DBZ audio
+        run: npx playwright test tests/browser/release.spec.mjs tests/browser/controls.spec.mjs tests/browser/sound.spec.mjs --grep 'public subdirectory|icon-only|DBZ flight'
       - uses: actions/upload-pages-artifact@v4
         if: github.event_name != 'pull_request'
         with:

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {synthesizeKiSound,durations} from '../engine/ki-sound.js';
+import {readFileSync} from 'node:fs';
+import {synthesizeKiSound,durations,cues} from '../engine/ki-sound.js';
 
 test('ki sound samples are finite, bounded, distinct and deterministic in both forms',()=>{
   const signatures=new Set();
@@ -12,4 +13,20 @@ test('ki sound samples are finite, bounded, distinct and deterministic in both f
     signatures.add(Array.from(pcm.slice(10,30)).join(','));
   }
   assert.ok(signatures.size>=Object.keys(durations).length);
+});
+
+test('every DBZ cue has a bounded prepared sample; sustained beds contain no silent loop seam',()=>{
+  const root=new URL('../assets/audio/dbz/',import.meta.url),manifest=JSON.parse(readFileSync(new URL('manifest.json',root)));
+  for(const clip of new Set(Object.values(cues).flatMap(c=>c.clips))){
+    const entry=manifest.clips.find(c=>c.name===clip);assert.ok(entry,clip);
+    assert.match(entry.sourceUrl,/^https:\/\/soundsverse.com\//);assert.equal(entry.sha256.length,64);
+    const b=readFileSync(new URL(entry.file,root));assert.equal(b.toString('ascii',0,4),'RIFF');assert.equal(b.readUInt32LE(24),manifest.rate);
+    const a=Array.from({length:(b.length-44)/2},(_,i)=>b.readInt16LE(44+i*2)/32768),peak=Math.max(...a);
+    assert.ok(peak<=.801);assert.ok(Math.min(...a)>=-.801);
+    if(entry.loop){
+      for(let i=0;i<a.length-3200;i+=1600){const chunk=a.slice(i,i+3200),rms=Math.sqrt(chunk.reduce((sum,x)=>sum+x*x,0)/chunk.length);assert.ok(rms>.025,`${clip} has a silent section`);}
+      const differences=a.slice(1).map((v,i)=>Math.abs(v-a[i])).sort((a,b)=>a-b);
+      assert.ok(Math.abs(a[0]-a.at(-1))<differences[Math.floor(differences.length*.999)],`${clip} discontinuity at loop point`);
+    }else{assert.equal(a[0],0);assert.equal(a.at(-1),0);}
+  }
 });

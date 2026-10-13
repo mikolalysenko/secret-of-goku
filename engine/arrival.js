@@ -9,7 +9,13 @@ export function createArrival(snes,mod){
   const state={phase:'prologue',ticks:0,arrived:false,started:false,crater:false};
   const pointer=()=>mod.read16(0xd1)|(mod.read8(0xd3)<<16);
   const setPointer=address=>{mod.write16(0xd1,address);mod.write8(0xd3,address>>16);};
-  const setPhase=phase=>{if(state.phase!==phase){state.phase=phase;state.ticks=0;}else state.ticks++;};
+  const setPhase=phase=>{
+    if(state.phase!==phase){
+      state.phase=phase;state.ticks=0;
+      if(phase==='descent')mod.playSound?.('flight');
+      if(phase==='impact')mod.playSound?.('impact');
+    }else state.ticks++;
+  };
   const nativeProgress=()=>mod.read8(0xcf10)>0&&(
     ((mod.read8(0xe000)&1)!==0&&[0x5c,0xa8,0xc0,0,0x5c,0xcf,0xc1,0].every((v,i)=>mod.read8(0x100+i)===v))||
     mod.nativeFlight||(!mod.flight&&mod.read8(0xe4)===1&&mod.read8(0xe5)===1&&(mod.read8(0xe000)&1)!==0));

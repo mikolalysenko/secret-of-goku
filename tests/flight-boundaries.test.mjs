@@ -60,3 +60,20 @@ test('map size, collision layer and live obstacle changes immediately alter flig
   word(0xe002,119);ram[0x1e]=8;cpu.br[4]=0xd651;cpu.cycle();assert.equal(ram[0x1e],1,'clamped before wrap');
   word(0xc0,64);assert.equal(hook.canLand(80,40),false,'new map has its own bounds');
 });
+
+test('flight can change terrain height, and forest banks require usable ground on both sides',()=>{
+ const {hook,ram,word,tile,phase,cpu}=fixture();
+ ram[0xe00b]=1;ram.set([2,0,0,0],0x1b800);
+ assert.equal(hook.canLand(25,40),false);assert.equal(hook.canFly(25,40),true,'fly between native height bands');
+ assert.equal(hook.canLand(25,40,0,2),true,'teleport checks the target terrain, not Goku’s old terrain');
+ const rom=new Uint8Array(0x90000);rom[0x80002]=2;
+ // This fixture needs cartridge art metadata to distinguish banks from trees.
+ const native=createNativeLocalFlight({ram,cpu,cart:{data:rom}},{active:()=>true,phase:true});
+ ram.set([3,0,0,0],0x1b800+62*4);ram.set([0x73,0,0,0],0x1b800+186*4);
+ for(let y=0;y<6;y++)tile(2,y,62);
+ assert.equal(native.canFly(40,40),true,'a thin riverbank between two shores');
+ assert.equal(native.canLand(40,40),false,'stay airborne over the rock face');
+ for(let y=0;y<6;y++)for(let x=3;x<8;x++)tile(x,y,186);
+ assert.equal(native.canFly(40,40),false,'the same bank art at the forest/void boundary stays closed');
+ native.dispose();
+});

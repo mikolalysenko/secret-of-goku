@@ -1,5 +1,5 @@
-// Original, deterministic sampled effects inspired by anime ki combat.
-// The Japanese chant uses a separate, cancellable sample voice.
+// DBZ sample playback, with a deterministic emergency synth fallback.
+// The Japanese chant uses a separate, cancellable vocal stem.
 import {createKamehamehaVoice} from './kamehameha-voice.js';
 const TAU=Math.PI*2;
 export const durations={swing:.12,hit:.24,blast:.19,beam:1.05,charged:.21,transform:.9,teleport:.16,teleportIn:.13,flight:.24,charge:1};
@@ -52,44 +52,110 @@ export function synthesizeKiSound(name,{rate=22050,superSaiyan=false}={}){
   return data;
 }
 
+// Short source effects are independent from the vocal stem. Animation cues
+// select one-shots; held states own seamless loops. The synth above is only a
+// network-failure fallback so offline failures never leave a charge silent.
+export const cues={
+ swing:{clips:['swing'],gain:.36,cap:2},hit:{clips:['hit-1','hit-2','hit-3'],gain:.64,cap:3},
+ kick:{clips:['kick'],gain:.70,cap:2},blast:{clips:['blast'],gain:.38,cap:5},impact:{clips:['impact'],gain:.48,cap:3},
+ beam:{clips:['beam'],gain:.80,cap:1},charged:{clips:['charged'],gain:.42,cap:1},
+ transform:{clips:['transform'],gain:.72,cap:1},revert:{clips:['revert'],gain:.50,cap:1},
+ teleport:{clips:['teleport'],gain:.74,cap:2},teleportIn:{clips:['teleport'],gain:.46,cap:2},
+ flight:{clips:['flight'],gain:.48,cap:1},landing:{clips:['landing'],gain:.36,cap:1},
+ charge:{clips:['charge'],gain:.55,loop:true},aura:{clips:['aura'],gain:.30,loop:true},air:{clips:['air'],gain:.25,loop:true},
+};
+const fallback={kick:'hit',impact:'hit',revert:'transform',landing:'flight',aura:'charge',air:'charge'};
 export function createKiSound(mod){
   const speech=createKamehamehaVoice(mod);
-  let queue=[],context=null,master=null,charge=null,buffers=new Map();
-  const voices=new Set(),stats={played:0,last:null,charge:false};
-  function stopCharge(){if(charge){try{charge.source.stop();}catch{}charge=null;}stats.charge=false;}
-  function stop(){stopCharge();speech.clear();for(const source of voices){try{source.stop();}catch{}}voices.clear();}
-  function buffer(name,superSaiyan){
-    const key=name+':'+superSaiyan;
-    if(!buffers.has(key)){const samples=synthesizeKiSound(name,{superSaiyan}),b=context.createBuffer(1,samples.length,22050);b.copyToChannel(samples,0);buffers.set(key,b);}
-    return buffers.get(key);
+  let queue=[],context=null,master=null,compressor=null,decoding=null,buffers=new Map(),fallbackBuffers=new Map();
+  const voices=new Set(),tails=new Set(),loops=new Map(),variants=new Map(),lastCue=new Map();
+  const stats={ready:false,error:null,played:0,last:null,charge:false,loops:[],history:[]};
+  const data=Promise.all([...new Set(Object.values(cues).flatMap(c=>c.clips))].map(async name=>{
+    const response=await fetch(new URL(`../assets/audio/dbz/${name}.wav`,import.meta.url));
+    if(!response.ok)throw Error(`DBZ effect unavailable: ${name}`);return[name,await response.arrayBuffer()];
+  })).catch(error=>{stats.error=error.message;return[];});
+  function stopVoice(v,when=0,fade=0){
+    if(!v)return;voices.delete(v);
+    try{
+      if(fade&&context?.state==='running'){
+        tails.add(v);
+        const time=Math.max(context.currentTime,when);v.gain.gain.cancelScheduledValues(time);
+        v.gain.gain.setValueAtTime(v.gain.gain.value,time);v.gain.gain.linearRampToValueAtTime(0,time+fade);v.source.stop(time+fade+.005);
+      }else{tails.delete(v);v.source.stop();v.source.disconnect();v.gain.disconnect();}
+    }catch{}
   }
-  function voice(name,superSaiyan,when,loop=false){
-    const source=context.createBufferSource(),gain=context.createGain();source.buffer=buffer(name,superSaiyan);source.loop=loop;gain.gain.value=loop?.16:1;
-    source.connect(gain);gain.connect(master);voices.add(source);source.onended=()=>{voices.delete(source);source.disconnect();gain.disconnect();};source.start(when);
-    stats.played++;stats.last=name;return{source,gain};
+  function stopLoop(name,when=0,fade=0){stopVoice(loops.get(name),when,fade);loops.delete(name);}
+  function stop(){for(const v of new Set([...voices,...tails]))stopVoice(v);loops.clear();stats.charge=false;stats.loops=[];speech.clear();}
+  function buffer(clip,name,superSaiyan){
+    if(buffers.has(clip))return buffers.get(clip);
+    const synth=fallback[name]||name,key=synth+':'+superSaiyan;
+    if(!fallbackBuffers.has(key)){const pcm=synthesizeKiSound(synth,{superSaiyan}),b=context.createBuffer(1,pcm.length,22050);b.copyToChannel(pcm,0);fallbackBuffers.set(key,b);}
+    return fallbackBuffers.get(key);
+  }
+  function voice(name,when,superSaiyan=false,frame=mod.frame){
+    const cue=cues[name],variant=variants.get(name)||0;variants.set(name,variant+1);
+    const peers=[...voices].filter(v=>v.name===name);while(peers.length>=(cue.cap||1))stopVoice(peers.shift(),when,.012);
+    // Bound overlap during continuous SSJ barrages, without delaying a shot.
+    while([...voices].filter(v=>!v.loop).length>=12)stopVoice([...voices].find(v=>!v.loop),when,.012);
+    const source=context.createBufferSource(),gain=context.createGain(),clip=cue.clips[variant%cue.clips.length];
+    source.buffer=buffer(clip,name,superSaiyan);source.loop=!!cue.loop;
+    source.playbackRate.value=(name==='hit'||name==='swing'||name==='blast')?[1,1.035,.975][variant%3]:1;
+    gain.gain.value=cue.loop?0:cue.gain;source.connect(gain);gain.connect(master);
+    const v={source,gain,name,loop:!!cue.loop};voices.add(v);
+    source.onended=()=>{voices.delete(v);tails.delete(v);source.disconnect();gain.disconnect();};source.start(when);
+    stats.played++;stats.last=name;stats.history.push({name,clip,frame,when,sampled:buffers.has(clip)});if(stats.history.length>120)stats.history.shift();return v;
+  }
+  function loop(name,on,level,when,rate=1){
+    if(!on){stopLoop(name,when,.065);return;}
+    if(!loops.has(name))loops.set(name,voice(name,when));
+    const v=loops.get(name);v.gain.gain.setTargetAtTime(cues[name].gain*level,when,.055);v.source.playbackRate.setTargetAtTime(rate,when,.08);
   }
   const api={
-    stats,speech,
-    play(name){if(name==='charge')return;if(durations[name]){queue.push({name,frame:mod.frame,superSaiyan:mod.options.superSaiyan});if(queue.length>12)queue.shift();}},
+    stats,speech,cues,
+    play(name){
+      if(!cues[name]||cues[name].loop)return;
+      if((name==='hit'||name==='impact')&&mod.frame-(lastCue.get(name)??-100)<2)return;
+      lastCue.set(name,mod.frame);queue.push({name,frame:mod.frame,superSaiyan:mod.options.superSaiyan});if(queue.length>24)queue.shift();
+    },
     update(ctx,audible,when){
       if(!audible||!ctx||ctx.state!=='running'){queue=[];stop();return;}
-      if(ctx!==context){stop();context=ctx;buffers=new Map();master=ctx.createGain();master.gain.value=.38;master.connect(ctx.destination);}
-      when=Math.max(ctx.currentTime,when??ctx.currentTime);
-      let beam=false;
-      for(const item of queue)if(mod.frame-item.frame<5){voice(item.name,item.superSaiyan,when);beam||=item.name==='beam';}
-      queue=[];
-      speech.update(ctx,true,when,beam);
-      if(mod.charging&&(mod.canAttack||mod.worldFlight)){
-        if(!charge)charge=voice('charge',false,when,true);
-        const strength=Math.min(1,mod.charge/(mod.options.superSaiyan?45:90));
-        charge.source.playbackRate.setTargetAtTime(.7+strength*1.9,ctx.currentTime,.035);
-        charge.gain.gain.setTargetAtTime(.16+strength*.38,ctx.currentTime,.035);stats.charge=true;
-      }else stopCharge();
+      if(ctx!==context){
+        stop();master?.disconnect();compressor?.disconnect();context=ctx;buffers=new Map();fallbackBuffers=new Map();stats.ready=false;
+        master=ctx.createGain();master.gain.value=.55;compressor=ctx.createDynamicsCompressor();
+        compressor.threshold.value=-10;compressor.knee.value=12;compressor.ratio.value=6;compressor.attack.value=.003;compressor.release.value=.16;
+        master.connect(compressor);compressor.connect(ctx.destination);
+        decoding=data.then(async clips=>{
+          const decoded=await Promise.all(clips.map(async([n,b])=>[n,await ctx.decodeAudioData(b.slice(0))]));
+          if(context===ctx){buffers=new Map(decoded);stats.ready=buffers.size===17;
+            // Replace a fallback loop if the first gesture preceded decoding.
+            for(const name of [...loops.keys()])stopLoop(name,ctx.currentTime,.04);
+          }
+        }).catch(error=>{stats.error=error.message;});
+      }
+      when=Math.max(ctx.currentTime,when??ctx.currentTime);let beam=false;
+      for(const item of queue)if(mod.frame-item.frame<5){voice(item.name,when,item.superSaiyan,item.frame);beam||=item.name==='beam';}
+      queue=[];speech.update(ctx,true,when,beam);
+      const charging=mod.charging&&(mod.canAttack||mod.worldFlight),strength=Math.min(1,mod.charge/(mod.options.superSaiyan?45:90));
+      // Never key energy to the chant's duration: an indefinite hold keeps its
+      // own rumble, with a small pitch rise instead of a sped-up voice/whine.
+      loop('charge',charging,.48+strength*.52,when,.94+strength*.12);
+      loop('aura',charging&&mod.options.superSaiyan&&strength>.35,strength,when);
+      loop('air',mod.options.enabled&&mod.gokuActive&&(mod.localFlight||mod.worldFlight||mod.gapFlight?.active),charging?.35:1,when);
+      stats.charge=loops.has('charge');stats.loops=[...loops.keys()];
+    },
+    get ready(){return decoding||data;},
+    get output(){return compressor;},
+    connect(node){compressor?.connect(node);},
+    cancelCombat(){
+      queue=queue.filter(v=>!['swing','blast','beam','charged'].includes(v.name));
+      stopLoop('charge');stopLoop('aura');speech.clear();
+      for(const v of [...voices])if(v.name==='beam')stopVoice(v,context?.currentTime,.035);
+      stats.charge=false;stats.loops=[...loops.keys()];
     },
     snapshot(){return{queue:structuredClone(queue)};},
-    restore(saved){stop();queue=saved?.queue?structuredClone(saved.queue):[];},
-    clear(){queue=[];stop();},
-    dispose(){api.clear();speech.dispose();master?.disconnect();buffers.clear();},
+    restore(saved){stop();lastCue.clear();variants.clear();queue=saved?.queue?structuredClone(saved.queue):[];},
+    clear(){queue=[];lastCue.clear();stop();},
+    dispose(){api.clear();speech.dispose();master?.disconnect();compressor?.disconnect();buffers.clear();},
   };
   mod.playSound=name=>api.play(name);mod.sound=api;return api;
 }

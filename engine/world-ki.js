@@ -87,7 +87,7 @@ export function createWorldKi(snes,mod){
         if(!shot.hit&&shot.target&&shot.age>=12){
           shot.hit=true;
           if(shot.strength>=.85){
-            lastHit=shot.target.id;explosion={...shot.target,age:0};mod.playSound('hit');
+            lastHit=shot.target.id;explosion={...shot.target,age:0};mod.playSound('impact');
             if(lastHit==='mana-tree-barrier'){
               // AF tests the high byte of $E2: bit 6 in $E3. Preserve every
               // boss, seed and Pure Land flag; this only opens world landing.

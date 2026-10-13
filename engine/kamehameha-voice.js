@@ -22,7 +22,7 @@ export function createKamehamehaVoice(mod){
   function clear(){stopChant();stopVoice(release);release=null;stats.speaking=false;}
   function play(name,when){
     const buffer=buffers.get(name);if(!buffer)return null;
-    const source=context.createBufferSource(),gain=context.createGain();source.buffer=buffer;gain.gain.value=.82;
+    const source=context.createBufferSource(),gain=context.createGain();source.buffer=buffer;gain.gain.value=name==='release'?.36:.32;
     source.connect(gain);gain.connect(context.destination);
     const voice={source,gain};source.onended=()=>{source.disconnect();gain.disconnect();if(chant===voice)chant=null;if(release===voice)release=null;stats.speaking=!!(chant||release);};
     source.start(when);stats.played++;stats.last=name;stats.speaking=true;
