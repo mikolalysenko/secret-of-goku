@@ -16,6 +16,8 @@ The title and opening run from the beginning. The gold title reads **Secret of G
 
 Your disk ROM remains untouched. Checkpoints stay in this browser; select the same ROM again and choose **Restore checkpoint** to continue.
 
+For quick testing, use **Controls & game options → After title** or **After sword / pod crash**. The first use builds the checkpoints locally from your ROM; later jumps restore instantly. They have separate slots from your manual save. [Start with Goku ready to play](https://mikolalysenko.github.io/secret-of-goku/?start=sword) or [open the name menu after the title](https://mikolalysenko.github.io/secret-of-goku/?start=title). Locally, use the same `?start=sword` or `?start=title` on `http://127.0.0.1:5173/`.
+
 | Input | Action |
 | --- | --- |
 | WASD / arrows | Native movement and menu navigation |
@@ -27,10 +29,11 @@ Your disk ROM remains untouched. Checkpoints stay in this browser; select the sa
 | E | Native confirm / talk |
 | Q | Original sprite ring; also closes it |
 | X | Native back / cancel; in flight, ascend |
+| Backspace | Delete a letter in the name menu; native back / cancel |
 | R | Super Saiyan toggle during gameplay |
 | Tab | Switch the controlled party member |
 | , / . | Native L / R buttons |
-| F | World flight / landing; punch through a dungeon ceiling |
+| F | World flight / landing; punch through indoor ceilings |
 | Escape | Pause / resume the emulator |
 
 In menus and dialogue, attack is the original confirm button and never charges a beam. E always talks/confirms without charging. Move and aim while charging at half speed. Shift flies over bushes, breakable rocks and short forest riverbanks at three times walking speed (four times in Super Saiyan). Riverbanks require usable ground on both sides; room walls, doors and map edges still constrain movement. Release over clear ground to land; over a low obstacle, Goku hovers until you steer clear. Whip pads automatically float the party across. Rapid taps buffer a combo ending with a kick. Super Saiyan charges twice as fast and fires faster, stronger attacks; poison cancels it and prevents transforming until cured. During world flight, hold J to charge and release to fire, F toggles descent/landing, X ascends, up/down travel and left/right turn. Touch buttons are available on touch devices. Save/Restore checkpoint preserves SNES state, Goku's action timing and projectiles in this browser.
@@ -48,7 +51,7 @@ Connect an Xbox, PlayStation, or other controller that the browser exposes with 
 | Left bumper | Hold for fast local flight / world ascent |
 | Right bumper | Super Saiyan |
 | Left trigger | Instant Transmission |
-| Right trigger | World flight / land; burst through dungeon ceilings |
+| Right trigger | World flight / land; burst through indoor ceilings |
 | Menu / Start / Options | Start and resume |
 | View / Select / Share | Switch party member |
 | Right stick click | Pause / resume |
@@ -69,8 +72,13 @@ Pausing, switching tabs, disconnecting a controller, or cancelling a touch clear
 - Punches, ki blasts and Kamehameha activate elemental crystal orbs using their original puzzle events, including all seven Grand Palace orbs. Orbs receive activation instead of lethal damage.
 - F takes off directly, and the native item ring has an animated Goku **Fly** ability in the former Drum slot. Goku flies through takeoff, the original Mode 7 world, and landing. Scripted Flammie departures use the same handoff. The dragon rescue still progresses normally; a few lines acknowledge that Goku already flies. Landing bypasses the original BG3 dragon fly-by; Goku descends during the visible ground fade. Native landing restrictions remain except for the breakable Mana Tree cloud barrier.
 - **King Kai** makes at most one remark per Super Saiyan charge, after full power has been held for another 1.5 seconds. His warnings rotate between charges, on the ground and in Mode 7, with no extra complaint on release. They use the ROM's original font and window art, keep movement/charging live, and yield to real dialogue and menus.
-- **Ceiling escape:** press F, the touch rocket, or the gamepad right trigger inside a dungeon. Goku punches a jagged hole, blasts upward with native effects, and carries the party into world flight. Routes cover 185 rooms across 21 regions using original exterior doors; cutscenes, the Potos rescue and final battle arenas retain their locks. Checkpoints preserve holes and mid-escape animation.
+- **Ceiling escape:** press F, the touch rocket, or the gamepad right trigger inside a dungeon, palace, house, inn or shop. Goku punches a jagged hole and sends chunks of the roof flying as he blasts upward with the party. Routes cover 253 rooms using original exterior doors, including the Water Palace's peaceful rooms. He stays airborne throughout the transition to world flight. Live bosses, conversations, cutscenes and the Potos rescue retain their locks. Checkpoints preserve holes, debris timing and mid-escape animation.
 - **Dragon Ball quest:** the crash scatters seven Balls into the Mana Seeds and breaks the Sword's Fortress seal. Jema and Luka explain why the Fortress wakes early. Collect the Balls from Water, Earth, Wind, Fire, Light, Dark and Moon; the seed cases keep Mana flowing. Dryad is a person, not an eighth Ball. Collection notices and Luka's Advice show progress. Most NPC dialogue remains original. Selected conversations acknowledge Goku, the shattered Sword and the boy sheltered by the Mana Tree. Absent companions do not speak or stall scripted movement; early spell grants are retained for later recruitment. Area entry prerequisites support out-of-order visits without globally completing bosses.
+- **A deliberately bad decision:** before the Mana Beast, choose **Calm it** for the usual overpowered fight or **Feed seeds** because Goku wants a proper challenge. He offers seed energy while keeping the Dragon Balls for the wish. The fed Beast has 65,535 HP and takes one quarter of Goku's normal damage. Goku stops automatically healing, and glowing circles warn of eruptions; they grow and arrive faster below half boss health. Dash out before committing to a beam, or use Senzu Beans. Native damage, defeat and ending events still apply.
+- **A reason to visit palaces:** each Ball personally collected earns one **Mana Ward**, blocking one hit in the fed Beast fight. King Kai's emergency deliveries complete the wish but earn no shields. All seven visits give seven wards; rushing the finale gives none. Repeated visits cannot farm wards, and checkpoints preserve spent wards and attack timing.
+- **Power reveals:** the first fast hover defies the ghost's instruction to walk; the first Super Saiyan transformation lingers in a gold lightning burst while Goku explains his “serious hair.” Both remain available immediately. First-use banter pauses during Kamehameha, preserving the one-warning-per-charge limit.
+- **Collateral damage:** a strong aerial Kamehameha can hit towns or scar the landscape. Goku apologizes and promises to wish everyone back. Huge craters use the original Potos hole artwork in the Mode 7 surface, rotate with the planet, and persist through travel and checkpoints. The restoration wish brings people back; the craters stay.
+- Local flight ignores water currents and stair guidance, keeps full speed over both, and can land on them. Charging still halves flight speed. Solid walls, shaped corners and scripted doors retain their collision rules.
 - Potos villagers explicitly blame Goku for killing **Randi** and destroying the Mana Sword. Goku apologizes awkwardly, deliberately hops into the Mantis hole to rescue Elliott, and is banished as a very strong menace. The Elder's conversations are about Randi, rather than treating Goku as the child he raised.
 - Fully charge a wave to break Witch Castle’s three-person gate, Northtown Castle’s entrance, or Gold Tower’s lock. These run native events and rebuild the map; returning preserves the opened route.
 - Fly toward the Mana Tree clouds in the northwest, aim and release a fully charged wave to open the Pure Land landing zone early. This does not complete any Pure Land bosses.

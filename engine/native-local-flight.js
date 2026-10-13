@@ -5,6 +5,9 @@ const scenery={0:new Set([130,139,141,159]),2:new Set([130,131])};
 // Forest rock-bank faces. These can only be flown across when usable terrain
 // exists on BOTH sides of a short span; the same art also borders map voids.
 const forestBanks=new Set([1,2,4,6,9,14,17,18,19,20,22,23,25,30,31,33,34,35,36,38,39,46,47,49,50,51,52,54,55,58,59,60,61,62,63,65,66,67,68,70,71,72,73,74,75,76,77,78,79,80,81,83,84,86,87,88,89,90,91,94,96,97,135,137,158,159,174,175]);
+// C0:D359 dispatches 2x stair guidance and 3x currents/conveyors. These
+// modify walking velocity; they are floors, not collision or event triggers.
+const movementFloor=code=>(code&0xf0)===0x20||(code&0xf0)===0x30;
 export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=false}={}){
  const c=snes.cpu,r=snes.ram,priorCycle=c.cycle,word=a=>r[a]|r[a+1]<<8;
  const ground=()=>[0x5c,0xa8,0xc0,0,0x5c,0xcf,0xc1,0].every((v,i)=>r[0x100+i]===v)&&r[0xd0]===0&&(r[0xec]&0xfe)===0&&r[0x2c]===0&&!(r[0xed]&0x40)&&r[0xff]===0;
@@ -63,7 +66,7 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   const height=t.flags&7;
   if(height===3||(!air&&height>0&&height<3&&(height^terrain)===3))return false;
   // C1->0 is uncut tall grass, which is walkable in the original game.
-  return t.code===0||(t.code===0xc1&&t.replacement===0);
+  return t.code===0||movementFloor(t.code)||(t.code===0xc1&&t.replacement===0);
  }
  function footprint(x,y,l,air,terrain=r[0xe00b]&3){
   const {width,height}=bounds();if(width<16||height<16||x<8||x>width-8||y<8||y>height-8)return false;
@@ -84,6 +87,10 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
  let changed=0,phased=0,limited=0,recovered=0,anchor=null;
  c.cycle=function(){
   const pc=this.br[4];
+  // Keep native animation/terrain updates, but airborne Goku does not wade
+  // against a current or follow the stairs' forced walking axis. Charging on
+  // foot still uses the original terrain behavior.
+  if(this.cyclesLeft===0&&(this.r[1]&0x3f)===0&&pc===0xd359&&word(0x10)===0&&phasing()&&eligible()&&movementFloor(r[0xe048]))this.br[4]=0xd38e;
   if(this.cyclesLeft===0&&(this.r[1]&0x3f)===0&&(pc===0xd651||pc===0xd778)&&word(0x10)===0&&eligible()){
    const x=word(0xe002),y=word(0xe004);
    if(pc===0xd651){

@@ -18,21 +18,23 @@ export function createWorldKi(snes,mod){
     // Original Pure Land takeoff entry sits inside the AF landing tile patch.
     if(!(r[0xe3]&0x40))result.push({id:'mana-tree-barrier',x:rom[0x67a80+198*2]*16,y:rom[0x67a81+198*2]*16,radius:44});
     if(!fortressDestroyed&&r[0x8c]===0&&r[0xcf4e]<9)result.push({id:'mana-fortress',x:w(0x128),y:w(0x12a),radius:36});
-    return result;
+    return [...result,...(mod.worldScars?.targets()??[])];
   }
   function aim(){
     const mega=mod.options.superSaiyan&&mod.charge>=45;
     return targets().map(t=>({...t,...worldAim(position(),w(0xf6),t)}))
       .filter(t=>t.along>=8&&t.along<=(mega?1024:512)&&Math.abs(t.across)<=t.radius+(mega?80:20))
-      .sort((a,b)=>a.along-b.along)[0]??null;
+      .sort((a,b)=>(a.id.startsWith('town-')-b.id.startsWith('town-'))||a.along-b.along)[0]??null;
   }
   function screen(target){
     if(target.id==='mana-fortress'&&fortScreen&&mod.frame-fortScreen.frame<3)return{x:fortScreen.x,y:fortScreen.y};
     return{x:Math.round(128+target.across*128/Math.max(80,target.along)),y:Math.round(84+1600/Math.max(64,target.along))};
   }
   function fire(){
-    const strength=Math.min(1,mod.charge/(mod.options.superSaiyan?45:90)),target=aim();
+    const strength=Math.min(1,mod.charge/(mod.options.superSaiyan?45:90));
     const mega=mod.beamProfile(strength).mega;
+    const at=position(),angle=w(0xf6)*Math.PI/512,range=mega?640:420;
+    const target=aim()??{id:'landscape',x:(Math.round(at.x-Math.sin(angle)*range)+4096)&4095,y:(Math.round(at.y-Math.cos(angle)*range)+4096)&4095,along:range,across:0};
     shot={age:0,strength,mega,max:mega?72:32,super:mod.options.superSaiyan,target:target?{...target,screen:screen(target)}:null,end:target?screen(target):{x:128,y:45},hit:false};
     mod.charging=false;mod.charge=0;mod.action={kind:'airBeam',age:0,duration:shot.max,facing:3,super:mod.options.superSaiyan};
     mod.playSound('beam');
@@ -90,11 +92,13 @@ export function createWorldKi(snes,mod){
           shot.hit=true;
           if(shot.strength>=.85){
             lastHit=shot.target.id;explosion={...shot.target,mega:shot.mega,age:0};mod.playSound('impact');
+            mod.worldScars?.strike(shot.target,shot.mega);
             if(lastHit==='mana-tree-barrier'){
               // AF tests the high byte of $E2: bit 6 in $E3. Preserve every
               // boss, seed and Pure Land flag; this only opens world landing.
               treeBarrierBroken=true;r[0xe3]|=0x40;mod.log('The Mana Tree cloud barrier broke. Press F to land in the Pure Land.');
-            }else{fortressDestroyed=true;mod.log('The Fortress is breaking apart. The Mana Beast is coming!');}
+            }else if(lastHit==='mana-fortress'){fortressDestroyed=true;mod.log('The Fortress is breaking apart. The Mana Beast is coming!');}
+            else mod.log('The wave left a permanent crater on the world map.');
           }else mod.log('The wave was too weak. Charge the aerial Kamehameha fully.');
         }
         if(shot.age>(shot.max??32))shot=null;
@@ -128,7 +132,7 @@ export function createWorldKi(snes,mod){
       }
     },
     get status(){return{shot,explosion,fortressDestroyed,treeBarrierBroken,landingQueued,finaleQueued,lastHit,target:mod.worldFlight?aim():null};},
-    snapshot(){return structuredClone({shot,explosion,fortressDestroyed,treeBarrierBroken,landingQueued,finaleQueued,lastHit,fortScreen});},
-    restore(s){shot=s?.shot??null;explosion=s?.explosion??null;fortressDestroyed=!!s?.fortressDestroyed;treeBarrierBroken=s?.treeBarrierBroken??!!(r[0xe3]&0x40);landingQueued=!!s?.landingQueued;finaleQueued=!!s?.finaleQueued;lastHit=s?.lastHit??null;fortScreen=s?.fortScreen??null;},
+    snapshot(){return structuredClone({shot,explosion,fortressDestroyed,treeBarrierBroken,landingQueued,finaleQueued,lastHit,fortScreen,scars:mod.worldScars?.snapshot()});},
+    restore(saved){const s=saved?structuredClone(saved):null;shot=s?.shot??null;explosion=s?.explosion??null;fortressDestroyed=!!s?.fortressDestroyed;treeBarrierBroken=s?.treeBarrierBroken??!!(r[0xe3]&0x40);landingQueued=!!s?.landingQueued;finaleQueued=!!s?.finaleQueued;lastHit=s?.lastHit??null;fortScreen=s?.fortScreen??null;mod.worldScars?.restore(s?.scars);},
   };
 }

@@ -32,13 +32,13 @@ export function restore(snes,state){
   }
   apply(state.root,snes);
 }
-export async function checkpointStore(value){
+export async function checkpointStore(value,key='potos'){
   const db=await new Promise((resolve,reject)=>{
     const r=indexedDB.open('secret-of-goku-engine',1);r.onupgradeneeded=()=>r.result.createObjectStore('checkpoints');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);
   });
   try{return await new Promise((resolve,reject)=>{
     const tx=db.transaction('checkpoints',value===undefined?'readonly':'readwrite'),store=tx.objectStore('checkpoints');
-    const request=value===undefined?store.get('potos'):store.put(value,'potos');let result;
+    const request=value===undefined?store.get(key):store.put(value,key);let result;
     request.onsuccess=()=>{result=request.result;};tx.oncomplete=()=>resolve(result);tx.onerror=()=>reject(tx.error);
   });}finally{db.close();}
 }

@@ -36,6 +36,9 @@ export function createNativeTeleport(snes,mod,collision){
    mod.write16(base+2,landing.x);mod.write16(base+4,landing.y);r[base+11]=landing.terrain;
    r[base+6]=r[base+7]=r[base+0x2d]=r[base+0x45]=0;
   }
+  // Mode 7 boss arenas use fixed background/matrix setup, not the scrolling
+  // overworld tile ring. Uploading ordinary map rows can corrupt the Beast.
+  if(snes.ppu?.mode===7){pending=null;return;}
   pending={map:word(0xdc),layer:landing.layer,terrain:landing.terrain,
    x:clamp(landing.x-128,0,Math.max(0,word(0xc0)-256)),
    y:clamp(landing.y-112,0,Math.max(0,word(0xc2)-224))};

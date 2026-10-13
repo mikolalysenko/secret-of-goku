@@ -30,6 +30,13 @@ test('native conversations hide and pause telepathy; base Goku does not trigger 
   mod.canAttack=false;snes.ram[0xd0]=0x82;tick(300);assert.equal(radio.status.visible,false);assert.deepEqual(radio.snapshot(),before);
   mod.canAttack=true;snes.ram[0xd0]=0;mod.options.superSaiyan=false;radio.restore();tick(1000);assert.equal(radio.status.warning,0);
 });
+test('first-use power banter cannot add a second King Kai remark to a held charge',()=>{
+  const{mod,radio,tick}=radioFixture();mod.charging=false;
+  radio.say('KING KAI:New hair?',{kind:'power-intro'});tick();const before=radio.status.current.remaining;
+  mod.charging=true;tick(800);assert.equal(radio.status.warning,1);assert.equal(radio.status.current,null);assert.equal(radio.status.queued,1);
+  mod.charging=false;mod.action={kind:'beam'};tick(70);assert.equal(radio.status.current,null);
+  mod.action=null;tick();assert.equal(radio.status.current.remaining,before);assert.equal(radio.status.current.kind,'power-intro');
+});
 test('first-flight advice happens once and obsolete Fortress advice is discarded after destruction',()=>{
   const{mod,snes,radio,tick}=radioFixture();mod.worldFlight=true;snes.ram[0x2c]=128;mod.charging=false;tick();assert.equal(radio.status.firstFlight,true);assert.equal(radio.status.queued,3);
   assert.equal(snes.ppu.getColor(false,16,160)[0],0x2c00);assert.equal(snes.ppu.getColor(false,16,16)[0],17,'The aerial beam and sky stay visible');

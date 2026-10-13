@@ -222,6 +222,7 @@ class ManaSpriteLayer {
     const shadow=m.flightShadow;
     if(flight&&shadow){const cx=(shadow.minX+shadow.maxX)/2,cy=(shadow.minY+shadow.maxY)/2;for(let yy=-2;yy<=2;yy++)for(let xx=-8;xx<=8;xx++)if(xx*xx/64+yy*yy/4<=1)this.pixel(cx+xx,cy+yy,this.rgb(40,56,48));}
     m.ceiling?.draw(this);
+    m.challenge?.draw(this);m.powerIntro?.draw(this);
     this.blit(pose.sheet,column,row,x,y,size,size,pose.legs??null);
     // Follow original poison/stone/ghost/flash palette changes before the PPU
     // applies its own window, water blend and brightness operations.

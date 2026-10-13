@@ -1,5 +1,27 @@
 import {test,expect} from '@playwright/test';
 import {existsSync} from 'node:fs';
+
+test('Backspace clears the first name letter and empty names survive checkpoint restoration',async({page})=>{
+  test.setTimeout(90000);test.skip(!existsSync('.local/rom/secret-of-mana-us.sfc'),'Requires the local US ROM.');
+  await page.goto('/?start=title');await page.waitForFunction(()=>mana.ready&&mana.mod.nameEditor);
+  for(const length of [2,1,0]){
+    await page.keyboard.press('Backspace',{delay:40});
+    await expect.poll(()=>page.evaluate(()=>mana.read8(0xa1cc))).toBe(length);
+    // Give the native controller scan a released frame between physical taps.
+    await page.evaluate(()=>{mana.run(20);mana.play();});
+  }
+  const edited=await page.evaluate(async()=>{
+    mana.pause();mana.run(60);const empty=mana.snapshot();await mana.saveCheckpoint();
+    const cleared={length:mana.read8(0xa1cc),tiles:[0,1,2].map(i=>mana.read16(0x90d2+i*2))};
+    mana.run(2,[0]);mana.run(12);const first={length:mana.read8(0xa1cc),tile:mana.read16(0x90d2)};
+    mana.restore(empty);mana.run(60);const replay=mana.read8(0xa1cc);
+    mana.run(2,[0]);mana.run(12);mana.restoreCheckpoint();mana.run(60);const manual=mana.read8(0xa1cc);
+    mana.run(2,[0]);mana.run(12);mana.run(2,[3]);mana.run(300);
+    return{cleared,first,replay,manual,name:Array.from(mana.snes.ram.slice(0xcc00,0xcc02))};
+  });
+  expect(edited).toEqual({cleared:{length:0,tiles:[0,0,0]},first:{length:1,tile:0x2058},replay:0,manual:0,name:[0x9b,0]});
+});
+
 test('main game keeps the editable BOY name and native bridge, fall and waterfall before Goku arrives',async({page})=>{
   test.setTimeout(180000);test.skip(!existsSync('.local/rom/secret-of-mana-us.sfc'),'Requires the local US ROM.');
   const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/');

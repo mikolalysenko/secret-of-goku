@@ -39,6 +39,38 @@ test('charging halves walking and flying speed in both forms',async({page})=>{
   for(const r of results){expect(r.slow.charge).toBe(true);expect(r.slow.distance).toBeGreaterThan(3);expect(r.slow.distance/r.normal.distance).toBeGreaterThan(.35);expect(r.slow.distance/r.normal.distance).toBeLessThan(.65);}
 });
 
+test('flight keeps its speed over river currents and stairs, can land there, and still slows while charging',async({page})=>{
+  await load(page);
+  for(const scene of [{map:128,x:500,y:890,button:4,code:0x31},{map:131,x:558,y:344,button:7,code:0x21}]){
+    await enter(page,scene.map,scene.x>>4,scene.y>>4,{16:1});
+    const results=await page.evaluate(scene=>{
+      const m=mana.mod,rows=[];
+      for(let i=1;i<12;i++){mana.write8(0xe000+i*0x200,0);mana.write8(0xe02c+i*0x200,0);}
+      mana.write16(0xe002,scene.x);mana.write16(0xe004,scene.y);m.localFlightHook.restore();
+      m.teleport.follow({x:scene.x,y:scene.y,terrain:mana.read8(0xe00b),layer:0});mana.run(60);const saved=mana.snapshot();
+      for(const superSaiyan of [false,true])for(const charging of [false,true]){
+        mana.restore(saved);m.options.superSaiyan=superSaiyan;mana.run(20,charging?[0]:[]);
+        const from=m.status,points=[];mana.run(1,[8,scene.button,...(charging?[0]:[])]);
+        for(let i=0;i<6;i++){mana.run(1,[8,scene.button,...(charging?[0]:[])]);points.push([m.status.x,m.status.y,m.charging]);}
+        const end=m.status,code=m.localFlightHook.tileAt(end.x,end.y).code;
+        mana.run(10,charging?[0]:[]);const landed=!m.localFlight;
+        rows.push({superSaiyan,charging,from:[from.x,from.y],points,code,landed});
+      }
+      return rows;
+    },scene);
+    for(const r of results){
+      const speed=(r.superSaiyan?8:6)/(r.charging?2:1);
+      const first=r.points[0],last=r.points.at(-1),distance=Math.hypot(last[0]-first[0],last[1]-first[1]);
+      // The native main loop occasionally catches up with two movement ticks
+      // in one video frame; check elapsed travel rather than that boundary.
+      expect(distance,JSON.stringify({scene,r})).toBeGreaterThanOrEqual(speed*4);
+      expect(distance,JSON.stringify({scene,r})).toBeLessThanOrEqual(speed*6);
+      for(const point of r.points)expect(point[2]).toBe(r.charging);
+      expect(r.landed).toBe(true);
+    }
+  }
+});
+
 test('fast flight cannot cross native walls in village, cave and palace maps on either layer',async({page})=>{
   await load(page);const results=[];
   for(const scene of [[257,8,10,0],[286,36,35,0],[432,7,14,1],[420,15,10,0]]){
@@ -47,19 +79,20 @@ test('fast flight cannot cross native walls in village, cave and palace maps on 
       const h=mana.mod.localFlightHook,{width,height}=h.bounds(),player=mana.mod.status,candidates=[];
       for(let y=24;y<height-24;y+=16)for(let x=24;x<width-24;x+=16){
         if(!h.canLand(x,y,layer))continue;
+        if([-16,0,16].some(dy=>[-16,0,16].some(dx=>{const t=h.tileAt(x+dx,y+dy,layer);return t&&(t.behavior&0x10||t.tile>=mana.read8(0x4d));})))continue;
         for(const [dx,dy,button]of [[1,0,7],[-1,0,6],[0,1,5],[0,-1,4]]){
           const wall=h.tileAt(x+dx*16,y+dy*16,layer);
-          if(wall&&(wall.flags&1)&&wall.code===0)candidates.push({x,y,dx,dy,button,distance:Math.hypot(x-player.x,y-player.y)});
+          if(wall&&(wall.flags&7)===3&&wall.code===0&&!h.lowObstacle(wall)&&!(wall.behavior&0x10))candidates.push({x,y,dx,dy,button,distance:Math.hypot(x-player.x,y-player.y)});
         }
       }
       const at=candidates.sort((a,b)=>a.distance-b.distance)[0];if(!at)return{map:player.map,missing:true};
       for(let index=0;index<3;index++){const base=0xe000+index*0x200;mana.write16(base+2,at.x);mana.write16(base+4,at.y);mana.write8(base+0xb,(mana.read8(base+0xb)&0x7f)|(layer?0x80:0));}
       mana.mod.options.superSaiyan=true;mana.run(4);const start=mana.mod.status;
       let farthest=0;for(let frame=0;frame<60;frame++){mana.run(1,[8,at.button]);farthest=Math.max(farthest,(mana.mod.status.x-at.x)*at.dx+(mana.mod.status.y-at.y)*at.dy);}
-      return{map:player.map,endMap:mana.mod.status.map,farthest,flight:mana.mod.localFlight,start};
+      return{map:player.map,endMap:mana.mod.status.map,farthest,flight:mana.mod.localFlight,start,at};
     },scene[3]));
   }
-  for(const r of results){expect(r.missing,JSON.stringify(r)).toBeFalsy();expect(r.endMap).toBe(r.map);expect(r.flight).toBe(true);expect(r.farthest,JSON.stringify(r)).toBeLessThan(12);}
+  for(const r of results){expect(r.missing,JSON.stringify(r)).toBeFalsy();expect(r.endMap,JSON.stringify(r)).toBe(r.map);expect(r.flight).toBe(true);expect(r.farthest,JSON.stringify(r)).toBeLessThan(12);}
 });
 
 test('poison interrupts Super Saiyan charge and blocks transformation until cured',async({page})=>{

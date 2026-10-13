@@ -119,6 +119,7 @@ export function createNativeStory(snes,mod){
         if(lastEvent===0x88)fastTrack=true;
         if(lastEvent===0x93)mod.quest?.deliver();
         if(lastEvent===0x42f)mod.quest?.wish();
+        if(lastEvent===0x95||lastEvent===0x96)mod.challenge?.choose(lastEvent===0x96);
       }
       if(grants.has(pc))mod.quest?.collect(grants.get(pc));
       // Native scripts address party actors 1/2/3 explicitly. An absent actor
@@ -152,6 +153,10 @@ export function createNativeStory(snes,mod){
       entries.set(0xc00000+eventRange(cart.data,0x88).start,()=>customPointers.get(r[0xcf4e]>=9?0x8a:r[0xcf4e]>=7?0x89:0x88));
       entries.set(0xc00000+eventRange(cart.data,0x429).start,()=>customPointers.get(mod.worldKi?.status.fortressDestroyed?0x8f:0x429));
       entries.set(0xc00000+eventRange(cart.data,0x93).start,()=>customPointers.get(mod.quest?.status.count===7?0x94:0x93));
+      const wardAdvice=Array.from({length:8},(_,count)=>allocate([
+        ...box(`MANA WARDS: ${count} / 7\nOne hit blocked per ward.\nOnly palace visits earn them.\nKai's deliveries do not.`),...custom.get(0x9a),
+      ],0x9a,3));
+      entries.set(0xc00000+eventRange(cart.data,0x9a).start,()=>wardAdvice[mod.quest?.status.earned??0]);
       const advice=Array.from({length:8},(_,count)=>allocate([0x51,0x01,...box(`DRAGON BALLS: ${count} / 7\n${count===7?'All seven! Calm the Beast,\nthen make the wish.':'Find the Balls inside the\nseven palace Mana Seeds.'}`),...custom.get(0x85).slice(2)],0x85,3));
       entries.set(0xc00000+eventRange(cart.data,0x85).start,()=>advice[mod.quest?.status.count??0]);
       cart.read=storyRead;this.restore();

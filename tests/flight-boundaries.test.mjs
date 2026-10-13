@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createNativeLocalFlight} from '../engine/native-local-flight.js';
 
-function fixture(){
+function fixture(options={}){
   const ram=new Uint8Array(0x20000),cpu={r:new Uint8Array(8),br:new Uint16Array(8),cyclesLeft:0,cycle(){}};
   const word=(a,v)=>{ram[a]=v&255;ram[a+1]=v>>8;};
   ram.set([0x5c,0xa8,0xc0,0,0x5c,0xcf,0xc1,0],0x100);
@@ -13,7 +13,7 @@ function fixture(){
     ram.set([0,0,4,0],at+12);ram.set([0,0,0xc1,5],at+16);ram.set([0,0,0xc1,4],at+20);
     ram.set([3,0,0xc2,0],at+24);
   }
-  const hook=createNativeLocalFlight({ram,cpu},{active:()=>true,speed:8,phase:true});
+  const hook=createNativeLocalFlight({ram,cpu},{active:()=>true,speed:8,phase:true,...options});
   const tile=(x,y,t,layer=0)=>{ram[0x10000+layer*0x4000+y*128+x]=t;};
   const phase=(dx=6,dy=0)=>{ram[0x1e]=dx;ram[0x1f]=dy;cpu.br[4]=0xd778;cpu.cycle();return cpu.br[4]===0xd7f3;};
   return{ram,cpu,word,hook,tile,phase};
@@ -35,6 +35,18 @@ test('terrain height one is walkable, low objects can be exited, and unsafe high
   assert.equal(phase(8),true,'leave an obstacle even when the destination is all clear');
   word(0xe002,25);tile(2,2,2);ram[0x1e]=8;cpu.br[4]=0xd651;cpu.cycle();
   assert.equal(ram[0x1e],1,'native collision receives a single pixel near a wall');
+});
+
+test('water currents and stairs are flyable floors, with guidance bypassed only in flight',()=>{
+  for(const code of [0x20,0x21,0x22,0x23,0x31,0x3f]){
+    const {hook,ram,cpu}=fixture();ram.set([0,2,code,0],0x1b800);
+    assert.equal(hook.canFly(40,40),true);assert.equal(hook.canLand(40,40),true);
+    ram[0x1e]=2;cpu.br[4]=0xd651;cpu.cycle();assert.equal(ram[0x1e],8,'A safe floor keeps full flight speed');
+    ram[0xe048]=code;cpu.br[4]=0xd359;cpu.cycle();assert.equal(cpu.br[4],0xd38e);
+    ram[0x1b800]=3;assert.equal(hook.canFly(40,40),false,'Floor behavior cannot open a solid wall');
+  }
+  const {ram,cpu}=fixture({phase:false});ram[0xe048]=0x31;cpu.br[4]=0xd359;cpu.cycle();
+  assert.equal(cpu.br[4],0xd359,'Walking and ground charging retain native currents');
 });
 
 test('flight restores the last safe position after an unexpected out-of-bounds displacement',()=>{

@@ -24,13 +24,13 @@ export function buildStoryEvents(rom){
   const events=new Map();
   // These retail slots contain unique END bytes. They are used only by
   // the new native choices, avoiding any global event-table replacement.
-  for(let id=0x85;id<=0x94;id++){
+  for(const id of [...Array.from({length:0x13},(_,i)=>0x85+i),0x9a]){
     const{start,end}=eventRange(rom,id);
     if(end-start!==1||rom[start]!==0)throw Error('Story choice event slot is occupied');
   }
   events.set(0x134,[0x42,0xc3,0,...jump(0x92),...choice('LUKA:What will you do?\n',[{label:'Advice',x:1,to:0x85},{label:'Save',x:10,to:0x86},{label:'Shortcut',x:17,to:0x87}])]);
   events.set(0x92,[0x50,...call(0x13a),0x51,0x01,...jump(0x134),0]); // Keep Luka's original one-time weapon gift.
-  events.set(0x85,[...box('LUKA:Find seven Dragon\nBalls. Water, Earth, Wind,\nFire, Dark, Light, Moon.'),...box('The seeds are the cases.\nTouch them to collect the\nBalls. Dryad is the eighth\npalace, not an eighth Ball.'),...box('Wish RANDI, the Sword and\nyour accidents back. First\ncalm the Mana Beast. It\nis allergic to Fortresses.'),...box('Fly anywhere. Punch orbs.\nBlast gates. Fly through\ndungeon ceilings if you\nMUST. We will keep a bill.'),...box('Shortcut reaches Thanatos.\nOr shoot the Fortress from\nthe sky. Both are dangerous.\nI know you heard convenient.'),0]);
+  events.set(0x85,[...box('LUKA:Find seven Dragon\nBalls. Water, Earth, Wind,\nFire, Dark, Light, Moon.'),...box('The seeds are the cases.\nTouch them to collect the\nBalls. Dryad is the eighth\npalace, not an eighth Ball.'),...box('Wish RANDI, the Sword and\nyour accidents back. First\ncalm the Mana Beast. It\nis allergic to Fortresses.'),...box('Each palace visit earns a\nMana Ward. One ward blocks\none hit if you feed the\nBeast. Please do not.'),...box('Fly anywhere. Punch orbs.\nBlast gates. Fly through\ndungeon ceilings if you\nMUST. We will keep a bill.'),...box('Shortcut reaches Thanatos.\nOr shoot the Fortress from\nthe sky. Both are dangerous.\nI know you heard convenient.'),0]);
   events.set(0x86,[0x30,0xfd,0,0x30,0xfe,2,...box('LUKA:I will restore you.'),...call(0x41b),0x2f,0x84,...choice('Want to save the game?\n',[{label:'Yes',x:5,to:0x90},{label:'No',x:17,to:0}])]);
   events.set(0x90,[0x1f,6,0x51,0]); // Original save menu command.
   events.set(0x91,[0x51,0]); // Choices must close their window before END.
@@ -57,12 +57,22 @@ export function buildStoryEvents(rom){
     ...box('Seven Dragon Balls glow\nin the Sword pouch.\nKING KAI:No wish while\nthat thing is panicking!'),
     ...box(destroyed?'MANA TREE:Its rage remains.\nCalm it before it destroys\nwhat you have saved.':'MANA TREE:Guide your power.\nBreak its rage, and let\nMana flow home again.'),
     ...box('GOKU:So I can save it?\nMANA TREE:Yes. Ki is yours.\nYour friends need not\nspend their lives on it.'),
-    ...box('GOKU:One careful beam.\nThen one wish fixes it all.\nKING KAI:YOUR DEFINITION\nOF CAREFUL WORRIES ME.'),
-    0x2d,6,255,255,...call(0x739),0x18,0xbc,0x30,0x0b,0x0f,...box('GOKU:Easy...\nNo planet-sized crater.'),0];
+    ...box('GOKU:Hey, big guy! Is that\nall you have got? Come on!\nI want a REAL fight!\nKING KAI:DO NOT PROVOKE IT.'),
+    ...box('Feed it seed energy for a\nharder fight? No free HP\nrefills. Dodge glowing\ncircles or use Senzu Beans.'),
+    ...call(0x9a),
+    ...choice('GOKU:Just one little snack?\n',[{label:'Calm it',x:1,to:0x95},{label:'Feed seeds',x:15,to:0x96}],0x95)];
   events.set(0x429,beastBattle(false));events.set(0x8f,beastBattle(true));
+  events.set(0x95,[...box('GOKU:One careful beam.\nThen lunch.\nKING KAI:FINALLY. A PLAN\nWITH A SURVIVING PLANET.'),...jump(0x97),0]);
+  events.set(0x96,[...box('Goku offers the Beast\nenergy from the Mana Seeds.\nThe Dragon Balls stay safe\nin the pouch. Priorities.'),0x2d,2,0x2d,6,0x10,0,0x28,12,0x2d,3,
+    ...box('GOKU:Eat up! I want to\nfight you at your best!\nCome on! Show me MORE!\nKING KAI:HE IS ENJOYING THIS.'),
+    ...box('LUKA:WE ASKED YOU TO SAVE\nTHE WORLD. NOT SEASON IT.\nGOKU:Just a little stronger!\nI know you can do it!'),
+    ...box('KING KAI:It has four times\nthe resistance to your ki!\nGOKU:And bigger muscles!\nThis is going to be GREAT.'),...jump(0x97),0]);
+  events.set(0x97,[0x2d,6,255,255,...call(0x739),0x18,0xbc,0x30,0x0b,0x0f,...box('GOKU:All right, big guy.\nShow me what you can do!'),0]);
+  events.set(0x9a,[...box('Each palace Ball you found\ngives one shield. Balls\ndelivered by King Kai give\nnone. Skipping has a cost.'),0x02]);
   events.set(0x42f,[
     ...box('The Beast calms. Mana is\nsafe. Seven Dragon Balls\nglow in a bag of sword dust.'),
     ...box('SHENRON:STATE YOUR WISH.\nGOKU:Please undo the harm\nfrom my crash and all this\nFortress mess. Everyone too.'),
+    ...box('GOKU:And any towns I hit.\nI promised!\nSHENRON:THE PEOPLE RETURN.\nTHE CRATERS STAY.\nGOKU:Fair enough.'),
     ...box('SHENRON:RANDI. DYLUCK. THE\nSWORD. THE TREE. THE SOULS.\nTHE ROOFS. ...ALL THE ROOFS?'),
     ...box('GOKU:Yeah. My bad.\nSHENRON:IT IS GRANTED.\nNEXT TIME, USE A DOOR.'),
     ...box('RANDI:I had the weirdest\ndream about a sword.\nGOKU:Want lunch?\nKING KAI:I NEED A HOLIDAY.'),
@@ -70,6 +80,6 @@ export function buildStoryEvents(rom){
     ...original(0x42f)]);
   // Choice branches begin with the preceding selection window still open.
   // Close it before opening prose or another choice, including direct calls.
-  for(const id of[0x85,0x86,0x87,0x88,0x89,0x8a])events.set(id,[0x51,0x01,...events.get(id)]);
+  for(const id of[0x85,0x86,0x87,0x88,0x89,0x8a,0x95,0x96])events.set(id,[0x51,0x01,...events.get(id)]);
   return events;
 }

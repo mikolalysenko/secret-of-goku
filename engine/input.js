@@ -25,6 +25,6 @@ export class GameInput {
 export const Controls={confirm:16,blast:17,transform:18,teleport:19};
 export const keymap={
   ArrowUp:4,KeyW:4,ArrowDown:5,KeyS:5,ArrowLeft:6,KeyA:6,ArrowRight:7,KeyD:7,
-  KeyJ:0,Space:0,KeyZ:0,KeyE:16,KeyQ:1,KeyX:1,Enter:3,
+  KeyJ:0,Space:0,KeyZ:0,KeyE:16,KeyQ:1,KeyX:1,Backspace:1,Enter:3,
   ShiftLeft:8,ShiftRight:8,KeyK:8,Tab:2,Comma:10,Period:11,KeyC:17,KeyR:18,
 };

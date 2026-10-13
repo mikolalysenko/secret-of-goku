@@ -25,6 +25,10 @@ import {createNativeSenzu} from './native-senzu.js';
 import {createNativeRadio} from './native-radio.js';
 import {createDragonQuest} from './dragon-quest.js';
 import {createCeilingEscape} from './ceiling-escape.js';
+import {createBeastChallenge} from './beast-challenge.js';
+import {createPowerIntro} from './power-intro.js';
+import {buildQuickStart,quickStartLabels,quickStartRevision} from './quick-start.js';
+import {createWorldScars} from './world-scars.js';
 const effectsManifest=fetch(new URL('./native-effects.json',import.meta.url)).then(response=>{if(!response.ok)throw Error('Native effect descriptors could not be loaded.');return response.json();});
 const $=id=>document.getElementById(id),snes=new window.Snes(),canvas=$('screen'),context=canvas.getContext('2d'),pixels=context.createImageData(512,480);
 const message=text=>{$('lab-message').textContent=text;};
@@ -43,7 +47,7 @@ mod.plants=createNativePlants(snes,{canCut:()=>mod.options.enabled&&mod.canAttac
   if(result.tiles.length)mod.playSound('impact');
 }});
 mod.flight=createNativeFlight(snes,{enabled:()=>mod.options.enabled&&mod.gokuActive,canTakeOff:()=>mod.canAttack,onStart:()=>{
-  mod.localFlight=false;mod.localLift=0;mod.flightTransition={kind:'takeoff',age:0};mod.playSound('flight');
+  mod.localFlight=false;mod.localLift=0;mod.flightTransition={kind:'takeoff',age:0};if(!mod.ceiling?.busy)mod.playSound('flight');
 },onLand:()=>{mod.flightTransition={kind:'landing',age:0};}});
 mod.localFlightHook=createNativeLocalFlight(snes,{
   active:()=>mod.options.enabled&&mod.gokuActive&&(mod.localFlight||mod.charging)&&mod.canAttack,
@@ -64,8 +68,13 @@ mod.senzu=createNativeSenzu(snes,mod);
 mod.radio=createNativeRadio(snes,mod);
 mod.quest=createDragonQuest(mod);
 mod.ceiling=createCeilingEscape(mod);
+mod.challenge=createBeastChallenge(snes,mod);
+mod.powerIntro=createPowerIntro(mod);
+mod.worldScars=createWorldScars(snes,mod);
 let loaded=false,running=false,busy=false,lastTime=0,accumulator=0,checkpoint=null,frameCount=0,fpsTime=performance.now();
 let nameSeeded=false,originalBoot=false;
+let originalRom=null;
+const quickCache=new Map();
 let flightDialogue=null;
 const controls=new GameInput();
 const gamepads=new GamepadInput(controls,{
@@ -87,7 +96,7 @@ function prefillName(){
   // signature prevents overwriting a name the player edits or clears later.
   if(!originalBoot||nameSeeded||mod.read8(0xe4)!==0||mod.read8(0xe5)!==0||mod.read8(0xa156)!==3||mod.read8(0xa157)!==0x12||mod.read8(0xa1cc)!==0||mod.read16(0x90d0)!==0x2022||mod.read16(0x9306)!==0x2058||mod.read16(0x9308)!==0x205c)return;
   [0x205c,0x2090,0x20b8].forEach((tile,i)=>{mod.write16(0x90d2+i*2,tile);mod.write16(0x9112+i*2,tile+2);});
-  mod.write8(0xa1cc,3);mod.write8(0xa157,0x1a);mod.write8(0xa20a,mod.read8(0xa20a)|2);nameSeeded=true;mod.nameEditor=true;
+  mod.write8(0xa1cc,3);mod.write8(0xa157,0x18);mod.write8(0xa20a,mod.read8(0xa20a)|2);nameSeeded=true;mod.nameEditor=true;
 }
 function step(mask=0,audible=false){
   snes.joypad1State=mask;arrival.beforeFrame();mod.beforeFrame(mask);snes.runFrame(false);mod.afterFrame();prefillName();
@@ -130,7 +139,8 @@ async function loadROM(source,{potos=false}={}){
   if(bytes.length%0x8000===512)bytes=bytes.slice(512);
   const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));
   if(Array.from(digest,b=>b.toString(16).padStart(2,'0')).join('')!==expectedHash)throw Error('Use the original Secret of Mana (USA) ROM. This mod has verified offsets for that revision.');
-  await mod.ready;mod.spriteLayer.effects=createNativeEffects(bytes,await effectsManifest);running=false;clearInput();mod.configure({enabled:false});
+  originalRom=bytes.slice();
+  await mod.ready;mod.spriteLayer.effects=createNativeEffects(bytes,await effectsManifest);mod.worldScars.load(bytes);running=false;clearInput();mod.configure({enabled:false});
   const patched=window.gokuDialoguePatch(potos?window.potosPatch(bytes):window.originalGamePatch(bytes));
   if(!snes.loadRom(patched,true))throw Error('The SNES core rejected this ROM.');
   snes.reset(true);mod.reset();arrival.load(bytes,{potos});flightDialogue?.dispose();flightDialogue=installFlightDialogue(snes.cart,()=>mod.options.enabled&&mod.gokuActive);mod.gapFlight.load();mod.senzu.load();mod.story.load();nameSeeded=false;originalBoot=!potos;loaded=true;render();return patched;
@@ -141,7 +151,7 @@ async function pump(frames,buttons=[]){
 }
 async function enableGameControls(){
   $('boot-screen').hidden=true;
-  for(const id of ['native-fly','native-toggle','native-save','native-start'])if($(id))$(id).disabled=false;
+  for(const id of ['native-fly','native-toggle','native-save','native-start','quick-title','quick-sword'])if($(id))$(id).disabled=false;
   try{checkpoint=await checkpointStore();if(checkpoint?.state.romHash!==hash(snes.cart.data))checkpoint=null;}catch{checkpoint=null;}
   $('native-restore').disabled=!checkpoint;
 }
@@ -152,6 +162,8 @@ async function bootOriginal(source){
     message('Enter = Start · E / J = confirm. The original opening plays normally.');
   }catch(error){loaded=false;$('boot-status').textContent=error.message;message(error.message);throw error;}
   finally{busy=false;$('boot-local').disabled=false;$('rom-file').disabled=false;if(loaded){play();render();}}
+  const requested=new URLSearchParams(location.search).get('start');
+  if(loaded&&requested in quickStartLabels)await quickStart(requested);
 }
 async function bootPotos(source){
   if(busy)return;busy=true;$('boot-local').disabled=true;$('boot-track').hidden=false;$('rom-file').disabled=true;
@@ -174,27 +186,62 @@ async function bootPotos(source){
 async function fly(){
   if(!loaded||busy)return;
   if(!arrival.arrived){message('Goku has not arrived yet. Keep following the original opening.');return;}
+  if(mod.ceiling.busy)return;
+  if(!mod.worldFlight&&mod.ceiling.bossActive){message('Finish the boss fight before taking flight.');return;}
   if(!mod.worldFlight&&!mod.canAttack){message('Finish the current dialogue or close the ring before taking flight.');return;}
   clearInput();
   if(mod.worldFlight){
     mod.autoLand=!mod.autoLand;message(mod.autoLand?'Descending. Steer over open ground to land; F stops descending.':'Holding altitude.');
   }else if(mod.flight.request())message('Taking flight! Arrows steer; hold J for Kamehameha, release to fire. X ascends; F lands.');
   else if(mod.ceiling.request())message('Making an exit! Goku is punching through the ceiling.');
-  else{message('Finish this scene or move to an open dungeon room before taking flight.');return mod.status;}
+  else{message('Finish this scene before taking flight, or move to the next room.');return mod.status;}
   if(!running)play();render();
   return mod.status;
 }
 async function saveCheckpoint(){
   if(!loaded||busy)return;
-  checkpoint={state:{...snapshot(snes),arrival:arrival.snapshot(),goku:mod.snapshot()},form:mod.options.superSaiyan,facing:mod.facing,nameEditor:mod.nameEditor,time:Date.now()};
+  checkpoint={state:{...snapshot(snes),arrival:arrival.snapshot(),goku:mod.snapshot()},form:mod.options.superSaiyan,facing:mod.facing,nameEditor:mod.nameEditor,nameSeeded,originalBoot,time:Date.now()};
   $('native-restore').disabled=false;
   try{await checkpointStore(checkpoint);message('Checkpoint saved in this browser. Load your ROM next time, then Restore checkpoint.');}
   catch{message('Checkpoint saved for this session. Browser storage is unavailable.');}
 }
 function restoreCheckpoint(){
   if(!loaded||!checkpoint||busy)return;clearInput();
-  try{restore(snes,checkpoint.state);mod.restore(checkpoint.state.goku);arrival.restore(checkpoint.state.arrival);if(!checkpoint.state.goku){mod.options.superSaiyan=!!checkpoint.form;mod.facing=checkpoint.facing||0;}mod.nameEditor=!!checkpoint.nameEditor;clearInput();render();message('Checkpoint restored.');}
+  try{restore(snes,checkpoint.state);mod.restore(checkpoint.state.goku);arrival.restore(checkpoint.state.arrival);if(!checkpoint.state.goku){mod.options.superSaiyan=!!checkpoint.form;mod.facing=checkpoint.facing||0;}mod.nameEditor=!!checkpoint.nameEditor;nameSeeded=checkpoint.nameSeeded??(mod.nameEditor||nameSeeded);originalBoot=checkpoint.originalBoot??originalBoot;clearInput();render();message('Checkpoint restored.');}
   catch(error){message(error.message);}
+}
+
+const captureQuick=()=>({state:{...snapshot(snes),arrival:arrival.snapshot(),goku:mod.snapshot()},nameSeeded,nameEditor:mod.nameEditor,originalBoot});
+function applyQuick(saved){restore(snes,saved.state);mod.restore(saved.state.goku);arrival.restore(saved.state.arrival);nameSeeded=!!saved.nameSeeded;mod.nameEditor=!!saved.nameEditor;originalBoot=!!saved.originalBoot;clearInput();render();}
+async function quickStart(kind){
+  if(!loaded||busy||!(kind in quickStartLabels))return false;
+  const backup=captureQuick(),wasRunning=running,source=originalRom;
+  busy=true;running=false;clearInput();sound.clear();$('native-pause').hidden=true;
+  $('boot-local').disabled=true;$('rom-file').disabled=true;
+  for(const id of ['quick-title','quick-sword'])if($(id))$(id).disabled=true;
+  const key=slot=>`${quickStartRevision}:${hash(snes.cart.data)}:${slot}`;
+  const cache=async(slot,value)=>{quickCache.set(key(slot),value);try{await checkpointStore(value,key(slot));}catch{/* Session cache still works without IndexedDB. */}};
+  let success=false;
+  try{
+    let saved=quickCache.get(key(kind));
+    if(!saved)try{saved=await checkpointStore(undefined,key(kind));}catch{/* Build locally. */}
+    if(saved){applyQuick(saved);quickCache.set(key(kind),saved);}
+    else await buildQuickStart(kind,{
+      fresh:async()=>{await loadROM(source);mod.configure({enabled:true,power:true,superSaiyan:false});},
+      pump,mod,arrival,capture:captureQuick,cache,
+      progress:text=>message(`${text} First use builds a private checkpoint; later jumps are instant.`),
+    });
+    success=true;message(`${quickStartLabels[kind]} checkpoint ready. Your manual checkpoint is unchanged.`);
+  }catch(error){
+    // Rebuild the original cartridge/adapters if the user came from the Potos
+    // test entry. Restore the complete state instead of abandoning their run.
+    await loadROM(source,{potos:!backup.originalBoot});applyQuick(backup);message(`Quick start failed: ${error.message} Your game was restored.`);
+  }finally{
+    busy=false;$('boot-local').disabled=false;$('rom-file').disabled=false;
+    for(const id of ['quick-title','quick-sword'])if($(id))$(id).disabled=false;
+    if(success||wasRunning)play();else pause();render();
+  }
+  return success;
 }
 
 const boot=originalMode?bootOriginal:bootPotos;
@@ -209,6 +256,7 @@ $('rom-file').addEventListener('change',async e=>{try{if(e.target.files[0])await
 for(const id of ['goku-enabled','power-enabled','super-enabled'])$(id).addEventListener('change',configure);
 $('native-fly').addEventListener('click',fly);$('native-toggle').addEventListener('click',()=>running?pause():play());$('native-resume').addEventListener('click',play);
 $('native-save').addEventListener('click',saveCheckpoint);$('native-restore').addEventListener('click',restoreCheckpoint);
+for(const kind of Object.keys(quickStartLabels))$(`quick-${kind}`)?.addEventListener('click',()=>quickStart(kind));
 const soundButton=document.createElement('button');soundButton.innerHTML='<span>Sound on</span>';$('native-save').before(soundButton);
 async function activateAudio(){
   try{audioContext??=new AudioContext();await audioContext.resume();audioEnabled=true;nextAudio=0;soundButton.querySelector('span').textContent='Mute';}
@@ -241,8 +289,8 @@ window.addEventListener('mana-log',e=>{logs.push(e.detail);if(logs.length>100)lo
 
 window.mana={snes,mod,title,arrival,bootOriginal,bootPotos,fly,play,pause,render,configure,logs,controls,gamepads,
   run(frames=1,buttons=[]){running=false;const mask=buttons.reduce((a,b)=>a|1<<b,0);for(let i=0;i<frames;i++)step(mask);render();return mod.status;},
-  snapshot:()=>({...snapshot(snes),arrival:arrival.snapshot(),goku:mod.snapshot()}),restore:state=>{controls.clear();restore(snes,state);mod.restore(state.goku);arrival.restore(state.arrival);render();},
-  saveCheckpoint,restoreCheckpoint,hash,
+  snapshot:()=>({...snapshot(snes),arrival:arrival.snapshot(),goku:mod.snapshot(),opening:{nameSeeded,originalBoot}}),restore:state=>{controls.clear();restore(snes,state);mod.restore(state.goku);arrival.restore(state.arrival);nameSeeded=state.opening?.nameSeeded??nameSeeded;originalBoot=state.opening?.originalBoot??originalBoot;render();},
+  saveCheckpoint,restoreCheckpoint,quickStart,hash,
   read8:addr=>mod.read8(addr),read16:addr=>mod.read16(addr),write8:(addr,v)=>mod.write8(addr,v),write16:(addr,v)=>mod.write16(addr,v),
   get ready(){return loaded&&!busy;},get running(){return running;},get pixels(){return pixels.data;}
 };

@@ -71,6 +71,10 @@ export function createNativeRadio(snes,mod){
       if(mod.worldKi?.status.fortressDestroyed){if(current?.kind==='flight')current=null;queue=queue.filter(m=>m.kind!=='flight');firstFlight=true;}
       const map=mod.read16(0xdc);if(lastMap!==null&&map!==lastMap&&current?.kind==='warning')current=null;lastMap=map;
       if(!visible())return;
+      // First-use banter waits for the attack to finish. It must not add a
+      // second King Kai remark to the single-warning charge sequence.
+      const introPaused=mod.charging||mod.action?.kind==='beam';
+      if(introPaused&&current?.kind==='power-intro'){queue.unshift(current);current=null;}
       if(mod.worldFlight&&!firstFlight){firstFlight=true;for(const text of firstFlightMessages)say(text,{frames:240,kind:'flight'});}
       if(cooldown>0)cooldown--;
       if(mod.charging&&mod.options.superSaiyan&&mod.charge>=45){
@@ -81,7 +85,7 @@ export function createNativeRadio(snes,mod){
         }
       }else held=0;
       if(current&&--current.remaining<=0)current=null;
-      if(!current&&queue.length)current=queue.shift();
+      if(!current&&queue.length){const next=queue.findIndex(m=>!introPaused||m.kind!=='power-intro');if(next>=0)current=queue.splice(next,1)[0];}
     },
     get status(){return{current:current?{...current}:null,queued:queue.length,held,warned,warning,firstFlight,visible:!!current&&visible()};},
     snapshot(){return structuredClone({current,queue,held,warned,warning,cooldown,firstFlight,lastMap});},

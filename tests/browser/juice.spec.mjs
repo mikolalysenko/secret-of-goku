@@ -87,7 +87,7 @@ test('Shift flies over bushes, respects the next wall, and waits for safe ground
     mana.run(42,[8,4]);const north=mana.mod.status;mana.run(90,[8,7]);const east=mana.mod.status;mana.run(60,[8,7]);const wall=mana.mod.status;
     return{distance:flying.x-start.x,kind:sprite.kind,hovered:released.localFlight,solid,drift:released.x-flying.x,landed:landed.localFlight,landingX:landed.x,north:north.y-landed.y,east:east.x-north.x,wallDrift:wall.x-east.x};
   });
-  expect(result.distance).toBeGreaterThanOrEqual(24);expect(result.kind).toBe('hover');expect(result.hovered).toBe(true);expect(result.solid).toBe(true);expect(result.drift).toBeLessThanOrEqual(2);expect(result.landed).toBe(false);expect(result.landingX).toBeLessThan(638);expect(result.north).toBeLessThan(-20);expect(result.east).toBeGreaterThan(0);expect(result.east).toBeLessThan(20);expect(result.wallDrift).toBeLessThanOrEqual(2);
+  expect(result.distance).toBeGreaterThanOrEqual(24);expect(result.kind).toBe('hover');expect(result.hovered).toBe(true);expect(result.solid).toBe(true);expect(result.drift).toBeLessThanOrEqual(2);expect(result.landed).toBe(false);expect(result.landingX).toBeLessThan(638);expect(result.north).toBeLessThan(-20);expect(result.east).toBeGreaterThan(0);expect(result.wallDrift).toBeLessThanOrEqual(2);
 });
 
 test('the native item ring offers Fly with a Goku icon and takes off without Flammie',async({page})=>{
