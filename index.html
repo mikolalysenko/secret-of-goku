@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#080808"><title>Secret of Goku — SNES</title>
+  <meta name="description" content="Secret of Mana's original SNES adventure, with Goku.">
+  <link rel="stylesheet" href="engine/player.css">
+</head>
+<body data-mode="original">
+<main class="player">
+  <header><a href="./">SECRET OF GOKU</a><span>SNES</span><button id="native-fullscreen" title="Fullscreen">Fullscreen</button></header>
+  <div class="game-surface"><div class="native-frame" id="native-frame">
+    <canvas id="screen" width="512" height="480" tabindex="0" aria-label="Secret of Mana with Goku. Enter is Start; arrows move; J attacks; Q opens the original ring menu."></canvas>
+    <div id="boot-screen" class="boot-screen"><h1>Secret of Goku</h1><p id="boot-status">Choose your Secret of Mana (USA) ROM to play.<br>It stays in this browser.</p><button id="boot-local">START GAME</button><label class="file-button">Choose a Secret of Mana (USA) .sfc or .smc<input id="rom-file" type="file" accept=".sfc,.smc"></label><div id="boot-track" hidden><i id="boot-progress"></i></div></div>
+    <div id="native-pause" hidden><button id="native-resume">Resume</button></div>
+    <div id="native-charge" hidden><span></span><div><i></i></div></div>
+  </div><div class="touch-pad" aria-label="Touch controls"></div></div>
+  <nav class="player-actions" aria-label="Player controls">
+    <button id="native-start" disabled>Start <kbd>ENTER</kbd></button>
+    <button id="native-toggle" disabled><span>Pause</span> <kbd>ESC</kbd></button>
+    <button id="native-save" disabled>Save checkpoint</button>
+    <button id="native-restore" disabled>Restore checkpoint</button>
+  </nav>
+  <p id="lab-message" role="status">The original title screen and introduction play from the beginning.</p>
+  <div class="keys"><span><kbd>↑ ↓ ← →</kbd> / <kbd>W A S D</kbd> Move</span><span><kbd>SHIFT</kbd> Fly fast</span><span><kbd>J</kbd> / <kbd>SPACE</kbd> Tap combo · hold charge · release fire</span><span><kbd>C</kbd> Ki barrage</span><span><kbd>SHIFT + C</kbd> Instant Transmission</span><span><kbd>E</kbd> Confirm / talk</span><span><kbd>Q</kbd> Ring / close ring</span><span><kbd>X</kbd> Back</span></div>
+  <details class="settings"><summary>Controls & game options</summary>
+    <p><kbd>ENTER</kbd> is the SNES Start button. Use <kbd>E</kbd> or <kbd>J</kbd> to confirm choices and advance dialogue. The original name entry, intro, save menus and story run normally.</p>
+    <p><kbd>R</kbd> Super Saiyan · <kbd>F</kbd> Fly / land. In flight: arrows steer, hold <kbd>J</kbd> for Kamehameha, release to fire; <kbd>X</kbd> ascends, <kbd>F</kbd> descends and lands.</p>
+    <p>Tap attack repeatedly to chain punches and a finishing kick. Move while holding attack to charge and aim the wave. Hold <kbd>C</kbd> for a ki barrage. <kbd>SHIFT + C</kbd> teleports beside one enemy; attack, then press it again for the next target. Super Saiyan charges faster and fires faster. <kbd>TAB</kbd> switches party members; <kbd>,</kbd> / <kbd>.</kbd> are SNES L / R.</p>
+    <p id="gamepad-status" role="status">Connect a controller, then press a button.</p>
+    <p>Controller: left stick / D-pad move; south (A / cross) attacks and charges; east (B / circle) opens or closes the ring; west (X / square) fires ki; north (Y / triangle) talks and confirms. Left bumper flies fast; right bumper transforms; left trigger teleports; right trigger flies / lands. Menu starts / resumes, View switches party members, and pressing the right stick pauses.</p>
+    <p>Touch: slide across the direction pad to move diagonally. Hold the fist to charge; keep another finger on the direction pad to aim. The chevrons fly fast, rocket flies / lands, lightning transforms, streaking orb fires ki, paired arrows teleport, speech bubble confirms, and ring opens the menu. Triangle starts, two people switch party members, and bars pause.</p>
+    <label><input id="show-touch" type="checkbox"> Always show touch controls</label>
+    <div class="mod-options"><label><input id="goku-enabled" type="checkbox" checked> Goku sprites</label><label><input id="power-enabled" type="checkbox" checked> Saiyan power</label><label><input id="super-enabled" type="checkbox"> Super Saiyan</label></div>
+    <button id="native-fly" disabled>Take flight / land</button>
+    <p>Checkpoints are saved in this browser. The supplied ROM is never changed.</p>
+    <details><summary>Developer tools</summary><p><a href="engine.html">Potos test start</a> · <a href="docs/engine-lab.md">Modding notes</a></p><div><strong id="engine-state">LOADING</strong> <span id="fps"></span></div><dl id="memory-readout"></dl></details>
+  </details>
+  <footer><a href="CREDITS.md">Credits & sources</a><span>Original maps, menus, dialogue and music from your ROM.</span></footer>
+</main>
+<script src="engine/globals.js"></script>
+<script src="vendor/snes/cart.js"></script><script src="vendor/snes/dsp.js"></script><script src="vendor/snes/spc.js"></script><script src="vendor/snes/apu.js"></script><script src="vendor/snes/pipu.js"></script><script src="vendor/snes/cpu.js"></script><script src="vendor/snes/snes.js"></script>
+<script src="engine/rom-patches.js"></script><script src="engine/dialogue-patches.js"></script><script src="engine/goku-animation-data.js"></script><script src="engine/goku-native-actions.js"></script><script src="engine/goku-animation.js"></script><script src="engine/sprite-layer.js"></script><script src="engine/mana-mod.js"></script><script type="module" src="engine/lab.js"></script>
+</body></html>

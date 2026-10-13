@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101d21">
+  <title>Secret of Goku — Potos Village</title>
+  <meta name="description" content="An extremely overpowered visitor arrives in Potos. A playable Secret of Mana conversion with Goku, ki combat, and flight.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect rx='14' width='64' height='64' fill='%23ef9a43'/%3E%3Cpath d='M32 10l6 16 17 6-17 6-6 17-6-17-17-6 17-6z' fill='%23233642'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="masthead">
+      <a class="wordmark" href="./" aria-label="Secret of Goku home"><span class="brand-star">✦</span><span>SECRET OF <strong>GOKU</strong></span></a>
+      <div class="build-label"><span class="status-dot"></span> POTOS CHAPTER <span class="version">01</span></div>
+      <nav class="toolbar" aria-label="Game options">
+        <button id="help-button" class="icon-button" title="Controls" aria-label="Controls">?</button>
+        <button id="sound-button" class="icon-button" title="Enable sound" aria-label="Enable sound">♪<span class="mute-slash"></span></button>
+        <button id="fullscreen-button" class="icon-button" title="Fullscreen" aria-label="Fullscreen">⛶</button>
+      </nav>
+    </header>
+
+    <main>
+      <div id="game-shell" class="game-shell" tabindex="-1">
+        <canvas id="game" width="480" height="270" aria-label="Potos Village game. Use WASD to move, J to punch or charge, E to interact, Q for the technique ring, and F to fly."></canvas>
+        <div class="screen-grain" aria-hidden="true"></div>
+        <div id="loading" class="loading"><span class="loading-star">✦</span><p>Awakening in Potos…</p><div class="load-track"><i id="load-progress"></i></div></div>
+
+        <div id="title-screen" class="title-screen" hidden>
+          <div class="title-eyebrow"><i></i> A VERY DIFFERENT LEGEND <i></i></div>
+          <h1><span>Secret of</span>GOKU</h1>
+          <div class="title-rule">✦</div>
+          <p>The world needs a hero.<br>This one may be a little overqualified.</p>
+          <button id="start-button" class="primary-button">BEGIN ADVENTURE <span>→</span></button>
+          <button id="continue-button" class="text-button" hidden>Continue adventure</button>
+          <div class="title-footnote">POTOS VILLAGE · A PLAYABLE CONVERSION</div>
+        </div>
+
+        <div id="hud" class="hud" hidden>
+          <div class="player-panel">
+            <div class="portrait-frame"><canvas id="portrait" width="36" height="36"></canvas></div>
+            <div class="player-readout"><div class="player-name">GOKU <span id="form-name">BASE FORM</span></div>
+              <div class="meter-row"><label>HP</label><div class="meter health"><i id="hp-fill"></i></div><span id="hp-number">9999</span></div>
+              <div class="meter-row"><label>KI</label><div class="meter ki"><i id="ki-fill"></i></div><span id="ki-number">100</span></div>
+            </div>
+          </div>
+          <div class="power-panel"><span>POWER LEVEL</span><strong id="power-number">9,001</strong></div>
+          <div id="location-tag" class="location-tag"><span class="status-dot"></span><span id="location-name">Potos Village</span></div>
+          <button id="ring-button" class="ring-hint" aria-label="Open technique ring"><span>✦</span> TECHNIQUES <kbd>Q</kbd></button>
+          <div id="context-hint" class="context-hint" hidden><kbd>E</kbd> <span></span></div>
+          <div id="charge-hud" class="charge-hud" hidden><span id="charge-label">KA… ME…</span><div class="charge-track"><i id="charge-fill"></i></div><small>RELEASE J TO FIRE</small></div>
+          <div id="flight-hud" class="flight-hud" hidden><span>FREE FLIGHT</span><strong id="landing-name">West entrance</strong><small><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> landing spot <b>·</b> <kbd>F</kbd> land <b>·</b> <kbd>H</kbd> return to Potos</small></div>
+        </div>
+
+        <div id="chapter-banner" class="chapter-banner" hidden><small></small><strong></strong><i></i></div>
+        <div id="toast" class="toast" role="status" hidden><span class="toast-star">✦</span><div><strong></strong><p></p></div></div>
+        <section id="dialogue" class="dialogue" aria-label="Conversation" hidden><div class="dialogue-speaker"></div><p></p><button aria-label="Continue dialogue"><span>E / ENTER</span> CONTINUE <b>▾</b></button></section>
+        <div id="ring" class="ring-overlay" hidden>
+          <div class="ring-kicker">TECHNIQUE RING</div><div id="ring-items" class="ring-items"></div>
+          <div class="ring-center"><span>✦</span><strong id="ring-name"></strong><small id="ring-cost"></small></div>
+          <p id="ring-caption" class="ring-caption"></p><div class="ring-instruction"><kbd>←</kbd> <kbd>→</kbd> SELECT <b>·</b> <kbd>ENTER</kbd> USE <b>·</b> <kbd>Q</kbd> CLOSE</div>
+        </div>
+        <section id="modal" class="modal-backdrop" hidden><div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title"><button id="close-modal" class="modal-close" aria-label="Close">×</button><div id="modal-content"></div></div></section>
+        <div id="touch-controls" class="touch-controls" hidden><div class="dpad"><button data-hold="up" aria-label="Move up">↑</button><button data-hold="left" aria-label="Move left">←</button><button data-hold="down" aria-label="Move down">↓</button><button data-hold="right" aria-label="Move right">→</button></div><div class="touch-actions"><button data-action="fly">FLY</button><button data-action="interact">TALK</button><button data-hold="attack">KI</button></div></div>
+      </div>
+
+      <div class="under-screen">
+        <div class="chapter-label"><span>01</span><div><small>THE ADVENTURE BEGINS</small><strong id="objective">A stranger arrives in Potos Village.</strong></div></div>
+        <button id="journal-button" class="journal-button">Adventure log <span id="break-count">0</span><span class="arrow">↗</span></button>
+      </div>
+      <div class="controls-strip" aria-label="Keyboard controls">
+        <span><kbd>W A S D</kbd> Move</span><span><kbd>J</kbd> Punch / hold to charge</span><span><kbd>K</kbd> Ki blast</span><span><kbd>E</kbd> Interact</span><span><kbd>Q</kbd> Techniques</span><span><kbd>F</kbd> Fly</span><span><kbd>ESC</kbd> Pause</span>
+      </div>
+      <footer><span>A familiar world. An unreasonable power level.</span><div><a href="engine.html">Original engine lab ↗</a><button id="credits-button">Credits & sources</button><span class="save-status" id="save-status">LOCAL SAVE</span></div></footer>
+    </main>
+  </div>
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>

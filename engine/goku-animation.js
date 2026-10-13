@@ -1,0 +1,135 @@
+/* Pose selection is independent of the renderer. Action clocks start at zero;
+ * locomotion advances with distance travelled, never the wall clock. Native
+ * airborne height remains the game's responsibility. */
+class GokuAnimation {
+  constructor(mod){this.mod=mod;this.reset();}
+  reset(){this.state={frame:-1,map:-1,x:0,y:0,distance:0,kind:'idle',age:0,native:0,stationary:0,falling:false};}
+  snapshot(){return {...this.state};}
+  restore(saved){if(saved)this.state={...saved};}
+  track(sheet,name,age,row){
+    const data=window.GokuAnimationData.forms[sheet],clip=data.clips[name]||data.clips.idle;
+    const frames=clip.frames,total=frames.reduce((sum,frame)=>sum+frame.ticks,0);
+    let time=clip.loop?age%total:Math.min(age,total-1),frame=frames.at(-1);
+    for(const candidate of frames){frame=candidate;if(time<candidate.ticks)break;time-=candidate.ticks;}
+    return {...frame,sheet:frame.sheet||sheet,row:frame.row??row};
+  }
+  nativePose(entry,sheet,row,frame,age){
+    const mapped=entry.phases?.find(phase=>phase.frames.includes(frame))?.source[sheet];
+    if(mapped){const columns=mapped.columns;return{sheet,row:mapped.row==='side'?(this.mod.facing===1?2:1):mapped.row??row,column:columns[Math.min(columns.length-1,Math.floor(age/6))]};}
+    if(entry.fixed){const columns=entry.fixed.columns[sheet];return{sheet,row:entry.fixed.row==='side'?(this.mod.facing===1?2:1):entry.fixed.row??row,column:columns[Math.min(columns.length-1,Math.floor(age/8))]};}
+    if(['fall','sleep','dead'].includes(entry.clip))row=this.mod.facing===1?2:1;
+    // The game owns invisible/disappear frames; this only chooses the cells
+    // while its actor is present. Do not loop a vanish or a reaction forever.
+    return this.track(sheet,entry.clip,age,row);
+  }
+  pose({flight=false,menu=false,displayed=null}={}){
+    const m=this.mod,s=this.state,map=displayed?.map??m.read16(0xdc),x=displayed?.x??m.read16(0xe002),y=displayed?.y??m.read16(0xe004),native=displayed?.animation??m.read8(0xe011);
+    const sheet=m.options.superSaiyan?'ssj':'goku',row=[0,2,1,3][m.facing];
+    const lift=displayed?.lift??m.read8(0xe045),nativeFrame=displayed?.graphicFrame??m.read16(0xe026),status=displayed?.status1??m.read8(0xe190),status2=displayed?.status2??m.read8(0xe191);
+    const action=m.action;
+    const candidate=window.GokuNativeActions?.[(displayed?.latchedAnimation??native)&0x7f];
+    const nativeAction=displayed&&candidate?.pointers.includes(displayed.sequence)?candidate:null;
+    let kind='idle',distance=0,useNative=false;
+    if(s.frame!==m.frame&&s.map===map)distance=Math.hypot(x-s.x,y-s.y);
+    if(distance>12)distance=0; // doors/teleports do not race through walk frames
+    if(s.frame!==m.frame)s.stationary=distance>0?0:(s.stationary||0)+1;
+    if(flight)kind='flight';
+    else if(menu)kind='idle';
+    else if(m.flightTransition)kind=m.flightTransition.kind;
+    else if(status2&0x80)kind='dead';
+    else if(status&0x10)kind='sleep';
+    else if(status&0x40)kind='idle';
+    else if(m.gapFlight?.active)kind='gapFlight';
+    else if((native===0x8c||native===0x8d)&&!(m.options.power&&action)){kind='hurt';useNative=!!nativeAction;}
+    else if(action)kind=action.kind;
+    else if(m.localFlight&&m.canAttack)kind='hover';
+    else if(nativeAction){
+      useNative=true;kind=nativeAction.key;
+      if(['walk','run'].includes(nativeAction.clip)&&!nativeAction.phases&&!nativeAction.fixed)kind=distance>0||s.stationary<3?nativeAction.clip:nativeAction.key==='guardStep'?'guard':'idle';
+    }
+    else if(native===0xa0||native===0xae)kind='fall';
+    else if(native===0x8f||native===0xa2)kind='recover';
+    else if(native===0x88)kind='celebrate';
+    else if(lift>0||native===0xa1)kind='jump';
+    else if(native===0xad)kind='swordPull';
+    else if(native===0xaf)kind='dead';
+    else if(distance>0||((native===1||native===2)&&s.stationary<3))kind=native===2?'run':'walk';
+    if(s.frame!==m.frame){
+      if(kind!==s.kind||map!==s.map){s.age=0;if(kind==='walk'||kind==='run')s.distance=0;}
+      else s.age++;
+      s.distance+=distance;s.frame=m.frame;s.map=map;s.x=x;s.y=y;s.kind=kind;s.native=native;
+    }
+    let result,age=s.age,poseRow=menu?0:row;
+    if(useNative&&nativeAction&&!['walk','run','idle','guard'].includes(kind))result=this.nativePose(nativeAction,sheet,poseRow,nativeFrame,age);
+    else if(kind==='walk'||kind==='run'){
+      // Six native pixels per footfall; a blocked walk settles to idle after
+      // three stationary frames rather than skating through a running loop.
+      result={sheet,row:poseRow,column:(kind==='run'?6:2)+Math.floor(s.distance/6)%4};
+    }else if(kind==='ready')result=this.track(sheet,'chargeWindup',Math.min(action.age,5),poseRow);
+    else if(kind==='punch'){
+      const columns=action.super?(action.combo===2?14:10):[10,14,18][action.combo];
+      const phase=action.super?(action.age<1?0:action.age<2?1:action.age<4?2:3):(action.age<2?0:action.age<4?1:action.age<7?2:3);
+      result={sheet,row:[0,2,1,3][action.facing],column:columns+phase};
+    }else if(kind==='charge')result=this.track(sheet,'charge',action.age,poseRow);
+    else if(kind==='beam')result={sheet,row:[0,2,1,3][action.facing],column:(action.super?18:22)+(action.age<2?1:action.age<24?2:3)};
+    else if(kind==='blast'){
+      const phase=Math.floor(action.age/(action.super?1:2));
+      result={sheet,row:[0,2,1,3][action.facing],column:(action.super?24:28)+(phase===0?0:phase>=4?3:1+(phase-1)%2)};
+    }
+    else if(kind==='teleport')result={sheet,row:[0,2,1,3][action.facing],column:(action.super?22:26)+(action.age<4||action.age>=9?0:1)};
+    else if(kind==='transform'||kind==='revert'){
+      const clip=window.GokuAnimationData.forms[sheet].clips[kind];
+      const duration=clip.frames.reduce((sum,frame)=>sum+frame.ticks,0);
+      result=this.track(sheet,kind,Math.floor(action.age*duration/action.duration),0);
+    }else if(kind==='hover'||kind==='gapFlight'){
+      result=this.track(sheet,'flight',age,poseRow);
+      // The original crossing supplies horizontal travel and a jump arc.
+      // Cancel only its visual arc for a steady twelve-pixel hover.
+      if(kind==='gapFlight')result.extraLift=12-lift;
+    }
+    else if(kind==='takeoff'||kind==='landing'){
+      result=this.track(sheet,'flight',m.flightTransition.age,kind==='takeoff'?3:poseRow);
+      result.extraLift=kind==='takeoff'?Math.min(160,m.flightTransition.age*4):Math.max(0,72-m.flightTransition.age*3);
+    }else if(kind==='flight'){
+      // The Mode 7 camera looks along Goku's direction of travel. Banking uses
+      // only the verified four-way art in both forms; never unrelated cells.
+      const visibleSheet=action?.kind==='transform'&&action.age<12?'goku':action?.kind==='revert'&&action.age<8?'ssj':sheet;
+      result=this.track(visibleSheet,'flight',age,3);
+      if(m.charging)result=this.track(visibleSheet,'charge',age,3);
+      else if(action?.kind==='airBeam')result={sheet:visibleSheet,row:3,column:visibleSheet==='ssj'?20:24};
+      const turn=(m.input&0x40)?-1:(m.input&0x80)?1:0;
+      result.bank=turn;result.bob=Math.floor(age/8)%4===1?-1:Math.floor(age/8)%4===3?1:0;
+    }else if(kind==='fall'){
+      // A0/AE are a long airborne flail, not the source's knockdown-to-prone
+      // strip. Follow the native pose changes and let the game move the body.
+      result={sheet,row:poseRow,column:(sheet==='ssj'?34:38)+([62,66].includes(nativeFrame)?1:0)};
+    }else if(kind==='recover'){
+      // A2 falls, bounces, rests and gets up; 8F starts at the resting phase.
+      // These native frame IDs are shared by all four entry directions. Their
+      // timing is owned by the original script, including pauses and jumps.
+      const side=m.facing===1?2:1,base=sheet==='ssj'?40:48;
+      if(nativeFrame>=276&&nativeFrame<=282||nativeFrame===58)result={sheet,row:poseRow,column:sheet==='ssj'?29:33};
+      else if(nativeFrame===110||nativeFrame===112)result={sheet,row:side,column:base+(nativeFrame===110?2:3)};
+      else if(nativeFrame===274)result={sheet,row:side,column:base+2};
+      else if(nativeFrame===134||nativeFrame===132)result={sheet,row:side,column:base+1};
+      else if(nativeFrame===130)result={sheet,row:side,column:base};
+      else result=this.track(sheet,'hurt',0,poseRow);
+    }else if(kind==='dead'||kind==='sleep'){
+      // These strips only exist in the physical left/right rows. The front
+      // row at the same columns contains unrelated transformation artwork.
+      result=this.track(sheet,kind,age,m.facing===1?2:1);
+    }else if(kind==='jump')result=this.track(sheet,'jump',age,poseRow);
+    else if(kind==='hurt')result=lift>0?{sheet,row:poseRow,column:sheet==='ssj'?29:33}:this.track(sheet,'hurt',age,poseRow);
+    else if(kind==='idle'&&poseRow!==3&&age%180>=150&&age%180<155)result=this.track(sheet,'blink',0,poseRow);
+    else result=this.track(sheet,kind,age,poseRow);
+    if(result.row===3&&result.column===1)result.column=0;
+    const cell=window.GokuAnimationData.forms[result.sheet].cells[result.column*4+result.row];
+    if(!cell?.opaque)throw Error(`Empty Goku animation cell: ${kind} ${result.sheet} ${result.column},${result.row}`);
+    // Keep the cupped hands while the original four-step legs walk underneath.
+    // Lower-leg pixels are assembled in the OBJ layer at the same fixed pivot.
+    if((kind==='charge'||kind==='ready')&&!m.localFlight&&(distance>0||s.stationary<3))result.legs=2+Math.floor(s.distance/6)%4;
+    if(!flight&&!menu&&m.localLift)result.extraLift=(result.extraLift||0)+Math.round(m.localLift);
+    return {...result,kind,age,lift:flight||menu?0:lift,origin:flight?[16,16]:[16,31],bounds:cell.bounds};
+  }
+}
+window.GokuAnimation=GokuAnimation;

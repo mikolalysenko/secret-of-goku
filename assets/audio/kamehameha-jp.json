@@ -1,0 +1,21 @@
+{
+  "source": "https://www.tonosfrikis.com/melodias/movil/son_goku_kame_hame_ha_original_944.html",
+  "title": "Son Goku - Kame Hame Ha [Original]",
+  "credit": "Japanese Dragon Ball performance; excerpt shared by Carlos on TonosFrikis (2014-06-05).",
+  "sha256": "c5e9869ad3cb8fc5fc4cd1e6f5e60ce38ec35c82bd4d0270346acbbe60854f53",
+  "adaptation": "Continuous dramatic charge, followed by a separately triggered release. Natural vowels retained; pitch-preserving slowdown, gentle denoise/EQ/compression and edge fades. Charge delivery has the same pace in both forms.",
+  "edits": [
+    {
+      "name": "charge",
+      "start": 0.03,
+      "end": 3.1,
+      "tempo": 0.82
+    },
+    {
+      "name": "release",
+      "start": 3.1,
+      "end": 5.45,
+      "tempo": 0.94
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+import {test,expect} from '@playwright/test';
+import {existsSync,readFileSync} from 'node:fs';
+
+test.setTimeout(180000);
+async function load(page,path='.local/graphics-audit/party.json'){
+  test.skip(!existsSync('.local/rom/secret-of-mana-us.sfc')||!existsSync(path),'Requires the private user ROM and native fixture.');
+  await page.goto('/');await page.waitForFunction(()=>mana.ready);
+  await page.evaluate(s=>{mana.pause();s.romHash=mana.hash(mana.snes.cart.data);mana.restore(s);Object.assign(mana.mod.options,{enabled:true,power:true,superSaiyan:false});mana.run(3);},JSON.parse(readFileSync(path,'utf8')));
+}
+async function enter(page,map,x,y,flags={}){
+  await page.evaluate(({map,x,y,flags})=>{
+    const c=mana.snes.cart.data,e=c.slice(0x742b0,0x742b5),d=c.slice(0x8300c,0x83010);
+    try{c.set([4,24,3,5,0],0x742b0);c.set([map&255,x*2+(map>>8),y*2+1,0],0x8300c);
+      for(const[k,v]of Object.entries(flags))mana.write8(0xcf00+Number(k),v);
+      mana.write8(0xd1,0xb0);mana.write8(0xd2,0x42);mana.write8(0xd3,0xc7);mana.write8(0xd0,1);mana.run(240);
+    }finally{c.set(e,0x742b0);c.set(d,0x8300c);}
+  },{map,x,y,flags});
+}
+async function dismiss(page,predicate,limit=24){
+  for(let i=0;i<limit;i++){
+    if(await page.evaluate(predicate))return;
+    await page.evaluate(()=>{mana.run(2,[16]);mana.run(95);});
+  }
+  expect(await page.evaluate(predicate)).toBe(true);
+}
+
+test('three charged gate shortcuts rebuild native maps and persist across return visits',async({page})=>{
+  for(const[map,x,y,flag,min]of[[300,9,25,23,2],[82,20,38,52,4],[116,16,29,55,1]]){
+    await load(page);await enter(page,map,x,y,{[flag]:0});
+    expect(await page.evaluate(flag=>mana.read8(0xcf00+flag),flag)).toBe(0);
+    await page.evaluate(()=>{mana.run(1,[4]);mana.run(105,[0]);mana.run(1);mana.run(60);});
+    await dismiss(page,()=>mana.mod.barriers.status.completed.length>0&&mana.mod.canAttack,40);
+    expect(await page.evaluate(flag=>mana.read8(0xcf00+flag),flag)).toBe(min);
+    const after=await page.evaluate(()=>({map:mana.read16(0xdc),grid:mana.hash(mana.snes.ram.slice(0x10000,0x18000)),error:mana.mod.story.status.error}));
+    expect(after.map).toBe(map);expect(after.error).toBe(null);
+    await enter(page,131,18,22);await enter(page,map,x,y);
+    expect(await page.evaluate(flag=>mana.read8(0xcf00+flag),flag)).toBeGreaterThanOrEqual(min);
+    expect(await page.evaluate(()=>mana.hash(mana.snes.ram.slice(0x10000,0x18000)))).toBe(after.grid);
+  }
+});
+
+test('early Tree barrier blocks landing, breaks with an aerial charge, then lands without Flammie',async({page})=>{
+  await load(page);await enter(page,198,18,39,{93:1,70:0});
+  const result=await page.evaluate(()=>{
+    mana.write8(0xe3,0);mana.mod.flight.request();mana.run(700);
+    mana.mod.autoLand=true;mana.run(160);const blocked=mana.mod.worldFlight;mana.mod.autoLand=false;
+    // Travel away naturally so the native world row stream stays initialized.
+    mana.write16(0xf6,512);mana.run(100,[4]);mana.write16(0xf6,0);mana.write16(0xf4,0);
+    mana.run(105,[0]);const held={charge:mana.mod.charge,nativeB:mana.snes.joypad1State&1};mana.run(1);mana.run(100);
+    const hit=mana.mod.worldKi.status.lastHit,saved=mana.snapshot();mana.restore(saved);
+    mana.write16(0xfa,624);mana.write16(0xfc,384);mana.write16(0xf4,0);mana.write8(0xcf5d,0);mana.mod.autoLand=true;
+    const landing=[],backgroundFlyby=[];for(let f=0;f<400;f++){mana.run(1);if(!mana.mod.worldFlight&&!mana.snes.ppu.forcedBlank){backgroundFlyby.push(mana.read8(0x52));const pose=mana.mod.spriteLayer.plan?.sprite;if(pose?.kind==='landing')landing.push(pose.y);}}
+    return{blocked,held,hit,map:mana.read16(0xdc),world:mana.mod.worldFlight,gate:mana.read8(0xe3)&64,progress:mana.read8(0xcf46),landing,backgroundFlyby};
+  });
+  expect(result.blocked).toBe(true);expect(result.held).toEqual({charge:90,nativeB:0});expect(result.hit).toBe('mana-tree-barrier');
+  expect(result.map).toBe(198);expect(result.world).toBe(false);expect(result.gate).toBe(64);expect(result.progress).toBe(0);
+  expect(result.landing.length).toBeGreaterThan(10);expect(Math.max(...result.landing)-Math.min(...result.landing)).toBeGreaterThan(40);
+  expect(result.backgroundFlyby.every(v=>v===0)).toBe(true);
+  await dismiss(page,()=>mana.mod.canAttack);expect(await page.evaluate(()=>mana.mod.story.status.lastEvent)).toBe(0x4d8);
+});
+
+test('aerial Fortress destruction skips the dungeon and starts the native Mana Beast battle solo',async({page})=>{
+  await load(page,'.local/juice-research/flight/request-flight.json');
+  const hit=await page.evaluate(()=>{
+    for(const base of[0xe200,0xe400]){mana.write8(base,0);mana.write8(base+0x2c,0);}
+    mana.write8(0xf8,190);mana.run(10);
+    for(let f=0;f<105;f++){
+      const dx=((mana.read16(0x128)-mana.read16(0xfa)+2048)&4095)-2048,dy=((mana.read16(0x12a)-mana.read16(0xfc)+2048)&4095)-2048;
+      mana.write16(0xf6,Math.round(Math.atan2(-dx,-dy)*512/Math.PI)&1023);mana.run(1,[0]);
+    }
+    mana.run(1);mana.run(17);const hit=mana.mod.worldKi.status.lastHit;mana.run(240);return hit;
+  });
+  expect(hit).toBe('mana-fortress');
+  await dismiss(page,()=>mana.read16(0xdc)===253&&mana.mod.canAttack&&mana.mod.entities().some(e=>e.active&&e.species===127),50);
+  expect(await page.evaluate(()=>({mode:mana.snes.ppu.mode,flag:mana.read8(0xcf4e),destroyed:mana.mod.worldKi.status.fortressDestroyed,error:mana.mod.story.status.error}))).toEqual({mode:7,flag:8,destroyed:true,error:null});
+});
+
+test('Luka shortcut plays both final battles and reaches the ending without recruiting anyone',async({page})=>{
+  await load(page);await page.evaluate(()=>{for(const base of[0xe200,0xe400]){mana.write8(base,0);mana.write8(base+0x2c,0);}mana.mod.options.superSaiyan=true;mana.mod.story.request(0x88);});
+  const seen=new Set();let ending=false;
+  for(let i=0;i<150;i++){
+    const s=await page.evaluate(()=>{
+      const m=mana.mod,bosses=m.entities().filter(e=>e.index>=3&&e.active&&e.species>=87&&e.species<128&&e.hp);const seen=bosses.map(e=>e.species);
+      if(m.canAttack&&bosses.length){m.instantTransmission();mana.run(15);mana.run(110,[0]);mana.run(1);mana.run(40);}
+      else{mana.run(2,[16]);mana.run(95);}
+      return{seen,flag:mana.read8(0xcf4e),error:m.story.status.error};
+    });s.seen.forEach(id=>seen.add(id));expect(s.error).toBe(null);if(s.flag>=9){ending=true;break;}
+  }
+  expect([...seen]).toContain(121);expect([...seen]).toContain(127);expect(ending).toBe(true);
+});
+
+test('Undine can grant spells solo and native later recruitment keeps both rewards',async({page})=>{
+  await load(page);await enter(page,278,15,30,{169:0});
+  expect(await page.evaluate(()=>{for(const b of[0xe200,0xe400]){mana.write8(b,0);mana.write8(b+0x2c,0);for(let i=0;i<8;i++)mana.write8(b+0x1c8+i,0);}mana.mod.story.restore();return mana.mod.story.request(0x581);})).toBe(true);
+  await dismiss(page,()=>mana.mod.canAttack&&mana.read8(0xcfa9)>0,60);
+  const result=await page.evaluate(()=>{
+    const before=[mana.read8(0xe3c9),mana.read8(0xe5c9)],c=mana.snes.cart.data,table=0x90000+0x98*2,pointer=c.slice(table,table+2),bytes=c.slice(0x9f300,0x9f305);
+    // Private scratch script invokes the real ADD_CHARACTER initializer. Its
+    // offsets/data are restored even if recruitment or validation fails.
+    try{c.set([0x00,0xf3],table);c.set([0x2b,1,0x2b,2,0],0x9f300);const requested=mana.mod.story.request(0x98);mana.run(240);
+      return{before,requested,after:[mana.read8(0xe3c9),mana.read8(0xe5c9)],present:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],error:mana.mod.story.status.error};
+    }finally{c.set(pointer,table);c.set(bytes,0x9f300);}
+  });
+  expect(result.requested).toBe(true);expect(result.before).toEqual([0x38,7]);expect(result.after).toEqual(result.before);expect(result.present).toEqual([1,1]);expect(result.error).toBe(null);
+});
+
+test('Luka menu can cancel the shortcut and open the original save screen',async({page})=>{
+  await load(page);await page.evaluate(()=>{mana.write8(0xcfc3,1);mana.mod.story.request(0x134);mana.run(200);});
+  for(let i=0;i<2;i++)await page.evaluate(()=>{mana.run(4,[7]);mana.run(16);});
+  await page.evaluate(()=>{mana.run(4,[16]);mana.run(110);});
+  expect(await page.evaluate(()=>mana.mod.story.status.lastEvent)).toBe(0x87);
+  await dismiss(page,()=>mana.mod.canAttack,20); // Stay is the default option.
+  expect(await page.evaluate(()=>({event:mana.mod.story.status.lastEvent,flag:mana.read8(0xcf4e)}))).toEqual({event:0x91,flag:0});
+  await page.evaluate(()=>{mana.mod.story.request(0x134);mana.run(200);mana.run(4,[7]);mana.run(16);mana.run(4,[16]);mana.run(110);});
+  for(let i=0;i<5;i++){
+    if(await page.evaluate(()=>mana.mod.story.status.lastEvent===0x90))break;
+    await page.evaluate(()=>{mana.run(4,[16]);mana.run(130);});
+  }
+  expect(await page.evaluate(()=>mana.mod.story.status.lastEvent)).toBe(0x90);
+  expect(await page.evaluate(()=>mana.mod.story.status.error)).toBe(null);
+});

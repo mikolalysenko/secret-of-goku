@@ -1,0 +1,97 @@
+import {test,expect} from '@playwright/test';
+import {existsSync,readFileSync} from 'node:fs';
+const fixture=path=>JSON.parse(readFileSync(path,'utf8'));
+async function load(page,path){
+  await page.goto('/');await page.waitForFunction(()=>window.mana?.ready);
+  await page.evaluate(state=>{mana.pause();state.romHash=mana.hash(mana.snes.cart.data);mana.restore(state);Object.assign(mana.mod.options,{enabled:true,power:true,superSaiyan:false});mana.run(2);},fixture(path));
+}
+test.beforeEach(()=>test.skip(!existsSync('.local/rom/secret-of-mana-us.sfc'),'Requires user-supplied US cartridge.'));
+
+test('real native Rabites receive punch, travelling beam and ki damage, launch and finish their death animation',async({page})=>{
+  const path='.local/animation-audit/native/rabite-field-a.json';test.skip(!existsSync(path),'Requires native combat research fixture.');
+  await load(page,path);const results=await page.evaluate(()=>{
+    mana.write8(0xe200,0);mana.write8(0xe400,0);
+    const base=mana.snapshot(),results=[];
+    for(const technique of ['punch','beam','ki']){
+      mana.restore(base);mana.run(5,[7]);mana.run(3);
+      const enemy=mana.mod.entities().find(e=>e.index===3),before={...enemy},gold=mana.read16(0xcc6a),xp=mana.read16(0xe18d);
+      if(technique==='beam'){
+        mana.run(110,[0]);
+        const target=mana.mod.entities()[3],player=mana.mod.status,dx=target.x-player.x,dy=target.y-player.y;
+        const direction=Math.abs(dx)>Math.abs(dy)?(dx>0?7:6):(dy>0?5:4);
+        mana.run(2,[0,direction]);mana.run(1);
+      }
+      else if(technique==='ki')mana.run(8,[17]);
+      else{mana.run(2,[0]);mana.run(1);}
+      let zero=false,inactive=false,maxDisplacement=0,queued=false,number=false,launchOrigin=null;
+      for(let i=0;i<180;i++){
+        mana.run(1);const e=mana.mod.entities()[3];
+        if(e.hp===0)zero=true;if(!e.active)inactive=true;
+        if(mana.read16(e.base+0x1f1))queued=true;if(mana.read16(e.base+0x17b))number=true;
+        const launch=mana.mod.knockbacks.find(hit=>hit.base===e.base);if(launch)launchOrigin={x:launch.x,y:launch.y};
+        if(launchOrigin)maxDisplacement=Math.max(maxDisplacement,Math.hypot(e.x-launchOrigin.x,e.y-launchOrigin.y));
+      }
+      results.push({technique,zero,inactive,queued,number,maxDisplacement,canAttack:mana.mod.canAttack,gold:mana.read16(0xcc6a)-gold,xp:mana.read16(0xe18d)-xp});
+    }
+    return results;
+  });
+  for(const result of results){expect(result.zero,result.technique).toBe(true);expect(result.inactive,result.technique).toBe(true);expect(result.maxDisplacement,result.technique).toBeGreaterThan(25);expect(result.canAttack).toBe(true);expect(result.gold).toBe(2);expect(result.xp).toBeGreaterThan(0);}
+});
+
+test('Mantis Ant takes the native lethal damage path and still reaches the original rescue event',async({page})=>{
+  const path='.local/emulator-probe/map-260-state.json';test.skip(!existsSync(path),'Requires native boss fixture.');
+  await load(page,path);
+  const result=await page.evaluate(async()=>{
+    const boss=mana.mod.entities().find(e=>e.index>=3&&e.active&&e.species===87),before=boss?.hp;
+    if(!boss)return{before};
+    // Aim using actual actor coordinates; positioning uses normal controller
+    // input, never relocating the boss or inventing its defeat flag.
+    const status=mana.mod.status,dx=boss.x-status.x,dy=boss.y-status.y;
+    const button=Math.abs(dx)>Math.abs(dy)?(dx>0?7:6):(dy>0?5:4);
+    mana.run(2,[button]);mana.run(112,[0]);mana.run(1);
+    let dead=false,rescue=false;
+    for(let i=0;i<60;i++){
+      mana.run(20);if(mana.read16(boss.base+0x182)===0)dead=true;
+      if(mana.read8(0xd0)!==0||mana.read8(0xcf10)>6)rescue=true;
+      if(i%8===0)await new Promise(resolve=>setTimeout(resolve,0));
+    }
+    return{before,dead,rescue,flag:mana.read8(0xcf10),event:mana.read8(0xd0)};
+  });
+  expect(result.before).toBeGreaterThan(0);expect(result.dead).toBe(true);expect(result.rescue).toBe(true);
+});
+
+test('keyboard aliases, confirm, ring cancellation, party switching and checkpoint replay keep distinct input ownership',async({page})=>{
+  await load(page,'.local/graphics-audit/party.json');
+  await page.evaluate(()=>mana.play());await page.keyboard.down('j');await page.keyboard.down('Space');
+  await expect.poll(()=>page.evaluate(()=>mana.mod.charging)).toBe(true);
+  await page.keyboard.up('j');await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBe(90);
+  await page.keyboard.up('Space');await expect.poll(()=>page.evaluate(()=>mana.logs.some(line=>line.startsWith('Kamehameha')))).toBe(true);
+  const result=await page.evaluate(()=>{
+    mana.pause();mana.run(40);const base=mana.snapshot();
+    mana.run(80,[16]);const confirm={charged:mana.mod.charging,beams:mana.mod.effects.filter(e=>e.kind==='beam').length};
+    mana.restore(base);mana.run(50,[0]);mana.run(2,[0,1]);mana.run(90,[0]);const ring={charge:mana.mod.charge,menu:mana.read8(0xec),nativeB:mana.snes.joypad1State&1};
+    mana.restore(base);mana.run(2,[2]);mana.run(40);const owner=mana.read8(0xe02c);mana.run(90,[0]);const party={owner,charging:mana.mod.charging,nativeB:mana.snes.joypad1State&1};
+    mana.restore(base);mana.run(45,[0]);const saved=mana.snapshot();mana.run(15,[0]);mana.run(7);const hash=mana.hash(mana.pixels),ram=mana.hash(mana.snes.ram);
+    mana.restore(saved);mana.run(15,[0]);mana.run(7);return{confirm,ring,party,replay:hash===mana.hash(mana.pixels)&&ram===mana.hash(mana.snes.ram)};
+  });
+  expect(result.confirm).toEqual({charged:false,beams:0});expect(result.ring.charge).toBe(0);expect(result.ring.menu).not.toBe(0);expect(result.ring.nativeB).toBe(0);
+  expect(result.party).toEqual({owner:0,charging:false,nativeB:1});expect(result.replay).toBe(true);
+});
+
+test('on-screen attack and keyboard can overlap, and C/R drive ki and transformation',async({page})=>{
+  await load(page,'.local/graphics-audit/party.json');
+  // Make the real pointer control visible on the desktop test viewport too.
+  await page.locator('.touch-pad').evaluate(element=>element.style.display='flex');
+  const attack=page.locator('[data-snes="0"]');await attack.scrollIntoViewIfNeeded();
+  const box=await attack.boundingBox();await page.evaluate(()=>mana.play());
+  await page.keyboard.down('j');await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.keyboard.up('j');
+  await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBe(90);
+  await page.mouse.up();await expect.poll(()=>page.evaluate(()=>mana.logs.some(line=>line.startsWith('Kamehameha')))).toBe(true);
+  await expect.poll(()=>page.evaluate(()=>mana.mod.action===null)).toBe(true);
+  await page.keyboard.press('r');await expect.poll(()=>page.evaluate(()=>mana.mod.options.superSaiyan)).toBe(true);
+  await expect.poll(()=>page.evaluate(()=>mana.mod.action===null)).toBe(true);
+  await page.keyboard.down('c');await expect.poll(()=>page.evaluate(()=>mana.mod.effects.some(effect=>effect.kind==='ki'))).toBe(true);await page.keyboard.up('c');
+  await expect.poll(()=>page.evaluate(()=>mana.mod.effects.length===0)).toBe(true);
+  await page.keyboard.press('Escape');expect(await page.evaluate(()=>mana.running)).toBe(false);
+  await page.keyboard.press('Escape');expect(await page.evaluate(()=>mana.running)).toBe(true);
+});

@@ -1,0 +1,33 @@
+{
+  "name": "secret-of-goku",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Secret of Mana in the browser with Goku, overpowered combat, flight and story shortcuts. Bring your own ROM.",
+  "engines": {"node": ">=22"},
+  "scripts": {
+    "dev": "node scripts/serve.mjs",
+    "start": "node scripts/serve.mjs",
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:e2e": "playwright test",
+    "audit:seed": "node tools/qa/area-seed.mjs",
+    "audit:ui": "node tools/qa/ui-audit.mjs --state .local/graphics-audit/party.json",
+    "audit:menus": "node tools/qa/event-ui-audit.mjs",
+    "audit:effects": "node tools/qa/effects-audit.mjs --state .local/graphics-audit/party.json",
+    "audit:combat": "node tools/qa/combat-audit.mjs",
+    "audit:poses": "node tools/qa/pose-audit.mjs",
+    "audit:status": "node tools/qa/status-audit.mjs",
+    "audit:areas": "node tools/qa/area-sweep.mjs",
+    "audit:boss": "node tools/qa/area-manabeast.mjs",
+    "audit:report": "node tools/qa/area-report.mjs --screenshots",
+    "assets:prepare": "node scripts/prepare-assets.mjs",
+    "rom:import": "node scripts/import-rom.mjs",
+    "rom:inspect": "node tools/rom/cli.mjs inspect .local/rom/secret-of-mana-us.sfc",
+    "rom:extract": "node tools/rom/cli.mjs extract .local/rom/secret-of-mana-us.sfc --out assets/data/potos-rom.json --render-dir assets/maps"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "pngjs": "^7.0.0"
+  }
+}
