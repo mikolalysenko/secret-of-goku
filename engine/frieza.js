@@ -176,8 +176,8 @@ export function createFrieza(snes,mod){
    // Compact native-font boss name and three life segments leave the arena
    // visible. No HTML UI is introduced over the original game's graphics.
    const text=encodeText(b.stun?'FRIEZA  STAGGERED':'FRIEZA  FULL POWER');
-   text.forEach((code,col)=>{for(let y=0;y<12;y++)for(let x=0;x<8;x++)if(snes.cart.data[0x12d600+code*12+y]>>(7-x)&1){put(57+col*8+x,9+y,1);put(56+col*8+x,8+y,0x8000);}});
-   for(let y=23;y<29;y++)for(let x=48;x<208;x++)put(x,y,y===23||y===28||x%53===48?rgb(23,19,27):x-48<160*b.hp/FRIEZA_HP?rgb(27,4,20):rgb(5,2,7));
+   text.forEach((code,col)=>{for(let y=0;y<12;y++)for(let x=0;x<8;x++)if(snes.cart.data[0x12d600+code*12+y]>>(7-x)&1){put(57+col*8+x,1+y,1);put(56+col*8+x,y,0x8000);}});
+   for(let y=14;y<18;y++)for(let x=48;x<208;x++)put(x,y,y===14||y===17||x%53===48?rgb(23,19,27):x-48<160*b.hp/FRIEZA_HP?rgb(27,4,20):rgb(5,2,7));
   },
   get status(){return copy({...s,eligible:eligible(),hp:s.boss?.hp??null});},snapshot(){return copy(s);},restore(saved){s={...initial(),...copy(saved)};if(s.permanent)mod.options.superSaiyan=true;},
  };
