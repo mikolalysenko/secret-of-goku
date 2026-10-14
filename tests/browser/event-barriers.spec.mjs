@@ -80,14 +80,14 @@ test('an early Snapdragon defeat opens the original palace bridge and reaches Dr
   const h=m.localFlightHook,{width,height}=h.bounds(),origin=(m.status.y>>4)*128+(m.status.x>>4),goal=37*128+18,queue=[origin],parents=new Map([[origin,null]]);
   for(let i=0;i<queue.length&&!parents.has(goal);i++)for(const[dx,dy]of[[0,-1],[-1,0],[1,0],[0,1]]){
    const x=queue[i]%128+dx,y=(queue[i]>>7)+dy,k=y*128+x;
-   if(x<0||y<0||x>=width/16||y>=height/16||parents.has(k)||!h.canFly(x*16+8,y*16+8))continue;
+   if(x<0||y<0||x>=width/16||y>=height/16||parents.has(k)||!Array.from({length:17},(_,d)=>h.canFly(x*16+8-dx*d,y*16+8-dy*d)).every(Boolean))continue;
    parents.set(k,queue[i]);queue.push(k);
   }
   const path=[];if(parents.has(goal))for(let k=goal;k!==origin;k=parents.get(k))path.unshift(k);
   const stalls=[];for(const k of path){
    for(let f=0;f<80&&m.status.map===430;f++){
     const dx=k%128*16+8-m.status.x,dy=(k>>7)*16+8-m.status.y;if(Math.abs(dx)<=2&&Math.abs(dy)<=2)break;
-    mana.run(1,[8,Math.abs(dx)>Math.abs(dy)?dx>0?7:6:dy>0?5:4]);
+    mana.run(1,[...(Math.max(Math.abs(dx),Math.abs(dy))>20?[8]:[]),Math.abs(dx)>Math.abs(dy)?dx>0?7:6:dy>0?5:4]);
     if(f===79)stalls.push({k,status:m.status});
    }
    if(m.status.map!==430)break;

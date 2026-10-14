@@ -16,7 +16,7 @@ test('flight crosses lily pads, cave height changes and Gaia lava shores while p
   for(let y=24;y<height-16;y+=16)for(let x=24;x<width-16;x+=16){
    const t=h.tileAt(x,y,0);
    if(map===139&&t.ty>=59&&t.ty<=65&&t.tx>=12&&t.tx<=21&&(t.tx<16||t.tx>17)&&[6,22,38,54,187].includes(t.tile))pockets.push({x,y,fly:h.canFly(x,y,0)});
-   if(map>=275&&t.tile===0)voids.push(h.canFly(x,y,0));
+   if(map>=275&&t.tile===0){const route=h.dungeon.airRoute(t);voids.push({fly:h.canFly(x,y,0),shores:route?route.ends.map(t=>({tx:t.tx,ty:t.ty,floor:h.dungeon.floor(t,h.dungeon.context())})):[]});}
    if(map===139?!(t.ty>=48&&t.ty<=53&&[6,22,38,54,187].includes(t.tile)):map===136?![174,175].includes(t.tile):!((t.code>=16&&t.code<=23)||((t.flags&7)===3&&h.lowObstacle(t))))continue;
    if(!h.canFly(x,y,0))continue;
    for(const[dx,dy]of[[0,1],[1,0]]){
@@ -33,7 +33,7 @@ test('flight crosses lily pads, cave height changes and Gaia lava shores while p
   return{map,routes:routes.length,route,across:steer(b),returned:steer(a),pockets,voids,radio:m.radio.status,error:m.story.status.error};
  },{baseline,map}));
  writeFileSync(test.info().outputPath('terrain.json'),JSON.stringify(results,null,2));
- for(const r of results){const detail=JSON.stringify(r);expect(r.routes,detail).toBeGreaterThan(0);expect(r.voids.some(Boolean),detail).toBe(false);expect(r.pockets.some(p=>p.fly),detail).toBe(false);if(r.map===139)expect(r.pockets.length).toBeGreaterThan(0);
+ for(const r of results){const detail=JSON.stringify(r);expect(r.routes,detail).toBeGreaterThan(0);for(const gap of r.voids.filter(v=>v.fly)){expect(gap.shores,detail).toHaveLength(2);expect(gap.shores.every(s=>s.floor&&s.tx>0&&s.ty>0),detail).toBe(true);}expect(r.pockets.some(p=>p.fly),detail).toBe(false);if(r.map===139)expect(r.pockets.length).toBeGreaterThan(0);
   for(const[end,target]of[[r.across,r.route.b],[r.returned,r.route.a]]){expect(end.map,detail).toBe(r.map);expect(Math.hypot(end.x-target.x,end.y-target.y),detail).toBeLessThanOrEqual(5);expect(end.land,detail).toBe(true);expect(end.localFlight,detail).toBe(false);}
   expect(r.radio.barrierCount,detail).toBe(0);expect(r.error,detail).toBe(null);
  }

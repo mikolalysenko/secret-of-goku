@@ -3,6 +3,7 @@
 // Flags 1 and 2 are terrain heights, not walls (C1:BE15). Height 3 is solid.
 import {createNativeWhipRoutes} from './native-whip-routes.js';
 import {smallScenery,terrainBanks,blankGroundZero} from './flight-terrain.js';
+import {createDungeonGeometry} from './dungeon-geometry.js';
 const scenery={0:new Set([130,139,141,159]),2:new Set([130,131]),
  // Haunted Forest flowers and creeping vines, verified against tileset 7.
  // Tall trees, cliff faces, switches and the scripted rose gate are separate.
@@ -38,6 +39,7 @@ const movementFloor=code=>(code&0xf0)===0x20||(code&0xf0)===0x30;
 export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=false,onCross=null,onCarry=null}={}){
  const c=snes.cpu,r=snes.ram,priorCycle=c.cycle,word=a=>r[a]|r[a+1]<<8;
  const whipRoutes=createNativeWhipRoutes(snes);
+ const dungeon=createDungeonGeometry(snes);
  const ground=()=>[0x5c,0xa8,0xc0,0,0x5c,0xcf,0xc1,0].every((v,i)=>r[0x100+i]===v)&&r[0xd0]===0&&(r[0xec]&0xfe)===0&&!(r[0xed]&0x40)&&r[0xff]===0;
  const eligible=()=>active()&&ground()&&(r[0xe000]&1)&&(r[0xe02c]&1)&&!(r[0xe190]&0x70)&&!(r[0xe191]&0xd7)&&!(r[0xe01c]|r[0xe060]|r[0xe00a])&&r[0xe008]===0;
  const phasing=()=>typeof phase==='function'?phase():phase;
@@ -71,6 +73,7 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   if(!t)return false;
   if(ferryGap(t)||shipRail(t))return true;
   if(whipRoutes.crossable(t))return true;
+  if(dungeon.air(t))return true;
   const at=header(),flags=at===null?0:snes.cart.data[at+2],tileset=at===null?-1:flags&63,metatile=t.tile+((flags&(t.layer?128:64))?192:0);
   const realShore=d=>clear(d,0,true)&&!(blankGroundZero.has(tileset)&&d.tile+((flags&(d.layer?128:64))?192:0)===0)&&!(d.behavior&0x90);
   const betweenShores=(accepts,span)=>{
@@ -271,7 +274,7 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   // This crossing is longer than the native party-distance limit. Goku
   // carries CPU followers while over the sea, so the camera and input never
   // tether him to companions stranded on the first pier.
-  if(ferryGap(tileAt(x,y,l)))onCarry?.({x,y,layer:l,terrain:r[0xe00b]});
+  if(ferryGap(tileAt(x,y,l))||dungeon.air(tileAt(x,y,l)))onCarry?.({x,y,layer:l,terrain:r[0xe00b]});
   const {width,height}=bounds(),t=tileAt(x,y,l),outside=x<8||y<8||x>width-8||y>height-8;
   // Recover older checkpoints stranded in a wall/void, or an unexpected
   // native displacement. Prefer the most recent verified landing position.
@@ -285,10 +288,11 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   }
   if(safe){crossing=null;for(const[a,v]of[[0xe002,safe.x],[0xe004,safe.y]]){r[a]=v&255;r[a+1]=v>>8;}r[0xe006]=r[0xe007]=0;if(safe.terrain!==undefined)r[0xe00b]=safe.terrain;recovered++;return{x:safe.x,y:safe.y,layer:l,terrain:r[0xe00b]};}
  }
- return{canLand,canFly,canFloat,lowObstacle,breakScenery,tileAt,bounds,settle,
+ return{canLand,canFly,canFloat,lowObstacle,breakScenery,tileAt,bounds,settle,dungeon,
   get passengers(){
-   if(!phasing()||!eligible()||!ferryGap(tileAt(word(0xe002),word(0xe004),layer())))return [];
+   const t=tileAt(word(0xe002),word(0xe004),layer());
+   if(!phasing()||!eligible()||!(ferryGap(t)||dungeon.air(t)))return [];
    return [0xe200,0xe400].filter(base=>(r[base]&1)&&!r[base+0x2c]&&!(r[base+0x0e]&0x80));
   },
-  snapshot:()=>({anchor,crossing,motionFrame,travel:[...travel]}),restore:s=>{anchor=s?.anchor??null;crossing=s?.crossing??null;motionFrame=s?.motionFrame??-1;travel=s?.travel?.slice()??[0,0];},get changed(){return changed},get phased(){return phased},get limited(){return limited},get recovered(){return recovered},get npcPasses(){return npcPasses},dispose(){c.cycle=priorCycle;}};
+  snapshot:()=>({anchor,crossing,motionFrame,travel:[...travel]}),restore:s=>{anchor=s?.anchor??null;crossing=s?.crossing??null;motionFrame=s?.motionFrame??-1;travel=s?.travel?.slice()??[0,0];dungeon.invalidate();},get changed(){return changed},get phased(){return phased},get limited(){return limited},get recovered(){return recovered},get npcPasses(){return npcPasses},dispose(){c.cycle=priorCycle;}};
 }

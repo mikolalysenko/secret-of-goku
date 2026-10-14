@@ -19,6 +19,16 @@ The regional pass records renderer SHA-256 `eba2f05774bb4c490255b2ab2fb3f74197da
 
 ## Area coverage
 
+### Dungeon shortcut follow-up — October 14, 2026
+
+The [dungeon flight and demolition pass](dungeon-shortcuts.md) covers 252 maps
+in all 22 dungeon families and 598 native-loaded layouts. It adds bounded
+flight corridors and full Super Saiyan wall breaches, with native paired-layer
+redraws and protection for event cells, changing puzzle layouts and map edges.
+The all-room runtime sweep passed, including 196 wall and 97 flight round
+trips. The linked report lists the scope, excluded special-renderer scenes,
+visual follow-up, progression regressions and reproduction commands.
+
 ### Barrier follow-up — October 13, 2026
 
 The barrier inventory reads all 512 map slots, including hidden pieces in 78

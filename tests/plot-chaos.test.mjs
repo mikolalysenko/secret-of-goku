@@ -76,6 +76,13 @@ test('a shortcut remark does not follow Goku into another room',()=>{
   tick(500);mod.action={kind:'beam'};radio.defeatedBarrier('northtown-castle');tick();assert.equal(radio.status.queued,1);
   mod.read16=()=>131;mod.action=null;tick();assert.equal(radio.status.current,null);assert.equal(radio.status.queued,0);
 });
+test('a demolition quip happens at most once per dungeon, including after a save and a room change',()=>{
+ const{mod,radio,tick}=radioFixture();mod.charging=false;mod.read16=()=>312;
+ assert.equal(radio.defeatedBarrier('dungeon-wall-earth',{map:312,onceKey:'dungeon:earth'}),true);tick(600);
+ const saved=radio.snapshot();radio.restore(saved);mod.read16=()=>313;
+ assert.equal(radio.defeatedBarrier('dungeon-wall-earth',{map:313,onceKey:'dungeon:earth'}),false);assert.equal(radio.status.queued,0);
+ assert.equal(radio.defeatedBarrier('dungeon-wall-fire',{map:327,onceKey:'dungeon:fire'}),true);
+});
 test('first-flight advice happens once and obsolete Fortress advice is discarded after destruction',()=>{
   const{mod,snes,radio,tick}=radioFixture();mod.worldFlight=true;snes.ram[0x2c]=128;mod.charging=false;tick();assert.equal(radio.status.firstFlight,true);assert.equal(radio.status.queued,3);
   assert.equal(snes.ppu.getColor(false,16,160)[0],0x2c00);assert.equal(snes.ppu.getColor(false,16,16)[0],17,'The aerial beam and sky stay visible');

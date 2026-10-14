@@ -2,7 +2,7 @@
 // grid and queues the original tilemap/DMA redraw, including BG2 obstacles.
 // No ROM patches, graphics bytes, direct VRAM writes or forced CPU calls.
 // Traced C1:D293..D429; C0:C7C3 consumes the redraw queue; C0:B565 drains SFX.
-export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplacement=null}={}){
+export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplacement=null,demolitionPlan=null}={}){
  const cpu=snes.cpu,priorCycle=cpu.cycle,r=snes.ram;
  const read16=a=>r[a]|r[a+1]<<8;
  let queue=[],lastFrame=-1,done=[],cleared=new Map(),cutMap=null;
@@ -67,7 +67,7 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
   const replacement=objectPolicy(policy)&&tile?(sceneryReplacement?.(tile)??(policy==='super-beam'?brazierReplacement(tile):null)):null;
   return Number.isInteger(replacement)&&replacement>=0&&replacement<256&&replacement!==tile.tile?{...tile,replacement,kind:8}:null;
  };
- function enqueueTiles(tiles,{policy='plants'}={}){
+ function enqueueTiles(tiles,{policy='plants',attack={}}={}){
   if(!ground())return[];
   const map=read16(0xdc),added=[];
   const expanded=[];
@@ -81,7 +81,24 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
    if(queue.length>=128)break;
    const queued={...item,map,frame:snes.frames,policy};queue.push(queued);added.push(queued);
   }
+  if(policy==='super-beam'&&demolitionPlan){
+   const unused=tiles.filter(t=>!queue.some(q=>q.map===map&&q.tx===t.tx&&q.ty===t.ty&&q.layer===(t.layer??layer())));
+   for(const item of demolitionPlan(unused,attack)){
+    if(queue.length>=128)break;
+    if(queue.some(q=>q.map===map&&q.address===item.address))continue;
+    const queued={...item,map,frame:snes.frames,policy};if(!queuedTile(queued))continue;queue.push(queued);added.push(queued);
+   }
+  }
   return added;
+ }
+ function queuedTile(item){
+  const now=metadata(item.tx,item.ty,item.layer);
+  if(!item.demolition)return breakable(now,item.policy);
+  if(!now||now.tile!==item.tile||now.flags!==item.flags||now.behavior!==item.behavior||now.code!==0||item.code!==0||now.flags&8||now.behavior&0xd0||!Number.isInteger(item.replacement)||item.replacement<0||item.replacement>191)return null;
+  // A scene may have rebuilt the room between impact and this DMA slot.
+  // Its original two floors must still exist; never replay an obsolete hole.
+  if(!item.witnesses?.length||item.witnesses.some(w=>r[w.address]!==w.tile||r[w.descriptor]!==w.flags||r[w.descriptor+1]!==w.behavior||r[w.descriptor+2]!==w.code))return null;
+  return{...now,replacement:item.replacement,kind:8,demolition:true,dungeon:item.dungeon,witnesses:item.witnesses};
  }
  function beam({x,y,dx,dy,length=180,halfWidth=12,taper=0,policy='plants',collisionLayer=layer()}){
   const norm=Math.hypot(dx,dy);if(!norm||![x,y,dx,dy,length,halfWidth].every(Number.isFinite))return[];
@@ -97,7 +114,7 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
    if(along>=-8&&along<=length+8&&across<=width+8)tiles.push({tx,ty,layer:collisionLayer,along});
   }
   tiles.sort((a,b)=>a.along-b.along||a.ty-b.ty||a.tx-b.tx);
-  return enqueueTiles(tiles,{policy});
+  return enqueueTiles(tiles,{policy,attack:{dx,dy}});
  }
  cpu.cycle=function(){
   const boundary=(this.r[1]===0||this.r[1]===0xc0)&&this.br[4]===0xc7c3&&this.cyclesLeft===0;
@@ -114,18 +131,18 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
     // to an obsolete replacement, and leaving the map keeps native respawn.
     for(const item of cleared.values()){
      if(queue.length>=128)break;
-     const policy=item.policy??'objects',now=breakable(metadata(item.tx,item.ty,item.layer),policy);
+     const policy=item.policy??'objects',now=item.demolition?queuedTile(item):breakable(metadata(item.tx,item.ty,item.layer),policy);
      const sameTile=now&&(now.tile===item.tile||policy==='super-beam'&&brazierPart(item.tile)>=0&&brazierPart(now.tile)===brazierPart(item.tile));
      if(sameTile&&now.flags===item.flags&&now.behavior===item.behavior&&now.code===item.code&&now.replacement===item.replacement&&!queue.some(q=>q.address===item.address))queue.push({...item,...now,policy,frame:snes.frames,replay:true});
     }
     while(queue.length){
-     const first=queue.shift(),now=breakable(metadata(first.tx,first.ty,first.layer),first.policy);
+     const first=queue.shift(),now=queuedTile(first);
      if(!now||now.tile!==first.tile)continue;
      const group=[first],rest=[];for(const item of queue)(item.layer===first.layer&&item.ty===first.ty&&!!item.replay===!!first.replay?group:rest).push(item);queue=rest;
      const changed=[];
      for(const item of group){
-      const cur=breakable(metadata(item.tx,item.ty,item.layer),item.policy);if(!cur||cur.tile!==item.tile)continue;r[cur.address]=cur.replacement;changed.push(cur);
-      if(objectPolicy(item.policy)&&((cur.flags&7)===3||cur.flags&8||item.policy==='super-beam'&&brazierReplacement(cur)!==null))cleared.set(cur.address,{...cur,map,policy:item.policy});
+      const cur=queuedTile(item);if(!cur||cur.tile!==item.tile)continue;r[cur.address]=cur.replacement;changed.push(cur);
+      if(objectPolicy(item.policy)&&(cur.demolition||(cur.flags&7)===3||cur.flags&8||item.policy==='super-beam'&&brazierReplacement(cur)!==null))cleared.set(cur.address,{...cur,map,policy:item.policy});
      }
      if(!changed.length)continue;
      const scrollY=read16(first.layer?0xae:0xaa),mapHeight=read16(0xc2),worldY=first.ty*16+8;

@@ -45,7 +45,32 @@ export const treeBlastMessages=[
   "GOKU:Oh. Sorry! I'll wish\nit back with the others.\nLUKA:THE OTHERS?!",
   'KING KAI:I caught the\nsouls. You nearly made my\nplanet the ONLY planet!',
 ];
+export const dungeonQuips={
+ water:'LUKA:This is a sanctuary!\nGOKU:Now it has a window.\nLUKA:THAT WAS THE WALL.',
+ pandora:'KING KAI:Ancient ruins!\nGOKU:Even more ancient now.\nKAI:Not how that works.',
+ gaia:'KING KAI:That was a cave!\nGOKU:Now it is TWO caves.\nKAI:Also not how it works.',
+ witch:'KING KAI:The witch had a\nmaze planned here.\nGOKU:I found the short one.',
+ earth:'KING KAI:They carved this\npalace out of a mountain!\nGOKU:I carved it smaller.',
+ kilroy:'KING KAI:That ship floats!\nGOKU:Good. I made a window.\nKAI:BELOW THE WATERLINE!',
+ wind:'KING KAI:That wall was\nholding the wind IN.\nGOKU:You are welcome?',
+ matango:'GOKU:Shortcut!\nKING KAI:There WAS a path.\nGOKU:It took a whole minute.',
+ ice:'KING KAI:The Ice Palace!\nGOKU:I helped defrost it.\nKAI:IT HAD PEOPLE IN IT.',
+ sandship:'KING KAI:Stop remodeling\nthe ship while it is moving!\nGOKU:Better air flow!',
+ fire:'GOKU:Fire exit!\nLUKA:That was not an exit.\nGOKU:It is now.',
+ empire:'KING KAI:So much for\nsneaking into the castle.\nGOKU:I knocked first.',
+ northtown:'KING KAI:You cannot punch\nyour way through history!\nGOKU:I used both hands.',
+ light:'LUKA:The key is downstairs.\nGOKU:So is most of the wall.',
+ jehk:'KING KAI:This is a test\nof patience and wisdom.\nGOKU:I finished early!',
+ shade:'KING KAI:This palace is\nsupposed to be dark!\nGOKU:Found the light switch.',
+ moon:'KING KAI:You cannot make\nan emergency exit in SPACE!\nGOKU:Watch me.',
+ tasnica:'KING KAI:The king wanted\nan audience, not a patio!\nGOKU:Room for more people.',
+ undersea:'KING KAI:We are UNDERWATER!\nGOKU:I held my breath.\nKAI:THE BUILDING CANNOT!',
+ grand:'LUKA:Seven sacred trials.\nGOKU:One straight hallway.\nLUKA:That was the temple.',
+ pure:'KING KAI:This is Pure Land!\nGOKU:Pure gravel now.\nKAI:Put that on the wish.',
+ fortress:'KING KAI:That was a load\nbearing wall!\nGOKU:It should train harder.',
+};
 export const barrierReactions={
+  ...Object.fromEntries(Object.entries(dungeonQuips).map(([id,text])=>[`dungeon-wall-${id}`,[text]])),
   'haunted-forest-bridge':['KING KAI:That was a\nsecurity system!\nGOKU:Seems pretty insecure.'],
   'witch-castle':['LUKA:That gate needed\nthree people on switches.\nGOKU:I pushed REALLY hard.'],
   'northtown-castle':['KING KAI:You needed an\ninvitation!\nGOKU:They can hear me now.'],
@@ -82,13 +107,13 @@ export function createNativeRadio(snes,mod){
   const say=(text,{frames=230,kind='story'}={})=>{encodeText(text);if(wrapText(text).split('\n').length>3)throw Error('Radio message is too long');queue.push({text,remaining:frames,kind});};
   return{
     say,
-    defeatedBarrier(id,{map=mod.read16(0xdc)}={}){
+    defeatedBarrier(id,{map=mod.read16(0xdc),onceKey=null}={}){
       // Only authored progression shortcuts qualify. Cutting scenery,
       // operating switches/orbs and ordinary flight are normal gameplay.
       // Unknown IDs must stay silent rather than fall back to a generic joke.
       const choices=Object.hasOwn(barrierReactions,id)?barrierReactions[id]:null;
       if(!choices||!mod.options.enabled||!mod.gokuActive)return false;
-      const key=`${map}:${id}`;if(barriers.has(key))return false;barriers.add(key);
+      const key=onceKey??`${map}:${id}`;if(barriers.has(key))return false;barriers.add(key);
       // Coalesce shortcuts hit by the same blast. Remember suppressed repeats
       // too, so returning to a breached gate cannot start another complaint.
       const prior=current?.kind==='barrier'?current:queue.find(m=>m.kind==='barrier');

@@ -9,6 +9,7 @@ import {mountTouchControls} from './touch-controls.js';
 import {createKiSound} from './ki-sound.js';
 import {createNativeCombatSound} from './native-combat-sound.js';
 import {createNativePlants} from './native-plants.js';
+import {demolitionEffects} from './dungeon-demolition.js';
 import {createNativeFeedback} from './native-feedback.js';
 import {installFlightDialogue} from './flight-dialogue.js';
 import {installNativeOamOwnership} from './native-oam.js';
@@ -51,7 +52,9 @@ mod.combatSound=createNativeCombatSound(snes,mod);
 mod.gapFlight=createNativeGapFlight(snes,mod);
 mod.feedback=createNativeFeedback(snes,mod);
 mod.ownership=installNativeOamOwnership(snes);
-mod.plants=createNativePlants(snes,{canCut:()=>mod.options.enabled&&mod.canAttack,sceneryReplacement:tile=>mod.localFlightHook?.breakScenery(tile),onCut:result=>{
+mod.plants=createNativePlants(snes,{canCut:()=>mod.options.enabled&&mod.canAttack,sceneryReplacement:tile=>mod.localFlightHook?.breakScenery(tile),demolitionPlan:(tiles,attack)=>mod.localFlightHook?.dungeon.demolish(tiles,attack)??[],onCut:result=>{
+  mod.localFlightHook?.dungeon.invalidate();
+  demolitionEffects(mod,result);
   for(const tile of result.tiles)mod.effects.push({kind:'impact',x:tile.tx*16+8,y:tile.ty*16+8,dx:1,dy:0,life:8,max:8,super:false});
   if(result.tiles.length)mod.playSound('impact');
 }});

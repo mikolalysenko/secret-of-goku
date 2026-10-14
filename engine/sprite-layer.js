@@ -304,6 +304,14 @@ class ManaSpriteLayer {
       this.behindBody=effect.dy<0&&(effect.kind==='beam'||effect.kind==='ki');
       const sx=effect.x-state.cameraX,sy=effect.y-state.cameraY;
       const age=effect.max-effect.life,phase=Math.floor(age/2);
+      if(effect.kind==='rubble'){
+        for(let i=0;i<6;i++){
+          const a=(i*2.39996+effect.seed),px=sx+Math.cos(a)*age*(.7+i%3*.3),py=sy-4-age*(1+i%3*.5)+age*age*.075,size=1+i%2;
+          for(let y=-size;y<=size;y++)for(let x=-size;x<=size;x++)if(Math.abs(x)+Math.abs(y)<=size+1)this.pixel(px+x,py+y,1+effect.colors[y<0?2:x<0?1:0],true);
+          if(age>6&&age<26)this.pixel(px-2,py+4,1+effect.colors[1],true);
+        }
+        continue;
+      }
       if(effect.kind==='powerBurst'){
         // The whole damage radius lights up on the ignition frame, then
         // dissipates outward using native spell cells at their original size.
