@@ -7,12 +7,24 @@ async function load(page){
  await page.goto('/');await page.waitForFunction(()=>mana.ready);
  await page.evaluate(state=>{mana.pause();state.romHash=mana.hash(mana.snes.cart.data);mana.restore(state);Object.assign(mana.mod.options,{enabled:true,power:true,superSaiyan:false});mana.run(3);},JSON.parse(readFileSync(fixture)));
 }
-async function enter(page,map,x,y,flag,value){
- await page.evaluate(({map,x,y,flag,value})=>{
+async function enter(page,map,x,y,flag,value,layer=1){
+ await page.evaluate(({map,x,y,flag,value,layer})=>{
   const c=mana.snes.cart.data,e=c.slice(0x742b0,0x742b5),d=c.slice(0x8300c,0x83010);
-  try{c.set([4,24,3,5,0],0x742b0);c.set([map&255,x*2+(map>>8),y*2+1,0],0x8300c);mana.write8(0xcf00+flag,value);mana.write8(0xd1,0xb0);mana.write8(0xd2,0x42);mana.write8(0xd3,0xc7);mana.write8(0xd0,1);mana.run(240);}finally{c.set(e,0x742b0);c.set(d,0x8300c);}
- },{map,x,y,flag,value});
+  try{c.set([4,24,3,5,0],0x742b0);c.set([map&255,x*2+(map>>8),y*2+layer,0],0x8300c);mana.write8(0xcf00+flag,value);mana.write8(0xd1,0xb0);mana.write8(0xd2,0x42);mana.write8(0xd3,0xc7);mana.write8(0xd0,1);mana.run(240);}finally{c.set(e,0x742b0);c.set(d,0x8300c);}
+ },{map,x,y,flag,value,layer});
 }
+
+test('Goku enters Undine cave early without advancing the Water Palace plot, including checkpoint replay',async({page})=>{
+ for(const flag of[0,12,13]){
+  await load(page);await page.evaluate(()=>{mana.write8(0xe200,0);mana.write8(0xe400,0);});await enter(page,109,13,9,0x11,flag,0);
+  const result=await page.evaluate(()=>{
+   const m=mana.mod,hash=mana.hash(mana.snes.cart.data),checkpoint=mana.snapshot();
+   const cross=()=>{mana.run(40,[4]);mana.run(180);return m.status;};const crossed=cross();mana.restore(checkpoint);const replay=cross();
+   return{crossed,replay,flag:mana.read8(0xcf11),undine:mana.read8(0xcfa9),party:m.entities().slice(0,3).map(e=>e.active),error:m.story.status.error,unchanged:hash===mana.hash(mana.snes.cart.data)};
+  });const detail=JSON.stringify(result);
+  expect(result.crossed.map,detail).toBe(275);expect(result.crossed.canAttack).toBe(true);expect(result.replay).toEqual(result.crossed);expect(result.flag).toBe(flag);expect(result.undine).toBe(0);expect(result.party).toEqual([true,false,false]);expect(result.error).toBe(null);expect(result.unchanged).toBe(true);
+ }
+});
 
 test('Pandora script locks break by punch or beam, preserve the plot and stay broken in both room variants',async({page})=>{
  for(const s of[{map:164,flag:0,punch:false},{map:167,flag:7,punch:true}]){

@@ -49,6 +49,7 @@ test('early area prerequisites are local, monotone and leave Tree and final boss
   assert.equal(r[0xcf46],0);assert.equal(r[0xcf4e],0);
   assert.deepEqual(prepareStoryArea(r,82),[],'castle exterior still requires an invitation or a blast');
   assert.deepEqual(prepareStoryArea(r,300),[],'witch gate is not opened just by entering');
+  r[0xcf34]=3;assert.deepEqual(prepareStoryArea(r,377),[]);assert.equal(r[0xcf34],3,'the native jail encounter must not mark Metal Mantis defeated on entry');
 });
 
 test('aerial targeting uses native heading and wraps across world seams',()=>{

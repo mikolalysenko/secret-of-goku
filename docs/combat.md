@@ -119,6 +119,15 @@ Tileset 23's platform edges, downward faces and empty air are separately classif
 
 `tests/browser/teleport.spec.mjs` covers a riverbank landing from the wrong terrain height, camera streaming to an offscreen enemy, walking and opening the ring afterward, flying across the early river, and escaping an old bank-stranded checkpoint. Unit checks cover every prepared audio cue, loop continuity/headroom and animation-frame cue timing.
 
+`audit:boss-barriers` verifies 38 native boss scenarios in 36 arenas with solo
+controller attacks, expected defeat flags and return of control. Three
+Jabberwocky routes have separate native defeat events. Dark Lich and Mana Beast
+use the existing full-story shortcut tests. `trial-routes.spec.mjs` checks the
+complete early Undine trip, Joch's trial exit, Tasnica's imposter and the castle
+jail escape. Metal Mantis retains its pre-fight stage on entry; the general
+castle prerequisite no longer silently marks it defeated. These checks wait
+for original rewards and death animations, preserving the native exit logic.
+
 The local inspection tools are reproducible:
 
 ```sh
@@ -126,6 +135,7 @@ npm run audit:combat  # 41 controller-driven sequences, 2,684 selected frames
 npm run audit:poses   # 28 native event-driven gesture/chest/boss/fall/recovery sequences
 npm run audit:effects # all four directions and both forms, plus ring cancellation
 npm run audit:status  # native status and miniature comparisons
+npm run audit:boss-barriers # native boss defeats, rewards and progression
 node tools/qa/flight-boundary-audit.mjs --out .local/flight-boundaries
 ```
 
