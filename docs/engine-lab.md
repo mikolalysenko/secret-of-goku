@@ -170,3 +170,35 @@ The shared SNES keyboard layout is arrows plus Z/X/C/A, Shift/D, Space and S; se
 The HDMA initialization now terminates disabled and zero-length channels before the frame runs. Previously, a channel enabled late in NMI could execute a stale zero repeat count, wrap it to 255 and write unrelated RAM into CGRAM. This fixes the reproduced orange end-screen palette. It is a targeted core correction, not a claim of cycle-exact SNES timing.
 
 Validation: 145 unit tests passed. Real-ROM browser checks covered persistent Haunted Forest gates, cave/palace hit switches, the guarded button-combination shortcut, destructible vines, Gaia's Navel ledges, bee-hit recovery, Fortress approach/deck/interior traversal, radar progression, aerial impact ordering, ending colors, and checkpoint replay. The broader combat, controller, teleport and story-shortcut regressions and all three public-build ROM-loading checks also passed. The reported intermittent high-altitude sky flicker was not reproduced; these checks do not constitute a full playthrough of every area.
+
+
+## October 14 story and finale review
+
+`story-compiler.js` compiles four party variants from the native event stream.
+`scene-dialogue.js` supplies explicit alternatives when a missing companion
+changes the scene's meaning; ordinary NPC lore stays native. Speaker state
+persists across text pauses, and empty filtered dialogue windows disappear
+without removing reward or progression commands. Identical compiled variants
+share virtual storage. `native-story.js` still dispatches events through the
+original interpreter, skips movement waits for absent actors, and retains
+spell rewards until actual recruitment.
+
+The Sandship only marks companions who were aboard as captive. Northtown's
+Dyluck encounter no longer removes Primm or recruits her during a solo run;
+its Vampire encounter and native exit/reward flags remain. An older checkpoint
+with Primm already captive retains the rescue path. In the new scene, stage 6
+removes the NPCs before stage 7 enables Vampire: the native object loader can
+run between script commands, and a leftover NPC can crash its boss updater.
+Missing party stand-ins
+are hidden in the Mana Tree's opening shot as well as in its dialogue.
+
+`shenron-ending.js` composites the summoning into the PPU before brightness
+and color math. Events A3–A6 cue the dragon, wish, Potos return and end card;
+42F owns the native dialogue, travel and finale flags. The wish restores the
+world, then the native boy actor appears as the revived Randi beside an extra
+Goku sprite. The old montage that forcibly adds companions is no longer used.
+The full ending state and animation timers survive browser checkpoints.
+
+See [story review](story-review.md) for coverage, scene changes and reproducible
+checks. Original dialogue dumps and test screenshots remain private under
+`.local/`; the build includes authored dialogue and extraction logic only.

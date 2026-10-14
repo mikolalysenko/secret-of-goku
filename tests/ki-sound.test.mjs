@@ -63,3 +63,13 @@ test('Super Saiyan retains the full-speed power-up eruption and rumbling tail',(
  assert.ok(energy(1,2)>.07,'the power-up keeps its sustained body');
  assert.ok(cues.transform.gain>cues.revert.gain);
 });
+
+test('the reveal adds a separate non-vocal bass/ki explosion with an energetic attack and natural decay',()=>{
+ const {clips}=JSON.parse(readFileSync(new URL('../assets/audio/dbz/manifest.json',import.meta.url)));
+ const burst=clips.find(c=>c.name==='power-burst');assert.equal(burst.source,'charge');assert.equal(burst.thump,true);
+ assert.deepEqual(burst.layers.map(l=>l.source),['beam','electric']);assert.equal(burst.duration,1.55);
+ const b=readFileSync(new URL('../assets/audio/dbz/power-burst.wav',import.meta.url));
+ const energy=(start,end)=>{let sum=0,n=0;for(let i=start*16000|0;i<end*16000;i++){sum+=(b.readInt16LE(44+i*2)/32768)**2;n++;}return Math.sqrt(sum/n);};
+ assert.ok(energy(.01,.12)>.2);assert.ok(energy(.6,.9)>.025);assert.ok(energy(1.4,1.55)<energy(.01,.12)/5);
+ assert.notDeepEqual(b,readFileSync(new URL('../assets/audio/dbz/transform.wav',import.meta.url)));
+});

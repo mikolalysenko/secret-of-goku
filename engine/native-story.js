@@ -1,28 +1,9 @@
-import {parseEvent,eventRange,dialoguePages,encodeText,commandLength} from './event-codec.js';
-import {storyDialogue,soloDialogue} from './story-dialogue.js';
-import {buildStoryEvents,bossReactions,box,choice} from './story-events.js';
+import {parseEvent,eventRange} from './event-codec.js';
+import {compileStoryEvent,needsStory} from './story-compiler.js';
+export {partyText} from './story-compiler.js';
+import {buildStoryEvents,box,choice} from './story-events.js';
 import {prepareStoryArea} from './story-areas.js';
-import {renameSenzu} from './native-senzu.js';
-import {potosCommand} from './potos-story.js';
-import {dragonBallGrant} from './dragon-quest.js';
 import {breakableDoors} from './breakable-doors.js';
-
-// Keep remaining speakers when a text run contains both a missing companion
-// and an NPC. The last speaker carries across native pauses and page clears.
-export function partyText(text,mask,silent=false){
-  const matches=[...text.matchAll(/(?:^|\n)\s*(\{[012]\}|[A-Z][A-Z ]*):/g)];
-  let kept='',offset=0;
-  for(let i=0;i<matches.length;i++){
-    const match=matches[i];if(!silent)kept+=text.slice(offset,match.index);
-    silent=(match[1]==='{1}'&&!(mask&1))||(match[1]==='{2}'&&!(mask&2));
-    offset=match.index;
-    const end=matches[i+1]?.index??text.length;if(!silent)kept+=text.slice(offset,end);offset=end;
-  }
-  if(!matches.length&&!silent)kept=text;
-  if(!(mask&1))kept=kept.replaceAll('{1}','Primm');
-  if(!(mask&2))kept=kept.replaceAll('{2}','Popoi');
-  return{text:kept,silent};
-}
 
 // Relocate selected event streams on reads. Native control codes, text drawing,
 // choices, actor choreography, map loading and rewards still run on the SNES.
@@ -60,36 +41,6 @@ export function createNativeStory(snes,mod){
     for(const[offset,index]of bytes.grants??[])grants.set(at+offset,index);
     return at;
   }
-  function compile(event,mask){
-    const out=bossReactions[event.id]?box(bossReactions[event.id]):[];out.grants=[];
-    let silent=false,lastSilent=false,selection=false,currentMask=mask;
-    for(const op of event.ops){
-      if(op.op==='text'){
-        let text=storyDialogue[op.at]??op.text;
-        const solo=soloDialogue[op.at],spriteScene=op.at===0x9a168||(op.at>=0xa31ec&&op.at<=0xa3423);
-        const missingSpeaker=spriteScene||op.text.includes('{2}:')?!(currentMask&2):!(currentMask&1);
-        if(solo&&missingSpeaker){text=solo;silent=false;}
-        else if(!(op.at in storyDialogue)){
-          const filtered=partyText(text,currentMask,silent);text=filtered.text;silent=filtered.silent;
-          if(!text){lastSilent=true;continue;}
-        }else silent=false;
-        text=renameSenzu(text);lastSilent=false;
-        // Choice labels retain their original positions. New story choices are
-        // built separately with known widths and native branch commands.
-        out.push(...(op.at in storyDialogue||op.at in soloDialogue?dialoguePages(text):text===op.text?op.bytes:encodeText(text)));
-      }else{
-        if(op.op===0x50){silent=false;lastSilent=false;}
-        if(op.op===0x2b&&op.bytes[1]>=1&&op.bytes[1]<=2)currentMask|=1<<(op.bytes[1]-1);
-        if(op.op===0x2c&&op.bytes[1]>=1&&op.bytes[1]<=2)currentMask&=~(1<<(op.bytes[1]-1));
-        if(op.op===0x58)selection=true;
-        if(op.op===0x5b)selection=false;
-        if(lastSilent&&!selection&&(op.op===0x52||(op.op===0x28&&op.bytes[1]===0)))continue;
-        out.push(...(potosCommand(op)??op.bytes));
-        const ball=dragonBallGrant(op.at,op.op);if(ball!==null)out.grants.push([out.length,ball]);
-      }
-    }
-    return out;
-  }
   function storyRead(bank,address){
     // Sequence breaks can leave the first Luka visit unfinished while the
     // Empire plot already wants its later Jema. These are separate object
@@ -97,6 +48,23 @@ export function createNativeStory(snes,mod){
     if((bank&63)===8&&enabled()&&r[0xcf11]<10){
       const header=0x80000+(cart.data[0x87116]|cart.data[0x87117]<<8);
       if(0x80000+address===header+8+6*8+1)return 0xf0; // impossible visibility range
+    }
+    // The Tree's first shot uses NPC stand-ins for the party, not the party
+    // slots. Hide only missing companions; the goblin camp's girl remains
+    // a real scene NPC even when she has not been recruited.
+    if((bank&63)===8&&enabled()){
+      const header=0x80000+(cart.data[0x871d8]|cart.data[0x871d9]<<8);
+      for(let i=1;i<=2;i++)if(!present(i)&&0x80000+address===header+8+i*8+1)return 0xf0;
+      // New Northtown scenes never abduct Primm. Hide the captive stand-in,
+      // and let Thanatos disappear at stage 6, before stage 7 spawns Vampire.
+      // The boss loader can run between event commands, so its old NPC must
+      // already be gone before the flag changes to the boss stage. Preserve
+      // the retail records for checkpoints with an actual captive Primm.
+      if(r[0xcf0d]<8){
+        const northtown=0x80000+(cart.data[0x87330]|cart.data[0x87331]<<8);
+        if(0x80000+address===northtown+9)return 0xf0;
+        if(0x80000+address===northtown+17)return 0x55;
+      }
     }
     if(bank>=0xf0&&bank<=0xf7){
       const address24=bank<<16|address;
@@ -129,7 +97,8 @@ export function createNativeStory(snes,mod){
         const mask=party();setPointer(typeof entry==='function'?entry(mask):entry[mask]);pc=pointer();lastEvent=metadata.get(pc)?.id;relocations++;
         if(lastEvent===0x88)fastTrack=true;
         if(lastEvent===0x93)mod.quest?.deliver();
-        if(lastEvent===0x42f)mod.quest?.wish();
+        if(lastEvent===0x42f)mod.ending?.begin();
+        if(lastEvent>=0xa3&&lastEvent<=0xa6)mod.ending?.cue(['dragon','wish','village','complete'][lastEvent-0xa3]);
         if(lastEvent===0x95||lastEvent===0x96)mod.challenge?.choose(lastEvent===0x96);
       }
       if(grants.has(pc))mod.quest?.collect(grants.get(pc));
@@ -137,7 +106,9 @@ export function createNativeStory(snes,mod){
       // must never acquire a movement wait bit and stall WAIT_FOR_ANIM.
       for(let i=0;i<32;i++){
         const op=inspectByte(pc),selector=inspectByte(pc+1);
-        if(![0x31,0x32,0x34].includes(op)||selector<1||selector>3||present(selector-1))break;
+        const missingParty=selector>=1&&selector<=3&&!present(selector-1);
+        const missingStandIn=word(0xdc)===236&&((selector===5&&!present(1))||(selector===6&&!present(2)));
+        if(![0x31,0x32,0x34].includes(op)||!missingParty&&!missingStandIn)break;
         pc+=3;setPointer(pc);skippedActors++;
       }
       if(inspectByte(pc)===0x39){
@@ -151,11 +122,21 @@ export function createNativeStory(snes,mod){
     inspectByte,
     load(){
       cart=snes.cart;read=cart.read;scripts.clear();entries.clear();metadata.clear();grants.clear();next=0xf08000;
+      const customVariants=[0,1,2,3].map(mask=>buildStoryEvents(cart.data,mask));
+      const custom=customVariants[0],customIds=new Set(customVariants.flatMap(v=>[...v.keys()])),customPointers=new Map();
+      function variants(id,compile){
+        const seen=new Map();
+        return [0,1,2,3].map(mask=>{
+          const bytes=compile(mask),key=bytes.join(',')+'|'+JSON.stringify(bytes.grants??[]);
+          if(!seen.has(key))seen.set(key,allocate(bytes,id,mask));return seen.get(key);
+        });
+      }
       for(let id=0;id<0x800;id++){
+        if(customIds.has(id))continue;
         if(id>=0x100&&id<=0x106||id===0x400)continue; // BOY prologue and title legend
         const event=parseEvent(cart.data,id);
-        if(!bossReactions[id]&&!event.ops.some(op=>dragonBallGrant(op.at,op.op)!==null||op.op==='text'&&(op.at in storyDialogue||op.at in soloDialogue||/\{[12]\}/.test(op.text)||renameSenzu(op.text)!==op.text)))continue;
-        entries.set(0xc00000+event.start,[0,1,2,3].map(mask=>allocate(compile(event,mask),id,mask)));
+        if(!needsStory(event))continue;
+        entries.set(0xc00000+event.start,variants(id,mask=>compileStoryEvent(event,mask)));
       }
       // Cannon returns use the waterfall's prone/bouncing recovery for all
       // three actors. Goku brakes upright; companions retain their original
@@ -163,18 +144,23 @@ export function createNativeStory(snes,mod){
       const cannonReturn=parseEvent(cart.data,0xf7);
       entries.set(0xc00000+cannonReturn.start,[0,1,2,3].map(mask=>{
         const event={...cannonReturn,ops:cannonReturn.ops.map(op=>op.op===0x31&&op.bytes[1]===1?{...op,bytes:[0x31,1,0x80]}:op)};
-        return allocate(compile(event,mask),0xf7,mask);
+        return allocate(compileStoryEvent(event,mask),0xf7,mask);
       }));
-      const custom=buildStoryEvents(cart.data),customPointers=new Map();
-      for(const[id,bytes]of custom){
-        const address=allocate(bytes,id,3);customPointers.set(id,address);
-        entries.set(0xc00000+eventRange(cart.data,id).start,[address,address,address,address]);
+      for(const id of customIds){
+        const entry=variants(id,mask=>customVariants[mask].get(id)??compileStoryEvent(parseEvent(cart.data,id),mask));
+        customPointers.set(id,entry[0]);
+        entries.set(0xc00000+eventRange(cart.data,id).start,entry);
       }
+      // Resume old checkpoints made while Primm really was captive. New
+      // scenes never set this flag, but an existing rescue must finish.
+      const rescueAt=0xc00000+eventRange(cart.data,0x558).start,free=entries.get(rescueAt);
+      const captive=variants(0x558,mask=>compileStoryEvent(parseEvent(cart.data,0x558),mask|1));
+      entries.set(rescueAt,mask=>r[0xcf0d]>=8?captive[mask]:free[mask]);
       const cabinAt=0xc00000+eventRange(cart.data,0x29c).start,cabin=entries.get(cabinAt);
       entries.set(cabinAt,mask=>r[0xcf28]>=7?cabin[mask]:customPointers.get(r[0xcf0d]>=8?0xa2:0xa1));
       for(const door of breakableDoors)for(const[id,bytes]of door.events){
         const event=parseEvent(cart.data,id),at=0xc00000+event.start;
-        const original=entries.get(at)??[0,1,2,3].map(mask=>allocate(compile(event,mask),id,mask));
+        const original=entries.get(at)??variants(id,mask=>compileStoryEvent(event,mask));
         const opened=allocate(bytes,id,3);
         entries.set(at,mask=>mod.barriers?.doorBroken(door.id)?opened:typeof original==='function'?original(mask):original[mask]);
       }

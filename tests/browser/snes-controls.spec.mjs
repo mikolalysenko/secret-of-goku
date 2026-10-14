@@ -38,6 +38,7 @@ test('L focus grows native aura without chanting, L+A transforms, and a tap reve
  await page.keyboard.up('z');await page.keyboard.up('Shift');
  await expect.poll(()=>page.evaluate(()=>mana.mod.sound.stats.history.some(v=>v.name==='transform'&&v.sampled))).toBe(true);
  await expect.poll(()=>page.evaluate(()=>mana.mod.action)).toBe(null);
+ expect(await page.evaluate(()=>mana.mod.sound.stats.history.filter(v=>v.name==='powerBurst'&&v.sampled).length)).toBe(1);
  await page.keyboard.press('Shift+z');await expect.poll(()=>page.evaluate(()=>mana.mod.options.superSaiyan)).toBe(false);
  await expect.poll(()=>page.evaluate(()=>mana.mod.action)).toBe(null);
 });

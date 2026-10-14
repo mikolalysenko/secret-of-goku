@@ -23,7 +23,9 @@ Reference rips retained under `assets/maps/` helped verify coordinate alignment 
 
 Original downloaded sheets and their embedded credit blocks are preserved in `assets/source/`. `scripts/prepare-assets.mjs` removes flat background colors into `assets/sprites/`; runtime animation selects sheet rectangles.
 
-`engine/goku-animation-data.js` catalogs the supplied sheets' occupied cells, four direction rows, pivots and hand positions. Animation timings, combo sequencing, fall/recovery adaptations, projectile motion and transformation choreography are authored for this conversion; they are not a reconstruction of Buu's Fury's animation engine. No generated replacement character pixels are used.
+`engine/goku-animation-data.js` catalogs the supplied sheets' occupied cells, four direction rows, pivots and hand positions. Animation timings, combo sequencing, fall/recovery adaptations, projectile motion and transformation choreography are authored for this conversion; they are not a reconstruction of Buu's Fury's animation engine. Goku's character frames use these source sheets.
+
+The new **Shenron ending sprite** is generated fan artwork, created with OpenAI image generation and reduced to a transparent 160×168 image with SNES-style 5-bit RGB colors. [The sprite](assets/sprites/shenron.png) and [generation prompt and processing record](assets/sprites/shenron.json) are included. Its summoning, Dragon Balls, fallout, lighting and animation are authored in `engine/shenron-ending.js`.
 
 - **Goku** — Dragon Ball Z: Buu's Fury, Webfoot Technologies / Atari. [Goku sheet](https://www.spriters-resource.com/game_boy_advance/dbzbuusfury/asset/47770/), original listing Mister Man; the currently downloaded sheet credits **SpYn_**.
 - **Super Saiyan Goku** — same game. [Sheet by SpYn_](https://www.spriters-resource.com/game_boy_advance/dbzbuusfury/asset/509009/).
@@ -32,7 +34,7 @@ Original downloaded sheets and their embedded credit blocks are preserved in `as
 - **Mantis Ant** — [sheet by Thanwe](https://www.spriters-resource.com/snes/secretofmana/asset/1503/).
 - **Rabite** — [Secret of Mana sheet](https://www.spriters-resource.com/snes/secretofmana/asset/54947/), embedded sheet credit retained in the source image.
 
-Dragon Ball characters originate with Akira Toriyama / Bird Studio and their respective rights holders. The original game supplies the main game's dialogue, music and interface, apart from the new arrival conversation and bounded player reactions described above. Goku combat/rendering hooks were authored for this project. The earlier JavaScript prototype is retained locally for research.
+Dragon Ball characters originate with Akira Toriyama / Bird Studio and their respective rights holders. The original game supplies the main game's music, interface and much of its NPC dialogue. The arrival, Goku's responses, companion-dependent scenes and restoration ending are authored adaptations; see [story review](docs/story-review.md). Goku combat/rendering hooks were authored for this project. The earlier JavaScript prototype is retained locally for research.
 
 ## Code and technical references
 

@@ -218,7 +218,7 @@ test('scripted falling stays airborne, then native landing and recovery phases u
     }
     mod.write8(0xe011,0xa2);mod.write16(0xe026,280);mod.write8(0xe045,47);step();
     assert.equal(mod.motion.pose().column,superSaiyan?29:33);assert.equal(mod.motion.pose().lift,47);
-    mod.write8(0xe045,0);mod.write16(0xe026,112);step();assert.equal(mod.motion.pose().column,superSaiyan?43:51);
+    mod.write8(0xe045,0);mod.write16(0xe026,112);step();assert.equal(mod.motion.pose().column,superSaiyan?33:51);
     mod.write16(0xe026,134);mod.write8(0xe045,2);step();assert.equal(mod.motion.pose().column,superSaiyan?41:49);
     mod.write8(0xe011,0);mod.write8(0xe045,0);step(0,3);assert.equal(mod.motion.pose().kind,'idle');
   }

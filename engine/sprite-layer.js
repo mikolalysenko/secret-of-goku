@@ -9,7 +9,7 @@ class ManaSpriteLayer {
     const ppu=snes.ppu,self=this;
     this.originalEvaluate=ppu.evaluateSprites;this.originalColor=ppu.getColor;
     ppu.evaluateSprites=function(line){
-      if(!mod.options.enabled||!self.atlas.goku||(mod.gokuActive===false&&!mod.arrival?.animating)){
+      if(!mod.options.enabled||!self.atlas.goku||mod.ending?.nativeBoy||(mod.gokuActive===false&&!mod.arrival?.animating)){
         self.customLine.fill(0);mod.hiddenLastFrame=[];self.plan=null;return self.originalEvaluate.call(this,line);
       }
       if(line===0||!self.plan||self.plan.frame!==mod.frame||self.plan.oamRevision!==mod.ownership?.revision)self.prepare();
@@ -289,6 +289,7 @@ class ManaSpriteLayer {
     if(ground&&!menuBody)for(let yy=Math.max(0,y);yy<Math.min(256,y+size);yy++)for(let xx=Math.max(0,x);xx<Math.min(256,x+size);xx++){
       const i=yy*256+xx;if(this.surface[i]&&!this.effectMask[i])this.surface[i]=this.tint(this.surface[i],anchor.palette);
     }
+    if(ground&&!menuBody)m.hitRecovery?.draw(this,x,y,size);
     if(m.charging&&(m.canAttack||flight)){
       const form=window.GokuAnimationData.forms[superForm?'ssj':'goku'],socket=form.sockets[superForm?18:22][row];
       const strength=m.charge/(superForm?45:90),frame=strength>=1?3+Math.floor(m.frame/4)%2:Math.min(4,Math.floor(strength*5));

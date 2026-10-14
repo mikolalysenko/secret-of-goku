@@ -207,6 +207,71 @@
       "gain": 4.273535685478752
     },
     {
+      "name": "power-burst",
+      "source": "charge",
+      "start": 1.6,
+      "end": 3.15,
+      "rms": 0.28,
+      "highpass": 45,
+      "fade": 0.24,
+      "decay": 1.8,
+      "thump": true,
+      "layers": [
+        {
+          "source": "beam",
+          "start": 0.03,
+          "end": 0.45,
+          "level": 0.85,
+          "decay": 7,
+          "sourceFile": "kamehameha-fire/goku-kamehameha-fire-sound-effect.wav",
+          "sourceUrl": "https://soundsverse.com/dragon-ball-z/goku/kamehameha-fire",
+          "sha256": "accc43029cd4db978a95ced818d77d06fe901370138ba04ede8c215d98d2957c"
+        },
+        {
+          "source": "electric",
+          "start": 5,
+          "end": 6.55,
+          "level": 0.32,
+          "decay": 2.3,
+          "sourceFile": "son-gohan-ssj2-electricity-aura/son-gohan-son-gohan-ssj2-electricity-aura-sound-effect.mp3",
+          "sourceUrl": "https://soundsverse.com/dragon-ball-z/son-gohan/son-gohan-ssj2-electricity-aura",
+          "sha256": "a90ac19c819be4b1324e72deba65e84e121ae1fb08e9804d3dce8bdd0c52fd56"
+        }
+      ],
+      "file": "power-burst.wav",
+      "duration": 1.55,
+      "sourceFile": "kamehameha-charge/goku-kamehameha-charge-sound-effect.wav",
+      "sourceUrl": "https://soundsverse.com/dragon-ball-z/goku/kamehameha-charge",
+      "sha256": "b9c384a4d9e4a742b8a869dc5c472f1cf9e226701de78df3ed1fc7c92e31488c",
+      "gain": 0.7566675934902258
+    },
+    {
+      "name": "deflect",
+      "source": "swish",
+      "start": 0.02,
+      "end": 0.25,
+      "tempo": 1.25,
+      "rms": 0.18,
+      "layers": [
+        {
+          "source": "punchB",
+          "start": 0,
+          "end": 0.18,
+          "level": 0.55,
+          "decay": 8,
+          "sourceFile": "punch-fight/Dragon Ball Z Punch Sound Effect N°22.wav",
+          "sourceUrl": "https://soundsverse.com/dragon-ball-z/dragon-ball-z-punch-fight",
+          "sha256": "5712f553635e0a74346f746cf8f52a47c4a7e1291bc209dfa387aab5ab6b2c1e"
+        }
+      ],
+      "file": "deflect.wav",
+      "duration": 0.1919375,
+      "sourceFile": "anime-whoosh/Anime_Whoosh_Sound_16.ogg",
+      "sourceUrl": "https://soundeffects.fandom.com/wiki/Anime_Whoosh_Sound_16",
+      "sha256": "c278624f5058aac17b6ff1370dc02b6c0af033301fb821bea0af75d105fff452",
+      "gain": 0.8110888467138655
+    },
+    {
       "name": "revert",
       "source": "revert",
       "start": 0.25,

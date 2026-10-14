@@ -19,12 +19,12 @@ export const bossReactions={
   0x425:'GOKU:I am never eating\njelly again.\nWell... not today.',
 };
 
-export function buildStoryEvents(rom){
+export function buildStoryEvents(rom,mask=0){
   const original=id=>{const{start,end}=eventRange(rom,id);return Array.from(rom.slice(start,end));};
   const events=new Map();
   // These retail slots contain unique END bytes. They are used only by
   // the new native choices, avoiding any global event-table replacement.
-  for(const id of [...Array.from({length:0x13},(_,i)=>0x85+i),0x9a,0x9b,0x9c,0x9d,0x9e,0x9f,0xa0,0xa1,0xa2]){
+  for(const id of [...Array.from({length:0x13},(_,i)=>0x85+i),0x9a,0x9b,0x9c,0x9d,0x9e,0x9f,0xa0,0xa1,0xa2,0xa3,0xa4,0xa5,0xa6]){
     const{start,end}=eventRange(rom,id);
     if(end-start!==1||rom[start]!==0)throw Error('Story choice event slot is occupied');
   }
@@ -69,11 +69,25 @@ export function buildStoryEvents(rom){
     ...box('DYLUCK:Stop helping him!\nHe is stealing my body!\nGOKU:Oh! My bad. I am Goku.'),
     ...box('DYLUCK:I can force him out.\nThe Mana Tree can hold my\nspirit until your wish.'),
     ...box('GOKU:Great! Then he can\nfight without borrowing you.\nDYLUCK:That is your concern?'),
-    ...box('DYLUCK:Please find Primm.\nTell her I will return.\nGOKU:Okay. I will ask around.'),
+    ...box(mask&1?'DYLUCK:Primm! I will return.\nPRIMM:You had better.\nGOKU:I will make the wish.':'DYLUCK:Please find Primm.\nTell her I will return.\nGOKU:Okay. I will ask around.'),
     0x27,0x33,0x30,0x4e,6,0x18,0x2f,0x29,0xff,
     ...box('THANATOS:Behold my true\nform! Now you will suffer!'),
     ...box('GOKU:A giant skeleton!\nI KNEW you had more!\nKING KAI:DO NOT FEED IT.'),
     0x2a,0xff,...jump(0x70c),0]);
+  // The original aftermath waits for Primm to mourn and Popoi to collapse.
+  // Filtering their lines leaves empty windows and Goku answering nobody.
+  // King Kai is explicitly telepathic, so this scene also works alone.
+  events.set(0x42d,[0x06,
+    ...box('The seal on Mana Magic\nis broken. Thanatos falls.'),
+    0x29,0x4e,0x27,0x48,0x29,0xff,
+    ...box('GOKU:Now THAT was better!\nMaybe a little too much ki.\nWorth it, though.'),
+    ...box('KING KAI [telepathy]:\nYou gave him a POWER UP.\nPlease stop helping evil.'),
+    ...box(mask&1?'PRIMM:And Dyluck?\nKING KAI [telepathy]:\nSafe with the Tree.\nThe wish will bring him back.':'GOKU:What about Dyluck?\nKING KAI:The Tree has him.\nYour wish can bring him\nback with RANDI.'),
+    0x2a,0xff,0x27,0x31,0x18,0x2f,0x28,8,
+    0x27,0x84,0x2d,2,0x28,8,0x2d,8,0x27,0x36,
+    ...box('GOKU:Whoa! The floor!\nKING KAI [telepathy]:\nThe Mana Beast is coming!'),
+    ...box('GOKU:I can feel it!\nNow THAT is a challenge!\nKING KAI:THAT IS A WARNING.'),
+    0x29,0x4e,0x39,2,0xcd,0x38,0x39,3,0xcd,7,0]);
   events.set(0x89,[0x30,0x4e,8,...jump(0x429),0]);
   events.set(0x8a,[...box('LUKA:You have already freed\nthe world. Please enjoy\nsome quiet travelling.'),0]);
   events.set(0x8b,[...box('GOKU:That was the engine,\nright?\nOh. The whole thing.'),...box('KING KAI:I shielded Mana!\nThe Tree caught the souls!\nLUKA:That was our ENTIRE\nemergency plan, Goku!'),...box('MANA TREE:Thanatos lost\nhis host. Dyluck is safe\nwith RANDI. Your wish can\nbring them back.'),...box('GOKU:Great! All fixed!\nKING KAI:LOOK UP.\nGOKU:That is a VERY\nbig shadow.'),0x2f,0x84,0x30,0x4e,8,...jump(0x429),0]);
@@ -88,6 +102,32 @@ export function buildStoryEvents(rom){
   events.set(0x3dd,[...box('JEHK:Joch says you may try\nthe trial now. He heard the\nmountain shaking.\nGOKU:That was a sneeze.'),...jump(0x3dc),0]);
   events.set(0x59d,[0x32,0,0,0x08,...box('GOKU:Locked. I could find\nthe key... or back up and\ncharge a Kamehameha.'),0x31,0,0x8c,0x08,0]);
   events.set(0x4d8,[0x29,0x5d,...box('MANA TREE:That barrier\nwas older than your species.\nGOKU:It was in the way.'),...box('MANA TREE:RANDI is safe\nwith me. The Dragon Balls\ncan restore him. Come in.\nLeave the forest standing.'),0x02]);
+  // Goku interrupts the abduction instead of watching a companion be killed.
+  // Dyluck briefly breaks his possession; native doors, Vampire setup,
+  // rewards and flags remain. No absent victim is staged or recruited.
+  {
+    events.set(0x555,[0x42,0x2d,0x5f,...jump(0x557),0x06,
+      ...box('GOKU:Hi! I am Goku.\nDYLUCK:Dyluck. You should\nnot have come here.'),
+      ...box(mask&1?'PRIMM:Dyluck! It is me!\nDYLUCK:Come closer...\nGOKU:Wait. That is not\nhis ki doing the talking.':'GOKU:People are worried\nabout you. What is wrong?\nDYLUCK:Thanatos needs\nmore life energy...'),
+      ...box('GOKU:You do not sound\nlike you mean that.\nTry fighting him.'),
+      0x27,0x87,0x28,8,
+      ...box('DYLUCK:Ugh! I can hear you.\nGo through the door.\nI can weaken his spell.\nHelp the people inside!'),
+      0x29,0x2d,0]);
+    events.set(0x557,[0x51,0x01,...box('DYLUCK:The door behind me.\nI will hold him back.\nHurry!'),0]);
+    events.set(0x558,[0x06,0x27,0xd8,
+      ...box('THANATOS:You again!\nYour life force could\nfeed an entire army!'),
+      ...box('GOKU:People are not food.\nHave you tried rice?\nI could eat a whole army\nof rice balls.'),
+      0x2d,6,0xff,0x43,0x28,8,0x2d,7,
+      ...box('THANATOS:My binding spell!\nDyluck is interfering!\nGOKU:He is trying to help.'),
+      ...box('THANATOS:Enough!\nVampire, destroy him!\nGOKU:Oh! You have a pet too.'),
+      // Stage 6 removes the departed cast before stage 7 can spawn the boss.
+      // Otherwise the native loader can switch to boss mode between commands
+      // and interpret a remaining NPC's animation data as an enemy AI pointer.
+      0x30,0x2d,6,0x09,0x30,0x2d,7,0x1b,0x18,...jump(0x704),0]);
+    events.set(0x559,[...call(0x506),0x27,0xd8,0x29,0x2d,0x1b,0x19,
+      ...box(mask&1?'PRIMM:Where is Dyluck?\nGOKU:They got away again.\nBut he fought the spell.':'GOKU:They got away again.\nBut the people are free.'),
+      ...box(mask&1?'PRIMM:I will find him.\nGOKU:We will help.\nA punch cannot fix\neverything. Apparently.':'GOKU:Hang on, Dyluck.\nI will find a way to\nget you out of there.'),0x30,0x32,2,0]);
+  }
   events.set(0x93,[...box('KING KAI:I got the rest\nof the Dragon Balls!\nI am NOT doing this again.'),...box('GOKU:Thanks! That saved\na lot of walking.\nKING KAI:YOU CAN FLY.'),0x02]);
   events.set(0x94,[...box('KING KAI:All seven Balls!\nYou actually collected them.\nI had a whole speech ready.'),0x02]);
   // The finale uses the same original camera, Mode7 door and boss setup. No
@@ -96,7 +136,7 @@ export function buildStoryEvents(rom){
     ...box(destroyed?'GOKU:The Fortress is gone!\nYou can go home now!\n...It cannot hear me.':'GOKU:That is a Mana Beast!\nIt is only trying to stop\nthe Fortress.'),
     ...box('Seven Dragon Balls glow\nin the Sword pouch.\nKING KAI:No wish while\nthat thing is panicking!'),
     ...box(destroyed?'MANA TREE:Its rage remains.\nCalm it before it destroys\nwhat you have saved.':'MANA TREE:Guide your power.\nBreak its rage, and let\nMana flow home again.'),
-    ...box('GOKU:So I can save it?\nMANA TREE:Yes. Ki is yours.\nYour friends need not\nspend their lives on it.'),
+    ...box('GOKU:So I can save it?\nMANA TREE:Yes. Use your ki.\nNo one must sacrifice\ntheir life for this.'),
     ...box('GOKU:Hey, big guy! Is that\nall you have got? Come on!\nI want a REAL fight!\nKING KAI:DO NOT PROVOKE IT.'),
     ...box('Feed it seed energy for a\nharder fight? No free HP\nrefills. Dodge glowing\ncircles or use Senzu Beans.'),
     ...jump(0x9a),0];
@@ -108,15 +148,28 @@ export function buildStoryEvents(rom){
     ...box('KING KAI:It has four times\nthe resistance to your ki!\nGOKU:And bigger muscles!\nThis is going to be GREAT.'),...jump(0x97),0]);
   events.set(0x97,[0x2d,6,255,255,...call(0x739),0x18,0xbc,0x30,0x0b,0x0f,...box('GOKU:All right, big guy.\nShow me what you can do!'),0]);
   events.set(0x9a,choice('GOKU:Just one little snack?\n',[{label:'Calm it',x:1,to:0x95},{label:'Feed seeds',x:15,to:0x96}],0x95));
-  events.set(0x42f,[
-    ...box('The Beast calms. Mana is\nsafe. Seven Dragon Balls\nglow in a bag of sword dust.'),
-    ...box('SHENRON:STATE YOUR WISH.\nGOKU:Please undo the harm\nfrom my crash and all this\nFortress mess. Everyone too.'),
-    ...box('GOKU:And any towns I hit.\nI promised!\nSHENRON:THE PEOPLE RETURN.\nTHE CRATERS STAY.\nGOKU:Fair enough.'),
-    ...box('SHENRON:RANDI. DYLUCK. THE\nSWORD. THE TREE. THE SOULS.\nTHE ROOFS. ...ALL THE ROOFS?'),
+  // A short wish scene replaces the retail credits montage, which forcibly
+  // recruits Primm and assumes Popoi has just disappeared even on solo runs.
+  for(const id of[0xa3,0xa4,0xa5,0xa6])events.set(id,[0x02]);
+  events.set(0x42f,[0x06,0x27,0x3a,0x18,0x2f,
+    ...box('The Beast calms. Seven\nDragon Balls glow in a\nbag of sword dust.'),
+    ...box('GOKU:Hey, it is snowing!\nKING KAI [telepathy]:\nThat is radioactive fallout\nfrom your Kamehameha!'),
+    ...box('GOKU:Oh. Better fix that.\nShenron! Come out!'),
+    ...call(0xa3),0x28,0x18,
+    ...box('SHENRON:SPEAK YOUR WISH.'),
+    ...box('GOKU:Bring back RANDI,\nDyluck, the Sword and Tree.\nFix everyone and everything\nmy ki blasts wrecked.'),
+    ...box('GOKU:And the fallout.\nDefinitely the fallout.\nSHENRON:...ALL THE ROOFS?'),
     ...box('GOKU:Yeah. My bad.\nSHENRON:IT IS GRANTED.\nNEXT TIME, USE A DOOR.'),
-    ...box('RANDI:I had the weirdest\ndream about a sword.\nGOKU:Want lunch?\nKING KAI:I NEED A HOLIDAY.'),
-    ...box('JEMA:You saved the world.\nELDER:You missed the bridge.\nGOKU:Small hammer. Got it.\nNo Kamehameha.'),
-    ...original(0x42f)]);
+    ...box('SHENRON:THE PEOPLE RETURN.\nTHE CRATERS STAY.\nGOKU:Fair enough.'),
+    ...call(0xa4),0x28,0x18,
+    ...(mask&1?box('PRIMM:Dyluck is coming\nhome! Thank you.\nGOKU:Tell him no more\nborrowing bodies.'):[]),
+    ...(mask&2?box('POPOI:Mana is back!\nMy village will be okay!\nGOKU:Save me some dinner.'):[]),
+    0x30,0x4e,9,0x30,0x0b,2,0x30,0x10,0x0b,0x18,0x8e,
+    ...call(0xa5),0x32,1,0x40,0x08,
+    ...box('POTOS VILLAGE\nRandi is alive again.\nThe village is whole.'),
+    ...box('RANDI:I had the weirdest\ndream about a sword...\nGOKU:Want lunch?'),
+    ...box('RANDI:Did you fix\nthe bridge too?\nGOKU:...Where is the hammer?'),
+    ...call(0xa6),0]);
   // Choice branches begin with the preceding selection window still open.
   // Close it before opening prose or another choice, including direct calls.
   for(const id of[0x85,0x86,0x87,0x88,0x89,0x8a,0x95,0x96])events.set(id,[0x51,0x01,...events.get(id)]);

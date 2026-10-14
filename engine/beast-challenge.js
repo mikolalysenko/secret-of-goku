@@ -1,8 +1,7 @@
-// Optional seed-fed finale. The original boss AI, damage queue, death and
-// ending still run on the SNES. Only this deliberately chosen fight loses
-// Saiyan auto-healing; ordinary enemies keep their overpowered comedy.
+// Goku's ki strengthens Dark Lich; the player can also feed the Mana Beast.
+// Original boss AI, damage, death and progression still run on the SNES.
 export function createBeastChallenge(snes,mod){
-  let fed=false,started=false,won=false,wards=0,blocked=0,hits=0,clock=0,wardFlash=0,grace=0,burst=null;
+  let fed=false,started=false,won=false,wards=0,blocked=0,hits=0,clock=0,wardFlash=0,grace=0,burst=null,lich=null;
   const active=()=>fed&&started&&!won&&mod.options.enabled&&mod.gokuActive&&mod.read16(0xdc)===253;
   const beast=()=>mod.entities().find(e=>e.index>=3&&e.active&&e.species===127&&e.hp>0&&!(mod.read8(e.base+0x191)&0x80));
   const cpu=snes.cpu,cycle=cpu.cycle;
@@ -25,8 +24,20 @@ export function createBeastChallenge(snes,mod){
   return{
     choose(feed){if(feed&&!mod.quest?.status.canFeed)return false;fed=!!feed;started=won=false;wards=feed?(mod.quest?.status.earned??0):0;blocked=hits=clock=wardFlash=grace=0;burst=null;return true;},
     get dangerous(){return fed&&!won&&mod.read16(0xdc)===253;},
-    damage(enemy,amount){return active()&&enemy.species===127?Math.max(1,Math.floor(amount/4)):amount;},
+    damage(enemy,amount){return (active()&&enemy.species===127)||(lich&&mod.options.enabled&&mod.options.power&&mod.gokuActive&&mod.read16(0xdc)===lich.map&&enemy.species===121&&enemy.base===lich.base)?Math.max(1,Math.floor(amount/4)):amount;},
     tick(){
+      // Goku really did lend Thanatos ki. Give his true form time to fight:
+      // roughly three full SSJ beams, with the original AI/death intact.
+      if(lich&&mod.read16(0xdc)!==lich.map)lich=null;
+      if(!lich&&mod.options.enabled&&mod.options.power&&mod.gokuActive&&mod.canAttack&&mod.read8(0xcf4e)<7){
+        const boss=mod.entities().find(e=>e.index>=3&&e.active&&e.species===121&&e.hp>0&&!(mod.read8(e.base+0x191)&0x80));
+        if(boss){
+          lich={map:mod.read16(0xdc),base:boss.base};
+          const missing=Math.max(0,mod.read16(boss.base+0x184)-boss.hp);
+          mod.write16(boss.base+0x184,48000);mod.write16(boss.base+0x182,Math.max(1,48000-missing));
+          for(const [offset,bonus]of[[0x198,48],[0x18b,24]])mod.write8(boss.base+offset,Math.min(255,mod.read8(boss.base+offset)+bonus));
+        }
+      }
       if(!fed||won||!mod.options.enabled||!mod.gokuActive)return;
       if(mod.read8(0xcf4e)>=9){won=true;burst=null;return;}
       if(mod.read16(0xdc)!==253)return;
@@ -76,8 +87,8 @@ export function createBeastChallenge(snes,mod){
         layer.stamp('gold-arc',wardFlash>>2,Math.round(s.screenX+Math.cos(angle)*18),Math.round(s.screenY-16+Math.sin(angle)*22));
       }
     },
-    get status(){return structuredClone({fed,started,won,wards,blocked,hits,clock,grace,burst});},
-    snapshot(){return structuredClone({fed,started,won,wards,blocked,hits,clock,grace,wardFlash,burst});},
-    restore(s){fed=!!s?.fed;started=!!s?.started;won=!!s?.won;wards=s?.wards??0;blocked=s?.blocked??0;hits=s?.hits??0;clock=s?.clock??0;grace=s?.grace??0;wardFlash=s?.wardFlash??0;burst=s?.burst?structuredClone(s.burst):null;},
+    get status(){return structuredClone({fed,started,won,wards,blocked,hits,clock,grace,burst,lich});},
+    snapshot(){return structuredClone({fed,started,won,wards,blocked,hits,clock,grace,wardFlash,burst,lich});},
+    restore(s){fed=!!s?.fed;started=!!s?.started;won=!!s?.won;wards=s?.wards??0;blocked=s?.blocked??0;hits=s?.hits??0;clock=s?.clock??0;grace=s?.grace??0;wardFlash=s?.wardFlash??0;burst=s?.burst?structuredClone(s.burst):null;lich=s?.lich?{...s.lich}:null;},
   };
 }

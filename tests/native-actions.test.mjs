@@ -15,7 +15,11 @@ test('all 51 native actions resolve their phases to valid Goku cells in both for
       const pose=motion.pose({displayed});
       assert.ok(context.window.GokuAnimationData.forms[pose.sheet].cells[pose.column*4+pose.row].opaque,`${entry.key} has art`);
       const mapped=entry.phases?.find(p=>p.frames.includes(graphicFrame))?.source[superSaiyan?'ssj':'goku'];
-      if(mapped)assert.ok(mapped.columns.includes(pose.column),`${entry.key} follows native frame ${graphicFrame}`);
+      if(mapped){
+        const columns=mapped.columns.map(c=>superSaiyan&&[42,43].includes(c)?33:c);
+        assert.ok(columns.includes(pose.column),`${entry.key} follows native frame ${graphicFrame}`);
+      }
+      if(superSaiyan&&[1,2].includes(pose.row))assert.ok(![42,43].includes(pose.column),'never display the source knockdown cells that revert to black hair');
     }
   }
 });

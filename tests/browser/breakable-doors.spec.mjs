@@ -68,7 +68,7 @@ test('breaking Northtown seal early leads through the native rescue and Vampire 
   return{locked,broken,entered,rescued,returned:{status:m.status,flag:mana.read8(0xcf2d),bosses:m.entities().filter(e=>e.active&&e.species>=87&&e.species<128&&e.hp>0)},error:m.story.status.error,unchanged:mana.hash(mana.snes.cart.data)===hash};
  });
  expect(result.locked.map).toBe(402);expect(result.locked.event).not.toBe(0);expect(result.broken).toEqual({map:402,flag:5,doors:['northtown-ruins-seal']});expect(result.entered.status.map,JSON.stringify(result)).toBe(408);expect(result.entered.flag,JSON.stringify(result)).toBe(7);expect(result.entered.status.canAttack).toBe(true);expect(result.entered.boss).toBeTruthy();
- expect(result.rescued.status.map,JSON.stringify(result)).toBe(402);expect(result.rescued.flag).toBe(8);expect(result.rescued.party).toEqual([true,true,false]);expect(result.returned.status.map,JSON.stringify(result)).toBe(408);expect(result.returned.status.canAttack).toBe(true);expect(result.returned.flag).toBe(8);expect(result.returned.bosses).toEqual([]);expect(result.error).toBe(null);expect(result.unchanged).toBe(true);
+ expect(result.rescued.status.map,JSON.stringify(result)).toBe(402);expect(result.rescued.flag).toBe(8);expect(result.rescued.party).toEqual([true,false,false]);expect(result.returned.status.map,JSON.stringify(result)).toBe(408);expect(result.returned.status.canAttack).toBe(true);expect(result.returned.flag).toBe(8);expect(result.returned.bosses).toEqual([]);expect(result.error).toBe(null);expect(result.unchanged).toBe(true);
 });
 
 test('a punched Northtown door reopens after the completed rescue without lowering progress',async({page})=>{

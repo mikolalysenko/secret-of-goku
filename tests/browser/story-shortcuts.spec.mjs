@@ -100,18 +100,19 @@ for(const solo of[true,false])test(`Thanatos possession scene reaches and clears
   const m=mana.mod,r=mana.snes.ram;Object.assign(m.options,{superSaiyan:true});m.powerIntro.restore({flight:true,superSaiyan:true});
   // The real Fortress door runs walk-on event 428. A diagnostic map load
   // would bypass that event and would not exercise the reported approach.
-  let scene=false,battle=false,defeated=false;const poses=new Set();
+  let scene=false,battle=false,defeated=false,initialHP=0;const poses=new Set(),beamCount=()=>mana.logs.filter(l=>l.startsWith('Kamehameha')).length,initialBeams=beamCount();
   for(let f=0;f<8000;f++){
    if(m.story.status.lastEvent===0x4e1)scene=true;
    if(m.spriteLayer.plan?.sprite)poses.add(m.spriteLayer.plan.sprite.kind);
    const boss=m.entities().find(e=>e.active&&e.species===121&&e.hp);
-   if(m.canAttack&&boss){battle=true;m.instantTransmission();mana.run(15);mana.run(100,[10,1]);mana.run(1);mana.run(80);}
+   if(m.canAttack&&boss){if(!battle){mana.run(1);initialHP=mana.read16(boss.base+0x184);}battle=true;m.instantTransmission();mana.run(15);mana.run(100,[10,1]);mana.run(1);mana.run(80);}
    else mana.run(1,[11]);
    if(battle&&r[0xcf4e]===8&&m.canAttack){defeated=true;break;}
   }
-  return{scene,battle,defeated,poses:[...poses],map:mana.read16(0xdc),flag:r[0xcf4e],party:[r[0xe200]&1,r[0xe400]&1],error:m.story.status.error,can:m.canAttack};
+  return{scene,battle,defeated,initialHP,beams:beamCount()-initialBeams,poses:[...poses],map:mana.read16(0xdc),flag:r[0xcf4e],party:[r[0xe200]&1,r[0xe400]&1],error:m.story.status.error,can:m.canAttack};
  });
  expect(result,JSON.stringify(result)).toMatchObject({scene:true,battle:true,defeated:true,map:246,flag:8,party:solo?[0,0]:[1,1],error:null,can:true});
+ expect(result.initialHP).toBe(48000);expect(result.beams).toBeGreaterThan(1);
  await page.locator('#screen').screenshot({path:test.info().outputPath('thanatos-defeated.png')});
 });
 

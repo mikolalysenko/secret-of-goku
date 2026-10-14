@@ -15,7 +15,7 @@ export function createPowerIntro(mod){
   return{
     transform(){
       if(superShown||!mod.options.superSaiyan)return;
-      superShown=true;say('super');mod.feedback?.pulse(28);
+      superShown=true;say('super');
       // The first reveal lingers in the existing gold transformation pose.
       if(mod.action?.kind==='transform'){mod.action.duration=72;mod.action.reveal=true;}
     },

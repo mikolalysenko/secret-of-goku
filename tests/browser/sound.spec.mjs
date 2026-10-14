@@ -33,6 +33,7 @@ test('Super Saiyan plays one full power-up burst over the aura, separate from Ka
   const sound=createKiSound(m);sound.update(ctx,true);await sound.ready;await sound.speech.ready;sound.clear();sound.stats.history=[];
   sound.update(ctx,true);const focus=[...sound.stats.loops];
   m.frame++;m.options.superSaiyan=true;m.action={kind:'transform'};sound.play('transform');sound.update(ctx,true);
+  await new Promise(r=>setTimeout(r,200));m.frame+=12;sound.play('powerBurst');sound.update(ctx,true);
   const analyser=ctx.createAnalyser();analyser.fftSize=2048;sound.connect(analyser);
   await new Promise(r=>setTimeout(r,600));m.frame+=36;m.action=null;sound.update(ctx,true);
   await new Promise(r=>setTimeout(r,450));
@@ -45,5 +46,6 @@ test('Super Saiyan plays one full power-up burst over the aura, separate from Ka
  });
  expect(result.focus).toEqual(['charge','aura']);expect(result.history.filter(e=>e.name==='transform')).toHaveLength(1);
  expect(result.history.find(e=>e.name==='transform').sampled).toBe(true);expect(result.body).toBeGreaterThan(.01);
+ expect(result.history.filter(e=>e.name==='powerBurst')).toHaveLength(1);expect(result.history.find(e=>e.name==='powerBurst').sampled).toBe(true);
  expect(result.speech).toBe(false);expect(result.loops).toEqual([]);expect(result.reverted).toBeLessThan(.0001);
 });

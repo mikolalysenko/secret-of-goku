@@ -37,6 +37,15 @@ const clips=[
  // Keep the full power-up eruption and its rumbling decay at the original
  // speed. The old half-second sped-up excerpt lost both the attack and tail.
  {name:'transform',source:'transform',start:.015,end:2.57,rms:.25,highpass:45,fade:.24},
+ // Non-vocal energy eruption, kept separate from the transformation shout.
+ // A bass impact opens into the TV charge/electricity beds, then decays.
+ {name:'power-burst',source:'charge',start:1.6,end:3.15,rms:.28,highpass:45,fade:.24,decay:1.8,thump:true,layers:[
+  {source:'beam',start:.03,end:.45,level:.85,decay:7},
+  {source:'electric',start:5,end:6.55,level:.32,decay:2.3},
+ ]},
+ {name:'deflect',source:'swish',start:.02,end:.25,tempo:1.25,rms:.18,layers:[
+  {source:'punchB',start:0,end:.18,level:.55,decay:8},
+ ]},
  {name:'revert',source:'revert',start:.25,end:.87,tempo:1.5,reverse:true,rms:.13},
  {name:'charged',source:'electric',start:5,end:5.28,rms:.12},
  {name:'charge',source:'charge',start:1.6,end:5.15,loop:.24,rms:.20},
@@ -59,6 +68,18 @@ const level=a=>Math.sqrt(a.reduce((s,x)=>s+x*x,0)/a.length);
 const result=[];
 for(const clip of clips){
  let a=decode(clip);
+ if(clip.layers){
+  const gain=.22/level(a);
+  a=a.map((v,i)=>v*gain*Math.exp(-i/rate*(clip.decay??0)));
+  for(const layer of clip.layers){
+   const b=decode(layer),gain=.22*layer.level/level(b);
+   for(let i=0;i<Math.min(a.length,b.length);i++)a[i]+=b[i]*gain*Math.exp(-i/rate*(layer.decay??0));
+  }
+  if(clip.thump)for(let i=0;i<a.length;i++){
+   const t=i/rate,phase=2*Math.PI*(48*t+55*(1-Math.exp(-t*22))/22);
+   a[i]+=.65*Math.sin(phase)*Math.exp(-t*8);
+  }
+ }
  if(clip.steady){
   // Even the whoosh's envelope before looping, to leave soft moving air
   // rather than a rhythmic series of new takeoffs. The source has no voice.
@@ -83,7 +104,7 @@ for(const clip of clips){
  }
  const rms=Math.sqrt(a.reduce((s,x)=>s+x*x,0)/a.length),peak=a.reduce((s,x)=>Math.max(s,Math.abs(x)),0),gain=Math.min(clip.rms/rms,.80/peak);
  a=a.map(x=>x*gain);fs.writeFileSync(`${out}/${clip.name}.wav`,snesWav(a));
- result.push({...clip,...(clip.leadIn?{leadIn:{...clip.leadIn,...sourceInfo(clip.leadIn)}}:{}),file:`${clip.name}.wav`,duration:a.length/rate,...sourceInfo(clip),gain});
+ result.push({...clip,...(clip.layers?{layers:clip.layers.map(layer=>({...layer,...sourceInfo(layer)}))}:{}),...(clip.leadIn?{leadIn:{...clip.leadIn,...sourceInfo(clip.leadIn)}}:{}),file:`${clip.name}.wav`,duration:a.length/rate,...sourceInfo(clip),gain});
 }
 fs.writeFileSync(`${out}/manifest.json`,JSON.stringify({rate,bits:snesAudio.bits,credit:'Dragon Ball sound effects, selected excerpts shared by Soundsverse / Youtube Sound Effects and Soundeffects Wiki. Original sound rights remain with their owners.',processing:snesAudioDescription+' Trimmed to animation cues and level matched with headroom. Sustained beds use equal-power circular crossfades with no silence or edge fades.',clips:result},null,2)+'\n');
 console.log(`Prepared ${result.length} short DBZ effects and independent looping energy beds.`);

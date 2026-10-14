@@ -1,0 +1,7 @@
+{
+  "asset": "shenron.png",
+  "source": "Generated with OpenAI image_gen (generate mode)",
+  "date": "2026-10-14",
+  "processing": "Nearest-neighbor sampling to 160x168, 5-bit RGB, binary alpha.",
+  "prompt": "Use case: stylized-concept\nAsset type: transparent SNES RPG sprite for a Secret of Mana / Dragon Ball fan game ending, drawn for a 256x224 game screen.\nPrimary request: a single fully visible Shenron, the long green serpentine wish dragon from Dragon Ball, rising majestically with two great winding coils below his head, facing nearly forward with a slight three-quarter turn. Recognizable antler-like brown horns, red eyes, long thin whiskers, fanged snout, green scales, cream/gold segmented underside, small clawed arms, no wings. Friendly imposing wish-granting presence.\nStyle/medium: authentic 1990s 16-bit SNES pixel art boss sprite, crisp chunky square pixels, limited 24-color palette, hard edges, no smooth shading, no anti-aliasing. Build on a 160 by 168 logical pixel grid, enlarged uniformly 6x to 960 by 1008, with every logical pixel a solid-color square. Keep silhouette visually clear at native size.\nComposition: entire dragon isolated centered, head near top, coils filling lower two thirds, limbs and whiskers wholly inside frame, 5 percent transparent padding all around. No text, no background, no ground, no clouds, no glow, no energy, no Dragon Balls, no other characters. Genuine transparent alpha outside the dragon."
+}

@@ -97,9 +97,13 @@ test('a real bee sting allows recovery and flight, retains poison, and never rev
  const result=await page.evaluate(()=>{
   for(const a of[0xe200,0xe400])mana.write8(a,0);
   const bee=mana.mod.entities().find(e=>e.active&&e.species===1);if(!bee)return{missing:true};
+  // The defense bonus now stops this early enemy's weak sting. Remove the
+  // bonus only while obtaining a real native poisoned hit for recovery QA.
+  mana.mod.options.power=false;mana.mod.hitRecovery.tick();
   mana.write16(0xe002,bee.x-16);mana.write16(0xe004,bee.y);mana.mod.teleport.follow({x:bee.x-16,y:bee.y,terrain:mana.read8(bee.base+11)});mana.run(30);
   mana.mod.options.superSaiyan=true;
   let hit=false;for(let i=0;i<500;i++){mana.run(1);if([0x8d,0x8e].includes(mana.read8(0xe011))){hit=true;break;}}
+  mana.mod.options.power=true;
   const poison=mana.mod.poisoned,saved=mana.snapshot(),start=mana.mod.status,states=[];
   for(let i=0;i<140;i++){mana.run(1,[8,4]);states.push({weapon:!!(mana.read8(0xe01c)&0xa0),hurt:[0x8d,0x8e].includes(mana.read8(0xe011))});}
   const result={hit,poison,superSaiyan:mana.mod.options.superSaiyan,distance:start.y-mana.mod.status.y,states,recovered:mana.mod.hitRecovery.recovered};

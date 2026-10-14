@@ -26,7 +26,7 @@ class GokuAnimation {
     const m=this.mod,s=this.state,map=displayed?.map??m.read16(0xdc),x=displayed?.x??m.read16(0xe002),y=displayed?.y??m.read16(0xe004),native=displayed?.animation??m.read8(0xe011);
     const sheet=m.options.superSaiyan?'ssj':'goku',row=[0,2,1,3][m.facing];
     const lift=displayed?.lift??m.read8(0xe045),nativeFrame=displayed?.graphicFrame??m.read16(0xe026),status=displayed?.status1??m.read8(0xe190),status2=displayed?.status2??m.read8(0xe191);
-    const action=m.action;
+    const action=m.action,reaction=m.hitRecovery?.reaction;
     const candidate=window.GokuNativeActions?.[(displayed?.latchedAnimation??native)&0x7f];
     const nativeAction=displayed&&candidate?.pointers.includes(displayed.sequence)?candidate:null;
     let kind='idle',distance=0,useNative=false;
@@ -41,6 +41,7 @@ class GokuAnimation {
     else if(status&0x10)kind='sleep';
     else if(status&0x40)kind='idle';
     else if(m.gapFlight?.active)kind='gapFlight';
+    else if(reaction&&!action)kind=reaction.kind;
     else if(m.story?.status.lastEvent===0x10c&&m.read8(0xcf10)===6&&[131,260].includes(map)&&[0xa0,0xae,0xa2].includes(native))kind='rescueDive';
     else if((native===0x8c||native===0x8d)&&!(m.options.power&&action)){kind='hurt';useNative=!!nativeAction;}
     else if(action)kind=action.kind;
@@ -68,6 +69,8 @@ class GokuAnimation {
       // three stationary frames rather than skating through a running loop.
       result={sheet,row:poseRow,column:(kind==='run'?6:2)+Math.floor(s.distance/6)%4};
     }else if(kind==='focus')result={sheet,row:0,column:sheet==='ssj'?46:54};
+    else if(kind==='deflect')result=this.track(sheet,'guard',0,[0,2,1,3][reaction.facing]);
+    else if(kind==='resist')result=this.track(sheet,'brace',0,poseRow);
     else if(kind==='ready')result=this.track(sheet,'chargeWindup',Math.min(action.age,5),poseRow);
     else if(kind==='punch'){
       const columns=action.super?(action.combo===2?14:10):[10,14,18][action.combo];
@@ -105,7 +108,7 @@ class GokuAnimation {
     }else if(kind==='flight'){
       // The Mode 7 camera looks along Goku's direction of travel. Banking uses
       // only the verified four-way art in both forms; never unrelated cells.
-      const visibleSheet=action?.kind==='transform'&&action.age<12?'goku':action?.kind==='revert'&&action.age<8?'ssj':sheet;
+      const visibleSheet=action?.kind==='transform'&&action.age<Math.ceil(action.duration*14/40)?'goku':action?.kind==='revert'&&action.age<8?'ssj':sheet;
       result=this.track(visibleSheet,'flight',age,3);
       if(m.charging)result=this.track(visibleSheet,'charge',age,3);
       else if(action?.kind==='airBeam')result={sheet:visibleSheet,row:3,column:visibleSheet==='ssj'?20:24};
@@ -134,6 +137,9 @@ class GokuAnimation {
     else if(kind==='hurt')result=lift>0?{sheet,row:poseRow,column:sheet==='ssj'?29:33}:this.track(sheet,'hurt',age,poseRow);
     else if(kind==='idle'&&poseRow!==3&&age%180>=150&&age%180<155)result=this.track(sheet,'blink',0,poseRow);
     else result=this.track(sheet,kind,age,poseRow);
+    // The source's side-on impact/rest cells actually lose their gold hair.
+    // Keep SSJ in a low, gold-haired brace instead of showing a false revert.
+    if(result.sheet==='ssj'&&[1,2].includes(result.row)&&[42,43].includes(result.column))result.column=33;
     if(result.row===3&&result.column===1)result.column=0;
     const cell=window.GokuAnimationData.forms[result.sheet].cells[result.column*4+result.row];
     if(!cell?.opaque)throw Error(`Empty Goku animation cell: ${kind} ${result.sheet} ${result.column},${result.row}`);
