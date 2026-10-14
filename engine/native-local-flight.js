@@ -30,6 +30,10 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
  };
  function lowObstacle(t){
   if(!t)return false;
+  const at=header(),flags=at===null?0:snes.cart.data[at+2],tileset=at===null?-1:flags&63,metatile=t.tile+((flags&(t.layer?128:64))?192:0);
+  // These small carved heads merely rotate when hit by a native sword.
+  // They are scenery, unlike other cyclic C-prefix puzzle switches.
+  if(tileset===1&&t.layer===0&&[171,172].includes(metatile)&&t.code===0xc1&&t.replacement===343-t.tile)return true;
   // Native cuttable objects may have several break stages. Follow their
   // replacement chain; switches cycle and must never become fly-throughs.
   if((t.code&0xf0)===0xc0&&(t.code&15)<=11){
@@ -44,8 +48,24 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   // These original metatiles are short flowers, bushes and a single rock.
   // Decorative scenery has no cut code. Do not classify roofs/trees/cliffs
   // from their shared solid flag. Scope the list to the original tileset.
-  const at=header();if(at===null)return false;
-  const flags=snes.cart.data[at+2],tileset=flags&63,metatile=t.tile+((flags&(t.layer?128:64))?192:0);
+  if(at===null)return false;
+  // Ruins balconies have a one-tile raised floor lip on BG2. The same
+  // solid art is not enough to identify a crossing: require real floors
+  // at different heights on opposite sides, keeping walls/voids closed.
+  if(tileset===9&&t.layer===1&&t.code===0&&metatile===222&&Number.isInteger(t.tx)&&Number.isInteger(t.ty)){
+   const shore=(dx,dy)=>{
+    for(let n=1;n<=3;n++){
+     const next=tileAt((t.tx+dx*n)*16+8,(t.ty+dy*n)*16+8,1);
+     if(!next||next.behavior&0x10)return 0;
+     if(clear(next,0,true))return next.flags&3;
+     if(next.code!==0||next.tile+((flags&128)?192:0)!==222)return 0;
+    }
+    return 0;
+   };
+   return [[-1,0,1,0],[0,-1,0,1]].some(([ax,ay,bx,by])=>{
+    const a=shore(ax,ay),b=shore(bx,by);return a>0&&a<3&&b>0&&b<3&&a!==b;
+   });
+  }
   if(tileset===23&&t.layer===0&&t.code===0&&palaceGaps.has(metatile)&&Number.isInteger(t.tx)&&Number.isInteger(t.ty)){
    const shore=(dx,dy)=>{
     for(let n=1;n<=16;n++){
@@ -85,8 +105,10 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   return scenery[tileset]?.has(metatile)??false;
  }
  function breakScenery(t){
-  const at=header();if(!t||at===null||t.code!==0||t.layer!==0)return null;
+  const at=header();if(!t||at===null||t.layer!==0)return null;
   const flags=snes.cart.data[at+2],id=t.tile+((flags&64)?192:0);
+  if((flags&63)===1&&[171,172].includes(id)&&t.code===0xc1&&t.replacement===343-t.tile)return 161;
+  if(t.code!==0)return null;
   // The vines/flowers have no native cut code; clear them to this tileset's
   // original grass. Do not infer a replacement for buildings or cliff walls.
   return (flags&63)===7&&scenery[7].has(id)?122:null;

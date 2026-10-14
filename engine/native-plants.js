@@ -19,7 +19,8 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
   if(policy==='objects'){
    if(tile.kind>11)return false;
    // Native axe rocks, stalagmites, plants and staged barriers all name
-   // their next tile. Reject cycles: C1 switches toggle rather than break.
+   // their next tile. Reject cycles: rotating scenery needs a verified
+   // replacement from sceneryReplacement instead of endlessly toggling.
    const descriptors=tile.descriptor-tile.tile*4,seen=new Set([tile.tile]);
    let next=tile.replacement;
    for(let i=0;i<16;i++){
@@ -31,8 +32,8 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
    return false;
   }
   if(policy==='sword')return tile.kind===1||tile.kind===8||tile.kind===11;
-  // Plants: native sword/axe bushes, and tall-grass C1->0. Do not toggle
-  // C1 switches (tileset1 tiles171/172) as though they were ordinary grass.
+  // Plants: native sword/axe bushes, and tall-grass C1->0. Do not rotate
+  // C1 carved heads (tileset1 tiles171/172) as though they were grass.
   return tile.kind===8||(tile.kind===1&&tile.replacement===0);
  };
  const breakable=(tile,policy)=>{

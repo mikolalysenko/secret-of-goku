@@ -1,5 +1,6 @@
 import {test,expect} from '@playwright/test';
-import {existsSync,readFileSync} from 'node:fs';
+import {existsSync,readFileSync,writeFileSync} from 'node:fs';
+import {barrierFloorEvents} from '../../engine/native-barriers.js';
 async function load(page,path='.local/graphics-audit/party.json'){
  test.skip(!existsSync(path)||!existsSync('.local/rom/secret-of-mana-us.sfc'),'Requires the private ROM and native fixture.');
  await page.goto('/');await page.waitForFunction(()=>mana.ready);
@@ -33,11 +34,11 @@ test('Haunted Forest gates open by beam or punch and stay open after leaving',as
  }
 });
 test('a beam operates native hit switches and smashes the palace combination without altering later progress',async({page})=>{
- for(const s of[{map:286,x:45,y:31,flag:0x60,min:7,flags:{0x60:0,0x61:2}},{map:390,x:16,y:18,flag:0x35,min:3,flags:{0x35:0}},{map:415,x:21,y:27,flag:0x48,min:1,flags:{0x48:0}},{map:43,x:31,y:49,flag:0x42,min:4,flags:{0x42:3,0x43:0}}]){
+ for(const s of[{map:285,x:14,y:7,flag:0x60,min:1,flags:{0x60:0,0x61:0}},{map:286,x:45,y:31,flag:0x60,min:7,flags:{0x60:0,0x61:0}},{map:390,x:16,y:18,flag:0x35,min:3,flags:{0x35:0}},{map:415,x:21,y:27,flag:0x48,min:1,flags:{0x48:0}},{map:43,x:31,y:49,flag:0x42,min:4,flags:{0x42:3,0x43:0}}]){
   await load(page);await enter(page,s.map,s.x,s.y,s.flags);
   const result=await page.evaluate(s=>{
    for(let i=1;i<12;i++)mana.write8(0xe000+i*512,0);
-   mana.run(1,[4]);mana.run(100,[10,1]);mana.run(1);mana.run(180);
+   mana.run(1,[4]);if(s.map===285||s.map===286)mana.write8(0xcf61,0);mana.run(100,[10,1]);mana.run(1);mana.run(180);
    return{flag:mana.read8(0xcf00+s.flag),barriers:mana.mod.barriers.status,status:mana.mod.status,error:mana.mod.story.status.error};
   },s);
   expect(result.flag,JSON.stringify({s,result})).toBe(s.min);expect(result.error).toBe(null);
@@ -68,6 +69,24 @@ test('Haunted Forest vines can be punched or blasted into native walkable grass'
   expect(r.before.tile).toBe(132);expect(r.walkBefore).toBe(false);expect(r.after.tile,JSON.stringify(r)).toBe(122);expect(r.walkAfter).toBe(true);expect(r.cuts.length).toBeGreaterThan(0);
   expect(r.radio.current?.kind).toBe('barrier');expect(r.radio.current.text).toContain('vines');expect(r.radio.barrierCount).toBe(1);
  }
+});
+test('carved forest heads are flyable and break into native grass across every map using them',async({page})=>{
+ test.setTimeout(180000);await load(page);const baseline=await page.evaluate(()=>mana.snapshot()),results=[];
+ for(const map of[19,23,27,39,40,41,49,52,53,54,55]){
+  await page.evaluate(s=>mana.restore(s),baseline);await enter(page,map,8,8,{},0,true);
+  results.push(await page.evaluate(map=>{
+   const m=mana.mod,h=m.localFlightHook,{width,height}=h.bounds();let candidate=null,heads=0,unsafe=[];
+   for(let y=8;y<height;y+=16)for(let x=8;x<width;x+=16){const t=h.tileAt(x,y,0);if(![171,172].includes(t.tile)||t.code!==0xc1)continue;heads++;if(!h.canFly(x,y,0))unsafe.push({x,y});
+    if(!candidate)for(const[dx,dy,button]of[[0,-1,4],[0,1,5],[-1,0,6],[1,0,7]]){const sx=x-dx*32,sy=y-dy*32;if(h.canLand(sx,sy,0,2)&&!(h.tileAt(sx,sy,0).behavior&0x80))candidate={x,y,sx,sy,dx,dy,button};}
+   }
+   if(!candidate)return{map,heads,unsafe,candidate};
+   const {x,y,sx,sy,button}=candidate;mana.write16(0xe002,sx);mana.write16(0xe004,sy);mana.write8(0xe00b,2);m.teleport.follow({x:sx,y:sy,terrain:2});mana.run(25);
+   for(let n=0;n<12&&(!m.canAttack||m.teleport.pending);n++)mana.run(10);mana.run(1);
+   mana.run(1,[button]);mana.run(100,[10,1]);mana.run(1);mana.run(95);
+   return{map,heads,unsafe,candidate,tile:h.tileAt(x,y,0).tile,land:h.canLand(x,y,0,2),canAttack:m.canAttack,error:m.story.status.error,radio:m.radio.snapshot()};
+  },map));
+ }
+ for(const r of results){expect(r.heads,JSON.stringify(r)).toBeGreaterThan(0);expect(r.unsafe,JSON.stringify(r)).toEqual([]);expect(r.candidate,JSON.stringify(r)).toBeTruthy();expect(r.tile,JSON.stringify(r)).toBe(161);expect(r.land).toBe(true);expect(r.canAttack).toBe(true);expect(r.error).toBe(null);expect(r.radio.barrierCount).toBe(1);}
 });
 test('a real bee sting allows recovery and flight, retains poison, and never reveals a native weapon',async({page})=>{
  await load(page);await enter(page,25,46,39);
@@ -155,19 +174,33 @@ test('Goku flies across the Water Palace platform gap and hovers safely if relea
  expect(r.radio.current?.kind).toBe('barrier');expect(r.radio.current.text).toContain('bridge');expect(r.radio.barrierCount).toBe(1);
 });
 
-test('punches and beams press native floor switches across palaces, castles and the Fortress',async({page})=>{
- test.setTimeout(240000);
+test('punches and beams press all 41 native floor-switch event families across palaces, castles and the Fortress',async({page})=>{
+ test.setTimeout(600000);
  const cases=[{map:135,x:15,y:27,flag:0xa7,to:1,punch:true},{map:139,x:15,y:53,flag:0xa4,to:1},{map:117,x:10,y:25,flag:0xa4,to:1},{map:302,x:8,y:13,flag:0xa4,to:1},{map:248,x:66,y:15,flag:0x4f,from:1,to:3},
   {map:352,x:14,y:16,flag:0x55,to:2},{map:355,x:24,y:19,flag:0x55,from:2,to:3},{map:357,x:5,y:13,flag:0x56,from:1,to:2},
   {map:368,x:24,y:10,flag:0x39,to:1},{map:370,x:16,y:15,flag:0x38,to:1},{map:374,x:16,y:31,flag:0x38,from:2,to:3},
   {map:312,x:8,y:40,flag:0x1c,to:1},{map:403,x:66,y:70,flag:0x2d,to:1,layer:1},{map:404,x:33,y:64,flag:0x2d,from:2,to:3,layer:1},
-  {map:327,x:12,y:15,flag:0x2b,from:1,to:2},{map:240,x:16,y:23,flag:0x2b,from:2,to:3},{map:417,x:14,y:12,flag:0x48,to:1}];
+  {map:327,x:12,y:15,flag:0x2b,from:1,to:2},{map:240,x:16,y:23,flag:0x2b,from:2,to:3},{map:417,x:14,y:12,flag:0x48,to:1},
+  {map:305,x:11,y:17,flag:0x53,to:6},{map:312,x:39,y:40,flag:0x1d,to:1},
+  {map:248,x:66,y:70,flag:0x4f,to:2},{map:248,x:72,y:18,flag:0x4f,from:4,to:5},
+  {map:248,x:51,y:69,flag:0x4f,from:5,to:6},{map:248,x:55,y:69,flag:0x4f,from:6,to:7},
+  {map:248,x:39,y:73,flag:0x4f,from:7,to:9},{map:249,x:64,y:31,flag:0x4f,from:9,to:14},
+  {map:417,x:18,y:20,flag:0x48,from:1,to:2},{map:417,x:33,y:12,flag:0x49,to:1},{map:417,x:29,y:20,flag:0x49,from:1,to:2},
+  {map:382,x:9,y:22,flag:0xdd,to:2},{map:386,x:14,y:10,flag:0x35,to:2},{map:403,x:34,y:59,flag:0x2d,from:1,to:2,layer:1},
+  {map:352,x:19,y:24,flag:0x55,to:1},{map:352,x:25,y:16,flag:0x55,from:1,to:2},
+  {map:355,x:6,y:19,flag:0x56,to:1},{map:357,x:9,y:13,flag:0x56,from:1,to:2},
+  {map:370,x:18,y:8,flag:0x38,from:1,to:2},{map:374,x:19,y:27,flag:0x38,from:3,to:4},{map:374,x:27,y:16,flag:0x38,from:4,to:5},
+  {map:240,x:21,y:26,flag:0x2b,from:4,to:10},{map:139,x:13,y:31,flag:0xa5,to:1},{map:139,x:20,y:31,flag:0xa6,to:1},
+  {map:117,x:30,y:23,flag:0xa5,to:1},{map:118,x:10,y:23,flag:0xa6,to:1}];
+ const results=[];
  for(const s of cases){
   await load(page);await enter(page,s.map,s.x,s.y+3,{[s.flag]:s.from??0},s.layer??0,true);
   const r=await page.evaluate(s=>{
    const m=mana.mod,h=m.localFlightHook,targets=[];for(let i=1;i<12;i++)mana.write8(0xe000+i*512,0);
    const range=s.punch?[20,24,28]:[56,72,88,104,120,136,152];
-   for(const distance of range)for(const [dx,dy,button]of[[0,1,4],[0,-1,5],[1,0,6],[-1,0,7]]){const x=s.x*16+8+dx*distance,y=s.y*16+8+dy*distance;if(h.canLand(x,y,s.layer??0,0))targets.push({x,y,button});}
+   for(const distance of range)for(const [dx,dy,button]of[[0,1,4],[0,-1,5],[1,0,6],[-1,0,7]]){const x=s.x*16+8+dx*distance,y=s.y*16+8+dy*distance;
+    const scriptNearby=[-10,0,10].some(ox=>[-10,0,10].some(oy=>h.tileAt(x+ox,y+oy,s.layer??0)?.behavior&0x80));
+    if(h.canLand(x,y,s.layer??0,0)&&!scriptNearby)targets.push({x,y,button});}
    const at=targets[0];if(!at)return{missing:true};
    const terrain=s.layer?0x80:0;mana.write16(0xe002,at.x);mana.write16(0xe004,at.y);mana.write8(0xe00b,terrain);m.teleport.follow({...at,terrain,layer:s.layer??0});mana.run(80);
    const before=mana.read8(0xcf00+s.flag),tile=m.plants.metadata(s.x,s.y);mana.run(1,[at.button]);
@@ -178,7 +211,12 @@ test('punches and beams press native floor switches across palaces, castles and 
    mana.run(2);
    return{before,flag:mana.read8(0xcf00+s.flag),tile,barriers:m.barriers.status,error:m.story.status.error,canAttack:m.canAttack,status:m.status,story:m.story.status,radio:m.radio.status};
   },s);
-  expect(r.missing,JSON.stringify({s,r})).toBeFalsy();expect(r.before,JSON.stringify({s,r})).toBe(s.from??0);expect(r.flag,JSON.stringify({s,r})).toBe(s.to);expect(r.error).toBe(null);expect(r.canAttack,JSON.stringify({s,r})).toBe(true);
-  expect(r.radio.barrierCount,JSON.stringify({s,r})).toBe(1);
+  results.push({s,r});
  }
+ await test.info().attach('floor-switch-results',{body:JSON.stringify(results,null,2),contentType:'application/json'});
+ writeFileSync(test.info().outputPath('floor-switch-results.json'),JSON.stringify(results,null,2));
+ const failed=results.filter(({s,r})=>r.missing||r.before!==(s.from??0)||r.flag!==s.to||r.error!==null||!r.canAttack||r.radio.barrierCount!==1);
+ expect(failed).toEqual([]);
+ const families=[...new Set(results.flatMap(({r})=>r.barriers.completed.filter(id=>id.startsWith('tile-')).map(id=>Number(id.split('-').at(-1)))))].sort((a,b)=>a-b);
+ expect(families).toEqual([...barrierFloorEvents.keys()].sort((a,b)=>a-b));
 });

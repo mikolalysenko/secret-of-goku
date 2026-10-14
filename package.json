@@ -21,6 +21,7 @@
     "audit:areas": "node tools/qa/area-sweep.mjs",
     "audit:barriers": "node tools/qa/barrier-catalog.mjs --out .local/barrier-audit",
     "audit:barrier-runtime": "node tools/qa/barrier-runtime.mjs --out .local/barrier-audit",
+    "audit:barrier-destruction": "node tools/qa/barrier-destruction.mjs --out .local/barrier-audit",
     "audit:boss": "node tools/qa/area-manabeast.mjs",
     "audit:report": "node tools/qa/area-report.mjs --screenshots",
     "assets:prepare": "node scripts/prepare-assets.mjs",

@@ -5,6 +5,7 @@ import {prepareStoryArea} from './story-areas.js';
 import {renameSenzu} from './native-senzu.js';
 import {potosCommand} from './potos-story.js';
 import {dragonBallGrant} from './dragon-quest.js';
+import {breakableDoors} from './breakable-doors.js';
 
 // Keep remaining speakers when a text run contains both a missing companion
 // and an NPC. The last speaker carries across native pauses and page clears.
@@ -153,6 +154,12 @@ export function createNativeStory(snes,mod){
       for(const[id,bytes]of custom){
         const address=allocate(bytes,id,3);customPointers.set(id,address);
         entries.set(0xc00000+eventRange(cart.data,id).start,[address,address,address,address]);
+      }
+      for(const door of breakableDoors)for(const[id,bytes]of door.events){
+        const event=parseEvent(cart.data,id),at=0xc00000+event.start;
+        const original=entries.get(at)??[0,1,2,3].map(mask=>allocate(compile(event,mask),id,mask));
+        const opened=allocate(bytes,id,3);
+        entries.set(at,mask=>mod.barriers?.doorBroken(door.id)?opened:typeof original==='function'?original(mask):original[mask]);
       }
       entries.set(0xc00000+eventRange(cart.data,0x88).start,()=>customPointers.get(r[0xcf4e]>=9?0x8a:r[0xcf4e]>=7?0x89:0x88));
       entries.set(0xc00000+eventRange(cart.data,0x429).start,()=>customPointers.get(mod.worldKi?.status.fortressDestroyed?0x8f:0x429));

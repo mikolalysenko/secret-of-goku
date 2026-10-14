@@ -51,6 +51,8 @@ export const barrierReactions={
   'witch-castle':['LUKA:That gate needed\nthree people on switches.\nGOKU:I pushed REALLY hard.'],
   'northtown-castle':['KING KAI:You needed an\ninvitation!\nGOKU:They can hear me now.'],
   'gold-tower':['LUKA:A key would have\nbeen cheaper.\nGOKU:I do not have pockets.'],
+  'pandora-ruins-exit':['KING KAI:That was a lock!\nGOKU:It was in the way.\nKAI:THAT IS ITS JOB.'],
+  'northtown-ruins-seal':['LUKA:That was a dark seal.\nGOKU:Now it is a doorway.\nLUKA:Go rescue someone.'],
   switch:[
     'KING KAI:It was a puzzle!\nGOKU:I solved it.\nKAI:IT IS ON FIRE.',
     'LUKA:That was a switch.\nYou can press those\nwithout a shock wave.',

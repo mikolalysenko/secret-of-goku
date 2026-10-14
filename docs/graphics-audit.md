@@ -35,7 +35,8 @@ outside the tested bounds. Boss graphics genuinely overwrite unused tails of
 some map buffers; those writes are traced at the original graphics routines,
 not silently treated as geometry.
 
-Controller regressions additionally exercise 17 floor-switch scenarios across
+Controller regressions additionally exercise all **41 native floor-switch event
+families in 43 scenarios** across
 the Water, Earth, Ice, Fire, Shade and Grand Palaces, Witch Castle, Gold Tower,
 Northtown Ruins and Mana Fortress. They use actual punch/beam input and check
 native progress flags and return of player control. Separate checks cover the
@@ -46,17 +47,40 @@ choice through the Water Seed reward.
 This is structural coverage plus the listed controller scenarios. It does not
 establish traversal of every route or every combination of story flags.
 
+The follow-up tests **360 piece-visibility combinations across all 78 conditional
+gameplay maps**: 2,452,278 further cells match the native grids, with 4,219 trigger
+cells tracked separately and no accepted outer-edge positions. Eleven requested
+states are adjusted by existing entry prerequisites; the report lists both the
+requested and actual flags rather than claiming those unreachable states loaded.
+
+The native destruction pipeline also clears **2,569 object placements**, including
+1,617 solid obstacles, through 3,062 replacement stages in **63 scenarios across
+61 maps**. This covers all named maps with C-prefix objects, Haunted Forest vines,
+and the two conditional physical-object layouts. Only placed map cells count;
+unused boss graphics buffers do not. Hostile actors are hidden in these isolated
+scenery fixtures. Separate controller tests blast carved heads in all 11 maps
+using them, operate both Gaia switches without their floor markers, and break the
+Pandora/Northtown locks. Northtown additionally runs through its native rescue,
+Vampire defeat and a return to the emptied room, including early entry with Goku
+alone and Primm joining during the rescue.
+
 ```sh
 npm run audit:barriers
 npm run audit:barrier-runtime
+npm run audit:barrier-runtime -- --variants
+npm run audit:barrier-destruction
 # Recheck saved native grids after changing the independent ROM decoder:
 npm run audit:barrier-runtime -- --compare-only
 ```
 
 Reports remain in `.local/barrier-audit/`: `barriers.json`,
-`runtime-summary.json` and `runtime/NNN.json`. The runtime tool accepts numeric
+`runtime-summary.json`, `runtime/NNN.json`, `variants-summary.json`, `variants/`
+and `destruction-summary.json`. The runtime tool accepts numeric
 map IDs to repeat selected entries. A selected run's summary covers only those
 entries; `--compare-only` without IDs compares all retained gameplay records.
+The destruction tool accepts `--retry` to retain successful scenarios and repeat
+only failures. These checks exercise geometry and object destruction, not a
+complete controller playthrough of every story route.
 
 ### Original entry-view pass
 

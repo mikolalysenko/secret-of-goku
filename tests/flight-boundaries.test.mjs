@@ -116,3 +116,26 @@ test('palace flight crosses enclosed platform gaps but stops at walls and open m
  tile(3,1,185);tile(3,3,16);assert.equal(native.canFly(56,56),false,'upright walls never become gap tiles');
  assert.equal(native.canFly(4,56),false,'the map boundary remains closed');native.dispose();
 });
+
+test('ruins balcony flight crosses short floor lips between heights, not walls or voids',()=>{
+ const {ram,cpu,tile,word}=fixture(),rom=new Uint8Array(0x90000);rom[0x80002]=9|128;ram[0xe00b]=0x81;
+ const native=createNativeLocalFlight({ram,cpu,cart:{data:rom}},{active:()=>true,phase:true});
+ ram.set([0x12,6,0,0],0x1bc00+153*4);ram.set([0x11,7,0,0],0x1bc00+46*4);ram.set([0x13,6,0,0],0x1bc00+30*4);
+ for(let x=0;x<8;x++){tile(x,1,153,1);tile(x,2,30,1);tile(x,3,46,1);}
+ assert.equal(native.canFly(56,40,1),true);assert.equal(native.canLand(56,40,1),false);
+ word(0xe002,56);word(0xe004,24);native.settle();assert.equal(ram[0xe00b],0x82,'landing adopts the upper balcony height');
+ tile(3,1,46,1);assert.equal(native.canFly(56,40,1),false,'a wall between same-height floors remains solid');
+ tile(3,1,0,1);assert.equal(native.canFly(56,40,1),false,'blank map buffer is not an upper floor');
+ tile(3,1,153,1);ram.set([0x13,6,0,0],0x1bc00+31*4);tile(3,2,31,1);assert.equal(native.canFly(56,40,1),false,'upright wall art remains solid');
+ native.dispose();
+});
+
+test('forest carved heads can be flown over and smashed without opening solid tree placeholders',()=>{
+ const {ram,cpu,tile}=fixture(),rom=new Uint8Array(0x90000);rom[0x80002]=1|128;ram[0xe00b]=2;
+ const native=createNativeLocalFlight({ram,cpu,cart:{data:rom}},{active:()=>true,phase:true});
+ for(const id of[171,172])ram.set([0x13,0,0xc1,343-id],0x1b800+id*4);
+ for(const id of[171,172]){tile(2,2,id);assert.equal(native.canFly(40,40),true);assert.equal(native.canLand(40,40),false);assert.equal(native.breakScenery(native.tileAt(40,40)),161);}
+ ram.set([0x13,6,0,0],0x1b800+186*4);tile(2,2,186);assert.equal(native.canFly(40,40),false);assert.equal(native.breakScenery(native.tileAt(40,40)),null);
+ rom[0x80002]=2|128;tile(2,2,171);assert.equal(native.canFly(40,40),false,'other tilesets cannot inherit the statue exception');assert.equal(native.breakScenery(native.tileAt(40,40)),null);
+ native.dispose();
+});

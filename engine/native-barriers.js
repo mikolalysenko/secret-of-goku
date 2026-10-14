@@ -1,6 +1,7 @@
 // Factual gate rectangles come from the original map-piece placements and
 // tile triggers. Progress is applied by native events and the map rebuild;
 // no collision holes are drawn into walls or persisted as arbitrary tiles.
+import {breakableDoors,lockedDoorAt} from './breakable-doors.js';
 export const kiBarriers=[
   {id:'haunted-forest',map:29,rect:[224,288,32,32],flag:0x5e,min:1,event:0x1ef},
   {id:'haunted-forest-bridge',map:30,rect:[224,368,64,80],flag:0x5f,min:3,event:0x6da},
@@ -17,6 +18,14 @@ export const barrierTileEvents=new Map([
   [0x565,0x56b],[0x566,0x56b],[0x567,0x56b],[0x568,0x56b],
   [0x599,0x599],[0x59a,0x59a],
 ]);
+export function barrierHitEvent(map,source){
+  // The retail 1AF dispatcher chooses a cave switch using the last floor
+  // marker Goku walked over (CF61). A ranged hit or flight may skip that
+  // marker. Select the native switch at the actual target instead. The same
+  // descriptor in Earth Palace is an orb hint, handled by the orb adapter.
+  if(source===0x1af)return map===285?0x1ac:map===286?0x1ad:null;
+  return barrierTileEvents.get(source)??null;
+}
 // Pressure plates use per-location trigger metatiles instead of F hit codes.
 // These events only operate their local switches/gates. Doorways, trap drops,
 // boss entry scenes and conversations are deliberately not ranged targets.
@@ -45,7 +54,7 @@ export function beamTouchesBarrier(beam,barrier){
   return along>=0&&along<=Math.min(640,beam.length)+forward&&across<=beam.width+side;
 }
 export function createNativeBarriers(mod){
-  let pending=null,completed=[];
+  let pending=null,completed=[],doors=new Set();
   function nativeTile(attack){
     const h=mod.localFlightHook;if(!h||!mod.plants)return null;
     const {width,height}=h.bounds(),length=Math.min(640,attack.length),pad=attack.width+8;
@@ -53,12 +62,12 @@ export function createNativeBarriers(mod){
     for(let ty=Math.max(0,Math.floor((Math.min(attack.y,y1)-pad)/16));ty<Math.min(height/16,Math.ceil((Math.max(attack.y,y1)+pad)/16));ty++)
     for(let tx=Math.max(0,Math.floor((Math.min(attack.x,x1)-pad)/16));tx<Math.min(width/16,Math.ceil((Math.max(attack.x,x1)+pad)/16));tx++){
       const tile=mod.plants.metadata(tx,ty);
-      const hitTile=(tile.code&0xf0)===0xf0,source=hitTile?tile.replacement*16+(tile.code&15):floorTileEvent(mod,tile),event=(hitTile?barrierTileEvents:barrierFloorEvents).get(source);
-      if(!event)continue;
+      const hitTile=(tile.code&0xf0)===0xf0,source=hitTile?tile.replacement*16+(tile.code&15):floorTileEvent(mod,tile),door=lockedDoorAt(mod,source),event=hitTile?barrierHitEvent(mod.read16(0xdc),source):barrierFloorEvents.get(source);
+      if(!event&&!door)continue;
       // The Grand Palace sequence owns these buttons only at stage three.
       // Smash its four-button combination once; do not advance later scenes.
       if(source>=0x565&&source<=0x568&&mod.read8(0xcf42)!==3)continue;
-      const candidate={id:`tile-${tile.layer}-${tx}-${ty}-${source}`,event,rect:[tx*16,ty*16,16,16],tile};
+      const candidate={id:door?.id??`tile-${tile.layer}-${tx}-${ty}-${source}`,event,door:door?.id,rect:[tx*16,ty*16,16,16],tile};
       if(beamTouchesBarrier(attack,candidate))candidates.push(candidate);
     }
     candidates.sort((a,b)=>Math.hypot(a.rect[0]-attack.x,a.rect[1]-attack.y)-Math.hypot(b.rect[0]-attack.x,b.rect[1]-attack.y));
@@ -69,16 +78,23 @@ export function createNativeBarriers(mod){
     const map=mod.read16(0xdc),barrier=kiBarriers.find(b=>b.map===map&&mod.read8(0xcf00+b.flag)<b.min&&beamTouchesBarrier(beam,b))??nativeTile(beam);
     if(!barrier)return false;
     beam.barrierHit=true;
-    pending={id:barrier.id,map,event:barrier.event,frame:mod.frame,tile:barrier.tile,flags:Array.from({length:256},(_,i)=>mod.read8(0xcf00+i))};mod.playSound('impact');mod.feedback?.pulse(12);
+    pending={id:barrier.id,map,event:barrier.event,door:barrier.door,frame:mod.frame,tile:barrier.tile,flags:Array.from({length:256},(_,i)=>mod.read8(0xcf00+i))};mod.playSound('impact');mod.feedback?.pulse(12);
     const[x,y,w,h]=barrier.rect;for(let i=0;i<6;i++)mod.effects.push({kind:'impact',x:x+(i%3+.5)*w/3,y:y+(Math.floor(i/3)+.5)*h/2,dx:1,dy:0,life:20,max:20,super:false});
     return true;
   }
   return{
     beam:hit,
+    doorBroken:id=>doors.has(id),
     punch(attack){return hit({...attack,length:28,width:9,strength:1});},
     tick(){
       if(!pending)return;
       if(pending.map!==mod.read16(0xdc)){pending=null;return;}
+      if(pending.door){
+        if(mod.frame-pending.frame<26||!mod.canAttack)return;
+        const door=breakableDoors.find(d=>d.id===pending.door);
+        if(door.prepareEvent&&mod.read8(0xcf00+door.flag)<door.openAt&&!mod.story.request(door.prepareEvent))return;
+        doors.add(door.id);completed.push(door.id);mod.radio?.defeatedBarrier(door.id,{map:pending.map});pending=null;return;
+      }
       const barrier=kiBarriers.find(b=>b.id===pending.id);
       const tile=pending.tile,changed=barrier?mod.read8(0xcf00+barrier.flag)>=barrier.min:
         tile&&mod.plants.metadata(tile.tx,tile.ty,tile.layer).tile!==tile.tile||
@@ -92,8 +108,8 @@ export function createNativeBarriers(mod){
       }
       if(mod.frame-pending.frame>=26&&mod.story.request(pending.event)){completed.push(pending.id);pending.requested=true;pending.frame=mod.frame;}
     },
-    get status(){return{pending,completed:[...completed]};},
-    snapshot(){return structuredClone({pending,completed});},
-    restore(s){pending=s?.pending??null;completed=s?.completed?.slice()||[];},
+    get status(){return{pending,completed:[...completed],doors:[...doors]};},
+    snapshot(){return structuredClone({pending,completed,doors:[...doors]});},
+    restore(s){pending=s?.pending??null;completed=s?.completed?.slice()||[];doors=new Set(s?.doors??[]);},
   };
 }
