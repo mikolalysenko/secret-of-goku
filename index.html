@@ -14,6 +14,7 @@
     <div id="boot-screen" class="boot-screen"><h1>Secret of Goku</h1><p id="boot-status">Looking for a Secret of Mana (USA) ROM…</p><button id="boot-local" disabled>Choose ROM</button><label class="file-button">Choose a Secret of Mana (USA) .sfc or .smc<input id="rom-file" type="file" accept=".sfc,.smc" disabled></label><div id="boot-track" hidden><i id="boot-progress"></i></div></div>
     <div id="native-pause" hidden role="status"><div class="pause-card"><strong>PAUSED</strong><button id="native-resume" aria-label="Resume game" title="Resume game"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 4 13 8-13 8Z"/></svg></button><span>Tap to resume · Space / Esc</span></div></div>
     <div id="native-charge" hidden><span></span><div><i></i></div></div>
+    <div id="test-loading" hidden role="status">Loading test scene…</div>
   </div><div class="touch-pad" aria-label="Touch controls"></div></div>
   <nav class="player-actions" aria-label="Player controls">
     <button id="native-start" disabled>Start <kbd>SPACE</kbd></button>
@@ -35,9 +36,12 @@
     <div class="mod-options"><label><input id="goku-enabled" type="checkbox" checked> Goku sprites</label><label><input id="power-enabled" type="checkbox" checked> Saiyan power</label><label><input id="super-enabled" type="checkbox"> Super Saiyan</label></div>
     <button id="native-fly" disabled>Take flight</button>
     <p>Checkpoints are saved in this browser. The supplied ROM is never changed.</p>
-    <div class="player-actions" aria-label="Quick testing checkpoints"><button id="quick-title" disabled>After title</button><button id="quick-sword" disabled>After sword / pod crash</button><button id="quick-late" disabled>After Sunken Continent</button><button id="quick-frieza" disabled>Frieza / Thanatos showdown</button><button id="quick-battle" disabled>Frieza battle</button><button id="quick-orbit" disabled>Frieza in space</button></div>
-    <p>Quick testing: the first jump builds a checkpoint from your ROM; repeat jumps are instant. These have separate slots from your manual checkpoint. Direct links: <a href="?start=title">after title</a> · <a href="?start=sword">Goku ready to play</a> · <a href="?start=late">late-game story</a> · <a href="?start=frieza">Frieza / Thanatos showdown</a> · <a href="?start=battle">Frieza battle</a> · <a href="?start=orbit">Frieza in space</a>.</p>
     <details><summary>Developer tools</summary><p><a href="engine.html">Potos test start</a> · <a href="docs/engine-lab.md">Modding notes</a></p><div><strong id="engine-state">LOADING</strong> <span id="fps"></span></div><dl id="memory-readout"></dl></details>
+  </details>
+  <details class="settings"><summary>Test scenes</summary>
+    <p>Jump to a scene or open its direct link. Late-game scenes skip the opening. First use takes a few seconds; later jumps are instant. Your in-game saves and manual checkpoint stay separate.</p>
+    <div id="quick-checkpoints" aria-label="Quick testing checkpoints"></div>
+    <p>Endings are previews with preset progress. Normal play still requires all seven Dragon Balls, Frieza and the upgraded Mana Beast for the good ending. Sound starts after a tap or key press.</p>
   </details>
   <footer><a href="CREDITS.md">Credits & sources</a><span>Original maps, menus, dialogue and music from your ROM.</span><span>Build <span id="build-id">development</span></span></footer>
 </main>

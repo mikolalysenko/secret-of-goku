@@ -3,7 +3,7 @@ import {existsSync} from 'node:fs';
 import {readFile} from 'node:fs/promises';
 import {resolve,extname} from 'node:path';
 const origin='https://demo.example/secret-of-goku/';
-async function publicBuild(page,{defaultRom=false}={}){
+async function publicBuild(page,{defaultRom=false,start=''}={}){
  test.skip(!existsSync('dist/index.html'),'Run npm run build first.');
  const requests=[],errors=[];page.on('request',r=>requests.push({url:r.url(),method:r.method()}));page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/*',async route=>{
@@ -14,7 +14,7 @@ async function publicBuild(page,{defaultRom=false}={}){
   try{await route.fulfill({body:await readFile(resolve('dist',path)),contentType:({'.html':'text/html','.js':'text/javascript','.json':'application/json','.css':'text/css','.png':'image/png','.wav':'audio/wav'})[extname(path)]||'application/octet-stream'});}
   catch{await route.fulfill({status:404,body:'Missing public file'});}
  });
- await page.goto(origin);await page.waitForFunction(()=>window.mana);return{requests,errors};
+ await page.goto(origin+(start?`?start=${start}`:''));await page.waitForFunction(()=>window.mana);return{requests,errors};
 }
 test('public subdirectory build starts with a ROM chooser and rejects unsupported files locally',async({page})=>{
  const {requests,errors}=await publicBuild(page);await expect(page.getByRole('button',{name:'Choose ROM',exact:true})).toBeEnabled();
@@ -42,4 +42,15 @@ test('public subdirectory build automatically boots a valid ROM at the default p
  await expect(page.locator('#boot-screen')).toBeHidden();
  expect(requests.filter(r=>r.url===origin+'rom/secret-of-mana-us.sfc')).toHaveLength(1);
  expect(requests.some(r=>r.url.includes('local-rom'))).toBe(false);expect(requests.every(r=>r.method==='GET')).toBe(true);expect(errors).toEqual([]);
+});
+test('a shared finale query survives manual ROM selection in the published subdirectory build',async({page})=>{
+ test.skip(!existsSync('.local/rom/secret-of-mana-us.sfc'),'Requires local ROM.');
+ const {requests,errors}=await publicBuild(page,{start:'beast'});
+ await expect(page.getByRole('button',{name:'Choose ROM',exact:true})).toBeEnabled();
+ await page.locator('#rom-file').setInputFiles('.local/rom/secret-of-mana-us.sfc');
+ await page.waitForFunction(()=>mana.ready&&mana.mod.status.map===253&&mana.mod.canAttack,{},{timeout:35000});
+ expect(await page.evaluate(()=>{mana.pause();return mana.mod.challenge.status;})).toMatchObject({fed:true,started:true,won:false});
+ await page.getByText('Test scenes',{exact:true}).click();
+ await expect(page.getByRole('link',{name:'Planet explosion: direct link'})).toHaveAttribute('href','?start=explosion');
+ expect(requests.every(r=>r.method==='GET')).toBe(true);expect(errors).toEqual([]);
 });

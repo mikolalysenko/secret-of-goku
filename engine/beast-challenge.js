@@ -1,7 +1,8 @@
 // Frieza's ki strengthens Dark Lich; all seven seeds force the fed Mana Beast.
 // Original boss AI, damage, death and progression still run on the SNES.
 export function createBeastChallenge(snes,mod){
-  let fed=false,started=false,won=false,wards=0,blocked=0,hits=0,clock=0,wardFlash=0,grace=0,burst=null,lich=null;
+  let fed=false,started=false,won=false,wards=0,blocked=0,hits=0,clock=0,wardFlash=0,grace=0,burst=null,lich=null,beastBody=null;
+  const powered=()=>mod.options.enabled&&mod.options.power&&mod.gokuActive;
   const active=()=>fed&&started&&!won&&mod.options.enabled&&mod.gokuActive&&mod.read16(0xdc)===253;
   const beast=()=>mod.entities().find(e=>e.index>=3&&e.active&&e.species===127&&e.hp>0&&!(mod.read8(e.base+0x191)&0x80));
   const cpu=snes.cpu,cycle=cpu.cycle;
@@ -23,10 +24,27 @@ export function createBeastChallenge(snes,mod){
   };
   return{
     victory(){if(fed&&started){won=true;burst=null;}},
-    choose(feed){if(mod.quest?.status.canFeed)feed=true;else if(feed)return false;fed=!!feed;started=won=false;wards=feed?(mod.quest?.status.earned??0):0;blocked=hits=clock=wardFlash=grace=0;burst=null;return true;},
+    choose(feed){if(mod.quest?.status.canFeed)feed=true;else if(feed)return false;fed=!!feed;started=won=false;wards=feed?(mod.quest?.status.earned??0):0;blocked=hits=clock=wardFlash=grace=0;burst=null;beastBody=null;return true;},
     get dangerous(){return fed&&!won&&mod.read16(0xdc)===253;},
-    damage(enemy,amount){return (active()&&enemy.species===127)||(lich&&mod.options.enabled&&mod.options.power&&mod.gokuActive&&mod.read16(0xdc)===lich.map&&enemy.species===121&&enemy.base===lich.base)?Math.max(1,Math.floor(amount/4)):amount;},
+    damage(enemy,amount){
+      if(powered()&&mod.read16(0xdc)===253&&enemy.species===127)return Math.max(1,Math.floor(amount/(fed?8:2)));
+      return lich&&powered()&&mod.read16(0xdc)===lich.map&&enemy.species===121&&enemy.base===lich.base?Math.max(1,Math.floor(amount/4)):amount;
+    },
     tick(){
+      if(mod.read16(0xdc)!==253)beastBody=null;
+      if(powered()&&mod.read16(0xdc)===253&&mod.canAttack){
+        const target=beast();
+        if(target&&beastBody?.base!==target.base){
+          beastBody={base:target.base};
+          // Preserve wounds when resuming an older checkpoint. Resistance is
+          // applied to attacks, avoiding HP overflow in the 16-bit native AI.
+          const oldMax=mod.read16(target.base+0x184),maximum=fed?65535:48000;
+          if(oldMax<maximum){
+            const fraction=oldMax?Math.min(1,target.hp/oldMax):1;
+            mod.write16(target.base+0x184,maximum);mod.write16(target.base+0x182,Math.max(1,Math.ceil(maximum*fraction)));
+          }
+        }
+      }
       // Frieza feeds Thanatos ki for his amusement. Give his true form time to fight:
       // roughly three full SSJ beams, with the original AI/death intact.
       if(lich&&mod.read16(0xdc)!==lich.map)lich=null;
@@ -88,8 +106,8 @@ export function createBeastChallenge(snes,mod){
         layer.stamp('gold-arc',wardFlash>>2,Math.round(s.screenX+Math.cos(angle)*18),Math.round(s.screenY-16+Math.sin(angle)*22));
       }
     },
-    get status(){return structuredClone({fed,started,won,wards,blocked,hits,clock,grace,burst,lich});},
-    snapshot(){return structuredClone({fed,started,won,wards,blocked,hits,clock,grace,wardFlash,burst,lich});},
-    restore(s){fed=!!s?.fed;started=!!s?.started;won=!!s?.won;wards=s?.wards??0;blocked=s?.blocked??0;hits=s?.hits??0;clock=s?.clock??0;grace=s?.grace??0;wardFlash=s?.wardFlash??0;burst=s?.burst?structuredClone(s.burst):null;lich=s?.lich?{...s.lich}:null;},
+    get status(){return structuredClone({fed,started,won,wards,blocked,hits,clock,grace,burst,lich,beastBody});},
+    snapshot(){return structuredClone({fed,started,won,wards,blocked,hits,clock,grace,wardFlash,burst,lich,beastBody});},
+    restore(s){fed=!!s?.fed;started=!!s?.started;won=!!s?.won;wards=s?.wards??0;blocked=s?.blocked??0;hits=s?.hits??0;clock=s?.clock??0;grace=s?.grace??0;wardFlash=s?.wardFlash??0;burst=s?.burst?structuredClone(s.burst):null;lich=s?.lich?{...s.lich}:null;beastBody=s?.beastBody?{...s.beastBody}:null;},
   };
 }

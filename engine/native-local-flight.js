@@ -36,13 +36,18 @@ const caveGaps=new Set([...caveBanks,0,5,41,78,79,94,95,99,154]);
 // C0:D359 dispatches 2x stair guidance and 3x currents/conveyors. These
 // modify walking velocity; they are floors, not collision or event triggers.
 const movementFloor=code=>(code&0xf0)===0x20||(code&0xf0)===0x30;
-export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=false,onCross=null,onCarry=null}={}){
+export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,speed=6,phase=false,onCross=null,onCarry=null}={}){
  const c=snes.cpu,r=snes.ram,priorCycle=c.cycle,word=a=>r[a]|r[a+1]<<8;
  const whipRoutes=createNativeWhipRoutes(snes);
  const dungeon=createDungeonGeometry(snes);
  const ground=()=>[0x5c,0xa8,0xc0,0,0x5c,0xcf,0xc1,0].every((v,i)=>r[0x100+i]===v)&&r[0xd0]===0&&(r[0xec]&0xfe)===0&&!(r[0xed]&0x40)&&r[0xff]===0;
  const eligible=()=>active()&&ground()&&(r[0xe000]&1)&&(r[0xe02c]&1)&&!(r[0xe190]&0x70)&&!(r[0xe191]&0xd7)&&!(r[0xe01c]|r[0xe060]|r[0xe00a])&&r[0xe008]===0;
  const phasing=()=>typeof phase==='function'?phase():phase;
+ // The Beast's fixed Mode 7 arena has no ordinary floor outside the deck.
+ // These native world coordinates keep the entire flying sprite on screen,
+ // above the HUD, without exposing the arena's unused collision-map buffer.
+ const beastArena=()=>enabled()&&word(0xdc)===253&&snes.ppu?.mode===7;
+ const beastAir=(x,y)=>Number.isFinite(x)&&Number.isFinite(y)&&x>=184&&x<=408&&y>=292&&y<=432;
  const bounds=()=>({width:Math.min(2048,word(0xc0)),height:Math.min(2048,word(0xc2))});
  const layer=()=>r[0xe00b]&0x80?1:0;
  const header=()=>{const rom=snes.cart?.data,id=word(0xdc);if(!rom||id>511)return null;return 0x80000+(rom[0x87000+id*2]|rom[0x87001+id*2]<<8);};
@@ -196,7 +201,7 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   return true;
  }
  const canLand=(x=word(0xe002),y=word(0xe004),l=layer(),terrain=r[0xe00b]&3)=>footprint(x,y,l,false,terrain);
- const canFly=(x,y,l=layer())=>footprint(x,y,l,true);
+ const canFly=(x,y,l=layer())=>beastArena()?beastAir(x,y):footprint(x,y,l,true);
  const canFloat=(x,y,l=layer())=>canFly(x,y,l)&&!canLand(x,y,l);
  function sweep(x,y,dx,dy){
   const steps=Math.max(Math.abs(dx),Math.abs(dy));
@@ -207,6 +212,10 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
  let changed=0,phased=0,limited=0,recovered=0,npcPasses=0,anchor=null,crossing=null,motionFrame=-1,travel=[0,0];
  c.cycle=function(){
   const pc=this.br[4];
+  // The retail deck never reaches the scrolling thresholds. Flight can,
+  // but its Mode 7 sky/Beast art cannot accept ordinary map-row uploads.
+  // Keep native position/animation updates, and send zero camera deltas.
+  if(this.cyclesLeft===0&&(this.r[1]&63)===0&&pc===0xd6ac&&beastArena()&&ground())r[0x84]=r[0x86]=0;
   // Actor contact has already checked interaction scripts at C1:CFE5.
   // Airborne Goku can pass above an NPC without pushing either actor; enemy
   // hits and ground conversations retain their original contact handling.
@@ -233,7 +242,10 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
     travel[0]+=r[0x1e]&0x7f;travel[1]+=r[0x1f]&0x7f;
     if(phasing()){
      const dx=signed(r[0x1e]),dy=signed(r[0x1f]);
-     if(!sweep(x,y,dx,dy)){
+     if(beastArena()){
+      r[0x1e]=packed(Math.max(184,Math.min(408,x+dx))-x);
+      r[0x1f]=packed(Math.max(292,Math.min(432,y+dy))-y);
+     }else if(!sweep(x,y,dx,dy)){
       // Let the native shaped tiles, stairs and triggers work one pixel at a
       // time. Never give its endpoint-only collision check an 8px leap.
       r[0x1e]=packed(Math.sign(dx));r[0x1f]=packed(Math.sign(dy));limited++;
@@ -271,6 +283,7 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   }
   if(!phasing()||!eligible())return;
   if(anchor&&canFly(x,y,l))crossing??={...anchor};
+  if(beastArena()&&beastAir(x,y)){onCarry?.({x,y,layer:l,terrain:r[0xe00b]});return;}
   // This crossing is longer than the native party-distance limit. Goku
   // carries CPU followers while over the sea, so the camera and input never
   // tether him to companions stranded on the first pier.
@@ -291,7 +304,7 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
  return{canLand,canFly,canFloat,lowObstacle,breakScenery,tileAt,bounds,settle,dungeon,
   get passengers(){
    const t=tileAt(word(0xe002),word(0xe004),layer());
-   if(!phasing()||!eligible()||!(ferryGap(t)||dungeon.air(t)))return [];
+   if(!phasing()||!eligible()||!(beastArena()||ferryGap(t)||dungeon.air(t)))return [];
    return [0xe200,0xe400].filter(base=>(r[base]&1)&&!r[base+0x2c]&&!(r[base+0x0e]&0x80));
   },
   snapshot:()=>({anchor,crossing,motionFrame,travel:[...travel]}),restore:s=>{anchor=s?.anchor??null;crossing=s?.crossing??null;motionFrame=s?.motionFrame??-1;travel=s?.travel?.slice()??[0,0];dungeon.invalidate();},get changed(){return changed},get phased(){return phased},get limited(){return limited},get recovered(){return recovered},get npcPasses(){return npcPasses},dispose(){c.cycle=priorCycle;}};

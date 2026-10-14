@@ -34,7 +34,7 @@ import {createCeilingEscape} from './ceiling-escape.js';
 import {createBeastChallenge} from './beast-challenge.js';
 import {createPowerIntro} from './power-intro.js';
 import {createShenronEnding} from './shenron-ending.js';
-import {buildQuickStart,buildLateCheckpoint,quickStartLabels,quickStartRevision} from './quick-start.js';
+import {buildQuickStart,buildLateCheckpoint,quickStartLabels,quickStartRevision,isQuickStart,isLateStart} from './quick-start.js';
 import {createWorldScars} from './world-scars.js';
 import {createPlanetView} from './planet-view.js';
 import {createKiArt} from './ki-art.js';
@@ -67,6 +67,7 @@ mod.flight=createNativeFlight(snes,{enabled:()=>mod.options.enabled&&mod.gokuAct
   mod.localFlight=false;mod.localLift=0;mod.flightTransition={kind:'takeoff',age:0};if(!mod.ceiling?.busy)mod.playSound('flight');
 },onLand:({fortress})=>{mod.flightTransition={kind:'landing',age:0,fortress};},onDock:()=>mod.playSound('flight')});
 mod.localFlightHook=createNativeLocalFlight(snes,{
+  enabled:()=>mod.options.enabled&&mod.gokuActive,
   active:()=>mod.options.enabled&&mod.gokuActive&&(mod.localFlight||mod.charging)&&mod.canAttack,
   phase:()=>mod.localFlight,
   onCross:({map,from,to})=>{
@@ -187,9 +188,13 @@ async function loadROM(source,{potos=false}={}){
   if(!snes.loadRom(patched,true))throw Error('The SNES core rejected this ROM.');
   snes.reset(true);battery.attach(snes.cart,hash(bytes));mod.reset();arrival.load(bytes,{potos});flightDialogue?.dispose();flightDialogue=installFlightDialogue(snes.cart,()=>mod.options.enabled&&mod.gokuActive);mod.gapFlight.load();mod.senzu.load();mod.equipment.load();mod.story.load();nameSeeded=false;originalBoot=!potos;loaded=true;render();return patched;
 }
-async function pump(frames,buttons=[]){
+async function pump(frames,buttons=[],{fast=false}={}){
   const mask=buttons.reduce((a,b)=>a|(1<<b),0);
-  for(let i=0;i<frames;i+=20){for(let j=0;j<Math.min(20,frames-i);j++)step(mask);render();await nextPaint();}
+  for(let i=0;i<frames;i+=20){
+    const count=Math.min(20,frames-i);
+    for(let j=0;j<count;j++)step(mask,false,fast&&j<count-1);
+    if(!fast)render();await nextPaint();
+  }
 }
 async function enableGameControls(){
   $('boot-screen').hidden=true;
@@ -205,7 +210,8 @@ async function bootOriginal(source){
   }catch(error){loaded=false;$('boot-status').textContent=error.message;message(error.message);throw error;}
   finally{busy=false;$('boot-local').disabled=false;$('rom-file').disabled=false;if(loaded){play();render();}}
   const requested=new URLSearchParams(location.search).get('start');
-  if(loaded&&requested in quickStartLabels)await quickStart(requested);
+  if(loaded&&isQuickStart(requested))await quickStart(requested);
+  else if(loaded&&requested)message('Unknown test scene. Starting the normal game; available links are under Test scenes.');
 }
 async function bootPotos(source){
   if(busy)return;busy=true;$('boot-local').disabled=true;$('boot-track').hidden=false;$('rom-file').disabled=true;
@@ -254,9 +260,10 @@ function restoreCheckpoint(){
 const captureQuick=()=>({state:{...snapshot(snes),arrival:arrival.snapshot(),goku:mod.snapshot()},nameSeeded,nameEditor:mod.nameEditor,originalBoot});
 function applyQuick(saved){const saves=snes.cart.sram.slice();restore(snes,saved.state);snes.cart.sram.set(saves);mod.restore(saved.state.goku);arrival.restore(saved.state.arrival);nameSeeded=!!saved.nameSeeded;mod.nameEditor=!!saved.nameEditor;originalBoot=!!saved.originalBoot;clearInput();render();}
 async function quickStart(kind){
-  if(!loaded||busy||!(kind in quickStartLabels))return false;
+  if(!loaded||busy||!isQuickStart(kind))return false;
   const backup=captureQuick(),wasRunning=running,source=originalRom;
   busy=true;running=false;clearInput();sound.clear();$('native-pause').hidden=true;
+  if($('test-loading'))$('test-loading').hidden=false;
   $('boot-local').disabled=true;$('rom-file').disabled=true;
   for(const id of Object.keys(quickStartLabels).map(k=>`quick-${k}`))if($(id))$(id).disabled=true;
   const key=slot=>`${quickStartRevision}:${hash(snes.cart.data)}:${slot}`;
@@ -267,22 +274,23 @@ async function quickStart(kind){
     if(!saved)try{saved=await checkpointStore(undefined,key(kind));}catch{/* Build locally. */}
     if(saved){applyQuick(saved);quickCache.set(key(kind),saved);}
     else {
-     let late=['frieza','battle','orbit'].includes(kind)?quickCache.get(key('late')):null;
-     if(!late&&['frieza','battle','orbit'].includes(kind))try{late=await checkpointStore(undefined,key('late'));}catch{}
-     const callbacks={pump,mod,arrival,capture:captureQuick,cache,progress:text=>message(`${text} First use builds a private checkpoint; later jumps are instant.`)};
+     let late=isLateStart(kind)?quickCache.get(key('late')):null;
+     if(!late&&isLateStart(kind))try{late=await checkpointStore(undefined,key('late'));}catch{}
+     const callbacks={pump:(frames,buttons)=>pump(frames,buttons,{fast:isLateStart(kind)}),mod,arrival,capture:captureQuick,cache,progress:text=>{message(text);if($('test-loading'))$('test-loading').textContent=text;}};
      if(late){applyQuick(late);await buildLateCheckpoint(kind,callbacks);}
      else await buildQuickStart(kind,{
       fresh:async()=>{await loadROM(source);mod.configure({enabled:true,power:true,superSaiyan:false});},
       ...callbacks,
     });
     }
-    success=true;message(`${quickStartLabels[kind]} checkpoint ready. Your manual checkpoint is unchanged.`);
+    success=true;message(`${quickStartLabels[kind]} ready — ?start=${kind}. Your manual checkpoint is unchanged.`);
   }catch(error){
     // Rebuild the original cartridge/adapters if the user came from the Potos
     // test entry. Restore the complete state instead of abandoning their run.
     await loadROM(source,{potos:!backup.originalBoot});applyQuick(backup);message(`Quick start failed: ${error.message} Your game was restored.`);
   }finally{
     busy=false;$('boot-local').disabled=false;$('rom-file').disabled=false;
+    if($('test-loading'))$('test-loading').hidden=true;
     for(const id of Object.keys(quickStartLabels).map(k=>`quick-${k}`))if($(id))$(id).disabled=false;
     if(success||wasRunning)play();else pause();render();
   }
@@ -306,7 +314,15 @@ $('rom-file').addEventListener('change',async e=>{try{if(e.target.files[0])await
 for(const id of ['goku-enabled','power-enabled','super-enabled'])$(id).addEventListener('change',configure);
 $('native-fly').addEventListener('click',fly);$('native-toggle').addEventListener('click',()=>running?pause():play());$('native-resume').addEventListener('click',play);
 $('native-save').addEventListener('click',saveCheckpoint);$('native-restore').addEventListener('click',restoreCheckpoint);
-for(const kind of Object.keys(quickStartLabels))$(`quick-${kind}`)?.addEventListener('click',()=>quickStart(kind));
+for(const[kind,label]of Object.entries(quickStartLabels)){
+  if($('quick-checkpoints')){
+    const item=document.createElement('div'),button=document.createElement('button'),link=document.createElement('a');
+    button.id=`quick-${kind}`;button.disabled=true;button.textContent=label;
+    link.href=`?start=${kind}`;link.textContent=`?start=${kind}`;link.setAttribute('aria-label',`${label}: direct link`);
+    item.append(button,link);$('quick-checkpoints').append(item);
+  }
+  $(`quick-${kind}`)?.addEventListener('click',()=>quickStart(kind));
+}
 const soundButton=document.createElement('button');soundButton.innerHTML='<span>Sound on</span>';$('native-save').before(soundButton);
 async function activateAudio(){
   try{audioContext??=new AudioContext();await audioContext.resume();audioEnabled=true;nextAudio=0;soundButton.querySelector('span').textContent='Mute';}

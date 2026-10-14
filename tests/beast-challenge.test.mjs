@@ -7,12 +7,12 @@ import {encodeText,wrapText} from '../engine/event-codec.js';
 
 function fixture(earned=7){
   const ram=new Uint8Array(0x20000),cpu={cycle(){},cyclesLeft:0,r:[0,0],br:[0,0,0,0,0x4053]},snes={ram,cpu};
-  const notices=[],position={x:128,y:160,screenX:128,screenY:160},mod={options:{enabled:true},gokuActive:true,canAttack:true,
+  const notices=[],position={x:128,y:160,screenX:128,screenY:160},mod={options:{enabled:true,power:true},gokuActive:true,canAttack:true,
     read8:a=>ram[a],read16:a=>ram[a]|ram[a+1]<<8,write8:(a,v)=>ram[a]=v,write16:(a,v)=>{ram[a]=v;ram[a+1]=v>>8;},
     entities:()=>[{index:3,base:0xe600,active:true,species:127,hp:mod.read16(0xe782)}],
     get status(){return position;},
     quest:{status:{earned,canFeed:earned===7}},radio:{say:text=>notices.push(text)}};
-  mod.write16(0xdc,253);mod.write16(0xe782,1000);mod.write16(0xe182,999);
+  mod.write16(0xdc,253);mod.write16(0xe782,1000);mod.write16(0xe784,1000);mod.write16(0xe182,999);
   const challenge=createBeastChallenge(snes,mod);mod.challenge=challenge;
   return{mod,challenge,notices,position,cpu,tick:(n=1)=>{for(let i=0;i<n;i++)challenge.tick();}};
 }
@@ -20,7 +20,7 @@ test('all seven Balls force seed feeding, earned wards matter, and no Balls are 
   const f=fixture(),{mod,challenge,cpu}=f;
   challenge.choose(false);f.tick();assert.equal(challenge.dangerous,true);assert.equal(mod.read16(0xe782),65535);
   challenge.choose(true);f.tick();assert.equal(mod.read16(0xe782),65535);assert.equal(challenge.dangerous,true);
-  assert.equal(challenge.damage({species:127},8191),2047);assert.equal(challenge.damage({species:87},8191),8191);
+  assert.equal(challenge.damage({species:127},8191),1023);assert.equal(challenge.damage({species:87},8191),8191);
   challenge.restore({...challenge.snapshot(),wards:2}); // two wards remain after earlier hits
   mod.write16(0xe1f1,450);cpu.cycle();assert.equal(mod.read16(0xe1f1),0);assert.equal(challenge.status.wards,1);
   mod.write16(0xe1f1,450);cpu.cycle();assert.equal(challenge.status.wards,1,'One spell animation cannot consume every ward');
@@ -30,6 +30,19 @@ test('all seven Balls force seed feeding, earned wards matter, and no Balls are 
   q.restore({mask:127,seedMask:6,delivered:5});assert.equal(q.status.earned,2,'Legacy delivered Balls cannot count as earned wards');
   const textQuest=createDragonQuest({radio:{say:text=>{encodeText(text);assert.ok(wrapText(text).split('\n').length<=3);}}});
   for(let i=0;i<7;i++)textQuest.collect(i);
+});
+test('both Beast routes survive a Super Saiyan combo; wounds persist across frames and restores',()=>{
+  for(const earned of[0,7]){
+    const f=fixture(earned),{mod,challenge}=f;challenge.choose(false);f.tick();
+    const maximum=earned?65535:48000,damage=challenge.damage({species:127},12287);
+    assert.equal(mod.read16(0xe784),maximum);assert.ok(damage<maximum/4);
+    mod.write16(0xe782,maximum-damage);f.tick(10);assert.equal(mod.read16(0xe782),maximum-damage);
+    const saved=challenge.snapshot();challenge.restore(saved);f.tick();assert.equal(mod.read16(0xe782),maximum-damage);
+    mod.options.power=false;assert.equal(challenge.damage({species:127},12287),12287);
+    mod.options.power=true;mod.write16(0xdc,252);assert.equal(challenge.damage({species:127},12287),12287);
+  }
+  const f=fixture(0);f.mod.write16(0xe782,500);f.tick();
+  assert.equal(f.mod.read16(0xe782),24000,'An older half-health checkpoint stays half wounded');
 });
 test('telegraphed eruptions pause in menus, replay exactly, and end with the native boss flag',()=>{
   const f=fixture(),{challenge,mod}=f;challenge.choose(true);f.tick(150);

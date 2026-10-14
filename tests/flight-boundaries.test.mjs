@@ -13,11 +13,23 @@ function fixture(options={}){
     ram.set([0,0,4,0],at+12);ram.set([0,0,0xc1,5],at+16);ram.set([0,0,0xc1,4],at+20);
     ram.set([3,0,0xc2,0],at+24);
   }
-  const hook=createNativeLocalFlight({ram,cpu},{active:()=>true,speed:8,phase:true,...options});
+  const snes={ram,cpu},hook=createNativeLocalFlight(snes,{active:()=>true,speed:8,phase:true,...options});
   const tile=(x,y,t,layer=0)=>{ram[0x10000+layer*0x4000+y*128+x]=t;};
   const phase=(dx=6,dy=0)=>{ram[0x1e]=dx;ram[0x1f]=dy;cpu.br[4]=0xd778;cpu.cycle();return cpu.br[4]===0xd7f3;};
-  return{ram,cpu,word,hook,tile,phase};
+  return{snes,ram,cpu,word,hook,tile,phase};
 }
+
+test('Mana Beast flight stays inside its fixed arena without scrolling Mode 7 art',()=>{
+ const {snes,ram,cpu,word,hook,phase}=fixture();snes.ppu={mode:7};word(0xdc,253);word(0xc0,576);word(0xc2,576);
+ ram.set([3,0,0,0],0x1b800);word(0xe002,296);word(0xe004,320);
+ assert.equal(hook.canFly(296,320),true);assert.equal(hook.canLand(),false);assert.equal(phase(),true);
+ hook.settle();assert.equal(hook.recovered,0,'Open sky is not a corrupt map position');
+ for(const [x,y]of[[183,320],[409,320],[296,291],[296,433]])assert.equal(hook.canFly(x,y),false);
+ word(0xe002,408);ram[0x1e]=8;cpu.br[4]=0xd651;cpu.cycle();assert.equal(ram[0x1e],0,'Holding right stops at the arena edge');
+ ram[0x84]=8;ram[0x86]=0x88;cpu.br[4]=0xd6ac;cpu.cycle();assert.equal(ram[0x84]|ram[0x86],0);
+ word(0xdc,252);assert.equal(hook.canFly(296,320),false,'No other Mode 7 map inherits this exception');
+ ram[0x84]=8;cpu.br[4]=0xd6ac;cpu.cycle();assert.equal(ram[0x84],8);
+});
 
 test('flight crosses low native obstacles, but walls, slopes and switches retain native collision',()=>{
   for(const t of [1,2,3,4,6]){

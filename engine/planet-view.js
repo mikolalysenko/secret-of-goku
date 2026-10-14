@@ -2,6 +2,7 @@ import {decodePlanetTexture} from './world-texture.js';
 import {radioPixels} from './native-radio.js';
 import {createOrbitView} from './frieza-orbit-view.js';
 import {kaiActors,newKaiScene} from './kai-planet.js';
+import {fracturePlanet,fragmentPose} from './planet-fragments.js';
 
 // Scatter once with an independent random sequence for each coordinate.
 // The former pair of modular strides made obvious diagonal rows of stars.
@@ -21,7 +22,7 @@ const stars=(()=>{
 // It never writes Mode 7 matrices, sky HDMA, VRAM, or the landing ABI.
 export function createPlanetView(snes,mod){
   const p=snes.ppu,previous=p.getColor,surface=new Uint16Array(256*224);
-  let texture=null,frame=-1,preparedState=null,globe=null,globeKey='',card=null,cardKey='';
+  let texture=null,frame=-1,preparedState=null,globe=null,globeKey='',fragments=null,card=null,cardKey='';
   const rgb=(r,g,b)=>1+r+(g<<5)+(b<<10);
   const blue=[rgb(4,7,20),rgb(6,17,30),rgb(16,26,31),rgb(31,31,31)];
   const put=(x,y,c)=>{x=Math.round(x);y=Math.round(y);if(c>0&&x>=0&&x<256&&y>=0&&y<224)surface[y*256+x]=c;};
@@ -42,7 +43,7 @@ export function createPlanetView(snes,mod){
   }
   function planet(target,night){
     const key=`${target.x}:${target.y}:${night}`;if(key===globeKey&&globe)return;
-    globeKey=key;globe=new Uint16Array(256*224);
+    globeKey=key;globe=new Uint16Array(256*224);fragments=null;
     // Put the actual strike site on the upper-right limb of the globe.
     const cx=87,cy=140,r=72,hitX=.62,hitY=-.69,hitZ=Math.sqrt(1-hitX*hitX-hitY*hitY);
     const lon=target.x/4096*Math.PI*2-Math.atan2(hitX,hitZ),lat=target.y/4096*Math.PI-Math.asin(hitY);
@@ -86,26 +87,31 @@ export function createPlanetView(snes,mod){
     }
   }
   function explodingPlanet(age,target){
+    planet(target,true);fragments??=fracturePlanet(globe);
     if(age<48){
       drawPlanet(target,true,age>25?(age%4<2?-1:1):0);
-      // Bright cracks split the real continents before the sphere bursts.
-      for(let i=0;i<7;i++){
-        const a=i*.89,end=Math.min(68,age*2),dx=Math.cos(a),dy=Math.sin(a);
-        for(let t=0;t<end;t++)put(87+dx*t+Math.sin(t*.4+i)*2,140+dy*t,age<30?rgb(30,12,2):rgb(31,27,16));
-      }
+      // Fracture seams spread outward and become the chunks' actual edges.
+      const reach=age*1.9,shake=age>25?(age%4<2?-1:1):0;
+      for(const p of fragments)for(const v of p.pixels)if(v.edge&&Math.hypot(v.x-87,v.y-140)<reach)
+        put(v.x+shake,v.y,age<30?rgb(30,12,2):rgb(31,27,16));
     }else{
       const t=age-48,radius=8+t*3;
-      // Break the actual world picture into tumbling pieces, with native
-      // spell sparks between them, rather than replacing it with flat dots.
-      planet(target,true);
-      if(t<110)for(let gy=72;gy<212;gy+=8)for(let gx=15;gx<160;gx+=8){
-        const nx=gx+4-87,ny=gy+4-140,d=Math.hypot(nx,ny);if(d>73)continue;
-        const seed=(gx*31+gy*17)%23,speed=.3+seed*.035,travel=t*speed+t*t*.002;
-        const x=gx+nx/(d||1)*travel,y=gy+ny/(d||1)*travel,fade=Math.max(0,1-(t-40)/70);
-        for(let py=0;py<8;py++)for(let px=0;px<8;px++){
-          const raw=globe[(gy+py)*256+gx+px];if(!raw||t>55&&(px+py+seed)%3===0)continue;
-          const c=raw-1,hot=Math.max(0,1-t/42),shade=(v,glow)=>Math.min(31,Math.floor((v+glow*hot)*fade));
-          put(x+(seed&1?7-px:px),y+py,rgb(shade(c&31,22),shade(c>>5&31,10),shade(c>>10&31,2)));
+      // Uneven continental shards tumble out with hot, broken edges. Their
+      // masks are never padded to rectangles; rotation leaves real voids.
+      if(t<115)for(const p of fragments){
+        const pose=fragmentPose(p,t),{cos,sin,squash,heat,fade}=pose;
+        const radius=Math.ceil(Math.hypot(p.width,p.height));
+        // Sample backwards through the rotation so the solid rock does not
+        // acquire checkerboard holes between rounded destination pixels.
+        for(let depth=1;depth>=0;depth--)for(let y=Math.max(0,Math.floor(pose.y-radius));y<Math.min(224,pose.y+radius);y++)for(let x=Math.max(0,Math.floor(pose.x-radius));x<Math.min(256,pose.x+radius);x++){
+          const dx=x-pose.x-depth*2,dy=y-pose.y-depth*3;
+          const sx=Math.round(dx*cos+dy*sin+p.x-p.left),sy=Math.round((-dx*sin+dy*cos)/squash+p.y-p.top);
+          if(sx<0||sy<0||sx>=p.width||sy>=p.height)continue;
+          const i=sy*p.width+sx,raw=p.colors[i];if(!raw)continue;const c=raw-1;
+          const shade=(value,glow)=>Math.min(31,Math.floor((value+glow*heat)*fade));
+          const color=depth?rgb(shade(8,18),shade(3,6),shade(3,0)):p.edges[i]?rgb(shade(c&31,26),shade(c>>5&31,12),shade(c>>10&31,2)):
+            rgb(shade(c&31,10),shade(c>>5&31,4),shade(c>>10&31,0));
+          put(x,y,color);
         }
       }
       if(t<8)disc(87,140,Math.min(86,18+t*10),rgb(31,31,31));
