@@ -1,5 +1,6 @@
 import {radioPixels} from './native-radio.js';
 import {endingResult} from './ending-rules.js';
+import {newKaiScene,tickKaiScene} from './kai-planet.js';
 
 // Native-sized picture surface, before the PPU's brightness and color math.
 // Dialogue remains the cartridge's own BG3 window and event interpreter.
@@ -49,8 +50,7 @@ export function createShenronEnding(snes,mod){
   for(let i=0;i<7;i++){
    const angle=i*Math.PI*2/7-Math.PI/2;
    const x=128+Math.cos(angle)*(scattered?28+travel*180:28),y=196+Math.sin(angle)*(scattered?12+travel*150:12);
-   for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++)if(dx*dx+dy*dy<20)put(x+dx,y+dy,Math.abs(dx)+Math.abs(dy)>5?rgb(17,7,0):rgb(31,20,2));
-   if(!scattered){put(x-1,y-2,rgb(31,30,16));for(let star=0;star<=i;star++)put(x-2+star%3*2,y-1+Math.floor(star/3)*2,rgb(24,2,1));}
+   mod.kiArt?.draw('dragon',i,x,y,12,put);
   }
   // The final falling flakes are explicitly called fallout in the dialogue.
   if(state.phase==='summon')for(let i=0;i<32;i++)put((i*61+age/12|0)%256,(i*47+age/3|0)%224,rgb(21,24,17));
@@ -76,7 +76,7 @@ export function createShenronEnding(snes,mod){
    state.phase=phase;state.age=0;prepared=-1;
    if(phase==='escape')mod.playSound?.('teleport');
    if(phase==='depart')mod.playSound?.('flight');
-   if(phase==='kai')mod.playSound?.('teleportIn');
+   if(phase==='kai'){state.kai??=newKaiScene();mod.playSound?.('teleportIn');}
    if(phase==='dragon'){mod.playSound?.('powerBurst');}
    if(phase==='wish'){mod.quest?.wish();mod.playSound?.('charged');}
    if(phase==='village'){
@@ -84,12 +84,12 @@ export function createShenronEnding(snes,mod){
     snes.ram[0xe190]=snes.ram[0xe191]=0;mod.write16(0xe182,mod.read16(0xe184));
    }
   },
-  tick(){if(state){state.age++;if(state.phase==='explode'&&state.age===48)mod.playSound?.('powerBurst');}},
+  tick(){if(state){state.age++;if(state.phase==='explode'&&state.age===48)mod.playSound?.('powerBurst');if(['kai','complete'].includes(state.phase))tickKaiScene(state.kai??=newKaiScene());}},
   get active(){return !!state;},get complete(){return state?.phase==='complete';},
   get nativeBoy(){return state?.outcome!=='bad'&&state?.phase==='village';},
   get planetScene(){return state&&(state.outcome==='bad'||['depart','kai','complete'].includes(state.phase))?state:null;},
-  get status(){return state?{...state}:null;},
-  snapshot(){return state?{...state}:null;},restore(saved){state=saved?{...saved}:null;prepared=-1;},
+  get status(){return structuredClone(state);},
+  snapshot(){return structuredClone(state);},restore(saved){state=saved?structuredClone(saved):null;prepared=-1;},
   dispose(){p.getColor=previous;},
  };
 }

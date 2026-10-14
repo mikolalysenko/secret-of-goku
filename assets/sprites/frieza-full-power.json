@@ -1,0 +1,19 @@
+{
+  "generatedWith": "OpenAI built-in image_gen",
+  "reference": "frieza.png",
+  "prompt": "Use case: precise-object-edit. Asset type: transparent SNES RPG boss sprite sheet. Edit target: the provided Frieza eight-pose sheet. Change all eight sprites into Frieza's 100% full-power muscular final form: very broad shoulders, huge rounded biceps and forearms, thick neck, sharply defined chest muscles and powerful thighs. Retain white skin, glossy purple head/chest/shoulder accents, red eyes, tail, and same three-quarter facing to viewer's left. Preserve the 4-column by 2-row grid, pose order and positions: top row folded-arms idle, second idle-tail, pointing shot, raised hand telekinesis; bottom row clenched-fist power stance, lunging punch, recoiling hurt, defeated kneeling. Keep transparent gutters, complete tails and feet inside each individual cell. Authentic SNES sprite pixel clusters, limited white/lavender/dark-purple palette, dark outline, crisp hard edges. No antialiasing, no background, no text or borders. Main request: visibly bulky muscular Frieza in every pose, no new transformations or armor. Sheet aspect ratio 2:1.",
+  "grid": [
+    4,
+    2
+  ],
+  "poses": [
+    "idle",
+    "idle-tail",
+    "death-beam",
+    "telekinesis",
+    "full-power",
+    "rush",
+    "hurt",
+    "defeated"
+  ]
+}

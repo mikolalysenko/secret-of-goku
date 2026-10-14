@@ -37,12 +37,12 @@ test('Frieza escalates through a fractured deck and cosmic beam, then returns sa
  const base=await page.evaluate(()=>mana.snapshot());writeFileSync(test.info().outputPath('battle.json'),JSON.stringify(base));
  await page.locator('#screen').screenshot({path:test.info().outputPath('duel.png')});
  const phase1=await page.evaluate(()=>{
-  const m=mana.mod,grid=mana.hash(mana.snes.ram.slice(0x10000,0x18000));m.frieza.hit(m.frieza.entity(),1e8);mana.run(50);
-  return{grid,hp:m.frieza.status.hp,tier:m.frieza.status.boss.tier,locked:m.frieza.inputLocked,scars:m.frieza.status.boss.arena.scars.length};
+  const m=mana.mod,grid=mana.hash(mana.snes.ram.slice(0x10000,0x18000));m.frieza.hit(m.frieza.entity(),1e8);mana.run(320);
+  return{grid,hp:m.frieza.status.hp,tier:m.frieza.status.boss.tier,locked:m.frieza.inputLocked,muscular:m.frieza.status.boss.muscular,scars:m.frieza.status.boss.arena.scars.length};
  });
- expect(phase1).toMatchObject({hp:64000,tier:1,locked:true});expect(phase1.scars).toBeGreaterThan(1);
+ expect(phase1).toMatchObject({hp:64000,tier:1,locked:true,muscular:true});expect(phase1.scars).toBeGreaterThan(1);
  await page.locator('#screen').screenshot({path:test.info().outputPath('deck-burst.png')});
- await page.evaluate(()=>mana.run(45));
+ await page.evaluate(()=>mana.run(65));
  const phase2=await page.evaluate(()=>{
   const m=mana.mod;m.frieza.hit(m.frieza.entity(),1e8);mana.run(112);
   return{hp:m.frieza.status.hp,tier:m.frieza.status.boss.tier,cinematic:m.frieza.cinematic?.kind,damage:m.frieza.status.boss.arena.scars.length,saved:mana.snapshot()};
@@ -54,14 +54,17 @@ test('Frieza escalates through a fractured deck and cosmic beam, then returns sa
   mana.run(35,[10,1,7]);const pixels=mana.hash(mana.pixels),a=m.frieza.snapshot();
   mana.restore(saved);mana.run(35,[10,1,7]);const exact=JSON.stringify(a)===JSON.stringify(m.frieza.snapshot())&&pixels===mana.hash(mana.pixels);
   const during={position:[m.status.x,m.status.y],hp:m.status.hp,nativeButtons:mana.snes.joypad1State};
-  mana.run(75);return{exact,position,hp,during,cinematic:m.frieza.cinematic,locked:m.frieza.inputLocked,control:m.canAttack,grid:mana.hash(mana.snes.ram.slice(0x10000,0x18000)),error:m.story.status.error};
+  mana.run(75);return{exact,position,hp,during,cinematic:m.frieza.cinematic,orbit:m.frieza.orbit?.kind,locked:m.frieza.inputLocked,control:m.canAttack,grid:mana.hash(mana.snes.ram.slice(0x10000,0x18000)),error:m.story.status.error};
  },phase2.saved);
  expect(replay.exact).toBe(true);expect(replay.during).toEqual({position:replay.position,hp:replay.hp,nativeButtons:0});
- expect(replay).toMatchObject({cinematic:null,locked:false,control:true,grid:phase1.grid,error:null});
- await page.locator('#screen').screenshot({path:test.info().outputPath('shattered-deck.png')});
- const movement=await page.evaluate(()=>{const m=mana.mod,before=m.status;mana.run(6,[8,7]);return{before,after:m.status};});
- expect(movement.after.x).toBeGreaterThan(movement.before.x);
+ expect(replay).toMatchObject({cinematic:null,orbit:'frieza-orbit',locked:false,control:true,grid:phase1.grid,error:null});
+ await page.locator('#screen').screenshot({path:test.info().outputPath('orbital-battle.png')});
+ const movement=await page.evaluate(()=>{const m=mana.mod,before={...m.frieza.orbit.hero},ground=[m.status.x,m.status.y];mana.run(6,[8,7]);return{before,after:m.frieza.orbit.hero,ground,afterGround:[m.status.x,m.status.y]};});
+ expect(movement.after.x).toBeGreaterThan(movement.before.x);expect(movement.afterGround).toEqual(movement.ground);
  // An old save predating the new fight still initializes all effect state.
- const old=await page.evaluate(()=>{const m=mana.mod,s=m.frieza.snapshot();for(const key of['tier','surge','arena','afterimages','hazards'])delete s.boss[key];m.frieza.restore(s);mana.run(2);return m.story.status.error;});
- expect(old).toBe(null);
+ const old=await page.evaluate(()=>{
+  const m=mana.mod,s=m.frieza.snapshot();for(const key of['orbital','space','surge','muscular'])delete s.boss[key];s.boss.tier=2;s.boss.hp=20000;
+  m.frieza.restore(s);mana.run(2);return{error:m.story.status.error,kind:m.frieza.status.boss.surge?.kind,muscular:m.frieza.status.boss.muscular};
+ });
+ expect(old).toEqual({error:null,kind:'frieza-cosmic',muscular:true});
 });

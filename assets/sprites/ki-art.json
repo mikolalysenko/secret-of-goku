@@ -1,0 +1,32 @@
+{
+  "generatedWith": "OpenAI built-in image_gen",
+  "format": "RGBA PNG; nearest-neighbor sampling onto native RGB555 surface",
+  "death": {
+    "file": "death-ball.png",
+    "grid": [
+      3,
+      2
+    ],
+    "prompt": "Asset type: transparent sprite sheet for a 1993 SNES action RPG. Create Frieza's Death Ball from Dragon Ball Z as SIX individual animation frames in a precise 3-column by 2-row grid, aspect ratio 3:2, transparent background and wide transparent gutters. A huge threatening DARK purple/violet spherical ki bomb with irregular incandescent magenta electrical surface veins, a hot pale-lavender offset core, a deep nearly black purple underside, sharp jagged purple electrical corona reaching outside the sphere. Not a flat pink circle, not a Dragon Ball, no stars. All six frames have exactly the same center and size, sequential electrical flicker/rotation, no projectile trail. Crisp SNES pixel art, large square pixel clusters, hard outlines, at most 15 distinct colors. Each frame is logically 64x64 pixels, sphere diameter44 and corona diameter60; nearest-neighbor enlarged. No soft glow, antialiasing, text, labels, borders, backdrop, character or watermark. Output ONLY the six separated complete energy sprites on real transparency.",
+    "refinement": "Remove the background, preserving only the six spheres and their lightning corona on true alpha transparency."
+  },
+  "dragon": {
+    "file": "dragon-balls.png",
+    "grid": [
+      4,
+      2
+    ],
+    "stars": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "prompt": "Asset type: transparent sprite sheet of Dragon Balls for a 1993 SNES action RPG. Exact 4-column by 2-row grid, aspect ratio2:1, eight complete orange glass spheres, each centered with identical size and generous transparent gutters. Top row left to right must have 1,2,3,4 RED STARS; bottom row left to right 5,6,7,8 RED STARS. Distinct count of sharp red five-point stars inside each. Rich amber rim, shaded burnt-orange underside, luminous golden orange body, a crisp white/cream reflection at upper left. Recognizable classic Dragon Balls, not flat orange discs. Crisp pixel art with big clean square clusters, 12-color SNES palette, no smooth gradients, no antialiasing. Each sphere logical diameter24pixels in a32x32pixel cell, enlarged nearest neighbor. No characters, text, labels, frame outlines, shadows or background. True transparent background.",
+    "refinement": "Correct the star counts, especially the five-star and eight-star Dragon Balls, keeping the transparent 4 by 2 sheet."
+  }
+}

@@ -184,6 +184,7 @@ class ManaMod {
     this.facing=(nativeDirection&0x7f)===0?3:(nativeDirection&0x7f)===1?0:(nativeDirection&0x80)?2:1;
     if(this.ceiling?.tick()){this.localFlight=false;this.localLift=0;return;}
     if(this.frieza?.inputLocked){this.snes.joypad1State=0;this.input=0;this.padInput=0;return;}
+    if(this.frieza?.spaceInput(input)){this.snes.joypad1State=0;return;}
     if(this.teleport?.pending){this.snes.joypad1State=0;this.advanceAction();return;}
     const takeoff=(this.padInput&0xc00)===0xc00;
     if(takeoff&&(this.lastPadInput&0xc00)!==0xc00&&this.requestFlight()){this.snes.joypad1State=0;return;}
@@ -249,7 +250,7 @@ class ManaMod {
       // Native input sampling can finish one movement step after release.
       // Keep hovering if that last step carries the feet off a narrow shore.
       if(!this.worldFlight&&this.canAttack&&this.localLift>0&&this.localFlightHook&&!this.localFlightHook.canLand()&&this.localFlightHook.canFly(this.read16(0xe002),this.read16(0xe004)))this.localFlight=true;
-      const recovered=this.localFlightHook?.settle();
+      const recovered=this.frieza?.orbit?null:this.localFlightHook?.settle();
       if(recovered)this.teleport?.follow(recovered);
     }
     this.moving=this.read16(0xe002)!==this.before.x||this.read16(0xe004)!==this.before.y;

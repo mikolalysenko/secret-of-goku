@@ -59,7 +59,14 @@ test('Frieza fires lethal projectiles; flying returns discs, attacks hit him, me
 for(const mask of[0,1,2,3])test(`Frieza route reaches the wish and restores only recruited Popoi, party ${mask}`,async({page})=>{
  await load(page,mask);await late(page);
  expect(await page.evaluate(()=>mana.mod.frieza.popoiMember)).toBe(!!(mask&2));
- await page.evaluate(()=>{const m=mana.mod;for(let i=0;i<32&&m.frieza.status.stage==='battle';i++){if(!m.frieza.inputLocked)m.frieza.hit(m.frieza.entity(),1e8);mana.run(20);}});
+  await page.evaluate(()=>{
+   const m=mana.mod;for(let i=0;i<100&&m.frieza.status.stage==='battle';i++){
+    const clash=m.frieza.orbit?.clash;
+    if(clash?.phase==='charge'){mana.run(50,[10,1]);mana.run(1);}
+    else if(clash?.phase==='struggle'){mana.run(1,[0]);mana.run(3);}
+    else{if(!m.frieza.inputLocked)m.frieza.hit(m.frieza.entity(),1e8);mana.run(20);}
+   }
+  });
  let beast=false;for(let i=0;i<70;i++){
   const s=await page.evaluate(()=>{mana.run(100,[11]);return{map:mana.mod.status.map,control:mana.mod.canAttack,event:mana.mod.story.status.lastEvent};});
   if(s.event===0x9a)await page.evaluate(()=>{mana.run(3,[0]);mana.run(30);});

@@ -34,4 +34,9 @@ test('late checkpoints build from a fresh ROM and reload the playable Frieza bat
   const cached=await page.evaluate(()=>{mana.pause();return{state:mana.mod.frieza.status,map:mana.mod.status.map,sram:mana.hash(mana.snes.cart.sram),rom:mana.hash(mana.snes.cart.data)}});
   expect(cached.map).toBe(246);expect(cached.state).toMatchObject({stage:'battle',permanent:true,fallen:true,hp:96000});
   expect(cached.sram).toBe(start.sram);expect(cached.rom).toBe(start.rom);expect(errors).toEqual([]);
+  const orbit=await page.evaluate(async()=>{await mana.quickStart('orbit');mana.pause();return{map:mana.mod.status.map,space:mana.mod.frieza.orbit,rom:mana.hash(mana.snes.cart.data)}});
+  expect(orbit.map).toBe(246);expect(orbit.space.kind).toBe('frieza-orbit');expect(orbit.rom).toBe(start.rom);
+  await page.locator('#native-restore').click();expect(await page.evaluate(()=>mana.mod.frieza.orbit)).toBe(null);
+  await page.goto('/?start=orbit');await page.waitForFunction(()=>mana.ready&&!!mana.mod.frieza.orbit,{},{timeout:15000});
+  expect(errors).toEqual([]);
 });

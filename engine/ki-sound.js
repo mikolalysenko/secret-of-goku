@@ -1,6 +1,7 @@
 // DBZ sample playback, with a deterministic emergency synth fallback.
 // The Japanese chant uses a separate, cancellable vocal stem.
 import {createKamehamehaVoice} from './kamehameha-voice.js';
+import {createFriezaScore} from './frieza-score.js';
 const TAU=Math.PI*2;
 export const durations={swing:.12,hit:.24,blast:.19,beam:1.05,charged:.21,transform:2.55,powerBurst:1.55,teleport:.16,teleportIn:.13,flight:.24,charge:1};
 export function synthesizeKiSound(name,{rate=16000,superSaiyan=false}={}){
@@ -77,6 +78,7 @@ export const cues={
 const fallback={friezaImpact:'hit',fortressBreak:'powerBurst',friezaRush:'flight',friezaCharge:'charge',friezaLaugh:'charged',friezaOrb:'beam',friezaDisc:'blast',kickSwing:'swing',kick:'hit',impact:'hit',distantImpact:'hit',deflect:'hit',revert:'transform',landing:'flight',aura:'charge',air:'charge'};
 export function createKiSound(mod){
   const speech=createKamehamehaVoice(mod);
+  const music=createFriezaScore(mod);
   let queue=[],context=null,master=null,compressor=null,decoding=null,buffers=new Map(),fallbackBuffers=new Map();
   const voices=new Set(),tails=new Set(),loops=new Map(),variants=new Map(),lastCue=new Map();
   const stats={ready:false,error:null,played:0,last:null,charge:false,loops:[],history:[]};
@@ -96,7 +98,7 @@ export function createKiSound(mod){
     }catch{}
   }
   function stopLoop(name,when=0,fade=0){stopVoice(loops.get(name),when,fade);loops.delete(name);}
-  function stop(){for(const v of new Set([...voices,...tails]))stopVoice(v);loops.clear();stats.charge=false;stats.loops=[];speech.clear();}
+  function stop(){for(const v of new Set([...voices,...tails]))stopVoice(v);loops.clear();stats.charge=false;stats.loops=[];speech.clear();music.clear();}
   function buffer(clip,name,superSaiyan){
     if(buffers.has(clip))return buffers.get(clip);
     const synth=fallback[name]||name,key=synth+':'+superSaiyan;
@@ -122,7 +124,7 @@ export function createKiSound(mod){
     const v=loops.get(name);v.gain.gain.setTargetAtTime(cues[name].gain*level,when,.055);v.source.playbackRate.setTargetAtTime(rate,when,.08);
   }
   const api={
-    stats,speech,cues,
+    stats,speech,cues,music,
     play(name){
       if(!cues[name]||cues[name].loop)return;
       if((name==='hit'||name==='impact')&&mod.frame-(lastCue.get(name)??-100)<2)return;
@@ -144,6 +146,7 @@ export function createKiSound(mod){
         }).catch(error=>{stats.error=error.message;});
       }
       when=Math.max(ctx.currentTime,when??ctx.currentTime);let beam=false;
+      music.update(ctx,true,when);
       for(const item of queue)if(mod.frame-item.frame<5){
         // A quick return to base form cuts off the power-up's long tail.
         if(item.name==='revert')for(const v of [...voices])if(v.name==='transform'||v.name==='powerBurst')stopVoice(v,when,.05);
@@ -156,12 +159,13 @@ export function createKiSound(mod){
       // own rumble, with a small pitch rise instead of a sped-up voice/whine.
       loop('charge',charging||focusing||revealing,focusing?.22+focus*.85:revealing?.85:.48+strength*.52,when,focusing?.72+focus*.3:.94+strength*.12);
       loop('aura',(focusing&&focus>.4)||revealing||(charging&&mod.options.superSaiyan&&strength>.35),focusing?focus:revealing?1:strength,when,focusing?.8+focus*.2:1);
-      loop('air',mod.options.enabled&&mod.gokuActive&&(mod.localFlight||mod.worldFlight||mod.gapFlight?.active),charging?.35:1,when);
+      loop('air',mod.options.enabled&&mod.gokuActive&&(mod.localFlight||mod.worldFlight||mod.gapFlight?.active||mod.frieza?.orbit),charging?.35:1,when);
       const enemyCharge=mod.options.enabled&&mod.gokuActive?(mod.frieza?.chargeSound??0):0;
       loop('friezaCharge',enemyCharge>0,enemyCharge,when,.76);
       stats.charge=loops.has('charge');stats.loops=[...loops.keys()];
     },
-    get ready(){return decoding||data;},
+    get ready(){return Promise.all([decoding||data,music.ready]);},
+    get nativeGain(){return music.nativeGain;},
     get output(){return compressor;},
     connect(node){compressor?.connect(node);},
     cancelCombat(){
@@ -173,7 +177,7 @@ export function createKiSound(mod){
     snapshot(){return{queue:structuredClone(queue)};},
     restore(saved){stop();lastCue.clear();variants.clear();queue=saved?.queue?structuredClone(saved.queue):[];},
     clear(){queue=[];lastCue.clear();stop();},
-    dispose(){api.clear();speech.dispose();master?.disconnect();compressor?.disconnect();buffers.clear();},
+    dispose(){api.clear();speech.dispose();music.dispose();master?.disconnect();compressor?.disconnect();buffers.clear();},
   };
   mod.playSound=name=>api.play(name);mod.sound=api;return api;
 }

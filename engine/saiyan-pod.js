@@ -9,12 +9,12 @@ const palette=[0,...[
 ].map(c=>rgb(...c))];
 const width=48,height=48;
 
-function makeFrame(open){
+function makeFrame(open,grounded=true){
   const pixels=new Uint16Array(width*height);
   const dot=(x,y,c)=>{if(x>=0&&x<width&&y>=0&&y<height)pixels[y*width+x]=palette[c];};
   // Hand-sized pixels and stepped shading, never antialiasing or gradients.
   for(let y=0;y<height;y++)for(let x=0;x<width;x++){
-    if(((x-24)/18)**2+((y-42)/3)**2<=1)dot(x,y,1);
+    if(grounded&&((x-24)/18)**2+((y-42)/3)**2<=1)dot(x,y,1);
     const dx=x-23.5,dy=y-22,edge=(dx/20)**2+(dy/21)**2;
     if(edge>1)continue;
     let c=edge>.91?1:dx+dy>22?2:dx+dy>11?3:dx+dy>-2?4:dx+dy>-19?5:6;
@@ -46,12 +46,13 @@ function makeFrame(open){
   return Object.freeze({width,height,pixels,open});
 }
 
-export const saiyanPodFrames=Object.freeze([0,1,2].map(makeFrame));
+export const saiyanPodFrames=Object.freeze([0,1,2].map(open=>makeFrame(open)));
+const airbornePod=makeFrame(0,false);
 
-export function drawSaiyanPod(layer,x,y,open=0){
-  const frame=saiyanPodFrames[open];
+export function drawSaiyanPod(layer,x,y,open=0,airborne=false){
+  const frame=airborne?airbornePod:saiyanPodFrames[open];
   for(let py=0;py<height;py++)for(let px=0;px<width;px++){
     const color=frame.pixels[py*width+px];if(color)layer.pixel(x+px,y+py,color,true);
   }
-  layer.plan.pod={x,y,width,height,open};
+  layer.plan.pod={x,y,width,height,open,airborne};
 }

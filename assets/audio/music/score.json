@@ -1,0 +1,34 @@
+{
+  "author": "Original compositions for Secret of Goku",
+  "license": "MIT",
+  "source": "scripts/compose-frieza-score.mjs",
+  "titles": [
+    "Five Minutes",
+    "Fury Above Mana",
+    "Orbit Breaker"
+  ],
+  "sampleRate": 22050,
+  "tracks": [
+    {
+      "file": "arrival.wav",
+      "bpm": 72,
+      "bars": 8,
+      "duration": 26.666666666666668,
+      "instruments": 8
+    },
+    {
+      "file": "battle.wav",
+      "bpm": 128,
+      "bars": 16,
+      "duration": 30,
+      "instruments": 8
+    },
+    {
+      "file": "orbit.wav",
+      "bpm": 152,
+      "bars": 16,
+      "duration": 25.263174603174605,
+      "instruments": 8
+    }
+  ]
+}

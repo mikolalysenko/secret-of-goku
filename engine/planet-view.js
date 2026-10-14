@@ -1,5 +1,7 @@
 import {decodePlanetTexture} from './world-texture.js';
 import {radioPixels} from './native-radio.js';
+import {createOrbitView} from './frieza-orbit-view.js';
+import {kaiActors,newKaiScene} from './kai-planet.js';
 
 // A 256x224 RGB555 picture surface, before native brightness/color math.
 // It never writes Mode 7 matrices, sky HDMA, VRAM, or the landing ABI.
@@ -47,6 +49,7 @@ export function createPlanetView(snes,mod){
     planet(target,night);
     for(let y=0;y<224;y++)for(let x=0;x<256;x++){const c=globe[y*256+x];if(c)put(x+shake,y,c);}
   }
+  const drawOrbit=createOrbitView(snes,mod,{put,disc,line,spell,rgb,drawPlanet});
   function beam(age){
     const start={x:132,y:90},dx=.66,dy=-.7513,envelope=Math.max(0,Math.min(1,(age+8)/14,(112-age)/30));
     const length=210*Math.min(1,(age+12)/24),width=18*envelope;
@@ -107,7 +110,7 @@ export function createPlanetView(snes,mod){
     const u=Math.min(1,t/32),ox=226-85*u,oy=8+73*u,r=8+Math.floor(u*10);
     if(t<49){
       for(let i=0;i<7;i++){const a=i*Math.PI/3.5+t*.14;line(ox+Math.cos(a)*(r-1),oy+Math.sin(a)*(r-1),ox+Math.cos(a)*(r+7),oy+Math.sin(a)*(r+7),rgb(28,8,28));}
-      disc(ox,oy,r,rgb(14,2,20));disc(ox-2,oy-2,r-3,rgb(28,5,24));disc(ox-4,oy-4,Math.max(2,r-9),rgb(31,23,30));
+      mod.kiArt?.draw('death',(t>>3)%6,ox,oy,r*2.7,put);
     }
     if(t>20)beam(t-20);
     // Small pieces of the Fortress silhouette peel away from the impact.
@@ -127,41 +130,23 @@ export function createPlanetView(snes,mod){
     if(t>101){const f=Math.max(0,(118-t)/17);for(let i=0;i<surface.length;i++){const c=surface[i]-1;surface[i]=rgb(Math.floor((c&31)*f),Math.floor((c>>5&31)*f),Math.floor((c>>10&31)*f));}}
   }
   function kaiPlanet(state){
-    // Authored pixel scenery: the tiny round lawn, curved road, house, tree,
-    // car and blue antennaed Kai. No borrowed picture or canvas smoothing.
-    const cx=128,cy=181,rx=99,ry=35;
-    for(let y=146;y<218;y++)for(let x=24;x<232;x++){
-      const d=(x-cx)**2/rx**2+(y-cy)**2/ry**2;if(d>1)continue;
-      const grain=(x*17+y*31)%29,shade=Math.floor(Math.max(0,y-177)/7),edge=d>.93;
-      put(x,y,edge?rgb(3,9-shade,4):grain<4?rgb(13-shade,23-shade,7):rgb(8-shade,18-shade,5));
-      const road=Math.abs(Math.hypot((x-128)*.62,(y-181)*1.5)-31);
-      if(y>167&&road<5.5)put(x,y,road>4?rgb(9,10,9):rgb(18+grain%3,18+grain%3,16+grain%3));
-    }
-    // Small house and its red tiled roof.
-    for(let y=143;y<171;y++)for(let x=55;x<94;x++)put(x,y,y>165?rgb(15,10,6):x>86?rgb(18,16,11):y%7===0?rgb(21,19,13):rgb(26,24,17));
-    for(let y=130;y<146;y++)for(let x=51+(145-y);x<98-(145-y);x++)put(x,y,y===145?rgb(9,4,3):((x+y)%7===0||y%4===0)?rgb(27,13,7):rgb(18,5,4));
-    for(let y=151;y<171;y++)for(let x=72;x<81;x++)put(x,y,rgb(9,7,6));
-    for(const x of[59,84])for(let y=151;y<159;y++)for(let xx=x;xx<x+5;xx++)put(xx,y,rgb(9,19,25));
-    for(let y=122;y<168;y++)for(let x=184;x<190;x++)put(x,y,x<186?rgb(19,12,5):rgb(11,7,4));
-    for(const[x,y,r]of[[184,116,16],[196,120,13],[175,125,12]]){disc(x+1,y+2,r,rgb(4,11,4));disc(x-2,y-2,r-3,rgb(9,19,5));}
-    for(let y=101;y<138;y++)for(let x=164;x<209;x++)if(surface[y*256+x]===rgb(9,19,5)&&(x*7+y*13)%23<4)put(x,y,rgb(13,23,7));
-    // Kai's famously impractical car on a very small road.
-    for(let y=192;y<201;y++)for(let x=53;x<81;x++)put(x,y,rgb(24,4,5));
-    for(let y=187;y<193;y++)for(let x=60;x<75;x++)put(x,y,rgb(9,19,25));
-    disc(59,201,3,rgb(1,1,2));disc(76,201,3,rgb(1,1,2));
-    const kai=[
-      '..d...........d..','...d.........d...','....d.......d....','.....bbbbbbb.....','....bbccccbbbd...',
-      '...bbccccccbbbd..','..bbbccccccbbbdd.','..kkkwkkbkkwkkkd.','..kkkkkkbkkkkkkd.',
-      '..bbbccccccbbbdd.','...bbwwwwwwbbdd..','....bbccccbbdd...','.....bbbbbbb.....','....rrrrrrrrr....',
-      '...rrkkkkkkkrr...','..rrkkkkkkkkkrr..','.drrkkkkkkkkkrrd.','bbrrkkkwwwkkkrrbb',
-      'bcrrkkwwwwwkkrrcb','bcrrkkwkwkwkkrrcb','.brrkkwwwwwkkrrb.','..rrkkkwwwkkkrr..',
-      '..rrkkkkkkkkkrr..','..rrkkkkkkkkkrr..','...rrrrrrrrrrr...','....kkk.kkkk.....','...kkkk.kkkkk....',
-    ],colors={b:rgb(10,23,27),c:rgb(16,28,30),d:rgb(5,14,18),k:rgb(1,2,4),w:rgb(30,28,17),r:rgb(23,5,4)};
-    kai.forEach((row,y)=>[...row].forEach((v,x)=>{if(colors[v])put(108+x,145+y,colors[v]);}));
+    // Full opaque Snake Way / golden-cloud map: no orbital starfield leaks
+    // into the overhead epilogue. The native dialogue still draws above it.
+    mod.kaiArt?.backdrop(surface);
+    const scene=state.kai??newKaiScene(),b=scene.bubbles;
     const goku=mod.spriteLayer.atlas[mod.frieza?.permanent?'ssj':'goku'];
     const arriving=state.phase==='kai'&&state.age<12;
-    if(!arriving||state.age>5)blit(goku,139,146,0,32,32,32);
-    if(arriving)for(let i=0;i<9;i++)line(142+i*3,143+i%3*2,142+i*3,177-i%2*4,blue[1+i%3]);
+    const walk=b.walking?Math.floor(b.step/9)%4:1,row=b.direction==='down'?4:b.direction==='up'?8:12;
+    const kaiFrame=state.phase==='complete'?3:state.outcome==='bad'?2:Math.floor(state.age/28)%2;
+    const actors=[
+      {y:kaiActors.kai.y,draw:()=>mod.kaiArt?.npc(kaiFrame,kaiActors.kai.x,kaiActors.kai.y,put)},
+      {y:b.y,draw:()=>mod.kaiArt?.npc(row+walk,b.x,b.y,put,b.direction==='left')},
+      {y:kaiActors.goku.y,draw:()=>{
+        if(!arriving||state.age>5)blit(goku,kaiActors.goku.x-16,kaiActors.goku.y-31,0,32,32,32);
+        if(arriving)for(let i=0;i<9;i++)line(138+i*3,129+i%3*2,138+i*3,163-i%2*4,blue[1+i%3]);
+      }},
+    ];
+    actors.sort((a,b)=>a.y-b.y).forEach(a=>a.draw());
     if(state.phase==='complete'){
       const text=state.outcome==='bad'?'         BAD ENDING\n      THE WORLD IS GONE.':'        SECRET OF GOKU\n          THE END';
       if(text!==cardKey){cardKey=text;card=radioPixels(snes.cart.data,text);}
@@ -171,7 +156,8 @@ export function createPlanetView(snes,mod){
   function prepare(state,isShot){
     frame=mod.frame;preparedState=state;const age=state.age;sky(age);
     const target=state.target??{x:2432,y:3024};
-    if(state.kind==='frieza-cosmic')cosmicBattle(state);
+    if(state.kind==='frieza-orbit')drawOrbit(state);
+    else if(state.kind==='frieza-cosmic')cosmicBattle(state);
     else if(isShot){drawPlanet(target,!!mod.frieza?.crisisActive);beam(age);}
     else if(['kai','complete'].includes(state.phase))kaiPlanet(state);
     else if(state.phase==='explode')explodingPlanet(age,target);
@@ -187,17 +173,21 @@ export function createPlanetView(snes,mod){
         const ssj=!!mod.frieza?.permanent;blit(mod.spriteLayer.atlas[ssj?'ssj':'goku'],x-16,y-16,(ssj?34:38)*32,128,32,32);
       }
     }
-    if(isShot&&age>164){const factor=Math.max(0,(186-age)/22);for(let i=0;i<surface.length;i++){const c=surface[i]-1;surface[i]=1+Math.floor((c&31)*factor)+(Math.floor((c>>5&31)*factor)<<5)+(Math.floor((c>>10&31)*factor)<<10);}}
+    if(isShot&&state.kind!=='frieza-orbit'&&age>164){const factor=Math.max(0,(186-age)/22);for(let i=0;i<surface.length;i++){const c=surface[i]-1;surface[i]=1+Math.floor((c&31)*factor)+(Math.floor((c>>5&31)*factor)<<5)+(Math.floor((c>>10&31)*factor)<<10);}}
   }
   p.getColor=function(sub,x,y){
     const result=previous.call(this,sub,x,y);
     if(sub||y>224||!mod.options.enabled||!mod.gokuActive||!texture)return result;
-    const shot=mod.worldKi?.cinematic??mod.frieza?.cinematic,state=shot??mod.ending?.planetScene;
+    const orbit=mod.frieza?.orbit;
+    // Let the cartridge show and operate its real inventory/status pages.
+    if(orbit&&(!mod.nativeField||mod.read8(0xec)&0xfe))return result;
+    const shot=mod.worldKi?.cinematic??mod.frieza?.cinematic??orbit,state=shot??mod.ending?.planetScene;
     if(!state)return result;
     if(frame!==mod.frame||preparedState!==state)prepare(state,!!shot);
     // Keep native event text above the ending picture. The aerial cut has no
     // HUD/radar/radio at all, including the source camera's compass.
     if(!shot&&result[1]===2&&y<170&&state.phase!=='complete')return result;
+    if(orbit&&!orbit.clash&&y>190&&[2,4].includes(result[1]))return result;
     return[y===224?0:surface[y*256+x]-1,4,0x86];
   };
   return{load(rom){texture=decodePlanetTexture(rom);frame=-1;globeKey='';},dispose(){p.getColor=previous;}};

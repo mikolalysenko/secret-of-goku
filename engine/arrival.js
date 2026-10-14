@@ -90,13 +90,13 @@ export function createArrival(snes,mod){
         // Goku stays inside the red-windowed pod until its hatch opens.
         // The hot entry trail is still made of original Mana spell cells.
         for(let i=5;i>=1;i--)layer.stamp('gold-charge-orb',Math.max(0,4-i),x+24+i*5,y+12-i*12);
-        drawSaiyanPod(layer,x,y);
+        drawSaiyanPod(layer,x,y,0,true);
       }else{
         // The capsule bounces into the back of the crater, opens its hatch,
         // and Goku hops out toward the unchanged native actor position.
         const settle=Math.min(1,age/42),podX=Math.round(cx-24+24*settle),podY=Math.round(cy-48-10*settle-Math.sin(settle*Math.PI)*9);
         const open=age<58?0:age<74?1:2;
-        drawSaiyanPod(layer,podX,podY,open);
+        drawSaiyanPod(layer,podX,podY,open,age<42);
         // Keep the actual sprite cells at native resolution. Multiple blasts
         // spread out from the impact instead of stretching one explosion.
         if(age>=78){

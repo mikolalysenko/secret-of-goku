@@ -1,7 +1,7 @@
 // Built locally from the user's ROM. No cartridge bytes or savestates ship
 // with the site. Bump the revision when native virtual script layouts change.
-export const quickStartRevision='frieza-cosmic-2';
-export const quickStartLabels={title:'After title',sword:'After sword / pod crash',late:'After Sunken Continent',frieza:'Frieza / Thanatos showdown',battle:'Frieza battle'};
+export const quickStartRevision='frieza-orbit-3';
+export const quickStartLabels={title:'After title',sword:'After sword / pod crash',late:'After Sunken Continent',frieza:'Frieza / Thanatos showdown',battle:'Frieza battle',orbit:'Frieza in space'};
 export async function buildQuickStart(kind,{fresh,pump,mod,arrival,capture,cache,progress}){
   if(!(kind in quickStartLabels))throw Error('Unknown quick checkpoint');
   await fresh();progress('Running the original title…');
@@ -42,7 +42,7 @@ export async function buildLateCheckpoint(kind,{pump,mod,capture,cache,progress}
   progress('Preparing Frieza and the stolen Dragon Balls…');
   // The showdown fixture begins after Frieza's automatic entrance.
   // Keep the actual theft playable from the post-continent checkpoint.
-  mod.frieza.restore({stage:'hunt',stolen:true,stolenMask:127,eighth:true,hinted:true,trialWon:kind==='battle'});
+  mod.frieza.restore({stage:'hunt',stolen:true,stolenMask:127,eighth:true,hinted:true,trialWon:['battle','orbit'].includes(kind)});
   const {activateTwilight}=await import('./frieza-crisis.js');activateTwilight(mod.snes.ram);
   if(!mod.story.travel(0x2f))throw Error('The Fortress entrance was not ready.');
   await pump(240);if(mod.status.map!==246)throw Error('The Fortress did not load.');
@@ -60,4 +60,18 @@ export async function buildLateCheckpoint(kind,{pump,mod,capture,cache,progress}
   }
   if(!mod.frieza.fighting||!mod.canAttack)throw Error('The Frieza battle did not start.');
   mod.cancelInput();mod.write16(0xe182,999);await cache('battle',capture());
+  if(kind==='orbit'){
+    progress('Powering Frieza up and taking the fight into orbit…');
+    // Test-only damage reaches the real phase thresholds, then plays both
+    // transitions. Native actor, camera and collision state stay untouched.
+    for(let phase=0;phase<2;phase++){
+      mod.frieza.hit(mod.frieza.entity(),1e8);
+      for(let f=0;f<420;f++){
+        await pump(1);
+        if(!mod.frieza.inputLocked&&(phase===0?mod.frieza.status.boss.tier===1:mod.frieza.orbit))break;
+      }
+    }
+    if(!mod.frieza.orbit)throw Error('The orbital battle did not start.');
+    mod.cancelInput();mod.write16(0xe182,999);await cache('orbit',capture());
+  }
 }

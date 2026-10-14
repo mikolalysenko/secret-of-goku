@@ -37,6 +37,8 @@ import {createShenronEnding} from './shenron-ending.js';
 import {buildQuickStart,buildLateCheckpoint,quickStartLabels,quickStartRevision} from './quick-start.js';
 import {createWorldScars} from './world-scars.js';
 import {createPlanetView} from './planet-view.js';
+import {createKiArt} from './ki-art.js';
+import {createKaiArt} from './kai-planet.js';
 import {createSceneFastForward,sceneFastForwardRate} from './scene-fast-forward.js';
 import {fetchDefaultRom,validateRom} from './rom-loader.js';
 import {createDragonRadar} from './dragon-radar.js';
@@ -102,6 +104,8 @@ mod.nativeSave=createNativeModSave(snes,mod,battery);
 const fastForward=createSceneFastForward(mod);
 mod.radar=createDragonRadar(snes,mod);
 mod.planetView=createPlanetView(snes,mod);
+mod.kiArt=createKiArt();
+mod.kaiArt=createKaiArt();
 let loaded=false,running=false,busy=false,lastTime=0,accumulator=0,checkpoint=null,frameCount=0,fpsTime=performance.now();
 let nameSeeded=false,originalBoot=false;
 let originalRom=null;
@@ -134,7 +138,7 @@ function step(mask=0,audible=false,skipPicture=false){
   if(audible&&audioEnabled&&audioContext?.state==='running'){
     const samples=Math.round(audioContext.sampleRate/60),buffer=audioContext.createBuffer(2,samples,audioContext.sampleRate);
     snes.setSamples(buffer.getChannelData(0),buffer.getChannelData(1),samples);
-    const source=audioContext.createBufferSource(),gain=audioContext.createGain();source.buffer=buffer;gain.gain.value=.4;source.connect(gain);gain.connect(audioContext.destination);
+    const source=audioContext.createBufferSource(),gain=audioContext.createGain();source.buffer=buffer;gain.gain.value=.4*sound.nativeGain;source.connect(gain);gain.connect(audioContext.destination);
     nextAudio=Math.max(nextAudio,audioContext.currentTime+.025);source.start(nextAudio);sound.update(audioContext,true,nextAudio);nextAudio+=1/60;
   }else {snes.apu.dsp.sampleOffset=0;sound.update(null,false);}
 }
@@ -178,7 +182,7 @@ async function loadROM(source,{potos=false}={}){
   const bytes=await validateRom(source);
   battery.flush();
   originalRom=bytes.slice();
-  await Promise.all([mod.ready,mod.frieza.ready]);mod.spriteLayer.effects=createNativeEffects(bytes,await effectsManifest);mod.worldScars.load(bytes);mod.planetView.load(bytes);running=false;clearInput();mod.configure({enabled:false});
+  await Promise.all([mod.ready,mod.frieza.ready,mod.kiArt.ready,mod.kaiArt.ready]);mod.spriteLayer.effects=createNativeEffects(bytes,await effectsManifest);mod.worldScars.load(bytes);mod.planetView.load(bytes);running=false;clearInput();mod.configure({enabled:false});
   const patched=window.gokuDialoguePatch(potos?window.potosPatch(bytes):window.originalGamePatch(bytes));
   if(!snes.loadRom(patched,true))throw Error('The SNES core rejected this ROM.');
   snes.reset(true);battery.attach(snes.cart,hash(bytes));mod.reset();arrival.load(bytes,{potos});flightDialogue?.dispose();flightDialogue=installFlightDialogue(snes.cart,()=>mod.options.enabled&&mod.gokuActive);mod.gapFlight.load();mod.senzu.load();mod.equipment.load();mod.story.load();nameSeeded=false;originalBoot=!potos;loaded=true;render();return patched;
@@ -263,8 +267,8 @@ async function quickStart(kind){
     if(!saved)try{saved=await checkpointStore(undefined,key(kind));}catch{/* Build locally. */}
     if(saved){applyQuick(saved);quickCache.set(key(kind),saved);}
     else {
-     let late=['frieza','battle'].includes(kind)?quickCache.get(key('late')):null;
-     if(!late&&['frieza','battle'].includes(kind))try{late=await checkpointStore(undefined,key('late'));}catch{}
+     let late=['frieza','battle','orbit'].includes(kind)?quickCache.get(key('late')):null;
+     if(!late&&['frieza','battle','orbit'].includes(kind))try{late=await checkpointStore(undefined,key('late'));}catch{}
      const callbacks={pump,mod,arrival,capture:captureQuick,cache,progress:text=>message(`${text} First use builds a private checkpoint; later jumps are instant.`)};
      if(late){applyQuick(late);await buildLateCheckpoint(kind,callbacks);}
      else await buildQuickStart(kind,{

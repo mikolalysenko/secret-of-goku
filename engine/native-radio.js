@@ -94,7 +94,9 @@ export function createNativeRadio(snes,mod){
   p.getColor=function(sub,x,y){
     const color=previous.call(this,sub,x,y);
     // World flight has no bottom HUD. Keep the sky, Fortress and beam clear.
-    const top=mod.worldFlight?152:8;
+    // The full-power cutscene must leave Frieza's body and expanding aura
+    // visible. It locks combat, so the bottom HUD can yield to its dialogue.
+    const top=mod.worldFlight||current?.kind==='full-power-frieza'?152:8;
     if(!sub&&current&&x>=8&&x<248&&y>=top&&y<top+64){
       if(visibilityFrame!==mod.frame){visibilityFrame=mod.frame;frameVisible=visible();}
       if(!frameVisible)return color;

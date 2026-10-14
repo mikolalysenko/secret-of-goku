@@ -1,5 +1,25 @@
 import {test,expect} from '@playwright/test';
 
+test('Frieza score changes from ominous entrance to battle and orbit, ducks native music and stops on pause',async({page})=>{
+ await page.goto('/');await page.getByRole('button',{name:/Sound on|Mute/}).click();
+ const result=await page.evaluate(async()=>{
+  const {createFriezaScore}=await import('/engine/frieza-score.js'),ctx=new AudioContext();await ctx.resume();
+  const m={frame:0,frieza:{music:'arrival'},charging:false},score=createFriezaScore(m);score.update(ctx,true);await score.ready;score.update(ctx,true);
+  const analyser=ctx.createAnalyser();analyser.fftSize=2048;score.connect(analyser);
+  const energy=()=>{const a=new Float32Array(2048);analyser.getFloatTimeDomainData(a);return Math.sqrt(a.reduce((s,x)=>s+x*x,0)/a.length);};
+  await new Promise(r=>setTimeout(r,250));const entrance={track:score.stats.track,rms:energy(),gain:score.nativeGain};
+  m.frame++;m.frieza.music='battle';score.update(ctx,true);await new Promise(r=>setTimeout(r,250));const battle={track:score.stats.track,rms:energy()};
+  m.frame++;m.frieza.music='orbit';score.update(ctx,true);await new Promise(r=>setTimeout(r,250));const orbit={track:score.stats.track,rms:energy()};
+  score.update(ctx,false);await new Promise(r=>setTimeout(r,100));const paused={track:score.stats.track,rms:energy(),gain:score.nativeGain};
+  score.update(ctx,true);const resumed=score.stats.track;m.frieza.music=null;score.update(ctx,true);const ended=score.nativeGain;
+  const error=score.stats.error;score.dispose();await ctx.close();return{entrance,battle,orbit,paused,resumed,ended,error};
+ });
+ expect(result.entrance.track).toBe('arrival');expect(result.entrance.rms).toBeGreaterThan(.005);expect(result.entrance.gain).toBeLessThan(.05);
+ expect(result.battle.track).toBe('battle');expect(result.battle.rms).toBeGreaterThan(.005);expect(result.orbit.track).toBe('orbit');expect(result.orbit.rms).toBeGreaterThan(.005);
+ expect(result.paused.track).toBe(null);expect(result.paused.rms).toBeLessThan(.0001);expect(result.paused.gain).toBe(1);
+ expect(result.resumed).toBe('orbit');expect(result.ended).toBe(1);expect(result.error).toBe(null);
+});
+
 test('Frieza charge has a sustained bed and impacts use bounded sampled cues that clear on pause',async({page})=>{
  await page.goto('/');await page.getByRole('button',{name:/Sound on|Mute/}).click();
  const result=await page.evaluate(async()=>{

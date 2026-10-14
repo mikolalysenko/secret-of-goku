@@ -92,7 +92,11 @@ test('Luka shortcut introduces Frieza, reaches Thanatos, Frieza and the Beast, a
       else if(m.frieza.unresolved&&!m.frieza.fighting&&m.status.map!==246&&m.canAttack)m.story.request(0x88);
       // Combat/survival has separate coverage. Drive the real damage queue
       // here to verify both native defeat handlers and the ending branch.
-      if(m.canAttack&&bosses.length){for(const boss of bosses)m.hit(boss,boss.custom?1e7:60000,0,-1);mana.run(70,[11]);}
+      if(m.frieza.orbit?.clash){
+        if(m.frieza.orbit.clash.phase==='charge'){mana.run(50,[10,1]);mana.run(1);}
+        else for(let i=0;i<8;i++){mana.run(1,[0]);mana.run(3);}
+      }
+      else if(m.canAttack&&bosses.length){for(const boss of bosses)m.hit(boss,boss.custom?1e7:60000,0,-1);mana.run(70,[11]);}
       else{mana.run(100,[11]);if(mana.fastForward.state(0x800).choice){mana.run(2,[16]);mana.run(20);}}
       return{seen,entrance:m.worldFlight&&m.frieza.status.stage==='hunt',complete:m.ending.complete,flag:mana.read8(0xcf4e),error:m.story.status.error};
     });entrance||=s.entrance;s.seen.forEach(id=>seen.add(id));expect(s.error).toBe(null);if(s.complete){ending=true;break;}

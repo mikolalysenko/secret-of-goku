@@ -69,6 +69,9 @@ export function buildFriezaEvents(rom,mask,{discVictory=false,collected=7}={}){
   ...box('GOKU:Hang on, Popoi.\nI am bringing you back.'),
   ...box('DRYAD:\nThe Tree has his spirit.\nCalm the Mana Beast.\nThen make the wish.'),
   ...box(mask&1?'PRIMM:And Dyluck.\nGOKU:And Dyluck. Everyone.':'KING KAI:Everyone, Goku.\nGOKU:Everyone.'),
+  ...box('LUKA:What in the name\nof Mana was THAT?!'),
+  ...box('LUKA:All the Mana in this\nworld... nothing beside\nthat ki! Such overwhelming\npower!'),
+  ...box('GOKU:He finally went\nall out. That was a fight!'),
   ...box('LUKA:The core is still\nbreaking! Five minutes!\nGOKU:One fight left.\nI can do that.'),
   0x30,0x4e,8,0x39,2,0xcd,0x38,0x39,3,0xcd,7,...jump(0x429),0]);
  return e;

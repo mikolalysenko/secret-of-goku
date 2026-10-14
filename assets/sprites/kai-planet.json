@@ -1,0 +1,26 @@
+{
+  "source": "Original generated pixel artwork for Secret of Goku",
+  "created": "2026-10-14",
+  "background": {
+    "file": "kai-planet.png",
+    "size": [
+      256,
+      224
+    ],
+    "prompt": "Asset type: finished SNES action-RPG map background, native logical resolution 256x224 pixels, aspect ratio 8:7, enlarged cleanly. King Kai's tiny planet from Dragon Ball Z ABOVE SNAKE WAY IN GOLDEN CLOUDS. Overhead three-quarter TOP-DOWN perspective like a Secret of Mana town map: look down at rooftops and grass. This is a playable map, NOT a side view or isometric diamond, no tilted globe, no horizon, no starfield, no outer space. A roughly circular green lawn island fills x25..233,y55..213 of the logical frame. Rich grass tiles, leafy small tree at upper right, one small cream round King Kai house with red terracotta domed roof at upper center, compact red car parked left of the house, a narrow gray curving road around a wide open central lawn. The main open lawn must have uninterrupted grass from x68..180,y120..190 for three NPC sprites to walk. Tree and house must NOT obstruct that lawn. Show a rounded small earthy rim around the lawn. Outside the planet: thick ochre/gold/cream clouds with the long PINK SNAKE WAY winding through them, the pink snake road entering from upper left, curving along top and right edge and behind the planet, receding into the clouds. All clouds and Snake Way drawn from above. Fill the entire canvas; NO black space, NO stars. Crisp authentic 1993 16-bit pixel art, chunky clearly defined 1px logical pixels, restrained SNES palette, detailed hand-crafted tile texture, no gradients, no 3D render, no antialiasing, no characters, no people, no text, no UI, no watermark. Composition must leave the top 64 logical pixels mostly clouds and distant Snake Way so the game's dialogue box fits without obscuring characters. Flat rectangular game map, not a screenshot frame."
+  },
+  "sprites": {
+    "file": "kai-npcs.png",
+    "grid": [
+      4,
+      4
+    ],
+    "rows": [
+      "King Kai: idle, speak, scold, hands on hips",
+      "Bubbles: down walk",
+      "Bubbles: up walk",
+      "Bubbles: right walk (mirror for left)"
+    ],
+    "prompt": "Asset type: transparent SNES RPG NPC animation sheet, exact 4-column by 4-row grid, aspect ratio 1:1. Logical cells 32x32 pixels, all feet aligned at y29 of each cell, complete figures and antennae inside every cell with transparent gutters. First ROW: four KING KAI sprites from Dragon Ball Z, seen in overhead 3/4 Secret of Mana game perspective, round short blue-skinned man, thin black antennae, small black sunglasses, black robe with bright red sides and yellow circular chest emblem. Pose order: idle facing camera/down, idle facing camera/down slightly breathing, scolding with right hand raised facing down, hands on hips facing down. King Kai height28px logical, width24. Remaining three rows: BUBBLES the brown chimpanzee from Dragon Ball Z, round tan muzzle and ears, short dark brown fur, friendly goofy expression, small brown ape body with long arms and short bent legs, NO TAIL. Height21px logical, width20. Second row: four walk-cycle frames facing DOWN toward camera, alternate left foot forward, neutral, right foot forward, neutral. Third row: same four-frame walk cycle facing UP away from camera. Fourth row: same walk cycle facing RIGHT, profile but overhead. Distinct foot/arm motion between adjacent walking frames. Exactly sixteen sprites in a precise uniform 4x4 grid; first row King Kai only, next three Bubbles only. Authentic SNES pixel art, limited 15-color palette per character, crisp dark outline, hard chunky square pixel clusters, no antialiasing, no soft shadows, no painted lighting. True alpha transparent background, no backdrop, labels, gridlines, borders, watermarks, or text. Match original Secret of Mana NPC scale and overhead viewing angle."
+  }
+}
