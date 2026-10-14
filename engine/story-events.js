@@ -24,7 +24,7 @@ export function buildStoryEvents(rom){
   const events=new Map();
   // These retail slots contain unique END bytes. They are used only by
   // the new native choices, avoiding any global event-table replacement.
-  for(const id of [...Array.from({length:0x13},(_,i)=>0x85+i),0x9a,0x9b,0x9c,0x9d,0x9e,0x9f,0xa0]){
+  for(const id of [...Array.from({length:0x13},(_,i)=>0x85+i),0x9a,0x9b,0x9c,0x9d,0x9e,0x9f,0xa0,0xa1,0xa2]){
     const{start,end}=eventRange(rom,id);
     if(end-start!==1||rom[start]!==0)throw Error('Story choice event slot is occupied');
   }
@@ -37,6 +37,13 @@ export function buildStoryEvents(rom){
     // or run the Tree scene remotely; stepping through still owns travel.
     events.set(0x9e+i,[0x42,0x46,(stage<<4)|15,...jump(0),0x30,0x46,stage,0]);
   }
+  events.set(0xa1,[...box('MORIE:No one may enter!\nGOKU:But I am already here.\nDo I go out and try again?'),
+    ...box('MORIE:How did you get past\nthe guards?!\nGOKU:They were guarding\nthe floor.'),
+    ...box('KING KAI:The Empire is\nboarding the ship!\nGOKU:Finally! Someone\nwho wants to fight!'),
+    0x30,0x28,10,0x19,0xab,0x29,0x28,...jump(0x29d),0]);
+  // If Primm really was captured, flying past the guards skips their decoy
+  // puzzle but preserves the original rescue and recruitment choreography.
+  events.set(0xa2,[0x30,0x28,7,...jump(0x29c),0]);
   events.set(0x134,[0x42,0xc3,0,...jump(0x92),...choice('LUKA:What will you do?\n',[{label:'Advice',x:1,to:0x85},{label:'Save',x:10,to:0x86},{label:'Shortcut',x:17,to:0x87}])]);
   events.set(0x92,[0x50,...call(0x13a),0x51,0x01,...jump(0x134),0]); // Keep Luka's original one-time weapon gift.
   events.set(0x85,[...box('LUKA:Find seven Dragon\nBalls. Water, Earth, Wind,\nFire, Dark, Light, Moon.'),...box('The seeds are the cases.\nTouch them to collect the\nBalls. Dryad is the eighth\npalace, not an eighth Ball.'),...box('Wish RANDI, the Sword and\nyour accidents back. First\ncalm the Mana Beast. It\nis allergic to Fortresses.'),...box('Visit all seven Mana Seeds\nto feed the Beast. Each\nvisit also earns a shield.\nPlease just calm it down.'),...box('Fly anywhere. Punch orbs.\nBlast gates. Fly through\ndungeon ceilings if you\nMUST. We will keep a bill.'),...box('Shortcut reaches Thanatos.\nOr shoot the Fortress from\nthe sky. Both are dangerous.\nI know you heard convenient.'),0]);

@@ -53,10 +53,10 @@ cells tracked separately and no accepted outer-edge positions. Eleven requested
 states are adjusted by existing entry prerequisites; the report lists both the
 requested and actual flags rather than claiming those unreachable states loaded.
 
-The native destruction pipeline also clears **2,665 object placements**, including
-1,713 solid obstacles, directly to their final native replacements in **63 scenarios across
-61 maps**. This covers all named maps with C-prefix objects, Haunted Forest vines,
-and the two conditional physical-object layouts. Only placed map cells count;
+The native destruction pipeline also clears **2,673 object placements**, including
+1,721 solid obstacles, directly to their final native replacements in **65 scenarios across
+63 maps**. This covers all named maps with C-prefix objects, Haunted Forest vines,
+Sandship deck rails and the two conditional physical-object layouts. Only placed map cells count;
 unused boss graphics buffers do not. Hostile actors are hidden in these isolated
 scenery fixtures. Separate controller tests blast carved heads in all 11 maps
 using them, operate both Gaia switches without their floor markers, and break the
@@ -74,12 +74,26 @@ checks that a switch reached by the same wave cannot regrow destroyed scenery.
 
 The event-barrier follow-up checks punches and beams against all three Pure Land
 gates, including checkpoint replay of their native exits. The final gate is
-verified through entry into the Mana Tree scene with Goku alone; this check does
-not replay the entire subsequent conversation. Additional controller cases fly
+verified through entry into the Mana Tree scene with Goku alone. A subsequent
+private controller replay completes the entire Tree conversation and disaster,
+returns control on the ruined Tree map, and checks movement, the ring and world
+takeoff. Additional controller cases fly
 over Pandora's castle guards without changing its story flags, enter the Dwarf
 Village pit with no Magic Rope, and defeat Snapdragon on an early visit, cross
 its rebuilt bridge and enter Dryad's room. Results are retained in
 `.local/barrier-audit/event-barriers-final/`.
+
+Seven travel regressions cover Karon's starry sea in both directions at three
+positions, hovering and checkpoint replay, companion arrival and the original
+Moon Palace exit; early Sandship entry solo, with companions and during Primm's
+rescue; and punches/beams against both deck variants' handrails. The Sandship
+cases reach its native boss fight, with the solo case also defeating Mech Rider
+and reaching the desert aftermath. Results are in
+`.local/barrier-audit/travel-barriers-2/` and `travel-rails/`. The ferry leaves its
+native quest flag unchanged, and all scenarios verify that the cartridge bytes
+remain unchanged. `ferry-presentation/` repeats all three crossings after the
+passenger presentation fix: followers ride invisibly during the crossing and
+reappear at the shore, while their HUD portraits remain visible.
 
 ```sh
 npm run audit:barriers

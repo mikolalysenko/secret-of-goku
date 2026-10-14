@@ -10,7 +10,7 @@ export const radarPalaces=[
  {map:90,hint:'West of Kakkara. Go inside.'},
  {map:113,hint:'Gold City tower. Go up.'},
  {map:61,hint:'Cave west of Mandala.'},
- {map:95,hint:'Desert ferry. Follow stars.'},
+ {map:95,hint:'Fly across the starry sea.'},
 ];
 const route=[0,1,2,3,5,4,6];
 export function radarTarget(rom,quest,{fortressDestroyed=false,fortress={x:0,y:0}}={}){

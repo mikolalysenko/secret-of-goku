@@ -139,6 +139,7 @@ class ManaSpriteLayer {
   }
   prepare(){
     const m=this.mod,p=this.snes.ppu,parts=[],hidden=new Set(),portraits=new Map(),flight=m.nativeFlight??m.worldFlight,replacing=m.gokuActive!==false;
+    const passengers=new Set(m.localFlightHook?.passengers??[]);
     this.surface.fill(0);this.effectMask.fill(0);this.paletteCache.clear();this.behindBody=false;
     // Title screens and naming menus have no ground actor. In particular,
     // never mistake their reused OAM tile numbers for the player.
@@ -168,6 +169,9 @@ class ManaSpriteLayer {
       if(y>=224||y<=-size||x<=-size||x>=256)continue;
       // Water uses palette 5 (the color-math-enabled copy of player palette 1).
       const owner=m.ownership?.ppuOwners[index/2];
+      // Ferry passengers ride with Goku as during world flight. Hide only
+      // their owned body/attachment/shadow cells, retaining the native HUD.
+      if(passengers.has(owner?.base)){hidden.add(index);continue;}
       const body=ground&&!nativeForm&&(m.ownership?owner?.base===0xe000&&owner.kind==='body':(palette===1||palette===5)&&(attr&0x100)&&tile>=0xc0&&tile<0xe8);
       const nameBody=naming&&palette===1&&!(attr&0x100)&&tile>=0x30&&tile<=0x37;
       if(menuBoy&&palette===1&&!(attr&0x100)&&tile>=0x30&&tile<=0x37&&size===8)menuParts.push({index,x,y,size,tile,palette,priority:(attr>>12)&3});

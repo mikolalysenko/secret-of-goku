@@ -51,7 +51,10 @@ mod.plants=createNativePlants(snes,{canCut:()=>mod.options.enabled&&mod.canAttac
   for(const tile of result.tiles)mod.effects.push({kind:'impact',x:tile.tx*16+8,y:tile.ty*16+8,dx:1,dy:0,life:8,max:8,super:false});
   if(result.tiles.length)mod.playSound('impact');
   const obstacle=result.tiles.find(tile=>(tile.flags&7)===3||tile.flags&8);
-  if(obstacle)mod.radio?.defeatedBarrier('scenery',{map:result.map,kind:obstacle.code===0?'vines':'obstacle'});
+  if(obstacle){
+    const rom=snes.cart.data,at=0x87000+result.map*2,header=0x80000+(rom[at]|rom[at+1]<<8);
+    mod.radio?.defeatedBarrier('scenery',{map:result.map,kind:obstacle.code===0&&(rom[header+2]&63)===7?'vines':'obstacle'});
+  }
 }});
 mod.flight=createNativeFlight(snes,{enabled:()=>mod.options.enabled&&mod.gokuActive,canTakeOff:()=>mod.canAttack,onStart:()=>{
   mod.localFlight=false;mod.localLift=0;mod.flightTransition={kind:'takeoff',age:0};if(!mod.ceiling?.busy)mod.playSound('flight');
@@ -60,6 +63,7 @@ mod.localFlightHook=createNativeLocalFlight(snes,{
   active:()=>mod.options.enabled&&mod.gokuActive&&(mod.localFlight||mod.charging)&&mod.canAttack,
   phase:()=>mod.localFlight,
   onCross:({map,to})=>{mod.teleport?.gather(to);mod.radio?.defeatedBarrier('flight-gap',{map,kind:'flight'});},
+  onCarry:position=>mod.teleport?.gather(position),
   speed:()=>{
     const speed=mod.localFlight&&(mod.input&0x100)?(mod.options.superSaiyan?8:6):2;
     return mod.charging?speed/2:speed;

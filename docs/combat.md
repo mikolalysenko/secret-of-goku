@@ -93,6 +93,20 @@ Local flight modifies the native movement vector at C0:D651. Boundaries are deri
 
 `native-whip-routes.js` permits direct local flight along native whip-pad/post corridors. Each needs a real 6D8 pad (or BF in special-tile mode one), a matching 6F8 post four cells away, clear ground beyond both ends and no intervening event or layer-change seam. Two missing-post return lanes require a complete adjacent reverse crossing. Pit art outside those corridors remains closed. While flying, C0:B683 skips only resolved 6D8 floor events, preserving live steering without a scripted jump or input lock. Landing beyond the corridor gathers CPU companions, including crossings with a lower walkable floor in the middle. Releasing on a narrow shore keeps Goku hovering if the last native input step carries his feet over the edge.
 
+Karon's pier map (32, BG2) also permits flight between its six matching deck
+columns. Both live piers must exist. Decorative stars inside the crossing remain
+airborne cells even where their native descriptors resemble floors. Releasing
+flight there hovers; CPU followers travel with Goku to avoid the native party
+distance limit. Both shore exits keep their original events and Moon Palace
+progress is unchanged. The four low handrail cells on Sandship decks 98/99 allow
+flight only with usable floor on both sides, and punches or beams replace them
+with the original deck planks through the native destruction queue.
+
+Entering the Sandship captain's cabin before the native rescue stage dispatches
+a short Goku intrusion event, then the original Imperial ambush. It preserves
+free companions and does not recruit Primm. If she is already captured, the
+original rescue runs instead. Later visits keep the original event checks.
+
 For walking onto a pad, `native-gap-flight.js` redirects only the native 6D8 whip-pad and 6FA post-hit gates for controlled Goku. A matching native 6F8 post must exist four tiles away. Event 6F9 supplies the original party gather, crossing, camera movement and balanced CF01 flags without fastening a whip. Goku uses a level hover pose during the crossing. Other actors and events retain their original scripts; checkpoint state includes the active crossing.
 
 Tileset 23's platform edges, downward faces and empty air are separately classified from upright walls. A palace gap is flyable only with usable floor on both sides along one axis, each within sixteen tiles; event seams remain native. The Water Palace test crosses the actual missing platform in both directions and replays a checkpoint while hovering above it. When flight bypasses a walking height transition, settlement copies the new terrain height only after the full footprint fits the destination floor, preserving the collision layer.

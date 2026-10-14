@@ -6,12 +6,12 @@ import {chromium} from '@playwright/test';
 import {readOptions,loadAuditRom,loadCatalog,openAuditPage} from './area-catalog.mjs';
 const options=readOptions(),rom=await loadAuditRom(options),catalog=await loadCatalog(options);
 const inventory=JSON.parse(await fs.readFile(options.out+'/barriers.json'));
-const maps=inventory.maps.filter(m=>m.classification==='gameplay'&&(m.destructibles.length||m.header.tileset16===7)&&(!options.selected.length||options.selected.includes(m.id)));
+const maps=inventory.maps.filter(m=>m.classification==='gameplay'&&(m.destructibles.length||m.header.tileset16===7||[98,99].includes(m.id))&&(!options.selected.length||options.selected.includes(m.id)));
 const jobs=maps.flatMap(m=>{
  const map=catalog.maps[m.id],flags=new Map();
  for(const d of m.destructibles)for(const t of d.tiles){const v=t.visibility;if(v.flag&&(v.min>0||v.max<15)){const values=flags.get(v.flag)??new Set([0]);values.add(v.min);flags.set(v.flag,values);}}
  let states=[{}];for(const[f,values]of flags)states=states.flatMap(s=>[...values].map(v=>({...s,[f]:v})));
- return states.map(flags=>({map,flags}));
+ return states.map(flags=>({map,flags:[98,99].includes(map.id)?{40:11,...flags}:flags}));
 });
 const key=j=>JSON.stringify([j.map?.id??j.id,j.flags]);
 const previous=options.retry?JSON.parse(await fs.readFile(options.out+'/destruction-summary.json')).maps:[];
@@ -63,6 +63,6 @@ async function worker(){
  }}finally{await page.close();if(errors.length)console.log(JSON.stringify({pageErrors:errors}));}
 }
 try{await Promise.all(Array.from({length:Math.min(options.workers,pendingJobs.length)},worker));}finally{await browser.close();}
-const report={coverage:'Every named gameplay map with native C-prefix obstacles or Haunted Forest vines, plus each conditional physical-object layout. Live queue, staged replacements, original collision and native redraw. Enemy actors hidden after entry to isolate scenery. Controller aiming, switches, orbs, doors and story traversal are separate tests.',counts:results.reduce((a,r)=>(a[r.result]=(a[r.result]??0)+1,a),{}),maps:results.sort((a,b)=>a.id-b.id)};
+const report={coverage:'Every named gameplay map with native C-prefix obstacles, Haunted Forest vines or Sandship deck rails, plus each conditional physical-object layout. Live queue, staged replacements, original collision and native redraw. Enemy actors hidden after entry to isolate scenery. Controller aiming, switches, orbs, doors and story traversal are separate tests.',counts:results.reduce((a,r)=>(a[r.result]=(a[r.result]??0)+1,a),{}),maps:results.sort((a,b)=>a.id-b.id)};
 await fs.writeFile(options.out+'/destruction-summary.json',JSON.stringify(report,null,2));console.log(JSON.stringify(report.counts));
 if(results.some(r=>r.result!=='checked'||!r.romUnchanged))process.exitCode=1;

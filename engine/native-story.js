@@ -155,6 +155,8 @@ export function createNativeStory(snes,mod){
         const address=allocate(bytes,id,3);customPointers.set(id,address);
         entries.set(0xc00000+eventRange(cart.data,id).start,[address,address,address,address]);
       }
+      const cabinAt=0xc00000+eventRange(cart.data,0x29c).start,cabin=entries.get(cabinAt);
+      entries.set(cabinAt,mask=>r[0xcf28]>=7?cabin[mask]:customPointers.get(r[0xcf0d]>=8?0xa2:0xa1));
       for(const door of breakableDoors)for(const[id,bytes]of door.events){
         const event=parseEvent(cart.data,id),at=0xc00000+event.start;
         const original=entries.get(at)??[0,1,2,3].map(mask=>allocate(compile(event,mask),id,mask));

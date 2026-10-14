@@ -73,6 +73,18 @@ test('map size, collision layer and live obstacle changes immediately alter flig
   word(0xc0,64);assert.equal(hook.canLand(80,40),false,'new map has its own bounds');
 });
 
+test('the ferry crossing keeps decorative stars airborne and needs both real piers',()=>{
+ const {ram,word,tile,hook}=fixture();word(0xdc,32);word(0xc0,1024);word(0xc2,1024);ram[0xe00b]=0x82;
+ ram.set([0x13,6,0,0],0x1bc00);ram.set([0x12,7,0,0],0x1bc00+4);ram.set([0x12,6,0,0],0x1bc00+8);
+ for(let x=24;x<=29;x++){tile(x,17,1,1);tile(x,44,1,1);}
+ tile(26,25,2,1); // Native star artwork has a misleading floor descriptor.
+ assert.equal(hook.canFly(424,408,1),true);assert.equal(hook.canLand(424,408,1),false);
+ assert.equal(hook.canFly(424,280,1),true);assert.equal(hook.canLand(424,280,1),true);
+ assert.equal(hook.canFly(376,408,1),false,'the outer void is not part of this route');
+ tile(26,44,0,1);assert.equal(hook.canFly(424,392,1),false,'missing destination pier closes the crossing');
+ tile(26,44,1,1);word(0xdc,33);assert.equal(hook.canFly(424,392,1),false,'ferry travel/other maps retain their own geometry');
+});
+
 test('flight can change terrain height, and forest banks require usable ground on both sides',()=>{
  const {hook,ram,word,tile,phase,cpu}=fixture();
  ram[0xe00b]=1;ram.set([2,0,0,0],0x1b800);

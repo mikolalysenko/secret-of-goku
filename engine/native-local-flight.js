@@ -15,7 +15,7 @@ const palaceGaps=new Set([0,6,22,38,54,63,187]);
 // C0:D359 dispatches 2x stair guidance and 3x currents/conveyors. These
 // modify walking velocity; they are floors, not collision or event triggers.
 const movementFloor=code=>(code&0xf0)===0x20||(code&0xf0)===0x30;
-export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=false,onCross=null}={}){
+export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=false,onCross=null,onCarry=null}={}){
  const c=snes.cpu,r=snes.ram,priorCycle=c.cycle,word=a=>r[a]|r[a+1]<<8;
  const whipRoutes=createNativeWhipRoutes(snes);
  const ground=()=>[0x5c,0xa8,0xc0,0,0x5c,0xcf,0xc1,0].every((v,i)=>r[0x100+i]===v)&&r[0xd0]===0&&(r[0xec]&0xfe)===0&&r[0x2c]===0&&!(r[0xed]&0x40)&&r[0xff]===0;
@@ -30,8 +30,26 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   const tx=Math.floor(x/16),ty=Math.floor(y/16),tile=r[0x10000+l*0x4000+ty*128+tx];
   return{tx,ty,...descriptor(tile,l)};
  };
+ function ferryGap(t){
+  // Karon's two piers occupy one native map, 28 tiles apart. Their six
+  // matching deck columns define the flight corridor across the starry sea.
+  // Some decorative stars have floor collision: they are still open air,
+  // never landing spots. Keep the shore exits and outer void outside it.
+  if(!t||word(0xdc)!==32||t.layer!==1||t.tx<24||t.tx>29||t.ty<18||t.ty>43||t.code!==0||t.behavior&0x90||t.flags&8)return false;
+  return [17,44].every(y=>{
+   const deck=tileAt(t.tx*16+8,y*16+8,1);
+   return deck&&deck.code===0&&!(deck.behavior&0x90)&&(deck.flags&15)===2;
+  });
+ }
+ function shipRail(t){
+  // The short handrail between the Sandship's two decks, not its outer
+  // hull. Both encounter variants share these four original map cells.
+  if(!t||![98,99].includes(word(0xdc))||t.layer!==0||t.ty!==9||t.tx<24||t.tx>27||t.tile!==122||t.code!==0)return false;
+  return [-1,1].every(dy=>clear(tileAt(t.tx*16+8,(t.ty+dy)*16+8,0),0,true));
+ }
  function lowObstacle(t){
   if(!t)return false;
+  if(ferryGap(t)||shipRail(t))return true;
   if(whipRoutes.crossable(t))return true;
   const at=header(),flags=at===null?0:snes.cart.data[at+2],tileset=at===null?-1:flags&63,metatile=t.tile+((flags&(t.layer?128:64))?192:0);
   // These small carved heads merely rotate when hit by a native sword.
@@ -108,6 +126,7 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   return scenery[tileset]?.has(metatile)??false;
  }
  function breakScenery(t){
+  if(shipRail(t))return 10; // Original upper-deck planks.
   const at=header();if(!t||at===null||t.layer!==0)return null;
   const flags=snes.cart.data[at+2],id=t.tile+((flags&64)?192:0);
   if((flags&63)===1&&[171,172].includes(id)&&t.code===0xc1&&t.replacement===343-t.tile)return 161;
@@ -118,6 +137,7 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
  }
  function clear(t,terrain=r[0xe00b]&3,air=false){
   if(!t||t.flags&8)return false;
+  if(ferryGap(t))return air;
   const height=t.flags&7;
   if(height===3||(!air&&height>0&&height<3&&(height^terrain)===3))return false;
   // C1->0 is uncut tall grass, which is walkable in the original game.
@@ -206,6 +226,10 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   }
   if(!phasing()||!eligible())return;
   if(anchor&&canFly(x,y,l))crossing??={...anchor};
+  // This crossing is longer than the native party-distance limit. Goku
+  // carries CPU followers while over the sea, so the camera and input never
+  // tether him to companions stranded on the first pier.
+  if(ferryGap(tileAt(x,y,l)))onCarry?.({x,y,layer:l,terrain:r[0xe00b]});
   const {width,height}=bounds(),t=tileAt(x,y,l),outside=x<8||y<8||x>width-8||y>height-8;
   // Recover older checkpoints stranded in a wall/void, or an unexpected
   // native displacement. Prefer the most recent verified landing position.
@@ -219,5 +243,10 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   }
   if(safe){crossing=null;for(const[a,v]of[[0xe002,safe.x],[0xe004,safe.y]]){r[a]=v&255;r[a+1]=v>>8;}r[0xe006]=r[0xe007]=0;if(safe.terrain!==undefined)r[0xe00b]=safe.terrain;recovered++;return{x:safe.x,y:safe.y,layer:l,terrain:r[0xe00b]};}
  }
- return{canLand,canFly,canFloat,lowObstacle,breakScenery,tileAt,bounds,settle,snapshot:()=>({anchor,crossing,motionFrame,travel:[...travel]}),restore:s=>{anchor=s?.anchor??null;crossing=s?.crossing??null;motionFrame=s?.motionFrame??-1;travel=s?.travel?.slice()??[0,0];},get changed(){return changed},get phased(){return phased},get limited(){return limited},get recovered(){return recovered},get npcPasses(){return npcPasses},dispose(){c.cycle=priorCycle;}};
+ return{canLand,canFly,canFloat,lowObstacle,breakScenery,tileAt,bounds,settle,
+  get passengers(){
+   if(!phasing()||!eligible()||!ferryGap(tileAt(word(0xe002),word(0xe004),layer())))return [];
+   return [0xe200,0xe400].filter(base=>(r[base]&1)&&!r[base+0x2c]&&!(r[base+0x0e]&0x80));
+  },
+  snapshot:()=>({anchor,crossing,motionFrame,travel:[...travel]}),restore:s=>{anchor=s?.anchor??null;crossing=s?.crossing??null;motionFrame=s?.motionFrame??-1;travel=s?.travel?.slice()??[0,0];},get changed(){return changed},get phased(){return phased},get limited(){return limited},get recovered(){return recovered},get npcPasses(){return npcPasses},dispose(){c.cycle=priorCycle;}};
 }
