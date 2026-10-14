@@ -62,13 +62,16 @@ test('aerial targeting uses native heading and wraps across world seams',()=>{
   assert.ok(worldAim({x:100,y:100},0,{x:100,y:200}).along<0);
 });
 
-test('a full SSJ aerial beam can reach the distant Fortress; lesser charges retain the short range',()=>{
+test('the distant Fortress shield catches partial waves and only a full SSJ wave destroys it',()=>{
   const ram=new Uint8Array(0x20000),snes={ram,cart:{data:new Uint8Array(0x200000)},cpu:{cycle(){}},joypad1State:0};
   const word=(a,v)=>{ram[a]=v&255;ram[a+1]=v>>8;};
   word(0xfa,1000);word(0xfc,1000);word(0x128,1000);word(0x12a,300);ram[0xe3]=64;
   const mod={options:{enabled:true,superSaiyan:true},gokuActive:true,worldFlight:true,charge:44,charging:true,attackHeld:1,frame:100,
     beamProfile:strength=>({mega:strength===1}),playSound(){},log(){}};
-  const world=createWorldKi(snes,mod);assert.equal(world.aim(),null);
+  const world=createWorldKi(snes,mod),saved=world.snapshot();assert.equal(world.aim().id,'mana-fortress');
+  world.tick(0);for(let i=0;i<12;i++)world.tick(0);
+  assert.ok(world.status.shot.deflected);assert.equal(world.status.fortressDestroyed,false);
+  world.restore(saved);mod.charging=true;
   mod.charge=45;assert.equal(world.aim().id,'mana-fortress');world.tick(0);
   assert.equal(world.status.shot.mega,true);assert.equal(world.status.shot.strength,1);
   for(let i=0;i<12;i++)world.tick(0);

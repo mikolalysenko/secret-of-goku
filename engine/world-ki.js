@@ -2,6 +2,13 @@
 // Fortress remains the cartridge's moving object ($0128/$012A), not a marker
 // painted over the map. All transitions use the original world landing code.
 import {treeBlastMessages} from './native-radio.js';
+import {createFortressCollapse} from './fortress-collapse.js';
+export const fortressDeflectionMessages=[
+  'LUKA:The Mana Fortress is\ntoo strong! You cannot just\ndestroy it with your magic!',
+  'GOKU:Bet I could if I\ntried a bit harder.',
+];
+const shieldBlocks=shot=>shot.target?.id==='mana-fortress'&&!shot.ki&&(!shot.super||shot.strength<1);
+const shieldPoint=shot=>({x:128,y:shot.end.y>=24&&shot.end.y<=64?shot.end.y:48});
 export const worldDelta=(a,b)=>((a-b+2048)&4095)-2048;
 export function worldAim(origin,heading,target){
   const angle=heading*Math.PI/512,dx=-Math.sin(angle),dy=-Math.cos(angle);
@@ -18,9 +25,11 @@ export function aerialBeamGeometry(shot){
     taper:shot.mega?26:18,farScale:.72};
 }
 export function createWorldKi(snes,mod){
-  const r=snes.ram,c=snes.cpu,cycle=c.cycle,w=a=>r[a]|r[a+1]<<8;
-  let shot=null,explosion=null,cutaway=null,distantBursts=[],fortressDestroyed=false,treeBarrierBroken=false,landingQueued=false,finaleQueued=false,lastHit=null,fortScreen=null;
+  const r=snes.ram,c=snes.cpu,w=a=>r[a]|r[a+1]<<8;
+  let shot=null,explosion=null,cutaway=null,distantBursts=[],fortressDestroyed=false,treeBarrierBroken=false,landingQueued=false,finaleQueued=false,lastHit=null,fortScreen=null,warningCooldown=0;
   const enabled=()=>mod.options.enabled&&mod.gokuActive;
+  const collapse=createFortressCollapse(snes,mod,()=>fortressDestroyed);
+  const cycle=c.cycle;
   const position=()=>({x:w(0xfa)&4095,y:w(0xfc)&4095});
   function targets(){
     const rom=snes.cart?.data;if(!rom)return[];
@@ -33,7 +42,7 @@ export function createWorldKi(snes,mod){
   function aim(){
     const mega=mod.options.superSaiyan&&mod.charge>=45;
     return targets().map(t=>({...t,...worldAim(position(),w(0xf6),t)}))
-      .filter(t=>t.along>=8&&t.along<=(mega?1024:512)&&Math.abs(t.across)<=t.radius+(mega?80:20))
+      .filter(t=>t.along>=8&&t.along<=(mega||t.id==='mana-fortress'?1024:512)&&Math.abs(t.across)<=t.radius+(mega?80:20))
       .sort((a,b)=>(a.id.startsWith('town-')-b.id.startsWith('town-'))||a.along-b.along)[0]??null;
   }
   function screen(target){
@@ -60,6 +69,7 @@ export function createWorldKi(snes,mod){
       if(bank===2&&pc===0xb1f7)fortScreen={x:r[8],y:r[9],frame:mod.frame};
       if(bank===2&&pc===0xb1b3&&(mod.attackHeld||shot||explosion||cutaway||landingQueued))r[0xcf]=0;
       if(bank===0&&pc===0x8064&&landingQueued&&mod.nativeFlight){
+        if(collapse.startLandingMusic(this))return;
         landingQueued=false;finaleQueued=true;
         // Same ABI as the Fortress's own C2:B1CA docking path. Entry 10 of
         // C6:7780 supplies its native door and map coordinates.
@@ -70,9 +80,11 @@ export function createWorldKi(snes,mod){
     return cycle.call(this);
   };
   return{
-    aim,targets,
+    aim,targets,collapse,
     tick(input){
       if(!enabled())return;
+      if(warningCooldown)warningCooldown--;
+      collapse.tick();
       if(!mod.worldFlight){
         shot=explosion=cutaway=null;distantBursts=[];
         if(finaleQueued&&w(0xdc)===255&&mod.canAttack&&mod.story.request(0x8b))finaleQueued=false;
@@ -110,6 +122,15 @@ export function createWorldKi(snes,mod){
             distantBursts.push({...shot.target,age:-18});
             if(distantBursts.length>8)distantBursts.shift();
           }
+          else if(shieldBlocks(shot)){
+            // The shield survives every base-form or incomplete SSJ wave.
+            // A rebound is cosmetic: no crater, collapse or ending flags.
+            shot.deflected={...shieldPoint(shot),side:shot.target.across<0?-1:1};shot.max=54;
+            if(mod.action?.kind==='airBeam')mod.action.duration=shot.max;
+            mod.playSound('deflect');
+            if(!warningCooldown){mod.radio?.interrupt(fortressDeflectionMessages,{kind:'fortress-shield',frames:240});warningCooldown=720;}
+            mod.log('The wave deflected off the Mana Fortress. It takes a fully charged Super Saiyan Kamehameha.');
+          }
           else if(shot.strength>=.85){
             lastHit=shot.target.id;explosion={...shot.target,mega:shot.mega,age:0};mod.playSound('impact');
             // Opening a cloud layer does not destroy the Tree or crater it.
@@ -145,9 +166,19 @@ export function createWorldKi(snes,mod){
         const phase=shot.age>>1,t=Math.min(1,shot.age/12),end={x:128+(shot.end.x-128)*t,y:88+(shot.end.y-88)*t};
         if(shot.ki){layer.stamp('charge-orb',Math.max(0,3-Math.floor(t*3)),end.x,end.y);}
         else{
-          const g=aerialBeamGeometry(shot);
+          const g=aerialBeamGeometry(shot),blocked=shieldBlocks(shot),bounce=shot.deflected;
           layer.behindBody=false;
-          layer.giantBeam(g.x,g.y,g.dx,g.dy,g.length,g.halfWidth,phase,g);
+          if(blocked)g.length=(88-shieldPoint(shot).y)*Math.min(1,shot.age/12);
+          if(bounce)g.halfWidth*=Math.max(0,1-(shot.age-12)/10);
+          if(g.halfWidth>0)layer.giantBeam(g.x,g.y,g.dx,g.dy,g.length,g.halfWidth,phase,g);
+          if(bounce){
+            const age=shot.age-12,fade=Math.max(0,Math.min(1,(shot.max-shot.age)/14)),length=Math.min(150,age*12);
+            layer.giantBeam(bounce.x,bounce.y,bounce.side*.84,-.54,length,(8+shot.strength*8)*fade,phase,{taper:9,farScale:.6});
+            if(age<24){
+              for(let i=0;i<4;i++){const angle=i*Math.PI/2,radius=18+age/2;layer.stamp('aura-arc',phase+i,bounce.x+Math.cos(angle)*radius,bounce.y+Math.sin(angle)*radius*.5,Math.cos(angle),Math.sin(angle));}
+              layer.stamp('impact-spark',phase,bounce.x,bounce.y);
+            }
+          }
           layer.behindBody=false;
         }
       }
@@ -167,7 +198,7 @@ export function createWorldKi(snes,mod){
     },
     get cinematic(){return cutaway;},
     get status(){return{shot,explosion,cutaway,distantBursts,fortressDestroyed,treeBarrierBroken,landingQueued,finaleQueued,lastHit,target:mod.worldFlight?aim():null};},
-    snapshot(){return structuredClone({shot,explosion,cutaway,distantBursts,fortressDestroyed,treeBarrierBroken,landingQueued,finaleQueued,lastHit,fortScreen,scars:mod.worldScars?.snapshot()});},
-    restore(saved){const s=saved?structuredClone(saved):null;shot=s?.shot??null;explosion=s?.explosion??null;cutaway=s?.cutaway??null;distantBursts=s?.distantBursts??[];fortressDestroyed=!!s?.fortressDestroyed;treeBarrierBroken=s?.treeBarrierBroken??!!(r[0xe3]&0x40);landingQueued=!!s?.landingQueued;finaleQueued=!!s?.finaleQueued;lastHit=s?.lastHit??null;fortScreen=s?.fortScreen??null;mod.worldScars?.restore(s?.scars);},
+    snapshot(){return structuredClone({shot,explosion,cutaway,distantBursts,fortressDestroyed,treeBarrierBroken,landingQueued,finaleQueued,lastHit,fortScreen,warningCooldown,collapse:collapse.snapshot(),scars:mod.worldScars?.snapshot()});},
+    restore(saved){const s=saved?structuredClone(saved):null;shot=s?.shot??null;explosion=s?.explosion??null;cutaway=s?.cutaway??null;distantBursts=s?.distantBursts??[];fortressDestroyed=!!s?.fortressDestroyed;treeBarrierBroken=s?.treeBarrierBroken??!!(r[0xe3]&0x40);landingQueued=!!s?.landingQueued;finaleQueued=!!s?.finaleQueued;lastHit=s?.lastHit??null;fortScreen=s?.fortScreen??null;warningCooldown=s?.warningCooldown??0;collapse.restore(s?.collapse);mod.worldScars?.restore(s?.scars);},
   };
 }

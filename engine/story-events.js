@@ -92,7 +92,7 @@ export function buildStoryEvents(rom,mask=0,{crisis=false}={}){
     0x29,0x4e,0x39,2,0xcd,0x38,0x39,3,0xcd,7,0]);
   events.set(0x89,[0x30,0x4e,8,...jump(0x429),0]);
   events.set(0x8a,[...box('LUKA:You have already freed\nthe world. Please enjoy\nsome quiet travelling.'),0]);
-  events.set(0x8b,[...box('GOKU:That was the engine,\nright?\nOh. The whole thing.'),...box('KING KAI:You burned away\nthe Fortress AND its Mana!\nThe planet is coming apart!'),...box('LUKA:You were supposed to\nsave us! That was not\nan obstacle, Goku!'),...box('GOKU:I can still stop\nthe big guy, right?\nKING KAI:That will not\nput the planet back!'),0x2f,0x84,0x30,0x4e,8,...jump(0x429),0]);
+  events.set(0x8b,[...call(0x7d7),...box('GOKU:Uh... I hit more\nthan the engine.'),...box('LUKA:The Fortress is\nfalling apart!\nGoku, get out of there!'),0x2f,0x84,0x30,0x4e,8,...jump(0x429),0]);
   events.set(0x8c,[0x30,0x17,2,0x09,0x0a,...box('GOKU:Three people on a\nswitch? I brought three\nfingers.\nSorry about the gate.'),0]);
   events.set(0x8d,[0x30,0x34,4,0x09,0x0a,...box('GOKU:Hello! I was told\nthere was an invitation.\nI may have knocked\na little too hard.'),0]);
   events.set(0x8e,[0x30,0x37,1,...box('GOKU:There. Unlocked.\nI can put the lock back\nafterwards. Probably.'),0]);
@@ -130,20 +130,17 @@ export function buildStoryEvents(rom,mask=0,{crisis=false}={}){
       ...box(mask&1?'PRIMM:Where is Dyluck?\nGOKU:They got away again.\nBut he fought the spell.':'GOKU:They got away again.\nBut the people are free.'),
       ...box(mask&1?'PRIMM:I will find him.\nGOKU:We will help.\nA punch cannot fix\neverything. Apparently.':'GOKU:Hang on, Dyluck.\nI will find a way to\nget you out of there.'),0x30,0x32,2,0]);
   }
-  events.set(0x93,[...box('KING KAI:You are still\nmissing Dragon Balls!\nWithout them, there is\nNO WISH. No second chance.'),0x02]);
+  events.set(0x93,[...box('KING KAI:You do not have\nall the Dragon Balls!\nWe cannot make the wish!'),0x02]);
   events.set(0x94,[...box(crisis?'KING KAI:Seven Balls back!\nNow calm the Beast!\nFive minutes remain!':'KING KAI:All seven Balls!\nYou actually collected them.\nI had a whole speech ready.'),0x02]);
   // The finale uses the same original camera, Mode7 door and boss setup. No
   // nonexistent companion is asked to cast Mana Magic to make damage possible.
   const beastBattle=destroyed=>[0x42,0x4e,0x07,...jump(0),0x18,0x3b,...call(0x47c),...call(0x737),0x2d,6,0x10,0,0x2d,2,0x28,8,0x2d,4,...call(0x93),
-    ...box(destroyed?'GOKU:The Fortress is gone!\nYou can go home now!\n...It cannot hear me.':'GOKU:That is a Mana Beast!\nIt is only trying to stop\nthe Fortress.'),
-    ...box(destroyed?'KING KAI:The Mana is gone!\nEven stopping the Beast\ncannot fix what you did.':'KING KAI:Every Ball.\nNo threat left behind. All\nthe Beast\'s Mana released.\nThat is how we save them!'),
-    ...box(destroyed?'LUKA:There are still people\ndown here! Keep that thing\naway from us!':'MANA TREE:Guide your power.\nBreak its rage, and let\nMana flow home again.'),
-    ...box(destroyed?'GOKU:I can at least\nstop this fight.\nKING KAI:You started it!':'GOKU:So I can save it?\nMANA TREE:Yes. Use your ki.\nNo one must sacrifice\ntheir life for this.'),
-    ...box(crisis?'GOKU:Five minutes left?\nI can still give you\na proper fight, big guy!\nKING KAI:THE CORE, GOKU!':'GOKU:Hey, big guy! Is that\nall you have got? Come on!\nI want a REAL fight!\nKING KAI:DO NOT PROVOKE IT.'),
-    ...box('KING KAI:Dodge the glowing\ncircles! Use Senzu Beans!\nGOKU:I wonder how much\nstronger it can get...'),
+    ...box(destroyed?'LUKA:The Mana Beast is\nattacking! There are still\npeople down here!':'LUKA:The Mana Beast is\nattacking the Fortress!\nGoku, stop it!'),
+    ...box('GOKU:Whoa! That ki...\nNow THIS looks like\na challenging fight!'),
+    ...(crisis?[...box('KING KAI:Five minutes\nuntil the planet explodes!\nGOKU:Plenty of time!')]:[]),
     ...jump(0x9a),0];
   events.set(0x429,beastBattle(false));events.set(0x8f,beastBattle(true));
-  events.set(0x95,[...box('GOKU:One careful beam.\nThen I will figure out\nthe rest.\nKING KAI:THERE IS NO TIME!'),...jump(0x97),0]);
+  events.set(0x95,[...jump(0x97),0]);
   events.set(0x96,[...box('KING KAI:You have all seven!\nNow listen VERY CAREFULLY-\nGOKU:Hey, big guy! Catch!'),...box('Before King Kai can finish,\nGoku pours all seven Mana\nSeeds\' energy into the Beast.'),0x2d,2,0x2d,6,0x10,0,0x28,12,0x2d,4,
     ...box('GOKU:Eat up! I want to\nfight you at your best!\nCome on! Show me MORE!\nKING KAI:HE IS ENJOYING THIS.'),
     ...box(crisis?'LUKA:FIVE MINUTES, GOKU!\nPlease stop feeding it!\nGOKU:I will still finish\nwith time to spare.':'LUKA:WE ASKED YOU TO SAVE\nTHE WORLD. NOT SEASON IT.\nGOKU:Just a little stronger!\nI know you can do it!'),

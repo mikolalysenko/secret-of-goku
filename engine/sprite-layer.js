@@ -321,6 +321,7 @@ class ManaSpriteLayer {
       this.behindBody=!flight&&row===3;this.stamp('charge-orb',frame,x+socket[0]*size/32,y+socket[1]*size/32);this.behindBody=false;
     }
     if(flight){m.worldKi?.draw(this);return;}
+    m.worldKi?.collapse?.draw(this);
     if(!m.canAttack)return;
     const state=m.status;
     for(const effect of m.effects){

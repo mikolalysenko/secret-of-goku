@@ -18,7 +18,7 @@ export function buildBadEnding(reason){
     fortress:'KING KAI:You burned away\nthe Fortress and its Mana!\nThere is nothing left\nholding this world together!',
     balls:'KING KAI:The Dragon Balls\nare still scattered!\nNo wish! No time left!\nThe planet is coming apart!',
     frieza:'KING KAI:You never dealt\nwith Frieza! He just fired\nanother Death Ball!\nThe core is rupturing!',
-    beast:'KING KAI:You never drew\nout the Beast\'s full power!\nIts trapped Mana is tearing\nthe planet apart!',
+    beast:'KING KAI:The core is\nstill breaking apart!\nWe are out of time!',
   }[reason];
   return[6,0x27,0x3a,0x18,0x2f,
     ...box('The Mana Beast falls.\nThe ground keeps shaking.'),

@@ -33,7 +33,7 @@ Native poison, flash and ghost palette changes are transferred to Goku's colors;
 
 Charge, beam, impact and aura pixels are decoded from 34 original spell cells. Their palette-0, priority-3 OBJ marker remains independent of the body's water palette, and they pass through native layer composition without browser glow, smoothing or HTML overlays. See [native effects](native-effects.md) for the recovered encoding and independent VRAM/CGRAM checks.
 
-The core under `vendor/snes/` is unchanged. Its [MIT license](../vendor/snes/LICENSE.txt) also applies to the evaluator adaptation.
+The core under `vendor/snes/` has one local Mode 7 overflow correction in `pipu.js`, described below. Its [MIT license](../vendor/snes/LICENSE.txt) also applies to the evaluator adaptation.
 
 ## Native state and controls
 
@@ -237,7 +237,11 @@ Earlier Death Ball validation covered the native twilight handoff, shop/inn cont
 
 `world-ki.js` renders a single beam along the flight camera’s forward axis. Hit testing still uses native world bearings; a culled Fortress projection can no longer steer the beam sideways. The destruction sequence locks flight input, pauses the docking hook, and plays a 186-frame planet cutaway before returning through the existing native landing and Beast setup. The cutaway’s clock and target survive checkpoints.
 
+Only a fully charged Super Saiyan wave breaks the Fortress shield. Other waves stop at the shield and rebound without setting destruction, crater or landing flags. Luka and Goku's two-page response has a cooldown. `fortress-collapse.js` adds bounded floor scars, native spell-cell explosions, debris and red background pulses to the damaged deck on map255; it never rewrites map tiles or collision. A native sound-dispatch call at the world-loop landing boundary starts crisis cue 1B before touchdown. The map loader's ordinary cue 26 is replaced on this route, while the subsequent Beast cues remain native. Collapse and shield effects preserve exact checkpoint replay.
+
 `world-texture.js` decodes the loaded cartridge’s world map, tile pixels and day/night palettes without Node dependencies. `planet-view.js` draws the globe, outward beam, dust, planetary destruction and King Kai’s tiny planet into a 256×224 RGB555 PPU surface. It leaves Mode7 matrices, HDMA and VRAM alone. Native ending dialogue remains above the picture; the aerial cut has no radar or combat HUD.
+
+The shared orbital/ending sky uses a fixed seeded scatter with independent coordinates and varied brightness, replacing the visible diagonal star rows. Positions stay stable across frames and checkpoint replay.
 
 Event42F selects the ending from actual progression, never from a dialogue choice. Good: seven earned Balls, Frieza defeated, upgraded Beast defeated, Fortress intact. Shenron restores the core, victims and craters, the scene visits living Randi in Potos, and Goku leaves for Kai’s planet. Bad: the planet explodes, Goku teleports away, and Kai condemns his recklessness. No Balls are delivered, no wish executes and no crisis flag is repaired. DE/E4 are verified unused native event slots for the good departure and Kai arrival. A3–A6 use outcome-specific phases for both endings.
 
@@ -252,4 +256,10 @@ At 6,000 HP, Frieza starts the final beam struggle. A full L+Y release commits t
 
 The King Kai epilogue uses an opaque overhead map of his lawn, house and car with Snake Way among golden clouds; it does not use the orbital starfield. `kai-planet.js` renders King Kai's poses and an independently walking Bubbles, with deterministic targets, pauses and collision around the speakers. The ending checkpoint deep-copies Bubbles' RNG, position, target and animation clock. Native dialogue stays above the map in both outcomes. The intro pod's airborne frames omit the ground shadow; it returns only after impact.
 
-Current validation: 221 unit tests; native solo, Primm-only, Popoi-only and full-party good-ending routes; playable orbit movement, injury, beam counters, ring pause, exact checkpoint replay and the charged/mash finisher; normal and fast-forwarded pod intros; and original-score pause/mute/mix checks passed. Separate good/bad epilogue checks verify the Snake Way map, Bubbles movement and exact replay. This is targeted regression coverage, not another full game playthrough.
+Earlier finale validation: 221 unit tests; native solo, Primm-only, Popoi-only and full-party good-ending routes; playable orbit movement, injury, beam counters, ring pause, exact checkpoint replay and the charged/mash finisher; normal and fast-forwarded pod intros; and original-score pause/mute/mix checks passed. Separate good/bad epilogue checks verify the Snake Way map, Bubbles movement and exact replay. This is targeted regression coverage, not another full game playthrough.
+
+### Mana Beast background correction
+
+The repeated gray glyphs on map253 also occurred with idle input and no terrain modifications. In the emulator, Mode 7's outside-map character-zero fill followed tilemap entry zero instead of sampling character zero directly. Streaming Beast animation changes that tilemap entry, so its art repeated across the empty sky. `vendor/snes/pipu.js` now selects character zero directly for this overflow mode, matching [bsnes's renderer](https://github.com/bsnes-emu/bsnes/blob/master/bsnes/sfc/ppu-fast/mode7.cpp). Inside-map tiles, transparent overflow, wrapping, horizontal flip and EXTBG priority retain their behavior.
+
+All 225 unit tests passed. Real-ROM checks exercised 1,440 frames each of idle, beam, teleport and local-flight input during the Beast's streamed animation, verified correct overflow samples and nonempty boss art, and reproduced exact pixels after checkpoint restore. High-altitude world-flight rendering also passed. Fortress checks cover base-form and partial-wave deflection, full-power destruction, damaged landing, crisis music, and continuation through the native Beast to the bad ending. The earned seven-seed route still forces the upgraded Beast and reaches the good ending after victory. All three public-build ROM-loading checks passed. This remains targeted regression coverage.

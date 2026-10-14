@@ -35,6 +35,17 @@ test('Fortress beam cuts to a replayable planet view, then destruction dooms eve
   mana.restore(saved);mana.run(80,[8,7]);return{same:a.pixels===mana.hash(mana.pixels)&&JSON.stringify(a.state)===JSON.stringify(mana.mod.worldKi.snapshot()),world:mana.mod.worldFlight};
  });expect(replay).toEqual({same:true,world:true});await capture(page,'space-dust');
  await page.evaluate(()=>mana.run(54));await capture(page,'space-settling');
+ let deck=null;
+ for(let i=0;i<200;i++){
+  const status=await page.evaluate(()=>{mana.run(3);return{...mana.mod.worldKi.collapse.status,blank:mana.snes.ppu.forcedBlank,brightness:mana.snes.ppu.brightness,flight:mana.mod.worldFlight,transition:mana.mod.flightTransition};});
+  if(status.active&&!status.blank&&status.scars&&status.brightness>=10){deck=status;break;}
+ }
+ expect(deck).toMatchObject({active:true,music:0x1b,flight:false});await capture(page,'damaged-fortress-landing');
+ const collapseReplay=await page.evaluate(()=>{
+  const saved=mana.snapshot(),tiles=mana.hash(mana.snes.ram.slice(0x10000,0x18000));mana.run(12);
+  const first={pixels:mana.hash(mana.pixels),state:mana.mod.worldKi.collapse.snapshot()};
+  mana.restore(saved);mana.run(12);return{same:first.pixels===mana.hash(mana.pixels)&&JSON.stringify(first.state)===JSON.stringify(mana.mod.worldKi.collapse.snapshot()),tilesIntact:tiles===mana.hash(mana.snes.ram.slice(0x10000,0x18000))};
+ });expect(collapseReplay).toEqual({same:true,tilesIntact:true});await capture(page,'damaged-fortress-explosions');
  for(let i=0;i<90;i++){
   if(await page.evaluate(()=>mana.read16(0xdc)===253&&mana.mod.canAttack&&mana.mod.challenge.status.started))break;
   await page.evaluate(()=>mana.run(100,[11]));

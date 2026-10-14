@@ -216,7 +216,9 @@ export function createNativeStory(snes,mod){
       entries.set(0xc00000+eventRange(cart.data,0x429).start,()=>customPointers.get(mod.worldKi?.status.fortressDestroyed?0x8f:0x429));
       entries.set(0xc00000+eventRange(cart.data,0x93).start,()=>customPointers.get(mod.quest?.status.held===7&&mod.quest.status.seedMask===127?0x94:0x93));
       const wardAdvice=Array.from({length:8},(_,count)=>allocate([
-        ...box(`MANA WARDS: ${count} / 7\nOne hit blocked per ward.\nOnly palace visits earn them.`),...(count===7?[0x10,0x96,0]:[...box(`KING KAI:You touched ${count} of\nseven Mana Seeds. We cannot\nrelease all its Mana!\nThis will NOT save the world.`),...choice('Face the Mana Beast?\n',[{label:'Fight',x:7,to:0x95}],0x95)]),
+        // Missing Balls have already been acknowledged. Move directly into
+        // the fight; the seven-Ball route still forces Goku to feed the Beast.
+        0x10,count===7?0x96:0x95,0,
       ],0x9a,3));
       entries.set(0xc00000+eventRange(cart.data,0x9a).start,()=>wardAdvice[mod.quest?.status.earned??0]);
       entries.set(0xc00000+eventRange(cart.data,0x96).start,()=>customPointers.get(mod.quest?.status.canFeed?0x96:0x95));

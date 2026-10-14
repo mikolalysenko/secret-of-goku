@@ -732,12 +732,14 @@ function Ppu(snes) {
       let py = this.mode7Ycoords[rX] >> 8;
 
       let pixelIsTransparent = false;
+      let useCharacterZero = false;
 
       if(this.mode7LargeField && (px < 0 || px >= 1024 || py < 0 || py >= 1024)) {
         if(this.mode7Char0fill) {
-          // always use tile 0
-          px &= 0x7;
-          py &= 0x7;
+          // M7SEL repeat=3 samples character zero, not the character named
+          // by tilemap entry zero. That entry changes as Mana Beast graphics
+          // stream in; following it filled the background with repeated art.
+          useCharacterZero = true;
         } else {
           // act as transparent
           pixelIsTransparent = true;
@@ -747,7 +749,7 @@ function Ppu(snes) {
       let tileX = (px & 0x3f8) >> 3;
       let tileY = (py & 0x3f8) >> 3;
 
-      let tileByte = this.vram[(tileY * 128 + tileX)] & 0xff;
+      let tileByte = useCharacterZero ? 0 : this.vram[(tileY * 128 + tileX)] & 0xff;
       // fetch the tile
       pixelData = this.vram[tileByte * 64 + (py & 0x7) * 8 + (px & 0x7)];
       pixelData >>= 8;

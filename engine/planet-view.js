@@ -3,6 +3,20 @@ import {radioPixels} from './native-radio.js';
 import {createOrbitView} from './frieza-orbit-view.js';
 import {kaiActors,newKaiScene} from './kai-planet.js';
 
+// Scatter once with an independent random sequence for each coordinate.
+// The former pair of modular strides made obvious diagonal rows of stars.
+// A fixed seed preserves the sky across frames and checkpoint replays.
+const stars=(()=>{
+  let seed=0x53a19e27;
+  const random=()=>{seed^=seed<<13;seed^=seed>>>17;seed^=seed<<5;return(seed>>>0)/4294967296;},result=[];
+  while(result.length<100){
+    const x=Math.floor(random()*256),y=Math.floor(random()*224);
+    if(result.some(s=>Math.abs(s.x-x)+Math.abs(s.y-y)<4))continue;
+    result.push({x,y,shade:Math.floor(random()*4),phase:Math.floor(random()*240),bright:random()<.05});
+  }
+  return result;
+})();
+
 // A 256x224 RGB555 picture surface, before native brightness/color math.
 // It never writes Mode 7 matrices, sky HDMA, VRAM, or the landing ABI.
 export function createPlanetView(snes,mod){
@@ -21,9 +35,9 @@ export function createPlanetView(snes,mod){
   }
   function sky(age){
     surface.fill(rgb(0,0,2));
-    for(let i=0;i<92;i++){
-      const x=(i*73+23)%256,y=(i*53+11)%224,c=rgb(9+i%5,11+i%6,17+i%7);
-      put(x,y,c);if(i%17===0&&((age>>4)+i)%4===0){put(x-1,y,c);put(x+1,y,c);put(x,y-1,c);put(x,y+1,c);}
+    for(const {x,y,shade,phase,bright}of stars){
+      const c=rgb(5+shade*2,7+shade*2,11+shade*3);
+      put(x,y,c);if(bright&&(age+phase)%240<9){put(x-1,y,c);put(x+1,y,c);put(x,y-1,c);put(x,y+1,c);}
     }
   }
   function planet(target,night){
