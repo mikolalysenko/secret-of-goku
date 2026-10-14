@@ -53,8 +53,8 @@ cells tracked separately and no accepted outer-edge positions. Eleven requested
 states are adjusted by existing entry prerequisites; the report lists both the
 requested and actual flags rather than claiming those unreachable states loaded.
 
-The native destruction pipeline also clears **2,569 object placements**, including
-1,617 solid obstacles, through 3,062 replacement stages in **63 scenarios across
+The native destruction pipeline also clears **2,665 object placements**, including
+1,713 solid obstacles, directly to their final native replacements in **63 scenarios across
 61 maps**. This covers all named maps with C-prefix objects, Haunted Forest vines,
 and the two conditional physical-object layouts. Only placed map cells count;
 unused boss graphics buffers do not. Hostile actors are hidden in these isolated
@@ -63,6 +63,14 @@ using them, operate both Gaia switches without their floor markers, and break th
 Pandora/Northtown locks. Northtown additionally runs through its native rescue,
 Vampire defeat and a return to the emptied room, including early entry with Goku
 alone and Primm joining during the rescue.
+
+Direct-flight controller checks traverse **58 whip lanes in both directions
+(116 crossings) across 14 maps**, including both axes and the two return lanes
+with missing posts. They check live steering, safe landing, companion arrival,
+camera position, cleared native locks and an unchanged ROM. Separate punch and
+Kamehameha scenarios cover the native axe/sword obstacle families in 11 maps,
+both collision layers and multi-stage Fortress pillars. The Fortress test also
+checks that a switch reached by the same wave cannot regrow destroyed scenery.
 
 ```sh
 npm run audit:barriers

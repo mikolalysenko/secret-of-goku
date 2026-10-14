@@ -1,6 +1,7 @@
 // Local flight uses the live native collision layers. Low plants/rocks may be
 // crossed; room walls, map edges, layer changes and script triggers stay native.
 // Flags 1 and 2 are terrain heights, not walls (C1:BE15). Height 3 is solid.
+import {createNativeWhipRoutes} from './native-whip-routes.js';
 const scenery={0:new Set([130,139,141,159]),2:new Set([130,131]),
  // Haunted Forest flowers and creeping vines, verified against tileset 7.
  // Tall trees, cliff faces, switches and the scripted rose gate are separate.
@@ -16,6 +17,7 @@ const palaceGaps=new Set([0,6,22,38,54,63,187]);
 const movementFloor=code=>(code&0xf0)===0x20||(code&0xf0)===0x30;
 export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=false,onCross=null}={}){
  const c=snes.cpu,r=snes.ram,priorCycle=c.cycle,word=a=>r[a]|r[a+1]<<8;
+ const whipRoutes=createNativeWhipRoutes(snes);
  const ground=()=>[0x5c,0xa8,0xc0,0,0x5c,0xcf,0xc1,0].every((v,i)=>r[0x100+i]===v)&&r[0xd0]===0&&(r[0xec]&0xfe)===0&&r[0x2c]===0&&!(r[0xed]&0x40)&&r[0xff]===0;
  const eligible=()=>active()&&ground()&&(r[0xe000]&1)&&(r[0xe02c]&1)&&!(r[0xe190]&0x70)&&!(r[0xe191]&0xd7)&&!(r[0xe01c]|r[0xe060]|r[0xe00a])&&r[0xe008]===0;
  const phasing=()=>typeof phase==='function'?phase():phase;
@@ -30,6 +32,7 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
  };
  function lowObstacle(t){
   if(!t)return false;
+  if(whipRoutes.crossable(t))return true;
   const at=header(),flags=at===null?0:snes.cart.data[at+2],tileset=at===null?-1:flags&63,metatile=t.tile+((flags&(t.layer?128:64))?192:0);
   // These small carved heads merely rotate when hit by a native sword.
   // They are scenery, unlike other cyclic C-prefix puzzle switches.
@@ -183,7 +186,7 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   if(!ground()){crossing=null;return;}
   const map=word(0xdc),x=word(0xe002),y=word(0xe004),l=layer();
   if(anchor?.map!==map)anchor=null;
-  if(crossing?.map!==map||!phasing()||!eligible())crossing=null;
+  if(crossing?.map!==map||!crossing?.whip&&(!phasing()||!eligible()))crossing=null;
   // Crossing a ledge can bypass the walking stair that normally changes
   // E00B. Adopt the destination floor only once the entire footprint fits;
   // otherwise releasing flight would leave Goku hovering on clear ground.
@@ -191,8 +194,14 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
    const terrain=tileAt(x,y,l)?.flags&3;
    if((terrain===1||terrain===2)&&terrain!==(r[0xe00b]&3)&&canLand(x,y,l,terrain))r[0xe00b]=(r[0xe00b]&0xfc)|terrain;
   }
+  // Track the entire whip corridor, including any walkable lower floor in
+  // the middle. Gathering on that temporary floor can strand companions at
+  // the next height change; bring them over once Goku reaches either shore.
+  const withinWhip=(crossing?.whip||phasing()&&eligible())&&whipRoutes.crossable(tileAt(x,y,l));
+  if(withinWhip&&phasing()&&eligible()&&anchor)crossing={...(crossing??anchor),whip:true};
   if(canLand(x,y,l)){
-   if(crossing&&crossing.layer===l&&Math.hypot(x-crossing.x,y-crossing.y)>=24)onCross?.({map,from:crossing,to:{x,y}});
+   if(crossing?.whip&&withinWhip)return;
+   if(crossing&&crossing.layer===l&&Math.hypot(x-crossing.x,y-crossing.y)>=24)onCross?.({map,from:crossing,to:{x,y,layer:l,terrain:r[0xe00b]}});
    crossing=null;anchor={map,x,y,layer:l,terrain:r[0xe00b]};return;
   }
   if(!phasing()||!eligible())return;

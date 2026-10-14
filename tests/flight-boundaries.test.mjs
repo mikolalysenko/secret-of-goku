@@ -139,3 +139,28 @@ test('forest carved heads can be flown over and smashed without opening solid tr
  rom[0x80002]=2|128;tile(2,2,171);assert.equal(native.canFly(40,40),false,'other tilesets cannot inherit the statue exception');assert.equal(native.breakScenery(native.tileAt(40,40)),null);
  native.dispose();
 });
+
+test('whip flight opens only the complete native pad/post corridor with ground beyond both ends',()=>{
+ const {ram,cpu,tile,word}=fixture(),rom=new Uint8Array(0x90000);word(0xc0,160);rom[0x80002]=10;ram[0xb8]=1;
+ const native=createNativeLocalFlight({ram,cpu,cart:{data:rom}},{active:()=>true,phase:true});
+ ram.set([0x12,6,0,0],0x1b800);ram.set([0x13,7,0,0],0x1b800+41*4);ram.set([0x13,7,0xf8,0x6f],0x1b800+130*4);ram.set([0x10,0x46,0,0],0x1b800+191*4);
+ tile(2,2,191);for(let x=3;x<6;x++)tile(x,2,41);tile(6,2,130);tile(4,3,41);
+ for(let x=40;x<=120;x++)assert.equal(native.canFly(x,40),true,`swept footprint at ${x}`);
+ for(const x of[56,72,88,104])assert.equal(native.canLand(x,40),false,'cannot land in the gap or on its post');
+ assert.equal(native.canFly(72,56),false,'nearby cliff art remains solid');
+ tile(7,2,41);assert.equal(native.canFly(72,40),false,'no ground behind the post');tile(7,2,0);
+ tile(1,2,41);assert.equal(native.canFly(72,40),false,'no ground behind the pad');tile(1,2,0);
+ ram[0xb8]=2;assert.equal(native.canFly(72,40),false,'BF has a different purpose in other special-tile modes');ram[0xb8]=1;
+ tile(2,2,0);assert.equal(native.canFly(72,40),false,'a decorative post alone never opens a cliff');tile(2,2,191);
+ ram[0x1b800+41*4+2]=0x15;assert.equal(native.canFly(72,40),false,'a layer-change seam is not gap airspace');native.dispose();
+});
+
+test('a native return pad may share the adjacent whip lane anchor, but ordinary floor cannot',()=>{
+ const {ram,cpu,tile,word}=fixture(),rom=new Uint8Array(0x90000);word(0xc0,160);ram[0xb8]=1;
+ const native=createNativeLocalFlight({ram,cpu,cart:{data:rom}},{active:()=>true,phase:true});
+ ram.set([0x12,6,0,0],0x1b800);ram.set([0x13,7,0,0],0x1b800+41*4);ram.set([0x13,7,0xf8,0x6f],0x1b800+130*4);ram.set([0x10,0x46,0,0],0x1b800+191*4);
+ tile(2,2,191);tile(6,2,130);tile(6,3,191);
+ for(let x=3;x<6;x++){tile(x,2,41);tile(x,3,41);}
+ assert.equal(native.canFly(72,56),true,'the return pad has its adjacent real anchor');
+ tile(6,3,0);assert.equal(native.canFly(72,56),false,'the exception requires the return pad');native.dispose();
+});

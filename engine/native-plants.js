@@ -5,7 +5,7 @@
 export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplacement=null}={}){
  const cpu=snes.cpu,priorCycle=cpu.cycle,r=snes.ram;
  const read16=a=>r[a]|r[a+1]<<8;
- let queue=[],lastFrame=-1,done=[];
+ let queue=[],lastFrame=-1,done=[],cleared=new Map(),cutMap=null;
  const ground=()=>canCut?canCut():r[0xe4]===1&&r[0xe5]===1&&r[0xd0]===0&&(r[0xec]&0xfe)===0&&(r[0xed]&0x40)===0&&r[0x2c]===0;
  const layer=()=>r[0xe00b]&0x80?1:0;
  const metadata=(tx,ty,l=layer())=>{
@@ -37,7 +37,14 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
   return tile.kind===8||(tile.kind===1&&tile.replacement===0);
  };
  const breakable=(tile,policy)=>{
-  if(eligible(tile,policy))return tile;
+  if(eligible(tile,policy)){
+   if(policy!=='objects')return tile;
+   // One Saiyan strike clears every damage stage of an axe/sword obstacle.
+   // Eligibility has already rejected cycles and non-destructible switches.
+   const descriptors=tile.descriptor-tile.tile*4;let replacement=tile.replacement;
+   while((r[descriptors+replacement*4+2]&0xf0)===0xc0)replacement=r[descriptors+replacement*4+3];
+   return{...tile,replacement};
+  }
   const replacement=policy==='objects'&&tile?sceneryReplacement?.(tile):null;
   return Number.isInteger(replacement)&&replacement>=0&&replacement<256&&replacement!==tile.tile?{...tile,replacement,kind:8}:null;
  };
@@ -69,18 +76,31 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
  }
  cpu.cycle=function(){
   const boundary=(this.r[1]===0||this.r[1]===0xc0)&&this.br[4]===0xc7c3&&this.cyclesLeft===0;
-  if(boundary&&queue.length&&lastFrame!==snes.frames&&!this.waiting&&!this.stopped&&!this.nmiWanted&&!this.abortWanted&&(!this.irqWanted||this.i)){
+  if(boundary&&(queue.length||cleared.size)&&lastFrame!==snes.frames&&!this.waiting&&!this.stopped&&!this.nmiWanted&&!this.abortWanted&&(!this.irqWanted||this.i)){
    const map=read16(0xdc);
+   if(cutMap!==map){cleared.clear();cutMap=map;}
    queue=queue.filter(item=>item.map===map&&snes.frames-item.frame<90);
    const signature=[0xe2,0x30,0xa5,0x2e].every((v,i)=>snes.cart?.data[0xc7c3+i]===v);
    if(!ground())queue=[];
    else if(signature&&r[0x82]===0&&r[0x2e]===0){
+    // A beam may smash scenery and activate a native layout switch at once.
+    // Reapply matching broken objects after that same-room rebuild, through
+    // the normal redraw queue. A changed descriptor/layout is never forced
+    // to an obsolete replacement, and leaving the map keeps native respawn.
+    for(const item of cleared.values()){
+     if(queue.length>=128)break;
+     const now=breakable(metadata(item.tx,item.ty,item.layer),'objects');
+     if(now&&now.tile===item.tile&&now.flags===item.flags&&now.behavior===item.behavior&&now.code===item.code&&now.replacement===item.replacement&&!queue.some(q=>q.address===item.address))queue.push({...item,policy:'objects',frame:snes.frames,replay:true});
+    }
     while(queue.length){
      const first=queue.shift(),now=breakable(metadata(first.tx,first.ty,first.layer),first.policy);
      if(!now||now.tile!==first.tile)continue;
-     const group=[first],rest=[];for(const item of queue)(item.layer===first.layer&&item.ty===first.ty?group:rest).push(item);queue=rest;
+     const group=[first],rest=[];for(const item of queue)(item.layer===first.layer&&item.ty===first.ty&&!!item.replay===!!first.replay?group:rest).push(item);queue=rest;
      const changed=[];
-     for(const item of group){const cur=breakable(metadata(item.tx,item.ty,item.layer),item.policy);if(!cur||cur.tile!==item.tile)continue;r[cur.address]=cur.replacement;changed.push(cur);}
+     for(const item of group){
+      const cur=breakable(metadata(item.tx,item.ty,item.layer),item.policy);if(!cur||cur.tile!==item.tile)continue;r[cur.address]=cur.replacement;changed.push(cur);
+      if(item.policy==='objects'&&((cur.flags&7)===3||cur.flags&8))cleared.set(cur.address,{...cur,map});
+     }
      if(!changed.length)continue;
      const scrollY=read16(first.layer?0xae:0xaa),mapHeight=read16(0xc2),worldY=first.ty*16+8;
      let screenY=worldY-scrollY;if(screenY<0)screenY+=mapHeight;
@@ -89,16 +109,16 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
      const visible=screenY>=0&&screenY<240;
      if(visible){r[0x82]=first.layer?0x80:1;r[0x83]=screenY&255;}
      const sound=changed.find(item=>item.replacement!==0xc1);
-     if(sound&&visible&&(r[0x95]&0x80)===0){
+     if(!first.replay&&sound&&visible&&(r[0x95]&0x80)===0){
       r[0x95]=(0xd8+sound.kind)&255;
       const sx=Math.max(0,Math.min(255,sound.tx*16+8-read16(sound.layer?0xac:0xa8))),pan=(sx&0xf0)|(sx>>4);
       r[0x118]=sx&0xf0;r[0x119]=pan;
      }
-     lastFrame=snes.frames;const result={map,frame:snes.frames,tiles:changed,visible,screenY};done.push(result);if(done.length>16)done.shift();onCut?.(result);break;
+     lastFrame=snes.frames;const result={map,frame:snes.frames,tiles:changed,visible,screenY,replayed:!!first.replay};done.push(result);if(done.length>16)done.shift();if(!first.replay)onCut?.(result);break;
     }
    }
   }
   return priorCycle.call(this);
  };
- return{beam,enqueueTiles,metadata,eligible,snapshot:()=>({queue:structuredClone(queue),lastFrame,done:structuredClone(done)}),restore(state){queue=state?.queue||[];lastFrame=state?.lastFrame??-1;done=state?.done||[];},clear(){queue=[];},dispose(){cpu.cycle=priorCycle;queue=[];},get pending(){return queue.length;},get completed(){return done;}};
+ return{beam,enqueueTiles,metadata,eligible,snapshot:()=>({queue:structuredClone(queue),lastFrame,done:structuredClone(done),cleared:structuredClone([...cleared.values()]),cutMap}),restore(state){queue=state?.queue||[];lastFrame=state?.lastFrame??-1;done=state?.done||[];cleared=new Map((state?.cleared??[]).map(t=>[t.address,t]));cutMap=state?.cutMap??null;},clear(){queue=[];},dispose(){cpu.cycle=priorCycle;queue=[];cleared.clear();},get pending(){return queue.length;},get completed(){return done;}};
 }

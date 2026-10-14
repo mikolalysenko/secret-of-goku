@@ -59,7 +59,7 @@ mod.flight=createNativeFlight(snes,{enabled:()=>mod.options.enabled&&mod.gokuAct
 mod.localFlightHook=createNativeLocalFlight(snes,{
   active:()=>mod.options.enabled&&mod.gokuActive&&(mod.localFlight||mod.charging)&&mod.canAttack,
   phase:()=>mod.localFlight,
-  onCross:({map})=>mod.radio?.defeatedBarrier('flight-gap',{map,kind:'flight'}),
+  onCross:({map,to})=>{mod.teleport?.gather(to);mod.radio?.defeatedBarrier('flight-gap',{map,kind:'flight'});},
   speed:()=>{
     const speed=mod.localFlight&&(mod.input&0x100)?(mod.options.superSaiyan?8:6):2;
     return mod.charging?speed/2:speed;

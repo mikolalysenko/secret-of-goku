@@ -226,6 +226,9 @@ class ManaMod {
   afterFrame(){
     if(this.options.enabled&&this.gokuActive){
       if(!this.worldFlight&&(this.read8(0xd0)||this.read8(0xec)&0xfe)){this.localFlight=false;this.localLift=0;}
+      // Native input sampling can finish one movement step after release.
+      // Keep hovering if that last step carries the feet off a narrow shore.
+      if(!this.worldFlight&&this.canAttack&&this.localLift>0&&this.localFlightHook&&!this.localFlightHook.canLand()&&this.localFlightHook.canFly(this.read16(0xe002),this.read16(0xe004)))this.localFlight=true;
       const recovered=this.localFlightHook?.settle();
       if(recovered)this.teleport?.follow(recovered);
     }
@@ -368,6 +371,9 @@ class ManaMod {
     const damage=Math.round(this.damageScale()*Math.max(.25,strength));
     const [dx,dy]=[[0,1],[1,0],[-1,0],[0,-1]][this.facing];
     const origin=this.handOrigin(),profile=this.beamProfile(strength);
+    // At point-blank range the palms can already extend through a solid
+    // tile. Include the short body-to-palm span so that obstacle is hit too.
+    this.plants?.beam({x:this.read16(0xe002),y:this.read16(0xe004),dx,dy,length:28,halfWidth:9,policy:'objects'});
     this.effects.push({...origin,...profile,kind:'beam',dx,dy,life:profile.max,strength,super:this.options.superSaiyan,damage,hits:[],pulses:{}});
     this.action={kind:'beam',age:0,duration:profile.max+4,facing:this.facing,super:this.options.superSaiyan};
     this.attackFrames=this.action.duration;this.charge=0;this.queuedPunch=false;

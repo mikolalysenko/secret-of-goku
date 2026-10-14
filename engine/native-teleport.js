@@ -29,13 +29,16 @@ export function createNativeTeleport(snes,mod,collision){
   }
   return null;
  }
- function follow(landing){
+ function gather(landing){
   // Bring CPU-controlled companions along. Leaving them on the old screen
   // trips the native party-distance leash and can lock movement or the ring.
   for(const base of[0xe200,0xe400])if((r[base]&1)&&!r[base+0x2c]&&!(r[base+0x0e]&0x80)){
    mod.write16(base+2,landing.x);mod.write16(base+4,landing.y);r[base+11]=landing.terrain;
    r[base+6]=r[base+7]=r[base+0x2d]=r[base+0x45]=0;
   }
+ }
+ function follow(landing){
+  gather(landing);
   // Mode 7 boss arenas use fixed background/matrix setup, not the scrolling
   // overworld tile ring. Uploading ordinary map rows can corrupt the Beast.
   if(snes.ppu?.mode===7){pending=null;return;}
@@ -61,6 +64,6 @@ export function createNativeTeleport(snes,mod,collision){
   }
   return cycle.call(this);
  };
- return{findLanding,follow,get pending(){return !!pending;},get scrolls(){return scrolls;},
+ return{findLanding,follow,gather,get pending(){return !!pending;},get scrolls(){return scrolls;},
   snapshot:()=>pending?{...pending,scrollFrame}:null,restore:s=>{pending=s?{...s}:null;scrollFrame=s?.scrollFrame??-1;},dispose(){c.cycle=cycle;}};
 }

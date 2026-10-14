@@ -4,10 +4,17 @@
 // Post descriptor/direction lookup verified against FastWhipPosts research;
 // see CREDITS.md. The cartridge buffer and disk ROM remain unchanged.
 export function createNativeGapFlight(snes,mod){
-  const r=snes.ram,word=a=>r[a]|r[a+1]<<8;
+  const r=snes.ram,cpu=snes.cpu,cycle=cpu.cycle,word=a=>r[a]|r[a+1]<<8;
   const state={active:false,map:-1,crossings:0};
   let cart=null,read=null;
   const enabled=()=>mod.options.enabled&&mod.gokuActive&&(r[0xe000]&1)&&(r[0xe02c]&1)&&word(0xd4)===0;
+  cpu.cycle=function(){
+    // C0:B683 dispatches the resolved floor event after consuming its tile
+    // marker. Skip only whip pads while the controlled Goku is airborne,
+    // before they lock input, clear flight or gather the party for a jump.
+    if(this.cyclesLeft===0&&(this.r[1]&63)===0&&this.br[4]===0xb683&&mod.localFlight&&enabled()&&(word(0)&0xfff)===0x6d8)this.br[4]=0xb678;
+    return cycle.call(this);
+  };
   function direction(){
     const x=word(0xe002)>>4,y=word(0xe004)>>4,layer=(r[0xe00b]&0x80)?1:0;
     const dirs=[[0,-4,0],[0,4,1],[4,0,2],[-4,0,0x82]];
@@ -24,6 +31,9 @@ export function createNativeGapFlight(snes,mod){
     const entry=offset>=0xa90da&&offset<0xa90e1?0xa90da:offset>=0xa927a&&offset<0xa9283?0xa927a:null;
     if((bank&0xc0)===0xc0&&entry!==null&&enabled()){
       if(offset===entry){
+        // Holding local flight keeps steering live across the real gap.
+        // Walking onto a pad can still use the party's automatic float.
+        if(mod.localFlight||((mod.padInput&0x100)!==0&&(mod.padInput&0xf0)!==0))return 0;
         const facing=direction();
         if(facing===null)return 0; // No matching post: end, never jump blindly.
         r[0xe010]=facing;state.active=true;state.map=word(0xdc);state.crossings++;
@@ -45,6 +55,6 @@ export function createNativeGapFlight(snes,mod){
     tick(){if(state.active&&(word(0xdc)!==state.map||!mod.options.enabled||r[0xd0]===0)){if(mod.options.enabled&&word(0xdc)===state.map){mod.playSound?.('landing');mod.radio?.defeatedBarrier('flight-gap',{kind:'flight',map:state.map});}state.active=false;}},
     snapshot(){return{...state};},
     restore(saved){Object.assign(state,{active:false,map:-1,crossings:0},saved||{});},
-    dispose(){if(cart?.read===gapRead)cart.read=read;},
+    dispose(){if(cart?.read===gapRead)cart.read=read;cpu.cycle=cycle;},
   };
 }
