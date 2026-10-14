@@ -14,7 +14,7 @@ const palaceGaps=new Set([0,6,22,38,54,63,187]);
 // C0:D359 dispatches 2x stair guidance and 3x currents/conveyors. These
 // modify walking velocity; they are floors, not collision or event triggers.
 const movementFloor=code=>(code&0xf0)===0x20||(code&0xf0)===0x30;
-export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=false}={}){
+export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=false,onCross=null}={}){
  const c=snes.cpu,r=snes.ram,priorCycle=c.cycle,word=a=>r[a]|r[a+1]<<8;
  const ground=()=>[0x5c,0xa8,0xc0,0,0x5c,0xcf,0xc1,0].every((v,i)=>r[0x100+i]===v)&&r[0xd0]===0&&(r[0xec]&0xfe)===0&&r[0x2c]===0&&!(r[0xed]&0x40)&&r[0xff]===0;
  const eligible=()=>active()&&ground()&&(r[0xe000]&1)&&(r[0xe02c]&1)&&!(r[0xe190]&0x70)&&!(r[0xe191]&0xd7)&&!(r[0xe01c]|r[0xe060]|r[0xe00a])&&r[0xe008]===0;
@@ -114,7 +114,7 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   return true;
  }
  const signed=v=>(v&0x80)?-(v&0x7f):v,packed=v=>v<0?0x80|(-v):v;
- let changed=0,phased=0,limited=0,recovered=0,npcPasses=0,anchor=null,motionFrame=-1,travel=[0,0];
+ let changed=0,phased=0,limited=0,recovered=0,npcPasses=0,anchor=null,crossing=null,motionFrame=-1,travel=[0,0];
  c.cycle=function(){
   const pc=this.br[4];
   // Actor contact has already checked interaction scripts at C1:CFE5.
@@ -158,9 +158,10 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   return priorCycle.call(this);
  };
  function settle(){
-  if(!ground())return;
+  if(!ground()){crossing=null;return;}
   const map=word(0xdc),x=word(0xe002),y=word(0xe004),l=layer();
   if(anchor?.map!==map)anchor=null;
+  if(crossing?.map!==map||!phasing()||!eligible())crossing=null;
   // Crossing a ledge can bypass the walking stair that normally changes
   // E00B. Adopt the destination floor only once the entire footprint fits;
   // otherwise releasing flight would leave Goku hovering on clear ground.
@@ -168,8 +169,12 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
    const terrain=tileAt(x,y,l)?.flags&3;
    if((terrain===1||terrain===2)&&terrain!==(r[0xe00b]&3)&&canLand(x,y,l,terrain))r[0xe00b]=(r[0xe00b]&0xfc)|terrain;
   }
-  if(canLand(x,y,l)){anchor={map,x,y,layer:l,terrain:r[0xe00b]};return;}
+  if(canLand(x,y,l)){
+   if(crossing&&crossing.layer===l&&Math.hypot(x-crossing.x,y-crossing.y)>=24)onCross?.({map,from:crossing,to:{x,y}});
+   crossing=null;anchor={map,x,y,layer:l,terrain:r[0xe00b]};return;
+  }
   if(!phasing()||!eligible())return;
+  if(anchor&&canFly(x,y,l))crossing??={...anchor};
   const {width,height}=bounds(),t=tileAt(x,y,l),outside=x<8||y<8||x>width-8||y>height-8;
   // Recover older checkpoints stranded in a wall/void, or an unexpected
   // native displacement. Prefer the most recent verified landing position.
@@ -181,7 +186,7 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
    for(let dy=-128;dy<=128;dy+=8)for(let dx=-128;dx<=128;dx+=8){const px=Math.min(width-8,Math.max(8,x))+dx,py=Math.min(height-8,Math.max(8,y))+dy;if(canLand(px,py,l))candidates.push({x:px,y:py,d:dx*dx+dy*dy});}
    safe=candidates.sort((a,b)=>a.d-b.d)[0];
   }
-  if(safe){for(const[a,v]of[[0xe002,safe.x],[0xe004,safe.y]]){r[a]=v&255;r[a+1]=v>>8;}r[0xe006]=r[0xe007]=0;if(safe.terrain!==undefined)r[0xe00b]=safe.terrain;recovered++;return{x:safe.x,y:safe.y,layer:l,terrain:r[0xe00b]};}
+  if(safe){crossing=null;for(const[a,v]of[[0xe002,safe.x],[0xe004,safe.y]]){r[a]=v&255;r[a+1]=v>>8;}r[0xe006]=r[0xe007]=0;if(safe.terrain!==undefined)r[0xe00b]=safe.terrain;recovered++;return{x:safe.x,y:safe.y,layer:l,terrain:r[0xe00b]};}
  }
- return{canLand,canFly,canFloat,lowObstacle,breakScenery,tileAt,bounds,settle,snapshot:()=>({anchor,motionFrame,travel:[...travel]}),restore:s=>{anchor=s?.anchor??null;motionFrame=s?.motionFrame??-1;travel=s?.travel?.slice()??[0,0];},get changed(){return changed},get phased(){return phased},get limited(){return limited},get recovered(){return recovered},get npcPasses(){return npcPasses},dispose(){c.cycle=priorCycle;}};
+ return{canLand,canFly,canFloat,lowObstacle,breakScenery,tileAt,bounds,settle,snapshot:()=>({anchor,crossing,motionFrame,travel:[...travel]}),restore:s=>{anchor=s?.anchor??null;crossing=s?.crossing??null;motionFrame=s?.motionFrame??-1;travel=s?.travel?.slice()??[0,0];},get changed(){return changed},get phased(){return phased},get limited(){return limited},get recovered(){return recovered},get npcPasses(){return npcPasses},dispose(){c.cycle=priorCycle;}};
 }

@@ -24,9 +24,10 @@ test('Haunted Forest gates open by beam or punch and stay open after leaving',as
   const result=await page.evaluate(({punch,flag})=>{
    const before=mana.hash(mana.snes.ram.slice(0x10000,0x18000));mana.run(1,[4]);
    if(punch){mana.run(2,[0]);mana.run(80);}else{mana.run(100,[10,1]);mana.run(1);mana.run(160);}
-   return{before,after:mana.hash(mana.snes.ram.slice(0x10000,0x18000)),flag:mana.read8(0xcf00+flag),error:mana.mod.story.status.error,canAttack:mana.mod.canAttack};
+   return{before,after:mana.hash(mana.snes.ram.slice(0x10000,0x18000)),flag:mana.read8(0xcf00+flag),error:mana.mod.story.status.error,canAttack:mana.mod.canAttack,radio:mana.mod.radio.status};
   },{punch,flag});
   expect(result.flag,JSON.stringify({map,punch,result})).toBe(min);expect(result.error).toBe(null);expect(result.after).not.toBe(result.before);expect(result.canAttack).toBe(true);
+  expect(result.radio.current?.kind).toBe('barrier');expect(result.radio.current.text).toContain(map===29?'Elinee':'security system');expect(result.radio.barrierCount).toBe(1);
   await enter(page,131,18,22);await enter(page,map,x,y);
   expect(await page.evaluate(flag=>mana.read8(0xcf00+flag),flag)).toBe(min);
  }
@@ -62,9 +63,10 @@ test('Haunted Forest vines can be punched or blasted into native walkable grass'
    const h=mana.mod.localFlightHook;mana.write16(0xe002,232);mana.write16(0xe004,322);mana.mod.teleport.follow({x:232,y:322,terrain:2});mana.run(30);
    const before=h.tileAt(232,296),walkBefore=h.canLand(232,296);mana.run(1,[4]);
    if(punch){mana.run(2,[0]);mana.run(55);}else{mana.run(100,[10,1]);mana.run(1);mana.run(80);}
-   return{before,walkBefore,after:h.tileAt(232,296),walkAfter:h.canLand(232,296),cuts:mana.mod.plants.completed};
+   return{before,walkBefore,after:h.tileAt(232,296),walkAfter:h.canLand(232,296),cuts:mana.mod.plants.completed,radio:mana.mod.radio.status};
   },punch);
   expect(r.before.tile).toBe(132);expect(r.walkBefore).toBe(false);expect(r.after.tile,JSON.stringify(r)).toBe(122);expect(r.walkAfter).toBe(true);expect(r.cuts.length).toBeGreaterThan(0);
+  expect(r.radio.current?.kind).toBe('barrier');expect(r.radio.current.text).toContain('vines');expect(r.radio.barrierCount).toBe(1);
  }
 });
 test('a real bee sting allows recovery and flight, retains poison, and never reveals a native weapon',async({page})=>{
@@ -142,14 +144,15 @@ test('the native ending keeps its blue sky palette when HDMA is enabled late',as
 test('Goku flies across the Water Palace platform gap and hovers safely if released over it',async({page})=>{
  await load(page);await enter(page,139,17,55);
  const r=await page.evaluate(()=>{
-  const m=mana.mod,h=m.localFlightHook,start=m.status,hash=mana.hash(mana.snes.cart.data);
+  const m=mana.mod,h=m.localFlightHook,start=m.status,hash=mana.hash(mana.snes.cart.data);m.powerIntro.restore({flight:true,superSaiyan:true});m.radio.restore();
   mana.run(14,[8,4]);const over=m.status,saved=mana.snapshot();mana.run(45);const hovering={flight:m.localFlight,y:m.status.y,safe:h.canFly(m.status.x,m.status.y)};
   mana.run(14,[8,4]);mana.run(10);const across=m.status;
   mana.restore(saved);mana.run(45);mana.run(14,[8,4]);mana.run(10);const replay=m.status;
   mana.run(28,[8,5]);mana.run(10);const back=m.status;
-  return{start,over,hovering,across,replay,back,unchanged:mana.hash(mana.snes.cart.data)===hash};
+  return{start,over,hovering,across,replay,back,radio:m.radio.status,unchanged:mana.hash(mana.snes.cart.data)===hash};
  });
  expect(r.over.y).toBeGreaterThan(768);expect(r.over.y).toBeLessThan(848);expect(r.hovering.flight).toBe(true);expect(r.hovering.safe).toBe(true);expect(Math.abs(r.hovering.y-r.over.y)).toBeLessThanOrEqual(2);expect(r.across.y).toBeLessThan(768);expect(r.across.localFlight).toBe(false);expect(r.across.map).toBe(139);expect([r.replay.x,r.replay.y]).toEqual([r.across.x,r.across.y]);expect(r.back.y).toBeGreaterThan(850);expect(r.back.localFlight).toBe(false);expect(r.unchanged).toBe(true);
+ expect(r.radio.current?.kind).toBe('barrier');expect(r.radio.current.text).toContain('bridge');expect(r.radio.barrierCount).toBe(1);
 });
 
 test('punches and beams press native floor switches across palaces, castles and the Fortress',async({page})=>{
@@ -172,8 +175,10 @@ test('punches and beams press native floor switches across palaces, castles and 
    // Native puzzle sparkles retain their effect lock ($2C) after the map
    // rebuild. Wait for the original animation to return player control.
    for(let i=0;i<12&&!m.canAttack;i++){if(mana.read8(0xd0)&128){mana.run(2,[0]);mana.run(4);}mana.run(60,[11]);}
-   return{before,flag:mana.read8(0xcf00+s.flag),tile,barriers:m.barriers.status,error:m.story.status.error,canAttack:m.canAttack,status:m.status,story:m.story.status};
+   mana.run(2);
+   return{before,flag:mana.read8(0xcf00+s.flag),tile,barriers:m.barriers.status,error:m.story.status.error,canAttack:m.canAttack,status:m.status,story:m.story.status,radio:m.radio.status};
   },s);
   expect(r.missing,JSON.stringify({s,r})).toBeFalsy();expect(r.before,JSON.stringify({s,r})).toBe(s.from??0);expect(r.flag,JSON.stringify({s,r})).toBe(s.to);expect(r.error).toBe(null);expect(r.canAttack,JSON.stringify({s,r})).toBe(true);
+  expect(r.radio.barrierCount,JSON.stringify({s,r})).toBe(1);
  }
 });

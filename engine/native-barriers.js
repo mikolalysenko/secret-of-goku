@@ -69,7 +69,7 @@ export function createNativeBarriers(mod){
     const map=mod.read16(0xdc),barrier=kiBarriers.find(b=>b.map===map&&mod.read8(0xcf00+b.flag)<b.min&&beamTouchesBarrier(beam,b))??nativeTile(beam);
     if(!barrier)return false;
     beam.barrierHit=true;
-    pending={id:barrier.id,map,event:barrier.event,frame:mod.frame,tile:barrier.tile};mod.playSound('impact');mod.feedback?.pulse(12);
+    pending={id:barrier.id,map,event:barrier.event,frame:mod.frame,tile:barrier.tile,flags:Array.from({length:256},(_,i)=>mod.read8(0xcf00+i))};mod.playSound('impact');mod.feedback?.pulse(12);
     const[x,y,w,h]=barrier.rect;for(let i=0;i<6;i++)mod.effects.push({kind:'impact',x:x+(i%3+.5)*w/3,y:y+(Math.floor(i/3)+.5)*h/2,dx:1,dy:0,life:20,max:20,super:false});
     return true;
   }
@@ -78,11 +78,19 @@ export function createNativeBarriers(mod){
     punch(attack){return hit({...attack,length:28,width:9,strength:1});},
     tick(){
       if(!pending)return;
-      const barrier=kiBarriers.find(b=>b.id===pending.id);
-      if(barrier&&mod.read8(0xcf00+barrier.flag)>=barrier.min){pending=null;return;}
-      if(pending.tile){const {tx,ty,layer,tile}=pending.tile;if(mod.plants.metadata(tx,ty,layer).tile!==tile){pending=null;return;}}
       if(pending.map!==mod.read16(0xdc)){pending=null;return;}
-      if(mod.frame-pending.frame>=26&&mod.story.request(pending.event)){completed.push(pending.id);pending=null;}
+      const barrier=kiBarriers.find(b=>b.id===pending.id);
+      const tile=pending.tile,changed=barrier?mod.read8(0xcf00+barrier.flag)>=barrier.min:
+        tile&&mod.plants.metadata(tile.tx,tile.ty,tile.layer).tile!==tile.tile||
+        pending.requested&&mod.canAttack&&pending.flags?.some((value,i)=>i!==0x0a&&value!==mod.read8(0xcf00+i));
+      if(changed){mod.radio?.defeatedBarrier(pending.id,{map:pending.map});pending=null;return;}
+      if(pending.requested){
+        // A switch already in its target state may return without changing
+        // anything. Do not celebrate another hit on the same closed puzzle.
+        if(mod.canAttack&&mod.story.status.queued===null&&mod.frame>pending.frame+2)pending=null;
+        return;
+      }
+      if(mod.frame-pending.frame>=26&&mod.story.request(pending.event)){completed.push(pending.id);pending.requested=true;pending.frame=mod.frame;}
     },
     get status(){return{pending,completed:[...completed]};},
     snapshot(){return structuredClone({pending,completed});},

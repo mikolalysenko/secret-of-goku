@@ -114,10 +114,11 @@ test('the native whip pad floats the whole party across without an equipped whip
   const result=await page.evaluate(()=>{
     const start=mana.mod.status,weapon=mana.read8(0xe1e3),poses=new Set();
     for(let f=0;f<240;f++){mana.run(1,f<10?[7]:[]);poses.add(mana.mod.spriteLayer.plan?.sprite?.kind);}
-    return{weapon,start,party:mana.mod.entities().slice(0,3),poses:[...poses],active:mana.mod.gapFlight.active,count:mana.mod.gapFlight.crossings,flags:[mana.read8(0xcf01),mana.read8(0xcf03)],event:mana.read8(0xd0)};
+    return{weapon,start,party:mana.mod.entities().slice(0,3),poses:[...poses],active:mana.mod.gapFlight.active,count:mana.mod.gapFlight.crossings,flags:[mana.read8(0xcf01),mana.read8(0xcf03)],event:mana.read8(0xd0),radio:mana.mod.radio.snapshot()};
   });
   expect(result.weapon).not.toBe(4);expect(result.poses).toContain('gapFlight');expect(result.count).toBe(1);expect(result.active).toBe(false);expect(result.flags).toEqual([0,0]);expect(result.event).toBe(0);
   for(const actor of result.party){expect(actor.x-result.start.x).toBeGreaterThan(80);expect(actor.y).toBe(result.start.y);}
+  expect(result.radio.barrierCount).toBe(1);expect([result.radio.current,...result.radio.queue].some(m=>m?.kind==='barrier')).toBe(true);
 });
 
 test('Kamehameha breaks native axe rocks on both collision layers',async({page})=>{
@@ -192,10 +193,10 @@ test('punches, ki shots and Kamehameha activate every native elemental orb puzzl
       else{mana.run(105,[10,1]);mana.run(1);}
       mana.run(30);
       for(let f=0;f<300;f++)mana.run(1,f%30<2?[16]:[]);
-      return{map:mana.read16(0xdc),before,after:mana.read8(0xcf00+flag),count:mana.mod.orbs.activated,last:mana.mod.orbs.last,error:mana.mod.orbs.error,queuedDamage:mana.read16(orb.base+0x1f1),event:mana.read8(0xd0),gridChanged:grid.some((v,i)=>v!==mana.snes.ram[0x10000+i])};
+      return{map:mana.read16(0xdc),before,after:mana.read8(0xcf00+flag),count:mana.mod.orbs.activated,last:mana.mod.orbs.last,error:mana.mod.orbs.error,queuedDamage:mana.read16(orb.base+0x1f1),event:mana.read8(0xd0),gridChanged:grid.some((v,i)=>v!==mana.snes.ram[0x10000+i]),radio:mana.mod.radio.snapshot()};
     },{i,flag});results.push({map,...result});
   }
   await test.info().attach('orb-puzzles',{body:JSON.stringify(results,null,2),contentType:'application/json'});
-  for(const r of results){expect(r.count,`map ${r.map}: ${JSON.stringify(r)}`).toBe(1);expect(r.after,`map ${r.map}`).toBeGreaterThan(r.before);expect(r.error).toBe(null);expect(r.queuedDamage).toBe(0);expect(r.event).toBe(0);}
+  for(const r of results){expect(r.count,`map ${r.map}: ${JSON.stringify(r)}`).toBe(1);expect(r.after,`map ${r.map}`).toBeGreaterThan(r.before);expect(r.error).toBe(null);expect(r.queuedDamage).toBe(0);expect(r.event).toBe(0);expect(r.radio.barrierCount).toBe(1);expect(r.radio.barriers).toContain(`${r.last.map}:orb-${r.last.event}`);}
   expect(results.filter(r=>r.gridChanged).length).toBeGreaterThan(4);
 });

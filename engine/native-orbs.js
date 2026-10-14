@@ -34,7 +34,8 @@ export function createNativeOrbs(snes,mod){
           const actor=item.base-0xe000;r[0x3a]=actor&255;r[0x3b]=actor>>8;
           pending={br:[...this.br],r:[...this.r],p:this.getP()};
           this.br[0]=item.event;this.pushByte(this.r[1]);this.pushWord((this.br[4]-1)&65535);
-          this.r[1]=1;this.br[4]=0xe76d;this.cyclesLeft=7;activated++;last=item;return;
+          this.r[1]=1;this.br[4]=0xe76d;this.cyclesLeft=7;activated++;last=item;
+          mod.radio?.defeatedBarrier(`orb-${item.event}`,{kind:'orb',map:item.map});return;
         }
       }
     }

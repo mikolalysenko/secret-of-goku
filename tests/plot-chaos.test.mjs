@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {existsSync,readFileSync} from 'node:fs';
-import {createNativeRadio,radioPixels,kaiWarnings,firstFlightMessages,treeBlastMessages} from '../engine/native-radio.js';
+import {createNativeRadio,radioPixels,kaiWarnings,firstFlightMessages,treeBlastMessages,barrierReactions} from '../engine/native-radio.js';
 import {createDragonQuest,dragonBallGrant} from '../engine/dragon-quest.js';
 import {ceilingExits,ceilingExitFor} from '../engine/ceiling-exits.js';
 import {encodeText,wrapText,parseEvent} from '../engine/event-codec.js';
@@ -37,6 +37,23 @@ test('first-use power banter cannot add a second King Kai remark to a held charg
   mod.charging=false;mod.action={kind:'beam'};tick(70);assert.equal(radio.status.current,null);
   mod.action=null;tick();assert.equal(radio.status.current.remaining,before);assert.equal(radio.status.current.kind,'power-intro');
 });
+test('barrier reactions wait for native scenes and attacks, coalesce destruction, and remember defeated barriers in saves',()=>{
+  const{mod,snes,radio,tick}=radioFixture();mod.charging=false;snes.joypad1State=0x80;
+  assert.equal(radio.defeatedBarrier('scenery',{kind:'vines'}),true);
+  assert.equal(radio.defeatedBarrier('haunted-forest'),true);
+  assert.equal(radio.defeatedBarrier('haunted-forest'),false);
+  assert.equal(radio.defeatedBarrier('nearby-rock',{kind:'obstacle'}),false);
+  mod.canAttack=false;snes.ram[0xd0]=0x83;tick(500);assert.equal(radio.status.current,null);assert.equal(radio.status.queued,1);
+  mod.canAttack=true;snes.ram[0xd0]=0;mod.action={kind:'beam'};tick(30);assert.equal(radio.status.current,null);
+  mod.action=null;tick();assert.equal(radio.status.current.text,barrierReactions['haunted-forest'][0]);assert.equal(radio.status.visible,true);
+  const saved=radio.snapshot();mod.charging=true;tick(800);
+  assert.equal(radio.status.warning,1);assert.equal(radio.status.current,null);assert.equal(radio.status.queued,1);
+  mod.charging=false;tick(500);const after=radio.snapshot();assert.equal(radio.status.barrierCount,1);
+  radio.restore(saved);mod.charging=true;tick(800);mod.charging=false;tick(500);assert.deepEqual(radio.snapshot(),after);
+  assert.equal(radio.defeatedBarrier('haunted-forest'),false);assert.equal(radio.defeatedBarrier('nearby-rock',{kind:'obstacle'}),false);
+  assert.equal(radio.defeatedBarrier('new-seal',{kind:'orb'}),true);tick();assert.match(radio.status.current.text,/magic seal/);
+  assert.equal(snes.joypad1State,0x80);assert.equal(snes.ram[0xd0],0);
+});
 test('first-flight advice happens once and obsolete Fortress advice is discarded after destruction',()=>{
   const{mod,snes,radio,tick}=radioFixture();mod.worldFlight=true;snes.ram[0x2c]=128;mod.charging=false;tick();assert.equal(radio.status.firstFlight,true);assert.equal(radio.status.queued,3);
   assert.equal(snes.ppu.getColor(false,16,160)[0],0x2c00);assert.equal(snes.ppu.getColor(false,16,16)[0],17,'The aerial beam and sky stay visible');
@@ -46,12 +63,12 @@ test('first-flight advice happens once and obsolete Fortress advice is discarded
 test('radio uses the ROM font pixels and every authored page fits the original three-line frame',()=>{
   const{rom}=radioFixture();const code=encodeText('A')[0];rom[0x12d600+code*12]=0x40;
   const pixels=radioPixels(rom,'A');assert.equal(pixels[10*240+9],0x8000);assert.equal(pixels[9*240+9],1);
-  for(const text of [...kaiWarnings,...firstFlightMessages,...treeBlastMessages]){encodeText(text);assert.ok(wrapText(text).split('\n').length<=3,text);}
+  for(const text of [...kaiWarnings,...firstFlightMessages,...treeBlastMessages,...Object.values(barrierReactions).flat()]){encodeText(text);assert.ok(wrapText(text).split('\n').length<=3,text);}
   assert.throws(()=>radioPixels(rom,'1\n2\n3\n4'));
 });
 test('the Tree catastrophe interrupts stale flight advice, keeps rewards, and survives a checkpoint',()=>{
  const{mod,radio,tick}=radioFixture();mod.charging=false;mod.worldFlight=true;
- tick();radio.say('Found a Dragon Ball!',{kind:'reward'});
+ tick();radio.say('Found a Dragon Ball!',{kind:'reward'});radio.defeatedBarrier('scenery',{kind:'obstacle'});
  radio.interrupt(treeBlastMessages,{kind:'tree-blast',frames:40});tick();
  assert.equal(radio.status.current.text,treeBlastMessages[0]);assert.equal(radio.status.queued,3);
  const saved=radio.snapshot();tick(120);const after=radio.snapshot();

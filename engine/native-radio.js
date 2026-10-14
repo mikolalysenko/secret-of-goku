@@ -45,9 +45,38 @@ export const treeBlastMessages=[
   "GOKU:Oh. Sorry! I'll wish\nit back with the others.\nLUKA:THE OTHERS?!",
   'KING KAI:I caught the\nsouls. You nearly made my\nplanet the ONLY planet!',
 ];
+export const barrierReactions={
+  'haunted-forest':['LUKA:Elinee put a spell\non that gate.\nGOKU:I put a hole in it.'],
+  'haunted-forest-bridge':['KING KAI:That was a\nsecurity system!\nGOKU:Seems pretty insecure.'],
+  'witch-castle':['LUKA:That gate needed\nthree people on switches.\nGOKU:I pushed REALLY hard.'],
+  'northtown-castle':['KING KAI:You needed an\ninvitation!\nGOKU:They can hear me now.'],
+  'gold-tower':['LUKA:A key would have\nbeen cheaper.\nGOKU:I do not have pockets.'],
+  switch:[
+    'KING KAI:It was a puzzle!\nGOKU:I solved it.\nKAI:IT IS ON FIRE.',
+    'LUKA:That was a switch.\nYou can press those\nwithout a shock wave.',
+    'KING KAI:An ancient test\nof wisdom!\nGOKU:I got it in one hit.',
+  ],
+  orb:[
+    'LUKA:It wanted elemental\nmagic. Apparently, terror\nis also an element.',
+    'KING KAI:You cannot just\npunch every magic seal!\n...Stop proving me wrong.',
+  ],
+  obstacle:[
+    'KING KAI:Those rocks were\nblocking the path, not\nchallenging you to a duel.',
+    'LUKA:The path is clear.\nSo is most of the scenery.\nPlease aim lower.',
+  ],
+  vines:[
+    'LUKA:The vines are gone.\nPlease leave the forest.\nI mean IN ONE PIECE.',
+    'KING KAI:That is the\nmost aggressive gardening\nI have ever seen.',
+  ],
+  flight:[
+    'LUKA:There was a bridge.\nGOKU:Too far.\nLUKA:It was TEN STEPS.',
+    'KING KAI:You skipped the\nwhole puzzle!\nGOKU:Was there a prize?',
+  ],
+};
 
 export function createNativeRadio(snes,mod){
   let current=null,queue=[],held=0,warned=false,warning=0,cooldown=0,firstFlight=false,lastMap=null;
+  let barriers=new Set(),barrierCount=0,barrierCooldown=0;
   let raster=null,key=null,visibilityFrame=-1,frameVisible=false;
   const p=snes.ppu,previous=p.getColor;
   const visible=()=>mod.options.enabled&&mod.gokuActive&&!p.forcedBlank&&
@@ -68,11 +97,27 @@ export function createNativeRadio(snes,mod){
   const say=(text,{frames=230,kind='story'}={})=>{encodeText(text);if(wrapText(text).split('\n').length>3)throw Error('Radio message is too long');queue.push({text,remaining:frames,kind});};
   return{
     say,
+    defeatedBarrier(id,{kind='switch',map=mod.read16(0xdc)}={}){
+      if(!mod.options.enabled||!mod.gokuActive)return false;
+      const key=`${map}:${id}`;if(barriers.has(key))return false;barriers.add(key);
+      // One aside for a burst of destruction, never a queue of complaints
+      // for every tile in a beam. Remember even suppressed repeats in saves.
+      const choices=barrierReactions[id]??barrierReactions[kind]??barrierReactions.switch;
+      const priority=barrierReactions[id]?2:['switch','orb'].includes(kind)?1:0;
+      const prior=current?.kind==='barrier'?current:queue.find(m=>m.kind==='barrier');
+      if(prior&&priority>(prior.priority??0)){
+        // Debris often clears before its gate's native script runs. Replace
+        // that generic aside with the gate's punchline, not a second page.
+        prior.text=choices[Math.max(0,barrierCount-1)%choices.length];prior.priority=priority;prior.remaining=230;barrierCooldown=480;return true;
+      }
+      if(barrierCooldown||prior)return false;
+      say(choices[barrierCount++%choices.length],{frames:230,kind:'barrier'});queue.at(-1).priority=priority;barrierCooldown=480;return true;
+    },
     interrupt(messages,{frames=240,kind='story'}={}){
       // A catastrophe replaces stale flight instructions, then resumes any
       // collected-Ball notices. It never opens a native dialogue/input lock.
       for(const text of messages){encodeText(text);if(wrapText(text).split('\n').length>3)throw Error('Radio message is too long');}
-      const keep=m=>!['flight','warning','power-intro'].includes(m.kind);
+      const keep=m=>!['flight','warning','power-intro','barrier'].includes(m.kind);
       queue=[...messages.map(text=>({text,remaining:frames,kind})),...(current&&keep(current)?[current]:[]),...queue.filter(keep)];
       current=null;firstFlight=true;visibilityFrame=-1;
     },
@@ -87,9 +132,11 @@ export function createNativeRadio(snes,mod){
       // First-use banter waits for the attack to finish. It must not add a
       // second King Kai remark to the single-warning charge sequence.
       const introPaused=mod.charging||mod.action?.kind==='beam';
-      if(introPaused&&current?.kind==='power-intro'){queue.unshift(current);current=null;}
+      const aside=m=>m.kind==='power-intro'||m.kind==='barrier';
+      if(introPaused&&current&&aside(current)){queue.unshift(current);current=null;}
       if(mod.worldFlight&&!firstFlight){firstFlight=true;for(const text of firstFlightMessages)say(text,{frames:240,kind:'flight'});}
       if(cooldown>0)cooldown--;
+      if(barrierCooldown>0)barrierCooldown--;
       if(mod.charging&&mod.options.superSaiyan&&mod.charge>=45){
         held++;
         if(held>=90&&!warned&&!cooldown&&(!current||current.kind!=='warning'&&current.remaining<60)){
@@ -98,11 +145,11 @@ export function createNativeRadio(snes,mod){
         }
       }else held=0;
       if(current&&--current.remaining<=0)current=null;
-      if(!current&&queue.length){const next=queue.findIndex(m=>!introPaused||m.kind!=='power-intro');if(next>=0)current=queue.splice(next,1)[0];}
+      if(!current&&queue.length){const next=queue.findIndex(m=>!introPaused||!aside(m));if(next>=0)current=queue.splice(next,1)[0];}
     },
-    get status(){return{current:current?{...current}:null,queued:queue.length,held,warned,warning,firstFlight,visible:!!current&&visible()};},
-    snapshot(){return structuredClone({current,queue,held,warned,warning,cooldown,firstFlight,lastMap});},
-    restore(saved){const s=saved?structuredClone(saved):null;current=s?.current??null;queue=s?.queue??[];held=s?.held??0;warned=s?.warned??(s?.nextWarning>90);warning=s?.warning??0;cooldown=s?.cooldown??0;firstFlight=!!s?.firstFlight;lastMap=s?.lastMap??null;raster=key=null;visibilityFrame=-1;},
+    get status(){return{current:current?{...current}:null,queued:queue.length,held,warned,warning,firstFlight,barrierCount,visible:!!current&&visible()};},
+    snapshot(){return structuredClone({current,queue,held,warned,warning,cooldown,firstFlight,lastMap,barriers:[...barriers],barrierCount,barrierCooldown});},
+    restore(saved){const s=saved?structuredClone(saved):null;current=s?.current??null;queue=s?.queue??[];held=s?.held??0;warned=s?.warned??(s?.nextWarning>90);warning=s?.warning??0;cooldown=s?.cooldown??0;firstFlight=!!s?.firstFlight;lastMap=s?.lastMap??null;barriers=new Set(s?.barriers??[]);barrierCount=s?.barrierCount??0;barrierCooldown=s?.barrierCooldown??0;raster=key=null;visibilityFrame=-1;},
     dispose(){p.getColor=previous;},
   };
 }

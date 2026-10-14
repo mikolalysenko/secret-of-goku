@@ -50,6 +50,8 @@ mod.ownership=installNativeOamOwnership(snes);
 mod.plants=createNativePlants(snes,{canCut:()=>mod.options.enabled&&mod.canAttack,sceneryReplacement:tile=>mod.localFlightHook?.breakScenery(tile),onCut:result=>{
   for(const tile of result.tiles)mod.effects.push({kind:'impact',x:tile.tx*16+8,y:tile.ty*16+8,dx:1,dy:0,life:8,max:8,super:false});
   if(result.tiles.length)mod.playSound('impact');
+  const obstacle=result.tiles.find(tile=>(tile.flags&7)===3||tile.flags&8);
+  if(obstacle)mod.radio?.defeatedBarrier('scenery',{map:result.map,kind:obstacle.code===0?'vines':'obstacle'});
 }});
 mod.flight=createNativeFlight(snes,{enabled:()=>mod.options.enabled&&mod.gokuActive,canTakeOff:()=>mod.canAttack,onStart:()=>{
   mod.localFlight=false;mod.localLift=0;mod.flightTransition={kind:'takeoff',age:0};if(!mod.ceiling?.busy)mod.playSound('flight');
@@ -57,6 +59,7 @@ mod.flight=createNativeFlight(snes,{enabled:()=>mod.options.enabled&&mod.gokuAct
 mod.localFlightHook=createNativeLocalFlight(snes,{
   active:()=>mod.options.enabled&&mod.gokuActive&&(mod.localFlight||mod.charging)&&mod.canAttack,
   phase:()=>mod.localFlight,
+  onCross:({map})=>mod.radio?.defeatedBarrier('flight-gap',{map,kind:'flight'}),
   speed:()=>{
     const speed=mod.localFlight&&(mod.input&0x100)?(mod.options.superSaiyan?8:6):2;
     return mod.charging?speed/2:speed;
