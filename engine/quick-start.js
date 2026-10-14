@@ -1,6 +1,6 @@
 // Built locally from the user's ROM. No cartridge bytes or savestates ship
 // with the site. Bump the revision when native virtual script layouts change.
-export const quickStartRevision='frieza-1';
+export const quickStartRevision='frieza-core-2';
 export const quickStartLabels={title:'After title',sword:'After sword / pod crash',late:'After Sunken Continent',frieza:'Frieza showdown',battle:'Frieza battle'};
 export async function buildQuickStart(kind,{fresh,pump,mod,arrival,capture,cache,progress}){
   if(!(kind in quickStartLabels))throw Error('Unknown quick checkpoint');
@@ -31,7 +31,7 @@ export async function buildQuickStart(kind,{fresh,pump,mod,arrival,capture,cache
 export async function buildLateCheckpoint(kind,{pump,mod,capture,cache,progress}){
   progress('Preparing the post-continent route…');
   mod.cancelCombat();mod.radio.restore({firstFlight:true});mod.powerIntro.restore({flight:true,superShown:true});
-  for(const[flag,value]of[[0x10,11],[0x11,10],[0x41,3],[0x44,3],[0x45,1],[0xaf,2],[0x4e,4]])mod.write8(0xcf00+flag,value);
+  for(const[flag,value]of[[0x10,11],[0x11,10],[0x41,2],[0x44,3],[0x45,1],[0xaf,2],[0x4e,4]])mod.write8(0xcf00+flag,value);
   for(let i=0;i<7;i++)mod.write8(0xcf90+i,1);
   mod.quest.restore({mask:127,seedMask:127,delivered:0,wished:false});mod.frieza.restore({hinted:true});
   mod.worldKi.restore();mod.write16(0xe182,999);mod.write16(0xe184,999);
@@ -43,13 +43,19 @@ export async function buildLateCheckpoint(kind,{pump,mod,capture,cache,progress}
   // The showdown fixture begins after accepting Dryad's optional route.
   // Keep the actual theft playable from the post-continent checkpoint.
   mod.frieza.restore({stage:'hunt',stolen:true,eighth:true,hinted:true});
+  const {activateTwilight}=await import('./frieza-crisis.js');activateTwilight(mod.snes.ram);
   if(!mod.story.travel(0x2f))throw Error('The Fortress entrance was not ready.');
   await pump(240);if(mod.status.map!==246)throw Error('The Fortress did not load.');
   if(mod.frieza.status.stage!=='showdown'&&!mod.story.request(0xc1))throw Error('Frieza was not ready.');
   mod.cancelInput();await cache('frieza',capture());
   if(kind==='frieza')return;
   progress("Playing Frieza's confrontation…");
-  for(let i=0;i<100&&mod.frieza.status.stage!=='battle';i++)await pump(60,[11]);
+  // Stop at the actual handoff, not up to a second into the projectile
+  // fight. Dialogue revisions must not change the testing spawn's timing.
+  for(let frames=0;frames<6000&&!(mod.frieza.fighting&&mod.canAttack);){
+    const step=mod.frieza.status.scene?.kind==='gold'||mod.frieza.fighting?1:60;
+    await pump(step,[11]);frames+=step;
+  }
   if(!mod.frieza.fighting||!mod.canAttack)throw Error('The Frieza battle did not start.');
   mod.cancelInput();mod.write16(0xe182,999);await cache('battle',capture());
 }

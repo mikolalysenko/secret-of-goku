@@ -41,9 +41,8 @@ export const firstFlightMessages=[
   'KING KAI:I will shield\nthe people. That is NOT\npermission to shoot!',
 ];
 export const treeBlastMessages=[
-  'KING KAI:GOKU!! THE TREE!\nLUKA:That blast hit the\nROOT OF ALL MANA!',
-  "GOKU:Oh. Sorry! I'll wish\nit back with the others.\nLUKA:THE OTHERS?!",
-  'KING KAI:I caught the\nsouls. You nearly made my\nplanet the ONLY planet!',
+  'LUKA:The cloud barrier\nis open. The Mana Tree\nis still safe below it.',
+  'GOKU:See? Just the clouds.\nKING KAI:Keep it that way!\nNow land carefully.',
 ];
 export const dungeonQuips={
  water:'LUKA:This is a sanctuary!\nGOKU:Now it has a window.\nLUKA:THAT WAS THE WALL.',
@@ -124,7 +123,7 @@ export function createNativeRadio(snes,mod){
       // A catastrophe replaces stale flight instructions, then resumes any
       // collected-Ball notices. It never opens a native dialogue/input lock.
       for(const text of messages){encodeText(text);if(wrapText(text).split('\n').length>3)throw Error('Radio message is too long');}
-      const keep=m=>!['flight','warning','power-intro','barrier'].includes(m.kind);
+      const keep=m=>!['flight','warning','power-intro','barrier','core-crisis'].includes(m.kind);
       queue=[...messages.map(text=>({text,remaining:frames,kind})),...(current&&keep(current)?[current]:[]),...queue.filter(keep)];
       current=null;firstFlight=true;visibilityFrame=-1;
     },
@@ -145,7 +144,7 @@ export function createNativeRadio(snes,mod){
       const introPaused=mod.charging||mod.action?.kind==='beam';
       const aside=m=>m.kind==='power-intro'||m.kind==='barrier';
       if(introPaused&&current&&aside(current)){queue.unshift(current);current=null;}
-      if(mod.worldFlight&&!firstFlight){firstFlight=true;for(const text of firstFlightMessages)say(text,{frames:240,kind:'flight'});}
+      if(mod.worldFlight&&!firstFlight){firstFlight=true;if(!mod.frieza?.crisisActive)for(const text of firstFlightMessages)say(text,{frames:240,kind:'flight'});}
       if(cooldown>0)cooldown--;
       if(barrierCooldown>0)barrierCooldown--;
       if(mod.charging&&mod.options.superSaiyan&&mod.charge>=45){

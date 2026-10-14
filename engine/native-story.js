@@ -5,6 +5,7 @@ import {buildStoryEvents,box,choice} from './story-events.js';
 import {prepareStoryArea} from './story-areas.js';
 import {buildFriezaEvents,buildFriezaEnding,friezaEvents as F} from './frieza-events.js';
 import {breakableDoors} from './breakable-doors.js';
+import {crisisDialogue,crisisGreeting,crisisGreetings} from './frieza-crisis.js';
 
 // Relocate selected event streams on reads. Native control codes, text drawing,
 // choices, actor choreography, map loading and rewards still run on the SNES.
@@ -18,7 +19,7 @@ export function createNativeStory(snes,mod){
   const present=index=>!!(r[0xe000+index*0x200]&1);
   const party=()=>Number(present(1))|Number(present(2))<<1;
   let cart=null,read=null,next=0xf08000;
-  const scripts=new Map(),entries=new Map(),metadata=new Map(),grants=new Map();
+  const scripts=new Map(),entries=new Map(),metadata=new Map(),grants=new Map(),eventIds=new Map(),greetings=new Map(),greetingEnds=new Set(),greetingKinds=new Map();
   function inspectByte(pc){
     if(pc>=0xf08000&&pc<0xf80000)for(const[at,script]of scripts)if(pc>=at&&pc<script.end)return script.bytes[pc-at]??0;
     // Inspection must not execute the cartridge adapters. Whip-pad reads, for
@@ -26,6 +27,7 @@ export function createNativeStory(snes,mod){
     return cart.data[pc&0x3fffff]??0;
   }
   let lastEvent=null,relocations=0,skippedActors=0,fastTrack=false,areaChanges=[],queued=null,queuedContext=null,pending=null,error=null,spellGrants=Array.from({length:2},()=>Array(8).fill(0));
+  let greetingResume=null,greeted=false,greetingCount=0;
   const write=snes.write;
   snes.write=function(address,value,dma=false){
     const result=write.call(this,address,value,dma),bank=address>>>16&255;
@@ -81,6 +83,7 @@ export function createNativeStory(snes,mod){
   }
   c.cycle=function(){
     if(this.cyclesLeft===0&&(this.r[1]&0x3f)===0&&this.br[4]===0xb073){
+      if(mod.canAttack&&!r[0xd0]&&greetingResume===null)greeted=false;
       // Older checkpoints may already be inside the skipped Fire Palace
       // room. Stage two enables its plate; the plate and orb still earn stages
       // three and four, and the room's exit still owns the final progression.
@@ -120,7 +123,13 @@ export function createNativeStory(snes,mod){
       }
     }
     if(this.cyclesLeft===0&&(this.r[1]&0x3f)===1&&this.br[4]===0xe8ef&&enabled()){
-      let pc=pointer();const entry=entries.get(pc);
+      let pc=pointer();
+      // A greeting is a native window prepended to the NPC's real event.
+      // Resume at the exact script pointer: no extra CALL stack or altered
+      // shop/inn/save choices, and no second greeting in nested subevents.
+      const resuming=greetingEnds.has(pc)&&greetingResume!==null;
+      if(resuming){setPointer(greetingResume);pc=pointer();greetingResume=null;}
+      const id=resuming?null:eventIds.get(pc),entry=resuming?null:entries.get(pc);
       if(entry){
         const mask=party();setPointer(typeof entry==='function'?entry(mask):entry[mask]);pc=pointer();lastEvent=metadata.get(pc)?.id;relocations++;
         mod.frieza?.onEvent(lastEvent);
@@ -128,7 +137,13 @@ export function createNativeStory(snes,mod){
         if(lastEvent===0x93)mod.quest?.deliver();
         if(lastEvent===0x42f)mod.ending?.begin();
         if(lastEvent>=0xa3&&lastEvent<=0xa6)mod.ending?.cue(['dragon','wish','village','complete'][lastEvent-0xa3]);
+        if(lastEvent===0xa4)mod.frieza?.repairCore();
         if(lastEvent===0x95||lastEvent===0x96)mod.challenge?.choose(lastEvent===0x96);
+      }
+      const actor=word(0x3a);
+      if(id!==null&&id!==undefined&&mod.frieza?.crisisActive&&!greeted&&greetingResume===null&&
+        actor>=0x600&&actor<0x1800&&actor%0x200===0&&(r[0xe000+actor]&1)&&(word(0xe03e+actor)&0x7ff)===id&&greetingKinds.has(id)){
+        greeted=true;greetingCount++;greetingResume=pc;setPointer(greetings.get(greetingKinds.get(id)));pc=pointer();
       }
       if(grants.has(pc))mod.quest?.collect(grants.get(pc));
       // Native scripts address party actors 1/2/3 explicitly. An absent actor
@@ -150,7 +165,7 @@ export function createNativeStory(snes,mod){
   return{
     inspectByte,
     load(){
-      cart=snes.cart;read=cart.read;scripts.clear();entries.clear();metadata.clear();grants.clear();next=0xf08000;
+      cart=snes.cart;read=cart.read;scripts.clear();entries.clear();metadata.clear();grants.clear();eventIds.clear();greetings.clear();greetingEnds.clear();greetingKinds.clear();next=0xf08000;
       const customVariants=[0,1,2,3].map(mask=>new Map([...buildStoryEvents(cart.data,mask),...buildFriezaEvents(cart.data,mask)]));
       const custom=customVariants[0],customIds=new Set(customVariants.flatMap(v=>[...v.keys()])),customPointers=new Map();
       function variants(id,compile){
@@ -161,9 +176,10 @@ export function createNativeStory(snes,mod){
         });
       }
       for(let id=0;id<0x800;id++){
+        const event=parseEvent(cart.data,id);eventIds.set(0xc00000+event.start,id);
+        if((!customIds.has(id)&&id!==0x5f8&&id!==0x4a4)||[0x131,0x132,0x133,0x134].includes(id))greetingKinds.set(id,crisisGreeting(event));
         if(customIds.has(id))continue;
         if(id>=0x100&&id<=0x106||id===0x400)continue; // BOY prologue and title legend
-        const event=parseEvent(cart.data,id);
         if(!needsStory(event))continue;
         entries.set(0xc00000+event.start,variants(id,mask=>compileStoryEvent(event,mask)));
       }
@@ -207,10 +223,20 @@ export function createNativeStory(snes,mod){
         const at=0xc00000+eventRange(cart.data,id).start,original=entries.get(at);
         entries.set(at,mask=>choose(mask)??(typeof original==='function'?original(mask):original[mask]));
       };
+      for(const[kind,text]of Object.entries(crisisGreetings)){
+        const bytes=box(text),at=allocate([...bytes,1],-1,0);greetings.set(kind,at);greetingEnds.add(at+bytes.length);
+      }
+      for(const id of[0x4e0,0x5f8]){
+        const crisis=variants(id,mask=>compileStoryEvent(parseEvent(cart.data,id),mask,{textOverrides:crisisDialogue}));
+        route(id,mask=>mod.frieza?.crisisActive?crisis[mask]:null);
+      }
+      route(0x4a4,()=>mod.frieza?.crisisActive?customPointers.get(F.escape):mod.frieza?.eligible?customPointers.get(F.transitionOffer):null);
       const showdown=variants(F.showdown,mask=>customVariants[mask].get(F.showdown));
       const visit=allocate([0x51,1,...box('LUKA:Frieza has your Balls.\nI can take you inside.\nKeep the eighth safe.'),0x2f,0x84,0x30,0x4e,4,0x30,0x0b,2,0x18,0x2f,...[0x10|(F.showdown>>8),F.showdown&255],0],F.showdown,0);
       route(0x4e1,mask=>mod.frieza?.unresolved?showdown[mask]:null);
       route(0x88,()=>mod.frieza?.unresolved?visit:null);
+      const rescue=allocate([0x51,1,...box('LUKA:Five minutes remain.\nI can take you to Frieza.\nRecover the Balls and\nsave this planet!'),...choice('Enter the Fortress?\n',[{label:'Stay',x:3,to:0},{label:'Go',x:17,to:0x88}])],0x87,0);
+      route(0x87,()=>mod.frieza?.unresolved?rescue:null);
       for(const id of[0x429,0x8b,0x93])route(id,()=>mod.frieza?.unresolved?customPointers.get(F.reminder):null);
       const invitation=allocate([0x51,1,...box(`LUKA:All seven! Dryad
 has sensed someone
@@ -221,6 +247,11 @@ You can investigate first.`),...choice('Visit Dryad?\n',[{label:'Later',x:2,to:0
       route(F.victory,mask=>mod.frieza?.status.discHits?discVictory[mask]:null);
       const friezaEnding=[false,true].map(member=>variants(0x42f,mask=>buildFriezaEnding(mask,member)));
       route(0x42f,mask=>mod.frieza?.unresolved?customPointers.get(F.reminder):mod.frieza?.permanent?friezaEnding[Number(mod.frieza.popoiMember)][mask]:null);
+      const crisisFinales=[0,1,2,3].map(mask=>buildStoryEvents(cart.data,mask,{crisis:true}));
+      for(const id of[0x429,0x94,0x95,0x96,0x97]){
+        const crisis=variants(id,mask=>crisisFinales[mask].get(id));
+        route(id,mask=>mod.frieza?.crisisActive&&!mod.frieza.unresolved?crisis[mask]:null);
+      }
       cart.read=storyRead;this.restore();
     },
     request(event,{actor=0}={}){
@@ -229,9 +260,9 @@ You can investigate first.`),...choice('Visit Dryad?\n',[{label:'Later',x:2,to:0
       queued=event;queuedContext=actor?{actor,map:word(0xdc),event:word(0xe03e+actor)}:null;return true;
     },
     travel(door){if(!Number.isInteger(door)||door<=0||door>=0x400||queued!==null||pending||!enabled()||!mod.canAttack)return false;queued=0x800|door;return true;},
-    get status(){return{lastEvent,relocations,skippedActors,fastTrack,areaChanges:[...areaChanges],queued,error,eventCount:entries.size,scriptCount:scripts.size};},
-    snapshot(){return{version:1,lastEvent,relocations,skippedActors,fastTrack,areaChanges,queued,queuedContext,pending,error,spellGrants:spellGrants.map(s=>s.slice())};},
-    restore(saved){lastEvent=saved?.lastEvent??null;relocations=saved?.relocations??0;skippedActors=saved?.skippedActors??0;fastTrack=!!saved?.fastTrack;areaChanges=saved?.areaChanges?.slice()||[];queued=saved?.queued??null;queuedContext=saved?.queuedContext??null;pending=saved?.pending??null;error=saved?.error??null;spellGrants=saved?.spellGrants?.map(s=>s.slice())||[Array.from(r.slice(0xe3c8,0xe3d0)),Array.from(r.slice(0xe5c8,0xe5d0))];},
+    get status(){return{lastEvent,relocations,skippedActors,fastTrack,areaChanges:[...areaChanges],queued,error,eventCount:entries.size,scriptCount:scripts.size,greetingCount};},
+    snapshot(){return{version:1,lastEvent,relocations,skippedActors,fastTrack,areaChanges,queued,queuedContext,pending,error,spellGrants:spellGrants.map(s=>s.slice()),greetingResume,greeted,greetingCount};},
+    restore(saved){lastEvent=saved?.lastEvent??null;relocations=saved?.relocations??0;skippedActors=saved?.skippedActors??0;fastTrack=!!saved?.fastTrack;areaChanges=saved?.areaChanges?.slice()||[];queued=saved?.queued??null;queuedContext=saved?.queuedContext??null;pending=saved?.pending??null;error=saved?.error??null;spellGrants=saved?.spellGrants?.map(s=>s.slice())||[Array.from(r.slice(0xe3c8,0xe3d0)),Array.from(r.slice(0xe5c8,0xe5d0))];greetingResume=saved?.greetingResume??null;greeted=!!saved?.greeted;greetingCount=saved?.greetingCount??0;},
     dispose(){if(cart?.read===storyRead)cart.read=read;c.cycle=cycle;snes.write=write;},
   };
 }

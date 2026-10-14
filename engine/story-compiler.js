@@ -22,8 +22,8 @@ export function partyText(text,mask,silent=false){
  if(!(mask&2))kept=kept.replaceAll('{2}','Popoi');
  return{text:kept,silent};
 }
-export function storyText(op,mask,silent=false){
- let text=partyDialogue[op.at]?.[mask];
+export function storyText(op,mask,silent=false,overrides={}){
+ let text=overrides[op.at]??partyDialogue[op.at]?.[mask];
  const spriteScene=op.at===0x9a168||(op.at>=0xa31ec&&op.at<=0xa3423);
  const missing=spriteScene||op.text.includes('{2}:')?!(mask&2):!(mask&1);
  text??=missing?soloDialogue[op.at]:null;
@@ -69,7 +69,7 @@ function layoutText(text,state,format){
  return out;
 }
 
-export function compileStoryEvent(event,mask){
+export function compileStoryEvent(event,mask,{textOverrides={}}={}){
  // The Earth reward is shared; Popoi's memory scene is not. Keep the native
  // seed grant and its quest marker, then advance the same story flag.
  if(event.id===0x592&&!(mask&2)){
@@ -83,7 +83,7 @@ export function compileStoryEvent(event,mask){
  const layout={window:false,changed:false,row:0,column:0,space:false};
  for(const op of event.ops){
   if(op.op==='text'){
-   const result=storyText(op,currentMask,silent);silent=result.silent;
+   const result=storyText(op,currentMask,silent,textOverrides);silent=result.silent;
    const text=result.text;
    if(!text){lastSilent=true;continue;}
    lastSilent=false;

@@ -25,6 +25,9 @@ Jema meeting Goku, are genuine scene NPCs and can still appear before joining.
 | Mana Tree, event 5F8 | Randi's family belongs to Randi. The Tree shelters him for the wish and asks Goku to finish the job. Missing companion stand-ins are omitted. |
 | Thanatos, events 4E1/42D | Goku coaches the villain into a stronger fight. Dyluck and King Kai explain the aftermath; absent companions and blank confirmation boxes are removed. |
 | Restoration, event 42F | Shenron appears, the white flakes are identified as radioactive fallout, and the wish returns Randi alive to Potos. Primm/Popoi only contribute if present. |
+| Optional Frieza entrance, events 4A4/A8 | After seven personally collected Balls, calling out to Frieza triggers the theft and a Death Ball into the core. The original sinking-continent flyby follows. Declining keeps the original transition. |
+| Five-minute crisis | Frieza, Kai, Luka, Jema and townspeople believe the planet is about to explode. Goku believes the deadline too, but thinks he can finish everything in time. Shops and inns warn him once before their normal service. Jema and the Tree blame Frieza's Death Ball for the roots burning. |
+| Frieza finale | Popoi's death triggers permanent Super Saiyan. The stolen Balls return after the fight, but the crisis persists through the Mana Beast. Shenron explicitly repairs the core; only recruited companions return to the party. |
 
 `engine/story-dialogue.js` and `engine/scene-dialogue.js` contain authored
 substitutions. `engine/story-compiler.js` preserves native control codes,
@@ -43,6 +46,7 @@ npm run audit:story
 npm test
 npx playwright test tests/browser/cutscenes.spec.mjs tests/browser/goku-ending.spec.mjs
 npx playwright test tests/browser/story-shortcuts.spec.mjs
+npx playwright test tests/browser/frieza.spec.mjs tests/browser/frieza-crisis.spec.mjs
 ```
 
 The audit validates substitution addresses, glyphs and line widths, then

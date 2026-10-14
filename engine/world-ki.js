@@ -106,12 +106,13 @@ export function createWorldKi(snes,mod){
             mod.playSound('friezaLaugh');
           }else if(shot.strength>=.85){
             lastHit=shot.target.id;explosion={...shot.target,mega:shot.mega,age:0};mod.playSound('impact');
-            mod.worldScars?.strike(shot.target,shot.mega);
+            // Opening a cloud layer does not destroy the Tree or crater it.
+            if(lastHit!=='mana-tree-barrier')mod.worldScars?.strike(shot.target,shot.mega);
             if(lastHit==='mana-tree-barrier'){
               // AF tests the high byte of $E2: bit 6 in $E3. Preserve every
               // boss, seed and Pure Land flag; this only opens world landing.
               treeBarrierBroken=true;r[0xe3]|=0x40;mod.log('The Mana Tree cloud barrier broke. Hold X / SNES B to descend into the Pure Land.');
-              mod.radio?.interrupt(treeBlastMessages,{kind:'tree-blast',frames:270});
+              mod.radio?.interrupt(mod.frieza?.crisisActive?['LUKA:The clouds are open!\nReach the Tree or Frieza!\nOnly five minutes remain.']:treeBlastMessages,{kind:'tree-blast',frames:270});
             }else if(lastHit==='mana-fortress'){fortressDestroyed=true;mod.log('The Fortress is breaking apart. The Mana Beast is coming!');}
             else mod.log('The wave left a permanent crater on the world map.');
           }else mod.log('The wave was too weak. Charge the aerial Kamehameha fully.');

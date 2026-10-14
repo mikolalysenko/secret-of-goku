@@ -95,11 +95,11 @@ test('radio uses the ROM font pixels and every authored page fits the original t
   for(const text of [...kaiWarnings,...firstFlightMessages,...treeBlastMessages,...Object.values(barrierReactions).flat()]){encodeText(text);assert.ok(wrapText(text).split('\n').length<=3,text);}
   assert.throws(()=>radioPixels(rom,'1\n2\n3\n4'));
 });
-test('the Tree catastrophe interrupts stale flight advice, keeps rewards, and survives a checkpoint',()=>{
+test('opening the Tree clouds interrupts stale flight advice, keeps rewards, and survives a checkpoint',()=>{
  const{mod,radio,tick}=radioFixture();mod.charging=false;mod.worldFlight=true;
  tick();radio.say('Found a Dragon Ball!',{kind:'reward'});radio.defeatedBarrier('gold-tower');
  radio.interrupt(treeBlastMessages,{kind:'tree-blast',frames:40});tick();
- assert.equal(radio.status.current.text,treeBlastMessages[0]);assert.equal(radio.status.queued,3);
+ assert.equal(radio.status.current.text,treeBlastMessages[0]);assert.equal(radio.status.queued,treeBlastMessages.length);
  const saved=radio.snapshot();tick(120);const after=radio.snapshot();
  assert.equal(radio.status.current.text,'Found a Dragon Ball!');radio.restore(saved);tick(120);assert.deepEqual(radio.snapshot(),after);
 });

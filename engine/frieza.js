@@ -1,8 +1,9 @@
 import {friezaEvents as F} from './frieza-events.js';
 import {FRIEZA_HP,homingStep,discContact,sweptDistance} from './frieza-combat.js';
 import {encodeText} from './event-codec.js';
+import {newCoreCrisis,activateTwilight,crisisFlightMessages} from './frieza-crisis.js';
 const copy=s=>s?structuredClone(s):null;
-const initial=()=>({stage:'dormant',stolen:false,eighth:false,permanent:false,fallen:false,popoiMember:false,popoi:null,scene:null,boss:null,offered:false,lastMap:null,hinted:false,discHits:0,playerHits:0});
+const initial=()=>({stage:'dormant',stolen:false,eighth:false,permanent:false,fallen:false,popoiMember:false,popoi:null,scene:null,boss:null,crisis:null,offered:false,lastMap:null,hinted:false,discHits:0,playerHits:0});
 export function createFrieza(snes,mod){
  let s=initial(),atlas=null;
  const img=new Image(),url=new URL('../assets/sprites/frieza.png',import.meta.url);url.search=new URL(import.meta.url).search;img.src=url.href;
@@ -71,13 +72,18 @@ export function createFrieza(snes,mod){
   try{return color.call(this,sub,x,y);}finally{screens[1]=old;}
  };
  const api={
-  ready,get eligible(){return eligible();},get active(){return s.stage!=='dormant';},get unresolved(){return s.stolen;},get eighth(){return s.eighth;},get permanent(){return s.permanent;},get fallen(){return s.fallen;},get popoiMember(){return s.popoiMember;},get fighting(){return s.stage==='battle'||s.stage==='won';},
+  ready,get eligible(){return eligible();},get active(){return s.stage!=='dormant';},get crisisActive(){return !!s.crisis?.active;},get unresolved(){return s.stolen;},get eighth(){return s.eighth;},get permanent(){return s.permanent;},get fallen(){return s.fallen;},get popoiMember(){return s.popoiMember;},get fighting(){return s.stage==='battle'||s.stage==='won';},
+  repairCore(){if(s.crisis){s.crisis.active=false;s.crisis.resolved=true;}},
   ownsArena(){return on()&&api.active&&map()===246;},
   onEvent(id){
    if(id===F.offer)s.offered=true;
    if(id===F.theft){if(!eligible())return;s.stage='theft';mod.cancelCombat();cue('waiting');}
    if(id===F.reveal){cue('reveal');laugh();mod.playSound?.('teleportIn');mod.feedback?.pulse(12);}
    if(id===F.steal){s.stolen=true;cue('steal');mod.playSound?.('charged');}
+   if(id===F.coreCharge){cue('core-charge');mod.playSound?.('friezaOrb');}
+   if(id===F.coreShot){cue('core-shot');mod.playSound?.('friezaOrb');}
+   if(id===F.coreImpact){s.crisis=newCoreCrisis();cue('core-impact');mod.feedback?.pulse(24);mod.playSound?.('powerBurst');}
+   if(id===F.escape){activateTwilight(snes.ram);s.stage='hunt';s.scene=null;}
    if(id===F.leave){cue('depart');mod.playSound?.('flight');}
    if(id===F.eighth){s.eighth=true;s.stage='hunt';cue('eighth');mod.playSound?.('charged');}
    if(id===F.showdown){s.stage='showdown';s.popoiMember=!!(snes.ram[0xe400]&1);s.popoi=Array.from(snes.ram.slice(0xe400,0xe600));if(!s.popoiMember){
@@ -107,6 +113,13 @@ export function createFrieza(snes,mod){
    if(!on())return;
    const here=map();if(s.lastMap!==here){s.lastMap=here;s.offered=false;if(s.scene?.map!==here)s.scene=null;}
    if(s.permanent&&!mod.ending?.nativeBoy)mod.options.superSaiyan=true;
+   if(s.crisis?.active&&!s.crisis.flightNotified&&mod.worldFlight&&!snes.ram[0x8c]&&!(snes.ram[0xfe]&0xc0)&&!snes.ppu.forcedBlank){
+    // 1F04 ends its sinking-continent flyby in the overhead view. Ask the
+    // native C0:8779 camera transition for a rear view, so Kai's sky warning
+    // arrives over the changed horizon. Do not touch matrices/HDMA/VRAM.
+    if(snes.ram[0xf2]&0x80){if(!s.crisis.rearCamera){s.crisis.rearCamera=true;snes.ram[0xf8]=0x90;snes.ram[0xcc]|=0x10;}}
+    else if(!(snes.ram[0xf2]&3)){s.crisis.flightNotified=true;mod.radio?.interrupt(crisisFlightMessages,{kind:'core-crisis',frames:300});}
+   }
    if(eligible()&&!s.hinted){s.hinted=true;mod.radio?.say('DRYAD:Seven Balls...\nCome to the Tree Palace.\nSomeone is following you.',{kind:'quest'});}
    if(eligible()&&here===431&&!s.offered&&Math.hypot(hero().x-232,hero().y-200)<90&&mod.canAttack)mod.story.request(F.offer);
    if(s.scene){
@@ -150,10 +163,21 @@ export function createFrieza(snes,mod){
    };
    const ball=(x,y,r,color)=>{for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){const d=dx*dx+dy*dy;if(d<=r*r)put(x+dx,y+dy,d<(r-2)**2?color:rgb(8,2,14));}};
    const fx=(x,y,n)=>{for(let i=0;i<8;i++){const a=i*Math.PI/4;layer.stamp(i&1?'impact-spark':'gold-charge-orb',n>>2,x+Math.cos(a)*n,y+Math.sin(a)*n);}};
-   if(c&&['reveal','steal','depart','taunt','lift','explode','gold','eighth','victory','defeated'].includes(c.kind)){
+   if(c&&['reveal','steal','depart','taunt','lift','explode','gold','eighth','victory','defeated','core-charge','core-shot','core-impact'].includes(c.kind)){
     let x=c.x+40-h.cameraX,y=c.y-40-h.cameraY;
+    if(['reveal','steal','depart','core-charge','core-shot','core-impact'].includes(c.kind))y=Math.max(104,Math.min(160,y));
     if(['reveal','steal','depart'].includes(c.kind))y-=c.kind==='reveal'?Math.max(0,64-c.age*2):c.kind==='depart'?Math.min(150,c.age*4):0;
-    if(!['eighth','defeated'].includes(c.kind))sprite(c.kind==='lift'||c.kind==='explode'?3:c.kind==='victory'?7:Math.floor(c.age/20)%2,x,y);
+    if(!['eighth','defeated'].includes(c.kind))sprite(c.kind==='lift'||c.kind==='explode'||c.kind==='core-charge'?3:c.kind==='core-shot'?2:c.kind==='victory'?7:Math.floor(c.age/20)%2,x,y);
+    if(c.kind==='core-charge'||c.kind==='core-shot'){
+     // A large violet Death Ball forms overhead, then burrows down through
+     // the floor. All pixels use the same native-resolution effect surface.
+     const t=c.kind==='core-shot'?Math.min(1,c.age/80):0,size=c.kind==='core-charge'?Math.min(24,5+c.age/5):24;
+     const ox=x-12,oy=y-58+Math.pow(t,1.8)*66;
+     if(t<1){ball(ox,oy,Math.floor(size),rgb(24,2,16));ball(ox-5,oy-6,Math.floor(size*.57),rgb(31,12,22));
+      for(let i=0;i<6;i++){const a=i*Math.PI/3+c.age*.08;layer.stamp('lightning',(c.age>>2)+i,ox+Math.cos(a)*(size+5),oy+Math.sin(a)*(size+5));}}
+     if(t>.7)fx(ox,y+8,Math.min(40,(t-.7)*120));
+    }
+    if(c.kind==='core-impact'&&c.age<80){fx(x-12,y+8,Math.min(60,c.age+8));for(let i=0;i<5;i++)layer.stamp('lightning',(c.age>>2)+i,x-60+i*26,y+8-Math.abs(Math.sin(c.age*.1+i))*25);}
     if(c.kind==='steal')for(let i=0;i<7;i++){const t=Math.min(1,c.age/48),a=i*Math.PI*2/7;ball(c.x-h.cameraX+(40+Math.cos(a)*18)*t,c.y-12-h.cameraY+(-42+Math.sin(a)*14)*t,3,rgb(31,20,2));}
     if(c.kind==='eighth'){ball(c.x-h.cameraX,c.y-36-h.cameraY,6,rgb(31,20,2));for(let i=0;i<8;i++)put(c.x-h.cameraX-3+i%4*2,c.y-38-h.cameraY+(i>>2)*3,rgb(24,2,1));}
     if(c.kind==='explode'&&c.age<48)fx(c.x+35-h.cameraX,c.y-60-h.cameraY,Math.min(28,c.age));
@@ -179,7 +203,7 @@ export function createFrieza(snes,mod){
    text.forEach((code,col)=>{for(let y=0;y<12;y++)for(let x=0;x<8;x++)if(snes.cart.data[0x12d600+code*12+y]>>(7-x)&1){put(57+col*8+x,1+y,1);put(56+col*8+x,y,0x8000);}});
    for(let y=14;y<18;y++)for(let x=48;x<208;x++)put(x,y,y===14||y===17||x%53===48?rgb(23,19,27):x-48<160*b.hp/FRIEZA_HP?rgb(27,4,20):rgb(5,2,7));
   },
-  get status(){return copy({...s,eligible:eligible(),hp:s.boss?.hp??null});},snapshot(){return copy(s);},restore(saved){s={...initial(),...copy(saved)};if(s.permanent)mod.options.superSaiyan=true;},
+  get status(){return copy({...s,eligible:eligible(),hp:s.boss?.hp??null});},snapshot(){return copy(s);},restore(saved){s={...initial(),...copy(saved)};if(saved&&saved.crisis===undefined&&(s.stolen||s.permanent))s.crisis={...newCoreCrisis(),active:!mod.quest?.status.wished,flightNotified:true};if(s.permanent)mod.options.superSaiyan=true;},
  };
  return api;
 }

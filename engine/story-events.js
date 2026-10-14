@@ -19,7 +19,7 @@ export const bossReactions={
   0x425:'GOKU:I am never eating\njelly again.\nWell... not today.',
 };
 
-export function buildStoryEvents(rom,mask=0){
+export function buildStoryEvents(rom,mask=0,{crisis=false}={}){
   const original=id=>{const{start,end}=eventRange(rom,id);return Array.from(rom.slice(start,end));};
   const events=new Map();
   // These retail slots contain unique END bytes. They are used only by
@@ -129,7 +129,7 @@ export function buildStoryEvents(rom,mask=0){
       ...box(mask&1?'PRIMM:I will find him.\nGOKU:We will help.\nA punch cannot fix\neverything. Apparently.':'GOKU:Hang on, Dyluck.\nI will find a way to\nget you out of there.'),0x30,0x32,2,0]);
   }
   events.set(0x93,[...box('KING KAI:I got the rest\nof the Dragon Balls!\nI am NOT doing this again.'),...box('GOKU:Thanks! That saved\na lot of walking.\nKING KAI:YOU CAN FLY.'),0x02]);
-  events.set(0x94,[...box('KING KAI:All seven Balls!\nYou actually collected them.\nI had a whole speech ready.'),0x02]);
+  events.set(0x94,[...box(crisis?'KING KAI:Seven Balls back!\nNow calm the Beast!\nFive minutes remain!':'KING KAI:All seven Balls!\nYou actually collected them.\nI had a whole speech ready.'),0x02]);
   // The finale uses the same original camera, Mode7 door and boss setup. No
   // nonexistent companion is asked to cast Mana Magic to make damage possible.
   const beastBattle=destroyed=>[0x42,0x4e,0x07,...jump(0),0x18,0x3b,...call(0x47c),...call(0x737),0x2d,6,0x10,0,0x2d,2,0x28,8,0x2d,4,...call(0x93),
@@ -137,16 +137,16 @@ export function buildStoryEvents(rom,mask=0){
     ...box('Seven Dragon Balls glow\nin the Sword pouch.\nKING KAI:No wish while\nthat thing is panicking!'),
     ...box(destroyed?'MANA TREE:Its rage remains.\nCalm it before it destroys\nwhat you have saved.':'MANA TREE:Guide your power.\nBreak its rage, and let\nMana flow home again.'),
     ...box('GOKU:So I can save it?\nMANA TREE:Yes. Use your ki.\nNo one must sacrifice\ntheir life for this.'),
-    ...box('GOKU:Hey, big guy! Is that\nall you have got? Come on!\nI want a REAL fight!\nKING KAI:DO NOT PROVOKE IT.'),
+    ...box(crisis?'GOKU:Five minutes left?\nI can still give you\na proper fight, big guy!\nKING KAI:THE CORE, GOKU!':'GOKU:Hey, big guy! Is that\nall you have got? Come on!\nI want a REAL fight!\nKING KAI:DO NOT PROVOKE IT.'),
     ...box('Feed it seed energy for a\nharder fight? No free HP\nrefills. Dodge glowing\ncircles or use Senzu Beans.'),
     ...jump(0x9a),0];
   events.set(0x429,beastBattle(false));events.set(0x8f,beastBattle(true));
-  events.set(0x95,[...box('GOKU:One careful beam.\nThen lunch.\nKING KAI:FINALLY. A PLAN\nWITH A SURVIVING PLANET.'),...jump(0x97),0]);
+  events.set(0x95,[...box(crisis?'GOKU:One careful beam.\nThen the wish. Plenty\nof time.\nLUKA:Please hurry!':'GOKU:One careful beam.\nThen lunch.\nKING KAI:FINALLY. A PLAN\nWITH A SURVIVING PLANET.'),...jump(0x97),0]);
   events.set(0x96,[...box('Goku offers the Beast\nenergy from the Mana Seeds.\nThe Dragon Balls stay safe\nin the pouch. Priorities.'),0x2d,2,0x2d,6,0x10,0,0x28,12,0x2d,4,
     ...box('GOKU:Eat up! I want to\nfight you at your best!\nCome on! Show me MORE!\nKING KAI:HE IS ENJOYING THIS.'),
-    ...box('LUKA:WE ASKED YOU TO SAVE\nTHE WORLD. NOT SEASON IT.\nGOKU:Just a little stronger!\nI know you can do it!'),
+    ...box(crisis?'LUKA:FIVE MINUTES, GOKU!\nPlease stop feeding it!\nGOKU:I will still finish\nwith time to spare.':'LUKA:WE ASKED YOU TO SAVE\nTHE WORLD. NOT SEASON IT.\nGOKU:Just a little stronger!\nI know you can do it!'),
     ...box('KING KAI:It has four times\nthe resistance to your ki!\nGOKU:And bigger muscles!\nThis is going to be GREAT.'),...jump(0x97),0]);
-  events.set(0x97,[0x2d,6,255,255,...call(0x739),0x18,0xbc,0x30,0x0b,0x0f,...box('GOKU:All right, big guy.\nShow me what you can do!'),0]);
+  events.set(0x97,[0x2d,6,255,255,...call(0x739),0x18,0xbc,0x30,0x0b,0x0f,...box(crisis?'KING KAI:Five minutes\nuntil the core blows!\nGOKU:Then let us finish!':'GOKU:All right, big guy.\nShow me what you can do!'),0]);
   events.set(0x9a,choice('GOKU:Just one little snack?\n',[{label:'Calm it',x:1,to:0x95},{label:'Feed seeds',x:15,to:0x96}],0x95));
   // A short wish scene replaces the retail credits montage, which forcibly
   // recruits Primm and assumes Popoi has just disappeared even on solo runs.

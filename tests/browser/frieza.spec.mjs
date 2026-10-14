@@ -22,9 +22,10 @@ test('Dryad offers an optional theft only for seven personally collected Balls; 
  await page.evaluate(()=>{mana.mod.story.request(0xa7);mana.run(550,[11]);mana.run(2,[0]);mana.run(120);});
  expect(await page.evaluate(()=>({stage:mana.mod.frieza.status.stage,canAttack:mana.mod.canAttack}))).toEqual({stage:'dormant',canAttack:true});
  await page.evaluate(()=>{mana.mod.story.request(0xa7);mana.run(550,[11]);mana.run(2,[7]);mana.run(20);mana.run(2,[0]);mana.run(120);});
- for(let i=0;i<30;i++){if(await page.evaluate(()=>mana.mod.frieza.status.stage==='hunt'&&mana.mod.canAttack))break;await page.evaluate(()=>mana.run(100,[11]));}
- const result=await page.evaluate(async()=>{const m=mana.mod,{radarTarget}=await import('/engine/dragon-radar.js');m.quest.wish();return{state:m.frieza.status,quest:m.quest.status,delivery:m.quest.deliver(),target:radarTarget(mana.snes.cart.data,m.quest.status,{frieza:m.frieza.status,fortress:{x:123,y:456}}),error:m.story.status.error};});
+ for(let i=0;i<80;i++){if(await page.evaluate(()=>mana.mod.worldFlight&&mana.mod.frieza.status.crisis?.flightNotified))break;await page.evaluate(()=>mana.run(100,[11]));}
+ const result=await page.evaluate(async()=>{const m=mana.mod,{radarTarget}=await import('/engine/dragon-radar.js');m.quest.wish();return{state:m.frieza.status,quest:m.quest.status,delivery:m.quest.deliver(),target:radarTarget(mana.snes.cart.data,m.quest.status,{frieza:m.frieza.status,fortress:{x:123,y:456}}),world:m.worldFlight,flags:[m.read8(0xcf41),m.read8(0xcf44)],error:m.story.status.error};});
  expect(result.state).toMatchObject({stage:'hunt',stolen:true,eighth:true,permanent:false});expect(result.quest).toMatchObject({held:0,seedMask:127,wished:false});expect(result.delivery).toBe(0);expect(result.target.id).toBe('frieza');expect(result.error).toBe(null);
+ expect(result.world).toBe(true);expect(result.flags).toEqual([3,6]);expect(result.state.crisis).toMatchObject({active:true,minutes:5,flightNotified:true});
  await page.evaluate(()=>document.querySelector('#native-pause').hidden=true);await page.locator('#screen').screenshot({path:test.info().outputPath('dryad.png')});
 });
 
@@ -32,8 +33,15 @@ test('Frieza fires lethal projectiles; flying returns discs, attacks hit him, me
  await load(page);const entry=await late(page);expect(entry.frieza).toMatchObject({stage:'battle',permanent:true,fallen:true,popoiMember:false});expect(entry.seen.some(s=>s.species===130&&s.active&&s.graphics===0x400)).toBe(true);
  const result=await page.evaluate(()=>{
   const m=mana.mod,base=mana.snapshot();let flying=0;
-  // Circle toward his upper-left starting position, then back underneath.
-  for(let f=0;f<1200;f++){mana.run(1,[8,[6,4,7,5][Math.floor(f/24)%4]]);if(m.localFlight)flying++;if(m.read8(0xe191)&128)break;}
+  // Steer around the arena using actual positions. A timed square can run
+  // into a wall when native camera/entry timing changes, never circling the
+  // incoming discs even though it is holding the flight button.
+  const nodes=m.frieza.status.boss.nodes,center={x:nodes.reduce((n,p)=>n+p.x,0)/nodes.length,y:nodes.reduce((n,p)=>n+p.y,0)/nodes.length};
+  for(let f=0;f<1500&&!m.frieza.status.discHits;f++){
+   const h={x:m.status.x,y:m.status.y-12},angle=Math.atan2(h.y-center.y,h.x-center.x)+.4,target={x:center.x+Math.cos(angle)*65,y:center.y+Math.sin(angle)*65},keys=[8];
+   if(Math.abs(h.x-target.x)>3)keys.push(h.x<target.x?7:6);if(Math.abs(h.y-target.y)>3)keys.push(h.y<target.y?5:4);
+   mana.run(1,keys);if(m.localFlight)flying++;if(m.read8(0xe191)&128)break;
+  }
   const circles={flying,discs:m.frieza.status.discHits,boss:m.frieza.status.hp,hits:m.frieza.status.playerHits};
   mana.restore(base);for(let f=0;f<1400&&!(m.read8(0xe191)&128);f++)mana.run(1);
   const dead={hp:m.status.hp,status:m.read8(0xe191)&128,hits:m.frieza.status.playerHits};
@@ -63,8 +71,8 @@ for(const mask of[0,1,2,3])test(`Frieza route reaches the wish and restores only
  for(let i=0;i<150;i++){
   const complete=await page.evaluate(()=>{const m=mana.mod,b=m.entities().find(e=>e.active&&e.species===127&&e.hp);if(b&&m.canAttack)m.hit(b,60000,0,-1);mana.run(70,[11]);return m.ending.complete;});if(complete)break;
  }
- const end=await page.evaluate(()=>({map:mana.mod.status.map,complete:mana.mod.ending.complete,wished:mana.mod.quest.status.wished,fallen:mana.mod.frieza.fallen,party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],popoiHP:mana.read16(0xe582),permanent:mana.mod.frieza.permanent,error:mana.mod.story.status.error}));
- expect(end).toMatchObject({map:131,complete:true,wished:true,fallen:false,party:[mask&1,mask>>1&1],permanent:true,error:null});if(mask&2)expect(end.popoiHP).toBeGreaterThan(0);
+ const end=await page.evaluate(()=>({map:mana.mod.status.map,complete:mana.mod.ending.complete,wished:mana.mod.quest.status.wished,fallen:mana.mod.frieza.fallen,party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],popoiHP:mana.read16(0xe582),permanent:mana.mod.frieza.permanent,crisis:mana.mod.frieza.status.crisis,error:mana.mod.story.status.error}));
+ expect(end).toMatchObject({map:131,complete:true,wished:true,fallen:false,party:[mask&1,mask>>1&1],permanent:true,crisis:{active:false,resolved:true},error:null});if(mask&2)expect(end.popoiHP).toBeGreaterThan(0);
  await page.evaluate(()=>document.querySelector('#native-pause').hidden=true);await page.locator('#screen').screenshot({path:test.info().outputPath('ending.png')});
 });
 
@@ -72,6 +80,6 @@ test('native GAME FILE keeps Frieza theft separate from other saves',async({page
  await load(page);await page.evaluate(()=>{const m=mana.mod;m.quest.restore({mask:127,seedMask:127});m.frieza.restore({stage:'hunt',stolen:true,eighth:true,hinted:true});const c=mana.snes.cart.data,r=mana.snes.ram,old=c.slice(0x742b0,0x742b3);try{c.set([0x10,0x50,0],0x742b0);r.set([1,0xb0,0x42,0xc7],0xd0);mana.run(180);for(let i=0;i<5;i++){mana.run(2,[0]);mana.run(100);}}finally{c.set(old,0x742b0);}});
  expect(await page.evaluate(()=>mana.battery.metadataFor(0)?.frieza.stolen)).toBe(true);
  await page.reload();await page.waitForFunction(()=>mana.ready);
- const loaded=await page.evaluate(()=>{mana.pause();mana.run(960);mana.run(2,[3]);mana.run(180);mana.run(2,[5]);mana.run(60);mana.run(2,[0]);mana.run(180);mana.run(4,[0]);mana.run(360);return{stage:mana.mod.frieza.status.stage,held:mana.mod.quest.status.held,seedMask:mana.mod.quest.status.seedMask,canAttack:mana.mod.canAttack};});
- expect(loaded).toEqual({stage:'hunt',held:0,seedMask:127,canAttack:true});
+ const loaded=await page.evaluate(()=>{mana.pause();mana.run(960);mana.run(2,[3]);mana.run(180);mana.run(2,[5]);mana.run(60);mana.run(2,[0]);mana.run(180);mana.run(4,[0]);mana.run(360);return{stage:mana.mod.frieza.status.stage,held:mana.mod.quest.status.held,seedMask:mana.mod.quest.status.seedMask,canAttack:mana.mod.canAttack,crisis:mana.mod.frieza.status.crisis};});
+ expect(loaded).toMatchObject({stage:'hunt',held:0,seedMask:127,canAttack:true,crisis:{active:true,minutes:5}});
 });

@@ -48,13 +48,14 @@ test('early Tree barrier blocks landing, breaks with an aerial charge, then land
     // Travel away naturally so the native world row stream stays initialized.
     mana.write16(0xf6,512);mana.run(100,[4]);mana.write16(0xf6,0);mana.write16(0xf4,0);
     mana.run(105,[10,1]);const held={charge:mana.mod.charge,nativeB:mana.snes.joypad1State&1};mana.run(1);mana.run(100);
-    const hit=mana.mod.worldKi.status.lastHit,saved=mana.snapshot();mana.restore(saved);
+    const hit=mana.mod.worldKi.status.lastHit,scars=mana.mod.worldScars.status.length,saved=mana.snapshot();mana.restore(saved);
     mana.write16(0xfa,624);mana.write16(0xfc,384);mana.write16(0xf4,0);mana.write8(0xcf5d,0);
     const landing=[],backgroundFlyby=[];for(let f=0;f<400;f++){mana.run(1,mana.mod.worldFlight?[0]:[]);if(!mana.mod.worldFlight&&!mana.snes.ppu.forcedBlank){backgroundFlyby.push(mana.read8(0x52));const pose=mana.mod.spriteLayer.plan?.sprite;if(pose?.kind==='landing')landing.push(pose.y);}}
-    return{blocked,held,hit,map:mana.read16(0xdc),world:mana.mod.worldFlight,gate:mana.read8(0xe3)&64,progress:mana.read8(0xcf46),landing,backgroundFlyby};
+    return{blocked,held,hit,scars,map:mana.read16(0xdc),world:mana.mod.worldFlight,gate:mana.read8(0xe3)&64,progress:mana.read8(0xcf46),landing,backgroundFlyby};
   });
   expect(result.blocked).toBe(true);expect(result.held).toEqual({charge:90,nativeB:0});expect(result.hit).toBe('mana-tree-barrier');
   expect(result.map).toBe(198);expect(result.world).toBe(false);expect(result.gate).toBe(64);expect(result.progress).toBe(0);
+  expect(result.scars).toBe(0);
   expect(result.landing.length).toBeGreaterThan(10);expect(Math.max(...result.landing)-Math.min(...result.landing)).toBeGreaterThan(40);
   expect(result.backgroundFlyby.every(v=>v===0)).toBe(true);
   await dismiss(page,()=>mana.mod.canAttack);expect(await page.evaluate(()=>mana.mod.story.status.lastEvent)).toBe(0x4d8);
