@@ -2,7 +2,7 @@
 // The Japanese chant uses a separate, cancellable vocal stem.
 import {createKamehamehaVoice} from './kamehameha-voice.js';
 const TAU=Math.PI*2;
-export const durations={swing:.12,hit:.24,blast:.19,beam:1.05,charged:.21,transform:.9,teleport:.16,teleportIn:.13,flight:.24,charge:1};
+export const durations={swing:.12,hit:.24,blast:.19,beam:1.05,charged:.21,transform:2.55,teleport:.16,teleportIn:.13,flight:.24,charge:1};
 export function synthesizeKiSound(name,{rate=16000,superSaiyan=false}={}){
   if(!durations[name])throw Error(`Unknown ki sound: ${name}`);
   const data=new Float32Array(Math.ceil(durations[name]*rate));
@@ -42,9 +42,10 @@ export function synthesizeKiSound(name,{rate=16000,superSaiyan=false}={}){
       phase+=TAU*(1600-800*u)/rate;
       value=(Math.sin(phase)*.26+Math.sin(phase*1.51)*.15+hiss*.25)*Math.exp(-t*19)*attack*tail;
     }else if(name==='transform'){
-      phase+=TAU*(80+85*u)/rate;
-      phase2+=TAU*(420+1100*u)/rate;
-      value=(Math.sin(phase)*.28+Math.sin(phase2+Math.sin(phase)*2)*.18+hiss*.7)*Math.sin(Math.PI*u)**.6;
+      phase+=TAU*(65+100*Math.exp(-t*5))/rate;
+      phase2+=TAU*(380+900*Math.exp(-t*3))/rate;
+      const surge=Math.exp(-t*.8),rumble=.78+.22*Math.sin(TAU*23*t);
+      value=(Math.sin(phase)*.45+Math.sin(phase2+Math.sin(phase)*2)*.18+hiss*.8+low*.6)*surge*rumble*attack*tail;
     }
     // The emergency synth uses the same 10-bit, 16 kHz sample-bank aesthetic.
     data[i]=Math.round(Math.tanh(value*1.1)*.68*512)/512;
@@ -60,7 +61,7 @@ export const cues={
  kick:{clips:['kick'],gain:.70,cap:2},blast:{clips:['blast'],gain:.38,cap:5},impact:{clips:['impact'],gain:.48,cap:3},
  distantImpact:{clips:['impact'],gain:.16,cap:2},
  beam:{clips:['beam'],gain:.80,cap:1},charged:{clips:['charged'],gain:.42,cap:1},
- transform:{clips:['transform'],gain:.64,cap:1},revert:{clips:['revert'],gain:.50,cap:1},
+ transform:{clips:['transform'],gain:.78,cap:1},revert:{clips:['revert'],gain:.50,cap:1},
  teleport:{clips:['teleport'],gain:.74,cap:2},teleportIn:{clips:['teleport'],gain:.46,cap:2},
  flight:{clips:['flight'],gain:.48,cap:1},landing:{clips:['landing'],gain:.36,cap:1},
  charge:{clips:['charge'],gain:.55,loop:true},aura:{clips:['aura'],gain:.30,loop:true},air:{clips:['air'],gain:.25,loop:true},
@@ -72,7 +73,8 @@ export function createKiSound(mod){
   const voices=new Set(),tails=new Set(),loops=new Map(),variants=new Map(),lastCue=new Map();
   const stats={ready:false,error:null,played:0,last:null,charge:false,loops:[],history:[]};
   const data=Promise.all([...new Set(Object.values(cues).flatMap(c=>c.clips))].map(async name=>{
-    const response=await fetch(new URL(`../assets/audio/dbz/${name}.wav`,import.meta.url));
+    const url=new URL(`../assets/audio/dbz/${name}.wav`,import.meta.url);url.search=new URL(import.meta.url).search;
+    const response=await fetch(url);
     if(!response.ok)throw Error(`DBZ effect unavailable: ${name}`);return[name,await response.arrayBuffer()];
   })).catch(error=>{stats.error=error.message;return[];});
   function stopVoice(v,when=0,fade=0){
@@ -134,7 +136,11 @@ export function createKiSound(mod){
         }).catch(error=>{stats.error=error.message;});
       }
       when=Math.max(ctx.currentTime,when??ctx.currentTime);let beam=false;
-      for(const item of queue)if(mod.frame-item.frame<5){voice(item.name,when,item.superSaiyan,item.frame);beam||=item.name==='beam';}
+      for(const item of queue)if(mod.frame-item.frame<5){
+        // A quick return to base form cuts off the power-up's long tail.
+        if(item.name==='revert')for(const v of [...voices])if(v.name==='transform')stopVoice(v,when,.05);
+        voice(item.name,when,item.superSaiyan,item.frame);beam||=item.name==='beam';
+      }
       queue=[];speech.update(ctx,true,when,beam);
       const focusing=mod.action?.kind==='focus',revealing=mod.action?.kind==='transform',focus=Math.min(1,mod.powerCharge/96);
       const charging=mod.charging&&(mod.canAttack||mod.worldFlight),strength=Math.min(1,mod.charge/(mod.options.superSaiyan?45:90));

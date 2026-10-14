@@ -23,7 +23,10 @@ export function installNativeOamOwnership(s){
     if(bank===0x7e||bank===0x7f)return (bank&1)*65536+off;
     return off<0x2000&&(bank<0x40||(bank>=0x80&&bank<0xc0))?off:-1;
   };
-  const classify=(pc,x)=>{
+  const classify=(pc,x,tile)=>{
+    // The HUD has its own writer and survives frames with no world actor
+    // (doors, fades and offscreen travel). Track its DMA independently.
+    if((pc&0x3fffff)===0x01e688&&[0xe8,0xea,0xec].includes(tile))return{base:0xe000+(tile-0xe8)*0x100,actor:(tile-0xe8)/2,kind:'portrait',descriptor:null};
     if((pc&0x3fffff)===0x00e6ab){
       // Source descriptors are passed in X, not tied to a tile or palette.
       if(x>=0xe090){
@@ -42,10 +45,11 @@ export function installNativeOamOwnership(s){
   s.write=function(a,v,dma){
     const off=normalize(a);
     if(off>=0x800&&off<0xa00){
-      const byte=(off-0x800)&3,slot=(off-0x800)>>2;
-      if(byte===0)ramOwners[slot]=null;
+      const byte=(off-0x800)&3,slot=(off-0x800)>>2,c=s.cpu,pc=c.r[1]*65536+c.br[4];
+      // HUD writes attributes before XY; ordinary actors write XY first.
+      if(byte===0&&(pc&0x3fffff)!==0x01e68d)ramOwners[slot]=null;
       if(byte===2){
-        const c=s.cpu,pc=c.r[1]*65536+c.br[4],tag=metadata(classify(pc,c.br[1]));ramOwners[slot]=tag;
+        const tag=metadata(classify(pc,c.br[1],v&255));ramOwners[slot]=tag;
         stats.writers.set(pc,(stats.writers.get(pc)||0)+1);
         if(tag?.kind==='body')stats.descriptors++;else if(tag?.kind==='shadow')stats.shadows++;else if(!tag)stats.unknown++;
       }

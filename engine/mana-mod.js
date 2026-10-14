@@ -57,7 +57,7 @@ class ManaMod {
     this.log(`Mod: ${JSON.stringify(this.options)}`);
   }
   cancelCombat(){this.action=null;this.queuedPunch=false;this.attackHeld=0;this.nativeTapFrames=0;this.charging=false;this.charge=0;this.powerCharge=0;this.attackFrames=0;this.attackCooldown=0;this.blastCooldown=0;this.effects=[];if(this.sound?.cancelCombat)this.sound.cancelCombat();else this.sound?.clear();this.plants?.clear();}
-  cancelInput(){this.attackHeld=0;this.nativeTapFrames=0;this.charging=false;this.charge=0;this.powerCharge=0;this.queuedPunch=false;this.attackBlocked=false;this.kiBlocked=false;this.powerBlocked=false;this.input=0;this.lastInput=0;this.padInput=0;this.lastPadInput=0;if(['ready','charge','focus'].includes(this.action?.kind))this.action=null;}
+  cancelInput(){this.panelBack=false;this.attackHeld=0;this.nativeTapFrames=0;this.charging=false;this.charge=0;this.powerCharge=0;this.queuedPunch=false;this.attackBlocked=false;this.kiBlocked=false;this.powerBlocked=false;this.input=0;this.lastInput=0;this.padInput=0;this.lastPadInput=0;if(['ready','charge','focus'].includes(this.action?.kind))this.action=null;}
   requestFlight(){
     if(!this.options.enabled||!this.gokuActive||this.worldFlight||!this.canAttack||this.ceiling?.busy||this.ceiling?.bossActive)return false;
     this.cancelCombat();return this.flight?.request()||this.ceiling?.request()||false;
@@ -76,23 +76,26 @@ class ManaMod {
     if(transform&&this.powerCharge===96&&!this.poisoned){this.configure({superSaiyan:true});this.powerBlocked=true;}
     return true;
   }
-  reset(){this.padInput=0;this.lastPadInput=0;this.powerCharge=0;this.powerBlocked=false;this.kiBlocked=false;this.kiHand=0;this.frame=0;this.hitRecovery?.restore();this.cancelCombat();this.sound?.restore();this.combatSound?.restore();this.ownership?.reset();this.feedback?.restore();this.orbs?.restore();this.story?.restore();this.worldKi?.restore();this.barriers?.restore();this.potosGatekeeper?.restore();this.flight?.restore();this.gapFlight?.restore();this.radio?.restore();this.quest?.restore();this.ceiling?.restore();this.challenge?.restore();this.powerIntro?.restore();this.flightTransition=null;this.autoLand=false;this.localFlight=false;this.localLift=0;this.localFlightHook?.restore();this.teleport?.restore();this.lastTeleportTarget=-1;this.input=0;this.lastInput=0;this.hiddenLastFrame=[];this.flightShadow=null;this.worldFlight=false;this.nameEditor=false;this.spriteLayer.plan=null;this.attackBlocked=false;this.combo=0;this.comboUntil=0;this.knockbacks=[];this.lastMap=null;this.motion?.reset();}
+  reset(){this.panelBack=false;this.padInput=0;this.lastPadInput=0;this.powerCharge=0;this.powerBlocked=false;this.kiBlocked=false;this.kiHand=0;this.frame=0;this.hitRecovery?.restore();this.cancelCombat();this.sound?.restore();this.combatSound?.restore();this.ownership?.reset();this.feedback?.restore();this.orbs?.restore();this.story?.restore();this.worldKi?.restore();this.barriers?.restore();this.potosGatekeeper?.restore();this.flight?.restore();this.gapFlight?.restore();this.radio?.restore();this.quest?.restore();this.ceiling?.restore();this.challenge?.restore();this.powerIntro?.restore();this.flightTransition=null;this.autoLand=false;this.localFlight=false;this.localLift=0;this.localFlightHook?.restore();this.teleport?.restore();this.lastTeleportTarget=-1;this.input=0;this.lastInput=0;this.hiddenLastFrame=[];this.flightShadow=null;this.worldFlight=false;this.nameEditor=false;this.spriteLayer.plan=null;this.attackBlocked=false;this.combo=0;this.comboUntil=0;this.knockbacks=[];this.lastMap=null;this.motion?.reset();}
   snapshot(){
-    const fields=['padInput','lastPadInput','powerCharge','powerBlocked','kiBlocked','kiHand','frame','facing','nameEditor','worldFlight','flightShadow','charge','charging','attackHeld','nativeTapFrames','action','queuedPunch','combo','comboUntil','blastCooldown','attackBlocked','effects','knockbacks','lastMap','input','lastInput','attackFrames','attackCooldown','autoLand','flightTransition','localFlight','localLift'];
+    const fields=['panelBack','padInput','lastPadInput','powerCharge','powerBlocked','kiBlocked','kiHand','frame','facing','nameEditor','worldFlight','flightShadow','charge','charging','attackHeld','nativeTapFrames','action','queuedPunch','combo','comboUntil','blastCooldown','attackBlocked','effects','knockbacks','lastMap','input','lastInput','attackFrames','attackCooldown','autoLand','flightTransition','localFlight','localLift'];
     return JSON.parse(JSON.stringify({version:1,options:this.options,hitRecovery:this.hitRecovery?.snapshot(),motion:this.motion?.snapshot(),sound:this.sound?.snapshot(),plants:this.plants?.snapshot(),feedback:this.feedback?.snapshot(),ownership:this.ownership?.snapshot(),flight:this.flight?.snapshot(),localFlightState:this.localFlightHook?.snapshot(),teleportState:this.teleport?.snapshot(),gapFlight:this.gapFlight?.snapshot(),orbs:this.orbs?.snapshot(),story:this.story?.snapshot(),worldKi:this.worldKi?.snapshot(),barriers:this.barriers?.snapshot(),potosGatekeeper:this.potosGatekeeper?.snapshot(),radio:this.radio?.snapshot(),quest:this.quest?.snapshot(),ceiling:this.ceiling?.snapshot(),challenge:this.challenge?.snapshot(),powerIntro:this.powerIntro?.snapshot(),lastTeleportTarget:this.lastTeleportTarget,...Object.fromEntries(fields.map(key=>[key,this[key]]))}));
   }
   restore(saved){
     this.reset();this.hitRecovery?.restore(saved?.hitRecovery);this.worldFlight=this.nativeFlight;this.sound?.restore(saved?.sound);this.plants?.restore(saved?.plants);this.feedback?.restore(saved?.feedback);this.ownership?.restore(saved?.ownership);this.lastTeleportTarget=saved?.lastTeleportTarget??-1;if(saved?.version!==1)return;
     this.flight?.restore(saved?.flight);this.localFlightHook?.restore(saved?.localFlightState);this.teleport?.restore(saved?.teleportState);this.gapFlight?.restore(saved?.gapFlight);this.orbs?.restore(saved?.orbs);this.story?.restore(saved?.story);this.worldKi?.restore(saved?.worldKi);this.barriers?.restore(saved?.barriers);this.potosGatekeeper?.restore(saved?.potosGatekeeper);this.radio?.restore(saved?.radio);this.quest?.restore(saved?.quest);this.ceiling?.restore(saved?.ceiling);
-    for(const key of ['padInput','lastPadInput','powerCharge','powerBlocked','kiBlocked','kiHand','frame','facing','nameEditor','worldFlight','flightShadow','charge','charging','attackHeld','nativeTapFrames','action','queuedPunch','combo','comboUntil','blastCooldown','attackBlocked','effects','knockbacks','lastMap','input','lastInput','attackFrames','attackCooldown','autoLand','flightTransition','localFlight','localLift'])if(saved[key]!==undefined)this[key]=JSON.parse(JSON.stringify(saved[key]));
+    for(const key of ['panelBack','padInput','lastPadInput','powerCharge','powerBlocked','kiBlocked','kiHand','frame','facing','nameEditor','worldFlight','flightShadow','charge','charging','attackHeld','nativeTapFrames','action','queuedPunch','combo','comboUntil','blastCooldown','attackBlocked','effects','knockbacks','lastMap','input','lastInput','attackFrames','attackCooldown','autoLand','flightTransition','localFlight','localLift'])if(saved[key]!==undefined)this[key]=JSON.parse(JSON.stringify(saved[key]));
     Object.assign(this.options,saved.options);this.motion?.restore(saved.motion);
     this.challenge?.restore(saved.challenge);this.powerIntro?.restore(saved.powerIntro);
   }
   get gokuActive(){return !this.arrival||this.arrival.arrived;}
   get poisoned(){return !!(this.read8(0xe191)&0x20);}
   get nativeFlight(){return this.flight?this.flight.worldActive():this.read8(0xe4)===4&&this.read8(0xe5)===4&&this.read8(0xd0)===0&&(this.read8(0xec)&0x80)!==0;}
+  get nativeField(){return [0x5c,0xa8,0xc0,0,0x5c,0xcf,0xc1,0].every((v,i)=>this.read8(0x100+i)===v);}
   get canAttack(){
-    return this.gokuActive&&this.read8(0xe4)===1&&this.read8(0xe5)===1&&(this.read8(0xe000)&1)!==0&&(this.read8(0xe02c)&1)!==0&&(this.read8(0xec)&0xfe)===0&&!(this.read8(0xed)&0x40)&&this.read8(0xd0)===0&&this.read8(0x2c)===0&&!(this.read8(0xe190)&0x70)&&!(this.read8(0xe191)&0xd5);
+    // $2C is the transient battle-message window (level ups / spell names),
+    // not a modal menu. The native menu/event and actor locks remain owners.
+    return this.gokuActive&&this.nativeField&&this.read8(0xe4)===1&&this.read8(0xe5)===1&&(this.read8(0xe000)&1)!==0&&(this.read8(0xe02c)&1)!==0&&(this.read8(0xec)&0xfe)===0&&!(this.read8(0xed)&0x40)&&this.read8(0xd0)===0&&!(this.read8(0xe190)&0x70)&&!(this.read8(0xe191)&0xd5);
   }
   get status(){
     const x=this.read16(0xe002),y=this.read16(0xe004),sx=this.readSigned16(0xe020),sy=this.readSigned16(0xe022);
@@ -119,15 +122,23 @@ class ManaMod {
     if(input&(1<<22))input|=0x402;
     if(input&(1<<23))input|=0x401;
     this.padInput=input;
-    const controlled=this.options.enabled&&this.gokuActive&&(this.canAttack||this.nativeFlight);
+    const gokuControls=this.options.enabled&&this.gokuActive&&((this.read8(0xe02c)&1)!==0||this.nativeFlight);
+    const controlled=gokuControls&&(this.canAttack||this.nativeFlight);
     this.snes.joypad1State=(input&0xfff)|((input&(1<<16))?1:0);
     // On foot A is a speed modifier, never the cartridge's latched dash.
     // Keep it out of native movement even during hurt/recovery. Menus and
     // Mode 7 still receive their normal A confirmation/altitude input.
-    if(this.options.enabled&&this.gokuActive&&!this.nativeFlight&&!(this.read8(0xec)&0xfe)&&!this.read8(0xd0))this.snes.joypad1State&=~0x100;
-    // X is the ring/back button. Y becomes ki only in active Goku gameplay.
-    if(controlled){input=(input&~2)|((input&2)?1<<17:0);this.snes.joypad1State&=~0xe02;}
-    if(input&0x200)this.snes.joypad1State=(this.snes.joypad1State&~0x200)|2;
+    if(this.options.enabled&&this.gokuActive&&this.nativeField&&!this.nativeFlight&&!(this.read8(0xec)&0xfe)&&!this.read8(0xd0))this.snes.joypad1State&=~0x100;
+    // X is always ring/back. Y stays ki even while a spell/status/menu locks
+    // attacks; it must never fall through to the cartridge's Y ring command.
+    if(gokuControls){input=(input&~2)|((input&2)?1<<17:0);this.snes.joypad1State&=~2;}
+    if(controlled)this.snes.joypad1State&=~0xe00;
+    // The cartridge's window/controller editors finish with Start; ordinary
+    // Status/Level/Action pages and rings cancel with Y. Keep X/back usable
+    // everywhere, latching the route until release if the panel closes.
+    if(!(input&0x200))this.panelBack=false;
+    else if(!(this.lastPadInput&0x200))this.panelBack=this.read8(0xe4)===1&&this.read8(0xe5)===1&&!this.read8(0xd0)&&this.snes.ppu.mode===5&&this.read8(0x1809)===2&&[5,6].includes(this.read8(0x180a))&&[0x5c,0xa7,0x20,0xc0,0x5c,0xcf,0xc1,0].every((v,i)=>this.read8(0x100+i)===v)?8:2;
+    if(input&0x200)this.snes.joypad1State=(this.snes.joypad1State&~0x200)|(this.panelBack||2);
     if(input&0x200)input=(input&~0x200)|2;
     this.input=input;this.frame++;this.before={x:this.read16(0xe002),y:this.read16(0xe004)};
     if(this.read8(0xe4)!==0||this.read8(0xe5)!==0)this.nameEditor=false;
@@ -157,7 +168,10 @@ class ManaMod {
     this.lastMap=map;
     this.challenge?.tick();
     if(this.options.power&&(this.canAttack||this.worldFlight)){
-      this.write16(0xe184,999);if(!this.challenge?.dangerous)this.write16(0xe182,999);
+      // Grant the larger health pool once; later battle damage stays until
+      // a real heal/rest/item. Preserve any existing missing HP on conversion.
+      const maxHp=this.read16(0xe184),hp=this.read16(0xe182);
+      if(maxHp!==999){this.write16(0xe184,999);if(hp>0)this.write16(0xe182,Math.min(999,hp+Math.max(0,999-maxHp)));}
       this.write8(0xe188,255);this.write16(0xe198,this.options.superSaiyan?8191:4095);
       this.write8(0xe1ed,0);
     }
@@ -179,7 +193,7 @@ class ManaMod {
       if(this.read8(0xd0)||this.read8(0xec)&0xfe){this.localFlight=false;this.localLift=0;}
       const heldCombat=this.attackHeld>0||this.charging||this.attackBlocked;
       this.cancelCombat();this.attackBlocked=heldCombat&&!!((this.padInput&3)|(input&(1<<17)));this.powerBlocked=!!(input&0x400);
-      if(this.attackBlocked&&!(input&(1<<16))){this.snes.joypad1State&=~3;if(this.padInput&0x200)this.snes.joypad1State|=2;}
+      if(this.attackBlocked&&!(input&(1<<16))){this.snes.joypad1State&=~3;if(this.padInput&0x200)this.snes.joypad1State|=this.panelBack||2;}
       return;
     }
     this.aim(input);

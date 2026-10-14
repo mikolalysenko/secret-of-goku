@@ -230,6 +230,10 @@ Mana Beast map 253 needs native flag `$CF4E=8` and original event `$429`, includ
 
 ## Limits
 
+The October 14 flight pass checked all 370 named gameplay maps against the independent map decoder with no grid differences or unsafe map edges. Twenty-seven new controller round trips cover low scenery, terraces, water edges and all four Mana Fortress platform maps (248–251), alongside the earlier palace, cave, Gaia's Navel and village routes. Fortress geometry was checked again after adding its chasms. Airborne sprites use priority above the low scenery and do not inherit submerged walking color math; the Water Palace's lower stair side pockets remain excluded.
+
+Native UI checks save to SRAM, reload the page, select GAME FILE and load back into play; inspect Goku's file portrait; reject sword-dust equips while allowing companion weapon swaps; and attack through real level-up and spell announcements. A complete cannon launch and arrival checks upright descent and visible walking control afterward. Thanatos tests use the original Fortress entrance and native Dark Lich defeat progression, with solo and full-party variants; the Luka route also plays through both final bosses and the ending. Audio checks cover the sustained charge, full power-up transformation, quick reversion and flight loops.
+
 Entry views alone do not cover every tile through traversal, all scripted poses, all attacks/spells, every boss phase or the complete ending/credits sequence. Intro and credits catalog entries establish their map backgrounds only; separate browser regressions play the actual opening and finale. The later barrier, combat and route checks above extend that coverage without constituting an uninterrupted full-game playthrough. Unused slots may be blank, duplicated or invalid by design.
 
 Factual map IDs/names are attributed in `tools/qa/map-names.json` to [Moppu/SecretOfManaRandomizer](https://github.com/Moppu/SecretOfManaRandomizer/blob/1404b7bd8552677399f24632c1e37cba37d491ef/SoMRandomizer/processing/common/SomVanillaValues.cs). Layout research is cross-checked against [Hack of Mana](https://hackofmana.com/maps/) and the supplied ROM.

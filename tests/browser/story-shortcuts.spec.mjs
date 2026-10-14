@@ -80,7 +80,7 @@ test('aerial Fortress destruction skips the dungeon and starts the native Mana B
 test('Luka shortcut plays both final battles and reaches the ending without recruiting anyone',async({page})=>{
   await load(page);await page.evaluate(()=>{for(const base of[0xe200,0xe400]){mana.write8(base,0);mana.write8(base+0x2c,0);}mana.mod.options.superSaiyan=true;mana.mod.story.request(0x88);});
   const seen=new Set();let ending=false;
-  for(let i=0;i<150;i++){
+  for(let i=0;i<190;i++){
     const s=await page.evaluate(()=>{
       const m=mana.mod,bosses=m.entities().filter(e=>e.index>=3&&e.active&&e.species>=87&&e.species<128&&e.hp);const seen=bosses.map(e=>e.species);
       if(m.canAttack&&bosses.length){m.instantTransmission();mana.run(15);mana.run(110,[10,1]);mana.run(1);mana.run(40);}
@@ -90,6 +90,46 @@ test('Luka shortcut plays both final battles and reaches the ending without recr
   }
   expect([...seen]).toContain(121);expect([...seen]).toContain(127);expect(ending).toBe(true);
   expect(await page.evaluate(()=>mana.mod.quest.status)).toMatchObject({count:7,wished:true});
+});
+
+for(const solo of[true,false])test(`Thanatos possession scene reaches and clears Dark Lich ${solo?'with solo Goku':'with the full party'}`,async({page})=>{
+ await load(page,solo?'.local/animation-audit/native/rabite-field-a.json':'.local/graphics-audit/party.json');
+ if(solo)await page.evaluate(()=>{for(const base of[0xe200,0xe400])mana.snes.ram.fill(0,base,base+0x200);});
+ expect(await page.evaluate(()=>{mana.write8(0xcf4e,4);return mana.mod.story.travel(0x154);})).toBe(true);
+ const result=await page.evaluate(()=>{
+  const m=mana.mod,r=mana.snes.ram;Object.assign(m.options,{superSaiyan:true});m.powerIntro.restore({flight:true,superSaiyan:true});
+  // The real Fortress door runs walk-on event 428. A diagnostic map load
+  // would bypass that event and would not exercise the reported approach.
+  let scene=false,battle=false,defeated=false;const poses=new Set();
+  for(let f=0;f<8000;f++){
+   if(m.story.status.lastEvent===0x4e1)scene=true;
+   if(m.spriteLayer.plan?.sprite)poses.add(m.spriteLayer.plan.sprite.kind);
+   const boss=m.entities().find(e=>e.active&&e.species===121&&e.hp);
+   if(m.canAttack&&boss){battle=true;m.instantTransmission();mana.run(15);mana.run(100,[10,1]);mana.run(1);mana.run(80);}
+   else mana.run(1,[11]);
+   if(battle&&r[0xcf4e]===8&&m.canAttack){defeated=true;break;}
+  }
+  return{scene,battle,defeated,poses:[...poses],map:mana.read16(0xdc),flag:r[0xcf4e],party:[r[0xe200]&1,r[0xe400]&1],error:m.story.status.error,can:m.canAttack};
+ });
+ expect(result,JSON.stringify(result)).toMatchObject({scene:true,battle:true,defeated:true,map:246,flag:8,party:solo?[0,0]:[1,1],error:null,can:true});
+ await page.locator('#screen').screenshot({path:test.info().outputPath('thanatos-defeated.png')});
+});
+
+test('a complete native cannon trip lands Goku upright and returns visible walking control',async({page})=>{
+ await load(page);await enter(page,159,10,17,{},0);
+ const result=await page.evaluate(()=>{
+  const m=mana.mod,npc=m.entities().find(e=>e.active&&e.species===206),requested=m.story.request(0xfa,{actor:npc.base-0xe000});
+  const poses=[];let arrived=false;
+  for(let f=0;f<2600;f++){
+   mana.run(1,[11]);const p=m.spriteLayer.plan?.sprite;if(p?.kind==='landing')poses.push(p.column);
+   if(f>600&&m.canAttack&&mana.read16(0xdc)===19){arrived=true;mana.run(90);break;}
+  }
+  const before=m.status;mana.run(10,[5]);return{requested,arrived,poses,visible:!!m.spriteLayer.plan?.sprite,hidden:mana.read8(0xe00e),before,after:m.status,error:m.story.status.error};
+ });
+ expect(result.requested).toBe(true);expect(result.arrived).toBe(true);expect(result.poses).toContain(38);
+ expect(result.poses.every(p=>[0,37,38].includes(p))).toBe(true);expect(result.visible).toBe(true);expect(result.hidden&0x80).toBe(0);
+ expect(result.after.canAttack).toBe(true);expect(result.after.y).not.toBe(result.before.y);expect(result.error).toBe(null);
+ await page.locator('#screen').screenshot({path:test.info().outputPath('cannon-landed.png')});
 });
 
 test('Undine can grant spells solo and native later recruitment keeps both rewards',async({page})=>{

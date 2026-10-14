@@ -14,8 +14,8 @@ async function enter(page,map,x,y,flags={},layer=0){
  },{map,x,y,flags,layer});
 }
 
-for(const x of[24,26,29])test(`Goku flies both ways between Karon's piers at column ${x} before the ferry is available`,async({page},testInfo)=>{
- test.setTimeout(150000);await load(page);await enter(page,32,x,17,{148:0},1);
+for(const [x,ferry] of[[24,0],[26,0],[29,0],[26,1]])test(`Goku flies both ways between Karon's piers at column ${x} with ferry stage ${ferry}`,async({page},testInfo)=>{
+ test.setTimeout(150000);await load(page);await enter(page,32,x,17,{148:ferry},1);
  const result=await page.evaluate(async x=>{
   const m=mana.mod,h=m.localFlightHook,hash=mana.hash(mana.snes.cart.data),start=mana.snapshot(),before=m.status;
   mana.run(30,[5]);const walked=m.status;mana.restore(start);
@@ -33,7 +33,9 @@ for(const x of[24,26,29])test(`Goku flies both ways between Karon's piers at col
  expect(result.walked.y-result.before.y).toBeLessThan(18);expect(result.hovered.status.map).toBe(32);expect(result.hovered.status.localFlight,detail).toBe(true);expect(result.hovered.land).toBe(false);expect(result.hovered.status.y).toBeGreaterThan(390);expect(result.hovered.status.y).toBeLessThan(430);
  expect(result.hovered.passengers).toEqual([0xe200,0xe400]);expect(result.hovered.visiblePassengers,detail).toEqual([]);expect(result.south.passengers).toEqual([]);
  for(const r of[result.south,result.replay,result.north]){expect(r.status.map,detail).toBe(32);expect(r.status.canAttack).toBe(true);expect(r.status.localFlight).toBe(false);expect(r.land).toBe(true);for(const p of r.party)expect(Math.hypot(p.x-r.status.x,p.y-r.status.y),detail).toBeLessThan(34);}
- expect(result.replay).toEqual(result.south);expect(result.exit.map,detail).toBe(48);expect(result.exit.canAttack).toBe(true);expect(result.progress).toBe(0);expect(result.romUnchanged).toBe(true);
+ expect(result.replay).toEqual(result.south);expect(result.exit.map,detail).toBe(48);expect(result.exit.canAttack).toBe(true);expect(result.progress).toBe(ferry);expect(result.romUnchanged).toBe(true);
+ expect(result.radio.barrierCount).toBe(ferry?0:1);expect(result.radio.current?.kind).not.toBe('barrier');
+ if(!ferry)expect(result.radio.barriers).toContain('32:moon-ferry');
 });
 
 for(const scene of[{name:'solo',girl:0,ship:0,party:false},{name:'with companions',girl:1,ship:0,party:true},{name:'during the native rescue',girl:8,ship:4,party:false}])test(`flying past the Sandship guards ${scene.name} reaches a valid Imperial ambush`,async({page},testInfo)=>{

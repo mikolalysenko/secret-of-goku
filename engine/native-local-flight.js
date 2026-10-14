@@ -2,23 +2,37 @@
 // crossed; room walls, map edges, layer changes and script triggers stay native.
 // Flags 1 and 2 are terrain heights, not walls (C1:BE15). Height 3 is solid.
 import {createNativeWhipRoutes} from './native-whip-routes.js';
+import {smallScenery,terrainBanks,blankGroundZero} from './flight-terrain.js';
 const scenery={0:new Set([130,139,141,159]),2:new Set([130,131]),
  // Haunted Forest flowers and creeping vines, verified against tileset 7.
  // Tall trees, cliff faces, switches and the scripted rose gate are separate.
- 7:new Set([112,114,115,116,117,118,119,120,126,127,130,131,132,133,134,135,136,138,142,143])};
+ 7:new Set([112,114,115,116,117,118,119,120,126,127,130,131,132,133,134,135,136,138,142,143]),
+ // Water Palace exterior: plain and flowering lily pads, not its stone walls.
+ 22:new Set([174,175])};
 // Forest rock-bank faces. These can only be flown across when usable terrain
 // exists on BOTH sides of a short span; the same art also borders map voids.
 const forestBanks=new Set([1,2,4,6,9,14,17,18,19,20,22,23,25,30,31,32,33,34,35,36,37,38,39,46,47,48,49,50,51,52,53,54,55,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,96,97,135,137,158,159,174,175]);
+// Village/woodland tilesets share these low earth terraces, including their
+// sloping ends and inside corners. Their tall trees/buildings use other cells.
+// The same terrace art can frame a map edge, so it still needs two shores.
+const earthBanks=new Set(Array.from({length:44},(_,i)=>96+i).filter(id=>id!==130));
+// Natural cave faces and diagonal ledges. These also surround the lava in
+// Gaia's Navel. Door arches, stalagmites and transparent void cells are not
+// banks; a crossing must still connect two real pieces of cave floor.
+const caveBanks=new Set([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,20,32,33,34,61,98,107,108,109,113,114,115,117,121,122,125]);
 // Palace platform edges, downward faces and the empty air below them. These
 // are shared by Water/Earth/Fire/Shade/Grand Palace, not their upright walls.
 const palaceGaps=new Set([0,6,22,38,54,63,187]);
+// Mana Fortress platforms: open air and their downward metal faces. Upright
+// room walls, machinery and the exterior hull are not part of this list.
+const fortressGaps=new Set([0,14,15,35,49,50,51,52,65,66,67,68,70,71,72]);
 // C0:D359 dispatches 2x stair guidance and 3x currents/conveyors. These
 // modify walking velocity; they are floors, not collision or event triggers.
 const movementFloor=code=>(code&0xf0)===0x20||(code&0xf0)===0x30;
 export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=false,onCross=null,onCarry=null}={}){
  const c=snes.cpu,r=snes.ram,priorCycle=c.cycle,word=a=>r[a]|r[a+1]<<8;
  const whipRoutes=createNativeWhipRoutes(snes);
- const ground=()=>[0x5c,0xa8,0xc0,0,0x5c,0xcf,0xc1,0].every((v,i)=>r[0x100+i]===v)&&r[0xd0]===0&&(r[0xec]&0xfe)===0&&r[0x2c]===0&&!(r[0xed]&0x40)&&r[0xff]===0;
+ const ground=()=>[0x5c,0xa8,0xc0,0,0x5c,0xcf,0xc1,0].every((v,i)=>r[0x100+i]===v)&&r[0xd0]===0&&(r[0xec]&0xfe)===0&&!(r[0xed]&0x40)&&r[0xff]===0;
  const eligible=()=>active()&&ground()&&(r[0xe000]&1)&&(r[0xe02c]&1)&&!(r[0xe190]&0x70)&&!(r[0xe191]&0xd7)&&!(r[0xe01c]|r[0xe060]|r[0xe00a])&&r[0xe008]===0;
  const phasing=()=>typeof phase==='function'?phase():phase;
  const bounds=()=>({width:Math.min(2048,word(0xc0)),height:Math.min(2048,word(0xc2))});
@@ -52,6 +66,19 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   if(ferryGap(t)||shipRail(t))return true;
   if(whipRoutes.crossable(t))return true;
   const at=header(),flags=at===null?0:snes.cart.data[at+2],tileset=at===null?-1:flags&63,metatile=t.tile+((flags&(t.layer?128:64))?192:0);
+  const realShore=d=>clear(d,0,true)&&!(blankGroundZero.has(tileset)&&d.tile+((flags&(d.layer?128:64))?192:0)===0)&&!(d.behavior&0x90);
+  const betweenShores=(accepts,span)=>{
+   const shore=(dx,dy)=>{
+    for(let n=1;n<=span;n++){
+     const next=tileAt((t.tx+dx*n)*16+8,(t.ty+dy*n)*16+8,t.layer);
+     if(!next||next.behavior&0x90||next.flags&8)return false;
+     if(realShore(next))return true;
+     if(!accepts(next))return false;
+    }
+    return false;
+   };
+   return shore(-1,0)&&shore(1,0)||shore(0,-1)&&shore(0,1);
+  };
   // These small carved heads merely rotate when hit by a native sword.
   // They are scenery, unlike other cyclic C-prefix puzzle switches.
   if(tileset===1&&t.layer===0&&[171,172].includes(metatile)&&t.code===0xc1&&t.replacement===343-t.tile)return true;
@@ -70,6 +97,10 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   // Decorative scenery has no cut code. Do not classify roofs/trees/cliffs
   // from their shared solid flag. Scope the list to the original tileset.
   if(at===null)return false;
+  if(tileset===21&&t.layer===0&&word(0xdc)>=248&&word(0xdc)<=251){
+   const gap=d=>d&&d.code===0&&!(d.flags&8)&&!(d.behavior&0x90)&&fortressGaps.has(d.tile+((flags&64)?192:0));
+   if(gap(t)&&betweenShores(gap,16))return true;
+  }
   // Ruins balconies have a one-tile raised floor lip on BG2. The same
   // solid art is not enough to identify a crossing: require real floors
   // at different heights on opposite sides, keeping walls/voids closed.
@@ -88,6 +119,10 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
    });
   }
   if(tileset===23&&t.layer===0&&t.code===0&&palaceGaps.has(metatile)&&Number.isInteger(t.tx)&&Number.isInteger(t.ty)){
+   // These pockets flank the long entrance stairs, below the palace's front
+   // wall. Their foreground masks cut an airborne body in half. Keep just
+   // these cells closed; the actual gaps between the upper platforms fly.
+   if(word(0xdc)===139&&t.ty>=59&&t.ty<=65&&t.tx>=12&&t.tx<=21&&(t.tx<16||t.tx>17))return false;
    const shore=(dx,dy)=>{
     for(let n=1;n<=16;n++){
      const next=tileAt((t.tx+dx*n)*16+8,(t.ty+dy*n)*16+8,0);
@@ -101,19 +136,10 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   }
   // Forest height-transition strips (10-17) are also part of the ledge;
   // walking uses them to change floors. Flight ignores that forced motion.
-  const bank=d=>d&&(d.code===0&&forestBanks.has(d.tile+((flags&64)?192:0))||d.code>=0x10&&d.code<=0x17);
-  if(tileset===2&&t.layer===0&&bank(t)&&Number.isInteger(t.tx)&&Number.isInteger(t.ty)){
-   const shore=(dx,dy)=>{
-    const span=word(0xdc)===25?16:5;
-    for(let n=1;n<=span;n++){
-     const next=tileAt((t.tx+dx*n)*16+8,(t.ty+dy*n)*16+8,t.layer);
-     if(!next||next.behavior&0x10)return false;
-     if(clear(next,0,true))return true;
-     if(!bank(next))return false;
-    }
-    return false;
-   };
-   if(shore(-1,0)&&shore(1,0)||shore(0,-1)&&shore(0,1))return true;
+  const bankTiles=tileset===2?forestBanks:tileset===0||tileset===1?earthBanks:tileset===10?caveBanks:terrainBanks[tileset];
+  const bank=d=>d&&!(d.flags&8)&&!(d.behavior&0x90)&&(d.code===0&&bankTiles?.has(d.tile+((flags&(d.layer?128:64))?192:0))||d.code>=0x10&&d.code<=0x17);
+  if(bankTiles&&bank(t)&&Number.isInteger(t.tx)&&Number.isInteger(t.ty)){
+   if(betweenShores(bank,tileset===2&&word(0xdc)!==25?5:16))return true;
   }
   if(t.code!==0)return false;
   // Village flowers and two-cell shrubs are on BG2. Their BG1 placeholder
@@ -123,6 +149,8 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
    const foreground=r[0x14000+t.ty*128+t.tx]+((flags&128)?192:0);
    if([272,273,274,275,276,277,278,288,289,290,291,292,293,294].includes(foreground))return true;
   }
+  const small=d=>d&&d.code===0&&!(d.flags&8)&&!(d.behavior&0x90)&&smallScenery[tileset]?.has(d.tile+((flags&(d.layer?128:64))?192:0));
+  if(small(t)&&Number.isInteger(t.tx)&&Number.isInteger(t.ty)&&betweenShores(small,8))return true;
   return scenery[tileset]?.has(metatile)??false;
  }
  function breakScenery(t){
@@ -137,6 +165,9 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
  }
  function clear(t,terrain=r[0xe00b]&3,air=false){
   if(!t||t.flags&8)return false;
+  // The cave's transparent filler carries height 2, despite having no floor
+  // artwork. It must not count as the far shore of a cliff or a landing spot.
+  if(t.layer===0&&t.tile===0){const at=header();if(at!==null&&(snes.cart.data[at+2]&63)===10)return false;}
   if(ferryGap(t))return air;
   const height=t.flags&7;
   if(height===3||(!air&&height>0&&height<3&&(height^terrain)===3))return false;

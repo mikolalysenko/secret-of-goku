@@ -41,6 +41,6 @@ export function createNativeSenzu(snes,mod){
    // ring, target cursor, shop and use animation regardless of its DMA slot.
    const base=ppu.sprAdr1+((attr&256)?ppu.sprAdr2:0),tile=attr&255;let hash=2166136261;
    for(const delta of[0,1,16,17])for(let i=0;i<16;i++)hash=Math.imul(hash^ppu.vram[(base+((tile+delta)&255)*16+i)&32767],16777619);
-   return (hash>>>0)===0xb22e39c3;
+   return [0xb22e39c3,0x430ea2ce].includes(hash>>>0);
   },pixel:senzuPixel,get used(){return used;}};
 }

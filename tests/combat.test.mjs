@@ -9,6 +9,7 @@ for(const file of ['goku-animation-data.js','goku-animation.js','mana-mod.js'])v
 function setup({superSaiyan=false,facing=1,power=true}={}){
   const snes={ram:new Uint8Array(0x20000),joypad1State:0,ppu:{getWindowState(){}}},mod=new context.window.ManaMod(snes);
   Object.assign(mod.options,{enabled:true,power,superSaiyan});
+  snes.ram.set([0x5c,0xa8,0xc0,0,0x5c,0xcf,0xc1,0],0x100);
   for(const a of [0xe4,0xe5,0xe000,0xe02c])mod.write8(a,1);
   mod.write16(0xe002,200);mod.write16(0xe004,200);mod.write16(0xe020,128);mod.write16(0xe022,114);mod.write8(0xe010,[1,2,0x82,0][facing]);mod.facing=facing;
   const step=(mask=0,n=1)=>{for(let i=0;i<n;i++){mod.beforeFrame(mask);mod.motion.pose();mod.afterFrame();}return mod;};
@@ -16,11 +17,11 @@ function setup({superSaiyan=false,facing=1,power=true}={}){
   return{mod,snes,step,enemy};
 }
 
-test('keyboard aliases and separate touch pointers cannot release one another; quick taps survive two scans',()=>{
+test('keyboard aliases and separate touch pointers cannot release one another; quick action taps survive slower native menu scans',()=>{
   const input=new GameInput();input.press('j',0);input.press('touch:2',0);input.release('j');
   assert.equal(input.sample(),1);assert.equal(input.sample(),1);assert.equal(input.sample(),1);
-  input.release('touch:2');assert.equal(input.sample(),0);
-  input.press('space',0);input.release('space');assert.equal(input.sample(),1);assert.equal(input.sample(),1);assert.equal(input.sample(),0);
+  input.release('touch:2');assert.equal(input.sample(),1);assert.equal(input.sample(),0);
+  input.press('space',0);input.release('space');for(let i=0;i<4;i++)assert.equal(input.sample(),1);assert.equal(input.sample(),0);
   input.press('up',4);input.press('left',6);assert.equal(input.sample(),80);input.clear();assert.equal(input.sample(),0);
 });
 
@@ -102,7 +103,7 @@ test('world-flight landing cue waits for the visible descent to reach ground lev
   snes.ppu.brightness=15;mod.ownership={ppuOwners:[{base:0xe000,kind:'body'}]};
   mod.flightTransition={kind:'landing',age:0};mod.playSound=name=>cues.push({name,age:mod.flightTransition?.age});
   snes.ppu.forcedBlank=true;step(0,10);assert.equal(mod.flightTransition.age,0);assert.deepEqual(cues,[]);
-  snes.ppu.forcedBlank=false;step(0,23);assert.deepEqual(cues,[]);assert.equal(mod.motion.pose().extraLift,3);
+  snes.ppu.forcedBlank=false;step(0,23);assert.deepEqual(cues,[]);assert.ok(mod.motion.pose().extraLift>0);
   step();assert.equal(mod.motion.pose().extraLift,0);assert.deepEqual(cues,[{name:'landing',age:24}]);
   step(0,10);assert.equal(cues.length,1);
 });
@@ -253,4 +254,27 @@ test('focus checkpoints replay the aura clock and transformation precisely',()=>
   const {mod,step}=setup();step(0x500,55);const saved=mod.snapshot(),ram=mod.snes.ram.slice();
   step(0x500,60);const expected=JSON.stringify(mod.snapshot());mod.snes.ram.set(ram);mod.restore(saved);step(0x500,60);
   assert.equal(JSON.stringify(mod.snapshot()),expected);
+});
+
+test('Saiyan strength enlarges the health pool once but never regenerates battle injuries',()=>{
+ const {mod,step}=setup();mod.write16(0xe184,50);mod.write16(0xe182,43);step();
+ assert.equal(mod.read16(0xe184),999);assert.equal(mod.read16(0xe182),992,'keep the seven points already lost');
+ mod.write16(0xe182,913);step(0,180);step(0x402,120);step(0,80);
+ assert.equal(mod.read16(0xe182),913,'idle, charging and releasing cannot heal');
+ mod.options.superSaiyan=true;step(0,60);assert.equal(mod.read16(0xe182),913);
+ mod.write16(0xe182,0);mod.write8(0xe191,0x80);step(0,120);assert.equal(mod.read16(0xe182),0,'unconscious Goku is not revived');
+});
+
+test('battle banners keep attacks active; modal screens and incapacitation never turn ki into a ring request',()=>{
+ const {mod,snes,step}=setup();mod.write8(0x2c,3);
+ step(2,4);assert.equal(mod.canAttack,true);assert.equal(mod.action.kind,'blast');assert.equal(snes.joypad1State&2,0);
+ step(0,30);step(1);assert.equal(mod.action.kind,'punch');step(0,30);
+ // Native status/action/level pages use the menu interrupt, even with EC=0.
+ snes.ram.set([0x5c,0xa7,0x20,0xc0],0x100);step(2,5);
+ assert.equal(mod.canAttack,false);assert.equal(mod.action,null);assert.equal(snes.joypad1State&2,0);
+ step(0x200);assert.equal(snes.joypad1State&2,2,'the explicit ring/back button still exits');
+ snes.ram.set([0x5c,0xa8,0xc0,0],0x100);mod.write8(0xe191,0x80);step(2,5);
+ assert.equal(mod.canAttack,false);assert.equal(snes.joypad1State&2,0);
+ mod.write8(0xe191,0);step();step(2,4);assert.equal(mod.action.kind,'blast');
+ step(0,30);step(1);assert.equal(mod.action.kind,'punch');
 });

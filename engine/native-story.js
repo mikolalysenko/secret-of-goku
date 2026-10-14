@@ -91,6 +91,13 @@ export function createNativeStory(snes,mod){
     return out;
   }
   function storyRead(bank,address){
+    // Sequence breaks can leave the first Luka visit unfinished while the
+    // Empire plot already wants its later Jema. These are separate object
+    // records; keep the introduction's Jema until his departure is complete.
+    if((bank&63)===8&&enabled()&&r[0xcf11]<10){
+      const header=0x80000+(cart.data[0x87116]|cart.data[0x87117]<<8);
+      if(0x80000+address===header+8+6*8+1)return 0xf0; // impossible visibility range
+    }
     if(bank>=0xf0&&bank<=0xf7){
       const address24=bank<<16|address;
       for(const[at,script]of scripts)if(address24>=at&&address24<script.end)return script.bytes[address24-at]??0;
@@ -150,6 +157,14 @@ export function createNativeStory(snes,mod){
         if(!bossReactions[id]&&!event.ops.some(op=>dragonBallGrant(op.at,op.op)!==null||op.op==='text'&&(op.at in storyDialogue||op.at in soloDialogue||/\{[12]\}/.test(op.text)||renameSenzu(op.text)!==op.text)))continue;
         entries.set(0xc00000+event.start,[0,1,2,3].map(mask=>allocate(compile(event,mask),id,mask)));
       }
+      // Cannon returns use the waterfall's prone/bouncing recovery for all
+      // three actors. Goku brakes upright; companions retain their original
+      // fall and the original script still owns the camera, waits and exit.
+      const cannonReturn=parseEvent(cart.data,0xf7);
+      entries.set(0xc00000+cannonReturn.start,[0,1,2,3].map(mask=>{
+        const event={...cannonReturn,ops:cannonReturn.ops.map(op=>op.op===0x31&&op.bytes[1]===1?{...op,bytes:[0x31,1,0x80]}:op)};
+        return allocate(compile(event,mask),0xf7,mask);
+      }));
       const custom=buildStoryEvents(cart.data),customPointers=new Map();
       for(const[id,bytes]of custom){
         const address=allocate(bytes,id,3);customPointers.set(id,address);

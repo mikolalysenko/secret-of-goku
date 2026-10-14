@@ -19,8 +19,31 @@ class ManaSpriteLayer {
     ppu.getColor=function(sub,x,y){
       const result=self.originalColor.call(this,sub,x,y);
       if(result[1]===4&&self.customLine[x])result[0]=self.customLine[x]-1;
+      const face=self.savePortrait(this,x,y);
+      if(face){result[0]=face-1;result[1]=1;result[2]=1;}
       return result;
     };
+  }
+  savePortrait(ppu,x,y){
+    if(!this.mod.options.enabled||!this.atlas.goku||ppu.mode!==5||x<94||x>=110||y<31||y>=191)return 0;
+    if(this.saveFrame!==this.mod.frame){
+      this.saveFrame=this.mod.frame;this.saveFaces=0;
+      // The native four-slot file window, not naming, shops or ring icons.
+      // C7:5BDA uses four $400-byte records with $1000-byte backup copies;
+      // C7:5C3B leaves two validation bits per slot in $A215.
+      if(ppu.tilemapAdr?.[1]===0x5800&&[2,8,14,20].every(row=>
+        (ppu.vram[0x5800+row*32+7]&0xc3ff)===0x20&&
+        (ppu.vram[0x5800+(row+5)*32+7]&0xc3ff)===0x8020)){
+        const invalid=this.mod.read8(0xa215),sram=this.snes.cart?.sram;
+        for(let slot=0;slot<4;slot++){
+          const bits=(invalid>>(slot*2))&3,at=slot*0x400+((bits&1)?0x1000:0);
+          if(bits!==3&&sram?.[at]===0xc5&&sram[at+0x2bb]===0x3a&&[0xa1,0xa9,0xa5,0xaf,0].every((v,i)=>sram[at+3+i]===v))this.saveFaces|=1<<slot;
+        }
+      }
+    }
+    const slot=Math.floor((y-31)/48),row=y-31-slot*48;
+    if(!(this.saveFaces&(1<<slot))||row>=16)return 0;
+    const a=this.atlas.goku;return a.pixels[(32+Math.floor(row*21/16))*a.width+3+Math.floor((x-94)*26/16)];
   }
   load(images){
     for(const [name,image] of Object.entries(images)){
@@ -146,13 +169,14 @@ class ManaSpriteLayer {
     // $E4/$E5 are brightness fade timers. Door/boss fades continue displaying
     // the native actor, so its DMA ownership decides when to replace it.
     const displayed=m.ownership?.ppuOwners.find(owner=>owner?.base===0xe000&&owner.kind==='body');
+    const hud=m.ownership?.ppuOwners.find(owner=>owner?.base===0xe000&&owner.kind==='portrait');
     const ground=!!displayed||(m.read8(0xe4)===1&&m.read8(0xe5)===1&&(m.read8(0xe000)&1));
     const naming=m.nameEditor&&m.read8(0xe4)===0&&m.read8(0xe5)===0;
     const menuBoy=ground&&m.read8(0x2c)!==0&&m.read8(0xec)===0&&this.boyMenuPalette(p);
     const menuParts=[];
     // Snowman and moogle are shared native transformation sprites, not Randi
     // artwork. Keep their actual animation and matching transformed portraits.
-    const nativeForm=ground&&(((displayed?.native.status1??m.read8(0xe190))&0x20)||((displayed?.native.status2??m.read8(0xe191))&0x10));
+    const nativeForm=(ground||hud)&&((((displayed??hud)?.native.status1??m.read8(0xe190))&0x20)||(((displayed??hud)?.native.status2??m.read8(0xe191))&0x10));
     // Balloon, Barrel and Engulf reuse the weapon OBJ slots for their native
     // covering/effect. Preserve those cells over the replacement body.
     const weaponEffect=ground&&(m.read8(0xe191)&0x45);
@@ -160,7 +184,7 @@ class ManaSpriteLayer {
     if(ground&&(m.read8(0xec)&8)&&m.read8(0x1809)===0)for(let i=0;i<12;i++){
       const item=m.read8(0xcc48+i);if(item===255)break;if((item&31)===7){flyItem=i;break;}
     }
-    if(ground||flight||naming)for(let index=0;index<256;index+=2){
+    if(ground||hud||flight||naming)for(let index=0;index<256;index+=2){
       const attr=p.oam[index+1],tile=attr&255,palette=(attr>>9)&7;
       let x=p.oam[index]&255,y=p.oam[index]>>8;
       x|=((p.highOam[index>>4]>>(index&15))&1)<<8;if(x>255)x-=512;
@@ -176,9 +200,10 @@ class ManaSpriteLayer {
       const nameBody=naming&&palette===1&&!(attr&0x100)&&tile>=0x30&&tile<=0x37;
       if(menuBoy&&palette===1&&!(attr&0x100)&&tile>=0x30&&tile<=0x37&&size===8)menuParts.push({index,x,y,size,tile,palette,priority:(attr>>12)&3});
       const dragon=flight&&palette===5;
-      const portrait=ground&&!nativeForm&&(palette===1||palette===5)&&(attr&0x100)&&(tile===0xe8||tile===0x0a);
+      const portrait=!nativeForm&&(m.ownership?owner?.base===0xe000&&owner.kind==='portrait':ground&&(palette===1||palette===5)&&(attr&0x100)&&tile===0xe8);
       const flyIcon=flyItem>=0&&index/2===18+flyItem&&!(attr&0x100)&&tile===0xe0+flyItem*2&&size===16;
       const senzuIcon=size===16&&m.senzu?.iconMatches(p,attr);
+      const dustIcon=size===16&&m.equipment?.iconMatches(p,attr,index/2);
       // The waterfall engine also moves the weapon to color-math palette 4.
       const screenX=m.read16(0xe020)<<16>>16,screenY=m.read16(0xe022)<<16>>16;
       const sword=ground&&!nativeForm&&!weaponEffect&&(palette===0||palette===4)&&(attr&0x100)&&[0x44,0x46,0x48].includes(tile)&&Math.abs(x-screenX)<48&&Math.abs(y-screenY)<48;
@@ -186,6 +211,7 @@ class ManaSpriteLayer {
       else if(portrait&&replacing){portraits.set(index,{x:x+(tile===0x0a?3:0),y:y+(tile===0x0a?2:0),size:tile===0x0a?10:16,palette,priority:(attr>>12)&3});hidden.add(index);}
       else if(flyIcon&&replacing){portraits.set(index,{x,y,size:16,palette,priority:(attr>>12)&3,kind:'fly'});hidden.add(index);}
       else if(senzuIcon){portraits.set(index,{x,y,size:16,palette,priority:(attr>>12)&3,kind:'senzu',flipX:!!(attr&0x4000),flipY:!!(attr&0x8000)});hidden.add(index);}
+      else if(dustIcon){portraits.set(index,{x,y,size:16,palette,priority:(attr>>12)&3,kind:'dust'});hidden.add(index);}
       else if(m.gapFlight?.active&&owner?.base===0xe000&&['attachment','cached-attachment'].includes(owner.kind))hidden.add(index);
       else if(sword&&replacing)hidden.add(index);
     }
@@ -310,19 +336,21 @@ class ManaSpriteLayer {
   }
   inject(ppu,line){
     const a=this.plan.anchor,part=this.plan.parts.find(p=>line>=p.y&&line<p.y+p.size)||a;
+    const airborne=this.mod.localFlight||this.mod.localLift>0||this.mod.flightTransition||this.mod.ceiling?.pose;
     for(let x=0;x<256;x++){const i=line*256+x,color=this.surface[i];if(color){
       // Original spell OBJs use palette 0, priority 3 and no OBJ color math,
       // independently of Goku's water palette or background priority.
-      ppu.spriteLineBuffer[x]=this.effectMask[i]?0x86:0x81+part.palette*16;
-      ppu.spritePrioBuffer[x]=this.effectMask[i]||this.mod.ceiling?.pose?3:part.priority;this.customLine[x]=color;
+      ppu.spriteLineBuffer[x]=this.effectMask[i]?0x86:0x81+(airborne?part.palette&3:part.palette)*16;
+      ppu.spritePrioBuffer[x]=this.effectMask[i]||airborne?3:part.priority;this.customLine[x]=color;
     }}
   }
   injectPortrait(ppu,line,portrait){
     const row=line-portrait.y;if(row<0||row>=portrait.size)return;
     const atlas=this.atlas[this.mod.options.superSaiyan?'ssj':'goku'];
     for(let col=0;col<portrait.size;col++){
-      if(portrait.kind==='senzu'){
-        const x=portrait.x+col,color=this.mod.senzu.pixel(portrait.flipX?15-col:col,portrait.flipY?15-row:row);
+      if(portrait.kind==='senzu'||portrait.kind==='dust'){
+        const item=portrait.kind==='senzu'?this.mod.senzu:this.mod.equipment;
+        const x=portrait.x+col,color=item.pixel(portrait.flipX?15-col:col,portrait.flipY?15-row:row);
         if(color&&x>=0&&x<256){ppu.spriteLineBuffer[x]=0x81+portrait.palette*16;ppu.spritePrioBuffer[x]=portrait.priority;this.customLine[x]=color;}
         continue;
       }

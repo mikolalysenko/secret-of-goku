@@ -28,7 +28,9 @@ test('Haunted Forest gates open by beam or punch and stay open after leaving',as
    return{before,after:mana.hash(mana.snes.ram.slice(0x10000,0x18000)),flag:mana.read8(0xcf00+flag),error:mana.mod.story.status.error,canAttack:mana.mod.canAttack,radio:mana.mod.radio.status};
   },{punch,flag});
   expect(result.flag,JSON.stringify({map,punch,result})).toBe(min);expect(result.error).toBe(null);expect(result.after).not.toBe(result.before);expect(result.canAttack).toBe(true);
-  expect(result.radio.current?.kind).toBe('barrier');expect(result.radio.current.text).toContain(map===29?'Elinee':'security system');expect(result.radio.barrierCount).toBe(1);
+  expect(result.radio.barrierCount).toBe(map===30?1:0);
+  if(map===30){expect(result.radio.current?.kind).toBe('barrier');expect(result.radio.current.text).toContain('security system');}
+  else expect(result.radio.current?.kind).not.toBe('barrier');
   await enter(page,131,18,22);await enter(page,map,x,y);
   expect(await page.evaluate(flag=>mana.read8(0xcf00+flag),flag)).toBe(min);
  }
@@ -39,9 +41,11 @@ test('a beam operates native hit switches and smashes the palace combination wit
   const result=await page.evaluate(s=>{
    for(let i=1;i<12;i++)mana.write8(0xe000+i*512,0);
    mana.run(1,[4]);if(s.map===285||s.map===286)mana.write8(0xcf61,0);mana.run(100,[10,1]);mana.run(1);mana.run(180);
-   return{flag:mana.read8(0xcf00+s.flag),barriers:mana.mod.barriers.status,status:mana.mod.status,error:mana.mod.story.status.error};
+   return{flag:mana.read8(0xcf00+s.flag),barriers:mana.mod.barriers.status,status:mana.mod.status,error:mana.mod.story.status.error,radio:mana.mod.radio.snapshot()};
   },s);
   expect(result.flag,JSON.stringify({s,result})).toBe(s.min);expect(result.error).toBe(null);
+  expect(result.radio.barrierCount).toBe(s.map===43?1:0);
+  if(s.map===43)expect(result.radio.barriers).toContain('43:palace-combination');
   if(s.map===43){await page.evaluate(()=>{mana.run(100,[10,1]);mana.run(1);mana.run(180);});expect(await page.evaluate(()=>mana.read8(0xcf42))).toBe(4);}
  }
 });
@@ -67,7 +71,7 @@ test('Haunted Forest vines can be punched or blasted into native walkable grass'
    return{before,walkBefore,after:h.tileAt(232,296),walkAfter:h.canLand(232,296),cuts:mana.mod.plants.completed,radio:mana.mod.radio.status};
   },punch);
   expect(r.before.tile).toBe(132);expect(r.walkBefore).toBe(false);expect(r.after.tile,JSON.stringify(r)).toBe(122);expect(r.walkAfter).toBe(true);expect(r.cuts.length).toBeGreaterThan(0);
-  expect(r.radio.current?.kind).toBe('barrier');expect(r.radio.current.text).toContain('vines');expect(r.radio.barrierCount).toBe(1);
+  expect(r.radio.current?.kind).not.toBe('barrier');expect(r.radio.barrierCount).toBe(0);
  }
 });
 test('carved forest heads are flyable and break into native grass across every map using them',async({page})=>{
@@ -86,7 +90,7 @@ test('carved forest heads are flyable and break into native grass across every m
    return{map,heads,unsafe,candidate,tile:h.tileAt(x,y,0).tile,land:h.canLand(x,y,0,2),canAttack:m.canAttack,error:m.story.status.error,radio:m.radio.snapshot()};
   },map));
  }
- for(const r of results){expect(r.heads,JSON.stringify(r)).toBeGreaterThan(0);expect(r.unsafe,JSON.stringify(r)).toEqual([]);expect(r.candidate,JSON.stringify(r)).toBeTruthy();expect(r.tile,JSON.stringify(r)).toBe(161);expect(r.land).toBe(true);expect(r.canAttack).toBe(true);expect(r.error).toBe(null);expect(r.radio.barrierCount).toBe(1);}
+ for(const r of results){expect(r.heads,JSON.stringify(r)).toBeGreaterThan(0);expect(r.unsafe,JSON.stringify(r)).toEqual([]);expect(r.candidate,JSON.stringify(r)).toBeTruthy();expect(r.tile,JSON.stringify(r)).toBe(161);expect(r.land).toBe(true);expect(r.canAttack).toBe(true);expect(r.error).toBe(null);expect(r.radio.barrierCount).toBe(0);}
 });
 test('a real bee sting allows recovery and flight, retains poison, and never reveals a native weapon',async({page})=>{
  await load(page);await enter(page,25,46,39);
@@ -171,7 +175,7 @@ test('Goku flies across the Water Palace platform gap and hovers safely if relea
   return{start,over,hovering,across,replay,back,radio:m.radio.status,unchanged:mana.hash(mana.snes.cart.data)===hash};
  });
  expect(r.over.y).toBeGreaterThan(768);expect(r.over.y).toBeLessThan(848);expect(r.hovering.flight).toBe(true);expect(r.hovering.safe).toBe(true);expect(Math.abs(r.hovering.y-r.over.y)).toBeLessThanOrEqual(2);expect(r.across.y).toBeLessThan(768);expect(r.across.localFlight).toBe(false);expect(r.across.map).toBe(139);expect([r.replay.x,r.replay.y]).toEqual([r.across.x,r.across.y]);expect(r.back.y).toBeGreaterThan(850);expect(r.back.localFlight).toBe(false);expect(r.unchanged).toBe(true);
- expect(r.radio.current?.kind).toBe('barrier');expect(r.radio.current.text).toContain('bridge');expect(r.radio.barrierCount).toBe(1);
+ expect(r.radio.current?.kind).not.toBe('barrier');expect(r.radio.barrierCount).toBe(0);
 });
 
 test('punches and beams press all 41 native floor-switch event families across palaces, castles and the Fortress',async({page})=>{
@@ -215,7 +219,7 @@ test('punches and beams press all 41 native floor-switch event families across p
  }
  await test.info().attach('floor-switch-results',{body:JSON.stringify(results,null,2),contentType:'application/json'});
  writeFileSync(test.info().outputPath('floor-switch-results.json'),JSON.stringify(results,null,2));
- const failed=results.filter(({s,r})=>r.missing||r.before!==(s.from??0)||r.flag!==s.to||r.error!==null||!r.canAttack||r.radio.barrierCount!==1);
+ const failed=results.filter(({s,r})=>r.missing||r.before!==(s.from??0)||r.flag!==s.to||r.error!==null||!r.canAttack||r.radio.barrierCount!==0);
  expect(failed).toEqual([]);
  const families=[...new Set(results.flatMap(({r})=>r.barriers.completed.filter(id=>id.startsWith('tile-')).map(id=>Number(id.split('-').at(-1)))))].sort((a,b)=>a-b);
  expect(families).toEqual([...barrierFloorEvents.keys()].sort((a,b)=>a-b));

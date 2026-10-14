@@ -24,3 +24,26 @@ test('DBZ flight audio survives scripted combat locks and all audio stops on cle
  expect(result.active.loops).toEqual(['air']);expect(result.active.rms).toBeGreaterThan(.005);
  expect(result.stopped.loops).toEqual([]);expect(result.stopped.speaking).toBe(false);expect(result.stopped.rms).toBeLessThan(.00001);
 });
+
+test('Super Saiyan plays one full power-up burst over the aura, separate from Kamehameha speech',async({page})=>{
+ await page.goto('/');await page.getByRole('button',{name:/Sound on|Mute/}).click();
+ const result=await page.evaluate(async()=>{
+  const {createKiSound}=await import('/engine/ki-sound.js');const ctx=new AudioContext();await ctx.resume();
+  const m={frame:0,options:{enabled:true,superSaiyan:false},gokuActive:true,canAttack:true,powerCharge:60,action:{kind:'focus'},charging:false,charge:0};
+  const sound=createKiSound(m);sound.update(ctx,true);await sound.ready;await sound.speech.ready;sound.clear();sound.stats.history=[];
+  sound.update(ctx,true);const focus=[...sound.stats.loops];
+  m.frame++;m.options.superSaiyan=true;m.action={kind:'transform'};sound.play('transform');sound.update(ctx,true);
+  const analyser=ctx.createAnalyser();analyser.fftSize=2048;sound.connect(analyser);
+  await new Promise(r=>setTimeout(r,600));m.frame+=36;m.action=null;sound.update(ctx,true);
+  await new Promise(r=>setTimeout(r,450));
+  const samples=new Float32Array(2048);analyser.getFloatTimeDomainData(samples);
+  const body=Math.sqrt(samples.reduce((s,x)=>s+x*x,0)/samples.length),history=[...sound.stats.history],speech=sound.speech.stats.speaking;
+  m.frame++;m.options.superSaiyan=false;m.action={kind:'revert'};sound.play('revert');sound.update(ctx,true);
+  await new Promise(r=>setTimeout(r,650));analyser.getFloatTimeDomainData(samples);
+  const reverted=Math.sqrt(samples.reduce((s,x)=>s+x*x,0)/samples.length),loops=[...sound.stats.loops];
+  sound.dispose();await ctx.close();return{focus,body,history,speech,reverted,loops};
+ });
+ expect(result.focus).toEqual(['charge','aura']);expect(result.history.filter(e=>e.name==='transform')).toHaveLength(1);
+ expect(result.history.find(e=>e.name==='transform').sampled).toBe(true);expect(result.body).toBeGreaterThan(.01);
+ expect(result.speech).toBe(false);expect(result.loops).toEqual([]);expect(result.reverted).toBeLessThan(.0001);
+});

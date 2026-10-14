@@ -5,7 +5,7 @@ import {readFile} from 'node:fs/promises';
 import {snapshot,restore} from '../engine/state.js';
 const source=await readFile(new URL('../engine/mana-mod.js',import.meta.url),'utf8');
 const context={window:{ManaSpriteLayer:class{load(){}destroy(){}}},Image:class{decode(){return Promise.resolve();}}};vm.runInNewContext(source,context);
-const make=()=>{const snes={ram:new Uint8Array(0x20000),joypad1State:0,ppu:{oam:new Uint16Array(256),evaluateSprites(){}}};const mod=new context.window.ManaMod(snes);mod.configure({enabled:true});mod.write8(0xe4,1);mod.write8(0xe5,1);mod.write8(0xe000,1);mod.write8(0xe02c,1);mod.write8(0xe010,1);return{snes,mod};};
+const make=()=>{const snes={ram:new Uint8Array(0x20000),joypad1State:0,ppu:{oam:new Uint16Array(256),evaluateSprites(){}}};snes.ram.set([0x5c,0xa8,0xc0,0,0x5c,0xcf,0xc1,0],0x100);const mod=new context.window.ManaMod(snes);mod.configure({enabled:true});mod.write8(0xe4,1);mod.write8(0xe5,1);mod.write8(0xe000,1);mod.write8(0xe02c,1);mod.write8(0xe010,1);return{snes,mod};};
 const frame=(snes,mod,input=0)=>{snes.joypad1State=input;mod.beforeFrame(input);mod.afterFrame();};
 
 test('native attack stays masked during a hold and fires only after release',()=>{
@@ -43,7 +43,7 @@ test('state snapshots omit ROM bytes, preserve aliases and closures, and reject 
 
 
 test('title, naming, dialogue, ring and ring-opening inputs bypass combat hooks',()=>{
-  for(const [address,value] of [[0xe4,0],[0xe5,0],[0xe000,0],[0xd0,0x83],[0x2c,3],[0xec,8],[0xed,0x40],[0xe190,0x10],[0xe190,0x20],[0xe190,0x40],[0xe191,0x01],[0xe191,0x04],[0xe191,0x10],[0xe191,0x40],[0xe191,0x80]]){
+  for(const [address,value] of [[0xe4,0],[0xe5,0],[0xe000,0],[0xd0,0x83],[0xec,8],[0xed,0x40],[0xe190,0x10],[0xe190,0x20],[0xe190,0x40],[0xe191,0x01],[0xe191,0x04],[0xe191,0x10],[0xe191,0x40],[0xe191,0x80]]){
     const {snes,mod}=make();mod.write8(address,value);
     for(let i=0;i<120;i++){frame(snes,mod,1);assert.equal(snes.joypad1State,1);}
     frame(snes,mod,0);assert.equal(mod.charging,false);assert.equal(mod.effects.length,0);

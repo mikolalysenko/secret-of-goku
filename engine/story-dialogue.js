@@ -149,7 +149,7 @@ export const storyDialogue={
   0xa4745:'Mana was weakening. The boy\ncould draw the Sword...\nand then Goku arrived.',
   0xa47e7:'Monsters are stealing the\nSword\'s Mana. Its spirit\nsurvives in the fragments.',
   0xa4837:'Defeat them to restore\nthat power. It will help\nyou put things right.',
-  0xa48dc:'Weapon orbs hold Mana.\nGOKU:Watts can have mine!\nMy fists are doing okay.',
+  0xa48dc:'Weapon orbs hold Mana.\nGOKU:My fists are doing okay.',
   0xa4925:'Find a good smith.\nAnd a better pouch.\nPlease stop spilling it.',
   0xa4c71:'They may know a smith who\ncan strengthen the Sword\nfragments in your pouch.',
   0xa4cbe:'Mana will help you guide\nthat absurd power. Perhaps\nyour next landing can be\na little quieter.',

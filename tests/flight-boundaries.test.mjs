@@ -109,6 +109,31 @@ test('flight passes NPC contact without disabling enemy collisions or ground con
   assert.equal(cpu.br[4],flying&&species===0x90?0xcfe4:0xd017);assert.equal(hook.npcPasses,flying&&species===0x90?1:0);
  }
 });
+
+test('low village and woodland earth terraces are flyable only between real ground inside the map',()=>{
+ for(const tileset of[0,1]){
+  const {ram,cpu,tile,word}=fixture(),rom=new Uint8Array(0x90000);rom[0x80002]=tileset;
+  const native=createNativeLocalFlight({ram,cpu,cart:{data:rom}},{active:()=>true,phase:true});
+  ram.set([0x12,6,0,0],0x1b800);ram.set([0x13,6,0,0],0x1b800+186*4);
+  // Straight face, sloping end and inner corner use the same shared art in
+  // both tilesets. Native collision differs, but flight may cross all three.
+  for(const id of[102,96,117]){
+   ram.set([0x13,6,0,0],0x1b800+id*4);
+   for(let x=0;x<8;x++)tile(x,2,id);
+   assert.equal(native.canFly(56,40),true);assert.equal(native.canLand(56,40),false);
+   for(let y=0;y<2;y++)for(let x=0;x<8;x++)tile(x,y,186);
+   assert.equal(native.canFly(56,40),false,'a terrace ending at forest void stays closed');
+   for(let y=0;y<2;y++)for(let x=0;x<8;x++)tile(x,y,0);
+  }
+  // A doorway or layer-change marker is not a valid landing beyond a bank.
+  ram.set([0x12,0x80,0,0],0x1b800+190*4);for(let x=0;x<8;x++)tile(x,1,190);
+  assert.equal(native.canFly(56,40),false);for(let x=0;x<8;x++)tile(x,1,0);
+  word(0xc2,48);assert.equal(native.canFly(56,40),false,'the far shore is outside the map bounds');word(0xc2,96);
+  for(const [x,y]of[[-1,40],[4,40],[128,40],[56,-1],[56,96]])assert.equal(native.canFly(x,y),false);
+  ram.set([0x13,6,0,0],0x1b800+53*4);tile(3,2,53);assert.equal(native.canFly(56,40),false,'a house wall does not become a terrace');
+  native.dispose();
+ }
+});
 test('multiple movement updates cannot outrun one VRAM row/column upload in a video frame',()=>{
  const {ram,cpu}=fixture(),distances=[];
  for(let i=0;i<3;i++){ram[0x1e]=8;cpu.br[4]=0xd651;cpu.cycle();distances.push(ram[0x1e]);}
@@ -155,16 +180,16 @@ test('forest carved heads can be flown over and smashed without opening solid tr
 test('whip flight opens only the complete native pad/post corridor with ground beyond both ends',()=>{
  const {ram,cpu,tile,word}=fixture(),rom=new Uint8Array(0x90000);word(0xc0,160);rom[0x80002]=10;ram[0xb8]=1;
  const native=createNativeLocalFlight({ram,cpu,cart:{data:rom}},{active:()=>true,phase:true});
- ram.set([0x12,6,0,0],0x1b800);ram.set([0x13,7,0,0],0x1b800+41*4);ram.set([0x13,7,0xf8,0x6f],0x1b800+130*4);ram.set([0x10,0x46,0,0],0x1b800+191*4);
+ ram.set([0x12,6,0,0],0x1b800+101*4);for(let y=0;y<6;y++)for(let x=0;x<10;x++)tile(x,y,101);ram.set([0x13,7,0,0],0x1b800+41*4);ram.set([0x13,7,0xf8,0x6f],0x1b800+130*4);ram.set([0x10,0x46,0,0],0x1b800+191*4);
  tile(2,2,191);for(let x=3;x<6;x++)tile(x,2,41);tile(6,2,130);tile(4,3,41);
  for(let x=40;x<=120;x++)assert.equal(native.canFly(x,40),true,`swept footprint at ${x}`);
  for(const x of[56,72,88,104])assert.equal(native.canLand(x,40),false,'cannot land in the gap or on its post');
  assert.equal(native.canFly(72,56),false,'nearby cliff art remains solid');
- tile(7,2,41);assert.equal(native.canFly(72,40),false,'no ground behind the post');tile(7,2,0);
- tile(1,2,41);assert.equal(native.canFly(72,40),false,'no ground behind the pad');tile(1,2,0);
+ tile(7,2,41);assert.equal(native.canFly(72,40),false,'no ground behind the post');tile(7,2,101);
+ tile(1,2,41);assert.equal(native.canFly(72,40),false,'no ground behind the pad');tile(1,2,101);
  ram[0xb8]=2;assert.equal(native.canFly(72,40),false,'BF has a different purpose in other special-tile modes');ram[0xb8]=1;
- tile(2,2,0);assert.equal(native.canFly(72,40),false,'a decorative post alone never opens a cliff');tile(2,2,191);
- ram[0x1b800+41*4+2]=0x15;assert.equal(native.canFly(72,40),false,'a layer-change seam is not gap airspace');native.dispose();
+ tile(2,2,101);assert.equal(native.canFly(72,40),false,'a decorative post alone never opens a cliff');tile(2,2,191);
+ ram[0x1b800+41*4+1]|=0x10;assert.equal(native.canFly(72,40),false,'a layer-change seam is not gap airspace');native.dispose();
 });
 
 test('a native return pad may share the adjacent whip lane anchor, but ordinary floor cannot',()=>{

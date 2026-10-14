@@ -51,7 +51,29 @@ export function buildStoryEvents(rom){
   events.set(0x90,[0x1f,6,0x51,0]); // Original save menu command.
   events.set(0x91,[0x51,0]); // Choices must close their window before END.
   events.set(0x87,[...box('LUKA:I can guide your ki\nstraight to Thanatos.\nSkip the journey and face\nthe last two battles.'),...box('KING KAI:I will fetch any\nmissing Dragon Balls while\nyou fight. Better an errand\nthan a replacement planet.'),...box('LUKA:Free the captive souls,\ncalm the Beast, then wish\nthe crash undone. Try to\nleave the sky attached.'),...choice('Take the shortcut now?\n',[{label:'Stay',x:3,to:0},{label:'Go',x:17,to:0x88}])]);
-  events.set(0x88,[...box('GOKU:Can we still wish\nRANDI and the Sword back?\nLUKA:Yes. The Tree is\nkeeping the souls safe.'),...box('KING KAI:I will get any\nmissing Balls. You get\nThanatos. NOT HIS PLANET.'),...box('GOKU:I can feel him now.\nOne villain. Small punch.\nProbably.'),0x2f,0x84,0x30,0x4e,6,0x30,0x0b,2,0x18,0x2f,...box('THANATOS:Who are you?!\nThis is my final body!\nGOKU:Then leave Dyluck\nand the others alone!'),...box('DYLUCK:I can force him out!\nCatch us!\nGOKU:The Mana Tree has you.\nNow, you and me, Thanatos.'),...jump(0x70c),0]);
+  events.set(0x88,[...box('GOKU:Can we still wish\nRANDI and the Sword back?\nLUKA:Yes. The Tree is\nkeeping the souls safe.'),...box('KING KAI:I will get any\nmissing Balls. You get\nThanatos. NOT HIS PLANET.'),...box('GOKU:I can feel him now.\nThink he has a stronger\nform? I should ask.'),0x2f,0x84,0x30,0x4e,4,0x30,0x0b,2,0x18,0x2f,...jump(0x4e1),0]);
+  // The retail scene repeatedly positions, strikes and waits for Primm,
+  // then moves Goku relative to her. Flight and solo arrival do not provide
+  // those actors/starting positions. This scene uses native text, music,
+  // fades, object refresh and the original Dark Lich setup without any
+  // party-dependent motion or waits. Dyluck is introduced here, not assumed
+  // to be Goku's long-lost friend. The party can still accompany Goku.
+  events.set(0x4e1,[0x06,0x27,0xd7,
+    ...box('THANATOS:My body grows\nweak. I must take Dyluck\nand rule this world!'),
+    ...box('GOKU:That guy? He looks\npretty tired too.\nHave you tried powering up?'),
+    ...box('THANATOS:You would HELP me?\nGOKU:Sure! I came all this\nway. I want a good fight.'),
+    ...box('GOKU:Here. Have a little ki.\nBreathe from your stomach.\nReally let it out!'),
+    0x27,0x8e,0x2d,6,0x10,0,0x28,12,0x2d,4,
+    ...box('KING KAI:STOP COACHING THE\nANCIENT EVIL!\nGOKU:But he was struggling.'),
+    0x30,0x4e,5,0x09,
+    ...box('DYLUCK:Stop helping him!\nHe is stealing my body!\nGOKU:Oh! My bad. I am Goku.'),
+    ...box('DYLUCK:I can force him out.\nThe Mana Tree can hold my\nspirit until your wish.'),
+    ...box('GOKU:Great! Then he can\nfight without borrowing you.\nDYLUCK:That is your concern?'),
+    ...box('DYLUCK:Please find Primm.\nTell her I will return.\nGOKU:Okay. I will ask around.'),
+    0x27,0x33,0x30,0x4e,6,0x18,0x2f,0x29,0xff,
+    ...box('THANATOS:Behold my true\nform! Now you will suffer!'),
+    ...box('GOKU:A giant skeleton!\nI KNEW you had more!\nKING KAI:DO NOT FEED IT.'),
+    0x2a,0xff,...jump(0x70c),0]);
   events.set(0x89,[0x30,0x4e,8,...jump(0x429),0]);
   events.set(0x8a,[...box('LUKA:You have already freed\nthe world. Please enjoy\nsome quiet travelling.'),0]);
   events.set(0x8b,[...box('GOKU:That was the engine,\nright?\nOh. The whole thing.'),...box('KING KAI:I shielded Mana!\nThe Tree caught the souls!\nLUKA:That was our ENTIRE\nemergency plan, Goku!'),...box('MANA TREE:Thanatos lost\nhis host. Dyluck is safe\nwith RANDI. Your wish can\nbring them back.'),...box('GOKU:Great! All fixed!\nKING KAI:LOOK UP.\nGOKU:That is a VERY\nbig shadow.'),0x2f,0x84,0x30,0x4e,8,...jump(0x429),0]);

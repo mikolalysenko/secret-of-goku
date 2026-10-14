@@ -51,3 +51,15 @@ test('strikes and flight use TV-anime air without looping power-up vocals; speec
     assert.ok((b.length-44)/32000>(name==='charge'?3.5:2),'retain the unhurried Japanese delivery');
   }
 });
+
+test('Super Saiyan retains the full-speed power-up eruption and rumbling tail',()=>{
+ const {clips}=JSON.parse(readFileSync(new URL('../assets/audio/dbz/manifest.json',import.meta.url)));
+ const transform=clips.find(c=>c.name==='transform');
+ assert.match(transform.sourceUrl,/goku\/son-goku-power-up$/);assert.match(transform.sourceFile,/Effect 1\.mp3$/);
+ assert.equal(transform.tempo,undefined);assert.ok(transform.duration>2.4&&transform.duration<2.7);
+ const wav=readFileSync(new URL('../assets/audio/dbz/transform.wav',import.meta.url));
+ const energy=(start,end)=>{let sum=0,n=0;for(let i=Math.floor(start*16000);i<Math.floor(end*16000);i++){const v=wav.readInt16LE(44+i*2)/32768;sum+=v*v;n++;}return Math.sqrt(sum/n);};
+ assert.ok(energy(.1,.5)>.1,'the transformation starts with an audible surge');
+ assert.ok(energy(1,2)>.07,'the power-up keeps its sustained body');
+ assert.ok(cues.transform.gain>cues.revert.gain);
+});

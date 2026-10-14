@@ -1,17 +1,17 @@
 // Keyboard aliases and simultaneous touch pointers share a controller without
-// releasing one source releasing another. Two sampled frames preserve quick
-// taps across the SNES's alternating controller scans.
+// releasing one source releasing another. Action taps span four frames to reach the slower native menu scans;
+// directional taps keep their shorter two-frame movement response.
 export class GameInput {
   constructor(){this.held=new Map();this.pulses=new Map();}
   press(source,bit){
     if(this.held.get(source)===bit)return;
-    this.held.set(source,bit);this.pulses.set(source,{bit,frames:2});
+    this.held.set(source,bit);this.pulses.set(source,{bit,frames:bit>=4&&bit<=7?2:4});
   }
   release(source){this.held.delete(source);}
   cancel(source){this.held.delete(source);this.pulses.delete(source);}
   releasePrefix(prefix){for(const source of new Set([...this.held.keys(),...this.pulses.keys()]))if(source.startsWith(prefix))this.cancel(source);}
   has(bit){return [...this.held.values()].includes(bit);}
-  pulse(bit){this.pulses.set('pulse:'+bit,{bit,frames:2});}
+  pulse(bit){this.pulses.set('pulse:'+bit,{bit,frames:4});}
   sample(){
     let mask=0;
     for(const bit of this.held.values())mask|=1<<bit;

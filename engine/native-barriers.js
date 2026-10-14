@@ -71,7 +71,8 @@ export function createNativeBarriers(mod){
       // The Grand Palace sequence owns these buttons only at stage three.
       // Smash its four-button combination once; do not advance later scenes.
       if(source>=0x565&&source<=0x568&&mod.read8(0xcf42)!==3)continue;
-      const candidate={id:door?.id??`tile-${tile.layer}-${tx}-${ty}-${source}`,event,door:door?.id,rect:[tx*16,ty*16,16,16],tile};
+      const candidate={id:door?.id??`tile-${tile.layer}-${tx}-${ty}-${source}`,event,door:door?.id,rect:[tx*16,ty*16,16,16],tile,
+        reaction:source>=0x565&&source<=0x568?'palace-combination':null};
       if(beamTouchesBarrier(attack,candidate))candidates.push(candidate);
     }
     candidates.sort((a,b)=>Math.hypot(a.rect[0]-attack.x,a.rect[1]-attack.y)-Math.hypot(b.rect[0]-attack.x,b.rect[1]-attack.y));
@@ -82,7 +83,7 @@ export function createNativeBarriers(mod){
     const map=mod.read16(0xdc),barrier=kiBarriers.find(b=>b.map===map&&mod.read8(0xcf00+b.flag)<b.min&&beamTouchesBarrier(beam,b))??nativeTile(beam);
     if(!barrier)return false;
     beam.barrierHit=true;
-    pending={id:barrier.id,map,event:barrier.event,door:barrier.door,frame:mod.frame,tile:barrier.tile,flags:Array.from({length:256},(_,i)=>mod.read8(0xcf00+i))};mod.playSound('impact');mod.feedback?.pulse(12);
+    pending={id:barrier.id,map,event:barrier.event,door:barrier.door,reaction:barrier.reaction,frame:mod.frame,tile:barrier.tile,flags:Array.from({length:256},(_,i)=>mod.read8(0xcf00+i))};mod.playSound('impact');mod.feedback?.pulse(12);
     const[x,y,w,h]=barrier.rect;for(let i=0;i<6;i++)mod.effects.push({kind:'impact',x:x+(i%3+.5)*w/3,y:y+(Math.floor(i/3)+.5)*h/2,dx:1,dy:0,life:20,max:20,super:false});
     return true;
   }
@@ -103,7 +104,7 @@ export function createNativeBarriers(mod){
       const tile=pending.tile,changed=barrier?mod.read8(0xcf00+barrier.flag)>=barrier.min:
         tile&&mod.plants.metadata(tile.tx,tile.ty,tile.layer).tile!==tile.tile||
         pending.requested&&mod.canAttack&&pending.flags?.some((value,i)=>i!==0x0a&&value!==mod.read8(0xcf00+i));
-      if(changed){mod.radio?.defeatedBarrier(pending.id,{map:pending.map});pending=null;return;}
+      if(changed){mod.radio?.defeatedBarrier(pending.reaction??pending.id,{map:pending.map});pending=null;return;}
       if(pending.requested){
         // A switch already in its target state may return without changing
         // anything. Do not celebrate another hit on the same closed puzzle.

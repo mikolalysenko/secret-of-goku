@@ -118,7 +118,7 @@ test('the native whip pad floats the whole party across without an equipped whip
   });
   expect(result.weapon).not.toBe(4);expect(result.poses).toContain('gapFlight');expect(result.count).toBe(1);expect(result.active).toBe(false);expect(result.flags).toEqual([0,0]);expect(result.event).toBe(0);
   for(const actor of result.party){expect(actor.x-result.start.x).toBeGreaterThan(80);expect(actor.y).toBe(result.start.y);}
-  expect(result.radio.barrierCount).toBe(1);expect([result.radio.current,...result.radio.queue].some(m=>m?.kind==='barrier')).toBe(true);
+  expect(result.radio.barrierCount).toBe(0);expect([result.radio.current,...result.radio.queue].some(m=>m?.kind==='barrier')).toBe(false);
 });
 
 test('Kamehameha breaks native axe rocks on both collision layers',async({page})=>{
@@ -197,6 +197,6 @@ test('punches, ki shots and Kamehameha activate every native elemental orb puzzl
     },{i,flag});results.push({map,...result});
   }
   await test.info().attach('orb-puzzles',{body:JSON.stringify(results,null,2),contentType:'application/json'});
-  for(const r of results){expect(r.count,`map ${r.map}: ${JSON.stringify(r)}`).toBe(1);expect(r.after,`map ${r.map}`).toBeGreaterThan(r.before);expect(r.error).toBe(null);expect(r.queuedDamage).toBe(0);expect(r.event).toBe(0);expect(r.radio.barrierCount).toBe(1);expect(r.radio.barriers).toContain(`${r.last.map}:orb-${r.last.event}`);}
+  for(const r of results){expect(r.count,`map ${r.map}: ${JSON.stringify(r)}`).toBe(1);expect(r.after,`map ${r.map}`).toBeGreaterThan(r.before);expect(r.error).toBe(null);expect(r.queuedDamage).toBe(0);expect(r.event).toBe(0);expect(r.radio.barrierCount).toBe(0);expect([r.radio.current,...r.radio.queue].some(m=>m?.kind==='barrier')).toBe(false);}
   expect(results.filter(r=>r.gridChanged).length).toBeGreaterThan(4);
 });

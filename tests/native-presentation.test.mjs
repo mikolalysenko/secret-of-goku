@@ -48,13 +48,44 @@ test('waterfall sprites retain the native color-math palette and all body pixels
   layer.inject(ppu,80);const x=layer.customLine.findIndex(color=>color>0);assert.ok(x>=0);assert.equal(ppu.spriteLineBuffer[x],0xd1);
 });
 
-test('HUD and ring portraits change without consuming the native ring cursor sprites',()=>{
+test('airborne Goku clears low foreground scenery without inheriting submerged color math',()=>{
+ const {layer,ppu,mod}=scene();ppu.oam[15]=0x2bc0;ppu.oam[17]=0x2bc2;mod.localFlight=true;mod.localLift=12;layer.prepare();
+ let seen=0;for(let y=40;y<110;y++){layer.inject(ppu,y);for(let x=0;x<256;x++)if(layer.customLine[x]){seen++;assert.equal(ppu.spriteLineBuffer[x],0x91);assert.equal(ppu.spritePrioBuffer[x],3);}}
+ assert.ok(seen>100);
+});
+
+test('native save files show Goku only for validated Goku records, including backup saves',()=>{
+ const {layer,ppu,mod,ram}=scene();ppu.mode=5;ppu.tilemapAdr=[0,0x5800];ppu.vram=new Uint16Array(32768);
+ for(const row of[2,8,14,20]){ppu.vram[0x5800+row*32+7]=0x20;ppu.vram[0x5800+(row+5)*32+7]=0x8020;}
+ const sram=new Uint8Array(8192);layer.snes.cart={sram};ram[0xa215]=0xfc;sram[0]=0xc5;sram[0x2bb]=0x3a;sram.set([0xa1,0xa9,0xa5,0xaf,0],3);
+ const pixels=()=>{mod.frame++;let n=0;for(let y=31;y<191;y++)for(let x=94;x<110;x++)n+=!!layer.savePortrait(ppu,x,y);return n;};
+ assert.ok(pixels()>100);assert.equal(layer.saveFaces,1);
+ sram.copyWithin(0x1000,0,0x400);sram.fill(0,0,0x400);ram[0xa215]=0xfd;assert.ok(pixels()>100,'use a valid backup if the primary save is corrupt');
+ ram[0xa215]=0xff;assert.equal(pixels(),0,'empty and invalid records keep native artwork');
+ ram[0xa215]=0xfd;sram[0x1003]=0x9b;assert.equal(pixels(),0,'pre-Goku files retain the boy');
+ sram[0x1003]=0xa1;ppu.vram[0x5800+2*32+7]=0;assert.equal(pixels(),0,'other high-resolution windows are not save files');
+});
+
+test('HUD portraits change without replacing reused shop icons or the ring cursor',()=>{
   const {layer,ppu}=scene();
   ppu.oam[0]=88|(199<<8);ppu.oam[1]=0x33e8;
   ppu.oam[4]=125|(100<<8);ppu.oam[5]=0x330a;
   ppu.oam[6]=112|(87<<8);ppu.oam[7]=0x3308;
-  layer.prepare();assert.equal(layer.plan.portraits.size,2);assert.ok(layer.plan.hidden.has(0));assert.ok(layer.plan.hidden.has(4));assert.equal(layer.plan.hidden.has(6),false);
+  layer.prepare();assert.equal(layer.plan.portraits.size,1);assert.ok(layer.plan.hidden.has(0));assert.equal(layer.plan.hidden.has(4),false);assert.equal(layer.plan.hidden.has(6),false);
   layer.injectPortrait(ppu,204,layer.plan.portraits.get(0));assert.ok(layer.customLine.some(color=>color>0));
+});
+
+test('the owned HUD portrait stays Goku during fades without a visible body',()=>{
+  for(const superSaiyan of[false,true])for(const palette of[1,5]){
+    const {layer,ppu,mod,ram}=scene();mod.options.superSaiyan=superSaiyan;
+    ram[0xe4]=4;ram[0xe5]=7;ppu.oam.fill(0xf000);ppu.oam[0]=88|(199<<8);ppu.oam[1]=0x31e8|(palette<<9);
+    mod.ownership={revision:1,ppuOwners:[{base:0xe000,kind:'portrait',native:{status1:0,status2:0}}]};
+    layer.prepare();assert.equal(layer.plan.anchor,null);assert.equal(layer.plan.portraits.size,1);assert.ok(layer.plan.hidden.has(0));
+    layer.injectPortrait(ppu,204,layer.plan.portraits.get(0));assert.ok(layer.customLine.some(Boolean));
+    // Shared status icons and the other characters are still cartridge art.
+    mod.ownership.ppuOwners[0].native.status1=0x20;layer.prepare();assert.equal(layer.plan.portraits.size,0);
+    mod.ownership.ppuOwners[0]={base:0xe200,kind:'portrait',native:{status1:0,status2:0}};layer.prepare();assert.equal(layer.plan.portraits.size,0);
+  }
 });
 
 test('post-sword waterfall palettes replace the HUD portrait and hide the native weapon',()=>{

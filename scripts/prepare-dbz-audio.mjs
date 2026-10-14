@@ -12,7 +12,8 @@ const sources={
  beam:['kamehameha-fire/goku-kamehameha-fire-sound-effect.wav','goku/kamehameha-fire'],
  teleport:['goku-instant-transmission/goku-goku-instant-transmission-sound-effect.mp3','goku/goku-instant-transmission'],
  flight:['cell-flying-turbo/cell-cell-flying-turbo-sound-effect.mp3','cell/cell-flying-turbo'],
- transform:['son-goku-power-up/Dragon Ball Son Goku Power Up Sound Effect 3.mp3','goku/son-goku-power-up'],
+ transform:['son-goku-power-up/Dragon Ball Son Goku Power Up Sound Effect 1.mp3','goku/son-goku-power-up'],
+ revert:['son-goku-power-up/Dragon Ball Son Goku Power Up Sound Effect 3.mp3','goku/son-goku-power-up'],
  electric:['son-gohan-ssj2-electricity-aura/son-gohan-son-gohan-ssj2-electricity-aura-sound-effect.mp3','son-gohan/son-gohan-ssj2-electricity-aura'],
  punchA:['punch-fight/Dragon Ball Z Punch Sound Effect N°19.wav','dragon-ball-z-punch-fight'],
  punchB:['punch-fight/Dragon Ball Z Punch Sound Effect N°22.wav','dragon-ball-z-punch-fight'],
@@ -33,8 +34,10 @@ const clips=[
  {name:'teleport',source:'teleport',start:0,end:.83,rms:.17},
  {name:'flight',source:'whoosh',start:.01,end:.37,rms:.15,leadIn:{source:'charge',start:1.6,end:1.82,level:.65,overlap:.025}},
  {name:'landing',source:'flight',start:.86,end:1.30,tempo:1.6,reverse:true,rms:.12},
- {name:'transform',source:'transform',start:.18,end:.89,tempo:1.2,rms:.20},
- {name:'revert',source:'transform',start:.25,end:.87,tempo:1.5,reverse:true,rms:.13},
+ // Keep the full power-up eruption and its rumbling decay at the original
+ // speed. The old half-second sped-up excerpt lost both the attack and tail.
+ {name:'transform',source:'transform',start:.015,end:2.57,rms:.25,highpass:45,fade:.24},
+ {name:'revert',source:'revert',start:.25,end:.87,tempo:1.5,reverse:true,rms:.13},
  {name:'charged',source:'electric',start:5,end:5.28,rms:.12},
  {name:'charge',source:'charge',start:1.6,end:5.15,loop:.24,rms:.20},
  {name:'aura',source:'electric',start:5,end:7.8,loop:.18,rms:.15},

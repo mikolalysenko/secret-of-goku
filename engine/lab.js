@@ -1,4 +1,5 @@
 import {snapshot,restore,hash,checkpointStore} from './state.js';
+import {createBatteryStore} from './battery.js';
 import {createNativeEffects} from './native-effects.js';
 import {createTitleLayer} from './title-layer.js';
 import {createArrival} from './arrival.js';
@@ -23,6 +24,7 @@ import {createNativeBarriers} from './native-barriers.js';
 import {createNativeInteraction} from './native-interaction.js';
 import {createNativeHitRecovery} from './native-hit-recovery.js';
 import {createNativeSenzu} from './native-senzu.js';
+import {createNativeEquipment} from './native-equipment.js';
 import {createNativeRadio} from './native-radio.js';
 import {createDragonQuest} from './dragon-quest.js';
 import {createCeilingEscape} from './ceiling-escape.js';
@@ -37,6 +39,7 @@ import {createPotosGatekeeper} from './potos-story.js';
 const effectsManifest=fetch(new URL('./native-effects.json',import.meta.url)).then(response=>{if(!response.ok)throw Error('Native effect descriptors could not be loaded.');return response.json();});
 const $=id=>document.getElementById(id),snes=new window.Snes(),canvas=$('screen'),context=canvas.getContext('2d'),pixels=context.createImageData(512,480);
 const message=text=>{$('lab-message').textContent=text;};
+const battery=createBatteryStore({onError:()=>message('Browser storage is unavailable. Keep this page open to retain in-game saves.')});
 const originalMode=document.body.dataset.mode==='original';
 const logs=[];
 const mod=new window.ManaMod(snes,{gokuUrl:'assets/sprites/goku.png',ssjUrl:'assets/sprites/ssj.png',onLog:text=>{logs.push(text);if(logs.length>100)logs.shift();if(!originalMode&&!text.startsWith('Mod:'))message(text);}});
@@ -50,11 +53,6 @@ mod.ownership=installNativeOamOwnership(snes);
 mod.plants=createNativePlants(snes,{canCut:()=>mod.options.enabled&&mod.canAttack,sceneryReplacement:tile=>mod.localFlightHook?.breakScenery(tile),onCut:result=>{
   for(const tile of result.tiles)mod.effects.push({kind:'impact',x:tile.tx*16+8,y:tile.ty*16+8,dx:1,dy:0,life:8,max:8,super:false});
   if(result.tiles.length)mod.playSound('impact');
-  const obstacle=result.tiles.find(tile=>(tile.flags&7)===3||tile.flags&8);
-  if(obstacle){
-    const rom=snes.cart.data,at=0x87000+result.map*2,header=0x80000+(rom[at]|rom[at+1]<<8);
-    mod.radio?.defeatedBarrier('scenery',{map:result.map,kind:obstacle.code===0&&(rom[header+2]&63)===7?'vines':'obstacle'});
-  }
 }});
 mod.flight=createNativeFlight(snes,{enabled:()=>mod.options.enabled&&mod.gokuActive,canTakeOff:()=>mod.canAttack,onStart:()=>{
   mod.localFlight=false;mod.localLift=0;mod.flightTransition={kind:'takeoff',age:0};if(!mod.ceiling?.busy)mod.playSound('flight');
@@ -62,7 +60,12 @@ mod.flight=createNativeFlight(snes,{enabled:()=>mod.options.enabled&&mod.gokuAct
 mod.localFlightHook=createNativeLocalFlight(snes,{
   active:()=>mod.options.enabled&&mod.gokuActive&&(mod.localFlight||mod.charging)&&mod.canAttack,
   phase:()=>mod.localFlight,
-  onCross:({map,to})=>{mod.teleport?.gather(to);mod.radio?.defeatedBarrier('flight-gap',{map,kind:'flight'});},
+  onCross:({map,from,to})=>{
+    mod.teleport?.gather(to);
+    // Only a full crossing between Karon's piers before his ferry is
+    // available is a sequence break. Routine gaps/ledges stay quiet.
+    if(map===32&&!snes.ram[0xcf94]&&Math.min(from.y,to.y)<18*16&&Math.max(from.y,to.y)>=44*16)mod.radio?.defeatedBarrier('moon-ferry',{map});
+  },
   onCarry:position=>mod.teleport?.gather(position),
   speed:()=>{
     const speed=mod.localFlight&&(mod.input&0x100)?(mod.options.superSaiyan?8:6):2;
@@ -79,6 +82,7 @@ mod.barriers=createNativeBarriers(mod);
 mod.interaction=createNativeInteraction(snes,mod);
 mod.hitRecovery=createNativeHitRecovery(snes,mod);
 mod.senzu=createNativeSenzu(snes,mod);
+mod.equipment=createNativeEquipment(snes,mod);
 mod.radio=createNativeRadio(snes,mod);
 mod.quest=createDragonQuest(mod);
 mod.ceiling=createCeilingEscape(mod);
@@ -115,7 +119,7 @@ function prefillName(){
 }
 function step(mask=0,audible=false,skipPicture=false){
   mask=fastForward.input(mask);
-  snes.joypad1State=mask;arrival.beforeFrame();mod.beforeFrame(mask);snes.runFrame(skipPicture);mod.afterFrame();prefillName();
+  snes.joypad1State=mask;arrival.beforeFrame();mod.beforeFrame(mask);snes.runFrame(skipPicture);mod.afterFrame();prefillName();battery.tick();
   if(audible&&audioEnabled&&audioContext?.state==='running'){
     const samples=Math.round(audioContext.sampleRate/60),buffer=audioContext.createBuffer(2,samples,audioContext.sampleRate);
     snes.setSamples(buffer.getChannelData(0),buffer.getChannelData(1),samples);
@@ -161,11 +165,12 @@ function tick(now){
 
 async function loadROM(source,{potos=false}={}){
   const bytes=await validateRom(source);
+  battery.flush();
   originalRom=bytes.slice();
   await mod.ready;mod.spriteLayer.effects=createNativeEffects(bytes,await effectsManifest);mod.worldScars.load(bytes);running=false;clearInput();mod.configure({enabled:false});
   const patched=window.gokuDialoguePatch(potos?window.potosPatch(bytes):window.originalGamePatch(bytes));
   if(!snes.loadRom(patched,true))throw Error('The SNES core rejected this ROM.');
-  snes.reset(true);mod.reset();arrival.load(bytes,{potos});flightDialogue?.dispose();flightDialogue=installFlightDialogue(snes.cart,()=>mod.options.enabled&&mod.gokuActive);mod.gapFlight.load();mod.senzu.load();mod.story.load();nameSeeded=false;originalBoot=!potos;loaded=true;render();return patched;
+  snes.reset(true);battery.attach(snes.cart,hash(bytes));mod.reset();arrival.load(bytes,{potos});flightDialogue?.dispose();flightDialogue=installFlightDialogue(snes.cart,()=>mod.options.enabled&&mod.gokuActive);mod.gapFlight.load();mod.senzu.load();mod.equipment.load();mod.story.load();nameSeeded=false;originalBoot=!potos;loaded=true;render();return patched;
 }
 async function pump(frames,buttons=[]){
   const mask=buttons.reduce((a,b)=>a|(1<<b),0);
@@ -232,7 +237,7 @@ function restoreCheckpoint(){
 }
 
 const captureQuick=()=>({state:{...snapshot(snes),arrival:arrival.snapshot(),goku:mod.snapshot()},nameSeeded,nameEditor:mod.nameEditor,originalBoot});
-function applyQuick(saved){restore(snes,saved.state);mod.restore(saved.state.goku);arrival.restore(saved.state.arrival);nameSeeded=!!saved.nameSeeded;mod.nameEditor=!!saved.nameEditor;originalBoot=!!saved.originalBoot;clearInput();render();}
+function applyQuick(saved){const saves=snes.cart.sram.slice();restore(snes,saved.state);snes.cart.sram.set(saves);mod.restore(saved.state.goku);arrival.restore(saved.state.arrival);nameSeeded=!!saved.nameSeeded;mod.nameEditor=!!saved.nameEditor;originalBoot=!!saved.originalBoot;clearInput();render();}
 async function quickStart(kind){
   if(!loaded||busy||!(kind in quickStartLabels))return false;
   const backup=captureQuick(),wasRunning=running,source=originalRom;
@@ -308,10 +313,11 @@ window.addEventListener('keydown',e=>{
 });
 window.addEventListener('keyup',e=>controls.release(e.code));
 window.addEventListener('blur',()=>{clearInput();if(!busy&&loaded)pause();});
-document.addEventListener('visibilitychange',()=>{if(document.hidden){clearInput();if(!busy&&loaded)pause();}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){battery.flush();clearInput();if(!busy&&loaded)pause();}});
+window.addEventListener('pagehide',()=>battery.flush());
 window.addEventListener('mana-log',e=>{logs.push(e.detail);if(logs.length>100)logs.shift();});
 
-window.mana={snes,mod,title,arrival,bootOriginal,bootPotos,fly,play,pause,render,configure,logs,controls,gamepads,fastForward,
+window.mana={snes,mod,title,arrival,battery,bootOriginal,bootPotos,fly,play,pause,render,configure,logs,controls,gamepads,fastForward,
   run(frames=1,buttons=[]){running=false;const mask=buttons.reduce((a,b)=>a|1<<b,0);for(let i=0;i<frames;i++)step(mask);render();return mod.status;},
   snapshot:()=>({...snapshot(snes),arrival:arrival.snapshot(),goku:mod.snapshot(),opening:{nameSeeded,originalBoot}}),restore:state=>{controls.clear();restore(snes,state);mod.restore(state.goku);arrival.restore(state.arrival);nameSeeded=state.opening?.nameSeeded??nameSeeded;originalBoot=state.opening?.originalBoot??originalBoot;render();},
   saveCheckpoint,restoreCheckpoint,quickStart,hash,

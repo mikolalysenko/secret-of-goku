@@ -44,7 +44,7 @@ class GokuAnimation {
     else if(m.story?.status.lastEvent===0x10c&&m.read8(0xcf10)===6&&[131,260].includes(map)&&[0xa0,0xae,0xa2].includes(native))kind='rescueDive';
     else if((native===0x8c||native===0x8d)&&!(m.options.power&&action)){kind='hurt';useNative=!!nativeAction;}
     else if(action)kind=action.kind;
-    else if(m.localFlight&&m.canAttack)kind='hover';
+    else if((m.localFlight||m.localLift>0)&&m.canAttack)kind='hover';
     else if(nativeAction){
       useNative=true;kind=nativeAction.key;
       if(['walk','run'].includes(nativeAction.clip)&&!nativeAction.phases&&!nativeAction.fixed)kind=distance>0||s.stationary<3?nativeAction.clip:nativeAction.key==='guardStep'?'guard':'idle';
@@ -85,19 +85,23 @@ class GokuAnimation {
       const duration=clip.frames.reduce((sum,frame)=>sum+frame.ticks,0);
       result=this.track(sheet,kind,Math.floor(action.age*duration/action.duration),0);
     }else if(kind==='hover'||kind==='gapFlight'||kind==='rescueDive'){
-      result=this.track(sheet,'flight',age,poseRow);
+      result=kind==='hover'&&(!m.localFlight||m.localLift<12||s.stationary>=3)?{sheet,row:poseRow,column:sheet==='ssj'?34:38}:this.track(sheet,'flight',age,poseRow);
       // The original crossing supplies horizontal travel and a jump arc.
       // Cancel only its visual arc for a steady twelve-pixel hover.
       if(kind==='gapFlight')result.extraLift=12-lift;
     }
     else if(kind==='ceilingEscape'){
       const age=m.ceiling.pose.age;
-      result=age<18?{sheet,row:3,column:(sheet==='ssj'?14:18)+Math.min(3,Math.floor(age/5))}:this.track(sheet,'flight',age,3);
+      result=age<18?{sheet,row:3,column:(sheet==='ssj'?14:18)+Math.min(3,Math.floor(age/5))}:{sheet,row:3,column:sheet==='ssj'?34:38};
       result.extraLift=age<18?Math.floor(age/3):Math.min(220,(age-18)*6+6);
     }
     else if(kind==='takeoff'||kind==='landing'){
-      result=this.track(sheet,'flight',m.flightTransition.age,kind==='takeoff'?3:poseRow);
-      result.extraLift=kind==='takeoff'?Math.min(160,m.flightTransition.age*4):Math.max(0,72-m.flightTransition.age*3);
+      const t=m.flightTransition.age,knee=sheet==='ssj'?34:38,crouch=knee-1;
+      // Keep the torso upright, one knee tucked and the other boot down.
+      // A quadratic descent brakes before touchdown, then the knees absorb
+      // the landing. Prone cruise cells are only for forward aerial travel.
+      result={sheet,row:kind==='takeoff'?3:poseRow,column:kind==='takeoff'?t<4?crouch:knee:t<24?knee:t<29?crouch:0};
+      result.extraLift=kind==='takeoff'?Math.min(160,Math.round(Math.max(0,t-4)**2*.22)):Math.ceil(72*Math.max(0,1-t/24)**2)-lift;
     }else if(kind==='flight'){
       // The Mode 7 camera looks along Goku's direction of travel. Banking uses
       // only the verified four-way art in both forms; never unrelated cells.

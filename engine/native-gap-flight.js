@@ -52,7 +52,7 @@ export function createNativeGapFlight(snes,mod){
         if(!bytes.every((v,i)=>cart.data[at+i]===v))throw Error('Unsupported native whip crossing event');
       cart.read=gapRead;this.restore();
     },
-    tick(){if(state.active&&(word(0xdc)!==state.map||!mod.options.enabled||r[0xd0]===0)){if(mod.options.enabled&&word(0xdc)===state.map){mod.playSound?.('landing');mod.radio?.defeatedBarrier('flight-gap',{kind:'flight',map:state.map});}state.active=false;}},
+    tick(){if(state.active&&(word(0xdc)!==state.map||!mod.options.enabled||r[0xd0]===0)){if(mod.options.enabled&&word(0xdc)===state.map)mod.playSound?.('landing');state.active=false;}},
     snapshot(){return{...state};},
     restore(saved){Object.assign(state,{active:false,map:-1,crossings:0},saved||{});},
     dispose(){if(cart?.read===gapRead)cart.read=read;cpu.cycle=cycle;},

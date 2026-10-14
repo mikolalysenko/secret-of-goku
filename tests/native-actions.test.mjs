@@ -27,3 +27,18 @@ test('native chest, boss and recovery phases never become a combat action or gue
   assert.equal(motion.pose({displayed}).kind,'chest');assert.equal(mod.action,undefined);
   displayed.sequence=0x1234;mod.frame++;assert.equal(motion.pose({displayed}).kind,'idle');
 });
+
+test('flight departure and landing stay upright, brake into touchdown and retain cruise art in the air',()=>{
+  for(const superSaiyan of[false,true])for(let facing=0;facing<4;facing++){
+    const mod={frame:0,facing,options:{superSaiyan},read8:()=>0,read16:()=>0},motion=new context.window.GokuAnimation(mod),knee=superSaiyan?34:38;
+    const heights=[];
+    for(let age=0;age<=32;age++){
+      mod.frame++;mod.flightTransition={kind:'landing',age};const pose=motion.pose();
+      assert.equal(pose.column,age<24?knee:age<29?knee-1:0);heights.push(pose.extraLift);
+    }
+    assert.equal(heights[0],72);assert.equal(heights[24],0);
+    assert.ok(heights.every((h,i)=>!i||h<=heights[i-1]));assert.ok(heights[0]-heights[4]>heights[16]-heights[20],'descent slows before the feet touch down');
+    mod.flightTransition={kind:'takeoff',age:10};mod.frame++;assert.equal(motion.pose().column,knee);
+    mod.flightTransition=null;mod.frame++;assert.ok(motion.pose({flight:true}).column>=knee+2);
+  }
+});
