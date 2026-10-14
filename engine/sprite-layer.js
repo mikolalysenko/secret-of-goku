@@ -172,7 +172,9 @@ class ManaSpriteLayer {
     const hud=m.ownership?.ppuOwners.find(owner=>owner?.base===0xe000&&owner.kind==='portrait');
     const ground=!!displayed||(m.read8(0xe4)===1&&m.read8(0xe5)===1&&(m.read8(0xe000)&1));
     const naming=m.nameEditor&&m.read8(0xe4)===0&&m.read8(0xe5)===0;
-    const menuBoy=ground&&m.read8(0x2c)!==0&&m.read8(0xec)===0&&this.boyMenuPalette(p);
+    // Save confirmation uses the same eight OBJ cells as Status, but clears
+    // the text-panel flag. Its Mode 5 layout still needs the boy replacement.
+    const menuBoy=ground&&(m.read8(0x2c)!==0||p.mode===5)&&m.read8(0xec)===0&&this.boyMenuPalette(p);
     const menuParts=[];
     // Snowman and moogle are shared native transformation sprites, not Randi
     // artwork. Keep their actual animation and matching transformed portraits.
@@ -302,6 +304,19 @@ class ManaSpriteLayer {
       this.behindBody=effect.dy<0&&(effect.kind==='beam'||effect.kind==='ki');
       const sx=effect.x-state.cameraX,sy=effect.y-state.cameraY;
       const age=effect.max-effect.life,phase=Math.floor(age/2);
+      if(effect.kind==='powerBurst'){
+        // The whole damage radius lights up on the ignition frame, then
+        // dissipates outward using native spell cells at their original size.
+        this.behindBody=true;
+        const radius=effect.radius+age*1.5,count=age<8?16:8;
+        for(let i=0;i<count;i++){
+          const angle=i*Math.PI*2/count,dx=Math.cos(angle),dy=Math.sin(angle),turn=Math.round(i*4/count)%4;
+          const [ax,ay]=[[1,0],[0,1],[-1,0],[0,-1]][turn];
+          this.stamp(age<8?'gold-arc':'gold-spark',phase+i,Math.round(sx+dx*radius),Math.round(sy+dy*radius),ax,ay);
+          if(age<5)this.stamp('gold-spark',phase+i,Math.round(sx+dx*radius*.45),Math.round(sy+dy*radius*.45));
+        }
+        this.behindBody=false;continue;
+      }
       if(effect.kind==='punch'){
         // The punch sheets already contain their own white motion arcs. A
         // missed swing must not look like an impact against an invisible wall.

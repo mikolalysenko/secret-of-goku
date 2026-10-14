@@ -22,6 +22,9 @@ test('native in-game saves survive reload and GAME FILE loads them',async({page}
  test.setTimeout(120000);await load(page);
  const saved=await page.evaluate(()=>{const c=mana.snes.cart.data,r=mana.snes.ram,old=c.slice(0x742b0,0x742b3);try{c.set([0x10,0x50,0],0x742b0);r.set([1,0xb0,0x42,0xc7],0xd0);mana.run(180);for(let i=0;i<5;i++){mana.run(2,[0]);mana.run(100);}return{battery:mana.battery.status,bytes:[...mana.snes.cart.sram]};}finally{c.set(old,0x742b0);}});
  expect(saved.battery.saves).toBeGreaterThan(0);expect(saved.battery.dirty).toBe(false);
+ const confirmation=await page.evaluate(()=>{const c=mana.snes.cart.data,r=mana.snes.ram,old=c.slice(0x742b0,0x742b3);try{c.set([0x1f,6,0],0x742b0);r.set([1,0xb0,0x42,0xc7],0xd0);mana.run(180);mana.run(2,[0]);mana.run(120);return{mode:mana.snes.ppu.mode,panel:r[0x2c],sprite:mana.mod.spriteLayer.plan?.sprite,hidden:mana.mod.spriteLayer.plan?.hidden.size};}finally{c.set(old,0x742b0);}});
+ expect(confirmation.mode).toBe(5);expect(confirmation.panel).toBe(0);expect(confirmation.sprite?.sheet).toBe('goku');expect(confirmation.hidden).toBe(8);
+ await page.locator('#screen').screenshot({path:test.info().outputPath('save-confirmation-goku.png')});
  await page.reload();await page.waitForFunction(()=>mana.ready);
  const loaded=await page.evaluate(()=>{mana.pause();const same=[...mana.snes.cart.sram];mana.run(960);mana.run(2,[3]);mana.run(180);mana.run(2,[5]);mana.run(60);mana.run(2,[0]);mana.run(180);return{same,mode:mana.snes.ppu.mode,png:document.querySelector('#screen').toDataURL()};});
  expect(loaded.same).toEqual(saved.bytes);expect(loaded.mode).toBe(5);

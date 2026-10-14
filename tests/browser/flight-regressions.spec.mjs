@@ -228,3 +228,75 @@ test('punches and beams press all 41 native floor-switch event families across p
  const families=[...new Set(results.flatMap(({r})=>r.barriers.completed.filter(id=>id.startsWith('tile-')).map(id=>Number(id.split('-').at(-1)))))].sort((a,b)=>a-b);
  expect(families).toEqual([...barrierFloorEvents.keys()].sort((a,b)=>a-b));
 });
+
+test('castle and Gaia chasms and lava cross in both directions without allowing outer voids',async({page})=>{
+ test.setTimeout(120000);
+ for(const s of[{map:302,x:248,y:408,button:4,frames:27,min:150},{map:302,x:200,y:328,button:7,frames:16,min:80},{map:285,x:472,y:888,button:6,frames:33,min:180},{map:284,x:376,y:280,button:5,frames:28,min:160}]){
+  await load(page);await enter(page,s.map,s.x>>4,s.y>>4,{},0,true);
+  const result=await page.evaluate(s=>{
+   const m=mana.mod,h=m.localFlightHook;for(let i=1;i<12;i++)mana.write8(0xe000+i*512,0);
+   m.powerIntro.restore({flight:true,superShown:true});mana.write16(0xe002,s.x);mana.write16(0xe004,s.y);m.teleport.follow({x:s.x,y:s.y,terrain:mana.read8(0xe00b)});mana.run(30);
+   const start=m.status,phased=h.phased;mana.run(s.frames,[8,s.button]);const end=m.status;
+   mana.run(20);const settled={flight:m.localFlight,safe:h.canFly(m.status.x,m.status.y),land:h.canLand(m.status.x,m.status.y)};
+   const reverse={4:5,5:4,6:7,7:6}[s.button];mana.run(s.frames,[8,reverse]);mana.run(20);const back=m.status;
+   return{start,end,back,settled,phased:h.phased-phased,outside:h.canFly(4,4),error:m.story.status.error};
+  },s);
+  expect(result.end.map).toBe(s.map);expect(Math.hypot(result.end.x-result.start.x,result.end.y-result.start.y),JSON.stringify({s,result})).toBeGreaterThanOrEqual(s.min);
+  expect(result.phased).toBeGreaterThan(0);expect(result.settled.safe).toBe(true);expect(result.outside).toBe(false);expect(result.error).toBe(null);
+  expect(Math.hypot(result.back.x-result.start.x,result.back.y-result.start.y),JSON.stringify({s,result})).toBeLessThan(16);
+  await page.locator('#screen').screenshot({path:test.info().outputPath(`flight-${s.map}-${s.button}.png`)});
+ }
+});
+
+test('high-altitude world flight keeps the native sky on delayed NMI frames while turning',async({page})=>{
+ test.setTimeout(120000);await load(page,'.local/juice-research/flight/request-flight.json');
+ const result=await page.evaluate(async()=>{
+  const s=mana.snes,c=s.cpu,p=s.ppu,cycle=c.cycle,render=p.renderLine;let checks=0,bad=0,delayed=0,maxAltitude=0;
+  mana.mod.radio.restore({firstFlight:true});mana.mod.powerIntro.restore({flight:true,superShown:true});
+  c.cycle=function(){if(this.cyclesLeft===0&&(this.r[1]&63)===0&&this.br[4]===0x8903&&p.mode===7&&!(s.ram[0xf2]&128))delayed++;return cycle.call(this);};
+  p.renderLine=function(y){if(y===10&&mana.mod.nativeFlight&&!(s.ram[0xf2]&128)){checks++;if(p.mode!==1)bad++;}return render.call(this,y);};
+  try{for(const[buttons,frames]of[[[8],500],[[8,6],600],[[8,7],600],[[4],600]])for(let i=0;i<frames;i++){mana.run(1,buttons);maxAltitude=Math.max(maxAltitude,s.ram[0xf8]);if(i%90===0)await new Promise(r=>setTimeout(r,0));}return{checks,bad,delayed,maxAltitude,flight:mana.mod.worldFlight};}
+  finally{c.cycle=cycle;p.renderLine=render;}
+ });
+ expect(result.flight).toBe(true);expect(result.checks).toBeGreaterThan(2000);expect(result.delayed).toBeGreaterThan(0);expect(result.maxAltitude).toBeGreaterThanOrEqual(216);expect(result.bad).toBe(0);
+});
+
+test('Water Palace keeps one Jema after the first conversation and repairs old duplicate checkpoints',async({page})=>{
+ test.setTimeout(120000);await load(page);await enter(page,139,17,29,{0x11:7,0x1e:5});
+ const result=await page.evaluate(async()=>{
+  const m=mana.mod,jemas=()=>m.entities().filter(e=>e.active&&e.species===0xa0),before=jemas();
+  const requested=m.story.request(0x131,{actor:before[0].index*512});
+  for(let i=0;i<1800;i++){mana.run(1,[11]);if(i>100&&!mana.read8(0xd0))break;if(i%180===0)await new Promise(r=>setTimeout(r,0));}mana.run(30);
+  const after=jemas(),stage=mana.read8(0xcf11),flags=mana.snes.ram.slice(0xcf00,0xd000);
+  // Legacy checkpoints can contain the old stair actor plus the new actor.
+  const old=before[0].base,keep=after[0].base;if(old!==keep){mana.snes.ram.copyWithin(old,keep,keep+512);mana.write16(old+2,212);mana.write16(old+4,404);}mana.run(30);
+  return{requested,before:before.length,after,stage,repaired:jemas(),sameFlags:[...flags].every((v,i)=>v===mana.read8(0xcf00+i)),error:m.story.status.error,canAttack:m.canAttack};
+ });
+ expect(result.requested).toBe(true);expect(result.before).toBe(1);expect(result.after).toHaveLength(1);expect(result.stage).toBe(8);expect(result.after[0]).toMatchObject({x:260,y:276});expect(result.repaired).toHaveLength(1);expect(result.sameFlags).toBe(true);expect(result.error).toBe(null);expect(result.canAttack).toBe(true);
+});
+
+test('Fire Palace early flight enables its inner plate and orb; only a full gold beam demolishes braziers',async({page})=>{
+ test.setTimeout(120000);await load(page);await enter(page,240,16,26,{0x2b:0});
+ const result=await page.evaluate(async()=>{
+  const m=mana.mod,r=mana.snes.ram,h=m.plants,stage=mana.read8(0xcf2b),pattern=[92,93,108,109,124,125],cells=[];
+  // The two lower central braziers flank the entrance and use the room's
+  // original six-cell object. Check both art and native collision afterwards.
+  for(let y=0;y<40;y++)for(let x=0;x<40;x++)if(h.metadata(x,y,0).tile===92){if(pattern.every((id,i)=>h.metadata(x+i%2,y+Math.floor(i/2),0).tile===id))cells.push({x,y});}
+  const before=cells.map(c=>pattern.map((_,i)=>h.metadata(c.x+i%2,c.y+Math.floor(i/2),0).tile));
+  mana.run(1,[4]);mana.run(110,[10,1]);mana.run(1);mana.run(160);
+  const normal=cells.map(c=>pattern.map((_,i)=>h.metadata(c.x+i%2,c.y+Math.floor(i/2),0).tile));
+  const afterPlate=mana.read8(0xcf2b),orb=m.entities().find(e=>e.active&&e.species===0x55);
+  // Native orb hit still owns its elemental test, puzzle sound and stage.
+  if(orb){mana.run(2,[1]);mana.run(240);}const afterOrb=mana.read8(0xcf2b);
+  m.powerIntro.restore({flight:true,superShown:true});m.options.superSaiyan=true;mana.run(110,[10,1]);mana.run(1);mana.run(200);
+  const after=cells.map(c=>({x:c.x,y:c.y,tiles:pattern.map((_,i)=>h.metadata(c.x+i%2,c.y+Math.floor(i/2),0).tile)}));
+  return{stage,cells,before,normal,afterPlate,hadOrb:!!orb,afterOrb,after,error:m.story.status.error,canAttack:m.canAttack,flags:mana.read8(0xcf2b)};
+ });
+ await test.info().attach('fire-palace',{body:JSON.stringify(result),contentType:'application/json'});
+ expect(result.stage).toBe(2);expect(result.cells.length).toBeGreaterThan(4);expect(result.afterPlate).toBe(3);expect(result.hadOrb).toBe(true);expect(result.afterOrb).toBe(4);
+ // Ordinary charge preserves the pedestal; lighting changes belong to the
+ // original puzzle. A full SSJ wave removes at least one entire object.
+ expect(result.normal.every(c=>c[4]===124&&c[5]===125)).toBe(true);
+ expect(result.after.some(c=>c.tiles.every(t=>t===186)),JSON.stringify(result)).toBe(true);expect(result.error).toBe(null);expect(result.canAttack).toBe(true);
+ await page.locator('#screen').screenshot({path:test.info().outputPath('fire-palace-braziers.png')});
+});

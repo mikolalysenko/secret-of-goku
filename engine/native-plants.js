@@ -8,6 +8,25 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
  let queue=[],lastFrame=-1,done=[],cleared=new Map(),cutMap=null;
  const ground=()=>canCut?canCut():r[0xe4]===1&&r[0xe5]===1&&r[0xd0]===0&&(r[0xec]&0xfe)===0&&(r[0xed]&0x40)===0&&r[0x2c]===0;
  const layer=()=>r[0xe00b]&0x80?1:0;
+ const objectPolicy=policy=>policy==='objects'||policy==='super-beam';
+ // The palace braziers are complete 2x3 native BG1 objects. Removing their
+ // transparent base reveals the existing BG2 floor/rug; no replacement art
+ // is synthesized. Match all six cells before accepting a grazing beam hit.
+ const braziers=[[144,145,88,89,124,125],[92,93,108,109,124,125]];
+ const brazierPart=id=>Math.max(...braziers.map(cells=>cells.indexOf(id)));
+ function brazierReplacement(tile){
+  const rom=snes.cart?.data,map=read16(0xdc);if(!rom||map>=512||tile.layer!==0)return null;
+  const at=0x87000+map*2,header=0x80000+(rom[at]|rom[at+1]<<8);
+  return (rom[header+2]&127)===23&&tile.code===0&&braziers.some(cells=>cells.includes(tile.tile))?186:null;
+ }
+ function brazierGroup(tile){
+  if(brazierReplacement(tile)===null)return null;
+  for(const pattern of braziers){const index=pattern.indexOf(tile.tile);if(index<0)continue;
+   const x=tile.tx-index%2,y=tile.ty-Math.floor(index/2),cells=pattern.map((id,i)=>metadata(x+i%2,y+Math.floor(i/2),0));
+   if(cells.every((cell,i)=>cell&&cell.tile===pattern[i]&&cell.code===0))return cells;
+  }
+  return null;
+ }
  const metadata=(tx,ty,l=layer())=>{
   if(!Number.isInteger(tx)||!Number.isInteger(ty)||tx<0||tx>=128||ty<0||ty>=128||!(l===0||l===1))return null;
   const address=0x10000+l*0x4000+ty*128+tx,tile=r[address],descriptor=0x1b800+l*0x400+tile*4;
@@ -16,7 +35,7 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
  const eligible=(tile,policy)=>{
   if(!tile||(tile.code&0xf0)!==0xc0||tile.tile===tile.replacement)return false;
   if(policy==='all-native')return tile.kind<=11;
-  if(policy==='objects'){
+  if(objectPolicy(policy)){
    if(tile.kind>11)return false;
    // Native axe rocks, stalagmites, plants and staged barriers all name
    // their next tile. Reject cycles: rotating scenery needs a verified
@@ -38,20 +57,26 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
  };
  const breakable=(tile,policy)=>{
   if(eligible(tile,policy)){
-   if(policy!=='objects')return tile;
+   if(!objectPolicy(policy))return tile;
    // One Saiyan strike clears every damage stage of an axe/sword obstacle.
    // Eligibility has already rejected cycles and non-destructible switches.
    const descriptors=tile.descriptor-tile.tile*4;let replacement=tile.replacement;
    while((r[descriptors+replacement*4+2]&0xf0)===0xc0)replacement=r[descriptors+replacement*4+3];
    return{...tile,replacement};
   }
-  const replacement=policy==='objects'&&tile?sceneryReplacement?.(tile):null;
+  const replacement=objectPolicy(policy)&&tile?(sceneryReplacement?.(tile)??(policy==='super-beam'?brazierReplacement(tile):null)):null;
   return Number.isInteger(replacement)&&replacement>=0&&replacement<256&&replacement!==tile.tile?{...tile,replacement,kind:8}:null;
  };
  function enqueueTiles(tiles,{policy='plants'}={}){
   if(!ground())return[];
   const map=read16(0xdc),added=[];
-  for(const t of tiles){const item=breakable(metadata(t.tx,t.ty,t.layer??layer()),policy);
+  const expanded=[];
+  for(const t of tiles){
+   const tile=metadata(t.tx,t.ty,t.layer??layer());
+   if(policy==='super-beam'&&tile&&brazierReplacement(tile)!==null)expanded.push(...(brazierGroup(tile)??[]));
+   else expanded.push(t);
+  }
+  for(const t of expanded){const item=breakable(metadata(t.tx,t.ty,t.layer??layer()),policy);
    if(!item||queue.some(q=>q.map===map&&q.address===item.address))continue;
    if(queue.length>=128)break;
    const queued={...item,map,frame:snes.frames,policy};queue.push(queued);added.push(queued);
@@ -89,8 +114,9 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
     // to an obsolete replacement, and leaving the map keeps native respawn.
     for(const item of cleared.values()){
      if(queue.length>=128)break;
-     const now=breakable(metadata(item.tx,item.ty,item.layer),'objects');
-     if(now&&now.tile===item.tile&&now.flags===item.flags&&now.behavior===item.behavior&&now.code===item.code&&now.replacement===item.replacement&&!queue.some(q=>q.address===item.address))queue.push({...item,policy:'objects',frame:snes.frames,replay:true});
+     const policy=item.policy??'objects',now=breakable(metadata(item.tx,item.ty,item.layer),policy);
+     const sameTile=now&&(now.tile===item.tile||policy==='super-beam'&&brazierPart(item.tile)>=0&&brazierPart(now.tile)===brazierPart(item.tile));
+     if(sameTile&&now.flags===item.flags&&now.behavior===item.behavior&&now.code===item.code&&now.replacement===item.replacement&&!queue.some(q=>q.address===item.address))queue.push({...item,...now,policy,frame:snes.frames,replay:true});
     }
     while(queue.length){
      const first=queue.shift(),now=breakable(metadata(first.tx,first.ty,first.layer),first.policy);
@@ -99,7 +125,7 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
      const changed=[];
      for(const item of group){
       const cur=breakable(metadata(item.tx,item.ty,item.layer),item.policy);if(!cur||cur.tile!==item.tile)continue;r[cur.address]=cur.replacement;changed.push(cur);
-      if(item.policy==='objects'&&((cur.flags&7)===3||cur.flags&8))cleared.set(cur.address,{...cur,map});
+      if(objectPolicy(item.policy)&&((cur.flags&7)===3||cur.flags&8||item.policy==='super-beam'&&brazierReplacement(cur)!==null))cleared.set(cur.address,{...cur,map,policy:item.policy});
      }
      if(!changed.length)continue;
      const scrollY=read16(first.layer?0xae:0xaa),mapHeight=read16(0xc2),worldY=first.ty*16+8;

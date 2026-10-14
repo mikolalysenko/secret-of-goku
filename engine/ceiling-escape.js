@@ -1,7 +1,7 @@
 import {ceilingExitFor} from './ceiling-exits.js';
 
 export function createCeilingEscape(mod){
-  let escape=null,holes=[],completed=0,error=null;
+  let escape=null,completed=0,error=null;
   const bossActive=()=>mod.entities?.().some(e=>e.index>=3&&e.active&&e.species>=87&&e.species<128&&e.hp>0&&!(mod.read8(e.base+0x191)&0x80))??false;
   const safe=()=>mod.options.enabled&&mod.gokuActive&&mod.canAttack&&!mod.worldFlight&&!mod.flight?.pending&&!mod.teleport?.pending&&!bossActive();
   const cancel=reason=>{error=reason;escape=null;mod.flightTransition=null;mod.feedback?.clear();};
@@ -33,9 +33,8 @@ export function createCeilingEscape(mod){
       if(e.phase==='punch'){
         if(mod.read16(0xdc)!==e.source||!mod.canAttack){cancel('The native scene took over');return false;}
         if(e.age===22){
+          e.colors=roofColors();
           mod.feedback?.pulse(24);mod.playSound('impact');mod.playSound('flight');
-          if(!holes.some(h=>h.map===e.source&&Math.hypot(h.x-e.x,h.y-e.y)<24))holes.push({map:e.source,x:e.x,y:e.y,colors:roofColors()});
-          if(holes.length>256)holes.shift();
         }
         if(e.age>=68&&mod.story.travel(e.exit.door)){e.phase='exit';e.age=0;}
       }else if(e.phase==='exit'){
@@ -55,43 +54,35 @@ export function createCeilingEscape(mod){
     draw(layer){
       if(mod.worldFlight||!mod.gokuActive)return;
       const s=mod.status,e=escape,phase=e?.phase==='punch'?e.age:100;
-      for(const hole of holes)if(hole.map===s.map){
-        const x=hole.x-s.cameraX,y=hole.y-s.cameraY;
-        // A jagged breach and rock chips use the loaded map's stone shades;
-        // the burst itself uses the cartridge's original explosion cells.
-        const [dark,stone,highlight]=hole.colors??roofColors();
-        for(let yy=-12;yy<=12;yy++)for(let xx=-23;xx<=23;xx++){
-          const edge=xx*xx/529+yy*yy/144,rag=((xx*17+yy*11)&7)/48;
-          if(edge<1+rag)layer.pixel(x+xx,y+yy,1+(edge>.7?stone:dark),true);
+      if(e?.source===s.map&&phase>=22&&phase<68){
+        const x=e.x-s.cameraX,y=e.y-s.cameraY;
+        const [dark,stone,highlight]=e.colors??roofColors();
+        const age=phase-22;
+        // Short native impact cells give way to spinning chunks and falling
+        // dust. Integer pixels and the room's own palette keep the SNES look.
+        if(age<12)for(let i=0;i<8;i++){
+          const a=i*Math.PI/4,spread=5+age*1.7;
+          layer.stamp('impact-spark',Math.min(5,age>>2),x+Math.cos(a)*spread,y+Math.sin(a)*spread*.6);
         }
-        if(e?.source===s.map&&phase>=22&&phase<68&&Math.hypot(hole.x-e.x,hole.y-e.y)<24){
-          const age=phase-22;
-          // Short native impact cells give way to spinning chunks and falling
-          // dust. Integer pixels and the room's own palette keep the SNES look.
-          if(age<12)for(let i=0;i<8;i++){
-            const a=i*Math.PI/4,spread=5+age*1.7;
-            layer.stamp('impact-spark',Math.min(5,age>>2),x+Math.cos(a)*spread,y+Math.sin(a)*spread*.6);
+        for(let i=0;i<20;i++){
+          const a=i*2.39996,speed=1+(i%5)*.3,px=Math.round(x+Math.cos(a)*(10+age*speed)),py=Math.round(y+Math.sin(a)*7-age*(1.3+(i%4)*.4)+age*age*.095);
+          const size=2+i%3,turn=(age>>2)+i;
+          for(let yy=-size;yy<=size;yy++)for(let xx=-size;xx<=size;xx++){
+            if(Math.abs(xx)+Math.abs(yy)>size+1||((xx+yy+turn)&7)===0)continue;
+            layer.pixel(px+xx,py+yy,1+(yy<0?highlight:xx<0?stone:dark),true);
           }
-          for(let i=0;i<20;i++){
-            const a=i*2.39996,speed=1+(i%5)*.3,px=Math.round(x+Math.cos(a)*(10+age*speed)),py=Math.round(y+Math.sin(a)*7-age*(1.3+(i%4)*.4)+age*age*.095);
-            const size=2+i%3,turn=(age>>2)+i;
-            for(let yy=-size;yy<=size;yy++)for(let xx=-size;xx<=size;xx++){
-              if(Math.abs(xx)+Math.abs(yy)>size+1||((xx+yy+turn)&7)===0)continue;
-              layer.pixel(px+xx,py+yy,1+(yy<0?highlight:xx<0?stone:dark),true);
-            }
-            if(age>8&&age<38){layer.pixel(px-(turn&3),py+size+3,1+stone,true);layer.pixel(px+2,py+size+5,1+stone,true);}
-          }
+          if(age>8&&age<38){layer.pixel(px-(turn&3),py+size+3,1+stone,true);layer.pixel(px+2,py+size+5,1+stone,true);}
         }
       }
     },
     get busy(){return !!escape;},
     get bossActive(){return bossActive();},
-    repair(){holes=[];},
+    repair(){},
     // The exterior loads only to initialize the native world-flight return
     // data. Goku is already above the roof: never pop him onto that floor.
     get pose(){return escape&&!mod.worldFlight?{age:escape.phase==='punch'?escape.age:80}:null;},
-    get status(){return{escape:escape?structuredClone(escape):null,completed,holes:holes.length,error};},
-    snapshot(){return structuredClone({escape,holes,completed,error});},
-    restore(saved){const s=saved?structuredClone(saved):null;escape=s?.escape??null;holes=s?.holes??[];completed=s?.completed??0;error=s?.error??null;},
+    get status(){return{escape:escape?structuredClone(escape):null,completed,holes:0,error};},
+    snapshot(){return structuredClone({escape,completed,error});},
+    restore(saved){const s=saved?structuredClone(saved):null;escape=s?.escape??null;completed=s?.completed??0;error=s?.error??null;},
   };
 }

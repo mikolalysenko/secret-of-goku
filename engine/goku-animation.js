@@ -68,7 +68,11 @@ class GokuAnimation {
       // Six native pixels per footfall; a blocked walk settles to idle after
       // three stationary frames rather than skating through a running loop.
       result={sheet,row:poseRow,column:(kind==='run'?6:2)+Math.floor(s.distance/6)%4};
-    }else if(kind==='focus')result={sheet,row:0,column:sheet==='ssj'?46:54};
+    }else if(kind==='focus'){
+      // SSJ 44-46 are the source game's long-haired SS3 transformation.
+      // The base sheet's gold flare cells are the actual short-haired form.
+      result={sheet:'goku',row:0,column:sheet==='ssj'?56+Math.floor(action.age/6)%2:54};
+    }
     else if(kind==='deflect')result=this.track(sheet,'guard',0,[0,2,1,3][reaction.facing]);
     else if(kind==='resist')result=this.track(sheet,'brace',0,poseRow);
     else if(kind==='ready')result=this.track(sheet,'chargeWindup',Math.min(action.age,5),poseRow);

@@ -23,19 +23,19 @@ test('real native Rabites receive punch, travelling beam and ki damage, launch a
       }
       else if(technique==='ki')mana.run(8,[17]);
       else{mana.run(2,[0]);mana.run(1);}
-      let zero=false,inactive=false,maxDisplacement=0,queued=false,number=false,launchOrigin=null;
+      let zero=false,finished=false,maxDisplacement=0,queued=false,number=false,launchOrigin=null;
       for(let i=0;i<180;i++){
         mana.run(1);const e=mana.mod.entities()[3];
-        if(e.hp===0)zero=true;if(!e.active)inactive=true;
+        if(e.hp===0)zero=true;if(!e.active||e.species===0xea)finished=true; // Native death may leave a treasure chest.
         if(mana.read16(e.base+0x1f1))queued=true;if(mana.read16(e.base+0x17b))number=true;
         const launch=mana.mod.knockbacks.find(hit=>hit.base===e.base);if(launch)launchOrigin={x:launch.x,y:launch.y};
         if(launchOrigin)maxDisplacement=Math.max(maxDisplacement,Math.hypot(e.x-launchOrigin.x,e.y-launchOrigin.y));
       }
-      results.push({technique,zero,inactive,queued,number,maxDisplacement,dbzImpacts:mana.mod.combatSound.suppressed-sounds,canAttack:mana.mod.canAttack,gold:mana.read16(0xcc6a)-gold,xp:mana.read16(0xe18d)-xp});
+      results.push({technique,zero,finished,queued,number,maxDisplacement,dbzImpacts:mana.mod.combatSound.suppressed-sounds,canAttack:mana.mod.canAttack,gold:mana.read16(0xcc6a)-gold,xp:mana.read16(0xe18d)-xp});
     }
     return results;
   });
-  for(const result of results){expect(result.zero,result.technique).toBe(true);expect(result.inactive,result.technique).toBe(true);expect(result.maxDisplacement,result.technique).toBeGreaterThan(25);expect(result.canAttack).toBe(true);expect(result.gold).toBe(2);expect(result.xp).toBeGreaterThan(0);expect(result.dbzImpacts).toBeGreaterThan(0);}
+  for(const result of results){expect(result.zero,result.technique).toBe(true);expect(result.finished,result.technique).toBe(true);expect(result.maxDisplacement,result.technique).toBeGreaterThan(25);expect(result.canAttack).toBe(true);expect(result.gold).toBe(2);expect(result.xp).toBeGreaterThan(0);expect(result.dbzImpacts).toBeGreaterThan(0);}
 });
 
 test('one SSJ beam repeatedly hits a 65535-HP Mantis Ant and still reaches the native rescue event',async({page})=>{
@@ -62,6 +62,49 @@ test('one SSJ beam repeatedly hits a 65535-HP Mantis Ant and still reaches the n
     return{before,dead,rescue,hits:beam?.pulses[boss.index]?.count,flag:mana.read8(0xcf10),event:mana.read8(0xd0)};
   });
   expect(result.before).toBeGreaterThan(0);expect(result.hits).toBeGreaterThanOrEqual(9);expect(result.dead).toBe(true);expect(result.rescue).toBe(true);
+});
+
+test('SSJ ignition bursts on the gold frame, awards native enemy rewards once, and keeps short hair when focusing',async({page},testInfo)=>{
+  const path='.local/animation-audit/native/rabite-field-a.json';test.skip(!existsSync(path),'Requires native combat research fixture.');
+  await load(page,path);
+  const saved=await page.evaluate(()=>{mana.write8(0xe200,0);mana.write8(0xe400,0);mana.run(5,[7]);mana.run(3);return mana.snapshot();});
+  for(const first of[true,false]){
+    const ignition=await page.evaluate(({saved,first})=>{
+      mana.restore(saved);const m=mana.mod;m.powerIntro.restore({flight:true,superShown:!first});
+      const gold=mana.read16(0xcc6a),xp=mana.read16(0xe18d),hit=m.hit,calls=[],play=m.playSound,cues=[];
+      m.hit=function(enemy,...args){calls.push({index:enemy.index,age:this.action?.age});return hit.call(this,enemy,...args);};
+      m.playSound=function(name){cues.push({name,age:this.action?.age});return play.call(this,name);};
+      try{
+        m.configure({superSaiyan:true});const frame=Math.ceil(m.action.duration*14/40);mana.run(frame-1);
+        const before={hits:calls.length,flash:m.feedback.snapshot().flash};mana.run(1);
+        return{first,frame,before,calls,cues:cues.filter(c=>c.name==='powerBurst'),flash:m.feedback.snapshot().flash,
+          pose:m.spriteLayer.plan.sprite,pixels:m.spriteLayer.effectMask.reduce((a,b)=>a+b,0),
+          effects:m.effects.filter(e=>e.kind==='powerBurst').length,gold,xp};
+      }finally{m.hit=hit;m.playSound=play;}
+    },{saved,first});
+    expect(ignition.frame).toBe(first?26:12);expect(ignition.before).toEqual({hits:0,flash:0});
+    expect(ignition.calls).toEqual([{index:3,age:ignition.frame}]);expect(ignition.cues).toEqual([{name:'powerBurst',age:ignition.frame}]);
+    expect(ignition.flash).toBe(7);expect(ignition.pose).toMatchObject({sheet:'goku',column:56,kind:'transform'});
+    expect(ignition.effects).toBe(1);expect(ignition.pixels).toBeGreaterThan(1000);
+    await page.evaluate(()=>document.querySelector('#native-pause').hidden=true);
+    await page.locator('#screen').screenshot({path:testInfo.outputPath(first?'first-ignition.png':'repeat-ignition.png')});
+    const aftermath=await page.evaluate(()=>{
+      let displacement=0;const enemy=mana.mod.entities()[3];
+      for(let i=0;i<180;i++){mana.run(1);const now=mana.mod.entities()[3];displacement=Math.max(displacement,Math.hypot(now.x-enemy.x,now.y-enemy.y));}
+      const m=mana.mod,target=m.entities()[3];return{dead:target.hp===0,finished:!target.active||target.species===0xea,displacement,
+        gold:mana.read16(0xcc6a),xp:mana.read16(0xe18d),effects:m.effects.length,canAttack:m.canAttack};
+    });
+    // The native drop roll can replace the finished death effect with a chest.
+    expect(aftermath.dead).toBe(true);expect(aftermath.finished).toBe(true);expect(aftermath.displacement).toBeGreaterThan(25);
+    expect(aftermath.gold-ignition.gold).toBe(2);expect(aftermath.xp-ignition.xp).toBeGreaterThan(0);
+    expect(aftermath.effects).toBe(0);expect(aftermath.canAttack).toBe(true);
+  }
+  const focused=await page.evaluate(()=>{
+    const poses=new Set();for(let i=0;i<150;i++){mana.run(1,[10]);const p=mana.mod.spriteLayer.plan.sprite;poses.add(`${p.sheet}:${p.row}:${p.column}:${p.kind}`);}
+    return{poses:[...poses].sort(),superSaiyan:mana.mod.options.superSaiyan,effects:mana.mod.effects.length};
+  });
+  expect(focused).toEqual({poses:['goku:0:56:focus','goku:0:57:focus'],superSaiyan:true,effects:0});
+  await page.locator('#screen').screenshot({path:testInfo.outputPath('super-saiyan-focus.png')});
 });
 
 test('keyboard aliases, confirm, ring cancellation, party switching and checkpoint replay keep distinct input ownership',async({page})=>{

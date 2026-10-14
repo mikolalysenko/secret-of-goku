@@ -29,8 +29,8 @@ test('Water Palace, houses, inns and shops allow roof exits without a ground-spr
       mana.run(100);
       return{burst,replay,flashes,s:m.status,ceiling:m.ceiling.status,party:m.entities().slice(0,3).map(e=>e.active),story:m.story.status.error,flight:m.flight.error};
     });
-    expect(result.burst).toEqual({pose:'ceilingEscape',holes:1});expect(result.replay).toBe(true);expect(result.flashes).toBe(0);
-    expect(result.s).toMatchObject({map:outside,worldFlight:true});expect(result.ceiling).toMatchObject({completed:1,holes:1,error:null});
+    expect(result.burst).toEqual({pose:'ceilingEscape',holes:0});expect(result.replay).toBe(true);expect(result.flashes).toBe(0);
+    expect(result.s).toMatchObject({map:outside,worldFlight:true});expect(result.ceiling).toMatchObject({completed:1,holes:0,error:null});
     expect(result.party).toEqual([true,true,true]);expect(result.story).toBe(null);expect(result.flight).toBe(null);
   }
   expect(errors).toEqual([]);

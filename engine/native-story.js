@@ -74,6 +74,27 @@ export function createNativeStory(snes,mod){
   }
   c.cycle=function(){
     if(this.cyclesLeft===0&&(this.r[1]&0x3f)===0&&this.br[4]===0xb073){
+      // Older checkpoints may already be inside the skipped Fire Palace
+      // room. Stage two enables its plate; the plate and orb still earn stages
+      // three and four, and the room's exit still owns the final progression.
+      if(enabled()&&mod.canAttack&&word(0xdc)===240&&r[0xcf2b]<2)areaChanges.push(...prepareStoryArea(r,240));
+      // The first conversation advances CF11 and spawns Jema beside Luka,
+      // but the native refresh can retain his old stair-blocking actor when
+      // Goku bypasses the approach. Reconcile only after choreography ends;
+      // never remove an actor that an active movement command is waiting on.
+      // This also repairs duplicates already stored in older checkpoints.
+      if(enabled()&&word(0xdc)===139&&mod.canAttack){
+        const jemas=[];
+        for(let base=0xe600;base<0xf800;base+=0x200)if((r[base]&1)&&r[base+0x180]===0xa0&&[0x131,0x212].includes(word(base+0x3e)&0x7ff))jemas.push(base);
+        if(jemas.length>1){
+          const stage=r[0xcf11],event=stage<10?0x131:0x212,x=stage<8?212:260,y=stage<8?404:stage<10?276:308;
+          const candidates=jemas.filter(base=>(word(base+0x3e)&0x7ff)===event);
+          if(candidates.length){
+            const keep=candidates.sort((a,b)=>Math.hypot(word(a+2)-x,word(a+4)-y)-Math.hypot(word(b+2)-x,word(b+4)-y))[0];
+            for(const base of jemas)if(base!==keep)r[base]&=~1;
+          }
+        }
+      }
       if(enabled())for(let i=0;i<2;i++)if(present(i+1))for(let spell=0;spell<8;spell++)r[0xe3c8+i*0x200+spell]|=spellGrants[i][spell];
       if(pending){
         if(this.br[3]!==pending.br[3])error='Story event returned with unexpected stack';

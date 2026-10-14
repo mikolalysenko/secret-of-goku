@@ -17,6 +17,15 @@ export function createNativeFlight(snes,{canTakeOff=null,enabled=()=>true,onStar
  c.cycle=function(){
   if(this.cyclesLeft===0){
    const bank=this.r[1],pc=this.br[4],boundary=(bank===0||bank===0xc0)&&pc===0xb073;
+   if((bank&63)===0&&pc===0x8903&&enabled()&&worldActive()&&!(r[0xf2]&0x80)&&snes.ppu.mode===7){
+    // The horizon IRQ leaves Mode 7 and the ground scroll selected. On a
+    // lag frame, C0:88FB/8918 can skip the normal sky setup because the next
+    // world buffer is not ready (more frequent with the early Fortress).
+    // Restore only those two display registers before NMI returns. Retain
+    // the last complete HDMA tables and the native horizon IRQ; overhead
+    // flight, docking and boss arenas keep their own renderer.
+    snes.writeBBus(0x05,1);snes.writeBBus(0x0d,r[0xa9]);snes.writeBBus(0x0d,r[0xaa]);
+   }
    if((pc===0xb1c2||pc===0xb1f7||pc===0xb230)&&(bank&63)===2&&enabled()&&worldActive()){
     if(pc===0xb1c2){
      if(!docking){docking={x:128,y:40};onDock?.();}

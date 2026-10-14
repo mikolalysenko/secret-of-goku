@@ -37,3 +37,19 @@ test('a same-room switch rebuild cannot regrow smashed scenery, including after 
  f.tile(3,4,10);f.descriptor(10,[0x23,0,0xc2,12]);f.ram[0x82]=0;f.snes.frames++;f.cpu.cycle();assert.equal(f.plants.metadata(3,4).tile,10,'a changed layout descriptor cannot inherit an obsolete replacement');
  f.descriptor(10,[0x23,0,0xc2,11]);f.ram[0xdc]=1;f.snes.frames++;f.cpu.cycle();assert.equal(f.plants.metadata(3,4).tile,10,'leaving the room retains native respawn semantics');
 });
+
+test('only a full Super Saiyan beam destroys complete braziers, including a grazing hit and a native rebuild',()=>{
+ const f=fixture(),rom=new Uint8Array(0x90000);rom.set(f.snes.cart.data);rom[0x80002]=23|128;f.snes.cart.data=rom;
+ const pattern=[144,145,88,89,124,125];for(const id of pattern)f.descriptor(id,[0x13,6,0,0]);f.descriptor(186,[0x12,6,0,0]);
+ const reset=()=>pattern.forEach((id,i)=>f.tile(3+i%2,2+Math.floor(i/2),id));reset();
+ for(const policy of['plants','objects'])assert.equal(f.plants.enqueueTiles([{tx:3,ty:2}],{policy}).length,0);
+ assert.equal(f.plants.enqueueTiles([{tx:3,ty:2}],{policy:'super-beam'}).length,6);
+ const drain=()=>{for(let i=0;i<4;i++){f.ram[0x82]=0;f.snes.frames++;f.cpu.cycle();}};drain();
+ for(let i=0;i<6;i++)assert.equal(f.plants.metadata(3+i%2,2+Math.floor(i/2)).tile,186);
+ const saved=f.plants.snapshot();reset();f.plants.restore(saved);drain();for(let i=0;i<6;i++)assert.equal(f.plants.metadata(3+i%2,2+Math.floor(i/2)).tile,186);
+ // Lighting/extinguishing a room puzzle changes the same object's artwork.
+ for(const[id,i]of[92,93,108,109,124,125].map((id,i)=>[id,i])){f.descriptor(id,[0x13,6,0,0]);f.tile(3+i%2,2+Math.floor(i/2),id);}drain();
+ for(let i=0;i<6;i++)assert.equal(f.plants.metadata(3+i%2,2+Math.floor(i/2)).tile,186,'a native lighting change cannot regrow the shattered object');
+ f.plants.clear();f.plants.restore();reset();f.tile(4,4,90);assert.equal(f.plants.enqueueTiles([{tx:3,ty:2}],{policy:'super-beam'}).length,0,'a partial pattern is another decoration, not a brazier');
+ reset();rom[0x80002]=15|128;assert.equal(f.plants.enqueueTiles([{tx:3,ty:2}],{policy:'super-beam'}).length,0,'same tile numbers in another tileset are untouched');
+});

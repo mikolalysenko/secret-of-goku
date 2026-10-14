@@ -50,6 +50,9 @@ test('early area prerequisites are local, monotone and leave Tree and final boss
   assert.deepEqual(prepareStoryArea(r,82),[],'castle exterior still requires an invitation or a blast');
   assert.deepEqual(prepareStoryArea(r,300),[],'witch gate is not opened just by entering');
   r[0xcf34]=3;assert.deepEqual(prepareStoryArea(r,377),[]);assert.equal(r[0xcf34],3,'the native jail encounter must not mark Metal Mantis defeated on entry');
+  prepareStoryArea(r,326);assert.equal(r[0xcf2b],0,'the ordinary entrance keeps its original first orb');
+  prepareStoryArea(r,327);assert.equal(r[0xcf2b],1);prepareStoryArea(r,240);assert.equal(r[0xcf2b],2,'only the skipped prerequisite is supplied; the inner orb is not defeated');
+  r[0xcf2b]=10;prepareStoryArea(r,240);assert.equal(r[0xcf2b],10,'completed puzzle is never reset');
 });
 
 test('aerial targeting uses native heading and wraps across world seams',()=>{

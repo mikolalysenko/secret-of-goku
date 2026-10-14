@@ -201,3 +201,18 @@ test('a native return pad may share the adjacent whip lane anchor, but ordinary 
  assert.equal(native.canFly(72,56),true,'the return pad has its adjacent real anchor');
  tile(6,3,0);assert.equal(native.canFly(72,56),false,'the exception requires the return pad');native.dispose();
 });
+
+test('castle chasms and Gaia lava/air need two real shores and never become landing floors',()=>{
+ for(const [map,set,gap,edge,floor,wall]of[[302,15,90,106,100,56],[285,10,41,20,70,118],[284,10,5,4,70,118]]){
+  const {ram,cpu,tile,word}=fixture(),rom=new Uint8Array(0x90000);rom[0x80002]=set;word(0xdc,map);
+  const h=createNativeLocalFlight({ram,cpu,cart:{data:rom}},{active:()=>true,phase:true});
+  ram.set([0x13,6,0,0],0x1b800+wall*4);ram.set([0x12,7,0,0],0x1b800+floor*4);
+  for(const id of[gap,edge])ram.set([0x13,6,0,0],0x1b800+id*4);
+  for(let y=0;y<6;y++)for(let x=0;x<8;x++)tile(x,y,wall);
+  for(let x=1;x<7;x++){tile(x,1,floor);tile(x,2,edge);tile(x,3,gap);tile(x,4,floor);}
+  for(let y=36;y<=60;y++){assert.equal(h.canFly(56,y),true,`${map}: ${y}`);assert.equal(h.canLand(56,y,0,2),false);}
+  tile(3,4,wall);assert.equal(h.canFly(56,56),false,'no far shore');tile(3,4,floor);
+  assert.equal(h.canFly(8,56),false,'outside the corridor');assert.equal(h.canFly(-8,56),false,'outside the map');
+  ram.set([0x12,0x80,0,0],0x1b800+floor*4);assert.equal(h.canFly(56,56),false,'an event or door is not a shore');h.dispose();
+ }
+});

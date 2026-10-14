@@ -19,3 +19,11 @@ test('roof exits respect live bosses, native dialogue, and an escape already und
   ceiling.restore();dead=false;enemies[0].species=0;
   assert.equal(ceiling.request(),true,'Ordinary monsters do not prevent taking off');
 });
+
+test('ceiling escape emits transient particles and ignores persistent holes in legacy checkpoints',()=>{
+ const mod={gokuActive:true,worldFlight:false,status:{map:139,cameraX:0,cameraY:0},snes:{ppu:{cgram:new Uint16Array(256)}}},ceiling=createCeilingEscape(mod);
+ let pixels=0,sparks=0;const layer={pixel(){pixels++;},stamp(){sparks++;}};
+ ceiling.restore({holes:[{map:139,x:40,y:40,colors:[0,100,200]}]});ceiling.draw(layer);assert.equal(pixels,0);assert.equal(sparks,0);
+ ceiling.restore({escape:{phase:'punch',age:28,source:139,x:40,y:40,colors:[0,100,200]}});ceiling.draw(layer);assert.ok(pixels>50);assert.equal(sparks,8);assert.equal(ceiling.status.holes,0);
+ ceiling.restore({escape:{phase:'exit',age:0,source:139,x:40,y:40}});pixels=sparks=0;ceiling.draw(layer);assert.equal(pixels,0);assert.equal(sparks,0);
+});

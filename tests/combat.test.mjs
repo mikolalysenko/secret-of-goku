@@ -178,6 +178,50 @@ test('transform and revert play every authored phase without empty or unrelated 
   }
 });
 
+test('Super Saiyan ignition hits nearby enemies once on the gold flash and sound frame',()=>{
+  for(const duration of[32,72]){
+    const {mod,step,enemy}=setup(),cues=[],flashes=[];
+    mod.playSound=name=>cues.push({name,age:mod.action?.age});mod.feedback={tick(){},burst:()=>flashes.push(mod.action.age)};
+    const nearby=[enemy(3,240,200),enemy(4,160,200),enemy(5,200,240),enemy(6,200,160,20000,87)];
+    const untouched=[enemy(1,205,200,50,129),enemy(7,244,244),enemy(8,205,200,100,150),enemy(9,205,200,100,0x55),enemy(10,210,200),enemy(11,205,200,30)];
+    mod.write8(untouched[4]+0x191,0x80);mod.write16(untouched[5]+0x1f1,30);
+    const health=base=>mod.read16(base+0x182)-mod.read16(base+0x1f1),before=untouched.map(health);
+    mod.configure({superSaiyan:true});mod.action.duration=duration;
+    const ignition=Math.ceil(duration*14/40);step(0,ignition-1);
+    assert.deepEqual(nearby.map(health),[20000,20000,20000,20000]);assert.deepEqual(flashes,[]);
+    step();assert.equal(mod.motion.pose().column,56);
+    assert.deepEqual(flashes,[ignition]);assert.deepEqual(cues.filter(c=>c.name==='powerBurst'),[{name:'powerBurst',age:ignition}]);
+    assert.deepEqual(nearby.map(health),Array(4).fill(20000-Math.round(8191*.75)));
+    assert.deepEqual(untouched.map(health),before);assert.equal(mod.effects.filter(e=>e.kind==='powerBurst').length,1);
+    assert.equal(mod.knockbacks.length,3,'bosses stay in their arena');
+    assert.ok(mod.knockbacks.find(k=>k.base===nearby[0]).dx>0);assert.ok(mod.knockbacks.find(k=>k.base===nearby[1]).dx<0);
+    step(0,duration+20);assert.equal(mod.effects.length,0);assert.deepEqual(flashes,[ignition]);
+    assert.deepEqual(nearby.map(health),Array(4).fill(20000-Math.round(8191*.75)));
+  }
+});
+
+test('transformation burst replays once across checkpoints and never damages from Mode 7',()=>{
+  const {mod,step,enemy}=setup(),target=enemy(3,235,200);
+  mod.configure({superSaiyan:true});step(0,10);
+  const before=mod.snapshot(),ram=mod.snes.ram.slice();step(0,4);const after=JSON.stringify(mod.snapshot()),afterRam=mod.snes.ram.slice();
+  mod.snes.ram.set(ram);mod.restore(before);step(0,4);assert.equal(JSON.stringify(mod.snapshot()),after);assert.deepEqual(mod.snes.ram,afterRam);
+  const during=mod.snapshot(),effective=mod.read16(target+0x182)-mod.read16(target+0x1f1);mod.restore(during);step(0,40);
+  assert.equal(mod.read16(target+0x182)-mod.read16(target+0x1f1),effective,'restoring after ignition cannot hit twice');
+  const air=setup();air.enemy(3,235,200);air.mod.write8(0xe4,4);air.mod.write8(0xe5,4);air.mod.write8(0xec,0x80);air.step();
+  air.mod.configure({superSaiyan:true});air.step(0,40);
+  assert.equal(air.mod.read16(0xe782),20000);assert.equal(air.mod.effects.length,0);
+});
+
+test('holding focus in Super Saiyan keeps short gold hair throughout the power-up',()=>{
+  const {mod,step}=setup({superSaiyan:true}),seen=new Set();
+  for(let i=0;i<150;i++){
+    step(0x400);const pose=mod.motion.pose(),cell=context.window.GokuAnimationData.forms[pose.sheet].cells[pose.column*4+pose.row];
+    assert.equal(pose.kind,'focus');assert.match(cell.semantic,/^transformGoldFlare/);seen.add(pose.column);
+  }
+  assert.deepEqual([...seen].sort(),[56,57]);assert.equal(mod.options.superSaiyan,true);
+  assert.equal(mod.effects.length,0,'holding focus alone does not repeatedly explode');
+});
+
 test('mid-charge and mid-strike snapshots preserve exact animation and projectile timing',()=>{
   for(const charging of [true,false]){
     const {mod,step}=setup();step(charging?0x402:1,charging?36:2);if(!charging){step();step();}
@@ -277,4 +321,13 @@ test('battle banners keep attacks active; modal screens and incapacitation never
  assert.equal(mod.canAttack,false);assert.equal(snes.joypad1State&2,0);
  mod.write8(0xe191,0);step();step(2,4);assert.equal(mod.action.kind,'blast');
  step(0,30);step(1);assert.equal(mod.action.kind,'punch');
+});
+
+test('sleep and poison immediately end Super Saiyan without curing the native condition or firing the held beam',()=>{
+ for(const [address,bit]of[[0xe190,0x10],[0xe191,0x20]]){
+  const {mod,step}=setup({superSaiyan:true});const sounds=[];mod.playSound=s=>sounds.push(s);step(0x402,35);assert.equal(mod.charging,true);
+  mod.write8(address,bit);step(0x402);assert.equal(mod.options.superSaiyan,false);assert.equal(mod.charging,false);assert.equal(mod.charge,0);assert.equal(mod.read8(address)&bit,bit);assert.equal(mod.effects.some(e=>e.kind==='beam'),false);
+  step(0x402,8);assert.equal(sounds.filter(s=>s==='revert').length,1);mod.configure({superSaiyan:true});assert.equal(mod.options.superSaiyan,false);
+  mod.write8(address,0);step();mod.configure({superSaiyan:true});assert.equal(mod.options.superSaiyan,true);
+ }
 });

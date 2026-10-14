@@ -26,6 +26,12 @@ const palaceGaps=new Set([0,6,22,38,54,63,187]);
 // Mana Fortress platforms: open air and their downward metal faces. Upright
 // room walls, machinery and the exterior hull are not part of this list.
 const fortressGaps=new Set([0,14,15,35,49,50,51,52,65,66,67,68,70,71,72]);
+// Elinee's bridge rooms: platform lips, downward faces and the black gaps.
+// These cells are distinct from her upright walls, pillars and doorways.
+const castleGaps=new Set([73,83,85,88,89,90,105,106,115,140,148,151,152,168,185,188]);
+// Gaia's cave uses tile 41 over animated lava/water, and 5 for black air.
+// Only short spans bounded by cave floor on both sides are safe crossings.
+const caveGaps=new Set([...caveBanks,0,5,41,78,79,94,95,99,154]);
 // C0:D359 dispatches 2x stair guidance and 3x currents/conveyors. These
 // modify walking velocity; they are floors, not collision or event triggers.
 const movementFloor=code=>(code&0xf0)===0x20||(code&0xf0)===0x30;
@@ -97,6 +103,11 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   // Decorative scenery has no cut code. Do not classify roofs/trees/cliffs
   // from their shared solid flag. Scope the list to the original tileset.
   if(at===null)return false;
+  if(t.layer===0&&(tileset===15&&[302,303,304].includes(word(0xdc))||tileset===10&&word(0xdc)>=284&&word(0xdc)<=297)){
+   const ids=tileset===15?castleGaps:caveGaps;
+   const gap=d=>d&&!(d.flags&8)&&!(d.behavior&0x90)&&(d.code===0&&ids.has(d.tile)||tileset===10&&d.code>=0x10&&d.code<=0x17);
+   if(gap(t)&&betweenShores(gap,16))return true;
+  }
   if(tileset===21&&t.layer===0&&word(0xdc)>=248&&word(0xdc)<=251){
    const gap=d=>d&&d.code===0&&!(d.flags&8)&&!(d.behavior&0x90)&&fortressGaps.has(d.tile+((flags&64)?192:0));
    if(gap(t)&&betweenShores(gap,16))return true;

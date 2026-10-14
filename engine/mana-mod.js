@@ -44,7 +44,7 @@ class ManaMod {
   write8(address,value){this.snes.ram[address&0x1ffff]=value&255}
   write16(address,value){this.write8(address,value);this.write8(address+1,value>>8)}
   configure(options){
-    if(options.superSaiyan&&this.poisoned)options={...options,superSaiyan:false};
+    if(options.superSaiyan&&(this.poisoned||this.sleeping))options={...options,superSaiyan:false};
     const changed=options.superSaiyan!==undefined&&options.superSaiyan!==this.options.superSaiyan;
     Object.assign(this.options,options);
     if(!this.options.enabled){this.cancelCombat();this.localFlight=false;this.localLift=0;}
@@ -73,7 +73,7 @@ class ManaMod {
     if(this.action&&!['focus','ready'].includes(this.action.kind))return true;
     if(!this.action||this.action.kind!=='focus')this.action={kind:'focus',age:0,duration:0,facing:this.facing,super:this.options.superSaiyan};
     this.powerCharge=Math.min(96,this.powerCharge+1);
-    if(transform&&this.powerCharge===96&&!this.poisoned){this.configure({superSaiyan:true});this.powerBlocked=true;}
+    if(transform&&this.powerCharge===96&&!this.poisoned&&!this.sleeping){this.configure({superSaiyan:true});this.powerBlocked=true;}
     return true;
   }
   reset(){this.panelBack=false;this.padInput=0;this.lastPadInput=0;this.powerCharge=0;this.powerBlocked=false;this.kiBlocked=false;this.kiHand=0;this.frame=0;this.hitRecovery?.restore();this.cancelCombat();this.sound?.restore();this.combatSound?.restore();this.ownership?.reset();this.feedback?.restore();this.orbs?.restore();this.story?.restore();this.worldKi?.restore();this.barriers?.restore();this.potosGatekeeper?.restore();this.flight?.restore();this.gapFlight?.restore();this.radio?.restore();this.quest?.restore();this.ceiling?.restore();this.challenge?.restore();this.powerIntro?.restore();this.ending?.restore();this.flightTransition=null;this.autoLand=false;this.localFlight=false;this.localLift=0;this.localFlightHook?.restore();this.teleport?.restore();this.lastTeleportTarget=-1;this.input=0;this.lastInput=0;this.hiddenLastFrame=[];this.flightShadow=null;this.worldFlight=false;this.nameEditor=false;this.spriteLayer.plan=null;this.attackBlocked=false;this.combo=0;this.comboUntil=0;this.knockbacks=[];this.lastMap=null;this.motion?.reset();}
@@ -90,6 +90,7 @@ class ManaMod {
   }
   get gokuActive(){return !this.arrival||this.arrival.arrived;}
   get poisoned(){return !!(this.read8(0xe191)&0x20);}
+  get sleeping(){return !!(this.read8(0xe190)&0x10);}
   get nativeFlight(){return this.flight?this.flight.worldActive():this.read8(0xe4)===4&&this.read8(0xe5)===4&&this.read8(0xd0)===0&&(this.read8(0xec)&0x80)!==0;}
   get nativeField(){return [0x5c,0xa8,0xc0,0,0x5c,0xcf,0xc1,0].every((v,i)=>this.read8(0x100+i)===v);}
   get canAttack(){
@@ -157,12 +158,12 @@ class ManaMod {
       }
     }
     if(!this.options.enabled||!this.gokuActive)return;
-    // Native poison drains the transformation immediately, including while
-    // charging. Its own status/palette/timer and cure remain game-owned.
-    if(this.poisoned&&this.options.superSaiyan){
+    // Poison and sleep break the transformation, including while charging.
+    // Their own status, animation, timers and cures remain game-owned.
+    if((this.poisoned||this.sleeping)&&this.options.superSaiyan){
       this.options.superSaiyan=false;this.cancelCombat();this.motion?.reset();
       this.playSound?.('revert');
-      this.attackBlocked=!!(input&(1|(1<<17)));this.powerBlocked=!!(input&0x400);this.log('Poison knocked Goku out of Super Saiyan.');
+      this.attackBlocked=!!(input&(1|(1<<17)));this.powerBlocked=!!(input&0x400);this.log(`${this.sleeping?'Sleep':'Poison'} knocked Goku out of Super Saiyan.`);
     }
     const map=this.read16(0xdc);
     if(this.lastMap!==null&&map!==this.lastMap){this.cancelCombat();this.knockbacks=[];this.lastTeleportTarget=-1;this.localFlight=false;this.localLift=0;this.attackBlocked=!!(input&(1|(1<<17)));this.powerBlocked=!!(input&0x400);}
@@ -267,7 +268,7 @@ class ManaMod {
     action.age++;
     // Match the first gold cell, including the slower first-time reveal.
     if(action.kind==='transform'&&!action.burst&&action.age>=Math.ceil(action.duration*14/40)){
-      action.burst=true;this.playSound?.('powerBurst');this.feedback?.burst?.();
+      action.burst=true;this.playSound?.('powerBurst');this.feedback?.burst?.();this.transformBurst();
     }
     if(action.kind==='punch'&&!action.hit&&action.age>=action.impact){action.hit=true;this.strike(action);}
     if(action.kind==='blast'&&action.shots===0&&action.age>=(action.super?1:2)){
@@ -346,6 +347,22 @@ class ManaMod {
     }
     return {index:enemy.index,species:enemy.species,before:enemy.hp,after:Math.max(0,enemy.hp-damage)};
   }
+  transformBurst(){
+    if(!this.options.enabled||!this.canAttack||this.worldFlight)return [];
+    const origin={x:this.read16(0xe002),y:this.read16(0xe004)},radius=56,damage=Math.round(this.damageScale()*.75),hits=[];
+    this.effects.push({kind:'powerBurst',x:origin.x,y:origin.y-16-this.read8(0xe045)-this.localLift,radius,life:14,max:14,super:true});
+    for(const enemy of this.targets(origin,1,0,radius,radius,radius)){
+      const x=enemy.x-origin.x,y=enemy.y-origin.y,distance=Math.hypot(x,y),pending=this.read16(enemy.base+0x1f1);
+      // One radial hit at ignition. Puzzle orbs need an aimed attack, and an
+      // already-lethal native queue must finish its own defeat/reward event.
+      if(distance>radius||enemy.species===0x55||pending>0&&pending>=enemy.hp)continue;
+      const [dx,dy]=distance?[x/distance,y/distance]:[[0,1],[1,0],[-1,0],[0,-1]][this.facing];
+      hits.push(this.hit(enemy,damage,dx,dy,true));
+      const horizontal=Math.abs(dx)>=Math.abs(dy);
+      this.effects.push({kind:'impact',x:enemy.x,y:enemy.y-12,dx:horizontal?Math.sign(dx):0,dy:horizontal?0:Math.sign(dy),life:10,max:10,super:true});
+    }
+    return hits;
+  }
   punch(){
     if(!this.options.enabled||!this.canAttack)return [];
     this.combo=this.frame<=this.comboUntil?(this.combo+1)%3:0;this.comboUntil=this.frame+40;
@@ -392,7 +409,7 @@ class ManaMod {
     const origin=this.handOrigin(),profile=this.beamProfile(strength);
     // At point-blank range the palms can already extend through a solid
     // tile. Include the short body-to-palm span so that obstacle is hit too.
-    this.plants?.beam({x:this.read16(0xe002),y:this.read16(0xe004),dx,dy,length:28,halfWidth:9,policy:'objects'});
+    this.plants?.beam({x:this.read16(0xe002),y:this.read16(0xe004),dx,dy,length:28,halfWidth:9,policy:profile.mega?'super-beam':'objects'});
     this.effects.push({...origin,...profile,kind:'beam',dx,dy,life:profile.max,strength,super:this.options.superSaiyan,damage,hits:[],pulses:{}});
     this.action={kind:'beam',age:0,duration:profile.max+4,facing:this.facing,super:this.options.superSaiyan};
     this.attackFrames=this.action.duration;this.charge=0;this.queuedPunch=false;
@@ -412,7 +429,7 @@ class ManaMod {
       if(!['beam','ki'].includes(effect.kind))continue;
       const age=effect.max-effect.life,geometry=effect.kind==='beam'?this.beamGeometry(effect):{speed:14,length:Math.min(effect.range,(age+1)*14),halfWidth:effect.width,taper:0};
       const {speed,length,halfWidth,taper}=geometry;
-      if(effect.kind==='beam')this.plants?.beam({...effect,...geometry,policy:'objects'});
+      if(effect.kind==='beam')this.plants?.beam({...effect,...geometry,policy:effect.mega?'super-beam':'objects'});
       if(effect.kind==='beam'&&!effect.barrierHit){const hit={...effect,length,width:halfWidth};if(this.barriers?.beam(hit))effect.barrierHit=true;}
       const width=halfWidth+8;
       for(const enemy of this.targets(effect,effect.dx,effect.dy,length,width,8,12)){
