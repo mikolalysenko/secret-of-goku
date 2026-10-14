@@ -8,9 +8,18 @@ export function worldAim(origin,heading,target){
   const x=worldDelta(target.x,origin.x),y=worldDelta(target.y,origin.y);
   return{along:x*dx+y*dy,across:x*(-dy)+y*dx};
 }
+export function aerialBeamGeometry(shot){
+  // The flight camera looks along the firing heading. Projecting a target's
+  // screen offset as a direction sent shots sideways (or down when the
+  // Fortress was culled). Its bearing selects hits, never the beam's axis.
+  const age=shot.age,max=shot.max??32;
+  return{x:128,y:88,dx:0,dy:-1,length:112*Math.min(1,age/12),
+    halfWidth:(shot.mega?78:14+shot.strength*12)*Math.max(0,Math.min(1,age/6,(max-age)/12)),
+    taper:shot.mega?26:18,farScale:.72};
+}
 export function createWorldKi(snes,mod){
   const r=snes.ram,c=snes.cpu,cycle=c.cycle,w=a=>r[a]|r[a+1]<<8;
-  let shot=null,explosion=null,distantBursts=[],fortressDestroyed=false,treeBarrierBroken=false,landingQueued=false,finaleQueued=false,lastHit=null,fortScreen=null;
+  let shot=null,explosion=null,cutaway=null,distantBursts=[],fortressDestroyed=false,treeBarrierBroken=false,landingQueued=false,finaleQueued=false,lastHit=null,fortScreen=null;
   const enabled=()=>mod.options.enabled&&mod.gokuActive;
   const position=()=>({x:w(0xfa)&4095,y:w(0xfc)&4095});
   function targets(){
@@ -29,7 +38,7 @@ export function createWorldKi(snes,mod){
   }
   function screen(target){
     if(target.id==='mana-fortress'&&fortScreen&&mod.frame-fortScreen.frame<3)return{x:fortScreen.x,y:fortScreen.y};
-    return{x:Math.round(128+target.across*128/Math.max(80,target.along)),y:Math.round(84+1600/Math.max(64,target.along))};
+    return{x:Math.round(128+target.across*128/Math.max(80,target.along)),y:Math.round(48+1600/Math.max(64,target.along))};
   }
   function fire(ki=false){
     const strength=ki ? .2 :Math.min(1,mod.charge/(mod.options.superSaiyan?45:90));
@@ -49,7 +58,7 @@ export function createWorldKi(snes,mod){
         this.br[4]=fortressDestroyed?0xb118:0xb119;
       }
       if(bank===2&&pc===0xb1f7)fortScreen={x:r[8],y:r[9],frame:mod.frame};
-      if(bank===2&&pc===0xb1b3&&(mod.attackHeld||shot))r[0xcf]=0;
+      if(bank===2&&pc===0xb1b3&&(mod.attackHeld||shot||explosion||cutaway||landingQueued))r[0xcf]=0;
       if(bank===0&&pc===0x8064&&landingQueued&&mod.nativeFlight){
         landingQueued=false;finaleQueued=true;
         // Same ABI as the Fortress's own C2:B1CA docking path. Entry 10 of
@@ -65,7 +74,7 @@ export function createWorldKi(snes,mod){
     tick(input){
       if(!enabled())return;
       if(!mod.worldFlight){
-        shot=explosion=null;distantBursts=[];
+        shot=explosion=cutaway=null;distantBursts=[];
         if(finaleQueued&&w(0xdc)===255&&mod.canAttack&&mod.story.request(0x8b))finaleQueued=false;
         return;
       }
@@ -75,7 +84,7 @@ export function createWorldKi(snes,mod){
       const wave=!!(input&0x400)&&!!(input&(1<<17));
       if(input&0x400)snes.joypad1State&=~1;
       if(mod.action?.kind==='focus'||wave)snes.joypad1State&=~0x100;
-      const busy=!!(r[0xfe]&0xc0)||r[0x8c]!==0||!!(r[0xe2]&1)||!!explosion||!!landingQueued||!!mod.flight?.docking;
+      const busy=!!(r[0xfe]&0xc0)||r[0x8c]!==0||!!(r[0xe2]&1)||!!explosion||!!cutaway||!!landingQueued||!!(shot&&!shot.ki)||!!mod.flight?.docking;
       if(busy){snes.joypad1State=0;mod.charging=false;mod.charge=0;mod.attackHeld=0;}
       else{
         if(!(input&(1<<17)))mod.kiBlocked=false;
@@ -101,10 +110,7 @@ export function createWorldKi(snes,mod){
             distantBursts.push({...shot.target,age:-18});
             if(distantBursts.length>8)distantBursts.shift();
           }
-          else if(shot.target.id==='mana-fortress'&&mod.frieza?.unresolved){
-            mod.radio?.say('FRIEZA:Shoot the Fortress?\nWith your Dragon Balls in it?\nHo ho ho... Come inside.',{kind:'frieza-shield'});
-            mod.playSound('friezaLaugh');
-          }else if(shot.strength>=.85){
+          else if(shot.strength>=.85){
             lastHit=shot.target.id;explosion={...shot.target,mega:shot.mega,age:0};mod.playSound('impact');
             // Opening a cloud layer does not destroy the Tree or crater it.
             if(lastHit!=='mana-tree-barrier')mod.worldScars?.strike(shot.target,shot.mega);
@@ -113,13 +119,19 @@ export function createWorldKi(snes,mod){
               // boss, seed and Pure Land flag; this only opens world landing.
               treeBarrierBroken=true;r[0xe3]|=0x40;mod.log('The Mana Tree cloud barrier broke. Hold X / SNES B to descend into the Pure Land.');
               mod.radio?.interrupt(mod.frieza?.crisisActive?['LUKA:The clouds are open!\nReach the Tree or Frieza!\nOnly five minutes remain.']:treeBlastMessages,{kind:'tree-blast',frames:270});
-            }else if(lastHit==='mana-fortress'){fortressDestroyed=true;mod.log('The Fortress is breaking apart. The Mana Beast is coming!');}
+            }else if(lastHit==='mana-fortress'){fortressDestroyed=true;mod.log('The Fortress is breaking apart. Its Mana is burning away. The Mana Beast is coming!');}
             else mod.log('The wave left a permanent crater on the world map.');
           }else mod.log('The wave was too weak. Charge the aerial Kamehameha fully.');
         }
         if(shot.age>(shot.max??32))shot=null;
       }
-      if(explosion){explosion.age++;if(explosion.age>80){if(explosion.id==='mana-fortress')landingQueued=true;explosion=null;}}
+      if(cutaway&&++cutaway.age>=cutaway.max){cutaway=null;explosion=null;landingQueued=true;}
+      if(explosion){
+        explosion.age++;
+        if(explosion.id==='mana-fortress'){
+          if(!cutaway&&explosion.age>=24){cutaway={age:0,max:186,target:{x:explosion.x,y:explosion.y},mega:explosion.mega};mod.playSound('distantImpact');}
+        }else if(explosion.age>80)explosion=null;
+      }
       for(const burst of distantBursts){burst.age++;if(burst.age===0)mod.playSound('distantImpact');}
       distantBursts=distantBursts.filter(burst=>burst.age<32);
     },
@@ -131,18 +143,12 @@ export function createWorldKi(snes,mod){
       }
       if(shot){
         const phase=shot.age>>1,t=Math.min(1,shot.age/12),end={x:128+(shot.end.x-128)*t,y:88+(shot.end.y-88)*t};
-        const dx=end.x-128,dy=end.y-88,len=Math.hypot(dx,dy)||1,bands=shot.super?5:3;
         if(shot.ki){layer.stamp('charge-orb',Math.max(0,3-Math.floor(t*3)),end.x,end.y);}
-        else if(shot.mega){
-          // Keep the blue-white core enormous even at the highest altitude;
-          // its streak continues past the target and beyond the world horizon.
-          const envelope=Math.min(1,shot.age/6,((shot.max??72)-shot.age)/12);
+        else{
+          const g=aerialBeamGeometry(shot);
           layer.behindBody=false;
-          layer.giantBeam(128,88,dx/len,dy/len,Math.max(288,len)*t,88*envelope,phase,{taper:30,farScale:.72});
+          layer.giantBeam(g.x,g.y,g.dx,g.dy,g.length,g.halfWidth,phase,g);
           layer.behindBody=false;
-        }else{
-          for(let d=0;d<=len;d+=5){const scale=1-d/len*.6;for(let k=-bands;k<=bands;k++)layer.stamp('beam-body',phase,128+dx*d/len+k*2*scale,88+dy*d/len,0,-1);}
-          layer.stamp('beam-head',phase,end.x,end.y,0,-1);layer.stamp('charge-orb',4,128,88);
         }
       }
       if(explosion){
@@ -159,8 +165,9 @@ export function createWorldKi(snes,mod){
         }
       }
     },
-    get status(){return{shot,explosion,distantBursts,fortressDestroyed,treeBarrierBroken,landingQueued,finaleQueued,lastHit,target:mod.worldFlight?aim():null};},
-    snapshot(){return structuredClone({shot,explosion,distantBursts,fortressDestroyed,treeBarrierBroken,landingQueued,finaleQueued,lastHit,fortScreen,scars:mod.worldScars?.snapshot()});},
-    restore(saved){const s=saved?structuredClone(saved):null;shot=s?.shot??null;explosion=s?.explosion??null;distantBursts=s?.distantBursts??[];fortressDestroyed=!!s?.fortressDestroyed;treeBarrierBroken=s?.treeBarrierBroken??!!(r[0xe3]&0x40);landingQueued=!!s?.landingQueued;finaleQueued=!!s?.finaleQueued;lastHit=s?.lastHit??null;fortScreen=s?.fortScreen??null;mod.worldScars?.restore(s?.scars);},
+    get cinematic(){return cutaway;},
+    get status(){return{shot,explosion,cutaway,distantBursts,fortressDestroyed,treeBarrierBroken,landingQueued,finaleQueued,lastHit,target:mod.worldFlight?aim():null};},
+    snapshot(){return structuredClone({shot,explosion,cutaway,distantBursts,fortressDestroyed,treeBarrierBroken,landingQueued,finaleQueued,lastHit,fortScreen,scars:mod.worldScars?.snapshot()});},
+    restore(saved){const s=saved?structuredClone(saved):null;shot=s?.shot??null;explosion=s?.explosion??null;cutaway=s?.cutaway??null;distantBursts=s?.distantBursts??[];fortressDestroyed=!!s?.fortressDestroyed;treeBarrierBroken=s?.treeBarrierBroken??!!(r[0xe3]&0x40);landingQueued=!!s?.landingQueued;finaleQueued=!!s?.finaleQueued;lastHit=s?.lastHit??null;fortScreen=s?.fortScreen??null;mod.worldScars?.restore(s?.scars);},
   };
 }

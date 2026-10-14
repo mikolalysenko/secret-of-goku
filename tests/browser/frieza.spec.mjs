@@ -15,16 +15,14 @@ async function late(page,kind='battle'){
  },kind);
 }
 
-test('Dryad offers an optional theft only for seven personally collected Balls; stolen Balls cannot be wished or delivered',async({page})=>{
- await load(page);const guards=await page.evaluate(()=>{const m=mana.mod;m.quest.deliver();const delivered=m.frieza.eligible;m.quest.restore({mask:127,seedMask:63});const six=m.frieza.eligible;m.quest.restore({mask:127,seedMask:127});return{delivered,six,seven:m.frieza.eligible};});
+test('Dryad’s late-game visit starts Frieza immediately; stolen Balls cannot be wished and old deliveries do not complete the quest',async({page})=>{
+ await load(page);const guards=await page.evaluate(()=>{const m=mana.mod;m.quest.restore({mask:127,seedMask:0,delivered:7});const delivered=m.frieza.eligible;m.quest.restore({mask:127,seedMask:63});const six=m.frieza.eligible;m.quest.restore({mask:127,seedMask:127});return{delivered,six,seven:m.frieza.eligible};});
  expect(guards).toEqual({delivered:false,six:false,seven:true});
  await late(page,'late');
- await page.evaluate(()=>{mana.mod.story.request(0xa7);mana.run(550,[11]);mana.run(2,[0]);mana.run(120);});
- expect(await page.evaluate(()=>({stage:mana.mod.frieza.status.stage,canAttack:mana.mod.canAttack}))).toEqual({stage:'dormant',canAttack:true});
- await page.evaluate(()=>{mana.mod.story.request(0xa7);mana.run(550,[11]);mana.run(2,[7]);mana.run(20);mana.run(2,[0]);mana.run(120);});
+ await page.evaluate(()=>{mana.mod.story.request(0xa7);mana.run(200,[11]);});
  for(let i=0;i<80;i++){if(await page.evaluate(()=>mana.mod.worldFlight&&mana.mod.frieza.status.crisis?.flightNotified))break;await page.evaluate(()=>mana.run(100,[11]));}
- const result=await page.evaluate(async()=>{const m=mana.mod,{radarTarget}=await import('/engine/dragon-radar.js');m.quest.wish();return{state:m.frieza.status,quest:m.quest.status,delivery:m.quest.deliver(),target:radarTarget(mana.snes.cart.data,m.quest.status,{frieza:m.frieza.status,fortress:{x:123,y:456}}),world:m.worldFlight,flags:[m.read8(0xcf41),m.read8(0xcf44)],error:m.story.status.error};});
- expect(result.state).toMatchObject({stage:'hunt',stolen:true,eighth:true,permanent:false});expect(result.quest).toMatchObject({held:0,seedMask:127,wished:false});expect(result.delivery).toBe(0);expect(result.target.id).toBe('frieza');expect(result.error).toBe(null);
+ const result=await page.evaluate(async()=>{const m=mana.mod,{radarTarget}=await import('/engine/dragon-radar.js');m.quest.wish();return{state:m.frieza.status,quest:m.quest.status,target:radarTarget(mana.snes.cart.data,m.quest.status,{frieza:m.frieza.status,fortress:{x:123,y:456}}),world:m.worldFlight,flags:[m.read8(0xcf41),m.read8(0xcf44)],error:m.story.status.error};});
+ expect(result.state).toMatchObject({stage:'hunt',stolen:true,eighth:true,permanent:false});expect(result.quest).toMatchObject({held:0,seedMask:127,wished:false});expect(result.target.id).toBe('frieza');expect(result.error).toBe(null);
  expect(result.world).toBe(true);expect(result.flags).toEqual([3,6]);expect(result.state.crisis).toMatchObject({active:true,minutes:5,flightNotified:true});
  await page.evaluate(()=>document.querySelector('#native-pause').hidden=true);await page.locator('#screen').screenshot({path:test.info().outputPath('dryad.png')});
 });
@@ -61,18 +59,18 @@ test('Frieza fires lethal projectiles; flying returns discs, attacks hit him, me
 for(const mask of[0,1,2,3])test(`Frieza route reaches the wish and restores only recruited Popoi, party ${mask}`,async({page})=>{
  await load(page,mask);await late(page);
  expect(await page.evaluate(()=>mana.mod.frieza.popoiMember)).toBe(!!(mask&2));
- await page.evaluate(()=>mana.mod.frieza.hit(mana.mod.frieza.entity(),1e8));
+ await page.evaluate(()=>{const m=mana.mod;for(let i=0;i<32&&m.frieza.status.stage==='battle';i++){if(!m.frieza.inputLocked)m.frieza.hit(m.frieza.entity(),1e8);mana.run(20);}});
  let beast=false;for(let i=0;i<70;i++){
   const s=await page.evaluate(()=>{mana.run(100,[11]);return{map:mana.mod.status.map,control:mana.mod.canAttack,event:mana.mod.story.status.lastEvent};});
   if(s.event===0x9a)await page.evaluate(()=>{mana.run(3,[0]);mana.run(30);});
   if(s.map===253&&s.control){beast=true;break;}
  }
- expect(beast).toBe(true);expect(await page.evaluate(()=>mana.mod.quest.status.held)).toBe(7);
+ expect(beast).toBe(true);expect(await page.evaluate(()=>mana.mod.quest.status.held)).toBe(7);expect(await page.evaluate(()=>mana.mod.challenge.status)).toMatchObject({fed:true,started:true,won:false});
  for(let i=0;i<150;i++){
   const complete=await page.evaluate(()=>{const m=mana.mod,b=m.entities().find(e=>e.active&&e.species===127&&e.hp);if(b&&m.canAttack)m.hit(b,60000,0,-1);mana.run(70,[11]);return m.ending.complete;});if(complete)break;
  }
- const end=await page.evaluate(()=>({map:mana.mod.status.map,complete:mana.mod.ending.complete,wished:mana.mod.quest.status.wished,fallen:mana.mod.frieza.fallen,party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],popoiHP:mana.read16(0xe582),permanent:mana.mod.frieza.permanent,crisis:mana.mod.frieza.status.crisis,error:mana.mod.story.status.error}));
- expect(end).toMatchObject({map:131,complete:true,wished:true,fallen:false,party:[mask&1,mask>>1&1],permanent:true,crisis:{active:false,resolved:true},error:null});if(mask&2)expect(end.popoiHP).toBeGreaterThan(0);
+ const end=await page.evaluate(()=>({map:mana.mod.status.map,complete:mana.mod.ending.complete,ending:mana.mod.ending.status,challenge:mana.mod.challenge.status,wished:mana.mod.quest.status.wished,fallen:mana.mod.frieza.fallen,party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],popoiHP:mana.read16(0xe582),permanent:mana.mod.frieza.permanent,crisis:mana.mod.frieza.status.crisis,error:mana.mod.story.status.error}));
+ expect(end).toMatchObject({map:131,complete:true,ending:{outcome:'good',phase:'complete'},challenge:{fed:true,started:true,won:true},wished:true,fallen:false,party:[mask&1,mask>>1&1],permanent:true,crisis:{active:false,resolved:true},error:null});if(mask&2)expect(end.popoiHP).toBeGreaterThan(0);
  await page.evaluate(()=>document.querySelector('#native-pause').hidden=true);await page.locator('#screen').screenshot({path:test.info().outputPath('ending.png')});
 });
 

@@ -1,7 +1,7 @@
 // Built locally from the user's ROM. No cartridge bytes or savestates ship
 // with the site. Bump the revision when native virtual script layouts change.
-export const quickStartRevision='frieza-core-2';
-export const quickStartLabels={title:'After title',sword:'After sword / pod crash',late:'After Sunken Continent',frieza:'Frieza showdown',battle:'Frieza battle'};
+export const quickStartRevision='frieza-cosmic-2';
+export const quickStartLabels={title:'After title',sword:'After sword / pod crash',late:'After Sunken Continent',frieza:'Frieza / Thanatos showdown',battle:'Frieza battle'};
 export async function buildQuickStart(kind,{fresh,pump,mod,arrival,capture,cache,progress}){
   if(!(kind in quickStartLabels))throw Error('Unknown quick checkpoint');
   await fresh();progress('Running the original title…');
@@ -40,15 +40,17 @@ export async function buildLateCheckpoint(kind,{pump,mod,capture,cache,progress}
   if(mod.status.map!==431||!mod.canAttack)throw Error('The Tree Palace did not return control.');
   mod.cancelInput();await cache('late',capture());if(kind==='late')return;
   progress('Preparing Frieza and the stolen Dragon Balls…');
-  // The showdown fixture begins after accepting Dryad's optional route.
+  // The showdown fixture begins after Frieza's automatic entrance.
   // Keep the actual theft playable from the post-continent checkpoint.
-  mod.frieza.restore({stage:'hunt',stolen:true,eighth:true,hinted:true});
+  mod.frieza.restore({stage:'hunt',stolen:true,stolenMask:127,eighth:true,hinted:true,trialWon:kind==='battle'});
   const {activateTwilight}=await import('./frieza-crisis.js');activateTwilight(mod.snes.ram);
   if(!mod.story.travel(0x2f))throw Error('The Fortress entrance was not ready.');
   await pump(240);if(mod.status.map!==246)throw Error('The Fortress did not load.');
-  if(mod.frieza.status.stage!=='showdown'&&!mod.story.request(0xc1))throw Error('Frieza was not ready.');
-  mod.cancelInput();await cache('frieza',capture());
-  if(kind==='frieza')return;
+  if(!['showdown','trial'].includes(mod.frieza.status.stage)&&!mod.story.request(0xc1))throw Error('Frieza was not ready.');
+  mod.cancelInput();
+  // A direct battle fixture has intentionally skipped Thanatos. Do not let
+  // it overwrite the independent showdown slot that plays his trial.
+  if(kind==='frieza'){await cache('frieza',capture());return;}
   progress("Playing Frieza's confrontation…");
   // Stop at the actual handoff, not up to a second into the projectile
   // fight. Dialogue revisions must not change the testing spawn's timing.

@@ -12,6 +12,16 @@ function radioFixture(){
   const radio=createNativeRadio(snes,mod),tick=(n=1)=>{for(let i=0;i<n;i++){mod.frame++;radio.tick();}};
   return{mod,snes,rom,radio,tick};
 }
+test('recovering a stolen pouch never awards uncollected Dragon Balls',()=>{
+ const q=createDragonQuest({read8:()=>0});q.restore({mask:5,seedMask:5});q.recover();
+ assert.equal(q.status.mask,5);assert.equal(q.status.earned,2);assert.equal(q.status.delivered,0);
+});
+test('Balls collected after the theft remain in Goku’s possession',()=>{
+ const m={read8:()=>0,frieza:{unresolved:true,stolenMask:3}},q=createDragonQuest(m);
+ q.restore({mask:3,seedMask:3});assert.equal(q.status.held,0);
+ q.collect(2);assert.equal(q.status.held,1);assert.equal(q.status.count,3);
+ m.frieza.unresolved=false;q.recover();assert.equal(q.status.held,3);assert.equal(q.status.seedMask,7);
+});
 test('King Kai speaks once after full charge is held, stays quiet on release, and checkpoints preserve that limit',()=>{
   const{mod,snes,radio,tick}=radioFixture();mod.charge=44;snes.joypad1State=0x81;
   tick(400);assert.equal(radio.status.warning,0);mod.charge=45;
@@ -103,12 +113,16 @@ test('opening the Tree clouds interrupts stale flight advice, keeps rewards, and
  const saved=radio.snapshot();tick(120);const after=radio.snapshot();
  assert.equal(radio.status.current.text,'Found a Dragon Ball!');radio.restore(saved);tick(120);assert.deepEqual(radio.snapshot(),after);
 });
-test('Dragon Balls collect once, survive broken seed seals, and the emergency wish repairs roofs',()=>{
+test('Dragon Balls must be collected, and only a complete victory permits the restoring wish',()=>{
   const notices=[],mod={read8:()=>0,radio:{say:s=>notices.push(s)},ceiling:{repair(){this.repaired=true;}}};
-  const quest=createDragonQuest(mod);quest.restore();quest.wish();assert.equal(quest.status.wished,false);
+  const quest=createDragonQuest(mod);mod.quest=quest;quest.restore();quest.wish();assert.equal(quest.status.wished,false);
   assert.equal(quest.collect(2),true);assert.equal(quest.collect(2),false);assert.equal(notices.length,1);
   const saved=quest.snapshot();quest.collect(3);quest.restore(saved);assert.equal(quest.status.count,1);
-  assert.equal(quest.deliver(),6);assert.equal(quest.status.count,7);quest.wish();assert.equal(quest.status.wished,true);assert.equal(mod.ceiling.repaired,true);
+  assert.equal(quest.status.count,1);quest.wish();assert.equal(quest.status.wished,false);
+  for(let i=0;i<7;i++)quest.collect(i);quest.wish();assert.equal(quest.status.wished,false);
+  mod.frieza={status:{stage:'defeated',stolen:false}};mod.challenge={status:{fed:true,started:true,won:true}};
+  mod.worldScars={restore(){this.repaired=true;}};
+  quest.wish();assert.equal(quest.status.wished,true);assert.equal(mod.ceiling.repaired,true);assert.equal(mod.worldScars.repaired,true);
   assert.equal(dragonBallGrant(0xa8562,0x30),null,'Tree mass blessing is not collection');
   assert.equal(dragonBallGrant(0xa7360,0x30),null,'Dryad is not an eighth ball');
 });

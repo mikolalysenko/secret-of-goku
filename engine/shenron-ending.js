@@ -1,4 +1,5 @@
 import {radioPixels} from './native-radio.js';
+import {endingResult} from './ending-rules.js';
 
 // Native-sized picture surface, before the PPU's brightness and color math.
 // Dialogue remains the cartridge's own BG3 window and event interpreter.
@@ -68,9 +69,14 @@ export function createShenronEnding(snes,mod){
  };
  return{
   ready,
-  begin(){if(state)return;mod.cancelCombat();mod.localFlight=false;mod.localLift=0;state={phase:'summon',age:0,party:Number(!!(snes.ram[0xe200]&1))|Number(!!(snes.ram[0xe400]&1))<<1};},
+  begin(){if(state)return;mod.cancelCombat();mod.localFlight=false;mod.localLift=0;const result=endingResult(mod);state={...result,phase:result.outcome==='good'?'summon':'doomed',age:0,party:Number(!!(snes.ram[0xe200]&1))|Number(!!(snes.ram[0xe400]&1))<<1};},
   cue(phase){
-   if(!state)return;state.phase=phase;state.age=0;prepared=-1;
+   if(!state)return;
+   if(state.outcome==='bad')phase=({dragon:'explode',wish:'escape',village:'kai'})[phase]??phase;
+   state.phase=phase;state.age=0;prepared=-1;
+   if(phase==='escape')mod.playSound?.('teleport');
+   if(phase==='depart')mod.playSound?.('flight');
+   if(phase==='kai')mod.playSound?.('teleportIn');
    if(phase==='dragon'){mod.playSound?.('powerBurst');}
    if(phase==='wish'){mod.quest?.wish();mod.playSound?.('charged');}
    if(phase==='village'){
@@ -78,9 +84,10 @@ export function createShenronEnding(snes,mod){
     snes.ram[0xe190]=snes.ram[0xe191]=0;mod.write16(0xe182,mod.read16(0xe184));
    }
   },
-  tick(){if(state)state.age++;},
+  tick(){if(state){state.age++;if(state.phase==='explode'&&state.age===48)mod.playSound?.('powerBurst');}},
   get active(){return !!state;},get complete(){return state?.phase==='complete';},
-  get nativeBoy(){return state?.phase==='village'||state?.phase==='complete';},
+  get nativeBoy(){return state?.outcome!=='bad'&&state?.phase==='village';},
+  get planetScene(){return state&&(state.outcome==='bad'||['depart','kai','complete'].includes(state.phase))?state:null;},
   get status(){return state?{...state}:null;},
   snapshot(){return state?{...state}:null;},restore(saved){state=saved?{...saved}:null;prepared=-1;},
   dispose(){p.getColor=previous;},

@@ -205,7 +205,7 @@ export const storyDialogue={
   0xa816b:'Our tribe becomes the Tree\nand guards the world. Life\nis more than a broken body.',
   0xa81b7:"Shenron can restore us\nwhen Mana is calm again.\nI am keeping the souls safe.",
   0xa81ef:'Stop the Fortress. Then\ncalm the Beast. Blowing up\nthe planet would not help.',
-  0xa8236:"My Mana will shield the\nsouls. King Kai will help\nwith the missing Balls.",
+  0xa8236:"My Mana will hold the\nsouls. You must collect\nall seven Balls yourself.",
   0xa828e:"The pouch shines!\nGOKU:Does it need a lid?\nKING KAI:IT NEEDS A HELMET.",
   0xa82ad:'MANA TREE:Bring my son\nhome. And Goku...\nthank you for staying.',
   0xa82fe:'GOKU:Wait!',

@@ -1,4 +1,6 @@
 import {dialoguePages,encodeText,eventRange} from './event-codec.js';
+import {endingEvents} from './ending-rules.js';
+import {heroFarewell} from './ending-events.js';
 export const jump=id=>[0x10+(id>>8),id&255];
 export const call=id=>[0x20+(id>>8),id&255];
 // An event NOP returns control to the interpreter between windows. Without
@@ -24,7 +26,7 @@ export function buildStoryEvents(rom,mask=0,{crisis=false}={}){
   const events=new Map();
   // These retail slots contain unique END bytes. They are used only by
   // the new native choices, avoiding any global event-table replacement.
-  for(const id of [...Array.from({length:0x13},(_,i)=>0x85+i),0x9a,0x9b,0x9c,0x9d,0x9e,0x9f,0xa0,0xa1,0xa2,0xa3,0xa4,0xa5,0xa6]){
+  for(const id of [...Array.from({length:0x13},(_,i)=>0x85+i),0x9a,0x9b,0x9c,0x9d,0x9e,0x9f,0xa0,0xa1,0xa2,0xa3,0xa4,0xa5,0xa6,...Object.values(endingEvents)]){
     const{start,end}=eventRange(rom,id);
     if(end-start!==1||rom[start]!==0)throw Error('Story choice event slot is occupied');
   }
@@ -46,12 +48,12 @@ export function buildStoryEvents(rom,mask=0,{crisis=false}={}){
   events.set(0xa2,[0x30,0x28,7,...jump(0x29c),0]);
   events.set(0x134,[0x42,0xc3,0,...jump(0x92),...choice('LUKA:What will you do?\n',[{label:'Advice',x:1,to:0x85},{label:'Save',x:10,to:0x86},{label:'Shortcut',x:17,to:0x87}])]);
   events.set(0x92,[0x50,...call(0x13a),0x51,0x01,...jump(0x134),0]); // Keep Luka's original one-time weapon gift.
-  events.set(0x85,[...box('LUKA:Find seven Dragon\nBalls. Water, Earth, Wind,\nFire, Dark, Light, Moon.'),...box('The seeds are the cases.\nTouch them to collect the\nBalls. Dryad guards the\neighth palace. She keeps\nher own counsel.'),...box('Wish RANDI, the Sword and\nyour accidents back. First\ncalm the Mana Beast. It\nis allergic to Fortresses.'),...box('Visit all seven Mana Seeds\nto feed the Beast. Each\nvisit also earns a shield.\nPlease just calm it down.'),...box('Fly anywhere. Punch orbs.\nBlast gates. Fly through\ndungeon ceilings if you\nMUST. We will keep a bill.'),...box('Shortcut reaches Thanatos.\nOr shoot the Fortress from\nthe sky. Both are dangerous.\nI know you heard convenient.'),0]);
+  events.set(0x85,[...box('LUKA:Find seven Dragon\nBalls. Water, Earth, Wind,\nFire, Dark, Light, Moon.'),...box('The seeds are the cases.\nTouch them to collect the\nBalls. Dryad guards the\neighth palace. She keeps\nher own counsel.'),...box('Wish RANDI, the Sword and\nyour accidents back. First\ncalm the Mana Beast. It\nis allergic to Fortresses.'),...box('Collect all seven Balls.\nSee Dryad before the wish.\nThe Beast must release\nall its trapped Mana.'),...box('Fly anywhere. Punch orbs.\nBlast gates. Fly through\ndungeon ceilings if you\nMUST. We will keep a bill.'),...box('Destroying the Fortress\nwould burn away all Mana.\nNo wish could fix that.\nPlease leave it standing.'),0]);
   events.set(0x86,[0x30,0xfd,0,0x30,0xfe,2,...box('LUKA:I will restore you.'),...call(0x41b),0x2f,0x84,...choice('Want to save the game?\n',[{label:'Yes',x:5,to:0x90},{label:'No',x:17,to:0}])]);
   events.set(0x90,[0x1f,6,0x51,0]); // Original save menu command.
   events.set(0x91,[0x51,0]); // Choices must close their window before END.
-  events.set(0x87,[...box('LUKA:I can guide your ki\nstraight to Thanatos.\nSkip the journey and face\nthe last two battles.'),...box('KING KAI:I will fetch any\nmissing Dragon Balls while\nyou fight. Better an errand\nthan a replacement planet.'),...box('LUKA:Free the captive souls,\ncalm the Beast, then wish\nthe crash undone. Try to\nleave the sky attached.'),...choice('Take the shortcut now?\n',[{label:'Stay',x:3,to:0},{label:'Go',x:17,to:0x88}])]);
-  events.set(0x88,[...box('GOKU:Can we still wish\nRANDI and the Sword back?\nLUKA:Yes. The Tree is\nkeeping the souls safe.'),...box('KING KAI:I will get any\nmissing Balls. You get\nThanatos. NOT HIS PLANET.'),...box('GOKU:I can feel him now.\nThink he has a stronger\nform? I should ask.'),0x2f,0x84,0x30,0x4e,4,0x30,0x0b,2,0x18,0x2f,...jump(0x4e1),0]);
+  events.set(0x87,[...box('LUKA:I can guide your ki\nstraight to Thanatos.\nBut skipping the journey\ndoes NOT save this world.'),...box('KING KAI:Collect the Balls!\nLet Dryad check them!\nThe Beast must release ALL\nof its trapped Mana.'),...box('LUKA:Without all three,\nthere can be no wish.\nThe planet will break apart.\nI am not joking.'),...choice('Take the shortcut now?\n',[{label:'Stay',x:3,to:0},{label:'Go',x:17,to:0x88}])]);
+  events.set(0x88,[...box('KING KAI:This is a shortcut\nto a fight, NOT a rescue.\nLeave the job unfinished\nand this world is doomed.'),...box('GOKU:I can feel him now.\nThink he has a stronger\nform? I should ask.'),0x2f,0x84,0x30,0x4e,4,0x30,0x0b,2,0x18,0x2f,...jump(0x4e1),0]);
   // The retail scene repeatedly positions, strikes and waits for Primm,
   // then moves Goku relative to her. Flight and solo arrival do not provide
   // those actors/starting positions. This scene uses native text, music,
@@ -60,13 +62,13 @@ export function buildStoryEvents(rom,mask=0,{crisis=false}={}){
   // to be Goku's long-lost friend. The party can still accompany Goku.
   events.set(0x4e1,[0x06,0x27,0xd7,
     ...box('THANATOS:My body grows\nweak. I must take Dyluck\nand rule this world!'),
-    ...box('GOKU:That guy? He looks\npretty tired too.\nHave you tried powering up?'),
-    ...box('THANATOS:You would HELP me?\nGOKU:Sure! I came all this\nway. I want a good fight.'),
-    ...box('GOKU:Here. Have a little ki.\nBreathe from your stomach.\nReally let it out!'),
+    ...box('GOKU:That guy? He looks\npretty tired too.\nLet him go.'),
+    ...box('THANATOS:This Fortress\nis overflowing with Mana!\nI will take it ALL!'),
+    ...box('KING KAI:He is drawing\npower from the Fortress!\nStay alert, Goku!'),
     0x27,0x8e,0x2d,6,0x10,0,0x28,12,0x2d,4,
-    ...box('KING KAI:STOP COACHING THE\nANCIENT EVIL!\nGOKU:But he was struggling.'),
+    ...box('GOKU:Whoa! That helped.\nNow let Dyluck go and\nfight me.'),
     0x30,0x4e,5,0x09,
-    ...box('DYLUCK:Stop helping him!\nHe is stealing my body!\nGOKU:Oh! My bad. I am Goku.'),
+    ...box('DYLUCK:He is stealing\nmy body!\nGOKU:I am Goku.\nI will get you out.'),
     ...box('DYLUCK:I can force him out.\nThe Mana Tree can hold my\nspirit until your wish.'),
     ...box('GOKU:Great! Then he can\nfight without borrowing you.\nDYLUCK:That is your concern?'),
     ...box(mask&1?'DYLUCK:Primm! I will return.\nPRIMM:You had better.\nGOKU:I will make the wish.':'DYLUCK:Please find Primm.\nTell her I will return.\nGOKU:Okay. I will ask around.'),
@@ -80,17 +82,17 @@ export function buildStoryEvents(rom,mask=0,{crisis=false}={}){
   events.set(0x42d,[0x06,
     ...box('The seal on Mana Magic\nis broken. Thanatos falls.'),
     0x29,0x4e,0x27,0x48,0x29,0xff,
-    ...box('GOKU:Now THAT was better!\nMaybe a little too much ki.\nWorth it, though.'),
-    ...box('KING KAI [telepathy]:\nYou gave him a POWER UP.\nPlease stop helping evil.'),
-    ...box(mask&1?'PRIMM:And Dyluck?\nKING KAI [telepathy]:\nSafe with the Tree.\nThe wish will bring him back.':'GOKU:What about Dyluck?\nKING KAI:The Tree has him.\nYour wish can bring him\nback with RANDI.'),
+    ...box('GOKU:Now THAT was better!\nHe had a lot left in him.'),
+    ...box('KING KAI:That was the\nFortress\'s Mana!\nPlease take this seriously.'),
+    ...box(mask&1?'PRIMM:And Dyluck?\nKING KAI:\nSafe with the Tree.\nThe wish will bring him back.':'GOKU:What about Dyluck?\nKING KAI:The Tree has him.\nYour wish can bring him\nback with RANDI.'),
     0x2a,0xff,0x27,0x31,0x18,0x2f,0x28,8,
     0x27,0x84,0x2d,2,0x28,8,0x2d,8,0x27,0x36,
-    ...box('GOKU:Whoa! The floor!\nKING KAI [telepathy]:\nThe Mana Beast is coming!'),
+    ...box('GOKU:Whoa! The floor!\nKING KAI:\nThe Mana Beast is coming!'),
     ...box('GOKU:I can feel it!\nNow THAT is a challenge!\nKING KAI:THAT IS A WARNING.'),
     0x29,0x4e,0x39,2,0xcd,0x38,0x39,3,0xcd,7,0]);
   events.set(0x89,[0x30,0x4e,8,...jump(0x429),0]);
   events.set(0x8a,[...box('LUKA:You have already freed\nthe world. Please enjoy\nsome quiet travelling.'),0]);
-  events.set(0x8b,[...box('GOKU:That was the engine,\nright?\nOh. The whole thing.'),...box('KING KAI:I shielded Mana!\nThe Tree caught the souls!\nLUKA:That was our ENTIRE\nemergency plan, Goku!'),...box('MANA TREE:Thanatos lost\nhis host. Dyluck is safe\nwith RANDI. Your wish can\nbring them back.'),...box('GOKU:Great! All fixed!\nKING KAI:LOOK UP.\nGOKU:That is a VERY\nbig shadow.'),0x2f,0x84,0x30,0x4e,8,...jump(0x429),0]);
+  events.set(0x8b,[...box('GOKU:That was the engine,\nright?\nOh. The whole thing.'),...box('KING KAI:You burned away\nthe Fortress AND its Mana!\nThe planet is coming apart!'),...box('LUKA:You were supposed to\nsave us! That was not\nan obstacle, Goku!'),...box('GOKU:I can still stop\nthe big guy, right?\nKING KAI:That will not\nput the planet back!'),0x2f,0x84,0x30,0x4e,8,...jump(0x429),0]);
   events.set(0x8c,[0x30,0x17,2,0x09,0x0a,...box('GOKU:Three people on a\nswitch? I brought three\nfingers.\nSorry about the gate.'),0]);
   events.set(0x8d,[0x30,0x34,4,0x09,0x0a,...box('GOKU:Hello! I was told\nthere was an invitation.\nI may have knocked\na little too hard.'),0]);
   events.set(0x8e,[0x30,0x37,1,...box('GOKU:There. Unlocked.\nI can put the lock back\nafterwards. Probably.'),0]);
@@ -128,39 +130,40 @@ export function buildStoryEvents(rom,mask=0,{crisis=false}={}){
       ...box(mask&1?'PRIMM:Where is Dyluck?\nGOKU:They got away again.\nBut he fought the spell.':'GOKU:They got away again.\nBut the people are free.'),
       ...box(mask&1?'PRIMM:I will find him.\nGOKU:We will help.\nA punch cannot fix\neverything. Apparently.':'GOKU:Hang on, Dyluck.\nI will find a way to\nget you out of there.'),0x30,0x32,2,0]);
   }
-  events.set(0x93,[...box('KING KAI:I got the rest\nof the Dragon Balls!\nI am NOT doing this again.'),...box('GOKU:Thanks! That saved\na lot of walking.\nKING KAI:YOU CAN FLY.'),0x02]);
+  events.set(0x93,[...box('KING KAI:You are still\nmissing Dragon Balls!\nWithout them, there is\nNO WISH. No second chance.'),0x02]);
   events.set(0x94,[...box(crisis?'KING KAI:Seven Balls back!\nNow calm the Beast!\nFive minutes remain!':'KING KAI:All seven Balls!\nYou actually collected them.\nI had a whole speech ready.'),0x02]);
   // The finale uses the same original camera, Mode7 door and boss setup. No
   // nonexistent companion is asked to cast Mana Magic to make damage possible.
   const beastBattle=destroyed=>[0x42,0x4e,0x07,...jump(0),0x18,0x3b,...call(0x47c),...call(0x737),0x2d,6,0x10,0,0x2d,2,0x28,8,0x2d,4,...call(0x93),
     ...box(destroyed?'GOKU:The Fortress is gone!\nYou can go home now!\n...It cannot hear me.':'GOKU:That is a Mana Beast!\nIt is only trying to stop\nthe Fortress.'),
-    ...box('Seven Dragon Balls glow\nin the Sword pouch.\nKING KAI:No wish while\nthat thing is panicking!'),
-    ...box(destroyed?'MANA TREE:Its rage remains.\nCalm it before it destroys\nwhat you have saved.':'MANA TREE:Guide your power.\nBreak its rage, and let\nMana flow home again.'),
-    ...box('GOKU:So I can save it?\nMANA TREE:Yes. Use your ki.\nNo one must sacrifice\ntheir life for this.'),
+    ...box(destroyed?'KING KAI:The Mana is gone!\nEven stopping the Beast\ncannot fix what you did.':'KING KAI:Every Ball.\nNo threat left behind. All\nthe Beast\'s Mana released.\nThat is how we save them!'),
+    ...box(destroyed?'LUKA:There are still people\ndown here! Keep that thing\naway from us!':'MANA TREE:Guide your power.\nBreak its rage, and let\nMana flow home again.'),
+    ...box(destroyed?'GOKU:I can at least\nstop this fight.\nKING KAI:You started it!':'GOKU:So I can save it?\nMANA TREE:Yes. Use your ki.\nNo one must sacrifice\ntheir life for this.'),
     ...box(crisis?'GOKU:Five minutes left?\nI can still give you\na proper fight, big guy!\nKING KAI:THE CORE, GOKU!':'GOKU:Hey, big guy! Is that\nall you have got? Come on!\nI want a REAL fight!\nKING KAI:DO NOT PROVOKE IT.'),
-    ...box('Feed it seed energy for a\nharder fight? No free HP\nrefills. Dodge glowing\ncircles or use Senzu Beans.'),
+    ...box('KING KAI:Dodge the glowing\ncircles! Use Senzu Beans!\nGOKU:I wonder how much\nstronger it can get...'),
     ...jump(0x9a),0];
   events.set(0x429,beastBattle(false));events.set(0x8f,beastBattle(true));
-  events.set(0x95,[...box(crisis?'GOKU:One careful beam.\nThen the wish. Plenty\nof time.\nLUKA:Please hurry!':'GOKU:One careful beam.\nThen lunch.\nKING KAI:FINALLY. A PLAN\nWITH A SURVIVING PLANET.'),...jump(0x97),0]);
-  events.set(0x96,[...box('Goku offers the Beast\nenergy from the Mana Seeds.\nThe Dragon Balls stay safe\nin the pouch. Priorities.'),0x2d,2,0x2d,6,0x10,0,0x28,12,0x2d,4,
+  events.set(0x95,[...box('GOKU:One careful beam.\nThen I will figure out\nthe rest.\nKING KAI:THERE IS NO TIME!'),...jump(0x97),0]);
+  events.set(0x96,[...box('KING KAI:You have all seven!\nNow listen VERY CAREFULLY-\nGOKU:Hey, big guy! Catch!'),...box('Before King Kai can finish,\nGoku pours all seven Mana\nSeeds\' energy into the Beast.'),0x2d,2,0x2d,6,0x10,0,0x28,12,0x2d,4,
     ...box('GOKU:Eat up! I want to\nfight you at your best!\nCome on! Show me MORE!\nKING KAI:HE IS ENJOYING THIS.'),
     ...box(crisis?'LUKA:FIVE MINUTES, GOKU!\nPlease stop feeding it!\nGOKU:I will still finish\nwith time to spare.':'LUKA:WE ASKED YOU TO SAVE\nTHE WORLD. NOT SEASON IT.\nGOKU:Just a little stronger!\nI know you can do it!'),
     ...box('KING KAI:It has four times\nthe resistance to your ki!\nGOKU:And bigger muscles!\nThis is going to be GREAT.'),...jump(0x97),0]);
   events.set(0x97,[0x2d,6,255,255,...call(0x739),0x18,0xbc,0x30,0x0b,0x0f,...box(crisis?'KING KAI:Five minutes\nuntil the core blows!\nGOKU:Then let us finish!':'GOKU:All right, big guy.\nShow me what you can do!'),0]);
-  events.set(0x9a,choice('GOKU:Just one little snack?\n',[{label:'Calm it',x:1,to:0x95},{label:'Feed seeds',x:15,to:0x96}],0x95));
+  // Replaced at runtime by earned wards and the mandatory seven-seed feed.
+  events.set(0x9a,[...jump(0x95),0]);
   // A short wish scene replaces the retail credits montage, which forcibly
   // recruits Primm and assumes Popoi has just disappeared even on solo runs.
-  for(const id of[0xa3,0xa4,0xa5,0xa6])events.set(id,[0x02]);
+  for(const id of[0xa3,0xa4,0xa5,0xa6,...Object.values(endingEvents)])events.set(id,[0x02]);
   events.set(0x42f,[0x06,0x27,0x3a,0x18,0x2f,
     ...box('The Beast calms. Seven\nDragon Balls glow in a\nbag of sword dust.'),
-    ...box('GOKU:Hey, it is snowing!\nKING KAI [telepathy]:\nThat is radioactive fallout\nfrom your Kamehameha!'),
+    ...box('GOKU:Hey, it is snowing!\nKING KAI:\nThat is radioactive fallout\nfrom your Kamehameha!'),
     ...box('GOKU:Oh. Better fix that.\nShenron! Come out!'),
     ...call(0xa3),0x28,0x18,
     ...box('SHENRON:SPEAK YOUR WISH.'),
     ...box('GOKU:Bring back RANDI,\nDyluck, the Sword and Tree.\nFix everyone and everything\nmy ki blasts wrecked.'),
     ...box('GOKU:And the fallout.\nDefinitely the fallout.\nSHENRON:...ALL THE ROOFS?'),
     ...box('GOKU:Yeah. My bad.\nSHENRON:IT IS GRANTED.\nNEXT TIME, USE A DOOR.'),
-    ...box('SHENRON:THE PEOPLE RETURN.\nTHE CRATERS STAY.\nGOKU:Fair enough.'),
+    ...box('SHENRON:THE PEOPLE RETURN.\nTHE LAND IS WHOLE AGAIN.\nGOKU:Even the big craters?\nSHENRON:EVEN THOSE.'),
     ...call(0xa4),0x28,0x18,
     ...(mask&1?box('PRIMM:Dyluck is coming\nhome! Thank you.\nGOKU:Tell him no more\nborrowing bodies.'):[]),
     ...(mask&2?box('POPOI:Mana is back!\nMy village will be okay!\nGOKU:Save me some dinner.'):[]),
@@ -169,7 +172,7 @@ export function buildStoryEvents(rom,mask=0,{crisis=false}={}){
     ...box('POTOS VILLAGE\nRandi is alive again.\nThe village is whole.'),
     ...box('RANDI:I had the weirdest\ndream about a sword...\nGOKU:Want lunch?'),
     ...box('RANDI:Did you fix\nthe bridge too?\nGOKU:...Where is the hammer?'),
-    ...call(0xa6),0]);
+    ...heroFarewell()]);
   // Choice branches begin with the preceding selection window still open.
   // Close it before opening prose or another choice, including direct calls.
   for(const id of[0x85,0x86,0x87,0x88,0x89,0x8a,0x95,0x96])events.set(id,[0x51,0x01,...events.get(id)]);

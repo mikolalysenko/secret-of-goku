@@ -75,46 +75,46 @@ test('aerial Fortress destruction skips the dungeon and starts the native Mana B
   expect(hit).toBe('mana-fortress');
   await dismiss(page,()=>mana.read16(0xdc)===253&&mana.mod.canAttack&&mana.mod.entities().some(e=>e.active&&e.species===127),50);
   expect(await page.evaluate(()=>({mode:mana.snes.ppu.mode,flag:mana.read8(0xcf4e),destroyed:mana.mod.worldKi.status.fortressDestroyed,error:mana.mod.story.status.error}))).toEqual({mode:7,flag:8,destroyed:true,error:null});
-  expect(await page.evaluate(()=>mana.mod.quest.status.count)).toBe(7);
+  expect(await page.evaluate(()=>mana.mod.quest.status.count)).toBeLessThan(7);
 });
 
-test('Luka shortcut plays both final battles and reaches the ending without recruiting anyone',async({page})=>{
+test('Luka shortcut introduces Frieza, reaches Thanatos, Frieza and the Beast, and cannot save an incomplete collection',async({page})=>{
+  test.setTimeout(300000);
   await load(page);await page.evaluate(()=>{for(const base of[0xe200,0xe400]){mana.write8(base,0);mana.write8(base+0x2c,0);}mana.mod.options.superSaiyan=true;mana.mod.story.request(0x88);});
-  const seen=new Set();let ending=false;
-  for(let i=0;i<190;i++){
+  const seen=new Set();let ending=false,entrance=false;
+  // Includes the native Dark Lich fight, Frieza's two phase transitions,
+  // the Beast and the full Kai epilogue. Bound the complete route, not only
+  // the previous version which skipped the Dark Lich warm-up.
+  for(let i=0;i<270;i++){
     const s=await page.evaluate(()=>{
-      const m=mana.mod,bosses=m.entities().filter(e=>e.index>=3&&e.active&&e.species>=87&&e.species<128&&e.hp);const seen=bosses.map(e=>e.species);
-      if(m.canAttack&&bosses.length){m.instantTransmission();mana.run(15);mana.run(110,[10,1]);mana.run(1);mana.run(40);}
-      else{mana.run(2,[16]);mana.run(95);}
-      return{seen,flag:mana.read8(0xcf4e),error:m.story.status.error};
-    });s.seen.forEach(id=>seen.add(id));expect(s.error).toBe(null);if(s.flag>=9){ending=true;break;}
+      const m=mana.mod,bosses=m.entities().filter(e=>e.index>=3&&e.active&&e.species>=87&&e.species<128&&e.hp);const seen=bosses.map(e=>e.custom??e.species);
+      if(m.worldFlight){const c=mana.snes.cart.data;mana.write16(0xfa,c[0x67a80+131*2]*16);mana.write16(0xfc,c[0x67a81+131*2]*16);mana.write16(0xf4,0);mana.run(80,[0]);}
+      else if(m.frieza.unresolved&&!m.frieza.fighting&&m.status.map!==246&&m.canAttack)m.story.request(0x88);
+      // Combat/survival has separate coverage. Drive the real damage queue
+      // here to verify both native defeat handlers and the ending branch.
+      if(m.canAttack&&bosses.length){for(const boss of bosses)m.hit(boss,boss.custom?1e7:60000,0,-1);mana.run(70,[11]);}
+      else{mana.run(100,[11]);if(mana.fastForward.state(0x800).choice){mana.run(2,[16]);mana.run(20);}}
+      return{seen,entrance:m.worldFlight&&m.frieza.status.stage==='hunt',complete:m.ending.complete,flag:mana.read8(0xcf4e),error:m.story.status.error};
+    });entrance||=s.entrance;s.seen.forEach(id=>seen.add(id));expect(s.error).toBe(null);if(s.complete){ending=true;break;}
   }
-  expect([...seen]).toContain(121);expect([...seen]).toContain(127);expect(ending).toBe(true);
-  expect(await page.evaluate(()=>mana.mod.quest.status)).toMatchObject({count:7,wished:true});
+  expect(entrance).toBe(true);expect([...seen]).toContain('frieza');expect([...seen]).toContain(127);expect([...seen]).toContain(121);expect(ending).toBe(true);
+  expect(await page.evaluate(()=>({quest:mana.mod.quest.status,ending:mana.mod.ending.status}))).toMatchObject({quest:{wished:false,delivered:0},ending:{outcome:'bad',reason:'balls',phase:'complete'}});
 });
 
-for(const solo of[true,false])test(`Thanatos possession scene reaches and clears Dark Lich ${solo?'with solo Goku':'with the full party'}`,async({page})=>{
+for(const solo of[true,false])test(`Fortress entrance introduces Frieza automatically ${solo?'solo':'with companions'}`,async({page})=>{
  await load(page,solo?'.local/animation-audit/native/rabite-field-a.json':'.local/graphics-audit/party.json');
  if(solo)await page.evaluate(()=>{for(const base of[0xe200,0xe400])mana.snes.ram.fill(0,base,base+0x200);});
- expect(await page.evaluate(()=>{mana.write8(0xcf4e,4);return mana.mod.story.travel(0x154);})).toBe(true);
+ expect(await page.evaluate(()=>{mana.mod.quest.restore({mask:0,seedMask:0});mana.write8(0xcf4e,4);return mana.mod.story.travel(0x154);})).toBe(true);
  const result=await page.evaluate(()=>{
-  const m=mana.mod,r=mana.snes.ram;Object.assign(m.options,{superSaiyan:true});m.powerIntro.restore({flight:true,superSaiyan:true});
-  // The real Fortress door runs walk-on event 428. A diagnostic map load
-  // would bypass that event and would not exercise the reported approach.
-  let scene=false,battle=false,defeated=false,initialHP=0;const poses=new Set(),beamCount=()=>mana.logs.filter(l=>l.startsWith('Kamehameha')).length,initialBeams=beamCount();
-  for(let f=0;f<8000;f++){
-   if(m.story.status.lastEvent===0x4e1)scene=true;
-   if(m.spriteLayer.plan?.sprite)poses.add(m.spriteLayer.plan.sprite.kind);
-   const boss=m.entities().find(e=>e.active&&e.species===121&&e.hp);
-   if(m.canAttack&&boss){if(!battle){mana.run(1);initialHP=mana.read16(boss.base+0x184);}battle=true;m.instantTransmission();mana.run(15);mana.run(100,[10,1]);mana.run(1);mana.run(80);}
-   else mana.run(1,[11]);
-   if(battle&&r[0xcf4e]===8&&m.canAttack){defeated=true;break;}
+  const m=mana.mod;let reveal=false,impact=false,oldBoss=false;
+  for(let f=0;f<6500;f+=40){
+   mana.run(40,[11]);const kind=m.frieza.status.scene?.kind;
+   reveal||=kind==='reveal';impact||=kind==='core-impact';oldBoss||=m.entities().some(e=>e.active&&e.species===121&&!e.custom);
+   if(m.worldFlight&&m.frieza.status.crisis?.flightNotified)break;
   }
-  return{scene,battle,defeated,initialHP,beams:beamCount()-initialBeams,poses:[...poses],map:mana.read16(0xdc),flag:r[0xcf4e],party:[r[0xe200]&1,r[0xe400]&1],error:m.story.status.error,can:m.canAttack};
+  return{reveal,impact,oldBoss,state:m.frieza.status,quest:m.quest.status,world:m.worldFlight,party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],error:m.story.status.error};
  });
- expect(result,JSON.stringify(result)).toMatchObject({scene:true,battle:true,defeated:true,map:246,flag:8,party:solo?[0,0]:[1,1],error:null,can:true});
- expect(result.initialHP).toBe(48000);expect(result.beams).toBeGreaterThan(1);
- await page.locator('#screen').screenshot({path:test.info().outputPath('thanatos-defeated.png')});
+ expect(result).toMatchObject({reveal:true,impact:true,oldBoss:false,state:{stage:'hunt',stolenMask:0,eighth:true,crisis:{active:true}},quest:{count:0},world:true,party:solo?[0,0]:[1,1],error:null});
 });
 
 test('a complete native cannon trip lands Goku upright and returns visible walking control',async({page})=>{

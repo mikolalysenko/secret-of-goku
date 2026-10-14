@@ -14,11 +14,12 @@ export const radarPalaces=[
 ];
 const route=[0,1,2,3,5,4,6];
 export function radarTarget(rom,quest,{fortressDestroyed=false,fortress={x:0,y:0},frieza=null}={}){
- if(frieza?.stolen)return{id:'frieza',name:'Frieza / Fortress',hint:'Keep eighth. Recover seven.',...fortress};
- if(frieza?.eligible)return{id:'dryad',name:'Tree Palace',hint:'Optional: speak to Dryad.',x:rom[0x67a80+195*2]*16,y:rom[0x67a81+195*2]*16};
  const index=route.find(i=>!(quest.mask&(1<<i)));
  if(index!==undefined){const {map,hint}=radarPalaces[index];return{id:index,name:`${dragonBallPalaces[index]} Palace`,hint,x:rom[0x67a80+map*2]*16,y:rom[0x67a81+map*2]*16};}
+ if(frieza?.stolen)return{id:'frieza',name:'Frieza / Fortress',hint:'Keep eighth. Confront him.',...fortress};
+ if(frieza?.eligible)return{id:'dryad',name:'Tree Palace',hint:'See Dryad before the wish.',x:rom[0x67a80+195*2]*16,y:rom[0x67a81+195*2]*16};
  if(quest.wished)return null;
+ if(quest.seedMask===127&&frieza?.stage==='dormant')return{id:'dryad',name:'Tree Palace',hint:'See Dryad before the wish.',x:rom[0x67a80+195*2]*16,y:rom[0x67a81+195*2]*16};
  return{id:'finale',name:fortressDestroyed?'Mana Beast':'Mana Fortress',hint:'All seven! Time to fix this.',...fortress};
 }
 export function radarBearing(origin,heading,target){

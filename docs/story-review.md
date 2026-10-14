@@ -23,9 +23,11 @@ Jema meeting Goku, are genuine scene NPCs and can still appear before joining.
 | Northtown, events 555–559 | Goku interrupts Dyluck's possession without kidnapping or adding an absent Primm. The original Vampire fight, reward and exit still run. |
 | Joch, Empire and Dryad | Trials emphasize restraint; the damaged Sword explains the Fortress's early awakening. Missing companions are not addressed. |
 | Mana Tree, event 5F8 | Randi's family belongs to Randi. The Tree shelters him for the wish and asks Goku to finish the job. Missing companion stand-ins are omitted. |
-| Thanatos, events 4E1/42D | Goku coaches the villain into a stronger fight. Dyluck and King Kai explain the aftermath; absent companions and blank confirmation boxes are removed. |
-| Restoration, event 42F | Shenron appears, the white flakes are identified as radioactive fallout, and the wish returns Randi alive to Potos. Primm/Popoi only contribute if present. |
-| Optional Frieza entrance, events 4A4/A8 | After seven personally collected Balls, calling out to Frieza triggers the theft and a Death Ball into the core. The original sinking-continent flyby follows. Declining keeps the original transition. |
+| Thanatos, events 4E1/42D | Frieza supplies the ki and makes Thanatos fight Goku for entertainment. Dyluck and King Kai explain the aftermath; absent companions and blank confirmation boxes are removed. |
+| Good ending, event 42F | Seven earned Balls, defeated Frieza and the upgraded Beast, and an intact Fortress are required. Shenron repairs the world, including radioactive fallout and craters; Randi returns alive to Potos. Goku leaves for Kai’s planet, where Kai thanks him and asks him to be more careful. Primm/Popoi only contribute if present. |
+| Bad ending, event 42F | Destroying the Fortress or skipping the required collection/fights dooms the world. The planet explodes, Goku teleports to Kai’s planet, and Kai scolds him. No wish or emergency collection rescues the run. |
+| Mana Beast, events 429/96 | With all seven seeds, Goku feeds their energy to the Beast despite Kai’s protests. The upgraded fight is mandatory. |
+| Mainline Frieza entrance, events 4A4/A8 | Frieza interrupts automatically regardless of collected Ball count. Early Fortress visits cannot bypass his appearance. He steals the earned collection and fires a Death Ball; the native sinking-continent flyby follows. |
 | Five-minute crisis | Frieza, Kai, Luka, Jema and townspeople believe the planet is about to explode. Goku believes the deadline too, but thinks he can finish everything in time. Shops and inns warn him once before their normal service. Jema and the Tree blame Frieza's Death Ball for the roots burning. |
 | Frieza finale | Popoi's death triggers permanent Super Saiyan. The stolen Balls return after the fight, but the crisis persists through the Mana Beast. Shenron explicitly repairs the core; only recruited companions return to the party. |
 
@@ -51,8 +53,8 @@ npx playwright test tests/browser/frieza.spec.mjs tests/browser/frieza-crisis.sp
 
 The audit validates substitution addresses, glyphs and line widths, then
 emits the compiled dialogue for each party into ignored `.local/story-research/`.
-The inventory contains 751 reviewed native/authored events and 3,004 variants:
-545 unchanged NPC/lore/UI events, 150 adapted text events, 49 authored native
+The inventory contains 753 reviewed native/authored events and 3,012 variants:
+545 unchanged NPC/lore/UI events, 150 adapted text events, 51 authored native
 events and seven original prologue events. Categories include non-text cue
 events, so their total exceeds the original 715 text events.
 
@@ -61,7 +63,7 @@ losing commands, party variants, reward markers, valid encoding and pagination.
 Real-ROM browser checks exercise capture/escape, elemental rewards, dragon
 rescue, Northtown, the Tree, Thanatos and the new ending. Northtown checks all
 four parties and an older checkpoint with Primm actually captive. The ending checks all
-four party combinations, Potos's living Randi, wish flags and checkpoint replay.
+four party combinations, Potos's living Randi, wish prerequisites, the farewell on Kai’s planet and checkpoint replay. Bad-route checks cover planet destruction and the absence of a wish.
 
 This is a complete dialogue inventory review with targeted native runtime
 checks, not four uninterrupted playthroughs of every possible route. Screenshots,

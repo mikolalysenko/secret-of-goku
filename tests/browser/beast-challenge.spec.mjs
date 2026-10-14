@@ -1,6 +1,5 @@
 import {test,expect} from '@playwright/test';
 import {existsSync,readFileSync} from 'node:fs';
-import {encodeText} from '../../engine/event-codec.js';
 test.setTimeout(240000);
 async function load(page){
   const path='.local/graphics-audit/party.json';
@@ -8,25 +7,21 @@ async function load(page){
   await page.goto('/');await page.waitForFunction(()=>mana.ready);
   await page.evaluate(s=>{mana.pause();s.romHash=mana.hash(mana.snes.cart.data);mana.restore(s);Object.assign(mana.mod.options,{enabled:true,power:true,superSaiyan:false});mana.run(3);},JSON.parse(readFileSync(path)));
 }
-test('native Feed seeds choice creates a survivable multi-beam boss, earned wards, and real danger',async({page})=>{
+test('seven Balls automatically feed the native Beast, creating a multi-beam boss with earned wards and real danger',async({page})=>{
   await load(page);
   await page.evaluate(()=>{
     for(const base of[0xe200,0xe400]){mana.write8(base,0);mana.write8(base+0x2c,0);}
     mana.mod.quest.restore({mask:0,delivered:0});for(let i=0;i<7;i++)mana.mod.quest.collect(i);
+    mana.mod.frieza.restore({stage:'defeated',stolen:false,permanent:true});
     mana.write8(0xcf4e,8);mana.mod.story.request(0x429);
   });
-  const signature=[0x50,...encodeText('GOKU:Just one little snack?')];
-  const choice=await page.evaluate(async signature=>{
-    const ready=()=>mana.read8(0xd0)===0x81&&signature.every((b,i)=>mana.snes.cart.read(mana.read8(0xd3),mana.read16(0xd1)+i)===b);
-    for(let i=0;i<80&&!ready();i++){mana.run(2,[16]);mana.run(150);await new Promise(r=>setTimeout(r,0));}
-    return ready();
-  },signature);expect(choice).toBe(true);
-  await page.evaluate(()=>{mana.run(4,[7]);mana.run(16);mana.run(2,[16]);mana.run(120);});
-  expect(await page.evaluate(()=>mana.mod.challenge.status.fed)).toBe(true);
-  for(let i=0;i<25;i++){
+  // There is no opt-out choice when all seven seeds are earned. Advance
+  // native dialogue with R only; the feed scene must lead into the battle.
+  for(let i=0;i<60;i++){
     if(await page.evaluate(()=>mana.mod.canAttack&&mana.read16(0xdc)===253))break;
-    await page.evaluate(()=>{mana.run(2,[16]);mana.run(150);});
+    await page.evaluate(()=>mana.run(100,[11]));
   }
+  expect(await page.evaluate(()=>mana.mod.challenge.status.fed)).toBe(true);
   const initial=await page.evaluate(()=>({s:mana.mod.status,c:mana.mod.challenge.status,boss:mana.read16(0xe782),quest:mana.mod.quest.status}));
   expect(initial.s.canAttack).toBe(true);expect(initial.boss).toBe(65535);expect(initial.c.wards).toBe(7);expect(initial.quest).toMatchObject({count:7,earned:7,delivered:0});
   const state=await page.evaluate(()=>mana.snapshot());
@@ -74,7 +69,7 @@ test('native Feed seeds choice creates a survivable multi-beam boss, earned ward
       return{won:mana.read8(0xcf4e)>=9,hp:mana.read16(0xe182),error:m.story.status.error};
     });expect(result.error).toBe(null);expect(result.hp).toBeGreaterThan(0);if(result.won){won=true;break;}
   }
-  expect(won).toBe(true);expect(await page.evaluate(()=>mana.mod.quest.status.wished)).toBe(true);
+  expect(won).toBe(true);expect(await page.evaluate(()=>mana.mod.quest.status.wished)).toBe(true);expect(await page.evaluate(()=>mana.mod.ending.status)).toMatchObject({outcome:'good'});
 });
 
 test('first hover and Super Saiyan reveals preserve controls and replay only once',async({page})=>{

@@ -28,7 +28,7 @@ export function createNativeHitRecovery(snes,mod){
    !mod.poisoned&&!mod.challenge?.dangerous&&!mod.flightTransition;
  function parry(attacker){
    // Ordinary physical contacts only: magic, status weapons, bosses and the
-   // optional seed-fed Beast remain dangerous. No RNG means exact replays.
+   // upgraded seed-fed Beast remain dangerous. No RNG means exact replays.
    const base=0xe000+attacker;
    if(attacker<0x600||attacker>0x1600||attacker%0x200||!(r[base]&1)||r[base+0x180]>=0x57||word(base+0x199)||word(0xe1f1))return false;
    contacts++;

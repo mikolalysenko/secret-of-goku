@@ -63,6 +63,7 @@ export function synthesizeKiSound(name,{rate=16000,superSaiyan=false}={}){
 // network-failure fallback so offline failures never leave a charge silent.
 export const cues={
  friezaLaugh:{clips:['frieza-laugh'],gain:.60,cap:1},friezaOrb:{clips:['frieza-orb'],gain:.55,cap:2},friezaDisc:{clips:['frieza-disc'],gain:.42,cap:2},
+ friezaImpact:{clips:['impact'],gain:.72,cap:2,rate:.76},fortressBreak:{clips:['power-burst'],gain:.72,cap:1,rate:.82},friezaRush:{clips:['flight'],gain:.52,cap:1,rate:1.25},friezaCharge:{clips:['charge'],gain:.40,loop:true},
  swing:{clips:['swing','swing-2'],gain:.44,cap:2},kickSwing:{clips:['kick-swing'],gain:.46,cap:2},hit:{clips:['hit-1','hit-2','hit-3'],gain:.64,cap:3},
  kick:{clips:['kick'],gain:.70,cap:2},blast:{clips:['blast'],gain:.38,cap:5},impact:{clips:['impact'],gain:.48,cap:3},
  distantImpact:{clips:['impact'],gain:.16,cap:2},
@@ -73,7 +74,7 @@ export const cues={
  flight:{clips:['flight'],gain:.48,cap:1},landing:{clips:['landing'],gain:.36,cap:1},
  charge:{clips:['charge'],gain:.55,loop:true},aura:{clips:['aura'],gain:.30,loop:true},air:{clips:['air'],gain:.25,loop:true},
 };
-const fallback={friezaLaugh:'charged',friezaOrb:'beam',friezaDisc:'blast',kickSwing:'swing',kick:'hit',impact:'hit',distantImpact:'hit',deflect:'hit',revert:'transform',landing:'flight',aura:'charge',air:'charge'};
+const fallback={friezaImpact:'hit',fortressBreak:'powerBurst',friezaRush:'flight',friezaCharge:'charge',friezaLaugh:'charged',friezaOrb:'beam',friezaDisc:'blast',kickSwing:'swing',kick:'hit',impact:'hit',distantImpact:'hit',deflect:'hit',revert:'transform',landing:'flight',aura:'charge',air:'charge'};
 export function createKiSound(mod){
   const speech=createKamehamehaVoice(mod);
   let queue=[],context=null,master=null,compressor=null,decoding=null,buffers=new Map(),fallbackBuffers=new Map();
@@ -109,7 +110,7 @@ export function createKiSound(mod){
     while([...voices].filter(v=>!v.loop).length>=12)stopVoice([...voices].find(v=>!v.loop),when,.012);
     const source=context.createBufferSource(),gain=context.createGain(),clip=cue.clips[variant%cue.clips.length];
     source.buffer=buffer(clip,name,superSaiyan);source.loop=!!cue.loop;
-    source.playbackRate.value=(name==='hit'||name==='swing'||name==='blast')?[1,1.035,.975][variant%3]:1;
+    source.playbackRate.value=cue.rate??((name==='hit'||name==='swing'||name==='blast')?[1,1.035,.975][variant%3]:1);
     gain.gain.value=cue.loop?0:cue.gain;source.connect(gain);gain.connect(master);
     const v={source,gain,name,loop:!!cue.loop};voices.add(v);
     source.onended=()=>{voices.delete(v);tails.delete(v);source.disconnect();gain.disconnect();};source.start(when);
@@ -156,6 +157,8 @@ export function createKiSound(mod){
       loop('charge',charging||focusing||revealing,focusing?.22+focus*.85:revealing?.85:.48+strength*.52,when,focusing?.72+focus*.3:.94+strength*.12);
       loop('aura',(focusing&&focus>.4)||revealing||(charging&&mod.options.superSaiyan&&strength>.35),focusing?focus:revealing?1:strength,when,focusing?.8+focus*.2:1);
       loop('air',mod.options.enabled&&mod.gokuActive&&(mod.localFlight||mod.worldFlight||mod.gapFlight?.active),charging?.35:1,when);
+      const enemyCharge=mod.options.enabled&&mod.gokuActive?(mod.frieza?.chargeSound??0):0;
+      loop('friezaCharge',enemyCharge>0,enemyCharge,when,.76);
       stats.charge=loops.has('charge');stats.loops=[...loops.keys()];
     },
     get ready(){return decoding||data;},

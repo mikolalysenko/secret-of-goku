@@ -38,7 +38,7 @@ export const firstFlightMessages=[
   'GOKU:Hey! The Fortress!\nI could just blow it up.\nBe right back!',
   'LUKA:NO! That could burn\nALL Mana! You broke the\nSword seal. It woke early!',
   'LUKA:Find seven Dragon\nBalls. Wish the boy and\nthe Sword back. GENTLY.',
-  'KING KAI:I will shield\nthe people. That is NOT\npermission to shoot!',
+  'KING KAI:I cannot shield\na planet from that!\nDo NOT shoot the Fortress!',
 ];
 export const treeBlastMessages=[
   'LUKA:The cloud barrier\nis open. The Mana Tree\nis still safe below it.',
@@ -88,7 +88,7 @@ export function createNativeRadio(snes,mod){
   let barriers=new Set(),barrierCount=0,barrierCooldown=0;
   let raster=null,key=null,visibilityFrame=-1,frameVisible=false;
   const p=snes.ppu,previous=p.getColor;
-  const visible=()=>mod.options.enabled&&mod.gokuActive&&!p.forcedBlank&&
+  const visible=()=>mod.options.enabled&&mod.gokuActive&&!p.forcedBlank&&!mod.worldKi?.cinematic&&!mod.frieza?.cinematic&&!mod.ending?.active&&
     (mod.worldFlight?!(snes.ram[0xfe]&0xc0)&&snes.ram[0x8c]===0&&!(snes.ram[0xe2]&1):mod.canAttack&&!mod.ceiling?.busy)&&
     snes.ram[0xd0]===0&&(snes.ram[0xec]&0x7e)===0&&(mod.worldFlight||!snes.ram[0x2c]);
   p.getColor=function(sub,x,y){

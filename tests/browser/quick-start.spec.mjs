@@ -29,7 +29,7 @@ test('late checkpoints build from a fresh ROM and reload the playable Frieza bat
   expect(await page.evaluate(async()=>{await mana.quickStart('late');mana.pause();return{map:mana.mod.status.map,eligible:mana.mod.frieza.eligible,count:mana.mod.quest.status.seedCount}})).toEqual({map:431,eligible:true,count:7});
   await page.locator('#native-restore').click();
   expect(await page.evaluate(()=>mana.mod.frieza.status.stage)).toBe('battle');
-  expect(await page.evaluate(async()=>{await mana.quickStart('frieza');mana.pause();return mana.mod.frieza.status.stage})).toBe('showdown');
+  expect(await page.evaluate(async()=>{await mana.quickStart('frieza');mana.pause();return mana.mod.frieza.status.stage})).toBe('trial');
   await page.reload();await page.waitForFunction(()=>mana.ready&&mana.mod.frieza.fighting,{},{timeout:15000});
   const cached=await page.evaluate(()=>{mana.pause();return{state:mana.mod.frieza.status,map:mana.mod.status.map,sram:mana.hash(mana.snes.cart.sram),rom:mana.hash(mana.snes.cart.data)}});
   expect(cached.map).toBe(246);expect(cached.state).toMatchObject({stage:'battle',permanent:true,fallen:true,hp:96000});

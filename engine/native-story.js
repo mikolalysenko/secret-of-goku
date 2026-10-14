@@ -6,6 +6,8 @@ import {prepareStoryArea} from './story-areas.js';
 import {buildFriezaEvents,buildFriezaEnding,friezaEvents as F} from './frieza-events.js';
 import {breakableDoors} from './breakable-doors.js';
 import {crisisDialogue,crisisGreeting,crisisGreetings} from './frieza-crisis.js';
+import {endingResult,endingEvents} from './ending-rules.js';
+import {buildBadEnding} from './ending-events.js';
 
 // Relocate selected event streams on reads. Native control codes, text drawing,
 // choices, actor choreography, map loading and rewards still run on the SNES.
@@ -70,8 +72,8 @@ export function createNativeStory(snes,mod){
       }
     }
     // Keep the native arena/map loader, but suppress its Thanatos/Dyluck/
-    // Dark Lich object records on the optional branch before they can spawn.
-    if((bank&63)===8&&enabled()&&mod.frieza?.active){
+    // Dark Lich object records before the mainline Frieza scene can spawn.
+    if((bank&63)===8&&enabled()&&(mod.frieza?.active||mod.frieza?.pendingEntrance)&&!mod.frieza?.trial){
       const start=0x80000+(cart.data[0x871ec]|cart.data[0x871ed]<<8),end=0x80000+(cart.data[0x871ee]|cart.data[0x871ef]<<8),at=0x80000+address;
       if(at>=start+9&&at<end&&(at-start-9)%8===0)return 0xf0;
     }
@@ -111,7 +113,7 @@ export function createNativeStory(snes,mod){
         else{this.br.set(pending.br);this.r.set(pending.r);this.setP(pending.p);}
         pending=null;
       }
-      if(fastTrack&&word(0xdc)===246&&r[0xcf4e]===8&&mod.canAttack&&queued===null)queued=0x429;
+      if(fastTrack&&!mod.frieza?.unresolved&&word(0xdc)===246&&r[0xcf4e]===8&&mod.canAttack&&queued===null)queued=0x429;
       if(queued!==null&&!pending&&enabled()&&mod.canAttack&&!this.waiting&&!this.stopped&&!this.nmiWanted&&!this.abortWanted&&(!this.irqWanted||this.i)){
         const context=queuedContext;queuedContext=null;
         if(context&&(word(0xdc)!==context.map||!(r[0xe000+context.actor]&1)||word(0xe03e+context.actor)!==context.event)){queued=null;return cycle.call(this);}
@@ -134,10 +136,11 @@ export function createNativeStory(snes,mod){
         const mask=party();setPointer(typeof entry==='function'?entry(mask):entry[mask]);pc=pointer();lastEvent=metadata.get(pc)?.id;relocations++;
         mod.frieza?.onEvent(lastEvent);
         if(lastEvent===0x88)fastTrack=true;
-        if(lastEvent===0x93)mod.quest?.deliver();
         if(lastEvent===0x42f)mod.ending?.begin();
         if(lastEvent>=0xa3&&lastEvent<=0xa6)mod.ending?.cue(['dragon','wish','village','complete'][lastEvent-0xa3]);
-        if(lastEvent===0xa4)mod.frieza?.repairCore();
+        if(lastEvent===endingEvents.depart)mod.ending?.cue('depart');
+        if(lastEvent===endingEvents.kai)mod.ending?.cue('kai');
+        if(lastEvent===0xa4&&mod.quest?.status.wished)mod.frieza?.repairCore();
         if(lastEvent===0x95||lastEvent===0x96)mod.challenge?.choose(lastEvent===0x96);
       }
       const actor=word(0x3a);
@@ -211,9 +214,9 @@ export function createNativeStory(snes,mod){
       }
       entries.set(0xc00000+eventRange(cart.data,0x88).start,()=>customPointers.get(r[0xcf4e]>=9?0x8a:r[0xcf4e]>=7?0x89:0x88));
       entries.set(0xc00000+eventRange(cart.data,0x429).start,()=>customPointers.get(mod.worldKi?.status.fortressDestroyed?0x8f:0x429));
-      entries.set(0xc00000+eventRange(cart.data,0x93).start,()=>customPointers.get(mod.quest?.status.count===7?0x94:0x93));
+      entries.set(0xc00000+eventRange(cart.data,0x93).start,()=>customPointers.get(mod.quest?.status.held===7&&mod.quest.status.seedMask===127?0x94:0x93));
       const wardAdvice=Array.from({length:8},(_,count)=>allocate([
-        ...box(`MANA WARDS: ${count} / 7\nOne hit blocked per ward.\nOnly palace visits earn them.\nKai's deliveries do not.`),...(count===7?custom.get(0x9a):[...box(`KING KAI:You touched ${count} of\nseven Mana Seeds. Delivered\nBalls cannot feed the Beast.\nGOKU:Aw. Next time, big guy.`),...choice('Calm the Mana Beast?\n',[{label:'Calm it',x:7,to:0x95}],0x95)]),
+        ...box(`MANA WARDS: ${count} / 7\nOne hit blocked per ward.\nOnly palace visits earn them.`),...(count===7?[0x10,0x96,0]:[...box(`KING KAI:You touched ${count} of\nseven Mana Seeds. We cannot\nrelease all its Mana!\nThis will NOT save the world.`),...choice('Face the Mana Beast?\n',[{label:'Fight',x:7,to:0x95}],0x95)]),
       ],0x9a,3));
       entries.set(0xc00000+eventRange(cart.data,0x9a).start,()=>wardAdvice[mod.quest?.status.earned??0]);
       entries.set(0xc00000+eventRange(cart.data,0x96).start,()=>customPointers.get(mod.quest?.status.canFeed?0x96:0x95));
@@ -230,28 +233,46 @@ export function createNativeStory(snes,mod){
         const crisis=variants(id,mask=>compileStoryEvent(parseEvent(cart.data,id),mask,{textOverrides:crisisDialogue}));
         route(id,mask=>mod.frieza?.crisisActive?crisis[mask]:null);
       }
-      route(0x4a4,()=>mod.frieza?.crisisActive?customPointers.get(F.escape):mod.frieza?.eligible?customPointers.get(F.transitionOffer):null);
+      const theft=[0,1,7].map(collected=>variants(F.theft,mask=>buildFriezaEvents(cart.data,mask,{collected}).get(F.theft)));
+      route(F.theft,mask=>theft[mod.quest.status.count===7?2:mod.quest.status.count?1:0][mask]);
+      route(0x4a4,()=>mod.frieza?.pendingEntrance?customPointers.get(F.transitionOffer):mod.frieza?.crisisActive?customPointers.get(F.escape):null);
       const showdown=variants(F.showdown,mask=>customVariants[mask].get(F.showdown));
-      const visit=allocate([0x51,1,...box('LUKA:Frieza has your Balls.\nI can take you inside.\nKeep the eighth safe.'),0x2f,0x84,0x30,0x4e,4,0x30,0x0b,2,0x18,0x2f,...[0x10|(F.showdown>>8),F.showdown&255],0],F.showdown,0);
-      route(0x4e1,mask=>mod.frieza?.unresolved?showdown[mask]:null);
-      route(0x88,()=>mod.frieza?.unresolved?visit:null);
+      const trial=variants(F.trial,mask=>customVariants[mask].get(F.trial));
+      const afterTrial=variants(F.afterTrial,mask=>customVariants[mask].get(F.afterTrial));
+      route(F.showdown,mask=>mod.frieza?.unresolved&&!mod.frieza?.status.trialWon?trial[mask]:showdown[mask]);
+      route(0x42d,mask=>mod.frieza?.trial?afterTrial[mask]:null);
+      const visit=allocate([0x51,1,...box('LUKA:Frieza is waiting.\nI can take you inside.\nKeep the eighth safe.'),0x2f,0x84,0x30,0x4e,4,0x30,0x0b,2,0x18,0x2f,...[0x10|(F.showdown>>8),F.showdown&255],0],F.showdown,0);
+      // Flying straight into the Fortress must not silently select Thanatos.
+      // An unseen Frieza makes his entrance, fires into the core, and leaves
+      // Goku in the twilight world to finish collecting before returning.
+      route(0x4e1,mask=>mod.frieza?.pendingEntrance?customPointers.get(F.offer):mod.frieza?.unresolved?(mod.frieza.status.trialWon?showdown[mask]:trial[mask]):null);
+      const firstVisit=allocate([0x51,1,0x2f,0x84,0x30,0x4e,4,0x30,0x0b,2,0x18,0x2f,...[0x10|(F.offer>>8),F.offer&255],0],0x88,0);
+      route(0x88,()=>mod.frieza?.pendingEntrance?firstVisit:mod.frieza?.unresolved?visit:null);
+      route(0x429,()=>mod.frieza?.pendingEntrance?customPointers.get(F.offer):null);
       const rescue=allocate([0x51,1,...box('LUKA:Five minutes remain.\nI can take you to Frieza.\nRecover the Balls and\nsave this planet!'),...choice('Enter the Fortress?\n',[{label:'Stay',x:3,to:0},{label:'Go',x:17,to:0x88}])],0x87,0);
       route(0x87,()=>mod.frieza?.unresolved?rescue:null);
-      for(const id of[0x429,0x8b,0x93])route(id,()=>mod.frieza?.unresolved?customPointers.get(F.reminder):null);
       const invitation=allocate([0x51,1,...box(`LUKA:All seven! Dryad
 has sensed someone
 following their power.
-You can investigate first.`),...choice('Visit Dryad?\n',[{label:'Later',x:2,to:0},{label:'Go',x:17,to:F.travel}])],0x85,0);
+Speak to her before wishing.`),...choice('Visit Dryad?\n',[{label:'Later',x:2,to:0},{label:'Go',x:17,to:F.travel}])],0x85,0);
       route(0x85,()=>mod.frieza?.unresolved?customPointers.get(F.reminder):mod.frieza?.eligible?invitation:null);
       const discVictory=variants(F.victory,mask=>buildFriezaEvents(cart.data,mask,{discVictory:true}).get(F.victory));
       route(F.victory,mask=>mod.frieza?.status.discHits?discVictory[mask]:null);
       const friezaEnding=[false,true].map(member=>variants(0x42f,mask=>buildFriezaEnding(mask,member)));
-      route(0x42f,mask=>mod.frieza?.unresolved?customPointers.get(F.reminder):mod.frieza?.permanent?friezaEnding[Number(mod.frieza.popoiMember)][mask]:null);
+      const badEndings=Object.fromEntries(['fortress','balls','frieza','beast'].map(reason=>[reason,allocate(buildBadEnding(reason),0x42f,0)]));
+      route(0x42f,mask=>{
+        mod.challenge?.victory(); // Native Beast victory, before choosing the ending.
+        const result=endingResult(mod);
+        return result.outcome==='bad'?badEndings[result.reason]:friezaEnding[Number(mod.frieza.popoiMember)][mask];
+      });
       const crisisFinales=[0,1,2,3].map(mask=>buildStoryEvents(cart.data,mask,{crisis:true}));
       for(const id of[0x429,0x94,0x95,0x96,0x97]){
         const crisis=variants(id,mask=>crisisFinales[mask].get(id));
-        route(id,mask=>mod.frieza?.crisisActive&&!mod.frieza.unresolved?crisis[mask]:null);
+        route(id,mask=>mod.frieza?.crisisActive&&!mod.frieza.unresolved&&!mod.worldKi?.status.fortressDestroyed?crisis[mask]:null);
       }
+      // Seven personally collected Balls always provoke the upgraded fight.
+      // This also covers old checkpoints paused at the former Calm choice.
+      route(0x95,()=>mod.quest?.status.canFeed?customPointers.get(0x96):null);
       cart.read=storyRead;this.restore();
     },
     request(event,{actor=0}={}){

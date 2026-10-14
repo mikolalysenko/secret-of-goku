@@ -1,5 +1,24 @@
 import {test,expect} from '@playwright/test';
 
+test('Frieza charge has a sustained bed and impacts use bounded sampled cues that clear on pause',async({page})=>{
+ await page.goto('/');await page.getByRole('button',{name:/Sound on|Mute/}).click();
+ const result=await page.evaluate(async()=>{
+  const {createKiSound}=await import('/engine/ki-sound.js'),ctx=new AudioContext();await ctx.resume();
+  const m={frame:0,options:{enabled:true,superSaiyan:true},gokuActive:true,canAttack:true,frieza:{chargeSound:1},charging:false,charge:0,powerCharge:0};
+  const sound=createKiSound(m);sound.update(ctx,true);await sound.ready;await sound.speech.ready;sound.clear();sound.stats.history=[];
+  sound.update(ctx,true);const analyser=ctx.createAnalyser();analyser.fftSize=2048;sound.connect(analyser);
+  const energy=()=>{const a=new Float32Array(2048);analyser.getFloatTimeDomainData(a);return{rms:Math.sqrt(a.reduce((s,x)=>s+x*x,0)/a.length),peak:Math.max(...a.map(Math.abs))};};
+  await new Promise(r=>setTimeout(r,1400));const held=energy();
+  m.frame++;m.frieza.chargeSound=0;sound.play('friezaOrb');sound.play('fortressBreak');sound.play('friezaImpact');sound.update(ctx,true);
+  await new Promise(r=>setTimeout(r,160));const hit=energy(),history=[...sound.stats.history];
+  sound.update(ctx,false);await new Promise(r=>setTimeout(r,120));const paused=energy(),loops=[...sound.stats.loops];
+  sound.dispose();await ctx.close();return{held,hit,history,paused,loops};
+ });
+ expect(result.held.rms).toBeGreaterThan(.01);expect(result.hit.rms).toBeGreaterThan(.02);expect(result.hit.peak).toBeLessThan(.95);
+ expect(result.history.every(v=>v.sampled)).toBe(true);expect(result.history.map(v=>v.name)).toEqual(['friezaCharge','friezaOrb','fortressBreak','friezaImpact']);
+ expect(result.paused.rms).toBeLessThan(.0001);expect(result.loops).toEqual([]);
+});
+
 test('DBZ flight audio survives scripted combat locks and all audio stops on clear',async({page})=>{
  await page.goto('/');
  // A real gesture unlocks the browser AudioContext; this test needs no ROM.

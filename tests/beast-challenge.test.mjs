@@ -5,28 +5,29 @@ import {createDragonQuest} from '../engine/dragon-quest.js';
 import {createPowerIntro,powerIntroMessages} from '../engine/power-intro.js';
 import {encodeText,wrapText} from '../engine/event-codec.js';
 
-function fixture(earned=0){
+function fixture(earned=7){
   const ram=new Uint8Array(0x20000),cpu={cycle(){},cyclesLeft:0,r:[0,0],br:[0,0,0,0,0x4053]},snes={ram,cpu};
   const notices=[],position={x:128,y:160,screenX:128,screenY:160},mod={options:{enabled:true},gokuActive:true,canAttack:true,
     read8:a=>ram[a],read16:a=>ram[a]|ram[a+1]<<8,write8:(a,v)=>ram[a]=v,write16:(a,v)=>{ram[a]=v;ram[a+1]=v>>8;},
     entities:()=>[{index:3,base:0xe600,active:true,species:127,hp:mod.read16(0xe782)}],
     get status(){return position;},
-    quest:{status:{earned,canFeed:true}},radio:{say:text=>notices.push(text)}};
+    quest:{status:{earned,canFeed:earned===7}},radio:{say:text=>notices.push(text)}};
   mod.write16(0xdc,253);mod.write16(0xe782,1000);mod.write16(0xe182,999);
   const challenge=createBeastChallenge(snes,mod);mod.challenge=challenge;
   return{mod,challenge,notices,position,cpu,tick:(n=1)=>{for(let i=0;i<n;i++)challenge.tick();}};
 }
-test('seed feeding is optional, earned wards matter, and delivered Balls grant no wards',()=>{
-  const f=fixture(2),{mod,challenge,cpu}=f;
-  challenge.choose(false);f.tick();assert.equal(challenge.dangerous,false);assert.equal(mod.read16(0xe782),1000);
+test('all seven Balls force seed feeding, earned wards matter, and no Balls are delivered',()=>{
+  const f=fixture(),{mod,challenge,cpu}=f;
+  challenge.choose(false);f.tick();assert.equal(challenge.dangerous,true);assert.equal(mod.read16(0xe782),65535);
   challenge.choose(true);f.tick();assert.equal(mod.read16(0xe782),65535);assert.equal(challenge.dangerous,true);
   assert.equal(challenge.damage({species:127},8191),2047);assert.equal(challenge.damage({species:87},8191),8191);
+  challenge.restore({...challenge.snapshot(),wards:2}); // two wards remain after earlier hits
   mod.write16(0xe1f1,450);cpu.cycle();assert.equal(mod.read16(0xe1f1),0);assert.equal(challenge.status.wards,1);
   mod.write16(0xe1f1,450);cpu.cycle();assert.equal(challenge.status.wards,1,'One spell animation cannot consume every ward');
   f.tick(90);mod.write16(0xe1f1,450);cpu.cycle();assert.equal(challenge.status.wards,0);
   f.tick(90);mod.write16(0xe1f1,450);cpu.cycle();assert.equal(mod.read16(0xe1f1),450,'No ward leaves damage to the native engine');
-  const q=createDragonQuest({read8:()=>0});q.collect(1);q.collect(2);q.deliver();assert.equal(q.status.earned,2);assert.equal(q.status.count,7);
-  assert.equal(q.deliver(),0);assert.equal(q.status.earned,2,'A repeated delivery cannot turn delivered Balls into earned wards');
+  const q=createDragonQuest({read8:()=>0});q.collect(1);q.collect(2);assert.equal(q.status.earned,2);assert.equal(q.status.count,2);
+  q.restore({mask:127,seedMask:6,delivered:5});assert.equal(q.status.earned,2,'Legacy delivered Balls cannot count as earned wards');
   const textQuest=createDragonQuest({radio:{say:text=>{encodeText(text);assert.ok(wrapText(text).split('\n').length<=3);}}});
   for(let i=0;i<7;i++)textQuest.collect(i);
 });
@@ -54,9 +55,9 @@ test('flight and gold-hair reveals are one-shot and use valid native three-line 
   const saved=intro.snapshot();intro.restore(saved);intro.tick();intro.transform();assert.equal(notices.length,5);
 });
 
-test('all seven real seed visits are required; emergency Balls cannot unlock feeding or prevent later collection',()=>{
+test('all seven real seed visits are required; legacy emergency Balls cannot unlock feeding or prevent later collection',()=>{
   const f=fixture(),q=createDragonQuest(f.mod);f.mod.quest=q;
-  q.collect(0);q.collect(2);q.deliver();assert.equal(q.status.canFeed,false);assert.equal(f.challenge.choose(true),false);
+  q.restore({mask:127,seedMask:5,delivered:5});assert.equal(q.status.canFeed,false);assert.equal(f.challenge.choose(true),false);
   assert.equal(f.challenge.status.fed,false);
   for(const i of[1,3,4,5])q.collect(i);assert.equal(q.status.seedCount,6);assert.equal(f.challenge.choose(true),false);
   q.collect(6);assert.equal(q.status.canFeed,true);assert.equal(q.status.earned,7);assert.equal(q.status.delivered,0);

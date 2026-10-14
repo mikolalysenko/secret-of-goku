@@ -8,22 +8,20 @@ async function load(page,crisis=false){
  await page.evaluate(({state,crisis})=>{mana.pause();state.romHash=mana.hash(mana.snes.cart.data);mana.restore(state);Object.assign(mana.mod.options,{enabled:true,power:true,superSaiyan:false});mana.mod.radio.restore({firstFlight:true});if(crisis){mana.mod.quest.restore({mask:127,seedMask:127});mana.mod.frieza.restore({stage:'hunt',stolen:true,eighth:true,hinted:true});}mana.run(3);},{state:JSON.parse(readFileSync(fixture)),crisis});
 }
 async function late(page){await page.evaluate(async()=>{const{buildLateCheckpoint}=await import('/engine/quick-start.js');await buildLateCheckpoint('late',{mod:mana.mod,pump:async(f,b)=>mana.run(f,b),capture:()=>mana.snapshot(),cache:()=>{},progress:()=>{}});});}
-for(const accept of[false,true])test(`native continent transition ${accept?'plays the Death Ball and returns the party to the twilight sky':'can decline Frieza and keep the original route'}`,async({page})=>{
+for(const balls of[0,3,7])test(`native continent transition always introduces Frieza and the Death Ball with ${balls} Balls`,async({page})=>{
  await load(page);await late(page);
- await page.evaluate(()=>{mana.mod.story.request(0x4a4);mana.run(700,[11]);});
- expect(await page.evaluate(()=>mana.mod.story.status.lastEvent)).toBe(0xd9);
- await page.evaluate(accept=>{if(accept){mana.run(2,[7]);mana.run(20);}mana.run(2,[0]);mana.run(50);},accept);
+ await page.evaluate(balls=>{const mask=(1<<balls)-1;mana.mod.quest.restore({mask,seedMask:mask});mana.mod.story.request(0x4a4);},balls);
  let complete=false,impact=false,charge=false;
  for(let i=0;i<110;i++){
-  const r=await page.evaluate(()=>{mana.run(75,[11]);const m=mana.mod;return{scene:m.frieza.status.scene?.kind,world:m.worldFlight,control:mana.read8(0x8c),notified:m.frieza.status.crisis?.flightNotified};});
-  impact||=r.scene==='core-impact';charge||=r.scene==='core-charge';
-  if(r.world&&r.control===0&&(!accept||r.notified)){complete=true;break;}
+  const r=await page.evaluate(()=>{mana.run(75,[11]);const m=mana.mod;return{scene:m.frieza.status.scene?.kind,world:m.worldFlight,control:mana.read8(0x8c),notified:m.frieza.status.crisis?.flightNotified,choice:mana.fastForward.state(1<<11).choice};});
+  // No B, direction, or menu confirmation is supplied anywhere in this scene.
+  expect(r.choice).toBe(false);impact||=r.scene==='core-impact';charge||=r.scene==='core-charge';
+  if(r.world&&r.control===0&&r.notified){complete=true;break;}
  }
- expect(complete).toBe(true);
- const result=await page.evaluate(()=>({state:mana.mod.frieza.status,flags:[mana.read8(0xcf41),mana.read8(0xcf44)],rearView:!(mana.read8(0xf2)&0x80),radio:mana.mod.radio.status,party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],error:mana.mod.story.status.error}));
- expect(result.error).toBe(null);expect(result.party).toEqual([1,1]);
- if(accept){expect(impact&&charge).toBe(true);expect(result.state).toMatchObject({stage:'hunt',stolen:true,eighth:true,crisis:{active:true,minutes:5,flightNotified:true}});expect(result.rearView).toBe(true);expect(result.radio.current?.text).toContain('LOOK AT THE SKY');}
- else{expect(result.state.stage).toBe('dormant');expect(result.state.crisis).toBe(null);expect(result.state.stolen).toBe(false);}
+ expect(complete).toBe(true);expect(impact&&charge).toBe(true);
+ const result=await page.evaluate(()=>({state:mana.mod.frieza.status,quest:mana.mod.quest.status,flags:[mana.read8(0xcf41),mana.read8(0xcf44)],rearView:!(mana.read8(0xf2)&0x80),radio:mana.mod.radio.status,party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],error:mana.mod.story.status.error}));
+ expect(result).toMatchObject({state:{stage:'hunt',stolen:true,stolenMask:(1<<balls)-1,eighth:true,crisis:{active:true,minutes:5,flightNotified:true}},quest:{count:balls,seedCount:balls,wished:false},party:[1,1],error:null,rearView:true});
+ expect(result.radio.current?.text).toContain('LOOK AT THE SKY');
  await page.evaluate(()=>document.querySelector('#native-pause').hidden=true);await page.locator('#screen').screenshot({path:test.info().outputPath('world.png')});
 });
 

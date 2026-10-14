@@ -1,4 +1,4 @@
-// Goku's ki strengthens Dark Lich; the player can also feed the Mana Beast.
+// Frieza's ki strengthens Dark Lich; all seven seeds force the fed Mana Beast.
 // Original boss AI, damage, death and progression still run on the SNES.
 export function createBeastChallenge(snes,mod){
   let fed=false,started=false,won=false,wards=0,blocked=0,hits=0,clock=0,wardFlash=0,grace=0,burst=null,lich=null;
@@ -22,11 +22,12 @@ export function createBeastChallenge(snes,mod){
     return cycle.call(this);
   };
   return{
-    choose(feed){if(feed&&!mod.quest?.status.canFeed)return false;fed=!!feed;started=won=false;wards=feed?(mod.quest?.status.earned??0):0;blocked=hits=clock=wardFlash=grace=0;burst=null;return true;},
+    victory(){if(fed&&started){won=true;burst=null;}},
+    choose(feed){if(mod.quest?.status.canFeed)feed=true;else if(feed)return false;fed=!!feed;started=won=false;wards=feed?(mod.quest?.status.earned??0):0;blocked=hits=clock=wardFlash=grace=0;burst=null;return true;},
     get dangerous(){return fed&&!won&&mod.read16(0xdc)===253;},
     damage(enemy,amount){return (active()&&enemy.species===127)||(lich&&mod.options.enabled&&mod.options.power&&mod.gokuActive&&mod.read16(0xdc)===lich.map&&enemy.species===121&&enemy.base===lich.base)?Math.max(1,Math.floor(amount/4)):amount;},
     tick(){
-      // Goku really did lend Thanatos ki. Give his true form time to fight:
+      // Frieza feeds Thanatos ki for his amusement. Give his true form time to fight:
       // roughly three full SSJ beams, with the original AI/death intact.
       if(lich&&mod.read16(0xdc)!==lich.map)lich=null;
       if(!lich&&mod.options.enabled&&mod.options.power&&mod.gokuActive&&mod.canAttack&&mod.read8(0xcf4e)<7){

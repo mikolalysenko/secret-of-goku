@@ -1,3 +1,4 @@
+import {endingResult} from './ending-rules.js';
 export const dragonBallPalaces=['Water','Earth','Wind','Fire','Light','Dark','Moon'];
 // Only real collection writes count. Breaking a seal (2), theft (14/15),
 // Tree magic and map preparation must not invent or remove collected balls.
@@ -12,10 +13,9 @@ export function createDragonQuest(mod){
   const count=()=>popcount(mask);
   return{
     collect(index){if(index<0||index>6||seedMask&(1<<index))return false;seedMask|=1<<index;if(mask&(1<<index))delivered=Math.max(0,delivered-1);mask|=1<<index;mod.radio?.say(`DRAGON BALLS: ${count()} / 7\n${dragonBallPalaces[index]} Ball and a Mana Ward.\nA shield for the last fight.`,{kind:'quest'});return true;},
-    deliver(){if(mod.frieza?.unresolved)return 0;const missing=7-count();delivered+=missing;mask=127;return missing;},
-    recover(){mask=127;},
-    wish(){if(mask===127&&!mod.frieza?.unresolved){wished=true;mod.ceiling?.repair();}},
-    get status(){return{mask,count:count(),held:mod.frieza?.unresolved?0:count(),stolen:!!mod.frieza?.unresolved,eighth:!!mod.frieza?.eighth,seedMask,seedCount:popcount(seedMask),canFeed:seedMask===127,earned:popcount(seedMask),delivered,wished,missing:dragonBallPalaces.filter((_,i)=>!(mask>>i&1))};},
+    recover(){mask|=seedMask;}, // Frieza cannot award Balls the player never collected.
+    wish(){if(mask===127&&seedMask===127&&endingResult(mod).outcome==='good'){wished=true;mod.ceiling?.repair();mod.worldScars?.restore();}},
+    get status(){return{mask,count:count(),held:popcount(mask&~(mod.frieza?.unresolved?(mod.frieza.stolenMask??mask):0)),stolen:!!mod.frieza?.unresolved,eighth:!!mod.frieza?.eighth,seedMask,seedCount:popcount(seedMask),canFeed:seedMask===127,earned:popcount(seedMask),delivered,wished,missing:dragonBallPalaces.filter((_,i)=>!(mask>>i&1))};},
     snapshot(){return{mask,seedMask,delivered,wished};},
     restore(s){mask=s?.mask??dragonBallPalaces.reduce((bits,_,i)=>bits|(mod.read8(0xcf90+i)===1?1<<i:0),0);delivered=s?.delivered??0;seedMask=s?.seedMask??(delivered?dragonBallPalaces.reduce((bits,_,i)=>bits|(mod.read8(0xcf90+i)===1?1<<i:0),0):mask);wished=!!s?.wished;},
   };

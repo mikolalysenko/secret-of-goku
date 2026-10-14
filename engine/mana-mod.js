@@ -183,6 +183,7 @@ class ManaMod {
     const nativeDirection=this.read8(0xe010);
     this.facing=(nativeDirection&0x7f)===0?3:(nativeDirection&0x7f)===1?0:(nativeDirection&0x80)?2:1;
     if(this.ceiling?.tick()){this.localFlight=false;this.localLift=0;return;}
+    if(this.frieza?.inputLocked){this.snes.joypad1State=0;this.input=0;this.padInput=0;return;}
     if(this.teleport?.pending){this.snes.joypad1State=0;this.advanceAction();return;}
     const takeoff=(this.padInput&0xc00)===0xc00;
     if(takeoff&&(this.lastPadInput&0xc00)!==0xc00&&this.requestFlight()){this.snes.joypad1State=0;return;}

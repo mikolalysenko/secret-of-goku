@@ -52,7 +52,7 @@ test('ceiling punches escape three dungeons with the party, checkpoint replay, a
     expect(landing.world).toBe(false);expect(landing.party).toEqual([true,true,true]);expect(landing.canAttack).toBe(true);expect(landing.error).toBe(null);
   }
 });
-test('native palace rewards count each Dragon Ball once, then King Kai supplies only the missing Ball',async({page})=>{
+test('native palace rewards count each Dragon Ball once, then the incomplete finale leaves the missing Ball uncollected',async({page})=>{
   await load(page);await page.evaluate(()=>{for(let i=0;i<8;i++)mana.write8(0xcf90+i,0);mana.mod.quest.restore();});
   // Native seed interaction/reward scripts, with only their visit prerequisites
   // initialized by the fixture. Collection and animation run in the cartridge.
@@ -73,5 +73,5 @@ test('native palace rewards count each Dragon Ball once, then King Kai supplies 
   const saved=await page.evaluate(()=>mana.snapshot());await page.evaluate(s=>mana.restore(s),saved);
   expect(await page.evaluate(()=>mana.mod.quest.status.count)).toBe(6);
   await page.evaluate(()=>{mana.mod.story.request(0x93);mana.run(220);});
-  expect(await page.evaluate(()=>mana.mod.quest.status)).toMatchObject({count:7,delivered:1,wished:false});
+  expect(await page.evaluate(()=>mana.mod.quest.status)).toMatchObject({count:6,earned:6,delivered:0,wished:false});
 });

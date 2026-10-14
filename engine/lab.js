@@ -34,8 +34,9 @@ import {createCeilingEscape} from './ceiling-escape.js';
 import {createBeastChallenge} from './beast-challenge.js';
 import {createPowerIntro} from './power-intro.js';
 import {createShenronEnding} from './shenron-ending.js';
-import {buildQuickStart,quickStartLabels,quickStartRevision} from './quick-start.js';
+import {buildQuickStart,buildLateCheckpoint,quickStartLabels,quickStartRevision} from './quick-start.js';
 import {createWorldScars} from './world-scars.js';
+import {createPlanetView} from './planet-view.js';
 import {createSceneFastForward,sceneFastForwardRate} from './scene-fast-forward.js';
 import {fetchDefaultRom,validateRom} from './rom-loader.js';
 import {createDragonRadar} from './dragon-radar.js';
@@ -100,6 +101,7 @@ mod.frieza=createFrieza(snes,mod);
 mod.nativeSave=createNativeModSave(snes,mod,battery);
 const fastForward=createSceneFastForward(mod);
 mod.radar=createDragonRadar(snes,mod);
+mod.planetView=createPlanetView(snes,mod);
 let loaded=false,running=false,busy=false,lastTime=0,accumulator=0,checkpoint=null,frameCount=0,fpsTime=performance.now();
 let nameSeeded=false,originalBoot=false;
 let originalRom=null;
@@ -176,7 +178,7 @@ async function loadROM(source,{potos=false}={}){
   const bytes=await validateRom(source);
   battery.flush();
   originalRom=bytes.slice();
-  await Promise.all([mod.ready,mod.frieza.ready]);mod.spriteLayer.effects=createNativeEffects(bytes,await effectsManifest);mod.worldScars.load(bytes);running=false;clearInput();mod.configure({enabled:false});
+  await Promise.all([mod.ready,mod.frieza.ready]);mod.spriteLayer.effects=createNativeEffects(bytes,await effectsManifest);mod.worldScars.load(bytes);mod.planetView.load(bytes);running=false;clearInput();mod.configure({enabled:false});
   const patched=window.gokuDialoguePatch(potos?window.potosPatch(bytes):window.originalGamePatch(bytes));
   if(!snes.loadRom(patched,true))throw Error('The SNES core rejected this ROM.');
   snes.reset(true);battery.attach(snes.cart,hash(bytes));mod.reset();arrival.load(bytes,{potos});flightDialogue?.dispose();flightDialogue=installFlightDialogue(snes.cart,()=>mod.options.enabled&&mod.gokuActive);mod.gapFlight.load();mod.senzu.load();mod.equipment.load();mod.story.load();nameSeeded=false;originalBoot=!potos;loaded=true;render();return patched;
@@ -260,11 +262,16 @@ async function quickStart(kind){
     let saved=quickCache.get(key(kind));
     if(!saved)try{saved=await checkpointStore(undefined,key(kind));}catch{/* Build locally. */}
     if(saved){applyQuick(saved);quickCache.set(key(kind),saved);}
-    else await buildQuickStart(kind,{
+    else {
+     let late=['frieza','battle'].includes(kind)?quickCache.get(key('late')):null;
+     if(!late&&['frieza','battle'].includes(kind))try{late=await checkpointStore(undefined,key('late'));}catch{}
+     const callbacks={pump,mod,arrival,capture:captureQuick,cache,progress:text=>message(`${text} First use builds a private checkpoint; later jumps are instant.`)};
+     if(late){applyQuick(late);await buildLateCheckpoint(kind,callbacks);}
+     else await buildQuickStart(kind,{
       fresh:async()=>{await loadROM(source);mod.configure({enabled:true,power:true,superSaiyan:false});},
-      pump,mod,arrival,capture:captureQuick,cache,
-      progress:text=>message(`${text} First use builds a private checkpoint; later jumps are instant.`),
+      ...callbacks,
     });
+    }
     success=true;message(`${quickStartLabels[kind]} checkpoint ready. Your manual checkpoint is unchanged.`);
   }catch(error){
     // Rebuild the original cartridge/adapters if the user came from the Potos

@@ -21,15 +21,34 @@ test('the core deadline is persistent story state and twilight does not rewind o
   assert.ok(wrapText(`RADAR 8TH BALL TURN AROUND\nNext: ${target.name}\n${target.hint}`).split('\n').length<=3);
  }
 });
+test('after an early theft the radar completes missing palace visits before returning to Frieza',()=>{
+ const rom=new Uint8Array(0x200000),frieza={stolen:true,stolenMask:3,stage:'hunt'};
+ assert.equal(radarTarget(rom,{mask:3},{frieza}).id,2);
+ assert.equal(radarTarget(rom,{mask:127},{frieza}).id,'frieza');
+});
 
 const path='.local/rom/secret-of-mana-us.sfc';
-test('Death Ball precedes twilight, and declining at the native transition preserves the retail exit',{skip:!existsSync(path)},()=>{
+test('Death Ball precedes twilight, and every entrance is unconditional',{skip:!existsSync(path)},()=>{
  const rom=readFileSync(path),events=buildFriezaEvents(rom,0),bytes=events.get(F.theft),calls=[];
  for(let i=0;i<bytes.length;i+=commandLength(bytes,i))if(bytes[i]>=0x20&&bytes[i]<=0x27)calls.push((bytes[i]&7)<<8|bytes[i+1]);
  assert.ok(calls.indexOf(F.coreCharge)<calls.indexOf(F.coreShot));assert.ok(calls.indexOf(F.coreShot)<calls.indexOf(F.coreImpact));assert.ok(calls.indexOf(F.coreImpact)<calls.indexOf(F.leave));
- assert.deepEqual(events.get(F.retailEscape).slice(2),Array.from(compileStoryEvent(parseEvent(rom,0x4a4),0)));
+ assert.ok(calls.indexOf(0x7d7)<calls.indexOf(F.reveal),'ominous native score begins before the reveal');
+ for(const id of[F.offer,F.transitionOffer,F.retailEscape])assert.deepEqual(events.get(id),[0x51,1,0x10,F.theft,0]);
  assert.ok(events.get(F.escape).some((v,i,a)=>v===0x1f&&a[i+1]===4),'native world-mode handoff');
- const all=compiledText(bytes).map(decodeText).join(' ');assert.match(all,/destabilized the core/);assert.match(all,/FIVE MINUTES/);assert.doesNotMatch(all,/half a season|television|heard that one/i);
+ const all=compiledText(bytes).map(decodeText).join(' ');assert.match(all,/destabilized the core/);assert.match(all,/FIVE MINUTES/);assert.doesNotMatch(all,/half a season|television|heard that one|Come on out|Investigate|Call out/i);
+ for(const collected of[0,3,7]){const text=compiledText(buildFriezaEvents(rom,0,{collected}).get(F.theft)).map(decodeText).join(' ');assert.match(text,/FIVE MINUTES/);if(collected<7)assert.doesNotMatch(text,/collected every|all seven!/);}
+});
+
+test('Frieza powers the native Dark Lich warm-up; no dialogue displays telepathy tags',{skip:!existsSync(path)},()=>{
+ const rom=readFileSync(path);
+ for(const mask of[0,1,2,3]){
+  const events=buildFriezaEvents(rom,mask),text=id=>compiledText(events.get(id)).map(decodeText).join(' ');
+  assert.match(text(F.trial),/FRIEZA:Then have some ki/);assert.match(text(F.trial),/I want to watch him sweat/);
+  assert.doesNotMatch(text(F.trial),/GOKU:Here. Have a little ki/);
+  assert.ok(events.get(F.trial).some((v,i,a)=>v===0x17&&a[i+1]===0x0c),'native Dark Lich music/control handoff');
+  for(const bytes of events.values())assert.doesNotMatch(compiledText(bytes).map(decodeText).join(' '),/\[telepathy\]/i);
+  assert.doesNotMatch(compiledText(buildFriezaEnding(mask,!!(mask&2))).map(decodeText).join(' '),/\[telepathy\]/i);
+ }
 });
 
 test('the Tree blame and every ending party variant follow Frieza through to the repaired core',{skip:!existsSync(path)},()=>{
