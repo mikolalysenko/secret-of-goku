@@ -81,12 +81,11 @@ export function decodeObject(bytes, index = 0) {
     species:bytes[5],event:bytes[6]|((bytes[7]&7)<<8),interactionBits:bytes[7]>>3};
 }
 export function decodePlacements(bytes) {
-  let offset=0, layer=null;
+  let offset=0, layer='background';
   const pieces=[];
   while (offset<bytes.length) {
     const first=bytes[offset];
     if(first===0xfe || first===0xff) { layer=first===0xfe ? 'background':'foreground'; ++offset; continue; }
-    if(!layer) throw new RomFormatError('Map placements must begin with FE or FF layer marker');
     requireRange(bytes,offset,5,'Map placement');
     pieces.push({id:bytes[offset+2] | ((bytes[offset+3]&1)<<8) | ((bytes[offset+4]&1)<<9),
       layer,x:bytes[offset+3]>>1,y:bytes[offset+4]>>1,
@@ -103,7 +102,9 @@ export function mapPieceOffset(bytes,id) {
 export function readMapPiece(bytes,id) {
   const offset=mapPieceOffset(bytes,id);
   let end=id<1023 ? mapPieceOffset(bytes,id+1) : (offset&0xff0000)+0x10000;
-  if ((offset&0xff0000)!==(end&0xff0000)) end=(offset&0xff0000)+0x10000;
+  // HiROM streams can continue across a bank boundary (Mandala north does).
+  // The piece table's final bank jump back to C is not contiguous.
+  if(end<offset&&(offset&0xff0000)!==(end&0xff0000))end=(offset&0xff0000)+0x10000;
   if(end<=offset) throw new RomFormatError(`Invalid or empty map piece ${id}: 0x${offset.toString(16)}..0x${end.toString(16)}`);
   requireRange(bytes,offset,end-offset,`Map piece ${id}`);
   try { return {offset,compressedLength:end-offset,...decodeMapPiece(bytes.subarray(offset,end))}; }
@@ -175,6 +176,7 @@ export function readMap(bytes,id,name=`Map ${id}`,eventFlags={}) {
     if(index===0&&header.walkOnEvent) role='walk-on';
     else if(specialIndex<header.specialEventTileMode) role=`special-${0xbf-specialIndex++}`;
     const value=word(bytes,offset);
+    if(value===0xffff)break; // Padding after the last trigger, e.g. Todo.
     triggers.push(value<0x800 ? {index,value,role,kind:'event',event:value} : {index,value,role,kind:'door',door:decodeDoor(bytes,value-0x800)});
   }
   const tileset=readTileset(bytes,header.tileset16);

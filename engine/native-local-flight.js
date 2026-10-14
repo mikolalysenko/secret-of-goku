@@ -8,6 +8,9 @@ const scenery={0:new Set([130,139,141,159]),2:new Set([130,131]),
 // Forest rock-bank faces. These can only be flown across when usable terrain
 // exists on BOTH sides of a short span; the same art also borders map voids.
 const forestBanks=new Set([1,2,4,6,9,14,17,18,19,20,22,23,25,30,31,32,33,34,35,36,37,38,39,46,47,48,49,50,51,52,53,54,55,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,96,97,135,137,158,159,174,175]);
+// Palace platform edges, downward faces and the empty air below them. These
+// are shared by Water/Earth/Fire/Shade/Grand Palace, not their upright walls.
+const palaceGaps=new Set([0,6,22,38,54,63,187]);
 // C0:D359 dispatches 2x stair guidance and 3x currents/conveyors. These
 // modify walking velocity; they are floors, not collision or event triggers.
 const movementFloor=code=>(code&0xf0)===0x20||(code&0xf0)===0x30;
@@ -43,6 +46,18 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   // from their shared solid flag. Scope the list to the original tileset.
   const at=header();if(at===null)return false;
   const flags=snes.cart.data[at+2],tileset=flags&63,metatile=t.tile+((flags&(t.layer?128:64))?192:0);
+  if(tileset===23&&t.layer===0&&t.code===0&&palaceGaps.has(metatile)&&Number.isInteger(t.tx)&&Number.isInteger(t.ty)){
+   const shore=(dx,dy)=>{
+    for(let n=1;n<=16;n++){
+     const next=tileAt((t.tx+dx*n)*16+8,(t.ty+dy*n)*16+8,0);
+     if(!next||next.behavior&0x10)return false;
+     if(clear(next,0,true))return true;
+     if(next.code!==0||!palaceGaps.has(next.tile+((flags&64)?192:0)))return false;
+    }
+    return false;
+   };
+   return shore(-1,0)&&shore(1,0)||shore(0,-1)&&shore(0,1);
+  }
   // Forest height-transition strips (10-17) are also part of the ledge;
   // walking uses them to change floors. Flight ignores that forced motion.
   const bank=d=>d&&(d.code===0&&forestBanks.has(d.tile+((flags&64)?192:0))||d.code>=0x10&&d.code<=0x17);
@@ -146,6 +161,13 @@ export function createNativeLocalFlight(snes,{active=()=>false,speed=6,phase=fal
   if(!ground())return;
   const map=word(0xdc),x=word(0xe002),y=word(0xe004),l=layer();
   if(anchor?.map!==map)anchor=null;
+  // Crossing a ledge can bypass the walking stair that normally changes
+  // E00B. Adopt the destination floor only once the entire footprint fits;
+  // otherwise releasing flight would leave Goku hovering on clear ground.
+  if(phasing()&&eligible()){
+   const terrain=tileAt(x,y,l)?.flags&3;
+   if((terrain===1||terrain===2)&&terrain!==(r[0xe00b]&3)&&canLand(x,y,l,terrain))r[0xe00b]=(r[0xe00b]&0xfc)|terrain;
+  }
   if(canLand(x,y,l)){anchor={map,x,y,layer:l,terrain:r[0xe00b]};return;}
   if(!phasing()||!eligible())return;
   const {width,height}=bounds(),t=tileAt(x,y,l),outside=x<8||y<8||x>width-8||y>height-8;

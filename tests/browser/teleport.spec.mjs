@@ -44,3 +44,13 @@ test('flight crosses the Potos-path riverbanks and can rescue an old bank-strand
  expect(r.river.x).toBeLessThan(324);expect(r.river.x).toBeGreaterThan(272);expect(r.shore.x).toBeGreaterThan(348);
  expect(r.rescued.x).toBeGreaterThan(348);expect(r.clear).toBe(true);expect(r.phased).toBeGreaterThan(0);
 });
+test('flight lands on the new floor height after bypassing a terrain transition',async({page})=>{
+ await load(page);
+ const r=await page.evaluate(()=>{
+  const m=mana.mod,h=m.localFlightHook;for(let i=1;i<12;i++)mana.write8(0xe000+i*512,0);
+  mana.write16(0xe002,312);mana.write16(0xe004,200);mana.write8(0xe00b,1);h.restore();m.teleport.follow({x:312,y:200,terrain:1,layer:0});mana.run(30);
+  mana.run(5,[8,5]);mana.run(12);
+  return{status:m.status,terrain:mana.read8(0xe00b),clear:h.canLand(),tile:h.tileAt(m.status.x,m.status.y)};
+ });
+ expect(r.status.y,JSON.stringify(r)).toBeGreaterThan(215);expect(r.terrain).toBe(2);expect(r.clear).toBe(true);expect(r.status.localFlight).toBe(false);
+});

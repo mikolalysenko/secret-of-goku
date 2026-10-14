@@ -32,6 +32,16 @@ test('increment/decrement runs wrap within bytes',()=>{
   assert.deepEqual(decodeMapPiece(piece(5,1,[2,0xf0,0x83])).tiles,[2,1,0,255,254]);
   assert.deepEqual(decodeMapPiece(piece(4,1,[10,0xf2])).tiles,[10,11,12,13]);
 });
+test('rectangular map motifs stamp after the base stream, including multiple definitions',()=>{
+  const withMotifs=(w,h,data)=>{const bytes=piece(w,h,data);bytes[0]|=1;return bytes;};
+  const decoded=decodeMapPiece(withMotifs(4,3,[0x11,1,2,3,4,0xfe,0,9,0xff,0xf8,0,0xf9,0,0,0,0,0,0,0,0,0]));
+  assert.deepEqual(decoded.tiles,[1,2,9,0,3,4,0,0,0,0,0,0]);
+  // Row copies use the motif width, and a later stamp wins even when its
+  // dictionary index is lower. Rectangles at the right edge do not wrap.
+  const overlap=decodeMapPiece(withMotifs(4,3,[0x11,1,2,0xe1,0xfe,0x11,8,9,0xe1,0xff,0xf9,0xf8,0,0xf9,0,0,0,0,0,0,0,0]));
+  assert.deepEqual(overlap.tiles,[8,1,2,8,8,1,2,8,0,0,0,0]);
+  assert.throws(()=>decodeMapPiece(withMotifs(4,3,[0x11,1,2,0xff])),RomFormatError);
+});
 test('map decoding fails on unsupported, truncated, overflowing, or before-start references',()=>{
   for(const input of [[],[0],[0,0,0xf8],[0,0,0xc0],[2,0,1,0xe0],[2,0,1,0xc7],[2,0,1,0xe8,0x80]])
     assert.throws(()=>decodeMapPiece(Uint8Array.from(input)),RomFormatError);

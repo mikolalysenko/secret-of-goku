@@ -42,7 +42,7 @@ export function createNativeStory(snes,mod){
     // example, begin a crossing when the interpreter actually fetches them.
     return cart.data[pc&0x3fffff]??0;
   }
-  let lastEvent=null,relocations=0,skippedActors=0,fastTrack=false,areaChanges=[],queued=null,pending=null,error=null,spellGrants=Array.from({length:2},()=>Array(8).fill(0));
+  let lastEvent=null,relocations=0,skippedActors=0,fastTrack=false,areaChanges=[],queued=null,queuedContext=null,pending=null,error=null,spellGrants=Array.from({length:2},()=>Array(8).fill(0));
   const write=snes.write;
   snes.write=function(address,value,dma=false){
     const result=write.call(this,address,value,dma),bank=address>>>16&255;
@@ -106,7 +106,10 @@ export function createNativeStory(snes,mod){
       }
       if(fastTrack&&word(0xdc)===246&&r[0xcf4e]===8&&mod.canAttack&&queued===null)queued=0x429;
       if(queued!==null&&!pending&&enabled()&&mod.canAttack&&!this.waiting&&!this.stopped&&!this.nmiWanted&&!this.abortWanted&&(!this.irqWanted||this.i)){
+        const context=queuedContext;queuedContext=null;
+        if(context&&(word(0xdc)!==context.map||!(r[0xe000+context.actor]&1)||word(0xe03e+context.actor)!==context.event)){queued=null;return cycle.call(this);}
         r[0xd4]=r[0xd5]=r[0x3a]=r[0x3b]=0;
+        if(context){r[0x3a]=context.actor&255;r[0x3b]=context.actor>>8;}
         pending={br:[...this.br],r:[...this.r],p:this.getP()};
         this.br[0]=queued;queued=null;this.pushByte(this.r[1]);this.pushWord((this.br[4]-1)&65535);
         this.r[1]=1;this.br[4]=0xe76d;this.cyclesLeft=7;return;
@@ -163,11 +166,15 @@ export function createNativeStory(snes,mod){
       entries.set(0xc00000+eventRange(cart.data,0x85).start,()=>advice[mod.quest?.status.count??0]);
       cart.read=storyRead;this.restore();
     },
-    request(event){if(!Number.isInteger(event)||event<0||event>=0x800||queued!==null||pending||!enabled()||!mod.canAttack)return false;queued=event;return true;},
+    request(event,{actor=0}={}){
+      if(!Number.isInteger(event)||event<0||event>=0x800||queued!==null||pending||!enabled()||!mod.canAttack)return false;
+      if(actor&&(!Number.isInteger(actor)||actor<0x600||actor>=0x1800||actor%0x200||!(r[0xe000+actor]&1)))return false;
+      queued=event;queuedContext=actor?{actor,map:word(0xdc),event:word(0xe03e+actor)}:null;return true;
+    },
     travel(door){if(!Number.isInteger(door)||door<=0||door>=0x400||queued!==null||pending||!enabled()||!mod.canAttack)return false;queued=0x800|door;return true;},
     get status(){return{lastEvent,relocations,skippedActors,fastTrack,areaChanges:[...areaChanges],queued,error,eventCount:entries.size,scriptCount:scripts.size};},
-    snapshot(){return{version:1,lastEvent,relocations,skippedActors,fastTrack,areaChanges,queued,pending,error,spellGrants:spellGrants.map(s=>s.slice())};},
-    restore(saved){lastEvent=saved?.lastEvent??null;relocations=saved?.relocations??0;skippedActors=saved?.skippedActors??0;fastTrack=!!saved?.fastTrack;areaChanges=saved?.areaChanges?.slice()||[];queued=saved?.queued??null;pending=saved?.pending??null;error=saved?.error??null;spellGrants=saved?.spellGrants?.map(s=>s.slice())||[Array.from(r.slice(0xe3c8,0xe3d0)),Array.from(r.slice(0xe5c8,0xe5d0))];},
+    snapshot(){return{version:1,lastEvent,relocations,skippedActors,fastTrack,areaChanges,queued,queuedContext,pending,error,spellGrants:spellGrants.map(s=>s.slice())};},
+    restore(saved){lastEvent=saved?.lastEvent??null;relocations=saved?.relocations??0;skippedActors=saved?.skippedActors??0;fastTrack=!!saved?.fastTrack;areaChanges=saved?.areaChanges?.slice()||[];queued=saved?.queued??null;queuedContext=saved?.queuedContext??null;pending=saved?.pending??null;error=saved?.error??null;spellGrants=saved?.spellGrants?.map(s=>s.slice())||[Array.from(r.slice(0xe3c8,0xe3d0)),Array.from(r.slice(0xe5c8,0xe5d0))];},
     dispose(){if(cart?.read===storyRead)cart.read=read;c.cycle=cycle;snes.write=write;},
   };
 }

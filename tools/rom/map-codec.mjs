@@ -19,51 +19,78 @@ export function decodeMapPiece(bytes) {
   requireRange(bytes, 0, 2, 'Map dimensions');
   const width = (bytes[0] >> 1) + 1;
   const height = (bytes[1] >> 1) + 1;
-  const tiles = new Uint8Array(width * height);
   let input = 2;
-  let output = 0;
   const commands = new Set();
+  const motifs=[];
+  const placements=[];
   const read = () => {
     requireRange(bytes, input, 1, 'Map command');
     return bytes[input++];
   };
-  const previous = distance => {
-    if (distance < 1 || distance > output) {
-      throw new RomFormatError(`Map back-reference ${distance} before start at output ${output}`);
+  function stream(w,h,allowMotifs=false) {
+    const tiles=new Uint8Array(w*h);let output=0;
+    const previous = distance => {
+      if (distance < 1 || distance > output) {
+        throw new RomFormatError(`Map back-reference ${distance} before start at output ${output}`);
+      }
+      return tiles[output - distance];
+    };
+    const emit = value => {
+      if (output >= tiles.length) throw new RomFormatError(`Map run exceeds ${w}x${h} output`);
+      tiles[output++] = value & 0xff;
+    };
+    while (output < tiles.length) {
+      const at = input;
+      const command = read();
+      if (command < 0xc0) { emit(command); continue; }
+      commands.add(command);
+      if (command < 0xe0) {
+        const value = previous(1 + ((command - 0xc0) >> 3));
+        for (let n = (command & 7) + 1; n > 0; --n) emit(value);
+      } else if (command <= 0xe7) {
+        const arg = command === 0xe0 ? read() : command - 0xe0;
+        const distance = w * (1 + (arg >> 7));
+        for (let n = (arg & 127) + 1; n > 0; --n) emit(previous(distance));
+      } else if (command <= 0xef) {
+        const arg = read();
+        const size = 1 + 2 * (command - 0xe8) + (arg >> 7);
+        const pattern = Array.from({length:size}, (_, i) => previous(size - i));
+        for (let i = 0; i <= (arg & 127); ++i) emit(pattern[i % size]);
+      } else if (command <= 0xf7) {
+        const arg = command === 0xf0 ? read() : command - 0xf0;
+        const start = previous(1);
+        const step = (arg & 128) ? -1 : 1;
+        for (let i = 1; i <= (arg & 127) + 1; ++i) emit(start + step * i);
+      } else if(command<=0xfd){
+        const motif=motifs[command-0xf8];
+        if(!allowMotifs||!motif)throw new RomFormatError(`Undefined map motif at compressed offset 0x${at.toString(16)}`);
+        placements.push({motif,position:output});emit(0);
+      } else {
+        throw new RomFormatError(`Unexpected map motif delimiter at compressed offset 0x${at.toString(16)}`);
+      }
     }
-    return tiles[output - distance];
-  };
-  const emit = value => {
-    if (output >= tiles.length) throw new RomFormatError(`Map run exceeds ${width}x${height} output`);
-    tiles[output++] = value & 0xff;
-  };
-  while (output < tiles.length) {
-    const at = input;
-    const command = read();
-    if (command < 0xc0) { emit(command); continue; }
-    commands.add(command);
-    if (command < 0xe0) {
-      const value = previous(1 + ((command - 0xc0) >> 3));
-      for (let n = (command & 7) + 1; n > 0; --n) emit(value);
-    } else if (command <= 0xe7) {
-      const arg = command === 0xe0 ? read() : command - 0xe0;
-      const distance = width * (1 + (arg >> 7));
-      for (let n = (arg & 127) + 1; n > 0; --n) emit(previous(distance));
-    } else if (command <= 0xef) {
-      const arg = read();
-      const size = 1 + 2 * (command - 0xe8) + (arg >> 7);
-      const pattern = Array.from({length:size}, (_, i) => previous(size - i));
-      for (let i = 0; i <= (arg & 127); ++i) emit(pattern[i % size]);
-    } else if (command <= 0xf7) {
-      const arg = command === 0xf0 ? read() : command - 0xf0;
-      const start = previous(1);
-      const step = (arg & 128) ? -1 : 1;
-      for (let i = 1; i <= (arg & 127) + 1; ++i) emit(start + step * i);
-    } else {
-      // Motifs require additional state; do not silently return inaccurate maps.
-      throw new RomFormatError(`Unsupported map command 0x${command.toString(16)} at compressed offset 0x${at.toString(16)}`);
-    }
+    return tiles;
   }
+  // C0:CD03-CD38 reads a dictionary before the main stream when either
+  // dimension has its low flag bit set. Each rectangle has its OWN width
+  // for row back-references. FE separates definitions; FF ends the table.
+  if((bytes[0]|bytes[1])&1){
+    let delimiter;
+    do {
+      if(motifs.length>=6)throw new RomFormatError('Too many map motif definitions');
+      const settings=read(),w=(settings&15)+1,h=(settings>>4)+1;
+      const data=stream(w,h);delimiter=read();commands.add(delimiter);
+      if(delimiter!==0xfe&&delimiter!==0xff)throw new RomFormatError('Invalid map motif delimiter');
+      motifs.push({width:w,height:h,data});
+    }while(delimiter!==0xff);
+  }
+  const tiles=stream(width,height,true);
+  // Native C0:CD4D stamps in encounter order, preserving overlapping motifs.
+  for(const {motif,position} of placements)
+    for(let y=0;y<motif.height;y++)for(let x=0;x<motif.width;x++){
+      const tx=position%width+x,ty=Math.floor(position/width)+y;
+      if(tx<width&&ty<height)tiles[ty*width+tx]=motif.data[y*motif.width+x];
+    }
   return {width, height, tiles:Array.from(tiles), bytesConsumed:input,
     compressionCommands:[...commands].sort((a,b) => a-b)};
 }

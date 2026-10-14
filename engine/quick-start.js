@@ -1,6 +1,6 @@
 // Built locally from the user's ROM. No cartridge bytes or savestates ship
 // with the site. Bump the revision when native virtual script layouts change.
-export const quickStartRevision='snes-controls-watts-5';
+export const quickStartRevision='arrival-cleanup-6';
 export const quickStartLabels={title:'After title',sword:'After sword / pod crash'};
 export async function buildQuickStart(kind,{fresh,pump,mod,arrival,capture,cache,progress}){
   if(!(kind in quickStartLabels))throw Error('Unknown quick checkpoint');

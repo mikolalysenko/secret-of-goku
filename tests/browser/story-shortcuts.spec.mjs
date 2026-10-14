@@ -1,5 +1,6 @@
 import {test,expect} from '@playwright/test';
 import {existsSync,readFileSync} from 'node:fs';
+import {encodeText} from '../../engine/event-codec.js';
 
 test.setTimeout(180000);
 async function load(page,path='.local/graphics-audit/party.json'){
@@ -7,14 +8,14 @@ async function load(page,path='.local/graphics-audit/party.json'){
   await page.goto('/');await page.waitForFunction(()=>mana.ready);
   await page.evaluate(s=>{mana.pause();s.romHash=mana.hash(mana.snes.cart.data);mana.restore(s);Object.assign(mana.mod.options,{enabled:true,power:true,superSaiyan:false});mana.run(3);},JSON.parse(readFileSync(path,'utf8')));
 }
-async function enter(page,map,x,y,flags={}){
-  await page.evaluate(({map,x,y,flags})=>{
+async function enter(page,map,x,y,flags={},layer=1){
+  await page.evaluate(({map,x,y,flags,layer})=>{
     const c=mana.snes.cart.data,e=c.slice(0x742b0,0x742b5),d=c.slice(0x8300c,0x83010);
-    try{c.set([4,24,3,5,0],0x742b0);c.set([map&255,x*2+(map>>8),y*2+1,0],0x8300c);
+    try{c.set([4,24,3,5,0],0x742b0);c.set([map&255,x*2+(map>>8),y*2+layer,0],0x8300c);
       for(const[k,v]of Object.entries(flags))mana.write8(0xcf00+Number(k),v);
       mana.write8(0xd1,0xb0);mana.write8(0xd2,0x42);mana.write8(0xd3,0xc7);mana.write8(0xd0,1);mana.run(240);
     }finally{c.set(e,0x742b0);c.set(d,0x8300c);}
-  },{map,x,y,flags});
+  },{map,x,y,flags,layer});
 }
 async function dismiss(page,predicate,limit=24){
   for(let i=0;i<limit;i++){
@@ -120,4 +121,25 @@ test('Luka menu can cancel the shortcut and open the original save screen',async
   }
   expect(await page.evaluate(()=>mana.mod.story.status.lastEvent)).toBe(0x90);
   expect(await page.evaluate(()=>mana.mod.story.status.error)).toBe(null);
+});
+
+test('Goku answers NOTHING to Luka and still receives the Water Dragon Ball through the native seed scene',async({page})=>{
+ await load(page);await enter(page,139,17,18,{0x11:10,0x90:0},0);
+ const choice=await page.evaluate(()=>{
+  const m=mana.mod,npc=m.entities().find(e=>e.active&&(mana.read16(e.base+0x3e)&0x7ff)===0x130);m.quest.restore();
+  const requested=m.story.request(0x133,{actor:npc.base-0xe000});mana.run(300,[11]);
+  const pc=mana.read16(0xd1)|(mana.read8(0xd3)<<16),bytes=Array.from({length:100},(_,i)=>m.story.inspectByte(pc+i));
+  mana.run(180,[11]);return{requested,bytes:bytes.join(','),waiting:pc===(mana.read16(0xd1)|(mana.read8(0xd3)<<16)),id:m.story.status.lastEvent};
+ });
+ expect(choice.requested).toBe(true);expect(choice.id).toBe(0x133);expect(choice.waiting).toBe(true);expect(choice.bytes).toContain(encodeText('NOTHING').join(','));expect(choice.bytes).not.toContain(encodeText('The Sword').join(','));
+ const result=await page.evaluate(async()=>{
+  const events=new Set();mana.run(2,[0]);mana.run(10);
+  for(let i=0;i<120&&mana.read8(0xcf11)===10;i++){
+   mana.run(30,[11]);events.add(mana.mod.story.status.lastEvent);
+   if(mana.fastForward.state(0x800).choice){mana.run(240,[11]);if(mana.mod.story.status.lastEvent===0x202){mana.run(2,[7]);mana.run(12);}mana.run(2,[0]);mana.run(10);}
+   if(i%10===0)await new Promise(r=>setTimeout(r,0));
+  }
+  return{events:[...events],progress:mana.read8(0xcf11),seed:mana.read8(0xcf90),quest:mana.mod.quest.status,error:mana.mod.story.status.error};
+ });
+ expect(result.events).toContain(0x9c);expect(result.events).toContain(0x200);expect(result.events).toContain(0x204);expect(result.progress).toBe(11);expect(result.seed).toBe(1);expect(result.quest.mask&1).toBe(1);expect(result.quest.seedMask&1).toBe(1);expect(result.error).toBe(null);
 });

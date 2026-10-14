@@ -53,6 +53,17 @@ and 15; it blocks the Mantis hole with invisible solid tiles. The hole's visible
 art remains in the foreground. The exported default sets flag `0x10 = 6`.
 All five maps' used pieces decode with the implemented commands and bounded input.
 
+The later whole-cartridge pass also decodes all 392 named map layouts. Native
+C0:CD03–CD38 treats a low flag bit in either dimension byte as a rectangle
+dictionary prefix: each motif has its own packed width/height, compressed tile
+stream, and FE/FF delimiter. F8–FD in the main stream record placements; C0:CD4D
+stamps them in encounter order. Motif rows use their own width for copies and
+clip at the piece edge instead of wrapping into the next row. Paradise Town
+exposed the edge case. Kilroy uses an implicit initial background section,
+Mandala has a piece stream crossing a HiROM bank boundary, and Todo's trigger
+list ends with FFFF padding. The native-grid comparison and its limits are
+recorded in the [barrier audit](graphics-audit.md#barrier-follow-up--october-13-2026).
+
 The old `potos-original.png` map rip shifts the village 48 pixels right relative
 to ROM coordinates. The generated `rom-potos-*.png` images use the real ROM
 origin. When migrating existing placements: `nativeX = oldX - 48`; Y is unchanged.

@@ -17,6 +17,26 @@ export const barrierTileEvents=new Map([
   [0x565,0x56b],[0x566,0x56b],[0x567,0x56b],[0x568,0x56b],
   [0x599,0x599],[0x59a,0x59a],
 ]);
+// Pressure plates use per-location trigger metatiles instead of F hit codes.
+// These events only operate their local switches/gates. Doorways, trap drops,
+// boss entry scenes and conversations are deliberately not ranged targets.
+export const barrierFloorEvents=new Map([
+  [0x6e9,0x6f1],[0x6ea,0x6f2],
+  ...[0x6f0,0x6f1,0x6f2,0x6f3,0x430,0x431,0x432,0x433,0x434,0x435,0x436,
+    0x660,0x663,0x664,0x665,0x667,0x6b0,0x6b1,0x6b2,0x6b3,0x6b4,0x6b5,0x22c,0x22d,
+    0x1e8,0x51f,0x528,0x54f,0x550,0x551,0x6cc,0x6cd,0x6cf,
+    0x4c1,0x4c2,0x4c3,0x4c4].map(id=>[id,id]),
+  [0x662,0x663],[0x666,0x667],
+]);
+export function floorTileEvent(mod,tile){
+  if(!tile||(tile.behavior&0x80)===0||tile.tile<mod.read8(0x4d))return null;
+  const rom=mod.snes.cart?.data,map=mod.read16(0xdc);if(!rom||map>=511)return null;
+  const word=a=>rom[a]|rom[a+1]<<8,start=0x80000+word(0x84000+map*2),end=0x80000+word(0x84002+map*2);
+  // C0:B642-B66F: $4D already accounts for BF/BE special tiles; only the
+  // optional walk-on entry is added. The native loader numbers both layers.
+  const at=start+2*(tile.tile-mod.read8(0x4d)+((mod.read8(0xb8)&4)?1:0));
+  return at>=start&&at+1<end?word(at):null;
+}
 export function beamTouchesBarrier(beam,barrier){
   if((beam.strength??0)<.85)return false;
   const[x,y,w,h]=barrier.rect,cx=x+w/2,cy=y+h/2,ox=cx-beam.x,oy=cy-beam.y;
@@ -33,8 +53,7 @@ export function createNativeBarriers(mod){
     for(let ty=Math.max(0,Math.floor((Math.min(attack.y,y1)-pad)/16));ty<Math.min(height/16,Math.ceil((Math.max(attack.y,y1)+pad)/16));ty++)
     for(let tx=Math.max(0,Math.floor((Math.min(attack.x,x1)-pad)/16));tx<Math.min(width/16,Math.ceil((Math.max(attack.x,x1)+pad)/16));tx++){
       const tile=mod.plants.metadata(tx,ty);
-      if((tile.code&0xf0)!==0xf0)continue;
-      const source=tile.replacement*16+(tile.code&15),event=barrierTileEvents.get(source);
+      const hitTile=(tile.code&0xf0)===0xf0,source=hitTile?tile.replacement*16+(tile.code&15):floorTileEvent(mod,tile),event=(hitTile?barrierTileEvents:barrierFloorEvents).get(source);
       if(!event)continue;
       // The Grand Palace sequence owns these buttons only at stage three.
       // Smash its four-button combination once; do not advance later scenes.

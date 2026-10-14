@@ -5,14 +5,18 @@ async function load(page,path='.local/graphics-audit/party.json'){
  await page.goto('/');await page.waitForFunction(()=>mana.ready);
  await page.evaluate(s=>{mana.pause();s.romHash=mana.hash(mana.snes.cart.data);mana.restore(s);Object.assign(mana.mod.options,{enabled:true,power:true,superSaiyan:false});mana.run(3);},JSON.parse(readFileSync(path)));
 }
-async function enter(page,map,x,y,flags={},layer=0){
- await page.evaluate(({map,x,y,flags,layer})=>{
-  const c=mana.snes.cart.data,e=c.slice(0x742b0,0x742b5),d=c.slice(0x8300c,0x83010);
+async function enter(page,map,x,y,flags={},layer=0,quiet=false){
+ await page.evaluate(({map,x,y,flags,layer,quiet})=>{
+  const c=mana.snes.cart.data,e=c.slice(0x742b0,0x742b5),d=c.slice(0x8300c,0x83010),word=a=>c[a]|c[a+1]<<8;
+  const start=0x80000+word(0x87000+map*2),end=0x80000+word(0x87002+map*2),objects=c.slice(start,end);
   try{c.set([4,24,3,5,0],0x742b0);c.set([map&255,x*2+(map>>8),y*2+layer,0],0x8300c);
+   // Gate tests retain the native map/event engine but hide enemy spawns;
+   // otherwise their offscreen spell windups interrupt remote-switch shots.
+   if(quiet)for(let at=start+8;at<end;at+=8)if(c[at+5]<0x80){c[at]=0;c[at+1]=0xff;}
    for(const[k,v]of Object.entries(flags))mana.write8(0xcf00+Number(k),v);
    mana.write8(0xd1,0xb0);mana.write8(0xd2,0x42);mana.write8(0xd3,0xc7);mana.write8(0xd0,1);mana.run(240);
-  }finally{c.set(e,0x742b0);c.set(d,0x8300c);}
- },{map,x,y,flags,layer});
+  }finally{c.set(e,0x742b0);c.set(d,0x8300c);c.set(objects,start);}
+ },{map,x,y,flags,layer,quiet});
 }
 test('Haunted Forest gates open by beam or punch and stay open after leaving',async({page})=>{
  for(const [map,x,y,flag,min,punch]of[[29,15,23,0x5e,1,false],[29,15,21,0x5e,1,true],[30,15,30,0x5f,3,false]]){
@@ -133,4 +137,43 @@ test('the native ending keeps its blue sky palette when HDMA is enabled late',as
  await load(page,'.local/ending-fix/ending-native.json');
  const result=await page.evaluate(()=>{mana.mod.options.enabled=false;mana.run(600);return[...mana.snes.ppu.cgram.slice(0,4)];});
  expect(result).toEqual([0,0x34c0,0x2480,0x1820]);
+});
+
+test('Goku flies across the Water Palace platform gap and hovers safely if released over it',async({page})=>{
+ await load(page);await enter(page,139,17,55);
+ const r=await page.evaluate(()=>{
+  const m=mana.mod,h=m.localFlightHook,start=m.status,hash=mana.hash(mana.snes.cart.data);
+  mana.run(14,[8,4]);const over=m.status,saved=mana.snapshot();mana.run(45);const hovering={flight:m.localFlight,y:m.status.y,safe:h.canFly(m.status.x,m.status.y)};
+  mana.run(14,[8,4]);mana.run(10);const across=m.status;
+  mana.restore(saved);mana.run(45);mana.run(14,[8,4]);mana.run(10);const replay=m.status;
+  mana.run(28,[8,5]);mana.run(10);const back=m.status;
+  return{start,over,hovering,across,replay,back,unchanged:mana.hash(mana.snes.cart.data)===hash};
+ });
+ expect(r.over.y).toBeGreaterThan(768);expect(r.over.y).toBeLessThan(848);expect(r.hovering.flight).toBe(true);expect(r.hovering.safe).toBe(true);expect(Math.abs(r.hovering.y-r.over.y)).toBeLessThanOrEqual(2);expect(r.across.y).toBeLessThan(768);expect(r.across.localFlight).toBe(false);expect(r.across.map).toBe(139);expect([r.replay.x,r.replay.y]).toEqual([r.across.x,r.across.y]);expect(r.back.y).toBeGreaterThan(850);expect(r.back.localFlight).toBe(false);expect(r.unchanged).toBe(true);
+});
+
+test('punches and beams press native floor switches across palaces, castles and the Fortress',async({page})=>{
+ test.setTimeout(240000);
+ const cases=[{map:135,x:15,y:27,flag:0xa7,to:1,punch:true},{map:139,x:15,y:53,flag:0xa4,to:1},{map:117,x:10,y:25,flag:0xa4,to:1},{map:302,x:8,y:13,flag:0xa4,to:1},{map:248,x:66,y:15,flag:0x4f,from:1,to:3},
+  {map:352,x:14,y:16,flag:0x55,to:2},{map:355,x:24,y:19,flag:0x55,from:2,to:3},{map:357,x:5,y:13,flag:0x56,from:1,to:2},
+  {map:368,x:24,y:10,flag:0x39,to:1},{map:370,x:16,y:15,flag:0x38,to:1},{map:374,x:16,y:31,flag:0x38,from:2,to:3},
+  {map:312,x:8,y:40,flag:0x1c,to:1},{map:403,x:66,y:70,flag:0x2d,to:1,layer:1},{map:404,x:33,y:64,flag:0x2d,from:2,to:3,layer:1},
+  {map:327,x:12,y:15,flag:0x2b,from:1,to:2},{map:240,x:16,y:23,flag:0x2b,from:2,to:3},{map:417,x:14,y:12,flag:0x48,to:1}];
+ for(const s of cases){
+  await load(page);await enter(page,s.map,s.x,s.y+3,{[s.flag]:s.from??0},s.layer??0,true);
+  const r=await page.evaluate(s=>{
+   const m=mana.mod,h=m.localFlightHook,targets=[];for(let i=1;i<12;i++)mana.write8(0xe000+i*512,0);
+   const range=s.punch?[20,24,28]:[56,72,88,104,120,136,152];
+   for(const distance of range)for(const [dx,dy,button]of[[0,1,4],[0,-1,5],[1,0,6],[-1,0,7]]){const x=s.x*16+8+dx*distance,y=s.y*16+8+dy*distance;if(h.canLand(x,y,s.layer??0,0))targets.push({x,y,button});}
+   const at=targets[0];if(!at)return{missing:true};
+   const terrain=s.layer?0x80:0;mana.write16(0xe002,at.x);mana.write16(0xe004,at.y);mana.write8(0xe00b,terrain);m.teleport.follow({...at,terrain,layer:s.layer??0});mana.run(80);
+   const before=mana.read8(0xcf00+s.flag),tile=m.plants.metadata(s.x,s.y);mana.run(1,[at.button]);
+   if(s.punch){mana.run(2,[0]);mana.run(80);}else{mana.run(100,[10,1]);mana.run(1);mana.run(150);}
+   // Native puzzle sparkles retain their effect lock ($2C) after the map
+   // rebuild. Wait for the original animation to return player control.
+   for(let i=0;i<12&&!m.canAttack;i++){if(mana.read8(0xd0)&128){mana.run(2,[0]);mana.run(4);}mana.run(60,[11]);}
+   return{before,flag:mana.read8(0xcf00+s.flag),tile,barriers:m.barriers.status,error:m.story.status.error,canAttack:m.canAttack,status:m.status,story:m.story.status};
+  },s);
+  expect(r.missing,JSON.stringify({s,r})).toBeFalsy();expect(r.before,JSON.stringify({s,r})).toBe(s.from??0);expect(r.flag,JSON.stringify({s,r})).toBe(s.to);expect(r.error).toBe(null);expect(r.canAttack,JSON.stringify({s,r})).toBe(true);
+ }
 });

@@ -78,6 +78,7 @@ test('flight can change terrain height, and forest banks require usable ground o
  ram[0xe00b]=1;ram.set([2,0,0,0],0x1b800);
  assert.equal(hook.canLand(25,40),false);assert.equal(hook.canFly(25,40),true,'fly between native height bands');
  assert.equal(hook.canLand(25,40,0,2),true,'teleport checks the target terrain, not Goku’s old terrain');
+ hook.settle();assert.equal(ram[0xe00b],2);assert.equal(hook.canLand(25,40),true,'flight can land at its new height without walking through a staircase');
  const rom=new Uint8Array(0x90000);rom[0x80002]=2;
  // This fixture needs cartridge art metadata to distinguish banks from trees.
  const native=createNativeLocalFlight({ram,cpu,cart:{data:rom}},{active:()=>true,phase:true});
@@ -100,4 +101,18 @@ test('multiple movement updates cannot outrun one VRAM row/column upload in a vi
  const {ram,cpu}=fixture(),distances=[];
  for(let i=0;i<3;i++){ram[0x1e]=8;cpu.br[4]=0xd651;cpu.cycle();distances.push(ram[0x1e]);}
  assert.deepEqual(distances,[8,6,0]);
+});
+
+test('palace flight crosses enclosed platform gaps but stops at walls and open map voids',()=>{
+ const {ram,cpu,tile}=fixture(),rom=new Uint8Array(0x90000);rom[0x80002]=23;
+ const native=createNativeLocalFlight({ram,cpu,cart:{data:rom}},{active:()=>true,phase:true});
+ ram.set([0x12,7,0,0],0x1b800+185*4);
+ for(const id of[6,22,38,54,187,16])ram.set([0x13,6,0,0],0x1b800+id*4);
+ // No ordinary zero tile is ground in this palace; build two real platforms.
+ ram.set([0x13,6,0,0],0x1b800);
+ for(let x=1;x<7;x++){tile(x,1,185);tile(x,2,6);tile(x,3,22);tile(x,4,187);tile(x,5,185);}
+ for(const y of[40,56,72]){assert.equal(native.canFly(56,y),true);assert.equal(native.canLand(56,y),false);}
+ tile(3,1,187);assert.equal(native.canFly(56,56),false,'a gap needs a real shore at both ends');
+ tile(3,1,185);tile(3,3,16);assert.equal(native.canFly(56,56),false,'upright walls never become gap tiles');
+ assert.equal(native.canFly(4,56),false,'the map boundary remains closed');native.dispose();
 });

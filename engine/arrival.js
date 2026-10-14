@@ -7,7 +7,7 @@ import {drawSaiyanPod,saiyanPodFrames} from './saiyan-pod.js';
 export function createArrival(snes,mod){
   let event=null,crater=null,craterOnScreen=false,craterX=0,craterY=0;
   const groundPalette=new Uint16Array(128),craterColors=new Map();
-  const state={phase:'prologue',ticks:0,arrived:false,started:false,crater:false};
+  const state={phase:'prologue',ticks:0,arrived:false,started:false,crater:false,effectsSettled:false};
   const pointer=()=>mod.read16(0xd1)|(mod.read8(0xd3)<<16);
   const setPointer=address=>{mod.write16(0xd1,address);mod.write8(0xd3,address>>16);};
   const setPhase=phase=>{
@@ -29,18 +29,18 @@ export function createArrival(snes,mod){
       for(let p=1;p<=6;p++)for(let i=1;i<16;i++){
         const at=0xc8000+26*210+(p-1)*30+(i-1)*2;groundPalette[p*16+i]=rom[at]|rom[at+1]<<8;
       }
-      Object.assign(state,{phase:potos?'complete':'prologue',ticks:0,arrived:potos,started:potos,crater:false});
+      Object.assign(state,{phase:potos?'complete':'prologue',ticks:0,arrived:potos,started:potos,crater:false,effectsSettled:potos});
       craterOnScreen=false;
     },
     snapshot(){return {version:1,...state};},
     restore(saved){
       if(saved?.version===1&&['prologue','queued','descent','impact','ghost','dialogue','complete'].includes(saved.phase)){
-        Object.assign(state,{phase:saved.phase,ticks:Math.max(0,saved.ticks|0),arrived:!!saved.arrived,started:!!saved.started,crater:!!saved.crater});
+        Object.assign(state,{phase:saved.phase,ticks:Math.max(0,saved.ticks|0),arrived:!!saved.arrived,started:!!saved.started,crater:!!saved.crater,effectsSettled:!!saved.effectsSettled});
       }else{
         // Old checkpoints predate the scripted arrival. Native sword progress
         // distinguishes the original boy prologue from the existing Goku game.
         const arrived=nativeProgress();
-        Object.assign(state,{phase:arrived?'complete':'prologue',ticks:0,arrived,started:arrived,crater:false});
+        Object.assign(state,{phase:arrived?'complete':'prologue',ticks:0,arrived,started:arrived,crater:false,effectsSettled:false});
         const phase=event?.classify(pointer());
         if(phase&&phase!=='finish'){state.phase=phase;state.started=true;state.arrived=phase!=='descent';state.crater=state.arrived;}
       }
@@ -48,6 +48,14 @@ export function createArrival(snes,mod){
     },
     beforeFrame(){
       if(!event)return;
+      if(state.phase==='complete'&&!state.effectsSettled&&mod.read8(0xd0)===0){
+        // Repair completed checkpoints made with the old 2D03 command.
+        // That selects a weaker continuous quake ($49=60); 2D04 stops it.
+        // Run once, only in the sword clearing, so later native/attack shakes
+        // retain their own lifetime and ownership.
+        if(mod.read16(0xdc)===128&&mod.read8(0x49)===0x60)mod.write8(0x49,0);
+        state.effectsSettled=true;
+      }
       const pc=pointer();
       if(!state.started&&mod.options.enabled&&mod.read16(0xdc)===128&&mod.read8(0xcf10)===0&&pc===event.hook&&(mod.read8(0xd0)&0x80)){
         setPointer(event.entry);state.started=true;setPhase('queued');return;
@@ -128,9 +136,10 @@ export function createArrival(snes,mod){
       if(craterOnScreen){
         // The native sword flash animates CGRAM, not screen brightness. Apply
         // its shared channel offsets to the borrowed Potos soil palette too.
-        // Palette7 contains cycling water colors and is intentionally excluded.
+        // Palettes6/7 contain cycling river colors. Including them in the
+        // maximum makes the stationary crater flash with the water forever.
         const delta=[0,0,0];
-        for(let p=1;p<=6;p++)for(let i=1;i<16;i++)for(let c=0;c<3;c++){
+        for(let p=1;p<=5;p++)for(let i=1;i<16;i++)for(let c=0;c<3;c++){
           const shift=c*5;delta[c]=Math.max(delta[c],((ppu.cgram[p*16+i]>>shift)&31)-((groundPalette[p*16+i]>>shift)&31));
         }
         craterColors.clear();

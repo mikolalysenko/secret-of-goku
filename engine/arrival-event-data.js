@@ -63,7 +63,7 @@ mark('impactWait');
 separator();
 
 mark('ghost');
-emit(0x2d, 0x03, 0x2d, 0x07);            // stop quake; restore scene palette
+emit(0x2d, 0x04, 0x2d, 0x07);            // stop quake; restore scene palette
 emit(0x29, 0x0a, 0x09);                   // original flag spawns species D7 ghost
 emit(0x28, 0x04);                         // 20 frames for native ghost appearance
 mark('ghostWait');

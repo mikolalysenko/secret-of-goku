@@ -24,10 +24,12 @@ export function buildStoryEvents(rom){
   const events=new Map();
   // These retail slots contain unique END bytes. They are used only by
   // the new native choices, avoiding any global event-table replacement.
-  for(const id of [...Array.from({length:0x13},(_,i)=>0x85+i),0x9a]){
+  for(const id of [...Array.from({length:0x13},(_,i)=>0x85+i),0x9a,0x9b,0x9c]){
     const{start,end}=eventRange(rom,id);
     if(end-start!==1||rom[start]!==0)throw Error('Story choice event slot is occupied');
   }
+  events.set(0x133,[0x32,0,0,0x2d,8,0x30,0x0a,0,...choice('LUKA:GOKU, what are you\nso scared of?\n',[{label:'NOTHING',x:9,to:0x9c}],0x9c)]);
+  events.set(0x9c,[0x51,0x01,...box('GOKU:Nothing!\nThat Fortress looks like\na pretty good workout.'),...box('LUKA:That is what\nscares ME.'),...jump(0x200),0]);
   events.set(0x134,[0x42,0xc3,0,...jump(0x92),...choice('LUKA:What will you do?\n',[{label:'Advice',x:1,to:0x85},{label:'Save',x:10,to:0x86},{label:'Shortcut',x:17,to:0x87}])]);
   events.set(0x92,[0x50,...call(0x13a),0x51,0x01,...jump(0x134),0]); // Keep Luka's original one-time weapon gift.
   events.set(0x85,[...box('LUKA:Find seven Dragon\nBalls. Water, Earth, Wind,\nFire, Dark, Light, Moon.'),...box('The seeds are the cases.\nTouch them to collect the\nBalls. Dryad is the eighth\npalace, not an eighth Ball.'),...box('Wish RANDI, the Sword and\nyour accidents back. First\ncalm the Mana Beast. It\nis allergic to Fortresses.'),...box('Visit all seven Mana Seeds\nto feed the Beast. Each\nvisit also earns a shield.\nPlease just calm it down.'),...box('Fly anywhere. Punch orbs.\nBlast gates. Fly through\ndungeon ceilings if you\nMUST. We will keep a bill.'),...box('Shortcut reaches Thanatos.\nOr shoot the Fortress from\nthe sky. Both are dangerous.\nI know you heard convenient.'),0]);
@@ -42,6 +44,7 @@ export function buildStoryEvents(rom){
   events.set(0x8c,[0x30,0x17,2,0x09,0x0a,...box('GOKU:Three people on a\nswitch? I brought three\nfingers.\nSorry about the gate.'),0]);
   events.set(0x8d,[0x30,0x34,4,0x09,0x0a,...box('GOKU:Hello! I was told\nthere was an invitation.\nI may have knocked\na little too hard.'),0]);
   events.set(0x8e,[0x30,0x37,1,...box('GOKU:There. Unlocked.\nI can put the lock back\nafterwards. Probably.'),0]);
+  events.set(0x9b,[...box('HEY! Get lost!\nStop flying around Potos!\nBanished includes the AIR!'),...box('GOKU:Oh. Sorry!\nI thought you meant\nthe ground.'),...jump(0x11c),0]);
   events.set(0x1bd,[...jump(0x6f4),0]); // Primm no longer refuses Gaia's Navel.
   events.set(0x231,original(0x231).slice(5)); // Undine can be rescued before Elinee.
   events.set(0x62b,original(0x62b).slice(5)); // Goku can enter the Fortress early.
@@ -52,7 +55,7 @@ export function buildStoryEvents(rom){
   events.set(0x94,[...box('KING KAI:All seven Balls!\nYou actually collected them.\nI had a whole speech ready.'),0x02]);
   // The finale uses the same original camera, Mode7 door and boss setup. No
   // nonexistent companion is asked to cast Mana Magic to make damage possible.
-  const beastBattle=destroyed=>[0x42,0x4e,0x07,...jump(0),0x18,0x3b,...call(0x47c),...call(0x737),0x2d,6,0x10,0,0x2d,2,0x28,8,0x2d,3,...call(0x93),
+  const beastBattle=destroyed=>[0x42,0x4e,0x07,...jump(0),0x18,0x3b,...call(0x47c),...call(0x737),0x2d,6,0x10,0,0x2d,2,0x28,8,0x2d,4,...call(0x93),
     ...box(destroyed?'GOKU:The Fortress is gone!\nYou can go home now!\n...It cannot hear me.':'GOKU:That is a Mana Beast!\nIt is only trying to stop\nthe Fortress.'),
     ...box('Seven Dragon Balls glow\nin the Sword pouch.\nKING KAI:No wish while\nthat thing is panicking!'),
     ...box(destroyed?'MANA TREE:Its rage remains.\nCalm it before it destroys\nwhat you have saved.':'MANA TREE:Guide your power.\nBreak its rage, and let\nMana flow home again.'),
@@ -62,7 +65,7 @@ export function buildStoryEvents(rom){
     ...jump(0x9a),0];
   events.set(0x429,beastBattle(false));events.set(0x8f,beastBattle(true));
   events.set(0x95,[...box('GOKU:One careful beam.\nThen lunch.\nKING KAI:FINALLY. A PLAN\nWITH A SURVIVING PLANET.'),...jump(0x97),0]);
-  events.set(0x96,[...box('Goku offers the Beast\nenergy from the Mana Seeds.\nThe Dragon Balls stay safe\nin the pouch. Priorities.'),0x2d,2,0x2d,6,0x10,0,0x28,12,0x2d,3,
+  events.set(0x96,[...box('Goku offers the Beast\nenergy from the Mana Seeds.\nThe Dragon Balls stay safe\nin the pouch. Priorities.'),0x2d,2,0x2d,6,0x10,0,0x28,12,0x2d,4,
     ...box('GOKU:Eat up! I want to\nfight you at your best!\nCome on! Show me MORE!\nKING KAI:HE IS ENJOYING THIS.'),
     ...box('LUKA:WE ASKED YOU TO SAVE\nTHE WORLD. NOT SEASON IT.\nGOKU:Just a little stronger!\nI know you can do it!'),
     ...box('KING KAI:It has four times\nthe resistance to your ki!\nGOKU:And bigger muscles!\nThis is going to be GREAT.'),...jump(0x97),0]);

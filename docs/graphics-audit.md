@@ -19,6 +19,47 @@ The regional pass records renderer SHA-256 `eba2f05774bb4c490255b2ab2fb3f74197da
 
 ## Area coverage
 
+### Barrier follow-up — October 13, 2026
+
+The barrier inventory reads all 512 map slots, including hidden pieces in 78
+gameplay maps with conditional layouts. All 392 named maps now decode, including
+rectangle dictionaries, implicit first-layer placements and cross-bank streams.
+The two unnamed layouts are an empty map alias (14) and a blank debug room (15).
+
+The runtime pass loads all **370 named gameplay maps**, reads both collision
+layers, checks their outer bounds and compares them with the independent ROM
+decoder using the live event flags. **1,961,104 map cells match**. Native trigger
+metatiles (2,127) and traced boss-graphics scratch bytes (4,156) are counted
+separately. There are no unexplained decoder differences or accepted positions
+outside the tested bounds. Boss graphics genuinely overwrite unused tails of
+some map buffers; those writes are traced at the original graphics routines,
+not silently treated as geometry.
+
+Controller regressions additionally exercise 17 floor-switch scenarios across
+the Water, Earth, Ice, Fire, Shade and Grand Palaces, Witch Castle, Gold Tower,
+Northtown Ruins and Mana Fortress. They use actual punch/beam input and check
+native progress flags and return of player control. Separate checks cover the
+Water Palace gap in both directions, hovering and checkpoint replay, landing at
+a changed terrain height, the repeat Potos banishment and Luka's **NOTHING**
+choice through the Water Seed reward.
+
+This is structural coverage plus the listed controller scenarios. It does not
+establish traversal of every route or every combination of story flags.
+
+```sh
+npm run audit:barriers
+npm run audit:barrier-runtime
+# Recheck saved native grids after changing the independent ROM decoder:
+npm run audit:barrier-runtime -- --compare-only
+```
+
+Reports remain in `.local/barrier-audit/`: `barriers.json`,
+`runtime-summary.json` and `runtime/NNN.json`. The runtime tool accepts numeric
+map IDs to repeat selected entries. A selected run's summary covers only those
+entries; `--compare-only` without IDs compares all retained gameplay records.
+
+### Original entry-view pass
+
 Each count is a native entry viewport with opening plot flags and a full party. Multiple rooms, encounter variants, and scene maps have separate IDs.
 
 | Area | Documented views captured |
