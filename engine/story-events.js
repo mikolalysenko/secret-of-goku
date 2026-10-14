@@ -24,13 +24,19 @@ export function buildStoryEvents(rom){
   const events=new Map();
   // These retail slots contain unique END bytes. They are used only by
   // the new native choices, avoiding any global event-table replacement.
-  for(const id of [...Array.from({length:0x13},(_,i)=>0x85+i),0x9a,0x9b,0x9c,0x9d]){
+  for(const id of [...Array.from({length:0x13},(_,i)=>0x85+i),0x9a,0x9b,0x9c,0x9d,0x9e,0x9f,0xa0]){
     const{start,end}=eventRange(rom,id);
     if(end-start!==1||rom[start]!==0)throw Error('Story choice event slot is occupied');
   }
   events.set(0x133,[0x32,0,0,0x2d,8,0x30,0x0a,0,...choice('LUKA:GOKU, what are you\nso scared of?\n',[{label:'NOTHING',x:9,to:0x9c}],0x9c)]);
   events.set(0x9c,[0x51,0x01,...box('GOKU:Nothing!\nThat Fortress looks like\na pretty good workout.'),...box('LUKA:That is what\nscares ME.'),...jump(0x200),0]);
   events.set(0x9d,[0x30,0x2d,5,0]); // Breached NTR seal: stage the native rescue, not its completion.
+  for(let i=0;i<3;i++){
+    const stage=2+i*2;
+    // Only the gate's own guardians are skipped. Never lower later progress
+    // or run the Tree scene remotely; stepping through still owns travel.
+    events.set(0x9e+i,[0x42,0x46,(stage<<4)|15,...jump(0),0x30,0x46,stage,0]);
+  }
   events.set(0x134,[0x42,0xc3,0,...jump(0x92),...choice('LUKA:What will you do?\n',[{label:'Advice',x:1,to:0x85},{label:'Save',x:10,to:0x86},{label:'Shortcut',x:17,to:0x87}])]);
   events.set(0x92,[0x50,...call(0x13a),0x51,0x01,...jump(0x134),0]); // Keep Luka's original one-time weapon gift.
   events.set(0x85,[...box('LUKA:Find seven Dragon\nBalls. Water, Earth, Wind,\nFire, Dark, Light, Moon.'),...box('The seeds are the cases.\nTouch them to collect the\nBalls. Dryad is the eighth\npalace, not an eighth Ball.'),...box('Wish RANDI, the Sword and\nyour accidents back. First\ncalm the Mana Beast. It\nis allergic to Fortresses.'),...box('Visit all seven Mana Seeds\nto feed the Beast. Each\nvisit also earns a shield.\nPlease just calm it down.'),...box('Fly anywhere. Punch orbs.\nBlast gates. Fly through\ndungeon ceilings if you\nMUST. We will keep a bill.'),...box('Shortcut reaches Thanatos.\nOr shoot the Fortress from\nthe sky. Both are dangerous.\nI know you heard convenient.'),0]);
@@ -48,6 +54,7 @@ export function buildStoryEvents(rom){
   events.set(0x9b,[...box('HEY! Get lost!\nStop flying around Potos!\nBanished includes the AIR!'),...box('GOKU:Oh. Sorry!\nI thought you meant\nthe ground.'),...jump(0x11c),0]);
   events.set(0x1bd,[...jump(0x6f4),0]); // Primm no longer refuses Gaia's Navel.
   events.set(0x231,original(0x231).slice(5)); // Undine can be rescued before Elinee.
+  events.set(0x368,original(0x368).slice(5)); // A flying Saiyan does not need a Magic Rope to enter the Dwarf Village pit.
   events.set(0x62b,original(0x62b).slice(5)); // Goku can enter the Fortress early.
   events.set(0x3dd,[...box('JEHK:Joch says you may try\nthe trial now. He heard the\nmountain shaking.\nGOKU:That was a sneeze.'),...jump(0x3dc),0]);
   events.set(0x59d,[0x32,0,0,0x08,...box('GOKU:Locked. I could find\nthe key... or back up and\ncharge a Kamehameha.'),0x31,0,0x8c,0x08,0]);

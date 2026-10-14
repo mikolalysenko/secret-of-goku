@@ -53,6 +53,9 @@ export const barrierReactions={
   'gold-tower':['LUKA:A key would have\nbeen cheaper.\nGOKU:I do not have pockets.'],
   'pandora-ruins-exit':['KING KAI:That was a lock!\nGOKU:It was in the way.\nKAI:THAT IS ITS JOB.'],
   'northtown-ruins-seal':['LUKA:That was a dark seal.\nGOKU:Now it is a doorway.\nLUKA:Go rescue someone.'],
+  'pure-land-gate-1':['KING KAI:Defeat the dragon!\nGOKU:I fought the door.\nKAI:THAT DOES NOT COUNT.'],
+  'pure-land-gate-2':['LUKA:Another ancient gate!\nGOKU:It lost the fight.\nLUKA:IT WAS A DOOR.'],
+  'pure-land-gate-3':['KING KAI:The Tree is next.\nUse your INDOOR voice.\nAnd your INDOOR hands.'],
   switch:[
     'KING KAI:It was a puzzle!\nGOKU:I solved it.\nKAI:IT IS ON FIRE.',
     'LUKA:That was a switch.\nYou can press those\nwithout a shock wave.',

@@ -67,6 +67,14 @@ Gate-opening floor plates are ranged targets too. Their live metatile index is r
 
 King Kai and Luka react through the nonblocking native-font radio after a gate's flag or layout changes, an orb accepts a hit, solid scenery is actually removed, or flight reaches safe ground across an obstacle. Named gates have specific replies; other puzzles rotate short remarks. Grass does not count. A shared eight-second cooldown and saved per-barrier keys coalesce large blasts and prevent repeated complaints. Reactions pause during native dialogue, menus, charging and beam animations, preserving the single warning per held Super Saiyan charge. A catastrophe discards stale barrier jokes.
 
+Pure Land's three talking gates are separate script barriers. Punches and charged
+waves target their original two-tile entrance on maps 233–235. The native event
+sets `$CF46` to at least 2, 4 or 6, skipping only the guardians before that gate;
+it never lowers later progress. The attack leaves Goku in place. Walking through
+still invokes the original save prompt and door, or the final Mana Tree arrival.
+The Dwarf Village pit also drops its Magic Rope prerequisite for Goku, retaining
+the original drop transition without granting the item.
+
 Pandora Ruins and Northtown Ruins script locks use checkpointed door latches. A hit unlocks the original door; walking through still invokes the native transition. Pandora’s plot flag is unchanged. An early Northtown breach stages the original Primm rescue and Vampire fight; returning afterward does not replay either or lower progress. Gaia’s hit switches select the native event for the targeted room instead of depending on the last floor marker walked over. The forest’s rotating carved heads (tileset 1, cells 171/172) can be flown over or destroyed to native grass; other cyclic descriptors keep their original behavior. Ruins balcony lips require clear floors at different native heights on opposite sides before flight may cross them.
 
 Super Saiyan charge lightning regenerates deterministic jagged paths every three emulated frames, including while holding full power. Bolts connect to nearby native solid-tile edges, low obstacles and actors, using Thunderbolt colors and original 16×16 cells. These arcs are decorative; attacks activate puzzles. Snapshot replay reproduces the same paths.

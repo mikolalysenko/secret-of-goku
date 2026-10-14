@@ -72,6 +72,15 @@ Kamehameha scenarios cover the native axe/sword obstacle families in 11 maps,
 both collision layers and multi-stage Fortress pillars. The Fortress test also
 checks that a switch reached by the same wave cannot regrow destroyed scenery.
 
+The event-barrier follow-up checks punches and beams against all three Pure Land
+gates, including checkpoint replay of their native exits. The final gate is
+verified through entry into the Mana Tree scene with Goku alone; this check does
+not replay the entire subsequent conversation. Additional controller cases fly
+over Pandora's castle guards without changing its story flags, enter the Dwarf
+Village pit with no Magic Rope, and defeat Snapdragon on an early visit, cross
+its rebuilt bridge and enter Dryad's room. Results are retained in
+`.local/barrier-audit/event-barriers-final/`.
+
 ```sh
 npm run audit:barriers
 npm run audit:barrier-runtime

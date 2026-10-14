@@ -8,6 +8,10 @@ export const kiBarriers=[
   {id:'witch-castle',map:300,rect:[128,240,48,80],flag:0x17,min:2,event:0x8c},
   {id:'northtown-castle',map:82,rect:[304,528,32,32],flag:0x34,min:4,event:0x8d},
   {id:'gold-tower',map:116,rect:[240,392,32,24],flag:0x37,min:1,event:0x8e},
+  // Pure Land's three talking gates have walk-on script locks rather than
+  // cuttable collision tiles. A breach skips that gate's pair of guardians,
+  // leaving the next section at its normal starting stage.
+  ...[233,234,235].map((map,i)=>({id:`pure-land-gate-${i+1}`,map,rect:[336,112,32,16],flag:0x46,min:2+i*2,event:0x9e+i})),
 ];
 // Native F-prefix hit tiles encode an event in the descriptor. These are
 // the retail axe gate, crystal/door switches and palace puzzle switches.
