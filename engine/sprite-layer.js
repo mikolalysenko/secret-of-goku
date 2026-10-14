@@ -65,6 +65,25 @@ class ManaSpriteLayer {
       if(color)this.pixel(x+dx*u-dy*v,y+dy*u+dx*v,color,true);
     }
   }
+  rubble(){
+    const m=this.mod,state=m.status;
+    // Draw before the body and all energy effects. Opaque beam pixels cover
+    // debris, rather than turning a full-power wave into a dotted grid.
+    for(const e of m.effects)if(e.kind==='rubble'){
+      const age=e.max-e.life;
+      for(let i=0;i<4;i++){
+        const seed=(Math.imul(e.seed+i*71,1103515245)>>>0),vx=((seed>>>8)%25-12)/8;
+        const px=e.x-state.cameraX+((seed>>>16)%15-7)+vx*age;
+        const py=e.y-state.cameraY-5-(2.2+i*.3)*age+age*age*.10;
+        if(py>208)continue;
+        const size=i%2+2,turn=(age>>3)+i;
+        for(let y=-size;y<=size;y++)for(let x=-size;x<=size;x++){
+          if(Math.abs(x)+Math.abs(y)>size+1||x===-size&&y===0)continue;
+          this.pixel(px+x,py+y,1+e.colors[(x+y+turn)%3===0?1:y<0?2:0],true);
+        }
+      }
+    }
+  }
   giantBeam(x,y,dx,dy,length,halfWidth,phase,{taper=44,farScale=1}={}){
     // A solid blue-white core, using only Lucent Beam's original colors.
     // Work in native pixels: no stretched sprites, alpha glow or canvas layer.
@@ -197,6 +216,7 @@ class ManaSpriteLayer {
       const owner=m.ownership?.ppuOwners[index/2];
       // Ferry passengers ride with Goku as during world flight. Hide only
       // their owned body/attachment/shadow cells, retaining the native HUD.
+      if(m.frieza?.hideOwner(owner)){hidden.add(index);continue;}
       if(passengers.has(owner?.base)){hidden.add(index);continue;}
       const body=ground&&!nativeForm&&(m.ownership?owner?.base===0xe000&&owner.kind==='body':(palette===1||palette===5)&&(attr&0x100)&&tile>=0xc0&&tile<0xe8);
       const nameBody=naming&&palette===1&&!(attr&0x100)&&tile>=0x30&&tile<=0x37;
@@ -228,6 +248,7 @@ class ManaSpriteLayer {
     this.plan={frame:m.frame,oamRevision:m.ownership?.revision,anchor,hidden,parts,portraits};
     if(!anchor){
       if(m.arrival?.animating){this.plan.anchor={index:0,x:0,y:0,size:8,palette:0,priority:3};m.arrival.drawScene(this);}
+      else if(m.frieza?.ownsArena()){this.plan.anchor={index:0,x:0,y:0,size:8,palette:0,priority:3};m.frieza.draw(this);}
       return;
     }
     if(m.arrival?.drawScene(this))return;
@@ -283,6 +304,7 @@ class ManaSpriteLayer {
     }
     const shadow=m.flightShadow;
     if(flight&&shadow){const cx=(shadow.minX+shadow.maxX)/2,cy=(shadow.minY+shadow.maxY)/2;for(let yy=-2;yy<=2;yy++)for(let xx=-8;xx<=8;xx++)if(xx*xx/64+yy*yy/4<=1)this.pixel(cx+xx,cy+yy,this.rgb(40,56,48));}
+    if(m.canAttack)this.rubble();
     m.ceiling?.draw(this);
     m.challenge?.draw(this);m.powerIntro?.draw(this);
     this.blit(pose.sheet,column,row,x,y,size,size,pose.legs??null);
@@ -292,6 +314,7 @@ class ManaSpriteLayer {
       const i=yy*256+xx;if(this.surface[i]&&!this.effectMask[i])this.surface[i]=this.tint(this.surface[i],anchor.palette);
     }
     if(ground&&!menuBody)m.hitRecovery?.draw(this,x,y,size);
+    m.frieza?.draw(this);
     if(m.charging&&(m.canAttack||flight)){
       const form=window.GokuAnimationData.forms[superForm?'ssj':'goku'],socket=form.sockets[superForm?18:22][row];
       const strength=m.charge/(superForm?45:90),frame=strength>=1?3+Math.floor(m.frame/4)%2:Math.min(4,Math.floor(strength*5));
@@ -305,11 +328,6 @@ class ManaSpriteLayer {
       const sx=effect.x-state.cameraX,sy=effect.y-state.cameraY;
       const age=effect.max-effect.life,phase=Math.floor(age/2);
       if(effect.kind==='rubble'){
-        for(let i=0;i<6;i++){
-          const a=(i*2.39996+effect.seed),px=sx+Math.cos(a)*age*(.7+i%3*.3),py=sy-4-age*(1+i%3*.5)+age*age*.075,size=1+i%2;
-          for(let y=-size;y<=size;y++)for(let x=-size;x<=size;x++)if(Math.abs(x)+Math.abs(y)<=size+1)this.pixel(px+x,py+y,1+effect.colors[y<0?2:x<0?1:0],true);
-          if(age>6&&age<26)this.pixel(px-2,py+4,1+effect.colors[1],true);
-        }
         continue;
       }
       if(effect.kind==='powerBurst'){

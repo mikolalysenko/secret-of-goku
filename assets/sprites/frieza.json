@@ -1,0 +1,19 @@
+{
+  "source": "Custom fan-art generated with the built-in image_gen tool, 2026-10-14.",
+  "character": "Frieza / Dragon Ball, Akira Toriyama; original rights remain with their owners.",
+  "prompt": "Use case: stylized-concept. Asset type: production pixel-art enemy sprite sheet for a Secret of Mana SNES fan-game. Create Frieza in his final form (Dragon Ball Z): slender compact white alien, smooth purple dome, purple shoulders and chest patches, red eyes, long white curved tail, bare clawed feet, no clothes, no horns. EXACTLY eight full-body sprites in an evenly spaced 4-column by 2-row grid on an actual transparent background. Every cell has the same size and baseline, ample transparent padding, complete tail and feet, no overlapping cells. Consistent three-quarter front facing toward the viewer's left, slightly elevated top-down RPG view, identical body scale in every cell. Top row left to right: 1 hovering idle arms folded smug, 2 hovering idle arms folded with tail curled higher, 3 pointing one index finger toward lower left firing pose (no projectile), 4 telekinetic raised hand clenched with malicious grin. Bottom row: 5 full-power fighting crouch fists clenched, 6 lunging punch to lower left, 7 recoiling from impact knees bent, 8 defeated kneeling one hand on ground. Style: authentic 1993 SNES action RPG sprites, large crisp square pixel clusters, hard dark purple one-pixel outlines, extremely limited 15-color palette, three-tone white and lavender shading, NO antialiasing, no gradients, no soft shadows or glow, no text, no labels, no watermark, no scenery. Each logical sprite fits 48 by 48 pixels inside a 64 by 64 logical cell, rendered at exactly 4x nearest-neighbor pixel scale if output resolution requires enlargement. Favor readability and recognizable white/purple silhouette rather than detail. Sheet aspect ratio 2:1.",
+  "grid": [
+    4,
+    2
+  ],
+  "poses": [
+    "idle",
+    "idle-tail",
+    "death-beam",
+    "telekinesis",
+    "full-power",
+    "rush",
+    "hurt",
+    "defeated"
+  ]
+}

@@ -2,7 +2,7 @@ import {ceilingExitFor} from './ceiling-exits.js';
 
 export function createCeilingEscape(mod){
   let escape=null,completed=0,error=null;
-  const bossActive=()=>mod.entities?.().some(e=>e.index>=3&&e.active&&e.species>=87&&e.species<128&&e.hp>0&&!(mod.read8(e.base+0x191)&0x80))??false;
+  const bossActive=()=>mod.entities?.().some(e=>e.index>=3&&e.active&&e.species>=87&&e.species<128&&e.hp>0&&(e.custom||!(mod.read8(e.base+0x191)&0x80)))??false;
   const safe=()=>mod.options.enabled&&mod.gokuActive&&mod.canAttack&&!mod.worldFlight&&!mod.flight?.pending&&!mod.teleport?.pending&&!bossActive();
   const cancel=reason=>{error=reason;escape=null;mod.flightTransition=null;mod.feedback?.clear();};
   function roofColors(){

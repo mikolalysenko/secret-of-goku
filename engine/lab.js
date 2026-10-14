@@ -27,6 +27,8 @@ import {createNativeHitRecovery} from './native-hit-recovery.js';
 import {createNativeSenzu} from './native-senzu.js';
 import {createNativeEquipment} from './native-equipment.js';
 import {createNativeRadio} from './native-radio.js';
+import {createNativeModSave} from './native-mod-save.js';
+import {createFrieza} from './frieza.js';
 import {createDragonQuest} from './dragon-quest.js';
 import {createCeilingEscape} from './ceiling-escape.js';
 import {createBeastChallenge} from './beast-challenge.js';
@@ -94,6 +96,8 @@ mod.challenge=createBeastChallenge(snes,mod);
 mod.powerIntro=createPowerIntro(mod);
 mod.worldScars=createWorldScars(snes,mod);
 mod.ending=createShenronEnding(snes,mod);
+mod.frieza=createFrieza(snes,mod);
+mod.nativeSave=createNativeModSave(snes,mod,battery);
 const fastForward=createSceneFastForward(mod);
 mod.radar=createDragonRadar(snes,mod);
 let loaded=false,running=false,busy=false,lastTime=0,accumulator=0,checkpoint=null,frameCount=0,fpsTime=performance.now();
@@ -172,7 +176,7 @@ async function loadROM(source,{potos=false}={}){
   const bytes=await validateRom(source);
   battery.flush();
   originalRom=bytes.slice();
-  await mod.ready;mod.spriteLayer.effects=createNativeEffects(bytes,await effectsManifest);mod.worldScars.load(bytes);running=false;clearInput();mod.configure({enabled:false});
+  await Promise.all([mod.ready,mod.frieza.ready]);mod.spriteLayer.effects=createNativeEffects(bytes,await effectsManifest);mod.worldScars.load(bytes);running=false;clearInput();mod.configure({enabled:false});
   const patched=window.gokuDialoguePatch(potos?window.potosPatch(bytes):window.originalGamePatch(bytes));
   if(!snes.loadRom(patched,true))throw Error('The SNES core rejected this ROM.');
   snes.reset(true);battery.attach(snes.cart,hash(bytes));mod.reset();arrival.load(bytes,{potos});flightDialogue?.dispose();flightDialogue=installFlightDialogue(snes.cart,()=>mod.options.enabled&&mod.gokuActive);mod.gapFlight.load();mod.senzu.load();mod.equipment.load();mod.story.load();nameSeeded=false;originalBoot=!potos;loaded=true;render();return patched;
@@ -183,7 +187,7 @@ async function pump(frames,buttons=[]){
 }
 async function enableGameControls(){
   $('boot-screen').hidden=true;
-  for(const id of ['native-fly','native-toggle','native-save','native-start','quick-title','quick-sword'])if($(id))$(id).disabled=false;
+  for(const id of ['native-fly','native-toggle','native-save','native-start',...Object.keys(quickStartLabels).map(k=>`quick-${k}`)])if($(id))$(id).disabled=false;
   try{checkpoint=await checkpointStore();if(checkpoint?.state.romHash!==hash(snes.cart.data))checkpoint=null;}catch{checkpoint=null;}
   $('native-restore').disabled=!checkpoint;
 }
@@ -248,7 +252,7 @@ async function quickStart(kind){
   const backup=captureQuick(),wasRunning=running,source=originalRom;
   busy=true;running=false;clearInput();sound.clear();$('native-pause').hidden=true;
   $('boot-local').disabled=true;$('rom-file').disabled=true;
-  for(const id of ['quick-title','quick-sword'])if($(id))$(id).disabled=true;
+  for(const id of Object.keys(quickStartLabels).map(k=>`quick-${k}`))if($(id))$(id).disabled=true;
   const key=slot=>`${quickStartRevision}:${hash(snes.cart.data)}:${slot}`;
   const cache=async(slot,value)=>{quickCache.set(key(slot),value);try{await checkpointStore(value,key(slot));}catch{/* Session cache still works without IndexedDB. */}};
   let success=false;
@@ -268,7 +272,7 @@ async function quickStart(kind){
     await loadROM(source,{potos:!backup.originalBoot});applyQuick(backup);message(`Quick start failed: ${error.message} Your game was restored.`);
   }finally{
     busy=false;$('boot-local').disabled=false;$('rom-file').disabled=false;
-    for(const id of ['quick-title','quick-sword'])if($(id))$(id).disabled=false;
+    for(const id of Object.keys(quickStartLabels).map(k=>`quick-${k}`))if($(id))$(id).disabled=false;
     if(success||wasRunning)play();else pause();render();
   }
   return success;

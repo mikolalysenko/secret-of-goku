@@ -62,6 +62,7 @@ export function synthesizeKiSound(name,{rate=16000,superSaiyan=false}={}){
 // select one-shots; held states own seamless loops. The synth above is only a
 // network-failure fallback so offline failures never leave a charge silent.
 export const cues={
+ friezaLaugh:{clips:['frieza-laugh'],gain:.60,cap:1},friezaOrb:{clips:['frieza-orb'],gain:.55,cap:2},friezaDisc:{clips:['frieza-disc'],gain:.42,cap:2},
  swing:{clips:['swing','swing-2'],gain:.44,cap:2},kickSwing:{clips:['kick-swing'],gain:.46,cap:2},hit:{clips:['hit-1','hit-2','hit-3'],gain:.64,cap:3},
  kick:{clips:['kick'],gain:.70,cap:2},blast:{clips:['blast'],gain:.38,cap:5},impact:{clips:['impact'],gain:.48,cap:3},
  distantImpact:{clips:['impact'],gain:.16,cap:2},
@@ -72,7 +73,7 @@ export const cues={
  flight:{clips:['flight'],gain:.48,cap:1},landing:{clips:['landing'],gain:.36,cap:1},
  charge:{clips:['charge'],gain:.55,loop:true},aura:{clips:['aura'],gain:.30,loop:true},air:{clips:['air'],gain:.25,loop:true},
 };
-const fallback={kickSwing:'swing',kick:'hit',impact:'hit',distantImpact:'hit',deflect:'hit',revert:'transform',landing:'flight',aura:'charge',air:'charge'};
+const fallback={friezaLaugh:'charged',friezaOrb:'beam',friezaDisc:'blast',kickSwing:'swing',kick:'hit',impact:'hit',distantImpact:'hit',deflect:'hit',revert:'transform',landing:'flight',aura:'charge',air:'charge'};
 export function createKiSound(mod){
   const speech=createKamehamehaVoice(mod);
   let queue=[],context=null,master=null,compressor=null,decoding=null,buffers=new Map(),fallbackBuffers=new Map();

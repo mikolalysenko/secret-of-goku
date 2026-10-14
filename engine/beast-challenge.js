@@ -30,7 +30,7 @@ export function createBeastChallenge(snes,mod){
       // roughly three full SSJ beams, with the original AI/death intact.
       if(lich&&mod.read16(0xdc)!==lich.map)lich=null;
       if(!lich&&mod.options.enabled&&mod.options.power&&mod.gokuActive&&mod.canAttack&&mod.read8(0xcf4e)<7){
-        const boss=mod.entities().find(e=>e.index>=3&&e.active&&e.species===121&&e.hp>0&&!(mod.read8(e.base+0x191)&0x80));
+        const boss=mod.entities().find(e=>e.index>=3&&e.active&&e.species===121&&!e.custom&&e.hp>0&&!(mod.read8(e.base+0x191)&0x80));
         if(boss){
           lich={map:mod.read16(0xdc),base:boss.base};
           const missing=Math.max(0,mod.read16(boss.base+0x184)-boss.hp);

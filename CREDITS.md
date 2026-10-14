@@ -53,3 +53,8 @@ Punch and kick windups use excerpts from [Anime Whoosh Sound 20](https://soundef
 The main game uses the original ROM font and graphics. Browser controls use system fonts. The developer lab and archived prototype retain Cinzel/DM Sans with local fallbacks.
 
 The original `FastWhipPosts.cs` and `ElementSwaps.cs` in the pinned Randomizer reference helped locate whip-post descriptors and elemental-orb events. The browser adapters were separately implemented and checked against the user ROM's event interpreter and live RAM.
+
+
+Frieza's eight-pose sheet, `assets/sprites/frieza.png`, was generated with the built-in OpenAI image tool for this mod. The full generation prompt and pose order are in [frieza.json](assets/sprites/frieza.json). The runtime crops its transparent cells and renders them with nearest-neighbor sampling in the native RGB555 OBJ layer. Frieza's character design remains associated with Dragon Ball and its respective rights holders.
+
+Frieza's laugh uses a short excerpt from [Frieza OHOHOHOHOH on Myinstants](https://www.myinstants.com/en/instant/frieza-ohohohohoh-46566/). The Death Ball and disc sounds use `friezadeathball.wav` and `krillindestructodisc.wav` from the [DragonBallZ Sound Collection on Staredit Network](https://staredit.net/sc1db/file/1158/), uploaded by KiIIer2121; the original recording author is not identified there. `scripts/prepare-frieza-audio.mjs` applies the same mono 16 kHz, 5.6 kHz low-pass, 10-bit treatment as the other DBZ effects. [The audio manifest](assets/audio/dbz/frieza.json) records source URLs, hashes, gain and trims. These short adapted recordings retain their original rights and are not covered by the code's MIT license.

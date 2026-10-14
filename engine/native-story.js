@@ -3,6 +3,7 @@ import {compileStoryEvent,needsStory} from './story-compiler.js';
 export {partyText} from './story-compiler.js';
 import {buildStoryEvents,box,choice} from './story-events.js';
 import {prepareStoryArea} from './story-areas.js';
+import {buildFriezaEvents,buildFriezaEnding,friezaEvents as F} from './frieza-events.js';
 import {breakableDoors} from './breakable-doors.js';
 
 // Relocate selected event streams on reads. Native control codes, text drawing,
@@ -66,6 +67,12 @@ export function createNativeStory(snes,mod){
         if(0x80000+address===northtown+17)return 0x55;
       }
     }
+    // Keep the native arena/map loader, but suppress its Thanatos/Dyluck/
+    // Dark Lich object records on the optional branch before they can spawn.
+    if((bank&63)===8&&enabled()&&mod.frieza?.active){
+      const start=0x80000+(cart.data[0x871ec]|cart.data[0x871ed]<<8),end=0x80000+(cart.data[0x871ee]|cart.data[0x871ef]<<8),at=0x80000+address;
+      if(at>=start+9&&at<end&&(at-start-9)%8===0)return 0xf0;
+    }
     if(bank>=0xf0&&bank<=0xf7){
       const address24=bank<<16|address;
       for(const[at,script]of scripts)if(address24>=at&&address24<script.end)return script.bytes[address24-at]??0;
@@ -116,6 +123,7 @@ export function createNativeStory(snes,mod){
       let pc=pointer();const entry=entries.get(pc);
       if(entry){
         const mask=party();setPointer(typeof entry==='function'?entry(mask):entry[mask]);pc=pointer();lastEvent=metadata.get(pc)?.id;relocations++;
+        mod.frieza?.onEvent(lastEvent);
         if(lastEvent===0x88)fastTrack=true;
         if(lastEvent===0x93)mod.quest?.deliver();
         if(lastEvent===0x42f)mod.ending?.begin();
@@ -143,7 +151,7 @@ export function createNativeStory(snes,mod){
     inspectByte,
     load(){
       cart=snes.cart;read=cart.read;scripts.clear();entries.clear();metadata.clear();grants.clear();next=0xf08000;
-      const customVariants=[0,1,2,3].map(mask=>buildStoryEvents(cart.data,mask));
+      const customVariants=[0,1,2,3].map(mask=>new Map([...buildStoryEvents(cart.data,mask),...buildFriezaEvents(cart.data,mask)]));
       const custom=customVariants[0],customIds=new Set(customVariants.flatMap(v=>[...v.keys()])),customPointers=new Map();
       function variants(id,compile){
         const seen=new Map();
@@ -195,6 +203,24 @@ export function createNativeStory(snes,mod){
       entries.set(0xc00000+eventRange(cart.data,0x96).start,()=>customPointers.get(mod.quest?.status.canFeed?0x96:0x95));
       const advice=Array.from({length:8},(_,count)=>allocate([0x51,0x01,...box(`DRAGON BALLS: ${count} / 7\n${count===7?'All seven! Calm the Beast,\nthen make the wish.':'Find the Balls inside the\nseven palace Mana Seeds.'}`),...custom.get(0x85).slice(2)],0x85,3));
       entries.set(0xc00000+eventRange(cart.data,0x85).start,()=>advice[mod.quest?.status.count??0]);
+      const route=(id,choose)=>{
+        const at=0xc00000+eventRange(cart.data,id).start,original=entries.get(at);
+        entries.set(at,mask=>choose(mask)??(typeof original==='function'?original(mask):original[mask]));
+      };
+      const showdown=variants(F.showdown,mask=>customVariants[mask].get(F.showdown));
+      const visit=allocate([0x51,1,...box('LUKA:Frieza has your Balls.\nI can take you inside.\nKeep the eighth safe.'),0x2f,0x84,0x30,0x4e,4,0x30,0x0b,2,0x18,0x2f,...[0x10|(F.showdown>>8),F.showdown&255],0],F.showdown,0);
+      route(0x4e1,mask=>mod.frieza?.unresolved?showdown[mask]:null);
+      route(0x88,()=>mod.frieza?.unresolved?visit:null);
+      for(const id of[0x429,0x8b,0x93])route(id,()=>mod.frieza?.unresolved?customPointers.get(F.reminder):null);
+      const invitation=allocate([0x51,1,...box(`LUKA:All seven! Dryad
+has sensed someone
+following their power.
+You can investigate first.`),...choice('Visit Dryad?\n',[{label:'Later',x:2,to:0},{label:'Go',x:17,to:F.travel}])],0x85,0);
+      route(0x85,()=>mod.frieza?.unresolved?customPointers.get(F.reminder):mod.frieza?.eligible?invitation:null);
+      const discVictory=variants(F.victory,mask=>buildFriezaEvents(cart.data,mask,{discVictory:true}).get(F.victory));
+      route(F.victory,mask=>mod.frieza?.status.discHits?discVictory[mask]:null);
+      const friezaEnding=[false,true].map(member=>variants(0x42f,mask=>buildFriezaEnding(mask,member)));
+      route(0x42f,mask=>mod.frieza?.unresolved?customPointers.get(F.reminder):mod.frieza?.permanent?friezaEnding[Number(mod.frieza.popoiMember)][mask]:null);
       cart.read=storyRead;this.restore();
     },
     request(event,{actor=0}={}){

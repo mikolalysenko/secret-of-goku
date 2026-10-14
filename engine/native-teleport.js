@@ -7,7 +7,7 @@ export function createNativeTeleport(snes,mod,collision){
  const r=snes.ram,c=snes.cpu,cycle=c.cycle,word=a=>r[a]|r[a+1]<<8;
  let pending=null,scrolls=0,scrollFrame=-1;
  function findLanding(target,origin){
-  const terrain=r[target.base+11],layer=terrain&128?1:0;
+  const terrain=target.terrain??r[target.base+11],layer=terrain&128?1:0;
   const clear=(x,y)=>{
    if(!collision.canLand(x,y,layer,terrain&3))return false;
    // Do not materialize on a door, a layer-change seam or a scripted pad.

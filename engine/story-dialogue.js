@@ -5,7 +5,7 @@ export const storyDialogue={
   0xa73f5:"Got the Earth Dragon Ball!\nGOKU:Looks like candy.\nLUKA:Do not even THINK it.",
   0xa7397:"The seed glows. The pouch\nchecks for a Dragon Ball.\nGOKU:Not shaking. Promise.",
   0xa4a6f:"LUKA:The Empire is breaking\nthe seed cases for fuel.\nKeep the Dragon Balls safe!",
-  0xa3dfa:"The Tree Palace has Dryad.\nNo eighth Dragon Ball.\nShe is very firm about that.",
+  0xa3dfa:"The Tree Palace has Dryad.\nNo eighth Ball, she says.\nVery firmly. Suspiciously.",
   0xa28b6:"JEMA:Now the Fortress has\nits full power. It was bad\nenough when you woke it!",
   0xa2128:"We are feeding the Fortress\nGoku so helpfully awakened!\nAn excellent employee!",
   0xa1f57:"Once I break this last\nseal, the Fortress will\nhave its FULL power!",

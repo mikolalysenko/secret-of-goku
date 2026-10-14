@@ -17,9 +17,10 @@ test('ki sound samples are finite, bounded, distinct and deterministic in both f
 
 test('every DBZ cue has a bounded prepared sample; sustained beds contain no silent loop seam',()=>{
   const root=new URL('../assets/audio/dbz/',import.meta.url),manifest=JSON.parse(readFileSync(new URL('manifest.json',root)));
+  manifest.clips.push(...JSON.parse(readFileSync(new URL('frieza.json',root))).clips);
   for(const clip of new Set(Object.values(cues).flatMap(c=>c.clips))){
     const entry=manifest.clips.find(c=>c.name===clip);assert.ok(entry,clip);
-    assert.match(entry.sourceUrl,/^https:\/\/(soundsverse.com|soundeffects.fandom.com)\//);assert.equal(entry.sha256.length,64);
+    assert.match(entry.sourceUrl,/^https:\/\/(soundsverse.com|soundeffects.fandom.com|www.myinstants.com|staredit.net)\//);assert.equal(entry.sha256.length,64);
     const b=readFileSync(new URL(entry.file,root));assert.equal(b.toString('ascii',0,4),'RIFF');assert.equal(b.readUInt32LE(24),manifest.rate);
     const a=Array.from({length:(b.length-44)/2},(_,i)=>b.readInt16LE(44+i*2)/32768),peak=Math.max(...a);
     assert.equal(manifest.rate,16000);assert.equal(manifest.bits,10);

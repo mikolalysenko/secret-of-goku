@@ -1,0 +1,42 @@
+{
+  "processing": "Mono 16 kHz, 5.6 kHz low-pass, 10-bit quantization stored as 16-bit PCM. A consistent SNES-style sample-bank aesthetic; not hardware BRR encoding.",
+  "credit": "Short Dragon Ball audio excerpts. Original rights remain with their owners.",
+  "clips": [
+    {
+      "name": "frieza-laugh",
+      "start": 0.06,
+      "end": 4.5,
+      "rms": 0.16,
+      "sourceUrl": "https://www.myinstants.com/en/instant/frieza-ohohohohoh-46566/",
+      "file": "frieza-laugh.wav",
+      "sourceFile": "laugh-source.mp3",
+      "sha256": "ff8aa2929811f70a3cc76a753df91efa09ff036d093789aafafd65c7e4a84f90",
+      "duration": 4.44,
+      "gain": 3.9859649211726604
+    },
+    {
+      "name": "frieza-orb",
+      "start": 0,
+      "end": 1.028,
+      "rms": 0.2,
+      "sourceUrl": "https://staredit.net/sc1db/file/1158/",
+      "file": "frieza-orb.wav",
+      "sourceFile": "friezadeathball.wav",
+      "sha256": "6e06325315efb7351984d596bf8f721b53af5b43021ca0396b0b71cee825090f",
+      "duration": 1.0279375,
+      "gain": 0.8463439474920049
+    },
+    {
+      "name": "frieza-disc",
+      "start": 0,
+      "end": 1.042,
+      "rms": 0.17,
+      "sourceUrl": "https://staredit.net/sc1db/file/1158/",
+      "file": "frieza-disc.wav",
+      "sourceFile": "krillindestructodisc.wav",
+      "sha256": "60cfb19a6ac13bdca98e167aa881e45866dd00283133c399e9d747bee8aca160",
+      "duration": 1.042,
+      "gain": 0.6758255015526772
+    }
+  ]
+}

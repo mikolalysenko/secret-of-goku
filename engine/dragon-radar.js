@@ -13,7 +13,9 @@ export const radarPalaces=[
  {map:95,hint:'Fly across the starry sea.'},
 ];
 const route=[0,1,2,3,5,4,6];
-export function radarTarget(rom,quest,{fortressDestroyed=false,fortress={x:0,y:0}}={}){
+export function radarTarget(rom,quest,{fortressDestroyed=false,fortress={x:0,y:0},frieza=null}={}){
+ if(frieza?.stolen)return{id:'frieza',name:'Frieza / Fortress',hint:'Keep the eighth. Recover seven.',...fortress};
+ if(frieza?.eligible)return{id:'dryad',name:'Tree Palace',hint:'Optional: ask Dryad about ki.',x:rom[0x67a80+195*2]*16,y:rom[0x67a81+195*2]*16};
  const index=route.find(i=>!(quest.mask&(1<<i)));
  if(index!==undefined){const {map,hint}=radarPalaces[index];return{id:index,name:`${dragonBallPalaces[index]} Palace`,hint,x:rom[0x67a80+map*2]*16,y:rom[0x67a81+map*2]*16};}
  if(quest.wished)return null;
@@ -32,10 +34,10 @@ export function createDragonRadar(snes,mod){
   visible=mod.options.enabled&&mod.gokuActive&&mod.worldFlight&&!p.forcedBlank&&!(snes.ram[0xfe]&0xc0)&&!(snes.ram[0xe2]&1)&&!snes.ram[0x8c]&&!mod.flight?.docking&&!mod.radio?.status.visible&&!mod.charging&&!mod.worldKi?.status.shot&&!mod.worldKi?.status.explosion;
   if(!visible)return;
   const quest=mod.quest.status;
-  target=radarTarget(snes.cart.data,quest,{fortressDestroyed:mod.worldKi?.status.fortressDestroyed,fortress:{x:word(0x128),y:word(0x12a)}});
+  target=radarTarget(snes.cart.data,quest,{frieza:mod.frieza?.status,fortressDestroyed:mod.worldKi?.status.fortressDestroyed,fortress:{x:word(0x128),y:word(0x12a)}});
   if(!target){visible=false;return;}
   bearing=radarBearing({x:word(0xfa)&4095,y:word(0xfc)&4095},word(0xf6),target);
-  const text=`RADAR ${quest.count}/7  ${bearing.guide}\nNext: ${target.name}\n${target.hint}`;
+  const text=`RADAR ${quest.stolen?'8TH BALL':`${quest.count}/7`}  ${bearing.guide}\nNext: ${target.name}\n${target.hint}`;
   if(text!==panelKey){panelKey=text;panel=radioPixels(snes.cart.data,text);}
   dial=new Uint16Array(48*48);
   const put=(x,y,c)=>{x=Math.round(x);y=Math.round(y);if(x>=0&&x<48&&y>=0&&y<48)dial[y*48+x]=c+1;};

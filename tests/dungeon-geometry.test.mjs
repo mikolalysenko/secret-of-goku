@@ -62,3 +62,8 @@ test('piece visibility changes invalidate cached crossings and boss pictures nev
  f.ram[0xcf01]=0;f.g.invalidate();assert.ok(f.g.breach(f.g.tile(5,5,0)));
  for(const id of dungeonSpecialScenes.keys()){f.ram[0xdc]=id&255;f.ram[0xdd]=id>>8;assert.equal(f.g.context(),null);}
 });
+test('Fire Palace wall recesses cannot become copied floor across a demolished wall',()=>{
+ const f=fixture();f.descriptor(90,[0x10,0,0,0]);f.descriptor(91,[0x10,0,0,0]);
+ for(let x=1;x<11;x++)f.put(x,5,x<5?91:x>6?90:10);
+ assert.equal(f.g.breach(f.g.tile(5,5,0),{dx:1}),null,'walkable collision alone does not make a window ledge safe floor art');
+});

@@ -80,7 +80,12 @@ export function createDungeonGeometry(snes){
  // per-location event bit. They include whip pads and cave entrances.
  const ordinary=t=>t&&!(t.flags&8)&&!(t.behavior&0xd0)&&t.code===0;
  const metatile=(t,c)=>t.tile+((c.flags&(t.layer?128:64))?192:0);
- const floor=(t,c)=>ordinary(t)&&(t.flags&7)<3&&!(metatile(t,c)===0&&blankZero.has(c.tileset));
+ // Palace window recesses have walkable height-0 descriptors, but their
+ // art is brick/arch trim. Treating two windows as opposing floors copied
+ // their bricks across a blasted wall and admitted routes through the roof.
+ const falsePalaceFloor=new Set([58,74,80,81,82,90,91]);
+ const floor=(t,c)=>ordinary(t)&&(t.flags&7)<3&&!(metatile(t,c)===0&&blankZero.has(c.tileset))&&
+  !(c.tileset===23&&t.layer===0&&falsePalaceFloor.has(metatile(t,c)));
  const protectedCell=(t,c)=>c.map===139&&t.ty>=59&&t.ty<=65&&t.tx>=12&&t.tx<=21&&(t.tx<16||t.tx>17);
  const airMaterial=(t,c)=>t&&!protectedCell(t,c)&&!(t.flags&8)&&!(t.behavior&0xd0)&&
   (t.code===0&&dungeonAirTiles[c.tileset]?.has(metatile(t,c))||c.tileset===10&&t.code>=0x10&&t.code<=0x17);

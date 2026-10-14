@@ -44,7 +44,8 @@ class ManaMod {
   write8(address,value){this.snes.ram[address&0x1ffff]=value&255}
   write16(address,value){this.write8(address,value);this.write8(address+1,value>>8)}
   configure(options){
-    if(options.superSaiyan&&(this.poisoned||this.sleeping))options={...options,superSaiyan:false};
+    if(this.frieza?.permanent)options={...options,superSaiyan:true};
+    if(!this.frieza?.permanent&&options.superSaiyan&&(this.poisoned||this.sleeping))options={...options,superSaiyan:false};
     const changed=options.superSaiyan!==undefined&&options.superSaiyan!==this.options.superSaiyan;
     Object.assign(this.options,options);
     if(!this.options.enabled){this.cancelCombat();this.localFlight=false;this.localLift=0;}
@@ -68,7 +69,7 @@ class ManaMod {
     const held=!!(input&0x400),transform=held&&!!(input&0x100);
     const wasTransform=!!(this.lastInput&0x400)&&!!(this.lastInput&0x100);
     if(!held){this.powerBlocked=false;this.powerCharge=0;if(this.action?.kind==='focus')this.action=null;return false;}
-    if(transform&&!wasTransform&&this.options.superSaiyan){this.configure({superSaiyan:false});this.action.duration=10;this.powerBlocked=true;return true;}
+    if(transform&&!wasTransform&&this.options.superSaiyan&&!this.frieza?.permanent){this.configure({superSaiyan:false});this.action.duration=10;this.powerBlocked=true;return true;}
     if(this.powerBlocked)return true;
     if(this.action&&!['focus','ready'].includes(this.action.kind))return true;
     if(!this.action||this.action.kind!=='focus')this.action={kind:'focus',age:0,duration:0,facing:this.facing,super:this.options.superSaiyan};
@@ -76,17 +77,17 @@ class ManaMod {
     if(transform&&this.powerCharge===96&&!this.poisoned&&!this.sleeping){this.configure({superSaiyan:true});this.powerBlocked=true;}
     return true;
   }
-  reset(){this.panelBack=false;this.padInput=0;this.lastPadInput=0;this.powerCharge=0;this.powerBlocked=false;this.kiBlocked=false;this.kiHand=0;this.frame=0;this.hitRecovery?.restore();this.cancelCombat();this.sound?.restore();this.combatSound?.restore();this.ownership?.reset();this.feedback?.restore();this.orbs?.restore();this.story?.restore();this.worldKi?.restore();this.barriers?.restore();this.potosGatekeeper?.restore();this.flight?.restore();this.gapFlight?.restore();this.radio?.restore();this.quest?.restore();this.ceiling?.restore();this.challenge?.restore();this.powerIntro?.restore();this.ending?.restore();this.flightTransition=null;this.autoLand=false;this.localFlight=false;this.localLift=0;this.localFlightHook?.restore();this.teleport?.restore();this.lastTeleportTarget=-1;this.input=0;this.lastInput=0;this.hiddenLastFrame=[];this.flightShadow=null;this.worldFlight=false;this.nameEditor=false;this.spriteLayer.plan=null;this.attackBlocked=false;this.combo=0;this.comboUntil=0;this.knockbacks=[];this.lastMap=null;this.motion?.reset();}
+  reset(){this.panelBack=false;this.padInput=0;this.lastPadInput=0;this.powerCharge=0;this.powerBlocked=false;this.kiBlocked=false;this.kiHand=0;this.frame=0;this.hitRecovery?.restore();this.cancelCombat();this.sound?.restore();this.combatSound?.restore();this.ownership?.reset();this.feedback?.restore();this.orbs?.restore();this.story?.restore();this.worldKi?.restore();this.barriers?.restore();this.potosGatekeeper?.restore();this.flight?.restore();this.gapFlight?.restore();this.radio?.restore();this.quest?.restore();this.ceiling?.restore();this.challenge?.restore();this.powerIntro?.restore();this.ending?.restore();this.frieza?.restore();this.flightTransition=null;this.autoLand=false;this.localFlight=false;this.localLift=0;this.localFlightHook?.restore();this.teleport?.restore();this.lastTeleportTarget=-1;this.input=0;this.lastInput=0;this.hiddenLastFrame=[];this.flightShadow=null;this.worldFlight=false;this.nameEditor=false;this.spriteLayer.plan=null;this.attackBlocked=false;this.combo=0;this.comboUntil=0;this.knockbacks=[];this.lastMap=null;this.motion?.reset();}
   snapshot(){
     const fields=['panelBack','padInput','lastPadInput','powerCharge','powerBlocked','kiBlocked','kiHand','frame','facing','nameEditor','worldFlight','flightShadow','charge','charging','attackHeld','nativeTapFrames','action','queuedPunch','combo','comboUntil','blastCooldown','attackBlocked','effects','knockbacks','lastMap','input','lastInput','attackFrames','attackCooldown','autoLand','flightTransition','localFlight','localLift'];
-    return JSON.parse(JSON.stringify({version:1,options:this.options,hitRecovery:this.hitRecovery?.snapshot(),motion:this.motion?.snapshot(),sound:this.sound?.snapshot(),plants:this.plants?.snapshot(),feedback:this.feedback?.snapshot(),ownership:this.ownership?.snapshot(),flight:this.flight?.snapshot(),localFlightState:this.localFlightHook?.snapshot(),teleportState:this.teleport?.snapshot(),gapFlight:this.gapFlight?.snapshot(),orbs:this.orbs?.snapshot(),story:this.story?.snapshot(),worldKi:this.worldKi?.snapshot(),barriers:this.barriers?.snapshot(),potosGatekeeper:this.potosGatekeeper?.snapshot(),radio:this.radio?.snapshot(),quest:this.quest?.snapshot(),ceiling:this.ceiling?.snapshot(),challenge:this.challenge?.snapshot(),powerIntro:this.powerIntro?.snapshot(),ending:this.ending?.snapshot(),lastTeleportTarget:this.lastTeleportTarget,...Object.fromEntries(fields.map(key=>[key,this[key]]))}));
+    return JSON.parse(JSON.stringify({version:1,options:this.options,hitRecovery:this.hitRecovery?.snapshot(),motion:this.motion?.snapshot(),sound:this.sound?.snapshot(),plants:this.plants?.snapshot(),feedback:this.feedback?.snapshot(),ownership:this.ownership?.snapshot(),flight:this.flight?.snapshot(),localFlightState:this.localFlightHook?.snapshot(),teleportState:this.teleport?.snapshot(),gapFlight:this.gapFlight?.snapshot(),orbs:this.orbs?.snapshot(),story:this.story?.snapshot(),worldKi:this.worldKi?.snapshot(),barriers:this.barriers?.snapshot(),potosGatekeeper:this.potosGatekeeper?.snapshot(),radio:this.radio?.snapshot(),quest:this.quest?.snapshot(),ceiling:this.ceiling?.snapshot(),challenge:this.challenge?.snapshot(),powerIntro:this.powerIntro?.snapshot(),ending:this.ending?.snapshot(),frieza:this.frieza?.snapshot(),lastTeleportTarget:this.lastTeleportTarget,...Object.fromEntries(fields.map(key=>[key,this[key]]))}));
   }
   restore(saved){
     this.reset();this.hitRecovery?.restore(saved?.hitRecovery);this.worldFlight=this.nativeFlight;this.sound?.restore(saved?.sound);this.plants?.restore(saved?.plants);this.feedback?.restore(saved?.feedback);this.ownership?.restore(saved?.ownership);this.lastTeleportTarget=saved?.lastTeleportTarget??-1;if(saved?.version!==1)return;
     this.flight?.restore(saved?.flight);this.localFlightHook?.restore(saved?.localFlightState);this.teleport?.restore(saved?.teleportState);this.gapFlight?.restore(saved?.gapFlight);this.orbs?.restore(saved?.orbs);this.story?.restore(saved?.story);this.worldKi?.restore(saved?.worldKi);this.barriers?.restore(saved?.barriers);this.potosGatekeeper?.restore(saved?.potosGatekeeper);this.radio?.restore(saved?.radio);this.quest?.restore(saved?.quest);this.ceiling?.restore(saved?.ceiling);
     for(const key of ['panelBack','padInput','lastPadInput','powerCharge','powerBlocked','kiBlocked','kiHand','frame','facing','nameEditor','worldFlight','flightShadow','charge','charging','attackHeld','nativeTapFrames','action','queuedPunch','combo','comboUntil','blastCooldown','attackBlocked','effects','knockbacks','lastMap','input','lastInput','attackFrames','attackCooldown','autoLand','flightTransition','localFlight','localLift'])if(saved[key]!==undefined)this[key]=JSON.parse(JSON.stringify(saved[key]));
     Object.assign(this.options,saved.options);this.motion?.restore(saved.motion);
-    this.challenge?.restore(saved.challenge);this.powerIntro?.restore(saved.powerIntro);this.ending?.restore(saved.ending);
+    this.challenge?.restore(saved.challenge);this.powerIntro?.restore(saved.powerIntro);this.ending?.restore(saved.ending);this.frieza?.restore(saved.frieza);
   }
   get gokuActive(){return !this.arrival||this.arrival.arrived;}
   get poisoned(){return !!(this.read8(0xe191)&0x20);}
@@ -105,14 +106,16 @@ class ManaMod {
       charge:this.charge,worldFlight:this.worldFlight,localFlight:this.localFlight,canAttack:this.canAttack,action:this.action?.kind||'idle',combo:this.combo,menu:this.read8(0xec),event:this.read8(0xd0),hiddenOamSlots:this.hiddenLastFrame};
   }
   entities(){
-    return Array.from({length:12},(_,index)=>{
+    const entities=Array.from({length:12},(_,index)=>{
       const base=0xe000+index*0x200;
       return {index,base,active:!!(this.read8(base)&1),species:this.read8(base+0x180),hp:this.read16(base+0x182),
         maxHp:this.read16(base+0x184),x:this.read16(base+2),y:this.read16(base+4),screenX:this.readSigned16(base+0x20),screenY:this.readSigned16(base+0x22)};
     });
+    const frieza=this.frieza?.entity();if(frieza)entities.push(frieza);
+    return entities;
   }
   beforeFrame(input=this.snes.joypad1State) {
-    this.ending?.tick();this.hitRecovery?.tick();this.potosGatekeeper?.tick();
+    this.ending?.tick();this.frieza?.tick();this.hitRecovery?.tick();this.potosGatekeeper?.tick();
     this.feedback?.tick();this.gapFlight?.tick();
     const previousLift=this.localLift;
     this.localLift=Math.max(0,Math.min(12,this.localLift+(this.localFlight?3:-3)));
@@ -160,7 +163,7 @@ class ManaMod {
     if(!this.options.enabled||!this.gokuActive)return;
     // Poison and sleep break the transformation, including while charging.
     // Their own status, animation, timers and cures remain game-owned.
-    if((this.poisoned||this.sleeping)&&this.options.superSaiyan){
+    if((this.poisoned||this.sleeping)&&this.options.superSaiyan&&!this.frieza?.permanent){
       this.options.superSaiyan=false;this.cancelCombat();this.motion?.reset();
       this.playSound?.('revert');
       this.attackBlocked=!!(input&(1|(1<<17)));this.powerBlocked=!!(input&0x400);this.log(`${this.sleeping?'Sleep':'Poison'} knocked Goku out of Super Saiyan.`);
@@ -294,7 +297,7 @@ class ManaMod {
   instantTransmission(){
     if(!this.options.enabled||!this.canAttack||this.action?.kind==='teleport')return false;
     const origin={x:this.read16(0xe002),y:this.read16(0xe004)};
-    const enemies=this.entities().filter(e=>e.index>=3&&e.active&&e.species<128&&e.species!==0x55&&e.hp&&!(this.read8(e.base+0x191)&0x80));
+    const enemies=this.entities().filter(e=>e.index>=3&&e.active&&e.species<128&&e.species!==0x55&&e.hp&&(e.custom||!(this.read8(e.base+0x191)&0x80)));
     // Each press chooses one living foe. Repeated presses cycle away from the
     // previous target, and never inflict damage or return Goku to his origin.
     const reachable=enemies.filter(e=>this.teleportLanding(e,origin));
@@ -307,7 +310,7 @@ class ManaMod {
   finishTeleport(action){
     action.arrived=true;
     const target=this.entities()[action.target];
-    if(!target?.active||target.species!==action.species||!target.hp||(this.read8(target.base+0x191)&0x80))return;
+    if(!target?.active||target.species!==action.species||!target.hp||(!target.custom&&(this.read8(target.base+0x191)&0x80)))return;
     const landing=this.teleportLanding(target,action.origin);if(!landing)return;
     this.write16(0xe002,landing.x);this.write16(0xe004,landing.y);
     this.write8(0xe00b,landing.terrain);
@@ -326,12 +329,13 @@ class ManaMod {
   }
   targets(origin,dx,dy,range,width,behind=0,centerY=0){
     return this.entities().filter(enemy=>{
-      if(enemy.index<3||!enemy.active||enemy.species>=128||!enemy.hp||(this.read8(enemy.base+0x191)&0x80))return false;
+      if(enemy.index<3||!enemy.active||enemy.species>=128||!enemy.hp||(!enemy.custom&&(this.read8(enemy.base+0x191)&0x80)))return false;
       const x=enemy.x-origin.x,y=enemy.y-centerY-origin.y,along=x*dx+y*dy;
       return along>=-behind&&along<=range&&Math.abs(x*dy-y*dx)<=width;
     });
   }
   hit(enemy,damage,dx,dy,launch=false){
+    if(enemy.custom==='frieza')return this.frieza.hit(enemy,damage);
     if(enemy.species===0x55)return{index:enemy.index,species:enemy.species,before:enemy.hp,after:enemy.hp,activated:this.orbs?.hit(enemy)||false};
     damage=this.challenge?.damage(enemy,damage)??damage;
     // Queue damage through C0:4053 so the original game owns impact, numbers,
@@ -352,7 +356,7 @@ class ManaMod {
     const origin={x:this.read16(0xe002),y:this.read16(0xe004)},radius=56,damage=Math.round(this.damageScale()*.75),hits=[];
     this.effects.push({kind:'powerBurst',x:origin.x,y:origin.y-16-this.read8(0xe045)-this.localLift,radius,life:14,max:14,super:true});
     for(const enemy of this.targets(origin,1,0,radius,radius,radius)){
-      const x=enemy.x-origin.x,y=enemy.y-origin.y,distance=Math.hypot(x,y),pending=this.read16(enemy.base+0x1f1);
+      const x=enemy.x-origin.x,y=enemy.y-origin.y,distance=Math.hypot(x,y),pending=enemy.custom?0:this.read16(enemy.base+0x1f1);
       // One radial hit at ignition. Puzzle orbs need an aimed attack, and an
       // already-lethal native queue must finish its own defeat/reward event.
       if(distance>radius||enemy.species===0x55||pending>0&&pending>=enemy.hp)continue;
@@ -440,7 +444,7 @@ class ManaMod {
         if(beam&&pulse?.species===enemy.species&&age-pulse.age<(effect.mega?6:8))continue;
         // Let an already-lethal queued hit finish through the original game.
         // Repeated calls must not restart death, rewards or boss scripts.
-        const pending=this.read16(enemy.base+0x1f1);
+        const pending=enemy.custom?0:this.read16(enemy.base+0x1f1);
         if(enemy.species!==0x55&&pending>0&&enemy.hp<=pending)continue;
         const along=(enemy.x-effect.x)*effect.dx+(enemy.y-12-effect.y)*effect.dy;
         const across=Math.abs((enemy.x-effect.x)*effect.dy-(enemy.y-12-effect.y)*effect.dx);

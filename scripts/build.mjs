@@ -4,7 +4,7 @@ await rm('dist',{recursive:true,force:true});await mkdir('dist',{recursive:true}
 // Explicit public runtime list. The archived prototype and extracted map PNGs
 // are research inputs; the real game reads those maps from the selected ROM.
 const files=['index.html','engine.html','styles.css','engine','vendor','tools/rom','CREDITS.md','LICENSE','docs',
-  'assets/sprites/goku.png','assets/sprites/ssj.png','assets/sprites/shenron.png','assets/sprites/shenron.json',
+  'assets/sprites/frieza.png','assets/sprites/frieza.json','assets/sprites/goku.png','assets/sprites/ssj.png','assets/sprites/shenron.png','assets/sprites/shenron.json',
   'assets/audio/kamehameha-charge.wav','assets/audio/kamehameha-release.wav','assets/audio/kamehameha-jp.json','assets/audio/dbz'];
 for(const file of files){
   await mkdir(`dist/${file.split('/').slice(0,-1).join('/')}`,{recursive:true});

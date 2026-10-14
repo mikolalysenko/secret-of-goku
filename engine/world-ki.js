@@ -101,7 +101,10 @@ export function createWorldKi(snes,mod){
             distantBursts.push({...shot.target,age:-18});
             if(distantBursts.length>8)distantBursts.shift();
           }
-          else if(shot.strength>=.85){
+          else if(shot.target.id==='mana-fortress'&&mod.frieza?.unresolved){
+            mod.radio?.say('FRIEZA:Shoot the Fortress?\nWith your Dragon Balls in it?\nHo ho ho... Come inside.',{kind:'frieza-shield'});
+            mod.playSound('friezaLaugh');
+          }else if(shot.strength>=.85){
             lastHit=shot.target.id;explosion={...shot.target,mega:shot.mega,age:0};mod.playSound('impact');
             mod.worldScars?.strike(shot.target,shot.mega);
             if(lastHit==='mana-tree-barrier'){

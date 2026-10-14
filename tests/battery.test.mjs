@@ -20,3 +20,12 @@ test('blocked browser storage does not prevent playing or native in-memory saves
   assert.deepEqual(errors,['Storage blocked']);assert.equal(store.status.error,'Storage blocked');
  }finally{if(previous)Object.defineProperty(globalThis,'localStorage',previous);else delete globalThis.localStorage;}
 });
+test('mod sidecars follow the exact native save slot and backup, never an overwritten record',()=>{
+ const data=new Map(),storage={getItem:k=>data.get(k),setItem:(k,v)=>data.set(k,v)},store=createBatteryStore({storage}),cart=cartridge();store.attach(cart,'rom');
+ store.stageMetadata(0x400,{version:1,frieza:{stage:'hunt',stolen:true}});
+ cart.write(0x30,0x6400,197);cart.write(0x30,0x7400,197);store.flush();
+ assert.equal(store.metadataFor(0x400).frieza.stolen,true);assert.deepEqual(store.metadataFor(0x400),store.metadataFor(0x1400));assert.equal(store.metadataFor(0),null);
+ const next=cartridge();store.attach(next,'rom');assert.equal(store.metadataFor(0x400).frieza.stage,'hunt');
+ next.write(0x30,0x6405,7);assert.equal(store.metadataFor(0x400),null,'different SRAM content rejects stale quest state');
+ assert.equal(store.metadataFor(0x1400).frieza.stolen,true,'the validated backup retains its own sidecar');
+});

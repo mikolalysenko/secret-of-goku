@@ -23,7 +23,7 @@ export function createShenronEnding(snes,mod){
  function prepare(){
   prepared=mod.frame;surface.fill(0);if(!state)return;
   const village=state.phase==='village'||state.phase==='complete',age=state.age;
-  const goku=mod.spriteLayer.atlas.goku;
+  const goku=mod.spriteLayer.atlas[mod.frieza?.permanent?'ssj':'goku'];
   if(village){
    // Randi is the original native boy actor again; Goku stands beside him.
    const x=mod.readSigned16(0xe020),y=mod.readSigned16(0xe022);
