@@ -212,7 +212,6 @@ export function createNativeStory(snes,mod){
         const opened=allocate(bytes,id,3);
         entries.set(at,mask=>mod.barriers?.doorBroken(door.id)?opened:typeof original==='function'?original(mask):original[mask]);
       }
-      entries.set(0xc00000+eventRange(cart.data,0x88).start,()=>customPointers.get(r[0xcf4e]>=9?0x8a:r[0xcf4e]>=7?0x89:0x88));
       entries.set(0xc00000+eventRange(cart.data,0x429).start,()=>customPointers.get(mod.worldKi?.status.fortressDestroyed?0x8f:0x429));
       entries.set(0xc00000+eventRange(cart.data,0x93).start,()=>customPointers.get(mod.quest?.status.held===7&&mod.quest.status.seedMask===127?0x94:0x93));
       const wardAdvice=Array.from({length:8},(_,count)=>allocate([
@@ -243,16 +242,11 @@ export function createNativeStory(snes,mod){
       const afterTrial=variants(F.afterTrial,mask=>customVariants[mask].get(F.afterTrial));
       route(F.showdown,mask=>mod.frieza?.unresolved&&!mod.frieza?.status.trialWon?trial[mask]:showdown[mask]);
       route(0x42d,mask=>mod.frieza?.trial?afterTrial[mask]:null);
-      const visit=allocate([0x51,1,...box('LUKA:Frieza is waiting.\nI can take you inside.\nKeep the eighth safe.'),0x2f,0x84,0x30,0x4e,4,0x30,0x0b,2,0x18,0x2f,...[0x10|(F.showdown>>8),F.showdown&255],0],F.showdown,0);
       // Flying straight into the Fortress must not silently select Thanatos.
       // An unseen Frieza makes his entrance, fires into the core, and leaves
       // Goku in the twilight world to finish collecting before returning.
       route(0x4e1,mask=>mod.frieza?.pendingEntrance?customPointers.get(F.offer):mod.frieza?.unresolved?(mod.frieza.status.trialWon?showdown[mask]:trial[mask]):null);
-      const firstVisit=allocate([0x51,1,0x2f,0x84,0x30,0x4e,4,0x30,0x0b,2,0x18,0x2f,...[0x10|(F.offer>>8),F.offer&255],0],0x88,0);
-      route(0x88,()=>mod.frieza?.pendingEntrance?firstVisit:mod.frieza?.unresolved?visit:null);
       route(0x429,()=>mod.frieza?.pendingEntrance?customPointers.get(F.offer):null);
-      const rescue=allocate([0x51,1,...box('LUKA:Five minutes remain.\nI can take you to Frieza.\nRecover the Balls and\nsave this planet!'),...choice('Enter the Fortress?\n',[{label:'Stay',x:3,to:0},{label:'Go',x:17,to:0x88}])],0x87,0);
-      route(0x87,()=>mod.frieza?.unresolved?rescue:null);
       const invitation=allocate([0x51,1,...box(`LUKA:All seven! Dryad
 has sensed someone
 following their power.

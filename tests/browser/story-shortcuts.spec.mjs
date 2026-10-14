@@ -64,6 +64,7 @@ test('early Tree barrier blocks landing, breaks with an aerial charge, then land
 test('aerial Fortress destruction skips the dungeon and starts the native Mana Beast battle solo',async({page})=>{
   await load(page,'.local/juice-research/flight/request-flight.json');
   const hit=await page.evaluate(()=>{
+    mana.mod.options.superSaiyan=true;
     for(const base of[0xe200,0xe400]){mana.write8(base,0);mana.write8(base+0x2c,0);}
     mana.write8(0xf8,190);mana.run(10);
     for(let f=0;f<105;f++){
@@ -78,9 +79,9 @@ test('aerial Fortress destruction skips the dungeon and starts the native Mana B
   expect(await page.evaluate(()=>mana.mod.quest.status.count)).toBeLessThan(7);
 });
 
-test('Luka shortcut introduces Frieza, reaches Thanatos, Frieza and the Beast, and cannot save an incomplete collection',async({page})=>{
+test('the Fortress route introduces Frieza, reaches Thanatos, Frieza and the Beast, and cannot save an incomplete collection',async({page})=>{
   test.setTimeout(300000);
-  await load(page);await page.evaluate(()=>{for(const base of[0xe200,0xe400]){mana.write8(base,0);mana.write8(base+0x2c,0);}mana.mod.options.superSaiyan=true;mana.mod.story.request(0x88);});
+  await load(page);await page.evaluate(()=>{for(const base of[0xe200,0xe400]){mana.write8(base,0);mana.write8(base+0x2c,0);}mana.mod.options.superSaiyan=true;mana.write8(0xcf4e,4);mana.mod.story.travel(0x154);});
   const seen=new Set();let ending=false,entrance=false;
   // Includes the native Dark Lich fight, Frieza's two phase transitions,
   // the Beast and the full Kai epilogue. Bound the complete route, not only
@@ -89,7 +90,7 @@ test('Luka shortcut introduces Frieza, reaches Thanatos, Frieza and the Beast, a
     const s=await page.evaluate(()=>{
       const m=mana.mod,bosses=m.entities().filter(e=>e.index>=3&&e.active&&e.species>=87&&e.species<128&&e.hp);const seen=bosses.map(e=>e.custom??e.species);
       if(m.worldFlight){const c=mana.snes.cart.data;mana.write16(0xfa,c[0x67a80+131*2]*16);mana.write16(0xfc,c[0x67a81+131*2]*16);mana.write16(0xf4,0);mana.run(80,[0]);}
-      else if(m.frieza.unresolved&&!m.frieza.fighting&&m.status.map!==246&&m.canAttack)m.story.request(0x88);
+      else if(m.frieza.unresolved&&!m.frieza.fighting&&m.status.map!==246&&m.canAttack)m.story.travel(0x154);
       // Combat/survival has separate coverage. Drive the real damage queue
       // here to verify both native defeat handlers and the ending branch.
       if(m.frieza.orbit?.clash){
@@ -153,13 +154,23 @@ test('Undine can grant spells solo and native later recruitment keeps both rewar
   expect(result.requested).toBe(true);expect(result.before).toEqual([0x38,7]);expect(result.after).toEqual(result.before);expect(result.present).toEqual([1,1]);expect(result.error).toBe(null);
 });
 
-test('Luka menu can cancel the shortcut and open the original save screen',async({page})=>{
+test('Luka offers Advice and Save, cancels normally, and retired travel choices cannot skip progression',async({page})=>{
   await load(page);await page.evaluate(()=>{mana.write8(0xcfc3,1);mana.mod.story.request(0x134);mana.run(200);});
-  for(let i=0;i<2;i++)await page.evaluate(()=>{mana.run(4,[7]);mana.run(16);});
-  await page.evaluate(()=>{mana.run(4,[16]);mana.run(110);});
-  expect(await page.evaluate(()=>mana.mod.story.status.lastEvent)).toBe(0x87);
-  await dismiss(page,()=>mana.mod.canAttack,20); // Stay is the default option.
+  const menu=await page.evaluate(()=>{const pc=mana.read16(0xd1)|(mana.read8(0xd3)<<16);return Array.from({length:100},(_,i)=>mana.mod.story.inspectByte(pc+i)).join(',');});
+  expect(menu).toContain(encodeText('Advice').join(','));expect(menu).toContain(encodeText('Save').join(','));expect(menu).not.toContain(encodeText('Shortcut').join(','));
+  await page.locator('#screen').screenshot({path:test.info().outputPath('luka-advice-save.png')});
+  await page.evaluate(()=>{mana.run(2,[9]);for(let f=0;f<120&&!mana.mod.canAttack;f++)mana.run(1);});
+  expect(await page.evaluate(()=>mana.mod.canAttack)).toBe(true);
   expect(await page.evaluate(()=>({event:mana.mod.story.status.lastEvent,flag:mana.read8(0xcf4e)}))).toEqual({event:0x91,flag:0});
+  for(const stage of['dormant','hunt','defeated'])for(const event of[0x87,0x88]){
+    const result=await page.evaluate(({stage,event})=>{
+      const m=mana.mod,before={map:mana.read16(0xdc),flag:mana.read8(0xcf4e)};
+      m.frieza.restore({stage,stolen:stage==='hunt'});m.story.request(event);mana.run(200);
+      const menu=m.story.status.lastEvent;mana.run(2,[9]);for(let f=0;f<120&&!m.canAttack;f++)mana.run(1);
+      return{before,after:{map:mana.read16(0xdc),flag:mana.read8(0xcf4e)},menu,canAttack:m.canAttack,error:m.story.status.error};
+    },{stage,event});
+    expect(result.after).toEqual(result.before);expect(result.menu).toBe(0x134);expect(result.canAttack).toBe(true);expect(result.error).toBe(null);
+  }
   await page.evaluate(()=>{mana.mod.story.request(0x134);mana.run(200);mana.run(4,[7]);mana.run(16);mana.run(4,[16]);mana.run(110);});
   for(let i=0;i<5;i++){
     if(await page.evaluate(()=>mana.mod.story.status.lastEvent===0x90))break;

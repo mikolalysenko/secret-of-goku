@@ -46,14 +46,15 @@ export function buildStoryEvents(rom,mask=0,{crisis=false}={}){
   // If Primm really was captured, flying past the guards skips their decoy
   // puzzle but preserves the original rescue and recruitment choreography.
   events.set(0xa2,[0x30,0x28,7,...jump(0x29c),0]);
-  events.set(0x134,[0x42,0xc3,0,...jump(0x92),...choice('LUKA:What will you do?\n',[{label:'Advice',x:1,to:0x85},{label:'Save',x:10,to:0x86},{label:'Shortcut',x:17,to:0x87}])]);
+  events.set(0x134,[0x42,0xc3,0,...jump(0x92),...choice('LUKA:What will you do?\n',[{label:'Advice',x:5,to:0x85},{label:'Save',x:17,to:0x86}])]);
   events.set(0x92,[0x50,...call(0x13a),0x51,0x01,...jump(0x134),0]); // Keep Luka's original one-time weapon gift.
   events.set(0x85,[...box('LUKA:Find seven Dragon\nBalls. Water, Earth, Wind,\nFire, Dark, Light, Moon.'),...box('The seeds are the cases.\nTouch them to collect the\nBalls. Dryad guards the\neighth palace. She keeps\nher own counsel.'),...box('Wish RANDI, the Sword and\nyour accidents back. First\ncalm the Mana Beast. It\nis allergic to Fortresses.'),...box('Collect all seven Balls.\nSee Dryad before the wish.\nThe Beast must release\nall its trapped Mana.'),...box('Fly anywhere. Punch orbs.\nBlast gates. Fly through\ndungeon ceilings if you\nMUST. We will keep a bill.'),...box('Destroying the Fortress\nwould burn away all Mana.\nNo wish could fix that.\nPlease leave it standing.'),0]);
   events.set(0x86,[0x30,0xfd,0,0x30,0xfe,2,...box('LUKA:I will restore you.'),...call(0x41b),0x2f,0x84,...choice('Want to save the game?\n',[{label:'Yes',x:5,to:0x90},{label:'No',x:17,to:0}])]);
   events.set(0x90,[0x1f,6,0x51,0]); // Original save menu command.
   events.set(0x91,[0x51,0]); // Choices must close their window before END.
-  events.set(0x87,[...box('LUKA:I can guide your ki\nstraight to Thanatos.\nBut skipping the journey\ndoes NOT save this world.'),...box('KING KAI:Collect the Balls!\nLet Dryad check them!\nThe Beast must release ALL\nof its trapped Mana.'),...box('LUKA:Without all three,\nthere can be no wish.\nThe planet will break apart.\nI am not joking.'),...choice('Take the shortcut now?\n',[{label:'Stay',x:3,to:0},{label:'Go',x:17,to:0x88}])]);
-  events.set(0x88,[...box('KING KAI:This is a shortcut\nto a fight, NOT a rescue.\nLeave the job unfinished\nand this world is doomed.'),...box('GOKU:I can feel him now.\nThink he has a stronger\nform? I should ask.'),0x2f,0x84,0x30,0x4e,4,0x30,0x0b,2,0x18,0x2f,...jump(0x4e1),0]);
+  // Retired Luka travel choices return to her menu even if an old selection
+  // still dispatches their event IDs. Neither can skip into the final fights.
+  for(const id of[0x87,0x88])events.set(id,[0x51,0x01,...jump(0x134),0]);
   // The retail scene repeatedly positions, strikes and waits for Primm,
   // then moves Goku relative to her. Flight and solo arrival do not provide
   // those actors/starting positions. This scene uses native text, music,
