@@ -3,6 +3,9 @@ import {radioPixels} from './native-radio.js';
 import {createOrbitView} from './frieza-orbit-view.js';
 import {kaiActors,newKaiScene} from './kai-planet.js';
 import {fracturePlanet,fragmentPose} from './planet-fragments.js';
+import {createCollateralView} from './frieza-collateral-view.js';
+import {pullbackStart} from './frieza-cinematic.js';
+import {drawFriezaSprite} from './frieza-sprite.js';
 
 // Scatter once with an independent random sequence for each coordinate.
 // The former pair of modular strides made obvious diagonal rows of stars.
@@ -41,13 +44,13 @@ export function createPlanetView(snes,mod){
       put(x,y,c);if(bright&&(age+phase)%240<9){put(x-1,y,c);put(x+1,y,c);put(x,y-1,c);put(x,y+1,c);}
     }
   }
-  function planet(target,night){
-    const key=`${target.x}:${target.y}:${night}`;if(key===globeKey&&globe)return;
+  function planet(target,night,view={x:87,y:140,r:72}){
+    const key=`${target.x}:${target.y}:${night}:${view.x}:${view.y}:${view.r}`;if(key===globeKey&&globe)return;
     globeKey=key;globe=new Uint16Array(256*224);fragments=null;
     // Put the actual strike site on the upper-right limb of the globe.
-    const cx=87,cy=140,r=72,hitX=.62,hitY=-.69,hitZ=Math.sqrt(1-hitX*hitX-hitY*hitY);
+    const cx=Math.round(view.x),cy=Math.round(view.y),r=Math.round(view.r),hitX=.62,hitY=-.69,hitZ=Math.sqrt(1-hitX*hitX-hitY*hitY);
     const lon=target.x/4096*Math.PI*2-Math.atan2(hitX,hitZ),lat=target.y/4096*Math.PI-Math.asin(hitY);
-    for(let y=cy-r-3;y<=cy+r+3;y++)for(let x=cx-r-3;x<=cx+r+3;x++){
+    for(let y=Math.max(0,cy-r-3);y<=Math.min(223,cy+r+3);y++)for(let x=Math.max(0,cx-r-3);x<=Math.min(255,cx+r+3);x++){
       const nx=(x-cx)/r,ny=(y-cy)/r,d=nx*nx+ny*ny;if(d>1.07)continue;
       let color;
       if(d>1)color=blue[d<1.035?1:0]-1;
@@ -60,11 +63,12 @@ export function createPlanetView(snes,mod){
       globe[y*256+x]=color+1;
     }
   }
-  function drawPlanet(target,night,shake=0){
-    planet(target,night);
+  function drawPlanet(target,night,shake=0,view){
+    planet(target,night,view);
     for(let y=0;y<224;y++)for(let x=0;x<256;x++){const c=globe[y*256+x];if(c)put(x+shake,y,c);}
   }
   const drawOrbit=createOrbitView(snes,mod,{put,disc,line,spell,rgb,drawPlanet});
+  const collateral=createCollateralView(snes,{put,disc,line,rgb});
   function beam(age){
     const start={x:132,y:90},dx=.66,dy=-.7513,envelope=Math.max(0,Math.min(1,(age+8)/14,(112-age)/30));
     const length=210*Math.min(1,(age+12)/24),width=18*envelope;
@@ -123,31 +127,44 @@ export function createPlanetView(snes,mod){
     }
   }
   function cosmicBattle(state){
-    const t=state.age-72;
-    drawPlanet(state.target,true,t>28&&t<49?(t%4<2?-1:1):0);
-    // A Death Ball dives toward the globe. Goku's blue counterbeam carries
-    // it back into space; the damaged Fortress remains for the final fight.
-    const u=Math.min(1,t/32),ox=226-85*u,oy=8+73*u,r=8+Math.floor(u*10);
-    if(t<49){
-      for(let i=0;i<7;i++){const a=i*Math.PI/3.5+t*.14;line(ox+Math.cos(a)*(r-1),oy+Math.sin(a)*(r-1),ox+Math.cos(a)*(r+7),oy+Math.sin(a)*(r+7),rgb(28,8,28));}
-      mod.kiArt?.draw('death',(t>>3)%6,ox,oy,r*2.7,put);
+    if(collateral.draw(state))return;
+    const t=state.age-pullbackStart,uZoom=Math.max(0,Math.min(1,t/200)),ease=uZoom*uZoom*(3-2*uZoom);
+    const view={x:Math.round(95*ease),y:Math.round(282-128*ease),r:Math.round(240-136*ease)};
+    drawPlanet(state.target,true,0,view);
+    // Project everything through ONE camera, in planet-radius units. The
+    // strike site, Death Ball, beam widths, shock wave and particles all
+    // shrink and move with the globe instead of sliding over the zoom.
+    const project=(x,y)=>({x:view.x+x*view.r,y:view.y+y*view.r});
+    const source={x:.62,y:-.69},dx=.66,dy=-.7513,point=d=>project(source.x+dx*d,source.y+dy*d);
+    const origin=point(0),scale=view.r/104;
+    if(t>=35&&t<190){
+      const envelope=Math.max(0,Math.min(1,(t-35)/18,(190-t)/35)),width=13*envelope*scale;
+      const end=point(Math.min(3,(t-35)/24));
+      for(let y=0;y<224;y++)for(let x=0;x<256;x++){
+        const along=(x-origin.x)*dx+(y-origin.y)*dy,across=Math.abs((x-origin.x)*dy-(y-origin.y)*dx);
+        const radius=width*Math.min(1,.35+along/(28*scale));
+        if(along<0||along>Math.hypot(end.x-origin.x,end.y-origin.y)||across>radius)continue;
+        const edge=(radius-across)/scale;put(x,y,blue[edge<1.5?0:edge<3?1:edge<5?2:3]);
+      }
     }
-    if(t>20)beam(t-20);
-    // Small pieces of the Fortress silhouette peel away from the impact.
-    for(let i=0;i<23;i++){
-      const bx=130+i%7*3,by=77+Math.floor(i/7)*3,torn=Math.max(0,t-29-i%7);
-      const x=bx+torn*(i%2?1:-1)*(.12+i%5*.06),y=by-torn*(.25+i%4*.1);
-      if(torn>70)continue;
-      for(let yy=0;yy<3;yy++)for(let xx=0;xx<3;xx++)put(x+xx,y+yy,yy===0?rgb(19,20,12):rgb(5,10,9));
+    if(t<140){
+      const distance=t<70?1.15*(1-t/70):((t-70)/30)**1.4,orb=point(distance);
+      mod.kiArt?.draw('death',(t>>3)%6,orb.x,orb.y,Math.round(29*scale),put);
     }
-    if(t>29&&t<75){
-      const radius=(t-29)*2;
-      for(let i=0;i<150;i++){const a=i*Math.PI/75;put(141+Math.cos(a)*radius,81+Math.sin(a)*radius*.45,t<42?blue[3]:blue[1]);}
-      for(let i=0;i<8;i++){const a=i*2.39996,d=(t-29)*.85;spell('impact-spark',(t>>2)+i,141+Math.cos(a)*d,81+Math.sin(a)*d);}
+    if(t>=70&&t<160){
+      const radius=(t-70)*.007*view.r;
+      for(let i=0;i<96;i++){const a=i*Math.PI/48;put(origin.x+Math.cos(a)*radius,origin.y+Math.sin(a)*radius*.34,t<86?blue[3]:blue[1]);}
+      for(let i=0;i<12;i++){const age=t-70,a=i*2.39996,d=age*(.0008+i%4*.0004),p=project(source.x+Math.cos(a)*d,source.y+Math.sin(a)*d);put(p.x,p.y,t<105?blue[2]:rgb(10,13,19));}
     }
-    // One streak reaches beyond the planet and disappears among the stars.
-    if(t>=49&&t<90){const q=t-49;line(162+q*3,57-q*3.4,177+q*3,40-q*3.4,blue[3]);}
-    if(t>101){const f=Math.max(0,(118-t)/17);for(let i=0;i<surface.length;i++){const c=surface[i]-1;surface[i]=rgb(Math.floor((c&31)*f),Math.floor((c>>5&31)*f),Math.floor((c>>10&31)*f));}}
+    // Two tiny fighters leave the surface after the shot has passed. Their
+    // final positions match the orbital encounter's opening composition.
+    if(t>=150){
+      const u=Math.min(1,(t-150)/70),g={x:origin.x+(156-origin.x)*u,y:origin.y+(155-origin.y)*u},f={x:origin.x+(202-origin.x)*u,y:origin.y+(57-origin.y)*u};
+      if(u<1){line(g.x,g.y,g.x-(g.x-origin.x)*.35,g.y-(g.y-origin.y)*.35,blue[1]);line(f.x,f.y,f.x-(f.x-origin.x)*.35,f.y-(f.y-origin.y)*.35,rgb(25,7,25));}
+      const a=mod.spriteLayer.atlas.ssj;
+      if(a)for(let y=0;y<16;y++)for(let x=0;x<16;x++){const c=a.pixels[(128+y*2)*a.width+34*32+x*2];if(c)put(g.x-8+x,g.y-8+y,c);}
+      drawFriezaSprite(mod.frieza.portraitAtlas,4,f.x,f.y+10,put,{tiny:true,flip:true});
+    }
   }
   function kaiPlanet(state){
     // Full opaque Snake Way / golden-cloud map: no orbital starfield leaks
@@ -193,7 +210,7 @@ export function createPlanetView(snes,mod){
         const ssj=!!mod.frieza?.permanent;blit(mod.spriteLayer.atlas[ssj?'ssj':'goku'],x-16,y-16,(ssj?34:38)*32,128,32,32);
       }
     }
-    if(isShot&&state.kind!=='frieza-orbit'&&age>164){const factor=Math.max(0,(186-age)/22);for(let i=0;i<surface.length;i++){const c=surface[i]-1;surface[i]=1+Math.floor((c&31)*factor)+(Math.floor((c>>5&31)*factor)<<5)+(Math.floor((c>>10&31)*factor)<<10);}}
+    if(isShot&&!['frieza-orbit','frieza-cosmic'].includes(state.kind)&&age>164){const factor=Math.max(0,(186-age)/22);for(let i=0;i<surface.length;i++){const c=surface[i]-1;surface[i]=1+Math.floor((c&31)*factor)+(Math.floor((c>>5&31)*factor)<<5)+(Math.floor((c>>10&31)*factor)<<10);}}
   }
   p.getColor=function(sub,x,y){
     const result=previous.call(this,sub,x,y);
@@ -207,8 +224,8 @@ export function createPlanetView(snes,mod){
     // Keep native event text above the ending picture. The aerial cut has no
     // HUD/radar/radio at all, including the source camera's compass.
     if(!shot&&result[1]===2&&y<170&&state.phase!=='complete')return result;
-    if(orbit&&!orbit.clash&&y>190&&[2,4].includes(result[1]))return result;
+    if(orbit&&!orbit.intro&&!orbit.clash&&y>190&&[2,4].includes(result[1]))return result;
     return[y===224?0:surface[y*256+x]-1,4,0x86];
   };
-  return{load(rom){texture=decodePlanetTexture(rom);frame=-1;globeKey='';},dispose(){p.getColor=previous;}};
+  return{ready:collateral.ready,load(rom){texture=decodePlanetTexture(rom);frame=-1;globeKey='';},dispose(){p.getColor=previous;}};
 }

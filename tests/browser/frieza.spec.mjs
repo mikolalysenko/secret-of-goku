@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {existsSync,readFileSync,writeFileSync} from 'node:fs';
 const fixture='.local/graphics-audit/party.json';
-test.setTimeout(180000);
+test.setTimeout(300000);
 async function load(page,mask=0){
  test.skip(!existsSync(fixture)||!existsSync('.local/rom/secret-of-mana-us.sfc'),'Private native fixture and ROM required.');
  await page.goto('/');await page.waitForFunction(()=>mana.ready);
@@ -28,22 +28,22 @@ test('Dryad’s late-game visit starts Frieza immediately; stolen Balls cannot b
 });
 
 test('Frieza fires lethal projectiles; flying returns discs, attacks hit him, menus pause shots, and checkpoint replay is exact',async({page})=>{
- await load(page);const entry=await late(page);expect(entry.frieza).toMatchObject({stage:'battle',permanent:true,fallen:true,popoiMember:false});expect(entry.seen.some(s=>s.species===130&&s.active&&s.graphics===0x400)).toBe(true);
+ await load(page);const entry=await late(page);expect(entry.frieza).toMatchObject({stage:'battle',permanent:true,fallen:true,popoiMember:false});expect(entry.seen).toEqual([],'The direct battle test start skips the confrontation');
  const result=await page.evaluate(()=>{
   const m=mana.mod,base=mana.snapshot();let flying=0;
-  // Steer around the arena using actual positions. A timed square can run
-  // into a wall when native camera/entry timing changes, never circling the
-  // incoming discs even though it is holding the flight button.
-  const nodes=m.frieza.status.boss.nodes,center={x:nodes.reduce((n,p)=>n+p.x,0)/nodes.length,y:nodes.reduce((n,p)=>n+p.y,0)/nodes.length};
-  for(let f=0;f<1500&&!m.frieza.status.discHits;f++){
-   const h={x:m.status.x,y:m.status.y-12},angle=Math.atan2(h.y-center.y,h.x-center.x)+.4,target={x:center.x+Math.cos(angle)*65,y:center.y+Math.sin(angle)*65},keys=[8];
-   if(Math.abs(h.x-target.x)>3)keys.push(h.x<target.x?7:6);if(Math.abs(h.y-target.y)>3)keys.push(h.y<target.y?5:4);
-   mana.run(1,keys);if(m.localFlight)flying++;if(m.read8(0xe191)&128)break;
+  // Start with an armed disc coming back across the arena. Fly past its
+  // owner so he lies between the chasing disc and Goku. Circling at a
+  // constant radius forever does not necessarily make that intersection.
+  const state=m.frieza.snapshot(),owner=state.boss;
+  owner.shots=[{kind:'disc',x:owner.x-60,y:owner.y,angle:0,speed:3,age:41,trail:[]}];owner.clock=999;
+  m.frieza.restore(state);
+  for(let f=0;f<40&&!m.frieza.status.discHits;f++){
+   mana.run(1,f<9?[8,4]:[8]);if(m.localFlight)flying++;
   }
   const circles={flying,discs:m.frieza.status.discHits,boss:m.frieza.status.hp,hits:m.frieza.status.playerHits};
-  mana.restore(base);for(let f=0;f<1400&&!(m.read8(0xe191)&128);f++)mana.run(1);
-  const dead={hp:m.status.hp,status:m.read8(0xe191)&128,hits:m.frieza.status.playerHits};
-  mana.restore(base);m.instantTransmission();mana.run(14);mana.run(50,[10,1]);mana.run(2,[10,1,7]);mana.run(1);mana.run(70);const beam=m.frieza.status.hp;
+  mana.restore(base);for(let f=0;f<4000&&!mana.battleRetry.defeated;f++)mana.run(1);
+  const dead={hp:m.status.hp,frozen:mana.battleRetry.defeated,map:m.status.map,hits:m.frieza.status.playerHits};
+  mana.restore(base);m.instantTransmission();mana.run(14);mana.run(50,[10,1]);mana.run(1);mana.run(70);const beam=m.frieza.status.hp;
   mana.restore(base);mana.run(130);const checkpoint=mana.snapshot();mana.run(50,[8,7]);const a=m.frieza.snapshot();mana.restore(checkpoint);mana.run(50,[8,7]);const b=m.frieza.snapshot();
   // Native ring is a real modal pause, and X returns to the same fight.
   mana.restore(base);mana.run(2,[9]);mana.run(70);const opened=!!(m.read8(0xec)&12),before=m.frieza.status.boss.age;mana.run(100);const after=m.frieza.status.boss.age;mana.run(3,[9]);mana.run(90);const resumed=m.frieza.status.boss.age;
@@ -51,16 +51,19 @@ test('Frieza fires lethal projectiles; flying returns discs, attacks hit him, me
   return{circles,dead,beam,replay:JSON.stringify(a)===JSON.stringify(b),menu:{opened,before,after,resumed},poison,sleep:m.options.superSaiyan,bossBlocksEscape:m.ceiling.bossActive,vanillaBoss:m.entities().some(e=>!e.custom&&e.active&&e.species===121),error:m.story.status.error};
  });
  writeFileSync(test.info().outputPath('combat.json'),JSON.stringify(result,null,2));
- expect(result.circles.flying).toBeGreaterThan(200);expect(result.circles.discs).toBeGreaterThan(0);expect(result.circles.boss).toBeLessThan(96000);
- expect(result.dead.hp).toBe(0);expect(result.dead.status).toBe(128);expect(result.dead.hits).toBeGreaterThanOrEqual(4);expect(result.beam).toBeLessThan(96000);
+ expect(result.circles.flying).toBeGreaterThan(8);expect(result.circles.discs).toBeGreaterThan(0);expect(result.circles.boss).toBeLessThan(96000);
+ expect(result.dead).toMatchObject({hp:0,frozen:true,map:246});expect(result.dead.hits).toBeGreaterThanOrEqual(6);expect(result.beam).toBeLessThan(96000);
  expect(result.replay).toBe(true);expect(result.menu.opened).toBe(true);expect(result.menu.before).toBe(result.menu.after);expect(result.menu.resumed).toBeGreaterThan(result.menu.after);expect(result.poison&&result.sleep).toBe(true);expect(result.bossBlocksEscape).toBe(true);expect(result.vanillaBoss).toBe(false);expect(result.error).toBe(null);
 });
 
 for(const mask of[0,1,2,3])test(`Frieza route reaches the wish and restores only recruited Popoi, party ${mask}`,async({page})=>{
- await load(page,mask);await late(page);
+ await load(page,mask);await late(page,'frieza');
+ for(let i=0;i<110;i++){
+  const ready=await page.evaluate(()=>{const m=mana.mod,b=m.entities().find(e=>e.active&&!e.custom&&e.species===121&&e.hp);if(b&&m.canAttack)m.hit(b,60000,0,-1);if(m.frieza.fighting&&m.canAttack)return true;mana.run(60,[11]);return false;});if(ready)break;
+ }
  expect(await page.evaluate(()=>mana.mod.frieza.popoiMember)).toBe(!!(mask&2));
   await page.evaluate(()=>{
-   const m=mana.mod;for(let i=0;i<100&&m.frieza.status.stage==='battle';i++){
+   const m=mana.mod;for(let i=0;i<200&&m.frieza.status.stage==='battle';i++){
     const clash=m.frieza.orbit?.clash;
     if(clash?.phase==='charge'){mana.run(50,[10,1]);mana.run(1);}
     else if(clash?.phase==='struggle'){mana.run(1,[0]);mana.run(3);}

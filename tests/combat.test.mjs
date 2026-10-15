@@ -268,10 +268,13 @@ test('scripted falling stays airborne, then native landing and recovery phases u
   }
 });
 
-test('Saiyan charge resists ordinary knockback without losing its pose; normal power can be interrupted',()=>{
-  for(const power of [false,true]){
-    const {mod,step}=setup({power});step(0x402,40);mod.write8(0xe011,0x8d);mod.write8(0xe045,12);step(0x402);
-    assert.equal(mod.charging,power);assert.equal(mod.motion.pose().kind,power?'charge':'hurt');
+test('an unblocked hit cancels charge, owns movement, and requires release before charging again',()=>{
+  for(const power of [false,true])for(const hurt of[0x8c,0x8d,0x8e,0x8f]){
+    const {mod,step}=setup({power});step(0x402,40);assert.equal(mod.charging,true);
+    mod.write8(0xe011,hurt);mod.write8(0xe045,12);step(0x402);
+    assert.equal(mod.charging,false);assert.equal(mod.canAttack,false);assert.equal(mod.action,null);assert.equal(mod.attackBlocked,true);
+    mod.write8(0xe011,0);mod.write8(0xe045,0);step(0x402,10);assert.equal(mod.charging,false);
+    step();assert.equal(mod.effects.some(e=>e.kind==='beam'),false);step(0x402,10);assert.equal(mod.charging,true);
   }
 });
 

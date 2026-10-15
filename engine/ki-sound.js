@@ -64,6 +64,7 @@ export function synthesizeKiSound(name,{rate=16000,superSaiyan=false}={}){
 // network-failure fallback so offline failures never leave a charge silent.
 export const cues={
  friezaLaugh:{clips:['frieza-laugh'],gain:.60,cap:1},friezaOrb:{clips:['frieza-orb'],gain:.55,cap:2},friezaDisc:{clips:['frieza-disc'],gain:.42,cap:2},
+ friezaLaser:{clips:['blast'],gain:.42,cap:1,rate:1.65},
  friezaImpact:{clips:['impact'],gain:.72,cap:2,rate:.76},fortressBreak:{clips:['power-burst'],gain:.72,cap:1,rate:.82},friezaRush:{clips:['flight'],gain:.52,cap:1,rate:1.25},friezaCharge:{clips:['charge'],gain:.40,loop:true},
  swing:{clips:['swing','swing-2'],gain:.44,cap:2},kickSwing:{clips:['kick-swing'],gain:.46,cap:2},hit:{clips:['hit-1','hit-2','hit-3'],gain:.64,cap:3},
  kick:{clips:['kick'],gain:.70,cap:2},blast:{clips:['blast'],gain:.38,cap:5},impact:{clips:['impact'],gain:.48,cap:3},

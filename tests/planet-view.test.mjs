@@ -5,6 +5,7 @@ import {decodePlanetTexture} from '../engine/world-texture.js';
 import {readWorldMap} from '../tools/rom/world.mjs';
 import {aerialBeamGeometry,createWorldKi} from '../engine/world-ki.js';
 import {createPlanetView} from '../engine/planet-view.js';
+import {pullbackStart} from '../engine/frieza-cinematic.js';
 
 test('one forward aerial beam cannot skew with a culled, wrapped or off-centre Fortress',()=>{
   for(const mega of[false,true])for(const end of[{x:0,y:250},{x:255,y:49},{x:128,y:88},{x:-100,y:88}]){
@@ -38,11 +39,39 @@ test('space globe samples match the independent original world decoder in both p
 });
 test('cosmic clash never emits invalid/white underflow pixels below the beam',{skip:!existsSync('.local/rom/secret-of-mana-us.sfc')},()=>{
  const rom=readFileSync('.local/rom/secret-of-mana-us.sfc'),ppu={getColor:()=>[0,0,0]},snes={ppu,cart:{data:rom}};
- const mod={frame:1,options:{enabled:true},gokuActive:true,frieza:{crisisActive:true,cinematic:{kind:'frieza-cosmic',age:112,target:{x:2000,y:2000}}},spriteLayer:{effects:{},atlas:{}}};
+ const mod={frame:1,options:{enabled:true},gokuActive:true,frieza:{crisisActive:true,cinematic:{kind:'frieza-cosmic',age:pullbackStart+100,target:{x:2000,y:2000}}},spriteLayer:{effects:{},atlas:{}}};
  const scene=createPlanetView(snes,mod);scene.load(rom);let whiteBelow=0;
  for(let y=0;y<224;y++)for(let x=0;x<256;x++){
   const c=ppu.getColor(false,x,y)[0];assert.ok(Number.isInteger(c)&&c>=0&&c<=32767,`invalid color ${c} at ${x},${y}`);
   if(y>160&&c===32767)whiteBelow++;
  }
  assert.equal(whiteBelow,0);scene.dispose();
+});
+
+test('the pullback keeps the beam rooted at the globe and scales its width with the planet',{skip:!existsSync('.local/rom/secret-of-mana-us.sfc')},()=>{
+ const rom=readFileSync('.local/rom/secret-of-mana-us.sfc'),ppu={getColor:()=>[0,0,0]},snes={ppu,cart:{data:rom}};
+ const state={kind:'frieza-cosmic',age:0,target:{x:2000,y:2000}},orbs=[];
+ const mod={frame:0,options:{enabled:true},gokuActive:true,frieza:{cinematic:state},spriteLayer:{effects:{},atlas:{}},kiArt:{draw:(kind,frame,x,y,size)=>orbs.push({x,y,size})}};
+ const scene=createPlanetView(snes,mod);scene.load(rom);
+ const blue=new Set([4+(7<<5)+(20<<10),6+(17<<5)+(30<<10),16+(26<<5)+(31<<10),32767]);
+ // Independently calculated camera keyframes, in native screen pixels.
+ const frames=[{t:60,x:21,y:254,r:211},{t:100,x:48,y:218,r:172},{t:130,x:68,y:190,r:142}];
+ let lastWidth=Infinity;
+ for(const f of frames){
+  mod.frame++;state.age=pullbackStart+f.t;
+  const picture=new Uint16Array(256*224);
+  for(let y=0;y<224;y++)for(let x=0;x<256;x++){
+   const c=ppu.getColor(false,x,y)[0];assert.ok(Number.isInteger(c)&&c>=0&&c<=32767);picture[y*256+x]=c;
+  }
+  const origin={x:f.x+.62*f.r,y:f.y-.69*f.r},dx=.66,dy=-.7513;
+  const sample=(along,across=0)=>picture[Math.round(origin.y+dy*along+dx*across)*256+Math.round(origin.x+dx*along-dy*across)];
+  assert.ok(blue.has(sample(3)),`Beam must emerge from the globe at frame ${f.t}`);
+  assert.equal(sample(f.r*.4),32767,'The same world-space beam center stays bright throughout the zoom');
+  let width=0;for(let offset=-40;offset<=40;offset++)if(blue.has(sample(f.r*.4,offset)))width++;
+  assert.ok(Math.abs(width-26*f.r/104)<4,`Beam width ${width} must shrink with radius ${f.r}`);
+  assert.ok(width<lastWidth);lastWidth=width;
+  const orb=orbs.at(-1);assert.ok(Math.abs(orb.size/f.r-29/104)<.004,'Death Ball scales through the same camera');
+  assert.ok(Math.abs((orb.x-origin.x)*dy-(orb.y-origin.y)*dx)<.01,'Death Ball stays on the beam axis');
+ }
+ scene.dispose();
 });

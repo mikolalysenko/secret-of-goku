@@ -43,6 +43,7 @@ import {createSceneFastForward,sceneFastForwardRate} from './scene-fast-forward.
 import {fetchDefaultRom,validateRom} from './rom-loader.js';
 import {createDragonRadar} from './dragon-radar.js';
 import {createPotosGatekeeper} from './potos-story.js';
+import {createBattleRetry} from './battle-retry.js';
 const effectsManifest=fetch(new URL('./native-effects.json',import.meta.url)).then(response=>{if(!response.ok)throw Error('Native effect descriptors could not be loaded.');return response.json();});
 const $=id=>document.getElementById(id),snes=new window.Snes(),canvas=$('screen'),context=canvas.getContext('2d'),pixels=context.createImageData(512,480);
 const message=text=>{$('lab-message').textContent=text;};
@@ -70,6 +71,7 @@ mod.localFlightHook=createNativeLocalFlight(snes,{
   enabled:()=>mod.options.enabled&&mod.gokuActive,
   active:()=>mod.options.enabled&&mod.gokuActive&&(mod.localFlight||mod.charging)&&mod.canAttack,
   phase:()=>mod.localFlight,
+  missingFloor:(x,y,l)=>mod.frieza?.floorHole(x,y,l)??false,
   onCross:({map,from,to})=>{
     mod.teleport?.gather(to);
     // Only a full crossing between Karon's piers before his ferry is
@@ -109,6 +111,11 @@ mod.kiArt=createKiArt();
 mod.kaiArt=createKaiArt();
 let loaded=false,running=false,busy=false,lastTime=0,accumulator=0,checkpoint=null,frameCount=0,fpsTime=performance.now();
 let nameSeeded=false,originalBoot=false;
+const battleRetry=createBattleRetry(mod,{
+  capture:()=>({...snapshot(snes),arrival:arrival.snapshot(),goku:mod.snapshot()}),
+  restore:state=>{restore(snes,state);mod.restore(state.goku);arrival.restore(state.arrival);},
+  onDefeat:()=>{running=false;clearInput();sound.clear();$('native-pause').hidden=false;pauseCard(true);message('Goku was defeated. Retry this phase with Start, Space, or the on-screen button.');},
+});
 let originalRom=null;
 const quickCache=new Map();
 let flightDialogue=null;
@@ -134,8 +141,10 @@ function prefillName(){
   mod.write8(0xa1cc,3);mod.write8(0xa157,0x18);mod.write8(0xa20a,mod.read8(0xa20a)|2);nameSeeded=true;mod.nameEditor=true;
 }
 function step(mask=0,audible=false,skipPicture=false){
+  if(!busy&&battleRetry.check())return;
   mask=fastForward.input(mask);
   snes.joypad1State=mask;arrival.beforeFrame();mod.beforeFrame(mask);snes.runFrame(skipPicture);mod.afterFrame();prefillName();battery.tick();
+  if(!busy&&battleRetry.check())return;
   if(audible&&audioEnabled&&audioContext?.state==='running'){
     const samples=Math.round(audioContext.sampleRate/60),buffer=audioContext.createBuffer(2,samples,audioContext.sampleRate);
     snes.setSamples(buffer.getChannelData(0),buffer.getChannelData(1),samples);
@@ -155,13 +164,14 @@ function render(){
   const values=[['Map $00DC',r.map],['World position',`${r.x}, ${r.y}`],['Camera',`${r.cameraX}, ${r.cameraY}`],['HP $E182',r.hp],['Attack $E198',r.attack],['Stamina $E1ED',r.staminaRemaining],['Hidden OAM',r.hiddenOamSlots.join(', ')||'—']];
   $('memory-readout').replaceChildren(...values.flatMap(([k,v])=>{const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=k;dd.textContent=v;return[dt,dd];}));
 }
-function play(){if(!loaded||busy)return;running=true;lastTime=performance.now();fpsTime=lastTime;frameCount=0;accumulator=0;$('native-pause').hidden=true;$('native-toggle').querySelector('span').textContent='Pause';}
-function pause(){running=false;clearInput();sound.clear();if(loaded&&!busy)$('native-pause').hidden=false;$('native-toggle').querySelector('span').textContent='Resume';render();}
+function pauseCard(defeated=false){const card=$('native-pause');card.querySelector('strong').textContent=defeated?'DEFEATED':'PAUSED';const label=defeated?'Retry this phase':'Resume game';$('native-resume').setAttribute('aria-label',label);$('native-resume').title=label;card.querySelector('.pause-card>span')?.replaceChildren(defeated?'Tap to retry · Space / Start':'Tap to resume · Space / Esc');}
+function play(){if(!loaded||busy)return;if(battleRetry.defeated){battleRetry.retry();clearInput();nextAudio=0;}pauseCard();running=true;lastTime=performance.now();fpsTime=lastTime;frameCount=0;accumulator=0;$('native-pause').hidden=true;$('native-toggle').querySelector('span').textContent='Pause';}
+function pause(){running=false;clearInput();sound.clear();pauseCard(battleRetry.defeated);if(loaded&&!busy)$('native-pause').hidden=false;$('native-toggle').querySelector('span').textContent='Resume';render();}
 function tick(now){
   try{gamepads.poll(navigator.getGamepads?.()||[],{enabled:loaded&&!busy,focused:!document.hidden&&document.hasFocus()});}catch{/* The browser may disable controller access. Keyboard and touch remain available. */}
   if(running&&!busy){
     accumulator+=Math.min(.1,(now-lastTime)/1000);let steps=0;
-    while(accumulator>=1/60&&steps<4){
+    while(running&&accumulator>=1/60&&steps<4){
       const mask=controls.sample(),fast=fastForward.state(mask).active;
       if(fast){
         nextAudio=0;
@@ -180,10 +190,11 @@ function tick(now){
 }
 
 async function loadROM(source,{potos=false}={}){
+  battleRetry.clear();pauseCard();
   const bytes=await validateRom(source);
   battery.flush();
   originalRom=bytes.slice();
-  await Promise.all([mod.ready,mod.frieza.ready,mod.kiArt.ready,mod.kaiArt.ready]);mod.spriteLayer.effects=createNativeEffects(bytes,await effectsManifest);mod.worldScars.load(bytes);mod.planetView.load(bytes);running=false;clearInput();mod.configure({enabled:false});
+  await Promise.all([mod.ready,mod.frieza.ready,mod.kiArt.ready,mod.kaiArt.ready,mod.planetView.ready]);mod.spriteLayer.effects=createNativeEffects(bytes,await effectsManifest);mod.worldScars.load(bytes);mod.planetView.load(bytes);running=false;clearInput();mod.configure({enabled:false});
   const patched=window.gokuDialoguePatch(potos?window.potosPatch(bytes):window.originalGamePatch(bytes));
   if(!snes.loadRom(patched,true))throw Error('The SNES core rejected this ROM.');
   snes.reset(true);battery.attach(snes.cart,hash(bytes));mod.reset();arrival.load(bytes,{potos});flightDialogue?.dispose();flightDialogue=installFlightDialogue(snes.cart,()=>mod.options.enabled&&mod.gokuActive);mod.gapFlight.load();mod.senzu.load();mod.equipment.load();mod.story.load();nameSeeded=false;originalBoot=!potos;loaded=true;render();return patched;
@@ -253,12 +264,13 @@ async function saveCheckpoint(){
 }
 function restoreCheckpoint(){
   if(!loaded||!checkpoint||busy)return;clearInput();
+  battleRetry.clear();pauseCard();
   try{restore(snes,checkpoint.state);mod.restore(checkpoint.state.goku);arrival.restore(checkpoint.state.arrival);if(!checkpoint.state.goku){mod.options.superSaiyan=!!checkpoint.form;mod.facing=checkpoint.facing||0;}mod.nameEditor=!!checkpoint.nameEditor;nameSeeded=checkpoint.nameSeeded??(mod.nameEditor||nameSeeded);originalBoot=checkpoint.originalBoot??originalBoot;clearInput();render();message('Checkpoint restored.');}
   catch(error){message(error.message);}
 }
 
 const captureQuick=()=>({state:{...snapshot(snes),arrival:arrival.snapshot(),goku:mod.snapshot()},nameSeeded,nameEditor:mod.nameEditor,originalBoot});
-function applyQuick(saved){const saves=snes.cart.sram.slice();restore(snes,saved.state);snes.cart.sram.set(saves);mod.restore(saved.state.goku);arrival.restore(saved.state.arrival);nameSeeded=!!saved.nameSeeded;mod.nameEditor=!!saved.nameEditor;originalBoot=!!saved.originalBoot;clearInput();render();}
+function applyQuick(saved){battleRetry.clear();pauseCard();const saves=snes.cart.sram.slice();restore(snes,saved.state);snes.cart.sram.set(saves);mod.restore(saved.state.goku);arrival.restore(saved.state.arrival);nameSeeded=!!saved.nameSeeded;mod.nameEditor=!!saved.nameEditor;originalBoot=!!saved.originalBoot;clearInput();render();}
 async function quickStart(kind){
   if(!loaded||busy||!isQuickStart(kind))return false;
   const backup=captureQuick(),wasRunning=running,source=originalRom;
@@ -353,9 +365,9 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden){battery.fl
 window.addEventListener('pagehide',()=>battery.flush());
 window.addEventListener('mana-log',e=>{logs.push(e.detail);if(logs.length>100)logs.shift();});
 
-window.mana={snes,mod,title,arrival,battery,bootOriginal,bootPotos,fly,play,pause,render,configure,logs,controls,gamepads,fastForward,
+window.mana={snes,mod,title,arrival,battery,battleRetry,bootOriginal,bootPotos,fly,play,pause,render,configure,logs,controls,gamepads,fastForward,
   run(frames=1,buttons=[]){running=false;const mask=buttons.reduce((a,b)=>a|1<<b,0);for(let i=0;i<frames;i++)step(mask);render();return mod.status;},
-  snapshot:()=>({...snapshot(snes),arrival:arrival.snapshot(),goku:mod.snapshot(),opening:{nameSeeded,originalBoot}}),restore:state=>{controls.clear();restore(snes,state);mod.restore(state.goku);arrival.restore(state.arrival);nameSeeded=state.opening?.nameSeeded??nameSeeded;originalBoot=state.opening?.originalBoot??originalBoot;render();},
+  snapshot:()=>({...snapshot(snes),arrival:arrival.snapshot(),goku:mod.snapshot(),opening:{nameSeeded,originalBoot}}),restore:state=>{battleRetry.clear();pauseCard();controls.clear();restore(snes,state);mod.restore(state.goku);arrival.restore(state.arrival);nameSeeded=state.opening?.nameSeeded??nameSeeded;originalBoot=state.opening?.originalBoot??originalBoot;render();},
   saveCheckpoint,restoreCheckpoint,quickStart,hash,
   read8:addr=>mod.read8(addr),read16:addr=>mod.read16(addr),write8:(addr,v)=>mod.write8(addr,v),write16:(addr,v)=>mod.write16(addr,v),
   get ready(){return loaded&&!busy;},get running(){return running;},get pixels(){return pixels.data;}

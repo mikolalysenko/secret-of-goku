@@ -1,12 +1,14 @@
 import {friezaEvents as F} from './frieza-events.js';
-import {FRIEZA_HP,homingStep,discContact,sweptDistance} from './frieza-combat.js';
+import {FRIEZA_HP,homingStep,discContact,sweptDistance,pixelStep,rushStep,beamTouchesShot} from './frieza-combat.js';
 import {newCoreCrisis,activateTwilight,crisisFlightMessages} from './frieza-crisis.js';
-import {newFriezaArena,fractureFortress,tickFriezaArena,ruinMask,drawFriezaDebris} from './frieza-arena.js';
+import {newFriezaArena,fractureFortress,tickFriezaArena,ruinMask,drawFriezaDebris,floorHole} from './frieza-arena.js';
 import {newOrbit,ricochet,tickOrbit,steerOrbit} from './frieza-orbit.js';
+import {collateralBeat,collateralStart,pullbackStart,cosmicDuration} from './frieza-cinematic.js';
+import {prepareFriezaSprite,drawFriezaSprite} from './frieza-sprite.js';
 const copy=s=>s?structuredClone(s):null;
 const initial=()=>({stage:'dormant',trialWon:false,stolen:false,stolenMask:0,eighth:false,permanent:false,fallen:false,popoiMember:false,popoi:null,scene:null,boss:null,crisis:null,offered:false,lastMap:null,hinted:false,discHits:0,playerHits:0});
 export function createFrieza(snes,mod){
- let s=initial(),atlas=null,fullAtlas=null,ruins=null,ruinsKey='',renderFrame=-1,renderArena=false,renderCamera=null;
+ let s=initial(),atlas=null,fullAtlas=null,ruins=null,ruinsRevision=-1,ruinsX=NaN,ruinsY=NaN,renderFrame=-1,renderArena=false,cameraLine=-1,cameraX=0,cameraY=0;
  async function loadAtlas(path){
   const img=new Image(),url=new URL(path,import.meta.url);url.search=new URL(import.meta.url).search;img.src=url.href;await img.decode();
   const c=document.createElement('canvas');c.width=img.width;c.height=img.height;const ctx=c.getContext('2d');ctx.drawImage(img,0,0);
@@ -18,7 +20,7 @@ export function createFrieza(snes,mod){
    for(let y=y0;y<y1;y++)for(let x=x0;x<x1;x++)if(pixels[y*c.width+x]){left=Math.min(left,x);right=Math.max(right,x);top=Math.min(top,y);bottom=Math.max(bottom,y);}
    frames.push({x:left,y:top,w:right-left+1,h:bottom-top+1});
   }
-  return{pixels,width:c.width,frames};
+  return prepareFriezaSprite({pixels,width:c.width,frames});
  }
  const ready=Promise.all([loadAtlas('../assets/sprites/frieza.png').then(a=>atlas=a),loadAtlas('../assets/sprites/frieza-full-power.png').then(a=>fullAtlas=a)]);
  const map=()=>mod.read16(0xdc);
@@ -41,10 +43,11 @@ export function createFrieza(snes,mod){
  }
  function damagePlayer(amount){
   const b=s.boss;if(s.stage!=='battle'||!b||b.grace||mod.read8(0xe191)&0x80||!mod.read16(0xe182))return;
+  if(!b.tier&&!b.space)amount=Math.ceil(amount/2);
   mod.write16(0xe1f1,Math.max(mod.read16(0xe1f1),amount));mod.write8(0xe1f0,0);mod.write8(0xe1ec,0);b.grace=48;s.playerHits++;burst(hero().x,hero().y);mod.playSound?.('friezaImpact');
  }
  function hurt(amount,disc=false){
-  const b=s.boss;if(!b||s.stage!=='battle'||b.surge||b.space?.clash)return 0;
+  const b=s.boss;if(!b||s.stage!=='battle'||b.surge||b.space?.clash||b.space?.intro||b.guard)return 0;
   // Full beams are still devastating, but cannot erase an entire dramatic
   // phase before it appears. The two surges are earned HP thresholds.
   const floor=b.space?6000:(2-(b.tier??0))*FRIEZA_HP/3;
@@ -54,6 +57,13 @@ export function createFrieza(snes,mod){
   if(b.hp<=0)win();
   return hit;
  }
+ function evadeMelee(){
+  const b=s.boss,h=hero();if(!b?.tier||b.stun||b.surge||b.space?.clash)return;
+  const destinations=b.nodes.map((n,i)=>({n,i})).filter(({n})=>Math.hypot(n.x-b.x,n.y-b.y)>32);
+  b.node=(destinations.length?destinations:b.nodes.map((n,i)=>({n,i}))).sort((a,c)=>Math.hypot(c.n.x-h.x,c.n.y-h.y)-Math.hypot(a.n.x-h.x,a.n.y-h.y))[0].i;
+  b.warning=null;b.shots=[];b.dash=1;b.windup=0;b.guard=45;b.counter=true;b.hurt=0;b.meleeHits=0;mod.playSound?.('friezaRush');
+ }
+ function melee(amount){const b=s.boss,hit=hurt(amount);if(hit&&b.tier&&!b.stun){b.meleeHits=b.age-(b.lastMelee??-100)>60?1:(b.meleeHits??0)+1;b.lastMelee=b.age;if(b.meleeHits>=2)evadeMelee();}return hit;}
  function win(){const b=s.boss;s.stage='won';b.hp=0;b.shots=[];b.warning=null;b.age=0;cue('victory');mod.cancelCombat();mod.feedback?.burst();mod.playSound?.('beam');}
  function enterOrbit(target){
   const b=s.boss;b.ground={x:b.x,y:b.y};b.space=newOrbit(target);b.x=202;b.y=57;
@@ -72,8 +82,8 @@ export function createFrieza(snes,mod){
   mod.cancelCombat();mod.radio?.restore({firstFlight:true});
  }
  function attack(){
-  const b=s.boss,h=hero(),enraged=b.tier>0,discs=b.cycle++%2===1;
-  b.warning={kind:discs?'disc':'orb',age:0,wait:enraged?38:52,x:b.x,y:b.y,target:{...h}};
+  const b=s.boss,h=hero(),enraged=b.tier>0,kind=['orb','disc','laser'][b.cycle++%3];
+  b.warning={kind,age:0,wait:enraged?55:65,x:b.x,y:b.y,target:{...h}};
   // A lock-on ring gives time to fly clear before the deck erupts.
   if(b.tier&&!b.space&&b.cycle%3===0)b.hazards.push({x:h.x,y:h.y+12,age:0,wait:65,radius:28});
  }
@@ -81,11 +91,18 @@ export function createFrieza(snes,mod){
   const b=s.boss,w=b.warning,x=b.x,y=b.y-(b.space?5:24),angle=Math.atan2(w.target.y-y,w.target.x-x),enraged=b.tier>0;
   // Launch from the same moving hand that drew the charge, not the stale
   // world position where the warning started several dozen frames ago.
-  if(w.kind==='disc')for(const sign of[-1,1])b.shots.push({kind:'disc',x,y,angle:angle+sign*.85,speed:enraged?3.7:3.1,age:0,trail:[]});
-  else for(const offset of(enraged?[-.45,0,.45]:[-.23,.23]))b.shots.push({kind:'orb',x,y,angle:angle+offset,speed:enraged?3.5:2.8,age:0,trail:[]});
-  b.warning=null;b.clock=enraged?62:85;b.recoil=9;mod.playSound?.(w.kind==='disc'?'friezaDisc':'friezaOrb');
+  if(w.kind==='laser')b.shots.push({kind:'laser',x,y,dx:Math.cos(angle),dy:Math.sin(angle),age:0,trail:[]});
+  else if(w.kind==='disc')for(const sign of(enraged?[-1,1]:[0]))b.shots.push({kind:'disc',x,y,angle:angle+sign*.85,speed:enraged?4:3,age:0,trail:[]});
+  else for(const offset of(enraged?[-.45,0,.45]:[0]))b.shots.push({kind:'orb',x,y,angle:angle+offset,speed:enraged?4:3,age:0,trail:[]});
+  // A clear recovery window after each volley is long enough to charge and
+  // release the wave, including time spent first dodging the projectile.
+  b.warning=null;b.clock=enraged?140:180;b.recoil=9;mod.playSound?.(w.kind==='laser'?'friezaLaser':w.kind==='disc'?'friezaDisc':'friezaOrb');
   mod.feedback?.pulse(w.kind==='orb'?4:2);
   if(b.cycle===2||b.cycle===8)laugh();
+ }
+ function counterShot(shot){
+  if(!mod.effects.some(e=>e.kind==='beam'&&e.life>0&&beamTouchesShot(e,mod.beamGeometry(e),shot)))return false;
+  shot.age=999;mod.effects.push({kind:'impact',x:shot.x,y:shot.y,life:10,max:10,dx:1,dy:0,super:true});mod.playSound?.('deflect');return true;
  }
  // This arena reserves BG2 for Dark Lich's dynamically streamed body.
  // With that boss absent it retains unrelated VRAM. Frieza uses OBJ pixels;
@@ -93,16 +110,22 @@ export function createFrieza(snes,mod){
  // plane. Never change the PPU registers or affect other maps/menus.
  const color=snes.ppu.getColor;
  snes.ppu.getColor=function(sub,x,y){
-  if(renderFrame!==mod.frame){renderFrame=mod.frame;renderArena=api.ownsArena();renderCamera=renderArena?mod.status:null;}
+  if(renderFrame!==mod.frame){renderFrame=mod.frame;renderArena=api.ownsArena();cameraLine=-1;}
   if(!renderArena||this.mode!==1)return color.call(this,sub,x,y);
   const screens=sub?this.subScreenEnabled:this.mainScreenEnabled,old=screens[1];screens[1]=false;
   let result;try{result=color.call(this,sub,x,y);}finally{screens[1]=old;}
   // Floor-only scars cannot cover Goku, native windows, or room walls.
   if(!sub&&result[1]===0&&y<224&&s.boss?.arena){
-   const a=s.boss.arena,h=renderCamera,key=`${a.revision}:${h.cameraX}:${h.cameraY}`;
-   if(key!==ruinsKey){ruinsKey=key;ruins=ruinMask(a,h.cameraX,h.cameraY);}
+   // Actor screen coordinates include lift and can be one movement update
+   // behind the background. Use the tile stream's origin and this scanline's
+   // actual BG1 fine scroll, including native quake, instead.
+   if(cameraLine!==y){
+    cameraLine=y;const x0=mod.read16(0xa8),y0=mod.read16(0xaa);
+    cameraX=x0+((this.bgHoff[0]-x0+8)&15)-8;cameraY=y0+((this.bgVoff[0]-y0+8)&15)-8;
+    const a=s.boss.arena;if(a.revision!==ruinsRevision||cameraX!==ruinsX||cameraY!==ruinsY){ruinsRevision=a.revision;ruinsX=cameraX;ruinsY=cameraY;ruins=ruinMask(a,cameraX,cameraY);}
+   }
    const value=ruins?.[y*256+x];
-   if(value){const wx=x+h.cameraX,wy=y+h.cameraY,t=s.boss.age;
+   if(value){const wx=x+cameraX,wy=y+cameraY,t=s.boss.age;
     if(value===1){const cloud=(Math.floor(wx/9)+Math.floor(wy/6)+Math.floor(t/24))%3;result[0]=(2+cloud)|(1<<5)|((5+cloud)<<10);if((wx*37+wy*19)%211===0)result[0]=0x316b;}
     else result[0]=value===2?0x0842:(wx+wy)%11===0?0x3296:0x31a8;
    }
@@ -111,14 +134,16 @@ export function createFrieza(snes,mod){
  };
  const api={
   ready,get pendingEntrance(){return pendingEntrance();},get eligible(){return eligible();},get active(){return s.stage!=='dormant';},get crisisActive(){return !!s.crisis?.active;},get unresolved(){return s.stolen;},get eighth(){return s.eighth;},get permanent(){return s.permanent;},get fallen(){return s.fallen;},get popoiMember(){return s.popoiMember;},get trial(){return s.stage==='trial';},get fighting(){return s.stage==='battle'||s.stage==='won';},
+  get encounter(){return on()&&map()===246&&s.stage==='battle'&&!s.boss?.surge&&!s.boss?.space?.intro?`frieza:${s.boss?.tier??0}`:null;},
   repairCore(){if(s.crisis){s.crisis.active=false;s.crisis.resolved=true;}},
   ownsArena(){return on()&&api.active&&!api.trial&&map()===246;},
+  floorHole(x,y,layer){const b=s.boss;return !!(api.ownsArena()&&!b?.space&&b?.arena&&(b.terrain&128?1:0)===layer&&floorHole(b.arena,x,y));},
   get orbit(){return on()&&map()===246?s.boss?.space??null:null;},
   get portraitAtlas(){return s.boss?.muscular&&fullAtlas?fullAtlas:atlas;},
   get music(){if(!on())return null;return s.boss?.space&&['battle','won'].includes(s.stage)?'orbit':['battle','won'].includes(s.stage)||s.scene?.kind==='gold'?'battle':['theft','showdown'].includes(s.stage)||s.scene?.kind==='eighth'?'arrival':null;},
   get stolenMask(){return s.stolen?s.stolenMask:0;},
-  get cinematic(){const c=s.boss?.surge;return on()&&map()===246&&c?.kind==='frieza-cosmic'&&c.age>=72&&c.age<190?c:null;},
-  get inputLocked(){return on()&&map()===246&&!!s.boss?.surge;},
+  get cinematic(){const c=s.boss?.surge;return on()&&map()===246&&c?.kind==='frieza-cosmic'&&c.age>=collateralStart&&c.age<cosmicDuration?c:null;},
+  get inputLocked(){return on()&&map()===246&&!!s.boss?.surge&&!mod.read8(0xd0)&&!(mod.read8(0xec)&0xfe);},
   get chargeSound(){if(!on())return 0;const c=s.scene?.map===map()?s.scene:null;if(c)return c.kind==='core-charge'?.8:c.kind==='empower'?.7:0;if(map()!==246||s.stage!=='battle'||!mod.nativeField||mod.read8(0xec)&0xfe||mod.read8(0xe191)&128)return 0;return s.boss?.surge||s.boss?.space?.clash?1:s.boss?.warning?.kind==='orb'?.5:0;},
   onEvent(id){
    if(id===F.trial){s.stage='trial';mod.cancelCombat();cue('trial-taunt');laugh();}
@@ -156,12 +181,12 @@ export function createFrieza(snes,mod){
    }
   },
   entity(){const b=s.boss;if(!on()||map()!==246||s.stage!=='battle'||!b?.hp)return null;const h=mod.status;return{index:12,base:0,custom:'frieza',species:121,active:true,hp:b.hp,maxHp:FRIEZA_HP,x:b.x,y:b.y+12,screenX:b.x-h.cameraX,screenY:b.y+12-h.cameraY,terrain:b.terrain};},
-  hit(enemy,amount){const before=s.boss?.hp??0,damage=hurt(amount*(s.boss?.stun ? .65 : .15));return{index:enemy.index,species:enemy.species,before,after:before-damage};},
+  hit(enemy,amount){const before=s.boss?.hp??0,damage=(mod.action?.kind==='punch'?melee:hurt)(amount*(s.boss?.stun ? .65 : .15));return{index:enemy.index,species:enemy.species,before,after:before-damage};},
   spaceInput(input){
    const b=s.boss,o=api.orbit;if(!o)return false;
    // Original rings/items still pause the fight and own their normal input.
    if(mod.read8(0xd0)||mod.read8(0xec)&0xfe||input&2){o.charge=0;mod.charging=false;return false;}
-   if(s.stage!=='battle'||mod.read8(0xe191)&128)return true;
+   if(s.stage!=='battle'||!mod.read16(0xe182)||mod.read8(0xe191)&128||o.intro)return true;
    const wave=!!(input&0x400)&&!!(input&(1<<17)),tap=input&~mod.lastInput;
    const direction=()=>{const dx=b.x-o.hero.x,dy=b.y-o.hero.y,n=Math.hypot(dx,dy)||1;return{dx:dx/n,dy:dy/n};};
    const c=o.clash;
@@ -169,7 +194,7 @@ export function createFrieza(snes,mod){
     if(tap&(1|(1<<17))){c.pressure=Math.min(1,c.pressure+.058);c.taps++;mod.playSound?.('hit');mod.feedback?.pulse(2);}
     return true;
    }
-   if(!c)steerOrbit(o,input);
+   if(!c&&!o.beam)steerOrbit(o,input);
    if(wave&&!o.beam){o.charge=Math.min(45,o.charge+1);if(o.charge===45&&mod.charge<45)mod.playSound?.('charged');}
    else if(o.charge){
     const strength=o.charge/45,dir=direction();
@@ -180,9 +205,11 @@ export function createFrieza(snes,mod){
     o.charge=0;
    }
    mod.charging=wave&&!o.beam;mod.charge=o.charge;mod.action=mod.charging?{kind:'charge',age:o.charge,duration:999,super:true,facing:mod.facing}:null;
-   if(c)return true;
+   // The released wave is anchored at his hands until its tail fades. A
+   // teleport or melee input during that shot must not detach the fighter.
+   if(c||o.beam)return true;
    if((input&0x401)===0x401&&(tap&1)){o.hero.x=Math.max(14,Math.min(242,b.x-18));o.hero.y=Math.max(20,Math.min(184,b.y+8));o.teleport=12;mod.playSound?.('teleport');}
-   else if(input&1&&!(input&0x400)&&!o.cooldown){o.cooldown=8;o.punch=8;mod.playSound?.('swing');if(Math.hypot(b.x-o.hero.x,b.y-o.hero.y)<32){hurt(550);mod.playSound?.('friezaImpact');}}
+   else if(input&1&&!(input&0x400)&&!o.cooldown){o.cooldown=8;o.punch=8;mod.playSound?.('swing');if(Math.hypot(b.x-o.hero.x,b.y-o.hero.y)<32){melee(550);mod.playSound?.('friezaImpact');}}
    if(input&(1<<17)&&!(input&0x400)&&!o.cooldown&&!o.beam){o.cooldown=6;o.shots.push({...o.hero,...direction(),age:0});mod.playSound?.('blast');}
    return true;
   },
@@ -213,11 +240,15 @@ export function createFrieza(snes,mod){
    }
    if(s.stage!=='battle'||here!==246||!s.boss)return;
    // Menus pause this battle; spell/hit messages do not stop its projectiles.
-   if(!mod.nativeField||mod.read8(0xd0)||mod.read8(0xec)&0xfe||snes.ppu.forcedBlank||mod.read8(0xe191)&0x80)return;
-   const b=s.boss,h=hero();b.age++;if(b.grace)b.grace--;if(b.hurt)b.hurt--;if(b.recoil)b.recoil--;
+   if(!mod.nativeField||mod.read8(0xd0)||mod.read8(0xec)&0xfe||snes.ppu.forcedBlank||!mod.read16(0xe182)||mod.read8(0xe191)&0x80)return;
+   const b=s.boss,h=hero();b.age++;if(b.grace)b.grace--;if(b.hurt)b.hurt--;if(b.recoil)b.recoil--;if(b.guard)b.guard--;
    b.arena??=newFriezaArena();b.afterimages??=[];b.hazards??=[];b.tier??=0;tickFriezaArena(b.arena);
    b.afterimages=b.afterimages.filter(p=>++p.age<16);
    if(!b.surge&&b.tier<2&&b.hp<=(2-b.tier)*FRIEZA_HP/3){
+    // A threshold ends the phase, not the shot that earned it. Keep the full
+    // beam and its fade on screen before cancelCombat begins the cutscene.
+    // Frieza reels here instead of counterattacking through the final hit.
+    if(mod.effects.some(e=>e.kind==='beam'&&e.life>0)){b.shots=[];b.warning=null;b.hazards=[];return;}
     b.tier++;b.shots=[];b.warning=null;b.hazards=[];b.stun=0;
     b.surge={kind:b.tier===2?'frieza-cosmic':'frieza-breach',age:0,target:{x:mod.read16(0x128)||2000,y:mod.read16(0x12a)||2000}};
     mod.cancelCombat();mod.radio?.restore({firstFlight:true});mod.playSound?.('friezaOrb');
@@ -234,21 +265,25 @@ export function createFrieza(snes,mod){
     const impact=c.kind==='frieza-breach'?270:24;
     if(c.age===impact){breakFloor(b.x,b.y+12,34);mod.feedback?.burst();}
     if(c.age===impact+24){for(let i=0;i<b.nodes.length;i++){const n=b.nodes[i];breakFloor(n.x,n.y+12,c.kind==='frieza-cosmic'?29+i*5:19+i*3,false);}mod.playSound?.('fortressBreak');mod.feedback?.pulse(16);}
-    if(c.age===72&&c.kind==='frieza-cosmic'){mod.playSound?.('friezaOrb');mod.playSound?.('beam');}
-    if(c.age===116&&c.kind==='frieza-cosmic')mod.playSound?.('fortressBreak');
-    if(c.age>=(c.kind==='frieza-cosmic'?206:380)){if(c.kind==='frieza-cosmic')enterOrbit(c.target);b.surge=null;b.clock=35;b.grace=60;mod.cancelInput();}
+    if(c.kind==='frieza-cosmic'){
+     const beat=collateralBeat(c.age);if(beat&&beat.age===beat.shot.hit-12)mod.playSound?.('friezaLaser');if(beat&&beat.age===beat.shot.hit)mod.playSound?.('fortressBreak');
+     if(c.age===pullbackStart+60)mod.playSound?.('beam');
+    }
+    if(c.age>=(c.kind==='frieza-cosmic'?cosmicDuration:380)){if(c.kind==='frieza-cosmic')enterOrbit(c.target);b.surge=null;b.clock=150;b.grace=60;if(!b.space)evadeMelee();mod.cancelInput();}
     return;
    }
    if(b.space){
     const o=b.space;
     tickOrbit(o,b,{hurt,damage:damagePlayer,sound:mod.playSound,shake:n=>mod.feedback?.pulse(n)});
+    if(o.intro)return;
     if(b.hp<=6000&&!o.clash){
+     if(o.beam){b.shots=[];b.warning=null;return;}
      o.clash={phase:'charge',age:0,pressure:.45,taps:0};o.hero={x:48,y:140};b.x=209;b.y=51;b.shots=[];b.warning=null;o.shots=[];o.beam=null;o.charge=0;
      mod.cancelCombat();mod.radio?.restore({firstFlight:true});mod.playSound?.('friezaOrb');
     }
     if(o.clash){
      const c=o.clash;c.age++;
-     if(c.phase==='charge'&&c.age>480&&c.age%240===0)damagePlayer(180);
+     if(c.phase==='charge'&&c.age>900&&c.age%300===0)damagePlayer(120);
      if(c.phase==='struggle'){
       c.pressure-=.0017;
       if(c.age%45===0)mod.playSound?.('friezaOrb');
@@ -263,22 +298,27 @@ export function createFrieza(snes,mod){
     // He holds his ground to steer the discs. This gives players a readable
     // anchor to circle behind instead of moving their counter target away.
     const steering=b.shots.some(p=>p.kind==='disc'&&p.age<260);
-    if(!steering&&b.age%105===0){b.node=(b.node+1)%b.nodes.length;b.dash=12;mod.playSound?.('friezaRush');}
-    if(b.dash){if(b.age%2===0)b.afterimages.push({x:b.x,y:b.y,age:0});b.dash--;}
-    const to=b.nodes[b.node],dx=to.x-b.x,dy=to.y-b.y,d=Math.hypot(dx,dy),speed=steering?0:b.dash?7:b.tier?2.8:2.1;
-    if(d>1){b.x+=dx/d*Math.min(d,speed);b.y+=dy/d*Math.min(d,speed);}
-    if(b.warning){if(++b.warning.age>=b.warning.wait)fire();}else if(--b.clock<=0)attack();
+    if(!steering&&!b.warning&&!b.dash&&!b.windup&&b.age%105===0){b.node=(b.node+1)%b.nodes.length;b.windup=6;}
+    if(b.windup&&!--b.windup){b.dash=1;mod.playSound?.('friezaRush');}
+    if(b.dash&&!steering&&!b.warning){if(b.dash%3===1)b.afterimages.push({x:b.x,y:b.y,age:0});rushStep(b);if(!b.dash&&b.counter){b.counter=false;b.warning={kind:'laser',age:0,wait:70,x:b.x,y:b.y,target:{...h}};}}
+    if(b.warning){if(++b.warning.age>=b.warning.wait)fire();}
+    else if(!b.dash&&!b.windup&&--b.clock<=0&&(b.tier||!b.shots.length))attack();
    }
    for(const shot of b.shots){
     // A beam can counter a Death Ball earlier in this same tick. The
     // removed projectile must never run its old collision a second time.
     if(shot.age>=330)continue;
     shot.previousX=shot.x;shot.previousY=shot.y;shot.trail.unshift({x:shot.x,y:shot.y});if(shot.trail.length>8)shot.trail.pop();
-    if(shot.kind==='disc'){
+    if(shot.kind==='laser'){
+     shot.age++;if(shot.age===1&&sweptDistance(h.x,h.y,shot.x,shot.y,shot.x+shot.dx*360,shot.y+shot.dy*360)<8)damagePlayer(170);
+     if(shot.age>=16)shot.age=999;
+    }else if(shot.kind==='disc'){
      homingStep(shot,h,b.hp<FRIEZA_HP/2?.038:.032);
+     if(!b.space&&counterShot(shot))continue;
      const hit=discContact(shot,h,b);if(hit==='frieza'){shot.age=999;hurt(12000,true);}else if(hit==='goku'){shot.age=999;damagePlayer(230);}
     }else{
-     shot.age++;shot.x+=Math.cos(shot.angle)*shot.speed;shot.y+=Math.sin(shot.angle)*shot.speed;
+     shot.age++;pixelStep(shot,Math.cos(shot.angle),Math.sin(shot.angle),shot.speed);
+     if(!b.space&&counterShot(shot))continue;
      const hit=sweptDistance(h.x,h.y,shot.previousX,shot.previousY,shot.x,shot.y)<20;
      const camera=b.space?{cameraX:0,cameraY:0}:mod.status;
      const out=shot.age>15&&(shot.x<camera.cameraX+8||shot.x>camera.cameraX+248||shot.y<camera.cameraY+8||shot.y>camera.cameraY+205);
@@ -294,14 +334,7 @@ export function createFrieza(snes,mod){
    if(!on()||mod.worldFlight||snes.ppu.mode!==1||!atlas)return;
    const h=mod.status,c=s.scene?.map===map()?s.scene:null,b=map()===246?s.boss:null;
    const put=(x,y,color)=>layer.pixel(x,y,color,true),rgb=(r,g,b)=>1+r+(g<<5)+(b<<10);
-   const sprite=(frame,x,y,flip=false,ghost=0)=>{
-    const sheet=s.boss?.muscular&&fullAtlas?fullAtlas:atlas;
-    const f=sheet.frames[frame],height=frame===7?27:frame===4||frame===5?34:40,width=Math.round(f.w*height/f.h);
-    for(let py=0;py<height;py++)for(let px=0;px<width;px++){
-     const color=sheet.pixels[(f.y+Math.floor(py*f.h/height))*sheet.width+f.x+Math.floor((flip?width-1-px:px)*f.w/width)];
-     if(color&&(!ghost||(px+py+ghost)%3===0))put(x-width/2+px,y-height+py,ghost?rgb(10,7,18):color);
-    }
-   };
+   const sprite=(frame,x,y,flip=false,ghost=0)=>drawFriezaSprite(api.portraitAtlas,frame,x,y,put,{flip,ghost});
    const ball=(x,y,r,color)=>{for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){const d=dx*dx+dy*dy;if(d<=r*r)put(x+dx,y+dy,d<(r-2)**2?color:rgb(8,2,14));}};
    const fx=(x,y,n)=>{for(let i=0;i<8;i++){const a=i*Math.PI/4;layer.stamp(i&1?'impact-spark':'gold-charge-orb',n>>2,x+Math.cos(a)*n,y+Math.sin(a)*n);}};
    const line=(x,y,xx,yy,color)=>{const n=Math.ceil(Math.max(Math.abs(x-xx),Math.abs(y-yy)));for(let i=0;i<=n;i++)put(x+(xx-x)*i/(n||1),y+(yy-y)*i/(n||1),color);};
@@ -338,7 +371,7 @@ export function createFrieza(snes,mod){
     if(c.kind==='defeated'&&c.age<45)fx(x,y-16,Math.min(40,c.age));
    }
    if(s.stage!=='battle'||!b)return;
-   const bx=b.x-h.cameraX,by=b.y+8-h.cameraY-Math.round(Math.sin(b.age*.08)*2),face=b.x<h.x;
+   const bx=b.x-h.cameraX,by=b.y+8-h.cameraY,face=b.x<h.x;
    for(const p of b.afterimages??[])sprite(5,p.x-h.cameraX,p.y+8-h.cameraY,face,1+Math.floor(p.age/4));
    if(b.tier||b.surge){
     const t=b.surge?.age??b.age,scale=b.surge?1.7:1;
@@ -347,7 +380,7 @@ export function createFrieza(snes,mod){
      if(b.surge||i%2===(t>>3)%2)layer.stamp('lightning',(t>>2)+i,bx+Math.cos(a)*rx,by-17+Math.sin(a)*ry);
     }
    }
-   sprite(b.hurt?6:b.surge?4:b.dash?5:b.recoil?2:b.warning?.kind==='disc'?2:b.warning?3:b.tier?4:Math.floor(b.age/16)%2,bx+(b.recoil?(face?1:-1)*b.recoil*.3:0),by,face);
+   sprite(b.hurt?6:b.surge||b.windup?4:b.dash?5:b.recoil?2:['disc','laser'].includes(b.warning?.kind)?2:b.warning?3:b.tier?4:Math.floor(b.age/16)%2,bx+(b.recoil?(face?1:-1)*Math.ceil(b.recoil/3):0),by,face);
    if(b.surge){
     const age=b.surge.age;
     if(b.surge.kind==='frieza-cosmic'&&age>24&&age<72){
@@ -368,7 +401,10 @@ export function createFrieza(snes,mod){
     }
    }
    for(const p of b.shots){
-    if(p.kind==='disc'){
+    if(p.kind==='laser'){
+     const x=p.x-h.cameraX,y=p.y-h.cameraY;
+     for(let w=-3;w<=3;w++)line(x-p.dy*w,y+p.dx*w,x+p.dx*360-p.dy*w,y+p.dy*360+p.dx*w,Math.abs(w)<2?rgb(31,28,31):rgb(28,3,19));
+    }else if(p.kind==='disc'){
      p.trail.forEach((t,i)=>{if(i%2===0)for(let dx=-5;dx<=5;dx++)if((dx+i)%2===0)put(t.x-h.cameraX+dx,t.y-h.cameraY,rgb(25-i,9,22));});
      const x=p.x-h.cameraX,y=p.y-h.cameraY;
      const tilt=Math.sin(p.age*.28)*.28;
@@ -381,15 +417,18 @@ export function createFrieza(snes,mod){
      for(let i=0;i<3;i++){const a=p.age*.24+i*Math.PI*2/3;layer.stamp('lightning',(p.age>>2)+i,x+Math.cos(a)*13,y+Math.sin(a)*13);}
     }
    }
-   if(b.warning){const w=b.warning,x=b.x-h.cameraX,y=b.y-24-h.cameraY;for(let i=0;i<8;i++){const a=i*Math.PI/4+w.age/15,r=26-w.age/w.wait*10;line(x+Math.cos(a)*r,y+Math.sin(a)*r,x+Math.cos(a)*(r+5),y+Math.sin(a)*(r+5),rgb(31,7,25));}if(w.kind==='orb')mod.kiArt?.draw('death',(w.age>>3)%6,x,y,12+w.age/w.wait*27,put);else line(x-16,y,x+16,y,rgb(31,30,23));}
+   if(b.warning){const w=b.warning,x=b.x-h.cameraX,y=b.y-24-h.cameraY;
+    if(w.kind==='laser'){ball(x,y,2,rgb(31,25,31));if(w.age>w.wait-25)line(x,y,w.target.x-h.cameraX,w.target.y-h.cameraY,rgb(12,3,15));}
+    else{for(let i=0;i<8;i++){const a=i*Math.PI/4+w.age/15,r=26-w.age/w.wait*10;line(x+Math.cos(a)*r,y+Math.sin(a)*r,x+Math.cos(a)*(r+5),y+Math.sin(a)*(r+5),rgb(31,7,25));}if(w.kind==='orb')mod.kiArt?.draw('death',(w.age>>3)%6,x,y,12+w.age/w.wait*27,put);else line(x-16,y,x+16,y,rgb(31,30,23));}}
 
   },
   get status(){return copy({...s,eligible:eligible(),hp:s.boss?.hp??null});},snapshot(){return copy(s);},restore(saved){
-   s={...initial(),...copy(saved)};ruinsKey='';renderFrame=-1;
+   s={...initial(),...copy(saved)};ruinsRevision=-1;renderFrame=-1;
    if(saved&&saved.stolenMask===undefined&&s.stolen)s.stolenMask=mod.quest?.status.mask??0;
    if(saved&&saved.trialWon===undefined&&['showdown','battle','won','defeated'].includes(s.stage))s.trialWon=true;
    if(saved&&saved.crisis===undefined&&(s.stolen||s.permanent))s.crisis={...newCoreCrisis(),active:!mod.quest?.status.wished,flightNotified:true};
    const b=s.boss;
+   if(b){for(const p of[b,...b.nodes??[],...b.shots??[],...b.afterimages??[],b.space?.hero].filter(Boolean)){p.x=Math.round(p.x);p.y=Math.round(p.y);}}
    if(b&&!b.orbital){
     b.orbital=true;
     if(b.tier>0&&b.surge?.kind!=='frieza-breach')b.muscular=true;

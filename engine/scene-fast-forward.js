@@ -18,6 +18,7 @@ export function createSceneFastForward(mod){
   let cached=-1,choice=false;
   function state(input){
     const held=!!(input&0x800)&&!(input&0x400)&&!(input&(1<<21));
+    if(held&&(mod.frieza?.inputLocked||mod.frieza?.orbit?.intro))return{active:true,choice:false};
     const scene=mod.read8(0xd0)!==0&&!mod.nameEditor&&!mod.nativeFlight&&mod.read8(0xe4)!==0&&!(mod.read8(0xec)&0x7e);
     if(!held||!scene){cached=-1;return{active:false,choice:false};}
     const pointer=mod.read16(0xd1)|(mod.read8(0xd3)<<16),dialog=[0x81,0x83].includes(mod.read8(0xd0));

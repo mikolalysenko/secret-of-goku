@@ -19,6 +19,15 @@ function fixture(options={}){
   return{snes,ram,cpu,word,hook,tile,phase};
 }
 
+test('destroyed deck blocks walking and landing but remains flyable inside native map bounds',()=>{
+ let flying=false;
+ const {hook,cpu,ram,word}=fixture({enabled:()=>true,active:()=>flying,phase:()=>flying,missingFloor:(x,y)=>x>=32&&x<64&&y>=32&&y<64});
+ assert.equal(hook.canLand(40,40),false);assert.equal(hook.canFly(40,40),true);
+ word(0xe002,25);word(0xe004,40);ram[0x1e]=3;cpu.br[4]=0xd651;cpu.cycle();assert.equal(ram[0x1e],0,'Feet stop at the broken tile');
+ flying=true;ram[0x1e]=3;cpu.br[4]=0xd651;cpu.cycle();assert.equal(ram[0x1e],8,'Flight crosses the same tile at full speed');
+ assert.equal(hook.canFly(-1,40),false);assert.equal(hook.canFly(128,40),false);
+});
+
 test('Mana Beast flight stays inside its fixed arena without scrolling Mode 7 art',()=>{
  const {snes,ram,cpu,word,hook,phase}=fixture();snes.ppu={mode:7};word(0xdc,253);word(0xc0,576);word(0xc2,576);
  ram.set([3,0,0,0],0x1b800);word(0xe002,296);word(0xe004,320);

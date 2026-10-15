@@ -26,6 +26,7 @@ export function createBeastChallenge(snes,mod){
     victory(){if(fed&&started){won=true;burst=null;}},
     choose(feed){if(mod.quest?.status.canFeed)feed=true;else if(feed)return false;fed=!!feed;started=won=false;wards=feed?(mod.quest?.status.earned??0):0;blocked=hits=clock=wardFlash=grace=0;burst=null;beastBody=null;return true;},
     get dangerous(){return fed&&!won&&mod.read16(0xdc)===253;},
+    get empoweredLich(){return !!(powered()&&lich&&mod.read16(0xdc)===lich.map&&mod.read16(lich.base+0x182)>0&&!(mod.read8(lich.base+0x191)&0x80));},
     damage(enemy,amount){
       if(powered()&&mod.read16(0xdc)===253&&enemy.species===127)return Math.max(1,Math.floor(amount/(fed?8:2)));
       return lich&&powered()&&mod.read16(0xdc)===lich.map&&enemy.species===121&&enemy.base===lich.base?Math.max(1,Math.floor(amount/4)):amount;

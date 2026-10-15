@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {newFriezaArena,fractureFortress,tickFriezaArena,ruinMask} from '../engine/frieza-arena.js';
+import {newFriezaArena,fractureFortress,tickFriezaArena,ruinMask,floorHole} from '../engine/frieza-arena.js';
 
 test('Fortress fractures affect only verified floor cells and survive replay without map writes',()=>{
  const a=newFriezaArena(),safe=(x,y)=>x>=64&&x<160&&y>=48&&y<176;
@@ -11,6 +11,15 @@ test('Fortress fractures affect only verified floor cells and survive replay wit
  for(let i=0;i<70;i++)tickFriezaArena(a);
  assert.equal(a.bursts.length,0);assert.deepEqual(a.scars,saved.scars,'rubble clears while the damaged floor remains');
  assert.deepEqual(ruinMask(a,0,0),mask,'animation cannot damage source map or grow the footprint');
+});
+
+test('overlapping blasts make one hole without interior rims; old holes survive the debris cap',()=>{
+ const arena=newFriezaArena();fractureFortress(arena,88,88,12,()=>true);fractureFortress(arena,104,88,12,()=>true);
+ const mask=ruinMask(arena,0,0);
+ assert.equal(mask[88*256+95],1);assert.equal(mask[88*256+96],1,'The shared tile boundary is open air, not a second damage edge');
+ assert.equal(floorHole(arena,81,81),true);assert.equal(floorHole(arena,111,95),true);
+ for(let i=0;i<30;i++)fractureFortress(arena,400+i*16,400,12,()=>true);
+ assert.equal(floorHole(arena,88,88),true,'A previously destroyed floor cannot heal when older burst animations are discarded');
 });
 
 test('many impacts stay bounded, and camera-relative cracks follow world position',()=>{

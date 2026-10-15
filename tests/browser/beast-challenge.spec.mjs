@@ -55,10 +55,8 @@ test('seven Balls automatically feed the native Beast, creating a multi-beam bos
     for(let i=0;i<5&&mana.read16(0xe182);i++){
       mana.write16(0xe1f1,450);mana.write8(0xe1f0,3);mana.write8(0xe1ec,0);mana.run(140);
     }
-    // The native hurt animation finishes before its death status is latched.
-    for(let i=0;i<30&&!(mana.read8(0xe191)&0x80);i++)mana.run(20);
-    return{hp:mana.read16(0xe182),dead:mana.read8(0xe191)&0x80,c:mana.mod.challenge.status};
-  });expect(danger.hp).toBe(0);expect(danger.dead).toBe(128);expect(danger.c.hits).toBeGreaterThan(1);
+    return{hp:mana.read16(0xe182),dead:mana.battleRetry.defeated,map:mana.mod.status.map,c:mana.mod.challenge.status};
+  });expect(danger.hp).toBe(0);expect(danger.dead).toBe(true);expect(danger.map).toBe(253);expect(danger.c.hits).toBeGreaterThan(1);
   await page.evaluate(s=>{mana.restore(s);mana.mod.quest.restore({mask:127,delivered:0});mana.mod.challenge.choose(true);mana.mod.options.superSaiyan=true;mana.run(1);},state);
   let won=false;
   for(let i=0;i<80;i++){

@@ -8,7 +8,7 @@ function setup(){
  const sounds=[],mod={options:{enabled:true,power:true,superSaiyan:true},gokuActive:true,nativeField:true,playSound:n=>sounds.push(n),facing:1};
  const word=a=>ram[a]|ram[a+1]<<8,write=(a,v)=>{ram[a]=v;ram[a+1]=v>>8;};
  for(const a of[0xe000,0xe02c,0xe600])ram[a]=1;
- write(0xe1a5,16);write(0xe1a8,6);write(0xe182,800);
+ write(0xe1a5,16);write(0xe1a8,6);write(0xe182,800);write(0xe782,100);ram[0xe1f0]=3;
  const recovery=createNativeHitRecovery(snes,mod);
  const call=pc=>{cpu.r[1]=0;cpu.br[4]=pc;cpu.cycle();return cpu.br[4];};
  return{ram,cpu,snes,mod,sounds,word,write,recovery,call};
@@ -35,12 +35,51 @@ test('SSJ deflects some ordinary contacts through native dodge, not spells, boss
 });
 test('unblocked injuries still enter native damage, SSJ recovers quickly, and sleep/death retain ownership',()=>{
  const {recovery,call,cpu,snes,ram,write,word}=setup();
- write(0xe1f1,60);assert.equal(call(0x4053),0x4053);assert.equal(word(0xe1f1),60);
+ write(0xe1f1,60);assert.equal(call(0x4053),0x4053);assert.equal(word(0xe1f1),2);
  assert.equal(recovery.reaction.kind,'resist');ram[0xe011]=0x8d;recovery.tick();
  snes.frames=8;ram[0xe012]=30;recovery.tick();call(0xf590);assert.equal(ram[0xe012],0);
  cpu.r[1]=1;cpu.br[4]=0x8355;cpu.cycle();assert.equal(ram[0xe11f],1);assert.equal(recovery.recovered,1);
  for(const [address,value]of[[0xe190,0x10],[0xe191,0x80]]){
   ram[address]=value;ram[0xe012]=30;recovery.tick();call(0xf590);assert.equal(ram[0xe012],30);ram[address]=0;
+ }
+});
+test('ordinary physical and magic damage becomes chip damage; native bosses and finale threats use separate scales',()=>{
+ for(const gold of[false,true])for(const source of[3,255]){
+  const f=setup();f.mod.options.superSaiyan=gold;f.ram[0xe1f0]=source;
+  for(const [incoming,base,ssj]of[[0,0,0],[1,1,1],[60,3,2],[300,12,5],[65535,12,5]]){
+   f.write(0xe1f1,incoming);f.call(0x4053);assert.equal(f.word(0xe1f1),gold?ssj:base);assert.equal(f.word(0xe182),800,'native consumer owns HP');
+  }
+  f.ram[0xe780]=87;f.write(0xe1f1,300);f.call(0x4053);assert.equal(f.word(0xe1f1),gold?38:75);
+  f.write(0xe1f1,999);f.call(0x4053);assert.equal(f.word(0xe1f1),gold?40:80);
+  // Spells from defeated/inactive bosses do not classify a new encounter.
+  f.ram[0xe791]=128;f.write(0xe1f1,300);f.call(0x4053);assert.equal(f.word(0xe1f1),gold?5:12);
+ }
+ for(const setupDanger of[f=>f.mod.frieza={fighting:true},f=>f.mod.challenge={dangerous:true},f=>f.mod.challenge={empoweredLich:true}]){
+  const f=setup();setupDanger(f);f.write(0xe1f1,450);f.call(0x4053);assert.equal(f.word(0xe1f1),450);assert.equal(f.recovery.reaction,null);
+ }
+});
+test('resilience never scales healing, changes companions, clears status, revives Goku or changes BOY',()=>{
+ for(const inhibit of[f=>f.mod.options.power=false,f=>f.mod.options.enabled=false,f=>f.mod.gokuActive=false,f=>f.mod.nativeFlight=true,f=>f.cpu.br[1]=0x200,f=>f.write(0xe182,0),f=>f.write(0xe1b0,0x1000)]){
+  const f=setup();inhibit(f);f.write(0xe1f1,70);f.write(0xe1f3,200);f.call(0x4053);assert.equal(f.word(0xe1f1),70);assert.equal(f.word(0xe1f3),200);
+ }
+ const f=setup();f.ram[0xe190]=0x10;f.ram[0xe191]=0x20;f.ram[0xec]=0x20;f.write(0xe1f1,100);f.call(0x4053);
+ assert.equal(f.word(0xe1f1),2,'sleep and spell animations do not remove his armor');assert.equal(f.ram[0xe190],0x10);assert.equal(f.ram[0xe191],0x20);
+});
+test('base Goku blocks some clean physical hits; SSJ deflects more without touching status attacks',()=>{
+ const f=setup();f.mod.options.superSaiyan=false;
+ for(let n=1;n<=6;n++){f.snes.frames=n*30;assert.equal(f.call(0x514b),n%3?0x514b:0x4e6f);}
+ assert.equal(f.recovery.deflected,2);assert.equal(f.word(0xe182),800);
+ const saved=f.recovery.snapshot();f.snes.frames=210;f.call(0x514b);f.recovery.restore(saved);assert.deepEqual(f.recovery.snapshot(),saved);
+});
+test('ordinary recoil is bounded across movement steps and checkpoints; boss recoil and scripts stay native',()=>{
+ for(const gold of[false,true]){
+  const f=setup();f.mod.options.superSaiyan=gold;f.write(0xe1f1,100);f.call(0x4053);f.ram[0xe011]=0x8d;
+  const step=()=>{f.ram[0x1e]=0x83;f.ram[0x1f]=2;f.call(0xd651);const velocity=[f.ram[0x1e],f.ram[0x1f]];f.call(0xd890);return velocity;};
+  const first=step(),saved=f.recovery.snapshot(),rest=Array.from({length:10},step);
+  assert.equal(first[0],gold?0x81:0x82);assert.equal(f.recovery.snapshot().hit.recoil,gold?2:4);assert.deepEqual(rest.at(-1),[0,0]);
+  f.recovery.restore(saved);assert.deepEqual(Array.from({length:10},step),rest);
+  f.ram[0xd0]=1;assert.deepEqual(step(),[0x83,2]);f.ram[0xd0]=0;
+  f.mod.challenge={dangerous:true};f.write(0xe1f1,300);f.call(0x4053);assert.deepEqual(step(),[0x83,2]);
  }
 });
 test('reveal flash/shake decay, replay, respect native quake ownership and never shake Mode 7',()=>{

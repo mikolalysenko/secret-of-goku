@@ -36,12 +36,12 @@ const caveGaps=new Set([...caveBanks,0,5,41,78,79,94,95,99,154]);
 // C0:D359 dispatches 2x stair guidance and 3x currents/conveyors. These
 // modify walking velocity; they are floors, not collision or event triggers.
 const movementFloor=code=>(code&0xf0)===0x20||(code&0xf0)===0x30;
-export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,speed=6,phase=false,onCross=null,onCarry=null}={}){
+export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,speed=6,phase=false,missingFloor=()=>false,onCross=null,onCarry=null}={}){
  const c=snes.cpu,r=snes.ram,priorCycle=c.cycle,word=a=>r[a]|r[a+1]<<8;
  const whipRoutes=createNativeWhipRoutes(snes);
  const dungeon=createDungeonGeometry(snes);
  const ground=()=>[0x5c,0xa8,0xc0,0,0x5c,0xcf,0xc1,0].every((v,i)=>r[0x100+i]===v)&&r[0xd0]===0&&(r[0xec]&0xfe)===0&&!(r[0xed]&0x40)&&r[0xff]===0;
- const eligible=()=>active()&&ground()&&(r[0xe000]&1)&&(r[0xe02c]&1)&&!(r[0xe190]&0x70)&&!(r[0xe191]&0xd7)&&!(r[0xe01c]|r[0xe060]|r[0xe00a])&&r[0xe008]===0;
+ const eligible=()=>active()&&ground()&&(r[0xe000]&1)&&(r[0xe02c]&1)&&!(r[0xe011]>=0x8c&&r[0xe011]<=0x8f)&&!(r[0xe190]&0x70)&&!(r[0xe191]&0xd7)&&!(r[0xe01c]|r[0xe060]|r[0xe00a])&&r[0xe008]===0;
  const phasing=()=>typeof phase==='function'?phase():phase;
  // The Beast's fixed Mode 7 arena has no ordinary floor outside the deck.
  // These native world coordinates keep the entire flying sprite on screen,
@@ -200,7 +200,8 @@ export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,sp
   }
   return true;
  }
- const canLand=(x=word(0xe002),y=word(0xe004),l=layer(),terrain=r[0xe00b]&3)=>footprint(x,y,l,false,terrain);
+ const supported=(x,y,l)=>[-4,0,4].every(dy=>[-6,0,6].every(dx=>!missingFloor(x+dx,y+dy,l)));
+ const canLand=(x=word(0xe002),y=word(0xe004),l=layer(),terrain=r[0xe00b]&3)=>supported(x,y,l)&&footprint(x,y,l,false,terrain);
  const canFly=(x,y,l=layer())=>beastArena()?beastAir(x,y):footprint(x,y,l,true);
  const canFloat=(x,y,l=layer())=>canFly(x,y,l)&&!canLand(x,y,l);
  function sweep(x,y,dx,dy){
@@ -212,6 +213,13 @@ export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,sp
  let changed=0,phased=0,limited=0,recovered=0,npcPasses=0,anchor=null,crossing=null,motionFrame=-1,travel=[0,0];
  c.cycle=function(){
   const pc=this.br[4];
+  if(this.cyclesLeft===0&&(this.r[1]&63)===0&&pc===0xd651&&word(0x10)===0&&enabled()&&ground()&&!phasing()&&(r[0xe02c]&1)){
+   const x=word(0xe002),y=word(0xe004),l=layer();
+   // Walking stops at missing deck tiles. Only change this movement step;
+   // native doors, stairs, collision and animation still execute normally.
+   if(!supported(x+signed(r[0x1e]),y,l))r[0x1e]=0;
+   if(!supported(x+signed(r[0x1e]),y+signed(r[0x1f]),l))r[0x1f]=0;
+  }
   // The retail deck never reaches the scrolling thresholds. Flight can,
   // but its Mode 7 sky/Beast art cannot accept ordinary map-row uploads.
   // Keep native position/animation updates, and send zero camera deltas.

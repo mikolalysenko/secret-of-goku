@@ -94,10 +94,11 @@ class ManaMod {
   get sleeping(){return !!(this.read8(0xe190)&0x10);}
   get nativeFlight(){return this.flight?this.flight.worldActive():this.read8(0xe4)===4&&this.read8(0xe5)===4&&this.read8(0xd0)===0&&(this.read8(0xec)&0x80)!==0;}
   get nativeField(){return [0x5c,0xa8,0xc0,0,0x5c,0xcf,0xc1,0].every((v,i)=>this.read8(0x100+i)===v);}
+  get nativeHurt(){const pose=this.read8(0xe011);return pose>=0x8c&&pose<=0x8f;}
   get canAttack(){
     // $2C is the transient battle-message window (level ups / spell names),
     // not a modal menu. The native menu/event and actor locks remain owners.
-    return this.gokuActive&&!this.ending?.active&&this.nativeField&&this.read8(0xe4)===1&&this.read8(0xe5)===1&&(this.read8(0xe000)&1)!==0&&(this.read8(0xe02c)&1)!==0&&(this.read8(0xec)&0xfe)===0&&!(this.read8(0xed)&0x40)&&this.read8(0xd0)===0&&!(this.read8(0xe190)&0x70)&&!(this.read8(0xe191)&0xd5);
+    return this.gokuActive&&!this.ending?.active&&!this.nativeHurt&&this.nativeField&&this.read8(0xe4)===1&&this.read8(0xe5)===1&&(this.read8(0xe000)&1)!==0&&(this.read8(0xe02c)&1)!==0&&(this.read8(0xec)&0xfe)===0&&!(this.read8(0xed)&0x40)&&this.read8(0xd0)===0&&!(this.read8(0xe190)&0x70)&&!(this.read8(0xe191)&0xd5);
   }
   get status(){
     const x=this.read16(0xe002),y=this.read16(0xe004),sx=this.readSigned16(0xe020),sy=this.readSigned16(0xe022);
@@ -116,6 +117,9 @@ class ManaMod {
   }
   beforeFrame(input=this.snes.joypad1State) {
     this.ending?.tick();this.frieza?.tick();this.hitRecovery?.tick();this.potosGatekeeper?.tick();
+    // If a blast removes the floor under him, catch himself in a hover.
+    // Releasing speed cannot land on the hole; fly to intact deck first.
+    if(this.canAttack&&this.frieza?.floorHole(this.read16(0xe002),this.read16(0xe004),this.read8(0xe00b)&128?1:0))this.localFlight=true;
     this.feedback?.tick();this.gapFlight?.tick();
     const previousLift=this.localLift;
     this.localLift=Math.max(0,Math.min(12,this.localLift+(this.localFlight?3:-3)));
@@ -196,7 +200,7 @@ class ManaMod {
     if(this.worldFlight){this.localFlight=false;this.localLift=0;if(!this.worldKi&&this.autoLand)this.snes.joypad1State|=1;this.advanceAction();return;}
     // Native menus, events, character/status locks and stun own their inputs.
     // A held button must be released after a menu before it can charge again.
-    if(!this.canAttack||(input&((1<<1)|(1<<16)))||(!this.options.power&&this.read8(0xe011)===0x8d)){
+    if(!this.canAttack||(input&((1<<1)|(1<<16)))){
       if(this.read8(0xd0)||this.read8(0xec)&0xfe){this.localFlight=false;this.localLift=0;}
       const heldCombat=this.attackHeld>0||this.charging||this.attackBlocked;
       this.cancelCombat();this.attackBlocked=heldCombat&&!!((this.padInput&3)|(input&(1<<17)));this.powerBlocked=!!(input&0x400);
@@ -319,7 +323,7 @@ class ManaMod {
     this.write8(0xe006,0);this.write8(0xe007,0);this.write8(0xe045,0);
     action.facing=landing.facing;this.facing=action.facing;
     this.write8(0xe010,[1,2,0x82,0][this.facing]);this.lastTeleportTarget=target.index;
-    this.localFlight=false;this.localLift=0;this.localFlightHook?.restore();
+    this.localFlight=!!landing.air;this.localLift=landing.air?12:0;this.localFlightHook?.restore();
     this.motion?.reset();this.teleport?.follow(landing);
   }
   teleportLanding(target,origin){

@@ -29,14 +29,15 @@
     {
       "name": "frieza-disc",
       "start": 0,
-      "end": 1.042,
+      "end": 0.58,
       "rms": 0.17,
-      "sourceUrl": "https://staredit.net/sc1db/file/1158/",
+      "sourceUrl": "https://soundsverse.com/dragon-ball-z/goku/ki-blast",
       "file": "frieza-disc.wav",
-      "sourceFile": "krillindestructodisc.wav",
-      "sha256": "60cfb19a6ac13bdca98e167aa881e45866dd00283133c399e9d747bee8aca160",
-      "duration": 1.042,
-      "gain": 0.6758255015526772
+      "sourceFile": "assets/audio/dbz/blast.wav",
+      "sha256": "4d1d59066e65c3f758370a86a2a4d81764dd01447cf6e8f05447d1abcb1bf7e1",
+      "duration": 0.525125,
+      "gain": 1.4521708400321591,
+      "processing": "Voice-free ki effect: pitch raised 25%, 650 Hz high-pass, 28 Hz tremolo, 180 ms fade. Same mono 16 kHz / 10-bit bank treatment."
     }
   ]
 }

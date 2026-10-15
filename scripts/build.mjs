@@ -5,6 +5,7 @@ await rm('dist',{recursive:true,force:true});await mkdir('dist',{recursive:true}
 // are research inputs; the real game reads those maps from the selected ROM.
 const files=['index.html','engine.html','styles.css','engine','vendor','tools/rom','CREDITS.md','LICENSE','docs',
   'assets/sprites/kai-planet.png','assets/sprites/kai-npcs.png','assets/sprites/kai-planet.json',
+  'assets/sprites/npcs.png','assets/sprites/rabite.png',
   'assets/sprites/frieza.png','assets/sprites/frieza.json','assets/sprites/frieza-full-power.png','assets/sprites/frieza-full-power.json','assets/sprites/dragon-balls.png','assets/sprites/death-ball.png','assets/sprites/ki-art.json','assets/sprites/goku.png','assets/sprites/ssj.png','assets/sprites/shenron.png','assets/sprites/shenron.json',
   'assets/audio/kamehameha-charge.wav','assets/audio/kamehameha-release.wav','assets/audio/kamehameha-jp.json','assets/audio/dbz','assets/audio/music'];
 for(const file of files){

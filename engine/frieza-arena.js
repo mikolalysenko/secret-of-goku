@@ -1,11 +1,27 @@
-// Battle damage is drawn on the native floor only. Collision, map tiles,
-// doors, BG2 boss graphics and the event interpreter are never rewritten.
-export function newFriezaArena(){return{revision:0,scars:[],bursts:[]};}
+// Broken floor is a persistent set of whole native map cells. Drawing and
+// walking collision share this set; flight can cross it. Source map/event
+// buffers stay untouched, so leaving the arena cannot corrupt another room.
+export function newFriezaArena(){return{revision:0,scars:[],bursts:[],holes:[]};}
+const holeCache=new WeakMap();
+export function arenaHoles(arena){
+ if(!arena.holes){
+  const cells=new Set();
+  for(const s of arena.scars??[])for(const cell of s.tiles)if(Math.hypot((cell%256)*16+8-s.x,(Math.floor(cell/256)*16+8-s.y)*1.5)<s.radius)cells.add(cell);
+  arena.holes=[...cells];
+ }
+ let cache=holeCache.get(arena);
+ if(!cache||cache.revision!==arena.revision){cache={revision:arena.revision,cells:new Set(arena.holes)};holeCache.set(arena,cache);}
+ return cache.cells;
+}
+export const floorHole=(arena,x,y)=>arenaHoles(arena).has(Math.floor(y/16)*256+Math.floor(x/16));
 export function fractureFortress(arena,x,y,radius,canLand){
-  const tiles=[];
-  for(let ty=Math.floor((y-radius-30)/16);ty<=Math.floor((y+radius+30)/16);ty++)
-    for(let tx=Math.floor((x-radius-30)/16);tx<=Math.floor((x+radius+30)/16);tx++)
-      if(canLand(tx*16+8,ty*16+8))tiles.push(ty*256+tx);
+  const tiles=[],holes=new Set(arenaHoles(arena));
+  for(let ty=Math.floor((y-radius)/16);ty<=Math.floor((y+radius)/16);ty++)
+    for(let tx=Math.floor((x-radius)/16);tx<=Math.floor((x+radius)/16);tx++){
+      const px=tx*16+8,py=ty*16+8,key=ty*256+tx;
+      if(Math.hypot(px-x,(py-y)*1.5)<=radius&&(holes.has(key)||canLand(px,py))){tiles.push(key);holes.add(key);}
+    }
+  arena.holes=[...holes];
   const seed=++arena.revision,scar={x,y,radius,seed,tiles};
   arena.scars.push(scar);if(arena.scars.length>20)arena.scars.shift();
   arena.bursts.push({x,y,age:0,radius,seed});if(arena.bursts.length>12)arena.bursts.shift();
@@ -16,20 +32,16 @@ export function tickFriezaArena(arena){
   arena.bursts=arena.bursts.filter(b=>b.age<64);
 }
 export function ruinMask(arena,cameraX,cameraY){
-  const pixels=new Uint8Array(256*224);
-  for(const s of arena.scars){
-    const tiles=new Set(s.tiles),cx=s.x-cameraX,cy=s.y-cameraY,r=s.radius;
-    for(let y=Math.max(0,Math.floor(cy-r-29));y<Math.min(224,cy+r+29);y++)
-      for(let x=Math.max(0,Math.floor(cx-r-29));x<Math.min(256,cx+r+29);x++){
-        if(!tiles.has(Math.floor((y+cameraY)/16)*256+Math.floor((x+cameraX)/16)))continue;
-        const dx=x-cx,dy=(y-cy)*1.5,d=Math.hypot(dx,dy),angle=Math.atan2(dy,dx);
-        const sector=Math.floor((angle+Math.PI)*12/Math.PI),noise=(Math.imul(sector+s.seed*19,1103515245)>>>16)&255;
-        const edge=r*(.79+noise*.0008);
-        let value=0;
-        if(d<edge)value=d<edge-5?1:d<edge-2?2:3;
-        else if(d<edge+28&&Math.abs(Math.sin(angle*3+s.seed*.37))*d<1.3)value=2;
-        if(value)pixels[y*256+x]=value;
-      }
+  const pixels=new Uint8Array(256*224),holes=arenaHoles(arena);
+  const inside=(x,y)=>holes.has(Math.floor(y/16)*256+Math.floor(x/16));
+  for(let y=0;y<224;y++)for(let x=0;x<256;x++){
+    const wx=x+cameraX,wy=y+cameraY;if(!inside(wx,wy))continue;
+    // Outline the UNION, never each blast. Shared edges disappear when two
+    // holes meet. A chipped highlight sits above the dark exposed wall.
+    let edge=6;
+    for(let n=1;n<6;n++)if(!inside(wx-n,wy)||!inside(wx+n,wy)||!inside(wx,wy-n)||!inside(wx,wy+n)){edge=n;break;}
+    const chip=((wx*13+wy*7)&7)===0?1:0;
+    pixels[y*256+x]=edge<=1+chip?3:edge<=4?2:1;
   }
   return pixels;
 }

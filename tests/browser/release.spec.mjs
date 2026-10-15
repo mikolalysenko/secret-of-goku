@@ -11,7 +11,7 @@ async function publicBuild(page,{defaultRom=false,start=''}={}){
   const path=url.slice(origin.length).split('?')[0]||'index.html';
   if(path.includes('..'))return route.abort();
   if(defaultRom&&path==='rom/secret-of-mana-us.sfc')return route.fulfill({body:await readFile('.local/rom/secret-of-mana-us.sfc'),contentType:'application/octet-stream'});
-  try{await route.fulfill({body:await readFile(resolve('dist',path)),contentType:({'.html':'text/html','.js':'text/javascript','.json':'application/json','.css':'text/css','.png':'image/png','.wav':'audio/wav'})[extname(path)]||'application/octet-stream'});}
+  try{await route.fulfill({body:await readFile(resolve('dist',path)),contentType:({'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.json':'application/json','.css':'text/css','.png':'image/png','.wav':'audio/wav'})[extname(path)]||'application/octet-stream'});}
   catch{await route.fulfill({status:404,body:'Missing public file'});}
  });
  await page.goto(origin+(start?`?start=${start}`:''));await page.waitForFunction(()=>window.mana);return{requests,errors};

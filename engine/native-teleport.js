@@ -8,8 +8,11 @@ export function createNativeTeleport(snes,mod,collision){
  let pending=null,scrolls=0,scrollFrame=-1;
  function findLanding(target,origin){
   const terrain=target.terrain??r[target.base+11],layer=terrain&128?1:0;
+  // Frieza hovers over his broken deck. IT can end in a hover there, using
+  // the same bounded flight corridor; ordinary targets still need a floor.
+  const airborne=target.custom==='frieza';
   const clear=(x,y)=>{
-   if(!collision.canLand(x,y,layer,terrain&3))return false;
+   if(!collision.canLand(x,y,layer,terrain&3)&&!(airborne&&collision.canFly(x,y,layer)))return false;
    // Do not materialize on a door, a layer-change seam or a scripted pad.
    for(const dx of[-6,0,6])for(const dy of[-4,0,4]){
     const tile=collision.tileAt(x+dx,y+dy,layer);
@@ -20,12 +23,12 @@ export function createNativeTeleport(snes,mod,collision){
   const ox=origin.x-target.x,oy=origin.y-target.y,preferred=Math.abs(ox)>=Math.abs(oy)?[Math.sign(ox)||1,0]:[0,Math.sign(oy)||1];
   const directions=[preferred,...[[1,0],[-1,0],[0,1],[0,-1]].filter(d=>d[0]!==preferred[0]||d[1]!==preferred[1])];
   for(const distance of[26,22,18,32,38])for(const[dx,dy]of directions){
-   const x=target.x+dx*distance,y=target.y+dy*distance;
+   const x=Math.round(target.x+dx*distance),y=Math.round(target.y+dy*distance);
    if(!clear(x,y))continue;
    // Stay on the enemy's side of a wall/bank, close enough to punch it.
    let connected=true;
    for(let n=6;n<distance;n+=4)if(!clear(target.x+dx*n,target.y+dy*n)){connected=false;break;}
-   if(connected)return{x,y,terrain,layer,facing:dx<0?1:dx>0?2:dy<0?0:3};
+   if(connected)return{x,y,terrain,layer,air:airborne&&!collision.canLand(x,y,layer,terrain&3),facing:dx<0?1:dx>0?2:dy<0?0:3};
   }
   return null;
  }
@@ -43,8 +46,10 @@ export function createNativeTeleport(snes,mod,collision){
   // overworld tile ring. Uploading ordinary map rows can corrupt the Beast.
   if(snes.ppu?.mode===7){pending=null;return;}
   pending={map:word(0xdc),layer:landing.layer,terrain:landing.terrain,
-   x:clamp(landing.x-128,0,Math.max(0,word(0xc0)-256)),
-   y:clamp(landing.y-112,0,Math.max(0,word(0xc2)-224))};
+   // Native camera deltas are integer pixels. A fractional custom enemy
+   // position otherwise leaves a subpixel remainder forever, locking IT.
+   x:clamp(Math.round(landing.x)-128,0,Math.max(0,word(0xc0)-256)),
+   y:clamp(Math.round(landing.y)-112,0,Math.max(0,word(0xc2)-224))};
  }
  c.cycle=function(){
   if(pending&&this.cyclesLeft===0&&(this.r[1]&63)===0){
@@ -65,5 +70,5 @@ export function createNativeTeleport(snes,mod,collision){
   return cycle.call(this);
  };
  return{findLanding,follow,gather,get pending(){return !!pending;},get scrolls(){return scrolls;},
-  snapshot:()=>pending?{...pending,scrollFrame}:null,restore:s=>{pending=s?{...s}:null;scrollFrame=s?.scrollFrame??-1;},dispose(){c.cycle=cycle;}};
+  snapshot:()=>pending?{...pending,scrollFrame}:null,restore:s=>{pending=s?{...s,x:Math.round(s.x),y:Math.round(s.y)}:null;scrollFrame=s?.scrollFrame??-1;},dispose(){c.cycle=cycle;}};
 }

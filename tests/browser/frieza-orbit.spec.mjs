@@ -28,7 +28,7 @@ test('orbital battle keeps native map safe, counters balls, pauses in rings and 
   return{start,fast,slow,fired,replay,menu:{opened,before,after,resumed},injury,ground,afterGround:[m.status.x,m.status.y],grid,afterGrid:mana.hash(mana.snes.ram.slice(0x10000,0x18000)),error:m.story.status.error};
  });
  expect(fight.fast.x-fight.start.x).toBeGreaterThan(20);expect(fight.slow.x-fight.fast.x).toBeLessThan(9);
- expect(fight.fired.hp).toBeLessThan(32000);expect(fight.fired.destroyed.length).toBeGreaterThan(0);expect(fight.replay).toBe(true);
+ expect(fight.fired.hp).toBeLessThan(32000);expect(fight.fired.destroyed).toEqual([]);expect(fight.replay).toBe(true);
  expect(fight.menu.opened).toBe(true);expect(fight.menu.before).toBe(fight.menu.after);expect(fight.menu.resumed).toBeGreaterThan(fight.menu.after);
  expect(fight.injury).toBeLessThan(999);expect(fight.afterGround).toEqual(fight.ground);expect(fight.afterGrid).toBe(fight.grid);expect(fight.error).toBe(null);
  await page.evaluate(()=>{const m=mana.mod;m.frieza.hit(m.frieza.entity(),1e8);mana.run(2);});

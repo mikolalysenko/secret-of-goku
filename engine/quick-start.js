@@ -3,7 +3,8 @@
 import {bootLateGame} from './quick-boot.js';
 import {activateTwilight} from './frieza-crisis.js';
 import {friezaEvents} from './frieza-events.js';
-export const quickStartRevision='direct-finale-2';
+import {cosmicDuration} from './frieza-cinematic.js';
+export const quickStartRevision='orbital-finale-3';
 export const quickStartLabels={
   title:'After title',sword:'After sword / pod crash',late:'After Sunken Continent',
   fortress:'Mana Fortress deck',flight:'Fortress aerial shot',
@@ -51,6 +52,10 @@ export async function buildLateCheckpoint(kind,{pump,mod,capture,cache,progress}
   for(let i=0;i<7;i++)mod.write8(0xcf90+i,1);
   mod.quest.restore({mask:127,seedMask:127,delivered:0,wished:false});mod.frieza.restore({hinted:true});
   mod.worldKi.restore();mod.write16(0xe182,999);mod.write16(0xe184,999);
+  // Explicit test starts have a full native stack (four) of Senzu Beans.
+  // Use a free inventory record and retain the player's other item types.
+  const items=Array.from({length:12},(_,i)=>0xcc48+i),slot=items.find(a=>(mod.read8(a)&31)===5)??items.find(a=>mod.read8(a)===255);
+  if(slot!==undefined)mod.write8(slot,0xa5);
   if(mod.status.map!==431){
     if(!mod.story.travel(0x3fc))throw Error('The late-game entrance was not ready.');
     await pump(240);
@@ -125,15 +130,19 @@ export async function buildLateCheckpoint(kind,{pump,mod,capture,cache,progress}
       mod.frieza.hit(mod.frieza.entity(),1e8);
       await pump(1);
       const state=mod.frieza.snapshot();
-      state.boss.surge.age=phase===0?379:205;
+      state.boss.surge.age=phase===0?379:cosmicDuration-1;
       if(phase===0)state.boss.muscular=true;
       mod.frieza.restore(state);mod.radio.restore({firstFlight:true});
       for(let f=0;f<420;f++){
         await pump(1);
         if(!mod.frieza.inputLocked&&(phase===0?mod.frieza.status.boss.tier===1:mod.frieza.orbit))break;
       }
+      // His real phase-two entrance now includes an invulnerable retreat.
+      // Let it complete before applying the next test-only threshold hit.
+      if(phase===0)for(let f=0;f<120&&(mod.frieza.status.boss.guard||mod.frieza.status.boss.dash);f++)await pump(1);
     }
     if(!mod.frieza.orbit)throw Error('The orbital battle did not start.');
+    const direct=mod.frieza.snapshot();direct.boss.space.intro=0;direct.boss.guard=0;mod.frieza.restore(direct);
     mod.cancelInput();mod.write16(0xe182,999);await cache('orbit',capture());
   }
 }
