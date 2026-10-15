@@ -2,7 +2,7 @@ import {box,call,jump} from './story-events.js';
 import {eventRange} from './event-codec.js';
 import {heroFarewell} from './ending-events.js';
 export const friezaEvents={offer:0xa7,theft:0xa8,reveal:0xac,steal:0xad,eighth:0xaf,leave:0xbf,showdown:0xc1,lift:0xc2,explode:0xc3,gold:0xc5,battle:0xc6,victory:0xc7,defeated:0xc8,revive:0xc9,reminder:0xca,travel:0xcb,coreCharge:0xcc,coreShot:0xd6,coreImpact:0xd7,escape:0xd8,transitionOffer:0xd9,retailEscape:0xdd,trial:0xf6,empower:0x129,afterTrial:0x12a};
-export function buildFriezaEvents(rom,mask,{discVictory=false,collected=7}={}){
+export function buildFriezaEvents(rom,mask,{collected=7}={}){
  const f=friezaEvents,e=new Map();
  for(const id of Object.values(f)){const{start,end}=eventRange(rom,id);if(end-start!==1||rom[start]!==0)throw Error('Frieza event slot is occupied');e.set(id,[2]);}
  // Keep the old event IDs as unconditional entrances for older saves.
@@ -64,14 +64,15 @@ export function buildFriezaEvents(rom,mask,{discVictory=false,collected=7}={}){
   ...box('FRIEZA:The core will\nexplode in five minutes!\nYou will never escape!'),
   ...box('GOKU:Then I have time\nto finish you first.\nKING KAI:MOVE, GOKU!'),
   0x30,0x4e,6,0x09,...call(0x733),...call(f.battle),0]);
- e.set(f.victory,[6,...box(discVictory?'FRIEZA:My own... discs?!\nThis planet is defective!':'FRIEZA:Impossible...\nThis planet is defective!'),...call(f.defeated),0x28,12,
-  ...box('Goku reclaims his pouch.\nDryad\'s eighth Ball glows\nbeside his collection.'),
-  ...box('GOKU:Hang on, Popoi.\nI am bringing you back.'),
+ // The orbital counter already destroys Frieza and shows Goku's return.
+ // Never resurrect him on the deck for a second, unrelated disc death.
+ e.set(f.victory,[6,...call(f.defeated),
+  ...box('LUKA:What in the name\nof Mana was THAT?!'),
+  ...box('GOKU:Frieza is finished.\nI got my pouch back.\nNow we can help Popoi.'),
   ...box('DRYAD:\nThe Tree has his spirit.\nCalm the Mana Beast.\nThen make the wish.'),
   ...box(mask&1?'PRIMM:And Dyluck.\nGOKU:And Dyluck. Everyone.':'KING KAI:Everyone, Goku.\nGOKU:Everyone.'),
-  ...box('LUKA:What in the name\nof Mana was THAT?!'),
   ...box('LUKA:All the Mana in this\nworld... nothing beside\nthat ki! Such overwhelming\npower!'),
-  ...box('GOKU:He finally went\nall out. That was a fight!'),
+  ...box('GOKU:He really went\nall out. That was a fight!'),
   ...box('LUKA:The core is still\nbreaking! Five minutes!\nGOKU:One fight left.\nI can do that.'),
   0x30,0x4e,8,0x39,2,0xcd,0x38,0x39,3,0xcd,7,...jump(0x429),0]);
  return e;

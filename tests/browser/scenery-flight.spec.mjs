@@ -1,5 +1,9 @@
 import{test,expect}from'@playwright/test';import{existsSync,readFileSync,writeFileSync}from'node:fs';
 const cases=[
+ {"set":20,"kind":"entrance gap","map":255,"name":"manafort entrance middle seam","tile":119,"layer":0,"x":328,"y":408,"a":{"x":312,"y":408,"terrain":2},"b":{"x":360,"y":408,"terrain":2},"dx":1,"dy":0},
+ {"set":20,"kind":"entrance gap","map":255,"name":"manafort entrance upper seam","tile":119,"layer":0,"x":360,"y":392,"a":{"x":360,"y":376,"terrain":2},"b":{"x":360,"y":408,"terrain":2},"dx":0,"dy":1},
+ {"set":20,"kind":"entrance gap","map":255,"name":"manafort entrance side rim","tile":135,"layer":0,"x":248,"y":376,"a":{"x":216,"y":376,"terrain":2},"b":{"x":264,"y":376,"terrain":2},"dx":1,"dy":0},
+ {"set":20,"kind":"entrance gap","map":255,"name":"manafort entrance long seam","tile":119,"layer":0,"x":296,"y":392,"a":{"x":248,"y":392,"terrain":2},"b":{"x":328,"y":392,"terrain":2},"dx":1,"dy":0},
  {"set":5,"kind":"bank","map":22,"name":"turtleisland exterior","tile":81,"layer":0,"x":216,"y":232,"a":{"x":216,"y":216,"terrain":1},"b":{"x":216,"y":264,"terrain":2},"dx":0,"dy":1},
  {"set":5,"kind":"small","map":22,"name":"turtleisland exterior","tile":127,"layer":0,"x":408,"y":264,"a":{"x":408,"y":248,"terrain":2},"b":{"x":408,"y":280,"terrain":2},"dx":0,"dy":1},
  {"set":31,"kind":"bank","map":47,"name":"windpalace exterior","tile":121,"layer":0,"x":232,"y":120,"a":{"x":216,"y":120,"terrain":1},"b":{"x":248,"y":120,"terrain":0},"dx":1,"dy":0},

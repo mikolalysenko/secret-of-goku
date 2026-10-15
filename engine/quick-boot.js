@@ -18,8 +18,11 @@ export async function bootLateGame({pump,mod}){
   });
   try{
     for(const p of patches)rom.set(p.bytes,p.start);
-    // Eight-frame taps survive all phases of the native menu input scan.
-    for(const[frames,buttons]of[[960],[8,[3]],[180],[8,[0]],[180]])await pump(frames,buttons);
+    // Existing native saves make GAME FILE the default selection. Move to
+    // NEW GAME explicitly, without clearing or replacing battery saves.
+    // Eight-frame taps survive all phases of the native menu input scan;
+    // Up is harmless when an empty cartridge already selects NEW GAME.
+    for(const[frames,buttons]of[[960],[8,[3]],[180],[8,[4]],[8],[8,[0]],[180]])await pump(frames,buttons);
     if(!mod.nameEditor)throw Error('The native new-game initializer did not open.');
     await pump(8,[3]);
     for(let i=0;i<60&&!(mod.status.map===431&&mod.canAttack);i++)await pump(24);

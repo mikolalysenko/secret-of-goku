@@ -2,6 +2,8 @@
 
 The charge, beam, punch burst and Super Saiyan aura use 34 original spell OBJ cells decoded from the loaded US ROM. `engine/native-effects.json` contains offsets, assembly descriptors, palette rotations and capture provenance, not game graphics bytes. `engine/native-effects.js` decodes them when a verified ROM is loaded.
 
+The Frieza collateral montage also uses 24 original Exploder and Fireball cells, assembled into seven explosion frames and three ember frames. `engine/native-combustion-data.js` records their ROM addresses, native OBJ flips, assembly positions and independent capture hashes. Outward bursts use exact quarter turns; persistent fires use staggered native animation frames. Damaged roofs are a separate copy of the town map, with selected roof tiles replaced by that town's earth or paving and fragments cut from its original roof pixels. Debris stays attached to map coordinates through camera pans. Neither the cartridge nor the running battle's tilemap is changed.
+
 | Group | Cells | Original spell |
 | --- | ---: | --- |
 | Charge orb | 5 | Lucent Beam |

@@ -16,18 +16,21 @@ function fixture(earned=7){
   const challenge=createBeastChallenge(snes,mod);mod.challenge=challenge;
   return{mod,challenge,notices,position,cpu,tick:(n=1)=>{for(let i=0;i<n;i++)challenge.tick();}};
 }
-test('all seven Balls force seed feeding, earned wards matter, and no Balls are delivered',()=>{
+test('seven Balls force feeding; every distinct Beast hit hurts, including with an older ward checkpoint',()=>{
   const f=fixture(),{mod,challenge,cpu}=f;
   challenge.choose(false);f.tick();assert.equal(challenge.dangerous,true);assert.equal(mod.read16(0xe782),65535);
   challenge.choose(true);f.tick();assert.equal(mod.read16(0xe782),65535);assert.equal(challenge.dangerous,true);
   assert.equal(challenge.damage({species:127},8191),1023);assert.equal(challenge.damage({species:87},8191),8191);
-  challenge.restore({...challenge.snapshot(),wards:2}); // two wards remain after earlier hits
-  mod.write16(0xe1f1,450);cpu.cycle();assert.equal(mod.read16(0xe1f1),0);assert.equal(challenge.status.wards,1);
-  mod.write16(0xe1f1,450);cpu.cycle();assert.equal(challenge.status.wards,1,'One spell animation cannot consume every ward');
-  f.tick(90);mod.write16(0xe1f1,450);cpu.cycle();assert.equal(challenge.status.wards,0);
-  f.tick(90);mod.write16(0xe1f1,450);cpu.cycle();assert.equal(mod.read16(0xe1f1),450,'No ward leaves damage to the native engine');
+  challenge.restore({...challenge.snapshot(),wards:7,wardFlash:30});
+  mod.write16(0xe1f1,450);cpu.cycle();assert.equal(mod.read16(0xe1f1),450);assert.equal(challenge.status.hits,1);
+  mod.write16(0xe1f1,450);cpu.cycle();assert.equal(mod.read16(0xe1f1),0,'One spell cannot repeatedly hit during recovery');
+  f.tick(90);mod.write16(0xe1f1,450);cpu.cycle();assert.equal(mod.read16(0xe1f1),450);assert.equal(challenge.status.hits,2);
+  assert.equal('wards' in challenge.snapshot(),false);assert.equal('wardFlash' in challenge.snapshot(),false);
+  assert.ok(f.notices.every(text=>!/ward|blocked/i.test(text)));
+  mod.write16(0xe1b0,0x1000);mod.write16(0xe1f1,999);cpu.cycle();
+  assert.equal(mod.read16(0xe1f1),999,'Native healing bypasses damage scaling and recovery');assert.equal(challenge.status.hits,2);
   const q=createDragonQuest({read8:()=>0});q.collect(1);q.collect(2);assert.equal(q.status.earned,2);assert.equal(q.status.count,2);
-  q.restore({mask:127,seedMask:6,delivered:5});assert.equal(q.status.earned,2,'Legacy delivered Balls cannot count as earned wards');
+  q.restore({mask:127,seedMask:6,delivered:5});assert.equal(q.status.earned,2,'Legacy delivered Balls cannot count as collected');
   const textQuest=createDragonQuest({radio:{say:text=>{encodeText(text);assert.ok(wrapText(text).split('\n').length<=3);}}});
   for(let i=0;i<7;i++)textQuest.collect(i);
 });
@@ -74,6 +77,6 @@ test('all seven real seed visits are required; legacy emergency Balls cannot unl
   assert.equal(f.challenge.status.fed,false);
   for(const i of[1,3,4,5])q.collect(i);assert.equal(q.status.seedCount,6);assert.equal(f.challenge.choose(true),false);
   q.collect(6);assert.equal(q.status.canFeed,true);assert.equal(q.status.earned,7);assert.equal(q.status.delivered,0);
-  assert.equal(f.challenge.choose(true),true);assert.equal(f.challenge.status.wards,7);assert.equal(q.collect(6),false);
+  assert.equal(f.challenge.choose(true),true);assert.equal(f.challenge.status.fed,true);assert.equal(q.collect(6),false);
   const saved=q.snapshot();q.restore(saved);assert.equal(q.status.canFeed,true);
 });

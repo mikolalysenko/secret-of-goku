@@ -214,12 +214,9 @@ export function createNativeStory(snes,mod){
       }
       entries.set(0xc00000+eventRange(cart.data,0x429).start,()=>customPointers.get(mod.worldKi?.status.fortressDestroyed?0x8f:0x429));
       entries.set(0xc00000+eventRange(cart.data,0x93).start,()=>customPointers.get(mod.quest?.status.held===7&&mod.quest.status.seedMask===127?0x94:0x93));
-      const wardAdvice=Array.from({length:8},(_,count)=>allocate([
-        // Missing Balls have already been acknowledged. Move directly into
-        // the fight; the seven-Ball route still forces Goku to feed the Beast.
-        0x10,count===7?0x96:0x95,0,
-      ],0x9a,3));
-      entries.set(0xc00000+eventRange(cart.data,0x9a).start,()=>wardAdvice[mod.quest?.status.earned??0]);
+      // All seven seeds force Goku's power-up challenge. Missing Balls have
+      // already been acknowledged; proceed directly into the ordinary fight.
+      entries.set(0xc00000+eventRange(cart.data,0x9a).start,()=>customPointers.get(mod.quest?.status.canFeed?0x96:0x95));
       entries.set(0xc00000+eventRange(cart.data,0x96).start,()=>customPointers.get(mod.quest?.status.canFeed?0x96:0x95));
       const advice=Array.from({length:8},(_,count)=>allocate([0x51,0x01,...box(`DRAGON BALLS: ${count} / 7\n${count===7?'All seven! Calm the Beast,\nthen make the wish.':'Find the Balls inside the\nseven palace Mana Seeds.'}`),...custom.get(0x85).slice(2)],0x85,3));
       entries.set(0xc00000+eventRange(cart.data,0x85).start,()=>advice[mod.quest?.status.count??0]);
@@ -252,8 +249,6 @@ has sensed someone
 following their power.
 Speak to her before wishing.`),...choice('Visit Dryad?\n',[{label:'Later',x:2,to:0},{label:'Go',x:17,to:F.travel}])],0x85,0);
       route(0x85,()=>mod.frieza?.unresolved?customPointers.get(F.reminder):mod.frieza?.eligible?invitation:null);
-      const discVictory=variants(F.victory,mask=>buildFriezaEvents(cart.data,mask,{discVictory:true}).get(F.victory));
-      route(F.victory,mask=>mod.frieza?.status.discHits?discVictory[mask]:null);
       const friezaEnding=[false,true].map(member=>variants(0x42f,mask=>buildFriezaEnding(mask,member)));
       const badEndings=Object.fromEntries(['fortress','balls','frieza','beast'].map(reason=>[reason,allocate(buildBadEnding(reason),0x42f,0)]));
       route(0x42f,mask=>{

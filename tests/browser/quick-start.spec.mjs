@@ -1,5 +1,5 @@
 import {test,expect} from '@playwright/test';
-import {existsSync} from 'node:fs';
+import {existsSync,readFileSync} from 'node:fs';
 
 test('quick checkpoints build from the ROM, reload from browser storage, and preserve the manual slot',async({page})=>{
   test.setTimeout(180000);test.skip(!existsSync('.local/rom/secret-of-mana-us.sfc'),'Requires the private ROM.');
@@ -34,10 +34,12 @@ test('late checkpoints build from a fresh ROM and reload the playable Frieza bat
   const cached=await page.evaluate(()=>{mana.pause();return{state:mana.mod.frieza.status,map:mana.mod.status.map,sram:mana.hash(mana.snes.cart.sram),rom:mana.hash(mana.snes.cart.data)}});
   expect(cached.map).toBe(246);expect(cached.state).toMatchObject({stage:'battle',permanent:true,fallen:true,hp:96000});
   expect(cached.sram).toBe(start.sram);expect(cached.rom).toBe(start.rom);expect(errors).toEqual([]);
-  const orbit=await page.evaluate(async()=>{await mana.quickStart('orbit');mana.pause();return{map:mana.mod.status.map,space:mana.mod.frieza.orbit,rom:mana.hash(mana.snes.cart.data)}});
-  expect(orbit.map).toBe(246);expect(orbit.space.kind).toBe('frieza-orbit');expect(orbit.rom).toBe(start.rom);
+  const orbit=await page.evaluate(async()=>{await mana.quickStart('orbit');mana.pause();return{map:mana.mod.status.map,space:mana.mod.frieza.orbit,surge:mana.mod.frieza.status.boss.surge,rom:mana.hash(mana.snes.cart.data)}});
+  expect(orbit.map).toBe(246);expect(orbit.space).toBe(null);expect(orbit.surge).toMatchObject({kind:'frieza-cosmic',age:1});expect(orbit.rom).toBe(start.rom);
   await page.locator('#native-restore').click();expect(await page.evaluate(()=>mana.mod.frieza.orbit)).toBe(null);
-  await page.goto('/?start=orbit');await page.waitForFunction(()=>mana.ready&&!!mana.mod.frieza.orbit,{},{timeout:15000});
+  await page.goto('/?start=orbit');await page.waitForFunction(()=>mana.ready&&!!mana.mod.frieza.status.boss.surge,{},{timeout:15000});
+  const transition=await page.evaluate(()=>{mana.pause();const s=mana.mod.frieza.status.boss.surge;mana.run(1800);return{age:s.age,kind:s.kind,space:mana.mod.frieza.orbit?.kind,canAttack:mana.mod.canAttack};});
+  expect(transition.age).toBeLessThan(72);expect(transition).toMatchObject({kind:'frieza-cosmic',space:'frieza-orbit',canAttack:true});
   expect(errors).toEqual([]);
 });
 
@@ -48,7 +50,7 @@ test('all finale query links initialize native scenes, preserve saves and show l
  await page.waitForFunction(()=>mana.ready&&mana.mod.status.map===431,{},{timeout:30000});
  const initial=await page.evaluate(async()=>{mana.pause();mana.snes.cart.write(0x30,0x7fff,0xa5);mana.battery.flush();await mana.saveCheckpoint();return{rom:mana.hash(mana.snes.cart.data),sram:mana.hash(mana.snes.cart.sram)}});
  await page.getByText('Test scenes',{exact:true}).click();
- await expect(page.locator('#quick-checkpoints a')).toHaveCount(12);
+ await expect(page.locator('#quick-checkpoints a')).toHaveCount(13);
  for(const kind of['fortress','flight','beast','good-ending','bad-ending','explosion']){
    await page.goto(`/?start=${kind}`);await page.waitForFunction(()=>mana.ready,{},{timeout:30000});
    const state=await page.evaluate(()=>{mana.pause();const m=mana.mod;return{map:m.status.map,canAttack:m.canAttack,flight:m.worldFlight,hp:m.status.hp,challenge:m.challenge.status,ending:m.ending.status,rom:mana.hash(mana.snes.cart.data),sram:mana.hash(mana.snes.cart.sram),error:m.story.status.error};});
@@ -75,4 +77,27 @@ test('unknown query scenes safely start the ordinary game',async({page})=>{
  await page.goto('/?start=constructor');await page.waitForFunction(()=>mana.ready);
  expect(await page.evaluate(()=>mana.mod.frieza.fighting)).toBe(false);
  await expect(page.getByText('Unknown test scene.',{exact:false})).toBeVisible();
+});
+
+test('orbit query starts with an existing native GAME FILE and preserves its save and manual checkpoint',async({page})=>{
+ test.setTimeout(90000);test.skip(!existsSync('.local/rom/secret-of-mana-us.sfc')||!existsSync('.local/graphics-audit/party.json'),'Requires private ROM and fixture.');
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto('/');await page.waitForFunction(()=>mana.ready);
+ const saved=await page.evaluate(async state=>{
+  mana.pause();state.romHash=mana.hash(mana.snes.cart.data);mana.restore(state);Object.assign(mana.mod.options,{enabled:true,power:true});mana.run(3);
+  // Use the native save routine and checksum, so the title really selects
+  // GAME FILE. A lone SRAM sentinel does not reproduce that menu branch.
+  const c=mana.snes.cart.data,r=mana.snes.ram,old=c.slice(0x742b0,0x742b3);
+  try{c.set([0x10,0x50,0],0x742b0);r.set([1,0xb0,0x42,0xc7],0xd0);mana.run(180);for(let i=0;i<5;i++){mana.run(2,[0]);mana.run(100);}}
+  finally{c.set(old,0x742b0);}
+  mana.battery.flush();await mana.saveCheckpoint();
+  return{sram:mana.hash(mana.snes.cart.sram),metadata:mana.battery.metadataFor(0),map:mana.mod.status.map};
+ },JSON.parse(readFileSync('.local/graphics-audit/party.json')));
+ expect(saved.metadata).toBeTruthy();
+ await page.goto('/?start=orbit');await page.waitForFunction(()=>mana.ready,{},{timeout:45000});
+ const result=await page.evaluate(()=>{mana.pause();return{map:mana.mod.status.map,transition:mana.mod.frieza.status.boss?.surge?.kind,sram:mana.hash(mana.snes.cart.sram),metadata:mana.battery.metadataFor(0)};});
+ expect(result).toEqual({map:246,transition:'frieza-cosmic',sram:saved.sram,metadata:saved.metadata});
+ await expect(page.locator('#lab-message')).toContainText('Frieza: transition to space ready');
+ await page.locator('#native-restore').click();expect(await page.evaluate(()=>mana.mod.status.map)).toBe(saved.map);
+ expect(errors).toEqual([]);
 });

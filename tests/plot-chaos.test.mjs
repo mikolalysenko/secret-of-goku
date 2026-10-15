@@ -79,6 +79,15 @@ test('old checkpoints discard generic barrier chatter but keep rewards and allow
   tick();assert.equal(radio.status.current.text,'Found a Dragon Ball!');assert.equal(radio.defeatedBarrier('gold-tower'),true);
   tick(100);assert.equal(radio.status.current.text,barrierReactions['gold-tower'][0]);
 });
+test('old checkpoints discard retired ward messages without losing other dialogue',()=>{
+  const{radio,tick,mod}=radioFixture();mod.charging=false;
+  radio.restore({current:{kind:'ward',text:'MANA WARD:One hit blocked.',remaining:100},queue:[
+    {kind:'quest',text:'Water Ball and a Mana Ward.',remaining:100},
+    {kind:'story',text:'GOKU:Let us finish this!',remaining:100},
+  ]});
+  assert.equal(radio.status.current,null);assert.equal(radio.status.queued,1);
+  tick();assert.equal(radio.status.current.text,'GOKU:Let us finish this!');
+});
 test('a shortcut remark does not follow Goku into another room',()=>{
   const{mod,radio,tick}=radioFixture();mod.charging=false;
   radio.defeatedBarrier('gold-tower');tick();assert.equal(radio.status.current.kind,'barrier');

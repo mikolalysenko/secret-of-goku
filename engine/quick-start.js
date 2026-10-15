@@ -4,11 +4,11 @@ import {bootLateGame} from './quick-boot.js';
 import {activateTwilight} from './frieza-crisis.js';
 import {friezaEvents} from './frieza-events.js';
 import {cosmicDuration} from './frieza-cinematic.js';
-export const quickStartRevision='orbital-finale-3';
+export const quickStartRevision='orbital-finale-5';
 export const quickStartLabels={
   title:'After title',sword:'After sword / pod crash',late:'After Sunken Continent',
   fortress:'Mana Fortress deck',flight:'Fortress aerial shot',
-  frieza:'Frieza / Thanatos showdown',battle:'Frieza battle',orbit:'Frieza in space',
+  frieza:'Frieza / Thanatos showdown',battle:'Frieza battle',orbit:'Frieza: transition to space',space:'Frieza: space battle',
   beast:'Upgraded Mana Beast',
   'good-ending':'Good ending', 'bad-ending':'Bad ending',explosion:'Planet explosion',
 };
@@ -122,7 +122,7 @@ export async function buildLateCheckpoint(kind,{pump,mod,capture,cache,progress}
   mod.write8(0xcf4e,6);mod.frieza.onEvent(friezaEvents.battle);
   if(!mod.frieza.fighting||!mod.canAttack)throw Error('The Frieza battle did not start.');
   mod.cancelInput();mod.write16(0xe182,999);await cache('battle',capture());
-  if(kind==='orbit'){
+  if(kind==='orbit'||kind==='space'){
     progress('Preparing the orbital battle…');
     // Use the real phase handoffs, fast-forwarding only their test-scene
     // clocks. This keeps the arena and orbital spawn in the combat owner.
@@ -130,6 +130,12 @@ export async function buildLateCheckpoint(kind,{pump,mod,capture,cache,progress}
       mod.frieza.hit(mod.frieza.entity(),1e8);
       await pump(1);
       const state=mod.frieza.snapshot();
+      // Orbit starts at the end of ground phase two, before the collateral
+      // montage and pullback. Space remains a direct combat-only fixture.
+      if(phase===1&&kind==='orbit'){
+        if(state.boss.surge?.kind!=='frieza-cosmic')throw Error('The transition to space did not start.');
+        mod.cancelInput();mod.write16(0xe182,999);await cache('orbit',capture());return;
+      }
       state.boss.surge.age=phase===0?379:cosmicDuration-1;
       if(phase===0)state.boss.muscular=true;
       mod.frieza.restore(state);mod.radio.restore({firstFlight:true});
@@ -143,6 +149,6 @@ export async function buildLateCheckpoint(kind,{pump,mod,capture,cache,progress}
     }
     if(!mod.frieza.orbit)throw Error('The orbital battle did not start.');
     const direct=mod.frieza.snapshot();direct.boss.space.intro=0;direct.boss.guard=0;mod.frieza.restore(direct);
-    mod.cancelInput();mod.write16(0xe182,999);await cache('orbit',capture());
+    mod.cancelInput();mod.write16(0xe182,999);await cache('space',capture());
   }
 }

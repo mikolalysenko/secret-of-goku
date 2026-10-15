@@ -9,7 +9,7 @@ test('orbital battle keeps native map safe, counters balls, pauses in rings and 
   mana.pause();s.romHash=mana.hash(mana.snes.cart.data);mana.restore(s);const m=mana.mod;
   Object.assign(m.options,{enabled:true,power:true,superSaiyan:false});mana.snes.ram.fill(0,0xe200,0xe600);mana.run(3);
   const{buildLateCheckpoint}=await import('/engine/quick-start.js');
-  await buildLateCheckpoint('orbit',{mod:m,pump:async(f,b)=>mana.run(f,b),capture:()=>mana.snapshot(),cache:()=>{},progress:()=>{}});
+  await buildLateCheckpoint('space',{mod:m,pump:async(f,b)=>mana.run(f,b),capture:()=>mana.snapshot(),cache:()=>{},progress:()=>{}});
   document.querySelector('#native-pause').hidden=true;
  },JSON.parse(readFileSync(fixture)));
  const base=await page.evaluate(()=>mana.snapshot());writeFileSync(test.info().outputPath('orbit.json'),JSON.stringify(base));
@@ -32,20 +32,39 @@ test('orbital battle keeps native map safe, counters balls, pauses in rings and 
  expect(fight.menu.opened).toBe(true);expect(fight.menu.before).toBe(fight.menu.after);expect(fight.menu.resumed).toBeGreaterThan(fight.menu.after);
  expect(fight.injury).toBeLessThan(999);expect(fight.afterGround).toEqual(fight.ground);expect(fight.afterGrid).toBe(fight.grid);expect(fight.error).toBe(null);
  await page.evaluate(()=>{const m=mana.mod;m.frieza.hit(m.frieza.entity(),1e8);mana.run(2);});
+ expect(await page.evaluate(()=>mana.mod.frieza.orbit.clash.phase)).toBe('gather');
+ await page.evaluate(()=>mana.run(150));
  expect(await page.evaluate(()=>mana.mod.frieza.orbit.clash.phase)).toBe('charge');
  await page.locator('#screen').screenshot({path:test.info().outputPath('final-death-ball.png')});
  const failed=await page.evaluate(()=>{
   const m=mana.mod;mana.run(50,[10,1]);mana.run(1);const started=m.frieza.orbit.clash.phase;const saved=mana.snapshot();
-  mana.run(300,[0]);const failed={stage:m.frieza.status.stage,clash:m.frieza.orbit.clash.phase,hp:m.status.hp};mana.restore(saved);return{started,failed};
+  mana.run(450,[0]);const failed={stage:m.frieza.status.stage,clash:m.frieza.orbit.clash.phase,hp:m.status.hp};mana.restore(saved);return{started,failed};
  });
- expect(failed.started).toBe('struggle');expect(failed.failed.stage).toBe('battle');expect(failed.failed.clash).toBe('charge');expect(failed.failed.hp).toBeLessThan(999);
+ expect(failed.started).toBe('launch');expect(failed.failed.stage).toBe('battle');expect(failed.failed.clash).toBe('charge');expect(failed.failed.hp).toBeLessThan(999);
+ await page.evaluate(()=>mana.run(72));
  await page.locator('#screen').screenshot({path:test.info().outputPath('beam-struggle.png')});
  const win=await page.evaluate(()=>{
-  const m=mana.mod;for(let i=0;i<30&&m.frieza.status.stage==='battle';i++){mana.run(1,[0]);mana.run(3);}
+  const m=mana.mod;for(let i=0;i<100&&m.frieza.status.stage==='battle';i++){mana.run(1,[0]);mana.run(3);}
   return{stage:m.frieza.status.stage,hp:m.frieza.status.hp,phase:m.frieza.orbit.clash.phase,taps:m.frieza.orbit.clash.taps};
  });
  expect(win).toMatchObject({stage:'won',hp:0,phase:'win'});expect(win.taps).toBeGreaterThan(8);
  await page.locator('#screen').screenshot({path:test.info().outputPath('final-beam.png')});
+ const aftermath=await page.evaluate(()=>{
+  const m=mana.mod,saved=mana.snapshot(),grid=mana.hash(mana.snes.ram.slice(0x10000,0x18000));
+  mana.run(420);const expected=JSON.stringify(m.frieza.snapshot()),pixels=mana.hash(mana.pixels);
+  mana.restore(saved);mana.run(420);
+  const descent={stage:m.frieza.status.stage,age:m.frieza.orbit.clash.age,map:m.status.map};
+  const same=JSON.stringify(m.frieza.snapshot())===expected&&mana.hash(mana.pixels)===pixels;
+  const afterGrid=mana.hash(mana.snes.ram.slice(0x10000,0x18000));
+  for(let i=0;i<300&&!m.frieza.returnScene;i++)mana.run(1);
+  const touchdown={orbit:m.frieza.orbit,map:m.status.map,stage:m.frieza.status.stage,return:{...m.frieza.returnScene},safe:m.localFlight===false,locked:m.frieza.inputLocked};
+  mana.run(50);return{same,grid,afterGrid,descent,touchdown,landedStage:m.frieza.status.stage};
+ });
+ expect(aftermath.same).toBe(true);expect(aftermath.afterGrid).toBe(aftermath.grid);
+ expect(aftermath.descent).toMatchObject({stage:'won',map:246});expect(aftermath.descent.age).toBeGreaterThan(390);
+ expect(aftermath.touchdown).toMatchObject({orbit:null,map:246,stage:'won',safe:true,locked:true,return:{kind:'return',age:0}});
+ expect(aftermath.landedStage).toBe('won');
+ await page.locator('#screen').screenshot({path:test.info().outputPath('feet-first-return.png')});
  const result=await page.evaluate(()=>{
   const m=mana.mod;for(let f=0;f<6500&&m.status.map!==253;f+=50)mana.run(50,[11]);
   return{orbit:m.frieza.orbit,map:m.status.map,stage:m.frieza.status.stage,quest:m.quest.status,challenge:m.challenge.status,error:m.story.status.error};

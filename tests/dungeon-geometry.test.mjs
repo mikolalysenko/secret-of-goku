@@ -2,13 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDungeonGeometry,dungeonGroups,dungeonSpecialScenes} from '../engine/dungeon-geometry.js';
 import {createNativePlants} from '../engine/native-plants.js';
+import {createNativeLocalFlight} from '../engine/native-local-flight.js';
 
-function fixture(){
+function fixture({map=312,tileset=23|128}={}){
  const ram=new Uint8Array(0x20000),data=new Uint8Array(0x100000),word=(r,a,v)=>{r[a]=v&255;r[a+1]=v>>8;};
  const cpu={r:new Uint8Array(8),br:new Uint16Array(8),cyclesLeft:0,cycle(){}},snes={ram,cpu,cart:{data},frames:1};
- word(ram,0xdc,312);word(ram,0xc0,192);word(ram,0xc2,192);
- word(data,0x87000+312*2,0x2000);data[0x82002]=23|128;
- word(data,0x85000+312*2,0x1000);word(data,0x85002+312*2,0x100b);
+ word(ram,0xdc,map);word(ram,0xc0,192);word(ram,0xc2,192);
+ word(data,0x87000+map*2,0x2000);data[0x82002]=tileset;
+ word(data,0x85000+map*2,0x1000);word(data,0x85002+map*2,0x100b);
  data.set([0,15,0,0,0,255,0,15,0,0,0],0x81000);word(data,0xd0004,0x1000);data.set([22,22],0xd1000);
  const descriptor=(id,bytes,l=0)=>ram.set(bytes,0x1b800+l*0x400+id*4);
  const put=(x,y,id,l=0)=>{ram[0x10000+l*0x4000+y*128+x]=id;};
@@ -30,6 +31,23 @@ test('dungeon gap flight needs two shores and cannot use scripts, unplaced space
  for(let x=7;x<11;x++)f.put(x,5,187);f.g.invalidate();assert.equal(f.g.air(f.g.tile(5,5,0)),false);
  f.put(7,5,186);f.descriptor(186,[0x12,0x86,0,0]);f.g.invalidate();assert.equal(f.g.air(f.g.tile(5,5,0)),false,'walk-on triggers do not count as shores');
  assert.equal(f.g.tile(0,5,0),null);assert.equal(f.g.tile(12,5,0),null);
+});
+test('Fortress entrance seams are flyable between decks but retain the hull and tower boundaries',()=>{
+ const f=fixture({map:255,tileset:20|128}),h=createNativeLocalFlight(f.snes,{active:()=>true,phase:true});
+ for(const id of[64,65,103,104,119,120,135,136,151,152,167,168]){
+  f.descriptor(id,[0x13,6,0,0]);
+  for(let y=3;y<9;y++)for(const x of[5,6])f.put(x,y,id);
+  f.g.invalidate();h.dungeon.invalidate();
+  for(let x=74;x<=118;x++)assert.equal(h.canFly(x,88,0),true,`Entrance seam ${id}, x=${x}`);
+  assert.equal(h.canLand(88,88,0),false,'Goku must hover over the recessed seam');
+ }
+ f.descriptor(70,[0x73,6,0,0]);f.put(5,5,70);h.dungeon.invalidate();
+ assert.equal(h.canFly(88,88,0),false,'A tall engine tower is not a deck gap');
+ f.put(5,5,119);for(let x=7;x<12;x++)f.put(x,5,0);h.dungeon.invalidate();
+ assert.equal(h.canFly(88,88,0),false,'The same rim cannot open the outer sky');
+ f.put(7,5,186);f.descriptor(186,[0x12,0x86,0,0]);h.dungeon.invalidate();
+ assert.equal(h.canFly(88,88,0),false,'A scripted doorway is not a destination deck');
+ assert.equal(h.canFly(-8,88,0),false);assert.equal(h.canFly(192,88,0),false);h.dispose();
 });
 test('wall breaches sample open floor instead of repeating a decorative platform lip',()=>{
  const f=fixture();f.descriptor(15,[0x12,6,0,0]);f.put(4,5,15);

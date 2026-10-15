@@ -34,7 +34,7 @@ test('phase two retreats after its reveal and counters repeated melee; a finishi
  expect(result.max).toBe(64);expect(result.thresholdFrame).toBeLessThan(20);expect(result.cutFrame).toBeGreaterThanOrEqual(63);expect(result.lastBeam).toBeGreaterThanOrEqual(61);expect(errors).toEqual([]);
 });
 
-for(const kind of['battle','orbit'])test(`${kind}: native ring uses a stocked Senzu; fatal damage retries this phase without a death warp`,async({page})=>{
+for(const kind of['battle','space'])test(`${kind}: native ring uses a stocked Senzu; fatal damage retries this phase without a death warp`,async({page})=>{
  const errors=await start(page,kind);
  const result=await page.evaluate(()=>{
   const m=mana.mod,base=mana.snapshot();m.write16(0xe182,500);
@@ -47,20 +47,23 @@ for(const kind of['battle','orbit'])test(`${kind}: native ring uses a stocked Se
   mana.battleRetry.retry();mana.run(3);const retry={hp:m.status.hp,map:m.status.map,space:!!m.frieza.orbit,stock:[...mana.snes.ram.slice(0xcc48,0xcc54)].find(n=>(n&31)===5),canAttack:m.canAttack};
   return{opened,paused,healed,defeated,retry};
  });
- expect(result.opened&&result.paused).toBe(true);expect(result.healed).toEqual({hp:999,stock:0x85,canAttack:true,space:kind==='orbit'});
- expect(result.defeated).toEqual({hp:0,map:246,frozen:true,phase:kind==='orbit'?'frieza:2':'frieza:0'});
- expect(result.retry).toEqual({hp:999,map:246,space:kind==='orbit',stock:0xa5,canAttack:true});expect(errors).toEqual([]);
+ expect(result.opened&&result.paused).toBe(true);expect(result.healed).toEqual({hp:999,stock:0x85,canAttack:true,space:kind==='space'});
+ expect(result.defeated).toEqual({hp:0,map:246,frozen:true,phase:kind==='space'?'frieza:2':'frieza:0'});
+ expect(result.retry).toEqual({hp:999,map:246,space:kind==='space',stock:0xa5,canAttack:true});expect(errors).toEqual([]);
 });
 
 test('the orbital wave stays attached to Goku through movement, teleport and melee inputs',async({page})=>{
- const errors=await start(page,'orbit');
+ const errors=await start(page,'space');
  const result=await page.evaluate(()=>{
   const m=mana.mod,s=m.frieza.snapshot();s.boss.clock=9999;s.boss.shots=[];s.boss.warning=null;m.frieza.restore(s);
   mana.run(50,[10,1]);mana.run(1);const before={...m.frieza.orbit.hero};
   mana.run(3,[10,0,7]);mana.run(1);mana.run(3,[0,7]);
-  const o=m.frieza.orbit;return{before,hero:o.hero,beam:{x:o.beam.x,y:o.beam.y},teleport:o.teleport,punch:o.punch};
+  const o=m.frieza.orbit,colors=new Set();let whole=true;
+  for(let f=0;f<6;f++)for(const size of[16,32,48,64,80])m.kiArt.draw('death',f,80.2,90.4,size,(x,y,c)=>{colors.add(c);whole&&=Number.isInteger(x)&&Number.isInteger(y);});
+  return{before,hero:o.hero,beam:{x:o.beam.x,y:o.beam.y,heading:o.beam.heading},teleport:o.teleport,punch:o.punch,colors:colors.size,whole};
  });
- expect(result.hero).toEqual(result.before);expect(result.beam).toEqual(result.before);expect(result.teleport).toBe(0);expect(result.punch).toBe(0);expect(errors).toEqual([]);
+ expect(result.hero).toEqual(result.before);expect(result.beam).toMatchObject(result.before);expect(Number.isInteger(result.beam.heading)).toBe(true);
+ expect(result.teleport).toBe(0);expect(result.punch).toBe(0);expect(result.colors).toBeLessThanOrEqual(15);expect(result.whole).toBe(true);expect(errors).toEqual([]);
 });
 
 test('ground attacks have single projectiles, reduced damage, beam counters and working flight/IT after a hit',async({page})=>{

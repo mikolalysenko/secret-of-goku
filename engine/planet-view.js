@@ -6,6 +6,7 @@ import {fracturePlanet,fragmentPose} from './planet-fragments.js';
 import {createCollateralView} from './frieza-collateral-view.js';
 import {pullbackStart} from './frieza-cinematic.js';
 import {drawFriezaSprite} from './frieza-sprite.js';
+import {createOrbitEffects} from './orbit-effects.js';
 
 // Scatter once with an independent random sequence for each coordinate.
 // The former pair of modular strides made obvious diagonal rows of stars.
@@ -29,6 +30,7 @@ export function createPlanetView(snes,mod){
   const rgb=(r,g,b)=>1+r+(g<<5)+(b<<10);
   const blue=[rgb(4,7,20),rgb(6,17,30),rgb(16,26,31),rgb(31,31,31)];
   const put=(x,y,c)=>{x=Math.round(x);y=Math.round(y);if(c>0&&x>=0&&x<256&&y>=0&&y<224)surface[y*256+x]=c;};
+  const orbitFx=createOrbitEffects(snes,mod,put);
   function disc(x,y,r,c){for(let yy=-r;yy<=r;yy++)for(let xx=-r;xx<=r;xx++)if(xx*xx+yy*yy<=r*r)put(x+xx,y+yy,c);}
   function line(x,y,xx,yy,c){const steps=Math.ceil(Math.max(Math.abs(xx-x),Math.abs(yy-y)));for(let i=0;i<=steps;i++)put(x+(xx-x)*i/(steps||1),y+(yy-y)*i/(steps||1),c);}
   function blit(a,x,y,sx,sy,w,h){if(!a)return;for(let py=0;py<h;py++)for(let px=0;px<w;px++){const c=a.pixels[(sy+py)*a.width+sx+px];if(c)put(x+px,y+py,c);}}
@@ -45,6 +47,10 @@ export function createPlanetView(snes,mod){
     }
   }
   function planet(target,night,view={x:87,y:140,r:72}){
+    // Mode 7-style fixed camera increments and four palette shade bands.
+    // Texture movement stays on a small integer grid, without smooth light
+    // gradients introducing hundreds of interpolated sprite colors.
+    target={x:Math.round(target.x/8)*8,y:Math.round(target.y/8)*8};
     const key=`${target.x}:${target.y}:${night}:${view.x}:${view.y}:${view.r}`;if(key===globeKey&&globe)return;
     globeKey=key;globe=new Uint16Array(256*224);fragments=null;
     // Put the actual strike site on the upper-right limb of the globe.
@@ -56,8 +62,8 @@ export function createPlanetView(snes,mod){
       if(d>1)color=blue[d<1.035?1:0]-1;
       else{
         const z=Math.sqrt(1-d),wx=(lon+Math.atan2(nx,z))*4096/(Math.PI*2),wy=(lat+Math.asin(ny))*4096/Math.PI;
-        const raw=texture.sample(wx,wy,night),light=Math.max(.26,Math.min(1,.35+z*.65-nx*.16-ny*.18));
-        const shade=c=>Math.min(31,Math.floor(c*light+((x+y)&1)*.4));
+        const raw=texture.sample(wx,wy,night),light=Math.max(1,Math.min(4,Math.round((.35+z*.65-nx*.16-ny*.18)*4)));
+        const shade=c=>(c*light)>>2;
         color=shade(raw&31)|(shade(raw>>5&31)<<5)|(shade(raw>>10&31)<<10);
       }
       globe[y*256+x]=color+1;
@@ -67,7 +73,12 @@ export function createPlanetView(snes,mod){
     planet(target,night,view);
     for(let y=0;y<224;y++)for(let x=0;x<256;x++){const c=globe[y*256+x];if(c)put(x+shake,y,c);}
   }
-  const drawOrbit=createOrbitView(snes,mod,{put,disc,line,spell,rgb,drawPlanet});
+  const pale=(color,alpha)=>{
+    const c=color-1,mix=(n,t)=>Math.round(n+(t-n)*alpha);
+    return rgb(mix(c&31,28),mix(c>>5&31,30),mix(c>>10&31,31));
+  };
+  function flash(alpha){for(let i=0;i<surface.length;i++)surface[i]=pale(surface[i],alpha);}
+  const drawOrbit=createOrbitView(snes,mod,{put,disc,line,spell,rgb,drawPlanet,flash});
   const collateral=createCollateralView(snes,{put,disc,line,rgb});
   function beam(age){
     const start={x:132,y:90},dx=.66,dy=-.7513,envelope=Math.max(0,Math.min(1,(age+8)/14,(112-age)/30));
@@ -132,35 +143,24 @@ export function createPlanetView(snes,mod){
     const view={x:Math.round(95*ease),y:Math.round(282-128*ease),r:Math.round(240-136*ease)};
     drawPlanet(state.target,true,0,view);
     // Project everything through ONE camera, in planet-radius units. The
-    // strike site, Death Ball, beam widths, shock wave and particles all
+    // strike site, Death Ball and beam widths all
     // shrink and move with the globe instead of sliding over the zoom.
-    const project=(x,y)=>({x:view.x+x*view.r,y:view.y+y*view.r});
-    const source={x:.62,y:-.69},dx=.66,dy=-.7513,point=d=>project(source.x+dx*d,source.y+dy*d);
+    const project=(x,y)=>({x:Math.round(view.x+x*view.r),y:Math.round(view.y+y*view.r)});
+    const source={x:.62,y:-.69},dx=181/256,dy=-181/256,point=d=>project(source.x+dx*d,source.y+dy*d);
     const origin=point(0),scale=view.r/104;
     if(t>=35&&t<190){
       const envelope=Math.max(0,Math.min(1,(t-35)/18,(190-t)/35)),width=13*envelope*scale;
       const end=point(Math.min(3,(t-35)/24));
-      for(let y=0;y<224;y++)for(let x=0;x<256;x++){
-        const along=(x-origin.x)*dx+(y-origin.y)*dy,across=Math.abs((x-origin.x)*dy-(y-origin.y)*dx);
-        const radius=width*Math.min(1,.35+along/(28*scale));
-        if(along<0||along>Math.hypot(end.x-origin.x,end.y-origin.y)||across>radius)continue;
-        const edge=(radius-across)/scale;put(x,y,blue[edge<1.5?0:edge<3?1:edge<5?2:3]);
-      }
+      orbitFx.beam(origin.x,origin.y,end.x,end.y,width,t);
     }
     if(t<140){
       const distance=t<70?1.15*(1-t/70):((t-70)/30)**1.4,orb=point(distance);
-      mod.kiArt?.draw('death',(t>>3)%6,orb.x,orb.y,Math.round(29*scale),put);
-    }
-    if(t>=70&&t<160){
-      const radius=(t-70)*.007*view.r;
-      for(let i=0;i<96;i++){const a=i*Math.PI/48;put(origin.x+Math.cos(a)*radius,origin.y+Math.sin(a)*radius*.34,t<86?blue[3]:blue[1]);}
-      for(let i=0;i<12;i++){const age=t-70,a=i*2.39996,d=age*(.0008+i%4*.0004),p=project(source.x+Math.cos(a)*d,source.y+Math.sin(a)*d);put(p.x,p.y,t<105?blue[2]:rgb(10,13,19));}
+      mod.kiArt?.draw('death',(t>>3)%6,orb.x,orb.y,Math.round(29*scale/16)*16,put);
     }
     // Two tiny fighters leave the surface after the shot has passed. Their
     // final positions match the orbital encounter's opening composition.
     if(t>=150){
       const u=Math.min(1,(t-150)/70),g={x:origin.x+(156-origin.x)*u,y:origin.y+(155-origin.y)*u},f={x:origin.x+(202-origin.x)*u,y:origin.y+(57-origin.y)*u};
-      if(u<1){line(g.x,g.y,g.x-(g.x-origin.x)*.35,g.y-(g.y-origin.y)*.35,blue[1]);line(f.x,f.y,f.x-(f.x-origin.x)*.35,f.y-(f.y-origin.y)*.35,rgb(25,7,25));}
       const a=mod.spriteLayer.atlas.ssj;
       if(a)for(let y=0;y<16;y++)for(let x=0;x<16;x++){const c=a.pixels[(128+y*2)*a.width+34*32+x*2];if(c)put(g.x-8+x,g.y-8+y,c);}
       drawFriezaSprite(mod.frieza.portraitAtlas,4,f.x,f.y+10,put,{tiny:true,flip:true});
@@ -215,6 +215,8 @@ export function createPlanetView(snes,mod){
   p.getColor=function(sub,x,y){
     const result=previous.call(this,sub,x,y);
     if(sub||y>224||!mod.options.enabled||!mod.gokuActive||!texture)return result;
+    const returning=mod.frieza?.returnScene;
+    if(returning&&returning.age<24)return[pale(result[0]+1,1-returning.age/24)-1,result[1],result[2]];
     const orbit=mod.frieza?.orbit;
     // Let the cartridge show and operate its real inventory/status pages.
     if(orbit&&(!mod.nativeField||mod.read8(0xec)&0xfe))return result;

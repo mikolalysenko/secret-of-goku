@@ -163,7 +163,7 @@ export function createNativeRadio(snes,mod){
     snapshot(){return structuredClone({barrierVersion:2,current,queue,held,warned,warning,cooldown,firstFlight,lastMap,barriers:[...barriers],barrierCount,barrierCooldown});},
     restore(saved){
       const s=saved?structuredClone(saved):null;
-      const keep=m=>m.kind!=='barrier'||s?.barrierVersion===2&&Object.hasOwn(barrierReactions,m.barrierId);
+      const keep=m=>m.kind!=='ward'&&!m.text?.includes('Mana Ward')&&(m.kind!=='barrier'||s?.barrierVersion===2&&Object.hasOwn(barrierReactions,m.barrierId));
       current=s?.current&&keep(s.current)?s.current:null;queue=(s?.queue??[]).filter(keep);
       held=s?.held??0;warned=s?.warned??(s?.nextWarning>90);warning=s?.warning??0;cooldown=s?.cooldown??0;firstFlight=!!s?.firstFlight;lastMap=s?.lastMap??null;
       barriers=new Set(s?.barriers??[]);barrierCount=s?.barrierCount??0;barrierCooldown=s?.barrierVersion===2?(s.barrierCooldown??0):0;raster=key=null;visibilityFrame=-1;

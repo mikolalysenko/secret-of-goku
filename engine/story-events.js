@@ -147,7 +147,7 @@ export function buildStoryEvents(rom,mask=0,{crisis=false}={}){
     ...box(crisis?'LUKA:FIVE MINUTES, GOKU!\nPlease stop feeding it!\nGOKU:I will still finish\nwith time to spare.':'LUKA:WE ASKED YOU TO SAVE\nTHE WORLD. NOT SEASON IT.\nGOKU:Just a little stronger!\nI know you can do it!'),
     ...box('KING KAI:It has four times\nthe resistance to your ki!\nGOKU:And bigger muscles!\nThis is going to be GREAT.'),...jump(0x97),0]);
   events.set(0x97,[0x2d,6,255,255,...call(0x739),0x18,0xbc,0x30,0x0b,0x0f,...box(crisis?'KING KAI:Five minutes\nuntil the core blows!\nGOKU:Then let us finish!':'GOKU:All right, big guy.\nShow me what you can do!'),0]);
-  // Replaced at runtime by earned wards and the mandatory seven-seed feed.
+  // Replaced at runtime by the mandatory seven-seed feed when collected.
   events.set(0x9a,[...jump(0x95),0]);
   // A short wish scene replaces the retail credits montage, which forcibly
   // recruits Primm and assumes Popoi has just disappeared even on solo runs.

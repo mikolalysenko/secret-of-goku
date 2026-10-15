@@ -35,6 +35,10 @@ const sets=entries=>Object.fromEntries(Object.entries(entries).map(([k,v])=>[k,n
 export const dungeonAirTiles=sets({
  10:[...range(0,18),20,32,33,34,41,61,78,79,94,95,98,99,107,108,109,113,114,115,117,121,122,125,154],
  15:[73,83,85,88,89,90,105,106,115,140,148,151,152,168,185,188],
+ // The Fortress entrance uses the exterior hull tileset, unlike its rooms.
+ // Recessed seams and downward deck rims may connect two real deck floors;
+ // the towers, door housing and unbounded sky remain solid.
+ 20:[64,65,103,104,119,120,135,136,151,152,167,168],
  21:[0,14,15,35,49,50,51,52,65,66,67,68,70,71,72],
  23:[0,6,22,38,54,63,187],
 });
