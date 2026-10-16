@@ -11,7 +11,7 @@ import {beginClash,tickClash,tapClash,victoryTiming} from './frieza-finale.js';
 import {orbitHeading,orbitVector,orbitProjectile,orbitRush} from './orbit-pixels.js';
 import {createOrbitEffects} from './orbit-effects.js';
 import {orbitAim,orbitDefense,orbitAttackPattern,beginOrbitExchange,tickOrbitExchange} from './orbit-duel.js';
-import {createBossVictoryAudio,bossVictoryCue} from './boss-victory.js';
+import {createBossVictoryAudio,bossVictoryCue,bossVictoryTiming} from './boss-victory.js';
 import {createFriezaTreeView,treeTiming} from './frieza-tree-view.js';
 import {createEmperorBeamView,installAltarCamera,introTiming} from './frieza-intro.js';
 import {friezaScenePose,friezaDeathBallPose,templeFollowerPose,exteriorFollowerPose,coreTiming} from './frieza-staging.js';
@@ -237,7 +237,7 @@ export function createFrieza(snes,mod){
   get orbitMenu(){const o=api.orbit;return o&&mod.nativeField&&(mod.read8(0xec)&12)?orbitMenuView(o.hero):null;},
   get exteriorScene(){return on()&&map()===195&&(s.outdoorIntro||s.stage==='theft'||s.scene?.kind==='eighth');},
   get emperorPresent(){return on()&&!s.emperorKilled&&(s.stage==='theft'||s.scene?.kind==='emperor-wait');},
-  get music(){if(!on())return null;if(s.stage==='won')return s.boss?.space?.clash.age<victoryTiming.impact?'orbit':null;return s.boss?.space&&s.stage==='battle'?'orbit':s.stage==='battle'||s.scene?.kind==='gold'?'battle':['theft','showdown'].includes(s.stage)||s.scene?.kind==='eighth'||s.scene?.kind?.startsWith('tree-')&&s.scene.kind!=='tree-leave'?'arrival':null;},
+  get music(){if(!on())return null;if(s.stage==='won')return s.boss?.space?.clash.age<victoryTiming.impact+bossVictoryTiming.white?'orbit':null;return s.boss?.space&&s.stage==='battle'?'orbit':s.stage==='battle'||s.scene?.kind==='gold'?'battle':['theft','showdown'].includes(s.stage)||s.scene?.kind==='eighth'||s.scene?.kind?.startsWith('tree-')&&s.scene.kind!=='tree-leave'?'arrival':null;},
   get returnScene(){return on()&&map()===246&&s.scene?.kind==='return'?s.scene:null;},
   get stolenMask(){return s.stolen?s.stolenMask:0;},
   get cinematic(){const c=s.boss?.surge;return on()&&map()===246&&c?.kind==='frieza-cosmic'&&c.age>=collateralStart&&c.age<cosmicDuration?c:null;},

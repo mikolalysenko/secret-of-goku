@@ -1,16 +1,15 @@
 import {victoryTiming,ease} from './frieza-finale.js';
+import {bossVictoryTiming} from './boss-victory.js';
 import {createManaScoreRenderer,manaTracks} from './mana-score-renderer.js';
 
 // Separate score bus: never delays a hit or shares the Kamehameha vocal.
-// Five Minutes is a shipped recording; the four combat/training cues are
-// rendered at runtime from the running cartridge's own instrument samples.
+// Every cue, from the Five Minutes entrance to the combat and training
+// themes, is rendered at runtime from the cartridge's own instrument samples.
 export function createFriezaScore(mod,{rom=()=>mod.snes?.cart?.data}={}){
- let ctx=null,output=null,playing=null,lastFrame=-1,renderer=null,bankRom=null,arrival=null;
+ let ctx=null,output=null,playing=null,lastFrame=-1,renderer=null,bankRom=null;
  const stats={track:null,ready:false,error:null,rendered:[]},pcm=new Map(),buffers=new Map();
- const tracks=['arrival',...manaTracks];
- const bytes=(async()=>{const url=new URL('../assets/audio/music/arrival.wav',import.meta.url);url.search=new URL(import.meta.url).search;const r=await fetch(url);if(!r.ok)throw Error('Score unavailable: arrival');return r.arrayBuffer();})().catch(e=>{stats.error=e.message;return null;});
  let settle,rendered=new Promise(r=>settle=r);
- function refresh(){stats.ready=tracks.every(key=>buffers.has(key));if(manaTracks.every(key=>pcm.has(key)))settle();}
+ function refresh(){stats.ready=manaTracks.every(key=>buffers.has(key));if(manaTracks.every(key=>pcm.has(key)))settle();}
  function buffer(key){
   if(buffers.has(key)||!ctx)return buffers.get(key);
   const data=pcm.get(key);if(!data)return;
@@ -26,19 +25,19 @@ export function createFriezaScore(mod,{rom=()=>mod.snes?.cart?.data}={}){
   render();
   if(!audible||!context||context.state!=='running'){stop();return;}
   if(context!==ctx){stop();output?.disconnect();ctx=context;output=ctx.createGain();output.gain.value=.32;output.connect(ctx.destination);buffers.clear();stats.ready=false;
-   arrival=bytes.then(async b=>{if(!b)return;const decoded=await ctx.decodeAudioData(b.slice(0));if(context===ctx){buffers.set('arrival',decoded);refresh();}}).catch(e=>stats.error=e.message);
    for(const key of manaTracks)buffer(key);
   }
   const key=mod.ending?.active?null:mod.trial?.music??mod.frieza?.music;
   if(!key){stop();return;}
-  if(playing?.key!==key||mod.frame<lastFrame){stop();const b=key==='arrival'?buffers.get(key):buffer(key);if(b){const source=ctx.createBufferSource();source.buffer=b;source.loop=true;source.connect(output);const start=Math.max(ctx.currentTime,when??ctx.currentTime);source.start(start);playing={key,source,when:start};stats.track=key;}}
+  if(playing?.key!==key||mod.frame<lastFrame){stop();const b=buffer(key);if(b){const source=ctx.createBufferSource();source.buffer=b;source.loop=true;source.connect(output);const start=Math.max(ctx.currentTime,when??ctx.currentTime);source.start(start);playing={key,source,when:start};stats.track=key;}}
   const ending=mod.frieza?.orbit?.clash;
   let gain=mod.charging?.22:.32;
-  // Yield to the native boss-death sequence as the beam breaks through.
-  // The score stops at impact; neither pickup nor fanfare is ducked.
-  if(ending?.phase==='win')gain=.32*(1-ease(ending.age/victoryTiming.impact));
+  // As in the native boss deaths, the music plays on under the explosions
+  // and fades with the game's own fade command into the white-out. Neither
+  // the pickup nor the fanfare is ducked.
+  if(ending?.phase==='win'){const t=ending.age-victoryTiming.impact-bossVictoryTiming.fade;gain=.32*(1-ease(t/(bossVictoryTiming.white-bossVictoryTiming.fade)));}
   lastFrame=mod.frame;output.gain.setTargetAtTime(gain,ctx.currentTime,.12);
  }
  return{stats,update,clear:stop,resync(now){if(playing?.when>now)stop();},dispose(){stop();renderer?.dispose();output?.disconnect();},
-  get ready(){render();return Promise.all([arrival??bytes,bankRom?rendered:null]);},get nativeGain(){return playing ? .018 : 1;},connect(node){output?.connect(node);}};
+  get ready(){render();return bankRom?rendered:Promise.resolve();},get nativeGain(){return playing&&mod.frieza?.orbit?.clash?.phase!=='win'?.018:1;},connect(node){output?.connect(node);}};
 }

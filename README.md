@@ -63,7 +63,7 @@ The final attack is a beam struggle: Goku charges automatically, then **repeated
 
 Space combat uses whole-pixel movement and sixteen fixed projectile headings. Mana's original Lucent Beam, Lucid Barrier, Thunderbolt, Exploder and Fireball cells supply beams, charge effects, sparks, discs and explosions. Death Balls use a fixed fifteen-color palette and discrete sprite sizes. The globe keeps the original world-map texture, stepped rotation and four shading bands. Attacks use focused spell animations without speed lines, aiming reticles, expanding spark rings or scattered trails. The score settles during the aftermath, then rises for the descent.
 
-Three original SNES-style tracks accompany the entrance, battle and orbital phase. These are new compositions, not arrangements of the requested television themes. The reproducible score and asset provenance are linked in [CREDITS](CREDITS.md).
+The entrance, battle and orbital phase each have their own cue, played on Secret of Mana's own instruments, which are rendered at runtime from your ROM. The entrance is an original composition; the battle cues arrange Shunsuke Kikuchi's Frieza battle theme. Sources and rights are linked in [CREDITS](CREDITS.md).
 
 The good ending requires **seven personally collected Balls, defeated Frieza, victory over the upgraded Mana Beast, and an intact Fortress**. With seven seeds, Goku insists on powering up the Beast despite Kai's protests. Shenron then repairs the planet, revives Randi, Dyluck and the other victims, and restores Popoi only to a party that had recruited him. If Primm travelled with Goku, the original cliff scene reunites her with the revived Dyluck. Goku visits King Kai for a qualified congratulations. Both outcomes finish on an overhead map of Kai’s planet, with his house and car above Snake Way’s golden clouds. King Kai has animated sprite poses and Bubbles wanders around the lawn. Destroying the Fortress or skipping the required collection/fights instead dooms the planet: Goku escapes to Kai, who scolds him. King Kai never supplies missing Balls or rescues the world.
 
@@ -189,7 +189,7 @@ Open **http://127.0.0.1:5173** and select your ROM. Optionally import it with th
 | `engine/native-mod-save.js` + `battery.js` | Per-slot mod metadata bound to native SRAM records without changing cartridge save bytes |
 | `engine/shenron-ending.js`, `planet-view.js`, `kai-planet.js` | Summoning, restoration, planetary consequences and Snake Way epilogue |
 | `engine/frieza-orbit.js`, `frieza-orbit-view.js` | Orbital combat, ricochets and the charged/mash beam struggle |
-| `engine/frieza-score.js`, `engine/spc-score.js`, `engine/mana-instruments.js` | Frieza/Vegeta score: arrangements rendered at runtime from the cartridge's own Mana instrument bank, plus the original entrance cue |
+| `engine/frieza-score.js`, `engine/spc-score.js`, `engine/mana-instruments.js` | Frieza/Vegeta score: entrance, battle and training cues rendered at runtime from the cartridge's own Mana instrument bank |
 | `engine/native-plants.js` | Original destructible map tiles and native redraw |
 | `engine/dungeon-geometry.js` + `dungeon-demolition.js` | Live dungeon gap/wall validation, paired-layer breaches and room-colored debris |
 | `engine/native-flight.js` + `native-local-flight.js` | Direct world flight, local hover, collision and landing |

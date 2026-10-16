@@ -44,7 +44,7 @@ test('Frieza score changes from ominous entrance to battle and orbit, ducks nati
  expect(result.battle.track).toBe('battle');expect(result.battle.rms).toBeGreaterThan(.005);expect(result.orbit.track).toBe('orbit');expect(result.orbit.rms).toBeGreaterThan(.005);
  expect(result.paused.track).toBe(null);expect(result.paused.rms).toBeLessThan(.0001);expect(result.paused.gain).toBe(1);
  expect(result.resumed).toBe('orbit');expect(result.ended).toBe(1);expect(result.error).toBe(null);
- expect(result.rendered.sort()).toEqual(['battle','orbit','vegeta','vegeta-full-power']);
+ expect(result.rendered.sort()).toEqual(['arrival','battle','orbit','vegeta','vegeta-full-power']);
  expect(result.training.track).toBe('vegeta');expect(result.training.rms).toBeGreaterThan(.005);expect(result.training.gain).toBeLessThan(.05);
  expect(result.fullPower.track).toBe('vegeta-full-power');expect(result.fullPower.rms).toBeGreaterThan(.005);expect(result.returned).toEqual({track:null,gain:1});
 });

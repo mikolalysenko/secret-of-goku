@@ -172,7 +172,7 @@ test('orbital battle keeps native map safe, counters balls, pauses in rings and 
  expect(aftermath.white).toEqual([32767,32767,32767,32767]);
  expect(aftermath.same).toBe(true);expect(aftermath.afterGrid).toBe(aftermath.grid);
  expect(aftermath.descent).toMatchObject({stage:'won',map:246});expect(aftermath.descent.age).toBeGreaterThanOrEqual(victoryTiming.quiet-10);expect(aftermath.descent.age).toBeLessThan(victoryTiming.quiet);
- expect(aftermath.descent.audio.map(c=>c.name)).toEqual(['stop','death',...Array(6).fill('burst'),'fade',...Array(7).fill('burst'),'acquire','jingle']);
+ expect(aftermath.descent.audio.map(c=>c.name)).toEqual(['stop','death',...Array(6).fill('burst'),'fade',...Array(7).fill('burst'),'jingle']);
  expect(aftermath.descent.complete.at(-1).name).toBe('jingle');
  expect(aftermath.descent.frame-aftermath.descent.complete.at(-1).frame).toBeGreaterThanOrEqual(bossVictoryTiming.jingleFrames-12);
  expect(aftermath.touchdown).toMatchObject({orbit:null,map:246,stage:'won',safe:true,locked:true,return:{kind:'return',age:0}});

@@ -37,7 +37,10 @@ export function createArrangement({title,bpm,bars,echo,sections,roles}){
  function note(voice,at,len,pitch,patch,vol=100,options={}){
   if(!patches[patch])throw Error(`Unknown patch: ${patch}`);
   if(!(voice>=0&&voice<8)||!(at>=0&&at<total)||!(len>0))throw Error(`Invalid note at beat ${at}`);
-  voices[voice].events.push({at,len,patch,note:pitch,vol,...options});
+  // A voice keys one note at a time: a later note on the same beat (a fill
+  // snare over a kick, a climbing bass over the figure) replaces the first.
+  const events=voices[voice].events,same=events.findIndex(e=>e.at===at);if(same>=0)events.splice(same,1);
+  events.push({at,len,patch,note:pitch,vol,...options});
  }
  // [beat, pitch, length, velocity scale]; null pitches are rests.
  function phrase(voice,at,notes,patch,vol=100,transpose=0,options={}){

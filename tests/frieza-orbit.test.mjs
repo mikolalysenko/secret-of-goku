@@ -83,7 +83,7 @@ test('the beam struggle needs sustained fresh presses and every enemy surge push
  for(const s of[fast,steady]){assert.equal(s.o.clash.phase,'win');assert.equal(s.surges,3);assert.ok(s.o.clash.taps>75);assert.equal(s.damage,0);}
  assert.ok(steady.frames>fast.frames);assert.equal(slow.o.clash.phase,'recoil');assert.equal(held.o.clash.phase,'recoil');assert.equal(slow.damage,420);
  assert.ok(victoryTiming.quiet-victoryTiming.jingle>=bossVictoryTiming.jingleFrames);
- assert.ok(victoryTiming.reward<victoryTiming.acquire&&victoryTiming.acquire<victoryTiming.jingle);
+ assert.ok(victoryTiming.jingle<victoryTiming.reward&&victoryTiming.reward<victoryTiming.acquire);
  assert.ok(victoryTiming.descent>victoryTiming.reward+180,'reward and a quiet beat follow the complete native fanfare');
 });
 test('the same saved orbit camera moves near bodies farther than stars while preserving zoom and integer projection',()=>{
@@ -94,7 +94,7 @@ test('the same saved orbit camera moves near bodies farther than stars while pre
  assert.deepEqual(projectOrbitBackground(structuredClone(b),p,5),near);assert.ok(Object.values(near).every(Number.isInteger));
 });
 
-test('the boss whiteout holds through the explosion tail before the pouch and fanfare',()=>{
+test('the boss whiteout holds through the explosion tail before the pouch',()=>{
  const lastBurst=bossVictoryTiming.bursts.at(-1);
  for(let age=lastBurst;age<=bossVictoryTiming.reveal;age++)assert.equal(bossVictoryWhite(age),1);
  let previous=1;

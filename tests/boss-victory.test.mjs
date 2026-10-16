@@ -28,10 +28,14 @@ test('Frieza replays the actual unmodified Mantis Ant death sound sequence',t=>{
  assert.deepEqual(native.find(c=>c.command[0]===1)?.command,bossVictoryCommands.jingle);
 });
 
-test('the pouch chime finishes before the song upload and the complete fanfare precedes travel',()=>{
+test('Frieza keeps Mantis Ant\'s beat: fanfare in the white-out, pickup after it, then travel',()=>{
  assert.notDeepEqual(bossVictoryCommands.death,bossVictoryCommands.acquire);
- assert.ok(victoryTiming.acquire>victoryTiming.impact+bossVictoryTiming.clear);
- assert.ok(victoryTiming.jingle-victoryTiming.acquire>=120);
+ // The won clash already engulfs Frieza; the death cue follows the hit.
+ assert.ok(victoryTiming.impact<=12);
+ // Native: the fanfare starts 375 frames after the death cue, ~50 after the last burst.
+ assert.equal(victoryTiming.jingle-victoryTiming.impact,bossVictoryTiming.jingle);
+ assert.ok(bossVictoryTiming.jingle>bossVictoryTiming.bursts.at(-1)&&bossVictoryTiming.jingle<bossVictoryTiming.reveal);
  assert.ok(victoryTiming.quiet-victoryTiming.jingle>=540);
- assert.ok(victoryTiming.descent>victoryTiming.quiet);
+ assert.ok(victoryTiming.acquire>=victoryTiming.quiet&&victoryTiming.acquire>victoryTiming.impact+bossVictoryTiming.clear);
+ assert.ok(victoryTiming.descent-victoryTiming.acquire>=bossVictoryTiming.acquireFrames);
 });

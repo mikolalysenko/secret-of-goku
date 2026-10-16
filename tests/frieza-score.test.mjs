@@ -8,16 +8,19 @@ import {renderSpcScoreSync,scoreLength} from '../engine/spc-score.js';
 const meta=JSON.parse(readFileSync(new URL('../assets/audio/music/score.json',import.meta.url)));
 const romPath='.local/rom/secret-of-mana-us.sfc';
 
-test('combat and training arrangements keep their references and develop across eight voices',()=>{
+test('entrance, combat and training arrangements keep their references and develop across eight voices',()=>{
  assert.match(meta.runtime.references.battle.url,/5CpQ-uBRa78/);assert.match(meta.runtime.references.vegeta.url,/M954D_jyJbQ/);
  const scores=Object.fromEntries(Object.entries(arrangements).map(([k,b])=>[k,b()]));
- assert.deepEqual(Object.keys(scores),['battle','orbit','vegeta','vegeta-full-power']);
+ assert.deepEqual(Object.keys(scores),['arrival','battle','orbit','vegeta','vegeta-full-power']);
+ assert.equal(scores.arrival.title,'Five Minutes');assert.ok(scores.arrival.bpm<scores.battle.bpm);
  assert.ok(scores.orbit.bpm>scores.battle.bpm);assert.ok(scores['vegeta-full-power'].bpm>scores.vegeta.bpm);
  for(const[key,score]of Object.entries(scores)){
   assert.equal(score.voices.length,8);assert.ok(score.sections.length>=6,key);
   assert.ok(score.bars*4*60/score.bpm>=75,`${key} is a full multi-section arrangement`);
   for(const voice of score.voices){
    assert.ok(voice.events.length>30,`${key}: ${voice.role} plays throughout`);
+   // A monophonic voice keys one note per instant; none is silently dropped.
+   assert.equal(new Set(voice.events.map(e=>e.at)).size,voice.events.length,`${key}: ${voice.role}`);
    for(const e of voice.events){
     const patch=patches[e.patch];assert.ok(patch,`${key}: ${e.patch}`);
     assert.ok(e.at>=0&&e.at<score.bars*4&&e.len>0);
@@ -32,11 +35,9 @@ test('combat and training arrangements keep their references and develop across 
  assert.deepEqual(new Set(scores.battle.voices[0].events.map(e=>e.patch)),new Set(['kick','snare']));
 });
 
-test('the score metadata ships no cartridge audio, only the original entrance cue',()=>{
- assert.equal(meta.entrance.file,'arrival.wav');assert.deepEqual(meta.runtime.tracks.map(t=>t.key),Object.keys(arrangements));
- for(const file of['battle.wav','orbit.wav','vegeta.wav','vegeta-full-power.wav'])assert.ok(!existsSync(new URL(`../assets/audio/music/${file}`,import.meta.url)),`${file} is rendered at runtime`);
- const b=readFileSync(new URL('../assets/audio/music/arrival.wav',import.meta.url));
- assert.equal(b.toString('ascii',0,4),'RIFF');assert.equal(b.readUInt32LE(24),meta.entrance.sampleRate);
+test('the score metadata ships no audio: every cue is rendered at runtime',()=>{
+ assert.deepEqual(meta.runtime.tracks.map(t=>t.key),Object.keys(arrangements));
+ for(const key of Object.keys(arrangements))assert.ok(!existsSync(new URL(`../assets/audio/music/${key}.wav`,import.meta.url)),`${key} is rendered at runtime`);
 });
 
 test('BRR decoding follows the hardware filters, range clamp and 15-bit wrap',()=>{

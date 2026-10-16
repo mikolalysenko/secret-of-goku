@@ -6,11 +6,12 @@ const particleArt=new WeakMap();
 // music fade, then the original boss victory fanfare. The SPC plays the ROM's
 // own samples and sequence; no recording or substitute jingle is embedded.
 export const bossVictoryCommands={stop:[0xf0,0,0,0],death:[2,0x94,15,0x80],burst:[2,0x15,15,0],fade:[0x80,0x80,0,0],acquire:[2,0xd8,0,0x88],jingle:[1,0x18,0x44,0x8f]};
-// Native frame offsets from the fatal hit. The fanfare plays for about
-// 513 frames before the original boss script resumes; leave a 540-frame
-// window before travel, dialogue or replacement music. Loading the fanfare
-// replaces SPC sample memory, so let the entire pouch chime finish first.
-export const bossVictoryTiming={bursts:[36,56,76,96,116,137,157,177,197,217,237,257,326],fade:143,white:306,vanish:326,reveal:631,clear:791,acquireFrames:120,jingleFrames:540};
+// Native frame offsets from the fatal hit. Mantis Ant's fanfare starts at
+// frame 375, about 50 frames after the last burst while the screen is still
+// white, and plays for about 513 frames; leave 540 before travel, dialogue
+// or replacement music. The native item chime follows the fanfare, and D8h
+// still sounds after the fanfare's sample upload.
+export const bossVictoryTiming={bursts:[36,56,76,96,116,137,157,177,197,217,237,257,326],fade:143,white:306,vanish:326,jingle:375,reveal:631,clear:791,acquireFrames:120,jingleFrames:540};
 export function bossVictoryCue(age){
  // 94h is the opening boss-death effect, not the D8h item-acquisition
  // chime. Replacing it with 15h loses the characteristic death sound.

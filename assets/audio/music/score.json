@@ -1,15 +1,4 @@
 {
-  "entrance": {
-    "file": "arrival.wav",
-    "bpm": 72,
-    "bars": 8,
-    "duration": 26.666666666666668,
-    "instruments": 8,
-    "title": "Five Minutes",
-    "sampleRate": 22050,
-    "quantizationBits": 12,
-    "rights": "Original project composition, MIT"
-  },
   "runtime": {
     "renderer": "engine/spc-score.js",
     "instruments": "engine/mana-instruments.js",
@@ -29,8 +18,108 @@
         "url": "https://www.youtube.com/watch?v=M954D_jyJbQ&t=3s"
       }
     },
-    "rights": "The combat cues adapt Shunsuke Kikuchi’s composition and the training cues adapt the Faulconer Productions Vegeta theme; both remain with their respective rights holders. The instrument samples belong to Square Enix and come only from the player’s cartridge. The code license relicenses neither.",
+    "rights": "Five Minutes, the entrance cue, is an original project composition (MIT). The combat cues adapt Shunsuke Kikuchi’s composition and the training cues adapt the Faulconer Productions Vegeta theme; both remain with their respective rights holders. The instrument samples belong to Square Enix and come only from the player’s cartridge. The code license relicenses neither.",
     "tracks": [
+      {
+        "key": "arrival",
+        "title": "Five Minutes",
+        "bpm": 72,
+        "bars": 24,
+        "duration": 80,
+        "sections": [
+          {
+            "bar": 0,
+            "name": "Tolling chimes over the choir"
+          },
+          {
+            "bar": 4,
+            "name": "Harp ripple"
+          },
+          {
+            "bar": 8,
+            "name": "Flute melody"
+          },
+          {
+            "bar": 12,
+            "name": "Brass takes the melody"
+          },
+          {
+            "bar": 16,
+            "name": "Full statement"
+          },
+          {
+            "bar": 20,
+            "name": "Chimes return"
+          }
+        ],
+        "voices": [
+          {
+            "role": "Kick and snare",
+            "notes": 102,
+            "patches": [
+              "kick",
+              "snare"
+            ]
+          },
+          {
+            "role": "Chime / flute / brass melody",
+            "notes": 71,
+            "patches": [
+              "chime",
+              "flute",
+              "brass"
+            ]
+          },
+          {
+            "role": "Choir / strike layer",
+            "notes": 44,
+            "patches": [
+              "choir",
+              "strike",
+              "flute"
+            ]
+          },
+          {
+            "role": "Bass",
+            "notes": 98,
+            "patches": [
+              "bass"
+            ]
+          },
+          {
+            "role": "Strings (upper)",
+            "notes": 56,
+            "patches": [
+              "strings"
+            ]
+          },
+          {
+            "role": "Strings (middle)",
+            "notes": 56,
+            "patches": [
+              "strings"
+            ]
+          },
+          {
+            "role": "Strings (lower) / harp",
+            "notes": 328,
+            "patches": [
+              "strings",
+              "harp"
+            ]
+          },
+          {
+            "role": "Gong, cymbals",
+            "notes": 83,
+            "patches": [
+              "gong",
+              "crash",
+              "openHat",
+              "hat"
+            ]
+          }
+        ]
+      },
       {
         "key": "battle",
         "title": "Freeza vs the Legendary Super Saiyan — Battle",
@@ -70,7 +159,7 @@
         "voices": [
           {
             "role": "Kick and snare",
-            "notes": 419,
+            "notes": 416,
             "patches": [
               "kick",
               "snare"
@@ -95,7 +184,7 @@
           },
           {
             "role": "Octave bass",
-            "notes": 396,
+            "notes": 395,
             "patches": [
               "bass"
             ]
@@ -181,7 +270,7 @@
         "voices": [
           {
             "role": "Kick and snare",
-            "notes": 642,
+            "notes": 637,
             "patches": [
               "kick",
               "snare"
@@ -208,7 +297,7 @@
           },
           {
             "role": "Octave bass",
-            "notes": 644,
+            "notes": 643,
             "patches": [
               "bass"
             ]
@@ -282,7 +371,7 @@
         "voices": [
           {
             "role": "Kick and snare",
-            "notes": 318,
+            "notes": 316,
             "patches": [
               "kick",
               "snare"
@@ -384,7 +473,7 @@
         "voices": [
           {
             "role": "Kick and snare",
-            "notes": 319,
+            "notes": 317,
             "patches": [
               "kick",
               "snare"
