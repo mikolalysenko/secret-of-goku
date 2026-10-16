@@ -40,6 +40,15 @@ node snes/test/mesen.mjs dist/snes/secret-of-goku.sfc my-test.lua .local/snes-te
 node snes/test/run-all.mjs [module …]   # build, then every snes/test/<module>/run.mjs
 ```
 
+`snes/test/perf/run.mjs` guards the CPU budget: each native scene is imported
+once into the original cartridge and saved as a full Mesen state (so the APU
+and DSP phase are identical), then both cartridges run 300 frames from it and
+the scanline at which frame logic ends (`00:B077`/`00:8089`) and the lag-frame
+count are compared. Baseline: the original game finishes field logic around
+scanline 30–50 in quiet scenes and 90–125 in heavy ones (Sandship, Fortress,
+world flight); the Mana Beast natively updates at 30 Hz. Comparing raw imports
+instead of a shared savestate is misleading (DSP phase is not imported).
+
 Each module provides `snes/test/<module>/run.mjs`, which reads the ROM path
 from `SNES_ROM`, writes outputs under `.local/snes-test/<module>/` and exits
 non-zero on failure (`snes/test/boot/` is the minimal example).

@@ -144,6 +144,9 @@ function H.importSnesJs(dir, frames)
   local done = false
   local id = emu.addMemoryCallback(function()
     if done then return end
+    -- Apply on the scanline the state was captured at, so frame-phase
+    -- sensitive scenes (IRQ splits, 30 Hz loops) resume in step.
+    if regs.line and emu.getState()['ppu.scanline'] ~= regs.line then return end
     done = true
     blit(dir .. '/wram.bin', emu.memType.snesWorkRam)
     blit(dir .. '/vram.bin', emu.memType.snesVideoRam)

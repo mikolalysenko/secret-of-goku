@@ -102,7 +102,8 @@ export function exportState(statePath,outDir,{rom=new Uint8Array(readFileSync(re
     spc:{a:spc.r[0],x:spc.r[1],y:spc.r[2],sp:spc.r[3],pc:spc.br[0],ps:spc.getP(),
       cpuToApu:[...a.spcReadPorts.slice(0,4)],apuToCpu:[...a.spcWritePorts],dspAdr:a.dspAdr,romReadable:!!a.dspRomReadable,
       timers:[1,2,3].map(n=>({enabled:!!a[`timer${n}enabled`],target:a[`timer${n}target`],stage1:a[`timer${n}div`],output:a[`timer${n}counter`]}))},
-    map:s.ram[0xdc]|(s.ram[0xdd]<<8)
+    map:s.ram[0xdc]|(s.ram[0xdd]<<8),
+    line:s.yPos,dot:s.xPos>>2
   };
   writeFileSync(resolve(outDir,'regs.json'),JSON.stringify(regs,null,1));
   // Lua-friendly flat register list.
@@ -113,7 +114,7 @@ export function exportState(statePath,outDir,{rom=new Uint8Array(readFileSync(re
     `spc={a=${regs.spc.a},x=${regs.spc.x},y=${regs.spc.y},sp=${regs.spc.sp},pc=${regs.spc.pc},ps=${regs.spc.ps},dspAdr=${regs.spc.dspAdr},romReadable=${regs.spc.romReadable},`+
     `cpuToApu={${regs.spc.cpuToApu.join(',')}},apuToCpu={${regs.spc.apuToCpu.join(',')}},`+
     'timers={'+regs.spc.timers.map(t=>`{enabled=${t.enabled},target=${t.target},stage1=${t.stage1},output=${t.output}}`).join(',')+'}},',
-    `map=${regs.map}`,'}'];
+    `map=${regs.map},line=${regs.line},dot=${regs.dot}`,'}'];
   writeFileSync(resolve(outDir,'regs.lua'),lua.join('\n'));
   return regs;
 }
