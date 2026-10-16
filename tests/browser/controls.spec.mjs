@@ -6,35 +6,35 @@ async function load(page){
  await page.goto('/');await page.waitForFunction(()=>window.mana?.ready);
  await page.evaluate(state=>{mana.pause();state.romHash=mana.hash(mana.snes.cart.data);mana.restore(state);Object.assign(mana.mod.options,{enabled:true,power:true,superSaiyan:false});mana.run(3);},JSON.parse(readFileSync(fixture,'utf8')));
 }
-test('icon-only controls fit small phones, portrait and landscape without covering the game',async({browser})=>{
+test('labeled controls fit short phones, portrait and landscape without covering the game',async({browser})=>{
  const context=await browser.newContext({hasTouch:true,isMobile:true,viewport:{width:390,height:844}}),page=await context.newPage();
- const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.route(/\/(local-rom|rom\/secret-of-mana-us\.sfc)$/,route=>route.fulfill({status:404,body:'No ROM'}));await page.goto('/');
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));await load(page);
  await expect(page.locator('.touch-pad')).toBeVisible();
- for(const viewport of[{width:390,height:844},{width:844,height:390},{width:320,height:568}]){
+ for(const viewport of[{width:390,height:640},{width:844,height:390},{width:320,height:480},{width:568,height:320}]){
   await page.setViewportSize(viewport);
   const state=await page.evaluate(()=>{
-   const buttons=[...document.querySelectorAll('.touch-pad button')],canvas=document.querySelector('#screen').getBoundingClientRect();
-   return{fits:document.documentElement.scrollWidth<=innerWidth,text:buttons.map(b=>b.textContent.trim()).join(''),buttons:buttons.map(b=>{const r=b.getBoundingClientRect();return{label:b.getAttribute('aria-label'),width:r.width,height:r.height,overlaps:r.left<canvas.right&&r.right>canvas.left&&r.top<canvas.bottom&&r.bottom>canvas.top};}),selection:getComputedStyle(document.querySelector('.touch-pad')).userSelect};
+   const buttons=[...document.querySelectorAll('.touch-pad button')].filter(b=>b.getClientRects().length),canvas=document.querySelector('#screen').getBoundingClientRect();
+   return{fits:document.documentElement.scrollWidth<=innerWidth,text:buttons.map(b=>b.textContent.trim()).join(''),buttons:buttons.map(b=>{const r=b.getBoundingClientRect();return{label:b.getAttribute('aria-label'),width:r.width,height:r.height,fits:r.top>=0&&r.bottom<=innerHeight,overlaps:r.left<canvas.right&&r.right>canvas.left&&r.top<canvas.bottom&&r.bottom>canvas.top};}),selection:getComputedStyle(document.querySelector('.touch-pad')).userSelect};
   });
-  expect(state.fits).toBe(true);expect(state.text).toBe('');expect(state.selection).toBe('none');
-  for(const button of state.buttons){expect(button.label).toBeTruthy();expect(button.width).toBeGreaterThanOrEqual(44);expect(button.height).toBeGreaterThanOrEqual(36);expect(button.overlaps).toBe(false);}
+  expect(state.fits).toBe(true);expect(state.text).toContain('Punch');expect(state.selection).toBe('none');
+  for(const button of state.buttons){expect(button.label).toBeTruthy();expect(button.width).toBeGreaterThanOrEqual(44);expect(button.height).toBeGreaterThanOrEqual(44);expect(button.fits).toBe(true);expect(button.overlaps).toBe(false);}
  }
  await page.screenshot({path:'.local/flight-fixes/mobile-small.png'});expect(errors).toEqual([]);await context.close();
 });
 test('multitouch can move, slide diagonally and charge together; cancellation never fires a wave',async({browser})=>{
  const context=await browser.newContext({hasTouch:true,isMobile:true,viewport:{width:390,height:844}}),page=await context.newPage();await load(page);
  const session=await context.newCDPSession(page),center=async selector=>{const r=await page.locator(selector).boundingBox();return{x:r.x+r.width/2,y:r.y+r.height/2};};
- const attack=await center('[data-snes="1"]'),focus=await center('[data-snes="10"]'),left=await center('[data-snes="6"]'),pad=await page.locator('.touch-directions').boundingBox();
+ const beam=await center('[data-snes="22"]'),left=await center('[data-snes="6"]'),pad=await page.locator('.touch-directions').boundingBox();
  const start=await page.evaluate(()=>({x:mana.mod.status.x,beams:mana.logs.filter(l=>l.startsWith('Kamehameha')).length}));
  const send=(type,points)=>session.send('Input.dispatchTouchEvent',{type,touchPoints:points.map((p,i)=>({...p,id:i+1,radiusX:4,radiusY:4,force:1}))});
- await send('touchStart',[attack,focus,left]);await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBeGreaterThan(20);
+ await send('touchStart',[beam,left]);await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBeGreaterThan(20);
  expect(await page.evaluate(()=>mana.mod.status.x)).toBeLessThan(start.x);
- await send('touchMove',[attack,focus,{x:pad.x+8,y:pad.y+8}]);
- await expect.poll(()=>page.evaluate(()=>mana.controls.has(4)&&mana.controls.has(6)&&mana.controls.has(1)&&mana.controls.has(10))).toBe(true);
+ await send('touchMove',[beam,{x:pad.x+8,y:pad.y+8}]);
+ await expect.poll(()=>page.evaluate(()=>mana.controls.has(4)&&mana.controls.has(6)&&mana.controls.has(22))).toBe(true);
  await send('touchCancel',[]);await expect.poll(()=>page.evaluate(()=>mana.mod.charging)).toBe(false);
  expect(await page.evaluate(()=>mana.logs.filter(l=>l.startsWith('Kamehameha')).length)).toBe(start.beams);
  expect(await page.evaluate(()=>String(getSelection()))).toBe('');
- await send('touchStart',[attack,focus]);await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBe(90);await send('touchEnd',[]);
+ await send('touchStart',[beam]);await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBe(90);await send('touchEnd',[]);
  await expect.poll(()=>page.evaluate(()=>mana.logs.filter(l=>l.startsWith('Kamehameha')).length)).toBe(start.beams+1);
  await context.close();
 });
@@ -70,40 +70,49 @@ test('touch releases outside buttons, and interrupted gestures cannot leave a he
  const context=await browser.newContext({hasTouch:true,isMobile:true,viewport:{width:390,height:844}}),page=await context.newPage();await load(page);
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  const session=await context.newCDPSession(page),center=async selector=>{const r=await page.locator(selector).boundingBox();return{x:r.x+r.width/2,y:r.y+r.height/2};};
- const ki=await center('[data-snes="1"]'),focus=await center('[data-snes="10"]'),pause=await center('[data-action="pause"]');
+ const beam=await center('[data-snes="22"]'),left=await center('[data-snes="6"]'),pause=await center('[data-action="pause"]'),more=await center('.touch-utility [data-action="more"]');
  const send=(type,points)=>session.send('Input.dispatchTouchEvent',{type,touchPoints:points.map((p,i)=>({...p,id:i+1,radiusX:4,radiusY:4,force:1}))});
  const beams=()=>page.evaluate(()=>mana.logs.filter(l=>l.startsWith('Kamehameha')).length);
  const neutral=async()=>{await expect.poll(()=>page.evaluate(()=>({held:[...mana.controls.held.keys()].filter(k=>k.startsWith('touch:')).length,charge:mana.mod.charging,lit:document.querySelectorAll('.touch-pad .is-held').length}))).toEqual({held:0,charge:false,lit:0});};
  let count=await beams();
- await send('touchStart',[ki,focus]);await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBeGreaterThan(8);
+ await send('touchStart',[beam,left]);await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBeGreaterThan(8);
  await send('touchMove',[{x:10,y:10},{x:380,y:10}]);await send('touchEnd',[]);
  await neutral();await expect.poll(beams).toBe(++count);await expect.poll(()=>page.evaluate(()=>mana.mod.action)).toBe(null);
  // These interruptions are delivered while both real pointers are held.
- for(const interruption of ['capture','cancel','rotate','fullscreen','blur','pagehide','hide']){
-  await send('touchStart',[ki,focus]);await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBeGreaterThan(8);
-  if(interruption==='capture')await send('touchMove',[{x:ki.x+20,y:ki.y},focus]);
+ for(const interruption of ['capture','cancel','rotate','legacy-rotate','resize','fullscreen','blur','pagehide','hide','more']){
+  await send('touchStart',[beam,left]);await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBeGreaterThan(8);
+  if(interruption==='capture')await send('touchMove',[{x:beam.x+20,y:beam.y},left]);
+  if(interruption==='more')await send('touchStart',[beam,left,more]);
   await page.evaluate(kind=>{
+   if(kind==='more')return;
    const root=document.querySelector('.touch-pad');
    const id=Number([...mana.controls.held.keys()].find(k=>k.startsWith('touch:')).split(':')[1]);
    if(kind==='capture'){for(const el of root.querySelectorAll('button'))if(el.hasPointerCapture(id))el.releasePointerCapture(id);}
    if(kind==='cancel')root.dispatchEvent(new PointerEvent('pointercancel',{pointerId:id,bubbles:true}));
    if(kind==='rotate')screen.orientation.dispatchEvent(new Event('change'));
+   if(kind==='legacy-rotate')window.dispatchEvent(new Event('orientationchange'));
+   if(kind==='resize')window.dispatchEvent(new Event('resize'));
    if(kind==='fullscreen')document.dispatchEvent(new Event('fullscreenchange'));
    if(kind==='blur'||kind==='pagehide')window.dispatchEvent(new Event(kind));
    if(kind==='hide')document.querySelector('#show-touch').dispatchEvent(new Event('change'));
   },interruption);
   // Pointer capture changes are dispatched with the next pointer event.
-  if(interruption==='capture')await send('touchMove',[{x:ki.x+40,y:ki.y},focus]);
-  await neutral();await send('touchEnd',[]);await page.evaluate(()=>{mana.play();mana.run(6);});
+  if(interruption==='capture')await send('touchMove',[{x:beam.x+40,y:beam.y},left]);
+  await neutral();await send('touchEnd',[]);
+  if(interruption==='more'){
+   await expect(page.locator('#touch-more')).toBeVisible();
+   await send('touchStart',[more]);await send('touchEnd',[]);await expect(page.locator('#touch-main')).toBeVisible();
+  }
+  await page.evaluate(()=>{mana.play();mana.run(6);});
   expect(await beams()).toBe(count);await neutral();
  }
  // Pause cancels the existing fingers; their delayed pointerup/click cannot
  // resume the game, fire a shot or keep a button visually pressed.
- await send('touchStart',[ki,focus]);await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBeGreaterThan(8);
- await send('touchStart',[ki,focus,pause]);await expect.poll(()=>page.evaluate(()=>mana.running)).toBe(false);
+ await send('touchStart',[beam,left]);await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBeGreaterThan(8);
+ await send('touchStart',[beam,left,pause]);await expect.poll(()=>page.evaluate(()=>mana.running)).toBe(false);
  await send('touchEnd',[]);await neutral();expect(await beams()).toBe(count);
  expect(await page.evaluate(()=>mana.running)).toBe(false);
  await send('touchStart',[pause]);await send('touchEnd',[]);await expect.poll(()=>page.evaluate(()=>mana.running)).toBe(true);
- await send('touchStart',[ki,focus]);await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBeGreaterThan(8);await send('touchEnd',[]);
+ await send('touchStart',[beam,left]);await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBeGreaterThan(8);await send('touchEnd',[]);
  await expect.poll(beams).toBe(count+1);await neutral();expect(errors).toEqual([]);await context.close();
 });

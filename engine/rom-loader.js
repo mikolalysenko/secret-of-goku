@@ -5,7 +5,7 @@ export async function validateRom(source){
   let bytes=source instanceof Uint8Array?source:new Uint8Array(source);
   if(bytes.length%0x8000===512)bytes=bytes.slice(512);
   const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',bytes));
-  if(Array.from(digest,b=>b.toString(16).padStart(2,'0')).join('')!==expectedHash)throw Error('Use the original Secret of Mana (USA) ROM. This mod has verified offsets for that revision.');
+  if(Array.from(digest,b=>b.toString(16).padStart(2,'0')).join('')!==expectedHash)throw Error('Use the original Secret of Mana (USA) ROM. Other versions are not supported.');
   return bytes;
 }
 

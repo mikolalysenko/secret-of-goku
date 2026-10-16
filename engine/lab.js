@@ -7,6 +7,7 @@ import {createArrival} from './arrival.js';
 import {GameInput,keymap} from './input.js';
 import {GamepadInput} from './gamepad.js';
 import {mountTouchControls} from './touch-controls.js';
+import {mountPlayerShell} from './player-shell.js';
 import {createKiSound} from './ki-sound.js';
 import {createAudioOutput} from './audio-output.js';
 import {createNativeCombatSound} from './native-combat-sound.js';
@@ -55,9 +56,12 @@ import {createWindowPlacement} from './window-placement.js';
 import {createBattleRetry} from './battle-retry.js';
 const effectsManifest=fetch(new URL('./native-effects.json',import.meta.url)).then(response=>{if(!response.ok)throw Error('Native effect descriptors could not be loaded.');return response.json();});
 const $=id=>document.getElementById(id),snes=new window.Snes(),canvas=$('screen'),context=canvas.getContext('2d'),pixels=context.createImageData(512,480);
-const message=text=>{$('lab-message').textContent=text;};
+const message=text=>{$('lab-message').textContent=text;$('lab-message').hidden=!text;};
 const battery=createBatteryStore({onError:()=>message('Browser storage is unavailable. Keep this page open to retain in-game saves.')});
 const originalMode=document.body.dataset.mode==='original';
+const player=document.querySelector('.player'),params=new URLSearchParams(location.search);
+const debugMode=!originalMode||params.get('debug')==='1'||params.has('scene')||isQuickStart(params.get('start'));
+if(debugMode)document.querySelectorAll('[data-debug]').forEach(node=>node.hidden=false);
 const logs=[];
 const mod=new window.ManaMod(snes,{gokuUrl:'assets/sprites/goku.png',ssjUrl:'assets/sprites/ssj.png',onLog:text=>{logs.push(text);if(logs.length>100)logs.shift();if(!originalMode&&!text.startsWith('Mod:'))message(text);}});
 mod.spriteLayer.drawKiAura=drawKiAura;
@@ -152,6 +156,7 @@ const nextPaint=()=>new Promise(resolve=>setTimeout(resolve,0));
 
 function configure(){mod.configure({enabled:$('goku-enabled').checked,power:$('power-enabled').checked,superSaiyan:$('super-enabled').checked});}
 function clearInput(){controls.clear();touch.clear();gamepads.suspend();snes.joypad1State=0;mod.cancelInput();}
+mountPlayerShell(player,{clearInput});
 function prefillName(){
   // Use the original editable name field and native redraw flag. A one-shot
   // signature prevents overwriting a name the player edits or clears later.
@@ -182,9 +187,11 @@ function render(){
   $('native-charge').hidden=!mod.charging;
   $('native-charge').querySelector('i').style.width=`${Math.min(1,ratio)*100}%`;
   $('native-charge').querySelector('span').textContent=ratio>=1?'HA!!!':'KA… ME… HA… ME…';
-  $('engine-state').textContent=busy?'RUNNING EVENT':running?(r.worldFlight?'WORLD FLIGHT':'ORIGINAL ENGINE LIVE'):'PAUSED';
-  const values=[['Map $00DC',r.map],['World position',`${r.x}, ${r.y}`],['Camera',`${r.cameraX}, ${r.cameraY}`],['HP $E182',r.hp],['Saiyan attack',r.attack],['Stamina $E1ED',r.staminaRemaining],['Hidden OAM',r.hiddenOamSlots.join(', ')||'—']];
-  $('memory-readout').replaceChildren(...values.flatMap(([k,v])=>{const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=k;dd.textContent=v;return[dt,dd];}));
+  if(debugMode){
+    $('engine-state').textContent=busy?'RUNNING EVENT':running?(r.worldFlight?'WORLD FLIGHT':'ORIGINAL ENGINE LIVE'):'PAUSED';
+    const values=[['Map $00DC',r.map],['World position',`${r.x}, ${r.y}`],['Camera',`${r.cameraX}, ${r.cameraY}`],['HP $E182',r.hp],['Saiyan attack',r.attack],['Stamina $E1ED',r.staminaRemaining],['Hidden OAM',r.hiddenOamSlots.join(', ')||'—']];
+    $('memory-readout').replaceChildren(...values.flatMap(([k,v])=>{const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=k;dd.textContent=v;return[dt,dd];}));
+  }
 }
 function pauseCard(gameOver=false){const card=$('native-pause');card.querySelector('strong').textContent=gameOver?'GAME OVER':'PAUSED';const label=gameOver?'Return to title':'Resume game';$('native-resume').setAttribute('aria-label',label);$('native-resume').title=label;card.querySelector('.pause-card>span')?.replaceChildren(gameOver?'Return to title · Space / Start':'Tap to resume · Space / Esc');}
 function play(){if(!loaded||busy)return;if(battleRetry.gameOver){bootOriginal(originalRom,{testScenes:false});return;}pauseCard();running=true;lastTime=performance.now();fpsTime=lastTime;frameCount=0;accumulator=0;$('native-pause').hidden=true;$('native-toggle').querySelector('span').textContent='Pause';}
@@ -206,7 +213,7 @@ function tick(now){
       accumulator-=1/60;steps++;if(fast){accumulator=0;break;}
     }
     if(steps)render();
-    if(now-fpsTime>=1000){$('fps').textContent=`${Math.round(frameCount*1000/(now-fpsTime))} FPS`;frameCount=0;fpsTime=now;}
+    if(now-fpsTime>=1000){if(debugMode)$('fps').textContent=`${Math.round(frameCount*1000/(now-fpsTime))} FPS`;frameCount=0;fpsTime=now;}
   }
   lastTime=now;requestAnimationFrame(tick);
 }
@@ -232,16 +239,18 @@ async function pump(frames,buttons=[],{fast=false}={}){
 }
 async function enableGameControls(){
   $('boot-screen').hidden=true;
+  player?.classList.add('is-ready');
   for(const id of ['native-fly','native-toggle','native-save','native-start',...Object.keys(quickStartLabels).map(k=>`quick-${k}`)])if($(id))$(id).disabled=false;
   try{checkpoint=await checkpointStore();if(checkpoint?.state.romHash!==hash(snes.cart.data))checkpoint=null;}catch{checkpoint=null;}
   $('native-restore').disabled=!checkpoint;
 }
 async function bootOriginal(source,{testScenes=true}={}){
   if(busy)return;busy=true;$('boot-local').disabled=true;$('rom-file').disabled=true;
+  $('boot-status').textContent='Starting game…';
   try{
     await loadROM(source);configure();await enableGameControls();
-    message('Space / Enter = Start · X = confirm · A = ring / back · Arrows = move / menu.');
-  }catch(error){loaded=false;$('boot-status').textContent=error.message;message(error.message);throw error;}
+    message('');
+  }catch(error){loaded=false;player?.classList.remove('is-ready');$('boot-screen').hidden=false;$('boot-status').textContent=error.message;throw error;}
   finally{busy=false;$('boot-local').disabled=false;$('rom-file').disabled=false;if(loaded){play();render();}}
   if(!testScenes)return;
   const requested=new URLSearchParams(location.search).get('start'),scene=new URLSearchParams(location.search).get('scene');
@@ -339,7 +348,7 @@ async function quickStart(kind){
 const boot=originalMode?bootOriginal:bootPotos;
 async function loadDefault(){
   $('boot-local').disabled=true;$('rom-file').disabled=true;
-  $('boot-status').textContent='Looking for a Secret of Mana (USA) ROM…';
+  $('boot-status').textContent='Loading game…';
   const found=await fetchDefaultRom();
   if(found){try{await boot(found.bytes);return;}catch{/* The boot status explains the error. */}}
   else $('boot-status').textContent='Choose your Secret of Mana (USA) ROM to play. It stays in this browser.';
@@ -373,11 +382,6 @@ if(originalMode){
   window.addEventListener('keydown',e=>{if(!audioContext&&!soundButton.contains(e.target))activateAudio();},{once:true});
 }
 $('native-start')?.addEventListener('click',()=>{if(loaded&&!busy){if(!running)play();else controls.pulse(3);canvas.focus();}});
-$('native-fullscreen')?.addEventListener('click',async()=>{
-  const player=document.querySelector('.player');
-  try{if(document.fullscreenElement)await document.exitFullscreen();else if(player.requestFullscreen)await player.requestFullscreen();else player.classList.toggle('is-expanded');}
-  catch{player.classList.toggle('is-expanded');}
-});
 $('show-touch')?.addEventListener('change',e=>{document.querySelector('.player').classList.toggle('show-touch',e.target.checked);touch.clear();});
 window.addEventListener('keydown',e=>{
   if(!loaded||busy||e.ctrlKey||e.metaKey||e.altKey||e.target instanceof HTMLInputElement)return;
