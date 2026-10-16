@@ -1,19 +1,26 @@
 # secret of mana. with goku
 
-<p>
-  <img src="assets/readme/instant-transmission.gif" width="256" alt="Goku uses Instant Transmission and follows up with a punch in a forest clearing">
-  <img src="assets/readme/ki-blasts.gif" width="256" alt="Goku fires a volley of ki blasts at forest monsters">
-  <img src="assets/readme/kamehameha.gif" width="256" alt="Goku charges and fires a Kamehameha through the forest">
+<p align="center">
+  <img src="assets/readme/title-screen.png" width="512" alt="Secret of Goku title screen, with the credit Programmed by Nasir and ChatGPT">
 </p>
 
 **Secret of Goku** drops Goku into Secret of Mana's SNES action RPG. Explore its world, travel with companions, and solve problems with punches, flight, Instant Transmission, and wildly excessive amounts of ki.
 
 **[Play in your browser](https://mikolalysenko.github.io/secret-of-goku/)** · **[Native downloads](https://github.com/mikolalysenko/secret-of-goku/releases)** · **[Watch the teaser](https://www.youtube.com/watch?v=5lp2piNqMsg)**
 
-<p>
-  <img src="assets/readme/title-screen.png" width="384" alt="Secret of Goku title screen, with the credit Programmed by Nasir and ChatGPT">
-  <img src="assets/readme/kamehameha.png" width="384" alt="Goku fires a Kamehameha across an early forest clearing">
+<p align="center">
+  <img src="assets/readme/instant-transmission.gif" width="256" alt="Instant Transmission: Goku teleports between enemies among desert dunes">
+  <img src="assets/readme/ki-blasts.gif" width="256" alt="Ki blasts: Goku fires through a stone castle hall">
+  <img src="assets/readme/kamehameha.gif" width="256" alt="Kamehameha: Goku charges and releases a beam inside a cavern">
 </p>
+<p align="center"><em>Instant Transmission · Ki blasts · Kamehameha</em></p>
+
+<p align="center">
+  <img src="assets/readme/flight.gif" width="256" alt="Flight: Goku crosses wooded cliffs and ledges">
+  <img src="assets/readme/punch.gif" width="256" alt="Melee: Goku punches through obstacles on a forest trail">
+  <img src="assets/readme/power-up.gif" width="256" alt="Power up: Goku gathers ki beside a waterfall">
+</p>
+<p align="center"><em>Flight · Melee · Power up</em></p>
 
 ## Play
 
