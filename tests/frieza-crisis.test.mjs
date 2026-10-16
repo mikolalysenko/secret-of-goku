@@ -61,6 +61,9 @@ test('Frieza powers the native Dark Lich warm-up; no dialogue displays telepathy
   if(mask&2)assert.match(text(F.trial),/Please stop smiling/);
   assert.doesNotMatch(text(F.trial),/GOKU:Here. Have a little ki/);
   assert.ok(events.get(F.trial).some((v,i,a)=>v===0x17&&a[i+1]===0x0c),'native Dark Lich music/control handoff');
+  // Luka's post-orbit heal sounds like her native restore (event 41B).
+  const chime=parseEvent(rom,0x41b).ops.find(o=>o.op===0x40).bytes,victory=events.get(F.victory),heal=victory.findIndex((v,i,a)=>v===0x2f&&a[i+1]===1);
+  assert.deepEqual(chime,[0x40,2,7,0,0x88]);assert.ok(heal>0);assert.deepEqual(victory.slice(heal+2,heal+7),chime);
   for(const bytes of events.values())assert.doesNotMatch(compiledText(bytes).map(decodeText).join(' '),/\[telepathy\]/i);
   assert.doesNotMatch(compiledText(buildFriezaEnding(mask,!!(mask&2))).map(decodeText).join(' '),/\[telepathy\]/i);
  }

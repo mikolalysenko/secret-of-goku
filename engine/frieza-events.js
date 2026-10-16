@@ -108,7 +108,9 @@ export function buildFriezaEvents(rom,mask,{collected=7,emperorKilled=false,pala
  e.set(f.victory,[6,...call(f.defeated),
   ...box('GOKU:Got my pouch!\nNow we can wish {2}\nand Dyluck back.'),
   ...box('DRYAD:The Tree holds\ntheir souls. Calm the Beast,\nthen wish everyone back.'),
-  ...box('LUKA:Let me heal you.'),0x2f,1,
+  // Luka's native restore (event 41B) ends with the healing chime, SPC
+  // command 02 07 00 88; play it as Goku's HP refills.
+  ...box('LUKA:Let me heal you.'),0x2f,1,0x40,2,7,0,0x88,
   ...box('GOKU:A Zenkai boost!\nI feel stronger already!'),
   ...box('LUKA:The planet still\nhas FIVE MINUTES!\nGOKU:One more good fight!'),
   0x30,0x4e,8,0x39,2,0xcd,0x38,0x39,3,0xcd,7,...jump(0x429),0]);
