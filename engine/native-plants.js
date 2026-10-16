@@ -163,5 +163,6 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
   }
   return priorCycle.call(this);
  };
+ cpu.registerBreakpoints?.(cpu.cycle,priorCycle,[[0,0xc7c3]]);
  return{beam,enqueueTiles,metadata,eligible,wasCleared:(tx,ty,l=layer())=>cutMap===read16(0xdc)&&cleared.has(0x10000+l*0x4000+ty*128+tx),snapshot:()=>({queue:structuredClone(queue),lastFrame,done:structuredClone(done),cleared:structuredClone([...cleared.values()]),cutMap}),restore(state){queue=state?.queue||[];lastFrame=state?.lastFrame??-1;done=state?.done||[];cleared=new Map((state?.cleared??[]).map(t=>[t.address,t]));cutMap=state?.cutMap??null;},clear(){queue=[];},dispose(){cpu.cycle=priorCycle;queue=[];cleared.clear();},get pending(){return queue.length;},get completed(){return done;}};
 }

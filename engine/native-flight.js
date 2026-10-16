@@ -83,5 +83,6 @@ export function createNativeFlight(snes,{canTakeOff=null,enabled=()=>true,onStar
   }
   return priorCycle.call(this);
  };
+ c.registerBreakpoints?.(c.cycle,priorCycle,[[0,0x8903],[2,0xb1c2],[2,0xb1f7],[2,0xb230],[0,0xbc0b],[0,0xb073],[1,0xdbcd],[1,0xe837]]);
  return{worldActive,request(){if(!safe()){lastError='Takeoff unavailable in current native state/map';return false;}requested=true;lastError=null;return true;},mapAllows,clear(){requested=false;},get docking(){return docking&&worldActive()?{...docking,t:Math.min(1,r[0xbf]/160)}:null;},get pending(){return requested||!!pending||drumPending;},get starts(){return starts;},get error(){return lastError;},dispose(){c.cycle=priorCycle;},snapshot(){return{requested,pending,drumPending,lastError,starts,docking};},restore(saved){requested=!!saved?.requested;pending=saved?.pending||null;drumPending=!!saved?.drumPending;lastError=saved?.lastError||null;starts=saved?.starts||0;docking=saved?.docking?{...saved.docking}:null;}};
 }

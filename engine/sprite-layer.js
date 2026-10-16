@@ -23,6 +23,10 @@ class ManaSpriteLayer {
       if(face){result[0]=face-1;result[1]=1;result[2]=1;}
       return result;
     };
+    ppu.registerLineHook?.('getColor',ppu.getColor,this.originalColor,(p,line)=>{
+      const custom=self.customLine;for(let i=0;i<256;i++)if(custom[i])return false;
+      return !(mod.options.enabled&&self.atlas.goku&&p.mode===5&&line>=31&&line<191);
+    });
   }
   savePortrait(ppu,x,y){
     if(!this.mod.options.enabled||!this.atlas.goku||ppu.mode!==5||x<94||x>=110||y<31||y>=191)return 0;

@@ -80,6 +80,7 @@ export function createTimeChamber(snes,mod,{loadArt=true}={}){
   const px=wx-v.x,py=wy-v.y;if(px>=0&&py>=0&&px<v.width&&py<v.height&&pavilion?.[py*v.width+px])color=pavilion[py*v.width+px];
   return[color-1,0,1];
  };
+ if(previous)p.registerLineHook?.('getColor',p.getColor,previous,(ppu,line)=>!active()||!floor||line>224);
  return{ready,load(){
   const rom=snes.cart.data;if(loaded===rom)return;loaded=rom;
   const bytes=encodeChamberPiece(chamberLayout()),blank=encodeChamberPiece(chamberForeground()),start=0xfe243,foreground=start+bytes.length;

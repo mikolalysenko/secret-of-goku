@@ -218,6 +218,10 @@ export function createFrieza(snes,mod){
   }
   return result;
  };
+ snes.ppu.registerLineHook?.('getColor',snes.ppu.getColor,color,(ppu,line)=>{
+  if(renderFrame!==mod.frame){renderFrame=mod.frame;renderArena=api.ownsArena();cameraLine=-1;}
+  return !(renderArena&&ppu.mode===1)&&treeView.idle(ppu,line)&&emperorView.idle(ppu,line);
+ });
  const api={
   ready,get pendingEntrance(){return pendingEntrance();},get eligible(){return eligible();},get active(){return s.stage!=='dormant';},get crisisActive(){return !!s.crisis?.active;},get unresolved(){return s.stolen;},get eighth(){return s.eighth;},get permanent(){return s.permanent;},get fallen(){return s.fallen;},get popoiMember(){return s.popoiMember;},get trial(){return s.stage==='trial';},get fighting(){return s.stage==='battle'||s.stage==='won';},
   get pendingTrial(){return on()&&s.stolen&&s.tree==='complete'&&!s.trialWon&&s.stage==='hunt';},

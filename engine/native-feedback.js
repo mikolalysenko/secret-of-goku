@@ -12,6 +12,7 @@ export function createNativeFeedback(snes,mod){
     }
     return result;
   };
+  p.registerLineHook?.('getColor',p.getColor,color,ppu=>!flash||!(ppu.mode===1||ppu.mode===7));
   snes.write=function(address,value,dma){
     const bank=address>>>16,low=address&65535;
     if(low===0x49&&(bank===0x7e||bank<0x40||(bank>=0x80&&bank<0xc0)))pulse=null;

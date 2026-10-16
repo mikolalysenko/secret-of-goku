@@ -169,6 +169,7 @@ export function createArrival(snes,mod){
     }
     return result;
   };
+  ppu.registerLineHook?.('getColor',ppu.getColor,getColor,()=>!craterOnScreen);
   mod.arrival=api;
   return api;
 }

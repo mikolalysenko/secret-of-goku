@@ -50,6 +50,7 @@ export function createNativeEquipment(snes,mod){
   }
   return cycle.call(this);
  };
+ c.registerBreakpoints?.(c.cycle,cycle,[[0,0x4699],[0,0x4bf6],[0,0x4576],[0x10,0xd1cf],[0,0x74b6]]);
  function itemRead(bank,address){
   const pc=(bank&63)*65536+address;
   if((bank&0xc0)===0xc0&&enabled()&&names.has(pc))return names.get(pc);
@@ -66,7 +67,7 @@ export function createNativeEquipment(snes,mod){
    training.forEach((v,i)=>names.set(0xa9f00+i,v));
    const offset=cart.data[0x18fd66]|cart.data[0x18fd67]<<8;
    for(let i=9;i<18;i++){const a=0x18fd60+offset+i*2;swordIcons.add(cart.data[a]|cart.data[a+1]<<8);}
-   cart.read=itemRead;
+   cart.read=itemRead;cart.registerReadHook?.(itemRead,read,m=>{for(const pc of names.keys())m.hirom(pc,pc+1);});
   },
   iconMatches(ppu,attr,index){
    if(!enabled()||r[0x1809]!==3||r[0x1847]!==0||index<18||index>=26||(attr&511)!==0xe0+(index-18)*2)return false;

@@ -35,6 +35,7 @@ export function createWorldScars(snes,mod){
     }
     return result;
   };
+  p.registerLineHook?.('getColor',p.getColor,getColor,ppu=>!visible||ppu.mode!==7);
   return{
     load(rom){art=decodePotosCrater(rom);viewKey=null;},
     targets(){return blastTowns.filter(([map])=>!scars.some(s=>s.towns.includes(map))).map(([map,name])=>({id:`town-${map}`,map,name,...position(map),radius:32}));},

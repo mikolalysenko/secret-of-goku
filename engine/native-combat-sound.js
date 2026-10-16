@@ -13,6 +13,7 @@ export function createNativeCombatSound(snes,mod){
   }
   return cycle.call(this);
  };
+ cpu.registerBreakpoints?.(cpu.cycle,cycle,[[0,0x4157]]);
  return{mark(enemy){marked.set(enemy.base,{map:word(0xdc),species:enemy.species,frame:mod.frame});},
   get suppressed(){return suppressed;},restore(){marked.clear();},dispose(){cpu.cycle=cycle;marked.clear();}};
 }

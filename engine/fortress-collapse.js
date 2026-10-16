@@ -17,6 +17,7 @@ export function createFortressCollapse(snes,mod,destroyed){
     }
     return cycle.call(this);
   };
+  c.registerBreakpoints?.(c.cycle,cycle,[[3,0x0004]]);
   if(color)p.getColor=function(sub,x,y){
     const result=color.call(this,sub,x,y);
     if(renderFrame!==mod.frame){renderFrame=mod.frame;renderActive=active();camera=renderActive?mod.status:null;}
@@ -33,6 +34,10 @@ export function createFortressCollapse(snes,mod,destroyed){
     result[0]=Math.min(31,(v&31)+2+alarm)|(Math.max(0,((v>>5)&31)-2-(alarm>>1))<<5)|(Math.max(0,((v>>10)&31)-3-(alarm>>1))<<10);
     return result;
   };
+  if(color)p.registerLineHook?.('getColor',p.getColor,color,(ppu,line)=>{
+    if(renderFrame!==mod.frame){renderFrame=mod.frame;renderActive=active();camera=renderActive?mod.status:null;}
+    return !renderActive||ppu.mode!==1||line>=224;
+  });
   function fracture(spot,radius){
     const terrain=r[0xe00b];
     fractureFortress(state.arena,spot.x,spot.y,radius,(x,y)=>mod.localFlightHook.canLand(x,y,terrain&128?1:0,terrain&3));

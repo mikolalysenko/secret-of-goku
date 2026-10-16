@@ -35,6 +35,7 @@ export function installAltarCamera(snes,mod,getScene){
   }
   return cycle.call(this);
  };
+ cpu.registerBreakpoints?.(cpu.cycle,cycle,[[0,0xd651],[0,0xda6e]]);
  return{reset(){lastFrame=-1;},dispose(){cpu.cycle=cycle;}};
 }
 
@@ -79,7 +80,9 @@ export function createEmperorBeamView(snes,mod,getScene){
    }
   }
  }
- return{color(ppu,sub,x,y,native){
+ return{idle(ppu,line){
+  const scene=getScene();return !mod.options.enabled||scene?.kind!=='emperor-shot'||scene.map!==mod.read16(0xdc)||ppu.mode!==1||line>224;
+ },color(ppu,sub,x,y,native){
   const scene=getScene();if(!mod.options.enabled||scene?.kind!=='emperor-shot'||scene.map!==mod.read16(0xdc)||sub||ppu.mode!==1||y>224)return native;
   if(prepared!==mod.frame)prepare(scene);
   const c=surface[y*256+x];

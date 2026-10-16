@@ -299,6 +299,11 @@ export function createPlanetView(snes,mod){
     if(orbit&&(ring||y>=190)&&[2,4].includes(result[1]))return result;
     return[y===224?0:surface[y*256+x]-1,4,0x86];
   };
+  p.registerLineHook?.('getColor',p.getColor,previous,(ppu,line)=>{
+    if(line>224||!texture)return true;
+    viewFrame=mod.frame;viewLine=line;viewX=-1;view=selectView();
+    return !view;
+  });
   return{ready:collateral.ready,load(rom){texture=decodePlanetTexture(rom);frame=-1;viewFrame=-1;viewX=256;globeKey='';},
     renderDefeat(){
       const state=mod.ending?.planetScene;if(!state?.fatal)return;

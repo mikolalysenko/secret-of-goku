@@ -232,6 +232,7 @@ export function createNativeStory(snes,mod){
     }
     return cycle.call(this);
   };
+  c.registerBreakpoints?.(c.cycle,cycle,[[0,0xb073],[1,0xe8ef]]);
   return{
     inspectByte,
     load(){
@@ -420,7 +421,7 @@ Speak to her before wishing.`),...choice('Visit Dryad?\n',[{label:'Later',x:2,to
         for(const b of script.bytes)mix(b);
       }
       layout=(fingerprint>>>0).toString(16);
-      cart.read=storyRead;this.restore();
+      cart.read=storyRead;cart.registerReadHook?.(storyRead,read,m=>{m.bank(8,0,0x10000);for(let b=0xf0;b<=0xf7;b++)m.hirom((b&63)<<16,((b&63)<<16)+0x10000);});this.restore();
     },
     request(event,{actor=0}={}){
       if(!Number.isInteger(event)||event<0||event>=0x800||queued!==null||pending||!enabled()||!mod.canAttack)return false;

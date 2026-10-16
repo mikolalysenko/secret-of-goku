@@ -258,6 +258,14 @@ function Ppu(snes) {
       this.optVerBuffer = [0, 0];
       this.lastOrigTileX = [-1, -1];
       let bMult = this.brightnessMults[this.brightness];
+      if(this.canComposeLine(line)) {
+        this.composeLine(line, bMult);
+        clearArray(this.spriteLineBuffer);
+        if(!this.forcedBlank) {
+          this.evaluateSprites(line);
+        }
+        return;
+      }
       let i = 0;
       while(i < 256) {
         // for each pixel
@@ -456,6 +464,331 @@ function Ppu(snes) {
     }
 
     return [color, layer, pixel];
+  }
+
+  // Scanline compositor: produces exactly what the per-pixel getColor /
+  // getMathEnabled path above produces, but decodes each background tile
+  // once per line and evaluates windows by span. It runs only when no
+  // per-pixel hook replaces getColor, getWindowState, getPixelForLayer or
+  // getMathEnabled (or every hook's lineGuard reports it idle), and never for
+  // offset-per-tile modes 2/4/6, whose fetch state the slow path keeps.
+  const lineVal = [
+    new Uint16Array(256), new Uint16Array(256), new Uint16Array(256),
+    new Uint16Array(256)
+  ];
+  const linePrio = [
+    new Uint8Array(256), new Uint8Array(256), new Uint8Array(256),
+    new Uint8Array(256)
+  ];
+  const subVal = [new Uint16Array(256), new Uint16Array(256)];
+  const subPrio = [new Uint8Array(256), new Uint8Array(256)];
+  const winMask = [
+    new Uint8Array(256), new Uint8Array(256), new Uint8Array(256),
+    new Uint8Array(256), new Uint8Array(256), new Uint8Array(256)
+  ];
+  const winReady = new Uint8Array(6);
+  const spriteVal = new Uint16Array(256);
+  const spritePrio = new Uint8Array(256);
+  const composed = new Int32Array(3);
+  // Per-pixel hooks (wrappers of getColor and friends) register the wrapper
+  // they installed, the method it wraps and an idle(ppu, line) test that is
+  // true only when the wrapper returns exactly its predecessor's result for
+  // every pixel of the line. The compositor walks each actual wrapper chain;
+  // an unregistered or active wrapper keeps the per-pixel path.
+  const hookByFn = new Map();
+  const hookedMethods = [
+    "getColor", "getWindowState", "getPixelForLayer", "getMathEnabled",
+    "getMode7Pixel", "fetchTileInBuffer"
+  ];
+  this.registerLineHook = function(method, fn, previous, idle) {
+    hookByFn.set(fn, {method: method, previous: previous, idle: idle});
+    return () => {
+      hookByFn.delete(fn);
+    };
+  }
+
+  // Diagnostics/kill switch; kept in the closure so it is never serialized.
+  let composeEnabled = true;
+  this.setLineComposer = function(enabled) {
+    composeEnabled = !!enabled;
+  }
+
+  this.canComposeLine = function(line) {
+    if(!composeEnabled) {
+      return false;
+    }
+    let mode = this.mode;
+    if(mode === 2 || mode === 4 || mode === 6) {
+      return false;
+    }
+    for(let i = 0; i < hookedMethods.length; i++) {
+      let method = hookedMethods[i];
+      let fn = this[method];
+      while(fn !== base[method]) {
+        let hook = hookByFn.get(fn);
+        if(!hook || hook.method !== method || !hook.idle(this, line)) {
+          return false;
+        }
+        fn = hook.previous;
+      }
+    }
+    return true;
+  }
+
+  this.windowMaskFor = function(l) {
+    // Same truth table as the base getWindowState, evaluated for all 256 x.
+    let mask = winMask[l];
+    if(winReady[l]) {
+      return mask;
+    }
+    winReady[l] = 1;
+    let w1 = this.window1Enabled[l], w2 = this.window2Enabled[l];
+    if(!w1 && !w2) {
+      mask.fill(0);
+      return mask;
+    }
+    let l1 = this.window1Left, r1 = this.window1Right;
+    let l2 = this.window2Left, r2 = this.window2Right;
+    let i1 = this.window1Inversed[l], i2 = this.window2Inversed[l];
+    let logic = this.windowMaskLogic[l];
+    for(let x = 0; x < 256; x++) {
+      let t1 = x >= l1 && x <= r1;
+      t1 = i1 ? !t1 : t1;
+      let t2 = x >= l2 && x <= r2;
+      t2 = i2 ? !t2 : t2;
+      let v;
+      if(w1 && !w2) {
+        v = t1;
+      } else if(!w1 && w2) {
+        v = t2;
+      } else {
+        switch(logic) {
+          case 0: v = t1 || t2; break;
+          case 1: v = t1 && t2; break;
+          case 2: v = t1 !== t2; break;
+          case 3: v = t1 === t2; break;
+          default: v = undefined;
+        }
+      }
+      mask[x] = v ? 1 : 0;
+    }
+    return mask;
+  }
+
+  // Decodes one background layer for the whole line into value/priority
+  // arrays: value is what getPixelForLayer returns when the tile priority
+  // matches, priority is the tile's priority bit.
+  this.decodeLayer = function(l, y, sub, outVal, outPrio) {
+    let mode = this.mode;
+    let hires = mode === 5 || mode === 6;
+    let bits = this.bitPerMode[mode * 4 + l];
+    let mul = bits > 4 ? 256 : bits > 2 ? 16 : 4;
+    let palAdd = mode === 0 ? l * 8 : 0;
+    let mosaic = this.mosaicEnabled[l], size = this.mosaicSize;
+    let hoff = this.bgHoff[l], voff = this.bgVoff[l];
+    let lastX = -1, lastY = -1, mapWord = 0, p1 = 0, p2 = 0, p3 = 0, p4 = 0;
+    for(let x = 0; x < 256; x++) {
+      let lx = x, ly = y;
+      if(mosaic) {
+        lx -= lx % size;
+        ly -= (ly - this.mosaicStartLine) % size;
+      }
+      lx += hoff;
+      ly += voff;
+      if(hires) {
+        lx = lx * 2 + (sub ? 0 : 1);
+      }
+      if((lx >> 3) !== lastX || ly !== lastY) {
+        this.fetchTileInBuffer(lx, ly, l, false);
+        lastX = lx >> 3;
+        lastY = ly;
+        mapWord = this.tilemapBuffer[l];
+        p1 = this.tileBufferP1[l];
+        p2 = this.tileBufferP2[l];
+        p3 = this.tileBufferP3[l];
+        p4 = this.tileBufferP4[l];
+      }
+      let xShift = (mapWord & 0x4000) > 0 ? (lx & 0x7) : 7 - (lx & 0x7);
+      let tileData = (p1 >> xShift) & 0x1;
+      tileData |= ((p1 >> (8 + xShift)) & 0x1) << 1;
+      if(bits > 2) {
+        tileData |= ((p2 >> xShift) & 0x1) << 2;
+        tileData |= ((p2 >> (8 + xShift)) & 0x1) << 3;
+      }
+      if(bits > 4) {
+        tileData |= ((p3 >> xShift) & 0x1) << 4;
+        tileData |= ((p3 >> (8 + xShift)) & 0x1) << 5;
+        tileData |= ((p4 >> xShift) & 0x1) << 6;
+        tileData |= ((p4 >> (8 + xShift)) & 0x1) << 7;
+      }
+      outVal[x] = tileData > 0 ?
+        (((mapWord & 0x1c00) >> 10) + palAdd) * mul + tileData : 0;
+      outPrio[x] = (mapWord & 0x2000) >> 13;
+    }
+    // Leave the per-layer fetch cache exactly as the slow path would.
+    this.lastTileFetchedX[l] = lastX;
+    this.lastTileFetchedY[l] = lastY;
+  }
+
+  this.composeLine = function(line, bMult) {
+    let out = this.pixelOutput, base = line * 1536;
+    if(this.forcedBlank) {
+      out.fill(0, base, base + 1536);
+      return;
+    }
+    let mode = this.mode;
+    let modeIndex = this.layer3Prio && mode === 1 ? 96 : 12 * mode;
+    modeIndex = this.mode7ExBg && mode === 7 ? 108 : modeIndex;
+    let count = this.layercountPerMode[mode];
+    let hires = mode === 5 || mode === 6;
+    let y = line;
+    if(this.interlace && hires) {
+      y = y * 2 + (this.evenFrame ? 1 : 0);
+    }
+    winReady.fill(0);
+    // Which layers are present in this mode's priority list.
+    let used = 0;
+    for(let j = 0; j < count; j++) {
+      used |= 1 << this.layersPerMode[modeIndex + j];
+    }
+    // Mode 7 keeps sampling through getMode7Pixel per pixel (its own
+    // per-x texel cache is shared by layers 0 and 1/EXTBG).
+    if(mode !== 7) {
+      for(let l = 0; l < 4; l++) {
+        if(used & (1 << l)) {
+          this.decodeLayer(l, y, false, lineVal[l], linePrio[l]);
+          if(hires && l < 2) {
+            this.decodeLayer(l, y, true, subVal[l], subPrio[l]);
+          }
+        }
+      }
+    }
+    // Sprite lookups honour (unused in practice) layer-4 mosaic/scroll.
+    let sprMosaic = this.mosaicEnabled[4];
+    let sprH = mode === 7 ? 0 : this.bgHoff[4];
+    for(let x = 0; x < 256; x++) {
+      let lx = x;
+      if(sprMosaic) {
+        lx -= lx % this.mosaicSize;
+      }
+      lx += sprH;
+      spriteVal[x] = this.spriteLineBuffer[lx];
+      spritePrio[x] = this.spritePrioBuffer[lx];
+    }
+    let pseudo = this.pseudoHires;
+    let colorClip = this.colorClip, preventMath = this.preventMath;
+    let clipMask = colorClip === 1 || colorClip === 2 || preventMath === 1 ||
+      preventMath === 2 ? this.windowMaskFor(5) : null;
+    for(let i = 0; i < 256; i++) {
+      this.composePixel(false, i, y, modeIndex, count, mode);
+      let color = composed[0], lay = composed[1], pix = composed[2];
+      let r1 = 0, g1 = 0, b1 = 0;
+      let r2 = color & 0x1f;
+      let g2 = (color & 0x3e0) >> 5;
+      let b2 = (color & 0x7c00) >> 10;
+      if(
+        colorClip === 3 ||
+        (colorClip === 2 && clipMask[i]) ||
+        (colorClip === 1 && !clipMask[i])
+      ) {
+        r2 = 0;
+        g2 = 0;
+        b2 = 0;
+      }
+      let mathOn = !(
+        preventMath === 3 ||
+        (preventMath === 2 && clipMask[i]) ||
+        (preventMath === 1 && !clipMask[i])
+      ) && this.mathEnabled[lay] && (lay !== 4 || pix >= 0xc0);
+      let secondLayer = 5;
+      if(hires || pseudo || (mathOn && this.addSub)) {
+        this.composePixel(true, i, y, modeIndex, count, mode);
+        let c = composed[0];
+        secondLayer = composed[1];
+        r1 = c & 0x1f;
+        g1 = (c & 0x3e0) >> 5;
+        b1 = (c & 0x7c00) >> 10;
+      }
+      if(mathOn) {
+        let useSub = this.addSub && secondLayer < 5;
+        if(this.subtractColors) {
+          r2 -= useSub ? r1 : this.fixedColorR;
+          g2 -= useSub ? g1 : this.fixedColorG;
+          b2 -= useSub ? b1 : this.fixedColorB;
+        } else {
+          r2 += useSub ? r1 : this.fixedColorR;
+          g2 += useSub ? g1 : this.fixedColorG;
+          b2 += useSub ? b1 : this.fixedColorB;
+        }
+        if(this.halfColors && (secondLayer < 5 || !this.addSub)) {
+          r2 >>= 1;
+          g2 >>= 1;
+          b2 >>= 1;
+        }
+        r2 = r2 > 31 ? 31 : r2;
+        r2 = r2 < 0 ? 0 : r2;
+        g2 = g2 > 31 ? 31 : g2;
+        g2 = g2 < 0 ? 0 : g2;
+        b2 = b2 > 31 ? 31 : b2;
+        b2 = b2 < 0 ? 0 : b2;
+      }
+      if(!(hires || pseudo)) {
+        r1 = r2;
+        g1 = g2;
+        b1 = b2;
+      }
+      let at = base + 6 * i;
+      out[at] = (r1 * bMult) & 0xff;
+      out[at + 1] = (g1 * bMult) & 0xff;
+      out[at + 2] = (b1 * bMult) & 0xff;
+      out[at + 3] = (r2 * bMult) & 0xff;
+      out[at + 4] = (g2 * bMult) & 0xff;
+      out[at + 5] = (b2 * bMult) & 0xff;
+    }
+  }
+
+  // getColor for one pixel from the line buffers; writes composed[].
+  this.composePixel = function(sub, x, y, modeIndex, count, mode) {
+    let enabled = sub ? this.subScreenEnabled : this.mainScreenEnabled;
+    let windowed = sub ? this.subScreenWindow : this.mainScreenWindow;
+    let pixel = 0, layer = 5, j;
+    for(j = 0; j < count; j++) {
+      layer = this.layersPerMode[modeIndex + j];
+      if(enabled[layer] && (!windowed[layer] || !this.windowMaskFor(layer)[x])) {
+        let p = this.prioPerMode[modeIndex + j];
+        if(layer > 3) {
+          pixel = spritePrio[x] !== p ? 0 : spriteVal[x];
+        } else if(mode === 7) {
+          let lx = x, ly = y;
+          if(this.mosaicEnabled[layer]) {
+            lx -= lx % this.mosaicSize;
+            ly -= (ly - this.mosaicStartLine) % this.mosaicSize;
+          }
+          pixel = this.getMode7Pixel(lx, ly, layer, p);
+        } else if(sub && mode >= 5 && layer < 2) {
+          pixel = subPrio[layer][x] !== p ? 0 : subVal[layer][x];
+        } else {
+          pixel = linePrio[layer][x] !== p ? 0 : lineVal[layer][x];
+        }
+      }
+      if((pixel & 0xff) > 0) {
+        break;
+      }
+    }
+    layer = j === count ? 5 : layer;
+    let color = this.cgram[pixel & 0xff];
+    if(
+      this.directColor && layer < 4 &&
+      this.bitPerMode[mode * 4 + layer] === 8
+    ) {
+      let r = ((pixel & 0x7) << 2) | ((pixel & 0x100) >> 7);
+      let g = ((pixel & 0x38) >> 1) | ((pixel & 0x200) >> 8);
+      let b = ((pixel & 0xc0) >> 3) | ((pixel & 0x400) >> 8);
+      color = (b << 10) | (g << 5) | r;
+    }
+    composed[0] = color;
+    composed[1] = layer;
+    composed[2] = pixel;
   }
 
   this.getMathEnabled = function(x, l, pal) {
@@ -1278,6 +1611,14 @@ function Ppu(snes) {
       }
     }
   }
+
+  // The unhooked per-pixel methods, kept out of serialized state.
+  const base = {
+    getColor: this.getColor, getWindowState: this.getWindowState,
+    getPixelForLayer: this.getPixelForLayer,
+    getMathEnabled: this.getMathEnabled, getMode7Pixel: this.getMode7Pixel,
+    fetchTileInBuffer: this.fetchTileInBuffer
+  };
 
   this.setPixels = function(arr) {
 

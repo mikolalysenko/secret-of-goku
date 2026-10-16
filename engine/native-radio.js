@@ -116,6 +116,13 @@ export function createNativeRadio(snes,mod){
     }
     return color;
   };
+  p.registerLineHook?.('getColor',p.getColor,previous,(ppu,line)=>{
+    if(!current)return true;
+    const top=mod.worldFlight||current.kind==='full-power-frieza'?152:8;
+    if(line<top||line>=top+64)return true;
+    if(visibilityFrame!==mod.frame){visibilityFrame=mod.frame;frameVisible=visible();}
+    return !frameVisible;
+  });
   const say=(text,{frames=230,kind='story'}={})=>{encodeText(text);if(wrapText(text).split('\n').length>3)throw Error('Radio message is too long');queue.push({text,remaining:frames,kind});};
   return{
     say,

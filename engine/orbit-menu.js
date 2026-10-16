@@ -15,5 +15,6 @@ export function installOrbitMenu(snes,mod,getOrbit){
   }
   return cycle.call(this);
  };
+ cpu.registerBreakpoints?.(cpu.cycle,cycle,[[0,0x714a],[0,0x6c6d]]);
  return{dispose(){cpu.cycle=cycle;}};
 }

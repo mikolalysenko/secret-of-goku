@@ -32,12 +32,13 @@ export function createNativeSenzu(snes,mod){
   }
   return cycle.call(this);
  };
+ cpu.registerBreakpoints?.(cpu.cycle,cycle,[[0x10,0xdb2a],[0,0x5593]]);
  function itemRead(bank,address){
   const pc=(bank&63)*65536+address;
   if((bank&0xc0)===0xc0&&enabled()&&pc>=0xaa120&&pc<0xaa12e)return name[pc-0xaa120];
   return read.call(this,bank,address);
  }
- return{load(){cart=snes.cart;read=cart.read;const original=encodeText('Cup of Wishes');if(!original.every((b,i)=>cart.data[0xaa120+i]===b))throw Error('Unsupported item-name table');cart.read=itemRead;},
+ return{load(){cart=snes.cart;read=cart.read;const original=encodeText('Cup of Wishes');if(!original.every((b,i)=>cart.data[0xaa120+i]===b))throw Error('Unsupported item-name table');cart.read=itemRead;cart.registerReadHook?.(itemRead,read,m=>m.hirom(0xaa120,0xaa12e));},
   iconMatches(ppu,attr){
    return nativeItemIcon(ppu,attr)==='senzu';
   },pixel:senzuPixel,get used(){return used;}};

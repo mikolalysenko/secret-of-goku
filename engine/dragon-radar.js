@@ -62,5 +62,9 @@ export function createDragonRadar(snes,mod){
   const pixel=y<56?dial[(y-8)*48+x-8]:panel[(y-152)*240+x-8];
   return pixel?[pixel-1,4,0x86]:color;
  };
+ p.registerLineHook?.('getColor',p.getColor,previous,(ppu,line)=>{
+  if(!mod.worldFlight||!(line>=8&&line<56||line>=152&&line<216))return true;
+  if(frame!==mod.frame)update();return !visible;
+ });
  return{get status(){update();return{visible,target,bearing};},dispose(){p.getColor=previous;}};
 }

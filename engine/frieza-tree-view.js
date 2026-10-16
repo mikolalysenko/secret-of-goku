@@ -50,7 +50,11 @@ export function createFriezaTreeView(snes,mod,getScene,getAtlas){
    surface[i]=1+mix(c&31)+(mix(c>>5&31)<<5)+(mix(c>>10&31)<<10);
   }}
  }
- return{color(ppu,sub,x,y,native){
+ return{idle(ppu,line){
+  // True when color() returns its native argument for the whole line.
+  const scene=getScene();if(!scene||!mod.options.enabled||ppu.mode!==1||line>224)return true;
+  return scene.kind!=='tree-wake'&&scene.kind!=='tree-return'&&(scene.map!==236||!scene.kind.startsWith('tree-')||mod.read16(0xdc)!==236);
+ },color(ppu,sub,x,y,native){
   const scene=getScene();if(!scene||!mod.options.enabled||sub||ppu.mode!==1||y>224)return native;
   const dim=(color,amount)=>Math.round((color&31)*amount)|(Math.round((color>>5&31)*amount)<<5)|(Math.round((color>>10&31)*amount)<<10);
   if(scene.kind==='tree-wake')return[dim(native[0],Math.min(1,scene.age/40)),native[1],native[2]];

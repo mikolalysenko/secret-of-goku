@@ -14,5 +14,6 @@ export function createNativeInteraction(snes,mod){
   }
   return cycle.call(this);
  };
+ cpu.registerBreakpoints?.(cpu.cycle,cycle,[[0,0xb2a7],[0,0xb224]]);
  return{get suppressed(){return suppressed;},dispose(){cpu.cycle=cycle;}};
 }

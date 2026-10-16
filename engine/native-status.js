@@ -81,14 +81,16 @@ export function statusPixels(rom,stats,name='GOKU'){
 export function createNativeStatus(snes,mod){
  const p=snes.ppu,previous=p.getColor;
  let frame=-1,active=false,raster=null,key='';
- p.getColor=function(sub,x,y){
-  if(frame!==mod.frame){
-   frame=mod.frame;active=isGokuStatus(snes,mod);
-   if(active){
-    const stats=gokuStats(mod),r=snes.ram,end=r.indexOf(0,0xcc00),name=decodeText(r.slice(0xcc00,Math.min(end,0xcc06)));
-    const next=JSON.stringify([stats,name]);if(next!==key){key=next;raster=statusPixels(snes.cart.data,stats,name);}
-   }
+ function refresh(){
+  if(frame===mod.frame)return;
+  frame=mod.frame;active=isGokuStatus(snes,mod);
+  if(active){
+   const stats=gokuStats(mod),r=snes.ram,end=r.indexOf(0,0xcc00),name=decodeText(r.slice(0xcc00,Math.min(end,0xcc06)));
+   const next=JSON.stringify([stats,name]);if(next!==key){key=next;raster=statusPixels(snes.cart.data,stats,name);}
   }
+ }
+ p.getColor=function(sub,x,y){
+  refresh();
   if(!active||this.mode!==5)return previous.call(this,sub,x,y);
   // Replace only the native text/window layer. Its animated green texture,
   // Goku's real menu sprite, brightness, fades and color math stay native.
@@ -96,5 +98,6 @@ export function createNativeStatus(snes,mod){
   let color;try{screens[1]=false;color=previous.call(this,sub,x,y);}finally{screens[1]=enabled;}
   const pixel=raster[y*512+x*2+(sub?0:1)];return pixel?[pixel-1,1,3]:color;
  };
+ p.registerLineHook?.('getColor',p.getColor,previous,ppu=>{refresh();return !active||ppu.mode!==5;});
  return{get active(){return isGokuStatus(snes,mod);},get stats(){return gokuStats(mod);},dispose(){p.getColor=previous;}};
 }

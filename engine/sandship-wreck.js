@@ -68,6 +68,7 @@ export function createSandshipWreck(snes,mod,state){
   }
   return cycle.call(this);
  };
+ c.registerBreakpoints?.(c.cycle,cycle,[[3,0x0004]]);
 
  // Native object loader read view (C8:xxxx), active only while wrecked.
  function read(address,data){
@@ -174,6 +175,10 @@ export function createSandshipWreck(snes,mod,state){
   result[0]=rgb((v&31)+2+alarm+flicker,(v>>5&31)-alarm*.4+flicker*.5,(v>>10&31)-2-alarm*.5);
   return result;
  };
+ p.registerLineHook?.('getColor',p.getColor,color,(ppu,line)=>{
+  if(renderFrame!==mod.frame){renderFrame=mod.frame;renderActive=active();camera=renderActive?mod.status:null;}
+  return !renderActive||ppu.mode!==1||line>=224;
+ });
  // The white-out runs through the native fade and door load, so it is
  // applied to the finished line, after brightness and forced blank.
  p.renderLine=function(line){

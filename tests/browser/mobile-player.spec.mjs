@@ -110,12 +110,16 @@ test('tapping the game streams native music through the worklet without gaps at 
   window.requestAnimationFrame=f=>raf(t=>raf(f));
   try{
    mana.play();await new Promise(r=>setTimeout(r,800));
-   const before=out.stats.underruns,frames=out.stats.frames;out.stats.peak=0;
+   const before=out.stats.underruns,frames=out.stats.frames,start=performance.now();out.stats.peak=0;
    await new Promise(r=>setTimeout(r,2000));
-   return{underruns:out.stats.underruns-before,frames:out.stats.frames-frames,lead:out.stats.lead,peak:out.stats.peak};
+   const fps=(out.stats.frames-frames)*1000/(performance.now()-start);
+   return{underruns:out.stats.underruns-before,frames:out.stats.frames-frames,fps,lead:out.stats.lead,peak:out.stats.peak};
   }finally{window.requestAnimationFrame=raf;mana.pause();}
  });
- expect(result.frames).toBeGreaterThan(90);expect(result.underruns).toBe(0);expect(result.lead).toBeLessThan(.2);
+ // A source that cannot emulate 60 frames/s must starve any audio queue.
+ // Report that separately from a gap in the streaming pipeline itself.
+ expect(result.fps,`emulation kept real time: ${JSON.stringify(result)}`).toBeGreaterThan(57);
+ expect(result.underruns,`gap-free stream: ${JSON.stringify(result)}`).toBe(0);expect(result.lead).toBeLessThan(.2);
  expect(result.peak,'the title music is audible').toBeGreaterThan(.01);
  expect(await page.evaluate(()=>mana.audioOutput.queued)).toBe(0);
 });

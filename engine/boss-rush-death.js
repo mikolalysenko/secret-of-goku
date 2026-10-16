@@ -28,4 +28,5 @@ export function installFinaleDeathGate(snes,mod){
   if(this.cyclesLeft===0&&(this.r[1]&63)===1&&this.br[4]===0xe77b&&[0x7ff,0x42d,0x42f].includes(this.br[0])&&mod.ending?.defeated&&snes.cart.data[0x1e7c5]===0x60)this.br[4]=0xe7c5;
   return cycle.call(this);
  };
+ cpu.registerBreakpoints?.(cpu.cycle,cycle,[[1,0xe77b]]);
 }

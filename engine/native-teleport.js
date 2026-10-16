@@ -75,6 +75,7 @@ export function createNativeTeleport(snes,mod,collision){
   }
   return cycle.call(this);
  };
+ c.registerBreakpoints?.(c.cycle,cycle,[[0,0xd651],[0,0xda6e]],()=>pending!==null);
  return{findLanding,follow,gather,get pending(){return !!pending;},get scrolls(){return scrolls;},
   snapshot:()=>pending?{...pending,scrollFrame}:null,restore:s=>{pending=s?{...s,x:Math.round(s.x),y:Math.round(s.y)}:null;scrollFrame=s?.scrollFrame??-1;},dispose(){c.cycle=cycle;}};
 }

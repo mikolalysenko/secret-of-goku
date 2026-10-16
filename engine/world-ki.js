@@ -80,6 +80,7 @@ export function createWorldKi(snes,mod){
     }
     return cycle.call(this);
   };
+  c.registerBreakpoints?.(c.cycle,cycle,[[2,0xb112],[2,0xb1f7],[2,0xb1b3],[0,0x8064]]);
   return{
     aim,targets,collapse,
     tick(input){

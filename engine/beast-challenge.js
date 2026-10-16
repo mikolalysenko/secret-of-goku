@@ -21,6 +21,7 @@ export function createBeastChallenge(snes,mod){
     }
     return cycle.call(this);
   };
+  cpu.registerBreakpoints?.(cpu.cycle,cycle,[[0,0x4053]]);
   return{
     victory(){if(fed&&started){won=true;burst=null;}},
     choose(feed){if(mod.quest?.status.canFeed)feed=true;else if(feed)return false;fed=!!feed;started=won=false;hits=clock=grace=0;burst=null;beastBody=null;pendingBeam=0;return true;},

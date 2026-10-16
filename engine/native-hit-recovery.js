@@ -96,6 +96,7 @@ export function createNativeHitRecovery(snes,mod){
   }
   return cycle.call(this);
  };
+ c.registerBreakpoints?.(c.cycle,cycle,[[0,0x4afe],[0,0x514b],[0,0x4053],[0,0xd651],[0,0xd890],[0,0xf590],[1,0x8355]]);
  return{
   tick(){
    stats();

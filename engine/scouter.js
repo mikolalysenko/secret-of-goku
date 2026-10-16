@@ -56,6 +56,7 @@ export function createScouter(snes,mod){
   }
   return cycle.call(this);
  };
+ cpu.registerBreakpoints?.(cpu.cycle,cycle,[[0,0x73f4]]);
  function itemRead(bank,address){
   const pc=(bank&63)*65536+address;
   // The selected title is a zero-terminated native string. Only redirect
@@ -110,8 +111,9 @@ export function createScouter(snes,mod){
   const pixel=overlay?.[y*256+x];
   return pixel?[pixel-1,4,0x86]:color;
  };
+ p.registerLineHook?.('getColor',p.getColor,previous,()=>!readouts.size||!available());
  return{
-  load(){cart=snes.cart;read=cart.read;if(!encodeText('Targeting').every((v,i)=>cart.data[0xaa174+i]===v))throw Error('Unsupported targeting title');cart.read=itemRead;},
+  load(){cart=snes.cart;read=cart.read;if(!encodeText('Targeting').every((v,i)=>cart.data[0xaa174+i]===v))throw Error('Unsupported targeting title');cart.read=itemRead;cart.registerReadHook?.(itemRead,read,m=>m.hirom(0xaa174,0xaa174+Math.max(names[0].length,names[1].length)));},
   tick(){
    if(pending&&available()&&mod.canAttack){pending=false;scan();}
    for(const[key,readout]of readouts)if(++readout.age>lifetime&&readout.source==='analyzer')readouts.delete(key);

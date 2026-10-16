@@ -38,6 +38,8 @@ class ManaMod {
       }
       return masked;
     };
+    snes.ppu.registerLineHook?.('getWindowState',snes.ppu.getWindowState,this.originalGetWindowState,
+      ppu=>!(self.options.enabled&&self.worldFlight&&ppu.mode===7));
   }
   read8(address){return this.snes.ram[address&0x1ffff]}
   read16(address){return this.read8(address)|this.read8(address+1)<<8}

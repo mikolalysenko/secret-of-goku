@@ -27,6 +27,7 @@ export function createNativeSound(snes,mod){
     }
     return cycle.call(this);
   };
+  cpu.registerBreakpoints?.(cpu.cycle,cycle,[[0,0xb073]]);
   const api={
     play(name){
       const sound=sounds[name];if(!sound||!mod.canAttack||queue.some(item=>item.name===name&&mod.frame-item.frame<3))return;

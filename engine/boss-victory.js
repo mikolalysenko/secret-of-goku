@@ -49,6 +49,7 @@ export function createBossVictoryAudio(snes,mod,getState){
   }
   return cycle.call(this);
  };
+ cpu.registerBreakpoints?.(cpu.cycle,cycle,[[0,0xb073]]);
  return{play(name){if(name in bossVictoryCommands)state().queue.push({name,frame:mod.frame});},
   get pending(){const s=state();return !!s.pending||s.queue.length>0;}};
 }

@@ -15,6 +15,7 @@ export function createNativeGapFlight(snes,mod){
     if(this.cyclesLeft===0&&(this.r[1]&63)===0&&this.br[4]===0xb683&&mod.localFlight&&enabled()&&(word(0)&0xfff)===0x6d8)this.br[4]=0xb678;
     return cycle.call(this);
   };
+  cpu.registerBreakpoints?.(cpu.cycle,cycle,[[0,0xb683]]);
   function direction(){
     const x=word(0xe002)>>4,y=word(0xe004)>>4,layer=(r[0xe00b]&0x80)?1:0;
     const dirs=[[0,-4,0],[0,4,1],[4,0,2],[-4,0,0x82]];
@@ -50,7 +51,7 @@ export function createNativeGapFlight(snes,mod){
       cart=snes.cart;read=cart.read;
       for(const [at,bytes]of [[0xa90da,[0x4e,0,0xe4,4,0x16,0xd7,0]],[0xa927a,[0x4e,0,0xe4,4,0x16,0xfb,0x20,7,0]]])
         if(!bytes.every((v,i)=>cart.data[at+i]===v))throw Error('Unsupported native whip crossing event');
-      cart.read=gapRead;this.restore();
+      cart.read=gapRead;cart.registerReadHook?.(gapRead,read,m=>{m.hirom(0xa90da,0xa90e1);m.hirom(0xa927a,0xa9283);});this.restore();
     },
     tick(){if(state.active&&(word(0xdc)!==state.map||!mod.options.enabled||r[0xd0]===0)){if(mod.options.enabled&&word(0xdc)===state.map)mod.playSound?.('landing');state.active=false;}},
     snapshot(){return{...state};},

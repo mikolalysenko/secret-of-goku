@@ -28,5 +28,6 @@ export function installFlightDialogue(cart,enabled=()=>true){
     return read.call(this,bank,address);
   }
   cart.read=flightRead;
+  cart.registerReadHook?.(flightRead,read,m=>{for(const patch of flightDialogue)m.hirom(patch.at,patch.at+patch.bytes.length);});
   return{dispose(){if(cart.read===flightRead)cart.read=read;}};
 }

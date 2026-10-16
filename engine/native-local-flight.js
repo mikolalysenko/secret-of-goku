@@ -327,6 +327,7 @@ export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,sp
   }
   return priorCycle.call(this);
  };
+ c.registerBreakpoints?.(c.cycle,priorCycle,[[0,0xd9ae],[0,0xda34],[0,0xd84c],[0,0xd651],[0,0xd6ac],[1,0xcfe5],[1,0xd017],[0,0xd359],[0,0xd778]]);
  // Companions trail an airborne Goku inside the band the tether keeps on
  // screen. Landing still gathers them through onCross/onCarry.
  function follow(x,y){

@@ -109,6 +109,7 @@ export function createShenronEnding(snes,mod){
   if(state.phase!=='scatter'&&c[1]===2&&y<170)return c; // no dialogue or combat HUD in the departure shot
   const pixel=surface[y*256+x];return pixel?[pixel-1,4,0x86]:c;
  };
+ p.registerLineHook?.('getColor',p.getColor,previous,(ppu,line)=>!state||state.fatal||state.phase==='reunion'||!mod.options.enabled||line>224);
  return{
   ready,
   lose(encounter){

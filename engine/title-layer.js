@@ -146,5 +146,6 @@ export function createTitleLayer(ppu) {
     }
     return getPixel.call(this,x,y,bg,priority);
   };
+  ppu.registerLineHook?.('getPixelForLayer',ppu.getPixelForLayer,getPixel,p=>!(layer.active&&layer.enabled&&p.mode===3));
   return layer;
 }

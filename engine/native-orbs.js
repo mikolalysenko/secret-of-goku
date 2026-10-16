@@ -41,6 +41,7 @@ export function createNativeOrbs(snes,mod){
     }
     return cycle.call(this);
   };
+  c.registerBreakpoints?.(c.cycle,cycle,[[0,0xb073]]);
   return{
     hit(enemy){if(!mod.options.enabled||!mod.canAttack||queued||pending)return false;const item=describe(enemy);if(!item)return false;queued=item;return true;},
     describe,get activated(){return activated;},get last(){return last;},get error(){return error;},

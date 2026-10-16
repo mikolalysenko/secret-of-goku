@@ -15,5 +15,6 @@ export function createNativeModSave(snes,mod,battery){
   }
   return cycle.call(this);
  };
+ c.registerBreakpoints?.(c.cycle,cycle,[[7,0x55d9],[7,0x558f],[7,0x55c5]]);
  return{dispose(){c.cycle=cycle;}};
 }

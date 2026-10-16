@@ -187,6 +187,71 @@ Cpu = (function() {
       this.cyclesLeft--;
     }
 
+    // Instruction hooks replace this.cycle with wrappers that act only when
+    // a particular instruction is about to run (bank & 0x3f, PC). Each
+    // wrapper registers its breakpoints; gatedCycle() then calls the wrapper
+    // chain only at those instructions and the plain core everywhere else.
+    // A wrapper that must see every instruction for a while passes an
+    // always() test. An unregistered wrapper anywhere in the chain disables
+    // the gate, so behaviour never depends on registration being complete.
+    // All of this lives in the closure and is never serialized.
+    const coreCycle = this.cycle;
+    const breakpointBits = new Uint8Array(1 << 19);
+    const breakpointHooks = new Map();
+    let gateHead = null;
+    let gateMiss = null;
+    let gateAlways = [];
+    this.registerBreakpoints = function(fn, previous, points, always) {
+      breakpointHooks.set(fn, {previous: previous, points: points, always: always});
+      gateHead = null;
+      gateMiss = null;
+    }
+    const rebuildGate = (head) => {
+      let fn = head, always = [];
+      breakpointBits.fill(0);
+      while(fn !== coreCycle) {
+        let hook = breakpointHooks.get(fn);
+        if(!hook) {
+          return false;
+        }
+        for(let i = 0; i < hook.points.length; i++) {
+          let key = ((hook.points[i][0] & 0x3f) << 16) | (hook.points[i][1] & 0xffff);
+          breakpointBits[key >> 3] |= 1 << (key & 7);
+        }
+        if(hook.always) {
+          always.push(hook.always);
+        }
+        fn = hook.previous;
+      }
+      gateAlways = always;
+      gateHead = head;
+      return true;
+    }
+    let gateEnabled = true;
+    this.setBreakpointGate = function(enabled) {
+      gateEnabled = !!enabled;
+    }
+    this.gatedCycle = function() {
+      let fn = this.cycle;
+      if(fn === coreCycle || !gateEnabled) {
+        return fn.call(this);
+      }
+      if(fn !== gateHead && (fn === gateMiss || !rebuildGate(fn))) {
+        gateMiss = fn;
+        return fn.call(this);
+      }
+      let key = ((this.r[K] & 0x3f) << 16) | this.br[PC];
+      if((breakpointBits[key >> 3] & (1 << (key & 7))) !== 0) {
+        return fn.call(this);
+      }
+      for(let i = 0; i < gateAlways.length; i++) {
+        if(gateAlways[i]()) {
+          return fn.call(this);
+        }
+      }
+      return coreCycle.call(this);
+    }
+
     this.getP = function() {
       let val = 0;
       val |= this.n ? 0x80 : 0;

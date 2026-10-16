@@ -223,7 +223,7 @@ function Snes() {
     if(this.cpuCyclesLeft === 0) {
       this.cpu.cyclesLeft = 0;
       this.cpuMemOps = 0;
-      this.cpu.cycle();
+      this.cpu.gatedCycle();
       this.cpuCyclesLeft += (this.cpu.cyclesLeft + 1 - this.cpuMemOps) * 6;
     }
     this.cpuCyclesLeft -= 2;
@@ -237,9 +237,63 @@ function Snes() {
     this.apuCatchCycles -= catchUpCycles;
   }
 
+  // Advances whole runs of master-cycle pairs in which cycle() would only
+  // count down: the CPU is mid-instruction (or paused at dots 536-575), no
+  // (H)DMA is pending and the dot holds no IRQ, HDMA, render or line event.
+  // Returns the number of pairs skipped; 0 means cycle() must run next.
+  // State afterwards is identical to calling cycle() that many times.
+  this.skipIdleCycles = function() {
+    let x = this.xPos;
+    if(
+      this.hdmaTimer > 0 || this.dmaBusy || x === 0 || x === 512 ||
+      x === 1024 || x === 1362 || x === this.hTimer * 4
+    ) {
+      return 0;
+    }
+    let end = x < 512 ? 512 : x < 1024 ? 1024 : 1362;
+    let cpuRuns = x < 536 || x >= 576;
+    if(x < 536 && end > 536) {
+      end = 536;
+    } else if(x >= 536 && x < 576) {
+      end = 576;
+    }
+    let hPos = this.hTimer * 4;
+    if(hPos > x && hPos < end) {
+      end = hPos;
+    }
+    let n = (end - x) >> 1;
+    if(cpuRuns) {
+      let left = this.cpuCyclesLeft >> 1;
+      if(left < n) {
+        n = left;
+      }
+      this.cpuCyclesLeft -= n * 2;
+    }
+    if(n <= 0) {
+      return 0;
+    }
+    // Repeated addition keeps the APU catch-up float bit-identical.
+    let apu = this.apuCatchCycles, step = this.apuCyclesPerMaster * 2;
+    for(let i = 0; i < n; i++) {
+      apu += step;
+    }
+    this.apuCatchCycles = apu;
+    if(this.joypadStrobe) {
+      this.joypad1Val = this.joypad1State;
+      this.joypad2Val = this.joypad2State;
+    }
+    for(let i = 0; i < n && this.autoJoyTimer > 0; i++) {
+      this.autoJoyTimer -= 2;
+    }
+    this.xPos = x + n * 2;
+    return n;
+  }
+
   this.runFrame = function(noPpu) {
     do {
-      this.cycle(noPpu);
+      if(this.skipIdleCycles() === 0) {
+        this.cycle(noPpu);
+      }
     } while(!(this.xPos === 0 && this.yPos === 0));
     //log("apu position: " + this.apu.dsp.sampleOffset);
   }
@@ -781,7 +835,7 @@ function Snes() {
         return this.readReg(adr);
       }
     }
-    return this.cart.read(bank, adr);
+    return this.cart.gatedRead(bank, adr);
   }
 
   this.read = function(adr, dma = false) {
