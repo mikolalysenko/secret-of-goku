@@ -37,6 +37,13 @@ it once, then set `"AllowIoOsAccess": true` in Mesen2's `settings.json`
 node snes/test/mesen.mjs dist/snes/secret-of-goku.sfc my-test.lua .local/snes-test/out
 ```
 
+Mesen savestates load into later builds, but only if the saved program
+counter is in code that did not move. `H.saveStable(name)` saves while the
+field loop waits for NMI at `C0:B079` (original code), so those checkpoints
+stay valid across rebuilds. A test can start from one with
+`runMesen({state})` or the CLI's fourth argument. In Mesen2's settings, Port 1
+must be a `SnesController` for scripted input.
+
 A test defines `function test() … end` using the helpers in
 `snes/test/lua/harness.lua`: `H.wait(n)`, `H.hold('a up', n)`,
 `H.tap('start')`, `H.waitFor(fn, n)`, `H.r8/r16/w8/w16` (CPU bus),
@@ -61,6 +68,28 @@ savestate), `H.result(k, v)`, `H.log(...)`. Results land in
 `%hijack_jsl`, `%patch` and `%origN` byte assertions. Every patch of original
 bytes goes through them; `build.mjs` rejects overlapping patches.
 
+## Modules and core API
+
+Each work stream is a module under `snes/src/modules/<name>/` with its own
+code bank, data bank and WRAM block (`core/layout.asm`, `core/ram.asm`).
+`snes/src/modules.asm` includes every module and lists its calls in the core
+dispatch tables. Data generators are `snes/gen/<name>.mjs` exporting
+`generate({rom, repo, outDir, genDir})`; they run before assembly and write
+into `dist/snes/gen/<name>/`, which is on asar's include path
+(`incbin "<name>/file.bin"`, `incsrc "<name>/file.asm"`). Generators may
+import the browser engine's JavaScript (authored tables, dialogue, story
+compiler) so the cartridge reuses one source of truth.
+
+Core services (`snes/src/core/core.asm`):
+
+| Symbol | Contract |
+| --- | --- |
+| `modules_field_frame` | Called once per completed field frame after the game's logic, before the NMI handshake. P = M16/X16, DB = `$7E`, D = 0. Preserve DB/D, return with RTL. |
+| `modules_field_nmi` | Called in vblank after the game's own uploads, only for frames the field loop completed. DB = `$80` (I/O visible). Keep it short. |
+| `core_queue_vram` | Queue a VRAM upload for the next field vblank: A = VRAM word address, X = bytes, Y = source address, `core_scratch` byte = source bank. Carry set when the queue (8 entries) or the 3 KiB budget is full. |
+| `!core_pad`, `!core_pad_new`, `!core_pad_rel` | Pad 1 held/pressed/released this field frame (`$4218` bit layout, `!PAD_*`). |
+| `!core_frame` | Field frames since boot. |
+
 ## Engine anchors
 
 | Address | Meaning |
@@ -68,6 +97,10 @@ bytes goes through them; `build.mjs` rejects overlapping patches.
 | `C0:8008` | Reset continues with `JML $C10010`; hijacked by `core_boot` |
 | `C0:B070` | Field main loop: `JSR $B08C` (frame logic), then waits for NMI on `$EC` bit 0 |
 | `C0:B08C` | Field frame logic; calls the entity, map, menu and event subsystems |
+| `C0:B073` | Hijacked by `core_field_frame` (replaced `SEP #$20 / LDA #$01`) |
+| `$0100/$0104` | NMI/IRQ trampolines (`JML`). Field: `$00C0A8`/`$00C1CF`; world flight: `$0088CF`/`$008A4B`; file menu: `$C020A7`/`$7EA266` |
+| `00:C0A8` | Field NMI: forced blank, palette DMA from `7E:2200` (`$200` bytes), OAM DMA from `7E:0400` (`$220` bytes, when `$EC & 9`), VRAM queues (`C692`), then `C1E7` |
+| `00:C158` | Hijacked by `core_field_nmi` (replaced `SEP #$20 / LDA $2C / STA $420C`) |
 
 ## Analysis tools
 

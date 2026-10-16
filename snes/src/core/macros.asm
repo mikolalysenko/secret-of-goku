@@ -8,9 +8,9 @@ macro hijack(addr, target, len, module)
 	pushpc
 	org <addr>
 	JML <target>
-	if <len> > 4
-		rep <len>-4 : NOP
-	endif
+	for i = 4..<len>
+		NOP
+	endfor
 	pullpc
 	print "HIJACK ", hex(<addr>, 6), " ", dec(<len>), " <module>"
 endmacro
@@ -21,9 +21,9 @@ macro hijack_jsl(addr, target, len, module)
 	pushpc
 	org <addr>
 	JSL <target>
-	if <len> > 4
-		rep <len>-4 : NOP
-	endif
+	for i = 4..<len>
+		NOP
+	endfor
 	pullpc
 	print "HIJACK ", hex(<addr>, 6), " ", dec(<len>), " <module>"
 endmacro

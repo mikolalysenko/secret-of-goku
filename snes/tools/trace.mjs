@@ -14,7 +14,7 @@ const args=process.argv.slice(2);
 const frames=Number(args.find(a=>a.startsWith('--frames='))?.slice(9)??240);
 const limit=Number(args.find(a=>a.startsWith('--limit='))?.slice(8)??1e9);
 const romPath=args.find(a=>a.startsWith('--rom='))?.slice(6)??'rom/secret-of-mana-us.sfc';
-const out='dist/snes/analysis';mkdirSync(out,{recursive:true});
+const out=process.env.SNES_ANALYSIS??'dist/snes/analysis';mkdirSync(out,{recursive:true});
 const files=[];
 (function walk(d){for(const f of readdirSync(d)){const p=join(d,f);let s;try{s=statSync(p);}catch{continue;}
  if(s.isDirectory()){if(!/node_modules|^tools$/.test(f))walk(p);}else if(f.endsWith('.json')&&s.size>1e6)files.push(p);}})('.local');

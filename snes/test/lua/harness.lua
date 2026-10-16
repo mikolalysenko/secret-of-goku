@@ -86,9 +86,47 @@ function H.shot(name)
   writefile(H_OUT .. '/' .. name .. '.png', emu.takeScreenshot())
   H.log('shot', name, H.frame)
 end
-function H.save(name) writefile(H_OUT .. '/' .. name .. '.mss', emu.createSavestate()) end
-H.pendingLoad = nil
-function H.load(path) H.pendingLoad = readfile(path); coroutine.yield() end
+-- Savestates can only be created/loaded inside an exec memory callback, so
+-- both arm a one-shot callback and finish on the next executed instruction.
+local function onNextInstruction(fn, lo, hi)
+  lo = lo or 0x000000
+  hi = hi or 0xFFFFFF
+  local done = false
+  local id
+  id = emu.addMemoryCallback(function()
+    if not done then
+      done = true
+      fn()
+    end
+  end, emu.callbackType.exec, lo, hi)
+  while not done do coroutine.yield() end
+  emu.removeMemoryCallback(id, emu.callbackType.exec, lo, hi)
+end
+function H.save(name)
+  onNextInstruction(function() writefile(H_OUT .. '/' .. name .. '.mss', emu.createSavestate()) end)
+end
+-- Portable checkpoint: saved while the field main loop waits for NMI
+-- (C0:B079, original code that never moves), so it loads into later builds.
+-- Waits up to `frames` frames for the field loop; returns false if not reached.
+function H.saveStable(name, frames)
+  local done = false
+  local id = emu.addMemoryCallback(function()
+    if not done then
+      done = true
+      writefile(H_OUT .. '/' .. name .. '.mss', emu.createSavestate())
+    end
+  end, emu.callbackType.exec, 0xC0B079, 0xC0B079)
+  for _ = 1, (frames or 600) do
+    if done then break end
+    coroutine.yield()
+  end
+  emu.removeMemoryCallback(id, emu.callbackType.exec, 0xC0B079, 0xC0B079)
+  return done
+end
+function H.load(path)
+  local data = readfile(path)
+  onNextInstruction(function() emu.loadSavestate(data) end)
+end
 function H.state() return emu.getState() end
 function H.finish(code)
   results.frames = H.frame
@@ -102,11 +140,6 @@ emu.addEventCallback(function()
 end, emu.eventType.inputPolled)
 emu.addEventCallback(function()
   H.frame = H.frame + 1
-  if H.pendingLoad then
-    local s = H.pendingLoad
-    H.pendingLoad = nil
-    emu.loadSavestate(s)
-  end
   if not co then
     co = coroutine.create(function()
       if H_STATE then H.load(H_STATE) end

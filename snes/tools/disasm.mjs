@@ -10,7 +10,7 @@ import {decode,hiromToPc,hex} from './w65816.mjs';
 const args=process.argv.slice(2);
 const romPath=args.find(a=>a.startsWith('--rom='))?.slice(6)??'rom/secret-of-mana-us.sfc';
 const rom=new Uint8Array(readFileSync(romPath));
-const covPath='dist/snes/analysis/coverage.bin';
+const covPath=(process.env.SNES_ANALYSIS??'dist/snes/analysis')+'/coverage.bin';
 const cov=existsSync(covPath)?new Uint8Array(readFileSync(covPath)):null;
 const pos=args.filter(a=>!a.startsWith('--'));
 const parse=s=>parseInt(s.replace(/[:$]/g,''),16);
