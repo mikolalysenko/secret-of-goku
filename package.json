@@ -3,8 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Secret of Mana in the browser with Goku, overpowered combat, flight and story shortcuts. Bring your own ROM.",
-  "engines": {"node": ">=22"},
+  "description": "Secret of Mana. With Goku. A vibe coded fan game, not intended for commercial purposes.",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "node scripts/serve.mjs",
     "start": "node scripts/serve.mjs",
@@ -34,10 +36,16 @@
     "assets:prepare": "node scripts/prepare-assets.mjs",
     "rom:import": "node scripts/import-rom.mjs",
     "rom:inspect": "node tools/rom/cli.mjs inspect .local/rom/secret-of-mana-us.sfc",
-    "rom:extract": "node tools/rom/cli.mjs extract .local/rom/secret-of-mana-us.sfc --out assets/data/potos-rom.json --render-dir assets/maps"
+    "rom:extract": "node tools/rom/cli.mjs extract .local/rom/secret-of-mana-us.sfc --out assets/data/potos-rom.json --render-dir assets/maps",
+    "release": "node scripts/release.mjs",
+    "desktop:prepare": "node scripts/release.mjs --stage-only",
+    "desktop:start": "node scripts/start-desktop.mjs",
+    "test:desktop": "node tests/desktop/smoke.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.0",
+    "electron": "44.8.0",
+    "electron-builder": "26.15.3",
     "pngjs": "^7.0.0"
   }
 }

@@ -384,6 +384,9 @@ async function activateAudio(){
 }
 soundButton.addEventListener('click',()=>{if(audioEnabled){audioEnabled=false;stopAudio();soundButton.querySelector('span').textContent='Sound on';}else activateAudio();});
 if(originalMode){
+  // The desktop shell permits audio without a pointer gesture, so a controller
+  // can start the self-contained game with sound in Steam Gaming Mode.
+  if(location.protocol==='goku:')activateAudio();
   window.addEventListener('pointerdown',e=>{if(!audioContext&&!soundButton.contains(e.target))activateAudio();},{once:true});
   window.addEventListener('keydown',e=>{if(!audioContext&&!soundButton.contains(e.target))activateAudio();},{once:true});
 }
@@ -391,6 +394,9 @@ $('native-start')?.addEventListener('click',()=>{if(loaded&&!busy){if(!running)p
 $('show-touch')?.addEventListener('change',e=>{document.querySelector('.player').classList.toggle('show-touch',e.target.checked);touch.clear();});
 window.addEventListener('keydown',e=>{
   if(!loaded||busy||e.ctrlKey||e.metaKey||e.altKey||e.target instanceof HTMLInputElement)return;
+  if(location.protocol==='goku:'&&(e.code==='F5'||e.code==='F9')){
+    e.preventDefault();if(!e.repeat){if(e.code==='F5')saveCheckpoint();else restoreCheckpoint();}return;
+  }
   if(keymap[e.code]!==undefined){e.preventDefault();if(e.repeat)return;const bit=keymap[e.code];if(!running&&bit===3)play();else if(running)controls.press(e.code,bit);return;}
   if(e.code==='Escape'){e.preventDefault();if(e.repeat)return;
     if(e.code==='Escape')running?pause():play();

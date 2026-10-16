@@ -1,0 +1,104 @@
+name: Native releases
+on:
+  workflow_dispatch:
+    inputs:
+      draft_release:
+        description: Create a draft GitHub release after all builds pass
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-22.04, platform: linux, arch: x64, profile: desktop}
+          - {os: ubuntu-22.04, platform: linux, arch: x64, profile: steam-deck}
+          - {os: ubuntu-22.04, platform: linux, arch: x64, profile: bazzite}
+          - {os: windows-latest, platform: windows, arch: x64, profile: desktop}
+          - {os: macos-15, platform: mac, arch: arm64, profile: desktop}
+          - {os: macos-15-intel, platform: mac, arch: x64, profile: desktop}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Linux runtime and packaging dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2 xvfb
+          npx playwright install-deps chromium
+      - name: Build self-contained release
+        run: npm run release -- --platform ${{ matrix.platform }} --arch ${{ matrix.arch }} --profile ${{ matrix.profile }}
+        env:
+          # A private, direct HTTPS URL to the raw ROM; never committed or logged.
+          RELEASE_ROM_URL: ${{ secrets.RELEASE_ROM_URL }}
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Check offline startup and persistent saves (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:desktop -- --executable release/$(node -p "require('./package.json').version")/${{ matrix.profile }}-linux-x64/linux-unpacked/secret-of-goku
+      - name: Check offline startup and persistent saves (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          output="release/$(node -p "require('./package.json').version")/desktop-mac-${{ matrix.arch }}"
+          bundle=$(find "$output" -path '*/Contents/MacOS/Secret of Goku' -type f -print -quit)
+          test -n "$bundle"
+          npm run test:desktop -- --executable "$bundle"
+      - name: Check offline startup and persistent saves (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          npm run test:desktop -- --executable "release/$version/desktop-windows-x64/win-unpacked/Secret of Goku.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: secret-of-goku-${{ matrix.profile }}-${{ matrix.platform }}-${{ matrix.arch }}
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            release/**/*.zip
+            release/**/*.tar.gz
+            release/**/*.AppImage
+            release/**/SHA256SUMS
+
+  draft:
+    if: inputs.draft_release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: secret-of-goku-*
+          path: release-downloads
+      - name: Assemble downloadable files and checksums
+        run: node scripts/assemble-release.mjs release-downloads release-upload
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          gh release create "v$version" release-upload/* --draft --target "$GITHUB_SHA" --title "Secret of Goku $version" --notes-file desktop/PLAYING.md

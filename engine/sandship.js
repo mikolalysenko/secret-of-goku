@@ -122,6 +122,7 @@ export function buildSandshipEvents(){
 
 export function installSandship({rom,r,mod,entries,variants}){
  const at=id=>0xc00000+eventRange(rom,id).start;
+ const compile=(id,mask,opts)=>compileSandship(parseEvent(rom,id),mask,opts);
  for(const id of[...Object.values(breakout),flightDoor,...Object.values(crashEvents)]){
   const{start,end}=eventRange(rom,id);
   if(end-start!==1||rom[start]!==0)throw Error('Sandship breakout event slot is occupied');
@@ -138,7 +139,6 @@ export function installSandship({rom,r,mod,entries,variants}){
  const found=[false,true].map(d=>variants(crashEvents.found,()=>crashScripts.found(d)));
  entries.set(at(crashEvents.found),mask=>found[Number(!!mod.sandship?.ditched)][mask]);
  for(const k of['board','later'])entries.set(at(crashEvents[k]),variants(crashEvents[k],crashScripts[k]));
- const compile=(id,mask,opts)=>compileSandship(parseEvent(rom,id),mask,opts);
  const capture=[false,true].map(weighted=>variants(0x28b,mask=>compile(0x28b,mask,{weighted})));
  entries.set(at(0x28b),mask=>capture[Number(!!mod.equipment?.weighted)][mask]);
  const freed=variants(0x296,mask=>compile(0x296,mask)),end=variants(0x296,()=>[0]);

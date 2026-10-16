@@ -1,0 +1,12 @@
+/* Desktop releases show only the game. Keep the shared runtime's hidden DOM
+   controls mounted, but remove them from layout, focus and accessibility. */
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }
+.player { width: 100%; height: 100%; max-width: none; margin: 0; padding: 0; }
+.player > :not(.game-surface), .touch-pad, .native-frame > :not(#screen) { display: none !important; }
+.game-surface, .native-frame {
+  position: fixed !important; inset: 0 !important; width: 100% !important; height: 100% !important;
+  max-width: none !important; max-height: none !important; min-height: 0 !important;
+  margin: 0 !important; padding: 0 !important; border: 0 !important; border-radius: 0 !important;
+  box-shadow: none !important; background: #000 !important; aspect-ratio: auto !important;
+}
+#screen { display: block; width: 100% !important; height: 100% !important; max-width: none !important; max-height: none !important; object-fit: contain; image-rendering: pixelated; outline: none; }
