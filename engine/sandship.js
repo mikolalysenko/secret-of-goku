@@ -29,11 +29,9 @@ const geshtar=177,deck=99,decks=[98,99];
 
 const offer=()=>[
  ...box('GOKU:Hey... those guys are\npushing the engines in\nchains. Are they slaves?!'),
- ...box('SERGO:We ALL are, matey.\nThe Empire works us till\nwe drop.'),
- ...box('GOKU:That is terrible!\nI can fix that. One\nKamehameha should do it.'),
- ...box('SERGO:A kame-what? No, no!\nWe sneak out proper. Talk\nto the stair guards.'),
- ...box('SERGO:I will make the\ndistraction. Leave it to\nold Sergo!'),
- ...choice('GOKU:Sneak out, or...\n',[{label:'Sneak',x:3,to:breakout.sneak},{label:'KAMEHAMEHA',x:13,to:breakout.wave}])];
+ ...box('SERGO:We ALL are, matey.\nBut old Sergo has a plan.\nWe sneak out, quiet-like.'),
+ ...box('GOKU:Or I blast a hole in\nthe ship and free them\nall. One Kamehameha!'),
+ ...choice('SERGO:A kame-WHAT?! Well?\n',[{label:'Sneak',x:3,to:breakout.sneak},{label:'KAMEHAMEHA',x:13,to:breakout.wave}])];
 // Captives: bit 0 the girl is held in Morie's cabin, bit 1 the sprite is in
 // the kitchen. Nobody rejoins here; Goku has to go and get them.
 const stranded=['GOKU:Now let us get off\nthis ship before it\nsinks into the sand!',
@@ -49,8 +47,10 @@ const chaos=captives=>[
 // Release any cutscene lock left by the capture scene, as a door would.
 const escape=planned=>[0x19,0xa9,0x07,0x28,50,...jump(planned?breakout.scripted:breakout.improvised),0];
 const breakoutScripts={
- [breakout.sneak]:[...box('GOKU:Okay. Sneaking.\nI am great at sneaking.\nSERGO:...Sure you are.'),0x30,0x28,3,0],
- [breakout.wave]:[...box('GOKU:Everybody get behind\nme! This one is going\nto be loud.'),0],
+ [breakout.sneak]:[...box('GOKU:Okay. Sneaking.\nI am great at sneaking.\nSERGO:...Sure you are.'),
+  ...box("SERGO:Talk to the stair\nguards. I'll make the\ndistraction!"),0x30,0x28,3,0],
+ // The player charges and fires the wave; nothing is said first.
+ [breakout.wave]:[0],
  [breakout.scripted]:[...box("SERGO:Yer HAIR! And the\nHULL! Where'd it GO?!\nGOKU:Oops. Too much?"),...jump(breakout.chaos),0],
  [breakout.improvised]:[...box('GOKU:Oops. That was more\nthan I meant. Oh well.\nBreakout time!'),...jump(breakout.chaos),0],
  // Both captives are back: the Empire's ambush on deck, as in the original.
