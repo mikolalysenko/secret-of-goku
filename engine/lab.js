@@ -7,6 +7,7 @@ import {GameInput,keymap} from './input.js';
 import {GamepadInput} from './gamepad.js';
 import {mountTouchControls} from './touch-controls.js';
 import {createKiSound} from './ki-sound.js';
+import {createAudioOutput} from './audio-output.js';
 import {createNativeCombatSound} from './native-combat-sound.js';
 import {createNativePlants} from './native-plants.js';
 import {demolitionEffects,drawDemolitionEffects} from './dungeon-demolition.js';
@@ -61,6 +62,8 @@ const mod=new window.ManaMod(snes,{gokuUrl:'assets/sprites/goku.png',ssjUrl:'ass
 const title=createTitleLayer(snes.ppu);
 const arrival=createArrival(snes,mod);
 const sound=createKiSound(mod);
+const audioOutput=createAudioOutput(snes,sound);
+function stopAudio(){audioOutput.clear();sound.clear();}
 mod.combatSound=createNativeCombatSound(snes,mod);
 mod.gapFlight=createNativeGapFlight(snes,mod);
 mod.feedback=createNativeFeedback(snes,mod);
@@ -128,7 +131,7 @@ let loaded=false,running=false,busy=false,lastTime=0,accumulator=0,checkpoint=nu
 let nameSeeded=false,originalBoot=false;
 const battleRetry=createBattleRetry(mod,{
   onDefeat:()=>{clearInput();message('Goku has fallen. The planet is out of time.');},
-  onGameOver:()=>{running=false;clearInput();sound.clear();pauseCard(true);message('Game over. The planet is gone. Start returns to the title; your saved files are unchanged.');},
+  onGameOver:()=>{running=false;clearInput();stopAudio();pauseCard(true);message('Game over. The planet is gone. Start returns to the title; your saved files are unchanged.');},
 });
 let originalRom=null;
 const quickCache=new Map();
@@ -142,7 +145,7 @@ const gamepads=new GamepadInput(controls,{
 const touch=mountTouchControls(document.querySelector('.touch-pad'),controls,{
   ready:()=>loaded&&!busy,resume:()=>{if(!running){play();return true;}return false;},fly,pause:()=>running?pause():play(),cancel:()=>mod.cancelInput(),
 });
-let audioContext=null,audioEnabled=false,nextAudio=0;
+let audioContext=null,audioEnabled=false;
 const nextPaint=()=>new Promise(resolve=>setTimeout(resolve,0));
 
 function configure(){mod.configure({enabled:$('goku-enabled').checked,power:$('power-enabled').checked,superSaiyan:$('super-enabled').checked});}
@@ -166,11 +169,8 @@ function step(mask=0,audible=false,skipPicture=false){
     if(!busy)battleRetry.check();
   }
   if(audible&&audioEnabled&&audioContext?.state==='running'){
-    const samples=Math.round(audioContext.sampleRate/60),buffer=audioContext.createBuffer(2,samples,audioContext.sampleRate);
-    snes.setSamples(buffer.getChannelData(0),buffer.getChannelData(1),samples);
-    const source=audioContext.createBufferSource(),gain=audioContext.createGain();source.buffer=buffer;gain.gain.value=.4*sound.nativeGain;source.connect(gain);gain.connect(audioContext.destination);
-    nextAudio=Math.max(nextAudio,audioContext.currentTime+.025);source.start(nextAudio);sound.update(audioContext,true,nextAudio);nextAudio+=1/60;
-  }else {snes.apu.dsp.sampleOffset=0;sound.update(null,false);}
+    audioOutput.frame(audioContext);
+  }else {audioOutput.clear();snes.apu.dsp.sampleOffset=0;sound.update(null,false);}
 }
 function render(){
   snes.setPixels(pixels.data);context.putImageData(pixels,0,0);mod.draw(context);
@@ -186,7 +186,7 @@ function render(){
 }
 function pauseCard(gameOver=false){const card=$('native-pause');card.querySelector('strong').textContent=gameOver?'GAME OVER':'PAUSED';const label=gameOver?'Return to title':'Resume game';$('native-resume').setAttribute('aria-label',label);$('native-resume').title=label;card.querySelector('.pause-card>span')?.replaceChildren(gameOver?'Return to title · Space / Start':'Tap to resume · Space / Esc');}
 function play(){if(!loaded||busy)return;if(battleRetry.gameOver){bootOriginal(originalRom,{testScenes:false});return;}pauseCard();running=true;lastTime=performance.now();fpsTime=lastTime;frameCount=0;accumulator=0;$('native-pause').hidden=true;$('native-toggle').querySelector('span').textContent='Pause';}
-function pause(){running=false;clearInput();sound.clear();pauseCard(battleRetry.gameOver);if(loaded&&!busy)$('native-pause').hidden=false;$('native-toggle').querySelector('span').textContent='Resume';render();}
+function pause(){running=false;clearInput();stopAudio();pauseCard(battleRetry.gameOver);if(loaded&&!busy)$('native-pause').hidden=false;$('native-toggle').querySelector('span').textContent='Resume';render();}
 function tick(now){
   try{gamepads.poll(navigator.getGamepads?.()||[],{enabled:loaded&&!busy,focused:!document.hidden&&document.hasFocus()});}catch{/* The browser may disable controller access. Keyboard and touch remain available. */}
   if(running&&!busy){
@@ -194,7 +194,7 @@ function tick(now){
     while(running&&accumulator>=1/60&&steps<4){
       const mask=controls.sample(),fast=fastForward.state(mask).active;
       if(fast){
-        nextAudio=0;
+        audioOutput.clear();
         // CPU, audio processor, DMA and events keep running; render only the
         // last frame. Bound each batch so touch release/pause stays responsive.
         const deadline=performance.now()+18;
@@ -210,6 +210,7 @@ function tick(now){
 }
 
 async function loadROM(source,{potos=false}={}){
+  stopAudio();
   battleRetry.clear();pauseCard();
   const bytes=await validateRom(source);
   battery.flush();
@@ -286,7 +287,7 @@ async function saveCheckpoint(){
 }
 function restoreCheckpoint(){
   if(!loaded||!checkpoint||busy)return;clearInput();
-  battleRetry.clear();pauseCard();
+  stopAudio();battleRetry.clear();pauseCard();
   try{restore(snes,checkpoint.state);mod.restore(checkpoint.state.goku);arrival.restore(checkpoint.state.arrival);if(!checkpoint.state.goku){mod.options.superSaiyan=!!checkpoint.form;mod.facing=checkpoint.facing||0;}mod.nameEditor=!!checkpoint.nameEditor;nameSeeded=checkpoint.nameSeeded??(mod.nameEditor||nameSeeded);originalBoot=checkpoint.originalBoot??originalBoot;clearInput();render();message('Checkpoint restored.');}
   catch(error){message(error.message);}
 }
@@ -296,7 +297,7 @@ function applyQuick(saved){battleRetry.clear();pauseCard();const saves=snes.cart
 async function quickStart(kind){
   if(!loaded||busy||!isQuickStart(kind))return false;
   const backup=captureQuick(),wasRunning=running,source=originalRom;
-  busy=true;running=false;clearInput();sound.clear();$('native-pause').hidden=true;
+  busy=true;running=false;clearInput();stopAudio();$('native-pause').hidden=true;
   if($('test-loading'))$('test-loading').hidden=false;
   $('boot-local').disabled=true;$('rom-file').disabled=true;
   for(const id of Object.keys(quickStartLabels).map(k=>`quick-${k}`))if($(id))$(id).disabled=true;
@@ -361,13 +362,13 @@ for(const[kind,label]of Object.entries(quickStartLabels)){
 }
 const soundButton=document.createElement('button');soundButton.innerHTML='<span>Sound on</span>';$('native-save').before(soundButton);
 async function activateAudio(){
-  try{audioContext??=new AudioContext();await audioContext.resume();audioEnabled=true;nextAudio=0;soundButton.querySelector('span').textContent='Mute';}
+  try{audioContext??=new AudioContext({latencyHint:'interactive'});await audioContext.resume();audioEnabled=true;audioOutput.clear();soundButton.querySelector('span').textContent='Mute';}
   catch{message('Audio is unavailable in this browser.');}
 }
-soundButton.addEventListener('click',()=>{if(audioEnabled){audioEnabled=false;sound.clear();soundButton.querySelector('span').textContent='Sound on';}else activateAudio();});
+soundButton.addEventListener('click',()=>{if(audioEnabled){audioEnabled=false;stopAudio();soundButton.querySelector('span').textContent='Sound on';}else activateAudio();});
 if(originalMode){
-  window.addEventListener('pointerdown',()=>{if(!audioContext)activateAudio();},{once:true});
-  window.addEventListener('keydown',()=>{if(!audioContext)activateAudio();},{once:true});
+  window.addEventListener('pointerdown',e=>{if(!audioContext&&!soundButton.contains(e.target))activateAudio();},{once:true});
+  window.addEventListener('keydown',e=>{if(!audioContext&&!soundButton.contains(e.target))activateAudio();},{once:true});
 }
 $('native-start')?.addEventListener('click',()=>{if(loaded&&!busy){if(!running)play();else controls.pulse(3);canvas.focus();}});
 $('native-fullscreen')?.addEventListener('click',async()=>{
@@ -415,9 +416,9 @@ const scenes={
     return this.status;
   },
 };
-window.mana={snes,mod,scenes,title,arrival,battery,battleRetry,bootOriginal,bootPotos,fly,play,pause,render,configure,logs,controls,gamepads,fastForward,
+window.mana={snes,mod,scenes,title,arrival,battery,battleRetry,bootOriginal,bootPotos,fly,play,pause,render,configure,logs,controls,gamepads,fastForward,audioOutput,
   run(frames=1,buttons=[]){running=false;const mask=buttons.reduce((a,b)=>a|1<<b,0);for(let i=0;i<frames;i++)step(mask);render();return mod.status;},
-  snapshot:()=>({...snapshot(snes),arrival:arrival.snapshot(),goku:mod.snapshot(),opening:{nameSeeded,originalBoot}}),restore:state=>{battleRetry.clear();pauseCard();controls.clear();restore(snes,state);mod.restore(state.goku);arrival.restore(state.arrival);nameSeeded=state.opening?.nameSeeded??nameSeeded;originalBoot=state.opening?.originalBoot??originalBoot;render();},
+  snapshot:()=>({...snapshot(snes),arrival:arrival.snapshot(),goku:mod.snapshot(),opening:{nameSeeded,originalBoot}}),restore:state=>{stopAudio();battleRetry.clear();pauseCard();controls.clear();restore(snes,state);mod.restore(state.goku);arrival.restore(state.arrival);nameSeeded=state.opening?.nameSeeded??nameSeeded;originalBoot=state.opening?.originalBoot??originalBoot;render();},
   saveCheckpoint,restoreCheckpoint,quickStart,hash,
   read8:addr=>mod.read8(addr),read16:addr=>mod.read16(addr),write8:(addr,v)=>mod.write8(addr,v),write16:(addr,v)=>mod.write16(addr,v),
   get ready(){return loaded&&!busy;},get running(){return running;},get pixels(){return pixels.data;}

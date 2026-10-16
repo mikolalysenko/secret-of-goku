@@ -14,14 +14,13 @@ export function createFriezaScore(mod){
   }
   const key=mod.ending?.active?null:mod.trial?.music??mod.frieza?.music;
   if(!key){stop();return;}
-  if(playing?.key!==key||mod.frame<lastFrame){stop();const buffer=decoded.get(key);if(buffer){const source=ctx.createBufferSource();source.buffer=buffer;source.loop=true;source.connect(output);source.start(Math.max(ctx.currentTime,when??ctx.currentTime));playing={key,source};stats.track=key;}}
+  if(playing?.key!==key||mod.frame<lastFrame){stop();const buffer=decoded.get(key);if(buffer){const source=ctx.createBufferSource();source.buffer=buffer;source.loop=true;source.connect(output);const start=Math.max(ctx.currentTime,when??ctx.currentTime);source.start(start);playing={key,source,when:start};stats.track=key;}}
   const ending=mod.frieza?.orbit?.clash;
   let gain=mod.charging?.22:.32;
-  // Let the detonation finish, then leave audible space for the quiet beat
-  // and Goku's return. Keep the same track running across the landing cut.
-  if(ending?.phase==='win')gain=.32-.25*ease((ending.age-victoryTiming.beamFade)/(victoryTiming.quiet-victoryTiming.beamFade))+.15*ease((ending.age-victoryTiming.descent)/(victoryTiming.return-victoryTiming.descent));
-  else if(mod.frieza?.returnScene)gain=.22;
+  // Yield to the native boss-death sequence as the beam breaks through.
+  // The score stops at impact; neither pickup nor fanfare is ducked.
+  if(ending?.phase==='win')gain=.32*(1-ease(ending.age/victoryTiming.impact));
   lastFrame=mod.frame;output.gain.setTargetAtTime(gain,ctx.currentTime,.12);
  }
- return{stats,update,clear:stop,dispose(){stop();output?.disconnect();},get ready(){return pending??bytes;},get nativeGain(){return playing ? .018 : 1;},connect(node){output?.connect(node);}};
+ return{stats,update,clear:stop,resync(now){if(playing?.when>now)stop();},dispose(){stop();output?.disconnect();},get ready(){return pending??bytes;},get nativeGain(){return playing ? .018 : 1;},connect(node){output?.connect(node);}};
 }

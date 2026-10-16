@@ -123,7 +123,7 @@ export function createKiSound(mod){
     source.buffer=buffer(clip,name,superSaiyan);source.loop=!!cue.loop;
     source.playbackRate.value=cue.rate??((name==='hit'||name==='swing'||name==='blast')?[1,1.035,.975][variant%3]:1);
     gain.gain.value=cue.loop?0:cue.gain;source.connect(gain);gain.connect(master);
-    const v={source,gain,name,loop:!!cue.loop};voices.add(v);
+    const v={source,gain,name,loop:!!cue.loop,when};voices.add(v);
     source.onended=()=>{voices.delete(v);tails.delete(v);source.disconnect();gain.disconnect();};source.start(when);
     stats.played++;stats.last=name;stats.history.push({name,clip,frame,when,sampled:buffers.has(clip)});if(stats.history.length>120)stats.history.shift();return v;
   }
@@ -180,6 +180,15 @@ export function createKiSound(mod){
     get nativeGain(){return mod.ending?.musicMuted?0:music.nativeGain;},
     get output(){return compressor;},
     connect(node){compressor?.connect(node);},
+    resync(now=context?.currentTime??0){
+      // Discard only effects that have not reached the speakers. Preserve
+      // ongoing explosion/voice tails when the emulator catches up.
+      for(const v of new Set([...voices,...tails])){
+        if(v.when>now){stopVoice(v);if(loops.get(v.name)===v)loops.delete(v.name);}
+        else if(v.loop){v.gain.gain.cancelScheduledValues(now);v.source.playbackRate.cancelScheduledValues(now);}
+      }
+      speech.resync(now);music.resync(now);
+    },
     cancelCombat(){
       queue=queue.filter(v=>!['swing','kickSwing','blast','beam','charged'].includes(v.name));
       stopLoop('charge');stopLoop('aura');speech.clear();

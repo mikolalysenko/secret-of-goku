@@ -24,13 +24,14 @@ export function createKamehamehaVoice(mod){
     const buffer=buffers.get(name);if(!buffer)return null;
     const source=context.createBufferSource(),gain=context.createGain();source.buffer=buffer;gain.gain.value=name==='release'?.36:.32;
     source.connect(gain);gain.connect(context.destination);
-    const voice={source,gain};source.onended=()=>{source.disconnect();gain.disconnect();if(chant===voice)chant=null;if(release===voice)release=null;stats.speaking=!!(chant||release);};
+    const voice={source,gain,when};source.onended=()=>{source.disconnect();gain.disconnect();if(chant===voice)chant=null;if(release===voice)release=null;stats.speaking=!!(chant||release);};
     source.start(when);stats.played++;stats.last=name;stats.speaking=true;
     stats.history.push({name,frame:mod.frame,when,duration:buffer.duration});if(stats.history.length>24)stats.history.shift();
     return voice;
   }
   return{
     stats,clear,
+    resync(now){if(chant?.when>now)stopChant();if(release?.when>now){stopVoice(release);release=null;}stats.speaking=!!(chant||release);},
     update(ctx,audible,when,beam=false){
       if(!audible||!ctx||ctx.state!=='running'){clear();return;}
       if(ctx!==context){
