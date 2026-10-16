@@ -32,6 +32,7 @@ const stars=(()=>{
 export function createPlanetView(snes,mod){
   const p=snes.ppu,previous=p.getColor,surface=new Uint16Array(256*224);
   let texture=null,frame=-1,preparedState=null,globe=null,globeKey='',fragments=null,card=null,cardKey='';
+  let viewFrame=-1,viewLine=-1,viewX=256,view=null;
   const rgb=(r,g,b)=>1+r+(g<<5)+(b<<10);
   const blue=[rgb(4,7,20),rgb(6,17,30),rgb(16,26,31),rgb(31,31,31)];
   const put=(x,y,c)=>{x=Math.round(x);y=Math.round(y);if(c>0&&x>=0&&x<256&&y>=0&&y<224)surface[y*256+x]=c;};
@@ -260,27 +261,35 @@ export function createPlanetView(snes,mod){
     }
     if(isShot&&!['frieza-orbit','frieza-cosmic'].includes(state.kind)&&age>164){const factor=Math.max(0,(186-age)/22);for(let i=0;i<surface.length;i++){const c=surface[i]-1;surface[i]=1+Math.floor((c&31)*factor)+(Math.floor((c>>5&31)*factor)<<5)+(Math.floor((c>>10&31)*factor)<<10);}}
   }
-  p.getColor=function(sub,x,y){
-    const result=previous.call(this,sub,x,y);
-    if(sub||y>224||!mod.options.enabled||!mod.gokuActive||!texture)return result;
+  function selectView(){
+    if(!mod.options.enabled||!mod.gokuActive)return null;
     if(mod.ending?.defeated){
       const state=mod.ending.planetScene;
-      if(mod.ending.nativeDeath){
-        const light=bossRushDeathPose(state).light,c=result[0];
-        return[Math.round((c&31)*light)|(Math.round((c>>5&31)*light)<<5)|(Math.round((c>>10&31)*light)<<10),result[1],result[2]];
-      }
-      if(frame!==mod.frame||preparedState!==state)prepare(state,false);
-      return[y===224?0:surface[y*256+x]-1,4,0x86];
+      return mod.ending.nativeDeath?{light:bossRushDeathPose(state).light}:{state,fatal:true};
     }
     const returning=mod.frieza?.returnScene;
-    if(returning&&returning.age<24)return[pale(result[0]+1,1-returning.age/24)-1,result[1],result[2]];
+    if(returning&&returning.age<24)return{pale:1-returning.age/24};
     const orbit=mod.frieza?.orbit;
     // Let the cartridge show and operate its real inventory/status pages.
     const ring=orbit&&mod.nativeField&&!!(mod.read8(0xec)&12);
-    if(orbit&&(!mod.nativeField||mod.read8(0xec)&0xfe&&!ring))return result;
+    if(orbit&&(!mod.nativeField||mod.read8(0xec)&0xfe&&!ring))return null;
     const shot=mod.worldKi?.cinematic??mod.frieza?.cinematic??orbit,state=shot??mod.ending?.planetScene;
-    if(!state)return result;
+    return state?{state,shot,orbit,ring}:null;
+  }
+  p.getColor=function(sub,x,y){
+    const result=previous.call(this,sub,x,y);
+    if(sub||y>224||!texture)return result;
+    // Scene/party getters are relatively expensive. Ordinary ground fights
+    // used to evaluate all of them for every pixel, even with no globe in
+    // view. Resolve once per scanline; a new query pass also refreshes the
+    // selection for paused menus and restored checkpoints in the same frame.
+    if(viewFrame!==mod.frame||viewLine!==y||x<=viewX){viewFrame=mod.frame;viewLine=y;view=selectView();}
+    viewX=x;if(!view)return result;
+    if(view.light!==undefined){const c=result[0],light=view.light;return[Math.round((c&31)*light)|(Math.round((c>>5&31)*light)<<5)|(Math.round((c>>10&31)*light)<<10),result[1],result[2]];}
+    if(view.pale!==undefined)return[pale(result[0]+1,view.pale)-1,result[1],result[2]];
+    const {state,shot,orbit,ring}=view;
     if(frame!==mod.frame||preparedState!==state)prepare(state,!!shot);
+    if(view.fatal)return[y===224?0:surface[y*256+x]-1,4,0x86];
     // Keep native event text above the ending picture. The aerial cut has no
     // HUD/radar/radio at all, including the source camera's compass.
     if(!shot&&result[1]===2&&y<170&&state.phase!=='complete')return result;
@@ -290,7 +299,7 @@ export function createPlanetView(snes,mod){
     if(orbit&&(ring||y>=190)&&[2,4].includes(result[1]))return result;
     return[y===224?0:surface[y*256+x]-1,4,0x86];
   };
-  return{ready:collateral.ready,load(rom){texture=decodePlanetTexture(rom);frame=-1;globeKey='';},
+  return{ready:collateral.ready,load(rom){texture=decodePlanetTexture(rom);frame=-1;viewFrame=-1;viewX=256;globeKey='';},
     renderDefeat(){
       const state=mod.ending?.planetScene;if(!state?.fatal)return;
       if(mod.ending.nativeDeath)return;

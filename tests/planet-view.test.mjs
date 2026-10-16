@@ -38,6 +38,17 @@ test('space globe samples match the independent original world decoder in both p
     assert.equal(texture.sample(x,y,night),expected);assert.equal(texture.sample(x+4096,y-4096,night),expected);
   }
 });
+test('inactive planet presentation resolves state once per scanline, and refreshes paused query passes',{skip:!existsSync('.local/rom/secret-of-mana-us.sfc')},()=>{
+ const rom=readFileSync('.local/rom/secret-of-mana-us.sfc'),ppu={getColor:()=>[123,0,0]},snes={ppu,cart:{data:rom}};
+ let reads=0,returning=null;
+ const mod={frame:1,options:{enabled:true},gokuActive:true,frieza:{get returnScene(){reads++;return returning;}},spriteLayer:{effects:{},atlas:{}}};
+ const scene=createPlanetView(snes,mod);scene.load(rom);
+ for(let y=0;y<224;y++)for(let x=0;x<256;x++)assert.equal(ppu.getColor(false,x,y)[0],123);
+ assert.equal(reads,224,'No per-pixel scene/party lookups during the native boss fight');
+ returning={age:0};assert.equal(ppu.getColor(false,0,223)[0],28|(30<<5)|(31<<10),'A same-frame restore or new picture pass refreshes the view');
+ returning=null;assert.equal(ppu.getColor(false,0,223)[0],123);
+ scene.dispose();
+});
 test('cosmic clash never emits invalid/white underflow pixels below the beam',{skip:!existsSync('.local/rom/secret-of-mana-us.sfc')},()=>{
  const rom=readFileSync('.local/rom/secret-of-mana-us.sfc'),ppu={getColor:()=>[0,0,0]},snes={ppu,cart:{data:rom}};
  const mod={frame:1,options:{enabled:true},gokuActive:true,frieza:{crisisActive:true,cinematic:{kind:'frieza-cosmic',age:pullbackStart+100,target:{x:2000,y:2000}}},spriteLayer:{effects:{},atlas:{}}};
