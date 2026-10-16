@@ -146,6 +146,12 @@ export function createTitleLayer(ppu) {
     }
     return getPixel.call(this,x,y,bg,priority);
   };
-  ppu.registerLineHook?.('getPixelForLayer',ppu.getPixelForLayer,getPixel,p=>!(layer.active&&layer.enabled&&p.mode===3));
+  ppu.registerLineHook?.('getPixelForLayer',ppu.getPixelForLayer,getPixel,(p,line)=>{
+    if(!(layer.active&&layer.enabled&&p.mode===3))return true;
+    // BG2 row the per-pixel path would query on this line (mosaic, scroll).
+    let y=line;if(p.mosaicEnabled[1])y-=(y-p.mosaicStartLine)%p.mosaicSize;y+=p.bgVoff[1];
+    const {y:top,height}=TITLE_LOGO_RECT;
+    return !(y>=top&&y<top+height)&&!(layer.creditVisible&&y>=136&&y<144);
+  });
   return layer;
 }

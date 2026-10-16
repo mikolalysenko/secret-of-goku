@@ -98,7 +98,7 @@ export function createNativeRadio(snes,mod){
   let barriers=new Set(),barrierCount=0,barrierCooldown=0;
   let roofs=new Set(),roofExits=0,roofLastAside=0,roofRemarks=0,roofCooldown=0;
   let raster=null,key=null,visibilityFrame=-1,frameVisible=false;
-  const p=snes.ppu,previous=p.getColor;
+  const p=snes.ppu,previous=p.getColor,overlayLine=new Uint16Array(256);
   const visible=()=>mod.options.enabled&&mod.gokuActive&&!p.forcedBlank&&!mod.worldKi?.cinematic&&!mod.frieza?.cinematic&&!mod.ending?.active&&
     (mod.worldFlight?!(snes.ram[0xfe]&0xc0)&&snes.ram[0x8c]===0&&!(snes.ram[0xe2]&1):mod.canAttack&&!mod.ceiling?.busy)&&
     snes.ram[0xd0]===0&&(snes.ram[0xec]&0x7e)===0&&(mod.worldFlight||!snes.ram[0x2c]);
@@ -122,6 +122,12 @@ export function createNativeRadio(snes,mod){
     if(line<top||line>=top+64)return true;
     if(visibilityFrame!==mod.frame){visibilityFrame=mod.frame;frameVisible=visible();}
     return !frameVisible;
+  },(ppu,line,plan)=>{
+    if(plan.overlay)return false;
+    const top=mod.worldFlight||current.kind==='full-power-frieza'?152:8;
+    if(key!==current.text){key=current.text;raster=radioPixels(snes.cart.data,key,snes.ram);}
+    overlayLine.fill(0);for(let x=8;x<248;x++)overlayLine[x]=raster[(line-top)*240+x-8];
+    plan.overlay=overlayLine;return true;
   });
   const say=(text,{frames=230,kind='story'}={})=>{encodeText(text);if(wrapText(text).split('\n').length>3)throw Error('Radio message is too long');queue.push({text,remaining:frames,kind});};
   return{

@@ -23,13 +23,38 @@ class ManaSpriteLayer {
       if(face){result[0]=face-1;result[1]=1;result[2]=1;}
       return result;
     };
+    this.faceLine=new Uint16Array(256);
     ppu.registerLineHook?.('getColor',ppu.getColor,this.originalColor,(p,line)=>{
       const custom=self.customLine;for(let i=0;i<256;i++)if(custom[i])return false;
-      return !(mod.options.enabled&&self.atlas.goku&&p.mode===5&&line>=31&&line<191);
+      return !self.portraitLine(p,line);
+    },(p,line,plan)=>{
+      // Goku's pixels replace OBJ colors and the save portrait replaces the
+      // whole pixel (as BG2), exactly as the wrapper above does.
+      if(plan.objColor||plan.faceColor)return false;
+      plan.objColor=self.customLine;
+      if(self.portraitLine(p,line)){
+        const face=self.faceLine;face.fill(0);
+        for(let x=94;x<110;x++)face[x]=self.savePortrait(p,x,line)||0;
+        plan.faceColor=face;
+      }
+      return true;
     });
   }
   savePortrait(ppu,x,y){
     if(!this.mod.options.enabled||!this.atlas.goku||ppu.mode!==5||x<94||x>=110||y<31||y>=191)return 0;
+    this.refreshSaveFaces(ppu);
+    const slot=Math.floor((y-31)/48),row=y-31-slot*48;
+    if(!(this.saveFaces&(1<<slot))||row>=16)return 0;
+    const a=this.atlas.goku;return a.pixels[(32+Math.floor(row*21/16))*a.width+3+Math.floor((x-94)*26/16)];
+  }
+  // True when savePortrait() can draw on this scanline (used by line plans).
+  portraitLine(ppu,y){
+    if(!this.mod.options.enabled||!this.atlas.goku||ppu.mode!==5||y<31||y>=191)return false;
+    this.refreshSaveFaces(ppu);
+    const slot=Math.floor((y-31)/48),row=y-31-slot*48;
+    return !!(this.saveFaces&(1<<slot))&&row<16;
+  }
+  refreshSaveFaces(ppu){
     if(this.saveFrame!==this.mod.frame){
       this.saveFrame=this.mod.frame;this.saveFaces=0;
       // The native four-slot file window, not naming, shops or ring icons.
@@ -45,9 +70,6 @@ class ManaSpriteLayer {
         }
       }
     }
-    const slot=Math.floor((y-31)/48),row=y-31-slot*48;
-    if(!(this.saveFaces&(1<<slot))||row>=16)return 0;
-    const a=this.atlas.goku;return a.pixels[(32+Math.floor(row*21/16))*a.width+3+Math.floor((x-94)*26/16)];
   }
   load(images){
     this.shuffleFrames.clear();this.pushFrames.clear();

@@ -62,9 +62,16 @@ export function createDragonRadar(snes,mod){
   const pixel=y<56?dial[(y-8)*48+x-8]:panel[(y-152)*240+x-8];
   return pixel?[pixel-1,4,0x86]:color;
  };
+ const overlayLine=new Uint16Array(256);
  p.registerLineHook?.('getColor',p.getColor,previous,(ppu,line)=>{
   if(!mod.worldFlight||!(line>=8&&line<56||line>=152&&line<216))return true;
   if(frame!==mod.frame)update();return !visible;
+ },(ppu,line,plan)=>{
+  if(plan.overlay)return false;
+  overlayLine.fill(0);
+  if(line<56)for(let x=8;x<56;x++)overlayLine[x]=dial[(line-8)*48+x-8];
+  else for(let x=8;x<248;x++)overlayLine[x]=panel[(line-152)*240+x-8];
+  plan.overlay=overlayLine;return true;
  });
  return{get status(){update();return{visible,target,bearing};},dispose(){p.getColor=previous;}};
 }

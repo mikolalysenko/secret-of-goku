@@ -111,7 +111,14 @@ export function createScouter(snes,mod){
   const pixel=overlay?.[y*256+x];
   return pixel?[pixel-1,4,0x86]:color;
  };
- p.registerLineHook?.('getColor',p.getColor,previous,()=>!readouts.size||!available());
+ p.registerLineHook?.('getColor',p.getColor,previous,()=>!readouts.size||!available(),(ppu,line,plan)=>{
+  if(plan.overlay)return false;
+  if(frame!==mod.frame)draw();
+  // King Kai's radio window (rows 8-72) stays readable over the readouts.
+  if(line<72&&radioShown)return true;
+  if(!overlay)return true;
+  plan.overlay=overlay.subarray(line*256,line*256+256);return true;
+ });
  return{
   load(){cart=snes.cart;read=cart.read;if(!encodeText('Targeting').every((v,i)=>cart.data[0xaa174+i]===v))throw Error('Unsupported targeting title');cart.read=itemRead;cart.registerReadHook?.(itemRead,read,m=>m.hirom(0xaa174,0xaa174+Math.max(names[0].length,names[1].length)));},
   tick(){

@@ -24,22 +24,24 @@ class ManaMod {
     snes.ppu.getWindowState=function(x,layer){
       const masked=self.originalGetWindowState.call(this,x,layer);
       if(self.options.enabled&&self.worldFlight&&this.mode===7&&layer<2){
-        if(masked){
-          const y=snes.yPos;
-          if(!self.flightShadow||self.flightShadow.frame!==self.frame)
-            self.flightShadow={minX:x,maxX:x,minY:y,maxY:y,frame:self.frame};
-          else {
-            const b=self.flightShadow;
-            b.minX=Math.min(b.minX,x);b.maxX=Math.max(b.maxX,x);
-            b.minY=Math.min(b.minY,y);b.maxY=Math.max(b.maxY,y);
-          }
-        }
+        if(masked)recordShadow(x);
         return false;
       }
       return masked;
     };
+    function recordShadow(x){
+      const y=snes.yPos;
+      if(!self.flightShadow||self.flightShadow.frame!==self.frame)
+        self.flightShadow={minX:x,maxX:x,minY:y,maxY:y,frame:self.frame};
+      else {
+        const b=self.flightShadow;
+        b.minX=Math.min(b.minX,x);b.maxX=Math.max(b.maxX,x);
+        b.minY=Math.min(b.minY,y);b.maxY=Math.max(b.maxY,y);
+      }
+    }
     snes.ppu.registerLineHook?.('getWindowState',snes.ppu.getWindowState,this.originalGetWindowState,
-      ppu=>!(self.options.enabled&&self.worldFlight&&ppu.mode===7));
+      ppu=>!(self.options.enabled&&self.worldFlight&&ppu.mode===7),
+      (ppu,line,plan)=>{if(plan.windowSuppress)return false;plan.windowSuppress=3;plan.onWindowMasked=recordShadow;return true;});
   }
   read8(address){return this.snes.ram[address&0x1ffff]}
   read16(address){return this.read8(address)|this.read8(address+1)<<8}

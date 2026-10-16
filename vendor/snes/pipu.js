@@ -500,8 +500,23 @@ function Ppu(snes) {
     "getColor", "getWindowState", "getPixelForLayer", "getMathEnabled",
     "getMode7Pixel", "fetchTileInBuffer"
   ];
-  this.registerLineHook = function(method, fn, previous, idle) {
-    hookByFn.set(fn, {method: method, previous: previous, idle: idle});
+  // A hook that is active on a line may still describe its whole effect in
+  // terms the compositor reproduces exactly: plan(ppu, line, linePlan)
+  // fills linePlan and returns true, or returns false to keep the per-pixel
+  // path. objColor (value + 1 per x) replaces the color of pixels whose
+  // final layer is OBJ; windowSuppress is a bit set of layers for which
+  // getWindowState returns false, calling onWindowMasked(x) wherever the
+  // native window mask was set (in the same calls the slow path makes).
+  // faceColor (value + 1 per x) replaces the whole pixel as BG2 (layer 1,
+  // pixel 1), after any objColor replacement. overlay (value + 1 per x)
+  // replaces main-screen pixels as OBJ palette 0x86 (HUD art), last.
+  // bg1Color (value + 1 per x) replaces the color of BG1 (layer 0) pixels.
+  const linePlan = {
+    objColor: null, faceColor: null, overlay: null, bg1Color: null,
+    windowSuppress: 0, onWindowMasked: null
+  };
+  this.registerLineHook = function(method, fn, previous, idle, plan) {
+    hookByFn.set(fn, {method: method, previous: previous, idle: idle, plan: plan});
     return () => {
       hookByFn.delete(fn);
     };
@@ -521,12 +536,24 @@ function Ppu(snes) {
     if(mode === 2 || mode === 4 || mode === 6) {
       return false;
     }
+    linePlan.objColor = null;
+    linePlan.faceColor = null;
+    linePlan.overlay = null;
+    linePlan.bg1Color = null;
+    linePlan.windowSuppress = 0;
+    linePlan.onWindowMasked = null;
     for(let i = 0; i < hookedMethods.length; i++) {
       let method = hookedMethods[i];
       let fn = this[method];
       while(fn !== base[method]) {
         let hook = hookByFn.get(fn);
-        if(!hook || hook.method !== method || !hook.idle(this, line)) {
+        if(!hook || hook.method !== method) {
+          return false;
+        }
+        if(
+          !hook.idle(this, line) &&
+          !(hook.plan && hook.plan(this, line, linePlan))
+        ) {
           return false;
         }
         fn = hook.previous;
@@ -751,10 +778,22 @@ function Ppu(snes) {
   this.composePixel = function(sub, x, y, modeIndex, count, mode) {
     let enabled = sub ? this.subScreenEnabled : this.mainScreenEnabled;
     let windowed = sub ? this.subScreenWindow : this.mainScreenWindow;
+    let suppress = linePlan.windowSuppress;
     let pixel = 0, layer = 5, j;
     for(j = 0; j < count; j++) {
       layer = this.layersPerMode[modeIndex + j];
-      if(enabled[layer] && (!windowed[layer] || !this.windowMaskFor(layer)[x])) {
+      let visible = enabled[layer];
+      if(visible && windowed[layer]) {
+        let masked = this.windowMaskFor(layer)[x];
+        if((suppress >> layer) & 1) {
+          if(masked) {
+            linePlan.onWindowMasked(x);
+          }
+        } else {
+          visible = !masked;
+        }
+      }
+      if(visible) {
         let p = this.prioPerMode[modeIndex + j];
         if(layer > 3) {
           pixel = spritePrio[x] !== p ? 0 : spriteVal[x];
@@ -785,6 +824,22 @@ function Ppu(snes) {
       let g = ((pixel & 0x38) >> 1) | ((pixel & 0x200) >> 8);
       let b = ((pixel & 0xc0) >> 3) | ((pixel & 0x400) >> 8);
       color = (b << 10) | (g << 5) | r;
+    }
+    if(layer === 0 && linePlan.bg1Color !== null && linePlan.bg1Color[x]) {
+      color = linePlan.bg1Color[x] - 1;
+    }
+    if(layer === 4 && linePlan.objColor !== null && linePlan.objColor[x]) {
+      color = linePlan.objColor[x] - 1;
+    }
+    if(linePlan.faceColor !== null && linePlan.faceColor[x]) {
+      color = linePlan.faceColor[x] - 1;
+      layer = 1;
+      pixel = 1;
+    }
+    if(!sub && linePlan.overlay !== null && linePlan.overlay[x]) {
+      color = linePlan.overlay[x] - 1;
+      layer = 4;
+      pixel = 0x86;
     }
     composed[0] = color;
     composed[1] = layer;

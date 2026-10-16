@@ -35,7 +35,15 @@ export function createWorldScars(snes,mod){
     }
     return result;
   };
-  p.registerLineHook?.('getColor',p.getColor,getColor,ppu=>!visible||ppu.mode!==7);
+  const scarLine=new Uint16Array(256);
+  p.registerLineHook?.('getColor',p.getColor,getColor,ppu=>!visible||ppu.mode!==7,(ppu,line,plan)=>{
+    if(plan.bg1Color)return false;
+    for(let x=0;x<256;x++){
+      const rx=ppu.mode7FlipX?255-x:x,px=(ppu.mode7Xcoords[rx]>>8)&1023,py=(ppu.mode7Ycoords[rx]>>8)&1023;
+      scarLine[x]=texture[py*1024+px];
+    }
+    plan.bg1Color=scarLine;return true;
+  });
   return{
     load(rom){art=decodePotosCrater(rom);viewKey=null;},
     targets(){return blastTowns.filter(([map])=>!scars.some(s=>s.towns.includes(map))).map(([map,name])=>({id:`town-${map}`,map,name,...position(map),radius:32}));},
