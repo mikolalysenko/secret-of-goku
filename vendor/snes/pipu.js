@@ -260,11 +260,13 @@ function Ppu(snes) {
       if(this.mode === 7) {
         this.generateMode7Coords(line);
       }
-      this.lastTileFetchedX = [-1, -1, -1, -1];
-      this.lastTileFetchedY = [-1, -1, -1, -1];
-      this.optHorBuffer = [0, 0];
-      this.optVerBuffer = [0, 0];
-      this.lastOrigTileX = [-1, -1];
+      // Reset the per-line fetch caches in place (no allocation per line).
+      let fetchedX = this.lastTileFetchedX, fetchedY = this.lastTileFetchedY;
+      fetchedX[0] = fetchedX[1] = fetchedX[2] = fetchedX[3] = -1;
+      fetchedY[0] = fetchedY[1] = fetchedY[2] = fetchedY[3] = -1;
+      this.optHorBuffer[0] = this.optHorBuffer[1] = 0;
+      this.optVerBuffer[0] = this.optVerBuffer[1] = 0;
+      this.lastOrigTileX[0] = this.lastOrigTileX[1] = -1;
       let bMult = this.brightnessMults[this.brightness];
       if(this.canComposeLine(line)) {
         this.composeLine(line, bMult);

@@ -106,6 +106,10 @@ function Apu(snes) {
 
   this.read = function(adr) {
     adr &= 0xffff;
+    if(adr < 0xf0 || (adr > 0xff && adr < 0xffc0)) {
+      // plain RAM: no I/O register or boot ROM at this address
+      return this.ram[adr];
+    }
 
     switch(adr) {
       case 0xf0:
@@ -156,6 +160,11 @@ function Apu(snes) {
 
   this.write = function(adr, value) {
     adr &= 0xffff;
+    if(adr < 0xf0 || adr > 0xff) {
+      // plain RAM: the register switch below only handles $F0-$FF
+      this.ram[adr] = value;
+      return;
+    }
 
     switch(adr) {
       case 0xf0: {
