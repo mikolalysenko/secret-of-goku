@@ -4,6 +4,8 @@ This page tracks the port of the browser mod (original cartridge + JavaScript
 overlay) to a single `.sfc` that runs on real hardware and mainstream
 emulators. Spoilers follow the rest of `docs/agents/`.
 
+Work streams, hardware strategies and status: [snes-port/plan.md](snes-port/plan.md).
+
 ## Goal and constraints
 
 - Everything the browser build adds — Goku's graphics and animation, powers,
