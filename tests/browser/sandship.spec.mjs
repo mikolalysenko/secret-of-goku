@@ -101,7 +101,7 @@ async function untilControl(page){
   const m=mana.mod;for(let f=0;f<6000;f++){mana.run(1,mana.read8(0xd0)?[11]:[]);if(f>120&&m.canAttack&&!mana.read8(0xd0)&&!m.sandship.status.cut)break;}
   const s=m.sandship.status;
   return{map:m.status.map,can:m.canAttack,stage:mana.read8(0xcf28),captives:[mana.read8(0xcf0d),mana.read8(0xcf0e)],party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],
-   wreck:!!s.wreck,flash:s.flash,songs:s.songs,guards:m.entities().filter(e=>e.active&&[182,183].includes(e.species)).length,monsters:s.monsters,error:m.story.status.error};
+   wreck:!!s.wreck,flash:s.flash,songs:s.songs,song:s.lastSong,guards:m.entities().filter(e=>e.active&&[182,183].includes(e.species)).length,monsters:s.monsters,error:m.story.status.error};
  });
 }
 // Walk through a real door, then let any scene that starts play out.
@@ -119,8 +119,9 @@ async function wreckAndEscape(page,mask){
  expect(await page.evaluate(()=>[mana.read8(0xe1e1),[...mana.snes.ram.slice(0xcc2c,0xcc38)].includes(0x56)])).toEqual([0x16,true]);
  expect(wrecked,JSON.stringify(wrecked)).toMatchObject({map:271,can:true,wreck:true,flash:0,guards:0,captives:[mask&1?8:0,mask&2?8:0],party:[0,0],error:null});
  expect(wrecked.monsters).toBeGreaterThan(0);
- // The wreck plays the crisis cue in place of the ship's own song.
+ // The wreck plays the boss battle theme in place of the ship's own song.
  expect(wrecked.songs).toBeGreaterThan(0);
+ expect(wrecked.song).toBe(0x04);
  // Each rescue starts by just walking into the room, no talking needed.
  if(mask&2){await enter(page,{map:318,x:28,y:46});expect(await walkThrough(page,4)).toMatchObject({map:319,can:true,captives:[mask&1?8:0,1],error:null});}
  await enter(page,{map:324,x:16,y:10});

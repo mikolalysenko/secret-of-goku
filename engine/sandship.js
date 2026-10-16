@@ -2,7 +2,7 @@ import {parseEvent,eventRange} from './event-codec.js';
 import {compileStoryEvent} from './story-compiler.js';
 import {box,call,choice,jump} from './story-events.js';
 import {sandshipWeights} from './sandship-dialogue.js';
-import {createSandshipWreck,shipMaps,crisisSong} from './sandship-wreck.js';
+import {createSandshipWreck,shipMaps,alarmSong} from './sandship-wreck.js';
 
 export const sandshipCaptives=r=>Number(r[0xcf0d]>=8)|Number(r[0xcf0e]>=8)<<1;
 
@@ -60,9 +60,9 @@ const chaos=captives=>[
  ...box('GOKU:You are all free! Go!\nNobody should push\nengines in chains.'),
  ...box(stranded[captives]),0];
 // The white-out reloads Goku's own room (escape door) and starts the
-// crisis cue, then the reaction.
+// battle alarm, then the reaction.
 // Release any cutscene lock left by the capture scene, as a door would.
-const escape=planned=>[0x19,0xa9,0x40,...crisisSong,0x07,0x28,50,...jump(planned?breakout.scripted:breakout.improvised),0];
+const escape=planned=>[0x19,0xa9,0x40,...alarmSong,0x07,0x28,50,...jump(planned?breakout.scripted:breakout.improvised),0];
 const breakoutScripts={
  [breakout.sneak]:[...box('GOKU:Okay. Sneaking.\nI am great at sneaking.\nSERGO:...Sure you are.'),
   ...box("SERGO:Talk to the stair\nguards. I'll make the\ndistraction!"),0x30,0x28,3,0],
