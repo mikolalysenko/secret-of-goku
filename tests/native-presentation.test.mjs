@@ -189,7 +189,7 @@ test('a charging aura keeps every body pixel and stops on release or loss of nat
   mod.action={kind:'focus',age:100,duration:0};mod.powerCharge=96;layer.prepare();
   assert.ok(layer.effectMask.some(Boolean));const withAura=layer.surface.slice();
   mod.canAttack=false;layer.prepare();
-  for(let i=0;i<layer.surface.length;i++)if(layer.surface[i])assert.equal(withAura[i],layer.surface[i],'The moving body must stay in front of the aura');
+  for(let i=0;i<layer.surface.length;i++)if(layer.surface[i])assert.equal(withAura[i],layer.surface[i],'Faces, hands and boots must stay in front of the aura');
   mod.canAttack=false;layer.prepare();assert.equal(layer.effectMask.some(Boolean),false);
   mod.canAttack=true;mod.action=null;mod.powerCharge=0;layer.prepare();assert.equal(layer.effectMask.some(Boolean),false);
  }
@@ -206,30 +206,27 @@ test('Instant Transmission renders a completely absent body between the two stre
  }
 });
 
-test('focus breathing moves the upper body while boots remain planted in both sizes and forms',()=>{
- for(const superSaiyan of[false,true])for(const small of[false,true]){
-  const{layer,mod,ram}=scene();mod.options.superSaiyan=superSaiyan;if(small)ram[0xe180]=0xf6;
-  const frames=[];
-  for(const age of[10,22,46]){
-   mod.frame++;mod.action={kind:'focus',age,super:superSaiyan};layer.prepare();
-   const p=layer.plan.sprite,feet=[],head=[];
-   for(let y=0;y<p.height;y++)for(let x=0;x<p.width;x++){
-    const c=layer.surface[(p.y+y)*256+p.x+x];
-    if(y>=p.height-2)feet.push(c);else if(y<p.height/2)head.push(c);
+test('combat poses preserve exact source pixels and a fixed integer pivot in every direction and size',()=>{
+ for(const superSaiyan of[false,true])for(const small of[false,true])for(let facing=0;facing<4;facing++){
+  const {layer,mod,ram}=scene([1,2,0x82,0][facing]);mod.options.superSaiyan=superSaiyan;mod.canAttack=false;
+  if(small)ram[0xe180]=0xf6;
+  let anchor;
+  for(const kind of['focus','punch','blast','teleport','transform','revert'])for(let age=0;age<32;age++){
+   for(let combo=0;combo<(kind==='punch'?3:1);combo++){
+    mod.frame++;mod.action={kind,age,combo,super:superSaiyan,facing,impact:superSaiyan?1:2,duration:32};layer.prepare();
+    const p=layer.plan.sprite,a=atlases[p.sheet];
+    assert.ok(Number.isInteger(p.x)&&Number.isInteger(p.y));
+    anchor??=[p.x,p.y];assert.deepEqual([p.x,p.y],anchor,'actions never translate the sprite');
+    let opaque=0;
+    for(let y=0;y<p.height;y++)for(let x=0;x<p.width;x++){
+     const c=p.hidden?0:a.pixels[(32+p.row*32+Math.floor(y*32/p.height))*a.width+p.column*32+Math.floor(x*32/p.width)];
+     assert.equal(layer.surface[(p.y+y)*256+p.x+x],c,`${kind} must retain the complete source cell`);
+     if(c)opaque++;
+    }
+    assert.equal(layer.surface.filter(Boolean).length,opaque,'no displaced or stray pixels outside the cell');
    }
-   frames.push({feet,head});
   }
-  assert.deepEqual(frames[0].feet,frames[1].feet);assert.deepEqual(frames[0].feet,frames[2].feet);
-  assert.notDeepEqual(frames[0].head,frames[1].head,'inhale is visible without moving the feet');
  }
-});
-
-test('native palette effects cover the rising transformation hair above the original crop',()=>{
- const{layer,mod}=scene();mod.options.superSaiyan=true;mod.action={kind:'transform',age:12,duration:32,super:true};
- layer.tint=()=>12345;layer.prepare();
- const p=layer.plan.sprite;
- assert.ok(layer.surface.slice((p.y-1)*256,p.y*256).some(Boolean),'ignition lifts the hair beyond the old crop');
- assert.ok(layer.surface.filter(Boolean).every(c=>c===12345),'every body pixel receives the native tint');
 });
 
 test('Thanatos aura flickers behind native sprite pixels regardless of OAM order',()=>{

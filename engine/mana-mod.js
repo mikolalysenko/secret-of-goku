@@ -306,7 +306,7 @@ class ManaMod {
     // Charging keeps normal movement/collision, including stairs and dashing.
     // Only the brief committed attack/transform poses plant Goku's feet.
     const action=this.action;
-    if(action&&(['focus','transform','revert','beam','teleport'].includes(action.kind)||action.kind==='punch'&&action.age<(action.super?3:6)||action.kind==='blast'&&action.age<(action.super?1:2)))this.snes.joypad1State&=~0x1f0;
+    if(action&&['focus','transform','revert','beam','teleport','punch','blast'].includes(action.kind))this.snes.joypad1State&=~0x1f0;
     if(action&&!['ready','charge'].includes(action.kind))this.write8(0xe010,[1,2,0x82,0][action.facing]);
     this.attackFrames=action&&['punch','beam','blast'].includes(action.kind)?Math.max(0,action.duration-action.age):0;
     this.attackCooldown=action?.kind==='punch'?this.attackFrames:0;
@@ -474,7 +474,7 @@ class ManaMod {
     if(this.barriers?.punch({...origin,dx,dy}))this.nativeTapFrames=0;
     for(const enemy of contacts)this.effects.push({kind:'impact',x:enemy.x,y:enemy.y-12,dx,dy,life:10,max:10,hold:action.hitPause,super:action.super});
     this.effects.push({...origin,kind:'punch',dx,dy,life:7,max:7,super:action.super,hit:!!hits.length});
-    if(contacts.length){this.feedback?.pulse((action.super?5:3)+(action.combo===2?2:0));this.playSound?.(action.combo===2?'kick':'hit');this.log(`Punch ${damage}: ${JSON.stringify(hits)}`);}
+    if(contacts.length){this.feedback?.pulse(action.super?5:3);this.playSound?.(action.combo===2?'kick':'hit');this.log(`Punch ${damage}: ${JSON.stringify(hits)}`);}
     return hits;
   }
   handOrigin(facing=this.facing,technique='beam',hand=0){

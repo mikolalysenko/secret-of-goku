@@ -212,34 +212,34 @@ test('transformation burst replays once across checkpoints and never damages fro
   assert.equal(air.mod.read16(0xe782),20000);assert.equal(air.mod.effects.length,0);
 });
 
-test('held L plants a directional power stance and breathes without changing form or repeating explosions',()=>{
+test('held L keeps the original directional guard without shifting the body or changing form',()=>{
  for(const superSaiyan of[false,true])for(let facing=0;facing<4;facing++){
-  const {mod,step}=setup({superSaiyan,facing}),poses=new Set(),breath=new Set();
+  const {mod,step}=setup({superSaiyan,facing});
   for(let i=0;i<150;i++){
     step(0x400);const pose=mod.motion.pose();
     assert.equal(pose.kind,'focus');assert.equal(pose.sheet,superSaiyan?'ssj':'goku');
-    poses.add(pose.column);breath.add(pose.bodyY);assert.equal(pose.row,[0,2,1,3][facing]);
+    assert.equal(pose.column,superSaiyan?21:25);assert.equal(pose.row,[0,2,1,3][facing]);
+    for(const key of['bodyX','bodyY','offsetX','offsetY'])assert.equal(pose[key]??0,0);
   }
-  assert.deepEqual([...poses],superSaiyan?[21,33,30]:[25,37,34]);
-  assert.deepEqual([...breath].sort(),[-1,0,1]);
   assert.equal(mod.options.superSaiyan,superSaiyan);
   assert.equal(mod.effects.length,0,'holding focus alone does not repeatedly explode');
   step();assert.notEqual(mod.motion.pose().kind,'focus');
  }
 });
 
-test('punch anticipation, forward drive and recovery follow the locked facing without moving collision coordinates',()=>{
- for(const superSaiyan of[false,true])for(let facing=0;facing<4;facing++)for(let combo=0;combo<3;combo++){
-  const {mod,step}=setup({superSaiyan,facing}),[dx,dy]=[[0,1],[1,0],[-1,0],[0,-1]][facing];
-  mod.combo=combo-1;mod.comboUntil=100;mod.punch();const travel=[];
-  while(mod.action){
-   const p=mod.motion.pose();travel.push(p.offsetX*dx+p.offsetY*dy);
-   assert.equal(p.row,[0,2,1,3][facing]);assert.equal(mod.read16(0xe002),200);assert.equal(mod.read16(0xe004),200);
-   step();
+test('every strike keeps its native pivot and blocks movement until recovery finishes',()=>{
+ for(const superSaiyan of[false,true])for(let facing=0;facing<4;facing++)for(const kind of['punch','blast']){
+  for(let combo=0;combo<(kind==='punch'?3:1);combo++){
+   const {mod,step,snes}=setup({superSaiyan,facing});mod.combo=combo-1;mod.comboUntil=100;
+   if(kind==='punch')mod.punch();else mod.kiBlast();
+   while(mod.action){
+    const p=mod.motion.pose();
+    for(const key of['bodyX','bodyY','offsetX','offsetY'])assert.equal(p[key]??0,0);
+    assert.equal(p.row,[0,2,1,3][facing]);assert.equal(mod.read16(0xe002),200);assert.equal(mod.read16(0xe004),200);
+    step(0xf0);if(mod.action)assert.equal(snes.joypad1State&0xf0,0,'no sliding during the strike or recovery');
+   }
+   step(0x80);assert.equal(snes.joypad1State&0x80,0x80,'movement resumes immediately after recovery');
   }
-  assert.ok(travel[0]<0,'weight loads opposite the strike');
-  assert.ok(Math.max(...travel)>=5,'the body follows the fist');
-  assert.equal(travel.at(-1),0,'settle back on the native foot anchor');
  }
 });
 

@@ -7,6 +7,33 @@ async function load(page,path){
 }
 test.beforeEach(()=>test.skip(!existsSync('.local/rom/secret-of-mana-us.sfc'),'Requires user-supplied US cartridge.'));
 
+test('punches and quick ki stay planted on the native pixel grid through recovery',async({page})=>{
+  const path='.local/animation-audit/native/rabite-field-a.json';test.skip(!existsSync(path),'Requires native combat research fixture.');
+  await load(page,path);
+  const trials=await page.evaluate(()=>{
+    for(let i=1;i<12;i++)mana.write8(0xe000+i*512,0);
+    mana.run(4);const base=mana.snapshot(),trials=[];
+    for(const superSaiyan of[false,true])for(const direction of[4,5,6,7])for(const button of[0,17]){
+      mana.restore(base);const m=mana.mod;m.options.superSaiyan=superSaiyan;
+      mana.run(2,[direction]);mana.run(4);
+      const origin=[m.status.x,m.status.y],pivots=new Set();let drift=0,integer=true,frames=0;
+      mana.run(1,[button,direction]);
+      while(m.action&&frames++<24){
+        const p=m.spriteLayer.plan.sprite;
+        drift=Math.max(drift,Math.hypot(m.status.x-origin[0],m.status.y-origin[1]));
+        pivots.add(`${p.x},${p.y}`);integer&&=Number.isInteger(p.x)&&Number.isInteger(p.y);
+        mana.run(1,[direction]);
+      }
+      trials.push({superSaiyan,direction,button,drift,pivots:pivots.size,integer,frames});
+    }
+    return trials;
+  });
+  for(const t of trials){
+    expect(t.drift,JSON.stringify(t)).toBe(0);expect(t.pivots).toBe(1);expect(t.integer).toBe(true);
+    expect(t.frames).toBeGreaterThan(0);expect(t.frames).toBeLessThan(24);
+  }
+});
+
 test('real native Rabites receive punch, travelling beam and ki damage, launch and finish their death animation',async({page})=>{
   const path='.local/animation-audit/native/rabite-field-a.json';test.skip(!existsSync(path),'Requires native combat research fixture.');
   await load(page,path);const results=await page.evaluate(()=>{
@@ -104,7 +131,7 @@ test('SSJ ignition bursts on the gold frame, awards native enemy rewards once, a
     const poses=new Set();for(let i=0;i<150;i++){mana.run(1,[10]);const p=mana.mod.spriteLayer.plan.sprite;poses.add(`${p.sheet}:${p.row}:${p.column}:${p.kind}`);}
     return{poses:[...poses].sort(),superSaiyan:mana.mod.options.superSaiyan,effects:mana.mod.effects.length};
   });
-  expect(focused).toEqual({poses:['ssj:0:21:focus','ssj:0:30:focus','ssj:0:33:focus'],superSaiyan:true,effects:0});
+  expect(focused).toEqual({poses:['ssj:0:21:focus'],superSaiyan:true,effects:0});
   await page.locator('#screen').screenshot({path:testInfo.outputPath('super-saiyan-focus.png')});
 });
 

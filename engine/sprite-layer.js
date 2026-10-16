@@ -136,18 +136,14 @@ class ManaSpriteLayer {
       if(b.kind!=='air')this.stamp('impact-spark',arc.phase,b.x-state.cameraX,b.y-state.cameraY);
     }
   }
-  blit(sheet,column,row,x,y,width=32,height=32,legs=null,motion={}){
+  blit(sheet,column,row,x,y,width=32,height=32,legs=null){
     const a=this.atlas[sheet];
     for(let py=0;py<height;py++)for(let px=0;px<width;px++){
       const lx=Math.floor(px*32/width),ly=Math.floor(py*32/height);
       const hand=(row===1&&lx>=23)||(row===2&&lx<10)||(row===3&&lx>=22);
       const sourceColumn=legs!==null&&ly>=24&&!hand?legs:column;
       const sx=sourceColumn*32+lx,sy=32+row*32+ly;
-      // Translate the head/shoulders intact and ease out through the waist.
-      // Boots stay on their native pivot; faces are never rescaled or blurred.
-      const weight=Math.max(0,Math.min(1,(26-ly)/8));
-      const ox=Math.round((motion.bodyX||0)*weight*width/32),oy=Math.round((motion.bodyY||0)*weight*height/32);
-      const color=a.pixels[sy*a.width+sx];if(color)this.pixel(x+px+ox,y+py+oy,color);
+      const color=a.pixels[sy*a.width+sx];if(color)this.pixel(x+px,y+py,color);
     }
   }
   boyMenuPalette(ppu){
@@ -267,8 +263,7 @@ class ManaSpriteLayer {
     m.motion??=new window.GokuAnimation(m);
     const pose=m.motion.pose({flight,menu:!!(naming||menuBody),displayed:display?.native}),{row,column}=pose;
     if(pose.hidden){
-      // An absent fighter cannot cast a shadow. Ownership keeps every
-      // companion/enemy shadow and the HUD outside this brief vanish.
+      // Only Goku's owned shadow disappears with his body.
       m.ownership?.ppuOwners.forEach((owner,i)=>{if(heroOwner(owner)&&owner.kind==='shadow')hidden.add(i*2);});
       m.hiddenLastFrame=[...hidden].map(i=>i/2);
     }
@@ -284,20 +279,15 @@ class ManaSpriteLayer {
       return;
     }
     const small=ground&&!menuBody&&m.read8(0xe180)===0xf6,size=small?16:32;
-    const x=flight?112+(pose.bank||0)*2:(naming||menuBody)?Math.min(...parts.map(a=>a.x))-8:(display?.anchor.x??(m.read16(0xe020)<<16>>16))-size/2+Math.round((pose.offsetX||0)*size/32);
-    const y=flight?68+(pose.bob||0):(naming||menuBody)?Math.min(...parts.map(a=>a.y)):Math.round((display?.anchor.renderedFeetY??((m.read16(0xe022)<<16>>16)-pose.lift))-31*size/32)-(pose.extraLift||0)+Math.round((pose.offsetY||0)*size/32);
-    this.plan.sprite={x,y,width:size,height:size,row,column,facing:m.facing,sheet:pose.sheet,kind:pose.kind,age:pose.age,legs:pose.legs,
-      hidden:!!pose.hidden,phase:pose.phase,bodyX:pose.bodyX||0,bodyY:pose.bodyY||0,offsetX:pose.offsetX||0,offsetY:pose.offsetY||0};
+    const x=flight?112+(pose.bank||0)*2:(naming||menuBody)?Math.min(...parts.map(a=>a.x))-8:(display?.anchor.x??(m.read16(0xe020)<<16>>16))-size/2;
+    const y=flight?68+(pose.bob||0):(naming||menuBody)?Math.min(...parts.map(a=>a.y)):Math.round((display?.anchor.renderedFeetY??((m.read16(0xe022)<<16>>16)-pose.lift))-31*size/32)-(pose.extraLift||0);
+    this.plan.sprite={x,y,width:size,height:size,row,column,facing:m.facing,sheet:pose.sheet,kind:pose.kind,age:pose.age,legs:pose.legs,hidden:!!pose.hidden,phase:pose.phase};
     // Every crop includes all 32 source rows, including the boots on row 31.
     // The game keeps its own ground shadow; no browser clipping is involved.
     const action=m.action,focus=action?.kind==='focus',powering=action?.kind==='transform'||action?.kind==='revert';
     if((focus||m.charging||powering)&&(m.canAttack||flight)){
       let gold=superForm,power=focus?m.powerCharge/96:(superForm ? .4 : .15)+(superForm ? .6 : .4)*m.charge/(superForm?45:90);
-      if(focus){
-        this.plan.power=power;
-        const breath=[0,.02,.05,.08,.05,.02,0,-.02][Math.floor(action.age/6)%8];
-        power=.18+.66*power+breath*power;
-      }
+      if(focus){this.plan.power=power;power=.25+.45*power;}
       if(powering){
         const ignition=Math.ceil(action.duration*14/40);
         gold=action.kind==='transform'?action.age>=ignition:action.age<8;
@@ -314,11 +304,10 @@ class ManaSpriteLayer {
     m.sandship?.draw(this);
     m.ceiling?.draw(this);
     m.challenge?.draw(this);m.powerIntro?.draw(this);
-    if(!pose.hidden)this.blit(pose.sheet,column,row,x,y,size,size,pose.legs??null,pose);
+    if(!pose.hidden)this.blit(pose.sheet,column,row,x,y,size,size,pose.legs??null);
     // Follow original poison/stone/ghost/flash palette changes before the PPU
     // applies its own window, water blend and brightness operations.
-    const margin=pose.bodyX||pose.bodyY?1:0;
-    if(ground&&!menuBody&&display?.native.species!==138)for(let yy=Math.max(0,y-margin);yy<Math.min(256,y+size+margin);yy++)for(let xx=Math.max(0,x-margin);xx<Math.min(256,x+size+margin);xx++){
+    if(ground&&!menuBody&&display?.native.species!==138)for(let yy=Math.max(0,y);yy<Math.min(256,y+size);yy++)for(let xx=Math.max(0,x);xx<Math.min(256,x+size);xx++){
       const i=yy*256+xx;if(this.surface[i]&&!this.effectMask[i])this.surface[i]=this.tint(this.surface[i],anchor.palette);
     }
     if(ground&&!menuBody)m.hitRecovery?.draw(this,x,y,size);
