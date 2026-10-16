@@ -37,31 +37,33 @@ test('all four Goku directions use the correct source rows and retain every opaq
   }
 });
 
-test('push cells lean into a planted palm from existing art while the feet step in both forms',()=>{
+test('push cells press then heave with the head leaning in and the hips held still in both forms',()=>{
   const {layer}=scene();
   for(const sheet of ['goku','ssj'])for(let row=0;row<4;row++){
-    const atlas=atlases[sheet],colors=new Set(atlas.pixels),frames=[],first=layer.pushFrame(sheet,row,0);
-    const side=row===1||row===2,source=side?(sheet==='ssj'?26:30):(sheet==='ssj'?21:25),fixed=side?21:25;
-    const pixel=(col,x,y)=>atlas.pixels[(32+row*32+y)*atlas.width+col*32+x];
+    const atlas=atlases[sheet],colors=new Set(atlas.pixels),frames=[],side=row===1||row===2;
+    const toward=x=>row===1?31-x:x,centroid=(cell,y0,y1,axis)=>{let sum=0,n=0;
+      for(let y=y0;y<=y1;y++)for(let x=0;x<32;x++)if(cell[y*32+x]){sum+=axis==='x'?toward(x):y;n++;}return sum/n;};
     for(let phase=0;phase<4;phase++){
-      const cell=layer.pushFrame(sheet,row,phase);frames.push(Array.from(cell).join(','));
+      const cell=layer.pushFrame(sheet,row,phase);frames.push(cell);
       assert.equal(layer.pushFrame(sheet,row,phase),cell,'cells are cached, not rebuilt each scanline');
-      for(let i=0;i<1024;i++){
-        assert.ok(colors.has(cell[i]),'the push retains the existing sprite palette');
-        if(i<fixed*32)assert.equal(cell[i],first[i],'hands, head and torso stay planted while the feet step');
-      }
+      for(let i=0;i<1024;i++)assert.ok(colors.has(cell[i]),'the push retains the existing sprite palette');
       layer.surface.fill(0);layer.blit(sheet,0,row,100,80,32,32,null,0,phase);
       for(let y=0;y<32;y++)for(let x=0;x<32;x++)assert.equal(layer.surface[(80+y)*256+100+x],cell[y*32+x],'the actual OBJ blit uses the push cell');
     }
-    assert.ok(new Set(frames).size>=3,'the feet visibly step');
-    for(let y=0;y<13;y++)for(let x=0;x<32;x++)assert.equal(first[y*32+x],pixel(source,x,y),'the head comes unmodified from the leaning source cell');
+    assert.ok(new Set(frames.map(c=>c.join(','))).size>=3,'press, ease and heave are distinct');
+    // No pelvic thrust: the belt and hips stay within a pixel on every beat.
+    const hips=frames.map(c=>centroid(c,side?20:21,side?22:24,'x'));
+    assert.ok(Math.max(...hips)-Math.min(...hips)<=1,`hips drift ${hips}`);
     if(side){
-      // The palm sits just past the body, not at full blast reach.
-      let reach=0;for(let y=13;y<=19;y++)for(let x=0;x<32;x++)if(first[y*32+x])reach=Math.max(reach,row===2?x:31-x);
-      assert.ok(reach>=24&&reach<=27,`palm meets the wall at ${reach}`);
-    }
+      assert.ok(centroid(frames[2],0,10,'x')-centroid(frames[0],0,10,'x')>=2.5,'the heave leans the head toward the wall');
+      assert.ok(centroid(frames[2],0,10,'y')>centroid(frames[0],0,10,'y'),'and bows it');
+      for(const cell of frames){
+        let reach=0;for(let y=13;y<=19;y++)for(let x=0;x<32;x++)if(cell[y*32+x])reach=Math.max(reach,toward(x));
+        assert.ok(reach>=24&&reach<=28,`palm stays at the wall, reach ${reach}`);
+      }
+    }else assert.ok(centroid(frames[2],0,12,'y')>centroid(frames[0],0,12,'y'),'the heave bows the head');
     const moving=[2,3,4,5].map(legs=>layer.pushFrame(sheet,row,0,legs));
-    assert.deepEqual(moving.map(c=>Array.from(c).join(',')),frames,'moving steps use the same four beats');
+    assert.deepEqual(moving,frames,'moving pushes use the same beats');
   }
 });
 

@@ -172,26 +172,31 @@ class ManaSpriteLayer {
     return this.shuffleFrames.get(key);
   }
   pushFrame(sheet,row,phase,legs=null){
-    // Built only from existing cells: no hand-drawn arms. Side views lean in
-    // on the open-palm blast stance with the forearm shortened so the palm
-    // meets the wall; front/back raise both hands in the guard cell.
-    const beat=(legs===null?phase:legs-2)&3,key=`${sheet}:${row}:${beat}`;
+    // The boy's push alternates a straight-armed press with a heave that
+    // drops the head toward the object. Built only from existing cells; the
+    // hips stay put and the lean comes from the head and shoulders.
+    const beat=(legs===null?phase:legs-2)&3,lean=[0,1,2,1][beat],key=`${sheet}:${row}:${beat}`;
     if(!this.pushFrames.has(key)){
       const a=this.atlas[sheet],cell=new Uint16Array(1024),gold=sheet==='ssj';
       // Left cells are mirrored art; read them in right-facing coordinates.
-      const flip=row===1,get=(col,x,y)=>x<0||x>31?0:a.pixels[(32+row*32+y)*a.width+col*32+(flip?31-x:x)];
+      const flip=row===1,get=(col,x,y)=>x<0||x>31||y<0?0:a.pixels[(32+row*32+y)*a.width+col*32+(flip?31-x:x)];
+      const put=(x,y,c)=>{if(c&&x>=0&&x<32&&y>=0&&y<32)cell[y*32+(flip?31-x:x)]=c;};
       if(row===1||row===2){
-        // Planted, mid and pushed-off rear leg from the matching lunge cells.
-        const brace=gold?26:30,stance=[brace,brace-1,brace-7,brace-1][beat];
+        // Open-palm blast stance, forearm shortened so the palm meets the
+        // wall. The heave slides the rear foot back on the matching lunge
+        // cell, aligned to the same hips.
+        const brace=gold?26:30,stride=gold?19:23;
         for(let y=0;y<32;y++)for(let x=0;x<32;x++){
-          const arm=y>=13&&y<=19&&x>=21&&!(y<=15&&x===21);
-          cell[y*32+(flip?31-x:x)]=arm?get(brace,x+3,y):y>=21&&x<24?get(stance,x,y):get(brace,x,y);
+          const arm=y>=13&&y<=19&&x>=21&&!(y<=15&&x===21),head=y<=12||y<=14&&x<=22;
+          const c=arm?get(brace,x+3,y):y>=21?(lean===2?(x<24?get(stride,x-1,y):0):get(brace,x,y)):get(brace,x,y);
+          if(head)put(x+(lean===2?3:lean),y+(lean>>1),c);else if(y<=18)put(x+(lean>>1),y,c);else put(x,y,c);
         }
       }else{
-        // Feet step in place: staggered, passing, swapped stagger, passing.
+        // Front/back raise both hands in the guard cell; the heave bows the
+        // head and swaps which foot is planted forward.
         const hands=gold?21:25;
-        for(let y=0;y<32;y++)for(let x=0;x<32;x++)
-          cell[y*32+x]=y<25||beat===0?get(hands,x,y):beat===2?get(hands,31-x,y):get(beat===1?3:5,x,y);
+        for(let y=0;y<32;y++)for(let x=0;x<32;x++)if(y>14)put(x,y,y>=25&&lean===2?get(hands,31-x,y):get(hands,x,y));
+        for(let y=0;y<=14;y++)for(let x=0;x<32;x++)put(x,y+(lean?1:0),get(hands,x,y));
       }
       this.pushFrames.set(key,cell);
     }
