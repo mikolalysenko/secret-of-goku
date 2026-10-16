@@ -23,7 +23,9 @@ for(const file of files){
   await cp(file,`dist/${file}`,{recursive:true});
 }
 await mkdir('dist/rom',{recursive:true});await writeFile(`dist/${romPath}`,rom);
-const publicFiles=await readdir('dist',{recursive:true});
+// Windows readdir uses backslashes; use URL-style paths for the allowlist
+// and build hash so every platform packages the same module graph.
+const publicFiles=(await readdir('dist',{recursive:true})).map(file=>file.replaceAll('\\','/'));
 for(const file of publicFiles)if(file!==romPath&&/(^|\/)(\.|node_modules)|\.(sfc|smc|srm|state|zip)$/i.test(file))throw Error(`Unexpected private or cartridge file in build: ${file}`);
 // Version the complete module graph, not just lab.js: a cached imported mod
 // must not silently keep old controls beside a newly deployed player.

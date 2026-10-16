@@ -19,6 +19,11 @@ try {
     await stageRelease({root, stage, options, rom, metadata});
     console.log(`Staged offline ${id} app with verified ROM: ${stage}`);
     if (!options.stageOnly) {
+      // GitHub exposes absent optional secrets as empty strings. An empty
+      // CSC_LINK is interpreted as the current directory, not "no signing".
+      for (const key of ['CSC_LINK', 'CSC_KEY_PASSWORD', 'APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID']) {
+        if (process.env[key] === '') delete process.env[key];
+      }
       const require = createRequire(import.meta.url);
       const {build, Platform, Arch} = require('electron-builder');
       const platform = {linux: Platform.LINUX, mac: Platform.MAC, windows: Platform.WINDOWS}[options.platform];
@@ -32,4 +37,4 @@ try {
       console.log(`Release ready in ${output}:\n${files.join('\n')}\nSHA256SUMS`);
     }
   }
-} catch (error) {console.error(`Release failed: ${error.message}`); process.exitCode = 1;}
+} catch (error) {console.error(`Release failed: ${error.message}`); process.exit(1);}
