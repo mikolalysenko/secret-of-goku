@@ -49,8 +49,8 @@ function Cart(data, header, isHirom) {
 
   // Read hooks replace this.read with wrappers that intercept a few ROM
   // ranges. Each registers mark(m), which flags the addresses it may change
-  // via m.hirom(lo, hi) (offsets in banks $C0-$FF) or m.bank(b, lo, hi)
-  // (bank b and its $40/$80/$C0 mirrors). gatedRead() bypasses the wrapper
+  // via m.hirom(lo, hi) (offsets in banks $C0-$FF), m.bank(b, lo, hi)
+  // (bank b and its $40/$80/$C0 mirrors) or m.cpu(lo, hi) (24-bit addresses). gatedRead() bypasses the wrapper
   // chain elsewhere; an unregistered wrapper disables the gate. The tables
   // live in the closure and are never serialized.
   const coreRead = this.read;
@@ -74,6 +74,11 @@ function Cart(data, header, isHirom) {
       for(let mirror = 0; mirror < 4; mirror++) {
         watch((bank & 0x3f) | (mirror << 6), lo, hi);
       }
+    },
+    cpu: (lo, hi) => {
+      for(let adr = lo; adr < hi; adr++) {
+        watch((adr >> 16) & 0xff, adr & 0xffff, (adr & 0xffff) + 1);
+      }
     }
   };
   this.registerReadHook = function(fn, previous, mark) {
@@ -82,6 +87,9 @@ function Cart(data, header, isHirom) {
     readMiss = null;
   }
   const rebuildReadGate = (head) => {
+    // Forget the old verified chain first: a failed walk must not leave a
+    // previously valid head paired with a half-cleared table.
+    readHead = null;
     let fn = head;
     watchBits.fill(0);
     while(fn !== coreRead) {

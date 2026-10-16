@@ -87,3 +87,30 @@ test('cartridge read hooks run for every watched address and never elsewhere',()
  lockstep(plain,gated,240,'reads');
  assert.deepEqual(a,b);
 });
+test('removing a temporary unregistered wrapper restores exact gating for both gates',()=>{
+ // Watch bank 0 code reads and one hot instruction, counting per frame.
+ const probe=core(),counts=new Map(),previousProbe=probe.cpu.cycle;
+ probe.cpu.cycle=function(){const key=((this.r[1]&63)<<16)|this.br[4];counts.set(key,(counts.get(key)??0)+1);return previousProbe.call(this);};
+ for(let i=0;i<120;i++){probe.joypad1State=input(i);probe.runFrame(false);}
+ const hot=[...counts].sort((a,b)=>b[1]-a[1])[0][0];
+ const install=(s,register)=>{
+  const cart=s.cart,previous=cart.read,cpu=s.cpu,prevCycle=cpu.cycle,seen={reads:0,steps:0};
+  cart.read=function(bank,adr){if((bank&63)===0&&adr>=0x8000)seen.reads++;return previous.call(this,bank,adr);};
+  if(register)cart.registerReadHook(cart.read,previous,m=>m.bank(0,0x8000,0x10000));
+  cpu.cycle=function(){if((((this.r[1]&63)<<16)|this.br[4])===hot)seen.steps++;return prevCycle.call(this);};
+  if(register)cpu.registerBreakpoints(cpu.cycle,prevCycle,[[hot>>16,hot&0xffff]]);
+  return seen;
+ };
+ const a=install(gated=core(),true),b=install(plain=core(),false);
+ var gated,plain;
+ const step=(s,i)=>{
+  // Frames 40-79 run under an extra, unregistered read wrapper and
+  // instruction wrapper (like a temporary scene hook), then remove them.
+  if(i===40){for(const [t,key] of[[s.cart,'read'],[s.cpu,'cycle']]){const head=t[key];t['__'+key]=head;t[key]=function(...args){return head.apply(this,args);};}}
+  if(i===80){s.cart.read=s.cart.__read;s.cpu.cycle=s.cpu.__cycle;}
+  s.joypad1State=input(i);s.runFrame(false);
+  if(s===gated&&i>=80)assert.deepEqual([a.reads,a.steps],[b.reads,b.steps],`frame ${i}`);
+ };
+ for(let i=0;i<140;i++){step(plain,i);step(gated,i);}
+ assert.ok(a.reads>100&&a.steps>100,JSON.stringify(a));
+});

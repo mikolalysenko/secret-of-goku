@@ -126,6 +126,10 @@ export function installArrivalEventData(cart, originalROM = cart?.data) {
     return previousRead.call(this, bank, address);
   }
   cart.read = arrivalRead;
+  cart.registerReadHook?.(arrivalRead, previousRead, mark => {
+    mark.cpu(ENTRY, END);
+    mark.cpu(GRUNT, GRUNT + originalGrunt.length);
+  });
 
   return Object.freeze({
     version: 1, entry: ENTRY, hook: HOOK, resume: RESUME, labels,

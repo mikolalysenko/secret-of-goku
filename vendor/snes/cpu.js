@@ -207,6 +207,9 @@ Cpu = (function() {
       gateMiss = null;
     }
     const rebuildGate = (head) => {
+      // Forget the old verified chain first: a failed walk must not leave a
+      // previously valid head paired with a half-cleared table.
+      gateHead = null;
       let fn = head, always = [];
       breakpointBits.fill(0);
       while(fn !== coreCycle) {

@@ -11,6 +11,7 @@ Detailed implementation paths; this page includes story spoilers. Start with the
 | File | Purpose |
 | --- | --- |
 | `engine/lab.js` | ROM loading, native startup, controls, name entry, audio and checkpoints |
+| `vendor/snes/` fast paths, `engine/audio-output.js` + `audio-worklet.js` | Exact emulation fast paths, hook registration and streamed audio; see [performance](performance.md) |
 | `engine/sprite-layer.js` | Replacement sprites in native OBJ depth and background composition |
 | `engine/native-effects.js` + `.json` | Runtime spell-art decoder and ROM source descriptors |
 | `engine/title-layer.js` | Gold GOKU lettering and native-font credit in the title's BG2 layer |
