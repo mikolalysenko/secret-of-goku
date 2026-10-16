@@ -121,7 +121,7 @@ export function createFrieza(snes,mod){
   }
   return hit;
  }
- function win(){const b=s.boss;s.stage='won';b.hp=0;b.shots=[];b.warning=null;b.age=0;s.scene=null;mod.cancelCombat();victoryAudio.play('stop');mod.playSound?.('beam');}
+ function win(){const b=s.boss;s.stage='won';b.hp=0;b.shots=[];b.warning=null;b.age=0;s.scene=null;mod.cancelCombat();victoryAudio.play('stop');}
  function returnToFortress(){
   const b=s.boss;b.space=null;Object.assign(b,b.ground);mod.cancelCombat();
   // The player may have left the deck while hovering over a blast hole.
@@ -313,19 +313,20 @@ export function createFrieza(snes,mod){
   spaceInput(input){
    const b=s.boss,o=api.orbit;if(!o)return false;
    // Original rings/items still pause the fight and own their normal input.
-   if(mod.read8(0xd0)||mod.read8(0xec)&0xfe||!mod.nativeField){o.menuRequest=0;o.charge=0;mod.charging=false;return false;}
+   if(mod.read8(0xd0)||mod.read8(0xec)&0xfe||!mod.nativeField){o.menuRequest=0;o.charge=0;mod.charging=false;mod.focus(0);return false;}
    // A quick ring tap during native hit recovery used to disappear. Keep
    // that request until the actor can open the real menu, then pass one
    // normal controller pulse. Do not let an attack consume it first.
    if(input&2&&!(mod.lastInput&2))o.menuRequest=90;
    if(o.menuRequest){
-    o.menuRequest--;o.charge=0;mod.charging=false;
+    o.menuRequest--;o.charge=0;mod.charging=false;mod.focus(0);
     mod.snes.joypad1State=mod.canAttack?2:0;
     return !mod.canAttack;
    }
    if(input&2)return false;
    if(s.stage!=='battle'||!mod.read16(0xe182)||mod.read8(0xe191)&128||o.intro)return true;
    const wave=!!(input&0x400)&&!!(input&(1<<17)),tap=input&~mod.lastInput;
+   const focus=!!(input&0x400)&&!(input&(1|(1<<17)|0x900));
    const direction=()=>orbitAim(o);
    const c=o.clash;
    if(o.duel)return true;
@@ -337,14 +338,20 @@ export function createFrieza(snes,mod){
     if((tap&(1|(1<<17)))&&tapClash(c)){mod.playSound?.('hit');mod.feedback?.pulse(2);}
     return true;
    }
-   if(!c&&!o.beam)steerOrbit(o,input);
+   if(!focus&&!o.beam)steerOrbit(o,input);
    if(wave&&!o.beam){o.charge=Math.min(45,o.charge+1);if(o.charge===45&&mod.charge<45)mod.playSound?.('charged');}
    else if(o.charge){
     const strength=o.charge/45,dir=direction();
     o.beam={...o.hero,...dir,age:0,max:strength===1?60:30,width:8+strength*24,damage:400+strength*500};mod.playSound?.('beam');mod.feedback?.pulse(18);
     o.charge=0;
    }
-   mod.charging=wave&&!o.beam;mod.charge=o.charge;mod.action=mod.charging?{kind:'charge',age:o.charge,duration:999,super:true,facing:mod.facing}:null;
+   mod.charging=wave&&!o.beam;mod.charge=o.charge;
+   if(mod.charging){mod.powerCharge=0;mod.action={kind:'charge',age:o.charge,duration:999,super:true,facing:mod.facing};}
+   else{
+    if(mod.action?.kind!=='focus')mod.action=null;
+    mod.focus(focus&&!o.beam?0x400:0);
+    if(mod.action?.kind==='focus')mod.action.age++;
+   }
    // The released wave is anchored at his hands until its tail fades. A
    // teleport or melee input during that shot must not detach the fighter.
    if(c||o.beam)return true;
@@ -582,10 +589,11 @@ export function createFrieza(snes,mod){
     if(c.kind==='empower'&&c.target&&c.age<140){
      const tx=c.target.x-h.cameraX,ty=c.target.y-h.cameraY;
      for(let i=0;i<3;i++){
-      const t=Math.max(0,Math.min(1,(c.age-i*24)/72)),px=x-8+(tx-x+8)*t,py=y-20+(ty-y+20)*t;
-      spellFx.stamp('gold-charge-orb',1,px,py);
+      const travel=c.age-i*24;if(travel<0||travel>=72)continue;
+      const t=travel/72,px=x-8+(tx-x+8)*t,py=y-20+(ty-y+20)*t;
+      spellFx.stamp('charge-orb',1,px,py,0,true);
      }
-     if(c.age>=72)spellFx.aura(tx,ty,c.age-72);
+     if(c.age>=72)layer.aura(tx,ty,c.age-72,{height:32,tone:'pink',power:.7,behindActors:true});
     }
     if(c.kind==='steal'&&(!c.altar||c.age<64))for(let i=0;i<7;i++)if(s.stolenMask>>i&1){
      const t=Math.min(1,c.age/60),a=i*Math.PI*2/7;
@@ -594,7 +602,11 @@ export function createFrieza(snes,mod){
     }
     if(c.kind==='eighth')mod.kiArt?.draw('dragon',7,follower?.x??c.x-h.cameraX,(follower?.y??c.y-h.cameraY)-36,18,put);
     if(c.kind==='explode'&&c.target&&c.age<74)fx(c.target.x-h.cameraX,c.target.y-h.cameraY,c.age);
-    if(c.kind==='gold')spellFx.aura(c.x-h.cameraX,c.y-16-h.cameraY,c.age);
+    if(c.kind==='gold'){
+     layer.behindBody=true;
+     layer.aura(c.x-h.cameraX,c.y-16-h.cameraY,c.age,{height:32,power:Math.min(1,c.age/28)});
+     layer.behindBody=false;
+    }
     if(c.kind==='defeated'&&c.age<74)fx(x,y-16,c.age);
    }
    if(s.stage!=='battle'||!b)return;
@@ -602,16 +614,22 @@ export function createFrieza(snes,mod){
    for(const p of b.afterimages??[])sprite(5,p.x-h.cameraX,p.y+8-h.cameraY,face,1+Math.floor(p.age/4));
    if(b.surge){
     const t=b.surge.age;
-    spellFx.stamp('lightning',t>>3,bx-16,by-18);
-    spellFx.stamp('lightning',t>>3,bx+16,by-18,2);
+    if(!(mod.frame&1)){
+     spellFx.stamp('lightning',t>>3,bx-16,by-18,0,true);
+     spellFx.stamp('lightning',t>>3,bx+16,by-18,2,true);
+    }
+   }
+   if(b.surge||b.riposte?.age<18){
+    layer.behindBody=true;
+    spellFx.aura(bx,by-20,b.surge?.age??b.riposte.age,{height:40,tone:'pink',seed:5,clock:mod.frame});
+    layer.behindBody=false;
    }
    const pointer=friezaDeathBeamPose(b);
    if(pointer)sprite(2,pointer.x-h.cameraX,pointer.y-h.cameraY,pointer.flip);
    else sprite(b.hurt?6:b.riposte?2:b.surge||b.windup?4:b.dash?5:b.recoil?2:b.warning?.kind==='disc'?2:b.warning?3:b.tier?4:Math.floor(b.age/16)%2,bx+(b.recoil?(face?1:-1)*Math.ceil(b.recoil/3):0),by,face);
    if(b.riposte){
     const a=b.riposte.age;
-    if(a<18){spellFx.stamp('gold-arc',a>>2,bx-12,by-16);spellFx.stamp('gold-arc',a>>2,bx+12,by-16,2);}
-    else for(const[dx,dy]of[[1,0],[0,1],[-1,0],[0,-1]])spellFx.stamp('impact-spark',(a-18)>>1,bx+dx*(12+(a-18)*3),by-12+dy*(12+(a-18)*3));
+    if(a>=18)for(const[dx,dy]of[[1,0],[0,1],[-1,0],[0,-1]])spellFx.stamp('impact-spark',(a-18)>>1,bx+dx*(12+(a-18)*3),by-12+dy*(12+(a-18)*3));
    }
    if(b.surge){
     const age=b.surge.age;

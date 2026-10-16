@@ -5,7 +5,7 @@ import {drawFriezaSprite,friezaDeathBeamPose} from './frieza-sprite.js';
 import {clashCamera,clashLines} from './frieza-finale.js';
 import {createFinaleView} from './frieza-finale-view.js';
 import {createOrbitEffects} from './orbit-effects.js';
-import {orbitAim,orbitFacing} from './orbit-duel.js';
+import {orbitFacing} from './orbit-duel.js';
 import {orbitBodyColor,orbitFragments,orbitDebrisPose} from './orbit-debris.js';
 
 export const orbitPrompts=clashLines;
@@ -15,7 +15,7 @@ export function createOrbitView(snes,mod,{put,disc,line,spell,rgb,drawPlanet,fla
  const fx=createOrbitEffects(snes,mod,put),characters=new WeakMap();
  const blue=[rgb(3,7,23),rgb(4,17,31),rgb(16,27,31),rgb(31,31,31)],purple=[rgb(13,1,19),rgb(25,3,24),rgb(31,14,29),rgb(31,27,31)];
  function ray(x,y,xx,yy,width,colors,age=0){
-  fx.beam(x,y,xx,yy,width,age,colors[0]===purple[0]);
+  fx.beam(x,y,xx,yy,width,age,colors[0]===purple[0]?'frieza':false);
  }
  function character(a,f,x,y,height,flip=false,falling=false){
   if(!a||!f)return;height=falling?Math.max(4,Math.round(height/4)*4):Math.max(16,Math.round(height/8)*8);const width=height;
@@ -93,16 +93,20 @@ export function createOrbitView(snes,mod,{put,disc,line,spell,rgb,drawPlanet,fla
   const g=mod.spriteLayer.atlas.ssj;
   // The sheet has a 32px header. These are the same audited facing rows and
   // charge/release/flight cells as the field renderer, sampled exactly 2:1.
-  const gokuFrame={x:(o.charge?18:o.beam||o.clash?.phase==='struggle'?20:o.punch?(o.duel&&o.duel.age>54?16:12):cam.moving?36+Math.floor(age/5)%4:34)*32,y:32+orbitFacing(o)*32,w:32,h:32};
+  const focused=mod.action?.kind==='focus'&&!o.beam;
+  const gokuFrame={x:(o.charge?18:focused?21:o.beam||o.clash?.phase==='struggle'?20:o.punch?(o.duel&&o.duel.age>54?16:12):cam.moving?36+Math.floor(age/5)%4:34)*32,y:32+orbitFacing(o)*32,w:32,h:32};
   // Only the menu's miniature moves to its safe UI anchor. The saved hero,
   // scenery, opponent and projectiles stay at their paused battle positions.
+  if(!menu&&o.charge)fx.aura(h.x,h.y,age,{power:Math.min(1,o.charge/45)});
+  else if(!menu&&focused)fx.aura(h.x,h.y,age,{power:.25+.45*mod.powerCharge/96});
   if(menu)character(g,{x:0,y:32,w:32,h:32},menu.x,menu.y,16);
   else if(!o.teleport||o.teleport<7)character(g,gokuFrame,h.x,h.y,16);
   if(!menu&&o.teleport>6)fx.stamp('impact-spark',Math.floor((12-o.teleport)/2),h.x,h.y);
   const a=mod.frieza.portraitAtlas,pointer=friezaDeathBeamPose(b),frame=pointer?2:o.clash?.phase==='win'?7:b.hurt?6:b.warning||o.clash?3:b.dash||b.evade||o.duel?5:4;
+  if(b.warning?.kind==='beam')fx.aura(b.x,b.y,age,{tone:'pink',seed:5});
   if(!b.blink)drawFriezaSprite(a,frame,b.x,b.y+10,put,{tiny:true,flip:pointer?.flip??b.x>h.x});
   else fx.stamp('impact-spark',6-b.blink,b.x,b.y);
-  if(!menu&&o.charge){const aim=orbitAim(o);fx.aura(h.x,h.y,age);fx.stamp('charge-orb',Math.min(4,Math.floor(o.charge/10)),h.x+Math.round(aim.dx*7),h.y+Math.round(aim.dy*7));}
+  if(!menu&&o.charge){const hand=window.GokuAnimationData.forms.ssj.sockets[18][orbitFacing(o)];fx.charge(h.x+(hand[0]-16)/2,h.y+(hand[1]-16)/2,o.charge/45);}
   if(o.beam){const v=o.beam,w=v.width*Math.min(1,v.age/6,(v.max-v.age)/10);ray(v.x,v.y,v.x+v.dx*350,v.y+v.dy*350,w,blue,age);}
   for(const p of o.shots)fx.stamp('charge-orb',1,p.x,p.y);
   for(const p of b.shots){
@@ -112,7 +116,7 @@ export function createOrbitView(snes,mod,{put,disc,line,spell,rgb,drawPlanet,fla
    else if(p.kind==='orb')death(p.x,p.y,32,p.age);
    else fx.disc(p.x,p.y,p.age);
   }
-  if(b.warning){const w=b.warning;if(w.kind==='orb')death(b.x,b.y-10,16+16*Math.floor(w.age*2/w.wait),age);else if(w.kind==='beam'){fx.aura(b.x,b.y,age);fx.stamp('gold-charge-orb',Math.min(4,w.age>>4),b.x,b.y-5);}else if(w.kind==='laser')fx.fingerCharge(pointer.finger.x,pointer.finger.y,age);else fx.disc(b.x,b.y-9,age);}
+  if(b.warning){const w=b.warning;if(w.kind==='orb')death(b.x,b.y-10,16+16*Math.floor(w.age*2/w.wait),age);else if(w.kind==='beam'){fx.charge(b.x-8,b.y+4,w.age/w.wait,{pink:true});}else if(w.kind==='laser')fx.fingerCharge(pointer.finger.x,pointer.finger.y,age);else fx.disc(b.x,b.y-9,age);}
   for(const hit of o.hits??[]){fx.burst(hit.x,hit.y,hit.age);if(hit.age<3)fx.stamp('impact-spark',hit.age,hit.x,hit.y);}
   if(o.intro){const text=orbitIntroText(o.intro);if(text)textPanel(text);}
   else if(o.aside?.age>=0&&!menu)textPanel(o.aside.text);

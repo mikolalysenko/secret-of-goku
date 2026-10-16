@@ -1,5 +1,6 @@
 import {clashTiming,victoryTiming,clashLines,clashSurge,descentPose,ease} from './frieza-finale.js';
 import {drawBossVictory,bossVictoryTiming,bossVictoryWhite} from './boss-victory.js';
+import {drawBeamDetonation} from './beam-detonation.js';
 
 // Tiny, whole-pixel fighters establish the scale. The counter and its blast
 // occupy most of the picture; their shared axis never jumps between shots.
@@ -12,11 +13,11 @@ export function createFinaleView(mod,{put,line,disc,rgb,ray,character,frieza,pan
   const point=t=>({x:h.x+dx*t,y:h.y+dy*t});
   let goku={...h,size:16,column:34,row:2},text=clashLines[c.phase];
   if(c.phase==='gather'){
-   frieza(4,b.x,b.y+10);fx.aura(b.x,b.y,a);
-   if(a>60)fx.stamp('gold-charge-orb',Math.min(4,Math.floor((a-60)/18)),b.x-8,b.y+4);
+   fx.aura(b.x,b.y,a,{tone:'pink',seed:5});frieza(4,b.x,b.y+10);
+   if(a>60)fx.charge(b.x-8,b.y+4,(a-60)/72,{pink:true});
   }else if(c.phase==='charge'){
-   frieza(2,b.x,b.y+10);fx.aura(b.x,b.y,a);fx.stamp('gold-charge-orb',4,b.x-8,b.y+4);
-   if(o.charge){goku.column=18;fx.aura(h.x,h.y,a);fx.stamp('charge-orb',Math.min(4,Math.floor(o.charge/10)),h.x+8,h.y);}
+   fx.aura(b.x,b.y,a,{tone:'pink',seed:5});frieza(2,b.x,b.y+10);fx.charge(b.x-8,b.y+4,1,{pink:true});
+   if(o.charge){goku.column=18;fx.aura(h.x,h.y,a);const hand=window.GokuAnimationData.forms.ssj.sockets[18][goku.row];fx.charge(h.x+(hand[0]-16)/2,h.y+(hand[1]-16)/2,o.charge/45);}
    if(a>240)text=null;
   }else if(c.phase==='launch'){
    goku.column=20;frieza(2,b.x,b.y+10);
@@ -25,11 +26,13 @@ export function createFinaleView(mod,{put,line,disc,rgb,ray,character,frieza,pan
    ray(b.x,b.y,enemyFront.x,enemyFront.y,30,purple,a);
    if(a===clashTiming.contact)flash(.35);
   }else if(c.phase==='struggle'){
+   const surge=clashSurge(c);
+   if(surge)fx.aura(b.x,b.y,a,{tone:'pink',seed:5});
    goku.column=20;frieza(2,b.x,b.y+10);
-   const p=point(c.shown??c.pressure),pulse=(a>>3)%3,surge=clashSurge(c),power=surge?Math.min(3,1+(surge.age>>3),Math.ceil((90-surge.age)/12)):0;
+   const p=point(c.shown??c.pressure),pulse=(a>>3)%3,power=surge?Math.min(3,1+(surge.age>>3),Math.ceil((90-surge.age)/12)):0;
    ray(h.x,h.y,p.x,p.y,28+pulse,blue,a);ray(b.x,b.y,p.x,p.y,35-pulse+power*4,purple,a);
    fx.stamp('impact-spark',a>>2,p.x,p.y);fx.stamp('gold-spark',a>>2,p.x+8,p.y-8,2);
-   if(surge){fx.aura(b.x,b.y,a);if(surge.age<4)flash((4-surge.age)*.045);}
+   if(surge&&surge.age<4)flash((4-surge.age)*.045);
    if(a>100)text=surge?.text??null;
   }else if(c.phase==='recoil'){
    frieza(3,b.x,b.y+10);const p=point(Math.max(0,.12-a/100));
@@ -60,9 +63,10 @@ export function createFinaleView(mod,{put,line,disc,rgb,ray,character,frieza,pan
   character(g,{x:goku.column*32,y:32+goku.row*32,w:32,h:32},goku.x,goku.y,goku.size);
   if(c.phase==='win'){
    const deathAge=a-victoryTiming.impact;
+   drawBeamDetonation(mod.snes.cart.data,b.x,b.y,deathAge,put);
    drawBossVictory(b.x,b.y,deathAge,{put,disc},mod.snes.cart.data);
    // Wash the whole scene, including Goku, and hold it through the final
-   // explosion. The native fanfare starts under white before space returns.
+   // explosion. Only then can the pouch and native fanfare follow.
    const white=bossVictoryWhite(deathAge);if(white)flash(white,true);
   }
   if(text)panel(text);

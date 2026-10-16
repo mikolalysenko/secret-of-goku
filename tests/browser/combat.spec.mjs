@@ -100,10 +100,11 @@ test('SSJ ignition bursts on the gold frame, awards native enemy rewards once, a
     expect(aftermath.effects).toBe(0);expect(aftermath.canAttack).toBe(true);
   }
   const focused=await page.evaluate(()=>{
+    mana.run(2,[5]);
     const poses=new Set();for(let i=0;i<150;i++){mana.run(1,[10]);const p=mana.mod.spriteLayer.plan.sprite;poses.add(`${p.sheet}:${p.row}:${p.column}:${p.kind}`);}
     return{poses:[...poses].sort(),superSaiyan:mana.mod.options.superSaiyan,effects:mana.mod.effects.length};
   });
-  expect(focused).toEqual({poses:['goku:0:56:focus','goku:0:57:focus'],superSaiyan:true,effects:0});
+  expect(focused).toEqual({poses:['ssj:0:21:focus'],superSaiyan:true,effects:0});
   await page.locator('#screen').screenshot({path:testInfo.outputPath('super-saiyan-focus.png')});
 });
 

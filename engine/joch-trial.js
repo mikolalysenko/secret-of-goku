@@ -2,7 +2,8 @@ import {loadVegetaSprite,drawVegetaSprite} from './vegeta-sprite.js';
 import {createNativeCombustion} from './native-combustion.js';
 import {beamTouchesShot,sweptDistance} from './frieza-combat.js';
 import {createTimeChamber} from './time-chamber.js';
-import {opposingBeams,createTrainingClash,mashTrainingClash,tickTrainingClash,drawTrainingClash,trainingClashPoint} from './vegeta-clash.js';
+import {opposingBeams,createTrainingClash,mashTrainingClash,tickTrainingClash,drawTrainingClash,trainingClashPoint,trainingClashTiming} from './vegeta-clash.js';
+import {drawBeamDetonation} from './beam-detonation.js';
 export const vegetaHealth=[32000,60000];
 const cloneBases=[0xe600,0xe800,0xea00],directions=[[0,1],[1,0],[-1,0],[0,-1]];
 const face=(dx,dy)=>Math.abs(dx)>Math.abs(dy)?dx<0?2:1:dy<0?3:0;
@@ -89,9 +90,11 @@ export function createJochTrial(snes,mod,{loadArt=true}={}){
   if(cue==='focus'){mod.playSound?.('charged');mod.feedback?.pulse(8);}
   if(cue==='struggle')mod.playSound?.('beam');
   if(cue==='surge'){mod.playSound?.('powerBurst');mod.feedback?.pulse(5);}
-  if(cue==='win'||cue==='lose'){mod.playSound?.('impact');mod.feedback?.pulse(18);}
+  if(cue==='win'||cue==='lose')mod.feedback?.pulse(6);
+  if(cue==='detonate'){mod.playSound?.('fortressBreak');mod.playSound?.('friezaImpact');mod.feedback?.pulse(24);}
+  if(c.phase==='release'&&c.age===trainingClashTiming.impact+28){mod.playSound?.('fortressBreak');mod.feedback?.pulse(12);}
   if(cue==='done'){
-   const win=c.result==='win',point=trainingClashPoint(c);s.clash=null;recover(140);mod.cancelCombat?.();burst(point.x,point.y);
+   const win=c.result==='win';s.clash=null;recover(140);mod.cancelCombat?.();
    if(win){s.grace=90;api.hit(api.entity(),Math.round(vegetaHealth[s.tier]*.34/(s.tier?.38:.55)));}
    else{s.grace=0;receive(s.tier?320:230);}
   }
@@ -307,16 +310,22 @@ export function createJochTrial(snes,mod,{loadArt=true}={}){
     else if(moving)frame=16+s.tier*8+6+step;
    }
    const visible=s.phase!=='intro'||s.arrival>=12,vanishing=a?.kind==='counter'&&a.age>=8&&a.age<12;
-   if(visible&&!vanishing)drawVegetaSprite(cells,frame,s.x-camera.cameraX,s.y-camera.cameraY,s.clash?(x,y,c)=>layer.pixel(x,y,c):putPixel,{flip:s.facing===2,flash:s.hurt>0&&(s.hurt&2)!==0});
-   if(s.phase==='transform')for(let i=0;i<6;i++){
-    const dx=[-16,0,16,-16,0,16][i],dy=i<3?-20:0;
-    layer.stamp(s.tier?'gold-arc':'aura-arc',(s.phaseAge>>2)+i,s.x-camera.cameraX+dx,s.y-camera.cameraY-14+dy);
+   if(s.phase==='transform'||a?.kind==='beam'&&!a.beam){
+    layer.behindBody=true;
+    const age=s.phase==='transform'?s.phaseAge:a.age,power=s.phase==='transform' ? .35+age/140 : .25+.75*age/(s.tier?82:110);
+    layer.aura(s.x-camera.cameraX,s.y-camera.cameraY-20,age,{height:40,gold:!!s.tier,power:Math.min(1,power),seed:5});
+    layer.behindBody=false;
    }
+   if(visible&&!vanishing)drawVegetaSprite(cells,frame,s.x-camera.cameraX,s.y-camera.cameraY,s.clash?(x,y,c)=>layer.pixel(x,y,c):putPixel,{flip:s.facing===2,flash:s.hurt>0&&(s.hurt&2)!==0});
    if(s.clash){
     // Leave both firing poses readable at their beam's hand anchor. Native
     // spell OBJs can overlap the hands without covering either body.
     layer.behindBody=true;
     try{drawTrainingClash(layer,s.clash,camera);}finally{layer.behindBody=false;}
+    if(s.clash.phase==='release'){
+     const p=trainingClashPoint(s.clash);
+     drawBeamDetonation(snes.cart.data,p.x-camera.cameraX,p.y-camera.cameraY,s.clash.age-trainingClashTiming.impact,putPixel);
+    }
     return;
    }
    if(a?.kind==='beam'){

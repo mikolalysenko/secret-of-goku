@@ -212,14 +212,18 @@ test('transformation burst replays once across checkpoints and never damages fro
   assert.equal(air.mod.read16(0xe782),20000);assert.equal(air.mod.effects.length,0);
 });
 
-test('holding focus in Super Saiyan keeps short gold hair throughout the power-up',()=>{
-  const {mod,step}=setup({superSaiyan:true}),seen=new Set();
+test('held L maintains a directional fighting guard in both forms, reserving power-up poses for form changes',()=>{
+ for(const superSaiyan of[false,true])for(let facing=0;facing<4;facing++){
+  const {mod,step}=setup({superSaiyan,facing});
   for(let i=0;i<150;i++){
-    step(0x400);const pose=mod.motion.pose(),cell=context.window.GokuAnimationData.forms[pose.sheet].cells[pose.column*4+pose.row];
-    assert.equal(pose.kind,'focus');assert.match(cell.semantic,/^transformGoldFlare/);seen.add(pose.column);
+    step(0x400);const pose=mod.motion.pose();
+    assert.equal(pose.kind,'focus');assert.equal(pose.sheet,superSaiyan?'ssj':'goku');
+    assert.equal(pose.column,superSaiyan?21:25);assert.equal(pose.row,[0,2,1,3][facing]);
   }
-  assert.deepEqual([...seen].sort(),[56,57]);assert.equal(mod.options.superSaiyan,true);
+  assert.equal(mod.options.superSaiyan,superSaiyan);
   assert.equal(mod.effects.length,0,'holding focus alone does not repeatedly explode');
+  step();assert.notEqual(mod.motion.pose().kind,'focus');
+ }
 });
 
 test('mid-charge and mid-strike snapshots preserve exact animation and projectile timing',()=>{

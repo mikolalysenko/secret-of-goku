@@ -108,10 +108,11 @@ export function createBeastChallenge(snes,mod){
       if(lich?.boost&&powered()&&mod.frieza?.trial&&mod.read16(0xdc)===lich.map){
         const s=mod.status,age=lich.boost.age,x=mod.read16(lich.base+2)-s.cameraX,y=mod.read16(lich.base+4)-s.cameraY-24;
         for(let i=0;i<3;i++){
-          const t=Math.max(0,Math.min(1,(age-i*14)/60));
+          const travel=age-i*14;if(travel<0||travel>=60)continue;
+          const t=travel/60;
           layer.stamp('gold-charge-orb',(age>>3)%2,Math.round(232+(x-232)*t),Math.round(-16+(y+16)*t));
         }
-        if(age>=60)layer.stamp('impact-spark',(age>>2)%4,x,y);
+        if(age>=60)layer.aura(x,y,age-60,{height:40,tone:'pink',power:.7,behindActors:true});
       }
       if(!active()||!mod.canAttack||!burst)return;
       const s=mod.status,b=burst,x=b.x-s.cameraX,top=b.top-s.cameraY,bottom=b.bottom-s.cameraY,phase=b.age>>2,age=b.age-b.warning;

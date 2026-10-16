@@ -5,16 +5,16 @@ const particleArt=new WeakMap();
 // Captured from the unmodified Mantis Ant defeat: repeated explosion cue,
 // music fade, then the original boss victory fanfare. The SPC plays the ROM's
 // own samples and sequence; no recording or substitute jingle is embedded.
-export const bossVictoryCommands={stop:[0xf0,0,0,0],burst:[2,0x15,15,0],fade:[0x80,0x80,0,0],acquire:[2,0xd8,0,0x88],jingle:[1,0x18,0x44,0x8f]};
+export const bossVictoryCommands={stop:[0xf0,0,0,0],death:[2,0x94,15,0x80],burst:[2,0x15,15,0],fade:[0x80,0x80,0,0],acquire:[2,0xd8,0,0x88],jingle:[1,0x18,0x44,0x8f]};
 // Native frame offsets from the fatal hit. The fanfare plays for about
 // 513 frames before the original boss script resumes; leave a 540-frame
-// window before travel, dialogue or replacement music. The pouch uses the
-// native orb-acquisition cue, then starts the fanfare after a 40-frame beat.
-export const bossVictoryTiming={bursts:[36,56,76,96,116,137,157,177,197,217,237,257,326],fade:143,white:306,vanish:326,reveal:631,clear:791,jingleFrames:540};
+// window before travel, dialogue or replacement music. Loading the fanfare
+// replaces SPC sample memory, so let the entire pouch chime finish first.
+export const bossVictoryTiming={bursts:[36,56,76,96,116,137,157,177,197,217,237,257,326],fade:143,white:306,vanish:326,reveal:631,clear:791,acquireFrames:120,jingleFrames:540};
 export function bossVictoryCue(age){
- // The native fatal-hit cue is a high chime. Start with the explosion
- // itself; reserve the acquire chime for the pouch arriving afterward.
- return age===0||bossVictoryTiming.bursts.includes(age)?'burst':age===bossVictoryTiming.fade?'fade':null;
+ // 94h is the opening boss-death effect, not the D8h item-acquisition
+ // chime. Replacing it with 15h loses the characteristic death sound.
+ return age===0?'death':bossVictoryTiming.bursts.includes(age)?'burst':age===bossVictoryTiming.fade?'fade':null;
 }
 export function bossDeathColor(color,age){
  if(!color||age<0)return color;
@@ -36,9 +36,8 @@ export function createBossVictoryAudio(snes,mod,getState){
    const safe=!s.pending&&s.queue.length&&s.lastFrame!==snes.frames&&mod.options.enabled&&mod.canAttack&&!this.waiting&&!this.stopped&&!this.nmiWanted&&!this.abortWanted&&(!this.irqWanted||this.i)&&snes.ram[0x1e00]===0;
    if(safe&&[0xe2,0x20,0xa9,1].every((v,i)=>snes.cart.data[0xb073+i]===v)){
     const q=s.queue.shift();
-    // Older mid-victory checkpoints queued the high fatal-hit chime.
-    // Replay those as explosions too, preserving their place in the queue.
-    if(q.name==='hit')q.name='burst';
+    // Preserve the original sound for older mid-victory checkpoints too.
+    if(q.name==='hit')q.name='death';
     s.lastFrame=snes.frames;s.pending={name:q.name,p:this.getP(),sp:this.br[3]};
     // C3:0198 skips an already selected song. A previous native boss may
     // have left 18h cached after its fanfare ended; explicitly restart it.

@@ -154,6 +154,14 @@ test('a real Kamehameha locks Final Flash and mashing pushes the collision ball 
  });
  expect(pushed.shown).toBeGreaterThan(held.after.shown);
  await page.evaluate(()=>document.querySelector('#native-pause').hidden=true);await page.locator('#screen').screenshot({path:info.outputPath('final-flash-struggle.png')});
+ const detonation=await page.evaluate(()=>{
+  const m=mana.mod;
+  for(let n=0;n<90&&m.trial.status.clash?.phase!=='release';n++){mana.run(2,[0]);mana.run(8);}
+  while(m.trial.status.clash.age<54)mana.run(1);
+  return{hp:m.trial.status.hp,result:m.trial.status.clash.result,hero:[m.status.x,m.status.y]};
+ });
+ expect(detonation).toEqual({hp:locked.trial.hp,result:'win',hero:[locked.hero.x,locked.hero.y]});
+ await page.locator('#screen').screenshot({path:info.outputPath('final-flash-detonation.png')});
  const won=await page.evaluate(()=>{
   const m=mana.mod;for(let n=0;n<90&&m.trial.status.clash;n++){mana.run(2,[0]);mana.run(8);}
   mana.run(1);return{trial:m.trial.status,hero:m.status,effects:m.effects.map(e=>e.kind)};

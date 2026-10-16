@@ -67,7 +67,8 @@ export function createNativeHitRecovery(snes,mod){
    const base=0xe000+attacker;
    if(attacker<0x600||attacker>0x1600||attacker%0x200||!(r[base]&1)||r[base+0x180]>=0x57||word(base+0x199)||word(0xe1f1))return false;
    contacts++;
-   if(snes.frames<parryUntil||(mod.options.superSaiyan?contacts%3===0:contacts%3!==0))return false;
+   const focused=mod.action?.kind==='focus'&&!!(mod.input&0x400);
+   if(snes.frames<parryUntil||!focused&&(mod.options.superSaiyan?contacts%3===0:contacts%3!==0))return false;
    const dx=word(base+2)-word(0xe002),dy=word(base+4)-word(0xe004);
    const facing=Math.abs(dx)>Math.abs(dy)?dx<0?2:1:dy<0?3:0;
    reaction={kind:'deflect',frame:snes.frames,map:word(0xdc),facing};deflected++;parryUntil=snes.frames+24;

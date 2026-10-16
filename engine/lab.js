@@ -1,6 +1,7 @@
 import {snapshot,restore,hash,checkpointStore} from './state.js';
 import {createBatteryStore} from './battery.js';
 import {createNativeEffects} from './native-effects.js';
+import {drawKiAura} from './ki-aura.js';
 import {createTitleLayer} from './title-layer.js';
 import {createArrival} from './arrival.js';
 import {GameInput,keymap} from './input.js';
@@ -59,6 +60,7 @@ const battery=createBatteryStore({onError:()=>message('Browser storage is unavai
 const originalMode=document.body.dataset.mode==='original';
 const logs=[];
 const mod=new window.ManaMod(snes,{gokuUrl:'assets/sprites/goku.png',ssjUrl:'assets/sprites/ssj.png',onLog:text=>{logs.push(text);if(logs.length>100)logs.shift();if(!originalMode&&!text.startsWith('Mod:'))message(text);}});
+mod.spriteLayer.drawKiAura=drawKiAura;
 const title=createTitleLayer(snes.ppu);
 const arrival=createArrival(snes,mod);
 const sound=createKiSound(mod);

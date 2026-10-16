@@ -1,6 +1,6 @@
 # Original spell artwork for Goku
 
-The charge, beam, punch burst and Super Saiyan aura use 34 original spell OBJ cells decoded from the loaded US ROM. `engine/native-effects.json` contains offsets, assembly descriptors, palette rotations and capture provenance, not game graphics bytes. `engine/native-effects.js` decodes them when a verified ROM is loaded.
+The charge, beam, impact and lightning effects use 34 original spell OBJ cells decoded from the loaded US ROM. The rising ki aura uses their palettes with custom pixel animation. `engine/native-effects.json` contains offsets, assembly descriptors, palette rotations and capture provenance, not game graphics bytes. `engine/native-effects.js` decodes them when a verified ROM is loaded.
 
 The Frieza collateral montage also uses 24 original Exploder and Fireball cells, assembled into seven explosion frames and three ember frames. `engine/native-combustion-data.js` records their ROM addresses, native OBJ flips, assembly positions and independent capture hashes. Outward bursts use exact quarter turns; persistent fires use staggered native animation frames. Damaged roofs are a separate copy of the town map, with selected roof tiles replaced by that town's earth or paving and fragments cut from its original roof pixels. Debris stays attached to map coordinates through camera pans. Neither the cartridge nor the running battle's tilemap is changed.
 
@@ -15,7 +15,9 @@ The Frieza collateral montage also uses 24 original Exploder and Fireball cells,
 | Gold spark | 4 | Lucid Barrier |
 | Gold arc | 5 | Lucid Barrier |
 
-Kamehameha is new choreography assembled from these cells. It is not an original Secret of Mana spell. The gold beam reuses the native Lucid Barrier palette on Lucent Beam's cells. Quarter turns and repeated 16×4 beam strips preserve the original pixels; no smooth scaling, browser gradients or glow is used. Aura arcs and sparks keep the discrete native palette cycle. The physical punch's burst reuses Lucent Beam impact art, not a claimed original sword-hit animation.
+Kamehameha is new choreography assembled from these cells. It is not an original Secret of Mana spell. The gold beam reuses the native Lucid Barrier palette on Lucent Beam's cells. Quarter turns and repeated 16×4 beam strips preserve the original pixels; no smooth scaling, browser gradients or glow is used. The physical punch's burst reuses Lucent Beam impact art, not a claimed original sword-hit animation.
+
+Focus, transformation and charging use the pixel flame animation in `engine/ki-aura.js`, colored with the original Lucent Beam and Lucid Barrier palettes. Frieza uses the magenta/pink ramp shared with his finger laser and Death Discs. This is custom choreography, not an extracted spell: connected flame tongues and staggered highlights travel upward from a fixed foot anchor instead of orbiting shield arcs. Twelve frames advance every three game frames, with eight strength steps and separately rasterized 16-, 32- and 40-pixel character sizes. The complete silhouette alternates on/off each game frame for ghost-style temporal transparency, using quieter palette shades without a white core. Characters draw in front; there is no hollow rectangular center. Held L uses Goku's directional guard and a smaller aura, while the straining poses remain reserved for transforming/reverting. Goku, Vegeta and the orbital scenes share this animation; the surface-seeking Thunderbolt paths of SSJ Kamehameha remain unchanged. Orbital hand charges sample the native cells at the same 2:1 scale as the fighters. No additional image assets are required.
 
 ## Recovered format
 

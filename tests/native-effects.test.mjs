@@ -7,6 +7,7 @@ import {combustionCells,combustionFrames} from '../engine/native-combustion-data
 import {createNativeCombustion} from '../engine/native-combustion.js';
 import {createOrbitEffects} from '../engine/orbit-effects.js';
 import {orbitVector} from '../engine/orbit-pixels.js';
+import {friezaKiPalette} from '../engine/ki-aura.js';
 
 test('native effect row encoding recovers transparency, plane order and left-to-right bits',()=>{
   const bytes=new Uint8Array(24);
@@ -74,6 +75,20 @@ test('orbital beams use native strip colors at fixed headings with whole-pixel s
  }
  checkColors=false;
  for(let age=0;age<80;age++){fx.burst(80,90,age,{large:true});fx.aura(80,90,age);fx.disc(80,90,age);fx.beam(80,90,220,90,12,age,true);}
+});
+
+test('orbital hand charges stay miniature and Frieza charges, lightning and beams share pink ki',()=>{
+ const cell=Uint16Array.from({length:256},(_,i)=>[29397,31577,32733,32768][i%4]);
+ const effects={'charge-orb':Array(5).fill(cell),'beam-body':[cell],lightning:[cell]},pixels=[];
+ const fx=createOrbitEffects({},{spriteLayer:{effects}},(x,y,c)=>pixels.push({x,y,c}));
+ fx.charge(128.25,100.75,1,{pink:true});
+ assert.equal(pixels.length,64);assert.ok(pixels.every(p=>Number.isInteger(p.x)&&Number.isInteger(p.y)));
+ assert.equal(Math.max(...pixels.map(p=>p.x))-Math.min(...pixels.map(p=>p.x)),7);
+ assert.equal(Math.max(...pixels.map(p=>p.y))-Math.min(...pixels.map(p=>p.y)),7);
+ fx.stamp('lightning',0,128,100,0,true);
+ const before=pixels.length;fx.beam(40,100,210,100,16,0,'frieza');
+ assert.ok(pixels.length>before+1000,'The pink beam retains its full width');
+ assert.ok(pixels.every(p=>friezaKiPalette.includes(p.c)),'No gold/yellow charge or blue lightning leaks into Frieza ki');
 });
 
 test('Death Balls animate native sparks around a stable core, with a separate red cinematic sphere',async t=>{

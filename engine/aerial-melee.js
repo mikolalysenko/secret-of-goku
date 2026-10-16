@@ -59,8 +59,8 @@ export function createAerialMeleeView(snes,mod,{put,rgb,flash}){
    }
   }else if(blast<0){
    const t=age-(shot.impact-30),gap=Math.max(10,60-t*2);
+   fx.aura(128-gap,112,age,{height:32});fx.aura(128+gap,112,age,{height:40,tone:'pink',seed:5});
    goku(12,2,128-gap,112);drawFriezaSprite(mod.frieza.portraitAtlas,5,128+gap,131,put,{flip:true});
-   fx.aura(128-gap,112,age);fx.aura(128+gap,112,age);
   }else{
    // One escalating detonation, then a visible cloud-filled aftermath.
    fx.burst(128,112,blast,{large:true});

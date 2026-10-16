@@ -1,6 +1,7 @@
 // A real counter-shot initiates the clash. A parallel, crossing or already
 // passed beam cannot pull Goku into it. All visible motion is whole pixels.
-export const trainingClashTiming={lock:36,focus:48,minimum:240,limit:660,release:84};
+import {beamDetonationFrames} from './beam-detonation.js';
+export const trainingClashTiming={lock:36,focus:48,minimum:240,limit:660,impact:18,release:18+beamDetonationFrames+18};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export function opposingBeams(player,geometry,enemy){
  if(!geometry||!enemy||player.dx*enemy.dx+player.dy*enemy.dy>-.99)return false;
@@ -33,6 +34,7 @@ export function tickTrainingClash(c){
  }
  if(c.phase==='release'){
   c.shown=clamp(c.shown+(c.result==='win'?.025:-.025),0,1);
+  if(c.age===trainingClashTiming.impact){c.shown=c.result==='win'?1:0;return'detonate';}
   if(c.age>=trainingClashTiming.release)return'done';
  }
  return null;
@@ -50,7 +52,7 @@ export function drawTrainingClash(layer,c,camera){
  const enemy=c.tier?gold:purple,phase=c.total>>2;
  const focused=c.phase==='lock'?0:c.phase==='focus'?Math.min(1,age/trainingClashTiming.focus):1;
  const width=Math.round(54-42*focused),pulse=(phase&1)*2;
- const release=c.phase==='release',tail=release?clamp(1-(age-30)/54,0,1):1;
+ const release=c.phase==='release',tail=release?clamp(1-(age-trainingClashTiming.impact)/36,0,1):1;
  // Each wave starts at its saved firing hand and ends at the collision
  // ball. Pressure changes its length, never extending behind the fighter.
  const wave=(origin,dx,dy,halfWidth,palette)=>{

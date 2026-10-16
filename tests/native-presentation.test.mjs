@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 import {PNG} from 'pngjs';
+import {drawKiAura} from '../engine/ki-aura.js';
 const context={window:{},Uint8Array,Uint16Array,Set,Math};
 vm.runInNewContext(await readFile(new URL('../engine/rom-patches.js',import.meta.url),'utf8'),context);
 vm.runInNewContext(await readFile(new URL('../engine/goku-animation-data.js',import.meta.url),'utf8'),context);
@@ -19,7 +20,7 @@ function scene(direction=1){
   const ppu={oam:new Uint16Array(256),highOam:new Uint16Array(16),objSize:3,spriteSizes:[1,1,1,2,2,4,2,2,2,4,8,4,8,8,4,4],spriteLineBuffer:new Uint8Array(256),spritePrioBuffer:new Uint8Array(256),evaluateSprites(){},getColor(){return this.selectedLayer===4?[0,4,0x91]:[1234,1,3];}};
   ppu.oam.fill(0xf000);ppu.oam[14]=92|(68<<8);ppu.oam[15]=0x23c0;ppu.oam[16]=92|(84<<8);ppu.oam[17]=0x23c2;
   const mod={options:{enabled:true},read8:a=>ram[a],read16:a=>ram[a]|ram[a+1]<<8,worldFlight:false,frame:10,moving:true,canAttack:true,effects:[],status:{cameraX:0,cameraY:0}};
-  const layer=new context.window.ManaSpriteLayer({ppu},mod);layer.atlas=atlases;layer.prepare();return{layer,mod,ppu,ram};
+  const layer=new context.window.ManaSpriteLayer({ppu},mod);layer.drawKiAura=drawKiAura;layer.atlas=atlases;layer.prepare();return{layer,mod,ppu,ram};
 }
 
 test('all four Goku directions use the correct source rows and retain every opaque pixel, including boots',()=>{
@@ -177,6 +178,42 @@ test('charge and aura effects are absent while a native menu or dialogue owns co
   mod.options.superSaiyan=true;mod.charging=true;mod.charge=45;mod.canAttack=true;layer.prepare();
   assert.ok(layer.effectMask.some(Boolean));
   mod.canAttack=false;layer.prepare();assert.equal(layer.effectMask.some(Boolean),false);
+});
+
+test('a charging aura keeps every body pixel and stops on release or loss of native control',()=>{
+ for(const superSaiyan of[false,true])for(const small of[false,true]){
+  const{layer,mod,ram}=scene();mod.options.superSaiyan=superSaiyan;
+  layer.effects['charge-orb']=[Uint16Array.from([0,29397,31577,32733,32768])];
+  layer.effects['gold-arc']=[Uint16Array.from([0,500,633,797,12288,32768])];
+  if(small)ram[0xe180]=0xf6;
+  mod.action={kind:'focus',age:100,duration:0};mod.powerCharge=96;layer.prepare();
+  assert.ok(layer.effectMask.some(Boolean));const f=layer.plan.sprite,a=layer.atlas[f.sheet];
+  for(let y=0;y<f.height;y++)for(let x=0;x<f.width;x++){
+   const c=a.pixels[(32+f.row*32+Math.floor(y*32/f.height))*a.width+f.column*32+Math.floor(x*32/f.width)];
+   if(c)assert.equal(layer.surface[(f.y+y)*256+f.x+x],c,'Faces, hands and boots must stay in front of the aura');
+  }
+  mod.canAttack=false;layer.prepare();assert.equal(layer.effectMask.some(Boolean),false);
+  mod.canAttack=true;mod.action=null;mod.powerCharge=0;layer.prepare();assert.equal(layer.effectMask.some(Boolean),false);
+ }
+});
+
+test('Thanatos aura flickers behind native sprite pixels regardless of OAM order',()=>{
+ for(const slot of[2,30]){
+  const {layer,ppu,mod}=scene();
+  layer.effects['charge-orb']=[Uint16Array.from([0,29397,31577,32733,32768])];
+  layer.effects['gold-arc']=[Uint16Array.from([0,500,633,797,12288,32768])];
+  Object.assign(ppu,{vram:new Uint16Array(0x8000),sprAdr1:0,sprAdr2:0,objPriority:false,spriteTileOffsets:Array.from({length:64},(_,i)=>(i&7)+(i>>3)*16)});
+  ppu.oam[slot]=120|(90<<8);ppu.oam[slot+1]=0x2400;ppu.vram[0]=255;
+  layer.prepare();layer.aura(124,100,90,{tone:'pink',power:.7,behindActors:true});
+  assert.ok(layer.effectMask.some(v=>v===2));layer.evaluate(ppu,90);
+  for(let x=120;x<128;x++){
+   assert.equal(ppu.spriteLineBuffer[x],0xa1,'Every opaque native texel stays visible');
+   assert.equal(layer.customLine[x],0);
+  }
+  assert.ok(layer.customLine[119]||layer.customLine[128],'The flame remains around the actual silhouette');
+  mod.frame++;layer.prepare();layer.aura(124,100,90,{tone:'pink',power:.7,behindActors:true});
+  assert.equal(layer.effectMask.some(v=>v===2),false,'Alternate frames reveal the original background');
+ }
 });
 
 test('miniature charge stays at the smaller hand position without shrinking original spell art',()=>{

@@ -71,6 +71,17 @@ test('base Goku blocks some clean physical hits; SSJ deflects more without touch
  assert.equal(f.recovery.deflected,2);assert.equal(f.word(0xe182),800);
  const saved=f.recovery.snapshot();f.snes.frames=210;f.call(0x514b);f.recovery.restore(saved);assert.deepEqual(f.recovery.snapshot(),saved);
 });
+test('holding L in the focus stance deflects clean contacts in either form, with a recovery window',()=>{
+ for(const gold of[false,true]){
+  const f=setup();f.mod.options.superSaiyan=gold;f.mod.input=0x400;f.mod.action={kind:'focus'};
+  for(let i=0;i<5;i++){
+   f.snes.frames=i*30;assert.equal(f.call(0x514b),0x4e6f);
+   f.snes.frames++;assert.equal(f.call(0x514b),0x514b,'Successive contacts still respect the parry recovery');
+  }
+  assert.equal(f.recovery.deflected,5);assert.equal(f.word(0xe182),800);
+  f.snes.frames+=30;f.mod.frieza={fighting:true};assert.equal(f.call(0x514b),0x514b,'Focus does not make major bosses harmless');
+ }
+});
 test('ordinary recoil is bounded across movement steps and checkpoints; boss recoil and scripts stay native',()=>{
  for(const gold of[false,true]){
   const f=setup();f.mod.options.superSaiyan=gold;f.write(0xe1f1,100);f.call(0x4053);f.ram[0xe011]=0x8d;

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {opposingBeams,createTrainingClash,mashTrainingClash,tickTrainingClash,trainingClashPoint} from '../engine/vegeta-clash.js';
+import {opposingBeams,createTrainingClash,mashTrainingClash,tickTrainingClash,trainingClashPoint,trainingClashTiming} from '../engine/vegeta-clash.js';
+import {beamDetonationFrames,beamDetonationParts} from '../engine/beam-detonation.js';
 const player={x:100,y:140,dx:1,dy:0,super:true},enemy={x:260,y:140,dx:-1,dy:0,length:80,halfWidth:17},geometry={length:96,halfWidth:40};
 const start=()=>createTrainingClash(player,enemy,{x:88,y:152},{x:272,y:152},1);
 test('only head-on, overlapping waves lock, preserving misses and the chosen firing direction',()=>{
@@ -31,4 +32,23 @@ test('both winning and losing finish safely, and saved clashes replay determinis
  const c=start();for(let n=0;n<150;n++)tickTrainingClash(c);const restored=structuredClone(c);
  for(let n=0;n<150;n++)for(const state of[c,restored]){tickTrainingClash(state);mashTrainingClash(state,n%12<2?1:0);}
  assert.deepEqual(restored,c);
+});
+test('the winning wave reaches the fighter, detonates once, and holds combat through the debris tail',()=>{
+ for(const result of['win','lose']){
+  const c=start();Object.assign(c,{phase:'release',age:0,result,shown:result==='win'?.98:.02});
+  const cues=[];
+  for(let age=1;age<=trainingClashTiming.release;age++){
+   const cue=tickTrainingClash(c);if(cue)cues.push({age,cue});
+   if(cue==='detonate')assert.deepEqual(trainingClashPoint(c),result==='win'?c.to:c.from);
+   if(age<=trainingClashTiming.impact+beamDetonationFrames)assert.notEqual(cue,'done');
+  }
+  assert.deepEqual(cues,[{age:trainingClashTiming.impact,cue:'detonate'},{age:trainingClashTiming.release,cue:'done'}]);
+ }
+ let extent=0;
+ for(let age=0;age<beamDetonationFrames;age++){
+  const parts=beamDetonationParts(age);assert.ok(parts.length<40);
+  for(const p of parts){assert.ok([p.x,p.y,p.frame,p.turn].every(Number.isInteger));extent=Math.max(extent,Math.hypot(p.x,p.y));}
+ }
+ assert.ok(extent>120,'The blast and embers spread across the arena');
+ assert.deepEqual(beamDetonationParts(-1),[]);assert.deepEqual(beamDetonationParts(beamDetonationFrames),[]);
 });

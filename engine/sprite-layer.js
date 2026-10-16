@@ -55,7 +55,7 @@ class ManaSpriteLayer {
     }
   }
   rgb(r,g,b){return 1+((r>>3)|((g>>3)<<5)|((b>>3)<<10));}
-  pixel(x,y,color,effect=false){x=Math.round(x);y=Math.round(y);if(x>=0&&x<256&&y>=0&&y<256){const i=y*256+x;if(effect&&this.behindBody&&this.surface[i]&&!this.effectMask[i])return;this.surface[i]=color;this.effectMask[i]=effect?1:0;}}
+  pixel(x,y,color,effect=false){x=Math.round(x);y=Math.round(y);if(x>=0&&x<256&&y>=0&&y<256){const i=y*256+x;if(effect&&this.behindBody&&this.surface[i]&&!this.effectMask[i])return;this.surface[i]=color;this.effectMask[i]=effect?this.behindNative?2:1:0;if(effect&&this.behindNative)this.hasUnderlay=true;}}
   stamp(group,frame,x,y,dx=1,dy=0){
     const frames=this.effects[group];if(!frames?.length)return;
     const pixels=frames[((frame%frames.length)+frames.length)%frames.length];
@@ -64,6 +64,12 @@ class ManaSpriteLayer {
       const color=pixels[py*16+px],u=px-8,v=py-8;
       if(color)this.pixel(x+dx*u-dy*v,y+dy*u+dx*v,color,true);
     }
+  }
+  aura(x,y,age,{behindActors=false,...options}={}){
+    const body=this.behindBody,native=this.behindNative;
+    if(behindActors)this.behindBody=this.behindNative=true;
+    try{this.drawKiAura?.(this.effects,x,y,age,(px,py,c)=>this.pixel(px,py,c,true),{clock:this.mod.frame,...options});}
+    finally{this.behindBody=body;this.behindNative=native;}
   }
   rubble(){
     const m=this.mod,state=m.status;
@@ -182,7 +188,7 @@ class ManaSpriteLayer {
   prepare(){
     const m=this.mod,p=this.snes.ppu,parts=[],hidden=new Set(),portraits=new Map(),flight=m.nativeFlight??m.worldFlight,replacing=m.gokuActive!==false;
     const passengers=new Set(m.localFlightHook?.passengers??[]);
-    this.surface.fill(0);this.effectMask.fill(0);this.paletteCache.clear();this.behindBody=false;
+    this.surface.fill(0);this.effectMask.fill(0);this.paletteCache.clear();this.behindBody=this.behindNative=this.hasUnderlay=false;
     // Title screens and naming menus have no ground actor. In particular,
     // never mistake their reused OAM tile numbers for the player.
     // $E4/$E5 are brightness fade timers. Door/boss fades continue displaying
@@ -273,32 +279,19 @@ class ManaSpriteLayer {
     this.plan.sprite={x,y,width:size,height:size,row,column,facing:m.facing,sheet:pose.sheet,kind:pose.kind,age:pose.age,legs:pose.legs};
     // Every crop includes all 32 source rows, including the boots on row 31.
     // The game keeps its own ground shadow; no browser clipping is involved.
-    const powering=m.action?.kind==='transform'||m.action?.kind==='revert',aura=(superForm&&m.charging)||powering;
-    if(aura&&(m.canAttack||flight)){
-      // Lucid Barrier's original quarter-circle cells and discrete gold cycle.
-      const phase=Math.floor(m.frame/4),ax=x+size/2-16,ay=y+size-32;
-      for(const [ox,oy,dx,dy]of [[8,8,1,0],[24,8,0,1],[24,24,-1,0],[8,24,0,-1]])this.stamp('gold-arc',phase,ax+ox,ay+oy,dx,dy);
-      this.stamp('gold-spark',phase,ax+4,ay+10);
-      this.stamp('gold-spark',phase+2,ax+28,ay+22);
-      if(m.charging)this.chargeLightning(x+size/2,y+size/2);
-    }
-    if(m.action?.kind==='focus'&&(m.canAttack||flight)){
-      const power=m.powerCharge/96,phase=m.frame>>2,cx=x+size/2,cy=y+size/2;
-      const radius=6+power*12,count=4+Math.floor(power*4),gold=superForm;
-      this.plan.power=power;
-      for(let i=0;i<count;i++){
-        const angle=i*Math.PI*2/count,rad=radius+((phase+i)%3-1)*2;
-        const [dx,dy]=[[1,0],[0,1],[-1,0],[0,-1]][Math.floor(i*4/count)];
-        this.stamp(gold?'gold-arc':'aura-arc',phase+i,Math.round(cx+Math.cos(angle)*rad),Math.round(cy+Math.sin(angle)*rad*1.3),dx,dy);
+    const action=m.action,focus=action?.kind==='focus',powering=action?.kind==='transform'||action?.kind==='revert';
+    if((focus||m.charging||powering)&&(m.canAttack||flight)){
+      let gold=superForm,power=focus?m.powerCharge/96:(superForm ? .4 : .15)+(superForm ? .6 : .4)*m.charge/(superForm?45:90);
+      if(focus){this.plan.power=power;power=.25+.45*power;}
+      if(powering){
+        const ignition=Math.ceil(action.duration*14/40);
+        gold=action.kind==='transform'?action.age>=ignition:action.age<8;
+        power=action.kind==='revert'?Math.max(0,1-action.age/action.duration):gold?1:.4+.4*action.age/ignition;
       }
-      for(let i=0;i<Math.floor(power*6);i++){
-        const rise=(m.frame*2+i*9)%44,side=i&1?1:-1;
-        this.stamp(gold?'gold-spark':'impact-spark',phase+i,cx+side*(10+(i%3)*3),cy+22-rise);
-      }
-      if(power>.65)for(let i=0;i<4;i++){
-        const angle=(i*1.57+m.frame*.19),rad=radius+4;
-        this.stamp('lightning',phase+i,Math.round(cx+Math.cos(angle)*rad),Math.round(cy+Math.sin(angle)*rad));
-      }
+      this.plan.aura={gold,power,height:size};
+      this.aura(x+size/2,y+size/2,m.frame,this.plan.aura);
+      // Keep the surface-seeking Thunderbolt paths of the SSJ Kamehameha.
+      if(superForm&&m.charging)this.chargeLightning(x+size/2,y+size/2);
     }
     const shadow=m.flightShadow;
     if(flight&&shadow){const cx=(shadow.minX+shadow.maxX)/2,cy=(shadow.minY+shadow.maxY)/2;for(let yy=-2;yy<=2;yy++)for(let xx=-8;xx<=8;xx++)if(xx*xx/64+yy*yy/4<=1)this.pixel(cx+xx,cy+yy,this.rgb(40,56,48));}
@@ -402,11 +395,11 @@ class ManaSpriteLayer {
     }
     this.behindBody=false;
   }
-  inject(ppu,line){
+  inject(ppu,line,underlay=false){
     const a=this.plan.anchor,part=this.plan.parts.find(p=>line>=p.y&&line<p.y+p.size)||a;
     const airborne=this.mod.localFlight||this.mod.localLift>0||this.mod.flightTransition||this.mod.ceiling?.pose;
     const treeStandIn=a?.owner?.native.map===236&&a?.owner?.native.species===138;
-    for(let x=0;x<256;x++){const i=line*256+x,color=this.surface[i];if(color){
+    for(let x=0;x<256;x++){const i=line*256+x,color=this.surface[i];if(color&&(this.effectMask[i]===2)===underlay){
       // Original spell OBJs use palette 0, priority 3 and no OBJ color math,
       // independently of Goku's water palette or background priority.
       ppu.spriteLineBuffer[x]=this.effectMask[i]?0x86:0x81+(airborne||treeStandIn?part.palette&3:part.palette)*16;
@@ -439,6 +432,10 @@ class ManaSpriteLayer {
   }
   evaluate(p,line){
     this.customLine.fill(0);let spriteCount=0,sliverCount=0;
+    // Native NPCs/bosses live in OAM, not our custom body surface. Submit
+    // their aura first so every opaque native texel wins, regardless of its
+    // OAM slot relative to Goku. Transparent edges still show the flames.
+    if(this.hasUnderlay)this.inject(p,line,true);
     let index=p.objPriority?((p.oamAdr&0xfe)-2)&0xff:254;
     for(let i=0;i<128;i++,index=(index-2)&0xff){
       if(index===this.plan.anchor?.index)this.inject(p,line);

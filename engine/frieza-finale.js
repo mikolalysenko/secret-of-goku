@@ -13,7 +13,7 @@ export function tapClash(c){
  c.lastTap=c.age;c.taps=(c.taps??0)+1;
  c.pressure=Math.min(c.age<clashTiming.struggle?.92:1,c.pressure+.036*(clashSurge(c)?.65:1));return true;
 }
-const reward=96+bossVictoryTiming.vanish+525+60,acquire=reward+105,jingle=acquire+40,quiet=jingle+bossVictoryTiming.jingleFrames,descent=quiet+120;
+const reward=96+bossVictoryTiming.vanish+525+60,acquire=reward+105,jingle=acquire+bossVictoryTiming.acquireFrames,quiet=jingle+bossVictoryTiming.jingleFrames,descent=quiet+120;
 export const victoryTiming={impact:96,beamFade:168,beamEnd:210,reward,acquire,jingle,quiet,descent,return:descent+240,landed:descent+324};
 export const clashLines={
  gather:'FRIEZA:Then disappear!\nYou AND this entire planet!',

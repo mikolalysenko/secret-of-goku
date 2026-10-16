@@ -58,6 +58,13 @@ test('orbital battle keeps native map safe, counters balls, pauses in rings and 
  },JSON.parse(readFileSync(fixture)));
  const base=await page.evaluate(()=>mana.snapshot());writeFileSync(test.info().outputPath('orbit.json'),JSON.stringify(base));
  await page.locator('#screen').screenshot({path:test.info().outputPath('orbit.png')});
+ const focus=await page.evaluate(()=>{
+  const m=mana.mod,s=m.frieza.snapshot();s.boss.stun=1000;s.boss.warning=null;s.boss.shots=[];s.boss.space.intro=0;m.frieza.restore(s);
+  const old={...m.frieza.orbit.hero},ground=[m.status.x,m.status.y];mana.run(100,[10]);
+  const held={kind:m.action?.kind,power:m.powerCharge,hero:{...m.frieza.orbit.hero},ground:[m.status.x,m.status.y]};
+  mana.run(1);return{old,ground,held,released:m.action?.kind??null};
+ });
+ expect(focus.held).toEqual({kind:'focus',power:96,hero:focus.old,ground:focus.ground});expect(focus.released).toBe(null);
  // Open the real ring at opposite picture edges. Neither its opening nor
  // closing animation may pan the orbital background or the native actor.
  for(const position of[{x:14,y:20},{x:242,y:184}]){
@@ -131,28 +138,41 @@ test('orbital battle keeps native map safe, counters balls, pauses in rings and 
  const aftermath=await page.evaluate(async()=>{
   const {victoryTiming}=await import('/engine/frieza-finale.js');
   const m=mana.mod,saved=mana.snapshot(),grid=mana.hash(mana.snes.ram.slice(0x10000,0x18000));
-  let jingleEnergy=0;
+  let jingleEnergy=0,deathEnergy=0,pickupTail=null;
+  const commands=[],cpu=mana.snes.cpu,cycle=cpu.cycle;
+  cpu.cycle=function(){
+   if(this.cyclesLeft===0&&(this.r[1]&63)===3&&this.br[4]===4){
+    const command=[...mana.snes.ram.slice(0x1e00,0x1e04)];commands.push(command);
+    if(command[0]===1&&command[1]===0x18)pickupTail=mana.snes.apu.dsp.gain.slice(6);
+   }
+   return cycle.call(this);
+  };
   const advance=age=>{for(let i=0;i<2200&&m.frieza.orbit?.clash.age<age;i++){
    mana.run(1);
+   if(m.frieza.orbit?.clash.age>victoryTiming.impact&&m.frieza.orbit?.clash.age<victoryTiming.impact+30){const samples=mana.snes.apu.dsp.samplesL;deathEnergy=Math.max(deathEnergy,Math.sqrt(samples.reduce((s,v)=>s+v*v,0)/samples.length));}
    if(m.frieza.orbit?.clash.age>victoryTiming.jingle+60&&m.frieza.orbit?.clash.age<victoryTiming.quiet){const samples=mana.snes.apu.dsp.samplesL;jingleEnergy=Math.max(jingleEnergy,Math.sqrt(samples.reduce((s,v)=>s+v*v,0)/samples.length));}
   }};
   advance(victoryTiming.impact+400);
   const white=[0,30,100,180].map(y=>mana.snes.ppu.getColor(false,128,y)[0]);
   advance(victoryTiming.quiet-10);const expected=JSON.stringify(m.frieza.snapshot()),pixels=mana.hash(mana.pixels);
-  mana.restore(saved);advance(victoryTiming.quiet-10);
+  mana.restore(saved);commands.length=0;advance(victoryTiming.quiet-10);
   const native=m.frieza.snapshot().nativeAudio;
   const descent={stage:m.frieza.status.stage,age:m.frieza.orbit.clash.age,map:m.status.map,audio:native?.played,complete:native?.completed,frame:m.frame};
   const same=JSON.stringify(m.frieza.snapshot())===expected&&mana.hash(mana.pixels)===pixels;
   const afterGrid=mana.hash(mana.snes.ram.slice(0x10000,0x18000));
   for(let i=0;i<600&&!m.frieza.returnScene;i++)mana.run(1);
   const touchdown={orbit:m.frieza.orbit,map:m.status.map,stage:m.frieza.status.stage,return:{...m.frieza.returnScene},safe:m.localFlight===false,locked:m.frieza.inputLocked};
-  mana.run(50);return{jingleEnergy,white,same,grid,afterGrid,descent,touchdown,landedStage:m.frieza.status.stage};
+  mana.run(50);cpu.cycle=cycle;return{jingleEnergy,deathEnergy,pickupTail,commands,white,same,grid,afterGrid,descent,touchdown,landedStage:m.frieza.status.stage};
  });
  expect(aftermath.jingleEnergy).toBeGreaterThan(.03);
+ expect(aftermath.deathEnergy).toBeGreaterThan(.05);
+ expect(aftermath.pickupTail).toEqual([0,0]);
+ expect(aftermath.commands.filter(c=>c[0]===2&&c[1]===0x94)).toEqual([[2,0x94,15,0x80]]);
+ expect(aftermath.commands.filter(c=>c[0]===1)).toEqual([[1,0x18,0x44,0x8f]]);
  expect(aftermath.white).toEqual([32767,32767,32767,32767]);
  expect(aftermath.same).toBe(true);expect(aftermath.afterGrid).toBe(aftermath.grid);
  expect(aftermath.descent).toMatchObject({stage:'won',map:246});expect(aftermath.descent.age).toBeGreaterThanOrEqual(victoryTiming.quiet-10);expect(aftermath.descent.age).toBeLessThan(victoryTiming.quiet);
- expect(aftermath.descent.audio.map(c=>c.name)).toEqual(['stop',...Array(7).fill('burst'),'fade',...Array(7).fill('burst'),'acquire','jingle']);
+ expect(aftermath.descent.audio.map(c=>c.name)).toEqual(['stop','death',...Array(6).fill('burst'),'fade',...Array(7).fill('burst'),'acquire','jingle']);
  expect(aftermath.descent.complete.at(-1).name).toBe('jingle');
  expect(aftermath.descent.frame-aftermath.descent.complete.at(-1).frame).toBeGreaterThanOrEqual(bossVictoryTiming.jingleFrames-12);
  expect(aftermath.touchdown).toMatchObject({orbit:null,map:246,stage:'won',safe:true,locked:true,return:{kind:'return',age:0}});
