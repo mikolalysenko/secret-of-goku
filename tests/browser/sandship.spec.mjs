@@ -187,6 +187,61 @@ test('in the wreck, flight crosses every wall, doors work from any side and punc
  expect(hatch).toBe(271);
 });
 
+// Choose the first option (Yes) at the desert's crashed-ship prompt.
+async function boardFromDesert(page){
+ await enter(page,{map:67,x:20,y:20});
+ return page.evaluate(()=>{
+  const m=mana.mod;for(let f=0;f<3000&&m.status.map!==99;f++)mana.run(1,f%20<2?[0]:[]);
+  for(let f=0;f<600&&!(m.canAttack&&!mana.read8(0xd0));f++)mana.run(1);
+  const s=m.sandship.status;
+  return{map:m.status.map,can:m.canAttack,wreck:!!s.wreck,crashed:s.crashed,ditched:s.ditched,captives:[mana.read8(0xcf0d),mana.read8(0xcf0e)],events:m.story.status.recentEvents,error:m.story.status.error};
+ });
+}
+test('flying off with the captives aboard ditches them; the crashed ship in the desert takes Goku back',async({page})=>{
+ await load(page,3);await enter(page,{map:91,x:24,y:24,flags:{0x28:0,0x36:1}});
+ expect((await finish(page,0x28b,0x28,1)).map).toBe(271);
+ await enter(page,{map:99,x:30,y:11});
+ // L+R takeoff punches through the roof and flies off.
+ const away=await page.evaluate(()=>{
+  const m=mana.mod,said=new Set();mana.run(3,[10,11]);
+  for(let f=0;f<1200;f++){mana.run(1);const t=m.radio?.status.current?.text;if(t)said.add(t);}
+  for(let f=0;f<900&&m.worldFlight;f++)mana.run(1,[0]);mana.run(200);
+  const s=m.sandship.status;
+  return{said:[...said],ditched:s.ditched,crashed:s.crashed,wreck:!!s.wreck,captives:[mana.read8(0xcf0d),mana.read8(0xcf0e)],party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],ship:[98,99,270,271,318,319,324,339].includes(m.status.map)};
+ });
+ expect(away).toMatchObject({ditched:true,crashed:true,wreck:true,captives:[8,8],party:[0,0],ship:false});
+ expect(away.said.some(t=>t.includes('abandon'))).toBe(true);
+ expect(away.said.some(t=>t.includes('come back for them'))).toBe(true);
+ const back=await boardFromDesert(page);
+ expect(back).toMatchObject({map:99,can:true,wreck:true,captives:[8,8],error:null});
+ for(const id of[0x7e,0x7f])expect(back.events).toContain(id);
+ // Both are mad at him; each rescue still rejoins them.
+ await enter(page,{map:318,x:28,y:46});expect(await walkThrough(page,4)).toMatchObject({map:319,can:true,captives:[8,1],error:null});
+ await enter(page,{map:324,x:16,y:10});expect(await walkThrough(page,4)).toMatchObject({map:339,can:true,captives:[1,1],error:null});
+ await enter(page,{map:99,x:24,y:27});
+ const rider=await page.evaluate(()=>{const m=mana.mod;for(let f=0;f<8000&&!(m.status.map===340&&m.canAttack);f+=20)mana.run(20,f%40?[]:[11]);return{map:m.status.map,can:m.canAttack,party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],error:m.story.status.error};});
+ expect(rider).toMatchObject({map:340,can:true,party:[1,1],error:null});
+});
+
+test('breaking too many bulkheads crashes the ship into the desert, and Goku can go back aboard',async({page})=>{
+ await load(page,3);await enter(page,{map:91,x:24,y:24,flags:{0x28:0,0x36:1}});
+ expect((await finish(page,0x28b,0x28,1)).map).toBe(271);
+ await page.evaluate(()=>{mana.run(1,[4]);mana.run(100,[10,1]);mana.run(30);});
+ expect((await untilControl(page)).wreck).toBe(true);
+ const landed=await page.evaluate(()=>{
+  const m=mana.mod,said=new Set();
+  for(let i=0;i<5;i++){m.sandship.onDemolish({tiles:[{tx:1,ty:1,demolition:true}]});for(let f=0;f<50;f++){mana.run(1);const t=m.radio?.status.current?.text;if(t)said.add(t);}}
+  let white=0;for(let f=0;f<3000&&!(m.status.map===67&&m.canAttack&&!mana.read8(0xd0)&&!m.sandship.status.cut);f++){mana.run(1,mana.read8(0xd0)?[11]:[]);white=Math.max(white,m.sandship.status.flash);}
+  const s=m.sandship.status;
+  return{map:m.status.map,can:m.canAttack,white,said:[...said],crashed:s.crashed,ditched:s.ditched,breaks:s.breaks,flash:s.flash,events:m.story.status.recentEvents,error:m.story.status.error};
+ });
+ expect(landed).toMatchObject({map:67,can:true,white:1,crashed:true,ditched:false,breaks:0,flash:0,error:null});
+ expect(landed.events).toContain(0x7d);
+ expect(landed.said.some(t=>t.includes('STOP'))).toBe(true);
+ const back=await boardFromDesert(page);
+ expect(back).toMatchObject({map:99,can:true,wreck:true,captives:[8,8],error:null});
+});
+
 test('?start=sandship enters the desert with the full party and plays into the Sandship',async({page})=>{
  test.skip(!existsSync('.local/rom/secret-of-mana-us.sfc'),'Requires the private ROM.');
  test.setTimeout(600000);

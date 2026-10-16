@@ -29,6 +29,12 @@ export const holdMaps=[271,319,324];
 // side. Flying onto one takes it through this slot, as walking would.
 export const flightDoor=0x7a,shipDoors=Array.from({length:32},(_,i)=>0x1a0+i);
 const geshtar=177,deck=99,decks=[98,99],kitchen=319,cabin=339;
+// The wreck absorbs every unfinished Sandship route. Flying off and leaving
+// the captives behind, or breaking the ship apart, leaves it crashed in the
+// desert (map 67). Goku can go back aboard from there at any later time;
+// once everyone is back, Geshtar and the Mech Rider end the arc as usual.
+export const crashEvents={crash:0x7d,found:0x7e,board:0x7f,later:0x80};
+const desert=67,crashSite={map:desert,tx:20,ty:20,layer:0},boardAt={map:deck,tx:30,ty:10,layer:0},breakLimit=5;
 
 const offer=()=>[
  ...box('GOKU:Hey... those guys are\npushing the engines in\nchains. Are they slaves?!'),
@@ -60,6 +66,32 @@ const breakoutScripts={
  // Both captives are back: the Empire's ambush on deck, as in the original.
  [breakout.deck]:[...box('GESHTAR:WHO blew a hole in\nmy ship?! Get up here!\nGOKU:Ooh! Is he strong?'),0x30,0x28,10,0x19,0xab,0x29,0x28,...jump(0x29d),0],
 };
+const missing=['','GOKU:{1} is still in\nthere somewhere!','GOKU:{2} is still in\nthere somewhere!','GOKU:{1} and {2} are\nstill in there!'];
+const crashScripts={
+ // The white-out lands Goku on the dunes beside what is left of the ship.
+ // It starts at once; the script itself waits out the shaking and white.
+ crash:captives=>[0x28,30,0x19,0xa9,0x07,0x28,50,
+  ...box('GOKU:...Okay. THAT one\nwas my fault.'),
+  ...box('KING KAI:You broke the\nwhole ship, Goku! It\nsank into the SAND!'),
+  ...(captives?box(missing[captives]):[]),0],
+ found:ditched=>[...box(ditched?"GOKU:Hey, the Sandship!\nHuh. It crashed. I bet\nthey're fine in there.":'GOKU:There is what is\nleft of the Sandship.'),
+  ...choice('GOKU:Go back aboard?\n',[{label:'Yes',x:3,to:crashEvents.board},{label:'Later',x:13,to:crashEvents.later}])],
+ board:()=>[0x19,0xa9,0x07,0],
+ later:()=>[...box('GOKU:Eh. Later.'),0],
+};
+// Companions left behind when Goku flew off. He is not too worried.
+const madScripts={
+ kitchen:[...box('{2}:YOU! You flew off\nand left me here with a\nstove that EXPLODED!'),
+  ...box('GOKU:Ha ha! But you look\nfine. I knew you would\nbe okay.'),
+  ...box('{2}:NOT okay! I ate\nthe whole pot of soup\nout of spite!'),
+  ...box('GOKU:Great, so you are\nnot hungry. Come on!'),0x30,0x0e,1,0x09,0x2b,2,0],
+ cabin:[0x06,0x29,0x01,0x32,0,28,0x08,...call(0x47d),
+  ...box('MORIE:YOU again?! You\nleft, and my ship fell\nto PIECES!'),
+  ...box('{1}:You LEFT us?! I was\nchained up in here\nfor DAYS!'),
+  ...box('GOKU:Ah, I knew you would\nbe fine. You are tough!'),
+  ...box("{1}:Hmph. You owe me so\nmuch candy.\nGOKU:Deal! Let's go."),
+  0x30,0x0d,1,0x09,0x2b,1,0x2a,0x01,0x07,0],
+};
 const wreckScripts={
  sergo:[...box("SERGO:What are ye waitin'\nfor?! Grab yer mates and\nabandon ship!"),0],
  kitchen:[...box('{2}:The stove EXPLODED!\nI saved the soup, though!\nGOKU:Good! Bring the pot!'),0x30,0x0e,1,0x09,0x2b,2,0],
@@ -76,17 +108,29 @@ export function buildSandshipEvents(){
   [breakout.escape,'planned',escape(true)],[breakout.escape,'improvised',escape(false)],
   ...[0,1,2,3].map(c=>[breakout.chaos,`captives ${c}`,chaos(c)]),
   [flightDoor,'door 1A9 (one per ship door)',[0x19,0xa9,0]],
+  ...[0,1,2,3].map(c=>[crashEvents.crash,`captives ${c}`,crashScripts.crash(c)]),
+  [crashEvents.found,'ditched',crashScripts.found(true)],[crashEvents.found,'crashed',crashScripts.found(false)],
+  [crashEvents.board,'all',crashScripts.board()],[crashEvents.later,'all',crashScripts.later()],
+  [0x295,'ditched',madScripts.kitchen],[0x29c,'ditched',madScripts.cabin],
   [0x291,'wrecked',wreckScripts.sergo],[0x295,'wrecked',wreckScripts.kitchen],[0x29c,'wrecked',wreckScripts.cabin]];
 }
 
 export function installSandship({rom,r,mod,entries,variants}){
  const at=id=>0xc00000+eventRange(rom,id).start;
- for(const id of[...Object.values(breakout),flightDoor]){
+ for(const id of[...Object.values(breakout),flightDoor,...Object.values(crashEvents)]){
   const{start,end}=eventRange(rom,id);
   if(end-start!==1||rom[start]!==0)throw Error('Sandship breakout event slot is occupied');
  }
  const wrecked=()=>!!mod.sandship?.wrecked;
- const wreck=Object.fromEntries(Object.entries({sergo:0x291,kitchen:0x295,cabin:0x29c}).map(([k,id])=>[k,variants(id,()=>wreckScripts[k])]));
+ const calm=Object.fromEntries(Object.entries({sergo:0x291,kitchen:0x295,cabin:0x29c}).map(([k,id])=>[k,variants(id,()=>wreckScripts[k])]));
+ const mad=Object.fromEntries(Object.entries({kitchen:0x295,cabin:0x29c}).map(([k,id])=>[k,variants(id,()=>madScripts[k])]));
+ // Companions Goku flew off and left are mad at him.
+ const wreck={get sergo(){return calm.sergo;},get kitchen(){return(mod.sandship?.ditched?mad:calm).kitchen;},get cabin(){return(mod.sandship?.ditched?mad:calm).cabin;}};
+ const crashed=[0,1,2,3].map(c=>variants(crashEvents.crash,()=>crashScripts.crash(c)));
+ entries.set(at(crashEvents.crash),mask=>crashed[sandshipCaptives(r)][mask]);
+ const found=[false,true].map(d=>variants(crashEvents.found,()=>crashScripts.found(d)));
+ entries.set(at(crashEvents.found),mask=>found[Number(!!mod.sandship?.ditched)][mask]);
+ for(const k of['board','later'])entries.set(at(crashEvents[k]),variants(crashEvents[k],crashScripts[k]));
  const compile=(id,mask,opts)=>compileSandship(parseEvent(rom,id),mask,opts);
  const capture=[false,true].map(weighted=>variants(0x28b,mask=>compile(0x28b,mask,{weighted})));
  entries.set(at(0x28b),mask=>capture[Number(!!mod.equipment?.weighted)][mask]);
@@ -138,7 +182,7 @@ export function installSandship({rom,r,mod,entries,variants}){
 // or more) breaks out. The white-out then reloads the room as a wreck. Once
 // every captured companion is back, the deck brings on Geshtar's Mech Rider.
 export function createSandship(mod){
- const fresh=()=>({door:null,armed:false,hinted:false,cut:null,flash:0,wreck:null,deckDone:false,deckHint:false,boss:false});
+ const fresh=()=>({door:null,route:null,crashed:false,ditched:false,away:false,breaks:0,lastBreak:-99,armed:false,hinted:false,cut:null,flash:0,wreck:null,deckDone:false,deckHint:false,boss:false});
  let s=fresh();const seen=new WeakSet();
  const wreck=createSandshipWreck(mod.snes,mod,()=>s);
  const r=a=>mod.read8(a),map=()=>mod.read16(0xdc);
@@ -169,8 +213,57 @@ export function createSandship(mod){
   if(under.key!==lastDoor){lastDoor=under.key;doorFrames=0;}
   if(++doorFrames===3){s.door=under.door;mod.story.request(flightDoor);}
  }
+ let lastMap=-1,embedded=0;
+ function leaving(){
+  const now=map(),was=lastMap,stage=r(0xcf28);lastMap=now;
+  if(!shipMaps.includes(was)||shipMaps.includes(now)||now===340||s.cut?.crash||stage<1||stage>=10)return;
+  // Goku left the ship with the arc unfinished: it is wrecked from now on.
+  s.wreck??={age:0,planned:false,blasts:[],breach:null};
+  s.crashed=true;s.away=true;
+  if(sandshipCaptives(mod.snes.ram)&&!s.ditched){
+   s.ditched=true;
+   mod.radio?.dismiss?.('sandship');
+   mod.radio?.interrupt?.(["KING KAI:GOKU! You can't\njust abandon your\nfriends like that!","GOKU:Ah, they'll be fine.\nI'll come back for them\nlater."],{frames:240,kind:'ditch'});
+  }
+ }
+ function returning(stage){
+  // Any later visit to the desert finds the crashed ship.
+  const now=map();
+  if(s.route&&now===s.route.map)s.route=null;
+  if(!s.crashed||stage>=12)return;
+  if(now!==desert){if(!shipMaps.includes(now))s.away=true;return;}
+  if(s.away&&!s.cut&&mod.canAttack&&!r(0xd0)&&!mod.worldFlight&&mod.story.request(crashEvents.found))s.away=false;
+ }
+ function unstick(){
+  // A breach can leave Goku standing inside a wall. Lift him into a hover;
+  // flight crosses the ship's walls, so he can always fly back out.
+  const ok=!s.wreck||!shipMaps.includes(map())||!mod.canAttack||r(0xd0)||mod.localFlight||mod.localFlightHook?.canLand?.()!==false;
+  embedded=ok?0:embedded+1;
+  if(embedded>=8){mod.localFlight=true;embedded=0;}
+ }
+ // Too many broken bulkheads: the ship comes apart around Goku.
+ function crash(){
+  if(s.cut)return;
+  s.cut={age:0,crash:true,...crashSite,requested:false,door:false,loaded:false,after:0};
+  mod.radio?.dismiss?.('sandship');
+ }
+ function crashTick(c){
+  // Explosions all around him, harder and harder, then the white-out.
+  const w=s.wreck;
+  if(w&&c.age%10===0&&shipMaps.includes(map())){
+   const a=c.age*2.4,d=24+(c.age*13)%70;
+   w.blasts=[...(w.blasts??[]).filter(b=>w.age-b.age<48),{x:mod.read16(0xe002)+Math.cos(a)*d,y:mod.read16(0xe004)+Math.sin(a)*d*.7,age:w.age}];
+   mod.playSound?.('fortressBreak');mod.feedback?.pulse(4+Math.min(8,c.age>>4));
+  }
+  if(!c.requested&&mod.story.request(crashEvents.crash)){c.requested=true;c.age=0;s.crashed=true;s.away=true;mod.cancelInput();}
+  // Fade only once the desert itself is on screen, not its blank load.
+  if(map()===c.map&&mod.nativeField&&!mod.snes.ppu?.forcedBlank&&++c.after>24)s.flash=Math.max(0,1-(c.after-24)/45);
+  else if(!c.after)s.flash=c.requested?Math.max(0,Math.min(1,(c.age-60)/56)):0;
+  if(c.after>69||c.age>1200){s.cut=null;s.flash=0;s.breaks=0;}
+ }
  function cutTick(){
   const c=s.cut;c.age++;
+  if(c.crash)return crashTick(c);
   if(!c.requested){
    // Let the beam itself read for a moment, then white out.
    s.flash=Math.max(0,Math.min(1,(c.age-6)/18));
@@ -186,10 +279,22 @@ export function createSandship(mod){
  }
  return{
   get wrecked(){return !!s.wreck;},
+  get ditched(){return s.ditched;},
+  get crashed(){return s.crashed;},
+  // Each bulkhead punched open in the wreck weakens the ship.
+  onDemolish(result){
+   if(!s.wreck||s.cut||!shipMaps.includes(map())||!result?.tiles?.some(t=>t.demolition))return;
+   // The native redraw opens one row per frame: one strike, one break.
+   const fresh=mod.frame-s.lastBreak>40;s.lastBreak=mod.frame;if(!fresh)return;
+   s.breaks++;
+   if(s.breaks===breakLimit-2)mod.radio?.say("KING KAI:Goku, STOP! The\nship can't take much\nmore of that!",{frames:200,kind:'sandship'});
+   if(s.breaks>=breakLimit)crash();
+  },
   get openAir(){return mod.options.enabled&&shipMaps.includes(map());},
   get door(){return s.door;},
   get planned(){return !!(s.cut?.planned??s.wreck?.planned);},
   onEvent(id){
+   if(id===crashEvents.board)s.route={...boardAt};
    if(id===breakout.wave&&captive()&&!s.wreck){s.armed=true;s.hinted=false;}
    if(id===breakout.deck)s.boss=true;
   },
@@ -201,7 +306,8 @@ export function createSandship(mod){
   tick(){
    if(!mod.options.enabled||!mod.gokuActive)return;
    const stage=r(0xcf28);
-   if(s.wreck){s.wreck.age++;if(stage>=12){s.wreck=null;s.boss=false;}}
+   if(s.wreck){s.wreck.age++;if(stage>=12){s.wreck=null;s.boss=false;s.crashed=s.ditched=false;s.route=null;}}
+   leaving();
    if(s.cut)return cutTick();
    for(const e of mod.effects)if(e.kind==='beam'&&!seen.has(e)){
     seen.add(e);if(!captive()||s.wreck)continue;
@@ -211,6 +317,8 @@ export function createSandship(mod){
    if(s.armed&&!s.hinted&&quiet()){s.hinted=true;mod.radio?.say('GOKU:Hold L and Y to\ncharge, let go at full\npower. KA... ME... HA...',{frames:240,kind:'sandship'});}
    wreck.tick();
    flyThroughDoor();
+   unstick();
+   returning(stage);
    // The kitchen and cabin scenes sit on those rooms' door tiles, which
    // only arm in the original story order. In the wreck, walking in is
    // enough: each companion's rescue starts as Goku enters the room.
