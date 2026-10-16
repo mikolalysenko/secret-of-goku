@@ -67,6 +67,18 @@ module's own RAM/SRAM fields in the test. A field checkpoint to start from:
 any `H.saveStable` output, e.g. one made from power-on by
 `snes/test/checkpoints.mjs`.
 
+### Browser-mod references for every preset
+
+`node snes/tools/ref-capture.mjs [preset …] [--frames=0,60,240]` loads the
+browser player's `?start=` presets in headless Chromium (Playwright, dev
+server on port 5199) and writes `.local/snes-ref/<preset>/`: `state.json`
+(full snapshot including the mod's JavaScript state under `goku`, the
+authoritative reference for what each module's RAM/SRAM fields should hold),
+screenshots at the given frame offsets, and a Mesen import bundle
+`.local/snes-import/preset__<preset>/`. Presets: trial, late, intro, hexas,
+rider, tree, fortress, buffy, slime, flight, frieza, thanatos, battle, orbit,
+space, beast, good-ending, bad-ending, explosion, title, sword, sandship.
+
 A test defines `function test() … end` using the helpers in
 `snes/test/lua/harness.lua`: `H.wait(n)`, `H.hold('a up', n)`,
 `H.tap('start')`, `H.waitFor(fn, n)`, `H.r8/r16/w8/w16` (CPU bus),
