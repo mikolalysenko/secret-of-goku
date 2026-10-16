@@ -97,7 +97,7 @@ export function createDungeonGeometry(snes){
   !(c.tileset===23&&t.layer===0&&falsePalaceFloor.has(metatile(t,c)));
  // Native stairs carry a movement code rather than code 0. They are valid
  // shores for flight, but must never be copied as a demolition floor tile.
- const airShore=(t,c)=>floor(t,c)||[9,10].includes(c.tileset)&&t&&!(t.flags&8)&&!(t.behavior&0xd0)&&(t.flags&7)<3&&[0x20,0x30].includes(t.code&0xf0);
+ const airShore=(t,c)=>floor(t,c)||[9,10,15].includes(c.tileset)&&t&&!(t.flags&8)&&!(t.behavior&0xd0)&&(t.flags&7)<3&&[0x20,0x30].includes(t.code&0xf0);
  function caveCeiling(t,c){
   if(c.tileset!==10||t.layer!==0||metatile(t,c)!==5)return false;
   // A sealed black region in the cave tileset is the top of solid rock,
@@ -181,10 +181,15 @@ export function createDungeonGeometry(snes){
   const key=t.layer*16384+t.ty*128+t.tx;if(airCache.has(key))return airCache.get(key);
   const direct=p=>p&&airMaterial(p,c)&&(span(p,1,0,airMaterial,48,c)||span(p,0,1,airMaterial,48,c));
   let accepted=direct(t);
-  // Staggered palace balconies can leave a one-column seam between two
+  // Castle bridges have staggered corners: the middle of a real pit may
+  // have floor shores diagonally rather than in the same row or column.
+  // Both rays must still remain inside placed air tiles and end on floor;
+  // upright walls and the exterior filler cannot complete a crossing.
+  if(!accepted&&c.tileset===15)accepted=span(t,1,1,airMaterial,16,c)||span(t,1,-1,airMaterial,16,c);
+  // Staggered palace/castle balconies can leave a one-column seam between two
   // verified air corridors. Join those corridors without flood-filling the
   // exterior void or using a wall/window as a destination floor.
-  if(!accepted&&c.tileset===23)for(const[dx,dy]of[[1,0],[0,1]]){
+  if(!accepted&&[15,23].includes(c.tileset))for(const[dx,dy]of[[1,0],[0,1]]){
    const a=direct(tile(t.tx-dx,t.ty-dy,t.layer,c)),b=direct(tile(t.tx+dx,t.ty+dy,t.layer,c));
    if(a&&b){accepted={ends:[...a.ends,...b.ends],cells:[t]};break;}
   }

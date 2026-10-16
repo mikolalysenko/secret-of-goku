@@ -231,7 +231,7 @@ test('punches and beams press all 41 native floor-switch event families across p
 
 test('castle and Gaia chasms and lava cross in both directions without allowing outer voids',async({page})=>{
  test.setTimeout(120000);
- for(const s of[{map:302,x:248,y:408,button:4,frames:27,min:150},{map:302,x:200,y:328,button:7,frames:16,min:80},{map:285,x:472,y:888,button:6,frames:33,min:180},{map:284,x:376,y:280,button:5,frames:28,min:160}]){
+ for(const s of[{map:302,x:248,y:408,button:4,frames:27,min:150},{map:302,x:200,y:328,button:7,frames:16,min:80},{map:302,x:184,y:280,button:6,frames:12,min:70},{map:302,x:312,y:280,button:7,frames:12,min:70},{map:303,x:136,y:344,button:4,frames:20,min:110},{map:303,x:152,y:328,button:7,frames:20,min:110},{map:304,x:264,y:392,button:4,frames:27,min:150},{map:285,x:472,y:888,button:6,frames:33,min:180},{map:284,x:376,y:280,button:5,frames:28,min:160}]){
   await load(page);await enter(page,s.map,s.x>>4,s.y>>4,{},0,true);
   const result=await page.evaluate(s=>{
    const m=mana.mod,h=m.localFlightHook;for(let i=1;i<12;i++)mana.write8(0xe000+i*512,0);
@@ -242,7 +242,7 @@ test('castle and Gaia chasms and lava cross in both directions without allowing 
    return{start,end,back,settled,phased:h.phased-phased,outside:h.canFly(4,4),error:m.story.status.error};
   },s);
   expect(result.end.map).toBe(s.map);expect(Math.hypot(result.end.x-result.start.x,result.end.y-result.start.y),JSON.stringify({s,result})).toBeGreaterThanOrEqual(s.min);
-  expect(result.phased).toBeGreaterThan(0);expect(result.settled.safe).toBe(true);expect(result.outside).toBe(false);expect(result.error).toBe(null);
+  expect(result.phased,JSON.stringify({s,result})).toBeGreaterThan(0);expect(result.settled.safe).toBe(true);expect(result.outside).toBe(false);expect(result.error).toBe(null);
   expect(Math.hypot(result.back.x-result.start.x,result.back.y-result.start.y),JSON.stringify({s,result})).toBeLessThan(16);
   await page.locator('#screen').screenshot({path:test.info().outputPath(`flight-${s.map}-${s.button}.png`)});
  }

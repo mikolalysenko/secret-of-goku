@@ -48,6 +48,18 @@ test('enclosed cave rock ceilings remain solid while lava and open chasm spans s
  f.g.invalidate();h.dungeon.invalidate();assert.equal(h.canFly(88,88,0),true,'open chasm still needs and has two real shores');
  assert.equal(h.canLand(88,88,0),false);h.dispose();
 });
+test('castle bridge pits accept staggered shores and stairs without opening walls or exterior void',()=>{
+ const f=fixture({map:302,tileset:15|128}),h=createNativeLocalFlight(f.snes,{active:()=>true,phase:true});
+ f.descriptor(18,[0x73,6,0,0]);f.descriptor(90,[0x13,6,0,0]);f.descriptor(100,[0x12,6,0,0]);f.descriptor(117,[0x10,0,0x21,0]);
+ for(let y=0;y<12;y++)for(let x=0;x<12;x++)f.put(x,y,18);
+ for(let y=3;y<=8;y++)for(let x=3;x<=8;x++)f.put(x,y,90);
+ f.put(2,2,100);f.put(9,9,117);h.dungeon.invalidate();
+ assert.equal(h.canFly(88,88,0),true,'diagonally opposed floor and stairs bound the staggered pit');
+ assert.equal(h.canLand(88,88,0),false);assert.equal(h.canFly(24,88,0),false);
+ f.put(9,9,18);h.dungeon.invalidate();assert.equal(h.canFly(88,88,0),false,'no far shore');
+ f.put(9,9,117);f.descriptor(117,[0x10,0x80,0x21,0]);h.dungeon.invalidate();
+ assert.equal(h.canFly(88,88,0),false,'a scripted doorway cannot complete the route');h.dispose();
+});
 test('Fortress entrance seams are flyable between decks but retain the hull and tower boundaries',()=>{
  const f=fixture({map:255,tileset:20|128}),h=createNativeLocalFlight(f.snes,{active:()=>true,phase:true});
  for(const id of[64,65,103,104,119,120,135,136,151,152,167,168]){
