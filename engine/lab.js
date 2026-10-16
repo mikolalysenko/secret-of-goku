@@ -378,10 +378,26 @@ for(const[kind,label]of Object.entries(quickStartLabels)){
   $(`quick-${kind}`)?.addEventListener('click',()=>quickStart(kind));
 }
 const soundButton=document.createElement('button');soundButton.innerHTML='<span>Sound on</span>';$('native-save').before(soundButton);
+// Touch-first browsers (iOS Safari especially) glitch with the smallest
+// hardware buffer; the streaming worklet keeps effects in sync either way.
+const touchFirst=matchMedia?.('(pointer: coarse)').matches||navigator.maxTouchPoints>1;
 async function activateAudio(){
-  try{audioContext??=new AudioContext({latencyHint:'interactive'});await audioContext.resume();audioEnabled=true;audioOutput.clear();soundButton.querySelector('span').textContent='Mute';}
+  try{
+    if(!audioContext){
+      audioContext=new AudioContext({latencyHint:touchFirst?'balanced':'interactive'});
+      // iOS suspends or interrupts the context after calls, Siri or app
+      // switches. Re-prime the stream when it returns instead of replaying
+      // a stale queue.
+      audioContext.addEventListener('statechange',()=>{audioOutput.clear();});
+    }
+    const ready=audioOutput.prepare(audioContext);await audioContext.resume();await ready;
+    audioEnabled=true;audioOutput.clear();soundButton.querySelector('span').textContent='Mute';
+  }
   catch{message('Audio is unavailable in this browser.');}
 }
+// A context that iOS interrupted only resumes from a user gesture.
+function resumeAudio(){if(audioEnabled&&audioContext&&audioContext.state!=='running')audioContext.resume().catch(()=>{});}
+for(const type of ['pointerdown','touchend','keydown'])window.addEventListener(type,resumeAudio,{passive:true});
 soundButton.addEventListener('click',()=>{if(audioEnabled){audioEnabled=false;stopAudio();soundButton.querySelector('span').textContent='Sound on';}else activateAudio();});
 if(originalMode){
   // The desktop shell permits audio without a pointer gesture, so a controller
@@ -404,7 +420,7 @@ window.addEventListener('keydown',e=>{
 });
 window.addEventListener('keyup',e=>controls.release(e.code));
 window.addEventListener('blur',()=>{clearInput();if(!busy&&loaded)pause();});
-document.addEventListener('visibilitychange',()=>{if(document.hidden){battery.flush();clearInput();if(!busy&&loaded)pause();}});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){battery.flush();clearInput();if(!busy&&loaded)pause();}else resumeAudio();});
 window.addEventListener('pagehide',()=>battery.flush());
 window.addEventListener('mana-log',e=>{logs.push(e.detail);if(logs.length>100)logs.shift();});
 

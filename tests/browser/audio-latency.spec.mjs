@@ -1,7 +1,8 @@
 import {test,expect} from '@playwright/test';
 import {existsSync,readFileSync} from 'node:fs';
+import {streamTiming} from '../../engine/audio-worklet.js';
 
-test('real-time audio stays close to combat during repeated stalls, then clears on pause and restore',async({page})=>{
+test('streamed audio stays close to combat during repeated stalls, then clears on pause and restore',async({page})=>{
  const fixture='.local/graphics-audit/party.json';
  test.skip(!existsSync(fixture)||!existsSync('.local/rom/secret-of-mana-us.sfc'),'Requires the private ROM and field fixture');
  await page.goto('/?debug=1');await page.waitForFunction(()=>mana.ready);
@@ -21,7 +22,7 @@ test('real-time audio stays close to combat during repeated stalls, then clears 
     m.playSound('hit');
    }
    await new Promise(r=>setTimeout(r,200));
-   const active={frames:out.stats.frames-initial,largestLead:Math.max(...starts.map(s=>s.lead)),queued:Math.max(...starts.map(s=>s.queued)),hits:m.sound.stats.history.filter(s=>s.name==='hit').length};
+   const active={mode:out.stats.mode,underruns:out.stats.underruns,frames:out.stats.frames-initial,largestLead:Math.max(...starts.map(s=>s.lead)),queued:Math.max(...starts.map(s=>s.queued)),hits:m.sound.stats.history.filter(s=>s.name==='hit').length};
    mana.pause();const paused={queued:out.queued,loops:[...m.sound.stats.loops]};
    const saved=mana.snapshot();mana.play();await new Promise(r=>setTimeout(r,120));mana.restore(saved);
    const restored=out.queued;mana.pause();return{active,paused,restored};
@@ -29,6 +30,9 @@ test('real-time audio stays close to combat during repeated stalls, then clears 
  });
  await test.info().attach('audio-timing',{body:JSON.stringify(result,null,2),contentType:'application/json'});
  expect(result.active.frames).toBeGreaterThan(40);expect(result.active.hits).toBeGreaterThan(3);
- expect(result.active.largestLead).toBeLessThanOrEqual(.076);expect(result.active.queued).toBeLessThanOrEqual(6);
+ // The streaming worklet trades a little latency for gap-free music: under
+ // these 75 ms stalls its headroom grows, but never past its cap plus a frame.
+ expect(result.active.mode).toBe('worklet');
+ expect(result.active.largestLead).toBeLessThanOrEqual(streamTiming.maxTarget+.02);expect(result.active.queued).toBeLessThanOrEqual(11);
  expect(result.paused).toEqual({queued:0,loops:[]});expect(result.restored).toBe(0);
 });

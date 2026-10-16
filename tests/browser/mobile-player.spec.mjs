@@ -98,3 +98,24 @@ test('diagnostics require debug=true or a test-scene entry',async({page})=>{
   await page.getByText('Controls & game options',{exact:true}).tap();await expect(page.getByText('Developer tools',{exact:true})).toBeVisible({visible});
  }
 });
+
+test('tapping the game streams native music through the worklet without gaps at 30 Hz',async({page})=>{
+ await load(page);
+ const box=await page.locator('#screen').boundingBox();await page.touchscreen.tap(box.x+box.width/2,box.y+box.height/2);
+ await page.waitForFunction(()=>mana.audioOutput.stats.mode==='worklet');
+ const result=await page.evaluate(async()=>{
+  const out=mana.audioOutput,raf=window.requestAnimationFrame;
+  // Low-power iPhones run requestAnimationFrame at 30 Hz: two emulator
+  // frames arrive together every 33 ms.
+  window.requestAnimationFrame=f=>raf(t=>raf(f));
+  try{
+   mana.play();await new Promise(r=>setTimeout(r,800));
+   const before=out.stats.underruns,frames=out.stats.frames;out.stats.peak=0;
+   await new Promise(r=>setTimeout(r,2000));
+   return{underruns:out.stats.underruns-before,frames:out.stats.frames-frames,lead:out.stats.lead,peak:out.stats.peak};
+  }finally{window.requestAnimationFrame=raf;mana.pause();}
+ });
+ expect(result.frames).toBeGreaterThan(90);expect(result.underruns).toBe(0);expect(result.lead).toBeLessThan(.2);
+ expect(result.peak,'the title music is audible').toBeGreaterThan(.01);
+ expect(await page.evaluate(()=>mana.audioOutput.queued)).toBe(0);
+});
