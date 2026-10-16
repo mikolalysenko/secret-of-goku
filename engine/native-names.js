@@ -46,6 +46,7 @@ export function createNativeNames(snes){
     if(i===0)copy=displayName(snes.ram,n);
     return copy?.[i]??0;
   };
+  snes.registerBusReadHook?.(snes.read,read,m=>m.offsets(0xcc00,0xcc30));
   return{
     load(rom){supported=copySignature.every((v,i)=>rom[copyRead-3+i]===v);return supported;},
     get supported(){return supported;},

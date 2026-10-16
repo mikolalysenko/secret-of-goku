@@ -114,3 +114,14 @@ test('removing a temporary unregistered wrapper restores exact gating for both g
  for(let i=0;i<140;i++){step(plain,i);step(gated,i);}
  assert.ok(a.reads>100&&a.steps>100,JSON.stringify(a));
 });
+test('CPU reads reach bus read wrappers exactly at registered offsets; DMA reads always do',()=>{
+ const install=(s,register)=>{
+  const previous=s.read,seen={cpu:[],dma:0};
+  s.read=function(adr,dma){const value=previous.call(this,adr,dma);if(dma)seen.dma++;else if((adr&0xffff)>=0x0040&&(adr&0xffff)<0x0060)seen.cpu.push(adr);return value;};
+  if(register)s.registerBusReadHook(s.read,previous,m=>m.offsets(0x0040,0x0060));
+  return seen;
+ };
+ const gated=core(),plain=core(),a=install(gated,true),b=install(plain,false);
+ lockstep(plain,gated,240,'bus reads');
+ assert.deepEqual(a,b);assert.ok(a.cpu.length>0&&a.dma>0,`${a.cpu.length} CPU, ${a.dma} DMA reads`);
+});

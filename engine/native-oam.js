@@ -5,7 +5,11 @@ export function installNativeOamOwnership(s){
   const r=s.ram,p=s.ppu,oldRead=s.read,oldWrite=s.write,oldBus=s.writeBBus;
   const ramOwners=new Array(128).fill(null),ppuOwners=new Array(128).fill(null),words=new Array(256).fill(null);
   const stats={descriptors:0,shadows:0,unknown:0,commits:0,dmaSources:new Set(),writers:new Map()};
-  let source=null,pending=null,revision=0,serial=0;
+  let source=null,sourceRead=-1,pending=null,revision=0,serial=0;
+  // The bytes of the most recent read when it was an OAM-buffer DMA read.
+  // CPU reads bypass this wrapper (see Snes.cpuRead), so a later read of any
+  // kind still invalidates it through the core read counter.
+  const lastSource=()=>!s.readSerial||sourceRead===s.readSerial()?source:null;
   const w=a=>r[a]|r[a+1]<<8,signed=a=>(w(a)<<16)>>16;
   const copy=value=>value==null?null:JSON.parse(JSON.stringify(value));
   const metadata=tag=>{
@@ -57,13 +61,18 @@ export function installNativeOamOwnership(s){
     }
     return oldWrite.call(this,a,v,dma);
   };
+  // Only the WRAM OAM buffer ($0800-$09FF, bank $7E or a low mirror).
+  s.registerBusWriteHook?.(s.write,oldWrite,m=>m.offsets(0x800,0xa00));
   s.read=function(a,dma){
     const value=oldRead.call(this,a,dma),off=normalize(a);
     source=dma&&off>=0x800&&off<0xa00?{offset:off,value,owner:ramOwners[(off-0x800)>>2]}:null;
+    sourceRead=s.readSerial?.()??-1;
     if(source)stats.dmaSources.add(a>>>16);
     return value;
   };
+  s.registerBusReadHook?.(s.read,oldRead,()=>{});
   s.writeBBus=function(a,v){
+    const source=lastSource();
     if(a===4&&!p.oamInHigh){
       if(!p.oamSecond)pending=source&&source.value===v?source:null;
       else{
@@ -80,20 +89,21 @@ export function installNativeOamOwnership(s){
         pending=null;
       }
     }
-    source=null;
+    clearSource();
     return oldBus.call(this,a,v);
   };
+  function clearSource(){source=null;}
   return{
     ramOwners,ppuOwners,stats,
     get revision(){return revision;},
     reset(){ramOwners.fill(null);ppuOwners.fill(null);words.fill(null);source=pending=null;revision++;},
-    snapshot(){return{version:1,ramOwners:copy(ramOwners),ppuOwners:copy(ppuOwners),words:copy(words),source:copy(source),pending:copy(pending),serial};},
+    snapshot(){return{version:1,ramOwners:copy(ramOwners),ppuOwners:copy(ppuOwners),words:copy(words),source:copy(lastSource()),pending:copy(pending),serial};},
     restore(state){
       this.reset();
       if(state?.version!==1||!Array.isArray(state.ramOwners)||state.ramOwners.length!==128||!Array.isArray(state.ppuOwners)||state.ppuOwners.length!==128||!Array.isArray(state.words)||state.words.length!==256)return false;
       for(let i=0;i<128;i++){ramOwners[i]=copy(state.ramOwners[i]);ppuOwners[i]=copy(state.ppuOwners[i]);}
       for(let i=0;i<256;i++)words[i]=copy(state.words[i]);
-      source=copy(state.source);pending=copy(state.pending);serial=Number(state.serial)||0;
+      source=copy(state.source);sourceRead=s.readSerial?.()??-1;pending=copy(state.pending);serial=Number(state.serial)||0;
       return true;
     },
     stop(){s.read=oldRead;s.write=oldWrite;s.writeBBus=oldBus;},

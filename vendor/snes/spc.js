@@ -104,6 +104,11 @@ Spc = (function() {
     }
     this.reset();
 
+    // Effective addresses of the current instruction, set by getAdr; kept in
+    // the closure instead of a fresh array per instruction.
+    let effLo = 0;
+    let effHi = 0;
+
     this.cycle = function() {
       if(this.cyclesLeft === 0) {
         // the spc in the snes does not have interrupts,
@@ -113,8 +118,8 @@ Spc = (function() {
         this.cyclesLeft = this.cycles[instr];
 
         try {
-          let eff = this.getAdr(mode);
-          this.functions[instr].call(this, eff[0], eff[1], instr);
+          this.getAdr(mode);
+          this.functions[instr].call(this, effLo, effHi, instr);
         } catch(e) {
           log("Error with opcode " + getByteRep(instr) + ": " + e);
         }
@@ -181,36 +186,45 @@ Spc = (function() {
       switch(mode) {
         case IMP: {
           // implied
-          return [0, 0];
+          effLo = 0;
+          effHi = 0;
+          return;
         }
         case REL: {
           // relative
           let rel = this.mem.read(this.br[PC]++);
-          return [this.getSigned(rel), 0];
+          effLo = this.getSigned(rel);
+          effHi = 0;
+          return;
         }
         case DP: {
           // direct page (with next byte for 16-bit ops)
           let adr = this.mem.read(this.br[PC]++);
-          return [
-            adr | (this.p ? 0x100 : 0),
-            ((adr + 1) & 0xff) | (this.p ? 0x100 : 0)
-          ];
+          effLo = adr | (this.p ? 0x100 : 0);
+          effHi = ((adr + 1) & 0xff) | (this.p ? 0x100 : 0);
+          return;
         }
         case DPR: {
           // direct page, relative
           let adr = this.mem.read(this.br[PC]++);
           let rel = this.mem.read(this.br[PC]++);
-          return [adr | (this.p ? 0x100 : 0), this.getSigned(rel)];
+          effLo = adr | (this.p ? 0x100 : 0);
+          effHi = this.getSigned(rel);
+          return;
         }
         case ABS: {
           // absolute
           let adr = this.mem.read(this.br[PC]++);
           adr |= this.mem.read(this.br[PC]++) << 8;
-          return [adr, 0];
+          effLo = adr;
+          effHi = 0;
+          return;
         }
         case IND: {
           // indirect
-          return [this.r[X] | (this.p ? 0x100 : 0), 0];
+          effLo = this.r[X] | (this.p ? 0x100 : 0);
+          effHi = 0;
+          return;
         }
         case IDX: {
           // indexed indirect direct
@@ -221,28 +235,38 @@ Spc = (function() {
           adr |= this.mem.read(
             ((pointer + 1 + this.r[X]) & 0xff) | (this.p ? 0x100 : 0)
           ) << 8;
-          return [adr, 0];
+          effLo = adr;
+          effHi = 0;
+          return;
         }
         case IMM: {
           // immediate
-          return [this.br[PC]++, 0];
+          effLo = this.br[PC]++;
+          effHi = 0;
+          return;
         }
         case DPX: {
           // direct page indexed on x
           let adr = this.mem.read(this.br[PC]++);
-          return [((adr + this.r[X]) & 0xff) | (this.p ? 0x100 : 0), 0];
+          effLo = ((adr + this.r[X]) & 0xff) | (this.p ? 0x100 : 0);
+          effHi = 0;
+          return;
         }
         case ABX: {
           // absolute indexed on x
           let adr = this.mem.read(this.br[PC]++);
           adr |= this.mem.read(this.br[PC]++) << 8;
-          return [(adr + this.r[X]) & 0xffff, 0];
+          effLo = (adr + this.r[X]) & 0xffff;
+          effHi = 0;
+          return;
         }
         case ABY: {
           // absolute indexed on y
           let adr = this.mem.read(this.br[PC]++);
           adr |= this.mem.read(this.br[PC]++) << 8;
-          return [(adr + this.r[Y]) & 0xffff, 0];
+          effLo = (adr + this.r[Y]) & 0xffff;
+          effHi = 0;
+          return;
         }
         case IDY: {
           // indirect indexed direct
@@ -251,43 +275,54 @@ Spc = (function() {
           adr |= this.mem.read(
             ((pointer + 1) & 0xff) | (this.p ? 0x100 : 0)
           ) << 8;
-          return [(adr + this.r[Y]) & 0xffff, 0];
+          effLo = (adr + this.r[Y]) & 0xffff;
+          effHi = 0;
+          return;
         }
         case DD: {
           // direct page to direct page
           let adr = this.mem.read(this.br[PC]++);
           let adr2 = this.mem.read(this.br[PC]++);
-          return [adr | (this.p ? 0x100 : 0), adr2 | (this.p ? 0x100 : 0)];
+          effLo = adr | (this.p ? 0x100 : 0);
+          effHi = adr2 | (this.p ? 0x100 : 0);
+          return;
         }
         case II: {
           // indirect to indirect
-          return [
-            this.r[Y] | (this.p ? 0x100 : 0),
-            this.r[X] | (this.p ? 0x100 : 0)
-          ];
+          effLo = this.r[Y] | (this.p ? 0x100 : 0);
+          effHi = this.r[X] | (this.p ? 0x100 : 0);
+          return;
         }
         case DI: {
           // immediate to direct page
           let imm = this.br[PC]++;
           let adr = this.mem.read(this.br[PC]++);
-          return [imm, adr | (this.p ? 0x100 : 0)];
+          effLo = imm;
+          effHi = adr | (this.p ? 0x100 : 0);
+          return;
         }
         case DPY: {
           // direct page indexed on y
           let adr = this.mem.read(this.br[PC]++);
-          return [((adr + this.r[Y]) & 0xff) | (this.p ? 0x100 : 0), 0];
+          effLo = ((adr + this.r[Y]) & 0xff) | (this.p ? 0x100 : 0);
+          effHi = 0;
+          return;
         }
         case ABB: {
           // absolute, with bit index
           let adr = this.mem.read(this.br[PC]++);
           adr |= this.mem.read(this.br[PC]++) << 8;
-          return [adr & 0x1fff, adr >> 13];
+          effLo = adr & 0x1fff;
+          effHi = adr >> 13;
+          return;
         }
         case DXR: {
           // direct page indexed on x, relative
           let adr = this.mem.read(this.br[PC]++);
           let rel = this.getSigned(this.mem.read(this.br[PC]++));
-          return [((adr + this.r[X]) & 0xff) | (this.p ? 0x100 : 0), rel];
+          effLo = ((adr + this.r[X]) & 0xff) | (this.p ? 0x100 : 0);
+          effHi = rel;
+          return;
         }
         case IAX: {
           // indirect absolute indexed
@@ -295,11 +330,15 @@ Spc = (function() {
           adr |= this.mem.read(this.br[PC]++) << 8;
           let radr = this.mem.read((adr + this.r[X]) & 0xffff);
           radr |= this.mem.read((adr + this.r[X] + 1) & 0xffff) << 8;
-          return [radr, 0];
+          effLo = radr;
+          effHi = 0;
+          return;
         }
         case IPI: {
           // indirect post increment
-          return [this.r[X]++ | (this.p ? 0x100 : 0), 0];
+          effLo = this.r[X]++ | (this.p ? 0x100 : 0);
+          effHi = 0;
+          return;
         }
       }
     }

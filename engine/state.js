@@ -31,6 +31,8 @@ export function restore(snes,state){
     }
   }
   apply(state.root,snes);
+  // Derived per-frame caches (e.g. sprite geometry) follow restored OAM.
+  snes.ppu?.invalidateLineCaches?.();
 }
 export async function checkpointStore(value,key='potos'){
   const db=await new Promise((resolve,reject)=>{

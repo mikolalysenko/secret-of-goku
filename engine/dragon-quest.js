@@ -9,7 +9,7 @@ export function dragonBallGrant(at,op){
 }
 export function createDragonQuest(mod){
   let mask=0,seedMask=0,delivered=0,wished=false;
-  const popcount=n=>Array.from({length:7},(_,i)=>n>>i&1).reduce((a,b)=>a+b,0);
+  const popcount=n=>{let bits=0;for(let i=0;i<7;i++)bits+=n>>i&1;return bits;};
   const count=()=>popcount(mask);
   return{
     collect(index){if(index<0||index>6||seedMask&(1<<index))return false;seedMask|=1<<index;if(mask&(1<<index))delivered=Math.max(0,delivered-1);mask|=1<<index;mod.radio?.say(`DRAGON BALLS: ${count()} / 7\n${dragonBallPalaces[index]} Ball found.\nOne step closer to the wish.`,{kind:'quest'});return true;},

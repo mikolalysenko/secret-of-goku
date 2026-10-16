@@ -6,6 +6,9 @@ function Snes() {
   this.ppu = new Ppu(this);
 
   this.apu = new Apu(this);
+  // The unhooked APU step (catchUpApu batches it only while unchanged).
+  const apuCoreCycle = this.apu.cycle;
+  const spcCoreCycle = this.apu.spc?.cycle;
 
   this.ram = new Uint8Array(0x20000);
 
@@ -231,62 +234,185 @@ function Snes() {
 
   this.catchUpApu = function() {
     let catchUpCycles = this.apuCatchCycles & 0xffffffff;
-    for(let i = 0; i < catchUpCycles; i++) {
-      this.apu.cycle();
+    let apu = this.apu;
+    if(apu.cycle !== apuCoreCycle) {
+      for(let i = 0; i < catchUpCycles; i++) {
+        apu.cycle();
+      }
+    } else {
+      // Between SPC instruction starts, DSP samples (every 32 cycles) and
+      // timer ticks, apu.cycle() only counts down; apply such runs at once.
+      let spc = apu.spc, left = catchUpCycles;
+      while(left > 0) {
+        let n = spc.cyclesLeft;
+        let dsp = (32 - (apu.cycles & 0x1f)) & 0x1f;
+        if(dsp < n) {
+          n = dsp;
+        }
+        if(apu.timer1int < n) {
+          n = apu.timer1int;
+        }
+        if(apu.timer2int < n) {
+          n = apu.timer2int;
+        }
+        if(apu.timer3int < n) {
+          n = apu.timer3int;
+        }
+        if(left < n) {
+          n = left;
+        }
+        if(n <= 0) {
+          if(
+            spc.cyclesLeft === 0 && dsp !== 0 && apu.timer1int > 0 &&
+            apu.timer2int > 0 && apu.timer3int > 0 && spc.cycle === spcCoreCycle
+          ) {
+            // Only an SPC instruction starts: apu.cycle() without the DSP or
+            // timer events (instructions never touch the timer countdowns).
+            spc.cycle();
+            apu.timer1int--;
+            apu.timer2int--;
+            apu.timer3int--;
+            apu.cycles++;
+          } else {
+            apu.cycle();
+          }
+          left--;
+          continue;
+        }
+        spc.cyclesLeft -= n;
+        apu.timer1int -= n;
+        apu.timer2int -= n;
+        apu.timer3int -= n;
+        apu.cycles += n;
+        left -= n;
+      }
     }
     this.apuCatchCycles -= catchUpCycles;
   }
 
-  // Advances whole runs of master-cycle pairs in which cycle() would only
-  // count down: the CPU is mid-instruction (or paused at dots 536-575), no
-  // (H)DMA is pending and the dot holds no IRQ, HDMA, render or line event.
-  // Returns the number of pairs skipped; 0 means cycle() must run next.
-  // State afterwards is identical to calling cycle() that many times.
+  // Advances master-cycle pairs that need none of cycle()'s dot events:
+  // runs where the CPU is mid-instruction (or paused at dots 536-575) are
+  // skipped in bulk, and a pair that only starts the next CPU instruction
+  // runs inline. Stops before any pair with (H)DMA activity, an IRQ, HDMA,
+  // render or line event; returns the number of pairs advanced (0 means
+  // cycle() must run next). State afterwards is identical to calling
+  // cycle() that many times.
   this.skipIdleCycles = function() {
-    let x = this.xPos;
-    if(
-      this.hdmaTimer > 0 || this.dmaBusy || x === 0 || x === 512 ||
-      x === 1024 || x === 1362 || x === this.hTimer * 4
-    ) {
-      return 0;
-    }
-    let end = x < 512 ? 512 : x < 1024 ? 1024 : 1362;
-    let cpuRuns = x < 536 || x >= 576;
-    if(x < 536 && end > 536) {
-      end = 536;
-    } else if(x >= 536 && x < 576) {
-      end = 576;
-    }
-    let hPos = this.hTimer * 4;
-    if(hPos > x && hPos < end) {
-      end = hPos;
-    }
-    let n = (end - x) >> 1;
-    if(cpuRuns) {
-      let left = this.cpuCyclesLeft >> 1;
-      if(left < n) {
-        n = left;
+    let advanced = 0;
+    let step = this.apuCyclesPerMaster * 2;
+    for(;;) {
+      let x = this.xPos;
+      if(
+        x === 0 || x === 512 || x === 1024 || x === 1362 ||
+        x === this.hTimer * 4
+      ) {
+        return advanced;
       }
-      this.cpuCyclesLeft -= n * 2;
+      if(this.hdmaTimer > 0 || this.dmaBusy) {
+        // (H)DMA wait pairs only count their timer down; the CPU is halted.
+        let hdma = this.hdmaTimer > 0;
+        if(!hdma && this.handleDma !== coreHandleDma) {
+          return advanced;
+        }
+        let timer = hdma ? this.hdmaTimer : this.dmaTimer;
+        let end = x < 512 ? 512 : x < 1024 ? 1024 : 1362;
+        let hPos = this.hTimer * 4;
+        if(hPos > x && hPos < end) {
+          end = hPos;
+        }
+        let n = (end - x) >> 1;
+        if((timer >> 1) < n) {
+          n = timer >> 1;
+        }
+        if(n <= 0) {
+          return advanced;
+        }
+        if(hdma) {
+          this.hdmaTimer -= n * 2;
+        } else {
+          this.dmaTimer -= n * 2;
+        }
+        let apu = this.apuCatchCycles;
+        for(let i = 0; i < n; i++) {
+          apu += step;
+        }
+        this.apuCatchCycles = apu;
+        if(this.joypadStrobe) {
+          this.joypad1Val = this.joypad1State;
+          this.joypad2Val = this.joypad2State;
+        }
+        for(let i = 0; i < n && this.autoJoyTimer > 0; i++) {
+          this.autoJoyTimer -= 2;
+        }
+        this.xPos = x + n * 2;
+        advanced += n;
+        continue;
+      }
+      let cpuRuns = x < 536 || x >= 576;
+      if(cpuRuns && this.cpuCyclesLeft === 0) {
+        // cycle() for a plain dot that starts an instruction.
+        this.apuCatchCycles += step;
+        if(this.joypadStrobe) {
+          this.joypad1Val = this.joypad1State;
+          this.joypad2Val = this.joypad2State;
+        }
+        this.cpuCycle();
+        // The instruction may have moved the H-IRQ dot onto this one.
+        if(x === this.hTimer * 4) {
+          if(this.yPos === this.vTimer && this.vIrqEnabled) {
+            if(this.hIrqEnabled) {
+              this.inIrq = true;
+              this.cpu.irqWanted = true;
+            }
+          } else if(this.hIrqEnabled && !this.vIrqEnabled) {
+            this.inIrq = true;
+            this.cpu.irqWanted = true;
+          }
+        }
+        if(this.autoJoyTimer > 0) {
+          this.autoJoyTimer -= 2;
+        }
+        this.xPos = x + 2;
+        advanced++;
+        continue;
+      }
+      let end = x < 512 ? 512 : x < 1024 ? 1024 : 1362;
+      if(x < 536 && end > 536) {
+        end = 536;
+      } else if(x >= 536 && x < 576) {
+        end = 576;
+      }
+      let hPos = this.hTimer * 4;
+      if(hPos > x && hPos < end) {
+        end = hPos;
+      }
+      let n = (end - x) >> 1;
+      if(cpuRuns) {
+        let left = this.cpuCyclesLeft >> 1;
+        if(left < n) {
+          n = left;
+        }
+        this.cpuCyclesLeft -= n * 2;
+      }
+      if(n <= 0) {
+        return advanced;
+      }
+      // Repeated addition keeps the APU catch-up float bit-identical.
+      let apu = this.apuCatchCycles;
+      for(let i = 0; i < n; i++) {
+        apu += step;
+      }
+      this.apuCatchCycles = apu;
+      if(this.joypadStrobe) {
+        this.joypad1Val = this.joypad1State;
+        this.joypad2Val = this.joypad2State;
+      }
+      for(let i = 0; i < n && this.autoJoyTimer > 0; i++) {
+        this.autoJoyTimer -= 2;
+      }
+      this.xPos = x + n * 2;
+      advanced += n;
     }
-    if(n <= 0) {
-      return 0;
-    }
-    // Repeated addition keeps the APU catch-up float bit-identical.
-    let apu = this.apuCatchCycles, step = this.apuCyclesPerMaster * 2;
-    for(let i = 0; i < n; i++) {
-      apu += step;
-    }
-    this.apuCatchCycles = apu;
-    if(this.joypadStrobe) {
-      this.joypad1Val = this.joypad1State;
-      this.joypad2Val = this.joypad2State;
-    }
-    for(let i = 0; i < n && this.autoJoyTimer > 0; i++) {
-      this.autoJoyTimer -= 2;
-    }
-    this.xPos = x + n * 2;
-    return n;
   }
 
   this.runFrame = function(noPpu) {
@@ -366,6 +492,8 @@ function Snes() {
       this.dmaTimer += 8; // 8 extra cycles overhead per channel
     }
   }
+  // The unhooked DMA step (skipIdleCycles batches its wait pairs only then).
+  const coreHandleDma = this.handleDma;
 
   this.initHdma = function() {
     this.hdmaTimer = 18;
@@ -839,12 +967,100 @@ function Snes() {
   }
 
   this.read = function(adr, dma = false) {
+    readSerial++;
     if(!dma) {
       this.cpuMemOps++;
       this.cpuCyclesLeft += this.getAccessTime(adr);
     }
 
     let val = this.rread(adr);
+    this.openBus = val;
+    return val;
+  }
+
+  // Number of core reads so far, for wrappers that track "the last read".
+  let readSerial = 0;
+  this.readSerial = function() {
+    return readSerial;
+  }
+
+  // CPU reads (this.cpuRead) skip the snes.read wrapper chain unless a
+  // wrapper registered the 16-bit offset as one it may act on; DMA reads
+  // always go through this.read. Each wrapper registers mark(m), calling
+  // m.offsets(lo, hi). An unregistered wrapper disables the bypass. The
+  // tables live in the closure and are never serialized.
+  const coreRead = this.read;
+  const busBits = new Uint8Array(0x10000);
+  const busHooks = new Map();
+  let busHead = null;
+  let busMiss = null;
+  let busGateEnabled = true;
+  this.registerBusReadHook = function(fn, previous, mark) {
+    busHooks.set(fn, {previous: previous, mark: mark});
+    busHead = null;
+    busMiss = null;
+  }
+  this.setBusReadGate = function(enabled) {
+    busGateEnabled = !!enabled;
+  }
+  const busMarker = {
+    offsets: (lo, hi) => {
+      busBits.fill(1, lo, hi);
+    }
+  };
+  const rebuildBusGate = (head) => {
+    busHead = null;
+    let fn = head;
+    busBits.fill(0);
+    while(fn !== coreRead) {
+      let hook = busHooks.get(fn);
+      if(!hook) {
+        return false;
+      }
+      hook.mark(busMarker);
+      fn = hook.previous;
+    }
+    busHead = head;
+    return true;
+  };
+  this.cpuRead = function(adr) {
+    let fn = this.read;
+    if(fn !== coreRead) {
+      if(!busGateEnabled) {
+        return fn.call(this, adr);
+      }
+      if(fn !== busHead && (fn === busMiss || !rebuildBusGate(fn))) {
+        busMiss = fn;
+        return fn.call(this, adr);
+      }
+      if(busBits[adr & 0xffff] === 1) {
+        return fn.call(this, adr);
+      }
+    }
+    // coreRead(adr) inlined for work RAM and ROM: the same access time,
+    // mapping, read count and open bus. I/O and SRAM take the full path.
+    adr &= 0xffffff;
+    let bank = adr >> 16, low = adr & 0xffff, val;
+    if(bank === 0x7e || bank === 0x7f) {
+      this.cpuCyclesLeft += 8;
+      val = this.ram[((bank & 0x1) << 16) | low];
+    } else if(bank >= 0xc0) {
+      this.cpuCyclesLeft += this.fastMem ? 6 : 8;
+      val = this.cart.gatedRead(bank, low);
+    } else if(bank >= 0x40 && bank < 0x80) {
+      this.cpuCyclesLeft += 8;
+      val = this.cart.gatedRead(bank, low);
+    } else if(low < 0x2000) {
+      this.cpuCyclesLeft += 8;
+      val = this.ram[low & 0x1fff];
+    } else if(low >= 0x8000) {
+      this.cpuCyclesLeft += (this.fastMem && bank >= 0x80) ? 6 : 8;
+      val = this.cart.gatedRead(bank, low);
+    } else {
+      return coreRead.call(this, adr);
+    }
+    readSerial++;
+    this.cpuMemOps++;
     this.openBus = val;
     return val;
   }
@@ -881,6 +1097,56 @@ function Snes() {
 
     }
     this.cart.write(bank, adr, value);
+  }
+
+  // CPU writes (this.cpuWrite) skip the snes.write wrapper chain unless a
+  // wrapper registered the 16-bit offset (m.offsets(lo, hi)); DMA writes
+  // always use this.write. An unregistered wrapper disables the bypass.
+  const coreWrite = this.write;
+  const busWriteBits = new Uint8Array(0x10000);
+  const busWriteHooks = new Map();
+  let busWriteHead = null;
+  let busWriteMiss = null;
+  this.registerBusWriteHook = function(fn, previous, mark) {
+    busWriteHooks.set(fn, {previous: previous, mark: mark});
+    busWriteHead = null;
+    busWriteMiss = null;
+  }
+  const busWriteMarker = {
+    offsets: (lo, hi) => {
+      busWriteBits.fill(1, lo, hi);
+    }
+  };
+  const rebuildBusWriteGate = (head) => {
+    busWriteHead = null;
+    let fn = head;
+    busWriteBits.fill(0);
+    while(fn !== coreWrite) {
+      let hook = busWriteHooks.get(fn);
+      if(!hook) {
+        return false;
+      }
+      hook.mark(busWriteMarker);
+      fn = hook.previous;
+    }
+    busWriteHead = head;
+    return true;
+  };
+  this.cpuWrite = function(adr, value) {
+    let fn = this.write;
+    if(fn !== coreWrite) {
+      if(!busGateEnabled) {
+        return fn.call(this, adr, value);
+      }
+      if(fn !== busWriteHead && (fn === busWriteMiss || !rebuildBusWriteGate(fn))) {
+        busWriteMiss = fn;
+        return fn.call(this, adr, value);
+      }
+      if(busWriteBits[adr & 0xffff] === 1) {
+        return fn.call(this, adr, value);
+      }
+    }
+    return coreWrite.call(this, adr, value);
   }
 
   this.getAccessTime = function(adr) {

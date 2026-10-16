@@ -43,6 +43,7 @@ export function createNativeStory(snes,mod){
     }
     return result;
   };
+  snes.registerBusWriteHook?.(snes.write,write,m=>m.offsets(0xdd,0xde));
   function allocate(bytes,id,mask){
     if((next&65535)+bytes.length+1>65535)next=((next+0x10000)&0xff0000)|0x8000;
     if(next>=0xf80000)throw Error('Native story script banks exhausted');
@@ -124,9 +125,11 @@ export function createNativeStory(snes,mod){
     }
     // Keep the native arena/map loader, but suppress its Thanatos/Dyluck/
     // Dark Lich object records before the mainline Frieza scene can spawn.
-    if((bank&63)===8&&enabled()&&(mod.frieza?.active||mod.frieza?.pendingEntrance)&&!mod.frieza?.trial&&!mod.frieza?.pendingTrial){
+    if((bank&63)===8&&enabled()){
+      // Test the address before the (pure, but costlier) Frieza getters:
+      // every bank-8 read passes here while events and maps load.
       const start=0x80000+(cart.data[0x871ec]|cart.data[0x871ed]<<8),end=0x80000+(cart.data[0x871ee]|cart.data[0x871ef]<<8),at=0x80000+address;
-      if(at>=start+9&&at<end&&(at-start-9)%8===0)return 0xf0;
+      if(at>=start+9&&at<end&&(at-start-9)%8===0&&(mod.frieza?.active||mod.frieza?.pendingEntrance)&&!mod.frieza?.trial&&!mod.frieza?.pendingTrial)return 0xf0;
     }
     if(bank>=0xf0&&bank<=0xf7){
       const address24=bank<<16|address;

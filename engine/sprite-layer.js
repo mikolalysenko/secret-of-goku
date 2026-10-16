@@ -5,7 +5,9 @@
 class ManaSpriteLayer {
   constructor(snes, mod) {
     this.snes=snes;this.mod=mod;this.atlas={};this.customLine=new Uint16Array(256);
-    this.surface=new Uint16Array(256*256);this.effectMask=new Uint8Array(256*256);this.effects={};this.plan=null;this.paletteCache=new Map();this.shuffleFrames=new Map();this.pushFrames=new Map();
+    this.surface=new Uint16Array(256*256);this.effectMask=new Uint8Array(256*256);
+    // Per surface row, the x span that holds every non-zero pixel.
+    this.rowMin=new Int16Array(256).fill(256);this.rowMax=new Int16Array(256).fill(-1);this.entryMask=new Int32Array(4);this.effects={};this.plan=null;this.paletteCache=new Map();this.shuffleFrames=new Map();this.pushFrames=new Map();
     const ppu=snes.ppu,self=this;
     this.originalEvaluate=ppu.evaluateSprites;this.originalColor=ppu.getColor;
     ppu.evaluateSprites=function(line){
@@ -101,7 +103,7 @@ class ManaSpriteLayer {
     return{pixels,width,height};
   }
   rgb(r,g,b){return 1+((r>>3)|((g>>3)<<5)|((b>>3)<<10));}
-  pixel(x,y,color,effect=false){x=Math.round(x);y=Math.round(y);if(x>=0&&x<256&&y>=0&&y<256){const i=y*256+x;if(effect&&this.behindBody&&this.surface[i]&&!this.effectMask[i])return;this.surface[i]=color;this.effectMask[i]=effect?this.behindNative?2:1:0;if(effect&&this.behindNative)this.hasUnderlay=true;}}
+  pixel(x,y,color,effect=false){x=Math.round(x);y=Math.round(y);if(x>=0&&x<256&&y>=0&&y<256){const i=y*256+x;if(effect&&this.behindBody&&this.surface[i]&&!this.effectMask[i])return;this.surface[i]=color;if(x<this.rowMin[y])this.rowMin[y]=x;if(x>this.rowMax[y])this.rowMax[y]=x;this.effectMask[i]=effect?this.behindNative?2:1:0;if(effect&&this.behindNative)this.hasUnderlay=true;}}
   stamp(group,frame,x,y,dx=1,dy=0){
     const frames=this.effects[group];if(!frames?.length)return;
     const pixels=frames[((frame%frames.length)+frames.length)%frames.length];
@@ -282,7 +284,7 @@ class ManaSpriteLayer {
   prepare(){
     const m=this.mod,p=this.snes.ppu,parts=[],hidden=new Set(),portraits=new Map(),flight=m.nativeFlight??m.worldFlight,replacing=m.gokuActive!==false;
     const passengers=new Set(m.localFlightHook?.passengers??[]);
-    this.surface.fill(0);this.effectMask.fill(0);this.paletteCache.clear();this.behindBody=this.behindNative=this.hasUnderlay=false;
+    this.surface.fill(0);this.effectMask.fill(0);this.rowMin.fill(256);this.rowMax.fill(-1);this.paletteCache.clear();this.behindBody=this.behindNative=this.hasUnderlay=false;
     // Title screens and naming menus have no ground actor. In particular,
     // never mistake their reused OAM tile numbers for the player.
     // $E4/$E5 are brightness fade timers. Door/boss fades continue displaying
@@ -496,10 +498,13 @@ class ManaSpriteLayer {
     this.behindBody=false;
   }
   inject(ppu,line,underlay=false){
+    // Nothing to submit on rows without surface pixels (the lookups below
+    // are pure and only used inside the pixel loop).
+    if(this.rowMax[line]<this.rowMin[line])return;
     const a=this.plan.anchor,part=this.plan.parts.find(p=>line>=p.y&&line<p.y+p.size)||a;
     const airborne=this.mod.localFlight||this.mod.localLift>0||this.mod.flightTransition||this.mod.ceiling?.pose;
     const treeStandIn=a?.owner?.native.map===236&&a?.owner?.native.species===138;
-    for(let x=0;x<256;x++){const i=line*256+x,color=this.surface[i];if(color&&(this.effectMask[i]===2)===underlay){
+    for(let x=this.rowMin[line],end=this.rowMax[line];x<=end;x++){const i=line*256+x,color=this.surface[i];if(color&&(this.effectMask[i]===2)===underlay){
       // Original spell OBJs use palette 0, priority 3 and no OBJ color math,
       // independently of Goku's water palette or background priority.
       ppu.spriteLineBuffer[x]=this.effectMask[i]?0x86:0x81+(airborne||treeStandIn?part.palette&3:part.palette)*16;
@@ -537,16 +542,20 @@ class ManaSpriteLayer {
     // OAM slot relative to Goku. Transparent edges still show the flames.
     if(this.hasUnderlay)this.inject(p,line,true);
     let index=p.objPriority?((p.oamAdr&0xfe)-2)&0xff:254;
-    for(let i=0;i<128;i++,index=(index-2)&0xff){
-      if(index===this.plan.anchor?.index)this.inject(p,line);
-      if(this.plan.portraits.has(index))this.injectPortrait(p,line,this.plan.portraits.get(index));
-      const hidden=this.plan.hidden.has(index);
-      let x=p.oam[index]&255,y=p.oam[index]>>8,tile=p.oam[index+1]&255,ex=p.oam[index+1]>>8;
-      x|=((p.highOam[index>>4]>>(index&15))&1)<<8;if(x>255)x-=512;
-      const big=(p.highOam[index>>4]>>(index&15))&2,size=p.spriteSizes[p.objSize+(big?8:0)];
-      let sprRow=line-y;if(sprRow<0||sprRow>=size*(p.objInterlace?4:8))sprRow=line+256-y;
-      if(sprRow<0||sprRow>=size*(p.objInterlace?4:8)||x<=-size*8)continue;
-      if(spriteCount===32){p.rangeOver=true;break;}
+    // Plan lookups are fixed for the line; hidden is only needed in range.
+    const plan=this.plan,anchorIndex=plan.anchor?.index,portraits=plan.portraits.size?plan.portraits:null,hiddenSlots=plan.hidden;
+    const oam=p.oam,highOam=p.highOam,rows=p.objInterlace?4:8,spans=p.spriteSpans?.();
+    const entry=index=>{
+      if(index===anchorIndex)this.inject(p,line);
+      if(portraits!==null&&portraits.has(index))this.injectPortrait(p,line,portraits.get(index));
+      let x=oam[index]&255,y=oam[index]>>8,tile=oam[index+1]&255,ex=oam[index+1]>>8;
+      const high=highOam[index>>4]>>(index&15);
+      x|=(high&1)<<8;if(x>255)x-=512;
+      const size=p.spriteSizes[p.objSize+((high&2)?8:0)];
+      let sprRow=line-y;if(sprRow<0||sprRow>=size*rows)sprRow=line+256-y;
+      if(sprRow<0||sprRow>=size*rows||x<=-size*8)return false;
+      const hidden=hiddenSlots.has(index);
+      if(spriteCount===32){p.rangeOver=true;return true;}
       sprRow=p.objInterlace?sprRow*2+(p.evenFrame?1:0):sprRow;
       const adr=p.sprAdr1+((ex&1)?p.sprAdr2:0);if(ex&0x80)sprRow=size*8-1-sprRow;
       const tileRow=sprRow>>3;sprRow&=7;
@@ -560,7 +569,18 @@ class ManaSpriteLayer {
         }
         sliverCount++;
       }
-      if(sliverCount===35){p.timeOver=true;break;}spriteCount++;
+      if(sliverCount===35){p.timeOver=true;return true;}spriteCount++;
+      return false;
+    };
+    if(spans?.rows&&p.forEachSpriteEntry){
+      // Visit only entries covering this line plus the anchor/portrait
+      // slots, in the same evaluation order.
+      const mask=this.entryMask;mask.set(spans.rows.subarray(line*4,line*4+4));
+      if(anchorIndex!==undefined&&anchorIndex!==null)mask[(anchorIndex>>1)>>5]|=1<<((anchorIndex>>1)&31);
+      if(portraits!==null)for(const at of portraits.keys())mask[(at>>1)>>5]|=1<<((at>>1)&31);
+      p.forEachSpriteEntry(mask,0,index>>1,e=>entry(e*2));
+    }else{
+      for(let i=0;i<128;i++,index=(index-2)&0xff)if(entry(index))break;
     }
   }
   destroy(){this.snes.ppu.evaluateSprites=this.originalEvaluate;this.snes.ppu.getColor=this.originalColor;}

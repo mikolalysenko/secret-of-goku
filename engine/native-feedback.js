@@ -18,6 +18,7 @@ export function createNativeFeedback(snes,mod){
     if(low===0x49&&(bank===0x7e||bank<0x40||(bank>=0x80&&bank<0xc0)))pulse=null;
     return previous.call(this,address,value,dma);
   };
+  snes.registerBusWriteHook?.(snes.write,previous,m=>m.offsets(0x49,0x4a));
   return{
     // Ordinary BG scroll quake conflicts with Mode 7 boss matrix/HDMA work.
     // Keep their native impact animation instead of pulsing the map quake.

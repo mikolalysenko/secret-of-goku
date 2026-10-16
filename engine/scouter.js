@@ -73,6 +73,7 @@ export function createScouter(snes,mod){
    readouts.set(low-0x181,{age:0,source:'analyzer'});
   return result;
  };
+ snes.registerBusWriteHook?.(snes.write,write,m=>{for(let at=0xe181;at<0xf800;at+=0x200)m.offsets(at,at+1);});
  function joke(key,text){if(jokes.has(key))return;jokes.add(key);mod.radio?.say(text,{frames:260,kind:'scouter'});}
  function scan(){
   scans++;mod.playSound?.('teleport');
