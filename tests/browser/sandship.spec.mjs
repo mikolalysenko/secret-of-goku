@@ -92,42 +92,63 @@ for(const mask of[0,1,2,3])test(`flying straight to the Sandship cabin returns o
  expect(await page.evaluate(()=>[mana.read8(0xcf0d),mana.read8(0xcf0e)])).toEqual([mask&1,mask>>1&1]);
 });
 
-// Goku frees the engine-room slaves with a Super Saiyan wave instead of
-// sneaking. The chaos returns only captured companions and opens the fight.
-async function untilRider(page){
+// Goku frees the engine-room slaves with a wave the player fires himself.
+// The white-out returns the hold as a wreck: guards gone, desert monsters
+// in, nobody rejoined. Each captive is fetched before Geshtar's Mech Rider.
+async function untilControl(page){
  return page.evaluate(()=>{
-  const m=mana.mod;for(let f=0;f<6000&&!(m.status.map===340&&m.canAttack);f+=20)mana.run(20,f%40?[]:[11]);
-  return{map:m.status.map,can:m.canAttack,stage:mana.read8(0xcf28),captives:[mana.read8(0xcf0d),mana.read8(0xcf0e)],party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],error:m.story.status.error};
+  // Hold R: fast-forward pulses B itself, whatever the frame parity.
+  const m=mana.mod;for(let f=0;f<6000;f++){mana.run(1,mana.read8(0xd0)?[11]:[]);if(f>120&&m.canAttack&&!mana.read8(0xd0)&&!m.sandship.status.cut)break;}
+  const s=m.sandship.status;
+  return{map:m.status.map,can:m.canAttack,stage:mana.read8(0xcf28),captives:[mana.read8(0xcf0d),mana.read8(0xcf0e)],party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],
+   wreck:!!s.wreck,flash:s.flash,guards:m.entities().filter(e=>e.active&&[182,183].includes(e.species)).length,monsters:s.monsters,error:m.story.status.error};
  });
 }
-for(const mask of[0,1,2,3])test(`Kamehameha breakout frees the hold and starts Mech Rider at once, party ${mask}`,async({page})=>{
+async function wreckAndEscape(page,mask){
+ const wrecked=await untilControl(page);
+ expect(wrecked,JSON.stringify(wrecked)).toMatchObject({map:271,can:true,wreck:true,flash:0,guards:0,captives:[mask&1?8:0,mask&2?8:0],party:[0,0],error:null});
+ expect(wrecked.monsters).toBeGreaterThan(0);
+ if(mask&2){await enter(page,{map:319,x:7,y:12});expect(await finish(page,0x295,0x0e,0,{limit:4000})).toMatchObject({error:null});}
+ await enter(page,{map:324,x:12,y:19});
+ expect(await page.evaluate(()=>mana.mod.entities().filter(e=>e.active&&e.species===183).length)).toBe(0);
+ if(mask&1){await enter(page,{map:339,x:16,y:19,layer:1});expect(await finish(page,0x29c,0x0d,0,{limit:4000})).toMatchObject({error:null});}
+ expect(await page.evaluate(()=>[mana.read8(0xcf0d),mana.read8(0xcf0e),mana.read8(0xe200)&1,mana.read8(0xe400)&1])).toEqual([mask&1,mask>>1&1,mask&1,mask>>1&1]);
+ await enter(page,{map:99,x:24,y:27});
+ return page.evaluate(()=>{
+  const m=mana.mod;for(let f=0;f<8000&&!(m.status.map===340&&m.canAttack);f+=20)mana.run(20,f%40?[]:[11]);
+  return{map:m.status.map,can:m.canAttack,stage:mana.read8(0xcf28),party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],error:m.story.status.error};
+ });
+}
+for(const mask of[0,1,2,3])test(`Kamehameha breakout wrecks the ship and each captive is rescued before Mech Rider, party ${mask}`,async({page})=>{
  await load(page,mask);await enter(page,{map:91,x:24,y:24,flags:{0x28:0,0x36:1}});
  expect((await finish(page,0x28b,0x28,1)).map).toBe(271);
- const seen=await page.evaluate(()=>{
+ const armed=await page.evaluate(()=>{
   const m=mana.mod,sergo=m.entities().find(e=>e.active&&e.species===168);
   if(!sergo||!m.story.request(0x291,{actor:sergo.base-0xe000}))return null;
-  const out={super:false,mega:false,events:new Set()};
-  for(let f=0;f<6000&&!out.events.has(0x76);f++){
+  for(let f=0;f<6000;f++){
    // Choose KAMEHAMEHA, the second option.
    if(mana.fastForward.state(1<<11).choice){mana.run(240);mana.run(4,[7]);mana.run(16);mana.run(2,[16]);mana.run(10);}
-   mana.run(1,f%20<2?[11]:[]);out.super||=m.options.superSaiyan;out.mega||=m.effects.some(e=>e.kind==='beam'&&e.mega);
-   for(const id of m.story.status.recentEvents)out.events.add(id);
+   mana.run(1,f%20<2?[11]:[]);if(m.sandship.status.armed&&m.canAttack&&!mana.read8(0xd0))break;
   }
-  return{...out,events:[...out.events]};
+  // Nothing fires by itself: no transformation, no beam.
+  mana.run(120);
+  return{armed:m.sandship.status.armed,super:m.options.superSaiyan,beam:m.effects.some(e=>e.kind==='beam'),events:m.story.status.recentEvents};
  });
- expect(seen).toMatchObject({super:true,mega:true});
- for(const id of[0x72,0x75,0x78,0x76])expect(seen.events).toContain(id);
- expect(seen.events).not.toContain(0x293);
- const rider=await untilRider(page);
- expect(rider,JSON.stringify(rider)).toMatchObject({map:340,can:true,stage:11,captives:[mask&1,mask>>1&1],party:[mask&1,mask>>1&1],error:null});
+ expect(armed).toMatchObject({armed:true,super:false,beam:false});
+ for(const id of[0x72,0x75])expect(armed.events).toContain(id);
+ // The player charges L+Y to full power and releases.
+ const white=await page.evaluate(()=>{mana.run(2,[5]);mana.run(100,[10,1]);let max=0;for(let f=0;f<60;f++){mana.run(1);max=Math.max(max,mana.mod.sandship.status.flash);}return max;});
+ expect(white).toBe(1);
+ const rider=await wreckAndEscape(page,mask);
+ expect(rider,JSON.stringify(rider)).toMatchObject({map:340,can:true,stage:11,party:[mask&1,mask>>1&1],error:null});
 });
 
-test('a full-power wave fired in the hold starts the breakout without Sergo',async({page})=>{
+test('a full-power wave fired in the hold wrecks the ship without Sergo',async({page})=>{
  await load(page,3);await enter(page,{map:91,x:24,y:24,flags:{0x28:0,0x36:1}});
  expect((await finish(page,0x28b,0x28,1)).map).toBe(271);
  await page.evaluate(()=>{mana.run(1,[4]);mana.run(100,[10,1]);mana.run(30);});
- const rider=await untilRider(page);
- expect(rider,JSON.stringify(rider)).toMatchObject({map:340,can:true,stage:11,captives:[1,1],party:[1,1],error:null});
+ const rider=await wreckAndEscape(page,3);
+ expect(rider,JSON.stringify(rider)).toMatchObject({map:340,can:true,stage:11,party:[1,1],error:null});
 });
 
 test('?start=sandship enters the desert with the full party and plays into the Sandship',async({page})=>{

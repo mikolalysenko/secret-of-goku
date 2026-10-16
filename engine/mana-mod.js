@@ -157,7 +157,7 @@ class ManaMod {
     this.equipment?.tick();this.ending?.tick();this.frieza?.tick();this.scouter?.tick();this.hitRecovery?.tick();this.potosGatekeeper?.tick();this.sandship?.tick();
     // If a blast removes the floor under him, catch himself in a hover.
     // Releasing speed cannot land on the hole; fly to intact deck first.
-    if(this.canAttack&&this.frieza?.floorHole(this.read16(0xe002),this.read16(0xe004),this.read8(0xe00b)&128?1:0))this.localFlight=true;
+    if(this.canAttack&&(this.frieza?.floorHole(this.read16(0xe002),this.read16(0xe004),this.read8(0xe00b)&128?1:0)||this.sandship?.floorHole(this.read16(0xe002),this.read16(0xe004))))this.localFlight=true;
     this.feedback?.tick();this.gapFlight?.tick();
     const previousLift=this.localLift;
     this.localLift=Math.max(0,Math.min(12,this.localLift+(this.localFlight?3:-3)));

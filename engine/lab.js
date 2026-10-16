@@ -89,7 +89,7 @@ mod.localFlightHook=createNativeLocalFlight(snes,{
   enabled:()=>mod.options.enabled&&mod.gokuActive,
   active:()=>mod.options.enabled&&mod.gokuActive&&(mod.localFlight||mod.charging)&&mod.canAttack,
   phase:()=>mod.localFlight,
-  missingFloor:(x,y,l)=>mod.frieza?.floorHole(x,y,l)??false,
+  missingFloor:(x,y,l)=>!!(mod.frieza?.floorHole(x,y,l)||mod.sandship?.floorHole(x,y)),
   onCross:({map,from,to})=>{
     mod.teleport?.gather(to);
     // Only a full crossing between Karon's piers before his ferry is

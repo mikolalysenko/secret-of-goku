@@ -52,6 +52,7 @@ export function createNativeStory(snes,mod){
     return at;
   }
   function storyRead(bank,address){
+    if((bank&63)===8&&enabled()){const view=mod.sandship?.read(address,cart.data);if(view!==undefined)return view;}
     if((bank&63)===8&&enabled()){
       // The retail reunion cliff (map 180) has no NPCs. Extend only this
       // ending's read view by one record so the native loader brings back

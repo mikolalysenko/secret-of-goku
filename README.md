@@ -43,7 +43,7 @@ Add `?debug=true` to reveal **Test scenes**, or jump directly with `?start=…`.
 | [`?start=explosion`](https://mikolalysenko.github.io/secret-of-goku/?start=explosion) | Planet breakup animation |
 | [`?start=title`](https://mikolalysenko.github.io/secret-of-goku/?start=title) | Name entry after the title |
 | [`?start=sword`](https://mikolalysenko.github.io/secret-of-goku/?start=sword) | Goku ready after the sword/pod scene |
-| [`?start=sandship`](https://mikolalysenko.github.io/secret-of-goku/?start=sandship) | Full party entering the desert; the Sandship arc (and its Kamehameha breakout) plays from there |
+| [`?start=sandship`](https://mikolalysenko.github.io/secret-of-goku/?start=sandship) | Full party entering the desert; the Sandship arc plays from there. Choose KAMEHAMEHA in the engine room and fire it yourself (hold L+Y) to wreck the ship |
 
 The same queries work locally, for example `http://127.0.0.1:5173/?start=beast`. Every catalogued cutscene and event can also be loaded with `?scene=<id>`, browsed and live-debugged in [`scenes.html`](scenes.html), or crawled with `npm run scenes`. See [docs/scenes.md](docs/scenes.md). The opening presets (title, sword, sandship) still run their original scenes once before caching. No ROM or savestate is distributed with any link.
 

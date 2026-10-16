@@ -143,6 +143,8 @@ export function createNativeRadio(snes,mod){
       if(barrierCooldown||prior)return false;
       say(choices[barrierCount++%choices.length],{frames:230,kind:'barrier'});Object.assign(queue.at(-1),{barrierId:id,map});barrierCooldown=480;return true;
     },
+    // Drop a stale hint, shown or waiting, once its moment has passed.
+    dismiss(kind){if(current?.kind===kind)current=null;queue=queue.filter(m=>m.kind!==kind);},
     interrupt(messages,{frames=240,kind='story'}={}){
       // A catastrophe replaces stale flight instructions, then resumes any
       // collected-Ball notices. It never opens a native dialogue/input lock.
