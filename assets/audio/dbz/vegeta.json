@@ -1,0 +1,42 @@
+{
+  "rate": 16000,
+  "bits": 10,
+  "processing": "Mono 16 kHz, 5.6 kHz low-pass, 10-bit quantization stored as 16-bit PCM. A consistent SNES-style sample-bank aesthetic; not hardware BRR encoding.",
+  "adaptation": "Short Japanese voice excerpts, 85 Hz high-pass, 210 Hz presence EQ, compression, pitch-preserving tempo, level matching and 12/60 ms edge fades. Final Flash retains its brief energy tail; Kakarotto is isolated from the end of Vegeta’s challenge.",
+  "credit": "Original Dragon Ball performances and game audio retain their respective rights; not covered by the project code license.",
+  "clips": [
+    {
+      "name": "vegeta-final-flash",
+      "start": 0.06,
+      "end": 2.75,
+      "tempo": 1,
+      "rms": 0.22,
+      "sourceUrl": "https://www.myinstants.com/en/instant/vegeta-final-flash/",
+      "downloadUrl": "https://www.myinstants.com/media/sounds/vegeta-final-flash.mp3",
+      "text": "ファイナルフラッシュ！",
+      "credit": "Vegeta’s original Japanese Final Flash against Cell, Dragon Ball Z; short recording shared on Myinstants.",
+      "file": "vegeta-final-flash.wav",
+      "sourceFile": "vegeta-final-flash.mp3",
+      "sha256": "baf3bc55832396171ca8578f1a4b0ab651f9e7eae10f262bf2780c8015e17431",
+      "duration": 2.69,
+      "gain": 1.5765413813057318
+    },
+    {
+      "name": "vegeta-kakarot",
+      "start": 1.82,
+      "end": 2.5,
+      "tempo": 0.85,
+      "rms": 0.22,
+      "sourceUrl": "https://www.101soundboards.com/sounds/59071971-base-form-main-voice-files-vegeta35880-jie-zhao-wotsukeruzo-kakarotsuto",
+      "downloadUrl": "https://hoovers.101soundboards.com/sb/board_sounds/nlebvbvj.mp3",
+      "text": "カカロット！",
+      "credit": "Japanese Vegeta, Dragon Ball Z: Budokai Tenkaichi 3 (PlayStation 2), Base form/Main Voice Files/Vegeta(35880).wav. Shared by 101soundboards from The Sounds Resource.",
+      "originalListing": "https://sounds.spriters-resource.com/playstation_2/dragonballzbudokaitenkaichi3/asset/425588/",
+      "file": "vegeta-kakarot.wav",
+      "sourceFile": "Vegeta-35880.mp3",
+      "sha256": "5f27c2525a0ebf4995825a62ae8b7ceb8bfb2ae63f5494428fa716541970bda2",
+      "duration": 0.782,
+      "gain": 2.0380233383891504
+    }
+  ]
+}

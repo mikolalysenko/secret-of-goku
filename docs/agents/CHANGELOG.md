@@ -8,7 +8,8 @@ stay traceable even when they are committed together.
 
 - Final Flash now fills the screen with the full-power SSJ Kamehameha's wave geometry and yellow energy, including its charge, edge effects and beam clash. Galick Gun retains its purple appearance.
 - Only a Kamehameha fired as Super Saiyan can lock Final Flash. SSJ Vegeta takes 32% of incoming damage instead of 38%, making him about 19% tougher; winning a clash still removes 34% of his maximum HP.
-- Validation: 16 targeted unit tests and two private-ROM browser checks, covering the full yellow wave, rejected base-form counters, SSJ clash wins/losses and checkpoint replay. Screenshots remain under `.local/vegeta-final-flash/`.
+- Added Japanese Final Flash and “Kakarotto!” excerpts with the same mono 16 kHz / 10-bit processing as Goku's voice, reproducible preparation and source attribution. The callouts follow windup/struggle timing, stop with the battle and never trigger Goku's release shout.
+- Validation: all 358 unit tests, six browser audio checks, two private-ROM beam checks and the public build pass. Coverage includes the full yellow wave, rejected base-form counters, SSJ clash wins/losses, voice timing, sampled playback and mute/restore cleanup. Screenshots and audio review output remain under `.local/vegeta-final-flash/`.
 
 ## 2026-10-16 — Native releases and public overview
 

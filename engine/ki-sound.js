@@ -69,6 +69,8 @@ export function synthesizeKiSound(name,{rate=16000,superSaiyan=false}={}){
 // select one-shots; held states own seamless loops. The synth above is only a
 // network-failure fallback so offline failures never leave a charge silent.
 export const cues={
+ vegetaFinalFlash:{clips:['vegeta-final-flash'],gain:.72,cap:1,trial:true},vegetaKakarot:{clips:['vegeta-kakarot'],gain:.72,cap:1,trial:true},
+ vegetaBeam:{clips:['beam'],gain:.64,cap:1,rate:.86,trial:true},
  friezaLaugh:{clips:['frieza-laugh'],gain:.60,cap:1},friezaOrb:{clips:['power-burst'],gain:.55,cap:2,rate:.72},friezaDisc:{clips:['frieza-disc'],gain:.42,cap:2},
  friezaLaser:{clips:['blast'],gain:.42,cap:1,rate:1.65},
  friezaBeam:{clips:['beam'],gain:.56,cap:1,rate:.85},
@@ -84,7 +86,7 @@ export const cues={
  flight:{clips:['flight'],gain:.48,cap:1},landing:{clips:['landing'],gain:.36,cap:1},
  charge:{clips:['charge'],gain:.55,loop:true},aura:{clips:['aura'],gain:.30,loop:true},air:{clips:['air'],gain:.25,loop:true},
 };
-const fallback={balloonPop:'hit',iceBreak:'hit',friezaBeam:'beam',friezaLaser:'blast',friezaImpact:'hit',fortressBreak:'powerBurst',friezaRush:'flight',friezaCharge:'charge',friezaLaugh:'charged',friezaOrb:'beam',friezaDisc:'blast',kickSwing:'swing',kick:'hit',impact:'hit',distantImpact:'hit',deflect:'hit',revert:'transform',aura:'charge',air:'charge'};
+const fallback={vegetaFinalFlash:'charged',vegetaKakarot:'charged',vegetaBeam:'beam',balloonPop:'hit',iceBreak:'hit',friezaBeam:'beam',friezaLaser:'blast',friezaImpact:'hit',fortressBreak:'powerBurst',friezaRush:'flight',friezaCharge:'charge',friezaLaugh:'charged',friezaOrb:'beam',friezaDisc:'blast',kickSwing:'swing',kick:'hit',impact:'hit',distantImpact:'hit',deflect:'hit',revert:'transform',aura:'charge',air:'charge'};
 export function createKiSound(mod){
   const speech=createKamehamehaVoice(mod);
   const music=createFriezaScore(mod);
@@ -156,6 +158,12 @@ export function createKiSound(mod){
       }
       when=Math.max(ctx.currentTime,when??ctx.currentTime);let beam=false;
       music.update(ctx,true,when);
+      // Vegeta's callouts survive the counter-shot's combat cancellation,
+      // but end as soon as sparring stops. They never trigger Goku's HA.
+      if(!mod.trial?.dangerous){
+        queue=queue.filter(v=>!cues[v.name]?.trial);
+        for(const v of [...voices])if(cues[v.name]?.trial)stopVoice(v,when,.035);
+      }
       for(const item of queue)if(mod.frame-item.frame<5){
         // A quick return to base form cuts off the power-up's long tail.
         if(item.name==='revert')for(const v of [...voices])if(v.name==='transform'||v.name==='powerBurst')stopVoice(v,when,.05);

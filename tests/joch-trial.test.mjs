@@ -123,6 +123,23 @@ test('SSJ Vegeta resists more damage without overflowing native HP or weakening 
  assert.equal(read(0xe784),60000);
 });
 
+test('Vegeta calls Final Flash once during windup and Kakarotto once when the beam struggle starts',()=>{
+ const {trial,tick,mod,ram,sounds}=fixture();
+ trial.restore({...trial.snapshot(),tier:1,x:232,y:160,grace:1000,action:{kind:'beam',age:0,dx:-1,dy:0,x:232,y:160}});
+ tick(40);assert.equal(sounds.filter(s=>s==='vegetaFinalFlash').length,1);
+ ram[0xec]=4;tick(60);assert.equal(trial.status.action.age,40);
+ ram[0xec]=0;tick(41);assert.equal(sounds.filter(s=>s==='vegetaBeam').length,0);
+ tick();assert.equal(sounds.filter(s=>s==='vegetaBeam').length,1);
+ mod.effects=[{kind:'beam',life:30,x:140,y:148,dx:1,dy:0,length:120,halfWidth:12,super:true}];
+ tick();assert.equal(trial.status.clash.phase,'lock');
+ tick(trainingClashTiming.lock+trainingClashTiming.focus);
+ assert.equal(trial.status.clash.phase,'struggle');
+ assert.equal(sounds.filter(s=>s==='vegetaKakarot').length,1);
+ tick(100);assert.equal(sounds.filter(s=>s==='vegetaKakarot').length,1,'Surges do not spam the voice');
+ assert.equal(sounds.filter(s=>s==='vegetaFinalFlash').length,1);
+ assert.ok(!sounds.includes('beam'),'Enemy beams must never request Goku’s release voice');
+});
+
 test('the final beam finishes before the draw, and sparring damage cannot kill Goku',()=>{
  const {trial,tick,mod,write,read}=fixture();
  trial.restore({...trial.snapshot(),tier:1,hp:1});mod.effects=[{kind:'beam',life:40}];

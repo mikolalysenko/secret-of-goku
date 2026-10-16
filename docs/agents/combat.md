@@ -190,6 +190,15 @@ chunk of his health; losing hurts Goku but remains nonfatal sparring. The
 exchange ends within eleven seconds of the struggle starting, then ordinary
 combat resumes. Only opposed, overlapping beams clash; shots can still miss.
 
+Vegeta's Japanese Final Flash callout starts once at the beginning of the
+82-frame windup. His isolated “Kakarotto!” plays once when a beam clash enters
+the struggle. The clips use Goku's shared 16 kHz / 10-bit sample treatment;
+`scripts/prepare-vegeta-audio.mjs` reproduces them from local source recordings,
+with provenance in `assets/audio/dbz/vegeta.json` and [credits](../../CREDITS.md).
+Dedicated enemy beam cues keep Goku's release voice tied to his own attacks.
+The voices survive clash entry but stop on pause, mute, restore or the end of
+sparring; repeated surges do not replay the shout.
+
 The ring pauses his attacks. Completing both phases ends in an agreed draw;
 neither fighter dies. A finishing beam plays out before the exchange, both
 power down, then the scene fades for their return. If Goku needs a break,

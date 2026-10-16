@@ -128,7 +128,7 @@ export function createJochTrial(snes,mod,{loadArt=true}={}){
   put(0xe002,c.hero.x);put(0xe004,c.hero.y);s.x=c.boss.x;s.y=c.boss.y;
   const cue=tickTrainingClash(c);
   if(cue==='focus'){mod.playSound?.('charged');mod.feedback?.pulse(8);}
-  if(cue==='struggle')mod.playSound?.('beam');
+  if(cue==='struggle'){mod.playSound?.('vegetaBeam');mod.playSound?.('vegetaKakarot');}
   if(cue==='surge'){mod.playSound?.('powerBurst');mod.feedback?.pulse(5);}
   if(cue==='win'||cue==='lose')mod.feedback?.pulse(6);
   if(cue==='detonate'){mod.playSound?.('fortressBreak');mod.playSound?.('friezaImpact');mod.feedback?.pulse(24);}
@@ -176,7 +176,8 @@ export function createJochTrial(snes,mod,{loadArt=true}={}){
    // The lane locks early. Final Flash matches the full-power SSJ wave's
    // width, speed and taper; only a Super Saiyan counter can lock it.
    const windup=gold?82:110,age=a.age-windup;
-   if(age===0){mod.playSound?.('beam');mod.feedback?.pulse(12);}
+   if(gold&&a.age===1)mod.playSound?.('vegetaFinalFlash');
+   if(age===0){mod.playSound?.('vegetaBeam');mod.feedback?.pulse(12);}
    if(age>=0){
     const length=gold?Math.min(640,(age+1)*48):Math.min(512,16+age*16),origin={x:a.x+a.dx*12,y:a.y-12+a.dy*12};
     a.beam={...origin,dx:a.dx,dy:a.dy,length,halfWidth:gold?80*Math.max(0,Math.min(1,(age+1)/6,(66-age)/10)):11,taper:44};
