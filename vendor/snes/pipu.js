@@ -487,6 +487,15 @@ function Ppu(snes) {
     new Uint16Array(256)
   ];
   const subVal = [new Uint16Array(256), new Uint16Array(256)];
+  // Plain (no mosaic, no hires) layers are kept per fetched tile instead:
+  // tile i covers screen x with ((x + (hoff & 7)) >> 3) === i, holding its
+  // planar-to-chunky lanes (lo/hi) and palette | priority << 15 (tag).
+  const lineTiled = new Uint8Array(4);
+  const tileFine = new Int32Array(4);
+  const tileWide = new Uint8Array(4);
+  const tileLo = [new Int32Array(34), new Int32Array(34), new Int32Array(34), new Int32Array(34)];
+  const tileHi = [new Int32Array(34), new Int32Array(34), new Int32Array(34), new Int32Array(34)];
+  const tileTag = [new Int32Array(34), new Int32Array(34), new Int32Array(34), new Int32Array(34)];
   const winMask = [
     new Uint8Array(256), new Uint8Array(256), new Uint8Array(256),
     new Uint8Array(256), new Uint8Array(256), new Uint8Array(256)
@@ -690,7 +699,13 @@ function Ppu(snes) {
     let hoff = this.bgHoff[l], voff = this.bgVoff[l];
     let lastX = -1, lastY = -1, lo = 0, hi = 0, palette = 0, prio = 0;
     let present = 0;
-    if(!mosaic && !hires) {
+    lineTiled[l] = 0;
+    if(!mosaic && !hires && outVal === lineVal[l]) {
+      // Tile form (see lineTiled); composeScreen extracts pixels on demand.
+      lineTiled[l] = 1;
+      tileFine[l] = hoff & 0x7;
+      tileWide[l] = bits > 4 ? 1 : 0;
+      let tLo = tileLo[l], tHi = tileHi[l], tTag = tileTag[l], tile = 0;
       // lx = x + hoff: whole 8-pixel tiles, one fetch each. Plain 8x8 tiles
       // are fetched inline, exactly as fetchTileInBuffer(lx, ly, l) would.
       let ly = y + voff;
@@ -738,22 +753,11 @@ function Ppu(snes) {
         }
         palette = (((mapWord & 0x1c00) >> 10) + palAdd) * mul;
         prio = (mapWord & 0x2000) >> 13;
-        let end = x + 8 - (lx & 0x7);
-        if(end > 256) {
-          end = 256;
-        }
-        let tagged = palette | (prio << 15);
-        if(bits <= 4) {
-          for(let shift = (lx & 0x7) * 4; x < end; x++, shift += 4) {
-            let tileData = (lo >>> shift) & 0xf;
-            outVal[x] = tileData > 0 ? tagged + tileData : 0;
-          }
-        } else {
-          for(let shift = (lx & 0x7) * 4; x < end; x++, shift += 4) {
-            let tileData = ((lo >>> shift) & 0xf) | (((hi >>> shift) & 0xf) << 4);
-            outVal[x] = tileData > 0 ? tagged + tileData : 0;
-          }
-        }
+        tLo[tile] = lo;
+        tHi[tile] = hi;
+        tTag[tile] = palette | (prio << 15);
+        tile++;
+        x += 8 - (lx & 0x7);
         // Per tile (may include pixels left of x = 0): a superset is fine.
         if((lo | hi) !== 0) {
           present |= 1 << prio;
@@ -826,6 +830,7 @@ function Ppu(snes) {
   // exactly what decodeLayer(l, y, false/true) would. Returns the presence
   // bits for main in the low byte and for sub in the next byte.
   this.decodeHiresPair = function(l, y, outMain, outSub) {
+    lineTiled[l] = 0;
     let bits = this.bitPerMode[this.mode * 4 + l];
     let mul = bits > 4 ? 256 : bits > 2 ? 16 : 4;
     let palAdd = this.mode === 0 ? l * 8 : 0;
@@ -919,10 +924,21 @@ function Ppu(snes) {
       } else {
         vals = lineVal[layer];
         present = (linePresent[layer] >> p) & 1;
+        if(lineTiled[layer] === 1) {
+          kind = 4;
+        }
+      }
+      let fine = 0, wide = 0, tLo = null, tHi = null, tTag = null;
+      if(kind === 4) {
+        fine = tileFine[layer];
+        wide = tileWide[layer];
+        tLo = tileLo[layer];
+        tHi = tileHi[layer];
+        tTag = tileTag[layer];
       }
       let patch = linePlan.layerPatch;
       let patchMask = null, patchValues = null;
-      if(patch !== null && kind === 0 && patch.layer === layer && patch.prio === p) {
+      if(patch !== null && (kind === 0 || kind === 4) && patch.layer === layer && patch.prio === p) {
         patchMask = patch.mask;
         patchValues = patch.values;
         present = 1;
@@ -943,6 +959,18 @@ function Ppu(snes) {
         let v;
         if(patchMask !== null && patchMask[x] === 1) {
           v = patchValues[x];
+        } else if(kind === 4) {
+          let px = x + fine, i = px >> 3, tag = tTag[i];
+          if((tag >>> 15) !== p) {
+            v = 0;
+          } else {
+            let shift = (px & 0x7) << 2;
+            let tileData = (tLo[i] >>> shift) & 0xf;
+            if(wide === 1) {
+              tileData |= ((tHi[i] >>> shift) & 0xf) << 4;
+            }
+            v = tileData > 0 ? (tag & 0x7fff) + tileData : 0;
+          }
         } else if(kind === 0) {
           let w = vals[x];
           v = (w >>> 15) !== p ? 0 : w & 0x7fff;
@@ -981,6 +1009,18 @@ function Ppu(snes) {
           direct |= 1 << l;
         }
       }
+    }
+    if(
+      direct === 0 && bg1 === null && obj === null && face === null &&
+      overlay === null && postCount === 0
+    ) {
+      // Plain palette colors (what the loop below computes with no plans).
+      for(let x = 0; x < 256; x++) {
+        if(need === null || need[x] === 1) {
+          colorOut[x] = cgram[pixIn[x] & 0xff];
+        }
+      }
+      return;
     }
     for(let x = 0; x < 256; x++) {
       if(need !== null && need[x] !== 1) {
@@ -1044,6 +1084,50 @@ function Ppu(snes) {
   const levels = new Uint8Array(32);
   let levelsFor = -1;
 
+  // Mode 7 texels of layer l for the line into mode7Raw[l]; returns the
+  // layer's presence bits (as composeScreen expects).
+  this.mode7Line = function(l, y) {
+    let raw = mode7Raw[l], present = 0;
+    let inline = this.getMode7Pixel === base.getMode7Pixel;
+    let vram = this.vram, xc = this.mode7Xcoords, yc = this.mode7Ycoords;
+    let flipX = this.mode7FlipX, largeField = this.mode7LargeField;
+    let char0Fill = this.mode7Char0fill, mosaicLayer = this.mosaicEnabled[l];
+    for(let x = 0; x < 256; x++) {
+      let lx = x, ly = y;
+      if(mosaicLayer) {
+        lx -= lx % this.mosaicSize;
+        ly -= (ly - this.mosaicStartLine) % this.mosaicSize;
+      }
+      let d;
+      if(inline) {
+        // getMode7Pixel(lx, ly, 0, 0) without its per-x cache.
+        let rX = flipX ? 255 - lx : lx;
+        let px = xc[rX] >> 8, py = yc[rX] >> 8;
+        let transparent = false, char0 = false;
+        if(largeField && (px < 0 || px >= 1024 || py < 0 || py >= 1024)) {
+          if(char0Fill) {
+            char0 = true;
+          } else {
+            transparent = true;
+          }
+        }
+        let tileByte = char0 ? 0 :
+          vram[((py & 0x3f8) >> 3) * 128 + ((px & 0x3f8) >> 3)] & 0xff;
+        d = vram[tileByte * 64 + (py & 0x7) * 8 + (px & 0x7)] >> 8;
+        d = transparent ? 0 : d;
+      } else {
+        d = this.getMode7Pixel(lx, ly, 0, 0);
+      }
+      raw[x] = d;
+      if(l === 0) {
+        present |= d !== 0 ? 1 : 0;
+      } else if((d & 0x7f) !== 0) {
+        present |= 1 << (d >> 7);
+      }
+    }
+    return present;
+  }
+
   this.composeLine = function(line, bMult) {
     let out = this.pixelOutput, base = line * 1536;
     if(this.forcedBlank) {
@@ -1070,45 +1154,7 @@ function Ppu(snes) {
       // Mode 7 texels by (mosaic-adjusted) screen x, through getMode7Pixel.
       for(let l = 0; l < 2; l++) {
         if(used & (1 << l)) {
-          let raw = mode7Raw[l], present = 0;
-          let inline = this.getMode7Pixel === base.getMode7Pixel;
-          let vram = this.vram, xc = this.mode7Xcoords, yc = this.mode7Ycoords;
-          let flipX = this.mode7FlipX, largeField = this.mode7LargeField;
-          let char0Fill = this.mode7Char0fill, mosaicLayer = this.mosaicEnabled[l];
-          for(let x = 0; x < 256; x++) {
-            let lx = x, ly = y;
-            if(mosaicLayer) {
-              lx -= lx % this.mosaicSize;
-              ly -= (ly - this.mosaicStartLine) % this.mosaicSize;
-            }
-            let d;
-            if(inline) {
-              // getMode7Pixel(lx, ly, 0, 0) without its per-x cache.
-              let rX = flipX ? 255 - lx : lx;
-              let px = xc[rX] >> 8, py = yc[rX] >> 8;
-              let transparent = false, char0 = false;
-              if(largeField && (px < 0 || px >= 1024 || py < 0 || py >= 1024)) {
-                if(char0Fill) {
-                  char0 = true;
-                } else {
-                  transparent = true;
-                }
-              }
-              let tileByte = char0 ? 0 :
-                vram[((py & 0x3f8) >> 3) * 128 + ((px & 0x3f8) >> 3)] & 0xff;
-              d = vram[tileByte * 64 + (py & 0x7) * 8 + (px & 0x7)] >> 8;
-              d = transparent ? 0 : d;
-            } else {
-              d = this.getMode7Pixel(lx, ly, 0, 0);
-            }
-            raw[x] = d;
-            if(l === 0) {
-              present |= d !== 0 ? 1 : 0;
-            } else if((d & 0x7f) !== 0) {
-              present |= 1 << (d >> 7);
-            }
-          }
-          mode7Present[l] = present;
+          mode7Present[l] = this.mode7Line(l, y);
         }
       }
     } else {
@@ -1192,6 +1238,14 @@ function Ppu(snes) {
       }
       return;
     }
+    this.outputWithMath(line, base, modeIndex, count, mode, hires, pseudo,
+      addSub, colorClip, preventMath, clipMask, mathLayers, out, out32);
+  }
+
+  // Color math, clipping and output for a composed main screen (mainPix,
+  // mainLay, mainColor), composing the sub screen where it is needed.
+  this.outputWithMath = function(line, base, modeIndex, count, mode, hires,
+    pseudo, addSub, colorClip, preventMath, clipMask, mathLayers, out, out32) {
     let anySub = false;
     let mathBits = 0;
     for(let l = 0; l < 6; l++) {
@@ -1218,6 +1272,53 @@ function Ppu(snes) {
     let subtract = this.subtractColors, half = this.halfColors;
     let fixedR = this.fixedColorR, fixedG = this.fixedColorG;
     let fixedB = this.fixedColorB;
+    if(colorClip === 0 && !hires && !pseudo && out32 !== null) {
+      // Without clipping or hires the left half repeats the math result, so
+      // sub screen colors matter only where math is on (same arithmetic).
+      let at32 = base >> 1;
+      for(let i = 0; i < 256; i++, at32 += 3) {
+        let color = mainColor[i];
+        let r2 = color & 0x1f;
+        let g2 = (color & 0x3e0) >> 5;
+        let b2 = (color & 0x7c00) >> 10;
+        if(mathOn[i] === 1) {
+          let secondLayer = 5, r1 = 0, g1 = 0, b1 = 0;
+          if(subNeed[i] === 1) {
+            let c = subColor[i];
+            secondLayer = subLay[i];
+            r1 = c & 0x1f;
+            g1 = (c & 0x3e0) >> 5;
+            b1 = (c & 0x7c00) >> 10;
+          }
+          let useSub = addSub && secondLayer < 5;
+          if(subtract) {
+            r2 -= useSub ? r1 : fixedR;
+            g2 -= useSub ? g1 : fixedG;
+            b2 -= useSub ? b1 : fixedB;
+          } else {
+            r2 += useSub ? r1 : fixedR;
+            g2 += useSub ? g1 : fixedG;
+            b2 += useSub ? b1 : fixedB;
+          }
+          if(half && (secondLayer < 5 || !addSub)) {
+            r2 >>= 1;
+            g2 >>= 1;
+            b2 >>= 1;
+          }
+          r2 = r2 > 31 ? 31 : r2;
+          r2 = r2 < 0 ? 0 : r2;
+          g2 = g2 > 31 ? 31 : g2;
+          g2 = g2 < 0 ? 0 : g2;
+          b2 = b2 > 31 ? 31 : b2;
+          b2 = b2 < 0 ? 0 : b2;
+        }
+        let r = levels[r2], g = levels[g2], b = levels[b2];
+        out32[at32] = r | (g << 16);
+        out32[at32 + 1] = b | (r << 16);
+        out32[at32 + 2] = g | (b << 16);
+      }
+      return;
+    }
     for(let i = 0; i < 256; i++) {
       let color = mainColor[i];
       let r1 = 0, g1 = 0, b1 = 0;
