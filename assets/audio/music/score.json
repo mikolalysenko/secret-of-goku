@@ -1,34 +1,286 @@
 {
-  "author": "Original compositions for Secret of Goku",
-  "license": "MIT",
+  "arrangement": "Secret of Goku eight-voice Frieza battle arrangement",
+  "reference": {
+    "title": "Kaibutsu Freeza vs Densetsu no Super Saiyajin",
+    "composer": "Shunsuke Kikuchi",
+    "url": "https://www.youtube.com/watch?v=5CpQ-uBRa78",
+    "material": "F-minor battle march and brass answers in the opening movement, especially 0:10–0:42 and 0:44–1:22"
+  },
+  "rights": "The combat cues adapt Shunsuke Kikuchi’s composition, which remains with its respective rights holders. The code license does not relicense that composition. Five Minutes remains an original project cue.",
   "source": "scripts/compose-frieza-score.mjs",
-  "titles": [
-    "Five Minutes",
-    "Fury Above Mana",
-    "Orbit Breaker"
-  ],
-  "sampleRate": 22050,
+  "renderer": "scripts/tracker-score.mjs",
+  "sampleRate": 32000,
+  "quantizationBits": 16,
+  "description": "PCM brass, strings, horns and timpani, pulse/square lead voices, triangle bass, military snare and noise percussion. The orbital arrangement increases the pace and develops the same motifs; the entrance cue is unchanged. No reference recording is embedded.",
   "tracks": [
     {
       "file": "arrival.wav",
       "bpm": 72,
       "bars": 8,
       "duration": 26.666666666666668,
-      "instruments": 8
+      "instruments": 8,
+      "title": "Five Minutes",
+      "sampleRate": 22050,
+      "quantizationBits": 12,
+      "rights": "Original project composition, MIT"
     },
     {
       "file": "battle.wav",
-      "bpm": 128,
-      "bars": 16,
-      "duration": 30,
-      "instruments": 8
+      "title": "Freeza vs the Legendary Super Saiyan — Battle",
+      "bpm": 144,
+      "bars": 48,
+      "duration": 80,
+      "voices": 8,
+      "sections": [
+        {
+          "bar": 0,
+          "name": "F-minor battle march"
+        },
+        {
+          "bar": 8,
+          "name": "Dominant brass answer"
+        },
+        {
+          "bar": 16,
+          "name": "String pursuit"
+        },
+        {
+          "bar": 24,
+          "name": "Tense low-register interlude"
+        },
+        {
+          "bar": 32,
+          "name": "Brass and pulse reprise"
+        },
+        {
+          "bar": 40,
+          "name": "Full ensemble climax"
+        }
+      ],
+      "channels": [
+        {
+          "voice": 1,
+          "role": "PCM brass / square lead",
+          "notes": 208,
+          "instruments": [
+            "brass",
+            "horn"
+          ],
+          "rms": 0.1349173347135821,
+          "truncatedNotes": 0
+        },
+        {
+          "voice": 2,
+          "role": "PCM strings / pulse ostinato",
+          "notes": 336,
+          "instruments": [
+            "strings"
+          ],
+          "rms": 0.06375934544356952,
+          "truncatedNotes": 0
+        },
+        {
+          "voice": 3,
+          "role": "Triangle / low horn bass",
+          "notes": 216,
+          "instruments": [
+            "triangle"
+          ],
+          "rms": 0.12838054361496293,
+          "truncatedNotes": 0
+        },
+        {
+          "voice": 4,
+          "role": "PCM horn inner harmony",
+          "notes": 136,
+          "instruments": [
+            "horn"
+          ],
+          "rms": 0.08751826245133977,
+          "truncatedNotes": 0
+        },
+        {
+          "voice": 5,
+          "role": "PCM strings / answering pulse",
+          "notes": 144,
+          "instruments": [
+            "strings",
+            "pulse"
+          ],
+          "rms": 0.06486305369240235,
+          "truncatedNotes": 0
+        },
+        {
+          "voice": 6,
+          "role": "PCM timpani / kick",
+          "notes": 136,
+          "instruments": [
+            "timpani",
+            "kick"
+          ],
+          "rms": 0.08877402832127751,
+          "truncatedNotes": 0
+        },
+        {
+          "voice": 7,
+          "role": "PCM military snare / tom rolls",
+          "notes": 140,
+          "instruments": [
+            "snare",
+            "tom"
+          ],
+          "rms": 0.029664914266083198,
+          "truncatedNotes": 0
+        },
+        {
+          "voice": 8,
+          "role": "Noise percussion / PCM crash and ride",
+          "notes": 366,
+          "instruments": [
+            "crash",
+            "noise",
+            "hat",
+            "ride"
+          ],
+          "rms": 0.011521444848941168,
+          "truncatedNotes": 0
+        }
+      ],
+      "sha256": "bfa937e412c9af0bc8e2664532c80d2a116124c3681a95a8b91c97bed892f2f0"
     },
     {
       "file": "orbit.wav",
-      "bpm": 152,
-      "bars": 16,
-      "duration": 25.263174603174605,
-      "instruments": 8
+      "title": "Freeza vs the Legendary Super Saiyan — Orbit",
+      "bpm": 160,
+      "bars": 64,
+      "duration": 96,
+      "voices": 8,
+      "sections": [
+        {
+          "bar": 0,
+          "name": "F-minor battle march"
+        },
+        {
+          "bar": 8,
+          "name": "Dominant brass answer"
+        },
+        {
+          "bar": 16,
+          "name": "String pursuit"
+        },
+        {
+          "bar": 24,
+          "name": "Tense low-register interlude"
+        },
+        {
+          "bar": 32,
+          "name": "Brass and pulse reprise"
+        },
+        {
+          "bar": 40,
+          "name": "Full ensemble climax"
+        },
+        {
+          "bar": 48,
+          "name": "Orbital counterpoint"
+        },
+        {
+          "bar": 56,
+          "name": "Final brass charge and turnaround"
+        }
+      ],
+      "channels": [
+        {
+          "voice": 1,
+          "role": "PCM brass / square lead",
+          "notes": 277,
+          "instruments": [
+            "brass",
+            "horn",
+            "square"
+          ],
+          "rms": 0.1691365522913991,
+          "truncatedNotes": 0
+        },
+        {
+          "voice": 2,
+          "role": "PCM strings / pulse ostinato",
+          "notes": 464,
+          "instruments": [
+            "strings",
+            "pulse"
+          ],
+          "rms": 0.06596213133928126,
+          "truncatedNotes": 0
+        },
+        {
+          "voice": 3,
+          "role": "Triangle / low horn bass",
+          "notes": 296,
+          "instruments": [
+            "triangle"
+          ],
+          "rms": 0.13163587079821523,
+          "truncatedNotes": 0
+        },
+        {
+          "voice": 4,
+          "role": "PCM horn inner harmony",
+          "notes": 184,
+          "instruments": [
+            "horn"
+          ],
+          "rms": 0.08925867308206843,
+          "truncatedNotes": 0
+        },
+        {
+          "voice": 5,
+          "role": "PCM strings / answering pulse",
+          "notes": 208,
+          "instruments": [
+            "strings",
+            "pulse"
+          ],
+          "rms": 0.07056553513590767,
+          "truncatedNotes": 0
+        },
+        {
+          "voice": 6,
+          "role": "PCM timpani / kick",
+          "notes": 352,
+          "instruments": [
+            "timpani",
+            "kick"
+          ],
+          "rms": 0.13780916588923786,
+          "truncatedNotes": 0
+        },
+        {
+          "voice": 7,
+          "role": "PCM military snare / tom rolls",
+          "notes": 250,
+          "instruments": [
+            "snare",
+            "tom"
+          ],
+          "rms": 0.04303214855490431,
+          "truncatedNotes": 0
+        },
+        {
+          "voice": 8,
+          "role": "Noise percussion / PCM crash and ride",
+          "notes": 901,
+          "instruments": [
+            "crash",
+            "hat",
+            "noise",
+            "ride"
+          ],
+          "rms": 0.016154221069994423,
+          "truncatedNotes": 0
+        }
+      ],
+      "sha256": "b64f891766c11b8d851a3c18d3d7fa13ef0ac976f9a696c934ef3c2ce57d98d3"
     }
   ]
 }
