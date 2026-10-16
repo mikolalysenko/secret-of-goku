@@ -15,6 +15,7 @@ for(const name of ['goku','ssj']){
   for(let i=0;i<pixels.length;i++)if(png.data[i*4+3])pixels[i]=1+((png.data[i*4]>>3)|((png.data[i*4+1]>>3)<<5)|((png.data[i*4+2]>>3)<<10));
   atlases[name]={pixels,width:png.width,height:png.height};
 }
+atlases.ssjJab=context.window.ManaSpriteLayer.leadPunchAtlas(atlases);
 function scene(direction=1){
   const ram=new Uint8Array(0x20000);ram[0xe4]=ram[0xe5]=ram[0xe000]=1;ram[0xe011]=1;ram[0xe010]=direction;ram[0xe020]=100;ram[0xe022]=100;
   const ppu={oam:new Uint16Array(256),highOam:new Uint16Array(16),objSize:3,spriteSizes:[1,1,1,2,2,4,2,2,2,4,8,4,8,8,4,4],spriteLineBuffer:new Uint8Array(256),spritePrioBuffer:new Uint8Array(256),evaluateSprites(){},getColor(){return this.selectedLayer===4?[0,4,0x91]:[1234,1,3];}};
@@ -225,6 +226,40 @@ test('combat poses preserve exact source pixels and a fixed integer pivot in eve
     }
     assert.equal(layer.surface.filter(Boolean).length,opaque,'no displaced or stray pixels outside the cell');
    }
+  }
+ }
+});
+
+test('the SSJ lead jab retains original fists and arcs, with an attached golden head and complete cell bounds',()=>{
+ const a=atlases.ssjJab,base=atlases.goku,gold=new Set([3409,7834,13216,25568]);
+ for(const cell of context.window.GokuAnimationData.forms.ssjJab.cells){
+  const {column,row,bodyColumn}=cell,frame=[],points=[],reached=new Set(),queue=[];
+  for(let y=0;y<32;y++)for(let x=0;x<32;x++){
+   const c=a.pixels[(32+row*32+y)*a.width+column*32+x],old=base.pixels[(32+row*32+y)*base.width+bodyColumn*32+x];
+   frame.push(c);if(c)points.push([x,y]);
+   if(y>=22)assert.equal(c,old,'the original torso, hips and feet remain intact');
+   const side=row===1||row===2,u=row===2?31-x:x;
+   if(side&&column===0&&u>=27&&y>=11&&y<=15||side&&column===1&&u>=6&&u<=8&&y>=16&&y<=19)
+    assert.equal(c,old,'the cocked fist and extended lead fist cannot be cut by the head');
+   if(old===32768&&(row===3||y>=19||side&&u<=8||row===0&&x>=25))assert.equal(c,old,'white motion arcs stay in front of the head');
+   if(c&&y>=22){queue.push(y*32+x);reached.add(y*32+x);}
+  }
+  const xs=points.map(p=>p[0]),ys=points.map(p=>p[1]);
+  assert.deepEqual(Array.from(cell.bounds),[Math.min(...xs),Math.min(...ys),Math.max(...xs)-Math.min(...xs)+1,Math.max(...ys)-Math.min(...ys)+1]);
+  assert.equal(cell.opaque,points.length);
+  for(let i=0;i<queue.length;i++){
+   const at=queue[i],x=at%32,y=at>>5;
+   for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+    const xx=x+dx,yy=y+dy,next=yy*32+xx;
+    if(xx>=0&&xx<32&&yy>=0&&yy<32&&frame[next]&&!reached.has(next)){reached.add(next);queue.push(next);}
+   }
+  }
+  let hair=0;
+  for(let i=0;i<1024;i++)if(gold.has(frame[i])){hair++;assert.ok(reached.has(i),`row ${row} phase ${column}: golden head stays joined to the body`);}
+  assert.ok(hair>60);
+  for(let ty=0;ty<32;ty+=8)for(let tx=0;tx<32;tx+=8){
+   const colors=new Set();for(let y=ty;y<ty+8;y++)for(let x=tx;x<tx+8;x++)colors.add(frame[y*32+x]);
+   colors.delete(0);assert.ok(colors.size<=15,'each 8px tile fits a 16-color OBJ palette including transparency');
   }
  }
 });

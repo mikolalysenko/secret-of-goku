@@ -34,6 +34,30 @@ test('punches and quick ki stay planted on the native pixel grid through recover
   }
 });
 
+test('held Super Saiyan attacks show both hands and the kick without stepping in any direction',async({page})=>{
+  const path='.local/animation-audit/native/rabite-field-a.json';test.skip(!existsSync(path),'Requires native combat research fixture.');
+  await load(page,path);
+  const trials=await page.evaluate(()=>{
+    for(let i=1;i<12;i++)mana.write8(0xe000+i*512,0);
+    mana.run(4);const base=mana.snapshot(),out=[];
+    for(const direction of[4,5,6,7]){
+      mana.restore(base);const m=mana.mod;m.options.superSaiyan=true;mana.run(2,[direction]);mana.run(4);
+      const start=[m.status.x,m.status.y],poses=new Set(),pivots=new Set();let drift=0;
+      for(let i=0;i<35;i++){
+        mana.run(1,[0,direction]);const p=m.spriteLayer.plan.sprite;
+        poses.add(`${p.sheet}:${p.column}`);pivots.add(`${p.x},${p.y}`);
+        drift=Math.max(drift,Math.hypot(m.status.x-start[0],m.status.y-start[1]));
+      }
+      out.push({direction,poses:[...poses],pivots:pivots.size,drift});
+    }
+    return out;
+  });
+  for(const t of trials){
+    for(const pose of['ssjJab:1','ssj:11','ssj:15'])expect(t.poses,JSON.stringify(t)).toContain(pose);
+    expect(t.drift).toBe(0);expect(t.pivots).toBe(1);
+  }
+});
+
 test('real native Rabites receive punch, travelling beam and ki damage, launch and finish their death animation',async({page})=>{
   const path='.local/animation-audit/native/rabite-field-a.json';test.skip(!existsSync(path),'Requires native combat research fixture.');
   await load(page,path);const results=await page.evaluate(()=>{

@@ -83,9 +83,9 @@ class GokuAnimation {
     else if(kind==='resist')result=this.track(sheet,'brace',0,poseRow);
     else if(kind==='ready')result=this.track(sheet,'chargeWindup',Math.min(action.age,5),poseRow);
     else if(kind==='punch'){
-      const columns=action.super?(action.combo===2?14:10):[10,14,18][action.combo];
+      const columns=action.super?[0,10,14][action.combo]:[10,14,18][action.combo];
       const phase=action.super?(action.age<1?0:action.age<2?1:action.age<4?2:3):(action.age<2?0:action.age<4?1:action.age<7?2:3);
-      result={sheet,row:[0,2,1,3][action.facing],column:columns+phase,
+      result={sheet:action.super&&action.combo===0?'ssjJab':sheet,row:[0,2,1,3][action.facing],column:columns+phase,
         phase:action.age<action.impact?'anticipation':action.age===action.impact?'contact':phase<3?'followThrough':'recover'};
     }else if(kind==='charge')result=this.track(sheet,'charge',action.age,poseRow);
     else if(kind==='beam')result={sheet,row:[0,2,1,3][action.facing],column:(action.super?18:22)+(action.age<2?1:action.age<action.duration-4?2:3)};
@@ -157,7 +157,7 @@ class GokuAnimation {
     // The source's side-on impact/rest cells actually lose their gold hair.
     // Keep SSJ in a low, gold-haired brace instead of showing a false revert.
     if(result.sheet==='ssj'&&[1,2].includes(result.row)&&[42,43].includes(result.column))result.column=33;
-    if(result.row===3&&result.column===1)result.column=0;
+    if(result.row===3&&result.column===1&&result.sheet!=='ssjJab')result.column=0;
     const cell=window.GokuAnimationData.forms[result.sheet].cells[result.column*4+result.row];
     if(!cell?.opaque)throw Error(`Empty Goku animation cell: ${kind} ${result.sheet} ${result.column},${result.row}`);
     // Mana's charged walk alternates a wide stance and feet drawn together.

@@ -30,7 +30,7 @@ test('every form and direction commits exactly one punch on its active visual fr
     const {mod,step,enemy,snes}=setup({superSaiyan,facing}),[dx,dy]=[[0,1],[1,0],[-1,0],[0,-1]][facing];
     const target=enemy(3,200+dx*28,200+dy*28),behind=enemy(4,200-dx*40,200-dy*40),npc=enemy(5,200+dx*24,200+dy*24,100,150);
     step(1);assert.equal(mod.motion.pose().kind,'punch');assert.equal(mod.read16(target+0x182),20000);
-    step(0,superSaiyan?1:2);assert.equal(mod.motion.pose().column,11);assert.ok(mod.read16(target+0x182)<20000);assert.equal(snes.joypad1State&1,0,'a connected punch must not also trigger the hidden sword');
+    step(0,superSaiyan?1:2);assert.equal(mod.motion.pose().column,superSaiyan?1:11);assert.ok(mod.read16(target+0x182)<20000);assert.equal(snes.joypad1State&1,0,'a connected punch must not also trigger the hidden sword');
     const hp=mod.read16(target+0x182);step(0,20);assert.equal(mod.read16(target+0x182),hp);assert.equal(mod.read16(behind+0x182),20000);assert.equal(mod.read16(npc+0x182),100);
   }
 });
@@ -276,6 +276,22 @@ test('every strike keeps its native pivot and blocks movement until recovery fin
    }
    step(0x80);assert.equal(snes.joypad1State&0x80,0x80,'movement resumes immediately after recovery');
   }
+ }
+});
+
+test('both forms use separate lead-hand, rear-hand and kick strips in every direction',()=>{
+ for(const superSaiyan of[false,true])for(let facing=0;facing<4;facing++){
+  const {mod}=setup({superSaiyan,facing}),strips=[];
+  for(let combo=0;combo<3;combo++){
+   const poses=[];
+   for(const age of superSaiyan?[0,1,2,4]:[0,2,4,7]){
+    mod.action={kind:'punch',combo,age,super:superSaiyan,facing,impact:superSaiyan?1:2};
+    const p=mod.motion.pose();poses.push(`${p.sheet}:${p.column}`);assert.equal(p.row,[0,2,1,3][facing]);
+   }
+   assert.equal(new Set(poses).size,4,'every phase is reachable, including the rear-facing contact frame');strips.push(poses);
+  }
+  assert.equal(new Set(strips.flat()).size,12,'the second punch cannot reuse the first hand');
+  if(superSaiyan)assert.deepEqual(strips,[['ssjJab:0','ssjJab:1','ssjJab:2','ssjJab:3'],['ssj:10','ssj:11','ssj:12','ssj:13'],['ssj:14','ssj:15','ssj:16','ssj:17']]);
  }
 });
 

@@ -54,6 +54,25 @@ class ManaSpriteLayer {
       for(let i=0;i<pixels.length;i++)if(bytes[i*4+3])pixels[i]=1+((bytes[i*4]>>3)|((bytes[i*4+1]>>3)<<5)|((bytes[i*4+2]>>3)<<10));
       this.atlas[name]={pixels,width:canvas.width,height:canvas.height};
     }
+    this.atlas.ssjJab=ManaSpriteLayer.leadPunchAtlas(this.atlas);
+  }
+  static leadPunchAtlas({goku,ssj}){
+    const width=128,height=160,pixels=new Uint16Array(width*height);
+    for(const cell of window.GokuAnimationData.forms.ssjJab.cells){
+      const {column,row,bodyColumn,head}=cell,[dx,dy]=head.offset,top=32+row*32;
+      for(let y=0;y<32;y++)for(let x=0;x<32;x++){
+        if((head.mask[y]>>>x)&1)continue;
+        pixels[(top+y)*width+column*32+x]=goku.pixels[(top+y)*goku.width+bodyColumn*32+x];
+      }
+      // A fixed head tile sits behind the original arms and white punch arc.
+      // Copy native pixels once at load, with no scaling or runtime morphing.
+      for(let y=0;y<18;y++)for(let x=0;x<32;x++){
+        const c=ssj.pixels[(top+y)*ssj.width+x];if(!c)continue;
+        const at=(top+y+dy)*width+column*32+x+dx;
+        if(!pixels[at])pixels[at]=c;
+      }
+    }
+    return{pixels,width,height};
   }
   rgb(r,g,b){return 1+((r>>3)|((g>>3)<<5)|((b>>3)<<10));}
   pixel(x,y,color,effect=false){x=Math.round(x);y=Math.round(y);if(x>=0&&x<256&&y>=0&&y<256){const i=y*256+x;if(effect&&this.behindBody&&this.surface[i]&&!this.effectMask[i])return;this.surface[i]=color;this.effectMask[i]=effect?this.behindNative?2:1:0;if(effect&&this.behindNative)this.hasUnderlay=true;}}
