@@ -22,7 +22,7 @@ header>a{text-decoration:none;color:#eee;white-space:nowrap}
 .native-frame{position:relative;width:100%;aspect-ratio:8/7;background:#000;overflow:hidden;margin:auto}
 #screen{display:block;width:100%;height:100%;image-rendering:pixelated;object-fit:contain;outline:none}
 /* Prevent selection, image callouts, scrolling and pinch gestures only on play surfaces. */
-#screen,.touch-pad,.touch-pad *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:none;-webkit-tap-highlight-color:transparent}
+.game-surface,.game-surface *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:none;-webkit-tap-highlight-color:transparent}
 button,button *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .boot-screen{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:#101215;padding:20px;gap:14px}
 .boot-screen h1{font-size:24px;font-weight:500;margin:0;color:#eee}
@@ -72,8 +72,7 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 .touch-utility [aria-expanded=true]{border-color:#bce5f2}
 .touch-actions{display:grid;flex:0 1 216px;grid-template-columns:repeat(3,minmax(44px,1fr));grid-auto-rows:64px;gap:6px}
 #touch-main{grid-template-rows:64px 64px 44px}
-#touch-main [data-icon=teleport]{grid-column:1/-1;grid-auto-flow:column;justify-content:center;align-items:center;gap:8px;color:#c6edff}
-#touch-more [data-icon=fly]{grid-column:span 2}
+#touch-main [data-icon=focus]{grid-column:1/-1;grid-auto-flow:column;justify-content:center;align-items:center;gap:8px;color:#c6edff}
 .touch-actions [data-icon=attack]{color:#c6edff;background:#173445;border-color:#3d697f}
 .touch-actions [data-icon=super]{color:#f0d695}
 .show-touch .touch-pad{display:flex}

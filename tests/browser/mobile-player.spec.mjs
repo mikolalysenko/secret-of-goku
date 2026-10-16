@@ -49,7 +49,10 @@ test('both control pages fit short portrait and landscape webviews, including sa
   await page.setViewportSize(viewport);
   await expect.poll(()=>page.evaluate(()=>Number.parseFloat(document.querySelector('.player').style.getPropertyValue('--viewport-height')))).toBe(viewport.height);
   await expectLayout(page);await expect(page.getByRole('button',{name:'Warp: Instant Transmission',exact:true})).toBeVisible();
-  await page.getByRole('button',{name:'More controls',exact:true}).tap();await expect(page.locator('#touch-more')).toBeVisible();await expectLayout(page,12);
+  const main=await page.locator('#touch-main').boundingBox(),warp=await page.locator('#touch-main [data-snes="23"]').boundingBox(),power=await page.locator('#touch-main [data-snes="10"]').boundingBox();
+  expect(warp.y).toBe(main.y);expect(warp.x+warp.width).toBeCloseTo(main.x+main.width,1);
+  expect(power.x).toBeCloseTo(main.x,1);expect(power.width).toBeCloseTo(main.width,1);expect(power.y+power.height).toBeCloseTo(main.y+main.height,1);
+  await page.getByRole('button',{name:'More controls',exact:true}).tap();await expect(page.locator('#touch-more')).toBeVisible();await expectLayout(page,13);
   await page.locator('#touch-more [data-action="more"]').tap();await expect(page.locator('#touch-main')).toBeVisible();
  }
  await page.setViewportSize({width:390,height:640});
@@ -70,11 +73,14 @@ test('denied fullscreen falls back to an expanded player and exits cleanly',asyn
 
 test('touch labels and game canvas suppress selection and callouts; resizing clears held input',async({page})=>{
  await load(page);
- const prevention=await page.evaluate(()=>['#screen','.touch-pad'].map(selector=>{
+ const prevention=await page.evaluate(()=>['.game-surface','#screen','#native-pause','.pause-card span','.touch-pad','#touch-main button span','#touch-more button span'].map(selector=>{
   const el=document.querySelector(selector),style=getComputedStyle(el);
-  return{selection:style.userSelect||style.webkitUserSelect,touch:style.touchAction,context:!el.dispatchEvent(new Event('contextmenu',{bubbles:true,cancelable:true})),select:!el.dispatchEvent(new Event('selectstart',{bubbles:true,cancelable:true}))};
+  return{selection:style.userSelect||style.webkitUserSelect,touch:style.touchAction,prevented:['contextmenu','selectstart','dragstart','gesturestart','gesturechange'].every(type=>!el.dispatchEvent(new Event(type,{bubbles:true,cancelable:true}))),callout:!CSS.supports('-webkit-touch-callout','none')||style.webkitTouchCallout==='none'};
  }));
- for(const surface of prevention)expect(surface).toEqual({selection:'none',touch:'none',context:true,select:true});
+ for(const surface of prevention)expect(surface).toEqual({selection:'none',touch:'none',prevented:true,callout:true});
+ // Instructions and browser zoom outside the play area remain usable.
+ expect(await page.locator('.settings').first().evaluate(el=>getComputedStyle(el).touchAction)).toBe('auto');
+ await expect(page.locator('meta[name="viewport"]')).not.toHaveAttribute('content',/user-scalable\s*=\s*no|maximum-scale/);
  await page.locator('[data-snes="22"]').dispatchEvent('pointerdown',{pointerId:91,button:0,pointerType:'touch'});
  expect(await page.evaluate(()=>mana.controls.has(22))).toBe(true);
  await page.setViewportSize({width:390,height:540});

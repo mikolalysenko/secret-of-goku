@@ -31,7 +31,9 @@ export function mountPlayerShell(player,{clearInput=()=>{}}={}){
  document.addEventListener('fullscreenchange',fullscreen);
  window.addEventListener('resize',viewport);
  window.visualViewport?.addEventListener('resize',viewport);
- const canvas=player.querySelector('canvas');
- for(const event of ['contextmenu','selectstart','dragstart'])canvas.addEventListener(event,e=>e.preventDefault());
+ const surface=player.querySelector('.game-surface');
+ // Include overlays and gaps between controls: a gesture can start there
+ // before either finger reaches a button. Keep these guards local to play.
+ for(const event of ['contextmenu','selectstart','dragstart','gesturestart','gesturechange'])surface?.addEventListener(event,e=>e.preventDefault(),{passive:false});
  viewport();
 }

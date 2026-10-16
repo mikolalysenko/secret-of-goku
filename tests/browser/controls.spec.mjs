@@ -1,6 +1,12 @@
 import {test,expect} from '@playwright/test';
 import {existsSync,readFileSync} from 'node:fs';
 const fixture='.local/graphics-audit/party.json';
+async function installGamepad(page){
+ await page.addInitScript(()=>{
+  window.testPad={buttons:[],axes:[0,0],connected:true};
+  Object.defineProperty(navigator,'getGamepads',{value:()=>testPad.connected?[{index:0,id:'Browser test controller',mapping:'standard',connected:true,axes:[...testPad.axes],buttons:Array.from({length:17},(_,i)=>({pressed:testPad.buttons.includes(i),value:testPad.buttons.includes(i)?1:0}))}]:[]});
+ });
+}
 async function load(page){
  test.skip(!existsSync('.local/rom/secret-of-mana-us.sfc')||!existsSync(fixture),'Requires local ROM and native party fixture.');
  await page.goto('/');await page.waitForFunction(()=>window.mana?.ready);
@@ -39,14 +45,14 @@ test('multitouch can move, slide diagonally and charge together; cancellation ne
  await context.close();
 });
 test('standard gamepad drives charge, movement, menus, transformation and pause; disconnect cancels charge',async({page})=>{
- await page.addInitScript(()=>{
-  window.testPad={buttons:[],axes:[0,0],connected:true};
-  Object.defineProperty(navigator,'getGamepads',{value:()=>testPad.connected?[{index:0,id:'Browser test controller',mapping:'standard',connected:true,axes:[...testPad.axes],buttons:Array.from({length:17},(_,i)=>({pressed:testPad.buttons.includes(i),value:testPad.buttons.includes(i)?1:0}))}]:[]});
- });
+ await installGamepad(page);
  await load(page);await page.evaluate(()=>mana.play());
  await expect(page.locator('#gamepad-status')).toHaveText('Controller connected');
  // Let the neutral snapshot rearm the controller after restoring a checkpoint.
  await expect.poll(()=>page.evaluate(()=>mana.gamepads.pads.get(0)?.blocked)).toBe(false);
+ await page.evaluate(()=>testPad.buttons=[4]);await expect.poll(()=>page.evaluate(()=>mana.mod.powerCharge)).toBe(96);
+ expect(await page.evaluate(()=>mana.mod.options.superSaiyan)).toBe(false);
+ await page.evaluate(()=>testPad.buttons=[]);await expect.poll(()=>page.evaluate(()=>mana.mod.powerCharge)).toBe(0);
  const x=await page.evaluate(()=>mana.mod.status.x);
  await page.evaluate(()=>{testPad.buttons=[4,2];testPad.axes=[-.8,0];});
  await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBeGreaterThan(15);expect(await page.evaluate(()=>mana.mod.status.x)).toBeLessThan(x);
@@ -54,15 +60,84 @@ test('standard gamepad drives charge, movement, menus, transformation and pause;
  await expect.poll(()=>page.evaluate(()=>mana.mod.action)).toBe(null);
  await page.evaluate(()=>testPad.buttons=[4,1]);await expect.poll(()=>page.evaluate(()=>mana.mod.options.superSaiyan)).toBe(true);await page.evaluate(()=>testPad.buttons=[]);
  await expect.poll(()=>page.evaluate(()=>mana.mod.action)).toBe(null);
+ await page.evaluate(()=>testPad.buttons=[4]);await expect.poll(()=>page.evaluate(()=>mana.mod.powerCharge)).toBe(96);
+ expect(await page.evaluate(()=>mana.mod.options.superSaiyan)).toBe(true);
+ await page.evaluate(()=>testPad.buttons=[]);await expect.poll(()=>page.evaluate(()=>mana.mod.powerCharge)).toBe(0);
  await page.evaluate(()=>testPad.buttons=[4,1]);await expect.poll(()=>page.evaluate(()=>mana.mod.options.superSaiyan)).toBe(false);await page.evaluate(()=>testPad.buttons=[]);
  await expect.poll(()=>page.evaluate(()=>mana.mod.action)).toBe(null);
- await page.evaluate(()=>testPad.buttons=[3]);await expect.poll(()=>page.evaluate(()=>mana.read8(0xec)&8)).not.toBe(0);await page.evaluate(()=>testPad.buttons=[]);
- await expect.poll(()=>page.evaluate(()=>mana.controls.has(9))).toBe(false);await page.evaluate(()=>testPad.buttons=[3]);await expect.poll(()=>page.evaluate(()=>mana.read8(0xec)&8)).toBe(0);await page.evaluate(()=>testPad.buttons=[]);
+ // Tap Menu, then observe its animation. Holding it while polling a transient
+ // native flag can repeatedly open/close the ring before the next assertion.
+ const tapMenu=async()=>{
+  await page.evaluate(()=>testPad.buttons=[3]);await page.waitForFunction(()=>mana.controls.has(9));
+  await page.evaluate(()=>testPad.buttons=[]);await page.waitForFunction(()=>!(mana.mod.padInput&0x200));
+  // The cartridge clears its menu flag briefly during ring transitions.
+  // Let the native animation finish before the next controller action.
+  const frame=await page.evaluate(()=>mana.mod.frame);await page.waitForFunction(frame=>mana.mod.frame>=frame+60,frame);
+ };
+ await tapMenu();await expect.poll(()=>page.evaluate(()=>mana.read8(0xec)&8)).not.toBe(0);
+ await tapMenu();await expect.poll(()=>page.evaluate(()=>mana.mod.canAttack)).toBe(true);
  await page.evaluate(()=>testPad.buttons=[11]);await expect.poll(()=>page.evaluate(()=>mana.running)).toBe(false);await page.evaluate(()=>testPad.buttons=[]);
  await expect.poll(()=>page.evaluate(()=>mana.gamepads.pads.get(0)?.blocked)).toBe(false);await page.evaluate(()=>testPad.buttons=[9]);await expect.poll(()=>page.evaluate(()=>mana.running)).toBe(true);await page.evaluate(()=>testPad.buttons=[]);
  await expect.poll(()=>page.evaluate(()=>mana.mod.canAttack)).toBe(true);const beams=await page.evaluate(()=>mana.logs.filter(l=>l.startsWith('Kamehameha')).length);
  await page.evaluate(()=>testPad.buttons=[4,2]);await expect.poll(()=>page.evaluate(()=>mana.mod.charging)).toBe(true);await page.evaluate(()=>testPad.connected=false);
  await expect.poll(()=>page.evaluate(()=>mana.mod.charging)).toBe(false);expect(await page.evaluate(()=>mana.logs.filter(l=>l.startsWith('Kamehameha')).length)).toBe(beams);
+});
+
+test('touch and gamepad keep independent holds and rearm safely after pause',async({browser})=>{
+ const context=await browser.newContext({hasTouch:true,isMobile:true,viewport:{width:390,height:640}}),page=await context.newPage();
+ await installGamepad(page);await load(page);
+ await expect.poll(()=>page.evaluate(()=>mana.gamepads.pads.get(0)?.blocked)).toBe(false);
+ const session=await context.newCDPSession(page),power=page.getByRole('button',{name:'Power: Hold to charge ki / break stun',exact:true}),r=await power.boundingBox();
+ await session.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:r.x+r.width/2,y:r.y+r.height/2,id:1,radiusX:4,radiusY:4,force:1}]});
+ await expect.poll(()=>page.evaluate(()=>mana.mod.powerCharge)).toBe(96);
+ await page.evaluate(()=>testPad.buttons=[4]);
+ await expect.poll(()=>page.evaluate(()=>[...mana.controls.held.entries()].filter(([,bit])=>bit===10).length)).toBe(2);
+ await session.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+ expect(await page.evaluate(()=>mana.controls.has(10))).toBe(true);expect(await page.evaluate(()=>mana.mod.powerCharge)).toBe(96);
+ await expect(power).not.toHaveClass(/is-held/);
+ await page.evaluate(()=>testPad.buttons=[]);await expect.poll(()=>page.evaluate(()=>mana.mod.powerCharge)).toBe(0);
+ await page.evaluate(()=>testPad.buttons=[4,2]);await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBeGreaterThan(20);
+ const shots=await page.evaluate(()=>mana.logs.filter(l=>l.startsWith('Kamehameha')).length);
+ await page.keyboard.press('Escape');await expect.poll(()=>page.evaluate(()=>mana.running)).toBe(false);
+ await page.getByRole('button',{name:'Start',exact:true}).tap();
+ await expect.poll(()=>page.evaluate(()=>mana.running)).toBe(true);
+ expect(await page.evaluate(()=>({blocked:mana.gamepads.pads.get(0).blocked,held:mana.controls.held.size,charging:mana.mod.charging}))).toEqual({blocked:true,held:0,charging:false});
+ await page.evaluate(()=>testPad.buttons=[]);await expect.poll(()=>page.evaluate(()=>mana.gamepads.pads.get(0).blocked)).toBe(false);
+ await page.evaluate(()=>testPad.buttons=[4]);await expect.poll(()=>page.evaluate(()=>mana.mod.powerCharge)).toBe(96);
+ expect(await page.evaluate(()=>mana.mod.options.superSaiyan)).toBe(false);
+ await page.evaluate(()=>testPad.connected=false);await expect.poll(()=>page.evaluate(()=>mana.mod.powerCharge)).toBe(0);
+ expect(await page.evaluate(()=>mana.controls.held.size)).toBe(0);
+ expect(await page.evaluate(()=>mana.logs.filter(l=>l.startsWith('Kamehameha')).length)).toBe(shots);
+ await context.close();
+});
+
+test('touch Power charges and breaks stun without transforming; More has a separate SSJ action',async({browser})=>{
+ const context=await browser.newContext({hasTouch:true,isMobile:true,viewport:{width:390,height:640}}),page=await context.newPage();await load(page);
+ const session=await context.newCDPSession(page);
+ const hold=async locator=>{const r=await locator.boundingBox();await session.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:r.x+r.width/2,y:r.y+r.height/2,id:1,radiusX:4,radiusY:4,force:1}]});};
+ const release=()=>session.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+ const power=page.getByRole('button',{name:'Power: Hold to charge ki / break stun',exact:true});
+ await hold(power);await expect.poll(()=>page.evaluate(()=>mana.mod.powerCharge)).toBe(96);
+ expect(await page.evaluate(()=>mana.mod.options.superSaiyan)).toBe(false);
+ await release();await expect.poll(()=>page.evaluate(()=>mana.mod.powerCharge)).toBe(0);
+ // Petrification removes native controller ownership as well as movement.
+ const stunned=await page.evaluate(()=>{mana.pause();mana.write8(0xe200,0);mana.write8(0xe400,0);mana.run(4);mana.write16(0xe190,0x40);mana.run(90);return !mana.mod.canAttack&&!!(mana.read16(0xe190)&0x40)&&!(mana.read8(0xe02c)&1);});
+ expect(stunned).toBe(true);
+ await hold(power);await expect.poll(()=>page.evaluate(()=>mana.mod.canAttack&&!(mana.read16(0xe190)&0x40)&&!!(mana.read8(0xe02c)&1))).toBe(true);
+ await expect.poll(()=>page.evaluate(()=>mana.mod.powerCharge)).toBe(96);
+ expect(await page.evaluate(()=>mana.mod.options.superSaiyan)).toBe(false);
+ await release();await page.getByRole('button',{name:'More controls',exact:true}).tap();
+ const ssj=page.getByRole('button',{name:'SSJ: Hold to become Super Saiyan / tap to return to normal',exact:true});
+ await expect(page.getByRole('button',{name:'Take off into world flight',exact:true})).toBeVisible();
+ await hold(ssj);await expect.poll(()=>page.evaluate(()=>mana.mod.options.superSaiyan)).toBe(true);await release();
+ await expect.poll(()=>page.evaluate(()=>mana.mod.action)).toBe(null);
+ await page.locator('#touch-more [data-action="more"]').tap();await hold(power);
+ await expect.poll(()=>page.evaluate(()=>mana.mod.powerCharge)).toBe(96);
+ expect(await page.evaluate(()=>mana.mod.options.superSaiyan)).toBe(true);
+ await release();await page.getByRole('button',{name:'More controls',exact:true}).tap();await ssj.tap();
+ await expect.poll(()=>page.evaluate(()=>mana.mod.options.superSaiyan)).toBe(false);
+ await expect.poll(()=>page.evaluate(()=>mana.controls.held.size)).toBe(0);
+ expect(await page.evaluate(()=>String(getSelection()))).toBe('');await context.close();
 });
 
 test('touch releases outside buttons, and interrupted gestures cannot leave a held chord or ghost click',async({browser})=>{

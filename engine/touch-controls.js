@@ -22,7 +22,7 @@ export function mountTouchControls(root,input,{ready=()=>true,resume=()=>{},fly=
   const name=caption&&!label.toLowerCase().includes(caption.toLowerCase())?`${caption}: ${label}`:label;
   return `<button type="button" aria-label="${name}" title="${name}" ${typeof bit==='number'?`data-snes="${bit}"`:`data-action="${bit}"`} data-icon="${icon}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${icons[icon]}</svg>${caption?`<span aria-hidden="true">${caption}</span>`:''}</button>`;
  };
- root.innerHTML=`<div class="touch-left"><div class="touch-directions" aria-label="Move">${button('up','Up',4)}${button('left','Left',6)}${button('down','Down',5)}${button('right','Right',7)}</div><div class="touch-utility">${button('start','Start',3,'Start')}${button('pause','Pause or resume','pause','Pause')}${button('more','More controls','more','More')}</div></div><div class="touch-actions" id="touch-main">${button('ring','Menu / back',Controls.ring,'Menu')}${button('hover','Hold to fly fast / ascend',8,'Fly')}${button('super','Hold to transform / tap to return to normal',Controls.transform,'Power')}${button('ki','Ki blast / hold for rapid fire',Controls.blast,'Ki')}${button('attack','Punch / hold for combo / confirm / descend',Controls.physical,'Punch')}${button('wave','Hold Kamehameha / release to fire',Controls.wave,'Beam')}${button('teleport','Instant Transmission',Controls.teleport,'Warp')}</div><div class="touch-actions" id="touch-more" hidden>${button('focus','Hold to focus / recover from sleep or petrification',Controls.modifier,'Focus')}${button('fast','Hold to fast-forward dialogue',Controls.fastForward,'Skip')}${button('party','Switch party member',2,'Party')}${button('fly','Take off into world flight',Controls.flight,'Take off')}${button('back','Back to main controls','more','Back')}</div>`;
+ root.innerHTML=`<div class="touch-left"><div class="touch-directions" aria-label="Move">${button('up','Up',4)}${button('left','Left',6)}${button('down','Down',5)}${button('right','Right',7)}</div><div class="touch-utility">${button('start','Start',3,'Start')}${button('pause','Pause or resume','pause','Pause')}${button('more','More controls','more','More')}</div></div><div class="touch-actions" id="touch-main">${button('ring','Menu / back',Controls.ring,'Menu')}${button('hover','Hold to fly fast / ascend',8,'Fly')}${button('teleport','Instant Transmission',Controls.teleport,'Warp')}${button('ki','Ki blast / hold for rapid fire',Controls.blast,'Ki')}${button('attack','Punch / hold for combo / confirm / descend',Controls.physical,'Punch')}${button('wave','Hold Kamehameha / release to fire',Controls.wave,'Beam')}${button('focus','Hold to charge ki / break stun',Controls.modifier,'Power')}</div><div class="touch-actions" id="touch-more" hidden>${button('focus','Hold to focus / recover from sleep or petrification',Controls.modifier,'Focus')}${button('fast','Hold to fast-forward dialogue',Controls.fastForward,'Skip')}${button('party','Switch party member',2,'Party')}${button('fly','Take off into world flight',Controls.flight,'Take off')}${button('super','Hold to become Super Saiyan / tap to return to normal',Controls.transform,'SSJ')}${button('back','Back to main controls','more','Back')}</div>`;
  const more=root.querySelector('.touch-utility [data-action="more"]');
  more.setAttribute('aria-controls','touch-more');more.setAttribute('aria-expanded','false');
  function toggleMore(){
@@ -44,7 +44,12 @@ export function mountTouchControls(root,input,{ready=()=>true,resume=()=>{},fly=
   for(const bit of[4,5,6,7]){const key=prefix+bit;if(bits.includes(bit))input.press(key,bit);else input.cancel(key);}
   highlight();
  }
- function highlight(){for(const el of root.querySelectorAll('[data-snes]'))el.classList.toggle('is-held',input.has(Number(el.dataset.snes)));}
+ function highlight(){
+  // A controller holding the same bit must not leave a released touch button
+  // lit: controller changes do not dispatch pointer events to refresh it.
+  const held=new Set([...input.held].filter(([source])=>source.startsWith('touch:')).map(([,bit])=>bit));
+  for(const el of root.querySelectorAll('[data-snes]'))el.classList.toggle('is-held',held.has(Number(el.dataset.snes)));
+ }
  function dropCapture(id,pointer){
   try{if(pointer.capture.hasPointerCapture(id))pointer.capture.releasePointerCapture(id);}catch{/* A webview may have already discarded the pointer. */}
  }
