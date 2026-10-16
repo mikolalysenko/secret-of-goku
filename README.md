@@ -187,7 +187,7 @@ Open **http://127.0.0.1:5173** and select your ROM. Optionally import it with th
 | `engine/native-mod-save.js` + `battery.js` | Per-slot mod metadata bound to native SRAM records without changing cartridge save bytes |
 | `engine/shenron-ending.js`, `planet-view.js`, `kai-planet.js` | Summoning, restoration, planetary consequences and Snake Way epilogue |
 | `engine/frieza-orbit.js`, `frieza-orbit-view.js` | Orbital combat, ricochets and the charged/mash beam struggle |
-| `engine/frieza-score.js`, `scripts/compose-frieza-score.mjs` | Original three-part SNES-style score and reproducible audio synthesis |
+| `engine/frieza-score.js`, `engine/spc-score.js`, `engine/mana-instruments.js` | Frieza/Vegeta score: arrangements rendered at runtime from the cartridge's own Mana instrument bank, plus the original entrance cue |
 | `engine/native-plants.js` | Original destructible map tiles and native redraw |
 | `engine/dungeon-geometry.js` + `dungeon-demolition.js` | Live dungeon gap/wall validation, paired-layer breaches and room-colored debris |
 | `engine/native-flight.js` + `native-local-flight.js` | Direct world flight, local hover, collision and landing |

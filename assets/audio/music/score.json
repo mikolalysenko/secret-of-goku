@@ -1,286 +1,456 @@
 {
-  "arrangement": "Secret of Goku eight-voice Frieza battle arrangement",
-  "reference": {
-    "title": "Kaibutsu Freeza vs Densetsu no Super Saiyajin",
-    "composer": "Shunsuke Kikuchi",
-    "url": "https://www.youtube.com/watch?v=5CpQ-uBRa78",
-    "material": "F-minor battle march and brass answers in the opening movement, especially 0:10–0:42 and 0:44–1:22"
+  "entrance": {
+    "file": "arrival.wav",
+    "bpm": 72,
+    "bars": 8,
+    "duration": 26.666666666666668,
+    "instruments": 8,
+    "title": "Five Minutes",
+    "sampleRate": 22050,
+    "quantizationBits": 12,
+    "rights": "Original project composition, MIT"
   },
-  "rights": "The combat cues adapt Shunsuke Kikuchi’s composition, which remains with its respective rights holders. The code license does not relicense that composition. Five Minutes remains an original project cue.",
-  "source": "scripts/compose-frieza-score.mjs",
-  "renderer": "scripts/tracker-score.mjs",
-  "sampleRate": 32000,
-  "quantizationBits": 16,
-  "description": "PCM brass, strings, horns and timpani, pulse/square lead voices, triangle bass, military snare and noise percussion. The orbital arrangement increases the pace and develops the same motifs; the entrance cue is unchanged. No reference recording is embedded.",
-  "tracks": [
-    {
-      "file": "arrival.wav",
-      "bpm": 72,
-      "bars": 8,
-      "duration": 26.666666666666668,
-      "instruments": 8,
-      "title": "Five Minutes",
-      "sampleRate": 22050,
-      "quantizationBits": 12,
-      "rights": "Original project composition, MIT"
+  "runtime": {
+    "renderer": "engine/spc-score.js",
+    "instruments": "engine/mana-instruments.js",
+    "arrangements": "engine/mana-arrangements.js",
+    "sampleRate": 32000,
+    "description": "Rendered in the browser from Secret of Mana's own BRR instrument bank, read from the player's ROM: eight monophonic voices, gaussian interpolation, hardware ADSR and echo. No cartridge audio is stored in the repository.",
+    "references": {
+      "battle": {
+        "title": "Kaibutsu Freeza vs Densetsu no Super Saiyajin",
+        "composer": "Shunsuke Kikuchi",
+        "url": "https://www.youtube.com/watch?v=5CpQ-uBRa78",
+        "material": "F-minor battle march and brass answers in the opening movement, especially 0:10–0:42 and 0:44–1:22"
+      },
+      "vegeta": {
+        "title": "Vegeta's Theme",
+        "credit": "Faulconer Productions Music — Dragon Ball Z English-language score",
+        "url": "https://www.youtube.com/watch?v=M954D_jyJbQ&t=3s"
+      }
     },
-    {
-      "file": "battle.wav",
-      "title": "Freeza vs the Legendary Super Saiyan — Battle",
-      "bpm": 144,
-      "bars": 48,
-      "duration": 80,
-      "voices": 8,
-      "sections": [
-        {
-          "bar": 0,
-          "name": "F-minor battle march"
-        },
-        {
-          "bar": 8,
-          "name": "Dominant brass answer"
-        },
-        {
-          "bar": 16,
-          "name": "String pursuit"
-        },
-        {
-          "bar": 24,
-          "name": "Tense low-register interlude"
-        },
-        {
-          "bar": 32,
-          "name": "Brass and pulse reprise"
-        },
-        {
-          "bar": 40,
-          "name": "Full ensemble climax"
-        }
-      ],
-      "channels": [
-        {
-          "voice": 1,
-          "role": "PCM brass / square lead",
-          "notes": 208,
-          "instruments": [
-            "brass",
-            "horn"
-          ],
-          "rms": 0.1349173347135821,
-          "truncatedNotes": 0
-        },
-        {
-          "voice": 2,
-          "role": "PCM strings / pulse ostinato",
-          "notes": 336,
-          "instruments": [
-            "strings"
-          ],
-          "rms": 0.06375934544356952,
-          "truncatedNotes": 0
-        },
-        {
-          "voice": 3,
-          "role": "Triangle / low horn bass",
-          "notes": 216,
-          "instruments": [
-            "triangle"
-          ],
-          "rms": 0.12838054361496293,
-          "truncatedNotes": 0
-        },
-        {
-          "voice": 4,
-          "role": "PCM horn inner harmony",
-          "notes": 136,
-          "instruments": [
-            "horn"
-          ],
-          "rms": 0.08751826245133977,
-          "truncatedNotes": 0
-        },
-        {
-          "voice": 5,
-          "role": "PCM strings / answering pulse",
-          "notes": 144,
-          "instruments": [
-            "strings",
-            "pulse"
-          ],
-          "rms": 0.06486305369240235,
-          "truncatedNotes": 0
-        },
-        {
-          "voice": 6,
-          "role": "PCM timpani / kick",
-          "notes": 136,
-          "instruments": [
-            "timpani",
-            "kick"
-          ],
-          "rms": 0.08877402832127751,
-          "truncatedNotes": 0
-        },
-        {
-          "voice": 7,
-          "role": "PCM military snare / tom rolls",
-          "notes": 140,
-          "instruments": [
-            "snare",
-            "tom"
-          ],
-          "rms": 0.029664914266083198,
-          "truncatedNotes": 0
-        },
-        {
-          "voice": 8,
-          "role": "Noise percussion / PCM crash and ride",
-          "notes": 366,
-          "instruments": [
-            "crash",
-            "noise",
-            "hat",
-            "ride"
-          ],
-          "rms": 0.011521444848941168,
-          "truncatedNotes": 0
-        }
-      ],
-      "sha256": "bfa937e412c9af0bc8e2664532c80d2a116124c3681a95a8b91c97bed892f2f0"
-    },
-    {
-      "file": "orbit.wav",
-      "title": "Freeza vs the Legendary Super Saiyan — Orbit",
-      "bpm": 160,
-      "bars": 64,
-      "duration": 96,
-      "voices": 8,
-      "sections": [
-        {
-          "bar": 0,
-          "name": "F-minor battle march"
-        },
-        {
-          "bar": 8,
-          "name": "Dominant brass answer"
-        },
-        {
-          "bar": 16,
-          "name": "String pursuit"
-        },
-        {
-          "bar": 24,
-          "name": "Tense low-register interlude"
-        },
-        {
-          "bar": 32,
-          "name": "Brass and pulse reprise"
-        },
-        {
-          "bar": 40,
-          "name": "Full ensemble climax"
-        },
-        {
-          "bar": 48,
-          "name": "Orbital counterpoint"
-        },
-        {
-          "bar": 56,
-          "name": "Final brass charge and turnaround"
-        }
-      ],
-      "channels": [
-        {
-          "voice": 1,
-          "role": "PCM brass / square lead",
-          "notes": 277,
-          "instruments": [
-            "brass",
-            "horn",
-            "square"
-          ],
-          "rms": 0.1691365522913991,
-          "truncatedNotes": 0
-        },
-        {
-          "voice": 2,
-          "role": "PCM strings / pulse ostinato",
-          "notes": 464,
-          "instruments": [
-            "strings",
-            "pulse"
-          ],
-          "rms": 0.06596213133928126,
-          "truncatedNotes": 0
-        },
-        {
-          "voice": 3,
-          "role": "Triangle / low horn bass",
-          "notes": 296,
-          "instruments": [
-            "triangle"
-          ],
-          "rms": 0.13163587079821523,
-          "truncatedNotes": 0
-        },
-        {
-          "voice": 4,
-          "role": "PCM horn inner harmony",
-          "notes": 184,
-          "instruments": [
-            "horn"
-          ],
-          "rms": 0.08925867308206843,
-          "truncatedNotes": 0
-        },
-        {
-          "voice": 5,
-          "role": "PCM strings / answering pulse",
-          "notes": 208,
-          "instruments": [
-            "strings",
-            "pulse"
-          ],
-          "rms": 0.07056553513590767,
-          "truncatedNotes": 0
-        },
-        {
-          "voice": 6,
-          "role": "PCM timpani / kick",
-          "notes": 352,
-          "instruments": [
-            "timpani",
-            "kick"
-          ],
-          "rms": 0.13780916588923786,
-          "truncatedNotes": 0
-        },
-        {
-          "voice": 7,
-          "role": "PCM military snare / tom rolls",
-          "notes": 250,
-          "instruments": [
-            "snare",
-            "tom"
-          ],
-          "rms": 0.04303214855490431,
-          "truncatedNotes": 0
-        },
-        {
-          "voice": 8,
-          "role": "Noise percussion / PCM crash and ride",
-          "notes": 901,
-          "instruments": [
-            "crash",
-            "hat",
-            "noise",
-            "ride"
-          ],
-          "rms": 0.016154221069994423,
-          "truncatedNotes": 0
-        }
-      ],
-      "sha256": "b64f891766c11b8d851a3c18d3d7fa13ef0ac976f9a696c934ef3c2ce57d98d3"
-    }
-  ]
+    "rights": "The combat cues adapt Shunsuke Kikuchi’s composition and the training cues adapt the Faulconer Productions Vegeta theme; both remain with their respective rights holders. The instrument samples belong to Square Enix and come only from the player’s cartridge. The code license relicenses neither.",
+    "tracks": [
+      {
+        "key": "battle",
+        "title": "Freeza vs the Legendary Super Saiyan — Battle",
+        "bpm": 152,
+        "bars": 48,
+        "duration": 75.78947368421052,
+        "sections": [
+          {
+            "bar": 0,
+            "name": "Danger-style unison figure"
+          },
+          {
+            "bar": 4,
+            "name": "Battle march"
+          },
+          {
+            "bar": 12,
+            "name": "Flute and brass answer"
+          },
+          {
+            "bar": 20,
+            "name": "Harp breakdown"
+          },
+          {
+            "bar": 28,
+            "name": "Chromatic climb and march reprise"
+          },
+          {
+            "bar": 36,
+            "name": "Full answer"
+          },
+          {
+            "bar": 44,
+            "name": "Descent and turnaround"
+          }
+        ],
+        "voices": [
+          {
+            "role": "Kick and snare",
+            "notes": 419,
+            "patches": [
+              "kick",
+              "snare"
+            ]
+          },
+          {
+            "role": "Lead brass / flute",
+            "notes": 233,
+            "patches": [
+              "brass",
+              "flute"
+            ]
+          },
+          {
+            "role": "Strike layer / counter brass",
+            "notes": 180,
+            "patches": [
+              "strike",
+              "brass",
+              "flute"
+            ]
+          },
+          {
+            "role": "Octave bass",
+            "notes": 396,
+            "patches": [
+              "bass"
+            ]
+          },
+          {
+            "role": "Strings (upper)",
+            "notes": 112,
+            "patches": [
+              "strings"
+            ]
+          },
+          {
+            "role": "Strings (middle)",
+            "notes": 112,
+            "patches": [
+              "strings"
+            ]
+          },
+          {
+            "role": "Strings (lower) / brass stabs / harp",
+            "notes": 256,
+            "patches": [
+              "strings",
+              "harp",
+              "stab"
+            ]
+          },
+          {
+            "role": "Hi-hats and crash",
+            "notes": 222,
+            "patches": [
+              "crash",
+              "hat",
+              "openHat"
+            ]
+          }
+        ]
+      },
+      {
+        "key": "orbit",
+        "title": "Freeza vs the Legendary Super Saiyan — Orbit",
+        "bpm": 166,
+        "bars": 64,
+        "duration": 92.53012048192771,
+        "sections": [
+          {
+            "bar": 0,
+            "name": "Danger-style unison figure"
+          },
+          {
+            "bar": 4,
+            "name": "Battle march"
+          },
+          {
+            "bar": 12,
+            "name": "Flute and brass answer"
+          },
+          {
+            "bar": 20,
+            "name": "Orbital counterpoint"
+          },
+          {
+            "bar": 28,
+            "name": "Chromatic climb and march reprise"
+          },
+          {
+            "bar": 36,
+            "name": "Full answer"
+          },
+          {
+            "bar": 44,
+            "name": "Lead and brass march"
+          },
+          {
+            "bar": 52,
+            "name": "Final charge"
+          },
+          {
+            "bar": 60,
+            "name": "Turnaround"
+          }
+        ],
+        "voices": [
+          {
+            "role": "Kick and snare",
+            "notes": 642,
+            "patches": [
+              "kick",
+              "snare"
+            ]
+          },
+          {
+            "role": "Lead brass / flute",
+            "notes": 301,
+            "patches": [
+              "brass",
+              "flute",
+              "lead"
+            ]
+          },
+          {
+            "role": "Strike layer / counter brass",
+            "notes": 284,
+            "patches": [
+              "strike",
+              "brass",
+              "flute",
+              "lead"
+            ]
+          },
+          {
+            "role": "Octave bass",
+            "notes": 644,
+            "patches": [
+              "bass"
+            ]
+          },
+          {
+            "role": "Strings (upper)",
+            "notes": 152,
+            "patches": [
+              "strings"
+            ]
+          },
+          {
+            "role": "Strings (middle)",
+            "notes": 152,
+            "patches": [
+              "strings"
+            ]
+          },
+          {
+            "role": "Strings (lower) / brass stabs / harp",
+            "notes": 328,
+            "patches": [
+              "strings",
+              "harp",
+              "stab"
+            ]
+          },
+          {
+            "role": "Hi-hats and crash",
+            "notes": 772,
+            "patches": [
+              "crash",
+              "openHat",
+              "hat"
+            ]
+          }
+        ]
+      },
+      {
+        "key": "vegeta",
+        "title": "Vegeta's Theme — Time Chamber",
+        "bpm": 132,
+        "bars": 48,
+        "duration": 87.27272727272727,
+        "sections": [
+          {
+            "bar": 0,
+            "name": "Tolling bell theme"
+          },
+          {
+            "bar": 8,
+            "name": "Brass answer over the guitar figure"
+          },
+          {
+            "bar": 16,
+            "name": "Royal march"
+          },
+          {
+            "bar": 24,
+            "name": "Bell and harp breakdown"
+          },
+          {
+            "bar": 32,
+            "name": "Full brass reprise"
+          },
+          {
+            "bar": 40,
+            "name": "Final counterpoint and turnaround"
+          }
+        ],
+        "voices": [
+          {
+            "role": "Kick and snare",
+            "notes": 318,
+            "patches": [
+              "kick",
+              "snare"
+            ]
+          },
+          {
+            "role": "Bell / brass / lead melody",
+            "notes": 73,
+            "patches": [
+              "bell",
+              "brass",
+              "flute"
+            ]
+          },
+          {
+            "role": "Choir / strike / flute layer",
+            "notes": 72,
+            "patches": [
+              "choir",
+              "bell",
+              "flute",
+              "strike",
+              "brass"
+            ]
+          },
+          {
+            "role": "Picked bass (upper octave)",
+            "notes": 276,
+            "patches": [
+              "pick"
+            ]
+          },
+          {
+            "role": "Picked bass (lower octave)",
+            "notes": 276,
+            "patches": [
+              "pickHigh"
+            ]
+          },
+          {
+            "role": "Strings (upper) / harp",
+            "notes": 232,
+            "patches": [
+              "strings",
+              "harp"
+            ]
+          },
+          {
+            "role": "Strings (lower) / choir",
+            "notes": 113,
+            "patches": [
+              "strings",
+              "choir"
+            ]
+          },
+          {
+            "role": "Hi-hats and crash",
+            "notes": 285,
+            "patches": [
+              "crash",
+              "openHat",
+              "hat"
+            ]
+          }
+        ]
+      },
+      {
+        "key": "vegeta-full-power",
+        "title": "Vegeta's Theme — Super Saiyan",
+        "bpm": 152,
+        "bars": 48,
+        "duration": 75.78947368421052,
+        "sections": [
+          {
+            "bar": 0,
+            "name": "Tolling bell theme"
+          },
+          {
+            "bar": 8,
+            "name": "Brass answer over the guitar figure"
+          },
+          {
+            "bar": 16,
+            "name": "Royal march"
+          },
+          {
+            "bar": 24,
+            "name": "Bell and harp breakdown"
+          },
+          {
+            "bar": 32,
+            "name": "Full brass reprise"
+          },
+          {
+            "bar": 40,
+            "name": "Final counterpoint and turnaround"
+          }
+        ],
+        "voices": [
+          {
+            "role": "Kick and snare",
+            "notes": 319,
+            "patches": [
+              "kick",
+              "snare"
+            ]
+          },
+          {
+            "role": "Bell / brass / lead melody",
+            "notes": 73,
+            "patches": [
+              "bell",
+              "brass",
+              "lead"
+            ]
+          },
+          {
+            "role": "Choir / strike / flute layer",
+            "notes": 72,
+            "patches": [
+              "choir",
+              "bell",
+              "lead",
+              "strike",
+              "brass"
+            ]
+          },
+          {
+            "role": "Picked bass (upper octave)",
+            "notes": 276,
+            "patches": [
+              "pick"
+            ]
+          },
+          {
+            "role": "Picked bass (lower octave)",
+            "notes": 276,
+            "patches": [
+              "pickHigh"
+            ]
+          },
+          {
+            "role": "Strings (upper) / harp",
+            "notes": 232,
+            "patches": [
+              "strings",
+              "harp"
+            ]
+          },
+          {
+            "role": "Strings (lower) / choir",
+            "notes": 113,
+            "patches": [
+              "strings",
+              "choir"
+            ]
+          },
+          {
+            "role": "Hi-hats and crash",
+            "notes": 531,
+            "patches": [
+              "crash",
+              "openHat",
+              "hat"
+            ]
+          }
+        ]
+      }
+    ]
+  }
 }

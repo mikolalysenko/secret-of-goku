@@ -1,43 +1,68 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-import {createHash} from 'node:crypto';
-const root=new URL('../assets/audio/music/',import.meta.url);
-const combat=JSON.parse(readFileSync(new URL('score.json',root)));
-const training=JSON.parse(readFileSync(new URL('vegeta-score.json',root)));
+import {readFileSync,existsSync} from 'node:fs';
+import {arrangements} from '../engine/mana-arrangements.js';
+import {patches} from '../engine/mana-score-kit.js';
+import {readManaInstruments,decodeBrr} from '../engine/mana-instruments.js';
+import {renderSpcScoreSync,scoreLength} from '../engine/spc-score.js';
+const meta=JSON.parse(readFileSync(new URL('../assets/audio/music/score.json',import.meta.url)));
+const romPath='.local/rom/secret-of-mana-us.sfc';
 
-test('combat and training arrangements retain their references and develop across all eight voices',()=>{
- assert.equal(combat.tracks.length,3);assert.equal(training.tracks.length,2);
- assert.match(combat.reference.url,/5CpQ-uBRa78/);assert.match(training.reference.url,/M954D_jyJbQ/);
- assert.ok(training.tracks[1].bpm>training.tracks[0].bpm);
- assert.ok(combat.tracks[2].bpm>combat.tracks[1].bpm);
- for(const track of [...combat.tracks.slice(1),...training.tracks]){
-  assert.equal(track.voices,8);assert.equal(track.channels.length,8);
-  assert.ok(track.duration>=75,'A full multi-section arrangement replaces the short loop');
-  assert.ok(track.sections.length>=6);
-  assert.deepEqual(track.channels.map(c=>c.voice),[1,2,3,4,5,6,7,8]);
-  for(const c of track.channels){assert.ok(c.rms>.004,`${track.file}: voice ${c.voice} is audible`);assert.ok(c.notes>30);}
-  assert.ok(track.channels.some(c=>c.instruments.includes('noise')));
-  assert.ok(track.channels.some(c=>c.instruments.includes('pulse')));
-  assert.ok(track.channels.some(c=>c.instruments.includes('snare')));
-  assert.ok(track.channels.some(c=>c.instruments.includes('strings')));
+test('combat and training arrangements keep their references and develop across eight voices',()=>{
+ assert.match(meta.runtime.references.battle.url,/5CpQ-uBRa78/);assert.match(meta.runtime.references.vegeta.url,/M954D_jyJbQ/);
+ const scores=Object.fromEntries(Object.entries(arrangements).map(([k,b])=>[k,b()]));
+ assert.deepEqual(Object.keys(scores),['battle','orbit','vegeta','vegeta-full-power']);
+ assert.ok(scores.orbit.bpm>scores.battle.bpm);assert.ok(scores['vegeta-full-power'].bpm>scores.vegeta.bpm);
+ for(const[key,score]of Object.entries(scores)){
+  assert.equal(score.voices.length,8);assert.ok(score.sections.length>=6,key);
+  assert.ok(score.bars*4*60/score.bpm>=75,`${key} is a full multi-section arrangement`);
+  for(const voice of score.voices){
+   assert.ok(voice.events.length>30,`${key}: ${voice.role} plays throughout`);
+   for(const e of voice.events){
+    const patch=patches[e.patch];assert.ok(patch,`${key}: ${e.patch}`);
+    assert.ok(e.at>=0&&e.at<score.bars*4&&e.len>0);
+    // Stay near the registers the game's own sequences give each sample.
+    if(patch.range)assert.ok(e.note>=patch.range[0]-5&&e.note<=patch.range[1]+5,`${key}: ${e.patch} note ${e.note}`);
+   }
+  }
+  const used=new Set(score.voices.flatMap(v=>v.events.map(e=>e.patch)));
+  for(const p of['kick','snare','strings','brass'])assert.ok(used.has(p),`${key} uses ${p}`);
  }
+ // Kick and snare share one voice, as in the game's boss theme.
+ assert.deepEqual(new Set(scores.battle.voices[0].events.map(e=>e.patch)),new Set(['kick','snare']));
 });
 
-test('all rendered cues have stereo headroom, no DC buildup and continuous loop boundaries',()=>{
- const signatures=new Set();
- for(const meta of[combat,training])for(const track of meta.tracks){
-  const b=readFileSync(new URL(track.file,root)),rate=track.sampleRate??meta.sampleRate;
-  assert.equal(b.toString('ascii',0,4),'RIFF');assert.equal(b.readUInt16LE(22),2);assert.equal(b.readUInt32LE(24),rate);assert.equal(b.readUInt16LE(34),16);
-  const frames=(b.length-44)/4;assert.ok(Math.abs(frames/rate-track.duration)<1/rate);
-  for(let channel=0;channel<2;channel++){
-   let sum=0,peak=0,dc=0,delta=0,last=0;
-   for(let i=0;i<frames;i++){const v=b.readInt16LE(44+i*4+channel*2)/32768;sum+=v*v;peak=Math.max(peak,Math.abs(v));dc+=v;if(i)delta=Math.max(delta,Math.abs(v-last));last=v;}
-   assert.ok(Math.sqrt(sum/frames)>.08,`${track.file} channel ${channel} is not silent`);assert.ok(peak<.83);assert.ok(Math.abs(dc/frames)<.005);
-   assert.ok(Math.abs(b.readInt16LE(44+channel*2)/32768-last)<delta*.5,`${track.file} has no abrupt loop seam`);
-  }
-  const digest=createHash('sha256').update(b).digest('hex');if(track.sha256)assert.equal(digest,track.sha256);
-  signatures.add(digest);
+test('the score metadata ships no cartridge audio, only the original entrance cue',()=>{
+ assert.equal(meta.entrance.file,'arrival.wav');assert.deepEqual(meta.runtime.tracks.map(t=>t.key),Object.keys(arrangements));
+ for(const file of['battle.wav','orbit.wav','vegeta.wav','vegeta-full-power.wav'])assert.ok(!existsSync(new URL(`../assets/audio/music/${file}`,import.meta.url)),`${file} is rendered at runtime`);
+ const b=readFileSync(new URL('../assets/audio/music/arrival.wav',import.meta.url));
+ assert.equal(b.toString('ascii',0,4),'RIFF');assert.equal(b.readUInt32LE(24),meta.entrance.sampleRate);
+});
+
+test('BRR decoding follows the hardware filters, range clamp and 15-bit wrap',()=>{
+ // Header: shift 12, filter 0, END. Nibbles 7 and -8 hit both 15-bit limits.
+ const block=[0xc1,0x78,0,0,0,0,0,0,0];
+ const pcm=decodeBrr(Uint8Array.from(block),0,9);
+ assert.equal(pcm.length,16);assert.equal(pcm[0],0x3800);assert.equal(pcm[1],-0x4000);
+ // Filter 1 decays a held value by 15/16 per sample.
+ const held=decodeBrr(Uint8Array.from([0xc1,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x77,0x05,0,0,0,0,0,0,0,0]),0,18);
+ assert.equal(held[15],0x3800);assert.equal(held[16],0x3800-(0x3800>>4));
+ assert.equal(readManaInstruments(new Uint8Array(1024)),null);
+});
+
+test('the cartridge instrument bank renders seamless, balanced cues',{skip:!existsSync(romPath)},()=>{
+ const bank=readManaInstruments(new Uint8Array(readFileSync(romPath)));
+ assert.equal(bank.length,33);
+ // Strings (18) and synth brass (3) loop; kick (23) is a one-shot.
+ assert.ok(bank[18].loopStart>0&&bank[3].loopStart>0);assert.equal(bank[23].loopStart,-1);
+ assert.deepEqual(bank[18].adsr,[0xff,0xe0]);
+ for(const[key,build]of Object.entries(arrangements)){
+  const score=build(),r=renderSpcScoreSync(bank,score);
+  assert.equal(r.left.length,scoreLength(score));
+  let sum=0,peak=0,dc=0,delta=0;
+  for(let i=0;i<r.left.length;i++){const v=r.left[i];sum+=v*v;peak=Math.max(peak,Math.abs(v),Math.abs(r.right[i]));dc+=v;if(i)delta=Math.max(delta,Math.abs(v-r.left[i-1]));}
+  assert.ok(Math.sqrt(sum/r.left.length)>.08,`${key} is audible`);assert.ok(peak<=.8001);assert.ok(Math.abs(dc/r.left.length)<.01);
+  assert.ok(Math.abs(r.left[0]-r.left.at(-1))<delta*.5,`${key} loops without a seam`);
+  for(const v of r.voices)assert.ok(v.rms>.004,`${key}: ${v.role} is audible`);
  }
- assert.equal(signatures.size,5);
 });

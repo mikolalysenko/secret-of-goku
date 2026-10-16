@@ -23,9 +23,11 @@ test('Shenron silences combat loops and speech, with flight audio only during th
 
 test('Frieza score changes from ominous entrance to battle and orbit, ducks native music and stops on pause',async({page})=>{
  await page.goto('/');await page.getByRole('button',{name:/Sound on|Mute/}).click();
+ // The combat cues are rendered from the running cartridge's instrument bank.
+ await page.waitForFunction(()=>window.mana?.snes?.cart?.data?.length,{},{timeout:60000});
  const result=await page.evaluate(async()=>{
   const {createFriezaScore}=await import('/engine/frieza-score.js'),ctx=new AudioContext();await ctx.resume();
-  const m={frame:0,frieza:{music:'arrival'},charging:false},score=createFriezaScore(m);score.update(ctx,true);await score.ready;score.update(ctx,true);
+  const m={frame:0,frieza:{music:'arrival'},charging:false},score=createFriezaScore(m,{rom:()=>window.mana.snes.cart.data});score.update(ctx,true);await score.ready;score.update(ctx,true);
   const analyser=ctx.createAnalyser();analyser.fftSize=2048;score.connect(analyser);
   const energy=()=>{const a=new Float32Array(2048);analyser.getFloatTimeDomainData(a);return Math.sqrt(a.reduce((s,x)=>s+x*x,0)/a.length);};
   await new Promise(r=>setTimeout(r,250));const entrance={track:score.stats.track,rms:energy(),gain:score.nativeGain};
@@ -36,12 +38,13 @@ test('Frieza score changes from ominous entrance to battle and orbit, ducks nati
   m.trial={music:'vegeta'};m.frame++;score.update(ctx,true);await new Promise(r=>setTimeout(r,250));const training={track:score.stats.track,rms:energy(),gain:score.nativeGain};
   m.trial.music='vegeta-full-power';m.frame++;score.update(ctx,true);await new Promise(r=>setTimeout(r,250));const fullPower={track:score.stats.track,rms:energy()};
   m.trial.music=null;score.update(ctx,true);const returned={track:score.stats.track,gain:score.nativeGain};
-  const error=score.stats.error;score.dispose();await ctx.close();return{entrance,battle,orbit,paused,resumed,ended,training,fullPower,returned,error};
+  const error=score.stats.error,rendered=score.stats.rendered;score.dispose();await ctx.close();return{entrance,battle,orbit,paused,resumed,ended,training,fullPower,returned,error,rendered};
  });
  expect(result.entrance.track).toBe('arrival');expect(result.entrance.rms).toBeGreaterThan(.005);expect(result.entrance.gain).toBeLessThan(.05);
  expect(result.battle.track).toBe('battle');expect(result.battle.rms).toBeGreaterThan(.005);expect(result.orbit.track).toBe('orbit');expect(result.orbit.rms).toBeGreaterThan(.005);
  expect(result.paused.track).toBe(null);expect(result.paused.rms).toBeLessThan(.0001);expect(result.paused.gain).toBe(1);
  expect(result.resumed).toBe('orbit');expect(result.ended).toBe(1);expect(result.error).toBe(null);
+ expect(result.rendered.sort()).toEqual(['battle','orbit','vegeta','vegeta-full-power']);
  expect(result.training.track).toBe('vegeta');expect(result.training.rms).toBeGreaterThan(.005);expect(result.training.gain).toBeLessThan(.05);
  expect(result.fullPower.track).toBe('vegeta-full-power');expect(result.fullPower.rms).toBeGreaterThan(.005);expect(result.returned).toEqual({track:null,gain:1});
 });
