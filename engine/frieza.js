@@ -11,6 +11,7 @@ import {beginClash,tickClash,tapClash,victoryTiming} from './frieza-finale.js';
 import {orbitHeading,orbitVector,orbitProjectile,orbitRush} from './orbit-pixels.js';
 import {createOrbitEffects} from './orbit-effects.js';
 import {orbitAim,orbitDefense,orbitAttackPattern,beginOrbitExchange,tickOrbitExchange} from './orbit-duel.js';
+import {startOrbitTeleport,startOrbitPunch,tickOrbitAction} from './orbit-actions.js';
 import {createBossVictoryAudio,bossVictoryCue,bossVictoryTiming} from './boss-victory.js';
 import {createFriezaTreeView,treeTiming} from './frieza-tree-view.js';
 import {createEmperorBeamView,installAltarCamera,introTiming} from './frieza-intro.js';
@@ -326,19 +327,25 @@ export function createFrieza(snes,mod){
    if(input&2)return false;
    if(s.stage!=='battle'||!mod.read16(0xe182)||mod.read8(0xe191)&128||o.intro)return true;
    const wave=!!(input&0x400)&&!!(input&(1<<17)),tap=input&~mod.lastInput;
-   const focus=!!(input&0x400)&&!(input&(1|(1<<17)|0x900));
+   const focus=!!(input&0x400)&&!(input&(1|(1<<17)|0x900))&&!o.action;
    const direction=()=>orbitAim(o);
    const c=o.clash;
-   if(o.duel)return true;
+   if(o.duel){o.action=null;return true;}
    if(c){
     // This is Goku's scripted counter. The scene charges and releases it;
     // input only owns the tug-of-war once the two beams have met.
+    o.action=null;o.punch=0;o.teleport=0;
     mod.charging=c.phase==='charge';mod.charge=o.charge;
     mod.action=mod.charging?{kind:'charge',age:o.charge,duration:999,super:true,facing:mod.facing}:null;
     if((tap&(1|(1<<17)))&&tapClash(c)){mod.playSound?.('hit');mod.feedback?.pulse(2);}
     return true;
    }
-   if(!focus&&!o.beam)steerOrbit(o,input);
+   const teleport=(input&0x401)===0x401&&(mod.lastInput&0x401)!==0x401;
+   if(o.action?.kind==='teleport'&&teleport)startOrbitTeleport(o,mod.playSound);
+   tickOrbitAction(o,b,{melee,sound:mod.playSound,shake:n=>mod.feedback?.pulse(n)});
+   if(o.duel)return true;
+   if(o.action?.kind==='teleport'){mod.charging=false;mod.charge=0;mod.focus(0);return true;}
+   if(!focus&&!o.beam&&(!o.action||o.action.age>=3))steerOrbit(o,input);
    if(wave&&!o.beam){o.charge=Math.min(45,o.charge+1);if(o.charge===45&&mod.charge<45)mod.playSound?.('charged');}
    else if(o.charge){
     const strength=o.charge/45,dir=direction();
@@ -346,7 +353,7 @@ export function createFrieza(snes,mod){
     o.charge=0;
    }
    mod.charging=wave&&!o.beam;mod.charge=o.charge;
-   if(mod.charging){mod.powerCharge=0;mod.action={kind:'charge',age:o.charge,duration:999,super:true,facing:mod.facing};}
+   if(mod.charging){o.action=null;o.punch=0;mod.powerCharge=0;mod.action={kind:'charge',age:o.charge,duration:999,super:true,facing:mod.facing};}
    else{
     if(mod.action?.kind!=='focus')mod.action=null;
     mod.focus(focus&&!o.beam?0x400:0);
@@ -355,9 +362,9 @@ export function createFrieza(snes,mod){
    // The released wave is anchored at his hands until its tail fades. A
    // teleport or melee input during that shot must not detach the fighter.
    if(c||o.beam)return true;
-   if((input&0x401)===0x401&&(tap&1)){o.hero.x=Math.max(14,Math.min(242,b.x-22));o.hero.y=Math.max(20,Math.min(184,b.y));o.heading=0;o.teleport=18;mod.playSound?.('teleport');}
-   else if(input&1&&!(input&0x400)&&!o.cooldown){o.cooldown=8;o.punch=8;mod.playSound?.('swing');if(Math.hypot(b.x-o.hero.x,b.y-o.hero.y)<32){melee(550);mod.playSound?.('friezaImpact');}}
-   if(input&(1<<17)&&!(input&0x400)&&!o.cooldown&&!o.beam){o.cooldown=6;o.shots.push({...o.hero,...direction(),age:0});mod.playSound?.('blast');}
+   if(teleport)startOrbitTeleport(o,mod.playSound);
+   else if(input&1&&!(input&0x400)&&!o.cooldown&&!o.action)startOrbitPunch(o,mod.playSound);
+   if(input&(1<<17)&&!(input&0x400)&&!o.cooldown&&!o.beam&&!o.action){o.cooldown=6;o.shots.push({...o.hero,...direction(),age:0});mod.playSound?.('blast');}
    return true;
   },
   tick(){

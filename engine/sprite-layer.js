@@ -317,7 +317,8 @@ class ManaSpriteLayer {
     if(!pose.hidden)this.blit(pose.sheet,column,row,x,y,size,size,pose.legs??null,pose);
     // Follow original poison/stone/ghost/flash palette changes before the PPU
     // applies its own window, water blend and brightness operations.
-    if(ground&&!menuBody&&display?.native.species!==138)for(let yy=Math.max(0,y);yy<Math.min(256,y+size);yy++)for(let xx=Math.max(0,x);xx<Math.min(256,x+size);xx++){
+    const margin=pose.bodyX||pose.bodyY?1:0;
+    if(ground&&!menuBody&&display?.native.species!==138)for(let yy=Math.max(0,y-margin);yy<Math.min(256,y+size+margin);yy++)for(let xx=Math.max(0,x-margin);xx<Math.min(256,x+size+margin);xx++){
       const i=yy*256+xx;if(this.surface[i]&&!this.effectMask[i])this.surface[i]=this.tint(this.surface[i],anchor.palette);
     }
     if(ground&&!menuBody)m.hitRecovery?.draw(this,x,y,size);

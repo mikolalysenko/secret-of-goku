@@ -22,6 +22,34 @@ class GokuAnimation {
     // while its actor is present. Do not loop a vanish or a reaction forever.
     return this.track(sheet,entry.clip,age,row);
   }
+  static actionPose(action,sheet=action.super?'ssj':'goku',poseRow=[0,2,1,3][action.facing]){
+    let result;
+    if(action.kind==='focus'){
+      // Set the feet, sink into the stance, then breathe through the upper
+      // body. Keep the directional, short-haired art in either form.
+      const t=action.age,gold=sheet==='ssj';
+      result={sheet,row:poseRow,column:t<4?(gold?21:25):t<10?(gold?33:37):(gold?30:34),
+        bodyY:t<10?0:[0,0,1,1,0,0,-1,-1][Math.floor((t-10)/6)%8],phase:t<10?'gather':'sustain'};
+    }else if(action.kind==='punch'){
+      const columns=action.super?(action.combo===2?14:10):[10,14,18][action.combo];
+      const phase=action.super?(action.age<1?0:action.age<2?1:action.age<4?2:3):(action.age<2?0:action.age<4?1:action.age<7?2:3);
+      const t=action.age,kick=action.combo===2,settled=t>=(action.super?5:11);
+      const travel=action.super?[-2,7,6,4,2,0,0]:[-2,-3,5,7,6,5,4,3,2,1,0,0,0,0];
+      const drive=(travel[Math.min(t,travel.length-1)]||0)*(kick?1.25:action.combo===1?1.1:1);
+      const [dx,dy]=[[0,1],[1,0],[-1,0],[0,-1]][action.facing];
+      result={sheet,row:[0,2,1,3][action.facing],column:settled?(action.super?21:25):columns+phase,
+        offsetX:Math.round(dx*drive),offsetY:Math.round(dy*drive)-(kick&&phase===2?2:0),
+        phase:t<action.impact?'anticipation':t===action.impact?'contact':phase<3?'followThrough':'recover'};
+    }else if(action.kind==='teleport'){
+      // Readable guard -> broad streak -> thin streak -> nothing. The
+      // camera holds age four until its native tile uploads have finished.
+      // Materialization reverses the strip and ends in a planted guard.
+      const t=action.age,streak=action.super?22:26;
+      result={sheet,row:[0,2,1,3][action.facing],column:t<2||t>=9?(action.super?21:25):t===2||t===7||t===8?streak:streak+1,
+        hidden:t>=4&&t<6,bodyY:t===9?1:0,phase:t<2?'locate':t<4?'vanish':t<6?'absent':t<9?'appear':'settle'};
+    }
+    return result;
+  }
   pose({flight=false,menu=false,displayed=null}={}){
     const m=this.mod,s=this.state,map=displayed?.map??m.read16(0xdc),x=displayed?.x??m.read16(0xe002),y=displayed?.y??m.read16(0xe004),native=displayed?.animation??m.read8(0xe011);
     const sheet=m.options.superSaiyan?'ssj':'goku',row=[0,2,1,3][m.facing];
@@ -69,39 +97,15 @@ class GokuAnimation {
       // Six native pixels per footfall; a blocked walk settles to idle after
       // three stationary frames rather than skating through a running loop.
       result={sheet,row:poseRow,column:(kind==='run'?6:2)+Math.floor(s.distance/6)%4};
-    }else if(kind==='focus'){
-      // Set the feet, sink into the stance, then breathe through the upper
-      // body. Keep the directional, short-haired art in either form.
-      const t=action.age,gold=sheet==='ssj';
-      result={sheet,row:poseRow,column:t<4?(gold?21:25):t<10?(gold?33:37):(gold?30:34),
-        bodyY:t<10?0:[0,0,1,1,0,0,-1,-1][Math.floor((t-10)/6)%8],phase:t<10?'gather':'sustain'};
-    }
+    }else if(['focus','punch','teleport'].includes(kind))result=GokuAnimation.actionPose(action,sheet,poseRow);
     else if(kind==='deflect')result=this.track(sheet,'guard',0,[0,2,1,3][reaction.facing]);
     else if(kind==='resist')result=this.track(sheet,'brace',0,poseRow);
     else if(kind==='ready')result=this.track(sheet,'chargeWindup',Math.min(action.age,5),poseRow);
-    else if(kind==='punch'){
-      const columns=action.super?(action.combo===2?14:10):[10,14,18][action.combo];
-      const phase=action.super?(action.age<1?0:action.age<2?1:action.age<4?2:3):(action.age<2?0:action.age<4?1:action.age<7?2:3);
-      const t=action.age,kick=action.combo===2,settled=t>=(action.super?5:11);
-      const travel=action.super?[-2,7,6,4,2,0,0]:[-2,-3,5,7,6,5,4,3,2,1,0,0,0,0];
-      const drive=(travel[Math.min(t,travel.length-1)]||0)*(kick?1.25:action.combo===1?1.1:1);
-      const [dx,dy]=[[0,1],[1,0],[-1,0],[0,-1]][action.facing];
-      result={sheet,row:[0,2,1,3][action.facing],column:settled?(action.super?21:25):columns+phase,
-        offsetX:Math.round(dx*drive),offsetY:Math.round(dy*drive)-(kick&&phase===2?2:0),
-        phase:t<action.impact?'anticipation':t===action.impact?'contact':phase<3?'followThrough':'recover'};
-    }else if(kind==='charge')result=this.track(sheet,'charge',action.age,poseRow);
+    else if(kind==='charge')result=this.track(sheet,'charge',action.age,poseRow);
     else if(kind==='beam')result={sheet,row:[0,2,1,3][action.facing],column:(action.super?18:22)+(action.age<2?1:action.age<action.duration-4?2:3)};
     else if(kind==='blast'){
       const phase=Math.floor(action.age/(action.super?1:2));
       result={sheet,row:[0,2,1,3][action.facing],column:(action.super?24:28)+(phase===0?0:phase>=4?3:1+(action.hand??0))};
-    }
-    else if(kind==='teleport'){
-      // Readable guard -> broad streak -> thin streak -> nothing. The
-      // camera holds age four until its native tile uploads have finished.
-      // Materialization reverses the strip and ends in a planted guard.
-      const t=action.age,streak=action.super?22:26;
-      result={sheet,row:[0,2,1,3][action.facing],column:t<2||t>=9?(action.super?21:25):t===2||t===7||t===8?streak:streak+1,
-        hidden:t>=4&&t<6,bodyY:t===9?1:0,phase:t<2?'locate':t<4?'vanish':t<6?'absent':t<9?'appear':'settle'};
     }
     else if(kind==='transform'||kind==='revert'){
       const clip=window.GokuAnimationData.forms[sheet].clips[kind];

@@ -17,7 +17,9 @@ async function prepare(page,kind='battle',mask=0){
 }
 for(const mask of[0,3])test(`Frieza sponsors native Thanatos, then duels without absent-actor waits, party ${mask}`,async({page})=>{
  await prepare(page,'frieza',mask);let lich=false,duel=false,empower=false,lichHP=0;
- for(let i=0;i<110;i++){
+ // The full-party retreat includes extra dialogue and walks after the
+ // gold reveal. Keep a bounded wait for the actual control handoff.
+ for(let i=0;i<150;i++){
   const s=await page.evaluate(()=>{
    const m=mana.mod,b=m.entities().find(e=>e.active&&!e.custom&&e.species===121&&e.hp);
    const result={lich:!!b,lichHP:b?.maxHp??0,duel:m.frieza.fighting&&m.canAttack,empower:m.frieza.status.scene?.kind==='empower'};

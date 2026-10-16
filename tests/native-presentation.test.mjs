@@ -224,6 +224,14 @@ test('focus breathing moves the upper body while boots remain planted in both si
  }
 });
 
+test('native palette effects cover the rising transformation hair above the original crop',()=>{
+ const{layer,mod}=scene();mod.options.superSaiyan=true;mod.action={kind:'transform',age:12,duration:32,super:true};
+ layer.tint=()=>12345;layer.prepare();
+ const p=layer.plan.sprite;
+ assert.ok(layer.surface.slice((p.y-1)*256,p.y*256).some(Boolean),'ignition lifts the hair beyond the old crop');
+ assert.ok(layer.surface.filter(Boolean).every(c=>c===12345),'every body pixel receives the native tint');
+});
+
 test('Thanatos aura flickers behind native sprite pixels regardless of OAM order',()=>{
  for(const slot of[2,30]){
   const {layer,ppu,mod}=scene();

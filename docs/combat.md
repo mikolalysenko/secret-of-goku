@@ -43,6 +43,8 @@ Charge, beam and ki use separately measured hand sockets. On foot, upward effect
 
 World flight uses the verified four-way flight cells, rear view, discrete banking and a one-pixel bob. It retains the native Mode 7 map, movement and landing rules. Both forms can transform, steer, climb, descend and restore a flight checkpoint.
 
+The orbital Frieza fight shares the field's punch, focus and teleport pose sampler at half size. Punch damage waits for the extended fist, with a brief contact hold only on a successful directional hit. Instant Transmission relocates during the invisible phase, sounds on materialization and buffers one additional tap. Its saved action clock does not move the native actor off the Fortress. The scripted four-hit exchange keeps its choreography while using the same arrival streaks and punch recovery poses.
+
 The opening paths after the waterfall and Potos's outdoor exits catch local
 flight across the banks beside their narrow walking triggers. Crossing outward
 uses the original door, fade and party arrival; flying inward or beside an exit

@@ -17,13 +17,16 @@ export function createOrbitView(snes,mod,{put,disc,line,spell,rgb,drawPlanet,fla
  function ray(x,y,xx,yy,width,colors,age=0){
   fx.beam(x,y,xx,yy,width,age,colors[0]===purple[0]?'frieza':false);
  }
- function character(a,f,x,y,height,flip=false,falling=false){
+ function character(a,f,x,y,height,flip=false,falling=false,motion={}){
   if(!a||!f)return;height=falling?Math.max(4,Math.round(height/4)*4):Math.max(16,Math.round(height/8)*8);const width=height;
   let cache=characters.get(a);if(!cache){cache=new Map();characters.set(a,cache);}
   const key=`${f.x}:${f.y}:${height}:${flip}`;let cell=cache.get(key);
   if(!cell){cell=new Uint16Array(width*height);for(let py=0;py<height;py++)for(let px=0;px<width;px++)cell[py*width+px]=a.pixels[(f.y+Math.floor(py*f.h/height))*a.width+f.x+Math.floor((flip?width-1-px:px)*f.w/width)];cache.set(key,cell);}
   x=Math.round(x)-width/2;y=Math.round(y)-height/2;
-  for(let py=0;py<height;py++)for(let px=0;px<width;px++){const c=cell[py*width+px];if(c)put(x+px,y+py,c);}
+  for(let py=0;py<height;py++)for(let px=0;px<width;px++){
+   const weight=Math.max(0,Math.min(1,(26-py*32/height)/8));
+   const c=cell[py*width+px];if(c)put(x+px,y+py+Math.round((motion.bodyY||0)*weight*height/32),c);
+  }
  }
  function death(x,y,size,age){mod.kiArt?.draw('death',(age>>3)%12,Math.round(x),Math.round(y),Math.max(16,Math.round(size/16)*16),put);}
  function debris(o,cam,foreground){
@@ -94,14 +97,22 @@ export function createOrbitView(snes,mod,{put,disc,line,spell,rgb,drawPlanet,fla
   // The sheet has a 32px header. These are the same audited facing rows and
   // charge/release/flight cells as the field renderer, sampled exactly 2:1.
   const focused=mod.action?.kind==='focus'&&!o.beam;
-  const gokuFrame={x:(o.charge?18:focused?21:o.beam||o.clash?.phase==='struggle'?20:o.punch?(o.duel&&o.duel.age>54?16:12):cam.moving?36+Math.floor(age/5)%4:34)*32,y:32+orbitFacing(o)*32,w:32,h:32};
+  const row=orbitFacing(o),facing=[0,2,1,3][row];
+  // Legacy checkpoints and the scripted exchange retain their countdowns;
+  // regular inputs use the same anticipation/contact/recovery as the field.
+  const action=o.action??(o.teleport&&(o.duel||o.teleport>6)?{kind:'teleport',age:o.duel?10-o.teleport:18-o.teleport,super:true,facing}:
+    o.punch?{kind:'punch',age:Math.min(6,8-o.punch),impact:1,super:true,facing,combo:o.duel&&o.duel.age>54?2:0}:focused?mod.action:null);
+  const pose=action?window.GokuAnimation.actionPose(action,'ssj',row):null;
+  const gokuFrame={x:(pose?.column??(o.charge?18:o.beam?20:cam.moving?36+Math.floor(age/5)%4:34))*32,y:32+(pose?.row??row)*32,w:32,h:32};
   // Only the menu's miniature moves to its safe UI anchor. The saved hero,
   // scenery, opponent and projectiles stay at their paused battle positions.
   if(!menu&&o.charge)fx.aura(h.x,h.y,age,{power:Math.min(1,o.charge/45)});
-  else if(!menu&&focused)fx.aura(h.x,h.y,age,{power:.25+.45*mod.powerCharge/96});
+  else if(!menu&&focused){
+   const power=mod.powerCharge/96,breath=[0,.02,.05,.08,.05,.02,0,-.02][Math.floor(mod.action.age/6)%8];
+   fx.aura(h.x,h.y,age,{power:.18+.66*power+breath*power});
+  }
   if(menu)character(g,{x:0,y:32,w:32,h:32},menu.x,menu.y,16);
-  else if(!o.teleport||o.teleport<7)character(g,gokuFrame,h.x,h.y,16);
-  if(!menu&&o.teleport>6)fx.stamp('impact-spark',Math.floor((12-o.teleport)/2),h.x,h.y);
+  else if(!pose?.hidden)character(g,gokuFrame,h.x+Math.round((pose?.offsetX||0)/2),h.y+Math.round((pose?.offsetY||0)/2),16,false,false,pose??{});
   const a=mod.frieza.portraitAtlas,pointer=friezaDeathBeamPose(b),frame=pointer?2:o.clash?.phase==='win'?7:b.hurt?6:b.warning||o.clash?3:b.dash||b.evade||o.duel?5:4;
   if(b.warning?.kind==='beam')fx.aura(b.x,b.y,age,{tone:'pink',seed:5});
   if(!b.blink)drawFriezaSprite(a,frame,b.x,b.y+10,put,{tiny:true,flip:pointer?.flip??b.x>h.x});
