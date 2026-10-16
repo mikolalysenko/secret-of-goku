@@ -4,6 +4,13 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## 2026-10-16 — Optional Scouter and native menus
+
+- Sylphid unlocks Goku’s options-ring Scouter toggle. It starts off, replaces Targeting only for Goku after the unlock, updates its ON/OFF title immediately, and remembers the choice in checkpoints/native saves. Removed the focus-plus-ring shortcut and unsolicited Analyzer overlays.
+- Native ring and status-page fades retain control of confirmation, preventing punches, ki, focus and teleport from leaking into the field. Combat buttons held while closing a menu must be released first. Battle-name announcements still allow normal combat.
+- STATUS uses the native resolved item ID, so reopening the ring with STATUS already selected shows the current Goku power/gear/form calculations.
+- Validation: native browser coverage for the Sylphid grant and ring toggle, all four gear/form combinations, menu fades, held-input release, companions, saves and battle announcements; targeted unit tests for Scouter and STATUS behavior.
+
 ## 2026-10-16 — Vegeta Final Flash
 
 - Final Flash now fills the screen with the full-power SSJ Kamehameha's wave geometry and yellow energy, including its charge, edge effects and beam clash. Galick Gun retains its purple appearance.
@@ -46,7 +53,7 @@ stay traceable even when they are committed together.
 - Dialogue window moves above the HUD when it would cover the speakers
   (`engine/window-placement.js`). Placement is decided once per scene, before
   the first window tile shows, and never changes mid-scene.
-- Scouter from Sylphid; L+X / Analyzer show power levels (`engine/scouter.js`).
+- Optional Scouter from Sylphid, enabled through Goku’s options ring (`engine/scouter.js`).
 - Sandship: Kamehameha breakout from the engine room (Sneak or KAMEHAMEHA
   choice, or any full wave below deck) straight into Mech Rider 1; lines
   rewritten to fit; cabin framing fixed; `?start=sandship`.

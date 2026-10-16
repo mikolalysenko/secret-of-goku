@@ -19,11 +19,12 @@ export function gokuStats(mod){
 
 export function isGokuStatus(snes,mod){
  const p=snes.ppu,r=snes.ram,v=p.vram;
- // The native STATUS ring item, selected for Goku, plus its exact three
+ // Goku's STATUS panel, identified by its exact three
  // left panels and tall right panel. Saves, gear, action grids and companions
- // all keep their own native UI. The original menu still owns all inputs.
+ // all keep their own native UI. $180A is a cursor relative to the remembered
+ // first item, not an option ID; $1876 is the resolved native option.
  return !!(mod.options.enabled&&mod.options.power&&mod.gokuActive&&p.mode===5&&
-  r[0x2c]===3&&!(r[0xec]&0xfe)&&r[0x1808]===0&&r[0x19fe]===0&&r[0x1809]===2&&r[0x180a]===2&&
+  r[0x2c]===3&&!(r[0xec]&0xfe)&&r[0x1808]===0&&r[0x19fe]===0&&r[0x1809]===2&&r[0x1876]===2&&
   p.tilemapAdr[1]===0x5800&&v[0x5820]===0x2020&&v[0x5830]===0x2020&&
   v[0x59c0]===0xa020&&v[0x5b10]===0xa020);
 }

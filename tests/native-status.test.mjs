@@ -42,9 +42,10 @@ test('power page reads native seed count, full money and selected character with
  const before=r.slice();assert.equal(gokuStats(mod).mana,4);assert.equal(gokuStats(mod).money,1234567);assert.deepEqual(r,before);
  Object.assign(p,{mode:5,tilemapAdr:[0,0x5800],vram:new Uint16Array(0x8000)});
  for(const[a,v]of[[0x5820,0x2020],[0x5830,0x2020],[0x59c0,0xa020],[0x5b10,0xa020]])p.vram[a]=v;
- r[0x2c]=3;r[0x1809]=r[0x180a]=2;assert.equal(isGokuStatus(snes,mod),true);
- for(const[a,v]of[[0x19fe,1],[0x19fe,2],[0x1808,1],[0x180a,0],[0x1809,0],[0xec,8],[0x2c,0]]){
+ r[0x2c]=3;r[0x1809]=r[0x180a]=r[0x1876]=2;assert.equal(isGokuStatus(snes,mod),true);
+ for(const[a,v]of[[0x19fe,1],[0x19fe,2],[0x1808,1],[0x1876,0],[0x1809,0],[0xec,8],[0x2c,0]]){
   const old=r[a];r[a]=v;assert.equal(isGokuStatus(snes,mod),false);r[a]=old;
  }
+ r[0x180a]=0;assert.equal(isGokuStatus(snes,mod),true,'remembered STATUS is cursor zero on reopening');
  p.vram[0x5830]=0;assert.equal(isGokuStatus(snes,mod),false);
 });

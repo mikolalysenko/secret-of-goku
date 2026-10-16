@@ -1,10 +1,12 @@
 // Goku's scouter and power-level readouts for the native Analyzer spell.
 // The scouter is owned once Sylphid's powers are granted ($CFAB >= 2): it is
 // derived from native progress, so saves and checkpoints already carry it.
-// L+X scans everyone on screen. Analyzer (spell 17h, Primm's Sylphid magic)
+// Owning it does not switch it on. Goku's Targeting ring item becomes a
+// Scouter on/off switch after Sylphid. Analyzer (spell 17h, Primm's Sylphid magic)
 // shows its target's power level beside the native readout: the native hit
 // context stores the incoming spell in the target's +181h byte (C0:D453).
 // A PPU overlay like the radar; no cartridge bytes or event scripts change.
+import {encodeText} from './event-codec.js';
 export const analyzerSpell=0x17;
 export const sylphidFlag=0xab;
 const lifetime=240,green=4|31<<5|8<<10,shadow=0x0421;
@@ -36,16 +38,37 @@ export function powerLevel(mod,entity){
 }
 
 export function createScouter(snes,mod){
- const p=snes.ppu,previous=p.getColor,write=snes.write,r=snes.ram;
- let readouts=new Map(),scans=0,jokes=new Set(),lastChord=false,frame=-1,overlay=null,radioShown=false;
+ const p=snes.ppu,previous=p.getColor,write=snes.write,r=snes.ram,cpu=snes.cpu,cycle=cpu.cycle;
+ let readouts=new Map(),scans=0,jokes=new Set(),frame=-1,overlay=null,radioShown=false,enabled=false,pending=false,cart,read;
+ const names=[false,true].map(on=>Uint8Array.from([...encodeText(`Scouter: ${on?'ON':'OFF'}`),0]));
  const owned=()=>r[0xcf00+sylphidFlag]>=2;
- const visibleState=()=>mod.options.enabled&&mod.gokuActive&&!p.forcedBlank&&!mod.worldFlight&&!mod.worldKi?.cinematic&&!mod.frieza?.cinematic&&!mod.ending?.active;
+ const available=()=>enabled&&owned()&&mod.options.enabled&&mod.gokuActive;
+ const clear=()=>{readouts.clear();overlay=null;frame=-1;};
+ const visibleState=()=>available()&&!mod.menuActive&&!p.forcedBlank&&!mod.worldFlight&&!mod.worldKi?.cinematic&&!mod.frieza?.cinematic&&!mod.ending?.active;
+ const ringItem=()=>mod.options.enabled&&mod.gokuActive&&owned()&&r[0x1808]===0&&r[0x1809]===2&&r[0x1876]===1;
+ function setEnabled(value){enabled=!!value&&owned();pending=enabled;clear();return enabled;}
+ cpu.cycle=function(){
+  // C0:73F4 dispatches the resolved option in $1876 (NOT the rotating
+  // cursor in $180A). Keep native confirmation, redraw and ring/back input.
+  if(this.cyclesLeft===0&&(this.r[1]&63)===0&&this.br[4]===0x73f4&&ringItem()){
+   // $1812 requests the native title redraw; the selection remains put.
+   setEnabled(!enabled);r[0x1812]=1;r[0x1813]=0;this.br[4]=0x7275;
+  }
+  return cycle.call(this);
+ };
+ function itemRead(bank,address){
+  const pc=(bank&63)*65536+address;
+  // The selected title is a zero-terminated native string. Only redirect
+  // this item so the longer ON/OFF label cannot alter the adjacent STATUS.
+  if((bank&0xc0)===0xc0&&ringItem()&&pc>=0xaa174&&pc<0xaa174+names[+enabled].length)return names[+enabled][pc-0xaa174];
+  return read.call(this,bank,address);
+ }
  const actors=()=>mod.entities().filter(e=>e.active&&(e.hp>0)&&(e.index<3||e.species<128||e.custom==='frieza')&&e.species!==0x55&&
   e.screenX>-16&&e.screenX<272&&e.screenY>-16&&e.screenY<240);
  // Analyzer hits: the cartridge writes the spell into the target's +181h.
  snes.write=function(address,value,dma=false){
   const result=write.call(this,address,value,dma),low=address&0xffff,bank=address>>>16&255;
-  if(value===analyzerSpell&&bank===0x7e&&low>=0xe000&&low<0xf800&&(low-0xe000)%0x200===0x181&&mod.options.enabled)
+  if(value===analyzerSpell&&bank===0x7e&&low>=0xe000&&low<0xf800&&(low-0xe000)%0x200===0x181&&available())
    readouts.set(low-0x181,{age:0,source:'analyzer'});
   return result;
  };
@@ -80,7 +103,7 @@ export function createScouter(snes,mod){
  }
  p.getColor=function(sub,x,y){
   const color=previous.call(this,sub,x,y);
-  if(sub||!readouts.size)return color;
+  if(sub||!readouts.size||!available())return color;
   if(frame!==mod.frame)draw();
   // King Kai's radio window (rows 8-72) stays readable over the readouts.
   if(y<72&&radioShown)return color;
@@ -88,22 +111,22 @@ export function createScouter(snes,mod){
   return pixel?[pixel-1,4,0x86]:color;
  };
  return{
-  // Called from the input pipeline. Returns true when L+X belongs to the
-  // scouter, so the ring tap must not reach the cartridge.
-  chord(input,controlled){
-   const held=!!(input&0x400)&&!!(input&0x200),usable=held&&controlled&&mod.canAttack&&owned()&&!mod.worldFlight;
-   if(usable&&!lastChord)scan();
-   lastChord=held;
-   return usable||(held&&owned()&&controlled);
-  },
+  load(){cart=snes.cart;read=cart.read;if(!encodeText('Targeting').every((v,i)=>cart.data[0xaa174+i]===v))throw Error('Unsupported targeting title');cart.read=itemRead;},
   tick(){
-   for(const[key,readout]of readouts)if(++readout.age>lifetime)readouts.delete(key);
-   if(!mod.options.enabled)readouts.clear();
+   if(pending&&available()&&mod.canAttack){pending=false;scan();}
+   for(const[key,readout]of readouts)if(++readout.age>lifetime&&readout.source==='analyzer')readouts.delete(key);
+   if(available()&&!pending){
+    const keys=new Set();for(const e of actors()){const key=e.custom==='frieza'?'frieza':e.base;keys.add(key);if(!readouts.has(key))readouts.set(key,{age:0,source:'scouter'});}
+    for(const key of readouts.keys())if(!keys.has(key))readouts.delete(key);
+   }
+   if(!available()&&readouts.size)clear();
   },
+  setEnabled,
   get owned(){return owned();},
-  get status(){return{owned:owned(),scans,readouts:[...readouts].map(([key,v])=>({key,...v})),jokes:[...jokes]};},
-  snapshot(){return{version:1,jokes:[...jokes],scans};},
-  restore(saved){readouts=new Map();lastChord=false;jokes=new Set(saved?.jokes??[]);scans=saved?.scans??0;},
-  dispose(){p.getColor=previous;snes.write=write;},
+  get enabled(){return enabled&&owned();},
+  get status(){return{owned:owned(),enabled:enabled&&owned(),scans,readouts:[...readouts].map(([key,v])=>({key,...v})),jokes:[...jokes]};},
+  snapshot(){return{version:2,enabled,jokes:[...jokes],scans};},
+  restore(saved){clear();enabled=saved?.enabled===true;pending=enabled;jokes=new Set(saved?.jokes??[]);scans=saved?.scans??0;},
+  dispose(){p.getColor=previous;snes.write=write;cpu.cycle=cycle;if(cart)cart.read=read;},
  };
 }

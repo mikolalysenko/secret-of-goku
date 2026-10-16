@@ -3,7 +3,7 @@
 // backup selected by the retail validator, so another slot cannot inherit it.
 export function createNativeModSave(snes,mod,battery){
  const c=snes.cpu,cycle=c.cycle;let loading=null;
- const fields=['quest','frieza','worldKi','barriers','ceiling','challenge','powerIntro','sandship'];
+ const fields=['quest','frieza','worldKi','barriers','ceiling','challenge','powerIntro','sandship','scouter'];
  c.cycle=function(){
   if(this.cyclesLeft===0&&(this.r[1]&63)===7){
    if(this.br[4]===0x55d9)battery.stageMetadata(this.br[1],{version:1,...Object.fromEntries(fields.map(k=>[k,mod[k]?.snapshot()]))});

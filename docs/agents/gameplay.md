@@ -83,11 +83,12 @@ Every gameplay action fits a standard SNES controller. Browser gamepads use the 
 | L + B | Shift + X | Instant Transmission beside one enemy; press again for the next |
 | L + A | Shift + Z | Transform at full focus; tap in Super Saiyan to return to normal |
 | L + R | Shift + D | Take off into world flight, including bursting through indoor ceilings |
-| L + X | Shift + A | Scouter: read everyone's power level (after Sylphid gives it). Primm's Analyzer also shows its target's power level |
 | Hold R | D | Fast-forward dialogue and cutscenes at up to 12×; auto-advance prose, stop at choices |
 | Start | Space / Enter | Start / accept name; resume if the browser player is paused |
 | Select | S | Switch party member |
 | Browser conveniences | Backspace / Escape | Back or delete a letter / pause the browser player |
+
+After Sylphid grants his powers, Goku’s options ring replaces Targeting with **Scouter: OFF/ON**. Select it and confirm to toggle power-level readings. It defaults off, remembers your choice in saves, and has no button-combination shortcut. Primm’s Analyzer keeps its native spell behavior; its extra power reading appears only while the Scouter is enabled.
 
 L alone charges focus without changing form. Add A when ready, or hold L+A from the start: the aura builds for 1.6 seconds before the gold transformation burst. Let go early to cancel. L attack chords take priority and never accidentally revert Super Saiyan. The gold reveal adds an explosive ki rumble, a brief flash and ground shake beneath the existing power-up voice, independently of Kamehameha speech. On that same flash, a short radial blast damages nearby enemies once and throws small enemies away. Holding focus afterward keeps Goku's short Super Saiyan hair and does not repeat the explosion. Reverting cuts off the tail. Poison or sleep cancels ordinary Super Saiyan and prevents transforming until the status clears. The Frieza story transformation is permanent; those conditions still affect Goku but no longer change his form.
 

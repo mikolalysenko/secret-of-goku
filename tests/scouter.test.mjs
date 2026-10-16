@@ -5,7 +5,7 @@ import {createScouter,powerLevel,formatPower,analyzerSpell,sylphidFlag} from '..
 function rig({entities=[],owned=true}={}){
  const ram=new Uint8Array(0x20000),writes=[];
  if(owned)ram[0xcf00+sylphidFlag]=2;
- const snes={ram,ppu:{forcedBlank:false,getColor:()=>0x1234},write(address,value){writes.push([address,value]);ram[address&0x1ffff]=value;}};
+ const snes={ram,cpu:{cyclesLeft:0,r:new Uint8Array(4),br:new Uint16Array(8),cycle(){}},ppu:{forcedBlank:false,getColor:()=>0x1234},write(address,value){writes.push([address,value]);ram[address&0x1ffff]=value;}};
  const sounds=[],radio=[];
  const mod={options:{enabled:true,superSaiyan:false},gokuActive:true,canAttack:true,worldFlight:false,charging:false,charge:0,frame:0,
   entities:()=>entities,read16:()=>131,playSound:s=>sounds.push(s),radio:{say:t=>radio.push(t)},challenge:{status:{fed:false}},frieza:{trial:false,status:{}}};
@@ -26,35 +26,48 @@ test('power levels: canon Goku and Frieza, HP-derived for everyone else',()=>{
  assert.equal(formatPower(150000000),'150,000,000');
 });
 
-test('L+X scans only once the scouter is owned, and swallows the ring tap',()=>{
- const unowned=rig({entities:[goku,rabite],owned:false});
- assert.equal(unowned.scouter.chord(0x600,true),false,'without Sylphid, X still opens the ring');
- const {scouter,sounds,radio}=rig({entities:[goku,rabite]});
- assert.equal(scouter.chord(0x600,true),true);
- assert.equal(scouter.chord(0x600,true),true,'holding does not rescan');
- assert.equal(scouter.status.scans,1);
+function selectScouter({snes,scouter},actor=0){
+ const {ram:r,cpu:c}=snes;r[0x1808]=actor;r[0x1809]=2;r[0x1876]=1;
+ c.r[1]=0xc0;c.br[4]=0x73f4;c.cycle();scouter.tick();return c.br[4];
+}
+
+test('Sylphid unlocks a ring toggle but neither ownership nor Analyzer switches it on',()=>{
+ for(const owned of[false,true]){
+  const rigged=rig({entities:[goku,rabite],owned}),{snes,scouter}=rigged;
+  assert.equal(scouter.enabled,false);snes.write(0x7ee781,analyzerSpell);scouter.tick();
+  assert.equal(scouter.status.readouts.length,0);assert.equal(scouter.chord,undefined,'no shortcut intercepts focus + ring');
+  assert.equal(selectScouter(rigged),owned?0x7275:0x73f4);
+  assert.equal(scouter.enabled,owned);if(owned)assert.equal(snes.ram[0x1812],1,'the native title refreshes immediately');
+ }
+});
+
+test('only Goku can toggle the scouter; it follows visible actors until disabled',()=>{
+ const r=rig({entities:[goku,rabite]}),{scouter,sounds,radio}=r;
+ assert.equal(selectScouter(r,1),0x73f4);assert.equal(scouter.enabled,false);
+ selectScouter(r);assert.equal(scouter.enabled,true);assert.equal(scouter.status.scans,1);
  assert.deepEqual(scouter.status.readouts.map(r=>r.key),[0xe000,0xe600]);
  assert.deepEqual(sounds,['teleport']);assert.match(radio[0],/OVER 9000/);
- scouter.chord(0,true);scouter.chord(0x600,true);
- assert.equal(radio.length,1,'the joke plays once');
- for(let i=0;i<241;i++)scouter.tick();
- assert.equal(scouter.status.readouts.length,0,'readouts fade');
+ for(let i=0;i<300;i++)scouter.tick();assert.equal(scouter.status.readouts.length,2);
+ selectScouter(r);assert.equal(scouter.enabled,false);assert.equal(scouter.status.readouts.length,0);
+ selectScouter(r);assert.equal(radio.length,1,'the joke plays once');
 });
 
-test('a native Analyzer hit (spell 17h written to +181h) shows that target',()=>{
- const {snes,scouter}=rig({entities:[goku,rabite]});
- snes.write(0x7e0000|0xe781,analyzerSpell);
- assert.deepEqual(scouter.status.readouts.map(r=>[r.key,r.source]),[[0xe600,'analyzer']]);
- snes.write(0x7e0000|0xe981,0x12); // a different spell
- snes.write(0x7e0000|0xe782,analyzerSpell); // a different field
- assert.equal(scouter.status.readouts.length,1);
+test('Analyzer readouts require explicit activation and disabling immediately clears the cached overlay',()=>{
+ const r=rig({entities:[goku,rabite]}),{snes,scouter,mod}=r;
+ snes.write(0x7ee781,analyzerSpell);assert.equal(scouter.status.readouts.length,0);
+ selectScouter(r);snes.write(0x7ee781,analyzerSpell);
+ assert.equal(scouter.status.readouts.find(r=>r.key===0xe600).source,'analyzer');
+ for(let i=0;i<30;i++)scouter.tick();
+ const pixels=()=>{let lit=0;for(let y=60;y<130;y++)for(let x=40;x<160;x++)if(Array.isArray(snes.ppu.getColor(false,x,y)))lit++;return lit;};
+ assert.ok(pixels()>40);scouter.setEnabled(false);assert.equal(pixels(),0);
+ scouter.setEnabled(true);scouter.tick();mod.menuActive=true;mod.frame++;assert.equal(pixels(),0);
 });
 
-test('the overlay draws reticles and digits only while readouts exist',()=>{
- const {snes,scouter}=rig({entities:[goku]});
- assert.equal(snes.ppu.getColor(false,128,80),0x1234);
- scouter.chord(0x600,true);for(let i=0;i<30;i++)scouter.tick();
- let lit=0;for(let y=60;y<130;y++)for(let x=100;x<160;x++)if(Array.isArray(snes.ppu.getColor(false,x,y)))lit++;
- assert.ok(lit>40,`overlay pixels: ${lit}`);
- assert.deepEqual(scouter.snapshot(),{version:1,jokes:['goku'],scans:1});
+test('checkpoints remember opt-in; old saves and new games default off and never carry stale readouts',()=>{
+ const r=rig({entities:[goku]}),{scouter}=r;selectScouter(r);
+ const saved=scouter.snapshot();assert.deepEqual(saved,{version:2,enabled:true,jokes:['goku'],scans:1});
+ scouter.restore();assert.equal(scouter.enabled,false);
+ scouter.restore(saved);assert.equal(scouter.enabled,true);assert.equal(scouter.status.readouts.length,0);
+ scouter.restore({version:1,jokes:[],scans:5});assert.equal(scouter.enabled,false);
+ r.snes.ram[0xcf00+sylphidFlag]=0;scouter.restore(saved);assert.equal(scouter.enabled,false);
 });

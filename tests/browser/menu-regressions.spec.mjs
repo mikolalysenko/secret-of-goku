@@ -68,3 +68,22 @@ test('a native spell announcement never redirects ki to a ring and attacks recov
   }finally{c[0x1034d8]=target;}
  });expect(result.banners).toBeGreaterThan(0);expect(result.mp).toBeLessThan(99);expect(result.rings).toBe(0);expect(result.punches).toBeGreaterThan(0);expect(result.blasts).toBeGreaterThan(0);expect(result.canAttack).toBe(true);
 });
+
+test('ring confirmations and page fades cannot punch, swing, charge or teleport',async({page})=>{
+ await load(page);
+ const result=await page.evaluate(()=>{
+  const m=mana.mod,r=mana.snes.ram,tap=b=>{mana.run(3,[b]);mana.run(65);};
+  tap(9);for(let i=0;i<10&&r[0x1876]!==2;i++)tap(7);const ring=mana.snapshot(),out=[];
+  for(const extra of[[],[1],[10],[10,1]]){
+   mana.restore(ring);let actions=[],attackable=0;const effects=[];
+   for(let i=0;i<100;i++){mana.run(1,i<35?[0,...extra]:[]);if(m.action)actions.push(m.action.kind);if(m.canAttack)attackable++;if(m.effects.length)effects.push(m.effects.length);}
+   out.push({extra,actions,attackable,effects,active:m.statPage.active});
+  }
+  // Holding focus through back/close must not become a fresh action.
+  mana.restore(ring);tap(0);mana.run(4,[10,9]);mana.run(100,[10]);
+  if(r[0xec]&12){mana.run(4,[10,9]);mana.run(100,[10]);}const held=m.action;
+  mana.run(5);mana.run(1,[0]);return{out,held,can:m.canAttack,menu:m.menuActive,released:m.action?.kind};
+ });
+ for(const row of result.out){expect(row,JSON.stringify(row)).toMatchObject({actions:[],attackable:0,effects:[],active:true});}
+ expect(result,JSON.stringify(result)).toMatchObject({held:null,can:true,menu:false});expect(result.released).toBe('punch');
+});

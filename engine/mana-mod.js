@@ -12,6 +12,7 @@ class ManaMod {
     this.before={x:0,y:0};this.moving=false;this.worldFlight=false;this.nameEditor=false;this.flightTransition=null;this.autoLand=false;this.localFlight=false;this.localLift=0;
     this.hiddenLastFrame=[];this.input=0;this.lastInput=0;this.padInput=0;this.lastPadInput=0;this.flightShadow=null;
     this.powerCharge=0;this.powerBlocked=false;this.kiBlocked=false;this.kiHand=0;this.statusRecovery=null;
+    this.menuTransition=false;this.menuInputHeld=0;
     this.motion=window.GokuAnimation?new window.GokuAnimation(this):null;
     this.spriteLayer=new window.ManaSpriteLayer(snes,this);
     this.ready=Promise.all(Object.values(this.images).map(image=>image.decode())).then(()=>this.spriteLayer.load(this.images));
@@ -114,15 +115,15 @@ class ManaMod {
     if(transform&&this.powerCharge===96&&!this.poisoned&&!this.sleeping){this.configure({superSaiyan:true});this.powerBlocked=true;}
     return true;
   }
-  reset(){this.trial?.restore();this.equipment?.restore();this.statusRecovery=null;this.scouter?.restore();this.panelBack=false;this.padInput=0;this.lastPadInput=0;this.powerCharge=0;this.powerBlocked=false;this.kiBlocked=false;this.kiHand=0;this.frame=0;this.hitRecovery?.restore();this.cancelCombat();this.sound?.restore();this.combatSound?.restore();this.ownership?.reset();this.feedback?.restore();this.orbs?.restore();this.story?.restore();this.worldKi?.restore();this.barriers?.restore();this.potosGatekeeper?.restore();this.sandship?.restore();this.flight?.restore();this.gapFlight?.restore();this.radio?.restore();this.quest?.restore();this.ceiling?.restore();this.challenge?.restore();this.powerIntro?.restore();this.ending?.restore();this.frieza?.restore();this.flightTransition=null;this.autoLand=false;this.localFlight=false;this.localLift=0;this.localFlightHook?.restore();this.teleport?.restore();this.lastTeleportTarget=-1;this.input=0;this.lastInput=0;this.hiddenLastFrame=[];this.flightShadow=null;this.worldFlight=false;this.nameEditor=false;this.spriteLayer.plan=null;this.attackBlocked=false;this.combo=0;this.comboUntil=0;this.knockbacks=[];this.lastMap=null;this.motion?.reset();}
+  reset(){this.menuTransition=false;this.menuInputHeld=0;this.trial?.restore();this.equipment?.restore();this.statusRecovery=null;this.scouter?.restore();this.panelBack=false;this.padInput=0;this.lastPadInput=0;this.powerCharge=0;this.powerBlocked=false;this.kiBlocked=false;this.kiHand=0;this.frame=0;this.hitRecovery?.restore();this.cancelCombat();this.sound?.restore();this.combatSound?.restore();this.ownership?.reset();this.feedback?.restore();this.orbs?.restore();this.story?.restore();this.worldKi?.restore();this.barriers?.restore();this.potosGatekeeper?.restore();this.sandship?.restore();this.flight?.restore();this.gapFlight?.restore();this.radio?.restore();this.quest?.restore();this.ceiling?.restore();this.challenge?.restore();this.powerIntro?.restore();this.ending?.restore();this.frieza?.restore();this.flightTransition=null;this.autoLand=false;this.localFlight=false;this.localLift=0;this.localFlightHook?.restore();this.teleport?.restore();this.lastTeleportTarget=-1;this.input=0;this.lastInput=0;this.hiddenLastFrame=[];this.flightShadow=null;this.worldFlight=false;this.nameEditor=false;this.spriteLayer.plan=null;this.attackBlocked=false;this.combo=0;this.comboUntil=0;this.knockbacks=[];this.lastMap=null;this.motion?.reset();}
   snapshot(){
-    const fields=['statusRecovery','panelBack','padInput','lastPadInput','powerCharge','powerBlocked','kiBlocked','kiHand','frame','facing','nameEditor','worldFlight','flightShadow','charge','charging','attackHeld','nativeTapFrames','action','queuedPunch','combo','comboUntil','blastCooldown','attackBlocked','effects','knockbacks','lastMap','input','lastInput','attackFrames','attackCooldown','autoLand','flightTransition','localFlight','localLift'];
+    const fields=['menuTransition','menuInputHeld','statusRecovery','panelBack','padInput','lastPadInput','powerCharge','powerBlocked','kiBlocked','kiHand','frame','facing','nameEditor','worldFlight','flightShadow','charge','charging','attackHeld','nativeTapFrames','action','queuedPunch','combo','comboUntil','blastCooldown','attackBlocked','effects','knockbacks','lastMap','input','lastInput','attackFrames','attackCooldown','autoLand','flightTransition','localFlight','localLift'];
     return JSON.parse(JSON.stringify({version:1,options:this.options,trial:this.trial?.snapshot(),equipment:this.equipment?.snapshot(),scouter:this.scouter?.snapshot(),hitRecovery:this.hitRecovery?.snapshot(),motion:this.motion?.snapshot(),sound:this.sound?.snapshot(),plants:this.plants?.snapshot(),feedback:this.feedback?.snapshot(),ownership:this.ownership?.snapshot(),flight:this.flight?.snapshot(),localFlightState:this.localFlightHook?.snapshot(),teleportState:this.teleport?.snapshot(),gapFlight:this.gapFlight?.snapshot(),orbs:this.orbs?.snapshot(),story:this.story?.snapshot(),worldKi:this.worldKi?.snapshot(),barriers:this.barriers?.snapshot(),potosGatekeeper:this.potosGatekeeper?.snapshot(),sandship:this.sandship?.snapshot(),radio:this.radio?.snapshot(),quest:this.quest?.snapshot(),ceiling:this.ceiling?.snapshot(),challenge:this.challenge?.snapshot(),powerIntro:this.powerIntro?.snapshot(),ending:this.ending?.snapshot(),frieza:this.frieza?.snapshot(),lastTeleportTarget:this.lastTeleportTarget,...Object.fromEntries(fields.map(key=>[key,this[key]]))}));
   }
   restore(saved){
     this.reset();this.equipment?.restore(saved?.equipment);this.hitRecovery?.restore(saved?.hitRecovery);this.worldFlight=this.nativeFlight;this.sound?.restore(saved?.sound);this.plants?.restore(saved?.plants);this.feedback?.restore(saved?.feedback);this.ownership?.restore(saved?.ownership);this.lastTeleportTarget=saved?.lastTeleportTarget??-1;if(saved?.version!==1)return;
     this.flight?.restore(saved?.flight);this.localFlightHook?.restore(saved?.localFlightState);this.teleport?.restore(saved?.teleportState);this.gapFlight?.restore(saved?.gapFlight);this.orbs?.restore(saved?.orbs);this.story?.restore(saved?.story);this.worldKi?.restore(saved?.worldKi);this.barriers?.restore(saved?.barriers);this.potosGatekeeper?.restore(saved?.potosGatekeeper);this.sandship?.restore(saved?.sandship);this.radio?.restore(saved?.radio);this.quest?.restore(saved?.quest);this.ceiling?.restore(saved?.ceiling);
-    for(const key of ['statusRecovery','panelBack','padInput','lastPadInput','powerCharge','powerBlocked','kiBlocked','kiHand','frame','facing','nameEditor','worldFlight','flightShadow','charge','charging','attackHeld','nativeTapFrames','action','queuedPunch','combo','comboUntil','blastCooldown','attackBlocked','effects','knockbacks','lastMap','input','lastInput','attackFrames','attackCooldown','autoLand','flightTransition','localFlight','localLift'])if(saved[key]!==undefined)this[key]=JSON.parse(JSON.stringify(saved[key]));
+    for(const key of ['menuTransition','menuInputHeld','statusRecovery','panelBack','padInput','lastPadInput','powerCharge','powerBlocked','kiBlocked','kiHand','frame','facing','nameEditor','worldFlight','flightShadow','charge','charging','attackHeld','nativeTapFrames','action','queuedPunch','combo','comboUntil','blastCooldown','attackBlocked','effects','knockbacks','lastMap','input','lastInput','attackFrames','attackCooldown','autoLand','flightTransition','localFlight','localLift'])if(saved[key]!==undefined)this[key]=JSON.parse(JSON.stringify(saved[key]));
     Object.assign(this.options,saved.options);this.motion?.restore(saved.motion);
     this.trial?.restore(saved.trial);this.challenge?.restore(saved.challenge);this.scouter?.restore(saved.scouter);this.powerIntro?.restore(saved.powerIntro);this.ending?.restore(saved.ending);this.frieza?.restore(saved.frieza);
   }
@@ -132,10 +133,18 @@ class ManaMod {
   get nativeFlight(){return this.flight?this.flight.worldActive():this.read8(0xe4)===4&&this.read8(0xe5)===4&&this.read8(0xd0)===0&&(this.read8(0xec)&0x80)!==0;}
   get nativeField(){return [0x5c,0xa8,0xc0,0,0x5c,0xcf,0xc1,0].every((v,i)=>this.read8(0x100+i)===v);}
   get nativeHurt(){const pose=this.read8(0xe011);return pose>=0x8c&&pose<=0x8f;}
+  get menuActive(){return this.menuTransition||!!(this.read8(0xec)&12)||!!(this.read8(0xed)&0x40)||this.snes.ppu.mode===5;}
+  updateMenu(){
+    if(this.read8(0xec)&12||this.read8(0xed)&0x40||this.snes.ppu.mode===5)this.menuTransition=true;
+    // The ring clears EC before the options page installs its vectors.
+    // Keep ownership across that fade; battle-name banners alone never
+    // begin a menu session. Releasing the native window ends the session.
+    else if(this.nativeField&&!this.read8(0x2c)&&!(this.read8(0xec)&0xfe))this.menuTransition=false;
+  }
   get canAttack(){
     // $2C is the transient battle-message window (level ups / spell names),
     // not a modal menu. The native menu/event and actor locks remain owners.
-    return this.gokuActive&&!this.ending?.active&&!this.nativeHurt&&this.nativeField&&this.read8(0xe4)===1&&this.read8(0xe5)===1&&(this.read8(0xe000)&1)!==0&&(this.read8(0xe02c)&1)!==0&&(this.read8(0xec)&0xfe)===0&&!(this.read8(0xed)&0x40)&&this.read8(0xd0)===0&&!(this.read8(0xe190)&0x70)&&!(this.read8(0xe191)&0xd5);
+    return this.gokuActive&&!this.ending?.active&&!this.nativeHurt&&!this.menuActive&&this.nativeField&&this.read8(0xe4)===1&&this.read8(0xe5)===1&&(this.read8(0xe000)&1)!==0&&(this.read8(0xe02c)&1)!==0&&(this.read8(0xec)&0xfe)===0&&!(this.read8(0xed)&0x40)&&this.read8(0xd0)===0&&!(this.read8(0xe190)&0x70)&&!(this.read8(0xe191)&0xd5);
   }
   get status(){
     const x=this.read16(0xe002),y=this.read16(0xe004),sx=this.readSigned16(0xe020),sy=this.readSigned16(0xe022);
@@ -154,6 +163,7 @@ class ManaMod {
     return entities;
   }
   beforeFrame(input=this.snes.joypad1State) {
+    this.updateMenu();
     this.equipment?.tick();this.ending?.tick();this.frieza?.tick();this.scouter?.tick();this.hitRecovery?.tick();this.potosGatekeeper?.tick();this.sandship?.tick();
     // If a blast removes the floor under him, catch himself in a hover.
     // Releasing speed cannot land on the hole; fly to intact deck first.
@@ -168,12 +178,14 @@ class ManaMod {
     if(input&(1<<22))input|=0x402;
     if(input&(1<<23))input|=0x401;
     if(this.sandship)input=this.sandship.input(input);
+    // Confirmation/ki/focus held in a menu must be released before they
+    // can become combat input, including the frame the ring closes.
+    const combatButtons=0x503|(1<<17)|(1<<19);
+    if(this.menuActive)this.menuInputHeld=input&combatButtons;
+    else{this.menuInputHeld&=input;input&=~this.menuInputHeld;}
     this.padInput=input;
     const gokuControls=this.options.enabled&&this.gokuActive&&((this.read8(0xe02c)&1)!==0||this.nativeFlight);
     const controlled=gokuControls&&(this.canAttack||this.nativeFlight);
-    // L+X reads the scouter once Sylphid has given it; the tap must not
-    // also open the ring. Analyzer readouts need no input.
-    if(this.scouter?.chord(input,controlled))input&=~0x200;
     this.snes.joypad1State=(input&0xfff)|((input&(1<<16))?1:0);
     // On foot A is a speed modifier, never the cartridge's latched dash.
     // Keep it out of native movement even during hurt/recovery. Menus and
@@ -313,6 +325,7 @@ class ManaMod {
     this.attackCooldown=action?.kind==='punch'?this.attackFrames:0;
   }
   afterFrame(){
+    this.updateMenu();
     if(this.options.enabled&&this.gokuActive){
       if(!this.worldFlight&&(this.read8(0xd0)||this.read8(0xec)&0xfe)){this.localFlight=false;this.localLift=0;}
       // Native input sampling can finish one movement step after release.

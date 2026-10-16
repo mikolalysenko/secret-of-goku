@@ -28,13 +28,13 @@ for(const gold of[false,true])for(const weighted of[false,true])test(`Goku statu
   document.querySelector('#native-pause').hidden=true;const png=document.querySelector('#screen').toDataURL();
   close();const after=m.statPage.stats;const gone=!m.statPage.active;
   // Reopening STATUS must neither compound weight nor rebuild defenses twice.
-  tap(9);tap(0);const reopened=m.statPage.stats;close();
-  return{before,during,restored,after,reopened,active,gone,body,flags,afterFlags,ki,beam,can:m.canAttack,png};
+  tap(9);tap(0);const reopened=m.statPage.stats,reopenedActive=m.statPage.active;close();
+  return{before,during,restored,after,reopened,reopenedActive,active,gone,body,flags,afterFlags,ki,beam,can:m.canAttack,png};
  },{gold,weighted});
  const attack=Math.round((gold?8191:4095)*(weighted?.9:1));
  writeFileSync(test.info().outputPath('status.png'),Buffer.from(result.png.split(',')[1],'base64'));
  writeFileSync(test.info().outputPath('stats.json'),JSON.stringify({...result,png:undefined},null,2));
- expect(result.active).toBe(true);expect(result.gone).toBe(true);expect(result.can).toBe(true);
+ expect(result.active).toBe(true);expect(result.reopenedActive).toBe(true);expect(result.gone).toBe(true);expect(result.can).toBe(true);
  expect(result.before).toMatchObject({level:99,form:gold?'SUPER SAIYAN':'SAIYAN',weighted,strength:weighted?230:255,agility:weighted?79:99,attack,power:(gold?150000000:90000)*(weighted?.9:1)});
  expect(result.during).toEqual(result.before);expect(result.restored).toEqual(result.before);expect(result.after).toEqual(result.before);expect(result.reopened).toEqual(result.before);
  expect(result.body.sheet).toBe(gold?'ssj':'goku');expect(result.flags).toBe(result.afterFlags);

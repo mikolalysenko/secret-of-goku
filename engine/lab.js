@@ -232,7 +232,7 @@ async function loadROM(source,{potos=false}={}){
   await Promise.all([mod.ready,mod.frieza.ready,mod.trial.ready,mod.kiArt.ready,mod.kaiArt.ready,mod.planetView.ready]);mod.spriteLayer.effects=createNativeEffects(bytes,await effectsManifest);mod.worldScars.load(bytes);mod.planetView.load(bytes);running=false;clearInput();mod.configure({enabled:false});
   const patched=window.gokuDialoguePatch(potos?window.potosPatch(bytes):window.originalGamePatch(bytes));
   if(!snes.loadRom(patched,true))throw Error('The SNES core rejected this ROM.');
-  snes.reset(true);battery.attach(snes.cart,hash(bytes));mod.reset();arrival.load(bytes,{potos});flightDialogue?.dispose();flightDialogue=installFlightDialogue(snes.cart,()=>mod.options.enabled&&mod.gokuActive);mod.gapFlight.load();mod.senzu.load();mod.equipment.load();mod.trial.load();mod.story.load();mod.names.load(bytes);nameSeeded=false;originalBoot=!potos;loaded=true;render();return patched;
+  snes.reset(true);battery.attach(snes.cart,hash(bytes));mod.reset();arrival.load(bytes,{potos});flightDialogue?.dispose();flightDialogue=installFlightDialogue(snes.cart,()=>mod.options.enabled&&mod.gokuActive);mod.gapFlight.load();mod.senzu.load();mod.equipment.load();mod.scouter.load();mod.trial.load();mod.story.load();mod.names.load(bytes);nameSeeded=false;originalBoot=!potos;loaded=true;render();return patched;
 }
 async function pump(frames,buttons=[],{fast=false}={}){
   const mask=buttons.reduce((a,b)=>a|(1<<b),0);
