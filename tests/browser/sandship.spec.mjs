@@ -223,7 +223,7 @@ test('flying off with the captives aboard ditches them; the crashed ship in the 
  expect(rider).toMatchObject({map:340,can:true,party:[1,1],error:null});
 });
 
-test('breaking too many bulkheads crashes the ship into the desert, and Goku can go back aboard',async({page})=>{
+test('breaking too many bulkheads crashes the ship and cuts to the ending on the dunes with everyone',async({page})=>{
  await load(page,3);await enter(page,{map:91,x:24,y:24,flags:{0x28:0,0x36:1}});
  expect((await finish(page,0x28b,0x28,1)).map).toBe(271);
  await page.evaluate(()=>{mana.run(1,[4]);mana.run(100,[10,1]);mana.run(30);});
@@ -231,15 +231,14 @@ test('breaking too many bulkheads crashes the ship into the desert, and Goku can
  const landed=await page.evaluate(()=>{
   const m=mana.mod,said=new Set();
   for(let i=0;i<5;i++){m.sandship.onDemolish({tiles:[{tx:1,ty:1,demolition:true}]});for(let f=0;f<50;f++){mana.run(1);const t=m.radio?.status.current?.text;if(t)said.add(t);}}
-  let white=0;for(let f=0;f<3000&&!(m.status.map===67&&m.canAttack&&!mana.read8(0xd0)&&!m.sandship.status.cut);f++){mana.run(1,mana.read8(0xd0)?[11]:[]);white=Math.max(white,m.sandship.status.flash);}
+  let white=0;for(let f=0;f<4000&&!(m.status.map===91&&m.canAttack&&!mana.read8(0xd0)&&!m.sandship.status.cut);f++){mana.run(1,mana.read8(0xd0)?[11]:[]);white=Math.max(white,m.sandship.status.flash);}
   const s=m.sandship.status;
-  return{map:m.status.map,can:m.canAttack,white,said:[...said],crashed:s.crashed,ditched:s.ditched,breaks:s.breaks,flash:s.flash,events:m.story.status.recentEvents,error:m.story.status.error};
+  return{map:m.status.map,can:m.canAttack,white,said:[...said],stage:mana.read8(0xcf28),captives:[mana.read8(0xcf0d),mana.read8(0xcf0e)],party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],wreck:!!s.wreck,flash:s.flash,events:m.story.status.recentEvents,error:m.story.status.error};
  });
- expect(landed).toMatchObject({map:67,can:true,white:1,crashed:true,ditched:false,breaks:0,flash:0,error:null});
+ // 2A1, the arc's own ending: stage 12, the freed crew on desert map 91.
+ expect(landed).toMatchObject({map:91,can:true,white:1,stage:12,captives:[1,1],party:[1,1],wreck:false,flash:0,error:null});
  expect(landed.events).toContain(0x7d);
  expect(landed.said.some(t=>t.includes('STOP'))).toBe(true);
- const back=await boardFromDesert(page);
- expect(back).toMatchObject({map:99,can:true,wreck:true,captives:[8,8],error:null});
 });
 
 test('?start=sandship enters the desert with the full party and plays into the Sandship',async({page})=>{

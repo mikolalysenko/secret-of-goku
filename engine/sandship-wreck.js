@@ -46,16 +46,10 @@ function breachDepth(b,x,y){
  return reach(b,Math.atan2(dy,dx))-d;
 }
 
-// What is left of the ship, still burning on the dunes where it crashed
-// (desert map 67, around the spot where Goku lands).
-export const crashDesert=67;
-const wreckage=[[60,-36,0],[84,-20,1],[40,-14,2],[104,-44,0],[72,-60,1],[20,-48,2],[120,-12,1]].map(([dx,dy,k],i)=>({x:328+dx,y:330+dy,seed:i*7+k}));
-
 export function createSandshipWreck(snes,mod,state){
  const r=snes.ram,p=snes.ppu,word=a=>r[a]|r[a+1]<<8;
  let combustion=null,sites=null,siteKey='',mask=null,maskKey='',renderFrame=-1,renderActive=false,camera=null,loads=0,spawn=null;
  const onShip=()=>shipMaps.includes(word(0xdc));
- const crashSiteActive=()=>!!state().crashed&&!!state().wreck&&mod.options.enabled&&mod.gokuActive&&word(0xdc)===crashDesert&&p.mode===1&&!mod.worldFlight;
  const active=()=>!!state().wreck&&mod.options.enabled&&mod.gokuActive&&onShip()&&p.mode===1;
  const terrain=()=>r[0xe00b];
  const canLand=(x,y)=>!!mod.localFlightHook?.canLand(x,y,terrain()&128?1:0,terrain()&3);
@@ -187,22 +181,6 @@ export function createSandshipWreck(snes,mod,state){
   return result;
  };
 
- // The ship's hull, heeled over and half buried in the dunes. Rusted
- // plating with rivet rows; sand drifts over its lower edge.
- function hull(cx,cy,put){
-  const hx=402-cx,hy=300-cy;
-  for(let py=-22;py<=20;py++)for(let px=-78;px<=78;px++){
-   const e=px*px/(78*78)+(py+Math.abs(px)*.08)*(py+Math.abs(px)*.08)/(20*20);if(e>1)continue;
-   const x=hx+px,y=hy+py+Math.round(px*.12);if(x<0||x>255||y<0||y>223)continue;
-   // Buried: the lower edge breaks up into dithered sand.
-   if(py>8+Math.sin(px*.21)*4&&hash(px,py)<(py-6)/14)continue;
-   const band=py<-12?2:py<-4?1:0,rivet=(py===-9||py===3)&&(px&7)===0,seam=(px+40)%26===0;
-   const c=rivet?rgb(20,15,10):seam?rgb(6,3,2):band===2?rgb(17,10,6):band===1?rgb(13,7,4):rgb(9,5,3);
-   put(x,y,1+c);
-  }
-  // A snapped mast leaning out of the wreck.
-  for(let i=0;i<40;i++){const x=hx-18+Math.round(i*.45),y=hy-20-i;if(x>=0&&x<256&&y>=0&&y<224){put(x,y,1+rgb(10,6,3));put(x+1,y,1+rgb(14,9,5));}}
- }
  return{
   read,
   get active(){return active();},
@@ -220,11 +198,10 @@ export function createSandshipWreck(snes,mod,state){
    }
   },
   draw(layer){
-   const w=state().wreck;if(!w)return;
-   const list=active()?prepareSites():crashSiteActive()?wreckage:null;if(!list)return;
+   const w=state().wreck;if(!w||!active())return;
+   const list=prepareSites();if(!list)return;
    combustion??=createNativeCombustion(snes.cart.data);
    const {cameraX:cx,cameraY:cy}=mod.status,t=w.age,put=(x,y,c)=>layer.pixel(x,y,c,true);
-   if(!active())hull(cx,cy,put);
    for(const s of list){
     const x=s.x-cx,y=s.y-cy;if(x<-24||x>280||y<-32||y>240)continue;
     // A dithered smoke column first, so the flames read in front of it.

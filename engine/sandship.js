@@ -30,11 +30,14 @@ export const holdMaps=[271,319,324];
 export const flightDoor=0x7a,shipDoors=Array.from({length:32},(_,i)=>0x1a0+i);
 const geshtar=177,deck=99,decks=[98,99],kitchen=319,cabin=339;
 // The wreck absorbs every unfinished Sandship route. Flying off and leaving
-// the captives behind, or breaking the ship apart, leaves it crashed in the
-// desert (map 67). Goku can go back aboard from there at any later time;
-// once everyone is back, Geshtar and the Mech Rider end the arc as usual.
+// the captives behind leaves it crashed in the desert (map 67); Goku can go
+// back aboard from there later, and once everyone is back Geshtar and the
+// Mech Rider end the arc as usual. Breaking the ship apart skips straight to
+// the arc's own ending: everyone rejoins on the dunes with the freed crew.
 export const crashEvents={crash:0x7d,found:0x7e,board:0x7f,later:0x80};
-const desert=67,crashSite={map:desert,tx:20,ty:20,layer:0},boardAt={map:deck,tx:30,ty:10,layer:0},breakLimit=5;
+const desert=67,boardAt={map:deck,tx:30,ty:10,layer:0},breakLimit=5;
+// After the Mech Rider, 2A1 sets stage 12 and takes door 1FF to map 91.
+const endingMap=91,endingEvent=0x2a1,endingFallback=[0x30,0x28,0x0c,0x19,0xff];
 
 const offer=()=>[
  ...box('GOKU:Hey... those guys are\npushing the engines in\nchains. Are they slaves?!'),
@@ -66,15 +69,17 @@ const breakoutScripts={
  // Both captives are back: the Empire's ambush on deck, as in the original.
  [breakout.deck]:[...box('GESHTAR:WHO blew a hole in\nmy ship?! Get up here!\nGOKU:Ooh! Is he strong?'),0x30,0x28,10,0x19,0xab,0x29,0x28,...jump(0x29d),0],
 };
-const missing=['','GOKU:{1} is still in\nthere somewhere!','GOKU:{2} is still in\nthere somewhere!','GOKU:{1} and {2} are\nstill in there!'];
+const rejoin=captives=>[...(captives&1?[0x30,0x0d,1,0x09,0x2b,1]:[]),...(captives&2?[0x30,0x0e,1,0x09,0x2b,2]:[])];
 const crashScripts={
- // The white-out lands Goku on the dunes beside what is left of the ship.
- // It starts at once; the script itself waits out the shaking and white.
- crash:captives=>[0x28,30,0x19,0xa9,0x07,0x28,50,
+ // It starts at once; the script waits out the shaking and the white,
+ // brings back every captive, then plays the arc's ending (2A1) inline so
+ // the party can react on the dunes. party = who is there afterwards.
+ crash:(captives,party,ending=endingFallback)=>[0x28,30,...rejoin(captives),...ending,0x07,0x28,20,
   ...box('GOKU:...Okay. THAT one\nwas my fault.'),
-  ...box('KING KAI:You broke the\nwhole ship, Goku! It\nsank into the SAND!'),
-  ...(captives?box(missing[captives]):[]),0],
- found:ditched=>[...box(ditched?"GOKU:Hey, the Sandship!\nHuh. It crashed. I bet\nthey're fine in there.":'GOKU:There is what is\nleft of the Sandship.'),
+  ...(party&1?box('{1}:You THINK?! You sank\na whole ship in the\nSAND, Goku!'):[]),
+  ...(party&2?box('{2}:I saved the soup,\nthough!'):[]),
+  ...box('KING KAI:Goku! Try not to\nbreak the NEXT one.\nGOKU:Ha ha! No promises.'),0],
+ found:ditched=>[...box(ditched?"GOKU:Smoke over the dunes.\nThe Sandship crashed! I\nbet they're fine in there.":'GOKU:Smoke over the dunes.\nThat is what is left of\nthe Sandship.'),
   ...choice('GOKU:Go back aboard?\n',[{label:'Yes',x:3,to:crashEvents.board},{label:'Later',x:13,to:crashEvents.later}])],
  board:()=>[0x19,0xa9,0x07,0],
  later:()=>[...box('GOKU:Eh. Later.'),0],
@@ -108,7 +113,7 @@ export function buildSandshipEvents(){
   [breakout.escape,'planned',escape(true)],[breakout.escape,'improvised',escape(false)],
   ...[0,1,2,3].map(c=>[breakout.chaos,`captives ${c}`,chaos(c)]),
   [flightDoor,'door 1A9 (one per ship door)',[0x19,0xa9,0]],
-  ...[0,1,2,3].map(c=>[crashEvents.crash,`captives ${c}`,crashScripts.crash(c)]),
+  ...[0,1,2,3].map(p=>[crashEvents.crash,`party ${p}`,crashScripts.crash(p,p)]),
   [crashEvents.found,'ditched',crashScripts.found(true)],[crashEvents.found,'crashed',crashScripts.found(false)],
   [crashEvents.board,'all',crashScripts.board()],[crashEvents.later,'all',crashScripts.later()],
   [0x295,'ditched',madScripts.kitchen],[0x29c,'ditched',madScripts.cabin],
@@ -126,7 +131,9 @@ export function installSandship({rom,r,mod,entries,variants}){
  const mad=Object.fromEntries(Object.entries({kitchen:0x295,cabin:0x29c}).map(([k,id])=>[k,variants(id,()=>madScripts[k])]));
  // Companions Goku flew off and left are mad at him.
  const wreck={get sergo(){return calm.sergo;},get kitchen(){return(mod.sandship?.ditched?mad:calm).kitchen;},get cabin(){return(mod.sandship?.ditched?mad:calm).cabin;}};
- const crashed=[0,1,2,3].map(c=>variants(crashEvents.crash,()=>crashScripts.crash(c)));
+ // The arc's own ending, read from the cartridge: 2A1 without its END.
+ const ending=parseEvent(rom,endingEvent).ops.flatMap(o=>[...o.bytes]);ending.pop();
+ const crashed=[0,1,2,3].map(c=>variants(crashEvents.crash,mask=>crashScripts.crash(c,mask|c,ending)));
  entries.set(at(crashEvents.crash),mask=>crashed[sandshipCaptives(r)][mask]);
  const found=[false,true].map(d=>variants(crashEvents.found,()=>crashScripts.found(d)));
  entries.set(at(crashEvents.found),mask=>found[Number(!!mod.sandship?.ditched)][mask]);
@@ -244,7 +251,7 @@ export function createSandship(mod){
  // Too many broken bulkheads: the ship comes apart around Goku.
  function crash(){
   if(s.cut)return;
-  s.cut={age:0,crash:true,...crashSite,requested:false,door:false,loaded:false,after:0};
+  s.cut={age:0,crash:true,map:endingMap,requested:false,door:false,loaded:false,after:0};
   mod.radio?.dismiss?.('sandship');
  }
  function crashTick(c){
@@ -255,7 +262,7 @@ export function createSandship(mod){
    w.blasts=[...(w.blasts??[]).filter(b=>w.age-b.age<48),{x:mod.read16(0xe002)+Math.cos(a)*d,y:mod.read16(0xe004)+Math.sin(a)*d*.7,age:w.age}];
    mod.playSound?.('fortressBreak');mod.feedback?.pulse(4+Math.min(8,c.age>>4));
   }
-  if(!c.requested&&mod.story.request(crashEvents.crash)){c.requested=true;c.age=0;s.crashed=true;s.away=true;mod.cancelInput();}
+  if(!c.requested&&mod.story.request(crashEvents.crash)){c.requested=true;c.age=0;mod.cancelInput();}
   // Fade only once the desert itself is on screen, not its blank load.
   if(map()===c.map&&mod.nativeField&&!mod.snes.ppu?.forcedBlank&&++c.after>24)s.flash=Math.max(0,1-(c.after-24)/45);
   else if(!c.after)s.flash=c.requested?Math.max(0,Math.min(1,(c.age-60)/56)):0;

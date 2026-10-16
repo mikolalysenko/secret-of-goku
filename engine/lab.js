@@ -429,7 +429,7 @@ const scenes={
     return this.status;
   },
 };
-window.mana={snes,mod,scenes,title,arrival,battery,battleRetry,bootOriginal,bootPotos,fly,play,pause,render,configure,logs,controls,gamepads,fastForward,audioOutput,
+window.mana={snes,mod,scenes,title,arrival,battery,battleRetry,bootOriginal,bootPotos,fly,play,pause,render,configure,logs,controls,gamepads,fastForward,audioOutput,sound,
   run(frames=1,buttons=[]){running=false;const mask=buttons.reduce((a,b)=>a|1<<b,0);for(let i=0;i<frames;i++)step(mask);render();return mod.status;},
   snapshot:()=>({...snapshot(snes),arrival:arrival.snapshot(),goku:mod.snapshot(),opening:{nameSeeded,originalBoot}}),restore:state=>{stopAudio();battleRetry.clear();pauseCard();controls.clear();restore(snes,state);mod.restore(state.goku);arrival.restore(state.arrival);nameSeeded=state.opening?.nameSeeded??nameSeeded;originalBoot=state.opening?.originalBoot??originalBoot;render();},
   saveCheckpoint,restoreCheckpoint,quickStart,hash,
