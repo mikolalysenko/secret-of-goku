@@ -34,9 +34,11 @@ test('orbital melee also benefits from removing the training gi',async({page})=>
   mana.pause();const m=mana.mod,base=m.frieza.snapshot(),out=[];
   for(const armor of[22,21]){
    const s=structuredClone(base),b=s.boss,o=b.space;
-   Object.assign(b,{hp:20000,guard:0,surge:null,stun:0,x:128,y:80});
-   Object.assign(o,{intro:0,clash:null,duel:null,beam:null,charge:0,cooldown:0,hero:{x:108,y:80}});
-   m.write8(0xe1e1,armor);m.frieza.restore(s);m.frieza.spaceInput(1);out.push(20000-m.frieza.status.hp);
+   Object.assign(b,{hp:20000,guard:0,surge:null,stun:10000,x:128,y:80});
+   Object.assign(o,{intro:0,clash:null,duel:null,duelCooldown:10000,action:null,beam:null,charge:0,cooldown:0,heading:0,hero:{x:108,y:80}});
+   // Face the stationary opponent and let the real controller input reach
+   // the punch's contact frame before comparing the equipment penalty.
+   m.write8(0xe1e1,armor);m.frieza.restore(s);mana.run(2,[0]);out.push(20000-m.frieza.status.hp);
   }return out;
  });expect(damage).toEqual([495,550]);
 });
