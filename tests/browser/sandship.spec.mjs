@@ -166,24 +166,29 @@ test('a full-power wave fired in the hold wrecks the ship without Sergo',async({
  expect(rider,JSON.stringify(rider)).toMatchObject({map:340,can:true,stage:11,party:[1,1],error:null});
 });
 
-test('in the wreck, flight crosses every wall, doors work from any side and punches open bulkheads',async({page})=>{
+test('in the wreck, flight crosses inner bulkheads, doors work from any side and punches open walls',async({page})=>{
  await load(page,3);await enter(page,{map:91,x:24,y:24,flags:{0x28:0,0x36:1}});
  expect((await finish(page,0x28b,0x28,1)).map).toBe(271);
  // Flight passes over the ship walls before the breakout as well.
- const before=await page.evaluate(()=>{mana.write16(0xe002,136);mana.write16(0xe004,210);mana.run(2);mana.run(80,[8,7]);return mana.read16(0xe002);});
- expect(before).toBeGreaterThan(300);
+ const before=await page.evaluate(()=>{mana.write16(0xe002,136);mana.write16(0xe004,210);mana.run(2);mana.run(14,[8,7]);return{x:mana.read16(0xe002),cut:!!mana.mod.sandship.status.cut};});
+ expect(before.x).toBeGreaterThan(200);expect(before.cut).toBe(false);
  await page.evaluate(()=>{mana.write16(0xe002,136);mana.write16(0xe004,210);mana.run(40);mana.run(1,[4]);mana.run(100,[10,1]);mana.run(30);});
  expect((await untilControl(page)).wreck).toBe(true);
  const r=await page.evaluate(()=>{
   const ram=mana.snes.ram,solid=()=>{let n=0;for(let ty=0;ty<30;ty++)for(let tx=0;tx<30;tx++)n+=(ram[0x1b800+ram[0x10000+ty*128+tx]*4]&7)===3;return n;};
-  // Fly right from the hold floor across the bulkheads into the far hull.
-  mana.write16(0xe002,136);mana.write16(0xe004,210);mana.run(2);mana.run(80,[8,7]);const flew=mana.read16(0xe002);mana.run(30);
+  // Cross the inner bulkheads, staying inside the hull. Crossing its outer
+  // boundary now blows up the ship; the separate escape test covers that.
+  mana.write16(0xe002,136);mana.write16(0xe004,210);mana.run(2);
+  // The returned Heavy Gi slows Goku: stop at the inner wall's far side,
+  // rather than assuming the pre-breakout speed for a fixed frame count.
+  for(let f=0;f<60&&mana.read16(0xe002)<216;f++)mana.run(1,[8,7]);
+  const flew=mana.read16(0xe002);mana.run(30);
   // A plain punch at a bulkhead opens it.
   const walls=solid();mana.write16(0xe002,72);mana.write16(0xe004,152);mana.run(2);mana.run(2,[7]);mana.run(10);
   for(let i=0;i<4;i++){mana.run(2,[0]);mana.run(14);}mana.run(60);
-  return{flew,map:mana.read16(0xdc),opened:walls-solid()};
+  return{flew,map:mana.read16(0xdc),opened:walls-solid(),cut:!!mana.mod.sandship.status.cut};
  });
- expect(r.flew).toBeGreaterThan(440);expect(r.map).toBe(271);expect(r.opened).toBeGreaterThan(0);
+ expect(r.flew,JSON.stringify(r)).toBeGreaterThanOrEqual(216);expect(r.map).toBe(271);expect(r.opened).toBeGreaterThan(0);expect(r.cut).toBe(false);
  // Flying sideways onto the deck hatch still takes it below.
  await enter(page,{map:99,x:27,y:12});
  const hatch=await page.evaluate(()=>{for(let f=0;f<60&&mana.read16(0xdc)===99;f++)mana.run(1,[8,7]);mana.run(200);return mana.read16(0xdc);});
@@ -207,29 +212,59 @@ async function riderThenEnding(page){
   return{fight,map:m.status.map,can:m.canAttack,party:party(),captives:[mana.read8(0xcf0d),mana.read8(0xcf0e)],stage:mana.read8(0xcf28),wreck:!!m.sandship.status.wreck,ending:m.sandship.status.ending,events:m.story.status.recentEvents,error:m.story.status.error};
  });
 }
-test('flying off with the captives aboard ditches them; coming back boards straight into the Mech Rider, then the reunion',async({page})=>{
+test('the roof takeoff off an unfinished ship blows it up into the Mech Rider, then the reunion',async({page})=>{
  await load(page,3);await enter(page,{map:91,x:24,y:24,flags:{0x28:0,0x36:1}});
  expect((await finish(page,0x28b,0x28,1)).map).toBe(271);
  await enter(page,{map:99,x:30,y:11});
- // L+R takeoff punches through the roof and flies off.
- const away=await page.evaluate(()=>{
-  const m=mana.mod,said=new Set();mana.run(3,[10,11]);
-  for(let f=0;f<1200;f++){mana.run(1);const t=m.radio?.status.current?.text;if(t)said.add(t);}
-  for(let f=0;f<900&&m.worldFlight;f++)mana.run(1,[0]);mana.run(200);
-  const s=m.sandship.status;
-  return{said:[...said],ditched:s.ditched,crashed:s.crashed,wreck:!!s.wreck,stage:mana.read8(0xcf28),captives:[mana.read8(0xcf0d),mana.read8(0xcf0e)],party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],ship:[98,99,270,271,318,319,324,339].includes(m.status.map)};
+ // L+R takeoff no longer punches out through the roof.
+ const boom=await page.evaluate(()=>{
+  const m=mana.mod,said=new Set();mana.run(3,[10,11]);let white=0;
+  for(let f=0;f<400;f++){mana.run(1);white=Math.max(white,m.sandship.status.flash);const t=m.radio?.status.current?.text;if(t)said.add(t);}
+  return{white,said:[...said],ending:m.sandship.status.ending,wreck:!!m.sandship.status.wreck,ceiling:!!m.ceiling?.busy,maps:m.status.map};
  });
- // Nothing is resolved: still captive, the arc still at its early stage.
- expect(away).toMatchObject({ditched:true,crashed:true,wreck:true,captives:[8,8],party:[0,0],ship:false});
- expect(away.stage).toBeLessThan(10);
- expect(away.said.some(t=>t.includes('abandon'))).toBe(true);
- expect(away.said.some(t=>t.includes('come back for them'))).toBe(true);
- // The desert finds the crashed ship; Yes (the first option) boards it.
- await enter(page,{map:67,x:20,y:20});
+ expect(boom).toMatchObject({white:1,ending:'crash',wreck:true,ceiling:false});
+ expect(boom.said.some(t=>t.includes('broke the whole ship'))).toBe(true);
  const r=await riderThenEnding(page);
  expect(r.fight).toEqual({map:340,can:true,party:[0,0],stage:11});
  expect(r,JSON.stringify(r)).toMatchObject({map:91,can:true,party:[1,1],captives:[1,1],stage:12,wreck:false,ending:null,error:null});
- for(const id of[0x7e,0x7f,0x29e,0x2a1])expect(r.events).toContain(id);
+ for(const id of[0x7d,0x29e,0x2a1])expect(r.events).toContain(id);
+});
+
+test('flying out past the hull blows the ship up; flying over its walls does not',async({page})=>{
+ await load(page,3);await enter(page,{map:91,x:24,y:24,flags:{0x28:0,0x36:1}});
+ expect((await finish(page,0x28b,0x28,1)).map).toBe(271);
+ const r=await page.evaluate(()=>{
+  const m=mana.mod,w=a=>mana.read16(a);
+  // Across the hold's inner walls (4 tiles at most from its floor): fine.
+  mana.write16(0xe002,136);mana.write16(0xe004,210);mana.run(2);mana.run(14,[8,7]);mana.run(10);
+  const over={x:w(0xe002),cut:!!m.sandship.status.cut,escaped:m.sandship.status.escaped};
+  // On out into the void beyond the hull.
+  mana.run(70,[8,7]);let white=0;for(let f=0;f<300;f++){mana.run(1);white=Math.max(white,m.sandship.status.flash);}
+  return{over,x:w(0xe002),white,ending:m.sandship.status.ending};
+ });
+ expect(r.over).toMatchObject({cut:false,escaped:false});expect(r.over.x).toBeGreaterThan(200);
+ expect(r).toMatchObject({white:1,ending:'crash'});
+});
+
+test('Instant Transmission to a foe on the wreck stairs lands at their foot, and the stairs climb normally',async({page})=>{
+ await load(page,3);await enter(page,{map:91,x:24,y:24,flags:{0x28:0,0x36:1}});
+ expect((await finish(page,0x28b,0x28,1)).map).toBe(271);
+ await page.evaluate(()=>{mana.run(1,[4]);mana.run(100,[10,1]);mana.run(30);});
+ expect((await untilControl(page)).wreck).toBe(true);
+ const r=await page.evaluate(()=>{
+  const m=mana.mod,w=a=>mana.read16(a),foe=m.entities().find(e=>e.index>=3&&e.active&&e.species<128&&e.hp);
+  // The hold's stairs (tiles 14-15, rows 14-17) climb to the deck.
+  mana.write16(foe.base+2,14*16+8);mana.write16(foe.base+4,16*16+8);mana.run(2);
+  mana.run(2,[10,0]);mana.run(30);
+  const at={x:w(0xe002)>>4,y:w(0xe004)>>4},tile=m.localFlightHook.tileAt(w(0xe002),w(0xe004));
+  // Move the foe aside, then walk up the stairs.
+  mana.write16(foe.base+2,8*16);mana.write16(foe.base+4,8*16);
+  for(let f=0;f<120&&m.status.map===271;f++)mana.run(1,[4]);
+  return{at,stair:(tile.code&0xf0)===0x20,door:!!(tile.behavior&0x80),height:mana.read8(0xe00b)&3,map:m.status.map};
+ });
+ expect(r.stair).toBe(false);expect(r.door).toBe(false);
+ expect(r.at.x).toBeGreaterThanOrEqual(13);expect(r.at.x).toBeLessThanOrEqual(16);expect(r.at.y).toBeGreaterThanOrEqual(18);
+ expect(r.map).toBe(99);
 });
 
 test('breaking bulkheads while still sneaking crashes the ship into the Mech Rider fight, then everyone reunites',async({page})=>{

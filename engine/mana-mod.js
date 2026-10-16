@@ -62,6 +62,8 @@ class ManaMod {
   cancelInput(){this.panelBack=false;this.attackHeld=0;this.nativeTapFrames=0;this.charging=false;this.charge=0;this.powerCharge=0;this.queuedPunch=false;this.attackBlocked=false;this.kiBlocked=false;this.powerBlocked=false;this.input=0;this.lastInput=0;this.padInput=0;this.lastPadInput=0;if(['ready','charge','focus'].includes(this.action?.kind))this.action=null;}
   requestFlight(){
     if(!this.options.enabled||!this.gokuActive||this.worldFlight||!this.canAttack||this.ceiling?.busy||this.ceiling?.bossActive)return false;
+    // Taking off from an unfinished Sandship blows it up instead.
+    if(this.sandship?.takeoff())return true;
     this.cancelCombat();return this.flight?.request()||this.ceiling?.request()||false;
   }
   recoverStatus(input){

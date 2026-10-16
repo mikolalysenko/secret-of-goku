@@ -11,24 +11,30 @@ export function createNativeTeleport(snes,mod,collision){
   // Frieza hovers over his broken deck. IT can end in a hover there, using
   // the same bounded flight corridor; ordinary targets still need a floor.
   const airborne=target.custom==='frieza';
-  const clear=(x,y)=>{
+  const clear=(x,y,stairs=false)=>{
    if(!collision.canLand(x,y,layer,terrain&3)&&!(airborne&&collision.canFly(x,y,layer)))return false;
-   // Do not materialize on a door, a layer-change seam or a scripted pad.
+   // Do not materialize on a door, a layer-change seam or a scripted pad,
+   // nor on stairs: their 2x guidance only sets the floor height when he
+   // walks on from either end, so he could leave in only one direction.
    for(const dx of[-6,0,6])for(const dy of[-4,0,4]){
     const tile=collision.tileAt(x+dx,y+dy,layer);
-    if(!tile||(tile.behavior&0x10)||(tile.flags&7)>2)return false;
+    if(!tile||(tile.behavior&(stairs?0x10:0x90))||(tile.flags&7)>2||!stairs&&(tile.code&0xf0)===0x20)return false;
    }
    return true;
   };
   const ox=origin.x-target.x,oy=origin.y-target.y,preferred=Math.abs(ox)>=Math.abs(oy)?[Math.sign(ox)||1,0]:[0,Math.sign(oy)||1];
   const directions=[preferred,...[[1,0],[-1,0],[0,1],[0,-1]].filter(d=>d[0]!==preferred[0]||d[1]!==preferred[1])];
-  for(const distance of[26,22,18,32,38])for(const[dx,dy]of directions){
+  // Farther rings reach the floor past either end of a staircase.
+  for(const distance of[26,22,18,32,38,46,54])for(const[dx,dy]of directions){
    const x=Math.round(target.x+dx*distance),y=Math.round(target.y+dy*distance);
    if(!clear(x,y))continue;
    // Stay on the enemy's side of a wall/bank, close enough to punch it.
    let connected=true;
-   for(let n=6;n<distance;n+=4)if(!clear(target.x+dx*n,target.y+dy*n)){connected=false;break;}
-   if(connected)return{x,y,terrain,layer,air:airborne&&!collision.canLand(x,y,layer,terrain&3),facing:dx<0?1:dx>0?2:dy<0?0:3};
+   for(let n=6;n<distance;n+=4)if(!clear(target.x+dx*n,target.y+dy*n,true)){connected=false;break;}
+   // Stand at the landing floor's own height; a foe on the stairs can
+   // carry the other level's.
+   const floor=collision.tileAt(x,y,layer)?.flags&3,height=floor===1||floor===2?(terrain&0xfc)|floor:terrain;
+   if(connected)return{x,y,terrain:height,layer,air:airborne&&!collision.canLand(x,y,layer,height&3),facing:dx<0?1:dx>0?2:dy<0?0:3};
   }
   return null;
  }
