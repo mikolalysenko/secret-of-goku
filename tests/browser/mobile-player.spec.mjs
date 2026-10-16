@@ -21,9 +21,9 @@ async function layout(page){
   };
  });
 }
-async function expectLayout(page){
+async function expectLayout(page,controlCount=14){
  const view=await layout(page);expect(view.overflow).toBe(false);expect(view.ratio).toBeCloseTo(8/7,2);
- expect(view.controls).toHaveLength(13);
+ expect(view.controls).toHaveLength(controlCount);
  for(const control of view.controls){expect(control.size,control.name).toBeGreaterThanOrEqual(44);expect(control.visible,control.name).toBe(true);expect(control.overlap,control.name).toBe(false);}
 }
 
@@ -48,8 +48,8 @@ test('both control pages fit short portrait and landscape webviews, including sa
  for(const viewport of [{width:320,height:480},{width:390,height:640},{width:430,height:740},{width:568,height:320},{width:844,height:390}]){
   await page.setViewportSize(viewport);
   await expect.poll(()=>page.evaluate(()=>Number.parseFloat(document.querySelector('.player').style.getPropertyValue('--viewport-height')))).toBe(viewport.height);
-  await expectLayout(page);
-  await page.getByRole('button',{name:'More controls',exact:true}).tap();await expect(page.locator('#touch-more')).toBeVisible();await expectLayout(page);
+  await expectLayout(page);await expect(page.getByRole('button',{name:'Warp: Instant Transmission',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'More controls',exact:true}).tap();await expect(page.locator('#touch-more')).toBeVisible();await expectLayout(page,12);
   await page.locator('#touch-more [data-action="more"]').tap();await expect(page.locator('#touch-main')).toBeVisible();
  }
  await page.setViewportSize({width:390,height:640});
