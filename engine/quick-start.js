@@ -7,7 +7,7 @@ import {friezaEvents} from './frieza-events.js';
 import {cosmicDuration} from './frieza-cinematic.js';
 import {encodeText} from './event-codec.js';
 import {nameSlot} from './native-names.js';
-export const quickStartRevision='finale-polish-26';
+export const quickStartRevision='finale-polish-27';
 export const quickStartLabels={
   title:'After title',sword:'After sword / pod crash',sandship:'Sandship desert',late:'After Sunken Continent',trial:'Time Chamber: Goku versus Vegeta',
   fortress:'Mana Fortress deck',flight:'Fortress aerial shot',
@@ -26,7 +26,9 @@ export function buildFromBase(kind,callbacks){
   return kind==='sandship'?buildSandshipCheckpoint(callbacks):buildLateCheckpoint(kind,callbacks);
 }
 
-async function fullParty({mod,pump}){
+// Late starts boost the companions to 999 HP; the Sandship keeps their
+// native recruit stats (the next map load recomputes maximum HP anyway).
+async function fullParty({mod,pump},{boost=true}={}){
   const rom=mod.snes.cart.data,bytes=[];
   for(let i=1;i<=2;i++){
     const base=0xe000+i*512;
@@ -51,7 +53,7 @@ async function fullParty({mod,pump}){
   for(let i=1;i<=2;i++){
     const base=0xe000+i*512;
     if(!(mod.read8(base)&1))throw Error('A test companion did not join.');
-    mod.write16(base+0x182,999);mod.write16(base+0x184,999);
+    if(boost){mod.write16(base+0x182,999);mod.write16(base+0x184,999);}
     mod.write8(base+0x190,0);mod.write8(base+0x191,0);
     mod.snes.ram.fill(0,nameSlot(i),nameSlot(i+1));mod.snes.ram.set(encodeText(i===1?'Primm':'Popoi'),nameSlot(i));
   }
@@ -92,7 +94,7 @@ export async function buildQuickStart(kind,{fresh,pump,mod,arrival,capture,cache
 export async function buildSandshipCheckpoint({pump,mod,capture,cache,progress}){
   progress('Preparing the Sandship desert…');
   mod.cancelCombat();mod.radio.restore({firstFlight:true});mod.powerIntro.restore({flight:true,superShown:true});
-  await fullParty({mod,pump});
+  await fullParty({mod,pump},{boost:false});
   for(const[flag,value]of[[0x10,11],[0x28,0],[0x36,1]])mod.write8(0xcf00+flag,value);
   mod.write16(0xe182,999);mod.write16(0xe184,999);
   if(!mod.story.travel(0x1cb))throw Error('The desert entrance was not ready.');
