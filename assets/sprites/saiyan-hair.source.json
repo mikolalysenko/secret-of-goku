@@ -1,0 +1,17 @@
+{
+  "tool": "Built-in image_gen",
+  "goku": {
+    "file": "goku-ssj-hair.png",
+    "prompt": "Use case: precise-object-edit.\nAsset type: Goku Super Saiyan hairstyle correction reference atlas for an SNES Secret of Mana style RPG.\nEdit target: the attached 4x4 sheet. All 16 sprites must keep their exact cell, body, face, hands, feet, size and pose. The logical artwork is 128x128 pixels (32x32 per cell), enlarged 8 times. Change ONLY the GOLD HAIR above and behind the face. Keep every face, green eye, skin pixel, orange gi, blue cloth and shoe unchanged.\nMake the hair unmistakably classic SUPER SAIYAN ONE GOKU: broad, sharply separated upright golden tufts, a few pointed swept-up locks and the distinctive two forehead locks. It must be short spiked hair, never SSJ3 long hair. Replace the current busy, mottled, brown/white checker texture with clean connected gold pixel clusters and deliberate warm dark seams between spikes. Do not enlarge the head or move the hairline over the eyes. Preserve the direction/tilt of each head.\nUse the SAME FOUR hair colors in every frame: dark warm ochre #845218 outline/seams, amber #CEA538 shadow, golden yellow #FFE760 main mass, pale cream #FFF7C0 highlights. No pure white hair pixels, gray, electric aura or glow. The native pixels are solid aligned 8x8 blocks, not tiny finer details.\nRows are front/down, left, right, back/up. Columns are standing, running, charging beam, firing beam. Maintain these directions and every source pose. No new character poses. No particles, energy, borders, lettering or added objects. True transparent background, preserve transparency. Hair only; absolutely no changes to faces or body anatomy."
+  },
+  "vegeta": {
+    "file": "vegeta-ssj-hair.png",
+    "prompt": "Use case: precise-object-edit.\nAsset type: Super Saiyan Vegeta hair variant of an existing sixteen-pose SNES RPG sprite atlas.\nInput 1 is the EDIT TARGET, the existing base-form Vegeta 4x4 atlas. Input 2 is the HAIR PALETTE AND PIXEL CLUSTER reference, Super Saiyan Goku. Preserve input 1's exact canvas, cell arrangement, feet anchors, head size, body, face, eyes, gloves, armor and all sixteen poses. Change ONLY the black hair to a proper SUPER SAIYAN ONE VEGETA hairstyle.\nThe hair must have a crisp high widow's peak and several strong sharply separated upright tufts, tall and tapered with swept-back side spikes. Keep Vegeta's distinctive narrow crown and stern forehead; do not give him Goku's bangs. The hair silhouettes must be consistent as the head turns/leans, no rounded flame blob and no long SSJ3 hair. Preserve every face and exposed forehead pixel. Retain the same size and placement as his original hair, changing only small spike details.\nUse exactly the same four warm gold hair colors as the second image: dark ochre #845218 seams/outline, amber #CEA538 shadows, golden yellow #FFE760 main mass, pale cream #FFF7C0 highlight. No original black hair patches left, no white-gray highlights, no orange outline, no aura. Render large connected flat pixel clusters and 1-native-pixel stepped edges. Keep the reference target's coarse SNES/Secret of Mana scale, no finer detailed anime illustration.\nAll poses and rows stay exactly unchanged. Transparent background must be preserved. No text, grid, glow, shadows or effects. Only hair changes, never face, body, scale, gloves or gold armor."
+  },
+  "palette": [
+    "#845218",
+    "#CEA538",
+    "#FFE760",
+    "#FFF7C0"
+  ]
+}

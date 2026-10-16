@@ -7,7 +7,7 @@ async function load(page,map,x,y,flags){
  await page.evaluate(({state,map,x,y,flags})=>{
   mana.pause();state.romHash=mana.hash(mana.snes.cart.data);mana.restore(state);const m=mana.mod;Object.assign(m.options,{enabled:true,power:true,superSaiyan:true});m.powerIntro.restore({flight:true,superSaiyan:true});mana.write8(0xe200,0);mana.write8(0xe400,0);
   const c=mana.snes.cart.data,e=c.slice(0x742b0,0x742b5),d=c.slice(0x8300c,0x83010);
-  try{c.set([4,24,3,5,0],0x742b0);c.set([map&255,x*2+(map>>8),y*2,0],0x8300c);for(const[k,v]of Object.entries(flags))mana.write8(0xcf00+Number(k),v);mana.write8(0xd1,0xb0);mana.write8(0xd2,0x42);mana.write8(0xd3,0xc7);mana.write8(0xd0,1);mana.run(240);}finally{c.set(e,0x742b0);c.set(d,0x8300c);}
+  try{c.set([4,24,3,5,0],0x742b0);c.set(map===72?c.slice(0x83000+0x304*4,0x83004+0x304*4):[map&255,x*2+(map>>8),y*2,0],0x8300c);for(const[k,v]of Object.entries(flags))mana.write8(0xcf00+Number(k),v);mana.write8(0xd1,0xb0);mana.write8(0xd2,0x42);mana.write8(0xd3,0xc7);mana.write8(0xd0,1);mana.run(240);}finally{c.set(e,0x742b0);c.set(d,0x8300c);}
  },{state:JSON.parse(readFileSync(fixture)),map,x,y,flags});
 }
 async function steer(page,{event,tile}){
@@ -33,10 +33,22 @@ async function steer(page,{event,tile}){
  },{event,tile});
 }
 async function fight(page,predicate){
- for(let i=0;i<24;i++){
+ for(let i=0;i<40;i++){
   if(await page.evaluate(predicate))return;
   await page.evaluate(()=>{
    const m=mana.mod,target=m.entities().find(e=>e.index>=3&&e.active&&e.species<128&&e.species!==85&&e.hp&&!(mana.read8(e.base+0x191)&128));
+   if(m.trial?.active){
+    if(m.trial.status.clash){
+     for(let n=0;n<20&&m.trial.status.clash;n++){mana.run(2,[0]);mana.run(8);}
+     return;
+    }
+    if(m.trial.status.phase!=='battle'){mana.run(60,[11]);return;}
+    if(m.canAttack&&m.status.hp<450&&mana.read8(0xcc48)!==255){
+     // Use a real item, through its real target/consumption/heal pipeline.
+     mana.run(2,[9]);mana.run(90);for(let n=0;n<4&&mana.read8(0x1809)!==0;n++){mana.run(2,[4]);mana.run(60);}
+     mana.run(2,[16]);mana.run(55);mana.run(2,[16]);mana.run(220);return;
+    }
+   }
    if(m.canAttack&&target){const dx=target.x-m.status.x,dy=target.y-m.status.y;mana.run(2,[Math.abs(dx)>Math.abs(dy)?dx>0?7:6:dy>0?5:4]);mana.run(m.options.superSaiyan?60:105,[10,1]);mana.run(1);mana.run(100,[11]);}
    else mana.run(150,[11]);
   });
@@ -63,13 +75,13 @@ test('early solo Undine route keeps its native boss, spell reward and return to 
  expect(steps.at(-1).status.map,JSON.stringify(steps.at(-1))).toBe(136);expect(steps.at(-1).status.canAttack).toBe(true);
 });
 
-test('Joch trial can be cleared by a solo Kamehameha and its original exit finishes the trial',async({page},testInfo)=>{
+test('Goku completes both Vegeta sparring phases with real Kamehameha and Senzu input',async({page},testInfo)=>{
  test.setTimeout(180000);await load(page,72,16,20,{63:4});
- await page.evaluate(()=>mana.run(1200,[11])); // Finish the native clone initialization and opening challenge.
- // The original trial gate waits for the three native death animations to
- // finish (actor death bit 0x80), not just for their HP to reach zero.
- await fight(page,()=>mana.mod.canAttack&&[0xe791,0xe991,0xeb91].every(a=>mana.read8(a)&0x80));
- const exit=await steer(page,{event:0x3df});
+ await page.evaluate(()=>{mana.snes.ram.fill(255,0xcc48,0xcc54);mana.write8(0xcc48,0xa5);});
+ for(let i=0;i<60&&!await page.evaluate(()=>mana.mod.canAttack&&mana.mod.trial.status?.phase==='battle');i++)await page.evaluate(()=>mana.run(40,[11]));
+ // The fighters agree to a draw and the native return runs automatically.
+ await fight(page,()=>mana.mod.status.map===18||mana.mod.trial.status?.phase==='draw'&&mana.mod.trial.status.draw);
+ const exit=await page.evaluate(()=>({trial:mana.mod.trial.status,status:mana.mod.status}));
  for(let i=0;i<100&&!await page.evaluate(()=>mana.read8(0xcf3f)===6&&mana.mod.canAttack);i++)await page.evaluate(()=>mana.run(60,[11]));
  const result=await page.evaluate(()=>({status:mana.mod.status,stage:mana.read8(0xcf3f),actors:mana.mod.entities().filter(e=>e.active),error:mana.mod.story.status.error}));writeFileSync(testInfo.outputPath('trial.json'),JSON.stringify({exit,result},null,2));
  expect(result.stage).toBe(6);expect(result.status.map).toBe(18);expect(result.status.canAttack).toBe(true);expect(result.error).toBe(null);

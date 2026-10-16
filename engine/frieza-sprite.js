@@ -1,5 +1,15 @@
 // Prepare fixed native-sized cells once. Moving a tail never moves the torso
 // anchor; no per-frame crop scaling or subpixel sprite placement.
+import {bossDeathColor} from './boss-victory.js';
+// Authored fingertip in pointing cell 2, after the fixed 48px preparation.
+// Share its anchor with the charge, projectile and both battle renderers.
+export function friezaDeathBeamPose(b){
+ const charging=b.warning?.kind==='laser',shot=b.shots?.find(p=>p.kind==='laser'&&p.age<16);
+ if(!charging&&!shot)return null;
+ const flip=charging?b.warning.target.x>b.x:shot.flip??shot.dx>0;
+ const step=b.space?2:1,x=Math.round(b.x),y=Math.round(b.y)+(b.space?10:8),fingerX=b.muscular?2:6;
+ return{x,y,flip,finger:{x:x-24/step+Math.floor((flip?47-fingerX:fingerX)/step),y:y-22/step}};
+}
 const palette=[[3,2,5],[8,4,12],[13,6,18],[19,9,25],[25,14,30],[31,22,31],[31,31,31],[26,27,29],[21,22,26],[16,17,22],[12,12,17],[30,4,8],[20,2,5],[27,18,22],[7,7,11]];
 export function prepareFriezaSprite(sheet){
  const nearest=new Map(),color=value=>{if(!value)return 0;if(nearest.has(value))return nearest.get(value);const raw=value-1,r=raw&31,g=raw>>5&31,b=raw>>10&31;let best=Infinity,chosen;
@@ -13,7 +23,7 @@ export function prepareFriezaSprite(sheet){
  });
  return{...sheet,cells};
 }
-export function drawFriezaSprite(sheet,frame,x,y,put,{flip=false,tiny=false,ghost=0}={}){
+export function drawFriezaSprite(sheet,frame,x,y,put,{flip=false,tiny=false,ghost=0,death=-1}={}){
  const cell=sheet?.cells?.[frame];if(!cell)return;const step=tiny?2:1,size=48/step,left=Math.round(x)-24/step,top=Math.round(y)-44/step;
- for(let py=0;py<size;py++)for(let px=0;px<size;px++){const c=cell[py*step*48+(flip?47-px*step:px*step)];if(c&&(!ghost||(px+py+ghost)%3===0))put(left+px,top+py,ghost?1+10+(7<<5)+(18<<10):c);}
+ for(let py=0;py<size;py++)for(let px=0;px<size;px++){const c=cell[py*step*48+(flip?47-px*step:px*step)];if(c&&(!ghost||(px+py+ghost)%3===0))put(left+px,top+py,ghost?1+10+(7<<5)+(18<<10):bossDeathColor(c,death));}
 }

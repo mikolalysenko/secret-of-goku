@@ -2,6 +2,8 @@
 
 The native game owns maps, input locks, party ownership, enemy AI, HP transitions, rewards, boss events and audio playback. The wrapper supplies Goku's action timing, directional sprite selection and attack geometry. It never replaces the native battle/event engine with a separate enemy simulation.
 
+Power mode starts Goku at level 99 (`$E181=98`, zero-based) and caps all eight weapon skills at 8:99 (`$E1C0–C3=88`, `$E1D0–D7=99`, active proficiency `$E19C=8`). These caps also apply when resuming older saves, without executing level-up announcements. Unpowered mode retains native progression. HP still follows the existing 999 maximum and persistent injury rules.
+
 ## Controls and timing
 
 All durations below are emulated 60 Hz frames. Each attack starts its own clock; it does not begin at an arbitrary point in a global animation loop.
@@ -39,6 +41,12 @@ Charge, beam and ki use separately measured hand sockets. On foot, upward effect
 
 World flight uses the verified four-way flight cells, rear view, discrete banking and a one-pixel bob. It retains the native Mode 7 map, movement and landing rules. Both forms can transform, steer, climb, descend and restore a flight checkpoint.
 
+The opening paths after the waterfall and Potos's outdoor exits catch local
+flight across the banks beside their narrow walking triggers. Crossing outward
+uses the original door, fade and party arrival; flying inward or beside an exit
+does not redirect Goku. This extends the accepted flight passage without editing
+map tiles, changing story flags or closing the area's internal flight shortcuts.
+
 ## Real damage, launch and sound
 
 Punch hitboxes use a forward range and lateral width, excluding party slots, inactive/dead actors and NPC species. Regular beams advance 32 pixels per frame; ki advances 14. Damage follows the visible front. A beam reapplies its damage every eight frames of contact, or every six frames for the full SSJ wave. Each pulse rechecks the visible width and live target. Ki disappears at its first hit; puzzle orbs still activate only once per beam. Beam damage scales with charge with a quarter-strength minimum.
@@ -51,7 +59,7 @@ Ordinary enemies follow a twelve-frame eased launch and height arc. When the nat
 
 `ki-sound.js` loads 21 short, level-matched effects. Punch/cross windups alternate two anime air swishes, and the finishing kick has a longer whoosh. These come from catalogued Dragon Ball TV-anime whooshes, replacing the old sped-up flight sample. Punch/cross impacts cycle through three separate samples; the finishing kick, palm shots, projectile collisions, full charge, transformation/reversion, teleport departure/arrival, takeoff and landing have their own cues. Misses only play a whoosh. Each ki sound starts when its palm actually emits a projectile; impact sounds wait for contact, including native destructible-tile completion and world-map targets. Voice caps, short overlap fades and a compressor limit rapid Super Saiyan barrages. The deterministic synth remains an emergency fallback if sample loading fails.
 
-`kamehameha-voice.js` uses a Demucs-separated Japanese vocal stem with independent, reduced gains (.32 charge / .36 release). The roughly 3.7-second charge retains its vowels and the same pace in both forms. Releasing fades the chant into a separate shout. A circular-crossfaded DBZ energy bed continues indefinitely after the voice finishes, with a modest pitch/gain rise tied to charge strength; SSJ adds a separate electrical bed. Flight starts with a 0.22-second non-vocal energy swell crossfaded into an anime whoosh. Its quiet sustained air comes from an envelope-leveled TV-anime whoosh, never the former voiced power-up sample. All voices and loops clear on mute, pause, input cancellation and state restore. The original SPC music stays separate. Manifests record source checksums, edits and attribution in `assets/audio/`; see [credits](../CREDITS.md).
+`kamehameha-voice.js` uses a Demucs-separated Japanese vocal stem with independent, reduced gains (.32 charge / .36 release). The roughly 3.7-second charge retains its vowels and the same pace in both forms. Releasing fades the chant into a separate shout. A circular-crossfaded DBZ energy bed continues indefinitely after the voice finishes, with a modest pitch/gain rise tied to charge strength; SSJ adds a separate electrical bed. Flight starts with a 0.22-second non-vocal energy swell crossfaded into an anime whoosh. Its quiet sustained air comes from an envelope-leveled TV-anime whoosh. Landing uses the same air, filtered at 2.4 kHz, with a soft low impact delayed 70 ms; the reversed Cell turbo sample is removed. The landing fallback also has a low touchdown and no metallic pitch sweep. All voices and loops clear on mute, pause, input cancellation and state restore. The original SPC music stays separate. Manifests record source checksums, edits and attribution in `assets/audio/`; see [credits](../CREDITS.md).
 
 Asset preparation is offline and is not needed to run or build the game:
 
@@ -79,6 +87,12 @@ still invokes the original save prompt and door, or the final Mana Tree arrival.
 The Dwarf Village pit also drops its Magic Rope prerequisite for Goku, retaining
 the original drop transition without granting the item.
 
+The sealed Underground Palace wall in Dwarf Village accepts a fully charged
+base-form Kamehameha. Event15B advances only its opening stage (`$CF14` to 6),
+then rebuilds the original doorway and preserves its native transition. Punches
+do not open it. Popoi, Gnome and the Earth seed are not awarded by the breach;
+Goku can enter early and activate the native orb with his own attacks.
+
 Pandora Ruins and Northtown Ruins script locks use checkpointed door latches. A hit unlocks the original door; walking through still invokes the native transition. Pandora’s plot flag is unchanged. An early Northtown breach stages the original Primm rescue and Vampire fight; returning afterward does not replay either or lower progress. Gaia’s hit switches select the native event for the targeted room instead of depending on the last floor marker walked over. The forest’s rotating carved heads (tileset 1, cells 171/172) can be flown over or destroyed to native grass; other cyclic descriptors keep their original behavior. Ruins balcony lips require clear floors at different native heights on opposite sides before flight may cross them.
 
 Super Saiyan charge lightning regenerates deterministic jagged paths every three emulated frames, including while holding full power. Bolts connect to nearby native solid-tile edges, low obstacles and actors, using Thunderbolt colors and original 16×16 cells. These arcs are decorative; attacks activate puzzles. Snapshot replay reproduces the same paths.
@@ -86,6 +100,10 @@ Super Saiyan charge lightning regenerates deterministic jagged paths every three
 Crystal Orb species `$55` is excluded from damage and Instant Transmission. `native-orbs.js` reads each live orb's event ID at `+0x3E` and its native elemental-test call. A hit supplies an accepted spell value to the orb's `+0x181` test byte, then calls native C1:E76D at the safe C0:B073 boundary with the original actor context. The original script handles puzzle flags, graphics, disappearance, sound and dialogue. The Fire Palace entrance requires the second fire-test value; Grand Palace events accept any nonzero result. There are no direct puzzle-flag writes.
 
 `native-hit-recovery.js` adds 160 physical / 80 magic defense in base form and 320 / 160 in Super Saiyan, capped at 999 after native equipment totals. The C0:4AFE rebuild boundary refreshes the unboosted totals; form changes, equipment, leveling and checkpoint restores do not stack the bonus. Disabling power restores the native totals. This code never writes HP.
+
+Goku starts wearing **Heavy Gi**, weighted training clothes in the native armor ring. They reduce strength/damage by 10% and agility by 20%; removing them restores those stats, including for Super Saiyan. The penalty follows the actual body armor slot and never stacks on menu rebuilds or checkpoint loads. The orange sprite remains his normal outfit, as with other native armor changes.
+
+Goku's STATUS page shows his form, training gear, full combat attack and scouter power level. Base / Super Saiyan attack is **4,095 / 8,191** without the gi and **3,686 / 7,372** with it. Uncharged power readings are **90,000 / 150,000,000** without the gi and **81,000 / 135,000,000** with it; the scouter uses these same readings. This ki reading is not an additional damage multiplier. Defense shows the actual equipment total plus the form bonus. Native strength, agility, other attributes and percentages retain their real values instead of cosmetic multipliers.
 
 Super Saiyan deflects two of every three eligible ordinary physical contacts, with at least 24 frames between deflections. The C0:514B damage resolver redirects to the original C0:4E6F dodge path, giving a short gold guard pose, spark and swish. Bosses, status attacks, spells, poison and the fed Beast do not qualify. Other hits still apply native damage and show a bracing reaction. The SSJ sheet's black-haired side recovery cells are replaced by its gold-haired crouch.
 
@@ -102,6 +120,12 @@ L+B / Shift+X (or touch focus + fist) selects a living hostile with a usable adj
 The original camera dispatcher at C0:D6AC receives at most 15 pixels per frame, allowing each crossed 16px map row/column to stream into VRAM with native parallax. Teleport’s hidden phase and input lock last until the camera catches up; its arrival cue then plays. This avoids stale/blank background tiles from directly jumping scroll registers. Checkpoints preserve pending scrolls. Holding the teleport chord neither punches nor triggers the native dash. Subsequent presses cycle away from the previous target; party members, NPCs, dead actors, menus and scripts are excluded.
 
 Local flight modifies the native movement vector at C0:D651. Boundaries are derived from each loaded map's live BG1/BG2 collision grids and descriptors, including story-driven changes. Native C0–CB destructible replacement chains, walkable tall grass, and verified short scenery in the original village/forest tilesets permit a collision bypass. Potos shrubs and flowers inspect the paired BG2 art cell because their solid BG1 placeholders are shared with trees. Terrain flags 1/2 represent heights; 3 is solid. Every intermediate pixel checks the full 12×8 foot rectangle, rejecting mixed wall/obstacle corners. Flight can cross native terrain-height bands and short forest rock banks when both opposite sides contain usable ground within five tiles (sixteen on Gaia's Navel, whose stacked cliffs separate usable levels). Bank art bordering forest voids remains closed. Haunted Forest low vines and flowers are also flyable. Room walls, unsupported cliffs, doors, layer switches and party/camera limits keep their original collision handling; map bounds have an eight-pixel clamp to avoid coordinate wrap. Unsafe fast steps reduce to one pixel before native collision; leaving a low object is permitted, and an unexpected out-of-bounds displacement returns to the last verified same-layer landing position. Releasing over an obstacle keeps Goku hovering at normal steering speed until the entire footprint is clear. Charging halves ground speed to 1 pixel/update and flight to 3/4 pixels in base/SSJ form. Local altitude is visual; `$E045` remains native physics. Travel is capped at 14 pixels per axis per video frame, including catch-up updates, so the native VRAM row streamer can keep up. Airborne actor contact can pass NPCs without pushing them or suppressing conversations; native dialogue immediately drops visual lift. Recovery from a bad old checkpoint also streams the camera to the safe position.
+
+Gaia's Navel's sealed black rock caps are solid ceilings, even when usable
+floor lies on both sides. The live cave grid identifies enclosed connected
+regions of metatile5, including diagonal connections. Both the dungeon and
+short-ledge flight paths reject these cells. Lava and open chasms retain their
+two-shore checks; older checkpoints stranded inside a cap recover to safe ground.
 
 `native-whip-routes.js` permits direct local flight along native whip-pad/post corridors. Each needs a real 6D8 pad (or BF in special-tile mode one), a matching 6F8 post four cells away, clear ground beyond both ends and no intervening event or layer-change seam. Two missing-post return lanes require a complete adjacent reverse crossing. Pit art outside those corridors remains closed. While flying, C0:B683 skips only resolved 6D8 floor events, preserving live steering without a scripted jump or input lock. Landing beyond the corridor gathers CPU companions, including crossings with a lower walkable floor in the middle. Releasing on a narrow shore keeps Goku hovering if the last native input step carries his feet over the edge.
 
@@ -122,6 +146,52 @@ original rescue runs instead. Later visits keep the original event checks.
 For walking onto a pad, `native-gap-flight.js` redirects only the native 6D8 whip-pad and 6FA post-hit gates for controlled Goku. A matching native 6F8 post must exist four tiles away. Event 6F9 supplies the original party gather, crossing, camera movement and balanced CF01 flags without fastening a whip. Goku uses a level hover pose during the crossing. Other actors and events retain their original scripts; checkpoint state includes the active crossing.
 
 Tileset 23's platform edges, downward faces and empty air are separately classified from upright walls. A palace gap is flyable only with usable floor on both sides along one axis, each within sixteen tiles; event seams remain native. The Water Palace test crosses the actual missing platform in both directions and replays a checkpoint while hovering above it. When flight bypasses a walking height transition, settlement copies the new terrain height only after the full footprint fits the destination floor, preserving the collision layer.
+
+## Vegeta's trial
+
+Jehk opens a Hyperbolic Time Chamber where Vegeta was already training. He is
+annoyed at the interruption, but pleased to have a real sparring partner.
+Goku fights him alone while Primm and Popoi wait outside; no party ghosts appear.
+The room has a 1,024 × 1,024 native collision map, a white palace-stone floor,
+and a doorway pavilion with solid walls. Both native map planes load at that
+size, clearing old foreground tiles. The outgoing room fades to black; the
+entrance walk and camera settle under black before a one-second reveal.
+Goku faces the camera and returns to base form during that black transition.
+Native camera scrolling and menus remain authoritative. Vegeta has 32,000 HP in
+base form, then transforms into a 60,000 HP Super Saiyan. Rushes, aimed volleys,
+a telegraphed Galick Gun / Final Flash and teleport counters use integer-pixel movement.
+Repeated melee provokes a counter; Kamehameha cancels his projectiles. Stray
+attacks shake the room and throw warned fragments using native explosions.
+
+Both Super Saiyan sprites share a four-color gold hair ramp, with clean tuft
+textures confined to their original hair masks. Their faces, foot anchors and
+body geometry stay fixed across forms. Vegeta's original eight-voice battle
+theme, **Royal Rivalry**, switches to a faster arrangement when he powers up;
+it pauses with the game and yields to native music when sparring ends.
+
+Counter an oncoming Galick Gun or Final Flash with a Kamehameha to lock the
+waves. They run from each fighter's hands to the collision, compress into a
+bright core, and meet at an energy ball. Mash the attack button to push it
+toward Vegeta; holding the button does
+not work, and Vegeta periodically surges back. Winning removes a substantial
+chunk of his health; losing hurts Goku but remains nonfatal sparring. The
+exchange ends within eleven seconds of the struggle starting, then ordinary
+combat resumes. Only opposed, overlapping beams clash; shots can still miss.
+
+The ring pauses his attacks. Completing both phases ends in an agreed draw;
+neither fighter dies. A finishing beam plays out before the exchange, both
+power down, then the scene fades for their return. If Goku needs a break,
+Vegeta stops the match before a lethal hit. Native trial events restore the
+exact original party, heal it and continue Joch's reveal, or allow another try.
+`?start=trial` starts at the introduction with full Senzu Beans. The private-ROM
+`vegeta-trial.spec.mjs` checks all four original party lineups on both exits.
+
+Northtown Ruins' placed spikes are low obstacles; flight can hover over them,
+including where a row meets a wall. The recessed pit and its rims require real
+floor on both shores. Tall walls and unused space remain closed, including
+after puzzle switches change the layout. Flight leaves the spikes and switches
+intact. Full Super Saiyan beams can breach internal walls; the existing
+sealed-door skip still runs the rescue and Vampire sequence.
 
 ## Verification
 
@@ -167,4 +237,6 @@ This verifies the implemented combat loops and listed native poses, not every cu
 `native-interaction.js` leaves C0:B851 NPC/chest interaction alone and stops Goku's normal/charged native weapon fallback at C0:B2A7 / C0:B224. BOY's opening, companion attacks and menu confirmation retain native behavior. Empty-handed punches cut nearby breakable objects through `native-plants.js`.
 
 
-Sleep (`$E190 & $10`) now cancels Super Saiyan and any held charge just like poison (`$E191 & $20`). The native status bits, recovery animation, timers and cures remain intact; a held transform cannot re-enable the form until the condition clears. Full-power Super Saiyan beams use the `super-beam` destruction policy: complete six-cell palace braziers break through the original map redraw queue, exposing existing BG2 floor art. Normal attacks and partial beams preserve them.
+Sleep/unconsciousness (`$E190 & $10`) cancels Super Saiyan and any held charge just like poison (`$E191 & $20`). Focus (Shift / SNES L), including the transform chord, breaks sleep, petrification (`$E190 & $40`), Frosty (`$E190 & $20`), Balloon (`$E191 & $01`) and burning/Engulf (`$E191 & $40`). Solo Goku can recover even after petrification removes his controller assignment. The native palette, controller and get-up cleanup finish normally; a brief ki burst signals recovery, with a pop for Balloon, shattering ice for Frosty, or an explosion and outward-flying embers for burning. These reuse native impact and Exploder/Fireball cells. Recovery grants 120 frames of resistance to all five conditions so repeated effects cannot trap him. Recovery does not heal, clear poison, revive a defeated character, or interrupt a script/menu. The resistance and pending recovery survive checkpoints. A held transform must be released before changing form again after recovery.
+
+Full-power Super Saiyan beams use the `super-beam` destruction policy: complete six-cell palace braziers break through the original map redraw queue, exposing existing BG2 floor art. Normal attacks and partial beams preserve them.

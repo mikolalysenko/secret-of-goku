@@ -1,10 +1,12 @@
 import {encodeText,wrapText} from './event-codec.js';
+import {withNames} from './native-names.js';
 
 // The retail 8x12 font and 2bpp window corners, decoded from the user's ROM.
 // This is a PPU message surface, not an event: it never takes controller input
 // or opens $D0, so a warning cannot release/cancel a held Kamehameha.
-export function radioPixels(rom,text){
-  const lines=wrapText(text).split('\n');
+// Name codes ({1} etc.) show the native names when RAM is given.
+export function radioPixels(rom,text,ram=null){
+  const lines=wrapText(ram?withNames(ram,text):text).split('\n');
   if(lines.length>3)throw Error('Radio message exceeds the native window');
   const pixels=new Uint16Array(240*64),put=(x,y,c)=>{if(x>=0&&x<240&&y>=0&&y<64)pixels[y*240+x]=c+1;};
   const tile=(id,x,y,flipX=false,flipY=false)=>{
@@ -43,6 +45,14 @@ export const firstFlightMessages=[
 export const treeBlastMessages=[
   'LUKA:The cloud barrier\nis open. The Mana Tree\nis still safe below it.',
   'GOKU:See? Just the clouds.\nKING KAI:Keep it that way!\nNow land carefully.',
+];
+export const ceilingRemarks=[
+  'KING KAI:There was a door.\nGOKU:It was downstairs.',
+  'KING KAI:Mind the people\nunder all that stone!',
+  'KING KAI:I am adding that\nto the repair bill.',
+  'KING KAI:Roofs keep the\nrain out, you know.\nGOKU:Not this one.',
+  'KING KAI:Try the stairs\nnext time. Just once.',
+  'KING KAI:I heard that.\nGOKU:From your planet?\nKING KAI:Yes, Goku.',
 ];
 export const dungeonQuips={
  water:'LUKA:This is a sanctuary!\nGOKU:Now it has a window.\nLUKA:THAT WAS THE WALL.',
@@ -84,8 +94,9 @@ export const barrierReactions={
 };
 
 export function createNativeRadio(snes,mod){
-  let current=null,queue=[],held=0,warned=false,warning=0,cooldown=0,firstFlight=false,lastMap=null;
+  let current=null,queue=[],held=0,warned=false,warning=0,cooldown=0,firstFlight=false,lastMap=null,chargeAttempts=0,warningRoll=0x6d2b79f5;
   let barriers=new Set(),barrierCount=0,barrierCooldown=0;
+  let roofs=new Set(),roofExits=0,roofLastAside=0,roofRemarks=0,roofCooldown=0;
   let raster=null,key=null,visibilityFrame=-1,frameVisible=false;
   const p=snes.ppu,previous=p.getColor;
   const visible=()=>mod.options.enabled&&mod.gokuActive&&!p.forcedBlank&&!mod.worldKi?.cinematic&&!mod.frieza?.cinematic&&!mod.ending?.active&&
@@ -100,7 +111,7 @@ export function createNativeRadio(snes,mod){
     if(!sub&&current&&x>=8&&x<248&&y>=top&&y<top+64){
       if(visibilityFrame!==mod.frame){visibilityFrame=mod.frame;frameVisible=visible();}
       if(!frameVisible)return color;
-      if(key!==current.text){key=current.text;raster=radioPixels(snes.cart.data,key);}
+      if(key!==current.text){key=current.text;raster=radioPixels(snes.cart.data,key,snes.ram);}
       const pixel=raster[(y-top)*240+x-8];if(pixel)return[pixel-1,4,0x86];
     }
     return color;
@@ -108,6 +119,17 @@ export function createNativeRadio(snes,mod){
   const say=(text,{frames=230,kind='story'}={})=>{encodeText(text);if(wrapText(text).split('\n').length>3)throw Error('Radio message is too long');queue.push({text,remaining:frames,kind});};
   return{
     say,
+    escapedCeiling(map){
+      roofExits++;
+      if(roofs.has(map))return false;roofs.add(map);
+      // A passing aside, never a mandatory part of takeoff. Leave at least
+      // three silent exits and two minutes of play between remarks. Do not
+      // queue one behind story/flight advice, or repeat the finite pool.
+      if(!mod.options.enabled||!mod.gokuActive||current||queue.length||roofCooldown||
+        roofRemarks&&roofExits-roofLastAside<4||roofRemarks>=ceilingRemarks.length)return false;
+      say(ceilingRemarks[roofRemarks++],{frames:200,kind:'ceiling'});
+      roofLastAside=roofExits;roofCooldown=7200;return true;
+    },
     defeatedBarrier(id,{map=mod.read16(0xdc),onceKey=null}={}){
       // Only authored progression shortcuts qualify. Cutting scenery,
       // operating switches/orbs and ordinary flight are normal gameplay.
@@ -125,7 +147,7 @@ export function createNativeRadio(snes,mod){
       // A catastrophe replaces stale flight instructions, then resumes any
       // collected-Ball notices. It never opens a native dialogue/input lock.
       for(const text of messages){encodeText(text);if(wrapText(text).split('\n').length>3)throw Error('Radio message is too long');}
-      const keep=m=>!['flight','warning','power-intro','barrier','core-crisis'].includes(m.kind);
+      const keep=m=>!['flight','warning','power-intro','barrier','ceiling','core-crisis'].includes(m.kind);
       queue=[...messages.map(text=>({text,remaining:frames,kind})),...(current&&keep(current)?[current]:[]),...queue.filter(keep)];
       current=null;firstFlight=true;visibilityFrame=-1;
     },
@@ -144,29 +166,38 @@ export function createNativeRadio(snes,mod){
       // First-use banter waits for the attack to finish. It must not add a
       // second King Kai remark to the single-warning charge sequence.
       const introPaused=mod.charging||mod.action?.kind==='beam';
-      const aside=m=>m.kind==='power-intro'||m.kind==='barrier';
+      const aside=m=>m.kind==='power-intro'||m.kind==='barrier'||m.kind==='ceiling';
       if(introPaused&&current&&aside(current)){queue.unshift(current);current=null;}
       if(mod.worldFlight&&!firstFlight){firstFlight=true;if(!mod.frieza?.crisisActive)for(const text of firstFlightMessages)say(text,{frames:240,kind:'flight'});}
       if(cooldown>0)cooldown--;
       if(barrierCooldown>0)barrierCooldown--;
+      if(roofCooldown>0)roofCooldown--;
       if(mod.charging&&mod.options.superSaiyan&&mod.charge>=45){
         held++;
         if(held>=90&&!warned&&!cooldown&&(!current||current.kind!=='warning'&&current.remaining<60)){
-          const message={text:kaiWarnings[warning++%kaiWarnings.length],remaining:220,kind:'warning'};
-          if(current)queue.unshift(current);current=message;warned=true;cooldown=300;
+          // Decide once per sustained charge, including silent outcomes.
+          // Saved PRNG state keeps checkpoint replays identical.
+          warned=true;chargeAttempts++;
+          warningRoll^=warningRoll<<13;warningRoll^=warningRoll>>>17;warningRoll^=warningRoll<<5;warningRoll>>>=0;
+          if(chargeAttempts<=3||warningRoll%10===0){
+            const message={text:kaiWarnings[warning++%kaiWarnings.length],remaining:220,kind:'warning'};
+            if(current)queue.unshift(current);current=message;cooldown=300;
+          }
         }
       }else held=0;
       if(current&&--current.remaining<=0)current=null;
       if(!current&&queue.length){const next=queue.findIndex(m=>!introPaused||!aside(m));if(next>=0)current=queue.splice(next,1)[0];}
     },
     get status(){return{current:current?{...current}:null,queued:queue.length,held,warned,warning,firstFlight,barrierCount,visible:!!current&&visible()};},
-    snapshot(){return structuredClone({barrierVersion:2,current,queue,held,warned,warning,cooldown,firstFlight,lastMap,barriers:[...barriers],barrierCount,barrierCooldown});},
+    snapshot(){return structuredClone({barrierVersion:2,current,queue,held,warned,warning,cooldown,chargeAttempts,warningRoll,firstFlight,lastMap,barriers:[...barriers],barrierCount,barrierCooldown,roofs:[...roofs],roofExits,roofLastAside,roofRemarks,roofCooldown});},
     restore(saved){
       const s=saved?structuredClone(saved):null;
-      const keep=m=>m.kind!=='ward'&&!m.text?.includes('Mana Ward')&&(m.kind!=='barrier'||s?.barrierVersion===2&&Object.hasOwn(barrierReactions,m.barrierId));
+      const keep=m=>m.kind!=='ward'&&!m.text?.includes('Mana Ward')&&!m.text?.includes('You MADE an exit.')&&!m.text?.includes('KING KAI:BAD TENANT.')&&(m.kind!=='barrier'||s?.barrierVersion===2&&Object.hasOwn(barrierReactions,m.barrierId));
       current=s?.current&&keep(s.current)?s.current:null;queue=(s?.queue??[]).filter(keep);
       held=s?.held??0;warned=s?.warned??(s?.nextWarning>90);warning=s?.warning??0;cooldown=s?.cooldown??0;firstFlight=!!s?.firstFlight;lastMap=s?.lastMap??null;
+      chargeAttempts=s?.chargeAttempts??warning;warningRoll=s?.warningRoll??0x6d2b79f5;
       barriers=new Set(s?.barriers??[]);barrierCount=s?.barrierCount??0;barrierCooldown=s?.barrierVersion===2?(s.barrierCooldown??0):0;raster=key=null;visibilityFrame=-1;
+      roofs=new Set(s?.roofs??[]);roofExits=s?.roofExits??0;roofLastAside=s?.roofLastAside??0;roofRemarks=s?.roofRemarks??0;roofCooldown=s?.roofCooldown??0;
     },
     dispose(){p.getColor=previous;},
   };

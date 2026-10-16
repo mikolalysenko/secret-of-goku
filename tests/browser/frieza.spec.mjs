@@ -20,10 +20,14 @@ test('Dryad’s late-game visit starts Frieza immediately; stolen Balls cannot b
  expect(guards).toEqual({delivered:false,six:false,seven:true});
  await late(page,'late');
  await page.evaluate(()=>{mana.mod.story.request(0xa7);mana.run(200,[11]);});
- for(let i=0;i<80;i++){if(await page.evaluate(()=>mana.mod.worldFlight&&mana.mod.frieza.status.crisis?.flightNotified))break;await page.evaluate(()=>mana.run(100,[11]));}
+ // The altar theft leaves no crisis; Mech Rider III's Fortress deck hosts the Death Ball.
+ for(let i=0;i<80;i++){if(await page.evaluate(()=>mana.mod.frieza.status.stage==='palace'&&mana.mod.canAttack&&!mana.read8(0xd0)))break;await page.evaluate(()=>{mana.run(26);mana.run(4,[11]);});}
+ expect(await page.evaluate(()=>[mana.mod.frieza.status.stage,mana.mod.frieza.crisisActive])).toEqual(['palace',false]);
+ await page.evaluate(()=>{mana.mod.story.travel(0x3df);for(let i=0;i<40&&!(mana.read16(0xdc)===418&&mana.mod.canAttack);i++)mana.run(20,[11]);mana.write8(0xcf44,6);mana.run(30);mana.mod.story.travel(0x3dd);});
+ for(let i=0;i<200;i++){if(await page.evaluate(()=>mana.mod.worldFlight&&mana.mod.frieza.status.crisis?.flightNotified))break;await page.evaluate(()=>{const m=mana.mod,b=m.entities().find(e=>e.active&&e.index>=3&&e.hp>0);if(b&&m.canAttack&&m.status.map===237)m.hit(b,60000,0,-1);mana.run(26);mana.run(4,[11]);});}
  const result=await page.evaluate(async()=>{const m=mana.mod,{radarTarget}=await import('/engine/dragon-radar.js');m.quest.wish();return{state:m.frieza.status,quest:m.quest.status,target:radarTarget(mana.snes.cart.data,m.quest.status,{frieza:m.frieza.status,fortress:{x:123,y:456}}),world:m.worldFlight,flags:[m.read8(0xcf41),m.read8(0xcf44)],error:m.story.status.error};});
- expect(result.state).toMatchObject({stage:'hunt',stolen:true,eighth:true,permanent:false});expect(result.quest).toMatchObject({held:0,seedMask:127,wished:false});expect(result.target.id).toBe('frieza');expect(result.error).toBe(null);
- expect(result.world).toBe(true);expect(result.flags).toEqual([3,6]);expect(result.state.crisis).toMatchObject({active:true,minutes:5,flightNotified:true});
+ expect(result.state).toMatchObject({stage:'hunt',stolen:true,eighth:true,permanent:false});expect(result.quest).toMatchObject({held:0,seedMask:127,wished:false});expect(result.target.id).toBe('mana-tree');expect(result.error).toBe(null);
+ expect(result.world).toBe(true);expect(result.flags[0]).toBe(3);expect(result.flags[1]).toBeGreaterThanOrEqual(6);expect(result.state.crisis).toMatchObject({active:true,minutes:5,flightNotified:true});
  await page.evaluate(()=>document.querySelector('#native-pause').hidden=true);await page.locator('#screen').screenshot({path:test.info().outputPath('dryad.png')});
 });
 

@@ -7,9 +7,12 @@ export const collateralShots=[
  {name:'SOUTH OF POTOS',map:129,x:176,y:472,duration:260,hit:150,blast:[125,136],radius:27,rabite:true,people:[],text:'KING KAI:Even the wildlife!\nUP! Get off the surface!'},
 ];
 export const collateralStart=72;
-export const pullbackStart=collateralStart+collateralShots.reduce((n,s)=>n+s.duration,0);
+export const aerialCuts=[{kind:'aerial',duration:240,impact:180,intensity:0},{kind:'aerial',duration:330,impact:246,intensity:1}];
+export const cosmicShots=[collateralShots[0],aerialCuts[0],...collateralShots.slice(1),aerialCuts[1]];
+export const pullbackStart=collateralStart+cosmicShots.reduce((n,s)=>n+s.duration,0);
 export const cosmicDuration=pullbackStart+240;
-export function collateralBeat(age){let t=age-collateralStart;for(let i=0;i<collateralShots.length;i++){const shot=collateralShots[i];if(t<shot.duration)return t>=0?{shot,index:i,age:t}:null;t-=shot.duration;}return null;}
+export function cosmicBeat(age){let t=age-collateralStart;for(let i=0;i<cosmicShots.length;i++){const shot=cosmicShots[i];if(t<shot.duration)return t>=0?{shot,index:i,age:t}:null;t-=shot.duration;}return null;}
+export function collateralBeat(age){const beat=cosmicBeat(age);return beat?.shot.kind==='aerial'?null:beat;}
 // Authored street routes, in the shot's map coordinates. Unlike an arbitrary
 // escape vector, these cannot carry a pedestrian through the featured house.
 export function civilianPose(route,age,index=0){
@@ -20,8 +23,12 @@ export function civilianPose(route,age,index=0){
   distance-=n;
  }
 }
-export const orbitIntroFrames=240;
 export const orbitIntroLines=[
+ 'LUKA:What in the name\nof Mana was THAT?!',
+ 'LUKA:All the world\'s Mana\nis nothing beside that ki!\nSuch overwhelming power!',
+ 'FRIEZA:Look down, monkey.\nAll those lives below us.\nI could erase them all.',
+ 'FRIEZA:Five minutes.\nNo one can save you here.\nI will enjoy every second.',
  'GOKU:Away from everyone.\nNow we can stop\nholding back!',
- 'FRIEZA:You think distance\nwill save your little world?\nWatch closely.',
 ];
+export const orbitIntroFrames=60+orbitIntroLines.length*150+45;
+export function orbitIntroText(remaining){const age=orbitIntroFrames-remaining;return age<60||age>=orbitIntroFrames-45?null:orbitIntroLines[Math.floor((age-60)/150)]??null;}

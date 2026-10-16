@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scene Debugger — Secret of Goku</title>
+  <meta name="description" content="Crawl, view and live-debug every cutscene and event, from your own ROM.">
+  <link rel="stylesheet" href="engine/scene-viewer.css">
+</head>
+<body>
+<header class="bar">
+  <a href="./">SECRET OF GOKU</a><strong>Scene debugger</strong>
+  <span id="viewer-status" role="status">Looking for a Secret of Mana (USA) ROM…</span>
+  <label class="file">Choose ROM<input id="viewer-rom" type="file" accept=".sfc,.smc"></label>
+</header>
+<main class="layout">
+  <nav class="tree-pane" aria-label="Scenes">
+    <input id="scene-search" type="search" placeholder="Search scenes, events (4e1), text addresses, maps…" aria-label="Search">
+    <div id="scene-filters" class="chips"></div>
+    <div id="scene-tree"></div>
+  </nav>
+  <section id="detail" class="detail-pane" aria-live="polite"><p class="muted">Pick a scene, or search for an event id such as <code>4e1</code>.</p></section>
+  <aside class="live-pane" aria-label="Live debugger">
+    <div class="live-head"><strong>Live game</strong><span id="live-state" class="muted">not running</span></div>
+    <div class="frame-wrap"><iframe id="player" title="Game player" src="about:blank"></iframe></div>
+    <div class="live-actions">
+      <button id="live-open">Open player</button><button id="live-toggle">Pause / play</button>
+      <button id="live-step1">+1 frame</button><button id="live-step60">+60</button><button id="live-mash">Mash B ×300</button>
+      <button id="live-snap">Snapshot</button><button id="live-restore" disabled>Restore</button>
+    </div>
+    <dl id="live-readout" class="readout"></dl>
+    <h3>Watched flags <small class="muted">from the selected scene</small></h3>
+    <div id="live-flags" class="flags"></div>
+    <h3>Event trace</h3>
+    <ol id="live-trace" class="trace" reversed></ol>
+  </aside>
+</main>
+<script type="module" src="engine/scene-viewer.js"></script>
+</body>
+</html>

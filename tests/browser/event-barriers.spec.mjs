@@ -98,3 +98,18 @@ test('an early Snapdragon defeat opens the original palace bridge and reaches Dr
  writeFileSync(testInfo.outputPath('snapdragon.json'),JSON.stringify(result,null,2));
  expect(result.start.stage).toBe(1);expect(result.start.bridge).toBe(0);expect(result.defeated.stage,JSON.stringify(result)).toBe(2);expect(result.defeated.bridge).toBe(1);expect(result.defeated.hp).toBe(0);expect(result.across.y,JSON.stringify(result)).toBeLessThan(480);expect(result.path.length).toBeGreaterThan(0);expect(result.after.map,JSON.stringify(result)).toBe(431);expect(result.after.canAttack).toBe(true);expect(result.error).toBe(null);expect(result.romUnchanged).toBe(true);
 });
+
+test('a normal Kamehameha opens and saves Watts’s outside shortcut without granting Gnome progress',async({page},info)=>{
+ test.setTimeout(120000);await load(page);await enter(page,73,44,60,{20:0,194:0});
+ const result=await page.evaluate(()=>{
+  const m=mana.mod,rom=mana.hash(mana.snes.cart.data),flags=Array.from(mana.snes.ram.slice(0xcf14,0xcf17));
+  mana.run(3,[5]);const before=m.plants.metadata(44,63).tile;
+  mana.run(110,[10,1]);mana.run(1);mana.run(160,[11]);
+  const opened={tile:m.plants.metadata(44,63).tile,doors:m.barriers.status.doors,flags:Array.from(mana.snes.ram.slice(0xcf14,0xcf17)),weapon:mana.read8(0xcfc2)},save=mana.snapshot();
+  const cross=()=>{mana.run(40,[5]);mana.run(240);return{map:m.status.map,can:m.canAttack,error:m.story.status.error};};
+  const first=cross();mana.restore(save);const restored=cross();
+  return{before,opened,first,restored,flags,romUnchanged:rom===mana.hash(mana.snes.cart.data),super:m.options.superSaiyan};
+ });
+ writeFileSync(info.outputPath('gaia-shortcut.json'),JSON.stringify(result,null,2));
+ expect(result.before).not.toBe(result.opened.tile);expect(result.opened.doors).toContain('gaia-shortcut');expect(result.opened.flags).toEqual(result.flags);expect(result.opened.weapon).toBe(0);expect(result.first).toEqual({map:288,can:true,error:null});expect(result.restored).toEqual(result.first);expect(result.romUnchanged).toBe(true);expect(result.super).toBe(false);
+});

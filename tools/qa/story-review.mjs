@@ -1,24 +1,27 @@
 // Emits cartridge dialogue only into ignored .local/ research output.
 import fs from 'node:fs/promises';
 import {parseEvent,decodeText,encodeText,wrapText} from '../../engine/event-codec.js';
-import {compileStoryEvent,compiledText,needsStory} from '../../engine/story-compiler.js';
+import {compileStoryEvent,compiledText,needsStory,nativeOnlyEvents} from '../../engine/story-compiler.js';
 import {buildStoryEvents} from '../../engine/story-events.js';
 import {storyDialogue,soloDialogue} from '../../engine/story-dialogue.js';
 import {partyDialogue} from '../../engine/scene-dialogue.js';
+import {retailDialogue} from '../../engine/retail-dialogue.js';
+import {sandshipDialogue} from '../../engine/sandship-dialogue.js';
+import {compileSandship} from '../../engine/sandship.js';
 
 const rom=await fs.readFile('.local/rom/secret-of-mana-us.sfc'),out='.local/story-research';
 const events=Array.from({length:0x800},(_,id)=>parseEvent(rom,id)),ops=new Map(events.flatMap(e=>e.ops.map(op=>[op.at,op])));
-for(const table of[storyDialogue,soloDialogue,partyDialogue])for(const [at,value]of Object.entries(table)){
+for(const table of[storyDialogue,soloDialogue,partyDialogue,retailDialogue,sandshipDialogue])for(const [at,value]of Object.entries(table)){
  if(ops.get(Number(at))?.op!=='text')throw Error('Unknown text address '+Number(at).toString(16));
- for(const text of Array.isArray(value)?value:[value])if(text!==null){encodeText(text);if(wrapText(text).split('\n').some(s=>s.replace(/\{[012]\}/g,'XXXXXX').length>28))throw Error('Line overflow '+at);}
+ for(const text of Array.isArray(value)?value:[value])if(text!==null){encodeText(text);if(wrapText(text).split('\n').some(s=>s.replace(/\{[0-3]\}/g,'XXXXXX').length>28))throw Error('Line overflow '+at);}
 }
 const custom=[0,1,2,3].map(mask=>buildStoryEvents(rom,mask));
 const originalTextEvents=events.filter(e=>e.ops.some(o=>o.op==='text')).length;
 const records=events.filter(e=>e.ops.some(o=>o.op==='text')||custom.some(m=>m.has(e.id))).map(event=>{
- const prologue=event.id>=0x100&&event.id<=0x106||event.id===0x400;
+ const prologue=nativeOnlyEvents.includes(event.id);
  return{id:event.id,hex:event.id.toString(16),policy:prologue?'original BOY prologue':custom.some(m=>m.has(event.id))?'authored native event':needsStory(event)?'adapted dialogue':'original NPC/lore/UI',
   variants:[0,1,2,3].map(mask=>{
-   const bytes=prologue?Array.from(rom.slice(event.start,event.end)):custom[mask].get(event.id)??compileStoryEvent(event,mask);
+   const bytes=prologue?Array.from(rom.slice(event.start,event.end)):event.id>=0x28b&&event.id<=0x299?compileSandship(event,mask,{weighted:true}):custom[mask].get(event.id)??compileStoryEvent(event,mask);
    return{mask,text:compiledText(bytes).map(decodeText).join('\n'),bytes:bytes.length,grants:bytes.grants??[]};
   })};
 });

@@ -17,6 +17,9 @@ const forestBanks=new Set([1,2,4,6,9,14,17,18,19,20,22,23,25,30,31,32,33,34,35,3
 // sloping ends and inside corners. Their tall trees/buildings use other cells.
 // The same terrace art can frame a map edge, so it still needs two shores.
 const earthBanks=new Set(Array.from({length:44},(_,i)=>96+i).filter(id=>id!==130));
+// Village streams also use the narrow, one-tile bank pieces above the tall
+// terraces in tileset 0. Mandala, Potos, Pandora and Kippo share these edges.
+const villageBanks=new Set([...earthBanks,...Array.from({length:16},(_,i)=>80+i)]);
 // Natural cave faces and diagonal ledges. These also surround the lava in
 // Gaia's Navel. Door arches, stalagmites and transparent void cells are not
 // banks; a crossing must still connect two real pieces of cave floor.
@@ -36,6 +39,16 @@ const caveGaps=new Set([...caveBanks,0,5,41,78,79,94,95,99,154]);
 // C0:D359 dispatches 2x stair guidance and 3x currents/conveyors. These
 // modify walking velocity; they are floors, not collision or event triggers.
 const movementFloor=code=>(code&0xf0)===0x20||(code&0xf0)===0x30;
+// The opening woodland paths reuse scenery beyond their exit markers.
+// Walking is funnelled onto one narrow trigger; flight can skim the bank
+// beside it and reach that unused scenery. Cover the flight-height apron
+// of each passage, while retaining the original door and transition.
+const openingExits={
+ 128:[{x:47,y:50,n:2,dx:1,door:71}],
+ 129:[{x:15,y:36,n:2,dx:-1,door:70},{x:11,y:61,n:1,dx:-1,door:74}],
+ 130:[{x:33,y:11,n:1,dx:1,door:1},{x:33,y:31,n:1,dx:1,door:8}],
+ 131:[{x:4,y:23,n:2,dx:-1,door:75},{x:33,y:42,n:2,dy:1,door:2}],
+};
 export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,speed=6,phase=false,missingFloor=()=>false,onCross=null,onCarry=null}={}){
  const c=snes.cpu,r=snes.ram,priorCycle=c.cycle,word=a=>r[a]|r[a+1]<<8;
  const whipRoutes=createNativeWhipRoutes(snes);
@@ -76,16 +89,20 @@ export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,sp
  }
  function lowObstacle(t){
   if(!t)return false;
+  if(dungeon.blocked(t))return false;
   if(ferryGap(t)||shipRail(t))return true;
   if(whipRoutes.crossable(t))return true;
   if(dungeon.air(t))return true;
   const at=header(),flags=at===null?0:snes.cart.data[at+2],tileset=at===null?-1:flags&63,metatile=t.tile+((flags&(t.layer?128:64))?192:0);
+  // Cave gaps have one authoritative placed-floor check. The old fallback
+  // searched unplaced WRAM beyond the room and reopened its outer walls.
+  if(tileset===10&&dungeon.context()&&(caveGaps.has(metatile)||t.code>=0x10&&t.code<=0x17))return false;
   const realShore=d=>clear(d,0,true)&&!(blankGroundZero.has(tileset)&&d.tile+((flags&(d.layer?128:64))?192:0)===0)&&!(d.behavior&0x90);
   const betweenShores=(accepts,span)=>{
    const shore=(dx,dy)=>{
     for(let n=1;n<=span;n++){
      const next=tileAt((t.tx+dx*n)*16+8,(t.ty+dy*n)*16+8,t.layer);
-     if(!next||next.behavior&0x90||next.flags&8)return false;
+     if(!next||next.behavior&0x90||next.flags&8||dungeon.blocked(next))return false;
      if(realShore(next))return true;
      if(!accepts(next))return false;
     }
@@ -155,7 +172,7 @@ export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,sp
   }
   // Forest height-transition strips (10-17) are also part of the ledge;
   // walking uses them to change floors. Flight ignores that forced motion.
-  const bankTiles=tileset===2?forestBanks:tileset===0||tileset===1?earthBanks:tileset===10?caveBanks:terrainBanks[tileset];
+  const bankTiles=tileset===2?forestBanks:tileset===0?villageBanks:tileset===1?earthBanks:tileset===10?caveBanks:terrainBanks[tileset];
   const bank=d=>d&&!(d.flags&8)&&!(d.behavior&0x90)&&(d.code===0&&bankTiles?.has(d.tile+((flags&(d.layer?128:64))?192:0))||d.code>=0x10&&d.code<=0x17);
   if(bankTiles&&bank(t)&&Number.isInteger(t.tx)&&Number.isInteger(t.ty)){
    if(betweenShores(bank,tileset===2&&word(0xdc)!==25?5:16))return true;
@@ -167,6 +184,12 @@ export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,sp
   if(tileset===0&&t.layer===0&&[187,188].includes(t.tile)&&Number.isInteger(t.tx)&&Number.isInteger(t.ty)){
    const foreground=r[0x14000+t.ty*128+t.tx]+((flags&128)?192:0);
    if([272,273,274,275,276,277,278,288,289,290,291,292,293,294].includes(foreground))return true;
+  }
+  // Tree Palace flowers share their solid BG1 placeholder with roofs.
+  // Inspect the paired flower artwork, rather than opening every tile 185.
+  if(tileset===22&&t.layer===0&&t.tile===185&&Number.isInteger(t.tx)&&Number.isInteger(t.ty)){
+   const foreground=r[0x14000+t.ty*128+t.tx]+((flags&128)?192:0);
+   if([250,251,252].includes(foreground))return true;
   }
   const small=d=>d&&d.code===0&&!(d.flags&8)&&!(d.behavior&0x90)&&smallScenery[tileset]?.has(d.tile+((flags&(d.layer?128:64))?192:0));
   if(small(t)&&Number.isInteger(t.tx)&&Number.isInteger(t.ty)&&betweenShores(small,8))return true;
@@ -184,6 +207,7 @@ export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,sp
  }
  function clear(t,terrain=r[0xe00b]&3,air=false){
   if(!t||t.flags&8)return false;
+  if(dungeon.blocked(t))return false;
   // The cave's transparent filler carries height 2, despite having no floor
   // artwork. It must not count as the far shore of a cliff or a landing spot.
   if(t.layer===0&&t.tile===0){const at=header();if(at!==null&&(snes.cart.data[at+2]&63)===10)return false;}
@@ -210,9 +234,32 @@ export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,sp
   return true;
  }
  const signed=v=>(v&0x80)?-(v&0x7f):v,packed=v=>v<0?0x80|(-v):v;
+ function flightExit(){
+  const map=word(0xdc),exits=openingExits[map];if(!exits||layer()!==0)return null;
+  const dx=signed(r[0x1e]),dy=signed(r[0x1f]),x=word(0xe002)+dx,y=word(0xe004)+dy;
+  const t=tileAt(x,y,0);if(!t||t.behavior&0x80)return null;
+  for(const exit of exits){
+   // Only a movement OUT through the passage counts, not hovering nearby
+   // or flying parallel to it. Two tiles cover the bank and its slope.
+   const along=exit.dx?x:y,across=exit.dx?y:x,start=(exit.dx?exit.x:exit.y)*16,edge=(exit.dx?exit.y:exit.x)*16;
+   if(Math.sign(exit.dx?dx:dy)!==(exit.dx??exit.dy)||along<start||along>=start+16||across<edge-32||across>=edge+exit.n*16+32)continue;
+   const marker=tileAt(exit.x*16+8,exit.y*16+8,0),rom=snes.cart?.data;
+   if(!rom||!marker||!(marker.behavior&0x80)||marker.tile<r[0x4d])continue;
+   const table=0x80000+(rom[0x84000+map*2]|rom[0x84001+map*2]<<8),at=table+2*(marker.tile-r[0x4d]+((r[0xb8]&4)?1:0));
+   if((rom[at]|rom[at+1]<<8)!==0x800+exit.door)continue;
+   return exit.y*128+exit.x;
+  }
+  return null;
+ }
  let changed=0,phased=0,limited=0,recovered=0,npcPasses=0,anchor=null,crossing=null,motionFrame=-1,travel=[0,0];
  c.cycle=function(){
   const pc=this.br[4];
+  // C0:D84C samples the accepted destination's metatile after collision.
+  // Substitute only the marker lookup: native code queues its own door,
+  // fade, camera and party movement. No map graphics/flags are rewritten.
+  if(this.cyclesLeft===0&&(this.r[1]&63)===0&&pc===0xd84c&&word(0x10)===0&&phasing()&&eligible()){
+   const exit=flightExit();if(exit!==null)this.br[2]=exit;
+  }
   if(this.cyclesLeft===0&&(this.r[1]&63)===0&&pc===0xd651&&word(0x10)===0&&enabled()&&ground()&&!phasing()&&(r[0xe02c]&1)){
    const x=word(0xe002),y=word(0xe004),l=layer();
    // Walking stops at missing deck tiles. Only change this movement step;

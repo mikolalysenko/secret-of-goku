@@ -1,0 +1,40 @@
+{
+  "tool": "Built-in image_gen",
+  "prompt": "Use case: style-transfer.\nAsset type: replacement Vegeta gameplay animation atlas for Secret of Goku, a Secret of Mana style SNES action RPG.\nInput 1 is the existing Goku sheet: STRICT reference for anatomy, scale, dark warm outline, tiny face, and bold single pixel clusters. Input 2 is original Secret of Mana NPC sprites: STRICT reference for restrained warm shading and overhead viewpoint. Do NOT reproduce labels, backgrounds or other characters from references.\nCreate ONE transparent 4x4 atlas containing exactly 16 BASE-FORM VEGETA poses. Draw it as a real 160x160-pixel sprite sheet enlarged uniformly 6x. Each logical cell 40x40, with a 31-pixel-tall standing figure, feet baseline y35, body center x20. Sprite head plus hair uses only 11 logical pixels of height; torso and legs use 20. Lean adult body comparable to Goku. Small stern face, one-pixel eyes, upright tapered black hair with widow's peak, blue bodysuit, off-white Saiyan armor, ochre abdominal plates, white gloves and white boots with ochre toes. His armor makes his shoulders a little broad, but no giant head. This is a tiny overhead RPG sprite, not a side-on chibi illustration.\nPalette: 15 opaque colors maximum. Almost-black warm plum contour, dark brown-black hair with only one highlight shade; muted indigo three-tone suit; ivory/light sage-gray/shadow umber armor; warm tan/ochre/cream skin. Avoid electric blue, pure white highlights, smooth anime black ink linework, shiny glossy plastic. Use the same palette in every frame.\nPOSE ORDER EXACT:\nRow 1: three-quarter RIGHT folded arms; RIGHT fighting guard; RIGHT dash with torso low; RIGHT extended punch.\nRow 2: RIGHT extended kick; RIGHT Galick Gun charge hands at left hip; RIGHT Galick Gun release arms extended right; front-facing power-up fists at hips.\nRow 3: DOWN front fighting guard; DOWN front left-foot step; DOWN front right-foot step; UP back fighting guard.\nRow 4: UP back left-foot step; UP back right-foot step; RIGHT running left-foot step; RIGHT running right-foot step.\nSame head size, torso size and limb thickness across poses. Only moving limbs change, no zooming or changes of body proportions. Combat poses face RIGHT except power-up. Back views show the BACK of the hair and armor, no face.\nNo Super Saiyan, no aura, no beam, no energy, no ground, no shadow, no grid lines, no text, no labels. Genuine transparent background.\nMost important: an authentic low resolution 1990s 16-bit RPG sprite with coarse aligned pixels. Every logical pixel a flat solid square. No anti-aliasing. No soft edges. No higher-resolution detail. Keep generous transparent space between cells, and identical cell positions and baseline.",
+  "references": [
+    "assets/sprites/goku.png",
+    "assets/sprites/characters.png"
+  ],
+  "grid": {
+    "columns": 4,
+    "rows": 4
+  },
+  "sourceSize": [
+    1254,
+    1254
+  ],
+  "nativeCell": [
+    56,
+    40
+  ],
+  "standingHeight": 35,
+  "frames": [
+    "idle",
+    "guard",
+    "rush",
+    "punch",
+    "kick",
+    "charge",
+    "beam",
+    "power",
+    "front guard",
+    "front step 1",
+    "front step 2",
+    "back guard",
+    "back step 1",
+    "back step 2",
+    "side step 1",
+    "side step 2"
+  ],
+  "runtime": "Fixed 6.5 source pixels per native pixel and authored foot anchors, enlarged to match Goku's facial scale; 15-color RGB555 palette. Base and Super Saiyan retain identical geometry. Super Saiyan samples only the masked hair from vegeta-ssj-hair.png, using Goku's shared gold ramp in engine/saiyan-palette.js. Hair revision prompts are in saiyan-hair.source.json."
+}

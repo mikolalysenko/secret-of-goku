@@ -41,10 +41,13 @@ test('strikes and flight use TV-anime air without looping power-up vocals; speec
     assert.match(c.sourceUrl,/Anime_Whoosh_Sound_(16|20)$/);assert.ok(c.duration<.4);
     assert.equal(c.leadIn,undefined,'a punch whoosh has no ki power-up');
   }
-  const flight=manifest.clips.find(c=>c.name==='flight'),air=manifest.clips.find(c=>c.name==='air');
+  const flight=manifest.clips.find(c=>c.name==='flight'),air=manifest.clips.find(c=>c.name==='air'),landing=manifest.clips.find(c=>c.name==='landing');
   assert.equal(flight.leadIn.source,'charge');assert.ok(flight.leadIn.end-flight.leadIn.start<.25);
   assert.match(flight.sourceUrl,/Anime_Whoosh_Sound_20$/);assert.ok(flight.duration<.65);
   assert.match(air.sourceUrl,/Anime_Whoosh_Sound_20$/);assert.ok(air.loop>0);assert.ok(air.rms<flight.rms);
+  assert.match(landing.sourceUrl,/Anime_Whoosh_Sound_20$/);assert.equal(landing.reverse,undefined);
+  assert.ok(landing.duration<.4);assert.ok(landing.lowpass<=2800);
+  assert.ok(landing.layers.some(l=>l.source==='punchB'&&l.offset>0),'air brakes before the soft touchdown');
   for(const name of['charge','release']){
     const b=readFileSync(new URL(`../assets/audio/kamehameha-${name}.wav`,import.meta.url));
     assert.equal(b.readUInt32LE(24),16000);
@@ -73,4 +76,10 @@ test('the reveal adds a separate non-vocal bass/ki explosion with an energetic a
  const energy=(start,end)=>{let sum=0,n=0;for(let i=start*16000|0;i<end*16000;i++){sum+=(b.readInt16LE(44+i*2)/32768)**2;n++;}return Math.sqrt(sum/n);};
  assert.ok(energy(.01,.12)>.2);assert.ok(energy(.6,.9)>.025);assert.ok(energy(1.4,1.55)<energy(.01,.12)/5);
  assert.notDeepEqual(b,readFileSync(new URL('../assets/audio/dbz/transform.wav',import.meta.url)));
+});
+
+test('Frieza Death Balls use a lowered non-vocal energy effect instead of the speech sample',()=>{
+ assert.deepEqual(cues.friezaOrb.clips,['power-burst']);assert.ok(cues.friezaOrb.rate<1);
+ assert.deepEqual(cues.friezaCharge.clips,['charge']);assert.equal(cues.friezaCharge.loop,true);
+ assert.ok(!Object.values(cues).some(c=>c.clips.includes('frieza-orb')));
 });

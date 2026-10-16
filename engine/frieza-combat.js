@@ -1,6 +1,7 @@
 // Deterministic projectiles: discs turn at a limited angular speed, so a
 // flying player can circle behind their owner and let momentum do the rest.
 export const FRIEZA_HP=96000;
+const DISC_RADIUS=6;
 // Actor/projectile coordinates are whole native pixels. Keep aiming angles
 // continuous, but never feed fractional positions into the SNES camera.
 export function pixelStep(body,dx,dy,speed){
@@ -12,7 +13,7 @@ export function rushStep(boss){
  pixelStep(boss,dx/d,dy/d,7);boss.dash++;
 }
 export function beamTouchesShot(beam,geometry,shot){
- const radius=shot.kind==='orb'?10:4;
+ const radius=shot.kind==='orb'?10:shot.kind==='disc'?DISC_RADIUS:4;
  for(const [x,y]of[[shot.x,shot.y],[shot.previousX??shot.x,shot.previousY??shot.y]]){
   const along=(x-beam.x)*beam.dx+(y-beam.y)*beam.dy,across=Math.abs((x-beam.x)*beam.dy-(y-beam.y)*beam.dx);
   const width=geometry.halfWidth*(geometry.taper?Math.min(1,Math.max(0,along)/geometry.taper):1);
@@ -32,7 +33,7 @@ export function discContact(disc,player,boss){
  // Once armed, either combatant can be hit. Test the full step so fast
  // projectiles cannot tunnel through a target between rendered frames.
  const distance=p=>sweptDistance(p.x,p.y,disc.previousX??disc.x,disc.previousY??disc.y,disc.x,disc.y);
- if(disc.age>40&&distance(boss)<18)return 'frieza';
- if(disc.age>10&&distance(player)<12)return 'goku';
+ if(disc.age>40&&distance(boss)<14+DISC_RADIUS)return 'frieza';
+ if(disc.age>10&&distance(player)<8+DISC_RADIUS)return 'goku';
  return null;
 }

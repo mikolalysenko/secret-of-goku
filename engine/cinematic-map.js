@@ -1,7 +1,7 @@
 // Read-only scenery for the collateral montage. Decode the selected cartridge
 // into a separate picture; never load a town into the running boss's map RAM.
 import {decodeMapPiece,decodeMetatiles} from '../tools/rom/map-codec.mjs';
-export function cinematicMap(rom,id){
+export function cinematicMap(rom,id,flags={},{separateLayers=false}={}){
  const word=a=>rom[a]|rom[a+1]<<8,long=a=>word(a)|rom[a+2]<<16;
  const header=0x80000+word(0x87000+id*2),set=rom[header+2]&63;
  const metatiles=decodeMetatiles(rom.subarray(long(0xb4000+set*3),long(0xb4003+set*3))).metatiles;
@@ -13,7 +13,7 @@ export function cinematicMap(rom,id){
   const p=decodeMapPiece(rom.subarray(at));p.x=rom[a+3]>>1;p.y=rom[a+4]>>1;p.layer=layer;
   // Intact towns, independent of the player's flags; their destruction is
   // the shot's narrative, not a persistent mutation of shop/door scripts.
-  const value=flag===0x10?6:0;if(value>=min&&value<=max)pieces.push(p);
+  const value=flags[flag]??(flag===0x10?6:0);if(value>=min&&value<=max)pieces.push(p);
   width=Math.max(width,p.x+p.width);height=Math.max(height,p.y+p.height);a+=5;
  }
  const layers=[new Int16Array(width*height).fill(-1),new Int16Array(width*height).fill(-1)];
@@ -28,11 +28,12 @@ export function cinematicMap(rom,id){
  }
  for(let g=0;g<8;g++)for(let i=0;i<4;i++)gfx[864+g*4+i]=tile(0x1c8000+(rom[0x80441+rom[0x80400+gfxId]*2+g]&63)*512+i*32);
  const palette=0xc8000+(rom[header+1]&127)*210,pixels=new Uint16Array(width*16*height*16);
+ const planes=separateLayers?[new Uint16Array(pixels.length),new Uint16Array(pixels.length)]:null;
  for(const[layer,priority]of[[1,0],[0,0],[1,1],[0,1]])for(let cell=0;cell<layers[layer].length;cell++){
   const id=layers[layer][cell];if(id<0)continue;
   for(let s=0;s<4;s++){const n=metatiles[id][s];if((n>>13&1)!==priority)continue;const art=gfx[n&1023];if(!art)continue;
-   for(let y=0;y<8;y++)for(let x=0;x<8;x++){const c=art[(n&32768?7-y:y)*8+(n&16384?7-x:x)],p=n>>10&7;if(c)pixels[(Math.floor(cell/width)*16+(s>>1)*8+y)*width*16+(cell%width)*16+(s&1)*8+x]=p?1+(word(palette+(p-1)*30+(c-1)*2)&0x7fff):0;}
+   for(let y=0;y<8;y++)for(let x=0;x<8;x++){const c=art[(n&32768?7-y:y)*8+(n&16384?7-x:x)],p=n>>10&7;if(c){const at=(Math.floor(cell/width)*16+(s>>1)*8+y)*width*16+(cell%width)*16+(s&1)*8+x,color=p?1+(word(palette+(p-1)*30+(c-1)*2)&0x7fff):0;pixels[at]=color;if(planes)planes[layer][at]=color;}}
   }
  }
- return{pixels,width:width*16,height:height*16};
+ return{pixels,width:width*16,height:height*16,...(planes?{planes}:{})};
 }

@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync,existsSync} from 'node:fs';
-import {collateralShots,collateralStart,pullbackStart,cosmicDuration,collateralBeat,civilianPose,orbitIntroLines} from '../engine/frieza-cinematic.js';
+import {collateralShots,cosmicShots,cosmicBeat,collateralStart,pullbackStart,cosmicDuration,collateralBeat,civilianPose,orbitIntroLines,orbitIntroFrames,orbitIntroText} from '../engine/frieza-cinematic.js';
+import {aerialMeleePose} from '../engine/aerial-melee.js';
 import {cinematicMap} from '../engine/cinematic-map.js';
 import {cinematicRuin} from '../engine/cinematic-ruins.js';
 import {wrapText} from '../engine/event-codec.js';
@@ -10,13 +11,25 @@ import {readGraphics,readPalette,renderMap} from '../tools/rom/graphics.mjs';
 
 test('collateral has separate establishment, warning, impact and aftermath beats; all dialogue fits',()=>{
  let start=collateralStart;
- for(const shot of collateralShots){
-  assert.equal(collateralBeat(start).shot,shot);assert.equal(collateralBeat(start+shot.hit).age,shot.hit);
-  assert.ok(shot.hit>=150);assert.ok(shot.duration-shot.hit>=110);
+ for(const shot of cosmicShots){
+  assert.equal(cosmicBeat(start).shot,shot);
+  if(shot.kind==='aerial'){
+   assert.equal(collateralBeat(start),null);assert.equal(aerialMeleePose(shot,29).active,false);
+   assert.equal(aerialMeleePose(shot,30).teleport,true);assert.equal(aerialMeleePose(shot,35).hit,true);
+   assert.equal(aerialMeleePose(shot,shot.impact).explode,true);
+   for(let i=0;i<shot.duration;i++){const p=aerialMeleePose(shot,i);assert.ok([p.x,p.y,p.phase,p.beat].every(Number.isInteger));}
+  }else{
+   assert.equal(collateralBeat(start).shot,shot);assert.equal(collateralBeat(start+shot.hit).age,shot.hit);
+   assert.ok(shot.hit>=150);assert.ok(shot.duration-shot.hit>=110);
+  }
   start+=shot.duration;
  }
  assert.equal(start,pullbackStart);assert.equal(collateralBeat(start),null);assert.ok(cosmicDuration-start>=240);
  for(const text of [...orbitIntroLines,...collateralShots.map(s=>s.text)])assert.ok(wrapText(text).split('\n').length<=3,text);
+ assert.equal(orbitIntroText(orbitIntroFrames),null);
+ assert.match(orbitIntroText(orbitIntroFrames-61),/LUKA/);
+ assert.equal(orbitIntroText(1),null);
+ assert.match(orbitIntroLines.join('\n'),/FRIEZA:Look down/);
 });
 
 test('montage scenery matches the independent ROM renderer and pedestrians stay on real ground',{skip:!existsSync('.local/rom/secret-of-mana-us.sfc')},()=>{

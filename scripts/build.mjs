@@ -3,11 +3,16 @@ import {createHash} from 'node:crypto';
 await rm('dist',{recursive:true,force:true});await mkdir('dist',{recursive:true});
 // Explicit public runtime list. The archived prototype and extracted map PNGs
 // are research inputs; the real game reads those maps from the selected ROM.
-const files=['index.html','engine.html','styles.css','engine','vendor','tools/rom','CREDITS.md','LICENSE','docs',
+const files=['index.html','engine.html','scenes.html','styles.css','engine','vendor','tools/rom','CREDITS.md','LICENSE','docs',
   'assets/sprites/kai-planet.png','assets/sprites/kai-npcs.png','assets/sprites/kai-planet.json',
   'assets/sprites/npcs.png','assets/sprites/rabite.png',
+  'assets/sprites/vegeta-trial.png','assets/sprites/vegeta-trial.source.json',
+  'assets/sprites/time-chamber.png','assets/sprites/time-chamber.source.json',
+  'assets/sprites/vegeta-movement.png','assets/sprites/vegeta-movement.source.json',
+  'assets/sprites/vegeta.png','assets/sprites/vegeta.source.json',
+  'assets/sprites/goku-ssj-hair.png','assets/sprites/vegeta-ssj-hair.png','assets/sprites/saiyan-hair.source.json',
   'assets/sprites/frieza.png','assets/sprites/frieza.json','assets/sprites/frieza-full-power.png','assets/sprites/frieza-full-power.json','assets/sprites/dragon-balls.png','assets/sprites/death-ball.png','assets/sprites/ki-art.json','assets/sprites/goku.png','assets/sprites/ssj.png','assets/sprites/shenron.png','assets/sprites/shenron.json',
-  'assets/audio/kamehameha-charge.wav','assets/audio/kamehameha-release.wav','assets/audio/kamehameha-jp.json','assets/audio/dbz','assets/audio/music'];
+  'assets/social','assets/audio/kamehameha-charge.wav','assets/audio/kamehameha-release.wav','assets/audio/kamehameha-jp.json','assets/audio/dbz','assets/audio/music'];
 for(const file of files){
   await mkdir(`dist/${file.split('/').slice(0,-1).join('/')}`,{recursive:true});
   await cp(file,`dist/${file}`,{recursive:true});

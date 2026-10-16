@@ -33,7 +33,11 @@ const clips=[
  {name:'beam',source:'beam',start:0,end:1.10,rms:.20,fade:.24},
  {name:'teleport',source:'teleport',start:0,end:.83,rms:.17},
  {name:'flight',source:'whoosh',start:.01,end:.37,rms:.15,leadIn:{source:'charge',start:1.6,end:1.82,level:.65,overlap:.025}},
- {name:'landing',source:'flight',start:.86,end:1.30,tempo:1.6,reverse:true,rms:.12},
+ // Brake with the same air as takeoff, then touch down. Reversing Cell's
+ // turbo sample made the landing sound like a spinning razor/disc.
+ {name:'landing',source:'whoosh',start:.06,end:.37,highpass:90,lowpass:2400,rms:.12,fade:.11,decay:3,layers:[
+  {source:'punchB',start:0,end:.18,highpass:45,lowpass:1300,level:.48,offset:.07,decay:9},
+ ]},
  // Keep the full power-up eruption and its rumbling decay at the original
  // speed. The old half-second sped-up excerpt lost both the attack and tail.
  {name:'transform',source:'transform',start:.015,end:2.57,rms:.25,highpass:45,fade:.24},
@@ -73,7 +77,8 @@ for(const clip of clips){
   a=a.map((v,i)=>v*gain*Math.exp(-i/rate*(clip.decay??0)));
   for(const layer of clip.layers){
    const b=decode(layer),gain=.22*layer.level/level(b);
-   for(let i=0;i<Math.min(a.length,b.length);i++)a[i]+=b[i]*gain*Math.exp(-i/rate*(layer.decay??0));
+   const offset=Math.round((layer.offset??0)*rate);
+   for(let i=0;i<Math.min(a.length-offset,b.length);i++)a[offset+i]+=b[i]*gain*Math.exp(-i/rate*(layer.decay??0));
   }
   if(clip.thump)for(let i=0;i<a.length;i++){
    const t=i/rate,phase=2*Math.PI*(48*t+55*(1-Math.exp(-t*22))/22);

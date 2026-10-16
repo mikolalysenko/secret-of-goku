@@ -1,0 +1,23 @@
+{
+  "tool": "Built-in image_gen",
+  "prompt": "Use case: style-transfer. Asset type: directional movement sprite atlas for a native 32-pixel-tall RPG character. Reference image1 is the Goku game sheet: match his adult proportions and actual coarse pixel density, not a bobblehead. Reference image2 is Vegeta's design; retain his Saiyan armor, colors, gloves, boots and widow's peak. Create a 4x4 transparent sprite atlas, sixteen equal square cells, no labels or grids. Vegeta is viewed slightly from above like the Goku top-down game. Logical sprite height 31px, shoulders 14px wide, head including hair 14px wide, small face, lean body. Precise pixel clusters enlarged uniformly, hard nearest-neighbor edges, restricted 15-color palette, NO antialiasing, no illustration or smooth contours. All feet share same baseline and centered body anchor, no clipping. Row1 BASE BLACK HAIR: down-facing fighting guard (FRONT), down-facing left-foot step, down-facing right-foot step, up-facing fighting guard (BACK OF HEAD AND ARMOR, no face). Row2 BASE BLACK HAIR: up-facing left-foot step (BACK), up-facing right-foot step (BACK), right-facing running left-foot step, right-facing running right-foot step. Row3 SUPER SAIYAN GOLD HAIR teal eyes: exact same down/front poses and up/back guard as row1. Row4 SUPER SAIYAN: exact same up/back walking and right running poses as row2. All sixteen same height, same armor and proportions, upright large pointed Vegeta hair, no cape, no tail, white armor, blue bodysuit. Transparent alpha background, no shadow, aura, energy, effects, ground, text. This is animation artwork to be sampled down to 32 pixels tall: chunky sparse pixels, only a few pixels for face and fingers.",
+  "grid": {
+    "columns": 4,
+    "rows": 4
+  },
+  "nativeHeight": 32,
+  "frames": [
+    "front guard",
+    "front step 1",
+    "front step 2",
+    "back guard",
+    "back step 1",
+    "back step 2",
+    "side step 1",
+    "side step 2"
+  ],
+  "forms": [
+    "base",
+    "super-saiyan"
+  ]
+}

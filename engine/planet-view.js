@@ -7,6 +7,11 @@ import {createCollateralView} from './frieza-collateral-view.js';
 import {pullbackStart} from './frieza-cinematic.js';
 import {drawFriezaSprite} from './frieza-sprite.js';
 import {createOrbitEffects} from './orbit-effects.js';
+import {projectOrbitBackground} from './orbit-camera.js';
+import {clashCamera} from './frieza-finale.js';
+import {createAerialMeleeView} from './aerial-melee.js';
+import {departureOrbit} from './ending-departure.js';
+import {bossRushDeathTiming as deathTiming,bossRushDeathPose} from './boss-rush-death.js';
 
 // Scatter once with an independent random sequence for each coordinate.
 // The former pair of modular strides made obvious diagonal rows of stars.
@@ -39,9 +44,12 @@ export function createPlanetView(snes,mod){
     const pixels=frames[frame%frames.length];
     for(let py=0;py<16;py++)for(let px=0;px<16;px++){const c=pixels[py*16+px];if(c)put(x+px-8,y+py-8,c);}
   }
-  function sky(age){
+  function sky(age,camera){
     surface.fill(rgb(0,0,2));
-    for(const {x,y,shade,phase,bright}of stars){
+    for(const star of stars){
+      const {shade,phase,bright}=star;
+      const point=camera?projectOrbitBackground(camera,star,bright?3:1+(shade&1)):star;
+      const x=((point.x%256)+256)%256,y=((point.y%224)+224)%224;
       const c=rgb(5+shade*2,7+shade*2,11+shade*3);
       put(x,y,c);if(bright&&(age+phase)%240<9){put(x-1,y,c);put(x+1,y,c);put(x,y-1,c);put(x,y+1,c);}
     }
@@ -77,9 +85,16 @@ export function createPlanetView(snes,mod){
     const c=color-1,mix=(n,t)=>Math.round(n+(t-n)*alpha);
     return rgb(mix(c&31,28),mix(c>>5&31,30),mix(c>>10&31,31));
   };
-  function flash(alpha){for(let i=0;i<surface.length;i++)surface[i]=pale(surface[i],alpha);}
+  function flash(alpha,native=false){
+    const add=Math.round(alpha*31);
+    for(let i=0;i<surface.length;i++){
+      if(native){const c=surface[i]-1;surface[i]=rgb(Math.min(31,(c&31)+add),Math.min(31,(c>>5&31)+add),Math.min(31,(c>>10&31)+add));}
+      else surface[i]=pale(surface[i],alpha);
+    }
+  }
   const drawOrbit=createOrbitView(snes,mod,{put,disc,line,spell,rgb,drawPlanet,flash});
   const collateral=createCollateralView(snes,{put,disc,line,rgb});
+  const aerialMelee=createAerialMeleeView(snes,mod,{put,rgb,flash});
   function beam(age){
     const start={x:132,y:90},dx=.66,dy=-.7513,envelope=Math.max(0,Math.min(1,(age+8)/14,(112-age)/30));
     const length=210*Math.min(1,(age+12)/24),width=18*envelope;
@@ -138,6 +153,7 @@ export function createPlanetView(snes,mod){
     }
   }
   function cosmicBattle(state){
+    if(aerialMelee(state))return;
     if(collateral.draw(state))return;
     const t=state.age-pullbackStart,uZoom=Math.max(0,Math.min(1,t/200)),ease=uZoom*uZoom*(3-2*uZoom);
     const view={x:Math.round(95*ease),y:Math.round(282-128*ease),r:Math.round(240-136*ease)};
@@ -155,7 +171,7 @@ export function createPlanetView(snes,mod){
     }
     if(t<140){
       const distance=t<70?1.15*(1-t/70):((t-70)/30)**1.4,orb=point(distance);
-      mod.kiArt?.draw('death',(t>>3)%6,orb.x,orb.y,Math.round(29*scale/16)*16,put);
+      mod.kiArt?.draw('death',(t>>3)%12,orb.x,orb.y,Math.round(29*scale/16)*16,put);
     }
     // Two tiny fighters leave the surface after the shot has passed. Their
     // final positions match the orbital encounter's opening composition.
@@ -171,7 +187,7 @@ export function createPlanetView(snes,mod){
     // into the overhead epilogue. The native dialogue still draws above it.
     mod.kaiArt?.backdrop(surface);
     const scene=state.kai??newKaiScene(),b=scene.bubbles;
-    const goku=mod.spriteLayer.atlas[mod.frieza?.permanent?'ssj':'goku'];
+    const goku=mod.spriteLayer.atlas[state.outcome==='good'?'goku':mod.frieza?.permanent?'ssj':'goku'];
     const arriving=state.phase==='kai'&&state.age<12;
     const walk=b.walking?Math.floor(b.step/9)%4:1,row=b.direction==='down'?4:b.direction==='up'?8:12;
     const kaiFrame=state.phase==='complete'?3:state.outcome==='bad'?2:Math.floor(state.age/28)%2;
@@ -191,12 +207,37 @@ export function createPlanetView(snes,mod){
     }
   }
   function prepare(state,isShot){
-    frame=mod.frame;preparedState=state;const age=state.age;sky(age);
+    frame=mod.frame;preparedState=state;const age=state.age;
+    if(state.fatal){
+      const pose=bossRushDeathPose(state);
+      if(state.orbit&&age<deathTiming.black){
+        sky(state.orbit.age,pose.camera);drawOrbit(state.orbit,pose);
+      }else if(age<deathTiming.planet)surface.fill(1);
+      else{
+        sky(age);
+        if(age<deathTiming.rupture)drawPlanet(state.target??{x:2432,y:3024},true,age>deathTiming.rupture-36?(age%4<2?-1:1):0);
+        else explodingPlanet(age-deathTiming.rupture,state.target??{x:2432,y:3024});
+      }
+      const light=pose.light;
+      for(let i=0;i<surface.length;i++){const c=surface[i]-1;surface[i]=rgb(Math.round((c&31)*light),Math.round((c>>5&31)*light),Math.round((c>>10&31)*light));}
+      if(age>=deathTiming.gameOver){
+        const key='          GAME OVER\n\n      The planet is gone.';
+        if(cardKey!==key){cardKey=key;card=radioPixels(snes.cart.data,key);}
+        for(let y=0;y<64;y++)for(let x=0;x<240;x++){const c=card[y*240+x];if(c)put(x+8,y+80,c);}
+      }
+      return;
+    }
+    sky(age,state.kind==='frieza-orbit'?(state.clash?clashCamera(state):state.camera):null);
     const target=state.target??{x:2432,y:3024};
     if(state.kind==='frieza-orbit')drawOrbit(state);
     else if(state.kind==='frieza-cosmic')cosmicBattle(state);
     else if(isShot){drawPlanet(target,!!mod.frieza?.crisisActive);beam(age);}
-    else if(['kai','complete'].includes(state.phase))kaiPlanet(state);
+    else if(['kai','complete'].includes(state.phase)){
+      kaiPlanet(state);
+      if(state.outcome==='good'&&state.phase==='kai'&&age<32){
+        const scale=age/32;for(let i=0;i<surface.length;i++){const c=surface[i]-1;surface[i]=rgb(Math.round((c&31)*scale),Math.round((c>>5&31)*scale),Math.round((c>>10&31)*scale));}
+      }
+    }
     else if(state.phase==='explode')explodingPlanet(age,target);
     else if(state.phase==='escape'){
       explodingPlanet(125+age,target);
@@ -205,9 +246,16 @@ export function createPlanetView(snes,mod){
     }else{
       drawPlanet(target,!!mod.frieza?.crisisActive);
       if(state.phase==='depart'){
-        const t=Math.min(1,age/48),x=124+140*t,y=81-115*t;
-        line(x-10,y+14,x-27,y+34,blue[1]);line(x-8,y+12,x-20,y+27,blue[2]);
-        const ssj=!!mod.frieza?.permanent;blit(mod.spriteLayer.atlas[ssj?'ssj':'goku'],x-16,y-16,(ssj?34:38)*32,128,32,32);
+        const pose=departureOrbit(age),goku=mod.spriteLayer.atlas.goku;
+        // Match the established orbital scale, sampling the original flight
+        // cell at half size. No free-angle trails or instantaneous full cut.
+        if(goku)for(let py=0;py<16;py++)for(let px=0;px<16;px++){
+          const c=goku.pixels[(128+py*2)*goku.width+38*32+px*2];if(c)put(pose.x-8+px,pose.y-16+py,c);
+        }
+        for(let i=0;i<surface.length;i++){
+          const c=surface[i]-1,mix=n=>Math.round((n+(31-n)*pose.white)*(1-pose.black));
+          surface[i]=rgb(mix(c&31),mix(c>>5&31),mix(c>>10&31));
+        }
       }
     }
     if(isShot&&!['frieza-orbit','frieza-cosmic'].includes(state.kind)&&age>164){const factor=Math.max(0,(186-age)/22);for(let i=0;i<surface.length;i++){const c=surface[i]-1;surface[i]=1+Math.floor((c&31)*factor)+(Math.floor((c>>5&31)*factor)<<5)+(Math.floor((c>>10&31)*factor)<<10);}}
@@ -215,19 +263,45 @@ export function createPlanetView(snes,mod){
   p.getColor=function(sub,x,y){
     const result=previous.call(this,sub,x,y);
     if(sub||y>224||!mod.options.enabled||!mod.gokuActive||!texture)return result;
+    if(mod.ending?.defeated){
+      const state=mod.ending.planetScene;
+      if(mod.ending.nativeDeath){
+        const light=bossRushDeathPose(state).light,c=result[0];
+        return[Math.round((c&31)*light)|(Math.round((c>>5&31)*light)<<5)|(Math.round((c>>10&31)*light)<<10),result[1],result[2]];
+      }
+      if(frame!==mod.frame||preparedState!==state)prepare(state,false);
+      return[y===224?0:surface[y*256+x]-1,4,0x86];
+    }
     const returning=mod.frieza?.returnScene;
     if(returning&&returning.age<24)return[pale(result[0]+1,1-returning.age/24)-1,result[1],result[2]];
     const orbit=mod.frieza?.orbit;
     // Let the cartridge show and operate its real inventory/status pages.
-    if(orbit&&(!mod.nativeField||mod.read8(0xec)&0xfe))return result;
+    const ring=orbit&&mod.nativeField&&!!(mod.read8(0xec)&12);
+    if(orbit&&(!mod.nativeField||mod.read8(0xec)&0xfe&&!ring))return result;
     const shot=mod.worldKi?.cinematic??mod.frieza?.cinematic??orbit,state=shot??mod.ending?.planetScene;
     if(!state)return result;
     if(frame!==mod.frame||preparedState!==state)prepare(state,!!shot);
     // Keep native event text above the ending picture. The aerial cut has no
     // HUD/radar/radio at all, including the source camera's compass.
     if(!shot&&result[1]===2&&y<170&&state.phase!=='complete')return result;
-    if(orbit&&!orbit.intro&&!orbit.clash&&y>190&&[2,4].includes(result[1]))return result;
+    // The native HP digits, gauge and Goku portrait stay visible through the
+    // introduction and beam struggle too. Native rings draw above the same
+    // paused orbital picture; full inventory/status pages own their screen.
+    if(orbit&&(ring||y>=190)&&[2,4].includes(result[1]))return result;
     return[y===224?0:surface[y*256+x]-1,4,0x86];
   };
-  return{ready:collateral.ready,load(rom){texture=decodePlanetTexture(rom);frame=-1;globeKey='';},dispose(){p.getColor=previous;}};
+  return{ready:collateral.ready,load(rom){texture=decodePlanetTexture(rom);frame=-1;globeKey='';},
+    renderDefeat(){
+      const state=mod.ending?.planetScene;if(!state?.fatal)return;
+      if(mod.ending.nativeDeath)return;
+      prepare(state,false);
+      // Emit the same 256px picture through the emulator's output buffer.
+      // After the native collapse/reaper, no CPU/APU execution can trigger
+      // a native defeat warp or save writes underneath the planet sequence.
+      for(let y=1;y<225;y++)for(let x=0;x<256;x++){
+        const c=(surface[Math.min(223,y)*256+x]||1)-1,at=(y*512+x*2)*3;
+        for(let i=0;i<2;i++){p.pixelOutput[at+i*3]=(c&31)*255/31;p.pixelOutput[at+i*3+1]=(c>>5&31)*255/31;p.pixelOutput[at+i*3+2]=(c>>10&31)*255/31;}
+      }
+      p.frameOverscan=false;p.frameInterlace=false;
+    },dispose(){p.getColor=previous;}};
 }

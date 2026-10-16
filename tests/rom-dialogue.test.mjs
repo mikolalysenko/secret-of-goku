@@ -8,7 +8,7 @@ const context={window:{},Uint8Array};
 vm.runInNewContext(await readFile(new URL('../engine/dialogue-patches.js',import.meta.url),'utf8'),context);
 const patch=context.window.gokuDialoguePatch;
 const romPath=new URL('../.local/rom/secret-of-mana-us.sfc',import.meta.url);
-const spans=[[0x92691,12],[0x9306a,14],[0x9339f,11],[0x93450,18]];
+const spans=[[0x92691,12],[0x927e4,20],[0x9306a,14],[0x9339f,11],[0x93450,18]];
 const inSpan=offset=>spans.some(([start,length])=>offset>=start&&offset<start+length);
 
 test('dialogue rejects unsupported containers and sizes before editing',()=>{

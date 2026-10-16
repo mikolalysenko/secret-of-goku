@@ -45,6 +45,7 @@ class GokuAnimation {
     else if(m.story?.status.lastEvent===0x10c&&m.read8(0xcf10)===6&&[131,260].includes(map)&&[0xa0,0xae,0xa2].includes(native))kind='rescueDive';
     else if((native===0x8c||native===0x8d)&&!(m.options.power&&action)){kind='hurt';useNative=!!nativeAction;}
     else if(action)kind=action.kind;
+    else if(m.frieza?.approachingAltar&&(distance>0||s.stationary<3))kind='run';
     else if((m.localFlight||m.localLift>0)&&m.canAttack)kind='hover';
     else if(nativeAction){
       useNative=true;kind=nativeAction.key;

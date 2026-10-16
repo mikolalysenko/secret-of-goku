@@ -18,3 +18,4 @@ for (const [name, colors] of Object.entries(keys)) {
   await writeFile(`assets/sprites/${name}.png`, PNG.sync.write(png));
   console.log(`${name}: ${png.width} × ${png.height}`);
 }
+await import('./prepare-saiyan-hair.mjs');

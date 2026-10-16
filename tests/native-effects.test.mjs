@@ -75,3 +75,33 @@ test('orbital beams use native strip colors at fixed headings with whole-pixel s
  checkColors=false;
  for(let age=0;age<80;age++){fx.burst(80,90,age,{large:true});fx.aura(80,90,age);fx.disc(80,90,age);fx.beam(80,90,220,90,12,age,true);}
 });
+
+test('Death Balls animate native sparks around a stable core, with a separate red cinematic sphere',async t=>{
+ let rom;try{rom=new Uint8Array(await readFile(new URL('../.local/rom/secret-of-mana-us.sfc',import.meta.url)));}catch{t.skip('Local US ROM required');return;}
+ const {darkForceCells}=await import('../engine/native-dark-force.js');
+ const {createDeathBallArt,deathBallSizes}=await import('../engine/death-ball-art.js');
+ for(const cell of darkForceCells)assert.equal(createHash('sha256').update(decodeEffectFrame(rom,cell).rgba).digest('hex'),cell.sha256);
+ const draw=createDeathBallArt(rom),colors=new Set(),animations=new Set();
+ for(const size of deathBallSizes){const silhouettes=new Set();
+  for(let frame=0;frame<12;frame++){
+   const pixels=new Map();draw(frame,100.25,99.75,size,(x,y,c)=>{assert.ok(Number.isInteger(x)&&Number.isInteger(y));assert.ok(c>0&&c<=0x8000);colors.add(c);pixels.set(`${x},${y}`,c);});
+   assert.ok(pixels.size>size*size*.45);assert.ok(pixels.has('100,100'),'The solid core remains visible in every frame');silhouettes.add([...pixels.keys()].join(';'));
+   if(size===16)animations.add([...pixels.values()].join(','));
+  }
+  assert.ok(silhouettes.size>=6,'Sparks must move in space, not merely change palette');
+ }
+ assert.equal(colors.size,5);assert.ok(animations.size>=4);
+ // Cinematic growth must actually render intermediate sizes, not snap them
+ // back to the old 32px/64px jumps inside the shared sprite renderer.
+ let previous=0;
+ for(const size of[18,30,66,102,158,222]){
+  const xs=[],ys=[],colors=new Set();draw(0,128,128,size,(x,y,c)=>{xs.push(x);ys.push(y);colors.add(c-1);},{cinematic:true});
+  const diameter=Math.max(...xs)-Math.min(...xs)+1;
+  assert.ok(diameter>=Math.floor(size*.85)&&diameter<=size&&diameter>previous);previous=diameter;
+  assert.ok(Math.max(...ys)-Math.min(...ys)+1>=Math.floor(size*.85));
+  assert.ok([...colors].every(c=>(c&31)>(c>>10&31)),'The giant orb is red, orange and gold');
+ }
+ const {nativeCloud}=await import('../engine/aerial-melee.js'),{decodePlanarTile}=await import('../tools/rom/graphics.mjs');
+ const cloud=nativeCloud(rom),tile=decodePlanarTile(rom,0x62000+17*32);
+ for(let y=0;y<8;y++)for(let x=0;x<8;x++)assert.equal(cloud[y*120+x],tile[y*8+x]);
+});

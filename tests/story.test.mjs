@@ -22,7 +22,7 @@ test('all Potos replacements target actual native text and the rescue edits pres
   for(const [at,edit]of potosCommands)assert.deepEqual(potosCommand(ops.get(at)),edit.after);
   const potos=[...Array.from({length:21},(_,i)=>0x107+i),0x4e6,0x4e7].flatMap(id=>parseEvent(rom,id).ops).filter(op=>op.op==='text').map(op=>storyDialogue[op.at]??op.text).join('\n');
   assert.doesNotMatch(potos,/I took you in|I raised you|Your mother|too young|you yank out the sword/i);
-  for(const phrase of['You killed RANDI!','You destroyed the','Oops. My bad.','you are a menace.','You saved Elliott.'])assert.ok(potos.includes(phrase),phrase);
+  for(const phrase of['You killed {3}!','You destroyed the','Oops. My bad.','you are a menace.','You saved Elliott.'])assert.ok(potos.includes(phrase),phrase);
 });
 
 test('native ASCII credits remain opaque despite letters matching event opcodes',()=>{
@@ -36,7 +36,7 @@ test('incomplete party dialogue preserves NPC replies in mixed speaker pages',()
   assert.equal(partyText(page,0).text,'\nTHANATOS:Too late!\n{0}:Let him go!');
   assert.equal(partyText(page,3).text,page);
   assert.equal(partyText(' and another thing...',0,true).text,'');
-  assert.equal(partyText('LUKA:Find {1}.',0,true).text,'LUKA:Find Primm.');
+  assert.equal(partyText('LUKA:Find {1}.',0,true).text,'LUKA:Find {1}.','an absent companion keeps her native name code');
   assert.ok(partyText(page,1).text.startsWith('{1}:'));
   assert.ok(partyText(page,2).text.endsWith('{2}:Hey!'));
 });

@@ -6,7 +6,7 @@ export function encodeText(text){
   for(let i=0;i<text.length;i++){
     const c=text[i],n=c.charCodeAt(0);
     if(c==='<'&&/^[a-f0-9]{2}>$/.test(text.slice(i+1,i+4))){out.push(parseInt(text.slice(i+1,i+3),16));i+=3;}
-    else if(c==='{'&&/^[012]}$/.test(text.slice(i+1,i+3))){out.push(0x57,Number(text[i+1]));i+=2;}
+    else if(c==='{'&&/^[0-3]}$/.test(text.slice(i+1,i+3))){out.push(0x57,Number(text[i+1]));i+=2;}
     else if(c==='\n')out.push(0x7f);
     else if(c===' ')out.push(0x80);
     else if(n>=97&&n<=122)out.push(n+32);
@@ -56,18 +56,39 @@ export function parseEvent(rom,id){
   }
   return{id,start,end,ops};
 }
+// A name code ({0} Goku, {1} girl, {2} sprite, {3} the boy) is measured at
+// the native six-letter maximum.
+export const nameCodes=/\{[0-3]\}/g;
+export const textWidth=text=>text.replace(nameCodes,'XXXXXX').length;
 export function wrapText(text,width=28){
   return text.split('\n').map(line=>{
     const result=[];let current='';
     for(const word of line.split(' ')){
       const next=current?current+' '+word:word;
-      if(next.replace(/\{[012]\}/g,'XXXXXX').length>width&&current){result.push(current);current=word;}else current=next;
+      if(textWidth(next)>width&&current){result.push(current);current=word;}else current=next;
     }
     result.push(current);return result.join('\n');
   }).join('\n');
 }
+// Pages hold three lines. Break between speakers where possible, and split
+// a longer speech evenly (4 lines read 2+2), never leaving a one-word stub
+// page or a line separated from its speaker label.
+const speakerLine=/^(\{[0-3]\}|[A-Z][A-Z0-9 .'-]*):/;
+export function dialoguePagesOf(text){
+  const speeches=[];
+  for(const line of wrapText(text).split('\n')){if(!speeches.length||speakerLine.test(line))speeches.push([]);speeches.at(-1).push(line);}
+  const pages=[];let page=[];
+  for(const speech of speeches){
+    if(page.length+speech.length<=3){page.push(...speech);continue;}
+    if(page.length)pages.push(page);
+    const size=Math.ceil(speech.length/Math.ceil(speech.length/3));
+    for(let i=0;i<speech.length;i+=size)(i+size<speech.length?pages.push(speech.slice(i,i+size)):page=speech.slice(i));
+  }
+  if(page.length)pages.push(page);
+  return pages.map(p=>p.join('\n'));
+}
 export function dialoguePages(text){
-  const lines=wrapText(text).split('\n'),bytes=[];
-  for(let i=0;i<lines.length;i+=3){if(i)bytes.push(0x28,0,0x52);bytes.push(...encodeText(lines.slice(i,i+3).join('\n')));}
+  const bytes=[];
+  dialoguePagesOf(text).forEach((page,i)=>{if(i)bytes.push(0x28,0,0x52);bytes.push(...encodeText(page));});
   return bytes;
 }

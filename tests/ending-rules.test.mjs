@@ -24,7 +24,7 @@ test('both endings finish with Kai; bad endings never summon Shenron or restore 
   for(const cause of['fortress','balls','frieza','beast']){
     const words=text(buildBadEnding(cause));
     assert.match(words,/world is gone/);assert.match(words,/jerk move/);
-    assert.doesNotMatch(words,/IT IS GRANTED|Randi is alive|I got the rest|I will fetch/);
+    assert.doesNotMatch(words,/IT IS GRANTED|Randi is alive|\{3\} is alive|I got the rest|I will fetch/);
   }
   assert.match(text(heroFarewell()),/good job/);assert.match(text(heroFarewell()),/more careful/);
 });

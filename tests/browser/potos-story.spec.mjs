@@ -9,7 +9,7 @@ test('Potos accuses Goku, he deliberately hops after Elliott, and rescue leads t
   const result=await page.evaluate(async()=>{
     mana.pause();const hash=mana.hash(mana.snes.cart.data),poses=[],events=new Set();let hopReplay=null;
     const step=(frames,buttons=[])=>{for(let f=0;f<frames;f++){
-      mana.run(1,buttons);events.add(mana.mod.story.status.lastEvent);
+      mana.run(1,buttons);for(const id of mana.mod.story.status.recentEvents)events.add(id);
       if(mana.read16(0xdc)===131&&mana.read8(0xcf10)===6){
         const native=mana.read8(0xe011),kind=mana.mod.spriteLayer.plan?.sprite?.kind;
         if(poses.at(-1)?.native!==native||poses.at(-1)?.kind!==kind)poses.push({native,kind});

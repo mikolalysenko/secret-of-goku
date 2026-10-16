@@ -1,5 +1,6 @@
 // Dungeon membership and collision/art classifications, not extracted maps.
 // Geometry always comes from the user's cartridge and the live native layout.
+import {palaceDecoration} from './palace-braziers.js';
 const range=(a,b)=>Array.from({length:b-a+1},(_,i)=>a+i);
 export const dungeonGroups=[
  {id:'water',name:'Water Palace and Undine',maps:[109,135,136,137,139,140,142,143,275,277,278]},
@@ -33,6 +34,10 @@ const sets=entries=>Object.fromEntries(Object.entries(entries).map(([k,v])=>[k,n
 // Empty air, downward platform faces, cave ledges and lava. These must form
 // a finite corridor between real floors; their use at an exterior stays solid.
 export const dungeonAirTiles=sets({
+ // Ruins spikes and the recessed pit's narrow floor rims. BG2 tile 322
+ // is the pit, whereas 286 is the solid space outside the room. Requiring
+ // two placed floor shores keeps the separate rooms on this map isolated.
+ 9:[297,312,314,319,322,326,327,346],
  10:[...range(0,18),20,32,33,34,41,61,78,79,94,95,98,99,107,108,109,113,114,115,117,121,122,125,154],
  15:[73,83,85,88,89,90,105,106,115,140,148,151,152,168,185,188],
  // The Fortress entrance uses the exterior hull tileset, unlike its rooms.
@@ -88,9 +93,65 @@ export function createDungeonGeometry(snes){
  // art is brick/arch trim. Treating two windows as opposing floors copied
  // their bricks across a blasted wall and admitted routes through the roof.
  const falsePalaceFloor=new Set([58,74,80,81,82,90,91]);
- const floor=(t,c)=>ordinary(t)&&(t.flags&7)<3&&!(metatile(t,c)===0&&blankZero.has(c.tileset))&&
+ const floor=(t,c)=>ordinary(t)&&(t.flags&7)<3&&!palaceDecoration(t,c.tileset)&&!(metatile(t,c)===0&&blankZero.has(c.tileset))&&
   !(c.tileset===23&&t.layer===0&&falsePalaceFloor.has(metatile(t,c)));
- const protectedCell=(t,c)=>c.map===139&&t.ty>=59&&t.ty<=65&&t.tx>=12&&t.tx<=21&&(t.tx<16||t.tx>17);
+ // Native stairs carry a movement code rather than code 0. They are valid
+ // shores for flight, but must never be copied as a demolition floor tile.
+ const airShore=(t,c)=>floor(t,c)||[9,10].includes(c.tileset)&&t&&!(t.flags&8)&&!(t.behavior&0xd0)&&(t.flags&7)<3&&[0x20,0x30].includes(t.code&0xf0);
+ function caveCeiling(t,c){
+  if(c.tileset!==10||t.layer!==0||metatile(t,c)!==5)return false;
+  // A sealed black region in the cave tileset is the top of solid rock,
+  // not a pit. Two floors on opposite sides do not make it an air route.
+  // Open voids still need the ordinary two-shore check; lava and water use
+  // different cells. Build from the live native layout, including diagonals.
+  if(!c.rockCaps){
+   c.rockCaps=new Uint8Array(16384);const seen=new Uint8Array(16384);
+   for(let y=0;y<c.height;y++)for(let x=0;x<c.width;x++){
+    const key=y*128+x;if(seen[key]||r[0x10000+key]!==5)continue;
+    const cells=[key];seen[key]=1;let open=false;
+    for(let i=0;i<cells.length;i++){
+     const cx=cells[i]%128,cy=cells[i]>>7;
+     if(!c.placed[0][cells[i]])open=true;
+     for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+      if(!dx&&!dy)continue;const nx=cx+dx,ny=cy+dy,k=ny*128+nx;
+      if(nx<0||ny<0||nx>=c.width||ny>=c.height){open=true;continue;}
+      if(r[0x10000+k]===0)open=true;
+      if(r[0x10000+k]===5&&!seen[k]){seen[k]=1;cells.push(k);}
+     }
+    }
+    if(!open)for(const k of cells)c.rockCaps[k]=1;
+   }
+  }
+  return !!c.rockCaps[t.ty*128+t.tx];
+ }
+ function caveVoid(t,c){
+  if(c.tileset!==10||t.layer!==0)return false;
+  if(!tile(t.tx,t.ty,0,c))return true;
+  if(metatile(t,c)!==5)return false;
+  if(caveCeiling(t,c))return true;
+  c.voidRoutes??=new Map();const key=t.ty*128+t.tx;
+  if(c.voidRoutes.has(key))return !c.voidRoutes.get(key);
+  // A long ray can find a distant room across solid rock or even stale map
+  // bytes. Black cave air is only a short gap between two placed floors.
+  // Lava/water retain their longer crossings; their art is unambiguous.
+  let safe=false;
+  for(const [dx,dy]of[[1,0],[0,1]]){
+   let distance=0,shores=0;
+   for(const sign of[-1,1])for(let n=1;n<=12;n++){
+    const next=tile(t.tx+dx*n*sign,t.ty+dy*n*sign,0,c);if(!next||caveCeiling(next,c)||next.flags&8||next.behavior&0xd0)break;
+    const air=dungeonAirTiles[10].has(metatile(next,c))||next.code>=0x10&&next.code<=0x17;
+    if(airShore(next,c)&&!air){distance+=n;shores++;break;}
+    if(!air)break;
+   }
+   if(shores===2&&distance<=12){safe=true;break;}
+  }
+  c.voidRoutes.set(key,safe);return !safe;
+ }
+ const protectedCell=(t,c)=>
+  // Joch's expanded training room has a solid doorway pavilion and a safe
+  // perimeter. Neither is a cave ledge to fly through or demolish.
+  c.map===72&&c.width===64&&c.height===64&&t.layer===0&&t.tile!==70||
+  caveVoid(t,c)||c.map===139&&t.ty>=59&&t.ty<=65&&t.tx>=12&&t.tx<=21&&(t.tx<16||t.tx>17);
  const airMaterial=(t,c)=>t&&!protectedCell(t,c)&&!(t.flags&8)&&!(t.behavior&0xd0)&&
   (t.code===0&&dungeonAirTiles[c.tileset]?.has(metatile(t,c))||c.tileset===10&&t.code>=0x10&&t.code<=0x17);
  function span(t,dx,dy,accept,limit,c){
@@ -99,7 +160,7 @@ export function createDungeonGeometry(snes){
    let found=null;
    for(let n=1;n<=limit;n++){
     const next=tile(t.tx+dx*n*sign,t.ty+dy*n*sign,t.layer,c);if(!next)break;
-    if(floor(next,c)&&!airMaterial(next,c)){found=next;break;}
+    if((accept===airMaterial?airShore(next,c):floor(next,c))&&!airMaterial(next,c)){found=next;break;}
     if(!accept(next,c))break;cells.push(next);
    }
    if(!found)return null;ends.push(found);
@@ -107,12 +168,33 @@ export function createDungeonGeometry(snes){
   return{ends,cells};
  }
  function airRoute(t){
-  const c=context();if(!c||!airMaterial(t,c)||!tile(t.tx,t.ty,t.layer,c))return false;
+  const c=context();if(!c||!t||!tile(t.tx,t.ty,t.layer,c))return false;
+  // The Tree Palace's raised dais has a single row of ordinary brick art.
+  // It is a low step only when placed floors at heights 2 and 1 touch its
+  // north/south sides. The same bricks in a tall wall have no such pair.
+  if(c.tileset===23&&t.layer===0&&ordinary(t)&&[16,19,32,35].includes(metatile(t,c))){
+   const upper=tile(t.tx,t.ty-1,0,c),lower=tile(t.tx,t.ty+1,0,c);
+   if(floor(upper,c)&&floor(lower,c)&&(upper.flags&7)===2&&(lower.flags&7)===1)return{ends:[upper,lower],cells:[t]};
+  }
+  if(!airMaterial(t,c))return false;
   if(cacheFrame!==snes.frames){airCache.clear();cacheFrame=snes.frames;}
   const key=t.layer*16384+t.ty*128+t.tx;if(airCache.has(key))return airCache.get(key);
-  const accepted=span(t,1,0,airMaterial,48,c)||span(t,0,1,airMaterial,48,c);airCache.set(key,accepted);return accepted;
+  const direct=p=>p&&airMaterial(p,c)&&(span(p,1,0,airMaterial,48,c)||span(p,0,1,airMaterial,48,c));
+  let accepted=direct(t);
+  // Staggered palace balconies can leave a one-column seam between two
+  // verified air corridors. Join those corridors without flood-filling the
+  // exterior void or using a wall/window as a destination floor.
+  if(!accepted&&c.tileset===23)for(const[dx,dy]of[[1,0],[0,1]]){
+   const a=direct(tile(t.tx-dx,t.ty-dy,t.layer,c)),b=direct(tile(t.tx+dx,t.ty+dy,t.layer,c));
+   if(a&&b){accepted={ends:[...a.ends,...b.ends],cells:[t]};break;}
+  }
+  airCache.set(key,accepted);return accepted;
  }
- const wall=(t,c)=>ordinary(t)&&(t.flags&7)===3&&!airMaterial(t,c)&&!protectedCell(t,c);
+ // A placed spike is a low obstacle even where a row ends against a wall.
+ // It has no walking floor, but hovering above it cannot open neighboring
+ // wall/void cells. Two-shore checks still govern the actual pit and rims.
+ const spike=t=>{const c=context();return !!(c&&ordinary(t)&&c.tileset===9&&metatile(t,c)===319&&tile(t.tx,t.ty,t.layer,c));};
+ const wall=(t,c)=>ordinary(t)&&(t.flags&7)===3&&!palaceDecoration(t,c.tileset)&&!airMaterial(t,c)&&!protectedCell(t,c);
  function floorSample(origin,c){
   // A walkable platform lip may contain a railing or the top of a wall.
   // Prefer a nearby patch surrounded by floor, so demolition does not tile
@@ -166,5 +248,5 @@ export function createDungeonGeometry(snes){
   const edits=new Map();for(const point of tiles){const t=tile(point.tx,point.ty,point.layer??(r[0xe00b]&128?1:0)),plan=t&&breach(t,attack);if(plan)for(const edit of plan.edits)edits.set(edit.address,edit);}
   return[...edits.values()];
  }
- return{context,tile,floor,air:t=>!!airRoute(t),airRoute,breach,demolish,invalidate(){cache=null;airCache.clear();floorCache.clear();cacheFrame=contextFrame=floorFrame=-1;}};
+ return{context,tile,floor,blocked(t){const c=context();return !!(t&&c&&protectedCell(t,c));},air:t=>spike(t)||!!airRoute(t),airRoute,breach,demolish,invalidate(){cache=null;airCache.clear();floorCache.clear();cacheFrame=contextFrame=floorFrame=-1;}};
 }

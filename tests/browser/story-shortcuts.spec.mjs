@@ -114,7 +114,7 @@ for(const solo of[true,false])test(`Fortress entrance introduces Frieza automati
   const m=mana.mod;let reveal=false,impact=false,oldBoss=false;
   for(let f=0;f<6500;f+=40){
    mana.run(40,[11]);const kind=m.frieza.status.scene?.kind;
-   reveal||=kind==='reveal';impact||=kind==='core-impact';oldBoss||=m.entities().some(e=>e.active&&e.species===121&&!e.custom);
+   reveal||=kind==='reveal';impact||=(m.frieza.status.flyby?.age??0)>=430;oldBoss||=m.entities().some(e=>e.active&&e.species===121&&!e.custom);
    if(m.worldFlight&&m.frieza.status.crisis?.flightNotified)break;
   }
   return{reveal,impact,oldBoss,state:m.frieza.status,quest:m.quest.status,world:m.worldFlight,party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],error:m.story.status.error};

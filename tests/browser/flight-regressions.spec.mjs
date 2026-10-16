@@ -262,17 +262,22 @@ test('high-altitude world flight keeps the native sky on delayed NMI frames whil
 });
 
 test('Water Palace keeps one Jema after the first conversation and repairs old duplicate checkpoints',async({page})=>{
- test.setTimeout(120000);await load(page);await enter(page,139,17,29,{0x11:7,0x1e:5});
+ test.setTimeout(120000);await load(page);await enter(page,139,13,27,{0x11:7,0x1e:5},1);
  const result=await page.evaluate(async()=>{
   const m=mana.mod,jemas=()=>m.entities().filter(e=>e.active&&e.species===0xa0),before=jemas();
   const requested=m.story.request(0x131,{actor:before[0].index*512});
-  for(let i=0;i<1800;i++){mana.run(1,[11]);if(i>100&&!mana.read8(0xd0))break;if(i%180===0)await new Promise(r=>setTimeout(r,0));}mana.run(30);
-  const after=jemas(),stage=mana.read8(0xcf11),flags=mana.snes.ram.slice(0xcf00,0xd000);
+  // Checkpoint during Jema's walk, including the generated native script.
+  mana.run(240,[11]);const walking=mana.snapshot();mana.run(60,[11]);const expected={j:jemas(),g:m.status};
+  mana.restore(walking);mana.run(60,[11]);const replay=JSON.stringify({j:jemas(),g:m.status})===JSON.stringify(expected);
+  for(let i=0;i<3000;i++){mana.run(1,[11]);if(i>100&&!mana.read8(0xd0))break;if(i%180===0)await new Promise(r=>setTimeout(r,0));}mana.run(30);
+  const after=jemas(),stage=mana.read8(0xcf11),flags=mana.snes.ram.slice(0xcf00,0xd000),hero={x:m.status.x,y:m.status.y};
   // Legacy checkpoints can contain the old stair actor plus the new actor.
   const old=before[0].base,keep=after[0].base;if(old!==keep){mana.snes.ram.copyWithin(old,keep,keep+512);mana.write16(old+2,212);mana.write16(old+4,404);}mana.run(30);
-  return{requested,before:before.length,after,stage,repaired:jemas(),sameFlags:[...flags].every((v,i)=>v===mana.read8(0xcf00+i)),error:m.story.status.error,canAttack:m.canAttack};
+  const repaired=jemas(),sameFlags=[...flags].every((v,i)=>v===mana.read8(0xcf00+i));
+  m.story.request(0x131,{actor:after[0].index*512});for(let i=0;i<1200;i++){mana.run(1,[11]);if(i>100&&m.canAttack)break;if(i%180===0)await new Promise(r=>setTimeout(r,0));}
+  return{requested,replay,hero,before:before.length,after,stage,repaired,sameFlags,repeated:m.story.status.recentEvents.filter(id=>id===0x4e9).length,error:m.story.status.error,canAttack:m.canAttack};
  });
- expect(result.requested).toBe(true);expect(result.before).toBe(1);expect(result.after).toHaveLength(1);expect(result.stage).toBe(8);expect(result.after[0]).toMatchObject({x:260,y:276});expect(result.repaired).toHaveLength(1);expect(result.sameFlags).toBe(true);expect(result.error).toBe(null);expect(result.canAttack).toBe(true);
+ expect(result.requested).toBe(true);expect(result.replay).toBe(true);expect(result.hero).toEqual({x:280,y:308});expect(result.before).toBe(1);expect(result.after).toHaveLength(1);expect(result.stage).toBe(9);expect(result.after[0]).toMatchObject({x:260,y:276});expect(result.repaired).toHaveLength(1);expect(result.sameFlags).toBe(true);expect(result.repeated).toBe(1);expect(result.error).toBe(null);expect(result.canAttack).toBe(true);
 });
 
 test('Fire Palace early flight enables its inner plate and orb; only a full gold beam demolishes braziers',async({page})=>{

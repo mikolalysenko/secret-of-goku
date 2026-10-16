@@ -9,7 +9,7 @@ import {mountTouchControls} from './touch-controls.js';
 import {createKiSound} from './ki-sound.js';
 import {createNativeCombatSound} from './native-combat-sound.js';
 import {createNativePlants} from './native-plants.js';
-import {demolitionEffects} from './dungeon-demolition.js';
+import {demolitionEffects,drawDemolitionEffects} from './dungeon-demolition.js';
 import {createNativeFeedback} from './native-feedback.js';
 import {installFlightDialogue} from './flight-dialogue.js';
 import {installNativeOamOwnership} from './native-oam.js';
@@ -25,6 +25,7 @@ import {createNativeBarriers} from './native-barriers.js';
 import {createNativeInteraction} from './native-interaction.js';
 import {createNativeHitRecovery} from './native-hit-recovery.js';
 import {createNativeSenzu} from './native-senzu.js';
+import {nativeItemIcon} from './native-item-icons.js';
 import {createNativeEquipment} from './native-equipment.js';
 import {createNativeRadio} from './native-radio.js';
 import {createNativeModSave} from './native-mod-save.js';
@@ -32,9 +33,10 @@ import {createFrieza} from './frieza.js';
 import {createDragonQuest} from './dragon-quest.js';
 import {createCeilingEscape} from './ceiling-escape.js';
 import {createBeastChallenge} from './beast-challenge.js';
+import {createJochTrial} from './joch-trial.js';
 import {createPowerIntro} from './power-intro.js';
 import {createShenronEnding} from './shenron-ending.js';
-import {buildQuickStart,buildLateCheckpoint,quickStartLabels,quickStartRevision,isQuickStart,isLateStart} from './quick-start.js';
+import {buildQuickStart,buildFromBase,quickStartBase,quickStartLabels,quickStartRevision,isQuickStart,isLateStart} from './quick-start.js';
 import {createWorldScars} from './world-scars.js';
 import {createPlanetView} from './planet-view.js';
 import {createKiArt} from './ki-art.js';
@@ -42,7 +44,12 @@ import {createKaiArt} from './kai-planet.js';
 import {createSceneFastForward,sceneFastForwardRate} from './scene-fast-forward.js';
 import {fetchDefaultRom,validateRom} from './rom-loader.js';
 import {createDragonRadar} from './dragon-radar.js';
+import {createScouter} from './scouter.js';
+import {createNativeStatus} from './native-status.js';
+import {createNativeNames,crownGoku} from './native-names.js';
 import {createPotosGatekeeper} from './potos-story.js';
+import {createSandship} from './sandship.js';
+import {createWindowPlacement} from './window-placement.js';
 import {createBattleRetry} from './battle-retry.js';
 const effectsManifest=fetch(new URL('./native-effects.json',import.meta.url)).then(response=>{if(!response.ok)throw Error('Native effect descriptors could not be loaded.');return response.json();});
 const $=id=>document.getElementById(id),snes=new window.Snes(),canvas=$('screen'),context=canvas.getContext('2d'),pixels=context.createImageData(512,480);
@@ -58,10 +65,11 @@ mod.combatSound=createNativeCombatSound(snes,mod);
 mod.gapFlight=createNativeGapFlight(snes,mod);
 mod.feedback=createNativeFeedback(snes,mod);
 mod.ownership=installNativeOamOwnership(snes);
+mod.drawDemolitionEffects=layer=>drawDemolitionEffects(mod,layer);
 mod.plants=createNativePlants(snes,{canCut:()=>mod.options.enabled&&mod.canAttack,sceneryReplacement:tile=>mod.localFlightHook?.breakScenery(tile),demolitionPlan:(tiles,attack)=>mod.localFlightHook?.dungeon.demolish(tiles,attack)??[],onCut:result=>{
   mod.localFlightHook?.dungeon.invalidate();
   demolitionEffects(mod,result);
-  for(const tile of result.tiles)mod.effects.push({kind:'impact',x:tile.tx*16+8,y:tile.ty*16+8,dx:1,dy:0,life:8,max:8,super:false});
+  for(const tile of result.tiles)if(!tile.brazier)mod.effects.push({kind:'impact',x:tile.tx*16+8,y:tile.ty*16+8,dx:1,dy:0,life:8,max:8,super:false});
   if(result.tiles.length)mod.playSound('impact');
 }});
 mod.flight=createNativeFlight(snes,{enabled:()=>mod.options.enabled&&mod.gokuActive,canTakeOff:()=>mod.canAttack,onStart:()=>{
@@ -89,16 +97,20 @@ mod.teleport=createNativeTeleport(snes,mod,mod.localFlightHook);
 mod.orbs=createNativeOrbs(snes,mod);
 mod.story=createNativeStory(snes,mod);
 mod.potosGatekeeper=createPotosGatekeeper(mod);
+mod.sandship=createSandship(mod);
+mod.windowPlacement=createWindowPlacement(snes,mod);
 mod.worldKi=createWorldKi(snes,mod);
 mod.barriers=createNativeBarriers(mod);
 mod.interaction=createNativeInteraction(snes,mod);
 mod.hitRecovery=createNativeHitRecovery(snes,mod);
 mod.senzu=createNativeSenzu(snes,mod);
+mod.itemIconKind=nativeItemIcon;
 mod.equipment=createNativeEquipment(snes,mod);
 mod.radio=createNativeRadio(snes,mod);
 mod.quest=createDragonQuest(mod);
 mod.ceiling=createCeilingEscape(mod);
 mod.challenge=createBeastChallenge(snes,mod);
+mod.trial=createJochTrial(snes,mod);
 mod.powerIntro=createPowerIntro(mod);
 mod.worldScars=createWorldScars(snes,mod);
 mod.ending=createShenronEnding(snes,mod);
@@ -106,15 +118,17 @@ mod.frieza=createFrieza(snes,mod);
 mod.nativeSave=createNativeModSave(snes,mod,battery);
 const fastForward=createSceneFastForward(mod);
 mod.radar=createDragonRadar(snes,mod);
+mod.scouter=createScouter(snes,mod);
+mod.statPage=createNativeStatus(snes,mod);
+mod.names=createNativeNames(snes);
 mod.planetView=createPlanetView(snes,mod);
-mod.kiArt=createKiArt();
+mod.kiArt=createKiArt(snes);
 mod.kaiArt=createKaiArt();
 let loaded=false,running=false,busy=false,lastTime=0,accumulator=0,checkpoint=null,frameCount=0,fpsTime=performance.now();
 let nameSeeded=false,originalBoot=false;
 const battleRetry=createBattleRetry(mod,{
-  capture:()=>({...snapshot(snes),arrival:arrival.snapshot(),goku:mod.snapshot()}),
-  restore:state=>{restore(snes,state);mod.restore(state.goku);arrival.restore(state.arrival);},
-  onDefeat:()=>{running=false;clearInput();sound.clear();$('native-pause').hidden=false;pauseCard(true);message('Goku was defeated. Retry this phase with Start, Space, or the on-screen button.');},
+  onDefeat:()=>{clearInput();message('Goku has fallen. The planet is out of time.');},
+  onGameOver:()=>{running=false;clearInput();sound.clear();pauseCard(true);message('Game over. The planet is gone. Start returns to the title; your saved files are unchanged.');},
 });
 let originalRom=null;
 const quickCache=new Map();
@@ -141,10 +155,16 @@ function prefillName(){
   mod.write8(0xa1cc,3);mod.write8(0xa157,0x18);mod.write8(0xa20a,mod.read8(0xa20a)|2);nameSeeded=true;mod.nameEditor=true;
 }
 function step(mask=0,audible=false,skipPicture=false){
-  if(!busy&&battleRetry.check())return;
-  mask=fastForward.input(mask);
-  snes.joypad1State=mask;arrival.beforeFrame();mod.beforeFrame(mask);snes.runFrame(skipPicture);mod.afterFrame();prefillName();battery.tick();
-  if(!busy&&battleRetry.check())return;
+  if(!busy&&battleRetry.check())battleRetry.tick(()=>{
+    // Only the native collapse/reaper animation runs here. No controls,
+    // battery writes, retry snapshot or death-event warp can run beneath it.
+    snes.joypad1State=0;mod.beforeFrame(0);snes.runFrame(skipPicture);mod.afterFrame();
+  });
+  else{
+    mask=fastForward.input(mask);
+    snes.joypad1State=mask;arrival.beforeFrame();mod.beforeFrame(mask);snes.runFrame(skipPicture);mod.afterFrame();prefillName();battery.tick();
+    if(!busy)battleRetry.check();
+  }
   if(audible&&audioEnabled&&audioContext?.state==='running'){
     const samples=Math.round(audioContext.sampleRate/60),buffer=audioContext.createBuffer(2,samples,audioContext.sampleRate);
     snes.setSamples(buffer.getChannelData(0),buffer.getChannelData(1),samples);
@@ -161,12 +181,12 @@ function render(){
   $('native-charge').querySelector('i').style.width=`${Math.min(1,ratio)*100}%`;
   $('native-charge').querySelector('span').textContent=ratio>=1?'HA!!!':'KA… ME… HA… ME…';
   $('engine-state').textContent=busy?'RUNNING EVENT':running?(r.worldFlight?'WORLD FLIGHT':'ORIGINAL ENGINE LIVE'):'PAUSED';
-  const values=[['Map $00DC',r.map],['World position',`${r.x}, ${r.y}`],['Camera',`${r.cameraX}, ${r.cameraY}`],['HP $E182',r.hp],['Attack $E198',r.attack],['Stamina $E1ED',r.staminaRemaining],['Hidden OAM',r.hiddenOamSlots.join(', ')||'—']];
+  const values=[['Map $00DC',r.map],['World position',`${r.x}, ${r.y}`],['Camera',`${r.cameraX}, ${r.cameraY}`],['HP $E182',r.hp],['Saiyan attack',r.attack],['Stamina $E1ED',r.staminaRemaining],['Hidden OAM',r.hiddenOamSlots.join(', ')||'—']];
   $('memory-readout').replaceChildren(...values.flatMap(([k,v])=>{const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=k;dd.textContent=v;return[dt,dd];}));
 }
-function pauseCard(defeated=false){const card=$('native-pause');card.querySelector('strong').textContent=defeated?'DEFEATED':'PAUSED';const label=defeated?'Retry this phase':'Resume game';$('native-resume').setAttribute('aria-label',label);$('native-resume').title=label;card.querySelector('.pause-card>span')?.replaceChildren(defeated?'Tap to retry · Space / Start':'Tap to resume · Space / Esc');}
-function play(){if(!loaded||busy)return;if(battleRetry.defeated){battleRetry.retry();clearInput();nextAudio=0;}pauseCard();running=true;lastTime=performance.now();fpsTime=lastTime;frameCount=0;accumulator=0;$('native-pause').hidden=true;$('native-toggle').querySelector('span').textContent='Pause';}
-function pause(){running=false;clearInput();sound.clear();pauseCard(battleRetry.defeated);if(loaded&&!busy)$('native-pause').hidden=false;$('native-toggle').querySelector('span').textContent='Resume';render();}
+function pauseCard(gameOver=false){const card=$('native-pause');card.querySelector('strong').textContent=gameOver?'GAME OVER':'PAUSED';const label=gameOver?'Return to title':'Resume game';$('native-resume').setAttribute('aria-label',label);$('native-resume').title=label;card.querySelector('.pause-card>span')?.replaceChildren(gameOver?'Return to title · Space / Start':'Tap to resume · Space / Esc');}
+function play(){if(!loaded||busy)return;if(battleRetry.gameOver){bootOriginal(originalRom,{testScenes:false});return;}pauseCard();running=true;lastTime=performance.now();fpsTime=lastTime;frameCount=0;accumulator=0;$('native-pause').hidden=true;$('native-toggle').querySelector('span').textContent='Pause';}
+function pause(){running=false;clearInput();sound.clear();pauseCard(battleRetry.gameOver);if(loaded&&!busy)$('native-pause').hidden=false;$('native-toggle').querySelector('span').textContent='Resume';render();}
 function tick(now){
   try{gamepads.poll(navigator.getGamepads?.()||[],{enabled:loaded&&!busy,focused:!document.hidden&&document.hasFocus()});}catch{/* The browser may disable controller access. Keyboard and touch remain available. */}
   if(running&&!busy){
@@ -194,10 +214,10 @@ async function loadROM(source,{potos=false}={}){
   const bytes=await validateRom(source);
   battery.flush();
   originalRom=bytes.slice();
-  await Promise.all([mod.ready,mod.frieza.ready,mod.kiArt.ready,mod.kaiArt.ready,mod.planetView.ready]);mod.spriteLayer.effects=createNativeEffects(bytes,await effectsManifest);mod.worldScars.load(bytes);mod.planetView.load(bytes);running=false;clearInput();mod.configure({enabled:false});
+  await Promise.all([mod.ready,mod.frieza.ready,mod.trial.ready,mod.kiArt.ready,mod.kaiArt.ready,mod.planetView.ready]);mod.spriteLayer.effects=createNativeEffects(bytes,await effectsManifest);mod.worldScars.load(bytes);mod.planetView.load(bytes);running=false;clearInput();mod.configure({enabled:false});
   const patched=window.gokuDialoguePatch(potos?window.potosPatch(bytes):window.originalGamePatch(bytes));
   if(!snes.loadRom(patched,true))throw Error('The SNES core rejected this ROM.');
-  snes.reset(true);battery.attach(snes.cart,hash(bytes));mod.reset();arrival.load(bytes,{potos});flightDialogue?.dispose();flightDialogue=installFlightDialogue(snes.cart,()=>mod.options.enabled&&mod.gokuActive);mod.gapFlight.load();mod.senzu.load();mod.equipment.load();mod.story.load();nameSeeded=false;originalBoot=!potos;loaded=true;render();return patched;
+  snes.reset(true);battery.attach(snes.cart,hash(bytes));mod.reset();arrival.load(bytes,{potos});flightDialogue?.dispose();flightDialogue=installFlightDialogue(snes.cart,()=>mod.options.enabled&&mod.gokuActive);mod.gapFlight.load();mod.senzu.load();mod.equipment.load();mod.trial.load();mod.story.load();mod.names.load(bytes);nameSeeded=false;originalBoot=!potos;loaded=true;render();return patched;
 }
 async function pump(frames,buttons=[],{fast=false}={}){
   const mask=buttons.reduce((a,b)=>a|(1<<b),0);
@@ -213,15 +233,17 @@ async function enableGameControls(){
   try{checkpoint=await checkpointStore();if(checkpoint?.state.romHash!==hash(snes.cart.data))checkpoint=null;}catch{checkpoint=null;}
   $('native-restore').disabled=!checkpoint;
 }
-async function bootOriginal(source){
+async function bootOriginal(source,{testScenes=true}={}){
   if(busy)return;busy=true;$('boot-local').disabled=true;$('rom-file').disabled=true;
   try{
     await loadROM(source);configure();await enableGameControls();
     message('Space / Enter = Start · X = confirm · A = ring / back · Arrows = move / menu.');
   }catch(error){loaded=false;$('boot-status').textContent=error.message;message(error.message);throw error;}
   finally{busy=false;$('boot-local').disabled=false;$('rom-file').disabled=false;if(loaded){play();render();}}
-  const requested=new URLSearchParams(location.search).get('start');
-  if(loaded&&isQuickStart(requested))await quickStart(requested);
+  if(!testScenes)return;
+  const requested=new URLSearchParams(location.search).get('start'),scene=new URLSearchParams(location.search).get('scene');
+  if(loaded&&scene)await scenes.launch(scene).catch(error=>message(`Scene launch failed: ${error.message}`));
+  else if(loaded&&isQuickStart(requested))await quickStart(requested);
   else if(loaded&&requested)message('Unknown test scene. Starting the normal game; available links are under Test scenes.');
 }
 async function bootPotos(source){
@@ -235,7 +257,7 @@ async function bootPotos(source){
     }
     if(mod.read16(0xdc)!==131)throw Error('Startup did not reach Potos. Reload the page and try again.');
     // Original six-byte name field, using the game's own character encoding.
-    snes.ram.set([0xa1,0x8f,0x8b,0x95,0,0],0xcc00);configure();step(0);render();
+    crownGoku(snes.ram);configure();step(0);render();
     await enableGameControls();
     message('Potos is live. X punches; Shift+C charges Kamehameha. Shift+D takes off; D fast-forwards dialogue.');
   }catch(error){loaded=false;$('boot-status').textContent=error.message;message(error.message);throw error;}
@@ -278,18 +300,20 @@ async function quickStart(kind){
   if($('test-loading'))$('test-loading').hidden=false;
   $('boot-local').disabled=true;$('rom-file').disabled=true;
   for(const id of Object.keys(quickStartLabels).map(k=>`quick-${k}`))if($(id))$(id).disabled=true;
-  const key=slot=>`${quickStartRevision}:${hash(snes.cart.data)}:${slot}`;
+  const key=slot=>`${quickStartRevision}:${hash(snes.cart.data)}:${mod.story.layout}:${slot}`;
+  const compatible=saved=>saved?.state?.goku?.story?.layout===mod.story.layout;
   const cache=async(slot,value)=>{quickCache.set(key(slot),value);try{await checkpointStore(value,key(slot));}catch{/* Session cache still works without IndexedDB. */}};
   let success=false;
   try{
     let saved=quickCache.get(key(kind));
     if(!saved)try{saved=await checkpointStore(undefined,key(kind));}catch{/* Build locally. */}
-    if(saved){applyQuick(saved);quickCache.set(key(kind),saved);}
+    if(compatible(saved)){applyQuick(saved);quickCache.set(key(kind),saved);}
     else {
-     let late=isLateStart(kind)?quickCache.get(key('late')):null;
-     if(!late&&isLateStart(kind))try{late=await checkpointStore(undefined,key('late'));}catch{}
+     const base=quickStartBase(kind);
+     let late=base?quickCache.get(key(base)):null;
+     if(!late&&base)try{late=await checkpointStore(undefined,key(base));}catch{}
      const callbacks={pump:(frames,buttons)=>pump(frames,buttons,{fast:isLateStart(kind)}),mod,arrival,capture:captureQuick,cache,progress:text=>{message(text);if($('test-loading'))$('test-loading').textContent=text;}};
-     if(late){applyQuick(late);await buildLateCheckpoint(kind,callbacks);}
+     if(compatible(late)){applyQuick(late);await buildFromBase(kind,callbacks);}
      else await buildQuickStart(kind,{
       fresh:async()=>{await loadROM(source);mod.configure({enabled:true,power:true,superSaiyan:false});},
       ...callbacks,
@@ -365,7 +389,33 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden){battery.fl
 window.addEventListener('pagehide',()=>battery.flush());
 window.addEventListener('mana-log',e=>{logs.push(e.detail);if(logs.length>100)logs.shift();});
 
-window.mana={snes,mod,title,arrival,battery,battleRetry,bootOriginal,bootPotos,fly,play,pause,render,configure,logs,controls,gamepads,fastForward,
+// Scene debugger (testing only): ?scene=<id> or mana.scenes.launch(id).
+// The graph is crawled from the pristine ROM on first use; see
+// engine/scene-graph.js, engine/scene-catalog.json and scenes.html.
+const scenes={
+  status:null,graphPromise:null,
+  async graph(){
+    this.graphPromise??=(async()=>{
+      const [{buildSceneGraph},catalog]=await Promise.all([import('./scene-graph.js'),fetch(new URL('./scene-catalog.json',import.meta.url)).then(r=>r.json())]);
+      return{catalog,graph:buildSceneGraph(originalRom,{catalog})};
+    })();
+    return this.graphPromise;
+  },
+  async launch(id,{base=null,play:resume=true}={}){
+    if(!loaded)throw Error('Load the ROM first.');
+    const [{launchScene},{catalog,graph}]=await Promise.all([import('./scene-launcher.js'),this.graph()]);
+    const scene=catalog.scenes.find(s=>s.id===id);if(!scene)throw Error(`Unknown scene ${id}`);
+    this.status={scene:id,running:true,steps:[]};
+    const launch=base==='current'?{...scene,launch:{...scene.launch,start:undefined,base:'current'}}:scene;
+    try{
+      this.status=await launchScene(window.mana,launch,{graph,quickStart,log:text=>{this.status.steps.push(text);message(`Scene ${id}: ${text}`);}});
+      message(`Scene ${scene.title} ready — ?scene=${id}`);if(resume)play();
+    }catch(error){this.status={scene:id,ok:false,error:error.message,steps:this.status.steps};throw error;}
+    finally{this.status.running=false;render();}
+    return this.status;
+  },
+};
+window.mana={snes,mod,scenes,title,arrival,battery,battleRetry,bootOriginal,bootPotos,fly,play,pause,render,configure,logs,controls,gamepads,fastForward,
   run(frames=1,buttons=[]){running=false;const mask=buttons.reduce((a,b)=>a|1<<b,0);for(let i=0;i<frames;i++)step(mask);render();return mod.status;},
   snapshot:()=>({...snapshot(snes),arrival:arrival.snapshot(),goku:mod.snapshot(),opening:{nameSeeded,originalBoot}}),restore:state=>{battleRetry.clear();pauseCard();controls.clear();restore(snes,state);mod.restore(state.goku);arrival.restore(state.arrival);nameSeeded=state.opening?.nameSeeded??nameSeeded;originalBoot=state.opening?.originalBoot??originalBoot;render();},
   saveCheckpoint,restoreCheckpoint,quickStart,hash,

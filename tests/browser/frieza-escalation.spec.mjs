@@ -49,12 +49,12 @@ test('Frieza escalates through a fractured deck and cosmic beam, then returns sa
  });
  expect(phase2).toMatchObject({hp:32000,tier:2,cinematic:'frieza-cosmic'});
  await page.locator('#screen').screenshot({path:test.info().outputPath('cosmic-clash.png')});
- const replay=await page.evaluate(saved=>{
+ const replay=await page.evaluate(async saved=>{
   const m=mana.mod,position=[m.status.x,m.status.y],hp=m.status.hp;
   mana.run(35,[10,1,7]);const pixels=mana.hash(mana.pixels),a=m.frieza.snapshot();
   mana.restore(saved);mana.run(35,[10,1,7]);const exact=JSON.stringify(a)===JSON.stringify(m.frieza.snapshot())&&pixels===mana.hash(mana.pixels);
   const during={position:[m.status.x,m.status.y],hp:m.status.hp,nativeButtons:mana.snes.joypad1State};
-  mana.run(1565);return{exact,position,hp,during,cinematic:m.frieza.cinematic,orbit:m.frieza.orbit?.kind,locked:m.frieza.inputLocked,control:m.canAttack,grid:mana.hash(mana.snes.ram.slice(0x10000,0x18000)),error:m.story.status.error};
+  const {cosmicDuration,orbitIntroFrames}=await import('/engine/frieza-cinematic.js');mana.run(cosmicDuration-m.frieza.cinematic.age+orbitIntroFrames+1);return{exact,position,hp,during,cinematic:m.frieza.cinematic,orbit:m.frieza.orbit?.kind,locked:m.frieza.inputLocked,control:m.canAttack,grid:mana.hash(mana.snes.ram.slice(0x10000,0x18000)),error:m.story.status.error};
  },phase2.saved);
  expect(replay.exact).toBe(true);expect(replay.during).toEqual({position:replay.position,hp:replay.hp,nativeButtons:0});
  expect(replay).toMatchObject({cinematic:null,orbit:'frieza-orbit',locked:false,control:true,grid:phase1.grid,error:null});

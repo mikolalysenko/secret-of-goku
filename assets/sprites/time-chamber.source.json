@@ -1,0 +1,8 @@
+{
+  "tool": "Built-in image_gen",
+  "prompt": "Use case: illustration-story. Asset type: one transparent pixel-art map building to be sliced into native 16x16 SNES RPG tiles. Primary request: the entrance pavilion of Dragon Ball's Hyperbolic Time Chamber, drawn in the same top-down three-quarter overhead viewpoint as Secret of Mana map buildings. Supporting image1 is the game's actual palace tile atlas: match its coarse pixel density, restrained palette, warm gold outlines, white stone columns and chunky SNES geometry. Supporting image2 is actual Goku game sprite atlas only for relative scale. A complete symmetrical small white pavilion, jade-green domed roof with a gold finial, gold cornice, one dark arched doorway at the bottom center, two white columns and wide pale stone front steps. Two LARGE golden HOURGLASSES flank the pavilion left and right, with visible pale blue glass and golden sand and chunky round gold plinths. This is the Time Chamber doorway surrounded by white emptiness. No scenery, no landscape, no sky, no ground beyond the immediate small pedestal, no characters, no shadow extending beyond the stone pedestal, no text or clock numbers. Production pixel art: target logical canvas 160x128 pixels, enlarged exact square pixel clusters; 16-color shading ramps, NO antialiasing, no gradients, no rendered illustration. Building plus both hourglasses centered and fully visible with transparent padding, fits inside a 10 by 8 tile footprint. Entrance faces DOWN toward the viewer, walkable threshold at bottom center. View directly from overhead RPG camera, not isometric diamond angle. Symmetrical, clean tile seams, plausible map tiles for a real 16bit game. Transparent alpha background.",
+  "nativeSize": [
+    160,
+    112
+  ]
+}

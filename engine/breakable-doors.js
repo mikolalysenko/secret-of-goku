@@ -2,6 +2,9 @@
 // original door transition; it never teleports the player with the attack.
 // The two tiles of each doorway share a saved latch across room variants.
 export const breakableDoors=[
+  // Watts's outside shortcut uses its original map piece and passage. The
+  // separate latch avoids advancing Earth Palace / Gnome story progress.
+  {id:'gaia-shortcut',maps:[73],flag:0x14,openAt:6,prepareEvent:0x6c,events:new Map()},
   {id:'pandora-ruins-exit',maps:[164,167],flag:0x1a,openAt:8,
     events:new Map([[0x16a,[0x18,0x31,0]],[0x16b,[0x18,0x33,0]]])},
   {id:'northtown-ruins-seal',maps:[402,405],flag:0x2d,openAt:5,prepareEvent:0x9d,

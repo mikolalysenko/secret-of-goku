@@ -3,11 +3,20 @@
 // no collision holes are drawn into walls or persisted as arbitrary tiles.
 import {breakableDoors,lockedDoorAt} from './breakable-doors.js';
 export const kiBarriers=[
+  {id:'gaia-shortcut',map:73,rect:[672,992,64,48],flag:0x14,min:6,door:'gaia-shortcut',beamOnly:true},
+  {id:'underground-palace',map:287,rect:[368,336,32,48],flag:0x14,min:6,event:0x15b,beamOnly:true},
+  // This burner covers the native stair-door tiles, not just ordinary
+  // floor. Open its original switch layout so the loader restores both
+  // the stair collision and the correctly numbered doorway triggers.
+  {id:'earth-stair-burner',map:312,rect:[368,160,32,48],flag:0x1c,min:2,event:0x6d,beamOnly:true,cut:[23,10]},
   {id:'haunted-forest',map:29,rect:[224,288,32,32],flag:0x5e,min:1,event:0x1ef},
   {id:'haunted-forest-bridge',map:30,rect:[224,368,64,80],flag:0x5f,min:3,event:0x6da},
   {id:'witch-castle',map:300,rect:[128,240,48,80],flag:0x17,min:2,event:0x8c},
   {id:'northtown-castle',map:82,rect:[304,528,32,32],flag:0x34,min:4,event:0x8d},
   {id:'gold-tower',map:116,rect:[240,392,32,24],flag:0x37,min:1,event:0x8e},
+  // The cave's two switch stages reveal this original doorway. A wave can
+  // run those native rebuilds from the sealed entrance, without entering it.
+  {id:'shade-cave-door',map:370,rect:[336,64,32,48],flag:0x38,min:2,event:0x6b6,beamOnly:true,repeatUntilOpen:true},
   // Pure Land's three talking gates have walk-on script locks rather than
   // cuttable collision tiles. A breach skips that gate's pair of guardians,
   // leaving the next section at its normal starting stage.
@@ -80,7 +89,7 @@ export function createNativeBarriers(mod){
   }
   function hit(beam){
     if(pending||!mod.canAttack||(beam.strength??0)<.85||beam.barrierHit)return false;
-    const map=mod.read16(0xdc),barrier=kiBarriers.find(b=>b.map===map&&mod.read8(0xcf00+b.flag)<b.min&&beamTouchesBarrier(beam,b))??nativeTile(beam);
+    const map=mod.read16(0xdc),barrier=kiBarriers.find(b=>b.map===map&&!doors.has(b.id)&&(!b.beamOnly||!beam.melee)&&mod.read8(0xcf00+b.flag)<b.min&&beamTouchesBarrier(beam,b))??nativeTile(beam);
     if(!barrier)return false;
     beam.barrierHit=true;
     pending={id:barrier.id,map,event:barrier.event,door:barrier.door,reaction:barrier.reaction,frame:mod.frame,tile:barrier.tile,flags:Array.from({length:256},(_,i)=>mod.read8(0xcf00+i))};mod.playSound('impact');mod.feedback?.pulse(12);
@@ -90,8 +99,15 @@ export function createNativeBarriers(mod){
   return{
     beam:hit,
     doorBroken:id=>doors.has(id),
-    punch(attack){return hit({...attack,length:28,width:9,strength:1});},
+    punch(attack){return hit({...attack,length:28,width:9,strength:1,melee:true});},
     tick(){
+      // Older checkpoints may already have the burner cleared to blank
+      // floor. Repair that same native passage without requiring a second
+      // shot, and without advancing Gnome, the seed or any quest rewards.
+      if(!pending){
+        const map=mod.read16(0xdc),b=kiBarriers.find(b=>b.map===map&&b.cut&&mod.read8(0xcf00+b.flag)<b.min&&mod.plants?.wasCleared(...b.cut,0));
+        if(b)pending={id:b.id,map,event:b.event,frame:mod.frame-26,flags:Array.from({length:256},(_,i)=>mod.read8(0xcf00+i))};
+      }
       if(!pending)return;
       if(pending.map!==mod.read16(0xdc)){pending=null;return;}
       if(pending.door){
@@ -108,7 +124,11 @@ export function createNativeBarriers(mod){
       if(pending.requested){
         // A switch already in its target state may return without changing
         // anything. Do not celebrate another hit on the same closed puzzle.
-        if(mod.canAttack&&mod.story.status.queued===null&&mod.frame>pending.frame+2)pending=null;
+        if(mod.canAttack&&mod.story.status.queued===null&&mod.frame>pending.frame+2){
+          if(barrier?.repeatUntilOpen&&mod.read8(0xcf00+barrier.flag)>pending.flags[barrier.flag]){
+            pending.flags[barrier.flag]=mod.read8(0xcf00+barrier.flag);pending.requested=false;pending.frame=mod.frame-26;
+          }else pending=null;
+        }
         return;
       }
       if(mod.frame-pending.frame>=26&&mod.story.request(pending.event)){completed.push(pending.id);pending.requested=true;pending.frame=mod.frame;}

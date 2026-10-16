@@ -2,7 +2,7 @@ import {ceilingExitFor} from './ceiling-exits.js';
 
 export function createCeilingEscape(mod){
   let escape=null,completed=0,error=null;
-  const bossActive=()=>mod.entities?.().some(e=>e.index>=3&&e.active&&e.species>=87&&e.species<128&&e.hp>0&&(e.custom||!(mod.read8(e.base+0x191)&0x80)))??false;
+  const bossActive=()=>!!mod.trial?.active||(mod.entities?.().some(e=>e.index>=3&&e.active&&e.species>=87&&e.species<128&&e.hp>0&&(e.custom||!(mod.read8(e.base+0x191)&0x80)))??false);
   const safe=()=>mod.options.enabled&&mod.gokuActive&&mod.canAttack&&!mod.worldFlight&&!mod.flight?.pending&&!mod.teleport?.pending&&!bossActive();
   const cancel=reason=>{error=reason;escape=null;mod.flightTransition=null;mod.feedback?.clear();};
   function roofColors(){
@@ -41,7 +41,7 @@ export function createCeilingEscape(mod){
         if(mod.read16(0xdc)===e.exit.map&&mod.canAttack&&mod.flight.request()){e.phase='flight';e.age=0;}
       }else if(e.phase==='flight'&&mod.worldFlight){
         completed++;escape=null;
-        mod.radio?.say(completed%2?'GOKU:Found the exit!\nKING KAI:You MADE an exit.\nAdd the roof to the wish.':'LUKA:Another ceiling?!\nGOKU:Good ventilation.\nKING KAI:BAD TENANT.');
+        mod.radio?.escapedCeiling(e.source);
         return false;
       }else if(e.phase==='flight'&&!mod.flight.pending&&mod.canAttack){
         // An exterior's walk-on event can acquire control between REQUEST

@@ -1,3 +1,4 @@
+import {crownGoku} from './native-names.js';
 import {eventRange} from './event-codec.js';
 
 // Only used for an explicitly selected test scene. Let the cartridge do its
@@ -27,7 +28,7 @@ export async function bootLateGame({pump,mod}){
     await pump(8,[3]);
     for(let i=0;i<60&&!(mod.status.map===431&&mod.canAttack);i++)await pump(24);
     if(mod.status.map!==431||!mod.canAttack)throw Error('The test staging room did not load.');
-    mod.snes.ram.set([0xa1,0xa9,0xa5,0xaf,0,0],0xcc00); // native GOKU
+    crownGoku(mod.snes.ram); // native GOKU
     mod.cancelInput();
   }finally{
     for(const p of patches)rom.set(p.original,p.start);

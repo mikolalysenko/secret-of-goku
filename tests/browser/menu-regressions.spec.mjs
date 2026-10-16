@@ -5,10 +5,23 @@ async function load(page,fixture=party){
  await page.goto('/');await page.waitForFunction(()=>mana.ready);
  await page.evaluate(s=>{mana.pause();s.romHash=mana.hash(mana.snes.cart.data);mana.restore(s);Object.assign(mana.mod.options,{enabled:true,power:true,superSaiyan:false});mana.run(3);},JSON.parse(readFileSync(fixture)));
 }
+test('power mode caps Goku and all weapon skills without a level-up banner after a kill',async({page})=>{
+ await load(page,field);
+ const result=await page.evaluate(()=>{
+  const m=mana.mod,r=mana.snes.ram,skills=()=>Array.from(r.slice(0xe1c0,0xe1c4));
+  const before={level:r[0xe181],skills:skills()};mana.write16(0xe7f1,999);r[0xe7ec]=r[0xe7f0]=0;
+  let banners=0;for(let i=0;i<600;i++){mana.run(1);if(r[0x2c])banners++;}
+  const saved=mana.snapshot();r[0xe181]=0;r[0xe1c0]=0;mana.restore(saved);mana.run(3);
+  return{before,after:{level:r[0xe181],skills:skills()},banners,can:m.canAttack};
+ });
+ expect(result.before).toEqual({level:98,skills:[0x88,0x88,0x88,0x88]});expect(result.after).toEqual(result.before);expect(result.banners).toBe(0);expect(result.can).toBe(true);
+});
 test('native level-up announcements never remap punch or ki, and modal level/status pages still own confirmation',async({page})=>{
  test.setTimeout(120000);await load(page,field);
  const level=await page.evaluate(()=>{
-  const m=mana.mod,r=mana.snes.ram;r[0xe18d]=255;r[0xe18e]=0;mana.write16(0xe7f1,999);r[0xe7ec]=r[0xe7f0]=0;
+  // Unpowered mode retains the native progression system. Power mode now
+  // starts at its level cap, so explicitly exercise the legacy banner here.
+  const m=mana.mod,r=mana.snes.ram;m.options.power=false;r[0xe181]=0;r[0xe18d]=255;r[0xe18e]=0;mana.write16(0xe7f1,999);r[0xe7ec]=r[0xe7f0]=0;
   const initial=r[0xe181];let banner=0,rings=0,punches=0,blasts=0;
   for(let f=0;f<420;f++){mana.run(1,f%48<8?[0]:f%48>=24&&f%48<32?[1]:[]);if(r[0x2c]&&m.nativeField){banner++;if(m.action?.kind==='punch')punches++;if(m.action?.kind==='blast')blasts++;}if(r[0xec]&12||r[0xed]&64)rings++;}
   return{initial,level:r[0xe181],banner,rings,punches,blasts,canAttack:m.canAttack};

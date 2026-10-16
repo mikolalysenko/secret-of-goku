@@ -334,3 +334,43 @@ test('sleep and poison immediately end Super Saiyan without curing the native co
   mod.write8(address,0);step();mod.configure({superSaiyan:true});assert.equal(mod.options.superSaiyan,true);
  }
 });
+
+test('Focus breaks stone, unconsciousness, Frosty, Balloon and burning, with a saved resistance window',()=>{
+ for(const bit of[0x10,0x20,0x40,0x100,0x4000]){
+  const {mod,step}=setup({superSaiyan:true});mod.write16(0xe182,913);mod.write16(0xe184,999);
+  const cues=[];mod.playSound=name=>cues.push(name);
+  mod.write16(0xe190,bit);if(bit===0x40)mod.write8(0xe02c,0);
+  step(0x400);assert.equal(mod.read16(0xe190)&0x4170,0);assert.ok(mod.statusRecovery);
+  if(bit===0x10)assert.equal(mod.options.superSaiyan,false);
+  // The cartridge, not this adapter, assigns the controller after curing.
+  if(bit===0x40){assert.equal(mod.read8(0xe02c),0);mod.write8(0xe02c,1);step(0x400);}
+  assert.equal(mod.effects.filter(e=>e.kind==='statusBurst').length,1);
+  if(bit===0x20||bit===0x100){assert.equal(mod.effects.find(e=>e.kind==='statusBurst').shell,bit===0x20?'ice':'balloon');assert.ok(cues.includes(bit===0x20?'iceBreak':'balloonPop'));}
+  if(bit===0x4000){assert.equal(mod.effects.find(e=>e.kind==='statusBurst').shell,'fire');assert.ok(cues.includes('powerBurst'));assert.ok(cues.includes('impact'));}
+  const saved=mod.snapshot(),ram=mod.snes.ram.slice();
+  for(let i=0;i<100;i++){mod.write16(0xe190,bit);step();assert.equal(mod.read16(0xe190)&0x4170,0);}
+  const expected=JSON.stringify(mod.snapshot());mod.snes.ram.set(ram);mod.restore(saved);
+  for(let i=0;i<100;i++){mod.write16(0xe190,bit);step();}
+  assert.equal(JSON.stringify(mod.snapshot()),expected);assert.equal(mod.read16(0xe182),913);
+  step(0,25);mod.write16(0xe190,bit);step();assert.equal(mod.read16(0xe190)&bit,bit,'resistance expires');
+  step(0x400);assert.equal(mod.read16(0xe190)&0x4170,0,'Focus can break a later application');
+ }
+});
+
+test('Focus recovery preserves poison, party control, story locks, and actual defeat',()=>{
+ const {mod,step}=setup();mod.write16(0xe182,700);mod.write16(0xe184,999);
+ mod.write8(0xe190,0x10);mod.write8(0xe191,0x20);step(0x400);
+ assert.equal(mod.read8(0xe190),0);assert.equal(mod.read8(0xe191),0x20);assert.equal(mod.read16(0xe182),700);
+ mod.statusRecovery=null;mod.write16(0xe190,0x400);step(0x400);
+ assert.equal(mod.read16(0xe190),0x400,'Barrel is an item, not the fire stun (Engulf is $E191 bit 6)');assert.equal(mod.statusRecovery,null);
+ for(const lock of['event','menu','party','dead']){
+  mod.statusRecovery=null;mod.write8(0xe190,0x40);mod.write8(0xe191,0);mod.write16(0xe182,700);
+  if(lock==='event')mod.write8(0xd0,1);
+  if(lock==='menu')mod.write8(0xec,8);
+  if(lock==='party'){mod.write8(0xe200,1);mod.write8(0xe02c,0);}
+  if(lock==='dead'){mod.write16(0xe182,0);mod.write8(0xe191,0x80);}
+  step(0x400,4);assert.equal(mod.read8(0xe190),0x40,lock);assert.equal(mod.statusRecovery,null,lock);
+  mod.write8(0xd0,0);mod.write8(0xec,0);mod.write8(0xe200,0);mod.write8(0xe02c,1);
+ }
+ assert.equal(mod.read16(0xe182),0);assert.equal(mod.read8(0xe191),0x80);
+});

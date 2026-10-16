@@ -1,5 +1,26 @@
 import {test,expect} from '@playwright/test';
 
+test('Shenron silences combat loops and speech, with flight audio only during the Ball departure',async({page})=>{
+ await page.goto('/');await page.getByRole('button',{name:/Sound on|Mute/}).click();
+ const result=await page.evaluate(async()=>{
+  const {createKiSound}=await import('/engine/ki-sound.js'),ctx=new AudioContext();await ctx.resume();
+  const m={frame:0,options:{enabled:true,superSaiyan:true},gokuActive:true,canAttack:true,charging:false,charge:90,powerCharge:96,localFlight:false,frieza:{music:'orbit',chargeSound:0},ending:{active:false,airborne:false}};
+  const sound=createKiSound(m);sound.update(ctx,true);await sound.ready;await sound.speech.ready;sound.clear();sound.stats.history=[];sound.speech.stats.history=[];
+  sound.play('friezaBeam');sound.update(ctx,true);
+  const enemyBeam={effect:sound.stats.history.at(-1),speech:[...sound.speech.stats.history]};
+  m.frame++;m.ending.active=true;m.localFlight=true;m.charging=true;m.action={kind:'focus'};m.frieza.chargeSound=1;sound.update(ctx,true);
+  const wish={loops:[...sound.stats.loops],speaking:sound.speech.stats.speaking,track:sound.music.stats.track,gain:sound.nativeGain};
+  m.frame++;m.ending.airborne=true;m.ending.musicMuted=true;sound.update(ctx,true);const departure={loops:[...sound.stats.loops],gain:sound.nativeGain};
+  m.frame++;m.ending.airborne=false;m.ending.musicMuted=false;sound.update(ctx,true);const settled={loops:[...sound.stats.loops],gain:sound.nativeGain};
+  m.ending.charging=true;sound.stats.history=[];
+  for(let i=0;i<40;i++){m.frame++;sound.update(ctx,true);}
+  const powerup={loops:[...sound.stats.loops],starts:sound.stats.history.filter(v=>v.name==='charge').length};
+  sound.dispose();await ctx.close();return{enemyBeam,wish,departure,settled,powerup};
+ });
+ expect(result.enemyBeam.effect).toMatchObject({name:'friezaBeam',clip:'beam',sampled:true});expect(result.enemyBeam.speech).toEqual([]);
+ expect(result.wish).toEqual({loops:[],speaking:false,track:null,gain:1});expect(result.departure).toEqual({loops:['air'],gain:0});expect(result.settled).toEqual({loops:[],gain:1});expect(result.powerup).toEqual({loops:['charge'],starts:1});
+});
+
 test('Frieza score changes from ominous entrance to battle and orbit, ducks native music and stops on pause',async({page})=>{
  await page.goto('/');await page.getByRole('button',{name:/Sound on|Mute/}).click();
  const result=await page.evaluate(async()=>{
@@ -12,12 +33,17 @@ test('Frieza score changes from ominous entrance to battle and orbit, ducks nati
   m.frame++;m.frieza.music='orbit';score.update(ctx,true);await new Promise(r=>setTimeout(r,250));const orbit={track:score.stats.track,rms:energy()};
   score.update(ctx,false);await new Promise(r=>setTimeout(r,100));const paused={track:score.stats.track,rms:energy(),gain:score.nativeGain};
   score.update(ctx,true);const resumed=score.stats.track;m.frieza.music=null;score.update(ctx,true);const ended=score.nativeGain;
-  const error=score.stats.error;score.dispose();await ctx.close();return{entrance,battle,orbit,paused,resumed,ended,error};
+  m.trial={music:'vegeta'};m.frame++;score.update(ctx,true);await new Promise(r=>setTimeout(r,250));const training={track:score.stats.track,rms:energy(),gain:score.nativeGain};
+  m.trial.music='vegeta-full-power';m.frame++;score.update(ctx,true);await new Promise(r=>setTimeout(r,250));const fullPower={track:score.stats.track,rms:energy()};
+  m.trial.music=null;score.update(ctx,true);const returned={track:score.stats.track,gain:score.nativeGain};
+  const error=score.stats.error;score.dispose();await ctx.close();return{entrance,battle,orbit,paused,resumed,ended,training,fullPower,returned,error};
  });
  expect(result.entrance.track).toBe('arrival');expect(result.entrance.rms).toBeGreaterThan(.005);expect(result.entrance.gain).toBeLessThan(.05);
  expect(result.battle.track).toBe('battle');expect(result.battle.rms).toBeGreaterThan(.005);expect(result.orbit.track).toBe('orbit');expect(result.orbit.rms).toBeGreaterThan(.005);
  expect(result.paused.track).toBe(null);expect(result.paused.rms).toBeLessThan(.0001);expect(result.paused.gain).toBe(1);
  expect(result.resumed).toBe('orbit');expect(result.ended).toBe(1);expect(result.error).toBe(null);
+ expect(result.training.track).toBe('vegeta');expect(result.training.rms).toBeGreaterThan(.005);expect(result.training.gain).toBeLessThan(.05);
+ expect(result.fullPower.track).toBe('vegeta-full-power');expect(result.fullPower.rms).toBeGreaterThan(.005);expect(result.returned).toEqual({track:null,gain:1});
 });
 
 test('Frieza charge has a sustained bed and impacts use bounded sampled cues that clear on pause',async({page})=>{
@@ -36,6 +62,7 @@ test('Frieza charge has a sustained bed and impacts use bounded sampled cues tha
  });
  expect(result.held.rms).toBeGreaterThan(.01);expect(result.hit.rms).toBeGreaterThan(.02);expect(result.hit.peak).toBeLessThan(.95);
  expect(result.history.every(v=>v.sampled)).toBe(true);expect(result.history.map(v=>v.name)).toEqual(['friezaCharge','friezaOrb','fortressBreak','friezaImpact']);
+ expect(result.history.map(v=>v.clip)).toEqual(['charge','power-burst','power-burst','impact']);
  expect(result.paused.rms).toBeLessThan(.0001);expect(result.loops).toEqual([]);
 });
 
@@ -54,13 +81,18 @@ test('DBZ flight audio survives scripted combat locks and all audio stops on cle
   const rms=()=>{const a=new Float32Array(analyser.fftSize);analyser.getFloatTimeDomainData(a);return Math.sqrt(a.reduce((s,v)=>s+v*v,0)/a.length);};
   await new Promise(resolve=>setTimeout(resolve,850));
   const active={history:[...sound.stats.history],loops:[...sound.stats.loops],rms:rms(),ready:sound.stats.ready,error:sound.stats.error};
+  m.frame++;m.gapFlight.active=false;sound.play('landing');sound.update(ctx,true);
+  await new Promise(resolve=>setTimeout(resolve,90));
+  const landed={loops:[...sound.stats.loops],cue:sound.stats.history.at(-1),rms:rms()};
+  await new Promise(resolve=>setTimeout(resolve,450));const tail=rms();
   sound.clear();await new Promise(resolve=>setTimeout(resolve,120));
   const stopped={loops:[...sound.stats.loops],rms:rms(),speaking:sound.speech.stats.speaking};
-  sound.dispose();await ctx.close();return{active,stopped};
+  sound.dispose();await ctx.close();return{active,landed,tail,stopped};
  });
  expect(result.active.ready).toBe(true);expect(result.active.error).toBe(null);
  expect(result.active.history.map(e=>e.name)).toEqual(['flight','air']);expect(result.active.history.every(e=>e.sampled)).toBe(true);
  expect(result.active.loops).toEqual(['air']);expect(result.active.rms).toBeGreaterThan(.005);
+ expect(result.landed.loops).toEqual([]);expect(result.landed.cue).toMatchObject({name:'landing',clip:'landing',sampled:true});expect(result.landed.rms).toBeGreaterThan(.003);expect(result.tail).toBeLessThan(.0001);
  expect(result.stopped.loops).toEqual([]);expect(result.stopped.speaking).toBe(false);expect(result.stopped.rms).toBeLessThan(.00001);
 });
 

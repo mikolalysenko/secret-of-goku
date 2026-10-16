@@ -1,15 +1,17 @@
 import {encodeText} from './event-codec.js';
+import {nativeItemIcon} from './native-item-icons.js';
 
 export const renameSenzu=text=>text.replace(/\bCups?\s+of\s+Wishes\b/gi,match=>/^cups/i.test(match)?'Senzu Beans':'Senzu Bean');
 
-// Six SNES colors and transparent pixels, drawn at the original item's size.
+// A plump kidney-shaped bean, with a pale hilum in the inner crease.
+// Five SNES colors plus transparency, at the native 16-pixel item size.
 const bean=[
- '0000000000000000','0000000111100000','0000011344310000','0000123455431000',
- '0001234444431000','0012344333321000','0013443321121000','0124433322111000',
- '0124433322100000','0124433321000000','0013443321000000','0012344432100000',
- '0001233332100000','0000112221000000','0000001110000000','0000000000000000',
+ '0000000000000000','0000000111100000','0000011333310000','0000123444331000',
+ '0001234444332100','0012344443332100','0013444333222100','0123443325511000',
+ '0123433255100000','0123333251100000','0123333332100000','0012333333210000',
+ '0012233333210000','0001122222100000','0000011111000000','0000000000000000',
 ];
-const colors=[0,...[[3,7,2],[7,15,3],[14,23,5],[23,29,11],[30,31,22]].map(([r,g,b])=>1+r+(g<<5)+(b<<10))];
+const colors=[0,...[[3,6,2],[5,12,3],[10,20,4],[21,28,10],[28,28,18]].map(([r,g,b])=>1+r+(g<<5)+(b<<10))];
 export const senzuPixel=(x,y)=>colors[Number(bean[y]?.[x])||0];
 
 // Every shop, treasure message and ring reads the same native item name.
@@ -37,10 +39,6 @@ export function createNativeSenzu(snes,mod){
  }
  return{load(){cart=snes.cart;read=cart.read;const original=encodeText('Cup of Wishes');if(!original.every((b,i)=>cart.data[0xaa120+i]===b))throw Error('Unsupported item-name table');cart.read=itemRead;},
   iconMatches(ppu,attr){
-   // Fingerprint the decompressed native four-cell cup. This catches the
-   // ring, target cursor, shop and use animation regardless of its DMA slot.
-   const base=ppu.sprAdr1+((attr&256)?ppu.sprAdr2:0),tile=attr&255;let hash=2166136261;
-   for(const delta of[0,1,16,17])for(let i=0;i<16;i++)hash=Math.imul(hash^ppu.vram[(base+((tile+delta)&255)*16+i)&32767],16777619);
-   return [0xb22e39c3,0x430ea2ce].includes(hash>>>0);
+   return nativeItemIcon(ppu,attr)==='senzu';
   },pixel:senzuPixel,get used(){return used;}};
 }

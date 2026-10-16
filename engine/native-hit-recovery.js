@@ -10,7 +10,7 @@ export function createNativeHitRecovery(snes,mod){
    !(r[0xe190]&0x70)&&!(r[0xe191]&0xd5);
  const hurt=()=>r[0xe011]===0x8d||r[0xe011]===0x8e;
  const old=()=>hit&&snes.frames-hit.frame>=(powered()&&hit.tier==='ordinary'?(mod.options.superSaiyan?4:8):powered()&&mod.options.superSaiyan?8:24);
- const dangerous=()=>mod.challenge?.dangerous||mod.challenge?.empoweredLich||mod.frieza?.fighting;
+ const dangerous=()=>mod.trial?.dangerous||mod.challenge?.dangerous||mod.challenge?.empoweredLich||mod.frieza?.fighting;
  function threat(){
    if(dangerous())return 'dangerous';
    const enemy=i=>i>=3&&i<12&&(r[0xe000+i*512]&1)&&word(0xe182+i*512)>0&&!(r[0xe191+i*512]&0x80);

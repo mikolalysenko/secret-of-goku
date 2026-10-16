@@ -35,7 +35,8 @@ export function createWorldKi(snes,mod){
     const rom=snes.cart?.data;if(!rom)return[];
     const result=[];
     // Original Pure Land takeoff entry sits inside the AF landing tile patch.
-    if(!(r[0xe3]&0x40))result.push({id:'mana-tree-barrier',x:rom[0x67a80+198*2]*16,y:rom[0x67a81+198*2]*16,radius:44});
+    // Frieza's chase goes through Pure Land's gates: no cloud-barrier skip.
+    if(!(r[0xe3]&0x40)&&!mod.frieza?.unresolved&&!mod.frieza?.crisisActive)result.push({id:'mana-tree-barrier',x:rom[0x67a80+198*2]*16,y:rom[0x67a81+198*2]*16,radius:44});
     if(!fortressDestroyed&&r[0x8c]===0&&r[0xcf4e]<9)result.push({id:'mana-fortress',x:w(0x128),y:w(0x12a),radius:36});
     return [...result,...(mod.worldScars?.targets()??[])];
   }

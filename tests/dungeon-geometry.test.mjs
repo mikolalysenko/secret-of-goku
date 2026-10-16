@@ -28,9 +28,25 @@ test('internal walls require two real floors at the same height and preserve bot
 test('dungeon gap flight needs two shores and cannot use scripts, unplaced space or clipped entrance pockets',()=>{
  const f=fixture();for(let y=3;y<9;y++)for(const x of[5,6])f.put(x,y,187);
  assert.equal(f.g.air(f.g.tile(5,5,0)),true);assert.equal(f.g.breach(f.g.tile(5,5,0)),null,'beams do not manufacture floors over air');
- for(let x=7;x<11;x++)f.put(x,5,187);f.g.invalidate();assert.equal(f.g.air(f.g.tile(5,5,0)),false);
+ for(let x=7;x<11;x++)f.put(x,5,187);f.g.invalidate();
+ assert.equal(f.g.air(f.g.tile(5,5,0)),true,'a one-row seam can join the bounded corridors above and below');
+ assert.equal(f.g.air(f.g.tile(10,5,0)),false,'joining those corridors does not open the exterior beyond their shores');
+ for(let y=3;y<9;y++)for(let x=7;x<11;x++)f.put(x,y,187);f.g.invalidate();assert.equal(f.g.air(f.g.tile(5,5,0)),false);
  f.put(7,5,186);f.descriptor(186,[0x12,0x86,0,0]);f.g.invalidate();assert.equal(f.g.air(f.g.tile(5,5,0)),false,'walk-on triggers do not count as shores');
  assert.equal(f.g.tile(0,5,0),null);assert.equal(f.g.tile(12,5,0),null);
+});
+test('enclosed cave rock ceilings remain solid while lava and open chasm spans stay flyable',()=>{
+ const f=fixture({map:286,tileset:10}),h=createNativeLocalFlight(f.snes,{active:()=>true,phase:true});
+ f.descriptor(5,[0x13,6,0,0]);f.descriptor(41,[0x13,6,0,0]);
+ for(let y=0;y<12;y++)for(let x=0;x<12;x++)f.put(x,y,186);
+ for(let y=4;y<=6;y++)for(let x=5;x<=6;x++)f.put(x,y,5);
+ assert.equal(f.g.air(f.g.tile(5,5,0)),false,'floors on both sides of solid rock are not shores');
+ assert.equal(h.canFly(88,88,0),false,'the older short-span fallback cannot reopen the ceiling');
+ for(let y=4;y<=6;y++)for(let x=5;x<=6;x++)f.put(x,y,41);
+ f.g.invalidate();h.dungeon.invalidate();assert.equal(h.canFly(88,88,0),true,'lava between cave floors stays open');
+ for(let y=0;y<12;y++)for(let x=5;x<=6;x++)f.put(x,y,5);
+ f.g.invalidate();h.dungeon.invalidate();assert.equal(h.canFly(88,88,0),true,'open chasm still needs and has two real shores');
+ assert.equal(h.canLand(88,88,0),false);h.dispose();
 });
 test('Fortress entrance seams are flyable between decks but retain the hull and tower boundaries',()=>{
  const f=fixture({map:255,tileset:20|128}),h=createNativeLocalFlight(f.snes,{active:()=>true,phase:true});
@@ -48,6 +64,27 @@ test('Fortress entrance seams are flyable between decks but retain the hull and 
  f.put(7,5,186);f.descriptor(186,[0x12,0x86,0,0]);h.dungeon.invalidate();
  assert.equal(h.canFly(88,88,0),false,'A scripted doorway is not a destination deck');
  assert.equal(h.canFly(-8,88,0),false);assert.equal(h.canFly(192,88,0),false);h.dispose();
+});
+test('ruins spike rows and sunken pits fly between placed floors without opening room walls',()=>{
+ const f=fixture({map:403,tileset:9|128}),h=createNativeLocalFlight(f.snes,{active:()=>true,phase:true});
+ // Native BG2 metatiles: pink floor 313, spikes 319, pit 322, wall 286.
+ f.descriptor(121,[0x11,7,0,0],1);f.descriptor(94,[0x13,6,0,0],1);
+ for(let y=0;y<12;y++)for(let x=0;x<12;x++)f.put(x,y,94,1);
+ for(const id of[127,130]){
+  f.descriptor(id,[0x13,6,0,0],1);
+  for(let y=3;y<9;y++)for(let x=2;x<10;x++)f.put(x,y,x===5||x===6?id:121,1);
+  h.dungeon.invalidate();
+  for(let x=72;x<=120;x++)assert.equal(h.canFly(x,88,1),true,`metatile ${id+192}, x=${x}`);
+  assert.equal(h.canLand(88,88,1),false,'spikes and pit never become walking floor');
+  assert.equal(h.canFly(24,88,1),false,'the room wall remains solid');
+  for(let y=3;y<9;y++)for(let x=7;x<12;x++)f.put(x,y,94,1);
+  h.dungeon.invalidate();assert.equal(h.canFly(88,88,1),id===127,'a spike remains a low obstacle; a pit needs its far shore');
+ }
+ // A staircase immediately above the spike row is a valid landing shore.
+ f.descriptor(55,[0x10,0,0x21,0],1);f.put(5,4,55,1);f.put(5,5,127,1);f.put(5,6,121,1);h.dungeon.invalidate();
+ assert.equal(h.canFly(88,88,1),true);
+ f.put(5,5,130,1);f.descriptor(55,[0x10,0x80,0x21,0],1);h.dungeon.invalidate();assert.equal(h.canFly(88,88,1),false,'a scripted stair cannot be used as a pit shore');
+ h.dispose();
 });
 test('wall breaches sample open floor instead of repeating a decorative platform lip',()=>{
  const f=fixture();f.descriptor(15,[0x12,6,0,0]);f.put(4,5,15);

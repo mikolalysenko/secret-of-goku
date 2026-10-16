@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {existsSync,readFileSync} from 'node:fs';
-import {createNativeRadio,radioPixels,kaiWarnings,firstFlightMessages,treeBlastMessages,barrierReactions} from '../engine/native-radio.js';
+import {createNativeRadio,radioPixels,kaiWarnings,firstFlightMessages,treeBlastMessages,ceilingRemarks,barrierReactions} from '../engine/native-radio.js';
 import {createDragonQuest,dragonBallGrant} from '../engine/dragon-quest.js';
 import {ceilingExits,ceilingExitFor} from '../engine/ceiling-exits.js';
 import {encodeText,wrapText,parseEvent} from '../engine/event-codec.js';
@@ -39,6 +39,16 @@ test('native conversations hide and pause telepathy; base Goku does not trigger 
   const{mod,snes,radio,tick}=radioFixture();tick(100);const before=radio.snapshot();
   mod.canAttack=false;snes.ram[0xd0]=0x82;tick(300);assert.equal(radio.status.visible,false);assert.deepEqual(radio.snapshot(),before);
   mod.canAttack=true;snes.ram[0xd0]=0;mod.options.superSaiyan=false;radio.restore();tick(1000);assert.equal(radio.status.warning,0);
+});
+test('after three predictable warnings Kai speaks on about one in ten charges, never rerolling a held charge',()=>{
+ const {mod,radio,tick}=radioFixture();
+ const charge=()=>{mod.charging=false;tick(600);mod.charging=true;tick(90);};
+ for(let i=1;i<=3;i++){charge();assert.equal(radio.status.warning,i);}
+ const saved=radio.snapshot();
+ const run=()=>{for(let i=0;i<100;i++)charge();return radio.snapshot();};
+ const a=run();assert.ok(a.warning-3>=5&&a.warning-3<=18);assert.equal(a.chargeAttempts,103);
+ radio.restore(saved);assert.deepEqual(run(),a);
+ const before=radio.snapshot();tick(5000);assert.equal(radio.snapshot().chargeAttempts,before.chargeAttempts);assert.equal(radio.status.warning,before.warning);
 });
 test('first-use power banter cannot add a second King Kai remark to a held charge',()=>{
   const{mod,radio,tick}=radioFixture();mod.charging=false;
@@ -111,7 +121,7 @@ test('first-flight advice happens once and obsolete Fortress advice is discarded
 test('radio uses the ROM font pixels and every authored page fits the original three-line frame',()=>{
   const{rom}=radioFixture();const code=encodeText('A')[0];rom[0x12d600+code*12]=0x40;
   const pixels=radioPixels(rom,'A');assert.equal(pixels[10*240+9],0x8000);assert.equal(pixels[9*240+9],1);
-  for(const text of [...kaiWarnings,...firstFlightMessages,...treeBlastMessages,...Object.values(barrierReactions).flat()]){encodeText(text);assert.ok(wrapText(text).split('\n').length<=3,text);}
+  for(const text of [...kaiWarnings,...firstFlightMessages,...treeBlastMessages,...ceilingRemarks,...Object.values(barrierReactions).flat()]){encodeText(text);assert.ok(wrapText(text).split('\n').length<=3,text);}
   assert.throws(()=>radioPixels(rom,'1\n2\n3\n4'));
 });
 test('opening the Tree clouds interrupts stale flight advice, keeps rewards, and survives a checkpoint',()=>{
@@ -141,4 +151,21 @@ test('all ceiling exits and Dragon Ball reward markers match the supplied native
   for(const unsafe of [0,131,260,246,253,511])assert.equal(ceilingExitFor(unsafe),null);
   const found=new Set();for(let id=0;id<0x800;id++)for(const op of parseEvent(rom,id).ops){const ball=dragonBallGrant(op.at,op.op);if(ball!==null){assert.deepEqual(op.bytes,[0x30,0x90+ball,1]);found.add(ball);}}
   assert.equal(found.size,7);assert.ok(rooms.size>150);
+});
+
+test('ceiling asides vary, stay rare, and retain their limits after a checkpoint',()=>{
+ const{mod,radio,tick}=radioFixture();mod.charging=false;
+ assert.equal(radio.escapedCeiling(139),true);tick();assert.equal(radio.status.current.text,ceilingRemarks[0]);
+ tick(7200);
+ assert.equal(radio.escapedCeiling(257),false);assert.equal(radio.escapedCeiling(259),false);assert.equal(radio.escapedCeiling(279),false);
+ assert.equal(radio.escapedCeiling(261),true);tick();assert.equal(radio.status.current.text,ceilingRemarks[1]);
+ const saved=radio.snapshot();radio.restore(saved);
+ assert.equal(radio.escapedCeiling(139),false);assert.equal(radio.escapedCeiling(274),false);assert.equal(radio.escapedCeiling(282),false);assert.equal(radio.escapedCeiling(287),false);
+ tick(7200);assert.equal(radio.escapedCeiling(293),true);tick();assert.equal(radio.status.current.text,ceilingRemarks[2]);
+});
+test('roof jokes do not queue behind story dialogue or reappear from older saves',()=>{
+ const{mod,radio,tick}=radioFixture();mod.charging=false;
+ radio.say('KING KAI:Watch the sky!');assert.equal(radio.escapedCeiling(139),false);assert.equal(radio.status.queued,1);
+ radio.restore({current:{kind:'story',text:'GOKU:Found the exit!\nKING KAI:You MADE an exit.\nAdd the roof to the wish.',remaining:200},queue:[{kind:'reward',text:'Found a Dragon Ball!',remaining:200}]});
+ assert.equal(radio.status.current,null);tick();assert.equal(radio.status.current.text,'Found a Dragon Ball!');
 });

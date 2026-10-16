@@ -1,0 +1,28 @@
+{
+  "author": "Original compositions for Secret of Goku",
+  "license": "MIT",
+  "source": "scripts/compose-vegeta-score.mjs",
+  "description": "Original brass-led retro anime sparring theme, with a faster Super Saiyan arrangement. No TV recording or melody is sampled.",
+  "sampleRate": 22050,
+  "quantizationBits": 12,
+  "tracks": [
+    {
+      "file": "vegeta.wav",
+      "title": "Royal Rivalry",
+      "bpm": 152,
+      "bars": 32,
+      "duration": 50.52630385487528,
+      "voices": 8,
+      "sha256": "ea018919d83689e66844c6c40253aeabd887d431bc1db727f6b4bcdd88a23f76"
+    },
+    {
+      "file": "vegeta-full-power.wav",
+      "title": "Royal Rivalry — Full Power",
+      "bpm": 168,
+      "bars": 32,
+      "duration": 45.714285714285715,
+      "voices": 8,
+      "sha256": "f6436f3ef8bc9e8a3501ce73974517531236bc27285660b992fddab851b689c1"
+    }
+  ]
+}

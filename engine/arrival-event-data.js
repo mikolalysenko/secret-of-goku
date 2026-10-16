@@ -24,10 +24,10 @@ function glyph(character) {
 const encode = text => Uint8Array.from(text, glyph);
 const pages = Object.freeze([
   "GOKU:This isn't Planet\nNamek... Uh, sorry about\nthe parking.",
-  'GHOST: That was the chosen\nhero. And the Mana Sword.',
-  'GHOST: The boy is dead.\nThe sword is dust.',
+  'GHOST:That was the chosen\nhero. And the Mana Sword.',
+  'GHOST:The boy is dead.\nThe sword is dust.',
   'GOKU:I brought Dragon\nBalls! ...Oh. They went\nEVERYWHERE.',
-  'GHOST: You are the chosen\nhero now. Go to Potos.\nTry walking.'
+  'GHOST:You are the chosen\nhero now. Go to Potos.\nTry walking.'
 ]);
 for (const page of pages) {
   const lines = page.split('\n');

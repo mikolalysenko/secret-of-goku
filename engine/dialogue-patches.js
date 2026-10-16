@@ -10,6 +10,9 @@
   const patches = [
     {id:'sword-pull',event:0x103,eventStart:0x92613,eventEnd:0x927fe,offset:0x92691,
       original:':Urrrrrrrgh!',replacement:':Easy... Oh!',following:[0x28,0x10]},
+    // The ghost has just told Goku to walk to Potos; he has never been there.
+    {id:'sword-depart',event:0x103,eventStart:0x92613,eventEnd:0x927fe,offset:0x927e4,
+      original:':I have to get back!',replacement:':Potos it is, then!',following:[0x7f,0x29]},
     {id:'elliott-apology',event:0x10c,eventStart:0x92caf,eventEnd:0x93227,offset:0x9306a,
       original:':Hey! Stop it!',replacement:":I'm sorry!",following:[0x7f,0x9f,0xa6,0xa6]},
     {id:'mantis-aftermath',event:0x112,eventStart:0x932fa,eventEnd:0x93642,offset:0x9339f,
@@ -62,7 +65,7 @@
     return result;
   }
 
-  // Review/debug metadata contains just the four selected lines, not event data.
+  // Review/debug metadata contains just the selected lines, not event data.
   gokuDialoguePatch.patches=Object.freeze(patches.map(({before,after,following,...patch})=>Object.freeze(patch)));
   window.gokuDialoguePatch=gokuDialoguePatch;
 })();

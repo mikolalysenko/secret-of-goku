@@ -100,3 +100,13 @@ test('an old Northtown checkpoint with captive Primm still completes her native 
  expect(result,JSON.stringify(result)).toMatchObject({requested:true,can:true,flag:7,map:408,party:[1,1],error:null});
  expect(await page.evaluate(()=>mana.mod.entities().some(e=>e.active&&e.species===98&&e.hp>0))).toBe(true);
 });
+
+// Popoi's kitchen scenes alone raise CF28 to 7. Without a captive Primm
+// ($CF0D=8) the cabin must take the authored boarding scene, not the retail
+// rescue that ends with ADD_CHARACTER for Primm.
+test('the Sandship cabin never recruits a Primm who was not captured',async({page})=>{
+ await load(page,2);await enter(page,{map:339,x:16,y:18,flags:{0x28:7,0x0d:0,0x0e:1}});
+ const result=await finish(page,0x29c,0x28,10);
+ expect(result,JSON.stringify(result)).toMatchObject({requested:true,can:true,party:[0,1],error:null});
+ expect(await page.evaluate(()=>mana.read8(0xcf0d))).toBe(0);
+});

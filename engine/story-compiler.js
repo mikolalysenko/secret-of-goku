@@ -1,6 +1,8 @@
-import {dialoguePages,encodeText,commandLength} from './event-codec.js';
+import {dialoguePages,encodeText,commandLength,textWidth,nameCodes} from './event-codec.js';
 import {storyDialogue,soloDialogue} from './story-dialogue.js';
 import {partyDialogue} from './scene-dialogue.js';
+import {retailDialogue} from './retail-dialogue.js';
+import {sandshipDialogue} from './sandship-dialogue.js';
 import {bossReactions,box} from './story-events.js';
 import {renameSenzu} from './native-senzu.js';
 import {potosCommand} from './potos-story.js';
@@ -9,7 +11,7 @@ import {dragonBallGrant} from './dragon-quest.js';
 // Speaker identity carries over pauses and page clears. A missing companion
 // must not erase an NPC's reply on the same page, or speak under a bare name.
 export function partyText(text,mask,silent=false){
- const matches=[...text.matchAll(/(?:^|\n)\s*(\{[012]\}|[A-Z][A-Z ]*):/g)];
+ const matches=[...text.matchAll(/(?:^|\n)\s*(\{[0-3]\}|[A-Z][A-Z ]*):/g)];
  let kept='',offset=0;
  for(let i=0;i<matches.length;i++){
   const match=matches[i];if(!silent)kept+=text.slice(offset,match.index);
@@ -18,12 +20,15 @@ export function partyText(text,mask,silent=false){
   if(!silent)kept+=text.slice(offset,end);offset=end;
  }
  if(!matches.length&&!silent)kept=text;
- if(!(mask&1))kept=kept.replaceAll('{1}','Primm');
- if(!(mask&2))kept=kept.replaceAll('{2}','Popoi');
+ // A name code stays a code even when that companion is absent: the native
+ // name slot shows the player's name, or the default if never named.
  return{text:kept,silent};
 }
 export function storyText(op,mask,silent=false,overrides={}){
- let text=overrides[op.at]??partyDialogue[op.at]?.[mask];
+ // Scene-specific revisions, then retail adaptations: a string for every
+ // party, or [solo, +Primm, +Popoi, both] with null falling through.
+ const retail=sandshipDialogue[op.at]??retailDialogue[op.at];
+ let text=overrides[op.at]??(Array.isArray(retail)?retail[mask]:retail)??partyDialogue[op.at]?.[mask];
  const spriteScene=op.at===0x9a168||(op.at>=0xa31ec&&op.at<=0xa3423);
  const missing=spriteScene||op.text.includes('{2}:')?!(mask&2):!(mask&1);
  text??=missing?soloDialogue[op.at]:null;
@@ -32,33 +37,47 @@ export function storyText(op,mask,silent=false,overrides={}){
  const result=partyText(authored?text:op.text,mask,authored?false:silent);
  return{...result,text:renameSenzu(result.text),authored};
 }
+// Events that always run from the cartridge: the BOY prologue and title
+// legend, plus 103, whose bytes the arrival splice jumps into (its Goku
+// lines are same-length patches in dialogue-patches.js). 104/105 follow the
+// crash and compile like any other scene.
+export const nativeOnlyEvents=Object.freeze([0x100,0x101,0x102,0x103,0x106,0x400]);
 export function needsStory(event){
  return !!bossReactions[event.id]||event.ops.some(op=>dragonBallGrant(op.at,op.op)!==null||op.op==='text'&&
-  (op.at in storyDialogue||op.at in soloDialogue||op.at in partyDialogue||/\{[12]\}/.test(op.text)||renameSenzu(op.text)!==op.text));
+  (op.at in storyDialogue||op.at in soloDialogue||op.at in partyDialogue||op.at in retailDialogue||op.at in sandshipDialogue||/\{[12]\}/.test(op.text)||renameSenzu(op.text)!==op.text));
 }
 
 // Native scripts often split a sentence around an animation or pause. A
 // replacement can be longer than its fragment, so measure the whole window
 // instead of independently wrapping each text opcode from column zero.
 function layoutText(text,state,format){
- const out=[],width=s=>s.replace(/\{[012]\}/g,'XXXXXX').length;
+ const out=[],width=textWidth;
  const newline=()=>{
   if(state.row>=2){out.push(0x28,0,0x52);state.row=0;}else{out.push(0x7f);state.row++;}
   state.column=0;state.space=false;
  };
  if(!format){
-  for(const char of text.replace(/\{[012]\}/g,'XXXXXX')){
+  for(const char of text.replace(nameCodes,'XXXXXX')){
    if(char==='\n'){state.row++;state.column=0;}else state.column++;
    state.space=char===' ';
   }
   return encodeText(text);
  }
+ // A speaker's lines start a new page when they would not fit on this one,
+ // so no line is separated from its label (4 lines read 2+2, not 3+1).
+ const lines=text.split('\n'),label=/^(?:\{[0-3]\}|[A-Z][A-Z ]*):/;
+ const speech=i=>{let n=1;while(i+n<lines.length&&!label.test(lines[i+n]))n++;return n;};
+ const speakerBreak=i=>{
+  const n=speech(i);
+  if(state.row<2&&n<=3&&state.row+1+n>3){out.push(0x28,0,0x52);state.row=0;state.column=0;state.space=false;}else newline();
+ };
+ let line=0;
  if(state.column&&text&&!/^\s|^[.,!?]/.test(text)){
-  if(/^(?:\{[012]\}|[A-Z][A-Z ]*):/.test(text))newline();
+  if(label.test(text))speakerBreak(0);
   else state.space=true;
  }
  for(const token of text.match(/\n|[^\S\n]+|[^\s]+/g)??[]){
-  if(token==='\n'){newline();continue;}
+  if(token==='\n'){line++;if(label.test(lines[line]??''))speakerBreak(line);else newline();continue;}
   if(/^\s+$/.test(token)){state.space=true;continue;}
   const size=width(token);
   if(state.row>2)newline();
@@ -80,12 +99,21 @@ export function compileStoryEvent(event,mask,{textOverrides={}}={}){
  }
  const chunks=bossReactions[event.id]?[{bytes:box(bossReactions[event.id])}]:[];
  let silent=false,lastSilent=false,selection=false,currentMask=mask;
+ // A companion this event recruits (ADD_CHARACTER) is on stage for the whole
+ // scene: their naming reply and "joined" line precede the native add, and a
+ // freed captive speaks before rejoining. Treat them as present throughout.
+ for(const op of event.ops)if(op.op===0x2b&&op.bytes[1]>=1&&op.bytes[1]<=2)currentMask|=1<<(op.bytes[1]-1);
  const layout={window:false,changed:false,row:0,column:0,space:false};
  for(const op of event.ops){
   if(op.op==='text'){
    const result=storyText(op,currentMask,silent,textOverrides);silent=result.silent;
-   const text=result.text;
+   let text=result.text;
    if(!text){lastSilent=true;continue;}
+   // After a retained retail fragment, a replacement keeps the line break its
+   // original run began with instead of gluing onto that retail sentence.
+   // Consecutive authored fragments still flow as one sentence.
+   if(result.authored&&layout.window&&layout.column&&layout.retail&&/^\n/.test(op.text)&&!/^\s/.test(text))text='\n'+text;
+   layout.retail=!result.authored;
    lastSilent=false;
    if(result.authored)layout.changed=true;
    const bytes=layout.window&&!selection?layoutText(text,layout,layout.changed):result.authored&&!selection?dialoguePages(text):text===op.text?op.bytes:encodeText(text);

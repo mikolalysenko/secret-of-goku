@@ -1,0 +1,26 @@
+{
+  "tool": "Built-in image_gen",
+  "prompt": "Use case: style-transfer. Asset type: replacement gameplay sprite atlas for an existing SNES-style Secret of Mana / Dragon Ball action RPG. Input image 1 is the existing GOKU sprite atlas and is the STRICT pixel style/proportions reference. Input image 2 is the existing Vegeta atlas to REPLACE because it is too chibi, too small and inconsistent with Goku. Produce ONE transparent 4-column by 4-row atlas of VEGETA, 16 identical square cells, each sprite at EXACTLY the same gameplay scale. Render deliberate coarse square pixel clusters, visually equivalent to original 32x32 game sprite cells, enlarged uniformly for this output. NO antialiasing, no painterly shading, no high-resolution cartoon detail. Match Goku's lean adult body, small face, arm and leg lengths, top-down three-quarter RPG perspective; NOT a giant round chibi head. Vegeta's hair plus body should occupy 30 of 32 logical pixels vertically in standing poses, only one pixel shorter than Goku. His shoulder width is about 13 logical pixels, his head width about 12. Tall straight upright black hair with widow's peak, compact stern face, blue bodysuit, white chest armor with gold abdomen, white gloves, white boots with gold toes. Precise limited 15-color pixel palette, strong silhouettes, hard pixel edges. Consistent stable torso and feet baseline across every cell, ALL feet baseline exactly same relative y, generous cell margins and no clipped limbs. Three-quarter facing RIGHT in every cell. Row1 black hair: folded arms idle, fighting guard, forward dash, right punch. Row2 black hair: right kick, Galick Gun hands charging at left hip, Galick Gun hands thrust right, power-up fists at hips. Row3 GOLD SUPER SAIYAN with teal eyes: exact poses from row1. Row4 GOLD SUPER SAIYAN: exact poses from row2. No aura or effects, no ground shadows, no scenery, no text, no labels, no grid lines. Truly transparent alpha background. Above all match the Goku reference game's sprite anatomy and pixel density, and make the characters fully fill the same 32 pixel height.",
+  "grid": {
+    "columns": 4,
+    "rows": 4
+  },
+  "nativeSize": [
+    40,
+    32
+  ],
+  "frames": [
+    "idle",
+    "guard",
+    "rush",
+    "punch",
+    "kick",
+    "charge",
+    "beam",
+    "power"
+  ],
+  "forms": [
+    "base",
+    "super-saiyan"
+  ]
+}

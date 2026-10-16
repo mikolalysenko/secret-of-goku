@@ -19,7 +19,7 @@ Jema meeting Goku, are genuine scene NPCs and can still appear before joining.
 | Pandora, witch and recruitment | Goku learns who Dyluck is from the people involved; he does not assume Primm's relationships. |
 | Gnome, Earth and Wind | Solo/partial-party alternatives replace Popoi's servant joke, missing memories and absent Grandpa conversations. Seed rewards and later spell grants remain intact. |
 | Flammie | Goku rescues the young dragon while acknowledging he can already fly; the native rescue progresses normally. |
-| Sandship | He volunteers to help for food. Only companions actually aboard can be marked captive. The early cabin shortcut remains available. |
+| Sandship | Goku plays along for food and a worthy sparring partner. Confiscating his Heavy Gi removes its training penalty. Captured companions retain their dialogue, the kitchen progresses without Popoi, and flying straight to the cabin reunites only actual captives before Mech Rider. |
 | Northtown, events 555–559 | Goku interrupts Dyluck's possession without kidnapping or adding an absent Primm. The original Vampire fight, reward and exit still run. |
 | Joch, Empire and Dryad | Trials emphasize restraint; the damaged Sword explains the Fortress's early awakening. Missing companions are not addressed. |
 | Mana Tree, event 5F8 | Randi's family belongs to Randi. The Tree shelters him for the wish and asks Goku to finish the job. Missing companion stand-ins are omitted. |
@@ -31,8 +31,10 @@ Jema meeting Goku, are genuine scene NPCs and can still appear before joining.
 | Five-minute crisis | Frieza, Kai, Luka, Jema and townspeople believe the planet is about to explode. Goku believes the deadline too, but thinks he can finish everything in time. Shops and inns warn him once before their normal service. Jema and the Tree blame Frieza's Death Ball for the roots burning. |
 | Frieza finale | Popoi's death triggers permanent Super Saiyan. The stolen Balls return after the fight, but the crisis persists through the Mana Beast. Shenron explicitly repairs the core; only recruited companions return to the party. |
 
-`engine/story-dialogue.js` and `engine/scene-dialogue.js` contain authored
-substitutions. `engine/story-compiler.js` preserves native control codes,
+`engine/story-dialogue.js`, `engine/scene-dialogue.js` and
+`engine/retail-dialogue.js` and `engine/sandship-dialogue.js` contain authored substitutions. The last one holds
+adaptations of retail lines that earlier passes had left as they were. See
+[scenes.md](scenes.md#dialogue-review-and-fixes). `engine/story-compiler.js` preserves native control codes,
 choices, actor commands and rewards while compiling party variants.
 `engine/story-events.js` supplies scenes that need different choreography.
 Rewritten text measures the current window across intervening pauses and actor

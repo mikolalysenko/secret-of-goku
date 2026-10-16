@@ -2,28 +2,28 @@
 // grid and queues the original tilemap/DMA redraw, including BG2 obstacles.
 // No ROM patches, graphics bytes, direct VRAM writes or forced CPU calls.
 // Traced C1:D293..D429; C0:C7C3 consumes the redraw queue; C0:B565 drains SFX.
+import {palaceBraziers, brazierPart} from './palace-braziers.js';
 export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplacement=null,demolitionPlan=null}={}){
  const cpu=snes.cpu,priorCycle=cpu.cycle,r=snes.ram;
  const read16=a=>r[a]|r[a+1]<<8;
  let queue=[],lastFrame=-1,done=[],cleared=new Map(),cutMap=null;
  const ground=()=>canCut?canCut():r[0xe4]===1&&r[0xe5]===1&&r[0xd0]===0&&(r[0xec]&0xfe)===0&&(r[0xed]&0x40)===0&&r[0x2c]===0;
  const layer=()=>r[0xe00b]&0x80?1:0;
- const objectPolicy=policy=>policy==='objects'||policy==='super-beam';
+ const objectPolicy=policy=>['objects','beam','super-beam'].includes(policy);
+ const brazierPolicy=policy=>policy==='super-beam'||policy==='beam'&&[269,276,312,313,314].includes(read16(0xdc));
  // The palace braziers are complete 2x3 native BG1 objects. Removing their
  // transparent base reveals the existing BG2 floor/rug; no replacement art
  // is synthesized. Match all six cells before accepting a grazing beam hit.
- const braziers=[[144,145,88,89,124,125],[92,93,108,109,124,125]];
- const brazierPart=id=>Math.max(...braziers.map(cells=>cells.indexOf(id)));
  function brazierReplacement(tile){
   const rom=snes.cart?.data,map=read16(0xdc);if(!rom||map>=512||tile.layer!==0)return null;
   const at=0x87000+map*2,header=0x80000+(rom[at]|rom[at+1]<<8);
-  return (rom[header+2]&127)===23&&tile.code===0&&braziers.some(cells=>cells.includes(tile.tile))?186:null;
+  return (rom[header+2]&127)===23&&tile.code===0&&brazierPart(tile.tile)>=0?186:null;
  }
  function brazierGroup(tile){
   if(brazierReplacement(tile)===null)return null;
-  for(const pattern of braziers){const index=pattern.indexOf(tile.tile);if(index<0)continue;
+  for(const pattern of palaceBraziers){const index=pattern.indexOf(tile.tile);if(index<0)continue;
    const x=tile.tx-index%2,y=tile.ty-Math.floor(index/2),cells=pattern.map((id,i)=>metadata(x+i%2,y+Math.floor(i/2),0));
-   if(cells.every((cell,i)=>cell&&cell.tile===pattern[i]&&cell.code===0))return cells;
+   if(cells.every((cell,i)=>cell&&cell.tile===pattern[i]&&cell.code===0))return cells.map(cell=>({...cell,brazier:{x,y}}));
   }
   return null;
  }
@@ -64,7 +64,7 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
    while((r[descriptors+replacement*4+2]&0xf0)===0xc0)replacement=r[descriptors+replacement*4+3];
    return{...tile,replacement};
   }
-  const replacement=objectPolicy(policy)&&tile?(sceneryReplacement?.(tile)??(policy==='super-beam'?brazierReplacement(tile):null)):null;
+  const replacement=objectPolicy(policy)&&tile?(sceneryReplacement?.(tile)??(brazierPolicy(policy)?brazierReplacement(tile):null)):null;
   return Number.isInteger(replacement)&&replacement>=0&&replacement<256&&replacement!==tile.tile?{...tile,replacement,kind:8}:null;
  };
  function enqueueTiles(tiles,{policy='plants',attack={}}={}){
@@ -73,13 +73,13 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
   const expanded=[];
   for(const t of tiles){
    const tile=metadata(t.tx,t.ty,t.layer??layer());
-   if(policy==='super-beam'&&tile&&brazierReplacement(tile)!==null)expanded.push(...(brazierGroup(tile)??[]));
+   if(brazierPolicy(policy)&&tile&&brazierReplacement(tile)!==null)expanded.push(...(brazierGroup(tile)??[]));
    else expanded.push(t);
   }
   for(const t of expanded){const item=breakable(metadata(t.tx,t.ty,t.layer??layer()),policy);
    if(!item||queue.some(q=>q.map===map&&q.address===item.address))continue;
    if(queue.length>=128)break;
-   const queued={...item,map,frame:snes.frames,policy};queue.push(queued);added.push(queued);
+   const queued={...item,...(t.brazier?{brazier:t.brazier}:{}),map,frame:snes.frames,policy};queue.push(queued);added.push(queued);
   }
   if(policy==='super-beam'&&demolitionPlan){
    const unused=tiles.filter(t=>!queue.some(q=>q.map===map&&q.tx===t.tx&&q.ty===t.ty&&q.layer===(t.layer??layer())));
@@ -93,7 +93,7 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
  }
  function queuedTile(item){
   const now=metadata(item.tx,item.ty,item.layer);
-  if(!item.demolition)return breakable(now,item.policy);
+  if(!item.demolition){const next=breakable(now,item.policy);return next&&{...next,...(item.brazier?{brazier:item.brazier}:{})};}
   if(!now||now.tile!==item.tile||now.flags!==item.flags||now.behavior!==item.behavior||now.code!==0||item.code!==0||now.flags&8||now.behavior&0xd0||!Number.isInteger(item.replacement)||item.replacement<0||item.replacement>191)return null;
   // A scene may have rebuilt the room between impact and this DMA slot.
   // Its original two floors must still exist; never replay an obsolete hole.
@@ -132,7 +132,7 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
     for(const item of cleared.values()){
      if(queue.length>=128)break;
      const policy=item.policy??'objects',now=item.demolition?queuedTile(item):breakable(metadata(item.tx,item.ty,item.layer),policy);
-     const sameTile=now&&(now.tile===item.tile||policy==='super-beam'&&brazierPart(item.tile)>=0&&brazierPart(now.tile)===brazierPart(item.tile));
+     const sameTile=now&&(now.tile===item.tile||brazierPolicy(policy)&&brazierPart(item.tile)>=0&&brazierPart(now.tile)===brazierPart(item.tile));
      if(sameTile&&now.flags===item.flags&&now.behavior===item.behavior&&now.code===item.code&&now.replacement===item.replacement&&!queue.some(q=>q.address===item.address))queue.push({...item,...now,policy,frame:snes.frames,replay:true});
     }
     while(queue.length){
@@ -142,7 +142,7 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
      const changed=[];
      for(const item of group){
       const cur=queuedTile(item);if(!cur||cur.tile!==item.tile)continue;r[cur.address]=cur.replacement;changed.push(cur);
-      if(objectPolicy(item.policy)&&(cur.demolition||(cur.flags&7)===3||cur.flags&8||item.policy==='super-beam'&&brazierReplacement(cur)!==null))cleared.set(cur.address,{...cur,map,policy:item.policy});
+      if(objectPolicy(item.policy)&&(cur.demolition||(cur.flags&7)===3||cur.flags&8||brazierPolicy(item.policy)&&brazierReplacement(cur)!==null))cleared.set(cur.address,{...cur,map,policy:item.policy});
      }
      if(!changed.length)continue;
      const scrollY=read16(first.layer?0xae:0xaa),mapHeight=read16(0xc2),worldY=first.ty*16+8;
@@ -163,5 +163,5 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
   }
   return priorCycle.call(this);
  };
- return{beam,enqueueTiles,metadata,eligible,snapshot:()=>({queue:structuredClone(queue),lastFrame,done:structuredClone(done),cleared:structuredClone([...cleared.values()]),cutMap}),restore(state){queue=state?.queue||[];lastFrame=state?.lastFrame??-1;done=state?.done||[];cleared=new Map((state?.cleared??[]).map(t=>[t.address,t]));cutMap=state?.cutMap??null;},clear(){queue=[];},dispose(){cpu.cycle=priorCycle;queue=[];cleared.clear();},get pending(){return queue.length;},get completed(){return done;}};
+ return{beam,enqueueTiles,metadata,eligible,wasCleared:(tx,ty,l=layer())=>cutMap===read16(0xdc)&&cleared.has(0x10000+l*0x4000+ty*128+tx),snapshot:()=>({queue:structuredClone(queue),lastFrame,done:structuredClone(done),cleared:structuredClone([...cleared.values()]),cutMap}),restore(state){queue=state?.queue||[];lastFrame=state?.lastFrame??-1;done=state?.done||[];cleared=new Map((state?.cleared??[]).map(t=>[t.address,t]));cutMap=state?.cutMap??null;},clear(){queue=[];},dispose(){cpu.cycle=priorCycle;queue=[];cleared.clear();},get pending(){return queue.length;},get completed(){return done;}};
 }

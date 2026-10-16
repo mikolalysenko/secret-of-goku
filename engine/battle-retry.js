@@ -1,19 +1,38 @@
-// Retry restores the whole emulator plus mod state. Never jump a dead actor
-// back into a live room or let the old intro defeat event run in this arena.
-export function createBattleRetry(mod,{capture,restore,onDefeat}){
- let key=null,saved=null,defeated=false;
- function encounter(){return mod.frieza?.encounter??(mod.read16(0xdc)===253&&mod.canAttack&&mod.entities().some(e=>e.species===127&&e.active&&e.hp)?'beast':null);}
+// Retain the public adapter name for old test tools, but a finale defeat is
+// terminal. Let the native actor die, blocking its unrelated death warp;
+// the saved ending clock then renders the planet's destruction without reviving
+// Goku, restoring consumed items, or advancing the defeated boss's script.
+import {installFinaleDeathGate} from './boss-rush-death.js';
+export function createBattleRetry(mod,{onDefeat=()=>{},onGameOver=()=>{}}={}){
+ installFinaleDeathGate(mod.snes,mod);
+ let key=null,reported=false;
+ function encounter(){
+  if(mod.frieza?.encounter)return mod.frieza.encounter;
+  const map=mod.read16(0xdc),species=map===246?121:map===253?127:null;
+  // The native boss also identifies older checkpoints without trial flags.
+  return species&&mod.entities().some(e=>e.species===species&&!e.custom&&e.active&&e.hp)?map===246?'thanatos':'beast':null;
+ }
  return{
   check(){
-   if(defeated)return true;
+   if(mod.ending?.defeated){key=mod.ending.status.encounter;return true;}
+   if(mod.ending?.active||!mod.options.enabled||!mod.gokuActive){key=null;return false;}
    const next=encounter();
-   if(saved&&!mod.read16(0xe182)&&[246,253].includes(mod.read16(0xdc))){defeated=true;mod.cancelCombat();mod.teleport?.restore();onDefeat(key);return true;}
-   if(next&&next!==key&&mod.canAttack&&mod.read16(0xe182)>0&&!mod.read16(0xe1f1)){key=next;saved=capture();}
-   if(saved&&![246,253].includes(mod.read16(0xdc))){key=null;saved=null;}
+   if((key||next)&&!mod.read16(0xe182)&&[246,253].includes(mod.read16(0xdc))){key??=next;mod.ending.lose(key);mod.teleport?.restore();onDefeat(key);return true;}
+   if(next&&mod.canAttack&&mod.read16(0xe182)>0)key=next;
+   if(![246,253].includes(mod.read16(0xdc)))key=null;
    return false;
   },
-  retry(){if(!defeated||!saved)return false;const state=saved;restore(state);mod.cancelInput();defeated=false;return true;},
-  clear(){key=null;saved=null;defeated=false;},
-  get defeated(){return defeated;},get encounter(){return key;},
+  tick(advanceNative){
+   if(!mod.ending?.defeated)return;
+   if(!mod.ending.complete){
+    if(mod.ending.nativeDeath&&advanceNative)advanceNative();
+    else{mod.frame++;mod.ending.tick();}
+   }
+   mod.planetView.renderDefeat();
+   if(mod.ending.complete&&!reported){reported=true;onGameOver();}
+  },
+  retry(){return false;},
+  clear(){key=null;reported=false;},
+  get defeated(){return !!mod.ending?.defeated;},get gameOver(){return !!mod.ending?.defeated&&mod.ending.complete;},get encounter(){return key;},
  };
 }

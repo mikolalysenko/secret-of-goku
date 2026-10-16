@@ -178,18 +178,35 @@
     },
     {
       "name": "landing",
-      "source": "flight",
-      "start": 0.86,
-      "end": 1.3,
-      "tempo": 1.6,
-      "reverse": true,
+      "source": "whoosh",
+      "start": 0.06,
+      "end": 0.37,
+      "highpass": 90,
+      "lowpass": 2400,
       "rms": 0.12,
+      "fade": 0.11,
+      "decay": 3,
+      "layers": [
+        {
+          "source": "punchB",
+          "start": 0,
+          "end": 0.18,
+          "highpass": 45,
+          "lowpass": 1300,
+          "level": 0.48,
+          "offset": 0.07,
+          "decay": 9,
+          "sourceFile": "punch-fight/Dragon Ball Z Punch Sound Effect N°22.wav",
+          "sourceUrl": "https://soundsverse.com/dragon-ball-z/dragon-ball-z-punch-fight",
+          "sha256": "5712f553635e0a74346f746cf8f52a47c4a7e1291bc209dfa387aab5ab6b2c1e"
+        }
+      ],
       "file": "landing.wav",
-      "duration": 0.27675,
-      "sourceFile": "cell-flying-turbo/cell-cell-flying-turbo-sound-effect.mp3",
-      "sourceUrl": "https://soundsverse.com/dragon-ball-z/cell/cell-flying-turbo",
-      "sha256": "c6db7112e36a2644af1e016b1e0869f6e41ddd742d4ff980ac979f28670380ad",
-      "gain": 0.46325213768470075
+      "duration": 0.31,
+      "sourceFile": "anime-whoosh/Anime_Whoosh_Sound_20_(High_Quality).ogg",
+      "sourceUrl": "https://soundeffects.fandom.com/wiki/Anime_Whoosh_Sound_20",
+      "sha256": "c10814abb9548d3cc2fa43befa9e308bf0288e565686877133db772df57b732c",
+      "gain": 0.7787175614970214
     },
     {
       "name": "transform",

@@ -14,6 +14,7 @@ export const radarPalaces=[
 ];
 const route=[0,1,2,3,5,4,6];
 export function radarTarget(rom,quest,{fortressDestroyed=false,fortress={x:0,y:0},frieza=null}={}){
+ if(frieza?.needsTree)return{id:'mana-tree',name:'Mana Tree / Pure Land',hint:'Chase Frieza. Save the Tree.',x:rom[0x67a80+198*2]*16,y:rom[0x67a81+198*2]*16};
  const index=route.find(i=>!(quest.mask&(1<<i)));
  if(index!==undefined){const {map,hint}=radarPalaces[index];return{id:index,name:`${dragonBallPalaces[index]} Palace`,hint,x:rom[0x67a80+map*2]*16,y:rom[0x67a81+map*2]*16};}
  if(frieza?.stolen)return{id:'frieza',name:'Frieza / Fortress',hint:'Keep eighth. Confront him.',...fortress};

@@ -84,10 +84,10 @@ class ManaSpriteLayer {
       }
     }
   }
-  giantBeam(x,y,dx,dy,length,halfWidth,phase,{taper=44,farScale=1}={}){
+  giantBeam(x,y,dx,dy,length,halfWidth,phase,{taper=44,farScale=1,palette=null}={}){
     // A solid blue-white core, using only Lucent Beam's original colors.
     // Work in native pixels: no stretched sprites, alpha glow or canvas layer.
-    const colors=[...new Set((this.effects['beam-body']||[]).flatMap(p=>Array.from(p)))].filter(Boolean).sort((a,b)=>a-b);
+    const colors=palette??[...new Set((this.effects['beam-body']||[]).flatMap(p=>Array.from(p)))].filter(Boolean).sort((a,b)=>a-b);
     if(colors.length<4)return;
     const radius=d=>halfWidth*Math.min(1,(d+8)/taper)*(1-(1-farScale)*d/Math.max(1,length));
     const x0=Math.max(0,Math.floor(Math.min(x,x+dx*length)-halfWidth-2)),x1=Math.min(255,Math.ceil(Math.max(x,x+dx*length)+halfWidth+2));
@@ -187,7 +187,10 @@ class ManaSpriteLayer {
     // never mistake their reused OAM tile numbers for the player.
     // $E4/$E5 are brightness fade timers. Door/boss fades continue displaying
     // the native actor, so its DMA ownership decides when to replace it.
-    const displayed=m.ownership?.ppuOwners.find(owner=>owner?.base===0xe000&&owner.kind==='body');
+    // The Tree reveal stages Randi as an NPC while actor zero operates the
+    // camera. Replace that one owned stand-in too; companions remain native.
+    const heroOwner=owner=>owner?.base===0xe000||m.read16(0xdc)===236&&owner?.native?.species===138;
+    const displayed=m.ownership?.ppuOwners.find(owner=>heroOwner(owner)&&owner.kind==='body');
     const hud=m.ownership?.ppuOwners.find(owner=>owner?.base===0xe000&&owner.kind==='portrait');
     const ground=!!displayed||(m.read8(0xe4)===1&&m.read8(0xe5)===1&&(m.read8(0xe000)&1));
     const naming=m.nameEditor&&m.read8(0xe4)===0&&m.read8(0xe5)===0;
@@ -201,10 +204,6 @@ class ManaSpriteLayer {
     // Balloon, Barrel and Engulf reuse the weapon OBJ slots for their native
     // covering/effect. Preserve those cells over the replacement body.
     const weaponEffect=ground&&(m.read8(0xe191)&0x45);
-    let flyItem=-1;
-    if(ground&&(m.read8(0xec)&8)&&m.read8(0x1809)===0)for(let i=0;i<12;i++){
-      const item=m.read8(0xcc48+i);if(item===255)break;if((item&31)===7){flyItem=i;break;}
-    }
     if(ground||hud||flight||naming)for(let index=0;index<256;index+=2){
       const attr=p.oam[index+1],tile=attr&255,palette=(attr>>9)&7;
       let x=p.oam[index]&255,y=p.oam[index]>>8;
@@ -217,22 +216,21 @@ class ManaSpriteLayer {
       // Ferry passengers ride with Goku as during world flight. Hide only
       // their owned body/attachment/shadow cells, retaining the native HUD.
       if(m.frieza?.hideOwner(owner)){hidden.add(index);continue;}
+      if(m.trial?.hideOwner(owner)){hidden.add(index);continue;}
       if(passengers.has(owner?.base)){hidden.add(index);continue;}
-      const body=ground&&!nativeForm&&(m.ownership?owner?.base===0xe000&&owner.kind==='body':(palette===1||palette===5)&&(attr&0x100)&&tile>=0xc0&&tile<0xe8);
+      const body=ground&&!nativeForm&&(m.ownership?heroOwner(owner)&&owner.kind==='body':(palette===1||palette===5)&&(attr&0x100)&&tile>=0xc0&&tile<0xe8);
       const nameBody=naming&&palette===1&&!(attr&0x100)&&tile>=0x30&&tile<=0x37;
       if(menuBoy&&palette===1&&!(attr&0x100)&&tile>=0x30&&tile<=0x37&&size===8)menuParts.push({index,x,y,size,tile,palette,priority:(attr>>12)&3});
       const dragon=flight&&palette===5;
       const portrait=!nativeForm&&(m.ownership?owner?.base===0xe000&&owner.kind==='portrait':ground&&(palette===1||palette===5)&&(attr&0x100)&&tile===0xe8);
-      const flyIcon=flyItem>=0&&index/2===18+flyItem&&!(attr&0x100)&&tile===0xe0+flyItem*2&&size===16;
-      const senzuIcon=size===16&&m.senzu?.iconMatches(p,attr);
+      const itemIcon=size===16?m.itemIconKind?.(p,attr):null;
       const dustIcon=size===16&&m.equipment?.iconMatches(p,attr,index/2);
       // The waterfall engine also moves the weapon to color-math palette 4.
       const screenX=m.read16(0xe020)<<16>>16,screenY=m.read16(0xe022)<<16>>16;
       const sword=ground&&!nativeForm&&!weaponEffect&&(palette===0||palette===4)&&(attr&0x100)&&[0x44,0x46,0x48].includes(tile)&&Math.abs(x-screenX)<48&&Math.abs(y-screenY)<48;
       if(body||dragon||nameBody){parts.push({index,x,y,size,palette,priority:(attr>>12)&3,owner:body?owner:null});if(replacing)hidden.add(index);}
       else if(portrait&&replacing){portraits.set(index,{x:x+(tile===0x0a?3:0),y:y+(tile===0x0a?2:0),size:tile===0x0a?10:16,palette,priority:(attr>>12)&3});hidden.add(index);}
-      else if(flyIcon&&replacing){portraits.set(index,{x,y,size:16,palette,priority:(attr>>12)&3,kind:'fly'});hidden.add(index);}
-      else if(senzuIcon){portraits.set(index,{x,y,size:16,palette,priority:(attr>>12)&3,kind:'senzu',flipX:!!(attr&0x4000),flipY:!!(attr&0x8000)});hidden.add(index);}
+      else if(itemIcon){portraits.set(index,{x,y,size:16,palette,priority:(attr>>12)&3,kind:itemIcon,flipX:!!(attr&0x4000),flipY:!!(attr&0x8000)});hidden.add(index);}
       else if(dustIcon){portraits.set(index,{x,y,size:16,palette,priority:(attr>>12)&3,kind:'dust'});hidden.add(index);}
       else if(m.gapFlight?.active&&owner?.base===0xe000&&['attachment','cached-attachment'].includes(owner.kind))hidden.add(index);
       else if(sword&&replacing)hidden.add(index);
@@ -248,7 +246,7 @@ class ManaSpriteLayer {
     this.plan={frame:m.frame,oamRevision:m.ownership?.revision,anchor,hidden,parts,portraits};
     if(!anchor){
       if(m.arrival?.animating){this.plan.anchor={index:0,x:0,y:0,size:8,palette:0,priority:3};m.arrival.drawScene(this);}
-      else if(m.frieza?.ownsArena()){this.plan.anchor={index:0,x:0,y:0,size:8,palette:0,priority:3};m.frieza.draw(this);}
+      else if(m.frieza?.ownsArena()||m.frieza?.treeScene||m.frieza?.introHero){this.plan.anchor={index:0,x:0,y:0,size:8,palette:0,priority:3};m.frieza.draw(this);}
       return;
     }
     if(m.arrival?.drawScene(this))return;
@@ -304,17 +302,18 @@ class ManaSpriteLayer {
     }
     const shadow=m.flightShadow;
     if(flight&&shadow){const cx=(shadow.minX+shadow.maxX)/2,cy=(shadow.minY+shadow.maxY)/2;for(let yy=-2;yy<=2;yy++)for(let xx=-8;xx<=8;xx++)if(xx*xx/64+yy*yy/4<=1)this.pixel(cx+xx,cy+yy,this.rgb(40,56,48));}
-    if(m.canAttack)this.rubble();
+    if(m.canAttack){this.rubble();m.drawDemolitionEffects?.(this);}
     m.ceiling?.draw(this);
     m.challenge?.draw(this);m.powerIntro?.draw(this);
     this.blit(pose.sheet,column,row,x,y,size,size,pose.legs??null);
     // Follow original poison/stone/ghost/flash palette changes before the PPU
     // applies its own window, water blend and brightness operations.
-    if(ground&&!menuBody)for(let yy=Math.max(0,y);yy<Math.min(256,y+size);yy++)for(let xx=Math.max(0,x);xx<Math.min(256,x+size);xx++){
+    if(ground&&!menuBody&&display?.native.species!==138)for(let yy=Math.max(0,y);yy<Math.min(256,y+size);yy++)for(let xx=Math.max(0,x);xx<Math.min(256,x+size);xx++){
       const i=yy*256+xx;if(this.surface[i]&&!this.effectMask[i])this.surface[i]=this.tint(this.surface[i],anchor.palette);
     }
     if(ground&&!menuBody)m.hitRecovery?.draw(this,x,y,size);
     m.frieza?.draw(this);
+    if(!menuBody&&p.mode===1)m.trial?.draw(this);
     if(m.charging&&(m.canAttack||flight)){
       const form=window.GokuAnimationData.forms[superForm?'ssj':'goku'],socket=form.sockets[superForm?18:22][row];
       const strength=m.charge/(superForm?45:90),frame=strength>=1?3+Math.floor(m.frame/4)%2:Math.min(4,Math.floor(strength*5));
@@ -328,10 +327,35 @@ class ManaSpriteLayer {
       this.behindBody=effect.dy<0&&(effect.kind==='beam'||effect.kind==='ki');
       const sx=effect.x-state.cameraX,sy=effect.y-state.cameraY;
       const age=effect.max-effect.life,phase=Math.floor(age/2);
-      if(effect.kind==='rubble'){
+      if(effect.kind==='rubble'||effect.kind==='brazierBurst'){
         continue;
       }
-      if(effect.kind==='powerBurst'){
+      if(effect.kind==='powerBurst'||effect.kind==='statusBurst'){
+        if(effect.shell==='fire'){
+          // Break Engulf into the cartridge's Exploder/Fireball particles.
+          // Embers leave the body in eight directions and burn out quickly.
+          const put=(x,y,c)=>this.pixel(x,y,c,true),dirs=[[0,-4],[3,-3],[4,0],[3,2],[0,3],[-3,2],[-4,0],[-3,-3]];
+          if(age<14)m.kiArt?.combustion('burst',age>>1,sx,sy,put);
+          for(let i=0;i<dirs.length;i++)if(age<26-i){
+            const[dx,dy]=dirs[i];
+            m.kiArt?.combustion('ember',Math.min(2,age>>3),Math.round(sx)+Math.trunc(dx*(age+3)/3),Math.round(sy)+Math.trunc(dy*(age+3)/3)-(age>>2),put,{turn:i&3});
+          }
+          if(age>=14)continue;
+        }else if(effect.shell){
+          // Pop at the balloon's native height; the snow shell shatters
+          // around the body. Reuse Lucent Beam's blue/white impact cells,
+          // with small cropped fragments and whole-pixel ballistic motion.
+          const cy=sy-(effect.shell==='balloon'?18:0),dirs=[[0,-4],[3,-3],[4,0],[3,2],[0,3],[-3,2],[-4,0],[-3,-3]];
+          if(age<12)this.stamp('impact-spark',age>>1,sx,cy);
+          const cell=this.effects['impact-spark']?.[effect.shell==='ice'?1:2];
+          if(cell)for(let i=0;i<dirs.length;i++){
+            const [dx,dy]=dirs[i],xx=Math.round(sx)+Math.trunc(dx*age/3),yy=Math.round(cy)+Math.trunc(dy*age/3)+(age*age>>6),size=effect.shell==='ice'?5:3;
+            for(let py=0;py<size;py++)for(let px=0;px<size;px++){
+              const color=cell[(py+6)*16+px+6];if(color)this.pixel(xx+px,yy+py,color,true);
+            }
+          }
+          if(age>=14)continue;
+        }
         // The whole damage radius lights up on the ignition frame, then
         // dissipates outward using native spell cells at their original size.
         this.behindBody=true;
@@ -339,8 +363,9 @@ class ManaSpriteLayer {
         for(let i=0;i<count;i++){
           const angle=i*Math.PI*2/count,dx=Math.cos(angle),dy=Math.sin(angle),turn=Math.round(i*4/count)%4;
           const [ax,ay]=[[1,0],[0,1],[-1,0],[0,-1]][turn];
-          this.stamp(age<8?'gold-arc':'gold-spark',phase+i,Math.round(sx+dx*radius),Math.round(sy+dy*radius),ax,ay);
-          if(age<5)this.stamp('gold-spark',phase+i,Math.round(sx+dx*radius*.45),Math.round(sy+dy*radius*.45));
+          const gold=effect.super;
+          this.stamp(age<8?(gold?'gold-arc':'aura-arc'):(gold?'gold-spark':'impact-spark'),phase+i,Math.round(sx+dx*radius),Math.round(sy+dy*radius),ax,ay);
+          if(age<5)this.stamp(gold?'gold-spark':'impact-spark',phase+i,Math.round(sx+dx*radius*.45),Math.round(sy+dy*radius*.45));
         }
         this.behindBody=false;continue;
       }
@@ -380,10 +405,11 @@ class ManaSpriteLayer {
   inject(ppu,line){
     const a=this.plan.anchor,part=this.plan.parts.find(p=>line>=p.y&&line<p.y+p.size)||a;
     const airborne=this.mod.localFlight||this.mod.localLift>0||this.mod.flightTransition||this.mod.ceiling?.pose;
+    const treeStandIn=a?.owner?.native.map===236&&a?.owner?.native.species===138;
     for(let x=0;x<256;x++){const i=line*256+x,color=this.surface[i];if(color){
       // Original spell OBJs use palette 0, priority 3 and no OBJ color math,
       // independently of Goku's water palette or background priority.
-      ppu.spriteLineBuffer[x]=this.effectMask[i]?0x86:0x81+(airborne?part.palette&3:part.palette)*16;
+      ppu.spriteLineBuffer[x]=this.effectMask[i]?0x86:0x81+(airborne||treeStandIn?part.palette&3:part.palette)*16;
       ppu.spritePrioBuffer[x]=this.effectMask[i]||airborne?3:part.priority;this.customLine[x]=color;
     }}
   }
@@ -398,8 +424,11 @@ class ManaSpriteLayer {
         continue;
       }
       if(portrait.kind==='fly'){
-        const column=(this.mod.options.superSaiyan?36:40)+Math.floor(this.mod.frame/8)%4,x=portrait.x+col;
-        const color=atlas.pixels[(32+row*2)*atlas.width+column*32+col*2];
+        // The head-on cruise strip is almost entirely foreshortened hair.
+        // Use the complete upright hover pose, fixed like the other items.
+        const column=this.mod.options.superSaiyan?34:38,x=portrait.x+col;
+        const sx=(portrait.flipX?15-col:col)*2,sy=(portrait.flipY?15-row:row)*2;
+        const color=atlas.pixels[(32+sy)*atlas.width+column*32+sx];
         if(color&&x>=0&&x<256){ppu.spriteLineBuffer[x]=0x81+portrait.palette*16;ppu.spritePrioBuffer[x]=portrait.priority;this.customLine[x]=color;}
         continue;
       }

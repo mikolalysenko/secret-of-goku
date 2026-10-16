@@ -1,11 +1,12 @@
 import {box,call} from './story-events.js';
 import {endingEvents} from './ending-rules.js';
+import {departureTiming} from './ending-departure.js';
 
 export function heroFarewell(){
   return[
-    ...box('RANDI:You saved everyone!\nVILLAGER:Eventually.\nGOKU:I should probably go.'),
+    ...box('{3}:You saved everyone!\nVILLAGER:Eventually.\nGOKU:I should probably go.'),
     ...box('LUKA:Thank you, Goku.\nPlease use the sky on\nyour way out. Just fly.\nNo more beams.'),
-    ...call(endingEvents.depart),0x28,16,...call(endingEvents.kai),0x28,4,
+    ...call(endingEvents.depart),0x28,departureTiming.end/5,...call(endingEvents.kai),0x28,8,
     ...box('KING KAI:Next time, be\nmore careful, Goku.\nBut... good job.'),
     ...box('GOKU:Thanks, King Kai!\nThe big one was REALLY\nstrong after I fed it.'),
     ...box('KING KAI:I noticed.\nThat was the part where\nI was shouting STOP.'),

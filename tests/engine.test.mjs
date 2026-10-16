@@ -28,8 +28,8 @@ test('hybrid damage queues the native lethal hit without hitting an NPC or party
 
 test('native flight preserves the original held descend input and transformation doubles attack',()=>{
   const {snes,mod}=make();mod.write8(0xe4,4);mod.write8(0xe5,4);mod.write8(0xec,0x80);frame(snes,mod,1);
-  assert.equal(mod.worldFlight,true);assert.equal(snes.joypad1State&1,1);assert.equal(mod.charging,false);assert.equal(mod.read16(0xe198),4095);
-  mod.configure({superSaiyan:true});frame(snes,mod,1);assert.equal(mod.read16(0xe198),8191);assert.equal(mod.read8(0xe1ed),0);
+  assert.equal(mod.worldFlight,true);assert.equal(snes.joypad1State&1,1);assert.equal(mod.charging,false);assert.equal(mod.status.attack,4095);assert.equal(mod.read8(0xe198),255);
+  mod.configure({superSaiyan:true});frame(snes,mod,1);assert.equal(mod.status.attack,8191);assert.equal(mod.read8(0xe198),255);assert.equal(mod.read8(0xe1ed),0);
 });
 
 test('state snapshots omit ROM bytes, preserve aliases and closures, and reject another cartridge',()=>{
@@ -67,7 +67,7 @@ test('the BOY prologue retains native inputs and stats until Goku has arrived',(
   for(let i=0;i<120;i++){frame(snes,mod,1);assert.equal(snes.joypad1State,1);}
   assert.equal(mod.canAttack,false);assert.equal(mod.charging,false);assert.equal(mod.effects.length,0);
   assert.equal(mod.read16(0xe182),50);assert.equal(mod.read16(0xe198),7);
-  mod.arrival.arrived=true;frame(snes,mod,0);assert.equal(mod.canAttack,true);assert.equal(mod.read16(0xe198),4095);
+  mod.arrival.arrived=true;frame(snes,mod,0);assert.equal(mod.canAttack,true);assert.equal(mod.status.attack,4095);assert.equal(mod.read8(0xe198),255);
 });
 
 test('A alone stays still; direction+A flies, releasing direction lands, and dialogue drops hover immediately',()=>{

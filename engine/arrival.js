@@ -1,6 +1,7 @@
 import {installArrivalEventData} from './arrival-event-data.js';
 import {decodePotosCrater} from './native-crater.js';
 import {drawSaiyanPod,saiyanPodFrames} from './saiyan-pod.js';
+import {crownGoku} from './native-names.js';
 
 // A single hand-off in the native sword event. Text, input waits, sound, ghost,
 // inventory and story flags still execute in the original event interpreter.
@@ -76,7 +77,7 @@ export function createArrival(snes,mod){
         setPhase(phase);
         if(!state.arrived&&['impact','ghost','dialogue'].includes(phase)){
           state.arrived=true;state.crater=true;
-          snes.ram.set([0xa1,0xa9,0xa5,0xaf,0,0],0xcc00); // native GOKU name
+          crownGoku(snes.ram); // native GOKU name; the boy's name moves to the slot tail
           mod.attackHeld=0;mod.nativeTapFrames=0;mod.charging=false;mod.charge=0;
         }
       }

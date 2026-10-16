@@ -3,7 +3,22 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#080808"><title>Secret of Goku — SNES</title>
-  <meta name="description" content="Secret of Mana's original SNES adventure, with Goku.">
+  <meta name="description" content="Secret of Mana's original SNES adventure, with Goku. Punch, fly, Kamehameha and go Super Saiyan through the whole game, free in your browser — bring your own ROM.">
+  <link rel="canonical" href="https://mikolalysenko.github.io/secret-of-goku/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Secret of Goku"><meta property="og:locale" content="en_US">
+  <meta property="og:title" content="Secret of Goku — Secret of Mana, with Goku">
+  <meta property="og:description" content="Punch, fly, Kamehameha and go Super Saiyan through Secret of Mana's original SNES adventure. Play free in your browser — bring your own ROM.">
+  <meta property="og:url" content="https://mikolalysenko.github.io/secret-of-goku/">
+  <meta property="og:image" content="https://mikolalysenko.github.io/secret-of-goku/assets/social/og-image.jpg">
+  <meta property="og:image:type" content="image/jpeg"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Secret of Goku title card: the gold Secret of Mana logo reading “Secret of Goku” above the line “Secret of Mana. With Goku.”">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Secret of Goku — Secret of Mana, with Goku">
+  <meta name="twitter:description" content="Punch, fly, Kamehameha and go Super Saiyan through Secret of Mana's original SNES adventure. Play free in your browser — bring your own ROM.">
+  <meta name="twitter:image" content="https://mikolalysenko.github.io/secret-of-goku/assets/social/og-image.jpg">
+  <meta name="twitter:image:alt" content="Secret of Goku title card: the gold Secret of Mana logo reading “Secret of Goku” above the line “Secret of Mana. With Goku.”">
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"VideoGame","name":"Secret of Goku","url":"https://mikolalysenko.github.io/secret-of-goku/","description":"A browser mod of Secret of Mana's original SNES adventure where Goku replaces the hero: punches, flight, ki blasts, Kamehameha, Instant Transmission and Super Saiyan. Bring your own Secret of Mana (USA) ROM.","genre":["Action role-playing","Parody"],"gamePlatform":"Web browser","applicationCategory":"Game","operatingSystem":"Any","isAccessibleForFree":true,"author":{"@type":"Person","name":"Mikola Lysenko"},"codeRepository":"https://github.com/mikolalysenko/secret-of-goku","image":"https://mikolalysenko.github.io/secret-of-goku/assets/social/og-image.jpg","screenshot":[{"@type":"ImageObject","contentUrl":"https://mikolalysenko.github.io/secret-of-goku/assets/social/kamehameha.jpg","caption":"Super Saiyan Goku fires a Kamehameha at a Rabite in the forest near Potos"},{"@type":"ImageObject","contentUrl":"https://mikolalysenko.github.io/secret-of-goku/assets/social/super-saiyan.jpg","caption":"Goku transforms into a Super Saiyan beside a waterfall"},{"@type":"ImageObject","contentUrl":"https://mikolalysenko.github.io/secret-of-goku/assets/social/world-flight.jpg","caption":"Goku flies over the world map"},{"@type":"ImageObject","contentUrl":"https://mikolalysenko.github.io/secret-of-goku/assets/social/instant-transmission.jpg","caption":"Goku uses Instant Transmission to defeat a room of monsters"}]}</script>
   <link rel="stylesheet" href="engine/player.css">
 </head>
 <body data-mode="original">
@@ -26,7 +41,7 @@
   <div class="keys"><span><kbd>ARROWS</kbd> Move / menu</span><span><kbd>Z + ARROWS</kbd> Fly fast</span><span><kbd>X</kbd> Punch / confirm</span><span><kbd>C</kbd> Ki blast</span><span><kbd>A</kbd> Ring / back</span><span><kbd>SHIFT</kbd> Focus</span><span><kbd>D</kbd> Fast-forward</span><span><kbd>S</kbd> Select</span><span><kbd>SPACE</kbd> Start</span></div>
   <details class="settings"><summary>Controls & game options</summary>
     <p>Use <kbd>ARROWS</kbd> to move and navigate menus: left/right rotates the ring; up/down changes ring levels. <kbd>A</kbd> opens the ring, backs out of a submenu, or closes it. <kbd>X</kbd> punches, talks and confirms; mash or hold for a combo. Hold <kbd>Z</kbd> with an arrow to fly fast; Z alone stays still. <kbd>C</kbd> fires ki blasts; hold for rapid fire.</p>
-    <p>Hold <kbd>SHIFT</kbd> (SNES L) to focus. Add <kbd>C</kbd> to charge Kamehameha, then release to fire; movement stays available at half speed. Add <kbd>X</kbd> for Instant Transmission. Hold <kbd>SHIFT + Z</kbd> to build the aura and transform at full power; tap the chord in Super Saiyan to return to normal. <kbd>SHIFT + D</kbd> takes off into world flight, punching through indoor ceilings.</p>
+    <p>Hold <kbd>SHIFT</kbd> (SNES L) to focus and break out of sleep or petrification. Add <kbd>C</kbd> to charge Kamehameha, then release to fire; movement stays available at half speed. Add <kbd>X</kbd> for Instant Transmission. Hold <kbd>SHIFT + Z</kbd> to build the aura and transform at full power; tap the chord in Super Saiyan to return to normal. <kbd>SHIFT + D</kbd> takes off into world flight, punching through indoor ceilings.</p>
     <p>In world flight, arrows steer, <kbd>Z</kbd> ascends and <kbd>X</kbd> descends to land. <kbd>SHIFT + C</kbd> still charges the aerial Kamehameha. <kbd>SPACE</kbd> starts and accepts your name; <kbd>S</kbd> is Select / switch party. <kbd>ENTER</kbd> also starts, <kbd>BACKSPACE</kbd> goes back / deletes a letter, and <kbd>ESC</kbd> pauses the browser player.</p>
     <p>Hold <kbd>D</kbd> (SNES R) to fast-forward dialogue and cutscenes. Normal prose advances automatically; choices wait for your answer. Release to resume normal speed and sound.</p>
     <p id="gamepad-status" role="status">Connect a controller, then press a button.</p>
@@ -36,7 +51,7 @@
     <div class="mod-options"><label><input id="goku-enabled" type="checkbox" checked> Goku sprites</label><label><input id="power-enabled" type="checkbox" checked> Saiyan power</label><label><input id="super-enabled" type="checkbox"> Super Saiyan</label></div>
     <button id="native-fly" disabled>Take flight</button>
     <p>Checkpoints are saved in this browser. The supplied ROM is never changed.</p>
-    <details><summary>Developer tools</summary><p><a href="engine.html">Potos test start</a> · <a href="docs/engine-lab.md">Modding notes</a></p><div><strong id="engine-state">LOADING</strong> <span id="fps"></span></div><dl id="memory-readout"></dl></details>
+    <details><summary>Developer tools</summary><p><a href="engine.html">Potos test start</a> · <a href="scenes.html">Scene debugger</a> · <a href="docs/engine-lab.md">Modding notes</a></p><div><strong id="engine-state">LOADING</strong> <span id="fps"></span></div><dl id="memory-readout"></dl></details>
   </details>
   <details class="settings"><summary>Test scenes</summary>
     <p>Jump to a scene or open its direct link. Late-game scenes skip the opening. First use takes a few seconds; later jumps are instant. Your in-game saves and manual checkpoint stay separate.</p>
