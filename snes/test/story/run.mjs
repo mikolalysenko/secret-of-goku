@@ -31,7 +31,7 @@ const base=new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')
 const env=await loadStoryEnvironment(repo,base);
 const {eventRange}=await import(pathToFileURL(join(repo,'engine/event-codec.js')).href);
 const {waterPalaceApproach}=await import(pathToFileURL(join(repo,'engine/water-palace.js')).href);
-const {decodeText}=await import(pathToFileURL(join(repo,'engine/event-codec.js')).href);
+const {decodeText,commandLength:commandLengthOf}=await import(pathToFileURL(join(repo,'engine/event-codec.js')).href);
 const {compiledText}=await import(pathToFileURL(join(repo,'engine/story-compiler.js')).href);
 // The browser's choice for event `id` with party `mask` and state `assign`.
 const js=(id,mask,assign=[])=>{const e=env.entries.get(0xc00000+eventRange(env.data,id).start);if(!e)return 0xc00000+eventRange(env.data,id).start;return env.evaluate(e,assign,mask).result;};
@@ -92,6 +92,98 @@ cases.push({name:'water-palace-walk',bundle:'power-flight-fixes__jema-7',writes:
     ];
   }});
 
+// ---- names (engine/native-names.js) ----------------------------------------
+const {displayName}=await import(pathToFileURL(join(repo,'engine/native-names.js')).href);
+const {encodeText}=await import(pathToFileURL(join(repo,'engine/event-codec.js')).href);
+const wramOf=name=>new Uint8Array(readFileSync(join(bundle(name),'wram.bin')));
+const NAME_BUF=0x7ea22f;
+for(const [name,tail] of[['names-boy-state',null],['names-boy-tail',encodeText('Ann')],['names-boy-unnamed',encodeText('BOY')],['names-boy-empty',[]]]){
+  const writes=[...goku];
+  if(tail){for(let i=0;i<6;i++)writes.push([0x7ecc06+i,tail[i]??0,1]);}
+  cases.push({name,bundle:'emulator-probe__potos-state',writes,request:[0x107,0],frames:500,mash:24,shots:[80],dump:[[NAME_BUF,13]],
+    check(r){
+      const w=wramOf('emulator-probe__potos-state');
+      if(tail){for(let i=0;i<6;i++)w[0xcc06+i]=tail[i]??0;}
+      const want=[...displayName(w,3),0,0,0,0,0,0,0,0,0,0,0,0,0].slice(0,13);
+      const got=r.dumps?.[0]??[];
+      const t=r.trace.find(x=>x[0]===0x107);
+      return [
+        ['107 resolves to its compiled line',t&&t[1]===js(0x107,0),t?hex(t[1],6):'none'],
+        ['57 03 shows displayName(3)',want.every((v,i)=>v===got[i]),`native [${got.map(v=>hex(v)).join(' ')}] browser [${want.map(v=>hex(v)).join(' ')}]`],
+      ];
+    }});
+}
+// ---- Dragon Ball grant marker (588: Water seed) -----------------------------
+cases.push({name:'grant-water',bundle:'emulator-probe__potos-state',writes:[...goku,[P_MASK,0,1],[P_SEEDS,0,1],[0x7ecf90,0,1],[0x7ecf45,0,1]],request:[0x588,0],frames:700,mash:20,shots:[100,300],
+  check(r){
+    const p=r.persist,ram=r.ram,hits=ram[0x74]|ram[0x75]<<8;
+    const marker=catalog.grants.find(g=>g.index===0&&alloc(js(0x588,0))&&g.addr>=js(0x588,0)&&g.addr<alloc(js(0x588,0)).end);
+    return [
+      ['588 resolves to the compiled seed event',r.trace.some(t=>t[0]===0x588&&t[1]===js(0x588,0)),''],
+      ['native flag CF90 set by the event',r.flags[0x90]===1,`CF90=${r.flags[0x90]}`],
+      ['grant marker fetched',!!marker&&r.reads.some(([a,b])=>marker.addr>=a&&marker.addr<=b),marker?hex(marker.addr,6):'no marker'],
+      ['ledger collected the Water Ball',(p[1]&1)===1&&(p[2]&1)===1&&hits>=1,`mask ${hex(p[1])} seeds ${hex(p[2])} hits ${hits}`],
+    ];
+  }});
+// ---- spell grants kept for an absent companion (583) -------------------------
+cases.push({name:'spell-grant',bundle:'emulator-probe__potos-state',writes:[...goku,[0x316848+3,0,1],[0x316850+3,0,1],[0x7ee3cb,0,1],[0x7ee5cb,0,1]],request:[0x583,0],frames:90,mash:0,
+  timed:[[60,[[0x7ee200,1,1],[0x7ee3cb,0,1]]]],dump:[[0x7ee3cb,1],[0x7ee5cb,1]],
+  check(r){
+    const p=r.persist,girl=r.dumps?.[0]?.[0];
+    return [
+      ['girl grant remembered (39 02 CB 38)',p[8+3]===0x38,`spells[3]=${hex(p[8+3])}`],
+      ['sprite grant remembered (39 03 CB 07)',p[16+3]===0x07,`spells[11]=${hex(p[16+3])}`],
+      ['re-granted once the girl is present',(girl&0x38)===0x38,`E3CB=${hex(girl??0)}`],
+    ];
+  }});
+// ---- story-area prerequisites on map entry (door 45 -> Upper Land map 40) ---
+cases.push({name:'story-area',bundle:'emulator-probe__potos-state',writes:[...goku,[0x7ecf20,0,1],[0x7ecf21,0,1],[0x7ecf22,0,1]],request:[0x845,0],frames:240,mash:0,shots:[200],
+  check(r){
+    return [
+      ['door 45 loads map 40',r.map===40,`map ${r.map}`],
+      ['floors raised to 3/2/1 (story-areas.js)',r.flags[0x20]===3&&r.flags[0x21]===2&&r.flags[0x22]===1,`CF20-22 = ${r.flags[0x20]},${r.flags[0x21]},${r.flags[0x22]}`],
+    ];
+  }});
+// ---- absent companions never take movement (28A solo) ------------------------
+cases.push({name:'absent-skip',bundle:'emulator-probe__potos-state',writes:[...goku],request:[0x28a,0],frames:2400,mash:16,stopIdle:true,shots:[120,400],
+  check(r){
+    const at=js(0x28a,0),b=Array.from(env.scripts.get(at).bytes);
+    let moves=0;
+    for(let i=0;i<b.length;){const op=b[i];if(op>=0x7f||op===0x57){i+=op===0x57?2:1;continue;}if([0x31,0x32,0x34].includes(op)&&(b[i+1]===2||b[i+1]===3))moves++;i+=commandLengthOf(b,i);}
+    const skipped=r.ram[4]|r.ram[5]<<8;
+    return [
+      ['28A resolves to the solo variant',r.trace.some(t=>t[0]===0x28a&&t[1]===at),hex(at,6)],
+      ['companion moves skipped',skipped===moves,`skipped ${skipped}, companion moves in script ${moves}`],
+      ['the scene finished (no WAIT stall)',r.d0===0,`D0=${hex(r.d0)} after ${r.frames_run} frames`],
+    ];
+  }});
+// ---- crisis greeting prefix and resume -------------------------------------
+// The Frieza module owns crisisActive; route that query to the ledger's
+// wished bit for this test only (ROM write in Mesen) and set it.
+{
+  const w=wramOf('emulator-probe__potos-state');
+  let npc=null;
+  for(let slot=0x600;slot<0x1800;slot+=0x200){
+    const id=(w[0xe03e+slot]|w[0xe03f+slot]<<8)&0x7ff;
+    if(id&&(w[0xe000+slot]&1)&&w[0xe180+slot]>=0x80&&env.greetingKinds.has(id)&&env.entries.has(0xc00000+eventRange(env.data,id).start)){npc={slot,id,kind:env.greetingKinds.get(id)};break;}
+  }
+  const table=label('story_query_table'),target=label('story_query_quest_wished');
+  const pc=a=>((a>>16)&0x3f)<<16|(a&0xffff);
+  const entry=table+0x10*3;
+  if(npc)cases.push({name:'crisis-greeting',bundle:'emulator-probe__potos-state',writes:[...goku,[0x316844,1,1]],romWrites:[[pc(entry),target&255],[pc(entry)+1,target>>8&255],[pc(entry)+2,target>>16&255]],
+    request:[npc.id,npc.slot],frames:900,mash:24,stopIdle:true,shots:[30,90],
+    check(r){
+      const g=catalog.greetings.find(x=>x.kind===npc.kind),script=js(npc.id,0);
+      const count=r.ram[0x18]|r.ram[0x19]<<8;
+      const sc=alloc(script);
+      return [
+        [`NPC ${hex(npc.id,3)} (${npc.kind}) greeted once`,count===1,`greet count ${count}`],
+        ['greeting text read',readsCover(r.reads,g.start,g.end)>=(g.end-g.start)*0.8,`${hex(g.start,6)}-${hex(g.end,6)}`],
+        ['NPC script resumed after the greeting',sc?readsCover(r.reads,sc.at,sc.end)>0:r.trace.length>0,sc?hex(sc.at,6):'native script'],
+      ];
+    }});
+}
+
 const only=process.argv.slice(2);
 mkdirSync(out,{recursive:true});
 let failures=0;
@@ -100,7 +192,7 @@ const lua=v=>Array.isArray(v)?'{'+v.map(lua).join(',')+'}':typeof v==='string'?J
 for(const c of cases){
   if(only.length&&!only.includes(c.name))continue;
   if(!existsSync(bundle(c.bundle))){console.log(`skip ${c.name}: no bundle ${c.bundle}`);continue;}
-  const prelude=`CASE = {bundle=${lua(bundle(c.bundle))}, writes=${lua(c.writes)}, before=${lua(c.before??[])}, request=${lua(c.request)}, frames=${c.frames}, mash=${c.mash??0}, shots=${lua(c.shots??[])}, resolve=${label('story_resolve_done')}, dump_water=${!!c.dump_water}, stop_idle=${!!c.stopIdle}, rom_writes=${lua(c.romWrites??[])}}\n`;
+  const prelude=`CASE = {bundle=${lua(bundle(c.bundle))}, writes=${lua(c.writes)}, before=${lua(c.before??[])}, request=${lua(c.request)}, frames=${c.frames}, mash=${c.mash??0}, shots=${lua(c.shots??[])}, resolve=${label('story_resolve_done')}, dump_water=${!!c.dump_water}, stop_idle=${!!c.stopIdle}, rom_writes=${lua(c.romWrites??[])}, timed=${lua(c.timed??[])}, dump=${lua(c.dump??[])}}\n`;
   const r=await runMesen({rom,test:prelude+luaBody,outDir:join(out,c.name)});
   const res=r.results??{};
   if(res.error||!res.trace){console.log(`FAIL ${c.name}: ${res.error??'no results'}\n${r.output.slice(-1500)}`);failures++;continue;}

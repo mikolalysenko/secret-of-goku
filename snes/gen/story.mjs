@@ -229,6 +229,27 @@ export async function generate({rom,repo,outDir}){
   // Reference samples for tests (native builder vs. browser builder).
   const waterSamples=[[{x:200,y:400},4],[{x:300,y:350},7],[{x:231,y:291},3],[{x:280,y:308},5],[{x:100,y:500},9],[{x:390,y:200},11]].map(([hero,index])=>({hero,index,bytes:waterPalaceApproach(hero,{index})}));
 
+  // ---- 7b. character names (engine/native-names.js displayName) ----------
+  // The cartridge's name copy (C0:1866) is served the browser's view: the
+  // boy's name from the tail of Goku's slot, retail defaults when unnamed.
+  const names=await engine('native-names.js');
+  const {encodeText}=await engine('event-codec.js');
+  const boyMatch=source('native-names.js').match(/unnamedBoy=encodeText\('([^']+)'\)/);
+  if(!boyMatch)throw Error('native-names.js unnamed boy changed');
+  const unnamedBoy=encodeText(boyMatch[1]);
+  const nameRam=()=>new Uint8Array(0x20000);
+  const defaults=[1,2,3].map(n=>names.displayName(nameRam(),n));
+  { // behaviour checks: tail BOY -> default, real tail -> itself, slot names win
+    const r=nameRam();r.set(unnamedBoy,names.boyTail);
+    if(names.displayName(r,3).join()!==defaults[2].join())throw Error('native-names.js unnamed boy behaviour changed');
+    r.set(encodeText('Ann'),names.boyTail);r[names.boyTail+3]=0;
+    if(names.displayName(r,3).join()!==encodeText('Ann').join())throw Error('native-names.js boy tail behaviour changed');
+    r.set(encodeText('Kim'),names.nameSlot(1));
+    if(names.displayName(r,1).join()!==encodeText('Kim').join())throw Error('native-names.js slot behaviour changed');
+    if(names.boyTail!==0xcc06||names.nameSlot(1)!==0xcc0c)throw Error('native-names.js layout changed');
+  }
+  const pad=(b,n)=>[...b,...Array(n).fill(0)].slice(0,n);
+
   // ---- 8. bounded native text patches (non-relocated events) -------------
   // Flight dialogue is a read overlay in the browser over cartridge text.
   // A relocated event shows its compiled copy instead, so only patch text
@@ -334,6 +355,11 @@ export async function generate({rom,repo,outDir}){
   L('\tdw $FFFF : db 0,0');
   L('story_water_prefix:');bytes(prefix);
   L('story_water_suffix:');bytes(suffixA);
+  L('story_name_default: ; names 1-3 when unnamed (12 bytes each)');
+  bytes([...pad(defaults[0],12),...pad(defaults[1],12),...pad(defaults[2],12)],12);
+  L('story_name_unnamed_boy: ; the title editor default, read as unnamed');
+  bytes(pad(unnamedBoy,6));
+  L(`!STORY_UNNAMED_BOY_LEN = ${unnamedBoy.length}`);
   L('story_data_end:');
   L(`assert story_data_end <= !DATA_STORY+$${hex(DATA_END,4)}, "story data bank overflow"`);
   L('pullpc');

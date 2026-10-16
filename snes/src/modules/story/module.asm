@@ -75,7 +75,8 @@ incsrc "story/data.asm"
 !story_grant_hits    = !RAM_STORY+$74 ; word (debug)
 !story_qresult       = !RAM_STORY+$76 ; word: last query result
 !story_req_id        = !RAM_STORY+$78 ; word: event id being resolved
-; $7A-$FF free
+!story_name_buf      = !RAM_STORY+$7A ; 12 bytes: displayName(n) for the name copy
+; $86-$FF free
 
 ; Persistent fields (!PERSIST_STORY, $C0 bytes, battery SRAM, per save slot)
 !story_p_version   = !PERSIST_STORY+$00 ; 1 once initialised
@@ -2156,6 +2157,236 @@ story_abs:
 	INC
 +	RTS
 
+; ===========================================================================
+; Character names (engine/native-names.js). C0:1866 copies the 12 bytes of
+; name slot n ($CC00+12n) into the text buffer $A22F for a 57 n code. JSL
+; per byte: M8/X16, DB=$7E, X = 12n+i, Y = i, loop counter in B.
+; ===========================================================================
+story_name_byte:
+	PHP
+	REP #$30
+	PHA
+	PHX
+	PHY
+	CPX.w #$0030
+	BCS .native                  ; only slots 0-3 ($CC00-$CC2F)
+	CPY.w #$0000
+	BNE .copy
+	LDA.w #$0000                 ; n = X/12 (X = 12n at i = 0)
+	CPX.w #$000C
+	BCC +
+	INC
+	CPX.w #$0018
+	BCC +
+	INC
+	CPX.w #$0024
+	BCC +
+	INC
++	PHY
+	JSR story_display_name
+	PLY
+.copy
+	TYX
+	SEP #$20
+	LDA.l !story_name_buf,X
+	STA.w $A22F,Y
+	BRA .out
+.native
+	SEP #$20
+	LDA.w $CC00,X
+	STA.w $A22F,Y
+.out
+	REP #$30
+	PLY
+	PLX
+	PLA
+	PLP
+	RTL
+
+; A = n (0-3) -> !story_name_buf = displayName(n), zero padded to 12.
+; M16/X16. Clobbers A/X/Y.
+story_display_name:
+	STA.l !story_tmp0
+	LDX.w #$000A
+	LDA.w #$0000
+-	STA.l !story_name_buf,X
+	DEX
+	DEX
+	BPL -
+	LDA.l !story_tmp0
+	CMP.w #$0003
+	BEQ .boy
+	; slot n: bytes until 0 or FF, at most 12
+	ASL
+	ASL
+	STA.l !story_tmp1            ; 4n
+	ASL
+	CLC
+	ADC.l !story_tmp1            ; 12n
+	TAX
+	LDY.w #$0000
+	SEP #$20
+-	LDA.l $7ECC00,X
+	BEQ .slot_end
+	CMP.b #$FF
+	BEQ .slot_end
+	PHX
+	TYX
+	STA.l !story_name_buf,X
+	PLX
+	INX
+	INY
+	CPY.w #$000C
+	BNE -
+.slot_end
+	REP #$20
+	CPY.w #$0000
+	BNE .done
+	LDA.l !story_tmp0
+	BEQ .done                    ; Goku's slot has no default
+	DEC                          ; default 1 or 2
+	BRA .default
+.boy
+	; the boy's name lives in the tail of Goku's slot ($CC06, 6 letters)
+	LDX.w #$0000
+	SEP #$20
+-	LDA.l $7ECC06,X
+	BEQ .boy_end
+	CMP.b #$FF
+	BEQ .boy_end
+	STA.l !story_name_buf,X
+	INX
+	CPX.w #$0006
+	BNE -
+.boy_end
+	REP #$20
+	CPX.w #$0000
+	BEQ .boy_default
+	CPX.w #!STORY_UNNAMED_BOY_LEN
+	BNE .done
+	; the title editor's untouched default reads as unnamed
+	LDX.w #$0000
+	SEP #$20
+-	LDA.l !story_name_buf,X
+	CMP.l story_name_unnamed_boy,X
+	BNE .named
+	INX
+	CPX.w #!STORY_UNNAMED_BOY_LEN
+	BNE -
+	REP #$20
+.boy_default
+	LDA.w #$0002
+.default
+	; A = default index 0-2: copy 12 bytes of story_name_default
+	STA.l !story_tmp1
+	ASL
+	CLC
+	ADC.l !story_tmp1
+	ASL
+	ASL
+	TAX                          ; index*12
+	LDY.w #$0000
+	SEP #$20
+-	LDA.l story_name_default,X
+	PHX
+	TYX
+	STA.l !story_name_buf,X
+	PLX
+	INX
+	INY
+	CPY.w #$000C
+	BNE -
+.named
+	REP #$20
+.done
+	RTS
+
+; ===========================================================================
+; Public API (JSL; any M/X on entry unless noted; DB/D preserved)
+; ===========================================================================
+
+; A16 = n (0-3) -> X16 = address in bank $7E of displayName(n) (12 bytes,
+; zero padded). For overlay text (King Kai's radio, captions).
+story_api_display_name:
+	PHB
+	PHD
+	PHP
+	REP #$30
+	PEA $7E7E : PLB : PLB
+	PEA $0000 : PLD
+	AND.w #$0003
+	JSR story_display_name
+	PLP
+	PLD
+	PLB
+	REP #$10
+	LDX.w #!story_name_buf&$FFFF
+	RTL
+
+; A16 = story flag index (0-$FF, i.e. $7E:CF00+n) -> A16 = its value.
+story_api_flag_get:
+	PHP
+	REP #$30
+	AND.w #$00FF
+	TAX
+	LDA.l $7ECF00,X
+	AND.w #$00FF
+	PLP
+	RTL
+
+; A16 = flag index, X16 = value: $7E:CF00+n = value.
+story_api_flag_set:
+	PHP
+	REP #$30
+	PHX
+	AND.w #$00FF
+	TAX
+	PLA
+	SEP #$20
+	STA.l $7ECF00,X
+	PLP
+	RTL
+
+; A16 = flag index, X16 = minimum: raise the flag to it, never lower
+; (the story-area rule). Carry set when it changed.
+story_api_flag_raise:
+	PHP
+	REP #$30
+	PHX
+	AND.w #$00FF
+	TAX
+	PLA
+	SEP #$20
+	CMP.l $7ECF00,X
+	BEQ .same
+	BCC .same
+	STA.l $7ECF00,X
+	PLP
+	SEC
+	RTL
+.same
+	PLP
+	CLC
+	RTL
+
+; -> A16 = ledger: low byte balls held (bit = palace), high byte seeds
+; personally collected. X16 = bit0 wished.
+story_api_quest_status:
+	PHP
+	REP #$30
+	LDA.l !story_p_wished
+	AND.w #$0001
+	TAX
+	LDA.l !story_p_mask
+	AND.w #$007F
+	STA.l !story_tmp5
+	LDA.l !story_p_seeds
+	AND.w #$007F
+	XBA
+	ORA.l !story_tmp5
+	PLP
+	RTL
+
 story_code_end:
 assert story_code_end <= !CODE_STORY+$7C00, "story code bank overflow"
 pullpc
@@ -2179,6 +2410,10 @@ pullpc
 ; 00:C481 map object list (REP #$30 / LDA $DC) -> story_map_load
 %orig4($C0C481, $DCA530C2)
 %hijack_jsl($C0C481, story_map_load, 4, story)
+; 00:1866 name copy (LDA $CC00,X / STA $A22F,Y) -> story_name_byte
+%orig4($C01866, $99CC00BD)
+%orig2($C0186A, $A22F)
+%hijack_jsl($C01866, story_name_byte, 6, story)
 ; 00:DD85 object record copied (LDA #$01 / STA $C800,X) -> story_object
 %orig4($C0DD85, $009D01A9)
 %orig1($C0DD89, $C8)

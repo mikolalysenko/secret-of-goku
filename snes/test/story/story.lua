@@ -58,9 +58,22 @@ function test()
   end
   local shots = {}
   for _, f in ipairs(CASE.shots or {}) do shots[f] = true end
+  local timed = {}
+  for _, t in ipairs(CASE.timed or {}) do timed[t[1]] = t[2] end
+  local snapshots = {}
   local started = H.frame
   for i = 1, CASE.frames do
     if shots[i] then H.shot(string.format('f%04d', i)) end
+    if timed[i] then
+      local snap = {}
+      for _, d in ipairs(CASE.dump or {}) do
+        local bytes = {}
+        for k = 0, d[2] - 1 do bytes[k + 1] = u8(d[1] + k) end
+        snap[#snap + 1] = bytes
+      end
+      snapshots[#snapshots + 1] = {i, snap}
+      apply(timed[i])
+    end
     if CASE.mash and CASE.mash > 0 and i % CASE.mash == 0 then H.hold('b', 2) else H.wait(1) end
     if CASE.stop_idle and i > 30 and u8(0xD0) == 0 and u8(0x7EDA06) == 0 then
       local idle = true
@@ -70,6 +83,14 @@ function test()
   end
   H.shot('final')
   H.result('frames_run', H.frame - started)
+  H.result('snapshots', snapshots)
+  local dumps = {}
+  for _, d in ipairs(CASE.dump or {}) do
+    local bytes = {}
+    for k = 0, d[2] - 1 do bytes[k + 1] = u8(d[1] + k) end
+    dumps[#dumps + 1] = bytes
+  end
+  H.result('dumps', dumps)
   H.result('trace', trace)
   H.result('events', events)
   H.result('reads', ranges(reads))
