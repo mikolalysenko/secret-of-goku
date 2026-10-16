@@ -86,7 +86,7 @@ test('late checkpoints build from a fresh ROM and reload the playable Frieza bat
   expect(orbit.map).toBe(246);expect(orbit.space).toBe(null);expect(orbit.surge).toMatchObject({kind:'frieza-cosmic',age:1});expect(orbit.rom).toBe(start.rom);
   await page.locator('#native-restore').click();expect(await page.evaluate(()=>mana.mod.frieza.orbit)).toBe(null);
   await page.goto('/?start=orbit');await page.waitForFunction(()=>mana.ready&&!!mana.mod.frieza.status.boss.surge,{},{timeout:15000});
-  const transition=await page.evaluate(()=>{mana.pause();const s=mana.mod.frieza.status.boss.surge;mana.run(1800);return{age:s.age,kind:s.kind,space:mana.mod.frieza.orbit?.kind,canAttack:mana.mod.canAttack};});
+  const transition=await page.evaluate(async()=>{mana.pause();const s=mana.mod.frieza.status.boss.surge,{cosmicDuration}=await import('/engine/frieza-cinematic.js');mana.run(cosmicDuration+1);return{age:s.age,kind:s.kind,space:mana.mod.frieza.orbit?.kind,canAttack:mana.mod.canAttack};});
   expect(transition.age).toBeLessThan(72);expect(transition).toMatchObject({kind:'frieza-cosmic',space:'frieza-orbit',canAttack:true});
   expect(errors).toEqual([]);
 });
@@ -111,7 +111,13 @@ test('all finale query links initialize native scenes, preserve saves and show l
    }
    if(kind==='flight')expect(state.flight).toBe(true);
    if(kind==='beast')expect(state).toMatchObject({map:253,canAttack:true,challenge:{started:true,fed:true,won:false}});
-   if(kind==='good-ending')expect(state.ending).toMatchObject({outcome:'good',phase:'summon'});
+   if(kind==='good-ending'){
+     expect(state.ending).toMatchObject({outcome:'good',phase:'transition'});
+     const wish=await page.evaluate(()=>{
+       const m=mana.mod;for(let f=0;f<600&&m.ending.status.phase==='transition';f++)mana.run(1);
+       return{phase:m.ending.status.phase,error:m.story.status.error};
+     });expect(wish).toEqual({phase:'summon',error:null});
+   }
    if(kind==='bad-ending')expect(state.ending).toMatchObject({outcome:'bad',phase:'doomed'});
    if(kind==='explosion'){
      expect(state.ending.phase).toBe('explode');

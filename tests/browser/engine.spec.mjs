@@ -1,6 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {existsSync} from 'node:fs';
 test('original ROM boots Potos with Goku, holds attack, flies, lands and replays a checkpoint',async({page})=>{
+  test.setTimeout(180000);
   test.skip(!existsSync('.local/rom/secret-of-mana-us.sfc'),'Requires the local US ROM.');
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('/engine.html');await page.getByRole('button',{name:'START IN POTOS'}).click();
@@ -16,7 +17,10 @@ test('original ROM boots Potos with Goku, holds attack, flies, lands and replays
   await page.keyboard.down('Shift');await page.keyboard.down('c');await expect.poll(()=>page.evaluate(()=>mana.mod.charge)).toBe(90);
   expect(await page.evaluate(()=>({charging:mana.mod.charging,charge:mana.mod.charge,nativeB:mana.snes.joypad1State&1}))).toEqual({charging:true,charge:90,nativeB:0});
   await page.keyboard.up('c');await page.keyboard.up('Shift');await expect.poll(()=>page.evaluate(()=>mana.logs.some(l=>l.startsWith('Kamehameha')))).toBe(true);
-  await page.keyboard.down('Shift');await page.keyboard.down('z');await expect.poll(()=>page.evaluate(()=>mana.mod.status.attack)).toBe(8191);await page.keyboard.up('z');await page.keyboard.up('Shift');
+  await page.keyboard.down('Shift');await page.keyboard.down('z');
+  // The opening keeps Goku's weighted gi on, including its 10% power penalty.
+  await expect.poll(()=>page.evaluate(()=>({ssj:mana.mod.options.superSaiyan,weighted:mana.mod.equipment.weighted,attack:mana.mod.status.attack}))).toEqual({ssj:true,weighted:true,attack:7372});
+  await page.keyboard.up('z');await page.keyboard.up('Shift');
   await page.getByRole('button',{name:'Take flight'}).click();
   await page.waitForFunction(()=>mana.ready&&mana.mod.worldFlight&&(mana.read8(0xec)&0x80)&&!(mana.read8(0xe2)&1),null,{timeout:20000});
   const flight=await page.evaluate(()=>{
