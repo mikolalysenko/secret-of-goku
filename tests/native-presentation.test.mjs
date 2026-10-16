@@ -229,6 +229,35 @@ test('combat poses preserve exact source pixels and a fixed integer pivot in eve
  }
 });
 
+test('charge shuffle keeps the hands intact, both soles level and the leg pixels connected',()=>{
+ for(const sheet of['goku','ssj'])for(const size of[32,16])for(let row=0;row<4;row++){
+  const {layer}=scene(),column=sheet==='ssj'?18:22,a=atlases[sheet],frames=[];
+  for(const legs of[column,column+2]){
+   layer.surface.fill(0);layer.blit(sheet,column,row,40,40,size,size,legs);
+   const frame=[],soles=[-1,-1],reached=new Set(),queue=[];
+   for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+    const c=layer.surface[(40+y)*256+40+x],lx=x*32/size,ly=y*32/size;
+    const original=a.pixels[(32+row*32+ly)*a.width+column*32+lx];frame.push(c);
+    const hand=row===1&&lx>=23||row===2&&lx<10||row===3&&lx>=22;
+    if(ly<24||hand)assert.equal(c,original,'head, torso and cupped hands cannot flicker or be cut');
+    if(c&&ly>=24&&!hand)soles[x<size/2?0:1]=y;
+    if(c&&ly<24){reached.add(y*size+x);queue.push(y*size+x);}
+   }
+   for(let i=0;i<queue.length;i++){
+    const at=queue[i],x=at%size,y=Math.floor(at/size);
+    for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+     const xx=x+dx,yy=y+dy,next=yy*size+xx;
+     if(xx>=0&&xx<size&&yy>=0&&yy<size&&frame[next]&&!reached.has(next)){reached.add(next);queue.push(next);}
+    }
+   }
+   assert.equal(reached.size,frame.filter(Boolean).length,'every boot stays joined to the body');
+   frames.push({frame,soles});
+  }
+  assert.deepEqual(frames[0].soles,frames[1].soles,'neither foot rises and taps back down');
+  assert.notDeepEqual(frames[0].frame,frames[1].frame,'the shuffle remains visible');
+ }
+});
+
 test('Thanatos aura flickers behind native sprite pixels regardless of OAM order',()=>{
  for(const slot of[2,30]){
   const {layer,ppu,mod}=scene();

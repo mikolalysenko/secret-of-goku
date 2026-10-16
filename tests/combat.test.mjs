@@ -65,6 +65,24 @@ test('charge preserves directional movement, aims immediately and releases along
   }
 });
 
+test('charging shuffles between planted stances with travel and settles when movement stops',()=>{
+  for(const superSaiyan of[false,true])for(let facing=0;facing<4;facing++){
+    const {mod,step}=setup({superSaiyan,facing}),[dx,dy]=[[0,1],[1,0],[-1,0],[0,-1]][facing];
+    step(0x402,5);const column=superSaiyan?18:22,poses=new Set();
+    assert.equal(mod.motion.pose().legs,undefined,'stationary charging has no foot cycle');
+    for(let i=1;i<=32;i++){
+      mod.write16(0xe002,200+dx*i);mod.write16(0xe004,200+dy*i);step(0x402);
+      const p=mod.motion.pose();poses.add(p.legs);assert.equal(p.column,column);assert.equal(p.row,[0,2,1,3][facing]);
+      assert.ok([column,column+2].includes(p.legs),'the feet never enter a lifted walking pose');
+    }
+    assert.deepEqual([...poses].sort((a,b)=>a-b),[column,column+2]);
+    step(0x402,4);assert.equal(mod.motion.pose().legs,undefined);
+    const still=JSON.stringify(mod.motion.pose());step(0x402,20);
+    assert.equal(mod.motion.pose().column,JSON.parse(still).column);assert.equal(mod.motion.pose().legs,undefined);
+    step();assert.equal(mod.motion.pose().kind,'beam');assert.equal(mod.motion.pose().legs,undefined);
+  }
+});
+
 test('Instant Transmission stays beside one living target without dealing damage, then cycles on the next press',()=>{
   const {mod,step,enemy}=setup(),first=enemy(3,350,200,100),second=enemy(4,480,300,100),npc=enemy(5,205,200,100,150);
   const combo=0x401;step(combo,16);

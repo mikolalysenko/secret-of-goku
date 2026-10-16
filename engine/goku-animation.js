@@ -59,7 +59,7 @@ class GokuAnimation {
     else if(native===0xaf)kind='dead';
     else if(distance>0||((native===1||native===2)&&s.stationary<3))kind=native===2?'run':'walk';
     if(s.frame!==m.frame){
-      if(kind!==s.kind||map!==s.map){s.age=0;if(kind==='walk'||kind==='run')s.distance=0;}
+      if(kind!==s.kind||map!==s.map){s.age=0;if(['walk','run','charge','ready'].includes(kind))s.distance=0;}
       else s.age++;
       s.distance+=distance;s.frame=m.frame;s.map=map;s.x=x;s.y=y;s.kind=kind;s.native=native;
     }
@@ -155,9 +155,10 @@ class GokuAnimation {
     if(result.row===3&&result.column===1)result.column=0;
     const cell=window.GokuAnimationData.forms[result.sheet].cells[result.column*4+result.row];
     if(!cell?.opaque)throw Error(`Empty Goku animation cell: ${kind} ${result.sheet} ${result.column},${result.row}`);
-    // Keep the cupped hands while the original four-step legs walk underneath.
-    // Lower-leg pixels are assembled in the OBJ layer at the same fixed pivot.
-    if((kind==='charge'||kind==='ready')&&!m.localFlight&&(distance>0||s.stationary<3))result.legs=2+Math.floor(s.distance/6)%4;
+    // The charge/release stances share planted feet. Alternate their lower
+    // tile row for a short shuffle; normal walking cells lift the front knee.
+    // Advance with travel, so holding charge at a wall never taps in place.
+    if((kind==='charge'||kind==='ready')&&!m.localFlight&&(distance>0||s.stationary<3))result.legs=(sheet==='ssj'?18:22)+2*(Math.floor(s.distance/8)%2);
     if(!flight&&!menu&&m.localLift)result.extraLift=(result.extraLift||0)+Math.round(m.localLift);
     return {...result,kind,age,lift:flight||menu?0:lift,origin:flight?[16,16]:[16,31],bounds:cell.bounds};
   }

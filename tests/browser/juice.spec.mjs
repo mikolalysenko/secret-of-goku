@@ -27,21 +27,23 @@ test('Potos house entry and exit keep Goku through every native door fade',async
   expect(result.maps).toContain(257);expect(result.maps).toContain(131);expect(result.fadeBodies).toBeGreaterThan(20);expect(result.leaks).toEqual([]);
 });
 
-test('Goku walks while charging in both forms and Super Saiyan keeps a blue beam',async({page})=>{
+test('Goku shuffles while charging in both forms and Super Saiyan keeps a blue beam',async({page})=>{
   await load(page,'.local/graphics-audit/party.json');
   const result=await page.evaluate(()=>{
     const saved=mana.snapshot(),results=[];
     for(const superSaiyan of [false,true]){
       mana.restore(saved);mana.mod.options.superSaiyan=superSaiyan;
-      const before=mana.mod.status;mana.run(35,[10,1,6]);const after=mana.mod.status;
-      const sprite=mana.mod.spriteLayer.plan.sprite,groups=[],layer=mana.mod.spriteLayer,stamp=layer.stamp;
+      const before=mana.mod.status,legs=new Set();
+      for(let i=0;i<35;i++){mana.run(1,[10,1,6]);const p=mana.mod.spriteLayer.plan.sprite;if(p.legs!==undefined)legs.add(p.legs);}
+      const after=mana.mod.status;
+      const groups=[],layer=mana.mod.spriteLayer,stamp=layer.stamp;
       layer.stamp=function(group,...args){groups.push(group);return stamp.call(this,group,...args);};
       try{mana.run(1);mana.run(5);}finally{layer.stamp=stamp;}
-      results.push({moved:before.x-after.x,charging:after.action,legs:sprite.legs,blue:groups.includes('beam-body'),gold:groups.includes('gold-beam-body')||groups.includes('gold-charge-orb')});
+      results.push({superSaiyan,moved:before.x-after.x,charging:after.action,legs:[...legs].sort((a,b)=>a-b),blue:groups.includes('beam-body'),gold:groups.includes('gold-beam-body')||groups.includes('gold-charge-orb')});
     }
     return results;
   });
-  for(const item of result){expect(item.moved).toBeGreaterThan(20);expect(item.charging).toBe('charge');expect(item.legs).toBeGreaterThanOrEqual(2);expect(item.blue).toBe(true);expect(item.gold).toBe(false);}
+  for(const item of result){expect(item.moved).toBeGreaterThan(20);expect(item.charging).toBe('charge');expect(item.legs).toEqual(item.superSaiyan?[18,20]:[22,24]);expect(item.blue).toBe(true);expect(item.gold).toBe(false);}
 });
 
 test('a charged Kamehameha removes native bushes and opens their collision tiles',async({page})=>{
