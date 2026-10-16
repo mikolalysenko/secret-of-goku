@@ -20,10 +20,10 @@ export const quickStartLabels={
 export const isQuickStart=kind=>Object.hasOwn(quickStartLabels,kind);
 export const isLateStart=kind=>isQuickStart(kind)&&!['title','sword','sandship'].includes(kind);
 // The checkpoint a start is built on, when it has one: late scenes extend
-// the post-continent route, the Sandship extends the after-sword start.
-export const quickStartBase=kind=>isLateStart(kind)?'late':kind==='sandship'?'sword':null;
+// the post-continent route.
+export const quickStartBase=kind=>isLateStart(kind)?'late':null;
 export function buildFromBase(kind,callbacks){
-  return kind==='sandship'?buildSandshipCheckpoint(callbacks):buildLateCheckpoint(kind,callbacks);
+  return buildLateCheckpoint(kind,callbacks);
 }
 
 // Late starts boost the companions to 999 HP; the Sandship keeps their
@@ -66,6 +66,15 @@ export async function buildQuickStart(kind,{fresh,pump,mod,arrival,capture,cache
     await bootLateGame({pump,mod});
     return buildLateCheckpoint(kind,{pump,mod,capture,cache,progress});
   }
+  if(kind==='sandship'){
+    // The cartridge's own new-game initialization, then the bridge event's
+    // own ending (flag 0C, door 082 to the rusty-sword clearing) without the
+    // bridge and waterfall walk. The real sword and pod scenes still play.
+    progress('Initializing the test scene…');
+    await bootLateGame({pump,mod},{door:0x82,map:128,flags:[[0x0c,1]],item:null,seedHp:false,control:false});
+    await pullSword({pump,mod,arrival,progress});
+    return buildSandshipCheckpoint({pump,mod,capture,cache,progress});
+  }
   progress('Running the original title…');
   for(const[frames,buttons]of[[960],[2,[3]],[180],[2,[0]],[180]])await pump(frames,buttons);
   if(!mod.nameEditor)throw Error('The original name menu did not open.');
@@ -75,6 +84,11 @@ export async function buildQuickStart(kind,{fresh,pump,mod,arrival,capture,cache
   for(let i=0;i<6;i++)await pump(600);
   for(let i=0;i<30&&!(mod.read16(0xdc)===128&&mod.read8(0xd0)===0);i++){await pump(2,[16]);await pump(240);}
   if(mod.read16(0xdc)!==128||mod.read8(0xd0)!==0||mod.read8(0xcf10)!==0)throw Error('The opening did not reach the waterfall.');
+  await pullSword({pump,mod,arrival,progress});
+  await cache('sword',capture());
+}
+
+async function pullSword({pump,mod,arrival,progress}){
   progress('Pulling the Mana Sword and landing the pod…');
   // This explicit testing shortcut skips the river walk. Use the verified
   // sword approach point and stream every crossed camera row through the
@@ -84,8 +98,7 @@ export async function buildQuickStart(kind,{fresh,pump,mod,arrival,capture,cache
   await pump(120);await pump(2,[5]);
   for(let i=0;i<65&&!(arrival.phase==='complete'&&mod.canAttack);i++){await pump(2,[16]);await pump(150);}
   if(arrival.phase!=='complete'||!mod.canAttack||mod.read8(0xcf10)!==1)throw Error('The sword scene did not return control.');
-  mod.cancelInput();await pump(60);await cache('sword',capture());
-  if(kind==='sandship')await buildSandshipCheckpoint({pump,mod,capture,cache,progress});
+  mod.cancelInput();await pump(60);
 }
 
 // Testing fixture for the desert arc: the full party walks into the dunes,

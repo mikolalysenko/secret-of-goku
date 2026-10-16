@@ -45,7 +45,7 @@ Add `?debug=true` to reveal **Test scenes**, or jump directly with `?start=…`.
 | [`?start=sword`](https://mikolalysenko.github.io/secret-of-goku/?start=sword) | Goku ready after the sword/pod scene |
 | [`?start=sandship`](https://mikolalysenko.github.io/secret-of-goku/?start=sandship) | Full party entering the desert; the Sandship arc plays from there. Choose KAMEHAMEHA in the engine room and fire it yourself (hold L+Y) to wreck the ship |
 
-The same queries work locally, for example `http://127.0.0.1:5173/?start=beast`. Every catalogued cutscene and event can also be loaded with `?scene=<id>`, browsed and live-debugged in [`scenes.html`](scenes.html), or crawled with `npm run scenes`. See [docs/scenes.md](docs/scenes.md). The opening presets (title, sword, sandship) still run their original scenes once before caching. No ROM or savestate is distributed with any link.
+The same queries work locally, for example `http://127.0.0.1:5173/?start=beast`. Every catalogued cutscene and event can also be loaded with `?scene=<id>`, browsed and live-debugged in [`scenes.html`](scenes.html), or crawled with `npm run scenes`. See [docs/scenes.md](docs/scenes.md). The title and sword presets still run their original scenes once before caching; the Sandship preset starts a native new game at the sword clearing (skipping the bridge and waterfall walk) and plays the real sword and pod scenes. No ROM or savestate is distributed with any link.
 
 ### Frieza and the finale
 
