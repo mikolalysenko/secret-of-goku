@@ -515,15 +515,53 @@ function Ppu(snes) {
   // pixel 1), after any objColor replacement. overlay (value + 1 per x)
   // replaces main-screen pixels as OBJ palette 0x86 (HUD art), last.
   // bg1Color (value + 1 per x) replaces the color of BG1 (layer 0) pixels.
+  // layerPatch {layer, prio, mask, values} replaces what getPixelForLayer
+  // returns for that background and priority wherever mask[x] is 1.
+  // disableMain/disableSub (layer bit sets) act as if those layers were
+  // disabled on the screen while composing it (a wrapper that turns a
+  // layer off around its inner getColor call).
+  // posts: getColor wrappers whose whole effect is a post-process of their
+  // predecessor's [color, layer, pixel] declare post(ppu, sub, x, y, r),
+  // which the wrapper itself uses; the compositor runs the same function on
+  // each composed pixel, innermost first. A post must be outside (nearer
+  // the chain head than) every hook that contributes an inline field above.
   const linePlan = {
     objColor: null, faceColor: null, overlay: null, bg1Color: null,
-    windowSuppress: 0, onWindowMasked: null
+    layerPatch: null, windowSuppress: 0, onWindowMasked: null,
+    disableMain: 0, disableSub: 0, posts: []
   };
-  this.registerLineHook = function(method, fn, previous, idle, plan) {
-    hookByFn.set(fn, {method: method, previous: previous, idle: idle, plan: plan});
+  // extra: a plan function, or {plan, post, name}.
+  this.registerLineHook = function(method, fn, previous, idle, extra) {
+    let options = typeof extra === "function" ? {plan: extra} : (extra || {});
+    hookByFn.set(fn, {
+      method: method, previous: previous, idle: idle, plan: options.plan,
+      post: options.post, name: options.name
+    });
     return () => {
       hookByFn.delete(fn);
     };
+  }
+  // Diagnostics: names of the registered hooks active on this line, and
+  // "unregistered" for wrappers the compositor cannot see through.
+  this.activeLineHooks = function(line) {
+    let active = [];
+    for(let i = 0; i < hookedMethods.length; i++) {
+      let method = hookedMethods[i];
+      let fn = this[method];
+      while(fn !== base[method]) {
+        let hook = hookByFn.get(fn);
+        if(!hook) {
+          active.push(method + ":unregistered");
+          break;
+        }
+        if(!hook.idle(this, line)) {
+          active.push(method + ":" + (hook.name ||
+            String(fn).replace(/\s+/g, " ").slice(0, 160)));
+        }
+        fn = hook.previous;
+      }
+    }
+    return active;
   }
 
   // Diagnostics/kill switch; kept in the closure so it is never serialized.
@@ -544,21 +582,37 @@ function Ppu(snes) {
     linePlan.faceColor = null;
     linePlan.overlay = null;
     linePlan.bg1Color = null;
+    linePlan.layerPatch = null;
     linePlan.windowSuppress = 0;
     linePlan.onWindowMasked = null;
+    linePlan.disableMain = 0;
+    linePlan.disableSub = 0;
+    linePlan.posts.length = 0;
     for(let i = 0; i < hookedMethods.length; i++) {
       let method = hookedMethods[i];
       let fn = this[method];
+      // Inline plan fields are applied before posts, so a post found after
+      // (inside) a hook that set one would run in the wrong order.
+      let inlineSeen = false;
       while(fn !== base[method]) {
         let hook = hookByFn.get(fn);
         if(!hook || hook.method !== method) {
           return false;
         }
-        if(
-          !hook.idle(this, line) &&
-          !(hook.plan && hook.plan(this, line, linePlan))
-        ) {
-          return false;
+        if(!hook.idle(this, line)) {
+          if(hook.post) {
+            if(inlineSeen) {
+              return false;
+            }
+            if(hook.plan && !hook.plan(this, line, linePlan)) {
+              return false;
+            }
+            linePlan.posts.push(hook.post);
+          } else if(hook.plan && hook.plan(this, line, linePlan)) {
+            inlineSeen = true;
+          } else {
+            return false;
+          }
         }
         fn = hook.previous;
       }
@@ -830,6 +884,7 @@ function Ppu(snes) {
     let enabled = sub ? this.subScreenEnabled : this.mainScreenEnabled;
     let windowed = sub ? this.subScreenWindow : this.mainScreenWindow;
     let suppress = linePlan.windowSuppress;
+    let disabled = sub ? linePlan.disableSub : linePlan.disableMain;
     let n = 0;
     for(let x = 0; x < 256; x++) {
       pixOut[x] = 0;
@@ -840,7 +895,7 @@ function Ppu(snes) {
     }
     for(let j = 0; j < count && n > 0; j++) {
       let layer = this.layersPerMode[modeIndex + j];
-      if(!enabled[layer]) {
+      if(!enabled[layer] || ((disabled >> layer) & 1) === 1) {
         continue;
       }
       let p = this.prioPerMode[modeIndex + j];
@@ -865,6 +920,13 @@ function Ppu(snes) {
         vals = lineVal[layer];
         present = (linePresent[layer] >> p) & 1;
       }
+      let patch = linePlan.layerPatch;
+      let patchMask = null, patchValues = null;
+      if(patch !== null && kind === 0 && patch.layer === layer && patch.prio === p) {
+        patchMask = patch.mask;
+        patchValues = patch.values;
+        present = 1;
+      }
       if(present === 0 && !record) {
         continue;
       }
@@ -879,7 +941,9 @@ function Ppu(snes) {
           linePlan.onWindowMasked(x);
         }
         let v;
-        if(kind === 0) {
+        if(patchMask !== null && patchMask[x] === 1) {
+          v = patchValues[x];
+        } else if(kind === 0) {
           let w = vals[x];
           v = (w >>> 15) !== p ? 0 : w & 0x7fff;
         } else if(kind === 3) {
@@ -903,8 +967,10 @@ function Ppu(snes) {
 
   // Color for each resolved pixel (base getColor tail plus line plans);
   // plans may also change the layer/pixel seen by color math.
-  this.finishScreen = function(sub, mode, need, pixIn, layIn, colorOut) {
+  const postTriple = [0, 0, 0];
+  this.finishScreen = function(sub, mode, need, pixIn, layIn, colorOut, line) {
     let cgram = this.cgram;
+    let posts = linePlan.posts, postCount = posts.length;
     let bg1 = linePlan.bg1Color, obj = linePlan.objColor;
     let face = linePlan.faceColor, overlay = sub ? null : linePlan.overlay;
     // Layers (bit set) whose pixels are direct color this line.
@@ -943,6 +1009,18 @@ function Ppu(snes) {
         color = overlay[x] - 1;
         layIn[x] = 4;
         pixIn[x] = 0x86;
+      }
+      if(postCount > 0) {
+        let r = postTriple;
+        r[0] = color;
+        r[1] = layIn[x];
+        r[2] = pixIn[x];
+        for(let k = postCount - 1; k >= 0; k--) {
+          posts[k](this, sub, x, line, r);
+        }
+        color = r[0];
+        layIn[x] = r[1];
+        pixIn[x] = r[2];
       }
       colorOut[x] = color;
     }
@@ -1069,7 +1147,7 @@ function Ppu(snes) {
     }
     spritePresent = sprites;
     this.composeScreen(false, modeIndex, count, mode, null, mainPix, mainLay);
-    this.finishScreen(false, mode, null, mainPix, mainLay, mainColor);
+    this.finishScreen(false, mode, null, mainPix, mainLay, mainColor, line);
     let pseudo = this.pseudoHires, addSub = this.addSub;
     let colorClip = this.colorClip, preventMath = this.preventMath;
     let clipMask = colorClip === 1 || colorClip === 2 || preventMath === 1 ||
@@ -1104,7 +1182,7 @@ function Ppu(snes) {
       // Hires/pseudo-hires without color math or clipping: the left half is
       // the sub screen color, the right half the main screen color.
       this.composeScreen(true, modeIndex, count, mode, null, subPix, subLay);
-      this.finishScreen(true, mode, null, subPix, subLay, subColor);
+      this.finishScreen(true, mode, null, subPix, subLay, subColor, line);
       let at32 = base >> 1;
       for(let i = 0; i < 256; i++, at32 += 3) {
         let main = mainColor[i], sub = subColor[i];
@@ -1135,7 +1213,7 @@ function Ppu(snes) {
     }
     if(anySub) {
       this.composeScreen(true, modeIndex, count, mode, subNeed, subPix, subLay);
-      this.finishScreen(true, mode, subNeed, subPix, subLay, subColor);
+      this.finishScreen(true, mode, subNeed, subPix, subLay, subColor, line);
     }
     let subtract = this.subtractColors, half = this.halfColors;
     let fixedR = this.fixedColorR, fixedG = this.fixedColorG;

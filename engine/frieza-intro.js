@@ -85,9 +85,10 @@ export function createEmperorBeamView(snes,mod,getScene){
  },color(ppu,sub,x,y,native){
   const scene=getScene();if(!mod.options.enabled||scene?.kind!=='emperor-shot'||scene.map!==mod.read16(0xdc)||sub||ppu.mode!==1||y>224)return native;
   if(prepared!==mod.frame)prepare(scene);
+  // Writes the result into native (the caller's fresh triple) and returns it.
   const c=surface[y*256+x];
-  if(c)return[c-1,4,0x86];
-  if(chest&&scene.age>=introTiming.hit&&scene.age<introTiming.blackEnd)return[0,4,0x86];
+  if(c){native[0]=c-1;native[1]=4;native[2]=0x86;return native;}
+  if(chest&&scene.age>=introTiming.hit&&scene.age<introTiming.blackEnd){native[0]=0;native[1]=4;native[2]=0x86;return native;}
   return native;
  },get chest(){return chest;}};
 }

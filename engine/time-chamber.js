@@ -66,21 +66,28 @@ export function createTimeChamber(snes,mod,{loadArt=true}={}){
  // DC changes as soon as a door is selected, well before the outgoing map
  // fades. Wait for the new room's actors, otherwise the old cave flashes white.
  const active=()=>mod.options.enabled&&mod.gokuActive&&mod.trial?.roomLoaded&&(r[0xdc]|r[0xdd]<<8)===72&&mod.nativeField&&p.mode===1;
- if(previous)p.getColor=function(sub,x,y){
-  const result=previous.call(this,sub,x,y);
-  if(!active()||!floor||y>224||![0,1,5].includes(result[1]))return result;
+ // The whole effect on the inner [color, layer, pixel] (result or a new array).
+ // No CPU runs while a scanline renders, so the room state and scroll are
+ // fixed per (frame, line); cache them instead of re-reading every pixel.
+ let lineFrame=-1,lineY=-1,lineActive=false,scrollX=0,scrollY=0;
+ const scroll=a=>(r[a]|r[a+1]<<8)<<16>>16;
+ function shade(sub,x,y,result){
+  if(lineFrame!==mod.frame||lineY!==y){lineFrame=mod.frame;lineY=y;lineActive=active();scrollX=scroll(0xa8);scrollY=scroll(0xaa);}
+  const l=result[1];
+  if(!lineActive||!floor||y>224||!(l===0||l===1||l===5))return result;
   // Actual native scroll registers remain authoritative even when the ring
   // moves its character portrait, or the camera pauses for a conversation.
-  const scroll=a=>(r[a]|r[a+1]<<8)<<16>>16;
-  const wx=x+scroll(0xa8),wy=y+scroll(0xaa),v=chamber.pavilion;
+  const wx=x+scrollX,wy=y+scrollY,v=chamber.pavilion;
   let color=floor[(wy&15)*16+(wx&15)];
   // Repeated wide tile seams make speed readable in the white expanse.
   if((wx&63)===0||(wy&63)===0)color=1+28+(29<<5)+(30<<10);
   if(wx<32||wy<32||wx>=992||wy>=992)color=1+23+(25<<5)+(28<<10);
   const px=wx-v.x,py=wy-v.y;if(px>=0&&py>=0&&px<v.width&&py<v.height&&pavilion?.[py*v.width+px])color=pavilion[py*v.width+px];
-  return[color-1,0,1];
- };
- if(previous)p.registerLineHook?.('getColor',p.getColor,previous,(ppu,line)=>!active()||!floor||line>224);
+  result[0]=color-1;result[1]=0;result[2]=1;return result;
+ }
+ if(previous)p.getColor=function(sub,x,y){return shade(sub,x,y,previous.call(this,sub,x,y));};
+ if(previous)p.registerLineHook?.('getColor',p.getColor,previous,(ppu,line)=>!active()||!floor||line>224,{name:'time-chamber',
+  post:(ppu,sub,x,y,r)=>{const t=shade(sub,x,y,r);if(t!==r){r[0]=t[0];r[1]=t[1];r[2]=t[2];}}});
  return{ready,load(){
   const rom=snes.cart.data;if(loaded===rom)return;loaded=rom;
   const bytes=encodeChamberPiece(chamberLayout()),blank=encodeChamberPiece(chamberForeground()),start=0xfe243,foreground=start+bytes.length;

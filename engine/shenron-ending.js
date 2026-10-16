@@ -91,25 +91,29 @@ export function createShenronEnding(snes,mod){
   if(departing)dim(state.age/30);
   if(phase==='summon'&&age<48)dim(1-age/48);
  }
- p.getColor=function(sub,x,y){
-  const c=previous.call(this,sub,x,y);
+ // The whole effect on the inner [color, layer, pixel] (c or a new array).
+ function shade(sub,x,y,c){
   if(!state||state.fatal||state.phase==='reunion'||!mod.options.enabled||y>224)return c;
+  // Results are written into c (the caller's fresh triple).
   if(state.phase==='transition'){
    const fade=Math.max(0,1-state.age/48),color=c[0];
-   return[Math.round((color&31)*fade)|(Math.round((color>>5&31)*fade)<<5)|(Math.round((color>>10&31)*fade)<<10),4,0x86];
+   c[0]=Math.round((color&31)*fade)|(Math.round((color>>5&31)*fade)<<5)|(Math.round((color>>10&31)*fade)<<10);c[1]=4;c[2]=0x86;return c;
   }
   if(sub)return c;
-  if(y===224&&!['village','depart','complete'].includes(state.phase))return[0,4,0x86];
+  const phase=state.phase;
+  if(y===224&&phase!=='village'&&phase!=='depart'&&phase!=='complete'){c[0]=0;c[1]=4;c[2]=0x86;return c;}
   if(prepared!==mod.frame)prepare();
-  if(state.phase==='depart'){
+  if(phase==='depart'){
    const color=(surface[y*256+x]||c[0]+1)-1,white=departureWhite;
    const mix=n=>Math.round(n+(31-n)*white);
-   return[mix(color&31)|(mix(color>>5&31)<<5)|(mix(color>>10&31)<<10),4,0x86];
+   c[0]=mix(color&31)|(mix(color>>5&31)<<5)|(mix(color>>10&31)<<10);c[1]=4;c[2]=0x86;return c;
   }
-  if(state.phase!=='scatter'&&c[1]===2&&y<170)return c; // no dialogue or combat HUD in the departure shot
-  const pixel=surface[y*256+x];return pixel?[pixel-1,4,0x86]:c;
- };
- p.registerLineHook?.('getColor',p.getColor,previous,(ppu,line)=>!state||state.fatal||state.phase==='reunion'||!mod.options.enabled||line>224);
+  if(phase!=='scatter'&&c[1]===2&&y<170)return c; // no dialogue or combat HUD in the departure shot
+  const pixel=surface[y*256+x];if(pixel){c[0]=pixel-1;c[1]=4;c[2]=0x86;}return c;
+ }
+ p.getColor=function(sub,x,y){return shade(sub,x,y,previous.call(this,sub,x,y));};
+ p.registerLineHook?.('getColor',p.getColor,previous,(ppu,line)=>!state||state.fatal||state.phase==='reunion'||!mod.options.enabled||line>224,{name:'shenron',
+  post:(ppu,sub,x,y,r)=>{const t=shade(sub,x,y,r);if(t!==r){r[0]=t[0];r[1]=t[1];r[2]=t[2];}}});
  return{
   ready,
   lose(encounter){

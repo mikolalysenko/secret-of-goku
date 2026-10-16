@@ -195,11 +195,11 @@ export function createFrieza(snes,mod){
  const altarCamera=installAltarCamera(snes,mod,()=>s.scene);
  installOrbitMenu(snes,mod,()=>api.orbit);
  const color=snes.ppu.getColor;
- snes.ppu.getColor=function(sub,x,y){
-  if(renderFrame!==mod.frame){renderFrame=mod.frame;renderArena=api.ownsArena();cameraLine=-1;}
-  if(!renderArena||this.mode!==1)return emperorView.color(this,sub,x,y,treeView.color(this,sub,x,y,color.call(this,sub,x,y)));
-  const screens=sub?this.subScreenEnabled:this.mainScreenEnabled,old=screens[1];screens[1]=false;
-  let result;try{result=color.call(this,sub,x,y);}finally{screens[1]=old;}
+ const refreshArena=()=>{if(renderFrame!==mod.frame){renderFrame=mod.frame;renderArena=api.ownsArena();cameraLine=-1;}};
+ // The effect on the inner [color, layer, pixel] (result or a new array).
+ // In the arena the inner chain runs with BG2 off (see the wrapper).
+ function shade(ppu,sub,x,y,result,arena){
+  if(!arena)return emperorView.color(ppu,sub,x,y,treeView.color(ppu,sub,x,y,result));
   // Floor-only scars cannot cover Goku, native windows, or room walls.
   if(!sub&&result[1]===0&&y<224&&s.boss?.arena){
    // Actor screen coordinates include lift and can be one movement update
@@ -207,7 +207,7 @@ export function createFrieza(snes,mod){
    // actual BG1 fine scroll, including native quake, instead.
    if(cameraLine!==y){
     cameraLine=y;const x0=mod.read16(0xa8),y0=mod.read16(0xaa);
-    cameraX=x0+((this.bgHoff[0]-x0+8)&15)-8;cameraY=y0+((this.bgVoff[0]-y0+8)&15)-8;
+    cameraX=x0+((ppu.bgHoff[0]-x0+8)&15)-8;cameraY=y0+((ppu.bgVoff[0]-y0+8)&15)-8;
     const a=s.boss.arena;if(a.revision!==ruinsRevision||cameraX!==ruinsX||cameraY!==ruinsY){ruinsRevision=a.revision;ruinsX=cameraX;ruinsY=cameraY;ruins=ruinMask(a,cameraX,cameraY);}
    }
    const value=ruins?.[y*256+x];
@@ -217,11 +217,20 @@ export function createFrieza(snes,mod){
    }
   }
   return result;
+ }
+ snes.ppu.getColor=function(sub,x,y){
+  refreshArena();
+  if(!renderArena||this.mode!==1)return shade(this,sub,x,y,color.call(this,sub,x,y),false);
+  const screens=sub?this.subScreenEnabled:this.mainScreenEnabled,old=screens[1];screens[1]=false;
+  let result;try{result=color.call(this,sub,x,y);}finally{screens[1]=old;}
+  return shade(this,sub,x,y,result,true);
  };
  snes.ppu.registerLineHook?.('getColor',snes.ppu.getColor,color,(ppu,line)=>{
-  if(renderFrame!==mod.frame){renderFrame=mod.frame;renderArena=api.ownsArena();cameraLine=-1;}
+  refreshArena();
   return !(renderArena&&ppu.mode===1)&&treeView.idle(ppu,line)&&emperorView.idle(ppu,line);
- });
+ },{name:'frieza',
+  plan:(ppu,line,plan)=>{refreshArena();if(renderArena&&ppu.mode===1){plan.disableMain|=2;plan.disableSub|=2;}return true;},
+  post:(ppu,sub,x,y,r)=>{refreshArena();const t=shade(ppu,sub,x,y,r,renderArena&&ppu.mode===1);if(t!==r){r[0]=t[0];r[1]=t[1];r[2]=t[2];}}});
  const api={
   ready,get pendingEntrance(){return pendingEntrance();},get eligible(){return eligible();},get active(){return s.stage!=='dormant';},get crisisActive(){return !!s.crisis?.active;},get unresolved(){return s.stolen;},get eighth(){return s.eighth;},get permanent(){return s.permanent;},get fallen(){return s.fallen;},get popoiMember(){return s.popoiMember;},get trial(){return s.stage==='trial';},get fighting(){return s.stage==='battle'||s.stage==='won';},
   get pendingTrial(){return on()&&s.stolen&&s.tree==='complete'&&!s.trialWon&&s.stage==='hunt';},

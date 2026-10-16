@@ -146,12 +146,27 @@ export function createTitleLayer(ppu) {
     }
     return getPixel.call(this,x,y,bg,priority);
   };
+  const patch={layer:1,prio:1,mask:new Uint8Array(256),values:new Uint16Array(256)};
+  // BG2 row the per-pixel path would query on this line (mosaic, scroll).
+  const rowOf=(p,line)=>{let y=line;if(p.mosaicEnabled[1])y-=(y-p.mosaicStartLine)%p.mosaicSize;return y+p.bgVoff[1];};
   ppu.registerLineHook?.('getPixelForLayer',ppu.getPixelForLayer,getPixel,(p,line)=>{
     if(!(layer.active&&layer.enabled&&p.mode===3))return true;
-    // BG2 row the per-pixel path would query on this line (mosaic, scroll).
-    let y=line;if(p.mosaicEnabled[1])y-=(y-p.mosaicStartLine)%p.mosaicSize;y+=p.bgVoff[1];
-    const {y:top,height}=TITLE_LOGO_RECT;
+    const y=rowOf(p,line),{y:top,height}=TITLE_LOGO_RECT;
     return !(y>=top&&y<top+height)&&!(layer.creditVisible&&y>=136&&y<144);
+  },(p,line,plan)=>{
+    // The same replacement as the wrapper above, for every screen x.
+    if(plan.layerPatch)return false;
+    const y=rowOf(p,line),{x:left,y:top,width,height}=TITLE_LOGO_RECT;
+    patch.mask.fill(0);
+    for(let x=0;x<256;x++){
+      let lx=x;if(p.mosaicEnabled[1])lx-=lx%p.mosaicSize;lx+=p.bgHoff[1];
+      if(lx>=left&&lx<left+width&&y>=top&&y<top+height){patch.mask[x]=1;patch.values[x]=goldLetters[(y-top)*width+lx-left];}
+      else if(layer.creditVisible&&y>=136&&y<144&&lx>=0&&lx<256){
+        const local=lx-4;patch.mask[x]=1;
+        patch.values[x]=local<0||local>=TITLE_CREDIT.length*8?0:fontPixel(p.vram,tileFor(TITLE_CREDIT[local>>3]),local&7,y&7);
+      }
+    }
+    plan.layerPatch=patch;return true;
   });
   return layer;
 }

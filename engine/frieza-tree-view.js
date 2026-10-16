@@ -3,6 +3,7 @@ import {drawFriezaSprite} from './frieza-sprite.js';
 import {createOrbitEffects} from './orbit-effects.js';
 import {treeFriezaPose,friezaDeathBallPose} from './frieza-staging.js';
 export {treeTiming,treeFriezaPose} from './frieza-staging.js';
+const dimColor=(color,amount)=>Math.round((color&31)*amount)|(Math.round((color>>5&31)*amount)<<5)|(Math.round((color>>10&31)*amount)<<10);
 export function createFriezaTreeView(snes,mod,getScene,getAtlas){
  const surface=new Uint16Array(256*224);let vista=null,prepared=-1;
  const put=(x,y,c)=>{x=Math.round(x);y=Math.round(y);if(x>=0&&x<256&&y>=0&&y<224)surface[y*256+x]=c;};
@@ -55,18 +56,19 @@ export function createFriezaTreeView(snes,mod,getScene,getAtlas){
   const scene=getScene();if(!scene||!mod.options.enabled||ppu.mode!==1||line>224)return true;
   return scene.kind!=='tree-wake'&&scene.kind!=='tree-return'&&(scene.map!==236||!scene.kind.startsWith('tree-')||mod.read16(0xdc)!==236);
  },color(ppu,sub,x,y,native){
+  // Writes the result into native (the caller's fresh triple) and returns it.
   const scene=getScene();if(!scene||!mod.options.enabled||sub||ppu.mode!==1||y>224)return native;
-  const dim=(color,amount)=>Math.round((color&31)*amount)|(Math.round((color>>5&31)*amount)<<5)|(Math.round((color>>10&31)*amount)<<10);
-  if(scene.kind==='tree-wake')return[dim(native[0],Math.min(1,scene.age/40)),native[1],native[2]];
+  const set=(c,l,p)=>{native[0]=c;native[1]=l;native[2]=p;return native;};
+  if(scene.kind==='tree-wake'){native[0]=dimColor(native[0],Math.min(1,scene.age/40));return native;}
   if(scene.kind==='tree-return'){
-   if(scene.age>=48||y===224)return[0,4,0x86];
+   if(scene.age>=48||y===224)return set(0,4,0x86);
    if(prepared!==mod.frame)prepare(scene);
-   return[dim(surface[y*256+x]-1,1-scene.age/48),4,0x86];
+   return set(dimColor(surface[y*256+x]-1,1-scene.age/48),4,0x86);
   }
   if(scene.map!==236||!scene.kind.startsWith('tree-')||mod.read16(0xdc)!==236)return native;
-  if(y===224)return[0,4,0x86];
+  if(y===224)return set(0,4,0x86);
   if(prepared!==mod.frame)prepare(scene);
   if(native[1]===2&&y<170)return native;
-  return[surface[y*256+x]-1,4,0x86];
+  return set(surface[y*256+x]-1,4,0x86);
  }};
 }

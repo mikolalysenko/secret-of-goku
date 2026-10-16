@@ -276,8 +276,8 @@ export function createPlanetView(snes,mod){
     const shot=mod.worldKi?.cinematic??mod.frieza?.cinematic??orbit,state=shot??mod.ending?.planetScene;
     return state?{state,shot,orbit,ring}:null;
   }
-  p.getColor=function(sub,x,y){
-    const result=previous.call(this,sub,x,y);
+  // The whole effect on the inner [color, layer, pixel] (result or a new array).
+  function shade(sub,x,y,result){
     if(sub||y>224||!texture)return result;
     // Scene/party getters are relatively expensive. Ordinary ground fights
     // used to evaluate all of them for every pixel, even with no globe in
@@ -285,25 +285,26 @@ export function createPlanetView(snes,mod){
     // selection for paused menus and restored checkpoints in the same frame.
     if(viewFrame!==mod.frame||viewLine!==y||x<=viewX){viewFrame=mod.frame;viewLine=y;view=selectView();}
     viewX=x;if(!view)return result;
-    if(view.light!==undefined){const c=result[0],light=view.light;return[Math.round((c&31)*light)|(Math.round((c>>5&31)*light)<<5)|(Math.round((c>>10&31)*light)<<10),result[1],result[2]];}
-    if(view.pale!==undefined)return[pale(result[0]+1,view.pale)-1,result[1],result[2]];
+    if(view.light!==undefined){const c=result[0],light=view.light;result[0]=Math.round((c&31)*light)|(Math.round((c>>5&31)*light)<<5)|(Math.round((c>>10&31)*light)<<10);return result;}
+    if(view.pale!==undefined){result[0]=pale(result[0]+1,view.pale)-1;return result;}
     const {state,shot,orbit,ring}=view;
     if(frame!==mod.frame||preparedState!==state)prepare(state,!!shot);
-    if(view.fatal)return[y===224?0:surface[y*256+x]-1,4,0x86];
+    if(view.fatal){result[0]=y===224?0:surface[y*256+x]-1;result[1]=4;result[2]=0x86;return result;}
     // Keep native event text above the ending picture. The aerial cut has no
     // HUD/radar/radio at all, including the source camera's compass.
     if(!shot&&result[1]===2&&y<170&&state.phase!=='complete')return result;
     // The native HP digits, gauge and Goku portrait stay visible through the
     // introduction and beam struggle too. Native rings draw above the same
     // paused orbital picture; full inventory/status pages own their screen.
-    if(orbit&&(ring||y>=190)&&[2,4].includes(result[1]))return result;
-    return[y===224?0:surface[y*256+x]-1,4,0x86];
-  };
+    if(orbit&&(ring||y>=190)&&(result[1]===2||result[1]===4))return result;
+    result[0]=y===224?0:surface[y*256+x]-1;result[1]=4;result[2]=0x86;return result;
+  }
+  p.getColor=function(sub,x,y){return shade(sub,x,y,previous.call(this,sub,x,y));};
   p.registerLineHook?.('getColor',p.getColor,previous,(ppu,line)=>{
     if(line>224||!texture)return true;
     viewFrame=mod.frame;viewLine=line;viewX=-1;view=selectView();
     return !view;
-  });
+  },{name:'planet-view',post:(ppu,sub,x,y,r)=>{const t=shade(sub,x,y,r);if(t!==r){r[0]=t[0];r[1]=t[1];r[2]=t[2];}}});
   return{ready:collateral.ready,load(rom){texture=decodePlanetTexture(rom);frame=-1;viewFrame=-1;viewX=256;globeKey='';},
     renderDefeat(){
       const state=mod.ending?.planetScene;if(!state?.fatal)return;

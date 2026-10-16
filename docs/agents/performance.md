@@ -32,7 +32,7 @@ Every path re-validates the actual wrapper chain. The compositor and both gates 
     - `bg1Color`: recolours BG1 pixels (world scars).
     - `windowSuppress` / `onWindowMasked`: the Mode 7 shadow window.
 
-  A plan returns false if another hook already filled the same field.
+  A plan returns false if another hook already filled the same field. A hook whose whole effect is a post-process of its predecessor's `[color, layer, pixel]` passes `{post(ppu, sub, x, y, r)}`. The wrapper calls the same function, and the compositor runs it on every composed pixel, innermost first; it must be outside every hook that sets an inline field. A plan may also set `disableMain`/`disableSub` layer bits for wrappers that turn a layer off around their inner call. `ppu.activeLineHooks(line)` lists the hooks that are active on a line.
 
 ## Verification
 

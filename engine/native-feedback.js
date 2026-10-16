@@ -2,17 +2,21 @@
 // their next write to $49 immediately supersedes an attack's temporary pulse.
 export function createNativeFeedback(snes,mod){
   const previous=snes.write,r=snes.ram,p=snes.ppu,color=p.getColor;let pulse=null,flash=0;
-  p.getColor=function(sub,x,y){
-    const result=color.call(this,sub,x,y);
-    // A single seven-frame gold-white pulse, before native color math/fades.
-    // Do not mutate CGRAM, brighten text, or touch Mode 7 matrices/HDMA.
-    if(flash&&!sub&&(this.mode===1||this.mode===7)&&result[1]!==2){
+  // A single seven-frame gold-white pulse, before native color math/fades.
+  // Do not mutate CGRAM, brighten text, or touch Mode 7 matrices/HDMA.
+  function shade(ppu,sub,result){
+    if(flash&&!sub&&(ppu.mode===1||ppu.mode===7)&&result[1]!==2){
       const amount=[0,1,2,4,6,9,13,17][flash],c=result[0];
       result[0]=Math.min(31,(c&31)+amount)|(Math.min(31,((c>>5)&31)+amount)<<5)|(Math.min(31,((c>>10)&31)+(amount>>1))<<10);
     }
+  }
+  p.getColor=function(sub,x,y){
+    const result=color.call(this,sub,x,y);
+    shade(this,sub,result);
     return result;
   };
-  p.registerLineHook?.('getColor',p.getColor,color,ppu=>!flash||!(ppu.mode===1||ppu.mode===7));
+  p.registerLineHook?.('getColor',p.getColor,color,ppu=>!flash||!(ppu.mode===1||ppu.mode===7),
+    {name:'feedback',post:(ppu,sub,x,y,r)=>shade(ppu,sub,r)});
   snes.write=function(address,value,dma){
     const bank=address>>>16,low=address&65535;
     if(low===0x49&&(bank===0x7e||bank<0x40||(bank>=0x80&&bank<0xc0)))pulse=null;
