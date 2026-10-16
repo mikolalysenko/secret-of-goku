@@ -37,23 +37,25 @@ test('all four Goku directions use the correct source rows and retain every opaq
   }
 });
 
-test('push cells animate an existing palm while keeping each form, face and boots planted',()=>{
+test('push hands, face and torso stay planted while short native-sized steps animate in both forms',()=>{
   const {layer}=scene();
   for(const sheet of ['goku','ssj'])for(let row=0;row<4;row++){
-    const atlas=atlases[sheet],frames=[];
-    for(let reach=0;reach<3;reach++){
-      const cell=layer.pushFrame(sheet,row,reach);frames.push(Array.from(cell).join(','));
-      assert.equal(layer.pushFrame(sheet,row,reach),cell,'fixed cells are cached, not rebuilt each scanline');
-      const colors=new Set(atlas.pixels);
-      for(let y=0;y<32;y++)for(let x=0;x<32;x++){
-        const original=atlas.pixels[(32+row*32+y)*atlas.width+x],c=cell[y*32+x];
-        assert.ok(colors.has(c),'only existing sprite colors are used');
-        if(y>=28||original&&y<15&&x>=12&&x<=20)assert.equal(c,original,'face, hair and boot soles stay fixed');
+    const colors=new Set(atlases[sheet].pixels),frames=[],first=layer.pushFrame(sheet,row,0);
+    for(let phase=0;phase<4;phase++){
+      const cell=layer.pushFrame(sheet,row,phase);frames.push(Array.from(cell).join(','));
+      assert.equal(layer.pushFrame(sheet,row,phase),cell,'cells are cached, not rebuilt each scanline');
+      for(let i=0;i<1024;i++){
+        assert.ok(colors.has(cell[i]),'the push retains the existing sprite palette');
+        if(i<26*32)assert.equal(cell[i],first[i],'no stretching arms, sliding palms or thrusting hips');
       }
-      layer.surface.fill(0);layer.blit(sheet,0,row,100,80,32,32,null,0,reach);
+      layer.surface.fill(0);layer.blit(sheet,0,row,100,80,32,32,null,0,phase);
       for(let y=0;y<32;y++)for(let x=0;x<32;x++)assert.equal(layer.surface[(80+y)*256+100+x],cell[y*32+x],'the actual OBJ blit uses the push cell');
     }
-    assert.equal(new Set(frames).size,3,`${sheet} row ${row} has three visibly different poses`);
+    assert.equal(new Set(frames).size,3,'left step, planted feet, right step');
+    const moving=[2,3,4,5].map(legs=>layer.pushFrame(sheet,row,0,legs));
+    assert.ok(moving.some(cell=>cell.some((c,i)=>i>=26*32&&c!==first[i])),'accepted movement advances the feet');
+    for(const cell of moving)assert.deepEqual(cell.slice(0,26*32),first.slice(0,26*32),'hands remain on the object when the feet step');
+    for(let y=0;y<15;y++)for(let x=0;x<32;x++)assert.equal(first[y*32+x],atlases[sheet].pixels[(32+row*32+y)*atlases[sheet].width+x],'keep the neutral open-eyed head, not a strained attack face');
   }
 });
 

@@ -62,16 +62,22 @@ class GokuAnimation {
     // on actor contact. A held direction with no accepted movement is a push,
     // not a frozen walk. Require several blocked frames so a turn, DMA delay
     // or the first frame after standing still cannot briefly show the palm.
-    const pushing=m.canAttack&&!flight&&!menu&&!lift&&!m.localFlight&&!m.localLift&&
-      ['idle','walk','run'].includes(kind)&&!!(m.input&[0x20,0x80,0x40,0x10][m.facing])&&
+    const groundedControl=m.canAttack&&!flight&&!menu&&!lift&&!m.localFlight&&!m.localLift&&!action&&!reaction;
+    const pressure=groundedControl&&!!(m.input&[0x20,0x80,0x40,0x10][m.facing])&&
       !(m.input&[0x10,0x40,0x80,0x20][m.facing]);
+    // Native actor contact requests 08, then 91 when the other actor stops.
+    // Those are real pushes even while Goku is moving the enemy. Restrict the
+    // adaptation to field control so scripted alarm/brace gestures survive.
+    const actorPush=groundedControl&&nativeAction&&[8,17].includes(nativeAction.id)&&useNative;
+    if(actorPush){kind=pressure?'push':'idle';useNative=false;}
+    const pushing=pressure&&['idle','walk','run'].includes(kind);
     if(s.frame!==m.frame)s.blocked=pushing&&distance===0&&s.map===map&&s.facing===m.facing?(s.blocked||0)+1:0;
     if(pushing&&s.blocked>=6){kind='push';useNative=false;}
     const shuffleKinds=['charge','ready','focus','transform','revert'];
     if(s.frame!==m.frame){
       if(kind!==s.kind||map!==s.map){
         s.age=0;
-        if(['walk','run',...shuffleKinds].includes(kind)&&
+        if(['walk','run','push',...shuffleKinds].includes(kind)&&
           (map!==s.map||!shuffleKinds.includes(kind)||!shuffleKinds.includes(s.kind)))s.distance=0;
       }
       else s.age++;
@@ -83,7 +89,10 @@ class GokuAnimation {
       // Six native pixels per footfall; a blocked walk settles to idle after
       // three stationary frames rather than skating through a running loop.
       result={sheet,row:poseRow,column:(kind==='run'?6:2)+Math.floor(s.distance/6)%4};
-    }else if(kind==='push')result=this.track(sheet,'nudge',age,poseRow);
+    }else if(kind==='push'){
+      result=this.track(sheet,'nudge',age,poseRow);
+      if(distance>0||s.stationary<3&&s.distance>0)result.legs=2+Math.floor(s.distance/6)%4;
+    }
     else if(kind==='focus'){
       // Held L is a composed fighting guard, in the direction he is facing.
       // Straining/flaring cells belong only to the actual form changes.

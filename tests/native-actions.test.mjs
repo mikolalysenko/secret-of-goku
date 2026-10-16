@@ -32,7 +32,7 @@ test('native chest, boss and recovery phases never become a combat action or gue
   displayed.sequence=0x1234;mod.frame++;assert.equal(motion.pose({displayed}).kind,'idle');
 });
 
-test('blocked walking and actor contact use a relaxed moving push in both forms and every direction',()=>{
+test('blocked walking uses a relaxed moving push in both forms and every direction',()=>{
   for(const superSaiyan of [false,true])for(let facing=0;facing<4;facing++)for(const native of [0,1,2]){
     const input=[0x20,0x80,0x40,0x10][facing];
     const mod={frame:0,facing,input,canAttack:true,options:{superSaiyan},read8:()=>0,read16:()=>0};
@@ -41,11 +41,11 @@ test('blocked walking and actor contact use a relaxed moving push in both forms 
     const step=()=>{mod.frame++;return motion.pose({displayed});},frames=new Set();
     for(let i=0;i<90;i++){
       const p=step();assert.equal(p.sheet,superSaiyan?'ssj':'goku');assert.equal(p.row,[0,2,1,3][facing]);
-      if(i<6)assert.notEqual(p.kind,'push','input must be blocked before reaching');
+      if(i<6)assert.notEqual(p.kind,'push','input must be blocked before pushing');
       if(i>=6){assert.equal(p.kind,'push');assert.equal(p.column,0,'keeps the relaxed standing body');frames.add(p.nudge);}
       assert.equal(JSON.stringify(motion.pose({displayed})),JSON.stringify(p),'repainting cannot advance the loop');
     }
-    assert.equal(frames.size,3,'the palm reaches, presses and eases back');
+    assert.equal(frames.size,4,'short alternating steps have two planted beats');
     const saved=motion.snapshot(),next=step();motion.restore(saved);mod.frame--;assert.deepEqual(step(),next,'checkpoint resumes the same phase');
     mod.input=0;assert.notEqual(step().kind,'push','release drops the palm');
     mod.input=input;assert.notEqual(step().kind,'push','a new press does not inherit old contact time');
@@ -55,6 +55,23 @@ test('blocked walking and actor contact use a relaxed moving push in both forms 
     mod.canAttack=true;displayed.lift=12;for(let i=0;i<12;i++)assert.notEqual(step().kind,'push','airborne poses never push');
     displayed.lift=0;mod.action={kind:'focus'};for(let i=0;i<12;i++)assert.equal(step().kind,'focus','focus takes precedence over contact');
   }
+});
+
+test('native enemy pushes animate while moving or braced, release cleanly, and preserve scripted gestures',()=>{
+ for(const superSaiyan of[false,true])for(let facing=0;facing<4;facing++)for(const id of[8,17]){
+  const mod={frame:0,facing,input:[0x20,0x80,0x40,0x10][facing],canAttack:true,options:{superSaiyan},read8:()=>0,read16:()=>0};
+  const motion=new context.window.GokuAnimation(mod),entry=context.window.GokuNativeActions[id];
+  const displayed={map:129,x:100,y:100,animation:id,latchedAnimation:id,sequence:entry.pointers[0],graphicFrame:0,lift:0,status1:0,status2:0};
+  const phases=new Set(),steps=new Set(),step=()=>{mod.frame++;return motion.pose({displayed});};
+  for(let i=0;i<60;i++){
+   displayed.x++;const p=step();assert.equal(p.kind,'push');assert.equal(p.sheet,superSaiyan?'ssj':'goku');
+   phases.add(p.nudge);if(p.legs!==undefined)steps.add(p.legs);
+  }
+  assert.equal(phases.size,4);assert.equal(steps.size,4,'moving the enemy advances the feet');
+  for(let i=0;i<8;i++)step();assert.equal(step().legs,undefined,'blocked contact returns to the slower in-place cadence');
+  mod.input=0;assert.equal(step().kind,'idle','a stale native contact pose must not flash the strained brace');
+  mod.canAttack=false;assert.equal(step().kind,entry.key,'scripted gestures still use their native mapping');
+ }
 });
 
 test('flight departure and landing stay upright, brake into touchdown and retain cruise art in the air',()=>{

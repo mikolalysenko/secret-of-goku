@@ -171,34 +171,57 @@ class ManaSpriteLayer {
     }
     return this.shuffleFrames.get(key);
   }
-  pushFrame(sheet,row,reach){
-    const key=`${sheet}:${row}:${reach}`;
+  pushFrame(sheet,row,phase,legs=null){
+    // Hands stay planted. The native boy's push gets its motion from short
+    // steps, not a telescoping forearm or a repeating attack pose.
+    const column=[0,3,0,5][legs===null?phase:legs-2],key=`${sheet}:${row}:${column}`;
     if(!this.pushFrames.has(key)){
-      const a=this.atlas[sheet],cell=new Uint16Array(1024),gold=sheet==='ssj';
-      const copy=(column,r,x,y,dx=0,dy=0)=>{
-        const c=a.pixels[(32+r*32+y)*a.width+column*32+x],px=x+dx,py=y+dy;
-        if(c&&px>=0&&px<32&&py>=0&&py<32)cell[py*32+px]=c;
+      const a=this.atlas[sheet],base=this.atlas.goku,cell=new Uint16Array(1024),side=row===1||row===2;
+      const offset=sheet==='ssj'&&side?(row===1?-2:2):0;
+      const copy=(atlas,col,r,x,y,dx=0)=>{
+        const c=atlas.pixels[(32+r*32+y)*atlas.width+col*32+x],px=x+dx;
+        if(c&&px>=0&&px<32)cell[y*32+px]=c;
       };
-      // Reuse the open palm behind the standing body. Goku keeps his other
-      // arm down, his eyes open, and both boots planted: no straining pose.
-      if(row===1||row===2){
-        const start=row===1?4:15,dx=(row===1?1:-1)*(3-reach);
-        for(let y=13;y<=21;y++)for(let x=start;x<start+13;x++)copy(gold?19:23,row,x,y,dx,1);
-      }
+      // Keep each form's neutral face. These compact sleeves, bent elbows
+      // and palms use the gi's existing palette; both forms share the pose.
+      const colors=['000000','845218','ad7b39','dead63','a5a5a5','f7c673','ffffff','525252','733900','210084','3110ad','d66300','4221d6','ff7300','c69452','ad4a00','ad6b29','8c4a00','ffb529']
+        .map(hex=>{const c=parseInt(hex,16);return 1+((c>>19&31)|((c>>11&31)<<5)|((c>>3&31)<<10));});
+      const ink=(rows,x0,y0,mirror=false,dx=0)=>rows.forEach((line,y)=>[...line].forEach((ch,x)=>{
+        const c=colors[ch.charCodeAt(0)-65],px=(mirror?31-x0-x:x0+x)+dx;
+        if(c&&px>=0&&px<32)cell[(y+y0)*32+px]=c;
+      }));
       for(let y=0;y<32;y++)for(let x=0;x<32;x++){
-        const forearm=row===0&&x>=21&&x<=24&&y>=19&&y<=24||row===3&&x>=7&&x<=10&&y>=19&&y<=24;
-        if(!forearm)copy(0,row,x,y);
+        if(side){if(y<16)copy(a,0,row,x,y);else if(y>=26)copy(base,column,row,x,y,offset);}
+        else copy(a,y>=26?column:0,row,x,y);
       }
-      // Front/back arms use their own foreshortened source cells. Only the
-      // forearm moves by two integer pixels, never the body or its pivot.
-      if(row===0)for(let y=20;y<=29;y++)for(let x=y<27?19:17;x<=22;x++)copy(gold?25:29,0,x,y,2,-5+reach);
-      if(row===3)for(let y=16;y<=22;y++)for(let x=8;x<=11;x++)copy(gold?21:25,3,x,y,-1,-2-reach);
+      if(side)ink([
+        'IJJKKLJ',
+        'JPNLPLP..BB',
+        'BCDNNLPJBCDB',
+        'BDFPLLPJKCFB',
+        'BCDFDCJKJBB',
+        '.BBCCCBJKJ',
+        '.JKKKJLLPI',
+        'IPLNPPPLPI',
+        'IPNNLILNPI',
+        'IPLNPIPLPI',
+      ],11,16,row===1,offset);
+      else if(row===0){
+        // Replace both entire hanging arms, not only their last hand tiles.
+        for(let y=17;y<=24;y++)for(let x=7;x<=25;x++)if(x<=11||x>=21)cell[y*32+x]=0;
+        const arm=['BCD..BB','BCFJKDF','BCDJJBC','.BBCBB.'];
+        ink(arm,9,17);ink(arm,9,17,true,1);
+      }else{
+        // Away-facing palms are behind the shoulders; only bent elbows show.
+        for(let y=20;y<=24;y++)for(let x=6;x<=24;x++)if(x<=10||x>=20)cell[y*32+x]=0;
+        for(const x of[7,20])ink(['BCCB','CDCB','BJJB'],x,18);
+      }
       this.pushFrames.set(key,cell);
     }
     return this.pushFrames.get(key);
   }
   blit(sheet,column,row,x,y,width=32,height=32,legs=null,shuffle=0,nudge=null){
-    const a=this.atlas[sheet],cell=nudge!==null?this.pushFrame(sheet,row,nudge):shuffle?this.shuffleFrame(sheet,column,row):null;
+    const a=this.atlas[sheet],cell=nudge!==null?this.pushFrame(sheet,row,nudge,legs):shuffle?this.shuffleFrame(sheet,column,row):null;
     for(let py=0;py<height;py++)for(let px=0;px<width;px++){
       const lx=Math.floor(px*32/width),ly=Math.floor(py*32/height);
       // The cupped hand reaches row 24. Extending this mask to the bottom

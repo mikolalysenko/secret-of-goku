@@ -16376,11 +16376,11 @@ data.forms.ssjJab = {sheet:'ssjJab',source:'goku:10-13 body + ssj:0 head',width:
     bounds,opaque,origin:[16,31],semantic:'punch',bodyColumn:10+(i>>2),head:{offset:[dx,dy],mask}}))};
 data.forms.ssj.clips.punch.frames.forEach((f,i)=>{f.sheet='ssjJab';f.column=i;});
 data.forms.ssj.clips.cross.sourceGap='The original SSJ punch supplies the rear-hand cross. The lead-hand jab uses the matching base-form body with the existing golden head.';
-// A quiet one-handed nudge: reach, extend, hold, ease back. The renderer
-// swaps only the existing palm/forearm pixels; the relaxed head and feet stay.
+// A compact, planted push with short alternating steps. The renderer
+// keeps the upper body fixed and swaps the existing short walking steps.
 for(const sheet of ['goku','ssj'])data.forms[sheet].clips.nudge={
-  frames:[{column:0,nudge:0,ticks:10},{column:0,nudge:1,ticks:8},
-    {column:0,nudge:2,ticks:16},{column:0,nudge:1,ticks:8}],loop:true,adaptation:true,
+  frames:[{column:0,nudge:0,ticks:10},{column:0,nudge:1,ticks:10},
+    {column:0,nudge:2,ticks:10},{column:0,nudge:3,ticks:10}],loop:true,adaptation:true,
 };
 function freeze(value) { if (value && typeof value === 'object' && !Object.isFrozen(value)) { for (const child of Object.values(value)) freeze(child); Object.freeze(value); } return value; }
 root.GokuAnimationData = freeze(data);
