@@ -36,7 +36,7 @@ Native releases are self-contained, include the ROM, and run offline. Download t
 
 On Steam Deck or Bazzite, add the game to Steam in Desktop Mode and use the **Gamepad** controller template. The handheld builds start fullscreen. [Launch instructions and save locations](desktop/PLAYING.md).
 
-The browser version supports keyboard, controllers, and touch. If prompted, select your own **Secret of Mana (USA)** ROM; it stays on your device.
+The browser version starts automatically and supports keyboard, controllers, and phone touch controls. Open the play link and tap Start to begin.
 
 ## Controls
 

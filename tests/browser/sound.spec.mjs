@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 
 test('Shenron silences combat loops and speech, with flight audio only during the Ball departure',async({page})=>{
- await page.goto('/');await page.getByRole('button',{name:/Sound on|Mute/}).click();
+ await page.goto('/');await page.keyboard.press('Shift');
  const result=await page.evaluate(async()=>{
   const {createKiSound}=await import('/engine/ki-sound.js'),ctx=new AudioContext();await ctx.resume();
   const m={frame:0,options:{enabled:true,superSaiyan:true},gokuActive:true,canAttack:true,charging:false,charge:90,powerCharge:96,localFlight:false,frieza:{music:'orbit',chargeSound:0},ending:{active:false,airborne:false}};
@@ -22,7 +22,7 @@ test('Shenron silences combat loops and speech, with flight audio only during th
 });
 
 test('Frieza score changes from ominous entrance to battle and orbit, ducks native music and stops on pause',async({page})=>{
- await page.goto('/');await page.getByRole('button',{name:/Sound on|Mute/}).click();
+ await page.goto('/');await page.keyboard.press('Shift');
  // The combat cues are rendered from the running cartridge's instrument bank.
  await page.waitForFunction(()=>window.mana?.snes?.cart?.data?.length,{},{timeout:60000});
  const result=await page.evaluate(async()=>{
@@ -50,7 +50,7 @@ test('Frieza score changes from ominous entrance to battle and orbit, ducks nati
 });
 
 test('Frieza charge has a sustained bed and impacts use bounded sampled cues that clear on pause',async({page})=>{
- await page.goto('/');await page.getByRole('button',{name:/Sound on|Mute/}).click();
+ await page.goto('/');await page.keyboard.press('Shift');
  const result=await page.evaluate(async()=>{
   const {createKiSound}=await import('/engine/ki-sound.js'),ctx=new AudioContext();await ctx.resume();
   const m={frame:0,options:{enabled:true,superSaiyan:true},gokuActive:true,canAttack:true,frieza:{chargeSound:1},charging:false,charge:0,powerCharge:0};
@@ -70,9 +70,10 @@ test('Frieza charge has a sustained bed and impacts use bounded sampled cues tha
 });
 
 test('DBZ flight audio survives scripted combat locks and all audio stops on clear',async({page})=>{
+ await page.route(/\/(local-rom|rom\/secret-of-mana-us\.sfc)$/,route=>route.fulfill({status:404,body:'No ROM'}));
  await page.goto('/');
  // A real gesture unlocks the browser AudioContext; this test needs no ROM.
- await page.getByRole('button',{name:/Sound on|Mute/}).click();
+ await page.keyboard.press('Shift');
  const result=await page.evaluate(async()=>{
   const {createKiSound}=await import('/engine/ki-sound.js');
   const ctx=new AudioContext();await ctx.resume();
@@ -100,7 +101,8 @@ test('DBZ flight audio survives scripted combat locks and all audio stops on cle
 });
 
 test('Super Saiyan plays one full power-up burst over the aura, separate from Kamehameha speech',async({page})=>{
- await page.goto('/');await page.getByRole('button',{name:/Sound on|Mute/}).click();
+ await page.route(/\/(local-rom|rom\/secret-of-mana-us\.sfc)$/,route=>route.fulfill({status:404,body:'No ROM'}));
+ await page.goto('/');await page.keyboard.press('Shift');
  const result=await page.evaluate(async()=>{
   const {createKiSound}=await import('/engine/ki-sound.js');const ctx=new AudioContext();await ctx.resume();
   const m={frame:0,options:{enabled:true,superSaiyan:false},gokuActive:true,canAttack:true,powerCharge:60,action:{kind:'focus'},charging:false,charge:0};

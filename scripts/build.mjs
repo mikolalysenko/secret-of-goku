@@ -1,5 +1,10 @@
 import {cp,mkdir,rm,readdir,readFile,writeFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
+import {verifiedRom} from './release-lib.mjs';
+const romPath='rom/secret-of-mana-us.sfc';
+// The maintainer supplies this one cartridge for self-contained public builds.
+// Validate before replacing the last successful output.
+const rom=verifiedRom(await readFile(romPath));
 await rm('dist',{recursive:true,force:true});await mkdir('dist',{recursive:true});
 // Explicit public runtime list. The archived prototype and extracted map PNGs
 // are research inputs; the real game reads those maps from the selected ROM.
@@ -17,8 +22,9 @@ for(const file of files){
   await mkdir(`dist/${file.split('/').slice(0,-1).join('/')}`,{recursive:true});
   await cp(file,`dist/${file}`,{recursive:true});
 }
+await mkdir('dist/rom',{recursive:true});await writeFile(`dist/${romPath}`,rom);
 const publicFiles=await readdir('dist',{recursive:true});
-for(const file of publicFiles)if(/(^|\/)(\.|node_modules)|\.(sfc|smc|srm|state|zip)$/i.test(file))throw Error(`Private or cartridge file in build: ${file}`);
+for(const file of publicFiles)if(file!==romPath&&/(^|\/)(\.|node_modules)|\.(sfc|smc|srm|state|zip)$/i.test(file))throw Error(`Unexpected private or cartridge file in build: ${file}`);
 // Version the complete module graph, not just lab.js: a cached imported mod
 // must not silently keep old controls beside a newly deployed player.
 const sourceFiles=publicFiles.filter(file=>/\.(js|mjs|css|html|json)$/.test(file)).sort(),hash=createHash('sha256');
@@ -31,4 +37,4 @@ for(const file of sourceFiles){
  await writeFile(`dist/${file}`,source);
 }
 await writeFile('dist/.nojekyll','');
-console.log(`Built dist/ (${version}) — public player, emulator and mod assets only. No ROMs or checkpoints.`);
+console.log(`Built dist/ (${version}) — public player, emulator, mod assets and verified bundled ROM. No checkpoints or private fixtures.`);

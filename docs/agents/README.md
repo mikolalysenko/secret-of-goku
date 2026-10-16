@@ -18,6 +18,6 @@ These notes include complete gameplay, story and ending spoilers. The top-level 
 | World traversal | [Dungeon shortcuts](dungeon-shortcuts.md) |
 | Story | [Arrival](arrival.md), [Scene tooling](scenes.md), [Story review](story-review.md) |
 
-Read [AGENTS.md](../../AGENTS.md) before changing the project. Commit coherent, validated work and stage only task-owned changes. Keep local ROMs, raw recordings, test fixtures, generated reports and release archives out of Git. Curated public GIFs/title screenshots requested for the README live in `assets/readme/`.
+Read [AGENTS.md](../../AGENTS.md) before changing the project. Commit coherent, validated work and stage only task-owned changes. Keep private ROM copies, raw recordings, test fixtures, generated reports and release archives out of Git. The maintainer-authorized `rom/secret-of-mana-us.sfc` is the only tracked cartridge. Curated public GIFs/title screenshots requested for the README live in `assets/readme/`.
 
-Keep new change summaries and implementation details here. Preserve local links when moving notes. The browser build stays ROM-free; the release script adds the verified cartridge only to ignored desktop staging and downloadable archives.
+Keep new change summaries and implementation details here. Preserve local links when moving notes. The browser build and native releases include the verified tracked cartridge so players can start without selecting a file.

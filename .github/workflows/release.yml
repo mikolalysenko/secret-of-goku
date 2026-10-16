@@ -44,8 +44,7 @@ jobs:
       - name: Build self-contained release
         run: npm run release -- --platform ${{ matrix.platform }} --arch ${{ matrix.arch }} --profile ${{ matrix.profile }}
         env:
-          # A private, direct HTTPS URL to the raw ROM; never committed or logged.
-          RELEASE_ROM_URL: ${{ secrets.RELEASE_ROM_URL }}
+          # The verified cartridge is bundled from the release commit.
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}

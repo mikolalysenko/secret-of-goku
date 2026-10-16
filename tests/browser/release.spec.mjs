@@ -10,7 +10,9 @@ async function publicBuild(page,{defaultRom=false,start=''}={}){
   const url=route.request().url();if(!url.startsWith(origin))return route.fulfill({status:404,body:'Outside the public build'});
   const path=url.slice(origin.length).split('?')[0]||'index.html';
   if(path.includes('..'))return route.abort();
-  if(defaultRom&&path==='rom/secret-of-mana-us.sfc')return route.fulfill({body:await readFile('.local/rom/secret-of-mana-us.sfc'),contentType:'application/octet-stream'});
+  // Exercise the actual packaged file, or deliberately simulate a missing
+  // download to keep the manual fallback covered even when it is bundled.
+  if(!defaultRom&&path==='rom/secret-of-mana-us.sfc')return route.fulfill({status:404,body:'No bundled ROM'});
   try{await route.fulfill({body:await readFile(resolve('dist',path)),contentType:({'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.json':'application/json','.css':'text/css','.png':'image/png','.wav':'audio/wav'})[extname(path)]||'application/octet-stream'});}
   catch{await route.fulfill({status:404,body:'Missing public file'});}
  });
@@ -37,11 +39,24 @@ test('public subdirectory build boots a locally chosen ROM without uploading it'
  expect(requests.some(r=>r.url.includes('local-rom'))).toBe(false);expect(requests.every(r=>r.method==='GET')).toBe(true);expect(errors).toEqual([]);
 });
 test('public subdirectory build automatically boots a valid ROM at the default path',async({page})=>{
- test.skip(!existsSync('.local/rom/secret-of-mana-us.sfc'),'Requires local ROM.');
  const {requests,errors}=await publicBuild(page,{defaultRom:true});await page.waitForFunction(()=>mana.ready);
  await expect(page.locator('#boot-screen')).toBeHidden();
  expect(requests.filter(r=>r.url===origin+'rom/secret-of-mana-us.sfc')).toHaveLength(1);
  expect(requests.some(r=>r.url.includes('local-rom'))).toBe(false);expect(requests.every(r=>r.method==='GET')).toBe(true);expect(errors).toEqual([]);
+});
+test.describe('phone startup',()=>{
+ test.use({hasTouch:true,isMobile:true,viewport:{width:390,height:640}});
+ test('public subdirectory build starts on a phone without a file picker',async({page})=>{
+  const {requests,errors}=await publicBuild(page,{defaultRom:true});await page.waitForFunction(()=>mana.ready);
+  await expect(page.locator('#boot-screen')).toBeHidden();
+  await expect(page.locator('#native-save')).toBeHidden();await expect(page.locator('#native-restore')).toBeHidden();
+  await expect(page.locator('#touch-main')).toBeVisible();
+  await page.locator('.touch-pad [data-snes="3"]').tap();
+  const rendered=await page.evaluate(()=>{mana.pause();mana.run(900);return{pixels:mana.pixels.some((v,i)=>i%4!==3&&v>0),overflow:document.documentElement.scrollWidth>innerWidth};});
+  expect(rendered).toEqual({pixels:true,overflow:false});
+  expect(requests.filter(r=>r.url===origin+'rom/secret-of-mana-us.sfc')).toHaveLength(1);
+  expect(requests.some(r=>r.url.includes('local-rom'))).toBe(false);expect(errors).toEqual([]);
+ });
 });
 test('a shared finale query survives manual ROM selection in the published subdirectory build',async({page})=>{
  test.skip(!existsSync('.local/rom/secret-of-mana-us.sfc'),'Requires local ROM.');

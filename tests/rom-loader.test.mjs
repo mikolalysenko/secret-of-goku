@@ -23,11 +23,21 @@ test('a cold packaged ROM read outlasts the web timeout but is still bounded',as
     requestSignal=signal;
     return new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(signal.reason)));
   }});
-  t.mock.timers.tick(5000);
+  t.mock.timers.tick(35000);
   assert.equal(requestSignal.aborted,false,'a local packaged read survives a slow first launch');
-  t.mock.timers.tick(55000);
+  t.mock.timers.tick(25000);
   assert.equal(await pending,null);
   assert.equal(requestSignal.aborted,true,'a stalled local read still terminates');
+});
+test('a bundled web ROM allows a slower phone download and still bounds a stalled request',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  let requestSignal;
+  const pending=fetchDefaultRom({baseUrl:'https://example.test/secret-of-goku/',fetchImpl:(_url,{signal})=>{
+    requestSignal=signal;
+    return new Promise((_resolve,reject)=>signal.addEventListener('abort',()=>reject(signal.reason)));
+  }});
+  t.mock.timers.tick(5000);assert.equal(requestSignal.aborted,false);
+  t.mock.timers.tick(25000);assert.equal(await pending,null);assert.equal(requestSignal.aborted,true);
 });
 test('loopback lookup retains the private development endpoint as a fallback',async()=>{
   const urls=[];

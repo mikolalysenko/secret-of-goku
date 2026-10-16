@@ -7,6 +7,7 @@ playwright-report/
 .DS_Store
 .local/
 *.sfc
+!rom/secret-of-mana-us.sfc
 *.smc
 *.srm
 *.state

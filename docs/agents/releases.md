@@ -1,13 +1,12 @@
 # Native builds and releases
 
-This is a vibe coded fan game, not intended for commercial purposes. Original code remains under its existing license; third-party assets and the supplied ROM retain their original ownership. Keep ROMs, packaged downloads, captures, private fixtures and audit output out of Git.
+This is a vibe coded fan game, not intended for commercial purposes. Original code remains under its existing license; third-party assets and the supplied ROM retain their original ownership. The maintainer authorized committing `rom/secret-of-mana-us.sfc` for self-contained Pages and native builds. Keep other ROM copies, packaged downloads, captures, private fixtures and audit output out of Git.
 
 ## Local release
 
-Use Node.js 22.12 or newer and `npm ci`. Import the local US cartridge once:
+Use Node.js 22.12 or newer and `npm ci`. The verified cartridge is included in the release source:
 
 ```sh
-npm run rom:import -- "/path/to/Secret of Mana (USA).sfc"
 npm test
 npm run release
 ```
@@ -27,9 +26,9 @@ Linux creates AppImage and tar.gz files; Windows creates a ZIP containing an exe
 
 Build macOS on macOS and AppImages on Linux. `--archive-only` creates only a tar.gz or ZIP and allows cross-packaging Linux and Windows from this Mac without Wine, Docker or an installer compiler. Cross-packaging is not evidence of native runtime testing. macOS signing/notarization requires maintainer credentials; Windows ZIPs are unsigned. No credentials are required for local archives.
 
-Output is ignored under `release/<version>/<profile>-<platform>-<arch>/`. Each directory contains archives and `SHA256SUMS`; distribute those files only, not builder debug/config files. The ignored `.local/desktop/` staging area includes the ROM. The browser `dist/` build remains ROM-free. A repeated release replaces only that target's stage/output.
+Output is ignored under `release/<version>/<profile>-<platform>-<arch>/`. Each directory contains archives and `SHA256SUMS`; distribute those files only, not builder debug/config files. The ignored `.local/desktop/` staging area and the browser `dist/` build both include the verified tracked ROM. A repeated release replaces only that target's stage/output.
 
-`--rom /absolute/path/to/game.sfc` overrides the local ROM path. If the local file is missing, `RELEASE_ROM_URL` can supply a private direct HTTPS URL to the raw ROM. The downloader checks size and SHA-256 and does not print the URL. Never put the URL in command arguments or Git. A 2 MiB ROM is too large for a GitHub Actions secret; store its private URL, not base64 cartridge data.
+`--rom /absolute/path/to/game.sfc` overrides the default `rom/secret-of-mana-us.sfc`. The optional `RELEASE_ROM_URL` fallback still supports a private direct HTTPS URL if that override is missing; the downloader checks size and SHA-256 and does not print the URL. Normal local and CI builds need no ROM secret. The shared web build also validates the tracked cartridge.
 
 ## Desktop development and verification
 
@@ -43,7 +42,7 @@ npm run test:desktop
 
 ## GitHub Actions
 
-The manually dispatched **Native releases** workflow builds on Ubuntu 22.04, Windows, Apple silicon macOS and Intel macOS. It tests each packaged app before uploading archives. Configure the repository Actions secret `RELEASE_ROM_URL` before running it. The public Pages workflow never receives this secret.
+The manually dispatched **Native releases** workflow builds on Ubuntu 22.04, Windows, Apple silicon macOS and Intel macOS. Every job bundles the cartridge from the same source commit and tests its packaged app before uploading archives.
 
 Optional macOS signing secrets: `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`. Without them the builder creates an unsigned/ad-hoc local app. Signing and notarization have not been validated without real credentials.
 
@@ -65,6 +64,6 @@ Update `package.json` and `package-lock.json` to the release version first. Disp
 
 The game runs at `goku://game/` with a standard secure origin so fetch, Web Crypto, workers, audio and persistent browser storage work offline. Renderer Node integration is disabled; context isolation, the Chromium sandbox and a local-only CSP stay enabled. No preload bridge, listening server, updater, Steam credentials or Proton dependency is introduced.
 
-`engine/rom-loader.js` allows up to 60 seconds for a packaged ROM read. A cold Intel app running under Rosetta can exceed the browser's four-second download timeout; the web timeout remains unchanged.
+`engine/rom-loader.js` allows up to 60 seconds for a packaged ROM read and 30 seconds for a browser download. This accommodates cold Intel apps under Rosetta and slower phone connections while still bounding stalled requests.
 
 Implementation references: [Electron protocol](https://www.electronjs.org/docs/latest/api/protocol), [Electron web preferences](https://www.electronjs.org/docs/latest/api/structures/web-preferences), [electron-builder Linux targets](https://www.electron.build/linux/), [GitHub runner architectures](https://docs.github.com/en/actions/reference/runners/github-hosted-runners), [Bazzite game launchers](https://docs.bazzite.gg/Gaming/Game_Launchers/).

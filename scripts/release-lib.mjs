@@ -7,7 +7,7 @@ export const releaseHelp = `Usage: npm run release -- [options]
   --platform linux|mac|windows   Default: current host
   --arch x64|arm64               Default: current host
   --profile desktop|steam-deck|bazzite
-  --rom /path/to/game.sfc        Default: .local/rom/secret-of-mana-us.sfc
+  --rom /path/to/game.sfc        Default: rom/secret-of-mana-us.sfc
   --archive-only                ZIP / tar.gz only (also allows cross-packaging)
   --stage-only                  Prepare the offline app without packaging
   --help
@@ -23,7 +23,7 @@ to a private HTTPS download URL. Nothing is committed, tagged or published.
 Artifacts and SHA256SUMS are written under release/<version>/<profile>-<platform>-<arch>/.`;
 
 export function parseReleaseArgs(argv, host = process.platform, hostArch = process.arch) {
-  const options = {platform: ({darwin: 'mac', win32: 'windows', linux: 'linux'})[host], arch: hostArch, profile: 'desktop', rom: '.local/rom/secret-of-mana-us.sfc', archiveOnly: false, stageOnly: false};
+  const options = {platform: ({darwin: 'mac', win32: 'windows', linux: 'linux'})[host], arch: hostArch, profile: 'desktop', rom: 'rom/secret-of-mana-us.sfc', archiveOnly: false, stageOnly: false};
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--help') return {help: true};

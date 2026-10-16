@@ -14,9 +14,9 @@ export async function validateRom(source){
 // server all lead to the manual chooser. No selected file is ever uploaded.
 export async function fetchDefaultRom({baseUrl=location.href,fetchImpl=fetch,timeoutMs}={}){
   const base=new URL(baseUrl),urls=[new URL(defaultRomPath,base)];
-  // A cold packaged app (especially under Rosetta) can take longer to stream
-  // its local ASAR file. Keep the short web fallback without aborting that read.
-  const timeout=timeoutMs??(base.protocol==='goku:'?60000:4000);
+  // Allow the bundled 2 MiB download to finish on a slower phone connection.
+  // A cold packaged app (especially under Rosetta) gets a longer local read.
+  const timeout=timeoutMs??(base.protocol==='goku:'?60000:30000);
   if(['localhost','127.0.0.1','[::1]'].includes(base.hostname))urls.push(new URL('/local-rom',base));
   for(const url of urls){
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeout);
