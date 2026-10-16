@@ -8,12 +8,12 @@ from the ROM and the engine source each time the graph is built.
 
 | Piece | Role |
 | --- | --- |
-| [`engine/scene-graph.js`](../engine/scene-graph.js) | Crawler and graph core (browser and Node). Decodes all 2,048 events, 511 maps and 1,024 doors. Overlays the mod's authored scripts and text tables, indexes code references, and provides `crawl`, `enumerate`, `coverage` and `renderScript`. |
-| [`engine/scene-catalog.json`](../engine/scene-catalog.json) | Curated layer only: one scene per line, with chapter, kind, root events, maps, `next`/`requires` ordering, notes, dialogue notes, `code`/`tests` references and a launch recipe. |
-| [`engine/scene-launcher.js`](../engine/scene-launcher.js) | Turns a recipe into a plan and drives `window.mana`: base quick start, party mask, warp or door, flags, event request. Every temporary cartridge write is restored. |
-| [`scenes.html`](../scenes.html) | Viewer and live debugger. |
-| [`tools/scenes/cli.mjs`](../tools/scenes/cli.mjs) | Terminal crawler, coverage report and test runner. |
-| [`tests/browser/scenes.spec.mjs`](../tests/browser/scenes.spec.mjs) | Generic Playwright harness that loads any scene. |
+| [`engine/scene-graph.js`](../../engine/scene-graph.js) | Crawler and graph core (browser and Node). Decodes all 2,048 events, 511 maps and 1,024 doors. Overlays the mod's authored scripts and text tables, indexes code references, and provides `crawl`, `enumerate`, `coverage` and `renderScript`. |
+| [`engine/scene-catalog.json`](../../engine/scene-catalog.json) | Curated layer only: one scene per line, with chapter, kind, root events, maps, `next`/`requires` ordering, notes, dialogue notes, `code`/`tests` references and a launch recipe. |
+| [`engine/scene-launcher.js`](../../engine/scene-launcher.js) | Turns a recipe into a plan and drives `window.mana`: base quick start, party mask, warp or door, flags, event request. Every temporary cartridge write is restored. |
+| [`scenes.html`](../../scenes.html) | Viewer and live debugger. |
+| [`tools/scenes/cli.mjs`](../../tools/scenes/cli.mjs) | Terminal crawler, coverage report and test runner. |
+| [`tests/browser/scenes.spec.mjs`](../../tests/browser/scenes.spec.mjs) | Generic Playwright harness that loads any scene. |
 
 ## Node types (IRIs)
 
@@ -135,7 +135,7 @@ stay under `.local/`.
 4. `node tools/scenes/rewrite-tables.mjs` edits addresses that already have an
    authored entry in place (story, scene, party or crisis tables), following
    the compiler's precedence. `node tools/scenes/apply-edits.mjs` adds the
-   rest to [`engine/retail-dialogue.js`](../engine/retail-dialogue.js). That
+   rest to [`engine/retail-dialogue.js`](../../engine/retail-dialogue.js). That
    table holds adaptations of retail lines no earlier pass had rewritten, and
    the compiler checks it first. Each address lives in exactly one table.
    `npm test` fails if an entry is not a real text run, or if it targets an
@@ -150,7 +150,7 @@ codes, as retail text does: `{1}` is the girl (Primm), `{2}` the sprite
 Goku is fixed, so lines use `GOKU` directly, and `{0}` is also GOKU after the
 crash. A speaker label is written `{1}:`; the compiler drops it like
 `PRIMM:` when she is absent. Layout and the 28-column check count a code at
-the six-letter maximum. [`engine/native-names.js`](../engine/native-names.js)
+the six-letter maximum. [`engine/native-names.js`](../../engine/native-names.js)
 keeps the boy's name in the unused tail of Goku's name slot. Native saves keep
 it there. The module also serves a name the player never entered as its retail
 default. Overlay text (King Kai's radio, finale prompts) resolves the same codes

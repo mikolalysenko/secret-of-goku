@@ -1,6 +1,6 @@
 // Native Secret of Mana US spell OBJ decoder. No game bytes embedded.
 // Input is the 2 MiB, unheadered ROM Uint8Array; offsets are PC file offsets.
-// Descriptors are in native-effects.json. See docs/native-effects.md for verification.
+// Descriptors are in native-effects.json. See docs/agents/native-effects.md for verification.
 
 function range(bytes, offset, size) {
   if (!(bytes instanceof Uint8Array)) throw new TypeError('Expected ROM Uint8Array');

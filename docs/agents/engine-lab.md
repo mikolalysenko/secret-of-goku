@@ -33,7 +33,7 @@ Native poison, flash and ghost palette changes are transferred to Goku's colors;
 
 Charge, beam, impact and aura pixels are decoded from 34 original spell cells. Their palette-0, priority-3 OBJ marker remains independent of the body's water palette, and they pass through native layer composition without browser glow, smoothing or HTML overlays. See [native effects](native-effects.md) for the recovered encoding and independent VRAM/CGRAM checks.
 
-The core under `vendor/snes/` has one local Mode 7 overflow correction in `pipu.js`, described below. Its [MIT license](../vendor/snes/LICENSE.txt) also applies to the evaluator adaptation.
+The core under `vendor/snes/` has one local Mode 7 overflow correction in `pipu.js`, described below. Its [MIT license](../../vendor/snes/LICENSE.txt) also applies to the evaluator adaptation.
 
 ## Native state and controls
 

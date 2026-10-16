@@ -1,14 +1,14 @@
 # Credits and sources
 
-Secret of Goku is an unofficial browser fan conversion. Game artwork and character designs retain their original ownership. Source attribution does not relicense game assets.
+Secret of Goku is an unofficial, vibe coded fan game, not intended for commercial purposes. It runs in a browser and in self-contained desktop builds. Game artwork and character designs retain their original ownership. Source attribution does not relicense game assets.
 
 ## Original game and extracted maps
 
 **Secret of Mana / Seiken Densetsu 2 — Square, 1993.**
 
-The runtime Potos, interior, cave and overworld PNGs prefixed `rom-`, and `assets/data/potos-rom.json`, were decoded directly from the user-supplied US ROM. These research extractions are retained with the archived prototype, and are not shipped in the hosted demo. The main game decodes maps from the locally selected ROM. No game ROM is included in the repository or static build. See [ROM research](docs/rom-research.md) for decoding and validation.
+The runtime Potos, interior, cave and overworld PNGs prefixed `rom-`, and `assets/data/potos-rom.json`, were decoded directly from the user-supplied US ROM. These research extractions are retained with the archived prototype, and are not shipped in the hosted demo. The main game decodes maps from the locally selected ROM. No game ROM is included in the repository or static web build. Native release archives bundle the verified ROM supplied during packaging. See [ROM research](docs/agents/rom-research.md) for decoding and validation.
 
-Goku's charge, beam, impact and aura reuse original **Lucent Beam, Thunderbolt and Lucid Barrier** artwork and palette cycles decoded from that same ROM. `engine/native-effects.json` contains only extraction descriptors and provenance. See [native effects](docs/native-effects.md). The new attack choreography, branching lightning paths and gold ki palette combination are authored adaptations of that original art; Kamehameha remains blue.
+Goku's charge, beam, impact and aura reuse original **Lucent Beam, Thunderbolt and Lucid Barrier** artwork and palette cycles decoded from that same ROM. `engine/native-effects.json` contains only extraction descriptors and provenance. See [native effects](docs/agents/native-effects.md). The new attack choreography, branching lightning paths and gold ki palette combination are authored adaptations of that original art; Kamehameha remains blue.
 
 The arrival crater reuses the original Potos hole (map131, foreground piece15, metatiles369–374, palette24), decoded at runtime with surrounding turf omitted. The new gold GOKU title silhouettes are project-authored pixel lettering; the title palette, “Secret of” artwork, and extended programmer credit font come from the original game. The new arrival dialogue and scene choreography are authored for this conversion and execute through the original event/dialogue systems.
 
@@ -36,7 +36,7 @@ The new **Shenron ending sprite** is generated fan artwork, created with OpenAI 
 - **Mantis Ant** — [sheet by Thanwe](https://www.spriters-resource.com/snes/secretofmana/asset/1503/).
 - **Rabite** — [Secret of Mana sheet](https://www.spriters-resource.com/snes/secretofmana/asset/54947/), embedded sheet credit retained in the source image.
 
-Dragon Ball characters originate with Akira Toriyama / Bird Studio and their respective rights holders. The original game supplies the main game's music, interface and much of its NPC dialogue. The arrival, Goku's responses, companion-dependent scenes and restoration ending are authored adaptations; see [story review](docs/story-review.md). Goku combat/rendering hooks were authored for this project. The earlier JavaScript prototype is retained locally for research.
+Dragon Ball characters originate with Akira Toriyama / Bird Studio and their respective rights holders. The original game supplies the main game's music, interface and much of its NPC dialogue. The arrival, Goku's responses, companion-dependent scenes and restoration ending are authored adaptations; see [story review](docs/agents/story-review.md). Goku combat/rendering hooks were authored for this project. The earlier JavaScript prototype is retained locally for research.
 
 ## Code and technical references
 

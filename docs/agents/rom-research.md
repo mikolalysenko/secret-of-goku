@@ -180,8 +180,8 @@ those original systems through emulation and attaches live Goku hooks.
 ## References and attribution
 
 The LGPL-2.1 tooling adaptation preserves Moppleton's attribution and license in
-[tools/rom/NOTICE.md](../tools/rom/NOTICE.md) and
-[tools/rom/COPYING.LESSER](../tools/rom/COPYING.LESSER).
+[tools/rom/NOTICE.md](../../tools/rom/NOTICE.md) and
+[tools/rom/COPYING.LESSER](../../tools/rom/COPYING.LESSER).
 
 - [Moppu / SecretOfManaRandomizer](https://github.com/Moppu/SecretOfManaRandomizer/tree/1404b7bd8552677399f24632c1e37cba37d491ef): primary implementation for maps, metatiles, objects, events and world-map RLE.
 - [smkerz / secret-of-mana-hacking, graphics construction notes](https://github.com/smkerz/secret-of-mana-hacking/blob/main/Doc/Construction%20Tileset%20Map%20128.txt): pointed to the original graphics-list loader, which was then traced against the supplied ROM.

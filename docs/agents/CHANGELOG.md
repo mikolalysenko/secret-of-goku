@@ -4,12 +4,23 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## 2026-10-16 — Native releases and public overview
+
+- Added an Electron desktop shell and self-contained Windows/macOS/Linux archives, plus fullscreen Steam Deck and Bazzite profiles. Release packaging includes the verified local ROM and writes SHA-256 checksums while keeping ROMs and outputs out of Git.
+- Desktop builds show only the game canvas. Controller startup enables sound automatically; F5/F9 save and restore checkpoints. A stable per-user profile preserves native SRAM and checkpoints across updates.
+- Added manual native-release CI with per-platform packaged-app smoke checks and an optional draft release. Local packaging does not publish anything.
+- Reduced the public README to the premise, three real gameplay GIFs, title/gameplay screenshots, brief controls and an honestly pending YouTube teaser link. Added the vibe coded, noncommercial fan-game notice.
+- Moved detailed gameplay, developer notes, code summaries and this changelog into docs/agents/. Updated links and repository instructions.
+- Native validation at the first checkpoint: 348 unit tests, five browser release/title checks, and two-launch smoke tests of the staged and packaged Apple silicon macOS app. Cross-built Linux/Windows archives still require their native CI/hardware checks; Deck/Bazzite hardware and signing credentials are not available locally.
+
+
+
 ## 2026-10-15
 
 ### Scene graph, review tooling and cutscene fixes
 - Linked-data scene graph of every cutscene and event (`engine/scene-graph.js`,
   `engine/scene-catalog.json`, 107 scenes), launcher (`?scene=<id>`), viewer and
-  live debugger (`scenes.html`), CLI (`npm run scenes`), docs (`docs/scenes.md`).
+  live debugger (`scenes.html`), CLI (`npm run scenes`), docs (`docs/agents/scenes.md`).
   Launch recipes now actually play 20 previously unreachable scenes; recipes can
   set gold.
 - Dialogue: retail-text adaptations (`engine/retail-dialogue.js`), Goku's

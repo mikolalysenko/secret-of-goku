@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-only
 // SNES tile decoding; graphics list layout independently traced from the user's
-// ROM routines C1:F413-C1:F5CC. Sources and verification notes: docs/rom-research.md.
+// ROM routines C1:F413-C1:F5CC. Sources and verification notes: docs/agents/rom-research.md.
 import {deflateSync} from 'node:zlib';
 import {requireRange,RomFormatError} from './map-codec.mjs';
 import {crc32,word,long} from './rom.mjs';

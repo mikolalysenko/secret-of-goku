@@ -1,0 +1,23 @@
+# Agent and developer documentation
+
+These notes include complete gameplay, story and ending spoilers. The top-level [README](../../README.md) is the public, spoiler-free project overview.
+
+| Start here | Contents |
+| --- | --- |
+| [Code map](code-map.md) | Runtime subsystems, native hooks and developer entry points |
+| [Development](development.md) | Local setup, ROM import, tests, browser build and Pages deployment |
+| [Releases](releases.md) | Offline Windows/macOS/Linux packaging, Steam Deck/Bazzite profiles and CI |
+| [Changelog](CHANGELOG.md) | Changes and implementation summaries |
+| [Gameplay reference](gameplay.md) | Full feature behavior, detailed controls and story/debug starts |
+| [README media](readme-media.md) | Spoiler boundaries, capture process and pending teaser URL |
+
+| Subsystem | Notes |
+| --- | --- |
+| Emulator and ROM | [Engine lab](engine-lab.md), [ROM research](rom-research.md) |
+| Combat and presentation | [Combat](combat.md), [Native effects](native-effects.md), [Graphics audit](graphics-audit.md) |
+| World traversal | [Dungeon shortcuts](dungeon-shortcuts.md) |
+| Story | [Arrival](arrival.md), [Scene tooling](scenes.md), [Story review](story-review.md) |
+
+Read [AGENTS.md](../../AGENTS.md) before changing the project. Commit coherent, validated work and stage only task-owned changes. Keep local ROMs, raw recordings, test fixtures, generated reports and release archives out of Git. Curated public GIFs/title screenshots requested for the README live in `assets/readme/`.
+
+Keep new change summaries and implementation details here. Preserve local links when moving notes. The browser build stays ROM-free; the release script adds the verified cartridge only to ignored desktop staging and downloadable archives.
