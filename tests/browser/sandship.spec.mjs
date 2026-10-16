@@ -187,17 +187,21 @@ test('in the wreck, flight crosses every wall, doors work from any side and punc
  expect(hatch).toBe(271);
 });
 
-// Choose the first option (Yes) at the desert's crashed-ship prompt.
-async function boardFromDesert(page){
- await enter(page,{map:67,x:20,y:20});
+// Run to the Mech Rider arena, then stand in for its defeat (2A1 is the
+// event the fight itself runs) and play on to the dunes.
+async function riderThenEnding(page){
  return page.evaluate(()=>{
-  const m=mana.mod;for(let f=0;f<3000&&m.status.map!==99;f++)mana.run(1,f%20<2?[0]:[]);
-  for(let f=0;f<600&&!(m.canAttack&&!mana.read8(0xd0));f++)mana.run(1);
-  const s=m.sandship.status;
-  return{map:m.status.map,can:m.canAttack,wreck:!!s.wreck,crashed:s.crashed,ditched:s.ditched,captives:[mana.read8(0xcf0d),mana.read8(0xcf0e)],events:m.story.status.recentEvents,error:m.story.status.error};
+  const m=mana.mod,party=()=>[mana.read8(0xe200)&1,mana.read8(0xe400)&1];
+  // Fast-forward stops at choices: answer the boarding prompt with B (Yes).
+  const pulse=f=>mana.fastForward.state(1<<11).choice?(f%20<2?[0]:[]):mana.read8(0xd0)?[11]:[];
+  for(let f=0;f<9000&&!(m.status.map===340&&m.canAttack&&!mana.read8(0xd0));f++)mana.run(1,pulse(f));
+  const fight={map:m.status.map,can:m.canAttack,party:party(),stage:mana.read8(0xcf28)};
+  m.story.request(0x2a1);
+  for(let f=0;f<6000;f++){mana.run(1,mana.read8(0xd0)?[11]:[]);if(f>120&&m.status.map===91&&m.canAttack&&!mana.read8(0xd0))break;}
+  return{fight,map:m.status.map,can:m.canAttack,party:party(),captives:[mana.read8(0xcf0d),mana.read8(0xcf0e)],stage:mana.read8(0xcf28),wreck:!!m.sandship.status.wreck,ending:m.sandship.status.ending,events:m.story.status.recentEvents,error:m.story.status.error};
  });
 }
-test('flying off with the captives aboard ditches them; the crashed ship in the desert takes Goku back',async({page})=>{
+test('flying off with the captives aboard ditches them; coming back boards straight into the Mech Rider, then the reunion',async({page})=>{
  await load(page,3);await enter(page,{map:91,x:24,y:24,flags:{0x28:0,0x36:1}});
  expect((await finish(page,0x28b,0x28,1)).map).toBe(271);
  await enter(page,{map:99,x:30,y:11});
@@ -207,38 +211,42 @@ test('flying off with the captives aboard ditches them; the crashed ship in the 
   for(let f=0;f<1200;f++){mana.run(1);const t=m.radio?.status.current?.text;if(t)said.add(t);}
   for(let f=0;f<900&&m.worldFlight;f++)mana.run(1,[0]);mana.run(200);
   const s=m.sandship.status;
-  return{said:[...said],ditched:s.ditched,crashed:s.crashed,wreck:!!s.wreck,captives:[mana.read8(0xcf0d),mana.read8(0xcf0e)],party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],ship:[98,99,270,271,318,319,324,339].includes(m.status.map)};
+  return{said:[...said],ditched:s.ditched,crashed:s.crashed,wreck:!!s.wreck,stage:mana.read8(0xcf28),captives:[mana.read8(0xcf0d),mana.read8(0xcf0e)],party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],ship:[98,99,270,271,318,319,324,339].includes(m.status.map)};
  });
+ // Nothing is resolved: still captive, the arc still at its early stage.
  expect(away).toMatchObject({ditched:true,crashed:true,wreck:true,captives:[8,8],party:[0,0],ship:false});
+ expect(away.stage).toBeLessThan(10);
  expect(away.said.some(t=>t.includes('abandon'))).toBe(true);
  expect(away.said.some(t=>t.includes('come back for them'))).toBe(true);
- const back=await boardFromDesert(page);
- expect(back).toMatchObject({map:99,can:true,wreck:true,captives:[8,8],error:null});
- for(const id of[0x7e,0x7f])expect(back.events).toContain(id);
- // Both are mad at him; each rescue still rejoins them.
- await enter(page,{map:318,x:28,y:46});expect(await walkThrough(page,4)).toMatchObject({map:319,can:true,captives:[8,1],error:null});
- await enter(page,{map:324,x:16,y:10});expect(await walkThrough(page,4)).toMatchObject({map:339,can:true,captives:[1,1],error:null});
- await enter(page,{map:99,x:24,y:27});
- const rider=await page.evaluate(()=>{const m=mana.mod;for(let f=0;f<8000&&!(m.status.map===340&&m.canAttack);f+=20)mana.run(20,f%40?[]:[11]);return{map:m.status.map,can:m.canAttack,party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],error:m.story.status.error};});
- expect(rider).toMatchObject({map:340,can:true,party:[1,1],error:null});
+ // The desert finds the crashed ship; Yes (the first option) boards it.
+ await enter(page,{map:67,x:20,y:20});
+ const r=await riderThenEnding(page);
+ expect(r.fight).toEqual({map:340,can:true,party:[0,0],stage:11});
+ expect(r,JSON.stringify(r)).toMatchObject({map:91,can:true,party:[1,1],captives:[1,1],stage:12,wreck:false,ending:null,error:null});
+ for(const id of[0x7e,0x7f,0x29e,0x2a1])expect(r.events).toContain(id);
 });
 
-test('breaking too many bulkheads crashes the ship and cuts to the ending on the dunes with everyone',async({page})=>{
- await load(page,3);await enter(page,{map:91,x:24,y:24,flags:{0x28:0,0x36:1}});
+test('breaking bulkheads while still sneaking crashes the ship into the Mech Rider fight, then everyone reunites',async({page})=>{
+ // Primm was aboard and is held in the cabin; Popoi never joined.
+ await load(page,1);await enter(page,{map:91,x:24,y:24,flags:{0x28:0,0x36:1}});
  expect((await finish(page,0x28b,0x28,1)).map).toBe(271);
- await page.evaluate(()=>{mana.run(1,[4]);mana.run(100,[10,1]);mana.run(30);});
- expect((await untilControl(page)).wreck).toBe(true);
- const landed=await page.evaluate(()=>{
+ const broke=await page.evaluate(()=>{
   const m=mana.mod,said=new Set();
-  for(let i=0;i<5;i++){m.sandship.onDemolish({tiles:[{tx:1,ty:1,demolition:true}]});for(let f=0;f<50;f++){mana.run(1);const t=m.radio?.status.current?.text;if(t)said.add(t);}}
-  let white=0;for(let f=0;f<4000&&!(m.status.map===91&&m.canAttack&&!mana.read8(0xd0)&&!m.sandship.status.cut);f++){mana.run(1,mana.read8(0xd0)?[11]:[]);white=Math.max(white,m.sandship.status.flash);}
-  const s=m.sandship.status;
-  return{map:m.status.map,can:m.canAttack,white,said:[...said],stage:mana.read8(0xcf28),captives:[mana.read8(0xcf0d),mana.read8(0xcf0e)],party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],wreck:!!s.wreck,flash:s.flash,events:m.story.status.recentEvents,error:m.story.status.error};
+  // A real punch opens a hold bulkhead before any breakout, and counts.
+  mana.write16(0xe002,72);mana.write16(0xe004,152);mana.run(30);mana.run(2,[7]);mana.run(8);
+  for(let k=0;k<4;k++){mana.run(2,[0]);mana.run(14);}mana.run(60);
+  const first=m.sandship.status.breaks;
+  for(let i=0;i<4;i++){m.sandship.onDemolish({tiles:[{tx:1,ty:1,demolition:true}]});for(let f=0;f<50;f++){mana.run(1);const t=m.radio?.status.current?.text;if(t)said.add(t);}}
+  let white=0;for(let f=0;f<400;f++){mana.run(1);white=Math.max(white,m.sandship.status.flash);}
+  return{first,white,said:[...said],ending:m.sandship.status.ending,wreck:!!m.sandship.status.wreck};
  });
- // 2A1, the arc's own ending: stage 12, the freed crew on desert map 91.
- expect(landed).toMatchObject({map:91,can:true,white:1,stage:12,captives:[1,1],party:[1,1],wreck:false,flash:0,error:null});
- expect(landed.events).toContain(0x7d);
- expect(landed.said.some(t=>t.includes('STOP'))).toBe(true);
+ expect(broke).toMatchObject({first:1,white:1,ending:'crash',wreck:true});
+ expect(broke.said.some(t=>t.includes('STOP'))).toBe(true);
+ const r=await riderThenEnding(page);
+ // Goku fights alone; the dunes bring back Primm, and only Primm.
+ expect(r.fight).toEqual({map:340,can:true,party:[0,0],stage:11});
+ expect(r,JSON.stringify(r)).toMatchObject({map:91,can:true,party:[1,0],captives:[1,0],stage:12,wreck:false,ending:null,error:null});
+ for(const id of[0x7d,0x29e,0x2a1])expect(r.events).toContain(id);
 });
 
 test('?start=sandship enters the desert with the full party and plays into the Sandship',async({page})=>{

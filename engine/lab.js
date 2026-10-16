@@ -77,8 +77,8 @@ mod.feedback=createNativeFeedback(snes,mod);
 mod.ownership=installNativeOamOwnership(snes);
 mod.drawDemolitionEffects=layer=>drawDemolitionEffects(mod,layer);
 mod.plants=createNativePlants(snes,{canCut:()=>mod.options.enabled&&mod.canAttack,sceneryReplacement:tile=>mod.localFlightHook?.breakScenery(tile),demolitionPlan:(tiles,attack)=>mod.localFlightHook?.dungeon.demolish(tiles,attack)??[],
-  // In the wrecked Sandship any punch or wave tears through bulkheads.
-  demolishes:policy=>policy==='super-beam'||!!mod.sandship?.wrecked&&['beam','objects'].includes(policy),onCut:result=>{
+  // Aboard the Sandship any punch or wave tears through bulkheads.
+  demolishes:policy=>policy==='super-beam'||!!mod.sandship?.breakable&&['beam','objects'].includes(policy),onCut:result=>{
   mod.localFlightHook?.dungeon.invalidate();
   demolitionEffects(mod,result);
   mod.sandship?.onDemolish(result);

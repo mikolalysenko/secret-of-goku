@@ -67,11 +67,10 @@ export function createSandshipWreck(snes,mod,state){
  // Native object loader read view (C8:xxxx), active only while wrecked.
  function read(address,data){
   const s=state();
-  if((s.cut||s.route)&&address>=0x3000+escapeDoor*4&&address<0x3004+escapeDoor*4){
+  if(s.cut&&!s.cut.crash&&address>=0x3000+escapeDoor*4&&address<0x3004+escapeDoor*4){
    // The escape reloads the room Goku is standing in, through its own
    // door loader, so guards leave and the monsters arrive with the fade.
-   // The crash and the way back aboard reuse the same door (route).
-   const c=s.cut??s.route,i=address-0x3000-escapeDoor*4;if(s.cut)s.cut.door=true;
+   const c=s.cut,i=address-0x3000-escapeDoor*4;s.cut.door=true;
    return[c.map&255,c.tx*2|c.map>>8,c.ty*2|c.layer,data[0x83000+escapeDoor*4+3]][i];
   }
   if(!s.wreck)return;
