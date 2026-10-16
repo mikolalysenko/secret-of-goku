@@ -34,8 +34,8 @@
   <nav class="player-actions" aria-label="Player controls">
     <button id="native-start" disabled>Start <kbd>SPACE</kbd></button>
     <button id="native-toggle" disabled><span>Pause</span> <kbd>ESC</kbd></button>
-    <button id="native-save" disabled>Save checkpoint</button>
-    <button id="native-restore" disabled>Restore checkpoint</button>
+    <button id="native-save" data-debug hidden disabled>Save checkpoint</button>
+    <button id="native-restore" data-debug hidden disabled>Restore checkpoint</button>
   </nav>
   <p id="lab-message" role="status" hidden></p>
   <details class="settings"><summary>Controls & game options</summary>
@@ -50,7 +50,7 @@
     <p id="gamepad-status" role="status">Connect a controller, then press a button.</p>
     <p>SNES controller layout: south B punches/confirms, west Y fires ki, east A flies fast/ascends, north X opens the ring or goes back. D-pad left/right rotates the ring; up/down changes levels. L holds focus; L+Y charges Kamehameha, L+B teleports, L+A transforms/reverts, L+R takes off. R alone fast-forwards scenes. In world flight, B descends to land. Start starts; Select switches party. No triggers or stick clicks are required.</p>
     </details>
-    <p>Checkpoints are saved in this browser. The supplied ROM is never changed.</p>
+    <p data-debug hidden>Checkpoints are saved in this browser. The supplied ROM is never changed.</p>
     <details data-debug hidden><summary>Developer tools</summary><p><a href="engine.html">Potos test start</a> · <a href="scenes.html">Scene debugger</a> · <a href="docs/agents/engine-lab.md">Modding notes</a></p><div class="mod-options"><label><input id="goku-enabled" type="checkbox" checked> Goku sprites</label><label><input id="power-enabled" type="checkbox" checked> Saiyan power</label><label><input id="super-enabled" type="checkbox"> Super Saiyan</label></div><button id="native-fly" disabled>Take flight</button><div><strong id="engine-state">LOADING</strong> <span id="fps"></span></div><dl id="memory-readout"></dl></details>
   </details>
   <details class="settings" data-debug hidden><summary>Test scenes</summary>
