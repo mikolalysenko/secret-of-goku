@@ -12,11 +12,14 @@ export async function validateRom(source){
 // Resolve relative to the page, so project sites such as GitHub Pages work.
 // A missing file, an HTML fallback, an unsupported ROM or an unresponsive
 // server all lead to the manual chooser. No selected file is ever uploaded.
-export async function fetchDefaultRom({baseUrl=location.href,fetchImpl=fetch,timeoutMs=4000}={}){
+export async function fetchDefaultRom({baseUrl=location.href,fetchImpl=fetch,timeoutMs}={}){
   const base=new URL(baseUrl),urls=[new URL(defaultRomPath,base)];
+  // A cold packaged app (especially under Rosetta) can take longer to stream
+  // its local ASAR file. Keep the short web fallback without aborting that read.
+  const timeout=timeoutMs??(base.protocol==='goku:'?60000:4000);
   if(['localhost','127.0.0.1','[::1]'].includes(base.hostname))urls.push(new URL('/local-rom',base));
   for(const url of urls){
-    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeout);
     try{
       const response=await fetchImpl(url.href,{signal:controller.signal,cache:'no-store'});
       if(!response.ok)continue;

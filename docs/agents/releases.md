@@ -65,4 +65,6 @@ Update `package.json` and `package-lock.json` to the release version first. Disp
 
 The game runs at `goku://game/` with a standard secure origin so fetch, Web Crypto, workers, audio and persistent browser storage work offline. Renderer Node integration is disabled; context isolation, the Chromium sandbox and a local-only CSP stay enabled. No preload bridge, listening server, updater, Steam credentials or Proton dependency is introduced.
 
+`engine/rom-loader.js` allows up to 60 seconds for a packaged ROM read. A cold Intel app running under Rosetta can exceed the browser's four-second download timeout; the web timeout remains unchanged.
+
 Implementation references: [Electron protocol](https://www.electronjs.org/docs/latest/api/protocol), [Electron web preferences](https://www.electronjs.org/docs/latest/api/structures/web-preferences), [electron-builder Linux targets](https://www.electron.build/linux/), [GitHub runner architectures](https://docs.github.com/en/actions/reference/runners/github-hosted-runners), [Bazzite game launchers](https://docs.bazzite.gg/Gaming/Game_Launchers/).
