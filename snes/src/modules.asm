@@ -3,11 +3,13 @@
 ; snes/src/modules/<name>/. Add its include and its dispatch calls here.
 
 ; incsrc "modules/<name>/module.asm"
+incsrc "modules/destroy/module.asm"
 
 pushpc
 org !CODE_CORE+$7000
 ; Field frame, after game logic and before the NMI handshake.
 modules_field_frame:
+	JSL destroy_field_frame
 	RTL
 ; Field vblank, after the game's own uploads (DB = $80).
 modules_field_nmi:
