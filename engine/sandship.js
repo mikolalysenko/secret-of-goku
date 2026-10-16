@@ -2,7 +2,7 @@ import {parseEvent,eventRange} from './event-codec.js';
 import {compileStoryEvent} from './story-compiler.js';
 import {box,call,choice,jump} from './story-events.js';
 import {sandshipWeights} from './sandship-dialogue.js';
-import {createSandshipWreck} from './sandship-wreck.js';
+import {createSandshipWreck,shipMaps,crisisSong} from './sandship-wreck.js';
 
 export const sandshipCaptives=r=>Number(r[0xcf0d]>=8)|Number(r[0xcf0e]>=8)<<1;
 
@@ -25,7 +25,10 @@ export function compileSandship(event,mask,{weighted=false}={}){
 // Geshtar and his Mech Rider meet them on deck.
 export const breakout={offer:0x72,sneak:0x73,escape:0x74,wave:0x75,chaos:0x76,deck:0x77,scripted:0x78,improvised:0x79};
 export const holdMaps=[271,319,324];
-const geshtar=177,deck=99,decks=[98,99];
+// Flight passes over the ship's walls, so a door can be reached from any
+// side. Flying onto one takes it through this slot, as walking would.
+export const flightDoor=0x7a,shipDoors=Array.from({length:32},(_,i)=>0x1a0+i);
+const geshtar=177,deck=99,decks=[98,99],kitchen=319,cabin=339;
 
 const offer=()=>[
  ...box('GOKU:Hey... those guys are\npushing the engines in\nchains. Are they slaves?!'),
@@ -43,9 +46,10 @@ const chaos=captives=>[
  ...box("SERGO:Every chain aboard\njust snapped, lad! Run,\nye engine rats! RUN!"),
  ...box('GOKU:You are all free! Go!\nNobody should push\nengines in chains.'),
  ...box(stranded[captives]),0];
-// The white-out reloads Goku's own room (escape door), then the reaction.
+// The white-out reloads Goku's own room (escape door) and starts the
+// crisis cue, then the reaction.
 // Release any cutscene lock left by the capture scene, as a door would.
-const escape=planned=>[0x19,0xa9,0x07,0x28,50,...jump(planned?breakout.scripted:breakout.improvised),0];
+const escape=planned=>[0x19,0xa9,0x40,...crisisSong,0x07,0x28,50,...jump(planned?breakout.scripted:breakout.improvised),0];
 const breakoutScripts={
  [breakout.sneak]:[...box('GOKU:Okay. Sneaking.\nI am great at sneaking.\nSERGO:...Sure you are.'),
   ...box("SERGO:Talk to the stair\nguards. I'll make the\ndistraction!"),0x30,0x28,3,0],
@@ -71,12 +75,13 @@ export function buildSandshipEvents(){
  return[[breakout.offer,'offer',offer()],...Object.entries(breakoutScripts).map(([id,bytes])=>[Number(id),'all',bytes]),
   [breakout.escape,'planned',escape(true)],[breakout.escape,'improvised',escape(false)],
   ...[0,1,2,3].map(c=>[breakout.chaos,`captives ${c}`,chaos(c)]),
+  [flightDoor,'door 1A9 (one per ship door)',[0x19,0xa9,0]],
   [0x291,'wrecked',wreckScripts.sergo],[0x295,'wrecked',wreckScripts.kitchen],[0x29c,'wrecked',wreckScripts.cabin]];
 }
 
 export function installSandship({rom,r,mod,entries,variants}){
  const at=id=>0xc00000+eventRange(rom,id).start;
- for(const id of Object.values(breakout)){
+ for(const id of[...Object.values(breakout),flightDoor]){
   const{start,end}=eventRange(rom,id);
   if(end-start!==1||rom[start]!==0)throw Error('Sandship breakout event slot is occupied');
  }
@@ -119,6 +124,8 @@ export function installSandship({rom,r,mod,entries,variants}){
  entries.set(at(breakout.escape),mask=>escapes[Number(!!mod.sandship?.planned)][mask]);
  const free=[0,1,2,3].map(captives=>variants(breakout.chaos,()=>chaos(captives)));
  entries.set(at(breakout.chaos),mask=>free[sandshipCaptives(r)][mask]);
+ const doors=new Map(shipDoors.map(door=>[door,variants(flightDoor,()=>[0x18|door>>8,door&255,0])]));
+ entries.set(at(flightDoor),mask=>(doors.get(mod.sandship?.door)??end)[mask]);
  entries.set(at(0x29c),mask=>{
   if(r[0xcf28]>=11)return end[mask];
   const captives=sandshipCaptives(r),popoi=Number(!!(captives&2));
@@ -131,7 +138,7 @@ export function installSandship({rom,r,mod,entries,variants}){
 // or more) breaks out. The white-out then reloads the room as a wreck. Once
 // every captured companion is back, the deck brings on Geshtar's Mech Rider.
 export function createSandship(mod){
- const fresh=()=>({armed:false,hinted:false,cut:null,flash:0,wreck:null,deckDone:false,deckHint:false,boss:false});
+ const fresh=()=>({door:null,armed:false,hinted:false,cut:null,flash:0,wreck:null,deckDone:false,deckHint:false,boss:false});
  let s=fresh();const seen=new WeakSet();
  const wreck=createSandshipWreck(mod.snes,mod,()=>s);
  const r=a=>mod.read8(a),map=()=>mod.read16(0xdc);
@@ -141,6 +148,26 @@ export function createSandship(mod){
   const x=mod.read16(0xe002),y=mod.read16(0xe004),breach={...wreck.breach({x,y,dx:e.dx,dy:e.dy}),origin:{x:Math.round(e.x),y:Math.round(e.y)}};
   s.cut={age:0,planned:s.armed,map:map(),tx:breach.stand.x>>4,ty:breach.stand.y>>4,layer:r(0xe00b)&128?1:0,breach,requested:false,door:false,loaded:false,after:0};
   s.armed=false;mod.radio?.dismiss?.('sandship');
+ }
+ // The door table entry for the marker tile under Goku, as C0:D84C reads it.
+ function doorUnder(){
+  const ram=mod.snes.ram,rom=mod.snes.cart?.data,id=map(),l=r(0xe00b)&128?1:0;if(!rom)return null;
+  const x=mod.read16(0xe002),y=mod.read16(0xe004),tile=ram[0x10000+l*0x4000+(y>>4)*128+(x>>4)];
+  if(!(ram[0x1b800+l*0x400+tile*4+1]&0x80)||tile<r(0x4d))return null;
+  const table=0x80000+(rom[0x84000+id*2]|rom[0x84001+id*2]<<8),at=table+2*(tile-r(0x4d)+(r(0xb8)&4?1:0)),entry=rom[at]|rom[at+1]<<8;
+  return entry>=0x800&&shipDoors.includes(entry-0x800)?{door:entry-0x800,key:`${id}:${x>>4}:${y>>4}`}:null;
+ }
+ let lastDoor=null,doorFrames=0,doorRoom=-1,clearOfDoors=false;
+ function flyThroughDoor(){
+  // Native doors fire only when walked into from their own side. A Goku
+  // still hovering over one a few frames later gets it from this slot.
+  // Arrival places him on the far side's door; he must leave it first.
+  if(doorRoom!==map()){doorRoom=map();clearOfDoors=false;}
+  const ready=shipMaps.includes(map())&&mod.canAttack&&!r(0xd0),under=ready?doorUnder():null;
+  if(ready&&!under)clearOfDoors=true;
+  if(!under||!mod.localFlight||!clearOfDoors){lastDoor=null;doorFrames=0;return;}
+  if(under.key!==lastDoor){lastDoor=under.key;doorFrames=0;}
+  if(++doorFrames===3){s.door=under.door;mod.story.request(flightDoor);}
  }
  function cutTick(){
   const c=s.cut;c.age++;
@@ -159,6 +186,8 @@ export function createSandship(mod){
  }
  return{
   get wrecked(){return !!s.wreck;},
+  get openAir(){return mod.options.enabled&&shipMaps.includes(map());},
+  get door(){return s.door;},
   get planned(){return !!(s.cut?.planned??s.wreck?.planned);},
   onEvent(id){
    if(id===breakout.wave&&captive()&&!s.wreck){s.armed=true;s.hinted=false;}
@@ -181,6 +210,14 @@ export function createSandship(mod){
    }
    if(s.armed&&!s.hinted&&quiet()){s.hinted=true;mod.radio?.say('GOKU:Hold L and Y to\ncharge, let go at full\npower. KA... ME... HA...',{frames:240,kind:'sandship'});}
    wreck.tick();
+   flyThroughDoor();
+   // The kitchen and cabin scenes sit on those rooms' door tiles, which
+   // only arm in the original story order. In the wreck, walking in is
+   // enough: each companion's rescue starts as Goku enters the room.
+   if(s.wreck&&mod.canAttack&&!r(0xd0)&&stage<10){
+    const captives=sandshipCaptives(mod.snes.ram),room=map();
+    if(room===kitchen&&captives&2||room===cabin&&captives&1)mod.story.request(room===kitchen?0x295:0x29c);
+   }
    if(s.wreck&&!s.deckDone&&decks.includes(map())&&stage<10&&mod.canAttack&&!r(0xd0)){
     if(!sandshipCaptives(mod.snes.ram)){if(mod.story.request(breakout.deck))s.deckDone=true;}
     else if(!s.deckHint&&quiet()){s.deckHint=true;mod.radio?.say('GOKU:Not yet! My friends\nare still down below.',{frames:180,kind:'sandship'});}

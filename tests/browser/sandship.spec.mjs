@@ -101,17 +101,29 @@ async function untilControl(page){
   const m=mana.mod;for(let f=0;f<6000;f++){mana.run(1,mana.read8(0xd0)?[11]:[]);if(f>120&&m.canAttack&&!mana.read8(0xd0)&&!m.sandship.status.cut)break;}
   const s=m.sandship.status;
   return{map:m.status.map,can:m.canAttack,stage:mana.read8(0xcf28),captives:[mana.read8(0xcf0d),mana.read8(0xcf0e)],party:[mana.read8(0xe200)&1,mana.read8(0xe400)&1],
-   wreck:!!s.wreck,flash:s.flash,guards:m.entities().filter(e=>e.active&&[182,183].includes(e.species)).length,monsters:s.monsters,error:m.story.status.error};
+   wreck:!!s.wreck,flash:s.flash,songs:s.songs,guards:m.entities().filter(e=>e.active&&[182,183].includes(e.species)).length,monsters:s.monsters,error:m.story.status.error};
  });
+}
+// Walk through a real door, then let any scene that starts play out.
+async function walkThrough(page,dir){
+ return page.evaluate(dir=>{
+  const m=mana.mod,from=m.status.map;
+  for(let f=0;f<120&&m.status.map===from;f++)mana.run(1,[dir]);
+  for(let f=0;f<6000;f++){mana.run(1,mana.read8(0xd0)?[11]:[]);if(f>120&&m.canAttack&&!mana.read8(0xd0))break;}
+  return{map:m.status.map,can:m.canAttack,captives:[mana.read8(0xcf0d),mana.read8(0xcf0e)],error:m.story.status.error};
+ },dir);
 }
 async function wreckAndEscape(page,mask){
  const wrecked=await untilControl(page);
  expect(wrecked,JSON.stringify(wrecked)).toMatchObject({map:271,can:true,wreck:true,flash:0,guards:0,captives:[mask&1?8:0,mask&2?8:0],party:[0,0],error:null});
  expect(wrecked.monsters).toBeGreaterThan(0);
- if(mask&2){await enter(page,{map:319,x:7,y:12});expect(await finish(page,0x295,0x0e,0,{limit:4000})).toMatchObject({error:null});}
- await enter(page,{map:324,x:12,y:19});
+ // The wreck plays the crisis cue in place of the ship's own song.
+ expect(wrecked.songs).toBeGreaterThan(0);
+ // Each rescue starts by just walking into the room, no talking needed.
+ if(mask&2){await enter(page,{map:318,x:28,y:46});expect(await walkThrough(page,4)).toMatchObject({map:319,can:true,captives:[mask&1?8:0,1],error:null});}
+ await enter(page,{map:324,x:16,y:10});
  expect(await page.evaluate(()=>mana.mod.entities().filter(e=>e.active&&e.species===183).length)).toBe(0);
- if(mask&1){await enter(page,{map:339,x:16,y:19,layer:1});expect(await finish(page,0x29c,0x0d,0,{limit:4000})).toMatchObject({error:null});}
+ if(mask&1)expect(await walkThrough(page,4)).toMatchObject({map:339,can:true,captives:[1,mask>>1&1],error:null});
  expect(await page.evaluate(()=>[mana.read8(0xcf0d),mana.read8(0xcf0e),mana.read8(0xe200)&1,mana.read8(0xe400)&1])).toEqual([mask&1,mask>>1&1,mask&1,mask>>1&1]);
  await enter(page,{map:99,x:24,y:27});
  return page.evaluate(()=>{
@@ -149,6 +161,30 @@ test('a full-power wave fired in the hold wrecks the ship without Sergo',async({
  await page.evaluate(()=>{mana.run(1,[4]);mana.run(100,[10,1]);mana.run(30);});
  const rider=await wreckAndEscape(page,3);
  expect(rider,JSON.stringify(rider)).toMatchObject({map:340,can:true,stage:11,party:[1,1],error:null});
+});
+
+test('in the wreck, flight crosses every wall, doors work from any side and punches open bulkheads',async({page})=>{
+ await load(page,3);await enter(page,{map:91,x:24,y:24,flags:{0x28:0,0x36:1}});
+ expect((await finish(page,0x28b,0x28,1)).map).toBe(271);
+ // Flight passes over the ship walls before the breakout as well.
+ const before=await page.evaluate(()=>{mana.write16(0xe002,136);mana.write16(0xe004,210);mana.run(2);mana.run(80,[8,7]);return mana.read16(0xe002);});
+ expect(before).toBeGreaterThan(300);
+ await page.evaluate(()=>{mana.write16(0xe002,136);mana.write16(0xe004,210);mana.run(40);mana.run(1,[4]);mana.run(100,[10,1]);mana.run(30);});
+ expect((await untilControl(page)).wreck).toBe(true);
+ const r=await page.evaluate(()=>{
+  const ram=mana.snes.ram,solid=()=>{let n=0;for(let ty=0;ty<30;ty++)for(let tx=0;tx<30;tx++)n+=(ram[0x1b800+ram[0x10000+ty*128+tx]*4]&7)===3;return n;};
+  // Fly right from the hold floor across the bulkheads into the far hull.
+  mana.write16(0xe002,136);mana.write16(0xe004,210);mana.run(2);mana.run(80,[8,7]);const flew=mana.read16(0xe002);mana.run(30);
+  // A plain punch at a bulkhead opens it.
+  const walls=solid();mana.write16(0xe002,72);mana.write16(0xe004,152);mana.run(2);mana.run(2,[7]);mana.run(10);
+  for(let i=0;i<4;i++){mana.run(2,[0]);mana.run(14);}mana.run(60);
+  return{flew,map:mana.read16(0xdc),opened:walls-solid()};
+ });
+ expect(r.flew).toBeGreaterThan(440);expect(r.map).toBe(271);expect(r.opened).toBeGreaterThan(0);
+ // Flying sideways onto the deck hatch still takes it below.
+ await enter(page,{map:99,x:27,y:12});
+ const hatch=await page.evaluate(()=>{for(let f=0;f<60&&mana.read16(0xdc)===99;f++)mana.run(1,[8,7]);mana.run(200);return mana.read16(0xdc);});
+ expect(hatch).toBe(271);
 });
 
 test('?start=sandship enters the desert with the full party and plays into the Sandship',async({page})=>{

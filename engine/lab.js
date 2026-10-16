@@ -76,7 +76,9 @@ mod.gapFlight=createNativeGapFlight(snes,mod);
 mod.feedback=createNativeFeedback(snes,mod);
 mod.ownership=installNativeOamOwnership(snes);
 mod.drawDemolitionEffects=layer=>drawDemolitionEffects(mod,layer);
-mod.plants=createNativePlants(snes,{canCut:()=>mod.options.enabled&&mod.canAttack,sceneryReplacement:tile=>mod.localFlightHook?.breakScenery(tile),demolitionPlan:(tiles,attack)=>mod.localFlightHook?.dungeon.demolish(tiles,attack)??[],onCut:result=>{
+mod.plants=createNativePlants(snes,{canCut:()=>mod.options.enabled&&mod.canAttack,sceneryReplacement:tile=>mod.localFlightHook?.breakScenery(tile),demolitionPlan:(tiles,attack)=>mod.localFlightHook?.dungeon.demolish(tiles,attack)??[],
+  // In the wrecked Sandship any punch or wave tears through bulkheads.
+  demolishes:policy=>policy==='super-beam'||!!mod.sandship?.wrecked&&['beam','objects'].includes(policy),onCut:result=>{
   mod.localFlightHook?.dungeon.invalidate();
   demolitionEffects(mod,result);
   for(const tile of result.tiles)if(!tile.brazier)mod.effects.push({kind:'impact',x:tile.tx*16+8,y:tile.ty*16+8,dx:1,dy:0,life:8,max:8,super:false});
@@ -90,6 +92,7 @@ mod.localFlightHook=createNativeLocalFlight(snes,{
   active:()=>mod.options.enabled&&mod.gokuActive&&(mod.localFlight||mod.charging)&&mod.canAttack,
   phase:()=>mod.localFlight,
   missingFloor:(x,y,l)=>!!(mod.frieza?.floorHole(x,y,l)||mod.sandship?.floorHole(x,y)),
+  openAir:()=>!!mod.sandship?.openAir,
   onCross:({map,from,to})=>{
     mod.teleport?.gather(to);
     // Only a full crossing between Karon's piers before his ferry is

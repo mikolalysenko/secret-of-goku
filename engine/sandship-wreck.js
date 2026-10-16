@@ -16,6 +16,11 @@ const fled=new Set([168,182,183,196,201]);
 const monsters=[28,36];
 const monsterCount={270:3,271:3,318:3,319:2,324:3};
 const escapeDoor=0x1a9;
+// Every room load sends the ship's own song (25h). In the wreck it becomes
+// the cartridge's crisis cue, the same one the falling Fortress plays. The
+// white-out reloads the same room, which sends no song, so the escape
+// script starts the cue itself.
+export const shipSong=0x25,crisisSong=[1,0x1b,0x13,0x8f];
 
 const hash=(a,b=0)=>{let h=Math.imul(a^0x9e3779b9,0x85ebca6b)^Math.imul(b+0x632be5ab,0xc2b2ae35);h^=h>>>15;h=Math.imul(h,0x27d4eb2f);return((h^h>>>13)>>>0)/4294967296;};
 const rgb=(r,g,b)=>Math.max(0,Math.min(31,r|0))|Math.max(0,Math.min(31,g|0))<<5|Math.max(0,Math.min(31,b|0))<<10;
@@ -48,6 +53,16 @@ export function createSandshipWreck(snes,mod,state){
  const active=()=>!!state().wreck&&mod.options.enabled&&mod.gokuActive&&onShip()&&p.mode===1;
  const terrain=()=>r[0xe00b];
  const canLand=(x,y)=>!!mod.localFlightHook?.canLand(x,y,terrain()&128?1:0,terrain()&3);
+ // C3:0004 is the native sound dispatcher; swap the command before its
+ // SPC transfer, so the change lands with the room's own fade.
+ const c=snes.cpu,cycle=c.cycle;let songs=0;
+ c.cycle=function(){
+  if(this.cyclesLeft===0&&(this.r[1]&63)===3&&this.br[4]===4&&r[0x1e00]===1&&state().wreck&&mod.options.enabled&&onShip()){
+   if(r[0x1e01]===shipSong)r.set(crisisSong,0x1e00);
+   if(r[0x1e01]===crisisSong[1])songs++;
+  }
+  return cycle.call(this);
+ };
 
  // Native object loader read view (C8:xxxx), active only while wrecked.
  function read(address,data){
@@ -170,7 +185,7 @@ export function createSandshipWreck(snes,mod,state){
   get active(){return active();},
   floorHole(x,y){const b=state().wreck?.breach;return !!(b&&active()&&b.map===word(0xdc)&&breachDepth(b,x,y)>=0);},
   breach(beam){return{...findBreach(canLand,beam),map:word(0xdc)};},
-  status(){return{active:active(),loads,sites:sites?.length??0,monsters:mod.entities().filter(e=>e.active&&monsters.includes(e.species)).length};},
+  status(){return{active:active(),loads,songs,sites:sites?.length??0,monsters:mod.entities().filter(e=>e.active&&monsters.includes(e.species)).length};},
   tick(){
    const w=state().wreck;if(!w||!active())return;
    const list=prepareSites();if(!list?.length)return;

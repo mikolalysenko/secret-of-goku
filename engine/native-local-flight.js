@@ -49,7 +49,7 @@ const openingExits={
  130:[{x:33,y:11,n:1,dx:1,door:1},{x:33,y:31,n:1,dx:1,door:8}],
  131:[{x:4,y:23,n:2,dx:-1,door:75},{x:33,y:42,n:2,dy:1,door:2}],
 };
-export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,speed=6,phase=false,missingFloor=()=>false,onCross=null,onCarry=null}={}){
+export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,speed=6,phase=false,missingFloor=()=>false,openAir=()=>false,onCross=null,onCarry=null}={}){
  const c=snes.cpu,r=snes.ram,priorCycle=c.cycle,word=a=>r[a]|r[a+1]<<8;
  const whipRoutes=createNativeWhipRoutes(snes);
  const dungeon=createDungeonGeometry(snes);
@@ -219,6 +219,9 @@ export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,sp
  }
  function footprint(x,y,l,air,terrain=r[0xe00b]&3){
   const {width,height}=bounds();if(width<16||height<16||x<8||x>width-8||y<8||y>height-8)return false;
+  // Some rooms (the Sandship) let flight pass over every wall and rail.
+  // Landing still needs real floor; native doors and triggers still apply.
+  if(air&&openAir())return true;
   for(const dy of[-4,0,4])for(const dx of[-6,0,6]){
    const t=tileAt(x+dx,y+dy,l);if(!clear(t,terrain,air)&&!(air&&lowObstacle(t)))return false;
   }
@@ -346,7 +349,7 @@ export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,sp
   const {width,height}=bounds(),t=tileAt(x,y,l),outside=x<8||y<8||x>width-8||y>height-8;
   // Recover older checkpoints stranded in a wall/void, or an unexpected
   // native displacement. Prefer the most recent verified landing position.
-  const embedded=t&&t.code===0&&(t.flags&7)===3&&!lowObstacle(t);
+  const embedded=t&&t.code===0&&(t.flags&7)===3&&!lowObstacle(t)&&!openAir();
   if(!outside&&!embedded)return;
   let safe=anchor&&anchor.layer===l&&canLand(anchor.x,anchor.y,l)?anchor:null;
   if(!safe){

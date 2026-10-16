@@ -3,7 +3,7 @@
 // No ROM patches, graphics bytes, direct VRAM writes or forced CPU calls.
 // Traced C1:D293..D429; C0:C7C3 consumes the redraw queue; C0:B565 drains SFX.
 import {palaceBraziers, brazierPart} from './palace-braziers.js';
-export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplacement=null,demolitionPlan=null}={}){
+export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplacement=null,demolitionPlan=null,demolishes=policy=>policy==='super-beam'}={}){
  const cpu=snes.cpu,priorCycle=cpu.cycle,r=snes.ram;
  const read16=a=>r[a]|r[a+1]<<8;
  let queue=[],lastFrame=-1,done=[],cleared=new Map(),cutMap=null;
@@ -81,7 +81,7 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
    if(queue.length>=128)break;
    const queued={...item,...(t.brazier?{brazier:t.brazier}:{}),map,frame:snes.frames,policy};queue.push(queued);added.push(queued);
   }
-  if(policy==='super-beam'&&demolitionPlan){
+  if(demolitionPlan&&demolishes(policy)){
    const unused=tiles.filter(t=>!queue.some(q=>q.map===map&&q.tx===t.tx&&q.ty===t.ty&&q.layer===(t.layer??layer())));
    for(const item of demolitionPlan(unused,attack)){
     if(queue.length>=128)break;
