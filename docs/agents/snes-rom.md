@@ -37,7 +37,12 @@ it once, then set `"AllowIoOsAccess": true` in Mesen2's `settings.json`
 
 ```sh
 node snes/test/mesen.mjs dist/snes/secret-of-goku.sfc my-test.lua .local/snes-test/out
+node snes/test/run-all.mjs [module …]   # build, then every snes/test/<module>/run.mjs
 ```
+
+Each module provides `snes/test/<module>/run.mjs`, which reads the ROM path
+from `SNES_ROM`, writes outputs under `.local/snes-test/<module>/` and exits
+non-zero on failure (`snes/test/boot/` is the minimal example).
 
 Mesen savestates load into later builds, but only if the saved program
 counter is in code that did not move. `H.saveStable(name)` saves while the
