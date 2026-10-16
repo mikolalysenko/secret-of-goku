@@ -39,16 +39,39 @@ node snes/test/mesen.mjs dist/snes/secret-of-goku.sfc my-test.lua .local/snes-te
 
 Mesen savestates load into later builds, but only if the saved program
 counter is in code that did not move. `H.saveStable(name)` saves while the
-field loop waits for NMI at `C0:B079` (original code), so those checkpoints
+field loop waits for NMI at `00:B079` (original code), so those checkpoints
 stay valid across rebuilds. A test can start from one with
 `runMesen({state})` or the CLI's fourth argument. In Mesen2's settings, Port 1
 must be a `SnesController` for scripted input.
+
+### Testing anywhere in the game with browser-mod states
+
+The private SnesJs savestates under `.local/` (captured from the browser mod,
+covering the whole game) can be imported into a Mesen run of the cartridge:
+
+```sh
+node snes/tools/snesjs-export-all.mjs      # -> .local/snes-import/<name>/ + catalog.json (map per state)
+node snes/tools/snesjs-export.mjs <state.json> <outDir>   # a single state
+```
+
+The exporter advances the state in the vendored core until the field loop
+waits for NMI (`00:B079`), then writes WRAM, VRAM, CGRAM, OAM, SRAM, APU RAM,
+DSP registers and the PPU/DMA/IRQ/SPC register file. In a Lua test, start from
+any checkpoint that reaches the field loop and call
+`H.importSnesJs('<abs path to bundle dir>')`; the cartridge then continues in
+that scene (274 of 321 states import; world-flight, menu and title states do
+not reach the field loop). Mod-only state that the browser kept in JavaScript
+(Dragon Ball ledger, forms, scene clocks) is not in these bundles — set the
+module's own RAM/SRAM fields in the test. A field checkpoint to start from:
+any `H.saveStable` output, e.g. one made from power-on by
+`snes/test/checkpoints.mjs`.
 
 A test defines `function test() … end` using the helpers in
 `snes/test/lua/harness.lua`: `H.wait(n)`, `H.hold('a up', n)`,
 `H.tap('start')`, `H.waitFor(fn, n)`, `H.r8/r16/w8/w16` (CPU bus),
 `H.wram/vram/cgram/oam/sram`, `H.shot(name)`, `H.save(name)` (Mesen
-savestate), `H.result(k, v)`, `H.log(...)`. Results land in
+savestate), `H.saveStable(name)`, `H.load(path)`, `H.importSnesJs(dir)`,
+`H.result(k, v)`, `H.log(...)`. Results land in
 `<out>/results.json`.
 
 ## Layout

@@ -106,7 +106,7 @@ function H.save(name)
   onNextInstruction(function() writefile(H_OUT .. '/' .. name .. '.mss', emu.createSavestate()) end)
 end
 -- Portable checkpoint: saved while the field main loop waits for NMI
--- (C0:B079, original code that never moves), so it loads into later builds.
+-- (00:B079, original code that never moves), so it loads into later builds.
 -- Waits up to `frames` frames for the field loop; returns false if not reached.
 function H.saveStable(name, frames)
   local done = false
@@ -115,12 +115,12 @@ function H.saveStable(name, frames)
       done = true
       writefile(H_OUT .. '/' .. name .. '.mss', emu.createSavestate())
     end
-  end, emu.callbackType.exec, 0xC0B079, 0xC0B079)
+  end, emu.callbackType.exec, 0x00B079, 0x00B079)
   for _ = 1, (frames or 600) do
     if done then break end
     coroutine.yield()
   end
-  emu.removeMemoryCallback(id, emu.callbackType.exec, 0xC0B079, 0xC0B079)
+  emu.removeMemoryCallback(id, emu.callbackType.exec, 0x00B079, 0x00B079)
   return done
 end
 function H.load(path)
@@ -128,6 +128,57 @@ function H.load(path)
   onNextInstruction(function() emu.loadSavestate(data) end)
 end
 function H.state() return emu.getState() end
+-- Import a bundle written by snes/tools/snesjs-export.mjs (a browser-mod
+-- savestate advanced to the field wait loop). The running cartridge must
+-- reach the field wait loop (00:B079) itself first, e.g. from a checkpoint.
+local function blit(path, memtype, limit)
+  local data = readfile(path)
+  local n = #data
+  if limit and n > limit then n = limit end
+  for i = 1, n do emu.write(i - 1, string.byte(data, i), memtype) end
+  return n
+end
+function H.importSnesJs(dir, frames)
+  local regs = dofile(dir .. '/regs.lua')
+  local done = false
+  local id = emu.addMemoryCallback(function()
+    if done then return end
+    done = true
+    blit(dir .. '/wram.bin', emu.memType.snesWorkRam)
+    blit(dir .. '/vram.bin', emu.memType.snesVideoRam)
+    blit(dir .. '/cgram.bin', emu.memType.snesCgRam)
+    blit(dir .. '/oam.bin', emu.memType.snesSpriteRam)
+    blit(dir .. '/sram.bin', emu.memType.snesSaveRam, 0x2000)
+    blit(dir .. '/aram.bin', emu.memType.spcRam)
+    blit(dir .. '/dsp.bin', emu.memType.spcDspRegisters)
+    for _, w in ipairs(regs.ppu) do emu.write(w[1], w[2], emu.memType.snesMemory) end
+    for _, w in ipairs(regs.io) do emu.write(w[1], w[2], emu.memType.snesMemory) end
+    local st = {}
+    st['cpu.a'] = regs.cpu.a; st['cpu.x'] = regs.cpu.x; st['cpu.y'] = regs.cpu.y
+    st['cpu.sp'] = regs.cpu.sp; st['cpu.d'] = regs.cpu.d; st['cpu.dbr'] = regs.cpu.dbr; st['cpu.ps'] = regs.cpu.ps
+    local sp = regs.spc
+    st['spc.a'] = sp.a; st['spc.x'] = sp.x; st['spc.y'] = sp.y; st['spc.sp'] = sp.sp; st['spc.pc'] = sp.pc; st['spc.ps'] = sp.ps
+    st['spc.dspReg'] = sp.dspAdr; st['spc.romEnabled'] = sp.romReadable
+    for i = 0, 3 do
+      st['spc.cpuRegs[' .. i .. ']'] = sp.cpuToApu[i + 1]
+      st['spc.outputReg[' .. i .. ']'] = sp.apuToCpu[i + 1]
+    end
+    for i = 0, 2 do
+      local t = sp.timers[i + 1]
+      st['spc.timer' .. i .. '.enabled'] = t.enabled
+      st['spc.timer' .. i .. '.target'] = t.target
+      st['spc.timer' .. i .. '.stage1'] = t.stage1
+      st['spc.timer' .. i .. '.output'] = t.output
+    end
+    emu.setState(st)
+  end, emu.callbackType.exec, 0x00B079, 0x00B079)
+  for _ = 1, (frames or 600) do
+    if done then break end
+    coroutine.yield()
+  end
+  emu.removeMemoryCallback(id, emu.callbackType.exec, 0x00B079, 0x00B079)
+  return done
+end
 function H.finish(code)
   results.frames = H.frame
   results.log = logs
