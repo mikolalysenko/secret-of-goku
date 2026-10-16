@@ -76,7 +76,10 @@ incsrc "story/data.asm"
 !story_qresult       = !RAM_STORY+$76 ; word: last query result
 !story_req_id        = !RAM_STORY+$78 ; word: event id being resolved
 !story_name_buf      = !RAM_STORY+$7A ; 12 bytes: displayName(n) for the name copy
-; $86-$FF free
+!story_ff_ptr        = !RAM_STORY+$86 ; long: window last scanned by fast-forward
+!story_ff_valid      = !RAM_STORY+$89 ; byte: !story_ff_ptr is current
+!story_ff_choice     = !RAM_STORY+$8A ; byte: that window has a choice
+; $8B-$FF free
 
 ; Persistent fields (!PERSIST_STORY, $C0 bytes, battery SRAM, per save slot)
 !story_p_version   = !PERSIST_STORY+$00 ; 1 once initialised
@@ -1428,6 +1431,7 @@ story_field_frame:
 	JSR story_start_queued
 .noqueue
 	JSR story_potos_gatekeeper
+	JSR story_fast_forward
 	RTL
 
 ; Start the queued request, as native-story.js does at C0:B073.
@@ -1462,6 +1466,8 @@ story_start_queued:
 	LDA.w !story_q_event&$FFFF
 	JSL $01E76D
 	REP #$30
+	PEA $0000 : PLD
+	PEA $7E7E : PLB : PLB
 .out
 	RTS
 
@@ -2386,6 +2392,223 @@ story_api_quest_status:
 	ORA.l !story_tmp5
 	PLP
 	RTL
+
+; ===========================================================================
+; Scene fast-forward (engine/scene-fast-forward.js). Holding R during a
+; scene confirms prose with pulsed B and stops at choices; R itself is hidden
+; from the game. The browser also runs these frames faster; the cartridge
+; cannot, so this is the auto-confirm half. Runs every field frame.
+; ===========================================================================
+story_fast_forward:
+	LDA.l !core_pad
+	AND.w #!PAD_R|!PAD_L
+	CMP.w #!PAD_R
+	BEQ +
+	JMP .off
++	LDA.w #!STORY_Q_FRIEZA_INPUT_LOCKED
+	JSR story_query
+	BEQ .scene
+	LDA.w !core_pad_mask&$FFFF
+	ORA.w #!PAD_R
+	STA.w !core_pad_mask&$FFFF
+	JMP .off
+.scene
+	SEP #$20
+	LDA $D0
+	BEQ .off8
+	LDA $E4
+	BEQ .off8
+	LDA $EC
+	AND.b #$7E
+	BNE .off8
+	LDA $D0
+	CMP.b #$81
+	BEQ .dialog
+	CMP.b #$83
+	BEQ .dialog
+	; scripted motion: R is masked, nothing to confirm
+	REP #$20
+	STZ.w !story_ff_valid&$FFFF
+	BRA .mask
+.dialog
+	; rescan the window when the script pointer moved
+	LDA.w !story_ff_valid&$FFFF
+	BEQ .scan
+	LDA $D3
+	CMP.w !story_ff_ptr+2&$FFFF
+	BNE .scan
+	REP #$20
+	LDA $D1
+	CMP.w !story_ff_ptr&$FFFF
+	BEQ .known
+.scan
+	REP #$20
+	LDA $D1
+	STA.w !story_ff_ptr&$FFFF
+	SEP #$20
+	LDA $D3
+	STA.w !story_ff_ptr+2&$FFFF
+	LDA.b #$01
+	STA.w !story_ff_valid&$FFFF
+	REP #$20
+	JSR story_window_has_choice
+	SEP #$20
+	LDA.b #$00
+	ROL
+	STA.w !story_ff_choice&$FFFF
+	REP #$20
+.known
+	; mask R in a choice window too; confirm only prose
+	LDA.w !story_ff_choice&$FFFF
+	AND.w #$00FF
+	BNE .mask
+	LDA.l !core_frame
+	AND.w #$0007
+	CMP.w #$0002
+	BCS .mask
+	LDA.w !core_pad_inject&$FFFF
+	ORA.w #!PAD_B
+	STA.w !core_pad_inject&$FFFF
+.mask
+	LDA.w !core_pad_mask&$FFFF
+	ORA.w #!PAD_R
+	STA.w !core_pad_mask&$FFFF
+	RTS
+.off8
+	REP #$20
+.off
+	SEP #$20
+	STZ.w !story_ff_valid&$FFFF
+	REP #$20
+	RTS
+
+; windowHasChoice: scan the event stream at D1-D3 (at most 4096 bytes) for a
+; selection (58/5B) before the window ends (00/51/02). Carry set = choice,
+; or unknown. M16/X16.
+story_window_has_choice:
+	LDY.w #$0000
+.next
+	CPY.w #$1000
+	BCS .yes
+	SEP #$20
+	LDA [$D1],Y
+	CMP.b #$58
+	BEQ .yes8
+	CMP.b #$5B
+	BEQ .yes8
+	CMP.b #$00
+	BEQ .no8
+	CMP.b #$51
+	BEQ .no8
+	CMP.b #$02
+	BEQ .no8
+	REP #$20
+	JSR story_command_length
+	BRA .next
+.yes8
+	REP #$20
+.yes
+	SEC
+	RTS
+.no8
+	REP #$20
+	CLC
+	RTS
+
+; engine/event-codec.js commandLength at [D1]+Y: Y += length. M16/X16.
+story_command_length:
+	SEP #$20
+	LDA [$D1],Y
+	CMP.b #$7D
+	BEQ .ascii
+	CMP.b #$7F
+	BCS .one                     ; 7F and text 80-FF
+	CMP.b #$2D
+	BEQ .shake
+	CMP.b #$10
+	BCC .table
+	CMP.b #$30
+	BCC .two
+.table
+	REP #$20
+	AND.w #$00FF
+	TAX
+	LDA.l story_opcode_length,X
+	AND.w #$00FF
+	BRA .add
+.shake
+	INY
+	LDA [$D1],Y
+	DEY
+	CMP.b #$05
+	BEQ .four
+	CMP.b #$06
+	BEQ .four
+	CMP.b #$80
+	BCC .two
+	CMP.b #$90
+	BCS .two
+.four
+	REP #$20
+	LDA.w #$0004
+	BRA .add
+.two
+	REP #$20
+	LDA.w #$0002
+	BRA .add
+.one
+	REP #$20
+	LDA.w #$0001
+.add
+	STA.w !story_tmp0&$FFFF
+	TYA
+	CLC
+	ADC.w !story_tmp0&$FFFF
+	TAY
+	RTS
+.ascii
+	; credits: literal ASCII up to and including the closing 7E
+	INY
+-	CPY.w #$1000
+	BCS .done
+	LDA [$D1],Y
+	INY
+	CMP.b #$7E
+	BNE -
+.done
+	REP #$20
+	RTS
+
+; Opcode lengths 00-7C for opcodes not decided above (event-codec.js).
+story_opcode_length:
+	db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1      ; 00-0F
+	db 2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2      ; 10-1F
+	db 2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2      ; 20-2F
+	db 3,3,3,3,3,1,3,3,4,4,4,4,4,1,1,1      ; 30-3F
+	db 5,5,5,5,1,1,1,1,6,6,6,6,6,6,6,1      ; 40-4F
+	db 1,1,1,1,1,1,1,2,1,2,2,1,1,1,1,1      ; 50-5F
+	db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1      ; 60-6F
+	db 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1      ; 70-7F
+
+; ===========================================================================
+; Core save/load hooks: drop volatile requests and greetings with the old run.
+; ===========================================================================
+story_load:
+story_new_game:
+	SEP #$20
+	STZ.w !story_q_valid&$FFFF
+	STZ.w !story_greeted&$FFFF
+	STZ.w !story_greet_pending&$FFFF
+	STZ.w !story_cand_valid&$FFFF
+	STZ.w !story_ff_valid&$FFFF
+	STZ.w !story_gate_latched&$FFFF
+	REP #$20
+	STZ.w !story_gate_home&$FFFF
+	RTL
+
+; Addresses for tests and tools (read from ROM through the symbol file).
+story_addresses:
+	dl !persist_goku_active, !PERSIST_STORY, !RAM_STORY, !STORY_WATER_BUF
 
 story_code_end:
 assert story_code_end <= !CODE_STORY+$7C00, "story code bank overflow"

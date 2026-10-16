@@ -27,6 +27,12 @@ for(const line of readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8').split('\n'))
 }
 const label=n=>{if(!sym.has(n))throw Error(`missing symbol ${n}`);return sym.get(n);};
 const catalog=JSON.parse(readFileSync(resolve(repo,'dist/snes/gen/story/catalog.json'),'utf8'));
+// Addresses the module exports at story_addresses (dl goku_active,
+// PERSIST_STORY, RAM_STORY, water buffer), read from the built ROM.
+const romBytes=new Uint8Array(readFileSync(rom));
+const romAt=a=>romBytes[((a>>16)&0x3f)<<16|(a&0xffff)];
+const longAt=a=>romAt(a)|romAt(a+1)<<8|romAt(a+2)<<16;
+const ADDR={goku:longAt(label('story_addresses')),persist:longAt(label('story_addresses')+3),ram:longAt(label('story_addresses')+6),water:longAt(label('story_addresses')+9)};
 const base=new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')));
 const env=await loadStoryEnvironment(repo,base);
 const {eventRange}=await import(pathToFileURL(join(repo,'engine/event-codec.js')).href);
@@ -38,7 +44,7 @@ const js=(id,mask,assign=[])=>{const e=env.entries.get(0xc00000+eventRange(env.d
 const alloc=addr=>catalog.allocations.find(a=>a.at===addr);
 const text=addr=>{const a=alloc(addr);return compiledText(Array.from(env.scripts.get(addr).bytes)).map(decodeText).join(' | ');};
 // SRAM / RAM addresses (snes/src/modules/story/module.asm, core/shared.asm)
-const GOKU_ACTIVE=0x316801,P_VERSION=0x316840,P_MASK=0x316841,P_SEEDS=0x316842;
+const GOKU_ACTIVE=ADDR.goku,P_VERSION=ADDR.persist,P_MASK=ADDR.persist+1,P_SEEDS=ADDR.persist+2,P_WISHED=ADDR.persist+4,P_SPELLS=ADDR.persist+8;
 const goku=[[GOKU_ACTIVE,1,1],[P_VERSION,1,1]];
 const bundle=name=>join(imports,name);
 const readsCover=(reads,at,end)=>{let n=0;for(const [a,b] of reads){const lo=Math.max(a,at),hi=Math.min(b,end-1);if(hi>=lo)n+=hi-lo+1;}return n;};
@@ -87,7 +93,7 @@ cases.push({name:'water-palace-walk',bundle:'power-flight-fixes__jema-7',writes:
     const got=r.water?.slice(0,want?.length??0);
     return [
       ['Jema found in the state',!!jema,jema?`index ${jema.index}`:''],
-      ['131 resolves to the SRAM walk',t&&t[1]===0x336000,t?hex(t[1],6):'none'],
+      ['131 resolves to the SRAM walk',t&&t[1]===ADDR.water,t?hex(t[1],6):'none'],
       ['walk bytes equal water-palace.js',want&&got&&want.every((v,i)=>v===got[i]),want?`${want.length} bytes`:''],
     ];
   }});
@@ -126,7 +132,7 @@ cases.push({name:'grant-water',bundle:'emulator-probe__potos-state',writes:[...g
     ];
   }});
 // ---- spell grants kept for an absent companion (583) -------------------------
-cases.push({name:'spell-grant',bundle:'emulator-probe__potos-state',writes:[...goku,[0x316848+3,0,1],[0x316850+3,0,1],[0x7ee3cb,0,1],[0x7ee5cb,0,1]],request:[0x583,0],frames:90,mash:0,
+cases.push({name:'spell-grant',bundle:'emulator-probe__potos-state',writes:[...goku,[P_SPELLS+3,0,1],[P_SPELLS+11,0,1],[0x7ee3cb,0,1],[0x7ee5cb,0,1]],request:[0x583,0],frames:90,mash:0,
   timed:[[60,[[0x7ee200,1,1],[0x7ee3cb,0,1]]]],dump:[[0x7ee3cb,1],[0x7ee5cb,1]],
   check(r){
     const p=r.persist,girl=r.dumps?.[0]?.[0];
@@ -170,7 +176,7 @@ cases.push({name:'absent-skip',bundle:'emulator-probe__potos-state',writes:[...g
   const table=label('story_query_table'),target=label('story_query_quest_wished');
   const pc=a=>((a>>16)&0x3f)<<16|(a&0xffff);
   const entry=table+0x10*3;
-  if(npc)cases.push({name:'crisis-greeting',bundle:'emulator-probe__potos-state',writes:[...goku,[0x316844,1,1]],romWrites:[[pc(entry),target&255],[pc(entry)+1,target>>8&255],[pc(entry)+2,target>>16&255]],
+  if(npc)cases.push({name:'crisis-greeting',bundle:'emulator-probe__potos-state',writes:[...goku,[P_WISHED,1,1]],romWrites:[[pc(entry),target&255],[pc(entry)+1,target>>8&255],[pc(entry)+2,target>>16&255]],
     request:[npc.id,npc.slot],frames:900,mash:24,stopIdle:true,shots:[30,90],
     check(r){
       const g=catalog.greetings.find(x=>x.kind===npc.kind),script=js(npc.id,0);
@@ -192,7 +198,7 @@ const lua=v=>Array.isArray(v)?'{'+v.map(lua).join(',')+'}':typeof v==='string'?J
 for(const c of cases){
   if(only.length&&!only.includes(c.name))continue;
   if(!existsSync(bundle(c.bundle))){console.log(`skip ${c.name}: no bundle ${c.bundle}`);continue;}
-  const prelude=`CASE = {bundle=${lua(bundle(c.bundle))}, writes=${lua(c.writes)}, before=${lua(c.before??[])}, request=${lua(c.request)}, frames=${c.frames}, mash=${c.mash??0}, shots=${lua(c.shots??[])}, resolve=${label('story_resolve_done')}, dump_water=${!!c.dump_water}, stop_idle=${!!c.stopIdle}, rom_writes=${lua(c.romWrites??[])}, timed=${lua(c.timed??[])}, dump=${lua(c.dump??[])}}\n`;
+  const prelude=`CASE = {bundle=${lua(bundle(c.bundle))}, writes=${lua(c.writes)}, before=${lua(c.before??[])}, request=${lua(c.request)}, frames=${c.frames}, mash=${c.mash??0}, shots=${lua(c.shots??[])}, resolve=${label('story_resolve_done')}, ram=${ADDR.ram}, persist=${ADDR.persist}, water=${ADDR.water}, dump_water=${!!c.dump_water}, stop_idle=${!!c.stopIdle}, rom_writes=${lua(c.romWrites??[])}, timed=${lua(c.timed??[])}, dump=${lua(c.dump??[])}}\n`;
   const r=await runMesen({rom,test:prelude+luaBody,outDir:join(out,c.name)});
   const res=r.results??{};
   if(res.error||!res.trace){console.log(`FAIL ${c.name}: ${res.error??'no results'}\n${r.output.slice(-1500)}`);failures++;continue;}

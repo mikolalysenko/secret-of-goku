@@ -45,6 +45,7 @@ export const QUERY_VARS=[
   [0x1b,'friezaPopoiMember','frieza',[false,true],'Popoi was a recruited member at the showdown'],
   [0x1c,'friezaPrimmMember','frieza',[false,true],'Primm was a recruited member at the showdown'],
   [0x1d,'friezaStolenClass','frieza',[0,1,127],'stolen Balls: 0 none, 1 some, 2 all seven (popcount of stolenMask)'],
+  [0x1e,'friezaInputLocked','frieza',[false,true],'Frieza cutscene owns input (inputLocked or orbit intro): R fast-forward stays masked'],
   [0x20,'fortressDestroyed','destroy',[false,true],'the Mana Fortress was destroyed by a full beam (world-ki)'],
   [0x21,'door:gaia-shortcut','destroy',[false,true],'Watts shortcut door broken (barriers.doorBroken)'],
   [0x22,'door:pandora-ruins-exit','destroy',[false,true],'Pandora ruins exit broken'],

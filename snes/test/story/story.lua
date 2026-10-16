@@ -37,24 +37,24 @@ function test()
   H.wait(CASE.settle or 4)
   -- every native event resolution: requested id -> first script pointer
   emu.addMemoryCallback(function()
-    trace[#trace + 1] = {u16(0x7EDA78), u8(0xD1) | (u8(0xD2) << 8) | (u8(0xD3) << 16), H.frame}
+    trace[#trace + 1] = {u16(CASE.ram + 0x78), u8(0xD1) | (u8(0xD2) << 8) | (u8(0xD3) << 16), H.frame}
   end, emu.callbackType.exec, CASE.resolve, CASE.resolve)
   -- every byte the interpreter or text engine reads from compiled scripts
   emu.addMemoryCallback(function(addr) reads[addr] = true end, emu.callbackType.read, 0xF00000, 0xF7FFFF)
-  emu.addMemoryCallback(function(addr) reads[addr] = true end, emu.callbackType.read, 0x336000, 0x3361FF)
+  emu.addMemoryCallback(function(addr) reads[addr] = true end, emu.callbackType.read, CASE.water, CASE.water + 0x1FF)
   -- redirect bookkeeping (story_last_event high byte write completes a word)
   emu.addMemoryCallback(function()
-    events[#events + 1] = {u16(0x7EDA00), H.frame}
-  end, emu.callbackType.write, 0x7EDA01, 0x7EDA01)
+    events[#events + 1] = {u16(CASE.ram), H.frame}
+  end, emu.callbackType.write, CASE.ram + 1, CASE.ram + 1)
   apply(CASE.before)
   if CASE.request then
-    H.w16(0x7EDA08, CASE.request[1])
-    H.w16(0x7EDA0A, CASE.request[2] or 0)
+    H.w16(CASE.ram + 0x08, CASE.request[1])
+    H.w16(CASE.ram + 0x0A, CASE.request[2] or 0)
     if (CASE.request[2] or 0) ~= 0 then
-      H.w16(0x7EDA0C, u16(0x7E00DC))
-      H.w16(0x7EDA0E, u16(0x7EE03E + CASE.request[2]))
+      H.w16(CASE.ram + 0x0C, u16(0x7E00DC))
+      H.w16(CASE.ram + 0x0E, u16(0x7EE03E + CASE.request[2]))
     end
-    H.w8(0x7EDA06, 1)
+    H.w8(CASE.ram + 0x06, 1)
   end
   local shots = {}
   for _, f in ipairs(CASE.shots or {}) do shots[f] = true end
@@ -75,7 +75,7 @@ function test()
       apply(timed[i])
     end
     if CASE.mash and CASE.mash > 0 and i % CASE.mash == 0 then H.hold('b', 2) else H.wait(1) end
-    if CASE.stop_idle and i > 30 and u8(0xD0) == 0 and u8(0x7EDA06) == 0 then
+    if CASE.stop_idle and i > 30 and u8(0xD0) == 0 and u8(CASE.ram + 0x06) == 0 then
       local idle = true
       for _ = 1, 20 do H.wait(1); if u8(0xD0) ~= 0 then idle = false; break end end
       if idle then break end
@@ -96,14 +96,14 @@ function test()
   H.result('reads', ranges(reads))
   local flags, ram, persist = {}, {}, {}
   for i = 0, 255 do flags[i + 1] = u8(0x7ECF00 + i) end
-  for i = 0, 255 do ram[i + 1] = u8(0x7EDA00 + i) end
-  for i = 0, 0xBF do persist[i + 1] = u8(0x316840 + i) end
+  for i = 0, 255 do ram[i + 1] = u8(CASE.ram + i) end
+  for i = 0, 0xBF do persist[i + 1] = u8(CASE.persist + i) end
   H.result('flags', flags)
   H.result('ram', ram)
   H.result('persist', persist)
   if CASE.dump_water then
     local water = {}
-    for i = 0, 0x1FF do water[i + 1] = u8(0x336000 + i) end
+    for i = 0, 0x1FF do water[i + 1] = u8(CASE.water + i) end
     H.result('water', water)
   end
   local party = {}

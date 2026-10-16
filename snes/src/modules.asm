@@ -41,9 +41,11 @@ modules_save:
 	RTL
 ; After a GAME FILE loaded and core restored (or cleared) !SRAM_LIVE.
 modules_load:
+	JSL story_load
 	RTL
 ; New game: !SRAM_LIVE was cleared and !persist_version set to 1.
 modules_new_game:
+	JSL story_new_game
 	RTL
 pullpc
 
