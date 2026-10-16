@@ -305,3 +305,19 @@ test('Fire Palace early flight enables its inner plate and orb; only a full gold
  expect(result.after.some(c=>c.tiles.every(t=>t===186)),JSON.stringify(result)).toBe(true);expect(result.error).toBe(null);expect(result.canAttack).toBe(true);
  await page.locator('#screen').screenshot({path:test.info().outputPath('fire-palace-braziers.png')});
 });
+test('fast flight is never stopped by the native companion tether; companions are dragged along',async({page})=>{
+ await load(page);await enter(page,91,24,24);
+ const r=await page.evaluate(()=>{
+  Object.assign(mana.mod.options,{superSaiyan:true});mana.run(30);
+  const w=a=>mana.read16(a),party=[0xe200,0xe400].filter(b=>mana.read8(b)&1);let stalls=0,dropped=0,far=0;
+  // Vertical flight outruns walking companions every other frame. The
+  // tether used to cancel those steps and drop the hover for a moment.
+  for(const dir of[5,4,5]){let py=w(0xe004);
+   for(let f=0;f<24;f++){mana.run(1,[8,dir]);const y=w(0xe004);if(f>3&&y===py&&f<20)stalls++;if(f>3&&!mana.mod.localFlight)dropped++;py=y;
+    for(const b of party)far=Math.max(far,Math.abs(w(b+4)-y),Math.abs(w(b+2)-w(0xe002)));}}
+  return{party:party.length,stalls,dropped,far,tethers:mana.mod.localFlightHook.tethers};
+ });
+ expect(r.party).toBe(2);expect(r.tethers).toBeGreaterThan(0);
+ // One native lag frame can still skip a step; nothing stops flight.
+ expect(r.stalls).toBeLessThanOrEqual(3);expect(r.dropped).toBe(0);expect(r.far).toBeLessThanOrEqual(64);
+});

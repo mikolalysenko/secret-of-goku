@@ -254,12 +254,19 @@ export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,sp
   }
   return null;
  }
- let changed=0,phased=0,limited=0,recovered=0,npcPasses=0,anchor=null,crossing=null,motionFrame=-1,travel=[0,0];
+ let changed=0,phased=0,limited=0,recovered=0,npcPasses=0,tethers=0,dragged=0,anchor=null,crossing=null,motionFrame=-1,travel=[0,0];
  c.cycle=function(){
   const pc=this.br[4];
   // C0:D84C samples the accepted destination's metatile after collision.
   // Substitute only the marker lookup: native code queues its own door,
   // fade, camera and party movement. No map graphics/flags are rewritten.
+  // C0:D9AE / C0:DA34 tether the leader to each companion: a step that
+  // would put one outside the middle of the screen (columns 56-200, rows
+  // 72-176) cancels the leader's horizontal or vertical velocity. Walking
+  // never outpaces them; 6-8px flight does every other frame, stuttering
+  // and dropping the hover. Airborne Goku returns at their RTS instead and
+  // drags his companions along (follow(), from settle()).
+  if(this.cyclesLeft===0&&(this.r[1]&63)===0&&(pc===0xd9ae||pc===0xda34)&&word(0x10)===0&&phasing()&&eligible()){this.br[4]=pc===0xd9ae?0xd9e2:0xda68;tethers++;}
   if(this.cyclesLeft===0&&(this.r[1]&63)===0&&pc===0xd84c&&word(0x10)===0&&phasing()&&eligible()){
    const exit=flightExit();if(exit!==null)this.br[2]=exit;
   }
@@ -317,9 +324,21 @@ export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,sp
   }
   return priorCycle.call(this);
  };
+ // Companions trail an airborne Goku inside the band the tether keeps on
+ // screen. Landing still gathers them through onCross/onCarry.
+ function follow(x,y){
+  // Each keeps its own distance, so the two do not stack on one spot.
+  for(const [base,rx,ry]of[[0xe200,36,26],[0xe400,56,40]]){
+   if(!(r[base]&1)||r[base+0x2c]&1)continue;
+   const fx=word(base+2),fy=word(base+4),nx=Math.max(x-rx,Math.min(x+rx,fx)),ny=Math.max(y-ry,Math.min(y+ry,fy));
+   if(nx===fx&&ny===fy)continue;
+   r[base+2]=nx&255;r[base+3]=nx>>8;r[base+4]=ny&255;r[base+5]=ny>>8;dragged++;
+  }
+ }
  function settle(){
   if(!ground()){crossing=null;return;}
   const map=word(0xdc),x=word(0xe002),y=word(0xe004),l=layer();
+  if(phasing()&&eligible())follow(x,y);
   if(anchor?.map!==map)anchor=null;
   if(crossing?.map!==map||!crossing?.whip&&(!phasing()||!eligible()))crossing=null;
   // Crossing a ledge can bypass the walking stair that normally changes
@@ -365,5 +384,5 @@ export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,sp
    if(!phasing()||!eligible()||!(beastArena()||ferryGap(t)||dungeon.air(t)))return [];
    return [0xe200,0xe400].filter(base=>(r[base]&1)&&!r[base+0x2c]&&!(r[base+0x0e]&0x80));
   },
-  snapshot:()=>({anchor,crossing,motionFrame,travel:[...travel]}),restore:s=>{anchor=s?.anchor??null;crossing=s?.crossing??null;motionFrame=s?.motionFrame??-1;travel=s?.travel?.slice()??[0,0];dungeon.invalidate();},get changed(){return changed},get phased(){return phased},get limited(){return limited},get recovered(){return recovered},get npcPasses(){return npcPasses},dispose(){c.cycle=priorCycle;}};
+  snapshot:()=>({anchor,crossing,motionFrame,travel:[...travel]}),restore:s=>{anchor=s?.anchor??null;crossing=s?.crossing??null;motionFrame=s?.motionFrame??-1;travel=s?.travel?.slice()??[0,0];dungeon.invalidate();},get changed(){return changed},get phased(){return phased},get limited(){return limited},get recovered(){return recovered},get npcPasses(){return npcPasses},get tethers(){return tethers},get dragged(){return dragged},dispose(){c.cycle=priorCycle;}};
 }
