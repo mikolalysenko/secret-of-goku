@@ -57,16 +57,32 @@ test('strikes and flight use TV-anime air without looping power-up vocals; speec
   }
 });
 
-test('Super Saiyan retains the full-speed power-up eruption and rumbling tail',()=>{
+test('Super Saiyan uses non-vocal ki, electricity and air with a full rumbling tail',()=>{
  const {clips}=JSON.parse(readFileSync(new URL('../assets/audio/dbz/manifest.json',import.meta.url)));
  const transform=clips.find(c=>c.name==='transform');
- assert.match(transform.sourceUrl,/goku\/son-goku-power-up$/);assert.match(transform.sourceFile,/Effect 1\.mp3$/);
+ assert.equal(transform.source,'charge');assert.deepEqual(transform.layers.map(l=>l.source),['electric','whoosh']);
+ assert.ok(transform.start>=1.6);assert.ok(transform.attack>=.025);
  assert.equal(transform.tempo,undefined);assert.ok(transform.duration>2.4&&transform.duration<2.7);
  const wav=readFileSync(new URL('../assets/audio/dbz/transform.wav',import.meta.url));
  const energy=(start,end)=>{let sum=0,n=0;for(let i=Math.floor(start*16000);i<Math.floor(end*16000);i++){const v=wav.readInt16LE(44+i*2)/32768;sum+=v*v;n++;}return Math.sqrt(sum/n);};
  assert.ok(energy(.1,.5)>.1,'the transformation starts with an audible surge');
  assert.ok(energy(1,2)>.07,'the power-up keeps its sustained body');
  assert.ok(cues.transform.gain>cues.revert.gain);
+});
+
+test('returning to base releases ki into air without a reversed voice or impact, including the fallback',()=>{
+ const {clips}=JSON.parse(readFileSync(new URL('../assets/audio/dbz/manifest.json',import.meta.url))),revert=clips.find(c=>c.name==='revert');
+ assert.equal(revert.source,'whoosh');assert.equal(revert.reverse,undefined);assert.equal(revert.thump,undefined);
+ assert.deepEqual(revert.layers.map(l=>l.source),['charge']);assert.ok(revert.layers[0].start>=1.6);
+ assert.ok(revert.duration>.4&&revert.duration<.65);
+ const wav=readFileSync(new URL('../assets/audio/dbz/revert.wav',import.meta.url));
+ const sample=Float32Array.from({length:(wav.length-44)/2},(_,i)=>wav.readInt16LE(44+i*2)/32768);
+ for(const pcm of [sample,synthesizeKiSound('revert')]){
+  const energy=(start,end)=>{const a=pcm.slice(start*16000|0,end*16000|0);return Math.sqrt(a.reduce((s,v)=>s+v*v,0)/a.length);};
+  assert.ok(energy(.03,.15)>.025,'release stays audible');
+  assert.ok(energy(.37,.50)<energy(.03,.15)*.4,'energy dissipates smoothly');
+  assert.ok(energy(0,.005)<energy(.03,.15)*.4,'no hard impact at the start');
+ }
 });
 
 test('the reveal adds a separate non-vocal bass/ki explosion with an energetic attack and natural decay',()=>{

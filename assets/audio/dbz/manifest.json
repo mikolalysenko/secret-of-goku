@@ -210,18 +210,44 @@
     },
     {
       "name": "transform",
-      "source": "transform",
-      "start": 0.015,
-      "end": 2.57,
-      "rms": 0.25,
+      "source": "charge",
+      "start": 1.6,
+      "end": 4.15,
+      "rms": 0.22,
       "highpass": 45,
-      "fade": 0.24,
+      "attack": 0.045,
+      "fade": 0.3,
+      "decay": 0.45,
+      "layers": [
+        {
+          "source": "electric",
+          "start": 5,
+          "end": 7.55,
+          "level": 0.32,
+          "decay": 0.6,
+          "sourceFile": "son-gohan-ssj2-electricity-aura/son-gohan-son-gohan-ssj2-electricity-aura-sound-effect.mp3",
+          "sourceUrl": "https://soundsverse.com/dragon-ball-z/son-gohan/son-gohan-ssj2-electricity-aura",
+          "sha256": "a90ac19c819be4b1324e72deba65e84e121ae1fb08e9804d3dce8bdd0c52fd56"
+        },
+        {
+          "source": "whoosh",
+          "start": 0.02,
+          "end": 0.37,
+          "tempo": 0.75,
+          "lowpass": 3800,
+          "level": 0.4,
+          "decay": 3,
+          "sourceFile": "anime-whoosh/Anime_Whoosh_Sound_20_(High_Quality).ogg",
+          "sourceUrl": "https://soundeffects.fandom.com/wiki/Anime_Whoosh_Sound_20",
+          "sha256": "c10814abb9548d3cc2fa43befa9e308bf0288e565686877133db772df57b732c"
+        }
+      ],
       "file": "transform.wav",
-      "duration": 2.555,
-      "sourceFile": "son-goku-power-up/Dragon Ball Son Goku Power Up Sound Effect 1.mp3",
-      "sourceUrl": "https://soundsverse.com/dragon-ball-z/goku/son-goku-power-up",
-      "sha256": "d5694100662ecf1965af817963f02311d6994c414bc586ee21a234e14d1cbf9d",
-      "gain": 4.273535685478752
+      "duration": 2.55,
+      "sourceFile": "kamehameha-charge/goku-kamehameha-charge-sound-effect.wav",
+      "sourceUrl": "https://soundsverse.com/dragon-ball-z/goku/kamehameha-charge",
+      "sha256": "b9c384a4d9e4a742b8a869dc5c472f1cf9e226701de78df3ed1fc7c92e31488c",
+      "gain": 1.272233447319999
     },
     {
       "name": "power-burst",
@@ -290,18 +316,36 @@
     },
     {
       "name": "revert",
-      "source": "revert",
-      "start": 0.25,
-      "end": 0.87,
-      "tempo": 1.5,
-      "reverse": true,
-      "rms": 0.13,
+      "source": "whoosh",
+      "start": 0.02,
+      "end": 0.37,
+      "tempo": 0.65,
+      "highpass": 100,
+      "lowpass": 3200,
+      "attack": 0.025,
+      "fade": 0.18,
+      "decay": 3.2,
+      "rms": 0.12,
+      "layers": [
+        {
+          "source": "charge",
+          "start": 1.6,
+          "end": 2.2,
+          "highpass": 80,
+          "lowpass": 2400,
+          "level": 0.45,
+          "decay": 3.5,
+          "sourceFile": "kamehameha-charge/goku-kamehameha-charge-sound-effect.wav",
+          "sourceUrl": "https://soundsverse.com/dragon-ball-z/goku/kamehameha-charge",
+          "sha256": "b9c384a4d9e4a742b8a869dc5c472f1cf9e226701de78df3ed1fc7c92e31488c"
+        }
+      ],
       "file": "revert.wav",
-      "duration": 0.4233125,
-      "sourceFile": "son-goku-power-up/Dragon Ball Son Goku Power Up Sound Effect 3.mp3",
-      "sourceUrl": "https://soundsverse.com/dragon-ball-z/goku/son-goku-power-up",
-      "sha256": "e9708a3a3a666cc10db4ae702eeb0e51e83009ec291737417571e50c81aae46b",
-      "gain": 2.0944938307453027
+      "duration": 0.5203125,
+      "sourceFile": "anime-whoosh/Anime_Whoosh_Sound_20_(High_Quality).ogg",
+      "sourceUrl": "https://soundeffects.fandom.com/wiki/Anime_Whoosh_Sound_20",
+      "sha256": "c10814abb9548d3cc2fa43befa9e308bf0288e565686877133db772df57b732c",
+      "gain": 1.06799026424172
     },
     {
       "name": "charged",

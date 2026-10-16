@@ -3,7 +3,7 @@
 import {createKamehamehaVoice} from './kamehameha-voice.js';
 import {createFriezaScore} from './frieza-score.js';
 const TAU=Math.PI*2;
-export const durations={swing:.12,hit:.24,blast:.19,beam:1.05,charged:.21,transform:2.55,powerBurst:1.55,teleport:.16,teleportIn:.13,flight:.24,landing:.31,charge:1};
+export const durations={swing:.12,hit:.24,blast:.19,beam:1.05,charged:.21,transform:2.55,revert:.55,powerBurst:1.55,teleport:.16,teleportIn:.13,flight:.24,landing:.31,charge:1};
 export function synthesizeKiSound(name,{rate=16000,superSaiyan=false}={}){
   if(!durations[name])throw Error(`Unknown ki sound: ${name}`);
   const data=new Float32Array(Math.ceil(durations[name]*rate));
@@ -42,6 +42,10 @@ export function synthesizeKiSound(name,{rate=16000,superSaiyan=false}={}){
       value=low*1.25*Math.sin(Math.PI*u)**1.4*Math.exp(-t*6);
       if(t>=.07)value+=(Math.sin(TAU*76*impact)*.48+low*.7)*Math.exp(-impact*24)*Math.min(1,impact/.004);
       value*=attack*tail;
+    }else if(name==='revert'){
+      // A short, voiceless air/ki release even before samples are available.
+      // No sharp hit transient, oscillator sweep or full transformation roar.
+      value=(low*.9+hiss*.65)*Math.min(1,t/.025)*Math.exp(-t*4)*Math.min(1,(1-u)*4);
     }else if(name==='hit'){
       phase+=TAU*(48+170*Math.exp(-t*38))/rate;
       value=(Math.sin(phase)*.62*Math.exp(-t*21)+hiss*.85*Math.exp(-t*44)+low*.4*Math.exp(-t*17))*attack*tail;
@@ -86,7 +90,7 @@ export const cues={
  flight:{clips:['flight'],gain:.48,cap:1},landing:{clips:['landing'],gain:.36,cap:1},
  charge:{clips:['charge'],gain:.55,loop:true},aura:{clips:['aura'],gain:.30,loop:true},air:{clips:['air'],gain:.25,loop:true},
 };
-const fallback={vegetaFinalFlash:'charged',vegetaKakarot:'charged',vegetaBeam:'beam',balloonPop:'hit',iceBreak:'hit',friezaBeam:'beam',friezaLaser:'blast',friezaImpact:'hit',fortressBreak:'powerBurst',friezaRush:'flight',friezaCharge:'charge',friezaLaugh:'charged',friezaOrb:'beam',friezaDisc:'blast',kickSwing:'swing',kick:'hit',impact:'hit',distantImpact:'hit',deflect:'hit',revert:'transform',aura:'charge',air:'charge'};
+const fallback={vegetaFinalFlash:'charged',vegetaKakarot:'charged',vegetaBeam:'beam',balloonPop:'hit',iceBreak:'hit',friezaBeam:'beam',friezaLaser:'blast',friezaImpact:'hit',fortressBreak:'powerBurst',friezaRush:'flight',friezaCharge:'charge',friezaLaugh:'charged',friezaOrb:'beam',friezaDisc:'blast',kickSwing:'swing',kick:'hit',impact:'hit',distantImpact:'hit',deflect:'hit',aura:'charge',air:'charge'};
 export function createKiSound(mod){
   const speech=createKamehamehaVoice(mod);
   const music=createFriezaScore(mod);

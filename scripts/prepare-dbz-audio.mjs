@@ -12,8 +12,6 @@ const sources={
  beam:['kamehameha-fire/goku-kamehameha-fire-sound-effect.wav','goku/kamehameha-fire'],
  teleport:['goku-instant-transmission/goku-goku-instant-transmission-sound-effect.mp3','goku/goku-instant-transmission'],
  flight:['cell-flying-turbo/cell-cell-flying-turbo-sound-effect.mp3','cell/cell-flying-turbo'],
- transform:['son-goku-power-up/Dragon Ball Son Goku Power Up Sound Effect 1.mp3','goku/son-goku-power-up'],
- revert:['son-goku-power-up/Dragon Ball Son Goku Power Up Sound Effect 3.mp3','goku/son-goku-power-up'],
  electric:['son-gohan-ssj2-electricity-aura/son-gohan-son-gohan-ssj2-electricity-aura-sound-effect.mp3','son-gohan/son-gohan-ssj2-electricity-aura'],
  punchA:['punch-fight/Dragon Ball Z Punch Sound Effect N°19.wav','dragon-ball-z-punch-fight'],
  punchB:['punch-fight/Dragon Ball Z Punch Sound Effect N°22.wav','dragon-ball-z-punch-fight'],
@@ -38,10 +36,13 @@ const clips=[
  {name:'landing',source:'whoosh',start:.06,end:.37,highpass:90,lowpass:2400,rms:.12,fade:.11,decay:3,layers:[
   {source:'punchB',start:0,end:.18,highpass:45,lowpass:1300,level:.48,offset:.07,decay:9},
  ]},
- // Keep the full power-up eruption and its rumbling decay at the original
- // speed. The old half-second sped-up excerpt lost both the attack and tail.
- {name:'transform',source:'transform',start:.015,end:2.57,rms:.25,highpass:45,fade:.24},
- // Non-vocal energy eruption, kept separate from the transformation shout.
+ // A voiceless ki swell, with air and electricity instead of a vocal grunt.
+ // Retain the full-length energy tail; the gold-frame eruption is separate.
+ {name:'transform',source:'charge',start:1.6,end:4.15,rms:.22,highpass:45,attack:.045,fade:.3,decay:.45,layers:[
+  {source:'electric',start:5,end:7.55,level:.32,decay:.6},
+  {source:'whoosh',start:.02,end:.37,tempo:.75,lowpass:3800,level:.4,decay:3},
+ ]},
+ // Non-vocal energy eruption, kept separate from the initial ki swell.
  // A bass impact opens into the TV charge/electricity beds, then decays.
  {name:'power-burst',source:'charge',start:1.6,end:3.15,rms:.28,highpass:45,fade:.24,decay:1.8,thump:true,layers:[
   {source:'beam',start:.03,end:.45,level:.85,decay:7},
@@ -50,7 +51,11 @@ const clips=[
  {name:'deflect',source:'swish',start:.02,end:.25,tempo:1.25,rms:.18,layers:[
   {source:'punchB',start:0,end:.18,level:.55,decay:8},
  ]},
- {name:'revert',source:'revert',start:.25,end:.87,tempo:1.5,reverse:true,rms:.13},
+ // Let the aura disperse into air. The old reversed power-up sounded hurt;
+ // neither this release nor its ki tail contains a voice or impact sample.
+ {name:'revert',source:'whoosh',start:.02,end:.37,tempo:.65,highpass:100,lowpass:3200,attack:.025,fade:.18,decay:3.2,rms:.12,layers:[
+  {source:'charge',start:1.6,end:2.2,highpass:80,lowpass:2400,level:.45,decay:3.5},
+ ]},
  {name:'charged',source:'electric',start:5,end:5.28,rms:.12},
  {name:'charge',source:'charge',start:1.6,end:5.15,loop:.24,rms:.20},
  {name:'aura',source:'electric',start:5,end:7.8,loop:.18,rms:.15},
@@ -105,7 +110,7 @@ for(const clip of clips){
   a=loop;
  }else{
   const fade=Math.round((clip.fade??Math.min(.08,a.length/rate*.2))*rate);
-  for(let i=0;i<a.length;i++)a[i]*=Math.min(1,i/(rate*.003))*Math.min(1,(a.length-1-i)/fade);
+  for(let i=0;i<a.length;i++)a[i]*=Math.min(1,i/(rate*(clip.attack??.003)))*Math.min(1,(a.length-1-i)/fade);
  }
  const rms=Math.sqrt(a.reduce((s,x)=>s+x*x,0)/a.length),peak=a.reduce((s,x)=>Math.max(s,Math.abs(x)),0),gain=Math.min(clip.rms/rms,.80/peak);
  a=a.map(x=>x*gain);fs.writeFileSync(`${out}/${clip.name}.wav`,snesWav(a));
