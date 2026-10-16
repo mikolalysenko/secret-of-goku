@@ -84,9 +84,11 @@ test('touch labels and game canvas suppress selection and callouts; resizing cle
  expect(await page.evaluate(()=>String(getSelection()))).toBe('');await expectLayout(page);
 });
 
-test('diagnostics remain available only through an explicit debug entry',async({page})=>{
+test('diagnostics require debug=true or a test-scene entry',async({page})=>{
  await page.route(/\/(local-rom|rom\/secret-of-mana-us\.sfc)$/,route=>route.fulfill({status:404,body:'No ROM'}));
- await page.goto('/?debug=1');await page.waitForFunction(()=>window.mana);
- await expect(page.getByText('Test scenes',{exact:true})).toBeVisible();await expect(page.locator('#build-id')).toBeVisible();
- await page.getByText('Controls & game options',{exact:true}).tap();await expect(page.getByText('Developer tools',{exact:true})).toBeVisible();
+ for(const [query,visible] of [['?debug=true',true],['?start=frieza',true],['?scene=frieza-entrance',true],['?debug=false',false],['?debug=1',false],['?scene=',false],['?start=unknown',false]]){
+  await page.goto('/'+query);await page.waitForFunction(()=>window.mana);
+  await expect(page.getByText('Test scenes',{exact:true})).toBeVisible({visible});await expect(page.locator('#build-id')).toBeVisible({visible});
+  await page.getByText('Controls & game options',{exact:true}).tap();await expect(page.getByText('Developer tools',{exact:true})).toBeVisible({visible});
+ }
 });

@@ -18,7 +18,7 @@ The title and opening run from the beginning. The gold title reads **Secret of G
 
 Your disk ROM remains untouched. Native in-game saves now persist in this browser and appear under **GAME FILE** after reloading and selecting the same ROM. An empty cartridge has no file to select. Browser checkpoints are separate; choose **Restore checkpoint** to resume one. Quick testing checkpoints do not overwrite your in-game saves.
 
-Open **Test scenes** or add `?start=…` to the demo URL. Late-game scenes skip the opening, bridge and pod sequence even on first use. They initialize from your ROM in a few seconds, then cache locally for later jumps. These starts include a full stack of **four Senzu Beans**, usable through the native item ring. Your native saves and manual checkpoint stay separate. These are testing presets with the progress needed for each scene; normal play still requires earning the good ending.
+Add `?debug=true` to reveal **Test scenes**, or jump directly with `?start=…`. Late-game scenes skip the opening, bridge and pod sequence even on first use. They initialize from your ROM in a few seconds, then cache locally for later jumps. These starts include a full stack of **four Senzu Beans**, usable through the native item ring. Your native saves and manual checkpoint stay separate. These are testing presets with the progress needed for each scene; normal play still requires earning the good ending.
 
 | Direct link | Starting point |
 | --- | --- |
@@ -101,7 +101,7 @@ Touch controls appear after loading a ROM on touch devices, or enable **Always s
 
 Pausing, switching apps/tabs, changing the control page, hiding touch controls, resizing or rotating the viewport, changing fullscreen, or cancelling a touch clears held touch attacks without firing a wave. Lifting a finger outside a button still releases it. Buttons and their labels cannot select text or open a long-press menu. The game fits the visible viewport and safe areas, with controls below it in portrait and beside it in landscape. Expand uses an in-page view when the browser refuses fullscreen. A controller must return to neutral after a focus change before it can resume input. A Start press used to resume is consumed so it cannot also open a native menu. Pausing displays a darkened PAUSED overlay with a resume button.
 
-The regular loader shows the ROM chooser and player options. Developer tools, test scenes and the build ID appear only with `?debug=1` or an explicit `?start=` / `?scene=` test link. The header links to **Star on GitHub**. Run `npm run test:mobile` for Chromium and WebKit viewport, touch, loader and fullscreen-fallback checks (`npx playwright install webkit` installs the additional browser).
+The regular loader shows the ROM chooser and player options. Developer tools, test scenes and the build ID appear only with `?debug=true` or when jumping to a test scene, including an explicit `?start=` / `?scene=` test link. The header links to **Star on GitHub**. Run `npm run test:mobile` for Chromium and WebKit viewport, touch, loader and fullscreen-fallback checks (`npx playwright install webkit` installs the additional browser).
 
 ## What changes
 

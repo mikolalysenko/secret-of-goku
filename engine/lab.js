@@ -60,8 +60,9 @@ const message=text=>{$('lab-message').textContent=text;$('lab-message').hidden=!
 const battery=createBatteryStore({onError:()=>message('Browser storage is unavailable. Keep this page open to retain in-game saves.')});
 const originalMode=document.body.dataset.mode==='original';
 const player=document.querySelector('.player'),params=new URLSearchParams(location.search);
-const debugMode=!originalMode||params.get('debug')==='1'||params.has('scene')||isQuickStart(params.get('start'));
-if(debugMode)document.querySelectorAll('[data-debug]').forEach(node=>node.hidden=false);
+let debugMode=!originalMode||params.get('debug')==='true'||!!params.get('scene')||isQuickStart(params.get('start'));
+function showDebug(){debugMode=true;document.querySelectorAll('[data-debug]').forEach(node=>node.hidden=false);}
+if(debugMode)showDebug();
 const logs=[];
 const mod=new window.ManaMod(snes,{gokuUrl:'assets/sprites/goku.png',ssjUrl:'assets/sprites/ssj.png',onLog:text=>{logs.push(text);if(logs.length>100)logs.shift();if(!originalMode&&!text.startsWith('Mod:'))message(text);}});
 mod.spriteLayer.drawKiAura=drawKiAura;
@@ -307,6 +308,7 @@ const captureQuick=()=>({state:{...snapshot(snes),arrival:arrival.snapshot(),gok
 function applyQuick(saved){battleRetry.clear();pauseCard();const saves=snes.cart.sram.slice();restore(snes,saved.state);snes.cart.sram.set(saves);mod.restore(saved.state.goku);arrival.restore(saved.state.arrival);nameSeeded=!!saved.nameSeeded;mod.nameEditor=!!saved.nameEditor;originalBoot=!!saved.originalBoot;clearInput();render();}
 async function quickStart(kind){
   if(!loaded||busy||!isQuickStart(kind))return false;
+  showDebug();
   const backup=captureQuick(),wasRunning=running,source=originalRom;
   busy=true;running=false;clearInput();stopAudio();$('native-pause').hidden=true;
   if($('test-loading'))$('test-loading').hidden=false;
@@ -412,6 +414,7 @@ const scenes={
     if(!loaded)throw Error('Load the ROM first.');
     const [{launchScene},{catalog,graph}]=await Promise.all([import('./scene-launcher.js'),this.graph()]);
     const scene=catalog.scenes.find(s=>s.id===id);if(!scene)throw Error(`Unknown scene ${id}`);
+    showDebug();
     this.status={scene:id,running:true,steps:[]};
     const launch=base==='current'?{...scene,launch:{...scene.launch,start:undefined,base:'current'}}:scene;
     try{
