@@ -61,6 +61,25 @@ function assemble(image){
   return text;
 }
 
+// asar does not track REP/SEP, so an immediate's width comes from how it is
+// written. Require an explicit .b/.w on every accumulator/index immediate in
+// our sources (SEP/REP/PEA/BRK-style operands are always fixed width).
+function lintImmediates(dir){
+  const problems=[];
+  const walk=d=>{for(const e of readdirSync(d,{withFileTypes:true})){const p=join(d,e.name);
+    if(e.isDirectory())walk(p);else if(e.name.endsWith('.asm')){
+      readFileSync(p,'utf8').split('\n').forEach((line,i)=>{
+        const code=line.replace(/;.*$/,'');
+        for(const part of code.split(/(?<!\.):(?!\S*\])/)){
+          const m=part.match(/\b(LDA|LDX|LDY|CMP|CPX|CPY|ADC|SBC|AND|ORA|EOR|BIT)(\.[bwBW])?\s+#/);
+          if(m&&!m[2])problems.push(`${p.slice(repo.length+1)}:${i+1}: ${part.trim()}`);
+        }
+      });
+    }}};
+  walk(dir);
+  return problems;
+}
+
 // Hijack bookkeeping: %hijack() prints "HIJACK <addr> <len> <module>".
 function checkHijacks(text){
   const hits=[];
@@ -78,6 +97,12 @@ function checkHijacks(text){
 
 export async function build(){
   const t0=Date.now();
+  const lint=lintImmediates(join(here,'src'));
+  if(lint.length){
+    console.warn(`WARNING: ${lint.length} immediate(s) without an explicit .b/.w width (asar ignores REP/SEP):`);
+    for(const l of lint.slice(0,40))console.warn('  '+l);
+    if(args.includes('--strict'))throw Error('immediate width lint failed');
+  }
   const base=loadBaseRom();
   const image=new Uint8Array(ROM_SIZE);
   image.set(base);

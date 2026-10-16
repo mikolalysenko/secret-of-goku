@@ -1,5 +1,8 @@
 ; Core runtime: boot, per-frame dispatch, NMI DMA queue and input edges.
 ;
+; asar does not track REP/SEP: always write immediates as #.b / #.w (or
+; LDA.w #$xx) so their width matches the M/X state at that instruction.
+;
 ; Module calling convention (all core callbacks):
 ;   entered with JSL, P = M16/X16 (REP #$30), DB = $7E, D = $0000.
 ;   Preserve DB and D; A/X/Y may be clobbered; return with RTL.
@@ -48,8 +51,8 @@ core_code_start:
 core_boot:
 	PHP
 	REP #$30
-	LDA #$0000
-	LDX #(!WRAM_END-!WRAM_BASE-2)
+	LDA.w #$0000
+	LDX.w #(!WRAM_END-!WRAM_BASE-2)
 .clear
 	STA.l !WRAM_BASE,X
 	DEX : DEX
@@ -65,18 +68,18 @@ core_field_frame:
 	PHB
 	PHD
 	REP #$30
-	LDA #$0000 : TCD
+	LDA.w #$0000 : TCD
 	PEA $7E7E : PLB : PLB
 	INC.w !core_frame&$FFFF
 	JSR core_read_pad
 	JSL modules_field_frame
 	REP #$30
-	LDA #$0001 : STA.w !core_dma_ready&$FFFF
+	LDA.w #$0001 : STA.w !core_dma_ready&$FFFF
 	PLD
 	PLB
 	PLP
 	SEP #$20
-	LDA #$01
+	LDA.b #$01
 	RTL
 
 core_read_pad:
@@ -97,10 +100,10 @@ core_read_pad:
 core_queue_vram:
 	PHA
 	LDA.w !core_dma_count&$FFFF
-	CMP #!CORE_DMA_MAX
+	CMP.w #!CORE_DMA_MAX
 	BCS .full
 	TXA : CLC : ADC.w !core_dma_bytes&$FFFF
-	CMP #!CORE_DMA_BUDGET+1
+	CMP.w #!CORE_DMA_BUDGET+1
 	BCS .full
 	STA.w !core_dma_bytes&$FFFF
 	LDA.w !core_dma_count&$FFFF
@@ -108,7 +111,7 @@ core_queue_vram:
 	PHX
 	TAX
 	TYA : STA.l !core_dma_table+0,X
-	LDA.w !core_scratch&$FFFF : AND #$00FF : STA.l !core_dma_table+2,X
+	LDA.w !core_scratch&$FFFF : AND.w #$00FF : STA.l !core_dma_table+2,X
 	PLA : STA.l !core_dma_table+6,X
 	PLA : STA.l !core_dma_table+4,X
 	INC.w !core_dma_count&$FFFF
@@ -129,7 +132,7 @@ core_field_nmi:
 	PEA $8080 : PLB : PLB          ; I/O visible through bank $80
 	LDA.l !core_dma_ready
 	BEQ .done
-	LDA #$0000 : STA.l !core_dma_ready
+	LDA.w #$0000 : STA.l !core_dma_ready
 	JSL modules_field_nmi
 	JSR core_flush_vram
 .done
@@ -142,9 +145,9 @@ core_field_nmi:
 ; DB = $80 here. Channel 7 is the game's own NMI DMA channel.
 core_flush_vram:
 	SEP #$20
-	LDA #$80 : STA $2115
+	LDA.b #$80 : STA $2115
 	REP #$20
-	LDX #$0000
+	LDX.w #$0000
 .next
 	LDA.l !core_dma_count
 	BEQ .end
@@ -152,15 +155,15 @@ core_flush_vram:
 	LDA.l !core_dma_table+4,X : STA $2116
 	LDA.l !core_dma_table+0,X : STA $4372
 	LDA.l !core_dma_table+6,X : STA $4375
-	LDA #$1801 : STA $4370
+	LDA.w #$1801 : STA $4370
 	SEP #$20
 	LDA.l !core_dma_table+2,X : STA $4374
-	LDA #$80 : STA $420B
+	LDA.b #$80 : STA $420B
 	REP #$20
-	TXA : CLC : ADC #$0008 : TAX
+	TXA : CLC : ADC.w #$0008 : TAX
 	BRA .next
 .end
-	LDA #$0000 : STA.l !core_dma_bytes
+	LDA.w #$0000 : STA.l !core_dma_bytes
 	RTS
 
 core_code_end:
