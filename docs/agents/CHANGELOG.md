@@ -14,6 +14,12 @@ stay traceable even when they are committed together.
 - Moved detailed gameplay, developer notes, code summaries and this changelog into docs/agents/. Updated links and repository instructions.
 - Validation: 349 unit tests, five browser release/title checks, and two-launch smoke tests of packaged Apple silicon and Intel (via Rosetta) macOS apps. Cross-built Linux/Windows archives still require their native CI/hardware checks; Deck/Bazzite hardware and signing credentials are not available locally.
 
+### Goku push animation
+
+- Replaced the frozen wall-contact pose with a relaxed one-handed nudge loop in normal and Super Saiyan form, in all four directions. Reuses the existing palm and standing artwork with fixed feet and a calm expression.
+- Contact must persist before the loop starts; releasing, walking away, focusing, flight and native scenes cancel it. Collision behavior is unchanged.
+- Validation: 69 native animation/presentation/combat unit tests and eight browser checks, including both forms against native walls with no movement or pivot drift.
+
 
 
 ## 2026-10-15

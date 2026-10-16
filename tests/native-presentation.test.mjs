@@ -37,6 +37,26 @@ test('all four Goku directions use the correct source rows and retain every opaq
   }
 });
 
+test('push cells animate an existing palm while keeping each form, face and boots planted',()=>{
+  const {layer}=scene();
+  for(const sheet of ['goku','ssj'])for(let row=0;row<4;row++){
+    const atlas=atlases[sheet],frames=[];
+    for(let reach=0;reach<3;reach++){
+      const cell=layer.pushFrame(sheet,row,reach);frames.push(Array.from(cell).join(','));
+      assert.equal(layer.pushFrame(sheet,row,reach),cell,'fixed cells are cached, not rebuilt each scanline');
+      const colors=new Set(atlas.pixels);
+      for(let y=0;y<32;y++)for(let x=0;x<32;x++){
+        const original=atlas.pixels[(32+row*32+y)*atlas.width+x],c=cell[y*32+x];
+        assert.ok(colors.has(c),'only existing sprite colors are used');
+        if(y>=28||original&&y<15&&x>=12&&x<=20)assert.equal(c,original,'face, hair and boot soles stay fixed');
+      }
+      layer.surface.fill(0);layer.blit(sheet,0,row,100,80,32,32,null,0,reach);
+      for(let y=0;y<32;y++)for(let x=0;x<32;x++)assert.equal(layer.surface[(80+y)*256+100+x],cell[y*32+x],'the actual OBJ blit uses the push cell');
+    }
+    assert.equal(new Set(frames).size,3,`${sheet} row ${row} has three visibly different poses`);
+  }
+});
+
 test('replacement sprite obeys the native layer result instead of painting over foreground tiles',()=>{
   const {layer,ppu}=scene();layer.inject(ppu,80);const x=layer.customLine.findIndex(color=>color>0);assert.ok(x>=0);
   ppu.selectedLayer=4;assert.equal(ppu.getColor(false,x,81)[0],layer.customLine[x]-1);

@@ -5,7 +5,7 @@
 class ManaSpriteLayer {
   constructor(snes, mod) {
     this.snes=snes;this.mod=mod;this.atlas={};this.customLine=new Uint16Array(256);
-    this.surface=new Uint16Array(256*256);this.effectMask=new Uint8Array(256*256);this.effects={};this.plan=null;this.paletteCache=new Map();this.shuffleFrames=new Map();
+    this.surface=new Uint16Array(256*256);this.effectMask=new Uint8Array(256*256);this.effects={};this.plan=null;this.paletteCache=new Map();this.shuffleFrames=new Map();this.pushFrames=new Map();
     const ppu=snes.ppu,self=this;
     this.originalEvaluate=ppu.evaluateSprites;this.originalColor=ppu.getColor;
     ppu.evaluateSprites=function(line){
@@ -46,7 +46,7 @@ class ManaSpriteLayer {
     const a=this.atlas.goku;return a.pixels[(32+Math.floor(row*21/16))*a.width+3+Math.floor((x-94)*26/16)];
   }
   load(images){
-    this.shuffleFrames.clear();
+    this.shuffleFrames.clear();this.pushFrames.clear();
     for(const [name,image] of Object.entries(images)){
       const canvas=document.createElement('canvas');canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;
       const context=canvas.getContext('2d',{willReadFrequently:true});context.drawImage(image,0,0);
@@ -171,8 +171,34 @@ class ManaSpriteLayer {
     }
     return this.shuffleFrames.get(key);
   }
-  blit(sheet,column,row,x,y,width=32,height=32,legs=null,shuffle=0){
-    const a=this.atlas[sheet],cell=shuffle?this.shuffleFrame(sheet,column,row):null;
+  pushFrame(sheet,row,reach){
+    const key=`${sheet}:${row}:${reach}`;
+    if(!this.pushFrames.has(key)){
+      const a=this.atlas[sheet],cell=new Uint16Array(1024),gold=sheet==='ssj';
+      const copy=(column,r,x,y,dx=0,dy=0)=>{
+        const c=a.pixels[(32+r*32+y)*a.width+column*32+x],px=x+dx,py=y+dy;
+        if(c&&px>=0&&px<32&&py>=0&&py<32)cell[py*32+px]=c;
+      };
+      // Reuse the open palm behind the standing body. Goku keeps his other
+      // arm down, his eyes open, and both boots planted: no straining pose.
+      if(row===1||row===2){
+        const start=row===1?4:15,dx=(row===1?1:-1)*(3-reach);
+        for(let y=13;y<=21;y++)for(let x=start;x<start+13;x++)copy(gold?19:23,row,x,y,dx,1);
+      }
+      for(let y=0;y<32;y++)for(let x=0;x<32;x++){
+        const forearm=row===0&&x>=21&&x<=24&&y>=19&&y<=24||row===3&&x>=7&&x<=10&&y>=19&&y<=24;
+        if(!forearm)copy(0,row,x,y);
+      }
+      // Front/back arms use their own foreshortened source cells. Only the
+      // forearm moves by two integer pixels, never the body or its pivot.
+      if(row===0)for(let y=20;y<=29;y++)for(let x=y<27?19:17;x<=22;x++)copy(gold?25:29,0,x,y,2,-5+reach);
+      if(row===3)for(let y=16;y<=22;y++)for(let x=8;x<=11;x++)copy(gold?21:25,3,x,y,-1,-2-reach);
+      this.pushFrames.set(key,cell);
+    }
+    return this.pushFrames.get(key);
+  }
+  blit(sheet,column,row,x,y,width=32,height=32,legs=null,shuffle=0,nudge=null){
+    const a=this.atlas[sheet],cell=nudge!==null?this.pushFrame(sheet,row,nudge):shuffle?this.shuffleFrame(sheet,column,row):null;
     for(let py=0;py<height;py++)for(let px=0;px<width;px++){
       const lx=Math.floor(px*32/width),ly=Math.floor(py*32/height);
       // The cupped hand reaches row 24. Extending this mask to the bottom
@@ -318,7 +344,7 @@ class ManaSpriteLayer {
     const small=ground&&!menuBody&&m.read8(0xe180)===0xf6,size=small?16:32;
     const x=flight?112+(pose.bank||0)*2:(naming||menuBody)?Math.min(...parts.map(a=>a.x))-8:(display?.anchor.x??(m.read16(0xe020)<<16>>16))-size/2;
     const y=flight?68+(pose.bob||0):(naming||menuBody)?Math.min(...parts.map(a=>a.y)):Math.round((display?.anchor.renderedFeetY??((m.read16(0xe022)<<16>>16)-pose.lift))-31*size/32)-(pose.extraLift||0);
-    this.plan.sprite={x,y,width:size,height:size,row,column,facing:m.facing,sheet:pose.sheet,kind:pose.kind,age:pose.age,legs:pose.legs,shuffle:pose.shuffle,hidden:!!pose.hidden,phase:pose.phase};
+    this.plan.sprite={x,y,width:size,height:size,row,column,facing:m.facing,sheet:pose.sheet,kind:pose.kind,age:pose.age,legs:pose.legs,shuffle:pose.shuffle,nudge:pose.nudge,hidden:!!pose.hidden,phase:pose.phase};
     // Every crop includes all 32 source rows, including the boots on row 31.
     // The game keeps its own ground shadow; no browser clipping is involved.
     const action=m.action,focus=action?.kind==='focus',powering=action?.kind==='transform'||action?.kind==='revert';
@@ -341,7 +367,7 @@ class ManaSpriteLayer {
     m.sandship?.draw(this);
     m.ceiling?.draw(this);
     m.challenge?.draw(this);m.powerIntro?.draw(this);
-    if(!pose.hidden)this.blit(pose.sheet,column,row,x,y,size,size,pose.legs??null,pose.shuffle??0);
+    if(!pose.hidden)this.blit(pose.sheet,column,row,x,y,size,size,pose.legs??null,pose.shuffle??0,pose.nudge??null);
     // Follow original poison/stone/ghost/flash palette changes before the PPU
     // applies its own window, water blend and brightness operations.
     if(ground&&!menuBody&&display?.native.species!==138)for(let yy=Math.max(0,y);yy<Math.min(256,y+size);yy++)for(let xx=Math.max(0,x);xx<Math.min(256,x+size);xx++){

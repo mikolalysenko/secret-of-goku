@@ -3,7 +3,7 @@
  * airborne height remains the game's responsibility. */
 class GokuAnimation {
   constructor(mod){this.mod=mod;this.reset();}
-  reset(){this.state={frame:-1,map:-1,x:0,y:0,distance:0,kind:'idle',age:0,native:0,stationary:0,falling:false};}
+  reset(){this.state={frame:-1,map:-1,x:0,y:0,distance:0,kind:'idle',age:0,native:0,stationary:0,blocked:0,facing:-1,falling:false};}
   snapshot(){return {...this.state};}
   restore(saved){if(saved)this.state={...saved};}
   track(sheet,name,age,row){
@@ -58,6 +58,15 @@ class GokuAnimation {
     else if(native===0xad)kind='swordPull';
     else if(native===0xaf)kind='dead';
     else if(distance>0||((native===1||native===2)&&s.stationary<3))kind=native===2?'run':'walk';
+    // Retail collision can leave the walk sequence running or request idle
+    // on actor contact. A held direction with no accepted movement is a push,
+    // not a frozen walk. Require several blocked frames so a turn, DMA delay
+    // or the first frame after standing still cannot briefly show the palm.
+    const pushing=m.canAttack&&!flight&&!menu&&!lift&&!m.localFlight&&!m.localLift&&
+      ['idle','walk','run'].includes(kind)&&!!(m.input&[0x20,0x80,0x40,0x10][m.facing])&&
+      !(m.input&[0x10,0x40,0x80,0x20][m.facing]);
+    if(s.frame!==m.frame)s.blocked=pushing&&distance===0&&s.map===map&&s.facing===m.facing?(s.blocked||0)+1:0;
+    if(pushing&&s.blocked>=6){kind='push';useNative=false;}
     const shuffleKinds=['charge','ready','focus','transform','revert'];
     if(s.frame!==m.frame){
       if(kind!==s.kind||map!==s.map){
@@ -66,7 +75,7 @@ class GokuAnimation {
           (map!==s.map||!shuffleKinds.includes(kind)||!shuffleKinds.includes(s.kind)))s.distance=0;
       }
       else s.age++;
-      s.distance+=distance;s.frame=m.frame;s.map=map;s.x=x;s.y=y;s.kind=kind;s.native=native;
+      s.distance+=distance;s.frame=m.frame;s.map=map;s.x=x;s.y=y;s.kind=kind;s.native=native;s.facing=m.facing;
     }
     let result,age=s.age,poseRow=menu?0:row;
     if(useNative&&nativeAction&&!['walk','run','idle','guard'].includes(kind))result=this.nativePose(nativeAction,sheet,poseRow,nativeFrame,age);
@@ -74,7 +83,8 @@ class GokuAnimation {
       // Six native pixels per footfall; a blocked walk settles to idle after
       // three stationary frames rather than skating through a running loop.
       result={sheet,row:poseRow,column:(kind==='run'?6:2)+Math.floor(s.distance/6)%4};
-    }else if(kind==='focus'){
+    }else if(kind==='push')result=this.track(sheet,'nudge',age,poseRow);
+    else if(kind==='focus'){
       // Held L is a composed fighting guard, in the direction he is facing.
       // Straining/flaring cells belong only to the actual form changes.
       result=this.track(sheet,'guard',0,poseRow);
