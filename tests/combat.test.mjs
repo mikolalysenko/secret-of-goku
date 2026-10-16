@@ -65,21 +65,39 @@ test('charge preserves directional movement, aims immediately and releases along
   }
 });
 
-test('charging shuffles between planted stances with travel and settles when movement stops',()=>{
+test('charging slides between wide and closed stances and settles when movement stops',()=>{
   for(const superSaiyan of[false,true])for(let facing=0;facing<4;facing++){
     const {mod,step}=setup({superSaiyan,facing}),[dx,dy]=[[0,1],[1,0],[-1,0],[0,-1]][facing];
     step(0x402,5);const column=superSaiyan?18:22,poses=new Set();
-    assert.equal(mod.motion.pose().legs,undefined,'stationary charging has no foot cycle');
-    for(let i=1;i<=32;i++){
+    assert.equal(mod.motion.pose().shuffle,undefined,'stationary charging has no foot cycle');
+    for(let i=1;i<=40;i++){
       mod.write16(0xe002,200+dx*i);mod.write16(0xe004,200+dy*i);step(0x402);
-      const p=mod.motion.pose();poses.add(p.legs);assert.equal(p.column,column);assert.equal(p.row,[0,2,1,3][facing]);
-      assert.ok([column,column+2].includes(p.legs),'the feet never enter a lifted walking pose');
+      const p=mod.motion.pose();poses.add(p.shuffle);assert.equal(p.column,column);assert.equal(p.row,[0,2,1,3][facing]);
+      assert.ok([0,1].includes(p.shuffle));assert.equal(p.legs,undefined,'grounded charge never uses lifted walking legs');
     }
-    assert.deepEqual([...poses].sort((a,b)=>a-b),[column,column+2]);
-    step(0x402,4);assert.equal(mod.motion.pose().legs,undefined);
+    assert.deepEqual([...poses].sort((a,b)=>a-b),[0,1]);
+    step(0x402,4);assert.equal(mod.motion.pose().shuffle,undefined);
     const still=JSON.stringify(mod.motion.pose());step(0x402,20);
-    assert.equal(mod.motion.pose().column,JSON.parse(still).column);assert.equal(mod.motion.pose().legs,undefined);
+    assert.equal(mod.motion.pose().column,JSON.parse(still).column);assert.equal(mod.motion.pose().shuffle,undefined);
     step();assert.equal(mod.motion.pose().kind,'beam');assert.equal(mod.motion.pose().legs,undefined);
+  }
+});
+
+test('focus and form changes allow native walking and follow the aimed direction',()=>{
+  for(const kind of['focus','transform','revert'])for(let facing=0;facing<4;facing++){
+    const {mod,step,snes}=setup(),direction=[0x20,0x80,0x40,0x10][facing];
+    mod.action={kind,age:0,duration:kind==='focus'?0:32,super:kind==='transform',facing:1};
+    step(0x400|direction,4);
+    assert.equal(mod.action.kind,kind);assert.equal(snes.joypad1State&0xf0,direction);assert.equal(mod.action.facing,facing);
+  }
+});
+
+test('airborne Kamehameha uses upright hover legs, including suspended local flight and Mode 7',()=>{
+  for(const superSaiyan of[false,true])for(const mode of['localFlight','localLift','worldFlight']){
+    const {mod,step}=setup({superSaiyan});step(0x402,5);
+    if(mode==='localLift')mod.localLift=12;else mod[mode]=true;
+    const pose=mod.motion.pose({flight:mode==='worldFlight'});
+    assert.equal(pose.column,superSaiyan?18:22);assert.equal(pose.legs,superSaiyan?34:38);
   }
 });
 

@@ -229,18 +229,17 @@ test('combat poses preserve exact source pixels and a fixed integer pivot in eve
  }
 });
 
-test('charge shuffle keeps the hands intact, both soles level and the leg pixels connected',()=>{
- for(const sheet of['goku','ssj'])for(const size of[32,16])for(let row=0;row<4;row++){
-  const {layer}=scene(),column=sheet==='ssj'?18:22,a=atlases[sheet],frames=[];
-  for(const legs of[column,column+2]){
-   layer.surface.fill(0);layer.blit(sheet,column,row,40,40,size,size,legs);
-   const frame=[],soles=[-1,-1],reached=new Set(),queue=[];
+test('grounded charge and power-up feet slide together without lifting or breaking the leg joins',()=>{
+ for(const sheet of['goku','ssj'])for(const size of[32,16])for(let row=0;row<4;row++)for(const column of sheet==='ssj'?[18,21,...(row===0?[47,48,49]:[])]:[22,25,...(row===0?[54,55,56,57,58]:[])]){
+  const {layer}=scene(),a=atlases[sheet],poses=[];
+  for(const shuffle of[0,1]){
+   layer.surface.fill(0);layer.blit(sheet,column,row,40,40,size,size,null,shuffle);
+   const frame=[],reached=new Set(),queue=[],boots=[[],[]],soles=[-1,-1];
    for(let y=0;y<size;y++)for(let x=0;x<size;x++){
     const c=layer.surface[(40+y)*256+40+x],lx=x*32/size,ly=y*32/size;
     const original=a.pixels[(32+row*32+ly)*a.width+column*32+lx];frame.push(c);
-    const hand=row===1&&lx>=23||row===2&&lx<10||row===3&&lx>=22;
-    if(ly<24||hand)assert.equal(c,original,'head, torso and cupped hands cannot flicker or be cut');
-    if(c&&ly>=24&&!hand)soles[x<size/2?0:1]=y;
+    if(ly<=24)assert.equal(c,original,'head, torso and cupped hands stay intact');
+    if(ly>=26){const foot=x<size/2?0:1;boots[foot].push(!!c);if(c)soles[foot]=y;}
     if(c&&ly<24){reached.add(y*size+x);queue.push(y*size+x);}
    }
    for(let i=0;i<queue.length;i++){
@@ -250,11 +249,42 @@ test('charge shuffle keeps the hands intact, both soles level and the leg pixels
      if(xx>=0&&xx<size&&yy>=0&&yy<size&&frame[next]&&!reached.has(next)){reached.add(next);queue.push(next);}
     }
    }
-   assert.equal(reached.size,frame.filter(Boolean).length,'every boot stays joined to the body');
-   frames.push({frame,soles});
+   assert.equal(layer.surface.filter(Boolean).length,frame.filter(Boolean).length,'no pixels escape the cell');
+   poses.push({frame,boots,soles,detached:frame.filter(Boolean).length-reached.size});
   }
-  assert.deepEqual(frames[0].soles,frames[1].soles,'neither foot rises and taps back down');
-  assert.notDeepEqual(frames[0].frame,frames[1].frame,'the shuffle remains visible');
+  assert.ok(poses[1].detached<=poses[0].detached,`${sheet} column ${column} row ${row} size ${size}: sliding cannot detach any leg pixels`);
+  if(column<30)assert.equal(poses[1].detached,0,'charge and guard boots remain connected to the body');
+  for(let foot=0;foot<2;foot++){
+   const y=poses[0].soles[foot];let grounded=false;
+   for(let x=foot*size/2;x<(foot+1)*size/2;x++)if(poses[0].frame[y*size+x]){
+    for(let dx=-2;dx<=2;dx++)if(poses[1].frame[y*size+x+dx])grounded=true;
+   }
+   assert.ok(grounded,`${sheet} column ${column} row ${row} size ${size}: each sole remains on its original floor row`);
+  }
+  for(let foot=0;foot<2;foot++)assert.notDeepEqual(poses[0].boots[foot],poses[1].boots[foot],`${sheet} column ${column} row ${row} size ${size}: both feet must visibly slide`);
+ }
+});
+
+test('airborne charging preserves the cupped hands and joins downward boots to the knees',()=>{
+ for(const sheet of['goku','ssj'])for(const size of[32,16])for(let row=0;row<4;row++){
+  const {layer}=scene(),column=sheet==='ssj'?18:22,a=atlases[sheet];
+  layer.surface.fill(0);layer.blit(sheet,column,row,40,40,size,size,sheet==='ssj'?34:38);
+  const frame=[],reached=new Set(),queue=[];
+  for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+   const c=layer.surface[(40+y)*256+40+x],lx=x*32/size,ly=y*32/size;
+   const original=a.pixels[(32+row*32+ly)*a.width+column*32+lx];frame.push(c);
+   const hand=ly===24&&(row===1&&lx>=23||row===2&&lx<10||row===3&&lx>=22);
+   if(ly<24||hand)assert.equal(c,original,'the floating pose retains its head, torso and cupped hands');
+   if(c&&ly<24){reached.add(y*size+x);queue.push(y*size+x);}
+  }
+  for(let i=0;i<queue.length;i++){
+   const at=queue[i],x=at%size,y=Math.floor(at/size);
+   for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+    const xx=x+dx,yy=y+dy,next=yy*size+xx;
+    if(xx>=0&&xx<size&&yy>=0&&yy<size&&frame[next]&&!reached.has(next)){reached.add(next);queue.push(next);}
+   }
+  }
+  assert.equal(reached.size,frame.filter(Boolean).length,`${sheet} row ${row} size ${size}: floating boots stay joined to the body`);
  }
 });
 

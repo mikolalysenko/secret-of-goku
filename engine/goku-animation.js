@@ -58,8 +58,13 @@ class GokuAnimation {
     else if(native===0xad)kind='swordPull';
     else if(native===0xaf)kind='dead';
     else if(distance>0||((native===1||native===2)&&s.stationary<3))kind=native===2?'run':'walk';
+    const shuffleKinds=['charge','ready','focus','transform','revert'];
     if(s.frame!==m.frame){
-      if(kind!==s.kind||map!==s.map){s.age=0;if(['walk','run','charge','ready'].includes(kind))s.distance=0;}
+      if(kind!==s.kind||map!==s.map){
+        s.age=0;
+        if(['walk','run',...shuffleKinds].includes(kind)&&
+          (map!==s.map||!shuffleKinds.includes(kind)||!shuffleKinds.includes(s.kind)))s.distance=0;
+      }
       else s.age++;
       s.distance+=distance;s.frame=m.frame;s.map=map;s.x=x;s.y=y;s.kind=kind;s.native=native;
     }
@@ -155,10 +160,13 @@ class GokuAnimation {
     if(result.row===3&&result.column===1)result.column=0;
     const cell=window.GokuAnimationData.forms[result.sheet].cells[result.column*4+result.row];
     if(!cell?.opaque)throw Error(`Empty Goku animation cell: ${kind} ${result.sheet} ${result.column},${result.row}`);
-    // The charge/release stances share planted feet. Alternate their lower
-    // tile row for a short shuffle; normal walking cells lift the front knee.
-    // Advance with travel, so holding charge at a wall never taps in place.
-    if((kind==='charge'||kind==='ready')&&!m.localFlight&&(distance>0||s.stationary<3))result.legs=(sheet==='ssj'?18:22)+2*(Math.floor(s.distance/8)%2);
+    // Mana's charged walk alternates a wide stance and feet drawn together.
+    // Only the lower-leg tiles change; neither boot leaves its floor row.
+    // In the air use the upright hover legs, never a grounded wide stance.
+    if(shuffleKinds.includes(kind)||flight&&m.charging){
+      if(flight||m.localFlight||m.localLift>0||m.gapFlight?.active)result.legs=result.sheet==='ssj'?34:38;
+      else if(distance>0||s.stationary<3&&s.distance>0)result.shuffle=Math.floor(s.distance/16)%2;
+    }
     if(!flight&&!menu&&m.localLift)result.extraLift=(result.extraLift||0)+Math.round(m.localLift);
     return {...result,kind,age,lift:flight||menu?0:lift,origin:flight?[16,16]:[16,31],bounds:cell.bounds};
   }

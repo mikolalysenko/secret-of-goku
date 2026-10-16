@@ -303,10 +303,11 @@ class ManaMod {
     }
     if((input&(1<<17))&&!(input&0x400)&&!teleport&&!this.kiBlocked&&!this.attackBlocked&&!this.blastCooldown&&!this.charging&&(!this.action||this.action.kind==='blast'))this.kiBlast();
     if(this.nativeTapFrames>0){this.snes.joypad1State|=1;this.nativeTapFrames--;}
-    // Charging keeps normal movement/collision, including stairs and dashing.
-    // Only the brief committed attack/transform poses plant Goku's feet.
+    // Charge and power-up keep native walking/collision. Strikes and the
+    // released beam stay planted through their committed recovery.
     const action=this.action;
-    if(action&&['focus','transform','revert','beam','teleport','punch','blast'].includes(action.kind))this.snes.joypad1State&=~0x1f0;
+    if(action&&['focus','transform','revert'].includes(action.kind))action.facing=this.facing;
+    if(action&&['beam','teleport','punch','blast'].includes(action.kind))this.snes.joypad1State&=~0x1f0;
     if(action&&!['ready','charge'].includes(action.kind))this.write8(0xe010,[1,2,0x82,0][action.facing]);
     this.attackFrames=action&&['punch','beam','blast'].includes(action.kind)?Math.max(0,action.duration-action.age):0;
     this.attackCooldown=action?.kind==='punch'?this.attackFrames:0;

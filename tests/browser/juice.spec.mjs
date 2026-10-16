@@ -34,7 +34,7 @@ test('Goku shuffles while charging in both forms and Super Saiyan keeps a blue b
     for(const superSaiyan of [false,true]){
       mana.restore(saved);mana.mod.options.superSaiyan=superSaiyan;
       const before=mana.mod.status,legs=new Set();
-      for(let i=0;i<35;i++){mana.run(1,[10,1,6]);const p=mana.mod.spriteLayer.plan.sprite;if(p.legs!==undefined)legs.add(p.legs);}
+      for(let i=0;i<35;i++){mana.run(1,[10,1,6]);const p=mana.mod.spriteLayer.plan.sprite;if(p.shuffle!==undefined)legs.add(p.shuffle);}
       const after=mana.mod.status;
       const groups=[],layer=mana.mod.spriteLayer,stamp=layer.stamp;
       layer.stamp=function(group,...args){groups.push(group);return stamp.call(this,group,...args);};
@@ -43,7 +43,44 @@ test('Goku shuffles while charging in both forms and Super Saiyan keeps a blue b
     }
     return results;
   });
-  for(const item of result){expect(item.moved).toBeGreaterThan(20);expect(item.charging).toBe('charge');expect(item.legs).toEqual(item.superSaiyan?[18,20]:[22,24]);expect(item.blue).toBe(true);expect(item.gold).toBe(false);}
+  for(const item of result){expect(item.moved).toBeGreaterThan(20);expect(item.charging).toBe('charge');expect(item.legs).toEqual([0,1]);expect(item.blue).toBe(true);expect(item.gold).toBe(false);}
+});
+
+test('focus and transformation keep the native walk live with alternating feet',async({page})=>{
+  await load(page,'.local/graphics-audit/party.json');
+  const result=await page.evaluate(()=>{
+    const m=mana.mod,base=mana.snapshot(),out=[];
+    for(const kind of['focus','transform','revert']){
+      mana.restore(base);m.options.superSaiyan=kind==='revert';m.powerIntro.restore({flight:true,superShown:true});
+      if(kind==='transform')mana.run(95,[10]);
+      const before=m.status,legs=new Set(),frames=[];
+      for(let i=0;i<30;i++){
+        mana.run(1,kind==='revert'&&i===10?[6]:kind==='focus'||kind==='revert'&&i>10?[10,6]:[10,8,6]);
+        const p=m.spriteLayer.plan.sprite;frames.push(m.action?.kind);
+        if(p.shuffle!==undefined)legs.add(p.shuffle);
+      }
+      out.push({kind,moved:before.x-m.status.x,legs:[...legs],frames});
+    }
+    return out;
+  });
+  for(const r of result){
+    expect(r.moved,r.kind).toBeGreaterThan(20);
+    expect(r.frames).toContain(r.kind);expect(r.legs.length,JSON.stringify(r)).toBeGreaterThan(1);
+    expect(r.legs.every(c=>c===0||c===1)).toBe(true);
+  }
+});
+
+test('Kamehameha over unsafe ground retains cupped hands and downward hover legs in both forms',async({page})=>{
+  await load(page,'.local/emulator-probe/main-before-grass.json');
+  const result=await page.evaluate(()=>{
+    mana.run(5,[8,7]);mana.run(10);const m=mana.mod,base=mana.snapshot(),out=[];
+    for(const superSaiyan of[false,true]){
+      mana.restore(base);m.options.superSaiyan=superSaiyan;mana.run(16,[10,1]);
+      const p=m.spriteLayer.plan.sprite;out.push({superSaiyan,airborne:m.localFlight,solid:!m.localFlightHook.canLand(),kind:p.kind,column:p.column,legs:p.legs});
+    }
+    return out;
+  });
+  for(const r of result)expect(r).toEqual({superSaiyan:r.superSaiyan,airborne:true,solid:true,kind:'charge',column:r.superSaiyan?18:22,legs:r.superSaiyan?34:38});
 });
 
 test('a charged Kamehameha removes native bushes and opens their collision tiles',async({page})=>{
