@@ -16,11 +16,16 @@ function fixture(mask=3){
  write(0xe602,128);write(0xe604,48);
  const trial=createJochTrial(snes,mod,{loadArt:false}),tick=(n=1)=>{for(let i=0;i<n;i++)trial.tick();};
  mod.trial=trial;trial.onEvent(0x3db);tick();
+ const intro={phase:trial.status.phase,music:trial.music};
  // Combat cases start after the native entrance/fade, which has a separate
  // ROM-backed regression. The small fixture has no native fade interpreter.
  trial.restore({...trial.snapshot(),phase:'battle',entrance:null,arrival:36});
- return{ram,snes,mod,trial,tick,read,write,sounds,messages};
+ return{ram,snes,mod,trial,tick,read,write,sounds,messages,intro};
 }
+
+test('Vegeta\'s theme starts with his entrance cutscene, not after it',()=>{
+ assert.deepEqual(fixture().intro,{phase:'intro',music:'vegeta'});
+});
 
 test('Vegeta replaces all Dopples, preserves the original lineup, and has two distinct phases',()=>{
  for(const mask of[0,1,2,3]){

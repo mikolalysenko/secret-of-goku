@@ -150,7 +150,7 @@ export function createJochTrial(snes,mod,{loadArt=true}={}){
  }
  const api={
   ready,load:()=>arena.load(),get partyMask(){return s?.mask??0;},get roomLoaded(){return !!s?.spawned;},get active(){return !!(s&&wanted());},get dangerous(){return api.active&&s.phase==='battle';},
-  get music(){return api.active&&s.spawned&&s.phase!=='intro'?(s.tier||s.phase==='transform'||s.draw?'vegeta-full-power':'vegeta'):null;},
+  get music(){return api.active&&s.spawned?(s.tier||s.phase==='transform'||s.draw?'vegeta-full-power':'vegeta'):null;},
   get inputLocked(){return api.active&&s.phase==='draw'&&!r[0xd0];},
   clashInput(input){
    const c=s?.clash;if(!api.active||!c)return false;

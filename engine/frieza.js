@@ -17,6 +17,9 @@ import {createEmperorBeamView,installAltarCamera,introTiming} from './frieza-int
 import {friezaScenePose,friezaDeathBallPose,templeFollowerPose,exteriorFollowerPose,coreTiming} from './frieza-staging.js';
 import {installOrbitMenu,orbitMenuView} from './orbit-menu.js';
 const copy=s=>s?structuredClone(s):null;
+// Frieza's own cutscenes outside the theft and showdown stages keep his
+// entrance cue rather than the native music their events start.
+const entranceScenes=new Set(['eighth','emperor-wait','altar-leave','trial-entry','trial-taunt','empower','trial-leave']);
 const initial=()=>({flyby:null,deckBall:false,stage:'dormant',tree:null,outdoorIntro:false,emperorKilled:false,trialWon:false,stolen:false,stolenMask:0,eighth:false,permanent:false,fallen:false,popoiMember:false,popoi:null,primmMember:false,primm:null,scene:null,boss:null,crisis:null,offered:false,lastMap:null,hinted:false,discHits:0,playerHits:0});
 export function createFrieza(snes,mod){
  let s=initial(),atlas=null,fullAtlas=null,ruins=null,ruinsRevision=-1,ruinsX=NaN,ruinsY=NaN,renderFrame=-1,renderArena=false,cameraLine=-1,cameraX=0,cameraY=0,spellLayer=null,spellFx=null;
@@ -237,7 +240,7 @@ export function createFrieza(snes,mod){
   get orbitMenu(){const o=api.orbit;return o&&mod.nativeField&&(mod.read8(0xec)&12)?orbitMenuView(o.hero):null;},
   get exteriorScene(){return on()&&map()===195&&(s.outdoorIntro||s.stage==='theft'||s.scene?.kind==='eighth');},
   get emperorPresent(){return on()&&!s.emperorKilled&&(s.stage==='theft'||s.scene?.kind==='emperor-wait');},
-  get music(){if(!on())return null;if(s.stage==='won')return s.boss?.space?.clash.age<victoryTiming.impact+bossVictoryTiming.white?'orbit':null;return s.boss?.space&&s.stage==='battle'?'orbit':s.stage==='battle'||s.scene?.kind==='gold'?'battle':['theft','showdown'].includes(s.stage)||s.scene?.kind==='eighth'||s.scene?.kind?.startsWith('tree-')&&s.scene.kind!=='tree-leave'?'arrival':null;},
+  get music(){if(!on())return null;if(s.stage==='won')return s.boss?.space?.clash.age<victoryTiming.impact+bossVictoryTiming.white?'orbit':null;return s.boss?.space&&s.stage==='battle'?'orbit':s.stage==='battle'||s.scene?.kind==='gold'?'battle':['theft','showdown'].includes(s.stage)||entranceScenes.has(s.scene?.kind)||s.scene?.kind?.startsWith('tree-')&&s.scene.kind!=='tree-leave'?'arrival':null;},
   get returnScene(){return on()&&map()===246&&s.scene?.kind==='return'?s.scene:null;},
   get stolenMask(){return s.stolen?s.stolenMask:0;},
   get cinematic(){const c=s.boss?.surge;return on()&&map()===246&&c?.kind==='frieza-cosmic'&&c.age>=collateralStart&&c.age<cosmicDuration?c:null;},
