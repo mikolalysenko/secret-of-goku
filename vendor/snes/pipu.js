@@ -887,7 +887,9 @@ function Ppu(snes) {
   // pixel of that priority on the line is skipped (unless it must still
   // report masked pixels).
   const pendingX = new Int16Array(256);
-  this.composeScreen = function(sub, modeIndex, count, mode, need, pixOut, layOut) {
+  // With colorOut (lines without plans, posts or direct color), it also
+  // writes the palette color finishScreen would produce for each x.
+  this.composeScreen = function(sub, modeIndex, count, mode, need, pixOut, layOut, colorOut) {
     let enabled = sub ? this.subScreenEnabled : this.mainScreenEnabled;
     let windowed = sub ? this.subScreenWindow : this.mainScreenWindow;
     let suppress = linePlan.windowSuppress;
@@ -987,11 +989,21 @@ function Ppu(snes) {
         if((v & 0xff) > 0) {
           pixOut[x] = v;
           layOut[x] = layer;
+          if(colorOut !== undefined) {
+            colorOut[x] = this.cgram[v & 0xff];
+          }
         } else {
           pendingX[kept++] = x;
         }
       }
       n = kept;
+    }
+    if(colorOut !== undefined) {
+      // Backdrop (pixel 0) for everything left unresolved.
+      let backdrop = this.cgram[0];
+      for(let k = 0; k < n; k++) {
+        colorOut[pendingX[k]] = backdrop;
+      }
     }
   }
 
@@ -1068,6 +1080,7 @@ function Ppu(snes) {
     }
   }
 
+  let plainLine = false;
   const mainPix = new Int32Array(256);
   const mainLay = new Uint8Array(256);
   const mainColor = new Uint16Array(256);
@@ -1194,8 +1207,18 @@ function Ppu(snes) {
       }
     }
     spritePresent = sprites;
-    this.composeScreen(false, modeIndex, count, mode, null, mainPix, mainLay);
-    this.finishScreen(false, mode, null, mainPix, mainLay, mainColor, line);
+    // finishScreen only looks up palette colors on lines without plans,
+    // posts or direct color; composeScreen can then write them itself.
+    let plain = linePlan.objColor === null && linePlan.faceColor === null &&
+      linePlan.overlay === null && linePlan.bg1Color === null &&
+      linePlan.posts.length === 0 && !this.directColor;
+    plainLine = plain;
+    if(plain) {
+      this.composeScreen(false, modeIndex, count, mode, null, mainPix, mainLay, mainColor);
+    } else {
+      this.composeScreen(false, modeIndex, count, mode, null, mainPix, mainLay);
+      this.finishScreen(false, mode, null, mainPix, mainLay, mainColor, line);
+    }
     let pseudo = this.pseudoHires, addSub = this.addSub;
     let colorClip = this.colorClip, preventMath = this.preventMath;
     let clipMask = colorClip === 1 || colorClip === 2 || preventMath === 1 ||
@@ -1229,8 +1252,12 @@ function Ppu(snes) {
     if(noMath && colorClip === 0 && (hires || pseudo) && out32 !== null) {
       // Hires/pseudo-hires without color math or clipping: the left half is
       // the sub screen color, the right half the main screen color.
-      this.composeScreen(true, modeIndex, count, mode, null, subPix, subLay);
-      this.finishScreen(true, mode, null, subPix, subLay, subColor, line);
+      if(plain) {
+        this.composeScreen(true, modeIndex, count, mode, null, subPix, subLay, subColor);
+      } else {
+        this.composeScreen(true, modeIndex, count, mode, null, subPix, subLay);
+        this.finishScreen(true, mode, null, subPix, subLay, subColor, line);
+      }
       let at32 = base >> 1;
       for(let i = 0; i < 256; i++, at32 += 3) {
         let main = mainColor[i], sub = subColor[i];
@@ -1268,8 +1295,12 @@ function Ppu(snes) {
       anySub = anySub || need;
     }
     if(anySub) {
-      this.composeScreen(true, modeIndex, count, mode, subNeed, subPix, subLay);
-      this.finishScreen(true, mode, subNeed, subPix, subLay, subColor, line);
+      if(plainLine) {
+        this.composeScreen(true, modeIndex, count, mode, subNeed, subPix, subLay, subColor);
+      } else {
+        this.composeScreen(true, modeIndex, count, mode, subNeed, subPix, subLay);
+        this.finishScreen(true, mode, subNeed, subPix, subLay, subColor, line);
+      }
     }
     let subtract = this.subtractColors, half = this.halfColors;
     let fixedR = this.fixedColorR, fixedG = this.fixedColorG;
