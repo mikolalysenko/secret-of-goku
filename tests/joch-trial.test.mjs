@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createJochTrial,vegetaHealth} from '../engine/joch-trial.js';
+import {createJochTrial,vegetaHealth,vegetaPose} from '../engine/joch-trial.js';
 import {encodeText,wrapText} from '../engine/event-codec.js';
 import {createCeilingEscape} from '../engine/ceiling-escape.js';
 
@@ -99,4 +99,20 @@ test('the final beam finishes before the draw, and sparring damage cannot kill G
  mod.effects=[];tick(35);assert.equal(trial.status.tier,0);assert.equal(trial.inputLocked,true);
  trial.restore({...trial.snapshot(),phase:'battle',tier:1,grace:0,x:128,y:80,action:{kind:'beam',age:81,dx:0,dy:1,x:128,y:80}});
  write(0xe182,100);tick(10);assert.equal(read(0xe1f1),99);assert.equal(trial.status.phase,'draw');assert.equal(trial.status.draw,false);
+});
+
+test('Vegeta holds a planted guard, one low dash and a single held strike',()=>{
+ const base={phase:'battle',tier:0,facing:1,age:100,movingUntil:0,travel:0,hurt:0};
+ const at=(action,extra={})=>vegetaPose({...base,...extra,action}).frame;
+ const rush=age=>at({kind:'rush',age},{movingUntil:200});
+ assert.deepEqual([0,23,24,40,49,50,57,67,68].map(rush),[1,1,2,2,2,3,3,3,1],'whiffed rush: guard, dash, extended punch, guard');
+ assert.deepEqual([30,43,44,58].map(age=>at({kind:'rush',age,contact:30},{movingUntil:200})),[3,3,2,1],'contact commits the punch, then a carried dash resumes');
+ assert.deepEqual([24,32,39,49,50].map(age=>at({kind:'counter',age})),[2,4,4,4,1],'counter ends on a kick');
+ assert.equal(at({kind:'rush',age:40},{tier:1,facing:2,movingUntil:200}),10,'gold dash uses the same cell');
+ assert.deepEqual([0,41,42,48,49,62,82].map(age=>at({kind:'volley',age})),[5,5,6,6,5,6,6]);
+ const kinds=new Set();
+ for(let travel=0;travel<64;travel+=4)kinds.add(vegetaPose({...base,movingUntil:200,backstep:true,travel}).frame);
+ assert.deepEqual([...kinds].sort(),[1,22],'backing away keeps the guard, never forward running alone');
+ assert.deepEqual(vegetaPose({...base,hurt:9,facing:2}),{frame:1,dx:2,dy:0},'recoils away from Goku');
+ assert.equal(vegetaPose({...base,phase:'draw',tier:1}).frame,8);
 });

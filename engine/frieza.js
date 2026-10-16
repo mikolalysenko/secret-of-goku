@@ -629,7 +629,9 @@ export function createFrieza(snes,mod){
    }
    const pointer=friezaDeathBeamPose(b);
    if(pointer)sprite(2,pointer.x-h.cameraX,pointer.y-h.cameraY,pointer.flip);
-   else sprite(b.hurt?6:b.riposte?2:b.surge||b.windup?4:b.dash?5:b.recoil?2:b.warning?.kind==='disc'?2:b.warning?3:b.tier?4:Math.floor(b.age/16)%2,bx+(b.recoil?(face?1:-1)*Math.ceil(b.recoil/3):0),by,face);
+   // The riposte coils in his clenched power stance, then lunges into the
+   // radial blast; the pointing cell belongs only to aimed shots.
+   else sprite(b.hurt?6:b.riposte?b.riposte.age<18?4:5:b.surge||b.windup?4:b.dash?5:b.recoil?2:b.warning?.kind==='disc'?2:b.warning?3:b.tier?4:Math.floor(b.age/16)%2,bx+(b.recoil?(face?1:-1)*Math.ceil(b.recoil/3):0),by,face);
    if(b.riposte){
     const a=b.riposte.age;
     if(a>=18)for(const[dx,dy]of[[1,0],[0,1],[-1,0],[0,-1]])spellFx.stamp('impact-spark',(a-18)>>1,bx+dx*(12+(a-18)*3),by-12+dy*(12+(a-18)*3));

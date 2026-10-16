@@ -8,6 +8,43 @@ export const vegetaHealth=[32000,60000];
 const cloneBases=[0xe600,0xe800,0xea00],directions=[[0,1],[1,0],[-1,0],[0,-1]];
 const face=(dx,dy)=>Math.abs(dx)>Math.abs(dy)?dx<0?2:1:dy<0?3:0;
 const copy=v=>v?structuredClone(v):null;
+// Pure pose choice: atlas frame plus a whole-pixel hit recoil. Side combat
+// cells face right and are flipped for a left-facing Vegeta. He stays in a
+// planted guard between commitments: a held windup, one explosive low dash,
+// then a single strike held through its follow-through, never a punch/kick
+// flicker or forward running cells while he backs away.
+export function vegetaPose(s){
+ const a=s.action,gold=s.tier*8,moving=s.phase==='battle'&&s.age<(s.movingUntil??0);
+ const walk=Math.floor((s.travel??0)/12)&1,shuffle=Math.floor((s.travel??0)/16)&1;
+ const guard=s.facing===0?16+gold:s.facing===3?19+gold:1+gold;
+ const legs=()=>{
+  if(!moving)return guard;
+  // A backstep or sidestep breaks the guard only on alternate strides.
+  if(s.backstep)return shuffle?(s.facing===0?17:s.facing===3?20:22)+gold:guard;
+  return 16+gold+(s.facing===0?1:s.facing===3?4:6)+walk;
+ };
+ const [dx,dy]=directions[s.facing],recoil=s.hurt>6?2:s.hurt>2?1:0;
+ const pose=frame=>({frame,dx:-dx*recoil||0,dy:-dy*recoil||0});
+ if(s.phase==='transform')return pose(7+gold);
+ if(s.phase!=='battle')return pose(gold);
+ if(a?.kind==='beam')return pose((a.beam?6:5)+gold);
+ if(a?.kind==='volley'){
+  // Hands return to the hip between shots: one thrust per released blast.
+  const at=a.age-42,spacing=s.tier?13:20,count=s.tier?5:3;
+  return pose((at>=0&&at<spacing*count&&at%spacing<7?6:5)+gold);
+ }
+ if(a?.kind==='rush'||a?.kind==='counter'){
+  const end=a.kind==='rush'?58:40,strike=(a.kind==='rush'?3:4)+gold;
+  // Contact commits the blow for fourteen frames, then a dash that carries
+  // through resumes its lunge. A whiff extends the strike for the lunge's
+  // final eight frames and holds it ten frames after stopping.
+  const from=a.contact??end-8,until=a.contact==null?end+10:a.contact+14;
+  if(a.age>=from&&a.age<until)return pose(strike);
+  if(a.age>=24&&a.age<end)return pose(s.facing===1||s.facing===2?2+gold:legs());
+  return pose(guard);
+ }
+ return pose(legs());
+}
 
 // A real, mildly inconvenienced Vegeta occupies the boy Doppel's encounter
 // slot. Native event 4E5 owns the return and Joch reveal after their draw.
@@ -35,6 +72,7 @@ export function createJochTrial(snes,mod,{loadArt=true}={}){
   for(let i=0;i<speed;i++){
    const x=s.x+dx,y=s.y+dy;if(!safe(x,y))return false;s.x=x;s.y=y;
    s.travel=(s.travel??0)+Math.abs(dx)+Math.abs(dy);s.movingUntil=s.age+3;
+   const[fx,fy]=directions[s.facing];s.backstep=dx*fx+dy*fy<=0;
   }return true;
  }
  function pickSpot(distance=112){
@@ -112,13 +150,13 @@ export function createJochTrial(snes,mod,{loadArt=true}={}){
   if(a.kind==='counter'){
    if(a.age===12)teleport();
    if(a.age===24){const f=face(h.x-s.x,h.y-s.y);s.facing=f;[a.dx,a.dy]=directions[f];a.tx=h.x;a.ty=h.y;}
-   if(a.age>=24&&a.age<40){step(a.dx,a.dy,gold?8:6);if(Math.hypot(s.x-h.x,s.y-h.y)<24)receive(gold?310:220);}
+   if(a.age>=24&&a.age<40){step(a.dx,a.dy,gold?8:6);if(Math.hypot(s.x-h.x,s.y-h.y)<24){a.contact??=a.age;receive(gold?310:220);}}
    if(a.age>=54)recover(75);
   }else if(a.kind==='rush'){
    if(a.age===24)mod.playSound?.('flight');
    if(a.age>=24&&a.age<58){
     const moved=step(a.dx,a.dy,gold?6:4);
-    if(Math.hypot(s.x-h.x,s.y-h.y)<24)receive(gold?260:190);
+    if(Math.hypot(s.x-h.x,s.y-h.y)<24){a.contact??=a.age;receive(gold?260:190);}
     if(!moved){impactWall(s.x+a.dx*10,s.y+a.dy*10);recover(95);return;}
    }
    if(a.age>=76)recover(80);
@@ -300,15 +338,9 @@ export function createJochTrial(snes,mod,{loadArt=true}={}){
    const camera=mod.status,a=s.action,putPixel=(x,y,c)=>layer.pixel(x,y,c,true);
    combustion??=createNativeCombustion(snes.cart.data);
    for(const e of s.echoes)drawVegetaSprite(cells,e.frame,e.x-camera.cameraX,e.y-camera.cameraY,putPixel,{flip:e.flip,ghost:true});
-   let frame=(s.phase==='transform'?7:a?.kind==='beam'?(a.beam?6:5):a?.kind==='volley'?6:a&&a.age>=24&&a.age<58?Math.floor(a.age/6)%2?3:4:s.phase==='intro'||s.phase==='draw'?0:1)+s.tier*8;
-   // Advance the walk cycle from real travel, not a recovery timer. Idle
-   // footwork and blocked rushes no longer run in place or snap poses.
-   const moving=s.phase==='battle'&&s.age<(s.movingUntil??0),step=Math.floor((s.travel??0)/12)&1;
-   if(s.phase==='battle'&&(!a||a.kind==='rush')){
-    if(s.facing===0)frame=16+s.tier*8+(moving?1+step:0);
-    else if(s.facing===3)frame=16+s.tier*8+(moving?4+step:3);
-    else if(moving)frame=16+s.tier*8+6+step;
-   }
+   // Walk cycles advance from real travel, not a recovery timer. Blocked
+   // rushes and idle footwork never run in place or snap poses.
+   const pose=vegetaPose(s),frame=pose.frame;
    const visible=s.phase!=='intro'||s.arrival>=12,vanishing=a?.kind==='counter'&&a.age>=8&&a.age<12;
    if(s.phase==='transform'||a?.kind==='beam'&&!a.beam){
     layer.behindBody=true;
@@ -316,7 +348,7 @@ export function createJochTrial(snes,mod,{loadArt=true}={}){
     layer.aura(s.x-camera.cameraX,s.y-camera.cameraY-20,age,{height:40,gold:!!s.tier,power:Math.min(1,power),seed:5});
     layer.behindBody=false;
    }
-   if(visible&&!vanishing)drawVegetaSprite(cells,frame,s.x-camera.cameraX,s.y-camera.cameraY,s.clash?(x,y,c)=>layer.pixel(x,y,c):putPixel,{flip:s.facing===2,flash:s.hurt>0&&(s.hurt&2)!==0});
+   if(visible&&!vanishing)drawVegetaSprite(cells,frame,s.x+pose.dx-camera.cameraX,s.y+pose.dy-camera.cameraY,s.clash?(x,y,c)=>layer.pixel(x,y,c):putPixel,{flip:s.facing===2,flash:s.hurt>0&&(s.hurt&2)!==0});
    if(s.clash){
     // Leave both firing poses readable at their beam's hand anchor. Native
     // spell OBJs can overlap the hands without covering either body.

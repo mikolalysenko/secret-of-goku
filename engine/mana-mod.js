@@ -465,7 +465,9 @@ class ManaMod {
     const targets=this.targets(origin,dx,dy,action.combo===2?54:44,24,10),damage=Math.round(this.damageScale()*(action.combo===2?1.5:1));
     const hits=targets.map(enemy=>this.hit(enemy,damage,dx,dy,true));
     const contacts=targets.filter((enemy,i)=>enemy.species!==0x55&&hits[i]?.after<hits[i]?.before);
-    action.hitPause=contacts.length?(action.combo===2?3:2):0;
+    // Jab and cross freeze three frames on contact; the finishing kick holds
+    // five so its launch reads as the heaviest blow of the string.
+    action.hitPause=contacts.length?(action.combo===2?5:3):0;
     for(const hit of this.knockbacks)if(contacts.some(enemy=>enemy.base===hit.base))hit.hold=action.hitPause+1;
     // The native pulse handles talking/chests. The interaction adapter stops
     // its weapon fallback; punching plants uses the same native redraw queue
@@ -475,7 +477,7 @@ class ManaMod {
     if(this.barriers?.punch({...origin,dx,dy}))this.nativeTapFrames=0;
     for(const enemy of contacts)this.effects.push({kind:'impact',x:enemy.x,y:enemy.y-12,dx,dy,life:10,max:10,hold:action.hitPause,super:action.super});
     this.effects.push({...origin,kind:'punch',dx,dy,life:7,max:7,super:action.super,hit:!!hits.length});
-    if(contacts.length){this.feedback?.pulse(action.super?5:3);this.playSound?.(action.combo===2?'kick':'hit');this.log(`Punch ${damage}: ${JSON.stringify(hits)}`);}
+    if(contacts.length){this.feedback?.pulse((action.super?5:3)+(action.combo===2?3:0));this.playSound?.(action.combo===2?'kick':'hit');this.log(`Punch ${damage}: ${JSON.stringify(hits)}`);}
     return hits;
   }
   handOrigin(facing=this.facing,technique='beam',hand=0){

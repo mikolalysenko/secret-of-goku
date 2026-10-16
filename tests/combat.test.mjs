@@ -300,7 +300,7 @@ test('connected strikes hold the contact pose and spark before launch; misses an
   const {mod,step,enemy}=setup({superSaiyan}),base=enemy(3,228,200);
   mod.combo=combo-1;mod.comboUntil=100;mod.punch();step(0,mod.action.impact);
   const pose=JSON.stringify(mod.motion.pose()),hp=mod.read16(base+0x1f1),hold=mod.action.hitPause;
-  assert.equal(hold,combo===2?3:2);assert.equal(mod.effects.find(e=>e.kind==='impact').life,10);
+  assert.equal(hold,combo===2?5:3);assert.equal(mod.effects.find(e=>e.kind==='impact').life,10);
   for(let i=0;i<hold;i++){
    step();const p=mod.motion.pose();assert.equal(p.phase,'contact');
    assert.equal(p.column,JSON.parse(pose).column);assert.equal(mod.action.age,mod.action.impact);
