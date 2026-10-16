@@ -14,6 +14,7 @@ These notes include complete gameplay, story and ending spoilers. The top-level 
 | Subsystem | Notes |
 | --- | --- |
 | Emulator and ROM | [Engine lab](engine-lab.md), [ROM research](rom-research.md) |
+| Mobile player | [Fullscreen, Home Screen mode and viewport checks](mobile-fullscreen.md) |
 | Combat and presentation | [Combat](combat.md), [Native effects](native-effects.md), [Graphics audit](graphics-audit.md) |
 | World traversal | [Dungeon shortcuts](dungeon-shortcuts.md) |
 | Story | [Arrival](arrival.md), [Scene tooling](scenes.md), [Story review](story-review.md) |

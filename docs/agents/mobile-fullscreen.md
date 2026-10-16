@@ -1,0 +1,11 @@
+# Mobile fullscreen
+
+`engine/player-shell.js` controls both native fullscreen and the in-page fallback through the `is-expanded` class. Expansion is immediate: a missing API, rejected request, resolved request with no fullscreen event, or indefinitely pending request still provides a usable game view. Standard and prefixed Safari entry/exit events are supported. A browser exit clears the layout, and a native request that completes after the player tapped Exit is dismissed.
+
+`engine/player.css` gives expanded mode its own layout. Header links, settings and debug checkpoint buttons disappear; Sound and Exit share a 44-pixel bottom row. The rest of the visible viewport goes to the game and touch controls. Portrait controls remain below the picture; landscape controls remain beside it. Safe-area padding and the 8:7 picture aspect ratio are preserved. The fallback uses ordinary class selectors so its styles do not depend on `:fullscreen` selector support. Escape leaves the fallback without also toggling game pause.
+
+On iPhone, Safari's browser bars cannot be removed by an element fullscreen request; see the [WebKit tracking issue](https://bugs.webkit.org/show_bug.cgi?id=206854). `index.html` opts into Apple's Home Screen web app mode and explains Share → Add to Home Screen. Home Screen launches start expanded, detected through `navigator.standalone` or the `standalone` display-mode media query. This is [Apple's supported standalone mechanism](https://developer.apple.com/library/archive/documentation/AppleApplications/Reference/SafariWebContent/ConfiguringWebApplications/ConfiguringWebApplications.html); it does not add offline caching or migrate saves between browser storage contexts.
+
+`tests/browser/mobile-fullscreen.spec.mjs` runs in both Chromium and WebKit via `npm run test:mobile`. Coverage includes missing/denied/stalled fullscreen APIs, prefixed native entry and browser exit, late request completion, Home Screen startup, both touch-control pages, five phone viewport sizes, rotation, safe areas, minimum touch targets and picture/control separation. Automated WebKit coverage and local screenshots do not replace a physical iPhone check.
+
+Audio streaming and interruption recovery are a separate work stream; this change does not modify `audio-output.js`, `audio-worklet.js` or `lab.js`.

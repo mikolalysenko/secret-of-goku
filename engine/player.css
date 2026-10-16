@@ -2,7 +2,7 @@
 @supports(height:100dvh){:root{--viewport-height:100dvh}}
 *{box-sizing:border-box}
 body{margin:0;overscroll-behavior-y:none}
-.player-expanded{overflow:hidden}
+.player-expanded,.player-expanded body{overflow:hidden;overscroll-behavior:none}
 button,a,input,summary{touch-action:manipulation}
 button{font:inherit;color:inherit;background:#202020;border:1px solid #484848;padding:8px 12px;cursor:pointer;border-radius:6px;min-height:44px}
 @media(hover:hover){button:hover{background:#303030}}
@@ -77,17 +77,13 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 .touch-actions [data-icon=super]{color:#f0d695}
 .show-touch .touch-pad{display:flex}
 .player:not(.is-ready) .touch-pad,.player:not(.is-ready)>.player-actions{display:none}
-.player:fullscreen,.player.is-expanded{max-width:none;width:100%;height:var(--viewport-height);background:#080808;overflow:auto;overscroll-behavior:none}
-.player.is-expanded{position:fixed;inset:0;z-index:10}
-.player:fullscreen .native-frame,.player.is-expanded .native-frame{width:min(100%,calc((var(--viewport-height) - var(--safe-top) - var(--safe-bottom) - 108px)*8/7))}
-.player:fullscreen .settings,.player:fullscreen .keys,.player:fullscreen footer,.player:fullscreen #lab-message,.player.is-expanded .settings,.player.is-expanded .keys,.player.is-expanded footer,.player.is-expanded #lab-message{display:none}
 .show-touch.is-ready .native-frame{width:min(100%,max(160px,calc((var(--viewport-height) - var(--safe-top) - var(--safe-bottom) - 314px)*8/7)))}
 @media(any-pointer:coarse){
  .touch-pad{display:flex}
  .keys,.player-actions #native-start,.player-actions #native-toggle{display:none}
  .player-actions{margin:0;justify-content:center;min-height:52px}
  .player-actions kbd{display:none}
- .is-ready .native-frame,.player.is-ready:fullscreen .native-frame,.player.is-ready.is-expanded .native-frame{width:min(100%,max(160px,calc((var(--viewport-height) - var(--safe-top) - var(--safe-bottom) - 314px)*8/7)))}
+ .is-ready .native-frame{width:min(100%,max(160px,calc((var(--viewport-height) - var(--safe-top) - var(--safe-bottom) - 314px)*8/7)))}
 }
 @media(max-width:600px){
  .player{padding-left:max(8px,env(safe-area-inset-left));padding-right:max(8px,env(safe-area-inset-right))}
@@ -104,13 +100,35 @@ footer a{display:inline-flex;align-items:center;min-height:44px}
 @media(max-width:1024px) and (orientation:landscape) and (any-pointer:coarse){
  .player{max-width:none}
  .game-surface{display:flex;justify-content:center;align-items:center;min-height:190px;padding:0 174px 0 146px}
- .native-frame,.is-ready .native-frame,.player:fullscreen .native-frame,.player.is-expanded .native-frame,.player.is-ready:fullscreen .native-frame,.player.is-ready.is-expanded .native-frame{flex:none;width:min(100%,max(0px,calc((var(--viewport-height) - var(--safe-top) - var(--safe-bottom) - 108px)*8/7)))}
+ .native-frame,.is-ready .native-frame{flex:none;width:min(100%,max(0px,calc((var(--viewport-height) - var(--safe-top) - var(--safe-bottom) - 108px)*8/7)))}
  .touch-pad{position:absolute;inset:0;padding:0;height:auto;pointer-events:none;gap:0}
  .touch-left,.touch-actions{pointer-events:auto}
  .touch-actions{flex-basis:166px;grid-auto-rows:64px}
  .player:not(.is-ready) .game-surface{padding:0;min-height:0}
 }
 @media(max-width:360px){.touch-pad{gap:8px}.touch-actions{gap:4px}.touch-actions button{font-size:9px}}
+/* Native fullscreen and the iPhone fallback share the same immersive layout.
+   Keep Sound and Exit in one short row, leaving the rest for the game/controls. */
+.player.is-expanded{
+ --play-height:calc(var(--viewport-height) - max(8px,var(--safe-top)) - max(8px,var(--safe-bottom)) - 52px);
+ position:fixed;inset:0;z-index:10;max-width:none;width:100%;height:var(--viewport-height);
+ padding:max(8px,var(--safe-top)) max(8px,env(safe-area-inset-right)) max(8px,var(--safe-bottom)) max(8px,env(safe-area-inset-left));
+ display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:minmax(0,1fr) 44px;gap:8px;
+ align-items:center;background:#080808;overflow:hidden;overscroll-behavior:none
+}
+.player.is-expanded>header{grid-area:2/2;height:44px}
+.player.is-expanded>header>a,.player.is-expanded>.settings,.player.is-expanded>.keys,.player.is-expanded>footer,.player.is-expanded>#lab-message,.player.is-expanded>.player-actions>[data-debug]{display:none}
+.player.is-expanded>.player-actions{grid-area:2/1;margin:0;min-height:44px;justify-content:flex-end;flex-wrap:nowrap}
+.player.is-expanded>.game-surface{grid-area:1/1/2/3;min-height:0;width:100%}
+.player.is-expanded .native-frame{width:min(100%,max(0px,calc(var(--play-height)*8/7)))}
+.player.is-expanded.show-touch.is-ready .native-frame{width:min(100%,max(0px,calc((var(--play-height) - 206px)*8/7)))}
+@media(any-pointer:coarse){
+ .player.is-expanded.is-ready .native-frame{width:min(100%,max(0px,calc((var(--play-height) - 206px)*8/7)))}
+}
+@media(max-width:1024px) and (orientation:landscape) and (any-pointer:coarse){
+ .player.is-expanded.is-ready .native-frame,.player.is-expanded.show-touch.is-ready .native-frame{width:min(100%,max(0px,calc(var(--play-height)*8/7)))}
+ .player.is-expanded.is-ready>.game-surface{min-height:190px}
+}
 #test-loading:not([hidden]){position:absolute;inset:0;z-index:3;display:grid;place-items:center;background:#080808ee;padding:24px;text-align:center;color:#ddd;font-size:14px}
 #quick-checkpoints{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:16px 0}
 #quick-checkpoints>div{display:grid;gap:5px}
