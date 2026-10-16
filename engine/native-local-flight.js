@@ -2,14 +2,14 @@
 // crossed; room walls, map edges, layer changes and script triggers stay native.
 // Flags 1 and 2 are terrain heights, not walls (C1:BE15). Height 3 is solid.
 import {createNativeWhipRoutes} from './native-whip-routes.js';
-import {smallScenery,terrainBanks,blankGroundZero} from './flight-terrain.js';
+import {smallScenery,terrainBanks,blankGroundZero,lilyPads} from './flight-terrain.js';
 import {createDungeonGeometry} from './dungeon-geometry.js';
-const scenery={0:new Set([130,139,141,159]),2:new Set([130,131]),
+const scenery={0:new Set([...lilyPads[0],139,141]),1:lilyPads[1],2:lilyPads[2],
  // Haunted Forest flowers and creeping vines, verified against tileset 7.
  // Tall trees, cliff faces, switches and the scripted rose gate are separate.
  7:new Set([112,114,115,116,117,118,119,120,126,127,130,131,132,133,134,135,136,138,142,143]),
  // Water Palace exterior: plain and flowering lily pads, not its stone walls.
- 22:new Set([174,175])};
+ 22:lilyPads[22]};
 // Forest rock-bank faces. These can only be flown across when usable terrain
 // exists on BOTH sides of a short span; the same art also borders map voids.
 const forestBanks=new Set([1,2,4,6,9,14,17,18,19,20,22,23,25,30,31,32,33,34,35,36,37,38,39,46,47,48,49,50,51,52,53,54,55,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,96,97,135,137,158,159,174,175]);
@@ -17,9 +17,9 @@ const forestBanks=new Set([1,2,4,6,9,14,17,18,19,20,22,23,25,30,31,32,33,34,35,3
 // sloping ends and inside corners. Their tall trees/buildings use other cells.
 // The same terrace art can frame a map edge, so it still needs two shores.
 const earthBanks=new Set(Array.from({length:44},(_,i)=>96+i).filter(id=>id!==130));
-// Village streams also use the narrow, one-tile bank pieces above the tall
-// terraces in tileset 0. Mandala, Potos, Pandora and Kippo share these edges.
-const villageBanks=new Set([...earthBanks,...Array.from({length:16},(_,i)=>80+i)]);
+// Towns AND woodland streams use these narrow, one-tile banks. They include
+// the Potos/Pandora paths and Upper Land, not just the village tileset.
+const streamBanks=new Set([...earthBanks,...Array.from({length:16},(_,i)=>80+i)]);
 // Natural cave faces and diagonal ledges. These also surround the lava in
 // Gaia's Navel. Door arches, stalagmites and transparent void cells are not
 // banks; a crossing must still connect two real pieces of cave floor.
@@ -172,10 +172,13 @@ export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,sp
   }
   // Forest height-transition strips (10-17) are also part of the ledge;
   // walking uses them to change floors. Flight ignores that forced motion.
-  const bankTiles=tileset===2?forestBanks:tileset===0?villageBanks:tileset===1?earthBanks:tileset===10?caveBanks:terrainBanks[tileset];
+  const bankTiles=tileset===2?forestBanks:tileset===0||tileset===1?streamBanks:tileset===10?caveBanks:terrainBanks[tileset];
   const bank=d=>d&&!(d.flags&8)&&!(d.behavior&0x90)&&(d.code===0&&bankTiles?.has(d.tile+((flags&(d.layer?128:64))?192:0))||d.code>=0x10&&d.code<=0x17);
+  const lily=d=>d&&d.code===0&&!(d.flags&8)&&!(d.behavior&0x90)&&lilyPads[tileset]?.has(d.tile+((flags&(d.layer?128:64))?192:0));
   if(bankTiles&&bank(t)&&Number.isInteger(t.tx)&&Number.isInteger(t.ty)){
-   if(betweenShores(bank,tileset===2&&word(0xdc)!==25?5:16))return true;
+   // A pad beside the bank is another low obstacle, not the end of the
+   // crossing. Continue to real water/ground without accepting trees or void.
+   if(betweenShores(d=>bank(d)||lily(d),tileset===2&&word(0xdc)!==25?5:16))return true;
   }
   if(t.code!==0)return false;
   // Village flowers and two-cell shrubs are on BG2. Their BG1 placeholder

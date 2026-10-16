@@ -155,6 +155,39 @@ test('low village and woodland earth terraces are flyable only between real grou
   native.dispose();
  }
 });
+test('woodland and town stream banks cross adjacent lily pads, but still need ground beyond them',()=>{
+ for(const tileset of[0,1]){
+  const {ram,cpu,tile}=fixture(),rom=new Uint8Array(0x90000);rom[0x80002]=tileset;
+  const native=createNativeLocalFlight({ram,cpu,cart:{data:rom}},{active:()=>true,phase:true});
+  const pads=tileset===0?[130,159]:[159,162];
+  ram.set([0x12,6,0,0],0x1b800);ram.set([0x13,6,0,0],0x1b800+186*4);
+  for(const id of[82,89,90,91,94])for(const pad of pads){
+   ram.set([0x13,6,0,0],0x1b800+id*4);ram.set([0x13,6,0,0],0x1b800+pad*4);
+   for(let y=0;y<6;y++){tile(2,y,id);tile(3,y,pad);}
+   assert.equal(native.canFly(40,40),true,`set ${tileset}: bank ${id} across pad ${pad}`);
+   assert.equal(native.canFly(56,40),true);assert.equal(native.canLand(56,40),false);
+   for(let y=0;y<6;y++)for(let x=4;x<8;x++)tile(x,y,186);
+   assert.equal(native.canFly(40,40),false,'no shore beyond the pad closes the bank');
+   for(let y=0;y<6;y++)for(let x=4;x<8;x++)tile(x,y,0);
+  }
+  native.dispose();
+ }
+});
+
+test('plain and flowering Water Palace lily pads are low scenery, not landing floors or walls',()=>{
+ const {ram,cpu,tile}=fixture(),rom=new Uint8Array(0x90000);rom[0x80002]=22;
+ const native=createNativeLocalFlight({ram,cpu,cart:{data:rom}},{active:()=>true,phase:true});
+ for(const id of[173,174]){
+  ram.set([0x13,6,0,0],0x1b800+id*4);tile(2,2,id);
+  for(let x=34;x<=45;x++){assert.equal(native.canFly(x,40),true);assert.equal(native.canLand(x,40),false);}
+ }
+ for(const id of[120,175]){
+  ram.set([0x13,6,0,0],0x1b800+id*4);tile(2,2,id);
+  assert.equal(native.canFly(40,40),false,'palace walls and column bases retain collision');
+ }
+ native.dispose();
+});
+
 test('multiple movement updates cannot outrun one VRAM row/column upload in a video frame',()=>{
  const {ram,cpu}=fixture(),distances=[];
  for(let i=0;i<3;i++){ram[0x1e]=8;cpu.br[4]=0xd651;cpu.cycle();distances.push(ram[0x1e]);}

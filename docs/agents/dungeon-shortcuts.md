@@ -4,6 +4,13 @@ Hold **Z + arrows** (SNES A + D-pad) to cross low barriers, terraces, lava and
 internal chasms. Releasing over a gap leaves Goku hovering until he reaches
 usable ground. Companions travel with him across long gaps.
 
+Woodland streams use the same narrow bank pieces as town rivers. Those edges
+are flyable on the Potos/Pandora paths and in Upper Land, including where a
+lily pad sits beside the bank. The shore check continues past pads to usable
+ground; forest walls and outer boundaries remain blocked. Plain and flowering
+pads are flyable in the village, woodland, forest and palace tilesets. The
+Water Palace uses tiles 173/174; tile 175 is a column base and stays solid.
+
 In Super Saiyan, fully charge **Shift+C** (SNES L+Y) and release toward an
 interior wall. A valid breach replaces both original map layers with native
 floor tiles and redraws them through the game's own tilemap queue. Goku can

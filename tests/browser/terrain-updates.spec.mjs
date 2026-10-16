@@ -17,7 +17,7 @@ test('flight crosses lily pads, cave height changes and Gaia lava shores while p
    const t=h.tileAt(x,y,0);
    if(map===139&&t.ty>=59&&t.ty<=65&&t.tx>=12&&t.tx<=21&&(t.tx<16||t.tx>17)&&[6,22,38,54,187].includes(t.tile))pockets.push({x,y,fly:h.canFly(x,y,0)});
    if(map>=275&&t.tile===0){const route=h.dungeon.airRoute(t);voids.push({fly:h.canFly(x,y,0),shores:route?route.ends.map(t=>({tx:t.tx,ty:t.ty,floor:h.dungeon.floor(t,h.dungeon.context())})):[]});}
-   if(map===139?!(t.ty>=48&&t.ty<=53&&[6,22,38,54,187].includes(t.tile)):map===136?![174,175].includes(t.tile):!((t.code>=16&&t.code<=23)||((t.flags&7)===3&&h.lowObstacle(t))))continue;
+   if(map===139?!(t.ty>=48&&t.ty<=53&&[6,22,38,54,187].includes(t.tile)):map===136?![173,174].includes(t.tile):!((t.code>=16&&t.code<=23)||((t.flags&7)===3&&h.lowObstacle(t))))continue;
    if(!h.canFly(x,y,0))continue;
    for(const[dx,dy]of[[0,1],[1,0]]){
     const shore=sign=>{for(let d=16;d<=256;d+=16){const px=x+sign*dx*d,py=y+sign*dy*d,tt=h.tileAt(px,py,0);if(!tt||tt.behavior&0x90||!h.canFly(px,py,0))return null;if(h.canLand(px,py,0,tt.flags&3))return{x:px,y:py,terrain:tt.flags&3};}return null;},a=shore(-1),b=shore(1);

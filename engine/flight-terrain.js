@@ -3,6 +3,10 @@
 const range=(a,b)=>Array.from({length:b-a+1},(_,i)=>a+i);
 const set=(...groups)=>new Set(groups.flat());
 
+// Plain and flowering pads have different IDs in each outdoor tileset.
+// In the palace set, 175 is a stone column base, not a lily pad.
+export const lilyPads={0:set(130,159),1:set(159,162),2:set(130,131),22:set(173,174)};
+
 // Low furnishings and plants. Full room walls, roofs and tree canopies are
 // deliberately separate. Crossing still needs usable terrain on both sides.
 export const smallScenery={
@@ -19,7 +23,7 @@ export const smallScenery={
  18:set(219,220),
  19:set(119,120,158,159,199,215,231,246,247),
  21:set(137,153),
- 22:set(174,175),
+ 22:lilyPads[22],
  23:set(145,161),
  25:set(294,295,296),
  28:set(111,112,113,114,127,128,129,130,144,146,147,148,149,150,176,178,179,180,181,182),
