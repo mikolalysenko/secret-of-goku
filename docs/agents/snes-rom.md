@@ -120,6 +120,12 @@ savestate), `H.saveStable(name)`, `H.load(path)`, `H.importSnesJs(dir)`,
 `%hijack_jsl`, `%patch` and `%origN` byte assertions. Every patch of original
 bytes goes through them; `build.mjs` rejects overlapping patches.
 
+asar does not track `REP`/`SEP`: an immediate's width comes from how it is
+written, so `CMP #8` in 16-bit code assembles as two bytes and desynchronises
+the instruction stream. Write every accumulator/index immediate with an
+explicit width (`CMP.w #8`, `LDA.b #$80`). The build warns about unsuffixed
+immediates; `node snes/build.mjs --strict` turns the warning into an error.
+
 ## Modules and core API
 
 Each work stream is a module under `snes/src/modules/<name>/` with its own
