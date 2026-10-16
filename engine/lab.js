@@ -326,7 +326,7 @@ async function quickStart(kind){
      const base=quickStartBase(kind);
      let late=base?quickCache.get(key(base)):null;
      if(!late&&base)try{late=await checkpointStore(undefined,key(base));}catch{}
-     const callbacks={pump:(frames,buttons)=>pump(frames,buttons,{fast:isLateStart(kind)}),mod,arrival,capture:captureQuick,cache,progress:text=>{message(text);if($('test-loading'))$('test-loading').textContent=text;}};
+     const callbacks={pump:(frames,buttons)=>pump(frames,buttons,{fast:true}),mod,arrival,capture:captureQuick,cache,progress:text=>{message(text);if($('test-loading'))$('test-loading').textContent=text;}};
      if(compatible(late)){applyQuick(late);await buildFromBase(kind,callbacks);}
      else await buildQuickStart(kind,{
       fresh:async()=>{await loadROM(source);mod.configure({enabled:true,power:true,superSaiyan:false});},
