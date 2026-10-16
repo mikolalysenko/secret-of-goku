@@ -8,7 +8,7 @@ The browser player must emulate 60 SNES frames per second on phones; any shortfa
 | --- | --- | --- |
 | Idle-cycle batching | `Snes.skipIdleCycles` (`snes.js`) | Runs of master-cycle pairs where the CPU is mid-instruction (or paused at dots 536–575), or (H)DMA is only counting down, and no IRQ, render or line event is due. Plain instruction-start pairs run inline. The APU catch-up float is still accumulated by repeated addition so it stays bit-identical. |
 | APU batching | `Snes.catchUpApu` | Countdown cycles between SPC instruction starts, DSP samples and timer ticks. |
-| Scanline compositor | `Ppu.composeLine` (`pipu.js`) | Decodes each background tile once per line through planar-to-chunky tables, evaluates windows by span and resolves each screen slot by slot over only unresolved pixels, skipping layers with nothing at that priority. It has dedicated paths for paired hires decoding, inline Mode 7 texels and lines without colour math. Offset-per-tile modes 2/4/6 always use the original path. |
+| Scanline compositor | `Ppu.composeLine` (`pipu.js`) | Keeps plain background layers as fetched tiles (planar-to-chunky lanes) and extracts a pixel only while it is still unresolved, evaluates windows by span, and resolves each screen slot by slot over unresolved pixels, skipping layers with nothing at that priority. On lines without plans, posts or direct color it writes palette colors during resolution. It has dedicated paths for paired hires decoding, inline Mode 7 texels and lines without color math or clipping. Offset-per-tile modes 2/4/6 always use the original path. |
 | Sprite evaluation | `Ppu.spriteSpans`, `forEachSpriteEntry` | Per-line 128-bit masks of the OAM entries that cover each line, rebuilt on any OAM/OBJSEL write, reset or checkpoint restore (`invalidateLineCaches`); evaluation still visits entries in native order with the same 32/34 limits. |
 | Instruction gate | `Cpu.gatedCycle` (`cpu.js`) | Calls the `cpu.cycle` wrapper chain only at registered `(bank & 0x3f, PC)` breakpoints, or while a hook's `always()` test is true. |
 | Cartridge read gate | `Cart.gatedRead` (`cart.js`) | Calls the `cart.read` wrapper chain only for addresses a registered hook marked. |
@@ -39,17 +39,19 @@ Every path re-validates the actual wrapper chain. The compositor and both gates 
 - `tests/emulator-fast-paths.test.mjs` runs from power-on with the tracked cartridge. It compares the compositor with per-pixel rendering, batched cycles with single-cycle stepping, and both gates with their ungated chains. It also covers the private emulator states in `.local/emulator-probe/` when present.
 - For changes to hooks, also compare in the browser with every mod hook installed, toggling the three switches above. Compare pixels, WRAM and SPC RAM over a few hundred frames of each saved state.
 
-Chrome on an Apple-silicon Mac, real game with every mod hook, median of five 600-frame runs (October 2026). "Skip" omits the picture as fast-forward does; 60 frames/s is real time.
+Chrome on an Apple-silicon Mac, real game with every mod hook, median of five 600-frame runs on an idle machine (October 2026). "Picture" renders every frame; "skip" omits the picture, as fast-forward does. 60 frames/s is real time. "Before" is commit 2bcf010, from before this work.
 
-| Scene | Before (picture) | Picture | Skip |
-| --- | --- | --- | --- |
-| Field (party) | 117 | 577–591 (≈9.8×) | 999–1036 (≈17×) |
-| Combat | — | 553 (9.2×) | 1079–1144 (≈18×) |
-| World flight (Mode 7) | 110 | 489 (8.1×) | 1179 (19.7×) |
-| File select / naming (hires) | 88 | 464–467 (7.8×) | 1253–1303 (≈21×) |
-| Title | 214 | 417 (6.9×) | 1172–1277 (≈20×) |
+| Scene | Before: picture / skip | After: picture / skip |
+| --- | --- | --- |
+| Field (party) | 123 / 340 | 599 (10.0×) / 1011 (16.8×) |
+| Combat | 124 / 353 | 599 (10.0×) / 1157 (19.3×) |
+| World flight (Mode 7) | 109 / 342 | 550 (9.2×) / 1214 (20.2×) |
+| File select (hires) | 103 / 432 | 577 (9.6×) / 1289 (21.5×) |
+| Title | 133 / 451 | 691 (11.5×) / 1307 (21.8×) |
 
-At 4× CPU throttling, a proxy for phones and CI runners, the 30 Hz title-music check went from 35 frames/s with 8 underruns to a steady 60 frames/s with none.
+Writing palette colors during slot resolution (last row of the table above) adds another 2–7% in a same-session comparison, putting file select above 10× as well. Story set pieces that once rendered per pixel through mod hooks now composite natively: for example, the Frieza battle went from 125 to about 486 frames/s and the Time Chamber from 102 to about 461.
+
+At 4× CPU throttling, a proxy for phones and CI runners, the 30 Hz title-music check went from 35 frames/s with 8 underruns to a steady 60 frames/s with none. In real iOS Safari 26.5 (simulator), with an extra 20 ms of main-thread work per frame, file select dropped to 45 frames/s on the old build but holds 60 frames/s with zero underruns now. Holding R to fast-forward a cutscene is capped at 12×; it ran at about 3× on the old build under the same load and about 8× now.
 
 ## Audio streaming
 

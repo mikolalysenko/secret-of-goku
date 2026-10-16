@@ -11,6 +11,21 @@ stay traceable even when they are committed together.
 - iPhone Home Screen launches opt into standalone mode and start expanded. Player options explain Share → Add to Home Screen for playing without Safari's bars. Implementation notes are in [Mobile fullscreen](mobile-fullscreen.md).
 - Validation on an isolated checkout including the committed audio fix: 365 unit tests passed (two private-fixture tests skipped), static build, and all 28 Chromium/WebKit phone tests passed. Native Chromium entry/exit and WebKit fallback were also checked visually. Physical iPhone verification remains with the maintainer.
 
+## 2026-10-16 — Release 0.2.1
+
+- Release 0.2.1 (`v0.2.1`) and its Pages build include everything since 0.2.0:
+  - **Native set pieces:** title, boss and cinematic scenes composite natively.
+  - **Tile-level decoding:** plain background layers are decoded per tile, and pixels are extracted only while still unresolved.
+  - **Faster color output:** color math takes a specialized output path, and palette colors are written during slot resolution on plain lines.
+  - **Fewer allocations:** per-line fetch caches reset in place instead of reallocating.
+  - **Faster APU memory:** reads and writes skip the register switch for plain RAM.
+- Measured against the build before this work (Chrome medians, real game): field 123 → 599 frames/s (10.0×), combat 124 → 599, world flight 109 → 550, file select 103 → 577 (above 10× after the final step), title 133 → 691. Without the picture, every scene runs at 16.8–21.8× real time.
+- On real iOS Safari 26.5 (simulator) with an extra 20 ms of main-thread work per frame, file select dropped to 45 frames/s on the old build. It now holds 60 frames/s with zero audio underruns.
+- Validation:
+  - **Unit tests:** 374 pass.
+  - **Exactness:** all 42 core states, 41 saved states and 13 captured story scenes match the per-pixel path and the previous build in pixels, WRAM and SPC RAM every frame.
+  - **Browser and phone checks:** 320 pass. The 21 failures, 5 skips and one intermittent layout test (`controls.spec.mjs:15`) behave the same on the previous build. The 28 phone checks also pass.
+
 ## 2026-10-16 — Title, boss and cinematic scenes composite natively
 
 - The Frieza battle and space fight, the Time Chamber, the planet explosion and the endings rendered every pixel through the mod's hook chain, at about 2× real time; the title logo rows did the same. Effects that post-process the previous result now share one function between the wrapper and the compositor ("posts"). A hook that turns a layer off around its inner call declares it, and the title logo and credit become a BG2 layer patch. These effects write results in place and cache per-line state instead of allocating arrays or re-reading mod state for every pixel.
