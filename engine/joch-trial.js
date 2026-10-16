@@ -1,3 +1,4 @@
+import {viewCamera} from './view-camera.js';
 import {loadVegetaSprite,drawVegetaSprite} from './vegeta-sprite.js';
 import {createNativeCombustion} from './native-combustion.js';
 import {beamTouchesShot,sweptDistance} from './frieza-combat.js';
@@ -335,7 +336,8 @@ export function createJochTrial(snes,mod,{loadArt=true}={}){
   },
   draw(layer){
    if(!api.active||!s.spawned)return;
-   const camera=mod.status,a=s.action,putPixel=(x,y,c)=>layer.pixel(x,y,c,true);
+   // Track the drawn ground exactly; Goku's OAM-derived camera wobbles.
+   const camera=viewCamera(mod),a=s.action,putPixel=(x,y,c)=>layer.pixel(x,y,c,true);
    combustion??=createNativeCombustion(snes.cart.data);
    for(const e of s.echoes)drawVegetaSprite(cells,e.frame,e.x-camera.cameraX,e.y-camera.cameraY,putPixel,{flip:e.flip,ghost:true});
    // Walk cycles advance from real travel, not a recovery timer. Blocked

@@ -1,3 +1,4 @@
+import {viewCamera} from './view-camera.js';
 import {friezaEvents as F} from './frieza-events.js';
 import {FRIEZA_HP,homingStep,discContact,sweptDistance,pixelStep,rushStep,beamTouchesShot} from './frieza-combat.js';
 import {deathBallTiming,friezaFlybyPose,deathBallFlybyPose} from './frieza-flyby.js';
@@ -552,7 +553,8 @@ export function createFrieza(snes,mod){
   draw(layer){
    if(on()&&s.flyby?.started&&mod.worldFlight&&atlas){drawFlyby(layer);return;}
    if(!on()||mod.worldFlight||snes.ppu.mode!==1||!atlas)return;
-   const h=mod.status,c=s.scene?.map===map()?s.scene:null,b=map()===246?s.boss:null;
+   // World-anchored art follows the drawn background, not Goku's OAM.
+   const h={...mod.status,...viewCamera(mod)},c=s.scene?.map===map()?s.scene:null,b=map()===246?s.boss:null;
    const put=(x,y,color)=>layer.pixel(x,y,color,true);
    if(spellLayer!==layer){spellLayer=layer;spellFx=createOrbitEffects(snes,mod,put);}
    const sprite=(frame,x,y,flip=false,ghost=0)=>drawFriezaSprite(api.portraitAtlas,frame,x,y,put,{flip,ghost});

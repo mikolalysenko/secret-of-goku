@@ -174,3 +174,27 @@ test('a real Kamehameha locks Final Flash and mashing pushes the collision ball 
  },saved);
  expect(lost.clash).toBe(null);expect(lost.phase).toBe('battle');expect(lost.after).toBeLessThan(lost.before);expect(lost.after).toBeGreaterThan(0);expect(lost.can).toBe(true);expect(errors).toEqual([]);
 });
+test('Vegeta is drawn against the scrolled background, not Goku\'s wobbling sprite camera',async({page})=>{
+ test.skip(!existsSync(fixture)||!existsSync('.local/rom/secret-of-mana-us.sfc'),'Requires private ROM and native checkpoint');
+ await page.goto('/');await page.waitForFunction(()=>mana.ready);
+ await page.evaluate(state=>{
+  mana.pause();state.romHash=mana.hash(mana.snes.cart.data);mana.restore(state);const m=mana.mod,c=mana.snes.cart.data;
+  Object.assign(m.options,{enabled:true,power:true,superSaiyan:false});m.powerIntro.restore({flight:true,superShown:true});
+  const e=c.slice(0x742b0,0x742b5),d=c.slice(0x8300c,0x83010);
+  try{c.set([4,24,3,5,0],0x742b0);c.set(c.slice(0x83000+0x304*4,0x83004+0x304*4),0x8300c);mana.write8(0xcf3f,4);
+   mana.write8(0xd1,0xb0);mana.write8(0xd2,0x42);mana.write8(0xd3,0xc7);mana.write8(0xd0,1);mana.run(240);
+  }finally{c.set(e,0x742b0);c.set(d,0x8300c);}
+ },JSON.parse(readFileSync(fixture)));
+ await until(page,()=>mana.mod.trial.status?.phase==='battle'&&mana.mod.canAttack);
+ const r=await page.evaluate(async()=>{
+  const {viewCamera}=await import('/engine/view-camera.js');
+  const m=mana.mod,ppu=mana.snes.ppu,ev=ppu.evaluateSprites,seen=[];
+  // Sample both cameras where custom sprites are prepared: line 0.
+  ppu.evaluateSprites=function(line){if(line===0){const v=viewCamera(m),s=m.status;seen.push([v.cameraX,s.cameraX,this.bgHoff[0]]);}return ev.call(this,line);};
+  for(const dir of[7,7,7,7,7,7,6,6,6,6,6,6])mana.run(1,[8,dir]);
+  ppu.evaluateSprites=ev;
+  return{view:new Set(seen.map(s=>s[0]-s[2])).size,status:new Set(seen.map(s=>s[1]-s[2])).size};
+ });
+ // The view camera moves only with BG1 itself; the OAM-derived one wobbled.
+ expect(r.view).toBe(1);
+});
