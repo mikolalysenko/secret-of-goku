@@ -20,7 +20,7 @@ export const ceilingExits=[
   {name:"Todo houses and inn",map:228,door:410,rooms:[298,299]},
   {name:"Santa’s house",map:332,door:521,rooms:[333]},
   {name:"Paradise Town houses",map:81,door:390,rooms:[335]},
-  {name:"Kakkara and Sandship",map:89,door:395,rooms:[98,99,270,271,318,319,324,339,340,376]},
+  {name:"Kakkara and Sandship",map:89,door:395,rooms:[91,98,99,270,271,318,319,324,339,340,376]},
   {name:"Fire Palace",map:90,door:562,rooms:[240,241,326,327,328,329,330,331,345,346,347,348,349]},
   {name:"Southtown houses and shops",map:114,door:185,rooms:[124,127]},
   {name:"Northtown houses and shops",map:115,door:197,rooms:[122,123,126,138]},

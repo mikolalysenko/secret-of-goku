@@ -36,6 +36,11 @@ const geshtar=177,deck=99,decks=[98,99],kitchen=319,cabin=339;
 // visit to the desert (map 67) finds the crashed ship and boards straight
 // into that fight. After it, the desert ending reunites everyone left.
 export const crashEvents={crash:0x7d,found:0x7e,board:0x7f,later:0x80};
+// The dunes after the Mech Rider (map 91) are a closed basin. Its native
+// exit is the crew's "Are you leaving?" (2A7 -> 2A8: stage 14, the 2A9
+// hint, door 194). Flying off instead still reaches stage 14, and King Kai
+// gives that same hint.
+const dunes=91,leftDunes=14;
 const desert=67,breakLimit=5,ending=0x2a1,endingFallback=[0x30,0x28,0x0c,0x19,0xff];
 
 const offer=()=>[
@@ -189,7 +194,7 @@ export function installSandship({rom,r,mod,entries,variants}){
 // or more) breaks out. The white-out then reloads the room as a wreck. Once
 // every captured companion is back, the deck brings on Geshtar's Mech Rider.
 export function createSandship(mod){
- const fresh=()=>({door:null,ending:null,crashed:false,ditched:false,away:false,breaks:0,lastBreak:-99,armed:false,hinted:false,cut:null,flash:0,wreck:null,deckDone:false,deckHint:false,boss:false});
+ const fresh=()=>({gear:null,door:null,ending:null,crashed:false,ditched:false,away:false,breaks:0,lastBreak:-99,armed:false,hinted:false,cut:null,flash:0,wreck:null,deckDone:false,deckHint:false,boss:false});
  let s=fresh();const seen=new WeakSet();
  const wreck=createSandshipWreck(mod.snes,mod,()=>s);
  const r=a=>mod.read8(a),map=()=>mod.read16(0xdc);
@@ -220,9 +225,36 @@ export function createSandship(mod){
   if(under.key!==lastDoor){lastDoor=under.key;doorFrames=0;}
   if(++doorFrames===3){s.door=under.door;mod.story.request(flightDoor);}
  }
+ // Equipped head/body/accessory/weapon slots per character. Removing and
+ // re-adding a captive resets its weapon slot; the stowed Gi stays in the
+ // armor ring. Each one gets exactly its own gear back: Goku once the ship
+ // is wrecked (or the arc ends), a companion as soon as they rejoin.
+ const members=[0xe000,0xe200,0xe400];
+ function returnGear(stage){
+  if(!s.gear)return;
+  const ram=mod.snes.ram;
+  s.gear=s.gear.map((g,i)=>{
+   if(!g)return null;
+   const base=members[i];
+   // A companion is back once seen held captive and then active again.
+   if(i&&ram[0xcf0c+i]===8)return{...g,held:true};
+   const back=i===0?!!s.wreck||stage>=12:!!g.held&&!!(ram[base]&1);
+   if(!back)return g;
+   ram.set(g.slots,base+0x1e0);
+   // The native armor ring marks the wearer in its top two bits.
+   if(i===0)for(let at=0xcc2c;at<0xcc38;at++)if(ram[at]===g.slots[1]&&g.slots[1]<64)ram[at]=0x40|g.slots[1];
+   return null;
+  });
+  if(s.gear.every(g=>!g))s.gear=null;
+ }
  let lastMap=-1,embedded=0;
  function leaving(){
   const now=map(),was=lastMap,stage=r(0xcf28);lastMap=now;
+  if(was===dunes&&now!==dunes&&stage>=12&&stage<leftDunes){
+   mod.write8(0xcf28,leftDunes);
+   mod.radio?.interrupt?.(['KING KAI:Goku! North to\nKakkara, then west to\nthe Fire Palace.'],{frames:300,kind:'sandship'});
+   return;
+  }
   if(!shipMaps.includes(was)||shipMaps.includes(now)||now===340||s.cut?.crash||stage<1||stage>=10)return;
   // Goku left the ship with the arc unfinished: it is wrecked from now on.
   s.wreck??={age:0,planned:false,blasts:[],breach:null};
@@ -300,10 +332,13 @@ export function createSandship(mod){
    if(s.breaks===breakLimit-2)mod.radio?.say("KING KAI:Goku, STOP! The\nship can't take much\nmore of that!",{frames:200,kind:'sandship'});
    if(s.breaks>=breakLimit)crash();
   },
-  get openAir(){return mod.options.enabled&&shipMaps.includes(map());},
+  // Flight crosses every wall aboard, and the wreckage on the dunes.
+  get openAir(){return mod.options.enabled&&(shipMaps.includes(map())||map()===dunes);},
   get door(){return s.door;},
   get planned(){return !!(s.cut?.planned??s.wreck?.planned);},
   onEvent(id){
+   // The capture (28B) is about to stow Goku's Gi and drop the captives.
+   if(id===0x28b&&!r(0xcf28)&&!s.gear)s.gear=members.map(b=>mod.snes.ram[b]&1?{slots:Array.from(mod.snes.ram.slice(b+0x1e0,b+0x1e4)),held:false}:null);
    // Both routes end in the deck fight, then the reunion around 2A1.
    if(id===crashEvents.crash||id===crashEvents.board){s.boss=true;s.ending=id===crashEvents.crash?'crash':'ditch';}
    if(id===breakout.wave&&captive()&&!s.wreck){s.armed=true;s.hinted=false;}
@@ -319,6 +354,7 @@ export function createSandship(mod){
    const stage=r(0xcf28);
    if(s.wreck){s.wreck.age++;if(stage>=12){s.wreck=null;s.boss=false;s.crashed=s.ditched=false;s.ending=null;}}
    leaving();
+   returnGear(stage);
    if(s.cut)return cutTick();
    for(const e of mod.effects)if(e.kind==='beam'&&!seen.has(e)){
     seen.add(e);if(!captive()||s.wreck)continue;

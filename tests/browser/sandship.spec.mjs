@@ -115,6 +115,8 @@ async function walkThrough(page,dir){
 }
 async function wreckAndEscape(page,mask){
  const wrecked=await untilControl(page);
+ // Wrecking the ship gives Goku back the Gi the capture stowed.
+ expect(await page.evaluate(()=>[mana.read8(0xe1e1),[...mana.snes.ram.slice(0xcc2c,0xcc38)].includes(0x56)])).toEqual([0x16,true]);
  expect(wrecked,JSON.stringify(wrecked)).toMatchObject({map:271,can:true,wreck:true,flash:0,guards:0,captives:[mask&1?8:0,mask&2?8:0],party:[0,0],error:null});
  expect(wrecked.monsters).toBeGreaterThan(0);
  // The wreck plays the crisis cue in place of the ship's own song.
@@ -189,6 +191,9 @@ test('in the wreck, flight crosses every wall, doors work from any side and punc
 
 // Run to the Mech Rider arena, then stand in for its defeat (2A1 is the
 // event the fight itself runs) and play on to the dunes.
+// Equipped head/body/accessory/weapon of Goku, the girl and the sprite,
+// and the Gi's armor-ring entry with its wearer bits.
+const gear=page=>page.evaluate(()=>({slots:[0xe000,0xe200,0xe400].map(b=>Array.from(mana.snes.ram.slice(b+0x1e0,b+0x1e4))),ring:Array.from(mana.snes.ram.slice(0xcc2c,0xcc38))}));
 async function riderThenEnding(page){
  return page.evaluate(()=>{
   const m=mana.mod,party=()=>[mana.read8(0xe200)&1,mana.read8(0xe400)&1];
@@ -229,7 +234,10 @@ test('flying off with the captives aboard ditches them; coming back boards strai
 test('breaking bulkheads while still sneaking crashes the ship into the Mech Rider fight, then everyone reunites',async({page})=>{
  // Primm was aboard and is held in the cabin; Popoi never joined.
  await load(page,1);await enter(page,{map:91,x:24,y:24,flags:{0x28:0,0x36:1}});
+ const before=await gear(page);
  expect((await finish(page,0x28b,0x28,1)).map).toBe(271);
+ // The capture stows Goku's Gi.
+ expect((await gear(page)).slots[0][1]).not.toBe(before.slots[0][1]);
  const broke=await page.evaluate(()=>{
   const m=mana.mod,said=new Set();
   // A real punch opens a hold bulkhead before any breakout, and counts.
@@ -247,6 +255,20 @@ test('breaking bulkheads while still sneaking crashes the ship into the Mech Rid
  expect(r.fight).toEqual({map:340,can:true,party:[0,0],stage:11});
  expect(r,JSON.stringify(r)).toMatchObject({map:91,can:true,party:[1,0],captives:[1,0],stage:12,wreck:false,ending:null,error:null});
  for(const id of[0x7d,0x29e,0x2a1])expect(r.events).toContain(id);
+ // Everyone has exactly their own equipment back, the Gi included.
+ const after=await gear(page);
+ expect(after.slots.slice(0,2)).toEqual(before.slots.slice(0,2));expect(after.ring).toEqual(before.ring);
+ // The dunes are a closed basin. Flight crosses the wreckage, and takeoff
+ // leaves through Kakkara with the next story stage and its hint.
+ const left=await page.evaluate(()=>{
+  const m=mana.mod,said=new Set();
+  mana.write16(0xe002,17*16+8);mana.write16(0xe004,21*16+8);mana.run(4);const x0=mana.read16(0xe002);mana.run(20,[8,7]);const x1=mana.read16(0xe002);mana.run(30);
+  const ok=m.requestFlight();for(let f=0;f<900;f++){mana.run(1);const t=m.radio?.status.current?.text;if(t)said.add(t);}
+  return{crossed:x1-x0,ok,map:m.status.map,world:m.worldFlight,stage:mana.read8(0xcf28),said:[...said]};
+ });
+ expect(left).toMatchObject({ok:true,map:89,world:true,stage:14});
+ expect(left.crossed).toBeGreaterThan(100);
+ expect(left.said.some(t=>t.includes('Fire Palace'))).toBe(true);
 });
 
 test('?start=sandship enters the desert with the full party and plays into the Sandship',async({page})=>{
