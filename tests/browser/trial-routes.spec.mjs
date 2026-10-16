@@ -42,6 +42,9 @@ async function fight(page,predicate){
      for(let n=0;n<20&&m.trial.status.clash;n++){mana.run(2,[0]);mana.run(8);}
      return;
     }
+    // The entrance forces base form. Use Vegeta's transformation break to
+    // power up with real L+A input before his SSJ-only Final Flash counters.
+    if(m.trial.status.phase==='transform'&&m.canAttack&&!m.options.superSaiyan){mana.run(1);mana.run(96,[10,8]);mana.run(45);return;}
     if(m.trial.status.phase!=='battle'){mana.run(60,[11]);return;}
     if(m.canAttack&&m.status.hp<450&&mana.read8(0xcc48)!==255){
      // Use a real item, through its real target/consumption/heal pipeline.
