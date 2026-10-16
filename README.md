@@ -8,7 +8,7 @@
 
 **Secret of Goku** drops Goku into Secret of Mana's SNES action RPG. Explore its world, travel with companions, and solve problems with punches, flight, Instant Transmission, and wildly excessive amounts of ki.
 
-**[Play in your browser](https://mikolalysenko.github.io/secret-of-goku/)** · **[Native downloads](https://github.com/mikolalysenko/secret-of-goku/releases)** · **[Teaser — coming soon](#teaser)**
+**[Play in your browser](https://mikolalysenko.github.io/secret-of-goku/)** · **[Native downloads](https://github.com/mikolalysenko/secret-of-goku/releases)** · **[Watch the teaser](https://www.youtube.com/watch?v=5lp2piNqMsg)**
 
 <p>
   <img src="assets/readme/title-screen.png" width="384" alt="Secret of Goku title screen, with the credit Programmed by Nasir and ChatGPT">
@@ -51,9 +51,7 @@ Controller labels use the Xbox / Steam Deck layout.
 
 ## Teaser
 
-Coming soon to YouTube — we're getting the teaser ready.
-
-<!-- When the teaser is uploaded, replace the #teaser link above with its YouTube URL. -->
+[Watch the Secret of Goku teaser on YouTube.](https://www.youtube.com/watch?v=5lp2piNqMsg)
 
 ## About
 

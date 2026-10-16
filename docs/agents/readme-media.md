@@ -20,4 +20,4 @@ Use `--url http://127.0.0.1:PORT/` for another local server, or `--fixture /path
 
 ## Teaser
 
-The YouTube video is still being prepared. The README's teaser link currently leads to its clearly marked “coming soon” section. When the real URL exists, replace that anchor link and update the section. Do not invent a YouTube URL or link an unrelated video.
+The published teaser supplied by the maintainer is [Secret of Goku on YouTube](https://www.youtube.com/watch?v=5lp2piNqMsg). Both README teaser links point to this video.

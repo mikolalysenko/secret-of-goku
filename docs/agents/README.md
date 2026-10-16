@@ -9,7 +9,7 @@ These notes include complete gameplay, story and ending spoilers. The top-level 
 | [Releases](releases.md) | Offline Windows/macOS/Linux packaging, Steam Deck/Bazzite profiles and CI |
 | [Changelog](CHANGELOG.md) | Changes and implementation summaries |
 | [Gameplay reference](gameplay.md) | Full feature behavior, detailed controls and story/debug starts |
-| [README media](readme-media.md) | Spoiler boundaries, capture process and pending teaser URL |
+| [README media](readme-media.md) | Spoiler boundaries, capture process and teaser URL |
 
 | Subsystem | Notes |
 | --- | --- |

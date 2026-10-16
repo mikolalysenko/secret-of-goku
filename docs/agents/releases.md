@@ -39,7 +39,7 @@ npm run desktop:prepare
 npm run test:desktop
 ```
 
-`desktop:start` rebuilds/stages before launching. `test:desktop` uses a temporary profile and verifies bundled-ROM startup, title rendering, sandboxing, controller-friendly audio, native SRAM and IndexedDB checkpoint persistence through two launches. It does not touch personal saves. Pass `--app <stage-directory>` to test another staged profile, or `--executable <packaged-executable>` to test the final app. On headless Linux use `xvfb-run -a`. A real controller, suspend/resume and Gaming Mode performance still require hardware QA on a Deck/Bazzite machine.
+`desktop:start` rebuilds/stages before launching. `test:desktop` disables network access, uses a temporary profile and verifies bundled-ROM startup, title rendering, sandboxing, controller-friendly audio, native SRAM and IndexedDB checkpoint persistence through two launches, including the F5/F9 shortcuts. It does not touch personal saves. Pass `--app <stage-directory>` to test another staged profile, or `--executable <packaged-executable>` to test the final app. On headless Linux use `xvfb-run -a`. A real controller, suspend/resume and Gaming Mode performance still require hardware QA on a Deck/Bazzite machine.
 
 ## GitHub Actions
 
