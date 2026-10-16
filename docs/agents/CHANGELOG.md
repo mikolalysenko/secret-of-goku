@@ -36,9 +36,9 @@ stay traceable even when they are committed together.
 
 ### Goku push animation
 
-- Reworked normal and Super Saiyan pushing in all four directions around the boy’s compact hand placement and short steps. Hands and hips stay planted; the neutral face stays open-eyed. Two bent arms replace the old hanging arms completely, preventing extra hands, stretching forearms and the repeated thrusting pose.
+- Rebuilt normal and Super Saiyan push cells entirely from existing sprite art, replacing the hand-drawn arms that read as a lumpy torso with a fist at the chest. Side views lean into the open-palm blast stance with a shortened forearm so the palm meets the wall, and cycle the rear leg through the planted, mid-stride and pushed-off lunge cells. Front and back views raise both hands in the guard cell and step in place by swapping the staggered stance with passing steps. Head, hands and torso stay fixed while only the feet animate.
 - Enemy contact uses native animations 08 and 91, which the earlier wall-only fix missed. Both now use the same push while the player has control; scripted gestures retain their original mappings. Accepted movement advances the feet by distance, while blocked contact uses a slower in-place cadence. Releasing, walking away, focusing and flight cancel the push; collision behavior is unchanged.
-- Validation: 31 native animation/presentation unit tests and two private-ROM browser checks covering both forms against walls and a live Rabite, including the native contact brace, fixed upper-body pixels, no wall drift and clean release.
+- Validation: 31 native animation/presentation unit tests (including source-art, palm-reach and fixed-upper-body checks for every form and direction) and two private-ROM browser checks covering both forms against walls and a live Rabite, including the native contact brace, no wall drift and clean release. Cells and in-game captures were also compared visually with the boy's native push.
 
 
 

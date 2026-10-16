@@ -172,49 +172,26 @@ class ManaSpriteLayer {
     return this.shuffleFrames.get(key);
   }
   pushFrame(sheet,row,phase,legs=null){
-    // Hands stay planted. The native boy's push gets its motion from short
-    // steps, not a telescoping forearm or a repeating attack pose.
-    const column=[0,3,0,5][legs===null?phase:legs-2],key=`${sheet}:${row}:${column}`;
+    // Built only from existing cells: no hand-drawn arms. Side views lean in
+    // on the open-palm blast stance with the forearm shortened so the palm
+    // meets the wall; front/back raise both hands in the guard cell.
+    const beat=(legs===null?phase:legs-2)&3,key=`${sheet}:${row}:${beat}`;
     if(!this.pushFrames.has(key)){
-      const a=this.atlas[sheet],base=this.atlas.goku,cell=new Uint16Array(1024),side=row===1||row===2;
-      const offset=sheet==='ssj'&&side?(row===1?-2:2):0;
-      const copy=(atlas,col,r,x,y,dx=0)=>{
-        const c=atlas.pixels[(32+r*32+y)*atlas.width+col*32+x],px=x+dx;
-        if(c&&px>=0&&px<32)cell[y*32+px]=c;
-      };
-      // Keep each form's neutral face. These compact sleeves, bent elbows
-      // and palms use the gi's existing palette; both forms share the pose.
-      const colors=['000000','845218','ad7b39','dead63','a5a5a5','f7c673','ffffff','525252','733900','210084','3110ad','d66300','4221d6','ff7300','c69452','ad4a00','ad6b29','8c4a00','ffb529']
-        .map(hex=>{const c=parseInt(hex,16);return 1+((c>>19&31)|((c>>11&31)<<5)|((c>>3&31)<<10));});
-      const ink=(rows,x0,y0,mirror=false,dx=0)=>rows.forEach((line,y)=>[...line].forEach((ch,x)=>{
-        const c=colors[ch.charCodeAt(0)-65],px=(mirror?31-x0-x:x0+x)+dx;
-        if(c&&px>=0&&px<32)cell[(y+y0)*32+px]=c;
-      }));
-      for(let y=0;y<32;y++)for(let x=0;x<32;x++){
-        if(side){if(y<16)copy(a,0,row,x,y);else if(y>=26)copy(base,column,row,x,y,offset);}
-        else copy(a,y>=26?column:0,row,x,y);
-      }
-      if(side)ink([
-        'IJJKKLJ',
-        'JPNLPLP..BB',
-        'BCDNNLPJBCDB',
-        'BDFPLLPJKCFB',
-        'BCDFDCJKJBB',
-        '.BBCCCBJKJ',
-        '.JKKKJLLPI',
-        'IPLNPPPLPI',
-        'IPNNLILNPI',
-        'IPLNPIPLPI',
-      ],11,16,row===1,offset);
-      else if(row===0){
-        // Replace both entire hanging arms, not only their last hand tiles.
-        for(let y=17;y<=24;y++)for(let x=7;x<=25;x++)if(x<=11||x>=21)cell[y*32+x]=0;
-        const arm=['BCD..BB','BCFJKDF','BCDJJBC','.BBCBB.'];
-        ink(arm,9,17);ink(arm,9,17,true,1);
+      const a=this.atlas[sheet],cell=new Uint16Array(1024),gold=sheet==='ssj';
+      // Left cells are mirrored art; read them in right-facing coordinates.
+      const flip=row===1,get=(col,x,y)=>x<0||x>31?0:a.pixels[(32+row*32+y)*a.width+col*32+(flip?31-x:x)];
+      if(row===1||row===2){
+        // Planted, mid and pushed-off rear leg from the matching lunge cells.
+        const brace=gold?26:30,stance=[brace,brace-1,brace-7,brace-1][beat];
+        for(let y=0;y<32;y++)for(let x=0;x<32;x++){
+          const arm=y>=13&&y<=19&&x>=21&&!(y<=15&&x===21);
+          cell[y*32+(flip?31-x:x)]=arm?get(brace,x+3,y):y>=21&&x<24?get(stance,x,y):get(brace,x,y);
+        }
       }else{
-        // Away-facing palms are behind the shoulders; only bent elbows show.
-        for(let y=20;y<=24;y++)for(let x=6;x<=24;x++)if(x<=10||x>=20)cell[y*32+x]=0;
-        for(const x of[7,20])ink(['BCCB','CDCB','BJJB'],x,18);
+        // Feet step in place: staggered, passing, swapped stagger, passing.
+        const hands=gold?21:25;
+        for(let y=0;y<32;y++)for(let x=0;x<32;x++)
+          cell[y*32+x]=y<25||beat===0?get(hands,x,y):beat===2?get(hands,31-x,y):get(beat===1?3:5,x,y);
       }
       this.pushFrames.set(key,cell);
     }

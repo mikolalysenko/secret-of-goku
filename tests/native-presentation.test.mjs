@@ -37,25 +37,31 @@ test('all four Goku directions use the correct source rows and retain every opaq
   }
 });
 
-test('push hands, face and torso stay planted while short native-sized steps animate in both forms',()=>{
+test('push cells lean into a planted palm from existing art while the feet step in both forms',()=>{
   const {layer}=scene();
   for(const sheet of ['goku','ssj'])for(let row=0;row<4;row++){
-    const colors=new Set(atlases[sheet].pixels),frames=[],first=layer.pushFrame(sheet,row,0);
+    const atlas=atlases[sheet],colors=new Set(atlas.pixels),frames=[],first=layer.pushFrame(sheet,row,0);
+    const side=row===1||row===2,source=side?(sheet==='ssj'?26:30):(sheet==='ssj'?21:25),fixed=side?21:25;
+    const pixel=(col,x,y)=>atlas.pixels[(32+row*32+y)*atlas.width+col*32+x];
     for(let phase=0;phase<4;phase++){
       const cell=layer.pushFrame(sheet,row,phase);frames.push(Array.from(cell).join(','));
       assert.equal(layer.pushFrame(sheet,row,phase),cell,'cells are cached, not rebuilt each scanline');
       for(let i=0;i<1024;i++){
         assert.ok(colors.has(cell[i]),'the push retains the existing sprite palette');
-        if(i<26*32)assert.equal(cell[i],first[i],'no stretching arms, sliding palms or thrusting hips');
+        if(i<fixed*32)assert.equal(cell[i],first[i],'hands, head and torso stay planted while the feet step');
       }
       layer.surface.fill(0);layer.blit(sheet,0,row,100,80,32,32,null,0,phase);
       for(let y=0;y<32;y++)for(let x=0;x<32;x++)assert.equal(layer.surface[(80+y)*256+100+x],cell[y*32+x],'the actual OBJ blit uses the push cell');
     }
-    assert.equal(new Set(frames).size,3,'left step, planted feet, right step');
+    assert.ok(new Set(frames).size>=3,'the feet visibly step');
+    for(let y=0;y<13;y++)for(let x=0;x<32;x++)assert.equal(first[y*32+x],pixel(source,x,y),'the head comes unmodified from the leaning source cell');
+    if(side){
+      // The palm sits just past the body, not at full blast reach.
+      let reach=0;for(let y=13;y<=19;y++)for(let x=0;x<32;x++)if(first[y*32+x])reach=Math.max(reach,row===2?x:31-x);
+      assert.ok(reach>=24&&reach<=27,`palm meets the wall at ${reach}`);
+    }
     const moving=[2,3,4,5].map(legs=>layer.pushFrame(sheet,row,0,legs));
-    assert.ok(moving.some(cell=>cell.some((c,i)=>i>=26*32&&c!==first[i])),'accepted movement advances the feet');
-    for(const cell of moving)assert.deepEqual(cell.slice(0,26*32),first.slice(0,26*32),'hands remain on the object when the feet step');
-    for(let y=0;y<15;y++)for(let x=0;x<32;x++)assert.equal(first[y*32+x],atlases[sheet].pixels[(32+row*32+y)*atlases[sheet].width+x],'keep the neutral open-eyed head, not a strained attack face');
+    assert.deepEqual(moving.map(c=>Array.from(c).join(',')),frames,'moving steps use the same four beats');
   }
 });
 
