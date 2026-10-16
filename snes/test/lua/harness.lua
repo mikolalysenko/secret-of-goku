@@ -115,12 +115,12 @@ function H.saveStable(name, frames)
       done = true
       writefile(H_OUT .. '/' .. name .. '.mss', emu.createSavestate())
     end
-  end, emu.callbackType.exec, 0x00B079, 0x00B079)
+  end, emu.callbackType.exec, 0x000000, 0xFFFFFF)
   for _ = 1, (frames or 600) do
     if done then break end
     coroutine.yield()
   end
-  emu.removeMemoryCallback(id, emu.callbackType.exec, 0x00B079, 0x00B079)
+  emu.removeMemoryCallback(id, emu.callbackType.exec, 0x000000, 0xFFFFFF)
   return done
 end
 function H.load(path)
@@ -129,8 +129,9 @@ function H.load(path)
 end
 function H.state() return emu.getState() end
 -- Import a bundle written by snes/tools/snesjs-export.mjs (a browser-mod
--- savestate advanced to the field wait loop). The running cartridge must
--- reach the field wait loop (00:B079) itself first, e.g. from a checkpoint.
+-- savestate advanced to an NMI wait loop). Applied at the next executed
+-- instruction of the running cartridge: memory, PPU/DMA/IRQ registers, the
+-- CPU context including PC/K/SP and the SPC state are all replaced.
 local function blit(path, memtype, limit)
   local data = readfile(path)
   local n = #data
@@ -156,6 +157,7 @@ function H.importSnesJs(dir, frames)
     local st = {}
     st['cpu.a'] = regs.cpu.a; st['cpu.x'] = regs.cpu.x; st['cpu.y'] = regs.cpu.y
     st['cpu.sp'] = regs.cpu.sp; st['cpu.d'] = regs.cpu.d; st['cpu.dbr'] = regs.cpu.dbr; st['cpu.ps'] = regs.cpu.ps
+    st['cpu.pc'] = regs.cpu.pc; st['cpu.k'] = regs.cpu.k; st['cpu.emulationMode'] = regs.cpu.e
     local sp = regs.spc
     st['spc.a'] = sp.a; st['spc.x'] = sp.x; st['spc.y'] = sp.y; st['spc.sp'] = sp.sp; st['spc.pc'] = sp.pc; st['spc.ps'] = sp.ps
     st['spc.dspReg'] = sp.dspAdr; st['spc.romEnabled'] = sp.romReadable
@@ -171,12 +173,12 @@ function H.importSnesJs(dir, frames)
       st['spc.timer' .. i .. '.output'] = t.output
     end
     emu.setState(st)
-  end, emu.callbackType.exec, 0x00B079, 0x00B079)
+  end, emu.callbackType.exec, 0x000000, 0xFFFFFF)
   for _ = 1, (frames or 600) do
     if done then break end
     coroutine.yield()
   end
-  emu.removeMemoryCallback(id, emu.callbackType.exec, 0x00B079, 0x00B079)
+  emu.removeMemoryCallback(id, emu.callbackType.exec, 0x000000, 0xFFFFFF)
   return done
 end
 function H.finish(code)

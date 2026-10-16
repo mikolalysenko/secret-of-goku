@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // Converts a private SnesJs probe state (browser mod, .local/**.json) into an
 // import bundle for Mesen tests: the state is advanced in the vendored core
-// until the field main loop waits for NMI (C0:B079), then WRAM, VRAM, CGRAM,
-// OAM, SRAM, APU RAM/DSP and the register file are written to <outDir>.
+// until a main loop waits for NMI (field 00:B079 or world flight 00:808D),
+// then WRAM, VRAM, CGRAM, OAM, SRAM, APU RAM/DSP and the full register file
+// (CPU incl. PC, PPU, DMA/HDMA, IRQ, SPC) are written to <outDir>.
 // snes/test/lua/harness.lua's H.importSnesJs(<outDir>) applies the bundle to a
-// running cartridge that is itself waiting at C0:B079.
+// running cartridge at its next instruction.
 //   node snes/tools/snesjs-export.mjs <state.json> <outDir>
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
@@ -20,7 +21,9 @@ export function loadCore(rom){
   const snes=new context.Snes();snes.loadRom(rom,true);snes.reset(true);return snes;
 }
 // The bus starts the next CPU instruction when cpuCyclesLeft reaches 0.
-const atWait=s=>s.cpuCyclesLeft===0&&!s.dmaBusy&&!(s.hdmaTimer>0)&&!s.cpu.waiting&&(s.cpu.r[1]&0x3f)===0&&s.cpu.br[4]===0xB079;
+// Field (00:B079) and world-flight (00:808D) loops waiting for NMI.
+export const WAIT_LOOPS=[0xB079,0x808D];
+const atWait=s=>s.cpuCyclesLeft===0&&!s.dmaBusy&&!(s.hdmaTimer>0)&&!s.cpu.waiting&&(s.cpu.r[1]&0x3f)===0&&WAIT_LOOPS.includes(s.cpu.br[4]);
 
 export function exportState(statePath,outDir,{rom=new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc'))),maxSteps=4e6}={}){
   const st=JSON.parse(readFileSync(statePath,'utf8'));
@@ -28,7 +31,7 @@ export function exportState(statePath,outDir,{rom=new Uint8Array(readFileSync(re
   const s=loadCore(rom);
   restore(s,{...st,romHash:hash(s.cart.data)});
   let steps=0;
-  while(!atWait(s)){if(++steps>maxSteps)throw Error('field wait loop (C0:B079) not reached; not a field state?');s.cycle(false);}
+  while(!atWait(s)){if(++steps>maxSteps)throw Error('no NMI wait loop (00:B079 field / 00:808D world) reached; menu or title state?');s.cycle(false);}
   // The APU runs lazily; bring it up to the same instant before capture.
   if(typeof s.catchUpApu==='function')s.catchUpApu();
   mkdirSync(outDir,{recursive:true});
@@ -104,7 +107,7 @@ export function exportState(statePath,outDir,{rom=new Uint8Array(readFileSync(re
   writeFileSync(resolve(outDir,'regs.json'),JSON.stringify(regs,null,1));
   // Lua-friendly flat register list.
   const lua=['return {',
-    `cpu={a=${regs.cpu.a},x=${regs.cpu.x},y=${regs.cpu.y},sp=${regs.cpu.sp},d=${regs.cpu.d},dbr=${regs.cpu.dbr},ps=${regs.cpu.ps}},`,
+    `cpu={a=${regs.cpu.a},x=${regs.cpu.x},y=${regs.cpu.y},sp=${regs.cpu.sp},d=${regs.cpu.d},dbr=${regs.cpu.dbr},ps=${regs.cpu.ps},pc=${regs.cpu.pc},k=${regs.cpu.k},e=${regs.cpu.e}},`,
     'ppu={'+ppu.map(([r,v])=>`{${r},${v}}`).join(',')+'},',
     'io={'+cpu.map(([r,v])=>`{${r},${v}}`).join(',')+'},',
     `spc={a=${regs.spc.a},x=${regs.spc.x},y=${regs.spc.y},sp=${regs.spc.sp},pc=${regs.spc.pc},ps=${regs.spc.ps},dspAdr=${regs.spc.dspAdr},romReadable=${regs.spc.romReadable},`+
@@ -117,5 +120,5 @@ export function exportState(statePath,outDir,{rom=new Uint8Array(readFileSync(re
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const [state,out]=process.argv.slice(2);
   const r=exportState(state,out);
-  console.log(`exported ${state} -> ${out}: map ${r.map}, ${r.steps} steps to C0:B079`);
+  console.log(`exported ${state} -> ${out}: map ${r.map}, ${r.steps} steps to ${r.cpu.k.toString(16)}:${r.cpu.pc.toString(16)}`);
 }

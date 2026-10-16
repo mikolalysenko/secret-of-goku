@@ -54,13 +54,14 @@ node snes/tools/snesjs-export-all.mjs      # -> .local/snes-import/<name>/ + cat
 node snes/tools/snesjs-export.mjs <state.json> <outDir>   # a single state
 ```
 
-The exporter advances the state in the vendored core until the field loop
-waits for NMI (`00:B079`), then writes WRAM, VRAM, CGRAM, OAM, SRAM, APU RAM,
-DSP registers and the PPU/DMA/IRQ/SPC register file. In a Lua test, start from
-any checkpoint that reaches the field loop and call
-`H.importSnesJs('<abs path to bundle dir>')`; the cartridge then continues in
-that scene (274 of 321 states import; world-flight, menu and title states do
-not reach the field loop). Mod-only state that the browser kept in JavaScript
+The exporter advances the state in the vendored core until a main loop waits
+for NMI (field `00:B079`, world flight `00:808D`), then writes WRAM, VRAM,
+CGRAM, OAM, SRAM, APU RAM, DSP registers and the full CPU/PPU/DMA/IRQ/SPC
+register file. In a Lua test, call `H.importSnesJs('<abs path to bundle dir>')`
+at any point after boot; the cartridge continues in that scene from the next
+instruction (292 of 321 states import; ring-menu, file-select and title states
+use other loops). `node snes/tools/snesjs-render.mjs <state.json> <frames>
+<out.png>` renders the same state in the original engine for reference. Mod-only state that the browser kept in JavaScript
 (Dragon Ball ledger, forms, scene clocks) is not in these bundles — set the
 module's own RAM/SRAM fields in the test. A field checkpoint to start from:
 any `H.saveStable` output, e.g. one made from power-on by
