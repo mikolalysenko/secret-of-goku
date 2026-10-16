@@ -249,7 +249,10 @@ class ManaMod {
     }
     if(recovering)return;
     if(this.frieza?.spaceInput(input)){this.snes.joypad1State=0;return;}
-    if(this.teleport?.pending){this.snes.joypad1State=0;this.advanceAction();return;}
+    if(this.teleport?.pending){
+      if(this.action?.kind==='teleport'&&((input&0x401)===0x401&&(this.lastInput&0x401)!==0x401||input&(1<<19)&&!(this.lastInput&(1<<19))))this.action.queued=true;
+      this.snes.joypad1State=0;this.advanceAction();return;
+    }
     const takeoff=(this.padInput&0xc00)===0xc00;
     if(takeoff&&(this.lastPadInput&0xc00)!==0xc00&&this.requestFlight()){this.snes.joypad1State=0;return;}
     if(!((input&0x400)&&(input&((1<<17)|1|0x800)))){
@@ -276,7 +279,7 @@ class ManaMod {
     const hovering=this.localFlight;
     this.localFlight=!!this.localFlightHook&&!teleport&&this.action?.kind!=='teleport'&&!!(((input&0x100)&&(input&0xf0)&&(!(input&0x400)||wave))||(hovering&&!this.localFlightHook.canLand()));
     if(this.localFlight){this.snes.joypad1State&=~0x100;if(!hovering)this.playSound?.('flight');}
-    for(const effect of this.effects)effect.life--;
+    for(const effect of this.effects){if(effect.hold>0)effect.hold--;else effect.life--;}
     this.effects=this.effects.filter(effect=>effect.life>0);
     this.advanceAction();
     if(this.blastCooldown>0)this.blastCooldown--;
@@ -334,6 +337,10 @@ class ManaMod {
   }
   advanceAction(){
     const action=this.action;if(!action)return;
+    // Hold only the connected pose and its contact sparks, not the SNES
+    // simulation/audio. Misses retain their immediate recovery and inputs
+    // still buffer while the fist is planted in the target.
+    if(action.kind==='punch'&&action.hitPause>0){action.hitPause--;return;}
     action.age++;
     // Match the first gold cell, including the slower first-time reveal.
     if(action.kind==='transform'&&!action.burst&&action.age>=Math.ceil(action.duration*14/40)){
@@ -345,11 +352,14 @@ class ManaMod {
     }
     if(action.kind==='teleport'&&!action.arrived&&action.age>=4)this.finishTeleport(action);
     if(action.kind==='teleport'&&action.arrived){
-      if(this.ceiling?.tick()){this.localFlight=false;this.localLift=0;return;}
-    if(this.teleport?.pending)action.age=4;
-      else if(!action.sounded){action.sounded=true;this.playSound?.('teleportIn');}
+      if(this.teleport?.pending)action.age=4;
+      else if(action.age>=6&&!action.sounded){action.sounded=true;this.playSound?.('teleportIn');}
     }
-    if(action.duration>0&&action.age>=action.duration){this.action=null;return;}
+    if(action.duration>0&&action.age>=action.duration){
+      this.action=null;
+      if(action.kind==='teleport'&&action.queued)this.instantTransmission();
+      return;
+    }
     // Keep fast taps: one queued strike can cancel the visible recovery.
     if(action.kind==='punch'&&this.queuedPunch&&action.age>=(action.super?4:9)){this.queuedPunch=false;this.punch();}
   }
@@ -368,14 +378,16 @@ class ManaMod {
   }
   damageScale(){return this.options.power?Math.round((this.options.superSaiyan?8191:4095)*(this.equipment?.powerScale??1)):Math.max(12,Math.min(200,this.read8(0xe198)));}
   instantTransmission(){
-    if(!this.options.enabled||!this.canAttack||this.action?.kind==='teleport')return false;
+    if(!this.options.enabled||!this.canAttack)return false;
+    if(this.action?.kind==='teleport'){this.action.queued=true;return true;}
     const origin={x:this.read16(0xe002),y:this.read16(0xe004)};
     const enemies=this.entities().filter(e=>e.index>=3&&e.active&&e.species<128&&e.species!==0x55&&e.hp&&(e.custom||!(this.read8(e.base+0x191)&0x80)));
-    // Each press chooses one living foe. Repeated presses cycle away from the
-    // previous target, and never inflict damage or return Goku to his origin.
+    // Start at the nearest foe, then visit every reachable actor in stable
+    // slot order. Merely excluding the last foe ping-pongs between two and
+    // can starve the rest of the group forever.
     const reachable=enemies.filter(e=>this.teleportLanding(e,origin));
-    const candidates=reachable.filter(e=>e.index!==this.lastTeleportTarget);
-    const target=(candidates.length?candidates:reachable).sort((a,b)=>Math.hypot(a.x-origin.x,a.y-origin.y)-Math.hypot(b.x-origin.x,b.y-origin.y))[0];
+    const ordered=reachable.sort((a,b)=>a.index-b.index);
+    const target=this.lastTeleportTarget<0?reachable.sort((a,b)=>Math.hypot(a.x-origin.x,a.y-origin.y)-Math.hypot(b.x-origin.x,b.y-origin.y))[0]:ordered.find(e=>e.index>this.lastTeleportTarget)||ordered[0];
     if(!target)return false;
     this.cancelCombat();this.action={kind:'teleport',age:0,duration:12,super:this.options.superSaiyan,facing:this.facing,target:target.index,species:target.species,origin,arrived:false};
     this.playSound?.('teleport');return true;
@@ -451,15 +463,18 @@ class ManaMod {
     const [dx,dy]=[[0,1],[1,0],[-1,0],[0,-1]][action.facing],origin={x:this.read16(0xe002),y:this.read16(0xe004)};
     const targets=this.targets(origin,dx,dy,action.combo===2?54:44,24,10),damage=Math.round(this.damageScale()*(action.combo===2?1.5:1));
     const hits=targets.map(enemy=>this.hit(enemy,damage,dx,dy,true));
+    const contacts=targets.filter((enemy,i)=>enemy.species!==0x55&&hits[i]?.after<hits[i]?.before);
+    action.hitPause=contacts.length?(action.combo===2?3:2):0;
+    for(const hit of this.knockbacks)if(contacts.some(enemy=>enemy.base===hit.base))hit.hold=action.hitPause+1;
     // The native pulse handles talking/chests. The interaction adapter stops
     // its weapon fallback; punching plants uses the same native redraw queue
     // as the beam, so no invisible sword animation is needed.
     if(!hits.length)this.nativeTapFrames=2;
     this.plants?.beam({...origin,dx,dy,length:28,halfWidth:9,policy:'objects'});
     if(this.barriers?.punch({...origin,dx,dy}))this.nativeTapFrames=0;
-    for(const enemy of targets)this.effects.push({kind:'impact',x:enemy.x,y:enemy.y-12,dx,dy,life:10,max:10,super:action.super});
+    for(const enemy of contacts)this.effects.push({kind:'impact',x:enemy.x,y:enemy.y-12,dx,dy,life:10,max:10,hold:action.hitPause,super:action.super});
     this.effects.push({...origin,kind:'punch',dx,dy,life:7,max:7,super:action.super,hit:!!hits.length});
-    if(hits.length){this.feedback?.pulse(action.super?5:3);this.playSound?.(action.combo===2?'kick':'hit');this.log(`Punch ${damage}: ${JSON.stringify(hits)}`);}
+    if(contacts.length){this.feedback?.pulse((action.super?5:3)+(action.combo===2?2:0));this.playSound?.(action.combo===2?'kick':'hit');this.log(`Punch ${damage}: ${JSON.stringify(hits)}`);}
     return hits;
   }
   handOrigin(facing=this.facing,technique='beam',hand=0){
@@ -539,6 +554,7 @@ class ManaMod {
       // The native kill routine changes the actor into death-effect F9 before
       // its explosion finishes. Carry that same effect along the launch arc.
       if(!(this.read8(hit.base)&1)||(species!==hit.species&&!(species===0xf9&&dead)))return false;
+      if(hit.hold>0){hit.hold--;return true;}
       hit.age++;const t=Math.min(1,hit.age/hit.duration),distance=hit.distance*(1-(1-t)**2);
       this.write16(hit.base+2,Math.round(Math.max(8,Math.min(1016,hit.x+hit.dx*distance))));
       this.write16(hit.base+4,Math.round(Math.max(8,Math.min(1016,hit.y+hit.dy*distance))));

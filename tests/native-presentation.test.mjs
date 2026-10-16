@@ -187,13 +187,40 @@ test('a charging aura keeps every body pixel and stops on release or loss of nat
   layer.effects['gold-arc']=[Uint16Array.from([0,500,633,797,12288,32768])];
   if(small)ram[0xe180]=0xf6;
   mod.action={kind:'focus',age:100,duration:0};mod.powerCharge=96;layer.prepare();
-  assert.ok(layer.effectMask.some(Boolean));const f=layer.plan.sprite,a=layer.atlas[f.sheet];
-  for(let y=0;y<f.height;y++)for(let x=0;x<f.width;x++){
-   const c=a.pixels[(32+f.row*32+Math.floor(y*32/f.height))*a.width+f.column*32+Math.floor(x*32/f.width)];
-   if(c)assert.equal(layer.surface[(f.y+y)*256+f.x+x],c,'Faces, hands and boots must stay in front of the aura');
-  }
+  assert.ok(layer.effectMask.some(Boolean));const withAura=layer.surface.slice();
+  mod.canAttack=false;layer.prepare();
+  for(let i=0;i<layer.surface.length;i++)if(layer.surface[i])assert.equal(withAura[i],layer.surface[i],'The moving body must stay in front of the aura');
   mod.canAttack=false;layer.prepare();assert.equal(layer.effectMask.some(Boolean),false);
   mod.canAttack=true;mod.action=null;mod.powerCharge=0;layer.prepare();assert.equal(layer.effectMask.some(Boolean),false);
+ }
+});
+
+test('Instant Transmission renders a completely absent body between the two streak sequences',()=>{
+ for(const superSaiyan of[false,true])for(let facing=0;facing<4;facing++){
+  const {layer,mod}=scene([1,2,0x82,0][facing]);mod.options.superSaiyan=superSaiyan;
+  for(let age=0;age<12;age++){
+   mod.frame++;mod.action={kind:'teleport',age,super:superSaiyan,facing};layer.prepare();
+   assert.equal(layer.plan.sprite.hidden,age>=4&&age<6);
+   assert.equal(layer.surface.some(Boolean),!(age>=4&&age<6));
+  }
+ }
+});
+
+test('focus breathing moves the upper body while boots remain planted in both sizes and forms',()=>{
+ for(const superSaiyan of[false,true])for(const small of[false,true]){
+  const{layer,mod,ram}=scene();mod.options.superSaiyan=superSaiyan;if(small)ram[0xe180]=0xf6;
+  const frames=[];
+  for(const age of[10,22,46]){
+   mod.frame++;mod.action={kind:'focus',age,super:superSaiyan};layer.prepare();
+   const p=layer.plan.sprite,feet=[],head=[];
+   for(let y=0;y<p.height;y++)for(let x=0;x<p.width;x++){
+    const c=layer.surface[(p.y+y)*256+p.x+x];
+    if(y>=p.height-2)feet.push(c);else if(y<p.height/2)head.push(c);
+   }
+   frames.push({feet,head});
+  }
+  assert.deepEqual(frames[0].feet,frames[1].feet);assert.deepEqual(frames[0].feet,frames[2].feet);
+  assert.notDeepEqual(frames[0].head,frames[1].head,'inhale is visible without moving the feet');
  }
 });
 

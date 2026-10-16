@@ -32,6 +32,35 @@ test('an offscreen teleport streams the map into view and leaves movement and th
  expect(r.moved).toBeGreaterThan(3);expect(r.ring&0xfe).not.toBe(0);expect(r.blank).toBe(false);
  await page.locator('#screen').screenshot({path:'.local/dbz-audio/teleport-ring.png'});
 });
+test('teleport vanishes with its shadow, reforms on the arrival cue and replays a hidden checkpoint',async({page})=>{
+ await load(page);
+ const result=await page.evaluate(()=>{
+  const m=mana.mod;mana.write8(0xe600,0);mana.write8(0xe800,0);
+  const play=m.playSound,cues=[];m.playSound=function(name){cues.push({name,age:this.action?.age});};
+  try{
+   const phases=[],hidden=[];
+   const sample=()=>{
+    const p=m.spriteLayer.plan?.sprite;if(!p||m.action?.kind!=='teleport')return;
+    phases.push(p.phase);
+    if(m.teleport.pending)hidden.push({hidden:p.hidden,body:m.spriteLayer.surface.some(Boolean),
+      shadows:m.ownership.ppuOwners.every((owner,i)=>owner?.base!==0xe000||owner.kind!=='shadow'||m.hiddenLastFrame.includes(i))});
+   };
+   for(let i=0;i<4;i++){mana.run(1,[10,0]);sample();}
+   const saved=mana.snapshot();
+   const finish=()=>{
+    for(let i=0;i<100&&m.action;i++){mana.run(1);sample();}
+    return{x:m.status.x,y:m.status.y,cameraX:m.status.cameraX,cameraY:m.status.cameraY,target:m.lastTeleportTarget,action:m.action,pending:m.teleport.pending};
+   };
+   const first=finish(),arrival=cues.filter(c=>c.name==='teleportIn');mana.restore(saved);const second=finish();
+   return{phases:[...new Set(phases)],hidden,first,second,arrival};
+  }finally{m.playSound=play;}
+ });
+ expect(result.phases).toEqual(['locate','vanish','absent','appear','settle']);
+ expect(result.hidden.length).toBeGreaterThan(3);
+ for(const frame of result.hidden)expect(frame).toEqual({hidden:true,body:false,shadows:true});
+ expect(result.arrival).toEqual([{name:'teleportIn',age:6}]);
+ expect(result.first).toEqual(result.second);expect(result.first.action).toBeNull();expect(result.first.pending).toBe(false);
+});
 test('flight crosses the Potos-path riverbanks and can rescue an old bank-stranded checkpoint',async({page})=>{
  await load(page);
  const r=await page.evaluate(()=>{

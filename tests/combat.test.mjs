@@ -212,18 +212,75 @@ test('transformation burst replays once across checkpoints and never damages fro
   assert.equal(air.mod.read16(0xe782),20000);assert.equal(air.mod.effects.length,0);
 });
 
-test('held L maintains a directional fighting guard in both forms, reserving power-up poses for form changes',()=>{
+test('held L plants a directional power stance and breathes without changing form or repeating explosions',()=>{
  for(const superSaiyan of[false,true])for(let facing=0;facing<4;facing++){
-  const {mod,step}=setup({superSaiyan,facing});
+  const {mod,step}=setup({superSaiyan,facing}),poses=new Set(),breath=new Set();
   for(let i=0;i<150;i++){
     step(0x400);const pose=mod.motion.pose();
     assert.equal(pose.kind,'focus');assert.equal(pose.sheet,superSaiyan?'ssj':'goku');
-    assert.equal(pose.column,superSaiyan?21:25);assert.equal(pose.row,[0,2,1,3][facing]);
+    poses.add(pose.column);breath.add(pose.bodyY);assert.equal(pose.row,[0,2,1,3][facing]);
   }
+  assert.deepEqual([...poses],superSaiyan?[21,33,30]:[25,37,34]);
+  assert.deepEqual([...breath].sort(),[-1,0,1]);
   assert.equal(mod.options.superSaiyan,superSaiyan);
   assert.equal(mod.effects.length,0,'holding focus alone does not repeatedly explode');
   step();assert.notEqual(mod.motion.pose().kind,'focus');
  }
+});
+
+test('punch anticipation, forward drive and recovery follow the locked facing without moving collision coordinates',()=>{
+ for(const superSaiyan of[false,true])for(let facing=0;facing<4;facing++)for(let combo=0;combo<3;combo++){
+  const {mod,step}=setup({superSaiyan,facing}),[dx,dy]=[[0,1],[1,0],[-1,0],[0,-1]][facing];
+  mod.combo=combo-1;mod.comboUntil=100;mod.punch();const travel=[];
+  while(mod.action){
+   const p=mod.motion.pose();travel.push(p.offsetX*dx+p.offsetY*dy);
+   assert.equal(p.row,[0,2,1,3][facing]);assert.equal(mod.read16(0xe002),200);assert.equal(mod.read16(0xe004),200);
+   step();
+  }
+  assert.ok(travel[0]<0,'weight loads opposite the strike');
+  assert.ok(Math.max(...travel)>=5,'the body follows the fist');
+  assert.equal(travel.at(-1),0,'settle back on the native foot anchor');
+ }
+});
+
+test('connected strikes hold the contact pose and spark before launch; misses and puzzle orbs do not hit-stop',()=>{
+ for(const superSaiyan of[false,true])for(const combo of[0,2]){
+  const {mod,step,enemy}=setup({superSaiyan}),base=enemy(3,228,200);
+  mod.combo=combo-1;mod.comboUntil=100;mod.punch();step(0,mod.action.impact);
+  const pose=JSON.stringify(mod.motion.pose()),hp=mod.read16(base+0x1f1),hold=mod.action.hitPause;
+  assert.equal(hold,combo===2?3:2);assert.equal(mod.effects.find(e=>e.kind==='impact').life,10);
+  for(let i=0;i<hold;i++){
+   step();const p=mod.motion.pose();assert.equal(p.phase,'contact');
+   assert.equal(p.column,JSON.parse(pose).column);assert.equal(mod.action.age,mod.action.impact);
+   assert.equal(mod.effects.find(e=>e.kind==='impact').life,10);assert.equal(mod.read16(base+2),228);
+   assert.equal(mod.read16(base+0x1f1),hp,'contact hold never deals a second hit');
+  }
+  step();assert.ok(mod.read16(base+2)>228);assert.ok(mod.action.age>mod.action.impact);
+ }
+ for(const orb of[false,true]){
+  const {mod,step,enemy}=setup();if(orb)enemy(3,228,200,100,0x55);
+  step(1);step(0,2);assert.equal(mod.action.hitPause,0);
+  assert.equal(mod.effects.some(e=>e.kind==='impact'),false);step();assert.equal(mod.action.age,3);
+ }
+});
+
+test('teleport cycles the entire reachable roster and buffers one tap through the fully hidden camera wait',()=>{
+ const {mod,step,enemy,snes}=setup(),sounds=[];
+ for(let i=3;i<6;i++)enemy(i,200+i*45,200,100);
+ mod.playSound=name=>sounds.push({name,age:mod.action?.age});
+ let pending=false;mod.teleport={get pending(){return pending;},findLanding:target=>({x:target.x-26,y:target.y,terrain:0,facing:1}),follow(){pending=true;}};
+ step(0x401,4);assert.equal(mod.lastTeleportTarget,3);assert.equal(mod.motion.pose().hidden,true);
+ step();step(0x401);step();step(0x401,12);
+ assert.equal(mod.action.age,4);assert.equal(mod.motion.pose().hidden,true);assert.equal(snes.joypad1State,0);
+ assert.equal(sounds.filter(s=>s.name==='teleportIn').length,0);
+ pending=false;step();assert.equal(mod.motion.pose().hidden,true);
+ step();assert.equal(mod.motion.pose().phase,'appear');assert.deepEqual(sounds.at(-1),{name:'teleportIn',age:6});
+ step(0,10);assert.equal(mod.lastTeleportTarget,4,'the queued tap commits once after recovery');
+ pending=false;step(0,16);assert.equal(mod.action,null);assert.equal(sounds.filter(s=>s.name==='teleport').length,2);
+ for(const index of[5,3]){
+  step(0x401,4);assert.equal(mod.lastTeleportTarget,index);pending=false;step(0,16);
+ }
+ for(let i=3;i<6;i++)assert.equal(mod.read16(0xe000+i*512+0x1f1),0);
 });
 
 test('mid-charge and mid-strike snapshots preserve exact animation and projectile timing',()=>{
