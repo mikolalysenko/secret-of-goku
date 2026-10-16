@@ -3,9 +3,10 @@ import {loadVegetaSprite,drawVegetaSprite} from './vegeta-sprite.js';
 import {createNativeCombustion} from './native-combustion.js';
 import {beamTouchesShot,sweptDistance} from './frieza-combat.js';
 import {createTimeChamber} from './time-chamber.js';
-import {opposingBeams,createTrainingClash,mashTrainingClash,tickTrainingClash,drawTrainingClash,trainingClashPoint,trainingClashTiming} from './vegeta-clash.js';
+import {opposingBeams,createTrainingClash,mashTrainingClash,tickTrainingClash,drawTrainingClash,trainingClashPoint,trainingClashTiming,trainingBeamPalettes} from './vegeta-clash.js';
 import {drawBeamDetonation} from './beam-detonation.js';
 export const vegetaHealth=[32000,60000];
+const damageScale=[.55,.32];
 const cloneBases=[0xe600,0xe800,0xea00],directions=[[0,1],[1,0],[-1,0],[0,-1]];
 const face=(dx,dy)=>Math.abs(dx)>Math.abs(dy)?dx<0?2:1:dy<0?3:0;
 const copy=v=>v?structuredClone(v):null;
@@ -112,7 +113,7 @@ export function createJochTrial(snes,mod,{loadArt=true}={}){
  function recover(frames=70){s.action=null;s.clock=frames;}
  function counterBeam(){
   const enemy=s.action?.beam;if(!enemy)return false;
-  const beam=mod.effects.find(e=>e.kind==='beam'&&e.life>0&&opposingBeams(e,mod.beamGeometry(e),enemy));
+  const beam=mod.effects.find(e=>e.kind==='beam'&&e.life>0&&(!s.tier||e.super)&&opposingBeams(e,mod.beamGeometry(e),enemy));
   if(!beam)return false;
   s.clash=createTrainingClash(beam,enemy,hero(),{x:s.x,y:s.y},s.tier);s.clashes=(s.clashes??0)+1;
   s.shots=[];s.rocks=[];s.grace=120;mod.cancelCombat?.();mod.knockbacks=[];
@@ -134,7 +135,7 @@ export function createJochTrial(snes,mod,{loadArt=true}={}){
   if(c.phase==='release'&&c.age===trainingClashTiming.impact+28){mod.playSound?.('fortressBreak');mod.feedback?.pulse(12);}
   if(cue==='done'){
    const win=c.result==='win';s.clash=null;recover(140);mod.cancelCombat?.();
-   if(win){s.grace=90;api.hit(api.entity(),Math.round(vegetaHealth[s.tier]*.34/(s.tier?.38:.55)));}
+   if(win){s.grace=90;api.hit(api.entity(),Math.round(vegetaHealth[s.tier]*.34/damageScale[s.tier]));}
    else{s.grace=0;receive(s.tier?320:230);}
   }
  }
@@ -172,16 +173,17 @@ export function createJochTrial(snes,mod,{loadArt=true}={}){
    }
    if(at>spacing*(count-1)+20)recover(100);
   }else if(a.kind==='beam'){
-   // The lane locks early. Even base Goku can charge a counter during the
-   // long windup; the more dangerous second phase still gives a full second.
+   // The lane locks early. Final Flash matches the full-power SSJ wave's
+   // width, speed and taper; only a Super Saiyan counter can lock it.
    const windup=gold?82:110,age=a.age-windup;
    if(age===0){mod.playSound?.('beam');mod.feedback?.pulse(12);}
    if(age>=0){
-    const length=Math.min(512,16+age*16),origin={x:a.x+a.dx*12,y:a.y-12+a.dy*12};
-    a.beam={...origin,dx:a.dx,dy:a.dy,length,halfWidth:gold?17:11};
+    const length=gold?Math.min(640,(age+1)*48):Math.min(512,16+age*16),origin={x:a.x+a.dx*12,y:a.y-12+a.dy*12};
+    a.beam={...origin,dx:a.dx,dy:a.dy,length,halfWidth:gold?80*Math.max(0,Math.min(1,(age+1)/6,(66-age)/10)):11,taper:44};
     if(counterBeam())return;
     const along=(h.x-origin.x)*a.dx+(h.y-12-origin.y)*a.dy,across=Math.abs((h.x-origin.x)*a.dy-(h.y-12-origin.y)*a.dx);
-    if(along>=0&&along<=length&&across<a.beam.halfWidth+5)receive(gold?320:240);
+    const radius=a.beam.halfWidth*Math.min(1,(Math.max(0,along)+8)/a.beam.taper)*Math.min(1,Math.sqrt(Math.max(0,(length-along)/12)));
+    if(along>=0&&along<=length&&across<radius+5)receive(gold?320:240);
     if(age===24){const end={x:origin.x+a.dx*384,y:origin.y+a.dy*384};if(!safe(end.x,end.y+12))impactWall(end.x,end.y);}
     if(age>=(gold?66:48))recover(140);
    }
@@ -206,7 +208,7 @@ export function createJochTrial(snes,mod,{loadArt=true}={}){
    // A newly released wave can reach Vegeta in this same native frame,
    // after the AI tick. Intercept it before its damage skips the clash.
    if(counterBeam())return{index:3,species:46,before,after:before};
-   const melee=mod.action?.kind==='punch',damage=Math.max(1,Math.round(amount*(s.tier?.38:.55)));
+   const melee=mod.action?.kind==='punch',damage=Math.max(1,Math.round(amount*damageScale[s.tier]));
    s.hp=Math.max(0,s.hp-damage);s.hurt=10;
    if(melee&&s.hp){
     s.melee=s.age-s.lastMelee<100?s.melee+1:1;s.lastMelee=s.age;
@@ -363,11 +365,11 @@ export function createJochTrial(snes,mod,{loadArt=true}={}){
     return;
    }
    if(a?.kind==='beam'){
-    if(a.beam){const b=a.beam;layer.giantBeam(b.x-camera.cameraX,b.y-camera.cameraY,b.dx,b.dy,b.length,b.halfWidth,a.age>>2,{palette:[0x540d,0x6d3c,0x7e60,0x8000]});}
+    if(a.beam){const b=a.beam;layer.giantBeam(b.x-camera.cameraX,b.y-camera.cameraY,b.dx,b.dy,b.length,b.halfWidth,a.age>>2,{taper:b.taper,palette:s.tier?trainingBeamPalettes.gold:trainingBeamPalettes.purple,gold:!!s.tier});}
     else{
-     layer.stamp('charge-orb',Math.min(4,a.age>>4),s.x-camera.cameraX+a.dx*12,s.y-camera.cameraY-12+a.dy*12);
+     layer.stamp(s.tier?'gold-charge-orb':'charge-orb',Math.min(4,a.age>>4),s.x-camera.cameraX+a.dx*12,s.y-camera.cameraY-12+a.dy*12);
      // Four spaced native sparks mark the committed beam lane.
-     for(let d=40;d<=136;d+=32)layer.stamp('impact-spark',(a.age>>4)%2,s.x-camera.cameraX+a.dx*d,s.y-camera.cameraY-12+a.dy*d);
+     for(let d=40;d<=136;d+=32)layer.stamp(s.tier?'gold-spark':'impact-spark',(a.age>>4)%2,s.x-camera.cameraX+a.dx*d,s.y-camera.cameraY-12+a.dy*d);
     }
    }
    for(const p of s.shots)layer.stamp('charge-orb',(p.age>>2)%3,p.x-camera.cameraX,p.y-camera.cameraY);

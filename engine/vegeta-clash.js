@@ -2,6 +2,7 @@
 // passed beam cannot pull Goku into it. All visible motion is whole pixels.
 import {beamDetonationFrames} from './beam-detonation.js';
 export const trainingClashTiming={lock:36,focus:48,minimum:240,limit:660,impact:18,release:18+beamDetonationFrames+18};
+export const trainingBeamPalettes={blue:[0x5ca4,0x7e25,0x7fb1,0x8000],gold:[0x0110,0x01be,0x37ff,0x8000],purple:[0x540d,0x6d3c,0x7e60,0x8000]};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 export function opposingBeams(player,geometry,enemy){
  if(!geometry||!enemy||player.dx*enemy.dx+player.dy*enemy.dy>-.99)return false;
@@ -48,19 +49,19 @@ export function trainingClashPoint(c){
 // at their contact; pressure moves that ball, rather than a separate meter.
 export function drawTrainingClash(layer,c,camera){
  const age=c.age,point=trainingClashPoint(c),x=point.x-camera.cameraX,y=point.y-camera.cameraY;
- const blue=[0x5ca4,0x7e25,0x7fb1,0x8000],gold=[0x0110,0x01be,0x37ff,0x8000],purple=[0x540d,0x6d3c,0x7e60,0x8000];
+ const {blue,gold,purple}=trainingBeamPalettes;
  const enemy=c.tier?gold:purple,phase=c.total>>2;
  const focused=c.phase==='lock'?0:c.phase==='focus'?Math.min(1,age/trainingClashTiming.focus):1;
- const width=Math.round(54-42*focused),pulse=(phase&1)*2;
+ const opening=c.tier?80:54,width=Math.round(opening-(opening-12)*focused),pulse=(phase&1)*2;
  const release=c.phase==='release',tail=release?clamp(1-(age-trainingClashTiming.impact)/36,0,1):1;
  // Each wave starts at its saved firing hand and ends at the collision
  // ball. Pressure changes its length, never extending behind the fighter.
- const wave=(origin,dx,dy,halfWidth,palette)=>{
+ const wave=(origin,dx,dy,halfWidth,palette,gold=false)=>{
   const length=(point.x-origin.x)*dx+(point.y-origin.y)*dy;
-  if(length>0&&tail>0)layer.giantBeam(origin.x-camera.cameraX,origin.y-camera.cameraY,dx,dy,length,Math.round(halfWidth*tail),phase,{taper:36,palette});
+  if(length>0&&tail>0)layer.giantBeam(origin.x-camera.cameraX,origin.y-camera.cameraY,dx,dy,length,Math.round(halfWidth*tail),phase,{taper:36,palette,gold});
  };
  wave(c.from,c.dx,c.dy,width+pulse,blue);
- wave(c.to,-c.dx,-c.dy,width+2-pulse,enemy);
+ wave(c.to,-c.dx,-c.dy,width+2-pulse,enemy,!!c.tier);
  if(tail>0){
   const radius=Math.round((c.phase==='lock'?18+age/3:30+((phase&3)===0?2:0))*tail);
   for(let py=-radius;py<=radius;py++)for(let px=-radius;px<=radius;px++){

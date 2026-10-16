@@ -4,6 +4,12 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## 2026-10-16 — Vegeta Final Flash
+
+- Final Flash now fills the screen with the full-power SSJ Kamehameha's wave geometry and yellow energy, including its charge, edge effects and beam clash. Galick Gun retains its purple appearance.
+- Only a Kamehameha fired as Super Saiyan can lock Final Flash. SSJ Vegeta takes 32% of incoming damage instead of 38%, making him about 19% tougher; winning a clash still removes 34% of his maximum HP.
+- Validation: 16 targeted unit tests and two private-ROM browser checks, covering the full yellow wave, rejected base-form counters, SSJ clash wins/losses and checkpoint replay. Screenshots remain under `.local/vegeta-final-flash/`.
+
 ## 2026-10-16 — Native releases and public overview
 
 - Added an Electron desktop shell and self-contained Windows/macOS/Linux archives, plus fullscreen Steam Deck and Bazzite profiles. Release packaging includes the verified local ROM and writes SHA-256 checksums while keeping ROMs and outputs out of Git.

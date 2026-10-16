@@ -164,7 +164,9 @@ size, clearing old foreground tiles. The outgoing room fades to black; the
 entrance walk and camera settle under black before a one-second reveal.
 Goku faces the camera and returns to base form during that black transition.
 Native camera scrolling and menus remain authoritative. Vegeta has 32,000 HP in
-base form, then transforms into a 60,000 HP Super Saiyan. Rushes, aimed volleys,
+base form, then transforms into a 60,000 HP Super Saiyan. The second phase takes
+32% of incoming damage (previously 38%), giving him about 19% more effective
+durability while keeping his HP within the native 16-bit range. Rushes, aimed volleys,
 a telegraphed Galick Gun / Final Flash and teleport counters use integer-pixel movement.
 Repeated melee provokes a counter; Kamehameha cancels his projectiles. Stray
 attacks shake the room and throw warned fragments using native explosions.
@@ -175,8 +177,12 @@ body geometry stay fixed across forms. Vegeta's original eight-voice battle
 theme, **Royal Rivalry**, switches to a faster arrangement when he powers up;
 it pauses with the game and yields to native music when sparring ends.
 
-Counter an oncoming Galick Gun or Final Flash with a Kamehameha to lock the
-waves. They run from each fighter's hands to the collision, compress into a
+Final Flash uses a screen-spanning yellow/white wave with the full-power SSJ
+Kamehameha's 80-pixel half-width, 48-pixel/frame speed and 640-pixel reach.
+Its charge orb, edge sparks and clash wave stay gold; base Vegeta's Galick Gun
+retains its narrower purple beam. The hit lane follows the visible taper.
+Counter Galick Gun with either form's Kamehameha; Final Flash only locks with
+a shot fired as Super Saiyan. The waves run from each fighter's hands to the collision, compress into a
 bright core, and meet at an energy ball. Mash the attack button to push it
 toward Vegeta; holding the button does
 not work, and Vegeta periodically surges back. Winning removes a substantial

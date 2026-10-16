@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createJochTrial,vegetaHealth,vegetaPose} from '../engine/joch-trial.js';
 import {encodeText,wrapText} from '../engine/event-codec.js';
 import {createCeilingEscape} from '../engine/ceiling-escape.js';
+import {trainingClashTiming} from '../engine/vegeta-clash.js';
 
 function fixture(mask=3){
  const ram=new Uint8Array(0x20000),snes={ram,ppu:{forcedBlank:false}},sounds=[],messages=[];
@@ -90,6 +91,36 @@ test('a Kamehameha eats Vegeta projectiles; walls stop rushes and create telegra
  trial.restore({...trial.snapshot(),x:470,y:160,action:{kind:'rush',age:23,dx:1,dy:0}});tick();
  assert.equal(trial.status.x,472);assert.equal(trial.status.action,null);
  assert.ok(trial.status.rocks.length>0);assert.ok(trial.status.rocks.every(r=>r.age===0));
+});
+
+test('Final Flash fills the lane like a full-power SSJ wave and only SSJ shots can clash',()=>{
+ for(const tier of[0,1])for(const superShot of[false,true]){
+  const {trial,tick,mod}=fixture();
+  // Eligibility belongs to the shot that was fired, not Goku's current form.
+  mod.options.superSaiyan=!superShot;
+  mod.effects=[{kind:'beam',life:30,x:140,y:148,dx:1,dy:0,length:120,halfWidth:12,super:superShot}];
+  trial.restore({...trial.snapshot(),tier,x:232,y:160,grace:1000,action:{kind:'beam',age:tier?81:109,dx:-1,dy:0,x:232,y:160}});
+  tick();assert.equal(!!trial.status.clash,!tier||superShot);
+  if(tier&&!superShot){
+   const hp=trial.status.hp;trial.hit(trial.entity(),1000);
+   assert.equal(trial.status.clash,null,'The same-frame damage hook cannot start a base-form clash');
+   assert.equal(trial.status.hp,hp-320);
+   tick(12);
+   assert.equal(trial.status.action.beam.halfWidth,80);
+   assert.equal(trial.status.action.beam.length,624);
+   tick();assert.equal(trial.status.action.beam.length,640,'The wave reaches well beyond the viewport');
+  }
+ }
+});
+
+test('SSJ Vegeta resists more damage without overflowing native HP or weakening clash rewards',()=>{
+ const {trial,tick,read}=fixture();
+ trial.restore({...trial.snapshot(),tier:1,hp:60000,clock:1000});
+ trial.hit(trial.entity(),10000);assert.equal(trial.status.hp,56800);assert.equal(read(0xe782),56800);
+ // Finish through the real clash reward path, including damage resistance.
+ trial.restore({...trial.snapshot(),clash:{phase:'release',age:trainingClashTiming.release-1,total:0,result:'win',shown:1,hero:{x:128,y:160},boss:{x:232,y:160}}});
+ tick();assert.equal(trial.status.clash,null);assert.equal(trial.status.hp,36400);
+ assert.equal(read(0xe784),60000);
 });
 
 test('the final beam finishes before the draw, and sparring damage cannot kill Goku',()=>{

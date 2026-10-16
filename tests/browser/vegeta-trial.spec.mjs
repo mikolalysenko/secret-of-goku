@@ -38,8 +38,8 @@ for(const mask of[0,1,2,3])test(`Vegeta spars alone and returns lineup ${mask} a
  }
  await until(page,()=>mana.mod.trial.status?.tier===1&&mana.mod.trial.status?.phase==='battle');
  if(mask===0){
-  await page.evaluate(()=>{mana.run(84-mana.mod.trial.status.action.age);document.querySelector('#native-pause').hidden=true;});
-  await page.locator('#screen').screenshot({path:test.info().outputPath('vegeta-galick-gun.png')});
+  await page.evaluate(()=>{mana.run(94-mana.mod.trial.status.action.age);document.querySelector('#native-pause').hidden=true;});
+  await page.locator('#screen').screenshot({path:test.info().outputPath('vegeta-final-flash.png')});
  }
  await page.evaluate(()=>{const t=mana.mod.trial;t.hit(t.entity(),1000000);});
  expect(await page.evaluate(()=>mana.mod.trial.status.phase)).toBe('draw');
@@ -127,7 +127,27 @@ test('the chamber fades through black, clears both native planes, and never hide
  await page.evaluate(()=>document.querySelector('#native-pause').hidden=true);await page.locator('#screen').screenshot({path:info.outputPath('complete-goku-body.png')});
 });
 
-test('a real Kamehameha locks Final Flash and mashing pushes the collision ball before sparring resumes',async({page},info)=>{
+test('Final Flash fills the screen in yellow and a base-form Kamehameha cannot lock it',async({page},info)=>{
+ test.setTimeout(120000);test.skip(!existsSync('.local/rom/secret-of-mana-us.sfc'),'Requires private ROM');
+ await page.goto('/?start=trial');await page.waitForFunction(()=>mana.ready,{},{timeout:60000});await page.evaluate(()=>mana.pause());
+ await until(page,()=>mana.mod.canAttack&&mana.mod.trial.status?.phase==='battle');
+ const result=await page.evaluate(async()=>{
+  const {trainingBeamPalettes}=await import('/engine/vegeta-clash.js');
+  const m=mana.mod;m.options.superSaiyan=false;mana.run(2,[7]);
+  const h=m.status,x=h.x+104,y=h.y,t=m.trial.snapshot();
+  m.trial.restore({...t,tier:1,hp:60000,x,y,facing:2,grace:1000,shots:[],action:{kind:'beam',age:0,dx:-1,dy:0,x,y}});
+  mana.run(68,[10,1]);mana.run(1);const shot=m.effects.find(e=>e.kind==='beam');
+  mana.run(26);document.querySelector('#native-pause').hidden=true;
+  const pixels=Array.from(m.spriteLayer.surface.slice(0,256*224)),yellow=new Set(trainingBeamPalettes.gold.slice(0,3));
+  return{shot:shot&&{super:shot.super},clash:m.trial.status.clash,beam:m.trial.status.action?.beam,yellow:pixels.filter(c=>yellow.has(c)).length,white:pixels.filter(c=>c===0x8000).length};
+ });
+ expect(result.shot).toEqual({super:false});expect(result.clash).toBe(null);
+ expect(result.beam).toMatchObject({length:640,halfWidth:80});
+ expect(result.yellow).toBeGreaterThan(5000);expect(result.white).toBeGreaterThan(10000);
+ await page.locator('#screen').screenshot({path:info.outputPath('final-flash-full-wave.png')});
+});
+
+test('a real SSJ Kamehameha locks Final Flash and mashing pushes the collision ball before sparring resumes',async({page},info)=>{
  test.setTimeout(120000);test.skip(!existsSync('.local/rom/secret-of-mana-us.sfc'),'Requires private ROM');
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('/?start=trial');await page.waitForFunction(()=>mana.ready,{},{timeout:60000});await page.evaluate(()=>mana.pause());

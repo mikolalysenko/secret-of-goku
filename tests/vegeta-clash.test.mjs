@@ -1,9 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {opposingBeams,createTrainingClash,mashTrainingClash,tickTrainingClash,trainingClashPoint,trainingClashTiming} from '../engine/vegeta-clash.js';
+import {opposingBeams,createTrainingClash,mashTrainingClash,tickTrainingClash,drawTrainingClash,trainingClashPoint,trainingClashTiming,trainingBeamPalettes} from '../engine/vegeta-clash.js';
 import {beamDetonationFrames,beamDetonationParts} from '../engine/beam-detonation.js';
 const player={x:100,y:140,dx:1,dy:0,super:true},enemy={x:260,y:140,dx:-1,dy:0,length:80,halfWidth:17},geometry={length:96,halfWidth:40};
 const start=()=>createTrainingClash(player,enemy,{x:88,y:152},{x:272,y:152},1);
+test('Final Flash stays yellow from its giant opening through the focused clash and release',()=>{
+ for(const tier of[0,1])for(const phase of['lock','focus','struggle','release']){
+  const waves=[],c={...start(),tier,phase,age:0},layer={giantBeam:(...args)=>waves.push(args),pixel(){},stamp(){}};
+  drawTrainingClash(layer,c,{cameraX:0,cameraY:0});
+  assert.equal(waves.length,2);
+  assert.deepEqual(waves[0][7].palette,trainingBeamPalettes.blue);
+  assert.deepEqual(waves[1][7].palette,tier?trainingBeamPalettes.gold:trainingBeamPalettes.purple);
+  assert.equal(waves[0][7].gold,false);assert.equal(waves[1][7].gold,!!tier);
+  if(phase==='lock')assert.equal(waves[1][5],tier?82:56);
+ }
+});
 test('only head-on, overlapping waves lock, preserving misses and the chosen firing direction',()=>{
  assert.ok(opposingBeams(player,geometry,enemy));
  assert.equal(opposingBeams(player,{...geometry,length:70},enemy),false,'Both wave fronts must actually arrive');

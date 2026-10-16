@@ -110,8 +110,8 @@ class ManaSpriteLayer {
       }
     }
   }
-  giantBeam(x,y,dx,dy,length,halfWidth,phase,{taper=44,farScale=1,palette=null}={}){
-    // A solid blue-white core, using only Lucent Beam's original colors.
+  giantBeam(x,y,dx,dy,length,halfWidth,phase,{taper=44,farScale=1,palette=null,gold=false}={}){
+    // A solid white core with Lucent Beam colors, or the caller's palette.
     // Work in native pixels: no stretched sprites, alpha glow or canvas layer.
     const colors=palette??[...new Set((this.effects['beam-body']||[]).flatMap(p=>Array.from(p)))].filter(Boolean).sort((a,b)=>a-b);
     if(colors.length<4)return;
@@ -127,12 +127,12 @@ class ManaSpriteLayer {
       const color=distance<3+ripple?colors[0]:distance<9+ripple?colors[1]:distance<17+ripple?colors[2]:colors[3];
       this.pixel(px,py,color,true);
     }
-    // Native sparks and short, blue Thunderbolt arcs race down both edges.
+    // Final Flash carries its yellow palette through the sparks and hands.
     for(let d=18+(phase*7)%28;d<Math.min(length,360);d+=28)for(const side of[-1,1]){
       const across=side*(radius(d)-2),px=x+dx*d-dy*across,py=y+dy*d+dx*across;
-      this.stamp((Math.floor(d/28)+phase)%3?'impact-spark':'lightning',phase%2,px,py,dx,dy);
+      this.stamp((Math.floor(d/28)+phase)%3?(gold?'gold-spark':'impact-spark'):(gold?'gold-arc':'lightning'),phase%2,px,py,dx,dy);
     }
-    this.stamp('charge-orb',4,x,y,dx,dy);
+    this.stamp(gold?'gold-charge-orb':'charge-orb',4,x,y,dx,dy);
   }
   chargeLightning(x,y){
     const m=this.mod,state=m.status,origin={x:x+state.cameraX,y:y+state.cameraY};
