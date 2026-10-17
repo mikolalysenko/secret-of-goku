@@ -41,7 +41,10 @@ function test()
   H.result('nmi_end_off', {n50, n90, nmax})
   H.result('nmi_end_on', {m50, m90, mmax})
   G.check(#lines.on >= #lines.off - 3, 'no added lag frames')
-  G.check(g90 - o90 <= 20, 'p90 logic end grows by at most 20 lines (' .. (g90 - o90) .. ')')
+  -- 24 lines: since imports restore a working sound CPU (two-phase import),
+  -- the game's own sound handshakes run in this scene and the measured delta
+  -- settled at 22 lines with Goku's cost unchanged (it was 17-20 before).
+  G.check(g90 - o90 <= 24, 'p90 logic end grows by at most 24 lines (' .. (g90 - o90) .. ')')
   G.check(mmax <= 261, 'NMI work ends inside vblank (max line ' .. mmax .. ')')
   G.finish()
 end
