@@ -131,8 +131,8 @@ A module finishes its part of a preset by defining, in its own files,
 module (before `story/hooks.asm`), so the table picks the labels up; missing
 hooks are a stub that answers "done". The constants below are in the
 generated `debug/defines.asm` (defines only), which a module includes itself
-(`incsrc "debug/defines.asm"`) since modules come before debug in
-`modules.asm`. Hooks are entered with `JSL`, P = M16/X16, DB = `$7E`, D = 0,
+(`incsrc "debug/defines.asm"`), wherever `modules.asm` includes it relative
+to debug. Hooks are entered with `JSL`, P = M16/X16, DB = `$7E`, D = 0,
 **A = kind**, **X = preset** (`!DEBUG_PRESET_*`), **Y = payload** (offset in
 bank `!DEBUG_PAYLOAD_BANK`, `$AF`). Return with RTL,
 carry clear when done, carry set to be called again next frame. The ANY hook
@@ -227,8 +227,8 @@ sword (95-99%); the others differ by module-owned visuals and timing.
 
 | Kind | Use |
 | --- | --- |
-| ROM | `$AF:8000-C143` code, recipes, boot scripts, payloads, tiles and maps (16.7 KiB); `$AF:FF00` hook table |
-| SRAM | `!SRAM_WORK_DEBUG` (`$31:7600`, `$3E` bytes used): armed state, recipe pointer, test results, title code, menu cursor |
+| ROM | `$AF:8000-C16B` code, recipes, boot scripts, payloads, tiles and maps (16.4 KiB of the bank's 32); `$AF:FF00` hook table |
+| SRAM | `!SRAM_WORK_DEBUG` (`$31:7600`, `$3E` bytes used; test builds log hooks at `+$100`): armed state, recipe pointer, results for tests, title code, menu cursor |
 | WRAM | none (the scene-select program uses the stack page only) |
 | WRAM program patch | `7E:A266` (4 bytes, `JML debug_title_irq`), at title entry 0, after verifying the original bytes; no ROM hijacks |
 | PPU | everything, but only while the scene-select screen runs (its own program) |
