@@ -485,17 +485,13 @@ story_run_program:
 	ASL
 	TAX
 	LDA.l story_hook_list_ptr,X
-	STA.l !story_tmp1
-.hook_list
-	LDA.l !story_tmp1
-	TAX
+	TAX                          ; cursor stays in X: story_call_hook preserves it,
+.hook_list                       ; and hooks may call story APIs that use scratch RAM
 	LDA.l !DATA_STORY,X          ; list lives in this bank (ptr is bank-relative)
 	AND.w #$00FF
 	BEQ .hooks_done
 	JSR story_call_hook
-	LDA.l !story_tmp1
-	INC
-	STA.l !story_tmp1
+	INX
 	BRA .hook_list
 .hooks_done
 	RTS
