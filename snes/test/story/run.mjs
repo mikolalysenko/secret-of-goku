@@ -330,6 +330,42 @@ cases.push({name:'absent-skip',bundle:'emulator-probe__potos-state',writes:[...g
   });
 }
 
+// ---- differential: the browser's own story stack on SnesJs ---------------
+// Same source state, writes, request and B mashing; compare all 256 story
+// flags, the relocated events entered, the ledger and absent-actor skips.
+{
+  const {runBrowserStory}=await import('./jsref.mjs');
+  const importCatalog=JSON.parse(readFileSync(join(imports,'catalog.json'),'utf8'));
+  const sourceOf=name=>{const e=importCatalog.find(x=>x.name===name);return e?resolve(mainCheckout(),e.source):null;};
+  const diff=(c,{file,writes=[],ledger=[0,0],request,frames,mash})=>cases.push({...c,bundle:file,
+    writes:[...goku,[P_MASK,ledger[0],1],[P_SEEDS,ledger[1],1],...writes.map(([a,v])=>[a,v,1])],request:[request,0],frames,mash,
+    async check(r){
+      const src=sourceOf(file);
+      if(!src||!existsSync(src))return [['browser source state available',false,src??file]];
+      const b=await runBrowserStory({repo,rom:base,statePath:src,writes,ledger,request,frames,mash});
+      const native=[];for(const [id] of r.events)if(native.at(-1)!==id||true)native.push(id);
+      const flagDiff=[];for(let i=0;i<256;i++)if(r.flags[i]!==b.flags[i])flagDiff.push(`CF${hex(i)} ${hex(r.flags[i])}/${hex(b.flags[i])}`);
+      const ev=r.events.map(e=>e[0]),bev=b.entered;
+      const p=r.persist,skipped=r.ram[4]|r.ram[5]<<8;
+      return [
+        ['browser accepted the same request',b.requested,''],
+        ['relocated events entered match the browser',ev.join()===bev.join(),`native [${ev.map(x=>hex(x,3)).join(' ')}] browser [${bev.map(x=>hex(x,3)).join(' ')}]`],
+        ['all 256 story flags match the browser',flagDiff.length===0,flagDiff.slice(0,8).join(' ')],
+        ['Dragon Ball ledger matches',(p[1]&127)===b.ledger.mask&&(p[2]&127)===b.ledger.seedMask,`native ${hex(p[1])}/${hex(p[2])} browser ${hex(b.ledger.mask)}/${hex(b.ledger.seedMask)}`],
+        ['absent-actor skips match',skipped===b.status.skippedActors,`native ${skipped} browser ${b.status.skippedActors}`],
+      ];
+    }});
+  diff({name:'diff-moogle'},{file:'emulator-probe__potos-state',request:0x24b,frames:900,mash:24});
+  diff({name:'diff-moogle-party'},{file:'barrier-audit__potos-probe',request:0x24b,frames:900,mash:24});
+  diff({name:'diff-water-seed'},{file:'emulator-probe__potos-state',writes:[[0x7ecf90,0],[0x7ecf45,0]],request:0x588,frames:700,mash:20});
+  diff({name:'diff-luka'},{file:'emulator-probe__potos-state',writes:[[0x7ecfc3,1]],ledger:[0x0b,0x0b],request:0x134,frames:1500,mash:30});
+  diff({name:'diff-absent'},{file:'emulator-probe__potos-state',request:0x28a,frames:900,mash:16});
+  diff({name:'diff-story-area'},{file:'emulator-probe__potos-state',writes:[[0x7ecf20,0],[0x7ecf21,0],[0x7ecf22,0]],request:0x845,frames:240,mash:0});
+  diff({name:'diff-villager'},{file:'emulator-probe__potos-state',request:0x107,frames:500,mash:24});
+  diff({name:'diff-elder',shots:[90,300]},{file:'mega-beam__elder-end',request:0x114,frames:900,mash:24});
+  diff({name:'diff-potos-arrival',shots:[200,600,1200]},{file:'emulator-probe__potos-state',request:0x10c,frames:2400,mash:24});
+}
+
 const only=process.argv.slice(2);
 mkdirSync(out,{recursive:true});
 let failures=0;
@@ -345,7 +381,7 @@ for(const c of cases){
   const res=r.results??{};
   if(res.error||!res.trace){console.log(`FAIL ${c.name}: ${res.error??'no results'}\n${r.output.slice(-1500)}`);failures++;continue;}
   writeFileSync(join(out,c.name,'trace.txt'),res.trace.map(([id,p,f])=>`${f} ${hex(id,3)} -> ${hex(p,6)}${alloc(p)?' ['+hex(alloc(p).id,3)+' m'+alloc(p).mask+']':''}`).join('\n'));
-  const checks=c.check(res);
+  const checks=await c.check(res);
   const ok=checks.every(x=>x[1]);
   if(!ok)failures++;
   console.log(`${ok?'pass':'FAIL'} ${c.name} (${(r.ms/1000).toFixed(1)}s)`);

@@ -48,8 +48,9 @@ function test()
   emu.addMemoryCallback(function(addr) reads[addr] = true end, emu.callbackType.read, 0xF00000, 0xF7FFFF)
   emu.addMemoryCallback(function(addr) reads[addr] = true end, emu.callbackType.read, CASE.water, CASE.water + 0x1FF)
   -- redirect bookkeeping (story_last_event high byte write completes a word)
-  emu.addMemoryCallback(function()
-    events[#events + 1] = {u16(CASE.ram), H.frame}
+  emu.addMemoryCallback(function(addr, value)
+    -- the callback runs before the byte is stored: use its value
+    events[#events + 1] = {u8(CASE.ram) | ((value or 0) << 8), H.frame}
   end, emu.callbackType.write, CASE.ram + 1, CASE.ram + 1)
   apply(CASE.before)
   if CASE.script then
