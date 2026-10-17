@@ -850,23 +850,48 @@ function Ppu(snes) {
       // Each block of size pixels shows the pixel at its left edge: the
       // same fetches (at the same lx) as the loop below, one decode each.
       let ly = y - (y - this.mosaicStartLine) % size + voff;
+      // Plain 8x8 tiles are fetched inline, exactly as fetchTileInBuffer(lx,
+      // ly, l) would (the fetch buffers are left as its last call leaves them).
+      let inline = !this.bigTiles[l], vram = this.vram, wider = this.tilemapWider[l];
+      let rowAdr = this.tilemapAdr[l] + (((ly & 0xff) >> 3) << 5);
+      rowAdr += ((ly & 0x100) > 0 && this.tilemapHigher[l]) ? (wider ? 2048 : 1024) : 0;
+      let charBase = this.tileAdr[l], yLow = ly & 0x7;
+      let mapWord = 0, p1 = 0, p2 = 0, p3 = 0, p4 = 0, fetched = false;
       for(let x0 = 0; x0 < 256; x0 += size) {
         let lx = x0 + hoff;
         if((lx >> 3) !== lastX || ly !== lastY) {
-          this.fetchTileInBuffer(lx, ly, l, false);
+          if(inline) {
+            let adr = rowAdr + ((lx & 0xff) >> 3);
+            adr += ((lx & 0x100) > 0 && wider) ? 1024 : 0;
+            mapWord = vram[adr & 0x7fff];
+            let yRow = (mapWord & 0x8000) > 0 ? 7 - yLow : yLow;
+            let at = charBase + (mapWord & 0x3ff) * 4 * bits + yRow;
+            p1 = vram[at & 0x7fff];
+            if(bits > 2) {
+              p2 = vram[(at + 8) & 0x7fff];
+            }
+            if(bits > 4) {
+              p3 = vram[(at + 16) & 0x7fff];
+              p4 = vram[(at + 24) & 0x7fff];
+            }
+            fetched = true;
+          } else {
+            this.fetchTileInBuffer(lx, ly, l, false);
+            mapWord = this.tilemapBuffer[l];
+            p1 = this.tileBufferP1[l];
+            p2 = this.tileBufferP2[l];
+            p3 = this.tileBufferP3[l];
+            p4 = this.tileBufferP4[l];
+          }
           lastX = lx >> 3;
           lastY = ly;
-          let mapWord = this.tilemapBuffer[l];
           let spread = (mapWord & 0x4000) > 0 ? spreadFlip : spreadNormal;
-          let p1 = this.tileBufferP1[l];
           lo = spread[p1 & 0xff] | (spread[(p1 >> 8) & 0xff] << 1);
           if(bits > 2) {
-            let p2 = this.tileBufferP2[l];
             lo |= (spread[p2 & 0xff] << 2) | (spread[(p2 >> 8) & 0xff] << 3);
           }
           hi = 0;
           if(bits > 4) {
-            let p3 = this.tileBufferP3[l], p4 = this.tileBufferP4[l];
             hi = spread[p3 & 0xff] | (spread[(p3 >> 8) & 0xff] << 1) |
               (spread[p4 & 0xff] << 2) | (spread[(p4 >> 8) & 0xff] << 3);
           }
@@ -882,6 +907,17 @@ function Ppu(snes) {
         let end = x0 + size < 256 ? x0 + size : 256;
         for(let x = x0; x < end; x++) {
           outVal[x] = v;
+        }
+      }
+      if(fetched) {
+        this.tilemapBuffer[l] = mapWord;
+        this.tileBufferP1[l] = p1;
+        if(bits > 2) {
+          this.tileBufferP2[l] = p2;
+        }
+        if(bits > 4) {
+          this.tileBufferP3[l] = p3;
+          this.tileBufferP4[l] = p4;
         }
       }
       this.lastTileFetchedX[l] = lastX;
@@ -1825,6 +1861,51 @@ function Ppu(snes) {
     let subtract = this.subtractColors, half = this.halfColors;
     let fixedR = this.fixedColorR, fixedG = this.fixedColorG;
     let fixedB = this.fixedColorB;
+    if(colorClip === 0 && !hires && !pseudo && out32 !== null && addSub && !subtract) {
+      // Adding the sub screen (translucent layers), the common case: where
+      // math is on the sub pixel was composed (need covers it). Over a sub
+      // layer the sum, or its per-channel floor average when halving; over
+      // sub backdrop the fixed color, never halved. Packed halving keeps
+      // each channel's carry in its own five bits (bit 15 is ignored, as
+      // the masks below ignore it).
+      let at32 = base >> 1;
+      for(let i = 0; i < 256; i++, at32 += 3) {
+        let color = mainColor[i], r, g, b;
+        if(mathOn[i] === 1) {
+          if(subLay[i] < 5) {
+            let c = subColor[i];
+            if(half) {
+              color = (((color ^ c) & 0x7bde) >>> 1) + (color & c);
+              r = levels[color & 0x1f];
+              g = levels[(color & 0x3e0) >> 5];
+              b = levels[(color & 0x7c00) >> 10];
+            } else {
+              let r2 = (color & 0x1f) + (c & 0x1f);
+              let g2 = ((color & 0x3e0) >> 5) + ((c & 0x3e0) >> 5);
+              let b2 = ((color & 0x7c00) >> 10) + ((c & 0x7c00) >> 10);
+              r = levels[r2 > 31 ? 31 : r2];
+              g = levels[g2 > 31 ? 31 : g2];
+              b = levels[b2 > 31 ? 31 : b2];
+            }
+          } else {
+            let r2 = (color & 0x1f) + fixedR;
+            let g2 = ((color & 0x3e0) >> 5) + fixedG;
+            let b2 = ((color & 0x7c00) >> 10) + fixedB;
+            r = levels[r2 > 31 ? 31 : r2];
+            g = levels[g2 > 31 ? 31 : g2];
+            b = levels[b2 > 31 ? 31 : b2];
+          }
+        } else {
+          r = levels[color & 0x1f];
+          g = levels[(color & 0x3e0) >> 5];
+          b = levels[(color & 0x7c00) >> 10];
+        }
+        out32[at32] = r | (g << 16);
+        out32[at32 + 1] = b | (r << 16);
+        out32[at32 + 2] = g | (b << 16);
+      }
+      return;
+    }
     if(colorClip === 0 && !hires && !pseudo && out32 !== null) {
       // Without clipping or hires the left half repeats the math result, so
       // sub screen colors matter only where math is on (same arithmetic).

@@ -12,8 +12,9 @@
 !RAM_FLIGHT   = $7ED900   ; 0x80  flight / traversal
 !RAM_DESTROY  = $7ED980   ; 0x80  destruction
 !RAM_STORY    = $7EDA00   ; 0x100 story runtime
-!RAM_FRIEZA   = $7EDB00   ; 0x100 Frieza / Vegeta fights (shared, never concurrent)
-!RAM_ORBIT    = $7EDC00   ; 0x100 orbit / cinematics / endings
+!RAM_FRIEZA   = $7EDB00   ; 0x0C0 Frieza fights / scenes
+!RAM_VEGETA   = $7EDBC0   ; 0x040 Vegeta trial (plus !SRAM_WORK_SCENE while it runs)
+!RAM_ORBIT    = $7EDC00   ; 0x100 orbit / cinematics ($00-$7F) and endings ($80-$FF)
 !RAM_AUDIO    = $7EDD00   ; 0x80  audio
 !RAM_MISC     = $7EDD80   ; 0x80  title / arrival / misc
 !WRAM_END     = $7EDE00

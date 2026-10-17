@@ -140,7 +140,8 @@ if defined("CORE_FASTROM")
 endif
 	RTS
 
-; Clear the module WRAM block and core's extended block. M16/X16 expected.
+; Clear every module WRAM block (7E:D700-DDFF, 7E:6E40-6FFF, 7E:7E40-7FFF):
+; WRAM is random at power-on on real hardware. M16/X16 expected.
 core_clear_wram:
 	LDA.w #$0000
 	LDX.w #(!WRAM_END-!WRAM_BASE-2)
@@ -153,6 +154,12 @@ core_clear_wram:
 	STA.l !RAM_CORE_EXT,X
 	DEX : DEX
 	BPL .ext
+	; UI and world blocks (7E:7E40-7FFF): random at power-on on hardware.
+	LDX.w #(!RAM_SPARE_END-!RAM_UI-2)
+.spare
+	STA.l !RAM_UI,X
+	DEX : DEX
+	BPL .spare
 	RTS
 
 ; Title program entries (C1:4CF6 JML $7EAF0B, C1:4D0B JML $7EAF28). Every way
