@@ -209,6 +209,7 @@ fl_pack:
 ; collision one pixel at a time.
 fl_hook_d651:
 	REP #$30
+	JSR fl_bind_recoil           ; combat's Saiyan recoil adjusts $1E/$1F first
 	LDA $10
 	BNE .native
 	LDA.w !fl_hook

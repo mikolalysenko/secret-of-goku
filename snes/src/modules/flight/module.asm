@@ -15,6 +15,11 @@
 ; routine says otherwise. Hooks into original code document their entry
 ; state and restore what the original instructions expect.
 
+; Flight owns the movement-vector patch at C0:D651; combat's Saiyan recoil
+; is called from fl_hook_d651 (combat_recoil_vector, contract in combat's
+; bind.asm). Defined before combat's bind.asm is included.
+!FLIGHT_OWNS_D651 = 1
+
 ; ---------------------------------------------------------------------------
 ; WRAM (!RAM_FLIGHT = $7ED900, $80 bytes; absolute addressing with DB = $7E)
 !FLIGHT_RAM = $D900
@@ -202,7 +207,7 @@ if defined("FLIGHT_TEST")
 	incsrc "../../../test/flight/testmod.asm"
 endif
 flight_code_end:
-assert flight_code_end <= !CODE_FLIGHT+$8000, "flight code bank overflow"
+assert flight_code_end <= !CODE_FLIGHT+$7000, "flight code overflows into the binding area ($A3:F000)"
 pullpc
 
 incsrc "hooks.asm"

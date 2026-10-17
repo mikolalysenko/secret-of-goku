@@ -66,6 +66,10 @@ modules_new_game:
 	RTL
 pullpc
 
+; Flight's bindings to optional modules (combat, audio, ui, world): after
+; every module so their defines are visible.
+incsrc "modules/flight/bind.asm"
+
 ; Story hook and query tables (generated). Keep this last: modules fill story
 ; hooks/queries by defining !STORY_HOOK_<NAME> / !STORY_QUERY_<NAME> in their
 ; own module files, which must be included above it.
