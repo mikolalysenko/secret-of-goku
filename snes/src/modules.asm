@@ -8,12 +8,14 @@
 ; incsrc "modules/<name>/module.asm"
 incsrc "modules/goku/module.asm"
 incsrc "modules/fx/module.asm"         ; before its clients (they use the !FX_* defines)
+incsrc "modules/combat/module.asm"
 
 pushpc
 org !CODE_CORE+$7000
 ; Field frame (also dialogue, events and Mode 7 boss arenas), after the game
 ; logic and OAM build, before the NMI handshake. M16/X16, DB = $7E, D = 0.
 modules_field_frame:
+	JSL combat_field_frame     ; before goku: poses and form apply this frame
 	JSL goku_frame
 	JSL fx_frame               ; keep last: draws what clients requested this frame
 	RTL
@@ -24,6 +26,7 @@ modules_field_nmi:
 	RTL
 ; World flight frame, after the world logic (DB = $7E).
 modules_world_frame:
+	JSL combat_world_frame
 	JSL fx_world_frame         ; keep last
 	RTL
 ; World vblank, after the game's uploads and HDMA setup; not force-blanked,
@@ -34,9 +37,11 @@ modules_world_nmi:
 ; Full-screen menu frame (file select, name entry, status, equipment,
 ; save), in vblank right after the menu's own uploads (DB = $7E).
 modules_menu_frame:
+	JSL combat_menu_frame
 	RTL
 ; Ring menu frame, in vblank (DB = $7E).
 modules_ring_frame:
+	JSL combat_menu_frame
 	RTL
 ; Title program entry (power-on, soft reset, quit to title), after module
 ; WRAM was cleared; the decompressed program is at 7E:8000 (DB = $7E).
@@ -47,8 +52,13 @@ modules_save:
 	RTL
 ; After a GAME FILE loaded and core restored (or cleared) !SRAM_LIVE.
 modules_load:
+	JSL combat_load
 	RTL
 ; New game: !SRAM_LIVE was cleared and !persist_version set to 1.
 modules_new_game:
+	JSL combat_new_game
 	RTL
 pullpc
+
+; Combat bindings to optional modules: keep after every module include.
+incsrc "modules/combat/bind.asm"
