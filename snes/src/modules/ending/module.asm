@@ -197,6 +197,8 @@ hi_bits_ram = !SW+$DF0             ; 16 bytes (oam_put's high-table patterns)
 !l_cy       = !s_x+$60          ; word
 !s_cutptr   = !s_x+$64          ; word  TM table (s_hdmabuf half) for the next vblank
 !s_palsaved = !s_x+$68          ; byte  s_palsave holds the game's palette buffer
+!s_ovclaim  = !s_x+$69          ; byte  the overlay holds core's OBJ VRAM region FIELD_OBJ_A
+!s_ldvis    = !s_x+$6A          ; byte  loading under a visible picture: vblank budget, the clock runs
 !s_goku_dma = !s_x+$70          ; 80 bytes: queue_goku's 16 tile DMAs (address, bank, VRAM)
 !s_pbmask   = !s_x+$D4          ; byte  colour groups of the palette pass in progress
 !s_pbnow    = !s_x+$D5          ; byte  rebuild everything at once next time
@@ -243,7 +245,7 @@ hi_bits_ram = !SW+$DF0             ; 16 bytes (oam_put's high-table patterns)
 !LD_CELL16 = $04        ; 16x16 OBJ cell: 2 rows of 64 bytes, stride $100 words
 !LD_CGRAM  = $05        ; CGRAM bytes (dest = colour index)
 !LD_FILL   = $06        ; VRAM fill with the byte at src (both bytes of each word)
-!LD_GOKU   = $07        ; Goku cell (src.w = goku module cell id) into four scene 16x16 cells
+!LD_GOKU   = $07        ; Goku tiles: src = the DMA table queue_goku built (bank $32), dest = its length
 !LD_END    = $FF
 
 macro ld(src, mode, dest, size)
@@ -665,6 +667,13 @@ ending_frame:
 	BEQ .live
 	REP #$30
 	JSR loading_frame
+	SEP #$20
+	LDA.w !s_ldvis
+	BEQ .post
+	REP #$30
+	LDA.l !ending_age             ; a visible load keeps the browser's clock
+	INC
+	STA.l !ending_age
 	BRA .post
 .live
 	REP #$30
@@ -704,6 +713,13 @@ check_map_change:
 	LDA.w !N_MAP
 	CMP.l !ending_map0
 	BEQ .keep
+	SEP #$20
+	LDA.w !s_family
+	CMP.b #!FAM_OVERLAY
+	REP #$20
+	BNE .release
+	JMP overlay_map_change
+.release
 	JSR release_quiet
 .keep
 	REP #$30
@@ -746,6 +762,9 @@ start_phase:
 	SEP #$20
 	LDA.l !ending_phase
 	STA.w !s_prevphase
+	LDA.l !ending_status
+	AND.b #~(!ES_NATIVEBOY|!ES_AIRBORNE|!ES_CHARGING)
+	STA.l !ending_status
 	REP #$30
 	PLA
 	SEP #$20
@@ -777,6 +796,8 @@ scene_init:
 	STA.w !s_band_top
 	STA.w !s_band_bot
 	STA.w !s_palsaved
+	STA.w !s_ovclaim
+	STA.w !s_ldvis
 	REP #$30
 	STZ.w !s_vwcount
 	LDA.w #!s_hdmabuf
@@ -894,19 +915,20 @@ release_quiet:
 	RTS
 
 release_common:
+	JSR end_overlay
 	SEP #$20
 	LDA.b #$00
 	STA.w !s_loading
+	STA.w !s_ldvis
 	STA.w !s_palcount
 	STA.w !s_fullscreen
-	JSR goku_quiet
-	SEP #$20
-	LDA.b #$00
 	LDA.b #!FAM_NONE
 	STA.w !s_family
 	LDA.l !ending_status
 	AND.b #!ES_COMPLETE|!ES_DEFEATED
 	STA.l !ending_status
+	JSR goku_quiet            ; after the status: Randi is no longer kept
+	SEP #$20
 	; Our HDMA channels off.
 	LDA.w !s_hdma
 	EOR.b #$FF
@@ -947,6 +969,7 @@ begin_fullscreen:
 	STA.w !s_regson
 	STA.w !s_fullscreen
 	LDA.b #$00
+	STA.w !s_ldvis
 	STA.w !s_tm
 	STA.w !s_ts
 	STA.w !s_cgadsub
@@ -1029,12 +1052,17 @@ begin_fullscreen:
 
 ; While a full-screen scene hides the field, the goku module keeps the
 ; native boy (GOKU_CTL_SUPPRESS): his cells, palette and portrait work
-; would cost the frame ~60 lines for a hidden sprite. Released with the
-; screen; never clears a SUPPRESS another module set.
+; would cost the frame ~60 lines for a hidden sprite. The village and the
+; departure keep Randi native the same way (shenron-ending nativeBoy).
+; Released with the screen; never clears a SUPPRESS another module set.
 goku_quiet:
 	SEP #$20
 	LDA.w !s_fullscreen
+	BNE .quiet
+	LDA.l !ending_status
+	AND.b #!ES_NATIVEBOY
 	BEQ .release
+.quiet
 	LDA.l !ending_gokuctl
 	BNE .done
 	LDA.l $7E0000|!goku_ctl
@@ -1085,6 +1113,7 @@ incsrc "lib.asm"
 incsrc "kai.asm"
 incsrc "space.asm"
 incsrc "fatal.asm"
+incsrc "village.asm"
 incsrc "stubs.asm"
 
 ; Generated palettes and small tables.

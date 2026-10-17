@@ -10,7 +10,7 @@ import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {runMesen} from '../mesen.mjs';
 const gfx=await import(new URL('../../tools/gfx.mjs',import.meta.url).href);
-import {kaiReference,compare,writeRef,bestPlanetMatch} from './reference.mjs';
+import {kaiReference,compare,writeRef,bestPlanetMatch,gokuAtlas,nativeEffects} from './reference.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const rom=process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-goku.sfc');
 const baseRom=new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')));
@@ -91,10 +91,72 @@ async function fatalCheck(r,out){
   }
 }
 
+// Good ending in Potos: Goku (and the charge orbs) against the browser's
+// own art at the browser's positions, the cloud against the village
+// whitened by (age - 114) / 30, the space half against planet-view's depart.
+const c8=v=>v<<3|v>>2;
+async function departCheck(r,out){
+  const atlas=await gokuAtlas(),orbs=(await nativeEffects(baseRom))['charge-orb'];
+  // A transparent composition: Goku's cell at (x0, y0), then the orbs.
+  const compose=(parts)=>{const s=new Uint16Array(256*224);
+    for(const p of parts)for(let py=0;py<p.h;py++)for(let px=0;px<p.w;px++){
+      const c=p.get(px,py),x=p.x+px,y=p.y+py;if(c&&x>=0&&x<256&&y>=0&&y<224)s[y*256+x]=c;}
+    return s;};
+  const goku=(x,y,col,row)=>({x,y,w:32,h:32,get:(px,py)=>atlas.pixels[(32+row*32+py)*atlas.width+col*32+px]});
+  const orb=(f,x,y)=>({x:x-8,y:y-8,w:16,h:16,get:(px,py)=>orbs[f%orbs.length][py*16+px]});
+  const score=(name,surface,tol=32)=>{
+    const img=gfx.readPng(join(out,`${name}.png`));let same=0,total=0;
+    for(let i=0;i<256*224;i++){const c=surface[i];if(!c)continue;const v=c-1,d=i*4;total++;
+      if(Math.abs(img.data[d]-c8(v&31))<=tol&&Math.abs(img.data[d+1]-c8(v>>5&31))<=tol&&Math.abs(img.data[d+2]-c8(v>>10&31))<=tol)same++;}
+    return total?same/total:0;
+  };
+  const [bx,by]=r.village_boy.split(',').map(Number),[ox,oy]=r.depart_origin.split(',').map(Number);
+  expect(r.village_suppress===1,'the goku module keeps the native Randi in the village');
+  expect((r.village_status&0x03)===0x03,`village status ${r.village_status}`);
+  r.village_match=score('village',compose([goku(bx+10,by-31,0,0)]));
+  expect(r.village_match>=0.85,`Goku beside Randi at ${(r.village_match*100).toFixed(1)}%`);
+  expect(ox===bx+26&&oy===by,`take-off point ${ox},${oy} (boy ${bx},${by})`);
+  const pose=a=>{const t=Math.max(0,a-56);return{x:ox,y:Math.round(oy-t*t*.055),col:a<12?0:a<56?54:38,row:a<56?0:3};};
+  for(const a of [6,30,50,70,100]){
+    const name=`depart-${a}`;if(r[name]===undefined){problems.push(`no still ${name}`);continue;}
+    const p=pose(a),parts=[goku(p.x-16,p.y-31,p.col,p.row)];
+    if(a>=12&&a<72)parts.push(orb(a>>3,p.x-13,p.y-14),orb((a>>3)+2,p.x+13,p.y-8));
+    const m=score(name,compose(parts));r[`${name}_match`]=m;
+    expect(m>=0.85,`${name}: Goku${a>=12&&a<72?' and the orbs':''} at ${(m*100).toFixed(1)}%`);
+  }
+  // The cloud: the village of 113 (Goku is above the screen by then) mixed
+  // towards white.
+  const base=gfx.readPng(join(out,'depart-113.png'));
+  for(const a of [120,129,138]){
+    const name=`depart-${a}`,w=Math.min(1,Math.max(0,(r[name]-114)/30)),ref=new Uint8Array(base.data.length);
+    for(let i=0;i<base.data.length;i+=4)for(let k=0;k<3;k++){const v=base.data[i+k]>>3;ref[i+k]=c8(Math.round(v+(31-v)*w));}
+    for(let i=3;i<ref.length;i+=4)ref[i]=255;
+    writeFileSync(join(out,`${name}-ref.png`),writeRef(null,ref));
+    const m=compare(join(out,`${name}.png`),ref);r[`${name}_match`]=m;
+    expect(m>=0.85,`${name}: the whitened village at ${(m*100).toFixed(1)}%`);
+  }
+  for(const a of [146,152,160,174,200,240,280]){
+    const name=`depart-${a}`;if(r[name]===undefined){problems.push(`no still ${name}`);continue;}
+    const best=await bestPlanetMatch(join(out,`${name}.png`),{rom:baseRom,phase:'depart',night:false},r[name]);
+    writeFileSync(join(out,`${name}-ref.png`),writeRef(null,best.ref));
+    r[`${name}_match`]=best.score;
+    expect(best.score>=0.9,`${name} matches planet-view at ${(best.score*100).toFixed(1)}% (age ${best.age})`);
+  }
+  expect((r.status_30&0x10)!==0,`charging at 30 (status ${r.status_30})`);
+  expect((r.status_70&0x08)!==0&&(r.status_200&0x08)!==0,`airborne at 70 and 200 (${r.status_70}, ${r.status_200})`);
+  expect((r.status_end&0x18)===0,`landed after the fade (status ${r.status_end})`);
+  expect(r.sfx_70===3,`flight sound cue (${r.sfx_70})`);
+  expect(r.done===1,'departure timeline done flag');
+  expect(r.lag_frames<=3,`lag ${r.lag_frames} frames`);
+  expect(r.overruns===0,`vblank overran ${r.overruns} times (${r.overrun_at})`);
+  expect(r.after_phase===0&&r.after_suppress===0,`stop releases the picture and Randi (${r.after_phase}, ${r.after_suppress})`);
+}
+
 const tests=[
   {name:'kai',check:kaiCheck},
   {name:'space',check:spaceCheck},
   {name:'fatal',check:fatalCheck},
+  {name:'depart',check:departCheck},
 ];
 let ok=true;
 for(const t of tests){

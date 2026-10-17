@@ -35,6 +35,15 @@ async function loadKaiArt(){
   return kaiArt;
 }
 
+// The browser's Goku atlas (assets/sprites/goku.png: cell (column, row) at
+// (32 column, 32 + 32 row)) and native effect cells (charge-orb, ...).
+export async function gokuAtlas(){return (await loadKaiArt()).goku;}
+let effectCells=null;
+export async function nativeEffects(rom){
+  if(!effectCells){const {createNativeEffects}=await engine('native-effects.js');effectCells=createNativeEffects(rom,JSON.parse(readFileSync(join(repo,'engine/native-effects.json'),'utf8')));}
+  return effectCells;
+}
+
 // planet-view kaiPlanet() for a given state.
 export async function kaiReference({rom,kaiFrame=0,bubbles={x:86,y:160,frame:5,flip:false},goku='goku',gokuVisible=true,card=null}){
   const a=await loadKaiArt(),surface=new Uint16Array(256*224);

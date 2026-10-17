@@ -321,11 +321,14 @@ nmi_transfers:
 	REP #$30
 	SEP #$20
 	LDA.w !s_loading
-	REP #$20
 	BEQ .visible
+	LDA.w !s_ldvis                 ; a load under a visible picture
+	BNE .visible                   ; (white departure) stays in vblank
+	REP #$20
 	LDA.w #$3000
 	BRA .set
 .visible
+	REP #$20
 	JSL core_vblank_lines          ; lines left before scanline 258
 	STA.w !s_nmitmp
 	ASL : ASL : ASL : ASL : ASL    ; *32
@@ -596,9 +599,10 @@ xfer_fill:
 	CLC
 	RTS
 
-; A Goku cell from the goku module's tile pool (banks $F8-$FA): sixteen
-; 32-byte tile DMAs from the table queue_goku prepared at s_goku_dma
-; (5 bytes per tile: source address, bank, VRAM word address).
+; A Goku cell from the goku module's tile pool (banks $F8-$FA): 32-byte
+; tile DMAs from the table queue_goku prepared at s_goku_dma (5 bytes per
+; tile: source address, bank, VRAM word address); the entry's dest word
+; is the table's length (16 tiles, or 4 for a miniature).
 xfer_goku:
 	LDA.w #!XFER_GOKU_COST
 	CMP.w !s_budget
@@ -627,7 +631,7 @@ xfer_goku:
 	STA.w $420B
 	REP #$20
 	INX : INX : INX : INX : INX
-	CPX.w #16*5
+	CPX.w !s_cur+4
 	BCC .tile
 	LDA.w !s_cur+6
 	STA.w !s_curoff
@@ -639,10 +643,11 @@ xfer_goku:
 	RTS
 
 ; Queue a Goku pose (goku module sheet A = 0 base / 1 Super Saiyan, column X,
-; row Y) into scene cells starting at s_tmp+6 and copy its palette to OBJ
-; colour s_tmp+4 (a multiple of 16). The 16 tile transfers are resolved
-; here (goku_cell_tiles' 4x4 grid: quadrants TL, TR, BL, BR, each two
-; rows of two tiles, rows $100 words apart in the cell grid). Clobbers the
+; row Y) into scene cells s_tmp+6 .. +3 (a multiple of 4: one cell row)
+; and copy its palette to OBJ colour s_tmp+4 (a multiple of 16). The 16
+; tile transfers are resolved here: goku_cell_tiles holds the cell's 4x4
+; grid row-major; quadrants TL, TR, BL, BR go to the four cells, each
+; cell's two tile rows $100 words apart (queue_goku_vram). Clobbers the
 ; q_* block; one Goku transfer may be pending at a time.
 queue_goku:
 	PHP
@@ -656,84 +661,45 @@ queue_goku:
 	STA.w !l_qcell
 	ASL : ASL : ASL : ASL : ASL   ; 32 bytes of tile indices per cell
 	STA.w !l_quadx
-	LDY.w #$0000                  ; 0..15: quadrant*4 + half*2 + t
-	LDX.w #$0000                  ; table offset
+	LDA.w !s_tmp+6
+	JSR cell_vram
+	STA.w !l_m0                   ; VRAM of the first cell
+	LDX.w #$0000                  ; grid index * 2
+	LDY.w #$0000                  ; DMA table offset
 .tile
-	; grid position: row = (q>>1)*2 + half, col = (q&1)*2 + t
-	PHX
-	TYA
-	AND.w #$0001
-	STA.w !l_quadi                ; t
-	TYA
-	AND.w #$0004
-	LSR
-	ORA.w !l_quadi
-	STA.w !l_quadi                ; col
-	TYA
-	AND.w #$0002
-	LSR
-	STA.w !l_bits                 ; half
-	TYA
-	AND.w #$0008
-	LSR : LSR
-	ORA.w !l_bits                 ; row
-	ASL : ASL
-	ORA.w !l_quadi                ; row*4 + col
-	ASL
+	STX.w !l_quadi
+	TXA
 	CLC
 	ADC.w !l_quadx
 	TAX
 	LDA.l goku_cell_tiles,X       ; global tile index
-	PLX
-	PHA
+	STA.w !l_m1
 	ASL : ASL : ASL : ASL : ASL
-	STA.w !s_goku_dma,X           ; source address
-	PLA
+	STA.w !s_goku_dma,Y           ; source address
+	LDA.w !l_m1
 	XBA
-	AND.w #$00FF
 	LSR : LSR : LSR
+	AND.w #$001F
 	CLC
 	ADC.w #$00F8
 	SEP #$20
-	STA.w !s_goku_dma+2,X         ; bank
+	STA.w !s_goku_dma+2,Y         ; bank
 	REP #$20
-	; VRAM: cell (first + q) + half*$100 + t*$10
-	TYA
-	LSR : LSR
-	CLC
-	ADC.w !s_tmp+6
-	PHX
-	JSR cell_vram
-	PLX
-	STA.w !l_m0
-	TYA
-	AND.w #$0002
-	BEQ .top
-	LDA.w #$0100
-.top
+	LDX.w !l_quadi
+	LDA.l queue_goku_vram,X
 	CLC
 	ADC.w !l_m0
-	STA.w !l_m0
+	STA.w !s_goku_dma+3,Y         ; VRAM word address
 	TYA
-	AND.w #$0001
-	BEQ .left
-	LDA.w #$0010
-.left
-	CLC
-	ADC.w !l_m0
-	STA.w !s_goku_dma+3,X
-	TXA
 	CLC
 	ADC.w #$0005
-	TAX
-	INY
-	CPY.w #$0010
-	BCS .queued
-	JMP .tile
-.queued
+	TAY
+	INX : INX
+	CPX.w #$0020
+	BCC .tile
 	LDA.w #!s_goku_dma
 	STA.w !q_src
-	LDA.w !s_tmp+6
+	LDA.w #16*5                   ; table length
 	STA.w !q_dest
 	SEP #$20
 	LDA.b #$32
@@ -772,6 +738,12 @@ queue_goku:
 .none
 	PLP
 	RTS
+
+; VRAM offset of grid tile (row r, column c) of a Goku cell from its first
+; scene cell: (r>>1)*$40 + (r&1)*$100 + (c>>1)*$20 + (c&1)*$10.
+queue_goku_vram:
+	dw $0000,$0010,$0020,$0030, $0100,$0110,$0120,$0130
+	dw $0040,$0050,$0060,$0070, $0140,$0150,$0160,$0170
 
 ; ---------------------------------------------------------------------------
 ; Dynamic transfers. Parameters in !q_* (s_tmp+8..15). Carry set when full.
@@ -854,25 +826,33 @@ queue_quad:
 	RTS
 
 ; VRAM word address of 16x16 cell A in the scene's OBJ cell grid: cells
-; are 2 tiles wide, 8 per tile-row pair, from !s_cellvram.
+; are 2 tiles wide, 8 per tile-row pair, from !s_cellvram. (Frame-side
+; scratch only: a late frame can be interrupted by the vblank hook.)
 cell_vram:
 	PHA
 	AND.w #$0007
 	XBA
 	LSR : LSR : LSR                ; (c & 7) * $20
-	STA.w !s_nmitmp+8
+	STA.w !l_cell
 	PLA
-	PHA
 	AND.w #$FFF8
 	XBA
 	LSR : LSR                      ; (c >> 3) * $200 = (c & ~7) * $40
 	CLC
-	ADC.w !s_nmitmp+8
+	ADC.w !l_cell
 	CLC
 	ADC.w !s_cellvram
-	STA.w !s_nmitmp+8
-	PLA
-	LDA.w !s_nmitmp+8
+	RTS
+
+; Z set when every queued transfer (and the one in progress) has reached
+; VRAM. M16.
+queue_idle:
+	LDA.w !s_dqhead
+	CMP.w !s_dqtail
+	BNE .busy
+	LDA.w !s_cur+6
+	CMP.w !s_curoff
+.busy
 	RTS
 
 ; OAM tile number of cell A: tile0 + (c>>3)*32 + (c&7)*2.
@@ -1122,11 +1102,16 @@ palette_build:
 	LDA.w !s_fadeb
 	LDX.w #$0000
 	JSR fade_table_set
+	JSR pal_group1
+	BCC .noGroup1
 	JSR fade_tables_1
+.noGroup1
 	LDA.w #$0003
 	STA.w !l_palm
 	BRA .dirty
 .no0
+	JSR pal_group1
+	BCC .dirty
 	LDA.w !s_fadeb2
 	JSR fade_level
 	CMP.w !l_fadeb2
@@ -1197,6 +1182,32 @@ palette_build:
 	BCC .small
 	INC.w !l_pbjump
 .small
+	RTS
+
+; Carry set when a declared range is in fade group 1. Without one the
+; group-1 curves are not kept (and marked stale for when one appears).
+pal_group1:
+	PHP
+	SEP #$30
+	LDX.w !s_palcount
+	BEQ .no
+.loop
+	DEX
+	LDA.w !s_palgrp,X
+	CMP.b #$01
+	BEQ .yes
+	TXA
+	BNE .loop
+.no
+	REP #$30
+	LDA.w #$FFFF
+	STA.w !l_fadeb2
+	PLP
+	CLC
+	RTS
+.yes
+	PLP
+	SEC
 	RTS
 
 ; Colours in all declared ranges -> A16.
@@ -1483,6 +1494,40 @@ fade_table_set:
 	XBA
 	LSR : LSR : LSR               ; level * 32
 	STA.w !s_tmp+12
+	; group 0 under a pure dark or a pure white mix: a whole table set
+	; from ROM (ending_fade_words), 192 bytes in one block move
+	LDA.w !s_tmp+8
+	BNE .compute
+	LDA.w !s_tmp+12
+	BEQ .romDark
+	LDA.w !s_tmp+14
+	BNE .compute
+	LDA.w !s_tmp+12
+	JSR .rowOffset
+	CLC
+	ADC.w #33*192                 ; the white sets follow the dark ones
+	BRA .rom
+.romDark
+	LDA.w !s_tmp+14
+	JSR .rowOffset
+.rom
+	CLC
+	ADC.w #ending_fade_words&$FFFF
+	TAX
+	LDY.w #!s_fader               ; s_fader, s_fadeg, s_fadebt: contiguous
+	LDA.w #191
+	PHB
+	MVN $32,(ending_fade_words>>16)
+	PLB
+	RTS
+.rowOffset                        ; level * 32 -> level * 192
+	ASL
+	STA.w !s_tmp+10
+	ASL
+	CLC
+	ADC.w !s_tmp+10
+	RTS
+.compute
 	; the curve, 32 words at l_curve
 	LDY.w #$0000                  ; c * 2
 	LDA.w !s_tmp+12

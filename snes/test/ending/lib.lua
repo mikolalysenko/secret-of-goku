@@ -67,3 +67,16 @@ end
 function E.waitAge(n, limit)
   return H.waitFor(function() return H.r16(E.age) >= n end, limit or 400)
 end
+-- A still of exactly scene age n: the clock is held at n for `hold` frames
+-- (Mesen's screenshot trails the emulation by a varying 2-5 frames), the
+-- picture taken, the clock released.
+function E.still(name, n, hold)
+  E.waitAge(n, 600)
+  for _ = 1, (hold or 14) do
+    H.w16(E.age, n)
+    H.wait(1)
+  end
+  H.w16(E.age, n)
+  H.shot(name)
+  H.result(name, n)
+end

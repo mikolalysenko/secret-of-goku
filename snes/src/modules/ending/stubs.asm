@@ -63,16 +63,10 @@ hold_black:
 
 start_vista:
 start_scatter:
-start_depart:
 	JMP hold_black
-
-start_village:
-	JMP release_screen
 
 frame_summon:
 frame_dragon:
 frame_wish:
 frame_scatter:
-frame_village:
-frame_depart:
 	RTS

@@ -271,9 +271,16 @@ space_phase_init:
 	BEQ .colour
 	JSR space_queue_strip
 .colour
-	; seams start hot (only revealed seam pixels use colour 15)
+	; seams start hot (only revealed seam pixels use colour 15); the day
+	; globe has no seams and uses colour 15 for itself
+	LDA.w !sp_bg1
+	AND.w #$007F
+	CMP.w #!SPB_NIGHT
+	BNE .noSeams
 	LDA.w #!SP_CRACK_HOT
 	JMP space_crack_colour
+.noSeams
+	RTS
 .escape
 	LDA.w !sp_strip
 	BNE .ready                ; uploaded during the explosion's drift
