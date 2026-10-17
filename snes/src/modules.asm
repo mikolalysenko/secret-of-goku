@@ -29,8 +29,8 @@ modules_field_frame:
 	RTL
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
 modules_field_nmi:
+	JSL destroy_field_nmi            ; first: switches the breach's HDMA on while vblank lasts
 	JSL goku_nmi
-	JSL destroy_field_nmi            ; Sandship white-out/tint palette, breach HDMA
 	RTL
 ; World flight frame, after the world logic (DB = $7E).
 modules_world_frame:

@@ -72,14 +72,16 @@ ss_pal_choose:
 	JMP .none
 +	LDA.w $00DC : JSR ss_ship_map : BCS +
 	JMP .none
-+	; phase = age % 120 (alarm), k = (age >> 2) & 255 (flicker)
-	LDA.l !ss_wage : STA.l $004204
-	SEP #$20
-	LDA.b #120 : STA.l $004206
-	REP #$20
++	; phase = age % 120 (alarm), k = (age >> 2) & 255 (flicker); the
+	; game's own multiplier/divider registers are left alone
 	LDA.l !ss_wage : LSR : LSR : AND.w #$00FF : ASL : STA.l !ssw_vtmp+2
-	NOP : NOP : NOP : NOP
-	LDA.l $004216 : ASL : TAX                     ; phase * 2
+	LDA.l !ss_wage : LDX.w #120 : JSR dst_div16    ; quotient q
+	STA.l !ssw_vtmp+6
+	ASL : ASL : ASL : ASL                         ; q * 16
+	SEC : SBC.l !ssw_vtmp+6                        ; q * 15
+	ASL : ASL : ASL                               ; q * 120
+	EOR.w #$FFFF : SEC : ADC.l !ss_wage            ; age - q * 120
+	ASL : TAX                                     ; phase * 2
 	LDA.l ss_alarm_a,X : STA.l !ssw_vtmp+6        ; alarm * 256
 	LDA.l ss_alarm_b,X : STA.l !ssw_vtmp+8        ; alarm * .4 * 256
 	LDA.l ss_alarm_c,X : STA.l !ssw_vtmp+10       ; alarm * .5 * 256
@@ -341,13 +343,19 @@ ss_breach_build:
 	LDA.w $0000,X                                 ; colour 0 of the game's buffer
 	JSR ss_white1
 	STA.l !ssw_br_bk
-	; the back buffer
-	LDA.l !ssw_br_buf : CLC : ADC.w #(!SS_HB)&$FFFF
+	; the buffer the channels are not reading (the vblank side may keep the
+	; programmed one for a late frame)
+	LDA.l !ss_own : BEQ .front
+	LDA.l !ssw_br_p2 : CMP.w #(!SS_HB)&$FFFF : BNE .front
+	LDA.w #(!SS_HB+!SS_HB_SIZE)&$FFFF
+	BRA .buffer
+.front
+	LDA.w #(!SS_HB)&$FFFF
+.buffer
 	STA.l !ssw_br_t2
 	CLC : ADC.w #!SS_HB_CH3 : STA.l !ssw_br_t3
 	JSR ss_breach_window
 	JSR ss_breach_backdrop
-	LDA.l !ssw_br_buf : EOR.w #!SS_HB_SIZE : STA.l !ssw_br_buf
 	LDA.w #1 : STA.l !ssw_br_on
 	RTS
 
@@ -483,60 +491,36 @@ ss_breach_backdrop:
 	RTS
 
 ; ---------------------------------------------------------------------------
-; Vblank side: destroy_field_nmi (JSL from modules_field_nmi), after the
-; game's own uploads, still force-blanked. DB = $80, M16/X16.
+; Vblank side: destroy_field_nmi (JSL, first in modules_field_nmi), after
+; the game's own uploads and HDMA setup, still force-blanked. DB = $80,
+; M16/X16. The colours themselves go up in the game's own CGRAM upload
+; (destroy_palette_dma below), so this costs no transfer time.
 destroy_field_nmi:
 	REP #$30
-	LDA.l !ss_vis : AND.w #$FF00 : CMP.w #!SS_VIS_MAGIC : BEQ .valid
+	LDA.l !ss_vis : AND.w #$FF00 : CMP.w #!SS_VIS_MAGIC : BNE .off
+	LDA.l !ss_vis : AND.w #!SS_VIS_BREACH : BEQ .off
+	JMP ss_nmi_breach
+.off
 	LDA.l !ss_own : BEQ +
 	JSR ss_nmi_release
 +	RTL
-.valid
-	LDA.l !ss_vis : AND.w #!SS_VIS_PAL : BEQ +
-	JSR ss_nmi_palette
-+	LDA.l !ss_vis : AND.w #!SS_VIS_BREACH : BEQ +
-	JSR ss_nmi_breach
-	RTL
-+	LDA.l !ss_own : BEQ +
-	JSR ss_nmi_release
-+	RTL
 
-; The staged colours -> CGRAM, general DMA on channel 7 (6 while 7 runs
-; HDMA), during the forced blank.
-ss_nmi_palette:
-	LDA.l $7E002C : AND.w #$0080 : BEQ .c7
-	LDA.l $7E002C : AND.w #$0040 : BEQ .c6
-	RTS
-.c7
-	LDX.w #$0070 : LDA.w #$0080 : BRA .go
-.c6
-	LDX.w #$0060 : LDA.w #$0040
-.go
-	STA.l !ssw_vtmp+14
-	LDA.l !ssw_pal_upat : LSR
-	SEP #$20
-	STA $2121
-	LDA.b #$00 : STA $4300,X                      ; A->B, one register
-	LDA.b #$22 : STA $4301,X                      ; CGDATA
-	LDA.b #(!SS_STAGE)>>16 : STA $4304,X
-	REP #$20
-	LDA.l !ssw_pal_upat : CLC : ADC.w #(!SS_STAGE)&$FFFF : STA $4302,X
-	LDA.l !ssw_pal_up : STA $4305,X
-	SEP #$20
-	LDA.l !ssw_vtmp+14 : STA $420B
-	REP #$20
-	LDA.l !ssw_pal_ups : INC : STA.l !ssw_pal_ups
-	RTS
-
-; Point HDMA channels 2/3 at this frame's tables, switch them on with
-; window 1 masking BG1/BG2 on the main screen.
+; Point HDMA channels 2/3 at this frame's tables and switch them on with
+; window 1 masking BG1/BG2 on the main screen. $420C is written here at
+; once (the game's own HDMA is set up by now): channels enabled before the
+; frame's HDMA start keep working even when the rest of the vblank work
+; (the game's final $420C write) runs past it. Entered by JMP; RTL.
 ss_nmi_breach:
-	JSL core_vblank_lines
-	CMP.w #2 : BCS +
-	; no time to switch HDMA on inside this vblank: off for this frame
+	JSR dst_vline
+	CMP.w #225 : BCS +
+	; the vblank is already over: nothing may be switched on now (a channel
+	; enabled after the frame's HDMA start runs from stale pointers); ours
+	; pause for this frame
 	LDA.l !ss_own : BEQ ++
-	JSR ss_nmi_release
-++	RTS
+	SEP #$20
+	LDA.l $7E002C : AND.b #$F3 : STA.l $7E002C
+	REP #$20
+++	RTL
 +	LDA.l !ss_own : BEQ .take
 	; still ours? (the game's spells and other modules use these channels)
 	JSR ss_ch2_mine : BCC .taken
@@ -544,7 +528,7 @@ ss_nmi_breach:
 	BRA .program
 .take
 	LDA.l $7E002C : AND.w #$000C : BEQ +
-	RTS                                           ; someone else's HDMA
+	RTL                                           ; someone else's HDMA
 +	LDA.w #1 : STA.l !ss_own
 .program
 	SEP #$20
@@ -560,13 +544,85 @@ ss_nmi_breach:
 	SEP #$20
 	LDA.b #$22 : STA $2123                        ; window 1 on BG1 and BG2
 	LDA.b #$03 : STA $212E                        ; masked on the main screen
-	LDA.l $7E002C : ORA.b #$0C : STA.l $7E002C    ; the NMI writes $420C next
+	LDA.l $7E002C : ORA.b #$0C : STA.l $7E002C
+	STA $420C
 	REP #$20
 	LDA.l !ssw_br_lines : INC : STA.l !ssw_br_lines
-	RTS
+	RTL
 .taken
 	; another party reprogrammed a channel: stop ours, leave theirs
-	JMP ss_nmi_release
+	JSR ss_nmi_release
+	RTL
+
+; C0:C0F0-C117, the field NMI's CGRAM upload (all 512 bytes from $7E:0600,
+; or $BE00 while $2A is set, DMA channel 7; M8/X16, DB = 0, D = 0): the
+; Sandship's staged colours replace their range of it, the rest comes from
+; the game's buffer as before. Same bytes, same time. Returns to C0:C118
+; with the original's registers: A = $0080 (the NMI keeps B = 0 from
+; C0:C0AF), X = $0200, Y kept.
+destroy_palette_dma:
+	PHY
+	PHP
+	REP #$30
+	LDA.l !ss_vis : AND.w #$FF00|!SS_VIS_PAL : CMP.w #!SS_VIS_MAGIC|!SS_VIS_PAL : BNE .native
+	LDA.l !ssw_pal_room : CMP.l $7E00DC : BNE .native   ; made for another room
+	LDA.l !ssw_pal_up : BEQ .native
+	; the game's buffer before the staged range
+	LDA.l !ssw_pal_upat : BEQ +
+	TAY
+	LDA.w #0
+	JSR ss_cg_native
++	; the staged range
+	LDA.l !ssw_pal_upat : PHA
+	LSR : SEP #$20 : STA $2121 : REP #$20
+	LDA.w #$2200 : STA $4370                      ; A->B, CGDATA
+	PLA : CLC : ADC.w #(!SS_STAGE)&$FFFF : STA $4372
+	SEP #$20
+	LDA.b #(!SS_STAGE)>>16 : STA $4374
+	REP #$20
+	LDA.l !ssw_pal_up : STA $4375
+	SEP #$20
+	LDA.b #$80 : STA $420B
+	REP #$20
+	; and the game's buffer after it
+	LDA.l !ssw_pal_upat : CLC : ADC.l !ssw_pal_up
+	CMP.w #512 : BCS +
+	PHA
+	EOR.w #$FFFF : SEC : ADC.w #512 : TAY         ; 512 - offset
+	PLA
+	JSR ss_cg_native
++	LDA.l !ssw_pal_ups : INC : STA.l !ssw_pal_ups
+	BRA .back
+.native
+	LDA.w #0 : LDY.w #512
+	JSR ss_cg_native
+.back
+	LDA.w #$0080
+	LDX.w #$0200
+	PLP
+	PLY
+	JML $00C118
+; A = CGRAM byte offset, Y = bytes: from the game's buffer (as C0:C0F0).
+ss_cg_native:
+	PHA
+	LSR : SEP #$20 : STA $2121 : REP #$20
+	LDA.w #$2200 : STA $4370
+	SEP #$20
+	LDA.l $7E002A
+	REP #$20
+	BEQ +
+	LDA.w #$BE00 : BRA ++
++	LDA.w #$0600
+++	CLC : ADC $01,S : STA $4372
+	SEP #$20
+	LDA.b #$7E : STA $4374
+	REP #$20
+	TYA : STA $4375
+	SEP #$20
+	LDA.b #$80 : STA $420B
+	REP #$20
+	PLA
+	RTS
 
 ; Carry: channel 2 / 3 hold this module's settings (mode, register, the
 ; SRAM bank of the tables) ...

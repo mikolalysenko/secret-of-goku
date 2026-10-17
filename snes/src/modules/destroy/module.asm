@@ -358,7 +358,7 @@ assert !ss_end <= !PERSIST_DESTROY+$80, "destroy persistent block overflow"
 !ssw_pal_src  = !SSW+$278 ; word: source buffer ($0600 or $BE00)
 !ssw_br_on    = !SSW+$280 ; word: breach tables built for this frame
 !ssw_br_own   = !SSW+$282 ; word: NMI: HDMA channels 2/3 programmed by us
-!ssw_br_buf   = !SSW+$284 ; word: back buffer offset (0 / !SS_HB_SIZE)
+!ssw_br_buf   = !SSW+$284 ; word: (unused)
 !ssw_br_t2    = !SSW+$286 ; word: channel 2 table (window) of the built frame
 !ssw_br_t3    = !SSW+$288 ; word: channel 3 table (backdrop)
 !ssw_br_p2    = !SSW+$28A ; word: table addresses programmed last NMI
@@ -507,6 +507,12 @@ pullpc
 %orig4($C1E7F3, $85C83002)
 %orig1($C1E7F7, $DF)
 %hijack_jsl($C1E7DF, destroy_door_record, 25, destroy)
+
+; C0:C0F0 (LDA #$00 / STA $2121, the start of the field NMI's 512-byte CGRAM
+; upload, C0:C0F0-C117): the Sandship's staged colours replace their range
+; of the upload (destroy_palette_dma returns to C0:C118).
+%orig4($C0C0F0, $218D00A9)
+%hijack($C0C0F0, destroy_palette_dma, 4, destroy)
 
 ; C3:0004 (JMP $0160), the sound driver entry: the wrecked ship's room song
 ; becomes the boss battle alarm.

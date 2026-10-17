@@ -25,6 +25,17 @@ const lua=v=>typeof v==='string'?JSON.stringify(v):typeof v==='boolean'?String(v
 // block, helpers to play until Goku is back in control.
 const prelude=`
 S = {}
+-- Native writes into the core's event request word ($7E:6E8E, inside the
+-- WRAM block the core assumes free) start spurious events; report them.
+S.clobbers = {}
+emu.addMemoryCallback(function(a, v)
+  local st = emu.getState()
+  local k = st['cpu.k']
+  if k < 0xA0 or k > 0xAF then
+    if #S.clobbers < 8 then S.clobbers[#S.clobbers + 1] = string.format('%06X=%02X by %02X:%04X map %03X', a, v, k, st['cpu.pc'], H.r16(0x7E00DC)) end
+    H.result('clobbers', S.clobbers)
+  end
+end, emu.callbackType.write, 0x7E6E8E, 0x7E6E8F)
 function S.reset()
   D.garbage()
   H.w8(ABI.P_DOORS, 0); H.w8(ABI.P_TREE, 0)
@@ -199,9 +210,9 @@ scenarios.push(
   H.result('corridor', S.state())
   S.walk('up')
   H.result('kitchen', S.state())
-  S.enter(324, 16, 10, 0)
-  H.result('stairs', S.state())
-  S.walk('up')
+  -- the cabin: arrive at its own door from the stairs (324); entering is
+  -- enough for the rescue
+  S.enter(339, 16, 19, 0)
   H.result('cabin', S.state())
   S.enter(99, 24, 27, 0)
   for f = 1, 8000 do
@@ -215,7 +226,6 @@ scenarios.push(
       const st=(k,want)=>{const a=res[k]??{};for(const [f,v] of Object.entries(want))if(JSON.stringify(a[f])!==JSON.stringify(v))problems.push(`${k}.${f} ${JSON.stringify(a[f])} want ${JSON.stringify(v)}`);};
       st('wreck',{map:271,control:true,captives:[8,8]});
       st('kitchen',{map:319,control:true,captives:[8,1]});
-      st('stairs',{map:324,guards:0});
       st('cabin',{map:339,control:true,captives:[1,1]});
       st('rider',{map:340,control:true,stage:11,party:[1,1]});
     }},
@@ -458,6 +468,7 @@ export async function runSandship({rom,only=[],log=console.log}){
     const problems=[];
     if(m.code!==0||res.error)problems.push('mesen: '+(res.error??m.code)+(res.error?'':' '+m.output.slice(-400)));
     else s.check(res,problems);
+    if(res.clobbers?.length)problems.push(`the game wrote the core's event request word (core WRAM overlap, see destroy.md core requests): ${res.clobbers.join(', ')}`);
     const r={name:s.name,ok:!problems.length,problems,ms:m.ms,note:s.note};
     writeFileSync(join(outDir,'summary.json'),JSON.stringify({...r,results:res},null,1));
     results.push(r);
