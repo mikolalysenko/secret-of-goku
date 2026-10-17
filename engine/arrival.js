@@ -148,6 +148,8 @@ export function createArrival(snes,mod){
           let tinted=0;for(let c=0;c<3;c++)tinted|=Math.min(31,(((color-1)>>(c*5))&31)+delta[c])<<(c*5);
           craterColors.set(color,tinted);
         }
+        // The same colors per crater pixel (value + 1) for line plans.
+        for(let i=0;i<crater.pixels.length;i++){const color=crater.pixels[i];craterTinted[i]=color?craterColors.get(color)+1:0;}
       }
     }
     return renderLine.call(this,line);
@@ -172,21 +174,22 @@ export function createArrival(snes,mod){
   // getColor's effect on a whole scanline as compositor paints (see
   // Ppu.registerLineHook): crater colors on BG1/BG2 pixels, then the open
   // pod over the same layers as OBJ palette 0x86. Other lines are untouched.
-  const craterLine=new Uint16Array(256),podLine=new Uint16Array(256);
+  const craterLine=new Uint16Array(256),podLine=new Uint16Array(256),craterTinted=new Uint16Array(48*32);
   const craterPaint={type:'paint',layers:3,colors:craterLine,skipZero:true,layer:-1,pixel:0,mainOnly:false};
   const podPaint={type:'paint',layers:3,colors:podLine,skipZero:true,layer:4,pixel:0x86,mainOnly:false};
   const craterRow=y=>{const py=Math.floor((y-craterY)/2);return py>=0&&py<32?py:-1;};
   const podRow=y=>{if(api.animating)return -1;const py=y-craterY+26;return py>=0&&py<saiyanPodFrames[2].height?py:-1;};
   ppu.registerLineHook?.('getColor',ppu.getColor,getColor,(p,line)=>!craterOnScreen||craterRow(line)<0&&podRow(line)<0,{name:'arrival',plan:(p,line,plan)=>{
     const cy=craterRow(line),py=podRow(line);
+    // Only x in the crater's (or pod's) columns can be nonzero.
     if(cy>=0){
-      let any=false;
-      for(let x=0;x<256;x++){const px=Math.floor((x-craterX)/2),color=px>=0&&px<48?crater.pixels[cy*48+px]:0;craterLine[x]=color?craterColors.get(color)+1:0;any||=!!color;}
+      let any=false;const x0=Math.max(0,craterX),x1=Math.min(256,craterX+96);craterLine.fill(0);
+      for(let x=x0;x<x1;x++){const v=craterTinted[cy*48+((x-craterX)>>1)];craterLine[x]=v;any||=v!==0;}
       if(any)plan.extra.push(craterPaint);
     }
     if(py>=0){
-      const pod=saiyanPodFrames[2];let any=false;
-      for(let x=0;x<256;x++){const px=x-craterX-48,color=px>=0&&px<pod.width?pod.pixels[py*pod.width+px]:0;podLine[x]=color;any||=!!color;}
+      const pod=saiyanPodFrames[2];let any=false;const x0=Math.max(0,craterX+48),x1=Math.min(256,craterX+48+pod.width);podLine.fill(0);
+      for(let x=x0;x<x1;x++){const v=pod.pixels[py*pod.width+x-craterX-48];podLine[x]=v;any||=v!==0;}
       if(any)plan.extra.push(podPaint);
     }
     plan.skipPost=true;return true;

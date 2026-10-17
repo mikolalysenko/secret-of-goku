@@ -184,15 +184,22 @@ function step(mask=0,audible=false,skipPicture=false){
     audioOutput.frame(audioContext);
   }else {audioOutput.clear();snes.apu.dsp.sampleOffset=0;sound.update(null,false);}
 }
+// Every rendered frame updates these; write only changed values, since each
+// DOM write can cost phones a style pass.
+const optionBoxes=[['goku-enabled','enabled'],['power-enabled','power'],['super-enabled','superSaiyan']].map(([id,key])=>[$(id),key]);
+const chargeBox=$('native-charge'),chargeBar=chargeBox.querySelector('i'),chargeText=chargeBox.querySelector('span');
+let chargeWidth=null,chargeLabel=null;
 function render(){
   snes.setPixels(pixels.data);context.putImageData(pixels,0,0);mod.draw(context);
   if(!loaded)return;
-  const r=mod.status,ratio=r.charge/(mod.options.superSaiyan?45:90);
-  if(!busy)for(const [id,key]of [['goku-enabled','enabled'],['power-enabled','power'],['super-enabled','superSaiyan']])$(id).checked=mod.options[key];
-  $('native-charge').hidden=!mod.charging;
-  $('native-charge').querySelector('i').style.width=`${Math.min(1,ratio)*100}%`;
-  $('native-charge').querySelector('span').textContent=ratio>=1?'HA!!!':'KA… ME… HA… ME…';
+  const ratio=mod.charge/(mod.options.superSaiyan?45:90);
+  if(!busy)for(const [box,key]of optionBoxes)if(box.checked!==!!mod.options[key])box.checked=mod.options[key];
+  if(chargeBox.hidden!==!mod.charging)chargeBox.hidden=!mod.charging;
+  const width=`${Math.min(1,ratio)*100}%`,label=ratio>=1?'HA!!!':'KA… ME… HA… ME…';
+  if(width!==chargeWidth){chargeWidth=width;chargeBar.style.width=width;}
+  if(label!==chargeLabel){chargeLabel=label;chargeText.textContent=label;}
   if(debugMode){
+    const r=mod.status;
     $('engine-state').textContent=busy?'RUNNING EVENT':running?(r.worldFlight?'WORLD FLIGHT':'ORIGINAL ENGINE LIVE'):'PAUSED';
     const values=[['Map $00DC',r.map],['World position',`${r.x}, ${r.y}`],['Camera',`${r.cameraX}, ${r.cameraY}`],['HP $E182',r.hp],['Saiyan attack',r.attack],['Stamina $E1ED',r.staminaRemaining],['Hidden OAM',r.hiddenOamSlots.join(', ')||'—']];
     $('memory-readout').replaceChildren(...values.flatMap(([k,v])=>{const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=k;dd.textContent=v;return[dt,dd];}));
