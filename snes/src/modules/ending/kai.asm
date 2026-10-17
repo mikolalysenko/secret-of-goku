@@ -51,6 +51,7 @@
 !k_bxi      = !s_var+$34   ; integer position
 !k_byi      = !s_var+$36
 !k_tmp      = !s_var+$38
+!k_tmp2     = !s_var+$3A
 
 start_kai:
 	REP #$30
@@ -108,14 +109,6 @@ kai_setup:
 	LDY.w #$00B0
 	JSR pal_set
 	LDA.w #$0010
-	LDX.w #ending_goku_palette
-	LDY.w #$00A0
-	JSR kai_goku_is_ssj
-	BCC .base
-	LDX.w #ending_ssj_palette
-.base
-	JSR pal_set
-	LDA.w #$0010
 	LDX.w #$0070
 	JSR pal_range             ; BG palettes 1-7
 	LDA.w #$0080
@@ -131,21 +124,20 @@ kai_setup:
 	STA.w !s_cellvram
 	LDA.w #!KAI_CELL_TILE
 	STA.w !s_celltile
-	; Goku, the line cells, the first King Kai and Bubbles frames.
-	JSR kai_goku_is_ssj
-	LDA.w #ending_goku_cells
-	LDX.w #(ending_goku_cells>>16)
-	BCC .gokuSrc
-	LDA.w #ending_ssj_cells
-	LDX.w #(ending_ssj_cells>>16)
-.gokuSrc
-	STA.w !q_src
-	TXA
-	SEP #$20
-	STA.w !q_src+2
-	REP #$20
+	; Goku (goku module cells: sheet 0/1, column 0, row 0 = standing,
+	; facing down), the line cells, the first King Kai and Bubbles frames.
 	LDA.w #!KC_GOKU
-	JSR queue_quad
+	STA.w !s_tmp+6
+	LDA.w #$00A0              ; OBJ palette 2
+	STA.w !s_tmp+4
+	LDA.w #$0000
+	JSR kai_goku_is_ssj
+	BCC .sheet
+	LDA.w #$0001
+.sheet
+	LDX.w #$0000
+	LDY.w #$0000
+	JSR queue_goku
 	LDA.w #ending_kai_lines_cells
 	STA.w !q_src
 	SEP #$20
@@ -187,6 +179,7 @@ kai_setup:
 	STA.w !k_phase
 	STA.w !k_walk
 	STA.w !k_n
+	STA.w !k_try
 	LDA.w #40
 	STA.w !k_wait
 	LDA.w #$4149              ; low half of the browser's 0x4b4149 seed
@@ -373,8 +366,19 @@ kai_tick:
 .noWait
 	LDA.w !k_has
 	BNE .move
+	; The browser tries up to 32 targets in one tick; here at most 4 per
+	; frame (a search may take up to 8 frames), so no frame overruns.
+	LDA.w !k_try
+	BNE .search
+	LDA.w #32
+	STA.w !k_try
+.search
 	JSR kai_pick
 	BCC .move
+	LDA.w !k_try
+	BEQ .giveUp
+	RTS
+.giveUp
 	LDA.w #20
 	STA.w !k_wait
 	RTS
@@ -428,11 +432,12 @@ kai_pos_int:
 	STA.w !k_byi
 	RTS
 
-; Choose a target (up to 32 tries). Carry clear = leg set up.
+; Try up to four targets (k_try counts the remaining tries of this search).
+; Carry clear = leg set up; carry set = none yet (k_try = 0: search failed).
 kai_pick:
 	JSR kai_pos_int
-	LDA.w #32
-	STA.w !k_try
+	LDA.w #4
+	STA.w !k_tmp2
 .try
 	JSR random8
 	STA.w !k_ang
@@ -504,9 +509,11 @@ kai_pick:
 	BRA .accept
 .next
 	DEC.w !k_try
-	BEQ .giveUp
+	BEQ .out
+	DEC.w !k_tmp2
+	BEQ .out
 	JMP .try
-.giveUp
+.out
 	SEC
 	RTS
 .accept
@@ -551,6 +558,7 @@ kai_pick:
 	STA.w !k_dir
 	LDA.w #$0001
 	STA.w !k_has
+	STZ.w !k_try
 	CLC
 	RTS
 

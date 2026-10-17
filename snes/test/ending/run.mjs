@@ -24,6 +24,7 @@ async function kaiCheck(r,out){
   expect(r.kai_done===1,'kai timeline done flag');
   expect((r.complete_status&0x20)!==0,'complete status bit');
   expect(r.lag_frames<=2&&r.fade_lag_frames<=2,`lag ${r.lag_frames}/${r.fade_lag_frames}`);
+  expect(r.overruns===0,`vblank overran ${r.overruns} times (to line ${r.overrun_max})`);
   // Bubbles walks: positions change and stay on the lawn ellipse.
   const pts=r.bubbles_path.split(' ').map(p=>p.split(',').map(Number));
   expect(new Set(pts.map(p=>p[0]+','+p[1])).size>=4,'Bubbles wanders');

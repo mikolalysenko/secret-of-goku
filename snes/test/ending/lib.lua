@@ -15,12 +15,13 @@ function E.cue(name, flags)
   if flags then H.w16(E.flags, flags) end
   H.w8(E.request, E.P[name])
 end
--- Wait for the phase to start and its art to finish loading.
+-- Wait for the phase to start and its art to finish loading: the phase
+-- clock only advances once the scene is live.
 function E.waitLoaded(name, frames)
   local p = E.P[name]
   H.wait(1)
   return H.waitFor(function()
-    return H.r8(E.phase) == p and (H.r8(E.status) & 0x80) == 0
+    return H.r8(E.phase) == p and (H.r8(E.status) & 0x80) == 0 and H.r16(E.age) >= 1
   end, frames or 120)
 end
 function E.import(bundle)
@@ -28,3 +29,23 @@ function E.import(bundle)
   H.importSnesJs('/Users/mikolalysenko/Projects/secret-of-goku/.local/snes-import/' .. bundle)
   H.wait(3)
 end
+
+-- Vblank overrun monitor: the field NMI re-enables the display at 00:C164;
+-- if that happens after scanline 0 of the next frame, the top lines are
+-- black. Counts frames that overran by more than `slack` lines while armed.
+E.overruns = 0
+E.overrunMax = 0
+E.watchArmed = false
+function E.watchVblank(slack)
+  slack = slack or 1
+  emu.addMemoryCallback(function()
+    if not E.watchArmed then return end
+    local line = emu.getState()['ppu.scanline']
+    if line < 200 and line > slack then
+      E.overruns = E.overruns + 1
+      if line > E.overrunMax then E.overrunMax = line end
+    end
+  end, emu.callbackType.exec, 0x00C164, 0x00C164)
+end
+-- Arm only while the scene is visible (not loading).
+function E.arm(on) E.watchArmed = on end

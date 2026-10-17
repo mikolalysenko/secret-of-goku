@@ -142,7 +142,7 @@
 !s_fadebt   = !SW+$B80  ; 32 words: faded blue << 10
 !s_dq       = !SW+$C00  ; dynamic transfer queue: 16 x 8 bytes
 !DQ_SIZE    = $80
-!s_hdmabuf  = !SW+$C80  ; HDMA tables (896 bytes)
+!s_hdmabuf  = !SW+$C80  ; HDMA tables (352 bytes, to $DDF)
 !s_big      = !SW+$1000 ; 4 KiB scene buffers
 
 !FAM_NONE    = $00
@@ -161,6 +161,7 @@
 !LD_CELL16 = $04        ; 16x16 OBJ cell: 2 rows of 64 bytes, stride $100 words
 !LD_CGRAM  = $05        ; CGRAM bytes (dest = colour index)
 !LD_FILL   = $06        ; VRAM fill with the byte at src (both bytes of each word)
+!LD_GOKU   = $07        ; Goku cell (src.w = goku module cell id) into four scene 16x16 cells
 !LD_END    = $FF
 
 macro ld(src, mode, dest, size)

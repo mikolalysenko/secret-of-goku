@@ -22,6 +22,17 @@
 !s_rng      = !SW+$FA           ; word  LCG state
 !s_cellvram = !SW+$FC           ; word  VRAM word address of 16x16 cell 0
 !s_celltile = !SW+$FE           ; word  OAM tile number of cell 0
+hi_bits_ram = !SW+$DE0             ; 16 bytes (oam_put's high-table patterns)
+
+; Parameter blocks in s_tmp (frame side).
+!o_x    = !s_tmp+0              ; oam_put / draw_quad: x (signed)
+!o_y    = !s_tmp+2              ; y (signed)
+!o_size = !s_tmp+4              ; 0 small, 2 large
+!q_attr = !s_tmp+6              ; draw_quad attributes
+!q_src  = !s_tmp+8              ; queue_add: source (long)
+!q_mode = !s_tmp+11
+!q_dest = !s_tmp+12
+!q_size = !s_tmp+14
 
 ; ===========================================================================
 ; Vblank hook (field NMI, after the game's uploads, still force-blanked).
@@ -267,7 +278,7 @@ nmi_transfers:
 .have
 	LDA.w !s_cur+3
 	AND.w #$00FF
-	CMP.w #!LD_FILL+1
+	CMP.w #!LD_GOKU+1
 	BCS .skipBad
 	ASL
 	TAX
@@ -282,7 +293,7 @@ nmi_transfers:
 	BRA .loop
 
 xfer_table:
-	dw xfer_vram, xfer_m7map, xfer_m7chr, xfer_cell32, xfer_cell16, xfer_cgram, xfer_fill
+	dw xfer_vram, xfer_m7map, xfer_m7chr, xfer_cell32, xfer_cell16, xfer_cgram, xfer_fill, xfer_goku
 
 ; Next transfer into s_cur. Carry set when the queue and script are empty.
 fetch_transfer:
@@ -494,12 +505,161 @@ xfer_fill:
 	CLC
 	RTS
 
+; A Goku cell from the goku module's tile pool (banks $F8-$FA): src.w = cell
+; id, dest.w = first of four scene 16x16 cells (TL, TR, BL, BR). Sixteen
+; 32-byte tile DMAs from goku_cell_tiles' 4x4 grid; needs 512 bytes of budget.
+xfer_goku:
+	LDA.w #$0200
+	CMP.w !s_budget
+	BEQ .ok
+	BCC .ok
+	SEC
+	RTS
+.ok
+	SEP #$20
+	LDA.b #$80 : STA.w $2115
+	REP #$20
+	LDA.w #$1801
+	STA.w $4370
+	LDA.w #$0020
+	STA.w !s_nmitmp+10            ; tile size
+	LDA.w !s_cur                  ; cell id -> grid offset (32 bytes per cell)
+	ASL : ASL : ASL : ASL : ASL
+	STA.w !s_nmitmp+12
+	LDY.w #$0000                  ; 0..15: quadrant*4 + half*2 + t
+.tile
+	; grid position: row = (q>>1)*2 + half, col = (q&1)*2 + t
+	TYA
+	AND.w #$0001                  ; t
+	STA.w !s_nmitmp+4
+	TYA
+	AND.w #$0004                  ; q & 1 -> col + 2
+	LSR
+	ORA.w !s_nmitmp+4
+	STA.w !s_nmitmp+4             ; col
+	TYA
+	AND.w #$0002                  ; half
+	LSR
+	STA.w !s_nmitmp+6
+	TYA
+	AND.w #$0008                  ; q >> 1 -> row + 2
+	LSR : LSR
+	ORA.w !s_nmitmp+6             ; row
+	ASL : ASL
+	ORA.w !s_nmitmp+4             ; row*4 + col
+	ASL
+	CLC
+	ADC.w !s_nmitmp+12
+	TAX
+	LDA.l goku_cell_tiles,X       ; global tile index
+	PHA
+	ASL : ASL : ASL : ASL : ASL
+	STA.w $4372
+	PLA
+	XBA
+	AND.w #$00FF
+	LSR : LSR : LSR
+	CLC
+	ADC.w #$00F8
+	SEP #$20
+	STA.w $4374
+	REP #$20
+	LDA.w !s_nmitmp+10
+	STA.w $4375
+	; VRAM: cell (dest + q) + half*$100 + t*$10
+	TYA
+	LSR : LSR
+	CLC
+	ADC.w !s_cur+4
+	JSR cell_vram
+	STA.w !s_nmitmp+8
+	TYA
+	AND.w #$0002
+	BEQ .top
+	LDA.w #$0100
+.top
+	CLC
+	ADC.w !s_nmitmp+8
+	STA.w !s_nmitmp+8
+	TYA
+	AND.w #$0001
+	BEQ .left
+	LDA.w #$0010
+.left
+	CLC
+	ADC.w !s_nmitmp+8
+	STA.w $2116
+	SEP #$20
+	LDA.b #$80
+	STA.w $420B
+	REP #$20
+	INY
+	CPY.w #$0010
+	BCS .all
+	JMP .tile
+.all
+	LDA.w !s_cur+6
+	STA.w !s_curoff
+	LDA.w !s_budget
+	SEC
+	SBC.w #$0200
+	STA.w !s_budget
+	CLC
+	RTS
+
+; Queue a Goku pose (goku module sheet A = 0 base / 1 Super Saiyan, column X,
+; row Y) into scene cells starting at s_tmp+6 and copy its palette to OBJ
+; colour s_tmp+4 (a multiple of 16). Clobbers the q_* block.
+queue_goku:
+	PHP
+	REP #$30
+	JSL goku_api_cell
+	REP #$30
+	CMP.w #$FFFF
+	BEQ .none
+	STA.w !q_src
+	PHA
+	LDA.w !s_tmp+6
+	STA.w !q_dest
+	SEP #$20
+	LDA.b #$00
+	STA.w !q_src+2
+	LDA.b #!LD_GOKU
+	STA.w !q_mode
+	REP #$20
+	LDA.w #$0200
+	STA.w !q_size
+	JSR queue_add
+	PLX
+	; palette: goku_palettes[goku_cell_pal[cell]]
+	LDA.l goku_cell_pal,X
+	AND.w #$0007
+	ASL : ASL : ASL : ASL : ASL
+	TAX
+	LDA.w !s_tmp+4
+	ASL
+	TAY
+	LDA.w #$0010
+	STA.w !l_palc
+.colour
+	LDA.l goku_palettes,X
+	PHX
+	TYX
+	JSR pal_store
+	PLX
+	INX : INX
+	INY : INY
+	DEC.w !l_palc
+	BNE .colour
+	SEP #$20
+	LDA.b #$01
+	STA.w !s_paldirty
+.none
+	PLP
+	RTS
+
 ; ---------------------------------------------------------------------------
 ; Dynamic transfers. Parameters in !q_* (s_tmp+8..15). Carry set when full.
-!q_src  = !s_tmp+8              ; long
-!q_mode = !s_tmp+11
-!q_dest = !s_tmp+12
-!q_size = !s_tmp+14
 queue_add:
 	PHP
 	REP #$30
@@ -965,81 +1125,99 @@ oam_begin:
 	STA.w !N_OAMHI,X
 	DEX : DEX
 	BPL .hi
+	LDX.w #$000E
+.copy
+	LDA.l hi_bits_table,X
+	STA.w hi_bits_ram,X
+	DEX : DEX
+	BPL .copy
 	RTS
 
-; x = s_tmp+0 (signed), y = s_tmp+2 (signed), A16 = tile/attributes,
-; s_tmp+4 = size (0 small, 2 large). Sprites entirely off screen are skipped.
-!o_x = !s_tmp+0
-!o_y = !s_tmp+2
-!o_size = !s_tmp+4
+; oam_put: o_x/o_y (signed), A16 = tile/attributes, o_size (0 small, 2
+; large). Sprites entirely off screen are skipped. M16 X16; clobbers X, Y.
 oam_put:
-	PHP
-	REP #$30
 	LDX.w !s_oamslot
 	CPX.w #$0200
 	BCS .skip
 	STA.w !N_OAM+2,X
-	LDA.w !o_x
-	CLC
-	ADC.w #$0020
-	CMP.w #$0120                   ; x in [-32, 256)
-	BCS .skip
 	LDA.w !o_y
 	CLC
 	ADC.w #$0020
 	CMP.w #$0100                   ; y in [-32, 224)
+	BCS .skip
+	LDA.w !o_x
+	CLC
+	ADC.w #$0020
+	CMP.w #$0120                   ; x in [-32, 256)
 	BCS .skip
 	SEP #$20
 	LDA.w !o_x
 	STA.w !N_OAM,X
 	LDA.w !o_y
 	STA.w !N_OAM+1,X
+	; High table: (xhi | size) << ((slot & 3) * 2) into byte slot / 4;
+	; nothing to do for small sprites at x 0-255 (oam_begin cleared it).
 	REP #$20
-	; High table bits: xhi | size, at (slot & 3) * 2.
+	LDA.w !o_x
+	AND.w #$FF00
+	ORA.w !o_size
+	BEQ .next
 	LDA.w !o_x
 	XBA
 	AND.w #$0001
 	ORA.w !o_size
 	STA.w !l_bits
 	TXA
-	LSR : LSR : LSR : LSR
-	TAY                            ; high-table byte
-	TXA
 	AND.w #$000C
 	ORA.w !l_bits
-	TAX                            ; (slot & 3) * 4 + bits
+	TAY
+	TXA
+	LSR : LSR : LSR : LSR
+	TAX
 	SEP #$20
-	LDA.l hi_bits_table,X
-	ORA.w !N_OAMHI,Y
-	STA.w !N_OAMHI,Y
+	LDA.w hi_bits_ram,Y
+	ORA.w !N_OAMHI,X
+	STA.w !N_OAMHI,X
 	REP #$20
+.next
 	LDA.w !s_oamslot
 	CLC
 	ADC.w #$0004
 	STA.w !s_oamslot
 .skip
-	PLP
 	RTS
+
+; The high-table bit patterns, copied into the work area by oam_begin so
+; the hot path reads them with DB = $32.
 hi_bits_table:
 	db $00,$01,$02,$03, $00,$04,$08,$0C, $00,$10,$20,$30, $00,$40,$80,$C0
 
-; Hide the unused slots and close the module area for this frame.
+; Hide the game's own sprites the scene did not overwrite and keep the
+; game's next clear short: it hides from its new end up to $0120.
 oam_finish:
 	REP #$30
 	SEP #$20
 	LDA.w !s_fullscreen
 	REP #$20
 	BEQ .done
+	LDA.l !core_oam_native         ; slots the game used this frame
+	ASL : ASL
+	STA.w !l_bits
 	LDX.w !s_oamslot
 	LDA.w #$E0FF
 .hide
-	CPX.w #$0200
+	CPX.w !l_bits
 	BCS .closed
 	STA.w !N_OAM,X
 	INX : INX : INX : INX
 	BRA .hide
 .closed
-	LDA.w #$0200
+	; Module area end = max(ours, the game's): core writes it to $0120.
+	LDA.w !s_oamslot
+	CMP.w !l_bits
+	BCS .ours
+	LDA.w !l_bits
+.ours
 	STA.l !core_oam_cursor
 	LDA.w #$0000
 	STA.l !core_oam_front_n
@@ -1047,54 +1225,56 @@ oam_finish:
 	REP #$30
 	RTS
 
-; Draw a 32x32 actor made of four 16x16 cells: s_tmp+0/2 = the cell's
-; bottom-centre anchor; A16 = first cell; !q_attr = OAM attribute bits
-; (palette/priority, bit 14 = h-flip). Clobbers o_x/o_y/o_size.
-!q_attr = !s_tmp+6
+; Draw a 32x32 actor made of four 16x16 cells c..c+3 (c a multiple of 4,
+; so their tiles are t, t+2, t+4, t+6): s_tmp+0/2 = the cell's bottom
+; centre; A16 = first cell; !q_attr = attributes (bit 14 = h-flip).
 draw_quad:
-	PHP
-	REP #$30
+	JSR cell_tile
+	ORA.w !q_attr
 	STA.w !l_quadc
-	LDA.w !o_x
-	SEC
-	SBC.w #$0010
-	STA.w !l_quadx
+	STZ.w !o_size
 	LDA.w !o_y
 	SEC
 	SBC.w #$0020
-	STA.w !l_quady
-	STZ.w !o_size
-	LDX.w #$0000
-.q
-	STX.w !l_quadi
-	LDA.l quad_dx,X
-	BIT.w !q_attr
-	BVC .noflip
-	LDA.l quad_dx_flip,X
-.noflip
-	CLC
-	ADC.w !l_quadx
-	STA.w !o_x
-	LDA.l quad_dy,X
-	CLC
-	ADC.w !l_quady
 	STA.w !o_y
-	TXA
-	LSR
+	LDA.w !o_x
+	SEC
+	SBC.w #$0010
+	STA.w !o_x
+	STA.w !l_quadx
+	BIT.w !q_attr
+	BVS .flip
+	LDA.w !l_quadc : JSR oam_put             ; TL
+	JSR .right
+	LDA.w !l_quadc : CLC : ADC.w #$0002 : JSR oam_put
+	JSR .down
+	LDA.w !l_quadc : CLC : ADC.w #$0006 : JSR oam_put
+	JSR .left
+	LDA.w !l_quadc : CLC : ADC.w #$0004 : JMP oam_put
+.flip
+	LDA.w !l_quadc : CLC : ADC.w #$0002 : JSR oam_put
+	JSR .right
+	LDA.w !l_quadc : JSR oam_put
+	JSR .down
+	LDA.w !l_quadc : CLC : ADC.w #$0004 : JSR oam_put
+	JSR .left
+	LDA.w !l_quadc : CLC : ADC.w #$0006 : JMP oam_put
+.right
+	LDA.w !l_quadx
 	CLC
-	ADC.w !l_quadc
-	JSR cell_tile
-	ORA.w !q_attr
-	JSR oam_put
-	LDX.w !l_quadi
-	INX : INX
-	CPX.w #$0008
-	BCC .q
-	PLP
+	ADC.w #$0010
+	STA.w !o_x
 	RTS
-quad_dx:      dw $0000,$0010,$0000,$0010
-quad_dx_flip: dw $0010,$0000,$0010,$0000
-quad_dy:      dw $0000,$0000,$0010,$0010
+.left
+	LDA.w !l_quadx
+	STA.w !o_x
+	RTS
+.down
+	LDA.w !o_y
+	CLC
+	ADC.w #$0010
+	STA.w !o_y
+	RTS
 
 ; 16-bit LCG x = x*25173 + 13849; returns the new high byte in A16.
 random8:
