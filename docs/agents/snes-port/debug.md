@@ -182,7 +182,13 @@ reported apart), party (active, level, HP, position ±16), inventory, names,
 Goku active, the ledger and the form. Differences owned by modules that are
 not merged here are attributed (`GAPS` in `run.mjs`); the run fails on
 anything else. `--battery` starts with native saves (GAME FILE becomes the
-default) and checks that the save area is untouched.
+default) and checks that the save area is untouched; a full run does this
+for `late` by itself when the private save fixture exists. The `controls`
+case (`controls.lua`, also with `--controls`) checks that wrong or slow
+D-pad sequences neither open the scene select nor leave the title, that Y
+returns to a re-patched title whose Start reaches the game select with
+nothing armed, and that Start+Select+L+R aborts a running preset into the
+usual soft reset.
 
 | Preset | Result on this branch | Missing (owner) |
 | --- | --- | --- |

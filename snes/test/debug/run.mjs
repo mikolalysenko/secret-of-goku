@@ -105,8 +105,21 @@ await Promise.all(Array.from({length:Math.min(jobs,queue.length)},async()=>{
   while(queue.length){const[k,o]=queue.shift();const r=await runOne(k,o);reports.push(r);console.log(`${r.kind.padEnd(14)} ${r.result.padEnd(8)} map ${r.state?.map} (ref ${r.refMap??'-'}) frames ${r.frames} picture ${r.picture!=null?(r.picture*100).toFixed(0)+'%':'-'}/${r.picture240!=null?(r.picture240*100).toFixed(0)+'%':'-'}${r.diffs?.length?'  diffs: '+r.diffs.map(d=>d.k+(d.owner?'('+d.owner+')':'')).join(','):''}${r.softWaits?'  soft wait at '+r.softWaits.pc:''}${r.failedOp?'  failed op '+r.failedOp.op+' at '+r.failedOp.pc:''}`);}
 }));
 reports.sort((a,b)=>kinds.indexOf(a.kind.split('+')[0])-kinds.indexOf(b.kind.split('+')[0])||a.kind.length-b.kind.length);
-writeFileSync(join(out,'report.json'),JSON.stringify(reports,null,1));
+// Controls: wrong and slow codes, Y back to a working title, abort.
+let controls=null;
+if(!only.length||args.includes('--controls')){
+  const copy=privateRom(rom,'debug-controls');
+  const r=await runMesen({rom:copy,test:`DBG_WORK=${work}\nLATE=${kinds.indexOf('late')}\n`+readFileSync(join(here,'controls.lua'),'utf8'),outDir:join(out,'controls')});
+  cleanupRom(copy);
+  const c=r.results??{};
+  const want={wrong_code_menu:false,wrong_code_title:true,slow_code_menu:false,code_menu:true,back_to_title:true,patched_again:true,
+    start_game_select:true,armed_after_start:false,abort_status:4,abort_title:true};
+  controls={ok:r.code===0&&Object.entries(want).every(([k,v])=>c[k]===v),results:c};
+  console.log(`controls       ${controls.ok?'pass':'FAIL'}  ${Object.entries(want).map(([k,v])=>`${k}=${c[k]}${c[k]===v?'':' (want '+v+')'}`).join(' ')}`);
+}
+writeFileSync(join(out,'report.json'),JSON.stringify({presets:reports,controls},null,1));
 const bad=reports.filter(r=>r.result==='FAILED'||r.result==='PARTIAL');
+if(controls&&!controls.ok)bad.push(controls);
 const count=k=>reports.filter(r=>r.result===k).length;
 console.log(`\n${count('FULL')} full, ${count('NATIVE')} native (remaining differences owned by: ${[...new Set(reports.flatMap(r=>r.gaps??[]))].join(', ')||'-'}), ${count('PARTIAL')} partial, ${count('FAILED')} failed of ${reports.length}; report ${join(out,'report.json')}`);
 process.exit(bad.length?1:0);
