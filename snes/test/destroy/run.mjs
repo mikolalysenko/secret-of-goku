@@ -38,6 +38,8 @@ export const scenarios=[
     expect:{passX:41*16},note:'one punch clears the bush stack (C8 -> 5F) and Goku walks through'},
   {name:'bush-mega',bundle:'emulator-probe__main-before-grass',attack:{dir:1,kind:'mega'},frames:60,
     note:'full Super Saiyan beam across the clearing: every bush in the tapered band'},
+  {name:'bush-mega-timeline',timeline:true,bundle:'emulator-probe__main-before-grass',attack:{dir:1,kind:'mega',str:200},frames:60,
+    note:'the full beam frame by frame over the clearing: the widening band (side strips) breaks the same bushes'},
   {name:'bush-beam-steps',bundle:'emulator-probe__main-before-grass',attack:{dir:1,kind:'beam',id:7},steps:[32,64,96,128,160,192,224,256,288,320],frames:40,
     note:'a growing beam rescans only new cells and matches the one-shot result'},
   {name:'grass-punch',bundle:'animation-audit__native__rabite-field-b',attack:{dir:0,kind:'punch'},
@@ -84,6 +86,8 @@ export const scenarios=[
     note:"Gaia's Navel cave switch (map 285, F-tile 1AF -> event 1AC) from a ranged beam"},
   {name:'beam-earth-tile',type:'event',bundle:'kamehameha-voice__gap-before',attack:{dir:1,kind:'mega',id:13},flagsChange:true,
     note:'Earth Palace: the full Super Saiyan beam reaches the hit tile at (28,37) (event 6F2), as in the browser'},
+  {name:'beam-earth-timeline',type:'event',timeline:true,bundle:'kamehameha-voice__gap-before',attack:{dir:1,kind:'mega'},flagsChange:true,
+    note:'the same target from the frame-by-frame full beam (incremental, widening search)'},
   {name:'orb-earth',type:'event',bundle:'kamehameha-voice__orb-before',orb:0x600,flagsChange:true,
     note:'Earth Palace crystal orb: its own event 239 with spell byte 06 in $E181'},
 ];
@@ -146,7 +150,11 @@ function test()
   D.grid('before.bin')
   H.shot('before')
   if SCN.flag then H.result('flagBefore', H.r8(0x7ECF00 + SCN.flag)) end
-  if SCN.orb then H.result('hit', D.orb(SCN.orb)) else
+  if SCN.orb then H.result('hit', D.orb(SCN.orb))
+  elseif SCN.steps then
+    for _, st in ipairs(SCN.steps) do D.hit(st) end
+    H.result('hit', #SCN.steps)
+  else
     if SCN.attack.x == nil then local p = D.pos(); SCN.attack.x = p.x; SCN.attack.y = p.y end
     H.result('hit', D.hit(SCN.attack))
   end
@@ -197,7 +205,13 @@ async function runEvent(s){
   let attack=null;
   if(s.attack){attack=attackProfile({...s.attack});attack.code=KIND[attack.kind];}
   const outDir=join(outRoot,s.name);
-  const test=`ABI=${lua(abi)}\nSCN=${lua({...s,bundlePath,attack,opened:undefined})}\n`+readFileSync(join(here,'destroy.lua'),'utf8')+bodyEvent;
+  // A full beam frame by frame from the bundle's position (no teleport).
+  let steps=null;
+  if(s.timeline){
+    const w=new Uint8Array(readFileSync(join(bundlePath,'wram.bin'))),x=w[0xe002]|w[0xe003]<<8,y=w[0xe004]|w[0xe005]<<8;
+    steps=beamTimeline({x,y,dir:attack.dir,kind:attack.kind}).map(t=>({x:t.x,y:t.y,dir:t.dir,length:t.length,halfWidth:Math.floor(t.halfWidth),taper:t.taper,id:t.id,code:attack.code,str:attack.str}));
+  }
+  const test=`ABI=${lua(abi)}\nSCN=${lua({...s,bundlePath,attack,steps,timeline:undefined,opened:undefined})}\n`+readFileSync(join(here,'destroy.lua'),'utf8')+bodyEvent;
   const m=await runMesen({rom,test,outDir});
   const res=m.results??{};
   const problems=[];
@@ -212,7 +226,11 @@ async function runEvent(s){
       expectEvent=ev;target={kind:'orb',event:ev};
     }else{
       const a={...attack};if(a.x===undefined){a.x=wram[0xe002]|wram[0xe003]<<8;a.y=wram[0xe004]|wram[0xe005]<<8;}
-      target=createReference(wram.slice(),cartridge).barrierTarget(a);
+      const ref=createReference(wram.slice(),cartridge);
+      if(steps){
+        // the browser's hit() each frame until one finds a target
+        for(const st of steps){target=ref.barrierTarget({...a,x:st.x,y:st.y,length:st.length,halfWidth:st.halfWidth});if(target)break;}
+      }else target=ref.barrierTarget(a);
       expectEvent=target?.event??null;
     }
   }
@@ -291,12 +309,15 @@ async function run(s){
         :(a,b)=>{let i=0;for(const x of a)if(x===b[i])i++;return i===b.length;};
       if(!sub(r82,want82))problems.push(`redraw $82 ${JSON.stringify(r82)} want ${JSON.stringify(want82)}`);
       if(!sub(r83,want83))problems.push(`redraw $83 ${JSON.stringify(r83)} want ${JSON.stringify(want83)}`);
-      if(!sub(want95,r95)||want95.length&&!r95.length)problems.push(`sound $95 ${JSON.stringify(r95)} want a subsequence of ${JSON.stringify(want95)}`);
+      // (a timeline may split a browser row into two applications: compare
+      // the sound kinds)
+      const sounds=s.timeline?r95.every(x=>want95.includes(x)):sub(want95,r95);
+      if(!sounds||want95.length&&!r95.length)problems.push(`sound $95 ${JSON.stringify(r95)} want ${s.timeline?'kinds of':'a subsequence of'} ${JSON.stringify(want95)}`);
     }
   }
   // Demolition rows publish a rubble record at a demolished row; brazier
   // rows one burst per brazier (at its centre column).
-  if(s.timeline&&grid.length){
+  if(s.timeline&&grid.length&&(s.fx||s.name.startsWith('demo-'))){
     const fx=res.fx??{},kind=s.fx??1,hit=grid.some(c=>Math.abs(c.tx*16+8-fx.x)<=96&&Math.abs(c.ty*16+8-fx.y)<=32);
     if(!(fx.seq>0&&fx.kind===kind&&hit))problems.push(`effect record ${JSON.stringify(fx)}`);
     if(kind===2&&ref){const braz=new Set(ref.rows.flatMap(r=>r.tiles.filter(t=>t.brazier).map(t=>t.ty*128+t.tx)));

@@ -186,12 +186,8 @@ dst_native_target:
 	JMP .end
 +	LDA.w !s_o : CMP.w !s_oend : BPL ++
 	JMP .end
-++	; not wider than before: skip straight past the searched length
-	LDA.w !nt_plen : BMI .outer
-	LDA.w !bh_wid : CMP.w !nt_phalf : BEQ + : BCS .outer
-+	LDA.w !nt_plen : JSR dst_band_skip : BCC .outer
-	JMP .end
-	; the band has the same width everywhere: inner ranges once
+++	; the band has the same width everywhere: inner ranges once (clipped
+	; to the map), and the previously searched ones
 	LDA.w !bh_wid : STA.w !s_w
 	JSR dst_inner_range
 	JSR dst_nt_inner_cells : DEC : CMP.w !s_hi : BCS +
@@ -205,6 +201,16 @@ dst_native_target:
 	JSR dst_inner_range
 	LDA.w !s_lo : STA.l !BC_PLO
 	LDA.w !s_hi : STA.l !BC_PHI
+	; not wider than before: skip straight past the searched length
+	LDA.w !bh_wid : CMP.w !nt_phalf : BEQ + : BCS .wider
++	LDA.w !nt_plen : JSR dst_band_skip : BCC .outer
+	JMP .end
+.wider
+	; wider: the rows the previous search covered only gain side strips
+	JSR dst_nt_strips : BCC .outer
+	LDA.w !s_o : CMP.w !s_oend : BNE +
+	JMP .end
++	CLC : ADC.w !s_ostep : STA.w !s_o
 .outer
 	JSR dst_band_along
 	LDA.w !s_along : BPL +
@@ -220,18 +226,32 @@ dst_native_target:
 +	LDA.w !s_lo : STA.w !s_i
 .cell
 	LDA.w !s_i : CMP.w !s_hi : BEQ + : BCS .next_outer
-+	CMP.w !s_plo : BCC .visit
-	CMP.w !s_phi : BEQ + : BCS .visit
++	CMP.w !s_plo : BCC .before
+	CMP.w !s_phi : BEQ + : BCS .after
 +	LDA.w !s_phi : INC : STA.w !s_i
 	BRA .cell
+.before
+	LDA.w !s_plo : DEC : CMP.w !s_hi : BCC .run
+	LDA.w !s_hi
+	BRA .run
+.after
+	LDA.w !s_hi
+.run
+	; skim the run to its next candidate (hit codes and walk-on triggers
+	; are tile class candidates)
+	STA.w !sk_end
+	LDA.w !s_i : JSR dst_band_cell
+	LDA.w !sk_end : SEC : SBC.w !s_i : INC
+	JSR dst_skim_nt : BCS .visit
+	LDA.w !sk_end : INC : STA.w !s_i
+	BRA .cell
 .visit
-	LDA.w !bh_horz : BEQ +
-	LDA.w !s_o : STA.w !d_cx
-	LDA.w !s_i : STA.w !d_cy
-	BRA ++
-+	LDA.w !s_i : STA.w !d_cx
-	LDA.w !s_o : STA.w !d_cy
-++	JSR dst_native_cell
+	JSR dst_offset_cell
+	LDA.w !d_cx
+	LDX.w !bh_horz : BEQ +
+	LDA.w !d_cy
++	STA.w !s_i
+	JSR dst_native_cell
 .skip
 	INC.w !s_i
 	BRA .cell
@@ -244,6 +264,28 @@ dst_native_target:
 	SEC
 	RTS
 +	CLC
+	RTS
+
+; dst_nt_strips: the band's rows within the previously searched length
+; (centre along <= len+8), from !s_o on, only gain their side strips.
+; Carry set when strips were visited (!s_o = the last of those rows).
+dst_nt_strips:
+	LDA.l !BC_PLO : CMP.l !BC_PHI : BEQ + : BCS .no
++	LDA.w !bh_sign : BMI .neg
+	LDA.w !s_a : CLC : ADC.w !nt_plen : JSR dst_floor16
+	CMP.w !s_o : BMI .no
+	BRA .go
+.neg
+	LDA.w !s_a : SEC : SBC.w !nt_plen : SEC : SBC.w #16 : JSR dst_ceil16
+	CMP.w !s_o : BEQ .go : BPL .no
+.go
+	PHA
+	LDA.w #1 : STA.w !st_kind
+	PLA : JSR dst_strips
+	SEC
+	RTS
+.no
+	CLC
 	RTS
 
 ; Cells along / across the attack axis on this map (min(2048, $C0/$C2)/16).

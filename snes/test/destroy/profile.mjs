@@ -18,7 +18,7 @@ const wram=new Uint8Array(readFileSync(join(imports,bundle,'wram.bin')));
 const x=wram[0xe002]|wram[0xe003]<<8,y=wram[0xe004]|wram[0xe005]<<8;
 const steps=beamTimeline({x,y,dir:Number(dirArg),kind:'mega'}).map(t=>({...t,halfWidth:Math.floor(t.halfWidth)}));
 const sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8');
-const addr=name=>{const m=sym.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${name}$`,'mi'));return parseInt(m[1]+m[2],16);};
+const addr=name=>{if(/^0x/.test(name))return parseInt(name,16);const m=sym.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${name}$`,'mi'));return parseInt(m[1]+m[2],16);};
 const abi=destroyAbi();
 const marks=['dst_consider_cell','dst_breakable','dst_queue_find','dst_load_cell','destroy_field_frame','dst_walls_work','dst_barrier_tick','destroy_redraw_hook','destroy_redraw_hook_exit','dst_scan_attack','dst_job_update',...(process.env.MARKS?process.env.MARKS.split(','):[])];
 const test=`

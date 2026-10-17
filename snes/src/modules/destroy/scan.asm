@@ -14,6 +14,13 @@
 !sc_phalf   = !cs+$A
 !sc_len     = !cs+$C
 !sc_half    = !cs+$E
+!sk_end     = !d_t5    ; end of a run (inclusive)
+; dst_strips words (the row words are free while strips are visited)
+!st_j       = !s_i
+!st_n       = !s_w
+!st_step    = !s_plo
+!st_last    = !s_phi
+!st_kind    = !s_lo     ; 0 scan, 1 barrier search
 
 dst_scan_attack:
 	LDA.w !arg_kind
@@ -76,7 +83,8 @@ dst_scan_attack:
 	JSR dst_band_flat
 	; the rest of the band is flat: rows only need their outer index
 	LDA.w !s_o : STA.l !BC_FLAT
-	BRA .ranges
+	JSR dst_scan_strips : BCC .ranges
+	JMP .next_outer
 .flat_row
 	; previous extent covers this row iff it lies before the boundary row
 	LDA.l !BC_LO : STA.w !s_lo
@@ -96,18 +104,31 @@ dst_scan_attack:
 .cell
 	LDA.w !s_i : CMP.w !s_hi : BEQ + : BCS .next_outer
 +	; jump over the cells this beam already scanned
-	CMP.w !s_plo : BCC .visit
-	CMP.w !s_phi : BEQ + : BCS .visit
+	CMP.w !s_plo : BCC .before
+	CMP.w !s_phi : BEQ + : BCS .after
 +	LDA.w !s_phi : INC : STA.w !s_i
 	BRA .cell
+.before
+	LDA.w !s_plo : DEC : CMP.w !s_hi : BCC .run
+	LDA.w !s_hi
+	BRA .run
+.after
+	LDA.w !s_hi
+.run
+	; skim the run to its next candidate cell
+	STA.w !sk_end
+	LDA.w !sc_layer : STA.w !d_cl
+	LDA.w !s_i : JSR dst_band_cell
+	LDA.w !sk_end : SEC : SBC.w !s_i : INC
+	JSR dst_skim : BCS .visit
+	LDA.w !sk_end : INC : STA.w !s_i
+	BRA .cell
 .visit
-	LDA.w !sc_horz : BEQ +
-	LDA.w !s_o : STA.w !d_cx
-	LDA.w !s_i : STA.w !d_cy
-	BRA ++
-+	LDA.w !s_i : STA.w !d_cx
-	LDA.w !s_o : STA.w !d_cy
-++	LDA.w !sc_layer : STA.w !d_cl
+	JSR dst_offset_cell
+	LDA.w !d_cx
+	LDX.w !sc_horz : BEQ +
+	LDA.w !d_cy
++	STA.w !s_i
 	JSR dst_consider_cell
 .skip
 	INC.w !s_i
@@ -321,22 +342,26 @@ dst_ceil16:
 	CLC : ADC.w #15
 	BRA dst_floor16
 
-; A = A * !d_t3 (small unsigned values).
+; A = A * !d_t3 (unsigned, product < 65536): shift and add. Consumes !d_t3.
 dst_mul16:
 	STA.w !d_t4
 	LDA.w #0
-	LDX.w !d_t3
-	BEQ +
--	CLC : ADC.w !d_t4
-	DEX : BNE -
-+	RTS
+-	LSR.w !d_t3 : BCC +
+	CLC : ADC.w !d_t4
++	ASL.w !d_t4
+	LDX.w !d_t3 : BNE -
+	RTS
 
-; A = A / X (unsigned, X > 0), restoring division.
+; A = A / X (unsigned, X > 0), restoring division (12 steps for dividends
+; below 4096, the taper products).
 dst_div16:
 	STX.w !d_t4
-	STA.w !d_t3
-	LDA.w #0
 	LDY.w #16
+	CMP.w #$1000 : BCS +
+	ASL : ASL : ASL : ASL
+	LDY.w #12
++	STA.w !d_t3
+	LDA.w #0
 -	ASL.w !d_t3
 	ROL
 	CMP.w !d_t4 : BCC +
@@ -344,6 +369,166 @@ dst_div16:
 	INC.w !d_t3
 +	DEY : BNE -
 	LDA.w !d_t3
+	RTS
+
+; ---------------------------------------------------------------------------
+; dst_skim: X = offset of the first cell (layer bit included), Y = offset
+; step between cells (signed), A = cells (>= 1). Finds the first whose tile
+; class has !TK_CAND (a class not computed yet counts: the caller's full
+; check computes it). Carry set: X = its offset, A = cells after it; carry
+; clear when none. About 60 cycles a cell; clobbers Y.
+; dst_skim_nt: the same for the barrier search: candidates that are not
+; ordinary (hit codes and walk-on triggers; not braziers or scenery).
+macro dst_skim_loop(name, test)
+<name>:
+	PHA                                   ; cells left
+	PHY                                   ; step
+	TXA : AND.w #$4000 : BEQ +
+	LDA.w #$0080                          ; class bytes of layer 1
++	PHA
+	PHB
+	PEA $3333 : PLB : PLB                 ; the class table's bank
+.loop
+	LDA.l $7F0000,X : AND.w #$00FF
+	LSR                                   ; carry = odd tile: high nibble
+	ORA $02,s
+	TAY
+	LDA.w !DKW,Y
+	BCC +
+	LSR : LSR : LSR : LSR
++	<test>
+	TXA : CLC : ADC $04,s : TAX
+	LDA $06,s : DEC : STA $06,s
+	BNE .loop
+	PLB
+	PLA : PLA : PLA
+	CLC
+	RTS
+.found
+	PLB
+	PLA : PLA
+	PLA : DEC
+	SEC
+	RTS
+endmacro
+%dst_skim_loop(dst_skim, "AND.w #!TK_CAND : BNE .found")
+%dst_skim_loop(dst_skim_nt, "AND.w #$000F : CMP.w #$000F : BEQ .found : AND.w #!TK_CAND|!TK_ORD : CMP.w #!TK_CAND : BEQ .found")
+
+; dst_band_cell: A = inner index -> X = offset of the cell (!s_o, A) on
+; layer !d_cl, Y = offset step along the inner axis.
+dst_band_cell:
+	LDX.w !sc_horz : BEQ .vert
+	XBA : LSR : ORA.w !s_o                ; inner = y: y*128 + x
+	LDY.w #128
+	BRA .layer
+.vert
+	PHA
+	LDA.w !s_o : XBA : LSR : ORA $01,s    ; inner = x
+	PLY
+	LDY.w #1
+.layer
+	LDX.w !d_cl : BEQ +
+	ORA.w #$4000
++	TAX
+	RTS
+
+; dst_offset_cell: X = cell offset -> !d_cx, !d_cy, !d_cl.
+dst_offset_cell:
+	TXA : AND.w #$007F : STA.w !d_cx
+	TXA : AND.w #$3F80 : ASL : XBA : STA.w !d_cy
+	TXA : AND.w #$4000 : BEQ +
+	LDA.w #1
++	STA.w !d_cl
+	RTS
+
+; dst_scan_strips (at the first flat row of the scan): a wider beam's flat
+; rows that the previous extent covered only gain their side strips; visit
+; those column by column. Carry set when done (!s_o = the last such row).
+dst_scan_strips:
+	LDA.l !BC_PREV : CMP.w #$FFFF : BEQ .no
+	LDA.l !BC_PLO : CMP.l !BC_PHI : BEQ + : BCS .no
++	LDA.w !sc_sign : BMI +
+	LDA.w !s_o : CMP.l !BC_PREV : BEQ .yes : BCC .yes
+	BRA .no
++	LDA.w !s_o : CMP.l !BC_PREV : BCC .no
+.yes
+	LDA.w !sc_layer : STA.w !d_cl
+	LDA.w #0 : STA.w !st_kind
+	LDA.l !BC_PREV : JSR dst_strips
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
+; dst_strips: the side strips of rows !s_o..A (inclusive, A clamped to
+; !s_oend) on layer !d_cl: columns [BC_LO, BC_PLO-1] and [BC_PHI+1, BC_HI],
+; skimmed column by column. Each candidate goes to dst_consider_cell
+; (!st_kind 0) or dst_native_cell (1). Leaves !s_o at the last row.
+dst_strips:
+	STA.w !st_last
+	; clamp to the band's last row (signed: the last row may be off the grid)
+	LDA.w !s_ostep : BMI .desc
+	LDA.w !st_last : SEC : SBC.w !s_oend : BMI .kept : BEQ .kept
+	BRA .clamp
+.desc
+	LDA.w !st_last : SEC : SBC.w !s_oend : BPL .kept
+.clamp
+	LDA.w !s_oend : STA.w !st_last
+.kept
+	; rows and the offset step between them
+	LDA.w !st_last : SEC : SBC.w !s_o
+	BPL +
+	EOR.w #$FFFF : INC
++	INC : STA.w !st_n
+	LDA.w !s_ostep
+	LDX.w !sc_horz : BNE +                ; outer = x: +-1
+	LDA.w #$0080                          ; outer = y: +-128
+	LDX.w !s_ostep : BPL +
+	LDA.w #$FF80
++	STA.w !st_step
+	; low strip, then high strip
+	LDA.l !BC_LO : STA.w !st_j
+-	LDA.w !st_j : CMP.l !BC_PLO : BCS .high
+	JSR dst_strip_column
+	INC.w !st_j
+	BRA -
+.high
+	LDA.l !BC_PHI : INC : STA.w !st_j
+-	LDA.w !st_j : CMP.l !BC_HI : BEQ + : BCS .done
++	JSR dst_strip_column
+	INC.w !st_j
+	BRA -
+.done
+	LDA.w !st_last : STA.w !s_o
+	RTS
+
+dst_strip_column:
+	LDA.w !st_j : JSR dst_band_cell
+	LDA.w !st_n
+.skim
+	LDY.w !st_step
+	PHA
+	LDA.w !st_kind : BNE +
+	PLA
+	JSR dst_skim
+	BRA ++
++	PLA
+	JSR dst_skim_nt
+++	BCC .done
+	PHA : PHX
+	JSR dst_offset_cell
+	LDA.w !st_kind : BNE +
+	JSR dst_consider_cell
+	BRA ++
++	JSR dst_native_cell
+++	PLX : PLA
+	BEQ .done                             ; no cells after it
+	PHA
+	TXA : CLC : ADC.w !st_step : TAX
+	PLA
+	BRA .skim
+.done
 	RTS
 
 ; ---------------------------------------------------------------------------

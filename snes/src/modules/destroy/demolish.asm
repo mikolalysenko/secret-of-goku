@@ -278,13 +278,15 @@ dst_walls_work:
 	RTS
 .walk
 	; only work when the frame has time left; a suspended plan that waited
-	; three frames gets its minimum quantum anyway
+	; three frames gets one sampler node anyway
+	LDA.w #0 : STA.l !pl_quota
 	JSR dst_budget : BCC .go
 	LDA.l !pl_stage : BNE +
 	RTS
 +	LDA.l !pl_wait : INC : STA.l !pl_wait
-	CMP.w #3 : BCS .go
+	CMP.w #3 : BCS +
 	RTS
++	LDA.w #1 : STA.l !pl_quota
 .go
 	LDA.w #0 : STA.l !pl_wait
 	STA.l !pj_plans
@@ -474,15 +476,28 @@ dst_plan_resume:
 	LDA.l !pl_b : STA.w !w_b
 	LDA.l !pl_n : STA.w !w_n
 	LDA.l !pl_k : STA.w !w_k
-	JSR dst_fs_load
+	LDA.l !pl_stage : CMP.w #2 : BNE +
+	LDA.l !pl_ox : BRA dst_plan_continue_finish   ; sampled: finish it
++	JSR dst_fs_load
 	; fall through
-; dst_plan_continue: run the floor sample; finish the plan when it is done.
+; dst_plan_continue: run the floor sample; finish the plan when it is done
+; (in the next frame when this one has no time left: stage 2, the sampled
+; floor kept in !pl_ox).
 dst_plan_continue:
-	JSR dst_fs_run : BCS .finish
+	JSR dst_fs_run : BCS +
 	JSR dst_fs_save
 	CLC
 	RTS
-.finish
++	STA.w !w_src
+	LDA.l !dbg_dry : BNE .now
+	JSR dst_budget : BCC .now
+	LDA.w !w_src : STA.l !pl_ox
+	LDA.w #2 : STA.l !pl_stage
+	CLC
+	RTS
+.now
+	LDA.w !w_src
+dst_plan_continue_finish:
 	STA.w !w_src
 	LDA.w #0 : STA.l !pl_stage
 	JSR dst_breach_layers : BCS +
@@ -709,20 +724,19 @@ dst_fs_load:
 	RTS
 
 ; dst_fs_run: breadth-first steps until the sample is decided (carry set,
-; A = chosen offset) or the frame budget is spent (carry clear; at least
-; four nodes per call; no limit for the debug dry run).
+; A = chosen offset) or the frame budget is spent (carry clear). Outside the
+; budget only !pl_quota forced nodes run; the debug dry run has no limit.
 dst_fs_run:
-	LDA.w #4 : STA.l !pl_quota
 .node
 	LDA.w !fs_head : CMP.w !fs_tail : BCC +
 	JMP .done
 +	; frame budget
+	LDA.l !dbg_dry : BNE .go
+	JSR dst_budget : BCC .go
 	LDA.l !pl_quota : BEQ +
 	DEC : STA.l !pl_quota
 	BRA .go
-+	LDA.l !dbg_dry : BNE .go
-	JSR dst_budget : BCC .go
-	CLC
++	CLC
 	RTS
 .go
 	LDX.w !fs_head

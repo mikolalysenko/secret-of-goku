@@ -160,7 +160,7 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !DK_NEW   = !DH+$1C   ; dst_cell_class: the class being stored
 !DK_HI    = !DH+$1E   ; (shifted to the high nibble)
 ; suspended breach plan (dst_plan_*)
-!pl_stage = !PL+$00   ; 0 none, 1 floor sampling in progress
+!pl_stage = !PL+$00   ; 0 none, 1 floor sampling in progress, 2 sampled (finish)
 !pl_off   = !PL+$02   ; wall cell and attack direction
 !pl_dir   = !PL+$04
 !pl_a     = !PL+$06   ; shores
@@ -179,6 +179,7 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !pl_wait  = !NTO+$0E  ; frames a suspended plan had no time (after the 14 bytes)
 !DQW #= (!DQ)&$FFFF                      ; bank-$33 absolute views (DB = $33)
 !DCW #= (!DC)&$FFFF
+!DKW #= (!DK)&$FFFF
 ; demolition planner job (demolish.asm)
 !pj_state = !DW+$00   ; 0 none, 1 walking, 2 walked (waits for growth)
 !pj_id    = !DW+$02   ; attack id (0: one-shot)
@@ -202,6 +203,7 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !bb_id    = !DW+$26   ; barrier search extent of the current beam (0: none)
 !bb_len   = !DW+$28
 !bb_half  = !DW+$2A
+!dk_warm  = !DW+$2C   ; next tile class to compute ahead of use (512 = all)
 !dk_d0    = !DW+$2E   ; $D0 seen last frame (recompute after native events)
 !DESTROY_PLAN_LINE = 160  ; the planner stops at this scanline (frame budget)
 ; barrier pending (native-barriers.js pending)
