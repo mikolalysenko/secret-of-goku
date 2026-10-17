@@ -31,6 +31,7 @@ ending_nmi:
 	LDA.w !s_regson
 	BEQ .noRegs
 	JSR nmi_regs
+	JSR nmi_flight
 .noRegs
 	JSR nmi_words
 	JSR nmi_transfers
@@ -369,7 +370,7 @@ nmi_transfers:
 .have
 	LDA.w !s_cur+3
 	AND.w #$00FF
-	CMP.w #!LD_GOKU+1
+	CMP.w #!LD_M7ROWS+1
 	BCS .skipBad
 	ASL
 	TAX
@@ -385,6 +386,316 @@ nmi_transfers:
 
 xfer_table:
 	dw xfer_vram, xfer_m7map, xfer_m7chr, xfer_cell32, xfer_cell16, xfer_cgram, xfer_fill, xfer_goku
+	dw xfer_m7tiles, xfer_m7rows
+
+; Time up for the converting loaders: the latched V counter has reached
+; line 150 of the next frame (they run only while loading, under the field
+; NMI's forced blank, and must end well before the next vblank). Carry set
+; when up.
+xfer_time_up:
+	PHP
+	SEP #$20
+	LDA.w $213F
+	LDA.w $2137
+	LDA.w $213D
+	XBA
+	LDA.w $213D
+	AND.b #$01
+	XBA
+	REP #$20
+	CMP.w #150
+	BCC .no
+	CMP.w #225
+	BCS .no
+	PLP
+	SEC
+	RTS
+.no
+	PLP
+	CLC
+	RTS
+
+; World characters for the flight's Mode 7 floor: tile t's 32 packed
+; bytes at C6:0000 + 32 t (two pixels a byte, low nibble first) with its
+; palette nibble (C6:7D80) as pixel = palette << 4 | index, into the high
+; bytes of VRAM words 64 t. Tiles the window never shows are skipped (one
+; bit each in the table at the entry's source). Entry size = tile count,
+; offset = tiles done.
+xfer_m7tiles:
+	SEP #$20
+	LDA.b #$80 : STA.w $2115      ; increment after $2119
+.tile
+	REP #$30
+	LDA.w !s_curoff
+	CMP.w !s_cur+6
+	BCC .more
+	CLC
+	RTS
+.more
+	JSR xfer_time_up
+	BCC .go
+	RTS
+.go
+	LDA.w !s_curoff
+	LSR : LSR : LSR
+	CLC
+	ADC.w !s_cur
+	TAX
+	SEP #$20
+	LDA.l !CB,X
+	STA.w !s_nmitmp
+	REP #$20
+	LDA.w !s_curoff
+	AND.w #$0007
+	TAX
+	SEP #$20
+	LDA.w !s_nmitmp
+.bit
+	DEX
+	BMI .tested
+	LSR
+	BRA .bit
+.tested
+	AND.b #$01
+	BEQ .next
+	REP #$20
+	LDA.w !s_curoff
+	LSR
+	TAX
+	SEP #$20
+	LDA.l $C67D80,X
+	BCC .low
+	LSR : LSR : LSR : LSR
+.low
+	ASL : ASL : ASL : ASL
+	STA.w !s_nmitmp
+	REP #$20
+	LDA.w !s_curoff
+	XBA
+	LSR : LSR                     ; t * 64
+	STA.w $2116
+	LDA.w !s_curoff
+	ASL : ASL : ASL : ASL : ASL
+	TAX
+	LDY.w #$0020
+	SEP #$20
+.byte
+	LDA.l $C60000,X
+	PHA
+	AND.b #$0F
+	ORA.w !s_nmitmp
+	STA.w $2119
+	PLA
+	LSR : LSR : LSR : LSR
+	ORA.w !s_nmitmp
+	STA.w $2119
+	INX
+	DEY
+	BNE .byte
+.next
+	REP #$20
+	INC.w !s_curoff
+	JMP .tile
+
+; The flight's Mode 7 map: window rows r = 0..127 (world tile row
+; (WY + r) & 511), columns WX..WX+127. Each row's RLE (C0:9A00's format: a
+; byte below $C0 is one tile, else (byte - $BF) tiles of the next byte;
+; row offsets at C6:8000, bank bit at C6:7FC0) is expanded from column WX
+; into a 128-byte buffer (long runs by a block move), then two DMAs put it
+; into the low bytes of VRAM words (row & 127) * 128 + (column & 127), the
+; second after the window's columns wrap. Entry size = rows, offset =
+; rows done.
+!M7ROW = !s_big+$C00
+xfer_m7rows:
+	REP #$30
+	LDA.w !s_curoff
+	CMP.w !s_cur+6
+	BCC .more
+	CLC
+	RTS
+.more
+	JSR xfer_time_up
+	BCC .go
+	RTS
+.go
+	LDA.w !s_curoff
+	CLC
+	ADC.w #!ENDING_FLIGHT_WY
+	AND.w #$01FF
+	STA.w !s_nmitmp               ; world row y
+	ASL
+	TAX
+	LDA.l $C68000,X
+	STA.w !s_nmitmp+2             ; its data
+	LDA.w !s_nmitmp
+	LSR : LSR : LSR
+	TAX
+	LDA.w !s_nmitmp
+	AND.w #$0007
+	TAY
+	SEP #$20
+	LDA.l $C67FC0,X
+.bankBit
+	DEY
+	BMI .bankHave
+	LSR
+	BRA .bankBit
+.bankHave
+	REP #$20
+	LDX.w !s_nmitmp+2
+	AND.w #$0001
+	BEQ .bank6
+	JSR m7row_c7
+	BRA .dma
+.bank6
+	JSR m7row_c6
+.dma
+	REP #$30
+	LDA.w !s_nmitmp
+	AND.w #$007F
+	XBA
+	LSR
+	STA.w !s_nmitmp+4             ; the VRAM row
+	ORA.w #!ENDING_FLIGHT_WX&127
+	LDX.w #!M7ROW
+	LDY.w #128-(!ENDING_FLIGHT_WX&127)
+	JSR m7_dma
+	LDA.w !s_nmitmp+4
+	LDX.w #!M7ROW+128-(!ENDING_FLIGHT_WX&127)
+	LDY.w #!ENDING_FLIGHT_WX&127
+	BEQ .rowDone
+	JSR m7_dma
+.rowDone
+	INC.w !s_curoff
+	JMP xfer_m7rows
+
+; DMA Y bytes from SRAM X into the low bytes of VRAM from word A.
+m7_dma:
+	STA.w $2116
+	STX.w $4372
+	STY.w $4375
+	LDA.w #$1800                  ; A -> B, one register: $2118
+	STA.w $4370
+	SEP #$20
+	STZ.w $2115                   ; increment after $2118
+	LDA.b #$32
+	STA.w $4374
+	LDA.b #$80
+	STA.w $420B
+	REP #$20
+	RTS
+
+; Row RLE at X in bank <bank>: skip to column WX, then 128 tiles into
+; M7ROW (Y the buffer index; s_nmitmp+6 the column, +8 the run left).
+macro m7row(bank)
+	STZ.w !s_nmitmp+6
+.skip
+	SEP #$20
+	LDA.l <bank>0000,X
+	INX
+	CMP.b #$C0
+	BCS .skipRun
+	REP #$20
+	LDA.w !s_nmitmp+6
+	INC
+	BRA .skipped
+.skipRun
+	SBC.b #$BF                    ; carry set: the run's length
+	INX
+	REP #$20
+	AND.w #$00FF
+	CLC
+	ADC.w !s_nmitmp+6
+.skipped
+	CMP.w #!ENDING_FLIGHT_WX+1
+	BCS .reach
+	STA.w !s_nmitmp+6
+	BRA .skip
+.reach
+	SEC
+	SBC.w #!ENDING_FLIGHT_WX      ; the run's tiles inside the window
+	STA.w !s_nmitmp+8
+	LDY.w #$0000
+	DEX
+	SEP #$20
+	LDA.l <bank>0000,X            ; its tile (a single op is its own tile)
+	INX
+	BRA .fill
+.op
+	LDA.l <bank>0000,X
+	INX
+	CMP.b #$C0
+	BCS .run
+	STA.w !M7ROW,Y
+	INY
+	CPY.w #128
+	BCC .op
+	RTS
+.run
+	SBC.b #$BF
+	STA.w !s_nmitmp+8
+	LDA.b #$00
+	STA.w !s_nmitmp+9
+	LDA.l <bank>0000,X
+	INX
+.fill
+	STA.w !M7ROW,Y
+	INY
+	CPY.w #128
+	BCS .done
+	REP #$20
+	DEC.w !s_nmitmp+8
+	BEQ .filled
+	LDA.w !s_nmitmp+8
+	CMP.w #8
+	BCS .long
+	SEP #$20
+	LDA.w !M7ROW-1,Y
+	BRA .fill
+.filled
+	SEP #$20
+	BRA .op
+.long
+	; the rest of a long run (at most to the buffer's end) by MVN from
+	; the tile just stored
+	STY.w !s_nmitmp+10
+	LDA.w #128
+	SEC
+	SBC.w !s_nmitmp+10
+	CMP.w !s_nmitmp+8
+	BCC .clip
+	LDA.w !s_nmitmp+8
+.clip
+	STA.w !s_nmitmp+12            ; tiles to copy
+	PHX
+	TYA
+	CLC
+	ADC.w #!M7ROW
+	TAY                           ; destination
+	DEC
+	TAX                           ; source: the tile before
+	LDA.w !s_nmitmp+12
+	DEC
+	PHB
+	MVN $32,$32
+	PLB
+	PLX
+	LDA.w !s_nmitmp+10
+	CLC
+	ADC.w !s_nmitmp+12
+	TAY
+	CPY.w #128
+	BCS .done
+	SEP #$20
+	BRA .op
+.done
+	REP #$20
+	RTS
+endmacro
+m7row_c6:
+	%m7row($C6)
+m7row_c7:
+	%m7row($C7)
 
 ; Next transfer into s_cur. Carry set when the queue and script are empty.
 fetch_transfer:
@@ -1725,6 +2036,32 @@ mulu16_8_shr8:
 	AND.w #$00FF
 	CLC
 	ADC.w $4216                    ; hi*y + (lo*y >> 8)
+	RTS
+
+; Unsigned A16 * Y8 / 256 rounded up -> A16.
+mulu16_8_shr8_up:
+	STA.w !l_m0
+	SEP #$20
+	TYA
+	STA.w $4202
+	LDA.w !l_m0
+	STA.w $4203
+	NOP : NOP : NOP : NOP
+	REP #$20
+	LDA.w $4216
+	CLC
+	ADC.w #$00FF
+	XBA
+	AND.w #$00FF                   ; ceil(lo * y / 256)
+	STA.w !l_m2
+	SEP #$20
+	LDA.w !l_m0+1
+	STA.w $4203
+	NOP : NOP : NOP : NOP
+	REP #$20
+	LDA.w $4216
+	CLC
+	ADC.w !l_m2
 	RTS
 
 ; Unsigned A16 / Y8 -> A16 quotient, X16 remainder.

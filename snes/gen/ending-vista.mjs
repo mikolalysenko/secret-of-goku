@@ -17,9 +17,14 @@ import {gfx,imageToSurface,quantizeSurfaces,fitGroupPalettes,nearestIn,objCell,u
 
 export const VISTA={bgX:24,bgY:40,bgCols:33,bgRows:29,fgY:144,fgRows:30};
 // OBJ cells (16x16; cell c at tile (c >> 3) * 32 + (c & 7) * 2): Balls
-// 0-7, sparks 8-11, the flake 12, Shenron from 13; Goku's four cells (queued
-// at run time) start at the next row of cells after the uploaded image.
-export const CELL={ball:0,spark:8,flake:12,dragon:13};
+// 0-7, Shenron 8-30, the wish flight's star tiles 31 (rows 0-3 are the
+// flight's whole OBJ name table 1), sparks 32-35, the flake 36; Goku's four
+// cells (queued at run time) start at the next row of cells after the
+// uploaded image.
+export const CELL={ball:0,dragon:8,stars:31,spark:32,flake:36};
+// The star tiles: one pixel each in colours 12-15 (OBJ palette 7 of the
+// flight, after the sparks' colours).
+export function starCell(){const ix=new Uint8Array(256);for(let s=0;s<4;s++)ix[((s>>1)*8)*16+(s&1)*8]=12+s;return ix;}
 export const FLAKE=21|(24<<5)|(17<<10);
 
 // Ki-art frames of a sheet (ki-art.js createKiArt): the opaque bounding box
@@ -125,8 +130,9 @@ export async function vistaAssets(o,{rom,repo,engine}){
   const flake=new Uint16Array(256);flake[0]=1+FLAKE;
   const ballQ=quantizeSurfaces([...ballSurf,flake],15,[FLAKE]);
   const effects=createNativeEffects(rom,JSON.parse(readFileSync(join(repo,'engine/native-effects.json'),'utf8')));
-  const gold=effects['gold-spark'],sparkQ=quantizeSurfaces(gold);
-  const cellCount=CELL.dragon+cells.length,rowsOfCells=Math.ceil(cellCount/8);
+  const gold=effects['gold-spark'],sparkQ=quantizeSurfaces(gold,11);
+  if(cells.length>23)throw Error('Shenron needs more than cells 8-30');
+  const cellCount=CELL.flake+1,rowsOfCells=Math.ceil(cellCount/8);
   if(rowsOfCells+1>12)throw Error('vista OBJ cells reach the BG1 map at $1800');
   o.def('ENDING_VISTA_GOKU_CELL',rowsOfCells*8);
   const vram=new Uint8Array(rowsOfCells*0x400);
@@ -134,6 +140,7 @@ export async function vistaAssets(o,{rom,repo,engine}){
   ballQ.index.slice(0,8).forEach((ix,i)=>putCell(CELL.ball+i,ix));
   putCell(CELL.flake,ballQ.index[8]);
   sparkQ.index.forEach((ix,i)=>putCell(CELL.spark+i,ix));
+  putCell(CELL.stars,starCell());
   const oam=[];
   cells.forEach((c,i)=>{
     const p=fit.assign[i],ix=new Uint8Array(256);
@@ -149,6 +156,8 @@ export async function vistaAssets(o,{rom,repo,engine}){
   o.table('ending_vista_ball_pal','dw',ballQ.palette);
   o.table('ending_vista_spark_pal','dw',sparkQ.palette);
   o.def('ENDING_VISTA_SPARKS',gold.length);
+  o.vistaBallPalette=ballQ.palette;
+  o.vistaDragonCells=cells.map((c,i)=>({cx:c.cx,cy:c.cy,pal:fit.assign[i]}));
   // The seven Balls around (128, 184) (x 28, y 12), at scroll 0: cell top-left.
   const ring=[];for(let i=0;i<7;i++){const a=i*Math.PI*2/7-Math.PI/2;ring.push(Math.round(128+Math.cos(a)*28)-8,Math.round(184+Math.sin(a)*12)-8);}
   o.table('ending_vista_ring','dw',ring.map(v=>v&0xffff));

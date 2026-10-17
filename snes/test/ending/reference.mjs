@@ -112,6 +112,37 @@ export async function vistaReference({rom,phase,age,eighth=false,dimmed=0}){
   return surfaceToRgba(surface);
 }
 
+// The wish flight as shenron-ending prepare() draws the scatter from 30:
+// createWishFlight (the world texture, stars, Shenron, the Balls, sparks)
+// with its flash, dimmed from black until 60.
+let flightArt=null;
+export async function flightReference({rom,age}){
+  if(!flightArt){
+    const {createWishFlight}=await engine('wish-flight.js');
+    const shenron=gfx.readPng(join(repo,'assets/sprites/shenron.png'));
+    const sheet=gfx.readPng(join(repo,'assets/sprites/dragon-balls.png')),bs=toSurface(sheet,128),W=sheet.width,H=sheet.height;
+    const frames=[];
+    for(let i=0;i<8;i++){
+      const x0=Math.round(i%4*W/4),x1=Math.round((i%4+1)*W/4),y0=Math.round(Math.floor(i/4)*H/2),y1=Math.round((Math.floor(i/4)+1)*H/2);
+      let x=x1,y=y1,right=x0,bottom=y0;
+      for(let yy=y0;yy<y1;yy++)for(let xx=x0;xx<x1;xx++)if(bs[yy*W+xx]){x=Math.min(x,xx);right=Math.max(right,xx);y=Math.min(y,yy);bottom=Math.max(bottom,yy);}
+      frames.push({x,y,w:right-x+1,h:bottom-y+1});
+    }
+    const state={surface:null};
+    const put=(x,y,c)=>{x=Math.round(x);y=Math.round(y);if(x>=0&&x<256&&y>=0&&y<224)state.surface[y*256+x]=c;};
+    const blit=(a,x,y,w,h,sx=0,sy=0,sw=a.width,sh=a.height)=>{for(let py=0;py<h;py++)for(let px=0;px<w;px++){const c=a.pixels[(sy+Math.floor(py*sh/h))*a.width+sx+Math.floor(px*sw/w)];if(c)put(x+px,y+py,c);}};
+    const rgb=(r,g,b)=>1+r+(g<<5)+(b<<10);
+    const mod={spriteLayer:{effects:await nativeEffects(rom)},kiArt:{draw(key,frame,x,y,size,put){const f=frames[frame%8],w=Math.round(size*f.w/Math.max(f.w,f.h)),h=Math.round(size*f.h/Math.max(f.w,f.h));for(let yy=0;yy<h;yy++)for(let xx=0;xx<w;xx++){const c=bs[(f.y+Math.floor(yy*f.h/h))*W+f.x+Math.floor(xx*f.w/w)];if(c)put(x-w/2+xx,y-h/2+yy,c);}}}};
+    flightArt={state,rgb,draw:createWishFlight({cart:{data:rom},ppu:{}},mod,{put,rgb,blit}),dragon:{pixels:toSurface(shenron,1),width:shenron.width,height:shenron.height}};
+  }
+  const f=flightArt,surface=new Uint16Array(256*224);f.state.surface=surface;
+  const light=f.draw(age,f.dragon);
+  const mixAll=g=>{for(let i=0;i<surface.length;i++){const c=surface[i]-1;surface[i]=f.rgb(g(c&31),g(c>>5&31),g(c>>10&31));}};
+  if(light)mixAll(n=>Math.round(n+(31-n)*light));
+  if(age<60){const a=(60-age)/30;mixAll(n=>Math.round(n*(1-a)));}
+  return surfaceToRgba(surface);
+}
+
 // Fraction of pixels whose channels all differ by at most `tol` (8-bit),
 // within the optional rectangle {x0,y0,x1,y1}.
 export function compare(pngPath,ref,{tol=24,rect=null}={}){

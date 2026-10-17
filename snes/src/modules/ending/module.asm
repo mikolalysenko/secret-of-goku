@@ -246,6 +246,8 @@ hi_bits_ram = !SW+$DF0             ; 16 bytes (oam_put's high-table patterns)
 !LD_CGRAM  = $05        ; CGRAM bytes (dest = colour index)
 !LD_FILL   = $06        ; VRAM fill with the byte at src (both bytes of each word)
 !LD_GOKU   = $07        ; Goku tiles: src = the DMA table queue_goku built (bank $32), dest = its length
+!LD_M7TILES = $08       ; the flight's Mode 7 characters from the world data (size = tiles)
+!LD_M7ROWS  = $09       ; the flight's Mode 7 map window from the world RLE (size = rows)
 !LD_END    = $FF
 
 macro ld(src, mode, dest, size)
@@ -1105,7 +1107,12 @@ loading_frame:
 	SEP #$20
 	LDA.b #$00
 	STA.w !s_tm
+	LDA.w !s_family
+	CMP.b #!FAM_FLIGHT
 	REP #$30
+	BNE .oam
+	JSR flight_loading
+.oam
 	JSR oam_begin
 	RTS
 
@@ -1115,6 +1122,7 @@ incsrc "space.asm"
 incsrc "fatal.asm"
 incsrc "village.asm"
 incsrc "vista.asm"
+incsrc "flight.asm"
 incsrc "stubs.asm"
 
 ; Generated palettes and small tables.

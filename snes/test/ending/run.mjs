@@ -10,7 +10,7 @@ import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {runMesen} from '../mesen.mjs';
 const gfx=await import(new URL('../../tools/gfx.mjs',import.meta.url).href);
-import {kaiReference,compare,writeRef,bestPlanetMatch,gokuAtlas,nativeEffects,vistaReference} from './reference.mjs';
+import {kaiReference,compare,writeRef,bestPlanetMatch,gokuAtlas,nativeEffects,vistaReference,flightReference} from './reference.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const rom=process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-goku.sfc');
 const baseRom=new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')));
@@ -176,12 +176,36 @@ async function vistaCheck(r,out){
   }
 }
 
+// The wish flight against createWishFlight's own picture. The cartridge's
+// floor is the world map in a 128x128-tile Mode 7 window (repeated beyond
+// it near the horizon) and Shenron keeps his full size as he rises away.
+async function flightCheck(r,out){
+  expect(r.vista_loaded,'the vista before the flight');
+  expect(r.flight_load_frames<=30,`flight stage load took ${r.flight_load_frames} frames`);
+  expect((r.status_100&0x0D)===0x0D,`muted and airborne at 100 (status ${r.status_100})`);
+  expect((r.status_end&0x0C)===0x04,`muted, landed after 420 (status ${r.status_end})`);
+  expect(r.sfx_310===2,`charged sound at the scatter (${r.sfx_310})`);
+  expect(r.done===1,'flight timeline done flag');
+  // SlowROM: the scatter's 28 sprites (300-340) and heavy native frames
+  // leave about one frame in eight late; no vblank overrun.
+  expect(r.lag_frames<=60,`lag ${r.lag_frames} frames`);
+  expect(r.overruns===0,`vblank overran ${r.overruns} times (${r.overrun_at})`);
+  for(const a of [40,60,120,180,230,280,301,320,360,400,450]){
+    const name=`flight-${a}`;if(r[name]===undefined){problems.push(`no still ${name}`);continue;}
+    const ref=await flightReference({rom:baseRom,age:a});
+    writeFileSync(join(out,`${name}-ref.png`),writeRef(null,ref));
+    const m=compare(join(out,`${name}.png`),ref);r[`${name}_match`]=m;
+    expect(m>=0.85,`${name} matches the browser at ${(m*100).toFixed(1)}%`);
+  }
+}
+
 const tests=[
   {name:'kai',check:kaiCheck},
   {name:'space',check:spaceCheck},
   {name:'fatal',check:fatalCheck},
   {name:'depart',check:departCheck},
   {name:'vista',check:vistaCheck},
+  {name:'flight',check:flightCheck},
 ];
 let ok=true;
 for(const t of tests){

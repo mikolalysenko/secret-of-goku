@@ -20,8 +20,8 @@
 !VS_ATTR_SPARK = $3600        ; palette 3
 !VS_ATTR_GOKU  = $3800        ; palette 4
 !CELL_VS_BALL  = 0            ; cells (ending-vista.mjs CELL)
-!CELL_VS_SPARK = 8
-!CELL_VS_FLAKE = 12
+!CELL_VS_SPARK = 32
+!CELL_VS_FLAKE = 36
 
 !vs_want    = !s_var+$00   ; word  BG2 should show the whole Tree
 !vs_have    = !s_var+$02   ; word  BG2 shows (or has queued) the whole Tree
@@ -65,6 +65,7 @@ start_vista:
 	RTS
 
 start_scatter:
+	JSR flight_reset
 	JMP start_vista
 
 vista_load:
@@ -194,13 +195,15 @@ frame_wish:
 	JMP vista_frame
 
 ; The flight's first 30 frames: the wish picture at age 96, dimmed by
-; age/30. (The flight itself is not ported yet: black after 30.)
+; age/30; then the flight (flight.asm).
 frame_scatter:
 	REP #$30
 	STZ.w !s_fadew
 	LDA.l !ending_age
 	CMP.w #30
-	BCS .dark
+	BCC .wish
+	JMP flight_frame
+.wish
 	XBA
 	LDY.w #30
 	JSR div_a_y
@@ -209,21 +212,6 @@ frame_scatter:
 	STA.w !vs_age
 	LDA.w #!EP_WISH
 	JMP vista_frame
-.dark
-	LDA.w #$0100
-	STA.w !s_fadeb
-	JSR oam_begin
-	SEP #$20
-	LDA.b #$00
-	STA.w !s_tm
-	STA.w !s_tmcut
-	REP #$20
-	LDA.l !ending_age
-	CMP.w #479
-	BCC .out
-	JMP mark_done
-.out
-	RTS
 
 ; ---------------------------------------------------------------------------
 ; The picture for phase A at vs_age (shenron-ending prepare).
@@ -414,7 +402,7 @@ vista_spark_first:
 ; Spark frame vs_i at o_x/o_y, then the next frame.
 vista_spark_put:
 	LDA.w !vs_i
-	ASL                       ; cells 8-11 (one cell row): tiles 32-38
+	ASL                       ; the four spark cells share one cell row
 	CLC
 	ADC.w #((!CELL_VS_SPARK>>3)*32)+((!CELL_VS_SPARK&7)*2)
 	ORA.w #!VS_ATTR_SPARK
