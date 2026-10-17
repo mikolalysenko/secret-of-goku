@@ -103,21 +103,24 @@ export function readWav(buffer){
  return {rate:fmt.rate,pcm:out};
 }
 
-// Windowed-sinc (Kaiser) resampler with an explicit cutoff (Hz).
-export function resample(pcm,from,to,{cutoff=Math.min(from,to)*0.47,taps=48,beta=8}={}){
- if(from===to)return Float32Array.from(pcm);
- const ratio=to/from,len=Math.round(pcm.length*ratio),out=new Float32Array(len);
+// Windowed-sinc (Kaiser) resampler with an explicit cutoff (Hz). With
+// {length} the output has exactly that many samples (a tiny time stretch);
+// {circular} treats the input as one period of a loop, so the seam stays
+// seamless.
+export function resample(pcm,from,to,{cutoff=Math.min(from,to)*0.47,taps=48,beta=8,length=null,circular=false}={}){
+ if(from===to&&!length)return Float32Array.from(pcm);
+ const len=length??Math.round(pcm.length*to/from),ratio=len/pcm.length,out=new Float32Array(len);
  const fc=cutoff/from; // normalized to input rate
  const bessel=x=>{let s=1,t=1;for(let k=1;k<30;k++){t*=(x/2/k)**2;s+=t;}return s;};
  const i0b=bessel(beta);
  for(let j=0;j<len;j++){
   const x=j/ratio,c=Math.floor(x);let acc=0,wsum=0;
   for(let k=c-taps+1;k<=c+taps;k++){
-   if(k<0||k>=pcm.length)continue;
+   if(!circular&&(k<0||k>=pcm.length))continue;
    const d=x-k,r=d/taps;if(Math.abs(r)>=1)continue;
    const w=bessel(beta*Math.sqrt(1-r*r))/i0b;
    const s=d===0?2*fc:Math.sin(2*Math.PI*fc*d)/(Math.PI*d);
-   acc+=pcm[k]*s*w;wsum+=s*w;
+   acc+=pcm[circular?((k%pcm.length)+pcm.length)%pcm.length:k]*s*w;wsum+=s*w;
   }
   out[j]=wsum?acc/wsum:0;
  }

@@ -6,18 +6,21 @@
 ; docs/agents/snes-port/engine.md (what the game is doing at each hook).
 
 ; incsrc "modules/<name>/module.asm"
+incsrc "modules/audio/module.asm"
 
 pushpc
 org !CODE_CORE+$7000
 ; Field frame (also dialogue, events and Mode 7 boss arenas), after the game
 ; logic and OAM build, before the NMI handshake. M16/X16, DB = $7E, D = 0.
 modules_field_frame:
+	JSL audio_frame
 	RTL
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
 modules_field_nmi:
 	RTL
 ; World flight frame, after the world logic (DB = $7E).
 modules_world_frame:
+	JSL audio_frame
 	RTL
 ; World vblank, after the game's uploads and HDMA setup; not force-blanked,
 ; so check core_vblank_lines before long uploads (DB = $80).
@@ -26,9 +29,11 @@ modules_world_nmi:
 ; Full-screen menu frame (file select, name entry, status, equipment,
 ; save), in vblank right after the menu's own uploads (DB = $7E).
 modules_menu_frame:
+	JSL audio_pause
 	RTL
 ; Ring menu frame, in vblank (DB = $7E).
 modules_ring_frame:
+	JSL audio_pause
 	RTL
 ; Title program entry (power-on, soft reset, quit to title), after module
 ; WRAM was cleared; the decompressed program is at 7E:8000 (DB = $7E).

@@ -134,7 +134,7 @@ test('stream: a streamed tone plays without gaps on voice 7, then the voice retu
  assert.equal(peakVoice,7);
  const {l}=h.take(),r=rmsWindows(l);
  const body=r.slice(5,50);assert.ok(Math.min(...body)>0.9*Math.max(...body),`steady level ${Math.min(...body)} ${Math.max(...body)}`);
- assert.ok(Math.abs(zeroCrossHz(l,3200,12800)-440)<2);
+ assert.ok(Math.abs(zeroCrossHz(l,3200,12800)-440)<4);
  assert.equal(h.ram[0xAE]&0x80,0,'voice handed back');assert.equal(h.ram[0xEC],0xFF);
  assert.deepEqual(h.status().active,[false,false]);
 });

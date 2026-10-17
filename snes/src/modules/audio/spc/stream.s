@@ -29,7 +29,8 @@
 ;
 ; Port command $8A (driver dispatch table entry $14C6): p1 = number of
 ; 3-byte groups that follow, acknowledged by echoing the counter
-; 1,2,…,255,1,… on port 0. One more group, acknowledged only after the
+; $20,$21,…,$7F,$20,… on port 0 (values the unextended driver ignores, so a
+; missing extension costs only silence). One more group, acknowledged only after the
 ; records are processed, ends the command; the CPU then writes 0 and waits
 ; for port 0 = 0. Records (first group; low bit of byte 0 = channel):
 ;   $1c slot flags + 12 data groups   chunk (flags bit0 = final)
@@ -177,15 +178,6 @@ slot_addr:
  MOV $2D,A
  RET
 
-; X = channel: A = the slot after pos (rings of 7 starting at 7*X).
-next_slot:
- MOV A,pos+X
- INC A
- CMP A,!ring_end+X
- BNE ns_ret
- MOV A,!ring_base+X
-ns_ret:
- RET
 
 ; End of every timer tick, $02F4: JMP $0279 → JMP ext_tick. The driver has
 ; written this tick's KON/KOF and voice registers.
@@ -318,7 +310,7 @@ tv_ok:
 ; cleared); $B5 = group count.
 ext_cmd:
  MOV groups,CMDP1
- MOV counter,#1
+ MOV counter,#$20
 cmd_next:
  MOV A,groups
  BNE cn_rec
@@ -384,8 +376,9 @@ rv_wait:
  MOV $36,A
  MOV P0,Y
  INC Y
+ CMP Y,#$80
  BNE rv_ok
- INC Y
+ MOV Y,#$20
 rv_ok:
  MOV counter,Y
  DEC groups
@@ -412,8 +405,9 @@ rd_wait:
  MOV [$2C]+Y,A
  INC Y
  INC X
+ CMP X,#$80
  BNE rd_cnt
- INC X
+ MOV X,#$20
 rd_cnt:
  DBNZ dcount,rd_wait
  MOV counter,X
@@ -527,6 +521,15 @@ sfxmask:
  MOV $02,A
  RET
 
+; X = channel: A = the slot after pos (rings of 7 starting at 7*X).
+next_slot:
+ MOV A,pos+X
+ INC A
+ CMP A,!ring_end+X
+ BNE ns_ret
+ MOV A,!ring_base+X
+ns_ret:
+ RET
 code_b_end:
 
 ; ADSR entries 12-31
