@@ -58,5 +58,12 @@
 !DATA_AUDIO   = $EA0000
 !DATA_MISC    = $EB0000
 
-!BANK_EVENTS  = $F0     ; F0-F7
+!BANK_EVENTS  = $F0     ; F0-F7 upper halves ($Fx:8000-FFFF): story events
 !BANK_ASSETS  = $F8     ; F8-FF
+
+; Art allocations for the set-piece modules (lower halves are read with long
+; addressing; story keeps the upper halves of F0-F7):
+;   Frieza  $F0:0000-$F3:7FFF lower halves (4 x 32 KiB) + $E6:0000-7FFF
+;   Vegeta  $F4:0000-$F5:7FFF lower halves (2 x 32 KiB) + $E8:0000-7FFF
+;   Orbit   $F6:0000-7FFF, $F7:0000-FFFF, $FA:8000-FFFF, $FB:0000-FFFF + $E7:0000-7FFF
+; (Goku uses F8-FA lower; audio FC-FF.)

@@ -13,46 +13,46 @@
 assert !FX_PBASE == (!FX_SRAM&$FF0000), "fx polygon tables: bank of !FX_SRAM"
 !FX_PLINES = 225                   ; HDMA lines described (0-224)
 
-; Locals while a polygon is built: !d_tiles and !d_s are free in the beam
+; Locals while a polygon is built: !d_tiles and !d_ks are free in the beam
 ; renderer until its first emit; !d_tmp is the writer's scratch.
-!p_x    = !d_tiles+$00   ; palms (screen)
-!p_y    = !d_tiles+$02
-!p_len  = !d_tiles+$04   ; length (the visible part)
-!p_hw   = !d_tiles+$06   ; half-width (1-255)
-!p_t    = !d_tiles+$08   ; taper (9-255)
-!p_ph   = !d_tiles+$0A   ; phase (age / 2)
-!p_out  = !d_tiles+$0C   ; table write address (bank !FX_PBASE)
-!p_end  = !d_tiles+$0E   ; first address past the buffer
-!p_cnt  = !d_tiles+$10   ; lines in the pending run
-!p_r0   = !d_tiles+$12   ; pending run record
-!p_r1   = !d_tiles+$14
-!p_rsz  = !d_tiles+$16   ; entry size: 3 (two-byte records) or 5
-!p_line = !d_tiles+$18   ; lines described so far
-!p_d    = !d_tiles+$1A   ; distance from the palms of the current line
-!p_q    = !d_tiles+$1C   ; lines per evaluated taper / cap / horn step
-!p_rip  = !d_tiles+$1E   ; nonzero: ripple (bands +2 every third 8 px)
-!p_left = !d_tiles+$20   ; lines left in the beam / last beam line
-!p_dt   = !d_tiles+$22   ; d where the taper ends (taper - 8)
-!p_first = !d_tiles+$24  ; first beam line (up/down)
-!p_top  = !d_tiles+$26   ; top line / scratch (left/right)
-!p_axis = !d_tiles+$28   ; axis line + 1 (left/right)
-!p_col  = !d_tiles+$2A   ; offset of the style's row in fx_wave_colors
-!p_ovf  = !d_tiles+$2C   ; nonzero: a table did not fit
-!p_sd   = !d_tiles+$2E   ; walk direction in d per line: 1 (down) / $FFFF (up)
-!p_n    = !d_s+$00       ; lines of the current step
-!p_b    = !d_s+$02       ; body bound (up/down)
-!p_r    = !d_s+$04       ; radius (up/down)
-!p_o    = !d_s+$06       ; outline record (up/down)
-!p_ra   = !d_s+$08       ; ripple amount (up/down)
-!p_ds   = !d_s+$0A       ; horn start d (left/right)
-!p_de   = !d_s+$0C       ; rounded end d (left/right)
-!p_a    = !d_s+$0E       ; distance from the axis (left/right)
-!h_as   = !d_s+$02       ; a * taper*256/hw (left/right)
-!h_ar   = !d_s+$04       ; a * 65535/hw
-!h_ss   = !d_s+$06       ; taper*256/hw
-!h_sr   = !d_s+$08       ; 65535/hw
-!h_qs   = !d_r0+$0       ; q * the steps
-!h_qr   = !d_r0+$2
+!fxp_x    = !d_tiles+$00   ; palms (screen)
+!fxp_y    = !d_tiles+$02
+!fxp_len  = !d_tiles+$04   ; length (the visible part)
+!fxp_hw   = !d_tiles+$06   ; half-width (1-255)
+!fxp_t    = !d_tiles+$08   ; taper (9-255)
+!fxp_ph   = !d_tiles+$0A   ; phase (age / 2)
+!fxp_out  = !d_tiles+$0C   ; table write address (bank !FX_PBASE)
+!fxp_end  = !d_tiles+$0E   ; first address past the buffer
+!fxp_cnt  = !d_tiles+$10   ; lines in the pending run
+!fxp_r0   = !d_tiles+$12   ; pending run record
+!fxp_r1   = !d_tiles+$14
+!fxp_rsz  = !d_tiles+$16   ; entry size: 3 (two-byte records) or 5
+!fxp_line = !d_tiles+$18   ; lines described so far
+!fxp_d    = !d_tiles+$1A   ; distance from the palms of the current line
+!fxp_q    = !d_tiles+$1C   ; lines per evaluated taper / cap / horn step
+!fxp_rip  = !d_tiles+$1E   ; nonzero: ripple (bands +2 every third 8 px)
+!fxp_left = !d_tiles+$20   ; lines left in the beam / last beam line
+!fxp_dt   = !d_tiles+$22   ; d where the taper ends (taper - 8)
+!fxp_first = !d_tiles+$24  ; first beam line (up/down)
+!fxp_top  = !d_tiles+$26   ; top line / scratch (left/right)
+!fxp_axis = !d_tiles+$28   ; axis line + 1 (left/right)
+!fxp_col  = !d_tiles+$2A   ; offset of the style's row in fx_wave_colors
+!fxp_ovf  = !d_tiles+$2C   ; nonzero: a table did not fit
+!fxp_sd   = !d_tiles+$2E   ; walk direction in d per line: 1 (down) / $FFFF (up)
+!fxp_n    = !d_ks+$00       ; lines of the current step
+!fxp_b    = !d_ks+$02       ; body bound (up/down)
+!fxp_r    = !d_ks+$04       ; radius (up/down)
+!fxp_o    = !d_ks+$06       ; outline record (up/down)
+!fxp_ra   = !d_ks+$08       ; ripple amount (up/down)
+!fxp_ds   = !d_ks+$0A       ; horn start d (left/right)
+!fxp_de   = !d_ks+$0C       ; rounded end d (left/right)
+!fxp_a    = !d_ks+$0E       ; distance from the axis (left/right)
+!fxh_as   = !d_ks+$02       ; a * taper*256/hw (left/right)
+!fxh_ar   = !d_ks+$04       ; a * 65535/hw
+!fxh_ss   = !d_ks+$06       ; taper*256/hw
+!fxh_sr   = !d_ks+$08       ; 65535/hw
+!fxh_qs   = !d_r0+$0       ; q * the steps
+!fxh_qr   = !d_r0+$2
 
 ; ---------------------------------------------------------------------------
 ; Beam polygon for the current effect (FX_BEAM_WAVE / FINAL / GALICK):
@@ -77,14 +77,14 @@ fx_poly_beam:
 	LDA !d_cur+!C_A
 	BEQ .gone
 	BMI .gone
-	STA !p_len
+	STA !fxp_len
 	LDA !d_cur+!C_B
 	BEQ .gone
 	BMI .gone
 	CMP.w #256
 	BCC +
 	LDA.w #255
-+	STA !p_hw
++	STA !fxp_hw
 	LDA !d_cur+!C_C
 	BNE +
 	LDA.w #44
@@ -94,24 +94,24 @@ fx_poly_beam:
 +	CMP.w #256
 	BCC +
 	LDA.w #255
-+	STA !p_t
++	STA !fxp_t
 	SEC
 	SBC.w #8
-	STA !p_dt
+	STA !fxp_dt
 	LDA !d_cur+!C_T
 	LSR
-	STA !p_ph
+	STA !fxp_ph
 	LDA !d_cur+!C_X
-	STA !p_x
+	STA !fxp_x
 	LDA !d_cur+!C_Y
-	STA !p_y
+	STA !fxp_y
 	LDA !d_cur+!C_KIND           ; colour row: style 1-3 -> 0-2
 	AND.w #$0003
 	DEC
 	ASL
 	ASL
 	ASL
-	STA !p_col
+	STA !fxp_col
 	; Only the visible part matters: a far end past the screen edge (its
 	; 12 px rounding included) draws the same picture.
 	LDA !d_cur+!C_DIR
@@ -130,29 +130,29 @@ fx_poly_beam:
 .down
 	LDA.w #237
 	SEC
-	SBC !p_y
+	SBC !fxp_y
 	BRA .lim
 .right
 	LDA.w #268
 	SEC
-	SBC !p_x
+	SBC !fxp_x
 	BRA .lim
 .left
-	LDA !p_x
+	LDA !fxp_x
 	CLC
 	ADC.w #13
 	BRA .lim
 .up
-	LDA !p_y
+	LDA !fxp_y
 	CLC
 	ADC.w #13
 .lim
 	BMI .gone
 	BEQ .gone
-	CMP !p_len
+	CMP !fxp_len
 	BCS +
-	STA !p_len
-+	JSR fx_poly_estimate         ; !p_q / !p_rip; C set: nothing visible
+	STA !fxp_len
++	JSR fx_poly_estimate         ; !fxp_q / !fxp_rip; C set: nothing visible
 	BCS .gone
 	JSR fx_poly_key              ; the same picture as last time?
 	BCS .build
@@ -197,26 +197,26 @@ fx_poly_kind:
 ; key is unchanged (the tables on file show this picture).
 fx_poly_key:
 	STZ !d_tmp+6
-	LDA !p_x
+	LDA !fxp_x
 	LDX.w #0
 	JSR .word
-	LDA !p_y
+	LDA !fxp_y
 	LDX.w #2
 	JSR .word
-	LDA !p_len
+	LDA !fxp_len
 	LDX.w #4
 	JSR .word
-	LDA !p_t
+	LDA !fxp_t
 	XBA
-	ORA !p_hw
+	ORA !fxp_hw
 	LDX.w #6
 	JSR .word
 	LDA.l $7E0600
 	LDX.w #10
 	JSR .word
-	LDA !p_rip                   ; ripple pattern: (phase % 3) + 1
+	LDA !fxp_rip                   ; ripple pattern: (phase % 3) + 1
 	BEQ +
-	LDA !p_ph
+	LDA !fxp_ph
 	STA.l $004204
 	SEP #$20
 	LDA.b #3
@@ -262,7 +262,7 @@ fx_poly_key:
 	INC !d_tmp+6
 +	RTS
 
-; Choose !p_q / !p_rip so the tables should fit one buffer (the build
+; Choose !fxp_q / !fxp_rip so the tables should fit one buffer (the build
 ; still checks): exact steps with the ripple first. C set when the beam
 ; has no visible line.
 fx_poly_estimate:
@@ -271,45 +271,45 @@ fx_poly_estimate:
 	BEQ .vert
 	; left/right: visible lines 2hw+1 clipped; 3 bytes per step, plus the
 	; colour table (at most 10 entries) and the empty runs.
-	STZ !p_rip
-	LDA !p_y
+	STZ !fxp_rip
+	LDA !fxp_y
 	CLC
-	ADC !p_hw
+	ADC !fxp_hw
 	CMP.w #!FX_PLINES
 	BMI +
 	LDA.w #!FX_PLINES-1
-+	STA !p_n
-	LDA !p_y
++	STA !fxp_n
+	LDA !fxp_y
 	SEC
-	SBC !p_hw
+	SBC !fxp_hw
 	BPL +
 	LDA.w #$0000
-+	STA !p_b
-	LDA !p_n
++	STA !fxp_b
+	LDA !fxp_n
 	SEC
-	SBC !p_b
+	SBC !fxp_b
 	BMI .none
 	INC
-	STA !p_n                     ; visible lines
+	STA !fxp_n                     ; visible lines
 	LDA.w #$0001
-	STA !p_q
+	STA !fxp_q
 .hTry
-	LDA !p_n
+	LDA !fxp_n
 	JSR fx_ceil_q
 	CLC
 	ADC.w #5
-	STA !p_b
+	STA !fxp_b
 	ASL
-	ADC !p_b                     ; * 3
+	ADC !fxp_b                     ; * 3
 	CLC
 	ADC.w #52
 	CMP.w #!FX_PBUF_SIZE+1
 	BCC .ok
-	LDA !p_q
+	LDA !fxp_q
 	CMP.w #8
 	BCS .ok
 	ASL
-	STA !p_q
+	STA !fxp_q
 	BRA .hTry
 .ok
 	CLC
@@ -319,40 +319,40 @@ fx_poly_estimate:
 	RTS
 .vert
 	LDA.w #$0001
-	STA !p_sd
+	STA !fxp_sd
 	LDA !d_cur+!C_DIR
 	AND.w #$0003
 	BEQ +
 	LDA.w #$FFFF
-	STA !p_sd
+	STA !fxp_sd
 +	JSR fx_pv_range
 	BCS .none
 	LDA.w #$0001
-	STA !p_q
-	STZ !p_rip                   ; see the ripple note in fx.md
+	STA !fxp_q
+	STZ !fxp_rip                   ; see the ripple note in fx.md
 .vTry
 	; taper lines (up to taper-8), cap lines (12), the body as one run or
 	; one run per 8 px with the ripple; 5 bytes each, colours 32 bytes.
-	LDA !p_dt
-	CMP !p_left
+	LDA !fxp_dt
+	CMP !fxp_left
 	BCC +
-	LDA !p_left
-+	STA !p_r                     ; taper lines
+	LDA !fxp_left
++	STA !fxp_r                     ; taper lines
 	JSR fx_ceil_q
-	STA !p_o
+	STA !fxp_o
 	LDA.w #12
 	JSR fx_ceil_q
 	CLC
-	ADC !p_o
-	STA !p_o
-	LDA !p_left
+	ADC !fxp_o
+	STA !fxp_o
+	LDA !fxp_left
 	SEC
-	SBC !p_r
+	SBC !fxp_r
 	SEC
 	SBC.w #12
 	BPL +
 	LDA.w #$0000
-+	LDX !p_rip
++	LDX !fxp_rip
 	BEQ +
 	LSR
 	LSR
@@ -360,34 +360,34 @@ fx_poly_estimate:
 	BRA ++
 +	LDA.w #$0000
 ++	CLC
-	ADC !p_o
+	ADC !fxp_o
 	CLC
 	ADC.w #6                     ; body bounds, empties, 127-line splits
-	STA !p_o
+	STA !fxp_o
 	ASL
 	ASL
-	ADC !p_o                     ; * 5
+	ADC !fxp_o                     ; * 5
 	CLC
 	ADC.w #32
 	CMP.w #!FX_PBUF_SIZE+1
 	BCC .ok
-	LDA !p_rip                   ; without the ripple, then coarser steps
+	LDA !fxp_rip                   ; without the ripple, then coarser steps
 	BEQ +
-	STZ !p_rip
+	STZ !fxp_rip
 	BRA .vTry
-+	LDA !p_q
++	LDA !fxp_q
 	CMP.w #8
 	BCS .ok
 	ASL
-	STA !p_q
+	STA !fxp_q
 	BRA .vTry
 
-; A = n -> ceil(n / !p_q) (q = 1, 2, 4, 8).
+; A = n -> ceil(n / !fxp_q) (q = 1, 2, 4, 8).
 fx_ceil_q:
 	CLC
-	ADC !p_q
+	ADC !fxp_q
 	DEC
-	LDX !p_q
+	LDX !fxp_q
 -	CPX.w #2
 	BCC +
 	LSR
@@ -407,45 +407,45 @@ fx_poly_build:
 	STA.l !fx_pkey+8
 .try
 	JSR fx_poly_tables
-	LDA !p_ovf
+	LDA !fxp_ovf
 	BNE +
 	CLC
 	RTS
-+	LDA !p_rip
++	LDA !fxp_rip
 	BEQ +
-	STZ !p_rip
+	STZ !fxp_rip
 	BRA .try
-+	LDA !p_q
++	LDA !fxp_q
 	CMP.w #8
 	BCS .fail
 	ASL
-	STA !p_q
+	STA !fxp_q
 	BRA .try
 .fail
 	SEC
 	RTS
 
-; One build attempt with the current !p_q / !p_rip (!p_ovf when it did not
+; One build attempt with the current !fxp_q / !fxp_rip (!fxp_ovf when it did not
 ; fit); sets the request for fx_nmi when it did.
 fx_poly_tables:
-	STZ !p_ovf
+	STZ !fxp_ovf
 	LDA.l !fx_pbuf
 	CLC
 	ADC.w #!fx_poly&$FFFF
-	STA !p_out
+	STA !fxp_out
 	STA.l !fx_ptab3
 	CLC
 	ADC.w #!FX_PBUF_SIZE
-	STA !p_end
+	STA !fxp_end
 	JSR fx_poly_kind
 	CMP.w #1
 	BEQ .vert
 	; Left / right: band colour per line, outline from the horn to the cap.
 	JSR fx_ph_colours
-	LDA !p_out
+	LDA !fxp_out
 	STA.l !fx_ptab2
 	JSR fx_ph_windows
-	LDA !p_ovf
+	LDA !fxp_ovf
 	BNE +
 	LDA.w #$0001
 	STA.l !fx_pdmap
@@ -456,10 +456,10 @@ fx_poly_tables:
 	JSR fx_pv_range
 	BCS .off
 	JSR fx_pv_colours
-	LDA !p_out
+	LDA !fxp_out
 	STA.l !fx_ptab2
 	JSR fx_pv_windows
-	LDA !p_ovf
+	LDA !fxp_ovf
 	BNE .off
 	LDA.w #$0004
 	STA.l !fx_pdmap
@@ -472,9 +472,9 @@ fx_poly_tables:
 ; ---------------------------------------------------------------------------
 ; Table writer. fx_pw_open: A = entry size (3: two-byte records, 5: four).
 fx_pw_open:
-	STA !p_rsz
-	STZ !p_cnt
-	STZ !p_line
+	STA !fxp_rsz
+	STZ !fxp_cnt
+	STZ !fxp_line
 	RTS
 
 ; Lines A with records X / Y (Y = 0 for two-byte records). Equal
@@ -482,16 +482,16 @@ fx_pw_open:
 fx_pw:
 	PHA
 	CLC
-	ADC !p_line
-	STA !p_line
+	ADC !fxp_line
+	STA !fxp_line
 	PLA
-	CPX !p_r0
+	CPX !fxp_r0
 	BNE .new
-	CPY !p_r1
+	CPY !fxp_r1
 	BNE .new
 	CLC
-	ADC !p_cnt
-	STA !p_cnt
+	ADC !fxp_cnt
+	STA !fxp_cnt
 	RTS
 .new
 	PHA
@@ -501,9 +501,9 @@ fx_pw:
 	PLY
 	PLX
 	PLA
-	STX !p_r0
-	STY !p_r1
-	STA !p_cnt
+	STX !fxp_r0
+	STY !fxp_r1
+	STA !fxp_cnt
 	RTS
 
 ; Lines from the current line up to line A (exclusive, at most the table's
@@ -516,7 +516,7 @@ fx_pw_to:
 	BCC +
 	LDA.w #!FX_PLINES
 +	SEC
-	SBC !p_line
+	SBC !fxp_line
 	BEQ .none
 	BMI .none
 	JMP fx_pw
@@ -525,40 +525,40 @@ fx_pw_to:
 
 ; Write the pending run as entries of at most 127 lines.
 fx_pw_flush:
-	LDA !p_cnt
+	LDA !fxp_cnt
 	BEQ .done
 .loop
 	CMP.w #128
 	BCC +
 	LDA.w #127
 +	STA !d_tmp+6                 ; lines in this entry
-	LDA !p_out
+	LDA !fxp_out
 	TAX
 	CLC
-	ADC !p_rsz
-	CMP !p_end
+	ADC !fxp_rsz
+	CMP !fxp_end
 	BCC +
 	BEQ +
 	LDA.w #$0001
-	STA !p_ovf
-	STZ !p_cnt
+	STA !fxp_ovf
+	STZ !fxp_cnt
 	RTS
-+	STA !p_out
++	STA !fxp_out
 	SEP #$20
 	LDA !d_tmp+6
 	STA.l !FX_PBASE,X
 	REP #$20
-	LDA !p_r0
+	LDA !fxp_r0
 	STA.l !FX_PBASE+1,X
-	LDA !p_rsz
+	LDA !fxp_rsz
 	CMP.w #5
 	BNE +
-	LDA !p_r1
+	LDA !fxp_r1
 	STA.l !FX_PBASE+3,X
-+	LDA !p_cnt
++	LDA !fxp_cnt
 	SEC
 	SBC !d_tmp+6
-	STA !p_cnt
+	STA !fxp_cnt
 	BNE .loop
 .done
 	RTS
@@ -568,15 +568,15 @@ fx_pw_close:
 	LDA.w #!FX_PLINES
 	JSR fx_pw_to
 	JSR fx_pw_flush
-	LDA !p_out
-	CMP !p_end
+	LDA !fxp_out
+	CMP !fxp_end
 	BCC +
 	LDA.w #$0001
-	STA !p_ovf
+	STA !fxp_ovf
 	RTS
 +	TAX
 	INC
-	STA !p_out
+	STA !fxp_out
 	SEP #$20
 	LDA.b #$00
 	STA.l !FX_PBASE,X
@@ -612,11 +612,11 @@ fx_pw_span:
 	CMP.w #$8000
 	BCS .empty
 	STA !d_tmp+4
-	LDA !p_x
+	LDA !fxp_x
 	SEC
 	SBC !d_tmp+4
 	STA !d_tmp
-	LDA !p_x
+	LDA !fxp_x
 	CLC
 	ADC !d_tmp+4
 	STA !d_tmp+2
@@ -636,7 +636,7 @@ fx_pw_colour:
 	RTS
 +	ASL
 	CLC
-	ADC !p_col
+	ADC !fxp_col
 	TAX
 	LDA.l fx_wave_colors,X
 	TAY
@@ -645,48 +645,48 @@ fx_pw_colour:
 
 ; ---------------------------------------------------------------------------
 ; Up / down beams. Visible lines and d of the first one; C set when none.
-; Out: !p_first, !p_left (lines), !p_d.
+; Out: !fxp_first, !fxp_left (lines), !fxp_d.
 fx_pv_range:
-	LDA !p_sd
+	LDA !fxp_sd
 	BMI .up
-	LDA !p_y                     ; down: lines y .. y+len
+	LDA !fxp_y                     ; down: lines y .. y+len
 	BPL +
 	LDA.w #$0000
-+	STA !p_first
++	STA !fxp_first
 	SEC
-	SBC !p_y
-	STA !p_d                     ; d = first line - y
-	CMP !p_len
+	SBC !fxp_y
+	STA !fxp_d                     ; d = first line - y
+	CMP !fxp_len
 	BEQ +
 	BCS .none
-+	LDA !p_y
++	LDA !fxp_y
 	CLC
-	ADC !p_len
+	ADC !fxp_len
 	BRA .last
 .up
-	LDA !p_y                     ; up: lines y-len .. y
+	LDA !fxp_y                     ; up: lines y-len .. y
 	SEC
-	SBC !p_len
+	SBC !fxp_len
 	BPL +
 	LDA.w #$0000
-+	STA !p_first
-	LDA !p_y
++	STA !fxp_first
+	LDA !fxp_y
 	SEC
-	SBC !p_first
+	SBC !fxp_first
 	BMI .none
-	STA !p_d                     ; d = y - first line
-	LDA !p_y
+	STA !fxp_d                     ; d = y - first line
+	LDA !fxp_y
 .last
 	BMI .none
 	CMP.w #224
 	BCC +
 	LDA.w #223
 +	SEC
-	SBC !p_first                 ; last - first
+	SBC !fxp_first                 ; last - first
 	BMI .none
 	INC
-	STA !p_left
-	LDA !p_first
+	STA !fxp_left
+	LDA !fxp_first
 	CMP.w #224
 	BCS .none
 	CLC
@@ -702,13 +702,13 @@ fx_pv_colours:
 	JSR fx_pw_open
 	LDA.w #4
 	JSR fx_pw_colour
-	LDA !p_first
+	LDA !fxp_first
 	JSR fx_pw_to
 	LDA.w #1
 	JSR fx_pw_colour
-	LDA !p_first
+	LDA !fxp_first
 	CLC
-	ADC !p_left
+	ADC !fxp_left
 	JSR fx_pw_to
 	LDA.w #4
 	JSR fx_pw_colour
@@ -720,86 +720,86 @@ fx_pv_windows:
 	JSR fx_pw_open
 	LDX.w #$00FF
 	LDY.w #$00FF
-	LDA !p_first
+	LDA !fxp_first
 	JSR fx_pw_to                 ; above the beam: empty
 .loop
-	LDA !p_d
-	CMP !p_dt
+	LDA !fxp_d
+	CMP !fxp_dt
 	BCC .eval                    ; taper
-	LDA !p_len
+	LDA !fxp_len
 	SEC
-	SBC !p_d
+	SBC !fxp_d
 	CMP.w #12
 	BCC .eval                    ; rounded end
 	; Body: full width; one run to the end of this 8 px ripple chunk (or
 	; of the body) in the walk direction.
-	LDA !p_sd
+	LDA !fxp_sd
 	BMI .bodyUp
-	LDA !p_len
+	LDA !fxp_len
 	SEC
 	SBC.w #12
-	STA !p_b                     ; last body d
-	LDA !p_rip
+	STA !fxp_b                     ; last body d
+	LDA !fxp_rip
 	BEQ +
-	LDA !p_d
+	LDA !fxp_d
 	ORA.w #$0007
-	CMP !p_b
+	CMP !fxp_b
 	BCS +
-	STA !p_b
-+	LDA !p_b
+	STA !fxp_b
++	LDA !fxp_b
 	SEC
-	SBC !p_d
+	SBC !fxp_d
 	INC
 	BRA .body
 .bodyUp
-	LDA !p_dt
-	STA !p_b                     ; first body d
-	LDA !p_rip
+	LDA !fxp_dt
+	STA !fxp_b                     ; first body d
+	LDA !fxp_rip
 	BEQ +
-	LDA !p_d
+	LDA !fxp_d
 	AND.w #$FFF8
-	CMP !p_b
+	CMP !fxp_b
 	BCC +
-	STA !p_b
-+	LDA !p_d
+	STA !fxp_b
++	LDA !fxp_d
 	SEC
-	SBC !p_b
+	SBC !fxp_b
 	INC
 .body
-	STA !p_n
-	LDA !p_hw
+	STA !fxp_n
+	LDA !fxp_hw
 	BRA .rec
 .eval
-	LDA !p_q
-	STA !p_n
+	LDA !fxp_q
+	STA !fxp_n
 	JSR fx_pv_edge
 .rec
 	JSR fx_pv_rec                ; X / Y records
-	LDA !p_n
-	CMP !p_left
+	LDA !fxp_n
+	CMP !fxp_left
 	BCC +
-	LDA !p_left
-	STA !p_n
+	LDA !fxp_left
+	STA !fxp_n
 +	JSR fx_pw
-	LDA !p_ovf
+	LDA !fxp_ovf
 	BEQ +
 	RTS
-+	LDA !p_left
++	LDA !fxp_left
 	SEC
-	SBC !p_n
-	STA !p_left
+	SBC !fxp_n
+	STA !fxp_left
 	BEQ .done
-	LDA !p_sd                    ; d += sd * lines
+	LDA !fxp_sd                    ; d += sd * lines
 	BMI +
-	LDA !p_d
+	LDA !fxp_d
 	CLC
-	ADC !p_n
-	STA !p_d
+	ADC !fxp_n
+	STA !fxp_d
 	JMP .loop
-+	LDA !p_d
++	LDA !fxp_d
 	SEC
-	SBC !p_n
-	STA !p_d
+	SBC !fxp_n
+	STA !fxp_d
 	BMI .done
 	JMP .loop
 .done
@@ -807,26 +807,26 @@ fx_pv_windows:
 	LDY.w #$00FF
 	JMP fx_pw_close
 
-; Edge (half outline) at !p_d: hw * min(1, (d+8)/taper), times
+; Edge (half outline) at !fxp_d: hw * min(1, (d+8)/taper), times
 ; sqrt((len-d)/12) on the last 12 px.
 fx_pv_edge:
-	LDA !p_d
-	CMP !p_dt
+	LDA !fxp_d
+	CMP !fxp_dt
 	BCS .full
 	JSR fx_taper_r
 	BRA .cap
 .full
-	LDA !p_hw
+	LDA !fxp_hw
 .cap
-	STA !p_r
-	LDA !p_len
+	STA !fxp_r
+	LDA !fxp_len
 	SEC
-	SBC !p_d
+	SBC !fxp_d
 	CMP.w #12
 	BCS .done
 	TAX
 	SEP #$20
-	LDA !p_r
+	LDA !fxp_r
 	STA.l $004202
 	LDA.l fx_capf,X
 	STA.l $004203                ; r * capf
@@ -840,7 +840,7 @@ fx_pv_edge:
 	AND.w #$00FF
 	RTS
 .done
-	LDA !p_r
+	LDA !fxp_r
 	RTS
 
 ; Taper radius at d = A (below taper - 8): hw * (d + 8) / taper.
@@ -849,7 +849,7 @@ fx_taper_r:
 	ADC.w #8
 	TAX                          ; d + 8 < 256
 	SEP #$20
-	LDA !p_hw
+	LDA !fxp_hw
 	STA.l $004202
 	TXA
 	STA.l $004203                ; hw * (d + 8)
@@ -861,7 +861,7 @@ fx_taper_r:
 	LDA.l $004216
 	STA.l $004204
 	SEP #$20
-	LDA !p_t
+	LDA !fxp_t
 	STA.l $004206                ; / taper
 	REP #$20
 	NOP
@@ -874,62 +874,62 @@ fx_taper_r:
 	LDA.l $004214
 	RTS
 
-; Records for edge A at !p_d: X = outline, Y = core (edge - 9 - ripple).
+; Records for edge A at !fxp_d: X = outline, Y = core (edge - 9 - ripple).
 fx_pv_rec:
 	PHA
 	JSR fx_pw_span
-	STA !p_o
-	STZ !p_ra
-	LDA !p_rip
+	STA !fxp_o
+	STZ !fxp_ra
+	LDA !fxp_rip
 	BEQ +
-	LDA !p_d
+	LDA !fxp_d
 	LSR
 	LSR
 	LSR
 	CLC
-	ADC !p_ph
+	ADC !fxp_ph
 	AND.w #$007F
 	TAX
 	LDA.l fx_rip3,X
 	AND.w #$00FF
-	STA !p_ra
+	STA !fxp_ra
 +	PLA
 	SEC
 	SBC.w #9
 	SEC
-	SBC !p_ra
+	SBC !fxp_ra
 	JSR fx_pw_span
 	TAY
-	LDX !p_o
+	LDX !fxp_o
 	RTS
 
 ; Fixed colour = core - rim per component (never negative), as the three
 ; COLDATA writes in !fx_pfix.
 fx_pv_fixed:
-	LDX !p_col
+	LDX !fxp_col
 	LDA.l fx_wave_colors+6,X     ; core
-	STA !p_r
+	STA !fxp_r
 	LDA.l fx_wave_colors+2,X     ; rim
-	STA !p_o
-	LDA !p_r                     ; red
+	STA !fxp_o
+	LDA !fxp_r                     ; red
 	AND.w #$001F
-	STA !p_ra
-	LDA !p_o
+	STA !fxp_ra
+	LDA !fxp_o
 	AND.w #$001F
 	JSR .diff
 	ORA.w #$0020
 	SEP #$20
 	STA.l !fx_pfix
 	REP #$20
-	LDA !p_r                     ; green
+	LDA !fxp_r                     ; green
 	LSR
 	LSR
 	LSR
 	LSR
 	LSR
 	AND.w #$001F
-	STA !p_ra
-	LDA !p_o
+	STA !fxp_ra
+	LDA !fxp_o
 	LSR
 	LSR
 	LSR
@@ -941,13 +941,13 @@ fx_pv_fixed:
 	SEP #$20
 	STA.l !fx_pfix+1
 	REP #$20
-	LDA !p_r                     ; blue
+	LDA !fxp_r                     ; blue
 	XBA
 	LSR
 	LSR
 	AND.w #$001F
-	STA !p_ra
-	LDA !p_o
+	STA !fxp_ra
+	LDA !fxp_o
 	XBA
 	LSR
 	LSR
@@ -958,9 +958,9 @@ fx_pv_fixed:
 	STA.l !fx_pfix+2
 	REP #$20
 	RTS
-.diff                            ; A = max(0, !p_ra - A)
+.diff                            ; A = max(0, !fxp_ra - A)
 	STA !d_tmp
-	LDA !p_ra
+	LDA !fxp_ra
 	SEC
 	SBC !d_tmp
 	BPL +
@@ -974,16 +974,16 @@ fx_pv_fixed:
 fx_ph_colours:
 	LDA.w #5
 	JSR fx_pw_open
-	LDA !p_y
+	LDA !fxp_y
 	SEC
-	SBC !p_hw
-	STA !p_top                   ; top line
-	LDA !p_y
+	SBC !fxp_hw
+	STA !fxp_top                   ; top line
+	LDA !fxp_y
 	INC
-	STA !p_axis                  ; the top half ends with the axis line
+	STA !fxp_axis                  ; the top half ends with the axis line
 	LDA.w #4
 	JSR fx_pw_colour
-	LDA !p_top
+	LDA !fxp_top
 	JSR fx_pw_to
 	LDA.w #0
 	JSR fx_pw_colour
@@ -999,30 +999,30 @@ fx_ph_colours:
 	JSR .top
 	LDA.w #3
 	JSR fx_pw_colour
-	LDA !p_axis
+	LDA !fxp_axis
 	JSR fx_pw_to
-	LDA !p_y                     ; bottom half: y + hw - 16, - 8, - 2, + 1
+	LDA !fxp_y                     ; bottom half: y + hw - 16, - 8, - 2, + 1
 	CLC
-	ADC !p_hw
-	STA !p_top
+	ADC !fxp_hw
+	STA !fxp_top
 	SEC
 	SBC.w #16
 	JSR fx_pw_to
 	LDA.w #2
 	JSR fx_pw_colour
-	LDA !p_top
+	LDA !fxp_top
 	SEC
 	SBC.w #8
 	JSR fx_pw_to
 	LDA.w #1
 	JSR fx_pw_colour
-	LDA !p_top
+	LDA !fxp_top
 	DEC
 	DEC
 	JSR fx_pw_to
 	LDA.w #0
 	JSR fx_pw_colour
-	LDA !p_top
+	LDA !fxp_top
 	INC
 	JSR fx_pw_to
 	LDA.w #4
@@ -1030,24 +1030,24 @@ fx_ph_colours:
 	JMP fx_pw_close
 .top                             ; to line top + A, not past the axis
 	CLC
-	ADC !p_top
-	CMP !p_axis
+	ADC !fxp_top
+	CMP !fxp_axis
 	BMI +
-	LDA !p_axis
+	LDA !fxp_axis
 +	JMP fx_pw_to
 
-; Channel 2 (mode 1: W1L, W1R), evaluated every !p_q lines. The horn and
+; Channel 2 (mode 1: W1L, W1R), evaluated every !fxp_q lines. The horn and
 ; the rounded end follow a = |line - y| through two accumulators stepped by
 ; q lines (two divisions per build, none per line).
 fx_ph_windows:
 	LDA.w #3
 	JSR fx_pw_open
-	LDA !p_t                     ; taper * 256 / hw
+	LDA !fxp_t                     ; taper * 256 / hw
 	XBA
 	AND.w #$FF00
 	STA.l $004204
 	SEP #$20
-	LDA !p_hw
+	LDA !fxp_hw
 	STA.l $004206
 	REP #$20
 	NOP
@@ -1058,11 +1058,11 @@ fx_ph_windows:
 	NOP
 	NOP
 	LDA.l $004214
-	STA !h_ss
+	STA !fxh_ss
 	LDA.w #$FFFF                 ; 65535 / hw
 	STA.l $004204
 	SEP #$20
-	LDA !p_hw
+	LDA !fxp_hw
 	STA.l $004206
 	REP #$20
 	NOP
@@ -1073,76 +1073,76 @@ fx_ph_windows:
 	NOP
 	NOP
 	LDA.l $004214
-	STA !h_sr
-	LDA !h_ss
+	STA !fxh_sr
+	LDA !fxh_ss
 	JSR fx_mul_q
-	STA !h_qs
-	LDA !h_sr
+	STA !fxh_qs
+	LDA !fxh_sr
 	JSR fx_mul_q
-	STA !h_qr
+	STA !fxh_qr
 	LDX.w #$00FF
 	LDY.w #$0000
-	LDA !p_y
+	LDA !fxp_y
 	SEC
-	SBC !p_hw
+	SBC !fxp_hw
 	JSR fx_pw_to                 ; above the beam: empty
-	LDA !p_y
+	LDA !fxp_y
 	CLC
-	ADC !p_hw
+	ADC !fxp_hw
 	CMP.w #!FX_PLINES
 	BMI +
 	LDA.w #!FX_PLINES-1
-+	STA !p_left                  ; last beam line
-	LDA !p_line
++	STA !fxp_left                  ; last beam line
+	LDA !fxp_line
 	JSR fx_ph_acc
 .loop
-	LDA !p_left
+	LDA !fxp_left
 	SEC
-	SBC !p_line
+	SBC !fxp_line
 	BMI .done
 	INC
-	CMP !p_q
+	CMP !fxp_q
 	BCC +
-	LDA !p_q
-+	STA !p_n
+	LDA !fxp_q
++	STA !fxp_n
 	JSR fx_ph_rec
 	TAX
 	LDY.w #$0000
-	LDA !p_n
-	JSR fx_pw                    ; advances !p_line
-	LDA !p_ovf
+	LDA !fxp_n
+	JSR fx_pw                    ; advances !fxp_line
+	LDA !fxp_ovf
 	BEQ +
 	RTS
-+	LDA !p_line                  ; step a to the new line
-	CMP !p_y
++	LDA !fxp_line                  ; step a to the new line
+	CMP !fxp_y
 	BEQ .dec
 	BMI .dec                     ; still above (or at) the axis: a - q
 	SEC
-	SBC !p_q
-	CMP !p_y
+	SBC !fxp_q
+	CMP !fxp_y
 	BPL .inc                     ; already below: a + q
-	LDA !p_line                  ; crossed the axis: from scratch
+	LDA !fxp_line                  ; crossed the axis: from scratch
 	JSR fx_ph_acc
 	BRA .loop
 .inc
-	LDA !h_as
+	LDA !fxh_as
 	CLC
-	ADC !h_qs
-	STA !h_as
-	LDA !h_ar
+	ADC !fxh_qs
+	STA !fxh_as
+	LDA !fxh_ar
 	CLC
-	ADC !h_qr
-	STA !h_ar
+	ADC !fxh_qr
+	STA !fxh_ar
 	BRA .loop
 .dec
-	LDA !h_as
+	LDA !fxh_as
 	SEC
-	SBC !h_qs
-	STA !h_as
-	LDA !h_ar
+	SBC !fxh_qs
+	STA !fxh_as
+	LDA !fxh_ar
 	SEC
-	SBC !h_qr
-	STA !h_ar
+	SBC !fxh_qr
+	STA !fxh_ar
 	BRA .loop
 .done
 	LDX.w #$00FF
@@ -1152,21 +1152,21 @@ fx_ph_windows:
 ; Accumulators for line A: a = |line - y|, a * steps.
 fx_ph_acc:
 	SEC
-	SBC !p_y
+	SBC !fxp_y
 	BPL +
 	EOR.w #$FFFF
 	INC
 +	CMP.w #256
 	BCC +
 	LDA.w #255
-+	STA !p_a
-	LDX !h_ss
++	STA !fxp_a
+	LDX !fxh_ss
 	JSR fx_mul8x16
-	STA !h_as
-	LDA !p_a
-	LDX !h_sr
+	STA !fxh_as
+	LDA !fxp_a
+	LDX !fxh_sr
 	JSR fx_mul8x16
-	STA !h_ar
+	STA !fxh_ar
 	RTS
 
 ; A (0-255) * X -> A (low 16 bits).
@@ -1198,9 +1198,9 @@ fx_mul8x16:
 	ADC !d_tmp+6
 	RTS
 
-; A * !p_q (1, 2, 4, 8).
+; A * !fxp_q (1, 2, 4, 8).
 fx_mul_q:
-	LDX !p_q
+	LDX !fxp_q
 -	CPX.w #2
 	BCC +
 	ASL
@@ -1216,7 +1216,7 @@ fx_mul_q:
 ; d = ceil(a*taper/hw) - 8, to the rounded end, d = len - ceil(12 (a/hw)^2).
 ; A = window record.
 fx_ph_rec:
-	LDA !h_as
+	LDA !fxh_as
 	CLC
 	ADC.w #$00FF
 	XBA
@@ -1225,8 +1225,8 @@ fx_ph_rec:
 	SBC.w #8
 	BPL +
 	LDA.w #$0000
-+	STA !p_ds
-	LDA !h_ar                    ; 64 a / hw -> ceil(12 (a/hw)^2)
++	STA !fxp_ds
+	LDA !fxh_ar                    ; 64 a / hw -> ceil(12 (a/hw)^2)
 	XBA
 	LSR
 	LSR
@@ -1234,35 +1234,35 @@ fx_ph_rec:
 	TAX
 	LDA.l fx_kc_tab,X
 	AND.w #$00FF
-	STA !p_de
-	LDA !p_len
+	STA !fxp_de
+	LDA !fxp_len
 	SEC
-	SBC !p_de                    ; end d
-	STA !p_de
+	SBC !fxp_de                    ; end d
+	STA !fxp_de
 	SEC
-	SBC !p_ds
+	SBC !fxp_ds
 	BMI .empty
 	LDA !d_cur+!C_DIR
 	AND.w #$0003
 	CMP.w #2
 	BEQ .left
-	LDA !p_x                     ; right: x + start .. x + end
+	LDA !fxp_x                     ; right: x + start .. x + end
 	CLC
-	ADC !p_ds
+	ADC !fxp_ds
 	STA !d_tmp
-	LDA !p_x
+	LDA !fxp_x
 	CLC
-	ADC !p_de
+	ADC !fxp_de
 	STA !d_tmp+2
 	JMP fx_pw_lohi
 .left
-	LDA !p_x                     ; left: x - end .. x - start
+	LDA !fxp_x                     ; left: x - end .. x - start
 	SEC
-	SBC !p_de
+	SBC !fxp_de
 	STA !d_tmp
-	LDA !p_x
+	LDA !fxp_x
 	SEC
-	SBC !p_ds
+	SBC !fxp_ds
 	STA !d_tmp+2
 	JMP fx_pw_lohi
 .empty
