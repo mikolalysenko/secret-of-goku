@@ -216,138 +216,7 @@ fl_hero_land:
 	LSR
 	RTS
 fl_hland_calc:
-	JSR fl_bind_holes            ; holes can open without a tile change
-	BCC +
-	JMP fl_can_land
-+
-	; bounds, then the tiles of the footprint's rectangle: the verdict of the
-	; last rectangle tested here is kept while its tiles, layer and terrain
-	; are unchanged
-	JSR fl_fp_bounds
-	BCS +
-	RTS
-+	JSR fl_fp_rect
-	LDA.w !fl_q_t
-	ASL
-	ORA.w !fl_q_l
-	STA.w !fl_t6                 ; layer | terrain << 1
-	SEP #$20
-	LDA.w !fl_t0
-	CMP.l !fl_hl
-	BNE .eval8
-	LDA.w !fl_t1
-	CMP.l !fl_hl+1
-	BNE .eval8
-	LDA.w !fl_t2
-	CMP.l !fl_hl+2
-	BNE .eval8
-	LDA.w !fl_t3
-	CMP.l !fl_hl+3
-	BNE .eval8
-	LDA.w !fl_t6
-	CMP.l !fl_hl+4
-	BNE .eval8
-	REP #$20
-	; the corner tiles still hold the ids recorded with the verdict?
-	LDA.l !fl_hl+6
-	TAX
-	LDA.l $7F0000,X
-	EOR.l !fl_hl+14
-	AND.w #$00FF
-	BNE .eval
-	LDA.l !fl_hl+8
-	TAX
-	LDA.l $7F0000,X
-	EOR.l !fl_hl+15
-	AND.w #$00FF
-	BNE .eval
-	LDA.l !fl_hl+10
-	TAX
-	LDA.l $7F0000,X
-	EOR.l !fl_hl+16
-	AND.w #$00FF
-	BNE .eval
-	LDA.l !fl_hl+12
-	TAX
-	LDA.l $7F0000,X
-	EOR.l !fl_hl+17
-	AND.w #$00FF
-	BNE .eval
-	LDA.l !fl_hl+5
-	LSR
-	RTS
-.eval8
-	REP #$20
-.eval
-	; record the rectangle, key and corner cells first (fl_fp_tiles uses
-	; the scratch), then evaluate and record the verdict
-	SEP #$20
-	LDA.w !fl_t0
-	STA.l !fl_hl
-	LDA.w !fl_t1
-	STA.l !fl_hl+1
-	LDA.w !fl_t2
-	STA.l !fl_hl+2
-	LDA.w !fl_t3
-	STA.l !fl_hl+3
-	LDA.w !fl_t6
-	STA.l !fl_hl+4
-	REP #$20
-	; corner cells (c0,r0) (c1,r0) (c0,r1) (c1,r1) and their tiles
-	LDA.w !fl_q_l
-	BEQ +
-	LDA.w #$4000
-+	STA.w !fl_t5
-	LDA.w !fl_t2
-	XBA
-	LSR
-	ORA.w !fl_t5
-	PHA                          ; row r0 base
-	ORA.w !fl_t0
-	STA.l !fl_hl+6
-	TAX
-	LDA.l $7F0000,X
-	SEP #$20
-	STA.l !fl_hl+14
-	REP #$20
-	LDA $01,S
-	ORA.w !fl_t1
-	STA.l !fl_hl+8
-	TAX
-	LDA.l $7F0000,X
-	SEP #$20
-	STA.l !fl_hl+15
-	REP #$20
-	PLA
-	LDA.w !fl_t3
-	XBA
-	LSR
-	ORA.w !fl_t5
-	PHA                          ; row r1 base
-	ORA.w !fl_t0
-	STA.l !fl_hl+10
-	TAX
-	LDA.l $7F0000,X
-	SEP #$20
-	STA.l !fl_hl+16
-	REP #$20
-	PLA
-	ORA.w !fl_t1
-	STA.l !fl_hl+12
-	TAX
-	LDA.l $7F0000,X
-	SEP #$20
-	STA.l !fl_hl+17
-	REP #$20
-	LDA.w #$0000
-	JSR fl_fp_tiles
-	LDA.w #$0000
-	ROL
-	SEP #$20
-	STA.l !fl_hl+5
-	REP #$20
-	LSR
-	RTS
+	JMP fl_can_land              ; (the hero grid answers it)
 
 fl_hero_fly:
 	JSR fl_q_hero
@@ -397,6 +266,8 @@ flight_frame:
 	endif
 	INC.w !fl_counter
 	STZ.w !fl_events
+	LDA.w #$0000
+	STA.l !fl_g_chk              ; the grid's tiles are checked once per phase
 	LDA.w #$FFFF
 	STA.l !fl_hm_land+4          ; hero canFly/canLand memos and the last sweep
 	STA.l !fl_hm_fly+4

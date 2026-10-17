@@ -371,20 +371,26 @@ bookkeeping costs ~45 instructions per frame (465 → 512 walking in the sword
 scene).
 
 Earth Palace whip corridor (`phases.mjs whip-fly`): walking ~490
-instructions per frame; flying 1,500-3,700 per logic frame (whip routes and
-dungeon air for each new tile, the hero grid, settle) and hovering ~1,800,
-so that scene runs at 30 Hz while flying (the cartridge covers the corridor
-in twice the browser's frames; the outcome is the same). Done so far: whip
-rays by index arithmetic with a quick pad pre-check, one tile-id compare
-for the whole hero grid, a per-frame hero canLand memo, the D778 endpoint
-canFly implied by the sweep.
+instructions per frame; flying 800-3,700 per logic frame (whip routes and
+dungeon air for each new tile, settle) and hovering ~1,800, so that scene
+runs at 30 Hz while flying (the cartridge covers the corridor in twice the
+browser's frames; the outcome is the same). Gaia's Navel at Super Saiyan
+speed (`phases.mjs gaia-ledges`): ~2,500 per frame, ~4,000 when a new row
+of bank tiles enters the sweep (the bank rule walks up to 16 tiles each
+way), at 60 Hz. Done so far: footprints inside the hero grid answered from
+column/row pattern tables (no tile rectangle, no bounds when the grid is
+well inside the map), the grid's tiles checked once per phase, hero canLand
+through the grid, whip rays by index arithmetic with a quick pad
+pre-check, unit `fl_step`s by index arithmetic, the D778 endpoint canFly
+implied by the sweep.
 
 Ceiling escape: the roof-colour search costs ~12,000 instructions once, at
 the impact (one dropped frame during the quake).
 
-Next steps: a leaner frame path (settle and the frame head cost ~1,200
-instructions while hovering in place), segment caching for long air routes,
-cheaper footprint assembly for grid hits. `CORE_FASTROM` would give module
+Next steps: per-direction distance-to-shore memos for the bank, gap and
+air-route walks (each new tile repeats its neighbours' walks), a leaner
+settle (~500 per frame while flying: four hero-tile lookups and fetches),
+more WRAM/SRAM for a larger tile cache. `CORE_FASTROM` would give module
 code 25%.
 
 ## Remaining

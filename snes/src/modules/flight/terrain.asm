@@ -41,6 +41,8 @@ fl_ctx_update:
 	BNE fl_ctx_load
 	RTS
 fl_ctx_load:
+	LDA.w #$0000
+	STA.l !fl_g_chk
 	; the Sandship and the dunes after it: flight passes over every wall
 	LDA $DC
 	JSR fl_ship_map
@@ -291,6 +293,60 @@ fl_negd:
 ; carry set when it leaves [0,W) x [0,H) (tileAt() == null). Preserves Y.
 ; Uses fl_t5.
 fl_step:
+	; unit steps (the common case) by index arithmetic
+	CMP.w #$0001
+	BEQ .right
+	CMP.w #$00FF
+	BEQ .left
+	CMP.w #$0100
+	BEQ .down
+	CMP.w #$FF00
+	BEQ .up
+	BRA .general
+.right
+	TXA
+	AND.w #$007F
+	INC
+	CMP.w !fl_W
+	BCS .unit_out
+	INX
+	CLC
+	RTS
+.left
+	TXA
+	AND.w #$007F
+	BEQ .unit_out
+	DEX
+	CLC
+	RTS
+.down
+	TXA
+	ASL
+	XBA
+	AND.w #$007F                 ; ty
+	INC
+	CMP.w !fl_H
+	BCS .unit_out
+	TXA
+	CLC
+	ADC.w #128
+	TAX
+	CLC
+	RTS
+.up
+	TXA
+	AND.w #$3F80
+	BEQ .unit_out
+	TXA
+	SEC
+	SBC.w #128
+	TAX
+	CLC
+	RTS
+.unit_out
+	SEC
+	RTS
+.general
 	STA.w !fl_t5
 	JSR fl_tx
 	PHA
@@ -393,7 +449,6 @@ fl_cache_clear:
 	STA.l !fl_cache,X
 	DEX : DEX : DEX : DEX : DEX : DEX
 	BPL .loop
-	STA.l !fl_hl+4               ; the hero's canLand memo key (byte $FF: none)
 	LDA.w #$0000
 	STA.l !fl_g_akn              ; grid verdicts expire with the cache (they
 	STA.l !fl_g_gkn              ; may depend on neighbouring tiles)
@@ -3001,6 +3056,30 @@ fl_pred_small:
 ; a mask; elsewhere every tile is classified (tile cache).
 fl_footprint:
 	PHA                          ; [mode]
+	LDA.l !fl_g_stale
+	BEQ +
+	LDA.w #$0000
+	STA.l !fl_g_stale
+	JSR fl_grid_reset
++	; a grid well inside the map: a footprint it covers is in bounds
+	LDA.l !fl_g_inner
+	BEQ .bounds
+	LDA $01,S
+	JSR fl_fp_cover
+	BCC .bounds
+	LDA $01,S
+	BEQ .answer
+	LDA.w !fl_open_air
+	BEQ .answer
+	PLA                          ; Sandship: flight passes over every wall
+	SEC
+	RTS
+.answer
+	PLA
+	JSR fl_grid_answer           ; A = 1 pass, 0 fail
+	LSR
+	RTS
+.bounds
 	JSR fl_fp_bounds
 	BCS +
 	PLA
@@ -3014,17 +3093,62 @@ fl_footprint:
 	SEC
 	RTS
 .grid
-	JSR fl_fp_rect
 	LDA $01,S
-	JSR fl_grid_test
-	BCS .done                    ; answered by the grid (A = 1 pass, 0 fail)
+	JSR fl_fp_cover
+	BCS .answer
+	JSR fl_fp_rect
 	PLA
 	JMP fl_fp_tiles
-.done
-	TAY
-	PLA
+
+; fl_fp_cover: A = mode. Carry set when the footprint at fl_q_x/y lies
+; inside the hero grid (its layer, and for ground its terrain), with fl_t4 =
+; its cells. Columns follow from x - (grid left) - 6 in 0-35 and rows from
+; y - (grid top) - 4 in 0-39 (pattern tables), without the tile rectangle.
+fl_fp_cover:
+	TAY                          ; mode
+	LDA.w !fl_q_l
+	CMP.l !fl_g_l
+	BNE .no
 	TYA
-	LSR
+	BNE +
+	LDA.w !fl_q_t
+	CMP.l !fl_g_t
+	BNE .no
++	LDA.l !fl_g_tx0
+	ASL : ASL : ASL : ASL
+	EOR.w #$FFFF
+	SEC
+	ADC.w !fl_q_x
+	SEC
+	SBC.w #6
+	CMP.w #36
+	BCS .no
+	TAX
+	LDA.l fl_grid_colpat,X
+	AND.w #$00FF
+	STA.w !fl_t4
+	LDA.l !fl_g_ty0
+	ASL : ASL : ASL : ASL
+	EOR.w #$FFFF
+	SEC
+	ADC.w !fl_q_y
+	SEC
+	SBC.w #4
+	CMP.w #40
+	BCS .no
+	TAX
+	LDA.l fl_grid_rowpat,X
+	AND.w #$00FF
+	ASL : ASL : ASL
+	ORA.w !fl_t4
+	ASL
+	TAX
+	LDA.l fl_grid_masks,X
+	STA.w !fl_t4
+	SEC
+	RTS
+.no
+	CLC
 	RTS
 
 ; Hero grid: the 3x3 tiles around Goku's position at the start of a
@@ -3093,6 +3217,29 @@ fl_grid_reset:
 	STA.l !fl_g_aok
 	STA.l !fl_g_gkn
 	STA.l !fl_g_gok
+	; inside: tx0 >= 1, ty0 >= 1, tx0*16 + 49 <= map width, ty0*16 + 51 <=
+	; map height (then every covered footprint is 8 px inside the edges)
+	STA.l !fl_g_inner
+	LDA.w !fl_t0
+	BEQ +
+	ASL : ASL : ASL : ASL
+	CLC
+	ADC.w #49
+	CMP.w !fl_wpx
+	BEQ ++
+	BCS +
+++	LDA.w !fl_t1
+	BEQ +
+	ASL : ASL : ASL : ASL
+	CLC
+	ADC.w #51
+	CMP.w !fl_hpx
+	BEQ ++
+	BCS +
+++	LDA.w #$0001
+	STA.l !fl_g_inner
++	LDA.w #$0001
+	STA.l !fl_g_chk              ; the snapshot below is this phase's check
 	; fall through: record the nine tiles
 ; fl_grid_snap: the tile ids under the nine cells as they are now (verdicts
 ; are kept only while their cell's tile is the recorded one).
@@ -3116,6 +3263,11 @@ fl_grid_snap:
 ; nothing to do); otherwise known cells whose tile changed lose their
 ; verdicts and the record is refreshed. Preserves fl_t4/fl_t5.
 fl_grid_check:
+	LDA.l !fl_g_chk
+	BEQ +
+	RTS                          ; checked in this phase already
++	LDA.w #$0001
+	STA.l !fl_g_chk
 	LDA.l !fl_g_base
 	TAX
 	LDA.l $7F0000,X
@@ -3301,6 +3453,14 @@ fl_grid_test:
 	TAX
 	LDA.l fl_grid_masks,X
 	STA.w !fl_t4                 ; the rectangle's cells
+	PLA
+	JSR fl_grid_answer
+	SEC
+	RTS
+; The grid's verdict on the cells fl_t4 for mode A (1 air, 0 ground), with
+; unknown cells evaluated first. A = 1 when every cell passes, else 0.
+fl_grid_answer:
+	PHA                          ; [mode]
 	; known cells whose tile changed lose their verdicts
 	JSR fl_grid_check
 	; cells still unknown in this mode
@@ -3333,13 +3493,22 @@ fl_grid_test:
 	BEQ .pass
 	PLA
 	LDA.w #$0000
-	SEC
 	RTS
 .pass
 	PLA
 	LDA.w #$0001
-	SEC
 	RTS
+; Columns of a footprint whose centre is x = grid left + 6 + i (cols
+; (x-6)>>4 .. (x+6)>>4 relative to the grid), and rows for y = grid top + 4 + i.
+fl_grid_colpat:
+	db $01, $01, $01, $01, $03, $03, $03, $03, $03, $03, $03, $03
+	db $03, $03, $03, $03, $02, $02, $02, $02, $06, $06, $06, $06
+	db $06, $06, $06, $06, $06, $06, $06, $06, $04, $04, $04, $04
+fl_grid_rowpat:
+	db $01, $01, $01, $01, $01, $01, $01, $01, $03, $03, $03, $03
+	db $03, $03, $03, $03, $02, $02, $02, $02, $02, $02, $02, $02
+	db $06, $06, $06, $06, $06, $06, $06, $06, $04, $04, $04, $04
+	db $04, $04, $04, $04
 ; 3-bit patterns of c0..c1 (index c0*3 + c1, c0 <= c1)
 fl_grid_sel:
 	db $01, $03, $07, $00, $02, $06, $00, $00, $04

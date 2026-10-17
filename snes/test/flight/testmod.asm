@@ -1,8 +1,11 @@
 ; A floor-hole provider for tests (the contract Frieza's deck and the
-; Sandship wreck will use): a hole rectangle in map pixels at SRAM
-; $33:7A96 (word enable, +2 x0, +4 x1, +6 y0, +8 y1, inclusive), outside
-; the mailbox (the classifier's rows fill it).
-!FLIGHT_MISSING_FLOOR = fl_test_hole
+; Sandship wreck will use), in builds with -DFLIGHT_TEST_HOLES: a hole
+; rectangle in map pixels at SRAM $33:7A96 (word enable, +2 x0, +4 x1,
+; +6 y0, +8 y1, inclusive), outside the mailbox (the classifier's rows fill
+; it). Other test builds keep the cartridge's own memos and timing.
+if defined("FLIGHT_TEST_HOLES")
+	!FLIGHT_MISSING_FLOOR = fl_test_hole
+endif
 !fl_test_hole_rect = !FL_SRAM+$296
 
 ; Flight test mailbox (FLIGHT_TEST builds only), polled at the start of

@@ -165,8 +165,11 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !fl_crossing   = !FL_SRAM+$28A     ; crossing start: map, x, y, layer, terrain, whip (6 words)
                                    ; $296-$29F: the FLIGHT_TEST floor hole (testmod.asm)
 !fl_sram_test  = !FL_SRAM+$2A0     ; test mailbox ($90 bytes, FLIGHT_TEST builds)
-!fl_hl         = !FL_SRAM+$330     ; canLand memo at the hero: rect (4 bytes), layer|terrain<<1 (byte),
-                                   ; verdict (byte), cell idx (4 words), cell tiles (4 bytes)
+!fl_g_inner    = !FL_SRAM+$330     ; word: the hero grid lies far enough inside the map that every
+                                   ; footprint it covers is in bounds
+!fl_g_chk      = !FL_SRAM+$332     ; word: the grid's tiles were checked in this phase (frame, step)
+!fl_ht         = !FL_SRAM+$334     ; hero tile memo: +0 x, +2 y, +4 layer bit, +6 idx, +8 1 = off the map
+                                   ; ($FFFF in +4: none); $33E-$34F free
 !fl_tp         = !FL_SRAM+$350     ; Instant Transmission (teleport.asm):
 !fl_tp_act     = !fl_tp+$00        ;   word: action running
 !fl_tp_age     = !fl_tp+$02        ;   word: action age

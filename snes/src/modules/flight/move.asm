@@ -241,6 +241,8 @@ fl_hook_d651:
 	STA.l !fl_step_f4
 	LDA.l !fl_step_elig
 	BEQ .native
+	LDA.w #$0000
+	STA.l !fl_g_chk              ; a new phase: check the grid's tiles again
 	JSR fl_grid_reset            ; tiles around Goku for this step's tests
 	JSR fl_sweep_forget
 	JSR fl_step_velocity
@@ -484,13 +486,18 @@ fl_hook_d778:
 	SEP #$20
 	LDA $10
 	ORA $11
-	BNE .native
+	BNE .native1
 	LDA.w !fl_hook
 	AND.b #!FLH_PHASE
-	BEQ .native
-	REP #$30
+	BNE +
+.native1
+	LDA $11
+	JML $00D77C
++	REP #$30
 	JSR fl_step_eligible
 	BCC .native
+	LDA.w #$0000
+	STA.l !fl_g_chk              ; a new phase: check the grid's tiles again
 	LDA $1E
 	JSR fl_unpack
 	STA.w !fl_sw_dx

@@ -9,8 +9,8 @@
 //             camera follow, cues, walking and the ring afterwards
 //   whip      whip-flight.spec.mjs / ki-world.spec.mjs whip pads (Earth Palace)
 //   ceiling   indoor-flight.spec.mjs roof exits from seven rooms
-//   holes     the floor-hole contract (FLIGHT_TEST provider): walking stops,
-//             flight crosses, hovering over a hole
+//   holes     the floor-hole contract (FLIGHT_TEST_HOLES provider): walking
+//             stops, flight crosses, hovering over a hole
 //   ... (see docs/agents/snes-port/flight.md)
 //   node snes/test/flight/run.mjs [test ...]
 // ROM: $SNES_ROM or dist/snes/secret-of-goku.sfc (the classify test builds
@@ -99,9 +99,9 @@ for(const t of ['water','teleport','whip','ceiling']){
 
 // FLIGHT_TEST cartridge: its floor-hole provider (testmod.asm)
 if(want('holes')){
-  const testRom=resolve(repo,'.local/snes-test/roms/flight-test.sfc');
-  if(!(want('classify')||want('landing'))||!existsSync(testRom))build(testRom,['-DFLIGHT_TEST=1']);
-  const rom=privateRom(testRom,'flight-holes');
+  const holesRom=resolve(repo,'.local/snes-test/roms/flight-test-holes.sfc');
+  build(holesRom,['-DFLIGHT_TEST=1','-DFLIGHT_TEST_HOLES=1']);
+  const rom=privateRom(holesRom,'flight-holes');
   const r=await runMesen({rom,test:prelude()+readFileSync(join(here,'holes.lua'),'utf8'),outDir:join(outRoot,'holes'),state:join(cps,'waterfall.mss')});
   cleanupRom(rom);
   const pass=r.code===0&&r.results?.pass===true;ok&&=pass;
