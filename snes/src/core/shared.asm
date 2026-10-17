@@ -26,4 +26,5 @@
 !SRAM_WORK_SCENE  = $326000   ; $2000 set-piece scenes (Frieza, orbit, endings, Vegeta) — one scene at a time
 !SRAM_WORK_STORY  = $336000   ; $1000 story runtime
 !SRAM_WORK_DESTROY = $337000  ; $0800 destruction
-!SRAM_WORK_FLIGHT = $337800   ; $0800 flight / traversal
+!SRAM_WORK_FLIGHT = $337800   ; $0400 flight / traversal
+!SRAM_WORK_UI     = $337C00   ; $0400 UI text staging (telepathy, radar, scouter, status)
