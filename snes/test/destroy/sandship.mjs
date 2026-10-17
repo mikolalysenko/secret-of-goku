@@ -213,6 +213,7 @@ scenarios.push(
   -- the cabin: arrive at its own door from the stairs (324); entering is
   -- enough for the rescue
   S.enter(339, 16, 19, 0)
+  S.untilControl(6000)                       -- the rescue scene's dialogue
   H.result('cabin', S.state())
   S.enter(99, 24, 27, 0)
   for f = 1, 8000 do
