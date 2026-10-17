@@ -303,11 +303,14 @@ combat_field_frame:
 	TSB.w !core_pad_inject&$FFFF
 	JSR cb_bind_loops
 	JSR cb_bind_charge_remark
-	; effects: live records, a charge or an action (the aura and orb)
+	; effects: live records, a charge or an action (the aura and orb), or
+	; the beam picture of this frame's last step
 	LDA !cb_fx_mask
 	BNE +
 	LDA !cb_act
 	AND.w #$00FF
+	BNE +
+	LDA.l !bd_on
 	BEQ .out
 +	JSR cb_effects_draw
 .out

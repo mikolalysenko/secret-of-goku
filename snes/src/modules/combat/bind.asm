@@ -500,34 +500,39 @@ endif
 
 ; The live beam: palms ag_x/ag_y, ag_dir, length cb_t2, half width cb_t3,
 ; taper cb_t1, age cb_t0.
+; The live beam's picture recorded by cb_beam_picture (frame end only: fx
+; keeps continuous draws from the frame callbacks).
 cb_fx_beam_draw:
 if defined("FX_BEAM_KAME")
 	JSR cb_fx_req_clear
 	SEP #$20
-	LDA !ag_dir
+	LDA.l !bd_dir
 	STA.l !fx_dir
 	REP #$20
-	LDA !cb_t2
+	LDA.l !bd_len
 	STA.l !fx_a
-	LDA !cb_t3
+	LDA.l !bd_half
 	STA.l !fx_b
-	LDA !cb_t1
+	LDA.l !bd_taper
 	STA.l !fx_c
-	LDA !cb_t0
+	LDA.l !bd_age
 	STA.l !fx_t
-	LDA !bm_mega
-	AND.w #$00FF
-	BEQ +
+	LDA.l !bd_kind
+	CMP.w #$0001
+	BNE +
 	LDA.w #!FX_BEAM_WAVE
 	BRA ++
-+	LDA !cb_form
-	AND.w #$00FF
-	BEQ +
++	CMP.w #$0002
+	BNE +
 	LDA.w #!FX_BEAM_KAME|(!FX_F_SSJ<<8)
 	BRA ++
 +	LDA.w #!FX_BEAM_KAME
-++	LDX !ag_x
-	LDY !ag_y
+++	PHA
+	LDA.l !bd_y
+	TAY
+	LDA.l !bd_x
+	TAX
+	PLA
 	JSL fx_beam
 endif
 	RTS

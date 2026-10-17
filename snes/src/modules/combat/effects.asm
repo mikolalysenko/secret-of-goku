@@ -207,6 +207,11 @@ cb_effects_draw:
 	JSR cb_goku_active
 	BNE +
 	RTS
++	LDA.l !bd_on
+	BEQ +
+	JSR cb_fx_beam_draw
+	LDA.w #$0000
+	STA.l !bd_on
 +	JSR cb_fx_continuous
 if !COMBAT_FX_PLACEHOLDER
 	JSR cb_placeholder_draw

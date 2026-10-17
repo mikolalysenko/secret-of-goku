@@ -204,7 +204,18 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
 !da_taper = !CW+$1FC       ; word: taper length (full wave 44) or 0
 !da_str   = !CW+$1FE       ; word: strength 0-256
 !da_id    = !CW+$200       ; word: attack id (beams), 0 one-shot
-!CW_END   = !CW+$202
+; the live beam's picture for this field frame, drawn at the frame end
+; (fx keeps continuous draws only from the frame callbacks)
+!bd_on    = !CW+$202       ; word: nonzero = draw
+!bd_kind  = !CW+$204       ; word: fx_beam A (kind | flags << 8)
+!bd_x     = !CW+$206       ; word: palms (map)
+!bd_y     = !CW+$208
+!bd_dir   = !CW+$20A       ; word: facing 0-3
+!bd_len   = !CW+$20C       ; word: length
+!bd_half  = !CW+$20E       ; word: half width
+!bd_taper = !CW+$210       ; word: taper (full wave 44) or 0
+!bd_age   = !CW+$212       ; word: beam age
+!CW_END   = !CW+$214
 ; effect record fields
 !er_kind  = $00   ; byte: !ERK_*
 !er_flags = $01   ; byte: !ERF_*

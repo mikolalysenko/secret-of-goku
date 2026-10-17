@@ -1038,6 +1038,38 @@ cb_beam_tables:
 	dw combat_beam_damage_ssj, combat_beam_damage_ssj_gi
 
 ; Strength of the live beam, 0-256 (charge * 256 / cap).
+; The live beam's picture for this frame (drawn by cb_effects_draw at the
+; frame end): palms ag_x/ag_y, facing ag_dir, length cb_t2, half width
+; cb_t3, taper cb_t1, age cb_t0.
+cb_beam_picture:
+	LDA !bm_mega
+	AND.w #$00FF
+	BEQ +
+	LDA.w #$0001                  ; full wave
+	BRA ++
++	LDA !cb_form
+	AND.w #$00FF
+	BEQ ++
+	LDA.w #$0002                  ; Super Saiyan colours
+++	STA.l !bd_kind
+	LDA !ag_x
+	STA.l !bd_x
+	LDA !ag_y
+	STA.l !bd_y
+	LDA !ag_dir
+	STA.l !bd_dir
+	LDA !cb_t2
+	STA.l !bd_len
+	LDA !cb_t3
+	STA.l !bd_half
+	LDA !cb_t1
+	STA.l !bd_taper
+	LDA !cb_t0
+	STA.l !bd_age
+	LDA.w #$0001
+	STA.l !bd_on
+	RTS
+
 ; strength 0-256 of the running charge (King Kai, energy beds, the orb)
 cb_bind_strength:
 	LDA !cb_charge
@@ -1330,7 +1362,7 @@ cb_beam_frame:
 	CLC
 	ADC.w #2
 	JSR cb_destroy_attack
-	JSR cb_fx_beam_draw
+	JSR cb_beam_picture
 .catchUp
 	JSR cb_targets
 	LDA !ag_list
