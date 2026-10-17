@@ -1,0 +1,74 @@
+// Reference pictures for the ending tests, composed with the browser
+// engine's own formulas and assets (planet-view.js kaiPlanet, kai-planet.js
+// createKaiArt, native-radio.js radioPixels), plus a tolerant comparison
+// against Mesen screenshots.
+import {readFileSync} from 'node:fs';
+import {resolve,dirname,join} from 'node:path';
+import {fileURLToPath,pathToFileURL} from 'node:url';
+const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
+const gfx=await import(pathToFileURL(join(repo,'snes/tools/gfx.mjs')).href);
+const engine=f=>import(pathToFileURL(join(repo,'engine',f)).href);
+
+export function surfaceToRgba(surface,w=256,h=224){
+  const out=new Uint8Array(w*h*4);
+  for(let i=0;i<w*h;i++){const c=surface[i];if(!c){out[i*4+3]=255;continue;}const v=c-1;out[i*4]=(v&31)<<3|(v&31)>>2;out[i*4+1]=(v>>5&31)<<3|(v>>5&31)>>2;out[i*4+2]=(v>>10&31)<<3|(v>>10&31)>>2;out[i*4+3]=255;}
+  return out;
+}
+const toSurface=(img,alpha=1)=>{const o=new Uint16Array(img.width*img.height);for(let i=0;i<o.length;i++)if(img.data[i*4+3]>=alpha)o[i]=1+(img.data[i*4]>>3)+((img.data[i*4+1]>>3)<<5)+((img.data[i*4+2]>>3)<<10);return o;};
+
+let kaiArt=null;
+async function loadKaiArt(){
+  if(kaiArt)return kaiArt;
+  const bg=toSurface(gfx.resize(gfx.readPng(join(repo,'assets/sprites/kai-planet.png')),256,224),0);
+  for(let i=0;i<bg.length;i++)if(!bg[i])bg[i]=1;
+  const sheet=gfx.readPng(join(repo,'assets/sprites/kai-npcs.png')),W=sheet.width,H=sheet.height,pix=toSurface(sheet,128);
+  const frames=[];
+  for(let i=0;i<16;i++){
+    const x0=Math.round(i%4*W/4),x1=Math.round((i%4+1)*W/4),y0=Math.round((i>>2)*H/4)+(i>=4&&i<8?32:0),y1=Math.round(((i>>2)+1)*H/4)+(i<4?16:0);
+    let x=x1,y=y1,right=x0,bottom=y0;
+    for(let yy=y0;yy<y1;yy++)for(let xx=x0;xx<x1;xx++)if(pix[yy*W+xx]){x=Math.min(x,xx);y=Math.min(y,yy);right=Math.max(right,xx);bottom=Math.max(bottom,yy);}
+    frames.push({x,y,w:right-x+1,h:bottom-y+1});
+  }
+  const scale=[32/Math.max(...frames.slice(0,4).map(f=>f.h)),22/Math.max(...frames.slice(4).map(f=>f.h))];
+  const goku=toSurface(gfx.readPng(join(repo,'assets/sprites/goku.png'))),ssj=toSurface(gfx.readPng(join(repo,'assets/sprites/ssj.png')));
+  kaiArt={bg,pix,W,frames,scale,goku:{pixels:goku,width:2016},ssj:{pixels:ssj,width:1760}};
+  return kaiArt;
+}
+
+// planet-view kaiPlanet() for a given state.
+export async function kaiReference({rom,kaiFrame=0,bubbles={x:86,y:160,frame:5,flip:false},goku='goku',gokuVisible=true,card=null}){
+  const a=await loadKaiArt(),surface=new Uint16Array(256*224);
+  surface.set(a.bg);
+  const put=(x,y,c)=>{x=Math.round(x);y=Math.round(y);if(c>0&&x>=0&&x<256&&y>=0&&y<224)surface[y*256+x]=c;};
+  const npc=(frame,x,y,flip=false)=>{
+    const f=a.frames[frame],s=a.scale[frame<4?0:1],w=Math.round(f.w*s),h=Math.round(f.h*s);
+    for(let yy=0;yy<h;yy++)for(let xx=0;xx<w;xx++){const c=a.pix[(f.y+Math.floor(yy*f.h/h))*a.W+f.x+Math.floor((flip?w-1-xx:xx)*f.w/w)];if(c)put(x-Math.floor(w/2)+xx,y-h+yy,c);}
+  };
+  const g=a[goku];
+  const actors=[
+    {y:139,draw:()=>npc(kaiFrame,116,139)},
+    {y:bubbles.y,draw:()=>npc(bubbles.frame,bubbles.x,bubbles.y,bubbles.flip)},
+    {y:162,draw:()=>{if(gokuVisible)for(let py=0;py<32;py++)for(let px=0;px<32;px++){const c=g.pixels[(32+py)*g.width+px];if(c)put(151-16+px,162-31+py,c);}}},
+  ];
+  actors.sort((p,q)=>p.y-q.y).forEach(x=>x.draw());
+  if(card){
+    const {radioPixels}=await engine('native-radio.js');
+    const px=radioPixels(rom,card);
+    for(let y=0;y<64;y++)for(let x=0;x<240;x++){const c=px[y*240+x];if(c)put(x+8,y+14,c);}
+  }
+  return surfaceToRgba(surface);
+}
+
+// Fraction of pixels whose channels all differ by at most `tol` (8-bit),
+// within the optional rectangle {x0,y0,x1,y1}.
+export function compare(pngPath,ref,{tol=24,rect=null}={}){
+  const img=gfx.readPng(pngPath);
+  if(img.width!==256||img.height!==224)throw Error(`unexpected screenshot size ${img.width}x${img.height}`);
+  const r=rect??{x0:0,y0:0,x1:256,y1:224};let same=0,total=0;
+  for(let y=r.y0;y<r.y1;y++)for(let x=r.x0;x<r.x1;x++){
+    const i=(y*256+x)*4;total++;
+    if(Math.abs(img.data[i]-ref[i])<=tol&&Math.abs(img.data[i+1]-ref[i+1])<=tol&&Math.abs(img.data[i+2]-ref[i+2])<=tol)same++;
+  }
+  return same/total;
+}
+export function writeRef(path,rgba){return gfx.writePng({width:256,height:224,data:rgba});}

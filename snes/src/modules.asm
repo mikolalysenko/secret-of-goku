@@ -6,15 +6,18 @@
 ; docs/agents/snes-port/engine.md (what the game is doing at each hook).
 
 ; incsrc "modules/<name>/module.asm"
+incsrc "modules/ending/module.asm"
 
 pushpc
 org !CODE_CORE+$7000
 ; Field frame (also dialogue, events and Mode 7 boss arenas), after the game
 ; logic and OAM build, before the NMI handshake. M16/X16, DB = $7E, D = 0.
 modules_field_frame:
+	JSL ending_frame          ; keep last: it may take the whole OAM
 	RTL
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
 modules_field_nmi:
+	JSL ending_nmi
 	RTL
 ; World flight frame, after the world logic (DB = $7E).
 modules_world_frame:
