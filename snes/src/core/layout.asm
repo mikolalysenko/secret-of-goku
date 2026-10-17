@@ -18,7 +18,10 @@
 ; E9    endings                   ending tables
 ; EA    audio                     audio tables
 ; EB    title / arrival / misc    misc tables
-; EC-EF reserved code
+; EC    UI code (upper half)        ending art (lower half)
+; ED    world-flight code (upper)     ending art (lower half)
+; EE    effects library code (upper)  ending art (lower half)
+; EF    reserved code                 ending art (lower half)
 ; F0-F7 story events and dialogue (whole banks)
 ; F8-FF graphics and samples (whole banks, packed by snes/gen)
 !CODE_CORE    = $A08000
@@ -33,8 +36,11 @@
 !CODE_ENDING  = $A98000
 !CODE_AUDIO   = $AA8000
 !CODE_MISC    = $AB8000
+!CODE_UI      = $AC8000   ; UI module (upper half only; $EC-$EF lower halves hold ending art)
 !CODE_SPARE0  = $AC8000
+!CODE_WORLD   = $AD8000   ; world-flight module (upper half only)
 !CODE_SPARE1  = $AD8000
+!CODE_FX      = $AE8000   ; effects library (upper half only)
 !CODE_SPARE2  = $AE8000
 !CODE_SPARE3  = $AF8000
 
