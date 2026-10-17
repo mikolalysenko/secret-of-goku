@@ -449,6 +449,22 @@ export async function generate({rom,repo,outDir}){
   });
   emit(`!DESTROY_DOORS = ${breakableDoors.length}`);
   breakableDoors.forEach((d,i)=>emit(`!DESTROY_DOOR_${d.id.toUpperCase().replace(/-/g,'_')} = ${i}`));
+  // Watts's shortcut entrance (native-story.js storyRead: the range byte at
+  // C8:5A8E reads $0F once the gaia-shortcut door broke): the map-73 piece
+  // gated by the door's flag. The loader hook keys on its record address.
+  {
+    const door=breakableDoors.find(d=>d.id==='gaia-shortcut');
+    assert(door&&door.maps.length===1,'gaia shortcut door');
+    const map=door.maps[0],start=0x80000+word(0x85000+map*2),end=0x80000+word(0x85002+map*2);
+    const records=[];
+    for(let p=start;p<end;){if(rom[p]>=254){p++;continue;}records.push(p);p+=5;}
+    const gated=records.filter(p=>rom[p]===door.flag);
+    assert(gated.length===1&&gated[0]+1===0x85a8e,'the shortcut piece record moved (native-story.js reads C8:5A8E)');
+    const range=rom[gated[0]+1];
+    assert((range>>4)===door.openAt&&(range&15)===15,'shortcut piece range');
+    emit(`!DESTROY_SHORTCUT_LO = ${hex2(gated[0]&255)}`);
+    emit(`!DESTROY_SHORTCUT_HI = ${hex2(gated[0]>>8&255)}`);
+  }
 
   // -------------------------------------------------------------------------
   // Crystal orbs: event -> spell byte for $E181 (native-orbs.js describe()).

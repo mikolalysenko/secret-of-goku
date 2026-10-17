@@ -80,6 +80,9 @@ export const scenarios=[
     flag:0x5e,opened:1,note:'Haunted Forest rose gate (map 29): punch -> retail event 1EF'},
   {name:'gate-bridge',type:'event',bundle:'ending-fix__vine',door:0xa9,map:30,teleport:[200,408],attack:{dir:1,kind:'punch'},walk:'right',walkFrames:90,expect:{passX:288},
     flag:0x5f,opened:3,note:'Haunted Forest bridge gate (map 30): punch -> retail event 6DA'},
+  {name:'gate-gaia',type:'event',bundle:'tree-presentation__gaia-open',door:0x17,map:73,teleport:[712,975],attack:{dir:0,kind:'beam',str:256,id:12},
+    doorBit:0,reload:true,piece:[42,62,4,3],
+    note:"Watts's shortcut (map 73): a charged beam breaks the door for good; its entrance piece shows and stays after re-entering (CF14 untouched)"},
   {name:'gate-witch',type:'event',bundle:'readme-variety-probe__castle',door:0xb0,map:300,teleport:[152,360],attack:{dir:3,kind:'beam',str:256,id:9},
     flag:0x17,opened:2,confirm:true,note:"Elinee's castle three-person gate (map 300): charged beam -> authored event 8C"},
   {name:'switch-gaia',type:'event',bundle:'power-flight-fixes__native-285',teleport:[232,120,3],attack:{dir:3,kind:'beam',str:256,id:11},flagsChange:true,
@@ -100,6 +103,7 @@ const body=`
 function test()
   D.watch()
   D.garbage()
+  H.w8(ABI.P_DOORS, SCN.doors or 0); H.w8(ABI.P_TREE, 0)
   assert(H.importSnesJs(SCN.bundlePath), 'import failed')
   H.wait(SCN.settle or 12)
   H.result('start', D.pos())
@@ -141,6 +145,7 @@ const bodyEvent=`
 function test()
   D.watch()
   D.garbage()
+  H.w8(ABI.P_DOORS, SCN.doors or 0); H.w8(ABI.P_TREE, 0)
   assert(H.importSnesJs(SCN.bundlePath), 'import failed')
   H.wait(2)
   if SCN.door then H.result('door', D.door(SCN.door, SCN.map, SCN.flags)) end
@@ -162,6 +167,7 @@ function test()
   H.shot('struck')
   H.result('busy', D.settle(SCN.waitFrames or 360, SCN.confirm))
   if SCN.flag then H.result('flagAfter', H.r8(0x7ECF00 + SCN.flag)) end
+  H.result('doors', H.r8(ABI.P_DOORS))
   H.result('event', H.r16(ABI.dbg_ev))
   H.result('events', H.r16(ABI.dbg_evn))
   H.result('react', H.r16(ABI.out_react))
@@ -169,6 +175,12 @@ function test()
   H.dumpfile('flags.bin', emu.memType.snesWorkRam, 0xCF00, 0x100)
   D.grid('after.bin')
   H.shot('after')
+  if SCN.reload then
+    -- enter the map again: the broken door's state must survive a reload
+    H.result('reload', D.door(SCN.door, SCN.map))
+    D.grid('reloaded.bin')
+    H.shot('reloaded')
+  end
   if SCN.walk then
     H.hold(SCN.walk, SCN.walkFrames or 60)
     H.result('walked', D.pos())
@@ -247,6 +259,14 @@ async function runEvent(s){
     for(let i=0;i<256;i++)if(before[i]!==after[i])flags.push(`CF${i.toString(16).toUpperCase().padStart(2,'0')}:${before[i]}->${after[i]}`);
   }
   if(s.flagsChange&&!flags.length)problems.push('no story flag changed');
+  if(s.doorBit!==undefined&&!((res.doors>>s.doorBit)&1))problems.push(`door bit ${s.doorBit} not set (P_DOORS ${res.doors})`);
+  if(s.piece){
+    // the piece area: closed before, open after the event, still open after a reload
+    const [px,py,pw,ph]=s.piece,area=f=>{if(!existsSync(join(outDir,f)))return null;const g=readFileSync(join(outDir,f)),a=[];for(let y=py;y<py+ph;y++)for(let x=px;x<px+pw;x++)a.push(g[y*128+x]);return a.join(',');};
+    const b=area('before.bin'),a=area('after.bin'),r=area('reloaded.bin');
+    if(!b||!a||b===a)problems.push(`piece area unchanged by the event (${a})`);
+    if(s.reload&&(res.reload!==true||r!==a))problems.push(`piece area after re-entering ${r} want ${a}`);
+  }
   const summary={name:s.name,ok:!problems.length,problems,edits:grid.length,flags,target,event:res.event,flag:[res.flagBefore,res.flagAfter],react:res.react,busy:res.busy,e181:res.e181,ms:m.ms,note:s.note};
   writeFileSync(join(outDir,'summary.json'),JSON.stringify({...summary,results:res},null,1));
   return summary;

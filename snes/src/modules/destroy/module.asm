@@ -299,3 +299,9 @@ pullpc
 ; native redraw request, then re-executes the replaced instructions.
 %orig4($C0C7C3, $2EA530E2)
 %hijack_jsl($C0C7C3, destroy_redraw_hook, 4, destroy)
+
+; C0:CC2D: LDA $7ECF00,X in the map piece loader (the gating story flag of
+; each piece). The hook returns it unchanged except for Watts's shortcut
+; entrance after its door broke.
+%orig4($C0CC2D, $7ECF00BF)
+%hijack_jsl($C0CC2D, destroy_piece_flag, 4, destroy)

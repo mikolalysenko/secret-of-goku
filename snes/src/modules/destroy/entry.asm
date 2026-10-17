@@ -247,6 +247,27 @@ destroy_tree_barrier_break:
 	RTL
 
 ; ---------------------------------------------------------------------------
+; C0:CC2D (map piece loader: LDA $7ECF00,X reads the story flag that gates
+; the piece at [$20]; 8-bit A/X, DB = $7F). Watts's shortcut entrance on
+; map 73 shows once its door broke, as if its range were 0..15 instead of
+; 6..15 (native-story.js storyRead returns $0F for its range byte), and
+; CF14 itself is left alone (it also drives Gnome and palace progress).
+destroy_piece_flag:
+	LDA.l $7ECF00,X
+	PHA
+	LDA $22 : CMP.b #$C8 : BNE .keep
+	LDA $21 : CMP.b #!DESTROY_SHORTCUT_HI : BNE .keep
+	LDA $20 : CMP.b #!DESTROY_SHORTCUT_LO : BNE .keep
+	LDA.l !P_DOORS : AND.b #1<<!DESTROY_DOOR_GAIA_SHORTCUT : BEQ .keep
+	PLA
+	CMP.b #16 : BCS +                  ; above 15: outside 0..15 as well
+	LDA.b #15                          ; inside the record's own 6..15
++	RTL
+.keep
+	PLA
+	RTL
+
+; ---------------------------------------------------------------------------
 ; Story queries DOOR_* (docs/agents/snes-port/story.md; barriers.doorBroken):
 ; JSL, M16/X16, DB = $7E. A16 = 1 when that breakable door is broken. Story
 ; routes the doors' trigger events (16A/16B, 55A/55B) on these.
