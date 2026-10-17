@@ -166,6 +166,18 @@ else
 	JMP fl_bind_world_takeoff
 endif
 
+; Sandship runtime (no owner yet): sandship.takeoff() on L+R. The owner
+; defines !SANDSHIP_TAKEOFF = <routine>: JSL, carry set when it handled the
+; chord (an unfinished ship blows up instead of any takeoff).
+fl_bind_ship_takeoff:
+if defined("SANDSHIP_TAKEOFF")
+	JSL !SANDSHIP_TAKEOFF
+	RTS
+else
+	CLC
+	RTS
+endif
+
 ; Story (snes/src/modules/story): story.travel(door), A16 = door. Carry set
 ; when queued.
 fl_bind_travel:

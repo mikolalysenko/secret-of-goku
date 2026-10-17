@@ -25,6 +25,9 @@
 !STORY_HOOK_FLIGHT_LAND = fl_story_land
 !STORY_HOOK_QUEST_WISH_CEILING = fl_story_wish_ceiling
 !STORY_QUERY_LOCAL_FLIGHT = fl_story_local_flight
+; The Sandship runtime has no owner yet; the door the flight-door event 07A
+; takes is flight's (sandship.js flyThroughDoor sets s.door).
+!STORY_QUERY_SANDSHIP_DOOR = fl_story_ship_door
 
 ; ---------------------------------------------------------------------------
 ; WRAM (!RAM_FLIGHT = $7ED900, $80 bytes; absolute addressing with DB = $7E)
@@ -85,13 +88,13 @@ assert !RAM_FLIGHT == $7E0000|!FLIGHT_RAM, "!FLIGHT_RAM must match !RAM_FLIGHT"
 !fl_lastmap    = !FLIGHT_RAM+$66   ; word: map of the last field frame
 !fl_lasttick   = !FLIGHT_RAM+$68   ; word: core tick of the last field frame
 !fl_magic      = !FLIGHT_RAM+$6A   ; word: !FL_MAGIC once the SRAM work area was initialised
-!fl_spare      = !FLIGHT_RAM+$6C   ; word: unused
+!fl_passengers = !FLIGHT_RAM+$6C   ; word: carried CPU companions to hide (bit 0 $E200, bit 1 $E400)
 !fl_speed      = !FLIGHT_RAM+$6E   ; word: configured speed for the next steps
 !fl_gap        = !FLIGHT_RAM+$70   ; word: whip-pad crossing active (map+1), 0 none
 !fl_counter    = !FLIGHT_RAM+$72   ; word: frames the module ran (field)
 !fl_events     = !FLIGHT_RAM+$74   ; word: !FLE_* one-frame events for other modules
 !fl_lock       = !FLIGHT_RAM+$76   ; word: request: nonzero forbids flight this frame (other modules)
-!fl_open_air   = !FLIGHT_RAM+$78   ; word: request: Sandship openAir (flight passes every wall)
+!fl_open_air   = !FLIGHT_RAM+$78   ; word: Sandship/dunes openAir (flight passes every wall), set with the map context
 !fl_charging   = !FLIGHT_RAM+$7A   ; word: request: combat is charging (halves speed, flight rules)
 !fl_held       = !FLIGHT_RAM+$7C   ; word: buttons held through a menu, ignored until released
 !fl_rc_tmp     = !FLIGHT_RAM+$7E   ; word: scratch for the flood fill
@@ -193,6 +196,13 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !fl_tp_l_air   = !FL_SRAM+$3AE
 !fl_tp_best_d  = !FL_SRAM+$3B0     ;   2 words: nearest search distance
 !fl_tp_best_i  = !FL_SRAM+$3B4     ;   word
+!fl_sd         = !FL_SRAM+$3B6     ; Sandship flight doors (sandship.asm):
+!fl_sd_room    = !fl_sd+$00        ;   word: map the door state belongs to
+!fl_sd_last    = !fl_sd+$02        ;   word: cell of the door hovered over ($FFFF none)
+!fl_sd_frames  = !fl_sd+$04        ;   byte: frames over it
+!fl_sd_clear   = !fl_sd+$05        ;   byte: Goku has been off every door in this room
+!fl_sd_door    = !fl_sd+$06        ;   word: SANDSHIP_DOOR answer (0 none, 1 + door - $1A0)
+!fl_sd_embedded = !fl_sd+$08       ;   byte: frames stuck where Goku cannot land
 ; WRAM aliases for the landing search (the sweep is idle meanwhile)
 !fl_tp_pref    = !fl_sw_x
 !fl_tp_dist    = !fl_sw_y
@@ -273,6 +283,7 @@ incsrc "teleport.asm"
 incsrc "gap.asm"
 incsrc "ceiling.asm"
 incsrc "exits.asm"
+incsrc "sandship.asm"
 incsrc "story.asm"
 if defined("FLIGHT_TEST")
 	incsrc "../../../test/flight/testmod.asm"

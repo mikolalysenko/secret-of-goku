@@ -44,9 +44,12 @@ export const DEFAULT_BUNDLES=[
   'frieza__wall-after',                     // 345 Fire Palace
 ];
 
+export const SHIP_AIR=[98,99,270,271,318,319,324,339,91];
 export function expected(wram,rom,createNativeLocalFlight){
   const snes={ram:wram,cart:{data:rom},cpu:{r:new Uint8Array(8),br:new Uint16Array(8),cyclesLeft:0,cycle(){}},frames:1,ppu:{mode:wram[0x29]&7}};
-  const h=createNativeLocalFlight(snes,{active:()=>true,phase:true});
+  // the Sandship's openAir (sandship.js: ship maps and the dunes), as lab.js wires it
+  const map=wram[0xdc]|wram[0xdd]<<8;
+  const h=createNativeLocalFlight(snes,{active:()=>true,phase:true,openAir:()=>SHIP_AIR.includes(map)});
   const W=Math.min(128,(wram[0xc0]|wram[0xc1]<<8)>>4),H=Math.min(128,(wram[0xc2]|wram[0xc3]<<8)>>4);
   const out=new Uint8Array(2*H*128);
   for(let l=0;l<2;l++)for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++){

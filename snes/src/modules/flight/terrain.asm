@@ -41,6 +41,12 @@ fl_ctx_update:
 	BNE fl_ctx_load
 	RTS
 fl_ctx_load:
+	; the Sandship and the dunes after it: flight passes over every wall
+	LDA $DC
+	JSR fl_ship_map
+	LDA.w #$0000
+	ROL
+	STA.w !fl_open_air
 	JSR fl_cache_clear
 	JSR fl_grid_off
 	JSR fl_sweep_forget

@@ -10,12 +10,13 @@ parts of `mana-mod.js`.
 
 Status (this branch): **local flight, hovering, crossings with companion
 gathering, recovery, the camera follow, Instant Transmission, the native
-whip-pad crossings, the ceiling escape, the opening-path exit catches and
-NPC pass-through are in and validated; the terrain classifier, the teleport
-landing search, the exit catches and the roof colours equal the browser's
-on every tile, query, probe and palette tested.** The Sandship's
-flight-side rules are next (see [Remaining](#remaining)). Flight still
-costs too much CPU in heavy scenes (see [Cost](#cost)).
+whip-pad crossings, the ceiling escape, the opening-path exit catches, NPC
+pass-through and the Sandship's flight-side rules are in and validated; the
+terrain classifier, the teleport landing search, the exit catches and the
+roof colours equal the browser's on every tile, query, probe and palette
+tested.** Flight still costs too much CPU in heavy scenes (see
+[Cost](#cost)); what other streams still owe is under
+[Remaining](#remaining).
 
 ## Behaviour (as the browser)
 
@@ -49,6 +50,14 @@ costs too much CPU in heavy scenes (see [Cost](#cost)).
 - Airborne Goku passes over NPCs (species >= `$80`) without pushing them
   or being pushed; enemy contact and conversations on the ground keep the
   native handling.
+- On the Sandship (maps 98, 99, 270, 271, 318, 319, 324, 339) and in the
+  dunes after it (91) flight passes over every wall (`openAir`). Hovering
+  over a ship door ($1A0-$1BF) for three frames, after having been off
+  every door since entering the room, takes it through the story's
+  flight-door event 07A (flight answers its `SANDSHIP_DOOR` query); a Goku
+  left standing where he cannot land for eight frames (a breached wall)
+  lifts into a hover. Carried CPU companions (the Beast's sky, the ferry
+  gap, dungeon air) are listed in `!fl_passengers` for hiding.
 - The Mana Beast's Mode 7 arena allows flight only inside X 184-408,
   Y 292-432, and no step there scrolls the camera.
 - On foot the A button never reaches the game (it is the speed modifier, not
@@ -210,10 +219,11 @@ WRAM fields (bank `$7E`, absolute with DB = `$7E`):
 | `!fl_state` | `$D900` byte | bit0 localFlight, bit1 Goku in play on the field, bit2 canAttack, bit4 charging |
 | `!fl_lift` | `$D901` byte | `mod.localLift` (0-12), also written to `!goku_lift` |
 | `!fl_hook` | `$D932` word | bit 2 (`$04`): the camera follows a teleport/recovery (the browser's `teleport.pending`: the pad is masked and only the running action advances) |
+| `!fl_passengers` | `$D96C` word | CPU companions Goku carries this frame (bit 0 `$E200`, bit 1 `$E400`): `sprite-layer.js` hides their body, attachment and shadow cells |
 | `!fl_gap` | `$D970` word | a native whip crossing runs (map + 1), 0 none (`gapFlight.active`) |
 | `!fl_events` | `$D974` word | one-frame events: `$01` takeoff (flight cue), `$02` landing cue, `$04` hovering with control (power-intro first-hover banter), `$08` crossing landed (onCross), `$10` teleport started, `$20` Goku reappears (age 6) |
 | `!fl_lock` | `$D976` word | request (write every frame): nonzero forbids flight (scene owners, endings, input locks) |
-| `!fl_open_air` | `$D978` word | request: Sandship `openAir` (flight passes over every wall) |
+| `!fl_open_air` | `$D978` word | Sandship/dunes `openAir` (flight passes over every wall), set with the map context |
 | `!fl_charging` | `$D97A` word | request from combat: a charge is running (halves speed, keeps the flight rules for the step) |
 
 Goku requests written by flight every field frame: `GOKU_CTL_LOCALFLY`
@@ -232,7 +242,9 @@ module that owns a foe outside the actor table writes it every field frame
 `frieza.js` `entity()`), `+6` terrain byte, `+7` airborne (Frieza).
 
 Story hooks/queries defined in `module.asm`: `!STORY_HOOK_FLIGHT_LAND`,
-`!STORY_HOOK_QUEST_WISH_CEILING`, `!STORY_QUERY_LOCAL_FLIGHT` (`story.asm`).
+`!STORY_HOOK_QUEST_WISH_CEILING`, `!STORY_QUERY_LOCAL_FLIGHT` (`story.asm`),
+`!STORY_QUERY_SANDSHIP_DOOR` (`sandship.asm`; listed under the Sandship
+owner in story.md, but only the flight door sets it).
 
 Bindings (`bind.asm`, included by `modules.asm` after every module so the
 providers' defines are visible): world (`!WORLD_MAGIC`) `world_takeoff`,
@@ -310,8 +322,11 @@ canLand with `!fl_q_x/y/l`; carry = hole under the footprint.
   the escape up to its takeoff request.
 - Scenarios also cover `event-barriers.spec.mjs`'s Pandora castle guards
   (flying past them: the NPC pass fires, both engines end at 88,148 on map
-  266 with the story flags unchanged) and flying out of Potos (both take
-  door 2 to map 16).
+  266 with the story flags unchanged), flying out of Potos (both take
+  door 2 to map 16) and `sandship.spec.mjs`'s deck hatch (both reach map
+  271 at 248,330). With `openAir` the Sandship deck classifies 7,000 /
+  7,000 tiles flyable in both engines (the classifier gives the browser's
+  flight hook the same `openAir` as `lab.js`).
 - Dev aids: `compare.mjs` + `browser-ref.mjs` replay the scenarios of
   `scenarios.mjs` in the browser mod (Playwright, private ROM/fixture) and on
   the cartridge and compare per-frame traces (`--shots=` takes screenshots).
@@ -352,18 +367,24 @@ for the whole hero grid, a per-frame hero canLand memo, the D778 endpoint
 canFly implied by the sweep.
 
 Ceiling escape: the roof-colour search costs ~12,000 instructions once, at
-the impact (one dropped frame during the quake). Next steps: cheaper anchor tracking on foot, a leaner frame path,
-segment caching for long air routes. `CORE_FASTROM` would give module code
-25%.
+the impact (one dropped frame during the quake).
+
+Next steps: a leaner frame path (settle and the frame head cost ~1,200
+instructions while hovering in place), segment caching for long air routes,
+cheaper footprint assembly for grid hits. `CORE_FASTROM` would give module
+code 25%.
 
 ## Remaining
 
-- Whip-pad gap crossings (`C0:B683` skip of 6D8 while flying; the `4E`
-  conditional at `C1:F1F1` → 6F9 crossing with gap-flight pose `$23`).
-- Sandship `openAir`/`shipHull` rules and its takeoff
-  (`sandship.takeoff()` blows up an unfinished ship before any takeoff),
-  passengers hidden while carried (`sprite-layer.js` also hides the whip
-  attachment during a crossing; goku draws no weapon cells for Goku
+- Sandship runtime (wreck, crash, flying out past the hull, floor holes,
+  gear; story.md lists it under destroy) is still unowned: its
+  `sandship.takeoff()` plugs into flight's L+R through `!SANDSHIP_TAKEOFF`
+  (JSL, carry set = handled) and its floor holes through
+  `!FLIGHT_MISSING_FLOOR`. The flight-door path itself is a direct port;
+  the hatch scenario takes the native door first in both engines.
+- Passengers: hiding the companions listed in `!fl_passengers` needs the
+  sprite owner (goku's per-actor passes); `sprite-layer.js` also hides the
+  whip attachment during a crossing (goku draws no weapon cells for Goku
   anyway).
 - Ceiling escape: the debris and sparks are requested from fx (style 1 for
   `ceiling-escape.js`'s 20-chunk layout); fx draws them once it implements

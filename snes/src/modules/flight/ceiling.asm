@@ -17,7 +17,12 @@ fl_ce_lr:
 	BNE .no                      ; ceiling.busy
 	JSR fl_ce_boss
 	BCS .no                      ; ceiling.bossActive
-	JSR fl_bind_cancel           ; cancelCombat()
+	; taking off from an unfinished Sandship blows it up instead
+	JSR fl_bind_ship_takeoff
+	BCC +
+	SEC
+	RTS
++	JSR fl_bind_cancel           ; cancelCombat()
 	; flight.request(): world flight from this map (the world module serves
 	; the chord itself when it is in the build)
 	JSR fl_bind_world_allowed

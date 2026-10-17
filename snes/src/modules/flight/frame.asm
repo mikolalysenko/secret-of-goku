@@ -486,7 +486,7 @@ flight_frame:
 	JSR fl_ce_tick
 	BCC +
 	JMP .publish
-+
++	JSR fl_ship_tick             ; Sandship doors and walls
 	; a teleport's camera follow locks the pad; a new L+B queues the next
 	LDA.w !fl_hook
 	AND.w #!FLH_CAMERA
@@ -974,6 +974,7 @@ fl_publish:
 	AND.w #!FLS_CHARGE
 	JSR fl_bind_air
 +
+	JSR fl_passengers_update
 	; first hover with control (power-intro.js) and the tile cache's life
 	LDA.w !fl_state
 	AND.w #!FLS_FLY|!FLS_CAN
@@ -1519,4 +1520,48 @@ fl_recover:
 	LDY $E004
 	JSR fl_camera_follow
 .none
+	RTS
+
+; passengers (native-local-flight.js): while Goku flies (eligible) over the
+; Beast's sky, the ferry gap or dungeon air, the CPU companions he carries
+; are hidden (sprite-layer.js hides their body, attachment and shadow
+; cells). !fl_passengers bit 0 = $E200, bit 1 = $E400, for the sprite owner.
+fl_passengers_update:
+	STZ.w !fl_passengers
+	LDA.w !fl_state
+	AND.w #!FLS_FLY
+	BEQ .done
+	JSR fl_eligible
+	BCC .done
+	JSR fl_beast_arena
+	BCS .carry
+	JSR fl_hero_tile
+	BCS .done
+	JSR fl_fetch
+	JSR fl_ferry_gap
+	BCS .carry
+	JSR fl_dungeon_air
+	BCC .done
+.carry
+	SEP #$20
+	LDA $E200
+	AND.b #$01
+	BEQ +
+	LDA $E22C
+	BNE +
+	LDA $E20E
+	BMI +
+	LDA.b #$01
+	TSB.w !fl_passengers
++	LDA $E400
+	AND.b #$01
+	BEQ +
+	LDA $E42C
+	BNE +
+	LDA $E40E
+	BMI +
+	LDA.b #$02
+	TSB.w !fl_passengers
++	REP #$20
+.done
 	RTS

@@ -13,7 +13,7 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {runMesen} from '../mesen.mjs';
 import {mainCheckout,privateRom,cleanupRom} from '../checkpoints.mjs';
-import {DEFAULT_BUNDLES} from './classify.mjs';
+import {DEFAULT_BUNDLES,SHIP_AIR} from './classify.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 
 export const LANDING_BUNDLES=[
@@ -55,7 +55,8 @@ export async function landings({bundles,rom,outRoot}){
     let moved=0;for(let a=0x10000;a<0x18000;a++)if(wram[a]!==after[a])moved++;
     for(let a=0x1b800;a<0x1c000;a++)if(wram[a]!==after[a])moved++;
     const snes={ram:wram,cart:{data:base},cpu:{r:new Uint8Array(8),br:new Uint16Array(8),cyclesLeft:0,cycle(){}},frames:1,ppu:{mode:wram[0x29]&7}};
-    const h=createNativeLocalFlight(snes,{active:()=>true,phase:true});
+    const map=wram[0xdc]|wram[0xdd]<<8;
+    const h=createNativeLocalFlight(snes,{active:()=>true,phase:true,openAir:()=>SHIP_AIR.includes(map)});
     const t=createNativeTeleport(snes,{options:{enabled:true},write16(){}},h);
     const qs=JSON.parse(readFileSync(join(outDir,'landing.json'),'utf8'));
     let bad=0,found=0;const examples=[];

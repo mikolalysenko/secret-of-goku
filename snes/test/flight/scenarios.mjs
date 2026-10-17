@@ -48,6 +48,10 @@ export const scenarios=[
   // walking through it does. 'restore' drops the fixture's saved anchor.
   {name:'potos-exit',fixture:'graphics-audit__party',enter:{map:131,x:33,y:38},prep:['clearActors','restore'],
     steps:[{n:10},{b:['a','right'],n:9},{b:['a','down'],n:40},{n:90}]},
+  // sandship.spec.mjs: flying sideways onto the deck hatch takes it below
+  // (flyThroughDoor: three frames over a ship door, story event 07A).
+  {name:'ship-hatch',fixture:'graphics-audit__party',enter:{map:99,x:27,y:12},prep:['restore'],
+    steps:[{b:['a','right'],n:60},{n:200}]},
   // Potos river banks and fences (town flight).
   {name:'potos-river',fixture:'graphics-audit__party',enter:{map:131,x:18,y:22},prep:['clearActors'],
     steps:[{n:10},{b:['a','right'],n:40},{n:10},{b:['a','down'],n:40},{n:10},{b:['a','left'],n:40},{n:20}]},
