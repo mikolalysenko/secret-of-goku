@@ -31,7 +31,7 @@ ui (King Kai) and destroy (the map) through `bind.asm`.
 | Heavy Gi (−10% strength, −20% agility, never stacking on rebuilds), DUST BAG names, weapon tiers | Done (gi), names patched | `heavy-gi`, `heavy-gi-ssj` (armor ring off/on) |
 | Senzu Bean (name, targets through the item ring) | Ported, not yet compared | — |
 | Status recovery (focus breaks sleep / petrify / Frosty / Balloon / Engulf; poison and sleep break SSJ) | Ported, not yet compared | — |
-| Effects | Gameplay records done; drawing through fx (`bind.asm`, compiles against fx `a8f13ce`); placeholder sprites while the real fx library is absent (`!COMBAT_FX_PLACEHOLDER`) | runtime with fx blocked, see Requests |
+| Effects | Gameplay records done; drawing through fx (`bind.asm`): spawns (impact, ki, burst, status) from the logic, continuous draws (beam picture, aura, orb, lightning) from `combat_field_frame`; placeholder sprites only without the fx library (`!COMBAT_FX_PLACEHOLDER`) | fx's `gallery` / `beams` pass with combat; on-screen look not reviewed yet (see Remaining work) |
 | World flight: focus and transformation | Done (`combat_world_frame`) | — |
 | World flight: the aerial charge | The world module's stand-in (`!w_combat_owns` = 0) | world tests pass |
 
@@ -223,10 +223,13 @@ another 2-3. With `CORE_FASTROM` (MEMSEL set) the same frames end at
   tier / equip rejection against the browser.
 - The aerial charge in world flight (`!w_combat_owns`).
 - Senzu Bean / DUST BAG item icons (names only so far).
-- Check the effects on screen once fx works in the merged build (the
-  bindings follow fx.md; every request starts from a cleared block).
-  Combat's effect records use their own names (`!ER`, `!er_*`, `!ERK_*`,
-  `!ERF_*`) so nothing shadows fx's `!fx_*` request block.
+- Review the effects on screen with fx: in the Rabite field (field frames
+  lag to 2 vblanks) screenshots showed no Kamehameha strip or charge orb and
+  a misplaced full-wave polygon although `fx_beam` / `fx_draw` receive the
+  expected arguments every frame (palms, facing 1, length 64-320, width 12,
+  age). Combat's effect records use their own names (`!ER`, `!er_*`,
+  `!ERK_*`, `!ERF_*`) so nothing shadows fx's `!fx_*` request block, and
+  every request starts from a cleared block.
 - The Mantis Ant rescue aftermath now that imports keep the sound CPU.
 
 ## Requests
@@ -245,12 +248,11 @@ another 2-3. With `CORE_FASTROM` (MEMSEL set) the same frames end at
 - **title**: the arrival test's ring round trip presses native Y, which is
   Goku's ki with combat (the browser mod's player presses X); see also the
   impact frames under Performance.
-- **fx**: merging `a8f13ce` into current main (with or without combat)
-  fails fx's own `gallery` and `beams` tests (no OBJ regions or palettes
-  claimed: `reg=0`, `pal=FF`), while the fx branch alone passes. In that
-  state combat's first effect hangs the game inside `fx_emit_slow` (an
-  assembly id of `$ECB3`, 65,535 parts). A define such as `!FX_DRAWS`
-  would be a cleaner signal than `!fx_busy` for the placeholder.
+- **fx**: continuous draws are kept only when they come from frame
+  callbacks (combat now sends its beam from `combat_field_frame`); worth a
+  line in fx.md. A define such as `!FX_DRAWS` would be a cleaner signal than
+  `!fx_busy` for combat's placeholder. Please look at combat's beam / orb /
+  wave in a lagging field scene (see Remaining work).
 - **debug**: one hook per preset can hold only one module; several modules
   (combat, frieza, radio, world) answer kinds of the same presets.
 - **destroy**: a full Super Saiyan wave's first frames (band growth) cost up
