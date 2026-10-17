@@ -1,0 +1,433 @@
+; VRAM uploads: Goku's current cell into the boy's OBJ slot (bank-1 tiles
+; C0-C7 / D0-D7), the HUD portrait (E8/E9/F8/F9) and, when replacement ends,
+; the boy's own tiles. All transfers run inside the field NMI after the
+; game's uploads (modules_field_nmi), using DMA channels 4-7 like the game's
+; own party-tile routine C1:950D.
+
+!VRAM_ROW0 = $7C00     ; C0-C3: cell rows 0-7
+!VRAM_ROW1 = $7D00     ; D0-D3: rows 8-15
+!VRAM_ROW2 = $7C40     ; C4-C7: rows 16-23
+!VRAM_ROW3 = $7D40     ; D4-D7: rows 24-31
+!VRAM_HUD  = $7E80     ; E8/E9, F8/F9 at +$100
+
+; Request the displayed cell (p_cell, p_flags small) for the next vblank.
+; Any M; exit M16 X16.
+goku_request_cell:
+	REP #$30
+	LDX !p_cell
+	SEP #$20
+	LDA.l goku_cell_pal,X
+	STA !cur_pal
+	LDA !p_flags
+	AND.b #!GOKU_PF_SMALL
+	BEQ .size
+	LDA.b #$01
+.size
+	STA !t_a                 ; small flag
+	CMP !vram_small
+	BNE .request
+	REP #$20
+	TXA
+	CMP !vram_cell
+	BEQ .done
+.request
+	SEP #$20
+	LDA !t_a
+	STA !up_small
+	REP #$20
+	STX !up_cell
+.done
+	REP #$30
+	RTS
+
+; C1:95BC hook in the field NMI (replaced LDA $7EE083). M16 X8, D = $4300.
+; While Goku stands in for the boy, skip the game's boy-tile upload and let
+; goku_nmi refresh Goku's cell on the same 5-frame cadence instead.
+goku_upload_hook:
+	PHP
+	SEP #$20
+	LDA.l $7E0000|!replacing
+	BEQ .native
+	LDA.b #!GOKU_UP_REFRESH
+	ORA.l $7E0000|!up_flags
+	STA.l $7E0000|!up_flags
+	PLP
+	JML $019678              ; continue with the girl's tiles
+.native
+	PLP
+	LDA.l $7EE083
+	JML $0195C0
+
+; C1:E6C4 hook (replaced LDA $7EE180): HUD portrait upload, boy part.
+; Runs right after an NMI (or in forced blank), M8 X16, D = 0, $00 = VRAM
+; word address ($7E80). DMA channel 7, as the original routine.
+goku_hud_hook:
+	JSR goku_check_on
+	BCS .goku
+	LDA.b #$00
+	STA.l $7E0000|!hud_form  ; the game's own face is in VRAM now
+	LDA.l $7EE180
+	JML $01E6C8              ; JSR $E6DA, then the girl
+.goku
+	PHB
+	PHP
+	REP #$30
+	LDA $00
+	JSR goku_hud_dma
+	REP #$20
+	LDA $00
+	CLC
+	ADC.w #$0020
+	STA $00
+	PLP
+	PLB
+	JML $01E6CB              ; skip the boy's JSR $E6DA
+
+; Upload the 16x16 HUD portrait for the current form. A16 = VRAM word
+; address of E8. M16 X16 in, any DB; uses channel 7. Exit M16 X16.
+goku_hud_dma:
+	PHB
+	PHA
+	PEA $7E7E
+	PLB
+	PLB
+	SEP #$20
+	LDA !goku_form
+	AND.b #$01
+	INC
+	STA !hud_form            ; form + 1
+	DEC
+	REP #$20
+	AND.w #$0001
+	ASL
+	ASL
+	ASL                      ; form * 8 bytes (4 tile words)
+	TAX
+	PLA
+	PHA
+	STA.l $002116
+	LDA.l goku_portrait_tiles+0,X
+	JSR goku_dma_tile7
+	LDA.l goku_portrait_tiles+2,X
+	JSR goku_dma_tile7
+	PLA
+	CLC
+	ADC.w #$0100
+	STA.l $002116
+	LDA.l goku_portrait_tiles+4,X
+	JSR goku_dma_tile7
+	LDA.l goku_portrait_tiles+6,X
+	JSR goku_dma_tile7
+	PLB
+	RTS
+
+; DMA one 32-byte tile (A16 = global tile index) to the current VRAM address
+; on channel 7. M16 X16; keeps X.
+goku_dma_tile7:
+	PHA
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL
+	STA.l $004372
+	LDA.w #$1801
+	STA.l $004370
+	LDA.w #$0020
+	STA.l $004375
+	PLA
+	XBA
+	AND.w #$00FF
+	LSR
+	LSR
+	LSR
+	CLC
+	ADC.w #$00F8
+	SEP #$20
+	STA.l $004374
+	LDA.b #$80
+	STA.l $002115
+	STA.l $00420B
+	REP #$20
+	RTS
+
+; ---------------------------------------------------------------------------
+; Field NMI work (modules_field_nmi): M16 X16, DB = $80, D = 0, in vblank.
+goku_nmi:
+	PHB
+	PHD
+	PEA $7E7E
+	PLB
+	PLB
+	JSR goku_ensure_init
+	REP #$30
+	; restore the boy's own tiles when the replacement just ended
+	LDA !up_flags
+	AND.w #!GOKU_UP_NATIVE
+	BEQ .refresh
+	JSL core_vblank_lines
+	CMP.w #6
+	BCS .native_go
+	JMP .done
+.native_go
+	JSR goku_upload_native
+	SEP #$20
+	LDA.b #!GOKU_UP_NATIVE|!GOKU_UP_REFRESH
+	TRB !up_flags
+	REP #$20
+	LDA.w #!GOKU_NONE
+	STA !up_cell
+	BRA .hud
+.refresh
+	; the game's 5-frame party refresh: re-send the cell in VRAM
+	LDA !up_flags
+	AND.w #!GOKU_UP_REFRESH
+	BEQ .cell
+	SEP #$20
+	LDA.b #!GOKU_UP_REFRESH
+	TRB !up_flags
+	REP #$20
+	LDA !up_cell
+	CMP.w #!GOKU_NONE
+	BNE .cell
+	LDA !vram_cell
+	CMP.w #!GOKU_NONE
+	BEQ .hud
+	STA !up_cell
+	SEP #$20
+	LDA !vram_small
+	STA !up_small
+	REP #$20
+.cell
+	LDA !up_cell
+	CMP.w #!GOKU_NONE
+	BEQ .hud
+	; 512 bytes need about 4 lines: keep it pending if vblank is too short
+	JSL core_vblank_lines
+	CMP.w #6
+	BCC .hud
+	JSR goku_upload_cell
+	LDA !up_cell
+	STA !vram_cell
+	SEP #$20
+	LDA !up_small
+	STA !vram_small
+	REP #$20
+	LDA.w #!GOKU_NONE
+	STA !up_cell
+.hud
+	LDA !up_flags
+	AND.w #!GOKU_UP_HUD
+	BEQ .done
+	JSL core_vblank_lines
+	CMP.w #3
+	BCC .done
+	SEP #$20
+	LDA.b #!GOKU_UP_HUD
+	TRB !up_flags
+	REP #$20
+	LDA.w #!VRAM_HUD
+	JSR goku_hud_dma
+.done
+	REP #$30
+	PLD
+	PLB
+	RTL
+
+; Upload cell up_cell (full or miniature) into the boy's slot. DB = $7E,
+; M16 X16. Four bursts of four 32-byte tiles on channels 4-7 (D = $4300).
+goku_upload_cell:
+	LDA !up_cell
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL                      ; cell * 32 bytes
+	TAY
+	LDA.w #$4300
+	TCD
+	LDA.w #$1801
+	STA $40
+	STA $50
+	STA $60
+	STA $70
+	SEP #$20
+	LDA.b #$80
+	STA.l $002115
+	REP #$20
+	LDA !up_small
+	AND.w #$00FF
+	BNE .small
+	TYX
+	LDA.w #!VRAM_ROW0
+	JSR goku_burst4
+	LDA.w #!VRAM_ROW1
+	JSR goku_burst4
+	LDA.w #!VRAM_ROW2
+	JSR goku_burst4
+	LDA.w #!VRAM_ROW3
+	JSR goku_burst4
+	BRA .done
+.small
+	; miniature: 4 tiles (TL, TR, BL, BR) at cell*8 in goku_cell_mini
+	TYA
+	LSR
+	LSR                      ; cell * 8
+	TAX
+	LDA.w #!VRAM_ROW0
+	JSR goku_burst2_mini
+	LDA.w #!VRAM_ROW1
+	JSR goku_burst2_mini
+.done
+	LDA.w #$0000
+	TCD
+	RTS
+
+; One burst: A16 = VRAM word address, X = offset of 4 tile words in
+; goku_cell_tiles (advanced by 8). D = $4300, M16 X16.
+macro goku_dma_src(table, n, ch)
+	LDA.l <table>+(<n>*2),X
+	PHA
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL
+	STA <ch>+2
+	PLA
+	XBA
+	AND.w #$00FF
+	LSR
+	LSR
+	LSR
+	CLC
+	ADC.w #$00F8
+	STA <ch>+4               ; bank (high byte overwritten by the size below)
+	LDA.w #$0020
+	STA <ch>+5
+endmacro
+
+goku_burst4:
+	STA.l $002116
+	%goku_dma_src(goku_cell_tiles, 0, $40)
+	%goku_dma_src(goku_cell_tiles, 1, $50)
+	%goku_dma_src(goku_cell_tiles, 2, $60)
+	%goku_dma_src(goku_cell_tiles, 3, $70)
+	SEP #$20
+	LDA.b #$F0
+	STA.l $00420B
+	REP #$20
+	TXA
+	CLC
+	ADC.w #$0008
+	TAX
+	RTS
+
+goku_burst2_mini:
+	STA.l $002116
+	%goku_dma_src(goku_cell_mini, 0, $40)
+	%goku_dma_src(goku_cell_mini, 1, $50)
+	SEP #$20
+	LDA.b #$30
+	STA.l $00420B
+	REP #$20
+	TXA
+	CLC
+	ADC.w #$0004
+	TAX
+	RTS
+
+; The boy's own tiles from the game's table ($0C00, bank $E082, count
+; $E083), exactly as C1:95BC uploads them. DB = $7E, M16 X16.
+goku_upload_native:
+	LDA $E083
+	AND.w #$00FF
+	BNE .some
+	RTS
+.some
+	STA !t_c
+	LDA.w #$4300
+	TCD
+	LDA.w #$1801
+	STA $40
+	STA $50
+	STA $60
+	STA $70
+	LDA $E082
+	AND.w #$00FF
+	ORA.w #$2000
+	STA $44
+	STA $54
+	STA $64
+	STA $74
+	SEP #$20
+	LDA.b #$80
+	STA.l $002115
+	REP #$20
+	LDA.w #!VRAM_ROW0
+	STA.l $002116
+	LDA $0C00
+	STA $42
+	LDA $0C02
+	STA $52
+	LDA $0C08
+	STA $62
+	LDA $0C0A
+	STA $72
+	JSR .go
+	LDA.w #!VRAM_ROW1
+	STA.l $002116
+	LDA $0C04
+	STA $42
+	LDA $0C06
+	STA $52
+	LDA $0C0C
+	STA $62
+	LDA $0C0E
+	STA $72
+	JSR .go
+	LDA !t_c
+	CMP.w #$0003
+	BCC .restore
+	LDA.w #!VRAM_ROW2
+	STA.l $002116
+	LDA $0C10
+	STA $42
+	LDA $0C12
+	STA $52
+	LDA $0C18
+	STA $62
+	LDA $0C1A
+	STA $72
+	JSR .go
+	LDA.w #!VRAM_ROW3
+	STA.l $002116
+	LDA $0C14
+	STA $42
+	LDA $0C16
+	STA $52
+	LDA $0C1C
+	STA $62
+	LDA $0C1E
+	STA $72
+	JSR .go
+.restore
+	LDA.w #$0000
+	TCD
+.done
+	RTS
+.go
+	SEP #$20
+	LDA.b #$20
+	STA $45
+	STA $55
+	STA $65
+	STA $75
+	STZ $46
+	STZ $56
+	STZ $66
+	STZ $76
+	LDA.b #$F0
+	STA.l $00420B
+	REP #$20
+	RTS

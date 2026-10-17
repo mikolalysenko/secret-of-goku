@@ -12,7 +12,9 @@
 !PERSIST_DESTROY = !SRAM_LIVE+$100   ; $80  craters, broken gates/barriers, demolished walls
 !PERSIST_FRIEZA  = !SRAM_LIVE+$180   ; $80  Frieza / Vegeta / orbit progress
 !PERSIST_COMBAT  = !SRAM_LIVE+$200   ; $80  form, power intro, Kai remark counters, scouter
-!PERSIST_FLIGHT  = !SRAM_LIVE+$280   ; $80  flight / teleport progress
+!PERSIST_FLIGHT  = !SRAM_LIVE+$280   ; $80  flight / teleport progress:
+!PERSIST_WORLD   = !SRAM_LIVE+$280   ;   $40 world-flight module (craters, cloud barrier, Fortress)
+!PERSIST_GROUND  = !SRAM_LIVE+$2C0   ;   $40 ground flight / teleport / escapes
 !PERSIST_MISC    = !SRAM_LIVE+$300   ; $100 title / arrival / audio / misc
 
 ; Shared persistent fields (byte unless noted).
@@ -22,7 +24,9 @@
 !persist_scouter     = !PERSIST_CORE+$03 ; bit0 owned (Sylphid), bit1 enabled
 
 ; Volatile SRAM work areas (contents undefined at boot; owners clear them).
-!SRAM_WORK_CORE   = $317480   ; $0B80 core / misc (through $317FFF)
+!SRAM_WORK_CORE   = $317480   ; $0380 core / misc (through $3177FF)
+!SRAM_WORK_FX     = $317800   ; $0400 effects library slots (beams, sparks, orbs, auras)
+!SRAM_WORK_COMBAT = $317C00   ; $0400 combat tables (projectiles, launches, per-target timers)
 !SRAM_WORK_SCENE  = $326000   ; $2000 set-piece scenes (Frieza, orbit, endings, Vegeta) — one scene at a time
 !SRAM_WORK_STORY  = $336000   ; $1000 story runtime
 !SRAM_WORK_DESTROY = $337000  ; $0800 destruction

@@ -15,16 +15,17 @@
 ; core_vram_release: A16 = region, X16 = owner id.
 ; Claims survive mode changes and are cleared at the title.
 
-!VRAM_WORLD_OBJ_A = 0   ; world: OBJ tiles $080-$0FF, VRAM $6800-$6FFF (128 8x8 tiles)
+!VRAM_WORLD_OBJ_A = 0   ; world: OBJ tiles $060-$0FF, VRAM $6600-$6FFF (160 8x8 tiles)
 !VRAM_WORLD_OBJ_B = 1   ; world: OBJ tiles $110-$17F, VRAM $7100-$77FF (112 tiles)
 !VRAM_FIELD_OBJ_A = 2   ; field: tiles $122-$12F + $132-$13F, VRAM $7220/$7320 (7 16x16 cells)
 !VRAM_FIELD_OBJ_B = 3   ; field: tiles $184-$18B + $194-$19B, VRAM $7840/$7940 (4 cells)
 !VRAM_FIELD_OBJ_C = 4   ; field: tiles $1A8-$1AF + $1B8-$1BF, VRAM $7A80/$7B80 (4 cells)
 !VRAM_FIELD_HERO  = 5   ; field: hero cells $1C0-$1C7 + $1D0-$1D7, VRAM $7C00/$7D00 (4 cells)
-!VRAM_REGIONS     = 6
+!VRAM_WORLD_OBJ_C = 6   ; world: OBJ tiles $190-$1FF, VRAM $7900-$7FFF (112 tiles)
+!VRAM_REGIONS     = 7
 
 core_vram_base:
-	dw $6800, $7100, $7220, $7840, $7A80, $7C00
+	dw $6600, $7100, $7220, $7840, $7A80, $7C00, $7900
 
 core_vram_claim:
 	CMP.w #!VRAM_REGIONS
