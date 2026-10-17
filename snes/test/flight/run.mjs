@@ -82,7 +82,7 @@ const symAt=name=>{
   const m=readFileSync(romSrc.replace(/\.sfc$/,'.sym'),'utf8').match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${name}$`,'mi'));
   if(!m)throw Error('no symbol '+name);return `0x${m[1]}${m[2]}`;
 };
-for(const t of ['water','teleport']){
+for(const t of ['water','teleport','whip']){
   if(!want(t)||!existsSync(join(here,`${t}.lua`)))continue;
   const rom=privateRom(romSrc,`flight-${t}`);
   const extra=t==='teleport'?`SFX=${symAt('fl_bind_sfx')}\n`:'';

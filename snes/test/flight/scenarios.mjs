@@ -31,6 +31,14 @@ export const scenarios=[
   // Pressing again visits the next foe (nearest first, then slot order).
   {name:'teleport-cycle',fixture:'animation-audit__native__rabite-field-b',
     steps:[{b:['l','b'],n:2},{n:18},{b:['l','b'],n:2},{n:18},{b:['l','b'],n:2},{n:30},{b:['l','b'],n:2},{n:30}]},
+  // ki-world.spec.mjs: walking onto Earth Palace's whip pad floats the party
+  // across without a whip (gap-flight pose, 6F9 crossing, CF01/CF03 clear).
+  {name:'whip-pad',fixture:'graphics-audit__party',enter:{map:313,x:12,y:38},
+    steps:[{b:['right'],n:10},{n:230}]},
+  // whip-flight.spec.mjs (map 313, pad 13,38 → right): flying over the pad
+  // never starts its event; Goku lands on the far side.
+  {name:'whip-fly',fixture:'graphics-audit__party',enter:{map:313,x:12,y:38},
+    steps:[{n:20},{b:['a','right'],n:16},{b:['right'],n:6},{n:20}]},
   // Potos river banks and fences (town flight).
   {name:'potos-river',fixture:'graphics-audit__party',enter:{map:131,x:18,y:22},prep:['clearActors'],
     steps:[{n:10},{b:['a','right'],n:40},{n:10},{b:['a','down'],n:40},{n:10},{b:['a','left'],n:40},{n:20}]},

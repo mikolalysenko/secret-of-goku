@@ -524,8 +524,9 @@ fl_hook_d778:
 	CLC
 	ADC.w !fl_sw_dy
 	STA.w !fl_q_y
-	JSR fl_can_float
-	BCC .native
+	; canFloat(x+dx, y+dy): the sweep's last step already proved canFly there
+	JSR fl_can_land
+	BCS .native
 .phase
 	SEP #$20
 	JML $00D7F3

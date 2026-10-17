@@ -4,7 +4,9 @@
 local function rec()
   local s = F.status()
   return {map = s.map, x = s.x, y = s.y, t = s.terrain, fly = s.fly, lift = s.lift, can = s.can,
-    act = s.act, age = s.age, cx = s.cx, cy = s.cy, tg = s.tg, pend = s.pend, en = s.en}
+    act = s.act, age = s.age, cx = s.cx, cy = s.cy, tg = s.tg, pend = s.pend, en = s.en,
+    gap = s.gap, ev = s.ev, party = string.format('%d,%d %d,%d', H.r16(0x7EE202), H.r16(0x7EE204), H.r16(0x7EE402), H.r16(0x7EE404)),
+    cf = H.r8(0x7ECF01) * 256 + H.r8(0x7ECF03)}
 end
 function test()
   F.import(SC.fixture)

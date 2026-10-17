@@ -47,6 +47,7 @@ function F.status()
     tg = (last == 0xFFFF) and -1 or last,
     pend = (H.r8(F.RAM + 0x32) & 4) == 4,
     en = F.enemies(),
+    gap = H.r8(0x7ED748) == 0x23, ev = H.r8(0x7E00D0),
   }
 end
 -- Active actors 3-11 as "slot:x,y" (teleport targets).

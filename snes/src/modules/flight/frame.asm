@@ -186,6 +186,36 @@ fl_q_hero:
 ; while those stay the same (the frame logic asks several times).
 fl_hero_land:
 	JSR fl_q_hero
+	; the same position, layer and terrain as the last call this frame
+	LDA.l !fl_hm_land
+	CMP $E002
+	BNE .calc
+	LDA.l !fl_hm_land+2
+	CMP $E004
+	BNE .calc
+	LDA $E00B
+	AND.w #$00FF
+	CMP.l !fl_hm_land+4
+	BNE .calc
+	LDA.l !fl_hm_land+6
+	LSR
+	RTS
+.calc
+	JSR fl_hland_calc
+	LDA.w #$0000
+	ROL
+	STA.l !fl_hm_land+6
+	LDA $E002
+	STA.l !fl_hm_land
+	LDA $E004
+	STA.l !fl_hm_land+2
+	LDA $E00B
+	AND.w #$00FF
+	STA.l !fl_hm_land+4
+	LDA.l !fl_hm_land+6
+	LSR
+	RTS
+fl_hland_calc:
 	if defined("FLIGHT_MISSING_FLOOR")
 		JMP fl_can_land
 	endif
@@ -443,7 +473,10 @@ flight_frame:
 .settle
 	JSR fl_settle
 	; --- beforeFrame (frame N+1) ---
-	JSR fl_lift_update
+	LDA.w !fl_gap
+	BEQ +
+	JSR fl_gap_tick              ; a whip crossing ends with its event
++	JSR fl_lift_update
 	; a teleport's camera follow locks the pad; a new L+B queues the next
 	LDA.w !fl_hook
 	AND.w #!FLH_CAMERA
@@ -499,6 +532,7 @@ fl_init_work:
 	STA.l !fl_tp_last
 	STA.l !fl_step_f4
 	STZ.w !fl_hook
+	STZ.w !fl_gap
 	LDA.w #$0000
 	STA.l !fl_tp_act
 	STA.l !fl_tp_queued
@@ -572,6 +606,7 @@ fl_reset:
 	STA.w !fl_lastmap            ; back on a field map: as a map change
 	LDA.w #$0000
 	STA.l !fl_tp_act
+	STZ.w !fl_gap
 	RTS
 
 ; localFlight = false, localLift = 0
@@ -885,10 +920,28 @@ fl_publish:
 	LDA.w #!FL_SFX_TELEPORT_IN
 	JSR fl_bind_sfx
 .air
-	; the air bed while flying (quieter while charging)
-	LDA.w !fl_state
+	; the gap-flight hover over a native whip crossing (goku mode $23)
+	LDA.w !fl_gap
+	BEQ .nogap
+	SEP #$20
+	LDA.b #!GOKU_K_GAPFLIGHT
+	STA.l $7E0000|!goku_mode
+	REP #$20
+	BRA .bed
+.nogap
+	LDA.l $7E0000|!goku_mode
+	AND.w #$00FF
+	CMP.w #!GOKU_K_GAPFLIGHT
+	BNE +
+	SEP #$20
+	LDA.b #$00
+	STA.l $7E0000|!goku_mode     ; only the mode flight set
+	REP #$20
++	LDA.w !fl_state
 	AND.w #!FLS_FLY
 	BEQ +
+.bed
+	; the air bed while flying or crossing (quieter while charging)
 	LDA.w !fl_state
 	AND.w #!FLS_CHARGE
 	JSR fl_bind_air

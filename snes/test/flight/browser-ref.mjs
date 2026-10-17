@@ -55,7 +55,8 @@ try{
       }
       const rec=()=>{const s=m.status,a=m.action;return {map:mana.read16(0xdc),x:mana.read16(0xe002),y:mana.read16(0xe004),t:mana.read8(0xe00b),fly:!!m.localFlight,lift:m.localLift,can:m.canAttack,
         act:a?.kind==='teleport',age:a?.kind==='teleport'?a.age:0,cx:s.cameraX,cy:s.cameraY,tg:m.lastTeleportTarget,pend:!!m.teleport?.pending,
-        en:Array.from({length:9},(_,k)=>k+3).filter(i=>mana.read8(0xe000+i*512)&1).map(i=>`${i}:${mana.read16(0xe002+i*512)},${mana.read16(0xe004+i*512)}`).join(' ')};};
+        en:Array.from({length:9},(_,k)=>k+3).filter(i=>mana.read8(0xe000+i*512)&1).map(i=>`${i}:${mana.read16(0xe002+i*512)},${mana.read16(0xe004+i*512)}`).join(' '),
+        gap:!!m.gapFlight?.active,ev:mana.read8(0xd0),party:`${mana.read16(0xe202)},${mana.read16(0xe204)} ${mana.read16(0xe402)},${mana.read16(0xe404)}`,cf:mana.read8(0xcf01)*256+mana.read8(0xcf03)};};
       const frames=[rec()];
       for(const st of sc.steps){
         const buttons=(st.b??[]).map(k=>BUTTON[k]);

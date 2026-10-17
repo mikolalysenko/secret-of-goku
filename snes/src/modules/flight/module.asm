@@ -256,6 +256,7 @@ incsrc "frame.asm"
 incsrc "terrain.asm"
 incsrc "move.asm"
 incsrc "teleport.asm"
+incsrc "gap.asm"
 if defined("FLIGHT_TEST")
 	incsrc "../../../test/flight/testmod.asm"
 endif

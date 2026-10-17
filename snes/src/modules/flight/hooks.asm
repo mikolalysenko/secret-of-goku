@@ -22,3 +22,10 @@
 ; Camera dispatcher (SEP #$30 / LDA $FF): follow and Beast-arena deltas
 %orig4($C0DA6E, $FFA530E2)
 %hijack($C0DA6E, fl_hook_da6e, 4, flight)
+; Floor event dispatch (REP #$20 / LDA #$0000): whip pads dropped in flight
+%orig4($C0B683, $00A920C2)
+%orig1($C0B687, $00)
+%hijack($C0B683, fl_hook_b683, 5, flight)
+; Event conditionals 49-4E (LDY #$02 / REP #$20): whip events 6D8 / 6FA
+%orig4($C1F1F1, $20C202A0)
+%hijack($C1F1F1, fl_hook_f1f1, 4, flight)

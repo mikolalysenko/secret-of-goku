@@ -45,14 +45,20 @@ function test()
   local line = {}
   for _, f in ipairs(frames) do line[#line + 1] = string.format('%d:%d%s', f.n, f.count, f.logic == 0 and '*' or '') end
   H.log('per frame (instructions; * = no logic frame ended): ' .. table.concat(line, ' '))
-  table.sort(frames, function(a, b) return a.count > b.count end)
-  for k = 1, math.min(4, #frames) do
-    local f = frames[k]
+  local pick = {}
+  if SHOW then
+    for _, f in ipairs(frames) do if SHOW[f.n] then pick[#pick + 1] = f end end
+  else
+    table.sort(frames, function(a, b) return a.count > b.count end)
+    for k = 1, math.min(4, #frames) do pick[#pick + 1] = frames[k] end
+  end
+  for k = 1, #pick do
+    local f = pick[k]
     local names = {}
     for name in pairs(f.per) do names[#names + 1] = name end
     table.sort(names, function(a, b) return f.per[a] > f.per[b] end)
     local top = {}
-    for j = 1, math.min(10, #names) do top[#top + 1] = string.format('%s %d', names[j], f.per[names[j]]) end
+    for j = 1, math.min(14, #names) do top[#top + 1] = string.format('%s %d', names[j], f.per[names[j]]) end
     H.log(string.format('frame %d: %d  %s', f.n, f.count, table.concat(top, ', ')))
   end
   H.result('pass', true)

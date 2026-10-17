@@ -9,12 +9,12 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 parts of `mana-mod.js`.
 
 Status (this branch): **local flight, hovering, crossings with companion
-gathering, recovery, the camera follow and Instant Transmission are in and
-validated; the terrain classifier and the teleport landing search equal the
-browser's on every tile and query tested.** Whip-pad crossings, the ceiling
-escape, the opening-path exit catches, NPC pass-through and the Sandship
-hooks are next (see [Remaining](#remaining)). Flight still costs too much CPU
-in heavy scenes (see [Cost](#cost)).
+gathering, recovery, the camera follow, Instant Transmission and the native
+whip-pad crossings are in and validated; the terrain classifier and the
+teleport landing search equal the browser's on every tile and query
+tested.** The ceiling escape, the opening-path exit catches, NPC
+pass-through and the Sandship hooks are next (see [Remaining](#remaining)).
+Flight still costs too much CPU in heavy scenes (see [Cost](#cost)).
 
 ## Behaviour (as the browser)
 
@@ -43,6 +43,19 @@ in heavy scenes (see [Cost](#cost)).
   Y 292-432, and no step there scrolls the camera.
 - On foot the A button never reaches the game (it is the speed modifier, not
   the native dash).
+
+### Whip pads (native-gap-flight.js)
+
+- While Goku flies, a whip pad (floor event 6D8) under any party member is
+  dropped before it can lock input, end flight or gather the party.
+- The pad and post-hit events (6D8 at `CA:90DA`, 6FA at `CA:927A`) start
+  with "if the hero holds the whip". For Goku that condition ends the event
+  when he flies or steers (A + a direction) or when no whip post stands four
+  tiles away; otherwise he faces the post and the script jumps to the native
+  6F9 crossing, which floats the party across with its own gathering,
+  movement, camera and CF01 flag. Goku hovers in the gap-flight pose (goku
+  mode `$23`) with the air bed; `flight` sounds at the start and `landing`
+  when the event ends on the same map.
 
 ### Instant Transmission (L+B)
 
@@ -129,6 +142,8 @@ is a branch target of traced original code (`snes/test/flight/branchcheck.mjs`).
 | `C0:D9AE` | 5 | `SEP #$20 / LDA $E000,X` | Horizontal leader tether bypass (→ `D9E2`) |
 | `C0:DA34` | 5 | `SEP #$20 / LDA $E000,X` | Vertical leader tether bypass (→ `DA68`) |
 | `C0:DA6E` | 4 | `SEP #$30 / LDA $FF` | Camera deltas: companions while the camera follows, every step in the Beast arena |
+| `C0:B683` | 5 | `REP #$20 / LDA #$0000` | Floor event dispatch: a whip pad (6D8) is dropped while Goku flies (→ `B678`) |
+| `C1:F1F1` | 4 | `LDY #$02 / REP #$20` | Conditionals 49-4E: at 6D8/6FA's whip check, END or JUMP 6F9 for Goku (→ `E9C4` / `EAF0`) |
 
 `C0:D651` is flight's (`!FLIGHT_OWNS_D651 = 1` in `module.asm`): its hook
 calls combat's Saiyan recoil (`combat_recoil_vector`) first, through
@@ -156,13 +171,16 @@ WRAM fields (bank `$7E`, absolute with DB = `$7E`):
 | `!fl_state` | `$D900` byte | bit0 localFlight, bit1 Goku in play on the field, bit2 canAttack, bit4 charging |
 | `!fl_lift` | `$D901` byte | `mod.localLift` (0-12), also written to `!goku_lift` |
 | `!fl_hook` | `$D932` word | bit 2 (`$04`): the camera follows a teleport/recovery (the browser's `teleport.pending`: the pad is masked and only the running action advances) |
+| `!fl_gap` | `$D970` word | a native whip crossing runs (map + 1), 0 none (`gapFlight.active`) |
 | `!fl_events` | `$D974` word | one-frame events: `$01` takeoff (flight cue), `$02` landing cue, `$04` hovering with control (power-intro first-hover banter), `$08` crossing landed (onCross), `$10` teleport started, `$20` Goku reappears (age 6) |
 | `!fl_lock` | `$D976` word | request (write every frame): nonzero forbids flight (scene owners, endings, input locks) |
 | `!fl_open_air` | `$D978` word | request: Sandship `openAir` (flight passes over every wall) |
 | `!fl_charging` | `$D97A` word | request from combat: a charge is running (halves speed, keeps the flight rules for the step) |
 
 Goku requests written by flight every field frame: `GOKU_CTL_LOCALFLY`
-(localFlight), `GOKU_CTL_AIRBORNE` (localFlight or lift > 0), `!goku_lift`;
+(localFlight), `GOKU_CTL_AIRBORNE` (localFlight or lift > 0), `!goku_lift`,
+`!goku_mode = $23` during a native whip crossing (cleared only if flight set
+it);
 while Instant Transmission runs `!goku_act = $14`, `!goku_act_age`,
 `!goku_act_facing`, `!goku_act_arg` bit 7 in Super Saiyan (cleared when it
 ends). Combat sees the foreign action through `cb_ext_kind` and starts
@@ -190,8 +208,8 @@ canLand with `!fl_q_x/y/l`; carry = hole under the footprint.
 
 ## Tests
 
-`node snes/test/flight/run.mjs [classify|landing|water|teleport]` (also via
-`run-all.mjs`):
+`node snes/test/flight/run.mjs [classify|landing|water|teleport|whip]` (also
+via `run-all.mjs`):
 
 - `classify`: for 26 imported scenes (towns, woodland, Gaia's Navel caves,
   Haunted Forest, Water/Earth/Fire Palace, Witch castle, Sandship, Mana
@@ -220,6 +238,11 @@ canLand with `!fl_q_x/y/l`; carry = hole under the footprint.
   streaming in 15 px steps (17 frames, all of them absent at age 4), Goku
   lands on screen, walks afterwards, the ring opens, `teleport` sounds at
   the press and `teleportIn` once at age 6.
+- `whip`: `whip-flight.spec.mjs` and `ki-world.spec.mjs` in the Earth Palace
+  (map 313): flying across both pads, there and back, never starts the pad
+  event, lands within 14 px on landable ground with the companions close;
+  walking onto the pad floats the whole party 93 px across in the
+  gap-flight pose, the event ends and CF01/CF03 stay clear.
 - Dev aids: `compare.mjs` + `browser-ref.mjs` replay the scenarios of
   `scenarios.mjs` in the browser mod (Playwright, private ROM/fixture) and on
   the cartridge and compare per-frame traces (`--shots=` takes screenshots).
@@ -232,8 +255,10 @@ canLand with `!fl_q_x/y/l`; carry = hole under the footprint.
   little differently after the import) and the camera path (offscreen:
   identical 15 px steps to the same camera). `icount.mjs`, `scost.mjs`
   (instructions per video frame of a scenario, costliest routines),
-  `callers.mjs` profile; `branchcheck.mjs` checks patch ranges against the
-  trace.
+  `callers.mjs`, `calls.mjs` (entries per frame) and `phases.mjs` (cost
+  per frame split by the frame's steps and each hook, `--focus=` for the
+  routines inside one) profile; `branchcheck.mjs` checks patch ranges
+  against the trace.
 
 ## Cost
 
@@ -246,7 +271,16 @@ only) reports +17-21 lines over main in its scenes, on top of main's own
 search with landings) and ~3,500 at arrival (landing again, gather, camera),
 one-off; the river field then drops one frame at the arrival. Idle teleport
 bookkeeping costs ~45 instructions per frame (465 → 512 walking in the sword
-scene). Next steps: cheaper anchor tracking on foot, a leaner frame path,
+scene).
+
+Earth Palace whip corridor (`phases.mjs whip-fly`): walking ~490
+instructions per frame; flying 1,500-3,700 per logic frame (whip routes and
+dungeon air for each new tile, the hero grid, settle) and hovering ~1,800,
+so that scene runs at 30 Hz while flying (the cartridge covers the corridor
+in twice the browser's frames; the outcome is the same). Done so far: whip
+rays by index arithmetic with a quick pad pre-check, one tile-id compare
+for the whole hero grid, a per-frame hero canLand memo, the D778 endpoint
+canFly implied by the sweep. Next steps: cheaper anchor tracking on foot, a leaner frame path,
 segment caching for long air routes. `CORE_FASTROM` would give module code
 25%.
 
@@ -257,8 +291,10 @@ segment caching for long air routes. `CORE_FASTROM` would give module code
 - Ceiling escape (L+R, 35 routes, punch pose `$25`, fx debris/sparks, door
   then `world_takeoff`), opening-path exit catches (`C0:D849`), NPC
   pass-through (`C1:CFE5/D017`), Sandship `openAir`/`shipHull` rules,
-  passengers hidden while carried, story hooks `FLIGHT_LAND`,
-  `QUEST_WISH_CEILING`, query `LOCAL_FLIGHT`.
+  passengers hidden while carried (`sprite-layer.js` also hides the whip
+  attachment during a crossing; goku draws no weapon cells for Goku
+  anyway), story hooks `FLIGHT_LAND`, `QUEST_WISH_CEILING`, query
+  `LOCAL_FLIGHT`.
 - Instant Transmission: `mod.facing` comes from `E010` (the browser also
   turns it on the press frame's new direction, which combat's aim tracks);
   the action advances once per logic frame (the browser: per video frame,

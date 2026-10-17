@@ -385,6 +385,9 @@ fl_cache_clear:
 	DEX : DEX : DEX : DEX : DEX : DEX
 	BPL .loop
 	STA.l !fl_hl+4               ; the hero's canLand memo key (byte $FF: none)
+	LDA.w #$0000
+	STA.l !fl_g_akn              ; grid verdicts expire with the cache (they
+	STA.l !fl_g_gkn              ; may depend on neighbouring tiles)
 	STZ.w !fl_cache_age
 	PLX
 	RTS
@@ -1842,13 +1845,67 @@ fl_whip_shore:
 	CLC
 	RTS
 
+; fl_ray: X = p, A = k (signed), fl_t2 = d (a unit step). X = p + k*d on
+; the same layer, carry clear; carry set when that cell is outside
+; [0,W) x [0,H) (tileAt() == null; X unchanged). Preserves Y. Uses fl_t5.
+fl_ray:
+	STA.w !fl_t5
+	LDA.w !fl_t2
+	BIT.w #$00FF
+	BEQ .vert
+	BIT.w #$0080
+	BEQ +
+	LDA.w !fl_t5                 ; dx = -1: tx - k
+	EOR.w #$FFFF
+	INC
+	STA.w !fl_t5
++	TXA
+	AND.w #$007F
+	CLC
+	ADC.w !fl_t5
+	CMP.w !fl_W
+	BCS .out
+	STA.w !fl_t5
+	TXA
+	AND.w #$FF80
+	ORA.w !fl_t5
+	TAX
+	CLC
+	RTS
+.vert
+	BIT.w #$8000
+	BEQ +
+	LDA.w !fl_t5                 ; dy = -1: ty - k
+	EOR.w #$FFFF
+	INC
+	STA.w !fl_t5
++	TXA
+	ASL
+	XBA
+	AND.w #$007F                 ; ty
+	CLC
+	ADC.w !fl_t5
+	CMP.w !fl_H
+	BCS .out
+	XBA
+	LSR                          ; ty << 7
+	STA.w !fl_t5
+	TXA
+	AND.w #$407F                 ; layer and tx
+	ORA.w !fl_t5
+	TAX
+	CLC
+	RTS
+.out
+	SEC
+	RTS
+
 ; span(p, d): shores at p-d and p+5d, plain cells at p+d .. p+3d.
-; X = p, fl_t2 = delta. Preserves X.
+; X = p, fl_t2 = delta. Preserves X (not Y).
 fl_whip_span:
 	PHX
-	LDA.w !fl_t2
-	JSR fl_negd
-	JSR fl_step
+	LDA.w #$FFFF
+	JSR fl_ray
 	BCS .no
 	JSR fl_fetch
 	JSR fl_whip_shore
@@ -1856,17 +1913,17 @@ fl_whip_span:
 	LDA $01,S
 	TAX
 	LDA.w #5
-	JSR fl_step_n
+	JSR fl_ray
 	BCS .no
 	JSR fl_fetch
 	JSR fl_whip_shore
 	BCC .no
+	LDY.w #1
+.mid
 	LDA $01,S
 	TAX
-	LDY.w #3
-.mid
-	LDA.w !fl_t2
-	JSR fl_step
+	TYA
+	JSR fl_ray
 	BCS .no
 	JSR fl_fetch
 	LDA.w !fl_d_code
@@ -1877,8 +1934,9 @@ fl_whip_span:
 	LDA.w !fl_d_beh
 	AND.w #$0090
 	BNE .no
-	DEY
-	BNE .mid
+	INY
+	CPY.w #4
+	BCC .mid
 	PLX
 	SEC
 	RTS
@@ -1897,7 +1955,7 @@ fl_whip_route:
 	RTS
 +	PHX                          ; [p]
 	LDA.w #4
-	JSR fl_step_n
+	JSR fl_ray
 	BCS .nopull
 	JSR fl_fetch
 	JSR fl_whip_post
@@ -2012,55 +2070,135 @@ fl_whip_crossable:
 	JSR fl_cache_put
 	SEC
 	RTS
+; fl_pad_quick: X = idx. Carry clear when the tile cannot be a whip pad:
+; neither a floor-event marker (behaviour bit 7) nor the special-mode BF
+; tile. Preserves X and Y.
+fl_pad_quick:
+	LDA.l $7F0000,X
+	AND.w #$00FF
+	CMP.w #$00BF
+	BEQ .maybe
+	PHX
+	ASL
+	ASL
+	CPX.w #$4000
+	BCC +
+	ORA.w #$0400
++	TAX
+	LDA.l $7FB800,X              ; flags | behaviour << 8
+	PLX
+	AND.w #$8000
+	BEQ .no
+.maybe
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
 fl_whip_calc:
 	JSR fl_fetch
 	LDA.w !fl_d_code
 	BEQ .ok
 	JSR fl_whip_post
-	BCC .no
+	BCS .ok
+	CLC
+	RTS
 .ok
-	PHX                          ; [t]
+	PHX                          ; [t 1-2]
+	; n = 0: t itself as a pad, in each direction
+	JSR fl_pad_quick
+	BCC .rays
+	LDA.w #$0000
+.self
+	PHA                          ; [k 1-2][t 3-4]
+	TAX
+	LDA.l fl_whip_dirs,X
+	STA.w !fl_t2
+	LDA $03,S
+	TAX
+	JSR fl_whip_route            ; preserves X and fl_t2
+	BCS .yesself
+	PLA
+	INC : INC
+	CMP.w #8
+	BCC .self
+.rays
+	; n = 1-4: walk each ray p = t - d*n while it stays on the map (a ray
+	; that leaves it never comes back: tileAt() is null from there on)
 	LDY.w #0
 .dir
 	PHY                          ; [dir 1-2][t 3-4]
 	TYX
 	LDA.l fl_whip_dirs,X
 	STA.w !fl_t2
-	LDA.w #$0000
-.n
-	PHA                          ; [n 1-2][dir 3-4][t 5-6]
+	LDA.l fl_whip_stride,X
+	PHA                          ; [stride 1-2][dir 3-4][t 5-6]
 	LDA $05,S
 	TAX
-	LDA.w !fl_t2
-	PHA
-	JSR fl_negd
-	STA.w !fl_t2
-	LDA $03,S                    ; n
-	JSR fl_step_n                ; p = t - d*n
-	PLA
-	STA.w !fl_t2
-	BCS .nextn
+	CPY.w #4
+	BCS .horiz
+	JSR fl_ty
+	CPY.w #2
+	BEQ .avail                   ; d down: the ray goes up (ty steps)
+	EOR.w #$FFFF                 ; d up: the ray goes down (H-1-ty)
+	SEC
+	ADC.w !fl_H
+	DEC
+	BRA .avail
+.horiz
+	JSR fl_tx
+	CPY.w #6
+	BEQ .avail                   ; d right: the ray goes left (tx steps)
+	EOR.w #$FFFF                 ; d left: the ray goes right (W-1-tx)
+	SEC
+	ADC.w !fl_W
+	DEC
+.avail
+	CMP.w #1
+	BCC .nextdir
+	CMP.w #5
+	BCC +
+	LDA.w #4
++	PHA                          ; [count 1-2][stride 3-4][dir 5-6][t 7-8]
+.n
+	TXA
+	CLC
+	ADC $03,S
+	TAX
+	JSR fl_pad_quick
+	BCC +
 	JSR fl_whip_route
 	BCS .yes
-.nextn
++	LDA $01,S
+	DEC
+	STA $01,S
+	BNE .n
 	PLA
-	INC
-	CMP.w #5
-	BCC .n
+.nextdir
+	PLA                          ; stride
 	PLY
 	INY : INY
 	CPY.w #8
 	BCC .dir
 	PLX
-.no
 	CLC
 	RTS
 .yes
+	PLA
 	PLA
 	PLY
 	PLX
 	SEC
 	RTS
+.yesself
+	PLA
+	PLX
+	SEC
+	RTS
+; idx stride of t - d for each direction of fl_whip_dirs
+fl_whip_stride:
+	dw 128, -128, 1, -1
 fl_whip_dirs:
 	dw $FF00, $0100, $00FF, $0001    ; [0,-1] [0,1] [-1,0] [1,0]
 
@@ -2946,6 +3084,59 @@ fl_grid_reset:
 	STA.l !fl_g_aok
 	STA.l !fl_g_gkn
 	STA.l !fl_g_gok
+	; fall through: record the nine tiles
+; fl_grid_snap: the tile ids under the nine cells as they are now (verdicts
+; are kept only while their cell's tile is the recorded one).
+fl_grid_snap:
+	LDA.l !fl_g_base
+	TAX
+	LDA.l $7F0000,X
+	STA.l !fl_g_tiles
+	LDA.l $7F0001,X
+	STA.l !fl_g_tiles+1
+	LDA.l $7F0080,X
+	STA.l !fl_g_tiles+3
+	LDA.l $7F0081,X
+	STA.l !fl_g_tiles+4
+	LDA.l $7F0100,X
+	STA.l !fl_g_tiles+6
+	LDA.l $7F0101,X
+	STA.l !fl_g_tiles+7
+	RTS
+; fl_grid_check: the nine tiles still match the record (the usual case:
+; nothing to do); otherwise known cells whose tile changed lose their
+; verdicts and the record is refreshed. Preserves fl_t4/fl_t5.
+fl_grid_check:
+	LDA.l !fl_g_base
+	TAX
+	LDA.l $7F0000,X
+	CMP.l !fl_g_tiles
+	BNE .slow
+	LDA.l $7F0001,X
+	CMP.l !fl_g_tiles+1
+	BNE .slow
+	LDA.l $7F0080,X
+	CMP.l !fl_g_tiles+3
+	BNE .slow
+	LDA.l $7F0081,X
+	CMP.l !fl_g_tiles+4
+	BNE .slow
+	LDA.l $7F0100,X
+	CMP.l !fl_g_tiles+6
+	BNE .slow
+	LDA.l $7F0101,X
+	CMP.l !fl_g_tiles+7
+	BNE .slow
+	RTS
+.slow
+	LDA.w !fl_t4
+	PHA
+	LDA.w #$01FF
+	STA.w !fl_t4
+	JSR fl_grid_verify
+	JSR fl_grid_snap
+	PLA
+	STA.w !fl_t4
 	RTS
 ; Cells of mask A (known in some mode) whose tile changed since their
 ; verdict lose it. Uses fl_t6/fl_t7.
@@ -3098,9 +3289,8 @@ fl_grid_test:
 	ASL : ASL : ASL
 	ORA.w !fl_t4
 	STA.w !fl_t4                 ; rows r0 and r0+1
-+	; known cells of the mask whose tile changed lose their verdicts
-	LDA.w !fl_t4
-	JSR fl_grid_verify
++	; known cells whose tile changed lose their verdicts
+	JSR fl_grid_check
 	; cells still unknown in this mode
 	LDA $01,S
 	BEQ .gneed
