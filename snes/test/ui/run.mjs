@@ -282,10 +282,10 @@ const cases={
         if(px(L,x,135+y)!==px(N,x,7+y))win++;
         if(px(K,x,7+y)!==px(N,x,7+y))back++;
       }
-      for(let y=199;y<224;y++)for(let x=0;x<256;x++)if(px(L,x,y)!==px(N,x,y))hud++;
+      for(let y=199;y<224;y++)for(let x=0;x<256;x++)if(px(L,x,y)!==px(K,x,y))hud++;   // (same run: Goku's form can differ between runs)
       for(let y=7;y<51;y++)for(let x=0;x<256;x++)if(px(L,x,y)!==px(B,x,y))top++;
       if(win)fails.push(`moved window: ${win}/${opaque} opaque pixels differ from the native window`);
-      if(hud)fails.push(`HUD (lines 199-223): ${hud} pixels differ from the reference`);
+      if(hud)fails.push(`HUD (lines 199-223): ${hud} pixels differ with the window moved and back in place`);
       if(top)fails.push(`lines 7-50 with the window moved: ${top} pixels differ from the scene before the event`);
       if(back)fails.push(`placement switched off: ${back}/${opaque} window pixels differ from the native window`);
       if(q.regs_back!==n.regs)fails.push(`channels 0/1 not given back: ${q.regs_back} (game: ${n.regs})`);
@@ -296,7 +296,7 @@ const cases={
         if(q.regs_end!==n.regs)fails.push(`after the scene: channels ${q.regs_end} (game: ${n.regs})`);
         if(q.c2c_end&3)fails.push(`after the scene: $2C = ${q.c2c_end.toString(16)}`);
       }
-      notes.push(`preset__late: decided on frame ${q.decided} (faces ${q.faces}); ${q.shown_frames} frames with a window up: ${q.moved_frames} moved, ${q.late_frames} after a late vblank (no HDMA can start), ${q.top_frames} at the top; ${opaque} window pixels, HUD and channels intact`);
+      notes.push(`preset__late: decided on frame ${q.decided} (faces ${q.faces}); ${q.shown_frames} frames with a window up: ${q.moved_frames} moved, ${q.late_frames} after a late vblank (no HDMA can start), ${q.guarded_frames} closing ones left in place by the vblank guard, ${q.top_frames} at the top otherwise; ${opaque} window pixels, HUD and channels intact`);
     }
     if(existsSync(potos)){
       const stay=await run('place-stay',{POTOS:true},potos),ref=await run('place-stay-native',{POTOS:true,NOPLACE:true},potos);

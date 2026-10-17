@@ -197,19 +197,21 @@ message shows, else the radar text) and a 48×48 dial at (8, 8).
 
 ### World-flight frame budget
 
-Production build (SlowROM) with the world, destroy, audio and debug
-modules merged, holding left then right for 120 frames; lines at which
-`modules_world_frame` returns (NMI at 225), p50 / p90 / max:
+Production build (FastROM since main `c81158d`) with the world, destroy,
+combat, audio and debug modules merged, holding left then right for 120
+frames; lines at which `modules_world_frame` returns (NMI at 225),
+p50 / p90 / max:
 
 | Scene | Game logic done | Radar hidden | Radar shown |
 | --- | --- | --- | --- |
-| `preset__flight` | 123 / 140 / 148 | 140 / 157 / 161 | 170 / 187 / 198 |
-| `frieza__core-free-flight` | 122 / 142 / 148 | 139 / 159 / 167 | 169 / 185 / 206 |
-| `emulator-probe__flight-baseline` | 129 / 149 / 156 | 148 / 167 / 168 | 177 / 190 / 209 |
+| `preset__flight` | 118 / 136 / 138 | 136 / 154 / 155 | 141 / 159 / 161 |
+| `frieza__core-free-flight` | 120 / 138 / 148 | 138 / 156 / 168 | 164 / 178 / 195 |
+| `emulator-probe__flight-baseline` | 124 / 141 / 146 | 143 / 160 / 161 | 168 / 179 / 195 |
 
-Every scene stays at 60 Hz; the worst frames leave 16–27 lines.
-The UI's own world frame (`ui_world_frame`, measured per frame) costs
-p50 24 / p90 32 / max 40 lines: dial run ~3, native scan ~5 plus ~1.3 per
+Every scene stays at 60 Hz; the worst frames leave 30 lines (SlowROM:
+198 / 206 / 209 at most). The UI's own world frame (`ui_world_frame`,
+measured per frame) costs p50 21 / p90 29 / max 37 lines (SlowROM
+24 / 32 / 40; its SRAM staging accesses stay slow): dial run ~3, native scan ~5 plus ~1.3 per
 native moved behind the dial (up to four compass letters), one bearing
 half ~4–6, radar text steps ~5 when the guide changes, band and policy
 ~3. Core re-hides the dial's slots at the next `core_oam_begin`
@@ -264,9 +266,11 @@ clears `$2C` bits 0–1 every vblank (`C0:C0E1`); the NMI sets bit 1 again
 bits when a window is open but the game skipped its setup because bit 1
 was ours. A channel switched on in HDMAEN after the frame's HDMA started
 runs from stale pointers, so no bit is set when the vblank's work already
-reached line 256 (the core writes `$2C` to HDMAEN after FX): such a frame
-shows the window at its native position (2 of 1,957 window frames in the
-test scene, both vblanks that ended past line 261 anyway).
+reached line 258 (the core writes `$2C` to HDMAEN after FX): such a frame
+shows the window at its native position (in the test scene 2 of 1,953
+window frames, closing ones: one vblank that ended past line 261 anyway,
+one that reached line 258). Putting `ui_field_nmi` first in
+`modules_field_nmi` would make this rarer (see the core requests).
 
 ## R fast-forward (`ff.asm`)
 
@@ -399,6 +403,8 @@ scenes and compares with the browser's own code:
   CGRAM / scroll writes for that frame, natively too when the window HDMA
   is on). Suggest the core checks the V counter before that write and
   writes 0 when it is already past vblank. The UI only sets `$2C` bits
-  when the vblank is before line 256.
+  when the vblank is before line 258; with `ui_field_nmi` first in
+  `modules_field_nmi` (a few register writes, before Goku's cell DMA) it
+  would check earlier in the vblank.
 - **Optional FastROM**: the UI code runs in bank `$AC`; a FastROM build
   (`CORE_FASTROM`) would cut its world-flight cost by roughly a fifth.
