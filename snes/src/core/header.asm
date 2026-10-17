@@ -7,4 +7,10 @@ org $00FFC0
 org $00FFD7
 	db $0C                      ; ROM size: 4 MiB
 	db $05                      ; SRAM size: 32 KiB
+if defined("CORE_FASTROM")
+; Opt-in FastROM (docs/agents/snes-port/engine.md): map mode HiROM+FastROM;
+; core_title_boot sets MEMSEL after the game's own register clear.
+org $00FFD5
+	db $31
+endif
 pullpc
