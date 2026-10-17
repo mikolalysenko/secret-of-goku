@@ -428,30 +428,40 @@ the upload at `C3:065C` that the story tests stop at) and native effects
 lag frames" check then reports). The audio module itself never waits more
 than one ~10-13 ms try, then ~1.5 ms probes with growing back-off.
 
-Fix for the harness, in two steps around the existing import:
+Recommended fix for the harness: do not import the APU at all. Leave out
+`aram.bin`, `dsp.bin` and every `spc.*` field, so the cartridge's own
+driver (with the stream extension) keeps running undisturbed, and make the
+CPU-side loader forget the browser's song and instrument cache, so the next
+song command uploads everything:
 
 ```lua
--- before: empty the echo ring, so the DSP's echo pointer restarts
-emu.write(0x6C, emu.read(0x6C, emu.memType.spcDspRegisters) | 0x20, emu.memType.spcDspRegisters) -- FLG: no echo writes
-emu.write(0x7D, 0, emu.memType.spcDspRegisters)                                                     -- EDL 0
-H.wait(1)
--- … the existing import (dsp.bin restores FLG, EDL and ESA) …
--- after: restart the driver at its main loop through a NOP landing pad in
--- ARAM it never uses, so a half-finished instruction lands on NOPs
-for i, b in ipairs({0x00, 0x00, 0x00, 0x5F, 0x79, 0x02}) do                -- NOP NOP NOP JMP $0279
-  emu.write(0x17EF + i, b, emu.memType.spcRam)
-end
-emu.setState({['spc.pc'] = 0x17F0, ['spc.sp'] = 0xFF})
+-- in H.importSnesJs, instead of the aram/dsp blits and the spc.* state:
+emu.write(0x1E05, 0xFF, emu.memType.snesWorkRam)                      -- no current song
+for a = 0x1E28, 0x1E47 do emu.write(a, 0, emu.memType.snesWorkRam) end -- empty instrument cache
 ```
 
-Checked with a wrapper around `H.importSnesJs`: `goku/field.lua` and
-`goku/budget.lua` pass on this branch, and the budget is the same on main
-and on this branch (p90 logic end 395 → 414 on main, 396 → 415 here; 160 of
-160 logic frames in both runs). Only the echo step is not enough (main then
-also halts in the budget's second import). The imported ARAM holds the
-browser's unextended driver, so DBZ streams stay silent in imported states
-unless a test injects the extension (`injectExtension()` in
-`snes/test/audio/lib.lua`).
+The scene then keeps the previous music until its next song command (a
+test that needs the scene's own song can send it: byte `$1E05` of the
+bundle's `wram.bin` names it), and DBZ streams work in imported states.
+Checked with a wrapper that imports this way, running `goku/menu.lua` and
+`goku/budget.lua` on main `594d740` and on this branch: `goku/menu.lua`
+passes on both, `goku/budget.lua` runs all 160
+logic frames on both and measures the same growth on both (p90 395 → 416 on
+main, 396 → 417 here; the test's own limit is 20 lines, so it is borderline
+for Goku either way).
+
+A milder fix that keeps the browser's APU state (empty the echo ring one
+frame before the import: FLG |= `$20`, EDL = 0; afterwards restart the
+driver at `$0279` with SP = `$FF` through a NOP landing pad at `$17F0`)
+fixed `goku/field.lua` and `goku/budget.lua` but not every import (a later
+import in `goku/menu.lua` still ran into the ADSR table at `$1881` on main).
+
+Without a fix, which test meets a dead APU is luck. On this branch after
+merging main `594d740` the losers are `goku/budget.lua` (second import: SPC
+halted at `$0CF3`, the walk's first sound at frame 47 never returns: 46 of
+160 logic frames) and `goku/menu.lua` (second import: the ring's first
+sound hangs at `C3:05D4`); main passes both by the same luck, and the audio
+module is idle in both (no stream, no transfer).
 
 ## 7. Integration summary
 
