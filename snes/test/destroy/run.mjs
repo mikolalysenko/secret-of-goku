@@ -50,6 +50,18 @@ export const scenarios=[
     note:'Haunted Forest vines (no cut code) become grass 7A; Goku walks through'},
   {name:'bg2-objects',bundle:'juice-research__plants__layer2-before',attack:{dir:3,kind:'punch'},
     note:'multi-stage C2 objects on BG2 (Lost Continent axe room) clear to their final stage'},
+  // Gates, switches, orbs: the module dispatches the original (or authored)
+  // event; the JavaScript reference must select the same target.
+  {name:'gate-forest',type:'event',bundle:'ending-fix__vine',door:0xac,map:29,teleport:[240,338],attack:{dir:3,kind:'punch'},walk:'up',expect:{passYlt:288},
+    flag:0x5e,opened:1,note:'Haunted Forest rose gate (map 29): punch -> retail event 1EF'},
+  {name:'gate-bridge',type:'event',bundle:'ending-fix__vine',door:0xa9,map:30,teleport:[200,408],attack:{dir:1,kind:'punch'},walk:'right',walkFrames:90,expect:{passX:288},
+    flag:0x5f,opened:3,note:'Haunted Forest bridge gate (map 30): punch -> retail event 6DA'},
+  {name:'gate-witch',type:'event',bundle:'readme-variety-probe__castle',door:0xb0,map:300,teleport:[152,360],attack:{dir:3,kind:'beam',str:256,id:9},
+    flag:0x17,opened:2,confirm:true,note:"Elinee's castle three-person gate (map 300): charged beam -> authored event 8C"},
+  {name:'switch-gaia',type:'event',bundle:'power-flight-fixes__native-285',teleport:[232,120,3],attack:{dir:3,kind:'beam',str:256,id:11},flagsChange:true,
+    note:"Gaia's Navel cave switch (map 285, F-tile 1AF -> event 1AC) from a ranged beam"},
+  {name:'orb-earth',type:'event',bundle:'kamehameha-voice__orb-before',orb:0x600,flagsChange:true,
+    note:'Earth Palace crystal orb: its own event 239 with spell byte 06 in $E181'},
 ];
 
 function lua(s){
@@ -91,13 +103,104 @@ function test()
 end
 `;
 
+
+const bodyEvent=`
+function test()
+  D.watch()
+  assert(H.importSnesJs(SCN.bundlePath), 'import failed')
+  H.wait(2)
+  if SCN.door then H.result('door', D.door(SCN.door, SCN.map, SCN.flags)) end
+  if SCN.teleport then D.teleport(SCN.teleport[1], SCN.teleport[2], SCN.teleport[3]) end
+  H.result('arrived', D.pos())
+  H.dumpfile('wram.bin', emu.memType.snesWorkRam, 0, 0x20000)
+  D.grid('before.bin')
+  H.shot('before')
+  if SCN.flag then H.result('flagBefore', H.r8(0x7ECF00 + SCN.flag)) end
+  if SCN.orb then H.result('hit', D.orb(SCN.orb)) else
+    if SCN.attack.x == nil then local p = D.pos(); SCN.attack.x = p.x; SCN.attack.y = p.y end
+    H.result('hit', D.hit(SCN.attack))
+  end
+  H.wait(6)
+  H.shot('struck')
+  H.result('busy', D.settle(SCN.waitFrames or 360, SCN.confirm))
+  if SCN.flag then H.result('flagAfter', H.r8(0x7ECF00 + SCN.flag)) end
+  H.result('event', H.r16(ABI.dbg_ev))
+  H.result('events', H.r16(ABI.dbg_evn))
+  H.result('react', H.r16(ABI.out_react))
+  if SCN.orb then H.result('e181', H.r8(0x7EE181 + SCN.orb)) end
+  H.dumpfile('flags.bin', emu.memType.snesWorkRam, 0xCF00, 0x100)
+  D.grid('after.bin')
+  H.shot('after')
+  if SCN.walk then
+    H.hold(SCN.walk, SCN.walkFrames or 60)
+    H.result('walked', D.pos())
+    H.shot('walked')
+  end
+end
+`;
+
+// Walking checks: passX/passY (beyond, increasing), passXlt/passYlt (beyond,
+// decreasing), blockedX (did not pass).
+function checkWalk(s,res,problems){
+  const e=s.expect??{},w=res.walked;
+  if(e.passX!==undefined&&!(w?.x>e.passX))problems.push(`did not walk through: x ${w?.x} <= ${e.passX}`);
+  if(e.passXlt!==undefined&&!(w?.x<e.passXlt))problems.push(`did not walk through: x ${w?.x} >= ${e.passXlt}`);
+  if(e.passY!==undefined&&!(w?.y>e.passY))problems.push(`did not walk through: y ${w?.y} <= ${e.passY}`);
+  if(e.passYlt!==undefined&&!(w?.y<e.passYlt))problems.push(`did not walk through: y ${w?.y} >= ${e.passYlt}`);
+  if(e.blockedX!==undefined&&!(w?.x<=e.blockedX))problems.push(`not blocked: x ${w?.x} > ${e.blockedX}`);
+}
+
 function diffGrids(a,b){
   const out=[];
   for(let i=0;i<0x8000;i++)if(a[i]!==b[i])out.push({off:i,layer:i>>14,tx:i&127,ty:(i>>7)&127,from:a[i],to:b[i]});
   return out;
 }
 
+async function runEvent(s){
+  const bundlePath=join(imports,s.bundle);
+  if(!existsSync(bundlePath))return{name:s.name,ok:false,skipped:true,reason:'missing bundle '+s.bundle};
+  let attack=null;
+  if(s.attack){attack=attackProfile({...s.attack});attack.code=KIND[attack.kind];}
+  const outDir=join(outRoot,s.name);
+  const test=`ABI=${lua(abi)}\nSCN=${lua({...s,bundlePath,attack,opened:undefined})}\n`+readFileSync(join(here,'destroy.lua'),'utf8')+bodyEvent;
+  const m=await runMesen({rom,test,outDir});
+  const res=m.results??{};
+  const problems=[];
+  if(m.code!==0||res.error)problems.push('mesen: '+(res.error??m.code));
+  if(s.door&&res.door!==true)problems.push('door load failed');
+  // The browser mod's choice for the same memory.
+  let expectEvent=null,target=null;
+  if(existsSync(join(outDir,'wram.bin'))){
+    const wram=new Uint8Array(readFileSync(join(outDir,'wram.bin')));
+    if(s.orb){
+      const base=0xe000+s.orb,ev=(wram[base+0x3e]|wram[base+0x3f]<<8)&0x7ff;
+      expectEvent=ev;target={kind:'orb',event:ev};
+    }else{
+      const a={...attack};if(a.x===undefined){a.x=wram[0xe002]|wram[0xe003]<<8;a.y=wram[0xe004]|wram[0xe005]<<8;}
+      target=createReference(wram.slice(),cartridge).barrierTarget(a);
+      expectEvent=target?.event??null;
+    }
+  }
+  if(!target)problems.push('reference found no target');
+  else if(expectEvent!==null&&res.event!==expectEvent)problems.push(`event ${res.event?.toString(16)} want ${expectEvent.toString(16)}`);
+  if(s.flag!==undefined&&!(res.flagAfter>=s.opened))problems.push(`flag ${s.flag.toString(16)} ${res.flagBefore} -> ${res.flagAfter}, want >= ${s.opened}`);
+  checkWalk(s,res,problems);
+  let grid=[];
+  if(existsSync(join(outDir,'after.bin')))grid=diffGrids(new Uint8Array(readFileSync(join(outDir,'before.bin'))),new Uint8Array(readFileSync(join(outDir,'after.bin'))));
+  // Story flags changed by the native event.
+  let flags=[];
+  if(existsSync(join(outDir,'flags.bin'))&&existsSync(join(outDir,'wram.bin'))){
+    const before=new Uint8Array(readFileSync(join(outDir,'wram.bin'))).subarray(0xcf00,0xd000),after=new Uint8Array(readFileSync(join(outDir,'flags.bin')));
+    for(let i=0;i<256;i++)if(before[i]!==after[i])flags.push(`CF${i.toString(16).toUpperCase().padStart(2,'0')}:${before[i]}->${after[i]}`);
+  }
+  if(s.flagsChange&&!flags.length)problems.push('no story flag changed');
+  const summary={name:s.name,ok:!problems.length,problems,edits:grid.length,flags,target,event:res.event,flag:[res.flagBefore,res.flagAfter],react:res.react,busy:res.busy,e181:res.e181,ms:m.ms,note:s.note};
+  writeFileSync(join(outDir,'summary.json'),JSON.stringify({...summary,results:res},null,1));
+  return summary;
+}
+
 async function run(s){
+  if(s.type==='event')return runEvent(s);
   const bundlePath=join(imports,s.bundle);
   if(!existsSync(bundlePath))return{name:s.name,ok:false,skipped:true,reason:'missing bundle '+s.bundle};
   const wram=new Uint8Array(readFileSync(join(bundlePath,'wram.bin')));
@@ -143,7 +246,7 @@ async function run(s){
       if(!sub(want95,r95)||want95.length&&!r95.length)problems.push(`sound $95 ${JSON.stringify(r95)} want a subsequence of ${JSON.stringify(want95)}`);
     }
   }
-  if(s.expect?.passX!==undefined&&!(res.walked?.x>s.expect.passX))problems.push(`did not walk through: x ${res.walked?.x} <= ${s.expect.passX}`);
+  checkWalk(s,res,problems);
   if(s.expect?.blockedX!==undefined&&!(res.walked?.x<=s.expect.blockedX))problems.push(`not blocked: x ${res.walked?.x} > ${s.expect.blockedX}`);
   const summary={name:s.name,ok:!problems.length,problems,edits:grid.length,refEdits:ref?.grid.length,start:res.start,walked:res.walked,queue:res.queue,ms:m.ms,note:s.note};
   writeFileSync(join(outDir,'summary.json'),JSON.stringify({...summary,ref,results:res},null,1));
@@ -155,7 +258,8 @@ const selected=scenarios.filter(s=>!only.length||only.includes(s.name));
 const results=[];
 for(const s of selected){
   const r=await run(s);results.push(r);
-  console.log(`${r.ok?'pass':r.skipped?'skip':'FAIL'}  ${s.name.padEnd(28)} edits ${r.edits??'-'} (ref ${r.refEdits??'-'})  ${r.walked?`walked to ${r.walked.x},${r.walked.y}`:''}  ${r.problems?.join('; ')??r.reason??''}`);
+  const detail=s.type==='event'?`event ${r.event?.toString(16)} target ${r.target?.id??r.target?.kind??'-'} flags ${r.flags?.join(' ')||'-'} map edits ${r.edits}`:`edits ${r.edits??'-'} (ref ${r.refEdits??'-'})  ${r.walked?`walked to ${r.walked.x},${r.walked.y}`:''}`;
+  console.log(`${r.ok?'pass':r.skipped?'skip':'FAIL'}  ${s.name.padEnd(16)} ${detail}  ${r.problems?.join('; ')??r.reason??''}`);
 }
 writeFileSync(join(outRoot,'summary.json'),JSON.stringify(results,null,1));
 process.exit(results.every(r=>r.ok||r.skipped)?0:1);

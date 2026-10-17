@@ -20,6 +20,7 @@ modules_field_nmi:
 	RTL
 ; World flight frame, after the world logic (DB = $7E).
 modules_world_frame:
+	JSL destroy_world_frame
 	RTL
 ; World vblank, after the game's uploads and HDMA setup; not force-blanked,
 ; so check core_vblank_lines before long uploads (DB = $80).
@@ -41,8 +42,10 @@ modules_save:
 	RTL
 ; After a GAME FILE loaded and core restored (or cleared) !SRAM_LIVE.
 modules_load:
+	JSL destroy_reset
 	RTL
 ; New game: !SRAM_LIVE was cleared and !persist_version set to 1.
 modules_new_game:
+	JSL destroy_reset
 	RTL
 pullpc

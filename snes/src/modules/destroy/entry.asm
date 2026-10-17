@@ -156,10 +156,14 @@ dst_ground_ok:
 dst_run_event:
 	STA.w !d_t0
 	STX.w !d_t1
+	; Same idle field as core_event_pump, and no other module's request
+	; waiting there.
+	LDA.w !CORE_EVREQ : BNE .no
 	SEP #$20
-	LDA $D0 : BEQ +
-	REP #$20 : CLC : RTS
-+	REP #$20
+	LDA $D0 : BNE .no8
+	LDA $FF : BNE .no8
+	LDA $E8 : AND.b #$04 : BNE .no8
+	REP #$20
 	STZ $D4
 	LDA.w !d_t1 : STA $3A
 	LDA.w !d_t0
@@ -192,6 +196,39 @@ dst_run_event:
 .started
 	SEC
 	RTS
+.no8
+	REP #$20
+.no
 .failed
 	CLC
 	RTS
+
+; ---------------------------------------------------------------------------
+; destroy_reset (JSL, modules_load / modules_new_game): forget every
+; transient edit, plan and pending hit; the next frame re-initialises.
+destroy_reset:
+	REP #$30
+	STZ.w !m_init
+	RTL
+
+; destroy_world_frame (JSL, modules_world_frame): the broken Mana Tree cloud
+; barrier keeps its landing lock open (world-ki.js: $E3 bit 6 while flying).
+destroy_world_frame:
+	REP #$30
+	LDA.l !P_TREE : AND.w #$0001 : BEQ +
+	SEP #$20
+	LDA $E3 : ORA.b #$40 : STA $E3
+	REP #$20
++	RTL
+
+; destroy_tree_barrier_break (JSL, for the world-flight module): a full wave
+; reached the cloud barrier around Pure Land. Remembers it (saved with the
+; GAME FILE) and opens the landing lock now. Boss progress is untouched.
+destroy_tree_barrier_break:
+	PHP
+	REP #$30
+	SEP #$20
+	LDA.l !P_TREE : ORA.b #$01 : STA.l !P_TREE
+	LDA.l $7E00E3 : ORA.b #$40 : STA.l $7E00E3
+	PLP
+	RTL

@@ -129,7 +129,6 @@ dst_scan_attack:
 	LDA.w !d_flags : AND.w #4 : BNE .exit
 	LDA.w !arg_id : CMP.w !d_aid : BEQ +
 	STA.w !d_aid
-	STZ.w !d_abar
 	LDA.w !sc_len : STA.w !d_alen
 	LDA.w !sc_half : STA.w !d_ahalf
 	RTS

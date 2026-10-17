@@ -22,6 +22,7 @@
 ; computed addresses use #= so no expression depends on operator order.
 !DST #= (!RAM_DESTROY)&$FFFF
 !FRAME #= (!core_frame)&$FFFF
+!CORE_EVREQ #= (!core_event_req)&$FFFF
 !d_map      = !DST+$00  ; map the transient state belongs to
 !d_qn       = !DST+$02  ; queue slots used (live + dead)
 !d_qlive    = !DST+$04  ; live queue entries
@@ -45,7 +46,7 @@
 !d_aid      = !DST+$24  ; attack id of the scanned region
 !d_alen     = !DST+$26  ; scanned length
 !d_ahalf    = !DST+$28  ; scanned half width
-!d_abar     = !DST+$2A  ; bit0: this attack already struck a barrier/switch
+!d_abar     = !DST+$2A  ; id of the beam that struck a barrier/switch (one per beam)
 ; current map context (dst_sync_map)
 !m_hdr      = !DST+$2C  ; native map header flags (tileset | $40/$80 metatile banks)
 !m_ts       = !DST+$2E  ; tileset
@@ -153,6 +154,7 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !dbg_n      = !DSTATE+$26  ; commands processed
 !dbg_ev     = !DSTATE+$28  ; last event dispatched by this module
 !dbg_evn    = !DSTATE+$2A  ; events dispatched
+!dbg_script = !DSTATE+$30  ; 16 bytes: event script for command 4
 ; queue entry: +0 offset.w ($FFFF dead) +2 tile +3 replacement (demolition)
 ;              +4 flags +5 behaviour +6 meta +7 frame
 ; meta: bits0-1 policy, bit2 replay, bit3 demolition, bits4-7 breach (demolition)
