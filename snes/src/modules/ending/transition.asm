@@ -1,7 +1,3 @@
-; Transition fade and holding pictures for phases whose scenes are still
-; being ported: they keep the event script running on a black picture and
-; mark their timeline done at once.
-
 ; Good ending: everything fades to black over 48 frames (shenron-ending
 ; 'transition'), then stays black until the vista is cued, also through
 ; the door to map 246. Only a brightness ceiling: the native picture,
@@ -43,22 +39,3 @@ frame_transition:
 .black
 	STZ.w !s_ebright
 	JMP mark_done
-
-; Placeholder: black picture under the native dialogue.
-hold_black:
-	SEP #$20
-	LDA.b #$00
-	STA.l !ending_live
-	LDA.b #!FAM_BLACK
-	STA.w !s_family
-	LDA.b #$00
-	STA.w !s_fullscreen
-	STA.w !s_regson
-	LDA.l !ending_status
-	ORA.b #!ES_ACTIVE
-	STA.l !ending_status
-	REP #$30
-	STZ.w !s_ebright
-	JMP mark_done
-
-

@@ -200,6 +200,35 @@ async function flightCheck(r,out){
   }
 }
 
+// Native map loads under the scenes, as the finale's scripts make them:
+// door 2F under the doomed globe (the stage loads again, the clock goes on)
+// and the reunion's door 3FF after the flight (black until the load, then
+// the field's own cliff with Dyluck), against a control load of the cliff.
+async function loadsCheck(r,out){
+  expect(r.control_map===180,`control door 3FF loaded map ${r.control_map}`);
+  expect(r.doomed_loaded,'doomed globe loaded');
+  expect(r.door_map===246,`door 2F loaded map ${r.door_map}`);
+  expect(r.doomed_reloaded,'the globe loads again after the native load');
+  expect(r.doomed_phase===11,`still doomed after the load (phase ${r.doomed_phase})`);
+  expect(r.doomed_age_after>r.doomed_age_before,`the clock goes on (${r.doomed_age_before} -> ${r.doomed_age_after})`);
+  if(r['doomed-load']!==undefined){
+    const best=await bestPlanetMatch(join(out,'doomed-load.png'),{rom:baseRom,phase:'doomed'},r['doomed-load']);
+    writeFileSync(join(out,'doomed-load-ref.png'),writeRef(null,best.ref));
+    r['doomed-load_match']=best.score;
+    expect(best.score>=.97,`globe after the load matches planet-view at ${(best.score*100).toFixed(1)}%`);
+  }else problems.push('no still doomed-load');
+  expect(r.hold_phase===6&&r.hold_bright===0,`reunion holds black over the flight's VRAM (phase ${r.hold_phase}, brightness ${r.hold_bright})`);
+  expect(r.reunion_released,'the reunion load gives the field the screen');
+  expect(r.reunion_map===180,`reunion door loaded map ${r.reunion_map}`);
+  expect(r.reunion_actors===r.control_actors+1,`Dyluck joins the cliff (${r.reunion_actors} actors, control ${r.control_actors})`);
+  expect((r.reunion_status&0x81)===0,`scene released (status ${r.reunion_status})`);
+  // The cliff as the native game loads it: the field's VRAM, palette and
+  // registers are back (Dyluck is the difference).
+  const native=gfx.readPng(join(out,'cliff-native.png'));
+  const m=compare(join(out,'reunion-cliff.png'),native.data);r['reunion-cliff_match']=m;
+  expect(m>=.95,`reunion cliff matches the native load at ${(m*100).toFixed(1)}%`);
+}
+
 const tests=[
   {name:'kai',check:kaiCheck},
   {name:'space',check:spaceCheck},
@@ -207,6 +236,7 @@ const tests=[
   {name:'depart',check:departCheck},
   {name:'vista',check:vistaCheck},
   {name:'flight',check:flightCheck},
+  {name:'loads',check:loadsCheck},
 ];
 let ok=true;
 for(const t of tests){

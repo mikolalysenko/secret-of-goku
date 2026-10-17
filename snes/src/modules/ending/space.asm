@@ -168,9 +168,9 @@ space_load:
 	LDX.w #ending_frag_pal
 	LDY.w #$00C0
 	JSR pal_set
-	LDA.w #$0001
-	LDX.w #$007F
-	JSR pal_range             ; BG colours 1-127
+	LDA.w #$0010
+	LDX.w #$0070
+	JSR pal_range             ; BG palettes 1-7 (palette 0 holds the dialogue's BG3 colours)
 	LDA.w #$0080
 	LDX.w #$0020
 	JSR pal_range             ; OBJ palettes 0-1

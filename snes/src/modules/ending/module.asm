@@ -33,6 +33,8 @@
 !ending_tmp     = !RAM_ORBIT+$9A   ; word  scratch (hooks)
 !ending_tmp2    = !RAM_ORBIT+$9C   ; word
 !ending_gokuctl = !RAM_ORBIT+$9E   ; byte  we set the goku module's SUPPRESS for a full-screen scene
+!ending_reload  = !RAM_ORBIT+$9F   ; byte  a native map load ran under a full-screen scene
+!ending_pulse   = !RAM_ORBIT+$A0   ; word  explosion preset: prose advance pulse (debug hook)
 
 ; Phases (match the browser's state.phase).
 !EP_TRANSITION = $01   ; good: whole-screen fade to black over 48 frames, then black
@@ -512,6 +514,10 @@ ending_debug_open:
 .reached
 	CLC
 	RTL
+; The explosion preset holds R (the browser's prose fast-forward) until the
+; bad ending's A3 cue starts the explosion; on the cartridge that is a B
+; pulse on a button wait ($D0 = $83) unless the window holds a choice, as
+; the debug module's ADVANCE waits (core input injection).
 ending_debug_explode:
 	CMP.w #!DEBUG_HOOK_SCENE
 	BNE .reached
@@ -519,6 +525,22 @@ ending_debug_explode:
 	AND.w #$00FF
 	CMP.w #!EP_EXPLODE
 	BEQ .reached
+	SEP #$20
+	LDA.l $7E00D0
+	CMP.b #$83
+	REP #$20
+	BNE .wait
+	JSL story_api_window_has_choice
+	BCS .wait
+	LDA.l !ending_pulse
+	INC
+	STA.l !ending_pulse
+	AND.w #$0007
+	BNE .wait
+	LDA.l !core_pad_inject
+	ORA.w #!PAD_B
+	STA.l !core_pad_inject
+.wait
 	SEC
 	RTL
 .reached
@@ -571,13 +593,26 @@ ending_query_active:
 .no
 	RTL
 
-; The reunion cliff (map 180) has no NPCs; during the good reunion its
-; object list gains Dyluck's record (native-story.js storyRead), so the
-; native loader brings him back with his graphics, palette and actor slot.
-; The list is copied to the scene work area (header + one record).
+; Every native map load passes here (C0:C487, inside the loader's blocking
+; pass): under a scene it notes that VRAM, CGRAM and the registers now hold
+; the new map (check_map_change). The reunion cliff (map 180) has no NPCs;
+; when it loads for the good reunion its object list gains Dyluck's record
+; (native-story.js storyRead), so the native loader brings him back with
+; his graphics, palette and actor slot. The list is copied to the scene
+; work area (header + one record).
 !ENDING_REUNION_MAP = 180
 ending_hook_object_list:
 	REP #$30
+	PHA
+	LDA.l !ending_phase
+	AND.w #$00FF
+	BEQ .seen
+	SEP #$20
+	LDA.b #$01
+	STA.l !ending_reload
+	REP #$20
+.seen
+	PLA
 	CMP.w #!ENDING_REUNION_MAP
 	BNE .out
 	LDA.l !ending_flags
@@ -588,10 +623,8 @@ ending_hook_object_list:
 	AND.w #$00FF
 	CMP.w #!EP_REUNION
 	BEQ .copy
-	LDA.l !ending_phase
-	AND.w #$00FF
-	CMP.w #!EP_REUNION
-	BNE .out
+	JSR reunion_due
+	BCC .out
 .copy
 	LDA.l !story_objlist_start
 	TAX
@@ -625,6 +658,22 @@ ending_hook_object_list:
 	RTL
 ending_dyluck_record:
 	db $4E,$8F,$8B,$88,$40,$AC,$00,$00
+
+; Carry set when a native map load now ends the flight: the script's next
+; door after the scatter's 480 frames is the reunion's cliff (3FF, after
+; cue 176) or Potos (08E); the flight never spans maps.
+reunion_due:
+	LDA.l !ending_phase
+	AND.w #$00FF
+	CMP.w #!EP_REUNION
+	BEQ .yes
+	CMP.w #!EP_SCATTER
+	BEQ .yes
+	CLC
+	RTS
+.yes
+	SEC
+	RTS
 
 ; Query id A16 through story's table (same contract as story_query):
 ; A16 = value, Z set when 0. DB = $7E.
@@ -690,8 +739,9 @@ ending_frame:
 	RTL
 .run
 	INC.w !s_frame
-	; A native map load since the scene took the screen ends it: the
-	; loader has already set every PPU register for the new map.
+	; A native map load since the scene took the screen: the loader has
+	; already set every PPU register for the new map (the overlay follows
+	; the boy; a full-screen phase loads its stage again).
 	JSR check_map_change
 	REP #$30
 	LDA.l !ending_phase
@@ -736,26 +786,54 @@ ending_frame:
 	PLB
 	RTL
 
+; A full-screen scene stays up over native map loads, as the browser's
+; picture does. A door changes $DC at once and fades the field (and the
+; scene) out; the loader then rewrites VRAM, CGRAM and the registers in one
+; blocking pass with no frame or vblank hook (ending_hook_object_list notes
+; it). The phase then loads its stage again and its clock goes on; the
+; reunion's load gives the field the screen back. The overlay follows the
+; new map ($DC) instead.
 check_map_change:
 	REP #$30
 	SEP #$20
+	LDA.l !ending_reload
+	STA.w !s_tmp
+	LDA.b #$00
+	STA.l !ending_reload
 	LDA.w !s_family
-	CMP.b #!FAM_BLACK
-	BEQ .keep
 	CMP.b #!FAM_NONE
 	BEQ .keep
+	CMP.b #!FAM_OVERLAY
+	BNE .loads
 	REP #$20
 	LDA.w !N_MAP
 	CMP.l !ending_map0
 	BEQ .keep
-	SEP #$20
-	LDA.w !s_family
-	CMP.b #!FAM_OVERLAY
-	REP #$20
-	BNE .release
 	JMP overlay_map_change
-.release
+.loads
+	LDA.w !s_tmp
+	BEQ .keep
+	REP #$20
+	JSR reunion_due
+	BCC .stage
+	JMP release_quiet
+.stage
+	SEP #$20
+	LDA.w !s_fullscreen
+	BEQ .keep                     ; black: the picture under it is native
+	REP #$20
+	LDA.l !ending_age
+	PHA
+	LDA.l !ending_phase
+	AND.w #$00FF
+	PHA
 	JSR release_quiet
+	REP #$30
+	PLA
+	JSR start_phase
+	REP #$30
+	PLA
+	STA.l !ending_age
 .keep
 	REP #$30
 	RTS
@@ -885,17 +963,42 @@ phase_start_table:
 	dw start_complete, start_space, start_space, start_space, start_fatal
 phase_frame_table:
 	dw frame_none, frame_transition, frame_summon, frame_dragon, frame_wish
-	dw frame_scatter, frame_none, frame_village, frame_depart, frame_kai
+	dw frame_scatter, frame_reunion, frame_village, frame_depart, frame_kai
 	dw frame_kai, frame_doomed, frame_explode, frame_escape, frame_fatal
 
 start_none:
 frame_none:
 	RTS
 
-; Not yet ported phases fall back to a held black picture so the event
-; script still runs; replaced as each scene lands.
+; The reunion is the native cliff scene (map 180, Dyluck from
+; ending_hook_object_list): the field gets the screen back. After a
+; full-screen scene the field's VRAM holds our stage, so the picture stays
+; black until the reunion's map load (door 3FF right after the cue;
+; check_map_change), at most 300 frames.
 start_reunion:
+	SEP #$20
+	LDA.w !s_fullscreen
+	PHA
+	JSR release_screen
+	SEP #$20
+	PLA
+	BEQ .out
+	LDA.b #!EP_REUNION
+	STA.l !ending_phase
+	LDA.b #!FAM_BLACK
+	STA.w !s_family
+	REP #$20
+	STZ.w !s_ebright
+.out
+	REP #$30
+	RTS
+frame_reunion:
+	LDA.l !ending_age
+	CMP.w #300
+	BCC .out
 	JMP release_screen
+.out
+	RTS
 
 ; ---------------------------------------------------------------------------
 ; Releasing the picture.
@@ -1156,7 +1259,7 @@ incsrc "fatal.asm"
 incsrc "village.asm"
 incsrc "vista.asm"
 incsrc "flight.asm"
-incsrc "stubs.asm"
+incsrc "transition.asm"
 
 ; Generated palettes and small tables.
 incsrc "ending/ending_tables.asm"
