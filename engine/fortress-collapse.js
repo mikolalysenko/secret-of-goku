@@ -34,10 +34,23 @@ export function createFortressCollapse(snes,mod,destroyed){
     result[0]=Math.min(31,(v&31)+2+alarm)|(Math.max(0,((v>>5)&31)-2-(alarm>>1))<<5)|(Math.max(0,((v>>10)&31)-3-(alarm>>1))<<10);
     return result;
   };
+  // The wrapper's effect on a whole scanline as compositor ops (see
+  // Ppu.registerLineHook): scars paint BG1, then BG1/BG2 take the tint.
+  const scarLine=new Uint16Array(256),scarPaint={type:'paint',layers:1,colors:scarLine,skipZero:true,layer:-1,pixel:0,mainOnly:true};
+  const tint={type:'channels',layers:3,r:new Int32Array(32),g:new Int32Array(32),b:new Int32Array(32),layer:-1,pixel:0,mainOnly:true};
   if(color)p.registerLineHook?.('getColor',p.getColor,color,(ppu,line)=>{
     if(renderFrame!==mod.frame){renderFrame=mod.frame;renderActive=active();camera=renderActive?mod.status:null;}
     return !renderActive||ppu.mode!==1||line>=224;
-  });
+  },{name:'fortress-collapse',plan:(ppu,y,plan)=>{
+    const key=`${state.arena.revision}:${camera.cameraX}:${camera.cameraY}`;
+    if(key!==maskKey){maskKey=key;mask=ruinMask(state.arena,camera.cameraX,camera.cameraY);}
+    let any=false;
+    for(let x=0;x<256;x++){const scar=mask?.[y*256+x];scarLine[x]=scar?(scar===1?0x0425:scar===2?0x0849:((x+y)%9===0?0x2674:0x14cd))+1:0;any||=!!scar;}
+    if(any)plan.extra.push(scarPaint);
+    const phase=state.age%84,alarm=phase<16?Math.round(Math.sin(phase*Math.PI/16)*9):0;
+    for(let c=0;c<32;c++){tint.r[c]=Math.min(31,c+2+alarm);tint.g[c]=Math.max(0,c-2-(alarm>>1));tint.b[c]=Math.max(0,c-3-(alarm>>1));}
+    plan.extra.push(tint);plan.skipPost=true;return true;
+  }});
   function fracture(spot,radius){
     const terrain=r[0xe00b];
     fractureFortress(state.arena,spot.x,spot.y,radius,(x,y)=>mod.localFlightHook.canLand(x,y,terrain&128?1:0,terrain&3));

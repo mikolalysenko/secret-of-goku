@@ -31,10 +31,17 @@ function atlas(name){
 }
 
 // steps: [{buttons, frames, shot}] ; returns per-shot info
-export async function renderJsRef({state,outDir,superSaiyan=false,steps,goku=true}){
+// sramState: another state whose cartridge SRAM (saved games) replaces this one's.
+export async function renderJsRef({state,outDir,superSaiyan=false,steps,goku=true,sramState=null}){
   mkdirSync(outDir,{recursive:true});
-  const s=loadCore(new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc'))));
+  const rom=new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')));
+  const s=loadCore(rom);
   restore(s,{...JSON.parse(readFileSync(state,'utf8')),romHash:hash(s.cart.data)});
+  if(sramState){
+    const other=loadCore(rom);
+    restore(other,{...JSON.parse(readFileSync(sramState,'utf8')),romHash:hash(other.cart.data)});
+    s.cart.sram.set(other.cart.sram);
+  }
   const context=engineContext(),w=context.window;
   const read8=a=>s.ram[a&0x1ffff],read16=a=>read8(a)|read8(a+1)<<8;
   const mod={
