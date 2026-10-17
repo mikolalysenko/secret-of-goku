@@ -107,6 +107,37 @@ function test()
       end
     end
   end
+  -- sweeps (the step's swept footprints) from a grid of starts in eight
+  -- directions at flight speeds, each from a hero grid anchored at the start
+  local sweeps = {}
+  local DIRS = {{8, 0}, {-8, 0}, {0, 8}, {0, -8}, {6, 6}, {-6, 6}, {6, -6}, {-6, -6}, {7, 0}, {0, -7}, {3, 8}, {-8, 2}}
+  local k2 = 0
+  for ty = 1, Hh - 2, 3 do
+    for tx = 1, W - 2, 3 do
+      local x = tx * 16 + ((tx * 5) % 16)
+      local y = ty * 16 + ((ty * 7) % 16)
+      for _, d in ipairs(DIRS) do
+        local layer = ((k2 % 5) == 4) and 1 or 0
+        k2 = k2 + 1
+        sweeps[#sweeps + 1] = {x = x, y = y, dx = d[1], dy = d[2], l = layer}
+      end
+    end
+  end
+  for i = 1, #sweeps, 16 do
+    local n = math.min(16, #sweeps - i + 1)
+    for j = 0, n - 1 do
+      local q, b = sweeps[i + j], MAIL + 0x10 + j * 8
+      H.w16(b, q.x); H.w16(b + 2, q.y); H.w8(b + 4, q.dx & 0xFF); H.w8(b + 5, q.dy & 0xFF); H.w8(b + 6, q.l)
+    end
+    local done3 = H.r16(MAIL + 6)
+    H.w16(MAIL + 2, n)
+    H.w16(MAIL, 7)
+    if not H.waitFor(function() return H.r16(MAIL + 6) ~= done3 end, 600) then error('sweep queries timed out') end
+    for j = 0, n - 1 do sweeps[i + j].pass = H.r8(MAIL + 0x10 + j * 8 + 7) == 1 end
+  end
+  local fs = assert(io.open(H_OUT .. '/sweeps.json', 'w'))
+  fs:write(H.json(sweeps))
+  fs:close()
   local fe = assert(io.open(H_OUT .. '/exits.json', 'w'))
   fe:write(H.json(exits))
   fe:close()

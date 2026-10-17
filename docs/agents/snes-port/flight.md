@@ -298,7 +298,12 @@ without a tile change) and walking stops before them (`supported()` at
   exits: 71,232 hero positions (a 4 px grid two tiles around each passage)
   and velocities, answered by the cartridge's `fl_flight_exit` and by the
   browser's own `C0:D84C` hook on the same WRAM: all equal, 1,848 exits
-  caught.
+  caught. And it sweeps: from a grid of starts in twelve directions at
+  flight speeds (each from a hero grid anchored at the start, as in a
+  movement step), the cartridge's `fl_sweep` against `canFly` at every
+  rounded step: about 200,000 sweeps, all equal. (This check found a hero
+  grid bug, now fixed: a sweep whose union spanned three tile columns or
+  rows inside the grid got an empty cell mask and passed through walls.)
 - `water`: the browser spec's Water Palace gap on the same fixture and warp:
   rises over the gap, hovers in place for 45 frames after release, crosses
   and lands on the far platform, flies back and lands.

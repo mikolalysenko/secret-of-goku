@@ -11,7 +11,7 @@
 ;        hero, 3 = forget the anchor/crossing (localFlightHook.restore()),
 ;        4 = Instant Transmission landings (fl_test_landing),
 ;        5 = the ceiling escape's roof colours (fl_ce_colors),
-;        6 = opening exits (fl_test_exits)
+;        6 = opening exits (fl_test_exits), 7 = sweeps (fl_test_sweeps)
 ;   +$02 word layer (0/1), +$04 word row (tile y)
 ;   +$06 word completion counter (incremented when a request is done)
 ;   +$08 word map width in tiles (written back), +$0A height
@@ -26,6 +26,9 @@ fl_test_poll:
 	CMP.w #$0004
 	BNE +
 	JMP fl_test_landing
++	CMP.w #$0007
+	BNE +
+	JMP fl_test_sweeps
 +	CMP.w #$0006
 	BNE +
 	JMP fl_test_exits
@@ -308,3 +311,84 @@ fl_test_hole:
 .no
 	CLC
 	RTL
+
+; 7 = sweep() for +$02 (1-16) queries of 8 bytes at +$10: in +0 x, +2 y,
+; +4 byte dx, +5 byte dy (signed), +6 byte layer; out +7 byte 1 pass. Goku
+; stands at the start (the hero grid anchors there, as in a movement step);
+; his position and layer are restored afterwards.
+fl_test_sweeps:
+	JSR fl_ctx_load
+	LDA $E002
+	PHA
+	LDA $E004
+	PHA
+	LDA $E00B
+	PHA
+	LDX.w #$0000
+.q
+	TXA
+	LSR : LSR : LSR
+	CMP.l !fl_sram_test+$02
+	BCC +
+	JMP .done
++	PHX
+	LDA.l !fl_sram_test+$10,X
+	STA $E002
+	STA.w !fl_sw_x
+	LDA.l !fl_sram_test+$12,X
+	STA $E004
+	STA.w !fl_sw_y
+	LDA.l !fl_sram_test+$14,X
+	AND.w #$00FF
+	BIT.w #$0080
+	BEQ +
+	ORA.w #$FF00
++	STA.w !fl_sw_dx
+	LDA.l !fl_sram_test+$15,X
+	AND.w #$00FF
+	BIT.w #$0080
+	BEQ +
+	ORA.w #$FF00
++	STA.w !fl_sw_dy
+	LDA.l !fl_sram_test+$16,X
+	AND.w #$0001
+	STA.w !fl_q_l
+	SEP #$20
+	LDA $E00B
+	AND.b #$7F
+	STA $E00B
+	LDA.w !fl_q_l
+	BEQ +
+	LDA $E00B
+	ORA.b #$80
+	STA $E00B
++	REP #$20
+	LDA.w #$0001
+	STA.l !fl_g_stale            ; re-anchor the grid at Goku
+	JSR fl_sweep_forget
+	JSR fl_grid_reset
+	JSR fl_sweep
+	LDA.w #$0000
+	ROL
+	PLX
+	SEP #$20
+	STA.l !fl_sram_test+$17,X
+	REP #$20
+	TXA
+	CLC
+	ADC.w #8
+	TAX
+	JMP .q
+.done
+	PLA
+	STA $E00B
+	PLA
+	STA $E004
+	PLA
+	STA $E002
+	LDA.w #$0000
+	STA.l !fl_sram_test
+	LDA.l !fl_sram_test+$06
+	INC
+	STA.l !fl_sram_test+$06
+	RTS

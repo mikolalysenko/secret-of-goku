@@ -45,8 +45,11 @@ fl_ctx_load:
 	LDA $DC
 	JSR fl_ship_map
 	LDA.w #$0000
-	ROL
-	STA.w !fl_open_air
+	BCC ++
+	LDA.w !fl_t7                 ; 1 on the ship
+	BNE ++
+	LDA.w #$0002                 ; 2 in the dunes
+++	STA.w !fl_open_air
 	JSR fl_cache_clear
 	JSR fl_grid_off
 	JSR fl_sweep_forget
@@ -3275,27 +3278,30 @@ fl_grid_test:
 	CMP.w #3
 	BCS .out
 	STA.w !fl_t7                 ; r1
-	; mask of the rectangle: columns c0..c1 in rows r0..r1 (bit r*3+c)
+	; mask of the rectangle: columns c0..c1 in rows r0..r1 (bit r*3+c);
+	; a sweep's union can span all three columns or rows
 	LDA.w !fl_t4
 	ASL
-	ADC.w !fl_t5                 ; c0*2+c1 (c1 = c0 or c0+1)
+	ADC.w !fl_t4
+	ADC.w !fl_t5                 ; c0*3 + c1
 	TAX
-	LDA.l fl_grid_cols,X
+	LDA.l fl_grid_sel,X
 	AND.w #$00FF
-	LDX.w !fl_t6
-	BEQ +
--	ASL : ASL : ASL
-	DEX
-	BNE -
-+	STA.w !fl_t4                 ; row r0 pattern
-	LDA.w !fl_t7
-	CMP.w !fl_t6
-	BEQ +
-	LDA.w !fl_t4
+	STA.w !fl_t4                 ; columns c0..c1
+	LDA.w !fl_t6
+	ASL
+	ADC.w !fl_t6
+	ADC.w !fl_t7                 ; r0*3 + r1
+	TAX
+	LDA.l fl_grid_sel,X
+	AND.w #$00FF
 	ASL : ASL : ASL
 	ORA.w !fl_t4
-	STA.w !fl_t4                 ; rows r0 and r0+1
-+	; known cells whose tile changed lose their verdicts
+	ASL
+	TAX
+	LDA.l fl_grid_masks,X
+	STA.w !fl_t4                 ; the rectangle's cells
+	; known cells whose tile changed lose their verdicts
 	JSR fl_grid_check
 	; cells still unknown in this mode
 	LDA $01,S
@@ -3334,9 +3340,19 @@ fl_grid_test:
 	LDA.w #$0001
 	SEC
 	RTS
-; patterns of columns c0..c1 (index c0*2 + c1)
-fl_grid_cols:
-	db $01, $03, $00, $02, $06, $00, $04, $00
+; 3-bit patterns of c0..c1 (index c0*3 + c1, c0 <= c1)
+fl_grid_sel:
+	db $01, $03, $07, $00, $02, $06, $00, $00, $04
+; cells of rows R (3 bits) x columns C (3 bits): index R*8 + C
+fl_grid_masks:
+	dw $0000, $0000, $0000, $0000, $0000, $0000, $0000, $0000
+	dw $0000, $0001, $0002, $0003, $0004, $0005, $0006, $0007
+	dw $0000, $0008, $0010, $0018, $0020, $0028, $0030, $0038
+	dw $0000, $0009, $0012, $001B, $0024, $002D, $0036, $003F
+	dw $0000, $0040, $0080, $00C0, $0100, $0140, $0180, $01C0
+	dw $0000, $0041, $0082, $00C3, $0104, $0145, $0186, $01C7
+	dw $0000, $0048, $0090, $00D8, $0120, $0168, $01B0, $01F8
+	dw $0000, $0049, $0092, $00DB, $0124, $016D, $01B6, $01FF
 
 ; Evaluate the grid cells in fl_g_need for mode A (1 air, 0 ground).
 fl_grid_fill:

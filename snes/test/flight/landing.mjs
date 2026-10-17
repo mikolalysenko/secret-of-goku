@@ -67,6 +67,16 @@ export async function landings({bundles,rom,outRoot}){
       if(js.found)found++;
       if(JSON.stringify(js)!==JSON.stringify(cart)){bad++;if(examples.length<8)examples.push({q:{x:q.x,y:q.y,ox:q.ox,oy:q.oy,t:q.t,air:q.air},js,cart});}
     }
+    // sweeps: canFly at each rounded step 1..n (the browser's sweep())
+    const sw=JSON.parse(readFileSync(join(outDir,'sweeps.json'),'utf8'));
+    let sweepBad=0,sweepPass=0;
+    for(const q of sw){
+      const n=Math.max(Math.abs(q.dx),Math.abs(q.dy));let ok=true;
+      for(let st=1;st<=n&&ok;st++)ok=h.canFly(q.x+Math.round(q.dx*st/n),q.y+Math.round(q.dy*st/n),q.l);
+      if(ok)sweepPass++;
+      if(ok!==q.pass){sweepBad++;if(examples.length<8)examples.push({sweep:{q,js:ok}});}
+    }
+    bad+=sweepBad;
     t.dispose();h.dispose();
     // flightExit() through the browser's own C0:D84C hook on the same WRAM:
     // the hero's position and velocity set, Y = the destination's idx; the
@@ -101,7 +111,7 @@ export async function landings({bundles,rom,outRoot}){
     const want=roofColors(roof.palette);
     const roofOk=!roof.stable||(want[1]===roof.stone&&want[2]===roof.highlight);
     if(!roofOk)examples.push({roof:{js:want.slice(1),cart:[roof.stone,roof.highlight]}});
-    results.push({name,map:r.results.map,queries:qs.length,found,bad:bad+(roofOk?0:1),examples,moved,ms:r.ms,roof:[roof.stone,roof.highlight],roofStable:roof.stable,exits:ex.length,exitHits});
+    results.push({name,map:r.results.map,queries:qs.length,found,bad:bad+(roofOk?0:1),examples,moved,ms:r.ms,roof:[roof.stone,roof.highlight],roofStable:roof.stable,exits:ex.length,exitHits,sweeps:sw.length,sweepPass,sweepBad});
   }
   return results;
 }
@@ -121,7 +131,7 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
     if(r.skipped){console.log(`${r.name}: skipped (no bundle)`);continue;}
     if(r.error){fail++;console.log(`${r.name}: ERROR ${r.error}`);continue;}
     if(r.bad||r.moved)fail++;
-    console.log(`${r.name.padEnd(44)} map ${String(r.map).padStart(3)} queries ${String(r.queries).padStart(5)} landings ${String(r.found).padStart(5)}  mismatches ${r.bad}${r.moved?` (map changed: ${r.moved})`:''} roof ${r.roof.map(c=>c.toString(16).padStart(4,'0')).join('/')}${r.roofStable?'':' (palette animated)'}${r.exits?` exits ${r.exits} (${r.exitHits} caught)`:''} ${r.ms}ms`);
+    console.log(`${r.name.padEnd(44)} map ${String(r.map).padStart(3)} queries ${String(r.queries).padStart(5)} landings ${String(r.found).padStart(5)}  mismatches ${r.bad}${r.moved?` (map changed: ${r.moved})`:''} roof ${r.roof.map(c=>c.toString(16).padStart(4,'0')).join('/')}${r.roofStable?'':' (palette animated)'}${r.exits?` exits ${r.exits} (${r.exitHits} caught)`:''} sweeps ${r.sweeps} (${r.sweepPass} clear, ${r.sweepBad} differ) ${r.ms}ms`);
     for(const e of r.examples.slice(0,r.bad?5:0))console.log('   ',JSON.stringify(e));
   }
   process.exit(fail?1:0);

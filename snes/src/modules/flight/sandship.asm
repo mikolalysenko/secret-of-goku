@@ -9,6 +9,7 @@
 
 ; Ship maps (sandship-wreck.js shipMaps) and the dunes (91). Carry set when
 ; A16 = map is one of them; with fl_t7 = 1 for a ship map, 0 for the dunes.
+; fl_ctx_load keeps the answer in !fl_open_air (1 ship, 2 dunes, 0 none).
 fl_ship_map:
 	LDX.w #0
 -	CMP.l .maps,X
@@ -35,13 +36,18 @@ fl_ship_map:
 ; The ship's per-frame rules, at the start of the frame's input work (the
 ; browser's sandship.tick()). M16/X16, DB = $7E.
 fl_ship_tick:
-	LDA $DC
-	JSR fl_ship_map
-	BCS +
-	RTS
-+	LDA.w !fl_t7
+	LDA.w !fl_state
+	AND.w #!FLS_CAN
 	BNE +
-	RTS                          ; the dunes: open air only
+	SEP #$20
+	LDA.b #$00
+	STA.l !fl_sd_embedded        ; unstick(): only while Goku can act
+	REP #$20
+	RTS
++	LDA.w !fl_open_air           ; the current map's context (Goku can act)
+	CMP.w #1
+	BEQ +
+	RTS                          ; not on the ship (the dunes: open air only)
 +	; --- flyThroughDoor() ---
 	LDA $DC
 	CMP.l !fl_sd_room

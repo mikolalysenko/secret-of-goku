@@ -979,7 +979,6 @@ fl_publish:
 	AND.w #!FLS_CHARGE
 	JSR fl_bind_air
 +
-	JSR fl_passengers_update
 	; first hover with control (power-intro.js) and the tile cache's life
 	LDA.w !fl_state
 	AND.w #!FLS_FLY|!FLS_CAN
@@ -1005,6 +1004,7 @@ fl_publish:
 ; long gaps carry the party, and a Goku left inside a wall or outside the
 ; map returns to safe ground.
 fl_settle:
+	STZ.w !fl_passengers
 	LDA.w !fl_state
 	AND.w #!FLS_CAN
 	BNE .can
@@ -1121,7 +1121,13 @@ fl_settle:
 	LDA $01,S
 	BNE .done                    ; still between whip pads
 .landed
-	LDA.l !fl_crossing
+	; passengers over the Beast's deck (beastArena())
+	LDA $03,S
+	BEQ +
+	JSR fl_beast_arena
+	BCC +
+	JSR fl_passengers_set
++	LDA.l !fl_crossing
 	CMP.w #$FFFF
 	BEQ .anchor
 	LDA.l !fl_crossing+6         ; layer
@@ -1158,6 +1164,7 @@ fl_settle:
 	; the Beast's open sky and long gaps carry the CPU companions
 	JSR fl_beast_arena
 	BCC .gaps
+	JSR fl_passengers_set
 	JSR fl_hero_fly
 	BCC .gaps
 	JSR fl_gather_here
@@ -1171,6 +1178,7 @@ fl_settle:
 	JSR fl_dungeon_air
 	BCC .recover_check
 .carried
+	JSR fl_passengers_set
 	JSR fl_gather_here
 .recover_check
 	; outside the map, or embedded in a solid cell that is not a low obstacle
@@ -1530,24 +1538,9 @@ fl_recover:
 ; passengers (native-local-flight.js): while Goku flies (eligible) over the
 ; Beast's sky, the ferry gap or dungeon air, the CPU companions he carries
 ; are hidden (sprite-layer.js hides their body, attachment and shadow
-; cells). !fl_passengers bit 0 = $E200, bit 1 = $E400, for the sprite owner.
-fl_passengers_update:
-	STZ.w !fl_passengers
-	LDA.w !fl_state
-	AND.w #!FLS_FLY
-	BEQ .done
-	JSR fl_eligible
-	BCC .done
-	JSR fl_beast_arena
-	BCS .carry
-	JSR fl_hero_tile
-	BCS .done
-	JSR fl_fetch
-	JSR fl_ferry_gap
-	BCS .carry
-	JSR fl_dungeon_air
-	BCC .done
-.carry
+; cells). Set by settle where it decides the carry; !fl_passengers bit 0 =
+; $E200, bit 1 = $E400, for the sprite owner.
+fl_passengers_set:
 	SEP #$20
 	LDA $E200
 	AND.b #$01
@@ -1568,5 +1561,4 @@ fl_passengers_update:
 	LDA.b #$02
 	TSB.w !fl_passengers
 +	REP #$20
-.done
 	RTS
