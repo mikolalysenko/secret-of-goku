@@ -659,13 +659,21 @@ fl_decide:
 
 ; Requests to Goku, the A mask and the hook work for the next frame.
 fl_publish:
-	; charging: combat's request (fl_charging), else the L+Y stand-in
+	; charging (mod.charging): combat's state (combat_api_state bit 1) or a
+	; request in fl_charging, else the L+Y test stand-in
 	SEP #$20
 	LDA.b #!FLS_CHARGE
 	TRB.w !fl_state
 	REP #$20
 	LDA.w !fl_charging
 	BNE .charge
+	LDA.w !fl_pad                ; a charge needs the wave chord (L+Y) held
+	AND.w #!PAD_L|!PAD_Y
+	CMP.w #!PAD_L|!PAD_Y
+	BNE +
+	JSR fl_bind_charging
+	BCS .charge
++
 	if defined("FLIGHT_CHARGE_STANDIN")
 		; test stand-in until combat owns the charge: L+Y without B
 		LDA.w !fl_state
@@ -860,12 +868,27 @@ fl_publish:
 	STA.w !fl_events
 	JSR fl_bind_ui_hover         ; power intro: the first hover's banter
 .cache
+	; rolling expiry: two cache slots a frame, so no result is older than
+	; 32 frames (results that depend on neighbouring tiles), and the hero
+	; grid's verdicts every 32 frames
 	LDA.w !fl_cache_age
 	INC
 	STA.w !fl_cache_age
-	CMP.w #!FL_CACHE_LIFE
-	BCC .done
-	JSR fl_cache_clear
+	AND.w #$001F
+	BNE +
+	STA.l !fl_g_akn
+	STA.l !fl_g_gkn
++	LDA.w !fl_cache_age
+	AND.w #$001F
+	ASL : ASL
+	STA.w !fl_t0
+	ASL
+	CLC
+	ADC.w !fl_t0                 ; (age & 31) * 12: slots 2k and 2k+1
+	TAX
+	LDA.w #$FFFF
+	STA.l !fl_cache,X
+	STA.l !fl_cache+6,X
 .done
 	RTS
 
@@ -902,7 +925,21 @@ fl_settle:
 	CMP $DC
 	BEQ +
 	JSR fl_anchor_none
-+	JSR fl_hero_land
+	BRA .onfoot
++	; an anchor already at this very spot stays whatever canLand says now
+	LDA.l !fl_anchor+2
+	CMP $E002
+	BNE .onfoot
+	LDA.l !fl_anchor+4
+	CMP $E004
+	BNE .onfoot
+	LDA $E00B
+	AND.w #$00FF
+	CMP.l !fl_anchor+8
+	BNE .onfoot
+	RTS
+.onfoot
+	JSR fl_hero_land
 	BCC +
 	JSR fl_anchor_here
 +	RTS

@@ -26,7 +26,11 @@ local function riverbank()
   H.w8(0x7EE800, 0); H.w8(0x7EEA00, 0)
   F.restore()
   H.hold('l b', 4)
-  H.wait(1)
+  -- until the action ends (lag frames stretch it)
+  for i = 1, 60 do
+    if H.r16(F.TP) == 0 then break end
+    H.wait(1)
+  end
   local s = F.status()
   local tx, ty = H.r16(0x7EE602), H.r16(0x7EE604)
   H.log('bank: landed ' .. F.str(s) .. string.format(' target %d,%d t %02x', tx, ty, H.r8(0x7EE60B)))

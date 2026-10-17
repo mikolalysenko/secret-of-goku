@@ -52,6 +52,10 @@ export const scenarios=[
   // (flyThroughDoor: three frames over a ship door, story event 07A).
   {name:'ship-hatch',fixture:'graphics-audit__party',enter:{map:99,x:27,y:12},prep:['restore'],
     steps:[{b:['a','right'],n:60},{n:200}]},
+  // On foot in the rabite field (combat's transform scenario): walking right,
+  // focusing (L), standing — the module's on-foot cost.
+  {name:'rabite-walk',fixture:'animation-audit__native__rabite-field-b',
+    steps:[{b:['right'],n:20},{b:['l'],n:40},{n:20}]},
   // Potos river banks and fences (town flight).
   {name:'potos-river',fixture:'graphics-audit__party',enter:{map:131,x:18,y:22},prep:['clearActors'],
     steps:[{n:10},{b:['a','right'],n:40},{n:10},{b:['a','down'],n:40},{n:10},{b:['a','left'],n:40},{n:20}]},

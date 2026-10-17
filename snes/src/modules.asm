@@ -28,6 +28,7 @@ modules_field_frame:
 	JSL combat_field_frame     ; before goku: poses and form apply this frame
 	JSL flight_frame           ; before goku: hover pose and lift requests
 	JSL world_field_frame
+	JSL flight_pose_frame      ; after world: the ceiling escape's pose wins over its takeoff pose
 	JSL goku_frame
 	JSL destroy_field_frame          ; last: its planner uses the frame time left
 	JSL fx_frame               ; after every module that draws effects: shows this frame's requests

@@ -523,6 +523,17 @@ fl_ce_pose:
 	REP #$20
 +	RTS
 
+; modules_field_frame, after the world module's frame: the ceiling pose wins
+; over its takeoff pose (goku-animation.js checks ceiling.pose first).
+flight_pose_frame:
+	PHP
+	REP #$30
+	LDA.l !fl_ce_phase
+	BEQ +
+	JSR fl_ce_pose
++	PLP
+	RTL
+
 ; --- world flight frame ----------------------------------------------------------
 ; modules_world_frame: the escape completes once world flight runs (King
 ; Kai's remark through ui_ceiling_escape); an earlier phase keeps aging and
