@@ -18,7 +18,7 @@ function C.probe()
     charge = r16(C.CB + 0x26), charging = r8(C.CB + 0x28) ~= 0, ssj = r8(C.CB + 0x11) ~= 0, power = r16(C.CB + 0x2E),
     map = r16(0x7E00DC), gx = r16(0x7EE002), gy = r16(0x7EE004), gface = r8(0x7EE010), ghp = r16(0x7EE182), gq = r16(0x7EE1F1),
     gp = r16(0x7ECC6A) | (r8(0x7ECC6C) << 16), xp = r16(0x7EE18D) | (r8(0x7EE18F) << 16),
-    frame = r16(0x7ED700), vb = r16(C.CB + 0xC4), hurt = r8(0x7EE011), can = r8(C.CB + 0x12), fxmask = r16(C.CB + 0xBE), kb = r16(C.CB + 0xC2),
+    frame = r16(0x7ED700), vb = r16(C.CB + 0xC4), vbl = r16(C.CB + 0xC6), hurt = r8(0x7EE011), can = r8(C.CB + 0x12), fxmask = r16(C.CB + 0xBE), kb = r16(C.CB + 0xC2),
     deflected = r16(C.CB + 0x5A), recovered = r16(C.CB + 0x68), hits = r16(C.CB + 0x6A), d0 = r8(0x7E00D0),
     str = r8(0x7EE188), agi = r8(0x7EE189), armor = r8(0x7EE1E1), ring = r8(0x7E00EC), pdef = r16(0x7EE1A5), mdef = r16(0x7EE1A8), lvl = r8(0x7EE181), maxhp = r16(0x7EE184),
     e = {},

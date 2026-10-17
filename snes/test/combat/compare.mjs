@@ -49,9 +49,13 @@ export function compare(js,cart,sc={}){
   // cartridge frame index from the vblank counter. The first record is the
   // first field frame of the script; the cartridge reads a frame's input at
   // the next vblank (auto-joypad), the browser before the frame: one frame.
+  // A record's time is the vblank its logic started at plus one (vbl + 1;
+  // the probe's own vblank for older traces): a long frame (destroy's band
+  // growth, streaming) shows the state of steps taken at its start.
   cart=cart.filter(f=>!f.inRing||sc.ringProbes);
-  const vb0=cart[0].vb-1,lag=sc.inputLag??1;
-  cart=cart.map(f=>({...f,_i:((f.vb-vb0)&0xffff)-1-lag})).filter(f=>f._i>=0&&f._i<js.length);
+  const at=f=>f.vbl!==undefined&&!f.inRing?f.vbl+1:f.vb;
+  const vb0=at(cart[0])-1,lag=sc.inputLag??1;
+  cart=cart.map(f=>({...f,_i:((at(f)-vb0)&0xffff)-1-lag})).filter(f=>f._i>=0&&f._i<js.length);
   // Action clock (kind / age / combo / hold / charge / form)
   const act=matchSequence('action',js,cart,actKey,{slack:sc.slack??3});
   failures.push(...act.failures);
