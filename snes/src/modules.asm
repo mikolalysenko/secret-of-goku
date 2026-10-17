@@ -11,6 +11,7 @@ incsrc "modules/title/module.asm"
 incsrc "modules/story/module.asm"
 incsrc "modules/debug/module.asm"
 incsrc "modules/destroy/module.asm"
+incsrc "modules/audio/module.asm"           ; after the modules whose sound flags it reads
 
 pushpc
 org !CODE_CORE+$7000
@@ -22,6 +23,7 @@ modules_field_frame:
 	JSL debug_field_frame
 	JSL goku_frame
 	JSL destroy_field_frame          ; last: its planner uses the frame time left
+	JSL audio_frame                 ; last: sends what other modules requested this frame
 	RTL
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
 modules_field_nmi:
@@ -31,6 +33,7 @@ modules_field_nmi:
 modules_world_frame:
 	JSL destroy_world_frame
 	JSL debug_world_frame
+	JSL audio_frame
 	RTL
 ; World vblank, after the game's uploads and HDMA setup; not force-blanked,
 ; so check core_vblank_lines before long uploads (DB = $80).
@@ -42,9 +45,11 @@ modules_menu_frame:
 	JSL goku_menu_frame
 	JSL title_menu_frame
 	JSL debug_menu_frame
+	JSL audio_pause
 	RTL
 ; Ring menu frame, in vblank (DB = $7E).
 modules_ring_frame:
+	JSL audio_pause
 	RTL
 ; Title program entry (power-on, soft reset, quit to title), after module
 ; WRAM was cleared; the decompressed program is at 7E:8000 (DB = $7E).
