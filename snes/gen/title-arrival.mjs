@@ -26,6 +26,9 @@ const PRIO=3;
 // Native sprites sharing the impact's scanlines: the hero's shadow (the
 // hero is hidden until he hops out) and one spare sprite.
 const NATIVE_SLIVERS=4,NATIVE_SPRITES=2;
+// Vertical offsets of BG1 (and so the crater) against the scene while the
+// native quake runs (C0:B518: BG1VOFS bit 1 flipped every other frame).
+const QUAKE=[-2,0,2];
 const rgb=c=>c-1; // engine colors are 1+BGR555
 
 function cellPixels(get,w,h,cx,cy){
@@ -145,6 +148,13 @@ export async function arrivalArt(rom,repo){
 
   // --- Timelines (engine/arrival.js drawScene).
   const craterLayout=craterSprites.map(sp=>({dy:sp.dy}));
+  const craterUsed=new Map(),craterCount=new Map();
+  for(const shift of QUAKE){
+    const u=new Map(),n=new Map();
+    for(const c of craterLayout)for(let r=0;r<16;r++){const y=c.dy+shift+r;u.set(y,(u.get(y)??0)+2);n.set(y,(n.get(y)??0)+1);}
+    for(const [y,v] of u)craterUsed.set(y,Math.max(craterUsed.get(y)??0,v));
+    for(const [y,v] of n)craterCount.set(y,Math.max(craterCount.get(y)??0,v));
+  }
   const podLayout=podCells[0].map(c=>({dy:c.dy}));
   const R=Math.round;
   const stamp=(list,group,frame,x,y,kind=group)=>{const f=groups[group].length;const k=((frame%f)+f)%f;list.push({dx:x-8,dy:y-8,cell:fxCell[group][k],kind});};
@@ -190,10 +200,11 @@ export async function arrivalArt(rom,repo){
     // browser stacks up to 30 stamps around the centre; keep the most
     // visible ones that fit beside the crater (6 per line), the pod (3) and
     // the hero's shadow, in priority order, and drop the rest for this age.
-    const used=new Map(),count=new Map();
+    // The crater sits on BG1, which the native quake shakes by 2 px against
+    // the scene: count each line's worst case over those shifts.
+    const used=new Map(craterUsed),count=new Map(craterCount);
     const take=(y,w=2)=>{for(let r=0;r<16;r++){used.set(y+r,(used.get(y+r)??0)+w);count.set(y+r,(count.get(y+r)??0)+1);}};
     const fits=y=>{for(let r=0;r<16;r++)if((used.get(y+r)??0)+2>34-NATIVE_SLIVERS||(count.get(y+r)??0)+1>32-NATIVE_SPRITES)return false;return true;};
-    for(const c of craterLayout)take(c.dy);
     for(const c of podLayout)take(podY+c.dy);
     const order=['centre','lightning','radial','gold-spark','beam-head'];
     const keep=new Set();

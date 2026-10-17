@@ -138,14 +138,23 @@ y < -15 (the OBJ y wrap). Per age, as `drawScene`:
 | Impact 77-109 | Goku hops out: cell request (sheet 0, column 37 in the air, 36 landed, row 0) through `!goku_cell_req`; the hero's native body entries (tiles `$1C0-$1EF`, held sword `$144-$149`) are hidden and redrawn as four 16×16 sprites at the hop position with the body's palette |
 | After | the crater and the open pod as map-128 scenery whenever the map is faded in (`$E4=$E5=1`), like `craterOnScreen` |
 
-- The browser composes the crater and the resting pod per scanline
-  (`getColor` line y, the first visible line being 1), one row above an OBJ
-  at the same y; both are placed one row higher than the scene's pod for
-  that reason, and match the browser's frames pixel for pixel.
+- The crater and the resting pod are map decoration, placed like the
+  browser's `placeCrater`: from BG1's scroll as the coming NMI writes it
+  (`C0:C170`: `$B0/$B2`, bit 1 flipped by the quake bits `$5E/$5F`) and the
+  tile stream's origin `$A8/$AA` (camera = origin + the scroll's offset from
+  it modulo 16, in -8..7), so they shake with the ground during the native
+  quake and never slip against the tiles. The scene itself (pods in flight,
+  effects, Goku) stays on the hero's camera (`$E002-$E020`), as `drawScene`
+  does.
+- The browser composes the crater and the resting pod per scanline (line y,
+  the first visible line being 1), one row above an OBJ at the same y; both
+  are placed one row higher than the scene's pod for that reason, and match
+  the browser's frames pixel for pixel.
 - Hardware limits: at most 32 sprites / 34 slivers per line. The generator
-  keeps the stamps that fit beside the crater (6 per line), the pod (3) and
-  the hero's shadow, in priority order (centre, lightning, radial, gold
-  sparks, beam heads); the densest ages drop up to 19 of 30 browser stamps.
+  keeps the stamps that fit beside the crater (6 per line, counted at the
+  quake's -2/0/+2 offsets), the pod (3) and the hero's shadow, in priority
+  order (centre, lightning, radial, gold sparks, beam heads); the densest
+  ages drop up to 19 of 30 browser stamps.
 - Art (generated from the browser's own code): pod frames from
   `saiyan-pod.js` (one 15-colour palette), the Potos hole from
   `native-crater.js` at 2× (48×32 → 96×64; 20 sprites from 9 cells after
@@ -208,9 +217,10 @@ story's. Core hooks used: `modules_title_boot` (WRAM program patches),
   extended credit is shown.
 - WRAM `!RAM_MISC`: `+$00` flags (bit0 prefilled), `+$02/$04` scratch, `+$06`
   phase, `+$07` sfx, `+$08` ticks, `+$0A-$0F` hero mode/frame/x/y, `+$10-$13`
-  VRAM state, `+$14/$16` sword screen position, `+$18` last tick, `+$1D`
-  claims, `+$1E` status (bit1 title program patched), `+$20-$27` crown
-  buffer, `+$28-$4B` drawing state, `+$60-$63` palette state; `+$4C-$5F` and
+  VRAM state, `+$14/$16` sword screen position on the hero's camera, `+$18`
+  last tick, `+$1D` claims, `+$1E` status (bit1 title program patched),
+  `+$20-$27` crown buffer, `+$28-$4B` drawing state, `+$4C/$4E` sword
+  screen position on BG1, `+$60-$63` palette state; `+$50-$5F` and
   `+$64-$7F` free.
 - OBJ VRAM (map 128 only; uploaded through `core_queue_vram` and redrawn
   after any interruption: other modes, map changes):
@@ -246,8 +256,11 @@ story's. Core hooks used: `modules_title_boot` (WRAM program patches),
     `sprite-layer.js`, from `.local/arrival-research/probe/before-pull.json`):
     phase frames within 3, hero slot, persistence, and 16 shots compared in
     5-bit channels with the best browser age within -7..+2 (the native flash
-    and water steps run on their own five-frame cadence). Side-by-side PNGs:
-    `.local/snes-test/title/arrival/compare/`.
+    and water steps run on their own five-frame cadence); the crater and pod
+    boxes take their own best age, since the quake's 2 px BG1 shake, which
+    moves them with the ground, alternates every other frame. A crater left
+    on the hero's camera fails these boxes by 10-24% while the quake runs.
+    Side-by-side PNGs: `.local/snes-test/title/arrival/compare/`.
   - *e2e*: power-on with this build to the waterfall
     (`snes/test/checkpoints.mjs --stop=waterfall`), a closed-loop walk to the
     sword (waypoints of a route found in SnesJs), the pull, every page, the
