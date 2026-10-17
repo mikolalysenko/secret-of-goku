@@ -9,7 +9,7 @@ import {restore,hash} from '../engine/state.js';
 // can act. Each must be indistinguishable from the original slow path.
 const rom=new Uint8Array(readFileSync('rom/secret-of-mana-us.sfc'));
 function core(){
- const context={console,Uint8Array,Uint16Array,Int8Array,Int16Array,Uint32Array,Int32Array,Float32Array,Float64Array,ArrayBuffer,Math,Map,clearArray:a=>a.fill(0),log:()=>{},getByteRep:x=>x.toString(16),getWordRep:x=>x.toString(16),getLongRep:x=>x.toString(16)};
+ const context={console,Uint8Array,Uint8ClampedArray,Uint16Array,Int8Array,Int16Array,Uint32Array,Int32Array,Float32Array,Float64Array,ArrayBuffer,Math,Map,clearArray:a=>a.fill(0),log:()=>{},getByteRep:x=>x.toString(16),getWordRep:x=>x.toString(16),getLongRep:x=>x.toString(16)};
  vm.createContext(context);
  for(const name of['cart','dsp','spc','apu','pipu','cpu','snes'])vm.runInContext(readFileSync(`vendor/snes/${name}.js`,'utf8'),context);
  const snes=new context.Snes();snes.loadRom(rom,true);snes.reset(true);return snes;
@@ -62,6 +62,18 @@ test('paint and channel line ops match the per-pixel wrappers they describe',()=
  for(const f of fixtures){
   const [a,b]=pair(),st=JSON.parse(readFileSync(f,'utf8'));for(const s of[a,b])restore(s,{...st,romHash:hash(s.cart.data)});
   lockstep(a,b,8,`line ops ${f}`);
+ }
+});
+test('setPixels writes ImageData words with the same bytes as its byte loop',()=>{
+ const ppu=core().ppu,p=ppu.pixelOutput;
+ for(let trial=0;trial<16;trial++){
+  // Out-of-range channels must clamp as Uint8ClampedArray stores do.
+  for(let i=0;i<p.length;i++)p[i]=(Math.imul(i+1,2654435761+trial)>>>23)%(trial%4===3?300:256);
+  Object.assign(ppu,{frameOverscan:!!(trial&1),frameInterlace:!!(trial&2),evenFrame:!!(trial&4)});
+  const before=Uint8ClampedArray.from({length:512*480*4},(_,i)=>(i*31+trial)&255),words=new Uint8ClampedArray(before),bytes=Array.from(before);
+  ppu.setPixels(words);ppu.setPixels(bytes);
+  const at=bytes.findIndex((v,i)=>Math.min(255,v)!==words[i]);
+  assert.equal(at,-1,`trial ${trial}: byte ${at}`);
  }
 });
 test('batched idle cycles match cycle-by-cycle stepping, including skipped pictures',()=>{
