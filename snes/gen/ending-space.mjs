@@ -163,3 +163,63 @@ export function brickFracture(globe,{candidates=60,maxTiles=496,seed0=0x6a09e667
   if(!best)throw Error('no brick fracture fits the OBJ budget');
   return best;
 }
+
+// Fragment motion (planet-fragments.js fragmentPose): the piece moves
+// radially by t*speed + .003 t^2; the cartridge reads round(dx*d),
+// round(dy*d) per drift frame from a table (ending_frag_offsets).
+export const FRAG_FRAMES=115;
+export function pieceOffsetExact(p,t){const d=t*p.speed+t*t*.003;return {x:Math.round(p.dx*d),y:Math.round(p.dy*d)};}
+export function piecePos(p,t){const o=pieceOffsetExact(p,t);return {x:p.left+o.x,y:p.top+o.y};}
+// planet-view explodingPlanet sparks: spell('gold-spark', (t>>2)+i, ...)
+// drawn centred on 87 + cos(a)*dist, 140 + sin(a)*dist (top-left = -8).
+export const SPARKS=18;
+export function sparkPos(i,t){
+  const a=i*2.39996,dist=20+t*(.65+i%5*.17);
+  return {x:Math.round(87+Math.cos(a)*dist)-8,y:Math.round(140+Math.sin(a)*dist)-8,frame:((t>>2)+i)&3};
+}
+// The white flash disc (t < 8): radius min(86, 18 + 10t).
+export const discRadius=t=>t<8?Math.min(86,18+t*10):-1;
+
+// Per-frame sprite budget of the drift (t = 0..69): pieces whose sprites
+// sit wholly inside the flash disc are skipped (they would be white), then
+// sparks are kept in index order while every scanline stays within 34
+// slivers and 32 sprites (no time-over: the PPU would drop the first
+// sprites' tiles, i.e. the sparks drawn on top). Pieces always fit (the
+// fracture keeps them within 32 slivers per line).
+export function sparkBudget(pieces){
+  const cull=[],keep=[];
+  for(let t=0;t<70;t++){
+    const tiles=new Int16Array(224),count=new Int16Array(224),r=discRadius(t),culled=new Set();
+    let index=0;
+    // Conservative: a sprite partly off the left edge counts all its tiles.
+    const add=(x,y,size)=>{
+      let n=0;for(let c=0;c<size;c+=8)if(x+c<256)n++;
+      if(x<=-size||!n)return;
+      for(let yy=y;yy<y+size;yy++)if(yy>=0&&yy<224){tiles[yy]+=n;count[yy]++;}
+    };
+    pieces.forEach(p=>{
+      const pos=piecePos(p,t);
+      p.sprites.forEach(s=>{
+        const x=pos.x+s.x,y=pos.y+s.y,k=index++;
+        if(r>0){const corners=[[x,y],[x+s.size-1,y],[x,y+s.size-1],[x+s.size-1,y+s.size-1]];
+          if(corners.every(([cx,cy])=>(cx-87)**2+(cy-140)**2<=r*r)){culled.add(k);return;}}
+        if(x<=-s.size||x>=256||y<=-s.size||y>=224)return;
+        add(x,y,s.size);
+      });
+    });
+    cull.push(culled);
+    // Greedy from a start index that rotates every frame, so in crowded
+    // frames the sparks left out change (they flicker instead of vanishing).
+    let mask=0;
+    for(let k=0;k<SPARKS;k++){
+      const i=(t*7+k)%SPARKS,s=sparkPos(i,t);
+      if(s.y<=-16||s.y>=224||s.x<=-16||s.x>=256){continue;}
+      let n=0;for(let c=0;c<16;c+=8)if(s.x+c<256)n++;
+      let fits=true;for(let yy=s.y;yy<s.y+16;yy++)if(yy>=0&&yy<224&&(tiles[yy]+n>34||count[yy]+1>32)){fits=false;break;}
+      if(!fits)continue;
+      mask|=1<<i;add(s.x,s.y,16);
+    }
+    keep.push(mask);
+  }
+  return {cull,keep};
+}

@@ -9,7 +9,7 @@ import {readFileSync,writeFileSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {runMesen} from '../mesen.mjs';
-import {kaiReference,compare,writeRef} from './reference.mjs';
+import {kaiReference,compare,writeRef,bestPlanetMatch} from './reference.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const rom=process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-goku.sfc');
 const baseRom=new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')));
@@ -40,8 +40,35 @@ async function kaiCheck(r,out){
   }
 }
 
+// Bad ending in space: stills against planet-view.js at the recorded ages.
+async function spaceCheck(r,out){
+  expect(r.doomed_loaded,'doomed globe loaded');
+  expect(r.doomed_load_frames<=12,`doomed load took ${r.doomed_load_frames} frames`);
+  expect(!r.explode_reloaded,'explosion continues on the live globe');
+  expect(!r.escape_reloaded,'escape continues without a reload');
+  expect(r.explode_done===1,'explosion timeline done flag');
+  expect(r.explode_lag<=2,`explosion lag ${r.explode_lag} frames`);
+  expect(r.escape_lag<=1,`escape lag ${r.escape_lag} frames`);
+  expect(r.overruns===0,`vblank overran ${r.overruns} times (to line ${r.overrun_max})`);
+  // The globe and seams are tile-exact; drifting fragments are the SNES
+  // brick fracture (39 sprite pieces, no rotation) against the browser's 64
+  // rotating Voronoi shards, so those stills share position, colour and
+  // timing rather than shapes.
+  const shots=[['doomed','doomed',.97],['doomed-day','doomed',.97,{night:false}],
+    ...[9,20,32,41].map(a=>[`explode-${a}`,'explode',.88]),...[52,60,70,90,120].map(a=>[`explode-${a}`,'explode',.6]),['explode-150','explode',.95],
+    ['escape-4','escape',.85],['escape-10','escape',.85],['escape-24','escape',.95]];
+  for(const [name,phase,min,opts={}] of shots){
+    if(r[name]===undefined){problems.push(`no still ${name}`);continue;}
+    const best=await bestPlanetMatch(join(out,`${name}.png`),{rom:baseRom,phase,...opts},r[name]);
+    writeFileSync(join(out,`${name}-ref.png`),writeRef(null,best.ref));
+    r[`${name}_match`]=best.score;r[`${name}_lagged`]=r[name]-best.age;
+    expect(best.score>=min,`${name} matches planet-view at ${(best.score*100).toFixed(1)}% (age ${best.age})`);
+  }
+}
+
 const tests=[
   {name:'kai',check:kaiCheck},
+  {name:'space',check:spaceCheck},
 ];
 let ok=true;
 for(const t of tests){

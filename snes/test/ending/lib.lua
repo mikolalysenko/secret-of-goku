@@ -35,6 +35,7 @@ end
 -- black. Counts frames that overran by more than `slack` lines while armed.
 E.overruns = 0
 E.overrunMax = 0
+E.overrunAt = {}
 E.watchArmed = false
 function E.watchVblank(slack)
   slack = slack or 1
@@ -44,6 +45,9 @@ function E.watchVblank(slack)
     if line < 200 and line > slack then
       E.overruns = E.overruns + 1
       if line > E.overrunMax then E.overrunMax = line end
+      if #E.overrunAt < 16 then
+        E.overrunAt[#E.overrunAt + 1] = string.format('p%d a%d l%d', H.r8(E.phase), H.r16(E.age), line)
+      end
     end
   end, emu.callbackType.exec, 0x00C164, 0x00C164)
 end

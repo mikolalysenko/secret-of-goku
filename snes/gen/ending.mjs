@@ -22,7 +22,7 @@ function radioCard(rom,radioPixels,text,x0,y0,paletteBase,tileBase){
 }
 
 const here=dirname(fileURLToPath(import.meta.url));
-const VERSION=3;
+const VERSION=4;
 // Data banks for the ending (lower halves): its own data bank and the spare
 // code banks' lower halves assigned by the integrator.
 export const DATA_BANKS=[0xE9,0xEC,0xED,0xEE,0xEF];
@@ -146,143 +146,302 @@ async function spaceAssets(o,{rom,repo}){
   const {radioPixels}=await engine(repo,'native-radio.js');
   const {createNativeEffects}=await engine(repo,'native-effects.js');
   const effects=createNativeEffects(rom,JSON.parse(readFileSync(join(repo,'engine/native-effects.json'),'utf8')));
-  // Palette 7: index 1-4 star shades, 5-9 the radio card colours.
-  const cardColors=[0x0000,0x2c00,0x5250,0x739c,0x7fff];
-  const pal7=[0,...[0,1,2,3].map(s=>sp.starColor(s)-1),...cardColors];while(pal7.length<16)pal7.push(0);
+  // BG palette 7: 1-4 star shades, 5-9 the radio card, 10-12 the teleport
+  // lines (planet-view blue[0..2]).
+  const cardColors=[0x0000,0x2c00,0x5250,0x739c,0x7fff],blue=sp.BLUE.map(c=>c-1);
+  const pal7=[0,...[0,1,2,3].map(s=>sp.starColor(s)-1),...cardColors,blue[0],blue[1],blue[2]];while(pal7.length<16)pal7.push(0);
   o.table('ending_space_pal7','dw',pal7);
+  o.table('ending_blue','dw',blue);
   // Stars (BG2, transparent between).
   const stars=sp.starList(),starIdx=new Uint8Array(256*224);
   for(const s of stars)starIdx[s.y*256+s.x]=1+s.shade;
   const st=encodeIndexTiles(starIdx,256,224,{tileBase:0});
   o.blob('space_star_tiles',st.tiles);o.blob('space_star_map',u16bytes(st.map));
   const S=st.tileCount;o.def('ENDING_STAR_TILES',S);
-  // Bright stars twinkle (planet-view sky): x, y, phase.
-  o.table('ending_twinkle','db',stars.filter(s=>s.bright).flatMap(s=>[s.x,s.y,s.phase,1+s.shade]));
-  o.def('ENDING_TWINKLES',stars.filter(s=>s.bright).length);
-  // Night globe with the fracture's crack tiles kept unique and index 15
-  // free for the crack colour.
+
+  // Night globe. The fracture's seams are revealed by rewriting their tiles
+  // (index 15 = crack colour), so those tiles stay unique and are moved to
+  // the end of the globe's tiles in order of first reveal.
   const night=sp.planetSurface(rom,{night:true});
   const fr=sp.brickFracture(night,{candidates:60,maxTiles:496});
   const crackPx=new Set();for(const p of fr.pieces)for(const i of p.edge)crackPx.add(i);
-  const crackTiles=new Set([...crackPx].map(i=>((i/256|0)>>3)*32+((i%256)>>3)));
-  const nightImg=surfaceToImage(night,256,224);
-  const ng=makeBgFitTiles(nightImg,{tileBase:S,colors:14,unique:crackTiles});
-  o.blob('space_night_tiles',ng.tiles);o.blob('space_night_map',u16bytes(ng.map));
-  o.table('ending_space_night_pal','dw',ng.palettes.flat().map(c=>c&0x7fff));
-  o.def('ENDING_NIGHT_TILES',ng.tileCount);
-  // Crack events: per age (browser reach = age*1.9), each globe tile row
-  // whose crack mask grows gets its final words (base | mask in all planes).
   const ageOf=i=>{const d=Math.hypot(i%256-sp.VIEW.x,(i/256|0)-sp.VIEW.y);return Math.floor(d/1.9)+1;};
+  const tileOfPx=i=>((i/256|0)>>3)*32+((i%256)>>3);
+  const crackTiles=new Set([...crackPx].filter(i=>ageOf(i)<=47).map(tileOfPx));
+  const ng0=makeBgFitTiles(surfaceToImage(night,256,224),{tileBase:S,colors:14,unique:crackTiles});
+  const minAge=new Map();for(const i of crackPx){const a=ageOf(i);if(a>47)continue;const t=tileOfPx(i);minAge.set(t,Math.min(minAge.get(t)??99,a));}
+  const crackPos=[...crackTiles].sort((a,b)=>minAge.get(a)-minAge.get(b)||a-b);
+  const crackIds=new Set(crackPos.map(t=>ng0.tileIds[t]));
+  const order=[];for(let id=0;id<ng0.tileCount;id++)if(!crackIds.has(id))order.push(id);
+  const nonCrack=order.length;for(const t of crackPos)order.push(ng0.tileIds[t]);
+  const newId=new Int32Array(ng0.tileCount);order.forEach((id,k)=>newId[id]=k);
+  const nightTiles=new Uint8Array(ng0.tiles.length);order.forEach((id,k)=>nightTiles.set(ng0.tiles.subarray(id*32,id*32+32),k*32));
+  const nightMap=ng0.map.map(w=>{const t=(w&0x3ff)-S;return t>=0&&t<ng0.tileCount?(w&~0x3ff)|(newId[t]+S):w;});
+  o.blob('space_night_tiles',nightTiles);o.blob('space_night_map',u16bytes(nightMap));
+  o.table('ending_space_night_pal','dw',ng0.palettes.flat().map(c=>c&0x7fff));
+  o.def('ENDING_NIGHT_TILES',ng0.tileCount);o.def('ENDING_CRACK_FIRST',S+nonCrack);o.def('ENDING_CRACK_NONCRACK',nonCrack);o.def('ENDING_CRACK_TILES',crackPos.length);
+  // Crack reveal (planet-view: seams within age*1.9 of the centre). The
+  // cartridge keeps a 128-tile ring mirror of the crack tiles in SRAM: at
+  // age a it seeds the tiles first revealed at a from ROM, stores the rows
+  // that change (base | mask in all planes) and uploads the changed span.
+  // Events: mirror offset ((k & 127) * 32 + row * 2), planes 0-1, planes 2-3.
+  const K=crackPos.length,kOf=new Map(crackPos.map((t,k)=>[t,k]));
   const rowMask=new Map();
   for(const i of crackPx){
     const x=i%256,y=i/256|0,a=ageOf(i);if(a>47)continue;
-    const t=(y>>3)*32+(x>>3),key=t*8+(y&7);
+    const key=kOf.get(tileOfPx(i))*8+(y&7);
     if(!rowMask.has(key))rowMask.set(key,[]);rowMask.get(key).push([a,0x80>>(x&7)]);
   }
-  const events=Array.from({length:49},()=>[]);
+  const events=Array.from({length:49},()=>[]),changed=Array.from({length:49},()=>new Set());
   for(const [key,list] of rowMask){
-    const t=key>>3,r=key&7,tid=ng.tileIds[t],base=ng.tiles.subarray(tid*32,tid*32+32);
+    const k=key>>3,r=key&7,base=nightTiles.subarray((nonCrack+k)*32,(nonCrack+k)*32+32);
     list.sort((p,q)=>p[0]-q[0]);let m=0;
-    for(let k=0;k<list.length;k++){
-      m|=list[k][1];
-      if(k+1<list.length&&list[k+1][0]===list[k][0])continue;
-      const addr=SPACE_BG_BASE+(S+tid)*16+r;
-      const w01=(base[r*2]|m)|((base[r*2+1]|m)<<8),w23=(base[16+r*2]|m)|((base[16+r*2+1]|m)<<8);
-      events[list[k][0]].push(addr,w01,w23);
+    for(let n=0;n<list.length;n++){
+      m|=list[n][1];
+      if(n+1<list.length&&list[n+1][0]===list[n][0])continue;
+      const a=list[n][0];
+      events[a].push((k&127)*32+r*2,(base[r*2]|m)|((base[r*2+1]|m)<<8),(base[16+r*2]|m)|((base[16+r*2+1]|m)<<8));
+      changed[a].add(k);
     }
   }
-  const evIndex=[];let evWords=[];
-  for(let a=0;a<49;a++){evIndex.push(evWords.length*2);evWords=evWords.concat(events[a]);}
-  evIndex.push(evWords.length*2);
+  const firstAge=k=>minAge.get(crackPos[k]);
+  // Per age (8 bytes): event byte offset.w, tiles that must be seeded by
+  // then (first reveal <= age), first uploaded tile, uploaded span, spare.
+  // Tile k may be seeded ahead of time once tile k-128 (same ring slot) has
+  // left every upload span (2 frames of margin for a deferred upload).
+  const ageRows=[],spans=[];let evWords=[];
+  for(let a=0;a<49;a++){
+    const ks=[...changed[a]],lo=ks.length?Math.min(...ks):0,hi=ks.length?Math.max(...ks):-1;
+    const need=[...Array(K).keys()].filter(k=>firstAge(k)<=a).length;
+    if(ks.length&&need-lo>128)throw Error(`crack ring mirror overflow at age ${a}`);
+    spans.push([lo,hi]);
+    ageRows.push(evWords.length*2,need,lo|((hi-lo+1)<<8),0);
+    evWords=evWords.concat(events[a]);
+  }
+  ageRows.push(evWords.length*2,K,0,0);
+  const lastUse=k=>{let last=-1;spans.forEach(([lo,hi],a)=>{if(k>=lo&&k<=hi)last=a;});return last;};
+  const seedAge=[...Array(K).keys()].map(k=>k<128?0:lastUse(k-128)+2);
+  for(let k=128;k<K;k++)if(lastUse(k-128)+1>firstAge(k))throw Error('crack ring slot reused too early');
   o.blob('space_crack_events',u16bytes(Uint16Array.from(evWords)));
-  o.table('ending_crack_index','dw',evIndex);
-  o.stats.crack={pixels:crackPx.size,events:evWords.length/3,bytes:evWords.length*2};
-  // Day globe (departure and a doomed planet without Frieza's crisis).
-  const dayImg=surfaceToImage(sp.planetSurface(rom,{night:false}),256,224);
-  const dg=makeBgFitTiles(dayImg,{tileBase:S,colors:15});
+  o.table('ending_crack_ages','dw',ageRows);
+  o.table('ending_crack_seed','db',seedAge.map(a=>Math.min(255,a)));
+  o.stats.crack={pixels:crackPx.size,tiles:K,events:evWords.length/3,bytes:evWords.length*2,maxSpan:Math.max(...changed.map(s=>s.size?Math.max(...s)-Math.min(...s)+1:0))};
+
+  // Day globe (doomed without Frieza's crisis, departure).
+  const dg=makeBgFitTiles(surfaceToImage(sp.planetSurface(rom,{night:false}),256,224),{tileBase:S,colors:15});
   o.blob('space_day_tiles',dg.tiles);o.blob('space_day_map',u16bytes(dg.map));
   o.table('ending_space_day_pal','dw',dg.palettes.flat().map(c=>c&0x7fff));
   o.def('ENDING_DAY_TILES',dg.tileCount);
-  // GAME OVER card (boss-rush-death: radio window at (8,80)), after the night globe.
+  // GAME OVER card (boss-rush-death: radio window at (8,80)), after the
+  // globes; its map replaces the globe's on BG1 when the card shows.
+  const cardBase=S+Math.max(ng0.tileCount,dg.tileCount);
   const cardPx=radioPixels(rom,'          GAME OVER\n\n      The planet is gone.'),cardIdx=new Uint8Array(256*224);
-  for(let y=0;y<64;y++)for(let x=0;x<240;x++){const c=cardPx[y*240+x];if(c)cardIdx[(y+80)*256+x+8]=5+cardColors.indexOf(c-1);}
-  const cd=encodeIndexTiles(cardIdx,256,224,{tileBase:S+ng.tileCount,priority:1});
+  for(let y=0;y<64;y++)for(let x=0;x<240;x++){const c=cardPx[y*240+x];if(!c)continue;const k=cardColors.indexOf(c-1);if(k<0)throw Error('card colour');cardIdx[(y+80)*256+x+8]=5+k;}
+  const cd=encodeIndexTiles(cardIdx,256,224,{tileBase:cardBase,priority:1});
   o.blob('space_card_tiles',cd.tiles);o.blob('space_card_map',u16bytes(cd.map));
-  o.def('ENDING_CARD_TILES_GO',cd.tileCount);
-  if(S+ng.tileCount+cd.tileCount>512)throw Error('space BG tiles exceed 512');
-  // Fragments: four OBJ palettes (4-7): colours 1-13, 15 = edge (animated).
+  o.def('ENDING_SPACE_CARD_BASE',cardBase);
+  // Escape teleport lines (planet-view escape): x = 170 + 2i, colour
+  // blue[i % 3] = BG palette 7 indices 10-12, on BG1 tile columns 21-24,
+  // rows 8-13 (y 64-111); a TM band per line limits them to 64+age..104-age.
+  const curtainBase=cardBase+cd.tileCount,curtainTiles=new Uint8Array(4*32);
+  for(let col=0;col<4;col++){const px=new Uint8Array(64);
+    for(let i=0;i<12;i++){const x=170+2*i-(168+col*8);if(x<0||x>7)continue;for(let y=0;y<8;y++)px[y*8+x]=10+i%3;}
+    curtainTiles.set(gfx.encodeTile(px,8,0,0,4),col*32);}
+  const curtainMap=new Uint16Array(32*32);
+  for(let ty=8;ty<14;ty++)for(let col=0;col<4;col++)curtainMap[ty*32+21+col]=(curtainBase+col)|(7<<10)|0x2000;
+  o.blob('space_curtain_map',u16bytes(curtainMap));
+  // Twinkling bright stars (planet-view sky: a cross while (age + phase) %
+  // 240 < 9): alternative star tiles swapped in through BG2 map words.
+  // Rows: phase, word count, 3 x (VRAM address, plain word, twinkle word).
+  const twBase=curtainBase+4,twTiles=[],twRows=[];
+  const bright=stars.filter(s=>s.bright);
+  for(const s of bright){
+    const pts=[[s.x,s.y],[s.x-1,s.y],[s.x+1,s.y],[s.x,s.y-1],[s.x,s.y+1]].filter(([x,y])=>x>=0&&x<256&&y>=0&&y<224);
+    const tiles=[...new Set(pts.map(([x,y])=>(y>>3)*32+(x>>3)))];
+    const words=[];
+    for(const t of tiles){
+      const tx=t%32,ty=t/32|0,px=new Uint8Array(64);
+      for(let y=0;y<8;y++)for(let x=0;x<8;x++)px[y*8+x]=starIdx[(ty*8+y)*256+tx*8+x];
+      for(const [x,y] of pts)if((y>>3)===ty&&(x>>3)===tx)px[(y&7)*8+(x&7)]=1+s.shade;
+      const id=twBase+twTiles.length;twTiles.push(gfx.encodeTile(px,8,0,0,4));
+      words.push(0x5400+t,st.map[t],id|(7<<10));
+    }
+    while(words.length<9)words.push(0,0,0);
+    twRows.push(s.phase,tiles.length,...words);
+  }
+  o.table('ending_twinkle','dw',twRows);o.def('ENDING_TWINKLES',bright.length);
+  const extra=new Uint8Array((4+twTiles.length)*32);extra.set(curtainTiles,0);twTiles.forEach((b,i)=>extra.set(b,128+i*32));
+  o.blob('space_extra_tiles',extra);
+  o.def('ENDING_SPACE_CURTAIN_BASE',curtainBase);
+  if(twBase+twTiles.length>512)throw Error('space BG tiles exceed 512');
+
+  // Fragments: OBJ palettes 4-7: colours 1-13, 14 = the piece's depth side
+  // (drawn 2 px right and 3 px down, as planet-view's depth pass), 15 = the
+  // hot seam; 14 and 15 and the heat are set per frame.
   const P=4,groups=fr.pieces.map(p=>{const h=new Map();for(const i of p.pixels)if(!p.edge.has(i)){const c=night[i]-1;h.set(c,(h.get(c)??0)+1);}return h;});
   const fit=fitGroupPalettes(groups,{P,colors:13});
-  const fragPal=[],hot=[];
+  const fragPal=[];
   for(let k=0;k<P;k++){
     const pal=fit.palettes[k]??[0];let r=0,g=0,b=0,n=0;
     fr.pieces.forEach((p,j)=>{if(fit.assign[j]!==k)return;for(const i of p.edge){const c=night[i]-1;r+=c&31;g+=c>>5&31;b+=c>>10&31;n++;}});
     const avg=n?(Math.round(r/n)|(Math.round(g/n)<<5)|(Math.round(b/n)<<10)):0;
     const row=[0,...pal.slice(0,13)];while(row.length<15)row.push(0);row.push(avg);fragPal.push(...row.slice(0,16));
-    const cl=v=>Math.min(31,v);hot.push(cl((avg&31)+26)|(cl((avg>>5&31)+12)<<5)|(cl((avg>>10&31)+2)<<10));
   }
-  o.table('ending_frag_pal','dw',fragPal);o.table('ending_frag_hot','dw',hot);
-  // Edge colour per drift frame t = 0..48 for each fragment palette: the
-  // browser adds (26,12,2) * heat (heat = 1 - t/48) to the edge pixels.
-  const edgeRamp=[];
-  for(let t=0;t<=48;t++)for(let k=0;k<P;k++){const cool=fragPal[k*16+15],h=1-t/48,cl=v=>Math.min(31,Math.round(v));
-    edgeRamp.push(cl((cool&31)+26*h)|(cl((cool>>5&31)+12*h)<<5)|(cl((cool>>10&31)+2*h)<<10));}
-  o.table('ending_frag_edge','dw',edgeRamp);
-  // Escape teleport lines (planet-view escape): x = 170 + 2i, colour
-  // blue[i % 3] -> BG palette 1 indices 1-3; plane bytes per tile column
-  // x = 168..199 (BG1 tile columns 21-24).
-  const curtain=[];for(let col=0;col<4;col++){let p0=0,p1=0;for(let i=0;i<12;i++){const x=170+2*i-(168+col*8);if(x<0||x>7)continue;const c=1+i%3;if(c&1)p0|=0x80>>x;if(c&2)p1|=0x80>>x;}curtain.push(p0,p1);}
-  o.table('ending_curtain_planes','db',curtain);
-  o.table('ending_blue','dw',sp.BLUE.map(c=>c-1));
-  // Unit circle (7-bit) and the shock ring's y-squash (planet-view: radius
-  // * .42): k = round(dy / .42) per screen line offset.
-  o.table('ending_unit_circle','db',Array.from({length:256},(_,j)=>Math.round(Math.sqrt(Math.max(0,1-(j/256)**2))*127)));
-  // OBJ allocation in the 16x32 tile grid (OBJ base $0000): 32x32 blocks,
-  // then 16x16 cells, then four spark cells.
+  o.table('ending_frag_pal','dw',fragPal);
+  // Heat glow per drift frame t < 48 (heat = 1 - t/48, floor as shade()):
+  // face (10,4,0), seam (26,12,2), depth (18,6) over (8,3,3).
+  const heat=Array.from({length:48},(_,t)=>{const g=v=>Math.floor(v*(48-t)/48);return [g(10),g(4),g(26),g(12),g(2),g(18),g(6),0];});
+  o.table('ending_heat','db',heat.flat());
+  // Whole fragment palettes (64 colours) the frame copies by DMA: one per
+  // face glow (g10, g4) for t < 48 (seam and depth are set per frame), one
+  // per fade level (33 levels of the palette pipeline's dark curve) after.
+  const clamp=v=>Math.min(31,v),ch=(c,k)=>c>>(k*5)&31,mk=(r,g,b)=>r|(g<<5)|(b<<10);
+  const plain=fragPal.map((c,i)=>i%16===14?mk(8,3,3):c);
+  const glowStates=[],stateOf=[];
+  for(const h of heat){const key=h[0]+','+h[1];let k=glowStates.indexOf(key);if(k<0){k=glowStates.length;glowStates.push(key);}stateOf.push(k);}
+  const glowPal=glowStates.flatMap(key=>{const [g10,g4]=key.split(',').map(Number);return plain.map((c,i)=>i%16===0||i%16>=14?c:mk(clamp(ch(c,0)+g10),clamp(ch(c,1)+g4),ch(c,2)));});
+  o.table('ending_frag_glowpal','dw',glowPal);
+  o.table('ending_frag_glowstate','db',stateOf);
+  const fadePal=[];
+  for(let l=0;l<=32;l++)for(const c of plain){const d=v=>Math.round(v*(1-l/32));fadePal.push(mk(d(ch(c,0)),d(ch(c,1)),d(ch(c,2))));}
+  o.table('ending_frag_fadepal','dw',fadePal);
+  o.stats.fragPalettes={glowStates:glowStates.length,bytes:(glowStates.length+33)*128};
+  // OBJ tiles (base $0000): 32x32 blocks, 16x16 cells, and the spark strip
+  // (tile rows 30-31, columns 0-7 = four 16x16 cells; the escape puts
+  // Goku's 32x32 there).
   const used=new Uint8Array(16*32),vram=new Uint8Array(512*32);
   const alloc=size=>{const n=size/8;for(let r=0;r+n<=32;r+=n)for(let c=0;c+n<=16;c+=n){let free=true;for(let y=0;y<n&&free;y++)for(let x=0;x<n;x++)if(used[(r+y)*16+c+x]){free=false;break;}if(!free)continue;for(let y=0;y<n;y++)for(let x=0;x<n;x++)used[(r+y)*16+c+x]=1;return r*16+c;}throw Error('OBJ VRAM full');};
   const putTile=(tile,px)=>vram.set(gfx.encodeTile(px,8,0,0,4),tile*32);
-  // Spark cells: a fixed 8x2 strip at tile rows 30-31 (cells 0-3 in the
-  // scene's 16x16 cell layout; the escape reuses it for Goku's quad).
   const SPARK_TILE=30*16;
   for(let y=30;y<32;y++)for(let x=0;x<8;x++)used[y*16+x]=1;
-  const sprites=[];const order=fr.pieces.map((p,j)=>j).sort((a,b)=>fr.pieces[b].sprites[0].size-fr.pieces[a].sprites[0].size);
-  const pieceRows=[];
   fr.pieces.forEach((p,j)=>{
     const pal=fit.palettes[fit.assign[j]]??[0];
-    pieceRows[j]={x:p.left,y:p.top,ux:Math.round(p.dx*127),uy:Math.round(p.dy*127),speed:Math.round(p.speed*16),pal:4+Math.max(0,fit.assign[j])};
     p.index=new Map();for(const i of p.pixels)p.index.set(i,p.edge.has(i)?15:1+nearestIn(pal.slice(0,13),night[i]-1));
   });
-  for(const j of order){
+  const bySize=fr.pieces.map((p,j)=>j).sort((a,b)=>fr.pieces[b].sprites[0].size-fr.pieces[a].sprites[0].size);
+  for(const j of bySize){
     const p=fr.pieces[j];
     for(const s of p.sprites){
-      const tile=alloc(s.size),n=s.size/8;
+      s.tile=alloc(s.size);const n=s.size/8;
       for(let ty=0;ty<n;ty++)for(let tx=0;tx<n;tx++){
         const px=new Uint8Array(64);
-        for(let y=0;y<8;y++)for(let x=0;x<8;x++){const gx=p.left+s.x+tx*8+x,gy=p.top+s.y+ty*8+y;px[y*8+x]=gx<256&&gy<224?(p.index.get(gy*256+gx)??0):0;}
-        putTile(tile+ty*16+tx,px);
+        for(let y=0;y<8;y++)for(let x=0;x<8;x++){
+          const gx=p.left+s.x+tx*8+x,gy=p.top+s.y+ty*8+y;if(gx>=256||gy>=224)continue;
+          const face=p.index.get(gy*256+gx);
+          px[y*8+x]=face??(p.index.has((gy-3)*256+gx-2)?14:0);
+        }
+        putTile(s.tile+ty*16+tx,px);
       }
-      sprites.push({piece:j,dx:s.x,dy:s.y,size:s.size,tile});
     }
   }
   const sparkTile=[0,1,2,3].map(f=>SPARK_TILE+f*2);
   const gold=effects['gold-spark'],sparkPal=quantizeSurfaces(gold.map(cell=>cell));
   gold.forEach((cell,f)=>{const ix=sparkPal.index[f];for(let ty=0;ty<2;ty++)for(let tx=0;tx<2;tx++){const px=new Uint8Array(64);for(let y=0;y<8;y++)for(let x=0;x<8;x++)px[y*8+x]=ix[(ty*8+y)*16+tx*8+x];putTile(sparkTile[f]+ty*16+tx,px);}});
   o.table('ending_spark_pal','dw',sparkPal.palette);
-  o.table('ending_spark_tiles','dw',sparkTile);
   o.def('ENDING_SPARK_TILE',SPARK_TILE);
   let top=0;for(let t=0;t<512;t++)if(used[t])top=t+1;
   const objRows=Math.ceil(top/16);
   o.blob('space_obj',vram.slice(0,objRows*16*32));
   o.def('ENDING_SPACE_OBJ_BYTES',objRows*16*32);
-  o.def('ENDING_FRAG_PIECES',fr.pieces.length);o.def('ENDING_FRAG_SPRITES',sprites.length);
-  o.table('ending_frag_pieces','db',pieceRows.flatMap(r=>[r.x&255,r.x>>8&255,r.y&255,r.y>>8&255,r.ux&255,r.uy&255,r.speed,r.pal]));
-  o.table('ending_frag_sprites','db',sprites.flatMap(s=>[s.piece,s.dx,s.dy,s.size===32?2:0,s.tile&255,s.tile>>8]));
-  o.table('ending_frag_q16','dw',Array.from({length:256},(_,t)=>Math.round(.003*t*t*16)));
-  // Sparks (planet-view explodingPlanet): angle i*2.39996, distance
-  // 20 + t*(.65 + (i%5)*.17).
-  o.table('ending_sparks','db',Array.from({length:18},(_,i)=>{const a=i*2.39996;return [Math.round(Math.cos(a)*127)&255,Math.round(Math.sin(a)*127)&255,Math.round((.65+(i%5)*.17)*16),0];}).flat());
-  o.stats.space={stars:S,night:ng.tileCount,day:dg.tileCount,card:cd.tileCount,pieces:fr.pieces.length,sprites:sprites.length,objTiles:top,load:fr.load};
+  // Fragment sprites in piece order (8 bytes): x0.w y0.w (rest corner),
+  // chr.w (tile | palette << 9 | priority 2), piece, flags (bit 0 32x32,
+  // bit 1 x moves left, bit 2 y moves up). Offsets per drift frame t < 115:
+  // |round(dx*d)|, |round(dy*d)| for every piece (ending_frag_offsets).
+  o.def('ENDING_FRAG_PIECES',fr.pieces.length);
+  const sprites=[];
+  fr.pieces.forEach((p,j)=>{
+    const pal=4+Math.max(0,fit.assign[j]);
+    for(const s of p.sprites)sprites.push({x:p.left+s.x,y:p.top+s.y,chr:s.tile|(pal<<9)|0x2000,j,flags:(s.size===32?1:0)|(p.dx<0?2:0)|(p.dy<0?4:0)});
+  });
+  o.def('ENDING_FRAG_SPRITES',sprites.length);
+  if(sprites.length>48)throw Error('fragment OAM block holds 48 sprites');
+  // OAM block (slots 24-71, fixed): chr words; per drift frame t < 115 the
+  // 48 (x low, y) pairs and the block's 12 high-table bytes (x bit 8,
+  // size). Hidden sprites (off screen, or inside the flash disc while
+  // t < 8) sit at y = 224.
+  o.table('ending_frag_chr','dw',sprites.map(s=>s.chr));
+  const fragOam=[];
+  const cullSets=sp.sparkBudget(fr.pieces).cull;
+  for(let t=0;t<sp.FRAG_FRAMES;t++){
+    const hi=new Array(12).fill(0);let k=0;
+    for(const p of fr.pieces){const o2=sp.pieceOffsetExact(p,t);
+      for(const s of p.sprites){
+        const x=p.left+s.x+o2.x,y=p.top+s.y+o2.y,size=s.size;
+        const hidden=x<=-size||x>=256||y<=-size||y>=224||(t<8&&cullSets[t].has(k));
+        fragOam.push(hidden?0:x&255,hidden?224:y&255);
+        hi[k>>2]|=((size===32?2:0)|(!hidden&&x<0?1:0))<<((k&3)*2);
+        k++;
+      }}
+    for(;k<48;k++)fragOam.push(0,224);
+    fragOam.push(...hi);
+  }
+  o.blob('space_frag_oam',Uint8Array.from(fragOam));
+  // Sparks: per drift frame t < 70, 18 x (x + 64, y) top-left corners;
+  // keep masks from the scanline budget.
+  // Sparks in OAM slots 0-17: per drift frame t < 70, 18 (x low, y) pairs
+  // (y = 224: left out by the scanline budget, or off screen) and the 5
+  // high-table bytes of slots 0-19 (x bit 8; sparks are 16x16).
+  const budget=sp.sparkBudget(fr.pieces);
+  const sparkOam=[];
+  for(let t=0;t<70;t++){
+    const hi=new Array(5).fill(0);
+    for(let i=0;i<sp.SPARKS;i++){
+      const s=sp.sparkPos(i,t),shown=(budget.keep[t]>>i&1)&&s.x>-16&&s.x<256&&s.y>-16&&s.y<224;
+      sparkOam.push(shown?s.x&255:0,shown?s.y&255:224);
+      if(shown&&s.x<0)hi[i>>2]|=1<<((i&3)*2);
+    }
+    sparkOam.push(...hi);
+  }
+  o.blob('space_spark_oam',Uint8Array.from(sparkOam));
+  // Flash disc (t < 8, radius min(86, 18 + 10t)): k(d) = floor(sqrt(r^2 -
+  // d^2)) per line offset d = 0..r. Shock ring (t = 8..89, radius 8 + 3t,
+  // y-radius .42 r): the arc's inner x at d, R sqrt(1 - ((d + .5)/ry)^2),
+  // d = 0..round(ry), clipped to 255. Rows: data offset.w, D, R (<= 255).
+  const winRows=[],winData=[];
+  for(let t=0;t<90;t++){
+    const at=winData.length;let D,R;
+    if(t<8){R=sp.discRadius(t);D=R;for(let d=0;d<=D;d++)winData.push(Math.floor(Math.sqrt(R*R-d*d)));}
+    else{R=8+3*t;const ry=.42*R;D=Math.round(ry);for(let d=0;d<=D;d++){const u=(d+.5)/ry;winData.push(u>=1?0:Math.min(255,Math.round(R*Math.sqrt(1-u*u))));}}
+    winRows.push(at,D|(Math.min(255,R)<<8));
+  }
+  o.blob('space_win_data',Uint8Array.from(winData));
+  o.table('ending_win_rows','dw',winRows);
+  // The browser's ring is 180 dots (2 degrees apart): at large radii they
+  // leave lines empty. Per t, bit d = line offset d has a dot (16 bytes).
+  const dots=[];
+  for(let t=0;t<90;t++){
+    const bits=new Array(16).fill(0);
+    if(t<8)bits.fill(255);
+    else{const R=8+3*t;for(let i=0;i<180;i++){const d=Math.abs(Math.round(140+Math.sin(i*Math.PI/90)*R*.42)-140);if(d<128)bits[d>>3]|=1<<(d&7);}}
+    dots.push(...bits);
+  }
+  o.table('ending_ring_dots','db',dots);
+  // Window registers WH0-WH3 come from four indirect HDMA channels reading
+  // per-line byte arrays U0-U3 in SRAM (two buffers at s_big = $7000 and
+  // $7400; U0 +$000, U1 +$080, U2 +$100, U3 +$180, empty bytes +$200-3).
+  // Line 140 +- d reads index d (the ellipse is symmetric), lines 0-23
+  // the empty bytes: the tables are constant. Lookups for a half width v:
+  // 87 - v (>= 1, else 1/0 = empty left), 87 + v (<= 254, else 255/254).
+  const WIN_BUFS=[0x7000,0x7400],U=[0x000,0x080,0x100,0x180],EMPTY=[1,0,0xff,0xfe],tables=[];
+  for(const buf of WIN_BUFS)for(let ch=0;ch<4;ch++){
+    const at=buf+U[ch],t=[24,(buf+0x200+ch)&255,(buf+0x200+ch)>>8];
+    for(let d=116;d>=1;d--)t.push(1,(at+d)&255,(at+d)>>8);
+    t.push(0x80|117,at&255,at>>8,0);
+    tables.push(t);
+  }
+  const tableLen=tables[0].length;
+  o.blob('space_win_hdma',Uint8Array.from(tables.flat()));
+  o.def('ENDING_WIN_HDMA_LEN',tableLen);
+  o.table('ending_win_empty','db',EMPTY);
+  const ta=(f)=>Array.from({length:256},(_,v)=>f(v));
+  o.blob('space_win_ta',Uint8Array.from([
+    ...ta(v=>v<=87?87-v:1),        // TA0: outer left edge
+    ...ta(v=>v<=87?87-v:0),        // TA1: inner left edge (0 with TA0 = 1: empty)
+    ...ta(v=>v<=168?87+v:255),     // TA2: inner right edge
+    ...ta(v=>v<=167?87+v:254),     // TA3: outer right edge (254 with TA2 = 255: empty)
+  ]));
+  o.stats.space={stars:S,night:ng0.tileCount,day:dg.tileCount,card:cd.tileCount,twinkleTiles:twTiles.length,bgTiles:twBase+twTiles.length,pieces:fr.pieces.length,sprites:sprites.length,objTiles:top,load:fr.load,winData:winData.length,
+    sparksDropped:budget.keep.reduce((a,m)=>a+sp.SPARKS-m.toString(2).split('').filter(c=>c==='1').length,0)};
 }
 // makeBgFit for a full picture with the space conventions: palettes 1-6.
 function makeBgFitTiles(img,{tileBase,colors,unique=null}){

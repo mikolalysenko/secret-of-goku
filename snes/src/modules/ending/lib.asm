@@ -27,12 +27,12 @@ ending_nmi:
 	LDA.l !ending_live
 	AND.b #$01
 	BEQ .out
-	JSR nmi_palette
 	SEP #$20
 	LDA.w !s_regson
 	BEQ .noRegs
 	JSR nmi_regs
 .noRegs
+	JSR nmi_words
 	JSR nmi_transfers
 .out
 	REP #$30
@@ -67,72 +67,27 @@ nmi_restore:
 	REP #$30
 	RTS
 
-; Our CGRAM ranges from s_palout.
-nmi_palette:
-	REP #$10
-	SEP #$20
-	LDX.w #$0000
-.loop
-	CPX.w #$0008
-	BCS .done
-	TXA
-	LSR
-	CMP.w !s_palcount
-	BCS .done
-	LDA.w !s_palrange,X
-	STA.w $2121
-	REP #$20
-	AND.w #$00FF
-	ASL
-	CLC
-	ADC.w #!s_palout
-	STA.w $4372
-	LDA.w !s_palrange+1,X
-	AND.w #$00FF
-	BNE .count
-	LDA.w #$0100
-.count
-	ASL
-	STA.w $4375
-	LDA.w #$2200              ; one register ($2122), A -> B
-	STA.w $4370
-	SEP #$20
-	LDA.b #$32
-	STA.w $4374
-	LDA.b #$80
-	STA.w $420B
-	INX : INX
-	BRA .loop
-.done
-	REP #$30
-	RTS
-
 ; The scene's PPU registers. BG3 registers are never written.
 nmi_regs:
+	REP #$20
+	LDA.w !s_bgmode                ; $2105 mode, $2106 mosaic off
+	AND.w #$00FF
+	STA.w $2105
+	LDA.w !s_bg1sc   : STA.w $2107 ; BG1SC, BG2SC
+	LDA.w !s_tm      : STA.w $212C ; TM, TS
+	LDA.w !s_cgwsel  : STA.w $2130 ; CGWSEL, CGADSUB
+	LDA.w !s_tmw     : STA.w $212E ; TMW, TSW
+	LDA.w !s_wbglog  : STA.w $212A ; WBGLOG, WOBJLOG
+	LDA.w !s_wh0     : STA.w $2126 ; WH0, WH1
+	LDA.w !s_wh2     : STA.w $2128 ; WH2, WH3
 	SEP #$20
-	LDA.w !s_bgmode  : STA.w $2105
-	STZ.w $2106
-	LDA.w !s_bg1sc   : STA.w $2107
-	LDA.w !s_bg2sc   : STA.w $2108
 	LDA.w !s_bg12nba : STA.w $210B
 	LDA.w !s_objsel  : STA.w $2101
-	LDA.w !s_tm      : STA.w $212C
-	LDA.w !s_ts      : STA.w $212D
-	LDA.w !s_cgwsel  : STA.w $2130
-	LDA.w !s_cgadsub : STA.w $2131
 	LDA.w !s_coldr   : STA.w $2132
 	LDA.w !s_coldg   : STA.w $2132
 	LDA.w !s_coldb   : STA.w $2132
 	LDA.w !s_w12sel  : STA.w $2123
 	LDA.w !s_wobjsel : STA.w $2125
-	LDA.w !s_tmw     : STA.w $212E
-	LDA.w !s_tsw     : STA.w $212F
-	LDA.w !s_wbglog  : STA.w $212A
-	LDA.w !s_wobjlog : STA.w $212B
-	LDA.w !s_wh0     : STA.w $2126
-	LDA.w !s_wh1     : STA.w $2127
-	LDA.w !s_wh2     : STA.w $2128
-	LDA.w !s_wh3     : STA.w $2129
 	LDA.w !s_bg1h    : STA.w $210D
 	LDA.w !s_bg1h+1  : STA.w $210D
 	LDA.w !s_bg1v    : STA.w $210E
@@ -167,8 +122,11 @@ nmi_regs:
 	RTS
 
 ; Planet pictures keep native dialogue above them only for y < 170
-; (planet-view/shenron-ending): HDMA channel 5 rewrites TM at line 170.
+; (planet-view/shenron-ending): HDMA channel 5 rewrites TM at line 170. An
+; optional band of lines [s_band_top, s_band_bot) adds s_band_bits to TM
+; (the escape's teleport lines on BG1).
 !HDMA_CUT = $20
+!HDMA_WIN = $5C                 ; channels 2, 3, 4, 6
 nmi_bg3cut:
 	SEP #$20
 	LDA.w !s_bg3cut
@@ -179,20 +137,12 @@ nmi_bg3cut:
 	LDA.w !N_HDMA
 	AND.b #~!HDMA_CUT
 	STA.w !N_HDMA
-	RTS
+	BRA .window
 .on
-	; Table: 127 lines TM, 43 lines TM, then the cut value from line 170.
-	LDA.b #127 : STA.w !s_hdmabuf+0
-	LDA.w !s_tm : STA.w !s_hdmabuf+1
-	LDA.b #43  : STA.w !s_hdmabuf+2
-	LDA.w !s_tm : STA.w !s_hdmabuf+3
-	LDA.b #$01 : STA.w !s_hdmabuf+4
-	LDA.w !s_tmcut : STA.w !s_hdmabuf+5
-	LDA.b #$00 : STA.w !s_hdmabuf+6
 	REP #$20
 	LDA.w #$2C00              ; mode 0 (one register), B-bus $212C
 	STA.w $4350
-	LDA.w #!s_hdmabuf
+	LDA.w !s_cutptr           ; the table the frame side built last
 	STA.w $4352
 	SEP #$20
 	LDA.b #$32
@@ -200,9 +150,169 @@ nmi_bg3cut:
 	LDA.w !s_hdma
 	ORA.b #!HDMA_CUT
 	STA.w !s_hdma
+.window
+	; Window positions (disc, shock ring): HDMA channels 2, 3, 4 and 6
+	; write WH0-WH3 (indirect, one register each) through the constant
+	; tables of the buffer the frame side finished last.
+	SEP #$20
+	LDA.w !s_win
+	BNE .winOn
+	LDA.w !s_hdma
+	AND.b #~!HDMA_WIN
+	STA.w !s_hdma
+	LDA.w !N_HDMA
+	AND.b #~!HDMA_WIN
+	STA.w !N_HDMA
+	RTS
+.winOn
+	REP #$20
+	LDA.w !s_winptr
+	BEQ .bufA
+	LDA.w #4*!ENDING_WIN_HDMA_LEN
+.bufA
+	CLC
+	ADC.w #ending_space_win_hdma&$FFFF
+	STA.w $4322
+	CLC
+	ADC.w #!ENDING_WIN_HDMA_LEN
+	STA.w $4332
+	CLC
+	ADC.w #!ENDING_WIN_HDMA_LEN
+	STA.w $4342
+	CLC
+	ADC.w #!ENDING_WIN_HDMA_LEN
+	STA.w $4362
+	LDA.w #$2640              ; indirect, mode 0: WH0
+	STA.w $4320
+	LDA.w #$2740              ; WH1
+	STA.w $4330
+	LDA.w #$2840              ; WH2
+	STA.w $4340
+	LDA.w #$2940              ; WH3
+	STA.w $4360
+	SEP #$20
+	LDA.b #ending_space_win_hdma>>16
+	STA.w $4324
+	STA.w $4334
+	STA.w $4344
+	STA.w $4364
+	LDA.b #$32                ; arrays in the scene work area
+	STA.w $4327
+	STA.w $4337
+	STA.w $4347
+	STA.w $4367
+	LDA.w !s_hdma
+	ORA.b #!HDMA_WIN
+	STA.w !s_hdma
+	RTS
+; Frame side: the TM table for HDMA channel 5 into the half of s_hdmabuf
+; the vblank is not using: lines 0..169 TM (optionally with the band
+; [s_band_top, s_band_bot) adding s_band_bits), then the cut value from
+; line 170, again from 196 (after the field IRQ's HUD split, which writes
+; TM = BG3 + OBJ at the end of line 195).
+cut_build:
+	PHP
+	SEP #$20
+	LDA.w !s_bg3cut
+	BNE .on
+	PLP
+	RTS
+.on
+	REP #$30
+	LDA.w !s_cutptr
+	EOR.w #$0020
+	AND.w #$0020
+	CLC
+	ADC.w #!s_hdmabuf
+	STA.w !l_cutnew
+	TAX
+	SEP #$20
+	LDA.w !s_band_top
+	CMP.w !s_band_bot
+	BCS .plain
+	STA.w !s_tmp
+	LDA.w !s_tm
+	JSR .seg
+	LDA.w !s_band_bot
+	SEC
+	SBC.w !s_band_top
+	STA.w !s_tmp
+	LDA.w !s_tm
+	ORA.w !s_band_bits
+	JSR .seg
+	LDA.b #170
+	SEC
+	SBC.w !s_band_bot
+	BRA .rest
+.plain
+	LDA.b #170
+.rest
+	STA.w !s_tmp
+	LDA.w !s_tm
+	JSR .seg
+	LDA.b #26 : STA.w $0000,X
+	LDA.w !s_tmcut : STA.w $0001,X
+	LDA.b #$01 : STA.w $0002,X
+	LDA.w !s_tmcut : STA.w $0003,X
+	LDA.b #$00 : STA.w $0004,X
+	REP #$20
+	LDA.w !l_cutnew
+	STA.w !s_cutptr
+	PLP
+	RTS
+; s_tmp lines of TM value A (M8) at X, in entries of <= 127 lines.
+.seg
+	STA.w !s_tmp+1
+.segLoop
+	LDA.w !s_tmp
+	BEQ .segDone
+	CMP.b #128
+	BCC .segLast
+	LDA.b #127
+.segLast
+	STA.w $0000,X
+	STA.w !s_tmp+2
+	LDA.w !s_tmp+1
+	STA.w $0001,X
+	INX : INX
+	LDA.w !s_tmp
+	SEC
+	SBC.w !s_tmp+2
+	STA.w !s_tmp
+	BRA .segLoop
+.segDone
+	RTS
+
+; Single-word VRAM writes queued from the frame side (vram_word).
+nmi_words:
+	REP #$30
+	LDA.w !s_vwcount
+	BEQ .done
+	ASL : ASL
+	STA.w !s_nmitmp+8
+	SEP #$20
+	LDA.b #$80 : STA.w $2115
+	REP #$20
+	LDX.w #$0000
+.loop
+	LDA.w !s_stage,X
+	STA.w $2116
+	LDA.w !s_stage+2,X
+	STA.w $2118
+	INX : INX : INX : INX
+	CPX.w !s_nmitmp+8
+	BCC .loop
+	STZ.w !s_vwcount
+.done
 	RTS
 
 ; ---------------------------------------------------------------------------
+; Transfer engine costs in budget bytes (160 per scanline): the CPU time of
+; setting up one DMA and of fetching one queue entry, measured in Mesen.
+!XFER_DMA_COST   = 208
+!XFER_FETCH_COST = 176
+!XFER_GOKU_COST  = $0200+(16*64)              ; 512 bytes in 16 tile DMAs
+
 ; Transfer engine. The dynamic queue (cell swaps) runs before the load
 ; script. While a scene is loading the picture is black and the field NMI
 ; is still force-blanked, so an overrun only delays the display; otherwise
@@ -239,7 +349,13 @@ nmi_transfers:
 	SBC.w !s_curoff
 	BNE .have
 	JSR fetch_transfer
-	BCC .loop
+	BCS .empty
+	LDA.w !s_budget               ; fetching costs about a line
+	SEC
+	SBC.w #!XFER_FETCH_COST
+	STA.w !s_budget
+	BRA .loop
+.empty
 	; Nothing left: a finished script ends the loading phase.
 	SEP #$20
 	LDA.w !s_ldptr+2
@@ -349,9 +465,12 @@ xfer_go:
 	CLC
 	ADC.w !s_nmitmp+4
 	STA.w !s_curoff
+	; bytes plus this code's own time (~1.3 lines per DMA on SlowROM)
 	LDA.w !s_budget
 	SEC
 	SBC.w !s_nmitmp+4
+	SEC
+	SBC.w #!XFER_DMA_COST
 	STA.w !s_budget
 	CLC
 	RTS
@@ -477,11 +596,11 @@ xfer_fill:
 	CLC
 	RTS
 
-; A Goku cell from the goku module's tile pool (banks $F8-$FA): src.w = cell
-; id, dest.w = first of four scene 16x16 cells (TL, TR, BL, BR). Sixteen
-; 32-byte tile DMAs from goku_cell_tiles' 4x4 grid; needs 512 bytes of budget.
+; A Goku cell from the goku module's tile pool (banks $F8-$FA): sixteen
+; 32-byte tile DMAs from the table queue_goku prepared at s_goku_dma
+; (5 bytes per tile: source address, bank, VRAM word address).
 xfer_goku:
-	LDA.w #$0200
+	LDA.w #!XFER_GOKU_COST
 	CMP.w !s_budget
 	BEQ .ok
 	BCC .ok
@@ -493,40 +612,82 @@ xfer_goku:
 	REP #$20
 	LDA.w #$1801
 	STA.w $4370
+	LDX.w #$0000
+.tile
+	LDA.w !s_goku_dma,X
+	STA.w $4372
+	LDA.w !s_goku_dma+3,X
+	STA.w $2116
 	LDA.w #$0020
-	STA.w !s_nmitmp+10            ; tile size
-	LDA.w !s_cur                  ; cell id -> grid offset (32 bytes per cell)
-	ASL : ASL : ASL : ASL : ASL
-	STA.w !s_nmitmp+12
+	STA.w $4375
+	SEP #$20
+	LDA.w !s_goku_dma+2,X
+	STA.w $4374
+	LDA.b #$80
+	STA.w $420B
+	REP #$20
+	INX : INX : INX : INX : INX
+	CPX.w #16*5
+	BCC .tile
+	LDA.w !s_cur+6
+	STA.w !s_curoff
+	LDA.w !s_budget
+	SEC
+	SBC.w #!XFER_GOKU_COST
+	STA.w !s_budget
+	CLC
+	RTS
+
+; Queue a Goku pose (goku module sheet A = 0 base / 1 Super Saiyan, column X,
+; row Y) into scene cells starting at s_tmp+6 and copy its palette to OBJ
+; colour s_tmp+4 (a multiple of 16). The 16 tile transfers are resolved
+; here (goku_cell_tiles' 4x4 grid: quadrants TL, TR, BL, BR, each two
+; rows of two tiles, rows $100 words apart in the cell grid). Clobbers the
+; q_* block; one Goku transfer may be pending at a time.
+queue_goku:
+	PHP
+	REP #$30
+	JSL goku_api_cell
+	REP #$30
+	CMP.w #$FFFF
+	BNE .cell
+	JMP .none
+.cell
+	STA.w !l_qcell
+	ASL : ASL : ASL : ASL : ASL   ; 32 bytes of tile indices per cell
+	STA.w !l_quadx
 	LDY.w #$0000                  ; 0..15: quadrant*4 + half*2 + t
+	LDX.w #$0000                  ; table offset
 .tile
 	; grid position: row = (q>>1)*2 + half, col = (q&1)*2 + t
+	PHX
 	TYA
-	AND.w #$0001                  ; t
-	STA.w !s_nmitmp+4
+	AND.w #$0001
+	STA.w !l_quadi                ; t
 	TYA
-	AND.w #$0004                  ; q & 1 -> col + 2
+	AND.w #$0004
 	LSR
-	ORA.w !s_nmitmp+4
-	STA.w !s_nmitmp+4             ; col
+	ORA.w !l_quadi
+	STA.w !l_quadi                ; col
 	TYA
-	AND.w #$0002                  ; half
+	AND.w #$0002
 	LSR
-	STA.w !s_nmitmp+6
+	STA.w !l_bits                 ; half
 	TYA
-	AND.w #$0008                  ; q >> 1 -> row + 2
+	AND.w #$0008
 	LSR : LSR
-	ORA.w !s_nmitmp+6             ; row
+	ORA.w !l_bits                 ; row
 	ASL : ASL
-	ORA.w !s_nmitmp+4             ; row*4 + col
+	ORA.w !l_quadi                ; row*4 + col
 	ASL
 	CLC
-	ADC.w !s_nmitmp+12
+	ADC.w !l_quadx
 	TAX
 	LDA.l goku_cell_tiles,X       ; global tile index
+	PLX
 	PHA
 	ASL : ASL : ASL : ASL : ASL
-	STA.w $4372
+	STA.w !s_goku_dma,X           ; source address
 	PLA
 	XBA
 	AND.w #$00FF
@@ -534,67 +695,48 @@ xfer_goku:
 	CLC
 	ADC.w #$00F8
 	SEP #$20
-	STA.w $4374
+	STA.w !s_goku_dma+2,X         ; bank
 	REP #$20
-	LDA.w !s_nmitmp+10
-	STA.w $4375
-	; VRAM: cell (dest + q) + half*$100 + t*$10
+	; VRAM: cell (first + q) + half*$100 + t*$10
 	TYA
 	LSR : LSR
 	CLC
-	ADC.w !s_cur+4
+	ADC.w !s_tmp+6
+	PHX
 	JSR cell_vram
-	STA.w !s_nmitmp+8
+	PLX
+	STA.w !l_m0
 	TYA
 	AND.w #$0002
 	BEQ .top
 	LDA.w #$0100
 .top
 	CLC
-	ADC.w !s_nmitmp+8
-	STA.w !s_nmitmp+8
+	ADC.w !l_m0
+	STA.w !l_m0
 	TYA
 	AND.w #$0001
 	BEQ .left
 	LDA.w #$0010
 .left
 	CLC
-	ADC.w !s_nmitmp+8
-	STA.w $2116
-	SEP #$20
-	LDA.b #$80
-	STA.w $420B
-	REP #$20
+	ADC.w !l_m0
+	STA.w !s_goku_dma+3,X
+	TXA
+	CLC
+	ADC.w #$0005
+	TAX
 	INY
 	CPY.w #$0010
-	BCS .all
+	BCS .queued
 	JMP .tile
-.all
-	LDA.w !s_cur+6
-	STA.w !s_curoff
-	LDA.w !s_budget
-	SEC
-	SBC.w #$0200
-	STA.w !s_budget
-	CLC
-	RTS
-
-; Queue a Goku pose (goku module sheet A = 0 base / 1 Super Saiyan, column X,
-; row Y) into scene cells starting at s_tmp+6 and copy its palette to OBJ
-; colour s_tmp+4 (a multiple of 16). Clobbers the q_* block.
-queue_goku:
-	PHP
-	REP #$30
-	JSL goku_api_cell
-	REP #$30
-	CMP.w #$FFFF
-	BEQ .none
+.queued
+	LDA.w #!s_goku_dma
 	STA.w !q_src
-	PHA
 	LDA.w !s_tmp+6
 	STA.w !q_dest
 	SEP #$20
-	LDA.b #$00
+	LDA.b #$32
 	STA.w !q_src+2
 	LDA.b #!LD_GOKU
 	STA.w !q_mode
@@ -602,8 +744,9 @@ queue_goku:
 	LDA.w #$0200
 	STA.w !q_size
 	JSR queue_add
-	PLX
 	; palette: goku_palettes[goku_cell_pal[cell]]
+	LDA.w !l_qcell
+	TAX
 	LDA.l goku_cell_pal,X
 	AND.w #$0007
 	ASL : ASL : ASL : ASL : ASL
@@ -624,8 +767,8 @@ queue_goku:
 	DEC.w !l_palc
 	BNE .colour
 	SEP #$20
-	LDA.b #$01
-	STA.w !s_paldirty
+	LDA.b #$03
+	TSB.w !s_paldirty
 .none
 	PLP
 	RTS
@@ -656,6 +799,27 @@ queue_add:
 	RTS
 .full
 	PLP
+	SEC
+	RTS
+
+; Queue one VRAM word: A16 = value, X16 = word address (s_stage, 64 max).
+; Carry set when full. M16/X16.
+vram_word:
+	PHA
+	LDA.w !s_vwcount
+	CMP.w #$0040
+	BCS .full
+	ASL : ASL
+	TAY
+	TXA
+	STA.w !s_stage,Y
+	PLA
+	STA.w !s_stage+2,Y
+	INC.w !s_vwcount
+	CLC
+	RTS
+.full
+	PLA
 	SEC
 	RTS
 
@@ -731,8 +895,112 @@ cell_tile:
 ; white/black mix (dim, brighten, departure white/black) and writes
 ; s_palout, which the vblank hook copies into the declared ranges.
 
-; Copy A colours from the code-bank table at X into s_palbase at colour Y,
-; and split them into the component arrays used by palette_build.
+; Commit our CGRAM ranges: the field NMI uploads the game's palette buffer
+; 7E:0600-07FF to CGRAM on every completed frame, so s_palout's ranges go
+; into that buffer (DMA through WMDATA) after the game's own palette work
+; (its animations rewrite some entries every few frames). The buffer's
+; original contents are saved when a scene takes the screen (s_palsave)
+; and restored when it lets go on the same map.
+pal_commit:
+	PHP
+	REP #$30
+	LDX.w #$0000
+.range
+	CPX.w #$0008
+	BCS .done
+	TXA
+	LSR
+	TAY
+	SEP #$20
+	CMP.w !s_palcount
+	REP #$20
+	BCS .done
+	LDA.w !s_palrange,X
+	AND.w #$00FF
+	ASL
+	STA.w !l_m0               ; first * 2
+	CLC
+	ADC.w #$0600
+	STA.w $2181               ; WRAM address 7E:0600 + first * 2
+	SEP #$20
+	STZ.w $2183
+	LDA.w !s_palgrp,Y
+	CMP.b #$02
+	BEQ .direct
+	LDA.b #$32
+	STA.w $4374
+	REP #$20
+	LDA.w !l_m0
+	CLC
+	ADC.w #!s_palout
+	BRA .src
+.direct
+	LDA.b #!CODE_BANK         ; a generator palette in the code bank
+	STA.w $4374
+	REP #$20
+	LDA.w !s_dirsrc
+.src
+	STA.w $4372
+	LDA.w !s_palrange+1,X
+	AND.w #$00FF
+	BNE .count
+	LDA.w #$0100
+.count
+	ASL
+	STA.w $4375
+	LDA.w #$8000              ; A -> B, one register: $2180 WMDATA
+	STA.w $4370
+	SEP #$20
+	LDA.b #$80
+	STA.w $420B
+	REP #$20
+	INX : INX
+	BRA .range
+.done
+	; per-frame colours over a direct range (the fragments' seam and depth)
+	LDA.w !s_edgeon
+	BEQ .out
+	LDX.w #$0000
+	LDY.w #$0180+28           ; OBJ palette 4, colour 14
+.edge
+	LDA.w !s_edge,X
+	STA.w $0600,Y
+	LDA.w !s_edge+2,X
+	STA.w $0602,Y
+	TYA
+	CLC
+	ADC.w #$0020
+	TAY
+	INX : INX : INX : INX
+	CPX.w #16
+	BCC .edge
+.out
+	PLP
+	RTS
+
+; Save (A = 0) or restore (A != 0) the game's palette buffer 7E:0600-07FF
+; against s_palsave.
+pal_native:
+	PHP
+	REP #$30
+	PHB
+	TAY
+	BNE .restore
+	LDX.w #$0600
+	LDY.w #!s_palsave
+	BRA .move
+.restore
+	LDX.w #!s_palsave
+	LDY.w #$0600
+.move
+	LDA.w #$01FF
+	MVN $32,$32
+	PLB
+	PLP
+	RTS
+
+; Copy A colours from the code-bank table at X to base colours from colour
+; Y: their component arrays, which palette_build reads.
 pal_set:
 	PHP
 	REP #$30
@@ -751,14 +1019,13 @@ pal_set:
 	DEC.w !l_palc
 	BNE .next
 	SEP #$20
-	LDA.b #$01
-	STA.w !s_paldirty
+	LDA.b #$03
+	TSB.w !s_paldirty
 	PLP
 	RTS
 
-; Store colour A at byte offset X of the base palette and its components.
+; Store base colour A at byte offset X (its components).
 pal_store:
-	STA.w !s_palbase,X
 	PHA
 	AND.w #$001F
 	ASL
@@ -791,40 +1058,70 @@ pal_range:
 	TXA
 	STA.w !s_palrange+1,Y
 	INC.w !s_palcount
-	LDA.b #$01
-	STA.w !s_paldirty
+	LDA.b #$03
+	TSB.w !s_paldirty
 	PLP
 	RTS
 
+; Rebuild s_palout for the ranges whose inputs changed: the white/black
+; mix (all ranges), the group-1 extra black (group-1 ranges) or base colours
+; (s_paldirty bit 0: group-0 ranges, bit 1: group-1 ranges).
+!l_palm = !s_tmp+8
 palette_build:
 	REP #$30
+	STZ.w !l_palm
+	; the curves change with the 33 mix levels, not every step of a fade
 	LDA.w !s_fadeb
+	JSR fade_level
 	CMP.w !s_fadekey
-	BNE .rebuild
+	BNE .tables0
 	LDA.w !s_fadew
+	JSR fade_level
 	CMP.w !l_fadew
-	BNE .rebuild
-	LDA.w !s_fadeb2
-	CMP.w !l_fadeb2
-	BNE .rebuild
-	SEP #$20
-	LDA.w !s_paldirty
-	REP #$20
-	BNE .apply
-	RTS
-.rebuild
+	BEQ .no0
+.tables0
 	LDA.w !s_fadeb
+	JSR fade_level
 	STA.w !s_fadekey
 	LDA.w !s_fadew
+	JSR fade_level
 	STA.w !l_fadew
+	LDA.w !s_fadeb
+	LDX.w #$0000
+	JSR fade_table_set
+	JSR fade_tables_1
+	LDA.w #$0003
+	STA.w !l_palm
+	BRA .dirty
+.no0
 	LDA.w !s_fadeb2
-	STA.w !l_fadeb2
-	JSR fade_tables
-.apply
+	JSR fade_level
+	CMP.w !l_fadeb2
+	BNE .tables1
+	LDA.w !s_glowr
+	CMP.w !l_glowr
+	BNE .tables1
+	LDA.w !s_glowg
+	CMP.w !l_glowg
+	BNE .tables1
+	LDA.w !s_glowb
+	CMP.w !l_glowb
+	BEQ .dirty
+.tables1
+	JSR fade_tables_1
+	LDA.w #$0002
+	STA.w !l_palm
+.dirty
 	SEP #$20
-	LDA.b #$00
-	STA.w !s_paldirty
-	REP #$30
+	LDA.w !s_paldirty
+	AND.b #$03
+	TSB.w !l_palm
+	STZ.w !s_paldirty
+	REP #$20
+	LDA.w !l_palm
+	BNE .apply
+	RTS
+.apply
 	LDA.w #$0000
 	STA.w !s_tmp+12               ; range offset
 .range
@@ -843,7 +1140,14 @@ palette_build:
 	TAY
 	LDA.w !s_palgrp,Y
 	AND.w #$00FF
-	PHA
+	STA.w !s_tmp+14               ; group
+	TAX
+	LDA.l .groupBit,X
+	AND.w !l_palm
+	AND.w #$00FF
+	BNE .build
+	JMP .next
+.build
 	LDY.w !s_tmp+12
 	LDA.w !s_palrange,Y
 	AND.w #$00FF
@@ -860,7 +1164,7 @@ palette_build:
 	CLC
 	ADC.w !s_tmp+10
 	STA.w !s_tmp+10               ; end * 2
-	PLA
+	LDA.w !s_tmp+14
 	BNE .group1
 .colour
 	LDY.w !s_compr,X
@@ -873,7 +1177,7 @@ palette_build:
 	INX : INX
 	CPX.w !s_tmp+10
 	BCC .colour
-	BRA .next
+	BRA .done
 .group1
 	LDY.w !s_compr,X
 	LDA.w !s_fader2,Y
@@ -885,19 +1189,27 @@ palette_build:
 	INX : INX
 	CPX.w !s_tmp+10
 	BCC .group1
+.done
 .next
 	INC.w !s_tmp+12
 	INC.w !s_tmp+12
 	JMP .range
+.groupBit
+	db $01,$02,$00,$00
 
-; Channel curves for the current white (w) and black (b) mix:
-; t[c] = dark_b(white_w(c)), from 33-level ROM tables (levels of 8/256).
-fade_tables:
+; Group-1 curves: black = 1 - (1-b)(1-b2) with the current white, from the
+; 33-level ROM tables (levels of 8/256).
+fade_tables_1:
 	REP #$30
-	LDA.w !s_fadeb
-	LDX.w #$0000
-	JSR fade_table_set
-	; Group 1: black = 1 - (1-b)(1-b2).
+	LDA.w !s_fadeb2
+	JSR fade_level
+	STA.w !l_fadeb2
+	LDA.w !s_glowr
+	STA.w !l_glowr
+	LDA.w !s_glowg
+	STA.w !l_glowg
+	LDA.w !s_glowb
+	STA.w !l_glowb
 	LDA.w #$0100
 	SEC
 	SBC.w !s_fadeb
@@ -916,11 +1228,36 @@ fade_tables:
 	EOR.w #$FFFF
 	SEC
 	ADC.w #$0100                  ; 256 - product/256
-	LDX.w #!s_fader2-!s_fader
+	LDX.w #(!s_fader2)-(!s_fader)
 	JMP fade_table_set
+
+; Mix A (0..256) -> its curve level 0..32 (levels of 8/256).
+fade_level:
+	CLC
+	ADC.w #$0004
+	LSR : LSR : LSR
+	CMP.w #33
+	BCC .in
+	LDA.w #32
+.in
+	RTS
+
+; Group-1 output colour at byte offset X from its components (the current
+; group-1 curves): for colours changed between full rebuilds.
+pal_out1:
+	LDY.w !s_compr,X
+	LDA.w !s_fader2,Y
+	LDY.w !s_compg,X
+	ORA.w !s_fadeg2,Y
+	LDY.w !s_compb,X
+	ORA.w !s_fadebt2,Y
+	STA.w !s_palout,X
+	RTS
 
 ; Curves for black A (0..256) and the current white into the table set at
 ; offset X from s_fader: t[c] = dark_b(white_w(c)), 33-level ROM tables.
+; Group 1 (X != 0) adds the heat glow per channel before the curve:
+; red t[min(31, c + s_glowr)], green and blue likewise.
 fade_table_set:
 	STX.w !s_tmp+8
 	CLC
@@ -944,8 +1281,9 @@ fade_table_set:
 	XBA
 	LSR : LSR : LSR               ; level * 32
 	STA.w !s_tmp+12
+	; the curve, 32 words at l_curve
 	LDY.w #$0000                  ; c * 2
-.loop
+.curve
 	TYA
 	LSR
 	CLC
@@ -958,22 +1296,72 @@ fade_table_set:
 	TAX
 	LDA.l ending_fade_dark,X
 	AND.w #$00FF
-	PHY
-	PHA
-	TYA
-	CLC
-	ADC.w !s_tmp+8
-	TAY
-	PLA
-	STA.w !s_fader,Y
-	ASL : ASL : ASL : ASL : ASL
-	STA.w !s_fadeg,Y
-	ASL : ASL : ASL : ASL : ASL
-	STA.w !s_fadebt,Y
-	PLY
+	STA.w !l_curve,Y
 	INY : INY
 	CPY.w #$0040
-	BCC .loop
+	BCC .curve
+	; channel tables
+	LDA.w !s_tmp+8
+	BEQ .plain
+	LDA.w !s_glowr
+	ORA.w !s_glowg
+	ORA.w !s_glowb
+	BNE .glow
+.plain
+	LDX.w !s_tmp+8
+	LDY.w #$0000
+.plainLoop
+	LDA.w !l_curve,Y
+	STA.w !s_fader,X
+	ASL : ASL : ASL : ASL : ASL
+	STA.w !s_fadeg,X
+	ASL : ASL : ASL : ASL : ASL
+	STA.w !s_fadebt,X
+	INX : INX
+	INY : INY
+	CPY.w #$0040
+	BCC .plainLoop
+	RTS
+.glow
+	LDX.w !s_tmp+8
+	LDY.w #$0000
+.glowLoop
+	STY.w !l_cy
+	TYA
+	CLC
+	ADC.w !s_glowr
+	CMP.w #$0040
+	BCC +
+	LDA.w #$003E
++	TAY
+	LDA.w !l_curve,Y
+	STA.w !s_fader,X
+	LDA.w !l_cy
+	CLC
+	ADC.w !s_glowg
+	CMP.w #$0040
+	BCC +
+	LDA.w #$003E
++	TAY
+	LDA.w !l_curve,Y
+	ASL : ASL : ASL : ASL : ASL
+	STA.w !s_fadeg,X
+	LDA.w !l_cy
+	CLC
+	ADC.w !s_glowb
+	CMP.w #$0040
+	BCC +
+	LDA.w #$003E
++	TAY
+	LDA.w !l_curve,Y
+	XBA
+	ASL : ASL
+	STA.w !s_fadebt,X
+	LDY.w !l_cy
+	INX : INX
+	INY : INY
+	CPY.w #$0040
+	BCC .glowLoop
 	RTS
 
 ; ---------------------------------------------------------------------------

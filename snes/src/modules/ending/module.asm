@@ -89,7 +89,7 @@
 !s_fadew    = !SW+$14   ; word  white mix 0..256
 !s_fadeb    = !SW+$16   ; word  black mix 0..256
 !s_fadekey  = !SW+$18   ; word  black mix of the current fade tables ($FFFF: rebuild)
-!s_paldirty = !SW+$1A   ; byte  base palette changed
+!s_paldirty = !SW+$1A   ; byte  base colours changed: bit 0 group-0 ranges, bit 1 group-1 ranges
 !s_regson   = !SW+$1B   ; byte  1: NMI writes the shadow block, 2: restore native once
 !s_oamslot  = !SW+$1C   ; word  next OAM byte offset (full-screen families)
 !s_budget   = !SW+$1E   ; word  NMI transfer budget left
@@ -139,8 +139,8 @@
 !s_bg3cut   = !SW+$7C   ; byte  BG3 (dialogue/HUD) hidden from line 170 down (HDMA ch5 on TM)
 !s_tmcut    = !SW+$7D   ; byte  TM value from line 170 down
 !s_var      = !SW+$80   ; $5E bytes per-scene variables (SW+$80..$DD)
-!s_palbase  = !SW+$100  ; 256 colours (scene base)
-!s_palout   = !SW+$300  ; 256 colours after fades
+!s_palsave  = !SW+$100  ; 512 bytes: the game's palette buffer 7E:0600 while a scene owns it
+!s_palout   = !SW+$300  ; 256 colours after fades (committed into 7E:0600 every frame)
 !s_compr    = !SW+$500  ; 256 words: red*2 of each base colour
 !s_compg    = !SW+$700  ; 256 words: green*2
 !s_compb    = !SW+$900  ; 256 words: blue*2
@@ -182,6 +182,25 @@ hi_bits_ram = !SW+$DF0             ; 16 bytes (oam_put's high-table patterns)
 !l_fadeb2   = !s_x+$06          ; word  group-1 black of the current tables
 !s_vwcount  = !s_x+$08          ; word  queued single-word VRAM writes (s_stage)
 !s_win      = !s_x+$0A          ; byte  window HDMA active (channel 6)
+!s_band_top = !s_x+$0C          ; byte  TM band (bg3cut table): first line
+!s_band_bot = !s_x+$0D          ; byte  end line (band off when top >= bot)
+!s_band_bits = !s_x+$0E         ; byte  layers added to TM inside the band
+!s_winptr   = !s_x+$10          ; word  window HDMA table (bank $32) for the next frame
+!s_glowr    = !s_x+$14          ; word  group-1 heat glow per channel (x2), added before the fade curve
+!s_glowg    = !s_x+$16
+!s_glowb    = !s_x+$18
+!l_glowr    = !s_x+$1A          ; glow of the current group-1 tables
+!l_glowg    = !s_x+$1C
+!l_glowb    = !s_x+$1E
+!l_curve    = !s_x+$20          ; 32 words: fade curve scratch
+!l_cy       = !s_x+$60          ; word
+!s_cutptr   = !s_x+$64          ; word  TM table (s_hdmabuf half) for the next vblank
+!s_palsaved = !s_x+$68          ; byte  s_palsave holds the game's palette buffer
+!s_goku_dma = !s_x+$70          ; 80 bytes: queue_goku's 16 tile DMAs (address, bank, VRAM)
+!s_dirsrc   = !s_x+$C0          ; word  code-bank palette of the direct range (group 2)
+!s_edgeon   = !s_x+$C2          ; word  s_edge colours go over the direct range
+!s_edge     = !s_x+$C4          ; 16 bytes: 4 x (colour 14, colour 15) of OBJ palettes 4-7
+!l_cutnew   = !s_x+$66          ; word
 !s_objlist  = !s_x+$F0          ; 16 bytes: reunion object list copy (header + Dyluck)
 
 ; Parameter blocks in s_tmp (frame side).
@@ -646,7 +665,9 @@ ending_frame:
 	STA.l !ending_age
 .post
 	REP #$30
+	JSR cut_build
 	JSR palette_build
+	JSR pal_commit
 	JSR brightness_apply
 	JSR suppress_native
 	JSR oam_finish
@@ -737,7 +758,14 @@ scene_init:
 	STA.w !s_paldirty
 	STA.w !s_ldptr+2
 	STA.w !s_bg3cut
+	STA.w !s_win
+	STA.w !s_band_top
+	STA.w !s_band_bot
+	STA.w !s_palsaved
 	REP #$30
+	STZ.w !s_vwcount
+	LDA.w #!s_hdmabuf
+	STA.w !s_cutptr
 	STZ.w !s_dqhead
 	STZ.w !s_dqtail
 	STZ.w !s_cur+6
@@ -745,6 +773,10 @@ scene_init:
 	STZ.w !s_fadew
 	STZ.w !s_fadeb
 	STZ.w !s_fadeb2
+	STZ.w !s_glowr
+	STZ.w !s_glowg
+	STZ.w !s_glowb
+	STZ.w !s_edgeon
 	STZ.w !s_frame
 	LDA.w #$FFFF
 	STA.w !s_fadekey
@@ -810,6 +842,13 @@ release_screen:
 	STA.l !ending_live
 	LDA.b #$00
 	STA.w !s_regson
+	LDA.w !s_palsaved
+	BEQ .noPal
+	LDA.b #$00
+	STA.w !s_palsaved
+	LDA.b #$01
+	JSR pal_native            ; the game's palette back
+.noPal
 	JSR release_common
 .idle
 	SEP #$20
@@ -823,6 +862,7 @@ release_quiet:
 	SEP #$20
 	LDA.b #$00
 	STA.w !s_regson
+	STA.w !s_palsaved         ; the map load rebuilt the game's palette
 	STA.l !ending_live
 	JSR release_common
 	SEP #$20
@@ -849,11 +889,13 @@ release_common:
 	STA.w !N_HDMA
 	LDA.b #$00
 	STA.w !s_hdma
+	STA.w !s_win
 	REP #$30
 	LDA.w #$00FF
 	STA.w !s_ebright
 	LDA.w !s_dqtail
 	STA.w !s_dqhead
+	STZ.w !s_vwcount
 	RTS
 
 ; ---------------------------------------------------------------------------
@@ -863,6 +905,16 @@ release_common:
 ; load script (set_script) and the dynamic queue have been uploaded.
 begin_fullscreen:
 	SEP #$20
+	PHA
+	LDA.w !s_palsaved
+	BNE .saved
+	LDA.b #$01
+	STA.w !s_palsaved
+	LDA.b #$00
+	JSR pal_native            ; keep the game's palette buffer
+.saved
+	SEP #$20
+	PLA
 	STA.w !s_family
 	LDA.b #$01
 	STA.l !ending_live
@@ -883,6 +935,9 @@ begin_fullscreen:
 	STA.w !s_mode7
 	STA.w !s_palcount
 	STA.w !s_bg3cut
+	STA.w !s_win
+	STA.w !s_band_top
+	STA.w !s_band_bot
 	STA.w !s_wh0
 	STA.w !s_wh2
 	LDA.b #$FF
@@ -918,6 +973,10 @@ begin_fullscreen:
 	STA.w !s_fadeb
 	LDA.w #$0000
 	STA.w !s_fadeb2
+	STA.w !s_glowr
+	STA.w !s_glowg
+	STA.w !s_glowb
+	STA.w !s_edgeon
 	LDA.w #$0000
 	STA.w !s_fadew
 	LDA.w #$FFFF
@@ -963,6 +1022,7 @@ loading_frame:
 
 incsrc "lib.asm"
 incsrc "kai.asm"
+incsrc "space.asm"
 incsrc "stubs.asm"
 
 ; Generated palettes and small tables.

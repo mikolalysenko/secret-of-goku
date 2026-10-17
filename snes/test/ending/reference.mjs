@@ -72,3 +72,39 @@ export function compare(pngPath,ref,{tol=24,rect=null}={}){
   return same/total;
 }
 export function writeRef(path,rgba){return gfx.writePng({width:256,height:224,data:rgba});}
+
+// planet-view.js itself (doomed globe, explosion, escape, fatal), driven
+// through its getColor hook with stand-ins for the mod and PPU: the picture
+// the browser composes, without the BG3 dialogue.
+let planetView=null;
+export async function planetReference({rom,phase,age,night=true,ssj=false,fatal=false}){
+  if(!planetView){
+    const {createPlanetView}=await engine('planet-view.js');
+    const {createNativeEffects}=await engine('native-effects.js');
+    const a=await loadKaiArt();
+    const ppu={getColor:()=>[0,5,0]},state={outcome:'bad',phase:'doomed',age:0};
+    const mod={options:{enabled:true},gokuActive:true,frame:0,frieza:{crisisActive:true,permanent:false},
+      ending:{defeated:false,nativeDeath:false,get planetScene(){return state;}},
+      read8:()=>0,read16:()=>0,nativeField:true,
+      spriteLayer:{effects:createNativeEffects(rom,JSON.parse(readFileSync(join(repo,'engine/native-effects.json'),'utf8'))),atlas:{goku:a.goku,ssj:a.ssj}}};
+    const view=createPlanetView({ppu,cart:{data:rom},ram:new Uint8Array(0x20000)},mod);view.load(rom);
+    planetView={ppu,state,mod};
+  }
+  const {ppu,state,mod}=planetView;
+  for(const k of Object.keys(state))delete state[k];
+  Object.assign(state,{outcome:'bad',phase,age},fatal?{fatal:true}:{});
+  mod.frieza.crisisActive=night;mod.frieza.permanent=ssj;mod.ending.defeated=fatal;mod.frame++;
+  const out=new Uint8Array(256*224*4);
+  for(let y=0;y<224;y++)for(let x=0;x<256;x++){const c=ppu.getColor(0,x,y)[0],i=(y*256+x)*4;out[i]=(c&31)<<3|(c&31)>>2;out[i+1]=(c>>5&31)<<3|(c>>5&31)>>2;out[i+2]=(c>>10&31)<<3|(c>>10&31)>>2;out[i+3]=255;}
+  return out;
+}
+// Best match among the browser ages a-spread..a+spread around the still's
+// recorded age: {score, age, ref}.
+export async function bestPlanetMatch(pngPath,opts,age,{tol=24,rect=null,spread=1}={}){
+  let best={score:-1,age};
+  for(let a=Math.max(0,age-spread);a<=age+spread;a++){
+    const ref=await planetReference({...opts,age:a}),score=compare(pngPath,ref,{tol,rect});
+    if(score>best.score)best={score,age:a,ref};
+  }
+  return best;
+}
