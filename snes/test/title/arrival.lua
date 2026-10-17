@@ -113,14 +113,20 @@ local function arrival()
   -- pull the sword, then the arrival and the original tail
   H.tap('down', 2, 6)
   H.tap('b', 3, 3)
-  local before, late, lateNative, frames3 = nil, 0, 0, 0
+  local before, late, lateNative, frames3, lateRows, fastOn = nil, 0, 0, 0, {}, 0
   local id1 = emu.addMemoryCallback(function() before = emu.getState()['ppu.scanline'] end, emu.callbackType.exec, 0x00B073, 0x00B073)
   local id2 = emu.addMemoryCallback(function()
-    local after = emu.getState()['ppu.scanline']
+    local st = emu.getState()
+    local after = st['ppu.scanline']
     if H.wram(0xDD86) == 3 and before then
       frames3 = frames3 + 1
+      -- MEMSEL ($420D bit 0): FastROM actually in effect this frame
+      if st['internalRegisters.enableFastRom'] then fastOn = fastOn + 1 end
       if before >= 225 then lateNative = lateNative + 1
-      elseif after >= 225 or after < before then late = late + 1 end
+      elseif after >= 225 or after < before then
+        late = late + 1
+        if #lateRows < 10 then lateRows[#lateRows + 1] = string.format('age %d: %d-%d', r16(0xDD88), before, after) end
+      end
     end
   end, emu.callbackType.exec, 0x00B077, 0x00B077)
   local phases, last, shot, pages = {}, -1, {}, {}
@@ -160,6 +166,8 @@ local function arrival()
   H.result('impact_frames', frames3)
   H.result('impact_late', late)
   H.result('impact_late_native', lateNative)
+  H.result('impact_late_rows', lateRows)
+  H.result('impact_fastrom', fastOn)
   local captured = {}
   for k in pairs(pages) do captured[#captured + 1] = k end
   table.sort(captured)
@@ -183,16 +191,18 @@ local function arrival()
   H.result('scenery', {c, p})
   H.result('crater_vram', craterVram())
   H.result('pos', {r16(0xE002), r16(0xE004)})
-  -- ring menu (Y) round trip: OBJ VRAM is the ring's meanwhile
+  -- ring menu round trip: OBJ VRAM is the ring's meanwhile. X is ring /
+  -- back for Goku (combat's input layer turns it into the native Y, which
+  -- is his ki), as the browser mod's player presses it.
   for _ = 1, 3 do
     if H.r16(0x7ED720) == 4 then break end
-    H.tap('y', 6, 40)
+    H.tap('x', 6, 40)
   end
   H.result('ring_open', H.r16(0x7ED720) == 4)
   H.shot('ring')
   for _ = 1, 4 do
     if H.r16(0x7ED720) == 1 then break end
-    H.tap('y', 6, 40)
+    H.tap('x', 6, 40)
   end
   H.wait(30)
   local c2, p2 = scenery()

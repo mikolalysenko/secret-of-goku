@@ -129,10 +129,10 @@ core_boot:
 	PLP
 	JML $C10010
 
-; FastROM (CORE_FASTROM builds): C1:4D0F clears $4200-$420D on every title
+; FastROM (default; -DCORE_SLOWROM=1 keeps 2.68 MHz ROM): C1:4D0F clears $4200-$420D on every title
 ; entry, so MEMSEL is set again here. Banks $80-$FF then run at 3.58 MHz.
 core_fastrom:
-if defined("CORE_FASTROM")
+if not(defined("CORE_SLOWROM"))
 	SEP #$20
 	LDA.b #$01
 	STA.l $00420D
@@ -206,6 +206,10 @@ core_frame_begin:
 	JSR core_oam_mode_changed
 .same
 	INC.w !core_tick&$FFFF
+	; The game's own register reset (C2:B620, $4202+X for X = 0..11) clears
+	; MEMSEL during the intro and on map setups; set it again every frame
+	; (no-op in -DCORE_SLOWROM builds). Found by the title stream.
+	JSR core_fastrom
 	JSR core_read_pad
 	STZ.w !core_pad_mask&$FFFF
 	STZ.w !core_pad_inject&$FFFF
