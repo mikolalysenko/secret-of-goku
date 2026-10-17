@@ -1114,6 +1114,7 @@ incsrc "kai.asm"
 incsrc "space.asm"
 incsrc "fatal.asm"
 incsrc "village.asm"
+incsrc "vista.asm"
 incsrc "stubs.asm"
 
 ; Generated palettes and small tables.

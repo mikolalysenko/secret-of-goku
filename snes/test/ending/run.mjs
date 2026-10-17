@@ -10,7 +10,7 @@ import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {runMesen} from '../mesen.mjs';
 const gfx=await import(new URL('../../tools/gfx.mjs',import.meta.url).href);
-import {kaiReference,compare,writeRef,bestPlanetMatch,gokuAtlas,nativeEffects} from './reference.mjs';
+import {kaiReference,compare,writeRef,bestPlanetMatch,gokuAtlas,nativeEffects,vistaReference} from './reference.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const rom=process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-goku.sfc');
 const baseRom=new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')));
@@ -152,11 +152,36 @@ async function departCheck(r,out){
   expect(r.after_phase===0&&r.after_suppress===0,`stop releases the picture and Randi (${r.after_phase}, ${r.after_suppress})`);
 }
 
+// Shenron's vista against shenron-ending.js's own composition (BG3 is
+// empty in the test state, so the whole picture is compared).
+async function vistaCheck(r,out){
+  expect(r.summon_loaded,'vista loaded');
+  expect(r.summon_load_frames<=40,`vista load took ${r.summon_load_frames} frames`);
+  expect(!r.dragon_reloaded,'the dragon continues on the live vista');
+  expect(r.summon_done===1&&r.dragon_done===1&&r.wish_done===1,`done flags ${r.summon_done}/${r.dragon_done}/${r.wish_done}`);
+  // Shenron's rise moves every frame; elsewhere a late frame (a heavy
+  // native frame during a palette fade, the wish's flash) holds a still
+  // picture one more frame.
+  expect(r.dragon_lag<=1,`dragon lag ${r.dragon_lag} frames`);
+  expect(r.lag_frames<=12,`lag ${r.lag_frames} frames`);
+  expect(r.overruns===0,`vblank overran ${r.overruns} times (${r.overrun_at})`);
+  const shots=[...[24,60].map(a=>['summon',a]),...[10,40,70,100].map(a=>['dragon',a]),...[4,30,50,80].map(a=>['wish',a]),...[6,20].map(a=>['scatter',a])];
+  for(const [phase,a] of shots){
+    const name=`${phase}-${a}`;if(r[name]===undefined){problems.push(`no still ${name}`);continue;}
+    const ref=phase==='scatter'?await vistaReference({rom:baseRom,phase:'wish',age:96,eighth:true,dimmed:a/30})
+      :await vistaReference({rom:baseRom,phase,age:a,eighth:true});
+    writeFileSync(join(out,`${name}-ref.png`),writeRef(null,ref));
+    const m=compare(join(out,`${name}.png`),ref);r[`${name}_match`]=m;
+    expect(m>=0.9,`${name} matches the browser at ${(m*100).toFixed(1)}%`);
+  }
+}
+
 const tests=[
   {name:'kai',check:kaiCheck},
   {name:'space',check:spaceCheck},
   {name:'fatal',check:fatalCheck},
   {name:'depart',check:departCheck},
+  {name:'vista',check:vistaCheck},
 ];
 let ok=true;
 for(const t of tests){

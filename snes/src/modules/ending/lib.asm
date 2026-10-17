@@ -1067,12 +1067,11 @@ pal_range:
 ; Rebuild s_palout for the ranges whose inputs changed: the white/black
 ; mix (all ranges), the group-1 extra black (group-1 ranges) or base colours
 ; (s_paldirty bit 0: group-0 ranges, bit 1: group-1 ranges). The curves are
-; rebuilt at once; the colours round-robin over the declared ranges, at
-; most !PB_BUDGET per frame while a fade steps a level or two at a time (a
-; colour trails its curve by a frame or two), all at once after a jump
-; (scene start, cuts).
+; rebuilt at once; the colours round-robin over the declared ranges, as
+; many per frame as the frame has time for (pb_time_budget, 16-192) while a
+; fade steps a level or two at a time (a colour trails its curve by a few
+; frames at most), all at once after a jump (scene start, cuts).
 !l_palm = !s_tmp+8
-!PB_BUDGET = 64
 palette_build:
 	REP #$30
 	STZ.w !l_palm
@@ -1158,7 +1157,7 @@ palette_build:
 	AND.w #$00FF
 	ORA.w !l_pbjump
 	BNE .all
-	LDA.w #!PB_BUDGET
+	JSR pb_time_budget
 	BRA .go
 .all
 	LDA.w #$0200                  ; a jump, new ranges or loading: all now
@@ -1182,6 +1181,42 @@ palette_build:
 	BCC .small
 	INC.w !l_pbjump
 .small
+	RTS
+
+; Colours this frame has time for: about 3 per scanline left before line
+; !PB_LINE_END (the hooks after ours, the vblank's uploads and the game's
+; next frame need the rest), at least 16, at most 192. The scanline comes
+; from the latched V counter (bit 8 of the second read; bits 1-7 of it are
+; open bus and masked).
+!PB_LINE_END = 200
+pb_time_budget:
+	SEP #$20
+	LDA.w $213F               ; reset the OPHCT/OPVCT flip-flops
+	LDA.w $2137               ; latch H/V
+	LDA.w $213D
+	XBA
+	LDA.w $213D
+	AND.b #$01
+	XBA
+	REP #$20
+	CMP.w #!PB_LINE_END
+	BCS .least
+	EOR.w #$FFFF
+	SEC
+	ADC.w #!PB_LINE_END
+	STA.w !l_m0
+	ASL
+	CLC
+	ADC.w !l_m0
+	CMP.w #16
+	BCC .least
+	CMP.w #192
+	BCC .ok
+	LDA.w #192
+.ok
+	RTS
+.least
+	LDA.w #16
 	RTS
 
 ; Carry set when a declared range is in fade group 1. Without one the

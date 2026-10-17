@@ -61,12 +61,4 @@ hold_black:
 	STZ.w !s_ebright
 	JMP mark_done
 
-start_vista:
-start_scatter:
-	JMP hold_black
 
-frame_summon:
-frame_dragon:
-frame_wish:
-frame_scatter:
-	RTS

@@ -478,8 +478,8 @@ depart_orb_cell:
 ; colour goes through the palette pipeline (colour math could only add a
 ; constant): from 107 the game's colours 0-223 become base colours (32 a
 ; frame, straight into s_palout as well: white 0), and at 114 one range
-; takes all 256 colours. palette_build's round robin (64 colours a frame)
-; leaves a colour at most four frames behind the mix.
+; takes all 256 colours. palette_build's round robin (as many colours as
+; the frame has time for) leaves a colour a few frames behind the mix.
 depart_cloud:
 	LDA.l !ending_age
 	CMP.w #!DP_COPY

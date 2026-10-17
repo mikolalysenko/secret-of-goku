@@ -68,6 +68,50 @@ export async function kaiReference({rom,kaiFrame=0,bubbles={x:86,y:160,frame:5,f
   return surfaceToRgba(surface);
 }
 
+// shenron-ending prepare() for the vista phases (summon, dragon, wish; the
+// scatter's first 30 frames are the wish at 96, dimmed): the engine's own
+// tree vista, then Shenron, the cliff, the Balls, the fallout, Goku from
+// behind and the sparks, with the browser's dim/brighten.
+let vistaArt=null;
+export async function vistaReference({rom,phase,age,eighth=false,dimmed=0}){
+  if(!vistaArt){
+    const {createManaTreeVista}=await engine('mana-tree-vista.js');
+    const a=await loadKaiArt();
+    const shenron=gfx.readPng(join(repo,'assets/sprites/shenron.png'));
+    const sheet=gfx.readPng(join(repo,'assets/sprites/dragon-balls.png')),bs=toSurface(sheet,128),W=sheet.width,H=sheet.height;
+    const frames=[];
+    for(let i=0;i<8;i++){
+      const x0=Math.round(i%4*W/4),x1=Math.round((i%4+1)*W/4),y0=Math.round(Math.floor(i/4)*H/2),y1=Math.round((Math.floor(i/4)+1)*H/2);
+      let x=x1,y=y1,right=x0,bottom=y0;
+      for(let yy=y0;yy<y1;yy++)for(let xx=x0;xx<x1;xx++)if(bs[yy*W+xx]){x=Math.min(x,xx);right=Math.max(right,xx);y=Math.min(y,yy);bottom=Math.max(bottom,yy);}
+      frames.push({x,y,w:right-x+1,h:bottom-y+1});
+    }
+    vistaArt={draw:createManaTreeVista(rom),dragon:{pixels:toSurface(shenron,1),width:shenron.width,height:shenron.height},
+      balls:{pixels:bs,width:W,frames},goku:a.goku,effects:await nativeEffects(rom)};
+  }
+  const v=vistaArt,surface=new Uint16Array(256*224);
+  const rgb=(r,g,b)=>1+r+(g<<5)+(b<<10);
+  const put=(x,y,c)=>{x=Math.round(x);y=Math.round(y);if(x>=0&&x<256&&y>=0&&y<224)surface[y*256+x]=c;};
+  const blit=(a,x,y,w,h,sx=0,sy=0,sw=a.width,sh=a.height)=>{for(let py=0;py<h;py++)for(let px=0;px<w;px++){const c=a.pixels[(sy+Math.floor(py*sh/h))*a.width+sx+Math.floor(px*sw/w)];if(c)put(x+px,y+py,c);}};
+  const ball=(frame,x,y,size)=>{const f=v.balls.frames[frame%8],w=Math.round(size*f.w/Math.max(f.w,f.h)),h=Math.round(size*f.h/Math.max(f.w,f.h));
+    for(let yy=0;yy<h;yy++)for(let xx=0;xx<w;xx++){const c=v.balls.pixels[(f.y+Math.floor(yy*f.h/h))*v.balls.width+f.x+Math.floor(xx*f.w/w)];if(c)put(x-w/2+xx,y-h/2+yy,c);}};
+  const stamp=(frame,x,y)=>{const fr=v.effects['gold-spark'],cell=fr[((frame%fr.length)+fr.length)%fr.length];for(let py=0;py<16;py++)for(let px=0;px<16;px++){const c=cell[py*16+px];if(c)put(Math.round(x)+px-8,Math.round(y)+py-8,c);}};
+  const mixAll=f=>{for(let i=0;i<surface.length;i++){const c=surface[i]-1;surface[i]=rgb(f(c&31),f(c>>5&31),f(c>>10&31));}};
+  const rise=phase==='dragon'?Math.max(0,1-age/96):phase==='wish'?0:1,scroll=Math.round(8*(1-rise*rise));
+  v.draw(put,{foreground:false,destroyed:phase!=='wish',x:30,y:44-Math.round(scroll/4)});
+  if(phase==='dragon'||phase==='wish')blit(v.dragon,92,66+Math.round(160*rise*rise),72,79);
+  v.draw(put,{foreground:true,x:0,y:156-scroll});
+  for(let i=0;i<7;i++){const a=i*Math.PI*2/7-Math.PI/2;ball(i,Math.round(128+Math.cos(a)*28),Math.round(184+scroll+Math.sin(a)*12),12);}
+  if(eighth)ball(7,128,172+scroll,12);
+  if(phase==='summon')for(let i=0;i<32;i++)put((i*61+age/12|0)%256,(i*47+age/3|0)%224,rgb(21,24,17));
+  blit(v.goku,112,172+scroll,32,32,0,32+3*32,32,32);
+  if(phase==='dragon'&&age<96)for(let i=0;i<4;i++)stamp((age>>2)+i,106+i*15,172+scroll-((age*3+i*29)%112));
+  if(phase==='wish'&&age<72){for(let i=0;i<4;i++)stamp((age>>3)+i,114+(i&1)*24,132+(i>>1)*26);if(age<36){const a=.65*(1-age/36);mixAll(n=>Math.round(n+(31-n)*a));}}
+  if(dimmed)mixAll(n=>Math.round(n*(1-dimmed)));
+  if(phase==='summon'&&age<48){const a=1-age/48;mixAll(n=>Math.round(n*(1-a)));}
+  return surfaceToRgba(surface);
+}
+
 // Fraction of pixels whose channels all differ by at most `tol` (8-bit),
 // within the optional rectangle {x0,y0,x1,y1}.
 export function compare(pngPath,ref,{tol=24,rect=null}={}){
