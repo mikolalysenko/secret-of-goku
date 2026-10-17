@@ -243,3 +243,21 @@ destroy_tree_barrier_break:
 	LDA.l $7E00E3 : ORA.b #$40 : STA.l $7E00E3
 	PLP
 	RTL
+
+; ---------------------------------------------------------------------------
+; Story queries DOOR_* (docs/agents/snes-port/story.md; barriers.doorBroken):
+; JSL, M16/X16, DB = $7E. A16 = 1 when that breakable door is broken. Story
+; routes the doors' trigger events (16A/16B, 55A/55B) on these.
+destroy_query_door_gaia:
+	LDA.w #1<<!DESTROY_DOOR_GAIA_SHORTCUT
+	BRA destroy_query_door
+destroy_query_door_pandora:
+	LDA.w #1<<!DESTROY_DOOR_PANDORA_RUINS_EXIT
+	BRA destroy_query_door
+destroy_query_door_northtown:
+	LDA.w #1<<!DESTROY_DOOR_NORTHTOWN_RUINS_SEAL
+destroy_query_door:
+	AND.l !P_DOORS
+	AND.w #$00FF : BEQ +
+	LDA.w #1
++	RTL

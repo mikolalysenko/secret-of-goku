@@ -260,6 +260,11 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !QM_DEMO     = $08
 !QM_BRAZIER  = $10
 
+; Story queries answered here (story/hooks.asm, included last, picks them up).
+!STORY_QUERY_DOOR_GAIA_SHORTCUT = destroy_query_door_gaia
+!STORY_QUERY_DOOR_PANDORA_RUINS_EXIT = destroy_query_door_pandora
+!STORY_QUERY_DOOR_NORTHTOWN_RUINS_SEAL = destroy_query_door_northtown
+
 pushpc
 org !DATA_DESTROY
 destroy_data_start:

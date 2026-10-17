@@ -383,12 +383,10 @@ export async function generate({rom,repo,outDir}){
     for(const v of[...variants,crisis])assert(JSON.stringify(v.get(id))===JSON.stringify(authored),`event ${id.toString(16)} differs by party/crisis`);
     scripts.push({id,start,bytes:authored});
   }
-  // Breakable doors: opened trigger scripts (for the event router).
-  const doorScripts=[];
-  for(const d of breakableDoors)for(const[id,b]of d.events)doorScripts.push({door:d.id,id,bytes:b});
+  // (The breakable doors' opened trigger events are routed by story on the
+  // DOOR_* queries this module answers.)
   emit('destroy_scripts:');
   for(const s of scripts)bytes(`destroy_script_${s.id.toString(16)}`,s.bytes);
-  for(const s of doorScripts)bytes(`destroy_door_open_${s.id.toString(16)}`,s.bytes);
   // Script table: event id, retail slot (C9/CA address), long pointer.
   emit('destroy_script_table:');
   for(const s of scripts){

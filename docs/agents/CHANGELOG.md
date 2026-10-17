@@ -4,6 +4,13 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## 2026-10-17 — SNES cartridge: Goku sprite and story (integration)
+
+- Goku replaces the boy on the cartridge once he has arrived: every native action and facing, distance-driven walk cycles, pushing, falls, status colours, the water palette, the pygmy miniature, the HUD portrait and the Super Saiyan form with its transformation. Art is converted from the browser sheets at build time (4,837 tiles in banks F8–FA) and poses port `goku-animation.js`; Mesen replays of all 51 native actions match the browser's pose choice on 12,740 of 12,740 frames. The pose API for combat, flight and scenes is in [snes-port/goku.md](snes-port/goku.md).
+- The story stack is compiled at build time from the browser's own story sources into banks F0–F7 (four party variants), with native event dispatch, party variants, story-area floors, object overlays, names, the Dragon Ball ledger, Luka's Advice, the five-minute crisis greeting, the Potos gatekeeper and the Water Palace walk. A sweep of all 324 dispatch programs (2,592 choices) and nine differential runs match the browser. Details and the hook table other modules fill are in [snes-port/story.md](snes-port/story.md).
+- Test tooling: imported browser states now neutralise idle text pointers into the browser's own story-bank layout, which otherwise redraw stale text every frame on the cartridge.
+- Validation: `node snes/test/run-all.mjs` — boot, core, goku, perf and story all pass on the merged build; strict build clean.
+
 ## 2026-10-17 — SNES cartridge: core runtime (core stream)
 
 - The standalone cartridge's core gives every module frame callbacks in the field (including dialogue and Mode 7 boss arenas), world flight, ring menus and full-screen menus, vblank callbacks for the field and world NMIs, and a title-program entry hook that resets module state on power-on and soft reset.
