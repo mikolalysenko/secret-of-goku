@@ -137,13 +137,54 @@
 !s_compr    = !SW+$500  ; 256 words: red*2 of each base colour
 !s_compg    = !SW+$700  ; 256 words: green*2
 !s_compb    = !SW+$900  ; 256 words: blue*2
-!s_fader    = !SW+$B00  ; 32 words: faded red
-!s_fadeg    = !SW+$B40  ; 32 words: faded green << 5
-!s_fadebt   = !SW+$B80  ; 32 words: faded blue << 10
-!s_dq       = !SW+$C00  ; dynamic transfer queue: 16 x 8 bytes
+!s_fader    = !SW+$B00  ; fade curves, group 0: 32 words red
+!s_fadeg    = !SW+$B40  ; 32 words green << 5
+!s_fadebt   = !SW+$B80  ; 32 words blue << 10
+!s_fader2   = !SW+$BC0  ; group 1 (global and group fade combined)
+!s_fadeg2   = !SW+$C00
+!s_fadebt2  = !SW+$C40
+!s_dq       = !SW+$C80  ; dynamic transfer queue: 16 x 8 bytes
 !DQ_SIZE    = $80
-!s_hdmabuf  = !SW+$C80  ; HDMA tables (352 bytes, to $DDF)
+!s_hdmabuf  = !SW+$D00  ; small HDMA tables (240 bytes)
+!s_x        = !SW+$E00  ; second state block (256 bytes)
+!s_stage    = !SW+$F00  ; 256-byte staging buffer (VRAM writes from the frame side)
 !s_big      = !SW+$1000 ; 4 KiB scene buffers
+
+; Library scratch (s_lib, SW+$E0..$FF); scenes own s_var (SW+$80..$DF).
+!l_cell     = !SW+$E0
+!l_qcell    = !SW+$E2
+!l_quadc    = !SW+$E4
+!l_quadx    = !SW+$E6
+!l_quady    = !SW+$E8
+!l_quadi    = !SW+$EA
+!l_bits     = !SW+$EC
+!l_sqn      = !SW+$EE
+!l_m0       = !SW+$F0
+!l_m1       = !SW+$F2
+!l_m2       = !SW+$F4
+!l_sqr      = !SW+$F6
+!l_palc     = !SW+$F8
+!l_fadew    = !SW+$DE           ; word  white mix of the current tables (s_fadekey holds black)
+!s_rng      = !SW+$FA           ; word  LCG state
+!s_cellvram = !SW+$FC           ; word  VRAM word address of 16x16 cell 0
+!s_celltile = !SW+$FE           ; word  OAM tile number of cell 0
+hi_bits_ram = !SW+$DF0             ; 16 bytes (oam_put's high-table patterns)
+; Second state block (s_x).
+!s_palgrp   = !s_x+$00          ; 4 bytes: fade group of each CGRAM range
+!s_fadeb2   = !s_x+$04          ; word  extra black mix for group-1 ranges
+!l_fadeb2   = !s_x+$06          ; word  group-1 black of the current tables
+!s_vwcount  = !s_x+$08          ; word  queued single-word VRAM writes (s_stage)
+!s_win      = !s_x+$0A          ; byte  window HDMA active (channel 6)
+
+; Parameter blocks in s_tmp (frame side).
+!o_x    = !s_tmp+0              ; oam_put / draw_quad: x (signed)
+!o_y    = !s_tmp+2              ; y (signed)
+!o_size = !s_tmp+4              ; 0 small, 2 large
+!q_attr = !s_tmp+6              ; draw_quad attributes
+!q_src  = !s_tmp+8              ; queue_add: source (long)
+!q_mode = !s_tmp+11
+!q_dest = !s_tmp+12
+!q_size = !s_tmp+14
 
 !FAM_NONE    = $00
 !FAM_BLACK   = $01      ; brightness ceiling only (transition hold)
@@ -464,6 +505,7 @@ scene_init:
 	STZ.w !s_curoff
 	STZ.w !s_fadew
 	STZ.w !s_fadeb
+	STZ.w !s_fadeb2
 	STZ.w !s_frame
 	LDA.w #$FFFF
 	STA.w !s_fadekey
@@ -635,6 +677,8 @@ begin_fullscreen:
 	STA.w !s_bg2v
 	LDA.w #$0100              ; black until loaded
 	STA.w !s_fadeb
+	LDA.w #$0000
+	STA.w !s_fadeb2
 	LDA.w #$0000
 	STA.w !s_fadew
 	LDA.w #$FFFF

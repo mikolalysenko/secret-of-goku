@@ -4,35 +4,7 @@
 !CODE_BANK #= !CODE_ENDING>>16
 !CB #= !CODE_ENDING&$FF0000      ; code bank base for long,X table reads
 
-; Library scratch (s_lib, SW+$E0..$FF); scenes own s_var (SW+$80..$DF).
-!l_cell     = !SW+$E0
-!l_qcell    = !SW+$E2
-!l_quadc    = !SW+$E4
-!l_quadx    = !SW+$E6
-!l_quady    = !SW+$E8
-!l_quadi    = !SW+$EA
-!l_bits     = !SW+$EC
-!l_sqn      = !SW+$EE
-!l_m0       = !SW+$F0
-!l_m1       = !SW+$F2
-!l_m2       = !SW+$F4
-!l_sqr      = !SW+$F6
-!l_palc     = !SW+$F8
-!l_fadew    = !SW+$DE           ; word  white mix of the current tables (s_fadekey holds black)
-!s_rng      = !SW+$FA           ; word  LCG state
-!s_cellvram = !SW+$FC           ; word  VRAM word address of 16x16 cell 0
-!s_celltile = !SW+$FE           ; word  OAM tile number of cell 0
-hi_bits_ram = !SW+$DE0             ; 16 bytes (oam_put's high-table patterns)
-
-; Parameter blocks in s_tmp (frame side).
-!o_x    = !s_tmp+0              ; oam_put / draw_quad: x (signed)
-!o_y    = !s_tmp+2              ; y (signed)
-!o_size = !s_tmp+4              ; 0 small, 2 large
-!q_attr = !s_tmp+6              ; draw_quad attributes
-!q_src  = !s_tmp+8              ; queue_add: source (long)
-!q_mode = !s_tmp+11
-!q_dest = !s_tmp+12
-!q_size = !s_tmp+14
+; Library scratch and parameter defines live in module.asm.
 
 ; ===========================================================================
 ; Vblank hook (field NMI, after the game's uploads, still force-blanked).
@@ -808,6 +780,10 @@ pal_range:
 	SEP #$30
 	PHA
 	LDA.w !s_palcount
+	TAY
+	LDA.b #$00
+	STA.w !s_palgrp,Y
+	TYA
 	ASL
 	TAY
 	PLA
@@ -828,6 +804,9 @@ palette_build:
 	LDA.w !s_fadew
 	CMP.w !l_fadew
 	BNE .rebuild
+	LDA.w !s_fadeb2
+	CMP.w !l_fadeb2
+	BNE .rebuild
 	SEP #$20
 	LDA.w !s_paldirty
 	REP #$20
@@ -838,6 +817,8 @@ palette_build:
 	STA.w !s_fadekey
 	LDA.w !s_fadew
 	STA.w !l_fadew
+	LDA.w !s_fadeb2
+	STA.w !l_fadeb2
 	JSR fade_tables
 .apply
 	SEP #$20
@@ -849,12 +830,20 @@ palette_build:
 .range
 	LDA.w !s_tmp+12
 	CMP.w #$0008
-	BCS .done
+	BCC .more
+	RTS
+.more
 	LSR
 	SEP #$20
 	CMP.w !s_palcount
 	REP #$20
-	BCS .done
+	BCC .go
+	RTS
+.go
+	TAY
+	LDA.w !s_palgrp,Y
+	AND.w #$00FF
+	PHA
 	LDY.w !s_tmp+12
 	LDA.w !s_palrange,Y
 	AND.w #$00FF
@@ -871,6 +860,8 @@ palette_build:
 	CLC
 	ADC.w !s_tmp+10
 	STA.w !s_tmp+10               ; end * 2
+	PLA
+	BNE .group1
 .colour
 	LDY.w !s_compr,X
 	LDA.w !s_fader,Y
@@ -882,16 +873,66 @@ palette_build:
 	INX : INX
 	CPX.w !s_tmp+10
 	BCC .colour
+	BRA .next
+.group1
+	LDY.w !s_compr,X
+	LDA.w !s_fader2,Y
+	LDY.w !s_compg,X
+	ORA.w !s_fadeg2,Y
+	LDY.w !s_compb,X
+	ORA.w !s_fadebt2,Y
+	STA.w !s_palout,X
+	INX : INX
+	CPX.w !s_tmp+10
+	BCC .group1
+.next
 	INC.w !s_tmp+12
 	INC.w !s_tmp+12
-	BRA .range
-.done
-	RTS
+	JMP .range
 
 ; Channel curves for the current white (w) and black (b) mix:
 ; t[c] = dark_b(white_w(c)), from 33-level ROM tables (levels of 8/256).
 fade_tables:
 	REP #$30
+	LDA.w !s_fadeb
+	LDX.w #$0000
+	JSR fade_table_set
+	; Group 1: black = 1 - (1-b)(1-b2).
+	LDA.w #$0100
+	SEC
+	SBC.w !s_fadeb
+	TAY
+	LDA.w #$0100
+	SEC
+	SBC.w !s_fadeb2
+	CPY.w #$0100
+	BCC .mul
+	BRA .have                     ; b = 0: just b2
+.mul
+	JSR mul_a_y                   ; (256-b2) * (256-b), Y < 256
+	XBA
+	AND.w #$00FF
+.have
+	EOR.w #$FFFF
+	SEC
+	ADC.w #$0100                  ; 256 - product/256
+	LDX.w #!s_fader2-!s_fader
+	JMP fade_table_set
+
+; Curves for black A (0..256) and the current white into the table set at
+; offset X from s_fader: t[c] = dark_b(white_w(c)), 33-level ROM tables.
+fade_table_set:
+	STX.w !s_tmp+8
+	CLC
+	ADC.w #$0004
+	LSR : LSR : LSR
+	CMP.w #33
+	BCC .b
+	LDA.w #32
+.b
+	XBA
+	LSR : LSR : LSR
+	STA.w !s_tmp+14
 	LDA.w !s_fadew
 	CLC
 	ADC.w #$0004
@@ -903,17 +944,6 @@ fade_tables:
 	XBA
 	LSR : LSR : LSR               ; level * 32
 	STA.w !s_tmp+12
-	LDA.w !s_fadeb
-	CLC
-	ADC.w #$0004
-	LSR : LSR : LSR
-	CMP.w #33
-	BCC .b
-	LDA.w #32
-.b
-	XBA
-	LSR : LSR : LSR
-	STA.w !s_tmp+14
 	LDY.w #$0000                  ; c * 2
 .loop
 	TYA
@@ -928,11 +958,19 @@ fade_tables:
 	TAX
 	LDA.l ending_fade_dark,X
 	AND.w #$00FF
+	PHY
+	PHA
+	TYA
+	CLC
+	ADC.w !s_tmp+8
+	TAY
+	PLA
 	STA.w !s_fader,Y
 	ASL : ASL : ASL : ASL : ASL
 	STA.w !s_fadeg,Y
 	ASL : ASL : ASL : ASL : ASL
 	STA.w !s_fadebt,Y
+	PLY
 	INY : INY
 	CPY.w #$0040
 	BCC .loop
