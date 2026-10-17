@@ -83,7 +83,11 @@ incsrc "story/data.asm"
 !story_objlist_end   = !RAM_STORY+$8E ; word: list end (start + 8 + 8n)
 !story_objlist_bank  = !RAM_STORY+$90 ; byte: bank of the list (C8 = cartridge)
 !story_sweeping      = !RAM_STORY+$91 ; byte: test sweep evaluates routes only
-; $92-$FF free
+!story_jema_count    = !RAM_STORY+$92 ; word: Jemas found by the Water Palace repair
+!story_gate_ax       = !RAM_STORY+$94 ; word: |dx| to the gate guard
+!story_gate_ay       = !RAM_STORY+$96 ; word: |dy| to the gate guard
+!story_gate_sq       = !RAM_STORY+$98 ; word: dx^2 (story_square clobbers tmp0-tmp5)
+; $9A-$FF free
 
 ; Persistent fields (!PERSIST_STORY, $C0 bytes, battery SRAM, per save slot)
 !story_p_version   = !PERSIST_STORY+$00 ; 1 once initialised
@@ -1624,7 +1628,7 @@ story_init_persist:
 ; Water Palace (map 139): remove a stale duplicate Jema after the first
 ; conversation; keep the one nearest his scripted position.
 story_jema_dedupe:
-	STZ.w !story_tmp3&$FFFF       ; count
+	STZ.w !story_jema_count&$FFFF
 	STZ.w !story_keep&$FFFF
 	LDA.w #$FFFF
 	STA.w !story_best&$FFFF
@@ -1662,7 +1666,7 @@ story_jema_dedupe:
 .scan
 	JSR story_is_jema
 	BCC .next
-	INC.w !story_tmp3&$FFFF
+	INC.w !story_jema_count&$FFFF
 	LDA.l $7EE03E,X
 	AND.w #$07FF
 	CMP.w !story_tmp4&$FFFF
@@ -1689,7 +1693,7 @@ story_jema_dedupe:
 	TAX
 	CPX.w #$1800
 	BCC .scan
-	LDA.w !story_tmp3&$FFFF
+	LDA.w !story_jema_count&$FFFF
 	CMP.w #$0002
 	BCC .out
 	LDA.w !story_keep&$FFFF
@@ -2170,23 +2174,21 @@ story_potos_gatekeeper:
 	JSR story_abs
 	CMP.w #65
 	BCS .unlatch
-	STA.w !story_tmp2&$FFFF
+	STA.w !story_gate_ax&$FFFF
 	LDA.w !story_tmp1&$FFFF
 	JSR story_abs
 	CMP.w #65
 	BCS .unlatch
-	STA.w !story_tmp3&$FFFF
-	PHX
-	LDA.w !story_tmp2&$FFFF
+	STA.w !story_gate_ay&$FFFF
+	LDA.w !story_gate_ax&$FFFF
 	JSR story_square
 	LDA.w !story_tmp0&$FFFF
-	STA.w !story_tmp4&$FFFF
-	LDA.w !story_tmp3&$FFFF
+	STA.w !story_gate_sq&$FFFF
+	LDA.w !story_gate_ay&$FFFF
 	JSR story_square
-	PLX
 	LDA.w !story_tmp0&$FFFF
 	CLC
-	ADC.w !story_tmp4&$FFFF
+	ADC.w !story_gate_sq&$FFFF
 	CMP.w #4097
 	BCC .stay
 .unlatch

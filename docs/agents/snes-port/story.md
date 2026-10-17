@@ -420,6 +420,8 @@ never from copied data. Test-ROM cases build `dist/snes/story-test.sfc` with
 | Story areas | `story-area` | door 45 → map 40 raises CF20–22 to 3/2/1 |
 | Greeting | `crisis-greeting` | one greeting before an NPC's compiled script, then resume |
 | Fast-forward | `newgame-fast-forward` | test ROM with `story_fast_forward`: R held through Luka's spear gift reaches the menu and stops at the choice |
+| Potos gatekeeper | `potos-gatekeeper` | test ROM with `LOCAL_FLIGHT` answered 1: hovering just north of the gate guard starts his compiled banishment scene (9B), fires `FLIGHT_LAND`, latches once |
+| Jema repair | `jema-dedupe` | a stale second Water Palace Jema (CF11 8) is removed; the actor slots equal the browser's on SnesJs |
 | Water Palace | `water-palace-walk` | 113-byte walk equals `water-palace.js` for the state's positions |
 | Object overlays | `objects-*` (7) | loaded records of maps 408 (both captive states), 236 (solo/full), 139 (CF11 5/12), 195 equal `storyRead` |
 | Routes | `route-*` (25) | first resolution under story and foreign state for 558, 93, 9A, A8, 297, 42F, 4E1, 4A4, 5F8, 429, 4E5, 28B, 7A |

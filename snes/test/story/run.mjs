@@ -401,6 +401,31 @@ cases.push({name:'absent-skip',bundle:'emulator-probe__potos-state',writes:[...g
     check(r){const t=r.trace.find(x=>x[0]===0x114),a=alloc(js(0x114,0));return [['114 resolves to the Elder\'s compiled line',t&&t[1]===a.at,hex(a.at,6)],['its text was read',readsCover(r.reads,a.at,a.end)>=a.length*0.8,'']];}});
 }
 
+// ---- Potos gatekeeper (potos-story.js) and Water Palace Jema repair -----
+{
+  // Flying low over the banished village gate: the guard shouts Goku down.
+  const guard=0x600;
+  cases.push({name:'potos-gatekeeper',rom:'test',bundle:'barrier-audit__potos-probe',queries:[['localFlight',1]],
+    writes:[...goku,[0x7ee002,536,2],[0x7ee004,540,2]],frames:240,mash:24,shots:[40],
+    check(r){
+      const t=r.trace.find(x=>x[0]===0x9b),ram=r.ram;
+      const land=(r.hooklog??[]).some(e=>e[0]===hookId('FLIGHT_LAND'));
+      return [['the guard starts 9B',t&&t[1]===js(0x9b,3),t?hex(t[1],6):'none'],['FLIGHT_LAND fired',land,''],
+        ['latched after one trigger',ram[0x24]===1&&(ram[0x2c]|ram[0x2d]<<8)===1,`latched ${ram[0x24]} triggers ${ram[0x2c]|ram[0x2d]<<8}`]];
+    }});
+  // A stale second Jema after the first Water Palace talk (CF11 = 8).
+  const {runBrowserStory}=await import('./jsref.mjs');
+  const importCatalog=JSON.parse(readFileSync(join(imports,'catalog.json'),'utf8'));
+  const src=resolve(mainCheckout(),importCatalog.find(x=>x.name==='power-flight-fixes__jema-after-talk')?.source??'');
+  cases.push({name:'jema-dedupe',bundle:'power-flight-fixes__jema-after-talk',writes:[...goku],frames:12,dump:[[0x7ee000,0x1800]],
+    async check(r){
+      const ram=r.dumps?.[0]??[],slots=Array.from({length:12},(_,i)=>ram[i*0x200]&1);
+      const b=existsSync(src)?await runBrowserStory({repo,rom:base,statePath:src,frames:12}):null;
+      return [['one Jema left (slot A00 removed, E00 kept)',slots[5]===0&&slots[7]===1,`active slots ${slots.join('')}`],
+        ['actor slots match the browser',b&&b.slots.join()===slots.join(),b?`browser ${b.slots.join('')}`:'no source state']];
+    }});
+}
+
 const only=process.argv.slice(2);
 mkdirSync(out,{recursive:true});
 let failures=0;

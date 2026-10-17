@@ -33,13 +33,6 @@ function test()
   H.wait(5)
   if CASE.bundle and not H.importSnesJs(CASE.bundle) then H.result('error', 'import failed'); return end
   for _, w in ipairs(CASE.rom_writes or {}) do emu.write(w[1], w[2], emu.memType.snesPrgRom) end
-  apply(CASE.writes)
-  if CASE.log then
-    H.w16(CASE.log, 0)
-    for i = 0, 127 do H.w8(CASE.queries + i, 0) end
-    for _, q in ipairs(CASE.test_queries or {}) do H.w8(CASE.queries + q[1], q[2]) end
-  end
-  H.wait(CASE.settle or 4)
   -- every native event resolution: requested id -> first script pointer
   emu.addMemoryCallback(function()
     trace[#trace + 1] = {u16(CASE.ram + 0x78), u8(0xD1) | (u8(0xD2) << 8) | (u8(0xD3) << 16), H.frame}
@@ -52,6 +45,14 @@ function test()
     -- the callback runs before the byte is stored: use its value
     events[#events + 1] = {u8(CASE.ram) | ((value or 0) << 8), H.frame}
   end, emu.callbackType.write, CASE.ram + 1, CASE.ram + 1)
+
+  apply(CASE.writes)
+  if CASE.log then
+    H.w16(CASE.log, 0)
+    for i = 0, 127 do H.w8(CASE.queries + i, 0) end
+    for _, q in ipairs(CASE.test_queries or {}) do H.w8(CASE.queries + q[1], q[2]) end
+  end
+  H.wait(CASE.settle or 4)
   apply(CASE.before)
   if CASE.script then
     -- run a raw event stream (e.g. the 3D opcode) from SRAM once idle

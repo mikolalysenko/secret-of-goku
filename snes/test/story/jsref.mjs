@@ -41,8 +41,9 @@ export async function runBrowserStory({repo,rom,statePath,writes=[],ledger=[0,0]
   for(const [a,v] of writes)r[a&0x1ffff]=v;
   const step=buttons=>{s.joypad1State=buttons;s.runFrame(true);};
   for(let i=0;i<settle;i++)step(0);
-  const ok=request>=0x800?story.travel(request&0x3ff):story.request(request);
+  const ok=request===undefined?true:request>=0x800?story.travel(request&0x3ff):story.request(request);
   for(let i=1;i<=frames;i++)step(mash&&i%mash<2?1:0);
   const status=story.status;
-  return{requested:ok,flags:Array.from(r.slice(0xcf00,0xd000)),entered:status.recentEvents,ledger:mod.quest.status,status,map:w(0xdc)};
+  const slots=Array.from({length:12},(_,i)=>r[0xe000+i*0x200]&1);
+  return{requested:ok,flags:Array.from(r.slice(0xcf00,0xd000)),entered:status.recentEvents,ledger:mod.quest.status,status,map:w(0xdc),slots};
 }
