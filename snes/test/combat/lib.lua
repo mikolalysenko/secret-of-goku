@@ -20,7 +20,7 @@ function C.probe()
     gp = r16(0x7ECC6A) | (r8(0x7ECC6C) << 16), xp = r16(0x7EE18D) | (r8(0x7EE18F) << 16),
     frame = r16(0x7ED700), vb = r16(C.CB + 0xC4), hurt = r8(0x7EE011), can = r8(C.CB + 0x12), fxmask = r16(C.CB + 0xBE), kb = r16(C.CB + 0xC2),
     deflected = r16(C.CB + 0x5A), recovered = r16(C.CB + 0x68), hits = r16(C.CB + 0x6A), d0 = r8(0x7E00D0),
-    str = r8(0x7EE188), agi = r8(0x7EE189), pdef = r16(0x7EE1A5), mdef = r16(0x7EE1A8), lvl = r8(0x7EE181), maxhp = r16(0x7EE184),
+    str = r8(0x7EE188), agi = r8(0x7EE189), armor = r8(0x7EE1E1), ring = r8(0x7E00EC), pdef = r16(0x7EE1A5), mdef = r16(0x7EE1A8), lvl = r8(0x7EE181), maxhp = r16(0x7EE184),
     e = {},
   }
   p.k0 = {}
@@ -48,6 +48,18 @@ function C.run(script, trace, pokes)
   local id = emu.addMemoryCallback(function()
     trace[#trace + 1] = C.probe()
   end, emu.callbackType.exec, 0x00B07D, 0x00B07D)
+  -- ring menus pause the field loop: probe their frames too (C0:694F)
+  local ringFrame = -1
+  local ringProbe = function()
+    if H.frame ~= ringFrame then
+      ringFrame = H.frame
+      local p = C.probe()
+      p.inRing = true
+      trace[#trace + 1] = p
+    end
+  end
+  local id2 = emu.addMemoryCallback(ringProbe, emu.callbackType.exec, 0xC0694F, 0xC0694F)
+  local id3 = emu.addMemoryCallback(ringProbe, emu.callbackType.exec, 0x00694F, 0x00694F)
   for part in script:gmatch('[^,]+') do
     local buttons, n = part:match('^([^:]+):(%d+)$')
     local input = nil
@@ -68,6 +80,8 @@ function C.run(script, trace, pokes)
   end
   H.input = nil
   emu.removeMemoryCallback(id, emu.callbackType.exec, 0x00B07D, 0x00B07D)
+  emu.removeMemoryCallback(id2, emu.callbackType.exec, 0xC0694F, 0xC0694F)
+  emu.removeMemoryCallback(id3, emu.callbackType.exec, 0x00694F, 0x00694F)
 end
 function C.import(name)
   local ok = H.importSnesJs(IMPORT_ROOT .. name)

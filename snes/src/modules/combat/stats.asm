@@ -67,6 +67,12 @@ cb_power_stats:
 ; native rebuild hooks apply the same rules at once; this catches writes
 ; by other code (level tables, scripts) within 4 frames.
 cb_stats_upkeep:
+	; the browser rewrites these every frame: a form change applies at once,
+	; the rest (native gear / level changes) within four frames
+	LDA !cb_def_form
+	EOR !cb_form
+	AND.w #$00FF
+	BNE +
 	LDA !cb_phase
 	AND.w #$0003
 	BEQ +
@@ -175,6 +181,10 @@ cb_defense_stats:
 	JSR cb_goku_active
 	BNE .powered
 	; power off: give back the unboosted totals
+	SEP #$20
+	LDA !cb_form
+	STA !cb_def_form
+	REP #$20
 	LDA !cb_def_valid
 	AND.w #$00FF
 	BEQ .none

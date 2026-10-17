@@ -50,6 +50,23 @@ export const SCENARIOS=[
     check:(js,cart)=>{const d=t=>t[t.length-1].deflected;return d(cart)<1?['no deflection']:[];}},
   {name:'deflect-ssj',bundle:RABITES,ssj:true,rewards:false,script:'right:30,none:900',
     check:(js,cart)=>{const d=t=>t[t.length-1].deflected;return d(cart)<2?['fewer than two deflections']:[];}},
+  // Heavy Gi through the native armor ring (X opens it, B confirms), as
+  // tests/browser/training-gear.spec.mjs: off -> strength 255, agility back;
+  // on again -> 230 and floor(agility * 0.8); the ring rebuild never stacks.
+  {name:'heavy-gi',bundle:'graphics-audit__party',rewards:false,ringProbes:true,
+    script:'none:4,x:2,none:90,b:2,none:90'+',b:2,none:90,b:2,none:90'.repeat(2)+',x:2,none:90,x:2,none:90,x:2,none:90',
+    check:(js,cart)=>{
+      const seq=t=>{const o=[];let last='';for(const f of t){const k=`${f.armor}/${f.str}/${f.agi}`;if(k!==last){o.push(k);last=k;}}return o;};
+      const a=seq(js),b=seq(cart),f=[];
+      if(JSON.stringify(a)!==JSON.stringify(b))f.push(`armor/str/agi: browser ${a.join(' > ')}, cartridge ${b.join(' > ')}`);
+      return f;}},
+  {name:'heavy-gi-ssj',bundle:'graphics-audit__party',ssj:true,rewards:false,ringProbes:true,
+    script:'none:4,x:2,none:90,b:2,none:90'+',b:2,none:90,b:2,none:90'.repeat(2)+',x:2,none:90,x:2,none:90,x:2,none:90',
+    check:(js,cart)=>{
+      const seq=t=>{const o=[];let last='';for(const f of t){const k=`${f.armor}/${f.str}/${f.agi}/${f.pdef}`;if(k!==last){o.push(k);last=k;}}return o;};
+      const a=seq(js),b=seq(cart),f=[];
+      if(JSON.stringify(a)!==JSON.stringify(b))f.push(`armor/str/agi/def: browser ${a.join(' > ')}, cartridge ${b.join(' > ')}`);
+      return f;}},
   // Super Saiyan: a fresh L+A reverts in 10 frames.
   {name:'revert',bundle:RABITES,ssj:true,script:'l:4,l+a:3,none:30'},
 ];

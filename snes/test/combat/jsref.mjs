@@ -38,7 +38,7 @@ export function parseScript(text){
 // One probe record, from WRAM only (shared with combat.lua's probe).
 export function probe(read8,read16){
   const r={map:read16(0xdc),gx:read16(0xe002),gy:read16(0xe004),gface:read8(0xe010),ghp:read16(0xe182),gq:read16(0xe1f1),d0:read8(0xd0),
-    str:read8(0xe188),agi:read8(0xe189),pdef:read16(0xe1a5),mdef:read16(0xe1a8),lvl:read8(0xe181),maxhp:read16(0xe184),
+    str:read8(0xe188),agi:read8(0xe189),armor:read8(0xe1e1),ring:read8(0xec),pdef:read16(0xe1a5),mdef:read16(0xe1a8),lvl:read8(0xe181),maxhp:read16(0xe184),
     gp:read16(0xcc6a)|read8(0xcc6c)<<16,xp:read16(0xe18d)|read8(0xe18f)<<16,e:[]};
   for(let i=3;i<12;i++){
     const b=0xe000+i*0x200;

@@ -41,6 +41,7 @@ export function compare(js,cart,sc={}){
   // cartridge frame index from the vblank counter. The first record is the
   // first field frame of the script; the cartridge reads a frame's input at
   // the next vblank (auto-joypad), the browser before the frame: one frame.
+  cart=cart.filter(f=>!f.inRing||sc.ringProbes);
   const vb0=cart[0].vb-1,lag=sc.inputLag??1;
   cart=cart.map(f=>({...f,_i:((f.vb-vb0)&0xffff)-1-lag})).filter(f=>f._i>=0&&f._i<js.length);
   // Action clock (kind / age / combo / hold / charge / form)
@@ -99,6 +100,10 @@ export function compare(js,cart,sc={}){
   notes.push(`gp +${d(cart,'gp')} xp +${d(cart,'xp')}`);
   // Goku's stats once the power block ran (level 99, 999 HP, Saiyan strength,
   // Heavy Gi agility, Saiyan defense): the last frame of both
+  // ... and every change on the way (form changes, gear), in order
+  const statSeq=t=>{const o=[];for(const f of t){const k=`${f.str}/${f.agi}/${f.pdef}/${f.mdef}`;if(o[o.length-1]!==k)o.push(k);}return o;};
+  const sj=statSeq(js),scs=statSeq(cart);
+  if(sj.join()!==scs.join())failures.push(`str/agi/def sequence: browser ${sj.join(' > ')}, cartridge ${scs.join(' > ')}`);
   const lj=js[js.length-1],lc=cart[cart.length-1];
   for(const k of ['lvl','maxhp','str','agi','pdef','mdef'])if(lj[k]!==lc[k])failures.push(`${k}: browser ${lj[k]}, cartridge ${lc[k]}`);
   notes.push(`lvl ${lc.lvl+1} hp ${lc.ghp}/${lc.maxhp} str ${lc.str} agi ${lc.agi} def ${lc.pdef}/${lc.mdef}`);
