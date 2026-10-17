@@ -23,7 +23,8 @@
 !RAM_CORE_EXT_END = $7E7000
 ; WRAM 7E:7E40-7FFF (448 bytes): UI block, then spare.
 !RAM_UI       = $7E7E40   ; 0xC0 telepathy box, radar, scouter, status, fast-forward
-!RAM_SPARE    = $7E7F00   ; 0x100 unassigned; ask integration before use
+!RAM_WORLD    = $7E7F00   ; 0x100 world-flight module (Mode 7 powers)
+!RAM_SPARE    = $7E7F00   ; (alias kept for older references; owned by world)
 !RAM_SPARE_END = $7E8000
 ;
 ; SRAM (battery backed, 32 KiB total, HiROM banks 30-33:6000-7FFF):

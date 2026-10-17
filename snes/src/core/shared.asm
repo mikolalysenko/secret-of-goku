@@ -12,7 +12,9 @@
 !PERSIST_DESTROY = !SRAM_LIVE+$100   ; $80  craters, broken gates/barriers, demolished walls
 !PERSIST_FRIEZA  = !SRAM_LIVE+$180   ; $80  Frieza / Vegeta / orbit progress
 !PERSIST_COMBAT  = !SRAM_LIVE+$200   ; $80  form, power intro, Kai remark counters, scouter
-!PERSIST_FLIGHT  = !SRAM_LIVE+$280   ; $80  flight / teleport progress
+!PERSIST_FLIGHT  = !SRAM_LIVE+$280   ; $80  flight / teleport progress:
+!PERSIST_WORLD   = !SRAM_LIVE+$280   ;   $40 world-flight module (craters, cloud barrier, Fortress)
+!PERSIST_GROUND  = !SRAM_LIVE+$2C0   ;   $40 ground flight / teleport / escapes
 !PERSIST_MISC    = !SRAM_LIVE+$300   ; $100 title / arrival / audio / misc
 
 ; Shared persistent fields (byte unless noted).
