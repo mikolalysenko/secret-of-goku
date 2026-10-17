@@ -174,62 +174,81 @@ goku_emit:
 	CLC
 	ADC.w #8
 	JSR goku_part_attr
+	XBA
+	ORA.w #$00C0
+	STA !e_tile
 	LDA $04
 	SEC
 	SBC.w #8
-	STA !e_x
-	LDA.w #$00C0
-	STA !e_tile
-	JMP goku_emit_entry
+	JMP goku_emit_at
 .full
-	LDA !p_cell
-	TAX
+	LDX !p_cell
 	LDA.l goku_cell_mask,X
 	AND.w #$000F
 	STA !e_mask
 	LDA !e_feet
 	SEC
 	SBC.w #31
-	STA !e_top
-	STZ !e_q
-.loop
-	LSR !e_mask
-	BCC .next
-	LDA !e_q
-	AND.w #$0001
-	BEQ +
-	LDA.w #16
-+	CLC
-	ADC $04
+	STA !e_y                 ; top row
+	; one attribute per 16-line row, from the native part covering its centre
+	CLC
+	ADC.w #24
+	JSR goku_part_attr
+	XBA
+	ORA.w #$00C4
+	STA !e_q                 ; bottom row: tile C4 | attr << 8
+	LDA !e_y
+	CLC
+	ADC.w #8
+	JSR goku_part_attr
+	XBA
+	ORA.w #$00C0
+	STA !e_tile              ; top row: tile C0 | attr << 8
+	LDA !e_mask
+	LSR
+	BCC .q1
+	LDA $04
 	SEC
 	SBC.w #16
-	STA !e_x
-	LDA !e_q
+	JSR goku_emit_at
+.q1
+	INC !e_tile
+	INC !e_tile              ; C2
+	LDA !e_mask
 	AND.w #$0002
-	BEQ +
-	LDA.w #16
-+	CLC
-	ADC !e_top
-	STA !e_y
+	BEQ .bottom
+	LDA $04
+	JSR goku_emit_at
+.bottom
+	LDA !e_y
 	CLC
-	ADC.w #8                 ; quadrant centre line
-	JSR goku_part_attr
+	ADC.w #16
+	STA !e_y
 	LDA !e_q
-	ASL
-	ORA.w #$00C0
-	STA !e_tile
-	JSR goku_emit_entry
-.next
-	INC !e_q
-	LDA !e_q
-	CMP.w #$0004
-	BCC .loop
+	STA !e_tile              ; C4
+	LDA !e_mask
+	AND.w #$0004
+	BEQ .q3
+	LDA $04
+	SEC
+	SBC.w #16
+	JSR goku_emit_at
+.q3
+	INC !e_tile
+	INC !e_tile              ; C6
+	LDA !e_mask
+	AND.w #$0008
+	BEQ .done
+	LDA $04
+	JMP goku_emit_at
+.done
 	RTS
 
-; e_attr for a screen line (A16): priority and palette of the boy's native
-; body part covering that line (descriptor 0 otherwise), no flips, name
-; select 1 (engine/sprite-layer.js inject(): per-line part). Airborne Goku
-; uses priority 3 and drops the water palette. M16 X16; keeps e_* inputs.
+; OAM attribute for a screen line (A16 in, A16 out = attribute byte):
+; priority and palette of the boy's native body part covering that line
+; (descriptor 0 otherwise), no flips, name select 1 (engine/sprite-layer.js
+; inject(): per-line part). Airborne Goku uses priority 3 and drops the water
+; palette. M16 X16; keeps e_* inputs.
 goku_part_attr:
 	SEC
 	SBC $06                  ; line relative to the native anchor
@@ -265,53 +284,46 @@ goku_part_attr:
 	LDA $E093,Y
 	AND.w #$003E
 	ORA.w #$0001
-	STA !e_attr
 	SEP #$20
+	PHA
 	LDA !goku_ctl
 	AND.b #!GOKU_CTL_AIRBORNE
-	BEQ .done
-	LDA !e_attr
+	BEQ .ground
+	PLA
 	AND.b #$F7               ; palette 5 -> 1 (no water colour math)
 	ORA.b #$30               ; priority 3
-	STA !e_attr
+	BRA .done
+.ground
+	PLA
 .done
 	REP #$30
+	AND.w #$00FF
 	RTS
 
-; One 16x16 OAM entry from e_x, e_y, e_tile, e_attr, mirroring C0:E640:
-; skipped when the buffer is full or the entry is outside -16..223 / -16..255.
-goku_emit_entry:
-	REP #$30
+; One 16x16 OAM entry, mirroring C0:E640: A16 = x, e_y = y, e_tile = tile |
+; attribute << 8. Skipped when the buffer is full or the entry is outside
+; -16..223 / -16..255.
+goku_emit_at:
+	STA !e_x
 	LDY $7C
 	CPY.w #$0200
 	BCS .skip
+	CLC
+	ADC.w #16
+	CMP.w #$0110             ; -16 <= x < 256
+	BCS .skip
 	LDA !e_y
-	BMI .yneg
-	CMP.w #$00E0
+	CLC
+	ADC.w #16
+	CMP.w #$00F0             ; -16 <= y < 224
 	BCS .skip
-	BRA .yok
-.yneg
-	CMP.w #$FFF0
-	BCC .skip
-.yok
-	LDA !e_x
-	BMI .xneg
-	CMP.w #$0100
-	BCS .skip
-	BRA .xok
-.xneg
-	CMP.w #$FFF0
-	BCC .skip
-.xok
+	LDA !e_tile
+	STA $0802,Y              ; tile, attribute
 	SEP #$20
 	LDA !e_y
 	STA $0801,Y
 	LDA !e_x
 	STA $0800,Y
-	LDA !e_tile
-	STA $0802,Y
-	LDA !e_attr
-	STA $0803,Y
 	LDA !e_x+1
 	BEQ .nomsb
 	REP #$20

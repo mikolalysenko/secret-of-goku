@@ -94,7 +94,9 @@ assert !RAM_GOKU == $7E0000|!GOKU_RAM, "!GOKU_RAM must match !RAM_GOKU"
 !div_r            = !GOKU_RAM+$BA   ; word: goku_div16 remainder
 !goku_inited      = !GOKU_RAM+$BC   ; byte: state initialised
 !pal_slot         = !GOKU_RAM+$BD   ; byte: OBJ palette tracked (1, or 5 on water maps), 0 none
-!GOKU_RAM_END     = !GOKU_RAM+$BE
+!pal_stone        = !GOKU_RAM+$BE   ; byte: petrify bit at the last palette build
+!st_blink         = !GOKU_RAM+$BF   ; byte: pose age modulo 180 (idle blink clock)
+!GOKU_RAM_END     = !GOKU_RAM+$C0
 assert !GOKU_RAM_END <= !GOKU_RAM+$C0, "goku RAM overflow"
 ; goku_emit scratch (aliases pal_work: never live at the same time)
 !e_attr = !pal_work+$00
@@ -147,7 +149,7 @@ assert !GOKU_RAM_END <= !GOKU_RAM+$C0, "goku RAM overflow"
 !GOKU_K_REVERT     = $16   ; dur: reversion length (20)
 !GOKU_K_READY      = $17
 !GOKU_K_FOCUS      = $18
-!GOKU_K_AIRBEAM    = $19
+!GOKU_K_AIRBEAM    = $19   ; world flight only (no field pose: the flight module requests cells)
 ; mode kinds (goku_mode)
 !GOKU_K_DEFLECT    = $20   ; reaction, facing = goku_mode_facing
 !GOKU_K_RESIST     = $21

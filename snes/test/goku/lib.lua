@@ -10,7 +10,7 @@ G.addr = {
   p_kind = ram(0x28), p_flags = ram(0x29), p_cell = ram(0x2A), p_lift = ram(0x2C), p_sheet = ram(0x2E),
   p_col = ram(0x2F), p_row = ram(0x30), p_var = ram(0x31),
   vram_cell = ram(0x40), up_cell = ram(0x42), vram_small = ram(0x4A), replacing = ram(0x46),
-  hud_form = ram(0x49), pal_slot = ram(0x7D),
+  hud_form = ram(0x49),
 }
 G.addr.pal_slot = ram(0xBD)
 G.PERSIST_ACTIVE = 0x316001

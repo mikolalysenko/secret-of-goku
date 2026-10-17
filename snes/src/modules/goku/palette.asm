@@ -102,6 +102,44 @@ goku_palette:
 	CLC
 	ADC.w #$0100
 	STA !t_d
+	; fast path: nothing to do while the slot still holds exactly what we
+	; wrote, the displayed cell's palette and the petrify bit are unchanged
+	LDA !pal_valid
+	AND.w #$00FF
+	BEQ .absorb
+	SEP #$20
+	LDA !cur_pal
+	CMP !pal_id_out
+	BNE .absorb8
+	LDA $E190
+	AND.b #$40
+	CMP !pal_stone
+	BNE .absorb8
+	REP #$20
+	LDA !t_d
+	CLC
+	ADC.w #!PALBUF+2
+	TAX                      ; X -> slot entry 1
+	LDY.w #$0002
+.fast
+	LDA $0000,X
+	CMP !pal_out,Y
+	BNE .absorb
+	INX
+	INX
+	INY
+	INY
+	CPY.w #$0020
+	BCC .fast
+	RTS
+.absorb8
+	REP #$20
+.absorb
+	SEP #$20
+	LDA $E190
+	AND.b #$40
+	STA !pal_stone
+	REP #$20
 	; absorb the game's writes into pal_native
 	STZ !t_c                 ; changed flag
 	LDY.w #$001E

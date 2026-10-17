@@ -37,6 +37,9 @@ goku_pose:
 	STA !p_lift
 	BRA .small
 .pose
+if defined("GOKU_TRACE")
+	JSR goku_trace_inputs
+endif
 	JSR pose_inputs
 	JSR pose_select_kind
 	JSR pose_push
@@ -54,6 +57,62 @@ goku_pose:
 .done
 	REP #$30
 	RTS
+
+if defined("GOKU_TRACE")
+; Test builds only (snes/test/goku): snapshot the native inputs this pose
+; reads, in spare WRAM $7E:7F00, so a Lua test can replay them through
+; engine/goku-animation.js frame by frame (difftest.mjs).
+!GOKU_TRACE_BUF = $7F00
+goku_trace_inputs:
+	PHP
+	REP #$30
+	LDA $DC
+	STA !GOKU_TRACE_BUF+0
+	LDA $E002
+	STA !GOKU_TRACE_BUF+2
+	LDA $E004
+	STA !GOKU_TRACE_BUF+4
+	LDA $E018
+	STA !GOKU_TRACE_BUF+6
+	LDA $E026
+	STA !GOKU_TRACE_BUF+8
+	LDA.l $004218
+	STA !GOKU_TRACE_BUF+10
+	SEP #$20
+	LDA $E011
+	STA !GOKU_TRACE_BUF+12
+	LDA $E031
+	STA !GOKU_TRACE_BUF+13
+	LDA $E010
+	STA !GOKU_TRACE_BUF+14
+	LDA $E045
+	STA !GOKU_TRACE_BUF+15
+	LDA $E190
+	STA !GOKU_TRACE_BUF+16
+	LDA $E191
+	STA !GOKU_TRACE_BUF+17
+	LDA $E180
+	STA !GOKU_TRACE_BUF+18
+	LDA $E4
+	STA !GOKU_TRACE_BUF+19
+	LDA $E5
+	STA !GOKU_TRACE_BUF+20
+	LDA $E000
+	STA !GOKU_TRACE_BUF+21
+	LDA $E02C
+	STA !GOKU_TRACE_BUF+22
+	LDA $EC
+	STA !GOKU_TRACE_BUF+23
+	LDA $ED
+	STA !GOKU_TRACE_BUF+24
+	LDA $D0
+	STA !GOKU_TRACE_BUF+25
+	LDA !GOKU_TRACE_BUF+26
+	INC
+	STA !GOKU_TRACE_BUF+26   ; pose counter
+	PLP
+	RTS
+endif
 
 ; ---------------------------------------------------------------------------
 ; Frame inputs: new-frame flag, distance moved, facing/row, validated native
@@ -570,6 +629,15 @@ pose_update_state:
 	LDA $DC
 	CMP !st_map
 	BNE .changed
+	SEP #$20
+	LDA !st_blink            ; age modulo 180 for the idle blink
+	INC
+	CMP.b #180
+	BCC .blink
+	LDA.b #0
+.blink
+	STA !st_blink
+	REP #$20
 	LDA !st_age
 	INC
 	BEQ .accumulate          ; saturate at $FFFF
@@ -578,6 +646,9 @@ pose_update_state:
 .changed
 	REP #$20
 	STZ !st_age
+	SEP #$20
+	STZ !st_blink
+	REP #$20
 	; walk/run/push and shuffle kinds restart their distance, unless both the
 	; old and new kinds are shuffle kinds on the same map
 	SEP #$20
@@ -912,24 +983,22 @@ pose_kind_table:
 	dw pk_idle, pk_walk, pk_run, pk_push, pk_guard, pk_fall, pk_recover, pk_celebrate
 	dw pk_jump, pk_swordpull, pk_dead, pk_sleep, pk_hurt, pk_idle, pk_idle, pk_idle
 	dw pk_punch, pk_charge, pk_beam, pk_blast, pk_teleport, pk_transform, pk_revert, pk_ready
-	dw pk_focus, pk_airbeam, pk_idle, pk_idle, pk_idle, pk_idle, pk_idle, pk_idle
+	dw pk_focus, pk_idle, pk_idle, pk_idle, pk_idle, pk_idle, pk_idle, pk_idle
 	dw pk_deflect, pk_resist, pk_hover, pk_gapflight, pk_rescuedive, pk_ceiling, pk_takeoff, pk_landing
 	dw pk_run, pk_idle, pk_idle, pk_idle, pk_idle, pk_idle, pk_idle, pk_idle
 
 pk_idle:
-	; blink for 5 frames every 180 (not facing up)
+	; blink for 5 frames every 180 (not facing up): age % 180 in 150..154
 	SEP #$20
 	LDA !p_row
 	CMP.b #3
 	BEQ .plain
-	REP #$30
-	LDA !p_age
-	LDX.w #180
-	JSR goku_div16
-	CPX.w #150
+	LDA !st_blink
+	CMP.b #150
 	BCC .plain
-	CPX.w #155
+	CMP.b #155
 	BCS .plain
+	REP #$20
 	STZ !t_age
 	SEP #$20
 	LDA.b #!GOKU_CLIP_BLINK
@@ -1230,19 +1299,6 @@ pk_beam:
 .base
 	CLC
 	ADC !t_a
-	STA !p_col
-	REP #$30
-	RTS
-pk_airbeam:
-	SEP #$20
-	LDA.b #3
-	STA !p_rowout
-	LDA !goku_form
-	AND.b #$01
-	STA !p_sheet
-	LDA.b #24
-	LDY.w #20
-	JSR pose_by_form
 	STA !p_col
 	REP #$30
 	RTS
