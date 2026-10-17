@@ -48,6 +48,7 @@ modules_ring_frame:
 ; WRAM was cleared; the decompressed program is at 7E:8000 (DB = $7E).
 modules_title_boot:
 	JSL title_title_boot
+	JSL fx_title_boot
 	RTL
 ; Before the game writes a GAME FILE: put persistent state into !SRAM_LIVE.
 modules_save:

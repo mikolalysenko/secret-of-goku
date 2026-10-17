@@ -2,12 +2,25 @@
 ; requested its effects. Entered M16/X16, DB = $7E, D = 0.
 
 fx_frame:
-	JSR fx_ensure_init
 if defined("FX_TEST")
+	JSR fx_ensure_init
 	JSR fx_test_frame
 	JSR fx_test_vline
 	STA.l !FXT_BOX+$A8           ; scanline when fx_frame started
 endif
+	; Idle fast path: no request since the last frame and nothing held
+	; (every API call sets !fx_busy; fx_finish recomputes it). Garbage SRAM
+	; at power-on reads nonzero here or initialises on the first request.
+	LDA.l !fx_busy
+	BNE .full
+if defined("FX_TEST")
+	LDA.l !fx_frame              ; tests count fx frames
+	INC
+	STA.l !fx_frame
+endif
+	RTL
+.full
+	JSR fx_ensure_init
 	PHD
 	TSC
 	SEC
@@ -79,10 +92,11 @@ endif
 ; World-flight frame: world rendering is not wired yet, so only the
 ; bookkeeping runs (the draw list is dropped).
 fx_world_frame:
-	JSR fx_ensure_init
+	LDA.l !fx_ndraw
+	BEQ +
 	LDA.w #$0000
 	STA.l !fx_ndraw
-	RTL
++	RTL
 
 ; Scene bookkeeping, camera, per-frame resets. C set when there is nothing
 ; to draw this frame.
@@ -174,16 +188,17 @@ endif
 	CLC
 	RTS
 
-; Map or mode change: drop spawned effects and forget cached cells (the
-; regions' VRAM may have been reloaded).
+; Map or mode change: drop spawned effects, forget cached cells (the
+; regions' VRAM may have been reloaded) and give the regions back, so a
+; module that claims them on arrival (title) is not refused while FX idles.
 fx_reset_scene:
-	JSR fx_clear_slots
+	JSR fx_clear_old_slots
 	JSR fx_clear_rbits
 	LDA.w #$0000
 	STA.l !fx_cpend
 	STA.l !fx_cfail
 	STA.l !fx_quake
-	JSR fx_claim                 ; re-validate held regions (a title reset clears claims)
+	JSR fx_release               ; claims are made again only when something is drawn
 	LDX.w #$001E
 -	LDA.l !fx_ccell,X
 	CMP.w #$FFFE
@@ -193,6 +208,39 @@ fx_reset_scene:
 +	DEX
 	DEX
 	BPL -
+	RTS
+
+; End the spawned effects of the previous scene; effects spawned this frame
+; (age $FFFF, already for the new scene) stay.
+fx_clear_old_slots:
+	LDA.l !fx_nlive
+	BEQ .done
+	LDX.w #$0000
+.loop
+	LDA.l !fx_slots+!S_KIND,X
+	AND.w #$00FF
+	BEQ .next
+	LDA.l !fx_slots+!S_AGE,X
+	CMP.w #$FFFF
+	BEQ .next
+	SEP #$20
+	LDA.b #$00
+	STA.l !fx_slots+!S_KIND,X
+	REP #$20
+	LDA.l !fx_nlive
+	DEC
+	STA.l !fx_nlive
+.next
+	TXA
+	CLC
+	ADC.w #16
+	TAX
+	CPX.w #!FX_SLOTS*16
+	BCC .loop
+	LDA.l !fx_nlive
+	BNE .done
+	STA.l !fx_hiwater
+.done
 	RTS
 
 ; Claim (or confirm) the field OBJ regions. Entries of a region we do not
@@ -625,6 +673,12 @@ fx_finish:
 	ORA.l !fx_poly_req
 	ORA.l !fx_poly_on
 	STA.l !fx_nmiwork
+	ORA.l !fx_regions            ; anything held keeps the full path running
+	ORA.l !fx_flash
+	ORA.l !fx_quake
+	ORA.l !fx_cfail
+	ORA.l !fx_nlive
+	STA.l !fx_busy
 	LDA.w #$0000
 	STA.l !fx_ndraw
 	RTS

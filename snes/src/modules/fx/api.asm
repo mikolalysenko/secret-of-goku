@@ -8,6 +8,8 @@ fx_ensure_init:
 	LDA.l !fx_magic
 	CMP.w #!FX_MAGIC
 	BNE .init
+	LDA.w #$0001                 ; a request: the next fx_frame runs in full
+	STA.l !fx_busy
 	PLA
 	RTS
 .init
@@ -35,9 +37,18 @@ fx_ensure_init:
 	STA.l !fx_vblp+8
 	LDA.w #!FX_MAGIC
 	STA.l !fx_magic
+	LDA.w #$0001
+	STA.l !fx_busy
 	PLX
 	PLA
 	RTS
+
+; Title entry (power-on, soft reset, quit to title): the SRAM work area is
+; battery backed, so a previous session's state is dropped here.
+fx_title_boot:
+	LDA.w #$0000
+	STA.l !fx_magic
+	RTL
 
 ; fx_spawn: A = kind | flags<<8, X = x, Y = y, request block.
 ; Out: C clear and A = handle (slot | generation<<8), or C set (no slot, or

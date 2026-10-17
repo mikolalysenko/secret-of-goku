@@ -7,11 +7,11 @@
 !fx_nmi_bit = !fx_s+2            ; word: its MDMAEN bit
 
 fx_nmi:
+	LDA.l !fx_nmiwork            ; idle frames cost one read here
+	BEQ .done
 	LDA.l !fx_magic
 	CMP.w #!FX_MAGIC
 	BNE .done
-	LDA.l !fx_nmiwork            ; idle frames cost nothing here
-	BEQ .done
 	JSL core_vblank_lines
 	STA.l !fx_vbl
 	JSR fx_nmi_learn
