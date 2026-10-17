@@ -10,6 +10,7 @@ incsrc "modules/goku/module.asm"
 incsrc "modules/title/module.asm"
 incsrc "modules/story/module.asm"
 incsrc "modules/destroy/module.asm"
+incsrc "modules/vegeta/module.asm"
 
 pushpc
 org !CODE_CORE+$7000
