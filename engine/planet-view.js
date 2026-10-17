@@ -300,11 +300,33 @@ export function createPlanetView(snes,mod){
     result[0]=y===224?0:surface[y*256+x]-1;result[1]=4;result[2]=0x86;return result;
   }
   p.getColor=function(sub,x,y){return shade(sub,x,y,previous.call(this,sub,x,y));};
+  // shade() for a whole scanline as compositor ops (Ppu.registerLineHook):
+  // a channel map for the light and pale tints, else a paint of the surface.
+  const rows=Array.from({length:224},(_,y)=>surface.subarray(y*256,y*256+256)),black=new Uint16Array(256).fill(1);
+  const tint={type:'channels',layers:63,r:new Int32Array(32),g:new Int32Array(32),b:new Int32Array(32),layer:-1,pixel:0,mainOnly:true};
+  const paint={type:'paint',layers:63,colors:null,skipZero:false,layer:4,pixel:0x86,mainOnly:true};
+  function plan(y,linePlan){
+    // idle() has selected this scanline's view.
+    if(view.light!==undefined){const light=view.light;for(let c=0;c<32;c++)tint.r[c]=tint.g[c]=tint.b[c]=Math.round(c*light);}
+    else if(view.pale!==undefined){
+      const alpha=view.pale,mix=(n,t)=>Math.round(n+(t-n)*alpha);
+      for(let c=0;c<32;c++){tint.r[c]=mix(c,28);tint.g[c]=mix(c,30);tint.b[c]=mix(c,31);}
+      // rgb() adds the channels and the op ORs them: equal only in range.
+      for(let c=0;c<32;c++)if((tint.r[c]|tint.g[c]|tint.b[c])>>>5)return true;
+    }else{
+      const {state,shot,orbit,ring}=view;
+      if(frame!==mod.frame||preparedState!==state)prepare(state,!!shot);
+      let keep=0;
+      if(!view.fatal){if(!shot&&y<170&&state.phase!=='complete')keep|=4;if(orbit&&(ring||y>=190))keep|=4|16;}
+      paint.layers=63&~keep;paint.colors=y===224?black:rows[y];linePlan.extra.push(paint);linePlan.skipPost=true;return true;
+    }
+    linePlan.extra.push(tint);linePlan.skipPost=true;return true;
+  }
   p.registerLineHook?.('getColor',p.getColor,previous,(ppu,line)=>{
     if(line>224||!texture)return true;
     viewFrame=mod.frame;viewLine=line;viewX=-1;view=selectView();
     return !view;
-  },{name:'planet-view',post:(ppu,sub,x,y,r)=>{const t=shade(sub,x,y,r);if(t!==r){r[0]=t[0];r[1]=t[1];r[2]=t[2];}}});
+  },{name:'planet-view',plan:(ppu,line,linePlan)=>plan(line,linePlan),post:(ppu,sub,x,y,r)=>{const t=shade(sub,x,y,r);if(t!==r){r[0]=t[0];r[1]=t[1];r[2]=t[2];}}});
   return{ready:collateral.ready,load(rom){texture=decodePlanetTexture(rom);frame=-1;viewFrame=-1;viewX=256;globeKey='';},
     renderDefeat(){
       const state=mod.ending?.planetScene;if(!state?.fatal)return;
