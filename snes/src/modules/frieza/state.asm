@@ -1124,6 +1124,10 @@ fz_reset_transient:
 	JSR fz_battle_reset
 	JSR fz_beast_reset
 	JSR fz_lich_reset
+	SEP #$20
+	STZ !fzd_on
+	STZ !fzd_key
+	REP #$20
 	RTS
 
 ; ---------------------------------------------------------------------------

@@ -173,6 +173,22 @@ endif
 	CLC
 	RTS
 
+; ending.lose(key): the ending module's fatal sequence (doomed planet, GAME
+; OVER). A: bit 3 died as a Super Saiyan. C set when the ending runs it.
+fz_bind_ending_lose:
+if defined("EP_FATAL")
+	LDA !fzd_gold
+	AND.w #$00FF
+	BEQ +
+	LDA.w #!EF_GOLD
++	JSL ending_lose
+	SEC
+	RTS
+else
+	CLC
+	RTS
+endif
+
 ; C set while an ending relaxes the permanent form (the revived Randi's
 ; scenes, Goku's death): frieza.js leaves options.superSaiyan alone then.
 fz_bind_ending_relaxed:
@@ -293,6 +309,21 @@ endif
 fz_bind_beam_touches:
 	CLC
 	RTS
+; Combat's whole-pad lock while a surge or the victory beat runs.
+!FZ_COMBAT_OWNER = $0040
+fz_bind_input_lock:
+if defined("COMBAT_OWNER")
+	LDA.w #!FZ_COMBAT_OWNER
+	JSL combat_api_input_lock
+endif
+	RTS
+fz_bind_input_unlock:
+if defined("COMBAT_OWNER")
+	LDA.w #!FZ_COMBAT_OWNER
+	JSL combat_api_input_unlock
+endif
+	RTS
+
 ; mod.cancelInput(): held buttons must be released after the surge.
 fz_bind_cancel_input:
 	RTS

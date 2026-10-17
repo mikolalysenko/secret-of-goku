@@ -15,12 +15,16 @@ frieza_field_frame:
 	JSR fz_scene_tick
 	JSR fz_battle_tick
 	JSR fz_beast_tick
+	JSR fz_death_tick
+	JSR fz_won_tick
+	JSR fz_lock_tick
 	; Mode 7 arenas (Beast, Fortress bosses) have no Frieza sprites
 	LDA $29
 	AND.w #$0004
 	BNE .out
 	JSR fz_draw_scene
 	JSR fz_battle_draw
+	JSR fz_won_draw
 .out
 	JSR fz_music_tick
 	RTL
@@ -28,7 +32,35 @@ frieza_field_frame:
 ; modules_field_nmi: in vblank after the game's uploads (DB = $80).
 frieza_field_nmi:
 	JSR fz_spr_nmi
+	JSR fz_won_nmi
 	RTL
+
+; inputLocked: a surge or the won beat owns the pad (mana-mod.js zeroes the
+; whole pad); combat is held through its input lock.
+fz_lock_tick:
+	JSR fz_input_locked
+	BCC .free
+	LDA.w #$FFFF
+	TSB.w !core_pad_mask&$FFFF
+	LDA !fz_tflags
+	AND.w #!FZT_LOCKED
+	BNE .out
+	SEP #$20
+	LDA.b #!FZT_LOCKED
+	TSB !fz_tflags
+	REP #$20
+	JMP fz_bind_input_lock
+.free
+	LDA !fz_tflags
+	AND.w #!FZT_LOCKED
+	BEQ .out
+	SEP #$20
+	LDA.b #!FZT_LOCKED
+	TRB !fz_tflags
+	REP #$20
+	JMP fz_bind_input_unlock
+.out
+	RTS
 
 ; Session bookkeeping: VRAM residency survives only an unbroken run of field
 ; frames on one map with the picture on; map changes reset the per-room
@@ -200,6 +232,9 @@ fz_story_tick:
 	LDA.w #!FZFL_PERMANENT
 	JSR fz_flag
 	BEQ +
+	LDA !fzd_on                       ; a finale death reverts him
+	AND.w #$00FF
+	BNE +
 	JSR fz_bind_ending_relaxed
 	BCS +
 	LDA.l !goku_form|$7E0000

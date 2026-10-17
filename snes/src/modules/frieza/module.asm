@@ -111,7 +111,10 @@ assert !FZF_END <= !FZ+$C0, "frieza WRAM overflow"
 !fz_hmelee     = !FZ+$B8   ; word: frieza_virtual_hit melee flag
 !fz_sx_i       = !FZ+$BA   ; word: table index of the loop in progress
 !fz_spr_pal2   = !FZ+$BC   ; byte: afterimage OBJ palette this frame ($FF none)
-assert !FZ+$BD <= !FZ+$C0, "frieza WRAM overflow"
+!fzd_on        = !FZ+$BD   ; byte: finale death running (1 here, 2 the ending's)
+!fzd_key       = !FZ+$BE   ; byte: encounter of the death (!FZE_*)
+!fzd_gold      = !FZ+$BF   ; byte: Goku died as a Super Saiyan
+assert !FZ+$C0 <= !FZ+$C0, "frieza WRAM overflow"
 ; math scratch: core's call-local scratch (never used in vblank)
 !fz_m0 #= (!core_scratch)&$FFFF
 !fz_m1 #= !fz_m0+2
@@ -218,12 +221,20 @@ assert !FZX_END <= !FZ+$C0, "frieza WRAM overflow (beast)"
 !fzs_arena_map = !FZSB+$140   ; word: map the bitmap belongs to ($FFFF none)
 !fzs_arena_rev = !FZSB+$142   ; word: revision (fractures so far)
 !fzs_holes_n   = !FZSB+$144   ; word: cells broken
+!fzd_age       = !FZSB+$146   ; word: finale death clock (long addressing)
+!fzv_on        = !FZSB+$14A   ; byte: the victory beat runs
+!fzv_age       = !FZSB+$14C   ; word: frames since the fatal hit
+!fzv_x         = !FZSB+$14E   ; word: where Frieza fell (map)
+!fzv_y         = !FZSB+$150   ; word
+!fzv_white     = !FZSB+$152   ; byte: whiteout 0-31 this frame
+!fzv_wlast     = !FZSB+$153   ; byte: the whiteout was on last vblank
 
 
 ; transient flags (!fz_tflags)
 !FZT_VRAM_OK   = $01       ; this map's Frieza VRAM region holds our buffers
 !FZT_FORCED    = $02       ; the frame ran under forced blank (map load)
 !FZT_PALSCAN   = $04       ; native OBJ palettes scanned this frame
+!FZT_LOCKED    = $08       ; the input lock is applied
 
 ; deferred work (!fz_pend), applied in the next field frame callback
 !FZW_FADE      = $0001     ; trial fade (C0:8B16's ordinary 60-frame fade)
@@ -489,6 +500,11 @@ pullpc
 ; Emperor is present (native-story.js storyRead of C8:3FF2).
 %orig4($C1E7F2, $C83002BF)
 %hijack_jsl($C1E7F2, frieza_door_entry, 4, frieza)
+; Event dispatcher (C1:E77B REP #$30 / PHX / CMP #$0800): the finale death
+; gate (boss-rush-death.js installFinaleDeathGate).
+%orig4($C1E77B, $C9DA30C2)
+%orig2($C1E77F, $0800)
+%hijack($C1E77B, frieza_event_gate, 6, frieza)
 
 pushpc
 org !CODE_FRIEZA
@@ -502,6 +518,8 @@ incsrc "math.asm"
 incsrc "draw.asm"
 incsrc "arena.asm"
 incsrc "beast.asm"
+incsrc "death.asm"
+incsrc "victory.asm"
 frieza_code_end:
 assert frieza_code_end <= !CODE_FRIEZA+$7000, "frieza code bank overflow"
 pullpc

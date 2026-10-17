@@ -139,6 +139,81 @@ end
 `;
 }
 
+// A finale death: Goku at 1 HP takes the first Death Orb. The native death
+// plays (no all-party-dead warp, event 7FF is gated), the screen fades out
+// from 300 to 360 frames and holds black; Start returns to the title.
+function deathTest(){
+  const g=reference('battle');
+  const writes=friezaWrites(g.frieza,g.challenge);
+  const v=n=>'0x'+(n<0x10000?(0x7E0000|n):n).toString(16);
+  return `
+function test()
+  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__battle'))})
+  F.check(ok, 'import')
+  H.w8(0x316001, 1)
+  F.apply(${luaWrites(writes)})
+  H.w16(0x7EE182, 1)
+  local died = H.waitFor(function() return H.r8(${v(defs.fzd_on)}) ~= 0 end, 400)
+  F.check(died, 'the death sequence started')
+  H.result('diedAt', H.frame)
+  H.wait(60)
+  H.shot('death-60')
+  F.check(H.r16(0x7E00DC) == 246, 'still in the arena (no wake-up warp)')
+  H.wait(240)
+  H.shot('death-300')
+  H.wait(70)
+  local bright = H.r8(0x7E00E6) & 0x0F
+  H.result('brightness', bright)
+  F.check(bright == 0, 'black after 360 frames, brightness ' .. bright)
+  F.check(H.r16(0x7E00DC) == 246, 'still in the arena at black')
+  H.hold('start', 4)
+  H.wait(90)
+  local pc = emu.getState()['cpu.k']
+  H.result('bankAfterStart', pc)
+  F.done()
+end
+`;
+}
+
+// The ground stand-in for the last phase (no orbit stream in the build):
+// at tier 2 Frieza has no HP floor; his fall plays Mantis Ant's beat
+// (flashes, bursts, whiteout, fanfare, chime) and then the victory event
+// C7, whose hooks recover the pouch (stage defeated).
+function victoryTest(){
+  const g=reference('battle');
+  const writes=friezaWrites(g.frieza,g.challenge);
+  const v=n=>'0x'+(n<0x10000?(0x7E0000|n):n).toString(16);
+  return `
+function test()
+  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__battle'))})
+  F.check(ok, 'import')
+  H.w8(0x316001, 1)
+  F.apply(${luaWrites(writes)})
+  H.w8(${v(defs.fzf_tier)}, 2)
+  H.w16(${v(defs.fzf_hp_lo)}, 500)
+  H.w16(${v(defs.fzf_hp_hi)}, 0)
+  H.wait(2)
+  H.w16(${v(defs.fzs_test)}+2, 60000)
+  H.w16(${v(defs.fzs_test)}, 2)
+  H.wait(2)
+  F.check(H.r8(${v(defs.fzp_stage)}) == ${defs.FZST_WON}, 'stage won after the fatal hit')
+  F.check(H.r8(${v(defs.fzv_on)}) == 1, 'the victory beat runs')
+  H.wait(100)
+  H.shot('victory-100')
+  H.wait(300)
+  H.result('white400', H.r8(${v(defs.fzv_white)}))
+  F.check(H.r8(${v(defs.fzv_white)}) == 31, 'white at 400')
+  H.shot('victory-400')
+  local done = H.waitFor(function() return H.r8(${v(defs.fzp_stage)}) == ${defs.FZST_DEFEATED} end, 1500)
+  F.check(done, 'event C7 ran: stage defeated')
+  H.result('defeatedAt', H.frame)
+  H.result('pouch', H.r8(0x316041))
+  H.shot('victory-after')
+  F.done()
+end
+`;
+}
+
 const cases={
   court:{preset:'frieza',frames:[60,240,600]},
   thanatos:{preset:'thanatos',frames:[60,240]},
@@ -159,6 +234,29 @@ if(want('surge')){
   const ok=r.code===0&&res.pass===true;
   results.push({name:'surge',ok,failures});
   console.log(`frieza surge: ${ok?'pass':'FAIL'} (${r.ms} ms) punch ${res.punch} hp at surge ${res.hpAtSurge} holes ${res.holes}`);
+  if(!ok)for(const f of failures)console.log('    !',f);
+}
+if(want('victory')){
+  buildTestRom();
+  const rom=privateRom(testRom,'frieza-victory');
+  const r=await runMesen({rom,test:lib+'\n'+victoryTest(),outDir:join(outRoot,'victory'),state:join(cps,'waterfall.mss')});
+  cleanupRom(rom);
+  const res=r.results??{};
+  const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
+  const ok=r.code===0&&res.pass===true;
+  results.push({name:'victory',ok,failures});
+  console.log(`frieza victory: ${ok?'pass':'FAIL'} (${r.ms} ms) white ${res.white400} defeated at ${res.defeatedAt} ledger ${res.pouch}`);
+  if(!ok)for(const f of failures)console.log('    !',f);
+}
+if(want('death')){
+  const rom=privateRom(romSrc,'frieza-death');
+  const r=await runMesen({rom,test:lib+'\n'+deathTest(),outDir:join(outRoot,'death'),state:join(cps,'waterfall.mss')});
+  cleanupRom(rom);
+  const res=r.results??{};
+  const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
+  const ok=r.code===0&&res.pass===true;
+  results.push({name:'death',ok,failures});
+  console.log(`frieza death: ${ok?'pass':'FAIL'} (${r.ms} ms) died at frame ${res.diedAt}, brightness ${res.brightness}, bank after Start ${res.bankAfterStart}`);
   if(!ok)for(const f of failures)console.log('    !',f);
 }
 for(const [name,c] of Object.entries(cases)){

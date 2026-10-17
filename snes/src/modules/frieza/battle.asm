@@ -1728,6 +1728,16 @@ fz_hurt_common:
 	LDA !fzf_hp_hi
 	SBC.w #0
 	STA !fzf_hp_hi
+	BNE +
+	LDA !fzf_hp_lo
+	BNE +
+	; his fall (only without a floor: the ground stand-in of the last phase)
+	LDA !fz_dmg
+	PHA
+	JSR fz_win
+	PLA
+	RTS
++
 	SEP #$20
 	LDA.b #10
 	STA !fzf_hurt
