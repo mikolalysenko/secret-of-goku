@@ -10,6 +10,9 @@
 ; stay visible in that bank).
 
 incsrc "orbit/defines.asm"
+incsrc "orbit-sprites/sprites.asm"
+incsrc "orbit-fx/defines.asm"
+incsrc "audio/ids.asm"
 
 ; ---------------------------------------------------------------------------
 ; WRAM (bank $7E, long addressing).
@@ -23,6 +26,7 @@ incsrc "orbit/defines.asm"
 !orbit_test    = !RAM_ORBIT+$09   ; byte: test scene options (!OT_*)
 !orbit_vline   = !RAM_ORBIT+$0A   ; word: scanline at which the last NMI hook ended (tests)
 !orbit_fline   = !RAM_ORBIT+$0C   ; word: scanline at which the last frame hook ended (tests)
+!orbit_arg     = !RAM_ORBIT+$0E   ; word: command argument
 
 !OS_OFF     = $00
 !OS_LOADING = $01                 ; art uploads; picture held black
@@ -32,6 +36,8 @@ incsrc "orbit/defines.asm"
 !OC_NONE      = $00
 !OC_TEST_GLOBE = $01              ; tests: show the globe with the camera in the scene block
 !OC_STOP      = $02
+!OC_TEST_FIGHT = $03              ; tests: the space fight from its first combat frame
+                                  ; (Frieza's HP in !orbit_arg, globe target in !cam_lon/lat)
 
 !OF_ACTIVE  = $01                 ; the orbit owns the picture
 !OF_LIVE    = $02
@@ -71,14 +77,15 @@ incsrc "orbit/defines.asm"
 !st_ax      = !SB+$060            ; 4 bytes: x travel term of depth 1, 16.16 px
 !st_ay      = !SB+$064            ; 4 bytes: y travel term, integer kept in 0..223
 !st_age240  = !SB+$068            ; sky clock modulo 240
-!st_rr      = !SB+$06A            ; r^2 of the culling globe
-!s_kgen     = !SB+$06C            ; culling generation (bumped when the square moves)
-!s_kx       = !SB+$06E            ; globe the culling square was set for
-!s_ky       = !SB+$070
-!s_kr       = !SB+$072
-!s_cxb      = !SB+$074            ; culling centre and half side (0: no culling)
-!s_cyb      = !SB+$076
-!s_qb       = !SB+$078
+!s_left     = !SB+$06A            ; stars left in this frame's rebuild step
+!s_kgen     = !SB+$06C            ; culling generation (bumped when the globe changes)
+!s_bpos     = !SB+$06E            ; rebuild: next star (x4)
+!s_bend     = !SB+$070            ;   end of the depth's stars (x4)
+!s_bout     = !SB+$072            ;   next list entry
+!s_ctop     = !SB+$074            ;   culling: line of the first rim row
+!s_cn       = !SB+$076            ;   rows (0: none)
+!s_cblk     = !SB+$078            ;   window block (bank $32)
+!STARS_STEP = 24
 !s_tw       = !SB+$07A            ; twinkle bits of the bright stars
 !s_twhave   = !SB+$07C            ; twinkle bits of the built depth-3 list
 !s_bd       = !SB+$07E            ; depth being built (d*2)
@@ -108,6 +115,12 @@ incsrc "orbit/defines.asm"
 !g_bw    = !SB+$0E6               ; building: window block
 !g_it    = !SB+$0E8               ; indirect table set being written
 !g_cur_it = !SB+$0EA              ; indirect table set for the NMI (0 / !IT_SIZE)
+!g_bld    = !SB+$0EC              ; nonzero: a window block is being built
+!g_bld_r  = !SB+$0EE              ; its radius
+!g_bld_cx = !SB+$0F0              ; its centre column
+!g_bld_a  = !SB+$0F2              ; next row (0..R)
+!g_bld_n  = !SB+$0F4              ; rows per frame
+!GLOBE_ROWS_STEP = 28             ; a whole block (R <= 108) in four frames
 
 ; Window blocks (4 bytes per row, rows -R..R, R <= 108) and the empty record.
 !gb_empty = !SB+$0F8              ; 4 bytes: empty windows
@@ -129,6 +142,160 @@ incsrc "orbit/defines.asm"
 !s_list3    = !SB_STARS+$1A0      ; depth 3 (3 x 4, bright)
 !SB_END     = !SB+$A80            ; the fight's state follows
 assert !SB_END <= $8000, "orbit scene block overflow"
+
+; ---------------------------------------------------------------------------
+; Fight state (engine/frieza-orbit.js space, frieza.js boss), words.
+!FB = !SB+$A80
+!f_age      = !FB+$00              ; space.age
+!f_intro    = !FB+$02              ; intro frames left
+!f_hx       = !FB+$04              ; hero (screen pixels)
+!f_hy       = !FB+$06
+!f_heading  = !FB+$08              ; 0-15
+!f_charge   = !FB+$0A              ; 0-45
+!f_cooldown = !FB+$0C
+!f_teleport = !FB+$0E
+!f_punch    = !FB+$10
+!f_duelcd   = !FB+$12
+!f_duel     = !FB+$14              ; exchange age (0: none)
+!f_moving   = !FB+$16              ; camera.moving
+!f_menureq  = !FB+$18
+!f_pad      = !FB+$1A              ; physical pad this frame (core layout)
+!f_padprev  = !FB+$1C
+!f_grace    = !FB+$1E              ; boss.grace (Goku's invulnerability after a hit)
+!fb_on      = !FB+$20              ; Goku's beam: active
+!fb_x       = !FB+$22
+!fb_y       = !FB+$24
+!fb_head    = !FB+$26
+!fb_age     = !FB+$28
+!fb_max     = !FB+$2A
+!fb_width   = !FB+$2C              ; 8.8 pixels (8 + 24 strength)
+!fb_damage  = !FB+$2E
+!b_x        = !FB+$30              ; Frieza
+!b_y        = !FB+$32
+!b_hp       = !FB+$34
+!b_age      = !FB+$36
+!b_clock    = !FB+$38
+!b_cycle    = !FB+$3A
+!b_stun     = !FB+$3C
+!b_hurt     = !FB+$3E
+!b_blink    = !FB+$40
+!b_dash     = !FB+$42
+!b_windup   = !FB+$44
+!b_node     = !FB+$46
+!b_evh      = !FB+$48              ; evade heading
+!b_evn      = !FB+$4A              ; evade frames left (0: none)
+!b_dodgecd  = !FB+$4C
+!b_guard    = !FB+$4E
+!b_counter  = !FB+$50
+!b_recoil   = !FB+$52
+!b_lastimp  = !FB+$54              ; age of the last impact cue
+!b_mhits    = !FB+$56              ; melee hits in the current window
+!b_lastmel  = !FB+$58
+!w_kind     = !FB+$5A              ; warning: 0 none, !WK_*
+!w_age      = !FB+$5C
+!w_wait     = !FB+$5E
+!w_tx       = !FB+$60              ; target (the hero when it started)
+!w_ty       = !FB+$62
+!f_hits     = !FB+$64              ; Goku hit count (browser playerHits)
+!f_shake    = !FB+$66              ; feedback pulse request (frames)
+!f_tmp      = !FB+$68              ; 16 bytes scratch
+!f_won      = !FB+$78              ; clash requested (HP at the 6,000 floor)
+!f_firing   = !FB+$7A              ; a laser is out (frieza.js firing)
+!f_evading  = !FB+$7C              ; Frieza side-steps this frame
+; Arrays.
+!FS_SHOTS   = !FB+$80              ; Goku's ki: 6 x 8 (x, y, heading, age; age $FF.. = free)
+!FS_N       = 6
+!FS_BOSS    = !FB+$B0              ; Frieza's shots: 12 x 16
+!BS_N       = 12
+!bs_kind    = $00                  ; 0 free, !WK_* kind
+!bs_x       = $02
+!bs_y       = $04
+!bs_head    = $06
+!bs_speed   = $08
+!bs_age     = $0A
+!bs_px      = $0C                  ; previous position
+!bs_py      = $0E
+!FS_RIC     = !FB+$170             ; ricochets: 8 x 8 (x, y, heading, owner<<8 | age; age >= 45 free)
+!RIC_N      = 8
+!FS_HITS    = !FB+$1B0             ; hit bursts: 8 x 6 (x, y, age; >= 54 free)
+!HIT_N      = 8
+!FS_AFTER   = !FB+$1E0             ; afterimages: 4 x 6 (x, y, age; >= 16 free)
+; Maths scratch (math.asm).
+!m_t0       = !FB+$200
+!m_t1       = !FB+$202
+!m_t2       = !FB+$204
+!m_t3       = !FB+$206
+!m_t4       = !FB+$208
+!m_t5       = !FB+$20A
+!m_t6       = !FB+$20C
+!m_t7       = !FB+$20E
+!sw_px      = !FB+$210
+!sw_py      = !FB+$212
+!sw_ax      = !FB+$214
+!sw_ay      = !FB+$216
+!sw_bx      = !FB+$218
+!sw_by      = !FB+$21A
+!sw_r       = !FB+$21C
+!sw_len     = !FB+$21E
+!sw_dx      = !FB+$220
+!sw_dy      = !FB+$222
+!sw_along   = !FB+$224
+!f_on       = !FB+$226             ; the fight runs and draws (tests, frieza hand-off)
+!f_power    = !FB+$228             ; focus power (mana-mod powerCharge, 0-96)
+!f_focus    = !FB+$22A             ; L alone held this frame (focus stance)
+!f_disc     = !FB+$22C             ; hurt: the hit is Frieza's own disc
+!FIGHT_END  = !FB+$230
+assert !FIGHT_END <= !SB+$D00, "orbit fight block overflow"
+
+; ---------------------------------------------------------------------------
+; Drawing and dynamic VRAM (draw.asm, scene.asm).
+!DB = !SB+$D00
+!d_x        = !DB+$00              ; ofx_put: x, y (signed), tile|attr word, large (0/1)
+!d_y        = !DB+$02
+!d_ta       = !DB+$04
+!d_big      = !DB+$06
+!d_t0       = !DB+$08              ; draw scratch
+!d_t1       = !DB+$0A
+!d_t2       = !DB+$0C
+!d_t3       = !DB+$0E
+!d_t4       = !DB+$10
+!d_t5       = !DB+$12
+!d_t6       = !DB+$14
+!d_t7       = !DB+$16
+!d_hit      = !DB+$18              ; hit entry being drawn
+!d_sx       = !DB+$1A              ; burst mirror flags (bit 0: x mirrored, bit 1: y)
+; Wanted (frame side) and uploaded (NMI side) dynamic cells; $FFFF = none.
+!v_frieza   = !DB+$20              ; bank FA offset of Frieza's 32x32 frame
+!v_frieza_h = !DB+$22
+!v_goku     = !DB+$24              ; bank FA offset of Goku's 16x16 pose
+!v_goku_h   = !DB+$26
+!v_d32      = !DB+$28              ; Death Ball 32 frame (0-11)
+!v_d32_h    = !DB+$2A
+!v_d16      = !DB+$2C              ; Death Ball 16 frame (0-11)
+!v_d16_h    = !DB+$2E
+!v_band     = !DB+$30              ; beam band colour frame (0/1)
+!n_src      = !DB+$32              ; NMI cell upload: source, bank, VRAM, rows, row bytes
+!n_bank     = !DB+$34
+!n_vram     = !DB+$36
+!n_rows     = !DB+$38
+!n_len      = !DB+$3A
+!DRAW_END   = !DB+$40
+assert !DRAW_END <= $8000, "orbit draw block overflow"
+
+; OBJ VRAM the scene owns while it shows (name base $6000, 16/32 sizes).
+!OV_FRIEZA = $000                  ; 32x32, dynamic
+!OV_D32    = $004                  ; 32x32, dynamic
+!OV_GOKU   = $088                  ; 16x16, dynamic
+!OV_D16    = $08A                  ; 16x16, dynamic
+; Sprite attributes (high byte of the OAM tile word): palette << 9, priority << 12.
+!OA_PRI    = $2000                 ; priority 2 (over the Mode 7 globe)
+!OA_HFLIP  = $4000
+!OA_VFLIP  = $8000
+
+!WK_BEAM  = 1
+!WK_LASER = 2
+!WK_DISC  = 3
+!WK_ORB   = 4
 
 ; HDMA channels the scene programs (bits in the game's shadow $2C).
 !ORBIT_HDMA = $5C                  ; channels 2 (BGMODE), 3 (M7A), 4 (M7D), 6 (windows)
@@ -163,17 +330,27 @@ orbit_recip:     incbin "orbit/recip.bin"
 orbit_rimsq:     incbin "orbit/rimsq.bin"
 orbit_rimw:      incbin "orbit/rimw.bin"
 orbit_globe_pal: incbin "orbit/globe_pal.bin"
+incsrc "orbit-sprites/palettes.asm"
 orbit_star_tiles:
 	; 32 tiles (OBJ rows $16x and $17x): dots of shades 0-3 at even columns
 	; 0-6, twinkle crosses at 8-14 (centre at 1,1); odd columns and the second
 	; row stay empty so each 16x16 sprite shows only its own star.
 	incbin "orbit/star_tiles.bin"
+incsrc "orbit-fx/data.asm"
 orbit_data_end:
 assert orbit_data_end <= !DATA_ORBIT+$8000, "orbit data bank overflow"
 org $F60000
 orbit_globe_vram: incbin "orbit/globe_vram.bin"
 org $F70000
 orbit_fight_lines: incbin "orbit/fight_lines.bin"
+orbit_fx_vram_a:  incbin "orbit-fx/vram_a.bin"   ; OBJ tiles $080-$0FF
+orbit_fx_vram_b:  incbin "orbit-fx/vram_b.bin"   ; $100-$13F
+orbit_fx_vram_c:  incbin "orbit-fx/vram_c.bin"   ; $180-$1BF
+orbit_fx_death:   incbin "orbit-fx/death.bin"    ; Death Balls: 12 x 32x32, 12 x 16x16
+orbit_f7_end:
+assert orbit_f7_end <= $F80000, "orbit bank F7 overflow"
+org $FA8000
+orbit_sprites: incbin "orbit-sprites/sprites.bin"
 pullpc
 
 pushpc
@@ -182,6 +359,9 @@ orbit_code_start:
 incsrc "scene.asm"
 incsrc "globe.asm"
 incsrc "stars.asm"
+incsrc "math.asm"
+incsrc "fight.asm"
+incsrc "draw.asm"
 orbit_code_end:
 assert orbit_code_end <= !CODE_ORBIT+$8000, "orbit code bank overflow"
 pullpc

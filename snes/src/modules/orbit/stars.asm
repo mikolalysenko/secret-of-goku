@@ -13,9 +13,11 @@
 ; counters would wrap. The offset is rounded before the zoom term is added
 ; (the browser rounds their sum; they differ by a pixel at most, and only
 ; while the camera zooms). Each depth keeps its visible stars as a list of
-; OAM entries, rebuilt (one depth per frame at most) when that depth's
-; offsets or zoom, the culling square or a twinkle change; every frame
-; copies the lists into OAM.
+; OAM entries, rebuilt when that depth's offsets or zoom, the globe or a
+; twinkle change: one depth at a time, !STARS_STEP stars per frame. A star
+; under the globe's rim chord on its line (the published window block, so
+; exactly the pixels the browser's planet paints over it) is left out;
+; every frame copies the lists into OAM.
 
 stars_frame:
 	REP #$30
@@ -92,23 +94,6 @@ stars_frame:
 	CPX.w #$0008
 	BCS +
 	JMP .depth
-+	; culling square: re-set after the globe moved 3 px (centre + radius)
-	LDA.w !cam_x
-	SEC : SBC.w !s_kx
-	JSR stars_abs
-	STA.w !s_tmp+0
-	LDA.w !cam_y
-	SEC : SBC.w !s_ky
-	JSR stars_abs
-	CLC : ADC.w !s_tmp+0
-	STA.w !s_tmp+0
-	LDA.w !cam_r
-	SEC : SBC.w !s_kr
-	JSR stars_abs
-	CLC : ADC.w !s_tmp+0
-	CMP.w #3
-	BCC +
-	JSR stars_new_square
 +	; bright-star twinkles (depth 3): one bit per star, set while NOT twinkling
 	STZ.w !s_tmp+2
 	LDX.w #4*!ORBIT_STARS_D2
@@ -128,8 +113,11 @@ stars_frame:
 .twDone
 	LDA.w !s_tmp+2
 	STA.w !s_tw
-	; rebuild at most one stale depth list per frame
-	LDX.w #$0002
+	; a rebuild in progress continues; else the first stale depth starts
+	LDA.w !s_bd
+	BEQ +
+	JMP stars_build_step
++	LDX.w #$0002
 .stale
 	LDA.w !sx_want,X
 	CMP.w !sx_have,X
@@ -153,7 +141,8 @@ stars_frame:
 	BCC .stale
 	RTS
 .rebuild
-	JMP stars_build
+	JSR stars_build_start
+	JMP stars_build_step
 
 ; A16 = A16 * d, d = X/2 (1-3).
 stars_times_x:
@@ -236,70 +225,57 @@ stars_mul16:
 	STA.w !s_tmp+2
 +	RTS
 
-; New culling square for the current globe: half side 0.68 r - 3 (inside
-; the disc's inscribed square, so a later 3 px camera move keeps it covered).
-stars_new_square:
-	LDA.w !cam_x : STA.w !s_kx
-	LDA.w !cam_y : STA.w !s_ky
-	LDA.w !cam_r : STA.w !s_kr
-	INC.w !s_kgen
-	SEP #$20
-	STA.w $4202
-	LDA.b #174
-	STA.w $4203
-	NOP : NOP : NOP : NOP
-	REP #$20
-	LDA.w $4216
-	XBA : AND.w #$00FF
-	SEC : SBC.w #3
-	BPL +
-	LDA.w #$0000
-+	STA.w !s_qb
-	SEP #$20
-	LDA.w !cam_r
-	STA.w $4202
-	STA.w $4203
-	NOP : NOP : NOP : NOP
-	REP #$20
-	LDA.w $4216
-	STA.w !st_rr
-	; culling only while the centre is on screen
-	LDA.w !cam_x
-	CMP.w #$0100
-	BCS .off
-	STA.w !s_cxb
-	LDA.w !cam_y
-	CMP.w #$0100
-	BCS .off
-	STA.w !s_cyb
-	RTS
-.off
-	STZ.w !s_qb
-	RTS
-
-; Rebuild the list of depth X/2 with the wanted offsets.
-stars_build:
+; Start rebuilding the list of depth X/2 with the wanted offsets and the
+; globe as published now.
+stars_build_start:
 	STX.w !s_bd
-	LDA.w !sx_want,X : STA.w !sx_have,X : STA.w !s_tmp+0   ; O_x
-	LDA.w !sy_want,X : STA.w !sy_have,X : STA.w !s_tmp+2   ; O_y
-	LDA.w !sz_want,X : STA.w !sz_have,X : STA.w !s_tmp+4   ; dz
+	LDA.w !sx_want,X : STA.w !sx_have,X
+	LDA.w !sy_want,X : STA.w !sy_have,X
+	LDA.w !sz_want,X : STA.w !sz_have,X
 	LDA.w !s_kgen : STA.w !sk_have,X
 	LDA.w !s_tw : STA.w !s_twhave
-	LDA.l stars_list_at-2,X
-	TAY                            ; list entries
-	LDA.l stars_last-2,X
-	STA.w !s_tmp+12                ; end (x4)
-	LDA.l stars_first-2,X
-	TAX                            ; first star (x4)
-	LDA.w !s_tmp+4
+	LDA.l stars_list_at-2,X : STA.w !s_bout
+	LDA.l stars_last-2,X : STA.w !s_bend
+	LDA.l stars_first-2,X : STA.w !s_bpos
+	; culling rows: the rim chords of lines cy - R .. cy + R
+	STZ.w !s_cn
+	LDA.w !g_lr
+	CMP.w #$FFFF
+	BEQ +
+	LDA.w !cam_y
+	SEC : SBC.w !g_lR
+	STA.w !s_ctop
+	LDA.w !g_lR
+	ASL
+	INC
+	STA.w !s_cn
+	LDA.w !g_lw
+	STA.w !s_cblk
++	RTS
+
+; Up to !STARS_STEP stars of the list being rebuilt.
+stars_build_step:
+	LDX.w !s_bd
+	LDA.w !sx_have,X : STA.w !s_tmp+0   ; O_x
+	LDA.w !sy_have,X : STA.w !s_tmp+2   ; O_y
+	LDA.w !sz_have,X : STA.w !s_tmp+4   ; dz
 	JSR stars_abs
 	SEP #$20
 	STA.w $4202                    ; |dz| (< 256) for the zoom products
 	REP #$20
+	LDA.w #!STARS_STEP
+	STA.w !s_left
+	LDY.w !s_bout
+	LDX.w !s_bpos
 .star
-	CPX.w !s_tmp+12
+	CPX.w !s_bend
 	BCC +
 	JMP .done
++	DEC.w !s_left
+	BPL +
+	STX.w !s_bpos                  ; the rest next frame
+	STY.w !s_bout
+	RTS
 +	; x = sx + O_x (+ zoom), mod 256
 	LDA.l orbit_stars,X
 	AND.w #$00FF
@@ -330,26 +306,28 @@ stars_build:
 	CLC : ADC.w !s_tmp+2
 	JSR stars_mod224
 	STA.w !s_tmp+8                 ; y
-	; inside the culling square: hidden by the globe, skip
-	LDA.w !s_qb
-	BEQ .keep
-	LDA.w !s_tmp+8
-	SEC : SBC.w !s_cyb
-	JSR stars_abs
-	CMP.w !s_qb
-	BCS .keep
+	; under the rim chord of its line: hidden by the globe
+	SEC : SBC.w !s_ctop
+	CMP.w !s_cn
+	BCS .emit
+	ASL : ASL
+	CLC : ADC.w !s_cblk
+	STY.w !s_tmp+14
+	TAY
+	SEP #$20
 	LDA.w !s_tmp+6
-	SEC : SBC.w !s_cxb
-	JSR stars_abs
-	CMP.w !s_qb
-	BCC .next
+	CMP.w $0002,Y                  ; x < W2L: outside
+	BCC .keep
+	CMP.w $0003,Y                  ; x > W2R: outside
+	BEQ .hide
+	BCS .keep
+.hide
+	REP #$20
+	LDY.w !s_tmp+14
+	BRA .next
 .keep
-	; below the Mode 7 lines the globe is not drawn: hide stars it covers
-	LDA.w !s_tmp+8
-	CMP.w #196
-	BCC .emit
-	JSR stars_in_disc
-	BCS .next
+	REP #$20
+	LDY.w !s_tmp+14
 .emit
 	LDA.l orbit_stars+2,X          ; flags | phase << 8
 	STA.w !s_tmp+10
@@ -397,6 +375,7 @@ stars_build:
 	TYA
 	SEC : SBC.l stars_list_at-2,X
 	STA.w !s_lists-2,X
+	STZ.w !s_bd
 	RTS
 
 stars_list_at:
@@ -425,54 +404,6 @@ stars_zoom:
 	BPL +
 	EOR.w #$FFFF : INC
 +	RTS
-
-; Carry set when (s_tmp+6, s_tmp+8) lies inside the disc (d <= 1).
-stars_in_disc:
-	LDA.w !s_tmp+6
-	SEC : SBC.w !cam_x
-	JSR stars_abs
-	CMP.w !cam_r
-	BCS .out
-	STA.w !s_tmp+10
-	LDA.w !s_tmp+8
-	SEC : SBC.w !cam_y
-	JSR stars_abs
-	CMP.w !cam_r
-	BCS .out
-	SEP #$20
-	STA.w $4202
-	STA.w $4203
-	NOP : NOP : NOP : NOP
-	REP #$20
-	LDA.w $4216
-	STA.w !s_tmp+14
-	SEP #$20
-	LDA.w !s_tmp+10
-	STA.w $4202
-	STA.w $4203
-	NOP : NOP : NOP : NOP
-	REP #$20
-	LDA.w $4216
-	CLC : ADC.w !s_tmp+14
-	BCS .out
-	CMP.w !st_rr
-	BEQ .in
-	BCS .out
-.in
-	JSR .restore
-	SEC
-	RTS
-.out
-	JSR .restore
-	CLC
-	RTS
-.restore
-	LDA.w !s_tmp+4
-	JSR stars_abs
-	SEP #$20
-	STA.w $4202
-	REP #$20
-	RTS
 
 ; Copy the three lists into OAM at o_slot.
 stars_oam:

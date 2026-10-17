@@ -54,6 +54,10 @@ orbit_command:
 	BNE .notTest
 	JMP orbit_start_test
 .notTest
+	CMP.b #!OC_TEST_FIGHT
+	BNE .notFight
+	JMP orbit_start_fight_test
+.notFight
 	CMP.b #!OC_STOP
 	BNE .done
 	LDA.l !orbit_state
@@ -75,6 +79,20 @@ orbit_start_test:
 	REP #$30
 	RTS
 
+; Tests: the space fight with no intro (quick-start.js 'space'): Frieza's
+; HP in !orbit_arg, the globe target already in !cam_lon / !cam_lat.
+orbit_start_fight_test:
+	REP #$30
+	JSR orbit_start_test
+	LDA.l !orbit_arg
+	LDX.w !cam_lon
+	LDY.w !cam_lat
+	JSR fight_start
+	STZ.w !f_intro
+	LDA.w #$0001
+	STA.w !f_on
+	RTS
+
 ; Fresh scene state (the camera fields are the caller's).
 orbit_scene_init:
 	REP #$30
@@ -85,9 +103,19 @@ orbit_scene_init:
 	STZ.w !g_lw
 	STZ.w !g_cur_it
 	STZ.w !g_ichg
+	STZ.w !g_bld
+	STZ.w !f_on
+	STZ.w !v_band
+	LDA.w #$FFFF                   ; no dynamic cell uploaded or wanted
+	STA.w !v_frieza
+	STA.w !v_frieza_h
+	STA.w !v_goku
+	STA.w !v_goku_h
+	STA.w !v_d32
+	STA.w !v_d32_h
+	STA.w !v_d16
+	STA.w !v_d16_h
 	; starfield: fresh accumulators, everything stale
-	LDA.w #$7FFF
-	STA.w !s_kx
 	LDA.w #$0000
 	STA.l !orbit_frame
 	STA.w !cam_tdx
@@ -98,7 +126,7 @@ orbit_scene_init:
 	STA.w !st_ay+2
 	STA.w !st_age240
 	STA.w !s_kgen
-	STA.w !s_qb
+	STA.w !s_bd
 	STA.w !s_lists
 	STA.w !s_lists+2
 	STA.w !s_lists+4
@@ -157,6 +185,17 @@ orbit_vcount:
 ; Live frame: camera, globe tables, stars.
 orbit_live_frame:
 	REP #$30
+	LDA.w !f_on
+	BEQ .noFight
+	JSR fight_frame
+	REP #$30
+	INC.w !cam_age
+	JSR globe_frame
+	JSR stars_frame
+	STZ.w !cam_tdx
+	STZ.w !cam_tdy
+	RTS
+.noFight
 	SEP #$20
 	LDA.l !orbit_test
 	AND.b #!OT_SPIN
@@ -205,25 +244,22 @@ orbit_oam_frame:
 	BRA .native
 .nativeDone
 	STX.w !o_slot
+	JSR ofx_clear_hi
 	SEP #$20
 	LDA.l !orbit_state
 	CMP.b #!OS_LIVE
 	REP #$20
 	BNE .close
+	JSR fight_draw
 	JSR stars_oam
 .close
-	; Hide what is left of the table and close the module area.
-	LDX.w !o_slot
-.rest
-	CPX.w #$0200
-	BCS .full
-	LDA.w #$E0FF
-	STA.w $0800,X
-	INX : INX : INX : INX
-	BRA .rest
-.full
-	LDA.w #$0200
+	; Close the module area at our end: other modules add nothing while
+	; the orbit owns the picture, and the game's next OAM pass (C0:BCAB,
+	; up to the core's $0120 = this cursor) hides whatever we leave, so the
+	; slots after ours are already hidden when we run.
+	LDA.w !o_slot
 	STA.l !core_oam_cursor
+	STA.l !core_oam_limit
 	RTS
 
 ; ---------------------------------------------------------------------------
@@ -297,10 +333,10 @@ orbit_nmi_load:
 	STA.w $2115
 	LDA.b #$80
 	STA.w $420B
-	BRA .next
+	JMP .next
 .stars
 	CMP.b #$08
-	BNE .finish
+	BNE .effects
 	REP #$20
 	LDA.w #!ORBIT_STAR_VRAM
 	STA.w $2116
@@ -312,6 +348,35 @@ orbit_nmi_load:
 	STA.w $4375
 	SEP #$20
 	LDA.b #orbit_star_tiles>>16
+	STA.w $4374
+	LDA.b #$80
+	STA.w $2115
+	LDA.b #$80
+	STA.w $420B
+	BRA .next
+.effects
+	; Steps 9-11: the fight's resident effect cells (OBJ tiles $080-$0FF,
+	; $100-$13F, $180-$1BF).
+	CMP.b #$0C
+	BCS .finish
+	REP #$20
+	AND.w #$00FF
+	SEC : SBC.w #$0009
+	ASL : ASL
+	TAX
+	LDA.l .fxSteps,X
+	STA.w $2116
+	LDA.l .fxSteps+2,X
+	STA.w $4372
+	LDA.w #$1801
+	STA.w $4370
+	LDA.w #$0800
+	CPX.w #$0000
+	BNE +
+	LDA.w #$1000
++	STA.w $4375
+	SEP #$20
+	LDA.b #orbit_fx_vram_a>>16
 	STA.w $4374
 	LDA.b #$80
 	STA.w $2115
@@ -330,6 +395,10 @@ orbit_nmi_load:
 	INC
 	STA.l !orbit_load
 	RTS
+.fxSteps
+	dw $6800, orbit_fx_vram_a
+	dw $7000, orbit_fx_vram_b
+	dw $7800, orbit_fx_vram_c
 
 ; Live picture: Mode 7 globe registers, windows, colour math, palettes and
 ; the HDMA channels for the next frame.
@@ -390,15 +459,7 @@ orbit_nmi_live:
 	STA.w $4374
 	LDA.b #$80
 	STA.w $420B
-	LDA.b #128+(16*!ORBIT_STAR_PAL)+1
-	STA.w $2121
-	LDX.w #$0000
-.starPal
-	LDA.l orbit_star_colors,X
-	STA.w $2122
-	INX
-	CPX.w #$0008
-	BCC .starPal
+	JSR orbit_nmi_obj_palettes
 	; HDMA: channel 2 BGMODE, 3 M7A, 4 M7Y, 6 windows (tables in bank $32).
 	REP #$20
 	LDA.w #$0500                   ; mode 0, $2105
@@ -433,7 +494,202 @@ orbit_nmi_live:
 	LDA.w !N_HDMA
 	ORA.b #!ORBIT_HDMA
 	STA.w !N_HDMA
+	JSR orbit_nmi_cells
 	PLB
+	RTS
+
+; OBJ palettes the scene owns: 0 fire, 4 blue, 5 pink, 6 Frieza, 7 gold
+; and the stars, 1 Goku (Super Saiyan, as the goku module sets it for his
+; form and HUD portrait); the beam bands (entries 2-3 of 4 and 5) take this frame's
+; beam-body colours. A8, DB = $32.
+orbit_nmi_obj_palettes:
+	REP #$20
+	LDA.w #$2200                   ; DMA mode 0 to $2122
+	STA.w $4370
+	LDA.w #32
+	STA.w $4375
+	SEP #$20
+	LDA.b #orbit_fx_pal_fire>>16
+	STA.w $4374
+	LDX.w #$0000
+.pal
+	LDA.l .cgram,X
+	STA.w $2121
+	REP #$20
+	LDA.l .src,X
+	STA.w $4372
+	LDA.w #32
+	STA.w $4375
+	SEP #$20
+	LDA.b #$80
+	STA.w $420B
+	INX : INX
+	CPX.w #$000C
+	BCC .pal
+	; band colours: blue entries 2-3, pink entries 2-3
+	REP #$20
+	LDA.w !v_band
+	AND.w #$0001
+	ASL : ASL
+	TAX
+	SEP #$20
+	LDA.b #192+2
+	STA.w $2121
+	LDA.l orbit_fx_band_blue,X : STA.w $2122
+	LDA.l orbit_fx_band_blue+1,X : STA.w $2122
+	LDA.l orbit_fx_band_blue+2,X : STA.w $2122
+	LDA.l orbit_fx_band_blue+3,X : STA.w $2122
+	LDA.b #208+2
+	STA.w $2121
+	LDA.l orbit_fx_band_pink,X : STA.w $2122
+	LDA.l orbit_fx_band_pink+1,X : STA.w $2122
+	LDA.l orbit_fx_band_pink+2,X : STA.w $2122
+	LDA.l orbit_fx_band_pink+3,X : STA.w $2122
+	RTS
+.cgram
+	dw 128, 192, 208, 224, 240, 144
+.src
+	dw orbit_fx_pal_fire, orbit_fx_pal_blue, orbit_fx_pal_pink, orbit_pal_frieza, orbit_fx_pal_gold
+	dw orbit_pal_goku_ssj          ; palette 1: the goku module's Super Saiyan colours
+
+; Dynamic cells wanted by the frame (Frieza's frame, Goku's pose, the Death
+; Ball frames), each sent once, while the vblank lasts. A8, DB = $32.
+orbit_nmi_cells:
+	REP #$30
+	; Frieza: 4 rows of 128 bytes from bank FA to tiles $000
+	LDA.w !v_frieza
+	CMP.w !v_frieza_h
+	BEQ .goku
+	JSR orbit_nmi_time
+	BCC +
+	JMP .out
++
+	LDA.w !v_frieza
+	STA.w !v_frieza_h
+	STA.w !n_src
+	LDA.w #!OSP_BANK
+	STA.w !n_bank
+	LDA.w #$6000+(!OV_FRIEZA*16)
+	STA.w !n_vram
+	LDA.w #4
+	STA.w !n_rows
+	LDA.w #128
+	STA.w !n_len
+	JSR orbit_nmi_rows
+.goku
+	LDA.w !v_goku
+	CMP.w !v_goku_h
+	BEQ .d32
+	JSR orbit_nmi_time
+	BCC +
+	JMP .out
++
+	LDA.w !v_goku
+	STA.w !v_goku_h
+	STA.w !n_src
+	LDA.w #!OSP_BANK
+	STA.w !n_bank
+	LDA.w #$6000+(!OV_GOKU*16)
+	STA.w !n_vram
+	LDA.w #2
+	STA.w !n_rows
+	LDA.w #64
+	STA.w !n_len
+	JSR orbit_nmi_rows
+.d32
+	LDA.w !v_d32
+	CMP.w !v_d32_h
+	BEQ .d16
+	JSR orbit_nmi_time
+	BCS .out
+	LDA.w !v_d32
+	STA.w !v_d32_h
+	XBA : ASL                      ; * 512
+	CLC : ADC.w #orbit_fx_death
+	STA.w !n_src
+	LDA.w #orbit_fx_death>>16
+	STA.w !n_bank
+	LDA.w #$6000+(!OV_D32*16)
+	STA.w !n_vram
+	LDA.w #4
+	STA.w !n_rows
+	LDA.w #128
+	STA.w !n_len
+	JSR orbit_nmi_rows
+.d16
+	LDA.w !v_d16
+	CMP.w !v_d16_h
+	BEQ .out
+	JSR orbit_nmi_time
+	BCS .out
+	LDA.w !v_d16
+	STA.w !v_d16_h
+	XBA : LSR                      ; * 128
+	CLC : ADC.w #orbit_fx_death+(12*512)
+	STA.w !n_src
+	LDA.w #orbit_fx_death>>16
+	STA.w !n_bank
+	LDA.w #$6000+(!OV_D16*16)
+	STA.w !n_vram
+	LDA.w #2
+	STA.w !n_rows
+	LDA.w #64
+	STA.w !n_len
+	JSR orbit_nmi_rows
+.out
+	SEP #$20
+	RTS
+
+; Carry set when the scanline is past 255 or not in vblank (a 512-byte
+; cell takes about three lines; vblank ends after line 261). M16.
+orbit_nmi_time:
+	SEP #$20
+	LDA.w $213F
+	LDA.w $2137
+	LDA.w $213D
+	XBA
+	LDA.w $213D
+	AND.b #$01
+	XBA
+	REP #$20
+	CMP.w #225
+	BCC .late
+	CMP.w #256
+	BCS .late
+	CLC
+	RTS
+.late
+	SEC
+	RTS
+
+; n_rows DMAs of n_len bytes from n_bank:n_src to n_vram, n_vram + $100,
+; ... (OBJ rows are 16 tiles apart). M16/X16.
+orbit_nmi_rows:
+	SEP #$20
+	LDA.b #$80
+	STA.w $2115
+	LDA.w !n_bank
+	STA.w $4374
+	REP #$20
+	LDA.w #$1801
+	STA.w $4370
+.row
+	LDA.w !n_vram
+	STA.w $2116
+	CLC : ADC.w #$0100
+	STA.w !n_vram
+	LDA.w !n_src
+	STA.w $4372
+	CLC : ADC.w !n_len
+	STA.w !n_src
+	LDA.w !n_len
+	STA.w $4375
+	SEP #$20
+	LDA.b #$80
+	STA.w $420B
+	REP #$20
+	DEC.w !n_rows
+	BNE .row
 	RTS
 
 ; Give the picture back: the field's registers from the map loader's

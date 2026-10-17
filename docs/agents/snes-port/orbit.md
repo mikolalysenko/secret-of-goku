@@ -2,7 +2,8 @@
 
 Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 [engine notes](engine.md)). Source: `snes/src/modules/orbit/`, generator
-`snes/gen/orbit.mjs`, tests `snes/test/orbit/`. Browser sources:
+`snes/gen/orbit.mjs`, `orbit-fx.mjs`, `orbit-sprites.mjs`, tests
+`snes/test/orbit/`. Browser sources:
 `engine/frieza-cinematic.js`, `frieza-collateral-view.js`, `cinematic-map.js`,
 `cinematic-ruins.js`, `aerial-melee.js`, `orbit-camera.js`, `frieza-orbit.js`,
 `frieza-orbit-view.js`, `orbit-duel.js`, `orbit-effects.js`, `orbit-pixels.js`,
@@ -16,7 +17,10 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 | Part | State |
 | --- | --- |
 | Mode 7 globe (rotation, zoom 56-104, centre, latitude, rim) and starfield (100 stars, three parallax depths, twinkles) | **Done**, test scene `globe` matches the browser's formulas (below) |
-| Space fight: Goku's movement, ki, beam, punch, teleport, dodge; Frieza's orbital AI and shots | Next |
+| Space fight logic: Goku's steering, ki, charged wave, punch, Instant Transmission and the four-beat exchange; Frieza's patrol, side-steps, warnings, beams, lasers, discs, Death Balls, ricochets; damage both ways; camera | **Done** (`fight.asm`, `math.asm`): matches the browser's own `frieza.js` tick frame for frame while the cartridge holds 60 fps (`fight` test, opt-in) |
+| Space fight drawing: Goku, Frieza, ki, Death Balls (16/32), discs, finger glints, hand charges, Exploder bursts, impact sparks, ricochets | **Done** (`draw.asm`, resident and streamed OBJ cells) |
+| Beam bands (Goku's wave, Frieza's beam and laser), auras, distant bodies | Next (the wave and beams currently show only their origin orbs) |
+| 60 fps under every move | In progress: idle and attack sequences hold 60 fps; steering with a zooming camera still drops frames (star-list rebuilds) |
 | Collateral shots, aerial melee, pullback, orbit intro dialogue | Planned (design below) |
 | Debris / asteroid field, Luna's remark | Planned |
 | Beam struggle, victory (boss explosion, whiteout, pouch, fanfare), descent, landing | Planned |
@@ -90,8 +94,31 @@ radius steps toward 68 (beam out), 84 (moving) or 104, centre toward
 globe (longitude += 4 dx speed, latitude += 2 dy speed, clamped 256-3840).
 Frieza's pattern beam, laser, beam, disc, beam, laser, orb; dodges threats;
 teleport-punch exchanges (four 18-frame beats, 450/900 damage). Shots,
-ricochets, distant bodies and debris as in the browser files (to be
-documented with the implementation).
+ricochets, distant bodies and debris as in the browser files.
+
+On the cartridge (`fight.asm`) each frame runs in the browser's order
+(`mana-mod.js beforeFrame`): `frieza.js tick` (pause on `$D0` or a menu in
+`$EC & $FE`, stop while Goku is down; `b.age`, grace/hurt/recoil/guard,
+`orbitDefense`, `tickOrbit` with the camera, Goku's ki and wave and the
+ricochets, the exchange, the 6,000 HP clash hand-off, the AI: stun, node
+rushes every 105 frames, warnings, `fire`, the shots), then `spaceInput`.
+Whole-pixel stepping uses the browser's 8.8 heading vectors and `orbitStep`
+rounding from generated tables; distances use the hardware multiplier
+(`orbit_near`, `orbit_swept`, `orbit_ray_hit`). Damage to Goku goes through
+the game's own queue (`$E1F1`, `$E1F0`, `$E1EC`), exactly like
+`damagePlayer`; Frieza's HP stops at 6,000 (`hurt` with the orbital floor).
+
+Drawing (`draw.asm`) mirrors `frieza-orbit-view.js`; OAM is front to back, so
+the browser's paint order is reversed: hit bursts (three Exploder bursts four
+frames apart, impact spark for three frames), Frieza's warning (the growing
+Death Ball, pink charge, finger glint, disc), his shots, Goku's ki, the
+wave's origin orb, the hand charge, Frieza (tiny muscular sheet, frame and
+facing as `drawFriezaSprite`), Goku (16x16 pose and facing row, impact spark
+while Instant Transmission hides him), ricochets; then the stars. Known
+simplifications: every Death Ball on screen shows the same animation frame
+(`(age >> 3) % 12` of the space clock; the browser animates each by its own
+age); Exploder parts at quarter turns 1 and 3 use turns 0 and 2 (the cells
+are not stored rotated).
 
 ### Finale (`frieza-finale.js`)
 
@@ -152,50 +179,74 @@ pixels match exactly (edge mismatch 0-0.01%), mean colour difference 1.0-2.7%.
 Starfield: the seeded list of `planet-view.js` (100 stars, four shades,
 depth 1-3 for parallax, three bright stars twinkling as a cross for 9 of
 every 240 frames), projected as `projectOrbitBackground` does, as 16x16 OBJ
-at priority 0 (the globe hides them where it is opaque; stars inside the
-disc's inscribed square are not given OAM slots). Per depth the visible stars
-are kept as a ready OAM list, rebuilt only when that depth's offsets, zoom or
-culling square change (one depth per frame at most) and copied into OAM with
+at priority 0. A star under the rim chord of its line (read from the
+published window block, so exactly the pixels the browser's planet paints
+over it) gets no OAM slot. Per depth the visible stars are kept as a ready
+OAM list, rebuilt when that depth's offsets, zoom, the globe or a twinkle
+change (one depth at a time, 24 stars per frame), and copied into OAM with
 MVN each frame.
+
+Window blocks: when the camera's radius or centre column changes, the next
+block is built in the back buffer 28 rows per frame (a whole block in four
+frames; the fight camera only steps every 4 frames) and published with the
+radius's ROM M7A/M7D blocks; M7HOFS follows the published column, so the
+texture and the disc edges always agree (the picture may trail the camera by
+up to four frames). The first block of a scene is built at once.
 
 ## Resources
 
 | Resource | Use |
 | --- | --- |
-| Code `$A7:8000-` | `!CODE_ORBIT` (about 3 KiB so far) |
-| Data `$E7:0000-` | stars, asin rows, chord scales, rim tables, palettes, star tiles (about 5 KiB) |
+| Code `$A7:8000-` | `!CODE_ORBIT` (about 9 KiB so far) |
+| Data `$E7:0000-` | stars, asin rows, chord scales, rim tables, palettes, star tiles, heading/step tables, burst parts and offsets (about 7 KiB) |
 | ROM `$F6:0000-7FFF` | Mode 7 globe VRAM image (32 KiB) |
-| ROM `$F7:0000-A02D` | fight line tables (41 KiB) |
-| WRAM `!RAM_ORBIT+$00-$0F` | state, command, flags, load step, frame counter, test options, timing lines |
-| SRAM `!SRAM_WORK_SCENE` `$32:6000-6A7F` | camera, globe/star state, two window blocks, indirect HDMA tables, BGMODE table, star lists; `$6A80-$7FFF` free for the fight |
-| VRAM | words `$0000-$3FFF` (Mode 7 map and characters) while the scene shows; OBJ tiles `$160-$17F` (star cells) |
-| CGRAM | 0 (sky), 32-112 (globe), 241-244 (stars, OBJ palette 7), rewritten each vblank after the game's palette upload |
-| OAM | native sprites on lines 190-223 (the HUD) kept, the rest hidden; ours after them; the core's module area is closed while the scene shows |
+| ROM `$F7:0000-` | fight line tables (41 KiB), resident effect cells (8 KiB), Death Ball frames (7.5 KiB) |
+| ROM `$FA:8000-` | Goku's orbit poses, descent and fall cells, aerial-melee cells; Frieza's tiny and full frames (27 KiB) |
+| WRAM `!RAM_ORBIT+$00-$0F` | state, command, flags, load step, frame counter, test options, timing lines, command argument |
+| SRAM `!SRAM_WORK_SCENE` `$32:6000-6D3F` | camera, globe/star state, two window blocks, indirect HDMA tables, BGMODE table, star lists (to `$6A7F`); fight state and arrays (`$6A80-$6CAF`); drawing scratch and streamed-cell bookkeeping (`$6D00-$6D3F`) |
+| VRAM | words `$0000-$3FFF` (Mode 7 map and characters) while the scene shows. OBJ (name base `$6000`, 16/32): `$000` Frieza 32x32 (streamed), `$004` Death Ball 32 (streamed), `$088` Goku 16x16 (streamed), `$08A` Death Ball 16 (streamed), 53 resident 16x16 effect cells in `$08C-$0FF`, `$100-$13F`, `$180-$1BF`, star cells `$160-$17F`. Untouched: `$144-$15F` and `$1C0-$1DF` (the game streams the boy's cells there), `$1E0-$1FF` (HUD portraits) |
+| CGRAM | 0 (sky), 32-112 (globe); OBJ palettes 0 fire, 1 Goku (Super Saiyan), 4 blue (entries 2-3: beam band), 5 pink (1 white, 2-3 beam band), 6 Frieza, 7 gold with the star shades in 1-4; rewritten each vblank after the game's palette upload. Palettes 2-3 (HUD companions) untouched |
+| OAM | native sprites on lines 190-223 (the HUD) kept, the rest hidden; ours after them (high-table bits cleared with a block fill); the core's module area is closed at our end (`core_oam_cursor = core_oam_limit`), so the game's next OAM pass hides what we leave |
 | HDMA | channels 2 (BGMODE), 3 (M7A, indirect from F7), 4 (M7D, indirect from F7), 6 (windows, indirect from SRAM) via `$2C` bits |
-| DMA | channel 7 in vblank: palettes (~170 bytes per frame); the Mode 7 image and star cells once |
+| DMA | channel 7 in vblank: palettes (~370 bytes per frame), streamed cells when they change (Frieza 512, Death Ball 512/128, Goku 128 bytes, each only while the vblank has time); the Mode 7 image, star and effect cells once (12 load steps) |
 
 While the scene owns the picture the module drops the game's BG row/column
 streaming (`$2E/$2F`) and animated-tile requests (`$90/$9A` bit 7), as the
 ending module does, so nothing writes BG VRAM.
 
-Timing (Mesen, `globe` test, space preset): the frame hook ends by line ~100
-in steady state (worst 204 on a star-list rebuild during a 240-frame spin);
-no lag frame in the spin; the vblank hook ends by line ~251.
+Timing (Mesen, space preset): the globe test's frame hook ends by line ~100
+in steady state; no lag frame in its 240-frame spin. The fight (600 frames,
+no input) holds 60 fps after the first frame, frame hook worst line 194; the
+vblank hook ends by line ~259 with uploads. Steering at speed with the
+camera zooming still costs lag frames (star-list rebuilds with the zoom
+term): being fixed with in-place list shifts.
 
 ## Tests
 
-`node snes/test/orbit/run.mjs [globe]` (also run by `snes/test/run-all.mjs`).
+`node snes/test/orbit/run.mjs [globe] [fight]` (`globe` also runs in
+`snes/test/run-all.mjs`).
 `globe`: imports `preset__space`, starts the test scene through the module's
 command byte with five browser cameras (idle fight, moving, beam, clash-wide,
 off-centre), compares each screenshot with `reference.mjs` (the browser's
 `planet()` and `sky()` formulas on the cartridge's world map), then spins the
 longitude for 240 frames and checks that every frame completed.
+`fight` (opt-in until steering holds 60 fps): starts the space fight with
+the space preset's values (`OC_TEST_FIGHT`, Frieza at 32,000 HP), drives a
+scripted pad (steering, sprint, ki, the charged wave, Instant Transmission
+and the exchange, focus), logs the fight state every frame and compares it
+field by field with `fight-ref.mjs`, which runs the browser's own
+`createFrieza` (`frieza.js` tick and `spaceInput`) headlessly in Node on the
+same pad (one frame later: the cartridge's joypad latch). Frames match while
+no lag frame drops a pad sample; the space preset's own capture
+(`.local/snes-ref/space/frame-00600.png`, HP 819/999 after Frieza's first
+beam) agrees with the cartridge at frame 600.
 
 ## API (so far)
 
 | Field / routine | Use |
 | --- | --- |
-| `!orbit_cmd` (`$7E:DC01`) | request: 1 test globe scene (camera in the scene block), 2 stop |
+| `!orbit_cmd` (`$7E:DC01`) | request: 1 test globe scene (camera in the scene block), 2 stop, 3 test fight (no intro; Frieza's HP in `!orbit_arg`, target longitude/latitude in `cam_lon`/`cam_lat`) |
+| `!orbit_arg` (`$7E:DC0E`) | word argument of the command |
 | `!orbit_state` (`$7E:DC00`) | 0 off, 1 loading, 2 live, 3 stopping |
 | `!orbit_flags` (`$7E:DC02`) | bit 0 the orbit owns the picture, bit 1 live |
 | `!orbit_test` (`$7E:DC09`) | test scene options: bit 0 spin (longitude +2 per frame) |
@@ -220,3 +271,16 @@ will be listed here as they land.
   bit 4 (died in orbit), as `!EF_ORBIT` already anticipates.
 - **ui**: `ui_hide` while the orbit owns the picture (its BG3 window would
   appear in the Mode 1 band only).
+- **goku**: while `!orbit_flags` bit 0 is set, stand down the hero's cell
+  streaming and drawing (the orbit draws Goku itself and hides native
+  sprites); keep the HUD portrait. The orbit writes OBJ palette 1 with the
+  Super Saiyan colours (`orbit_pal_goku_ssj`, from the goku manifest) each
+  vblank, so the HUD portrait should be the Super Saiyan one.
+- **combat / world / fx**: no field effects, punches or ki of their own while
+  `!orbit_flags` bit 0 is set (the orbit owns the pad through
+  `core_pad_mask` and closes the OAM module area).
+- **frieza (hand-off)**: Frieza's ground state carries into the orbit
+  (`b.age`, `b.cycle`, `b.node`, `lastImpact`, `lastMelee`, `meleeHits`,
+  `dodgeCooldown`, `stun`); the entry point will take them in the fight block
+  (`!b_*` in `module.asm`) so the patrol and attack pattern continue as in
+  the browser.

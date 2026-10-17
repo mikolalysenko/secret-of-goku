@@ -30,8 +30,10 @@ globe_frame:
 	AND.w #$03FF
 	STA.w !g_x0
 	STA.w !g_m7x
-	; M7HOFS = X0 - cx: texel X0 sits under screen column cx
-	SEC : SBC.w !cam_x
+	; M7HOFS = X0 - cx: texel X0 sits under screen column cx (the column
+	; of the published window block, which may trail the camera by a few
+	; frames while the next block is built)
+	SEC : SBC.w !g_cx
 	AND.w #$1FFF
 	STA.w !g_hofs
 	; target.y = round(lat / 8) * 8; ybase = floor((target.y + 992.8) / 4)
@@ -55,15 +57,33 @@ globe_frame:
 	BEQ +
 	JSR globe_mode_table
 +	REP #$30
-	; Window block for the radius and the centre column.
+	; Window block for the radius and the centre column: built over a few
+	; frames into the back block (the fight camera steps every 4 frames),
+	; at once when there is none yet.
+	LDA.w !g_bld
+	BNE .building
 	JSR globe_clamp_r
 	CMP.w !g_lr
-	BNE .build
+	BNE .start
 	LDA.w !cam_x
 	CMP.w !g_cx
 	BEQ .shapeOk
-.build
-	JSR globe_windows
+.start
+	LDY.w #!GLOBE_ROWS_STEP
+	LDA.w !g_lr
+	CMP.w #$FFFF
+	BNE +
+	LDY.w #$00FF
++	STY.w !g_bld_n
+	JSR globe_clamp_r
+	JSR globe_build_start
+.building
+	JSR globe_build_step
+	; the M7 registers follow the published block
+	LDA.w !g_x0
+	SEC : SBC.w !g_cx
+	AND.w #$1FFF
+	STA.w !g_hofs
 .shapeOk
 	LDA.w !cam_y
 	CMP.w !g_icy
@@ -134,37 +154,60 @@ globe_mode_table:
 	REP #$30
 	RTS
 
-; Window block for radius A (clamped) and centre column cam_x, into the
-; block the NMI is not using; then the blocks are published together with
-; the radius's ROM M7A/M7D blocks.
-globe_windows:
+; Start a window block for radius A (clamped) and centre column cam_x in
+; the block the NMI is not using.
+globe_build_start:
 	REP #$30
-	STA.w !g_l                     ; radius
+	STA.w !g_bld_r
 	SEC : SBC.w #!ORBIT_FIGHT_R0
 	ASL : ASL : ASL
 	TAX                            ; index entry
 	LDA.l !FL+0,X : STA.w !g_bR
 	LDA.l !FL+6,X : STA.w !g_bww
-	; back block
 	LDA.w #!gb_wina
 	CMP.w !g_lw
 	BNE +
 	LDA.w #!gb_winb
 +	STA.w !g_bw
-	; Pass 1: rows a = 0..R (centre and below), 8-bit maths on the centre
-	; column (the fight keeps it within the screen).
-	LDA.w !g_bR
-	ASL : ASL
-	CLC : ADC.w !g_bw
-	TAY                            ; entry of row 0
-	STA.w !g_tmp+2
-	LDA.w !g_bww
-	TAX                            ; chord pair for a (bank F7)
+	LDA.w !cam_x
+	STA.w !g_bld_cx
+	STZ.w !g_bld_a
+	LDA.w #$0001
+	STA.w !g_bld
+	RTS
+
+; Rows a = g_bld_a.. of the pending block (at most g_bld_n this frame), each
+; written at row +a and mirrored to row -a: W1 = cx -+ w (the disc), W2 =
+; cx -+ w2 (the rim), clamped to the screen; $FF, 0 when a row has none.
+; Publishes the block with the radius's ROM M7A/M7D blocks when complete.
+globe_build_step:
+	REP #$30
 	LDA.w !g_bR
 	INC
-	STA.w !g_tmp+4                 ; rows (<= 109)
+	SEC : SBC.w !g_bld_a           ; rows left
+	CMP.w !g_bld_n
+	BCC +
+	LDA.w !g_bld_n
++	STA.w !g_tmp+4
+	LDA.w !g_bR
+	CLC : ADC.w !g_bld_a
+	ASL : ASL
+	CLC : ADC.w !g_bw
+	TAY                            ; entry of row +a
+	LDA.w !g_bR
+	SEC : SBC.w !g_bld_a
+	ASL : ASL
+	CLC : ADC.w !g_bw
+	STA.w !g_tmp+2                 ; entry of row -a
+	LDA.w !g_bld_a
+	ASL
+	CLC : ADC.w !g_bww
+	TAX                            ; chord pair (bank F7)
+	LDA.w !g_tmp+4
+	CLC : ADC.w !g_bld_a
+	STA.w !g_bld_a
 	SEP #$20
-	LDA.w !cam_x
+	LDA.w !g_bld_cx
 	STA.w !g_tmp+6
 .row
 	LDA.l !FL,X                    ; w ($FF none)
@@ -201,35 +244,37 @@ globe_windows:
 	BCC +
 	LDA.b #$FF
 +	STA.w $0003,Y
-	BRA .next
+	BRA .mirror
 .noRim
 	STA.w $0002,Y
 	LDA.b #$00
 	STA.w $0003,Y
-.next
+.mirror
+	REP #$20
+	PHX
+	LDX.w !g_tmp+2
+	LDA.w $0000,Y : STA.w $0000,X
+	LDA.w $0002,Y : STA.w $0002,X
+	DEX : DEX : DEX : DEX
+	STX.w !g_tmp+2
+	PLX
+	SEP #$20
 	INX : INX
 	INY : INY : INY : INY
 	DEC.w !g_tmp+4
-	BNE .row
-	REP #$20
-	; Pass 2: rows -1..-R mirror rows 1..R.
-	LDX.w !g_tmp+2
-	TXY
+	BEQ +
+	JMP .row
++
+	REP #$30
 	LDA.w !g_bR
-	BEQ .mirrored
-	STA.w !g_tmp+4
-.mirror
-	INX : INX : INX : INX
-	DEY : DEY : DEY : DEY
-	LDA.w $0000,X : STA.w $0000,Y
-	LDA.w $0002,X : STA.w $0002,Y
-	DEC.w !g_tmp+4
-	BNE .mirror
-.mirrored
-	; publish: window block, radius, ROM blocks
-	LDA.w !g_l : STA.w !g_lr
-	LDA.w !cam_x : STA.w !g_cx
-	LDA.w !g_l
+	CMP.w !g_bld_a
+	BCC .publish                   ; next row > R: complete
+	RTS
+.publish
+	STZ.w !g_bld
+	LDA.w !g_bld_r : STA.w !g_lr
+	LDA.w !g_bld_cx : STA.w !g_cx
+	LDA.w !g_bld_r
 	SEC : SBC.w #!ORBIT_FIGHT_R0
 	ASL : ASL : ASL
 	TAX
@@ -246,6 +291,7 @@ globe_windows:
 globe_itables:
 	REP #$30
 	STZ.w !g_ichg
+	INC.w !s_kgen                  ; the stars' culling rows moved
 	LDA.w !cam_y
 	STA.w !g_icy
 	; the set the NMI is not using
