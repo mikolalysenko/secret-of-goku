@@ -208,6 +208,26 @@ export async function generate({repo,outDir}){
   // Cross-check the court anchors against the engine's exported constants.
   if(staging.fortressCourt.x!==350||staging.fortressCourt.y!==400)throw Error('frieza gen: fortressCourt moved');
 
+  // Fight geometry. Angles are 16-bit (65536 per turn, 0 = right, 16384 =
+  // down). Step tables: round(cos(a)*s), round(sin(a)*s) for 256 directions
+  // and s = 3, 4, 7 (frieza-combat.js pixelStep / rushStep), as JS rounds.
+  const speeds=[3,4,7];
+  const cos=[],sin=[];
+  for(const s of speeds)for(let i=0;i<256;i++){const a=i*Math.PI*2/256;cos.push(Math.round(Math.cos(a)*s));sin.push(Math.round(Math.sin(a)*s));}
+  out.push('frieza_cos_table:',...bytes(cos),'frieza_sin_table:',...bytes(sin));
+  // atan(t) for t = i/256, i = 0-256, in angle units.
+  const atan=[];for(let i=0;i<=256;i++)atan.push(Math.round(Math.atan(i/256)*65536/(Math.PI*2)));
+  out.push('frieza_atan_table:',...words(atan));
+  // orbit-pixels.js: sixteen headings; orbitHeading() for each of 256 angle
+  // bins (evaluated at the bin centre) and the vectors themselves.
+  const op=await eng('orbit-pixels.js');
+  const heading=[];for(let i=0;i<256;i++){const a=(i+.5)*Math.PI*2/256;heading.push(op.orbitHeading(Math.cos(a)*1000,Math.sin(a)*1000));}
+  out.push('frieza_heading_table:',...bytes(heading));
+  out.push('frieza_orbit_vectors:',...words(op.orbitVectors.flat()));
+  // frieza-combat.js constants
+  const combat=await eng('frieza-combat.js');
+  out.push(`!FRIEZA_HP = ${combat.FRIEZA_HP}`);
+
   // Timings used by the runtime (asserted against the engine's exports).
   const t=intro.introTiming;
   out.push(`!FRIEZA_INTRO_HIT = ${t.hit}`,`!FRIEZA_INTRO_BLACK_END = ${t.blackEnd}`,`!FRIEZA_INTRO_BEAM_END = ${t.beamEnd}`,`!FRIEZA_INTRO_PAN = ${t.pan}`,`!FRIEZA_INTRO_ENTRY = ${t.entry}`);

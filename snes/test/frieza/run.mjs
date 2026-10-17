@@ -52,6 +52,7 @@ function test()
   F.apply(${luaWrites(writes)})
   local shots = {}
   local boxes = {}
+  local trace = {}
   local frame = 0
   local targets = {${frames.join(',')}}
   local t = 1
@@ -59,6 +60,10 @@ function test()
     local target = targets[t]
     H.wait(1)
     frame = frame + 1
+    if TRACE then
+      trace[#trace + 1] = string.format('%d %d %d %d %d %d %d', frame, H.r16(0x7E0000|0x${defs.fzf_x.toString(16)}), H.r16(0x7E0000|0x${defs.fzf_y.toString(16)}),
+        H.r16(0x${(defs.fzs_wkind).toString(16)}) & 0xFF, H.r16(0x7EE182), H.r16(0x7E0000|0x${defs.fzf_hp_lo.toString(16)}) | (H.r8(0x7E0000|0x${defs.fzf_hp_hi.toString(16)}) << 16), H.r16(0x7E0000|0x${defs.fzf_clock.toString(16)}))
+    end
     if frame >= target - 2 and frame <= target + 2 then
       local name = string.format('f%05d', frame)
       H.shot(name)
@@ -70,6 +75,8 @@ function test()
   end
   H.result('shots', shots)
   H.result('boxes', boxes)
+  H.result('trace', trace)
+  H.result('hp', H.r16(0x7EE182))
   H.result('scene', F.ram(0x${defs.fz_scene.toString(16)}|0x7E0000))
   H.result('age', F.ram16(0x${defs.fz_sage.toString(16)}|0x7E0000))
   H.result('stage', F.ram(0x${(defs.fzp_stage).toString(16)}))
@@ -78,18 +85,87 @@ end
 `;
 }
 
+// Test ROM with the FRIEZA_TEST mailbox (combat's virtual hits).
+const testRom=resolve(repo,'.local/snes-test/roms/frieza-test.sfc');
+function buildTestRom(){
+  const b=spawnSync(process.execPath,[join(repo,'snes/build.mjs'),'--quiet','--strict',`--out=${testRom}`,'-DFRIEZA_TEST=1'],{cwd:repo,stdio:'inherit'});
+  if(b.status!==0){console.error('frieza: test build failed');process.exit(1);}
+}
+
+// The first power surge: Goku's hits (through the virtual-hit API combat
+// will call) take Frieza to 64,000; the surge holds the fight 380 frames,
+// he turns muscular at 270, then phase two begins (tier 1).
+function surgeTest(){
+  const g=reference('battle');
+  const writes=friezaWrites(g.frieza,g.challenge);
+  const v=n=>'0x'+(n<0x10000?(0x7E0000|n):n).toString(16);
+  return `
+function test()
+  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__battle'))})
+  F.check(ok, 'import')
+  H.w8(0x316001, 1)
+  F.apply(${luaWrites(writes)})
+  H.wait(2)
+  local function hit(dmg, melee)
+    H.w16(${v(defs.fzs_test)}+2, dmg)
+    H.w16(${v(defs.fzs_test)}, melee and 1 or 2)
+    H.wait(1)
+    return H.r16(${v(defs.fzs_test)}+4)
+  end
+  local function hp() return H.r16(${v(defs.fzf_hp_lo)}) | (H.r8(${v(defs.fzf_hp_hi)}) << 16) end
+  -- a punch of 4095 (base damageScale) takes 15%: 614
+  local taken = hit(4095, true)
+  H.result('punch', taken)
+  F.check(taken == 614, 'a 4095 punch takes 614 (15%), got ' .. tostring(taken))
+  -- ki/beam hits until the threshold: one more cannot cross 64,000
+  for i = 1, 40 do hit(60000, false) if hp() <= 64000 then break end end
+  H.result('hpAtSurge', hp())
+  F.check(hp() == 64000, 'HP stops at the 64,000 threshold, got ' .. hp())
+  H.wait(2)
+  local surge = H.r8(${v(defs.fzs_surge)})
+  F.check(surge == 1, 'the first surge started, got ' .. surge)
+  H.shot('surge-0')
+  H.wait(268)
+  F.check((H.r8(${v(defs.fzf_flags)}) & ${defs.FZFF_MUSCULAR}) ~= 0, 'muscular at 270')
+  H.shot('surge-270')
+  H.wait(120)
+  F.check(H.r8(${v(defs.fzs_surge)}) == 0, 'the surge ended after 380 frames')
+  F.check(H.r8(${v(defs.fzf_tier)}) == 1, 'phase two (tier 1)')
+  H.result('holes', H.r16(${v(defs.fzs_holes_n)}))
+  F.check(H.r16(${v(defs.fzs_holes_n)}) > 0, 'the floor fractured')
+  H.shot('phase2')
+  F.done()
+end
+`;
+}
+
 const cases={
   court:{preset:'frieza',frames:[60,240,600]},
   thanatos:{preset:'thanatos',frames:[60,240]},
-  battle:{preset:'battle',frames:[60]},
+  battle:{preset:'battle',frames:[60,240,600],trace:true,
+    // browser: the first Death Orb hits Goku by frame 240 (999 -> 844, 310
+    // halved), the disc by 600 (729)
+    hp:{240:844,600:729}},
 };
 
 const results=[];
+if(want('surge')){
+  buildTestRom();
+  const rom=privateRom(testRom,'frieza-surge');
+  const r=await runMesen({rom,test:lib+'\n'+surgeTest(),outDir:join(outRoot,'surge'),state:join(cps,'waterfall.mss')});
+  cleanupRom(rom);
+  const res=r.results??{};
+  const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
+  const ok=r.code===0&&res.pass===true;
+  results.push({name:'surge',ok,failures});
+  console.log(`frieza surge: ${ok?'pass':'FAIL'} (${r.ms} ms) punch ${res.punch} hp at surge ${res.hpAtSurge} holes ${res.holes}`);
+  if(!ok)for(const f of failures)console.log('    !',f);
+}
 for(const [name,c] of Object.entries(cases)){
   if(!want(name))continue;
   const rom=privateRom(romSrc,`frieza-${name}`);
   const out=join(outRoot,name);
-  const r=await runMesen({rom,test:lib+'\n'+sceneTest(c.preset,c.frames),outDir:out,state:join(cps,'waterfall.mss')});
+  const r=await runMesen({rom,test:lib+'\n'+(c.trace?'TRACE=true\n':'')+sceneTest(c.preset,c.frames),outDir:out,state:join(cps,'waterfall.mss')});
   cleanupRom(rom);
   const res=r.results??{};
   const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
@@ -108,6 +184,15 @@ for(const [name,c] of Object.entries(cases)){
     if(best){
       notes.push(`frame ${f}: ${(best.score*100).toFixed(1)}% (shift ${best.d})`+(best.box?` frieza ${best.box.n} OBJ at ${best.box.x0},${best.box.y0}-${best.box.x1},${best.box.y1} pal ${best.box.pal}`:' no frieza OBJ'));
       if(!best.box&&c.expectFrieza!==false)failures.push(`frame ${f}: Frieza not drawn`);
+    }
+  }
+  if(res.trace)writeFileSync(join(out,'trace.txt'),'frame x y warning gokuHP friezaHP clock\n'+res.trace.join('\n')+'\n');
+  if(c.hp&&res.trace){
+    for(const [f,want] of Object.entries(c.hp)){
+      const row=res.trace.find(l=>l.startsWith(f+' '));
+      const got=row?Number(row.split(' ')[4]):null;
+      notes.push(`Goku HP at ${f}: ${got} (browser ${want})`);
+      if(got!==want)failures.push(`Goku HP at frame ${f}: ${got}, browser ${want}`);
     }
   }
   const ok=r.code===0&&res.pass===true&&failures.length===0;

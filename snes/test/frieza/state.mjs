@@ -2,15 +2,16 @@
 // goku.challenge, engine/frieza.js `s`) into the cartridge's WRAM and SRAM
 // fields. Addresses come from the module's own defines, so the tests follow
 // layout changes.
-import {readFileSync} from 'node:fs';
+import {readFileSync,readdirSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
-const src=['module.asm','battle.asm'].map(f=>readFileSync(join(repo,'snes/src/modules/frieza',f),'utf8')).join('\n');
+const dir=join(repo,'snes/src/modules/frieza');
+const src=['module.asm',...readdirSync(dir).filter(f=>f.endsWith('.asm')&&f!=='module.asm').sort()].map(f=>readFileSync(join(dir,f),'utf8')).join('\n');
 
 // Evaluate the module's `!name = expr` defines (numbers, !FZ+$xx, !FZPB+$xx).
-export const defs={FZ:0xDB00,FZPB:0x316180};
-for(const line of src.split('\n')){
+export const defs={FZ:0xDB00,FZPB:0x316180,SRAM_WORK_SCENE:0x326000};
+for(let pass=0;pass<3;pass++)for(const line of src.split('\n')){
   const m=line.match(/^!(\w+)\s*#?=\s*([^;]+)/);if(!m)continue;
   let expr=m[2].trim();
   if(/^[a-z_]\w*$/.test(expr))continue;               // labels

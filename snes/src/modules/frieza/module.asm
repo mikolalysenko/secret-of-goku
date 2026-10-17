@@ -77,9 +77,153 @@ assert !RAM_FRIEZA == $7E0000|!FZ, "!FZ must match !RAM_FRIEZA"
 !FZ_SCENE_END  = !FZ+$58
 ; $58-$BF: battle / challenge / death state (battle.asm, beast.asm, death.asm)
 
+; ---- fight (battle.asm) ----
+!fzf_x         = !FZ+$58   ; word: map x
+!fzf_y         = !FZ+$5A   ; word: map y (the feet are y + 12)
+!fzf_hp_lo     = !FZ+$5C   ; word: HP (24-bit)
+!fzf_hp_hi     = !FZ+$5E   ; word
+!fzf_age       = !FZ+$60   ; word
+!fzf_clock     = !FZ+$62   ; word (signed): frames to the next attack
+!fzf_cycle     = !FZ+$64   ; byte: attack pattern index
+!fzf_node      = !FZ+$65   ; byte: current node
+!fzf_nodes     = !FZ+$66   ; byte: node count (<= 6)
+!fzf_tier      = !FZ+$67   ; byte: 0, 1 after the first surge
+!fzf_stun      = !FZ+$68   ; byte
+!fzf_grace     = !FZ+$69   ; byte
+!fzf_hurt      = !FZ+$6A   ; byte
+!fzf_recoil    = !FZ+$6B   ; byte
+!fzf_guard     = !FZ+$6C   ; byte
+!fzf_dash      = !FZ+$6D   ; byte (dash and windup are read as one word)
+!fzf_windup    = !FZ+$6E   ; byte
+!fzf_flags     = !FZ+$6F   ; byte: !FZFF_*
+!fzf_terrain   = !FZ+$70   ; word: Goku's terrain byte at the start ($E00B)
+!fzf_node_x    = !FZ+$72   ; 6 words
+!fzf_node_y    = !FZ+$7E   ; 6 words
+!FZF_END       = !FZ+$8A
+assert !FZF_END <= !FZ+$C0, "frieza WRAM overflow"
+; per-call values ($AC-$BB, after the Beast block)
+!fz_hx         = !FZ+$AC   ; word: hero() x
+!fz_hy         = !FZ+$AE   ; word: hero() y (feet - 12)
+!fz_ax         = !FZ+$B0   ; word: point argument x (map)
+!fz_ay         = !FZ+$B2   ; word: point argument y
+!fz_dmg        = !FZ+$B4   ; word: damage argument
+!fz_hdisc      = !FZ+$B6   ; word: hurt() from his own disc
+!fz_hmelee     = !FZ+$B8   ; word: frieza_virtual_hit melee flag
+!fz_sx_i       = !FZ+$BA   ; word: table index of the loop in progress
+!fz_spr_pal2   = !FZ+$BC   ; byte: afterimage OBJ palette this frame ($FF none)
+assert !FZ+$BD <= !FZ+$C0, "frieza WRAM overflow"
+; math scratch: core's call-local scratch (never used in vblank)
+!fz_m0 #= (!core_scratch)&$FFFF
+!fz_m1 #= !fz_m0+2
+!fz_m2 #= !fz_m0+4
+!fz_m3 #= !fz_m0+6
+!fz_m4 #= !fz_m0+8
+!fz_m5 #= !fz_m0+10
+!fz_m6 #= !fz_m0+12
+!fz_m7 #= !fz_m0+14
+
+!FZFF_ACTIVE   = $01       ; s.boss exists
+!FZFF_MUSCULAR = $02
+!FZFF_COUNTER  = $04
+!FZFF_SPACE    = $08       ; the orbit stream owns the fight (b.space)
+
+!FRIEZA_HP_LO  = 96000&$FFFF
+!FRIEZA_HP_HI  = 96000>>16
+
+; Scene SRAM block (long addressing)
+!FZSB          = !SRAM_WORK_SCENE+$1800
+!fzs_tag       = !FZSB+$000   ; word: $5A46 ("FZ") while the block holds a fight
+!fzs_wkind     = !FZSB+$002   ; byte: warning kind (!FZK_ORB/DISC/LASER), 0 none
+!fzs_wage      = !FZSB+$003   ; byte
+!fzs_wwait     = !FZSB+$004   ; byte
+!fzs_wx        = !FZSB+$006   ; word: Frieza's position at the warning
+!fzs_wy        = !FZSB+$008   ; word
+!fzs_wtx       = !FZSB+$00A   ; word: the target (Goku) at the warning
+!fzs_wty       = !FZSB+$00C   ; word
+!fzs_rip       = !FZSB+$00E   ; byte: riposte age ($FF none)
+!fzs_surge     = !FZSB+$00F   ; byte: 0 none, 1 breach (first), 2 cosmic (orbit's)
+!fzs_sage      = !FZSB+$010   ; word: surge age
+!fzs_lmelee    = !FZSB+$012   ; word: age of the last melee hit
+!fzs_mhits     = !FZSB+$014   ; byte: meleeHits
+!fzs_limpact   = !FZSB+$016   ; word: age of the last impact burst
+!fzs_dischits  = !FZSB+$018   ; word
+!fzs_phits     = !FZSB+$01A   ; word: playerHits
+!fzs_tgx       = !FZSB+$01C   ; word: surge target (the Fortress's screen position)
+!fzs_tgy       = !FZSB+$01E   ; word
+; shots: 12 x 16 bytes
+!FZ_SHOTS      = !FZSB+$020
+!FZ_SHOT_N     = 12
+!sh_kind       = $00       ; byte: 0 none, 1 orb, 2 disc, 3 laser
+!sh_flip       = $01       ; byte
+!sh_x          = $02
+!sh_y          = $04
+!sh_px         = $06       ; previous position
+!sh_py         = $08
+!sh_ang        = $0A       ; word: angle (orb, disc); laser: heading 0-15
+!sh_speed      = $0C       ; byte: step table (0 = 3 px, 1 = 4 px)
+!sh_age        = $0E       ; word
+; eruptions (hazards): 4 x 8 bytes
+!FZ_HAZ        = !FZSB+$0E0
+!FZ_HAZ_N      = 4
+!hz_on         = $00       ; byte
+!hz_r          = $01       ; byte: radius
+!hz_x          = $02
+!hz_y          = $04
+!hz_age        = $06       ; byte
+!hz_wait       = $07       ; byte
+; afterimages: 8 x 6 bytes
+!FZ_AFTER      = !FZSB+$100
+!FZ_AFTER_N    = 8
+!af_age        = $00       ; byte ($FF none)
+!af_x          = $02
+!af_y          = $04
+!fzs_test      = !FZSB+$130   ; FRIEZA_TEST mailbox: cmd, arg, result, count (words)
+; arena: arena.asm (+$140-$7FF)
+
+!FZK_ORB       = 1
+!FZK_DISC      = 2
+!FZK_LASER     = 3
+
+
+; ---- Beast challenge and Dark Lich (beast.asm) ----
+!fzl_base       = !FZ+$8A   ; word: Dark Lich actor offset ($FFFF none)
+!fzl_map        = !FZ+$8C   ; word: his map
+!fzl_clock      = !FZ+$8E   ; word
+!fzl_last       = !FZ+$90   ; word: clock of the last boost
+!fzl_buffs      = !FZ+$92   ; byte: boosts given (<= 2)
+!fzl_boost      = !FZ+$93   ; byte: boost visual age ($FF none)
+!fzx_body       = !FZ+$94   ; word: Beast actor offset whose HP was raised ($FFFF none)
+!fzx_clock      = !FZ+$96   ; word: frames to the next eruption
+!fzx_grace      = !FZ+$98   ; byte
+!fzx_hits       = !FZ+$99   ; byte
+!fzx_bon        = !FZ+$9A   ; byte: an eruption is on
+!fzx_bhit       = !FZ+$9B   ; byte: it struck Goku
+!fzx_bx         = !FZ+$9C   ; word: lane x (map)
+!fzx_btop       = !FZ+$9E   ; word: lane top (map y)
+!fzx_bbot       = !FZ+$A0   ; word: lane bottom
+!fzx_bwidth     = !FZ+$A2   ; word
+!fzx_bwarn      = !FZ+$A4   ; word: warning frames
+!fzx_bdmg       = !FZ+$A6   ; word
+!fzx_bage       = !FZ+$A8   ; word
+!fzx_pending    = !FZ+$AA   ; word: the eruption's damage queued on Goku (pendingBeam)
+!FZX_END        = !FZ+$AC
+assert !FZX_END <= !FZ+$C0, "frieza WRAM overflow (beast)"
+
+!FZ_SPECIES_BEAST = 127
+!FZ_SPECIES_LICH  = 121
+
+
+; ---- broken deck (arena.asm) ----
+!FZ_HOLES      = !FZSB+$400   ; 1 KiB bitmap: row stride 16 bytes
+!fzs_arena_map = !FZSB+$140   ; word: map the bitmap belongs to ($FFFF none)
+!fzs_arena_rev = !FZSB+$142   ; word: revision (fractures so far)
+!fzs_holes_n   = !FZSB+$144   ; word: cells broken
+
+
 ; transient flags (!fz_tflags)
 !FZT_VRAM_OK   = $01       ; this map's Frieza VRAM region holds our buffers
 !FZT_FORCED    = $02       ; the frame ran under forced blank (map load)
+!FZT_PALSCAN   = $04       ; native OBJ palettes scanned this frame
 
 ; deferred work (!fz_pend), applied in the next field frame callback
 !FZW_FADE      = $0001     ; trial fade (C0:8B16's ordinary 60-frame fade)
@@ -307,6 +451,8 @@ endif
 ; Combat: Goku's damage to the Beast and the empowered Dark Lich
 ; (beast-challenge.js damage()), bound by combat's bind.asm when present.
 !COMBAT_HOOK_DAMAGE = frieza_combat_damage
+; Local flight: the broken deck has no floor (frieza.js floorHole).
+!FLIGHT_MISSING_FLOOR = frieza_floor_hole
 
 ; Debug scene select: restore Frieza / Beast state for the presets.
 incsrc "debug/defines.asm"
@@ -352,6 +498,9 @@ incsrc "state.asm"
 incsrc "scene.asm"
 incsrc "sprite.asm"
 incsrc "battle.asm"
+incsrc "math.asm"
+incsrc "draw.asm"
+incsrc "arena.asm"
 incsrc "beast.asm"
 frieza_code_end:
 assert frieza_code_end <= !CODE_FRIEZA+$7000, "frieza code bank overflow"

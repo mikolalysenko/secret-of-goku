@@ -21,20 +21,54 @@ fz_spr_begin:
 	SEP #$20
 	LDA.b #$FF
 	STA !fz_spr_pal
+	STA !fz_spr_pal2
 	STZ !fz_spr_cnt
 	STZ !fz_spr_var
+	LDA.b #!FZT_PALSCAN
+	TRB !fz_tflags
 	REP #$20
 	RTS
 
-; Choose a free OBJ palette: one no native sprite of this frame uses,
+; Choose free OBJ palettes: ones no native sprite of this frame uses,
 ; preferring 7, 4, 6, 5 (no colour math in Frieza's maps), then 3, 2, 0.
+; fz_spr_palette: the main palette (!fz_spr_pal); fz_spr_palette2: the
+; afterimage palette (!fz_spr_pal2). Both stay for the frame.
 fz_spr_palette:
 	LDA !fz_spr_pal
 	AND.w #$00FF
 	CMP.w #$00FF
 	BEQ +
 	RTS
-+	STZ !fz_t6                        ; palettes in use (bit = palette)
++	JSR fz_pal_scan
+	JSR fz_pal_pick
+	SEP #$20
+	STA !fz_spr_pal
+	REP #$20
+	RTS
+fz_spr_palette2:
+	LDA !fz_spr_pal2
+	AND.w #$00FF
+	CMP.w #$00FF
+	BEQ +
+	RTS
++	JSR fz_spr_palette                ; the main one first
+	JSR fz_pal_pick
+	SEP #$20
+	STA !fz_spr_pal2
+	REP #$20
+	RTS
+
+; Palettes used by this frame's native sprites -> !fz_spr_used (once).
+fz_pal_scan:
+	LDA !fz_tflags
+	AND.w #!FZT_PALSCAN
+	BEQ +
+	RTS
++	SEP #$20
+	LDA.b #!FZT_PALSCAN
+	TSB !fz_tflags
+	STZ !fz_spr_used
+	REP #$20
 	LDA.w !core_oam_native&$FFFF
 	CMP.w #129
 	BCC +
@@ -47,7 +81,7 @@ fz_spr_palette:
 	DEX
 	DEX
 	DEX
-	BMI .pick
+	BMI .done
 	LDA.w $0801,X                     ; y
 	AND.w #$00FF
 	CMP.w #$00E0                      ; hidden slot
@@ -58,11 +92,16 @@ fz_spr_palette:
 	PHX
 	TAX
 	LDA.l fz_pal_bit,X
-	AND.w #$00FF
 	PLX
-	TSB !fz_t6
+	SEP #$20
+	TSB !fz_spr_used
+	REP #$20
 	BRA .scan
-.pick
+.done
+	RTS
+
+; A16 = the first free palette in the preferred order (marked used).
+fz_pal_pick:
 	LDX.w #0
 -	LDA.l fz_pal_order,X
 	AND.w #$00FF
@@ -70,7 +109,7 @@ fz_spr_palette:
 	TAX
 	LDA.l fz_pal_bit,X
 	PLX
-	AND !fz_t6
+	AND !fz_spr_used
 	AND.w #$00FF
 	BEQ .found
 	INX
@@ -80,9 +119,13 @@ fz_spr_palette:
 .found
 	LDA.l fz_pal_order,X
 	AND.w #$00FF
+	PHA
+	TAX
+	LDA.l fz_pal_bit,X
 	SEP #$20
-	STA !fz_spr_pal
+	TSB !fz_spr_used
 	REP #$20
+	PLA
 	RTS
 fz_pal_order:
 	db 7,4,6,5,3,2,0,0
@@ -147,9 +190,15 @@ fz_spr_draw:
 	INX
 	INX
 	STX !fz_t1                        ; piece list
-	JSR fz_spr_palette
-	; attribute word: palette, priority 3, h-flip
+	LDA !fz_spr_fl
+	AND.w #!FZD_GHOST
+	BEQ +
+	JSR fz_spr_palette2
+	LDA !fz_spr_pal2
+	BRA ++
++	JSR fz_spr_palette
 	LDA !fz_spr_pal
+++	; attribute word: palette, priority 3, h-flip
 	AND.w #$0007
 	XBA
 	ASL
@@ -256,6 +305,33 @@ fz_spr_nmi:
 	DEY
 	BNE .color
 .upload
+	; the afterimage palette (ghost colour)
+	LDA.l $7E0000|!fz_spr_pal2
+	AND.w #$00FF
+	CMP.w #$0008
+	BCS .frame
+	ASL
+	ASL
+	ASL
+	ASL
+	ORA.w #$0081
+	SEP #$20
+	STA $2121
+	REP #$20
+	LDX.w #3*32
+	LDY.w #15
+.ghost
+	LDA.l frieza_palettes+2,X
+	SEP #$20
+	STA $2122
+	XBA
+	STA $2122
+	REP #$20
+	INX
+	INX
+	DEY
+	BNE .ghost
+.frame
 	LDA.l $7E0000|!fz_spr_pend
 	CMP.w #$FFFF
 	BNE +

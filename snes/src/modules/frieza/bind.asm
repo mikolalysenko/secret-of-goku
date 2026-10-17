@@ -251,6 +251,281 @@ else
 	RTS
 endif
 
+; Flight's canLand query point for frieza_floor_hole: A16 = x, X16 = y;
+; C clear when the query's layer is not the deck's.
+fz_bind_flight_query:
+if defined("FLIGHT_OWNS_D651")
+	LDA.w !fl_q_l
+	AND.w #$0001
+	STA !fz_m4
+	LDA !fzf_terrain
+	AND.w #$0080                      ; terrain & $80 -> layer 1
+	BEQ +
+	LDA.w #$0001
++	CMP !fz_m4
+	BNE .other
+	LDA.w !fl_q_x
+	LDX.w !fl_q_y
+	SEC
+	RTS
+.other
+endif
+	LDA.w #$FFFF
+	TAX
+	CLC
+	RTS
+
+; ---------------------------------------------------------------------------
+; Combat: C set while Goku's beam is live (mod.effects beam with life).
+fz_bind_goku_beam_live:
+if defined("COMBAT_OWNER")
+	JSL combat_api_state
+	AND.w #$0010
+	BEQ +
+	SEC
+	RTS
++
+endif
+	CLC
+	RTS
+; beamTouchesShot(): Goku's beam covers shot X (needs combat's beam
+; geometry: see frieza.md, Requests). C set when it does.
+fz_bind_beam_touches:
+	CLC
+	RTS
+; mod.cancelInput(): held buttons must be released after the surge.
+fz_bind_cancel_input:
+	RTS
+
+; UI: radio.restore({firstFlight:true}) and the full-power exchange.
+fz_bind_radio_restore:
+if defined("UI_MSG_COUNT")
+	JSL ui_restore_first_flight
+endif
+	RTS
+fz_bind_full_power_lines:
+if defined("UI_GROUP_FRIEZA_FULL_POWER_FRIEZA_SEQ_0")
+	LDA.w #!UI_GROUP_FRIEZA_FULL_POWER_FRIEZA_SEQ_0
+	LDX.w #$0000
+	JSL ui_interrupt
+endif
+	RTS
+
+; Orbit: the second surge ('frieza-cosmic') and everything after it.
+; Without the orbit stream, the ground fight goes on as the stand-in: the
+; surge ends after 120 frames, Frieza fights on enraged with no HP floor,
+; and his fall ends the battle (frieza.js win(), the ground path).
+fz_bind_orbit_surge:
+if defined("FRIEZA_ORBIT_SURGE")
+	JSL !FRIEZA_ORBIT_SURGE
+	RTS
+else
+	LDA.l !fzs_sage
+	CMP.w #120
+	BCC +
+	SEP #$20
+	LDA.b #$00
+	STA.l !fzs_surge
+	LDA.b #60
+	STA !fzf_grace
+	REP #$20
+	LDA.w #150
+	STA !fzf_clock
++	RTS
+endif
+
+; ---------------------------------------------------------------------------
+; FX (docs/agents/snes-port/fx.md). Map coordinates !fz_ax / !fz_ay.
+if defined("FX_IMPACT")
+fz_fx_xy:
+	LDX !fz_ax
+	LDY !fz_ay
+	RTS
+endif
+
+; Gold impact spark (mod.effects impact, super).
+fz_fx_impact:
+if defined("FX_IMPACT")
+	LDA.w #12
+	STA.l !fx_a
+	LDA.w #0
+	STA.l !fx_b
+	SEP #$20
+	STA.l !fx_dir
+	REP #$20
+	JSR fz_fx_xy
+	LDA.w #!FX_IMPACT|(!FX_F_GOLD<<8)
+	JSL fx_spawn
+endif
+	RTS
+
+; The gold-white flash (feedback.burst()).
+fz_fx_flash:
+if defined("FX_IMPACT")
+	LDA.w #7
+	JSL fx_flash
+endif
+	RTS
+
+; A large Exploder burst (spellFx.burst large).
+fz_fx_explode:
+if defined("FX_IMPACT")
+	LDA.w #0
+	SEP #$20
+	STA.l !fx_dir
+	STA.l !fx_style
+	REP #$20
+	JSR fz_fx_xy
+	LDA.w #!FX_EXPLODE
+	JSL fx_spawn
+endif
+	RTS
+
+; Death Ball: A16 = diameter, X16 = frame (violet).
+fz_fx_deathball:
+if defined("FX_IMPACT")
+	STA.l !fx_a
+	TXA
+	STA.l !fx_t
+	SEP #$20
+	LDA.b #0
+	STA.l !fx_style
+	REP #$20
+	JSR fz_fx_xy
+	LDA.w #!FX_DEATHBALL
+	JSL fx_draw
+endif
+	RTS
+
+; Death Disc: A16 = age.
+fz_fx_disc:
+if defined("FX_IMPACT")
+	STA.l !fx_t
+	JSR fz_fx_xy
+	LDA.w #!FX_DISC
+	JSL fx_draw
+endif
+	RTS
+
+; Finger-laser glint: A16 = age.
+fz_fx_finger:
+if defined("FX_IMPACT")
+	STA.l !fx_t
+	JSR fz_fx_xy
+	LDA.w #!FX_FINGER
+	JSL fx_draw
+endif
+	RTS
+
+; Finger laser: A16 = age, Y16 = heading (0-15), 360 px from the finger.
+fz_fx_laser:
+if defined("FX_IMPACT")
+	STA.l !fx_t
+	TYA
+	SEP #$20
+	STA.l !fx_dir
+	REP #$20
+	LDA.w #360
+	STA.l !fx_a
+	LDA.w #3
+	STA.l !fx_b
+	JSR fz_fx_xy
+	LDA.w #!FX_BEAM_LASER|(!FX_F_HEADING<<8)
+	JSL fx_beam
+endif
+	RTS
+
+; Gold charge orb (eruption warning): A16 = frame 0-4.
+fz_fx_gold_orb:
+if defined("FX_IMPACT")
+	STA.l !fx_b
+	LDA.w #!FX_G_ORB
+	STA.l !fx_a
+	SEP #$20
+	LDA.b #0
+	STA.l !fx_dir
+	REP #$20
+	JSR fz_fx_xy
+	LDA.w #!FX_CELL|(!FX_F_GOLD<<8)
+	JSL fx_draw
+endif
+	RTS
+
+; Lightning cell: A16 = frame, X16 = quarter turn.
+fz_fx_lightning:
+if defined("FX_IMPACT")
+	STA.l !fx_b
+	TXA
+	SEP #$20
+	STA.l !fx_dir
+	REP #$20
+	LDA.w #!FX_G_LIGHTNING
+	STA.l !fx_a
+	JSR fz_fx_xy
+	LDA.w #!FX_CELL|(!FX_F_PINK<<8)
+	JSL fx_draw
+endif
+	RTS
+
+; Impact spark cell: A16 = frame.
+fz_fx_spark_cell:
+if defined("FX_IMPACT")
+	STA.l !fx_b
+	LDA.w #!FX_G_IMPACT
+	STA.l !fx_a
+	SEP #$20
+	LDA.b #0
+	STA.l !fx_dir
+	REP #$20
+	JSR fz_fx_xy
+	LDA.w #!FX_CELL
+	JSL fx_draw
+endif
+	RTS
+
+; Pink aura around Frieza (height 40): A16 = clock.
+fz_fx_aura_pink:
+if defined("FX_IMPACT")
+	STA.l !fx_t
+	LDA.w #256
+	STA.l !fx_a
+	LDA.w #40
+	STA.l !fx_b
+	SEP #$20
+	LDA.b #2
+	STA.l !fx_style
+	REP #$20
+	JSR fz_fx_xy
+	LDA.w #!FX_AURA|(!FX_F_BACK<<8)
+	JSL fx_draw
+endif
+	RTS
+
+; Debris burst of a fracture (drawFriezaDebris): chunks in the deck's
+; colours and a ring of sparks.
+fz_fx_debris:
+if defined("FX_IMPACT")
+	LDA.w #$2504                      ; rgb(4, 8, 9)
+	STA.l !fx_rgb
+	LDA.w #$422A                      ; rgb(10, 17, 16)
+	STA.l !fx_rgb+2
+	LDA.w #$42F6                      ; rgb(22, 23, 16)
+	STA.l !fx_rgb+4
+	LDA.w #14
+	STA.l !fx_a
+	LDA.w #64
+	STA.l !fx_b
+	JSR fz_fx_xy
+	LDA.w #!FX_DEBRIS
+	JSL fx_spawn
+	LDA.w #8
+	STA.l !fx_a
+	JSR fz_fx_xy
+	LDA.w #!FX_SPARKS
+	JSL fx_spawn
+endif
+	RTS
+
 frieza_bind_end:
 assert frieza_bind_end <= !CODE_FRIEZA+$8000, "frieza bind area overflow"
 pullpc

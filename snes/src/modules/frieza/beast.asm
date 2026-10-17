@@ -2,32 +2,6 @@
 ; (engine/beast-challenge.js). Persistent: !fzp_beast (fed, started, won).
 ; Per-visit state in WRAM after the battle block.
 
-!fzl_base       = !FZ+$8A   ; word: Dark Lich actor offset ($FFFF none)
-!fzl_map        = !FZ+$8C   ; word: his map
-!fzl_clock      = !FZ+$8E   ; word
-!fzl_last       = !FZ+$90   ; word: clock of the last boost
-!fzl_buffs      = !FZ+$92   ; byte: boosts given (<= 2)
-!fzl_boost      = !FZ+$93   ; byte: boost visual age ($FF none)
-!fzx_body       = !FZ+$94   ; word: Beast actor offset whose HP was raised ($FFFF none)
-!fzx_clock      = !FZ+$96   ; word: frames to the next eruption
-!fzx_grace      = !FZ+$98   ; byte
-!fzx_hits       = !FZ+$99   ; byte
-!fzx_bon        = !FZ+$9A   ; byte: an eruption is on
-!fzx_bhit       = !FZ+$9B   ; byte: it struck Goku
-!fzx_bx         = !FZ+$9C   ; word: lane x (map)
-!fzx_btop       = !FZ+$9E   ; word: lane top (map y)
-!fzx_bbot       = !FZ+$A0   ; word: lane bottom
-!fzx_bwidth     = !FZ+$A2   ; word
-!fzx_bwarn      = !FZ+$A4   ; word: warning frames
-!fzx_bdmg       = !FZ+$A6   ; word
-!fzx_bage       = !FZ+$A8   ; word
-!fzx_pending    = !FZ+$AA   ; word: the eruption's damage queued on Goku (pendingBeam)
-!FZX_END        = !FZ+$AC
-assert !FZX_END <= !FZ+$C0, "frieza WRAM overflow (beast)"
-
-!FZ_SPECIES_BEAST = 127
-!FZ_SPECIES_LICH  = 121
-
 ; challenge.choose(feed): seven personally collected seeds always feed.
 frieza_h_beast_ordinary:              ; 95
 	LDA.w #$0000
