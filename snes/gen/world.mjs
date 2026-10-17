@@ -10,8 +10,10 @@
 // Outputs (dist/snes/gen/world/):
 //   fx.bin      effect sprites as 16x16 OBJ blocks, laid out as the module's
 //               OBJ region (tile rows $06-$0F of name table 0, 16 tiles wide)
-//   data.asm    palette, fx tile table, trig table, towns
-//   preview-fx.png (not shipped)
+//   crater.bin  32 Mode 7 characters ($E0-$FF, 8bpp) for the town craters
+//   data.asm    palette, fx tile table, trig table, towns, beam profiles,
+//               docking curve, crater layouts (144 and 224 px)
+//   preview-fx.png, preview-crater.png (not shipped)
 import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
