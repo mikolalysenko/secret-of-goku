@@ -18,8 +18,10 @@ const failures=[];
 const check=(ok,msg)=>{console.log(`${ok?'ok  ':'FAIL'} ${msg}`);if(!ok)failures.push(msg);};
 const lua=name=>readFileSync(resolve(here,name),'utf8');
 
-// Emulators run the boot a few frames apart; match each Mesen shot against
-// reference frames within a window and require an exact picture.
+// Emulators run the boot a few frames apart (FastROM builds reach the menus
+// a few frames sooner); match each Mesen shot against reference frames
+// within a window on both sides (the reference runs `extra` frames past its
+// script) and require an exact picture.
 async function compare(shotPath,ref,frame,window=40){
   const m=fromMesen(await readShot(shotPath));
   let best=null;
@@ -36,7 +38,7 @@ if(!only.length||only.includes('title')){
   check(r.code===0,`title run finished (${r.results?.error??'ok'})`);
   const shots=[700,760,800,940],nameFrame=960+2+180+2+180;
   const capture=new Set();for(const f of [...shots,nameFrame])for(let d=-40;d<=40;d++)capture.add(f+d);
-  const ref=await referenceFrames({script:[[960],[2,PAD.start],[180],[2,PAD.b],[180]],capture});
+  const ref=await referenceFrames({script:[[960],[2,PAD.start],[180],[2,PAD.b],[180]],capture,extra:40});
   for(const f of shots){
     const b=await compare(resolve(out,'title',`title-${String(f).padStart(4,'0')}.png`),ref,f);
     check(b&&b.pixels===0,`title frame ${f} matches the browser (offset ${b?.offset}, ${b?.pixels} px differ${b?.first?' first '+JSON.stringify(b.first):''}, credit ${b?.info?.credit})`);
@@ -65,7 +67,7 @@ if(!only.length||only.includes('credit-exit')){
   const r=await runMesen({rom,test:lua('credit-exit.lua'),outDir:resolve(out,'credit-exit')});
   check(r.code===0&&r.results?.credit_row_new===true,'extended credit row in the tilemap buffer at frame 820');
   const f=820+2+240,capture=new Set();for(let d=-40;d<=40;d++)capture.add(f+d);
-  const ref=await referenceFrames({script:[[820],[2,PAD.start],[240]],capture});
+  const ref=await referenceFrames({script:[[820],[2,PAD.start],[240]],capture,extra:40});
   const b=await compare(resolve(out,'credit-exit','file-select.png'),ref,f);
   check(b&&b.pixels===0,`file select after leaving the credit matches (offset ${b?.offset}, ${b?.pixels} px differ)`);
 }

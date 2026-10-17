@@ -169,8 +169,9 @@ y < -15 (the OBJ y wrap). Per age, as `drawScene`:
 ### Palettes and the flash
 
 The field NMI uploads `7E:0600`, or `7E:BE00` while `$2A≠0`. The sword-scene
-flash (`C2:C820`) rebuilds BE00 from 0600 every frame, adding one clamped
-amount per channel to palettes 1-15 (OBJ too while `$2A` bit 6 is set). Our
+flash (`C2:C820`) rebuilds BE00 from 0600 whenever its level steps (every
+fifth frame in the arrival), adding one clamped amount per channel to
+palettes 1-15 (OBJ too while `$2A` bit 6 is set). Our
 palettes (OBJ 2 effects, 6 crater, 7 pod) are written to 0600 once per visit;
 on flash frames the pod and effect colours are put back into BE00 (the
 browser draws them unflashed), while the crater keeps the native flash, which
@@ -180,11 +181,16 @@ reference colours in 0600 and applied to 0600 when it changes.
 
 ### Speed
 
-Measured over the imported scene (`00:B073`→`00:B077`, core + title + goku):
-impact median 33 lines, maximum 43, no frame made late (the game's own frame
-logic ends near line 176 every fifth frame); ghost/dialogue about 21 lines;
-other maps under one line. During the dialogue the native text engine itself
-overruns some frames.
+The impact's every fifth frame runs the game's party refresh and the flash
+rebuild (`C2:C820` rebuilds `7E:BE00` only then), so the field frame hook
+starts near line 180 and every module together has about 45 lines. Title's
+own share on those frames is about 27 lines with SlowROM (palettes 4, effect
+list 7, crater 4, pod 3, hidden hero 3, OAM close 3, setup 3) and about 20
+with FastROM. With combat, fx, audio and the other modules (main, October
+2026) SlowROM builds end 4-5 of the 140 impact frames at lines 229-231;
+FastROM with `MEMSEL` actually on ends them by line 213. Ghost/dialogue
+frames cost about 27 lines in all; other maps under one line for title.
+During the dialogue the native text engine itself overruns some frames.
 
 ### API for other modules
 
@@ -243,7 +249,10 @@ story's. Core hooks used: `modules_title_boot` (WRAM program patches),
 - `title`, `attract`, `credit-exit`: `ref.mjs` renders the browser mod's
   frames in the vendored SnesJs core with `engine/title-layer.js` attached
   and the browser's prefill, and compares Mesen screenshots in 5-bit channels
-  within a ±40-frame window (the two emulators boot a few frames apart).
+  within a ±40-frame window (the two emulators boot a few frames apart, and
+  FastROM builds reach the menus a few frames sooner; the reference runs 40
+  frames past its script). The game select and the name editor read the pad
+  every fourth frame, so the test holds B and Start there for four frames.
   Title frames 700/760/800/940, the later credits and attract frames
   1040-2200, the BOY name editor and the file select after leaving the
   credit all match exactly. Native attract-mode HDMA band edges differ
@@ -265,7 +274,10 @@ story's. Core hooks used: `modules_title_boot` (WRAM program patches),
     (`snes/test/checkpoints.mjs --stop=waterfall`), a closed-loop walk to the
     sword (waypoints of a route found in SnesJs), the pull, every page, the
     original tail until control returns; flags, names, inventory, lag,
-    scenery, a ring menu round trip.
+    scenery, a ring menu round trip (X, Goku's ring/back button with
+    combat's input layer; native Y is his ki). Late impact frames fail
+    FastROM builds (header map mode `$31`), which must also keep `MEMSEL` on
+    through the impact; SlowROM builds report them.
   - *doors*: from the checkpoint below in a `CORE_TEST` build, door 3 to
     Potos and door 12 back beside the sword.
 - **Checkpoint after the arrival**: the e2e run saves
@@ -290,7 +302,7 @@ story's. Core hooks used: `modules_title_boot` (WRAM program patches),
 ## Requests
 
 - **goku module**: while `$2A≠0` the game rebuilds `7E:BE00` from `7E:0600`
-  every frame, Goku's palette included; the browser draws Goku unflashed in
+  at every flash step, Goku's palette included; the browser draws Goku unflashed in
   every flash scene. Restoring Goku's palette into BE00 on flash frames (as
   this module does for the pod) would fix the arrival's hop, ghost and
   dialogue and every other flash scene at once.
@@ -303,4 +315,12 @@ story's. Core hooks used: `modules_title_boot` (WRAM program patches),
   - `H.saveStable` hooks the whole address range, so it saves at the next
     instruction anywhere, not at `00:B079`; `arrival.lua` uses its own
     `00:B079`-only save.
-  - The module would run about 25% faster under `CORE_FASTROM`.
+  - `CORE_FASTROM`: `MEMSEL` does not stay on. The game's register reset at
+    `C2:B620` (`STA $2123,X / STA $4202,X` for X = 0..11) writes `$420D = 0`
+    (from power-on at frame ~518, in the intro) and only the next title entry
+    sets it again, so the field, the opening and the arrival run at SlowROM
+    speed in FastROM builds. Setting it in `core_frame_begin` (one `JSR
+    core_fastrom`) keeps it on: tested here, the arrival then has `MEMSEL` on
+    in 140 of 140 impact frames and no late frame. Imports
+    (`H.importSnesJs`) also write the browser's `$420D = 0`, so imported
+    scenes measure SlowROM speed unless something sets it again.
