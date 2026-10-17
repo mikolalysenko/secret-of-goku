@@ -250,6 +250,95 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !P_DOORS     = !PERSIST_DESTROY+$00      ; bit n: breakable door n broken
 !P_TREE      = !PERSIST_DESTROY+$01      ; bit0: Mana Tree cloud barrier broken
 
+; Sandship runtime (sandship.asm, engine/sandship.js createSandship). Saved
+; with the GAME FILE like the browser's sandship snapshot (native-mod-save).
+!SS          = !PERSIST_DESTROY+$10
+!ss_flags    = !SS+$00   ; word: !SSF_* below
+!ss_breaks   = !SS+$02   ; word: bulkheads broken (breakLimit blows the ship up)
+!ss_door     = !SS+$04   ; word: door id for the flight door slot (7A), 0 none
+!ss_lastbrk  = !SS+$06   ; word: core frame of the last counted break
+!ss_wage     = !SS+$08   ; word: wreck age (frames)
+!ss_cut      = !SS+$0A   ; word: white-out sequence: 0 none, 1 breakout, 2 crash
+!ss_cage     = !SS+$0C   ; word: its age
+!ss_cmap     = !SS+$0E   ; word: the room it reloads (breakout) / the deck (crash)
+!ss_ctx      = !SS+$10   ; word: Goku's tile x when the wave broke out
+!ss_cty      = !SS+$12   ; word: tile y
+!ss_clayer   = !SS+$14   ; word: layer 0/1
+!ss_cafter   = !SS+$16   ; word: frames since the reloaded room came up
+!ss_cbits    = !SS+$18   ; word: !SSC_* below
+!ss_flash    = !SS+$1A   ; word: white 0-256
+!ss_bmap     = !SS+$1C   ; word: map of the breach ($FFFF none)
+!ss_bx       = !SS+$1E   ; word: breach centre (map pixels)
+!ss_by       = !SS+$20
+!ss_breach_reach = !SS+$22 ; word: distance to the wall the wave tore through
+!ss_box      = !SS+$24   ; word: beam origin (the scorch starts there)
+!ss_boy      = !SS+$26
+!ss_gear     = !SS+$28   ; 3 x 4 bytes: equipped slots ($1E0-$1E3) the capture stowed
+!ss_gbits    = !SS+$34   ; word: bit i member i has stowed gear, bit 4+i seen held
+!ss_end      = !SS+$36
+!SSF_WRECK   = $0001     ; s.wreck
+!SSF_WPLAN   = $0002     ; s.wreck.planned
+!SSF_CRASH   = $0004     ; s.ending === 'crash'
+!SSF_BOSS    = $0008
+!SSF_DECKDONE = $0010
+!SSF_DECKHINT = $0020
+!SSF_ARMED   = $0040
+!SSF_HINTED  = $0080
+!SSF_ESCAPED = $0100
+!SSC_REQ     = $0001     ; event requested
+!SSC_DOOR    = $0002     ; the escape door was read with the override
+!SSC_LOADED  = $0004     ; the reloaded room's objects loaded
+!SSC_PLANNED = $0008     ; cut.planned (Sergo's plan)
+!SSC_FRESH   = $0010     ; started inside this frame's destroy_hit: tick next frame
+; Volatile Sandship work (CORE REQUEST: the tail of the set-piece scene area,
+; free while the player is aboard: no scene runs on the ship maps).
+!SSW         = !SRAM_WORK_SCENE+$1C00    ; $400 bytes
+!ssw_lastmap = !SSW+$00  ; word: map of the previous field frame
+!ssw_beam    = !SSW+$02  ; word: last beam id considered
+!ssw_doorkey = !SSW+$04  ; word: door marker cell under a hovering Goku
+!ssw_doorf   = !SSW+$06  ; word: frames on it
+!ssw_doorroom = !SSW+$08 ; word
+!ssw_clear   = !SSW+$0A  ; word: left the arrival door since entering
+!ssw_embed   = !SSW+$0C  ; word: frames stuck in a wall
+!ssw_remark  = !SSW+$0E  ; word: last remark for a radio module (!SS_SAY_*)
+!ssw_rseq    = !SSW+$10  ; word: increments per remark
+!ssw_songs   = !SSW+$12  ; word: alarm songs sent (status)
+!ssw_lastsong = !SSW+$14 ; word: last song command sent
+!ssw_loads   = !SSW+$16  ; word: wrecked room loads
+!ssw_stage   = !SSW+$18  ; word: CF28 this frame
+!ssw_dbgdoor = !SSW+$3A  ; word: tests: door id whose record !ssw_dbgrec replaces once ($FFFF none)
+!ssw_dbgrec  = !SSW+$3C  ; 4 bytes: map/x/y/layer record (tests' enter(), like the browser spec's)
+!ssw_tmp     = !SSW+$1A  ; 16 words scratch (+0..+31)
+!ssw_list    = !SSW+$40  ; object list copy: header + records (max $1C0)
+!SS_LIST_MAX = $1C0
+!ssw_fp_x    = !SSW+$208 ; word: ss_floor_px scratch
+!ssw_fp_o    = !SSW+$20A
+!ssw_fe_min  = !SSW+$20C ; word: ss_far_enough scratch
+!ssw_fe_sq   = !SSW+$20E
+!ssw_ray_d   = !SSW+$210 ; word: ss_ray_point distance
+!ssw_norig   = !SSW+$220 ; word: original records of the copied list
+!ssw_mcount  = !SSW+$222 ; word: monsters appended
+!ssw_mentry  = !SSW+$224 ; word: the room's ship directory entry
+!ssw_rec     = !SSW+$226 ; word: per-record hook: record index
+!ssw_slot    = !SSW+$228 ; word: its slot offset
+!ssw_k       = !SSW+$22A ; word: monster k
+!sp_n        = !SSW+$230 ; word: monster spots chosen ($FFFF: not yet for this load)
+!sp_k        = !SSW+$232 ; word: spot list cursor
+!sp_left     = !SSW+$234 ; word: spots left in the order
+!sp_x        = !SSW+$236 ; word: spot being tried
+!sp_y        = !SSW+$238
+!sp_out      = !SSW+$23A
+!sp_cx       = !SSW+$240 ; 3 words: chosen spots
+!sp_cy       = !SSW+$246
+; remarks published in !ssw_remark (the browser's radio lines)
+!SS_SAY_WEAK = 1         ; GOKU: Too weak! I have to charge it all the way.
+!SS_SAY_HINT = 2         ; GOKU: Hold L and Y to charge ... KA... ME... HA...
+!SS_SAY_NOTYET = 3       ; GOKU: Not yet! My friends are still down below.
+!SS_SAY_BROKE = 4        ; GOKU: Uh oh. I think I broke the whole ship.
+!SS_SAY_STOP = 5         ; KING KAI: Goku, STOP! The ship can't take much more
+!SS_SAY_DUNES = 6        ; KING KAI: Goku! North to Kakkara, then west to the Fire Palace.
+!SS_SAY_DISMISS = 7      ; dismiss the Sandship lines
+
 !MAP_INFO_BRAZIER = $01
 !MAP_INFO_SHIP    = $02
 !MAP_INFO_COMPLEX = $04
@@ -279,6 +368,37 @@ endif
 if not(defined("STORY_QUERY_DOOR_NORTHTOWN_RUINS_SEAL"))
 	!STORY_QUERY_DOOR_NORTHTOWN_RUINS_SEAL = destroy_query_door_northtown
 endif
+; The Sandship runtime (sandship.asm): its hooks and queries.
+if not(defined("STORY_HOOK_SANDSHIP_CAPTURE"))
+	!STORY_HOOK_SANDSHIP_CAPTURE = destroy_ss_capture
+endif
+if not(defined("STORY_HOOK_SANDSHIP_CRASH"))
+	!STORY_HOOK_SANDSHIP_CRASH = destroy_ss_crash
+endif
+if not(defined("STORY_HOOK_SANDSHIP_WAVE"))
+	!STORY_HOOK_SANDSHIP_WAVE = destroy_ss_wave
+endif
+if not(defined("STORY_HOOK_SANDSHIP_DECK"))
+	!STORY_HOOK_SANDSHIP_DECK = destroy_ss_deck
+endif
+if not(defined("STORY_HOOK_OBJECT_LIST_SANDSHIP"))
+	!STORY_HOOK_OBJECT_LIST_SANDSHIP = destroy_ss_object_list
+endif
+if not(defined("STORY_HOOK_OBJECT_SANDSHIP"))
+	!STORY_HOOK_OBJECT_SANDSHIP = destroy_ss_object
+endif
+if not(defined("STORY_QUERY_SANDSHIP_CRASH"))
+	!STORY_QUERY_SANDSHIP_CRASH = destroy_ss_q_crash
+endif
+if not(defined("STORY_QUERY_SANDSHIP_WRECKED"))
+	!STORY_QUERY_SANDSHIP_WRECKED = destroy_ss_q_wrecked
+endif
+if not(defined("STORY_QUERY_SANDSHIP_PLANNED"))
+	!STORY_QUERY_SANDSHIP_PLANNED = destroy_ss_q_planned
+endif
+if not(defined("STORY_QUERY_SANDSHIP_DOOR"))
+	!STORY_QUERY_SANDSHIP_DOOR = destroy_ss_q_door
+endif
 
 pushpc
 org !DATA_DESTROY
@@ -296,6 +416,7 @@ incsrc "tiles.asm"
 incsrc "scan.asm"
 incsrc "demolish.asm"
 incsrc "barriers.asm"
+incsrc "sandship.asm"
 incsrc "debug.asm"
 destroy_code_end:
 assert destroy_code_end <= !CODE_DESTROY+$8000, "destroy code bank overflow"
@@ -312,3 +433,21 @@ pullpc
 ; entrance after its door broke.
 %orig4($C0CC2D, $7ECF00BF)
 %hijack_jsl($C0CC2D, destroy_piece_flag, 4, destroy)
+
+; C1:E7DF-E7F7: the door event's record loads (map, x, y/layer and the last
+; byte from C8:3000+4*door) -> destroy_door_record (the Sandship escape
+; door reloads Goku's own room; other modules can override via
+; !DOOR_RECORD_HOOK).
+%orig4($C1E7DF, $C83000BF)
+%orig4($C1E7E3, $8501FF29)
+%orig4($C1E7E7, $3001BFDC)
+%orig4($C1E7EB, $00FF29C8)
+%orig4($C1E7EF, $BFDE854A)
+%orig4($C1E7F3, $85C83002)
+%orig1($C1E7F7, $DF)
+%hijack_jsl($C1E7DF, destroy_door_record, 25, destroy)
+
+; C3:0004 (JMP $0160), the sound driver entry: the wrecked ship's room song
+; becomes the boss battle alarm.
+%orig4($C30004, $EA01604C)
+%hijack($C30004, destroy_song_hook, 4, destroy)

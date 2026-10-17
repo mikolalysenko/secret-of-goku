@@ -23,7 +23,10 @@ export function destroyAbi(){
   };
   const names=['RAM_DESTROY','arg_x','arg_y','arg_dir','arg_len','arg_half','arg_taper','arg_kind','arg_str','arg_id','arg_layer',
     'd_qn','d_qlive','d_cn','d_flags','out_react','out_rmap','out_rows','out_demo','out_sfx',
-    'dbg_cmd','dbg_arg','dbg_res','dbg_n','dbg_ev','dbg_evn','dbg_script','bp_state','bp_event','orb_base','P_DOORS','P_TREE','DQ','DC','FX_SEQ','FX_KIND','FX_X','FX_Y'];
+    'dbg_cmd','dbg_arg','dbg_res','dbg_n','dbg_ev','dbg_evn','dbg_script','bp_state','bp_event','orb_base','P_DOORS','P_TREE','DQ','DC','FX_SEQ','FX_KIND','FX_X','FX_Y',
+    'SS','ss_flags','ss_breaks','ss_door','ss_wage','ss_cut','ss_cage','ss_cbits','ss_flash','ss_bmap','ss_bx','ss_by','ss_gear','ss_gbits','ss_end',
+    'SSW','ssw_songs','ssw_lastsong','ssw_remark','ssw_rseq','ssw_loads','ssw_dbgdoor','ssw_dbgrec','ssw_list',
+    'SSF_WRECK','SSF_WPLAN','SSF_CRASH','SSF_BOSS','SSF_DECKDONE','SSF_ARMED','SSF_ESCAPED','persist_goku_active'];
   const abi={};
   for(const n of names){
     let v=value(n);

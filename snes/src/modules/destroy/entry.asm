@@ -17,6 +17,7 @@ destroy_field_frame:
 	JSR dst_walls_work
 	JSR dst_barrier_tick
 	JSR dst_orb_tick
+	JSR ss_frame
 	RTL
 
 ; ---------------------------------------------------------------------------
@@ -37,6 +38,7 @@ destroy_hit:
 	JSR dst_ground_ok
 	BCC .done
 	LDA.w !arg_kind : CMP.w #1 : BEQ .done
+	JSR ss_hit                   ; the Sandship breakout wave
 	JSR dst_scan_attack          ; plants, objects, braziers, wall candidates
 	JSR dst_barrier_hit          ; gates, locks, hit/floor switches
 .done
@@ -102,6 +104,7 @@ dst_sync_map:
 -	STA.l !DW,X                        ; !DW, !NTO, !PL, !DH ($80 bytes)
 	DEX : DEX : BPL -
 	STA.l !FX_SEQ : STA.l !FX_KIND : STA.l !FX_X : STA.l !FX_Y
+	JSR ss_reset_work
 	LDA.w #$D5A1 : STA.w !m_init
 	LDA.w #$FFFF : STA.w !d_map
 .inited

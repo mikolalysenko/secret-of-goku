@@ -4,7 +4,7 @@
 // inside a function are recovered by probing the exported functions and are
 // asserted against them, so a change in the engine fails the build here
 // instead of drifting silently. Output: dist/snes/gen/destroy/tables.asm.
-import {writeFileSync} from 'node:fs';
+import {writeFileSync,readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 
@@ -491,6 +491,74 @@ export async function generate({rom,repo,outDir}){
   for(const ship of shipMaps)assert(ship<512,'ship map range');
   emit(`; complex-placement dungeon maps (runtime piece walk): ${complexDungeons.join(',')}`);
   emit(`; special scenes excluded from demolition: ${[...dungeonSpecialScenes.keys()].join(',')}`);
+
+  // -------------------------------------------------------------------------
+  // Sandship runtime (engine/sandship.js createSandship, sandship-wreck.js).
+  // Exported constants are imported; the ones the engine keeps private in
+  // its module scope are read from the source text with exact patterns, so a
+  // changed constant fails here instead of drifting.
+  {
+    const ss=await engine('sandship.js'),sw=await engine('sandship-wreck.js');
+    const text=name=>readFileSync(join(repo,'engine',name),'utf8');
+    const ssText=text('sandship.js'),swText=text('sandship-wreck.js');
+    const grab=(src,re,what)=>{const m=src.match(re);assert(m,`sandship: ${what} not found`);return m;};
+    const [,geshtar,deck,decksA,decksB,kitchen,cabin]=grab(ssText,/const geshtar=(\d+),deck=(\d+),decks=\[(\d+),(\d+)\],kitchen=(\d+),cabin=(\d+);/,'actors and rooms').map(Number);
+    const [,dunes,leftDunes]=grab(ssText,/const dunes=(\d+),leftDunes=(\d+);/,'dunes').map(Number);
+    const [,breakLimit,endingHex]=grab(ssText,/const breakLimit=(\d+),ending=0x([0-9a-f]+),/,'break limit');
+    const fled=grab(swText,/const fled=new Set\(\[([\d,]+)\]\);/,'fled species')[1].split(',').map(Number);
+    const monsters=grab(swText,/const monsters=\[([\d,]+)\];/,'monster species')[1].split(',').map(Number);
+    const counts=Object.fromEntries(grab(swText,/const monsterCount=\{([\d:,]+)\};/,'monster counts')[1].split(',').map(e=>e.split(':').map(Number)));
+    const escapeDoor=parseInt(grab(swText,/const escapeDoor=0x([0-9a-f]+);/,'escape door')[1],16);
+    // The placement order hash, evaluated from its own source line.
+    const hashSrc=grab(swText,/const hash=\(a,b=0\)=>\{[^\n]*\};/,'hash')[0];
+    const hash=new Function(hashSrc+'return hash;')();
+    assert(ss.holdMaps.length===3&&ss.shipDoors[0]===0x1a0&&ss.shipDoors.length===32,'hold maps / ship doors');
+    assert(monsters.length===2&&fled.length===5,'wreck actor sets');
+    assert(sw.alarmSong.length===4&&sw.alarmSong[0]===1,'alarm song command');
+    emit('; Sandship runtime');
+    emit(`!SS_DECK = ${deck}`);emit(`!SS_DECK_A = ${decksA}`);emit(`!SS_DECK_B = ${decksB}`);
+    emit(`!SS_KITCHEN = ${kitchen}`);emit(`!SS_CABIN = ${cabin}`);emit(`!SS_GESHTAR = ${geshtar}`);
+    emit(`!SS_DUNES = ${dunes}`);emit(`!SS_LEFT_DUNES = ${leftDunes}`);emit(`!SS_BREAK_LIMIT = ${breakLimit}`);
+    emit(`!SS_ENDING = $${endingHex}`);emit(`!SS_ARENA = 340`);
+    emit(`!SS_ESCAPE_DOOR = ${hex4(escapeDoor)}`);
+    emit(`!SS_DOOR_FIRST = ${hex4(ss.shipDoors[0])}`);emit(`!SS_DOORS = ${ss.shipDoors.length}`);
+    emit(`!SS_FLIGHT_DOOR = ${hex4(ss.flightDoor)}`);emit(`!SS_CRASH_EVENT = ${hex4(ss.crashEvents.crash)}`);
+    for(const [k,v] of Object.entries(ss.breakout))emit(`!SS_EV_${k.toUpperCase()} = ${hex4(v)}`);
+    emit(`!SS_SHIP_SONG = ${hex2(sw.shipSong)}`);
+    emit(`!SS_ALARM_SONG = ${hex4(sw.alarmSong[0]|sw.alarmSong[1]<<8)}`);
+    emit(`!SS_ALARM_PARAMS = ${hex4(sw.alarmSong[2]|sw.alarmSong[3]<<8)}`);
+    emit(`!SS_MONSTER_A = ${monsters[0]}`);emit(`!SS_MONSTER_B = ${monsters[1]}`);
+    // Map tables: ship maps, hold maps, fled species, monsters per room.
+    bytes('ss_fled',[...fled,0]);
+    words('ss_ship_maps',[...sw.shipMaps,0xffff]);
+    words('ss_hold_maps',[...ss.holdMaps,0xffff]);
+    words('ss_squares',Array.from({length:128},(_,i)=>i*i));
+    // Per ship map: monster count, then the browser's floor-spot orders for
+    // the monster grid (16 px) and the fire sites (24 px), each sorted by
+    // hash(map*977+x, y) over the whole map (stable for ties, like
+    // Array.sort), stored as cell indices (x, y bytes).
+    const firstPiece=map=>{const list=pieces(map);return list.length?[list[0].w,list[0].h]:[0,0];};
+    const orders=[];
+    for(const map of sw.shipMaps){
+      const [W,H]=firstPiece(map);assert(W>0&&H>0&&W<=128&&H<=128,'ship map size '+map);
+      const order=(step)=>{const out=[];const w=W*16,h=H*16;
+        for(let y=step/2;y<h;y+=step)for(let x=step/2;x<w;x+=step)out.push({x,y,i:(x-step/2)/step,j:(y-step/2)/step,o:hash(map*977+x,y)});
+        return out.map((s,k)=>({...s,k})).sort((a,b)=>a.o-b.o||a.k-b.k);};
+      // Only the head of each order is kept: the runtime takes the first
+      // landable, spread-out spots, a few out of the first hundreds.
+      const keep=256,monsterSpots=(counts[map]??0)?order(16).slice(0,keep):[],siteSpots=order(24).slice(0,keep);
+      orders.push({map,W,H,count:counts[map]??0,monsterSpots,siteSpots});
+    }
+    // Directory: map.w, count.w, monster spots ptr.w + n.w, site spots ptr.w + n.w
+    emit('ss_ship_dir:');
+    for(const o of orders)emit(`\tdw ${o.map},${o.count},ss_spots_m_${o.map},${o.monsterSpots.length},ss_spots_s_${o.map},${o.siteSpots.length}`);
+    emit('\tdw $FFFF');
+    for(const o of orders){
+      emit(`ss_spots_m_${o.map}:`);for(let k=0;k<o.monsterSpots.length;k+=16)emit('\tdb '+o.monsterSpots.slice(k,k+16).flatMap(s=>[hex2(s.i),hex2(s.j)]).join(','));
+      emit(`ss_spots_s_${o.map}:`);for(let k=0;k<o.siteSpots.length;k+=16)emit('\tdb '+o.siteSpots.slice(k,k+16).flatMap(s=>[hex2(s.i),hex2(s.j)]).join(','));
+    }
+    emit(`; sandship: ${sw.shipMaps.length} ship maps, monsters ${monsters.join('/')} (counts ${JSON.stringify(counts)}), fled ${fled.join('/')}`);
+  }
 
   writeFileSync(join(outDir,'tables.asm'),out.join('\n')+'\n');
   writeFileSync(join(outDir,'reactions.json'),JSON.stringify(reactions,null,1));
