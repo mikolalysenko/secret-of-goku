@@ -495,14 +495,6 @@ fx_b_strip:
 	LDA.w #2                     ; fire
 	BRA fx_beam_strips
 
-; FX_BEAM_WAVE / FINAL / GALICK until the polygon renderer lands: the widest
-; strip (7 bands) in blue.
-fx_b_wave:
-	LDA.w #7
-	STA !d_s+2
-	LDA.w #$0000
-	BRA fx_beam_strips
-
 ; FX_BEAM_LASER: not implemented yet (needs diagonal strips).
 fx_b_laser:
 	RTS
@@ -590,6 +582,8 @@ fx_beam_strips:
 	LDA.w #8
 	JSR fx_scale_dir
 	JSR fx_at
+	LDA.w #16
+	STA !d_rstep
 	PLA
 	JSR fx_emit_run
 .done
@@ -598,3 +592,324 @@ fx_beam_strips:
 	dw !FX_SG_BEAM_HEAD, !FX_SG_PINK_BEAM_HEAD, !FX_SG_BEAM_HEAD
 .orb
 	dw !FX_SG_CHARGE_ORB, !FX_SG_PINK_CHARGE_ORB, !FX_SG_GOLD_CHARGE_ORB
+
+; FX_BEAM_WAVE / FINAL / GALICK (giantBeam): the colour-math polygon
+; (poly.asm) with native cells along both edges and the orb at the palms;
+; where no polygon is possible, the widest strip (7 bands) in blue.
+fx_b_wave:
+if defined("FX_TEST")
+	JSR fx_test_vline
+	STA.l !FXT_BOX+$B8           ; before the polygon
+endif
+	JSR fx_poly_beam
+	PHP
+	LDA.w #$FFFF                 ; the builder used !d_tiles
+	STA !d_lasta
+if defined("FX_TEST")
+	JSR fx_test_vline
+	STA.l !FXT_BOX+$BA           ; after the polygon
+endif
+	PLP
+	BCC fx_wave_edges
+	LDA.w #7
+	STA !d_s+2
+	LDA.w #$0000
+	JMP fx_beam_strips
+
+; giantBeam's edge cells: for d = 18 + (phase*7)%28, every 28 px below
+; min(length, 360), on both sides at radius(d) - 2: impact sparks, every
+; third one a Thunderbolt cell (Final Flash: gold sparks / gold arcs),
+; frame phase % 2, turned along the beam; charge orb frame 4 at the palms.
+; Two passes (sparks, then the third cells) each set one assembly up. Cells
+; in the taper are placed one by one; past it every residue class of the
+; 28 px grid is a run 84 px apart on each side (fx_emit_run's fast path).
+!w_d    = !d_s+$0             ; distance along the beam
+!w_k    = !d_s+$2             ; (floor(d/28) + phase) % 3 at w_d
+!w_lim  = !d_s+$4             ; min(length, 360)
+!w_ph   = !d_s+$6             ; phase
+!w_r    = !d_s+$8             ; radius(d) - 2
+!w_x    = !d_s+$A             ; axis point at w_d
+!w_y    = !d_s+$C
+!w_j    = !d_s+$E             ; residue classes left
+!w_hw   = !fx_e+$0            ; (SRAM scratch, free while drawing)
+!w_t    = !fx_e+$2
+!w_dt   = !fx_e+$4
+!w_pass = !fx_e+$6            ; 0: the sparks, 1: the Thunderbolt / arc cells
+!w_gold = !fx_e+$8            ; 0 blue, 2 gold (table offset)
+!w_n    = !fx_e+$A            ; placements in the run
+fx_wave_edges:
+	LDA !d_cur+!C_DIR
+	JSR fx_set_dir
+	LDA !d_cur+!C_T
+	LSR
+	STA !w_ph
+	LDA !d_cur+!C_KIND
+	AND.w #$0003
+	CMP.w #!FX_BEAM_FINAL
+	BNE +
+	LDA.w #2
+	BRA ++
++	LDA.w #0
+++	STA.l !w_gold
+	LDA !d_cur+!C_B              ; geometry as fx_poly_beam
+	CMP.w #256
+	BCC +
+	LDA.w #255
++	STA.l !w_hw
+	LDA !d_cur+!C_C
+	BNE +
+	LDA.w #44
++	CMP.w #9
+	BCS +
+	LDA.w #9
++	CMP.w #256
+	BCC +
+	LDA.w #255
++	STA.l !w_t
+	SEC
+	SBC.w #8
+	STA.l !w_dt
+	; Orb at the palms, in front unless the beam points up.
+	LDA.w #!FX_E_FRONT
+	JSR fx_depth
+	JSR fx_depth_up
+	LDX.w #$0000
+	LDY.w #$0000
+	JSR fx_at
+	LDA.l !w_gold
+	TAX
+	LDA.l .orb,X
+	LDX.w #4
+	LDY !d_turn
+	JSR fx_stamp
+if defined("FX_TEST")
+	JSR fx_test_vline
+	STA.l !FXT_BOX+$BC           ; after the orb
+endif
+	; Edge cells behind the natives.
+	LDA.w #$0000
+	JSR fx_depth
+	LDA !d_cur+!C_A
+	CMP.w #360
+	BCC +
+	LDA.w #360
++	STA !w_lim
+	LDA.w #$0000
+	STA.l !w_pass
+.pass
+	LDA.l !w_gold                ; this pass's assembly, set up once
+	TAX
+	LDA.l !w_pass
+	BNE +
+	LDA.l .spark,X
+	BRA ++
++	LDA.l .arc,X
+++	PHA
+	LDA !w_ph
+	AND.w #$0001
+	TAX
+	PLA
+	LDY !d_turn
+	JSR fx_stamp_id
+	JSR fx_emit_setup
+	BCC +
+	JMP .nextPass
++	LDA !w_ph                    ; d = 18 + 7 * (phase & 3)
+	AND.w #$0003
+	STA !w_d
+	ASL
+	ASL
+	ASL
+	SEC
+	SBC !w_d
+	CLC
+	ADC.w #18
+	STA !w_d
+	CMP.w #28
+	LDA.w #$0000
+	ROL                          ; floor(d / 28)
+	CLC
+	ADC !w_ph
+-	CMP.w #3
+	BCC +
+	SBC.w #3
+	BRA -
++	STA !w_k
+.taper                           ; cells inside the taper, one by one
+	LDA !w_d
+	CMP !w_lim
+	BCC +
+	JMP .nextPass
++	CMP.l !w_dt
+	BCS .runs
+	JSR .match
+	BCS .tnext
+	LDA !w_d                     ; radius = hw * (d + 8) / taper
+	CLC
+	ADC.w #8
+	TAX
+	SEP #$20
+	LDA.l !w_hw
+	STA.l $004202
+	TXA
+	STA.l $004203
+	NOP
+	NOP
+	NOP
+	NOP
+	REP #$20
+	LDA.l $004216
+	STA.l $004204
+	SEP #$20
+	LDA.l !w_t
+	STA.l $004206
+	REP #$20
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	LDA.l $004214
+	SEC
+	SBC.w #2
+	BPL +
+	LDA.w #$0000
++	STA !w_r
+	JSR .axis
+	LDA.w #1
+	STA.l !w_n
+	JSR .sides
+.tnext
+	JSR .advance
+	JMP .taper
+.runs                            ; past the taper: the full radius
+	LDA.l !w_hw
+	SEC
+	SBC.w #2
+	BPL +
+	LDA.w #$0000
++	STA !w_r
+	LDA.w #3
+	STA !w_j
+.run
+	LDA !w_d
+	CMP !w_lim
+	BCS .nextPass
+	JSR .match
+	BCS .rnext
+	LDA !w_lim                   ; placements: ceil((lim - d) / 84)
+	SEC
+	SBC !w_d
+	CLC
+	ADC.w #83
+	STA.l $004204
+	SEP #$20
+	LDA.b #84
+	STA.l $004206
+	REP #$20
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	LDA.l $004214
+	STA.l !w_n
+	JSR .axis
+	JSR .sides
+.rnext
+	JSR .advance
+	DEC !w_j
+	BNE .run
+.nextPass
+	LDA.l !w_pass
+	BNE +
+	INC
+	STA.l !w_pass
+if defined("FX_TEST")
+	JSR fx_test_vline
+	STA.l !FXT_BOX+$BE           ; after the first pass
+endif
+	JMP .pass
++	RTS
+.match                           ; C clear when cell k belongs to this pass
+	LDA !w_k
+	BEQ +
+	LDA.l !w_pass                ; a spark: pass 0
+	CMP.w #1
+	RTS
++	LDA.l !w_pass                ; every third: pass 1
+	EOR.w #$0001
+	CMP.w #1
+	RTS
+.advance                         ; next cell on the 28 px grid
+	LDA !w_d
+	CLC
+	ADC.w #28
+	STA !w_d
+	LDA !w_k
+	INC
+	CMP.w #3
+	BCC +
+	LDA.w #0
++	STA !w_k
+	RTS
+.axis                            ; axis point at d
+	LDA !w_d
+	JSR fx_scale_dir
+	TXA
+	CLC
+	ADC !d_cur+!C_X
+	STA !w_x
+	TYA
+	CLC
+	ADC !d_cur+!C_Y
+	STA !w_y
+	RTS
+.sides                           ; !w_n placements 84 px apart at +r, then -r
+	LDA.w #84
+	STA !d_rstep
+	LDA !d_dx
+	BEQ .svert
+	LDA !w_x
+	STA !d_x
+	LDA !w_y
+	CLC
+	ADC !w_r
+	STA !d_y
+	LDA.l !w_n
+	JSR fx_emit_run
+	LDA !w_x
+	STA !d_x
+	LDA !w_y
+	SEC
+	SBC !w_r
+	STA !d_y
+	LDA.l !w_n
+	JMP fx_emit_run
+.svert
+	LDA !w_y
+	STA !d_y
+	LDA !w_x
+	CLC
+	ADC !w_r
+	STA !d_x
+	LDA.l !w_n
+	JSR fx_emit_run
+	LDA !w_y
+	STA !d_y
+	LDA !w_x
+	SEC
+	SBC !w_r
+	STA !d_x
+	LDA.l !w_n
+	JMP fx_emit_run
+.orb
+	dw !FX_SG_CHARGE_ORB, !FX_SG_GOLD_CHARGE_ORB
+.spark
+	dw !FX_SG_IMPACT_SPARK, !FX_SG_GOLD_SPARK
+.arc
+	dw !FX_SG_LIGHTNING, !FX_SG_GOLD_ARC

@@ -46,7 +46,17 @@ fx_ensure_init:
 ; Title entry (power-on, soft reset, quit to title): the SRAM work area is
 ; battery backed, so a previous session's state is dropped here.
 fx_title_boot:
-	LDA.w #$0000
+	LDA.l !fx_magic
+	CMP.w #!FX_MAGIC
+	BNE +
+	LDA.l !fx_poly_on            ; HDMA bits FX set in $2C go with it
+	BEQ +
+	SEP #$20
+	LDA.w $002C
+	AND.b #$F3
+	STA.w $002C
+	REP #$20
++	LDA.w #$0000
 	STA.l !fx_magic
 	RTL
 

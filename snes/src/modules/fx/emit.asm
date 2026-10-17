@@ -7,6 +7,11 @@
 ; frame count, as the browser's stamp()), Y = quarter turn 0-3. Anchor
 ; !d_x/!d_y, depth !d_ef.
 fx_stamp:
+	JSR fx_stamp_id
+	JMP fx_emit
+
+; Stamp group A, frame X, turn Y -> A = assembly id.
+fx_stamp_id:
 	PHY                          ; turn
 	PHX                          ; frame
 	TAX
@@ -33,10 +38,12 @@ fx_stamp:
 	CLC
 	ADC $01,S
 	PLY
-	; fall through
+	RTS
 
 ; fx_emit: A = assembly id, drawn at !d_x/!d_y with !d_ef.
 fx_emit:
+	CMP !d_lasta                 ; cells of this assembly already resolved
+	BEQ fx_emit_place
 	JSR fx_emit_setup
 	BCC fx_emit_place
 	RTS
@@ -46,6 +53,7 @@ fx_emit:
 ; Record: parts, cells, bbox (min x, min y, max x, max y), cell words,
 ; parts of 3 bytes (x+128, y+128, cell*8 | v*4 | h*2).
 fx_emit_setup:
+	STA !d_lasta
 	ASL
 	TAX
 	LDA.l fx_asm_ptr,X
@@ -60,6 +68,8 @@ fx_emit_setup:
 	LDA [!d_ptr]                 ; parts | cells << 8
 	AND.w #$00FF
 	BNE +
+	LDA.w #$FFFF
+	STA !d_lasta
 	SEC
 	RTS
 +	STA !d_np
@@ -191,7 +201,8 @@ fx_emit_place:
 	TAX
 	LDA !d_tiles,X
 	PLX
-	BMI .fmiss
+	CMP.w #$FFFF                 ; missing (flipped words have bit 15 set)
+	BEQ .fmiss
 	STA.w $0802,Y
 	INY
 	INY
@@ -213,7 +224,7 @@ fx_emit_place:
 	BRA .fnext
 
 ; fx_emit_run: the set-up assembly placed A times, first at !d_x/!d_y,
-; then every 16 px along the direction registers (beam strips). The
+; then every !d_rstep px along the direction registers (beam strips: 16). The
 ; bounding box is checked once: placements whose along-the-beam coordinate
 ; keeps the whole assembly on screen take the fast path (K steps by 16 or
 ; 16 * 256; one-part assemblies reuse a precomputed OAM word), the ones
@@ -232,12 +243,9 @@ fx_emit_run:
 	LDA !d_x
 	STA !d_r0                    ; along = x
 	LDA !d_dx
-	ASL
-	ASL
-	ASL
-	ASL
+	JSR .mulS
 	STA !d_r0+2                  ; along step
-	STA !d_tmp+6                 ; K step +-16
+	STA !d_tmp+6                 ; K step
 	LDY.w #$0003                 ; across = y: min y / max y must fit
 	LDA [!d_ptr],Y
 	JSR .sext
@@ -259,14 +267,11 @@ fx_emit_run:
 	LDA !d_y
 	STA !d_r0                    ; along = y
 	LDA !d_dy
-	ASL
-	ASL
-	ASL
-	ASL
+	JSR .mulS
 	STA !d_r0+2
 	XBA
 	AND.w #$FF00
-	STA !d_tmp+6                 ; K step +-16 * 256
+	STA !d_tmp+6                 ; K step * 256
 	LDY.w #$0002                 ; across = x
 	LDA [!d_ptr],Y
 	JSR .sext
@@ -348,7 +353,8 @@ fx_emit_run:
 	CPY !d_end
 	BCS .step                    ; the module area is full
 	LDA !d_r0+6
-	BMI .step                    ; cell not resident
+	CMP.w #$FFFF
+	BEQ .step                    ; cell not resident
 	STA.w $0802,Y
 	LDA !d_r0+4
 	CLC
@@ -371,7 +377,8 @@ fx_emit_run:
 	TAX
 	LDA !d_tiles,X
 	PLX
-	BMI .pnext
+	CMP.w #$FFFF
+	BEQ .pnext
 	STA.w $0802,Y
 	LDA.l fx_asm_data,X
 	CLC
@@ -406,18 +413,12 @@ fx_emit_run:
 ++	JSR fx_emit_slow
 .step
 	LDA !d_dx                    ; next placement
-	ASL
-	ASL
-	ASL
-	ASL
+	JSR .mulS
 	CLC
 	ADC !d_x
 	STA !d_x
 	LDA !d_dy
-	ASL
-	ASL
-	ASL
-	ASL
+	JSR .mulS
 	CLC
 	ADC !d_y
 	STA !d_y
@@ -437,23 +438,26 @@ fx_emit_run:
 .allSlow
 	JSR fx_emit_slow
 	LDA !d_dx
-	ASL
-	ASL
-	ASL
-	ASL
+	JSR .mulS
 	CLC
 	ADC !d_x
 	STA !d_x
 	LDA !d_dy
-	ASL
-	ASL
-	ASL
-	ASL
+	JSR .mulS
 	CLC
 	ADC !d_y
 	STA !d_y
 	DEC !d_tmp
 	BNE .allSlow
+	RTS
+.mulS                            ; A = -1 / 0 / 1 -> A * !d_rstep
+	BEQ +
+	BMI ++
+	LDA !d_rstep
++	RTS
+++	LDA.w #$0000
+	SEC
+	SBC !d_rstep
 	RTS
 .sext                            ; low byte of A as a signed value
 	AND.w #$00FF
@@ -501,7 +505,8 @@ fx_emit_slow:
 	TAX
 	LDA !d_tiles,X
 	PLX
-	BMI .skip                    ; cell not resident and no upload room
+	CMP.w #$FFFF
+	BEQ .skip                    ; cell not resident and no upload room
 	STA !d_tile
 	PHX
 	LDA !d_ef
@@ -679,7 +684,7 @@ fx_cache_get:
 	BNE +
 	JMP .miss                    ; not resident: nothing to search
 +	LDA !d_tmp
-	AND.w #$001F
+	AND.w #$000F
 	TAX
 	LDA.l !fx_hash,X
 	AND.w #$00FF
@@ -702,7 +707,7 @@ fx_cache_get:
 .found
 	PHX                          ; remember the entry for this cell's bucket
 	LDA !d_tmp
-	AND.w #$001F
+	AND.w #$000F
 	TAX
 	PLA
 	SEP #$20
@@ -1009,6 +1014,7 @@ fx_emit_group:
 	STA !d_white
 	LDA.w #$FFFF
 	STA !d_lastc
+	STA !d_lasta
 +	LDA.l fx_det_data+2,X
 	CLC
 	ADC !d_x
@@ -1036,4 +1042,5 @@ fx_emit_group:
 	STZ !d_white
 	LDA.w #$FFFF
 	STA !d_lastc
+	STA !d_lasta
 	RTS

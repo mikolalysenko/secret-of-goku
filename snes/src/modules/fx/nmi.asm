@@ -17,12 +17,39 @@ fx_nmi:
 	JSR fx_nmi_learn
 	LDA.w #$0000
 	STA.l !fx_upl
+	; When the game's own vblank work left (almost) no time, FX only
+	; rewrites its palettes (the game uploaded all of CGRAM in this vblank,
+	; and this frame's sprites need them) and leaves HDMA, colour math and
+	; cell uploads as they are: the field NMI writes $420C right after the
+	; modules and that write must land inside vblank (a channel switched on
+	; after the frame's HDMA start runs from stale pointers).
+	JSR fx_nmi_vline
+	CMP.w #225
+	BCC .late
+	CMP.w #257
+	BCS .late
+	JSR fx_nmi_poly              ; HDMA first, then the uploads
 	JSR fx_nmi_channel
 	BCS +
 	JSR fx_nmi_cells
 	JSR fx_nmi_palettes
-+
++	LDA.l !fx_poly_req           ; a wave polygon owns the colour math,
+	CMP.w #$0001                 ; otherwise the flash may use it
+	BEQ .end
 	JSR fx_nmi_math
+	BRA .end
+.late
+	LDA.l !fx_poly_on            ; the late $420C write must not switch FX's
+	BEQ +                        ; channels on mid-frame: off for this frame
+	SEP #$20                     ; (the registers stay; the next vblank in
+	LDA.l $7E002C                ; time programs or restores them)
+	AND.b #$F3
+	STA.l $7E002C
+	REP #$20
++	JSR fx_nmi_channel
+	BCS .end
+	JSR fx_nmi_palettes
+.end
 	LDA.l !fx_cpend              ; uploads that did not fit are not drawn
 	STA.l !fx_cfail              ; until a later vblank sends them
 if defined("FX_TEST")
@@ -46,8 +73,20 @@ fx_nmi_learn:
 +	STA.l !fx_vblp,X
 	RTS
 
+; World vblank: FX draws nothing there yet. A polygon cannot survive into
+; world flight (its HDMA bits in $2C would come back in the field with the
+; world's channel settings), so its state is dropped.
 fx_world_nmi:
-	RTL
+	LDA.l !fx_poly_on
+	BEQ +
+	SEP #$20
+	LDA.l $7E002C
+	AND.b #$F3
+	STA.l $7E002C
+	REP #$20
+	LDA.w #$0000
+	STA.l !fx_poly_on
++	RTL
 
 ; General DMA channel: 7, else 6, when no HDMA runs there ($2C). C set if
 ; both are busy. Y = register offset.

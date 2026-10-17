@@ -58,8 +58,8 @@ assert !FX_SRAM == !SRAM_WORK_FX, "fx request block must sit at !SRAM_WORK_FX"
 !FX_MAGIC     = $F0C6
 !fx_s         = !FX_SRAM+$A0   ; 16 bytes scratch for the API entry points
 !fx_e         = !FX_SRAM+$B0   ; 16 bytes scratch for the cache
-; Spawned effects: 18 slots of 16 bytes
-!FX_SLOTS     = 18
+; Spawned effects: 14 slots of 16 bytes
+!FX_SLOTS     = 14
 !fx_slots     = !FX_SRAM+$C0
 !S_KIND = $0   ; byte: kind, 0 = free
 !S_FLAGS = $1  ; byte
@@ -72,9 +72,9 @@ assert !FX_SRAM == !SRAM_WORK_FX, "fx request block must sit at !SRAM_WORK_FX"
 !S_B = $C      ; word
 !S_DIR = $E    ; byte
 !S_GEN = $F    ; byte
-; Draw list: 10 entries of 16 bytes, rebuilt every frame
-!FX_DRAWS     = 10
-!fx_draws     = !FX_SRAM+$1E0
+; Draw list: 8 entries of 16 bytes, rebuilt every frame
+!FX_DRAWS     = 8
+!fx_draws     = !FX_SRAM+$1A0
 !D_KIND = $0   ; byte (beams: $80 | style)
 !D_FLAGS = $1
 !D_X = $2
@@ -85,25 +85,39 @@ assert !FX_SRAM == !SRAM_WORK_FX, "fx request block must sit at !SRAM_WORK_FX"
 !D_B = $A
 !D_C = $C
 !D_T = $E
-!fx_vbl       = !FX_SRAM+$280  ; word: vblank lines left when fx_nmi started (last frame)
-!fx_vbl_end   = !FX_SRAM+$282  ; word: lines left after FX's vblank work (last frame)
-!fx_upl       = !FX_SRAM+$284  ; word: cells uploaded in the last vblank
-!fx_phase     = !FX_SRAM+$286  ; word: the game's streaming phase ($56) for the coming vblank
-!fx_cfail     = !FX_SRAM+$288  ; word: cache entries whose upload slipped (not drawn until done)
-!fx_nmiwork   = !FX_SRAM+$28A  ; word: nonzero when the coming vblank has FX work
-!fx_vblp      = !FX_SRAM+$290  ; 5 words: learned vblank lines left for FX, per phase
-!fx_hash      = !FX_SRAM+$2C0  ; 32 bytes: cache entry*2 for cell & 31 ($FF none)
-!fx_rbits     = !FX_SRAM+$2E0  ; 64 bytes: bit per cell id resident in the cache
-!fx_poly      = !FX_SRAM+$320  ; $E0 bytes: polygon (HDMA) tables
+!fx_vbl       = !FX_SRAM+$220  ; word: vblank lines left when fx_nmi started (last frame)
+!fx_vbl_end   = !FX_SRAM+$222  ; word: lines left after FX's vblank work (last frame)
+!fx_upl       = !FX_SRAM+$224  ; word: cells uploaded in the last vblank
+!fx_phase     = !FX_SRAM+$226  ; word: the game's streaming phase ($56) for the coming vblank
+!fx_cfail     = !FX_SRAM+$228  ; word: cache entries whose upload slipped (not drawn until done)
+!fx_nmiwork   = !FX_SRAM+$22A  ; word: nonzero when the coming vblank has FX work
+!fx_vblp      = !FX_SRAM+$22C  ; 5 words: learned vblank lines left for FX, per phase
+; Polygon (HDMA) state, written by fx_frame, read by the next fx_nmi
+!fx_pbuf      = !FX_SRAM+$236  ; word: back buffer for the next build (0 or !FX_PBUF_SIZE)
+!fx_pdmap     = !FX_SRAM+$238  ; word: channel 2 DMAP (1: W1 only, 4: W1 and W2)
+!fx_ptab2     = !FX_SRAM+$23A  ; word: channel 2 table (window edges)
+!fx_ptab3     = !FX_SRAM+$23C  ; word: channel 3 table (backdrop colour)
+!fx_pfix      = !FX_SRAM+$23E  ; 3 bytes: COLDATA writes (core = backdrop + fixed colour)
+!fx_hash      = !FX_SRAM+$242  ; 16 bytes: cache entry*2 for cell & 15 (a stale value costs a scan)
+!fx_pkey      = !FX_SRAM+$252  ; 6 words: parameters of the last built polygon (+8 = $FFFF: none)
+!fx_pshown    = !FX_SRAM+$25E  ; word: that polygon is in the buffer on screen
+!fx_preuse    = !FX_SRAM+$260  ; word: this frame shows it again (no build, no buffer swap)
+!fx_rbits     = !FX_SRAM+$262  ; 40 bytes: bit per cell id resident in the cache
+!FX_RBITS_SIZE = 40
+!fx_poly      = !FX_SRAM+$28A  ; two HDMA table buffers
+!FX_PBUF_SIZE = ($400-$28A)/2
 assert !fx_draws+(!FX_DRAWS*16) <= !fx_vbl, "fx SRAM layout overlap"
 assert !fx_slots+(!FX_SLOTS*16) <= !fx_draws, "fx SRAM layout overlap"
+assert !fx_pfix+3 <= !fx_hash, "fx SRAM layout overlap"
+assert !fx_preuse+2 <= !fx_rbits, "fx SRAM layout overlap"
+assert !fx_rbits+!FX_RBITS_SIZE <= !fx_poly, "fx SRAM layout overlap"
 
 ; ---------------------------------------------------------------------------
 ; Direct-page frame: fx_frame moves S down !FXF_SIZE bytes and points D at
 ; the frame, so the renderers' locals are fast direct-page variables. Only
 ; code running inside fx_frame may use these; the game's own direct-page
 ; variables are then reached with explicit absolute addressing ($7E:00xx).
-!FXF_SIZE = $90
+!FXF_SIZE = $94
 !d_ax    = $00    ; word: anchor x - 128 + 15 (assembly part placement)
 !d_ay    = $02
 !d_n     = $04    ; word: parts left in the assembly
@@ -132,6 +146,8 @@ assert !fx_slots+(!FX_SLOTS*16) <= !fx_draws, "fx SRAM layout overlap"
 !d_np    = $84    ; word: parts in the set-up assembly
 !d_pofs  = $86    ; word: offset of its first part in fx_asm_data
 !d_r0    = $88    ; 8 bytes: fx_emit_run state
+!d_lasta = $90    ; word: assembly whose cells !d_tiles holds ($FFFF none)
+!d_rstep = $92    ; word: fx_emit_run spacing in pixels
 ; Current effect fields (offsets into !d_cur)
 !C_KIND = $0   ; byte (beams: $80 | style)
 !C_FLAGS = $1  ; byte
@@ -166,6 +182,7 @@ fx_data:
 incsrc "fx/data.asm"
 fx_data_end:
 assert fx_data_end <= $FD0000, "fx data overflows bank $FC"
+assert !FX_CELL_COUNT <= !FX_RBITS_SIZE*8, "fx residency bitmap too small for the cells"
 pullpc
 
 if defined("FX_TEST")
@@ -179,6 +196,7 @@ incsrc "api.asm"
 incsrc "frame.asm"
 incsrc "emit.asm"
 incsrc "kinds.asm"
+incsrc "poly.asm"
 incsrc "nmi.asm"
 if defined("FX_TEST")
 	incsrc "../../../test/fx/testmod.asm"

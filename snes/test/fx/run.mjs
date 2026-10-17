@@ -16,6 +16,7 @@ import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {runMesen} from '../mesen.mjs';
 import {checkpointDir,privateRom,cleanupRom,mainCheckout} from '../checkpoints.mjs';
+import {readPng} from '../../tools/gfx.mjs';
 
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const only=process.argv.slice(2).filter(a=>!a.startsWith('--'));
@@ -38,6 +39,48 @@ function prelude(rom){
   }
   return `SYM={${Object.entries(sym).map(([k,v])=>`${k}=0x${v.toString(16)}`).join(',')}}\nFX_IMPORT=${JSON.stringify(importRoot)}\n`+readFileSync(join(here,'lib.lua'),'utf8')+'\n';
 }
+// Screenshot checks: fraction of pixels in a span (x0..x1 on row y, or
+// rows y0..y1 at column x) whose 5-bit colour is one of `want`, at least
+// `min` (or at most `max`). Wave colours: fx_wave_colors (snes/gen/fx.mjs,
+// the browser's giantBeam rows).
+const BLUE=[0x5D4A,0x6A10,0x7B39,0x7FFF],GOLD=[0x010F,0x01BD,0x37FE,0x7FFF],PURPLE=[0x540C,0x6D3B,0x7E5F,0x7FFF];
+const WHITE=[0x7FFF];
+const BEAM_CHECKS={
+  beams:[
+    ['wave_right','axis core',{x0:180,x1:240,y:100,want:WHITE,min:.9}],
+    ['wave_right','band 2 (9-16 px in)',{x0:150,x1:240,y:32,want:[BLUE[2]],min:.8}],
+    ['wave_right','outside',{x0:150,x1:240,y:10,want:BLUE,max:.05}],
+    ['wave_down','core',{x0:150,x1:170,y:150,want:WHITE,min:.8}],
+    ['wave_down','left rim',{x:72,y0:60,y1:200,want:[BLUE[1]],min:.4}],
+    ['wave_down','right rim',{x:184,y0:60,y1:200,want:[BLUE[1]],min:.4}],
+    ['wave_down','outside',{x0:200,x1:250,y:150,want:BLUE,max:.1}],
+    ['wave_up','core',{x0:150,x1:170,y:60,want:WHITE,min:.8}],
+    ['wave_up','left rim',{x:72,y0:20,y1:150,want:[BLUE[1]],min:.4}],
+    ['final_left','axis core',{x0:40,x1:100,y:110,want:WHITE,min:.8}],
+    ['final_left','band 2',{x0:60,x1:100,y:72,want:[GOLD[2]],min:.8}],
+    ['galick_right','axis core',{x0:150,x1:220,y:110,want:WHITE,min:.8}],
+    ['galick_right','band 2',{x0:150,x1:220,y:82,want:[PURPLE[2]],min:.8}],
+    ['wave_after','no beam left',{x0:0,x1:255,y:100,want:[BLUE[1],BLUE[2]],max:.05}],
+  ],
+};
+function spanFraction(img,c){
+  const at=(x,y)=>{const i=(y*img.width+x)*4,d=img.data;return ((d[i+2]>>3)<<10)|((d[i+1]>>3)<<5)|(d[i]>>3);};
+  let n=0,hit=0;
+  if(c.x!==undefined)for(let y=c.y0;y<=c.y1;y++){n++;if(c.want.includes(at(c.x,y)))hit++;}
+  else for(let x=c.x0;x<=c.x1;x++){n++;if(c.want.includes(at(x,c.y)))hit++;}
+  return hit/n;
+}
+function shotChecks(t,dir){
+  const out=[];
+  for(const [shot,label,c] of BEAM_CHECKS[t]??[]){
+    const path=join(dir,shot+'.png');
+    if(!existsSync(path)){out.push({ok:false,text:`${shot} ${label}: no screenshot`});continue;}
+    const f=spanFraction(readPng(path),c);
+    const ok=c.min!==undefined?f>=c.min:f<=c.max;
+    out.push({ok,text:`${shot} ${label}: ${(f*100).toFixed(0)}% (${c.min!==undefined?'min '+c.min*100:'max '+c.max*100}%)`});
+  }
+  return out;
+}
 const tests=['gallery','beams','battle','budget'].filter(t=>existsSync(join(here,`${t}.lua`))&&(!only.length||only.includes(t)));
 let ok=true;
 for(const t of tests){
@@ -47,9 +90,11 @@ for(const t of tests){
   cleanupRom(rom);
   const res=r.results??{};
   const fails=Object.entries(res).filter(([k,v])=>typeof v==='string'&&v.startsWith('FAIL'));
-  const pass=r.code===0&&!res.error&&res.failures===0;
+  const shots=shotChecks(t,join(outRoot,t));
+  const pass=r.code===0&&!res.error&&res.failures===0&&shots.every(c=>c.ok);
   if(!pass)ok=false;
   console.log(`fx ${t.padEnd(10)} ${pass?'pass':'FAIL'} (${((Date.now()-t0)/1000).toFixed(1)} s)${res.error?' error: '+res.error:''}`);
   for(const [k,v] of fails)console.log(`   ${k}: ${v}`);
+  for(const c of shots)console.log(`   ${c.ok?'ok  ':'FAIL'} ${c.text}`);
 }
 process.exit(ok?0:1);

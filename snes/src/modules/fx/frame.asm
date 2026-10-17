@@ -50,6 +50,7 @@ fx_frame_body:
 	STA !d_ef
 	LDA.w #$FFFF
 	STA !d_lastc
+	STA !d_lasta
 	JSR fx_begin
 	BCS .idle
 if defined("FX_TEST")
@@ -198,6 +199,8 @@ fx_reset_scene:
 	STA.l !fx_cpend
 	STA.l !fx_cfail
 	STA.l !fx_quake
+	LDA.w #$FFFF                 ; a new scene builds its polygon afresh
+	STA.l !fx_pkey+8
 	JSR fx_release               ; claims are made again only when something is drawn
 	LDX.w #$001E
 -	LDA.l !fx_ccell,X
@@ -318,7 +321,7 @@ fx_clear_rbits:
 	PHA
 	PHX
 	LDA.w #$0000
-	LDX.w #62
+	LDX.w #!FX_RBITS_SIZE-2
 -	STA.l !fx_rbits,X
 	DEX
 	DEX

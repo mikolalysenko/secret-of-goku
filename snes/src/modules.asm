@@ -43,6 +43,7 @@ modules_menu_frame:
 	RTL
 ; Ring menu frame, in vblank (DB = $7E).
 modules_ring_frame:
+	JSL fx_ring_frame
 	RTL
 ; Title program entry (power-on, soft reset, quit to title), after module
 ; WRAM was cleared; the decompressed program is at 7E:8000 (DB = $7E).
