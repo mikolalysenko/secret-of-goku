@@ -42,6 +42,36 @@ test('scanline compositor matches per-pixel rendering in saved menu, field and M
   lockstep(slow,fast,12,f);
  }
 });
+test('scanline compositor matches per-pixel rendering under random PPU settings',()=>{
+ // Color math, clipping, windows, mosaic, hires, brightness and scroll the
+ // game may never combine, over noise VRAM, palettes and sprites so that
+ // every layer is busy and overlaps the others.
+ const s=core(),p=s.ppu;
+ let seed=0x2545f491;const rnd=()=>{seed^=seed<<13;seed^=seed>>>17;seed^=seed<<5;return(seed>>>0)/4294967296;},ri=n=>Math.floor(rnd()*n),rb=(q=.5)=>rnd()<q;
+ const render=on=>{p.setLineComposer(on);p.renderLine(0);for(let l=1;l<225;l++)p.renderLine(l);return digest(p.pixelOutput);};
+ for(let t=0;t<120;t++){
+  if(t%20===0){
+   // Mostly transparent tile rows, so that lower layers show through.
+   for(let i=0;i<p.vram.length;i++)p.vram[i]=rb(.4)?ri(65536):0;
+   for(let i=0;i<256;i++)p.cgram[i]=ri(32768);
+   for(let i=0;i<256;i++)p.oam[i]=ri(65536);for(let i=0;i<16;i++)p.highOam[i]=ri(65536);
+   p.invalidateLineCaches();
+  }
+  p.mode=[0,1,1,1,3,5,7,1][ri(8)];
+  for(let l=0;l<5;l++)p.mainScreenEnabled[l]=rb(.7),p.subScreenEnabled[l]=rb(),p.mainScreenWindow[l]=rb(.3),p.subScreenWindow[l]=rb(.3),p.mosaicEnabled[l]=rb(.15);
+  for(let l=0;l<6;l++)p.mathEnabled[l]=rb(),p.window1Enabled[l]=rb(.3),p.window2Enabled[l]=rb(.3),p.window1Inversed[l]=rb(),p.window2Inversed[l]=rb(),p.windowMaskLogic[l]=ri(4);
+  for(let l=0;l<4;l++)p.bgHoff[l]=ri(1024),p.bgVoff[l]=ri(1024);
+  Object.assign(p,{mosaicSize:1+ri(16),window1Left:ri(256),window1Right:ri(256),window2Left:ri(256),window2Right:ri(256),addSub:rb(),halfColors:rb(),subtractColors:rb(.3),
+   fixedColorR:ri(32),fixedColorG:ri(32),fixedColorB:ri(32),colorClip:rb()?0:ri(4),preventMath:rb()?0:ri(4),pseudoHires:rb(.15),directColor:rb(.15),layer3Prio:rb(.3),brightness:1+ri(15),forcedBlank:false,
+   objSize:ri(8),sprAdr1:ri(4)<<13,sprAdr2:ri(4)<<12});
+  for(let l=0;l<4;l++)p.tilemapAdr[l]=ri(64)<<10,p.tileAdr[l]=ri(16)<<12,p.bigTiles[l]=rb(.2),p.tilemapWider[l]=rb(),p.tilemapHigher[l]=rb();
+  for(const k of['mode7A','mode7B','mode7C','mode7D','mode7X','mode7Y','mode7Hoff','mode7Voff'])p[k]=ri(8192)-4096;
+  Object.assign(p,{mode7LargeField:rb(),mode7Char0fill:rb(),mode7FlipX:rb(),mode7FlipY:rb(),mode7ExBg:rb(.2)});
+  p.invalidateLineCaches();
+  assert.equal(render(true),render(false),`trial ${t}`);
+ }
+ p.setLineComposer(true);
+});
 test('paint and channel line ops match the per-pixel wrappers they describe',()=>{
  const install=s=>{
   const p=s.ppu,inner=p.getColor,colors=new Uint16Array(256),tint=new Int32Array(32);
