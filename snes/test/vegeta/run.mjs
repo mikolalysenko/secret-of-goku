@@ -27,9 +27,36 @@ const outRoot=resolve(repo,'.local/snes-test/vegeta');
 const only=process.argv.slice(2);
 const lib=readFileSync(join(here,'lib.lua'),'utf8');
 
-async function mesen(name,lua,{state=join(checkpoints,'waterfall.mss')}={}){
-  const test=`V_IMPORT_DIR=${JSON.stringify(imports)}\n${lib}\n${readFileSync(join(here,lua),'utf8')}`;
-  const r=await runMesen({rom,test,outDir:join(outRoot,name),state});
+// Test ROM (-DVEGETA_TEST: the hit mailbox), built once per run next to the
+// main one; SNES_TEST_ROM skips the build.
+let testRom=process.env.SNES_TEST_ROM?resolve(process.env.SNES_TEST_ROM):null;
+function buildTestRom(){
+  if(testRom)return testRom;
+  testRom=resolve(repo,'dist/snes/vegeta-test.sfc');
+  const b=spawnSync(process.execPath,[join(repo,'snes/build.mjs'),'--quiet','-DVEGETA_TEST=1',`--out=${testRom}`],{cwd:repo,stdio:'inherit'});
+  if(b.status!==0)throw Error('vegeta test ROM build failed');
+  return testRom;
+}
+// Labels of a built cartridge (WLA symbol file next to the ROM).
+const symbolCache=new Map();
+function sym(name,romPath=rom){
+  if(!symbolCache.has(romPath)){
+    const map=new Map();
+    for(const line of readFileSync(romPath.replace(/\.sfc$/,'.sym'),'utf8').split('\n')){
+      const m=line.match(/^([0-9A-F]{2}):([0-9A-F]{4}) (\S+)$/i);if(m)map.set(m[3],parseInt(m[1]+m[2],16));
+    }
+    symbolCache.set(romPath,map);
+  }
+  const map=symbolCache.get(romPath);
+  if(!map.has(name))throw Error(`symbol ${name} not found`);
+  return map.get(name);
+}
+const luaValue=v=>Array.isArray(v)?`{${v.map(luaValue).join(',')}}`:typeof v==='string'?JSON.stringify(v):String(v);
+
+async function mesen(name,lua,{state=join(checkpoints,'waterfall.mss'),globals={},romPath=rom}={}){
+  const pre=Object.entries(globals).map(([k,v])=>`${k}=${luaValue(v)}`).join('\n');
+  const test=`V_IMPORT_DIR=${JSON.stringify(imports)}\n${pre}\n${lib}\n${readFileSync(join(here,lua),'utf8')}`;
+  const r=await runMesen({rom:romPath,test,outDir:join(outRoot,name),state});
   if(r.code!==0||!r.results||r.results.error)throw Error(`${name}: Mesen failed (${r.code}) ${r.results?.error??r.output.slice(-2000)}`);
   return r;
 }
@@ -69,7 +96,47 @@ function compareView(shotPath,cam,hero,diffPath){
   return {pixels:n,native:+(exact/n).toFixed(4),browser:+(bexact/bn).toFixed(4),floor:+(floorExact/Math.max(1,floor)).toFixed(4)};
 }
 
+// A whole match recorded in Mesen and replayed through engine/joch-trial.js:
+// the trial state after every tick must equal the browser's.
+async function fightCase(name,{script,hits,bundle,beam}){
+  const {parseRecording,replay}=await import('./replay.mjs');
+  const romPath=buildTestRom();
+  const extra=beam?{V_BEAM_AGE:beam.age,V_BEAM_LEN:beam.len??200,V_BEAM_HALF:beam.half??12,...(beam.mash?{V_MASH:beam.mash}:{}),...(beam.super?{V_BEAM_SUPER:'true'}:{})}:{};
+  const r=await mesen(name,'fight.lua',{romPath,globals:{V_TICK:sym('vg_tick',romPath),V_HOOK:sym('vegeta_story_trial_start',romPath),V_SCRIPT:script,V_HITS:hits,...(bundle?{V_BUNDLE:bundle}:{}),...extra}});
+  const recs=parseRecording(readFileSync(join(r.outDir,'fight.txt'),'utf8'));
+  const hookAt=r.results.hook??[];
+  const {results,events}=await replay(recs,{hookAt});
+  const bad=results.filter(x=>x.diff.length);
+  const fails=[];
+  if(!hookAt.length)fails.push('the TRIAL_START hook never ran');
+  if(bad.length)fails.push(`${bad.length} of ${results.length} ticks differ from joch-trial.js; first at tick ${bad[0].i} (frame ${bad[0].frame}): ${bad[0].diff.slice(0,4).join('; ')}`);
+  const phases=[...new Set(results.map((x,i)=>recs[i+1]).map(rec=>rec.vg[0]===0x5a?['intro','battle','transform','draw'][rec.vg[1]]:'off'))];
+  writeFileSync(join(r.outDir,'replay.json'),JSON.stringify({bad:bad.slice(0,50),events},null,1));
+  return {fails,info:{ticks:results.length,differing:bad.length,phases,events:events.length}};
+}
+
 const cases={
+  // A Kamehameha stand-in meets the Galick Gun (base form): lock, focus,
+  // struggle with B taps every 6 frames, release, detonation, win.
+  async 'clash-win'(){
+    return fightCase('clash-win',{
+      script:[[2400,'']],hits:[],
+      beam:{age:100,len:200,half:12,mash:6},
+    });
+  },
+  // The same without mashing: Vegeta's surges win, Goku takes the hit.
+  async 'clash-lose'(){
+    return fightCase('clash-lose',{
+      script:[[2000,'']],hits:[],
+      beam:{age:100,len:200,half:12,mash:0},
+    });
+  },
+  async fight(){
+    return fightCase('fight',{
+      script:[[120,''],[40,'left'],[30,'down'],[60,'right'],[200,''],[60,'up'],[1600,'']],
+      hits:[[60,400,1],[70,400,1],[520,65535,0],[1100,65535,0]],
+    });
+  },
   async chamber(){
     const r=await mesen('chamber','chamber.lua');
     const res=r.results,dir=r.outDir,fails=[];
@@ -103,6 +170,15 @@ const cases={
     return {fails,info:{views,north:res.north,east:res.east}};
   },
 };
+
+// Development: run one Lua file with the helpers and print its results.
+const raw=process.argv.find(a=>a.startsWith('--lua='));
+if(raw){
+  const lua=raw.slice(6),name=lua.replace(/\.lua$/,'');
+  const r=await mesen(name,lua);
+  console.log(JSON.stringify(r.results,null,1).slice(0,20000));
+  process.exit(0);
+}
 
 let failed=0;
 for(const [name,fn] of Object.entries(cases)){

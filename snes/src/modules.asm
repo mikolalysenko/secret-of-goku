@@ -24,6 +24,7 @@ modules_field_frame:
 	JSL story_field_frame
 	JSL debug_field_frame
 	JSL world_field_frame
+	JSL vegeta_field_frame
 	JSL goku_frame
 	JSL destroy_field_frame          ; last: its planner uses the frame time left
 	JSL audio_frame                 ; last: sends what other modules requested this frame
@@ -31,6 +32,7 @@ modules_field_frame:
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
 modules_field_nmi:
 	JSL goku_nmi
+	JSL vegeta_nmi
 	RTL
 ; World flight frame, after the world logic (DB = $7E).
 modules_world_frame:
@@ -71,6 +73,7 @@ modules_load:
 	JSL title_load
 	JSL story_load
 	JSL destroy_reset
+	JSL vegeta_reset
 	RTL
 ; New game: !SRAM_LIVE was cleared and !persist_version set to 1.
 modules_new_game:
@@ -78,8 +81,12 @@ modules_new_game:
 	JSL story_new_game
 	JSL debug_new_game
 	JSL destroy_reset
+	JSL vegeta_reset
 	RTL
 pullpc
+
+; Vegeta's bindings to optional modules (audio, ui, fx, combat).
+incsrc "modules/vegeta/bind.asm"
 
 ; Debug preset hook table (generated): modules fill it by defining
 ; !DEBUG_PRESET_HOOK_<NAME> / _ANY in their own files (included above).
