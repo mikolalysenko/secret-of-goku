@@ -126,9 +126,17 @@ local function arrival()
   local phases, last, shot, pages = {}, -1, {}, {}
   for _, s in ipairs(SHOTS) do shot[s[1] .. ':' .. s[2]] = s[3] end
   local done = false
+  -- an arrival page is confirmed only after its shot, taken a few frames
+  -- into the wait (the last glyphs reach VRAM after D0 becomes $83)
+  local waitSince = {}
+  local function page()
+    for i, off in ipairs(PAGE_WAITS) do if ptr() == SCRIPT + off then return 'page-' .. i end end
+    return nil
+  end
   for f = 1, 4000 do
     local d0 = H.wram(0xD0)
-    if d0 == 0x83 and (f % 40) < 3 then H.input = {b = true} else H.input = nil end
+    local p = d0 == 0x83 and page() or nil
+    if d0 == 0x83 and (f % 40) < 3 and (not p or pages[p]) then H.input = {b = true} else H.input = nil end
     H.wait(1)
     local ph, ticks = H.wram(0xDD86), r16(0xDD88)
     if ph ~= last then
@@ -137,9 +145,10 @@ local function arrival()
     end
     local name = shot[ph .. ':' .. ticks]
     if name and not pages[name] then pages[name] = true; H.shot(name) end
-    for i, off in ipairs(PAGE_WAITS) do
-      local n = 'page-' .. i
-      if not pages[n] and H.wram(0xD0) == 0x83 and ptr() == SCRIPT + off then pages[n] = true; H.shot(n) end
+    local q = H.wram(0xD0) == 0x83 and page() or nil
+    if q and not pages[q] then
+      waitSince[q] = waitSince[q] or f
+      if f - waitSince[q] >= 6 then pages[q] = true; H.shot(q) end
     end
     if ph == 6 and idle() and H.wram(0xCF00) == 1 then done = true break end
   end
