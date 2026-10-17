@@ -399,8 +399,9 @@ story's version uses only the core input filter (`story_fast_forward`, one
 story`). Cases import a browser-mod state, set story fields, start an event
 like `story.request()`, and record every native resolution plus every byte
 read from F0–F7. Expectations come from the browser's own closures
-(`env.evaluate`) and `storyRead`, never from copied data. Test-ROM cases build
-`dist/snes/story-test.sfc` with `-DSTORY_TEST`.
+(`env.evaluate`), its `storyRead`, or the browser stack running on SnesJs,
+never from copied data. Test-ROM cases build `dist/snes/story-test.sfc` with
+`-DSTORY_TEST`. Screenshots and traces go to `.local/snes-test/story/`.
 
 | Area | Cases | Checked |
 | --- | --- | --- |
@@ -415,6 +416,7 @@ read from F0–F7. Expectations come from the browser's own closures
 | Object overlays | `objects-*` (7) | loaded records of maps 408 (both captive states), 236 (solo/full), 139 (CF11 5/12), 195 equal `storyRead` |
 | Routes | `route-*` (25) | first resolution under story and foreign state for 558, 93, 9A, A8, 297, 42F, 4E1, 4A4, 5F8, 429, 4E5, 28B, 7A |
 | Hook contract | `hooks-objects/-opcode/-theft/-ending` | A/X per record, `3D`, Frieza hook order, `BEAST_VICTORY` before `ENDING_BEGIN` |
+| Browser differential | `diff-*` (9) | the browser's own `native-story.js` runs on the vendored SnesJs core (`snes/test/story/jsref.mjs`) from the same source state with the same request and mashing: all 256 story flags, the relocated events entered, the ledger and absent-actor skips equal the cartridge's, for the Moogle (solo, full party), Water seed, Luka's Advice, the solo 28A, a story-area door, a villager, the Elder (114) and the Potos arrival scene (10C, 2,400 frames) |
 | Every route | `sweep-0`…`sweep-7` | the cartridge evaluates all 324 dispatch programs (`story_test_sweep`) under 8 states (all party masks, ledger, RAM thresholds, every foreign query, 6 seeded at random); all 2,592 choices equal the browser's |
 
 Not covered natively: complete cutscenes that upload music or sound banks.
