@@ -233,6 +233,7 @@ title_arrival_draw:
 	CLC
 	ADC.w $E022
 	STA.w !title_scr_y&$FFFF
+	JSR title_map_origin
 	JSR title_oam_open
 	BCC +
 	JMP .done
@@ -276,9 +277,9 @@ title_arrival_draw:
 	LDA.w #$0003
 	JSR title_pod_load
 	BCS .crater
-	LDA.w !title_scr_x&$FFFF
+	LDA.w !title_map_x&$FFFF
 	STA.w !title_ox&$FFFF
-	LDA.w !title_scr_y&$FFFF
+	LDA.w !title_map_y&$FFFF
 	SEC
 	SBC.w #59
 	STA.w !title_oy&$FFFF
@@ -289,6 +290,47 @@ title_arrival_draw:
 	JSR title_oam_close
 .done
 	REP #$30
+	RTS
+
+; The crater and the resting pod are map decoration (arrival.js
+; placeCrater): placed from BG1's scroll as the coming NMI writes it (C0:C170:
+; $B0/$B2 with bit 1 flipped by the quake bits $5E/$5F) and the tile stream's
+; origin ($A8/$AA): the camera is the origin plus the scroll's offset from it
+; modulo 16, in -8..7. The scene itself (pods in flight, effects, Goku) stays
+; on the hero's camera like drawScene. M16/X16.
+title_map_origin:
+	LDA.w $005E
+	AND.w #$0002
+	EOR.w $00B0                     ; BG1HOFS
+	SEC
+	SBC.w $00A8
+	CLC
+	ADC.w #8
+	AND.w #$000F
+	SEC
+	SBC.w #8
+	CLC
+	ADC.w $00A8                     ; camera x
+	EOR.w #$FFFF
+	SEC
+	ADC.w #!TITLE_SWORD_X           ; sword x - camera x
+	STA.w !title_map_x&$FFFF
+	LDA.w $005F
+	AND.w #$0002
+	EOR.w $00B2                     ; BG1VOFS
+	SEC
+	SBC.w $00AA
+	CLC
+	ADC.w #8
+	AND.w #$000F
+	SEC
+	SBC.w #8
+	CLC
+	ADC.w $00AA                     ; camera y
+	EOR.w #$FFFF
+	SEC
+	ADC.w #!TITLE_SWORD_Y
+	STA.w !title_map_y&$FFFF
 	RTS
 
 ; Forget what is in our OBJ cells.
@@ -900,14 +942,15 @@ title_draw_pod:
 	REP #$30
 	JMP title_emit_pod
 
-; Crater around (cx, cy): 20 sprites from its deduplicated cells.
+; Crater around the sword on BG1 (!title_map_x/y): 20 sprites from its
+; deduplicated cells.
 title_draw_crater:
 	JSR title_crater_load
 	BCS .done
 	REP #$30
-	LDA.w !title_scr_x&$FFFF
+	LDA.w !title_map_x&$FFFF
 	STA.w !title_ox&$FFFF
-	LDA.w !title_scr_y&$FFFF
+	LDA.w !title_map_y&$FFFF
 	STA.w !title_oy&$FFFF
 	JSR title_emit_crater
 .done

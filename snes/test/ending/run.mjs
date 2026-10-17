@@ -152,8 +152,9 @@ async function departCheck(r,out){
   expect(r.after_phase===0&&r.after_suppress===0,`stop releases the picture and Randi (${r.after_phase}, ${r.after_suppress})`);
 }
 
-// Shenron's vista against shenron-ending.js's own composition (BG3 is
-// empty in the test state, so the whole picture is compared).
+// Shenron's vista against shenron-ending.js's own composition. The test
+// state (the finale's map 180) has a dialogue box open at the top, which
+// stays above the picture (BG3) as in the browser: lines 48+ are compared.
 async function vistaCheck(r,out){
   expect(r.summon_loaded,'vista loaded');
   expect(r.summon_load_frames<=40,`vista load took ${r.summon_load_frames} frames`);
@@ -171,7 +172,7 @@ async function vistaCheck(r,out){
     const ref=phase==='scatter'?await vistaReference({rom:baseRom,phase:'wish',age:96,eighth:true,dimmed:a/30})
       :await vistaReference({rom:baseRom,phase,age:a,eighth:true});
     writeFileSync(join(out,`${name}-ref.png`),writeRef(null,ref));
-    const m=compare(join(out,`${name}.png`),ref);r[`${name}_match`]=m;
+    const m=compare(join(out,`${name}.png`),ref,{rect:{x0:0,y0:48,x1:256,y1:224}});r[`${name}_match`]=m;
     expect(m>=0.9,`${name} matches the browser at ${(m*100).toFixed(1)}%`);
   }
 }
@@ -186,9 +187,9 @@ async function flightCheck(r,out){
   expect((r.status_end&0x0C)===0x04,`muted, landed after 420 (status ${r.status_end})`);
   expect(r.sfx_310===2,`charged sound at the scatter (${r.sfx_310})`);
   expect(r.done===1,'flight timeline done flag');
-  // SlowROM: the scatter's 28 sprites (300-340) and heavy native frames
-  // leave about one frame in eight late; no vblank overrun.
-  expect(r.lag_frames<=60,`lag ${r.lag_frames} frames`);
+  // On the finale's own map (180); the scatter's 28 sprites (300-340) are
+  // the heaviest frames.
+  expect(r.lag_frames<=20,`lag ${r.lag_frames} frames`);
   expect(r.overruns===0,`vblank overran ${r.overruns} times (${r.overrun_at})`);
   for(const a of [40,60,120,180,230,280,301,320,360,400,450]){
     const name=`flight-${a}`;if(r[name]===undefined){problems.push(`no still ${name}`);continue;}

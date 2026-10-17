@@ -492,6 +492,39 @@ if not(defined("STORY_TEST"))
 !STORY_QUERY_ENDING_ACTIVE      = ending_query_active
 endif
 
+; Debug scene select (docs/agents/snes-port/debug.md): the ending presets'
+; SCENE waits (debug.mjs: 42F until phase 'open', or 'explode' for the
+; explosion preset). Carry clear = reached.
+incsrc "debug/defines.asm"
+if not(defined("DEBUG_TEST"))
+!DEBUG_PRESET_HOOK_GOOD_ENDING = ending_debug_open
+!DEBUG_PRESET_HOOK_BAD_ENDING  = ending_debug_open
+!DEBUG_PRESET_HOOK_EXPLOSION   = ending_debug_explode
+endif
+ending_debug_open:
+	CMP.w #!DEBUG_HOOK_SCENE
+	BNE .reached
+	LDA.l !ending_phase
+	AND.w #$00FF
+	BNE .reached
+	SEC
+	RTL
+.reached
+	CLC
+	RTL
+ending_debug_explode:
+	CMP.w #!DEBUG_HOOK_SCENE
+	BNE .reached
+	LDA.l !ending_phase
+	AND.w #$00FF
+	CMP.w #!EP_EXPLODE
+	BEQ .reached
+	SEC
+	RTL
+.reached
+	CLC
+	RTL
+
 ; Entering 42F: endingResult() picks the outcome; Frieza's five-minute
 ; crisis puts the doomed globe on its night side (planet-view crisisActive).
 ; Presentation bits other modules set beforehand (!EF_SSJ, !EF_EIGHTH) stay.

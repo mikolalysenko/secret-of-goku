@@ -3,7 +3,7 @@
 -- the white flash, sparks), the scatter's fade-out. Stills at held ages;
 -- run.mjs compares them with shenron-ending.js's own composition.
 function test()
-  E.import(BUNDLE or 'emulator-probe__potos-state')
+  E.import(BUNDLE or 'ending-fix__end-20')
   E.watchVblank(1)
   H.wait(20)
   local t0 = H.frame

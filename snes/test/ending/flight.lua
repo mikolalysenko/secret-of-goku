@@ -4,7 +4,7 @@
 -- untouched (load frames, lag, vblank, status, done); a second, from the
 -- same state imported again, holds the clock for each still.
 function test()
-  local bundle = BUNDLE or 'emulator-probe__potos-state'
+  local bundle = BUNDLE or 'ending-fix__end-20'
   E.import(bundle)
   E.watchVblank(1)
   H.wait(20)
