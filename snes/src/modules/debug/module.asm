@@ -56,7 +56,8 @@ incsrc "debug/defines.asm"
 !dbg_newgame     = !SRAM_WORK_DEBUG+$38 ; byte: native new-game init ran for this preset
 !dbg_soft        = !SRAM_WORK_DEBUG+$3A ; word: soft waits that expired (module logic missing)
 !dbg_soft_pc     = !SRAM_WORK_DEBUG+$3C ; word: recipe pointer of the first one
-; $3E-$1FF free
+; $3E-$FF free
+!DBG_TEST_LOG    = !SRAM_WORK_DEBUG+$100 ; test builds: hook log (word count, 4-byte entries), +$FE SCENE count
 
 !DBG_MAGIC  = $4244                   ; 'DB'
 !DBG_PH_MENU     = $01                ; native game select / name editor
@@ -337,6 +338,55 @@ debug_crown_name:
 debug_hook_stub:
 	CLC
 	RTL
+
+; Test builds (-DDEBUG_TEST): hooks as another module would define them.
+; Every call appends (kind, preset, payload word) to a log at
+; !DBG_TEST_LOG (word count, then 4-byte entries); a SCENE call answers
+; "not yet" 30 times per wait before it lets the recipe go on.
+if defined("DEBUG_TEST")
+!DEBUG_PRESET_HOOK_ANY = debug_test_hook_any
+!DEBUG_PRESET_HOOK_BEAST = debug_test_hook_beast
+debug_test_hook_any:
+	PHA
+	PHX
+	PHY
+	LDA.l !DBG_TEST_LOG
+	CMP.w #63
+	BCS .full
+	ASL
+	ASL
+	TAX
+	LDA $05,S                       ; kind
+	SEP #$20
+	STA.l !DBG_TEST_LOG+2,X
+	LDA $03,S                       ; preset
+	STA.l !DBG_TEST_LOG+3,X
+	REP #$20
+	LDA $01,S                       ; payload
+	STA.l !DBG_TEST_LOG+4,X
+	LDA.l !DBG_TEST_LOG
+	INC
+	STA.l !DBG_TEST_LOG
+.full
+	PLY
+	PLX
+	PLA
+	CLC
+	RTL
+debug_test_hook_beast:
+	CMP.w #!DEBUG_HOOK_SCENE
+	BNE .done
+	LDA.l !DBG_TEST_LOG+$FE         ; SCENE answers so far
+	INC
+	STA.l !DBG_TEST_LOG+$FE
+	CMP.w #31
+	BCS .done
+	SEC
+	RTL
+.done
+	CLC
+	RTL
+endif
 
 ; Tables generated from engine/quick-start.js (snes/gen/debug.mjs).
 incsrc "debug/presets.asm"

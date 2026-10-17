@@ -32,6 +32,10 @@ debug_arm:
 	STA.l !dbg_boot_ok
 	STA.l !dbg_soft
 	STA.l !dbg_soft_pc
+if defined("DEBUG_TEST")
+	STA.l !DBG_TEST_LOG
+	STA.l !DBG_TEST_LOG+$FE
+endif
 	SEP #$20
 	STA.l !dbg_error
 	STA.l !dbg_newgame

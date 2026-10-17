@@ -11,6 +11,7 @@
 // PARTIAL otherwise, FAILED when the recipe did not finish. Fails on PARTIAL
 // or FAILED. Report: .local/snes-test/debug/report.json.
 import {readFileSync,writeFileSync,mkdirSync,existsSync,copyFileSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
 import {resolve,dirname,join,basename} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {runMesen} from '../mesen.mjs';
@@ -51,12 +52,12 @@ const gapOf=(kind,d)=>GAPS.find(g=>(g.preset==='*'||g.preset===kind)&&g.key.test
 // on this branch unless a module defines the hook).
 const HOOK_OWNER={1:'combat',2:'radio/ui',3:'combat',4:'world',5:'frieza',6:'frieza',7:'frieza/orbit',8:'frieza (Beast challenge)',9:'scene owner',10:'scene owner',11:'combat'};
 
-async function runOne(kind,{battery=opt('battery',null),tag=''}={}){
+async function runOne(kind,{battery=opt('battery',null),tag='',romPath=rom}={}){
   const index=kinds.indexOf(kind),p=catalog.presets[index];
   const dir=join(out,kind+tag);
   const lua=readFileSync(join(here,'preset.lua'),'utf8');
   const prelude=`DBG_WORK=${work}\nPRESET=${index}\nMAXF=${kind==='sword'?26000:16000}\nSHOTS={60,240}\n`;
-  const copy=privateRom(rom,`debug-${kind}`);
+  const copy=privateRom(romPath,`debug-${kind}${tag.replace(/\W/g,'')}`);
   // --battery=<8 KiB original save area>: start with those native saves
   // (GAME FILE becomes the game select's default); they must survive.
   let saves=null;
@@ -67,6 +68,7 @@ async function runOne(kind,{battery=opt('battery',null),tag=''}={}){
   const r=await runMesen({rom:copy,test:prelude+lua,outDir:dir,timeoutMs:900000});
   cleanupRom(copy);
   const res=r.results??{};
+  if(tag==='+hooks')return{kind:kind+tag,res,p};
   if(saves){
     const after=existsSync(join(dir,'sram-saves.bin'))?readFileSync(join(dir,'sram-saves.bin')):null;
     res.savesKept=!!after&&Buffer.compare(Buffer.from(saves),after)===0;
@@ -117,9 +119,38 @@ if(!only.length||args.includes('--controls')){
   controls={ok:r.code===0&&Object.entries(want).every(([k,v])=>c[k]===v),results:c};
   console.log(`controls       ${controls.ok?'pass':'FAIL'}  ${Object.entries(want).map(([k,v])=>`${k}=${c[k]}${c[k]===v?'':' (want '+v+')'}`).join(' ')}`);
 }
-writeFileSync(join(out,'report.json'),JSON.stringify({presets:reports,controls},null,1));
+// Hook contract: a -DDEBUG_TEST build defines !DEBUG_PRESET_HOOK_ANY (logs
+// kind, preset, payload) and _BEAST (a SCENE wait answers "not yet" 30
+// times). Every HOOK op must reach ANY with the recipe's kind, the preset id
+// and its payload's address, in order; SCENE polls must hold the wait.
+let hooks=null;
+if(!only.length||args.includes('--hooks')){
+  const testRom=join(repo,'dist/snes/debug-test.sfc');
+  const b=spawnSync(process.execPath,[join(repo,'snes/build.mjs'),'--quiet','--strict',`--out=${testRom}`,'-DDEBUG_TEST=1'],{cwd:repo,stdio:'inherit'});
+  if(b.status!==0)throw Error('DEBUG_TEST build failed');
+  const tsym=readFileSync(testRom.replace(/\.sfc$/,'.sym'),'utf8');
+  const addr=label=>{const m=tsym.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${label}$`,'m'));return m?parseInt(m[2],16):null;};
+  hooks={ok:true,cases:[]};
+  for(const kind of['late','beast']){
+    const {res,p}=await runOne(kind,{tag:'+hooks',romPath:testRom});
+    const log=Uint8Array.from((res.hooklog??'').match(/../g)??[],h=>parseInt(h,16));
+    const n=log[0]|log[1]<<8,calls=[];
+    for(let i=0;i<Math.min(n,63);i++)calls.push({kind:log[2+i*4],preset:log[3+i*4],payload:log[4+i*4]|log[5+i*4]<<8});
+    const want=p.recipe.filter(o=>o[0]==='HOOK').map(o=>({kind:parseInt(o[1],16),payload:addr(o[2])}));
+    const got=calls.filter(c=>c.kind!==0x09);
+    const scene=calls.filter(c=>c.kind===0x09).length;
+    const index=kinds.indexOf(kind);
+    const ok=res.status===2&&got.length===want.length&&got.every((c,i)=>c.kind===want[i].kind&&c.payload===want[i].payload&&c.preset===index)
+      &&(kind!=='beast'||scene>=31);
+    hooks.cases.push({kind,ok,calls:got.length,want:want.length,scene});
+    hooks.ok&&=ok;
+    console.log(`hooks ${kind.padEnd(8)} ${ok?'pass':'FAIL'}  ${got.length}/${want.length} hook calls in order with kind, preset and payload${kind==='beast'?`, ${scene} SCENE polls held the Beast wait`:''}`);
+  }
+}
+writeFileSync(join(out,'report.json'),JSON.stringify({presets:reports,controls,hooks},null,1));
 const bad=reports.filter(r=>r.result==='FAILED'||r.result==='PARTIAL');
 if(controls&&!controls.ok)bad.push(controls);
+if(hooks&&!hooks.ok)bad.push(hooks);
 const count=k=>reports.filter(r=>r.result===k).length;
 console.log(`\n${count('FULL')} full, ${count('NATIVE')} native (remaining differences owned by: ${[...new Set(reports.flatMap(r=>r.gaps??[]))].join(', ')||'-'}), ${count('PARTIAL')} partial, ${count('FAILED')} failed of ${reports.length}; report ${join(out,'report.json')}`);
 process.exit(bad.length?1:0);

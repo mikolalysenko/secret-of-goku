@@ -129,9 +129,12 @@ A module finishes its part of a preset by defining, in its own files,
 
 `snes/src/modules.asm` includes the generated `debug/hooks.asm` after every
 module (before `story/hooks.asm`), so the table picks the labels up; missing
-hooks are a stub that answers "done". Hooks are entered with `JSL`,
-P = M16/X16, DB = `$7E`, D = 0, **A = kind**, **X = preset**
-(`!DEBUG_PRESET_*`), **Y = payload** (offset in bank `$AF`). Return with RTL,
+hooks are a stub that answers "done". The constants below are in the
+generated `debug/defines.asm` (defines only), which a module includes itself
+(`incsrc "debug/defines.asm"`) since modules come before debug in
+`modules.asm`. Hooks are entered with `JSL`, P = M16/X16, DB = `$7E`, D = 0,
+**A = kind**, **X = preset** (`!DEBUG_PRESET_*`), **Y = payload** (offset in
+bank `!DEBUG_PAYLOAD_BANK`, `$AF`). Return with RTL,
 carry clear when done, carry set to be called again next frame. The ANY hook
 runs first. Kinds (`!DEBUG_HOOK_*`):
 
@@ -156,7 +159,11 @@ Example (a module restoring its state for every preset that asks):
 frieza_debug_preset:            ; A = kind, X = preset, Y = payload ($AF:Y)
 	CMP.w #!DEBUG_HOOK_FRIEZA
 	BNE .done
-	LDA.l $AF0000,Y             ; entry count
+	PHB
+	PEA.w !DEBUG_PAYLOAD_BANK*$0101
+	PLB : PLB
+	LDA $0000,Y                 ; entry count (byte), entries follow
+	PLB
 	...                         ; entries: key byte, value word
 .done
 	CLC                         ; done (SEC: call again next frame)
@@ -188,7 +195,13 @@ case (`controls.lua`, also with `--controls`) checks that wrong or slow
 D-pad sequences neither open the scene select nor leave the title, that Y
 returns to a re-patched title whose Start reaches the game select with
 nothing armed, and that Start+Select+L+R aborts a running preset into the
-usual soft reset.
+usual soft reset. The `hooks` case (also with `--hooks`) builds
+`dist/snes/debug-test.sfc` with `-DDEBUG_TEST`, where the module itself
+defines `!DEBUG_PRESET_HOOK_ANY` (logging kind, preset and payload to
+`$31:7700`) and `_BEAST` (a SCENE hook answering "not yet" 30 times), runs
+`late` and `beast`, and checks that every recipe HOOK reached the hook in
+order with its kind, preset and payload address and that the SCENE answers
+held the Beast's wait.
 
 | Preset | Result on this branch | Missing (owner) |
 | --- | --- | --- |

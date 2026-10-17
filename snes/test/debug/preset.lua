@@ -82,6 +82,7 @@ function test()
   s.world = {fa = H.r16(0x7E00FA), fc = H.r16(0x7E00FC), f6 = H.r16(0x7E00F6), f8 = H.r8(0x7E00F8)}
   H.result('state', s)
   H.dumpfile('sram-saves.bin', emu.memType.snesSaveRam, 0, 0x2000)
+  H.result('hooklog', hexdump(W + 0x100, 0x100))   -- test builds (-DDEBUG_TEST)
   H.shot('frame-00000')
   local at = 0
   for _, f in ipairs(SHOTS or {}) do
