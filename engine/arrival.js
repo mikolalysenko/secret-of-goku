@@ -6,7 +6,7 @@ import {crownGoku} from './native-names.js';
 // A single hand-off in the native sword event. Text, input waits, sound, ghost,
 // inventory and story flags still execute in the original event interpreter.
 export function createArrival(snes,mod){
-  let event=null,crater=null,craterOnScreen=false,craterX=0,craterY=0;
+  let event=null,crater=null,craterOnScreen=false,craterX=0,craterY=0,placedLine=-1;
   const groundPalette=new Uint16Array(128),craterColors=new Map();
   const state={phase:'prologue',ticks:0,arrived:false,started:false,crater:false,effectsSettled:false};
   const pointer=()=>mod.read16(0xd1)|(mod.read8(0xd3)<<16);
@@ -132,8 +132,7 @@ export function createArrival(snes,mod){
   ppu.renderLine=function(line){
     if(line===0){
       craterOnScreen=mod.options.enabled&&state.crater&&mod.read16(0xdc)===128&&ppu.mode===1&&mod.read8(0xe4)===1&&mod.read8(0xe5)===1;
-      craterX=500-(mod.read16(0xe002)-mod.readSigned16(0xe020))-48;
-      craterY=948-(mod.read16(0xe004)-mod.readSigned16(0xe022))-32;
+      placedLine=-1;
       if(craterOnScreen){
         // The native sword flash animates CGRAM, not screen brightness. Apply
         // its shared channel offsets to the borrowed Potos soil palette too.
@@ -154,9 +153,20 @@ export function createArrival(snes,mod){
     }
     return renderLine.call(this,line);
   };
+  // The crater and the landed pod are map decoration: place them from the
+  // tile stream's origin and this scanline's actual BG1 scroll (including
+  // native quake). Actor screen coordinates trail the background by one
+  // movement update while the camera scrolls, which made them slip against
+  // the ground tiles and shimmer.
+  function placeCrater(y){
+    if(placedLine===y)return;
+    placedLine=y;const x0=mod.read16(0xa8),y0=mod.read16(0xaa);
+    craterX=452-(x0+((ppu.bgHoff[0]-x0+8)&15)-8);craterY=916-(y0+((ppu.bgVoff[0]-y0+8)&15)-8);
+  }
   ppu.getColor=function(sub,x,y){
     const result=getColor.call(this,sub,x,y);
     if(craterOnScreen&&(result[1]===0||result[1]===1)){
+      placeCrater(y);
       const px=Math.floor((x-craterX)/2),py=Math.floor((y-craterY)/2);
       if(px>=0&&py>=0&&px<48&&py<32){const color=crater.pixels[py*48+px];if(color)result[0]=craterColors.get(color);}
       // Once the dust clears, the open capsule stays in the crater as map
@@ -179,7 +189,10 @@ export function createArrival(snes,mod){
   const podPaint={type:'paint',layers:3,colors:podLine,skipZero:true,layer:4,pixel:0x86,mainOnly:false};
   const craterRow=y=>{const py=Math.floor((y-craterY)/2);return py>=0&&py<32?py:-1;};
   const podRow=y=>{if(api.animating)return -1;const py=y-craterY+26;return py>=0&&py<saiyanPodFrames[2].height?py:-1;};
-  ppu.registerLineHook?.('getColor',ppu.getColor,getColor,(p,line)=>!craterOnScreen||craterRow(line)<0&&podRow(line)<0,{name:'arrival',plan:(p,line,plan)=>{
+  ppu.registerLineHook?.('getColor',ppu.getColor,getColor,(p,line)=>{
+    if(!craterOnScreen)return true;
+    placeCrater(line);return craterRow(line)<0&&podRow(line)<0;
+  },{name:'arrival',plan:(p,line,plan)=>{
     const cy=craterRow(line),py=podRow(line);
     // Only x in the crater's (or pod's) columns can be nonzero.
     if(cy>=0){

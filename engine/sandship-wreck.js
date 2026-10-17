@@ -154,19 +154,34 @@ export function createSandshipWreck(snes,mod,state){
   return s>1?rgb(31,25,17):s>.2?rgb(29,21,13):s>-.8?rgb(26,18,11):rgb(21,13,8);
  };
 
+ // The breach is hull decoration: place it from the tile stream's origin
+ // and each scanline's actual BG1 scroll, never from the actor camera,
+ // which trails the background while scrolling and is offset in flight.
+ // Its soot and fire patterns are in world coordinates for the same reason.
+ const view={map:0,cameraX:0,cameraY:0};let viewLine=-1;
+ const sceneView=y=>{
+  if(viewLine!==y){
+   viewLine=y;const x0=word(0xa8),y0=word(0xaa);view.map=word(0xdc);
+   view.cameraX=x0+((p.bgHoff[0]-x0+8)&15)-8;view.cameraY=y0+((p.bgVoff[0]-y0+8)&15)-8;
+  }
+  return view;
+ };
+ const soot=(wx,wy,age)=>((wx+wy+16+(age>>3))&3)?rgb(5,3,3):rgb(9,5,3);
+ const fire=(wx,wy,age)=>((wx*3+wy+40+(age>>2))%5<2)?rgb(31,27,10):rgb(31,15,3);
  const color=p.getColor,renderLine=p.renderLine;
  p.getColor=function(sub,x,y){
   const result=color.call(this,sub,x,y);
-  if(renderFrame!==mod.frame){renderFrame=mod.frame;renderActive=active();camera=renderActive?mod.status:null;}
+  if(renderFrame!==mod.frame){renderFrame=mod.frame;renderActive=active();viewLine=-1;}
   if(!renderActive||sub||this.mode!==1||y>=224||result[1]>1)return result;
+  camera=sceneView(y);
   const w=state().wreck,b=w.breach,age=w.age;
   if(b?.map===camera.map){
    const key=`${camera.cameraX}:${camera.cameraY}:${b.x}:${b.y}`;
    if(key!==maskKey){maskKey=key;mask=breachMask(b,camera.cameraX,camera.cameraY);}
    const m=mask[y*256+x];
    if(m===1){const wx=x+camera.cameraX,wy=y+camera.cameraY,c=sand(wx,wy,age),shade=breachDepth(b,wx,wy)<12?3:0;result[0]=rgb((c&31)-shade,(c>>5&31)-shade,(c>>10&31)-shade);return result;}
-   if(m===2){result[0]=((x+y+(age>>3))&3)?rgb(5,3,3):rgb(9,5,3);return result;}
-   if(m===3){result[0]=((x*3+y+(age>>2))%5<2)?rgb(31,27,10):rgb(31,15,3);return result;}
+   if(m===2){result[0]=soot(x+camera.cameraX,y+camera.cameraY,age);return result;}
+   if(m===3){result[0]=fire(x+camera.cameraX,y+camera.cameraY,age);return result;}
    if(m===4){const v=result[0];result[0]=rgb((v&31)*.42+1,(v>>5&31)*.36,(v>>10&31)*.34);}
   }
   // Firelight and a slow red alarm. Dialogue (BG3), HUD and sprites keep
@@ -189,8 +204,8 @@ export function createSandshipWreck(snes,mod,state){
    if(cut){
     const m=cut[at+x];
     if(m===1){const wx=x+camera.cameraX,wy=y+camera.cameraY,c=sand(wx,wy,age),shade=breachDepth(b,wx,wy)<12?3:0;colors[x]=rgb((c&31)-shade,(c>>5&31)-shade,(c>>10&31)-shade);continue;}
-    if(m===2){colors[x]=((x+y+(age>>3))&3)?rgb(5,3,3):rgb(9,5,3);continue;}
-    if(m===3){colors[x]=((x*3+y+(age>>2))%5<2)?rgb(31,27,10):rgb(31,15,3);continue;}
+    if(m===2){colors[x]=soot(x+camera.cameraX,y+camera.cameraY,age);continue;}
+    if(m===3){colors[x]=fire(x+camera.cameraX,y+camera.cameraY,age);continue;}
     if(m===4)v=rgb((v&31)*.42+1,(v>>5&31)*.36,(v>>10&31)*.34);
    }
    const flicker=flickers[x>>5];
@@ -199,10 +214,10 @@ export function createSandshipWreck(snes,mod,state){
  };
  const wreckOp={type:'line',layers:3,mainOnly:true,fn:wreckLine};
  p.registerLineHook?.('getColor',p.getColor,color,(ppu,line)=>{
-  if(renderFrame!==mod.frame){renderFrame=mod.frame;renderActive=active();camera=renderActive?mod.status:null;}
+  if(renderFrame!==mod.frame){renderFrame=mod.frame;renderActive=active();viewLine=-1;}
   return !renderActive||ppu.mode!==1||line>=224;
  },{name:'sandship-wreck',plan:(ppu,y,plan)=>{
-  lineWreck=state().wreck;const b=lineWreck.breach;
+  camera=sceneView(y);lineWreck=state().wreck;const b=lineWreck.breach;
   if(b?.map===camera.map){const key=`${camera.cameraX}:${camera.cameraY}:${b.x}:${b.y}`;if(key!==maskKey){maskKey=key;mask=breachMask(b,camera.cameraX,camera.cameraY);}}
   lineMask=mask;plan.extra.push(wreckOp);plan.skipPost=true;return true;
  }});
