@@ -353,6 +353,14 @@ export async function generate({rom,repo,outDir}){
   const radarSrc=readFileSync(join(repo,'engine','dragon-radar.js'),'utf8');
   for(const [k,s] of Object.entries(radarStrings))if(!radarSrc.includes(s.trim()))throw Error(`ui gen: radar string "${s}" (${k}) not found in dragon-radar.js`);
   for(const [k,s] of Object.entries(radarStrings))rd.push(`ui_rs_${k}: db ${enc(s)}`);
+  // ui_put_rom writes without a column check: every composed line must fit
+  {const cols=s=>encodeText(s).length,R=radarStrings;
+   const guides=[R.land,R.ahead,R.around,R.left,R.right];
+   const lines=[...guides.flatMap(g=>[R.radar+R.eighth+R.gap+g,R.radar+'7'+R.of7+R.gap+g]),
+     ...quest.dragonBallPalaces.map(n=>R.next+`${n} Palace`),
+     ...[R.tree_name,R.frieza_name,R.dryad_name,R.fortress_name,R.beast_name].map(n=>R.next+n),
+     ...radar.radarPalaces.map(p=>p.hint),R.tree_hint,R.frieza_hint,R.dryad_hint,R.finale_hint,R.crisis];
+   for(const l of lines)if(cols(l)>28)throw Error(`ui gen: radar line "${l}" wider than 28 columns`);}
   // ---------------------------------------------------------------------------
   // World flight band (BG3, opaque: Mode 7 cannot show through it). Glyphs
   // that any displayable text uses, with the dither holes filled with black
@@ -387,15 +395,20 @@ export async function generate({rom,repo,outDir}){
   def.push(`!UI_W_EDGE = ${hex(wFrame+1,3)}`);
   def.push(`!UI_W_SIDE = ${hex(wFrame+2,3)}`);
   def.push(`!UI_W_BLACK = ${hex(wFrame+3,3)}`);
-  rd.push('ui_wglyph:   ; glyph code $80+ -> top BG3 tile of the world atlas');
-  for(let i=0;i<wMap.length;i+=16)rd.push('\tdb '+wMap.slice(i,i+16).map(v=>hex(v)).join(','));
+  // glyph word ((code - $80) * 2) -> the top map entry of that glyph in the
+  // world atlas (bottom = +1); the attribute bits are world.asm's !UI_WT_TEXT
+  rd.push('ui_wtab16:   ; glyph word -> !UI_WT_TEXT | top BG3 tile of the world atlas');
+  for(let i=0;i<wMap.length;i+=8)rd.push('\tdw '+wMap.slice(i,i+8).map(v=>`!UI_WT_TEXT|${hex(v,3)}`).join(','));
 
   // ---------------------------------------------------------------------------
   // Radar dial (dragon-radar.js update()), 48x48 at screen (8,8): OBJ palette
-  // indices 1 ring, 2 fill, 3 grid, 4 sweep, 5 blip, 6 white. The base (ring,
-  // fill, grid, centre and N mark) is nine 16x16 cells; the sweep is drawn by
-  // up to !UI_SWEEP_TILES 8x8 sprites per angle (64 angles, the browser's
-  // continuous sweep quantised), the blip and the centre by one 8x8 each.
+  // indices 1 ring, 2 fill, 3 grid, 4 sweep, 5 blip, 6 white. OBJ region C
+  // (tiles $190-$1FF, 16 per VRAM row): the base (ring, fill, grid, centre
+  // and N mark) is nine 16x16 cells in columns 0-5 of rows 0-5; the 8x8
+  // effect tiles (blip, centre, sweep segments) fill columns 6-15 of rows
+  // 0-5, then row 6. The sweep (the browser's continuous frame * 0.045 rad,
+  // quantised to 64 angles) is three 8x8 segment sprites (d 1-6, 7-12,
+  // 13-19); angles 17-63 mirror the first quadrant's 0-16 with OBJ flips.
   const DIAL_COLORS=[0x739c,0x0440,0x1102,0x2284,0x03ff,0x7fff];
   const base=new Uint8Array(48*48);
   const put=(img,x,y,c)=>{x=Math.round(x);y=Math.round(y);if(x>=0&&x<48&&y>=0&&y<48)img[y*48+x]=c;};
@@ -407,65 +420,96 @@ export async function generate({rom,repo,outDir}){
   put(base,24,24,6);put(base,24,4,6);
   // check against the browser's own drawing
   {const src=readFileSync(join(repo,'engine','dragon-radar.js'),'utf8');
-   for(const c of DIAL_COLORS)if(!src.includes('0x'+c.toString(16).padStart(4,'0')))throw Error(`ui gen: dial colour ${c.toString(16)} not in dragon-radar.js`);}
+   for(const c of DIAL_COLORS)if(!src.includes('0x'+c.toString(16).padStart(4,'0')))throw Error(`ui gen: dial colour ${c.toString(16)} not in dragon-radar.js`);
+   if(!src.includes('const sweep=mod.frame*.045;')||!src.includes('for(let d=1;d<20;d++)put(24+Math.sin(sweep)*d,24-Math.cos(sweep)*d,0x2284)'))throw Error('ui gen: dragon-radar.js sweep changed');}
   const tile4=(img,w,tx,ty)=>{const out=new Uint8Array(32);
     for(let y=0;y<8;y++){let p=[0,0,0,0];
       for(let x=0;x<8;x++){const c=img[(ty*8+y)*w+tx*8+x];for(let b=0;b<4;b++)p[b]|=(c>>b&1)<<(7-x);}
       out[y*2]=p[0];out[y*2+1]=p[1];out[16+y*2]=p[2];out[16+y*2+1]=p[3];}
     return out;};
-  // base: 6 rows of 6 tiles in VRAM order (the 16x16 cells use N,N+1,N+16,N+17)
+  const pixel4=(t,x,y)=>{const bit=7-x;return (t[y*2]>>bit&1)|(t[y*2+1]>>bit&1)<<1|(t[16+y*2]>>bit&1)<<2|(t[17+y*2]>>bit&1)<<3;};
+  const DIAL_TILE=0x190,DIAL_VRAM=0x7900;
   const dialBase=[];
   for(let ty=0;ty<6;ty++)for(let tx=0;tx<6;tx++)dialBase.push(...tile4(base,48,tx,ty));
-  writeFileSync(join(outDir,'dial.bin'),Uint8Array.from(dialBase));
-  // sweep tiles per angle
-  const ANGLES=64;let maxTiles=0;const sweepTiles=[];const sweepIdx=[];
-  for(let a=0;a<ANGLES;a++){
-    const th=a*2*Math.PI/ANGLES,img=new Uint8Array(48*48);
-    for(let d=1;d<20;d++)put(img,24+Math.sin(th)*d,24-Math.cos(th)*d,4);
-    img[24*48+24]=0;img[4*48+24]=0;                    // the white centre/N stay on top
-    const tiles=[];
-    for(let ty=0;ty<6;ty++)for(let tx=0;tx<6;tx++){
-      let any=false;for(let y=0;y<8;y++)for(let x=0;x<8;x++)if(img[(ty*8+y)*48+tx*8+x])any=true;
-      if(any)tiles.push({tx,ty,data:tile4(img,48,tx,ty)});
-    }
-    maxTiles=Math.max(maxTiles,tiles.length);
-    sweepIdx.push(tiles);
-  }
-  // Per angle: the tiles the sweep touches (column, row; $FF unused) and
-  // its 19 pixels as (byte offset in the staging tiles, bit) for colour 4
-  // (plane 2 only), plotted by the CPU when the angle changes.
-  const sweepPos=[],sweepPlot=[];
-  for(let a=0;a<ANGLES;a++){
-    const tiles=sweepIdx[a];
-    for(let i=0;i<maxTiles;i++){const t=tiles[i];sweepPos.push(t?t.tx:0xff,t?t.ty:0xff);}
-    const th=a*2*Math.PI/ANGLES,seen=new Set();let n=0;
-    for(let d=1;d<20;d++){
-      const x=Math.round(24+Math.sin(th)*d),y=Math.round(24-Math.cos(th)*d),k=`${x},${y}`;
-      if(seen.has(k)||x<0||x>=48||y<0||y>=48||(x===24&&(y===24||y===4)))continue;seen.add(k);
-      const slot=tiles.findIndex(t=>t.tx===(x>>3)&&t.ty===(y>>3));
-      if(slot<0)throw Error('ui gen: sweep pixel outside its tiles');
-      sweepPlot.push(slot*32+16+(y&7)*2,0x80>>(x&7));n++;
-    }
-    for(;n<19;n++)sweepPlot.push(0xff,0);
-  }
-  def.push(`!UI_SWEEP_ANGLES = ${ANGLES}`);
-  def.push(`!UI_SWEEP_TILES = ${maxTiles}`);
-  rd.push('ui_sweep_pos:   ; per angle, per tile: tile column, tile row ($FF none)');
-  for(let a=0;a<ANGLES;a++)rd.push('\tdb '+sweepPos.slice(a*maxTiles*2,(a+1)*maxTiles*2).map(v=>hex(v)).join(','));
-  rd.push('ui_sweep_plot:  ; per angle, 19 x (offset in the staging tiles, bit), $FF none');
-  for(let a=0;a<ANGLES;a++)rd.push('\tdb '+sweepPlot.slice(a*38,(a+1)*38).map(v=>hex(v)).join(','));
-  // blip (3x3 at tile offset 0..2) and centre (1 pixel) tiles
+  // effect tiles, deduplicated; slot s -> OBJ tile number
+  const fx=[],fxKey=new Map();
+  const addFx=data=>{const k=Array.from(data).join(',');if(!fxKey.has(k)){fxKey.set(k,fx.length);fx.push(data);}return fxKey.get(k);};
+  const fxTile=s=>s<60?DIAL_TILE+Math.floor(s/10)*16+6+s%10:DIAL_TILE+0x60+(s-60);
   const blipImg=new Uint8Array(8*8);for(let y=0;y<3;y++)for(let x=0;x<3;x++)blipImg[y*8+x]=5;
   const ctrImg=new Uint8Array(8*8);ctrImg[0]=6;
-  writeFileSync(join(outDir,'dialfx.bin'),Uint8Array.from([...tile4(blipImg,8,0,0),...tile4(ctrImg,8,0,0)]));
+  const blipS=addFx(tile4(blipImg,8,0,0)),ctrS=addFx(tile4(ctrImg,8,0,0));
+  const SEGS=[[1,6],[7,12],[13,19]];
+  const sweepPixels=th=>{const img=new Uint8Array(48*48);for(let d=1;d<20;d++)put(img,24+Math.sin(th)*d,24-Math.cos(th)*d,4);return img;};
+  const segTab=[],segSlot=[];
+  for(let b=0;b<=16;b++){
+    const th=b*2*Math.PI/64;
+    for(const [d0,d1] of SEGS){
+      const px=[];for(let d=d0;d<=d1;d++)px.push([Math.round(24+Math.sin(th)*d),Math.round(24-Math.cos(th)*d)]);
+      const x0=Math.min(...px.map(q=>q[0])),y0=Math.min(...px.map(q=>q[1]));
+      const img=new Uint8Array(64);
+      for(const [x,y] of px){
+        if(x-x0>7||y-y0>7)throw Error('ui gen: sweep segment wider than 8 pixels');
+        if(x===24&&(y===24||y===4))throw Error('ui gen: sweep over the white centre / N mark');
+        img[(y-y0)*8+x-x0]=4;
+      }
+      const slot=addFx(tile4(img,8,0,0));
+      segSlot.push(slot);
+      segTab.push(x0,y0,fxTile(slot)&0xff);
+    }
+  }
+  if(fx.length>76)throw Error(`ui gen: ${fx.length} dial effect tiles (max 76)`);
+  // every angle drawn from the first quadrant must equal the direct drawing
+  // (angle a: quadrant q = a >> 4, i = a & 15; odd quadrants use 16 - i;
+  // H flip in quadrants 2-3, V flip in 1-2; a flipped 8x8 at p moves to 41 - p)
+  for(let a=0;a<64;a++){
+    const q=a>>4,i=a&15,b=q&1?16-i:i,hf=q===2||q===3,vf=q===1||q===2;
+    const got=new Uint8Array(48*48);
+    for(let k=0;k<3;k++){
+      const x0=segTab[(b*3+k)*3],y0=segTab[(b*3+k)*3+1],t=fx[segSlot[b*3+k]];
+      const sx0=hf?41-x0:x0,sy0=vf?41-y0:y0;
+      for(let y=0;y<8;y++)for(let x=0;x<8;x++){
+        const c=pixel4(t,hf?7-x:x,vf?7-y:y);
+        if(c)got[(sy0+y)*48+sx0+x]=c;
+      }
+    }
+    const want=sweepPixels(a*2*Math.PI/64);
+    for(let j=0;j<48*48;j++)if(got[j]!==want[j])throw Error(`ui gen: sweep angle ${a} symmetry mismatch`);
+  }
+  const fxBytes=[];for(const t of fx)fxBytes.push(...t);
+  writeFileSync(join(outDir,'dial.bin'),Uint8Array.from([...dialBase,...fxBytes]));
+  // upload steps: VRAM word address, source offset in dial.bin, bytes
+  const ups=[];
+  for(let r=0;r<6;r++)ups.push([DIAL_VRAM+r*0x100,r*192,192]);
+  for(let r=0;r<7;r++){
+    const s0=r*10,n=r<6?Math.min(10,fx.length-s0):fx.length-60;
+    if(n<=0)continue;
+    ups.push([DIAL_VRAM+(r<6?r*0x100+6*16:0x600),dialBase.length+s0*32,n*32]);
+  }
+  def.push(`!UI_DIAL_TILE = ${hex(DIAL_TILE,3)}`);
+  def.push(`!UI_DIAL_VRAM = ${hex(DIAL_VRAM,4)}`);
+  def.push(`!UI_BLIP_TILE = ${hex(fxTile(blipS),3)}`);
+  def.push(`!UI_CTR_TILE = ${hex(fxTile(ctrS),3)}`);
+  def.push(`!UI_DIAL_UPS = ${ups.length}`);
+  def.push(`!UI_DIAL_FX_TILES = ${fx.length}`);
+  rd.push('ui_dial_ups:    ; VRAM word address, offset in ui_dial_data, bytes');
+  for(const u of ups)rd.push(`\tdw ${hex(u[0],4)},${hex(u[1],4)},${hex(u[2],4)}`);
+  // per angle, the three segment sprites as OAM words (screen x | y << 8,
+  // tile | flips | !UI_DIAL_ATTR): copied straight into the dial's run
+  rd.push('ui_sweep_oam:   ; 64 angles x 3 sprites x (x | y << 8, attributes | tile)');
+  for(let a=0;a<64;a++){
+    const q=a>>4,i=a&15,b=q&1?16-i:i,hf=q===2||q===3,vf=q===1||q===2,w=[];
+    for(let k=0;k<3;k++){
+      const x0=segTab[(b*3+k)*3],y0=segTab[(b*3+k)*3+1],tile=segTab[(b*3+k)*3+2];
+      const x=8+(hf?41-x0:x0),y=8+(vf?41-y0:y0);
+      w.push(hex(x|y<<8,4),`!UI_DIAL_ATTR|${hex((vf?0x8000:0)|(hf?0x4000:0)|tile,4)}`);
+    }
+    rd.push('\tdw '+w.join(','));
+  }
   rd.push('ui_dial_colors: dw '+DIAL_COLORS.map(c=>hex(c,4)).join(','));
   // Trigonometry for the bearing (heading units: 1024 per turn).
-  const sin256=Array.from({length:256},(_,i)=>Math.round(Math.sin(i*2*Math.PI/256)*256));
-  rd.push('ui_sin256:   ; sin(i * 2pi / 256) * 256, signed words');
-  for(let i=0;i<256;i+=16)rd.push('\tdw '+sin256.slice(i,i+16).map(v=>v&0xffff).join(','));
-  const atanT=Array.from({length:129},(_,k)=>Math.round(Math.atan(k/128)*512/Math.PI));
-  rd.push('ui_atan128:  ; atan(k / 128) in heading units (1024 per turn)');
-  for(let i=0;i<129;i+=16)rd.push('\tdb '+atanT.slice(i,i+16).join(','));
+  const sinq=Array.from({length:257},(_,i)=>Math.round(Math.sin(i*Math.PI/512)*16384));
+  rd.push('ui_sinq:     ; sin(i * pi / 512) * 16384, i = 0..256 (a quarter turn of heading units)');
+  for(let i=0;i<257;i+=16)rd.push('\tdw '+sinq.slice(i,i+16).join(','));
   const secT=Array.from({length:129},(_,k)=>Math.round(Math.sqrt(1+(k/128)**2)*256));
   rd.push('ui_sec128:   ; sqrt(1 + (k/128)^2) * 256: hypot = max * sec / 256');
   for(let i=0;i<129;i+=16)rd.push('\tdw '+secT.slice(i,i+16).join(','));

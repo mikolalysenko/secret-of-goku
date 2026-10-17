@@ -11,7 +11,20 @@ incsrc "ui/defines.asm"
 
 ; ---------------------------------------------------------------------------
 ; Integration points. Define these before this file to connect providers
-; from other modules; the defaults are local stubs.
+; from other modules; with the story module (included first) they bind to
+; its API, otherwise to local stubs fed by the UI test client.
+if defined("STORY_LAYOUT")
+	!UI_HAVE_STORY = 1
+	if not(defined("UI_NAME_FN"))
+		!UI_NAME_FN = story_api_display_name
+	endif
+	if not(defined("UI_QUEST_STATUS_FN"))
+		!UI_QUEST_STATUS_FN = story_api_quest_status
+	endif
+	if not(defined("UI_RADAR_STATE_FN"))
+		!UI_RADAR_STATE_FN = ui_story_radar_state
+	endif
+endif
 if not(defined("UI_NAME_FN"))
 	!UI_NAME_FN = ui_default_name     ; A16 = n (0-3) -> X16 = name in bank $7E (0-terminated)
 endif
@@ -19,7 +32,10 @@ if not(defined("UI_QUEST_STATUS_FN"))
 	!UI_QUEST_STATUS_FN = ui_stub_quest_status ; -> A16 = held | collected<<8, X16 = wished
 endif
 ; The story module calls this hook when a Ball is collected (A = palace).
-!STORY_HOOK_QUEST_COLLECTED = ui_hook_quest_collected
+; (STORY_TEST builds bind every hook to the story's own logger first.)
+if not(defined("STORY_HOOK_QUEST_COLLECTED"))
+	!STORY_HOOK_QUEST_COLLECTED = ui_hook_quest_collected
+endif
 
 ; ---------------------------------------------------------------------------
 ; WRAM (!RAM_UI, $C0 bytes). Absolute with DB = $7E: LDA.w !x&$FFFF.
@@ -68,25 +84,46 @@ endif
 !ui_watlas    = !RAM_UI+$54   ; word: world atlas upload: 0 none, 1 first half, 2 done
 !ui_claims    = !RAM_UI+$56   ; word: bit0 region B, bit1 region C claimed
 !ui_sweep_ph  = !RAM_UI+$58   ; word: sweep phase (65536 = one turn)
-!ui_sweep_up  = !RAM_UI+$5A   ; word: sweep angle in VRAM + 1 (0 none)
+!ui_sweep_up  = !RAM_UI+$5A   ; word: sweep angle prepared + 1 (0 none)
 !ui_blip_x    = !RAM_UI+$5C   ; word: blip centre in dial pixels
 !ui_blip_y    = !RAM_UI+$5E
 !ui_rguide    = !RAM_UI+$60   ; word: guide (0 land, 1 ahead, 2 around, 3 left, 4 right)
 !ui_rtarget   = !RAM_UI+$62   ; word: target (0-6 palace, 7 tree, 8 frieza, 9 dryad, 10 finale)
 !ui_rdist     = !RAM_UI+$64   ; word: distance in world pixels
-!ui_dial_up   = !RAM_UI+$66   ; word: dial upload steps done (7 = base and effect tiles in VRAM)
+!ui_dial_up   = !RAM_UI+$66   ; word: dial upload steps done (!UI_DIAL_UPS = all tiles in VRAM)
 !ui_radar_on  = !RAM_UI+$68   ; word: radar shown this frame
 !ui_rflags    = !RAM_UI+$6A   ; word: radar state flags (!UIR_*) this frame
 !ui_rmask     = !RAM_UI+$6C   ; word: held | collected << 8 this frame
 !ui_rtx       = !RAM_UI+$6E   ; word: target x
 !ui_rty       = !RAM_UI+$70   ; word: target y
-!ui_rrel      = !RAM_UI+$72   ; word: relative bearing (heading units, signed)
+!ui_k0        = !RAM_UI+$72   ; word: dial / bearing scratch (world frame)
 !ui_stub_rf   = !RAM_UI+$74   ; word: stub radar flags without the providers
-!ui_sky       = !RAM_UI+$76   ; 12 bytes: the sky's CGRAM 9-15 (+$76..+$81)
+!ui_k1        = !RAM_UI+$76   ; words: more world-frame scratch
+!ui_k2        = !RAM_UI+$78
+!ui_k3        = !RAM_UI+$7A
+!ui_k4        = !RAM_UI+$7C
+!ui_k5        = !RAM_UI+$7E
+!ui_k6        = !RAM_UI+$80
 !ui_magic     = !RAM_UI+$82   ; word: !UI_MAGIC once this cartridge set the block up
 !UI_MAGIC     = $4B41         ; (savestates from other builds carry stale WRAM here)
 !ui_band_was  = !RAM_UI+$84   ; word: BG3 registers redirected (restore when the band goes)
-; +$86-$B7: scouter, status, placement and fast-forward
+!ui_front_n   = !RAM_UI+$86   ; word: native sprites moved behind the dial this frame
+!ui_bx8       = !RAM_UI+$88   ; word: radar target across the heading (1/8 px)
+!ui_by8       = !RAM_UI+$8A   ; word: along the heading (1/8 px)
+!ui_m0        = !RAM_UI+$8C   ; word: 32-bit scratch (low)
+!ui_m1        = !RAM_UI+$8E   ; word: 32-bit scratch (high)
+!ui_ma        = !RAM_UI+$90   ; word: multiply scratch
+!ui_mb        = !RAM_UI+$92
+!ui_msign     = !RAM_UI+$94
+!ui_rdx       = !RAM_UI+$96   ; word: radar target delta x (world wrap)
+!ui_rdy       = !RAM_UI+$98   ; word: delta y
+!ui_rtimer    = !RAM_UI+$9A   ; word: frames until the radar target is selected again
+!ui_rvalid    = !RAM_UI+$9C   ; word: a radar target exists
+!ui_rlast_h   = !RAM_UI+$9E   ; word: heading of the last far-blip computation
+!ui_rfar      = !RAM_UI+$A0   ; word: frames until the far blip is recomputed
+!ui_blink     = !RAM_UI+$A2   ; word: blip blink phase (0-29)
+; +$A4-$B7: scouter, status, placement and fast-forward
+
 !ui_name_buf  = !RAM_UI+$B8   ; 8 bytes: display name buffer ({n} codes)
 
 !UI_QMAX = 16
@@ -96,6 +133,15 @@ endif
 !UIS_ATLAS = $0002            ; glyph atlas resident in BG3 tiles $122-$1C1
 !UIS_HDMA  = $0004            ; palette HDMA (channel 5) armed
 !UIS_INIT  = $0008            ; WRAM initialised since the last title entry
+
+; build steps (!ui_s_bstep): one per frame, so a new message or radar text
+; never costs a frame more than one step
+!UIB_TEXT  = $0001            ; expand the text (all lines) and the static rows
+!UIB_TEXT0 = $0002            ; radar: text line 1 only (the guide changed)
+!UIB_LINE0 = $0004            ; map rows of text line 1
+!UIB_LINE1 = $0008            ; ... line 2
+!UIB_LINE2 = $0010            ; ... line 3
+!UIB_ALL   = !UIB_TEXT|!UIB_LINE0|!UIB_LINE1|!UIB_LINE2
 
 ; window renderer phases
 !UIP_IDLE   = 0
@@ -110,6 +156,7 @@ endif
 !UII_CRISIS        = $0001    ; the five-minute core crisis is active
 !UII_FORTRESS_GONE = $0002    ; the Fortress was destroyed (drop flight advice)
 !UII_ACTION_BEAM   = $0004    ; a beam action is running (asides wait)
+!UII_WORLD_YIELD   = $0008    ; world flight: docking, an aerial ki shot or explosion (the radar hides)
 
 ; ---------------------------------------------------------------------------
 ; Persistent fields (battery SRAM, copied into each GAME FILE's sidecar).
@@ -139,11 +186,20 @@ endif
 ; SRAM staging (!SRAM_WORK_UI, $400 bytes; contents undefined at boot)
 !ui_s_map   = !SRAM_WORK_UI+$000   ; $200: the window's 8 BG3 rows (32 words each)
 !ui_s_hdma  = !SRAM_WORK_UI+$200   ; $40: palette HDMA table (channel 5, mode 3 -> $2121)
-!ui_s_text  = !SRAM_WORK_UI+$240   ; 84 bytes: 3 x 28 glyph codes of the drawn message
-!ui_s_sweep = !SRAM_WORK_UI+$2A0   ; $A0: radar sweep tiles (world)
+!ui_s_text  = !SRAM_WORK_UI+$240   ; 168 bytes: 3 x 28 glyph words ((code - $80) * 2) of the message
+!ui_s_trig  = !SRAM_WORK_UI+$2E8   ; 10 bytes: heading + 1, sin, cos, |sin|, |cos| (radar cache)
+                                   ; $2F2-$2F3 free
+!ui_s_bkey  = !SRAM_WORK_UI+$2F4   ; word: content staged in !ui_s_map/!ui_s_text (id+1, or $8000|radar key)
+!ui_s_bpar  = !SRAM_WORK_UI+$2F6   ; word: its parameter
+!ui_s_bmode = !SRAM_WORK_UI+$2F8   ; word: 1 field window, 2 world band, 0 nothing staged
+!ui_s_bstep = !SRAM_WORK_UI+$2FA   ; word: build steps still to do (!UIB_*)
+!ui_s_rkey  = !SRAM_WORK_UI+$2FC   ; word: radar text key without the guide (set with the target)
+                                   ; $2FE-$33F free
 !ui_s_queue = !SRAM_WORK_UI+$340   ; !UI_QMAX x 8 bytes: id+1, param, map+1, frames left
 !ui_s_wband = !SRAM_WORK_UI+$3C0   ; 28 bytes: world band colours (HDMA ch6 data: 09 09 lo hi ...)
 !ui_s_wsky  = !SRAM_WORK_UI+$3DC   ; 28 bytes: the sky's colours 9-15 in the same layout
+!ui_front   = !SRAM_WORK_UI+$200   ; 8 x 8 bytes (world only; the field's HDMA table otherwise):
+                                   ; native sprites moved behind the dial (slot, x/y, tile)
 
 ; BG3 layout (field, Mode 1): chr $4000, tilemap $5800 (32x32).
 !UI_BG3_CHR    = $4000
@@ -178,8 +234,6 @@ ui_watlas_data:
 	incbin "ui/watlas.bin"
 ui_dial_data:
 	incbin "ui/dial.bin"
-ui_dialfx_data:
-	incbin "ui/dialfx.bin"
 ui_code_end:
 assert ui_code_end <= !CODE_UI+$8000, "ui bank overflow"
 pullpc

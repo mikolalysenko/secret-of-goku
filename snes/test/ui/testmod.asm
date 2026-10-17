@@ -32,7 +32,7 @@ ui_test_poll:
 ui_test_cmds:
 	dw ui_t_none, ui_t_say, ui_t_interrupt, ui_t_barrier, ui_t_ceiling, ui_t_dismiss
 	dw ui_t_super, ui_t_flight, ui_t_restore, ui_t_inputs, ui_t_quest, ui_t_hide, ui_t_unhide
-	dw ui_t_react
+	dw ui_t_react, ui_t_mul
 
 ui_t_none:
 	SEC
@@ -92,4 +92,10 @@ ui_t_unhide:
 ui_t_react:
 	LDX.w !ui_test_x&$FFFF
 	JSL ui_destroy_reaction
+	RTS
+; A = U: the radar's rotation products with !ui_ma / !ui_mb set by the test
+; (results in !ui_k5 / !ui_k6).
+ui_t_mul:
+	JSR ui_mul2r11
+	SEC
 	RTS

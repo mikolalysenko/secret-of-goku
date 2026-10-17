@@ -10,7 +10,17 @@ ui_title_boot:
 	STA.w !ui_state&$FFFF
 	LDA.w #!UI_MAGIC
 	STA.w !ui_magic&$FFFF
+	JSR ui_unstage
 	RTL
+
+; Nothing staged in !ui_s_map and no cached radar trigonometry (SRAM
+; staging is undefined at power-on).
+ui_unstage:
+	LDA.w #$0000
+	STA.l !ui_s_bmode
+	STA.l !ui_s_bstep
+	STA.l !ui_s_trig
+	RTS
 
 ; !RAM_UI must have been set up by this cartridge: a savestate made by
 ; another build (no UI module, or another layout) carries stale or random
@@ -40,6 +50,7 @@ ui_ram_check:
 	STA.w !ui_state&$FFFF
 	LDA.w #!UI_MAGIC
 	STA.w !ui_magic&$FFFF
+	JSR ui_unstage
 	PLX
 	PLA
 	RTS
@@ -169,8 +180,30 @@ ui_field_can_show:
 ; World flight: the browser's guards ($FE fade, $8C, $E2 landing, events,
 ; menus). Carry set = visible.
 ui_world_can_show:
-	LDX.w #ui_world_checks-ui_checks
-	JMP ui_check_list
+	JSR ui_goku_active
+	BEQ .no
+	LDA.w !ui_block&$FFFF
+	BNE .no
+	SEP #$20                          ; ui_world_checks, unrolled
+	LDA.w $00FE
+	AND.b #$C0                        ; world fade
+	ORA.w $008C
+	BNE .no8
+	LDA.w $00E2
+	AND.b #$01                        ; landing
+	ORA.w $00D0                       ; no event
+	BNE .no8
+	LDA.w $00EC
+	AND.b #$7E                        ; no menu
+	BNE .no8
+	REP #$20
+	SEC
+	RTS
+.no8
+	REP #$20
+.no
+	CLC
+	RTS
 
 ; Goku active, no hide request, and every (byte & mask) == value entry of
 ; the list at ui_checks+X holds. Carry set = all hold.
@@ -220,13 +253,6 @@ ui_field_checks:
 	dw $E02C : db $01,$01             ; and owned by player 1
 	dw $E190 : db $70,$00             ; incapacitating / covering status
 	dw $E191 : db $D5,$00
-	dw $FFFF
-ui_world_checks:
-	dw $00FE : db $C0,$00             ; world fade
-	dw $008C : db $FF,$00
-	dw $00E2 : db $01,$00             ; landing
-	dw $00D0 : db $FF,$00             ; no event
-	dw $00EC : db $7E,$00             ; no menu
 	dw $FFFF
 
 ; Default display name for {n} codes: the native slot, or the retail

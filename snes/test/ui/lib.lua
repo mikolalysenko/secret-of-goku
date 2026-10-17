@@ -25,6 +25,13 @@ function enter(bundle, setup)
   H.importSnesJs(bundle)
   H.w8(0x316001, 1)
   for a = 0x316380, 0x3163DF do H.w8(a, 0) end   -- UI persistent fields: a new game
+  -- the imported WRAM has no UI block: set it up as a title entry would
+  -- (else the first UI frame clears it, and with it the setup below)
+  for a = 0, 0xBF do H.w8(UI + a, 0) end
+  H.w16(UI + 0x00, 0x0008)
+  H.w16(UI + 0x82, 0x4B41)
+  for a = 0x337EF8, 0x337EFB do H.w8(a, 0) end   -- nothing staged (!ui_s_bmode/bstep)
+  H.w16(0x337EE8, 0)                               -- no cached radar heading (!ui_s_trig)
   if setup then setup() end
   H.wait(20)
 end

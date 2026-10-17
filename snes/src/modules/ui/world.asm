@@ -6,33 +6,30 @@
 ; window would need 60 16x16 sprites (the world gives modules 40). So the
 ; band is switched to Mode 1 for lines 152-215 by two IRQs chained off the
 ; game's horizon IRQ (C0:8A4B, hijacked):
-;   horizon (native timing): the game's own work; arms V=151 when shown.
-;   V=151: in this HBlank the band colours (palettes 2/3, CGRAM 9-15; the
-;          Mode 7 ground uses colours 64+) go in by DMA; in the next HBlank
-;          BGMODE $09 (BG3 priority) and TM $14 (BG3 + OBJ). Arms V=216.
-;   V=216: BGMODE 7 and TM $13 back; in the next HBlank the sky's colours
-;          9-15 are restored by DMA (from a copy read in vblank).
+;   horizon (native timing): the game's own work; arms V=152 when shown.
+;   V=152: in the HBlank after the game's HDMA burst, BGMODE $09 (BG3
+;          priority) and TM $14 (BG3 + OBJ). Arms V=216.
+;   V=216: BGMODE 7 and TM $13 back; the game's horizon timer again.
+; The band's colours (palettes 2/3, CGRAM 9-15; the Mode 7 ground uses
+; colours 64+) go in by HDMA channel 6 on lines 145-151, the sky's (read
+; back in vblank) on lines 217-223.
 ; BG3 (unused elsewhere in flight) points at core OBJ region B: map $7000
 ; (rows 19-26 = $7260-$735F), tiles from $7000 (the opaque world atlas at
 ; tile $6C = $7360). The band is opaque: the window's dither holes and the
 ; side gutters are black, since the ground cannot show through.
 ; The dial is OBJ (palette 3 = CGRAM 176-191, unused by sky and ground) in
 ; core region C (tiles $190-$1FF): nine static 16x16 cells, the sweep as
-; up to !UI_SWEEP_TILES 8x8 sprites for 64 angles, the blip and the centre.
+; three 8x8 segment sprites for 64 angles, the blip and the centre.
 
 !UI_VRAM_OWNER = $0C              ; core_vram_claim owner id (bank $AC)
 !UI_BAND_V0 = 152                 ; IRQ line before the band (BGMODE lands at line 153 = output 152)
 !UI_BAND_V1 = 216                 ; IRQ line of the band's end
-!UI_BAND_H  = 40                  ; IRQ dot: the handler reaches its HBlank wait well before dot 274
+!UI_BAND_H  = 160                 ; IRQ dot: the handler (~120 dots with the entry) reaches its
+                                  ; HBlank wait before the HDMA burst ends (~330); waiting less
 !UI_NATIVE_HTIME = 132            ; the game's horizon IRQ dot
 !UI_BAND_ROW = 19                 ; BG3 rows 19-26 = lines 152-215 (VOFS -1)
 !UI_WMAP  = $7000                 ; BG3 map (BG3SC $70)
 !UI_WCHR  = $7000                 ; BG3 tiles (BG34NBA $07)
-!UI_DIAL_VRAM = $7900             ; OBJ tile $190
-!UI_DIAL_TILE = $190
-!UI_SWEEP_TILE = $196
-!UI_BLIP_TILE  = $1A6
-!UI_CTR_TILE   = $1A7
 !UI_DIAL_PAL   = 3
 
 ; Radar state flags (from !UI_RADAR_STATE_FN in X16)
@@ -66,32 +63,49 @@ ui_world_update:
 	JMP ui_dial_hide
 .radio
 	JSR ui_dial_hide
-	LDA.w !ui_cur&$FFFF
-	STA.w !ui_tmp5&$FFFF
-	LDA.w !ui_cur_par&$FFFF
-	STA.w !ui_tmp4&$FFFF
 	JSR ui_band_prepare
-	BCS .wait
-	LDA.w !ui_tmp5&$FFFF
-	CMP.w !ui_band_key&$FFFF
-	BNE .drawRadio
-	LDA.w !ui_tmp4&$FFFF
-	CMP.w !ui_band_par&$FFFF
-	BEQ .shown
-.drawRadio
-	JSR ui_build_text
-	BRA .upload
+	BCC +
+	JMP .wait
++	LDA.w !ui_cur&$FFFF               ; the content key (the text builders
+	STA.w !ui_k5&$FFFF                ; use tmp0-tmp5)
+	LDA.w !ui_cur_par&$FFFF
+	STA.w !ui_k6&$FFFF
+	LDA.w #!UIB_ALL
+	STA.w !ui_tmp5&$FFFF
+	BRA .content
 .radar
 	JSR ui_band_prepare
-	BCS .dial
-	JSR ui_radar_key
-	CMP.w !ui_band_key&$FFFF
-	BEQ .shownRadar
+	BCC +
+	JMP .dial
++	JSR ui_radar_key
+	STA.w !ui_k5&$FFFF
+	STZ.w !ui_k6&$FFFF
+	; only the guide differs from the staged radar text: rebuild line 1
+	LDA.w #!UIB_ALL
 	STA.w !ui_tmp5&$FFFF
-	STZ.w !ui_tmp4&$FFFF
-	JSR ui_radar_text
-.upload
-	JSR ui_build_wmap
+	LDA.l !ui_s_bmode
+	CMP.w #$0002
+	BNE .content
+	LDA.l !ui_s_bkey
+	EOR.w !ui_k5&$FFFF
+	AND.w #$8FFF
+	BNE .content
+	LDA.w #!UIB_TEXT0|!UIB_LINE0
+	STA.w !ui_tmp5&$FFFF
+.content
+	LDA.w !ui_k5&$FFFF
+	CMP.w !ui_band_key&$FFFF
+	BNE .build
+	LDA.w !ui_k6&$FFFF
+	CMP.w !ui_band_par&$FFFF
+	BNE .build
+	JMP .shown
+.build
+	LDA.w !ui_k5&$FFFF
+	LDX.w !ui_k6&$FFFF
+	LDY.w #$0002
+	JSR ui_bs_step                    ; one build step per frame
+	BCC .wait
 	LDA.w #!SRAM_WORK_UI>>16
 	STA.w !core_scratch&$FFFF
 	LDA.w #!UI_WMAP+(!UI_BAND_ROW*32)
@@ -99,8 +113,8 @@ ui_world_update:
 	LDY.w #!ui_s_map&$FFFF
 	JSL core_queue_vram
 	BCS .wait
-	LDA.w !ui_tmp5&$FFFF : STA.w !ui_band_key&$FFFF
-	LDA.w !ui_tmp4&$FFFF : STA.w !ui_band_par&$FFFF
+	LDA.w !ui_k5&$FFFF : STA.w !ui_band_key&$FFFF
+	LDA.w !ui_k6&$FFFF : STA.w !ui_band_par&$FFFF
 	LDA.w !ui_band&$FFFF
 	BNE .wait                         ; already shown: new text next vblank
 	JSR ui_whdma_blocks
@@ -188,6 +202,7 @@ ui_band_off:
 
 ; Leaving world flight: everything off, regions released, atlas forgotten.
 ui_world_leave:
+	STZ.w !ui_front_n&$FFFF           ; the field rebuilds every slot itself
 	STZ.w !ui_band&$FFFF
 	STZ.w !ui_band_key&$FFFF
 	STZ.w !ui_watlas&$FFFF
@@ -210,11 +225,12 @@ ui_world_leave:
 .done
 	RTS
 
-; Build the band's 8 rows (32 entries) in !ui_s_map from !ui_s_text: the
-; native window layout with the world atlas, black gutters.
+; The band's 8 rows (32 entries) in !ui_s_map: the native window layout
+; with the world atlas, black gutters. The frame here; the glyph rows of
+; each text line by ui_wmap_line0-2 (ui_wtab16: glyph word -> top entry).
 !UI_WT_FRAME = $2000|(3<<10)
 !UI_WT_TEXT  = $2000|(2<<10)
-ui_build_wmap:
+ui_wmap_edges:
 	LDX.w #$0000
 	LDA.w #!UI_WT_FRAME|!UI_W_CORNER
 	LDY.w #!UI_WT_FRAME|!UI_W_EDGE
@@ -223,12 +239,8 @@ ui_build_wmap:
 	LDA.w #!UI_WT_FRAME|!UI_W_CORNER|$8000
 	LDY.w #!UI_WT_FRAME|!UI_W_EDGE|$8000
 	JSR ui_wm_edge
-	LDA.w #$0040
-	STA.w !ui_tmp0&$FFFF              ; row byte offset
-	STZ.w !ui_tmp1&$FFFF              ; text offset of the line
-	STZ.w !ui_tmp2&$FFFF              ; 0 top, 1 bottom half
-.row
-	LDX.w !ui_tmp0&$FFFF
+	LDX.w #$0040
+.side
 	LDA.w #!UI_WT_FRAME|!UI_W_BLACK
 	STA.l !ui_s_map+$00,X
 	STA.l !ui_s_map+$3E,X
@@ -236,50 +248,38 @@ ui_build_wmap:
 	STA.l !ui_s_map+$02,X
 	ORA.w #$4000
 	STA.l !ui_s_map+$3C,X
-	LDY.w #$0000
-.col
-	TYA
-	CLC : ADC.w !ui_tmp1&$FFFF
-	TAX
-	LDA.l !ui_s_text,X
-	AND.w #$00FF
-	CMP.w #!UI_ATLAS_FIRST
-	BCC .space
-	CMP.w #(!UI_ATLAS_FIRST+!UI_ATLAS_GLYPHS)
-	BCC +
-.space
-	LDA.w #!UI_ATLAS_FIRST
-+	SEC : SBC.w #!UI_ATLAS_FIRST
-	TAX
-	LDA.l ui_wglyph,X
-	AND.w #$00FF
-	CLC : ADC.w !ui_tmp2&$FFFF
-	ORA.w #!UI_WT_TEXT
-	STA.w !ui_tmp3&$FFFF
-	TYA
-	ASL
-	CLC : ADC.w !ui_tmp0&$FFFF
-	TAX
-	LDA.w !ui_tmp3&$FFFF
-	STA.l !ui_s_map+$04,X
-	INY
-	CPY.w #28
-	BCC .col
-	LDA.w !ui_tmp0&$FFFF
+	TXA
 	CLC : ADC.w #$0040
-	STA.w !ui_tmp0&$FFFF
-	LDA.w !ui_tmp2&$FFFF
-	EOR.w #$0001
-	STA.w !ui_tmp2&$FFFF
-	BEQ +
-	JMP .row
-+	LDA.w !ui_tmp1&$FFFF
-	CLC : ADC.w #28
-	STA.w !ui_tmp1&$FFFF
-	CMP.w #84
-	BCS +
-	JMP .row
-+	RTS
+	TAX
+	CPX.w #$01C0
+	BCC .side
+	RTS
+
+macro ui_wline(L)
+	PHB
+	PEA.w ((!SRAM_WORK_UI>>16)<<8)|(!SRAM_WORK_UI>>16)
+	PLB
+	PLB
+	LDY.w #$0000
+?c:
+	LDA.w 0+(!ui_s_text&$FFFF)+(<L>*56),Y
+	TAX
+	LDA.l ui_wtab16,X
+	STA.w 0+(!ui_s_map&$FFFF)+$44+(<L>*$80),Y
+	INC
+	STA.w 0+(!ui_s_map&$FFFF)+$84+(<L>*$80),Y
+	INY : INY
+	CPY.w #56
+	BCC ?c
+	PLB
+	RTS
+endmacro
+ui_wmap_line0:
+	%ui_wline(0)
+ui_wmap_line1:
+	%ui_wline(1)
+ui_wmap_line2:
+	%ui_wline(2)
 ; A = corner, Y = edge entry, X = row offset.
 ui_wm_edge:
 	STA.w !ui_tmp3&$FFFF
@@ -335,10 +335,8 @@ ui_world_vblank:
 	LDA.b #$04
 	STA $210C
 	REP #$20
-	BRA .dial
+	JMP .dial
 .on
-	LDA.w #$0001
-	STA.l !ui_band_was
 	SEP #$20
 	LDA.b #(!UI_WMAP>>8)&$FC
 	STA $2109                         ; BG3 map $7000, 32x32
@@ -350,6 +348,21 @@ ui_world_vblank:
 	STA $2112
 	LDA.b #$03
 	STA $2112                         ; BG3 VOFS -1: row 19 at output line 152
+	LDA.b #$40
+	TSB $002C                         ; the world NMI writes $2C | $3F to HDMAEN
+	REP #$20
+	; the sky's colours and channel 6 on the band's first frame, then every
+	; 8th (world flight uploads no palette by DMA; this follows native
+	; palette writes)
+	LDA.l !ui_band_was
+	BEQ +
+	LDA.l !ui_frame
+	AND.w #$0007
+	BEQ +
+	JMP .dial
++	LDA.w #$0001
+	STA.l !ui_band_was
+	SEP #$20
 	; the sky's colours 9-15 as they are now into the restore block
 	LDA.b #$09
 	STA $2121
@@ -379,8 +392,16 @@ ui_world_vblank:
 	TSB $002C                         ; the world NMI writes $2C | $3F to HDMAEN
 	REP #$20
 .dial
+	; the dial palette once per claim of region C, then every 8th frame
 	LDA.l !ui_dial_up
 	BEQ .done
+	LDA.l !ui_claims
+	AND.w #$0004
+	BEQ .pal0
+	LDA.l !ui_frame
+	AND.w #$0007
+	BNE .done
+.pal0
 	SEP #$20
 	LDA.b #(128+(!UI_DIAL_PAL*16)+1)
 	STA $2121
@@ -392,6 +413,9 @@ ui_world_vblank:
 	CPX.w #12
 	BCC .pal
 	REP #$20
+	LDA.l !ui_claims
+	ORA.w #$0004
+	STA.l !ui_claims
 .done
 	RTL
 
@@ -408,15 +432,16 @@ ui_world_irq:
 	PHA
 	PLB                               ; DB = $00
 	LDA $4211                         ; acknowledge
-	LDA.l !ui_magic                   ; block not set up (foreign savestate):
-	CMP.b #!UI_MAGIC&$FF              ; nothing of ours is armed
+	LDA.l !ui_wirq
+	BNE .band
+	; the horizon: arm the band when it is shown (and this block was set
+	; up: a foreign savestate leaves stale WRAM), then the game's handler
+	LDA.l !ui_magic
+	CMP.b #!UI_MAGIC&$FF
 	BNE .native
 	LDA.l !ui_magic+1
 	CMP.b #!UI_MAGIC>>8
 	BNE .native
-	LDA.l !ui_wirq
-	BNE .band
-	; the horizon: arm the band when it is shown, then the game's handler
 	LDA.l !ui_band
 	CMP.b #$02
 	BNE .native
@@ -455,6 +480,9 @@ ui_world_irq:
 	STA $212C
 	LDA.b #!UI_NATIVE_HTIME
 	STA $4207
+	LDA $0FD8                         ; the game's horizon line (C0:89CF): a lag
+	INC                               ; frame skips its NMI rewrite of VTIME
+	STA $4209
 	LDA.b #$00
 	STA.l !ui_wirq
 	PLB
@@ -495,19 +523,47 @@ ui_radar_update:
 	BNE .no
 	JSR ui_world_can_show
 	BCC .no
+	; the target only changes with story state: re-select every 16 frames
+	DEC.w !ui_rtimer&$FFFF
+	BPL .keep
+	LDA.w #15
+	STA.w !ui_rtimer&$FFFF
 	JSL !UI_RADAR_STATE_FN
 	REP #$30
 	STA.w !ui_rmask&$FFFF
 	STX.w !ui_rflags&$FFFF
-	TXA
+	JSR ui_radar_target
+	LDA.w #$0000
+	ROL
+	STA.w !ui_rvalid&$FFFF
+	JSR ui_radar_key_base
+.keep
+	LDA.w !ui_rvalid&$FFFF
+	BEQ .no
+	LDA.w !ui_rflags&$FFFF
 	AND.w #!UIR_DOCKING|!UIR_SHOT
 	BNE .no
-	JSR ui_radar_target
-	BCC .no
+	LDA.w !ui_in&$FFFF                ; the same, reported every frame
+	AND.w #!UII_WORLD_YIELD
+	BNE .no
+	; the Fortress moves: follow it every frame
+	LDA.w !ui_rtarget&$FFFF
+	CMP.w #8
+	BEQ .fort
+	CMP.w #10
+	BNE .bearing
+.fort
+	LDA.w $0128 : STA.w !ui_rtx&$FFFF
+	LDA.w $012A : STA.w !ui_rty&$FFFF
+.bearing
 	JSR ui_radar_bearing
 	LDA.w #$0001
 	STA.w !ui_radar_on&$FFFF
+	RTS
 .no
+	STZ.w !ui_rtimer&$FFFF            ; select again as soon as it shows
+	LDA.w #$FFFF
+	STA.w !ui_rlast_h&$FFFF           ; and compute the far blip at once
 	RTS
 
 ; radarTarget(): carry set and !ui_rtarget/!ui_rtx/!ui_rty, or carry clear.
@@ -588,11 +644,26 @@ ui_radar_target:
 ui_bitw:
 	dw $0001,$0002,$0004,$0008,$0010,$0020,$0040,$0080
 
-; radarBearing(): relative angle = heading - atan2(-dx, -dy) (heading units,
-; 1024 per turn), distance = hypot(dx, dy) on the 4096 wrap; the guide and
-; the blip position.
-!ui_dx = !ui_tmp0
-!ui_dy = !ui_tmp1
+; radarBearing(): worldAim along/across the heading, distance = hypot on
+; the 4096 wrap, the guide and the blip position. In 1/8 px:
+;   across = dx cos h - dy sin h,  along = -dx sin h - dy cos h
+; each product |a| * |b| / 2^11 rounded (sin/cos signed 1.14, ui_sinq).
+!ui_dx = !ui_rdx
+!ui_dy = !ui_rdy
+
+; A = <mag> with the sign of <a> * <b> (bit 15 of each).
+macro ui_signed(mag, a, b)
+	LDA.w <a>&$FFFF
+	EOR.w <b>&$FFFF
+	BPL ?pos
+	LDA.w #$0000
+	SEC : SBC.w <mag>&$FFFF
+	BRA ?done
+?pos:
+	LDA.w <mag>&$FFFF
+?done:
+endmacro
+
 ui_radar_bearing:
 	LDA.w !ui_rtx&$FFFF
 	SEC : SBC.w $00FA
@@ -606,193 +677,395 @@ ui_radar_bearing:
 	AND.w #$0FFF
 	SEC : SBC.w #2048
 	STA.w !ui_dy&$FFFF
-	; beta = atan2(-dx, -dy): angle of (-dx, -dy) measured from +y towards +x
-	LDA.w !ui_dx&$FFFF
-	EOR.w #$FFFF : INC
-	STA.w !ui_tmp2&$FFFF              ; sx = -dx (component along "sin")
-	LDA.w !ui_dy&$FFFF
-	EOR.w #$FFFF : INC
-	STA.w !ui_tmp3&$FFFF              ; cy = -dy (component along "cos")
-	JSR ui_atan2                      ; A = beta (0-1023), !ui_rdist = hypot
-	STA.w !ui_tmp4&$FFFF
+	; sin h, cos h and their magnitudes, cached per heading
 	LDA.w $00F6
-	SEC : SBC.w !ui_tmp4&$FFFF
-	CLC : ADC.w #512
-	AND.w #$03FF
-	SEC : SBC.w #512
-	STA.w !ui_rrel&$FFFF              ; heading - beta in (-512, 512]
-	; guide
-	LDA.w !ui_rdist&$FFFF
-	CMP.w #100
-	BCS +
-	LDA.w #0
-	BRA .guide
-+	LDA.w !ui_rrel&$FFFF
+	INC
+	CMP.l !ui_s_trig
+	BEQ .trig
+	STA.l !ui_s_trig
+	DEC
+	JSR ui_sin14
+	STA.l !ui_s_trig+2
+	CMP.w #$8000
+	BCC +
+	EOR.w #$FFFF : INC
++	STA.l !ui_s_trig+6
+	LDA.w $00F6
+	CLC : ADC.w #256
+	JSR ui_sin14
+	STA.l !ui_s_trig+4
+	CMP.w #$8000
+	BCC +
+	EOR.w #$FFFF : INC
++	STA.l !ui_s_trig+8
+.trig
+	LDA.l !ui_s_trig+2 : STA.w !ui_tmp2&$FFFF   ; sin h
+	LDA.l !ui_s_trig+4 : STA.w !ui_tmp3&$FFFF   ; cos h
+	LDA.l !ui_s_trig+6 : STA.w !ui_mb&$FFFF     ; |sin h|
+	LDA.l !ui_s_trig+8 : STA.w !ui_ma&$FFFF     ; |cos h|
+	LDA.w !ui_dx&$FFFF
 	BPL +
 	EOR.w #$FFFF : INC
-+	CMP.w #33                         ; |angle| < 0.2 rad (32.6 units)
-	BCS +
-	LDA.w #1
-	BRA .guide
-+	CMP.w #441                        ; |angle| > 2.7 rad (440.0 units)
++	JSR ui_mul2r11
+	LDA.w !ui_k5&$FFFF : STA.w !ui_tmp4&$FFFF   ; |dx cos|
+	LDA.w !ui_k6&$FFFF : STA.w !ui_tmp5&$FFFF   ; |dx sin|
+	LDA.w !ui_dy&$FFFF
+	BPL +
+	EOR.w #$FFFF : INC
++	JSR ui_mul2r11                    ; k5 = |dy cos|, k6 = |dy sin|
+	%ui_signed(!ui_k6, !ui_dy, !ui_tmp2)
+	STA.w !ui_bx8&$FFFF               ; dy sin
+	%ui_signed(!ui_tmp4, !ui_dx, !ui_tmp3)
+	SEC : SBC.w !ui_bx8&$FFFF
+	STA.w !ui_bx8&$FFFF               ; across = dx cos - dy sin
+	%ui_signed(!ui_tmp5, !ui_dx, !ui_tmp2)
+	STA.w !ui_by8&$FFFF               ; dx sin
+	%ui_signed(!ui_k5, !ui_dy, !ui_tmp3)
+	CLC : ADC.w !ui_by8&$FFFF
+	EOR.w #$FFFF : INC
+	STA.w !ui_by8&$FFFF               ; along = -(dx sin + dy cos)
+	; distance = hypot(dx, dy)
+	LDA.w !ui_dx&$FFFF
+	BPL +
+	EOR.w #$FFFF : INC
++	STA.w !ui_tmp4&$FFFF
+	LDA.w !ui_dy&$FFFF
+	BPL +
+	EOR.w #$FFFF : INC
++	STA.w !ui_tmp5&$FFFF
+	ORA.w !ui_tmp4&$FFFF
+	BNE +
+	STZ.w !ui_rdist&$FFFF
+	BRA .guide0
++	LDA.w !ui_tmp4&$FFFF
+	CMP.w !ui_tmp5&$FFFF
 	BCC +
-	LDA.w #2
+	LDX.w !ui_tmp5&$FFFF
+	LDY.w !ui_tmp4&$FFFF
+	BRA ++
++	LDX.w !ui_tmp4&$FFFF
+	LDY.w !ui_tmp5&$FFFF
+++	JSR ui_ratio128                   ; !ui_rdist
+	; guide: |angle| < 0.2 rad: along > 0, |across| < along * 13/64
+	; (tan 0.2 = 0.2027); |angle| > 2.7: along < 0, |across| < -along *
+	; 121/256 (tan 0.4416 = 0.4727); else the side of across
+	LDA.w !ui_rdist&$FFFF
+	CMP.w #100
+	BCS .notLand
+.guide0
+	LDA.w #0
 	BRA .guide
-+	LDA.w !ui_rrel&$FFFF
+.notLand
+	LDA.w !ui_bx8&$FFFF
+	BPL +
+	EOR.w #$FFFF : INC
++	STA.w !ui_tmp5&$FFFF              ; |across|
+	LDA.w !ui_by8&$FFFF
+	BMI .behind
+	LDX.w #13
+	JSR ui_mul_shr                    ; A = along * 13 >> 6 (saturated)
+	CMP.w !ui_tmp5&$FFFF
+	BCC .side
+	BEQ .side
+	LDA.w #1                          ; AHEAD
+	BRA .guide
+.behind
+	EOR.w #$FFFF : INC
+	LDX.w #121
+	JSR ui_mul_shr8
+	CMP.w !ui_tmp5&$FFFF
+	BCC .side
+	BEQ .side
+	LDA.w #2                          ; TURN AROUND
+	BRA .guide
+.side
+	LDA.w !ui_bx8&$FFFF
 	BMI +
 	LDA.w #4                          ; RIGHT
 	BRA .guide
 +	LDA.w #3                          ; LEFT
 .guide
 	STA.w !ui_rguide&$FFFF
-	; blip: radius = min(18, dist / 50) (8.8), at the relative angle
+	; blip = (24 + across * r / dist, 24 - along * r / dist)
 	LDA.w !ui_rdist&$FFFF
 	CMP.w #900
-	BCC +
-	LDA.w #18<<8
-	BRA .rad
-+	ASL : ASL : ASL : ASL : ASL       ; dist * 32 (< 28800)
+	BCC .near
+	; far: on the r = 18 circle; the direction moves slowly, so recompute
+	; every 8 frames, and while turning every other frame (0.1 px per
+	; heading unit). UI_TEST builds recompute every frame, so the radar
+	; test checks the arithmetic against the browser's exact blip.
+if defined("UI_TEST")
+	BRA .far
+endif
+	LDA.w $00F6
+	CMP.w !ui_rlast_h&$FFFF
+	BNE .turned
+	DEC.w !ui_rfar&$FFFF
+	BPL .done
+	BRA .far
+.turned
+	LDA.w !ui_frame&$FFFF
+	LSR
+	BCS .done
+.far
+	LDA.w $00F6
+	STA.w !ui_rlast_h&$FFFF
+	LDA.w #7
+	STA.w !ui_rfar&$FFFF
+.near
+	LDA.w !ui_bx8&$FFFF
+	JSR ui_blip_axis
+	CLC : ADC.w #24
+	STA.w !ui_blip_x&$FFFF
+	LDA.w !ui_by8&$FFFF
+	JSR ui_blip_axis
+	EOR.w #$FFFF : INC
+	CLC : ADC.w #24
+	STA.w !ui_blip_y&$FFFF
+.done
+	RTS
+
+; A16 = U (0-2048) -> !ui_k5 = U * !ui_ma / 2^11, !ui_k6 = U * !ui_mb / 2^11,
+; rounded (!ui_ma, !ui_mb <= 16384). The 8x8 multiplier through D = $4200
+; (the world IRQ and NMI handlers use no direct page before setting D);
+; WRMPYA stays latched while WRMPYB takes each multiplier byte. Per product
+; ((lo*hi' + hi*lo' + (lo*lo' >> 8) + 4) >> 3) + 32 * hi*hi'. Each result
+; is read 8+ cycles after its WRMPYB write (16-bit stores also write $4204,
+; which starts nothing).
+ui_mul2r11:
+	PHD
+	PHA
+	LDA.w #$4200
+	TCD
+	PLA
+	SEP #$10
+	TAX
+	STX.b $02                         ; WRMPYA = U low (8-bit: no multiplication starts)
+	REP #$10
+	XBA
+	AND.w #$00FF
+	STA.w !ui_k4&$FFFF                ; U high
+	LDX.w !ui_ma&$FFFF
+	STX.b $03                         ; Ul * Cl
+	NOP : NOP : NOP : NOP
+	LDA.b $16
+	LDX.w (!ui_ma+1)&$FFFF
+	STX.b $03                         ; Ul * Ch
+	XBA
+	AND.w #$00FF
+	CLC : ADC.w #4
+	STA.w !ui_k5&$FFFF                ; (Ul*Cl >> 8) + 4
+	LDA.b $16
+	LDX.w !ui_mb&$FFFF
+	STX.b $03                         ; Ul * Sl
+	CLC : ADC.w !ui_k5&$FFFF
+	STA.w !ui_k5&$FFFF                ; + Ul*Ch
+	LDA.b $16
+	LDX.w (!ui_mb+1)&$FFFF
+	STX.b $03                         ; Ul * Sh
+	XBA
+	AND.w #$00FF
+	CLC : ADC.w #4
+	STA.w !ui_k6&$FFFF                ; (Ul*Sl >> 8) + 4
+	LDA.b $16
+	SEP #$10
+	LDX.w !ui_k4&$FFFF
+	STX.b $02                         ; WRMPYA = U high (8-bit: a write to $4203 during a
+	REP #$10                          ; running multiplication would be lost)
+	LDX.w !ui_ma&$FFFF
+	STX.b $03                         ; Uh * Cl
+	CLC : ADC.w !ui_k6&$FFFF
+	STA.w !ui_k6&$FFFF                ; + Ul*Sh
+	LDA.b $16
+	LDX.w (!ui_ma+1)&$FFFF
+	STX.b $03                         ; Uh * Ch
+	CLC : ADC.w !ui_k5&$FFFF
+	LSR : LSR : LSR
+	STA.w !ui_k5&$FFFF
+	LDA.b $16
+	LDX.w !ui_mb&$FFFF
+	STX.b $03                         ; Uh * Sl
+	ASL : ASL : ASL : ASL : ASL
+	CLC : ADC.w !ui_k5&$FFFF
+	STA.w !ui_k5&$FFFF                ; U * C / 2^11
+	LDA.b $16
+	LDX.w (!ui_mb+1)&$FFFF
+	STX.b $03                         ; Uh * Sh
+	CLC : ADC.w !ui_k6&$FFFF
+	LSR : LSR : LSR
+	STA.w !ui_k6&$FFFF
+	LDA.b $16
+	ASL : ASL : ASL : ASL : ASL
+	CLC : ADC.w !ui_k6&$FFFF
+	STA.w !ui_k6&$FFFF                ; U * S / 2^11
+	PLD
+	RTS
+
+; A16 = v (0-32767) -> (v * X8) >> 6, saturated to $7FFF.
+ui_mul_shr:
+	STX.w !ui_mb&$FFFF
+	JSR ui_mul_u16_u8
+	; m (24-bit) >> 6
+	LDA.w !ui_m1&$FFFF
+	AND.w #$00FF
+	CMP.w #$0020
+	BCS .sat
+	XBA
+	ASL : ASL
+	STA.w !ui_ma&$FFFF
+	LDA.w !ui_m0&$FFFF
+	LSR : LSR : LSR : LSR : LSR : LSR
+	ORA.w !ui_ma&$FFFF
+	RTS
+.sat
+	LDA.w #$7FFF
+	RTS
+; A16 = v -> (v * X8) >> 8, saturated.
+ui_mul_shr8:
+	STX.w !ui_mb&$FFFF
+	JSR ui_mul_u16_u8
+	LDA.w !ui_m1&$FFFF
+	AND.w #$00FF
+	CMP.w #$0080
+	BCS .sat
+	XBA
+	STA.w !ui_ma&$FFFF
+	LDA.w !ui_m0&$FFFF
+	XBA
+	AND.w #$00FF
+	ORA.w !ui_ma&$FFFF
+	RTS
+.sat
+	LDA.w #$7FFF
+	RTS
+; m0 (low word) / m1 (high byte) = A16 * !ui_mb (8-bit), unsigned.
+ui_mul_u16_u8:
+	STA.w !ui_ma&$FFFF
+	SEP #$20
+	LDA.w !ui_ma&$FFFF : STA.l $004202
+	LDA.w !ui_mb&$FFFF : STA.l $004203
+	REP #$20
+	NOP : NOP : NOP
+	LDA.l $004216
+	STA.w !ui_m0&$FFFF
+	SEP #$20
+	LDA.w (!ui_ma&$FFFF)+1 : STA.l $004202
+	LDA.w !ui_mb&$FFFF : STA.l $004203
+	REP #$20
+	NOP : NOP : NOP
+	LDA.l $004216                     ; high * b (<< 8)
+	STA.w !ui_m1&$FFFF
+	XBA
+	AND.w #$FF00
+	CLC : ADC.w !ui_m0&$FFFF
+	STA.w !ui_m0&$FFFF
+	LDA.w !ui_m1&$FFFF
+	XBA
+	AND.w #$00FF
+	ADC.w #$0000
+	STA.w !ui_m1&$FFFF
+	RTS
+
+; A16 = component (1/8 px, signed) -> round(component * r / dist) with
+; r = min(18, dist / 50): component / 50 below 900 px, else * 18 / dist.
+ui_blip_axis:
+	STA.w !ui_tmp5&$FFFF
+	BPL +
+	EOR.w #$FFFF : INC
++	STA.w !ui_tmp4&$FFFF              ; |v|
+	LDA.w !ui_rdist&$FFFF
+	CMP.w #900
+	BCS .far
+	; round(|v| / 400) = ((|v| + 200) / 2) / 200
+	LDA.w !ui_tmp4&$FFFF
+	CLC : ADC.w #200
+	LSR
 	STA.l $004204
 	SEP #$20
-	LDA.b #25                         ; /25: dist*256/200... (dist*32/25 = dist/50*256/... see below)
+	LDA.b #200
 	STA.l $004206
 	REP #$20
 	NOP : NOP : NOP : NOP : NOP : NOP : NOP : NOP
-	LDA.l $004214                     ; dist*32/25 = dist*256/200 -> need dist*256/50
-	ASL : ASL                         ; * 4: radius in 8.8
-.rad
-	STA.w !ui_tmp2&$FFFF              ; radius 8.8
-	; x = 24 + sin(rel) * r, y = 24 - cos(rel) * r (rounded)
-	LDA.w !ui_rrel&$FFFF
-	LSR : LSR                         ; 1024 -> 256 steps (sign kept by AND)
-	AND.w #$00FF
-	PHA
+	LDA.l $004214
+	JMP .sign
+.far
+	; round(|v| * 9 / (4 dist)) = floor(N / D), N = 9|v| + 2 dist (18 bits),
+	; D = 4 dist: the quotient is at most 19, so a restoring division over
+	; the low 5 bits of N from R = N >> 5 (< D)
+	LDA.w !ui_tmp4&$FFFF
+	STA.w !ui_m0&$FFFF
+	STZ.w !ui_m1&$FFFF
+	ASL.w !ui_m0&$FFFF : ROL.w !ui_m1&$FFFF
+	ASL.w !ui_m0&$FFFF : ROL.w !ui_m1&$FFFF
+	ASL.w !ui_m0&$FFFF : ROL.w !ui_m1&$FFFF
+	LDA.w !ui_m0&$FFFF
+	CLC : ADC.w !ui_tmp4&$FFFF
+	STA.w !ui_m0&$FFFF
+	LDA.w !ui_m1&$FFFF
+	ADC.w #$0000
+	STA.w !ui_m1&$FFFF                ; 9|v|
+	LDA.w !ui_rdist&$FFFF
 	ASL
-	TAX
-	LDA.l ui_sin256,X
-	JSR ui_mul_r                      ; A = sin * r (8.8 * 8.8 -> pixels*256)
-	CLC : ADC.w #(24<<8)+128
-	XBA : AND.w #$00FF
-	STA.w !ui_blip_x&$FFFF
-	PLA
-	CLC : ADC.w #64                   ; cos = sin(a + 90 deg)
-	AND.w #$00FF
+	STA.w !ui_k3&$FFFF
 	ASL
-	TAX
-	LDA.l ui_sin256,X
-	JSR ui_mul_r
-	EOR.w #$FFFF : INC
-	CLC : ADC.w #(24<<8)+128
-	XBA : AND.w #$00FF
-	STA.w !ui_blip_y&$FFFF
-	RTS
-
-; A16 = signed 8.8 (|v| <= 256) times !ui_tmp2 (radius 8.8, <= 18.0)
-; -> A16 = signed product in 8.8 (pixels * 256).
-ui_mul_r:
-	PHP
-	CMP.w #$8000
-	ROR.w !ui_tmp5&$FFFF              ; sign in bit 15 of tmp5
+	STA.w !ui_k2&$FFFF                ; D = 4 dist
+	LDA.w !ui_k3&$FFFF
+	CLC : ADC.w !ui_m0&$FFFF
+	STA.w !ui_m0&$FFFF
+	LDA.w !ui_m1&$FFFF
+	ADC.w #$0000                      ; N high (0-3)
+	XBA
+	ASL : ASL : ASL
+	STA.w !ui_k3&$FFFF                ; N high << 11
+	LDA.w !ui_m0&$FFFF
+	XBA
+	ASL : ASL : ASL
+	STA.w !ui_k4&$FFFF                ; the low 5 bits of N at the top
+	LDA.w !ui_m0&$FFFF
+	LSR : LSR : LSR : LSR : LSR
+	ORA.w !ui_k3&$FFFF                ; R = N >> 5
+	STZ.w !ui_k3&$FFFF                ; quotient
+	LDY.w #5
+-	ASL.w !ui_k4&$FFFF
+	ROL
+	CMP.w !ui_k2&$FFFF
+	BCC +
+	SBC.w !ui_k2&$FFFF
++	ROL.w !ui_k3&$FFFF
+	DEY
+	BNE -
+	LDA.w !ui_k3&$FFFF
+.sign
 	BIT.w !ui_tmp5&$FFFF
 	BPL +
 	EOR.w #$FFFF : INC
-+	STA.w !ui_tmp3&$FFFF              ; |v| (0-256)
-	; |v| * r / 256 with 16x16 via the 8x8 multiplier
-	; r = rh*256 + rl, v = vh*256 + vl (vh 0/1)
-	SEP #$20
-	LDA.w !ui_tmp3&$FFFF : STA.l $004202
-	LDA.w !ui_tmp2&$FFFF : STA.l $004203   ; vl * rl
-	REP #$20
-	NOP : NOP : NOP
-	LDA.l $004216
-	XBA : AND.w #$00FF                ; (vl*rl) >> 8
-	STA.w !ui_tmp4&$FFFF
-	SEP #$20
-	LDA.w !ui_tmp3&$FFFF : STA.l $004202
-	LDA.w (!ui_tmp2&$FFFF)+1 : STA.l $004203 ; vl * rh
-	REP #$20
-	NOP : NOP : NOP
-	LDA.l $004216
-	CLC : ADC.w !ui_tmp4&$FFFF
-	STA.w !ui_tmp4&$FFFF
-	LDA.w (!ui_tmp3&$FFFF)+1          ; vh: |v| = 256 -> + r
++	RTS
+
+; A16 = heading units (any; mod 1024) -> sin as signed 1.14 (exact table).
+ui_sin14:
+	AND.w #$03FF
+	STA.w !ui_msign&$FFFF
 	AND.w #$00FF
+	TAX                               ; i
+	LDA.w !ui_msign&$FFFF
+	AND.w #$0100                      ; second / fourth quarter: sin(256 - i)
 	BEQ +
-	LDA.w !ui_tmp2&$FFFF
-	CLC : ADC.w !ui_tmp4&$FFFF
-	STA.w !ui_tmp4&$FFFF
-+	LDA.w !ui_tmp4&$FFFF
-	BIT.w !ui_tmp5&$FFFF
-	BPL +
-	EOR.w #$FFFF : INC
-+	PLP
-	RTS
-
-; atan2 for (sx, cy) in tmp2/tmp3 (signed, |v| <= 2048): A16 = angle in
-; heading units (0-1023) measured from +cy towards +sx; !ui_rdist = hypot.
-ui_atan2:
-	LDA.w !ui_tmp2&$FFFF
-	BPL +
-	EOR.w #$FFFF : INC
-+	STA.w !ui_tmp4&$FFFF              ; |sx|
-	LDA.w !ui_tmp3&$FFFF
-	BPL +
-	EOR.w #$FFFF : INC
-+	STA.w !ui_tmp5&$FFFF              ; |cy|
-	; octant: t = min/max * 128, base angle from the larger axis
-	LDA.w !ui_tmp4&$FFFF
-	ORA.w !ui_tmp5&$FFFF
-	BNE .nz
-	STZ.w !ui_rdist&$FFFF
-	LDA.w #$0000
-	RTS
-.nz
-	LDA.w !ui_tmp4&$FFFF
-	CMP.w !ui_tmp5&$FFFF
-	BCC .cyBig
-	; |sx| >= |cy|: a = 256 - atan(|cy|/|sx|)
-	LDX.w !ui_tmp5&$FFFF              ; min
-	LDY.w !ui_tmp4&$FFFF              ; max
-	JSR ui_ratio128                   ; A = k (0-128), dist computed
-	TAX
-	LDA.l ui_atan128,X
-	AND.w #$00FF
+	TXA
 	EOR.w #$FFFF : INC
 	CLC : ADC.w #256
-	BRA .quad
-.cyBig
-	LDX.w !ui_tmp4&$FFFF
-	LDY.w !ui_tmp5&$FFFF
-	JSR ui_ratio128
 	TAX
-	LDA.l ui_atan128,X
-	AND.w #$00FF
-.quad
-	; a in [0, 256] for the first quadrant (sx >= 0, cy >= 0)
-	STA.w !ui_tmp4&$FFFF
-	LDA.w !ui_tmp3&$FFFF
-	BMI .cyNeg
-	LDA.w !ui_tmp2&$FFFF
-	BPL .q1
-	; sx < 0, cy >= 0: 1024 - a
-	LDA.w #1024
-	SEC : SBC.w !ui_tmp4&$FFFF
-	AND.w #$03FF
++	TXA
+	ASL
+	TAX
+	LDA.l ui_sinq,X
+	PHA
+	LDA.w !ui_msign&$FFFF
+	AND.w #$0200                      ; second half turn: negative
+	BEQ +
+	PLA
+	EOR.w #$FFFF : INC
 	RTS
-.q1
-	LDA.w !ui_tmp4&$FFFF
-	RTS
-.cyNeg
-	LDA.w !ui_tmp2&$FFFF
-	BPL .q2
-	; sx < 0, cy < 0: 512 + a
-	LDA.w #512
-	CLC : ADC.w !ui_tmp4&$FFFF
-	RTS
-.q2
-	; sx >= 0, cy < 0: 512 - a
-	LDA.w #512
-	SEC : SBC.w !ui_tmp4&$FFFF
++	PLA
 	RTS
 
 ; X = min, Y = max (> 0): A = round(min * 128 / max) (0-128) and
@@ -829,55 +1102,51 @@ ui_ratio128:
 	BCC +
 	LDA.w #128
 +	PHA
-	; distance = max * sec[k] / 256 (max = original Y)
+	; distance = (max * sec[k]) >> 8 = (ml*sl >> 8) + mh*sl + (sec >= 256 ? max : 0)
+	; (sec 256..362, max = the original Y)
 	ASL
 	TAX
-	LDA.l ui_sec128,X                 ; 256..362
+	LDA.l ui_sec128,X
 	STA.w !ui_tmp0&$FFFF
+	STY.w !ui_tmp1&$FFFF
+	SEP #$20
+	STA.l $004202                     ; WRMPYA = sec low (latched)
 	TYA
-	STA.w !ui_tmp1&$FFFF              ; max (12-bit)
-	; (max * sec) >> 8 with the 8x8 multiplier: max = mh*256 + ml
-	SEP #$20
-	LDA.w !ui_tmp1&$FFFF : STA.l $004202
-	LDA.w !ui_tmp0&$FFFF : STA.l $004203       ; ml * sl
+	STA.l $004203                     ; max low * sec low
 	REP #$20
 	NOP : NOP : NOP
 	LDA.l $004216
-	XBA : AND.w #$00FF
+	XBA
+	AND.w #$00FF
 	STA.w !ui_rdist&$FFFF
 	SEP #$20
-	LDA.w !ui_tmp1&$FFFF : STA.l $004202
-	LDA.w (!ui_tmp0&$FFFF)+1 : STA.l $004203   ; ml * sh
-	REP #$20
-	NOP : NOP : NOP
-	LDA.l $004216
-	CLC : ADC.w !ui_rdist&$FFFF
-	STA.w !ui_rdist&$FFFF
-	SEP #$20
-	LDA.w (!ui_tmp1&$FFFF)+1 : STA.l $004202
-	LDA.w !ui_tmp0&$FFFF : STA.l $004203       ; mh * sl
+	LDA.w (!ui_tmp1&$FFFF)+1
+	STA.l $004203                     ; max high * sec low
 	REP #$20
 	NOP : NOP : NOP
 	LDA.l $004216
 	CLC : ADC.w !ui_rdist&$FFFF
 	STA.w !ui_rdist&$FFFF
-	SEP #$20
-	LDA.w (!ui_tmp1&$FFFF)+1 : STA.l $004202
-	LDA.w (!ui_tmp0&$FFFF)+1 : STA.l $004203   ; mh * sh (<< 8)
-	REP #$20
-	NOP : NOP : NOP
-	LDA.l $004216
-	XBA : AND.w #$FF00
+	LDA.w !ui_tmp0&$FFFF
+	CMP.w #$0100
+	BCC +
+	LDA.w !ui_tmp1&$FFFF
 	CLC : ADC.w !ui_rdist&$FFFF
 	STA.w !ui_rdist&$FFFF
-	PLA
++	PLA
 	RTS
 
-; Key of the radar text (changes when anything shown changes).
+; Key of the radar text (changes when anything shown changes): $8000 |
+; guide << 12 | target << 8 | stolen/crisis bits 4/7 | held count. All but
+; the guide only change when the target is selected (ui_radar_key_base).
 ui_radar_key:
 	LDA.w !ui_rguide&$FFFF
+	XBA
 	ASL : ASL : ASL : ASL
-	ORA.w !ui_rtarget&$FFFF
+	ORA.l !ui_s_rkey
+	RTS
+ui_radar_key_base:
+	LDA.w !ui_rtarget&$FFFF
 	XBA
 	PHA
 	LDA.w !ui_rmask&$FFFF
@@ -890,7 +1159,7 @@ ui_radar_key:
 	ASL : ASL : ASL : ASL             ; bits 4, 7
 	ORA $01,S
 	ORA.w #$8000
-	STA $01,S
+	STA.l !ui_s_rkey
 	PLA
 	RTS
 
@@ -911,12 +1180,22 @@ ui_popcount7:
 ;   Next: <name>
 ;   <hint>                 or   CORE: 5 MINUTES REMAIN
 ui_radar_text:
-	LDA.w #$8080
-	LDX.w #82
+	LDA.w #$0000                      ; spaces
+	LDX.w #166
 .fill
 	STA.l !ui_s_text,X
 	DEX : DEX
 	BPL .fill
+	JSR ui_radar_line1
+	BRA ui_radar_lines23
+; Line 1 only (the guide changed).
+ui_radar_text0:
+	LDA.w #$0000
+	LDX.w #54
+-	STA.l !ui_s_text,X
+	DEX : DEX
+	BPL -
+ui_radar_line1:
 	STZ.w !ui_bt_line&$FFFF
 	STZ.w !ui_bt_col&$FFFF
 	LDX.w #ui_rs_radar
@@ -942,8 +1221,8 @@ ui_radar_text:
 	TAX
 	LDA.l ui_rs_guides,X
 	TAX
-	JSR ui_put_rom
-	; line 2
+	JMP ui_put_rom
+ui_radar_lines23:
 	LDA.w #28 : STA.w !ui_bt_line&$FFFF
 	STZ.w !ui_bt_col&$FFFF
 	LDX.w #ui_rs_next
@@ -989,17 +1268,36 @@ ui_radar_text:
 	TAX
 	JMP ui_put_rom
 
-; Copy the zero-terminated string at X (this bank) to the text cursor.
+; Copy the zero-terminated string at X (this bank) to the text cursor as
+; glyph words (the generator checks that every radar line fits 28 columns).
 ui_put_rom:
-	LDA.l !UI_BANKBASE,X
+	TXY
+	LDA.w !ui_bt_line&$FFFF
+	CLC : ADC.w !ui_bt_col&$FFFF
+	ASL
+	TAX                               ; word offset in !ui_s_text
+	PHB
+	PHK
+	PLB                               ; DB = this bank: the string
+.c
+	LDA.w $0000,Y
 	AND.w #$00FF
 	BEQ .done
-	PHX
-	JSR ui_bt_put
-	PLX
-	INX
-	BRA ui_put_rom
+	SEC : SBC.w #!UI_ATLAS_FIRST
+	CMP.w #!UI_ATLAS_GLYPHS
+	BCC +
+	LDA.w #$0000
++	ASL
+	STA.l !ui_s_text,X
+	INX : INX
+	INY
+	BRA .c
 .done
+	PLB
+	TXA
+	LSR
+	SEC : SBC.w !ui_bt_line&$FFFF
+	STA.w !ui_bt_col&$FFFF
 	RTS
 
 ui_rs_guides:
@@ -1008,6 +1306,91 @@ ui_rs_tnames:   ; 7 tree, 8 frieza, 9 dryad, 10 finale (Mana Beast when the Fort
 	dw ui_rs_tree_name, ui_rs_frieza_name, ui_rs_dryad_name, ui_rs_fortress_name
 ui_rs_thints:
 	dw ui_rs_tree_hint, ui_rs_frieza_hint, ui_rs_dryad_hint, ui_rs_finale_hint
+
+if defined("UI_HAVE_STORY")
+; With the story module: the ledger from story_api_quest_status and the
+; Frieza/world state through the story query table (frieza and world
+; modules fill those queries; unimplemented ones answer 0, as the browser
+; does without those modules). UI_TEST builds can still force the stub.
+ui_story_radar_state:
+	PHP
+	PHB
+	REP #$30
+	PEA $7E7E : PLB : PLB
+if defined("UI_TEST")
+	LDA.l !ui_stub_q
+	BEQ +
+	PLB
+	PLP
+	JMP ui_stub_radar_state
++
+endif
+	JSL story_api_quest_status
+	REP #$30
+	STA.w !ui_tmp4&$FFFF
+	TXA
+	AND.w #$0001                      ; wished
+	STA.w !ui_tmp5&$FFFF
+	LDX.w #$0000
+.q
+	LDA.l ui_rq_ids,X
+	AND.w #$00FF
+	PHX
+	JSR ui_story_query
+	PLX
+	BEQ +
+	LDA.l ui_rq_bits,X
+	AND.w #$00FF
+	TSB.w !ui_tmp5&$FFFF
++	INX
+	CPX.w #5
+	BCC .q
+	LDX.w !ui_tmp5&$FFFF
+	LDA.w !ui_tmp4&$FFFF
+	PLB
+	PLP
+	RTL
+ui_rq_ids:
+	db !STORY_Q_FRIEZA_NEEDS_TREE, !STORY_Q_FRIEZA_STOLEN, !STORY_Q_FRIEZA_ELIGIBLE
+	db !STORY_Q_FRIEZA_CRISIS, !STORY_Q_FORTRESS_DESTROYED
+ui_rq_bits:
+	db !UIR_TREE, !UIR_STOLEN, !UIR_ELIGIBLE, !UIR_CRISIS, !UIR_FORT_GONE
+
+; A16 = story query id (< $80) -> A16 = its value (0 when nobody implements
+; it), as story_query (which is local to the story bank) does.
+ui_story_query:
+	AND.w #$007F
+	STA.w !ui_tmp3&$FFFF
+	ASL
+	CLC : ADC.w !ui_tmp3&$FFFF
+	TAX
+	LDA.l story_query_table,X
+	CMP.w #story_query_zero&$FFFF
+	BNE .call
+	LDA.l story_query_table+1,X
+	CMP.w #(story_query_zero>>8)&$FFFF
+	BNE .call
+	LDA.w #$0000
+	RTS
+.call
+	PHB
+	PEA $7E7E : PLB : PLB
+	PHK
+	PER .back-1
+	SEP #$20
+	LDA.l story_query_table+2,X
+	PHA
+	REP #$20
+	LDA.l story_query_table,X
+	DEC
+	PHA
+	RTL
+.back
+	REP #$30
+	PLB
+	AND.w #$00FF
+	RTS
+endif
 
 ; Without the providers: held | collected << 8 from !ui_stub_q, flags from
 ; !ui_stub_rf (tests).
@@ -1018,9 +1401,28 @@ ui_stub_radar_state:
 	RTL
 
 ; ===========================================================================
-; Dial: OBJ in region C.
+; Dial: OBJ in region C (snes/gen/ui.mjs lays out the tiles).
+;
+; The dial's sprites are one run of consecutive slots at the core's module
+; cursor, written straight into the OAM buffer (the core_oam_add contract:
+; low table $7E:0800, high table $7E:0A00, !core_oam_cursor advanced so the
+; core hides them again next frame): the centre (only when the blip covers
+; it), the blinking blip and the three sweep segments (8x8), then the nine
+; 16x16 base cells. Lower slots draw in front, so this is the browser's
+; drawing order. Natives over the dial follow the run (ui_dial_front).
+!UI_DIAL_ATTR = $3700             ; OAM byte 3: priority 3, palette 3, tile bit 8
+!UI_DIAL_RUN  = 14                ; most slots the run takes (5 small + 9 large)
+
+; Base cell i (column c, row r): x, y and the OAM tile word, immediate.
+macro ui_cellw(i, c, r)
+	LDA.w #(8+(<c>*16))|((8+(<r>*16))<<8)
+	STA.w $0800+(<i>*4),Y
+	LDA.w #((!UI_DIAL_TILE+(<r>*32)+(<c>*2))&$FF)|!UI_DIAL_ATTR
+	STA.w $0802+(<i>*4),Y
+endmacro
+
 ui_dial_hide:
-	RTS
+	JMP ui_dial_unfront
 
 ui_dial_draw:
 	; claim region C, upload the base and the effect tiles once
@@ -1036,7 +1438,7 @@ ui_dial_draw:
 	TSB.w !ui_claims&$FFFF
 .claimed
 	LDA.w !ui_dial_up&$FFFF
-	CMP.w #7
+	CMP.w #!UI_DIAL_UPS
 	BCS .base
 	JMP ui_dial_upload
 .base
@@ -1048,211 +1450,407 @@ ui_dial_draw:
 	LSR : LSR
 	AND.w #$003F
 	INC
-	CMP.w !ui_sweep_up&$FFFF
-	BEQ .sprites
-	PHA
-	DEC
-	JSR ui_sweep_draw
-	LDA.w #!SRAM_WORK_UI>>16
-	STA.w !core_scratch&$FFFF
-	LDA.w #!UI_DIAL_VRAM+((!UI_SWEEP_TILE-!UI_DIAL_TILE)*16)
-	LDX.w #!UI_SWEEP_TILES*32
-	LDY.w #!ui_s_sweep&$FFFF
-	JSL core_queue_vram
-	PLA
-	BCS .sprites                      ; retry next frame
 	STA.w !ui_sweep_up&$FFFF
-.sprites
-	; centre, blip (blinking), sweep tiles, then the nine base cells
-	LDA.w #8+24
-	STA.w !core_spr_x&$FFFF
-	LDA.w #8+24
-	STA.w !core_spr_y&$FFFF
-	LDA.w #!UI_CTR_TILE|(!UI_DIAL_PAL<<9)|(3<<12)
-	STA.w !core_spr_tile&$FFFF
-	STZ.w !core_spr_size&$FFFF
-	JSL core_oam_add
-	LDA.w !ui_frame&$FFFF             ; frame % 30 < 22
-	LDX.w #30
-	JSR ui_mod
-	CMP.w #22
-	BCS .noBlip
+	LDA.w !core_oam_limit&$FFFF
+	SEC : SBC.w !core_oam_cursor&$FFFF
+	BCC .noRoom
+	CMP.w #!UI_DIAL_RUN*4
+	BCS .room
+.noRoom
+	JMP ui_dial_unfront
+.room
+	LDY.w !core_oam_cursor&$FFFF
+	STY.w !ui_k0&$FFFF                ; first slot (byte offset)
+	INC.w !ui_blink&$FFFF             ; the browser's frame % 30 < 22
+	LDA.w !ui_blink&$FFFF
+	CMP.w #30
+	BCC +
+	STZ.w !ui_blink&$FFFF
+	LDA.w #$0000
++	CMP.w #22
+	BCS .sweep
+	; the centre is drawn last in the browser: in front of a blip over it
+	LDA.w !ui_blip_x&$FFFF
+	SEC : SBC.w #23
+	CMP.w #3
+	BCS .blip
+	LDA.w !ui_blip_y&$FFFF
+	SEC : SBC.w #23
+	CMP.w #3
+	BCS .blip
+	LDA.w #(8+24)|((8+24)<<8)
+	STA.w $0800,Y
+	LDA.w #(!UI_CTR_TILE&$FF)|!UI_DIAL_ATTR
+	STA.w $0802,Y
+	INY : INY : INY : INY
+.blip
+	LDA.w !ui_blip_y&$FFFF            ; 3x3 at the tile's top left: (bx-1, by-1)
+	CLC : ADC.w #8-1
+	XBA
+	STA.w !ui_k1&$FFFF
 	LDA.w !ui_blip_x&$FFFF
 	CLC : ADC.w #8-1
-	STA.w !core_spr_x&$FFFF
-	LDA.w !ui_blip_y&$FFFF
-	CLC : ADC.w #8-1
-	STA.w !core_spr_y&$FFFF
-	LDA.w #!UI_BLIP_TILE|(!UI_DIAL_PAL<<9)|(3<<12)
-	STA.w !core_spr_tile&$FFFF
-	JSL core_oam_add
-.noBlip
+	ORA.w !ui_k1&$FFFF
+	STA.w $0800,Y
+	LDA.w #(!UI_BLIP_TILE&$FF)|!UI_DIAL_ATTR
+	STA.w $0802,Y
+	INY : INY : INY : INY
+.sweep
 	LDA.w !ui_sweep_up&$FFFF
-	BEQ .base9
 	DEC
+	ASL : ASL
+	STA.w !ui_k1&$FFFF
 	ASL
-	TAX                               ; angle * 2 * tiles: positions table
-	LDA.w #!UI_SWEEP_TILES
-	STA.w !ui_tmp1&$FFFF
-	TXA
-	LDX.w #$0000
-	LDY.w !ui_tmp1&$FFFF
-	JSR ui_mul16
+	ADC.w !ui_k1&$FFFF                ; angle * 12 (carry clear)
 	TAX
-	LDY.w #$0000
-.sw
-	LDA.l ui_sweep_pos,X
-	AND.w #$00FF
-	CMP.w #$00FF
-	BEQ .swNext
-	ASL : ASL : ASL
-	CLC : ADC.w #8
-	STA.w !core_spr_x&$FFFF
-	LDA.l ui_sweep_pos+1,X
-	AND.w #$00FF
-	ASL : ASL : ASL
-	CLC : ADC.w #8
-	STA.w !core_spr_y&$FFFF
+	LDA.l ui_sweep_oam+0,X : STA.w $0800,Y
+	LDA.l ui_sweep_oam+2,X : STA.w $0802,Y
+	LDA.l ui_sweep_oam+4,X : STA.w $0804,Y
+	LDA.l ui_sweep_oam+6,X : STA.w $0806,Y
+	LDA.l ui_sweep_oam+8,X : STA.w $0808,Y
+	LDA.l ui_sweep_oam+10,X : STA.w $080A,Y
 	TYA
-	CLC : ADC.w #!UI_SWEEP_TILE|(!UI_DIAL_PAL<<9)|(3<<12)
-	STA.w !core_spr_tile&$FFFF
-	STZ.w !core_spr_size&$FFFF
-	PHX
-	PHY
-	JSL core_oam_add
-	PLY
-	PLX
-.swNext
-	INX : INX
-	INY
-	CPY.w #!UI_SWEEP_TILES
-	BCC .sw
-.base9
-	LDA.w #$0001
-	STA.w !core_spr_size&$FFFF
-	LDY.w #$0000
-.cell
+	CLC : ADC.w #12
+	TAY
+	STY.w !ui_k1&$FFFF                ; first 16x16 slot (byte offset)
+	%ui_cellw(0, 0, 0) : %ui_cellw(1, 1, 0) : %ui_cellw(2, 2, 0)
+	%ui_cellw(3, 0, 1) : %ui_cellw(4, 1, 1) : %ui_cellw(5, 2, 1)
+	%ui_cellw(6, 0, 2) : %ui_cellw(7, 1, 2) : %ui_cellw(8, 2, 2)
 	TYA
-	LDX.w #3
-	JSR ui_mod                        ; column
-	STA.w !ui_tmp0&$FFFF
-	ASL : ASL : ASL : ASL
-	CLC : ADC.w #8
-	STA.w !core_spr_x&$FFFF
-	TYA
-	SEC
-	LDX.w #$0000
--	SBC.w #3
-	BCC +
-	INX
-	BRA -
-+	TXA                               ; row
-	STA.w !ui_tmp1&$FFFF
-	ASL : ASL : ASL : ASL
-	CLC : ADC.w #8
-	STA.w !core_spr_y&$FFFF
-	LDA.w !ui_tmp1&$FFFF
-	ASL : ASL : ASL : ASL : ASL       ; row * 32 tiles
-	CLC : ADC.w !ui_tmp0&$FFFF
-	CLC : ADC.w !ui_tmp0&$FFFF        ; + col * 2
-	CLC : ADC.w #!UI_DIAL_TILE|(!UI_DIAL_PAL<<9)|(3<<12)
-	STA.w !core_spr_tile&$FFFF
-	PHY
-	JSL core_oam_add
-	PLY
-	INY
-	CPY.w #9
-	BCC .cell
-	RTS
+	CLC : ADC.w #9*4
+	STA.w !core_oam_cursor&$FFFF
+	JSR ui_dial_hibits
+	JMP ui_dial_front
 
-; Plot sweep angle A (0-63) into the staging tiles !ui_s_sweep.
-ui_sweep_draw:
-	PHA
-	LDA.w #$0000
-	LDX.w #(!UI_SWEEP_TILES*32)-2
-.clr
-	STA.l !ui_s_sweep,X
-	DEX : DEX
-	BPL .clr
-	PLA
-	LDY.w #38
-	JSR ui_mul16                      ; angle * 38
-	TAX
-	LDY.w #19
-.px
-	LDA.l ui_sweep_plot,X
-	AND.w #$00FF
-	CMP.w #$00FF
-	BEQ .next
-	PHX
-	PHA
-	LDA.l ui_sweep_plot+1,X
-	PLX
+; High table bits of the run: slots [!ui_k0, !ui_k1) small, the nine from
+; !ui_k1 large, x bit 8 clear. Byte g of the run's bytes (from the byte
+; holding the first slot) is $AA masked to the large slots; the first byte
+; keeps the bits of the slots before the run. Slots after the run in the
+; last byte are free (hidden) or written later through the same table.
+; A run starting on a byte boundary (the usual case: the UI's world frame
+; runs first) takes four whole bytes from ui_hi_runs.
+ui_dial_hibits:
+	LDA.w !ui_k0&$FFFF
+	BIT.w #$000C
+	BNE .general
+	LSR : LSR : LSR : LSR
+	TAY                               ; byte index of the first slot
+	LDA.w !ui_k1&$FFFF
+	SEC : SBC.w !ui_k0&$FFFF          ; small slots * 4 (12, 16 or 20)
+	SEC : SBC.w #12
+	TAX                               ; 0, 4, 8: four bytes per pattern
+	LDA.l ui_hi_runs,X : STA.w $0A00,Y
+	LDA.l ui_hi_runs+2,X : STA.w $0A02,Y
+	RTS
+.general
+	LSR : LSR
+	STA.w !ui_k2&$FFFF                ; first slot
+	LSR : LSR
+	TAY                               ; byte index
+	LDA.w !ui_k1&$FFFF
+	LSR : LSR
+	STA.w !ui_k3&$FFFF                ; first large slot
+	CLC : ADC.w #9-1
+	LSR : LSR
+	STA.w !ui_k4&$FFFF                ; last byte index
+	LDA.w !ui_k2&$FFFF
+	AND.w #$FFFC
+	EOR.w #$FFFF : INC
+	CLC : ADC.w !ui_k3&$FFFF
+	TAX                               ; k = first large slot - first byte's slot
+	LDA.w !ui_k2&$FFFF
+	AND.w #$0003
+	STA.w !ui_k2&$FFFF                ; slots kept in the first byte
 	SEP #$20
-	ORA.l !ui_s_sweep,X
-	STA.l !ui_s_sweep,X
-	REP #$20
+	PHX
+	LDX.w !ui_k2&$FFFF
+	LDA.w $0A00,Y
+	AND.l ui_hi_keep,X
 	PLX
+	ORA.l ui_hi_large,X
+	BRA .store
 .next
-	INX : INX
-	DEY
-	BNE .px
+	REP #$20
+	TXA
+	SEC : SBC.w #4
+	BCS +
+	LDA.w #$0000
++	TAX
+	SEP #$20
+	LDA.l ui_hi_large,X
+.store
+	STA.w $0A00,Y
+	INY
+	CPY.w !ui_k4&$FFFF
+	BCC .next
+	BEQ .next
+	REP #$20
 	RTS
 
-; Upload steps 0-5: the six tile rows of the base (6 tiles each), step 6:
-; blip + centre tiles.
+; Byte-aligned runs of 3, 4 or 5 small slots, then 9 large (four bytes).
+ui_hi_runs:
+	db $80,$AA,$AA,$AA
+	db $00,$AA,$AA,$AA
+	db $00,$A8,$AA,$AA
+; $AA masked to the slots >= k of a byte (k = 0..12, clamped).
+ui_hi_large:
+	db $AA,$A8,$A0,$80,$00,$00,$00,$00,$00,$00,$00,$00,$00
+; The bits of the first n slots of a byte (n = 0..3).
+ui_hi_keep:
+	db $00,$03,$0F,$3F
+; The bits of slot (s & 3) cleared, and value v (0-3) in place: [s&3][v].
+ui_hi_clr:
+	db $FC,$F3,$CF,$3F
+ui_hi_set:
+	db $00,$01,$02,$03, $00,$04,$08,$0C, $00,$10,$20,$30, $00,$40,$80,$C0
+
+; Upload steps (ui_dial_ups): as many as the core queue takes this frame.
 ui_dial_upload:
 	LDA.w !ui_dial_up&$FFFF
-	CMP.w #6
-	BCS .fx
-	PHA
-	; source: row * 6 tiles * 32 bytes; destination: row * 16 tiles
-	LDX.w #$0000
-	LDY.w #192
-	JSR ui_mul16
-	CLC : ADC.w #ui_dial_data
-	TAY
-	PLA
-	XBA                               ; row * $100 words
-	CLC : ADC.w #!UI_DIAL_VRAM
-	PHA
+	ASL
+	ADC.w !ui_dial_up&$FFFF
+	ASL
+	TAX                               ; 6 bytes per step
 	LDA.w #ui_dial_data>>16
 	STA.w !core_scratch&$FFFF
-	PLA
-	LDX.w #192
+	LDA.l ui_dial_ups+2,X
+	CLC : ADC.w #ui_dial_data
+	TAY
+	LDA.l ui_dial_ups+4,X
+	PHA
+	LDA.l ui_dial_ups,X
+	PLX
 	JSL core_queue_vram
 	BCS .out
 	INC.w !ui_dial_up&$FFFF
+	LDA.w !ui_dial_up&$FFFF
+	CMP.w #!UI_DIAL_UPS
+	BCC ui_dial_upload
 .out
 	RTS
-.fx
-	LDA.w #ui_dialfx_data>>16
-	STA.w !core_scratch&$FFFF
-	LDA.w #!UI_DIAL_VRAM+((!UI_BLIP_TILE-!UI_DIAL_TILE)*16)
-	LDX.w #64
-	LDY.w #ui_dialfx_data
-	JSL core_queue_vram
-	BCS .out
-	INC.w !ui_dial_up&$FFFF
+
+; The browser draws the dial over every sprite; in world flight module
+; sprites sit behind all native slots. Native sprites (slots 0-83) touching
+; the dial's box are copied right after the dial's run and their own slots
+; hidden with a marker (X $FE, Y $E0). At the next frame, slots that still
+; hold the marker (the game did not rewrite them) get their entry back
+; before the scan, so lag frames keep the dial in front and the game's
+; buffer only ever differs by entries it is about to overwrite.
+!UI_FRONT_MAX = 8
+!UI_FRONT_MARK = $E0FE
+; The scan reads only the Y bytes, 12 slots per pass with 8-bit registers
+; (slots 0-59 from $0801, 60-83 from $08F1); a Y above the dial skips the
+; slot in 9 cycles.
+macro ui_fscan(addr, k, stub)
+	LDA.w <addr>+(<k>*4),X            ; y
+	CMP.b #8+48
+	BCS ?n
+	LDA.w <addr>-1+(<k>*4),X          ; x low byte: 0-55, or 249-255 (x bit 8
+	CMP.b #8+48                       ; set: -7..-1, a 16x16 reaching x 8)
+	BCC ?c
+	CMP.b #249
+	BCC ?n
+?c:
+	LDA.b #<k>*4
+	JSR <stub>
+?n:
+endmacro
+macro ui_fpass(addr, stub)
+	%ui_fscan(<addr>, 0, <stub>) : %ui_fscan(<addr>, 1, <stub>) : %ui_fscan(<addr>, 2, <stub>)
+	%ui_fscan(<addr>, 3, <stub>) : %ui_fscan(<addr>, 4, <stub>) : %ui_fscan(<addr>, 5, <stub>)
+	%ui_fscan(<addr>, 6, <stub>) : %ui_fscan(<addr>, 7, <stub>) : %ui_fscan(<addr>, 8, <stub>)
+	%ui_fscan(<addr>, 9, <stub>) : %ui_fscan(<addr>, 10, <stub>) : %ui_fscan(<addr>, 11, <stub>)
+endmacro
+ui_dial_front:
+	JSR ui_dial_unfront
+	SEP #$30
+	LDX.b #$00                        ; slots 0-59: X = pass * 48
+.lo
+	%ui_fpass($0801, ui_front_stub_lo)
+	TXA
+	CLC : ADC.b #48
+	TAX
+	CPX.b #240
+	BCS +
+	JMP .lo
++	LDX.b #$00                        ; slots 60-83
+.hi
+	%ui_fpass($0801+240, ui_front_stub_hi)
+	TXA
+	CLC : ADC.b #48
+	TAX
+	CPX.b #96
+	BCS +
+	JMP .hi
++	REP #$30
+	RTS
+; A8 = the slot's byte offset in the pass: Y16 = OAM byte offset, then the
+; candidate test with A8/X16; back with 8-bit registers.
+ui_front_stub_hi:
+	CLC : ADC.b #240                  ; < 256: the last pass ends at 240 + 48 + 44
+	BCC ui_front_stub_lo
+	REP #$31
+	AND.w #$00FF
+	ORA.w #$0100
+	BRA +
+ui_front_stub_lo:
+	REP #$31
+	AND.w #$00FF
++	STA.w !ui_tmp1&$FFFF
+	TXA
+	ADC.w !ui_tmp1&$FFFF
+	TAY
+	SEP #$20
+	JSR ui_front_cand
+	SEP #$30
 	RTS
 
-; A = A * Y (16-bit, small values), X ignored.
-ui_mul16:
+; Y16 = OAM byte offset of a native with y < 56 and an x low byte that may
+; touch the dial (A8): move it behind the dial when it overlaps [8, 56) x
+; [8, 56). Keeps X; returns A8.
+ui_front_cand:
+	REP #$20
+	PHX
+	TYA
+	LSR : LSR
+	STA.w !ui_tmp2&$FFFF              ; slot
+	JSR ui_oam_hibits                 ; A = bit0 x bit 8, bit1 large
+	STA.w !ui_tmp3&$FFFF
+	AND.w #$0002
+	BEQ +
+	LDA.w #16
+	BRA ++
++	LDA.w #8
+++	STA.w !ui_tmp4&$FFFF              ; size in pixels
+	LDA.w !ui_tmp3&$FFFF
+	LSR                               ; x bit 8 into carry
+	LDA.w $0800,Y
+	AND.w #$00FF
+	BCC +
+	ORA.w #$FF00                      ; negative x
++	; overlap with [8, 56) x [8, 56): x < 56, x + size > 8, y + size > 8
+	BMI +
+	CMP.w #8+48
+	BCS .skip
++	CLC : ADC.w !ui_tmp4&$FFFF
+	BMI .skip
+	CMP.w #8+1
+	BCC .skip
+	LDA.w $0801,Y
+	AND.w #$00FF
+	CLC : ADC.w !ui_tmp4&$FFFF
+	CMP.w #8+1
+	BCC .skip
+	LDA.w !ui_front_n&$FFFF
+	CMP.w #!UI_FRONT_MAX
+	BCS .skip
+	LDA.w !core_oam_limit&$FFFF       ; room for one more after the run
+	SEC : SBC.w !core_oam_cursor&$FFFF
+	BCC .skip
+	CMP.w #4
+	BCC .skip
+	JSR ui_front_move
+.skip
+	PLX
+	SEP #$20
+	RTS
+
+; Move native Y (byte offset; !ui_tmp2 slot, !ui_tmp3 high bits) to the
+; module cursor and mark its own slot. M16.
+ui_front_move:
+	; remember the native entry (SRAM, 8 bytes each)
+	LDA.w !ui_front_n&$FFFF
+	ASL : ASL : ASL
+	TAX
+	LDA.w !ui_tmp2&$FFFF : STA.l !ui_front,X     ; slot
+	LDA.w $0800,Y : STA.l !ui_front+2,X          ; x, y
+	LDA.w $0802,Y : STA.l !ui_front+4,X          ; tile / attributes
+	INC.w !ui_front_n&$FFFF
+	; copy it to the cursor, with its high bits
+	LDX.w !core_oam_cursor&$FFFF
+	LDA.w $0800,Y : STA.w $0800,X
+	LDA.w $0802,Y : STA.w $0802,X
+	LDA.w #!UI_FRONT_MARK
+	STA.w $0800,Y
+	TXA
+	CLC : ADC.w #4
+	STA.w !core_oam_cursor&$FFFF
+	TXA
+	LSR : LSR
+	PHA
+	AND.w #$0003
 	STA.w !ui_tmp4&$FFFF
-	LDA.w #$0000
-	CPY.w #$0000
+	ASL : ASL
+	ORA.w !ui_tmp3&$FFFF              ; [slot & 3][high bits]
+	TAX
+	PLA
+	PHY
+	LSR : LSR
+	TAY
+	SEP #$20
+	LDA.w $0A00,Y
+	PHX
+	LDX.w !ui_tmp4&$FFFF
+	AND.l ui_hi_clr,X
+	PLX
+	ORA.l ui_hi_set,X
+	STA.w $0A00,Y
+	REP #$20
+	PLY
+	RTS
+
+; A = the 2 high-table bits (bit0 x bit 8, bit1 large) of slot !ui_tmp2.
+ui_oam_hibits:
+	PHX
+	LDA.w !ui_tmp2&$FFFF
+	LSR : LSR
+	TAX
+	LDA.w $0A00,X
+	AND.w #$00FF
+	STA.w !ui_tmp4&$FFFF
+	LDA.w !ui_tmp2&$FFFF
+	AND.w #$0003
+	TAX
+	LDA.w !ui_tmp4&$FFFF
+-	DEX
+	BMI +
+	LSR : LSR
+	BRA -
++	AND.w #$0003
+	PLX
+	RTS
+
+; Give back native entries we hid last frame that the game did not rewrite.
+; DB = $7E.
+ui_dial_unfront:
+	LDA.w !ui_front_n&$FFFF
 	BEQ .done
--	CLC : ADC.w !ui_tmp4&$FFFF
-	DEY
-	BNE -
+	LDY.w #$0000                      ; saved entry offset
+.e
+	TYX
+	LDA.l !ui_front,X                 ; slot
+	ASL : ASL
+	TAX                               ; OAM byte offset
+	LDA.w $0800,X
+	CMP.w #!UI_FRONT_MARK
+	BNE .skip                         ; rewritten by the game
+	PHX
+	TYX
+	LDA.l !ui_front+2,X
+	PLX
+	STA.w $0800,X
+	PHX
+	TYX
+	LDA.l !ui_front+4,X
+	PLX
+	STA.w $0802,X
+.skip
+	TYA
+	CLC : ADC.w #$0008
+	TAY
+	LSR : LSR : LSR
+	CMP.w !ui_front_n&$FFFF
+	BCC .e
+	STZ.w !ui_front_n&$FFFF
 .done
 	RTS
-
-; A = A mod X (A, X > 0 small).
-ui_mod:
-	STX.w !ui_tmp4&$FFFF
--	CMP.w !ui_tmp4&$FFFF
-	BCC +
-	SBC.w !ui_tmp4&$FFFF
-	BRA -
-+	RTS

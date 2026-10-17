@@ -9,6 +9,15 @@ function test()
     H.wait(5)
     H.importSnesJs(IMPORT)
   end
+  -- whatever build made the state, give the UI block and its SRAM staging
+  -- the random contents a foreign savestate (or power-on RAM) would have
+  local seed = 0x2545
+  local function rnd()
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff
+    return (seed >> 16) & 0xff
+  end
+  for a = 0x7E7E40, 0x7E7EFF do H.w8(a, rnd()) end
+  for a = 0x337C00, 0x337FFF do H.w8(a, rnd()) end
   H.wait(2)
   local t0, f0 = H.r16(0x7ED72C), H.r16(0x7ED700)
   local bad, frames = {}, 0

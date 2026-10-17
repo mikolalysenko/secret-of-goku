@@ -87,8 +87,13 @@ ui_window_update:
 	CMP.w !ui_row_want&$FFFF
 	BEQ +
 	JSR ui_window_clear
-+	JSR ui_build_text
-	JSR ui_build_map
++	LDA.w #!UIB_ALL
+	STA.w !ui_tmp5&$FFFF
+	LDA.w !ui_cur&$FFFF
+	LDX.w !ui_cur_par&$FFFF
+	LDY.w #$0001
+	JSR ui_bs_step                    ; one build step per frame
+	BCC .out
 	LDA.w #!SRAM_WORK_UI>>16
 	STA.w !core_scratch&$FFFF
 	LDA.w !ui_row_want&$FFFF
@@ -201,14 +206,124 @@ ui_queue_atlas_b:
 	RTS
 
 ; ---------------------------------------------------------------------------
-; Expand the current message into !ui_s_text (3 lines x 28 glyph codes):
+; Staged content: !ui_s_text and !ui_s_map are built over several frames,
+; one step per frame (!UIB_*), for the field window (mode 1) and the world
+; band (mode 2). A16 = key (message id + 1, or $8000 | radar key), X16 =
+; parameter, Y16 = mode, !ui_tmp5 = the steps new content needs. Content
+; that differs from the staged one starts over (its steps are merged with
+; the ones still pending when only the radar guide changed). Carry set when
+; the staged map is complete (the caller uploads it).
+ui_bs_step:
+	CMP.l !ui_s_bkey
+	BNE .new
+	PHA
+	TXA
+	CMP.l !ui_s_bpar
+	BNE .newPla
+	TYA
+	CMP.l !ui_s_bmode
+	BNE .newPla
+	PLA
+	BRA .step
+.newPla
+	PLA
+.new
+	STA.l !ui_s_bkey
+	TXA
+	STA.l !ui_s_bpar
+	TYA
+	CMP.l !ui_s_bmode
+	STA.l !ui_s_bmode
+	BEQ .merge
+	LDA.w #!UIB_ALL                   ; another mode's layout is staged
+	BRA +
+.merge
+	LDA.l !ui_s_bstep
+	ORA.w !ui_tmp5&$FFFF
++	STA.l !ui_s_bstep
+.step
+	LDA.l !ui_s_bstep
+	BNE +
+	SEC                               ; complete
+	RTS
++	LSR
+	BCS .text
+	LSR
+	BCS .text0
+	LSR
+	BCS .line0
+	LSR
+	BCS .line1
+	; line 2
+	LDA.w #!UIB_LINE2
+	LDX.w #ui_fmap_line2
+	LDY.w #ui_wmap_line2
+	BRA .line
+.line1
+	LDA.w #!UIB_LINE1
+	LDX.w #ui_fmap_line1
+	LDY.w #ui_wmap_line1
+	BRA .line
+.line0
+	LDA.w #!UIB_LINE0
+	LDX.w #ui_fmap_line0
+	LDY.w #ui_wmap_line0
+.line
+	PHA
+	LDA.l !ui_s_bmode
+	CMP.w #$0001
+	BEQ +
+	TYX
++	JSR ui_jsr_x
+	PLA
+	BRA .done
+.text0
+	JSR ui_radar_text0
+	LDA.w #!UIB_TEXT0
+	BRA .done
+.text
+	LDA.l !ui_s_bmode
+	CMP.w #$0001
+	BNE .wtext
+	JSR ui_build_text
+	JSR ui_fmap_edges
+	BRA .textDone
+.wtext
+	LDA.l !ui_s_bkey
+	BMI .rtext
+	JSR ui_build_text
+	BRA .wedges
+.rtext
+	JSR ui_radar_text
+.wedges
+	JSR ui_wmap_edges
+.textDone
+	LDA.w #!UIB_TEXT|!UIB_TEXT0       ; the full text covers a pending line-1 rebuild
+.done
+	EOR.w #$FFFF
+	AND.l !ui_s_bstep
+	STA.l !ui_s_bstep
+	BNE +
+	SEC                               ; that was the last step: upload now
+	RTS
++	CLC
+	RTS
+
+; JSR (X): call the routine at address X in this bank.
+ui_jsr_x:
+	DEX
+	PHX
+	RTS                               ; RTS adds one: lands on X
+
+; ---------------------------------------------------------------------------
+; Expand the current message into !ui_s_text (3 lines x 28 glyph words):
 ; $7F newline, $57 n name, $F0 string parameter, $F1 number parameter.
 !ui_bt_src  = !ui_tmp0              ; text address in this bank
 !ui_bt_line = !ui_tmp1              ; offset of the line (0, 28, 56)
 !ui_bt_col  = !ui_tmp2              ; column
 ui_build_text:
-	LDA.w #$8080
-	LDX.w #82
+	LDA.w #$0000                      ; space
+	LDX.w #166
 .fill
 	STA.l !ui_s_text,X
 	DEX : DEX
@@ -337,29 +452,35 @@ ui_bt_byte:
 	AND.w #$00FF
 	RTS
 
-; Store glyph A at the cursor (columns beyond 28 are dropped).
+; Store glyph A at the cursor as its atlas word ((code - $80) * 2; codes
+; outside the atlas are spaces). Columns beyond 28 are dropped.
 ui_bt_put:
 	LDX.w !ui_bt_col&$FFFF
 	CPX.w #28
 	BCS .full
+	SEC : SBC.w #!UI_ATLAS_FIRST
+	CMP.w #!UI_ATLAS_GLYPHS
+	BCC +
+	LDA.w #$0000
++	ASL
 	PHA
 	TXA
 	CLC : ADC.w !ui_bt_line&$FFFF
+	ASL
 	TAX
 	PLA
-	SEP #$20
 	STA.l !ui_s_text,X
-	REP #$20
 	INC.w !ui_bt_col&$FFFF
 .full
 	RTS
 
 ; ---------------------------------------------------------------------------
-; Build the 8 window rows (32 entries each) in !ui_s_map from !ui_s_text.
+; The 8 window rows (32 entries each) in !ui_s_map: the frame (rows 0 and
+; 7, the side columns of rows 1-6) here, the glyph rows of each text line
+; by ui_fmap_line0-2 (top tile = atlas base + glyph word, bottom = +1).
 !UI_TM_FRAME = $2000|(3<<10)        ; priority, palette 3
 !UI_TM_TEXT  = $2000|(2<<10)        ; priority, palette 2
-ui_build_map:
-	; frame rows 0 and 7, then the side columns
+ui_fmap_edges:
 	LDX.w #$0000
 	LDA.w #!UI_TM_FRAME|$0110
 	LDY.w #!UI_TM_FRAME|$0111
@@ -368,13 +489,8 @@ ui_build_map:
 	LDA.w #!UI_TM_FRAME|$8110
 	LDY.w #!UI_TM_FRAME|$8111
 	JSR ui_bm_edge
-	; text rows 1-6
-	LDA.w #$0040
-	STA.w !ui_tmp0&$FFFF              ; row byte offset
-	STZ.w !ui_tmp1&$FFFF              ; text offset of the line
-	STZ.w !ui_tmp2&$FFFF              ; 0 top half, 1 bottom half
-.row
-	LDX.w !ui_tmp0&$FFFF
+	LDX.w #$0040
+.side
 	LDA.w #$0000
 	STA.l !ui_s_map+$00,X
 	STA.l !ui_s_map+$3E,X
@@ -382,47 +498,38 @@ ui_build_map:
 	STA.l !ui_s_map+$02,X
 	ORA.w #$4000
 	STA.l !ui_s_map+$3C,X
-	LDY.w #$0000                      ; column 0-27
-.col
-	TYA
-	CLC : ADC.w !ui_tmp1&$FFFF
-	TAX
-	LDA.l !ui_s_text,X
-	AND.w #$00FF
-	CMP.w #!UI_ATLAS_FIRST
-	BCC .space
-	CMP.w #(!UI_ATLAS_FIRST+!UI_ATLAS_GLYPHS)
-	BCC +
-.space
-	LDA.w #!UI_ATLAS_FIRST
-+	SEC : SBC.w #!UI_ATLAS_FIRST
-	ASL
-	CLC : ADC.w #(!UI_ATLAS_TILE|!UI_TM_TEXT)
-	ADC.w !ui_tmp2&$FFFF              ; bottom half: the next tile
-	STA.w !ui_tmp3&$FFFF
-	TYA
-	ASL
-	CLC : ADC.w !ui_tmp0&$FFFF
-	TAX
-	LDA.w !ui_tmp3&$FFFF
-	STA.l !ui_s_map+$04,X
-	INY
-	CPY.w #28
-	BCC .col
-	; next row: alternate halves; after a bottom half move to the next line
-	LDA.w !ui_tmp0&$FFFF
+	TXA
 	CLC : ADC.w #$0040
-	STA.w !ui_tmp0&$FFFF
-	LDA.w !ui_tmp2&$FFFF
-	EOR.w #$0001
-	STA.w !ui_tmp2&$FFFF
-	BNE .row
-	LDA.w !ui_tmp1&$FFFF
-	CLC : ADC.w #28
-	STA.w !ui_tmp1&$FFFF
-	CMP.w #84
-	BCC .row
+	TAX
+	CPX.w #$01C0
+	BCC .side
 	RTS
+
+; Glyph rows of text line L (rows 1 + 2L, 2 + 2L), DB = the staging bank.
+macro ui_fline(L)
+	PHB
+	PEA.w ((!SRAM_WORK_UI>>16)<<8)|(!SRAM_WORK_UI>>16)
+	PLB
+	PLB
+	LDY.w #$0000
+?c:
+	LDA.w 0+(!ui_s_text&$FFFF)+(<L>*56),Y
+	CLC : ADC.w #!UI_ATLAS_TILE|!UI_TM_TEXT
+	STA.w 0+(!ui_s_map&$FFFF)+$44+(<L>*$80),Y
+	INC
+	STA.w 0+(!ui_s_map&$FFFF)+$84+(<L>*$80),Y
+	INY : INY
+	CPY.w #56
+	BCC ?c
+	PLB
+	RTS
+endmacro
+ui_fmap_line0:
+	%ui_fline(0)
+ui_fmap_line1:
+	%ui_fline(1)
+ui_fmap_line2:
+	%ui_fline(2)
 
 ; One frame row at byte offset X: A = corner entry, Y = edge entry.
 ui_bm_edge:

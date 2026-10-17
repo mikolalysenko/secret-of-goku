@@ -7,7 +7,6 @@
 //   policy    a scripted session (queue, SSJ charge remarks with the saved
 //             xorshift roll, interrupt, barriers, ceiling escapes, power intro,
 //             hidden frames) replayed frame by frame against createNativeRadio
-//   dialogue  the window yields to a native dialogue and comes back after it
 //   roll      saved charge attempts and xorshift state from a GAME FILE
 //   radar     world flight: band panel and dial against dragon-radar.js
 //   nocrash   production build from the arrival checkpoint (a savestate of
@@ -71,7 +70,7 @@ const cases={
       if(m.params)continue;
       const text=m.text;
       const ref=radioPixels(rom,text);
-      // software BG3: tilemap as ui_build_map writes it
+      // software BG3: tilemap as ui_fmap_edges / ui_fmap_line* write it
       const lines=text.split('\n');
       const {encodeText}=await import(pathToFileURL(resolve(repo,'engine/event-codec.js')).href);
       const colors={in:[null,0x0000,0x2c00,0x7fff],fr:[null,0x0000,0x5250,0x739c]};
@@ -206,6 +205,22 @@ const cases={
     report('nocrash',!fails.length,[...fails,...notes]);
   },
 
+  async mul(){
+    // The radar rotation's multiplier routine against exact integer math.
+    const cases=[[1951,7006,14811],[1520,7006,14811],[2048,16384,16384],[0,16384,0],[255,255,256],[256,256,255],[1,1,1]];
+    let seed=12345;const rnd=n=>{seed=(seed*1103515245+12345)&0x7fffffff;return seed%n;};
+    for(let i=0;i<40;i++)cases.push([rnd(2049),rnd(16385),rnd(16385)]);
+    const r=await mesenCase('mul',{bundle:'preset__late',prelude:{CASES:cases},test:'mul'});
+    const fails=resultFails(r.results);
+    if(r.code!==0||r.results?.error)fails.push(`mesen: ${r.results?.error??r.output.slice(-400)}`);
+    const got=(r.results?.products??'').split(';').map(p=>p.split(',').map(Number));
+    cases.forEach(([u,c,s],i)=>{
+      const want=[Math.floor((u*c+1024)/2048),Math.floor((u*s+1024)/2048)];
+      if(!got[i]||got[i][0]!==want[0]||got[i][1]!==want[1])fails.push(`U ${u} C ${c} S ${s}: cartridge ${got[i]} expected ${want}`);
+    });
+    report('mul',!fails.length,fails.slice(0,12));
+  },
+
   async radar(){
     // World flight: the band (lines 152-215) and the dial, against
     // dragon-radar.js run on the cartridge's own state for each screenshot.
@@ -223,18 +238,44 @@ const cases={
       if(r.code!==0||r.results?.error){fails.push(`${sc.name}: mesen ${r.results?.error??r.output.slice(-300)}`);continue;}
       fails.push(...resultFails(r.results).map(f=>`${sc.name}: ${f}`));
       for(const s of r.results.samples??[]){
-        const ex=await renderRadar({ram:s,quest:{held:sc.quest&0x7f,collected:sc.quest>>8},frieza:sc.frieza,crisis:sc.crisis,
-          sweepAngle:s.sweep,blink:(s.uiframe%30)<22});
         const png=loadPng(join(r.outDir,`${s.name}.png`));
-        let bad=0,n=0;const where=[];
-        for(const [k,c] of ex.pixels){const [x,y]=k.split(',').map(Number);n++;
-          const at=(y*png.width+x)*4,want=rgb(c);
-          if(png.data[at]!==want[0]||png.data[at+1]!==want[1]||png.data[at+2]!==want[2]){bad++;if(where.length<6)where.push(`${x},${y}:${c.toString(16)}/${png.data[at]},${png.data[at+1]},${png.data[at+2]}`);}}
-        if(bad)fails.push(`${sc.name}/${s.name}: dial ${bad}/${n} pixels differ (${where.join(' ')}) sweep ${s.sweep}`);
+        const quest={held:sc.quest&0x7f,collected:sc.quest>>8};
+        // The browser's blip before rounding: a coordinate within 0.05 px of
+        // a half pixel may round either way on the cartridge (its distance
+        // is a table hypot), so the two blip squares are then left out of the
+        // dial comparison and the cartridge's square is checked on its own.
+        const st=(await renderRadar({ram:s,quest,frieza:sc.frieza,crisis:sc.crisis,sweepAngle:0,blink:false})).bearing;
+        const br=Math.min(18,st.distance/50),bxf=24+Math.sin(st.angle)*br,byf=24-Math.cos(st.angle)*br;
+        const bx=Math.round(bxf),by=Math.round(byf);
+        const tie=(v,c)=>c===Math.round(v)||(Math.abs(v-Math.floor(v)-.5)<.05&&Math.abs(c-v)<1);
+        const rounded=(s.bx!==bx||s.by!==by)&&tie(bxf,s.bx)&&tie(byf,s.by);
+        const inSquare=(x,y,cx,cy)=>Math.abs(x-8-cx)<=1&&Math.abs(y-8-cy)<=1;
+        // the dial: exact match against the browser's dial for one sweep
+        // angle / blink phase (the sampled state may be a frame ahead)
+        let best={bad:1e9};
+        for(let da=-4;da<=4;da++)for(const blink of [true,false]){
+          const a=(s.sweep+da+64)&63;
+          const ex=await renderRadar({ram:s,quest,frieza:sc.frieza,crisis:sc.crisis,sweepAngle:a,blink});
+          let bad=0;const where=[];
+          for(const [k,c] of ex.pixels){const [x,y]=k.split(',').map(Number);
+            if(rounded&&(inSquare(x,y,bx,by)||inSquare(x,y,s.bx,s.by)))continue;
+            const at=(y*png.width+x)*4,want=rgb(c);
+            if(png.data[at]!==want[0]||png.data[at+1]!==want[1]||png.data[at+2]!==want[2]){bad++;if(where.length<8)where.push(`${x-8},${y-8}:${c.toString(16)}/${png.data[at]},${png.data[at+1]},${png.data[at+2]}`);}}
+          if(rounded&&blink)for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
+            const x=8+s.bx+dx,y=8+s.by+dy,at=(y*png.width+x)*4,want=rgb(0x03ff);
+            if(x===32&&y===32)continue;                        // the centre stays on top
+            if(png.data[at]!==want[0]||png.data[at+1]!==want[1]||png.data[at+2]!==want[2])bad++;
+          }
+          if(bad<best.bad)best={bad,da,blink,ex,n:ex.pixels.size,where};
+        }
+        if(best.bad)fails.push(`${sc.name}/${s.name}: dial ${best.bad}/${best.n} pixels differ at best (angle ${s.sweep}${best.da>=0?'+':''}${best.da}, blink ${best.blink}) ${best.where.join(' ')}`);
+        const ex=best.ex;
         const panel=await compareRadio({png,text:ex.text,x:8,y:152});
         if(panel.mismatches)fails.push(`${sc.name}/${s.name}: panel ${panel.mismatches}/${panel.opaque} differ; browser "${ex.text.replace(/\n/g,' | ')}"`);
         const guides=['LAND HERE','AHEAD','TURN AROUND','LEFT','RIGHT'];
-        notes.push(`${s.name} browser ${ex.bearing.guide} cart ${guides[s.guide]} d=${Math.round(ex.bearing.distance)}/${s.dist} f6=${s.f6} angle=${ex.bearing.angle.toFixed(3)} rel=${(s.rel<<16>>16)} blip ${s.bx},${s.by}`);
+        if(guides[s.guide]!==ex.bearing.guide)fails.push(`${sc.name}/${s.name}: guide ${guides[s.guide]} vs browser ${ex.bearing.guide}`);
+        if(!rounded&&(s.bx!==bx||s.by!==by))fails.push(`${sc.name}/${s.name}: blip ${s.bx},${s.by} vs browser ${bxf.toFixed(3)},${byf.toFixed(3)}`);
+        notes.push(`${sc.name}/${s.name}: ${ex.bearing.guide}, distance ${s.dist} (browser ${ex.bearing.distance.toFixed(1)}), heading ${s.f6}, blip ${s.bx},${s.by} (browser ${bxf.toFixed(2)},${byf.toFixed(2)}${rounded?', a rounding tie':''}), sweep ${s.sweep}${best.da>=0?'+':''}${best.da}, moved ${s.front}`);
       }
     }
     report('radar',!fails.length,[...fails,...notes]);
