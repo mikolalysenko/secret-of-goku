@@ -50,6 +50,10 @@ export function compare(js,cart,sc={}){
   const slots=Math.max(...js.map(f=>f.e.length),...cart.map(f=>f.e.length));
   let dmg=0,path=0,queued=0;
   for(let s=0;s<slots;s++){
+    // only actors combat touched (queue or launch); the rest are native-only
+    // (boss explosions, NPCs) and follow the game's own, load-dependent pace
+    const touched=t=>t.some(f=>f.e[s]&&(f.e[s].q||(f.kb>>s&1)));
+    if(!touched(js)&&!touched(cart))continue;
     // settled life states (no queue pending)
     const life=f=>{const e=f.e[s];if(!e)return 'off';if(e.q)return null;return `${e.sp}/${e.hp}/${e.dead}`;};
     const r=matchSequence(`slot ${s+3} hp`,js,cart,life,{slack:sc.nativeSlack??10,maxSkip:3});
@@ -90,8 +94,14 @@ export function compare(js,cart,sc={}){
   notes.push(`enemy states ${dmg}`,`queues ${queued}`,`launch points ${path}`);
   // Rewards
   const d=(t,k)=>t[t.length-1][k]-t[0][k];
-  for(const k of ['gp','xp'])if(d(js,k)!==d(cart,k))failures.push(`${k}: browser +${d(js,k)}, cartridge +${d(cart,k)}`);
+  // (companions also fight on their own: scenarios without attacks skip it)
+  if(sc.rewards!==false)for(const k of ['gp','xp'])if(d(js,k)!==d(cart,k))failures.push(`${k}: browser +${d(js,k)}, cartridge +${d(cart,k)}`);
   notes.push(`gp +${d(cart,'gp')} xp +${d(cart,'xp')}`);
+  // Goku's stats once the power block ran (level 99, 999 HP, Saiyan strength,
+  // Heavy Gi agility, Saiyan defense): the last frame of both
+  const lj=js[js.length-1],lc=cart[cart.length-1];
+  for(const k of ['lvl','maxhp','str','agi','pdef','mdef'])if(lj[k]!==lc[k])failures.push(`${k}: browser ${lj[k]}, cartridge ${lc[k]}`);
+  notes.push(`lvl ${lc.lvl+1} hp ${lc.ghp}/${lc.maxhp} str ${lc.str} agi ${lc.agi} def ${lc.pdef}/${lc.mdef}`);
   if(sc.check)failures.push(...sc.check(js,cart));
   return {failures,summary:notes.join(', ')};
 }

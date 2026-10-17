@@ -37,7 +37,8 @@ export function parseScript(text){
 
 // One probe record, from WRAM only (shared with combat.lua's probe).
 export function probe(read8,read16){
-  const r={map:read16(0xdc),gx:read16(0xe002),gy:read16(0xe004),gface:read8(0xe010),ghp:read16(0xe182),gq:read16(0xe1f1),
+  const r={map:read16(0xdc),gx:read16(0xe002),gy:read16(0xe004),gface:read8(0xe010),ghp:read16(0xe182),gq:read16(0xe1f1),d0:read8(0xd0),
+    str:read8(0xe188),agi:read8(0xe189),pdef:read16(0xe1a5),mdef:read16(0xe1a8),lvl:read8(0xe181),maxhp:read16(0xe184),
     gp:read16(0xcc6a)|read8(0xcc6c)<<16,xp:read16(0xe18d)|read8(0xe18f)<<16,e:[]};
   for(let i=3;i<12;i++){
     const b=0xe000+i*0x200;
@@ -47,7 +48,7 @@ export function probe(read8,read16){
   return r;
 }
 
-export function runJsRef({state,steps,superSaiyan=false,gi=null,romPath=resolve(repo,'rom/secret-of-mana-us.sfc')}){
+export function runJsRef({state,steps,superSaiyan=false,gi=null,pokes=[],pokeBase=0,romPath=resolve(repo,'rom/secret-of-mana-us.sfc')}){
   const s=loadCore(new Uint8Array(readFileSync(romPath)));
   restore(s,{...JSON.parse(readFileSync(state,'utf8')),romHash:hash(s.cart.data)});
   const context={window:{ManaSpriteLayer:class{load(){}destroy(){}}},Image:class{decode(){return Promise.resolve();}},Promise,Math,JSON,Array,Object,Number,Set,Map,Error};
@@ -70,10 +71,13 @@ export function runJsRef({state,steps,superSaiyan=false,gi=null,romPath=resolve(
   let n=0;
   for(const st of steps)for(let i=0;i<st.frames;i++){
     sounds.length=0;
+    // scheduled RAM writes ([frame, address, value, bytes]) before the frame
+    for(const [at,addr,value,bytes=1] of pokes)if(at+pokeBase===n){s.ram[addr&0x1ffff]=value&255;if(bytes===2)s.ram[(addr+1)&0x1ffff]=value>>8&255;}
     s.joypad1State=st.mask;mod.beforeFrame(st.mask);s.runFrame(true);mod.afterFrame();
     const a=mod.action;
-    frames.push({n:n++,input:st.mask,act:a?a.kind:null,age:a?.age??null,combo:a?.combo??null,pause:a?.hitPause??0,
+    frames.push({n:n++,input:st.mask,hurt:read8(0xe011),act:a?a.kind:null,age:a?.age??null,combo:a?.combo??null,pause:a?.hitPause??0,
       charge:mod.charge,charging:mod.charging,ssj:mod.options.superSaiyan,power:mod.powerCharge,
+      deflected:mod.hitRecovery.deflected,recovered:mod.hitRecovery.recovered,
       kb:mod.knockbacks.reduce((m,k)=>m|1<<((k.base-0xe600)>>9),0),
       k0:Object.fromEntries(mod.knockbacks.map(k=>[(k.base-0xe600)>>9,[k.x,k.y]])),fx:mod.effects.map(e=>`${e.kind}:${e.life}`).join(' '),sounds:[...sounds],...probe(read8,read16)});
   }

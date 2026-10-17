@@ -48,7 +48,7 @@ function test()
   H.wait(2)
   ${setup.join('\n  ')}
   local trace = {}
-  C.run(${JSON.stringify(sc.script)}, trace)
+  C.run(${JSON.stringify(sc.script)}, trace, {${(sc.pokes??[]).map(p=>`{${p.join(',')}}`).join(',')}})
   H.result('trace', trace)
   ${sc.shots?`H.shot('end')`:''}
   H.result('failures', C.failures)
@@ -69,7 +69,9 @@ for(const sc of SCENARIOS){
   if(r.results?.trace){
     // The browser runs the same frames after the import settles (2 frames).
     const steps=[{mask:0,frames:2+(sc.jsLead??0)},...parseScript(sc.script)];
-    const js=runJsRef({state,steps,superSaiyan:!!sc.ssj,gi:sc.gi??null}).frames.slice(2+(sc.jsLead??0));
+    // pokes land one frame later on the cartridge's clock (input latency
+    // alignment in compare.mjs), so the browser gets them one frame later too
+    const js=runJsRef({state,steps,superSaiyan:!!sc.ssj,gi:sc.gi??null,pokes:sc.pokes??[],pokeBase:2+(sc.jsLead??0)}).frames.slice(2+(sc.jsLead??0));
     const cart=r.results.trace;
     writeFileSync(join(outRoot,sc.name,'js.json'),JSON.stringify(js));
     writeFileSync(join(outRoot,sc.name,'cart.json'),JSON.stringify(cart));

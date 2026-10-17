@@ -26,6 +26,30 @@ export const SCENARIOS=[
   // Focus builds 96 frames; L+A at full power transforms (first reveal: 72
   // frames, the burst on age 26 hits everything within 56 px).
   {name:'transform',bundle:RABITES,radial:88,script:'right:20,l:100,l+a:4,l:2,none:90'},
+  // Mantis Ant (boss species $57): one jab leaves 1 HP, the native lethal hit
+  // starts its own death and the cave's defeat/rescue event; bosses never fly.
+  {name:'mantis',bundle:'emulator-probe__map-260-state',script:'up:2,b:2,none:420',
+    check:(js,cart)=>{const f=[];const ev=t=>t.some(x=>x.d0);if(ev(js)&&!ev(cart))f.push('the native defeat event never started');
+      if(cart.some(x=>x.kb))f.push('the boss was launched');return f;}},
+  // A boss hit on Goku (queued at C0:4053 by the Mantis, slot 3): Saiyan
+  // resilience scales it to ceil(300/4) = 75 (cap 80; SSJ /8, cap 40), the
+  // native consumer subtracts it and the recovery ends after 24 / 8 frames.
+  {name:'boss-hit',bundle:'emulator-probe__map-260-state',script:'none:120',pokes:[[10,0x7EE1F1,300,2],[10,0x7EE1F0,3]],
+    check:(js,cart)=>{const f=[];const loss=t=>t[0].ghp-Math.min(...t.map(x=>x.ghp));if(loss(js)!==loss(cart))f.push(`HP loss: browser ${loss(js)}, cartridge ${loss(cart)}`);return f;}},
+  {name:'boss-hit-ssj',bundle:'emulator-probe__map-260-state',ssj:true,script:'none:120',pokes:[[10,0x7EE1F1,300,2],[10,0x7EE1F0,3]],
+    check:(js,cart)=>{const f=[];const loss=t=>t[0].ghp-Math.min(...t.map(x=>x.ghp));if(loss(js)!==loss(cart))f.push(`HP loss: browser ${loss(js)}, cartridge ${loss(cart)}`);return f;}},
+  // An ordinary hit (a Rabite, slot 3): ceil(60/20) = 3 (SSJ ceil(60/50) = 2).
+  {name:'chip-hit',bundle:RABITES,script:'none:90',pokes:[[10,0x7EE1F1,60,2],[10,0x7EE1F0,3]],
+    check:(js,cart)=>{const f=[];const loss=t=>t[0].ghp-Math.min(...t.map(x=>x.ghp));if(loss(js)!==loss(cart))f.push(`HP loss: browser ${loss(js)}, cartridge ${loss(cart)}`);return f;}},
+  {name:'chip-hit-ssj',bundle:RABITES,ssj:true,script:'none:90',pokes:[[10,0x7EE1F1,60,2],[10,0x7EE1F0,3]],
+    check:(js,cart)=>{const f=[];const loss=t=>t[0].ghp-Math.min(...t.map(x=>x.ghp));if(loss(js)!==loss(cart))f.push(`HP loss: browser ${loss(js)}, cartridge ${loss(cart)}`);return f;}},
+  // Rabites attacking Goku: the Saiyan defense absorbs ordinary hits; base
+  // form deflects every third clean contact, Super Saiyan two of three
+  // (24 frames apart) through the retail dodge path.
+  {name:'deflect',bundle:RABITES,rewards:false,script:'right:30,none:900',
+    check:(js,cart)=>{const d=t=>t[t.length-1].deflected;return d(cart)<1?['no deflection']:[];}},
+  {name:'deflect-ssj',bundle:RABITES,ssj:true,rewards:false,script:'right:30,none:900',
+    check:(js,cart)=>{const d=t=>t[t.length-1].deflected;return d(cart)<2?['fewer than two deflections']:[];}},
   // Super Saiyan: a fresh L+A reverts in 10 frames.
   {name:'revert',bundle:RABITES,ssj:true,script:'l:4,l+a:3,none:30'},
 ];
