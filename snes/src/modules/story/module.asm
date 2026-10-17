@@ -87,7 +87,8 @@ incsrc "story/data.asm"
 !story_gate_ax       = !RAM_STORY+$94 ; word: |dx| to the gate guard
 !story_gate_ay       = !RAM_STORY+$96 ; word: |dy| to the gate guard
 !story_gate_sq       = !RAM_STORY+$98 ; word: dx^2 (story_square clobbers tmp0-tmp5)
-; $9A-$FF free
+!story_can_act_valid = !RAM_STORY+$9A ; byte: !story_can_act computed this field frame
+; $9B-$FF free
 
 ; Persistent fields (!PERSIST_STORY, $C0 bytes, battery SRAM, per save slot)
 !story_p_version   = !PERSIST_STORY+$00 ; 1 once initialised
@@ -96,6 +97,7 @@ incsrc "story/data.asm"
 !story_p_delivered = !PERSIST_STORY+$03 ; legacy delivery count (compatibility only)
 !story_p_wished    = !PERSIST_STORY+$04 ; restoration wish granted
 !story_p_fast      = !PERSIST_STORY+$05 ; retired Luka fast track (event 88) seen
+!story_p_spell_any = !PERSIST_STORY+$06 ; 1 once any spell grant was kept (skips the per-frame re-grant)
 !story_p_spells    = !PERSIST_STORY+$08 ; 2 x 8: spell grants for girl/sprite slots
 
 !STORY_WATER_BUF   = !SRAM_WORK_STORY    ; $33:6000, Water Palace walk script (<= $200)
@@ -125,7 +127,14 @@ story_call_hook:
 	CLC
 	ADC.l !story_tmp5
 	TAX
-	PHB
+	; unimplemented hooks cost nothing
+	LDA.l story_hook_table,X
+	CMP.w #story_hook_stub&$FFFF
+	BNE +
+	LDA.l story_hook_table+1,X
+	CMP.w #(story_hook_stub>>8)&$FFFF
+	BEQ .none
++	PHB
 	PEA $7E7E : PLB : PLB
 	PHK
 	PER .back-1
@@ -163,7 +172,16 @@ story_query:
 	CLC
 	ADC.l !story_tmp5
 	TAX
-	PHB
+	; unimplemented queries answer 0 without the call
+	LDA.l story_query_table,X
+	CMP.w #story_query_zero&$FFFF
+	BNE +
+	LDA.l story_query_table+1,X
+	CMP.w #(story_query_zero>>8)&$FFFF
+	BNE +
+	LDA.w #$0000
+	BRA .result
++	PHB
 	PEA $7E7E : PLB : PLB
 	PHK
 	PER .back-1
@@ -178,6 +196,7 @@ story_query:
 .back
 	REP #$30
 	PLB
+.result
 	AND.w #$00FF
 	STA.l !story_qresult
 	PLY
@@ -558,6 +577,14 @@ story_fetch:
 	; 3. Dragon Ball grant markers in compiled scripts.
 .grants
 	JSR story_grant_check
+	; Only opcodes 31-3D need the next steps.
+	SEP #$20
+	LDA [$D1]
+	CMP.b #$31
+	BCC .fetch
+	CMP.b #$3E
+	BCS .fetch
+	REP #$20
 	; 4. Absent companions never take movement commands.
 	JSR story_skip_absent
 	; 5. Spell grants to an absent companion are kept for recruitment.
@@ -838,8 +865,11 @@ story_spell_record:
 	SEP #$20
 	INY
 	LDA [$D1],Y                  ; value
+	BEQ .out
 	ORA.l !story_p_spells,X
 	STA.l !story_p_spells,X
+	LDA.b #$01
+	STA.l !story_p_spell_any
 .out
 	REP #$20
 	RTS
@@ -1443,65 +1473,78 @@ story_field_frame:
 	BNE +
 	RTL
 +	JSR story_init_persist
-	JSR story_compute_can_act
 	SEP #$20
-	LDA.b #$00
-	ROL
-	STA.w !story_can_act&$FFFF
+	STZ.w !story_can_act_valid&$FFFF  ; canAttack is evaluated on first use
 	; 1. greeting latch resets once the player has control again
-	BEQ .nolatch
+	LDA.w !story_greeted&$FFFF
+	BEQ .map
 	LDA $D0
 	ORA.w !story_greet_pending&$FFFF
-	BNE .nolatch
-	STZ.w !story_greeted&$FFFF
-.nolatch
+	BNE .map
 	REP #$20
-	LDA.w !story_can_act&$FFFF
-	AND.w #$00FF
-	BEQ .spells
-	; 2. Fire Palace brazier room entered from an older state
+	JSR story_can_act_now
+	BEQ .map16
+	SEP #$20
+	STZ.w !story_greeted&$FFFF
+.map
+	REP #$20
+.map16
+	; 2. Fire Palace brazier room / 3. Water Palace Jema / 4. Tree Palace Jema
 	LDA $DC
 	CMP.w #240
-	BNE +
+	BEQ .fire
+	CMP.w #139
+	BEQ .water
+	CMP.w #195
+	BEQ .treepal
+	BRA .spells
+.fire
 	SEP #$20
 	LDA $CF2B
 	CMP.b #$02
 	REP #$20
-	BCS +
+	BCS .spells
+	JSR story_can_act_now
+	BEQ .spells
 	LDA.w #240
 	JSR story_prepare_area
-+	; 3. Water Palace duplicate Jema / 4. Tree Palace Jema position
-	LDA $DC
-	CMP.w #139
-	BNE +
+	BRA .spells
+.water
+	JSR story_can_act_now
+	BEQ .spells
 	JSR story_jema_dedupe
 	BRA .spells
-+	CMP.w #195
-	BNE .spells
+.treepal
+	JSR story_can_act_now
+	BEQ .spells
 	JSR story_jema_tree_palace
 .spells
-	JSR story_spell_regrant
-	; 5. retired fast track: straight to the Beast
-	LDA.w !story_can_act&$FFFF
+	; spell grants retained for absent companions (only if any were kept)
+	LDA.l !story_p_spell_any
 	AND.w #$00FF
-	BEQ .noqueue
+	BEQ .fast
+	JSR story_spell_regrant
+.fast
+	; 5. retired fast track: straight to the Beast
 	LDA.l !story_p_fast
 	AND.w #$00FF
-	BEQ .gate
+	BEQ .queue
 	SEP #$20
 	LDA.w !story_q_valid&$FFFF
 	REP #$20
-	BNE .gate
+	BNE .queue
 	LDA $DC
 	CMP.w #246
-	BNE .gate
+	BNE .queue
 	LDA $CF4E
 	AND.w #$00FF
 	CMP.w #$0008
-	BNE .gate
+	BNE .queue
+	JSR story_can_act_now
+	BEQ .queue
 	LDA.w #!STORY_Q_FRIEZA_STOLEN
 	JSR story_query
-	BNE .gate
+	BNE .queue
 	LDA.w #$0429
 	STA.w !story_q_event&$FFFF
 	STZ.w !story_q_actor&$FFFF
@@ -1509,10 +1552,26 @@ story_field_frame:
 	LDA.b #$01
 	STA.w !story_q_valid&$FFFF
 	REP #$20
-.gate
+.queue
+	; 6. queued requests
+	SEP #$20
+	LDA.w !story_q_valid&$FFFF
+	REP #$20
+	BEQ .gate
 	JSR story_start_queued
-.noqueue
+.gate
+	; 7. Potos gatekeeper (its latch clears whenever Goku leaves Potos)
+	LDA $DC
+	CMP.w #131
+	BEQ .potos
+	SEP #$20
+	STZ.w !story_gate_latched&$FFFF
+	REP #$20
+	STZ.w !story_gate_home&$FFFF
+	BRA .ff
+.potos
 	JSR story_potos_gatekeeper
+.ff
 if defined("STORY_FAST_FORWARD")
 	JSR story_fast_forward
 endif
@@ -1521,14 +1580,33 @@ if defined("STORY_TEST")
 endif
 	RTL
 
+; canAttack for this field frame, evaluated on first use. M16; returns
+; A = 0/1 with Z set when Goku cannot act.
+story_can_act_now:
+	SEP #$20
+	LDA.w !story_can_act_valid&$FFFF
+	BNE .cached
+	INC
+	STA.w !story_can_act_valid&$FFFF
+	REP #$20
+	JSR story_compute_can_act
+	SEP #$20
+	LDA.b #$00
+	ROL
+	STA.w !story_can_act&$FFFF
+.cached
+	LDA.w !story_can_act&$FFFF
+	REP #$20
+	AND.w #$00FF
+	RTS
+
 ; Start the queued request, as native-story.js does at C0:B073.
 story_start_queued:
 	SEP #$20
 	LDA.w !story_q_valid&$FFFF
 	REP #$20
 	BEQ .out
-	LDA.w !story_can_act&$FFFF
-	AND.w #$00FF
+	JSR story_can_act_now
 	BEQ .out
 	SEP #$20
 	STZ.w !story_q_valid&$FFFF
@@ -1612,11 +1690,16 @@ story_init_persist:
 	STA.l !story_p_wished
 	STA.l !story_p_fast
 	; native-story.js restore(): spell grants start from the current slots
+	STA.l !story_p_spell_any      ; A = 0 here
 	LDX.w #$0007
 -	LDA.l $7EE3C8,X
 	STA.l !story_p_spells,X
+	ORA.l !story_p_spell_any
+	STA.l !story_p_spell_any
 	LDA.l $7EE5C8,X
 	STA.l !story_p_spells+8,X
+	ORA.l !story_p_spell_any
+	STA.l !story_p_spell_any
 	DEX
 	BPL -
 	LDA.b #$01
@@ -2115,8 +2198,7 @@ story_potos_gatekeeper:
 	REP #$20
 	AND.w #$00FF
 	BEQ .tick
-	LDA.w !story_can_act&$FFFF
-	AND.w #$00FF
+	JSR story_can_act_now
 	BEQ .tick
 	; repeating the joke must not walk the guard away from his post
 	LDX.w !story_gate_home&$FFFF
@@ -2130,11 +2212,28 @@ story_potos_gatekeeper:
 	STA.l $7E0004,X
 +	STZ.w !story_gate_home&$FFFF
 .tick
-	LDA.w !story_can_act&$FFFF
-	AND.w #$00FF
-	BNE +
+	; Unlatched, nothing can trigger without CF10 >= 10 and local flight:
+	; test those (side-effect free) before canAttack and the guard scan.
+	SEP #$20
+	LDA.w !story_gate_latched&$FFFF
+	REP #$20
+	BNE .act
+	SEP #$20
+	LDA $CF10
+	CMP.b #$0A
+	REP #$20
+	BCS +
 	RTS
-+	; the gate guard: species C4 running event 10B, entity index >= 3
++	LDA.w #!STORY_Q_LOCAL_FLIGHT
+	JSR story_query
+	BNE .act
+	RTS
+.act
+	JSR story_can_act_now
+	BNE .scan
+	RTS
+.scan
+	; the gate guard: species C4 running event 10B, entity index >= 3
 	LDX.w #$0600
 .find
 	LDA.l $7EE000,X

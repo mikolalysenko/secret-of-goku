@@ -445,6 +445,25 @@ behind the hooks (Frieza, Sandship wreck, endings) is outside this module.
   `$33:6000-$33:61FF` for that scene or give story a 512-byte WRAM buffer. A shared `canAttack` flag would replace
   `story_compute_can_act`, which reproduces `mana-mod.js canAttack` from RAM
   plus `ENDING_ACTIVE` (the JS-only `menuTransition` is not modelled).
+- **Import bundles from an older story layout (goku tests, harness):** a
+  browser state keeps live F0–F7 pointers, and any dialogue edit moves the
+  scripts after it (the browser lab discards quick-start caches whose
+  `story.layout` differs for this reason). The idle text-engine pointer
+  `$1D01-$1D03` is read once per frame at `C0:01AD`. On a ROM without the
+  story banks (F0–F7 zero) a stale pointer reads `00`. With them it can land
+  mid-sentence, and the native text engine renders the stale bytes every
+  frame: game logic rises from 16–20k to as much as 58k cycles, with lag
+  frames. The browser mod does exactly the same once `native-story.js` is
+  installed. In `barrier-audit/potos-probe` the pointer `F0:BECE` advances
+  and the hero walks up to y 616 instead of 600, in the browser and on the
+  cartridge alike. 61 of the 334 bundles in `.local/snes-import/` have such a
+  pointer, among them `barrier-audit__potos-probe`, which every goku test
+  imports. With that one pointer moved to a `00` byte (`F0:0000`; the lower
+  halves of F0–F7 are unused), all six goku tests pass on the story branch.
+  Re-export those bundles from states saved under the current layout, or
+  neutralise the pointer after the import in tests: if `$1D03` is F0–F7,
+  `$A170` is 0 and the byte at the pointer is `$50` or more, write
+  `$1D01-$1D02 = 0`.
 - **frieza:** door `3FC` entry override while the Emperor is present
   (`storyRead` returns 36 at `C8:3FF2`; door bytes are read at `C1:E7E8`/`E7F2`)
   needs its own patch site.
