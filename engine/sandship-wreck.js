@@ -175,10 +175,37 @@ export function createSandshipWreck(snes,mod,state){
   result[0]=rgb((v&31)+2+alarm+flicker,(v>>5&31)-alarm*.4+flicker*.5,(v>>10&31)-2-alarm*.5);
   return result;
  };
+ // The wrapper over a whole main-screen scanline, for the compositor
+ // (Ppu.registerLineHook): the same per-pixel arithmetic on BG1/BG2 pixels,
+ // with the flicker computed once per 32-pixel block.
+ const flickers=new Float64Array(8);let lineMask=null,lineWreck=null;
+ const wreckLine=(sub,y,colors,layers)=>{
+  const w=lineWreck,b=w.breach,age=w.age,cut=b?.map===camera.map?lineMask:null;
+  const phase=age%120,alarm=phase<24?Math.sin(phase*Math.PI/24)*4:0;
+  for(let k=0;k<8;k++)flickers[k]=hash(age>>2,k+(y>>5)*8)*2;
+  for(let x=0,at=y*256;x<256;x++){
+   if(layers[x]>1)continue;
+   let v=colors[x];
+   if(cut){
+    const m=cut[at+x];
+    if(m===1){const wx=x+camera.cameraX,wy=y+camera.cameraY,c=sand(wx,wy,age),shade=breachDepth(b,wx,wy)<12?3:0;colors[x]=rgb((c&31)-shade,(c>>5&31)-shade,(c>>10&31)-shade);continue;}
+    if(m===2){colors[x]=((x+y+(age>>3))&3)?rgb(5,3,3):rgb(9,5,3);continue;}
+    if(m===3){colors[x]=((x*3+y+(age>>2))%5<2)?rgb(31,27,10):rgb(31,15,3);continue;}
+    if(m===4)v=rgb((v&31)*.42+1,(v>>5&31)*.36,(v>>10&31)*.34);
+   }
+   const flicker=flickers[x>>5];
+   colors[x]=rgb((v&31)+2+alarm+flicker,(v>>5&31)-alarm*.4+flicker*.5,(v>>10&31)-2-alarm*.5);
+  }
+ };
+ const wreckOp={type:'line',layers:3,mainOnly:true,fn:wreckLine};
  p.registerLineHook?.('getColor',p.getColor,color,(ppu,line)=>{
   if(renderFrame!==mod.frame){renderFrame=mod.frame;renderActive=active();camera=renderActive?mod.status:null;}
   return !renderActive||ppu.mode!==1||line>=224;
- });
+ },{name:'sandship-wreck',plan:(ppu,y,plan)=>{
+  lineWreck=state().wreck;const b=lineWreck.breach;
+  if(b?.map===camera.map){const key=`${camera.cameraX}:${camera.cameraY}:${b.x}:${b.y}`;if(key!==maskKey){maskKey=key;mask=breachMask(b,camera.cameraX,camera.cameraY);}}
+  lineMask=mask;plan.extra.push(wreckOp);plan.skipPost=true;return true;
+ }});
  // The white-out runs through the native fade and door load, so it is
  // applied to the finished line, after brightness and forced blank.
  p.renderLine=function(line){
