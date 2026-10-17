@@ -208,10 +208,11 @@ transition palettes follow the browser's `transform` clip).
 
 - More WRAM would let the palette tracker keep a separate copy for palette 5
   (now it follows one slot at a time) and drop some shared scratch.
-- If the target cartridge is 120 ns, enabling FastROM (`$420D = 1`) would
-  speed every module's code in the `$80-$BF` mirrors by about a third (the
-  game itself runs in `$C0-$FF`/`$00-$3F` and would also speed up; needs an
-  integration decision).
+- The module would run ~25% faster under the core's `CORE_FASTROM` option
+  ([engine notes](engine.md#fastrom)); worth enabling if the combined module
+  budget gets tight.
+- Test builds (`-DGOKU_TRACE`) write a 27-byte trace to `$7E:7F00`
+  (`!RAM_SPARE`); release builds never touch it.
 - `snes/test/goku/actions.lua` writes a test event into its own Mesen copy
   of the ROM (`$E1:7F00`); a sanctioned scratch-event area in the core's
   test build would be tidier.
