@@ -306,7 +306,7 @@ export async function generate({rom,repo,outDir}){
   L.push('title_credit_hdma:');L.push(dbLines(title.hdma));
   L.push('');
   L.push('; Native-encoded names, zero padded to six bytes.');
-  for(const k of ['goku','boy','primm','popoi','randi'])L.push(`title_name_${k}:\n${dbLines(names[k])}`);
+  for(const k of ['goku'])L.push(`title_name_${k}:\n${dbLines(names[k])}`);
   L.push('');
   L.push('; Arrival event bytecode (engine/arrival-event-data.js), relocatable.');
   L.push('title_event_script:');L.push(dbLines(arrival.script));

@@ -8,10 +8,8 @@
 ; again until reset, so later edits are untouched; Start commits the name
 ; through the original code.
 ;
-; Name substitution: dialogue code 57 n copies name n into $A22F through the
-; loop at C0:1860. Slot 3 is virtual: the boy's name kept in the hero slot's
-; tail ($CC06) after Goku's arrival, or Randi when it is missing or the
-; editor default BOY. Unnamed companion slots read as Primm / Popoi.
+; Names in dialogue (code 57 n, displayName) are the story module's view at
+; C0:1866 (story_name_byte); this module only crowns Goku at the impact.
 !title_namebuf  = !RAM_MISC+$20   ; 6 bytes: name being moved by the crown
 !title_namelen  = !RAM_MISC+$26   ; word
 
@@ -80,121 +78,6 @@ title_prefill_name:
 	LDA.l !title_flags
 	ORA.b #$01
 	STA.l !title_flags
-	RTS
-
-; ---------------------------------------------------------------------------
-; C0:1860 (LDA.b #$0C / LDY.w #$0000) jumps here; returns to C0:1875 (PLY / RTS)
-; with the name in $A22F-$A23A, a terminator at $A23B, A=0, X=n*12+12.
-; M8 X16, DB=$7E, X = n*12.
-title_name_copy:
-	REP #$30
-	STX.w !title_tmp2&$FFFF      ; DB = $7E
-	CPX.w #$0030
-	BCC .named
-	JMP .raw                     ; slots 4+: original copy
-.named
-	CPX.w #$0024
-	BNE .slot
-	; slot 3: the boy's name in the hero slot's tail
-	LDX.w #$0006
-	LDA.w #$0006
-	JSR title_gather_name
-	CPY.w #$0000
-	BEQ .randi
-	CPY.w #$0003
-	BNE .pad
-	SEP #$20
-	LDA $A22F
-	CMP.l title_name_boy
-	BNE .pad
-	LDA $A230
-	CMP.l title_name_boy+1
-	BNE .pad
-	LDA $A231
-	CMP.l title_name_boy+2
-	BNE .pad
-.randi
-	REP #$30
-	LDX.w #title_name_randi
-	BRA .default
-.slot
-	LDA.w #$000C
-	JSR title_gather_name
-	CPY.w #$0000
-	BNE .pad
-	LDA.w !title_tmp2&$FFFF
-	CMP.w #$000C
-	BEQ .primm
-	CMP.w #$0018
-	BNE .pad                     ; an empty hero slot stays empty
-	LDX.w #title_name_popoi
-	BRA .default
-.primm
-	LDX.w #title_name_primm
-.default
-	SEP #$20
-	LDY.w #$0000
-.dloop
-	LDA.l title_name_randi&$FF0000,X
-	STA $A22F,Y
-	INX
-	INY
-	CPY.w #$0006
-	BNE .dloop
-.pad
-	SEP #$20
-	LDA.b #$00
-.ploop
-	CPY.w #$000C
-	BEQ .term
-	STA $A22F,Y
-	INY
-	BRA .ploop
-.term
-	STA $A22F,Y                  ; terminator, as the original's STA $A22F,Y
-	REP #$20
-	LDA.w !title_tmp2&$FFFF
-	CLC
-	ADC.w #$000C
-	TAX
-	SEP #$20
-	LDA.b #$00
-	JML $C01875
-.raw
-	SEP #$20
-	LDY.w #$0000
-.rloop
-	LDA $CC00,X
-	STA $A22F,Y
-	INX
-	INY
-	CPY.w #$000C
-	BNE .rloop
-	LDA.b #$00
-	STA $A22F,Y
-	JML $C01875
-
-; Copy name bytes from $CC00+X (DB=$7E) to $A22F until 0/$FF or A bytes.
-; M16 X16 in; returns Y = length, M16.
-title_gather_name:
-	STA.w !title_tmp&$FFFF
-	LDY.w #$0000
-.loop
-	CPY.w !title_tmp&$FFFF
-	BEQ .end
-	SEP #$20
-	LDA $CC00,X
-	BEQ .end16
-	CMP.b #$FF
-	BEQ .end16
-	STA $A22F,Y
-	REP #$20
-	INX
-	INY
-	BRA .loop
-.end16
-	REP #$20
-.end
 	RTS
 
 ; ---------------------------------------------------------------------------

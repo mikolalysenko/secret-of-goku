@@ -166,6 +166,27 @@ title_arrival_state:
 	RTS
 
 ; ---------------------------------------------------------------------------
+; modules_load: a GAME FILE was loaded and core restored (or cleared) the
+; persistent block. Files saved past the sword pull without our sidecar
+; (CF10 != 0, arrival bit clear) already belong to Goku, as the browser's
+; arrival.restore() decides from nativeProgress(): Goku active, no crater.
+title_load:
+	PHP
+	SEP #$20
+	LDA.l $7ECF10
+	BEQ .done
+	LDA.l !persist_title_arrival
+	BIT.b #$01
+	BNE .done
+	ORA.b #$01
+	STA.l !persist_title_arrival
+	LDA.b #$01
+	STA.l !persist_goku_active
+.done
+	PLP
+	RTL
+
+; ---------------------------------------------------------------------------
 ; Pictures on map 128.
 title_arrival_draw:
 	REP #$30
