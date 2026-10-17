@@ -694,26 +694,6 @@ dst_classes_reset:
 	LDX.w #$00FE
 -	STA.l !DK,X
 	DEX : DEX : BPL -
-	LDA.w #0 : STA.l !dk_warm
-	RTS
-
-; dst_classes_warm (field frame, last): compute classes ahead of use while
-; the frame has time, so a beam fired later meets a warm table.
-dst_classes_warm:
-	LDA.l !dk_warm : CMP.w #512 : BCC +
-	RTS
-+	LDA $D0 : AND.w #$00FF : BEQ +            ; an event may change them
-	RTS
-+	JSR dst_budget : BCC .tile
-	RTS
-.tile
-	LDA.l !dk_warm : XBA : AND.w #1 : STA.w !d_cl
-	LDA.l !dk_warm : JSR dst_cell_class
-	LDA.l !dk_warm : INC : STA.l !dk_warm
-	CMP.w #512 : BCS .done
-	AND.w #3 : BNE .tile                     ; the budget every 4 tiles
-	JSR dst_budget : BCC .tile
-.done
 	RTS
 
 ; dst_class_of: A = layer<<8 | tile -> A = class bits (!TK_*).

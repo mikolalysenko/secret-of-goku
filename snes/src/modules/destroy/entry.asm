@@ -17,7 +17,6 @@ destroy_field_frame:
 	JSR dst_walls_work
 	JSR dst_barrier_tick
 	JSR dst_orb_tick
-	JSR dst_classes_warm
 	RTL
 
 ; ---------------------------------------------------------------------------

@@ -203,7 +203,6 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !bb_id    = !DW+$26   ; barrier search extent of the current beam (0: none)
 !bb_len   = !DW+$28
 !bb_half  = !DW+$2A
-!dk_warm  = !DW+$2C   ; next tile class to compute ahead of use (512 = all)
 !dk_d0    = !DW+$2E   ; $D0 seen last frame (recompute after native events)
 !DESTROY_PLAN_LINE = 160  ; the planner stops at this scanline (frame budget)
 ; barrier pending (native-barriers.js pending)
@@ -268,10 +267,18 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !QM_DEMO     = $08
 !QM_BRAZIER  = $10
 
-; Story queries answered here (story/hooks.asm, included last, picks them up).
-!STORY_QUERY_DOOR_GAIA_SHORTCUT = destroy_query_door_gaia
-!STORY_QUERY_DOOR_PANDORA_RUINS_EXIT = destroy_query_door_pandora
-!STORY_QUERY_DOOR_NORTHTOWN_RUINS_SEAL = destroy_query_door_northtown
+; Story queries answered here (story/hooks.asm, included last, picks them
+; up). Story test builds (-DSTORY_TEST) answer every foreign query from their
+; own table instead, so those definitions are kept.
+if not(defined("STORY_QUERY_DOOR_GAIA_SHORTCUT"))
+	!STORY_QUERY_DOOR_GAIA_SHORTCUT = destroy_query_door_gaia
+endif
+if not(defined("STORY_QUERY_DOOR_PANDORA_RUINS_EXIT"))
+	!STORY_QUERY_DOOR_PANDORA_RUINS_EXIT = destroy_query_door_pandora
+endif
+if not(defined("STORY_QUERY_DOOR_NORTHTOWN_RUINS_SEAL"))
+	!STORY_QUERY_DOOR_NORTHTOWN_RUINS_SEAL = destroy_query_door_northtown
+endif
 
 pushpc
 org !DATA_DESTROY

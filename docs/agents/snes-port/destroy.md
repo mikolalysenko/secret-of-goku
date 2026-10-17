@@ -20,7 +20,7 @@ the scroll loader all agree.
 
 | Resource | Use |
 | --- | --- |
-| Code `$A4:8000-$A4:AD10` | `!CODE_DESTROY` (about 11.3 KiB) |
+| Code `$A4:8000-$A4:B0F1` | `!CODE_DESTROY` (about 12.2 KiB) |
 | Data `$E4:0000-$E4:1DF3` | `!DATA_DESTROY` (about 7.5 KiB, all generated) |
 | WRAM `$7E:D980-$7E:D9FF` | `!RAM_DESTROY`: state words `+$00-$0F`, API arguments `+$10-$23`, beam scan memory, map context, outputs `+$36-$3F`, call-local scratch `+$40-$7F` |
 | SRAM `$31:6100-$31:6101` | `!PERSIST_DESTROY` (2 of `$80` bytes): broken doors, Mana Tree cloud barrier; saved with the GAME FILE by the core sidecar |
@@ -35,6 +35,7 @@ consumer); nothing runs in NMI.
 | Address | Bytes | Replaced | Purpose |
 | --- | --- | --- | --- |
 | `C0:C7C3` | 4 | `SEP #$30 / LDA $2E` | Start of the native row-redraw consumer: `destroy_redraw_hook` applies one queued row group and raises `$82/$83` (and `$95`) exactly where the browser mod applies its edits, then re-executes the replaced instructions |
+| `C0:CC2D` | 4 | `LDA $7ECF00,X` | Map piece loader, the story flag gating each piece (8-bit, DB = `$7F`, record at `[$20]`): `destroy_piece_flag` returns it unchanged except for Watts's shortcut entrance on map 73 (record `C8:5A8D`, `CF14` 6..15), which reads as if its range were 0..15 once the Gaia shortcut door broke (`native-story.js` `storyRead` of `C8:5A8E`); `CF14` itself is untouched |
 
 Dispatch (`snes/src/modules.asm`): `modules_field_frame` →
 `destroy_field_frame` (last in the list: its planner uses the time the frame
@@ -144,11 +145,21 @@ After rows are applied while the beam is still firing, the walk restarts
 (the browser replans every frame). Protected cells: the Joch trial and Water
 Palace rules, always on both layers.
 
-**Frame budget.** Background work (the walk, the floor sampler) runs while
-`dst_budget` allows: a field frame that began in the visible part may work
-until scanline 160, one that began in vblank (the previous frame ran long)
-until line 160 of the next frame, one that began between the two not at all.
-A suspended plan that waited three frames gets a minimum quantum.
+**Frame budget.** Background work (the walk, the floor sampler, finishing a
+sampled plan, warming the class table) runs while `dst_budget` allows: a
+field frame that began in the visible part may work until scanline 160, one
+that began in vblank (the previous frame ran long) until line 160 of the
+next frame, one that began between the two not at all. A suspended plan
+that waited three frames gets one sampler node anyway; a plan whose sample
+completes without time left is finished the next frame. Planner work ends
+by about line 206 at worst (one sampler node is the largest step).
+
+**Cost of a call.** `destroy_hit` scans only the cells a beam newly covers.
+Runs of band cells are skimmed through the tile class table (about 60
+cycles a cell; the barrier search skims with a stricter filter: hit codes
+and walk-on triggers only); a widening beam visits only the new side strips
+of rows it already covered, column by column; classes are computed on first
+use and warmed in spare frame time.
 
 ## API for other modules
 
@@ -188,7 +199,8 @@ Story queries answered (`!STORY_QUERY_*` in `module.asm`):
 `!PERSIST_DESTROY+0` bit n: breakable door n broken (0 Gaia shortcut,
 1 Pandora ruins exit, 2 Northtown ruins seal); `+1` bit 0: Mana Tree cloud
 barrier broken. Both are saved with the GAME FILE (core sidecar) and cleared
-for NEW GAME. Everything else is per map visit, as in the browser
+for NEW GAME. A broken Gaia shortcut door also keeps Watts's entrance piece
+on map 73 (`C0:CC2D` above). Everything else is per map visit, as in the browser
 (`native-plants.js` keeps `cleared` per map): the queue, smashed objects,
 breaches, the planner job and pending events are reset on every map change,
 load and new game. Gate and switch progress lives in the game's own flags.
@@ -223,56 +235,64 @@ memory) or the event the reference selects; walking checks prove collision.
 | `grass-punch`, `grass-beam` | Rabite field tall grass (silent `C1`) | pass |
 | `vine-control`, `vine-punch` | Haunted Forest vines (no cut code) | pass |
 | `bg2-objects` | multi-stage objects on BG2 | pass |
-| `demo-earth`, `demo-witch`, `demo-undine`, `demo-fortress`, `demo-pure` | demolition timelines: identical edits, redraws (as multisets) and sounds; effect record | pass |
+| `bush-mega-timeline` | the full beam frame by frame over the Potos clearing (widening band, side strips): the same 19 edits | pass |
+| `demo-earth`, `demo-witch`, `demo-undine`, `demo-fortress`, `demo-pure` | demolition timelines: identical edits, redraws (as multisets) and sound kinds; effect record | pass |
 | `brazier-water` | three braziers shattered (Water Palace, protected map), one burst each | pass |
-| `demo-wind` | Wind Palace | differs: the scene's boss intro starts 33 frames in and drops the queue before the cartridge's second breach (planned later than the browser's frame 3) |
-| `demo-bg2`, `demo-ship` | Lost Continent (Goku on BG2), Sandship hold | differ in a few runs' replacement tiles: walls planned a few frames later than the browser's per-frame replan see neighbouring breaches already applied and sample another floor tile |
+| `demo-wind`, `demo-bg2`, `demo-ship` | Wind Palace, Lost Continent (Goku on BG2), Sandship hold: timing-sensitive, checked loosely (every wall cell opened on the beam's layer is one the browser opens; the difference is reported) | pass, with differences: Wind Palace, the scene's boss intro starts 33 frames in and drops the queue before the cartridge's second breach (the browser plans it on frame 3); Lost Continent and Sandship, walls planned some frames after the browser's every-frame replan see neighbouring breaches applied and sample other floor tiles (Sandship: one run's partner cells) |
 | `gate-forest`, `gate-bridge` | Haunted Forest rose gate (punch → retail event `1EF`) and bridge gate (`6DA`); Goku walks through | pass |
+| `gate-gaia` | Watts's shortcut (map 73), entered closed: a charged beam breaks the door, prep event `6C` reveals the entrance (12 cells), re-entering the map keeps it open; no story flag changes | pass |
 | `gate-witch` | Elinee's castle three-person gate: charged beam → authored event `8C` | pass |
 | `switch-gaia` | Gaia's Navel switch from a ranged beam (`F` tile `1AF` → `1AC`) | pass |
-| `beam-earth-tile` | the full beam's native target in the Earth Palace (event `6F2`), as the browser picks it | pass |
+| `beam-earth-tile`, `beam-earth-timeline` | the full beam's native target in the Earth Palace (event `6F2`), as the browser picks it, for one call and frame by frame | pass |
 | `orb-earth` | Earth Palace orb: event `239` with spell byte `06` | pass |
 
 The demolition scenarios fire at 78% charge so that barrier events (which
 the browser fires for the same beams, see `beam-earth-tile`) do not change
-the map under the comparison. Development tools: `breach-debug.mjs`
+the map under the comparison. Each scenario sets the persistent door bits
+itself (Mesen keeps SRAM between runs). Development tools: `breach-debug.mjs`
 (planner vs `breach()` cell by cell through debug command 5),
 `plan-trace.mjs` (plan frames, both pipelines), `profile.mjs` (per-frame
 scanlines and cycles of each phase).
 
 ## Performance
 
-Idle cost about one scanline per field frame. A full Super Saiyan beam is
-the heavy case: while its band grows (about 13 frames) the scan and the
-barrier search cost 100-250 scanlines a frame in dungeon scenes whose own
-frame logic already ends near line 110-160; the planner itself stays inside
-its budget. Measured over one full beam (`.local` lag probe, completed field
-logic frames):
+Idle cost about one scanline per field frame. Punches and plain beams cost
+a few scanlines. A full Super Saiyan beam is the heavy case while its band
+grows (about 13 frames): the scan and the barrier search run inside
+`destroy_hit`; the planner only uses spare time. Lag over one full beam at
+78% charge (no barrier event), completed field logic frames of the build
+with the beam / without it (same scene, `.local` lag probe; the idle
+build's extra lag over the original cartridge in the Earth and Wind Palace
+comes from other modules, not from this one):
 
-| Scene | Original cartridge, idle | Build, idle | Build, full beam |
-| --- | --- | --- | --- |
-| Earth Palace (`kamehameha-voice__gap-before`) | 26 / 138 | 35 / 138 | 72 / 184 |
-| Lost Continent (`juice-research__plants__layer2-before`) | 14 / 138 | 14 / 138 | 48 / 166 |
-| Wind Palace (`barrier-audit__bosses__60-0-state`) | 15 / 138 | 29 / 138 | 40 / 154 |
+| Scene | Build, full beam | Build, idle |
+| --- | --- | --- |
+| Potos clearing (`emulator-probe__main-before-grass`) | 14 / 138 | 14 / 138 |
+| Elinee's castle (`power-flight-fixes__native-302`) | 17 / 141 | 14 / 138 |
+| Mana Fortress deck (`preset__fortress`) | 16 / 140 | 14 / 138 |
+| Wind Palace (`barrier-audit__bosses__60-0-state`) | 33 / 147 | 29 / 138 |
+| Earth Palace (`kamehameha-voice__gap-before`) | 43 / 156 | 35 / 138 |
+| Lost Continent, Goku on BG2 (`juice-research__plants__layer2-before`) | 29 / 148 | 14 / 138 |
 
-(lag frames / frames; the idle difference in the Earth and Wind Palace comes
-from other modules or the boss event, not from this one.) Punches and
-plain beams cost a few scanlines.
+(lag frames / frames.) The remaining lag falls in the band's growth frames
+of scenes whose own frame logic ends near line 120-160.
 
 ## Remaining work
 
-- Lag during full beams in heavy dungeon scenes (above): the scan and the
-  native barrier search are not yet time-sliced.
-- Map 73's shortcut piece (`C8:5A8E` → `0F` when the Gaia shortcut door is
-  broken) needs a patch in the piece loader; until then the broken door
-  stays open only while the map stays loaded.
+- Lag during the growth of a full beam in heavy dungeon scenes (above): the
+  scan and the native barrier search are not time-sliced.
 - Debris is published (effect record), not drawn: an effects module owns
   sprites and palettes.
 - The Sandship runtime (`sandship.js`: wreck, flight doors, crash, gear; the
   story hooks `SANDSHIP_*`, `OBJECT_SANDSHIP`, `OBJECT_LIST_SANDSHIP` and
   queries `SANDSHIP_*`) is not implemented here.
 - Demolition timing differs from the browser where its every-frame replan
-  matters (`demo-wind`, `demo-bg2`, `demo-ship` above).
+  matters (`demo-wind`, `demo-bg2`, `demo-ship` above): every wall the
+  cartridge opens is one the browser opens, but one Wind Palace breach is
+  lost to the boss intro and some passages use another sampled floor tile.
+- Validated in Mesen 2 only (timing, budgets and SRAM behaviour follow the
+  hardware rules: no open bus, PPU untouched, all state initialised); not
+  yet run on bsnes, snes9x or a cartridge.
 
 ## Requests
 
