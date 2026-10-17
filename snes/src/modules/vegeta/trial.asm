@@ -195,20 +195,43 @@ vg_safe_dy:
 ; modules_field_frame entry (M16/X16, DB = $7E, D = 0).
 vegeta_field_frame:
 	PHP
+	SEP #$20
+	LDA !vg_on
+	CMP.b #!VG_ON
+	BEQ .trial
+	; no trial: nothing to do outside the chamber, unless a combat lock or
+	; the music cue is still to be given back (every field frame of the
+	; game runs this, keep it short)
+	LDA $DD
+	BNE +
+	LDA $DC
+	CMP.b #!VEGETA_CHAMBER_MAP
+	BEQ .room
++	LDA !vg_misc
+	AND.b #$03
+	ORA !vg_music
+	BNE .room
+	PLP
+	RTL
+.trial
 	REP #$30
+	JSR vg_draw
+.room
+	REP #$30
+if defined("VEGETA_TEST")
+	JSR vg_test_mailbox
 	SEP #$20
 	LDA !vg_on
 	CMP.b #!VG_ON
 	REP #$20
 	BNE +
-	JSR vg_draw
+	JSR vg_test_log_tick
 +
-if defined("VEGETA_TEST")
-	JSR vg_test_mailbox
 endif
 	JSR vg_tick
 	JSR vg_locks
 	JSR vg_music
+	JSR vb_flight_target
 	PLP
 	RTL
 
@@ -268,28 +291,34 @@ vg_test_mailbox:
 	BEQ .out
 	CMP.w #1
 	BNE .done
-	LDA.l !vs_dbg_a
-	STA.l !vs_s0
 	LDA.l !vs_dbg_b
+	TAX
+	LDA.l !vs_dbg_a
+	JSR vg_test_log_hit           ; counts the hit in !vs_dbg_n
+	STA.l !vs_s0
+	TXA
 	STA.l !vs_s1
 	JSR vg_hit
 .done
 	SEP #$20
 	LDA.b #0
 	STA.l !vs_dbg_cmd
-	LDA.l !vs_dbg_n
-	INC
-	STA.l !vs_dbg_n
 	REP #$20
 .out
 	RTS
 endif
 
-; modules_load / modules_new_game: no trial survives a load.
+; modules_load / modules_new_game: no trial survives a load. The locks,
+; the music cue and the combat window start clear (WRAM is random at
+; power-on; the field frame's short path relies on them).
 vegeta_reset:
 	PHP
 	REP #$30
 	JSR vg_end
+	SEP #$20
+	STZ !vg_misc
+	STZ !vg_music
+	STZ !vg_cwin
 	PLP
 	RTL
 

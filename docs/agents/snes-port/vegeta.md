@@ -8,9 +8,11 @@ Source: `snes/src/modules/vegeta/`, generator `snes/gen/vegeta.mjs`, tests
 `engine/beam-detonation.js`, `engine/saiyan-palette.js`; gameplay notes in
 [combat.md](../combat.md#vegetas-trial).
 
-Status: **the Time Chamber is native** (map, pavilion, collision, scrolling,
-checked against the browser picture). Vegeta, his AI, the clash and the
-return are in progress (see [Status](#status)).
+Status: **the trial is native**: the Time Chamber (map, pavilion, collision,
+scrolling), Vegeta's sprite, intro, AI, attacks, transformation, the clash
+and the draw, with Goku's real punches, ki and Kamehameha from the combat
+module; every tick of recorded matches equals `joch-trial.js` (see
+[Status](#status)).
 
 ## Timeline (browser behaviour the port follows)
 
@@ -122,6 +124,48 @@ Goku's hits (`vegeta_api_hit`) and the draw keep the browser's order.
   removes 34% of the maximum HP, a loss queues 230/320 on Goku. Goku holds his
   firing pose (`!goku_act` = beam, age 7) under combat's input lock.
 
+### Goku's attacks on Vegeta
+
+In the browser `entities()` replaces actor slot 3 with the trial's custom
+entity (active, species 46, his HP and position) and `hit()` sends its hits
+to `trial.hit()` (no native queue, number or launch). Combat's target scans
+(`cb_targets`) need an active slot, but slot 3 must stay inactive for the
+native engine (the browser clears its bit every tick). The cartridge shows
+the slot to combat's step only:
+
+- Combat's step is the `JSL` at `C0:B0AC` in the field logic. The two calls
+  before it (`C0:B0A6`: `JSR $8B5E` fade, `JSR $DB1E`) move into
+  `vegeta_combat_open` and the two after it (`C0:B0B2`: `JSR $D5C0`,
+  `JSR $B4FE`) into `vegeta_combat_close` (bank-00 subroutines called
+  through the RTL at `00:B294`, as combat's own hook does). The native
+  actors run before (`JSL $02C786` at `C0:B08C`) and after, so only
+  combat's step ever sees the slot active.
+- While `entity()` is non-null (the trial runs, he spawned, not beaten),
+  `vegeta_combat_open` sets `E600` bit 0, clears the pending damage `E7F1`
+  and gives the slot a boss species (84: `mana-mod.js` launches only
+  natives, and only below 84); `E602/E604/E60B` and `E782` (max(1, HP)) are
+  kept by the tick and `hit()` as in the browser. `vegeta_combat_close`
+  restores the flags, species and `E7F0/E7EC` and clears `E7F1`.
+- `!COMBAT_HOOK_DAMAGE = vegeta_combat_damage` (combat's per-hit hook): a
+  hit on slot 3 during the window is `trial.hit(amount)`, melee while
+  combat's action is a punch, and returns 1 when his HP dropped, else 0, so
+  combat's contact test (`after < before`: hit pause, impact spark, `hit`
+  cue, ki first contact, beam pulses) answers as the browser's; the 1 lands
+  in `E7F1`, which the close clears. Once beaten he leaves the target list
+  in the same step. Other actors go to the hook bound before vegeta's
+  module (`!VEGETA_DAMAGE_NEXT`); `bind.asm` refuses to assemble if a later
+  module rebinds the hook.
+- Goku's beam for the clash and the volley cancellation (`vb_goku_beam`):
+  combat's live beam record (`!ER`, kind beam, life > 0) and the beam
+  globals (`!bm_charge/_range/_speed`) with `beamGeometry()`: age
+  = max - life, length = min(range, (age + 1) * speed), half width
+  5 + 14 * min(1, charge / cap) (cap 45 when fired as Super Saiyan, else
+  90) or 80 * min(1, (age + 1) / 6, life / 10) for the full wave, in 8.8.
+  `combat_api_beam` replaces it when combat provides one.
+- Instant Transmission: with the flight module, `vb_flight_target` writes
+  the custom teleport target (`!fl_tp_custom`: kind 3, species 46, his
+  position and terrain) every field frame while `entity()` is non-null.
+
 ### Vegeta's sprite
 
 - 56×40 cells from `decodeVegetaSheet()` (32 frames: base/gold × 16 poses)
@@ -163,7 +207,7 @@ requested `combat_api_beam`).
 | VRAM, map 72 | BG tiles `$0000-$0CEF` (the cave tileset is not used there); OBJ tiles of the inactive clone slots: slot 3 (`$068-$07F`, `$080-$099`, `$0C8/$0D8`, `$0E0-$0F9`: Vegeta's two frame buffers and the echo), slot 4 (`$0A0-$0BB`, `$100-$11B`: the ball) |
 | CGRAM | BG palettes 2-7 through the game's buffer `$7E:0640-$06FF` (map 72); OBJ palette 4 (Vegeta) and 5 (the ball) through `$7E:0780/$07A0` while the trial draws |
 | WRAM | `!RAM_VEGETA` (`$7E:DBC0`, 64 bytes: phase, flags, HP, position, timers, action, sprite buffers, music cue, scratch); map 72's native tables 7F:C000 (ids 70/11), 7F:C808-, 7F:4000 |
-| SRAM | `!SRAM_WORK_SCENE` `$32:6000-$32:6203` while the trial runs: entrance view, beam, shots, bursts, rocks, echoes, the clash record, drawing scratch, logs, the test mailbox. Initialised by `start()`; valid only while `!vg_on` = `$5A` |
+| SRAM | `!SRAM_WORK_SCENE` `$32:6000-$32:6207` while the trial runs: entrance view, beam, shots, bursts, rocks, echoes, the clash record, drawing scratch, logs, the test mailbox, slot 3's bytes held during combat's step; test builds log hits and beams up to `$32:62AF`. Initialised by `start()`; valid only while `!vg_on` = `$5A` |
 | DMA | channel 6 in `vegeta_nmi` after the game's uploads: a changed pose (≤ 640 B), the echo cell, the ball (≤ 768 B), each only with 10+ vblank lines left |
 
 ## Original code patched
@@ -172,6 +216,8 @@ requested `combat_api_beam`).
 | --- | --- | --- | --- |
 | `C0:C4CA` | 4 | `JSL $02A000` | tileset tables of the map being loaded; for map 72 also chamber metatiles, palettes and tiles (`vegeta_tileset_hook`) |
 | `C0:C9F8` | 4 | `REP #$20 / SEP #$10` | after the pieces: map 72's BG2 grid (`vegeta_grid_hook`) |
+| `C0:B0A6` | 6 | `JSR $8B5E / JSR $DB1E` | field logic before combat's step: re-run, then slot 3 opens to combat (`vegeta_combat_open`) |
+| `C0:B0B2` | 6 | `JSR $D5C0 / JSR $B4FE` | after combat's step: slot 3 closes, then re-run (`vegeta_combat_close`) |
 
 ## Tests
 
@@ -183,13 +229,18 @@ requested `combat_api_beam`).
 | `fight` | test ROM (`-DVEGETA_TEST`): door `304` with the full party, the trial from the walk-on event to the draw; scripted walking and four mailbox hits (two melee → counter, an overwhelming blow → transformation, another → the draw). Every tick is recorded (game RAM it reads, its state) and replayed through the browser's own `engine/joch-trial.js` (`replay.mjs`): **2,994 / 2,994 ticks agree** on phase, HP, position, facing, timers, action (kind, age, direction, origin, contact, beam length/width), shots, bursts, rocks, echoes and flags |
 | `clash-win` | the same with a Kamehameha stand-in (the test record `!vs_tb_*` replaces combat's beam) opposing the Galick Gun: lock, focus, struggle with B taps 6 frames apart (38 taps), release won at 96.6%, Vegeta loses 10,880 HP (34%); a second clash on his next beam. Replayed with the clash internals (pressure and shown in 1/500000, taps, last tap, phase, result): **3,284 / 3,284 ticks agree** |
 | `clash-lose` | no mashing: Vegeta's drain and surges win at 3.8%, Goku takes 230: **2,969 / 2,969 ticks agree** |
+| `combat` | the test ROM with **combat's real input**: `fight.lua`'s pilot walks Goku up to Vegeta and punches (B) as a player would; the punches reach him through the slot-3 window and combat's damage hook (12 hits, the kick finisher, two counters), his attacks wear Goku down to the rest route (`025`). Each hit is logged on the cartridge (amount, melee, combat's beam record) and replayed through `trial.hit()` with the beam it saw: **4,554 / 4,554 ticks agree**, including actor slot 3 after every frame (inactive, position, HP and maximum, nothing pending, species) |
+| `combat-clash` | the same pilot also steps back along his lane, charges a Kamehameha (L+Y) during each Galick Gun windup and releases when his wave is out: a **real clash** from combat's beam record ("Push back, Kakarot!"), B mashing wins, the detonation takes 34% and he transforms; Final Flash, the rest route. **3,925 / 3,925 ticks agree** |
 | `chamber` | door `304` from a Potos state (`graphics-audit__party`, `CF3F`=5): VRAM tiles, CGRAM 32-127, BG1 metatiles 70/11, BG2 metatiles and grid equal the generator's outputs; BG1 grid equals `chamberLayout()`; four views (entrance, the steps, mid-room after scrolling, the east border) match the cartridge picture 100% and the browser's floor/seam/border colours 100% (pavilion views 84-86% of all pixels, the rest is palette quantisation of the 1,275-colour pavilion art); the pavilion's front wall and the east border block Goku |
 
 `replay.mjs` hosts the browser module with the recorded RAM: `canFly` is the
 chamber footprint, `mod.status` the camera from Goku's screen position,
-`mod.effects` the stand-in beam with its geometry, radio/sounds/story
-requests are collected; mailbox hits are applied after the tick they follow,
-the story hook before the tick it precedes, as on the cartridge.
+`mod.effects` Goku's beam (rebuilt from combat's raw record with
+`beamProfile`/`beamGeometry`, so the browser's own geometry decides, or the
+stand-in), `cancelCombat()` drops it, radio/sounds/story requests are
+collected; logged hits (combat's or the mailbox's, a ring of four per frame)
+are applied after the tick they follow, the story hook before the tick it
+precedes, as on the cartridge.
 
 ## Status
 
@@ -199,9 +250,11 @@ the story hook before the tick it precedes, as on the cartridge.
 | Story hook and queries (`TRIAL_START`, `TRIAL_ACTIVE`, `TRIAL_PARTY`) | done |
 | Vegeta's sprite, palette, VRAM streaming | done |
 | Intro, AI, attacks, damage, transformation, draw, return request | done: every tick equals `joch-trial.js` (`fight`) |
-| Clash (logic, mash, ball) | done: every tick equals `vegeta-clash.js` (`clash-win`, `clash-lose`); in the game it starts once combat provides Goku's beam (`combat_api_beam`) |
-| Goku's attacks on Vegeta | needs combat's custom-target hook (Requests); tests use the mailbox |
-| Effects, telepathy | bound to fx/ui (beams, orbs, sparks, bursts, embers, aura, detonation, quake/flash; the ten lines); those modules are not merged yet |
+| Clash (logic, mash, ball) | done: every tick equals `vegeta-clash.js` (`clash-win`, `clash-lose`, and from a real Kamehameha in `combat-clash`) |
+| Goku's attacks on Vegeta | done through the slot-3 window and combat's damage hook (`combat`, `combat-clash`); a combat custom-target API would replace the window (Requests) |
+| Instant Transmission to Vegeta | written for flight's `!fl_tp_custom` (flight is not merged here: untested) |
+| Effects | bound to fx (beams, orbs, sparks, bursts, embers, aura, detonation, quake/flash) |
+| Telepathy | bound to ui's `!UI_MSG_JOCH_TRIAL_0..9`; ui is not merged here (the lines are logged only) |
 
 ## API
 
@@ -210,6 +263,8 @@ All `JSL`, M16/X16 in and out, any DB (they set DB = `$7E` themselves).
 | Routine | Contract |
 | --- | --- |
 | `vegeta_api_hit` | Goku's attack landed on Vegeta (`trial.hit`): A16 = damage before Vegeta's damage scale (×0.55 base, ×0.32 Super Saiyan, rounded, at least 1; `$FFFF` = an overwhelming blow), X16 bit 0 = melee (a punch or kick: two within 100 frames start a teleport counter). Out: A16 = HP before, X16 = HP after, C set when it was taken (battle phase, not won, no clash; a live Kamehameha that opposes his beam starts the clash instead). |
+| `vegeta_combat_damage` | combat's `!COMBAT_HOOK_DAMAGE` (A16 = damage, X16 = actor offset; returns A16): slot 3 while the window is open is `hit()`; others are chained |
+| `vegeta_combat_open`, `vegeta_combat_close` | the hijacks at `C0:B0A6` / `C0:B0B2` (not for calling) |
 | `vegeta_story_trial_start` | story hook `TRIAL_START` |
 | `vegeta_q_trial_active`, `vegeta_q_trial_party` | story queries `TRIAL_ACTIVE`, `TRIAL_PARTY` |
 | `vegeta_field_frame`, `vegeta_nmi`, `vegeta_reset` | dispatch (`modules_field_frame`, `modules_field_nmi`, `modules_load`/`modules_new_game`) |
@@ -217,29 +272,37 @@ All `JSL`, M16/X16 in and out, any DB (they set DB = `$7E` themselves).
 State for other modules (read only): `!vg_on` (`$7E:DBC0` = `$5A` while a
 trial exists), `!vg_phase` (`$DBC1`: 0 intro, 1 battle, 2 transform, 3 draw),
 `!vg_hp` (`$DBC6`), `!vg_x`/`!vg_y` (`$DBC8`/`$DBCA`, also in slot 3's
-`$E602/$E604`). Test builds (`-DVEGETA_TEST`) add the mailbox (`$32:61FC`
-command 1 = `hit(amount $32:6200, flags $32:6202)`, `$32:61FD` counts).
+`$E602/$E604`), `!vg_cwin` (`$DBED`: 1 while combat's step sees him in
+slot 3). Test builds (`-DVEGETA_TEST`) add the mailbox (`$32:61FC` command
+1 = `hit(amount $32:6200, flags $32:6202)`) and the hit log: `$32:61FD`
+counts every hit (mailbox or combat), the last four at `$32:6210` (32 bytes
+each: amount, flags, combat's beam record, charge, range, speed), the beam
+record the tick saw at `$32:6290`.
 
 ## Requests
 
-- **combat — custom target.** Vegeta occupies actor slot 3 but the slot is
-  held inactive (the browser replaces the Doppelganger with its own entity),
-  so `cb_targets` never sees him. Wanted: while a custom target is
-  registered, attack boxes (punch, ki, beam, burst) include it at its
-  position and a hit calls its routine instead of the native damage queue
-  (no native number, no launch; beam pulses and the ki first-contact rule as
-  for natives; the impact spark and `impact` sound as `mana-mod.js` does for
-  every hit). Proposed: `combat_api_custom_target` per frame, A = slot (3),
-  X/Y = map position, plus the hit routine's long address; vegeta would call
-  it from its tick while `entity()` is non-null (spawned, battle, not won)
-  with `vegeta_api_hit`. Frieza's custom entity needs the same.
+- **combat — custom target.** The slot-3 window (two hijacks around
+  combat's step, a boss species against the launch) works but leans on
+  combat's internals: `cb_targets`' active/species/HP/dead tests, the
+  launch threshold 84, and `cb_hit` calling the damage hook before it
+  queues. A registered custom target would replace it: attack boxes
+  (punch, ki, beam, burst) include it at its position and a hit calls its
+  routine instead of the native queue (no number, no launch; beam pulses,
+  the ki first contact and the impact spark/sound as for natives). Frieza's
+  custom entity needs the same (frieza.md asks for
+  `!COMBAT_HOOK_VIRTUAL`).
+- **combat — the damage hook is single-owner.** Vegeta binds
+  `!COMBAT_HOOK_DAMAGE` and chains the one bound before its module
+  (`!VEGETA_DAMAGE_NEXT`); frieza binds it unconditionally. When both are
+  merged, include frieza's module before vegeta's (or chain frieza's to
+  `vegeta_combat_damage`); `bind.asm` stops the build otherwise. A chain in
+  combat (several hooks) would remove the ordering rule.
 - **combat — Goku's beam.** `combat_api_beam`: C set while Goku's beam
   effect is live (life > 0); out the palms (x, y), direction (dx, dy), the
   current length and half width (8.8) from `beamGeometry`, and flags (fired
-  as Super Saiyan, full wave). Vegeta's `counterBeam()` (clash start, also
-  from a hit) and the volley cancellation (`beamTouchesShot`) need it;
-  `bind.asm` uses it when `!COMBAT_API_BEAM` is defined (then fills
-  `!vs_gb_*`), else the test stand-in.
+  as Super Saiyan, full wave). Until then `bind.asm` reads combat's beam
+  record and globals (`!ER`, `!er_*`, `!ERK_BEAM`, `!bm_charge/_range/_speed`);
+  with `!COMBAT_API_BEAM` defined it calls the API instead.
 - **combat — input lock.** The draw blocks new input but lets the last wave
   finish (`inputLocked` in `mana-mod.js`); `combat_api_input_lock` cancels
   combat, so the wave ends at once and the draw's first count starts a few
@@ -262,6 +325,15 @@ command 1 = `hit(amount $32:6200, flags $32:6202)`, `$32:61FD` counts).
 - **story.** `OBJECT_TRIAL` (hook 49) is listed for vegeta but is the
   Thanatos trial's Dyluck/Thanatos staging on map 246 (`mod.frieza.trial` in
   `native-story.js`); it belongs to frieza.
-- **debug.** The `trial` preset's remaining differences (`CF0B`, both
-  companions still in the party) are capture timing: the browser captured
-  `?start=trial` before 3DB's opening commands ran, the cartridge after.
+- **debug.** The `trial` preset needs no vegeta hook (`?start=trial` only
+  travels through door `304`; the walk-on event and this module do the
+  rest). Its remaining differences (`CF0B` = 4, both companions out of the
+  party; picture 9% at the capture, 89% 240 frames later, where the rest is
+  the pavilion's palette quantisation) are capture timing: the recipe
+  waits `UNTIL` map 72 and 240 frames, which lands after 3DB's opening
+  commands; the browser captured 240 frames after the travel, before them
+  (its frame 60 already shows the borrowed party). The `GAPS` entry in
+  `snes/test/debug/run.mjs` can name debug's timing instead of vegeta.
+- **flight.** `vb_flight_target` writes `!fl_tp_custom` every field frame
+  after the tick (kind 3, species 46, position, terrain); please read it in
+  the same frame or the next (it is rewritten each frame).

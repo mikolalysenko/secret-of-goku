@@ -15,15 +15,36 @@ const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..')
 
 export function parseRecording(text){
   return text.trim().split('\n').map(line=>{
-    const [frame,dp,goku,slot3,e200,e400,cf3f,gokuApi,vectors,vg,vs,pad]=line.split(' ');
-    const bytes=h=>Uint8Array.from(h.match(/../g)??[],x=>parseInt(x,16));
+    const [frame,dp,goku,slot3,e200,e400,cf3f,gokuApi,vectors,vg,vs,pad,log]=line.split(' ');
+    const bytes=h=>Uint8Array.from(h?.match(/../g)??[],x=>parseInt(x,16));
     return {frame:+frame,dp:bytes(dp),goku:bytes(goku),slot3:bytes(slot3),e200:bytes(e200)[0],e400:bytes(e400)[0],cf3f:bytes(cf3f)[0],
-      gokuApi:bytes(gokuApi),vectors:bytes(vectors),vg:bytes(vg),vs:bytes(vs),pad:parseInt(pad,16)};
+      gokuApi:bytes(gokuApi),vectors:bytes(vectors),vg:bytes(vg),vs:bytes(vs),pad:parseInt(pad,16),log:bytes(log)};
   });
 }
 
 const w16=(b,a)=>b[a]|b[a+1]<<8,s16=(b,a)=>(w16(b,a)<<16)>>16,s8=(b,a)=>(b[a]<<24)>>24;
 const PHASES=['intro','battle','transform','draw'],KINDS=[null,'rush','volley','beam','counter'];
+
+// The test log (module.asm !vs_hl / !vs_tk, recorded from $32:6210): a ring
+// of 4 hits x 32 bytes, then the beam record the tick saw.
+const HIT_RING=0x00,TICK_BEAM=0x80;
+// Goku's Kamehameha as a mana-mod.js effect, rebuilt from combat's beam
+// record (combat/module.asm !er_*) with releaseCharge()'s beamProfile: the
+// browser's own geometry then decides, not the cartridge's.
+export function combatBeam(log,o){
+  if(!log?.length||!(w16(log,o+2)&2))return null;
+  const r=log.subarray(o+4,o+20),f=r[1],sup=!!(f&1),mega=!!(f&2),charge=log[o+20];
+  const strength=Math.min(1,charge/(sup?45:90)),[dx,dy]=[[0,1],[1,0],[-1,0],[0,-1]][r[6]&3];
+  const profile=mega?{width:80,range:640,speed:48}:{width:5+strength*14,range:320,speed:32};
+  return {kind:'beam',x:s16(r,2),y:s16(r,4),dx,dy,life:r[8],max:r[9],super:sup,mega,...profile,
+    cartridge:{range:w16(log,o+22),speed:w16(log,o+24)}};
+}
+// mana-mod.js beamGeometry()
+function beamGeometry(effect){
+  const age=effect.max-effect.life,speed=effect.speed||32;
+  return{length:Math.min(effect.range,(age+1)*speed),speed,taper:effect.mega?44:0,
+    halfWidth:effect.width*(effect.mega?Math.min(1,(age+1)/6,effect.life/10):1)};
+}
 
 // The cartridge's state (vegeta WRAM + SRAM record) in the browser's shape.
 export function cartridgeState(rec){
@@ -122,12 +143,13 @@ export async function replay(recs,{hookAt=[],onFrame=null}={}){
     get canAttack(){
       return mod.nativeField&&r[0xe4]===1&&r[0xe5]===1&&(r[0xe000]&1)&&(r[0xe02c]&1)&&!(r[0xec]&0xfe)&&!(r[0xed]&0x40)&&!r[0xd0]&&!(r[0xe190]&0x70)&&!(r[0xe191]&0xd5)&&r[0xe011]!==0x8d&&r[0xe011]!==0x8e;
     },
-    effects:[],beamGeometry:e=>e?._tb?{length:e._tb.len,halfWidth:e._tb.half,taper:e._tb.mega?44:0,speed:32}:null,knockbacks:[],action:null,frieza:null,
+    effects:[],beamGeometry:e=>e?._tb?{length:e._tb.len,halfWidth:e._tb.half,taper:e._tb.mega?44:0,speed:32}:e?beamGeometry(e):null,knockbacks:[],action:null,frieza:null,
     radio:{say(text){events.push({frame,kind:'say',text});},interrupt(lines){events.push({frame,kind:'say',text:lines[0]});}},
     playSound(name){events.push({frame,kind:'sfx',name});},
     feedback:{pulse(){},burst(){}},
     story:{request(id){events.push({frame,kind:'request',id});return true;}},
-    cancelCombat(){},motion:{reset(){}},
+    // combat's effects end; a test's stand-in beam stays until the test drops it
+    cancelCombat(){mod.effects=mod.effects.filter(e=>e._tb);},motion:{reset(){}},
   };
   const trial=createJochTrial(snes,mod,{loadArt:false});
   const results=[];
@@ -138,23 +160,36 @@ export async function replay(recs,{hookAt=[],onFrame=null}={}){
     r.set(rec.vectors,0x100);
     mod.options.superSaiyan=!!(rec.gokuApi[0]&1);
     ppu.forcedBlank=!!(r[0xe6]&0x80);
-    // Goku's beam: the test stand-in record ($32:61E0) as a mana-mod effect
+    // Goku's beam: combat's live record as the tick saw it, else the test
+    // stand-in record ($32:61E0)
+    const standIn=()=>{
+      const v=rec.vs;
+      if(!v[0x1f0])return [];
+      const tb={x:s16(v,0x1e0),y:s16(v,0x1e2),dx:s16(v,0x1e4),dy:s16(v,0x1e6),len:w16(v,0x1e8),half:w16(v,0x1ea)/256,super:!!v[0x1ec],mega:!!v[0x1ed]};
+      return [{kind:'beam',life:1,x:tb.x,y:tb.y,dx:tb.dx,dy:tb.dy,super:tb.super,mega:tb.mega,_tb:tb}];
+    };
     {
-      const v=rec.vs,on=v[0x1f0];
-      if(on){
-        const tb={x:s16(v,0x1e0),y:s16(v,0x1e2),dx:s16(v,0x1e4),dy:s16(v,0x1e6),len:w16(v,0x1e8),half:w16(v,0x1ea)/256,super:!!v[0x1ec],mega:!!v[0x1ed]};
-        mod.effects=[{kind:'beam',life:1,x:tb.x,y:tb.y,dx:tb.dx,dy:tb.dy,super:tb.super,mega:tb.mega,_tb:tb}];
-      }else mod.effects=[];
+      const beam=combatBeam(rec.log,TICK_BEAM);
+      mod.effects=standIn().length?standIn():beam?[beam]:[];
     }
     trial.tick();
-    // a mailbox hit ran in the next frame's callback, before its tick
+    // hits after this tick (combat's step, then the mailbox in the next
+    // frame's callback), each with the beam it saw, in order
     const next=cartridgeState(recs[i+1]);
-    if(next&&next.dbg.n!==lastDbg){
-      lastDbg=next.dbg.n;
-      mod.action=next.dbg.b&1?{kind:'punch'}:null;
-      trial.hit(trial.entity()??{index:3},next.dbg.a===0xffff?1000000:next.dbg.a);
-      mod.action=null;
-    }else if(next)lastDbg=next.dbg.n;
+    if(next){
+      const log=recs[i+1].log;
+      if(((next.dbg.n-lastDbg)&0xff)>4)events.push({frame,kind:'error',text:`${(next.dbg.n-lastDbg)&0xff} hits in one frame overran the log`});
+      for(let n=(lastDbg+1)&0xff;lastDbg!==next.dbg.n;n=(n+1)&0xff){
+        lastDbg=n;
+        const o=HIT_RING+(n&3)*32,amount=w16(log,o),flags=w16(log,o+2);
+        const beam=combatBeam(log,o);
+        mod.effects=standIn().length?standIn():beam?[beam]:[];
+        mod.action=flags&1?{kind:'punch'}:null;
+        const hit=trial.hit(trial.entity()??{index:3},amount===0xffff?1000000:amount);
+        events.push({frame,kind:'hit',amount,melee:!!(flags&1),beam:!!beam,before:hit?.before,after:hit?.after});
+        mod.action=null;
+      }
+    }
     // the story hook ran in the next frame's event logic, before its tick
     if(hookAt.includes(i+1))trial.onEvent(0x3db);
     if(trial.status?.clash){
@@ -163,6 +198,14 @@ export async function replay(recs,{hookAt=[],onFrame=null}={}){
       trial.clashInput(input);
     }
     const want=browserState(trial),got=cartridgeState(recs[i+1]);
+    // what the trial keeps in actor slot 3 (combat's window must leave it
+    // as the tick did): inactive, his position, HP and maximum, nothing
+    // pending, alive, the Doppel's species
+    if(want?.spawned&&got?.spawned&&(recs[i+1].dp[0xdc]|recs[i+1].dp[0xdd]<<8)===72){
+      const n=recs[i+1].slot3,slot=b=>({active:b(0)&1,x:b(2)|b(3)<<8,y:b(4)|b(5)<<8,terrain:b(0x0b),species:b(0x180),
+        hp:b(0x182)|b(0x183)<<8,max:b(0x184)|b(0x185)<<8,dead:b(0x191)>>7,pending:b(0x1f1)|b(0x1f2)<<8});
+      want.slot3=slot(o=>r[0xe600+o]);got.slot3=slot(o=>n[o]);
+    }
     const d=want||got?diff(got,want):[];
     results.push({i,frame:recs[i+1].frame,diff:d});
     onFrame?.(i,want,got,d);

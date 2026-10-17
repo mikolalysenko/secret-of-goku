@@ -153,19 +153,19 @@ endif
 
 ; Goku's live Kamehameha (mod.effects beam with life > 0): C set and
 ; !vs_gb_x/y (palms), !vs_gb_dx/dy, !vs_gb_len, !vs_gb_half (8.8),
-; !vs_gb_super filled. Needs combat_api_beam (requested); test builds read
-; the stand-in record a test wrote at !vs_tb_*.
+; !vs_gb_super, !vs_gb_mega filled. From combat_api_beam when combat has
+; one (requested), else from combat's beam record (vb_combat_beam); test
+; builds use the stand-in record a test wrote at !vs_tb_* first.
 vb_goku_beam:
 if defined("COMBAT_API_BEAM")
 	JSL combat_api_beam
 	RTS
 else
+if defined("VEGETA_TEST")
 	LDA.l !vs_tb_on
 	AND.w #$00FF
-	BNE +
-	CLC
-	RTS
-+	LDX.w #$000E
+	BEQ .combat
+	LDX.w #$000E
 -	LDA.l !vs_tb_x,X
 	STA.l !vs_gb_x,X
 	DEX
@@ -173,6 +173,14 @@ else
 	BPL -
 	SEC
 	RTS
+.combat
+endif
+if defined("COMBAT_OWNER")
+	JMP vb_combat_beam
+else
+	CLC
+	RTS
+endif
 endif
 vb_goku_beam_live:
 	JMP vb_goku_beam
@@ -695,6 +703,502 @@ endif
 ; A burst record X was created (bursts are drawn per frame through FX_CELL;
 ; nothing to spawn).
 vb_burst_spawn:
+	RTS
+
+; ---------------------------------------------------------------------------
+; Goku's attacks on Vegeta (mana-mod.js entities(): the trial's entity()
+; replaces actor slot 3; hit() sends it to trial.hit()).
+;
+; The native Doppel in slot 3 stays inactive (joch-trial.js clears its bit
+; every tick), so combat's target scans would skip him. Combat's step is
+; the JSL at C0:B0AC; the two calls before it (C0:B0A6) and the two after
+; it (C0:B0B2) are moved into vegeta_combat_open / vegeta_combat_close.
+; Between them slot 3 is shown as the browser's custom entity: active, his
+; position (the tick keeps $E602/$E604/$E60B), HP max(1, hp) ($E782, kept
+; by hit()), nothing pending, and a boss species so no launch moves him.
+; Combat's damage hook (vegeta_combat_damage) sends each hit to hit().
+; Nothing else runs in that window: the native actors run before it
+; (JSL $02C786 at C0:B08C) and see the slot inactive, as in the browser.
+if defined("COMBAT_OWNER")
+if not(stringsequal("!COMBAT_HOOK_DAMAGE", "vegeta_combat_damage"))
+	error "vegeta: !COMBAT_HOOK_DAMAGE was rebound after vegeta/module.asm. Include that module first (vegeta chains the earlier hook through !VEGETA_DAMAGE_NEXT) or chain to vegeta_combat_damage."
+endif
+
+%orig4($C0B0A6, $208B5E20)            ; JSR $8B5E (fade) / JSR $DB1E
+%orig2($C0B0AA, $DB1E)
+%hijack_jsl($C0B0A6, vegeta_combat_open, 6, vegeta)
+%orig4($C0B0B2, $20D5C020)            ; JSR $D5C0 / JSR $B4FE
+%orig2($C0B0B6, $B4FE)
+%hijack_jsl($C0B0B2, vegeta_combat_close, 6, vegeta)
+
+; C0:B0A6: the replaced calls (bank-00 routines ending in RTS return
+; through the RTL at 00:B294), then slot 3 opens to combat. Every field
+; frame runs this pair: without a trial they only clear !vg_cwin.
+vegeta_combat_open:
+	PHK
+	PER .faded-1
+	PEA $B294-1
+	JML $008B5E
+.faded
+	PHK
+	PER .cycled-1
+	PEA $B294-1
+	JML $00DB1E
+.cycled
+	PHP
+	SEP #$20
+	PHA
+	LDA.b #$00
+	STA.l $7E0000|!vg_cwin        ; written every frame before the close
+	LDA.l $7E0000|!vg_on
+	CMP.b #!VG_ON
+	BEQ .trial
+	PLA
+	PLP
+	RTL
+.trial
+	PLA
+	REP #$30
+	PHA
+	PHX
+	PHY
+	PHB
+	PHD
+	PEA $0000
+	PLD
+	PEA $7E7E
+	PLB
+	PLB
+	JSR vg_target_open
+	REP #$30
+	PLD
+	PLB
+	PLY
+	PLX
+	PLA
+	PLP
+	RTL
+
+; C0:B0B2: slot 3 closes again, then the replaced calls (C0:B4FE may
+; leave for a map change through C0:B03F, which resets the stack: the
+; window is closed before it).
+vegeta_combat_close:
+	PHP
+	SEP #$20
+	PHA
+	LDA.l $7E0000|!vg_cwin
+	BEQ .closed
+	PLA
+	REP #$30
+	PHA
+	PHX
+	PHY
+	PHB
+	PHD
+	PEA $0000
+	PLD
+	PEA $7E7E
+	PLB
+	PLB
+	JSR vg_target_close
+	REP #$30
+	PLD
+	PLB
+	PLY
+	PLX
+	PLA
+	PLP
+	BRA .calls
+.closed
+	PLA
+	PLP
+.calls
+	PHK
+	PER .moved-1
+	PEA $B294-1
+	JML $00D5C0
+.moved
+	PHK
+	PER .done-1
+	PEA $B294-1
+	JML $00B4FE
+.done
+	RTL
+
+; entity() is not null: the trial runs, he is in the room, not beaten. C set.
+vg_targetable:
+	JSR vg_active
+	BCC .no
+	SEP #$20
+	LDA !vg_flags
+	AND.b #!VF_SPAWNED|!VF_WON
+	CMP.b #!VF_SPAWNED
+	REP #$20
+	BNE .no
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
+vg_target_open:
+	SEP #$20
+	STZ !vg_cwin                  ; written every frame before the close
+	REP #$20
+	JSR vg_targetable
+	BCC .out
+	SEP #$20
+	LDA !VEGETA_SLOT+$E000
+	STA.l !vs_cw_e600
+	ORA.b #$01
+	STA !VEGETA_SLOT+$E000
+	LDA !VEGETA_SLOT+$E180
+	STA.l !vs_cw_species
+	LDA.b #!VEGETA_CW_SPECIES
+	STA !VEGETA_SLOT+$E180
+	LDA !VEGETA_SLOT+$E1F0
+	STA.l !vs_cw_e7f0
+	LDA !VEGETA_SLOT+$E1EC
+	STA.l !vs_cw_e7ec
+	LDA.b #$01
+	STA !vg_cwin
+	REP #$20
+	STZ !VEGETA_SLOT+$E1F1        ; custom: nothing pending
+.out
+	RTS
+
+vg_target_close:
+	LDA !vg_cwin
+	AND.w #$00FF
+	BEQ .out
+	SEP #$20
+	STZ !vg_cwin
+	LDA.l !vs_cw_e600
+	STA !VEGETA_SLOT+$E000
+	LDA.l !vs_cw_species
+	STA !VEGETA_SLOT+$E180
+	LDA.l !vs_cw_e7f0
+	STA !VEGETA_SLOT+$E1F0
+	LDA.l !vs_cw_e7ec
+	STA !VEGETA_SLOT+$E1EC
+	REP #$20
+	STZ !VEGETA_SLOT+$E1F1        ; combat queued its contact marker here
+.out
+	RTS
+
+; Combat's damage hook (combat/bind.asm cb_bind_damage_hook): JSL with
+; A16 = damage, X16 = actor offset, DB = $7E; returns A16 = the damage
+; combat queues natively. Slot 3 in the window is Vegeta: trial.hit(amount)
+; (melee while combat's action is a punch) and 1 when his HP dropped
+; (combat's contact test is after < before), else 0. Other actors go to the
+; hook bound before this module.
+vegeta_combat_damage:
+	CPX.w #!VEGETA_SLOT
+	BNE .next
+	PHA
+	LDA !vg_cwin
+	AND.w #$00FF
+	BNE .ours
+	PLA
+.next
+if defined("VEGETA_DAMAGE_NEXT")
+	JML !VEGETA_DAMAGE_NEXT
+else
+	RTL
+endif
+.ours
+	PLA
+	PHP
+	PHB
+	PHD
+	PHX
+	PHY
+	REP #$30
+	PEA $0000
+	PLD
+	PEA $7E7E
+	PLB
+	PLB
+	TAY                           ; amount
+	LDX.w #$0000
+	LDA !cb_act
+	AND.w #$00FF
+	CMP.w #!GOKU_K_PUNCH
+	BNE +
+	INX                           ; melee
++
+if defined("VEGETA_TEST")
+	TYA
+	JSR vg_test_log_hit
+endif
+	TYA
+	JSL vegeta_api_hit            ; A = HP before, X = HP after
+	STX !vg_t0
+	CMP !vg_t0
+	BEQ .none
+	BCC .none
+	LDA.w #$0001
+	BRA +
+.none
+	LDA.w #$0000
++	PHA
+	; once beaten he leaves the target list (entity() is null)
+	JSR vg_targetable
+	BCS +
+	SEP #$20
+	LDA !VEGETA_SLOT+$E000
+	AND.b #$FE
+	STA !VEGETA_SLOT+$E000
+	REP #$20
++	PLA
+	PLY
+	PLX
+	PLD
+	PLB
+	PLP
+	RTL
+
+; Goku's live beam from combat's effect records (kind beam, life > 0) and
+; the beam globals, with mana-mod.js beamGeometry(): age = max - life,
+; length = min(range, (age + 1) * speed), half width = 5 + 14 * strength
+; (strength = min(1, charge / (45 Super Saiyan, 90 base)), the form it was
+; fired in) or, for the full wave, 80 * min(1, (age + 1) / 6, life / 10).
+vb_combat_beam:
+	JSR vb_combat_beam_find
+	BCS +
+	RTS
++	LDA.l !ER+!er_x,X
+	STA.l !vs_gb_x
+	LDA.l !ER+!er_y,X
+	STA.l !vs_gb_y
+	PHX
+	LDA.l !ER+!er_dir,X
+	AND.w #$0003
+	ASL
+	ASL
+	TAX
+	LDA.l vb_beam_dirs,X
+	STA.l !vs_gb_dx
+	LDA.l vb_beam_dirs+2,X
+	STA.l !vs_gb_dy
+	PLX
+	SEP #$20
+	LDA.l !ER+!er_flags,X
+	AND.b #!ERF_SUPER
+	STA.l !vs_gb_super
+	LDA.l !ER+!er_flags,X
+	AND.b #!ERF_MEGA
+	STA.l !vs_gb_mega
+	REP #$20
+	; age + 1, life (vg_mul16 / vg_div32 use the vg_t* words)
+	LDA.l !ER+!er_life,X
+	AND.w #$00FF
+	STA.l !vs_gb_life
+	LDA.l !ER+!er_max,X
+	AND.w #$00FF
+	SEC
+	SBC.l !vs_gb_life
+	INC
+	STA.l !vs_gb_age1
+	; length = min(range, (age + 1) * speed)
+	LDX !bm_speed
+	JSR vg_mul16
+	LDA !vm_a1
+	BNE .range
+	LDA !vm_a0
+	CMP !bm_range
+	BCC +
+.range
+	LDA !bm_range
++	STA.l !vs_gb_len
+	LDA.l !vs_gb_mega
+	AND.w #$00FF
+	BEQ .normal
+	; full wave: 256 * 80 * min(1, (age + 1) / 6, life / 10)
+	LDA.l !vs_gb_life
+	CMP.w #10
+	BCC +
+	LDA.w #20480
+	BRA ++
++	ASL : ASL : ASL : ASL : ASL : ASL : ASL : ASL : ASL : ASL : ASL   ; life * 2048
+++	STA.l !vs_gb_half
+	LDA.l !vs_gb_age1
+	CMP.w #6
+	BCS .out
+	LDX.w #20480
+	JSR vg_mul16
+	LDX.w #6
+	JSR vg_div32
+	CMP.l !vs_gb_half
+	BCS .out
+	STA.l !vs_gb_half
+	BRA .out
+.normal
+	; 256 * (5 + 14 * min(charge, cap) / cap)
+	LDA.w #90
+	STA.l !vs_gb_cap
+	LDA.l !vs_gb_super
+	AND.w #$00FF
+	BEQ +
+	LDA.w #45
+	STA.l !vs_gb_cap
++	LDA !bm_charge
+	AND.w #$00FF
+	CMP.l !vs_gb_cap
+	BCC +
+	LDA.l !vs_gb_cap
++	LDX.w #3584
+	JSR vg_mul16
+	LDA.l !vs_gb_cap
+	TAX
+	JSR vg_div32
+	CLC
+	ADC.w #1280
+	STA.l !vs_gb_half
+.out
+	SEC
+	RTS
+
+; X = offset of the first live beam record (combat effects.asm keeps one
+; beam record; a free record has kind 0). C set when found.
+vb_combat_beam_find:
+	LDX.w #$0000
+.find
+	LDA.l !ER+!er_kind,X
+	AND.w #$00FF
+	CMP.w #!ERK_BEAM
+	BNE .next
+	LDA.l !ER+!er_life,X
+	AND.w #$00FF
+	BEQ .next
+	SEC
+	RTS
+.next
+	TXA
+	CLC
+	ADC.w #!ER_SIZE
+	TAX
+	CPX.w #!ER_N*!ER_SIZE
+	BCC .find
+	CLC
+	RTS
+
+; facing 0 down, 1 right, 2 left, 3 up: dx, dy
+vb_beam_dirs:
+	dw 0, 1
+	dw 1, 0
+	dw $FFFF, 0
+	dw 0, $FFFF
+
+if defined("VEGETA_TEST")
+; Test log of combat's live beam: !VS+X+2 |= 2 and the record, charge,
+; range and speed at !VS+X+4 when one is live.
+vb_test_beam_log:
+	STX !vg_t1                    ; entry offset
+	JSR vb_combat_beam_find
+	BCS +
+	RTS
++	STX !vg_t0                    ; record offset
+	LDX !vg_t1
+	LDA.l !VS+2,X
+	ORA.w #$0002
+	STA.l !VS+2,X
+	LDY.w #$0000
+-	TYA
+	CLC
+	ADC !vg_t0
+	TAX
+	LDA.l !ER,X
+	PHA
+	TYA
+	CLC
+	ADC !vg_t1
+	TAX
+	PLA
+	STA.l !VS+4,X
+	INY
+	INY
+	CPY.w #!ER_SIZE
+	BCC -
+	LDX !vg_t1
+	LDA !bm_charge
+	AND.w #$00FF
+	STA.l !VS+20,X
+	LDA !bm_range
+	STA.l !VS+22,X
+	LDA !bm_speed
+	STA.l !VS+24,X
+	RTS
+endif
+endif
+
+if defined("VEGETA_TEST")
+if not(defined("COMBAT_OWNER"))
+vb_test_beam_log:
+	RTS
+endif
+; Hit log entry: A = amount, X = flags (bit0 melee). Preserves A/X/Y.
+vg_test_log_hit:
+	PHA
+	PHX
+	PHY
+	PHA
+	SEP #$20
+	LDA.l !vs_dbg_n
+	INC
+	STA.l !vs_dbg_n
+	REP #$20
+	AND.w #$0003
+	XBA
+	LSR
+	LSR
+	LSR                           ; * 32
+	TAY
+	TXA
+	TYX
+	STA.l !vs_hl+2,X
+	PLA
+	STA.l !vs_hl,X
+	TXA
+	CLC
+	ADC.w #!vs_hl-!VS
+	TAX
+	JSR vb_test_beam_log
+	PLY
+	PLX
+	PLA
+	RTS
+; The beam as the tick sees it (before vg_tick).
+vg_test_log_tick:
+	LDA.w #$0000
+	STA.l !vs_tk+2
+	LDX.w #!vs_tk-!VS
+	JMP vb_test_beam_log
+endif
+
+; Instant Transmission's custom target (flight.md !fl_tp_custom, written
+; every field frame): kind 3 (Vegeta in place of slot 3), species 46, his
+; position and terrain, not airborne.
+vb_flight_target:
+if defined("fl_tp_custom")
+	JSR vg_targetable
+	BCC +
+	SEP #$20
+	LDA.b #3
+	STA.l !fl_tp_custom
+	LDA.b #!VEGETA_SPECIES
+	STA.l !fl_tp_custom+1
+	LDA !vg_terrain
+	STA.l !fl_tp_custom+6
+	LDA.b #0
+	STA.l !fl_tp_custom+7
+	REP #$20
+	LDA !vg_x
+	STA.l !fl_tp_custom+2
+	LDA !vg_y
+	STA.l !fl_tp_custom+4
++
+endif
 	RTS
 
 vegeta_bind_end:

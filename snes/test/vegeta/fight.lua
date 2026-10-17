@@ -3,6 +3,9 @@
 -- module's own state at that moment (= the result of the previous tick),
 -- and the test events (story hook, mailbox hits). Inputs: V_SCRIPT, a list
 -- of {frames, buttons} steps, and V_HITS, {frame offset, amount, melee}.
+-- A step with buttons 'pilot' lets V.pilot() play Goku with the real combat
+-- module: close in and punch, answer his beam with a Kamehameha
+-- (V_PILOT_BEAM), mash B in a clash.
 local recs = {}
 local hookAt = {}
 local function hex(mt, a, n)
@@ -24,8 +27,87 @@ local function record()
     hex(W, 0xDBC0, 0x40),         -- vegeta WRAM
     hex(S, 0x4000, 0x210),        -- vegeta SRAM record ($32:6000)
     string.format('%04x', emu.read(0x7ED702, emu.memType.snesMemory) | (emu.read(0x7ED703, emu.memType.snesMemory) << 8)), -- core_pad
+    hex(S, 0x4210, 0xA0),         -- test log: hit ring, the tick's beam record
   }, ' ')
 end
+-- Goku's sparring (real combat input). Facing follows the last direction
+-- pressed, so he lines up on the short axis first, then turns to Vegeta.
+local P = {t = 0, beam = 'idle'}
+local function towards(dx, dy)
+  if math.abs(dx) >= math.abs(dy) then return dx < 0 and 'left' or 'right' end
+  return dy < 0 and 'up' or 'down'
+end
+function V.pilot()
+  P.t = P.t + 1
+  local gx, gy = V.hero()
+  local vx, vy = H.r16(0x7EDBC8), H.r16(0x7EDBCA)
+  local dx, dy = vx - gx, vy - gy
+  local face = towards(dx, dy)
+  -- a clash: mash B
+  if H.r8(0x7EDBEF) ~= 0 then P.beam = 'idle'; return (P.t % 6 < 2) and 'b' or '' end
+  -- his beam: step back along his lane (the waves must meet more than 16 px
+  -- past the palms), face him, charge (L+Y), release when his wave is out
+  if V_PILOT_BEAM and H.r8(0x7EDBE0) == 3 then
+    local bx = H.r8(0x7EDBE1); if bx >= 128 then bx = bx - 256 end
+    local by = H.r8(0x7EDBE2); if by >= 128 then by = by - 256 end
+    local age = H.r16(0x7EDBE4)
+    local ahead = -dx * bx - dy * by          -- Goku ahead of him on the lane
+    if P.beam == 'idle' or P.beam == 'back' then
+      if ahead < 72 and age < 70 then P.beam = 'back'; return towards(bx, by) end
+      P.beam = 'face'; return towards(-bx, -by)
+    end
+    if P.beam == 'face' then P.beam = 'charge' end
+    if emu.read(0x4009, S) ~= 0 and P.beam == 'charge' then P.beam = 'fired'; return '' end
+    if P.beam == 'charge' then return 'l y' end
+    return ''
+  end
+  P.beam = 'idle'
+  local adx, ady = math.abs(dx), math.abs(dy)
+  local along, across = math.max(adx, ady), math.min(adx, ady)
+  if along <= 34 and across <= 12 then
+    if P.t % 12 == 0 then return face end
+    if P.t % 12 == 2 then return 'b' end
+    return ''
+  end
+  if across > 10 then
+    if adx >= ady then return dy < 0 and 'up' or 'down' end
+    return dx < 0 and 'left' or 'right'
+  end
+  return face
+end
+
+-- V_SHOTS: one screenshot at the first frame of each moment (the effects
+-- drawn through fx: volley orbs, his waves, the clash, the transformation's
+-- aura, a rush)
+local taken = {}
+local function shotOnce(name, cond)
+  if not taken[name] and cond() then taken[name] = H.frame; H.shot(name); H.result('shot_' .. name, H.frame) end
+end
+function V.shots()
+  local act, age = H.r8(0x7EDBE0), H.r16(0x7EDBE4)
+  local tier, phase, phaseAge = H.r8(0x7EDBC4), H.r8(0x7EDBC1), H.r16(0x7EDBD4)
+  local beamOn = emu.read(0x4009, S) ~= 0
+  shotOnce('volley', function()
+    if act ~= 2 then return false end
+    local n = 0
+    for i = 0, 7 do if emu.read(0x4020 + i * 8 + 7, S) ~= 0xFF then n = n + 1 end end
+    return n >= 3
+  end)
+  shotOnce('rush', function() return act == 1 and age == 30 end)
+  shotOnce('galick', function() return tier == 0 and act == 3 and beamOn and age >= 130 end)
+  shotOnce('galick2', function() return tier == 0 and act == 3 and beamOn and age >= 150 end)
+  shotOnce('final', function() return tier == 1 and act == 3 and beamOn and age >= 100 end)
+  shotOnce('final2', function() return tier == 1 and act == 3 and beamOn and age >= 125 end)
+  if V_FX_LOG and act == 3 and beamOn then
+    -- the field's HDMA enable shadow, fx's polygon state and CGRAM 0
+    H.log(string.format('beam f%d age %d tier %d $2C=%02X poly_req=%04X poly_on=%04X', H.frame, age, tier, H.r8(0x7E002C), H.r16(0x31788E), H.r16(0x317890)))
+  end
+  shotOnce('charge', function() return act == 3 and age == 60 end)
+  shotOnce('clash', function() return H.r8(0x7EDBEF) ~= 0 and emu.read(0x6100 - 0x6000 + 0x4000, S) == 2 and H.r16(0x7EDBEF) ~= 0 and emu.read(0x4102, S) == 60 end)
+  shotOnce('clash-lock', function() return H.r8(0x7EDBEF) ~= 0 and emu.read(0x4100, S) == 0 and emu.read(0x4102, S) == 20 end)
+  shotOnce('transform', function() return phase == 2 and phaseAge == 120 end)
+end
+
 function test()
   H.wait(5)
   H.importSnesJs(V.IMPORT .. '/' .. (V_BUNDLE or 'graphics-audit__party'))
@@ -41,6 +123,16 @@ function test()
   for i = 1, 400 do
     if H.r8(0x7E00D0) == 0 and H.r8(0x7EDBC1) == 1 then break end
     if H.r8(0x7E00D0) ~= 0 then H.tap('a', 2, 6) else H.wait(1) end
+  end
+  -- V_PROFILE = {address, ...}: the scanline at each address, per frame
+  -- (profile.txt: frame, then one line per address, -1 when not reached)
+  local prof, profIds, profRow = {}, {}, nil
+  if V_PROFILE then
+    for k, a in ipairs(V_PROFILE) do
+      profIds[k] = emu.addMemoryCallback(function()
+        if profRow and profRow[k] == -1 then profRow[k] = emu.getState()['ppu.scanline'] end
+      end, emu.callbackType.exec, a, a)
+    end
   end
   local start = H.frame
   local hits = V_HITS or {}
@@ -72,11 +164,26 @@ function test()
       end
       -- the stand-in ends when the clash takes it (browser: cancelCombat)
       if H.r8(0x7EDBEF) ~= 0 and emu.read(0x41F0, S) ~= 0 then emu.write(0x41F0, 0, S) end
+      if V_SHOTS then V.shots() end
+      if V_PROFILE then
+        if profRow then prof[#prof + 1] = H.frame .. ' ' .. H.r8(0x7EDBE0) .. ' ' .. table.concat(profRow, ' ') end
+        profRow = {}
+        for k = 1, #V_PROFILE do profRow[k] = -1 end
+      end
       local mash = V_MASH and H.r8(0x7EDBEF) ~= 0 and (H.frame % V_MASH) < 2
-      if mash then H.hold('b', 1)
+      if buttons == 'pilot' then
+        local b = V.pilot()
+        if b ~= '' then H.hold(b, 1) else H.wait(1) end
+      elseif mash then H.hold('b', 1)
       elseif buttons ~= '' then H.hold(buttons, 1) else H.wait(1) end
       if V_UNTIL and V_UNTIL() then break end
     end
+  end
+  if V_PROFILE then
+    for k, a in ipairs(V_PROFILE) do emu.removeMemoryCallback(profIds[k], emu.callbackType.exec, a, a) end
+    local pf = assert(io.open(H_OUT .. '/profile.txt', 'w'))
+    pf:write(table.concat(prof, '\n'))
+    pf:close()
   end
   emu.removeMemoryCallback(tickId, emu.callbackType.exec, V_TICK, V_TICK)
   emu.removeMemoryCallback(hookId, emu.callbackType.exec, V_HOOK, V_HOOK)

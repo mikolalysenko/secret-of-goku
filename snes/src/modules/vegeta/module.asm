@@ -53,7 +53,7 @@ assert !RAM_VEGETA == $7E0000|!VG, "!VG must match !RAM_VEGETA"
 !vg_act_y       #= !VG+$28   ; word
 !vg_contact     #= !VG+$2A   ; word: age of first contact, $FFFF none
 !vg_music       #= !VG+$2C   ; byte: music cue last sent (0 native, 1 vegeta, 2 full power)
-!vg_spare2d     #= !VG+$2D   ; byte (free)
+!vg_cwin        #= !VG+$2D   ; byte: 1 while combat's step sees him in slot 3 (bind.asm)
 !vg_spare2e     #= !VG+$2E   ; byte (free)
 !vg_clash_on    #= !VG+$2F   ; byte: a clash is running (state in SRAM)
 ; sprite / VRAM double buffer (also read by the NMI routine)
@@ -112,6 +112,11 @@ assert !RAM_VEGETA == $7E0000|!VG, "!VG must match !RAM_VEGETA"
 !VS_ROCKS = 6
 !vs_echoes      #= !VS+$0C4  ; !VS_ECHOES x 8: x, y, age (words), frame, flip (bytes)
 !VS_ECHOES = 4
+!vs_gb_age1     #= !VS+$0E4  ; word: vb_combat_beam scratch (age + 1)
+!vs_gb_life     #= !VS+$0E6  ; word
+!vs_gb_cap      #= !VS+$0E8  ; word
+!vs_hit_amount  #= !VS+$0EA  ; word: vg_hit's arguments (amount, flags)
+!vs_hit_flags   #= !VS+$0EC  ; word
 !vs_clash       #= !VS+$100  ; clash record (clash.asm)
 ; drawing scratch (sprite.asm)
 !vs_draw_frame  #= !VS+$180  ; word
@@ -174,6 +179,19 @@ assert !RAM_VEGETA == $7E0000|!VG, "!VG must match !RAM_VEGETA"
 !vs_s6          #= !VS+$1AC
 !vs_s7          #= !VS+$1AE
 !vs_end         #= !VS+$200   ; cleared by vegeta_start (the mailbox args above it are not)
+; slot 3 bytes held while combat's step sees Vegeta there (bind.asm)
+!vs_cw_e600     #= !VS+$204  ; byte: flags
+!vs_cw_species  #= !VS+$205  ; byte
+!vs_cw_e7f0     #= !VS+$206  ; byte
+!vs_cw_e7ec     #= !VS+$207  ; byte
+; test log (VEGETA_TEST builds; snes/test/vegeta/replay.mjs): every hit
+; (mailbox or combat) as a ring of 4 x 32 bytes at !vs_hl indexed by
+; !vs_dbg_n: +0 damage, +2 flags (bit0 melee, bit1 combat beam record),
+; +4 combat's beam record (16 bytes), +20 charge, +22 range, +24 speed.
+; !vs_tk: the beam record as the tick saw it (+2 flags, +4.. as above).
+!vs_hl          #= !VS+$210
+!vs_tk          #= !VS+$290
+!vs_log_end     #= !VS+$2B0
 assert (!vs_echoes+(!VS_ECHOES*8)) <= !vs_clash, "vegeta SRAM layout overlap"
 
 ; Sound cues (the audio module's !AUDIO_SFX_* ids; bind.asm asserts them)
@@ -217,6 +235,18 @@ endif
 if not(defined("STORY_QUERY_TRIAL_PARTY"))
 	!STORY_QUERY_TRIAL_PARTY = vegeta_q_trial_party
 endif
+
+; Goku's attacks on Vegeta: combat's per-hit damage hook (bind.asm
+; vegeta_combat_damage) owns slot 3 while the trial runs and hands every
+; other actor to the hook bound before this module, if any.
+if defined("COMBAT_HOOK_DAMAGE")
+	!VEGETA_DAMAGE_NEXT := !COMBAT_HOOK_DAMAGE
+endif
+!COMBAT_HOOK_DAMAGE = vegeta_combat_damage
+; slot 3's species while combat's step sees him: a boss's (>= 84, not the
+; orb $55), so no launch moves him (mana-mod.js hit(): custom foes return
+; before the knockback)
+!VEGETA_CW_SPECIES = 84
 
 ; Vegeta's OBJ VRAM (sprite.asm): buffers A/B and the echo, first tiles
 !VGB_A_TILE = $080

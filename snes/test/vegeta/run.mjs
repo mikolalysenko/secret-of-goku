@@ -98,10 +98,14 @@ function compareView(shotPath,cam,hero,diffPath){
 
 // A whole match recorded in Mesen and replayed through engine/joch-trial.js:
 // the trial state after every tick must equal the browser's.
-async function fightCase(name,{script,hits,bundle,beam}){
+async function fightCase(name,{script,hits,bundle,beam,pilotBeam,shots,fxLog,profile,check}){
   const {parseRecording,replay}=await import('./replay.mjs');
   const romPath=buildTestRom();
   const extra=beam?{V_BEAM_AGE:beam.age,V_BEAM_LEN:beam.len??200,V_BEAM_HALF:beam.half??12,...(beam.mash?{V_MASH:beam.mash}:{}),...(beam.super?{V_BEAM_SUPER:'true'}:{})}:{};
+  if(pilotBeam)extra.V_PILOT_BEAM='true';
+  if(shots)extra.V_SHOTS='true';
+  if(fxLog)extra.V_FX_LOG='true';
+  if(profile)extra.V_PROFILE=profile(romPath);
   const r=await mesen(name,'fight.lua',{romPath,globals:{V_TICK:sym('vg_tick',romPath),V_HOOK:sym('vegeta_story_trial_start',romPath),V_SCRIPT:script,V_HITS:hits,...(bundle?{V_BUNDLE:bundle}:{}),...extra}});
   const recs=parseRecording(readFileSync(join(r.outDir,'fight.txt'),'utf8'));
   const hookAt=r.results.hook??[];
@@ -111,8 +115,12 @@ async function fightCase(name,{script,hits,bundle,beam}){
   if(!hookAt.length)fails.push('the TRIAL_START hook never ran');
   if(bad.length)fails.push(`${bad.length} of ${results.length} ticks differ from joch-trial.js; first at tick ${bad[0].i} (frame ${bad[0].frame}): ${bad[0].diff.slice(0,4).join('; ')}`);
   const phases=[...new Set(results.map((x,i)=>recs[i+1]).map(rec=>rec.vg[0]===0x5a?['intro','battle','transform','draw'][rec.vg[1]]:'off'))];
+  for(const e of events)if(e.kind==='error')fails.push(e.text);
+  const landed=events.filter(e=>e.kind==='hit');
+  if(check)fails.push(...check({events,landed,recs,results}));
   writeFileSync(join(r.outDir,'replay.json'),JSON.stringify({bad:bad.slice(0,50),events},null,1));
-  return {fails,info:{ticks:results.length,differing:bad.length,phases,events:events.length}};
+  return {fails,info:{ticks:results.length,differing:bad.length,phases,events:events.length,hits:landed.length,
+    taken:landed.filter(e=>e.after<e.before).length,melee:landed.filter(e=>e.melee).length,beamHits:landed.filter(e=>e.beam).length}};
 }
 
 const cases={
@@ -136,6 +144,68 @@ const cases={
       script:[[120,''],[40,'left'],[30,'down'],[60,'right'],[200,''],[60,'up'],[1600,'']],
       hits:[[60,400,1],[70,400,1],[520,65535,0],[1100,65535,0]],
     });
+  },
+  // Goku with the real combat module (fight.lua's pilot): punches reach
+  // Vegeta through combat's damage hook (slot 3 shown to combat's step);
+  // every logged hit replays through joch-trial.js hit() with the beam it saw.
+  async combat(){
+    return fightCase('combat',{
+      script:[[3600,'pilot']],hits:[],shots:true,
+      check:({landed})=>{
+        const f=[];
+        if(landed.filter(e=>e.melee&&e.after<e.before).length<4)f.push(`only ${landed.filter(e=>e.melee&&e.after<e.before).length} punches took HP`);
+        return f;
+      },
+    });
+  },
+  // The same with a Kamehameha against each of his waves: combat's live
+  // beam record (vb_combat_beam) locks the Galick Gun; B mashing wins.
+  async 'combat-clash'(){
+    return fightCase('combat-clash',{
+      script:[[3600,'pilot']],hits:[],pilotBeam:true,shots:true,
+      check:({events})=>{
+        const f=[];
+        if(!events.some(e=>e.kind==='say'&&/Push back/.test(e.text)))f.push('no clash started from a real Kamehameha');
+        return f;
+      },
+    });
+  },
+  // Pictures of his waves (Galick Gun in base form, Final Flash after an
+  // overwhelming blow) and the moments around them, for review against the
+  // browser (no pass/fail beyond the replay).
+  async waves(){
+    return fightCase('waves',{
+      script:[[1500,'']],hits:[[700,65535,0]],shots:true,fxLog:true,
+    });
+  },
+  // CPU budget of the trial: scanlines of vegeta_field_frame and fx_frame
+  // and where the frame's logic ends (00:B077), per frame of the waves run
+  // (profile.txt); lag = frames whose logic did not finish.
+  async budget(){
+    // segments: consecutive points, each reached once per frame
+    const points=process.env.VEGETA_PROFILE?.split(',')??['vegeta_field_frame','vegeta_field_frame_trial','vegeta_field_frame_room','vg_tick','vg_locks','vg_music'];
+    const r=await fightCase('budget',{
+      script:[[1500,'']],hits:[[700,65535,0]],
+      profile:rom=>[...points.map(p=>/^[0-9a-f]+$/i.test(p)?parseInt(p,16):sym(p,rom)),0x00B077],
+    });
+    const rows=readFileSync(join(outRoot,'budget','profile.txt'),'utf8').trim().split('\n').map(l=>l.split(' ').map(Number));
+    const span=(a,b)=>a<0||b<0?null:(b-a+262)%262;
+    const stats=list=>{const v=list.filter(x=>x!=null).sort((a,b)=>a-b);return v.length?`${v[v.length>>1]}/${v[Math.floor(v.length*.9)]}/${v[v.length-1]}`:'-';};
+    const by={};
+    for(const [frame,act,...l] of rows){
+      const k=act===3?'beam':act?'attack':'other',end=l[l.length-1];
+      (by[k]??={seg:points.slice(0,-1).map(()=>[]),end:[],lag:0,frames:0});
+      const b=by[k];b.frames++;
+      if(end<0){b.lag++;continue;}
+      for(let i=0;i+1<points.length;i++)b.seg[i].push(span(l[i],l[i+1]));
+      b.end.push(end);
+    }
+    const info={};
+    for(const [k,b] of Object.entries(by)){
+      info[k]={frames:b.frames,lag:b.lag,end:stats(b.end)};
+      for(let i=0;i+1<points.length;i++)info[k][points[i]+'>'+points[i+1]]=stats(b.seg[i]);
+    }
+    return {fails:r.fails,info:{...r.info,budget:info}};
   },
   async chamber(){
     const r=await mesen('chamber','chamber.lua');

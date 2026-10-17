@@ -776,6 +776,11 @@ vg_hit:
 	JMP .no8
 +
 	REP #$20
+	; the arguments outlive the clash test (its helpers use the !vs_s* words)
+	LDA.l !vs_s0
+	STA.l !vs_hit_amount
+	LDA.l !vs_s1
+	STA.l !vs_hit_flags
 	; a newly released wave can reach him this frame: clash first
 	JSR vg_counter_beam
 	BCC +
@@ -783,19 +788,19 @@ vg_hit:
 	RTS
 +	; damage = max(1, round(amount * scale)): .55 base, .32 Super Saiyan
 	; ($FFFF stands for an overwhelming blow: the browser tests' 1000000)
-	LDA.l !vs_s0
+	LDA.l !vs_hit_amount
 	CMP.w #$FFFF
 	BNE +
 	JMP .scaled
 +	LDA !vg_tier
 	AND.w #$0001
 	BNE .ssj
-	LDA.l !vs_s0
+	LDA.l !vs_hit_amount
 	LDX.w #11
 	LDY.w #20
 	BRA .scale
 .ssj
-	LDA.l !vs_s0
+	LDA.l !vs_hit_amount
 	LDX.w #8
 	LDY.w #25
 .scale
@@ -815,7 +820,7 @@ vg_hit:
 	STA !vg_hurt
 	REP #$20
 	; melee: two in a row within 100 frames start a counter
-	LDA.l !vs_s1
+	LDA.l !vs_hit_flags
 	AND.w #$0001
 	BEQ .noMelee
 	LDA !vg_hp
@@ -877,17 +882,19 @@ vg_hit:
 	BNE +
 	INC
 +	STA.l $7EE782
+	; maximum: Super Saiyan's once he transforms
+	LDA !vg_tier
+	AND.w #$0001
+	BNE .max1
+	LDA !vg_phase
+	AND.w #$00FF
+	CMP.w #!VP_TRANSFORM
+	BEQ .max1
 	LDA.w #!VEGETA_HP0
-	LDX !vg_tier-1
-	CPX.w #$0100
-	BCS +
-	SEP #$20
-	LDX !vg_phase
-	CPX.w #!VP_TRANSFORM
-	REP #$20
-	BNE ++
-+	LDA.w #!VEGETA_HP1
-++	STA.l $7EE784
+	BRA +
+.max1
+	LDA.w #!VEGETA_HP1
++	STA.l $7EE784
 	SEC
 	RTS
 .no8
