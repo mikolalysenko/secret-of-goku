@@ -14,8 +14,10 @@
 
 const actKey=f=>`${f.act??'-'}/${f.age??'-'}/${f.combo??'-'}/${f.pause|0}/${f.charge|0}/${f.ssj?1:0}`;
 function runs(t,key){
-  const out=[];let last=null;
-  for(const f of t){const k=key(f);if(k===null)continue;if(k!==last){out.push({k,i:f._i});last=k;}}
+  // i: frame of the run's first record; gap: frames since the record before
+  // it (a lagging cartridge frame covers several browser frames)
+  const out=[];let last=null,prev=null;
+  for(const f of t){const k=key(f);if(k===null)continue;if(k!==last){out.push({k,i:f._i,gap:prev===null?1:f._i-prev});last=k;}prev=f._i;}
   return out;
 }
 
@@ -27,7 +29,10 @@ function matchSequence(name,js,cart,key,{slack=3,maxSkip=2}={}){
     while(k<a.length&&a[k].k!==s.k)k++;
     if(k>=a.length){failures.push(`${name}: cartridge state ${s.k} (frame ${s.i}) never seen in the browser`);break;}
     const skip=k-j-(matched?1:0);
-    if(matched&&skip>maxSkip)failures.push(`${name}: ${skip} browser states skipped before ${s.k} (frame ${s.i})`);
+    // one browser state per frame at most: a cartridge frame n vblanks after
+    // the last record may skip n states (its steps count from the logic's
+    // start, the record from its end), and maxSkip for input latency
+    if(matched&&skip>Math.max(maxSkip,s.gap))failures.push(`${name}: ${skip} browser states skipped before ${s.k} (frame ${s.i}, ${s.gap} frames after the last record)`);
     if(Math.abs(a[k].i-s.i)>slack)failures.push(`${name}: ${s.k} at cartridge frame ${s.i}, browser frame ${a[k].i}`);
     skipped+=Math.max(0,skip);matched++;j=k;
   }

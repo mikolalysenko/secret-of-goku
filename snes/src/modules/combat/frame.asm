@@ -66,7 +66,7 @@ cb_hook_logic:
 ; menus and doors pause combat anyway).
 cb_logic_frame:
 	JSR cb_ensure_init
-	JSR cb_cache_active
+	JSR cb_field_gate
 	SEP #$20
 	LDA !cb_world
 	STZ !cb_world
@@ -74,9 +74,7 @@ cb_logic_frame:
 	BEQ +
 	LDA !cb_vblanks               ; back from world flight: no catch-up
 	STA !cb_vb_last
-+	JSR cb_session_track
-	JSR cb_stats_upkeep
-	JSR cb_gate
++	JSR cb_stats_upkeep
 	LDA !cb_vblanks
 	SEC
 	SBC !cb_vb_last
@@ -90,7 +88,10 @@ cb_logic_frame:
 	REP #$20
 	LDA !cb_vblanks
 	STA !cb_vb_last
-	STZ !cb_spare                 ; injections of every step
+	STZ !cb_inj_all                 ; injections of every step
+	JSR cb_idle_frame
+	BCC .step
+	RTS
 .step
 	; each step gets the pad of its own vblank (the browser's per-frame
 	; input): vblank = last - (steps left - 1)
@@ -115,7 +116,7 @@ cb_logic_frame:
 	JSR cb_read_input
 	JSR cb_goku_frame
 	LDA !cb_inject
-	TSB !cb_spare
+	TSB !cb_inj_all
 	LDA !cb_pad
 	STA !cb_pad_prev
 	LDA !cb_in
@@ -124,7 +125,161 @@ cb_logic_frame:
 	DEC !cb_steps
 	REP #$20
 	BNE .step
-	JMP cb_publish
+	JSR cb_publish
+	JMP cb_note_quiet
+
+; A field frame with nothing to run (most frames): Goku active, no action,
+; charge, effect, launch, focus, hit, reaction, quake or breakable status, no
+; combat button (B Y A X L) in any of its vblanks, the same map and nothing
+; left to publish. Does exactly what its steps and cb_publish would do there
+; (clock, pads, masks, the power upkeep, facing) at a fraction of the cost.
+; C set when the frame was handled.
+cb_idle_frame:
+	SEP #$20
+	LDA !cb_active
+	AND !cb_quiet                 ; (both 0 / 1)
+	BNE .active
+.no8
+	REP #$20
+.no
+	CLC
+	RTS
+.active
+	LDA !GOKU_ACT_ADDR            ; another module's action
+	BNE .no8
+	LDA $E011                     ; ordinary hurt poses start hit tracking
+	CMP.b #$8D
+	BEQ .no8
+	CMP.b #$8E
+	BEQ .no8
+	LDA !goku_mode                ; a reaction mode cb_publish would clear
+	CMP.b #!GOKU_K_DEFLECT
+	BEQ .no8
+	CMP.b #!GOKU_K_RESIST
+	BEQ .no8
+	REP #$20
+	LDA $E190
+	AND.w #$6170                  ; breakable statuses, poison and sleep
+	BNE .no
+	LDA $DC
+	CMP !cb_map
+	BNE .no
+	; no combat button in the pads of this frame's vblanks
+	LDA !cb_vb_last
+	AND.w #$0003
+	ASL
+	TAX
+	LDA !cb_steps
+	AND.w #$00FF
+	DEC
+	BNE .pads
+	LDA.l !PADH,X
+	BRA .padsOr
+.pads
+	LDA !cb_steps
+	AND.w #$00FF
+	STA !cb_t0
+	LDA !cb_vb_last
+	STA !cb_t1
+	STZ !cb_t2
+-	LDA !cb_t1
+	AND.w #$0003
+	ASL
+	TAX
+	LDA.l !PADH,X
+	TSB !cb_t2
+	DEC !cb_t1
+	DEC !cb_t0
+	BNE -
+	LDA !cb_t2
+.padsOr
+	AND.w #!IN_B|!IN_Y|!IN_A|!IN_X|!IN_L
+	BEQ .idle
+	CLC
+	RTS
+.idle
+	; the steps: clock, the last vblank's pad (no menu filter: nothing is
+	; held), the gate's mask plus B while Goku can attack, nothing injected
+	LDA !cb_steps
+	AND.w #$00FF
+	PHA
+	CLC
+	ADC !cb_frame
+	STA !cb_frame
+	PLA
+	SEP #$20
+	CLC
+	ADC !cb_phase
+	STA !cb_phase
+	STZ !cb_steps
+	STZ !cb_ext_kind
+	REP #$20
+	LDA !cb_vb_last
+	AND.w #$0003
+	ASL
+	TAX
+	LDA.l !PADH,X
+	STA !cb_raw
+	STA !cb_pad
+	STA !cb_in
+	STA !cb_pad_prev
+	STA !cb_in_prev
+	STZ !cb_panel
+	STZ !cb_inject
+	STZ !cb_recovering
+	LDA !cb_basemask
+	STA !cb_mask
+	LDA !cb_can
+	AND.w #$00FF
+	BEQ +
+	LDA.w #!IN_B
+	TSB !cb_mask
++	JSR cb_power_stats
+	JSR cb_facing_from_native
+	SEC
+	RTS
+
+; After a full logic frame: is combat's own state idle (no action, charge,
+; effect, launch, focus, hit, reaction, quake, recovery, block or pending
+; publish)? cb_idle_frame then only checks the game's side.
+cb_note_quiet:
+	STZ !cb_quiet
+	SEP #$20
+	LDA !cb_act
+	ORA !cb_charging
+	ORA !cb_tap
+	ORA !cb_queued
+	ORA !cb_blast_cd
+	ORA !cb_quake
+	ORA !cb_react
+	ORA !cb_rec_pend
+	ORA !cb_blocked
+	ORA !cb_ki_blk
+	ORA !cb_pow_blk
+	ORA !cb_hr_tier
+	ORA !cb_pub_kind
+	BNE .out8
+	LDA !cb_form
+	CMP !cb_form_pub
+	BNE .out8
+	REP #$20
+	LDA !cb_fx_mask
+	ORA !cb_kb_mask
+	ORA !cb_power
+	ORA !cb_held
+	ORA !cb_menu_held
+	ORA !cb_inlock
+	ORA !cb_charge
+	BNE .out
+	LDA !cb_rec_map
+	INC                           ; no recovery record ($FFFF)
+	BNE .out
+	INC !cb_quiet
+.out
+	RTS
+.out8
+	REP #$20
+	RTS
 
 ; modules_field_frame (M16/X16, DB = $7E, D = 0): the frame's input requests
 ; for the core filter, energy beds, King Kai's charge policy, effects.
@@ -137,15 +292,21 @@ combat_field_frame:
 	BNE .out                      ; the logic hook has not run yet
 	; never hide a button combat injects (X routed to native Y while Y is
 	; ki): the core applies a mask to two reads but an injection to one
-	LDA !cb_spare
+	LDA !cb_inj_all
 	EOR.w #$FFFF
 	AND !cb_mask
 	TSB.w !core_pad_mask&$FFFF
-	LDA !cb_spare
+	LDA !cb_inj_all
 	TSB.w !core_pad_inject&$FFFF
 	JSR cb_bind_loops
 	JSR cb_bind_charge_remark
-	JSR cb_effects_draw
+	; effects: live records, a charge or an action (the aura and orb)
+	LDA !cb_fx_mask
+	BNE +
+	LDA !cb_act
+	AND.w #$00FF
+	BEQ .out
++	JSR cb_effects_draw
 .out
 	REP #$30
 	RTL
@@ -183,6 +344,7 @@ cb_nmi_vblank:
 combat_world_frame:
 	REP #$30
 	JSR cb_ensure_init
+	STZ !cb_quiet
 	SEP #$20
 	LDA.b #$01
 	STA !cb_world
@@ -204,6 +366,7 @@ combat_world_frame:
 combat_menu_frame:
 	REP #$30
 	JSR cb_ensure_init
+	STZ !cb_quiet
 	SEP #$20
 	LDA.b #$01
 	STA !cb_sess
@@ -329,6 +492,128 @@ cb_menu_active:
 .yes
 	REP #$20
 	RTS
+
+; ---------------------------------------------------------------------------
+; The field frame's gate in one pass: cb_cache_active, cb_session_track,
+; cb_compute_can and cb_gate inline (same results). Exit M16.
+cb_field_gate:
+	SEP #$20
+	STZ !cb_active
+	STZ !cb_fieldv
+	STZ !cb_can
+	STZ !cb_gc
+	STZ !cb_menuflag
+	STZ !cb_basemask
+	STZ !cb_basemask+1
+	LDA.l !persist_goku_active
+	BEQ +
+	LDA !goku_ctl
+	AND.b #!GOKU_CTL_SUPPRESS
+	BNE +
+	INC !cb_active
++	REP #$20
+	LDA $0101
+	CMP.w #$C0A8
+	BNE .vec
+	LDA $0105
+	CMP.w #$C1CF
+	BNE .vec
+	SEP #$20
+	INC !cb_fieldv
+.vec
+	SEP #$20
+	; menu session (cb_session_track)
+	LDA $EC
+	AND.b #$0C
+	BNE .sessOn
+	BIT $ED
+	BVS .sessOn
+	LDA !cb_fieldv
+	BEQ .sessKeep
+	LDA $2C
+	BNE .sessKeep
+	LDA $EC
+	AND.b #$FE
+	BNE .sessKeep
+	STZ !cb_sess
+	BRA .sessKeep
+.sessOn
+	LDA.b #$01
+	STA !cb_sess
+.sessKeep
+	; a native menu owns the input
+	LDA !cb_sess
+	BNE .menu
+	LDA $EC
+	AND.b #$0C
+	BNE .menu
+	BIT $ED
+	BVC .noMenu
+.menu
+	INC !cb_menuflag
+.noMenu
+	LDA !cb_active
+	BEQ .done
+	; on foot A is flight speed, never the dash
+	LDA !cb_fieldv
+	BEQ .noA
+	LDA $EC
+	AND.b #$FE
+	ORA $D0
+	BNE .noA
+	LDA.b #!IN_A
+	STA !cb_basemask
+.noA
+	; player 1 owns Goku: Y is ki
+	LDA $E02C
+	AND.b #$01
+	BEQ .done
+	STA !cb_gc
+	LDA.b #!IN_Y>>8
+	STA !cb_basemask+1
+	; canAttack (cb_compute_can): X/L/R are combat's
+	LDA !cb_fieldv
+	BEQ .done
+	LDA !cb_lock
+	ORA !cb_lock+1
+	ORA !cb_sess
+	ORA $D0
+	BNE .done
+	LDA $EC
+	AND.b #$FE
+	BNE .done
+	BIT $ED
+	BVS .done
+	LDA $E4
+	CMP.b #$01
+	BNE .done
+	LDA $E5
+	CMP.b #$01
+	BNE .done
+	LDA $E000
+	LSR
+	BCC .done
+	LDA $E011                     ; native hurt poses 8C-8F
+	CMP.b #$8C
+	BCC +
+	CMP.b #$90
+	BCC .done
++	LDA $E190
+	AND.b #$70
+	BNE .done
+	LDA $E191
+	AND.b #$D5
+	BNE .done
+	INC !cb_can
+	LDA.b #!IN_X|!IN_L|!IN_R
+	TSB !cb_basemask
+.done
+	REP #$20
+	LDA !cb_inlock
+	BEQ +
+	LDA.w #$FFF0
+	TSB !cb_basemask
++	RTS
 
 ; ---------------------------------------------------------------------------
 ; mana-mod.js canAttack: Goku active, settled field, player 1 owns Goku, no

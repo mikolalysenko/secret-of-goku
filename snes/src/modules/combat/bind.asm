@@ -110,15 +110,14 @@ if defined("AUDIO_IDS")
 	RTS
 +	; focus amount 0-256 (powerCharge / 96) and charge strength 0-256
 	LDA !cb_power
-	XBA
-	LDX.w #$0000
--	CMP.w #96
+	CMP.w #96
 	BCC +
-	SBC.w #96
-	INX
-	BRA -
-+	STX !cb_t0                    ; focus
-	JSR cb_beam_strength_live
+	LDA.w #96
++	ASL
+	TAX
+	LDA.l combat_focus256,X
+	STA !cb_t0                    ; focus
+	JSR cb_bind_strength
 	STA !cb_t1                    ; strength
 	SEP #$20
 	LDA !cb_act
@@ -237,31 +236,6 @@ cb_bind_cap255:
 	BCS +
 	LDA.w #1
 +	RTS
-; charge strength 0-256 of the running charge
-cb_beam_strength_live:
-	LDA !cb_charge
-	AND.w #$00FF
-	XBA
-	LDX.w #$0000
-	PHA
-	LDA !cb_form
-	AND.w #$00FF
-	BEQ .base
-	PLA
--	CMP.w #45
-	BCC +
-	SBC.w #45
-	INX
-	BRA -
-.base
-	PLA
--	CMP.w #90
-	BCC +
-	SBC.w #90
-	INX
-	BRA -
-+	TXA
-	RTS
 endif
 
 ; ---------------------------------------------------------------------------
@@ -633,30 +607,6 @@ endif
 	RTS
 
 ; charge strength 0-256
-cb_bind_strength:
-	LDA !cb_charge
-	AND.w #$00FF
-	XBA
-	LDX.w #$0000
-	PHA
-	LDA !cb_form
-	AND.w #$00FF
-	BEQ .base
-	PLA
--	CMP.w #45
-	BCC +
-	SBC.w #45
-	INX
-	BRA -
-.base
-	PLA
--	CMP.w #90
-	BCC +
-	SBC.w #90
-	INX
-	BRA -
-+	TXA
-	RTS
 
 cb_bind_fx_flash:
 if defined("FX_IMPACT")

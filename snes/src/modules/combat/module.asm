@@ -155,6 +155,8 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
 !cb_up_act     = !CB+$CF   ; byte: cb_active at the last stats upkeep pass
 !cb_sa_wr      = !CB+$D0   ; word: E188 / E189 (strength, agility) after the last stats upkeep
 !cb_pub_kind   = !CB+$D2   ; byte: action kind combat last wrote to !goku_act (0 none)
+!cb_quiet      = !CB+$D3   ; word: combat's own state is idle (set by a full logic frame,
+                           ; cleared by anything else that may change it: APIs, hooks, menus)
 !cb_d2         = !CB+$D6   ; word: burst: squared distance of the target
 !cb_mq         = !CB+$D8   ; 4 words: math scratch ($D8-$DF)
 !cb_mq1        = !CB+$DA
@@ -175,7 +177,7 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
 !cb_bx         = !CB+$F8   ; word: burst: target x - Goku x
 !cb_by         = !CB+$FA   ; word: burst: target y - Goku y
 !cb_bslot      = !CB+$FC   ; word: burst: actor offset in the loop
-!cb_spare      = !CB+$FE
+!cb_inj_all    = !CB+$FE   ; word: buttons injected by any step of this field frame
 !CB_END        = !CB+$100
 
 ; action flags (cb_act_fl)
@@ -267,6 +269,15 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
 if not(defined("STORY_TEST"))
 	!STORY_HOOK_EQUIP_CONFISCATE = combat_equip_confiscate
 	!STORY_QUERY_EQUIP_WEIGHTED = combat_q_weighted
+endif
+
+; Debug scene select: combat answers its preset hook kinds (api.asm) for
+; every preset unless another module owns the ANY slot (debug's test builds
+; log every hook themselves).
+if defined("DEBUG_HOOK_FORM")
+	if not(defined("DEBUG_PRESET_HOOK_ANY"))
+		!DEBUG_PRESET_HOOK_ANY = combat_debug_hook
+	endif
 endif
 
 ; Audio cue ids (snes/gen/audio.mjs SHOTS order; bind.asm asserts them

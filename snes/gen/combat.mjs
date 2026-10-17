@@ -75,6 +75,18 @@ export async function generate({rom,repo,outDir}){
     lines.push(`combat_beam_across_${ssj?'ssj':'base'}: ; floor(halfWidth + 8) of a normal beam`,...chunk(limit,16).map(l=>`\tdb ${db(l)}`));
     lines.push(`combat_beam_width16_${ssj?'ssj':'base'}: ; beam half width x16 (drawing)`,...chunk(w16,16).map(l=>`\tdw ${dw(l)}`));
   }
+  // Strength 0-256 = floor(min(charge, cap) * 256 / cap) (destroy's arg_str,
+  // King Kai and the energy beds), and the focus aura floor(power * 256 / 96).
+  for(const ssj of [false,true]){
+    const cap=ssj?45:90,list=[];
+    for(let c=0;c<=cap;c++)list.push(Math.floor(c*256/cap));
+    lines.push(`combat_strength_${ssj?'ssj':'base'}: ; floor(charge * 256 / ${cap})`,...chunk(list,16).map(l=>`\tdw ${dw(l)}`));
+  }
+  {
+    const list=[];
+    for(let p=0;p<=96;p++)list.push(Math.floor(p*256/96));
+    lines.push('combat_focus256: ; floor(powerCharge * 256 / 96)',...chunk(list,16).map(l=>`\tdw ${dw(l)}`));
+  }
   // Full SSJ wave: halfWidth = 80*min(1,(age+1)/6,life/10), life = 64-age after
   // the tick. 3*halfWidth is an integer; floor(halfWidth) for the hit lane.
   {

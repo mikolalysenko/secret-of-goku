@@ -13,6 +13,7 @@ macro cb_api_enter()
 	PEA $7E7E
 	PLB
 	PLB
+	STZ !cb_quiet
 	PLA
 endmacro
 macro cb_api_leave()
@@ -41,17 +42,17 @@ combat_api_state:
 	REP #$30
 	LDA !cb_can
 	AND.w #$0001
-	STA !cb_spare
+	STA !cb_t0
 	LDA !cb_charging
 	AND.w #$00FF
 	BEQ +
 	LDA.w #$0002
-	TSB !cb_spare
+	TSB !cb_t0
 +	LDA !cb_form
 	AND.w #$00FF
 	BEQ +
 	LDA.w #$0004
-	TSB !cb_spare
+	TSB !cb_t0
 +	LDA !cb_act_fl
 	AND.w #!AF_FULL
 	BEQ +
@@ -59,18 +60,18 @@ combat_api_state:
 	AND.w #$00FF
 	BEQ +
 	LDA.w #$0008
-	TSB !cb_spare
+	TSB !cb_t0
 +	LDA !cb_act
 	AND.w #$00FF
 	CMP.w #!GOKU_K_BEAM
 	BNE +
 	LDA.w #$0010
-	TSB !cb_spare
+	TSB !cb_t0
 +	LDA !cb_act
 	AND.w #$00FF
 	TAY
 	LDX !cb_charge
-	LDA !cb_spare
+	LDA !cb_t0
 	PLB
 	RTL
 
@@ -230,6 +231,7 @@ combat_q_weighted:
 ; Core save/load hooks.
 combat_new_game:
 	JSR cb_ensure_init
+	STZ !cb_quiet
 	JSR cb_cancel_combat_quiet
 	SEP #$20
 	STZ !cb_form
@@ -239,6 +241,7 @@ combat_new_game:
 	RTL
 combat_load:
 	JSR cb_ensure_init
+	STZ !cb_quiet
 	JSR cb_cancel_combat_quiet
 	JSR cb_launch_clear
 	SEP #$20
@@ -254,3 +257,81 @@ combat_load:
 	STA !cb_map
 	STA !cb_rec_map
 	RTL
+
+; ---------------------------------------------------------------------------
+; Debug scene select (docs/agents/snes-port/debug.md): the combat calls a
+; preset's browser recipe makes. JSL with A16 = kind, X16 = preset,
+; Y16 = payload offset in bank !DEBUG_PAYLOAD_BANK (count, then key / value
+; word triples), DB = $7E, D = 0. CANCEL_COMBAT: mod.cancelCombat();
+; FORM: options.superSaiyan; POWER_INTRO: superShown (the first
+; transformation reveal was seen; the flight hint is the UI's). Other kinds
+; are not combat's. Carry clear = done.
+if defined("DEBUG_HOOK_FORM")
+combat_debug_hook:
+	%cb_api_enter()
+	PHA
+	JSR cb_ensure_init
+	PLA
+	CMP.w #!DEBUG_HOOK_CANCEL_COMBAT
+	BNE +
+	JSR cb_cancel_combat
+	BRA .done
++	CMP.w #!DEBUG_HOOK_FORM
+	BNE +
+	LDA.w #!DEBUG_KEY_SUPER_SAIYAN
+	JSR cb_debug_value
+	BCC .done
+	SEP #$20
+	AND.b #$01
+	STA !cb_form
+	STA !goku_form
+	REP #$20
+	BRA .done
++	CMP.w #!DEBUG_HOOK_POWER_INTRO
+	BNE .done
+	LDA.w #!DEBUG_KEY_SUPER_SHOWN
+	JSR cb_debug_value
+	BCC .done
+	TAX
+	SEP #$20
+	LDA.l !pc_flags
+	AND.b #$FF^!PCF_REVEALED
+	CPX.w #$0000
+	BEQ +
+	ORA.b #!PCF_REVEALED
++	STA.l !pc_flags
+	REP #$20
+.done
+	%cb_api_leave()
+	CLC
+	RTL
+
+; A16 = payload key: A16 = its value and C set, or C clear when absent.
+cb_debug_value:
+	STA !cb_t0
+	TYX
+	SEP #$20
+	LDA.l !DEBUG_PAYLOAD_BANK<<16,X
+	STA !cb_t1
+	INX
+-	LDA !cb_t1
+	BEQ .none
+	LDA.l !DEBUG_PAYLOAD_BANK<<16,X
+	CMP !cb_t0
+	BEQ .found
+	INX
+	INX
+	INX
+	DEC !cb_t1
+	BRA -
+.found
+	REP #$20
+	LDA.l (!DEBUG_PAYLOAD_BANK<<16)+1,X
+	SEC
+	RTS
+.none
+	REP #$20
+	LDA.w #$0000
+	CLC
+	RTS
+endif

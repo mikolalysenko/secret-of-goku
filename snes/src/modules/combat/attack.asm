@@ -536,26 +536,65 @@ cb_scale_ease:
 
 ; A16 * cb_mq -> cb_mq2:cb_mq1 (unsigned 32-bit). Preserves X, Y.
 cb_mul16:
-	STA !cb_mq3
-	PHY
-	STZ !cb_mq1
-	STZ !cb_mq2
-	LDY.w #16
-.bit
-	ASL !cb_mq1
-	ROL !cb_mq2
-	ASL !cb_mq
-	BCC .skip
-	LDA !cb_mq1
+	; four 8x8 products on the CPU multiplier ($4202/$4203 -> $4216, ready
+	; 8 cycles after the $4203 write; the game's interrupt handlers never
+	; use it, like the game's own field code)
+	STA !cb_mq3                   ; b
+	SEP #$20
+	LDA !cb_mq                    ; al
+	STA.l $004202
+	LDA !cb_mq3                   ; bl
+	STA.l $004203
+	NOP : NOP : NOP : NOP
+	REP #$20
+	LDA.l $004216
+	STA !cb_mq1                   ; al*bl
+	SEP #$20
+	LDA !cb_mq3+1                 ; bh
+	STA.l $004203
+	NOP : NOP : NOP : NOP
+	REP #$20
+	LDA.l $004216
+	STA !cb_mq2                   ; al*bh
+	SEP #$20
+	LDA !cb_mq+1                  ; ah
+	STA.l $004202
+	LDA !cb_mq3                   ; bl
+	STA.l $004203
+	NOP : NOP : NOP : NOP
+	REP #$20
+	LDA.l $004216                 ; ah*bl
 	CLC
-	ADC !cb_mq3
+	ADC !cb_mq2
+	STA !cb_mq2                   ; m = al*bh + ah*bl, carry = bit 16
+	LDA.w #$0000
+	ROL
+	STA !cb_mq                    ; bit 16 of m
+	SEP #$20
+	LDA !cb_mq3+1                 ; bh
+	STA.l $004203                 ; ah*bh (read below, long after)
+	REP #$20
+	LDA !cb_mq2                   ; low word += (m & $FF) << 8
+	AND.w #$00FF
+	XBA
+	CLC
+	ADC !cb_mq1
 	STA !cb_mq1
-	BCC .skip
-	INC !cb_mq2
-.skip
-	DEY
-	BNE .bit
-	PLY
+	LDA !cb_mq2                   ; high word = (m >> 8) + carry
+	XBA
+	AND.w #$00FF
+	ADC.w #$0000
+	STA !cb_mq2
+	LDA !cb_mq                    ; + bit 16 of m (<< 8)
+	XBA
+	CLC
+	ADC !cb_mq2
+	STA !cb_mq2
+	LDA.l $004216                 ; + ah*bh
+	CLC
+	ADC !cb_mq2
+	STA !cb_mq2
+	STZ !cb_mq
 	RTS
 
 ; ---------------------------------------------------------------------------
@@ -999,29 +1038,36 @@ cb_beam_tables:
 	dw combat_beam_damage_ssj, combat_beam_damage_ssj_gi
 
 ; Strength of the live beam, 0-256 (charge * 256 / cap).
+; strength 0-256 of the running charge (King Kai, energy beds, the orb)
+cb_bind_strength:
+	LDA !cb_charge
+	AND.w #$00FF
+	BRA cb_strength
 cb_beam_strength:
 	LDA !bm_charge
 	AND.w #$00FF
-	XBA                           ; *256
-	LDX.w #$0000
-	PHA
+; A16 = charge: A16 = floor(min(charge, cap) * 256 / cap), cap 90 / 45 (SSJ).
+cb_strength:
+	TAX
 	LDA !cb_form
 	AND.w #$00FF
 	BEQ .base
-	PLA
--	CMP.w #45
+	CPX.w #45
 	BCC +
-	SBC.w #45
-	INX
-	BRA -
-.base
-	PLA
--	CMP.w #90
-	BCC +
-	SBC.w #90
-	INX
-	BRA -
+	LDX.w #45
 +	TXA
+	ASL
+	TAX
+	LDA.l combat_strength_ssj,X
+	RTS
+.base
+	CPX.w #90
+	BCC +
+	LDX.w #90
++	TXA
+	ASL
+	TAX
+	LDA.l combat_strength_base,X
 	RTS
 
 ; ---------------------------------------------------------------------------
@@ -1261,7 +1307,13 @@ cb_beam_frame:
 	STA !cb_t3                    ; floor(halfWidth)
 	STZ !cb_t1
 .geom
-	; the map: plants, rocks, gates and switches under the beam
+	; the map (plants, rocks, gates and switches under the beam) and the
+	; drawing take the field frame's last step only: destroy_hit is once per
+	; frame per attack, and the cells a beam covers only grow
+	LDA !cb_steps
+	AND.w #$00FF
+	CMP.w #2
+	BCS .catchUp
 	LDA !cb_t2
 	STA.l !da_len
 	LDA !cb_t3
@@ -1279,6 +1331,7 @@ cb_beam_frame:
 	ADC.w #2
 	JSR cb_destroy_attack
 	JSR cb_fx_beam_draw
+.catchUp
 	JSR cb_targets
 	LDA !ag_list
 	STA !cb_td

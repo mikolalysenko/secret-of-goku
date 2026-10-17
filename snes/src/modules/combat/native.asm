@@ -392,7 +392,11 @@ cb_receive:
 +	CLC
 	ADC.l $7E0000|!cb_t2
 	DEC
-	LDX.w #$0000
+	CMP.l cb_receive_capdiv,X     ; at least cap * divisor: the cap
+	BCC +
+	LDA.l $7E0000|!cb_t3
+	BRA .scaled
++	LDX.w #$0000
 -	CMP.l $7E0000|!cb_t2
 	BCC +
 	SEC
@@ -403,15 +407,18 @@ cb_receive:
 	BNE +
 	LDA.w #1
 +	CMP.l $7E0000|!cb_t3
-	BCC +
+	BCC .scaled
 	LDA.l $7E0000|!cb_t3
-+	STA.l $7EE1F1
+.scaled
+	STA.l $7EE1F1
 .record
 	; the hit (recovery window) and a resisting pose for ordinary hits
 	LDA.l $7E00DC
 	STA.l $7E0000|!cb_hr_map
 	LDA.l $7E0000|!cb_vblanks
 	STA.l $7E0000|!cb_hr_frame
+	LDA.w #$0000
+	STA.l $7E0000|!cb_quiet       ; combat's state changed outside its frame
 	SEP #$20
 	LDA.l $7E0000|!cb_t1
 	STA.l $7E0000|!cb_hr_tier
@@ -439,6 +446,8 @@ cb_receive_div:                       ; ordinary base, ordinary SSJ, boss base, 
 	dw 20,50,4,8
 cb_receive_cap:
 	dw 12,5,80,40
+cb_receive_capdiv:                    ; cap * divisor
+	dw 240,250,320,320
 
 ; C0:514B (bank C0): the physical damage resolver for target X, attacker
 ; Y. Super Saiyan deflects two of every three ordinary contacts (base form
@@ -527,6 +536,10 @@ cb_parry:
 	BRA .face
 +	LDA.w #2
 .face
+	PHA
+	LDA.w #$0000
+	STA.l $7E0000|!cb_quiet       ; combat's state changed outside its frame
+	PLA
 	SEP #$20
 	STA.l $7E0000|!cb_react_face
 	LDA.b #!GOKU_K_DEFLECT
@@ -858,17 +871,27 @@ cb_hook_item_target:
 ; (2 in Super Saiyan), 2 / 1 px per movement step. $1E/$1F hold the step's
 ; signed-magnitude velocity, $10 the moving actor.
 ; C0:D651 hook (bind.asm). Replaced: SEP #$20 / LDA $1F / ORA $1E.
+; Every moving actor passes here: only an ordinary hit being tracked
+; (cb_hr_tier 1) takes the full check.
 combat_hook_move_vector:
+	SEP #$20
+	LDA.l $7E0000|!cb_hr_tier
+	DEC
+	BNE +
 	JSL combat_recoil_vector
 	SEP #$20
-	LDA $1F
++	LDA $1F
 	ORA $1E
 	RTL
 ; C0:D890 hook (bind.asm). Replaced: SEP #$20 / CPX #$0600.
 combat_hook_move_commit:
+	SEP #$20
+	LDA.l $7E0000|!cb_hr_tier
+	DEC
+	BNE +
 	JSL combat_recoil_commit
 	SEP #$20
-	CPX.w #$0600
++	CPX.w #$0600
 	RTL
 
 ; combat_recoil_vector / combat_recoil_commit: callable from flight's own
