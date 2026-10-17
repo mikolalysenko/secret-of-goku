@@ -198,11 +198,13 @@ export function createArrival(snes,mod){
     if(cy>=0){
       let any=false;const x0=Math.max(0,craterX),x1=Math.min(256,craterX+96);craterLine.fill(0);
       for(let x=x0;x<x1;x++){const v=craterTinted[cy*48+((x-craterX)>>1)];craterLine[x]=v;any||=v!==0;}
+      craterPaint.x0=x0;craterPaint.x1=x1;
       if(any)plan.extra.push(craterPaint);
     }
     if(py>=0){
       const pod=saiyanPodFrames[2];let any=false;const x0=Math.max(0,craterX+48),x1=Math.min(256,craterX+48+pod.width);podLine.fill(0);
       for(let x=x0;x<x1;x++){const v=pod.pixels[py*pod.width+x-craterX-48];podLine[x]=v;any||=v!==0;}
+      podPaint.x0=x0;podPaint.x1=x1;
       if(any)plan.extra.push(podPaint);
     }
     plan.skipPost=true;return true;

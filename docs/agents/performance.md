@@ -73,6 +73,10 @@ The waterfall row is what phones felt. In the iOS Safari simulator, playing at t
 
 A bitset compositor (resolved pixels as 32-bit words) was tried and dropped. It gained only 2–3% in Chrome on translucent scenes and was slower in Node's V8.
 
+Release 0.2.3 skips the main screen when the outermost effect paints all of it (`Ppu.coverOp`). It also memoizes the Sandship breach mask in world space, caches wrapper chains between scanlines, and specializes the translucent math and tile loops. Against 0.2.2 in the same session: orbit ×1.28, space ×1.22, the waterfall after the arrival ×1.12, the Sandship wreck ×1.13, the status page ×1.09. Map decoration (the crater and pod, the deck scars, the Sandship breach) is placed from BG1's scroll, not Goku's actor position, so it stays on its tiles while scrolling, during quakes and in low flight.
+
+Tried and dropped: exact O(1) batches of the APU catch-up additions (per-binade increments) ran 7% slower than the 10-iteration loop they replaced.
+
 At 4× CPU throttling, a proxy for phones and CI runners, the 30 Hz title-music check went from 35 frames/s with 8 underruns to a steady 60 frames/s with none. In real iOS Safari 26.5 (simulator), with an extra 20 ms of main-thread work per frame, file select dropped to 45 frames/s on the old build but holds 60 frames/s with zero underruns now. Holding R to fast-forward a cutscene is capped at 12×; it ran at about 3× on the old build under the same load and about 8× now.
 
 ## Audio streaming
