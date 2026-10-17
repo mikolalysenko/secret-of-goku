@@ -178,6 +178,11 @@ goku_hud_dma:
 	ASL                      ; form * 8 bytes (4 tile words)
 	TAX
 	PLA
+	PLB
+; A16 = VRAM word address of the top-left tile, X = offset of a portrait's
+; four tile words in goku_portrait_tiles (top row, then the bottom row at
+; +$100). Channel 7. M16 X16; any DB.
+goku_portrait_dma:
 	PHA
 	STA.l $002116
 	LDA.l goku_portrait_tiles+0,X
@@ -192,7 +197,6 @@ goku_hud_dma:
 	JSR goku_dma_tile7
 	LDA.l goku_portrait_tiles+6,X
 	JSR goku_dma_tile7
-	PLB
 	RTS
 
 ; DMA one 32-byte tile (A16 = global tile index) to the current VRAM address

@@ -9,12 +9,16 @@
 //            reversion with their per-frame palettes; cell override
 //   ring     the boy's ring marker (bank-1 tiles 0A/0B/1A/1B) is Goku's head
 //            in either form; the girl's and sprite's markers stay native
+//   menu     Status and Action Grid figure (both forms, blink, Goku off)
+//   file     GAME FILE faces and the save confirmation (save from Potos)
+//   load     the title's GAME FILE faces after a reset
 //   actions  all 51 native player animations x 2 forms (GOKU_TRACE build),
 //            replayed through engine/goku-animation.js (difftest.mjs)
 //   api      every pose request (punch combos, charge, beam, blast, teleport,
 //            ready, focus, transform/revert, deflect/resist, hover, gap
 //            flight, ceiling escape, takeoff, landing), replayed the same way
-// plus browser-mod reference frames for the field walk (jsref.mjs).
+// plus browser-mod reference frames for the field walk (jsref.mjs) and the
+// menus (menuref.mjs).
 //   node snes/test/goku/run.mjs [test ...] [--no-ref]
 // ROM: $SNES_ROM or dist/snes/secret-of-goku.sfc. Outputs: .local/snes-test/goku/
 import {spawnSync} from 'node:child_process';
@@ -54,7 +58,7 @@ function prelude(rom){
   }
   return `SYM={${Object.entries(sym).map(([k,v])=>`${k}=0x${v.toString(16)}`).join(',')}}\nGOKU_IMPORT=${JSON.stringify(importRoot)}\n`+readFileSync(join(here,'lib.lua'),'utf8')+'\n';
 }
-const tests=[['field',romSrc],['status',romSrc],['forms',romSrc],['ring',romSrc],['actions',traceRom],['api',traceRom],['budget',romSrc]].filter(([t])=>existsSync(join(here,`${t}.lua`)));
+const tests=[['field',romSrc],['status',romSrc],['forms',romSrc],['ring',romSrc],['menu',romSrc],['file',romSrc],['load',romSrc],['actions',traceRom],['api',traceRom],['budget',romSrc]].filter(([t])=>existsSync(join(here,`${t}.lua`)));
 const results=[];
 for(const[t,src]of tests){
   if(!want(t))continue;
@@ -85,6 +89,15 @@ if(!args.includes('--no-ref')&&want('field')){
     const c=spawnSync(process.execPath,[join(here,'compare.mjs'),join(outRoot,'field'),join(outRoot,'field-js'),join(outRoot,'field-compare.png')],{cwd:repo,encoding:'utf8'});
     console.log('goku field vs browser mod:',(c.stdout.trim().split('\n').pop()??''),'->',join(outRoot,'field-compare.png'));
   }
+}
+// Browser-mod reference for the menus (same states and inputs, menuref.mjs).
+if(!args.includes('--no-ref')&&(want('menu')||want('file'))){
+  const {menuRef}=await import('./menuref.mjs');
+  const read=t=>{try{return JSON.parse(readFileSync(join(outRoot,t,'results.json'),'utf8'))[t]??null;}catch{return null;}};
+  const r=await menuRef({outRoot,local:join(mainCheckout(),'.local'),cart:{menu:want('menu')?read('menu'):null,file:want('file')?read('file'):null}});
+  for(const l of r.lines)console.log('goku menu vs browser mod:',l);
+  if(r.failures.length){results.push({test:'menu-ref',ok:false,failures:r.failures});for(const f of r.failures)console.log('   ',f);}
+  else if(r.lines.length)console.log('goku menu vs browser mod: agree ->',join(outRoot,'menu-compare.png'));
 }
 writeFileSync(join(outRoot,'summary.json'),JSON.stringify(results,null,1));
 process.exit(results.every(r=>r.ok)?0:1);
