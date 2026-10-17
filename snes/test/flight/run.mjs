@@ -68,15 +68,15 @@ if(want('landing')){
   if(!want('classify')||!existsSync(testRom))build(testRom,['-DFLIGHT_TEST=1']);
   const t0=Date.now();
   const res=await landings({bundles:LANDING_BUNDLES,rom:testRom,outRoot:join(outRoot,'landing')});
-  let queries=0,found=0,bad=0,scenes=0;const failures=[];
+  let queries=0,found=0,bad=0,scenes=0,exits=0,caught=0,roofs=0;const failures=[];
   for(const r of res){
     if(r.skipped)continue;
     if(r.error){failures.push(`${r.name}: ${r.error}`);continue;}
-    scenes++;queries+=r.queries;found+=r.found;bad+=r.bad;
+    scenes++;queries+=r.queries;found+=r.found;bad+=r.bad;exits+=r.exits;caught+=r.exitHits;if(r.roofStable)roofs++;
     if(r.bad||r.moved)failures.push(`${r.name} (map ${r.map}): ${r.bad} mismatches, moved ${r.moved} ${JSON.stringify(r.examples.slice(0,2))}`);
   }
   const pass=!failures.length;ok&&=pass;
-  results.push({test:'landing',ok:pass,ms:Date.now()-t0,failures,note:` ${scenes} scenes, ${queries-bad}/${queries} Instant Transmission queries (${found} landings) equal to native-teleport.js`});
+  results.push({test:'landing',ok:pass,ms:Date.now()-t0,failures,note:` ${scenes} scenes, ${queries-bad}/${queries} Instant Transmission queries (${found} landings) equal to native-teleport.js; ${exits} opening-exit probes (${caught} caught) equal to the browser's D84C hook; roof colours equal in ${roofs} scenes with a still palette`});
 }
 
 // address of a flight routine in the ROM under test (its .sym file)

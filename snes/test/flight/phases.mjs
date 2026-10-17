@@ -36,7 +36,7 @@ if(focus){
   buckets=`FOCUS=${JSON.stringify(focus)}\nBUCKETS={${labels.map((l,i)=>`{${JSON.stringify(l.name)},0x${l.addr.toString(16)},0x${(labels[i+1]?.addr??0xa40000).toString(16)}}`).join(',')}}\n`;
 }
 const show=(process.argv.find(a=>a.startsWith('--frames='))?.slice(9)??'').split(',').filter(Boolean).map(Number);
-const lua=v=>Array.isArray(v)?`{${v.map(lua).join(',')}}`:v&&typeof v==='object'?`{${Object.entries(v).map(([k,x])=>`${k}=${lua(x)}`).join(',')}}`:typeof v==='string'?JSON.stringify(v):String(v);
+const lua=v=>Array.isArray(v)?`{${v.map(lua).join(',')}}`:v&&typeof v==='object'?`{${Object.entries(v).map(([k,x])=>`${/^\d+$/.test(k)?`[${k}]`:k}=${lua(x)}`).join(',')}}`:typeof v==='string'?JSON.stringify(v):String(v);
 const test=`SC=${lua(sc)}\n${show.length?`SHOW={${show.map(n=>`[${n}]=true`).join(',')}}\n`:''}PHASES={${phases.join(',')}}\n${buckets}IMPORT=${JSON.stringify(join(mainCheckout(),'.local/snes-import')+'/')}\n`+readFileSync(join(here,'lib.lua'),'utf8')+'\n'+readFileSync(join(here,'debug_phases.lua'),'utf8');
 const cart=privateRom(rom,'flight-dev');
 const r=await runMesen({rom:cart,test,outDir:join(repo,'.local/snes-test/flight/phases',name),state:join(checkpointDir(),'waterfall.mss')});

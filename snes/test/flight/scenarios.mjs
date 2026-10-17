@@ -39,6 +39,15 @@ export const scenarios=[
   // never starts its event; Goku lands on the far side.
   {name:'whip-fly',fixture:'graphics-audit__party',enter:{map:313,x:12,y:38},
     steps:[{n:20},{b:['a','right'],n:16},{b:['right'],n:6},{n:20}]},
+  // event-barriers.spec.mjs: flight passes over the Pandora castle guards
+  // (NPC pass-through) without changing the castle story flags.
+  {name:'pandora-guards',fixture:'graphics-audit__party',enter:{map:266,x:5,y:17,flags:{18:0,19:6}},
+    steps:[{b:['a','up'],n:40},{n:30}]},
+  // Opening field exits: flying south out of Potos beside the path's
+  // passage (over its bank, x within two tiles) takes its door (2) as
+  // walking through it does. 'restore' drops the fixture's saved anchor.
+  {name:'potos-exit',fixture:'graphics-audit__party',enter:{map:131,x:33,y:38},prep:['clearActors','restore'],
+    steps:[{n:10},{b:['a','right'],n:9},{b:['a','down'],n:40},{n:90}]},
   // Potos river banks and fences (town flight).
   {name:'potos-river',fixture:'graphics-audit__party',enter:{map:131,x:18,y:22},prep:['clearActors'],
     steps:[{n:10},{b:['a','right'],n:40},{n:10},{b:['a','down'],n:40},{n:10},{b:['a','left'],n:40},{n:20}]},

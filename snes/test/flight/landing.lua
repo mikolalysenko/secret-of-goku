@@ -71,6 +71,45 @@ function test()
   local r = assert(io.open(H_OUT .. '/roof.json', 'w'))
   r:write(H.json({palette = pal, stone = H.r16(MAIL + 2), highlight = H.r16(MAIL + 4), stable = same}))
   r:close()
+  -- opening exits (maps 128-131): every position on a 4-px grid around each
+  -- exit with each of the 8 unit directions at speeds 1, 6 and 8
+  local exits = {}
+  if EXITS then
+    local map = H.r16(0x7E00DC)
+    for _, e in ipairs(EXITS) do
+      if e.map == map then
+        for y = e.y * 16 - 48, e.y * 16 + 63, 4 do
+          for x = e.x * 16 - 48, e.x * 16 + e.n * 16 + 47, 4 do
+            for _, v in ipairs({{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, -1}, {6, 0}, {0, 6}, {-6, 0}, {0, -6}, {8, 8}, {-8, 8}}) do
+              if x >= 0 and y >= 0 then
+                local function sm(n) if n < 0 then return 0x80 | -n end return n end
+                exits[#exits + 1] = {x = x, y = y, vx = v[1], vy = v[2], vel = sm(v[1]) | (sm(v[2]) << 8)}
+              end
+            end
+          end
+        end
+      end
+    end
+    for i = 1, #exits, 16 do
+      local n = math.min(16, #exits - i + 1)
+      for j = 0, n - 1 do
+        local q, b = exits[i + j], MAIL + 0x10 + j * 8
+        H.w16(b, q.x); H.w16(b + 2, q.y); H.w16(b + 4, q.vel)
+      end
+      local done2 = H.r16(MAIL + 6)
+      H.w16(MAIL + 2, n)
+      H.w16(MAIL, 6)
+      if not H.waitFor(function() return H.r16(MAIL + 6) ~= done2 end, 600) then error('exit queries timed out') end
+      for j = 0, n - 1 do
+        local q = exits[i + j]
+        local v = H.r16(MAIL + 0x10 + j * 8 + 6)
+        q.exit = (v == 0xFFFF) and -1 or v
+      end
+    end
+  end
+  local fe = assert(io.open(H_OUT .. '/exits.json', 'w'))
+  fe:write(H.json(exits))
+  fe:close()
   H.dumpfile('wram_end.bin', emu.memType.snesWorkRam, 0, 0x20000)
   H.result('queries', #queries)
   H.result('map', H.r16(0x7E00DC))

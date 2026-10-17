@@ -29,3 +29,14 @@
 ; Event conditionals 49-4E (LDY #$02 / REP #$20): whip events 6D8 / 6FA
 %orig4($C1F1F1, $20C202A0)
 %hijack($C1F1F1, fl_hook_f1f1, 4, flight)
+; Destination metatile sample (STA $08 / TAY / LDA [$0A],Y): opening exits
+%orig4($C0D849, $B7A80885)
+%orig1($C0D84D, $0A)
+%hijack($C0D849, fl_hook_d849, 5, flight)
+; Actor contact (SEP #$20 / LDA $E074,Y and LDA $E006,X / BEQ): NPC pass-through
+%orig4($C1CFE5, $74B920E2)
+%orig1($C1CFE9, $E0)
+%hijack($C1CFE5, fl_hook_cfe5, 5, flight)
+%orig4($C1D017, $F0E006BD)
+%orig1($C1D01B, $26)
+%hijack($C1D017, fl_hook_d017, 5, flight)

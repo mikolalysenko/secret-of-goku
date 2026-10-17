@@ -24,7 +24,7 @@ for(const line of readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8').split('\n'))
 }
 labels.sort((a,b)=>a.addr-b.addr);
 const buckets=labels.map((l,i)=>`{${JSON.stringify(l.name)},0x${l.addr.toString(16)},0x${(labels[i+1]?.addr??0xa40000).toString(16)}}`);
-const lua=v=>Array.isArray(v)?`{${v.map(lua).join(',')}}`:v&&typeof v==='object'?`{${Object.entries(v).map(([k,x])=>`${k}=${lua(x)}`).join(',')}}`:typeof v==='string'?JSON.stringify(v):String(v);
+const lua=v=>Array.isArray(v)?`{${v.map(lua).join(',')}}`:v&&typeof v==='object'?`{${Object.entries(v).map(([k,x])=>`${/^\d+$/.test(k)?`[${k}]`:k}=${lua(x)}`).join(',')}}`:typeof v==='string'?JSON.stringify(v):String(v);
 const show=(process.argv.find(a=>a.startsWith('--frames='))?.slice(9)??'').split(',').filter(Boolean).map(Number);
 const test=`SC=${lua(sc)}\n${show.length?`SHOW={${show.map(n=>`[${n}]=true`).join(',')}}\n`:''}BUCKETS={${buckets.join(',')}}\nIMPORT=${JSON.stringify(join(mainCheckout(),'.local/snes-import')+'/')}\n`+readFileSync(join(here,'lib.lua'),'utf8')+'\n'+readFileSync(join(here,'debug_scost.lua'),'utf8');
 const cart=privateRom(rom,'flight-dev');

@@ -272,6 +272,7 @@ incsrc "move.asm"
 incsrc "teleport.asm"
 incsrc "gap.asm"
 incsrc "ceiling.asm"
+incsrc "exits.asm"
 incsrc "story.asm"
 if defined("FLIGHT_TEST")
 	incsrc "../../../test/flight/testmod.asm"

@@ -3,7 +3,8 @@
 ;   +$00 word command: 1 = classify one map row, 2 = camera follow at the
 ;        hero, 3 = forget the anchor/crossing (localFlightHook.restore()),
 ;        4 = Instant Transmission landings (fl_test_landing),
-;        5 = the ceiling escape's roof colours (fl_ce_colors)
+;        5 = the ceiling escape's roof colours (fl_ce_colors),
+;        6 = opening exits (fl_test_exits)
 ;   +$02 word layer (0/1), +$04 word row (tile y)
 ;   +$06 word completion counter (incremented when a request is done)
 ;   +$08 word map width in tiles (written back), +$0A height
@@ -18,6 +19,9 @@ fl_test_poll:
 	CMP.w #$0004
 	BNE +
 	JMP fl_test_landing
++	CMP.w #$0006
+	BNE +
+	JMP fl_test_exits
 +	CMP.w #$0005
 	BNE +
 	; 5 = roofColors(): +$02 stone, +$04 highlight (ceiling.asm)
@@ -211,6 +215,54 @@ fl_test_landing:
 	TAX
 	JMP .q
 .done
+	LDA.w #$0000
+	STA.l !fl_sram_test
+	LDA.l !fl_sram_test+$06
+	INC
+	STA.l !fl_sram_test+$06
+	RTS
+
+; 6 = flightExit() for +$02 (1-16) queries of 8 bytes at +$10: in +0 x,
+; +2 y, +4 velocity ($1E | $1F << 8); out +6 marker idx or $FFFF. The hero's
+; position and velocity are set for each query and restored afterwards.
+fl_test_exits:
+	JSR fl_ctx_load
+	LDA $E002
+	PHA
+	LDA $E004
+	PHA
+	LDA $1E
+	PHA
+	LDX.w #$0000
+.q
+	TXA
+	LSR : LSR : LSR
+	CMP.l !fl_sram_test+$02
+	BCS .done
+	PHX
+	LDA.l !fl_sram_test+$10,X
+	STA $E002
+	LDA.l !fl_sram_test+$12,X
+	STA $E004
+	LDA.l !fl_sram_test+$14,X
+	STA $1E
+	JSR fl_flight_exit
+	BCS +
+	LDA.w #$FFFF
++	PLX
+	STA.l !fl_sram_test+$16,X
+	TXA
+	CLC
+	ADC.w #8
+	TAX
+	BRA .q
+.done
+	PLA
+	STA $1E
+	PLA
+	STA $E004
+	PLA
+	STA $E002
 	LDA.w #$0000
 	STA.l !fl_sram_test
 	LDA.l !fl_sram_test+$06

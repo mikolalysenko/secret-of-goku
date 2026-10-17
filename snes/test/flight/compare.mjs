@@ -16,7 +16,7 @@ import {mainCheckout,checkpointDir,privateRom,cleanupRom} from '../checkpoints.m
 import {scenarios} from './scenarios.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 
-const lua=v=>Array.isArray(v)?`{${v.map(lua).join(',')}}`:v&&typeof v==='object'?`{${Object.entries(v).map(([k,x])=>`${k}=${lua(x)}`).join(',')}}`:typeof v==='string'?JSON.stringify(v):String(v);
+const lua=v=>Array.isArray(v)?`{${v.map(lua).join(',')}}`:v&&typeof v==='object'?`{${Object.entries(v).map(([k,x])=>`${/^\d+$/.test(k)?`[${k}]`:k}=${lua(x)}`).join(',')}}`:typeof v==='string'?JSON.stringify(v):String(v);
 
 export async function runScenario(sc,rom,outDir,shots=[]){
   const test=`SC=${lua(sc)}\nSHOTS={${shots.map(n=>`[${n}]=true`).join(',')}}\nIMPORT=${JSON.stringify(join(mainCheckout(),'.local/snes-import')+'/')}\n`+readFileSync(join(here,'lib.lua'),'utf8')+'\n'+readFileSync(join(here,'scenario.lua'),'utf8');

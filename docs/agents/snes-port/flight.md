@@ -10,12 +10,12 @@ parts of `mana-mod.js`.
 
 Status (this branch): **local flight, hovering, crossings with companion
 gathering, recovery, the camera follow, Instant Transmission, the native
-whip-pad crossings and the ceiling escape are in and validated; the
-terrain classifier, the teleport landing search and the roof colours equal
-the browser's on every tile, query and palette tested.** The opening-path
-exit catches, NPC pass-through and the Sandship hooks are next (see
-[Remaining](#remaining)). Flight still costs too much CPU in heavy scenes
-(see [Cost](#cost)).
+whip-pad crossings, the ceiling escape, the opening-path exit catches and
+NPC pass-through are in and validated; the terrain classifier, the teleport
+landing search, the exit catches and the roof colours equal the browser's
+on every tile, query, probe and palette tested.** The Sandship's
+flight-side rules are next (see [Remaining](#remaining)). Flight still
+costs too much CPU in heavy scenes (see [Cost](#cost)).
 
 ## Behaviour (as the browser)
 
@@ -40,6 +40,15 @@ exit catches, NPC pass-through and the Sandship hooks are next (see
   a crossing of 24 px or more. A Goku embedded in a wall or outside the map
   returns to the last verified landing (else the nearest landable point of a
   ±128 px grid, in the browser's order) and the camera follows.
+- On the four opening-path maps (128-131) an airborne Goku moving out
+  through a passage (within its tile on the passage axis and two tiles
+  either side of it) takes the passage's door like walking through it:
+  the movement step samples the passage's marker, whose trigger must be
+  that door's event, so the native door, fade, camera and party movement
+  run.
+- Airborne Goku passes over NPCs (species >= `$80`) without pushing them
+  or being pushed; enemy contact and conversations on the ground keep the
+  native handling.
 - The Mana Beast's Mode 7 arena allows flight only inside X 184-408,
   Y 292-432, and no step there scrolls the camera.
 - On foot the A button never reaches the game (it is the speed modifier, not
@@ -169,6 +178,9 @@ is a branch target of traced original code (`snes/test/flight/branchcheck.mjs`).
 | `C0:DA6E` | 4 | `SEP #$30 / LDA $FF` | Camera deltas: companions while the camera follows, every step in the Beast arena |
 | `C0:B683` | 5 | `REP #$20 / LDA #$0000` | Floor event dispatch: a whip pad (6D8) is dropped while Goku flies (→ `B678`) |
 | `C1:F1F1` | 4 | `LDY #$02 / REP #$20` | Conditionals 49-4E: at 6D8/6FA's whip check, END or JUMP 6F9 for Goku (→ `E9C4` / `EAF0`) |
+| `C0:D849` | 5 | `STA $08 / TAY / LDA [$0A],Y` | Destination metatile sample: an opening exit's marker for an airborne exit move |
+| `C1:CFE5` | 5 | `SEP #$20 / LDA $E074,Y` | Actor contact: airborne Goku and an NPC → the routine's `RTS` (`CFE4`) |
+| `C1:D017` | 5 | `LDA $E006,X / BEQ $D042` | The same on the contact path entered with either M width |
 
 `C0:D651` is flight's (`!FLIGHT_OWNS_D651 = 1` in `module.asm`): its hook
 calls combat's Saiyan recoil (`combat_recoil_vector`) first, through
@@ -266,7 +278,11 @@ canLand with `!fl_q_x/y/l`; carry = hole under the footprint.
   landings: position, terrain, facing, hover). The same run compares the
   ceiling escape's roof colours with `roofColors()` on the palette the
   cartridge read: equal in all 21 scenes whose palette held still during
-  the call (6 animate theirs).
+  the call (6 animate theirs). On maps 128-131 it also probes the opening
+  exits: 71,232 hero positions (a 4 px grid two tiles around each passage)
+  and velocities, answered by the cartridge's `fl_flight_exit` and by the
+  browser's own `C0:D84C` hook on the same WRAM: all equal, 1,848 exits
+  caught.
 - `water`: the browser spec's Water Palace gap on the same fixture and warp:
   rises over the gap, hovers in place for 45 frames after release, crosses
   and lands on the far platform, flies back and lands.
@@ -292,6 +308,10 @@ canLand with `!fl_q_x/y/l`; carry = hole under the footprint.
   Water Palace exterior the native summon does not complete (the world
   module skips the summon, as the browser does), so there the test checks
   the escape up to its takeoff request.
+- Scenarios also cover `event-barriers.spec.mjs`'s Pandora castle guards
+  (flying past them: the NPC pass fires, both engines end at 88,148 on map
+  266 with the story flags unchanged) and flying out of Potos (both take
+  door 2 to map 16).
 - Dev aids: `compare.mjs` + `browser-ref.mjs` replay the scenarios of
   `scenarios.mjs` in the browser mod (Playwright, private ROM/fixture) and on
   the cartridge and compare per-frame traces (`--shots=` takes screenshots).
@@ -340,8 +360,7 @@ segment caching for long air routes. `CORE_FASTROM` would give module code
 
 - Whip-pad gap crossings (`C0:B683` skip of 6D8 while flying; the `4E`
   conditional at `C1:F1F1` → 6F9 crossing with gap-flight pose `$23`).
-- Opening-path exit catches (`C0:D849`), NPC pass-through
-  (`C1:CFE5/D017`), Sandship `openAir`/`shipHull` rules and its takeoff
+- Sandship `openAir`/`shipHull` rules and its takeoff
   (`sandship.takeoff()` blows up an unfinished ship before any takeoff),
   passengers hidden while carried (`sprite-layer.js` also hides the whip
   attachment during a crossing; goku draws no weapon cells for Goku
