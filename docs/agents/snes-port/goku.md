@@ -19,14 +19,14 @@ port of `GokuAnimation.pose()` and is checked frame by frame against it
 
 | Resource | Use |
 | --- | --- |
-| Code `$A1:8000-$A1:992B` | `!CODE_GOKU` (about 6.4 KiB used) |
+| Code `$A1:8000-$A1:99DD` | `!CODE_GOKU` (about 6.5 KiB used) |
 | Data `$E1:0000-$E1:68D9` | `!DATA_GOKU`: palettes, cell/variant tables, clips, the 51 native actions, sockets, lift tables |
 | ROM `$F8-$FA` | 4,837 de-duplicated 8×8 4bpp tiles (151 KiB). `$FB` of the F8–FB reservation is still free |
 | WRAM `$7E:D740-$7E:D7FF` | `!RAM_GOKU`, all $C0 bytes (fields below) |
-| VRAM | OBJ tiles `C0-C7`/`D0-D7` of name table 1 (word `$7C00/$7D00`, the boy's own cells; claimed as core region `!VRAM_FIELD_HERO` with owner `$01`), HUD portrait `E8/E9/F8/F9` (word `$7E80/$7F80`) |
+| VRAM | OBJ tiles `C0-C7`/`D0-D7` of name table 1 (word `$7C00/$7D00`, the boy's own cells; claimed as core region `!VRAM_FIELD_HERO` with owner `$01`), HUD portrait `E8/E9/F8/F9` (word `$7E80/$7F80`), ring marker `0A/0B/1A/1B` of name table 1 (word `$70A0/$71A0`, the boy's marker, rewritten when a ring opens) |
 | CGRAM | The boy's OBJ palette through the game's buffer `$7E:0600`: palette 1, or palette 5 on water maps (the slot his body descriptor uses) |
 | OAM | The boy's body entries are replaced in place by up to four 16×16 OBJ (empty quadrants are skipped), or one for the miniature |
-| DMA | In `modules_field_nmi`: channels 4-7 (one cell, 16 tiles = 512 B, only when it changed or on the game's 5-frame party refresh; skipped while `core_vblank_lines` < 6) and channel 7 for the HUD portrait (128 B) |
+| DMA | In `modules_field_nmi`: channels 4-7 (one cell, 16 tiles = 512 B, only when it changed or on the game's 5-frame party refresh; skipped while `core_vblank_lines` < 6) and channel 7 for the HUD portrait (128 B). Ring set-up: channel 5 (128 B) right after the game's own marker uploads on that channel (measured: the whole set-up ends by scanline 249) |
 | SRAM | None written. Test builds only (`-DGOKU_TRACE`): a 27-byte trace at `$7E:7F00` |
 
 Measured cost (Potos walk, `snes/test/goku/budget.lua`): frame logic ends
@@ -41,7 +41,9 @@ All with `%orig` byte assertions (`module.asm`):
 | Address | Bytes | Replaced | Purpose |
 | --- | --- | --- | --- |
 | `C0:E5E0` | 12 | `REP #$20 / LDA $E083,X / AND #$000F / STA $02 / BEQ $E5DF` | Body OAM of every actor: actor 0 is drawn as Goku (`goku_body_hook`) |
+| `C0:E553` | 5 | `LDA $E024,X / BPL $E565` | Attachment pass of every actor: for actor 0 under Goku, only the body is drawn (no weapon cells; status overlays and `$E060` render modes keep the native path) |
 | `C0:E760` | 5 | `SEP #$20 / LDY #$FFF8` | Shadow: hidden with Goku (teleport's absent frames, `GOKU_CTL_HIDE`) |
+| `C0:66BD` | 4 | `JSL $D0CDF9` | Ring set-up graphics: after the game's uploads, the boy's marker becomes Goku's head |
 | `C1:95BC` | 4 | `LDA $7EE083` | Field NMI party-tile upload: the boy's part is skipped while Goku stands in; Goku's cell is re-sent on that cadence |
 | `C1:E6C4` | 4 | `LDA $7EE180` | HUD portrait upload: the boy's face becomes Goku's (form-specific) |
 
@@ -95,6 +97,19 @@ replacement), `modules_field_nmi` → `goku_nmi` (uploads).
 - **Uploads** (`upload.asm`): see Resources. When replacement ends (snowman,
   moogle, `GOKU_CTL_SUPPRESS`, flag cleared) the boy's own tiles are
   re-uploaded from the game's `$0C00` table that very vblank.
+- **Weapon cells** (`goku_attach_hook`): the attachment pass draws the
+  boy's weapon cells (tiles 40-4E, palette 0/4) when a native weapon swing
+  sets `$E02F`; with Goku standing in, actor 0 goes straight to the body
+  (`C0:E8C6`), as `sprite-layer.js` hides the sword. Balloon, barrel,
+  engulf and the ghost's reaper (`$E191 & $C5`) and special render modes
+  (`$E060`) keep the native path. The skipped pass's one call of `C0:E5F5`
+  (shake decay) is applied in the hook.
+- **Ring marker** (`goku_ring_setup`): `D0:CDF9` uploads ten 2-tile
+  graphics from `D2:C680` (cursor, the three party markers, ...) when a ring
+  opens. Goku's 10×10 head (current form, at (+3,+2) in the 16×16 cell, as
+  `injectPortrait` draws tile `0A`) then replaces the boy's marker, which
+  draws with palette 1 and so with Goku's colours. The girl's and sprite's
+  markers stay native.
 
 ## API for other modules
 
@@ -181,6 +196,12 @@ transition palettes follow the browser's `transform` clip).
   ready, focus, transform, revert, deflect, resist, hover, gap flight,
   ceiling escape, takeoff and landing, both forms, replayed the same way:
   **1,716 / 1,716 frames agree**.
+- `ring`: weapon ring opened from Potos (X); VRAM `0A/0B/1A/1B` equal the
+  marker tiles in ROM for both forms, the girl's (`0C`) and sprite's (`0E`)
+  markers equal `D2:C680`'s, and with the flag cleared the boy's marker is
+  native again; screenshots once the marker OBJ has come to rest.
+- `field` also swings the native weapon (`emulator-probe__weapon-test`, B):
+  the boy draws his sword cells, Goku none.
 - `budget`: frame-logic end and NMI end with Goku off and on.
 
 ## Remaining work
@@ -190,13 +211,6 @@ transition palettes follow the browser's `transform` clip).
   GOKU records, and the name editor stay native for now; the generator
   already emits a 16×32 front figure (`goku_figure_tiles`) and both HUD
   portraits. Planned through `modules_menu_frame`.
-- Ring marker (bank-1 tile `0A`, the small head shown in some rings):
-  generated (`goku_portrait_tiles` entries 2-3, a 10×10 crop at (+3,+2)) but
-  not yet uploaded; needs the ring's upload site.
-- Weapon attachments: the boy's sword cells (tiles 44/46/48, palette 0/4)
-  are still drawn by the native attachment path when a native weapon attack
-  runs; the browser hides them. Combat replaces B with punches, so they
-  should not appear in normal play; a filter at `C0:E553` is the plan.
 - Other render paths for actor 0 (`C0:E57C` carried/attached, `C0:E6CF`
   multi-part, `C0:E88A`) are not hooked; none occurred in the 51 actions.
 - World flight (Mode 7 Flammie replacement), the orbital/scene renderers

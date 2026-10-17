@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 // GOKU module tests in Mesen, from browser-mod states imported with
 // H.importSnesJs:
-//   field    four facings, walk cycle, push, palette, OAM, VRAM bytes, HUD
+//   field    four facings, walk cycle, push, palette, OAM, VRAM bytes, HUD,
+//            a native weapon swing draws no sword cells under Goku
 //   status   poison / petrify / ghost / sleep / moogle / snowman / pygmy /
 //            barrel / waterfall (palette slot 5)
 //   forms    Super Saiyan art, palette and HUD portrait; transformation and
 //            reversion with their per-frame palettes; cell override
+//   ring     the boy's ring marker (bank-1 tiles 0A/0B/1A/1B) is Goku's head
+//            in either form; the girl's and sprite's markers stay native
 //   actions  all 51 native player animations x 2 forms (GOKU_TRACE build),
 //            replayed through engine/goku-animation.js (difftest.mjs)
 //   api      every pose request (punch combos, charge, beam, blast, teleport,
@@ -51,7 +54,7 @@ function prelude(rom){
   }
   return `SYM={${Object.entries(sym).map(([k,v])=>`${k}=0x${v.toString(16)}`).join(',')}}\nGOKU_IMPORT=${JSON.stringify(importRoot)}\n`+readFileSync(join(here,'lib.lua'),'utf8')+'\n';
 }
-const tests=[['field',romSrc],['status',romSrc],['forms',romSrc],['actions',traceRom],['api',traceRom],['budget',romSrc]].filter(([t])=>existsSync(join(here,`${t}.lua`)));
+const tests=[['field',romSrc],['status',romSrc],['forms',romSrc],['ring',romSrc],['actions',traceRom],['api',traceRom],['budget',romSrc]].filter(([t])=>existsSync(join(here,`${t}.lua`)));
 const results=[];
 for(const[t,src]of tests){
   if(!want(t))continue;

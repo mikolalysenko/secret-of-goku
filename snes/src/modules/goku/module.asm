@@ -208,6 +208,10 @@ pullpc
 %orig4($C0E5E4, $000F29E0)
 %orig4($C0E5E8, $F3F00285)
 %hijack($C0E5E0, goku_body_hook, 12, goku)
+; Attachments (C0:E553): LDA $E024,X / BPL $E565
+%orig4($C0E553, $10E024BD)
+%orig1($C0E557, $0D)
+%hijack($C0E553, goku_attach_hook, 5, goku)
 ; Shadow (C0:E760): SEP #$20 / LDY #$FFF8
 %orig4($C0E760, $F8A020E2)
 %orig1($C0E764, $FF)
@@ -215,6 +219,9 @@ pullpc
 ; Party tile upload in the field NMI, boy part (C1:95BC): LDA $7EE083
 %orig4($C195BC, $7EE083AF)
 %hijack($C195BC, goku_upload_hook, 4, goku)
+; Ring set-up graphics (C0:66BD): JSL $D0CDF9, then Goku's ring marker
+%orig4($C066BD, $D0CDF922)
+%hijack_jsl($C066BD, goku_ring_setup, 4, goku)
 ; HUD portrait upload, boy part (C1:E6C4): LDA $7EE180
 %orig4($C1E6C4, $7EE180AF)
 %hijack($C1E6C4, goku_hud_hook, 4, goku)
