@@ -55,6 +55,24 @@ Chrome on an Apple-silicon Mac, real game with every mod hook, median of five 60
 
 Writing palette colors during slot resolution (last row of the table above) adds another 2–7% in a same-session comparison, putting file select above 10× as well. Story set pieces that once rendered per pixel through mod hooks now composite natively: for example, the Frieza battle went from 125 to about 486 frames/s and the Time Chamber from 102 to about 461.
 
+Release 0.2.2 turned every hook effect into ordered line operations. It was measured against 0.2.1 in the same session, with the machine busy running other emulators, so absolute rates sit below the idle figures above:
+
+| Scene | 0.2.1 | 0.2.2 |
+| --- | --- | --- |
+| Explosion cinematic | 286 frames/s | 583 frames/s |
+| Orbit / space | 354 / 353 frames/s | 587 / 589 frames/s |
+| Ending | 407 frames/s | 650 frames/s |
+| Frieza battle | 445 frames/s | 669 frames/s |
+| Time Chamber | 478 frames/s | 647 frames/s |
+| File select | 466 frames/s | 625 frames/s |
+| Field / world flight | 574 / 568 frames/s | 643 / 683 frames/s |
+| Waterfall after the arrival (full player frame) | 10.7 ms | 2.3 ms |
+| Status page / Sandship wreck / Fortress deck (player frame) | 11.2 / 8.8 / 7.5 ms | 2.0 / 2.2 / 2.0 ms |
+
+The waterfall row is what phones felt. In the iOS Safari simulator, playing at the waterfall went from 10.0 to 2.4 ms per frame, and the sword and pod landing from 7.3 to 2.5 ms (peak 17 to 5 ms). `tests/browser/arrival.spec.mjs` fails if any scanline there falls back to the per-pixel path.
+
+A bitset compositor (resolved pixels as 32-bit words) was tried and dropped. It gained only 2–3% in Chrome on translucent scenes and was slower in Node's V8.
+
 At 4× CPU throttling, a proxy for phones and CI runners, the 30 Hz title-music check went from 35 frames/s with 8 underruns to a steady 60 frames/s with none. In real iOS Safari 26.5 (simulator), with an extra 20 ms of main-thread work per frame, file select dropped to 45 frames/s on the old build but holds 60 frames/s with zero underruns now. Holding R to fast-forward a cutscene is capped at 12×; it ran at about 3× on the old build under the same load and about 8× now.
 
 ## Audio streaming
