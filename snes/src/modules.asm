@@ -11,6 +11,7 @@ incsrc "modules/title/module.asm"
 incsrc "modules/story/module.asm"
 incsrc "modules/debug/module.asm"
 incsrc "modules/destroy/module.asm"
+incsrc "modules/frieza/module.asm"
 
 pushpc
 org !CODE_CORE+$7000
@@ -20,12 +21,14 @@ modules_field_frame:
 	JSL title_field_frame
 	JSL story_field_frame
 	JSL debug_field_frame
+	JSL frieza_field_frame
 	JSL goku_frame
 	JSL destroy_field_frame          ; last: its planner uses the frame time left
 	RTL
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
 modules_field_nmi:
 	JSL goku_nmi
+	JSL frieza_field_nmi
 	RTL
 ; World flight frame, after the world logic (DB = $7E).
 modules_world_frame:
@@ -59,16 +62,21 @@ modules_save:
 modules_load:
 	JSL title_load
 	JSL story_load
+	JSL frieza_load
 	JSL destroy_reset
 	RTL
 ; New game: !SRAM_LIVE was cleared and !persist_version set to 1.
 modules_new_game:
 	JSL title_new_game
 	JSL story_new_game
+	JSL frieza_new_game
 	JSL debug_new_game
 	JSL destroy_reset
 	RTL
 pullpc
+
+; Frieza bindings to optional modules (after every module's defines).
+incsrc "modules/frieza/bind.asm"
 
 ; Debug preset hook table (generated): modules fill it by defining
 ; !DEBUG_PRESET_HOOK_<NAME> / _ANY in their own files (included above).
