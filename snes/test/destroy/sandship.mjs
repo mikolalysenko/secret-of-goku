@@ -59,6 +59,64 @@ function S.state()
     loads = H.r16(ABI.ssw_loads), remark = H.r16(ABI.ssw_remark), control = S.control(),
     guards = S.species({182, 183}), monsters = S.species({28, 36}), d0 = H.r8(0x7E00D0)}
 end
+-- The browser spec's enter(): door 3 with a one-shot record (map, tile x/y,
+-- layer) through the native door loader, story flags first.
+function S.enter(map, x, y, layer, flags)
+  for k, v in pairs(flags or {}) do H.w8(0x7ECF00 + k, v) end
+  H.w16(ABI.ssw_dbgdoor, 3)
+  H.w8(ABI.ssw_dbgrec, map & 255); H.w8(ABI.ssw_dbgrec + 1, x * 2 + (map >> 8))
+  H.w8(ABI.ssw_dbgrec + 2, y * 2 + (layer or 0)); H.w8(ABI.ssw_dbgrec + 3, 0)
+  local ok = D.door(3, map)
+  S.untilControl(600)
+  return ok
+end
+-- Walk through a real door, then let any scene play out.
+function S.walk(dir, frames)
+  local from = H.r16(0x7E00DC)
+  for f = 1, frames or 120 do
+    if H.r16(0x7E00DC) ~= from then break end
+    H.hold(dir, 1)
+  end
+  return S.untilControl(6000)
+end
+-- The breakout from the hold (the spec's full-power wave): Gi stowed by the
+-- capture, Goku at (136, 210), the wave up.
+function S.breakout()
+  local slots = {H.r8(0x7EE1E0), 0x16, H.r8(0x7EE1E2), H.r8(0x7EE1E3)}
+  for i, v in ipairs(slots) do H.w8(ABI.ss_gear + i - 1, v) end
+  H.w16(ABI.ss_gbits, 1)
+  H.w16(0x7EE002, 136); H.w16(0x7EE004, 210); H.wait(40)
+  local hit = D.hit({x = 136, y = 210, dir = 3, length = 96, halfWidth = 19, taper = 0, code = 2, str = 256, id = 21})
+  local white = 0
+  for f = 1, 60 do H.wait(1); white = math.max(white, H.r16(ABI.ss_flash)) end
+  return white, S.untilControl(6000)
+end
+-- Play until the given map is up with Goku in control (B taps).
+function S.reach(map, limit)
+  for f = 1, limit or 9000 do
+    if H.r16(0x7E00DC) == map and S.control() then return f end
+    if H.r8(0x7E00D0) ~= 0 and f % 20 == 0 then H.tap('b', 2, 0) else H.wait(1) end
+  end
+  return -1
+end
+function S.cmd(c, arg)
+  local n = H.r16(ABI.dbg_n)
+  if arg then H.w16(ABI.dbg_arg, arg) end
+  H.w16(ABI.dbg_cmd, c)
+  H.waitFor(function() return H.r16(ABI.dbg_n) ~= n end, 30)
+  return H.r16(ABI.dbg_res)
+end
+-- Equipped slots of Goku, the girl and the sprite, and the armor ring.
+function S.gear()
+  local g = {}
+  for i = 0, 2 do
+    local base = 0x7EE1E0 + i * 0x200
+    g[#g + 1] = {H.r8(base), H.r8(base + 1), H.r8(base + 2), H.r8(base + 3)}
+  end
+  local ring = {}
+  for a = 0x7ECC2C, 0x7ECC37 do ring[#ring + 1] = H.r8(a) end
+  return {slots = g, ring = ring}
+end
 -- The object records the loader copied (slots $C808+16i): flag, range, x, y, ?, species.
 function S.objects()
   local out = {}
@@ -126,6 +184,150 @@ export const scenarios=[
     }},
 ];
 
+scenarios.push(
+  {name:'ship-rescues',bundle:'sandship-wreck__qs-captured',
+    note:'in the wreck each captive is fetched by walking into the kitchen and the cabin; the deck then starts Geshtar and the Mech Rider (spec wreckAndEscape, party 3)',
+    body:`
+  S.reset()
+  assert(H.importSnesJs(SCN.bundlePath), 'import failed')
+  H.wait(12)
+  local white, frames = S.breakout()
+  H.result('wreck', S.state())
+  -- the kitchen: walk up from the corridor (318)
+  S.enter(318, 28, 46, 0)
+  H.result('corridor', S.state())
+  S.walk('up')
+  H.result('kitchen', S.state())
+  S.enter(324, 16, 10, 0)
+  H.result('stairs', S.state())
+  S.walk('up')
+  H.result('cabin', S.state())
+  S.enter(99, 24, 27, 0)
+  for f = 1, 8000 do
+    if H.r16(0x7E00DC) == 340 and S.control() then break end
+    if H.r8(0x7E00D0) ~= 0 and f % 20 == 0 then H.tap('b', 2, 0) else H.wait(1) end
+  end
+  H.result('rider', S.state())
+  H.shot('rider')
+`,
+    check(res,problems){
+      const st=(k,want)=>{const a=res[k]??{};for(const [f,v] of Object.entries(want))if(JSON.stringify(a[f])!==JSON.stringify(v))problems.push(`${k}.${f} ${JSON.stringify(a[f])} want ${JSON.stringify(v)}`);};
+      st('wreck',{map:271,control:true,captives:[8,8]});
+      st('kitchen',{map:319,control:true,captives:[8,1]});
+      st('stairs',{map:324,guards:0});
+      st('cabin',{map:339,control:true,captives:[1,1]});
+      st('rider',{map:340,control:true,stage:11,party:[1,1]});
+    }},
+);
+
+// The capture stowed these (seeded: the browser kept them in its own JS
+// state, which an import cannot carry).
+const seedGear=`
+  local stowed = {{H.r8(0x7EE1E0), 0x16, H.r8(0x7EE1E2), H.r8(0x7EE1E3)}, {0x05, 0x19, 0x31, 0x3C}, {0x06, 0x1A, 0x32, 0x40}}
+  for i = 0, 2 do for j = 0, 3 do H.w8(ABI.ss_gear + i * 4 + j, stowed[i + 1][j + 1]) end end
+  H.w16(ABI.ss_gbits, 7)
+  H.result('stowed', stowed)
+`;
+scenarios.push(
+  {name:'ship-crash-breaks',bundle:'sandship-wreck__qs-captured',
+    note:'still sneaking: a real punch opens a hold bulkhead (one strike), four more strikes blow the ship up into Geshtar\'s Mech Rider with nobody freed; after the fight (2A1) everyone reunites on the dunes with their own gear (spec, party 3)',
+    body:`
+  S.reset()
+  assert(H.importSnesJs(SCN.bundlePath), 'import failed')
+  H.wait(12)
+`+seedGear+`
+  -- a real punch at the hold's west bulkhead
+  H.w16(0x7EE002, 72); H.w16(0x7EE004, 152); H.wait(30)
+  for k = 1, 4 do D.hit({x = 72, y = 152, dir = 1, length = 28, halfWidth = 9, taper = 0, code = 0, str = 256}); H.wait(14) end
+  H.wait(60)
+  H.result('first', H.r16(ABI.ss_breaks))
+  local said = {}
+  for i = 1, 4 do
+    S.cmd(6)
+    for f = 1, 50 do H.wait(1); said[H.r16(ABI.ssw_remark)] = true end
+  end
+  local white = 0
+  for f = 1, 400 do H.wait(1); white = math.max(white, H.r16(ABI.ss_flash)) end
+  H.result('white', white)
+  local list = {}
+  for k, _ in pairs(said) do list[#list + 1] = k end
+  H.result('said', list)
+  H.result('frames', S.reach(340, 9000))
+  H.result('fight', S.state())
+  -- stand in for the fight's end: 2A1, on to the dunes
+  local n = 0
+  for f = 1, 60 do
+    if S.control() then
+      H.w16(ABI.dbg_arg, 0x2A1)
+      if S.cmd(2, 0x2A1) == 1 then break end
+    end
+    H.wait(1)
+  end
+  H.result('reunion', S.reach(91, 9000))
+  H.result('dunes', S.state())
+  H.result('gear', S.gear())
+  H.shot('dunes')
+`,
+    check(res,problems){
+      if(!(res.first>=1))problems.push(`the punch counted ${res.first} strikes, want 1`);
+      if(res.white!==256)problems.push(`white-out ${res.white}`);
+      if(!(res.said??[]).includes(5))problems.push(`King Kai's STOP not said (${JSON.stringify(res.said)})`);
+      const f=res.fight??{};
+      for(const [k,v] of Object.entries({map:340,control:true,party:[0,0],stage:11}))if(JSON.stringify(f[k])!==JSON.stringify(v))problems.push(`fight.${k} ${JSON.stringify(f[k])} want ${JSON.stringify(v)}`);
+      if(!((f.flags??0)&4))problems.push('crash ending not set');
+      const d=res.dunes??{};
+      for(const [k,v] of Object.entries({map:91,control:true,party:[1,1],captives:[1,1],stage:12}))if(JSON.stringify(d[k])!==JSON.stringify(v))problems.push(`dunes.${k} ${JSON.stringify(d[k])} want ${JSON.stringify(v)}`);
+      if((d.flags??0)&(1|4))problems.push(`wreck/ending not closed: flags ${d.flags}`);
+      const g=res.gear?.slots??[],w=res.stowed??[];
+      if(JSON.stringify(g)!==JSON.stringify(w))problems.push(`gear ${JSON.stringify(g)} want ${JSON.stringify(w)}`);
+    }},
+);
+
+scenarios.push(
+  {name:'ship-leave',bundle:'sandship-wreck__qs-captured',
+    note:'leaving the ship some way the story did not plan (here: a door straight to the desert) blows it up behind Goku: Uh oh, the crash, Geshtar\'s Mech Rider',
+    body:`
+  S.reset()
+  assert(H.importSnesJs(SCN.bundlePath), 'import failed')
+  H.wait(12)
+  H.w16(ABI.ssw_dbgdoor, 3)
+  H.w8(ABI.ssw_dbgrec, 67); H.w8(ABI.ssw_dbgrec + 1, 40); H.w8(ABI.ssw_dbgrec + 2, 40); H.w8(ABI.ssw_dbgrec + 3, 0)
+  H.result('door', D.door(3, 67))
+  local white, said = 0, {}
+  for f = 1, 400 do H.wait(1); white = math.max(white, H.r16(ABI.ss_flash)); said[H.r16(ABI.ssw_remark)] = true end
+  H.result('white', white)
+  local list = {}
+  for k, _ in pairs(said) do list[#list + 1] = k end
+  H.result('said', list)
+  H.result('frames', S.reach(340, 9000))
+  H.result('fight', S.state())
+`,
+    check(res,problems){
+      if(res.white!==256)problems.push(`white-out ${res.white}`);
+      if(!(res.said??[]).includes(4))problems.push(`'broke the whole ship' not said (${JSON.stringify(res.said)})`);
+      const f=res.fight??{};
+      for(const [k,v] of Object.entries({map:340,control:true,stage:11}))if(JSON.stringify(f[k])!==JSON.stringify(v))problems.push(`fight.${k} ${JSON.stringify(f[k])} want ${JSON.stringify(v)}`);
+      if(((f.flags??0)&5)!==5)problems.push(`flags ${f.flags}: want wreck and crash`);
+    }},
+  {name:'dunes-exit',bundle:'sandship-wreck__dunes',
+    note:'the dunes after the Mech Rider are a closed basin: leaving them any other way than 2A8 sets stage 14 and King Kai repeats the hint',
+    body:`
+  S.reset()
+  assert(H.importSnesJs(SCN.bundlePath), 'import failed')
+  H.wait(12)
+  H.result('before', S.state())
+  S.enter(89, 20, 20, 0)
+  H.wait(30)
+  H.result('after', S.state())
+`,
+    check(res,problems){
+      if(res.before?.stage!==12)problems.push(`start stage ${res.before?.stage}`);
+      if(res.after?.stage!==14)problems.push(`stage ${res.after?.stage} want 14`);
+      if(res.after?.remark!==6)problems.push(`remark ${res.after?.remark} want the Fire Palace hint (6)`);
+      if(res.after?.map!==89)problems.push(`map ${res.after?.map}`);
+    }},
+);
+
 export async function runSandship({rom,only=[],log=console.log}){
   const abi=destroyAbi(),imports=importDir(),outRoot=resolve(repo,'.local/snes-test/destroy/sandship');
   mkdirSync(outRoot,{recursive:true});
@@ -140,7 +342,7 @@ export async function runSandship({rom,only=[],log=console.log}){
     const m=await runMesen({rom,test,outDir});
     const res=m.results??{};
     const problems=[];
-    if(m.code!==0||res.error)problems.push('mesen: '+(res.error??m.code));
+    if(m.code!==0||res.error)problems.push('mesen: '+(res.error??m.code)+(res.error?'':' '+m.output.slice(-400)));
     else s.check(res,problems);
     const r={name:s.name,ok:!problems.length,problems,ms:m.ms,note:s.note};
     writeFileSync(join(outDir,'summary.json'),JSON.stringify({...r,results:res},null,1));

@@ -5,6 +5,7 @@
 ;   3  destroy_orb_hit, actor offset !dbg_arg            -> dbg_res = 1 queued
 ;   4  run the event script in !dbg_script (door loader)  -> dbg_res = 1 started
 ;   5  plan the breach of wall offset !dbg_arg, no edits  -> dbg_res = 1 planned
+;   6  Sandship: count a bulkhead strike (onDemolish)    -> dbg_res = breaks
 dst_debug_frame:
 	LDA.l !dbg_cmd : BNE +
 	RTS
@@ -50,7 +51,10 @@ dst_debug_frame:
 .plan
 	; 5: plan (without queueing) the breach of wall cell !dbg_arg for the
 	; direction in !arg_dir; the plan stays in the worker words.
-	CMP.w #5 : BNE .unknown
+	CMP.w #5 : BEQ +
+	CMP.w #6 : BEQ .strike
+	JMP .unknown
++
 	LDA.l !pl_stage : BEQ +
 	RTS                                ; a walk's plan is open: next frame
 +	JSR dst_dm_context
@@ -60,6 +64,11 @@ dst_debug_frame:
 	JSR dst_breach
 	LDA.w #0 : STA.l !dbg_dry
 	LDA.w #0 : ROL
+	JMP .done
+.strike
+	; 6: the browser spec's onDemolish() stand-in for further strikes
+	JSR ss_on_demolish
+	LDA.l !ss_breaks
 	JMP .done
 .unknown
 	LDA.w #$FFFF

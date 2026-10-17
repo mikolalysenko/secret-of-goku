@@ -24,8 +24,13 @@ ss_clr:                                   ; A = !SSF_* bits to clear
 	EOR.w #$FFFF : AND.l !ss_flags : STA.l !ss_flags
 	RTS
 ss_say:                                   ; A = !SS_SAY_* remark
+	CMP.w #!SS_SAY_DISMISS : BEQ .dismiss
 	STA.l !ssw_remark
 	LDA.l !ssw_rseq : INC : STA.l !ssw_rseq
+	RTS
+.dismiss
+	; radio.dismiss('sandship'): other lines (the escape's) stay
+	LDA.l !ssw_dismiss : INC : STA.l !ssw_dismiss
 	RTS
 
 ; ss_in_list: A = map, X = table (long label offset within bank) -> carry.
@@ -119,7 +124,7 @@ ss_reset_work:
 	LDA.w #$FFFF : STA.l !ssw_lastmap : STA.l !ssw_beam : STA.l !ssw_doorkey : STA.l !ssw_doorroom
 	LDA.w #0
 	STA.l !ssw_doorf : STA.l !ssw_clear : STA.l !ssw_embed : STA.l !ssw_remark : STA.l !ssw_rseq
-	STA.l !ssw_songs : STA.l !ssw_lastsong : STA.l !ssw_loads
+	STA.l !ssw_songs : STA.l !ssw_lastsong : STA.l !ssw_loads : STA.l !ssw_dismiss
 	LDA.w #$FFFF : STA.l !ssw_dbgdoor
 	RTS
 

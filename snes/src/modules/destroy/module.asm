@@ -303,6 +303,7 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !ssw_remark  = !SSW+$0E  ; word: last remark for a radio module (!SS_SAY_*)
 !ssw_rseq    = !SSW+$10  ; word: increments per remark
 !ssw_songs   = !SSW+$12  ; word: alarm songs sent (status)
+!ssw_dismiss = !SSW+$24C ; word: increments when the Sandship lines are dismissed
 !ssw_lastsong = !SSW+$14 ; word: last song command sent
 !ssw_loads   = !SSW+$16  ; word: wrecked room loads
 !ssw_stage   = !SSW+$18  ; word: CF28 this frame
@@ -337,7 +338,7 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !SS_SAY_BROKE = 4        ; GOKU: Uh oh. I think I broke the whole ship.
 !SS_SAY_STOP = 5         ; KING KAI: Goku, STOP! The ship can't take much more
 !SS_SAY_DUNES = 6        ; KING KAI: Goku! North to Kakkara, then west to the Fire Palace.
-!SS_SAY_DISMISS = 7      ; dismiss the Sandship lines
+!SS_SAY_DISMISS = 7      ; (not a remark: dismiss the Sandship lines, !ssw_dismiss)
 
 !MAP_INFO_BRAZIER = $01
 !MAP_INFO_SHIP    = $02

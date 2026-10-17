@@ -373,6 +373,8 @@ async function run(s){
 }
 
 mkdirSync(outRoot,{recursive:true});
+const {runSandship,scenarios:shipScenarios}=await import('./sandship.mjs');
+const shipNames=new Set(shipScenarios.map(s=>s.name));
 const selected=scenarios.filter(s=>!only.length||only.includes(s.name));
 const results=[];
 for(const s of selected){
@@ -380,5 +382,8 @@ for(const s of selected){
   const detail=s.type==='event'?`event ${r.event?.toString(16)} target ${r.target?.id??r.target?.kind??'-'} flags ${r.flags?.join(' ')||'-'} map edits ${r.edits}`:`edits ${r.edits??'-'} (ref ${r.refEdits??'-'})  ${r.walked?`walked to ${r.walked.x},${r.walked.y}`:''}${r.timing?`  timing: ${r.timing}`:''}`;
   console.log(`${r.ok?'pass':r.skipped?'skip':'FAIL'}  ${s.name.padEnd(16)} ${detail}  ${r.problems?.join('; ')??r.reason??''}`);
 }
+// The Sandship runtime's own scenarios (sandship.mjs).
+const shipOnly=only.filter(n=>shipNames.has(n));
+if(!only.length||shipOnly.length)results.push(...await runSandship({rom,only:shipOnly}));
 writeFileSync(join(outRoot,'summary.json'),JSON.stringify(results,null,1));
 process.exit(results.every(r=>r.ok||r.skipped)?0:1);
