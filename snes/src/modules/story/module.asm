@@ -79,7 +79,10 @@ incsrc "story/data.asm"
 !story_ff_ptr        = !RAM_STORY+$86 ; long: window last scanned by fast-forward
 !story_ff_valid      = !RAM_STORY+$89 ; byte: !story_ff_ptr is current
 !story_ff_choice     = !RAM_STORY+$8A ; byte: that window has a choice
-; $8B-$FF free
+!story_objlist_start = !RAM_STORY+$8C ; word: map object list start (header) in its bank
+!story_objlist_end   = !RAM_STORY+$8E ; word: list end (start + 8 + 8n)
+!story_objlist_bank  = !RAM_STORY+$90 ; byte: bank of the list (C8 = cartridge)
+; $91-$FF free
 
 ; Persistent fields (!PERSIST_STORY, $C0 bytes, battery SRAM, per save slot)
 !story_p_version   = !PERSIST_STORY+$00 ; 1 once initialised
@@ -1231,6 +1234,62 @@ story_prepare_area:
 	BRA .scan
 .done
 	RTS
+
+; ===========================================================================
+; Object list: 00:C487 (JSL, M16/X16, D=0, X = map*2). Replaces the loader's
+; LDA $C87000,X / STA $1D / LDA $C87002,X / PHA / SEP #$30 / LDA #$C8 /
+; STA $1F (C0:C48B branches on to C498). Owners of browser read views that
+; add records or patch the header (Sandship wreck, ending reunion) may point
+; the list at a RAM copy: !story_objlist_start/_end/_bank.
+; ===========================================================================
+story_object_list:
+	LDA.l $C87000,X
+	STA.l !story_objlist_start
+	LDA.l $C87002,X
+	STA.l !story_objlist_end
+	SEP #$20
+	LDA.b #$C8
+	STA.l !story_objlist_bank
+	REP #$20
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BEQ .write
+	PHB
+	PEA $7E7E : PLB : PLB
+	PHX
+	LDA.l $7E00DC
+	STA.l !story_hook_event
+	LDA.w #!STORY_H_OBJECT_LIST_SANDSHIP
+	JSR story_call_hook
+	LDA.w #!STORY_H_OBJECT_LIST_ENDING
+	JSR story_call_hook
+	PLX
+	PLB
+.write
+	LDA.l !story_objlist_start
+	STA $1D
+	SEP #$20
+	LDA.l !story_objlist_bank
+	STA $1F
+	REP #$20
+	; the list end stays on the stack under our return address, exactly as
+	; the original PHA left it (pulled again at C0:C516)
+	PLA
+	STA.l !story_tmp5             ; return address
+	SEP #$20
+	PLA
+	STA.l !story_tmp4             ; return bank
+	REP #$20
+	LDA.l !story_objlist_end
+	PHA
+	SEP #$20
+	LDA.l !story_tmp4
+	PHA
+	REP #$20
+	LDA.l !story_tmp5
+	PHA
+	SEP #$30
+	RTL
 
 ; ===========================================================================
 ; Object records: 00:DD85 (JSL, M8/X16, DB=$7E, X = slot*16, $0D-$0F = the
@@ -2637,6 +2696,15 @@ pullpc
 %orig4($C01866, $99CC00BD)
 %orig2($C0186A, $A22F)
 %hijack_jsl($C01866, story_name_byte, 6, story)
+; 00:C487 map object list bounds -> story_object_list, then BRA to C498
+%orig4($C0C487, $C87000BF)
+%orig4($C0C48B, $02BF1D85)
+%hijack_jsl($C0C487, story_object_list, 4, story)
+%patch($C0C48B, 2, story)
+pushpc
+org $C0C48B
+	db $80, $C498-$C48D          ; BRA $C498
+pullpc
 ; 00:DD85 object record copied (LDA #$01 / STA $C800,X) -> story_object
 %orig4($C0DD85, $009D01A9)
 %orig1($C0DD89, $C8)

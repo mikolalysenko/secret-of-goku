@@ -190,6 +190,62 @@ cases.push({name:'absent-skip',bundle:'emulator-probe__potos-state',writes:[...g
     }});
 }
 
+// ---- object record overlays (native-story.js storyRead, story-owned) ------
+// Travel into the map, then compare the loader's record copies ($C808+16i)
+// with the browser's own cartridge read view under the same RAM.
+{
+  const listOf=map=>{const w=a=>env.data[a]|env.data[a+1]<<8;const start=0x80000+w(0x87000+map*2),end=0x80000+w(0x87002+map*2);return{start,count:(end-start-8)/8};};
+  const jsRecords=(map,ram)=>{
+    env.ram.fill(0);for(const [a,v] of ram)env.ram[a&0x1ffff]=v;
+    const {start,count}=listOf(map),out=[];
+    for(let i=0;i<count;i++)for(let b=0;b<8;b++){const at=start+8+i*8+b;out.push(env.cart.read(0xc8,at&0xffff));}
+    return out;
+  };
+  const objCase=(name,file,door,map,ramWrites,note)=>{
+    const {count}=listOf(map);
+    cases.push({name,bundle:file,writes:[...goku,...ramWrites.map(([a,v])=>[a,v,1])],request:[0x800|door,0],frames:150,mash:0,shots:[140],dump:[[0x7ec800,count*16]],
+      check(r){
+        const w=wramOf(file),party=[[0x7ee000,w[0xe000]],[0x7ee200,w[0xe200]],[0x7ee400,w[0xe400]]];
+        const want=jsRecords(map,[...party,...ramWrites]),got=r.dumps?.[0]??[];
+        const bad=[];for(let i=0;i<count;i++)for(let b=0;b<8;b++)if(got[i*16+8+b]!==want[i*8+b])bad.push(`r${i}+${b}: ${hex(got[i*16+8+b]??0)}/${hex(want[i*8+b])}`);
+        return [[`door ${hex(door,3)} loads map ${map}`,r.map===map,`map ${r.map}`],[`all ${count} records match the browser view (${note})`,bad.length===0,bad.slice(0,6).join(' ')]];
+      }});
+  };
+  objCase('objects-northtown','emulator-probe__potos-state',0x9f,408,[[0x7ecf0d,0]],'no captive Primm');
+  objCase('objects-northtown-captive','emulator-probe__potos-state',0x9f,408,[[0x7ecf0d,8]],'old captive save keeps retail records');
+  objCase('objects-tree-solo','emulator-probe__potos-state',0x5e,236,[],'absent stand-ins hidden');
+  objCase('objects-tree-party','barrier-audit__potos-probe',0x5e,236,[],'full party keeps stand-ins');
+  objCase('objects-water-luka','emulator-probe__potos-state',0x96,139,[[0x7ecf11,5]],'introduction Jema kept until CF11=10');
+  objCase('objects-water-late','emulator-probe__potos-state',0x96,139,[[0x7ecf11,12]],'later Jema visible');
+  objCase('objects-tree-palace','emulator-probe__potos-state',0x30a,195,[],'approach Jema on the dry path');
+}
+
+// ---- route matrix: first resolution under story-owned state ---------------
+// Foreign queries are stubs (0) natively, which is index 0 of every
+// domain in the browser model as well.
+{
+  const popcount=n=>{let b=0;for(;n;n&=n-1)b++;return b;};
+  const ledger=(mask,seeds)=>({writes:[[P_MASK,mask,1],[P_SEEDS,seeds,1]],assign:[['questCount',popcount(mask&127)],['questHeld7',Number((mask&127)===127)],['questSeedsAll',Number((seeds&127)===127)],['questMaskAll',Number((mask&127)===127)]]});
+  const ramv=(addr,value,index)=>({writes:[[0x7e0000|addr,value,1]],assign:[['ram:'+addr.toString(16),index]]});
+  const join=(...parts)=>({writes:parts.flatMap(p=>p.writes),assign:parts.flatMap(p=>p.assign)});
+  const rows=[
+    ['558 free',0x558,ramv(0xcf0d,0,0)],['558 captive',0x558,ramv(0xcf0d,8,1)],
+    ['93 incomplete',0x93,ledger(0x0b,0x0b)],['93 all seven',0x93,ledger(0x7f,0x7f)],
+    ['9A ordinary',0x9a,ledger(0x7f,0x3f)],['9A feed',0x9a,ledger(0x7f,0x7f)],
+    ['A8 none',0xa8,join(ramv(0xcf44,0,0),ledger(0,0))],['A8 some palace',0xa8,join(ramv(0xcf44,2,1),ledger(0x05,0x05))],['A8 seven',0xa8,join(ramv(0xcf44,0,0),ledger(0x7f,0x7f))],
+    ['297 none',0x297,join(ramv(0xcf0d,0,0),ramv(0xcf0e,0,0))],['297 girl',0x297,join(ramv(0xcf0d,8,1),ramv(0xcf0e,0,0))],['297 both',0x297,join(ramv(0xcf0d,8,1),ramv(0xcf0e,8,1))],
+    ['42F balls',0x42f,ledger(0x0b,0x0b)],['42F frieza',0x42f,ledger(0x7f,0x7f)],
+  ];
+  for(const [title,id,st] of rows){
+    const name='route-'+title.replace(/\s+/g,'-');
+    cases.push({name,bundle:'emulator-probe__potos-state',writes:[...goku,...st.writes],request:[id,0],frames:6,mash:0,
+      check(r){
+        const want=js(id,0,st.assign),t=r.trace.find(x=>x[0]===id);
+        return [[`${hex(id,3)} ${title}`,t&&t[1]===want,`native ${t?hex(t[1],6):'none'} browser ${hex(want,6)}${alloc(want)?' ['+hex(alloc(want).id,3)+']':''}`]];
+      }});
+  }
+}
+
 const only=process.argv.slice(2);
 mkdirSync(out,{recursive:true});
 let failures=0;

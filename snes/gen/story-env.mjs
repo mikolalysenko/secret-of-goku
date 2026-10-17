@@ -184,7 +184,7 @@ export async function loadStoryEnvironment(repo,rom){
     try{result=typeof fn==='function'?fn(mask):fn[mask];}finally{st.tracking=false;}
     return{result,reads:[...st.reads],effects:[...st.effects]};
   }
-  return{data,story,mod,ram:raw,vars,scripts,metadata,entries,eventIds,greetingKinds,greetings,greetingEnds,grants,evaluate,popcount};
+  return{data,story,mod,cart,ram:raw,vars,scripts,metadata,entries,eventIds,greetingKinds,greetings,greetingEnds,grants,evaluate,popcount};
 }
 
 // Exhaustive evaluation of one dispatch entry over the variables it reads.

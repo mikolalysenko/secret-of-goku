@@ -184,6 +184,11 @@ export async function generate({rom,repo,outDir}){
   addHook('OBJECT_ENDING','ending','object record overlay: reunion cliff Dyluck record');
   addHook('OBJECT_FRIEZA','frieza','object record overlay: Emperor, exterior Jema, arena 246 records');
   addHook('OBJECT_TRIAL','vegeta','object record overlay: trial Dyluck/Thanatos records on map 246');
+  // Per map load (00:C487), before the header/records are read: A = map;
+  // owners may point the list at a RAM copy with patched header or extra
+  // records (story_objlist_start/_end/_bank, see story.md).
+  addHook('OBJECT_LIST_SANDSHIP','destroy','object list view: Sandship wreck (hidden crew, enemy-map header, appended monsters)');
+  addHook('OBJECT_LIST_ENDING','ending','object list view: reunion cliff (map 180) gains the Dyluck record');
   addHook('OPCODE_SCRIPT','any','reserved for scripts using the 3D opcode');
   for(const p of pendingHooks)program[p.offset]=hookIndex.get(p.name)??(()=>{throw Error('Unknown hook '+p.name);})();
   if(program.length+PROGRAM_BASE>0x6000)throw Error('Story route programs overflow');
