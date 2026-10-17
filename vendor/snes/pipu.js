@@ -542,13 +542,17 @@ function Ppu(snes) {
   // hook), a plan may push ops onto plan.extra, in the order its wrapper
   // applies them; with skipPost set they describe its whole effect, so the
   // post is not run. Ops act on pixels whose current layer is in the bit
-  // set layers, on both screens unless mainOnly:
+  // set layers, on both screens unless mainOnly or subOnly:
   // {type: "paint", layers, colors, skipZero, layer, pixel, mainOnly} sets
   // the color to colors[x] - 1 (colors[x] === 0 leaves the pixel alone with
   // skipZero, else it stores -1 as the wrapper would) and, if layer >= 0,
   // the layer and pixel too;
   // {type: "channels", layers, r, g, b, layer, pixel, mainOnly} maps each
-  // 5-bit channel through its 32-entry table (and sets layer/pixel alike).
+  // 5-bit channel through its 32-entry table (and sets layer/pixel alike);
+  // {type: "line", layers, mainOnly, fn(sub, y, colors, layers, pixels,
+  // need)} lets the hook rewrite the line itself, pixel by pixel exactly as
+  // its wrapper would (only x with need === null or need[x] === 1 count;
+  // layers marks what it may change, for the backdrop test below).
   const linePlan = {
     objColor: null, faceColor: null, overlay: null, bg1Color: null,
     layerPatch: null, windowSuppress: 0, onWindowMasked: null,
@@ -840,6 +844,48 @@ function Ppu(snes) {
       }
       this.lastTileFetchedX[l] = lastX;
       this.lastTileFetchedY[l] = ly;
+      return present;
+    }
+    if(mosaic && !hires) {
+      // Each block of size pixels shows the pixel at its left edge: the
+      // same fetches (at the same lx) as the loop below, one decode each.
+      let ly = y - (y - this.mosaicStartLine) % size + voff;
+      for(let x0 = 0; x0 < 256; x0 += size) {
+        let lx = x0 + hoff;
+        if((lx >> 3) !== lastX || ly !== lastY) {
+          this.fetchTileInBuffer(lx, ly, l, false);
+          lastX = lx >> 3;
+          lastY = ly;
+          let mapWord = this.tilemapBuffer[l];
+          let spread = (mapWord & 0x4000) > 0 ? spreadFlip : spreadNormal;
+          let p1 = this.tileBufferP1[l];
+          lo = spread[p1 & 0xff] | (spread[(p1 >> 8) & 0xff] << 1);
+          if(bits > 2) {
+            let p2 = this.tileBufferP2[l];
+            lo |= (spread[p2 & 0xff] << 2) | (spread[(p2 >> 8) & 0xff] << 3);
+          }
+          hi = 0;
+          if(bits > 4) {
+            let p3 = this.tileBufferP3[l], p4 = this.tileBufferP4[l];
+            hi = spread[p3 & 0xff] | (spread[(p3 >> 8) & 0xff] << 1) |
+              (spread[p4 & 0xff] << 2) | (spread[(p4 >> 8) & 0xff] << 3);
+          }
+          palette = (((mapWord & 0x1c00) >> 10) + palAdd) * mul;
+          prio = (mapWord & 0x2000) >> 13;
+        }
+        let shift = (lx & 0x7) * 4;
+        let tileData = ((lo >>> shift) & 0xf) | (((hi >>> shift) & 0xf) << 4);
+        let v = tileData > 0 ? (palette + tileData) | (prio << 15) : 0;
+        if(tileData > 0) {
+          present |= 1 << prio;
+        }
+        let end = x0 + size < 256 ? x0 + size : 256;
+        for(let x = x0; x < end; x++) {
+          outVal[x] = v;
+        }
+      }
+      this.lastTileFetchedX[l] = lastX;
+      this.lastTileFetchedY[l] = lastY;
       return present;
     }
     for(let x = 0; x < 256; x++) {
@@ -1415,7 +1461,7 @@ function Ppu(snes) {
       if(op.type === "post") {
         return true;
       }
-      if(((op.layers >> 5) & 1) === 1 && !(op.mainOnly && sub)) {
+      if(((op.layers >> 5) & 1) === 1 && !(op.mainOnly && sub) && !(op.subOnly && !sub)) {
         return true;
       }
     }
@@ -1440,7 +1486,11 @@ function Ppu(snes) {
       }
       return;
     }
-    if(op.mainOnly && sub) {
+    if((op.mainOnly && sub) || (op.subOnly && !sub)) {
+      return;
+    }
+    if(op.type === "line") {
+      op.fn(sub, line, colorOut, layIn, pixIn, need);
       return;
     }
     let layers = op.layers, setLayer = op.layer, setPixel = op.pixel;
@@ -2790,7 +2840,52 @@ function Ppu(snes) {
     fetchTileInBuffer: this.fetchTileInBuffer
   };
 
+  // setPixels into a 512x480 Uint8ClampedArray (an ImageData) one 32-bit
+  // RGBA word per pixel: the same bytes as the byte loop below.
+  const littleEndian = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1;
+  let wordTarget = null, wordView = null;
   this.setPixels = function(arr) {
+    if(
+      littleEndian && arr instanceof Uint8ClampedArray &&
+      arr.length === 512 * 480 * 4 && (arr.byteOffset & 3) === 0
+    ) {
+      if(arr !== wordTarget) {
+        wordTarget = arr;
+        wordView = new Uint32Array(arr.buffer, arr.byteOffset, 512 * 480);
+      }
+      let words = wordView, src = this.pixelOutput;
+      if(!this.frameOverscan) {
+        // Alpha 0 on rows 0-15 and 464-479; their color bytes are kept.
+        for(let k = 0; k < 512 * 16; k++) {
+          words[k] &= 0x00ffffff;
+        }
+        for(let k = 464 * 512; k < 480 * 512; k++) {
+          words[k] &= 0x00ffffff;
+        }
+      }
+      let addY = this.frameOverscan ? 0 : 14;
+      let end = this.frameOverscan ? 240 : 225;
+      let first = !this.frameInterlace || this.evenFrame;
+      let second = !this.frameInterlace || !this.evenFrame;
+      for(let line = 1; line < end; line++) {
+        let row = (line * 2 + addY) * 512, s = line * 512 * 3;
+        for(let x = 0; x < 512; x++, s += 3) {
+          // Clamped as a Uint8ClampedArray store would be.
+          let r = src[s], g = src[s + 1], b = src[s + 2];
+          r = r > 255 ? 255 : r;
+          g = g > 255 ? 255 : g;
+          b = b > 255 ? 255 : b;
+          let word = r | (g << 8) | (b << 16) | 0xff000000;
+          if(first) {
+            words[row + x] = word;
+          }
+          if(second) {
+            words[row + 512 + x] = word;
+          }
+        }
+      }
+      return;
+    }
 
     if(!this.frameOverscan) {
       // clear the top 8 and bottom 8 lines to transarent
