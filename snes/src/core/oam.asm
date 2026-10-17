@@ -154,6 +154,21 @@ core_spr_cull:
 	CLC : ADC.w #$0040                 ; y in [-64, 224)
 	CMP.w #$0120
 	BCS .out
+	; Entirely above the screen (y + height <= 0) would wrap its 8-bit Y to
+	; 192-240 and show at the bottom; cull it. Partly visible sprites keep
+	; Y = 256 + y and wrap onto the top lines as on hardware. Heights follow
+	; the game's OBJSEL ($63: 16x16 small, 32x32 large).
+	LDA.w !core_spr_y&$FFFF
+	BPL .in
+	LDX.w #16
+	LDA.w !core_spr_size&$FFFF
+	BEQ +
+	LDX.w #32
++	TXA
+	CLC : ADC.w !core_spr_y&$FFFF
+	BEQ .out
+	BMI .out
+.in
 	CLC
 	RTS
 .out

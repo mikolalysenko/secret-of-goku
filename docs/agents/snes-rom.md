@@ -54,9 +54,12 @@ from `SNES_ROM`, writes outputs under `.local/snes-test/<module>/` and exits
 non-zero on failure (`snes/test/boot/` is the minimal example).
 
 Mesen savestates load into later builds, but only if the saved program
-counter is in code that did not move. `H.saveStable(name)` saves while the
-field loop waits for NMI at `00:B079` (original code), so those checkpoints
-stay valid across rebuilds. A test can start from one with
+counter is in code that did not move. `H.saveStable(name)` arms the save while
+the field loop waits for NMI at `00:B079` (original code). Mesen applies it at
+the following NMI entry, so a loaded checkpoint first executes `00:0100` and
+returns into the wait loop. That holds for frames that finished their logic;
+a checkpoint taken in a lag frame would return into whatever code the NMI
+interrupted, so take checkpoints in quiet scenes. A test can start from one with
 `runMesen({state})` or the CLI's fourth argument. In Mesen2's settings, Port 1
 must be a `SnesController` for scripted input.
 
