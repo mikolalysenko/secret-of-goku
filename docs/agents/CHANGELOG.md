@@ -4,6 +4,41 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## 2026-10-17 — Release 0.2.3
+
+- Release 0.2.3 (`v0.2.3`) and its Pages build include everything since 0.2.2:
+  - **Scenery anchored while scrolling:** the waterfall crater and landed Saiyan pod were placed from Goku's actor screen position. In low flight that position is offset by up to six pixels, and it doesn't follow the native quake, so the pod and crater jumped against the ground tiles while the screen scrolled or shook. They are now placed per scanline from the tile stream origin and BG1's actual scroll. The Fortress deck scars and the Sandship breach had the same problem and use the same camera, with world-anchored patterns. The arrival browser test now flies around the clearing and checks that the crater stays on its tiles.
+  - **Covered screens skipped:** when a line's outermost effect paints every main-screen pixel, the main screen is filled directly, without decoding or composing it. Planet view does this in orbit, space and the explosion.
+  - **Set pieces:**
+    - The Sandship breach mask is memoized in world space; it was rebuilt for the whole screen whenever the camera moved.
+    - Frieza's arena and the Fortress deck skip scar-free rows.
+    - The status page splits its raster once per change.
+    - The planet globe is copied without a per-pixel call.
+  - **Hot loops:**
+    - Wrapper chains are cached between scanlines.
+    - Translucent colour math, composition setup, plain and hires tile loops and the palette pass are specialized for their common cases.
+    - Narrow paints are bounded to their columns.
+- Measured against 0.2.2 in the same session (Chrome full-render frames/s, ratios because the machine was busy):
+
+  | Scene | 0.2.3 / 0.2.2 |
+  | --- | --- |
+  | Orbit | ×1.28 |
+  | Space | ×1.22 |
+  | Sandship wreck | ×1.13 |
+  | Waterfall after the arrival | ×1.12 |
+  | Status page | ×1.09 |
+  | File select | ×1.07 |
+  | Sandship | ×1.05 |
+  | Combat | ×1.04 |
+  | Explosion, Frieza battle | ×1.03 |
+  | Field | unchanged |
+
+  On a quieter run, every scene measured at least 9.4× real time except the Sandship wreck (8.7×). Most were at 10–12×, and the title at 15×.
+- Validation:
+  - **Unit tests:** 378 pass, including a temporary-wrapper test for the chain cache.
+  - **Exactness:** the SnesJs core equivalence passes, and composed and per-pixel rendering match on every changed scene and on random PPU states. The set pieces and planet scenes match the previous build frame for frame where the change was meant to be invisible.
+  - **Browser suite:** only the known failures after every push; all 28 phone tests pass.
+
 ## 2026-10-17 — Release 0.2.2
 
 - Release 0.2.2 (`v0.2.2`) and its Pages build include everything since 0.2.1:
