@@ -556,6 +556,8 @@ ui_radar_update:
 	LDA.w !ui_in&$FFFF                ; the same, reported every frame
 	AND.w #!UII_WORLD_YIELD
 	BNE .no
+	JSR ui_world_yield                ; or read from the world module
+	BNE .no
 	; the Fortress moves: follow it every frame
 	LDA.w !ui_rtarget&$FFFF
 	CMP.w #8
@@ -593,6 +595,29 @@ ui_radar_update:
 	STZ.w !ui_rphase&$FFFF
 	LDA.w #$FFFF
 	STA.w !ui_rlast_h&$FFFF           ; and compute the far blip at once
+	RTS
+
+; The world module's public flight state (world.md): Z clear while it
+; docks on the Fortress, charges, has an aerial ki shot out, an explosion or
+; the planet cutaway running (dragon-radar.js: flight.docking, charging,
+; worldKi shot/explosion). The ages are only kept while Goku flies
+; (!WF_ACTIVE); world_ram_clear leaves them 0. DB = $7E, M16.
+ui_world_yield:
+if defined("w_dock")
+	LDA.w !w_flags
+	AND.w #!WF_ACTIVE
+	BEQ .done
+	LDA.w !w_dock
+	ORA.w !w_shot
+	ORA.w !w_charging
+	BNE .done
+	LDA.w !w_expl_age
+	AND.w !w_cut_age
+	EOR.w #$FFFF                      ; 0 when both are $FFFF (none)
+.done
+else
+	LDA.w #$0000
+endif
 	RTS
 
 ; radarTarget(): carry set and !ui_rtarget/!ui_rtx/!ui_rty, or carry clear.

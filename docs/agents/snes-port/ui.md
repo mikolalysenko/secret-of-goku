@@ -182,10 +182,18 @@ message shows, else the radar text) and a 48×48 dial at (8, 8).
   change up to two frames after the browser's. The target is re-selected
   every 16 frames (story state), the Fortress followed every frame.
 - **Visibility**: Goku active, the world guards (`$FE & $C0`, `$8C`,
-  `$E2 & 1`, `$D0`, `$EC & $7E`), no radio line, no charge, no `ui_hide`,
-  a target, and no docking / aerial shot (`!UIR_DOCKING|!UIR_SHOT` from the
-  radar state query, or `!UII_WORLD_YIELD` set every frame through
-  `ui_set_inputs` by the world-flight module).
+  `$E2 & 1`, `$D0`, `$EC & $7E`), no radio line, no charge
+  (`ui_charge_tick`), no `ui_hide`, a target, and nothing the world module
+  reports as busy (`ui_world_yield`, from its public state while
+  `!w_flags & !WF_ACTIVE`: `!w_dock`, `!w_shot`, `!w_charging` — its local
+  charge stand-in — and `!w_expl_age` / `!w_cut_age` ≠ `$FFFF`). The
+  browser's `flight.docking`, `charging` and `worldKi` shot/explosion
+  checks; the cutaway is included since it replaces the view. Because
+  `ui_world_frame` runs before `world_world_frame`, it sees the world state
+  of the previous frame: the dial shows on the first frame of a shot and
+  comes back one frame after it ends. `!UIR_DOCKING|!UIR_SHOT` (radar state
+  query) and `!UII_WORLD_YIELD` (`ui_set_inputs`) still hide it for other
+  callers.
 
 ### World-flight frame budget
 
@@ -195,19 +203,18 @@ modules merged, holding left then right for 120 frames; lines at which
 
 | Scene | Game logic done | Radar hidden | Radar shown |
 | --- | --- | --- | --- |
-| `preset__flight` | 123 / 140 / 148 | 140 / 157 / 161 | 178 / 194 / 206 |
-| `frieza__core-free-flight` | 122 / 142 / 148 | 139 / 158 / 167 | 177 / 192 / 214 |
-| `emulator-probe__flight-baseline` | 129 / 149 / 156 | 147 / 167 / 168 | 185 / 198 / 219 |
+| `preset__flight` | 123 / 140 / 148 | 140 / 157 / 161 | 170 / 187 / 198 |
+| `frieza__core-free-flight` | 122 / 142 / 148 | 139 / 159 / 167 | 169 / 185 / 206 |
+| `emulator-probe__flight-baseline` | 129 / 149 / 156 | 148 / 167 / 168 | 177 / 190 / 209 |
 
-Every scene stays at 60 Hz, but the worst frames leave only 6–19 lines.
+Every scene stays at 60 Hz; the worst frames leave 16–27 lines.
 The UI's own world frame (`ui_world_frame`, measured per frame) costs
 p50 24 / p90 32 / max 40 lines: dial run ~3, native scan ~5 plus ~1.3 per
 native moved behind the dial (up to four compass letters), one bearing
 half ~4–6, radar text steps ~5 when the guide changes, band and policy
-~3. About 11 more lines per frame are the core re-hiding the dial's slots
-at the next `core_oam_begin` (`core_oam_hide_range` calls
-`core_oam_set_hi` per slot); with a hide that only writes Y = `$E0` the
-radar-shown frames end about 8–13 lines earlier (see the core requests).
+~3. Core re-hides the dial's slots at the next `core_oam_begin`
+(`core_oam_hide_range`, one Y store per slot since `eee1c93`; before that
+it cost about 11 lines more and the radar-shown max was 206–219).
 
 ## R fast-forward (`ff.asm`)
 
@@ -314,7 +321,7 @@ scenes and compares with the browser's own code:
 | `nocrash` | production build from `.local/snes-checkpoints/after-arrival.mss` (a savestate of another build: stale UI WRAM) and from `preset__sword`, while Goku walks: a dispatched frame per video frame, no code running from low RAM, the UI block set up |
 | `mul` | the rotation's multiplier routine against exact integer products (47 cases) |
 | `ff` | from `potos.mss` (a NEW GAME, Goku made active), Luka's menu (`$134`): with R held the spear gift's prose is confirmed (`$CFC3` = 1) and the interpreter waits on the menu's choice (`story_api_window_has_choice`); without input the prose waits (`$D0` = `$83`) |
-| `radar` | `preset__flight` with two quest states, steering between samples: band panel pixels against `radioPixels()` of the browser's panel text, dial pixels against `dragon-radar.js` for the sampled sweep angle and blink phase, guide and blip against `radarBearing` (UI_TEST builds compute the far blip every frame) |
+| `radar` | `preset__flight` with two quest states, steering between samples: band panel pixels against `radioPixels()` of the browser's panel text, dial pixels against `dragon-radar.js` for the sampled sweep angle and blink phase, guide and blip against `radarBearing` (UI_TEST builds compute the far blip every frame); then the world module's state: a Y ki shot, an L+Y charge and the weak wave it releases hide the dial (but the first frame), which comes back after them |
 
 ## Core requests
 
@@ -324,25 +331,13 @@ scenes and compares with the browser's own code:
   while it shows; `core_flush_auto` already skips channels enabled in `$2C`.
 - **HDMA channel 6 in world flight**: the band's colours, through `$2C`
   bit 6 (the world NMI writes `$2C | $3F` to `HDMAEN`).
-- **Faster `core_oam_hide_range`** (biggest single world-flight cost): it
-  calls `core_oam_set_hi` per slot (~90 cycles); world flight re-hides every
-  module slot of the previous frame, so the dial's 13–17 slots cost about 11
-  scanlines per frame. Writing Y = `$E0` alone hides a sprite (8×8, 16×16
-  and 32×32 sprites at Y 224 are off-screen in 224-line mode); measured with
-  that change: `preset__flight` world frame p50 173 → 165, p90 188 → 176.
-- **Bulk OAM writes**: the dial writes its run straight into `$7E:0800` /
-  `$0A00` at `!core_oam_cursor` and advances the cursor (respecting
-  `!core_oam_limit`), because 16 `core_oam_add` calls cost ~25 scanlines.
-  Please bless that (or add `core_oam_add_run`: n prebuilt entries plus
-  their high bits) so the variables stay a contract.
-- **World NMI and frame order**: keep `ui_world_frame` first in
-  `modules_world_frame` (see Ordering above) and `ui_world_nmi` first in
-  `modules_world_nmi` (a few register and CGRAM writes that must land in
-  vblank; the world module's uploads check `core_vblank_lines`).
-- **World module**: please call `ui_set_inputs` with `!UII_WORLD_YIELD`
-  while docking, an aerial ki shot or an explosion is active (the browser
-  hides the radar then; until that call exists the dial stays up). Its
-  sprites in native slots 0..n-1 that touch the dial's box (8–55, 8–55) are
-  moved behind the dial every other frame, as for any native.
+- **Done on main** (`eee1c93`): `core_oam_hide_range` writes only
+  Y = `$E0` / X = `$FF`; the dial's direct run at `!core_oam_cursor`
+  (advancing the cursor, respecting `!core_oam_limit` as `core_oam_add`
+  does) is approved; `ui_world_frame` / `ui_world_nmi` are first in the
+  world dispatch. The world module's busy states are read from its public
+  RAM (`ui_world_yield`); its sprites in native slots 0..n-1 that touch the
+  dial's box (8–55, 8–55) are moved behind the dial every other frame, as
+  for any native.
 - **Optional FastROM**: the UI code runs in bank `$AC`; a FastROM build
   (`CORE_FASTROM`) would cut its world-flight cost by roughly a fifth.

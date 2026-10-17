@@ -48,5 +48,39 @@ function test()
     out[#out + 1] = sample('r' .. (i + 1))
   end
   H.result('samples', out)
+  -- the world module's own flight state hides the radar (dragon-radar.js:
+  -- no charge, aerial shot or explosion on screen): a Y ki shot, then an
+  -- L+Y charge released into a weak wave. ui_world_frame runs before the
+  -- world module's frame, so it sees the state of the frame before: the
+  -- first frame of each busy stretch may still show the radar.
+  local W = 0x7E7F00
+  check('yield_shown', ui(0x68) == 1, 'radar not shown before the shot')
+  H.hold('y', 2)
+  local shot, hidden = 0, 0
+  for _ = 1, 8 do
+    H.wait(1)
+    if H.r16(W + 0x46) ~= 0 then shot = shot + 1; if ui(0x68) == 0 then hidden = hidden + 1 end end
+  end
+  check('yield_shot', shot > 0 and hidden >= shot - 1, string.format('%d shot frames, %d hidden', shot, hidden))
+  local back = 0
+  for i = 1, 120 do H.wait(1); if ui(0x68) == 1 then back = i; break end end
+  check('yield_back', back > 0, 'radar did not come back after the shot')
+  H.input = { l = true, y = true }
+  local charge, chidden = 0, 0
+  for _ = 1, 16 do
+    H.wait(1)
+    if H.r16(W + 0x42) ~= 0 then charge = charge + 1; if ui(0x68) == 0 then chidden = chidden + 1 end end
+  end
+  H.input = nil
+  check('yield_charge', charge > 0 and chidden >= charge - 1, string.format('%d charge frames, %d hidden', charge, chidden))
+  local wave, whidden, back2 = 0, 0, 0
+  for i = 1, 400 do
+    H.wait(1)
+    local busy = H.r16(W + 0x46) ~= 0 or H.r16(W + 0x5C) ~= 0xFFFF or H.r16(W + 0x64) ~= 0xFFFF
+    if busy then wave = wave + 1; if ui(0x68) == 0 then whidden = whidden + 1 end
+    elseif ui(0x68) == 1 then back2 = i; break end
+  end
+  check('yield_wave', wave > 0 and whidden == wave, string.format('%d wave/explosion frames, %d hidden', wave, whidden))
+  H.result('yield_notes', string.format('shot %d, back after %d; charge %d; wave %d, back after %d', shot, back, charge, wave, back2))
   finish()
 end
