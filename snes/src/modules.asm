@@ -7,6 +7,7 @@
 
 ; incsrc "modules/<name>/module.asm"
 incsrc "modules/goku/module.asm"
+incsrc "modules/story/module.asm"
 incsrc "modules/fx/module.asm"         ; before its clients (they use the !FX_* defines)
 incsrc "modules/combat/module.asm"
 
@@ -17,6 +18,7 @@ org !CODE_CORE+$7000
 modules_field_frame:
 	JSL combat_field_frame     ; before goku: poses and form apply this frame
 	JSL goku_frame
+	JSL story_field_frame
 	JSL fx_frame               ; keep last: draws what clients requested this frame
 	RTL
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
@@ -53,12 +55,20 @@ modules_save:
 ; After a GAME FILE loaded and core restored (or cleared) !SRAM_LIVE.
 modules_load:
 	JSL combat_load
+	JSL story_load
 	RTL
 ; New game: !SRAM_LIVE was cleared and !persist_version set to 1.
 modules_new_game:
 	JSL combat_new_game
+	JSL story_new_game
 	RTL
 pullpc
 
-; Combat bindings to optional modules: keep after every module include.
+; Combat bindings to optional modules: after every module include (its
+; defined() checks see them), before the story tables.
 incsrc "modules/combat/bind.asm"
+
+; Story hook and query tables (generated). Keep this last: modules fill story
+; hooks/queries by defining !STORY_HOOK_<NAME> / !STORY_QUERY_<NAME> in their
+; own module files, which must be included above it.
+incsrc "story/hooks.asm"

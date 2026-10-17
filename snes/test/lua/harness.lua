@@ -176,6 +176,21 @@ function H.importSnesJs(dir, frames)
       st['spc.timer' .. i .. '.output'] = t.output
     end
     emu.setState(st)
+    -- Browser states carry pointers into the browser's own, dynamically
+    -- allocated story banks (F0-F7). The cartridge's compiled events use a
+    -- different layout, so an idle text pointer ($1D01-$1D03, read every
+    -- frame at C0:01AD) could land mid-sentence and redraw stale text each
+    -- frame. When no window is open ($A170 = 0) and the pointer targets
+    -- printable text, point it at F0:0000, which the story banks keep zero.
+    local bank = emu.read(0x1D03, emu.memType.snesWorkRam)
+    if bank >= 0xF0 and bank <= 0xF7 and emu.read(0xA170, emu.memType.snesWorkRam) == 0 then
+      local ptr = (bank << 16) | emu.read(0x1D01, emu.memType.snesWorkRam) | (emu.read(0x1D02, emu.memType.snesWorkRam) << 8)
+      if emu.read(ptr, emu.memType.snesMemory) >= 0x50 then
+        emu.write(0x1D01, 0, emu.memType.snesWorkRam)
+        emu.write(0x1D02, 0, emu.memType.snesWorkRam)
+        emu.write(0x1D03, 0xF0, emu.memType.snesWorkRam)
+      end
+    end
   end, emu.callbackType.exec, 0x000000, 0xFFFFFF)
   for _ = 1, (frames or 600) do
     if done then break end
