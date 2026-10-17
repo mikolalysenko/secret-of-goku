@@ -1489,6 +1489,37 @@ function Ppu(snes) {
     }
   }
 
+  // The outermost op, when it alone decides every main-screen pixel: a
+  // paint of all layers that sets the layer and pixel and never skips.
+  // Inner ops must not be per-pixel posts (which may keep state), and color
+  // math must be off for the painted pixel, so that no sub screen (and no
+  // decoded layer) is needed for the line.
+  this.coverOp = function() {
+    let ops = linePlan.ops;
+    if(ops.length === 0 || this.pseudoHires || linePlan.windowSuppress !== 0) {
+      return null;
+    }
+    let op = ops[0];
+    if(
+      op.type !== "paint" || op.skipZero || (op.layers & 0x3f) !== 0x3f ||
+      op.layer < 0 || op.subOnly
+    ) {
+      return null;
+    }
+    for(let k = 1; k < ops.length; k++) {
+      if(ops[k].type === "post") {
+        return null;
+      }
+    }
+    if(
+      this.preventMath !== 3 && this.mathEnabled[op.layer] &&
+      (op.layer !== 4 || op.pixel >= 0xc0)
+    ) {
+      return null;
+    }
+    return op;
+  }
+
   // Whether any op could change a backdrop pixel on the given screen.
   this.opsTouchBackdrop = function(sub) {
     let ops = linePlan.ops;
@@ -1652,71 +1683,85 @@ function Ppu(snes) {
       y = y * 2 + (this.evenFrame ? 1 : 0);
     }
     winReady.fill(0);
-    // Which layers are present in this mode's priority list.
-    let used = 0;
-    for(let j = 0; j < count; j++) {
-      used |= 1 << this.layersPerMode[modeIndex + j];
-    }
-    if(mode === 7) {
-      // Mode 7 texels by (mosaic-adjusted) screen x, through getMode7Pixel.
-      for(let l = 0; l < 2; l++) {
-        if(used & (1 << l)) {
-          mode7Present[l] = this.mode7Line(l, y);
-        }
+    // An outermost paint that covers every main pixel decides the main
+    // screen by itself (see coverOp): skip decoding and composing it.
+    let cover = mode !== 7 && !hires ? this.coverOp() : null;
+    let plain = false;
+    if(cover !== null) {
+      let colors = cover.colors, layer = cover.layer, pixel = cover.pixel;
+      for(let x = 0; x < 256; x++) {
+        mainColor[x] = colors[x] - 1;
+        mainLay[x] = layer;
+        mainPix[x] = pixel;
       }
+      plainLine = false;
     } else {
-      for(let l = 0; l < 4; l++) {
-        if(used & (1 << l)) {
-          if(hires && l < 2 && !this.mosaicEnabled[l]) {
-            let both = this.decodeHiresPair(l, y, lineVal[l], subVal[l]);
-            linePresent[l] = both & 0xff;
-            subPresent[l] = both >> 8;
-          } else {
-            linePresent[l] = this.decodeLayer(l, y, false, lineVal[l]);
-            if(hires && l < 2) {
-              subPresent[l] = this.decodeLayer(l, y, true, subVal[l]);
+      // Which layers are present in this mode's priority list.
+      let used = 0;
+      for(let j = 0; j < count; j++) {
+        used |= 1 << this.layersPerMode[modeIndex + j];
+      }
+      if(mode === 7) {
+        // Mode 7 texels by (mosaic-adjusted) screen x, through getMode7Pixel.
+        for(let l = 0; l < 2; l++) {
+          if(used & (1 << l)) {
+            mode7Present[l] = this.mode7Line(l, y);
+          }
+        }
+      } else {
+        for(let l = 0; l < 4; l++) {
+          if(used & (1 << l)) {
+            if(hires && l < 2 && !this.mosaicEnabled[l]) {
+              let both = this.decodeHiresPair(l, y, lineVal[l], subVal[l]);
+              linePresent[l] = both & 0xff;
+              subPresent[l] = both >> 8;
+            } else {
+              linePresent[l] = this.decodeLayer(l, y, false, lineVal[l]);
+              if(hires && l < 2) {
+                subPresent[l] = this.decodeLayer(l, y, true, subVal[l]);
+              }
             }
           }
         }
       }
-    }
-    // Sprite lookups honour (unused in practice) layer-4 mosaic/scroll.
-    let sprMosaic = this.mosaicEnabled[4];
-    let sprH = mode === 7 ? 0 : this.bgHoff[4];
-    let sprites = 0;
-    spriteMinX[0] = spriteMinX[1] = spriteMinX[2] = spriteMinX[3] = 256;
-    spriteMaxX[0] = spriteMaxX[1] = spriteMaxX[2] = spriteMaxX[3] = -1;
-    for(let x = 0; x < 256; x++) {
-      let lx = x;
-      if(sprMosaic) {
-        lx -= lx % this.mosaicSize;
-      }
-      lx += sprH;
-      let v = this.spriteLineBuffer[lx];
-      let p = this.spritePrioBuffer[lx];
-      spriteVal[x] = v;
-      spritePrio[x] = p;
-      if(v !== 0) {
-        sprites |= 1 << p;
-        p &= 0x3;
-        if(x < spriteMinX[p]) {
-          spriteMinX[p] = x;
+      // Sprite lookups honour (unused in practice) layer-4 mosaic/scroll.
+      let sprMosaic = this.mosaicEnabled[4];
+      let sprH = mode === 7 ? 0 : this.bgHoff[4];
+      let sprites = 0;
+      spriteMinX[0] = spriteMinX[1] = spriteMinX[2] = spriteMinX[3] = 256;
+      spriteMaxX[0] = spriteMaxX[1] = spriteMaxX[2] = spriteMaxX[3] = -1;
+      for(let x = 0; x < 256; x++) {
+        let lx = x;
+        if(sprMosaic) {
+          lx -= lx % this.mosaicSize;
         }
-        if(x > spriteMaxX[p]) {
-          spriteMaxX[p] = x;
+        lx += sprH;
+        let v = this.spriteLineBuffer[lx];
+        let p = this.spritePrioBuffer[lx];
+        spriteVal[x] = v;
+        spritePrio[x] = p;
+        if(v !== 0) {
+          sprites |= 1 << p;
+          p &= 0x3;
+          if(x < spriteMinX[p]) {
+            spriteMinX[p] = x;
+          }
+          if(x > spriteMaxX[p]) {
+            spriteMaxX[p] = x;
+          }
         }
       }
-    }
-    spritePresent = sprites;
-    // finishScreen only looks up palette colors on lines without plans,
-    // posts or direct color; composeScreen can then write them itself.
-    let plain = linePlan.ops.length === 0 && !this.directColor;
-    plainLine = plain;
-    if(plain) {
-      this.composeScreen(false, modeIndex, count, mode, null, mainPix, mainLay, mainColor);
-    } else {
-      this.composeScreen(false, modeIndex, count, mode, null, mainPix, mainLay);
-      this.finishScreen(false, mode, null, mainPix, mainLay, mainColor, line);
+      spritePresent = sprites;
+      // finishScreen only looks up palette colors on lines without plans,
+      // posts or direct color; composeScreen can then write them itself.
+      plain = linePlan.ops.length === 0 && !this.directColor;
+      plainLine = plain;
+      if(plain) {
+        this.composeScreen(false, modeIndex, count, mode, null, mainPix, mainLay, mainColor);
+      } else {
+        this.composeScreen(false, modeIndex, count, mode, null, mainPix, mainLay);
+        this.finishScreen(false, mode, null, mainPix, mainLay, mainColor, line);
+      }
     }
     let pseudo = this.pseudoHires, addSub = this.addSub;
     let colorClip = this.colorClip, preventMath = this.preventMath;
