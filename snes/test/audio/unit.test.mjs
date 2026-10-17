@@ -139,6 +139,27 @@ test('stream: a streamed tone plays without gaps on voice 7, then the voice retu
  assert.deepEqual(h.status().active,[false,false]);
 });
 
+test('stream: a command the CPU withdraws is cancelled, taken or not',()=>{
+ for(const extension of [true,false]){
+  const h=createApu({extension});h.ms(60);
+  // withdrawn before the driver polled the ports
+  h.cpuWrite(1,3);h.cpuWrite(0,0x8A);h.cpuWrite(0,0);h.ms(10);
+  assert.equal(h.cpuRead(0),0);
+  // the driver echoed $8A, then the CPU gave up: the command returns at once
+  h.cpuWrite(1,3);h.cpuWrite(0,0x8A);h.waitFor(()=>h.cpuRead(0)===0x8A);h.cpuWrite(0,0);h.ms(10);
+  assert.equal(h.cpuRead(0),0,'driver back in its main loop');
+  if(extension){
+   const p=new StreamPlayer(h),clip=buildStreamClip(tone(440,0.3));
+   h.take();p.start(0,clip);
+   for(let f=0;f<20;f++){p.frame();h.ms(16.7);}
+   const {l}=h.take();
+   assert.ok(Math.abs(zeroCrossHz(l,3200,6400)-440)<6,`streams still play (${zeroCrossHz(l,3200,6400).toFixed(0)} Hz)`);
+  }
+  h.dsp.keyOns.length=0;h.nativeCmd(2,0x50,0x0F,0x88);h.ms(40);
+  assert.ok(h.dsp.keyOns.length>0,'native effects still play');
+ }
+});
+
 test('stream: native effects keep working beside two streams; stop releases a loop',()=>{
  const h=createApu();h.ms(60);
  const p=new StreamPlayer(h);

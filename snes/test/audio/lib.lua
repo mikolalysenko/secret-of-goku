@@ -26,6 +26,9 @@ function injectExtension()
   local f = assert(io.open(UPLOAD, 'rb'))
   local data = f:read('*a')
   f:close()
+  -- the module as if it had been running: no song change pending, no hold-off
+  H.w8(AU + 0x3F, H.r8(0x7E1E05))
+  H.w8(AU + 0x1F, 0)
   local i = 1
   while i + 3 <= #data do
     local addr = data:byte(i) | (data:byte(i + 1) << 8)
@@ -35,6 +38,36 @@ function injectExtension()
     i = i + 4 + len
   end
   return false
+end
+
+-- First ARAM byte that differs from the extension's code segments (the
+-- variable tables at $1818, $1930 and DP $E3 are left out), or nil.
+function extensionDamage()
+  local f = assert(io.open(UPLOAD, 'rb'))
+  local data = f:read('*a')
+  f:close()
+  local i = 1
+  while i + 3 <= #data do
+    local addr = data:byte(i) | (data:byte(i + 1) << 8)
+    local len = data:byte(i + 2) | (data:byte(i + 3) << 8)
+    if len == 0 then return nil end
+    if addr ~= 0x1818 and addr ~= 0x1930 and addr ~= 0x00E3 then
+      for k = 0, len - 1 do
+        if aram(addr + k) ~= data:byte(i + 4 + k) then return addr + k end
+      end
+    end
+    i = i + 4 + len
+  end
+  return nil
+end
+-- First byte of the native effect samples ($4800-$4DF0, boot chunk C3:1AE2)
+-- that differs from the cartridge, or nil.
+function effectSampleDamage()
+  local n = H.r8(0xC31AE2) | (H.r8(0xC31AE3) << 8)
+  for k = 0, n - 1 do
+    if aram(0x4800 + k) ~= H.r8(0xC31AE4 + k) then return 0x4800 + k end
+  end
+  return nil
 end
 
 -- Per-frame DSP view of one voice: SRCN, ENVX, OUTX (signed).

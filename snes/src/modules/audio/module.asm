@@ -12,8 +12,9 @@
 ;                 the chant), 0 cut the chant
 ;   audio_cancel  drop combat sounds: queued shots, charge/aura beds, chant
 ;   audio_stop    stop every stream at this frame's service
-;   audio_song    A = song id, X = p2 | p3<<8 (0: defaults) — native song
-;                 command through core_sound_queue
+;   audio_song    A = song id (!AUDIO_SONG_* or native), X = p2 | p3<<8
+;                 (0: $10, $FF) — native song command through core_sound_queue
+;   audio_song_restore  back to the last native song (the scene's own music)
 ;   audio_fade    A = native fade byte (command 80; $80 = fade out)
 ; Frame callbacks (modules.asm): audio_frame (field, world), audio_pause
 ; (menus, rings).
@@ -28,7 +29,8 @@ incsrc "audio/ids.asm"
 !au_status   #= !aw+$06   ; last port 3 status
 !au_cnt      #= !aw+$07   ; protocol counter
 !au_groups   #= !aw+$08   ; groups in the command being sent
-!au_flags    #= !aw+$09   ; bit0 stop all, bit2 chant latched, bit6 disabled (APU timeout), bit7 synced
+!au_flags    #= !aw+$09   ; bit0 stop all now, bit2 chant latched, bit3 stop all with the next
+                          ; transfer, bit6 disabled (APU timeout), bit7 synced
 !au_lvl      #= !aw+$0A   ; 4 loop levels requested (0 off)
 !au_rate     #= !aw+$0E   ; 4 loop rates ($80 = 1.0)
 !au_age      #= !aw+$12   ; 4 frames since the loop was requested
@@ -37,8 +39,14 @@ incsrc "audio/ids.asm"
 !au_var      #= !aw+$1A   ; variant counters: hit, swing, blast
 !au_frame    #= !aw+$1D
 !au_testloop #= !aw+$1E   ; test: loop id + 1 kept on every frame (0 none)
+!au_backoff  #= !aw+$1F   ; frames to wait before the next transfer
 !au_ch       #= !aw+$20   ; channel 0; channel 1 at +$20
 !au_tmp      #= !aw+$60   ; scratch $60-$7F
+; channel fields end at $1B: the last four bytes of each channel block hold
+; module globals
+!au_native   #= !aw+$3C   ; last native song: id|$80 (0 none), echo preset, p3
+!au_song     #= !aw+$3F   ; song id seen last frame ($1E05)
+!au_misses   #= !aw+$5C   ; commands withdrawn in a row (saturates at $FF)
 !AU_CH = $20
 ; channel fields (X = channel offset 0 / $20)
 !c_kind  = $00   ; 0 idle, 1 shot, 2 loop
@@ -68,6 +76,12 @@ incsrc "audio/ids.asm"
 !CTL_PITCH = $04
 !CTL_STOP  = $08
 !AU_BUDGET = 5   ; chunks per channel per frame (12 kHz needs ~3.1)
+!AU_CMD_WAIT = 3000  ; first echo: ~10-13 ms (the driver polls the ports at
+                     ; least every ~8 ms while it plays; APU harness)
+!AU_PROBE_WAIT = 400 ; ~1.5 ms: after a miss, until the driver answers again
+                     ; (misses in a row back off 2, 4, … 128 frames)
+!AU_SONG_HOLD = 16   ; frames after a song change: the driver clears its
+                     ; echo ring and does not poll the ports for ~15 frames
 !AU_FIRST  = 6
 
 pushpc
@@ -75,6 +89,7 @@ org !DATA_AUDIO
 audio_upload:
 	incbin "audio/upload.bin"
 incsrc "audio/tables.asm"
+incsrc "audio/songs.asm"
 audio_data_end:
 assert audio_data_end <= !DATA_AUDIO+$8000, "audio data bank overflow"
 pullpc
@@ -236,10 +251,38 @@ audio_song:
 	ORA.w #$0001              ; command 01, p1 = song
 	TXY
 	BNE +
-	LDY.w #$8F10              ; p2 = fade-out speed 1, p3 = $88 → $FF
+	LDY.w #$FF10              ; p2: previous song fades at speed 1; p3: full volume
 +	TYX
 	JSL core_sound_queue
 	PLB
+	PLX
+	PLA
+	PLP
+	RTL
+
+; The scene's own music again: the last native song with its echo preset
+; and start volume; the current song fades out at speed 1 first. Nothing
+; happens when no native song was seen since power-on.
+audio_song_restore:
+	PHP
+	REP #$30
+	PHA
+	PHX
+	PHB
+	PEA $7E7E : PLB : PLB
+	LDA.w !au_native
+	BIT.w #$0080
+	BEQ +
+	LDA.w !au_native+1        ; p3 << 8 | preset
+	AND.w #$FF0F
+	ORA.w #$0010
+	TAX
+	LDA.w !au_native
+	AND.w #$007F
+	XBA
+	ORA.w #$0001              ; command 01, p1 = song
+	JSL core_sound_queue
++	PLB
 	PLX
 	PLA
 	PLP
@@ -269,10 +312,36 @@ audio_frame:
 	PHP
 	SEP #$20
 	REP #$10
+	JSR audio_track_native
 	JSR audio_test_poll
 	JSR audio_service
 	PLP
 	RTL
+
+; Remember the native song playing (loader state $1E05-$1E07: id, echo
+; preset, p3) so audio_song_restore can return to it after a new cue. A
+; song change (by anyone: map, event, audio_song) keyed every voice off and
+; leaves the driver busy for a while: drop the streams and hold transfers.
+audio_track_native:
+	LDA.w $1E05
+	CMP.w !au_song
+	BEQ +
+	STA.w !au_song
+	LDA.b #!AU_SONG_HOLD
+	STA.w !au_backoff
+	LDA.w !au_flags
+	ORA.b #$08
+	STA.w !au_flags
+	LDA.w $1E05
++	CMP.b #$3B
+	BCS ++                    ; a new song ($3B-$3F) or none ($FF)
+	ORA.b #$80
+	STA.w !au_native
+	LDA.w $1E06
+	STA.w !au_native+1
+	LDA.w $1E07
+	STA.w !au_native+2
+++	RTS
 
 ; Menus and rings: the action is paused, streams stop.
 audio_pause:
@@ -299,7 +368,7 @@ audio_service:
 +	INC.w !au_frame
 	BIT.b #$80
 	BNE .synced
-	ORA.b #$81                ; first service since boot / title: stop both
+	ORA.b #$88                ; first service since boot / title: stop both
 	STA.w !au_flags
 	STZ.w !au_ch+!c_base
 	LDA.b #$07
@@ -307,6 +376,33 @@ audio_service:
 	STA.w !au_ch+!AU_CH+!c_wr
 	STZ.w !au_ch+!c_wr
 .synced
+	LDA.w !au_flags           ; drop both streams: now (menus, audio_stop) or
+	BIT.b #$09                ; with the next transfer (sync, song change:
+	BEQ +                     ; the song start already keyed the voices off
+	PHA                       ; and cleared $AE)
+	AND.b #$F6
+	STA.w !au_flags
+	LDX.w #$0000
+	JSR au_stop_channel
+	LDX.w #!AU_CH
+	JSR au_stop_channel
+	PLA
+	AND.b #$01
+	BNE .busy
++	LDA.w !au_ch+!c_kind      ; idle (most frames): nothing playing or asked
+	ORA.w !au_ch+!AU_CH+!c_kind ; for
+	ORA.w !au_reqn
+	ORA.w !au_voicereq
+	ORA.w !au_lvl
+	ORA.w !au_lvl+1
+	ORA.w !au_lvl+2
+	ORA.w !au_lvl+3
+	BNE .busy
+	LDA.w !au_backoff
+	BEQ +
+	DEC.w !au_backoff
++	RTS
+.busy
 -	LDA.l $002143             ; status, read until stable
 	CMP.l $002143
 	BNE -
@@ -315,16 +411,6 @@ audio_service:
 	JSR au_channel_status
 	LDX.w #!AU_CH
 	JSR au_channel_status
-	LDA.w !au_flags
-	BIT.b #$01
-	BEQ .requests
-	AND.b #$FE
-	STA.w !au_flags
-	LDX.w #$0000
-	JSR au_stop_channel
-	LDX.w #!AU_CH
-	JSR au_stop_channel
-.requests
 	JSR au_voice_requests
 	JSR au_shot_requests
 	JSR au_loops
@@ -348,7 +434,11 @@ au_channel_status:
 	PLA
 	AND.b #$08
 	BNE .ret
+	LDA.w !au_ch+!c_ctl,X     ; START not sent yet (withdrawn or held):
+	AND.b #!CTL_START         ; the SPC cannot know the cue
+	BNE .pending
 	STZ.w !au_ch+!c_kind,X    ; finished, never started, or reclaimed
+.pending
 	STZ.w !au_ch+!c_infl,X
 .ret
 	RTS
@@ -917,7 +1007,12 @@ au_plan:
 ; ---------------------------------------------------------------- transfer
 ; Count the groups, then send command $8A with every record.
 au_send:
-	STZ.w !au_groups
+	LDA.w !au_backoff
+	BEQ +
+	DEC
+	STA.w !au_backoff
+	RTS
++	STZ.w !au_groups
 	LDX.w #$0000
 	JSR .count
 	LDX.w #!AU_CH
@@ -928,7 +1023,7 @@ au_send:
 +	STA.l $002141
 	LDA.b #$8A
 	STA.l $002140
-	JSR au_wait_a
+	JSR au_wait_cmd
 	BCC +
 	RTS
 +	LDA.b #$20                ; counters run $20-$7F
@@ -983,6 +1078,50 @@ au_wait_a:
 	SEC
 	RTS
 .ok
+	PLY
+	CLC
+	RTS
+
+; The command's echo. The driver answers within one pass of its main loop
+; unless it is busy elsewhere; then withdraw the command (port 0 = 0: the
+; extension cancels it if it already took it) and try again 2 frames later
+; (4, 8, … 128 after further misses). Nothing was sent yet, so every pending
+; record stays pending. After a miss the next tries only probe briefly, so a
+; driver that is busy for long (or a dead APU in an imported test state)
+; costs little.
+au_wait_cmd:
+	PHY
+	LDY.w #!AU_CMD_WAIT
+	PHA
+	LDA.w !au_misses
+	BEQ +
+	LDY.w #!AU_PROBE_WAIT
++	PLA
+-	CMP.l $002140
+	BEQ .ok
+	DEY
+	BNE -
+	LDA.b #$00
+	STA.l $002140
+	LDA.w !au_misses
+	INC
+	BEQ +
+	STA.w !au_misses
++	LDA.w !au_misses          ; retry after 2, 4, … 128 frames
+	CMP.b #$07
+	BCC +
+	LDA.b #$07
++	STA.w !au_tmp
+	LDA.b #$01
+-	ASL
+	DEC.w !au_tmp
+	BNE -
+	STA.w !au_backoff
+	PLY
+	SEC
+	RTS
+.ok
+	STZ.w !au_misses
 	PLY
 	CLC
 	RTS
@@ -1175,10 +1314,81 @@ au_send_chunk:
 	CLC
 	RTS
 
+; ---------------------------------------------------------------- echo
+; C3:060A sends a song's echo parameters from the 16 presets at C3:0708
+; (index = p2 low nibble). Songs $3B-$3F take theirs from audio_echo_table
+; instead; the four table reads are replaced (A8 X16, D = $1E00, $05 = song).
+audio_echo0:
+	LDA $05
+	CMP.b #$3B
+	BCC +
+	CMP.b #$40
+	BCC ++
++	LDA.l $C30708,X
+	RTL
+++	PHX
+	JSR audio_echo_x
+	LDA.l audio_echo_table+0,X
+	PLX
+	RTL
+audio_echo1:
+	LDA $05
+	CMP.b #$3B
+	BCC +
+	CMP.b #$40
+	BCC ++
++	LDA.l $C30709,X
+	RTL
+++	PHX
+	JSR audio_echo_x
+	LDA.l audio_echo_table+1,X
+	PLX
+	RTL
+audio_echo2:
+	LDA $05
+	CMP.b #$3B
+	BCC +
+	CMP.b #$40
+	BCC ++
++	LDA.l $C3070A,X
+	RTL
+++	PHX
+	JSR audio_echo_x
+	LDA.l audio_echo_table+2,X
+	PLX
+	RTL
+audio_echo3:
+	LDA $05
+	CMP.b #$3B
+	BCC +
+	CMP.b #$40
+	BCC ++
++	LDA.l $C3070B,X
+	RTL
+++	PHX
+	JSR audio_echo_x
+	LDA.l audio_echo_table+3,X
+	PLX
+	RTL
+; A = song $3B-$3F → X = (song - $3B) * 4. B (the high byte of C) holds the
+; loader's handshake counter (C3 code keeps it there with XBA): keep it.
+audio_echo_x:
+	SEC
+	SBC.b #$3B
+	ASL : ASL
+	XBA                       ; A = counter, B = index
+	PHA
+	LDA.b #$00
+	XBA                       ; C = 00:index
+	TAX
+	PLA
+	XBA                       ; B = counter again
+	RTS
+
 ; ---------------------------------------------------------------- tests
 ; !au_test = op | arg<<8: 1 shot, 2 voice, 3 song, 4 stop all, 5 loop on
 ; (arg = loop id; kept on every frame), 6 loop off, 7 fade, 8 native effect
-; 02 arg 0F 88. A8 X16.
+; 02 arg 0F 88, 9 restore the native song. A8 X16.
 audio_test_poll:
 	LDA.w !au_testloop
 	BEQ +
@@ -1246,6 +1456,10 @@ audio_test_poll:
 	LDX.w #$880F
 	JSL core_sound_queue
 	SEP #$20
+	RTS
++	CMP.b #$09
+	BNE +
+	JSL audio_song_restore
 +	RTS
 
 audio_code_end:
@@ -1257,3 +1471,12 @@ pullpc
 %orig4($C30106, $8C0200A0)
 %orig2($C3010A, $2142)
 %hijack($C30106, audio_boot_upload, 6, audio)
+; Echo parameter reads in C3:060A (LDA $C30708..B,X).
+%orig4($C30618, $C30708BF)
+%hijack_jsl($C30618, audio_echo0, 4, audio)
+%orig4($C30651, $C30709BF)
+%hijack_jsl($C30651, audio_echo1, 4, audio)
+%orig4($C30663, $C3070ABF)
+%hijack_jsl($C30663, audio_echo2, 4, audio)
+%orig4($C3066A, $C3070BBF)
+%hijack_jsl($C3066A, audio_echo3, 4, audio)

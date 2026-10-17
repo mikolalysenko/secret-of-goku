@@ -32,7 +32,8 @@
 ; $20,$21,…,$7F,$20,… on port 0 (values the unextended driver ignores, so a
 ; missing extension costs only silence). One more group, acknowledged only after the
 ; records are processed, ends the command; the CPU then writes 0 and waits
-; for port 0 = 0. Records (first group; low bit of byte 0 = channel):
+; for port 0 = 0. A CPU that sees no echo of $8A in time writes 0 instead
+; of the first group, which cancels the command. Records (first group; low bit of byte 0 = channel):
 ;   $1c slot flags + 12 data groups   chunk (flags bit0 = final)
 ;   $2c slot 0                        start at slot (KON with the next tick)
 ;   $3c volL volR                     volume
@@ -307,8 +308,14 @@ tv_ok:
 
 ; ---------------------------------------------------------------- command
 ; Port command $8A, entered from the driver's dispatcher (port 0 out was
-; cleared); $B5 = group count.
+; cleared); $B5 = group count. Port 0 in is the first group's counter, or 0
+; when the CPU gave up waiting for the echo (it withdraws the command by
+; writing 0): then nothing follows.
 ext_cmd:
+ MOV A,P0
+ BNE ec_go
+ RET
+ec_go:
  MOV groups,CMDP1
  MOV counter,#$20
 cmd_next:
