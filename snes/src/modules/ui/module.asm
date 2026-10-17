@@ -120,9 +120,11 @@ endif
 !ui_rtimer    = !RAM_UI+$9A   ; word: frames until the radar target is selected again
 !ui_rvalid    = !RAM_UI+$9C   ; word: a radar target exists
 !ui_rlast_h   = !RAM_UI+$9E   ; word: heading of the last far-blip computation
-!ui_rfar      = !RAM_UI+$A0   ; word: frames until the far blip is recomputed
+!ui_rfar      = !RAM_UI+$A0   ; word: geometry passes until the far blip is recomputed
 !ui_blink     = !RAM_UI+$A2   ; word: blip blink phase (0-29)
-; +$A4-$B7: scouter, status, placement and fast-forward
+!ui_rphase    = !RAM_UI+$A4   ; word: bearing halves done since the radar showed (bit0 rotated, bit1 geometry)
+; +$A6-$A9: fast-forward (ff.asm)
+; +$AA-$B7: scouter, status, placement
 
 !ui_name_buf  = !RAM_UI+$B8   ; 8 bytes: display name buffer ({n} codes)
 
@@ -194,7 +196,9 @@ endif
 !ui_s_bmode = !SRAM_WORK_UI+$2F8   ; word: 1 field window, 2 world band, 0 nothing staged
 !ui_s_bstep = !SRAM_WORK_UI+$2FA   ; word: build steps still to do (!UIB_*)
 !ui_s_rkey  = !SRAM_WORK_UI+$2FC   ; word: radar text key without the guide (set with the target)
-                                   ; $2FE-$33F free
+!ui_s_rin   = !SRAM_WORK_UI+$2FE   ; 10 bytes: heading, x, y, target x, y of the last rotation
+!ui_s_gin   = !SRAM_WORK_UI+$308   ; 10 bytes: the same for the distance/guide/blip on screen
+                                   ; $312-$33F free
 !ui_s_queue = !SRAM_WORK_UI+$340   ; !UI_QMAX x 8 bytes: id+1, param, map+1, frames left
 !ui_s_wband = !SRAM_WORK_UI+$3C0   ; 28 bytes: world band colours (HDMA ch6 data: 09 09 lo hi ...)
 !ui_s_wsky  = !SRAM_WORK_UI+$3DC   ; 28 bytes: the sky's colours 9-15 in the same layout
@@ -217,6 +221,7 @@ incsrc "main.asm"
 incsrc "radio.asm"
 incsrc "window.asm"
 incsrc "world.asm"
+incsrc "ff.asm"
 if defined("UI_TEST")
 	incsrc "../../../test/ui/testmod.asm"
 endif

@@ -12,10 +12,15 @@ function sample(name)
     H.wait(1)
     local f1 = ui(0x36)
     if f1 == f0 + 1 then
+      -- the bearing on screen was computed from the state kept in
+      -- !ui_s_gin (heading, position, target), up to two frames old
+      local target = ui(0x62)
+      local fx, fy = H.r16(0x7E0128), H.r16(0x7E012A)
+      if target == 8 or target == 10 then fx, fy = H.r16(0x337F0E), H.r16(0x337F10) end
       local s = {
         name = name,
-        fa = H.r16(0x7E00FA), fc = H.r16(0x7E00FC), f6 = H.r16(0x7E00F6),
-        fx = H.r16(0x7E0128), fy = H.r16(0x7E012A),
+        fa = H.r16(0x337F0A), fc = H.r16(0x337F0C), f6 = H.r16(0x337F08),
+        fx = fx, fy = fy,
         sweep = ui(0x5A) - 1, uiframe = ui(0x36), guide = ui(0x60), target = ui(0x62),
         bx = ui(0x5C), by = ui(0x5E), dist = ui(0x64), across8 = ui(0x88), along8 = ui(0x8A),
         qcount = H.r16(0x7ED70A), vline = H.r16(0x7ED73E), phase = ui(0x58), front = ui(0x86),

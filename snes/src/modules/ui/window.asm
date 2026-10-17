@@ -114,7 +114,12 @@ ui_window_update:
 
 ; Leaving the field (world flight, rings): take the box down.
 ui_window_leave_field:
-	JSR ui_window_clear
+	LDA.w !ui_state&$FFFF             ; already down: nothing to do
+	AND.w #!UIS_DRAWN|!UIS_ATLAS|!UIS_HDMA
+	ORA.w !ui_phase&$FFFF
+	BNE +
+	RTS
++	JSR ui_window_clear
 	LDA.w #!UIS_ATLAS
 	TRB.w !ui_state&$FFFF
 	STZ.w !ui_phase&$FFFF

@@ -91,6 +91,7 @@ ui_reset_session:
 ui_field_frame:
 	JSR ui_ram_check
 	INC.w !ui_frame&$FFFF
+	JSR ui_fast_forward
 	LDA.w !ui_claims&$FFFF            ; back from world flight
 	ORA.w !ui_band&$FFFF
 	BEQ +

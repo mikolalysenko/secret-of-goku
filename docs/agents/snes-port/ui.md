@@ -17,7 +17,7 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 | Scouter option and readouts | Not yet |
 | Goku's STATUS page text | Not yet |
 | Dialogue window placement | Not yet |
-| R fast-forward | Not yet |
+| R fast-forward | Auto-confirm done (`ff.asm`): R held in a scene hides R, pulses B on two of every eight frames for prose and stops at choices, as `scene-fast-forward.js`'s input filter; the browser's 12× emulation speed has no cartridge equivalent and instant text is not done |
 
 ## One source of truth: `snes/gen/ui.mjs`
 
@@ -130,8 +130,10 @@ message shows, else the radar text) and a 48×48 dial at (8, 8).
   band's colours on lines 145–151 and puts the sky's back on lines 217–223.
   The sky's colours are read back from CGRAM in vblank on the band's first
   frame and every 8th frame (world flight uploads no palette by DMA).
-- **Dial (OBJ).** OBJ palette 3 (CGRAM 177–182, every 8th frame and once per
-  claim) and core OBJ region C (tiles `$190-$1FF`): nine 16×16 base cells
+- **Dial (OBJ).** OBJ palette 3 (CGRAM 177–182, written in vblank once per
+  claim and every 8th frame, and into the world's CGRAM buffers `$0600` and
+  `$DE00`, which the game uploads whole when its palette changes) and core
+  OBJ region C (tiles `$190-$1FF`): nine 16×16 base cells
   (ring, fill, grid, white centre and N mark) in columns 0–5 of tile rows
   0–5, then 46 deduplicated 8×8 effect tiles (blip, centre, sweep
   segments) in the free columns (`dial.bin`, 11 upload steps). The sweep is
@@ -149,13 +151,16 @@ message shows, else the radar text) and a 48×48 dial at (8, 8).
   is the first world-frame module). This replaces 16 `core_oam_add` calls
   (about 25 scanlines).
 - **Natives in front of the dial.** Module sprites sit behind every native
-  slot in world flight, but the browser's dial covers everything. Each
-  frame the Y bytes of native slots 0–83 are scanned (8-bit registers,
-  12 slots per pass, x pre-filtered); a native touching the dial's box
-  (the compass letters at y = 16 in practice) is copied right after the
-  dial's run and its own slot hidden with a marker (`X $FE, Y $E0`). The
+  slot in world flight, but the browser's dial covers everything. The Y
+  bytes of native slots are scanned (8-bit registers, 8 slots per pass, x
+  pre-filtered): slots 64–83 (the compass letters at y = 16, the only
+  natives seen in the dial's box in the flight scenes tested) every frame,
+  slots 0–63 (world objects; the world module's Goku and effects) one half
+  per frame. A native touching the dial's box is copied right after the
+  dial's run and its own slot hidden with a marker (`X $FE, Y $E0`); the
   next frame gives back marked entries the game did not rewrite before
-  scanning again, so lag frames keep the dial in front.
+  scanning again (one in the half not scanned that frame stays hidden and
+  is copied behind the dial again), so lag frames keep the dial in front.
 - **Bearing** (`radarBearing`/`worldAim`): `worldDelta` on the 4096 wrap;
   across = dx cos h − dy sin h and along = −dx sin h − dy cos h in 1/8 px,
   each product |a|·|b|/2¹¹ rounded, with sin/cos from an exact 1.14 table
@@ -168,9 +173,14 @@ message shows, else the radar text) and a 48×48 dial at (8, 8).
   (`|across| < −along × 121/256`), else the side of across. Blip:
   `round(across/50)` below 900 px (hardware divider), else
   `round(18 × across/distance)` by a 5-bit restoring division; the far blip
-  is recomputed every 8 frames and every other frame while turning (0.1 px
-  per heading unit). The target is re-selected every 16 frames (story
-  state), the Fortress followed every frame.
+  is recomputed when the heading turned and otherwise every 8 frames. The
+  bearing runs at 30 Hz in two halves so neither costs a whole frame: even
+  frames rotate that frame's state, odd frames turn it into distance, guide
+  and blip (shown from the next frame); the inputs behind what is on screen
+  are kept in SRAM (`!ui_s_gin`) for the test. A blip moves at most a
+  fraction of a pixel per frame, so this is not visible; the guide can
+  change up to two frames after the browser's. The target is re-selected
+  every 16 frames (story state), the Fortress followed every frame.
 - **Visibility**: Goku active, the world guards (`$FE & $C0`, `$8C`,
   `$E2 & 1`, `$D0`, `$EC & $7E`), no radio line, no charge, no `ui_hide`,
   a target, and no docking / aerial shot (`!UIR_DOCKING|!UIR_SHOT` from the
@@ -179,22 +189,41 @@ message shows, else the radar text) and a 48×48 dial at (8, 8).
 
 ### World-flight frame budget
 
-Production build (SlowROM), holding left then right for 120 frames;
-lines at which `modules_world_frame` returns (NMI at 225):
+Production build (SlowROM) with the world, destroy, audio and debug
+modules merged, holding left then right for 120 frames; lines at which
+`modules_world_frame` returns (NMI at 225), p50 / p90 / max:
 
-| Scene | Game logic done | Radar hidden | Radar shown (p50 / p90 / max) |
+| Scene | Game logic done | Radar hidden | Radar shown |
 | --- | --- | --- | --- |
-| `preset__flight` | 126 | 130 | 173 / 188 / 196 |
-| `frieza__core-free-flight` | 133 | — | 181 / 194 / 197 |
-| `emulator-probe__flight-baseline` | 128 | — | 172 / 185 / 191 |
+| `preset__flight` | 123 / 140 / 148 | 140 / 157 / 161 | 178 / 194 / 206 |
+| `frieza__core-free-flight` | 122 / 142 / 148 | 139 / 158 / 167 | 177 / 192 / 214 |
+| `emulator-probe__flight-baseline` | 129 / 149 / 156 | 147 / 167 / 168 | 185 / 198 / 219 |
 
-Every scene stays at 60 Hz. Of the ~45 lines with the radar shown, about
-11 are the core re-hiding the dial's slots at the next `core_oam_begin`
-(`core_oam_hide_range` calls `core_oam_set_hi` per slot); with a hide that
-only writes Y = `$E0` the same run ends at p50 165 / p90 176 (see the core
-requests). The rest (profiled per frame): native scan and moves ~10,
-rotation/bearing/hypot/blip ~14, dial run ~4, IRQs ~1.8, vblank ~1.2,
-policy and checks ~2.
+Every scene stays at 60 Hz, but the worst frames leave only 6–19 lines.
+The UI's own world frame (`ui_world_frame`, measured per frame) costs
+p50 24 / p90 32 / max 40 lines: dial run ~3, native scan ~5 plus ~1.3 per
+native moved behind the dial (up to four compass letters), one bearing
+half ~4–6, radar text steps ~5 when the guide changes, band and policy
+~3. About 11 more lines per frame are the core re-hiding the dial's slots
+at the next `core_oam_begin` (`core_oam_hide_range` calls
+`core_oam_set_hi` per slot); with a hide that only writes Y = `$E0` the
+radar-shown frames end about 8–13 lines earlier (see the core requests).
+
+## R fast-forward (`ff.asm`)
+
+Field frames: with R held (and L not), in a scene (`$D0` ≠ 0, `$E4` ≠ 0,
+`$EC & $7E` = 0) R is hidden from the game (`!core_pad_mask`); while the
+interpreter shows prose (`$D0` = `$81` text engine or `$83` button wait)
+and its window holds no choice (`story_api_window_has_choice`, rescanned
+when `$D1-$D3` moves), B is injected on two of every eight field frames
+(`!core_pad_inject`), as `scene-fast-forward.js` pulses it. During
+Frieza's input lock (story query `FRIEZA_INPUT_LOCKED`) R is hidden and
+prose is pulsed without the choice check, as in the browser. Story flags
+and choices are untouched: the native interpreter runs every event command.
+Built out when the story module's reference copy is (`-DSTORY_FAST_FORWARD`).
+Not done: the browser also runs these frames up to 12× faster, and the
+cartridge has no instant-text mode yet (the native text engine's character
+timing has not been traced).
 
 ## Foreign savestates
 
@@ -254,8 +283,8 @@ byte boundary.
 | Resource | Use |
 | --- | --- |
 | Code/data `$AC:8000-` | `!CODE_UI`: `$AC:8000-$E900` used (about 26 KiB: code, 6 KiB messages, 2.5 KiB field atlas, 2.2 KiB world atlas, 2.6 KiB dial tiles, radar tables); about 5.8 KiB left |
-| WRAM `$7E:7E40-$7E:7EFF` | `!RAM_UI`: state, current message, cooldowns, band/radar state, scratch, `!ui_magic` (`module.asm`); `+$A4`–`+$B7` free |
-| SRAM `$33:7C00-$33:7FFF` | staging: window/band rows (`+$000`), field HDMA table or moved natives (`+$200`), text words (`+$240`), radar trig cache (`+$2E8`), build state (`+$2F4`), radar key (`+$2FC`), queue (`+$340`), band and sky HDMA colour blocks (`+$3C0`, `+$3DC`) |
+| WRAM `$7E:7E40-$7E:7EFF` | `!RAM_UI`: state, current message, cooldowns, band/radar state, scratch, `!ui_magic` (`module.asm`), fast-forward (`+$A6`); `+$AA`–`+$B7` free |
+| SRAM `$33:7C00-$33:7FFF` | staging: window/band rows (`+$000`), field HDMA table or moved natives (`+$200`), text words (`+$240`), radar trig cache (`+$2E8`), build state (`+$2F4`), radar key (`+$2FC`), bearing inputs (`+$2FE`, `+$308`), queue (`+$340`), band and sky HDMA colour blocks (`+$3C0`, `+$3DC`) |
 | SRAM persistent | `!PERSIST_UI` = `!PERSIST_MISC+$80` (`$31:6380`, `$60` bytes) — **request** |
 | VRAM (field) | BG3 tiles `$110-$113`, `$122-$1BF` and rows 1–8 / 17–24 while the window shows |
 | VRAM (world flight) | core OBJ region B (`$7100-$78FF`: band map rows 19–26 and the world atlas, read as BG3) and region C (`$7900-$7FFF`: dial tiles), claimed while shown |
@@ -284,6 +313,7 @@ scenes and compares with the browser's own code:
 | `roll` | saved attempt count and xorshift state (attempts 48–52): the 10% rolls win on attempts 50 and 52 on the same frames, rotation continues from the saved index, the attempt count is saved |
 | `nocrash` | production build from `.local/snes-checkpoints/after-arrival.mss` (a savestate of another build: stale UI WRAM) and from `preset__sword`, while Goku walks: a dispatched frame per video frame, no code running from low RAM, the UI block set up |
 | `mul` | the rotation's multiplier routine against exact integer products (47 cases) |
+| `ff` | from `potos.mss` (a NEW GAME, Goku made active), Luka's menu (`$134`): with R held the spear gift's prose is confirmed (`$CFC3` = 1) and the interpreter waits on the menu's choice (`story_api_window_has_choice`); without input the prose waits (`$D0` = `$83`) |
 | `radar` | `preset__flight` with two quest states, steering between samples: band panel pixels against `radioPixels()` of the browser's panel text, dial pixels against `dragon-radar.js` for the sampled sweep angle and blink phase, guide and blip against `radarBearing` (UI_TEST builds compute the far blip every frame) |
 
 ## Core requests
@@ -306,6 +336,13 @@ scenes and compares with the browser's own code:
   Please bless that (or add `core_oam_add_run`: n prebuilt entries plus
   their high bits) so the variables stay a contract.
 - **World NMI and frame order**: keep `ui_world_frame` first in
-  `modules_world_frame` (see Ordering above).
+  `modules_world_frame` (see Ordering above) and `ui_world_nmi` first in
+  `modules_world_nmi` (a few register and CGRAM writes that must land in
+  vblank; the world module's uploads check `core_vblank_lines`).
+- **World module**: please call `ui_set_inputs` with `!UII_WORLD_YIELD`
+  while docking, an aerial ki shot or an explosion is active (the browser
+  hides the radar then; until that call exists the dial stays up). Its
+  sprites in native slots 0..n-1 that touch the dial's box (8–55, 8–55) are
+  moved behind the dial every other frame, as for any native.
 - **Optional FastROM**: the UI code runs in bank `$AC`; a FastROM build
   (`CORE_FASTROM`) would cut its world-flight cost by roughly a fifth.

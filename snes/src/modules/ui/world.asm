@@ -413,6 +413,14 @@ ui_world_vblank:
 	CPX.w #12
 	BCC .pal
 	REP #$20
+	; and into the world's CGRAM buffers ($0600 and the flash copy $DE00),
+	; which the game uploads whole when its palette changes (C0:8A79)
+	LDX.w #10
+-	LDA.l ui_dial_colors,X
+	STA.l $7E0600+((128+(!UI_DIAL_PAL*16)+1)*2),X
+	STA.l $7EDE00+((128+(!UI_DIAL_PAL*16)+1)*2),X
+	DEX : DEX
+	BPL -
 	LDA.l !ui_claims
 	ORA.w #$0004
 	STA.l !ui_claims
@@ -518,12 +526,14 @@ ui_radar_update:
 	LDA.w !ui_vis&$FFFF
 	BEQ +
 	LDA.w !ui_cur&$FFFF
-	BNE .no                           ; the radio has the band
+	BNE .noj                          ; the radio has the band
 +	LDA.w !ui_charge_seen&$FFFF
-	BNE .no
+	BNE .noj
 	JSR ui_world_can_show
-	BCC .no
-	; the target only changes with story state: re-select every 16 frames
+	BCS +
+.noj
+	JMP .no
++	; the target only changes with story state: re-select every 16 frames
 	DEC.w !ui_rtimer&$FFFF
 	BPL .keep
 	LDA.w #15
@@ -556,12 +566,31 @@ ui_radar_update:
 	LDA.w $0128 : STA.w !ui_rtx&$FFFF
 	LDA.w $012A : STA.w !ui_rty&$FFFF
 .bearing
-	JSR ui_radar_bearing
+	LDA.w !ui_frame&$FFFF
+	LSR
+	BCS .geometry
+	JSR ui_radar_rotate               ; even frames
+	LDA.w !ui_rphase&$FFFF
+	ORA.w #$0001
+	STA.w !ui_rphase&$FFFF
+	BRA .shown
+.geometry
+	LDA.w !ui_rphase&$FFFF
+	LSR
+	BCC .shown                        ; nothing rotated since it showed
+	JSR ui_radar_geometry             ; odd frames
+	LDA.w #$0003
+	STA.w !ui_rphase&$FFFF
+.shown
+	LDA.w !ui_rphase&$FFFF
+	AND.w #$0002
+	BEQ +                             ; the first bearing is not ready yet
 	LDA.w #$0001
 	STA.w !ui_radar_on&$FFFF
-	RTS
++	RTS
 .no
 	STZ.w !ui_rtimer&$FFFF            ; select again as soon as it shows
+	STZ.w !ui_rphase&$FFFF
 	LDA.w #$FFFF
 	STA.w !ui_rlast_h&$FFFF           ; and compute the far blip at once
 	RTS
@@ -664,7 +693,17 @@ macro ui_signed(mag, a, b)
 ?done:
 endmacro
 
-ui_radar_bearing:
+; The bearing runs at 30 Hz in two halves, so neither costs a whole frame:
+; even UI frames rotate this frame's state (ui_radar_rotate), odd frames
+; turn the result into distance, guide and blip (ui_radar_geometry). The
+; inputs of each half are kept in SRAM (!ui_s_rin, then !ui_s_gin for the
+; values on screen), which is what the radar test compares with.
+ui_radar_rotate:
+	LDA.w $00F6 : STA.l !ui_s_rin+0   ; heading
+	LDA.w $00FA : STA.l !ui_s_rin+2   ; position
+	LDA.w $00FC : STA.l !ui_s_rin+4
+	LDA.w !ui_rtx&$FFFF : STA.l !ui_s_rin+6   ; target
+	LDA.w !ui_rty&$FFFF : STA.l !ui_s_rin+8
 	LDA.w !ui_rtx&$FFFF
 	SEC : SBC.w $00FA
 	CLC : ADC.w #2048
@@ -724,6 +763,14 @@ ui_radar_bearing:
 	CLC : ADC.w !ui_by8&$FFFF
 	EOR.w #$FFFF : INC
 	STA.w !ui_by8&$FFFF               ; along = -(dx sin + dy cos)
+	RTS
+
+ui_radar_geometry:
+	LDX.w #8
+-	LDA.l !ui_s_rin,X                 ; these outputs belong to those inputs
+	STA.l !ui_s_gin,X
+	DEX : DEX
+	BPL -
 	; distance = hypot(dx, dy)
 	LDA.w !ui_dx&$FFFF
 	BPL +
@@ -791,26 +838,21 @@ ui_radar_bearing:
 	CMP.w #900
 	BCC .near
 	; far: on the r = 18 circle; the direction moves slowly, so recompute
-	; every 8 frames, and while turning every other frame (0.1 px per
-	; heading unit). UI_TEST builds recompute every frame, so the radar
-	; test checks the arithmetic against the browser's exact blip.
+	; when the heading turned and otherwise every 4th geometry pass (8
+	; frames). UI_TEST builds recompute every pass, so the radar test checks
+	; the arithmetic against the browser's exact blip.
 if defined("UI_TEST")
 	BRA .far
 endif
-	LDA.w $00F6
+	LDA.l !ui_s_rin+0
 	CMP.w !ui_rlast_h&$FFFF
-	BNE .turned
+	BNE .far
 	DEC.w !ui_rfar&$FFFF
 	BPL .done
-	BRA .far
-.turned
-	LDA.w !ui_frame&$FFFF
-	LSR
-	BCS .done
 .far
-	LDA.w $00F6
+	LDA.l !ui_s_rin+0
 	STA.w !ui_rlast_h&$FFFF
-	LDA.w #7
+	LDA.w #3
 	STA.w !ui_rfar&$FFFF
 .near
 	LDA.w !ui_bx8&$FFFF
@@ -1598,9 +1640,7 @@ ui_hi_large:
 ; The bits of the first n slots of a byte (n = 0..3).
 ui_hi_keep:
 	db $00,$03,$0F,$3F
-; The bits of slot (s & 3) cleared, and value v (0-3) in place: [s&3][v].
-ui_hi_clr:
-	db $FC,$F3,$CF,$3F
+; Value v (0-3) in place for slot (s & 3): [s&3][v].
 ui_hi_set:
 	db $00,$01,$02,$03, $00,$04,$08,$0C, $00,$10,$20,$30, $00,$40,$80,$C0
 
@@ -1630,17 +1670,22 @@ ui_dial_upload:
 	RTS
 
 ; The browser draws the dial over every sprite; in world flight module
-; sprites sit behind all native slots. Native sprites (slots 0-83) touching
-; the dial's box are copied right after the dial's run and their own slots
-; hidden with a marker (X $FE, Y $E0). At the next frame, slots that still
-; hold the marker (the game did not rewrite them) get their entry back
-; before the scan, so lag frames keep the dial in front and the game's
+; sprites sit behind all native slots. Native sprites touching the dial's
+; box are copied right after the dial's run and their own slots hidden with
+; a marker (X $FE, Y $E0); the list (!ui_front, 8 bytes each: slot, x/y,
+; tile/attributes, high bits) gives them back.
+; Slots 64-83 (the compass letters, effects) are scanned every frame, the
+; world-object slots 0-63 one half per frame (in the flight scenes tested
+; none of them reaches the dial's box). A marked native whose half is not
+; scanned this frame stays hidden and is copied behind the dial again;
+; the others get their entry back before the scan (if the game did not
+; rewrite them), so lag frames keep the dial in front and the game's
 ; buffer only ever differs by entries it is about to overwrite.
 !UI_FRONT_MAX = 8
 !UI_FRONT_MARK = $E0FE
-; The scan reads only the Y bytes, 12 slots per pass with 8-bit registers
-; (slots 0-59 from $0801, 60-83 from $08F1); a Y above the dial skips the
-; slot in 9 cycles.
+; The scan reads the Y bytes, 8 slots per pass with 8-bit registers; a Y
+; above the dial skips the slot in 9 cycles, an x low byte that cannot
+; reach the dial in 13.
 macro ui_fscan(addr, k, stub)
 	LDA.w <addr>+(<k>*4),X            ; y
 	CMP.b #8+48
@@ -1656,39 +1701,44 @@ macro ui_fscan(addr, k, stub)
 ?n:
 endmacro
 macro ui_fpass(addr, stub)
-	%ui_fscan(<addr>, 0, <stub>) : %ui_fscan(<addr>, 1, <stub>) : %ui_fscan(<addr>, 2, <stub>)
-	%ui_fscan(<addr>, 3, <stub>) : %ui_fscan(<addr>, 4, <stub>) : %ui_fscan(<addr>, 5, <stub>)
-	%ui_fscan(<addr>, 6, <stub>) : %ui_fscan(<addr>, 7, <stub>) : %ui_fscan(<addr>, 8, <stub>)
-	%ui_fscan(<addr>, 9, <stub>) : %ui_fscan(<addr>, 10, <stub>) : %ui_fscan(<addr>, 11, <stub>)
+	%ui_fscan(<addr>, 0, <stub>) : %ui_fscan(<addr>, 1, <stub>)
+	%ui_fscan(<addr>, 2, <stub>) : %ui_fscan(<addr>, 3, <stub>)
+	%ui_fscan(<addr>, 4, <stub>) : %ui_fscan(<addr>, 5, <stub>)
+	%ui_fscan(<addr>, 6, <stub>) : %ui_fscan(<addr>, 7, <stub>)
 endmacro
 ui_dial_front:
-	JSR ui_dial_unfront
+	JSR ui_dial_unfront_keep
+	LDA.w !ui_frame&$FFFF
+	AND.w #$0001
+	XBA
+	LSR                               ; this frame's half of slots 0-63: X = 0 or 128
+	CLC : ADC.w #128
+	STA.w !ui_tmp0&$FFFF              ; its end
+	SEC : SBC.w #128
 	SEP #$30
-	LDX.b #$00                        ; slots 0-59: X = pass * 48
+	TAX
 .lo
 	%ui_fpass($0801, ui_front_stub_lo)
 	TXA
-	CLC : ADC.b #48
+	CLC : ADC.b #32
 	TAX
-	CPX.b #240
-	BCS +
+	CPX.w !ui_tmp0&$FFFF              ; 8-bit compare with the end's low byte
+	BEQ +
 	JMP .lo
-+	LDX.b #$00                        ; slots 60-83
++	LDX.b #$00                        ; slots 64-87 (84-87 are never used)
 .hi
-	%ui_fpass($0801+240, ui_front_stub_hi)
+	%ui_fpass($0901, ui_front_stub_hi)
 	TXA
-	CLC : ADC.b #48
+	CLC : ADC.b #32
 	TAX
 	CPX.b #96
-	BCS +
+	BEQ +
 	JMP .hi
 +	REP #$30
 	RTS
-; A8 = the slot's byte offset in the pass: Y16 = OAM byte offset, then the
-; candidate test with A8/X16; back with 8-bit registers.
+; A8 = the slot's byte offset in the pass, X8 = the pass: Y16 = OAM byte
+; offset, then the candidate test with A8/X16; back with 8-bit registers.
 ui_front_stub_hi:
-	CLC : ADC.b #240                  ; < 256: the last pass ends at 240 + 48 + 44
-	BCC ui_front_stub_lo
 	REP #$31
 	AND.w #$00FF
 	ORA.w #$0100
@@ -1706,11 +1756,35 @@ ui_front_stub_lo:
 	RTS
 
 ; Y16 = OAM byte offset of a native with y < 56 and an x low byte that may
-; touch the dial (A8): move it behind the dial when it overlaps [8, 56) x
-; [8, 56). Keeps X; returns A8.
+; touch the dial (A8, X16 = the scan's, kept): move it behind the dial when
+; it overlaps [8, 56) x [8, 56). The usual case, an 8x8 at x 0-255 (the
+; compass letters), takes a short path; 16x16 or x-bit-8 sprites the full
+; test. Returns A8.
 ui_front_cand:
-	REP #$20
 	PHX
+	REP #$20
+	TYA
+	LSR : LSR : LSR : LSR
+	TAX                               ; its high-table byte
+	TYA
+	AND.w #$000C
+	STA.w !ui_tmp4&$FFFF              ; (slot & 3) * 4
+	SEP #$20
+	LDA.w $0A00,X
+	LDX.w !ui_tmp4&$FFFF
+	AND.l ui_hi_field16,X
+	BNE .general
+	LDA.w $0800,Y                     ; 8x8: 1 <= x < 56 and y >= 1
+	BEQ .skip
+	CMP.b #8+48
+	BCS .skip
+	LDA.w $0801,Y
+	BEQ .skip
+	REP #$20
+	STZ.w !ui_tmp3&$FFFF              ; its high bits: small, x bit 8 clear
+	BRA .room
+.general
+	REP #$20
 	TYA
 	LSR : LSR
 	STA.w !ui_tmp2&$FFFF              ; slot
@@ -1731,73 +1805,85 @@ ui_front_cand:
 +	; overlap with [8, 56) x [8, 56): x < 56, x + size > 8, y + size > 8
 	BMI +
 	CMP.w #8+48
-	BCS .skip
+	BCS .skip16
 +	CLC : ADC.w !ui_tmp4&$FFFF
-	BMI .skip
+	BMI .skip16
 	CMP.w #8+1
-	BCC .skip
+	BCC .skip16
 	LDA.w $0801,Y
 	AND.w #$00FF
 	CLC : ADC.w !ui_tmp4&$FFFF
 	CMP.w #8+1
-	BCC .skip
+	BCC .skip16
+.room
 	LDA.w !ui_front_n&$FFFF
 	CMP.w #!UI_FRONT_MAX
-	BCS .skip
+	BCS .skip16
 	LDA.w !core_oam_limit&$FFFF       ; room for one more after the run
 	SEC : SBC.w !core_oam_cursor&$FFFF
-	BCC .skip
+	BCC .skip16
 	CMP.w #4
-	BCC .skip
+	BCC .skip16
 	JSR ui_front_move
+.skip16
+	SEP #$20
 .skip
 	PLX
-	SEP #$20
 	RTS
 
-; Move native Y (byte offset; !ui_tmp2 slot, !ui_tmp3 high bits) to the
-; module cursor and mark its own slot. M16.
+; Move native Y (OAM byte offset, !ui_tmp3 its high bits) to the module
+; cursor and mark its own slot. M16.
 ui_front_move:
 	; remember the native entry (SRAM, 8 bytes each)
 	LDA.w !ui_front_n&$FFFF
 	ASL : ASL : ASL
 	TAX
-	LDA.w !ui_tmp2&$FFFF : STA.l !ui_front,X     ; slot
-	LDA.w $0800,Y : STA.l !ui_front+2,X          ; x, y
-	LDA.w $0802,Y : STA.l !ui_front+4,X          ; tile / attributes
+	TYA
+	LSR : LSR
+	STA.l !ui_front,X                 ; slot
+	LDA.w $0800,Y : STA.l !ui_front+2,X
+	LDA.w $0802,Y : STA.l !ui_front+4,X
+	LDA.w !ui_tmp3&$FFFF : STA.l !ui_front+6,X
 	INC.w !ui_front_n&$FFFF
-	; copy it to the cursor, with its high bits
-	LDX.w !core_oam_cursor&$FFFF
-	LDA.w $0800,Y : STA.w $0800,X
-	LDA.w $0802,Y : STA.w $0802,X
+	LDA.w $0800,Y : STA.w !ui_tmp4&$FFFF
+	LDA.w $0802,Y : STA.w !ui_tmp5&$FFFF
 	LDA.w #!UI_FRONT_MARK
 	STA.w $0800,Y
-	TXA
+	; fall through: the copy at the cursor
+; Add !ui_tmp4 (x/y), !ui_tmp5 (tile/attributes) with high bits !ui_tmp3
+; at the module cursor. M16; keeps Y.
+ui_front_put:
+	PHY
+	LDY.w !core_oam_cursor&$FFFF
+	LDA.w !ui_tmp4&$FFFF : STA.w $0800,Y
+	LDA.w !ui_tmp5&$FFFF : STA.w $0802,Y
+	TYA
 	CLC : ADC.w #4
 	STA.w !core_oam_cursor&$FFFF
-	TXA
-	LSR : LSR
-	PHA
-	AND.w #$0003
-	STA.w !ui_tmp4&$FFFF
-	ASL : ASL
-	ORA.w !ui_tmp3&$FFFF              ; [slot & 3][high bits]
-	TAX
-	PLA
-	PHY
-	LSR : LSR
-	TAY
-	SEP #$20
+	TYA
+	AND.w #$000C
+	STA.w !ui_tmp4&$FFFF              ; (slot & 3) * 4
+	ORA.w !ui_tmp3&$FFFF
+	STA.w !ui_tmp5&$FFFF              ; [slot & 3][high bits]
+	TYA
+	LSR : LSR : LSR : LSR
+	TAY                               ; the high-table byte
+	SEP #$30
 	LDA.w $0A00,Y
-	PHX
 	LDX.w !ui_tmp4&$FFFF
-	AND.l ui_hi_clr,X
-	PLX
+	AND.l ui_hi_clr16,X
+	LDX.w !ui_tmp5&$FFFF
 	ORA.l ui_hi_set,X
 	STA.w $0A00,Y
-	REP #$20
+	REP #$30
 	PLY
 	RTS
+
+; Per (slot & 3) * 4: the slot's two high-table bits, and the byte without them.
+ui_hi_field16:
+	db $03,0,0,0, $0C,0,0,0, $30,0,0,0, $C0
+ui_hi_clr16:
+	db $FC,0,0,0, $F3,0,0,0, $CF,0,0,0, $3F
 
 ; A = the 2 high-table bits (bit0 x bit 8, bit1 large) of slot !ui_tmp2.
 ui_oam_hibits:
@@ -1820,37 +1906,79 @@ ui_oam_hibits:
 	PLX
 	RTS
 
-; Give back native entries we hid last frame that the game did not rewrite.
-; DB = $7E.
+; Give back every native entry hidden last frame that the game did not
+; rewrite (the dial is going away). DB = $7E.
 ui_dial_unfront:
+	LDA.w #$FFFF
+	BRA ui_unfront_list
+; The same before a scan, except natives in the half of slots 0-63 that is
+; not scanned this frame: they stay hidden and go behind the dial again.
+ui_dial_unfront_keep:
+	LDA.w !ui_frame&$FFFF
+	AND.w #$0001
+ui_unfront_list:
+	STA.w !ui_tmp0&$FFFF              ; half scanned now, or $FFFF: all
 	LDA.w !ui_front_n&$FFFF
 	BEQ .done
-	LDY.w #$0000                      ; saved entry offset
+	STA.w !ui_tmp1&$FFFF              ; entries to look at
+	STZ.w !ui_front_n&$FFFF           ; rebuilt with the kept ones
+	LDX.w #$0000                      ; entry offset
 .e
-	TYX
 	LDA.l !ui_front,X                 ; slot
 	ASL : ASL
-	TAX                               ; OAM byte offset
-	LDA.w $0800,X
+	TAY                               ; its OAM byte offset
+	LDA.w $0800,Y
 	CMP.w #!UI_FRONT_MARK
-	BNE .skip                         ; rewritten by the game
-	PHX
-	TYX
-	LDA.l !ui_front+2,X
-	PLX
-	STA.w $0800,X
-	PHX
-	TYX
-	LDA.l !ui_front+4,X
-	PLX
-	STA.w $0802,X
-.skip
-	TYA
-	CLC : ADC.w #$0008
-	TAY
-	LSR : LSR : LSR
-	CMP.w !ui_front_n&$FFFF
-	BCC .e
-	STZ.w !ui_front_n&$FFFF
+	BNE .next                         ; rewritten by the game: forget it
+	LDA.w !ui_tmp0&$FFFF
+	BMI .restore
+	LDA.l !ui_front,X
+	CMP.w #64
+	BCS .restore                      ; scanned every frame
+	LSR : LSR : LSR : LSR : LSR       ; its half
+	EOR.w !ui_tmp0&$FFFF
+	LSR
+	BCC .restore                      ; scanned this frame
+	JSR ui_front_keep
+	BRA .next
+.restore
+	LDA.l !ui_front+2,X : STA.w $0800,Y
+	LDA.l !ui_front+4,X : STA.w $0802,Y
+.next
+	TXA
+	CLC : ADC.w #8
+	TAX
+	DEC.w !ui_tmp1&$FFFF
+	BNE .e
 .done
+	RTS
+
+; Entry X stays hidden: its copy at the cursor again, and the entry moves
+; to the end of the rebuilt list (never past X). Y = its OAM offset.
+ui_front_keep:
+	LDA.w !core_oam_limit&$FFFF
+	SEC : SBC.w !core_oam_cursor&$FFFF
+	BCC .restore
+	CMP.w #4
+	BCS +
+.restore
+	LDA.l !ui_front+2,X : STA.w $0800,Y   ; no room: back in front
+	LDA.l !ui_front+4,X : STA.w $0802,Y
+	RTS
++	LDA.l !ui_front+2,X : STA.w !ui_tmp4&$FFFF
+	LDA.l !ui_front+4,X : STA.w !ui_tmp5&$FFFF
+	LDA.l !ui_front+6,X : STA.w !ui_tmp3&$FFFF
+	PHX
+	JSR ui_front_put
+	PLX
+	LDA.w !ui_front_n&$FFFF
+	ASL : ASL : ASL
+	PHY
+	TAY                               ; write offset (<= X)
+	LDA.l !ui_front,X : PHX : TYX : STA.l !ui_front,X : PLX
+	LDA.l !ui_front+2,X : PHX : TYX : STA.l !ui_front+2,X : PLX
+	LDA.l !ui_front+4,X : PHX : TYX : STA.l !ui_front+4,X : PLX
+	LDA.l !ui_front+6,X : PHX : TYX : STA.l !ui_front+6,X : PLX
+	PLY
+	INC.w !ui_front_n&$FFFF
 	RTS

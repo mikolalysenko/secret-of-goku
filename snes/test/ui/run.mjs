@@ -205,6 +205,30 @@ const cases={
     report('nocrash',!fails.length,[...fails,...notes]);
   },
 
+  async ff(){
+    // R fast-forward from the Potos checkpoint: Luka's menu ($134) with R
+    // held confirms the spear gift's prose and stops at the menu's choice;
+    // without input the prose waits.
+    const state=join(process.env.SNES_CHECKPOINTS??join(mainCheckout(),'.local/snes-checkpoints'),'potos.mss');
+    if(!existsSync(state)){report('ff',true,[`skipped: no ${state}`]);return;}
+    const fails=[],notes=[];
+    for(const [name,hold] of [['ff-hold','r'],['ff-none',null]]){
+      const rom=privateRom(testRom,`ui-${name}`);
+      const pre=`HOLD=${hold?JSON.stringify(hold):'nil'}\nFRAMES=1500\nPERSIST_STORY=0x316040\n`;
+      const r=await runMesen({rom,state,test:pre+lib+'\n'+readFileSync(join(here,'ff.lua'),'utf8'),outDir:join(outRoot,name),timeoutMs:600000});
+      cleanupRom(rom);
+      const q=r.results??{};
+      if(r.code!==0||q.error){fails.push(`${name}: mesen ${q.error??r.output.slice(-300)}`);continue;}
+      if(q.queued!==1||!q.started)fails.push(`${name}: event 134 not started (queued ${q.queued})`);
+      if(hold){
+        if(!(q.gift>=1))fails.push(`${name}: the spear gift's prose was not confirmed (CFC3 ${q.gift})`);
+        if(q.d0===0||q.choice!==1)fails.push(`${name}: not waiting on the menu's choice (D0 ${q.d0}, choice ${q.choice})`);
+      }else if(q.gift!==0)fails.push(`${name}: the prose advanced without input (CFC3 ${q.gift})`);
+      notes.push(`${name}: D0 ${q.d0?.toString(16)}, CFC3 ${q.gift}, choice window ${q.choice}`);
+    }
+    report('ff',!fails.length,[...fails,...notes]);
+  },
+
   async mul(){
     // The radar rotation's multiplier routine against exact integer math.
     const cases=[[1951,7006,14811],[1520,7006,14811],[2048,16384,16384],[0,16384,0],[255,255,256],[256,256,255],[1,1,1]];
