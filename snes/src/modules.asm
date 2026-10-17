@@ -8,6 +8,7 @@
 ; incsrc "modules/<name>/module.asm"
 incsrc "modules/goku/module.asm"
 incsrc "modules/story/module.asm"
+incsrc "modules/debug/module.asm"
 
 pushpc
 org !CODE_CORE+$7000
@@ -16,6 +17,7 @@ org !CODE_CORE+$7000
 modules_field_frame:
 	JSL goku_frame
 	JSL story_field_frame
+	JSL debug_field_frame
 	RTL
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
 modules_field_nmi:
@@ -23,6 +25,7 @@ modules_field_nmi:
 	RTL
 ; World flight frame, after the world logic (DB = $7E).
 modules_world_frame:
+	JSL debug_world_frame
 	RTL
 ; World vblank, after the game's uploads and HDMA setup; not force-blanked,
 ; so check core_vblank_lines before long uploads (DB = $80).
@@ -31,6 +34,7 @@ modules_world_nmi:
 ; Full-screen menu frame (file select, name entry, status, equipment,
 ; save), in vblank right after the menu's own uploads (DB = $7E).
 modules_menu_frame:
+	JSL debug_menu_frame
 	RTL
 ; Ring menu frame, in vblank (DB = $7E).
 modules_ring_frame:
@@ -38,6 +42,7 @@ modules_ring_frame:
 ; Title program entry (power-on, soft reset, quit to title), after module
 ; WRAM was cleared; the decompressed program is at 7E:8000 (DB = $7E).
 modules_title_boot:
+	JSL debug_title_boot
 	RTL
 ; Before the game writes a GAME FILE: put persistent state into !SRAM_LIVE.
 modules_save:
@@ -49,8 +54,13 @@ modules_load:
 ; New game: !SRAM_LIVE was cleared and !persist_version set to 1.
 modules_new_game:
 	JSL story_new_game
+	JSL debug_new_game
 	RTL
 pullpc
+
+; Debug preset hook table (generated): modules fill it by defining
+; !DEBUG_PRESET_HOOK_<NAME> / _ANY in their own files (included above).
+incsrc "debug/hooks.asm"
 
 ; Story hook and query tables (generated). Keep this last: modules fill story
 ; hooks/queries by defining !STORY_HOOK_<NAME> / !STORY_QUERY_<NAME> in their
