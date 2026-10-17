@@ -124,6 +124,34 @@ test('batched idle cycles match cycle-by-cycle stepping, including skipped pictu
  lockstep(slow,fast,300,'stepping',(s,i)=>{s.joypad1State=input(i);s.runFrame(i%3===1);});
  assert.equal(fast.apuCatchCycles,slow.apuCatchCycles,'APU catch-up stays bit-identical');
 });
+test('BIT/BNE wait loops are skipped exactly, and not under an instruction hook that sees them',t=>{
+ const state=s=>[...frameState(s),s.apuCatchCycles,s.readSerial(),s.openBus,s.cpu.cyclesLeft,s.autoJoyTimer];
+ const counted=s=>{let batched=0;const spin=s.spinWait;s.spinWait=function(...a){const p=spin.apply(this,a);if(p>0)batched+=p;return p;};return()=>batched;};
+ const compare=(fast,slow,frames,label,step=(s,i)=>{s.joypad1State=input(i);s.runFrame(i%3===1);})=>{
+  for(let i=0;i<frames;i++){step(slow,i);step(fast,i);assert.deepEqual(state(fast),state(slow),`${label}: frame ${i}`);}
+ };
+ // From power-on (the title and intro wait on I/O, which never batches).
+ {const fast=core(),slow=core();slow.setSpinWait(false);compare(fast,slow,300,'power-on');}
+ // The game's main loop waits in BIT $EC / BNE in field and story scenes.
+ if(!fixtures.length){t.skip('Private emulator states not present');return;}
+ let total=0,loop=-1,loopState=null;
+ for(const f of fixtures){
+  const fast=core(),slow=core();slow.setSpinWait(false);const st=JSON.parse(readFileSync(f,'utf8'));
+  for(const s of[fast,slow])restore(s,{...st,romHash:hash(s.cart.data)});
+  const batched=counted(fast),spin=fast.spinWait;
+  fast.spinWait=function(x,pc,...a){const p=spin.call(this,x,pc,...a);if(p>0&&loop<0){loop=pc;loopState=st;}return p;};
+  compare(fast,slow,12,f);total+=batched();
+ }
+ assert.ok(total>100000,`${total} pairs skipped`);
+ // An instruction hook with a breakpoint on the loop sees every iteration.
+ const hooked=(s,register)=>{const cpu=s.cpu,previous=cpu.cycle;let hits=0;
+  cpu.cycle=function(){if((((this.r[1]&63)<<16)|this.br[4])===(loop&0x3fffff))hits++;return previous.call(this);};
+  if(register)cpu.registerBreakpoints(cpu.cycle,previous,[[loop>>16,loop&0xffff]]);return()=>hits;};
+ const a=core(),b=core();b.setSpinWait(false);for(const s of[a,b])restore(s,{...loopState,romHash:hash(s.cart.data)});
+ const ha=hooked(a,true),hb=hooked(b,true);
+ lockstep(b,a,30,'hooked loop');
+ assert.ok(ha()>1000&&ha()===hb(),`${ha()} vs ${hb()} hook calls`);
+});
 test('instruction hooks run at registered breakpoints, and unregistered hooks see every instruction',()=>{
  // Watch two instructions that the opening really executes, one rarely.
  const probe=core(),counts=new Map(),previousProbe=probe.cpu.cycle;
