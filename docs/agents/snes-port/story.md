@@ -161,6 +161,11 @@ against the encoded program at build time.
 | `00:1866` | name copy | `story_name_byte`: `displayName(n)` | `createNativeNames` |
 | field frame | | queued requests, spell re-grants, Jema repairs, Fire Palace floor, fast track, Potos gatekeeper (R fast-forward with `-DSTORY_FAST_FORWARD`) | `C0:B073` breakpoint, `potosGatekeeper.tick`, `scene-fast-forward` |
 
+The field frame costs about 240 CPU cycles when no step applies (measured
+on the Potos walk). `canAttack` is evaluated only when a step needs it, the
+gatekeeper checks `CF10` and local flight before scanning for the guard, and
+unimplemented hooks and queries are skipped without a call.
+
 Resolving at `E77B` instead of at the fetch is equivalent because event
 starts are unique, every event is terminated, and `E77B` is the only writer
 of an event-start pointer. The crisis greeting is still decided at the first
@@ -328,7 +333,7 @@ Palace walk; `16A`/`16B`/`55A`/`55B` broken doors; `558` Northtown captive.
 | --- | --- |
 | `!PERSIST_STORY+$00` | version (1 once initialised; 0 after a new game or a legacy load: the ledger is then inferred from `$CF90-$CF96` = 1, as `dragon-quest.js restore()` does) |
 | `+$01` / `+$02` | ledger: Balls held / personally collected (bit = palace: Water, Earth, Wind, Fire, Light, Dark, Moon) |
-| `+$03`, `+$04`, `+$05` | legacy delivery count, wished, fast track |
+| `+$03`, `+$04`, `+$05`, `+$06` | legacy delivery count, wished, fast track, any spell grant kept (gates the per-frame re-grant) |
 | `+$08`–`+$17` | spell grants kept for the girl / sprite slots (`$E3C8`/`$E5C8`), re-OR-ed every field frame once present |
 | `!RAM_STORY` | last event, counters, request queue, greeting state, scratch, name buffer, fast-forward, object list bounds (map in `module.asm`) |
 | `!SRAM_WORK_STORY` | `+$000` Water Palace walk script; test builds: `+$700` query table, `+$800` hook log (128 entries), `+$B10` dispatch sweep |
@@ -359,8 +364,8 @@ All `JSL`; any M/X on entry unless noted; DB/D preserved.
 | --- | --- |
 | ROM `F0:8000-F6:96DF` | compiled scripts (byte-identical to the browser); free: lower halves of F0–F7, `F6:96E0-F7:FFFF` |
 | ROM `E5:0000-3893` | dispatch (`$0000`), hook index (`$1000`), greeting kinds (`$1800`), programs (`$2000`, 5 KiB), hook lists, greetings, grant markers, RAM queries, story areas, Water Palace templates, default names |
-| ROM `A5:8000-9466` | runtime code; `A5:FC00` hook and query tables |
-| WRAM | `!RAM_STORY` (`$7E:DA00`, `$91` of `$100` bytes used) |
+| ROM `A5:8000-954A` | runtime code; `A5:FC00` hook and query tables |
+| WRAM | `!RAM_STORY` (`$7E:DA00`, `$9B` of `$100` bytes used) |
 | SRAM | `!PERSIST_STORY` (`$18` of `$C0` bytes), `!SRAM_WORK_STORY` |
 
 Patched original code (each asserted with `%orig`):
