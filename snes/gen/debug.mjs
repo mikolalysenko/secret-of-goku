@@ -32,7 +32,7 @@ export const presetDefine=name=>name.toUpperCase().replace(/-/g,'_');
 // Recipe opcodes (snes/src/modules/debug/recipe.asm dispatch order).
 export const OP={END:0x00,WAIT:0x01,POKE8:0x02,POKE16:0x03,POKEN:0x04,FILL:0x05,FLAG:0x06,RAISE:0x07,SENZU:0x08,
   LEDGER:0x09,SCRIPT:0x0A,TRAVEL:0x0B,REQUEST:0x0C,UNTIL:0x0D,HOOK:0x0E,FORM:0x0F,TAKEOFF:0x10,WORLDAIM:0x11,
-  TELEPORT:0x12,PRESS:0x13,SWORD:0x14,OPENING:0x15,REFILL:0x16,CANCEL:0x17,MARK:0x18};
+  TELEPORT:0x12,PRESS:0x13,SWORD:0x14,OPENING:0x15,REFILL:0x16,CANCEL:0x17,MARK:0x18,PERMANENT:0x19};
 // UNTIL condition bits.
 export const UNTIL={CAN_ACT:0x01,ADVANCE:0x02,ENEMY:0x04,IDLE:0x08,WINDOW:0x10,WORLD:0x20,SCENE:0x40,EVENT:0x80};
 // Hook kinds (A on entry of !DEBUG_PRESET_HOOK_<NAME> / _ANY).
@@ -55,13 +55,18 @@ const SENT_MAXHP=0x5a5a,SENT_FX=0x0a6e,SENT_FY=0x0bcd;
 // What the browser's polling loops and guards wait for, as native
 // conditions, keyed by travel door / requested event. `map` is also what the
 // mock reports so the browser's guards pass; `frieza`/`scene` are the Frieza
-// stage and the module state its loop polls. These are the only facts here
-// not read from quick-start.js; each mirrors one loop condition there.
+// stage and the module state its loop polls; `soft` marks a wait that only
+// another module's logic can satisfy (the preset then ends at the closest
+// native state after `frames`). These are the only facts here not read
+// from quick-start.js; each mirrors one loop condition there.
 const WAITS={
   travel:{
     0x304:{map:72},                                                // trial: pump(240), map 72
     0x3df:{map:418,until:UNTIL.CAN_ACT|UNTIL.ADVANCE},               // hexas: map 418 && canAttack, R held
-    0x3dd:{map:237,until:UNTIL.CAN_ACT|UNTIL.ADVANCE|UNTIL.ENEMY},   // rider: map 237, canAttack, live enemy
+    // rider: map 237, canAttack, a live enemy. Room 419 only moves on when
+    // the Frieza module requests 4A3 (frieza.js: stage palace, CF44 = 6):
+    // without it the preset ends in room 419 (soft wait).
+    0x3dd:{map:237,until:UNTIL.CAN_ACT|UNTIL.ADVANCE|UNTIL.ENEMY,soft:{owner:'frieza',frames:1280}},
     0x3a9:{map:235,until:UNTIL.CAN_ACT|UNTIL.ADVANCE},               // tree: until canAttack, R held
     0x3b:{map:255,until:UNTIL.CAN_ACT},                             // Fortress deck guard
     0x2f:{map:246,frieza:'trial'},                                  // Fortress arena: the trial scene starts
@@ -317,10 +322,15 @@ export async function generate({rom,repo,outDir}){
         case'option':
           if(t.key!=='superSaiyan')throw Error(`debug: option ${t.key} has no native form`);
           emit(OP.FORM,t.v?1:0);emit(OP.HOOK,HOOK.FORM,payloadOf({superSaiyan:!!t.v}));break;
-        case'takeoff':emit(OP.TAKEOFF);emit(OP.UNTIL,0xffff,0,UNTIL.WORLD,EMPTY);break;
+        case'takeoff':emit(OP.TAKEOFF);emit(OP.UNTIL,0xffff,0,UNTIL.WORLD,EMPTY,0);break;
         case'hook':
           if(t.kind==='FRIEZA'&&trace.slice(0,i).some(x=>x.op==='friezaHit'))break;
-          emit(OP.HOOK,HOOK[t.kind],payloadOf(t.o));break;
+          emit(OP.HOOK,HOOK[t.kind],payloadOf(t.o));
+          // frieza.restore({permanent}) also turns on the story's permanent
+          // Super Saiyan form (frieza.js restore: options.superSaiyan), which
+          // is shared state: core's !persist_ssj_lock and the goku form.
+          if(t.kind==='FRIEZA'&&t.o?.permanent)emit(OP.PERMANENT);
+          break;
         case'friezaHit':
           // orbit/space: the Frieza module's own phase handoffs; everything
           // up to the final capture belongs to it.
@@ -332,9 +342,9 @@ export async function generate({rom,repo,outDir}){
           const scene=typeof w.scene==='function'?w.scene(kind):w.scene;
           emit(travel?OP.TRAVEL:OP.REQUEST,travel?t.door:t.id);
           const map=travel?w.map??doorMap(t.door):w.map??0xffff;
-          if(travel&&!w.until)emit(OP.UNTIL,map,0,0,EMPTY);
+          if(travel&&!w.until)emit(OP.UNTIL,map,0,0,EMPTY,0);
           while(trace[i+1]?.op==='pump'){const p=trace[++i],bits=padBits(p.buttons);if(bits)emit(OP.PRESS,bits,p.frames);else emit(OP.WAIT,p.frames);}
-          if(w.until)emit(OP.UNTIL,map,w.species??0,w.until,scene?payloadOf(scene):EMPTY);
+          if(w.until)emit(OP.UNTIL,map,w.species??0,w.until,scene?payloadOf(scene):EMPTY,w.soft?Math.ceil(w.soft.frames/64):0);
           break;
         }
         case'teleport':throw Error('debug: teleport outside pullSword');
@@ -437,7 +447,7 @@ export async function generate({rom,repo,outDir}){
       const w=v=>`dw $${hex(v&0xffff,4)}`,b=v=>`db $${hex(v&255)}`;
       const parts=[`db !DEBUG_OP_${name}`];
       switch(op){
-        case OP.END:case OP.SENZU:case OP.TAKEOFF:case OP.WORLDAIM:case OP.SWORD:case OP.OPENING:case OP.REFILL:case OP.CANCEL:break;
+        case OP.END:case OP.SENZU:case OP.TAKEOFF:case OP.WORLDAIM:case OP.SWORD:case OP.OPENING:case OP.REFILL:case OP.CANCEL:case OP.PERMANENT:break;
         case OP.WAIT:case OP.TRAVEL:case OP.REQUEST:parts.push(w(args[0]));break;
         case OP.POKE8:parts.push(w(args[0]),b(args[1]));break;
         case OP.POKE16:parts.push(w(args[0]),w(args[1]));break;
@@ -446,7 +456,7 @@ export async function generate({rom,repo,outDir}){
         case OP.FLAG:case OP.RAISE:parts.push(b(args[0]),b(args[1]));break;
         case OP.LEDGER:parts.push(...args.map(b));break;
         case OP.SCRIPT:parts.push(`dw ${args[0]}`);break;
-        case OP.UNTIL:parts.push(w(args[0]),b(args[1]),b(args[2]),`dw ${args[3]}`);break;
+        case OP.UNTIL:parts.push(w(args[0]),b(args[1]),b(args[2]),`dw ${args[3]}`,b(args[4]));break;
         case OP.HOOK:parts.push(b(args[0]),`dw ${args[1]}`);break;
         case OP.FORM:case OP.MARK:parts.push(b(args[0]));break;
         case OP.TELEPORT:parts.push(w(args[0]),w(args[1]),w(args[2]));break;

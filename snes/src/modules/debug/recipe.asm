@@ -78,9 +78,9 @@ debug_op_table:
 	dw debug_op_request, debug_op_until, debug_op_hook, debug_op_form
 	dw debug_op_takeoff, debug_op_worldaim, debug_op_teleport, debug_op_press
 	dw debug_op_sword, debug_op_opening, debug_op_refill, debug_op_cancel
-	dw debug_op_mark
+	dw debug_op_mark, debug_op_permanent
 debug_op_table_end:
-assert (debug_op_table_end-debug_op_table)/2 == !DEBUG_OP_MARK+1, "debug op table out of step with snes/gen/debug.mjs"
+assert (debug_op_table_end-debug_op_table)/2 == !DEBUG_OP_PERMANENT+1, "debug op table out of step with snes/gen/debug.mjs"
 
 ; END: the browser's final capture point. The game is the player's again.
 debug_op_end:
@@ -328,8 +328,11 @@ debug_op_started:
 	RTS
 +	%dbg_next(3)
 
-; UNTIL map16 species8 flags8 payload16: wait for what the browser's polling
-; loop or guard waits for. map $FFFF = any; flags !DEBUG_UNTIL_*.
+; UNTIL map16 species8 flags8 payload16 soft8: wait for what the browser's
+; polling loop or guard waits for. map $FFFF = any; flags !DEBUG_UNTIL_*.
+; soft8 > 0: only another module's logic can satisfy the wait; after
+; soft8 * 64 frames the recipe goes on from the closest native state
+; (counted in !dbg_soft, first one in !dbg_soft_pc).
 debug_op_until:
 	%dbg_arg8(4)
 	STA.l !dbg_tmp2                 ; flags
@@ -350,8 +353,27 @@ debug_op_until:
 	JSR debug_call_hooks
 	BCS .no
 .yes
-	%dbg_next(7)
+	%dbg_next(8)
 .no
+	%dbg_arg8(7)
+	BEQ .hard
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL
+	CMP.l !dbg_op_frames
+	BCS .hard
+	LDA.l !dbg_soft
+	BNE +
+	LDA.l !dbg_pc
+	STA.l !dbg_soft_pc
++	LDA.l !dbg_soft
+	INC
+	STA.l !dbg_soft
+	BRA .yes
+.hard
 	LDA.l !dbg_tmp2
 	AND.w #!DEBUG_UNTIL_ADVANCE
 	BEQ +
@@ -622,8 +644,7 @@ debug_op_teleport:
 	LSR
 	LSR
 	LSR
-	ASL                             ; tile y * 2
-	AND.w #$00FE
+	AND.w #$00FE                    ; tile y * 2 = (y >> 4) << 1
 	STA.l !dbg_tmp0
 	SEP #$20
 	LDA $DF
@@ -768,6 +789,17 @@ debug_op_mark:
 	INC
 	STA.l !dbg_marks
 	%dbg_next(2)
+
+; PERMANENT: the story's permanent Super Saiyan form (frieza.restore with
+; permanent): core's shared lock and the goku module's form.
+debug_op_permanent:
+	SEP #$20
+	LDA.b #$01
+	STA.l !persist_ssj_lock
+	REP #$20
+	LDA.w #$0001
+	JSL goku_api_set_form
+	%dbg_next(1)
 
 ; Carry set in an interactive field frame.
 debug_field_mode:

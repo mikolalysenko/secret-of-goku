@@ -63,12 +63,16 @@ export function compareState(ours,ref){
   const r8=a=>ref.ram[a&0x1ffff],r16=a=>r8(a)|r8(a+1)<<8;
   const diffs=[],note=(k,want,got)=>diffs.push({k,want,got});
   if(ours.map!==r16(0xdc))note('map',r16(0xdc),ours.map);
-  const flags=unhex(ours.flags),flagDiffs=[];
-  for(let i=0;i<256;i++)if(flags[i]!==r8(0xcf00+i))flagDiffs.push(`${i.toString(16).padStart(2,'0')}:${r8(0xcf00+i)}->${flags[i]}`);
+  // CFF8-CFFF are event scratch counters (inc/dec around cutscenes, shop
+  // and inn markers): reported apart, they depend on the capture frame.
+  const flags=unhex(ours.flags),flagDiffs=[],scratch=[];
+  for(let i=0;i<256;i++)if(flags[i]!==r8(0xcf00+i))(i>=0xf8?scratch:flagDiffs).push(`${i.toString(16).padStart(2,'0')}:${r8(0xcf00+i)}->${flags[i]}`);
   if(flagDiffs.length)note('flags',null,flagDiffs.join(' '));
+  if(scratch.length)diffs.push({k:'scratch-flags',want:null,got:scratch.join(' '),transient:true});
   ours.party.forEach((p,i)=>{
     const b=0xe000+i*0x200;
     if(p.active!==(r8(b)&1))note(`party${i}.active`,r8(b)&1,p.active);
+    if(p.active&&p.level!==r8(b+0x181))note(`party${i}.level`,r8(b+0x181),p.level);
     if(p.active){
       if(p.hp!==r16(b+0x182)||p.maxhp!==r16(b+0x184))note(`party${i}.hp`,`${r16(b+0x182)}/${r16(b+0x184)}`,`${p.hp}/${p.maxhp}`);
       if(Math.abs(p.x-r16(b+2))>16||Math.abs(p.y-r16(b+4))>16)note(`party${i}.pos`,`${r16(b+2)},${r16(b+4)}`,`${p.x},${p.y}`);
@@ -80,6 +84,8 @@ export function compareState(ours,ref){
   if(names!==ours.names)note('names',names,ours.names);
   // Goku and the Dragon Ball ledger (browser JS state -> cartridge SRAM).
   const persist=unhex(ours.persist);
+  const ssj=!!ref.goku?.options?.superSaiyan;
+  if(ssj!==!!ours.goku_form)note('form',ssj?'super':'base',ours.goku_form?'super':'base');
   const arrived=ref.arrival?.phase==='complete';
   if(arrived!==!!persist[1])note('goku_active',arrived,!!persist[1]);
   const q=ref.goku?.quest;

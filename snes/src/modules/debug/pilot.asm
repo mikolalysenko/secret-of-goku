@@ -30,6 +30,8 @@ debug_arm:
 	STA.l !dbg_op_frames
 	STA.l !dbg_menu_frames
 	STA.l !dbg_boot_ok
+	STA.l !dbg_soft
+	STA.l !dbg_soft_pc
 	SEP #$20
 	STA.l !dbg_error
 	STA.l !dbg_newgame
@@ -105,17 +107,18 @@ debug_menu_frame:
 	JSR debug_press
 	RTL
 .editor
-	JSR debug_preset_x
-	LDA.l debug_preset_table+6,X
-	AND.w #$00FF
-	CMP.w #!DEBUG_BOOT_EDITOR
-	BNE .name
-	; title: the browser captures the name editor 180 frames after B.
+	; The browser presses Start (or captures the title preset) 180 frames
+	; after B; the title module prefills BOY once the editor has faded in.
 	LDA.l !dbg_stable
 	INC
 	STA.l !dbg_stable
 	CMP.w #120
 	BCC .out
+	JSR debug_preset_x
+	LDA.l debug_preset_table+6,X
+	AND.w #$00FF
+	CMP.w #!DEBUG_BOOT_EDITOR
+	BNE .name
 	LDA.l debug_preset_table,X
 	STA.l !dbg_pc
 	JSR debug_op_reset
@@ -133,7 +136,7 @@ debug_menu_frame:
 	REP #$20
 	AND.w #$00FF
 	BNE +
-	LDA.w #!PAD_B                   ; type a letter (slot 0 is set later)
+	LDA.w #!PAD_B                   ; no prefill: type a letter (slot 0 is set later)
 	JSR debug_press
 	RTL
 +	LDA.w #!PAD_START

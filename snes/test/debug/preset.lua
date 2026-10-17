@@ -47,6 +47,8 @@ function test()
   H.result('boot_frame', H.r16(W + 0x36))
   H.result('marks', H.r16(W + 0x10))
   H.result('newgame', H.r8(W + 0x38))
+  H.result('soft', H.r16(W + 0x3A))
+  H.result('soft_pc', H.r16(W + 0x3C))
   H.result('wall_frames', H.frame - started)
   -- State at the browser's capture point.
   local s = {}
@@ -59,6 +61,7 @@ function test()
   s.names = hexdump(0x7ECC00, 48)
   s.items = hexdump(0x7ECC48, 24)
   s.persist = hexdump(0x316000, 0x60)
+  s.title_arrival = H.r8(0x316300)
   s.goku_form = H.r8(0x7ED740)
   s.party = {}
   for i = 0, 2 do

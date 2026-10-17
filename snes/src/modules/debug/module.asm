@@ -54,7 +54,9 @@ incsrc "debug/defines.asm"
 !dbg_menu_frames = !SRAM_WORK_DEBUG+$34 ; word: menu-autopilot frame counter
 !dbg_boot_ok     = !SRAM_WORK_DEBUG+$36 ; word: frame the boot reached its room
 !dbg_newgame     = !SRAM_WORK_DEBUG+$38 ; byte: native new-game init ran for this preset
-; $39-$1FF free
+!dbg_soft        = !SRAM_WORK_DEBUG+$3A ; word: soft waits that expired (module logic missing)
+!dbg_soft_pc     = !SRAM_WORK_DEBUG+$3C ; word: recipe pointer of the first one
+; $3E-$1FF free
 
 !DBG_MAGIC  = $4244                   ; 'DB'
 !DBG_PH_MENU     = $01                ; native game select / name editor
@@ -303,8 +305,10 @@ debug_advance:
 	RTS
 
 ; Slot 0 becomes GOKU with the boy's name, BOY, in its tail (native-names.js
-; crownGoku with the title editor's default name). Carry set: also mark
-; Goku active (what the browser's arrival infers once CF10 > 0).
+; crownGoku with the title editor's default name). Carry set: Goku has also
+; arrived, as the browser's arrival infers once CF10 > 0 (arrival.js
+; restore: complete, no crater): Goku active and the title module's arrival
+; bit, without its crater/pod scenery bit.
 debug_crown:
 	PHP
 	LDX.w #$000A
@@ -318,6 +322,11 @@ debug_crown:
 	SEP #$20
 	LDA.b #$01
 	STA.l !persist_goku_active
+if defined("persist_title_arrival")
+	LDA.l !persist_title_arrival
+	ORA.b #$01
+	STA.l !persist_title_arrival
+endif
 	REP #$20
 .out
 	RTS

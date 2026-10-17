@@ -5,10 +5,11 @@
 // and frame-00000.png, from snes/tools/ref-capture.mjs) when present.
 //   node snes/test/debug/run.mjs [preset ...] [--jobs=6]
 // SNES_ROM selects the cartridge (default dist/snes/secret-of-goku.sfc).
-// Fails when a preset does not finish its recipe, or ends on another map
-// than the reference. Everything else is reported per preset (FULL when the
-// native state equals the browser's, PARTIAL with the differences
-// otherwise) in .local/snes-test/debug/report.json.
+// Each preset is FULL when its native state (map, position, flags, party,
+// inventory, names, form, Goku and the ledger) equals the browser's, NATIVE
+// when every difference is owned by a module not merged here (GAPS),
+// PARTIAL otherwise, FAILED when the recipe did not finish. Fails on PARTIAL
+// or FAILED. Report: .local/snes-test/debug/report.json.
 import {readFileSync,writeFileSync,mkdirSync,existsSync,copyFileSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -34,6 +35,18 @@ const sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8');
 const m=sym.match(/^([0-9A-F]{2}):([0-9A-F]{4}) debug_addresses$/m);
 const work=m?parseInt(m[1]+m[2],16):0x317600;
 
+// Differences from the browser that belong to modules not merged on this
+// branch ('*' = every preset); each names the browser behaviour behind it.
+const GAPS=[
+  {preset:'*',key:/^party0\.level$/,owner:'combat',why:'Goku starts at level 99 (mana-mod level and weapon caps)'},
+  {preset:'sword',key:/^party0\.hp$/,owner:'combat',why:'999 maximum HP once Goku has arrived'},
+  {preset:'rider',key:/^(map|flags|party0\.pos)$/,owner:'frieza',why:'requests 4A3 in room 419 during the palace stage (frieza.js), which leads to Mech Rider III on map 237'},
+  {preset:'trial',key:/^(flags|party0\.pos|party[12]\.active)$/,owner:'vegeta',why:'the Time Chamber trial starts with event 3DB and keeps the borrowed party (joch-trial.js)'},
+  {preset:'thanatos',key:/^party[12]\.pos$/,owner:'frieza',why:'stages Primm and Popoi in the Thanatos scene'},
+  {preset:'good-ending',key:/^(map|party0\.pos)$/,owner:'frieza',why:'FRIEZA_DEFEATED / BEAST_* answers make 42F choose the good ending'},
+];
+const gapOf=(kind,d)=>GAPS.find(g=>(g.preset==='*'||g.preset===kind)&&g.key.test(d.k));
+
 // Which module owns each hook kind the recipes call (none implemented yet
 // on this branch unless a module defines the hook).
 const HOOK_OWNER={1:'combat',2:'radio/ui',3:'combat',4:'world',5:'frieza',6:'frieza',7:'frieza/orbit',8:'frieza (Beast challenge)',9:'scene owner',10:'scene owner',11:'combat'};
@@ -50,6 +63,7 @@ async function runOne(kind){
   const report={kind,label:p.label,status:['idle','running','done','failed','aborted'][res.status]??'error',
     error:res.error,frames:res.frames,bootFrame:res.boot_frame,state:res.state,trace:res.trace,mesen:r.code};
   if(res.status===3)report.failedOp={op:res.error,pc:res.err_pc?.toString(16)};
+  if(res.soft)report.softWaits={count:res.soft,pc:res.soft_pc?.toString(16)};
   // Steps owned by modules that are not merged here (hooks with stubs).
   const kindsUsed=new Set(p.recipe.filter(o=>o[0]==='HOOK').map(o=>parseInt(o[1],16)));
   if(p.recipe.some(o=>o[0]==='UNTIL'&&parseInt(o[3],16)&0x40))kindsUsed.add(9);
@@ -62,7 +76,10 @@ async function runOne(kind){
     report.picture240=comparePictures(join(refDir,'frame-00240.png'),join(dir,'frame-00240.png'),join(dir,'compare-00240.png'));
     report.refMap=ref.ram[0xdc]|ref.ram[0xdd]<<8;
   }
-  report.result=report.status!=='done'?'FAILED':!ref?'DONE (no reference)':report.diffs.length?'PARTIAL':'FULL';
+  const real=(report.diffs??[]).filter(d=>!d.transient);
+  for(const d of real){const g=gapOf(kind,d);if(g){d.owner=g.owner;d.why=g.why;}}
+  report.gaps=[...new Set(real.filter(d=>d.owner).map(d=>d.owner))];
+  report.result=report.status!=='done'?'FAILED':!ref?'DONE (no reference)':!real.length?'FULL':real.every(d=>d.owner)?'NATIVE':'PARTIAL';
   return report;
 }
 
@@ -70,10 +87,11 @@ const jobs=Number(opt('jobs','6'));
 const reports=[];
 const queue=[...list];
 await Promise.all(Array.from({length:Math.min(jobs,queue.length)},async()=>{
-  while(queue.length){const k=queue.shift();const r=await runOne(k);reports.push(r);console.log(`${k.padEnd(12)} ${r.result.padEnd(8)} map ${r.state?.map} (ref ${r.refMap??'-'}) frames ${r.frames} picture ${r.picture!=null?(r.picture*100).toFixed(0)+'%':'-'}${r.diffs?.length?'  diffs: '+r.diffs.map(d=>d.k).join(','):''}${r.failedOp?'  failed op '+r.failedOp.op+' at '+r.failedOp.pc:''}`);}
+  while(queue.length){const k=queue.shift();const r=await runOne(k);reports.push(r);console.log(`${k.padEnd(12)} ${r.result.padEnd(8)} map ${r.state?.map} (ref ${r.refMap??'-'}) frames ${r.frames} picture ${r.picture!=null?(r.picture*100).toFixed(0)+'%':'-'}/${r.picture240!=null?(r.picture240*100).toFixed(0)+'%':'-'}${r.diffs?.length?'  diffs: '+r.diffs.map(d=>d.k+(d.owner?'('+d.owner+')':'')).join(','):''}${r.softWaits?'  soft wait at '+r.softWaits.pc:''}${r.failedOp?'  failed op '+r.failedOp.op+' at '+r.failedOp.pc:''}`);}
 }));
 reports.sort((a,b)=>kinds.indexOf(a.kind)-kinds.indexOf(b.kind));
 writeFileSync(join(out,'report.json'),JSON.stringify(reports,null,1));
-const bad=reports.filter(r=>r.status!=='done'||(r.refMap!==undefined&&r.state?.map!==r.refMap));
-console.log(`\n${reports.filter(r=>r.result==='FULL').length} full, ${reports.filter(r=>r.result==='PARTIAL').length} partial, ${reports.filter(r=>r.result==='FAILED').length} failed of ${reports.length}; report ${join(out,'report.json')}`);
+const bad=reports.filter(r=>r.result==='FAILED'||r.result==='PARTIAL');
+const count=k=>reports.filter(r=>r.result===k).length;
+console.log(`\n${count('FULL')} full, ${count('NATIVE')} native (remaining differences owned by: ${[...new Set(reports.flatMap(r=>r.gaps??[]))].join(', ')||'-'}), ${count('PARTIAL')} partial, ${count('FAILED')} failed of ${reports.length}; report ${join(out,'report.json')}`);
 process.exit(bad.length?1:0);
