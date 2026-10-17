@@ -328,6 +328,33 @@ scenarios.push(
     }},
 );
 
+scenarios.push(
+  {name:'ship-plan',bundle:'sandship-wreck__qs-captured',
+    note:'Sergo\'s plan answered KAMEHAMEHA (event 75): the wave is armed and Goku hints at L+Y when it is quiet; the full-power wave then wrecks the ship as the planned breakout (Sergo\'s scripted reaction 78)',
+    body:`
+  S.reset()
+  assert(H.importSnesJs(SCN.bundlePath), 'import failed')
+  H.wait(12)
+  H.w16(ABI.ssw_dbgactor, 0)
+  H.result('request', S.cmd(7, 0x75))
+  S.untilControl(600)
+  H.wait(30)
+  H.result('armed', S.state())
+  local seen = {}
+  for f = 1, 2 do end
+  local white, frames = S.breakout()
+  H.result('wreck', S.state())
+`,
+    check(res,problems){
+      if(res.request!==1)problems.push('request 75 refused');
+      const a=res.armed??{},w=res.wreck??{};
+      if(!(a.flags&0x40))problems.push(`not armed (flags ${a.flags})`);
+      if(a.remark!==2)problems.push(`hint remark ${a.remark} want 2`);
+      if(!(w.flags&1)||!(w.flags&2))problems.push(`planned wreck flags ${w.flags}`);
+      if(w.flags&0x40)problems.push('still armed after the wave');
+    }},
+);
+
 export async function runSandship({rom,only=[],log=console.log}){
   const abi=destroyAbi(),imports=importDir(),outRoot=resolve(repo,'.local/snes-test/destroy/sandship');
   mkdirSync(outRoot,{recursive:true});

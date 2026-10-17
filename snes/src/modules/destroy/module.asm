@@ -304,6 +304,7 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !ssw_rseq    = !SSW+$10  ; word: increments per remark
 !ssw_songs   = !SSW+$12  ; word: alarm songs sent (status)
 !ssw_dismiss = !SSW+$24C ; word: increments when the Sandship lines are dismissed
+!ssw_dbgactor = !SSW+$24E ; word: tests: actor slot for debug command 7
 !ssw_lastsong = !SSW+$14 ; word: last song command sent
 !ssw_loads   = !SSW+$16  ; word: wrecked room loads
 !ssw_stage   = !SSW+$18  ; word: CF28 this frame

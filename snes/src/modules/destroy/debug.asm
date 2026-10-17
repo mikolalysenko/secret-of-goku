@@ -6,6 +6,7 @@
 ;   4  run the event script in !dbg_script (door loader)  -> dbg_res = 1 started
 ;   5  plan the breach of wall offset !dbg_arg, no edits  -> dbg_res = 1 planned
 ;   6  Sandship: count a bulkhead strike (onDemolish)    -> dbg_res = breaks
+;   7  story_api_request(!dbg_arg, actor !ssw_dbgactor)  -> dbg_res = 1 queued
 dst_debug_frame:
 	LDA.l !dbg_cmd : BNE +
 	RTS
@@ -53,6 +54,7 @@ dst_debug_frame:
 	; direction in !arg_dir; the plan stays in the worker words.
 	CMP.w #5 : BEQ +
 	CMP.w #6 : BEQ .strike
+	CMP.w #7 : BEQ .request
 	JMP .unknown
 +
 	LDA.l !pl_stage : BEQ +
@@ -63,6 +65,13 @@ dst_debug_frame:
 	LDA.w #1 : STA.l !dbg_dry
 	JSR dst_breach
 	LDA.w #0 : STA.l !dbg_dry
+	LDA.w #0 : ROL
+	JMP .done
+.request
+	; 7: a story request, as the browser spec's m.story.request(id, {actor})
+	LDA.l !ssw_dbgactor : TAX
+	LDA.l !dbg_arg
+	JSL story_api_request
 	LDA.w #0 : ROL
 	JMP .done
 .strike
