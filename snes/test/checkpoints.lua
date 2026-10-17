@@ -78,11 +78,18 @@ function test()
   end
   if not menuNmi() then fail('game select not reached') end
   H.wait(30)
-  -- NEW GAME (default without saves). B opens the editor and types an A.
-  H.tap('b', 4, 4)
-  if not H.waitFor(function() return nameLen() == 1 end, 120) then fail('name editor not opened') end
-  H.wait(8)
-  H.tap('y', 8, 8)
+  -- NEW GAME (default without saves). B opens the editor; the same press
+  -- sometimes also types an A. Press B until a letter exists (proof that
+  -- the editor is open), then delete with Y down to an empty name.
+  for _ = 1, 6 do
+    if nameLen() > 0 then break end
+    H.tap('b', 4, 30)
+  end
+  if nameLen() == 0 then fail('name editor not opened') end
+  for _ = 1, 8 do
+    if nameLen() == 0 then break end
+    H.tap('y', 8, 8)
+  end
   if not H.waitFor(function() return nameLen() == 0 end, 60) then fail('could not clear the name') end
   H.wait(16)
   if not saveAt('name-entry', 0xC01DEF, 0xC01DFE, 120) then fail('name-entry save') end
@@ -119,11 +126,17 @@ function test()
     H.w16(0x7E6F40 + 0x28, 0x0800 | CP_POTOS_DOOR)
     H.w16(0x7E6F40, 5)
     if not H.waitFor(function() return H.r16(0x7E00DC) == 131 end, 600) then fail('Potos door did not load') end
-    for _ = 1, 600 do
-      if H.r8(0x7E00D0) == 0x83 then H.tap('b', 4, 4) else H.wait(4) end
-      if H.r8(0x7E00D0) == 0 and H.r8(0x7E00E4) == 1 and H.r8(0x7E00E5) == 1 then break end
+    -- The destination map is set at once; wait for the fade to start.
+    local function idle() return H.r8(0x7E00D0) == 0 and H.r8(0x7E00E4) == 1 and H.r8(0x7E00E5) == 1 end
+    if not H.waitFor(function() return not idle() end, 300) then fail('Potos transition did not start') end
+    -- Settle: idle for 60 consecutive frames (the map's entry event runs first).
+    local still = 0
+    for _ = 1, 1200 do
+      if H.r8(0x7E00D0) == 0x83 then H.tap('b', 4, 4) still = 0 else H.wait(1) end
+      if idle() then still = still + 1 else still = 0 end
+      if still >= 60 then break end
     end
-    H.wait(30)
+    if still < 60 then fail('Potos did not settle') end
     if not saveAt('potos', 0x00B079, 0x00B079, 120) then fail('potos save') end
   end
   H.result('checkpoints', results)
