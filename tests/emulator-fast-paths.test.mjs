@@ -94,6 +94,17 @@ test('paint and channel line ops match the per-pixel wrappers they describe',()=
   lockstep(a,b,8,`line ops ${f}`);
  }
 });
+test('the compositor sees a temporary unregistered getColor wrapper and its removal',()=>{
+ // A registered (idle) hook, then an unregistered wrapper on top for frames
+ // 40-79 that changes colours: those lines must render per pixel, exactly.
+ const setup=s=>{const p=s.ppu,inner=p.getColor;p.getColor=function(sub,x,y){return inner.call(this,sub,x,y);};p.registerLineHook('getColor',p.getColor,inner,()=>true);};
+ const fast=core(),slow=core();setup(fast);setup(slow);slow.ppu.setLineComposer(false);
+ lockstep(slow,fast,120,'temporary wrapper',(s,i)=>{
+  if(i===40){const p=s.ppu,head=p.getColor;s.__head=head;p.getColor=function(sub,x,y){const r=head.call(this,sub,x,y);r[0]^=0x7fff;return r;};}
+  if(i===80)s.ppu.getColor=s.__head;
+  s.joypad1State=input(i);s.runFrame(false);
+ });
+});
 test('setPixels writes ImageData words with the same bytes as its byte loop',()=>{
  const ppu=core().ppu,p=ppu.pixelOutput;
  for(let trial=0;trial<16;trial++){

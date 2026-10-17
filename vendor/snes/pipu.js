@@ -587,10 +587,39 @@ function Ppu(snes) {
       post: options.post, name: options.name,
       postOp: options.post ? {type: "post", fn: options.post} : null
     });
+    hookVersion++;
     return () => {
       hookByFn.delete(fn);
+      hookVersion++;
     };
   }
+  // Each method's wrapper chain resolved to its hooks (outermost first), or
+  // null when some wrapper is unregistered; reused until the method's head
+  // function or the registry changes.
+  let hookVersion = 0;
+  const chainHead = [null, null, null, null, null, null];
+  const chainVersion = [-1, -1, -1, -1, -1, -1];
+  const chainHooks = [[], [], [], [], [], []];
+  const chainOk = [false, false, false, false, false, false];
+  const resolveChain = (i, fn) => {
+    if(chainHead[i] !== fn || chainVersion[i] !== hookVersion) {
+      let method = hookedMethods[i], list = chainHooks[i], ok = true, f = fn;
+      list.length = 0;
+      while(f !== base[method]) {
+        let hook = hookByFn.get(f);
+        if(!hook || hook.method !== method) {
+          ok = false;
+          break;
+        }
+        list.push(hook);
+        f = hook.previous;
+      }
+      chainHead[i] = fn;
+      chainVersion[i] = hookVersion;
+      chainOk[i] = ok;
+    }
+    return chainOk[i] ? chainHooks[i] : null;
+  };
   // Diagnostics: names of the registered hooks active on this line, and
   // "unregistered" for wrappers the compositor cannot see through.
   this.activeLineHooks = function(line) {
@@ -640,13 +669,16 @@ function Ppu(snes) {
     linePlan.disableSub = 0;
     linePlan.ops.length = 0;
     for(let i = 0; i < hookedMethods.length; i++) {
-      let method = hookedMethods[i];
-      let fn = this[method];
-      while(fn !== base[method]) {
-        let hook = hookByFn.get(fn);
-        if(!hook || hook.method !== method) {
-          return false;
-        }
+      let fn = this[hookedMethods[i]];
+      if(fn === base[hookedMethods[i]]) {
+        continue;
+      }
+      let chain = resolveChain(i, fn);
+      if(chain === null) {
+        return false;
+      }
+      for(let c = 0; c < chain.length; c++) {
+        let hook = chain[c];
         if(!hook.idle(this, line)) {
           linePlan.objColor = null;
           linePlan.faceColor = null;
@@ -686,7 +718,6 @@ function Ppu(snes) {
             linePlan.ops.push(hookOps[k]);
           }
         }
-        fn = hook.previous;
       }
     }
     linePlan.objColor = null;
@@ -1076,13 +1107,17 @@ function Ppu(snes) {
     let disabled = sub ? linePlan.disableSub : linePlan.disableMain;
     let suppress = linePlan.windowSuppress;
     let done = screenResolved, cgram = this.cgram, fused = colorOut !== undefined;
-    let remaining = 0;
-    for(let x = 0; x < 256; x++) {
-      pixOut[x] = 0;
-      layOut[x] = 5;
-      let open = need === null || need[x] === 1;
-      done[x] = open ? 0 : 1;
-      remaining += open ? 1 : 0;
+    let remaining = 256;
+    pixOut.fill(0);
+    layOut.fill(5);
+    if(need === null) {
+      done.fill(0);
+    } else {
+      for(let x = 0; x < 256; x++) {
+        let open = need[x] === 1 ? 1 : 0;
+        done[x] = 1 - open;
+        remaining -= 1 - open;
+      }
     }
     for(let j = 0; j < count && remaining > 0; j++) {
       let layer = this.layersPerMode[modeIndex + j];
@@ -1198,8 +1233,34 @@ function Ppu(snes) {
             end = 256;
           }
           let base = tag & 0x7fff;
+          if(mask === null) {
+            // Lanes shift down one nibble per pixel from the tile's first
+            // visible lane (the same extraction as below).
+            let first = ((start + fine) & 0x7) << 2;
+            let laneLo = lo >>> first, laneHi = hi >>> first;
+            for(let x = start; x < end; x++, laneLo >>>= 4, laneHi >>>= 4) {
+              if(done[x] === 1) {
+                continue;
+              }
+              let tileData = laneLo & 0xf;
+              if(wide === 1) {
+                tileData |= (laneHi & 0xf) << 4;
+              }
+              if(tileData > 0) {
+                let v = base + tileData;
+                pixOut[x] = v;
+                layOut[x] = layer;
+                if(fused) {
+                  colorOut[x] = cgram[v & 0xff];
+                }
+                done[x] = 1;
+                remaining--;
+              }
+            }
+            continue;
+          }
           for(let x = start; x < end; x++) {
-            if(done[x] === 1 || (mask !== null && mask[x] === 1)) {
+            if(done[x] === 1 || mask[x] === 1) {
               continue;
             }
             let shift = ((x + fine) & 0x7) << 2;
@@ -1489,6 +1550,37 @@ function Ppu(snes) {
     }
   }
 
+  // The outermost op, when it alone decides every main-screen pixel: a
+  // paint of all layers that sets the layer and pixel and never skips.
+  // Inner ops must not be per-pixel posts (which may keep state), and color
+  // math must be off for the painted pixel, so that no sub screen (and no
+  // decoded layer) is needed for the line.
+  this.coverOp = function() {
+    let ops = linePlan.ops;
+    if(ops.length === 0 || this.pseudoHires || linePlan.windowSuppress !== 0) {
+      return null;
+    }
+    let op = ops[0];
+    if(
+      op.type !== "paint" || op.skipZero || (op.layers & 0x3f) !== 0x3f ||
+      op.layer < 0 || op.subOnly
+    ) {
+      return null;
+    }
+    for(let k = 1; k < ops.length; k++) {
+      if(ops[k].type === "post") {
+        return null;
+      }
+    }
+    if(
+      this.preventMath !== 3 && this.mathEnabled[op.layer] &&
+      (op.layer !== 4 || op.pixel >= 0xc0)
+    ) {
+      return null;
+    }
+    return op;
+  }
+
   // Whether any op could change a backdrop pixel on the given screen.
   this.opsTouchBackdrop = function(sub) {
     let ops = linePlan.ops;
@@ -1652,71 +1744,85 @@ function Ppu(snes) {
       y = y * 2 + (this.evenFrame ? 1 : 0);
     }
     winReady.fill(0);
-    // Which layers are present in this mode's priority list.
-    let used = 0;
-    for(let j = 0; j < count; j++) {
-      used |= 1 << this.layersPerMode[modeIndex + j];
-    }
-    if(mode === 7) {
-      // Mode 7 texels by (mosaic-adjusted) screen x, through getMode7Pixel.
-      for(let l = 0; l < 2; l++) {
-        if(used & (1 << l)) {
-          mode7Present[l] = this.mode7Line(l, y);
-        }
+    // An outermost paint that covers every main pixel decides the main
+    // screen by itself (see coverOp): skip decoding and composing it.
+    let cover = mode !== 7 && !hires ? this.coverOp() : null;
+    let plain = false;
+    if(cover !== null) {
+      let colors = cover.colors, layer = cover.layer, pixel = cover.pixel;
+      for(let x = 0; x < 256; x++) {
+        mainColor[x] = colors[x] - 1;
+        mainLay[x] = layer;
+        mainPix[x] = pixel;
       }
+      plainLine = false;
     } else {
-      for(let l = 0; l < 4; l++) {
-        if(used & (1 << l)) {
-          if(hires && l < 2 && !this.mosaicEnabled[l]) {
-            let both = this.decodeHiresPair(l, y, lineVal[l], subVal[l]);
-            linePresent[l] = both & 0xff;
-            subPresent[l] = both >> 8;
-          } else {
-            linePresent[l] = this.decodeLayer(l, y, false, lineVal[l]);
-            if(hires && l < 2) {
-              subPresent[l] = this.decodeLayer(l, y, true, subVal[l]);
+      // Which layers are present in this mode's priority list.
+      let used = 0;
+      for(let j = 0; j < count; j++) {
+        used |= 1 << this.layersPerMode[modeIndex + j];
+      }
+      if(mode === 7) {
+        // Mode 7 texels by (mosaic-adjusted) screen x, through getMode7Pixel.
+        for(let l = 0; l < 2; l++) {
+          if(used & (1 << l)) {
+            mode7Present[l] = this.mode7Line(l, y);
+          }
+        }
+      } else {
+        for(let l = 0; l < 4; l++) {
+          if(used & (1 << l)) {
+            if(hires && l < 2 && !this.mosaicEnabled[l]) {
+              let both = this.decodeHiresPair(l, y, lineVal[l], subVal[l]);
+              linePresent[l] = both & 0xff;
+              subPresent[l] = both >> 8;
+            } else {
+              linePresent[l] = this.decodeLayer(l, y, false, lineVal[l]);
+              if(hires && l < 2) {
+                subPresent[l] = this.decodeLayer(l, y, true, subVal[l]);
+              }
             }
           }
         }
       }
-    }
-    // Sprite lookups honour (unused in practice) layer-4 mosaic/scroll.
-    let sprMosaic = this.mosaicEnabled[4];
-    let sprH = mode === 7 ? 0 : this.bgHoff[4];
-    let sprites = 0;
-    spriteMinX[0] = spriteMinX[1] = spriteMinX[2] = spriteMinX[3] = 256;
-    spriteMaxX[0] = spriteMaxX[1] = spriteMaxX[2] = spriteMaxX[3] = -1;
-    for(let x = 0; x < 256; x++) {
-      let lx = x;
-      if(sprMosaic) {
-        lx -= lx % this.mosaicSize;
-      }
-      lx += sprH;
-      let v = this.spriteLineBuffer[lx];
-      let p = this.spritePrioBuffer[lx];
-      spriteVal[x] = v;
-      spritePrio[x] = p;
-      if(v !== 0) {
-        sprites |= 1 << p;
-        p &= 0x3;
-        if(x < spriteMinX[p]) {
-          spriteMinX[p] = x;
+      // Sprite lookups honour (unused in practice) layer-4 mosaic/scroll.
+      let sprMosaic = this.mosaicEnabled[4];
+      let sprH = mode === 7 ? 0 : this.bgHoff[4];
+      let sprites = 0;
+      spriteMinX[0] = spriteMinX[1] = spriteMinX[2] = spriteMinX[3] = 256;
+      spriteMaxX[0] = spriteMaxX[1] = spriteMaxX[2] = spriteMaxX[3] = -1;
+      for(let x = 0; x < 256; x++) {
+        let lx = x;
+        if(sprMosaic) {
+          lx -= lx % this.mosaicSize;
         }
-        if(x > spriteMaxX[p]) {
-          spriteMaxX[p] = x;
+        lx += sprH;
+        let v = this.spriteLineBuffer[lx];
+        let p = this.spritePrioBuffer[lx];
+        spriteVal[x] = v;
+        spritePrio[x] = p;
+        if(v !== 0) {
+          sprites |= 1 << p;
+          p &= 0x3;
+          if(x < spriteMinX[p]) {
+            spriteMinX[p] = x;
+          }
+          if(x > spriteMaxX[p]) {
+            spriteMaxX[p] = x;
+          }
         }
       }
-    }
-    spritePresent = sprites;
-    // finishScreen only looks up palette colors on lines without plans,
-    // posts or direct color; composeScreen can then write them itself.
-    let plain = linePlan.ops.length === 0 && !this.directColor;
-    plainLine = plain;
-    if(plain) {
-      this.composeScreen(false, modeIndex, count, mode, null, mainPix, mainLay, mainColor);
-    } else {
-      this.composeScreen(false, modeIndex, count, mode, null, mainPix, mainLay);
-      this.finishScreen(false, mode, null, mainPix, mainLay, mainColor, line);
+      spritePresent = sprites;
+      // finishScreen only looks up palette colors on lines without plans,
+      // posts or direct color; composeScreen can then write them itself.
+      plain = linePlan.ops.length === 0 && !this.directColor;
+      plainLine = plain;
+      if(plain) {
+        this.composeScreen(false, modeIndex, count, mode, null, mainPix, mainLay, mainColor);
+      } else {
+        this.composeScreen(false, modeIndex, count, mode, null, mainPix, mainLay);
+        this.finishScreen(false, mode, null, mainPix, mainLay, mainColor, line);
+      }
     }
     let pseudo = this.pseudoHires, addSub = this.addSub;
     let colorClip = this.colorClip, preventMath = this.preventMath;
@@ -1838,17 +1944,29 @@ function Ppu(snes) {
       }
       return;
     }
-    for(let i = 0; i < 256; i++) {
-      let lay = mainLay[i];
-      let on = !(
-        preventMath === 3 ||
-        (preventMath === 2 && clipMask[i]) ||
-        (preventMath === 1 && !clipMask[i])
-      ) && ((mathBits >> lay) & 1) === 1 && (lay !== 4 || mainPix[i] >= 0xc0);
-      mathOn[i] = on ? 1 : 0;
-      let need = hires || pseudo || (on && addSub);
-      subNeed[i] = need ? 1 : 0;
-      anySub = anySub || need;
+    if(preventMath === 0 && !hires && !pseudo) {
+      // The common case: math by layer only, the sub screen where it adds.
+      let add = addSub ? 1 : 0;
+      for(let i = 0; i < 256; i++) {
+        let lay = mainLay[i];
+        let on = ((mathBits >> lay) & 1) === 1 && (lay !== 4 || mainPix[i] >= 0xc0) ? 1 : 0;
+        mathOn[i] = on;
+        subNeed[i] = on & add;
+        anySub = anySub || (on & add) === 1;
+      }
+    } else {
+      for(let i = 0; i < 256; i++) {
+        let lay = mainLay[i];
+        let on = !(
+          preventMath === 3 ||
+          (preventMath === 2 && clipMask[i]) ||
+          (preventMath === 1 && !clipMask[i])
+        ) && ((mathBits >> lay) & 1) === 1 && (lay !== 4 || mainPix[i] >= 0xc0);
+        mathOn[i] = on ? 1 : 0;
+        let need = hires || pseudo || (on && addSub);
+        subNeed[i] = need ? 1 : 0;
+        anySub = anySub || need;
+      }
     }
     if(anySub) {
       if(plainLine) {
