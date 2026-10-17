@@ -9,12 +9,14 @@
 incsrc "modules/goku/module.asm"
 incsrc "modules/fx/module.asm"         ; before its clients (they use the !FX_* defines)
 incsrc "modules/story/module.asm"
+incsrc "modules/flight/module.asm"
 
 pushpc
 org !CODE_CORE+$7000
 ; Field frame (also dialogue, events and Mode 7 boss arenas), after the game
 ; logic and OAM build, before the NMI handshake. M16/X16, DB = $7E, D = 0.
 modules_field_frame:
+	JSL flight_frame           ; before goku: hover pose and lift requests
 	JSL goku_frame
 	JSL story_field_frame
 	JSL fx_frame               ; keep last: draws what clients requested this frame
