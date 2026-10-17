@@ -20,6 +20,12 @@
 ; bind.asm). Defined before combat's bind.asm is included.
 !FLIGHT_OWNS_D651 = 1
 
+; Story hooks and queries flight implements (story.asm; the tables in
+; story/hooks.asm, included last, pick these labels up).
+!STORY_HOOK_FLIGHT_LAND = fl_story_land
+!STORY_HOOK_QUEST_WISH_CEILING = fl_story_wish_ceiling
+!STORY_QUERY_LOCAL_FLIGHT = fl_story_local_flight
+
 ; ---------------------------------------------------------------------------
 ; WRAM (!RAM_FLIGHT = $7ED900, $80 bytes; absolute addressing with DB = $7E)
 !FLIGHT_RAM = $D900
@@ -213,6 +219,14 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !fl_sw_last    = !FL_SRAM+$3C8     ; 6 words: x, y, dx, dy, layer, result of the step's last sweep
 !fl_hm_land    = !FL_SRAM+$3D4     ; 4 words: x, y, E00B, result of canLand at the hero
 !fl_hm_fly     = !FL_SRAM+$3DC     ; 4 words: x, y, E00B, result of canFly at the hero
+!fl_ce         = !FL_SRAM+$3F0     ; ceiling escape (ceiling.asm):
+!fl_ce_phase   = !fl_ce+$00        ;   word: 0 none, 1 punch, 2 exit door queued, 3 takeoff requested
+!fl_ce_age     = !fl_ce+$02        ;   word: frames in the phase
+!fl_ce_src     = !fl_ce+$04        ;   word: room Goku punched out of
+!fl_ce_x       = !fl_ce+$06        ;   word: debris centre x (Goku's x)
+!fl_ce_y       = !fl_ce+$08        ;   word: debris centre y (Goku's y - 56)
+!fl_ce_map     = !fl_ce+$0A        ;   word: the room's exterior map
+!fl_ce_door    = !fl_ce+$0C        ;   word: its door
 !fl_cam        = !FL_SRAM+$3E4     ; camera follow (native-teleport.js pending):
 !fl_cam_map    = !fl_cam+$00       ;   word: map, $FFFF = none
 !fl_cam_layer  = !fl_cam+$02       ;   word: layer of the landing
@@ -257,6 +271,8 @@ incsrc "terrain.asm"
 incsrc "move.asm"
 incsrc "teleport.asm"
 incsrc "gap.asm"
+incsrc "ceiling.asm"
+incsrc "story.asm"
 if defined("FLIGHT_TEST")
 	incsrc "../../../test/flight/testmod.asm"
 endif

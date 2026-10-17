@@ -412,7 +412,12 @@ flight_frame:
 	JSR fl_native_field
 	BCS .on
 .off
-	JSR fl_reset
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BNE +
+	LDA.w #$0000
+	STA.l !fl_ce_phase           ; Goku left play: the escape ends
++	JSR fl_reset
 	JMP .publish
 .on
 	SEP #$20
@@ -477,6 +482,11 @@ flight_frame:
 	BEQ +
 	JSR fl_gap_tick              ; a whip crossing ends with its event
 +	JSR fl_lift_update
+	; a ceiling escape owns the frame's input while it runs
+	JSR fl_ce_tick
+	BCC +
+	JMP .publish
++
 	; a teleport's camera follow locks the pad; a new L+B queues the next
 	LDA.w !fl_hook
 	AND.w #!FLH_CAMERA
@@ -507,6 +517,22 @@ flight_frame:
 	JSR fl_land_now
 	BRA .publish
 .decide
+	; L+R pressed: world takeoff (the world module) or the ceiling escape
+	LDA.w !fl_pad
+	AND.w #!PAD_L|!PAD_R
+	CMP.w #!PAD_L|!PAD_R
+	BNE .noLR
+	LDA.w !fl_pad_prev
+	AND.w #!PAD_L|!PAD_R
+	CMP.w #!PAD_L|!PAD_R
+	BEQ .noLR
+	JSR fl_ce_lr
+	BCC .noLR
+	LDA.w !core_pad_mask&$FFFF
+	ORA.w #$FFF0
+	STA.w !core_pad_mask&$FFFF
+	JMP .publish
+.noLR
 	JSR fl_tp_chord_edge         ; L+B pressed: Instant Transmission
 	BCC +
 	JSR fl_tp_start
@@ -534,6 +560,7 @@ fl_init_work:
 	STZ.w !fl_hook
 	STZ.w !fl_gap
 	LDA.w #$0000
+	STA.l !fl_ce_phase
 	STA.l !fl_tp_act
 	STA.l !fl_tp_queued
 	STA.l !fl_tp_custom
@@ -937,7 +964,8 @@ fl_publish:
 	LDA.b #$00
 	STA.l $7E0000|!goku_mode     ; only the mode flight set
 	REP #$20
-+	LDA.w !fl_state
++	JSR fl_ce_pose               ; the ceiling escape's punch-and-rise pose
+	LDA.w !fl_state
 	AND.w #!FLS_FLY
 	BEQ +
 .bed

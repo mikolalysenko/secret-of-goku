@@ -9,12 +9,13 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 parts of `mana-mod.js`.
 
 Status (this branch): **local flight, hovering, crossings with companion
-gathering, recovery, the camera follow, Instant Transmission and the native
-whip-pad crossings are in and validated; the terrain classifier and the
-teleport landing search equal the browser's on every tile and query
-tested.** The ceiling escape, the opening-path exit catches, NPC
-pass-through and the Sandship hooks are next (see [Remaining](#remaining)).
-Flight still costs too much CPU in heavy scenes (see [Cost](#cost)).
+gathering, recovery, the camera follow, Instant Transmission, the native
+whip-pad crossings and the ceiling escape are in and validated; the
+terrain classifier, the teleport landing search and the roof colours equal
+the browser's on every tile, query and palette tested.** The opening-path
+exit catches, NPC pass-through and the Sandship hooks are next (see
+[Remaining](#remaining)). Flight still costs too much CPU in heavy scenes
+(see [Cost](#cost)).
 
 ## Behaviour (as the browser)
 
@@ -56,6 +57,30 @@ Flight still costs too much CPU in heavy scenes (see [Cost](#cost)).
   movement, camera and CF01 flag. Goku hovers in the gap-flight pose (goku
   mode `$23`) with the air bed; `flight` sounds at the start and `landing`
   when the event ends on the same map.
+
+### Ceiling escape (L+R indoors)
+
+- L+R (first frame of the chord) while Goku can act, no live boss is
+  around (species 87-127 in slots 3-11, or a scene's Frieza/Vegeta), no
+  escape runs, no teleport camera or takeoff is pending: where world flight
+  can start (`world_takeoff_allowed`) the world module takes off; otherwise,
+  in one of the 253 rooms with an exterior route (35 routes,
+  `ceiling-exits.js`), Goku punches through the roof. Combat is cancelled
+  in both cases (`requestFlight()`).
+- Punch (68 frames, goku mode `$25` with the age, the pad masked, `swing`):
+  at age 22 roof chunks and sparks burst 56 px above Goku in the room's own
+  colours (`roofColors()`: of the unique stone/timber-like colours in CGRAM
+  0-127 sorted by lightness, the 40% and 80% ones), the screen quakes for
+  24 frames, `impact` and `flight` sound. At 68 the room's exterior door is
+  queued (`story_api_travel`); there world flight is requested (retried
+  while an exterior event holds control) with Goku already above the roof
+  (pose age 80, never back on that floor). It completes when world flight
+  runs (`ui_ceiling_escape`, King Kai's remark). The native scene taking
+  over during the punch, Goku leaving play or 600 frames in one phase end
+  it.
+- Story: `FLIGHT_LAND` (the Potos gatekeeper: cancel combat, land at once,
+  `landing`), `QUEST_WISH_CEILING` (nothing to repair: escapes leave no
+  holes), query `LOCAL_FLIGHT`.
 
 ### Instant Transmission (L+B)
 
@@ -156,11 +181,13 @@ calls combat's Saiyan recoil (`combat_recoil_vector`) first, through
 | Code `$A3:8000-…` | `!CODE_FLIGHT` (about 13.5 KiB used; bindings to other modules at `$A3:F000`) |
 | Data `$E3:0000-…` | `!DATA_FLIGHT` (about 10 KiB: bitsets, map flags/extents, exits, routes, recovery order) |
 | WRAM `$7E:D900-D97F` | `!RAM_FLIGHT`, all $80 bytes (map in `module.asm`) |
-| SRAM `$33:7800-7BFF` | `!SRAM_WORK_FLIGHT`: tile cache, flood fill, anchor/crossing, hero grid, sweep/hero memos, Instant Transmission, camera follow, test mailbox (initialised on the first field frame after title entry: `!fl_magic`) |
+| SRAM `$33:7800-7BFF` | `!SRAM_WORK_FLIGHT`: tile cache, flood fill, anchor/crossing, hero grid, sweep/hero memos, Instant Transmission, camera follow, ceiling escape (`$7BF0`), test mailbox (initialised on the first field frame after title entry: `!fl_magic`); the roof-colour search borrows the tile cache once per escape |
 | SRAM `$31:62C0-62FF` | `!PERSIST_GROUND`: unused so far |
 | OAM / VRAM / CGRAM / DMA | none (Goku's pose comes from the goku module; effects will come from fx) |
 
-Dispatch: `modules_field_frame` → `flight_frame` (first, before goku).
+Dispatch: `modules_field_frame` → `flight_frame` (first, before goku);
+`modules_world_frame` → `flight_world_frame` (a ceiling escape completes in
+world flight).
 
 ## API for other modules
 
@@ -192,8 +219,16 @@ module that owns a foe outside the actor table writes it every field frame
 = slot 3), `+1` species (121 / 46), `+2` x, `+4` y (Frieza: `y + 12` as
 `frieza.js` `entity()`), `+6` terrain byte, `+7` airborne (Frieza).
 
+Story hooks/queries defined in `module.asm`: `!STORY_HOOK_FLIGHT_LAND`,
+`!STORY_HOOK_QUEST_WISH_CEILING`, `!STORY_QUERY_LOCAL_FLIGHT` (`story.asm`).
+
 Bindings (`bind.asm`, included by `modules.asm` after every module so the
-providers' defines are visible): combat `combat_recoil_vector`,
+providers' defines are visible): world (`!WORLD_MAGIC`) `world_takeoff`,
+`world_takeoff_allowed` (without the module: the native `$0C00|map` request
+with the map header's world-flight bit); story `story_api_travel`; fx
+(`!FX_DEBRIS`) `fx_spawn` `FX_SPARKS` (8) and `FX_DEBRIS` (20 chunks, life
+46, style 1 = the ceiling-escape layout, `!fx_rgb` = black, stone,
+highlight), `fx_quake` 24, `fx_kill_all` on a cancel; combat `combat_recoil_vector`,
 `combat_api_cancel`, `combat_api_state` (charging); audio `audio_sfx` cues
 `FLIGHT` 18, `LANDING` 19, `TELEPORT` 16, `TELEPORT_IN` 17 and the `AIR`
 loop while flying (level .35 while charging), ids asserted against
@@ -208,8 +243,8 @@ canLand with `!fl_q_x/y/l`; carry = hole under the footprint.
 
 ## Tests
 
-`node snes/test/flight/run.mjs [classify|landing|water|teleport|whip]` (also
-via `run-all.mjs`):
+`node snes/test/flight/run.mjs [classify|landing|water|teleport|whip|ceiling]`
+(also via `run-all.mjs`):
 
 - `classify`: for 26 imported scenes (towns, woodland, Gaia's Navel caves,
   Haunted Forest, Water/Earth/Fire Palace, Witch castle, Sandship, Mana
@@ -228,7 +263,10 @@ via `run-all.mjs`):
   Frieza) with origins on each side (mailbox command 4), and
   `engine/native-teleport.js` with the browser's collision answers the same
   queries on the same WRAM: **19,996 / 19,996 queries equal** (8,510
-  landings: position, terrain, facing, hover).
+  landings: position, terrain, facing, hover). The same run compares the
+  ceiling escape's roof colours with `roofColors()` on the palette the
+  cartridge read: equal in all 21 scenes whose palette held still during
+  the call (6 animate theirs).
 - `water`: the browser spec's Water Palace gap on the same fixture and warp:
   rises over the gap, hovers in place for 45 frames after release, crosses
   and lands on the far platform, flies back and lands.
@@ -243,6 +281,17 @@ via `run-all.mjs`):
   event, lands within 14 px on landable ground with the companions close;
   walking onto the pad floats the whole party 93 px across in the
   gap-flight pose, the event ends and CF01/CF03 stay clear.
+- `ceiling`: `indoor-flight.spec.mjs` from seven rooms entered through
+  their real doors (Water Palace 137/139, Potos houses 257/259, Gaia's
+  Navel 293, Matango inn 282, Gold City house 125): L+R starts the escape,
+  the pose shows, the exterior loads, Goku never reappears on its ground,
+  the whole party leaves; plus `ceiling-escape.test.mjs`'s boss lock (a
+  live species-100 boss keeps it, a dying one frees it). This branch has no
+  world module, so the fallback native request takes off with Flammie's
+  summon: world flight after 780-1,070 frames from five rooms; from the
+  Water Palace exterior the native summon does not complete (the world
+  module skips the summon, as the browser does), so there the test checks
+  the escape up to its takeoff request.
 - Dev aids: `compare.mjs` + `browser-ref.mjs` replay the scenarios of
   `scenarios.mjs` in the browser mod (Playwright, private ROM/fixture) and on
   the cartridge and compare per-frame traces (`--shots=` takes screenshots).
@@ -280,7 +329,10 @@ so that scene runs at 30 Hz while flying (the cartridge covers the corridor
 in twice the browser's frames; the outcome is the same). Done so far: whip
 rays by index arithmetic with a quick pad pre-check, one tile-id compare
 for the whole hero grid, a per-frame hero canLand memo, the D778 endpoint
-canFly implied by the sweep. Next steps: cheaper anchor tracking on foot, a leaner frame path,
+canFly implied by the sweep.
+
+Ceiling escape: the roof-colour search costs ~12,000 instructions once, at
+the impact (one dropped frame during the quake). Next steps: cheaper anchor tracking on foot, a leaner frame path,
 segment caching for long air routes. `CORE_FASTROM` would give module code
 25%.
 
@@ -288,13 +340,17 @@ segment caching for long air routes. `CORE_FASTROM` would give module code
 
 - Whip-pad gap crossings (`C0:B683` skip of 6D8 while flying; the `4E`
   conditional at `C1:F1F1` → 6F9 crossing with gap-flight pose `$23`).
-- Ceiling escape (L+R, 35 routes, punch pose `$25`, fx debris/sparks, door
-  then `world_takeoff`), opening-path exit catches (`C0:D849`), NPC
-  pass-through (`C1:CFE5/D017`), Sandship `openAir`/`shipHull` rules,
+- Opening-path exit catches (`C0:D849`), NPC pass-through
+  (`C1:CFE5/D017`), Sandship `openAir`/`shipHull` rules and its takeoff
+  (`sandship.takeoff()` blows up an unfinished ship before any takeoff),
   passengers hidden while carried (`sprite-layer.js` also hides the whip
   attachment during a crossing; goku draws no weapon cells for Goku
-  anyway), story hooks `FLIGHT_LAND`, `QUEST_WISH_CEILING`, query
-  `LOCAL_FLIGHT`.
+  anyway).
+- Ceiling escape: the debris and sparks are requested from fx (style 1 for
+  `ceiling-escape.js`'s 20-chunk layout); fx draws them once it implements
+  those kinds. The Vegeta trial counts as a boss only through its custom
+  target post (kind 3). The world module's own L+R takeoff does not check
+  the boss lock the browser's `requestFlight()` applies to both routes.
 - Instant Transmission: `mod.facing` comes from `E010` (the browser also
   turns it on the press frame's new direction, which combat's aim tracks);
   the action advances once per logic frame (the browser: per video frame,

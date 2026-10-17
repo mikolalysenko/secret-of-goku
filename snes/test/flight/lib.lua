@@ -33,6 +33,15 @@ function F.enter(map, x, y, layer, flags, frames)
 end
 F.TP = 0x337B50
 local function s16(v) if v >= 0x8000 then return v - 0x10000 end return v end
+-- Enter a room through its real door n (a scratch DOOR event run by the
+-- native interpreter, as story.travel(n) does), then the ROM bytes restored.
+function F.door(n, frames)
+  local oldEvent = setRom(0x0742B0, {4, 0x18 + (n >> 8), n & 0xFF, 5, 0})
+  H.w8(0x7E00D1, 0xB0); H.w8(0x7E00D2, 0x42); H.w8(0x7E00D3, 0xC7); H.w8(0x7E00D0, 1)
+  H.wait(frames or 240)
+  setRom(0x0742B0, oldEvent)
+end
+F.CE = 0x337BF0
 function F.status()
   local x, y = H.r16(0x7EE002), H.r16(0x7EE004)
   local last = H.r16(F.TP + 0x14)

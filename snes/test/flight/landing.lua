@@ -57,6 +57,20 @@ function test()
   local f = assert(io.open(H_OUT .. '/landing.json', 'w'))
   f:write(H.json(queries))
   f:close()
+  -- the ceiling escape's roof colours from the same palette (command 5),
+  -- with the 128 colours it read
+  local done = H.r16(MAIL + 6)
+  local base = (H.r8(0x7E002A) ~= 0) and 0x7EBE00 or 0x7E0600
+  local pal = {}
+  for i = 0, 127 do pal[#pal + 1] = H.r16(base + i * 2) end
+  H.w16(MAIL, 5)
+  if not H.waitFor(function() return H.r16(MAIL + 6) ~= done end, 60) then error('roof colours timed out') end
+  -- the palette must not have changed meanwhile (animated palettes)
+  local same = true
+  for i = 0, 127 do if H.r16(base + i * 2) ~= pal[i + 1] then same = false end end
+  local r = assert(io.open(H_OUT .. '/roof.json', 'w'))
+  r:write(H.json({palette = pal, stone = H.r16(MAIL + 2), highlight = H.r16(MAIL + 4), stable = same}))
+  r:close()
   H.dumpfile('wram_end.bin', emu.memType.snesWorkRam, 0, 0x20000)
   H.result('queries', #queries)
   H.result('map', H.r16(0x7E00DC))

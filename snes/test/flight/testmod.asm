@@ -2,7 +2,8 @@
 ; flight_frame. Lua writes the request at !fl_sram_test:
 ;   +$00 word command: 1 = classify one map row, 2 = camera follow at the
 ;        hero, 3 = forget the anchor/crossing (localFlightHook.restore()),
-;        4 = Instant Transmission landings (fl_test_landing)
+;        4 = Instant Transmission landings (fl_test_landing),
+;        5 = the ceiling escape's roof colours (fl_ce_colors)
 ;   +$02 word layer (0/1), +$04 word row (tile y)
 ;   +$06 word completion counter (incremented when a request is done)
 ;   +$08 word map width in tiles (written back), +$0A height
@@ -17,6 +18,15 @@ fl_test_poll:
 	CMP.w #$0004
 	BNE +
 	JMP fl_test_landing
++	CMP.w #$0005
+	BNE +
+	; 5 = roofColors(): +$02 stone, +$04 highlight (ceiling.asm)
+	JSR fl_ce_colors
+	LDA.w !fl_t0
+	STA.l !fl_sram_test+$02
+	LDA.w !fl_t1
+	STA.l !fl_sram_test+$04
+	JMP .ack5
 +	CMP.w #$0003
 	BNE +
 	; 3 = localFlightHook.restore(): no anchor or crossing, fresh travel
@@ -34,6 +44,7 @@ fl_test_poll:
 	JSR fl_ctx_load
 	JSR fl_camera_follow_hero
 .ack
+.ack5
 	LDA.w #$0000
 	STA.l !fl_sram_test
 	LDA.l !fl_sram_test+$06

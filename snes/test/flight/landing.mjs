@@ -21,6 +21,16 @@ export const LANDING_BUNDLES=[
   ...DEFAULT_BUNDLES.filter(n=>!n.includes('beast-fed')),
 ];
 
+// ceiling-escape.js roofColors() over a palette (CGRAM 0-127)
+export function roofColors(cgram){
+  const light=c=>(c&31)+((c>>5)&31)+((c>>10)&31);
+  const colors=[...new Set(cgram.slice(0,128).map(c=>c&0x7fff))].filter(c=>{
+    const r=c&31,g=c>>5&31,b=c>>10&31;
+    return light(c)>18&&light(c)<75&&(Math.max(r,g,b)-Math.min(r,g,b)<=8||r>=g&&g>=b&&r-g<12&&g-b<12);
+  }).sort((a,b)=>light(a)-light(b));
+  return[0,colors[Math.floor(colors.length*.4)]??0x294a,colors[Math.floor(colors.length*.8)]??0x4631];
+}
+
 export async function landings({bundles,rom,outRoot}){
   const {createNativeLocalFlight}=await import(pathToFileURL(resolve(repo,'engine/native-local-flight.js')).href);
   const {createNativeTeleport}=await import(pathToFileURL(resolve(repo,'engine/native-teleport.js')).href);
@@ -52,7 +62,12 @@ export async function landings({bundles,rom,outRoot}){
       if(JSON.stringify(js)!==JSON.stringify(cart)){bad++;if(examples.length<8)examples.push({q:{x:q.x,y:q.y,ox:q.ox,oy:q.oy,t:q.t,air:q.air},js,cart});}
     }
     t.dispose();h.dispose();
-    results.push({name,map:r.results.map,queries:qs.length,found,bad,examples,moved,ms:r.ms});
+    // roofColors() (ceiling-escape.js) on the palette the cartridge read
+    const roof=JSON.parse(readFileSync(join(outDir,'roof.json'),'utf8'));
+    const want=roofColors(roof.palette);
+    const roofOk=!roof.stable||(want[1]===roof.stone&&want[2]===roof.highlight);
+    if(!roofOk)examples.push({roof:{js:want.slice(1),cart:[roof.stone,roof.highlight]}});
+    results.push({name,map:r.results.map,queries:qs.length,found,bad:bad+(roofOk?0:1),examples,moved,ms:r.ms,roof:[roof.stone,roof.highlight],roofStable:roof.stable});
   }
   return results;
 }
@@ -72,7 +87,7 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
     if(r.skipped){console.log(`${r.name}: skipped (no bundle)`);continue;}
     if(r.error){fail++;console.log(`${r.name}: ERROR ${r.error}`);continue;}
     if(r.bad||r.moved)fail++;
-    console.log(`${r.name.padEnd(44)} map ${String(r.map).padStart(3)} queries ${String(r.queries).padStart(5)} landings ${String(r.found).padStart(5)}  mismatches ${r.bad}${r.moved?` (map changed: ${r.moved})`:''} ${r.ms}ms`);
+    console.log(`${r.name.padEnd(44)} map ${String(r.map).padStart(3)} queries ${String(r.queries).padStart(5)} landings ${String(r.found).padStart(5)}  mismatches ${r.bad}${r.moved?` (map changed: ${r.moved})`:''} roof ${r.roof.map(c=>c.toString(16).padStart(4,'0')).join('/')}${r.roofStable?'':' (palette animated)'} ${r.ms}ms`);
     for(const e of r.examples.slice(0,r.bad?5:0))console.log('   ',JSON.stringify(e));
   }
   process.exit(fail?1:0);

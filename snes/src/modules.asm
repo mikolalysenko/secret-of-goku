@@ -36,6 +36,7 @@ modules_field_nmi:
 modules_world_frame:
 	JSL destroy_world_frame
 	JSL debug_world_frame
+	JSL flight_world_frame     ; a ceiling escape completes in world flight
 	JSL fx_world_frame         ; keep last
 	RTL
 ; World vblank, after the game's uploads and HDMA setup; not force-blanked,

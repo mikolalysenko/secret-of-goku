@@ -100,25 +100,121 @@ if defined("UIF_INTRO_FLIGHT")
 endif
 	RTS
 
-; World (snes/src/modules/world): takeoff into world flight from the field.
-; The world module defines !WORLD_TAKEOFF = <its routine>: JSL, carry set
-; when the takeoff was accepted (native-flight.js request()). Without it
-; the game's own world request $0C00|map starts the native departure.
+; World (snes/src/modules/world, present when !WORLD_MAGIC is defined):
+; takeoff into world flight from the field (native-flight.js request()).
+; The world module serves the L+R chord itself; the ceiling escape acts only
+; where world_takeoff_allowed says no, and asks world_takeoff from the
+; room's exterior. Without the module the game's own world request
+; $0C00|map (the Drum's path) is used with the same checks.
+; C clear = requested.
 fl_bind_world_takeoff:
-if defined("WORLD_TAKEOFF")
-	JSL !WORLD_TAKEOFF
+if defined("WORLD_MAGIC")
+	JSL world_takeoff
 	RTS
 else
+	JSR fl_bind_world_allowed
+	BCS +
 	LDA $DC
-	AND.w #$01FF
+	AND.w #$00FF
 	ORA.w #$0C00
 	JSL core_event_request
-	BCS +
++	RTS
+endif
+; C clear when a world takeoff can start from here now.
+fl_bind_world_allowed:
+if defined("WORLD_MAGIC")
+	JSL world_takeoff_allowed
+	RTS
+else
+	; Goku can act, nothing queued, idle native field, and the map header's
+	; world-flight bit (C8:7000 header + 4, bit 7)
+	LDA.w !fl_state
+	AND.w #!FLS_CAN
+	BEQ .no
+	LDA.w !core_event_req&$FFFF
+	BNE .no
+	SEP #$20
+	LDA $E8
+	AND.b #$04
+	ORA $FF
+	REP #$20
+	BNE .no
+	LDA $DC
+	CMP.w #512
+	BCS .no
+	ASL
+	TAX
+	LDA.l $C87000,X
+	TAX
+	LDA.l $C80004,X
+	AND.w #$0080
+	BEQ .no
+	CLC
+	RTS
+.no
 	SEC
 	RTS
-+	CLC
-	RTS
 endif
+; L+R where world flight is allowed: with the world module nothing to do
+; (it requests the takeoff in its own frame); without it, the native
+; request. C clear = a takeoff was (or will be) requested.
+fl_bind_world_lr:
+if defined("WORLD_MAGIC")
+	CLC
+	RTS
+else
+	JMP fl_bind_world_takeoff
+endif
+
+; Story (snes/src/modules/story): story.travel(door), A16 = door. Carry set
+; when queued.
+fl_bind_travel:
+	JSL story_api_travel
+	RTS
+
+; FX (snes/src/modules/fx): the ceiling escape's roof chunks and sparks at
+; X/Y (map pixels) in the room's colours (fl_t0 stone, fl_t1 highlight; dark
+; is black), and the 24-frame quake (native-feedback.js pulse(24)).
+fl_bind_fx_ceiling:
+if defined("FX_DEBRIS")
+	PHX
+	PHY
+	LDA.w #$0000
+	STA.l !fx_rgb
+	LDA.w !fl_t0
+	STA.l !fx_rgb+2
+	LDA.w !fl_t1
+	STA.l !fx_rgb+4
+	LDA.w #8
+	STA.l !fx_a
+	LDA.w #!FX_SPARKS
+	JSL fx_spawn
+	LDA $03,S
+	TAX
+	LDA $01,S
+	TAY
+	SEP #$20
+	LDA.b #$01                   ; ceiling-escape layout (ceiling-escape.js draw)
+	STA.l !fx_style
+	REP #$20
+	LDA.w #20
+	STA.l !fx_a
+	LDA.w #46
+	STA.l !fx_b
+	LDA.w #!FX_DEBRIS
+	JSL fx_spawn
+	PLY
+	PLX
+	LDA.w #24
+	JSL fx_quake
+endif
+	RTS
+; feedback.clear() when an escape is cancelled.
+fl_bind_fx_clear:
+if defined("FX_DEBRIS")
+	JSL fx_kill_all
+endif
+	RTS
 
 flight_bind_end:
 assert flight_bind_end <= !CODE_FLIGHT+$8000, "flight binding area overflow"

@@ -7,6 +7,8 @@
 //   water     Water Palace gap: fly over, hover on release, cross, return
 //   teleport  teleport.spec.mjs: riverbank landing, offscreen target with the
 //             camera follow, cues, walking and the ring afterwards
+//   whip      whip-flight.spec.mjs / ki-world.spec.mjs whip pads (Earth Palace)
+//   ceiling   indoor-flight.spec.mjs roof exits from seven rooms
 //   ... (see docs/agents/snes-port/flight.md)
 //   node snes/test/flight/run.mjs [test ...]
 // ROM: $SNES_ROM or dist/snes/secret-of-goku.sfc (the classify test builds
@@ -82,10 +84,11 @@ const symAt=name=>{
   const m=readFileSync(romSrc.replace(/\.sfc$/,'.sym'),'utf8').match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${name}$`,'mi'));
   if(!m)throw Error('no symbol '+name);return `0x${m[1]}${m[2]}`;
 };
-for(const t of ['water','teleport','whip']){
+for(const t of ['water','teleport','whip','ceiling']){
   if(!want(t)||!existsSync(join(here,`${t}.lua`)))continue;
   const rom=privateRom(romSrc,`flight-${t}`);
-  const extra=t==='teleport'?`SFX=${symAt('fl_bind_sfx')}\n`:'';
+  const world=/^[0-9A-F]{2}:[0-9A-F]{4} world_takeoff$/mi.test(readFileSync(romSrc.replace(/\.sfc$/,'.sym'),'utf8'));
+  const extra=t==='teleport'?`SFX=${symAt('fl_bind_sfx')}\n`:t==='ceiling'?`WORLD=${world}\n`:'';
   const r=await runMesen({rom,test:extra+prelude()+readFileSync(join(here,`${t}.lua`),'utf8'),outDir:join(outRoot,t),state:join(cps,'waterfall.mss')});
   cleanupRom(rom);
   const pass=r.code===0&&r.results?.pass===true;ok&&=pass;
