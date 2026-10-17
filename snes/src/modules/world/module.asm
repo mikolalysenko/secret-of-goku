@@ -87,7 +87,7 @@ assert !RAM_WORLD == ($7E0000|!WORLD_RAM), "!WORLD_RAM must match !RAM_WORLD"
 !w_fort_seen    = !WORLD_RAM+$A4 ; word: w_frame when C2:B1F7 last projected the Fortress
 !w_burst_live   = !WORLD_RAM+$A6 ; word: live bursts
 !w_beam_rows    = !WORLD_RAM+$A8 ; 7 bytes: OAM offset of each beam row's left edge ($FF none)
-; $AF free
+!w_beam_hwe     = !WORLD_RAM+$AF ; byte: the wave's effective half-width this frame
 !w_scratch      = !WORLD_RAM+$B0 ; 16 bytes: call-local scratch
 !w_proj         = !WORLD_RAM+$C0 ; 7 bytes: beam row half-widths, +8 word: drawn length (edge sparks)
 !w_beam_sig     = !WORLD_RAM+$CA ; word: half-width << 8 | profile offset of the cached beam

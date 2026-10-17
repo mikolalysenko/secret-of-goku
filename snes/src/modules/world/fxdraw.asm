@@ -192,10 +192,6 @@ world_draw_beam:
 	JSR world_div8
 	STA.w !w_scratch+6
 +	; length index (multiples of 8)
-	STZ.w !w_proj
-	STZ.w !w_proj+2
-	STZ.w !w_proj+4
-	STZ.w !w_proj+6
 	LDA.w !w_scratch+6
 	STA.w !w_proj+8                  ; drawn length, for the edge sparks
 	CLC
@@ -279,6 +275,9 @@ world_draw_beam:
 	STX.w !w_scratch
 	JSR .scale
 	STA.w !w_scratch+4               ; effective half-width
+	SEP #$20
+	STA.w !w_beam_hwe                ; (world_beam_row reuses w_scratch+4)
+	REP #$20
 	; profile table base: taper (mega 26) * 105 + length/8 * 7
 	LDA.w !w_scratch+14
 	ASL
@@ -314,6 +313,10 @@ world_draw_beam:
 	BRA .orb
 .full
 	STA.w !w_beam_sig
+	STZ.w !w_proj                    ; row widths, rewritten below
+	STZ.w !w_proj+2
+	STZ.w !w_proj+4
+	STZ.w !w_proj+6
 	LDA.w !w_cursor
 	STA.w !w_beam_start
 	LDA.w #$FFFF
@@ -335,7 +338,8 @@ world_draw_beam:
 	AND.w #$00FF
 	BEQ .rowDone
 	STA.w !w_scratch
-	LDA.w !w_scratch+4
+	LDA.w !w_beam_hwe
+	AND.w #$00FF
 	JSR .scale                       ; W = hwe * f / 256
 	CMP.w #2
 	BCC .rowDone
@@ -472,6 +476,8 @@ world_beam_row:
 	ADC.w #16
 	CMP.w !w_scratch+4
 	BPL .end
+	CMP.w #240
+	BCS .end                         ; (x stays in the low byte of x|y)
 	CPX.w #$00DC                     ; leave room for Goku (4) and the shadow
 	BCS .end
 	TAY

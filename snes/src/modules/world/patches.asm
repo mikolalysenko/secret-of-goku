@@ -51,3 +51,8 @@
 %orig2($C2B1FB, $C200)
 %orig1($C2B1FD, $E8)
 %hijack_jsl($C2B1F7, world_fort_seen_hook, 7, world)
+
+; Event sound opcode: C1:F109 JSL $C30004. After the Fortress fell, the
+; deck's cue $26 becomes the crisis cue (fortress-collapse.js).
+%orig4($C1F109, $C3000422)
+%hijack_jsl($C1F109, world_event_sound_hook, 4, world)

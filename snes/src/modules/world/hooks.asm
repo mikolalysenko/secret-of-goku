@@ -277,3 +277,35 @@ world_fort_seen_hook:
 	LDA.l $C20000,X
 	INX
 	RTL
+
+; ---------------------------------------------------------------------------
+; C1:F109 (JSL, replaced JSL $C30004): the event script's sound command.
+; Once Goku destroyed the Fortress, its deck (map 255) keeps the crisis cue
+; started during the landing: the map's own cue $26 becomes 01 1B 13 8F
+; (engine/fortress-collapse.js). The driver's RTL returns to C1:F10D.
+world_event_sound_hook:
+	PHP
+	SEP #$20
+	LDA.l $7E1E00
+	CMP.b #$01
+	BNE .send
+	LDA.l $7E1E01
+	CMP.b #$26
+	BNE .send
+	LDA.l !pw_flags
+	AND.b #!PWF_FORTRESS
+	BEQ .send
+	LDA.l $7E00DD
+	BNE .send
+	LDA.l $7E00DC
+	CMP.b #$FF
+	BNE .send
+	LDA.b #$1B
+	STA.l $7E1E01
+	LDA.b #$13
+	STA.l $7E1E02
+	LDA.b #$8F
+	STA.l $7E1E03
+.send
+	PLP
+	JML $C30004
