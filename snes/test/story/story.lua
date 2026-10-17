@@ -31,7 +31,7 @@ local function ranges(set)
 end
 function test()
   H.wait(5)
-  if not H.importSnesJs(CASE.bundle) then H.result('error', 'import failed'); return end
+  if CASE.bundle and not H.importSnesJs(CASE.bundle) then H.result('error', 'import failed'); return end
   for _, w in ipairs(CASE.rom_writes or {}) do emu.write(w[1], w[2], emu.memType.snesPrgRom) end
   apply(CASE.writes)
   if CASE.log then

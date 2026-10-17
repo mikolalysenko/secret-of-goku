@@ -366,6 +366,33 @@ cases.push({name:'absent-skip',bundle:'emulator-probe__potos-state',writes:[...g
   diff({name:'diff-potos-arrival',shots:[200,600,1200]},{file:'emulator-probe__potos-state',request:0x10c,frames:2400,mash:24});
 }
 
+// ---- from a new game (core checkpoint: Potos via the native door) ---------
+// snes/test/checkpoints.mjs --potos: a fresh NEW GAME with empty battery RAM;
+// Goku is made active as the arrival module does at the impact.
+{
+  const dir=process.env.SNES_CHECKPOINTS??resolve(mainCheckout(),'.local/snes-checkpoints');
+  const state=join(dir,'potos.mss');
+  const fresh=[[GOKU_ACTIVE,1,1],[P_VERSION,0,1],[P_MASK,0xff,1],[P_SEEDS,0xff,1]];
+  cases.push({name:'newgame-init',state,writes:fresh,frames:10,
+    check(r){const p=r.persist;return [['ledger initialised from the native flags of a new game',p[0]===1&&p[1]===0&&p[2]===0,`version ${p[0]} mask ${hex(p[1])} seeds ${hex(p[2])}`]];}});
+  cases.push({name:'newgame-villager',state,writes:fresh,request:[0x107,0],frames:400,mash:24,shots:[80],dump:[[NAME_BUF,13]],
+    check(r){
+      const t=r.trace.find(x=>x[0]===0x107),got=r.dumps?.[0]??[];
+      const randi=[...encodeText('Randi'),0,0,0,0,0,0,0,0].slice(0,13);
+      return [['107 resolves to its compiled line',t&&t[1]===js(0x107,0),t?hex(t[1],6):'none'],['{3} reads Randi (no name in the slot tail)',randi.every((v,i)=>v===got[i]),got.map(v=>hex(v)).join(' ')]];
+    }});
+  cases.push({name:'newgame-luka',state,writes:fresh,request:[0x134,0],frames:1800,mash:30,shots:[60,240,640,665,900],
+    check(r){
+      const ids=r.trace.map(t=>t[0]);
+      return [['the one-time spear gift (92 -> 13A) runs before the menu',ids.includes(0x92)&&ids.includes(0x13a),ids.map(x=>hex(x,3)).join(' ')],
+        ['the menu returns (134 again) and Advice opens (85)',ids.filter(x=>x===0x134).length>=2&&ids.includes(0x85),''],
+        ['the gift flag advanced',r.flags[0xc3]>=1,`CFC3=${r.flags[0xc3]}`],
+        ['Advice chose the 0/7 page',r.trace.some(t=>t[0]===0x85&&t[1]===js(0x85,0,[['questCount',0]])),'']];
+    }});
+  cases.push({name:'newgame-elder',state,writes:fresh,request:[0x114,0],frames:600,mash:24,shots:[90],
+    check(r){const t=r.trace.find(x=>x[0]===0x114),a=alloc(js(0x114,0));return [['114 resolves to the Elder\'s compiled line',t&&t[1]===a.at,hex(a.at,6)],['its text was read',readsCover(r.reads,a.at,a.end)>=a.length*0.8,'']];}});
+}
+
 const only=process.argv.slice(2);
 mkdirSync(out,{recursive:true});
 let failures=0;
@@ -373,11 +400,12 @@ const luaBody=readFileSync(join(here,'story.lua'),'utf8');
 const lua=v=>Array.isArray(v)?'{'+v.map(lua).join(',')+'}':typeof v==='string'?JSON.stringify(v):typeof v==='boolean'?String(v):v===null||v===undefined?'nil':String(v);
 for(const c of cases){
   if(only.length&&!only.includes(c.name))continue;
-  if(!existsSync(bundle(c.bundle))){console.log(`skip ${c.name}: no bundle ${c.bundle}`);continue;}
+  if(c.bundle&&!existsSync(bundle(c.bundle))){console.log(`skip ${c.name}: no bundle ${c.bundle}`);continue;}
+  if(c.state&&!existsSync(c.state)){console.log(`skip ${c.name}: no checkpoint ${c.state}`);continue;}
   const info=c.rom==='test'?testInfo():prod,A=info.addr;
   const queries=c.rom==='test'?(c.queries??[]).map(([n,v])=>[queryId(n),v]):[];
-  const prelude=`CASE = {bundle=${lua(bundle(c.bundle))}, writes=${lua(c.writes)}, before=${lua(c.before??[])}, request=${lua(c.request)}, frames=${c.frames}, mash=${c.mash??0}, shots=${lua(c.shots??[])}, resolve=${info.label('story_resolve_done')}, ram=${A.ram}, persist=${A.persist}, water=${A.water}, dump_water=${!!c.dump_water}, stop_idle=${!!c.stopIdle}, rom_writes=${lua(c.romWrites??[])}, timed=${lua(c.timed??[])}, dump=${lua(c.dump??[])}, log=${c.rom==='test'?A.log:'nil'}, queries=${A.queries}, test_queries=${lua(queries)}, script=${lua(c.script??null)}}\n`;
-  const r=await runMesen({rom:info.path,test:prelude+luaBody,outDir:join(out,c.name)});
+  const prelude=`CASE = {bundle=${c.bundle?lua(bundle(c.bundle)):'nil'}, writes=${lua(c.writes)}, before=${lua(c.before??[])}, request=${lua(c.request)}, frames=${c.frames}, mash=${c.mash??0}, shots=${lua(c.shots??[])}, resolve=${info.label('story_resolve_done')}, ram=${A.ram}, persist=${A.persist}, water=${A.water}, dump_water=${!!c.dump_water}, stop_idle=${!!c.stopIdle}, rom_writes=${lua(c.romWrites??[])}, timed=${lua(c.timed??[])}, dump=${lua(c.dump??[])}, log=${c.rom==='test'?A.log:'nil'}, queries=${A.queries}, test_queries=${lua(queries)}, script=${lua(c.script??null)}}\n`;
+  const r=await runMesen({rom:info.path,test:prelude+luaBody,outDir:join(out,c.name),state:c.state??null});
   const res=r.results??{};
   if(res.error||!res.trace){console.log(`FAIL ${c.name}: ${res.error??'no results'}\n${r.output.slice(-1500)}`);failures++;continue;}
   writeFileSync(join(out,c.name,'trace.txt'),res.trace.map(([id,p,f])=>`${f} ${hex(id,3)} -> ${hex(p,6)}${alloc(p)?' ['+hex(alloc(p).id,3)+' m'+alloc(p).mask+']':''}`).join('\n'));

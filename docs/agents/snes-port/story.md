@@ -405,6 +405,7 @@ never from copied data. Test-ROM cases build `dist/snes/story-test.sfc` with
 
 | Area | Cases | Checked |
 | --- | --- | --- |
+| From a new game | `newgame-*` (4) | start from the core's `potos.mss` (fresh NEW GAME, empty battery, Potos by the native door) with Goku made active: the ledger initialises from native flags; a villager's `{3}` line reads Randi; Luka's one-time spear gift (with its music upload) runs, the menu returns, Advice opens the 0/7 page; the Elder's line |
 | Party variants | `party-solo/-girl/-sprite/-both` | 24B resolves to the browser's variant for each mask; its text is read |
 | Choices, ledger | `luka-advice` | Luka's menu, Advice chosen, "DRAGON BALLS: 3 / 7" page |
 | Names | `names-boy-*` (4) | `{3}` shows the state's, a typed, the editor-default (Randi) and an empty boy name |
