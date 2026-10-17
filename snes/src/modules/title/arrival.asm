@@ -1354,9 +1354,10 @@ title_hero_release:
 
 ; ---------------------------------------------------------------------------
 ; Palettes. The field NMI uploads 7E:0600, or 7E:BE00 while $2A is set. The
-; sword flash (C2:C820, before this hook) rebuilds BE00 from 0600 every frame,
-; adding one clamped amount per channel to palettes 1-15 (OBJ palettes too
-; while $2A bit 6 is set). Our colours go into 0600 once per visit
+; sword flash (C2:C820, before this hook) rebuilds BE00 from 0600 whenever
+; its level steps (every fifth frame in the arrival), adding one clamped
+; amount per channel to palettes 1-15 (OBJ palettes too while $2A bit 6 is
+; set). Our colours go into 0600 once per visit
 ; (!title_palstate bit0; the game does not touch OBJ palettes 2/6/7 on map
 ; 128). On flash frames the pod and effect colours are put back into BE00
 ; (the browser draws them unflashed); the crater keeps the flash, which is
