@@ -31,6 +31,7 @@ modules_world_nmi:
 ; Full-screen menu frame (file select, name entry, status, equipment,
 ; save), in vblank right after the menu's own uploads (DB = $7E).
 modules_menu_frame:
+	JSL goku_menu_frame
 	RTL
 ; Ring menu frame, in vblank (DB = $7E).
 modules_ring_frame:
