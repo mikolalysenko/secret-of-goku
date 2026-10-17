@@ -31,7 +31,7 @@ ui (King Kai) and destroy (the map) through `bind.asm`.
 | Heavy Gi (−10% strength, −20% agility, never stacking on rebuilds), DUST BAG names, weapon tiers | Done (gi), names patched | `heavy-gi`, `heavy-gi-ssj` (armor ring off/on) |
 | Senzu Bean (name, targets through the item ring) | Ported, not yet compared | — |
 | Status recovery (focus breaks sleep / petrify / Frosty / Balloon / Engulf; poison and sleep break SSJ) | Ported, not yet compared | — |
-| Effects | Gameplay records done; drawing through fx (`bind.asm`), placeholder sprites behind `!COMBAT_FX_PLACEHOLDER` | — |
+| Effects | Gameplay records done; drawing through fx (`bind.asm`, compiles against fx `a8f13ce`); placeholder sprites while the real fx library is absent (`!COMBAT_FX_PLACEHOLDER`) | runtime with fx blocked, see Requests |
 | World flight: focus and transformation | Done (`combat_world_frame`) | — |
 | World flight: the aerial charge | The world module's stand-in (`!w_combat_owns` = 0) | world tests pass |
 
@@ -45,7 +45,7 @@ ui (King Kai) and destroy (the map) through `bind.asm`.
 | WRAM `$7E:D800-$7E:D8FF` | `!RAM_COMBAT` (map in `module.asm`); public fields below |
 | SRAM `$31:7C00-$31:7FFF` | `!SRAM_WORK_COMBAT`: 16 effect records, 9 launch records, 9 sound marks, 9 beam pulse timers, the pad of the last four field vblanks (`!PADH`), destroy_hit arguments |
 | SRAM `$31:6200` | `!PERSIST_COMBAT` byte 0: `PCF_REVEALED` (the first transformation reveal was seen). Shared: `!persist_ssj_lock` (permanent form), `!persist_goku_active` (read) |
-| OAM / VRAM | Placeholder effects only (`!COMBAT_FX_PLACEHOLDER`, default 1 until fx draws): OBJ region `!VRAM_FIELD_OBJ_B` (owner `$02`, tiles `$184+`) |
+| OAM / VRAM | Placeholder effects only (`!COMBAT_FX_PLACEHOLDER`: 1 unless the real fx library is in the build, detected by its `!fx_busy`): OBJ region `!VRAM_FIELD_OBJ_B` (owner `$02`, tiles `$184+`) |
 | Other modules' RAM written | `!goku_form`, `!goku_act`, `!goku_act_facing/_age/_arg/_dur`, `!goku_mode/_facing/_age` (reactions); destroy's `!arg_*`; fx's request block; core `!core_pad_mask/_inject` |
 
 ## Original code patched
@@ -217,8 +217,10 @@ another 2-3. With `CORE_FASTROM` (MEMSEL set) the same frames end at
   tier / equip rejection against the browser.
 - The aerial charge in world flight (`!w_combat_owns`).
 - Senzu Bean / DUST BAG item icons (names only so far).
-- With fx merged, set `!COMBAT_FX_PLACEHOLDER = 0` and check the
-  bindings against fx's final API (written against its frozen API doc).
+- Check the effects on screen once fx works in the merged build (the
+  bindings follow fx.md; every request starts from a cleared block).
+  Combat's effect records use their own names (`!ER`, `!er_*`, `!ERK_*`,
+  `!ERF_*`) so nothing shadows fx's `!fx_*` request block.
 - The Mantis Ant rescue aftermath now that imports keep the sound CPU.
 
 ## Requests
@@ -237,6 +239,12 @@ another 2-3. With `CORE_FASTROM` (MEMSEL set) the same frames end at
 - **title**: the arrival test's ring round trip presses native Y, which is
   Goku's ki with combat (the browser mod's player presses X); see also the
   impact frames under Performance.
+- **fx**: merging `a8f13ce` into current main (with or without combat)
+  fails fx's own `gallery` and `beams` tests (no OBJ regions or palettes
+  claimed: `reg=0`, `pal=FF`), while the fx branch alone passes. In that
+  state combat's first effect hangs the game inside `fx_emit_slow` (an
+  assembly id of `$ECB3`, 65,535 parts). A define such as `!FX_DRAWS`
+  would be a cleaner signal than `!fx_busy` for the placeholder.
 - **debug**: one hook per preset can hold only one module; several modules
   (combat, frieza, radio, world) answer kinds of the same presets.
 - **destroy**: a full Super Saiyan wave's first frames (band growth) cost up
