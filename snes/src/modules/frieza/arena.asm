@@ -15,7 +15,7 @@ fz_arena_clear:
 	STA.l !fzs_holes_n
 	LDA $DC
 	STA.l !fzs_arena_map
-	RTS
+	JMP fz_holes_clear
 
 ; Bursts age in fx; nothing to tick here (frieza.js tickFriezaArena).
 fz_arena_tick:
@@ -206,6 +206,7 @@ fz_hole_set:
 	LDA.l !fzs_holes_n
 	INC
 	STA.l !fzs_holes_n
+	JMP fz_holes_add
 .out
 	RTS
 

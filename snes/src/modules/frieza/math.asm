@@ -16,9 +16,10 @@ fz_mul8:
 	LDA.l $004216
 	RTS
 
-; A16 = |A16|.
+; A16 = |A16| (flags of A itself, not of the caller's last instruction).
 fz_abs:
-	BPL +
+	CMP.w #$8000
+	BCC +
 	EOR.w #$FFFF
 	INC
 +	RTS

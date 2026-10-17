@@ -109,7 +109,7 @@ function test()
   local function hit(dmg, melee)
     H.w16(${v(defs.fzs_test)}+2, dmg)
     H.w16(${v(defs.fzs_test)}, melee and 1 or 2)
-    H.wait(1)
+    H.waitFor(function() return H.r16(${v(defs.fzs_test)}) == 0 end, 30)
     return H.r16(${v(defs.fzs_test)}+4)
   end
   local function hp() return H.r16(${v(defs.fzf_hp_lo)}) | (H.r8(${v(defs.fzf_hp_hi)}) << 16) end
@@ -214,6 +214,82 @@ end
 `;
 }
 
+// Floor fractures (frieza-arena.js fractureFortress) at chosen points and
+// radii, compared cell for cell with the browser's function (every cell
+// landable, as without the flight module).
+async function fractureTest(){
+  const arena=await import(join(repo,'engine/frieza-arena.js'));
+  const g=reference('battle');
+  const writes=friezaWrites(g.frieza,g.challenge);
+  const v=n=>'0x'+(n<0x10000?(0x7E0000|n):n).toString(16);
+  const shots=[[280,400,34],[263,377,20],[301,413,28],[220,444,26],[340,376,19],[350,420,32],[200,360,29]];
+  const a=arena.newFriezaArena();
+  for(const [x,y,r] of shots)arena.fractureFortress(a,x,y,r,()=>true);
+  const want=[...arena.arenaHoles(a)].sort((p,q)=>p-q);
+  const lua=`
+function test()
+  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__battle'))})
+  F.check(ok, 'import')
+  H.w8(0x316001, 1)
+  F.apply(${luaWrites(writes)})
+  H.wait(2)
+  for _, s in ipairs({${shots.map(([x,y,r])=>`{${x},${y},${r}}`).join(',')}}) do
+    H.w16(${v(defs.fzs_test)}+2, s[1])
+    H.w16(${v(defs.fzs_test)}+8, s[2])
+    H.w16(${v(defs.fzs_test)}+10, s[3])
+    H.w16(${v(defs.fzs_test)}, 3)
+    F.check(H.waitFor(function() return H.r16(${v(defs.fzs_test)}) == 0 end, 30), 'fracture command taken')
+  end
+  H.wait(4)
+  local cells = {}
+  for row = 0, 63 do
+    for col = 0, 15 do
+      local b = H.r8(${v(defs.FZ_HOLES)} + row * 16 + col)
+      for bit = 0, 7 do
+        if (b >> bit) & 1 == 1 then cells[#cells + 1] = row * 256 + col * 8 + bit end
+      end
+    end
+  end
+  H.result('cells', cells)
+  -- the broken floor on the screen: the hole tiles in VRAM before any
+  -- BG1 entry points at them, every listed row written
+  H.wait(24)
+  local tiles = {${holeTiles().join(',')}}
+  local same = true
+  for i = 1, #tiles do
+    if emu.read(0x1C00 * 2 + i - 1, emu.memType.snesVideoRam) ~= tiles[i] then same = false end
+  end
+  F.check(same, 'hole tiles in VRAM')
+  F.check(H.r8(${v(defs.fzh_tiles)}) == 2, 'hole tiles marked resident')
+  local rows = H.r16(${v(defs.fzh_wcount)})
+  F.check(rows > 0 and H.r16(${v(defs.fzh_wcursor)}) == rows, 'hole rows written')
+  local vr = function(a) return emu.read(a * 2, emu.memType.snesVideoRam) | (emu.read(a * 2 + 1, emu.memType.snesVideoRam) << 8) end
+  local bad = 0
+  for i = 0, rows - 1 do
+    local a = H.r16(${v(defs.FZ_HWRITE)} + i * 6)
+    if vr(a) ~= H.r16(${v(defs.FZ_HWRITE)} + i * 6 + 2) or vr(a + 1) ~= H.r16(${v(defs.FZ_HWRITE)} + i * 6 + 4) then bad = bad + 1 end
+  end
+  F.check(bad == 0, 'BG1 entries of the visible holes')
+  H.result('holeRows', rows)
+  H.shot('fractures')
+  F.done()
+end
+`;
+  return {lua,want};
+}
+// frieza_hole_tiles from the generated data (16 tiles, 512 bytes).
+function holeTiles(){
+  const asm=readFileSync(join(repo,'dist/snes/gen/frieza/data.asm'),'utf8').split('\n');
+  const at=asm.indexOf('frieza_hole_tiles:');
+  const out=[];
+  for(let i=at+1;i<asm.length&&out.length<512;i++){
+    const m=asm[i].match(/^\s*db\s+(.*)$/);if(!m)break;
+    for(const b of m[1].split(','))out.push(parseInt(b.trim().replace('$','0x')));
+  }
+  if(out.length!==512)throw Error('frieza_hole_tiles: '+out.length+' bytes');
+  return out;
+}
+
 const cases={
   court:{preset:'frieza',frames:[60,240,600]},
   thanatos:{preset:'thanatos',frames:[60,240]},
@@ -234,6 +310,22 @@ if(want('surge')){
   const ok=r.code===0&&res.pass===true;
   results.push({name:'surge',ok,failures});
   console.log(`frieza surge: ${ok?'pass':'FAIL'} (${r.ms} ms) punch ${res.punch} hp at surge ${res.hpAtSurge} holes ${res.holes}`);
+  if(!ok)for(const f of failures)console.log('    !',f);
+}
+if(want('fracture')){
+  buildTestRom();
+  const {lua,want:cellsWant}=await fractureTest();
+  const rom=privateRom(testRom,'frieza-fracture');
+  const r=await runMesen({rom,test:lib+'\n'+lua,outDir:join(outRoot,'fracture'),state:join(cps,'waterfall.mss')});
+  cleanupRom(rom);
+  const res=r.results??{};
+  const got=(res.cells??[]).slice().sort((p,q)=>p-q);
+  const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
+  const same=got.length===cellsWant.length&&got.every((c,i)=>c===cellsWant[i]);
+  if(!same)failures.push(`cells differ: cartridge ${got.length} [${got.slice(0,12).join(',')}...], browser ${cellsWant.length} [${cellsWant.slice(0,12).join(',')}...]`);
+  const ok=r.code===0&&res.pass===true&&same;
+  results.push({name:'fracture',ok,failures});
+  console.log(`frieza fracture: ${ok?'pass':'FAIL'} (${r.ms} ms) ${got.length} cells (browser ${cellsWant.length})`);
   if(!ok)for(const f of failures)console.log('    !',f);
 }
 if(want('victory')){

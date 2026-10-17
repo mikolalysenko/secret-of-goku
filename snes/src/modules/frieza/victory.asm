@@ -271,7 +271,10 @@ fz_won_tick:
 	JSR fz_victory_white
 	SEP #$20
 	STA.l !fzv_white
-	REP #$20
+	BEQ +
+	LDA.b #!FZT_WHITE                 ; the vblank whitens this frame
+	TSB !fz_tflags
++	REP #$20
 	LDA.l !fzv_age
 	CMP.w #!FZV_DONE
 	BCC .out
@@ -328,31 +331,29 @@ fz_won_draw:
 .out
 	RTS
 
-; Whiteout in vblank (DB = $80): fixed-colour addition on every layer;
-; the map's own colour math (C2:AAB3: CGWSEL 2, CGADSUB = $23) comes back
-; when it ends.
+; Whiteout in vblank (DB = $80): fixed-colour addition on every layer while
+; this frame's logic asked for it; the map's own colour math (C2:AAB3:
+; CGWSEL 2, CGADSUB = $23) comes back the vblank after it ends.
 fz_won_nmi:
-	LDA.l !fzv_white
-	AND.w #$00FF
+	LDA.l $7E0000|!fz_tflags
+	AND.w #!FZT_WHITE
 	BEQ .off
 	SEP #$20
-	STA.l !fzv_wlast
 	LDA.b #$00
 	STA $2130                         ; colour math always on, fixed colour
 	LDA.b #$3F
 	STA $2131                         ; add to every layer and the backdrop
 	LDA.l !fzv_white
+	AND.b #$1F
 	ORA.b #$E0
 	STA $2132                         ; R = G = B = white amount
 	REP #$20
 	RTS
 .off
-	LDA.l !fzv_wlast
-	AND.w #$00FF
+	LDA.l $7E0000|!fz_tflags
+	AND.w #!FZT_WPREV
 	BEQ .out
 	SEP #$20
-	LDA.b #$00
-	STA.l !fzv_wlast
 	LDA.b #$02
 	STA $2130
 	LDA.l $000023

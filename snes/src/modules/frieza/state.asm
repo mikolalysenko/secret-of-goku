@@ -1127,6 +1127,9 @@ fz_reset_transient:
 	SEP #$20
 	STZ !fzd_on
 	STZ !fzd_key
+	LDA.b #0
+	STA.l !fzv_on
+	STA.l !fzv_white
 	REP #$20
 	RTS
 

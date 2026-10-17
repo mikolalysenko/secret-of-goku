@@ -22,6 +22,9 @@ fz_battle_clear_sram:
 	DEX
 	BPL -
 	SEP #$20
+	LDA.b #0
+	STA.l !fzv_on
+	STA.l !fzv_white
 	LDA.b #$FF
 	STA.l !fzs_rip
 	LDX.w #(!FZ_AFTER_N-1)*6
@@ -2110,10 +2113,8 @@ fz_test_mailbox:
 	LDA.l !fzs_test
 	BEQ .out
 	CMP.w #3
+	BEQ .fracture
 	BCS .clear
-	DEC
-	TAX                               ; 0 punch... -> melee flag below
-	LDA.l !fzs_test
 	CMP.w #1
 	BEQ +
 	LDX.w #0
@@ -2122,6 +2123,16 @@ fz_test_mailbox:
 ++	LDA.l !fzs_test+2
 	JSL frieza_virtual_hit
 	STA.l !fzs_test+4
+	BRA .count
+.fracture
+	; cmd 3: breakFloor(arg x, arg2 y, arg3 radius)
+	LDA.l !fzs_test+2
+	STA !fz_ax
+	LDA.l !fzs_test+8
+	STA !fz_ay
+	LDA.l !fzs_test+10
+	JSR fz_break_floor
+.count
 	LDA.l !fzs_test+6
 	INC
 	STA.l !fzs_test+6

@@ -14,9 +14,16 @@ fz_spr_invalidate:
 	STA !fz_spr_res0
 	STA !fz_spr_res1
 	STA !fz_spr_pend
+	STA.l !fzh_key                    ; the broken floor too
+	SEP #$20
+	LDA.b #0
+	STA.l !fzh_tiles
+	REP #$20
 	RTS
 
-; Start of a field frame: nothing drawn yet.
+; Start of a field frame: nothing drawn yet, no vblank work allowed until
+; this frame's logic grants it (the whiteout of last frame is remembered
+; so the vblank can give the colour math back).
 fz_spr_begin:
 	SEP #$20
 	LDA.b #$FF
@@ -24,8 +31,14 @@ fz_spr_begin:
 	STA !fz_spr_pal2
 	STZ !fz_spr_cnt
 	STZ !fz_spr_var
-	LDA.b #!FZT_PALSCAN
-	TRB !fz_tflags
+	LDA !fz_tflags
+	AND.b #!FZT_WHITE
+	ASL                               ; -> !FZT_WPREV
+	STA !fz_t0
+	LDA !fz_tflags
+	AND.b #~(!FZT_PALSCAN|!FZT_HOLES|!FZT_WHITE|!FZT_WPREV)
+	ORA !fz_t0
+	STA !fz_tflags
 	REP #$20
 	RTS
 

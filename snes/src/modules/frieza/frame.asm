@@ -25,6 +25,7 @@ frieza_field_frame:
 	JSR fz_draw_scene
 	JSR fz_battle_draw
 	JSR fz_won_draw
+	JSR fz_holes_frame
 .out
 	JSR fz_music_tick
 	RTL
@@ -33,6 +34,23 @@ frieza_field_frame:
 frieza_field_nmi:
 	JSR fz_spr_nmi
 	JSR fz_won_nmi
+	JSR fz_holes_nmi
+	RTL
+
+; modules_title_boot: the scene SRAM block is battery backed (and random at
+; power-on): forget every Frieza scene's state there.
+frieza_title_boot:
+	LDA.w #$0000
+	LDX.w #$01FE
+-	STA.l !FZSB,X
+	DEX
+	DEX
+	BPL -
+	LDX.w #$000E
+-	STA.l !FZHB,X
+	DEX
+	DEX
+	BPL -
 	RTL
 
 ; inputLocked: a surge or the won beat owns the pad (mana-mod.js zeroes the

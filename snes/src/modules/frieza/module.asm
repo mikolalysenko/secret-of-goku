@@ -222,12 +222,21 @@ assert !FZX_END <= !FZ+$C0, "frieza WRAM overflow (beast)"
 !fzs_arena_rev = !FZSB+$142   ; word: revision (fractures so far)
 !fzs_holes_n   = !FZSB+$144   ; word: cells broken
 !fzd_age       = !FZSB+$146   ; word: finale death clock (long addressing)
+; holes on the screen (holes.asm): $32:7000-77FF (the orbit stream keeps to
+; $32:6000-6FFF while the fight is in space)
+!FZHB          = !SRAM_WORK_SCENE+$1000
+!fzh_count     = !FZHB+$000   ; word: listed hole cells
+!fzh_key       = !FZHB+$002   ; word: camera tile key of the last rebuild ($FFFF: rebuild)
+!fzh_wcount    = !FZHB+$004   ; word: tilemap rows in the write list
+!fzh_wcursor   = !FZHB+$006   ; word: rows written so far
+!fzh_tiles     = !FZHB+$008   ; byte: hole tiles 0 needed, 1 wanted, 2 in VRAM (set in vblank)
+!FZ_HLIST      = !FZHB+$010   ; 400 x 3 bytes: cx, cy, broken neighbours (W1 E2 N4 S8)
+!FZ_HWRITE     = !FZHB+$500   ; 64 x 6 bytes: VRAM address, two tilemap entries
 !fzv_on        = !FZSB+$14A   ; byte: the victory beat runs
 !fzv_age       = !FZSB+$14C   ; word: frames since the fatal hit
 !fzv_x         = !FZSB+$14E   ; word: where Frieza fell (map)
 !fzv_y         = !FZSB+$150   ; word
 !fzv_white     = !FZSB+$152   ; byte: whiteout 0-31 this frame
-!fzv_wlast     = !FZSB+$153   ; byte: the whiteout was on last vblank
 
 
 ; transient flags (!fz_tflags)
@@ -235,6 +244,11 @@ assert !FZX_END <= !FZ+$C0, "frieza WRAM overflow (beast)"
 !FZT_FORCED    = $02       ; the frame ran under forced blank (map load)
 !FZT_PALSCAN   = $04       ; native OBJ palettes scanned this frame
 !FZT_LOCKED    = $08       ; the input lock is applied
+; per-frame permissions for the vblank handler (set by this frame's field
+; logic only, so stale scene SRAM never reaches VRAM or the PPU)
+!FZT_HOLES     = $10       ; the broken floor is drawn this frame
+!FZT_WHITE     = $20       ; the victory whiteout is on this frame
+!FZT_WPREV     = $40       ; it was on last frame (the vblank restores)
 
 ; deferred work (!fz_pend), applied in the next field frame callback
 !FZW_FADE      = $0001     ; trial fade (C0:8B16's ordinary 60-frame fade)
@@ -517,6 +531,7 @@ incsrc "battle.asm"
 incsrc "math.asm"
 incsrc "draw.asm"
 incsrc "arena.asm"
+incsrc "holes.asm"
 incsrc "beast.asm"
 incsrc "death.asm"
 incsrc "victory.asm"

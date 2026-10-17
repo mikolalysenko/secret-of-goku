@@ -224,6 +224,47 @@ export async function generate({repo,outDir}){
   const heading=[];for(let i=0;i<256;i++){const a=(i+.5)*Math.PI*2/256;heading.push(op.orbitHeading(Math.cos(a)*1000,Math.sin(a)*1000));}
   out.push('frieza_heading_table:',...bytes(heading));
   out.push('frieza_orbit_vectors:',...words(op.orbitVectors.flat()));
+  // Broken floor (frieza-arena.js ruinMask / frieza.js scarColor): a hole
+  // cell's pixels depend only on which of its four neighbours are holes,
+  // and each 8x8 quadrant only on the two neighbours it touches, so 16 BG
+  // tiles cover every case: quadrant q (0 TL, 1 TR, 2 BL, 3 BR) x the two
+  // neighbour bits (vertical << 1 | horizontal). The chip pattern depends
+  // on the position modulo 8 only; the cloud, speckle and sparkle patterns
+  // use the cell's local coordinates. Colour indices: 1-3 the cloud phases
+  // (rotated every 24 frames at run time), 4 speckle, 5 the dark wall, 6
+  // the edge, 7 the edge sparkle.
+  {
+    const holeTiles=[];
+    for(let q=0;q<4;q++)for(let nb=0;nb<4;nb++){
+      const left=!(q&1),top=!(q&2);
+      const horiz=nb&1,vert=nb>>1;          // the touching neighbour is a hole
+      const inside=(x,y)=>{
+        if(x<0)return left&&horiz;if(x>15)return !left&&horiz;
+        if(y<0)return top&&vert;if(y>15)return !top&&vert;
+        return true;
+      };
+      const idx=new Uint8Array(64);
+      for(let py=0;py<8;py++)for(let px=0;px<8;px++){
+        const lx=(q&1)*8+px,ly=(q>>1)*8+py;
+        let edge=6;
+        for(let n=1;n<6;n++)if(!inside(lx-n,ly)||!inside(lx+n,ly)||!inside(lx,ly-n)||!inside(lx,ly+n)){edge=n;break;}
+        const chip=((lx*13+ly*7)&7)===0?1:0;
+        const value=edge<=1+chip?3:edge<=4?2:1;
+        let c;
+        if(value===1)c=(lx*37+ly*19)%211===0?4:1+(Math.floor(lx/9)+Math.floor(ly/6))%3;
+        else if(value===2)c=5;
+        else c=(lx+ly)%11===0?7:6;
+        idx[py*8+px]=c;
+      }
+      holeTiles.push(encodeTile(idx,8,0,0));
+    }
+    const holeBytes=Uint8Array.from(holeTiles.flatMap(t=>[...t]));
+    out.push('frieza_hole_tiles:',...bytes([...holeBytes]));
+    // cloud phases (2+k, 1, 5+k), speckle, wall, edge, sparkle
+    const holeColors=[rgb555(2,1,5),rgb555(3,1,6),rgb555(4,1,7),0x316b,0x0842,0x31a8,0x3296];
+    out.push('frieza_hole_colors:',...words(holeColors));
+  }
+
   // frieza-combat.js constants
   const combat=await eng('frieza-combat.js');
   out.push(`!FRIEZA_HP = ${combat.FRIEZA_HP}`);

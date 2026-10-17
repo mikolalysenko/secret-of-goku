@@ -60,6 +60,7 @@ modules_ring_frame:
 modules_title_boot:
 	JSL title_title_boot
 	JSL debug_title_boot
+	JSL frieza_title_boot
 	JSL fx_title_boot
 	RTL
 ; Before the game writes a GAME FILE: put persistent state into !SRAM_LIVE.
