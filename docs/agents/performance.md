@@ -16,6 +16,8 @@ The browser player must emulate 60 SNES frames per second on phones; any shortfa
 
 Every path re-validates the actual wrapper chain. The compositor and both gates walk from the current method back to the core one; an unregistered wrapper anywhere in a chain keeps the original slow path for that method. A forgotten registration therefore costs speed, never correctness. Registries and switches live in closures, so checkpoints are unchanged.
 
+`Ppu.setPixels` fills the 512×480 ImageData one 32-bit word per pixel (byte loop on big-endian hosts or other targets), and the player writes its charge meter and option boxes to the DOM only when they change.
+
 `ppu.setLineComposer(false)`, `cpu.setBreakpointGate(false)`, `cart.setReadGate(false)` and `snes.setBusReadGate(false)` (reads and writes) force the slow paths for diagnosis.
 
 ## Registering hooks
@@ -32,7 +34,7 @@ Every path re-validates the actual wrapper chain. The compositor and both gates 
     - `bg1Color`: recolours BG1 pixels (world scars).
     - `windowSuppress` / `onWindowMasked`: the Mode 7 shadow window.
 
-  The fields are reset before each hook's plan. Every active hook's effect becomes one whole-line operation, and operations run innermost first, in wrapper-chain order. A plan may also push operations onto `plan.extra`, in the order its wrapper applies them. `paint` sets the colour from a per-x array, and optionally the layer and pixel. `channels` maps each 5-bit channel through a 32-entry table. Each one is limited to a set of layers and, optionally, to the main screen. Setting `plan.skipPost` declares that these operations are the hook's whole effect. Goku's crater and pod at the waterfall, planet view, the ending, the Time Chamber, Frieza's arena scars and the hit flash work this way. A hook with no plan forces its active lines through the per-pixel path, about five times slower; the crater once did this on every frame after the arrival, which phones could not sustain.
+  The fields are reset before each hook's plan. Every active hook's effect becomes one whole-line operation, and operations run innermost first, in wrapper-chain order. A plan may also push operations onto `plan.extra`, in the order its wrapper applies them. `paint` sets the colour from a per-x array, and optionally the layer and pixel. `channels` maps each 5-bit channel through a 32-entry table. `line` hands the hook the line's colour, layer and pixel arrays to rewrite itself, pixel by pixel exactly as its wrapper would. Each one is limited to a set of layers and, optionally, to the main (`mainOnly`) or sub (`subOnly`) screen. Setting `plan.skipPost` declares that these operations are the hook's whole effect. Goku's crater and pod at the waterfall, the Fortress deck aftermath, the Sandship wreck (`line`), Goku's status page, planet view, the ending, the Time Chamber, Frieza's arena scars, tree and emperor scenes, and the hit flash work this way. A hook with no plan forces its active lines through the per-pixel path, about five times slower; the crater once did this on every frame after the arrival, which phones could not sustain.
 
   A hook whose effect is a post-process of its predecessor's `[color, layer, pixel]` can pass `{post(ppu, sub, x, y, r)}`. The wrapper calls the same function, and the compositor runs it per pixel on lines the plan leaves to it. A plan may also set `disableMain`/`disableSub` layer bits for wrappers that turn a layer off around their inner call. `ppu.activeLineHooks(line)` lists the hooks that are active on a line.
 

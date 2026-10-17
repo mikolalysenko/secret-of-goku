@@ -6,6 +6,10 @@ export {treeTiming,treeFriezaPose} from './frieza-staging.js';
 const dimColor=(color,amount)=>Math.round((color&31)*amount)|(Math.round((color>>5&31)*amount)<<5)|(Math.round((color>>10&31)*amount)<<10);
 export function createFriezaTreeView(snes,mod,getScene,getAtlas){
  const surface=new Uint16Array(256*224);let vista=null,prepared=-1;
+ // Line ops for plan(): a dimming channel map, or a paint of the picture.
+ const dim=new Int32Array(32),dimOp={type:'channels',layers:63,r:dim,g:dim,b:dim,layer:-1,pixel:0,mainOnly:true};
+ const lineColors=new Uint16Array(256),black=new Uint16Array(256).fill(1);
+ const paint={type:'paint',layers:63,colors:null,skipZero:false,layer:4,pixel:0x86,mainOnly:true};
  const put=(x,y,c)=>{x=Math.round(x);y=Math.round(y);if(x>=0&&x<256&&y>=0&&y<224)surface[y*256+x]=c;};
  const fx=createOrbitEffects(snes,mod,put);
  // Retain recruited companions' real SNES cells/palettes, repositioned onto
@@ -70,5 +74,20 @@ export function createFriezaTreeView(snes,mod,getScene,getAtlas){
   if(prepared!==mod.frame)prepare(scene);
   if(native[1]===2&&y<170)return native;
   return set(surface[y*256+x]-1,4,0x86);
+ },plan(ppu,y,linePlan){
+  // color() for a whole line as compositor ops, when idle() is false.
+  const scene=getScene();
+  if(scene.kind==='tree-wake'){const amount=Math.min(1,scene.age/40);for(let c=0;c<32;c++)dim[c]=Math.round(c*amount);linePlan.extra.push(dimOp);return;}
+  paint.layers=63;
+  if(scene.kind==='tree-return'){
+   if(scene.age>=48||y===224){paint.colors=black;linePlan.extra.push(paint);return;}
+   if(prepared!==mod.frame)prepare(scene);
+   const amount=1-scene.age/48;for(let x=0,at=y*256;x<256;x++)lineColors[x]=dimColor(surface[at+x]-1,amount)+1;
+   paint.colors=lineColors;linePlan.extra.push(paint);return;
+  }
+  if(y===224){paint.colors=black;linePlan.extra.push(paint);return;}
+  if(prepared!==mod.frame)prepare(scene);
+  if(y<170)paint.layers=63&~4;
+  paint.colors=surface.subarray(y*256,y*256+256);linePlan.extra.push(paint);
  }};
 }
