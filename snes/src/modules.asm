@@ -9,6 +9,8 @@
 incsrc "modules/goku/module.asm"
 incsrc "modules/title/module.asm"
 incsrc "modules/story/module.asm"
+incsrc "modules/debug/module.asm"
+incsrc "modules/destroy/module.asm"
 incsrc "modules/fx/module.asm"         ; before its clients (they use the !FX_* defines)
 incsrc "modules/combat/module.asm"
 
@@ -19,8 +21,10 @@ org !CODE_CORE+$7000
 modules_field_frame:
 	JSL title_field_frame
 	JSL story_field_frame
+	JSL debug_field_frame
 	JSL combat_field_frame     ; before goku: poses and form apply this frame
 	JSL goku_frame
+	JSL destroy_field_frame          ; last: its planner uses the frame time left
 	JSL fx_frame               ; keep last: draws what clients requested this frame
 	RTL
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
@@ -30,6 +34,8 @@ modules_field_nmi:
 	RTL
 ; World flight frame, after the world logic (DB = $7E).
 modules_world_frame:
+	JSL destroy_world_frame
+	JSL debug_world_frame
 	JSL combat_world_frame
 	JSL fx_world_frame         ; keep last
 	RTL
@@ -43,6 +49,7 @@ modules_world_nmi:
 modules_menu_frame:
 	JSL goku_menu_frame
 	JSL title_menu_frame
+	JSL debug_menu_frame
 	JSL combat_menu_frame
 	RTL
 ; Ring menu frame, in vblank (DB = $7E).
@@ -53,6 +60,7 @@ modules_ring_frame:
 ; WRAM was cleared; the decompressed program is at 7E:8000 (DB = $7E).
 modules_title_boot:
 	JSL title_title_boot
+	JSL debug_title_boot
 	RTL
 ; Before the game writes a GAME FILE: put persistent state into !SRAM_LIVE.
 modules_save:
@@ -62,18 +70,25 @@ modules_load:
 	JSL title_load
 	JSL combat_load
 	JSL story_load
+	JSL destroy_reset
 	RTL
 ; New game: !SRAM_LIVE was cleared and !persist_version set to 1.
 modules_new_game:
 	JSL title_new_game
 	JSL combat_new_game
 	JSL story_new_game
+	JSL debug_new_game
+	JSL destroy_reset
 	RTL
 pullpc
 
 ; Combat bindings to optional modules: after every module include (its
 ; defined() checks see them), before the story tables.
 incsrc "modules/combat/bind.asm"
+
+; Debug preset hook table (generated): modules fill it by defining
+; !DEBUG_PRESET_HOOK_<NAME> / _ANY in their own files (included above).
+incsrc "debug/hooks.asm"
 
 ; Story hook and query tables (generated). Keep this last: modules fill story
 ; hooks/queries by defining !STORY_HOOK_<NAME> / !STORY_QUERY_<NAME> in their

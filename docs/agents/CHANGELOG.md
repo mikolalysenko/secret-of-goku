@@ -4,6 +4,53 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## 2026-10-17 — Release 0.2.2
+
+- Release 0.2.2 (`v0.2.2`) and its Pages build include everything since 0.2.1:
+  - **Waterfall frame drops on phones:** after Goku's arrival, the crater hook had no line plan, so every frame at the waterfall rendered per pixel. It now paints the crater and pod as line operations. In Chrome, a player frame there went from 10.7 to 2.3 ms; in the iOS Safari simulator from 10.0 to 2.4 ms, and the sword and pod landing from 7.3 to 2.5 ms (peak 17 to 5 ms). The arrival test fails if a scanline falls back.
+  - **Ordered line operations:** each active colour hook becomes whole-line operations in wrapper order: paints, per-channel tables, whole-line functions, and per-pixel posts as a fallback. The following hooks now use them, and no story hook needs per-pixel work:
+    - planet view, the ending and the Time Chamber;
+    - Frieza's arena scars and his tree and emperor scenes;
+    - the hit flash, the Fortress deck, the Sandship wreck and Goku's status page.
+  - **Smaller wins:**
+    - Hires backgrounds decode as tiles, and mosaic layers decode once per block with inline fetches.
+    - The exploding planet samples only near each fragment.
+    - Translucent colour math averages packed colours; sub screens of pure backdrop use per-channel tables.
+    - `setPixels` writes whole RGBA words, and the player updates its charge meter and option boxes only when they change.
+- Measured against 0.2.1 in Chrome in the same session (the machine was busy with other emulators, so rates are low):
+
+  | Scene | 0.2.1 | 0.2.2 |
+  | --- | --- | --- |
+  | Explosion | 286 frames/s | 583 frames/s |
+  | Orbit / space | 354 / 353 frames/s | 587 / 589 frames/s |
+  | Ending | 407 frames/s | 650 frames/s |
+  | Frieza battle | 445 frames/s | 669 frames/s |
+  | Time Chamber | 478 frames/s | 647 frames/s |
+  | File select | 466 frames/s | 625 frames/s |
+  | Field / world flight | 574 / 568 frames/s | 643 / 683 frames/s |
+  | Status page / Sandship wreck / Fortress deck (player frame) | 11.2 / 8.8 / 7.5 ms | 2.0 / 2.2 / 2.0 ms |
+
+  Details are in [performance.md](performance.md).
+- Validation:
+  - **Unit tests:** 377 pass, including a fuzz of random PPU states over noise VRAM that compares the compositor with the per-pixel path.
+  - **Core equivalence:** the SnesJs core matches over 42 states.
+  - **Browser equivalence:** composed and per-pixel rendering match with every mod hook across 41 saved states and 16 story and set-piece scenes. They also match in the overlay scenarios, 49 forced ending and defeat branches, every arrival phase (with edge clipping) and the tree and emperor scenes.
+  - **Browser suite:** only the 21 known failures, plus a controls layout test that is also flaky on 0.2.1. All 28 phone tests pass.
+
+## 2026-10-17 — SNES cartridge: destructible scenery, barriers and demolition (destroy stream)
+
+- Goku's punches, kicks and beams break what the boy's weapons could on the cartridge, through the game's own cut-map pipeline: plants, rocks, pillars and multi-stage objects, tall grass, Haunted Forest vines, skull heads, the Sandship rail, and palace braziers for the full Super Saiyan beam. Edits are queued and applied one row per frame at the native redraw consumer (`C0:C7C3`), with the native redraw request and cut sound, and smashed objects are replayed silently after native rebuilds, as in the browser.
+- Gates, locks, hit switches, floor plates, the Grand Palace buttons and crystal orbs start their original or story-authored events; the three breakable doors persist in the GAME FILE and story routes their trigger events on the module's `DOOR_*` queries. Watts's shortcut entrance stays open across visits once its door broke (piece loader hook at `C0:CC2D`).
+- The full beam melts dungeon partitions on both layers in the 22 dungeon families (eight scenes compared end to end) with the browser's breach rules (span, heights, floor sample, partner layer, protected cells), planned within a per-frame scanline budget that can suspend a plan between frames. Rubble and brazier bursts are published as effect records for the effects library.
+- API for combat (`destroy_hit`, `destroy_orb_hit`), outputs for radio/feedback and the catalogue with data sources are in [snes-port/destroy.md](snes-port/destroy.md).
+- Validation: `snes/test/destroy/run.mjs` (29 Mesen scenarios against the browser modules on the same imported states): 26 match exactly; three timing-sensitive demolition scenes open the same walls with some different floor tiles or one fewer breach (documented). A full beam adds 0–8 lag frames over about 140 frames in most scenes measured, 15 in the heaviest (a BG2 room).
+
+## 2026-10-17 — SNES cartridge: destruction and scene select (integration)
+
+- Punches and beams on the cartridge break bushes, grass, vines and multi-stage objects through the native redraw, open authored gates and native hit/floor switches, light crystal orbs through their original events, keep Watts's shortcut entrance open, and let a full Super Saiyan wave demolish dungeon partitions; five demolition families match the browser edit for edit. See [snes-port/destroy.md](snes-port/destroy.md).
+- A hidden scene select on the title (Up Up Down Down Left Right Left Right) lists the 22 `?start=` presets; each runs the real NEW GAME and replays `quick-start.js`'s steps natively, with hooks the Frieza, orbit, Vegeta and ending modules fill. See [snes-port/debug.md](snes-port/debug.md).
+- Core clears every module WRAM block at power-on and title entry (random WRAM on hardware), and the Mesen harness no longer stops long tests at Mesen's 100-second limit.
+
 ## 2026-10-17 — SNES cartridge: title, arrival, Goku menus (integration)
 
 - The cartridge's title reads **Secret of GOKU** in gold with the extended credit, the name editor starts with an editable BOY, and the original opening plays as the boy until the sword pull. Goku's Saiyan pod then crashes in, with its descent, impact, quake and flash, obliterates the boy and the sword, leaves the Potos-hole crater, and the five arrival pages and the native event tail follow. Phase timing matches the browser within one frame; settled frames differ from the browser's in under 1% of pixels. Goku takes over the hero slot (GOKU, the typed name kept in the slot's tail) at impact, and the crater persists across menus and doors. See [snes-port/title.md](snes-port/title.md).
