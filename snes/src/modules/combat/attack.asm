@@ -840,37 +840,37 @@ cb_fire_ki:
 	BCC +
 	RTS
 +	SEP #$20
-	LDA.b #!FXK_KI
-	STA.l !FX+!fx_kind,X
+	LDA.b #!ERK_KI
+	STA.l !ER+!er_kind,X
 	LDA.b #$00
-	STA.l !FX+!fx_hold,X
+	STA.l !ER+!er_hold,X
 	LDA.b #22
-	STA.l !FX+!fx_life,X
-	STA.l !FX+!fx_max,X
+	STA.l !ER+!er_life,X
+	STA.l !ER+!er_max,X
 	LDA !cb_act_face
 	AND.b #$03
-	STA.l !FX+!fx_dir,X
+	STA.l !ER+!er_dir,X
 	LDA.b #$00
 	LDY !cb_act_super-1           ; high byte = cb_act_super
 	CPY.w #$0100
 	BCC +
-	LDA.b #!FXF_SUPER
+	LDA.b #!ERF_SUPER
 +	STA !cb_t9
 	LDA !cb_act_arg
 	AND.b #$01
 	BEQ +
-	LDA.b #!FXF_HAND
+	LDA.b #!ERF_HAND
 +	ORA !cb_t9
-	STA.l !FX+!fx_flags,X
+	STA.l !ER+!er_flags,X
 	REP #$20
 	LDA !cb_t4
-	STA.l !FX+!fx_x,X
+	STA.l !ER+!er_x,X
 	LDA !cb_t5
-	STA.l !FX+!fx_y,X
+	STA.l !ER+!er_y,X
 	LDA !cb_t7
-	STA.l !FX+!fx_dmg,X
+	STA.l !ER+!er_dmg,X
 	LDA.w #$0000
-	STA.l !FX+!fx_hits,X
+	STA.l !ER+!er_hits,X
 	JSR cb_fx_spawn_ki             ; X = record
 	LDA.w #!AUDIO_SFX_BLAST_ID
 	JMP cb_sfx
@@ -969,34 +969,34 @@ cb_fire_beam:
 	; the beam record
 	JSR cb_effect_beam_slot
 	SEP #$20
-	LDA.b #!FXK_BEAM
-	STA.l !FX+!fx_kind,X
+	LDA.b #!ERK_BEAM
+	STA.l !ER+!er_kind,X
 	LDA !cb_t8
-	STA.l !FX+!fx_dir,X
+	STA.l !ER+!er_dir,X
 	LDA.b #$00
-	STA.l !FX+!fx_hold,X
+	STA.l !ER+!er_hold,X
 	LDA !cb_t3
-	STA.l !FX+!fx_life,X
-	STA.l !FX+!fx_max,X
+	STA.l !ER+!er_life,X
+	STA.l !ER+!er_max,X
 	LDA.b #$00
 	LDY !cb_form-1                ; high byte = cb_form
 	CPY.w #$0100
 	BCC +
-	LDA.b #!FXF_SUPER
+	LDA.b #!ERF_SUPER
 +	LDY !bm_mega-1
 	CPY.w #$0100
 	BCC +
-	ORA.b #!FXF_MEGA
-+	STA.l !FX+!fx_flags,X
+	ORA.b #!ERF_MEGA
++	STA.l !ER+!er_flags,X
 	REP #$20
 	LDA !cb_t4
-	STA.l !FX+!fx_x,X
+	STA.l !ER+!er_x,X
 	LDA !cb_t5
-	STA.l !FX+!fx_y,X
+	STA.l !ER+!er_y,X
 	LDA !cb_t2
-	STA.l !FX+!fx_dmg,X
+	STA.l !ER+!er_dmg,X
 	LDA.w #$0000
-	STA.l !FX+!fx_hits,X
+	STA.l !ER+!er_hits,X
 	; per-target pulse timers start empty (species $FF never matches)
 	LDA.w #$FFFF
 	LDX.w #16
@@ -1082,11 +1082,11 @@ cb_update_projectiles:
 	STX !cb_tf                    ; record offset
 	LSR !cb_fx_iter
 	BCC .next
-	LDA.l !FX+!fx_kind,X
+	LDA.l !ER+!er_kind,X
 	AND.w #$00FF
-	CMP.w #!FXK_KI
+	CMP.w #!ERK_KI
 	BEQ .ki
-	CMP.w #!FXK_BEAM
+	CMP.w #!ERK_BEAM
 	BNE .next
 	JSR cb_beam_frame
 	BRA .next
@@ -1095,7 +1095,7 @@ cb_update_projectiles:
 .next
 	LDA !cb_tf
 	CLC
-	ADC.w #!FX_SIZE
+	ADC.w #!ER_SIZE
 	TAX
 	LDA !cb_fx_iter
 	BNE .loop
@@ -1104,20 +1104,20 @@ cb_update_projectiles:
 ; Projectile set-up: X = record. Fills ag_* (origin, dir, cy 12, behind 8)
 ; and cb_t0 = age.
 cb_proj_setup:
-	LDA.l !FX+!fx_x,X
+	LDA.l !ER+!er_x,X
 	STA !ag_x
-	LDA.l !FX+!fx_y,X
+	LDA.l !ER+!er_y,X
 	STA !ag_y
-	LDA.l !FX+!fx_dir,X
+	LDA.l !ER+!er_dir,X
 	AND.w #$0003
 	STA !ag_dir
 	LDA.w #12
 	STA !ag_cy
 	LDA.w #8
 	STA !ag_behind
-	LDA.l !FX+!fx_max,X
+	LDA.l !ER+!er_max,X
 	SEC
-	SBC.l !FX+!fx_life,X
+	SBC.l !ER+!er_life,X
 	AND.w #$00FF
 	STA !cb_t0                    ; age
 	RTS
@@ -1157,13 +1157,13 @@ cb_proj_along:
 ; A projectile (record cb_tf) hit actor Y: damage, cue and an impact spark.
 cb_proj_hit:
 	LDX !cb_tf
-	LDA.l !FX+!fx_dmg,X
+	LDA.l !ER+!er_dmg,X
 	STA !cb_hit_dmg
-	LDA.l !FX+!fx_dir,X
+	LDA.l !ER+!er_dir,X
 	AND.w #$0003
 	STA !cb_hit_dir
-	LDA.l !FX+!fx_flags,X
-	AND.w #!FXF_SUPER
+	LDA.l !ER+!er_flags,X
+	AND.w #!ERF_SUPER
 	STA !cb_bslot                 ; super (spark tone)
 	SEP #$20
 	LDA.b #$01
@@ -1208,8 +1208,8 @@ cb_ki_frame:
 +	STA !ag_range
 	STA !cb_t2                    ; length
 	LDX !cb_tf
-	LDA.l !FX+!fx_flags,X
-	AND.w #!FXF_SUPER
+	LDA.l !ER+!er_flags,X
+	AND.w #!ERF_SUPER
 	BEQ +
 	LDA.w #12+8
 	BRA ++
@@ -1232,7 +1232,7 @@ cb_ki_frame:
 	JSR cb_bit_of
 	STA !cb_t3
 	LDX !cb_tf
-	LDA.l !FX+!fx_hits,X
+	LDA.l !ER+!er_hits,X
 	AND !cb_t3
 	BNE .nextBit                  ; one contact per shot
 	JSR cb_lethal_pending
@@ -1245,9 +1245,9 @@ cb_ki_frame:
 	SBC !cb_t2
 	BMI .nextBit
 	LDX !cb_tf
-	LDA.l !FX+!fx_hits,X
+	LDA.l !ER+!er_hits,X
 	ORA !cb_t3
-	STA.l !FX+!fx_hits,X
+	STA.l !ER+!er_hits,X
 	JSR cb_proj_hit
 	; the shot is spent
 	LDX !cb_tf
@@ -1355,7 +1355,7 @@ cb_beam_frame:
 	CMP.w #$0055
 	BNE .pulse
 	LDX !cb_tf
-	LDA.l !FX+!fx_hits,X
+	LDA.l !ER+!er_hits,X
 	AND !cb_bx
 	BEQ .live
 	JMP .nextBit
@@ -1435,9 +1435,9 @@ cb_beam_frame:
 .take
 	; record, pulse timer and the hit
 	LDX !cb_tf
-	LDA.l !FX+!fx_hits,X
+	LDA.l !ER+!er_hits,X
 	ORA !cb_bx
-	STA.l !FX+!fx_hits,X
+	STA.l !ER+!er_hits,X
 	LDA !cb_te
 	ASL
 	TAX

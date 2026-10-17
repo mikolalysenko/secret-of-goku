@@ -191,9 +191,9 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
 ; ---------------------------------------------------------------------------
 ; SRAM work tables (!SRAM_WORK_COMBAT, $400 bytes, long addressing).
 !CW = !SRAM_WORK_COMBAT
-!FX       = !CW+$000       ; 16 effect records x 16 bytes
-!FX_N     = 16
-!FX_SIZE  = 16
+!ER       = !CW+$000       ; 16 effect records x 16 bytes
+!ER_N     = 16
+!ER_SIZE  = 16
 !KB       = !CW+$100       ; 9 launches x 16 bytes (enemy slots 3-11)
 !SM       = !CW+$190       ; 9 sound marks x 8 bytes
 !BP       = !CW+$1D8       ; 9 beam pulses x 2 bytes (species, age)
@@ -206,28 +206,28 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
 !da_id    = !CW+$200       ; word: attack id (beams), 0 one-shot
 !CW_END   = !CW+$202
 ; effect record fields
-!fx_kind  = $00   ; byte: !FXK_*
-!fx_flags = $01   ; byte: !FXF_*
-!fx_x     = $02   ; word: map x
-!fx_y     = $04   ; word: map y
-!fx_dir   = $06   ; byte: facing 0-3
-!fx_hold  = $07   ; byte
-!fx_life  = $08   ; byte
-!fx_max   = $09   ; byte
-!fx_dmg   = $0A   ; word
-!fx_hits  = $0C   ; word: slot bit mask
-!fx_aux   = $0E   ; word: ki half width / burst radius / beam charge
-!FXK_IMPACT = 1
-!FXK_KI     = 3
-!FXK_BEAM   = 4
-!FXK_BURST  = 5
-!FXK_STATUS = 6
-!FXF_SUPER  = $01
-!FXF_MEGA   = $02
-!FXF_HAND   = $04
-!FXF_FIRE   = $10   ; status burst shells
-!FXF_ICE    = $20
-!FXF_BALLOON = $40
+!er_kind  = $00   ; byte: !ERK_*
+!er_flags = $01   ; byte: !ERF_*
+!er_x     = $02   ; word: map x
+!er_y     = $04   ; word: map y
+!er_dir   = $06   ; byte: facing 0-3
+!er_hold  = $07   ; byte
+!er_life  = $08   ; byte
+!er_max   = $09   ; byte
+!er_dmg   = $0A   ; word
+!er_hits  = $0C   ; word: slot bit mask
+!er_aux   = $0E   ; word: ki half width / burst radius / beam charge
+!ERK_IMPACT = 1
+!ERK_KI     = 3
+!ERK_BEAM   = 4
+!ERK_BURST  = 5
+!ERK_STATUS = 6
+!ERF_SUPER  = $01
+!ERF_MEGA   = $02
+!ERF_HAND   = $04
+!ERF_FIRE   = $10   ; status burst shells
+!ERF_ICE    = $20
+!ERF_BALLOON = $40
 ; launch record fields
 !kb_on    = $00   ; byte: 1 active
 !kb_sp    = $01   ; byte: species at the hit
@@ -299,9 +299,15 @@ endif
 !AUDIO_SFX_ICE_BREAK_ID   = 15
 !AUDIO_SFX_CHARGE_ID      = 0     ; the charge is a loop (bind.asm), not a shot
 
-; combat placeholder sprites (until the fx module lands)
+; combat placeholder sprites while no fx module draws: off once the real fx
+; library is in the build (it owns the OBJ regions and the effect cells; its
+; request block's !fx_busy marks it, the API-only stub has none)
 if not(defined("COMBAT_FX_PLACEHOLDER"))
-	!COMBAT_FX_PLACEHOLDER = 1
+	if defined("fx_busy")
+		!COMBAT_FX_PLACEHOLDER = 0
+	else
+		!COMBAT_FX_PLACEHOLDER = 1
+	endif
 endif
 !COMBAT_OWNER = $02                 ; core_vram_claim owner id
 

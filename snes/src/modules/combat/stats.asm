@@ -645,8 +645,8 @@ cb_status_burst:
 	JMP .sound
 +
 	SEP #$20
-	LDA.b #!FXK_STATUS
-	STA.l !FX+!fx_kind,X
+	LDA.b #!ERK_STATUS
+	STA.l !ER+!er_kind,X
 	LDA.b #14
 	STA !cb_t2
 	LDA.b #$00
@@ -654,19 +654,19 @@ cb_status_burst:
 	LDA !cb_rec_status+1
 	AND.b #$40                    ; Engulf ($4000)
 	BEQ +
-	LDA.b #!FXF_FIRE
+	LDA.b #!ERF_FIRE
 	STA !cb_t3
 	BRA .life
 +	LDA !cb_rec_status
 	AND.b #$20                    ; Frosty
 	BEQ +
-	LDA.b #!FXF_ICE
+	LDA.b #!ERF_ICE
 	STA !cb_t3
 	BRA .life
 +	LDA !cb_rec_status+1
 	AND.b #$01                    ; Balloon ($0100)
 	BEQ .flags
-	LDA.b #!FXF_BALLOON
+	LDA.b #!ERF_BALLOON
 	STA !cb_t3
 .life
 	LDA.b #28
@@ -674,15 +674,15 @@ cb_status_burst:
 .flags
 	LDA !cb_form
 	BEQ +
-	LDA.b #!FXF_SUPER
+	LDA.b #!ERF_SUPER
 +	ORA !cb_t3
-	STA.l !FX+!fx_flags,X
+	STA.l !ER+!er_flags,X
 	LDA !cb_t2
-	STA.l !FX+!fx_life,X
-	STA.l !FX+!fx_max,X
+	STA.l !ER+!er_life,X
+	STA.l !ER+!er_max,X
 	REP #$20
 	LDA $E002
-	STA.l !FX+!fx_x,X
+	STA.l !ER+!er_x,X
 	LDA $E045
 	AND.w #$00FF
 	STA !cb_t0
@@ -693,7 +693,7 @@ cb_status_burst:
 	SBC !cb_t0
 	SEC
 	SBC !goku_lift
-	STA.l !FX+!fx_y,X
+	STA.l !ER+!er_y,X
 	JSR cb_fx_spawn_status
 .sound
 	LDA !cb_rec_status

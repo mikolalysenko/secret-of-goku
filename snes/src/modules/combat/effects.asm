@@ -18,23 +18,23 @@ cb_effect_alloc:
 	PHA
 	TXA
 	CLC
-	ADC.w #!FX_SIZE
+	ADC.w #!ER_SIZE
 	TAX
 	PLA
-	CPX.w #!FX_N*!FX_SIZE
+	CPX.w #!ER_N*!ER_SIZE
 	BCC .find
 	; full: evict an impact
 	LDX.w #$0000
 .evict
-	LDA.l !FX+!fx_kind,X
+	LDA.l !ER+!er_kind,X
 	AND.w #$00FF
-	CMP.w #!FXK_IMPACT
+	CMP.w #!ERK_IMPACT
 	BEQ .take
 	TXA
 	CLC
-	ADC.w #!FX_SIZE
+	ADC.w #!ER_SIZE
 	TAX
-	CPX.w #!FX_N*!FX_SIZE
+	CPX.w #!ER_N*!ER_SIZE
 	BCC .evict
 	SEC
 	RTS
@@ -43,15 +43,15 @@ cb_effect_alloc:
 .found
 	TSB !cb_fx_mask
 	LDA.w #$0000
-	STA.l !FX+$00,X
-	STA.l !FX+$02,X
-	STA.l !FX+$04,X
-	STA.l !FX+$06,X
-	STA.l !FX+$08,X
-	STA.l !FX+$0A,X
-	STA.l !FX+$0C,X
+	STA.l !ER+$00,X
+	STA.l !ER+$02,X
+	STA.l !ER+$04,X
+	STA.l !ER+$06,X
+	STA.l !ER+$08,X
+	STA.l !ER+$0A,X
+	STA.l !ER+$0C,X
 	LDA.w #$FFFF
-	STA.l !FX+$0E,X               ; no fx handle
+	STA.l !ER+$0E,X               ; no fx handle
 	CLC
 	RTS
 
@@ -73,7 +73,7 @@ cb_fx_bit:
 cb_effect_free:
 	SEP #$20
 	LDA.b #$00
-	STA.l !FX+!fx_kind,X
+	STA.l !ER+!er_kind,X
 	REP #$20
 	JSR cb_fx_bit
 	TRB !cb_fx_mask
@@ -85,15 +85,15 @@ cb_effect_beam_slot:
 	BEQ .new
 	LDX.w #$0000
 .find
-	LDA.l !FX+!fx_kind,X
+	LDA.l !ER+!er_kind,X
 	AND.w #$00FF
-	CMP.w #!FXK_BEAM
+	CMP.w #!ERK_BEAM
 	BEQ .found
 	TXA
 	CLC
-	ADC.w #!FX_SIZE
+	ADC.w #!ER_SIZE
 	TAX
-	CPX.w #!FX_N*!FX_SIZE
+	CPX.w #!ER_N*!ER_SIZE
 	BCC .find
 .new
 	JSR cb_effect_alloc
@@ -103,7 +103,7 @@ cb_effect_beam_slot:
 	TSB !cb_fx_mask
 .found
 	LDA.w #$FFFF
-	STA.l !FX+$0E,X
+	STA.l !ER+$0E,X
 .out
 	RTS
 
@@ -112,8 +112,8 @@ cb_effects_clear:
 	LDA !cb_fx_mask
 	BEQ .fx
 	LDA.w #$0000
-	LDX.w #!FX_N*!FX_SIZE-2
--	STA.l !FX,X
+	LDX.w #!ER_N*!ER_SIZE-2
+-	STA.l !ER,X
 	DEX : DEX
 	BPL -
 	STZ !cb_fx_mask
@@ -129,15 +129,15 @@ cb_effects_tick:
 	LSR !cb_fx_iter
 	BCC .next
 	SEP #$20
-	LDA.l !FX+!fx_hold,X
+	LDA.l !ER+!er_hold,X
 	BEQ .life
 	DEC
-	STA.l !FX+!fx_hold,X
+	STA.l !ER+!er_hold,X
 	BRA .next8
 .life
-	LDA.l !FX+!fx_life,X
+	LDA.l !ER+!er_life,X
 	DEC
-	STA.l !FX+!fx_life,X
+	STA.l !ER+!er_life,X
 	BNE .next8
 	REP #$20
 	JSR cb_effect_free
@@ -146,7 +146,7 @@ cb_effects_tick:
 .next
 	TXA
 	CLC
-	ADC.w #!FX_SIZE
+	ADC.w #!ER_SIZE
 	TAX
 	LDA !cb_fx_iter
 	BNE .loop
@@ -159,25 +159,25 @@ cb_effect_impact:
 	BCC +
 	RTS
 +	SEP #$20
-	LDA.b #!FXK_IMPACT
-	STA.l !FX+!fx_kind,X
+	LDA.b #!ERK_IMPACT
+	STA.l !ER+!er_kind,X
 	LDA !cb_t6
-	STA.l !FX+!fx_hold,X
+	STA.l !ER+!er_hold,X
 	LDA !cb_t7
-	STA.l !FX+!fx_life,X
-	STA.l !FX+!fx_max,X
+	STA.l !ER+!er_life,X
+	STA.l !ER+!er_max,X
 	LDA !cb_t8
 	AND.b #$03
-	STA.l !FX+!fx_dir,X
+	STA.l !ER+!er_dir,X
 	LDA !cb_t9
 	BEQ +
-	LDA.b #!FXF_SUPER
-+	STA.l !FX+!fx_flags,X
+	LDA.b #!ERF_SUPER
++	STA.l !ER+!er_flags,X
 	REP #$20
 	LDA !cb_t4
-	STA.l !FX+!fx_x,X
+	STA.l !ER+!er_x,X
 	LDA !cb_t5
-	STA.l !FX+!fx_y,X
+	STA.l !ER+!er_y,X
 	JMP cb_fx_spawn_impact
 
 ; The transformation ring (life 14) at cb_t4/cb_t5.
@@ -186,18 +186,18 @@ cb_effect_burst:
 	BCC +
 	RTS
 +	SEP #$20
-	LDA.b #!FXK_BURST
-	STA.l !FX+!fx_kind,X
+	LDA.b #!ERK_BURST
+	STA.l !ER+!er_kind,X
 	LDA.b #14
-	STA.l !FX+!fx_life,X
-	STA.l !FX+!fx_max,X
-	LDA.b #!FXF_SUPER
-	STA.l !FX+!fx_flags,X
+	STA.l !ER+!er_life,X
+	STA.l !ER+!er_max,X
+	LDA.b #!ERF_SUPER
+	STA.l !ER+!er_flags,X
 	REP #$20
 	LDA !cb_t4
-	STA.l !FX+!fx_x,X
+	STA.l !ER+!er_x,X
 	LDA !cb_t5
-	STA.l !FX+!fx_y,X
+	STA.l !ER+!er_y,X
 	JMP cb_fx_spawn_burst
 
 ; ---------------------------------------------------------------------------
@@ -274,29 +274,29 @@ cb_placeholder_draw:
 	LDX.w #$0000
 .loop
 	STX !cb_t3
-	LDA.l !FX+!fx_kind,X
+	LDA.l !ER+!er_kind,X
 	AND.w #$00FF
 	BEQ .next
-	CMP.w #!FXK_IMPACT
+	CMP.w #!ERK_IMPACT
 	BEQ .impact
-	CMP.w #!FXK_KI
+	CMP.w #!ERK_KI
 	BEQ .ki
-	CMP.w #!FXK_BEAM
+	CMP.w #!ERK_BEAM
 	BEQ .beam
-	CMP.w #!FXK_BURST
+	CMP.w #!ERK_BURST
 	BEQ .burst
 	BRA .next
 .impact
-	LDA.l !FX+!fx_flags,X
-	AND.w #!FXF_SUPER
+	LDA.l !ER+!er_flags,X
+	AND.w #!ERF_SUPER
 	BEQ +
 	LDA.w #!PH_TILE+6             ; gold spark
 	BRA ++
 +	LDA.w #!PH_TILE+2             ; spark
 ++	STA !cb_t6
-	LDA.l !FX+!fx_x,X
+	LDA.l !ER+!er_x,X
 	STA !cb_t4
-	LDA.l !FX+!fx_y,X
+	LDA.l !ER+!er_y,X
 	STA !cb_t5
 	JSR cb_ph_put
 	BRA .next
@@ -312,9 +312,9 @@ cb_placeholder_draw:
 	LDX !cb_t3
 	TXA
 	CLC
-	ADC.w #!FX_SIZE
+	ADC.w #!ER_SIZE
 	TAX
-	CPX.w #!FX_N*!FX_SIZE
+	CPX.w #!ER_N*!ER_SIZE
 	BCC .loop
 	; the charge orb at the palms
 	LDA !cb_charging
@@ -353,9 +353,9 @@ cb_ph_put:
 
 ; Ki: three orbs trailing the front by 7 px.
 cb_ph_ki:
-	LDA.l !FX+!fx_max,X
+	LDA.l !ER+!er_max,X
 	SEC
-	SBC.l !FX+!fx_life,X
+	SBC.l !ER+!er_life,X
 	AND.w #$00FF
 	INC
 	ASL
@@ -367,7 +367,7 @@ cb_ph_ki:
 	BCC +
 	LDA.w #256
 +	STA !cb_t7                    ; distance
-	LDA.l !FX+!fx_dir,X
+	LDA.l !ER+!er_dir,X
 	AND.w #$0003
 	STA !cb_t8
 	LDA.w #!PH_TILE
@@ -390,9 +390,9 @@ cb_ph_ki:
 ; cb_t4/cb_t5 = record X origin + distance A along facing cb_t8.
 cb_ph_along:
 	STA !cb_t0
-	LDA.l !FX+!fx_x,X
+	LDA.l !ER+!er_x,X
 	STA !cb_t4
-	LDA.l !FX+!fx_y,X
+	LDA.l !ER+!er_y,X
 	STA !cb_t5
 	LDA !cb_t8
 	BEQ .down
@@ -426,12 +426,12 @@ cb_ph_along:
 
 ; Beam: a body cell every 16 px (4 at most behind the head) and the head.
 cb_ph_beam:
-	LDA.l !FX+!fx_dir,X
+	LDA.l !ER+!er_dir,X
 	AND.w #$0003
 	STA !cb_t8
-	LDA.l !FX+!fx_max,X
+	LDA.l !ER+!er_max,X
 	SEC
-	SBC.l !FX+!fx_life,X
+	SBC.l !ER+!er_life,X
 	AND.w #$00FF
 	INC
 	STA !cb_mq
@@ -463,9 +463,9 @@ cb_ph_beam:
 
 ; Burst ring: eight gold sparks on the growing radius.
 cb_ph_burst:
-	LDA.l !FX+!fx_max,X
+	LDA.l !ER+!er_max,X
 	SEC
-	SBC.l !FX+!fx_life,X
+	SBC.l !ER+!er_life,X
 	AND.w #$00FF
 	STA !cb_t7
 	LSR

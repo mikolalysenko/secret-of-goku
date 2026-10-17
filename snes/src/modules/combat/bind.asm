@@ -366,29 +366,49 @@ else
 endif
 	RTS
 
+if defined("FX_IMPACT")
+; Every request starts from a clean block: fx reads the fields a kind uses,
+; and the block (battery RAM) keeps whatever the last caller or power-on
+; left there. Preserves A/X/Y and P.
+cb_fx_req_clear:
+	PHP
+	REP #$20
+	PHA
+	LDA.w #$0000
+	STA.l !fx_dir                 ; dir and style
+	STA.l !fx_a
+	STA.l !fx_b
+	STA.l !fx_c
+	STA.l !fx_t
+	PLA
+	PLP
+	RTS
+endif
+
 ; Impact spark for record X (fx_dir/fx_hold/fx_life/fx_flags/position).
 cb_fx_spawn_impact:
 if defined("FX_IMPACT")
+	JSR cb_fx_req_clear
 	PHX
 	SEP #$20
-	LDA.l !FX+!fx_dir,X
+	LDA.l !ER+!er_dir,X
 	STA.l !fx_dir
 	REP #$20
-	LDA.l !FX+!fx_life,X
+	LDA.l !ER+!er_life,X
 	AND.w #$00FF
 	STA.l !fx_a
-	LDA.l !FX+!fx_hold,X
+	LDA.l !ER+!er_hold,X
 	AND.w #$00FF
 	STA.l !fx_b
-	LDA.l !FX+!fx_flags,X
-	AND.w #!FXF_SUPER
+	LDA.l !ER+!er_flags,X
+	AND.w #!ERF_SUPER
 	BEQ +
 	LDA.w #!FX_F_GOLD<<8
 +	ORA.w #!FX_IMPACT
 	PHA
-	LDA.l !FX+!fx_y,X
+	LDA.l !ER+!er_y,X
 	TAY
-	LDA.l !FX+!fx_x,X
+	LDA.l !ER+!er_x,X
 	TAX
 	PLA
 	JSL fx_spawn
@@ -399,35 +419,36 @@ endif
 ; Ki shot for record X; the handle is kept to end it at the first contact.
 cb_fx_spawn_ki:
 if defined("FX_KI")
+	JSR cb_fx_req_clear
 	PHX
 	SEP #$20
-	LDA.l !FX+!fx_dir,X
+	LDA.l !ER+!er_dir,X
 	STA.l !fx_dir
 	REP #$20
 	LDA.w #256
 	STA.l !fx_a
-	LDA.l !FX+!fx_flags,X
-	AND.w #!FXF_SUPER
+	LDA.l !ER+!er_flags,X
+	AND.w #!ERF_SUPER
 	BEQ +
 	LDA.w #!FX_F_GOLD<<8
 +	ORA.w #!FX_KI
 	PHA
-	LDA.l !FX+!fx_y,X
+	LDA.l !ER+!er_y,X
 	TAY
-	LDA.l !FX+!fx_x,X
+	LDA.l !ER+!er_x,X
 	TAX
 	PLA
 	JSL fx_spawn
 	PLX
 	BCS +
-	STA.l !FX+$0E,X
+	STA.l !ER+$0E,X
 +
 endif
 	RTS
 
 cb_fx_kill_record:
 if defined("FX_KI")
-	LDA.l !FX+$0E,X
+	LDA.l !ER+$0E,X
 	CMP.w #$FFFF
 	BEQ +
 	JSL fx_kill
@@ -437,6 +458,7 @@ endif
 
 cb_fx_spawn_burst:
 if defined("FX_BURST")
+	JSR cb_fx_req_clear
 	LDA.w #56
 	STA.l !fx_a
 	LDY !cb_t5
@@ -449,25 +471,26 @@ endif
 ; Status recovery burst for record X.
 cb_fx_spawn_status:
 if defined("FX_STATUS")
+	JSR cb_fx_req_clear
 	PHX
-	LDA.l !FX+!fx_flags,X
+	LDA.l !ER+!er_flags,X
 	LDY.w #$0000
-	BIT.w #!FXF_FIRE
+	BIT.w #!ERF_FIRE
 	BEQ +
 	LDY.w #1
-+	BIT.w #!FXF_ICE
++	BIT.w #!ERF_ICE
 	BEQ +
 	LDY.w #2
-+	BIT.w #!FXF_BALLOON
++	BIT.w #!ERF_BALLOON
 	BEQ +
 	LDY.w #3
 +	TYA
 	SEP #$20
 	STA.l !fx_style
 	REP #$20
-	LDA.l !FX+!fx_y,X
+	LDA.l !ER+!er_y,X
 	TAY
-	LDA.l !FX+!fx_x,X
+	LDA.l !ER+!er_x,X
 	TAX
 	LDA.w #!FX_STATUS
 	JSL fx_spawn
@@ -479,6 +502,7 @@ endif
 ; taper cb_t1, age cb_t0.
 cb_fx_beam_draw:
 if defined("FX_BEAM_KAME")
+	JSR cb_fx_req_clear
 	SEP #$20
 	LDA !ag_dir
 	STA.l !fx_dir
@@ -511,6 +535,7 @@ endif
 ; Continuous draws.
 cb_fx_aura:
 if defined("FX_AURA")
+	JSR cb_fx_req_clear
 	; tone gold in Super Saiyan (and the transformation once gold)
 	LDA.w #$0000
 	LDX !cb_form-1
@@ -560,6 +585,7 @@ endif
 
 cb_fx_orb:
 if defined("FX_ORB")
+	JSR cb_fx_req_clear
 	; frame min(4, strength*5); full charge alternates 3/4 every 4 frames
 	JSR cb_bind_strength
 	CMP.w #256
@@ -595,6 +621,7 @@ endif
 
 cb_fx_lightning:
 if defined("FX_LIGHTNING")
+	JSR cb_fx_req_clear
 	LDA !cb_facing
 	AND.w #$0003
 	STA !cb_t8
