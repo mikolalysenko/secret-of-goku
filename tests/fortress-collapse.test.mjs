@@ -30,7 +30,7 @@ test('all normal-form and partial SSJ beams rebound without advancing the destru
 test('collapse damages only the deck presentation, preserves native menus and replays exactly',()=>{
   const ram=new Uint8Array(0x20000),cpu={r:new Uint8Array(2),br:new Uint16Array(5),cyclesLeft:0,cycle(){}},sounds=[];
   let layer=0;
-  const ppu={mode:1,getColor:()=>[0x4631,layer,1]},snes={ram,cpu,ppu};
+  const ppu={mode:1,bgHoff:[0,0,0,0],bgVoff:[0,0,0,0],getColor:()=>[0x4631,layer,1]},snes={ram,cpu,ppu};
   const m={frame:0,options:{enabled:true},gokuActive:true,nativeField:true,worldFlight:false,nativeFlight:false,
     status:{x:128,y:160,cameraX:0,cameraY:0},localFlightHook:{canLand:(x,y)=>x>=16&&x<240&&y>=24&&y<208},playSound:n=>sounds.push(n)};
   const collapse=createFortressCollapse(snes,m,()=>true),tick=n=>{for(let i=0;i<n;i++){m.frame++;collapse.tick();}};
