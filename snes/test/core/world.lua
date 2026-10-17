@@ -23,6 +23,17 @@ function test()
   local i = findOam(120, 100, 0x3100)
   check('world_sprite_slot', i ~= nil and i >= 88, tostring(i))
   check('world_sprite_large', i ~= nil and oamEntry(i).size == 1, i and oamEntry(i).size)
+  -- VRAM upload in world flight (no forced blank; HDMA-free channel).
+  local up = command(3, { [0x20] = 0x6800, [0x22] = 0x80 })
+  H.wait(3)
+  local okv = up == 0
+  local pattern = { 0xAA, 0x00, 0x55, 0xFF }
+  for k = 0, 0x7F do
+    local want = (k % 32) < 16 and pattern[(k % 4) + 1] or 0
+    if H.vram(0xD000 + k) ~= want then okv = false end
+  end
+  check('world_vram_upload', okv, up)
+  H.result('world_flush_line', H.r16(CORE + 0x3E))
   H.shot('world')
   setct(0x08, 0)
   H.wait(3)

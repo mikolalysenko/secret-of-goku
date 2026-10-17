@@ -41,6 +41,7 @@ const tests=[
   ['world','waterfall'],
   ['save','waterfall'],
   ['lag','waterfall'],
+  ['wram',null],
 ].filter(([n])=>!only.length||only.includes(n));
 
 const importDir=process.env.SNES_IMPORT??join(dirname(cps),'snes-import');
