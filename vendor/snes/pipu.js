@@ -842,6 +842,48 @@ function Ppu(snes) {
       this.lastTileFetchedY[l] = ly;
       return present;
     }
+    if(mosaic && !hires) {
+      // Each block of size pixels shows the pixel at its left edge: the
+      // same fetches (at the same lx) as the loop below, one decode each.
+      let ly = y - (y - this.mosaicStartLine) % size + voff;
+      for(let x0 = 0; x0 < 256; x0 += size) {
+        let lx = x0 + hoff;
+        if((lx >> 3) !== lastX || ly !== lastY) {
+          this.fetchTileInBuffer(lx, ly, l, false);
+          lastX = lx >> 3;
+          lastY = ly;
+          let mapWord = this.tilemapBuffer[l];
+          let spread = (mapWord & 0x4000) > 0 ? spreadFlip : spreadNormal;
+          let p1 = this.tileBufferP1[l];
+          lo = spread[p1 & 0xff] | (spread[(p1 >> 8) & 0xff] << 1);
+          if(bits > 2) {
+            let p2 = this.tileBufferP2[l];
+            lo |= (spread[p2 & 0xff] << 2) | (spread[(p2 >> 8) & 0xff] << 3);
+          }
+          hi = 0;
+          if(bits > 4) {
+            let p3 = this.tileBufferP3[l], p4 = this.tileBufferP4[l];
+            hi = spread[p3 & 0xff] | (spread[(p3 >> 8) & 0xff] << 1) |
+              (spread[p4 & 0xff] << 2) | (spread[(p4 >> 8) & 0xff] << 3);
+          }
+          palette = (((mapWord & 0x1c00) >> 10) + palAdd) * mul;
+          prio = (mapWord & 0x2000) >> 13;
+        }
+        let shift = (lx & 0x7) * 4;
+        let tileData = ((lo >>> shift) & 0xf) | (((hi >>> shift) & 0xf) << 4);
+        let v = tileData > 0 ? (palette + tileData) | (prio << 15) : 0;
+        if(tileData > 0) {
+          present |= 1 << prio;
+        }
+        let end = x0 + size < 256 ? x0 + size : 256;
+        for(let x = x0; x < end; x++) {
+          outVal[x] = v;
+        }
+      }
+      this.lastTileFetchedX[l] = lastX;
+      this.lastTileFetchedY[l] = lastY;
+      return present;
+    }
     for(let x = 0; x < 256; x++) {
       let lx = x, ly = y;
       if(mosaic) {
