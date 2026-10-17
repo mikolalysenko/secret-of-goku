@@ -199,6 +199,7 @@ incsrc "scars.asm"
 incsrc "fxdraw.asm"
 incsrc "api.asm"
 incsrc "hooks.asm"
+incsrc "ring.asm"
 world_code_end:
 assert world_code_end <= !CODE_WORLD+$8000, "world code bank overflow"
 pullpc

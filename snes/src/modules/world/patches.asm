@@ -68,3 +68,13 @@
 %orig4($C08190, $7F0000BF)
 %orig3($C08194, $00FF29)
 %hijack_jsl($C08190, world_land_tile_hook, 7, world)
+
+; Fly ring icon (ring.asm): D0:CA6E REP #$30 / AND #$00FF, the ring's item
+; icon builder; C0:7063 CPY #$0009 / JSR $709C / STA $06,X, the icon
+; sprite's tile and palette.
+%orig4($D0CA6E, $FF2930C2)
+%orig1($D0CA72, $00)
+%hijack_jsl($D0CA6E, world_ring_icon_hook, 5, world)
+%orig4($C07063, $200009C0)
+%orig4($C07067, $0695709C)
+%hijack_jsl($C07063, world_ring_attr_hook, 8, world)

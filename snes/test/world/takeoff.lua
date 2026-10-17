@@ -1,10 +1,9 @@
 -- L+R takeoff from the field (waterfall checkpoint, map 128): the native
 -- $0C80 event path starts at an idle field frame, C1:E833 skips the Flammie
 -- summon (no dragon, no E8=4 phase) and the fade goes straight to world
--- flight; Goku's takeoff pose runs on the goku module meanwhile. Then the
--- Fly ring path is exercised through the same handoff, and a forbidden map
--- (inside the Potos elder's house is not available here, so world_lock)
--- refuses the chord.
+-- flight; Goku's takeoff pose runs on the goku module meanwhile. A lock
+-- request from another module (world_lock) refuses the chord first. The Fly
+-- ring item takes the same handoff (item.lua).
 local function idle()
   return W.inField() and H.r8(0x7E00D0) == 0 and H.r8(0x7E00E4) == 1 and H.r8(0x7E00E5) == 1
 end

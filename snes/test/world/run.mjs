@@ -9,6 +9,7 @@
 //   fortress  full Super Saiyan wave: destruction, cutaway, deck landing
 //   scars     town craters in the 7F ring and the Mode 7 tilemap, persistence
 //   dock      docking approach: ki boost, curve into the Fortress, deck
+//   item      Fly from the item ring: Goku's icon, no drum, same handoff
 //   node snes/test/world/run.mjs [test ...]
 // ROM: $SNES_ROM or dist/snes/secret-of-goku.sfc. Outputs: .local/snes-test/world/
 import {spawnSync} from 'node:child_process';
