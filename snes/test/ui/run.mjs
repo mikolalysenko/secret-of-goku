@@ -311,6 +311,32 @@ const cases={
     report('place',!fails.length,[...fails,...notes]);
   },
 
+  async scouter(){
+    // scouter.js: Goku's Targeting ring item as the scouter switch.
+    const sym=new Map(readFileSync(testRom.replace(/\.sfc$/,'.sym'),'utf8').split('\n')
+      .map(l=>l.match(/^([0-9A-F]{2}):([0-9A-F]{4}) (\S+)/)).filter(Boolean).map(m=>[m[3],m[1]+':'+m[2]]));
+    const off=sym.get('ui_sc_title_off'),on=sym.get('ui_sc_title_on');
+    const r=await mesenCase('scouter',{bundle:'barrier-audit__potos-probe',prelude:{},test:'scouter'});
+    const fails=resultFails(r.results),q=r.results??{};
+    if(r.code!==0||q.error)fails.push(`mesen: ${q.error??r.output.slice(-400)}`);
+    else{
+      if(q.ring!=='00 02 01')fails.push(`ring not on Goku's Targeting item (1808 1809 1876 = ${q.ring})`);
+      if(q.title_off!==off)fails.push(`title before the switch: ${q.title_off} (expected ui_sc_title_off ${off})`);
+      if(!(q.flags_on&0x40))fails.push(`B did not switch the scouter on (flags ${q.flags_on})`);
+      if(!/^02 01 D0 00$/.test(q.ring_after))fails.push(`the ring did not stay open on the item (${q.ring_after})`);
+      if(q.title_on!==on)fails.push(`title after the switch: ${q.title_on} (expected ui_sc_title_on ${on})`);
+      // the joke for the form and gi at the scan
+      const [jname,jbit]=q.form?['SCOUTER_GOLD',0x08]:[q.weighted?'SCOUTER_GOKU_0':'SCOUTER_GOKU_1',0x20];
+      const joke=catalog.messages.find(m=>m.name===jname);
+      if(q.said!==joke.id+1)fails.push(`scan said message ${q.said-1} (expected ${joke.id} ${jname})`);
+      if(q.scans!==1)fails.push(`scans ${q.scans}`);
+      if(!(q.jokes&jbit))fails.push(`joke not saved (flags ${q.jokes})`);
+      if(q.flags_off&0x40)fails.push(`the second B did not switch it off (flags ${q.flags_off})`);
+      if(q.scans2!==2)fails.push(`switching on again: ${q.scans2} scans (expected 2, no second joke)`);
+    }
+    report('scouter',!fails.length,[...fails,`titles ${q.title_off} -> ${q.title_on}, joke ${q.said-1} (form ${q.form}, weighted ${q.weighted}), scans ${q.scans}/${q.scans2}`]);
+  },
+
   async radar(){
     // World flight: the band (lines 152-215) and the dial, against
     // dragon-radar.js run on the cartridge's own state for each screenshot.

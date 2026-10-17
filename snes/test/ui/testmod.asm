@@ -8,7 +8,8 @@
 ; 6 power intro super, 7 power intro flight, 8 restore first flight,
 ; 9 set inputs (A set, X clear), 10 quest collected (A palace, X = stub
 ; quest status held | collected<<8), 11 hide (A bits), 12 unhide (A bits),
-; 13 destroy reaction (A id, X map).
+; 13 destroy reaction (A id, X map), 14 multiply, 15 story event, 16 window
+; choice, 17 weighted gi.
 !ui_test_charge = !RAM_UI+$48
 
 ui_test_poll:
@@ -32,7 +33,7 @@ ui_test_poll:
 ui_test_cmds:
 	dw ui_t_none, ui_t_say, ui_t_interrupt, ui_t_barrier, ui_t_ceiling, ui_t_dismiss
 	dw ui_t_super, ui_t_flight, ui_t_restore, ui_t_inputs, ui_t_quest, ui_t_hide, ui_t_unhide
-	dw ui_t_react, ui_t_mul, ui_t_event, ui_t_choice
+	dw ui_t_react, ui_t_mul, ui_t_event, ui_t_choice, ui_t_weighted
 
 ui_t_none:
 	SEC
@@ -114,6 +115,16 @@ ui_t_choice:
 if defined("UI_HAVE_STORY")
 	JSL story_api_window_has_choice
 	REP #$30
+else
+	CLC
+endif
+	RTS
+; The weighted gi (story query EQUIP_WEIGHTED, answered by combat): carry.
+ui_t_weighted:
+if defined("STORY_Q_EQUIP_WEIGHTED")
+	LDA.w #!STORY_Q_EQUIP_WEIGHTED
+	JSR ui_story_query
+	CMP.w #$0001
 else
 	CLC
 endif

@@ -513,6 +513,40 @@ export async function generate({rom,repo,outDir}){
   const secT=Array.from({length:129},(_,k)=>Math.round(Math.sqrt(1+(k/128)**2)*256));
   rd.push('ui_sec128:   ; sqrt(1 + (k/128)^2) * 256: hypot = max * sec / 256');
   for(let i=0;i<129;i+=16)rd.push('\tdw '+secT.slice(i,i+16).join(','));
+  // ---------------------------------------------------------------------------
+  // Scouter (scouter.js): the ring title that replaces Goku's Targeting item,
+  // the readout font (3x5 digits and comma) and colours, read from the
+  // browser's source so a change there fails the build.
+  {
+    const src=readFileSync(join(repo,'engine/scouter.js'),'utf8');
+    const need=(cond,what)=>{if(!cond)throw Error(`ui gen: scouter.js changed (${what})`);};
+    need(src.includes("encodeText(`Scouter: ${on?'ON':'OFF'}`)"),'ring title template');
+    need(src.includes('pc>=0xaa174'),'Targeting title at PC 0xAA174');
+    need(src.includes('r[0x1808]===0&&r[0x1809]===2&&r[0x1876]===1'),'ring item test');
+    need(rom.slice(0xaa174,0xaa17e).every((b,i)=>b===[...encodeText('Targeting'),0][i]),'Targeting title bytes');
+    rd.push('ui_sc_titles: dw ui_sc_title_off, ui_sc_title_on');
+    rd.push(`ui_sc_title_off: db ${enc('Scouter: OFF')}`);
+    rd.push(`ui_sc_title_on: db ${enc('Scouter: ON')}`);
+    const consts=src.match(/const lifetime=(\d+),green=([^,]+),shadow=([^;]+);/);
+    need(consts,'lifetime/green/shadow constants');
+    const val=e=>Function(`return (${e});`)();
+    def.push(`!UI_SC_LIFETIME = ${val(consts[1])}`);
+    def.push(`!UI_SC_GREEN = ${hex(val(consts[2]),4)}`);
+    def.push(`!UI_SC_SHADOW = ${hex(val(consts[3]),4)}`);
+    const fontSrc=src.match(/const font=\{([\s\S]*?)\n\};/);
+    need(fontSrc,'readout font');
+    const glyphs={};
+    for(const m of fontSrc[1].matchAll(/(\d|',')\s*:\s*\[([^\]]*)\]/g)){
+      const key=m[1]===`','`?',':m[1];
+      const rows=[...m[2].matchAll(/'([01]{3})'/g)].map(r=>r[1]);
+      need(rows.length===5,`glyph ${key} rows`);
+      glyphs[key]=rows.map(r=>parseInt(r,2)<<5);   // 3 columns in bits 7-5
+    }
+    const order=['0','1','2','3','4','5','6','7','8','9',','];
+    need(order.every(k=>glyphs[k]),'glyphs 0-9 and comma');
+    rd.push('ui_sc_font:     ; 3x5 glyphs (bits 7-5): 0-9, comma');
+    for(const k of order)rd.push(`\tdb ${glyphs[k].map(b=>hex(b)).join(',')}  ; ${k}`);
+  }
   writeFileSync(join(outDir,'radar.asm'),rd.join('\n')+'\n');
   writeFileSync(join(outDir,'defines.asm'),def.join('\n')+'\n');
 

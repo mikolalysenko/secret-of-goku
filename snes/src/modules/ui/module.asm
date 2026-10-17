@@ -125,7 +125,8 @@ endif
 !ui_rphase    = !RAM_UI+$A4   ; word: bearing halves done since the radar showed (bit0 rotated, bit1 geometry)
 ; +$A6-$A9: fast-forward (ff.asm)
 ; +$AA-$AD: window placement (place.asm)
-; +$AE-$B7: scouter, status
+; +$AE-$AF: scouter (scouter.asm)
+; +$B0-$B7: free
 
 !ui_name_buf  = !RAM_UI+$B8   ; 8 bytes: display name buffer ({n} codes)
 
@@ -227,6 +228,7 @@ incsrc "window.asm"
 incsrc "world.asm"
 incsrc "ff.asm"
 incsrc "place.asm"
+incsrc "scouter.asm"
 if defined("UI_TEST")
 	incsrc "../../../test/ui/testmod.asm"
 endif

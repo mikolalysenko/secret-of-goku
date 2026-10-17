@@ -14,7 +14,7 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 | Telepathy window on the ground (King Kai / Luka, three lines, native font and window art) | Done: pixel-identical to `radioPixels()` |
 | Message policy: queue, `interrupt`, `dismiss`, SSJ charge remarks (saved attempts and xorshift roll), barrier and ceiling reactions, first-flight banter, power intro | Done: frame-identical to `createNativeRadio` + `createPowerIntro` |
 | Telepathy in world flight (bottom panel) and the Dragon Radar | Done: panel pixel-identical to the browser's; dial identical for the same sweep angle (64 steps) and blink phase; guide, distance and blip from `radarBearing` (the blip may round the other way within 0.05 px of a half pixel); 60 Hz kept |
-| Scouter option and readouts | Not yet |
+| Scouter option and readouts | Switch done (`scouter.asm`): Goku's Targeting ring item reads "Scouter: ON/OFF" and toggles the saved switch, a scan (teleport sound) tells King Kai's joke for the form once; the power-level readouts and Analyzer hits are not drawn yet (OBJ VRAM, see the core requests) |
 | Goku's STATUS page text | Not yet |
 | Dialogue window placement | Done (`place.asm`): the scene's windows move above the HUD when the first one would cover more faces where it is, as `window-placement.js`; moved window pixel-identical to the native one, HUD untouched |
 | R fast-forward | Auto-confirm done (`ff.asm`): R held in a scene hides R, pulses B on two of every eight frames for prose and stops at choices, as `scene-fast-forward.js`'s input filter; the browser's 12× emulation speed has no cartridge equivalent and instant text is not done |
@@ -272,6 +272,33 @@ window frames, closing ones: one vblank that ended past line 261 anyway,
 one that reached line 258). Putting `ui_field_nmi` first in
 `modules_field_nmi` would make this rarer (see the core requests).
 
+## Scouter (`scouter.asm`)
+
+As `scouter.js`: owned once Sylphid's powers are granted (`$CFAB` ≥ 2),
+switched in Goku's configuration ring. Two patched instructions:
+
+- `C0:1926` (`LDA $CA0000,X`, the text engine's string reference): when
+  the ring's selected item is Goku's Targeting (`$1808` = 0, `$1809` = 2,
+  `$1876` = 1, table base `$A1D5` = `$0864`, entry `$098E` → `CA:A174`),
+  the title is read from this bank instead ("Scouter: OFF" / "Scouter: ON",
+  encoded by the generator from the browser's template), so the longer
+  label never touches the adjacent Status string.
+- `C0:73F4` (`LDA $1876` / `BEQ`, the ring's option dispatch): confirming
+  that item flips the saved switch (`!ui_p_flags` bit 6), asks for the
+  native title redraw (`$1812` = 1, `$1813` = 0) and resumes the ring at
+  `C0:7275`, as the browser's breakpoint does; every other option and an
+  unowned scouter take the native path.
+
+Switching it on, or loading a game with it on, leaves a scan pending until
+Goku can act (`canAttack`): the teleport sound, one scan counted, and King
+Kai's joke for the form, once each (saved bits): Super Saiyan "SMOKING",
+else "OVER 9000" with or without the weights line (story query
+`EQUIP_WEIGHTED`, answered by combat). The Frieza joke needs his actor
+(the Frieza module does not publish one yet). Not done: the readouts
+(reticle corners and a 3×5 power-level number over every actor on screen,
+`!UI_SC_*` font and colours are generated) and Analyzer hits; they need
+OBJ VRAM for the rendered numbers (see the core requests).
+
 ## R fast-forward (`ff.asm`)
 
 Field frames: with R held (and L not), in a scene (`$D0` ≠ 0, `$E4` ≠ 0,
@@ -346,7 +373,7 @@ byte boundary.
 | Resource | Use |
 | --- | --- |
 | Code/data `$AC:8000-` | `!CODE_UI`: `$AC:8000-$E900` used (about 26 KiB: code, 6 KiB messages, 2.5 KiB field atlas, 2.2 KiB world atlas, 2.6 KiB dial tiles, radar tables); about 5.8 KiB left |
-| WRAM `$7E:7E40-$7E:7EFF` | `!RAM_UI`: state, current message, cooldowns, band/radar state, scratch, `!ui_magic` (`module.asm`), fast-forward (`+$A6`), window placement (`+$AA`); `+$AE`–`+$B7` free |
+| WRAM `$7E:7E40-$7E:7EFF` | `!RAM_UI`: state, current message, cooldowns, band/radar state, scratch, `!ui_magic` (`module.asm`), fast-forward (`+$A6`), window placement (`+$AA`), scouter (`+$AE`); `+$B0`–`+$B7` free |
 | SRAM `$33:7C00-$33:7FFF` | staging: window/band rows (`+$000`), the radio's HDMA table, the moved window's colour records or moved natives (`+$200`), text words (`+$240`), radar trig cache (`+$2E8`), build state (`+$2F4`), radar key (`+$2FC`), bearing inputs (`+$2FE`, `+$308`), placement scroll table and the game's channel 0/1 tables (`+$312`, `+$322`), queue (`+$340`), band and sky HDMA colour blocks (`+$3C0`, `+$3DC`) |
 | SRAM persistent | `!PERSIST_UI` = `!PERSIST_MISC+$80` (`$31:6380`, `$60` bytes) — **request** |
 | VRAM (field) | BG3 tiles `$110-$113`, `$122-$1BF` and rows 1–8 / 17–24 while the window shows |
@@ -354,10 +381,11 @@ byte boundary.
 | CGRAM | field: colours 9–11, 13–15 on lines 0–205 while the window shows (HDMA); world: 9–15 on lines 145–223 while the band shows (HDMA), OBJ palette 3 colours 1–6 for the dial |
 | HDMA | channel 5 in the field (`$2C` bit 5) for the radio; channels 0/1 (the game's window HDMA, reprogrammed, `$2C` bits 0–1) while a native window is moved; channel 6 in world flight (`$2C` bit 6) |
 | IRQ | world flight: `C0:8A4B` hijacked (6 bytes, `%orig4`-checked); V=152 / V=216 at H=160 while the band shows |
+| Patched code | `C0:8A4B` (world IRQ, 6 bytes), `C0:73F4` (ring option dispatch, 5 bytes), `C0:1926` (string reference pointer, 4 bytes), all `%orig`-checked |
 | OAM (world flight) | 12–14 module slots for the dial (first module slots) plus a slot per native moved behind it (at most 8) |
 
 Persistent layout (`!PERSIST_UI`): `+$00` flags (first flight, power intro
-flight/super, scouter jokes), `+$01` warning rotation, `+$02` charge
+flight/super, scouter jokes, scouter switch), `+$01` warning rotation, `+$02` charge
 attempts, `+$04` xorshift32 state, `+$08` barrier rotation, `+$09` ceiling
 remarks used, `+$0A` ceiling exits, `+$0C` exits at the last remark, `+$10`
 barrier keys (64 bits), `+$20` maps with a ceiling exit (512 bits).
@@ -378,6 +406,7 @@ scenes and compares with the browser's own code:
 | `mul` | the rotation's multiplier routine against exact integer products (47 cases) |
 | `ff` | from `potos.mss` (a NEW GAME, Goku made active), Luka's menu (`$134`): with R held the spear gift's prose is confirmed (`$CFC3` = 1) and the interpreter waits on the menu's choice (`story_api_window_has_choice`); without input the prose waits (`$D0` = `$83`) |
 | `place` | `preset__late` (Goku under the window: lower) and `potos.mss` (Luka's window covers nobody: native), event `$134` through the story API, each against a reference run with placement off: the moved window's 10,124 opaque pixels equal the native window's, the HUD (lines 199–223) and lines 7–50 are unchanged; every frame with a window up in the lower scene (1,957, through pages, Luka's menu, its choice box and the closing windows) is checked at the display level (a BG3VOFS HDMA write on line 7) unless its vblank ended late; switching placement off gives the game's channel setup back and the window returns; after the scene the session closes, the channels and `$2C` are the game's; potos frame-identical |
+| `scouter` | `barrier-audit__potos-probe` with Sylphid's powers: the ring opens on Goku's configuration ring, Targeting's title pointer is `ui_sc_title_off` (bank `$AC`), B switches it on (saved bit, the ring stays on the item, title now `ui_sc_title_on`), closing the ring scans once and King Kai says the joke for Goku's form and gi (`SCOUTER_GOLD` or `SCOUTER_GOKU_0/1`, saved); switching off and on again scans without repeating it |
 | `radar` | `preset__flight` with two quest states, steering between samples: band panel pixels against `radioPixels()` of the browser's panel text, dial pixels against `dragon-radar.js` for the sampled sweep angle and blink phase, guide and blip against `radarBearing` (UI_TEST builds compute the far blip every frame); then the world module's state: a Y ki shot, an L+Y charge and the weak wave it releases hide the dial (but the first frame), which comes back after them |
 
 ## Core requests

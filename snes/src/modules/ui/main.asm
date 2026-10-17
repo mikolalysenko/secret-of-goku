@@ -65,6 +65,7 @@ endmacro
 ui_new_game:
 	JSR ui_ram_check
 	JSR ui_reset_session
+	JSR ui_sc_load
 	RTL
 
 ; A GAME FILE was loaded (core restored or cleared !SRAM_LIVE): drop
@@ -72,6 +73,7 @@ ui_new_game:
 ui_load:
 	JSR ui_ram_check
 	JSR ui_reset_session
+	JSR ui_sc_load
 	RTL
 
 ui_reset_session:
@@ -100,6 +102,7 @@ ui_field_frame:
 if defined("UI_TEST")
 	JSR ui_test_poll
 endif
+	JSR ui_sc_frame
 	JSR ui_radio_tick
 	JSR ui_window_update
 	JSR ui_place_frame
@@ -163,6 +166,11 @@ ui_map_id:
 ; window, BG3 scroll and mode). Carry set = visible.
 ui_field_can_show:
 	LDX.w #ui_field_checks-ui_checks
+	BRA ui_can_attack_list
+; The browser's canAttack alone. Carry set = Goku can act.
+ui_can_attack:
+	LDX.w #ui_attack_checks-ui_checks
+ui_can_attack_list:
 	JSR ui_check_list
 	BCC .no
 	SEP #$20
@@ -239,6 +247,14 @@ ui_check_list:
 ui_checks:
 ; Ground: the browser's canAttack (mana-mod.js) plus the radio's guards.
 ui_field_checks:
+	dw $002C : db $0F,$00             ; native window / effect HDMA
+	dw $1D04 : db $60,$00             ; native window drawing or open
+	dw $0029 : db $04,$00             ; Mode 7 arena (BG3 only below line 196)
+	dw $003E : db $FF,$00             ; BG3 scrolled (quakes, special scenes)
+	dw $003F : db $FF,$00
+	dw $0040 : db $FF,$00
+; canAttack alone
+ui_attack_checks:
 	dw $0100 : db $FF,$5C             ; NMI trampoline JML $00C0A8: the field
 	dw $0101 : db $FF,$A8
 	dw $0102 : db $FF,$C0
@@ -247,12 +263,6 @@ ui_field_checks:
 	dw $00E5 : db $FF,$01
 	dw $00EC : db $FE,$00             ; no menu / transition
 	dw $00ED : db $40,$00             ; no ring opening request
-	dw $002C : db $0F,$00             ; native window / effect HDMA
-	dw $1D04 : db $60,$00             ; native window drawing or open
-	dw $0029 : db $04,$00             ; Mode 7 arena (BG3 only below line 196)
-	dw $003E : db $FF,$00             ; BG3 scrolled (quakes, special scenes)
-	dw $003F : db $FF,$00
-	dw $0040 : db $FF,$00
 	dw $E000 : db $01,$01             ; Goku's actor active
 	dw $E02C : db $01,$01             ; and owned by player 1
 	dw $E190 : db $70,$00             ; incapacitating / covering status
