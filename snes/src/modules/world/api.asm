@@ -190,13 +190,3 @@ world_wish_restore:
 world_title_boot:
 	JSR world_ram_clear
 	RTL
-
-; modules_new_game: the mod starts with the Fly item in the former Drum
-; slot (engine/rom-patches.js: item $27 into the first inventory slot
-; $7E:CC48 after the native initializer). M16/X16, DB = $7E.
-world_new_game:
-	SEP #$20
-	LDA.b #$27
-	STA.l $7ECC48
-	REP #$20
-	RTL
