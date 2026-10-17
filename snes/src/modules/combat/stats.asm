@@ -72,10 +72,10 @@ cb_power_stats:
 ; native rebuild hooks apply the same rules at once; this catches writes
 ; by other code (level tables, scripts) within 4 frames.
 cb_stats_upkeep:
-	; The browser rewrites these every frame. Every frame here: a form or
-	; power change, or any other writer's change to strength / agility / DEF
-	; applies at once; a full pass every 4th frame catches the rest (gear
-	; changed without a native rebuild).
+	; The browser rewrites these every frame. Here every frame checks that
+	; combat's last writes stand: a form, power or body armor change, or any
+	; other writer's change to strength / agility / attack / DEF, runs the
+	; pass at once (native rebuilds apply the rules through their hooks).
 	LDA !cb_def_form
 	EOR !cb_form
 	AND.w #$00FF
@@ -93,10 +93,19 @@ cb_stats_upkeep:
 	LDA $E188
 	CMP !cb_sa_wr
 	BNE .now
-	LDA !cb_phase
-	AND.w #$0003
-	BEQ .now
+	SEP #$20
+	LDA $E1E1
+	CMP !cb_gi_seen
+	BNE .now8
+	LDA !cb_active
+	BEQ +
+	LDA $E198                     ; the attack byte stays 255
+	INC
+	BNE .now8
++	REP #$20
 	RTS
+.now8
+	REP #$20
 .now
 	LDA.w #$0000
 	JSR cb_defense_stats
@@ -108,6 +117,8 @@ cb_stats_upkeep:
 +	LDA $E188
 	STA !cb_sa_wr
 	SEP #$20
+	LDA $E1E1
+	STA !cb_gi_seen
 	LDA !cb_active
 	STA !cb_up_act
 	REP #$20

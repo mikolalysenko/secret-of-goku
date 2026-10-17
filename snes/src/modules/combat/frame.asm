@@ -33,23 +33,18 @@ cb_hook_logic:
 	PEA $B294-1
 	JML $0093B9
 .read
+	; (C0:B69C starts with SEP #$30 and loads what it uses: only P, DB and
+	; D need to survive combat)
 	PHP
 	PHB
 	PHD
 	REP #$30
-	PHA
-	PHX
-	PHY
 	LDA.w #$0000
 	TCD
 	PEA $7E7E
 	PLB
 	PLB
 	JSR cb_logic_frame
-	REP #$30
-	PLY
-	PLX
-	PLA
 	PLD
 	PLB
 	PLP
@@ -128,22 +123,26 @@ cb_logic_frame:
 	JSR cb_publish
 	JMP cb_note_quiet
 
-; A field frame with nothing to run (most frames): Goku active, no action,
-; charge, effect, launch, focus, hit, reaction, quake or breakable status, no
-; combat button (B Y A X L) in any of its vblanks, the same map and nothing
-; left to publish. Does exactly what its steps and cb_publish would do there
-; (clock, pads, masks, the power upkeep, facing) at a fraction of the cost.
-; C set when the frame was handled.
+; A field frame with nothing to run (most frames): combat's own state quiet
+; (cb_note_quiet), no combat button (B Y A X L) in any of its vblanks and,
+; with Goku active, no foreign action, hurt pose, reaction mode, breakable
+; status or map change. Does exactly what its steps and cb_publish would do
+; there (clock, pads, masks, the power upkeep, facing) at a fraction of the
+; cost. C set when the frame was handled.
 cb_idle_frame:
 	SEP #$20
-	LDA !cb_active
-	AND !cb_quiet                 ; (both 0 / 1)
-	BNE .active
+	LDA !cb_quiet
+	BNE .quiet
 .no8
 	REP #$20
 .no
 	CLC
 	RTS
+.quiet
+	LDA !cb_active
+	BNE .active
+	REP #$20                      ; Goku inactive: the steps only filter
+	BRA .padCheck                 ; the pad (menu hold, the X route)
 .active
 	LDA !GOKU_ACT_ADDR            ; another module's action
 	BNE .no8
@@ -164,6 +163,7 @@ cb_idle_frame:
 	LDA $DC
 	CMP !cb_map
 	BNE .no
+.padCheck
 	; no combat button in the pads of this frame's vblanks
 	LDA !cb_vb_last
 	AND.w #$0003
@@ -231,11 +231,14 @@ cb_idle_frame:
 	STA !cb_mask
 	LDA !cb_can
 	AND.w #$00FF
-	BEQ +
+	BEQ .noCan
 	LDA.w #!IN_B
 	TSB !cb_mask
-+	JSR cb_power_stats
-	JSR cb_facing_from_native
+	JSR cb_power_stats
+.noCan
+	; (without canAttack the power upkeep does nothing; cb_facing is only
+	; read by actions, whose steps track it, and the resist reaction reads
+	; the native facing itself)
 	SEC
 	RTS
 

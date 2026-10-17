@@ -433,7 +433,7 @@ cb_receive:
 	SEP #$20
 	LDA.b #!GOKU_K_RESIST
 	STA.l $7E0000|!cb_react
-	LDA.l $7E0000|!cb_facing
+	JSR cb_n_facing               ; (idle frames do not track cb_facing)
 	STA.l $7E0000|!cb_react_face
 	REP #$20
 	LDA.l $7E0000|!cb_vblanks
@@ -441,6 +441,24 @@ cb_receive:
 	LDA.l $7E00DC
 	STA.l $7E0000|!cb_react_map
 .out
+	RTS
+; Goku's facing index from the native facing byte (cb_facing_from_native
+; with long addressing; M8 in and out).
+cb_n_facing:
+	LDA.l $7EE010
+	AND.b #$7F
+	BNE +
+	LDA.b #$03
+	RTS
++	CMP.b #$01
+	BNE +
+	LDA.b #$00
+	RTS
++	LDA.l $7EE010
+	BMI +
+	LDA.b #$01
+	RTS
++	LDA.b #$02
 	RTS
 cb_receive_div:                       ; ordinary base, ordinary SSJ, boss base, boss SSJ
 	dw 20,50,4,8

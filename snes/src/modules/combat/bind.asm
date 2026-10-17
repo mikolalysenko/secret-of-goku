@@ -104,7 +104,12 @@ endif
 ; 1-255 / $80 = 1.0.
 cb_bind_loops:
 if defined("AUDIO_IDS")
-	LDA !cb_can
+	; beds sound only while focusing, revealing or charging (an action runs)
+	LDA !cb_act
+	AND.w #$00FF
+	BNE +
+	RTS
++	LDA !cb_can
 	AND.w #$00FF
 	BNE +
 	RTS

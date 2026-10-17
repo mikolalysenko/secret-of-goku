@@ -157,6 +157,7 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
 !cb_pub_kind   = !CB+$D2   ; byte: action kind combat last wrote to !goku_act (0 none)
 !cb_quiet      = !CB+$D3   ; word: combat's own state is idle (set by a full logic frame,
                            ; cleared by anything else that may change it: APIs, hooks, menus)
+!cb_gi_seen    = !CB+$D5   ; byte: body armor ($E1E1) at the last stats upkeep pass
 !cb_d2         = !CB+$D6   ; word: burst: squared distance of the target
 !cb_mq         = !CB+$D8   ; 4 words: math scratch ($D8-$DF)
 !cb_mq1        = !CB+$DA

@@ -160,6 +160,10 @@ combat_api_input_lock:
 	REP #$20
 	ORA.l $7E0000|!cb_inlock
 	STA.l $7E0000|!cb_inlock
+	PHA
+	LDA.w #$0000
+	STA.l $7E0000|!cb_quiet       ; the next field frame takes the full path
+	PLA
 	PLP
 	RTL
 combat_api_input_unlock:
@@ -168,6 +172,10 @@ combat_api_input_unlock:
 	EOR.w #$FFFF
 	AND.l $7E0000|!cb_inlock
 	STA.l $7E0000|!cb_inlock
+	PHA
+	LDA.w #$0000
+	STA.l $7E0000|!cb_quiet
+	PLA
 	PLP
 	RTL
 ; combat_api_danger / _safe: A16 = owner bit. A dangerous encounter
