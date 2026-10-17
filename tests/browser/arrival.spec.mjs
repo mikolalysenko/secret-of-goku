@@ -47,7 +47,18 @@ for(const fast of[false,true])test(`native sword pull settles its effects after 
       const x=500-(mana.read16(0xe002)-mana.mod.readSigned16(0xe020))-30,y=948-(mana.read16(0xe004)-mana.mod.readSigned16(0xe022))+16;
       craters.add(mana.snes.ppu.getColor(false,x,y)[0]);
     }
-    const stable={quake:mana.read8(0x49),scrolls:scrolls.size,craters:craters.size};
+    // Flying low over the clearing scrolls the camera with an offset actor
+    // position; the crater must stay on its map tiles (BG1 camera).
+    const anchored=new Set(),flight=mana.snapshot();mana.mod.localFlight=true;
+    for(let i=0;i<120;i++){
+      mana.run(1,[8,[4,7,5,6][(i/30|0)%4]]);
+      const p=mana.snes.ppu,x0=mana.read16(0xa8),y0=mana.read16(0xaa),cx=x0+((p.bgHoff[0]-x0+8)&15)-8,cy=y0+((p.bgVoff[0]-y0+8)&15)-8;
+      // Ignore frames where the HUD (BG3) or a sprite covers the rim pixel.
+      const c=470-cx>=0&&470-cx<256&&964-cy>0&&964-cy<224?p.getColor(false,470-cx,964-cy):null;
+      if(c&&c[1]<2)anchored.add(c[0]);
+    }
+    mana.restore(flight);
+    const stable={quake:mana.read8(0x49),scrolls:scrolls.size,craters:craters.size,anchored:anchored.size};
     // A pre-fix checkpoint can have the residual quake but no cleanup marker.
     const legacy=mana.snapshot();delete legacy.arrival.effectsSettled;mana.restore(legacy);mana.write8(0x49,0x60);mana.run(2);
     return{romUnchanged:mana.hash(mana.snes.cart.data)===romHash,names,stages,pages:pages.size,replay,earlyGoku,ending,charging,beams,persistent,perPixel,stable,repaired:mana.read8(0x49)};
@@ -57,5 +68,5 @@ for(const fast of[false,true])test(`native sword pull settles its effects after 
   expect(result.ending).toEqual({phase:'complete',crater:true,name:[0xa1,0xa9,0xa5,0xaf,0,0],map:128,event:0,flags:[1,1,0,1],canAttack:true});
   expect(result.names).toMatchObject({0:'GOKU',3:fast?'Timmy':'Randi'});
   expect(result.charging).toBe(true);expect(result.beams).toBe(1);expect(result.persistent).toBe(true);expect(result.perPixel).toBe(0);expect(errors).toEqual([]);
-  expect(result.stable).toEqual({quake:0,scrolls:1,craters:1});expect(result.repaired).toBe(0);
+  expect(result.stable).toEqual({quake:0,scrolls:1,craters:1,anchored:1});expect(result.repaired).toBe(0);
 });

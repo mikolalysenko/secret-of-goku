@@ -131,20 +131,46 @@ export function createSandshipWreck(snes,mod,state){
   }
   sites=list;return sites;
  }
+ // The breach and soot mask value of one world pixel (0 = untouched), with
+ // the sand's depth shade (3 within 12 of the rim, else 0) in bits 3+.
+ function breachValue(b,wx,wy){
+  const origin=b.origin,depth=breachDepth(b,wx,wy);
+  if(depth>=0)return depth<2?3:depth<7?2:1|(depth<12?3<<3:0);
+  // Soot: a ring around the opening and the beam's scorched path to it.
+  let soot=depth>-16&&((wx*7+wy*13)%5<3-(depth<-9?1:0));
+  if(!soot&&origin){
+   const ax=b.x-origin.x,ay=b.y-origin.y,len=Math.hypot(ax,ay)||1,t=((wx-origin.x)*ax+(wy-origin.y)*ay)/len;
+   const off=Math.abs((wx-origin.x)*ay-(wy-origin.y)*ax)/len;
+   soot=t>10&&t<Math.max(len,b.reach??0)&&off<7+Math.sin(t*.3)*2&&(wx*5+wy*3)%4<(off<4?3:2);
+  }
+  return soot?4:0;
+ }
+ // breachValue depends on the breach alone, so it is memoized over a box
+ // that holds every non-zero value: the opening's ring (depth >= -16 lies
+ // within 1.34 radius + 16 of the centre, the y offset scaled by 1.25) and
+ // the beam's soot path (within 9 of its segment). A camera's screen mask
+ // is then a lookup, not some 57,000 fresh evaluations per new position.
+ let memoKey='',memo=null,known=null,boxX=0,boxY=0,boxW=0,boxH=0;
+ const screenMask=new Uint8Array(256*224),screenShade=new Uint8Array(256*224);
+ function memoize(b){
+  const key=`${b.x}:${b.y}:${b.radius}:${b.reach}:${b.origin?.x}:${b.origin?.y}`;
+  if(key===memoKey)return;
+  memoKey=key;const r=b.radius*1.34+18;
+  let x0=b.x-r,x1=b.x+r,y0=b.y-r/1.25,y1=b.y+r/1.25;const o=b.origin;
+  if(o){
+   const ax=b.x-o.x,ay=b.y-o.y,len=Math.hypot(ax,ay)||1,end=Math.max(len,b.reach??0)+2;
+   for(const t of[8,end]){const px=o.x+ax/len*t,py=o.y+ay/len*t;x0=Math.min(x0,px-11);x1=Math.max(x1,px+11);y0=Math.min(y0,py-11);y1=Math.max(y1,py+11);}
+  }
+  boxX=Math.floor(x0);boxY=Math.floor(y0);boxW=Math.ceil(x1)+1-boxX;boxH=Math.ceil(y1)+1-boxY;
+  memo=new Uint8Array(boxW*boxH);known=new Uint8Array(boxW*boxH);
+ }
  // Screen-space breach and soot mask for one camera position.
  function breachMask(b,cx,cy){
-  const out=new Uint8Array(256*224),origin=b.origin;
-  for(let y=0;y<224;y++)for(let x=0;x<256;x++){
-   const wx=x+cx,wy=y+cy,depth=breachDepth(b,wx,wy);
-   if(depth>=0){out[y*256+x]=depth<2?3:depth<7?2:1;continue;}
-   // Soot: a ring around the opening and the beam's scorched path to it.
-   let soot=depth>-16&&((wx*7+wy*13)%5<3-(depth<-9?1:0));
-   if(!soot&&origin){
-    const ax=b.x-origin.x,ay=b.y-origin.y,len=Math.hypot(ax,ay)||1,t=((wx-origin.x)*ax+(wy-origin.y)*ay)/len;
-    const off=Math.abs((wx-origin.x)*ay-(wy-origin.y)*ax)/len;
-    soot=t>10&&t<Math.max(len,b.reach??0)&&off<7+Math.sin(t*.3)*2&&(wx*5+wy*3)%4<(off<4?3:2);
-   }
-   if(soot)out[y*256+x]=4;
+  memoize(b);const out=screenMask;out.fill(0);screenShade.fill(0);
+  const yA=Math.max(0,boxY-cy),yB=Math.min(224,boxY+boxH-cy),xA=Math.max(0,boxX-cx),xB=Math.min(256,boxX+boxW-cx);
+  for(let y=yA;y<yB;y++)for(let x=xA,i=(y+cy-boxY)*boxW+(xA+cx-boxX);x<xB;x++,i++){
+   if(!known[i]){known[i]=1;memo[i]=breachValue(b,x+cx,y+cy);}
+   const v=memo[i];out[y*256+x]=v&7;screenShade[y*256+x]=v>>3;
   }
   return out;
  }
@@ -154,19 +180,34 @@ export function createSandshipWreck(snes,mod,state){
   return s>1?rgb(31,25,17):s>.2?rgb(29,21,13):s>-.8?rgb(26,18,11):rgb(21,13,8);
  };
 
+ // The breach is hull decoration: place it from the tile stream's origin
+ // and each scanline's actual BG1 scroll, never from the actor camera,
+ // which trails the background while scrolling and is offset in flight.
+ // Its soot and fire patterns are in world coordinates for the same reason.
+ const view={map:0,cameraX:0,cameraY:0};let viewLine=-1;
+ const sceneView=y=>{
+  if(viewLine!==y){
+   viewLine=y;const x0=word(0xa8),y0=word(0xaa);view.map=word(0xdc);
+   view.cameraX=x0+((p.bgHoff[0]-x0+8)&15)-8;view.cameraY=y0+((p.bgVoff[0]-y0+8)&15)-8;
+  }
+  return view;
+ };
+ const soot=(wx,wy,age)=>((wx+wy+16+(age>>3))&3)?rgb(5,3,3):rgb(9,5,3);
+ const fire=(wx,wy,age)=>((wx*3+wy+40+(age>>2))%5<2)?rgb(31,27,10):rgb(31,15,3);
  const color=p.getColor,renderLine=p.renderLine;
  p.getColor=function(sub,x,y){
   const result=color.call(this,sub,x,y);
-  if(renderFrame!==mod.frame){renderFrame=mod.frame;renderActive=active();camera=renderActive?mod.status:null;}
+  if(renderFrame!==mod.frame){renderFrame=mod.frame;renderActive=active();viewLine=-1;}
   if(!renderActive||sub||this.mode!==1||y>=224||result[1]>1)return result;
+  camera=sceneView(y);
   const w=state().wreck,b=w.breach,age=w.age;
   if(b?.map===camera.map){
    const key=`${camera.cameraX}:${camera.cameraY}:${b.x}:${b.y}`;
    if(key!==maskKey){maskKey=key;mask=breachMask(b,camera.cameraX,camera.cameraY);}
    const m=mask[y*256+x];
-   if(m===1){const wx=x+camera.cameraX,wy=y+camera.cameraY,c=sand(wx,wy,age),shade=breachDepth(b,wx,wy)<12?3:0;result[0]=rgb((c&31)-shade,(c>>5&31)-shade,(c>>10&31)-shade);return result;}
-   if(m===2){result[0]=((x+y+(age>>3))&3)?rgb(5,3,3):rgb(9,5,3);return result;}
-   if(m===3){result[0]=((x*3+y+(age>>2))%5<2)?rgb(31,27,10):rgb(31,15,3);return result;}
+   if(m===1){const wx=x+camera.cameraX,wy=y+camera.cameraY,c=sand(wx,wy,age),shade=screenShade[y*256+x];result[0]=rgb((c&31)-shade,(c>>5&31)-shade,(c>>10&31)-shade);return result;}
+   if(m===2){result[0]=soot(x+camera.cameraX,y+camera.cameraY,age);return result;}
+   if(m===3){result[0]=fire(x+camera.cameraX,y+camera.cameraY,age);return result;}
    if(m===4){const v=result[0];result[0]=rgb((v&31)*.42+1,(v>>5&31)*.36,(v>>10&31)*.34);}
   }
   // Firelight and a slow red alarm. Dialogue (BG3), HUD and sprites keep
@@ -178,31 +219,49 @@ export function createSandshipWreck(snes,mod,state){
  // The wrapper over a whole main-screen scanline, for the compositor
  // (Ppu.registerLineHook): the same per-pixel arithmetic on BG1/BG2 pixels,
  // with the flicker computed once per 32-pixel block.
- const flickers=new Float64Array(8);let lineMask=null,lineWreck=null;
+ // rgb() clamps each channel on its own, so the firelight tint is a
+ // channel table per 32x32 block (alarm per frame, flicker per block), and
+ // the soot darkening one table per channel: the same arithmetic per value.
+ const flickers=new Float64Array(8);let lineMask=null,lineWreck=null,tintAge=-1,tintRow=-1;
+ const tintR=new Uint8Array(256),tintG=new Uint8Array(256),tintB=new Uint8Array(32);
+ const channel=n=>Math.max(0,Math.min(31,n|0));
+ const darkR=new Uint8Array(32),darkG=new Uint8Array(32),darkB=new Uint8Array(32);
+ for(let c=0;c<32;c++){darkR[c]=channel(c*.42+1);darkG[c]=channel(c*.36);darkB[c]=channel(c*.34);}
  const wreckLine=(sub,y,colors,layers)=>{
   const w=lineWreck,b=w.breach,age=w.age,cut=b?.map===camera.map?lineMask:null;
-  const phase=age%120,alarm=phase<24?Math.sin(phase*Math.PI/24)*4:0;
-  for(let k=0;k<8;k++)flickers[k]=hash(age>>2,k+(y>>5)*8)*2;
+  if(age!==tintAge||(y>>5)!==tintRow){
+   tintAge=age;tintRow=y>>5;
+   const phase=age%120,alarm=phase<24?Math.sin(phase*Math.PI/24)*4:0;
+   for(let k=0;k<8;k++)flickers[k]=hash(age>>2,k+(y>>5)*8)*2;
+   for(let k=0;k<8;k++){const flicker=flickers[k];for(let c=0;c<32;c++){tintR[k*32+c]=channel(c+2+alarm+flicker);tintG[k*32+c]=channel(c-alarm*.4+flicker*.5);}}
+   for(let c=0;c<32;c++)tintB[c]=channel(c-2-alarm*.5);
+  }
+  // sand(wx, wy, age) with its row term computed once per line.
+  const wy=y+camera.cameraY,row=Math.sin(wy*.09)*2.4;
   for(let x=0,at=y*256;x<256;x++){
    if(layers[x]>1)continue;
-   let v=colors[x];
+   const v=colors[x];let r=v&31,g=v>>5&31,bl=v>>10&31;
    if(cut){
     const m=cut[at+x];
-    if(m===1){const wx=x+camera.cameraX,wy=y+camera.cameraY,c=sand(wx,wy,age),shade=breachDepth(b,wx,wy)<12?3:0;colors[x]=rgb((c&31)-shade,(c>>5&31)-shade,(c>>10&31)-shade);continue;}
-    if(m===2){colors[x]=((x+y+(age>>3))&3)?rgb(5,3,3):rgb(9,5,3);continue;}
-    if(m===3){colors[x]=((x*3+y+(age>>2))%5<2)?rgb(31,27,10):rgb(31,15,3);continue;}
-    if(m===4)v=rgb((v&31)*.42+1,(v>>5&31)*.36,(v>>10&31)*.34);
+    if(m===1){
+     const u=x+camera.cameraX+age*1.5,s=Math.sin(u*.16+row)+Math.sin(u*.05-wy*.07)*.6;
+     const c=s>1?rgb(31,25,17):s>.2?rgb(29,21,13):s>-.8?rgb(26,18,11):rgb(21,13,8),shade=screenShade[at+x];
+     colors[x]=rgb((c&31)-shade,(c>>5&31)-shade,(c>>10&31)-shade);continue;
+    }
+    if(m===2){colors[x]=soot(x+camera.cameraX,y+camera.cameraY,age);continue;}
+    if(m===3){colors[x]=fire(x+camera.cameraX,y+camera.cameraY,age);continue;}
+    if(m===4){r=darkR[r];g=darkG[g];bl=darkB[bl];}
    }
-   const flicker=flickers[x>>5];
-   colors[x]=rgb((v&31)+2+alarm+flicker,(v>>5&31)-alarm*.4+flicker*.5,(v>>10&31)-2-alarm*.5);
+   const k=(x>>5)*32;
+   colors[x]=tintR[k+r]|(tintG[k+g]<<5)|(tintB[bl]<<10);
   }
  };
  const wreckOp={type:'line',layers:3,mainOnly:true,fn:wreckLine};
  p.registerLineHook?.('getColor',p.getColor,color,(ppu,line)=>{
-  if(renderFrame!==mod.frame){renderFrame=mod.frame;renderActive=active();camera=renderActive?mod.status:null;}
+  if(renderFrame!==mod.frame){renderFrame=mod.frame;renderActive=active();viewLine=-1;}
   return !renderActive||ppu.mode!==1||line>=224;
  },{name:'sandship-wreck',plan:(ppu,y,plan)=>{
-  lineWreck=state().wreck;const b=lineWreck.breach;
+  camera=sceneView(y);lineWreck=state().wreck;const b=lineWreck.breach;
   if(b?.map===camera.map){const key=`${camera.cameraX}:${camera.cameraY}:${b.x}:${b.y}`;if(key!==maskKey){maskKey=key;mask=breachMask(b,camera.cameraX,camera.cameraY);}}
   lineMask=mask;plan.extra.push(wreckOp);plan.skipPost=true;return true;
  }});
@@ -270,7 +329,7 @@ export function createSandshipWreck(snes,mod,state){
     }
    }
   },
-  restore(){sites=null;siteKey='';mask=null;maskKey='';spawn=null;},
+  restore(){sites=null;siteKey='';mask=null;maskKey='';memoKey='';spawn=null;},
   dispose(){p.getColor=color;p.renderLine=renderLine;},
  };
 }
