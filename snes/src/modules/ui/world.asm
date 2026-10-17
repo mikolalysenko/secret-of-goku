@@ -408,6 +408,12 @@ ui_world_irq:
 	PHA
 	PLB                               ; DB = $00
 	LDA $4211                         ; acknowledge
+	LDA.l !ui_magic                   ; block not set up (foreign savestate):
+	CMP.b #!UI_MAGIC&$FF              ; nothing of ours is armed
+	BNE .native
+	LDA.l !ui_magic+1
+	CMP.b #!UI_MAGIC>>8
+	BNE .native
 	LDA.l !ui_wirq
 	BNE .band
 	; the horizon: arm the band when it is shown, then the game's handler

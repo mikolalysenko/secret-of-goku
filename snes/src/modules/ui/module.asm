@@ -82,7 +82,9 @@ endif
 !ui_rty       = !RAM_UI+$70   ; word: target y
 !ui_rrel      = !RAM_UI+$72   ; word: relative bearing (heading units, signed)
 !ui_stub_rf   = !RAM_UI+$74   ; word: stub radar flags without the providers
-!ui_sky       = !RAM_UI+$76   ; 14 bytes: the sky's CGRAM 9-15 (+$76..+$83)
+!ui_sky       = !RAM_UI+$76   ; 12 bytes: the sky's CGRAM 9-15 (+$76..+$81)
+!ui_magic     = !RAM_UI+$82   ; word: !UI_MAGIC once this cartridge set the block up
+!UI_MAGIC     = $4B41         ; (savestates from other builds carry stale WRAM here)
 !ui_band_was  = !RAM_UI+$84   ; word: BG3 registers redirected (restore when the band goes)
 ; +$86-$B7: scouter, status, placement and fast-forward
 !ui_name_buf  = !RAM_UI+$B8   ; 8 bytes: display name buffer ({n} codes)

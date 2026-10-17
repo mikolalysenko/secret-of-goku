@@ -8,16 +8,58 @@
 ui_title_boot:
 	LDA.w #!UIS_INIT
 	STA.w !ui_state&$FFFF
+	LDA.w #!UI_MAGIC
+	STA.w !ui_magic&$FFFF
 	RTL
+
+; !RAM_UI must have been set up by this cartridge: a savestate made by
+; another build (no UI module, or another layout) carries stale or random
+; WRAM here, which would drive the queue and the IRQ chain. Clear the block
+; when the marker or !ui_state is off. DB = $7E, M16/X16; keeps A/X/Y.
+ui_ram_check:
+	PHA
+	LDA.w !ui_magic&$FFFF
+	CMP.w #!UI_MAGIC
+	BNE .reset
+	LDA.w !ui_state&$FFFF
+	AND.w #(!UIS_DRAWN|!UIS_ATLAS|!UIS_HDMA|!UIS_INIT)^$FFFF
+	BNE .reset
+	LDA.w !ui_qn&$FFFF
+	CMP.w #!UI_QMAX+1
+	BCS .reset
+	PLA
+	RTS
+.reset
+	PHX
+	LDX.w #$00BE
+	LDA.w #$0000
+-	STA.l !RAM_UI,X
+	DEX : DEX
+	BPL -
+	LDA.w #!UIS_INIT
+	STA.w !ui_state&$FFFF
+	LDA.w #!UI_MAGIC
+	STA.w !ui_magic&$FFFF
+	PLX
+	PLA
+	RTS
+
+; NMI / IRQ side (any DB): Z set when the block is set up.
+macro ui_ram_ok_long()
+	LDA.l !ui_magic
+	CMP.w #!UI_MAGIC
+endmacro
 
 ; New game: persistent fields start at zero (core cleared !SRAM_LIVE).
 ui_new_game:
+	JSR ui_ram_check
 	JSR ui_reset_session
 	RTL
 
 ; A GAME FILE was loaded (core restored or cleared !SRAM_LIVE): drop
 ; transient messages from the previous session.
 ui_load:
+	JSR ui_ram_check
 	JSR ui_reset_session
 	RTL
 
@@ -36,6 +78,7 @@ ui_reset_session:
 ; ---------------------------------------------------------------------------
 ; Field frame (also dialogue, events, Mode 7 arenas).
 ui_field_frame:
+	JSR ui_ram_check
 	INC.w !ui_frame&$FFFF
 	LDA.w !ui_claims&$FFFF            ; back from world flight
 	ORA.w !ui_band&$FFFF
@@ -51,11 +94,15 @@ endif
 
 ; Field vblank (DB = $80, forced blank): arm the palette HDMA.
 ui_field_nmi:
+	%ui_ram_ok_long()
+	BNE +
 	JMP ui_window_nmi
++	RTL
 
 ; World flight frame: the radio keeps its policy running; the field window
 ; is not drawn in Mode 7 (the world panel is a separate renderer).
 ui_world_frame:
+	JSR ui_ram_check
 	INC.w !ui_frame&$FFFF
 if defined("UI_TEST")
 	JSR ui_test_poll
@@ -66,10 +113,14 @@ endif
 	RTL
 
 ui_world_nmi:
+	%ui_ram_ok_long()
+	BNE +
 	JMP ui_world_vblank
++	RTL
 
 ; Ring menus: the field loop is paused; the window hides (never over a ring).
 ui_ring_frame:
+	JSR ui_ram_check
 	JSR ui_window_leave_field
 	RTL
 

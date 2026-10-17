@@ -19,6 +19,7 @@ macro ui_api_enter()
 	PEA $7E7E
 	PLB
 	PLB
+	JSR ui_ram_check
 endmacro
 ; Leave with the carry from the body (PLD/PLB keep it; PLP is replaced).
 macro ui_api_leave()

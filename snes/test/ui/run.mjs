@@ -8,6 +8,10 @@
 //             xorshift roll, interrupt, barriers, ceiling escapes, power intro,
 //             hidden frames) replayed frame by frame against createNativeRadio
 //   dialogue  the window yields to a native dialogue and comes back after it
+//   roll      saved charge attempts and xorshift state from a GAME FILE
+//   radar     world flight: band panel and dial against dragon-radar.js
+//   nocrash   production build from the arrival checkpoint (a savestate of
+//             another build) and from preset__sword: keeps running
 //   node      generator: every message encodes, atlas == radioPixels glyphs
 //   node snes/test/ui/run.mjs [case ...]   (SNES_ROM is ignored: test build)
 // Outputs: .local/snes-test/ui/<case>/ (results.json, screenshots).
@@ -173,6 +177,33 @@ const cases={
     const warned=[...new Set(expected.filter(Boolean).map(name))];
     if(warned.length<2)fails.push(`expected two rolled warnings, browser showed ${warned.join(',')}`);
     report('roll',!fails.length,[...fails,`warnings: ${warned.join(', ')}`,`saved attempts ${r.results?.attempts}`]);
+  },
+
+  async nocrash(){
+    // The production build (no UI_TEST client) from the arrival checkpoint
+    // (a savestate of another build: stale UI WRAM) and from an imported
+    // scene: frames keep coming while Goku walks, no code runs from RAM.
+    const prodRom=resolve(repo,'.local/snes-test/roms/ui-prod.sfc');
+    const b=spawnSync(process.execPath,[join(repo,'snes/build.mjs'),'--quiet','--strict',`--out=${prodRom}`],{cwd:repo,stdio:'inherit'});
+    if(b.status!==0){report('nocrash',false,['production build failed']);return;}
+    const ckpt=join(process.env.SNES_CHECKPOINTS??join(mainCheckout(),'.local/snes-checkpoints'),'after-arrival.mss');
+    const runs=[{name:'nocrash-arrival',state:ckpt,prelude:'IMPORT=nil'},
+      {name:'nocrash-sword',state:null,prelude:`IMPORT=${JSON.stringify(join(importDir,'preset__sword'))}`}];
+    const fails=[],notes=[];
+    for(const run of runs){
+      if(run.state&&!existsSync(run.state)){notes.push(`${run.name}: skipped, no ${run.state}`);continue;}
+      const rom=privateRom(prodRom,`ui-${run.name}`);
+      const r=await runMesen({rom,state:run.state,test:run.prelude+'\n'+lib+'\n'+readFileSync(join(here,'nocrash.lua'),'utf8'),outDir:join(outRoot,run.name),timeoutMs:600000});
+      cleanupRom(rom);
+      const res=r.results??{};
+      if(r.code!==0||res.error){fails.push(`${run.name}: mesen ${res.error??r.output.slice(-300)}`);continue;}
+      if(res.ticks<res.steps-4)fails.push(`${run.name}: ${res.ticks} dispatched frames in ${res.steps}`);
+      if(res.field_frames<res.steps/2)fails.push(`${run.name}: ${res.field_frames} field frames in ${res.steps}`);
+      if(res.ram_pcs)fails.push(`${run.name}: executing RAM at ${res.ram_pcs}`);
+      if(res.magic!==0x4b41||res.queue>16)fails.push(`${run.name}: UI block not set up (marker ${res.magic?.toString(16)}, queue ${res.queue})`);
+      notes.push(`${run.name}: ${res.ticks}/${res.steps} frames dispatched, ${res.field_frames} field frames`);
+    }
+    report('nocrash',!fails.length,[...fails,...notes]);
   },
 
   async radar(){
