@@ -41,7 +41,7 @@ let testRom=null;
 const testInfo=()=>{
   if(testRom)return testRom;
   const path=resolve(repo,'dist/snes/story-test.sfc');
-  const b=spawnSync(process.execPath,[join(repo,'snes/build.mjs'),'--quiet','-DSTORY_TEST',`--out=${path}`],{cwd:repo,stdio:'inherit'});
+  const b=spawnSync(process.execPath,[join(repo,'snes/build.mjs'),'--quiet','-DSTORY_TEST','-DSTORY_FAST_FORWARD',`--out=${path}`],{cwd:repo,stdio:'inherit'});
   if(b.status!==0)throw Error('story test build failed');
   return testRom=romInfo(path);
 };
@@ -389,6 +389,14 @@ cases.push({name:'absent-skip',bundle:'emulator-probe__potos-state',writes:[...g
         ['the gift flag advanced',r.flags[0xc3]>=1,`CFC3=${r.flags[0xc3]}`],
         ['Advice chose the 0/7 page',r.trace.some(t=>t[0]===0x85&&t[1]===js(0x85,0,[['questCount',0]])),'']];
     }});
+  // R held (test ROM runs story_fast_forward): prose advances, the choice waits.
+  cases.push({name:'newgame-fast-forward',rom:'test',state,writes:fresh,request:[0x134,0],frames:1500,hold:'r',shots:[300,1400],
+    check(r){
+      const ids=r.trace.map(t=>t[0]);
+      return [['R confirmed the spear gift and reached the menu',ids.filter(x=>x===0x134).length>=2&&ids.includes(0x13a),ids.map(x=>hex(x,3)).join(' ')],
+        ['the choice was not taken (no 85/86)',!ids.includes(0x85)&&!ids.includes(0x86),''],
+        ['the menu window is still open',r.d0!==0,`D0=${hex(r.d0)}`]];
+    }});
   cases.push({name:'newgame-elder',state,writes:fresh,request:[0x114,0],frames:600,mash:24,shots:[90],
     check(r){const t=r.trace.find(x=>x[0]===0x114),a=alloc(js(0x114,0));return [['114 resolves to the Elder\'s compiled line',t&&t[1]===a.at,hex(a.at,6)],['its text was read',readsCover(r.reads,a.at,a.end)>=a.length*0.8,'']];}});
 }
@@ -404,7 +412,7 @@ for(const c of cases){
   if(c.state&&!existsSync(c.state)){console.log(`skip ${c.name}: no checkpoint ${c.state}`);continue;}
   const info=c.rom==='test'?testInfo():prod,A=info.addr;
   const queries=c.rom==='test'?(c.queries??[]).map(([n,v])=>[queryId(n),v]):[];
-  const prelude=`CASE = {bundle=${c.bundle?lua(bundle(c.bundle)):'nil'}, writes=${lua(c.writes)}, before=${lua(c.before??[])}, request=${lua(c.request)}, frames=${c.frames}, mash=${c.mash??0}, shots=${lua(c.shots??[])}, resolve=${info.label('story_resolve_done')}, ram=${A.ram}, persist=${A.persist}, water=${A.water}, dump_water=${!!c.dump_water}, stop_idle=${!!c.stopIdle}, rom_writes=${lua(c.romWrites??[])}, timed=${lua(c.timed??[])}, dump=${lua(c.dump??[])}, log=${c.rom==='test'?A.log:'nil'}, queries=${A.queries}, test_queries=${lua(queries)}, script=${lua(c.script??null)}}\n`;
+  const prelude=`CASE = {bundle=${c.bundle?lua(bundle(c.bundle)):'nil'}, writes=${lua(c.writes)}, before=${lua(c.before??[])}, request=${lua(c.request)}, frames=${c.frames}, mash=${c.mash??0}, shots=${lua(c.shots??[])}, resolve=${info.label('story_resolve_done')}, ram=${A.ram}, persist=${A.persist}, water=${A.water}, dump_water=${!!c.dump_water}, stop_idle=${!!c.stopIdle}, rom_writes=${lua(c.romWrites??[])}, timed=${lua(c.timed??[])}, dump=${lua(c.dump??[])}, hold=${c.hold?lua(c.hold):'nil'}, log=${c.rom==='test'?A.log:'nil'}, queries=${A.queries}, test_queries=${lua(queries)}, script=${lua(c.script??null)}}\n`;
   const r=await runMesen({rom:info.path,test:prelude+luaBody,outDir:join(out,c.name),state:c.state??null});
   const res=r.results??{};
   if(res.error||!res.trace){console.log(`FAIL ${c.name}: ${res.error??'no results'}\n${r.output.slice(-1500)}`);failures++;continue;}

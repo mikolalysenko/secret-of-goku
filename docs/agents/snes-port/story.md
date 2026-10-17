@@ -159,7 +159,7 @@ against the encoded program at build time.
 | `00:C487` | object list bounds | `story_object_list`: owners may substitute a RAM list | `storyRead` bank-8 views |
 | `00:DD85` | record copied to `$C808+16i` | `story_object`: story overlays + owner hooks, recompute `$C807` | `storyRead` bank-8 views |
 | `00:1866` | name copy | `story_name_byte`: `displayName(n)` | `createNativeNames` |
-| field frame | | queued requests, spell re-grants, Jema repairs, Fire Palace floor, fast track, Potos gatekeeper, R fast-forward | `C0:B073` breakpoint, `potosGatekeeper.tick`, `scene-fast-forward` |
+| field frame | | queued requests, spell re-grants, Jema repairs, Fire Palace floor, fast track, Potos gatekeeper (R fast-forward with `-DSTORY_FAST_FORWARD`) | `C0:B073` breakpoint, `potosGatekeeper.tick`, `scene-fast-forward` |
 
 Resolving at `E77B` instead of at the fetch is equivalent because event
 starts are unique, every event is terminated, and `E77B` is the only writer
@@ -351,6 +351,7 @@ All `JSL`; any M/X on entry unless noted; DB/D preserved.
 | `story_api_ending_result` | A16 = 0 good, 1 fortress, 2 balls, 3 frieza, 4 beast (`ending-rules.js`). |
 | `story_api_flag_get` / `_set` / `_raise` | story flags `$CF00+n` (A = n; X = value / minimum; raise never lowers, carry = changed). |
 | `story_api_display_name` | A16 = n (0–3) → X16 = address in bank `$7E` of the 12-byte display name (overlay text, King Kai's radio). |
+| `story_api_window_has_choice` | carry set when the interpreter's current window (`$D1-$D3`) holds a choice before it closes, or the stream is unknown (`windowHasChoice`, for R fast-forward). |
 
 ## Resources and patches
 
@@ -389,9 +390,14 @@ All other `flight-dialogue.js` spans sit inside relocated events (4E4, 52F,
 `plan.md` lists `native-names` under title. The name *view* lives here
 because every authored `{3}` line depends on it; if title also needs
 `C0:1866` the build's overlap check will say so, and one side should call
-the other's routine. Likewise `plan.md` gives `scene-fast-forward` to radio;
-story's version uses only the core input filter (`story_fast_forward`, one
-`JSR` in the field frame) and can be dropped if radio ships its own.
+the other's routine.
+
+`scene-fast-forward.js` belongs to the UI module (`plan.md`, `!RAM_UI`). Story
+provides `story_api_window_has_choice` (the event-stream scan) and a
+complete reference implementation over the core input filter
+(`story_fast_forward`: R held in a scene masks R, pulses B on two of every
+eight frames for prose, stops at choices), built only with
+`-DSTORY_FAST_FORWARD` so two modules never inject B.
 
 ## Tests
 
@@ -413,6 +419,7 @@ never from copied data. Test-ROM cases build `dist/snes/story-test.sfc` with
 | Absent companions | `spell-grant`, `absent-skip` | spells kept and re-granted; 8 companion moves skipped, no WAIT stall |
 | Story areas | `story-area` | door 45 → map 40 raises CF20–22 to 3/2/1 |
 | Greeting | `crisis-greeting` | one greeting before an NPC's compiled script, then resume |
+| Fast-forward | `newgame-fast-forward` | test ROM with `story_fast_forward`: R held through Luka's spear gift reaches the menu and stops at the choice |
 | Water Palace | `water-palace-walk` | 113-byte walk equals `water-palace.js` for the state's positions |
 | Object overlays | `objects-*` (7) | loaded records of maps 408 (both captive states), 236 (solo/full), 139 (CF11 5/12), 195 equal `storyRead` |
 | Routes | `route-*` (25) | first resolution under story and foreign state for 558, 93, 9A, A8, 297, 42F, 4E1, 4A4, 5F8, 429, 4E5, 28B, 7A |
@@ -429,7 +436,11 @@ behind the hooks (Frieza, Sandship wreck, endings) is outside this module.
 ## Not ported here / core and owner requests
 
 - **Core / tools:** the import bundles' APU state does not answer sound-bank
-  uploads (above). A shared `canAttack` flag would replace
+  uploads (above). The Water Palace walk script (at most 512 bytes) is built
+  in `!SRAM_WORK_STORY` and executed by the original interpreter and text
+  engine, which the WRAM/SRAM claim test (`snes/test/core/wram.lua`) would
+  report as original code reading an added SRAM page; either whitelist
+  `$33:6000-$33:61FF` for that scene or give story a 512-byte WRAM buffer. A shared `canAttack` flag would replace
   `story_compute_can_act`, which reproduces `mana-mod.js canAttack` from RAM
   plus `ENDING_ACTIVE` (the JS-only `menuTransition` is not modelled).
 - **frieza:** door `3FC` entry override while the Emperor is present

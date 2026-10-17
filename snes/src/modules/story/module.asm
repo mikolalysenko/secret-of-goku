@@ -1509,7 +1509,9 @@ story_field_frame:
 	JSR story_start_queued
 .noqueue
 	JSR story_potos_gatekeeper
+if defined("STORY_FAST_FORWARD")
 	JSR story_fast_forward
+endif
 if defined("STORY_TEST")
 	JSR story_test_sweep
 endif
@@ -2478,8 +2480,39 @@ story_api_quest_status:
 ; Scene fast-forward (engine/scene-fast-forward.js). Holding R during a
 ; scene confirms prose with pulsed B and stops at choices; R itself is hidden
 ; from the game. The browser also runs these frames faster; the cartridge
-; cannot, so this is the auto-confirm half. Runs every field frame.
+; cannot, so this is the auto-confirm half. The UI module owns input
+; features (plan.md); build with -DSTORY_FAST_FORWARD to run this one from
+; the story field frame instead. story_api_window_has_choice is the part
+; that needs the event stream.
 ; ===========================================================================
+
+; JSL API: carry set when the window the interpreter is in ($D1-$D3) holds
+; a choice before it closes (or the stream is unknown), as windowHasChoice.
+story_api_window_has_choice:
+	PHB
+	PHD
+	PHP
+	REP #$30
+	PHX
+	PHY
+	PEA $7E7E : PLB : PLB
+	PEA $0000 : PLD
+	JSR story_window_has_choice
+	PLY
+	PLX
+	BCS .yes
+	PLP
+	PLD
+	PLB
+	CLC
+	RTL
+.yes
+	PLP
+	PLD
+	PLB
+	SEC
+	RTL
+
 story_fast_forward:
 	LDA.l !core_pad
 	AND.w #!PAD_R|!PAD_L

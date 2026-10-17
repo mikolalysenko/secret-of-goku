@@ -87,7 +87,8 @@ function test()
       snapshots[#snapshots + 1] = {i, snap}
       apply(timed[i])
     end
-    if CASE.mash and CASE.mash > 0 and i % CASE.mash == 0 then H.hold('b', 2) else H.wait(1) end
+    if CASE.hold then H.hold(CASE.hold, 1)
+    elseif CASE.mash and CASE.mash > 0 and i % CASE.mash == 0 then H.hold('b', 2) else H.wait(1) end
     if CASE.stop_idle and i > 30 and u8(0xD0) == 0 and u8(CASE.ram + 0x06) == 0 then
       local idle = true
       for _ = 1, 20 do H.wait(1); if u8(0xD0) ~= 0 then idle = false; break end end
