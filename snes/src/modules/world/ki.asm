@@ -405,7 +405,7 @@ world_shot_hit:
 	CMP.w #!TGT_BARRIER
 	BNE .notBarrier
 	; Opening the cloud layer: no crater, no boss or Tree progress.
-	JSL world_barrier_break
+	JSR world_barrier_hit
 	LDA.w #!MSG_BARRIER
 	JMP world_message
 .notBarrier
@@ -625,19 +625,3 @@ world_fort_fresh:
 	CMP.w #3
 	RTS
 
-; ---------------------------------------------------------------------------
-; Stand-ins for other streams.
-
-; Messages for the radio / story streams: the id stays in !w_msg and
-; !w_msg_count advances (see docs: !MSG_*).
-world_message:
-	STA.w !w_msg
-	INC.w !w_msg_count
-	RTS
-
-; Mana Tree cloud barrier: the destroy stream's destroy_tree_barrier_break
-; owns the E3 bit 6 landing lock; until it merges, record the request.
-world_barrier_break:
-	LDA.w #$0001
-	STA.w !w_barrier_req
-	RTL

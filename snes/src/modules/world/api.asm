@@ -181,27 +181,6 @@ world_wish_restore:
 	PLP
 	RTL
 
-; Sound stand-ins until the audio stream's DBZ effects merge: the request
-; id (!SFX_*) is recorded for tests and the audio stream; nothing is sent to
-; the driver yet. A16 = id. Any M/X (M16 entry expected), DB = $7E.
-world_sfx_takeoff:
-	PHP
-	REP #$20
-	LDA.w #!SFX_TAKEOFF
-	BRA world_sfx_note
-world_sfx_landing:
-	PHP
-	REP #$20
-	LDA.w #!SFX_LANDING
-	BRA world_sfx_note
-world_sfx:
-	PHP
-	REP #$20
-world_sfx_note:
-	STA.l $7E0000|!w_sfx_last
-	PLP
-	RTS
-
 ; ---------------------------------------------------------------------------
 ; Lifecycle (dispatch tables in snes/src/modules.asm).
 

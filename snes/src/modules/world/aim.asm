@@ -48,7 +48,7 @@ world_aim:
 	LDA $E3
 	AND.w #$0040
 	BNE .fortress
-	LDA.w !w_frieza_barrier_lock
+	JSR world_barrier_held
 	BNE .fortress
 	LDA.l $C67A80+(198*2)
 	AND.w #$00FF
