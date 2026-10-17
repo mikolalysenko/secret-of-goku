@@ -4,6 +4,13 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## 2026-10-17 — SNES cartridge: core runtime (core stream)
+
+- The standalone cartridge's core gives every module frame callbacks in the field (including dialogue and Mode 7 boss arenas), world flight, ring menus and full-screen menus, vblank callbacks for the field and world NMIs, and a title-program entry hook that resets module state on power-on and soft reset.
+- Services: a pad 1 filter after the game's multitap BIOS (hide or add buttons for movement, rings, dialogue, menus and steering), extra sprites behind or in front of the native ones, a VRAM upload queue that never runs past vblank, OBJ VRAM region claims, the native sound driver queue and native event requests (doors, world takeoff, save point).
+- GAME FILE saves carry the Goku state in per-slot SRAM sidecars, bound so that saving another slot (which rewrites every slot's native checksum) keeps them valid; damaged or missing sidecars load as legacy saves and NEW GAME clears the state.
+- `snes/test/checkpoints.mjs` plays the opening from power-on into shared name-entry, waterfall and Potos checkpoints. Eleven Mesen tests cover every service, the WRAM claims and the untouched SRAM pages. Engine research (loops, interrupts, input, OAM, VRAM, DMA budget, saves, FastROM evaluation) is in [snes-port/engine.md](snes-port/engine.md); the API is in [snes-rom.md](snes-rom.md#modules-and-core-api).
+
 ## 2026-10-16 — Mobile fullscreen and Home Screen play
 
 - Expanded mode now removes the header and gives the saved space to the game, keeping touch controls, Sound and Exit visible in portrait and landscape. The previous fallback left the picture unchanged on iPhone.
