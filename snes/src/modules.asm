@@ -25,8 +25,8 @@ modules_field_frame:
 	JSL debug_field_frame
 	JSL world_field_frame
 	JSL goku_frame
-	JSL fx_frame               ; after every module that draws effects: shows this frame's requests
 	JSL destroy_field_frame          ; last: its planner uses the frame time left
+	JSL fx_frame               ; after every module that draws effects: shows this frame's requests
 	JSL audio_frame                 ; last: sends what other modules requested this frame
 	RTL
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
