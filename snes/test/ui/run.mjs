@@ -245,6 +245,72 @@ const cases={
     report('mul',!fails.length,fails.slice(0,12));
   },
 
+  async place(){
+    // window-placement.js. preset__late: Goku stands under the window (his
+    // face on lines 0-71, nobody on 128-199), so the scene's windows go
+    // above the HUD; potos.mss: Luka's window covers nobody, it stays put.
+    // Each against a reference run with placement off (the ending's hide bit).
+    const {loadPng}=await import('./compare.mjs');
+    const fails=[],notes=[];
+    const potos=join(process.env.SNES_CHECKPOINTS??join(mainCheckout(),'.local/snes-checkpoints'),'potos.mss');
+    const run=async(name,prelude,state=null)=>{
+      if(!state)return mesenCase(name,{bundle:'preset__late',prelude,test:'place'});
+      const rom=privateRom(testRom,`ui-${name}`);
+      const pre=Object.entries(prelude).map(([k,v])=>`${k}=${lua(v)}`).join('\n');
+      const r=await runMesen({rom,state,test:pre+'\n'+lib+'\n'+readFileSync(join(here,'place.lua'),'utf8'),outDir:join(outRoot,name),timeoutMs:600000});
+      cleanupRom(rom);
+      return r;
+    };
+    const ok=(name,r)=>{
+      if(r.code!==0||r.results?.error){fails.push(`${name}: mesen ${r.results?.error??r.output.slice(-300)}`);return false;}
+      if(r.results.queued!==1||!r.results.waits){fails.push(`${name}: event $134 did not reach its first page (queued ${r.results.queued})`);return false;}
+      return true;
+    };
+    const px=(png,x,y)=>{const i=(y*png.width+x)*4;return png.data[i]<<16|png.data[i+1]<<8|png.data[i+2];};
+    const lower=await run('place-lower',{BACK:true}),native=await run('place-native',{NOPLACE:true});
+    if(ok('place-lower',lower)&&ok('place-native',native)){
+      const q=lower.results,n=native.results;
+      if((q.wp&7)!==7)fails.push(`preset__late: not moved (placement bits ${q.wp})`);
+      if(q.top_frames)fails.push(`preset__late: ${q.top_frames} frames showed the window at the top (vblank in time)`);
+      if((n.wp&6)!==0)fails.push(`reference run moved the window (${n.wp})`);
+      const L=loadPng(join(lower.outDir,'window.png')),N=loadPng(join(native.outDir,'window.png'));
+      const B=loadPng(join(lower.outDir,'before.png')),K=loadPng(join(lower.outDir,'back.png'));
+      let win=0,opaque=0,hud=0,top=0,back=0;
+      for(let y=0;y<64;y++)for(let x=0;x<256;x++){
+        if(q.mask[y*256+x]!=='1')continue;
+        opaque++;
+        if(px(L,x,135+y)!==px(N,x,7+y))win++;
+        if(px(K,x,7+y)!==px(N,x,7+y))back++;
+      }
+      for(let y=199;y<224;y++)for(let x=0;x<256;x++)if(px(L,x,y)!==px(N,x,y))hud++;
+      for(let y=7;y<51;y++)for(let x=0;x<256;x++)if(px(L,x,y)!==px(B,x,y))top++;
+      if(win)fails.push(`moved window: ${win}/${opaque} opaque pixels differ from the native window`);
+      if(hud)fails.push(`HUD (lines 199-223): ${hud} pixels differ from the reference`);
+      if(top)fails.push(`lines 7-50 with the window moved: ${top} pixels differ from the scene before the event`);
+      if(back)fails.push(`placement switched off: ${back}/${opaque} window pixels differ from the native window`);
+      if(q.regs_back!==n.regs)fails.push(`channels 0/1 not given back: ${q.regs_back} (game: ${n.regs})`);
+      if(q.wp_back&0x1C)fails.push(`placement still active after switching off (${q.wp_back})`);
+      if(!q.ended)fails.push('preset__late: the scene did not end');
+      else{
+        if(q.wp_end&0x1F)fails.push(`after the scene: placement bits ${q.wp_end} (session not closed or channels kept)`);
+        if(q.regs_end!==n.regs)fails.push(`after the scene: channels ${q.regs_end} (game: ${n.regs})`);
+        if(q.c2c_end&3)fails.push(`after the scene: $2C = ${q.c2c_end.toString(16)}`);
+      }
+      notes.push(`preset__late: decided on frame ${q.decided} (faces ${q.faces}); ${q.shown_frames} frames with a window up: ${q.moved_frames} moved, ${q.late_frames} after a late vblank (no HDMA can start), ${q.top_frames} at the top; ${opaque} window pixels, HUD and channels intact`);
+    }
+    if(existsSync(potos)){
+      const stay=await run('place-stay',{POTOS:true},potos),ref=await run('place-stay-native',{POTOS:true,NOPLACE:true},potos);
+      if(ok('place-stay',stay)&&ok('place-stay-native',ref)){
+        if((stay.results.wp&7)!==1)fails.push(`potos: placement bits ${stay.results.wp} (expected a decided scene that stays native)`);
+        const S=loadPng(join(stay.outDir,'window.png')),R=loadPng(join(ref.outDir,'window.png'));
+        let d=0;for(let y=0;y<224;y++)for(let x=0;x<256;x++)if(px(S,x,y)!==px(R,x,y))d++;
+        if(d)fails.push(`potos: ${d} pixels differ from the reference`);
+        notes.push(`potos: decided on frame ${stay.results.decided} (faces ${stay.results.faces}), stays native, frame identical`);
+      }
+    }else notes.push(`potos: skipped, no ${potos}`);
+    report('place',!fails.length,[...fails,...notes]);
+  },
+
   async radar(){
     // World flight: the band (lines 152-215) and the dial, against
     // dragon-radar.js run on the cartridge's own state for each screenshot.

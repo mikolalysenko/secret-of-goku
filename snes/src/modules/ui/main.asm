@@ -102,12 +102,15 @@ if defined("UI_TEST")
 endif
 	JSR ui_radio_tick
 	JSR ui_window_update
+	JSR ui_place_frame
 	RTL
 
-; Field vblank (DB = $80, forced blank): arm the palette HDMA.
+; Field vblank (DB = $80, forced blank): switch the window HDMA channels
+; for a moved native window, arm the radio's palette HDMA.
 ui_field_nmi:
 	%ui_ram_ok_long()
 	BNE +
+	JSR ui_place_nmi
 	JMP ui_window_nmi
 +	RTL
 

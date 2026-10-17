@@ -16,7 +16,7 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 | Telepathy in world flight (bottom panel) and the Dragon Radar | Done: panel pixel-identical to the browser's; dial identical for the same sweep angle (64 steps) and blink phase; guide, distance and blip from `radarBearing` (the blip may round the other way within 0.05 px of a half pixel); 60 Hz kept |
 | Scouter option and readouts | Not yet |
 | Goku's STATUS page text | Not yet |
-| Dialogue window placement | Not yet |
+| Dialogue window placement | Done (`place.asm`): the scene's windows move above the HUD when the first one would cover more faces where it is, as `window-placement.js`; moved window pixel-identical to the native one, HUD untouched |
 | R fast-forward | Auto-confirm done (`ff.asm`): R held in a scene hides R, pulses B on two of every eight frames for prose and stops at choices, as `scene-fast-forward.js`'s input filter; the browser's 12× emulation speed has no cartridge equivalent and instant text is not done |
 
 ## One source of truth: `snes/gen/ui.mjs`
@@ -216,6 +216,58 @@ half ~4–6, radar text steps ~5 when the guide changes, band and policy
 (`core_oam_hide_range`, one Y store per slot since `eee1c93`; before that
 it cost about 11 lines more and the radar-shown max was 206–219).
 
+## Dialogue window placement (`place.asm`)
+
+The native text engine always draws its window on BG3 rows 1–8 (built at
+`$7E:9C00`, uploaded to `$5820`). As in `window-placement.js`, one decision
+per scene: when a window is first present during an event (`$D0` ≠ 0), it
+goes above the HUD if the field is in Mode 1, no menu is up (`$EC & $7E`),
+the band above the HUD is free (only the radio's lower box ever draws
+there in a field scene) and more active actors' faces (screen y − 24,
+`$E020/$E022` per actor) lie on lines 0–71 than on 128–199; the decision
+holds for every window of the scene until the interpreter has been idle
+for 30 frames, and a menu puts the scene back. Present = a tile in
+column 15 of the buffer's rows 1–8 (the window opens from and closes to
+the middle of rows 4–5, sideways first; its top and bottom edges stay
+while the text area is cleared). `$1D11` bit 0 (full-screen text from
+`$9400`) and `$1D05` = 7 are not dialogue windows. The ending's `ui_hide`
+bit (`!UI_HIDE_ENDING`, `$4000`) keeps windows native; Frieza's and
+Vegeta's own actors are not counted yet (their modules would need to
+report a screen position).
+
+The tilemap, the text engine and its timing are untouched; while a window
+is moved the game's two window HDMA channels are reprogrammed. The game
+sets them up at `C0:C1E7` when a window opens (channel 0 CGADD from
+`$05DB`: `7F 10 | 20 10 | 8F 01…0F`; channel 1 indirect CGDATA from
+`$05D0`: `7F 0620 | 20 0620 | 8F DE02`, i.e. the HUD's BG3 colours 1–15 on
+lines 159–173) and never uses them for DMA, so they keep whatever the UI
+writes and need no per-frame vblank work:
+
+- Channel 1: mode 2 to BG3VOFS, a 16-byte table in SRAM staging: the
+  game's scroll (`$40`) + 128 on lines 7–70 (rows 17–24, blank, so the
+  window disappears there) and 135–198 (rows 1–8 shown above the HUD), the
+  game's scroll elsewhere.
+- Channel 0: indirect mode 3 (CGADD, CGADD, CGDATA, CGDATA) from records in
+  staging rebuilt each frame from the game's own sources (its dummy colour
+  16 and HUD buffer): palette 0 on lines 191–193 (the window's bottom row
+  only uses the frame's palette 1), palettes 1–3 on lines 199–207 (the
+  HUD's top row only uses palette 0, its second starts at 207), dummies
+  elsewhere. Rows 135–198 keep the window colours the NMI uploaded
+  (`$0600`), as the browser keeps each moved line's source colours.
+
+The field frame decides (`!ui_wp`, `!UIW_NOW` stored once per frame) and
+builds the tables; `ui_place_nmi`, after the game's vblank work, takes the
+channels (saving the game's table addresses, and again if `C0:C1E7`
+reprogrammed them) or gives them back. While a window closes the game
+clears `$2C` bits 0–1 every vblank (`C0:C0E1`); the NMI sets bit 1 again
+(`!UIW_FORCED`) so the scroll keeps the closing window down, and sets both
+bits when a window is open but the game skipped its setup because bit 1
+was ours. A channel switched on in HDMAEN after the frame's HDMA started
+runs from stale pointers, so no bit is set when the vblank's work already
+reached line 256 (the core writes `$2C` to HDMAEN after FX): such a frame
+shows the window at its native position (2 of 1,957 window frames in the
+test scene, both vblanks that ended past line 261 anyway).
+
 ## R fast-forward (`ff.asm`)
 
 Field frames: with R held (and L not), in a scene (`$D0` ≠ 0, `$E4` ≠ 0,
@@ -260,7 +312,7 @@ covers it. SRAM staging state (`!ui_s_bmode`, `!ui_s_bstep`,
 | `ui_power_intro_flight` | Call while Goku hovers in local flight; the first time he can act while hovering, the two banter lines are queued (carry clear). |
 | `ui_restore_first_flight` | The browser's `radio.restore({firstFlight:true})` (Frieza's full-power phase): messages and counters back to defaults. |
 | `ui_status` | → A16 = current message id + 1 (0 none), X16 = queued count, Y16 = 1 if visible this frame (Sandship `quiet()`). |
-| `ui_hide` / `ui_unhide` | A16 = owner bit: while any bit is set the window stays hidden and paused (cinematics, ceiling escapes, endings). |
+| `ui_hide` / `ui_unhide` | A16 = owner bit: while any bit is set the window stays hidden and paused (cinematics, ceiling escapes, endings). The endings' bit `$4000` (`!UI_HIDE_ENDING`) also keeps native dialogue windows in their native place. |
 | `ui_set_inputs` | A16 = `!UII_*` bits to set, X16 = bits to clear: `CRISIS` (five-minute crisis: no first-flight banter), `FORTRESS_GONE` (drop flight advice), `ACTION_BEAM` (asides wait), `WORLD_YIELD` (world flight: docking, an aerial ki shot or explosion; the radar hides on the next frame). |
 | `ui_hook_quest_collected` | Story hook `QUEST_COLLECTED` (A = palace 0–6): "DRAGON BALLS: n / 7". Bound as `!STORY_HOOK_QUEST_COLLECTED`. |
 
@@ -290,13 +342,13 @@ byte boundary.
 | Resource | Use |
 | --- | --- |
 | Code/data `$AC:8000-` | `!CODE_UI`: `$AC:8000-$E900` used (about 26 KiB: code, 6 KiB messages, 2.5 KiB field atlas, 2.2 KiB world atlas, 2.6 KiB dial tiles, radar tables); about 5.8 KiB left |
-| WRAM `$7E:7E40-$7E:7EFF` | `!RAM_UI`: state, current message, cooldowns, band/radar state, scratch, `!ui_magic` (`module.asm`), fast-forward (`+$A6`); `+$AA`–`+$B7` free |
-| SRAM `$33:7C00-$33:7FFF` | staging: window/band rows (`+$000`), field HDMA table or moved natives (`+$200`), text words (`+$240`), radar trig cache (`+$2E8`), build state (`+$2F4`), radar key (`+$2FC`), bearing inputs (`+$2FE`, `+$308`), queue (`+$340`), band and sky HDMA colour blocks (`+$3C0`, `+$3DC`) |
+| WRAM `$7E:7E40-$7E:7EFF` | `!RAM_UI`: state, current message, cooldowns, band/radar state, scratch, `!ui_magic` (`module.asm`), fast-forward (`+$A6`), window placement (`+$AA`); `+$AE`–`+$B7` free |
+| SRAM `$33:7C00-$33:7FFF` | staging: window/band rows (`+$000`), the radio's HDMA table, the moved window's colour records or moved natives (`+$200`), text words (`+$240`), radar trig cache (`+$2E8`), build state (`+$2F4`), radar key (`+$2FC`), bearing inputs (`+$2FE`, `+$308`), placement scroll table and the game's channel 0/1 tables (`+$312`, `+$322`), queue (`+$340`), band and sky HDMA colour blocks (`+$3C0`, `+$3DC`) |
 | SRAM persistent | `!PERSIST_UI` = `!PERSIST_MISC+$80` (`$31:6380`, `$60` bytes) — **request** |
 | VRAM (field) | BG3 tiles `$110-$113`, `$122-$1BF` and rows 1–8 / 17–24 while the window shows |
 | VRAM (world flight) | core OBJ region B (`$7100-$78FF`: band map rows 19–26 and the world atlas, read as BG3) and region C (`$7900-$7FFF`: dial tiles), claimed while shown |
 | CGRAM | field: colours 9–11, 13–15 on lines 0–205 while the window shows (HDMA); world: 9–15 on lines 145–223 while the band shows (HDMA), OBJ palette 3 colours 1–6 for the dial |
-| HDMA | channel 5 in the field (`$2C` bit 5), channel 6 in world flight (`$2C` bit 6) |
+| HDMA | channel 5 in the field (`$2C` bit 5) for the radio; channels 0/1 (the game's window HDMA, reprogrammed, `$2C` bits 0–1) while a native window is moved; channel 6 in world flight (`$2C` bit 6) |
 | IRQ | world flight: `C0:8A4B` hijacked (6 bytes, `%orig4`-checked); V=152 / V=216 at H=160 while the band shows |
 | OAM (world flight) | 12–14 module slots for the dial (first module slots) plus a slot per native moved behind it (at most 8) |
 
@@ -321,6 +373,7 @@ scenes and compares with the browser's own code:
 | `nocrash` | production build from `.local/snes-checkpoints/after-arrival.mss` (a savestate of another build: stale UI WRAM) and from `preset__sword`, while Goku walks: a dispatched frame per video frame, no code running from low RAM, the UI block set up |
 | `mul` | the rotation's multiplier routine against exact integer products (47 cases) |
 | `ff` | from `potos.mss` (a NEW GAME, Goku made active), Luka's menu (`$134`): with R held the spear gift's prose is confirmed (`$CFC3` = 1) and the interpreter waits on the menu's choice (`story_api_window_has_choice`); without input the prose waits (`$D0` = `$83`) |
+| `place` | `preset__late` (Goku under the window: lower) and `potos.mss` (Luka's window covers nobody: native), event `$134` through the story API, each against a reference run with placement off: the moved window's 10,124 opaque pixels equal the native window's, the HUD (lines 199–223) and lines 7–50 are unchanged; every frame with a window up in the lower scene (1,957, through pages, Luka's menu, its choice box and the closing windows) is checked at the display level (a BG3VOFS HDMA write on line 7) unless its vblank ended late; switching placement off gives the game's channel setup back and the window returns; after the scene the session closes, the channels and `$2C` are the game's; potos frame-identical |
 | `radar` | `preset__flight` with two quest states, steering between samples: band panel pixels against `radioPixels()` of the browser's panel text, dial pixels against `dragon-radar.js` for the sampled sweep angle and blink phase, guide and blip against `radarBearing` (UI_TEST builds compute the far blip every frame); then the world module's state: a Y ki shot, an L+Y charge and the weak wave it releases hide the dial (but the first frame), which comes back after them |
 
 ## Core requests
@@ -339,5 +392,13 @@ scenes and compares with the browser's own code:
   RAM (`ui_world_yield`); its sprites in native slots 0..n-1 that touch the
   dial's box (8–55, 8–55) are moved behind the dial every other frame, as
   for any native.
+- **Late field vblanks**: in heavy frames (a window opening or closing,
+  sprite uploads) the field NMI's work runs up to line 261 and sometimes
+  past it, so the core's `$2C` → HDMAEN write lands after the frame's HDMA
+  started; every channel enabled then runs from stale pointers (garbage
+  CGRAM / scroll writes for that frame, natively too when the window HDMA
+  is on). Suggest the core checks the V counter before that write and
+  writes 0 when it is already past vblank. The UI only sets `$2C` bits
+  when the vblank is before line 256.
 - **Optional FastROM**: the UI code runs in bank `$AC`; a FastROM build
   (`CORE_FASTROM`) would cut its world-flight cost by roughly a fifth.

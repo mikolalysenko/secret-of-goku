@@ -124,7 +124,8 @@ endif
 !ui_blink     = !RAM_UI+$A2   ; word: blip blink phase (0-29)
 !ui_rphase    = !RAM_UI+$A4   ; word: bearing halves done since the radar showed (bit0 rotated, bit1 geometry)
 ; +$A6-$A9: fast-forward (ff.asm)
-; +$AA-$B7: scouter, status, placement
+; +$AA-$AD: window placement (place.asm)
+; +$AE-$B7: scouter, status
 
 !ui_name_buf  = !RAM_UI+$B8   ; 8 bytes: display name buffer ({n} codes)
 
@@ -198,7 +199,7 @@ endif
 !ui_s_rkey  = !SRAM_WORK_UI+$2FC   ; word: radar text key without the guide (set with the target)
 !ui_s_rin   = !SRAM_WORK_UI+$2FE   ; 10 bytes: heading, x, y, target x, y of the last rotation
 !ui_s_gin   = !SRAM_WORK_UI+$308   ; 10 bytes: the same for the distance/guide/blip on screen
-                                   ; $312-$33F free
+                                   ; $312-$33E: window placement tables (place.asm)
 !ui_s_queue = !SRAM_WORK_UI+$340   ; !UI_QMAX x 8 bytes: id+1, param, map+1, frames left
 !ui_s_wband = !SRAM_WORK_UI+$3C0   ; 28 bytes: world band colours (HDMA ch6 data: 09 09 lo hi ...)
 !ui_s_wsky  = !SRAM_WORK_UI+$3DC   ; 28 bytes: the sky's colours 9-15 in the same layout
@@ -214,6 +215,9 @@ endif
 !UI_KB_ASIDE   = $02
 !UI_KB_BOTTOM  = $04
 
+; ui_hide owner bit of the endings: also keeps native windows in place
+!UI_HIDE_ENDING = $4000
+
 pushpc
 org !CODE_UI
 ui_code_start:
@@ -222,6 +226,7 @@ incsrc "radio.asm"
 incsrc "window.asm"
 incsrc "world.asm"
 incsrc "ff.asm"
+incsrc "place.asm"
 if defined("UI_TEST")
 	incsrc "../../../test/ui/testmod.asm"
 endif
