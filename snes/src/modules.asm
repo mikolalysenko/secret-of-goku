@@ -30,6 +30,7 @@ modules_field_frame:
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
 modules_field_nmi:
 	JSL goku_nmi
+	JSL destroy_field_nmi            ; Sandship white-out/tint palette, breach HDMA
 	RTL
 ; World flight frame, after the world logic (DB = $7E).
 modules_world_frame:
@@ -54,6 +55,7 @@ modules_menu_frame:
 ; Ring menu frame, in vblank (DB = $7E).
 modules_ring_frame:
 	JSL audio_pause
+	JSL destroy_ring_frame
 	RTL
 ; Title program entry (power-on, soft reset, quit to title), after module
 ; WRAM was cleared; the decompressed program is at 7E:8000 (DB = $7E).
@@ -61,6 +63,7 @@ modules_title_boot:
 	JSL title_title_boot
 	JSL debug_title_boot
 	JSL world_title_boot
+	JSL destroy_title_boot
 	RTL
 ; Before the game writes a GAME FILE: put persistent state into !SRAM_LIVE.
 modules_save:

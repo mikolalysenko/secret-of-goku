@@ -104,7 +104,7 @@ dst_sync_map:
 -	STA.l !DW,X                        ; !DW, !NTO, !PL, !DH ($80 bytes)
 	DEX : DEX : BPL -
 	STA.l !FX_SEQ : STA.l !FX_KIND : STA.l !FX_X : STA.l !FX_Y
-	JSR ss_reset_work
+	STA.l !ss_vis : STA.l !ss_work          ; the Sandship work restarts in its window
 	LDA.w #$D5A1 : STA.w !m_init
 	LDA.w #$FFFF : STA.w !d_map
 .inited
@@ -224,6 +224,14 @@ dst_run_event:
 destroy_reset:
 	REP #$30
 	STZ.w !m_init
+	RTL
+
+; destroy_title_boot (JSL, modules_title_boot): nothing of the Sandship's
+; vblank work survives a reset (the persistent block keeps its words).
+destroy_title_boot:
+	REP #$30
+	LDA.w #0
+	STA.l !ss_vis : STA.l !ss_work : STA.l !ss_own
 	RTL
 
 ; destroy_world_frame (JSL, modules_world_frame): the broken Mana Tree cloud

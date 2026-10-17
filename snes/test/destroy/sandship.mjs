@@ -33,10 +33,11 @@ function S.reset()
 end
 -- Goku in control: idle field, no white-out running.
 function S.control() return D.ground() and H.r16(ABI.ss_cut) == 0 and (H.r8(0x7EE000) & 1) == 1 end
--- Play until Goku is back in control (B taps through dialogue).
-function S.untilControl(limit)
+-- Play until Goku is back in control (B taps through dialogue; quiet: no
+-- taps, for scripts without text, where a late tap would make him dash).
+function S.untilControl(limit, quiet)
   for f = 1, limit or 6000 do
-    if H.r8(0x7E00D0) ~= 0 and f % 20 == 0 then H.tap('b', 2, 0) else H.wait(1) end
+    if not quiet and H.r8(0x7E00D0) ~= 0 and f % 20 == 0 then H.tap('b', 2, 0) else H.wait(1) end
     if f > 120 and S.control() then return f end
   end
   return -1
@@ -67,7 +68,7 @@ function S.enter(map, x, y, layer, flags)
   H.w8(ABI.ssw_dbgrec, map & 255); H.w8(ABI.ssw_dbgrec + 1, x * 2 + (map >> 8))
   H.w8(ABI.ssw_dbgrec + 2, y * 2 + (layer or 0)); H.w8(ABI.ssw_dbgrec + 3, 0)
   local ok = D.door(3, map)
-  S.untilControl(600)
+  S.untilControl(600, true)
   return ok
 end
 -- Walk through a real door, then let any scene play out.
@@ -352,6 +353,92 @@ scenarios.push(
       if(a.remark!==2)problems.push(`hint remark ${a.remark} want 2`);
       if(!(w.flags&1)||!(w.flags&2))problems.push(`planned wreck flags ${w.flags}`);
       if(w.flags&0x40)problems.push('still armed after the wave');
+    }},
+);
+
+// The wreck's look on the PPU (wreck.asm): CGRAM against the game's own
+// palette buffer at full white, during the fade and in the wreck (alarm
+// tint on BG palettes 1-7 only), and the breach's HDMA (channels 2/3, the
+// window span around the breach centre, sand in CGRAM 0 on its lines).
+const lookLua=`
+-- CGRAM colour i and the game's buffer colour i
+function S.cg(i) return H.cgram(i * 2) | (H.cgram(i * 2 + 1) << 8) end
+function S.buf(i) local base = (H.r8(0x7E002A) ~= 0) and 0x7EBE00 or 0x7E0600; return H.r16(base + i * 2) & 0x7FFF end
+-- summary of CGRAM vs the buffer: how many colours are white / equal, per range
+function S.palette()
+  local out = {white = 0, bgEqual = 0, bgDiff = 0, lowEqual = 0, objEqual = 0}
+  for i = 0, 255 do
+    local c, b = S.cg(i) & 0x7FFF, S.buf(i)
+    if c == 0x7FFF then out.white = out.white + 1 end
+    if i >= 16 and i < 128 then if c == b then out.bgEqual = out.bgEqual + 1 else out.bgDiff = out.bgDiff + 1 end
+    elseif i < 16 then if c == b then out.lowEqual = out.lowEqual + 1 end
+    else if c == b then out.objEqual = out.objEqual + 1 end end
+  end
+  return out
+end
+-- tinted colour check: red never lower, blue never higher than the buffer's
+function S.tintShape()
+  local bad = 0
+  for i = 16, 127 do
+    local c, b = S.cg(i) & 0x7FFF, S.buf(i)
+    if (c & 31) < (b & 31) or ((c >> 10) & 31) > ((b >> 10) & 31) then bad = bad + 1 end
+  end
+  return bad
+end
+`;
+scenarios.push(
+  {name:'ship-look',bundle:'sandship-wreck__qs-captured',
+    note:'the breakout white-out whitens all of CGRAM (rides through the escape door), fades into the wreck: BG palettes 1-7 tinted (red up, blue down), text/HUD and sprite colours untouched; the breach shows through HDMA channels 2/3',
+    body:lookLua+`
+  S.reset()
+  assert(H.importSnesJs(SCN.bundlePath), 'import failed')
+  H.wait(12)
+  local slots = {H.r8(0x7EE1E0), 0x16, H.r8(0x7EE1E2), H.r8(0x7EE1E3)}
+  for i, v in ipairs(slots) do H.w8(ABI.ss_gear + i - 1, v) end
+  H.w16(ABI.ss_gbits, 1)
+  H.w16(0x7EE002, 136); H.w16(0x7EE004, 210); H.wait(40)
+  H.result('before', S.palette())
+  H.shot('look-0-before')
+  D.hit({x = 136, y = 210, dir = 3, length = 96, halfWidth = 19, taper = 0, code = 2, str = 256, id = 21})
+  local full, mid = nil, nil
+  local shots = {}
+  for f = 1, 400 do
+    H.wait(1)
+    local fl = H.r16(ABI.ss_flash)
+    if not mid and fl >= 100 and fl <= 160 and H.r16(ABI.ss_cafter) == 0 then mid = S.palette(); H.shot('look-1-ramp') end
+    if not full and fl == 256 and H.r16(ABI.ss_cage) >= 40 then full = S.palette(); H.shot('look-2-white') end
+    if H.r16(ABI.ss_cafter) == 30 and not shots.fade then shots.fade = true; H.result('fadePal', S.palette()); H.shot('look-3-fade') end
+    if H.r16(ABI.ss_cut) == 0 and f > 100 then break end
+  end
+  H.result('ramp', mid); H.result('white', full)
+  S.untilControl(6000)
+  H.wait(20)
+  H.result('wreckPal', S.palette()); H.result('tintBad', S.tintShape())
+  H.result('own', H.r16(ABI.ss_own)); H.result('hdma', H.r8(0x7E002C)); H.result('vis', H.r16(ABI.ss_vis))
+  H.result('breach', {sx = H.r16(ABI.ssw_br_sx), sy = H.r16(ABI.ssw_br_sy), lines = H.r16(ABI.ssw_br_lines), map = H.r16(ABI.ss_bmap), x = H.r16(ABI.ss_bx), y = H.r16(ABI.ss_by)})
+  H.result('cg0', S.cg(0))
+  H.shot('look-4-wreck')
+  for k = 1, 3 do H.wait(40); H.shot('look-' .. (4 + k) .. '-wreck') end
+  -- leaving the breach's room gives the channels back
+  S.enter(318, 28, 46, 0)
+  H.wait(10)
+  H.result('away', {own = H.r16(ABI.ss_own), hdma = H.r8(0x7E002C), vis = H.r16(ABI.ss_vis), pal = S.palette()})
+  H.shot('look-8-corridor')
+`,
+    check(res,problems){
+      const b=res.before??{};
+      if(b.bgDiff)problems.push(`before the wreck CGRAM differs from the game's buffer (${b.bgDiff} BG colours)`);
+      if(!(res.white?.white>=250))problems.push(`full white: ${res.white?.white} white colours`);
+      if(!(res.ramp?.white<200&&res.ramp?.bgDiff>100))problems.push(`ramp: ${JSON.stringify(res.ramp)}`);
+      const w=res.wreckPal??{};
+      if(!(w.bgDiff>=90))problems.push(`wreck tint: only ${w.bgDiff} BG colours tinted`);
+      if(w.lowEqual!==16)problems.push(`text/HUD colours changed (${w.lowEqual}/16 equal)`);
+      if(!(w.objEqual>=120))problems.push(`sprite colours changed (${w.objEqual}/128 equal)`);
+      if(res.tintBad)problems.push(`${res.tintBad} BG colours not warmer than the game's`);
+      if(res.own!==1||(res.hdma&0x0C)!==0x0C)problems.push(`breach HDMA: own ${res.own} $2C ${res.hdma}`);
+      if(!(res.breach?.lines>0))problems.push('breach never programmed');
+      const a=res.away??{};
+      if(a.own!==0||(a.hdma&0x0C))problems.push(`channels not given back after leaving: ${JSON.stringify(a)}`);
     }},
 );
 

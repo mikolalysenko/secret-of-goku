@@ -275,7 +275,18 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !ss_boy      = !SS+$26
 !ss_gear     = !SS+$28   ; 3 x 4 bytes: equipped slots ($1E0-$1E3) the capture stowed
 !ss_gbits    = !SS+$34   ; word: bit i member i has stowed gear, bit 4+i seen held
-!ss_end      = !SS+$36
+; Volatile words kept here, outside the set-piece scene area, because the
+; vblank callback and the hooks must know whether !SSW belongs to the
+; Sandship (cleared at load, new game and the title).
+!ss_vis      = !SS+$36   ; word: !SS_VIS_MAGIC | bits: staged palette / breach tables ready
+!ss_work     = !SS+$38   ; word: !SS_WORK_MAGIC while !SSW holds the arc's work
+!ss_own      = !SS+$3A   ; word: HDMA channels 2/3 programmed by the breach
+!ss_end      = !SS+$3C
+assert !ss_end <= !PERSIST_DESTROY+$80, "destroy persistent block overflow"
+!SS_VIS_PAL    = $0001
+!SS_VIS_BREACH = $0002
+!SS_VIS_MAGIC  = $A500
+!SS_WORK_MAGIC = $5157
 !SSF_WRECK   = $0001     ; s.wreck
 !SSF_WPLAN   = $0002     ; s.wreck.planned
 !SSF_CRASH   = $0004     ; s.ending === 'crash'
@@ -292,7 +303,7 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !SSC_FRESH   = $0010     ; started inside this frame's destroy_hit: tick next frame
 ; Volatile Sandship work (CORE REQUEST: the tail of the set-piece scene area,
 ; free while the player is aboard: no scene runs on the ship maps).
-!SSW         = !SRAM_WORK_SCENE+$1C00    ; $400 bytes
+!SSW         = !SRAM_WORK_SCENE+$1600    ; $A00 bytes ($32:7600-7FFF)
 !ssw_lastmap = !SSW+$00  ; word: map of the previous field frame
 !ssw_beam    = !SSW+$02  ; word: last beam id considered
 !ssw_doorkey = !SSW+$04  ; word: door marker cell under a hovering Goku
@@ -332,6 +343,51 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !sp_out      = !SSW+$23A
 !sp_cx       = !SSW+$240 ; 3 words: chosen spots
 !sp_cy       = !SSW+$246
+; The wreck's look (wreck.asm): palette transforms staged for CGRAM and the
+; breach's HDMA tables.
+!ssw_pal_mode = !SSW+$260 ; word: 0 none, 1 alarm tint, 2 white-out
+!ssw_pal_key  = !SSW+$262 ; word: transform key of the current mode
+!ssw_pal_tl   = !SSW+$264 ; long: low-byte table of the transform
+!ssw_pal_th   = !SSW+$268 ; long: high-byte table
+!ssw_pal_cur  = !SSW+$26C ; word: next byte offset to transform
+!ssw_pal_first = !SSW+$26E ; word: range start (bytes)
+!ssw_pal_end  = !SSW+$270 ; word: range end (bytes)
+!ssw_pal_done = !SSW+$272 ; word: bytes of the range made since the mode/room began (uploaded)
+!ssw_pal_up   = !SSW+$274 ; word: NMI: bytes to upload (0 none)
+!ssw_pal_upat = !SSW+$276 ; word: NMI: first byte offset to upload
+!ssw_pal_src  = !SSW+$278 ; word: source buffer ($0600 or $BE00)
+!ssw_br_on    = !SSW+$280 ; word: breach tables built for this frame
+!ssw_br_own   = !SSW+$282 ; word: NMI: HDMA channels 2/3 programmed by us
+!ssw_br_buf   = !SSW+$284 ; word: back buffer offset (0 / !SS_HB_SIZE)
+!ssw_br_t2    = !SSW+$286 ; word: channel 2 table (window) of the built frame
+!ssw_br_t3    = !SSW+$288 ; word: channel 3 table (backdrop)
+!ssw_br_p2    = !SSW+$28A ; word: table addresses programmed last NMI
+!ssw_br_p3    = !SSW+$28C
+!ssw_br_cx    = !SSW+$28E ; word: camera (BG1, map pixels)
+!ssw_br_cy    = !SSW+$290
+!ssw_br_sx    = !SSW+$292 ; word: breach centre on screen (signed)
+!ssw_br_sy    = !SSW+$294
+!ssw_br_y0    = !SSW+$296 ; word: first / last screen line of the outline
+!ssw_br_y1    = !SSW+$298
+!ssw_br_span  = !SSW+$29A ; word: span table offset of the outline variant
+!ssw_br_bk    = !SSW+$29C ; word: the room's backdrop colour (transformed)
+!ssw_br_sand  = !SSW+$29E ; word: sand pattern phase
+!ssw_br_n     = !SSW+$2A0 ; word: scratch
+!ssw_vtmp     = !SSW+$2A2 ; 8 words scratch (wreck.asm)
+!ssw_br_lines = !SSW+$2B4 ; word: NMI statistics: breach frames programmed
+!ssw_pal_ups  = !SSW+$2B6 ; word: palette uploads
+!ssw_pal_left = !SSW+$2B8 ; word: bytes left in the current pass
+!ssw_pal_room = !SSW+$2BA ; word: map the staged colours were made for
+!ssw_pal_load = !SSW+$2BC ; word: and its room load (!ssw_loads)
+!ssw_pal_cols = !SSW+$2BE ; word: statistics: colours transformed
+!ssw_pal_wait = !SSW+$2C0 ; word: frames a pending pass had no time
+!SS_PAL_LINE  = 185       ; palette chunks start only before this scanline
+!SS_PAL_LINE_WHITE = 200  ; ... during a white-out (Goku is held)
+!SS_PAL_STARVE = 8        ; ... or after this many frames without one
+!SS_STAGE    = !SSW+$300 ; 512 bytes: transformed CGRAM
+!SS_HB       = !SSW+$500 ; 2 x !SS_HB_SIZE: HDMA tables (channel 2 at +0, 3 at +$C0)
+!SS_HB_SIZE  = $240
+!SS_HB_CH3   = $C0
 ; remarks published in !ssw_remark (the browser's radio lines)
 !SS_SAY_WEAK = 1         ; GOKU: Too weak! I have to charge it all the way.
 !SS_SAY_HINT = 2         ; GOKU: Hold L and Y to charge ... KA... ME... HA...
@@ -419,7 +475,10 @@ incsrc "scan.asm"
 incsrc "demolish.asm"
 incsrc "barriers.asm"
 incsrc "sandship.asm"
+incsrc "wreck.asm"
 incsrc "debug.asm"
+destroy_code_tables:
+incsrc "destroy/white.asm"
 destroy_code_end:
 assert destroy_code_end <= !CODE_DESTROY+$8000, "destroy code bank overflow"
 pullpc

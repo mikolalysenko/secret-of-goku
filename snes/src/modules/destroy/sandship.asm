@@ -33,24 +33,25 @@ ss_say:                                   ; A = !SS_SAY_* remark
 	LDA.l !ssw_dismiss : INC : STA.l !ssw_dismiss
 	RTS
 
-; ss_in_list: A = map, X = table (long label offset within bank) -> carry.
+; A = map -> carry = in the table ($FFFF-terminated words). A and X kept;
+; no work memory (also used outside the arc's window).
 macro ss_member(name, table)
 <name>:
-	STA.l !ssw_tmp
 	PHX
+	PHA
 	LDX.w #0
 -	LDA.l <table>,X : CMP.w #$FFFF : BEQ .no
-	CMP.l !ssw_tmp : BEQ .yes
+	CMP $01,S : BEQ .yes
 	INX : INX
 	BRA -
 .no
+	PLA
 	PLX
-	LDA.l !ssw_tmp
 	CLC
 	RTS
 .yes
+	PLA
 	PLX
-	LDA.l !ssw_tmp
 	SEC
 	RTS
 endmacro
@@ -95,7 +96,7 @@ ss_can_attack:
 
 ; Flash ramps: !ss_flash = clamp(A * 256 / X, 0, 256) (A signed).
 ss_ramp:
-	BMI .zero
+	CMP.w #$8000 : BCS .zero
 	PHA
 	TXA : STA.l !ssw_tmp+4
 	PLA
@@ -125,15 +126,58 @@ ss_reset_work:
 	LDA.w #0
 	STA.l !ssw_doorf : STA.l !ssw_clear : STA.l !ssw_embed : STA.l !ssw_remark : STA.l !ssw_rseq
 	STA.l !ssw_songs : STA.l !ssw_lastsong : STA.l !ssw_loads : STA.l !ssw_dismiss
+	STA.l !ssw_pal_mode : STA.l !ssw_pal_up : STA.l !ssw_pal_done : STA.l !ssw_pal_ups
+	STA.l !ssw_pal_left : STA.l !ssw_pal_wait : STA.l !ssw_pal_cols : STA.l !ssw_pal_load
+	STA.l !ssw_br_on : STA.l !ssw_br_buf : STA.l !ssw_br_lines
+	LDA.w #$FFFF : STA.l !ssw_pal_room
 	LDA.w #$FFFF : STA.l !ssw_dbgdoor
 	RTS
 
-; ---------------------------------------------------------------------------
-; ss_frame (destroy_field_frame): createSandship tick().
-ss_frame:
-	LDA.l !persist_goku_active : AND.w #$00FF : BNE +
+; The Sandship's work memory (!SSW) lies in the set-piece scene area, which
+; the late scenes own while they run: it is used only inside the arc's
+; window and initialised on entry to it.
+ss_work_ensure:
+	LDA.l !ss_work : CMP.w #!SS_WORK_MAGIC : BEQ +
+	JSR ss_reset_work
+	LDA.w #!SS_WORK_MAGIC : STA.l !ss_work
++	RTS
+; Carry: !SSW holds the arc's work.
+ss_work_ours:
+	LDA.l !ss_work : CMP.w #!SS_WORK_MAGIC : BEQ +
+	CLC
 	RTS
-+	LDA.l $7ECF28 : AND.w #$00FF : STA.l !ssw_stage
++	SEC
+	RTS
+; The arc's window (carry): stages 1-13, a white-out, the wreck or its
+; ending, stowed gear, or Goku on a ship map or the dunes.
+ss_window:
+	LDA.l $7ECF28 : AND.w #$00FF : BEQ +
+	CMP.w #14 : BCC .yes
++	LDA.l !ss_cut : BNE .yes
+	LDA.l !ss_flags : AND.w #!SSF_WRECK|!SSF_CRASH|!SSF_BOSS|!SSF_ESCAPED : BNE .yes
+	LDA.l !ss_gbits : AND.w #$0007 : BNE .yes
+	LDA.w $00DC : CMP.w #!SS_DUNES : BEQ .yes
+	JMP ss_ship_map
+.yes
+	SEC
+	RTS
+
+; ---------------------------------------------------------------------------
+; ss_frame (destroy_field_frame): createSandship tick(), then the wreck's
+; look. Outside the arc's window nothing touches !SSW and the vblank side
+; is told to let go.
+ss_frame:
+	LDA.l !persist_goku_active : AND.w #$00FF : BEQ .out
+	JSR ss_window : BCC .out
+	JSR ss_work_ensure
+	JSR ss_tick
+	JMP ss_visuals
+.out
+	LDA.w #0 : STA.l !ss_vis : STA.l !ss_work
+	RTS
+
+ss_tick:
+	LDA.l $7ECF28 : AND.w #$00FF : STA.l !ssw_stage
 	; the wreck ages; stage 12 (after the Mech Rider) closes it
 	LDA.l !ss_flags : AND.w #!SSF_WRECK : BEQ +
 	LDA.l !ss_wage : INC : STA.l !ss_wage
@@ -336,10 +380,12 @@ ss_hit:
 	LDA.l !persist_goku_active : AND.w #$00FF : BEQ .ret
 	LDA.w !arg_kind : CMP.w #2 : BCC .ret
 	LDA.w !arg_id : BEQ .ret
+	JSR ss_captive : BCC .ret
+	JSR ss_work_ensure
+	LDA.w !arg_id
 	CMP.l !ssw_beam : BEQ .ret
 	STA.l !ssw_beam
 	LDA.l !ss_cut : BNE .ret
-	JSR ss_captive : BCC .ret
 	LDA.l !ss_flags : AND.w #!SSF_WRECK : BNE .ret
 	LDA.w !arg_str : CMP.w #218 : BCS ss_blast
 	LDA.l !ss_flags : AND.w #!SSF_ARMED : BEQ .ret
@@ -667,6 +713,7 @@ ss_boss:
 ; that opens a bulkhead weakens the ship (one per strike, not per row).
 ss_on_demolish:
 	JSR ss_breakable : BCC .ret
+	JSR ss_work_ensure
 	LDA.l !ss_cut : BNE .ret
 	LDA.w !FRAME : SEC : SBC.l !ss_lastbrk : STA.l !ssw_tmp+4
 	LDA.w !FRAME : STA.l !ss_lastbrk
@@ -726,7 +773,8 @@ destroy_ss_object_list:
 	JMP .done
 +	LDA.w $00DC : JSR ss_ship_map : BCS +
 	JMP .done
-+	; the escape reload: Goku's room is coming up
++	JSR ss_work_ensure
+	; the escape reload: Goku's room is coming up
 	LDA.l !ss_cut : CMP.w #1 : BNE +
 	LDA.l !ss_cbits : BIT.w #!SSC_DOOR : BEQ +
 	ORA.w #!SSC_LOADED : STA.l !ss_cbits
@@ -854,6 +902,7 @@ destroy_ss_object:
 ; The current record (!ssw_rec) is one of the monsters this load appended:
 ; carry set, A = its k.
 ss_monster_record:
+	JSR ss_work_ours : BCC .no
 	LDA.l !ss_flags : AND.w #!SSF_WRECK : BEQ .no
 	LDA.w $00DC : JSR ss_ship_map : BCC .no
 	LDA.l !story_objlist_bank : AND.w #$00FF : CMP.w #(!ssw_list)>>16 : BNE .no
@@ -998,6 +1047,7 @@ destroy_door_record:
 .other
 	; tests: a one-shot record for one door (the browser spec's enter())
 	PHA
+	JSR ss_work_ours : BCC +
 	TXA : LSR : LSR : CMP.l !ssw_dbgdoor : BNE +
 	LDA.w #$FFFF : STA.l !ssw_dbgdoor
 	PLA
@@ -1031,6 +1081,7 @@ destroy_song_hook:
 	LDA.w #!SS_ALARM_SONG : STA.l $7E1E00
 	LDA.w #!SS_ALARM_PARAMS : STA.l $7E1E02
 .count
+	JSR ss_work_ours : BCC .out
 	LDA.l $7E1E00 : AND.w #$00FF : CMP.w #1 : BNE .out
 	LDA.l $7E1E01 : AND.w #$00FF : STA.l !ssw_lastsong
 	CMP.w #!SS_ALARM_SONG>>8 : BNE .out
