@@ -202,21 +202,37 @@ export function createFrieza(snes,mod){
   if(!arena)return emperorView.color(ppu,sub,x,y,treeView.color(ppu,sub,x,y,result));
   // Floor-only scars cannot cover Goku, native windows, or room walls.
   if(!sub&&result[1]===0&&y<224&&s.boss?.arena){
-   // Actor screen coordinates include lift and can be one movement update
-   // behind the background. Use the tile stream's origin and this scanline's
-   // actual BG1 fine scroll, including native quake, instead.
-   if(cameraLine!==y){
-    cameraLine=y;const x0=mod.read16(0xa8),y0=mod.read16(0xaa);
-    cameraX=x0+((ppu.bgHoff[0]-x0+8)&15)-8;cameraY=y0+((ppu.bgVoff[0]-y0+8)&15)-8;
-    const a=s.boss.arena;if(a.revision!==ruinsRevision||cameraX!==ruinsX||cameraY!==ruinsY){ruinsRevision=a.revision;ruinsX=cameraX;ruinsY=cameraY;ruins=ruinMask(a,cameraX,cameraY);}
-   }
-   const value=ruins?.[y*256+x];
-   if(value){const wx=x+cameraX,wy=y+cameraY,t=s.boss.age;
-    if(value===1){const cloud=(Math.floor(wx/9)+Math.floor(wy/6)+Math.floor(t/24))%3;result[0]=(2+cloud)|(1<<5)|((5+cloud)<<10);if((wx*37+wy*19)%211===0)result[0]=0x316b;}
-    else result[0]=value===2?0x0842:(wx+wy)%11===0?0x3296:0x31a8;
-   }
+   const value=scarLine(ppu,y)?.[y*256+x];
+   if(value)result[0]=scarColor(value,x,y);
   }
   return result;
+ }
+ function scarLine(ppu,y){
+  // Actor screen coordinates include lift and can be one movement update
+  // behind the background. Use the tile stream's origin and this scanline's
+  // actual BG1 fine scroll, including native quake, instead.
+  if(cameraLine!==y){
+   cameraLine=y;const x0=mod.read16(0xa8),y0=mod.read16(0xaa);
+   cameraX=x0+((ppu.bgHoff[0]-x0+8)&15)-8;cameraY=y0+((ppu.bgVoff[0]-y0+8)&15)-8;
+   const a=s.boss.arena;if(a.revision!==ruinsRevision||cameraX!==ruinsX||cameraY!==ruinsY){ruinsRevision=a.revision;ruinsX=cameraX;ruinsY=cameraY;ruins=ruinMask(a,cameraX,cameraY);}
+  }
+  return ruins;
+ }
+ function scarColor(value,x,y){
+  const wx=x+cameraX,wy=y+cameraY,t=s.boss.age;
+  if(value===1){const cloud=(Math.floor(wx/9)+Math.floor(wy/6)+Math.floor(t/24))%3;return (wx*37+wy*19)%211===0?0x316b:(2+cloud)|(1<<5)|((5+cloud)<<10);}
+  return value===2?0x0842:(wx+wy)%11===0?0x3296:0x31a8;
+ }
+ // The arena's shade() for a whole scanline as a compositor paint of BG1
+ // (Ppu.registerLineHook); every scar color is positive.
+ const scarColors=new Uint16Array(256),scarPaint={type:'paint',layers:1,colors:scarColors,skipZero:true,layer:-1,pixel:0,mainOnly:true};
+ function planScars(ppu,y,linePlan){
+  linePlan.skipPost=true;
+  if(!(y<224&&s.boss?.arena))return;
+  const mask=scarLine(ppu,y);if(!mask)return;
+  let any=false;
+  for(let x=0,at=y*256;x<256;x++){const value=mask[at+x];scarColors[x]=value?scarColor(value,x,y)+1:0;if(value)any=true;}
+  if(any)linePlan.extra.push(scarPaint);
  }
  snes.ppu.getColor=function(sub,x,y){
   refreshArena();
@@ -229,7 +245,7 @@ export function createFrieza(snes,mod){
   refreshArena();
   return !(renderArena&&ppu.mode===1)&&treeView.idle(ppu,line)&&emperorView.idle(ppu,line);
  },{name:'frieza',
-  plan:(ppu,line,plan)=>{refreshArena();if(renderArena&&ppu.mode===1){plan.disableMain|=2;plan.disableSub|=2;}return true;},
+  plan:(ppu,line,plan)=>{refreshArena();if(renderArena&&ppu.mode===1){plan.disableMain|=2;plan.disableSub|=2;planScars(ppu,line,plan);}return true;},
   post:(ppu,sub,x,y,r)=>{refreshArena();const t=shade(ppu,sub,x,y,r,renderArena&&ppu.mode===1);if(t!==r){r[0]=t[0];r[1]=t[1];r[2]=t[2];}}});
  const api={
   ready,get pendingEntrance(){return pendingEntrance();},get eligible(){return eligible();},get active(){return s.stage!=='dormant';},get crisisActive(){return !!s.crisis?.active;},get unresolved(){return s.stolen;},get eighth(){return s.eighth;},get permanent(){return s.permanent;},get fallen(){return s.fallen;},get popoiMember(){return s.popoiMember;},get trial(){return s.stage==='trial';},get fighting(){return s.stage==='battle'||s.stage==='won';},

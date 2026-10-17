@@ -15,8 +15,14 @@ export function createNativeFeedback(snes,mod){
     shade(this,sub,result);
     return result;
   };
+  // shade() for a whole scanline as a compositor channel map.
+  const tint={type:'channels',layers:63&~4,r:new Int32Array(32),g:null,b:new Int32Array(32),layer:-1,pixel:0,mainOnly:true};tint.g=tint.r;
+  let tintFlash=-1;
   p.registerLineHook?.('getColor',p.getColor,color,ppu=>!flash||!(ppu.mode===1||ppu.mode===7),
-    {name:'feedback',post:(ppu,sub,x,y,r)=>shade(ppu,sub,r)});
+    {name:'feedback',post:(ppu,sub,x,y,r)=>shade(ppu,sub,r),plan:(ppu,line,plan)=>{
+      if(tintFlash!==flash){tintFlash=flash;const amount=[0,1,2,4,6,9,13,17][flash];for(let c=0;c<32;c++){tint.r[c]=Math.min(31,c+amount);tint.b[c]=Math.min(31,c+(amount>>1));}}
+      plan.extra.push(tint);plan.skipPost=true;return true;
+    }});
   snes.write=function(address,value,dma){
     const bank=address>>>16,low=address&65535;
     if(low===0x49&&(bank===0x7e||bank<0x40||(bank>=0x80&&bank<0xc0)))pulse=null;
