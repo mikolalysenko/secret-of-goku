@@ -7,6 +7,7 @@
 
 ; incsrc "modules/<name>/module.asm"
 incsrc "modules/goku/module.asm"
+incsrc "modules/world/module.asm"
 
 pushpc
 org !CODE_CORE+$7000
@@ -14,6 +15,7 @@ org !CODE_CORE+$7000
 ; logic and OAM build, before the NMI handshake. M16/X16, DB = $7E, D = 0.
 modules_field_frame:
 	JSL goku_frame
+	JSL world_field_frame
 	RTL
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
 modules_field_nmi:
@@ -21,10 +23,12 @@ modules_field_nmi:
 	RTL
 ; World flight frame, after the world logic (DB = $7E).
 modules_world_frame:
+	JSL world_world_frame
 	RTL
 ; World vblank, after the game's uploads and HDMA setup; not force-blanked,
 ; so check core_vblank_lines before long uploads (DB = $80).
 modules_world_nmi:
+	JSL world_world_nmi
 	RTL
 ; Full-screen menu frame (file select, name entry, status, equipment,
 ; save), in vblank right after the menu's own uploads (DB = $7E).
@@ -36,6 +40,7 @@ modules_ring_frame:
 ; Title program entry (power-on, soft reset, quit to title), after module
 ; WRAM was cleared; the decompressed program is at 7E:8000 (DB = $7E).
 modules_title_boot:
+	JSL world_title_boot
 	RTL
 ; Before the game writes a GAME FILE: put persistent state into !SRAM_LIVE.
 modules_save:
@@ -45,5 +50,6 @@ modules_load:
 	RTL
 ; New game: !SRAM_LIVE was cleared and !persist_version set to 1.
 modules_new_game:
+	JSL world_new_game
 	RTL
 pullpc
