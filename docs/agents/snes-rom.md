@@ -111,10 +111,16 @@ savestate), `H.saveStable(name)`, `H.load(path)`, `H.importSnesJs(dir)`,
 | ROM E0–EF | One code bank per module, assembled at the `$A0–$AF:8000` mirror so code sees low WRAM and I/O; lower halves `$Ex:0000–7FFF` hold that module's tables |
 | ROM F0–F7 | Compiled story events and dialogue |
 | ROM F8–FF | Packed graphics and samples |
-| WRAM `7E:D700–DDFF` | Module state blocks (`snes/src/core/ram.asm`); the only WRAM never touched in 321 replayed original-game states |
+| WRAM `7E:D700–DDFF` | Module state blocks (`snes/src/core/ram.asm`) |
+| WRAM `7E:6E40–6FFF` | Core queues and staging |
+| WRAM `7E:7E40–7FFF` | UI block, then spare |
 | SRAM `$30:6000–7FFF` | Original saves, untouched |
-| SRAM `$31:6000–6FFF` | Persistent Goku state: per-slot sidecars and options |
-| SRAM `$31:7000–$33:7FFF` | Volatile work buffers |
+| SRAM `$31:6000–747F` | Persistent Goku state: live block (`$31:6000`) and one sidecar per native slot |
+| SRAM `$31:7480–$33:7FFF` | Volatile work buffers (`core/shared.asm`) |
+
+The three WRAM ranges are the only ones the original game never touches; the
+core tests re-check that, and that the game never reads or writes the added
+SRAM pages, from power-on through the opening and in seven imported scenes.
 
 `snes/src/core/macros.asm` provides `%hijack(addr, target, len, module)`,
 `%hijack_jsl`, `%patch` and `%origN` byte assertions. Every patch of original
@@ -138,15 +144,60 @@ into `dist/snes/gen/<name>/`, which is on asar's include path
 import the browser engine's JavaScript (authored tables, dialogue, story
 compiler) so the cartridge reuses one source of truth.
 
-Core services (`snes/src/core/core.asm`):
+Core services (`snes/src/core/`; engine facts behind them in
+[snes-port/engine.md](snes-port/engine.md)). Callbacks are entered with
+`JSL`, P = M16/X16, DB = `$7E`, D = 0; preserve DB/D and return with RTL.
+Vblank callbacks get DB = `$80` instead. Add a `JSL` line before the RTL
+of each hook in `snes/src/modules.asm`.
 
-| Symbol | Contract |
+| Hook | When |
 | --- | --- |
-| `modules_field_frame` | Called once per completed field frame after the game's logic, before the NMI handshake. P = M16/X16, DB = `$7E`, D = 0. Preserve DB/D, return with RTL. |
-| `modules_field_nmi` | Called in vblank after the game's own uploads, only for frames the field loop completed. DB = `$80` (I/O visible). Keep it short. |
-| `core_queue_vram` | Queue a VRAM upload for the next field vblank: A = VRAM word address, X = bytes, Y = source address, `core_scratch` byte = source bank. Carry set when the queue (8 entries) or the 3 KiB budget is full. |
-| `!core_pad`, `!core_pad_new`, `!core_pad_rel` | Pad 1 held/pressed/released this field frame (`$4218` bit layout, `!PAD_*`). |
-| `!core_frame` | Field frames since boot. |
+| `modules_field_frame` | Every completed field frame (towns, dungeons, dialogue, events, Mode 7 boss arenas) after the game logic and OAM build, before the NMI handshake (`00:B073`) |
+| `modules_field_nmi` | Field vblank after the game's uploads, still force-blanked (`00:C158`); only for frames the loop completed |
+| `modules_world_frame` | World flight frame end (`00:8085`) |
+| `modules_world_nmi` | World vblank after the game's uploads and HDMA setup (`00:8903`); not force-blanked |
+| `modules_menu_frame` | Full-screen menus (game select, name entry, file list, status/equipment, save screen), once per frame in vblank after the menu's uploads (`C0:1E08`) |
+| `modules_ring_frame` | Ring menus, once per frame in vblank (`C0:694F`); the field loop is paused |
+| `modules_title_boot` | Each entry to the title/intro WRAM program (power-on, soft reset, quit; `!core_title_entry` 0, or 1 for the alternate entry used by the ending), after module WRAM was cleared; patch the program at `7E:8000+` here |
+| `modules_save` / `modules_load` / `modules_new_game` | Before a GAME FILE is written; after one loaded (and core restored or cleared `!SRAM_LIVE`); after NEW GAME cleared `!SRAM_LIVE` |
+
+| Service | Contract |
+| --- | --- |
+| `!core_pad`, `!core_pad_new`, `!core_pad_rel` | Physical pad 1 held/pressed/released, updated once per dispatched frame of any mode (`$4218` layout, `!PAD_*`) |
+| `!core_pad_mask`, `!core_pad_inject` | Per-frame requests (cleared before each dispatch; OR your bits in): buttons hidden from / added to every game pad read (movement, rings, dialogue, menus, world steering). They apply from the game's next read (one frame later). A mask lasts at most two reads without a new request; injected buttons stay until one read consumes them, so a one-frame request reaches the menus' 4-frame poll. The title program is not filtered. `!core_pad_seen` = what the game got |
+| `core_oam_add` | Sprite from `!core_spr_x/y` (signed), `!core_spr_tile` (OAM bytes 2–3), `!core_spr_size` (0/1), behind the native sprites: field right after them, world flight in slots 88–127. Carry set = no room. Offscreen sprites are dropped. Call from frame callbacks |
+| `core_oam_add_front` | Field only: in front of all native sprites (max 16 per frame; the natives shift by a multiple of 4 slots) |
+| `core_oam_hide`, `!core_oam_native` | Hide slot A; first slot after this frame's native sprites (inspect or edit natives below it) |
+| `core_queue_vram` | A = VRAM word address, X = bytes, Y = source address, `!core_scratch` byte = source bank. Uploaded in this mode's vblank on a DMA channel no HDMA uses; a transfer that would not end by line 258 waits for the next vblank. Carry set when the queue (8) or the per-frame budget (3 KiB) is full |
+| `core_vblank_lines` | A = scanlines left before line 258 (0 outside vblank), for modules' own vblank work |
+| `core_vram_claim`, `core_vram_release` | A = region (`!VRAM_*`, `core/vram.asm`), X = owner id: exclusive use of a free OBJ VRAM region; returns Y = its VRAM word address |
+| `core_sound_queue` | A = command bytes 0–1, X = bytes 2–3 for the native driver (`$1E00`, `C3:0004`); one command sent per frame; carry set when 7 are pending |
+| `core_event_request` | A = native event id (`C1:E76D`: script events, `$0800\|door`, `$0C00\|map` takeoff); started at the end of an idle field frame. `!core_event_req` pending, `!core_event_last` started |
+| `!SRAM_LIVE`, `!PERSIST_*` | Live persistent block (`core/shared.asm`): written to the slot's sidecar after each native save; restored on load when the sidecar matches that slot's record (primary or backup); zeroed for NEW GAME (`!persist_version` = 1) and for saves without a valid sidecar (version 0) |
+| `!core_frame`, `!core_frame_world`, `!core_frame_menu`, `!core_frame_ring`, `!core_tick`, `!core_mode` | Frame counters per mode, any-mode tick, mode of the last dispatch (`!CORE_MODE_*`) |
+
+Limits: 128 sprites, 32 per line, 34 eight-pixel slivers per line. Modules
+can count on at least 64 OAM slots in the field and 40 in world flight. The
+core costs about 4–5 scanlines per field frame (`snes/test/perf`).
+
+### Checkpoints and core tests
+
+`node snes/test/checkpoints.mjs [--potos]` plays the original opening from
+power-on in Mesen with scripted input and writes stable savestates to the
+main checkout's `.local/snes-checkpoints/` (shared by every worktree;
+`--out=` or `SNES_CHECKPOINTS` override): `name-entry.mss` (empty name
+editor of a NEW GAME), `waterfall.mss` (first controllable field scene),
+and with `--potos` `potos.mss` (Potos, entered through the game's own door
+event from the waterfall; opening flags only). Each is saved while a main
+loop of original code waits for vblank, so it loads into later builds:
+`runMesen({rom, state: '<dir>/waterfall.mss', test})`. `checkpoints.json`
+records frame, map and position. For later scenes, start from a checkpoint
+and call `H.importSnesJs`.
+
+`node snes/test/core/run.mjs [test ...]` builds a `CORE_TEST` cartridge (a
+client of every service driven through a WRAM mailbox, `snes/test/core/testmod.asm`)
+and runs the core tests; `node snes/test/core/measure.mjs` reprints the
+per-scene timing table in engine.md.
 
 ## Engine anchors
 
@@ -156,8 +207,8 @@ Core services (`snes/src/core/core.asm`):
 | `C0:B070` | Field main loop: `JSR $B08C` (frame logic), then waits for NMI on `$EC` bit 0 |
 | `C0:B08C` | Field frame logic; calls the entity, map, menu and event subsystems |
 | `C0:B073` | Hijacked by `core_field_frame` (replaced `SEP #$20 / LDA #$01`) |
-| `$0100/$0104` | NMI/IRQ trampolines (`JML`). Field: `$00C0A8`/`$00C1CF`; world flight: `$0088CF`/`$008A4B`; file menu: `$C020A7`/`$7EA266` |
-| `00:C0A8` | Field NMI: forced blank, palette DMA from `7E:2200` (`$200` bytes), OAM DMA from `7E:0400` (`$220` bytes, when `$EC & 9`), VRAM queues (`C692`), then `C1E7` |
+| `$0100/$0104` | NMI/IRQ trampolines (`JML`). Field: `$00C0A8`/`$00C1CF`; world flight: `$0088CF`/`$008A4B`; menus: `$C020A7` (IRQ off); title program: RTI/`$7EA266`. Every mode: [engine.md](snes-port/engine.md) |
+| `00:C0A8` | Field NMI: forced blank, palette DMA from `7E:0600` (or `7E:BE00`; `$200` bytes, when `$EC & 5`), OAM DMA from `7E:0800` (`$220` bytes, when `$EC & 9`), VRAM queues (`C692`), sprite cells (`C1:950D`), then `C1E7` |
 | `00:C158` | Hijacked by `core_field_nmi` (replaced `SEP #$20 / LDA $2C / STA $420C`) |
 
 ## Analysis tools

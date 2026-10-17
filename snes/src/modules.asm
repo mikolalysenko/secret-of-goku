@@ -6,6 +6,7 @@
 ; docs/agents/snes-port/engine.md (what the game is doing at each hook).
 
 ; incsrc "modules/<name>/module.asm"
+incsrc "modules/goku/module.asm"
 incsrc "modules/title/module.asm"
 
 pushpc
@@ -14,9 +15,11 @@ org !CODE_CORE+$7000
 ; logic and OAM build, before the NMI handshake. M16/X16, DB = $7E, D = 0.
 modules_field_frame:
 	JSL title_field_frame
+	JSL goku_frame
 	RTL
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
 modules_field_nmi:
+	JSL goku_nmi
 	RTL
 ; World flight frame, after the world logic (DB = $7E).
 modules_world_frame:
