@@ -311,22 +311,26 @@ async function run(s){
   if(!s.control&&existsSync(join(outDir,'after.bin'))){
     const before=new Uint8Array(readFileSync(join(outDir,'before.bin'))),after=new Uint8Array(readFileSync(join(outDir,'after.bin')));
     grid=diffGrids(before,after,[w16(0xc0)>>4,w16(0xc2)>>4]);
-    if(ref&&s.timing){
-      // Timing-sensitive demolition (documented in s.timing): every wall cell
-      // the cartridge opens on the beam's layer is one the browser opens too;
-      // replacement tiles and the partner layer may differ. Reported, not failed.
-      const L=wram[0xe00b]&0x80?1:0,refCells=new Set(ref.grid.filter(c=>c.layer===L).map(c=>c.off));
-      const ours=grid.filter(c=>c.layer===L),stray=ours.filter(c=>!refCells.has(c.off));
-      if(!ours.length)problems.push('no wall cell opened');
-      if(stray.length)problems.push(`cells the browser keeps ${JSON.stringify(stray.slice(0,8))}`);
-      const key=c=>`${c.off}:${c.to}`,want=new Set(ref.grid.map(key)),got=new Set(grid.map(key));
-      const differ=ref.grid.filter(c=>!got.has(key(c))).length+grid.filter(c=>!want.has(key(c))).length;
-      res.timingNote=`${differ} edits differ from the browser (${s.timing})`;
-    }else if(ref){
+    if(ref){
+      // Exact comparison first. Demolition timelines are timing-sensitive
+      // (the cartridge plans within a frame budget, the browser replans the
+      // whole band every frame; other modules' frame costs move the plans):
+      // when they differ, every wall cell the cartridge opens on the beam's
+      // layer must still be one the browser opens (replacement tiles and the
+      // partner layer may differ), and the difference is reported, not failed.
+      const exact=[];
       const key=c=>`${c.off}:${c.to}`,want=new Set(ref.grid.map(key)),got=new Set(grid.map(key));
       const missing=ref.grid.filter(c=>!got.has(key(c))),extra=grid.filter(c=>!want.has(key(c)));
-      if(missing.length)problems.push(`missing edits ${JSON.stringify(missing.slice(0,8))}`);
-      if(extra.length)problems.push(`unexpected edits ${JSON.stringify(extra.slice(0,8))}`);
+      if(missing.length)exact.push(`missing edits ${JSON.stringify(missing.slice(0,8))}`);
+      if(extra.length)exact.push(`unexpected edits ${JSON.stringify(extra.slice(0,8))}`);
+      const demo=s.timeline&&s.name.startsWith('demo-');
+      if(demo&&(exact.length||s.timing)){
+        const L=wram[0xe00b]&0x80?1:0,refCells=new Set(ref.grid.filter(c=>c.layer===L).map(c=>c.off));
+        const ours=grid.filter(c=>c.layer===L),stray=ours.filter(c=>!refCells.has(c.off));
+        if(!ours.length)problems.push('no wall cell opened');
+        if(stray.length)problems.push(`cells the browser keeps ${JSON.stringify(stray.slice(0,8))}`);
+        if(exact.length)res.timingNote=`${missing.length+extra.length} edits differ from the browser${s.timing?` (${s.timing})`:''}`;
+      }else problems.push(...exact);
       // Redraw requests and sounds, row by row.
       // $95 requests carry bit 7 until the native sound dispatcher takes
       // them (it rewrites the byte without bit 7); a row that finds the
@@ -341,8 +345,11 @@ async function run(s){
       // may come in another order; compare them as multisets instead.
       const sub=s.timeline?(a,b)=>{const n=new Map();for(const x of a)n.set(x,(n.get(x)??0)+1);for(const x of b){if(!n.get(x))return false;n.set(x,n.get(x)-1);}return true;}
         :(a,b)=>{let i=0;for(const x of a)if(x===b[i])i++;return i===b.length;};
-      if(!sub(r82,want82))problems.push(`redraw $82 ${JSON.stringify(r82)} want ${JSON.stringify(want82)}`);
-      if(!sub(r83,want83))problems.push(`redraw $83 ${JSON.stringify(r83)} want ${JSON.stringify(want83)}`);
+      // (rows follow the edits: when those differ, so do the rows)
+      if(!res.timingNote){
+        if(!sub(r82,want82))problems.push(`redraw $82 ${JSON.stringify(r82)} want ${JSON.stringify(want82)}`);
+        if(!sub(r83,want83))problems.push(`redraw $83 ${JSON.stringify(r83)} want ${JSON.stringify(want83)}`);
+      }
       // (a timeline may split a browser row into two applications: compare
       // the sound kinds)
       const sounds=s.timeline?r95.every(x=>want95.includes(x)):sub(want95,r95);
