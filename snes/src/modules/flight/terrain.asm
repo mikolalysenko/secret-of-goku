@@ -2884,6 +2884,8 @@ fl_footprint:
 ; test (positions within 8 px). fl_grid_reset sets the origin; verdicts are
 ; filled lazily by fl_grid_test.
 fl_grid_reset:
+	LDA.w #$0000
+	STA.l !fl_g_stale
 	LDA $E002
 	SEC
 	SBC.w #14
@@ -3023,6 +3025,19 @@ fl_grid_off:
 ; 0 fail.
 fl_grid_test:
 	PHA                          ; [mode]
+	LDA.l !fl_g_stale
+	BEQ .start
+	LDA.w #$0000
+	STA.l !fl_g_stale
+	LDA.w !fl_t0 : PHA
+	LDA.w !fl_t1 : PHA
+	LDA.w !fl_t2 : PHA
+	LDA.w !fl_t3 : PHA
+	JSR fl_grid_reset
+	PLA : STA.w !fl_t3
+	PLA : STA.w !fl_t2
+	PLA : STA.w !fl_t1
+	PLA : STA.w !fl_t0
 	BRA .start
 .out
 	PLA

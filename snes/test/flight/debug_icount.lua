@@ -6,7 +6,7 @@ function test()
   F.import('graphics-audit__party')
   F.on()
   F.enter(139, 17, 55)
-  H.hold('a up', 2)
+  if ICOUNT_INPUT then H.wait(20) else H.hold('a up', 2) end
   local phase = 'other'
   local phases = {}
   local pids = {}

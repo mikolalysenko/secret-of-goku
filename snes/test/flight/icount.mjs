@@ -6,7 +6,7 @@ import {readFileSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {runMesen} from '../mesen.mjs';
-import {mainCheckout,checkpointDir} from '../checkpoints.mjs';
+import {mainCheckout,checkpointDir,privateRom,cleanupRom} from '../checkpoints.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const pos=process.argv.slice(2).filter(a=>!a.startsWith('--'));
 const rom=pos[0]??join(repo,'dist/snes/secret-of-goku.sfc');
@@ -27,6 +27,8 @@ const sym=n=>labels.find(l=>l.name===n)?.addr;
 const phases=[['d651',sym('fl_hook_d651')],['other',0x00d655],['d778',sym('fl_hook_d778')],['other',0x00d77c],['other',0x00d7f3],
   ['frame',sym('flight_frame')],['other',0x00b077],['d359',sym('fl_hook_d359')],['other',0x00d360],['other',0x00d38e]];
 const test=(walk?'ICOUNT_INPUT={up=true}\n':'')+`PHASES={${phases.map(p=>`{${JSON.stringify(p[0])},0x${p[1].toString(16)}}`).join(',')}}\nBUCKETS={${buckets.join(',')}}\nIMPORT=${JSON.stringify(join(mainCheckout(),'.local/snes-import')+'/')}\n`+readFileSync(join(here,'lib.lua'),'utf8')+'\n'+readFileSync(join(here,'debug_icount.lua'),'utf8');
-const r=await runMesen({rom,test,outDir:join(repo,'.local/snes-test/flight/icount'),state:join(checkpointDir(),'waterfall.mss')});
+const cart=privateRom(rom,'flight-dev');
+const r=await runMesen({rom:cart,test,outDir:join(repo,'.local/snes-test/flight/icount'),state:join(checkpointDir(),'waterfall.mss')});
+cleanupRom(cart);
 console.log((r.results?.log??[]).join('\n'));
 if(r.results?.error)console.log('ERROR',r.results.error);

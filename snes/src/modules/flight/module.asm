@@ -134,7 +134,9 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !fl_rc_queue   = !FL_SRAM+$200     ; 64 words: flood fill queue (tile index)
 !fl_anchor     = !FL_SRAM+$280     ; last verified landing: map, x, y, layer, terrain (5 words)
 !fl_crossing   = !FL_SRAM+$28A     ; crossing start: map, x, y, layer, terrain, whip (6 words)
-!fl_sram_test  = !FL_SRAM+$2A0     ; test mailbox ($E0 bytes, FLIGHT_TEST builds)
+!fl_sram_test  = !FL_SRAM+$2A0     ; test mailbox ($90 bytes, FLIGHT_TEST builds)
+!fl_hl         = !FL_SRAM+$330     ; canLand memo at the hero: rect (4 bytes), layer|terrain<<1 (byte),
+                                   ; verdict (byte), cell idx (4 words), cell tiles (4 bytes)
 !fl_g         = !FL_SRAM+$380     ; hero grid (fl_grid_reset): 3x3 tile verdicts around Goku
 !fl_g_tx0      = !fl_g+$00         ; word: grid origin tile x
 !fl_g_ty0      = !fl_g+$02         ; word: grid origin tile y
@@ -149,6 +151,7 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !fl_step_elig  = !fl_g+$14         ; word: cached eligible() for that step
 !fl_g_tiles    = !fl_g+$18         ; 9 bytes: tile id of each grid cell when its verdict was made
 !fl_g_base     = !fl_g+$22         ; word: idx of grid cell 0
+!fl_g_stale    = !fl_g+$24         ; word: nonzero = re-anchor the grid at Goku before its next use
 !fl_sw_rect    = !FL_SRAM+$3C0     ; 4 words: tile rectangle of the last evaluated sweep step
 !fl_sw_last    = !FL_SRAM+$3C8     ; 6 words: x, y, dx, dy, layer, result of the step's last sweep
 !fl_hm_land    = !FL_SRAM+$3D4     ; 4 words: x, y, E00B, result of canLand at the hero

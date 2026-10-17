@@ -186,34 +186,138 @@ fl_q_hero:
 ; while those stay the same (the frame logic asks several times).
 fl_hero_land:
 	JSR fl_q_hero
-	LDA.l !fl_hm_land
-	CMP $E002
-	BNE .eval
-	LDA.l !fl_hm_land+2
-	CMP $E004
-	BNE .eval
-	LDA $E00B
+	if defined("FLIGHT_MISSING_FLOOR")
+		JMP fl_can_land
+	endif
+	; bounds, then the tiles of the footprint's rectangle: the verdict of the
+	; last rectangle tested here is kept while its tiles, layer and terrain
+	; are unchanged
+	JSR fl_fp_bounds
+	BCS +
+	RTS
++	JSR fl_fp_rect
+	LDA.w !fl_q_t
+	ASL
+	ORA.w !fl_q_l
+	STA.w !fl_t6                 ; layer | terrain << 1
+	SEP #$20
+	LDA.w !fl_t0
+	CMP.l !fl_hl
+	BNE .eval8
+	LDA.w !fl_t1
+	CMP.l !fl_hl+1
+	BNE .eval8
+	LDA.w !fl_t2
+	CMP.l !fl_hl+2
+	BNE .eval8
+	LDA.w !fl_t3
+	CMP.l !fl_hl+3
+	BNE .eval8
+	LDA.w !fl_t6
+	CMP.l !fl_hl+4
+	BNE .eval8
+	REP #$20
+	; the corner tiles still hold the ids recorded with the verdict?
+	LDA.l !fl_hl+6
+	TAX
+	LDA.l $7F0000,X
+	EOR.l !fl_hl+14
 	AND.w #$00FF
-	CMP.l !fl_hm_land+4
 	BNE .eval
-	LDA.l !fl_hm_land+6
+	LDA.l !fl_hl+8
+	TAX
+	LDA.l $7F0000,X
+	EOR.l !fl_hl+15
+	AND.w #$00FF
+	BNE .eval
+	LDA.l !fl_hl+10
+	TAX
+	LDA.l $7F0000,X
+	EOR.l !fl_hl+16
+	AND.w #$00FF
+	BNE .eval
+	LDA.l !fl_hl+12
+	TAX
+	LDA.l $7F0000,X
+	EOR.l !fl_hl+17
+	AND.w #$00FF
+	BNE .eval
+	LDA.l !fl_hl+5
 	LSR
 	RTS
+.eval8
+	REP #$20
 .eval
-	JSR fl_can_land
+	; record the rectangle, key and corner cells first (fl_fp_tiles uses
+	; the scratch), then evaluate and record the verdict
+	SEP #$20
+	LDA.w !fl_t0
+	STA.l !fl_hl
+	LDA.w !fl_t1
+	STA.l !fl_hl+1
+	LDA.w !fl_t2
+	STA.l !fl_hl+2
+	LDA.w !fl_t3
+	STA.l !fl_hl+3
+	LDA.w !fl_t6
+	STA.l !fl_hl+4
+	REP #$20
+	; corner cells (c0,r0) (c1,r0) (c0,r1) (c1,r1) and their tiles
+	LDA.w !fl_q_l
+	BEQ +
+	LDA.w #$4000
++	STA.w !fl_t5
+	LDA.w !fl_t2
+	XBA
+	LSR
+	ORA.w !fl_t5
+	PHA                          ; row r0 base
+	ORA.w !fl_t0
+	STA.l !fl_hl+6
+	TAX
+	LDA.l $7F0000,X
+	SEP #$20
+	STA.l !fl_hl+14
+	REP #$20
+	LDA $01,S
+	ORA.w !fl_t1
+	STA.l !fl_hl+8
+	TAX
+	LDA.l $7F0000,X
+	SEP #$20
+	STA.l !fl_hl+15
+	REP #$20
+	PLA
+	LDA.w !fl_t3
+	XBA
+	LSR
+	ORA.w !fl_t5
+	PHA                          ; row r1 base
+	ORA.w !fl_t0
+	STA.l !fl_hl+10
+	TAX
+	LDA.l $7F0000,X
+	SEP #$20
+	STA.l !fl_hl+16
+	REP #$20
+	PLA
+	ORA.w !fl_t1
+	STA.l !fl_hl+12
+	TAX
+	LDA.l $7F0000,X
+	SEP #$20
+	STA.l !fl_hl+17
+	REP #$20
+	LDA.w #$0000
+	JSR fl_fp_tiles
 	LDA.w #$0000
 	ROL
-	STA.l !fl_hm_land+6
-	LDA $E002
-	STA.l !fl_hm_land
-	LDA $E004
-	STA.l !fl_hm_land+2
-	LDA $E00B
-	AND.w #$00FF
-	STA.l !fl_hm_land+4
-	LDA.l !fl_hm_land+6
+	SEP #$20
+	STA.l !fl_hl+5
+	REP #$20
 	LSR
 	RTS
+
 fl_hero_fly:
 	JSR fl_q_hero
 	LDA.l !fl_hm_fly
@@ -257,8 +361,10 @@ flight_frame:
 	endif
 	INC.w !fl_counter
 	STZ.w !fl_events
-	JSR fl_hero_memo_off
-	JSR fl_sweep_forget
+	LDA.w #$FFFF
+	STA.l !fl_hm_land+4          ; hero canFly/canLand memos and the last sweep
+	STA.l !fl_hm_fly+4
+	STA.l !fl_sw_last+8
 	; Native field with Goku in play?
 	SEP #$20
 	LDA.w !fl_state
@@ -300,17 +406,20 @@ flight_frame:
 	TSB.w !fl_state
 	REP #$20
 	JSR fl_ctx_update
-	JSR fl_grid_reset
+	LDA.w #$0001
+	STA.l !fl_g_stale            ; re-anchor the grid at Goku when first used
 .after
 	; --- afterFrame (frame N) ---
-	JSR fl_event_or_menu
-	BCC +
-	JSR fl_land_now
-+	; native sampling can finish one step after release: keep hovering when
-	; that step carried the feet off a narrow shore
 	LDA.w !fl_state
 	AND.w #!FLS_CAN
-	BEQ .settle
+	BNE .canafter
+	JSR fl_event_or_menu         ; (canAttack implies no event or menu)
+	BCC .settle
+	JSR fl_land_now
+	BRA .settle
+.canafter
+	; native sampling can finish one step after release: keep hovering when
+	; that step carried the feet off a narrow shore
 	LDA.w !fl_lift
 	AND.w #$00FF
 	BEQ .settle
@@ -404,6 +513,13 @@ fl_read_pad:
 fl_lift_update:
 	LDA.w !fl_lift
 	AND.w #$00FF
+	BNE +
+	LDA.w !fl_state
+	AND.w #!FLS_FLY
+	BNE +
+	RTS                          ; on the ground and staying there
++	LDA.w !fl_lift
+	AND.w #$00FF
 	STA.w !fl_t0
 	LDA.w !fl_state
 	AND.w #!FLS_FLY
@@ -440,6 +556,18 @@ fl_lift_update:
 ; cannot land.
 fl_decide:
 	SEP #$20
+	LDA.w !fl_state
+	BIT.b #!FLS_FLY|!FLS_HOVERED
+	BNE .full
+	LDA.w !fl_pad+1
+	BIT.b #(!PAD_A>>8)
+	BNE .full
+	LDA.w !fl_pad
+	BIT.b #!PAD_A
+	BNE .full
+	REP #$20
+	RTS                          ; on foot, A not held: nothing to decide
+.full
 	LDA.w !fl_state
 	AND.b #!FLS_FLY
 	BEQ +
@@ -541,6 +669,9 @@ fl_publish:
 	LDA.w !fl_hook
 	AND.w #!FLH_CAMERA
 	STA.w !fl_hook
+	LDA.w !fl_mflags
+	AND.w #!FLM_BEAST
+	BEQ +
 	JSR fl_beast_arena
 	BCC +
 	JSR fl_ground
@@ -563,10 +694,13 @@ fl_publish:
 .hooks
 	; the A button is a speed modifier on foot, never the native dash
 	LDA.w !fl_state
+	BIT.w #!FLS_CAN
+	BNE .mask
 	AND.w #!FLS_ON
 	BEQ .nomask
 	JSR fl_event_or_menu
 	BCS .nomask
+.mask
 	LDA.w !core_pad_mask&$FFFF
 	ORA.w #!PAD_A
 	STA.w !core_pad_mask&$FFFF
@@ -617,14 +751,38 @@ fl_publish:
 ; long gaps carry the party, and a Goku left inside a wall or outside the
 ; map returns to safe ground.
 fl_settle:
+	LDA.w !fl_state
+	AND.w #!FLS_CAN
+	BNE .can
 	JSR fl_ground
 	BCS +
 	JMP fl_crossing_none
-+	LDA.w !fl_state
-	AND.w #!FLS_CAN
-	BNE +
-	RTS                          ; context not loaded (not controllable)
-+	JSR fl_phasing
++	RTS                          ; context not loaded (not controllable)
+.can
+	; canAttack covers ground() except the load flag $FF
+	SEP #$20
+	LDA $FF
+	REP #$20
+	BEQ +
+	JMP fl_crossing_none
++	; on foot without a whip crossing, settle() only clears the crossing and
+	; records the last landing
+	LDA.w !fl_state
+	AND.w #!FLS_FLY
+	BNE .full
+	LDA.l !fl_crossing+10
+	BNE .full
+	JSR fl_crossing_none
+	LDA.l !fl_anchor
+	CMP $DC
+	BEQ +
+	JSR fl_anchor_none
++	JSR fl_hero_land
+	BCC +
+	JSR fl_anchor_here
++	RTS
+.full
+	JSR fl_phasing
 	LDA.w #$0000
 	ROL
 	PHA                          ; [elig] = phasing && eligible
