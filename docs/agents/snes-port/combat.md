@@ -235,9 +235,12 @@ another 2-3. With `CORE_FASTROM` (MEMSEL set) the same frames end at
 ## Requests
 
 - **core**: FastROM (`CORE_FASTROM`). Measured on this branch: the title
-  arrival's late impact frames (4 of 140 at lines 229-230 with SlowROM) all
-  end by 215; every module runs 25% faster, which combat, goku, destroy,
-  fx and audio together now need in heavy rooms and cutscenes.
+  arrival's late impact frames (4-5 of 140 at lines 229-232 with SlowROM)
+  all end by 215; every module runs 25% faster, which combat, goku,
+  destroy, fx and audio together now need in heavy rooms and cutscenes.
+  With fx merged, combat's ~6 lines a frame also cost destroy's
+  `demo-wind` its first Wind Palace breach again (planner spare time; main
+  with fx keeps it).
 - **core**: a shared field-vblank counter and per-vblank pad history (what
   `C0:C164` provides here) would serve other 60 Hz clients.
 - **goku**: the `ring` / `menu` tests drive the ring with native X after a
