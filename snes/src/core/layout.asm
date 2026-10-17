@@ -57,6 +57,7 @@
 !DATA_ENDING  = $E90000
 !DATA_AUDIO   = $EA0000
 !DATA_MISC    = $EB0000
+!DATA_FX      = $FB0000   ; effects library: whole bank
 
 !BANK_EVENTS  = $F0     ; F0-F7 upper halves ($Fx:8000-FFFF): story events
 !BANK_ASSETS  = $F8     ; F8-FF
@@ -65,5 +66,6 @@
 ; addressing; story keeps the upper halves of F0-F7):
 ;   Frieza  $F0:0000-$F3:7FFF lower halves (4 x 32 KiB) + $E6:0000-7FFF
 ;   Vegeta  $F4:0000-$F5:7FFF lower halves (2 x 32 KiB) + $E8:0000-7FFF
-;   Orbit   $F6:0000-7FFF, $F7:0000-FFFF, $FA:8000-FFFF, $FB:0000-FFFF + $E7:0000-7FFF
+;   Orbit   $F6:0000-7FFF, $F7:0000-FFFF, $FA:8000-FFFF + $E7:0000-7FFF
+;   FX      $FB:0000-FFFF (!DATA_FX: spell cells and effect tables)
 ; (Goku uses F8-FA lower; audio FC-FF.)

@@ -80,6 +80,58 @@ function lintImmediates(dir){
   return problems;
 }
 
+// ROM ownership check. asar silently lets a later org overwrite earlier
+// bytes, so two modules placing data in the same bank half corrupt each other
+// without an error. Every label defined at column 0 in snes/src/modules/<m>/
+// (and in dist/snes/gen/<m>*/) belongs to <m>; core files, modules.asm and the
+// generated hook tables belong to core. A 32 KiB bank half (expansion area,
+// ROM >= 0x200000) holding labels of two modules is reported.
+function labelOwners(){
+  const owners=new Map();
+  const scan=(dir,owner)=>{
+    if(!existsSync(dir))return;
+    for(const e of readdirSync(dir,{withFileTypes:true})){
+      const p=join(dir,e.name);
+      if(e.isDirectory())scan(p,owner);
+      else if(e.name.endsWith('.asm'))for(const line of readFileSync(p,'utf8').split('\n')){
+        const m=line.match(/^([A-Za-z_][A-Za-z0-9_]*):/);
+        if(m&&!owners.has(m[1]))owners.set(m[1],owner);
+      }
+    }
+  };
+  const modDir=join(here,'src/modules');
+  if(existsSync(modDir))for(const e of readdirSync(modDir,{withFileTypes:true}))if(e.isDirectory())scan(join(modDir,e.name),e.name);
+  if(existsSync(genDir))for(const e of readdirSync(genDir,{withFileTypes:true}))if(e.isDirectory()){
+    const owner=e.name.replace(/[-_].*$/,'');
+    if(!['story','debug'].includes(owner)||!/hooks/.test(e.name))scan(join(genDir,e.name),owner);
+  }
+  return owners;
+}
+function checkOwnership(symPath){
+  if(!existsSync(symPath))return [];
+  const owners=labelOwners(),halves=new Map();
+  for(const line of readFileSync(symPath,'utf8').split('\n')){
+    const m=line.match(/^([0-9A-Fa-f]{2}):([0-9A-Fa-f]{4}) (\S+)$/);
+    if(!m)continue;
+    const bank=parseInt(m[1],16),adr=parseInt(m[2],16),name=m[3].replace(/^:/,'');
+    let pc=-1;
+    if(bank>=0xC0)pc=((bank-0xC0)<<16)|adr;
+    else if(bank>=0x80&&bank<0xC0&&adr>=0x8000)pc=((bank-0x80)<<16)|adr;
+    if(pc<0x200000)continue;
+    const owner=owners.get(name);
+    if(!owner)continue;
+    const half=pc>>15;
+    if(!halves.has(half))halves.set(half,new Map());
+    const h=halves.get(half);h.set(owner,(h.get(owner)??0)+1);
+  }
+  const problems=[];
+  for(const[half,h]of[...halves].sort((a,b)=>a[0]-b[0]))if(h.size>1){
+    const bank=0xC0+(half>>1),side=half&1?'8000-FFFF':'0000-7FFF';
+    problems.push(`$${bank.toString(16).toUpperCase()}:${side}: ${[...h].map(([o,n])=>`${o} (${n} labels)`).join(', ')}`);
+  }
+  return problems;
+}
+
 // Hijack bookkeeping: %hijack() prints "HIJACK <addr> <len> <module>".
 function checkHijacks(text){
   const hits=[];
@@ -110,6 +162,12 @@ export async function build(){
   await runGenerators(base);
   const text=assemble(image);
   const hijacks=checkHijacks(text);
+  const shared=checkOwnership(out.replace(/\.sfc$/,'.sym'));
+  if(shared.length){
+    console.warn(`WARNING: ${shared.length} ROM bank half/halves hold labels of more than one module (possible overwrite):`);
+    for(const l of shared)console.warn('  '+l);
+    if(args.includes('--strict'))throw Error('ROM ownership check failed');
+  }
   for(const line of text.split('\n'))if(line.trim()&&!/^HIJACK /.test(line.trim())&&!quiet)console.log('  asar:',line);
   const rom=new Uint8Array(readFileSync(out));
   if(rom.length!==ROM_SIZE)throw Error(`Unexpected ROM size ${rom.length}`);

@@ -15,7 +15,7 @@ const ORDER={
   modules_world_frame:['destroy_world_frame','ui_world_frame','world_world_frame','*','fx_world_frame','audio_frame'],
   modules_world_nmi:['ui_world_nmi','world_world_nmi','*','fx_world_nmi'],
   modules_menu_frame:['goku_menu_frame','title_menu_frame','ui_menu_frame','*','audio_pause'],
-  modules_ring_frame:['ui_ring_frame','*','audio_pause'],
+  modules_ring_frame:['fx_ring_frame','ui_ring_frame','*','audio_pause'],
 };
 const src=readFileSync(path,'utf8');
 const lines=src.split('\n');
