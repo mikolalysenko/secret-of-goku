@@ -33,7 +33,7 @@ function romInfo(path){
   const bytes=new Uint8Array(readFileSync(path));
   const at=a=>bytes[((a>>16)&0x3f)<<16|(a&0xffff)],long=a=>at(a)|at(a+1)<<8|at(a+2)<<16;
   const t=label('story_addresses');
-  return{path,label,addr:{goku:long(t),persist:long(t+3),ram:long(t+6),water:long(t+9),log:long(t+12),queries:long(t+15)}};
+  return{path,label,addr:{goku:long(t),persist:long(t+3),ram:long(t+6),water:long(t+9),log:long(t+12),queries:long(t+15),sweep:long(t+18)}};
 }
 const prod=romInfo(rom);
 // Test ROM: hooks log, foreign queries answer from a table (-DSTORY_TEST).
@@ -295,6 +295,39 @@ cases.push({name:'absent-skip',bundle:'emulator-probe__potos-state',writes:[...g
         return [[`${hex(id,3)} ${title}`,t&&t[1]===want,`native ${t?hex(t[1],6):'none'} browser ${hex(want,6)}${alloc(want)?' ['+hex(alloc(want).id,3)+']':''}`]];
       }});
   }
+}
+
+// ---- exhaustive dispatch sweep (test ROM) -----------------------------------
+// story_test_sweep evaluates every route program on the cartridge; compare
+// all 324 choices with the browser's closures under the same state.
+{
+  const routed=catalog.routes.map(r=>r.id).sort((a,b)=>a-b);
+  const foreign=catalog.queries.filter(q=>q.owner!=='story');
+  let seed=0x5eed;
+  const rnd=n=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return (seed>>>16)%n;};
+  const fixed=[
+    {mask:0,ledger:[0,0],ram:{0xcf0d:0,0xcf0e:0,0xcf28:0,0xcf44:0,0xcf11:0},q:{}},
+    {mask:3,ledger:[0x7f,0x7f],ram:{0xcf0d:8,0xcf0e:8,0xcf28:11,0xcf44:2,0xcf11:9},q:Object.fromEntries(foreign.map(q=>[q.name,q.domain.length-1]))},
+  ];
+  const randomState=()=>({mask:rnd(4),ledger:[rnd(128),rnd(2)?0x7f:rnd(128)],ram:{0xcf0d:rnd(2)*8,0xcf0e:rnd(2)*8,0xcf28:rnd(2)?11:3,0xcf44:rnd(3),0xcf11:rnd(12)},
+    q:Object.fromEntries(foreign.map(q=>[q.name,rnd(q.domain.length)]))});
+  const states=[...fixed,...Array.from({length:6},randomState)];
+  const popcount=n=>{let b=0;for(;n;n&=n-1)b++;return b;};
+  states.forEach((st,k)=>{
+    const [held,seeds]=st.ledger;
+    const writes=[...goku,[ROLE.girl,st.mask&1?1:0,1],[ROLE.sprite,st.mask&2?1:0,1],[P_MASK,held,1],[P_SEEDS,seeds,1],...Object.entries(st.ram).map(([a,v])=>[0x7e0000|Number(a),v,1])];
+    const assign=[['questCount',popcount(held&127)],['questHeld7',Number((held&127)===127&&!(st.q.friezaStolen&&st.q.friezaStolenClass))],['questSeedsAll',Number((seeds&127)===127)],['questMaskAll',Number((held&127)===127)],
+      ...Object.entries(st.ram).map(([a,v])=>{const name='ram:'+Number(a).toString(16),def=env.vars.get(name);return[name,def?def.thresholds.filter(t=>v>=t).length:0];}),
+      ...Object.entries(st.q)];
+    cases.push({name:`sweep-${k}`,rom:'test',bundle:'emulator-probe__potos-state',writes,queries:Object.entries(st.q),frames:20,
+      timed:[[8,[[ADDR.sweep,1,1]]]],dump:[[ADDR.sweep,1+routed.length*3]],
+      check(r){
+        const table=r.dumps?.[0]??[];
+        const bad=[];
+        routed.forEach((id,i)=>{const got=table[1+i*3]|table[2+i*3]<<8|table[3+i*3]<<16,want=js(id,st.mask,assign);if(got!==want)bad.push(`${hex(id,3)}: ${hex(got,6)}/${hex(want,6)}`);});
+        return [[`all ${routed.length} routed events choose the browser's script (mask ${st.mask})`,table.length>0&&bad.length===0,bad.slice(0,6).join(' ')]];
+      }});
+  });
 }
 
 const only=process.argv.slice(2);

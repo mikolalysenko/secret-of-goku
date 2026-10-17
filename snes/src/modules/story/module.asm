@@ -82,7 +82,8 @@ incsrc "story/data.asm"
 !story_objlist_start = !RAM_STORY+$8C ; word: map object list start (header) in its bank
 !story_objlist_end   = !RAM_STORY+$8E ; word: list end (start + 8 + 8n)
 !story_objlist_bank  = !RAM_STORY+$90 ; byte: bank of the list (C8 = cartridge)
-; $91-$FF free
+!story_sweeping      = !RAM_STORY+$91 ; byte: test sweep evaluates routes only
+; $92-$FF free
 
 ; Persistent fields (!PERSIST_STORY, $C0 bytes, battery SRAM, per save slot)
 !story_p_version   = !PERSIST_STORY+$00 ; 1 once initialised
@@ -95,7 +96,8 @@ incsrc "story/data.asm"
 
 !STORY_WATER_BUF   = !SRAM_WORK_STORY    ; $33:6000, Water Palace walk script (<= $200)
 !STORY_TEST_QUERIES = !SRAM_WORK_STORY+$0700 ; test builds: one byte per foreign query id
-!STORY_TEST_LOG     = !SRAM_WORK_STORY+$0800 ; test builds: word count, then (id, A, X) words
+!STORY_TEST_LOG     = !SRAM_WORK_STORY+$0800 ; test builds: word count, then 128 (id, A, X) entries
+!STORY_TEST_SWEEP   = !SRAM_WORK_STORY+$0B10 ; test builds: request byte, then a pointer per routed event
 
 pushpc
 org !CODE_STORY
@@ -406,18 +408,26 @@ story_run_program:
 	STA.l !story_vm_pc
 	BRA .loop
 .hook
+	LDA.l !story_sweeping
+	AND.w #$00FF
+	BNE .skip_hook
 	LDA.l !story_req_id          ; route effects see A = requested event id
 	STA.l !story_hook_event
 	LDA.l !DATA_STORY+1,X
 	JSR story_call_hook
+.skip_hook
 	LDA.l !story_vm_pc
 	CLC
 	ADC.w #$0002
 	STA.l !story_vm_pc
 	BRA .loop
 .dynamic
+	LDA.l !story_sweeping
+	AND.w #$00FF
+	BNE .skip_dynamic
 	JSR story_water_palace
 	BCS .entered
+.skip_dynamic
 	LDA.l !story_vm_pc
 	CLC
 	ADC.w #$0002
@@ -453,7 +463,11 @@ story_run_program:
 	LDA.l !DATA_STORY+4,X
 	STA.l !story_last_event
 .entered
-	LDA.l !story_relocations
+	LDA.l !story_sweeping
+	AND.w #$00FF
+	BEQ +
+	RTS
++	LDA.l !story_relocations
 	INC
 	STA.l !story_relocations
 	; frieza/sandship/trial observe every entry, then the script's own hooks.
@@ -1500,6 +1514,9 @@ story_field_frame:
 .noqueue
 	JSR story_potos_gatekeeper
 	JSR story_fast_forward
+if defined("STORY_TEST")
+	JSR story_test_sweep
+endif
 	RTL
 
 ; Start the queued request, as native-story.js does at C0:B073.
@@ -2677,7 +2694,7 @@ story_new_game:
 ; Addresses for tests and tools (read from ROM through the symbol file).
 story_addresses:
 	dl !persist_goku_active, !PERSIST_STORY, !RAM_STORY, !STORY_WATER_BUF
-	dl !STORY_TEST_LOG, !STORY_TEST_QUERIES
+	dl !STORY_TEST_LOG, !STORY_TEST_QUERIES, !STORY_TEST_SWEEP
 
 ; Test builds (-DSTORY_TEST): every hook appends (id, A, X) to a log and
 ; every foreign query answers from a table (see the defines at the top).
@@ -2687,7 +2704,7 @@ if defined("STORY_TEST")
 story_test_log:
 	STA.l !story_tmp4
 	LDA.l !STORY_TEST_LOG
-	CMP.w #$0100
+	CMP.w #$0080
 	BCS .full
 	ASL
 	STA.l !story_tmp3
@@ -2709,6 +2726,60 @@ story_test_log:
 .full
 	PLA
 	RTL
+
+; Evaluate every route program under the current party and queries and
+; write the chosen script pointers (3 bytes each, routed ids ascending) to
+; !STORY_TEST_SWEEP+1. Requested by a nonzero !STORY_TEST_SWEEP. M16/X16.
+story_test_sweep:
+	LDA.l !STORY_TEST_SWEEP
+	AND.w #$00FF
+	BNE +
+	RTS
++	SEP #$20
+	LDA.b #$01
+	STA.l !story_sweeping
+	REP #$20
+	LDA $D1
+	PHA
+	LDA $D3
+	PHA
+	LDA.w #$0001
+	STA.l !story_tmp2            ; output offset
+	LDA.w #$0000
+.id
+	STA.l !story_req_id
+	ASL
+	TAX
+	LDA.l story_dispatch,X
+	BEQ .next
+	JSR story_run_program
+	LDA.l !story_tmp2
+	TAX
+	LDA $D1
+	STA.l !STORY_TEST_SWEEP,X
+	SEP #$20
+	LDA $D3
+	STA.l !STORY_TEST_SWEEP+2,X
+	REP #$20
+	TXA
+	CLC
+	ADC.w #$0003
+	STA.l !story_tmp2
+.next
+	LDA.l !story_req_id
+	INC
+	CMP.w #$0800
+	BCC .id
+	PLA
+	STA $D3
+	PLA
+	STA $D1
+	SEP #$20
+	LDA.b #$00
+	STA.l !story_sweeping
+	STA.l !STORY_TEST_SWEEP
+	REP #$20
+	RTS
 endif
 
 story_code_end:
