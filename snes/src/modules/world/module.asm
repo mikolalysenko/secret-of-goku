@@ -83,7 +83,11 @@ assert !RAM_WORLD == ($7E0000|!WORLD_RAM), "!WORLD_RAM must match !RAM_WORLD"
 !w_action_age   = !WORLD_RAM+$7A ; word: airBeam pose frames left
 !w_scar_pend    = !WORLD_RAM+$7C ; word: crater VRAM refresh rows left (scars.asm)
 !w_scar_row     = !WORLD_RAM+$7E ; word
-!w_bursts       = !WORLD_RAM+$80 ; 6 x 6 bytes: age (signed, $8000 none), world x, world y
+!w_bursts       = !WORLD_RAM+$80 ; 5 x 6 bytes: age (signed, $8000 none), world x, world y
+!WORLD_BURST_BYTES = 30
+!w_crater_up    = !WORLD_RAM+$9E ; word: crater characters uploaded this flight (chunks, 4 = done)
+!w_scar_ring    = !WORLD_RAM+$A0 ; word: next ring row to patch for a new crater ($FFFF none)
+!w_scar_ring_end = !WORLD_RAM+$A2 ; word: last ring row to patch
 !w_fort_seen    = !WORLD_RAM+$A4 ; word: w_frame when C2:B1F7 last projected the Fortress
 !w_burst_live   = !WORLD_RAM+$A6 ; word: live bursts
 !w_beam_rows    = !WORLD_RAM+$A8 ; 7 bytes: OAM offset of each beam row's left edge ($FF none)
@@ -98,10 +102,10 @@ assert !RAM_WORLD == ($7E0000|!WORLD_RAM), "!WORLD_RAM must match !RAM_WORLD"
 !w_scar_w       = !WORLD_RAM+$D4 ; word
 !w_scar_h       = !WORLD_RAM+$D6 ; word
 !w_scar_id      = !WORLD_RAM+$D8 ; word
-!w_cell_tiles   = !WORLD_RAM+$DA ; word: offset of the pending cell's tiles in goku_cell_tiles
+!w_scar_col     = !WORLD_RAM+$DA ; word: next column of the tilemap refresh row
 !w_pal_dirty    = !WORLD_RAM+$DC ; word: OBJ palettes 5/6 to rewrite in CGRAM this vblank
-!w_dock_px      = !WORLD_RAM+$DE ; word: docking: drawn centre x
-!w_dock_py      = !WORLD_RAM+$E0 ; word: docking: drawn centre y
+!w_ref_x0       = !WORLD_RAM+$DE ; word: crater being refreshed: first column
+!w_ref_w        = !WORLD_RAM+$E0 ; word: and width (tiles)
 !w_cursor       = !WORLD_RAM+$E2 ; word: OAM byte cursor while drawing
 !w_msg_arg      = !WORLD_RAM+$E4 ; word: message argument (town index for !MSG_TOWN)
 ; $E6-$FB: targeting scratch (aim.asm)
@@ -182,6 +186,8 @@ incsrc "world/data.asm"
 world_fx_tiles:
 incbin "world/fx.bin"
 world_fx_tiles_end:
+world_crater_chars:
+incbin "world/crater.bin"
 incsrc "util.asm"
 incsrc "field.asm"
 incsrc "flight.asm"

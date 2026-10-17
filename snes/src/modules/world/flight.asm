@@ -23,6 +23,7 @@ endif
 	JSR world_shadow
 	JSR world_dock_track
 	JSR world_ki
+	JSR world_scar_tick
 	JSR world_pose
 	JSR world_palettes
 	JSR world_draw
@@ -57,6 +58,10 @@ world_enter:
 	LDA.w #!WF_ACTIVE
 	TSB.w !w_flags
 	JSR world_ki_reset
+	STZ.w !w_crater_up
+	STZ.w !w_scar_pend
+	LDA.w #$FFFF
+	STA.w !w_scar_ring
 	; the takeoff pose ends with the world on screen (mana-mod.js)
 	STZ.w !w_trans_kind
 	STZ.w !w_trans_age

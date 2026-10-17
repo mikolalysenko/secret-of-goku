@@ -56,3 +56,15 @@
 ; deck's cue $26 becomes the crisis cue (fortress-collapse.js).
 %orig4($C1F109, $C3000422)
 %hijack_jsl($C1F109, world_event_sound_hook, 4, world)
+
+; World rows: C0:98FD JSR $99F3 / REP #$20, the RLE row decompressor into the
+; 7F ring (the row number was pushed at C0:98FC): craters are drawn into it.
+%orig4($C098FD, $C299F320)
+%orig1($C09901, $20)
+%hijack_jsl($C098FD, world_scar_row_hook, 5, world)
+
+; Landing check: C0:8190 LDA $7F0000,X / AND #$00FF, the world tile under
+; the camera; a crater cell lands as its original terrain.
+%orig4($C08190, $7F0000BF)
+%orig3($C08194, $00FF29)
+%hijack_jsl($C08190, world_land_tile_hook, 7, world)

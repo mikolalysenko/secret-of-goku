@@ -309,3 +309,49 @@ world_event_sound_hook:
 .send
 	PLP
 	JML $C30004
+
+; ---------------------------------------------------------------------------
+; C0:98FD (JSL, 5 bytes, replaced JSR $99F3 / REP #$20): decompress world
+; row (pushed at C0:98FC) into the 7F ring, then draw the craters crossing
+; it. Entry: M16 X8, D = 0, DB = the world loop's.
+world_scar_row_hook:
+	%call00($99F3)
+	PHP
+	PHB
+	REP #$30
+	PEA $7E7E
+	PLB
+	PLB
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BEQ .done
+	LDA $06,S                        ; the row (above P, DB and our return)
+	JSR world_scar_patch_row
+.done
+	PLB
+	PLP
+	REP #$20
+	RTL
+
+; C0:8190 (JSL, 7 bytes, replaced LDA $7F0000,X / AND #$00FF): the tile
+; under the camera for the landing check. A crater cell answers with the
+; original terrain from the ROM row, so landing works as before the blast.
+; Entry: M16 X16, D = 0.
+world_land_tile_hook:
+	LDA.l $7F0000,X
+	AND.w #$00FF
+	CMP.w #!WORLD_CRATER_CHAR0
+	BCC .done
+	LDA $FC
+	LSR
+	LSR
+	LSR
+	TAX                              ; row
+	LDA $FA
+	LSR
+	LSR
+	LSR
+	AND.w #$01FF                     ; column
+	JSR world_orig_tile
+.done
+	RTL

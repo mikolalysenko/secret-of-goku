@@ -494,7 +494,7 @@ world_burst_add:
 	CLC
 	ADC.w #6
 	TAX
-	CPX.w #36
+	CPX.w #!WORLD_BURST_BYTES
 	BCC -
 	; full: drop the oldest (largest age)
 	LDX.w #$0000
@@ -507,7 +507,7 @@ world_burst_add:
 	CLC
 	ADC.w #6
 	TAX
-	CPX.w #36
+	CPX.w #!WORLD_BURST_BYTES
 	BCC -
 	TYX
 	BRA .slot
@@ -549,7 +549,7 @@ world_bursts_tick:
 	CLC
 	ADC.w #6
 	TAX
-	CPX.w #36
+	CPX.w #!WORLD_BURST_BYTES
 	BCC .next
 	RTS
 
@@ -568,7 +568,7 @@ world_ki_reset:
 	STZ.w !w_burst_live
 	LDA.w #$FFF0
 	STA.w !w_fort_seen
-	LDX.w #30
+	LDX.w #!WORLD_BURST_BYTES-6
 -	LDA.w #$8000
 	STA.w !w_bursts,X
 	TXA

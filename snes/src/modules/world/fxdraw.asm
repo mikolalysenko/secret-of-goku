@@ -1131,7 +1131,7 @@ world_draw_bursts:
 	LDA.w !w_burst_live
 	BNE +
 	RTS
-+	LDX.w #30
++	LDX.w #!WORLD_BURST_BYTES-6
 -	LDA.w !w_bursts,X
 	BPL +
 	TXA
@@ -1202,7 +1202,7 @@ world_draw_bursts:
 	CLC
 	ADC.w #6
 	TAX
-	CPX.w #36
+	CPX.w #!WORLD_BURST_BYTES
 	BCS +
 	JMP .burst
 +

@@ -35,6 +35,7 @@ world_world_nmi:
 	JSR world_nmi_palettes
 	JSR world_nmi_cell
 	JSR world_nmi_mini
+	JSR world_nmi_scars
 .exit
 	PLD
 	PLB
@@ -103,7 +104,7 @@ world_nmi_cell:
 	ASL
 	ASL
 	ASL                              ; cell * 32 (16 tile words)
-	STA.w !w_cell_tiles
+	STA.w !w_scratch+12              ; offset of the cell's tile words
 	LDA.l world_buf_vram,X           ; X = target*2
 	STA.w !w_scratch+4
 	SEP #$20
@@ -117,11 +118,11 @@ world_nmi_cell:
 	PHY
 	LDY.w #4
 .tile
-	LDX.w !w_cell_tiles
+	LDX.w !w_scratch+12
 	LDA.l goku_cell_tiles,X
 	JSR world_dma_tile
-	INC.w !w_cell_tiles
-	INC.w !w_cell_tiles
+	INC.w !w_scratch+12
+	INC.w !w_scratch+12
 	DEY
 	BNE .tile
 	PLY

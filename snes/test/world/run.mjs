@@ -5,7 +5,10 @@
 //             banking, bob, shadow), both forms
 //   takeoff   L+R from the field: native $0C00|map path without the summon
 //   landing   B over land: no BG3 fly-by, landing pose, ordinary loader
-//   (more in later milestones: ki, wave, fortress, scars, dock, item)
+//   ki        aerial ki shots, charge, Fortress shield deflection
+//   fortress  full Super Saiyan wave: destruction, cutaway, deck landing
+//   scars     town craters in the 7F ring and the Mode 7 tilemap, persistence
+//   dock      docking approach: ki boost, curve into the Fortress, deck
 //   node snes/test/world/run.mjs [test ...]
 // ROM: $SNES_ROM or dist/snes/secret-of-goku.sfc. Outputs: .local/snes-test/world/
 import {spawnSync} from 'node:child_process';

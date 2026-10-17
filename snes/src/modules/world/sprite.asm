@@ -345,22 +345,25 @@ world_draw_dock:
 	LDX.w #128
 	LDY.w #210
 	JSR world_bezier
-	STA.w !w_dock_px
+	PHA                              ; x
 	LDA.w !w_dock_y
 	LDX.w #84
 	LDY.w #$FFF4                     ; -12
 	JSR world_bezier
-	STA.w !w_dock_py
-	PLX
+	TAY                              ; y
+	PLA
+	PLX                              ; OAM cursor
+	STA.w !w_scratch+10
+	STY.w !w_scratch+12
 	LDA $BF
 	AND.w #$00FF
 	CMP.w #80                        ; t >= 1/2: the 16x16 miniature
 	BCS .mini
-	LDA.w !w_dock_px
+	LDA.w !w_scratch+10
 	SEC
 	SBC.w #16
 	STA.w !w_scratch
-	LDA.w !w_dock_py
+	LDA.w !w_scratch+12
 	SEC
 	SBC.w #16
 	STA.w !w_scratch+2
@@ -369,11 +372,11 @@ world_draw_dock:
 	LDA.w !w_mini
 	CMP.w #!GOKU_NONE
 	BEQ .none
-	LDA.w !w_dock_px
+	LDA.w !w_scratch+10
 	SEC
 	SBC.w #8
 	STA.w !w_scratch+10
-	LDA.w !w_dock_py
+	LDA.w !w_scratch+12
 	SEC
 	SBC.w #8
 	STA.w !w_scratch+12

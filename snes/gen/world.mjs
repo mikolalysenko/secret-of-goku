@@ -155,6 +155,71 @@ export async function generate({rom,repo,outDir}){
     }
   }
   a.label('world_beam_f');a.db(beamF);
+
+  // Craters (engine/world-scars.js): the Potos hole (native-crater.js) scaled
+  // to 144 x 96 (224 x 149 for the full SSJ wave) on the 8-px Mode 7 grid.
+  // A cell becomes crater when its art is at least 3/8 opaque (the turf of
+  // the original metatiles fills the rest); 32 characters ($E0-$FF, never
+  // used by the world map) are chosen by k-means over every crater cell,
+  // coloured with the world's own CGRAM entries (palettes 4-12, as the world
+  // tiles: pixel = palette*16 + index), so day/night palettes follow.
+  const {decodePotosCrater}=await engine('native-crater.js');
+  const art=decodePotosCrater(rom);
+  const worldColors=[];
+  for(let p=4;p<=12;p++)for(let i=1;i<16;i++){const at=0x67dfe+p*30+i*2;worldColors.push({index:p*16+i,c:(rom[at]|rom[at+1]<<8)&0x7fff});}
+  const nearestWorld=c=>{let best=worldColors[0],bd=Infinity;for(const w of worldColors){const d=dist(w.c,c);if(d<bd){bd=d;best=w;}}return best;};
+  const CRATER_CHAR0=0xE0,CRATER_CHARS=32;
+  const sizes=[144,224];
+  const cells=[],layouts=[];
+  for(const width of sizes){
+    const height=Math.round(width*2/3),tw=Math.ceil(width/8),th=Math.ceil(height/8);
+    const layout={tw,th,cells:new Array(tw*th).fill(-1)};
+    for(let ty=0;ty<th;ty++)for(let tx=0;tx<tw;tx++){
+      const px=new Uint16Array(64);let opaque=0;
+      for(let y=0;y<8;y++)for(let x=0;x<8;x++){
+        const ix=tx*8+x,iy=ty*8+y;if(ix>=width||iy>=height)continue;
+        const sx=Math.floor(ix*art.width/width),sy=Math.floor(iy*art.height/height);
+        const c=art.pixels[sy*art.width+sx];
+        if(c){px[y*8+x]=c;opaque++;}else px[y*8+x]=art.fullPixels[sy*art.width+sx];
+      }
+      if(opaque<24)continue;
+      // remaining holes: the cell's own most common colour
+      const hist=new Map();for(const v of px)if(v)hist.set(v,(hist.get(v)??0)+1);
+      const common=[...hist.entries()].sort((a,b)=>b[1]-a[1])[0]?.[0]??(1+0x0421);
+      for(let i=0;i<64;i++)if(!px[i])px[i]=common;
+      layout.cells[ty*tw+tx]=cells.length;
+      cells.push(px.map(v=>v-1));
+    }
+    layouts.push(layout);
+  }
+  // k-means on cell colours (RGB555 channels, 64 pixels)
+  const vec=c=>Array.from(c).flatMap(W5);
+  const vecs=cells.map(vec);
+  let centers=[];
+  for(let k=0;k<CRATER_CHARS;k++)centers.push([...vecs[Math.floor(k*vecs.length/CRATER_CHARS)]]);
+  let assign=new Array(vecs.length).fill(0);
+  for(let it=0;it<20;it++){
+    assign=vecs.map(v=>{let bi=0,bd=Infinity;centers.forEach((c,k)=>{let d=0;for(let i=0;i<v.length;i+=3)d+=3*(v[i]-c[i])**2+4*(v[i+1]-c[i+1])**2+2*(v[i+2]-c[i+2])**2;if(d<bd){bd=d;bi=k;}});return bi;});
+    centers=centers.map((c,k)=>{const m=vecs.filter((_,i)=>assign[i]===k);if(!m.length)return c;return c.map((_,j)=>m.reduce((s,v)=>s+v[j],0)/m.length);});
+  }
+  // characters: each centre pixel to the nearest world colour index
+  const chars=new Uint8Array(CRATER_CHARS*64);
+  centers.forEach((c,k)=>{for(let p=0;p<64;p++){const col=rgb(Math.round(c[p*3]),Math.round(c[p*3+1]),Math.round(c[p*3+2]));chars[k*64+p]=nearestWorld(col).index;}});
+  writeFileSync(join(outDir,'crater.bin'),chars);
+  a.def('WORLD_CRATER_CHAR0',CRATER_CHAR0);
+  a.def('WORLD_CRATER_CHARS',CRATER_CHARS);
+  layouts.forEach((l,s)=>{
+    a.def(`WORLD_CRATER_W${s}`,l.tw);a.def(`WORLD_CRATER_H${s}`,l.th);
+    a.label(`world_crater_layout${s}`);
+    a.db(l.cells.map(i=>i<0?0:CRATER_CHAR0+assign[i]));
+  });
+  // preview (not shipped): both craters as the cartridge draws them
+  const cv=blank(32*8+8,20*8*2+8);
+  layouts.forEach((l,s)=>{const oy=s?13*8+8:0;for(let ty=0;ty<l.th;ty++)for(let tx=0;tx<l.tw;tx++){const i=l.cells[ty*l.tw+tx];if(i<0)continue;const k=assign[i];
+    for(let p=0;p<64;p++){const idx=chars[k*64+p],col=worldColors.find(w=>w.index===idx).c,d=((oy+ty*8+(p>>3))*cv.width+tx*8+(p&7))*4;cv.data[d]=(col&31)*255/31;cv.data[d+1]=((col>>5)&31)*255/31;cv.data[d+2]=((col>>10)&31)*255/31;cv.data[d+3]=255;}}});
+  writeFileSync(join(outDir,'preview-crater.png'),writePng(cv));
+  // RLE world rows: bank bit table (C6:7FC0) and row pointers (C6:8000)
+  // are read at run time to recover a crater tile's original terrain.
   writeFileSync(join(outDir,'data.asm'),a.text());
 
   const fv=blank(18*FX.length,18);
