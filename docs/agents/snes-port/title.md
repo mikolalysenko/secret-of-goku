@@ -192,7 +192,7 @@ overruns some frames.
 | --- | --- |
 | `!title_phase` (`$7E:DD86`) | 0 prologue, 1 queued, 2 descent, 3 impact, 4 ghost, 5 dialogue, 6 complete |
 | `!title_ticks` (`$DD88`, word) | frames in the phase (the browser's age) |
-| `!title_sfx` (`$DD87`) | set to 1 when the descent begins (`playSound('flight')`), 2 at the impact (`playSound('impact')`); the audio consumer clears it |
+| `!title_sfx` (`$DD87`) | set to 1 when the descent begins (`playSound('flight')`), 2 at the impact (`playSound('impact')`); the audio module plays the pod cues and clears it |
 | `!title_hero_mode` (`$DD8A`) | 0 native, 1 Goku hidden in the pod, 2 hop sprite; `!title_hero_frame/x/y` describe the hop |
 | `!persist_title_arrival` (`$31:6300`) | bit 0 Goku arrived, bit 1 crater/pod scenery |
 
@@ -294,8 +294,6 @@ story's. Core hooks used: `modules_title_boot` (WRAM program patches),
   every flash scene. Restoring Goku's palette into BE00 on flash frames (as
   this module does for the pod) would fix the arrival's hop, ghost and
   dialogue and every other flash scene at once.
-- **audio**: `!title_sfx` carries the browser's `flight`/`impact` sounds of
-  the arrival.
 - **core**:
   - `core_spr_cull` accepts y down to -64; 16×16 sprites with y in
     [-64, -16) wrap onto the bottom of the screen. This module culls at -15
@@ -305,17 +303,4 @@ story's. Core hooks used: `modules_title_boot` (WRAM program patches),
   - `H.saveStable` hooks the whole address range, so it saves at the next
     instruction anywhere, not at `00:B079`; `arrival.lua` uses its own
     `00:B079`-only save.
-  - `H.importSnesJs`: the SPC side of an import does not always resynchronize
-    with the CPU. Importing `barrier-audit__potos-probe` a second time in one
-    session leaves the game waiting in the APU handshake at `C3:05D2` on most
-    frames (46 of 160 frames complete) depending on which instruction the
-    import lands on: with this tree's code it happens after the 160-frame
-    'off' walk of `snes/test/goku/budget.lua`; without the title module it
-    happens after 150, 157, 162 or 163 frames instead. That test then fails
-    on "no added lag frames" although no module code runs longer. Applying
-    imports at the captured PC (the field loop's NMI wait) would make them
-    deterministic.
-  - `docs/agents/snes-rom.md` engine anchors: the field NMI's palette DMA
-    source is `7E:0600` (`7E:BE00` when `$2A≠0`) and the OAM DMA source is
-    `7E:0800` (`$220` bytes).
   - The module would run about 25% faster under `CORE_FASTROM`.
