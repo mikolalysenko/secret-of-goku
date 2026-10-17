@@ -203,6 +203,12 @@ first frames of a wave are dominated by destroy's band growth (one
 `destroy_hit` call up to ~600 lines while the band grows, ~14 lines a frame
 afterwards), so those frames lag 2-5 vblanks and combat catches up.
 
+`snes/test/perf` (p90 logic end over the original cartridge, shared import
+bundles): sword 39, Sandship 37, battle 45, Fortress 41, flight 42, Rabite
+field 44 lines on this branch; main without combat measures 45, 31, 37, 33,
+38, 43, so combat adds about 4-8 lines where the scene is busy and the
+40-line limit is already reached on main in two scenes.
+
 The title arrival's impact (`snes/test/title`, "no frames made late by the
 modules") has every fifth frame (the game's party refresh) start the
 modules at line ~181 on this branch: they end at 229-230 in 4 of 140 frames
