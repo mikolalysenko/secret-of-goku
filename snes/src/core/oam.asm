@@ -104,20 +104,19 @@ core_oam_mode_changed:
 	RTS
 
 ; Hide byte offsets [X, Y) (multiples of 4) and clear their high bits.
+; Y = 224 is below the 224-line picture for both OBJSEL $63 sizes (16/32),
+; so the high-table bits need not change: a hidden slot costs one store
+; (requested by the UI stream: re-hiding the radar dial was ~11 lines/frame).
 core_oam_hide_range:
 	STY.w !core_tmp0&$FFFF
+	CPY.w #$0200
+	BCC .loop
+	LDA.w #$0200 : STA.w !core_tmp0&$FFFF
 .loop
 	CPX.w !core_tmp0&$FFFF
 	BCS .done
-	CPX.w #$0200
-	BCS .done
 	LDA.w #$E0FF
 	STA.w $0800,X
-	PHX
-	TXA : LSR : LSR : TAY
-	LDA.w #$0000
-	JSR core_oam_set_hi
-	PLX
 	INX : INX : INX : INX
 	BRA .loop
 .done
