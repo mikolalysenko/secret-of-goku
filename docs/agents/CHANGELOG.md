@@ -4,6 +4,41 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## 2026-10-17 — Release 0.2.3
+
+- Release 0.2.3 (`v0.2.3`) and its Pages build include everything since 0.2.2:
+  - **Scenery anchored while scrolling:** the waterfall crater and landed Saiyan pod were placed from Goku's actor screen position. In low flight that position is offset by up to six pixels, and it doesn't follow the native quake, so the pod and crater jumped against the ground tiles while the screen scrolled or shook. They are now placed per scanline from the tile stream origin and BG1's actual scroll. The Fortress deck scars and the Sandship breach had the same problem and use the same camera, with world-anchored patterns. The arrival browser test now flies around the clearing and checks that the crater stays on its tiles.
+  - **Covered screens skipped:** when a line's outermost effect paints every main-screen pixel, the main screen is filled directly, without decoding or composing it. Planet view does this in orbit, space and the explosion.
+  - **Set pieces:**
+    - The Sandship breach mask is memoized in world space; it was rebuilt for the whole screen whenever the camera moved.
+    - Frieza's arena and the Fortress deck skip scar-free rows.
+    - The status page splits its raster once per change.
+    - The planet globe is copied without a per-pixel call.
+  - **Hot loops:**
+    - Wrapper chains are cached between scanlines.
+    - Translucent colour math, composition setup, plain and hires tile loops and the palette pass are specialized for their common cases.
+    - Narrow paints are bounded to their columns.
+- Measured against 0.2.2 in the same session (Chrome full-render frames/s, ratios because the machine was busy):
+
+  | Scene | 0.2.3 / 0.2.2 |
+  | --- | --- |
+  | Orbit | ×1.28 |
+  | Space | ×1.22 |
+  | Sandship wreck | ×1.13 |
+  | Waterfall after the arrival | ×1.12 |
+  | Status page | ×1.09 |
+  | File select | ×1.07 |
+  | Sandship | ×1.05 |
+  | Combat | ×1.04 |
+  | Explosion, Frieza battle | ×1.03 |
+  | Field | unchanged |
+
+  On a quieter run, every scene measured at least 9.4× real time except the Sandship wreck (8.7×). Most were at 10–12×, and the title at 15×.
+- Validation:
+  - **Unit tests:** 378 pass, including a temporary-wrapper test for the chain cache.
+  - **Exactness:** the SnesJs core equivalence passes, and composed and per-pixel rendering match on every changed scene and on random PPU states. The set pieces and planet scenes match the previous build frame for frame where the change was meant to be invisible.
+  - **Browser suite:** only the known failures after every push; all 28 phone tests pass.
+
 ## 2026-10-17 — Release 0.2.2
 
 - Release 0.2.2 (`v0.2.2`) and its Pages build include everything since 0.2.1:
@@ -44,6 +79,13 @@ stay traceable even when they are committed together.
 - The full beam melts dungeon partitions on both layers in the 22 dungeon families (eight scenes compared end to end) with the browser's breach rules (span, heights, floor sample, partner layer, protected cells), planned within a per-frame scanline budget that can suspend a plan between frames. Rubble and brazier bursts are published as effect records for the effects library.
 - API for combat (`destroy_hit`, `destroy_orb_hit`), outputs for radio/feedback and the catalogue with data sources are in [snes-port/destroy.md](snes-port/destroy.md).
 - Validation: `snes/test/destroy/run.mjs` (29 Mesen scenarios against the browser modules on the same imported states): 26 match exactly; three timing-sensitive demolition scenes open the same walls with some different floor tiles or one fewer breach (documented). A full beam adds 0–8 lag frames over about 140 frames in most scenes measured, 15 in the heaviest (a BG2 room).
+
+## 2026-10-17 — SNES cartridge: combat and effects (integration)
+
+- Goku fights natively on the cartridge: punch/cross/kick combos, ki blasts, partial and full Kamehameha (including the 160-pixel Super Saiyan wave), focus, transformation with its radial burst, reversion, Saiyan defense and deflection, the Heavy Gi penalty, level 99 and 999 HP, Senzu Beans and the Dust Bag, all through the native damage queue so XP, rewards and boss events stay native. Twenty-one Mesen-versus-browser comparisons on the same states and inputs match. See [snes-port/combat.md](snes-port/combat.md).
+- The effects library draws charge orbs, ki shots, beams, sparks and explosions from the cartridge's own spell cells; the full-screen Super Saiyan wave, Final Flash and Galick Gun are HDMA-driven window polygons with sprite edge sparks. See [snes-port/fx.md](snes-port/fx.md).
+- Build: a ROM ownership check now flags bank halves holding two modules' labels (asar overwrites silently); the effects library has its own bank. Core hides sprites with one store and culls sprites entirely above the screen.
+- Known open items: FastROM (planned default for CPU headroom) still breaks the title's BOY prefill; title and goku tests are being updated for combat's remapped controls; a full wave's first frames stall in destroy's hit scan.
 
 ## 2026-10-17 — SNES cartridge: audio and world flight (integration)
 
