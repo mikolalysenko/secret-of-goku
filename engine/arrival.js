@@ -169,7 +169,28 @@ export function createArrival(snes,mod){
     }
     return result;
   };
-  ppu.registerLineHook?.('getColor',ppu.getColor,getColor,()=>!craterOnScreen);
+  // getColor's effect on a whole scanline as compositor paints (see
+  // Ppu.registerLineHook): crater colors on BG1/BG2 pixels, then the open
+  // pod over the same layers as OBJ palette 0x86. Other lines are untouched.
+  const craterLine=new Uint16Array(256),podLine=new Uint16Array(256);
+  const craterPaint={type:'paint',layers:3,colors:craterLine,skipZero:true,layer:-1,pixel:0,mainOnly:false};
+  const podPaint={type:'paint',layers:3,colors:podLine,skipZero:true,layer:4,pixel:0x86,mainOnly:false};
+  const craterRow=y=>{const py=Math.floor((y-craterY)/2);return py>=0&&py<32?py:-1;};
+  const podRow=y=>{if(api.animating)return -1;const py=y-craterY+26;return py>=0&&py<saiyanPodFrames[2].height?py:-1;};
+  ppu.registerLineHook?.('getColor',ppu.getColor,getColor,(p,line)=>!craterOnScreen||craterRow(line)<0&&podRow(line)<0,{name:'arrival',plan:(p,line,plan)=>{
+    const cy=craterRow(line),py=podRow(line);
+    if(cy>=0){
+      let any=false;
+      for(let x=0;x<256;x++){const px=Math.floor((x-craterX)/2),color=px>=0&&px<48?crater.pixels[cy*48+px]:0;craterLine[x]=color?craterColors.get(color)+1:0;any||=!!color;}
+      if(any)plan.extra.push(craterPaint);
+    }
+    if(py>=0){
+      const pod=saiyanPodFrames[2];let any=false;
+      for(let x=0;x<256;x++){const px=x-craterX-48,color=px>=0&&px<pod.width?pod.pixels[py*pod.width+px]:0;podLine[x]=color;any||=!!color;}
+      if(any)plan.extra.push(podPaint);
+    }
+    plan.skipPost=true;return true;
+  }});
   mod.arrival=api;
   return api;
 }

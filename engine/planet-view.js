@@ -34,6 +34,8 @@ export function createPlanetView(snes,mod){
   let texture=null,frame=-1,preparedState=null,globe=null,globeKey='',fragments=null,card=null,cardKey='';
   let viewFrame=-1,viewLine=-1,viewX=256,view=null;
   const rgb=(r,g,b)=>1+r+(g<<5)+(b<<10);
+  // Per-fragment channel shades for explodingPlanet.
+  const edgeR=new Int32Array(32),edgeG=new Int32Array(32),edgeB=new Int32Array(32),bodyR=new Int32Array(32),bodyG=new Int32Array(32),bodyB=new Int32Array(32);
   const blue=[rgb(4,7,20),rgb(6,17,30),rgb(16,26,31),rgb(31,31,31)];
   const put=(x,y,c)=>{x=Math.round(x);y=Math.round(y);if(c>0&&x>=0&&x<256&&y>=0&&y<224)surface[y*256+x]=c;};
   const orbitFx=createOrbitEffects(snes,mod,put);
@@ -132,17 +134,30 @@ export function createPlanetView(snes,mod){
       if(t<115)for(const p of fragments){
         const pose=fragmentPose(p,t),{cos,sin,squash,heat,fade}=pose;
         const radius=Math.ceil(Math.hypot(p.width,p.height));
+        const shade=(value,glow)=>Math.min(31,Math.floor((value+glow*heat)*fade));
+        const deep=rgb(shade(8,18),shade(3,6),shade(3,0));
+        for(let v=0;v<32;v++){edgeR[v]=shade(v,26);edgeG[v]=shade(v,12);edgeB[v]=shade(v,2);bodyR[v]=shade(v,10);bodyG[v]=shade(v,4);bodyB[v]=shade(v,0);}
+        const {x:px,y:py,left,top,width,height,colors,edges}=p,poseX=pose.x,poseY=pose.y;
+        // Only offsets near the rotated, squashed fragment can pass the test
+        // below: (sx, sy) lies in the fragment for u = dx*cos+dy*sin and
+        // v = -dx*sin+dy*cos within these ranges, give or take rounding.
+        const u0=-1-(px-left),u1=width+1-(px-left),v0=(-1-(py-top))*squash,v1=(height+1-(py-top))*squash;
+        let dxMin=Infinity,dxMax=-Infinity,dyMin=Infinity,dyMax=-Infinity;
+        for(const u of[u0,u1])for(const v of[v0,v1]){const ex=u*cos-v*sin,ey=u*sin+v*cos;dxMin=Math.min(dxMin,ex);dxMax=Math.max(dxMax,ex);dyMin=Math.min(dyMin,ey);dyMax=Math.max(dyMax,ey);}
         // Sample backwards through the rotation so the solid rock does not
         // acquire checkerboard holes between rounded destination pixels.
-        for(let depth=1;depth>=0;depth--)for(let y=Math.max(0,Math.floor(pose.y-radius));y<Math.min(224,pose.y+radius);y++)for(let x=Math.max(0,Math.floor(pose.x-radius));x<Math.min(256,pose.x+radius);x++){
-          const dx=x-pose.x-depth*2,dy=y-pose.y-depth*3;
-          const sx=Math.round(dx*cos+dy*sin+p.x-p.left),sy=Math.round((-dx*sin+dy*cos)/squash+p.y-p.top);
-          if(sx<0||sy<0||sx>=p.width||sy>=p.height)continue;
-          const i=sy*p.width+sx,raw=p.colors[i];if(!raw)continue;const c=raw-1;
-          const shade=(value,glow)=>Math.min(31,Math.floor((value+glow*heat)*fade));
-          const color=depth?rgb(shade(8,18),shade(3,6),shade(3,0)):p.edges[i]?rgb(shade(c&31,26),shade(c>>5&31,12),shade(c>>10&31,2)):
-            rgb(shade(c&31,10),shade(c>>5&31,4),shade(c>>10&31,0));
-          put(x,y,color);
+        for(let depth=1;depth>=0;depth--){
+          const yStart=Math.max(0,Math.floor(poseY-radius),Math.floor(poseY+depth*3+dyMin)-2),yEnd=Math.min(224,poseY+radius,poseY+depth*3+dyMax+3);
+          const xStart=Math.max(0,Math.floor(poseX-radius),Math.floor(poseX+depth*2+dxMin)-2),xEnd=Math.min(256,poseX+radius,poseX+depth*2+dxMax+3);
+          for(let y=yStart;y<yEnd;y++)for(let x=xStart;x<xEnd;x++){
+            const dx=x-poseX-depth*2,dy=y-poseY-depth*3;
+            const sx=Math.round(dx*cos+dy*sin+px-left),sy=Math.round((-dx*sin+dy*cos)/squash+py-top);
+            if(sx<0||sy<0||sx>=width||sy>=height)continue;
+            const i=sy*width+sx,raw=colors[i];if(!raw)continue;const c=raw-1;
+            const color=depth?deep:edges[i]?1+edgeR[c&31]+(edgeG[c>>5&31]<<5)+(edgeB[c>>10&31]<<10):
+              1+bodyR[c&31]+(bodyG[c>>5&31]<<5)+(bodyB[c>>10&31]<<10);
+            if(color>0)surface[y*256+x]=color;
+          }
         }
       }
       if(t<8)disc(87,140,Math.min(86,18+t*10),rgb(31,31,31));
@@ -300,11 +315,33 @@ export function createPlanetView(snes,mod){
     result[0]=y===224?0:surface[y*256+x]-1;result[1]=4;result[2]=0x86;return result;
   }
   p.getColor=function(sub,x,y){return shade(sub,x,y,previous.call(this,sub,x,y));};
+  // shade() for a whole scanline as compositor ops (Ppu.registerLineHook):
+  // a channel map for the light and pale tints, else a paint of the surface.
+  const rows=Array.from({length:224},(_,y)=>surface.subarray(y*256,y*256+256)),black=new Uint16Array(256).fill(1);
+  const tint={type:'channels',layers:63,r:new Int32Array(32),g:new Int32Array(32),b:new Int32Array(32),layer:-1,pixel:0,mainOnly:true};
+  const paint={type:'paint',layers:63,colors:null,skipZero:false,layer:4,pixel:0x86,mainOnly:true};
+  function plan(y,linePlan){
+    // idle() has selected this scanline's view.
+    if(view.light!==undefined){const light=view.light;for(let c=0;c<32;c++)tint.r[c]=tint.g[c]=tint.b[c]=Math.round(c*light);}
+    else if(view.pale!==undefined){
+      const alpha=view.pale,mix=(n,t)=>Math.round(n+(t-n)*alpha);
+      for(let c=0;c<32;c++){tint.r[c]=mix(c,28);tint.g[c]=mix(c,30);tint.b[c]=mix(c,31);}
+      // rgb() adds the channels and the op ORs them: equal only in range.
+      for(let c=0;c<32;c++)if((tint.r[c]|tint.g[c]|tint.b[c])>>>5)return true;
+    }else{
+      const {state,shot,orbit,ring}=view;
+      if(frame!==mod.frame||preparedState!==state)prepare(state,!!shot);
+      let keep=0;
+      if(!view.fatal){if(!shot&&y<170&&state.phase!=='complete')keep|=4;if(orbit&&(ring||y>=190))keep|=4|16;}
+      paint.layers=63&~keep;paint.colors=y===224?black:rows[y];linePlan.extra.push(paint);linePlan.skipPost=true;return true;
+    }
+    linePlan.extra.push(tint);linePlan.skipPost=true;return true;
+  }
   p.registerLineHook?.('getColor',p.getColor,previous,(ppu,line)=>{
     if(line>224||!texture)return true;
     viewFrame=mod.frame;viewLine=line;viewX=-1;view=selectView();
     return !view;
-  },{name:'planet-view',post:(ppu,sub,x,y,r)=>{const t=shade(sub,x,y,r);if(t!==r){r[0]=t[0];r[1]=t[1];r[2]=t[2];}}});
+  },{name:'planet-view',plan:(ppu,line,linePlan)=>plan(line,linePlan),post:(ppu,sub,x,y,r)=>{const t=shade(sub,x,y,r);if(t!==r){r[0]=t[0];r[1]=t[1];r[2]=t[2];}}});
   return{ready:collateral.ready,load(rom){texture=decodePlanetTexture(rom);frame=-1;viewFrame=-1;viewX=256;globeKey='';},
     renderDefeat(){
       const state=mod.ending?.planetScene;if(!state?.fatal)return;

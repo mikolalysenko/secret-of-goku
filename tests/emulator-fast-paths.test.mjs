@@ -42,6 +42,28 @@ test('scanline compositor matches per-pixel rendering in saved menu, field and M
   lockstep(slow,fast,12,f);
  }
 });
+test('paint and channel line ops match the per-pixel wrappers they describe',()=>{
+ const install=s=>{
+  const p=s.ppu,inner=p.getColor,colors=new Uint16Array(256),tint=new Int32Array(32);
+  for(let x=0;x<256;x++)colors[x]=x%5?((x*97)&0x7fff)+1:0;for(let c=0;c<32;c++)tint[c]=31-c;
+  // Inner: repaint main BG1/OBJ pixels as BG3 pixel 7; outer: invert every non-backdrop pixel.
+  p.getColor=function(sub,x,y){const r=inner.call(this,sub,x,y);if(!sub&&(r[1]===0||r[1]===4)&&colors[x]){r[0]=colors[x]-1;r[1]=2;r[2]=7;}return r;};
+  p.registerLineHook('getColor',p.getColor,inner,()=>false,{plan:(ppu,line,plan)=>{plan.extra.push({type:'paint',layers:0x11,colors,skipZero:true,layer:2,pixel:7,mainOnly:true});plan.skipPost=true;return true;}});
+  const mid=p.getColor;
+  p.getColor=function(sub,x,y){const r=mid.call(this,sub,x,y);if(r[1]!==5){const c=r[0];r[0]=tint[c&31]|(tint[c>>5&31]<<5)|(tint[c>>10&31]<<10);}return r;};
+  p.registerLineHook('getColor',p.getColor,mid,()=>false,{plan:(ppu,line,plan)=>{plan.extra.push({type:'channels',layers:0x1f,r:tint,g:tint,b:tint,layer:-1,pixel:0,mainOnly:false});plan.skipPost=true;return true;}});
+ };
+ const pair=()=>{const fast=core(),slow=core();install(fast);install(slow);slow.ppu.setLineComposer(false);return[slow,fast];};
+ const [slow,fast]=pair();
+ let composed=0;const can=fast.ppu.canComposeLine;fast.ppu.canComposeLine=function(line){const ok=can.call(this,line);if(ok)composed++;return ok;};
+ lockstep(slow,fast,400,'line ops');
+ assert.ok(composed>40000,`${composed} composed lines`);
+ // The opening shows no sprites; saved field states (when present) do.
+ for(const f of fixtures){
+  const [a,b]=pair(),st=JSON.parse(readFileSync(f,'utf8'));for(const s of[a,b])restore(s,{...st,romHash:hash(s.cart.data)});
+  lockstep(a,b,8,`line ops ${f}`);
+ }
+});
 test('batched idle cycles match cycle-by-cycle stepping, including skipped pictures',()=>{
  const fast=core(),slow=core();
  // The original frame loop: one cycle() per master-cycle pair.
