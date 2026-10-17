@@ -4,7 +4,7 @@
  * (MIT; vendor/snes/LICENSE.txt). */
 class ManaSpriteLayer {
   constructor(snes, mod) {
-    this.snes=snes;this.mod=mod;this.atlas={};this.customLine=new Uint16Array(256);
+    this.snes=snes;this.mod=mod;this.atlas={};this.customLine=new Uint16Array(256);this.customAny=false;
     this.surface=new Uint16Array(256*256);this.effectMask=new Uint8Array(256*256);
     // Per surface row, the x span that holds every non-zero pixel.
     this.rowMin=new Int16Array(256).fill(256);this.rowMax=new Int16Array(256).fill(-1);this.entryMask=new Int32Array(4);this.effects={};this.plan=null;this.paletteCache=new Map();this.shuffleFrames=new Map();this.pushFrames=new Map();
@@ -12,10 +12,10 @@ class ManaSpriteLayer {
     this.originalEvaluate=ppu.evaluateSprites;this.originalColor=ppu.getColor;
     ppu.evaluateSprites=function(line){
       if(!mod.options.enabled||!self.atlas.goku||mod.ending?.nativeBoy||(mod.gokuActive===false&&!mod.arrival?.animating)){
-        self.customLine.fill(0);mod.hiddenLastFrame=[];self.plan=null;return self.originalEvaluate.call(this,line);
+        self.customLine.fill(0);self.customAny=false;mod.hiddenLastFrame=[];self.plan=null;return self.originalEvaluate.call(this,line);
       }
       if(line===0||!self.plan||self.plan.frame!==mod.frame||self.plan.oamRevision!==mod.ownership?.revision)self.prepare();
-      if(!self.plan.anchor&&!self.plan.portraits.size){self.customLine.fill(0);return self.originalEvaluate.call(this,line);}
+      if(!self.plan.anchor&&!self.plan.portraits.size){self.customLine.fill(0);self.customAny=false;return self.originalEvaluate.call(this,line);}
       self.evaluate(this,line);
     };
     ppu.getColor=function(sub,x,y){
@@ -27,7 +27,9 @@ class ManaSpriteLayer {
     };
     this.faceLine=new Uint16Array(256);
     ppu.registerLineHook?.('getColor',ppu.getColor,this.originalColor,(p,line)=>{
-      const custom=self.customLine;for(let i=0;i<256;i++)if(custom[i])return false;
+      // customAny is false when no non-zero pixel was written since the
+      // line's buffer was cleared (zero writes only clear pixels).
+      if(self.customAny){const custom=self.customLine;for(let i=0;i<256;i++)if(custom[i])return false;}
       return !self.portraitLine(p,line);
     },(p,line,plan)=>{
       // Goku's pixels replace OBJ colors and the save portrait replaces the
@@ -508,7 +510,7 @@ class ManaSpriteLayer {
       // Original spell OBJs use palette 0, priority 3 and no OBJ color math,
       // independently of Goku's water palette or background priority.
       ppu.spriteLineBuffer[x]=this.effectMask[i]?0x86:0x81+(airborne||treeStandIn?part.palette&3:part.palette)*16;
-      ppu.spritePrioBuffer[x]=this.effectMask[i]||airborne?3:part.priority;this.customLine[x]=color;
+      ppu.spritePrioBuffer[x]=this.effectMask[i]||airborne?3:part.priority;this.customLine[x]=color;this.customAny=true;
     }}
   }
   injectPortrait(ppu,line,portrait){
@@ -518,7 +520,7 @@ class ManaSpriteLayer {
       if(portrait.kind==='senzu'||portrait.kind==='dust'){
         const item=portrait.kind==='senzu'?this.mod.senzu:this.mod.equipment;
         const x=portrait.x+col,color=item.pixel(portrait.flipX?15-col:col,portrait.flipY?15-row:row);
-        if(color&&x>=0&&x<256){ppu.spriteLineBuffer[x]=0x81+portrait.palette*16;ppu.spritePrioBuffer[x]=portrait.priority;this.customLine[x]=color;}
+        if(color&&x>=0&&x<256){ppu.spriteLineBuffer[x]=0x81+portrait.palette*16;ppu.spritePrioBuffer[x]=portrait.priority;this.customLine[x]=color;this.customAny=true;}
         continue;
       }
       if(portrait.kind==='fly'){
@@ -527,16 +529,16 @@ class ManaSpriteLayer {
         const column=this.mod.options.superSaiyan?34:38,x=portrait.x+col;
         const sx=(portrait.flipX?15-col:col)*2,sy=(portrait.flipY?15-row:row)*2;
         const color=atlas.pixels[(32+sy)*atlas.width+column*32+sx];
-        if(color&&x>=0&&x<256){ppu.spriteLineBuffer[x]=0x81+portrait.palette*16;ppu.spritePrioBuffer[x]=portrait.priority;this.customLine[x]=color;}
+        if(color&&x>=0&&x<256){ppu.spriteLineBuffer[x]=0x81+portrait.palette*16;ppu.spritePrioBuffer[x]=portrait.priority;this.customLine[x]=color;this.customAny=true;}
         continue;
       }
       const sx=3+Math.floor(col*26/portrait.size),sy=32+Math.floor(row*21/portrait.size),x=portrait.x+col;
       const raw=atlas.pixels[sy*atlas.width+sx],color=raw?this.tint(raw,portrait.palette):0;
-      if(color&&x>=0&&x<256){ppu.spriteLineBuffer[x]=0x81+portrait.palette*16;ppu.spritePrioBuffer[x]=portrait.priority;this.customLine[x]=color;}
+      if(color&&x>=0&&x<256){ppu.spriteLineBuffer[x]=0x81+portrait.palette*16;ppu.spritePrioBuffer[x]=portrait.priority;this.customLine[x]=color;this.customAny=true;}
     }
   }
   evaluate(p,line){
-    this.customLine.fill(0);let spriteCount=0,sliverCount=0;
+    this.customLine.fill(0);this.customAny=false;let spriteCount=0,sliverCount=0;
     // Native NPCs/bosses live in OAM, not our custom body surface. Submit
     // their aura first so every opaque native texel wins, regardless of its
     // OAM slot relative to Goku. Transparent edges still show the flames.
