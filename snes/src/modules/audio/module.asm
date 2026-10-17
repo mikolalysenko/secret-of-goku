@@ -7,8 +7,9 @@
 ;   audio_loop    A = loop id (!AUDIO_LOOP_*), X = level 1-255, Y = rate
 ;                 ($80 = 1.0, $60-$A0 sensible); call every frame while the
 ;                 bed should sound; it fades out two frames after the last call
-;   audio_voice   A = 1 start the Kamehameha chant, 2 release (the shout
-;                 replaces the chant), 0 cut the chant
+;   audio_voice   A = 1 Kamehameha chant (once per charge: repeated calls
+;                 while charging are ignored), 2 release (the shout replaces
+;                 the chant), 0 cut the chant
 ;   audio_cancel  drop combat sounds: queued shots, charge/aura beds, chant
 ;   audio_stop    stop every stream at this frame's service
 ;   audio_song    A = song id, X = p2 | p3<<8 (0: defaults) — native song
@@ -27,7 +28,7 @@ incsrc "audio/ids.asm"
 !au_status   #= !aw+$06   ; last port 3 status
 !au_cnt      #= !aw+$07   ; protocol counter
 !au_groups   #= !aw+$08   ; groups in the command being sent
-!au_flags    #= !aw+$09   ; bit0 stop all, bit6 disabled (APU timeout), bit7 synced
+!au_flags    #= !aw+$09   ; bit0 stop all, bit2 chant latched, bit6 disabled (APU timeout), bit7 synced
 !au_lvl      #= !aw+$0A   ; 4 loop levels requested (0 off)
 !au_rate     #= !aw+$0E   ; 4 loop rates ($80 = 1.0)
 !au_age      #= !aw+$12   ; 4 frames since the loop was requested
@@ -360,6 +361,8 @@ au_stop_channel:
 	RTS
 
 ; ---------------------------------------------------------------- requests
+; The chant starts once per charge (bit 2 of au_flags latches it until a
+; release or a cut), so callers may request it every charging frame.
 au_voice_requests:
 	LDA.w !au_voicereq
 	BEQ .none
@@ -369,12 +372,23 @@ au_voice_requests:
 	LDX.w #$0000              ; voices take channel 0
 	CMP.b #$02
 	BEQ .release
+	LDA.w !au_flags
+	BIT.b #$04
+	BNE .none
+	ORA.b #$04
+	STA.w !au_flags
 	LDA.b #!AUDIO_SFX_KAME_CHARGE
 	JMP au_start_shot
 .release
+	LDA.w !au_flags
+	AND.b #$FB
+	STA.w !au_flags
 	LDA.b #!AUDIO_SFX_KAME_RELEASE
 	JMP au_start_shot
 .cut
+	LDA.w !au_flags
+	AND.b #$FB
+	STA.w !au_flags
 	LDA.w !au_ch+!c_kind
 	CMP.b #$01
 	BNE .none

@@ -197,11 +197,75 @@ arrangements into the native format with the cartridge's own instruments, so
 the native song command, fades and story events (`40 01 3B …`) work
 unchanged. Details and per-song adaptations: section 5 (in progress).
 
-## 4. Status
+## 4. API for other modules
 
-- Done: SPC700 assembler/disassembler, BRR codec, S-DSP model with echo,
-  APU harness running the real driver, stream extension validated in the
-  harness (gapless tone, natural end, stop/release, native effects beside two
-  streams) — `node --test snes/test/audio/unit.test.mjs`.
-- In progress: 65816 module (boot upload, API, frame service), DBZ clip
-  bank, music compiler, Mesen tests.
+Include the generated ids with `incsrc "audio/ids.asm"` (guarded, safe to
+include from several modules). Every routine is `JSL` from main-loop code
+(field, world, menu or ring frame logic, or a module frame callback), with
+any M/X width; it preserves DB and D and, unless noted, A/X/Y. **Never call
+them from NMI/IRQ code.** Requests are queued and served once per field or
+world frame at `audio_frame` (the module's own frame callback, which runs
+before the core's native sound pump), so the cost of a call is a few cycles.
+
+| Routine | Input | Effect |
+| --- | --- | --- |
+| `audio_sfx` | A = `!AUDIO_SFX_*` | One-shot DBZ effect at the end of this frame. Up to 4 per frame. `hit` and `impact` sound at most once every 2 frames; `hit`, `swing` and `blast` step through the browser's clip and pitch variants (1, 1.035, 0.975); `revert` cuts a `transform` / `powerBurst` still sounding. |
+| `audio_loop` | A = `!AUDIO_LOOP_*`, X = level 1-255 (255 = the cue's full gain), Y = rate (`$80` = 1.0, `$60`-`$A0` sensible) | Sustained bed. **Call every frame** while it should sound; it stops two frames after the last call. Level/rate changes are applied the frame they change (browser: charge `.48+.52·strength` gain, `.94+.12·strength` rate). |
+| `audio_voice` | A = 1 chant, 2 release, 0 cut | Kamehameha voice: 1 starts the 3.7 s Japanese charge chant once per charge — calling it every charging frame is fine, it latches until 2 or 0; 2 replaces it with the release shout (call when the beam fires); 0 cuts the chant without a shout (cancelled charge). |
+| `audio_cancel` | — | Browser `cancelCombat`: drops queued shots, the `charge`/`aura` beds and the chant. |
+| `audio_stop` | — | Stops every stream at this frame's service. |
+| `audio_song` | A = song id, X = p2 \| p3<<8 (0: `$10`, `$8F`) | Native song command `01` through `core_sound_queue` (sent at the end of the frame). |
+| `audio_fade` | A = fade byte | Native command `80`: `$80` fades the music out (boss deaths), `$1A` ducks to `$AA` in 16 ticks, `$0F` restores. |
+
+One-shots (`!AUDIO_SFX_*`, browser cue name in parentheses where it differs):
+`SWING` 1, `KICK_SWING` 2, `HIT` 3, `KICK` 4, `BLAST` 5, `IMPACT` 6,
+`DISTANT_IMPACT` 7, `BEAM` 8, `CHARGED` 9, `TRANSFORM` 10, `REVERT` 11,
+`POWER_BURST` 12, `DEFLECT` 13, `BALLOON_POP` 14, `ICE_BREAK` 15,
+`TELEPORT` 16, `TELEPORT_IN` 17, `FLIGHT` 18, `LANDING` 19, `FRIEZA_ORB` 20,
+`FRIEZA_DISC` 21, `FRIEZA_LASER` 22, `FRIEZA_BEAM` 23, `FRIEZA_IMPACT` 24,
+`FORTRESS_BREAK` 25, `FRIEZA_RUSH` 26, `VEGETA_BEAM` 27, `FRIEZA_LAUGH` 28,
+`VEGETA_FINAL_FLASH` 29, `VEGETA_KAKAROT` 30, `KAME_CHARGE` 31,
+`KAME_RELEASE` 32 (the last two are what `audio_voice` plays).
+Loops (`!AUDIO_LOOP_*`): `CHARGE` 0, `AURA` 1, `AIR` 2, `FRIEZA_CHARGE` 3.
+
+Gains, clips and rates come from `engine/ki-sound.js` (`cues`) at build
+time; voice gains from `kamehameha-voice.js`. Mapping the browser's call
+sites: `mod.playSound(name)` → `audio_sfx`; the per-frame `loop(name, on,
+level, rate)` calls → `audio_loop` while `on`; `speech` (chant while
+`charging`, shout on `beam`) → `audio_voice`; `cancelCombat` → `audio_cancel`.
+The native-hit handoff (`native-combat-sound.js`: skip C0:4157 for Goku's
+hits) belongs to combat, which then calls `audio_sfx` with `HIT`.
+
+**Channels and priority.** Two stream channels play at once, beside the
+native music and effects. Channel 0 takes voice-class cues (chant, shout,
+Frieza's laugh, Vegeta's callouts); everything else takes channel 1, or
+channel 0 when 1 holds something more important. Priorities (higher wins):
+shout 11, voices 10, `TRANSFORM`/`POWER_BURST` 9, beams and `FORTRESS_BREAK`
+8, `FRIEZA_ORB`/`REVERT` 7, teleports 6, hits/kicks/impacts 5, blasts and
+small effects 4, flight/landing 3, swings 2, `DISTANT_IMPACT` 1. A request
+that finds both channels busy with higher priorities is dropped (the
+browser overlapped up to 12 sounds; the SNES cuts or drops). Loops yield to
+any one-shot and restart when a channel is free again; `charge` > `aura` >
+`FRIEZA_CHARGE` > `air`. A stream voice is taken from the music like a
+native effect (highest voice no effect holds) and returned when it ends.
+
+**Costs.** Each active channel streams 12 kHz BRR: about 3 chunks (39
+groups, ~2 ms of CPU busy-wait) per frame while it plays, nothing when idle.
+Menus and rings stop all streams.
+
+**Test mailbox** (Mesen tests): word `!RAM_AUDIO+$16` = op | arg<<8 —
+1 shot, 2 voice, 3 song, 4 stop, 5 loop on (kept every frame), 6 loop off,
+7 fade, 8 native effect `02 arg 0F 88`.
+
+## 5. Status
+
+- Done: driver research (this page); SPC700 assembler/disassembler, BRR
+  codec, S-DSP model with echo, APU harness running the real driver; stream
+  extension; the 65816 module and API above; the 12 kHz DBZ/voice bank.
+  `node snes/test/audio/run.mjs` runs the Node tests (gapless stream, natural
+  end, stop/release, native effects beside two streams) and the Mesen test
+  (from the waterfall checkpoint, with the current extension injected): a hit
+  on the first free voice with full envelope and audible output, the chant
+  beside the game's own hit effect, the shout, a 4 s charge loop and its
+  stop, voices returned, native music before and after.
+- In progress: the five songs (compiler `snes/gen/audio-music.mjs`).

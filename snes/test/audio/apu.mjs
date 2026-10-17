@@ -95,3 +95,51 @@ export class StreamPlayer{
   return groups.length;
  }
 }
+
+// Native song data from the cartridge: instrument bank, song table, lists.
+export function romInstrument(rom,id){
+ const u16=a=>rom[a]|rom[a+1]<<8,u24=a=>rom[a]|rom[a+1]<<8|rom[a+2]<<16;
+ const p=u24(0x33df9+(id-1)*3)&0x3fffff,len=u16(p);
+ return {id,brr:rom.subarray(p+2,p+2+len),loop:u16(0x33e5c+(id-1)*2),tune:u16(0x33e9e+(id-1)*2),adsr:u16(0x33ee0+(id-1)*2)};
+}
+export function romSong(rom,song){
+ const u16=a=>rom[a]|rom[a+1]<<8,u24=a=>rom[a]|rom[a+1]<<8|rom[a+2]<<16;
+ const p=u24(0x33d39+song*3)&0x3fffff,len=u16(p),list=[];
+ for(let k=0;k<16;k++){const v=u16(0x33f22+song*32+k*2);if(v)list.push(v);}
+ return {blob:rom.subarray(p+2,p+2+len),instruments:list};
+}
+export function romEcho(rom,preset){const a=0x30708+preset*4;return {edl:rom[a]&15,evol:rom[a+1],efb:rom[a+2],fir:rom[a+3]};}
+// Leave ARAM as the CPU loader (C3:0198) does for a song: instrument k at
+// increasing addresses from $4DF1, its DIR / tuning / ADSR at entry $20+k,
+// the sequence at $1A00; then run the SPC side of command 01 (echo
+// parameters, an empty transfer) so the driver starts the song.
+export function loadSong(h,rom,{blob,instruments,echo={edl:4,evol:0x40,efb:0x1e,fir:0},song=0x3b,p2=0x0f,p3=0xff}){
+ let at=0x4DF1;
+ instruments.forEach((id,k)=>{
+  const ins=typeof id==='number'?romInstrument(rom,id):id;
+  h.ram.set(ins.brr,at);
+  const dir=0x1980+k*4,loop=at+ins.loop;
+  h.ram[dir]=at&255;h.ram[dir+1]=at>>8;h.ram[dir+2]=loop&255;h.ram[dir+3]=loop>>8;
+  h.ram[0x1840+k*2]=ins.tune&255;h.ram[0x1841+k*2]=ins.tune>>8;
+  h.ram[0x18C0+k*2]=ins.adsr&255;h.ram[0x18C1+k*2]=ins.adsr>>8;
+  at+=ins.brr.length;
+ });
+ const esa=0xFA00-(echo.edl||1)*0x800;
+ if(at>esa)throw Error(`song samples end at $${at.toString(16)}, past the echo buffer at $${esa.toString(16)}`);
+ h.ram.set(blob,0x1A00);
+ h.cpuWrite(1,song);h.cpuWrite(2,p2);h.cpuWrite(3,p3);h.cpuWrite(0,1);
+ h.waitFor(()=>h.cpuRead(0)===1);
+ h.cpuWrite(2,echo.edl);h.cpuWrite(3,echo.evol);h.cpuWrite(0,2);h.waitFor(()=>h.cpuRead(0)===2);
+ h.cpuWrite(2,echo.efb);h.cpuWrite(3,echo.fir);h.cpuWrite(0,3);h.waitFor(()=>h.cpuRead(0)===3);
+ h.cpuWrite(1,0);h.cpuWrite(0,4);h.waitFor(()=>h.cpuRead(0)===4);
+ h.cpuWrite(0,0);
+ return {end:at,esa};
+}
+// Stereo 16-bit WAV (32 kHz) for listening and comparisons.
+export function wav(l,r,rate=32000){
+ const n=l.length,b=Buffer.alloc(44+n*4);
+ b.write('RIFF');b.writeUInt32LE(b.length-8,4);b.write('WAVEfmt ',8);b.writeUInt32LE(16,16);b.writeUInt16LE(1,20);b.writeUInt16LE(2,22);
+ b.writeUInt32LE(rate,24);b.writeUInt32LE(rate*4,28);b.writeUInt16LE(4,32);b.writeUInt16LE(16,34);b.write('data',36);b.writeUInt32LE(n*4,40);
+ for(let i=0;i<n;i++){b.writeInt16LE(l[i],44+i*4);b.writeInt16LE(r[i],46+i*4);}
+ return b;
+}
