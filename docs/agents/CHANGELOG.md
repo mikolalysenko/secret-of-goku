@@ -45,6 +45,12 @@ stay traceable even when they are committed together.
 - API for combat (`destroy_hit`, `destroy_orb_hit`), outputs for radio/feedback and the catalogue with data sources are in [snes-port/destroy.md](snes-port/destroy.md).
 - Validation: `snes/test/destroy/run.mjs` (29 Mesen scenarios against the browser modules on the same imported states): 26 match exactly; three timing-sensitive demolition scenes open the same walls with some different floor tiles or one fewer breach (documented). A full beam adds 0–8 lag frames over about 140 frames in most scenes measured, 15 in the heaviest (a BG2 room).
 
+## 2026-10-17 — SNES cartridge: destruction and scene select (integration)
+
+- Punches and beams on the cartridge break bushes, grass, vines and multi-stage objects through the native redraw, open authored gates and native hit/floor switches, light crystal orbs through their original events, keep Watts's shortcut entrance open, and let a full Super Saiyan wave demolish dungeon partitions; five demolition families match the browser edit for edit. See [snes-port/destroy.md](snes-port/destroy.md).
+- A hidden scene select on the title (Up Up Down Down Left Right Left Right) lists the 22 `?start=` presets; each runs the real NEW GAME and replays `quick-start.js`'s steps natively, with hooks the Frieza, orbit, Vegeta and ending modules fill. See [snes-port/debug.md](snes-port/debug.md).
+- Core clears every module WRAM block at power-on and title entry (random WRAM on hardware), and the Mesen harness no longer stops long tests at Mesen's 100-second limit.
+
 ## 2026-10-17 — SNES cartridge: title, arrival, Goku menus (integration)
 
 - The cartridge's title reads **Secret of GOKU** in gold with the extended credit, the name editor starts with an editable BOY, and the original opening plays as the boy until the sword pull. Goku's Saiyan pod then crashes in, with its descent, impact, quake and flash, obliterates the boy and the sword, leaves the Potos-hole crater, and the five arrival pages and the native event tail follow. Phase timing matches the browser within one frame; settled frames differ from the browser's in under 1% of pixels. Goku takes over the hero slot (GOKU, the typed name kept in the slot's tail) at impact, and the crater persists across menus and doors. See [snes-port/title.md](snes-port/title.md).
