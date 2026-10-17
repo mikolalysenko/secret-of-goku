@@ -86,7 +86,24 @@ export function createTimeChamber(snes,mod,{loadArt=true}={}){
   result[0]=color-1;result[1]=0;result[2]=1;return result;
  }
  if(previous)p.getColor=function(sub,x,y){return shade(sub,x,y,previous.call(this,sub,x,y));};
+ // shade() for a whole scanline as a compositor paint (Ppu.registerLineHook).
+ const lineColors=new Uint16Array(256),paint={type:'paint',layers:0x23,colors:lineColors,skipZero:false,layer:0,pixel:1,mainOnly:false};
+ function plan(y,linePlan){
+  if(lineFrame!==mod.frame||lineY!==y){lineFrame=mod.frame;lineY=y;lineActive=active();scrollX=scroll(0xa8);scrollY=scroll(0xaa);}
+  linePlan.skipPost=true;
+  if(!lineActive||!floor||y>224)return true;
+  const v=chamber.pavilion,wy=y+scrollY,row=(wy&15)*16,seam=(wy&63)===0,edge=wy<32||wy>=992,py=wy-v.y;
+  for(let x=0;x<256;x++){
+   const wx=x+scrollX;let color=floor[row+(wx&15)];
+   if((wx&63)===0||seam)color=1+28+(29<<5)+(30<<10);
+   if(wx<32||edge||wx>=992)color=1+23+(25<<5)+(28<<10);
+   const px=wx-v.x;if(px>=0&&py>=0&&px<v.width&&py<v.height&&pavilion?.[py*v.width+px])color=pavilion[py*v.width+px];
+   lineColors[x]=color;
+  }
+  linePlan.extra.push(paint);return true;
+ }
  if(previous)p.registerLineHook?.('getColor',p.getColor,previous,(ppu,line)=>!active()||!floor||line>224,{name:'time-chamber',
+  plan:(ppu,line,linePlan)=>plan(line,linePlan),
   post:(ppu,sub,x,y,r)=>{const t=shade(sub,x,y,r);if(t!==r){r[0]=t[0];r[1]=t[1];r[2]=t[2];}}});
  return{ready,load(){
   const rom=snes.cart.data;if(loaded===rom)return;loaded=rom;
