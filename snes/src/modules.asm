@@ -7,6 +7,7 @@
 
 ; incsrc "modules/<name>/module.asm"
 incsrc "modules/goku/module.asm"
+incsrc "modules/fx/module.asm"         ; before its clients (they use the !FX_* defines)
 incsrc "modules/world/module.asm"
 incsrc "modules/title/module.asm"
 incsrc "modules/story/module.asm"
@@ -27,12 +28,14 @@ modules_field_frame:
 	JSL goku_frame
 	JSL ui_field_frame
 	JSL destroy_field_frame          ; last: its planner uses the frame time left
+	JSL fx_frame               ; after every module that draws effects: shows this frame's requests
 	JSL audio_frame                 ; last: sends what other modules requested this frame
 	RTL
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
 modules_field_nmi:
 	JSL goku_nmi
-	JSL ui_field_nmi                  ; last: re-arms HDMA channel 5 after DMA on 4-7
+	JSL ui_field_nmi                  ; re-arms HDMA channel 5 after the game's DMA on 4-7
+	JSL fx_nmi                 ; keep last: programs HDMA channels 2/3 after all vblank DMA
 	RTL
 ; World flight frame, after the world logic (DB = $7E).
 modules_world_frame:
@@ -40,6 +43,7 @@ modules_world_frame:
 	JSL destroy_world_frame
 	JSL world_world_frame
 	JSL debug_world_frame
+	JSL fx_world_frame         ; after the modules that draw effects
 	JSL audio_frame
 	RTL
 ; World vblank, after the game's uploads and HDMA setup; not force-blanked,
@@ -47,6 +51,7 @@ modules_world_frame:
 modules_world_nmi:
 	JSL ui_world_nmi                  ; first: a few register and CGRAM writes
 	JSL world_world_nmi
+	JSL fx_world_nmi           ; keep last
 	RTL
 ; Full-screen menu frame (file select, name entry, status, equipment,
 ; save), in vblank right after the menu's own uploads (DB = $7E).
@@ -59,6 +64,7 @@ modules_menu_frame:
 	RTL
 ; Ring menu frame, in vblank (DB = $7E).
 modules_ring_frame:
+	JSL fx_ring_frame          ; first: puts PPU registers back inside vblank
 	JSL ui_ring_frame
 	JSL audio_pause
 	RTL
@@ -68,6 +74,7 @@ modules_title_boot:
 	JSL title_title_boot
 	JSL debug_title_boot
 	JSL world_title_boot
+	JSL fx_title_boot
 	JSL ui_title_boot
 	RTL
 ; Before the game writes a GAME FILE: put persistent state into !SRAM_LIVE.

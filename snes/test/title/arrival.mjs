@@ -85,25 +85,29 @@ export async function runArrival({rom,out}){
       const path=join(dir,'scene',`${n}.png`);
       if(!existsSync(path)){check(false,`${n}: no Mesen shot`);continue;}
       const m=mesen5(path);
-      let best=null;
+      // Each measure takes its best browser age in the window: the native
+      // flash steps (every fifth frame) and the quake's 2 px BG1 shake
+      // (every other frame, which moves the crater and resting pod with the
+      // ground) run on the game's own counters, not on the scene's age.
+      const cx=124,cy=139,hero=[95,98,143,130];
+      let best=null,region=null;
       for(const d of OFFSETS){
         const raw=ref.frames.get(`${n}@${d}`);if(!raw)continue;
-        const j=js5(raw);let full=0;
-        for(let i=0;i<m.length;i+=3)if(j[i]!==m[i]||j[i+1]!==m[i+1]||j[i+2]!==m[i+2])full++;
-        if(!best||full<best.full)best={d,full,j,raw};
+        const j=js5(raw);let full=0,crater=0,cn=0,pod=0,pn=0;
+        for(let y=0;y<224;y++)for(let x=0;x<256;x++){
+          const i=(y*256+x)*3,dif=j[i]!==m[i]||j[i+1]!==m[i+1]||j[i+2]!==m[i+2];
+          if(dif)full++;
+          if(x>=hero[0]&&x<hero[2]&&y>=hero[1]&&y<hero[3])continue;
+          if(x>=cx-48&&x<cx+48&&y>=cy-33&&y<cy+31){cn++;if(dif)crater++;}
+          else if(x>=cx-24&&x<cx+24&&y>=cy-59&&y<cy-11){pn++;if(dif)pod++;}
+        }
+        if(!best||full<best.full)best={d,full,raw};
+        const r=crater/cn+pod/pn;
+        if(!region||r<region.r)region={d,r,cp:100*crater/cn,pp:100*pod/pn};
       }
       if(!best){check(false,`${n}: no browser frame`);continue;}
-      // regions relative to the sword's screen position on this camera
-      const cx=124,cy=139,hero=[95,98,143,130];
-      let crater=0,cn=0,pod=0,pn=0;
-      for(let y=0;y<224;y++)for(let x=0;x<256;x++){
-        if(x>=hero[0]&&x<hero[2]&&y>=hero[1]&&y<hero[3])continue;
-        const i=(y*256+x)*3,dif=best.j[i]!==m[i]||best.j[i+1]!==m[i+1]||best.j[i+2]!==m[i+2];
-        if(x>=cx-48&&x<cx+48&&y>=cy-33&&y<cy+31){cn++;if(dif)crater++;}
-        else if(x>=cx-24&&x<cx+24&&y>=cy-59&&y<cy-11){pn++;if(dif)pod++;}
-      }
-      const pct=100*best.full/(256*224),cp=100*crater/cn,pp=100*pod/pn;
-      const msg=`${n} vs browser (age offset ${best.d}): ${pct.toFixed(2)}% of the frame, crater ${cp.toFixed(2)}%, pod ${pp.toFixed(2)}%`;
+      const pct=100*best.full/(256*224),cp=region.cp,pp=region.pp;
+      const msg=`${n} vs browser: ${pct.toFixed(2)}% of the frame (age offset ${best.d}), crater ${cp.toFixed(2)}% and pod ${pp.toFixed(2)}% (offset ${region.d})`;
       check(kind==='static'?pct<=1.5&&cp<=1&&pp<=1:pct<=6,msg);
       // side by side: browser | cartridge
       const img=blank(512,224),mm=readPng(path);

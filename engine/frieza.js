@@ -214,7 +214,11 @@ export function createFrieza(snes,mod){
   if(cameraLine!==y){
    cameraLine=y;const x0=mod.read16(0xa8),y0=mod.read16(0xaa);
    cameraX=x0+((ppu.bgHoff[0]-x0+8)&15)-8;cameraY=y0+((ppu.bgVoff[0]-y0+8)&15)-8;
-   const a=s.boss.arena;if(a.revision!==ruinsRevision||cameraX!==ruinsX||cameraY!==ruinsY){ruinsRevision=a.revision;ruinsX=cameraX;ruinsY=cameraY;ruins=ruinMask(a,cameraX,cameraY);}
+   const a=s.boss.arena;if(a.revision!==ruinsRevision||cameraX!==ruinsX||cameraY!==ruinsY){
+    ruinsRevision=a.revision;ruinsX=cameraX;ruinsY=cameraY;ruins=ruinMask(a,cameraX,cameraY);
+    // Rows with any ruin pixel, so line plans can skip the rest.
+    for(let row=0;row<224;row++){let any=0;for(let x=0,at=row*256;x<256&&!any;x++)any=ruins[at+x];ruinRows[row]=any?1:0;}
+   }
   }
   return ruins;
  }
@@ -225,11 +229,11 @@ export function createFrieza(snes,mod){
  }
  // The arena's shade() for a whole scanline as a compositor paint of BG1
  // (Ppu.registerLineHook); every scar color is positive.
- const scarColors=new Uint16Array(256),scarPaint={type:'paint',layers:1,colors:scarColors,skipZero:true,layer:-1,pixel:0,mainOnly:true};
+ const scarColors=new Uint16Array(256),scarPaint={type:'paint',layers:1,colors:scarColors,skipZero:true,layer:-1,pixel:0,mainOnly:true},ruinRows=new Uint8Array(224);
  function planScars(ppu,y,linePlan){
   linePlan.skipPost=true;
   if(!(y<224&&s.boss?.arena))return;
-  const mask=scarLine(ppu,y);if(!mask)return;
+  const mask=scarLine(ppu,y);if(!mask||!ruinRows[y])return;
   let any=false;
   for(let x=0,at=y*256;x<256;x++){const value=mask[at+x];scarColors[x]=value?scarColor(value,x,y)+1:0;if(value)any=true;}
   if(any)linePlan.extra.push(scarPaint);
