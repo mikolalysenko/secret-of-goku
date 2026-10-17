@@ -43,6 +43,7 @@ export function installAltarCamera(snes,mod,getScene){
 // follows the same anchor as the native body, even while the camera moves.
 export function createEmperorBeamView(snes,mod,getScene){
  const surface=new Uint16Array(256*224);let prepared=-1,chest=null;
+ const lineColors=new Uint16Array(256),paint={type:'paint',layers:63,colors:lineColors,skipZero:true,layer:4,pixel:0x86,mainOnly:true};
  const pink=1+31+(8<<5)+(23<<10),rim=1+20+(2<<5)+(14<<10),white=0x8000;
  const put=(x,y,c)=>{x=Math.round(x);y=Math.round(y);if(x>=0&&x<256&&y>=0&&y<224)surface[y*256+x]=c;};
  function prepare(scene){
@@ -90,5 +91,12 @@ export function createEmperorBeamView(snes,mod,getScene){
   if(c){native[0]=c-1;native[1]=4;native[2]=0x86;return native;}
   if(chest&&scene.age>=introTiming.hit&&scene.age<introTiming.blackEnd){native[0]=0;native[1]=4;native[2]=0x86;return native;}
   return native;
+ },plan(ppu,y,linePlan){
+  // color() for a whole line as one paint, when idle() is false: the
+  // picture, and black elsewhere during the impact.
+  const scene=getScene();if(prepared!==mod.frame)prepare(scene);
+  const black=chest&&scene.age>=introTiming.hit&&scene.age<introTiming.blackEnd;
+  for(let x=0,at=y*256;x<256;x++){const c=surface[at+x];lineColors[x]=c||(black?1:0);}
+  paint.skipZero=!black;linePlan.extra.push(paint);
  },get chest(){return chest;}};
 }

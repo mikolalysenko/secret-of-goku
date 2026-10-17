@@ -24,6 +24,40 @@ goku_body_hook:
 	SEP #$20
 	JML $00E5DF              ; RTS to the native caller
 
+; C0:E553 hook (replaced LDA $E024,X / BPL $E565): attachments of actor X.
+; M8 X16, DB = $7E. While Goku stands in, the boy's weapon cells (drawn
+; when a native weapon swing sets $E02F) are dropped and only the body is
+; drawn, as engine/sprite-layer.js hides the sword. Status overlays
+; (balloon, barrel, engulf, the ghost's reaper: $E191 & $C5) and special
+; render modes ($E060) keep the native path. The skipped attachment pass
+; would have run C0:E5F5 once: its shake decay is applied here too.
+goku_attach_hook:
+	CPX.w #$0000
+	BNE .native
+	JSR goku_check_on
+	BCC .native
+	LDA $E191
+	AND.b #$C5
+	BNE .native
+	LDA $E060
+	BNE .native
+	LDA $E00D
+	BEQ .body
+	SEC
+	SBC.b #$10
+	BCS .decayed
+	LDA.b #$00
+.decayed
+	STA $E00D
+.body
+	JML $00E8C6              ; body only (C0:E8C6 -> E5CE)
+.native
+	LDA $E024,X
+	BPL .body_first
+	JML $00E558
+.body_first
+	JML $00E565
+
 ; C0:E760 hook (replaced SEP #$20 / LDY #$FFF8). Shadow of actor X.
 goku_shadow_hook:
 	SEP #$20

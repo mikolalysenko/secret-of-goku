@@ -141,40 +141,31 @@ local function blit(path, memtype, limit)
 end
 function H.importSnesJs(dir, frames)
   local regs = dofile(dir .. '/regs.lua')
-  local done = false
-  local id = emu.addMemoryCallback(function()
-    if done then return end
+  -- Phase A (main CPU, at its next instruction): memory, PPU/DMA/IRQ
+  -- registers and the CPU context. Phase B (sound CPU, at its next
+  -- instruction boundary): APU RAM, DSP registers, SPC700 context, ports and
+  -- timers. Swapping the SPC700 state while Mesen's sound CPU was partway
+  -- through an instruction let that instruction finish against the new state
+  -- and desynchronise the CPU/APU handshake (stalls at C3:05D2 / C3:065C).
+  local phase = 0
+  local idA, idB
+  idA = emu.addMemoryCallback(function()
+    if phase ~= 0 then return end
     -- Apply on the scanline the state was captured at, so frame-phase
     -- sensitive scenes (IRQ splits, 30 Hz loops) resume in step.
     if regs.line and emu.getState()['ppu.scanline'] ~= regs.line then return end
-    done = true
+    phase = 1
     blit(dir .. '/wram.bin', emu.memType.snesWorkRam)
     blit(dir .. '/vram.bin', emu.memType.snesVideoRam)
     blit(dir .. '/cgram.bin', emu.memType.snesCgRam)
     blit(dir .. '/oam.bin', emu.memType.snesSpriteRam)
     blit(dir .. '/sram.bin', emu.memType.snesSaveRam, 0x2000)
-    blit(dir .. '/aram.bin', emu.memType.spcRam)
-    blit(dir .. '/dsp.bin', emu.memType.spcDspRegisters)
     for _, w in ipairs(regs.ppu) do emu.write(w[1], w[2], emu.memType.snesMemory) end
     for _, w in ipairs(regs.io) do emu.write(w[1], w[2], emu.memType.snesMemory) end
     local st = {}
     st['cpu.a'] = regs.cpu.a; st['cpu.x'] = regs.cpu.x; st['cpu.y'] = regs.cpu.y
     st['cpu.sp'] = regs.cpu.sp; st['cpu.d'] = regs.cpu.d; st['cpu.dbr'] = regs.cpu.dbr; st['cpu.ps'] = regs.cpu.ps
     st['cpu.pc'] = regs.cpu.pc; st['cpu.k'] = regs.cpu.k; st['cpu.emulationMode'] = regs.cpu.e
-    local sp = regs.spc
-    st['spc.a'] = sp.a; st['spc.x'] = sp.x; st['spc.y'] = sp.y; st['spc.sp'] = sp.sp; st['spc.pc'] = sp.pc; st['spc.ps'] = sp.ps
-    st['spc.dspReg'] = sp.dspAdr; st['spc.romEnabled'] = sp.romReadable
-    for i = 0, 3 do
-      st['spc.cpuRegs[' .. i .. ']'] = sp.cpuToApu[i + 1]
-      st['spc.outputReg[' .. i .. ']'] = sp.apuToCpu[i + 1]
-    end
-    for i = 0, 2 do
-      local t = sp.timers[i + 1]
-      st['spc.timer' .. i .. '.enabled'] = t.enabled
-      st['spc.timer' .. i .. '.target'] = t.target
-      st['spc.timer' .. i .. '.stage1'] = t.stage1
-      st['spc.timer' .. i .. '.output'] = t.output
-    end
     emu.setState(st)
     -- Browser states carry pointers into the browser's own, dynamically
     -- allocated story banks (F0-F7). The cartridge's compiled events use a
@@ -192,12 +183,35 @@ function H.importSnesJs(dir, frames)
       end
     end
   end, emu.callbackType.exec, 0x000000, 0xFFFFFF)
+  idB = emu.addMemoryCallback(function()
+    if phase ~= 1 then return end
+    phase = 2
+    blit(dir .. '/aram.bin', emu.memType.spcRam)
+    blit(dir .. '/dsp.bin', emu.memType.spcDspRegisters)
+    local sp = regs.spc
+    local st = {}
+    st['spc.a'] = sp.a; st['spc.x'] = sp.x; st['spc.y'] = sp.y; st['spc.sp'] = sp.sp; st['spc.pc'] = sp.pc; st['spc.ps'] = sp.ps
+    st['spc.dspReg'] = sp.dspAdr; st['spc.romEnabled'] = sp.romReadable
+    for i = 0, 3 do
+      st['spc.cpuRegs[' .. i .. ']'] = sp.cpuToApu[i + 1]
+      st['spc.outputReg[' .. i .. ']'] = sp.apuToCpu[i + 1]
+    end
+    for i = 0, 2 do
+      local t = sp.timers[i + 1]
+      st['spc.timer' .. i .. '.enabled'] = t.enabled
+      st['spc.timer' .. i .. '.target'] = t.target
+      st['spc.timer' .. i .. '.stage2'] = t.stage1
+      st['spc.timer' .. i .. '.output'] = t.output
+    end
+    emu.setState(st)
+  end, emu.callbackType.exec, 0x0000, 0xFFFF, emu.cpuType.spc, emu.memType.spcMemory)
   for _ = 1, (frames or 600) do
-    if done then break end
+    if phase == 2 then break end
     coroutine.yield()
   end
-  emu.removeMemoryCallback(id, emu.callbackType.exec, 0x000000, 0xFFFFFF)
-  return done
+  emu.removeMemoryCallback(idA, emu.callbackType.exec, 0x000000, 0xFFFFFF)
+  emu.removeMemoryCallback(idB, emu.callbackType.exec, 0x0000, 0xFFFF, emu.cpuType.spc, emu.memType.spcMemory)
+  return phase == 2
 end
 function H.finish(code)
   results.frames = H.frame

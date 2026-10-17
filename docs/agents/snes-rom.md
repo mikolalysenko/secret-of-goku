@@ -74,8 +74,12 @@ The exporter advances the state in the vendored core until a main loop waits
 for NMI (field `00:B079`, world flight `00:808D`), then writes WRAM, VRAM,
 CGRAM, OAM, SRAM, APU RAM, DSP registers and the full CPU/PPU/DMA/IRQ/SPC
 register file. In a Lua test, call `H.importSnesJs('<abs path to bundle dir>')`
-at any point after boot; the cartridge continues in that scene from the next
-instruction (292 of 321 states import; ring-menu, file-select and title states
+at any point after boot (repeatedly if needed); the cartridge continues in
+that scene. Memory and the CPU context are applied at the main CPU's next
+instruction on the captured scanline, the APU RAM, DSP and SPC700 context at
+the sound CPU's next instruction boundary (swapping it mid-instruction used to
+desynchronise the sound handshake, stalling at `C3:05D2`/`C3:065C`). Idle text
+pointers into the browser's story-bank layout are neutralised (292 of 321 states import; ring-menu, file-select and title states
 use other loops). `node snes/tools/snesjs-render.mjs <state.json> <frames>
 <out.png>` renders the same state in the original engine for reference. Mod-only state that the browser kept in JavaScript
 (Dragon Ball ledger, forms, scene clocks) is not in these bundles — set the
