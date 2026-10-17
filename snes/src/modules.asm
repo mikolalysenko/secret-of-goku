@@ -7,12 +7,12 @@
 
 ; incsrc "modules/<name>/module.asm"
 incsrc "modules/goku/module.asm"
+incsrc "modules/fx/module.asm"         ; before its clients (they use the !FX_* defines)
 incsrc "modules/world/module.asm"
 incsrc "modules/title/module.asm"
 incsrc "modules/story/module.asm"
 incsrc "modules/debug/module.asm"
 incsrc "modules/destroy/module.asm"
-incsrc "modules/fx/module.asm"         ; before its clients (they use the !FX_* defines)
 incsrc "modules/combat/module.asm"
 incsrc "modules/audio/module.asm"           ; after the modules whose sound flags it reads
 
@@ -28,7 +28,7 @@ modules_field_frame:
 	JSL world_field_frame
 	JSL goku_frame
 	JSL destroy_field_frame          ; last: its planner uses the frame time left
-	JSL fx_frame               ; keep last: draws what clients requested this frame
+	JSL fx_frame               ; after every module that draws effects: shows this frame's requests
 	JSL audio_frame                 ; last: sends what other modules requested this frame
 	RTL
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
@@ -42,7 +42,7 @@ modules_world_frame:
 	JSL world_world_frame
 	JSL debug_world_frame
 	JSL combat_world_frame
-	JSL fx_world_frame         ; keep last
+	JSL fx_world_frame         ; after the modules that draw effects
 	JSL audio_frame
 	RTL
 ; World vblank, after the game's uploads and HDMA setup; not force-blanked,
@@ -62,6 +62,7 @@ modules_menu_frame:
 	RTL
 ; Ring menu frame, in vblank (DB = $7E).
 modules_ring_frame:
+	JSL fx_ring_frame          ; first: puts PPU registers back inside vblank
 	JSL combat_menu_frame
 	JSL audio_pause
 	RTL
@@ -71,6 +72,7 @@ modules_title_boot:
 	JSL title_title_boot
 	JSL debug_title_boot
 	JSL world_title_boot
+	JSL fx_title_boot
 	RTL
 ; Before the game writes a GAME FILE: put persistent state into !SRAM_LIVE.
 modules_save:
