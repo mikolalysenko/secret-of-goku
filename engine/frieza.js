@@ -245,7 +245,14 @@ export function createFrieza(snes,mod){
   refreshArena();
   return !(renderArena&&ppu.mode===1)&&treeView.idle(ppu,line)&&emperorView.idle(ppu,line);
  },{name:'frieza',
-  plan:(ppu,line,plan)=>{refreshArena();if(renderArena&&ppu.mode===1){plan.disableMain|=2;plan.disableSub|=2;planScars(ppu,line,plan);}return true;},
+  plan:(ppu,line,plan)=>{
+   refreshArena();
+   if(renderArena&&ppu.mode===1){plan.disableMain|=2;plan.disableSub|=2;planScars(ppu,line,plan);return true;}
+   // shade() outside the arena: the tree view, then the emperor's beam.
+   if(!treeView.idle(ppu,line))treeView.plan(ppu,line,plan);
+   if(!emperorView.idle(ppu,line))emperorView.plan(ppu,line,plan);
+   plan.skipPost=true;return true;
+  },
   post:(ppu,sub,x,y,r)=>{refreshArena();const t=shade(ppu,sub,x,y,r,renderArena&&ppu.mode===1);if(t!==r){r[0]=t[0];r[1]=t[1];r[2]=t[2];}}});
  const api={
   ready,get pendingEntrance(){return pendingEntrance();},get eligible(){return eligible();},get active(){return s.stage!=='dormant';},get crisisActive(){return !!s.crisis?.active;},get unresolved(){return s.stolen;},get eighth(){return s.eighth;},get permanent(){return s.permanent;},get fallen(){return s.fallen;},get popoiMember(){return s.popoiMember;},get trial(){return s.stage==='trial';},get fighting(){return s.stage==='battle'||s.stage==='won';},
