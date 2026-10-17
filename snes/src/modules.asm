@@ -7,6 +7,7 @@
 
 ; incsrc "modules/<name>/module.asm"
 incsrc "modules/goku/module.asm"
+incsrc "modules/story/module.asm"
 incsrc "modules/ending/module.asm"
 
 pushpc
@@ -15,6 +16,7 @@ org !CODE_CORE+$7000
 ; logic and OAM build, before the NMI handshake. M16/X16, DB = $7E, D = 0.
 modules_field_frame:
 	JSL goku_frame
+	JSL story_field_frame
 	JSL ending_frame          ; keep last: it may take the whole OAM
 	RTL
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
@@ -45,8 +47,15 @@ modules_save:
 	RTL
 ; After a GAME FILE loaded and core restored (or cleared) !SRAM_LIVE.
 modules_load:
+	JSL story_load
 	RTL
 ; New game: !SRAM_LIVE was cleared and !persist_version set to 1.
 modules_new_game:
+	JSL story_new_game
 	RTL
 pullpc
+
+; Story hook and query tables (generated). Keep this last: modules fill story
+; hooks/queries by defining !STORY_HOOK_<NAME> / !STORY_QUERY_<NAME> in their
+; own module files, which must be included above it.
+incsrc "story/hooks.asm"
