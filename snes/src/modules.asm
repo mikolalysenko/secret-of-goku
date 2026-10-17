@@ -7,6 +7,7 @@
 
 ; incsrc "modules/<name>/module.asm"
 incsrc "modules/goku/module.asm"
+incsrc "modules/fx/module.asm"         ; before its clients (they use the !FX_* defines)
 incsrc "modules/title/module.asm"
 incsrc "modules/story/module.asm"
 incsrc "modules/debug/module.asm"
@@ -24,20 +25,24 @@ modules_field_frame:
 	JSL frieza_field_frame
 	JSL goku_frame
 	JSL destroy_field_frame          ; last: its planner uses the frame time left
+	JSL fx_frame               ; keep last: draws what clients requested this frame
 	RTL
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
 modules_field_nmi:
 	JSL goku_nmi
 	JSL frieza_field_nmi
+	JSL fx_nmi                 ; keep last: programs HDMA channels 2/3 after all vblank DMA
 	RTL
 ; World flight frame, after the world logic (DB = $7E).
 modules_world_frame:
 	JSL destroy_world_frame
 	JSL debug_world_frame
+	JSL fx_world_frame         ; keep last
 	RTL
 ; World vblank, after the game's uploads and HDMA setup; not force-blanked,
 ; so check core_vblank_lines before long uploads (DB = $80).
 modules_world_nmi:
+	JSL fx_world_nmi           ; keep last
 	RTL
 ; Full-screen menu frame (file select, name entry, status, equipment,
 ; save), in vblank right after the menu's own uploads (DB = $7E).
@@ -48,12 +53,14 @@ modules_menu_frame:
 	RTL
 ; Ring menu frame, in vblank (DB = $7E).
 modules_ring_frame:
+	JSL fx_ring_frame
 	RTL
 ; Title program entry (power-on, soft reset, quit to title), after module
 ; WRAM was cleared; the decompressed program is at 7E:8000 (DB = $7E).
 modules_title_boot:
 	JSL title_title_boot
 	JSL debug_title_boot
+	JSL fx_title_boot
 	RTL
 ; Before the game writes a GAME FILE: put persistent state into !SRAM_LIVE.
 modules_save:
