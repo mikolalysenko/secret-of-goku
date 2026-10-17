@@ -35,12 +35,36 @@ function test()
   -- turning off restores the boy
   G.off(); H.wait(8); s = snap('boy')
   G.check(s.repl == 0, 'the boy returns when persist_goku_active is cleared')
-  G.check(#G.oam_goku() == 0 or true, 'boy tiles')
   G.on(); H.wait(8); snap('goku_again')
   -- HUD portrait (E8/E9/F8/F9) carries Goku's face
   local hud = 0
   for i = 0, 31 do if H.vram(0x7E80 * 2 + i) ~= 0 then hud = hud + 1 end end
   G.check(hud > 0, 'HUD portrait tiles uploaded')
   H.result('shots', shots)
+  -- A native weapon swing (B, a state where the hero holds a weapon): the
+  -- boy draws his sword cells, Goku draws none (C0:E553 filter).
+  local function weaponCells()
+    local n = 0
+    for i = 0, 127 do
+      local y, tile, attr = H.oam(i * 4 + 1), H.oam(i * 4 + 2), H.oam(i * 4 + 3)
+      local pal = (attr >> 1) & 7
+      if y < 224 and (attr & 1) == 1 and tile >= 0x40 and tile <= 0x4E and (pal == 0 or pal == 4) then n = n + 1 end
+    end
+    return n
+  end
+  local function swing(on)
+    G.import('emulator-probe__weapon-test')
+    if on then G.on() else G.off() end
+    H.wait(8)
+    local seen = 0
+    H.tap('b', 6, 0)
+    for i = 1, 30 do H.wait(1); seen = seen + weaponCells() end
+    if on then H.shot('swing_goku') else H.shot('swing_boy') end
+    return seen
+  end
+  local boy, goku = swing(false), swing(true)
+  H.result('weapon_cells', {boy = boy, goku = goku})
+  G.check(boy > 0, 'the native boy draws his sword (' .. boy .. ' cells)')
+  G.check(goku == 0, 'Goku swings without sword cells (' .. goku .. ')')
   G.finish()
 end

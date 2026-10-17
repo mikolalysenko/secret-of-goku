@@ -1060,16 +1060,24 @@ pal_range:
 	INC.w !s_palcount
 	LDA.b #$03
 	TSB.w !s_paldirty
+	LDA.b #$01                    ; new ranges: rebuild at once
+	STA.w !s_pbnow
 	PLP
 	RTS
 
 ; Rebuild s_palout for the ranges whose inputs changed: the white/black
 ; mix (all ranges), the group-1 extra black (group-1 ranges) or base colours
-; (s_paldirty bit 0: group-0 ranges, bit 1: group-1 ranges).
+; (s_paldirty bit 0: group-0 ranges, bit 1: group-1 ranges). The curves are
+; rebuilt at once; the colours round-robin over the declared ranges, at
+; most !PB_BUDGET per frame while a fade steps a level or two at a time (a
+; colour trails its curve by a frame or two), all at once after a jump
+; (scene start, cuts).
 !l_palm = !s_tmp+8
+!PB_BUDGET = 64
 palette_build:
 	REP #$30
 	STZ.w !l_palm
+	STZ.w !l_pbjump
 	; the curves change with the 33 mix levels, not every step of a fade
 	LDA.w !s_fadeb
 	JSR fade_level
@@ -1082,9 +1090,15 @@ palette_build:
 .tables0
 	LDA.w !s_fadeb
 	JSR fade_level
+	JSR .jump
 	STA.w !s_fadekey
 	LDA.w !s_fadew
 	JSR fade_level
+	PHA
+	SEC
+	SBC.w !l_fadew
+	JSR .jumpBy
+	PLA
 	STA.w !l_fadew
 	LDA.w !s_fadeb
 	LDX.w #$0000
@@ -1117,54 +1131,198 @@ palette_build:
 	AND.b #$03
 	TSB.w !l_palm
 	STZ.w !s_paldirty
-	REP #$20
+	; a new change restarts the count of a full pass (the cursor goes on)
 	LDA.w !l_palm
-	BNE .apply
+	BEQ .run
+	TSB.w !s_pbmask
+	REP #$20
+	JSR pal_total
+	STA.w !s_pbleft
+.run
+	REP #$30
+	SEP #$20
+	LDA.w !s_pbmask
+	REP #$20
+	BNE .budget
 	RTS
-.apply
+.budget
+	SEP #$20
+	LDA.w !s_pbnow
+	STZ.w !s_pbnow
+	ORA.w !s_loading
+	REP #$20
+	AND.w #$00FF
+	ORA.w !l_pbjump
+	BNE .all
+	LDA.w #!PB_BUDGET
+	BRA .go
+.all
+	LDA.w #$0200                  ; a jump, new ranges or loading: all now
+.go
+	STA.w !l_pbbudget
+	JMP pal_walk
+; level A16 against s_fadekey: a jump of more than 2 levels -> l_pbjump.
+.jump
+	PHA
+	SEC
+	SBC.w !s_fadekey
+	JSR .jumpBy
+	PLA
+	RTS
+.jumpBy
+	BPL .pos
+	EOR.w #$FFFF
+	INC
+.pos
+	CMP.w #3
+	BCC .small
+	INC.w !l_pbjump
+.small
+	RTS
+
+; Colours in all declared ranges -> A16.
+pal_total:
 	LDA.w #$0000
-	STA.w !s_tmp+12               ; range offset
+	STA.w !l_m0
+	LDX.w #$0000
 .range
-	LDA.w !s_tmp+12
-	CMP.w #$0008
-	BCC .more
-	RTS
-.more
+	CPX.w #$0008
+	BCS .done
+	TXA
 	LSR
 	SEP #$20
 	CMP.w !s_palcount
 	REP #$20
-	BCC .go
+	BCS .done
+	LDA.w !s_palrange+1,X
+	AND.w #$00FF
+	BNE .count
+	LDA.w #$0100
+.count
+	CLC
+	ADC.w !l_m0
+	STA.w !l_m0
+	INX : INX
+	BRA .range
+.done
+	LDA.w !l_m0
 	RTS
-.go
-	TAY
-	LDA.w !s_palgrp,Y
+
+; Walk the cursor (s_pbrange, s_pbcol) over the ranges for up to
+; l_pbbudget colours of the pending groups (s_pbmask) or the pass end.
+pal_walk:
+	REP #$30
+.range
+	LDA.w !s_pbleft
+	BNE .more
+	SEP #$20
+	STZ.w !s_pbmask               ; pass complete
+	REP #$20
+	RTS
+.more
+	LDA.w !l_pbbudget
+	BNE .budgetLeft
+	RTS
+.budgetLeft
+	; cursor range valid? (else wrap to range 0)
+	LDA.w !s_pbrange
+	CMP.w #$0008
+	BCS .wrap
+	LSR
+	SEP #$20
+	CMP.w !s_palcount
+	REP #$20
+	BCC .inRange
+.wrap
+	STZ.w !s_pbrange
+	LDA.w !s_palrange
 	AND.w #$00FF
-	STA.w !s_tmp+14               ; group
-	TAX
-	LDA.l .groupBit,X
-	AND.w !l_palm
+	ASL
+	STA.w !s_pbcol
+	LDA.w !s_palcount
 	AND.w #$00FF
-	BNE .build
-	JMP .next
-.build
-	LDY.w !s_tmp+12
+	BNE .range
+	STZ.w !s_pbleft
+	BRA .range
+.inRange
+	; end of this range (colour * 2)
+	LDY.w !s_pbrange
 	LDA.w !s_palrange,Y
 	AND.w #$00FF
 	ASL
-	TAX                           ; first colour * 2
+	STA.w !l_pbfirst
 	LDA.w !s_palrange+1,Y
 	AND.w #$00FF
 	BNE .count
 	LDA.w #$0100
 .count
 	ASL
-	STA.w !s_tmp+10
-	TXA
 	CLC
-	ADC.w !s_tmp+10
-	STA.w !s_tmp+10               ; end * 2
-	LDA.w !s_tmp+14
+	ADC.w !l_pbfirst
+	STA.w !l_pbend
+	; cursor outside this range (ranges changed): restart it
+	LDA.w !s_pbcol
+	CMP.w !l_pbfirst
+	BCC .reset
+	CMP.w !l_pbend
+	BCC .group
+.reset
+	LDA.w !l_pbfirst
+	STA.w !s_pbcol
+.group
+	; colours left in this range
+	LDA.w !l_pbend
+	SEC
+	SBC.w !s_pbcol
+	LSR
+	STA.w !l_pbn
+	TYA
+	LSR
+	TAY
+	LDA.w !s_palgrp,Y
+	AND.w #$00FF
+	STA.w !l_pbgrp
+	TAX
+	SEP #$20
+	LDA.l .groupBit,X
+	AND.w !s_pbmask
+	REP #$20
+	BNE .build
+	; not pending: skip the rest of the range
+	LDA.w !s_pbleft
+	SEC
+	SBC.w !l_pbn
+	BCS .skipLeft
+	LDA.w #$0000
+.skipLeft
+	STA.w !s_pbleft
+	JMP .nextRange
+.build
+	; n = min(left in range, budget, left in pass)
+	LDA.w !l_pbn
+	CMP.w !l_pbbudget
+	BCC .n1
+	LDA.w !l_pbbudget
+.n1
+	CMP.w !s_pbleft
+	BCC .n2
+	LDA.w !s_pbleft
+.n2
+	STA.w !l_pbn
+	ASL
+	CLC
+	ADC.w !s_pbcol
+	STA.w !l_pbstop
+	LDA.w !l_pbbudget
+	SEC
+	SBC.w !l_pbn
+	STA.w !l_pbbudget
+	LDA.w !s_pbleft
+	SEC
+	SBC.w !l_pbn
+	STA.w !s_pbleft
+	LDX.w !s_pbcol
+	LDA.w !l_pbgrp
 	BNE .group1
 .colour
 	LDY.w !s_compr,X
@@ -1175,9 +1333,9 @@ palette_build:
 	ORA.w !s_fadebt,Y
 	STA.w !s_palout,X
 	INX : INX
-	CPX.w !s_tmp+10
+	CPX.w !l_pbstop
 	BCC .colour
-	BRA .done
+	BRA .built
 .group1
 	LDY.w !s_compr,X
 	LDA.w !s_fader2,Y
@@ -1187,12 +1345,37 @@ palette_build:
 	ORA.w !s_fadebt2,Y
 	STA.w !s_palout,X
 	INX : INX
-	CPX.w !s_tmp+10
+	CPX.w !l_pbstop
 	BCC .group1
-.done
-.next
-	INC.w !s_tmp+12
-	INC.w !s_tmp+12
+.built
+	STX.w !s_pbcol
+	CPX.w !l_pbend
+	BCS .nextRange
+	JMP .range
+.nextRange
+	LDA.w !s_pbrange
+	CLC
+	ADC.w #$0002
+	STA.w !s_pbrange
+	CMP.w #$0008
+	BCS .toFirst
+	LSR
+	SEP #$20
+	CMP.w !s_palcount
+	REP #$20
+	BCS .toFirst
+	LDY.w !s_pbrange
+	LDA.w !s_palrange,Y
+	AND.w #$00FF
+	ASL
+	STA.w !s_pbcol
+	JMP .range
+.toFirst
+	STZ.w !s_pbrange
+	LDA.w !s_palrange
+	AND.w #$00FF
+	ASL
+	STA.w !s_pbcol
 	JMP .range
 .groupBit
 	db $01,$02,$00,$00
@@ -1283,6 +1466,18 @@ fade_table_set:
 	STA.w !s_tmp+12
 	; the curve, 32 words at l_curve
 	LDY.w #$0000                  ; c * 2
+	LDA.w !s_tmp+12
+	BNE .curve
+	LDX.w !s_tmp+14               ; no white: the dark row as it is
+.dark
+	LDA.l ending_fade_dark,X
+	AND.w #$00FF
+	STA.w !l_curve,Y
+	INX
+	INY : INY
+	CPY.w #$0040
+	BCC .dark
+	BRA .tables
 .curve
 	TYA
 	LSR
@@ -1300,6 +1495,7 @@ fade_table_set:
 	INY : INY
 	CPY.w #$0040
 	BCC .curve
+.tables
 	; channel tables
 	LDA.w !s_tmp+8
 	BEQ .plain

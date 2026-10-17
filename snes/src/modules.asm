@@ -7,7 +7,9 @@
 
 ; incsrc "modules/<name>/module.asm"
 incsrc "modules/goku/module.asm"
+incsrc "modules/title/module.asm"
 incsrc "modules/story/module.asm"
+incsrc "modules/destroy/module.asm"
 incsrc "modules/ending/module.asm"
 
 pushpc
@@ -15,9 +17,11 @@ org !CODE_CORE+$7000
 ; Field frame (also dialogue, events and Mode 7 boss arenas), after the game
 ; logic and OAM build, before the NMI handshake. M16/X16, DB = $7E, D = 0.
 modules_field_frame:
-	JSL goku_frame
+	JSL title_field_frame
 	JSL story_field_frame
-	JSL ending_frame          ; keep last: it may take the whole OAM
+	JSL goku_frame
+	JSL ending_frame          ; after the modules that draw sprites: a full-screen scene takes the whole OAM
+	JSL destroy_field_frame          ; last: its planner uses the frame time left
 	RTL
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
 modules_field_nmi:
@@ -26,6 +30,7 @@ modules_field_nmi:
 	RTL
 ; World flight frame, after the world logic (DB = $7E).
 modules_world_frame:
+	JSL destroy_world_frame
 	RTL
 ; World vblank, after the game's uploads and HDMA setup; not force-blanked,
 ; so check core_vblank_lines before long uploads (DB = $80).
@@ -34,6 +39,8 @@ modules_world_nmi:
 ; Full-screen menu frame (file select, name entry, status, equipment,
 ; save), in vblank right after the menu's own uploads (DB = $7E).
 modules_menu_frame:
+	JSL goku_menu_frame
+	JSL title_menu_frame
 	RTL
 ; Ring menu frame, in vblank (DB = $7E).
 modules_ring_frame:
@@ -41,17 +48,22 @@ modules_ring_frame:
 ; Title program entry (power-on, soft reset, quit to title), after module
 ; WRAM was cleared; the decompressed program is at 7E:8000 (DB = $7E).
 modules_title_boot:
+	JSL title_title_boot
 	RTL
 ; Before the game writes a GAME FILE: put persistent state into !SRAM_LIVE.
 modules_save:
 	RTL
 ; After a GAME FILE loaded and core restored (or cleared) !SRAM_LIVE.
 modules_load:
+	JSL title_load
 	JSL story_load
+	JSL destroy_reset
 	RTL
 ; New game: !SRAM_LIVE was cleared and !persist_version set to 1.
 modules_new_game:
+	JSL title_new_game
 	JSL story_new_game
+	JSL destroy_reset
 	RTL
 pullpc
 

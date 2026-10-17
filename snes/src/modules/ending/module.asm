@@ -32,6 +32,7 @@
 !ending_depart_y = !RAM_ORBIT+$98  ; word
 !ending_tmp     = !RAM_ORBIT+$9A   ; word  scratch (hooks)
 !ending_tmp2    = !RAM_ORBIT+$9C   ; word
+!ending_gokuctl = !RAM_ORBIT+$9E   ; byte  we set the goku module's SUPPRESS for a full-screen scene
 
 ; Phases (match the browser's state.phase).
 !EP_TRANSITION = $01   ; good: whole-screen fade to black over 48 frames, then black
@@ -197,6 +198,18 @@ hi_bits_ram = !SW+$DF0             ; 16 bytes (oam_put's high-table patterns)
 !s_cutptr   = !s_x+$64          ; word  TM table (s_hdmabuf half) for the next vblank
 !s_palsaved = !s_x+$68          ; byte  s_palsave holds the game's palette buffer
 !s_goku_dma = !s_x+$70          ; 80 bytes: queue_goku's 16 tile DMAs (address, bank, VRAM)
+!s_pbmask   = !s_x+$D4          ; byte  colour groups of the palette pass in progress
+!s_pbnow    = !s_x+$D5          ; byte  rebuild everything at once next time
+!s_pbleft   = !s_x+$D6          ; word  colours left in the pass
+!s_pbrange  = !s_x+$D8          ; word  cursor: range offset
+!s_pbcol    = !s_x+$DA          ; word  cursor: colour * 2
+!l_pbjump   = !s_x+$DC          ; word  scratch (palette_build)
+!l_pbbudget = !s_x+$DE
+!l_pbfirst  = !s_x+$E0
+!l_pbend    = !s_x+$E2
+!l_pbn      = !s_x+$E4
+!l_pbgrp    = !s_x+$E6
+!l_pbstop   = !s_x+$E8
 !s_dirsrc   = !s_x+$C0          ; word  code-bank palette of the direct range (group 2)
 !s_edgeon   = !s_x+$C2          ; word  s_edge colours go over the direct range
 !s_edge     = !s_x+$C4          ; 16 bytes: 4 x (colour 14, colour 15) of OBJ palettes 4-7
@@ -671,6 +684,7 @@ ending_frame:
 	JSR brightness_apply
 	JSR suppress_native
 	JSR oam_finish
+	JSR goku_quiet
 	JSR status_loading
 .out
 	REP #$30
@@ -777,6 +791,13 @@ scene_init:
 	STZ.w !s_glowg
 	STZ.w !s_glowb
 	STZ.w !s_edgeon
+	STZ.w !s_pbleft
+	STZ.w !s_pbrange
+	STZ.w !s_pbcol
+	SEP #$20
+	STZ.w !s_pbmask
+	STZ.w !s_pbnow
+	REP #$20
 	STZ.w !s_frame
 	LDA.w #$FFFF
 	STA.w !s_fadekey
@@ -877,6 +898,9 @@ release_common:
 	STA.w !s_loading
 	STA.w !s_palcount
 	STA.w !s_fullscreen
+	JSR goku_quiet
+	SEP #$20
+	LDA.b #$00
 	LDA.b #!FAM_NONE
 	STA.w !s_family
 	LDA.l !ending_status
@@ -977,6 +1001,12 @@ begin_fullscreen:
 	STA.w !s_glowg
 	STA.w !s_glowb
 	STA.w !s_edgeon
+	STA.w !s_pbleft
+	STA.w !s_pbrange
+	STA.w !s_pbcol
+	SEP #$20
+	STA.w !s_pbmask
+	REP #$20
 	LDA.w #$0000
 	STA.w !s_fadew
 	LDA.w #$FFFF
@@ -994,6 +1024,36 @@ begin_fullscreen:
 	LDA.w #$0000
 	LDX.w #$0001
 	JSR pal_range
+	RTS
+
+; While a full-screen scene hides the field, the goku module keeps the
+; native boy (GOKU_CTL_SUPPRESS): his cells, palette and portrait work
+; would cost the frame ~60 lines for a hidden sprite. Released with the
+; screen; never clears a SUPPRESS another module set.
+goku_quiet:
+	SEP #$20
+	LDA.w !s_fullscreen
+	BEQ .release
+	LDA.l !ending_gokuctl
+	BNE .done
+	LDA.l $7E0000|!goku_ctl
+	BIT.b #!GOKU_CTL_SUPPRESS
+	BNE .done                 ; someone else's
+	ORA.b #!GOKU_CTL_SUPPRESS
+	STA.l $7E0000|!goku_ctl
+	LDA.b #$01
+	STA.l !ending_gokuctl
+	BRA .done
+.release
+	LDA.l !ending_gokuctl
+	BEQ .done
+	LDA.l $7E0000|!goku_ctl
+	AND.b #~!GOKU_CTL_SUPPRESS
+	STA.l $7E0000|!goku_ctl
+	LDA.b #$00
+	STA.l !ending_gokuctl
+.done
+	REP #$30
 	RTS
 
 ; Set the load script: A = address in the code bank.
