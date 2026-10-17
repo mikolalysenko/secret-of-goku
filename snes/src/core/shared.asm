@@ -24,7 +24,9 @@
 !persist_scouter     = !PERSIST_CORE+$03 ; bit0 owned (Sylphid), bit1 enabled
 
 ; Volatile SRAM work areas (contents undefined at boot; owners clear them).
-!SRAM_WORK_CORE   = $317480   ; $0B80 core / misc (through $317FFF)
+!SRAM_WORK_CORE   = $317480   ; $0380 core / misc (through $3177FF)
+!SRAM_WORK_FX     = $317800   ; $0400 effects library slots (beams, sparks, orbs, auras)
+!SRAM_WORK_COMBAT = $317C00   ; $0400 combat tables (projectiles, launches, per-target timers)
 !SRAM_WORK_SCENE  = $326000   ; $2000 set-piece scenes (Frieza, orbit, endings, Vegeta) — one scene at a time
 !SRAM_WORK_STORY  = $336000   ; $1000 story runtime
 !SRAM_WORK_DESTROY = $337000  ; $0800 destruction

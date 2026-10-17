@@ -129,6 +129,17 @@ core_boot:
 	PLP
 	JML $C10010
 
+; FastROM (CORE_FASTROM builds): C1:4D0F clears $4200-$420D on every title
+; entry, so MEMSEL is set again here. Banks $80-$FF then run at 3.58 MHz.
+core_fastrom:
+if defined("CORE_FASTROM")
+	SEP #$20
+	LDA.b #$01
+	STA.l $00420D
+	REP #$20
+endif
+	RTS
+
 ; Clear the module WRAM block and core's extended block. M16/X16 expected.
 core_clear_wram:
 	LDA.w #$0000
@@ -152,6 +163,7 @@ core_title_boot:
 	PHP : PHB : PHD
 	REP #$30
 	PHA : PHX : PHY
+	JSR core_fastrom
 	JSR core_clear_wram
 	LDA.w #$0000 : TCD
 	PEA $7E7E : PLB : PLB
@@ -166,6 +178,7 @@ core_title_boot_alt:
 	PHP : PHB : PHD
 	REP #$30
 	PHA : PHX : PHY
+	JSR core_fastrom
 	JSR core_clear_wram
 	LDA.w #$0000 : TCD
 	PEA $7E7E : PLB : PLB
@@ -258,8 +271,7 @@ if defined("CORE_TEST")
 endif
 	JSL modules_field_nmi
 	REP #$30
-	LDA.w #$0007                     ; channel 7: the game's own NMI DMA channel
-	JSR core_flush_vram
+	JSR core_flush_auto
 .done
 	PLB
 	PLP
@@ -308,8 +320,7 @@ if defined("CORE_TEST")
 endif
 	JSL modules_world_nmi
 	REP #$30
-	LDA.w #$0006
-	JSR core_flush_vram
+	JSR core_flush_auto
 .done
 	PLB
 	REP #$30
@@ -511,14 +522,45 @@ core_flush_vram:
 core_dma_bit:
 	db $01,$02,$04,$08,$10,$20,$40,$80
 
+; Flush on a DMA channel no HDMA channel uses: 7, 6, 5 or 4, checked against
+; the game's HDMA mask $2C (world flight also runs HDMA on channels 0-5).
+; Skips the flush (entries wait) when none is free. DB = an I/O bank.
+core_flush_auto:
+	REP #$30
+	LDA.l !core_dma_count
+	BEQ .none
+	LDA.l $7E002C
+	AND.w #$00FF
+	STA.l !core_tmp0
+	LDA.l !core_mode
+	CMP.w #!CORE_MODE_WORLD
+	BNE .mask
+	LDA.l !core_tmp0
+	ORA.w #$003F
+	STA.l !core_tmp0
+.mask
+	LDX.w #$0007
+.try
+	LDA.l core_dma_bit,X
+	AND.w #$00FF
+	AND.l !core_tmp0
+	BEQ .found
+	DEX
+	CPX.w #$0004
+	BCS .try
+.none
+	RTS
+.found
+	TXA
+	JMP core_flush_vram
+
 ; Flush from a main-loop hook that runs in vblank (menus, rings). DB = $7E.
 core_flush_main:
 	LDA.w !core_dma_count&$FFFF
 	BEQ .none
 	PHB
 	PEA $8080 : PLB : PLB
-	LDA.w #$0007
-	JSR core_flush_vram
+	JSR core_flush_auto
 	PLB
 .none
 	RTS
