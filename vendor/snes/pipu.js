@@ -587,10 +587,39 @@ function Ppu(snes) {
       post: options.post, name: options.name,
       postOp: options.post ? {type: "post", fn: options.post} : null
     });
+    hookVersion++;
     return () => {
       hookByFn.delete(fn);
+      hookVersion++;
     };
   }
+  // Each method's wrapper chain resolved to its hooks (outermost first), or
+  // null when some wrapper is unregistered; reused until the method's head
+  // function or the registry changes.
+  let hookVersion = 0;
+  const chainHead = [null, null, null, null, null, null];
+  const chainVersion = [-1, -1, -1, -1, -1, -1];
+  const chainHooks = [[], [], [], [], [], []];
+  const chainOk = [false, false, false, false, false, false];
+  const resolveChain = (i, fn) => {
+    if(chainHead[i] !== fn || chainVersion[i] !== hookVersion) {
+      let method = hookedMethods[i], list = chainHooks[i], ok = true, f = fn;
+      list.length = 0;
+      while(f !== base[method]) {
+        let hook = hookByFn.get(f);
+        if(!hook || hook.method !== method) {
+          ok = false;
+          break;
+        }
+        list.push(hook);
+        f = hook.previous;
+      }
+      chainHead[i] = fn;
+      chainVersion[i] = hookVersion;
+      chainOk[i] = ok;
+    }
+    return chainOk[i] ? chainHooks[i] : null;
+  };
   // Diagnostics: names of the registered hooks active on this line, and
   // "unregistered" for wrappers the compositor cannot see through.
   this.activeLineHooks = function(line) {
@@ -640,13 +669,16 @@ function Ppu(snes) {
     linePlan.disableSub = 0;
     linePlan.ops.length = 0;
     for(let i = 0; i < hookedMethods.length; i++) {
-      let method = hookedMethods[i];
-      let fn = this[method];
-      while(fn !== base[method]) {
-        let hook = hookByFn.get(fn);
-        if(!hook || hook.method !== method) {
-          return false;
-        }
+      let fn = this[hookedMethods[i]];
+      if(fn === base[hookedMethods[i]]) {
+        continue;
+      }
+      let chain = resolveChain(i, fn);
+      if(chain === null) {
+        return false;
+      }
+      for(let c = 0; c < chain.length; c++) {
+        let hook = chain[c];
         if(!hook.idle(this, line)) {
           linePlan.objColor = null;
           linePlan.faceColor = null;
@@ -686,7 +718,6 @@ function Ppu(snes) {
             linePlan.ops.push(hookOps[k]);
           }
         }
-        fn = hook.previous;
       }
     }
     linePlan.objColor = null;
