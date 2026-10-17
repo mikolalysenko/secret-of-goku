@@ -121,6 +121,7 @@ world_ki_input:
 	STZ.w !w_charge
 	LDA.w #!TGT_NONE
 	STA.w !w_aim
+	STZ.w !wa_mega                   ; no staged aim to continue
 	LDA.w #!SFX_CHARGE
 	JSR world_sfx
 	BRA .charge
@@ -334,13 +335,25 @@ world_shot_tick:
 +	INC.w !w_shot_age
 	LDA.w !w_shot_flags
 	AND.w #!SF_HIT
-	BNE .aged
+	BNE +
 	LDA.w !w_shot_age
 	CMP.w #12
 	BCC .aged
 	LDA.w #!SF_HIT
 	TSB.w !w_shot_flags
 	JSR world_shot_hit
+	BRA .aged
++	; the crater strike runs the frame after the hit (the hit frame already
+	; carries the explosion and the grown beam's rebuild)
+	LDA.w !w_shot_flags
+	AND.w #!SF_STRIKE
+	BEQ .aged
+	LDA.w #!SF_STRIKE
+	TRB.w !w_shot_flags
+	LDA.w !w_shot_tx
+	LDX.w !w_shot_ty
+	LDY.w !w_shot_flags
+	JSR world_scar_strike
 .aged
 	LDA.w !w_shot_age
 	CMP.w !w_shot_max
@@ -421,10 +434,9 @@ world_shot_hit:
 	LDA.w #!MSG_FORTRESS
 	JSR world_message
 .scar
-	LDA.w !w_shot_tx
-	LDX.w !w_shot_ty
-	LDY.w !w_shot_flags
-	JMP world_scar_strike
+	LDA.w #!SF_STRIKE                ; world_shot_tick strikes next frame
+	TSB.w !w_shot_flags
+	RTS
 
 ; Explosion, the Fortress cutaway and the queued landing.
 world_expl_tick:

@@ -140,6 +140,7 @@ assert !RAM_WORLD == ($7E0000|!WORLD_RAM), "!WORLD_RAM must match !RAM_WORLD"
 !SF_HIT     = $0004
 !SF_DEFLECT = $0008
 !SF_BLOCKED = $0010     ; Fortress shield blocks this wave (drawn short)
+!SF_STRIKE  = $0020     ; crater strike pending (one frame after the hit)
 !TGT_NONE      = $FFFF
 !TGT_LANDSCAPE = $0000
 !TGT_FORTRESS  = $0001
@@ -169,6 +170,8 @@ assert !pw_scars+(!WORLD_MAX_SCARS*4) <= !PERSIST_WORLD+$40, "world persistent b
 !WORLD_TILE_BUF0 = $080   ; Goku cell buffer 0: 4x4 tiles at columns 0-3, tile rows 8-11
 !WORLD_TILE_BUF1 = $084   ; buffer 1: columns 4-7
 !WORLD_TILE_MINI = $06C   ; 16x16 miniature (docking): columns 12-13, tile rows 6-7
+!WORLD_FX_SLOTS_END = $00DC ; effects use our slots up to here (OAM bytes),
+                            ; leaving Goku's four cells and the shadow
 !WORLD_OBJ_ATTR_GOKU = $3A  ; priority 3, palette 5, name table 0
 !WORLD_OBJ_ATTR_FX   = $3C  ; priority 3, palette 6
 !WORLD_VRAM_OWNER = $0D   ; core_vram_claim owner id (module bank AD/ED)

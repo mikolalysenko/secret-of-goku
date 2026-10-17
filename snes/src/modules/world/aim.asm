@@ -34,22 +34,65 @@ world_aim_camera:
 	STA.w !wa_cos
 	RTS
 
+; Aim candidates and the staged-evaluation marker in !wa_mega bit 8.
+!WA_STAGED = $0100
+!WORLD_AIM_CANDS = 2+!WORLD_TOWN_COUNT   ; barrier, Fortress, towns
+
 ; world_aim: the target an aerial wave fired now would hit. A16 = nonzero
 ; for the full SSJ wave. Out: A16 = target id (!TGT_*), $FFFF for none;
 ; when found !wa_tx/ty/along/across describe it. M16/X16, DB = $7E, D = 0.
 world_aim:
+	CMP.w #$0000
+	BEQ +
+	LDA.w #$0001
++	JSR world_aim_begin
+	LDA.w #$0000
+	LDX.w #!WORLD_AIM_CANDS
+	JSR world_aim_step
+	LDA.w !wa_best
+	RTS
+
+; Start an evaluation: A16 = mega (bit 0) | !WA_STAGED when the candidates
+; are spread over several frames (world_draw_aim_sparks). Takes the camera
+; snapshot every candidate of this evaluation is measured from.
+world_aim_begin:
 	STA.w !wa_mega
 	JSR world_aim_camera
 	LDA.w #!TGT_NONE
 	STA.w !wa_best
+	RTS
+
+; Evaluate candidates [A16, X16): 0 the cloud barrier, 1 the Fortress,
+; 2.. the towns. The best so far stays in !wa_best.
+world_aim_step:
+	STX.w !w_scratch+4
+-	CMP.w !w_scratch+4
+	BCC +
+	RTS
++	PHA
+	JSR world_aim_cand
+	PLA
+	INC
+	BRA -
+
+; One candidate (A16 = index, see world_aim_step). Clobbers X/Y and
+; w_scratch+6..+15 (w_scratch+4 is the step's end).
+world_aim_cand:
+	CMP.w #$0001
+	BEQ .fortress
+	BCC .barrier
+	SEC
+	SBC.w #2
+	JMP .town
+.barrier
 	; Mana Tree cloud barrier: the AF landing patch around the Pure Land
 	; entry (takeoff table entry of map 198); gone once $E3 bit 6 opens it.
-	; Frieza's unresolved/crisis states keep it (frieza stream, stand-in).
+	; Frieza's unresolved/crisis states keep it (world_barrier_held).
 	LDA $E3
 	AND.w #$0040
-	BNE .fortress
+	BNE .none
 	JSR world_barrier_held
-	BNE .fortress
+	BNE .none
 	LDA.l $C67A80+(198*2)
 	AND.w #$00FF
 	ASL
@@ -66,18 +109,20 @@ world_aim:
 	STA.w !w_scratch+14
 	LDA.w #44
 	LDX.w #!TGT_BARRIER
-	JSR world_aim_try
+	JMP world_aim_try
+.none
+	RTS
 .fortress
 	LDA.l !pw_flags
 	AND.w #!PWF_FORTRESS
-	BNE .towns
+	BNE .none
 	LDA $8C
 	AND.w #$00FF
-	BNE .towns
+	BNE .none
 	LDA.l $7ECF4E
 	AND.w #$00FF
 	CMP.w #9
-	BCS .towns
+	BCS .none
 	LDA.w $0128
 	AND.w #$0FFF
 	STA.w !w_scratch+12
@@ -86,20 +131,14 @@ world_aim:
 	STA.w !w_scratch+14
 	LDA.w #36
 	LDX.w #!TGT_FORTRESS
-	JSR world_aim_try
-.towns
-	LDY.w #$0000
+	JMP world_aim_try
 .town
-	PHY
-	TYA
+	TAY
 	ASL
 	TAX
 	LDA.l world_bit,X
 	AND.l !pw_towns
-	BNE .next                        ; already a crater
-	TYA
-	ASL
-	TAX
+	BNE .none                        ; already a crater
 	LDA.l world_town_maps,X
 	ASL
 	TAX
@@ -119,18 +158,11 @@ world_aim:
 	ASL
 	ASL
 	STA.w !w_scratch+14
-	LDA $01,S
+	TYA
 	ORA.w #!TGT_TOWN
 	TAX
 	LDA.w #32
-	JSR world_aim_try
-.next
-	PLY
-	INY
-	CPY.w #!WORLD_TOWN_COUNT
-	BCC .town
-	LDA.w !wa_best
-	RTS
+	JMP world_aim_try
 
 ; Try one target: A = radius, X = id, w_scratch+12/+14 = world x/y.
 world_aim_try:
@@ -175,6 +207,7 @@ world_aim_try:
 +
 	LDX.w #512
 	LDA.w !wa_mega
+	AND.w #$0001
 	BNE +
 	LDA.w !wa_cand
 	CMP.w #!TGT_FORTRESS
@@ -198,6 +231,7 @@ world_aim_try:
 	; tolerance = radius + (mega ? 80 : 20)
 	LDX.w #20
 	LDA.w !wa_mega
+	AND.w #$0001
 	BEQ +
 	LDX.w #80
 +	TXA

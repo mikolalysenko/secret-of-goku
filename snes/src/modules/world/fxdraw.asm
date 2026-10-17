@@ -1,8 +1,11 @@
 ; Aerial effect sprites (engine/world-ki.js draw(), engine/sprite-layer.js
-; giantBeam/stamp). Front effects (charge orb, ki orb, the wave) go into our
-; OAM slots ahead of Goku, as the browser draws them over his body; the rest
-; (sparks, explosion, distant bursts, the shield rebound) go through
-; core_oam_add into the module slots behind the natives.
+; giantBeam/stamp). Everything goes into our OAM slots ahead of Goku, as the
+; browser's effect layer draws over his body (layer.behindBody false) and
+; over the native sprites: the charge orb, ki orb and the wave first, then
+; the sparks, the shield rebound, the explosion and the distant bursts.
+; Only when our slots run out (!WORLD_FX_SLOTS_END, keeping room for Goku)
+; do the latter go through core_oam_add into the module slots behind the
+; natives.
 
 ; ---------------------------------------------------------------------------
 ; Front effects. w_cursor = OAM byte cursor (in/out). M16/X16, DB = $7E.
@@ -572,7 +575,7 @@ world_shield_y:
 	RTS
 
 ; ---------------------------------------------------------------------------
-; Back effects through core_oam_add (module slots behind the natives).
+; The second group of effects (world_fx_back: our slots while they last).
 world_draw_back:
 	JSR world_draw_beam_sparks       ; (reads the widths world_draw_beam left)
 	JSR world_draw_aim_sparks
@@ -580,12 +583,21 @@ world_draw_back:
 	JSR world_draw_explosion
 	JMP world_draw_bursts
 
-; A16 = fx id, w_scratch+10/+12 = top-left, w_scratch+8 flips. C set when
-; the module slots are full. Sprites outside [-16, 256) x [-16, 224) are
-; dropped here: OAM Y is 8 bits, so core_oam_add's wider cull would let a
-; 16x16 sprite at y < -16 wrap to the bottom of the screen.
+; A16 = fx id, w_scratch+10/+12 = top-left, w_scratch+8 flips. Our slots
+; (world_fx_front) while the cursor is below !WORLD_FX_SLOTS_END, else
+; core_oam_add; C set when those are full too. Sprites outside [-16, 256) x
+; [-16, 224) are dropped: OAM Y is 8 bits, so core_oam_add's wider cull
+; would let a 16x16 sprite at y < -16 wrap to the bottom of the screen.
 world_fx_back:
 	PHA
+	LDA.w !w_cursor
+	CMP.w #!WORLD_FX_SLOTS_END
+	BCS .core
+	PLA
+	JSR world_fx_front               ; our slots, in front of Goku and natives
+	CLC
+	RTS
+.core
 	LDA.w !w_scratch+12
 	CLC
 	ADC.w #16
@@ -616,19 +628,17 @@ world_fx_back:
 	CLC
 	RTS
 
-; While charging: four sparks around the aimed target (every frame).
+; While charging: four sparks around the aimed target (every frame). The
+; target is re-evaluated every four frames, its candidates spread over the
+; four frames (barrier, Fortress and two towns, then three towns per frame)
+; from one camera snapshot, and published on the fourth.
 world_draw_aim_sparks:
 	LDA.w !w_charging
 	BNE +
 	JMP .none
 +	LDA.w !w_frame
 	AND.w #$0003
-	BEQ .aim
-	LDA.w !w_aim
-	CMP.w #!TGT_NONE
-	BNE .draw
-	JMP .none
-.aim
+	BNE .steps
 	; mega = Super Saiyan with a full charge (world-ki.js aim())
 	LDA.w !goku_form
 	AND.w #$0001
@@ -637,11 +647,37 @@ world_draw_aim_sparks:
 	CMP.w #!CHARGE_CAP_SSJ
 	LDA.w #$0000
 	ROL
-+	JSR world_aim
++	ORA.w #!WA_STAGED
+	JSR world_aim_begin
+	LDA.w #0
+	LDX.w #4
+	JSR world_aim_step
+	BRA .shown
+.steps
+	TAY
+	LDA.w !wa_mega
+	AND.w #!WA_STAGED
+	BEQ .shown                       ; no evaluation of this cycle to continue
+	TYA
+	ASL
+	TAX
+	LDA.l .first-2,X
+	PHA
+	LDA.l .end-2,X
+	TAX
+	PLA
+	JSR world_aim_step
+	LDA.w !w_frame
+	AND.w #$0003
+	CMP.w #$0003
+	BNE .shown
+	; publish
+	LDA.w !wa_best
 	STA.w !w_aim
 	CMP.w #!TGT_NONE
-	BEQ .none
-	CMP.w #!TGT_FORTRESS
+	BNE +
+	JMP .none
++	CMP.w #!TGT_FORTRESS
 	BNE .formula
 	JSR world_fort_fresh
 	BCS .formula
@@ -656,6 +692,14 @@ world_draw_aim_sparks:
 	JSR world_target_screen
 	STA.w !w_aim_x
 	STX.w !w_aim_y
+	BRA .draw
+.shown
+	LDA.w !w_aim
+	CMP.w #!TGT_NONE
+	BNE .draw
+	JMP .none
+.first: dw 4, 7, 10
+.end:   dw 7, 10, !WORLD_AIM_CANDS
 .draw
 	; impact-spark frame floor(frame/6) mod 6, at (+-12, +-10)
 	LDA.w !w_frame
@@ -717,7 +761,10 @@ world_draw_beam_sparks:
 	ADC.w #18
 	STA.w !w_scratch+6               ; d
 .next
-	LDA.w !w_scratch+6
+	JSR world_fx_budget
+	BCC +
+	RTS
++	LDA.w !w_scratch+6
 	CMP.w !w_proj+8
 	BCC +
 	RTS
@@ -789,10 +836,13 @@ world_draw_beam_sparks:
 ; fading over the last 14 frames, with four arcs and a spark at the contact
 ; point for 24 frames.
 world_draw_rebound:
+	LDA.w !w_shot                    ; only while the deflected wave lives
+	CMP.w #!SHOT_WAVE
+	BNE ++
 	LDA.w !w_shot_flags
 	AND.w #!SF_DEFLECT
 	BNE +
-	RTS
+++	RTS
 +	LDA.w !w_shot_age
 	SEC
 	SBC.w #12
@@ -820,6 +870,8 @@ world_draw_rebound:
 	BCC .arcs
 	STZ.w !w_scratch                 ; t
 .orb
+	JSR world_fx_budget
+	BCS .arcs
 	LDA.w !w_scratch
 	CMP.w !w_scratch+2
 	BCS .arcs
@@ -951,8 +1003,12 @@ world_draw_rebound:
 .ay2: dw 0, 1, 0, -1
 
 ; Explosion at the hit point (world-ki.js draw): 8 sparks and orbs (20 for
-; the full SSJ wave, drawn half per frame) turning and spreading on a ring.
-; Not drawn once the planet cutaway covers the view.
+; the full SSJ wave, a third of them per frame) turning and spreading on a
+; ring: spark i at angle i*K + phase*24 (K = 12 of 256, ~12.8; 32 for 8),
+; radius 8 + (age + 7i) mod M (M = 78, or 30), odd i an impact spark of
+; frame (i + phase) mod 6, even i a charge orb of frame (i + phase) mod 5.
+; The per-spark terms advance incrementally from the first i. Not drawn
+; once the planet cutaway covers the view.
 world_draw_explosion:
 	LDA.w !w_expl_age
 	CMP.w #$FFFF
@@ -965,46 +1021,46 @@ world_draw_explosion:
 +	LDA.w !w_expl_age
 	LSR
 	LSR
-	STA.w !w_scratch+4               ; phase
-	; mega: 20 on the ring at 12.8 steps, half of them each frame
+	STA.w !w_scratch+12              ; phase
 	LDA.w !w_expl_flags
 	AND.w #$0001
 	BEQ .small
 	LDA.w #20
-	STA.w !w_scratch+6               ; count
+	STA.w !w_scratch                 ; count
 	LDA.w #78
-	STA.w !w_scratch+2               ; radius modulus
+	STA.w !w_scratch+2               ; M
+	LDA.w #3
+	STA.w !w_scratch+4               ; i step
+	LDA.w #36
+	STA.w !w_scratch+6               ; angle step (3 * 12)
+	LDA.w #21
+	STA.w !w_scratch+14              ; radius step (3 * 7)
 	LDA.w !w_frame
 	LDX.w #3
-	JSR world_mod                    ; a third of the ring each frame
+	JSR world_mod                    ; i0: a third of the ring each frame
+	PHA                              ; [i]
+	ASL
+	ASL
+	STA.w !w_scratch+10
+	ASL
+	ADC.w !w_scratch+10              ; i0 * 12
 	BRA .start
 .small
 	LDA.w #8
-	STA.w !w_scratch+6
+	STA.w !w_scratch
 	LDA.w #30
 	STA.w !w_scratch+2
-	LDA.w #$0000
+	LDA.w #1
+	STA.w !w_scratch+4
+	LDA.w #32
+	STA.w !w_scratch+6
+	LDA.w #7
+	STA.w !w_scratch+14
+	LDA.w #0
+	PHA                              ; [i] = 0
 .start
-	STA.w !w_scratch+14              ; i
-.spark
-	; angle = i * (256/count) + phase * 24
-	LDA.w !w_scratch+14
-	LDX.w !w_scratch+6
-	CPX.w #20
-	BNE +
-	ASL
-	ASL
-	STA.w !w_scratch
-	ASL
-	ADC.w !w_scratch                 ; i * 12 (~12.8)
-	BRA ++
-+	ASL
-	ASL
-	ASL
-	ASL
-	ASL                              ; i * 32
-++	STA.w !w_scratch
-	LDA.w !w_scratch+4
+	STA.w !w_scratch+10
+	LDA.w !w_scratch+12
 	ASL
 	ASL
 	ASL
@@ -1012,40 +1068,57 @@ world_draw_explosion:
 	ASL
 	ADC.w !w_scratch+8               ; phase * 24
 	CLC
-	ADC.w !w_scratch
+	ADC.w !w_scratch+10
 	AND.w #$00FF
-	STA.w !w_scratch                 ; angle
-	; rad = 8 + (age + 7i) mod (30 / 78)
-	LDA.w !w_scratch+14
+	PHA                              ; [angle]
+	LDA $03,S                        ; i0
 	ASL
 	ASL
 	ASL
 	SEC
-	SBC.w !w_scratch+14
+	SBC $03,S                        ; 7 * i0
 	CLC
 	ADC.w !w_expl_age
 	LDX.w !w_scratch+2
 	JSR world_mod
 	CLC
 	ADC.w #8
-	STA.w !w_scratch+12              ; rad (top-left y computed below)
-	; x = ex + cos * rad, y = ey + sin * rad
-	LDA.w !w_scratch
+	PHA                              ; [rad]
+	LDA $05,S
+	CLC
+	ADC.w !w_scratch+12
+	PHA
+	LDX.w #6
+	JSR world_mod
+	STA $01,S                        ; [m6] = (i0 + phase) mod 6
+	LDA $07,S
+	CLC
+	ADC.w !w_scratch+12
+	LDX.w #5
+	JSR world_mod
+	PHA                              ; [m5] = (i0 + phase) mod 5
+	; stack: m5 $01, m6 $03, rad $05, angle $07, i $09
+.spark
+	JSR world_fx_budget              ; out of frame time: the rest next frame
+	BCC +
+	JMP .done
++	; x = ex - 8 + cos(angle) * rad, y = ey - 8 + sin(angle) * rad
+	LDA $07,S
 	CLC
 	ADC.w #64
 	JSR world_sin256
 	TAY
-	LDA.w !w_scratch+12
+	LDA $05,S
 	JSR world_mul8s
 	CLC
 	ADC.w !w_expl_x
 	SEC
 	SBC.w #8
 	STA.w !w_scratch+10
-	LDA.w !w_scratch
+	LDA $07,S
 	JSR world_sin256
 	TAY
-	LDA.w !w_scratch+12
+	LDA $05,S
 	JSR world_mul8s
 	CLC
 	ADC.w !w_expl_y
@@ -1053,41 +1126,64 @@ world_draw_explosion:
 	SBC.w #8
 	STA.w !w_scratch+12
 	STZ.w !w_scratch+8
-	; odd: impact spark, even: charge orb; frame phase + i
-	LDA.w !w_scratch+14
-	CLC
-	ADC.w !w_scratch+4
-	TAY
-	LDA.w !w_scratch+14
+	LDA $09,S
 	LSR
-	TYA
 	BCC .orb
-	LDX.w #6
-	JSR world_mod
+	LDA $03,S
 	CLC
 	ADC.w #!FX_IMPACT_SPARK_0
 	BRA .put
 .orb
-	LDX.w #5
-	JSR world_mod
+	LDA $01,S
 	CLC
 	ADC.w #!FX_CHARGE_ORB_0
 .put
 	JSR world_fx_back
-	BCS .done
-	LDA.w !w_scratch+14
+	BCS .done                        ; module slots full
+	; next i
+	LDA $09,S
 	CLC
-	ADC.w #3
-	LDX.w !w_scratch+6
-	CPX.w #20
-	BEQ +
-	SEC
-	SBC.w #2                         ; small ring: every one
-+	STA.w !w_scratch+14
-	CMP.w !w_scratch+6
+	ADC.w !w_scratch+4
+	CMP.w !w_scratch
 	BCS .done
+	STA $09,S
+	LDA $07,S
+	CLC
+	ADC.w !w_scratch+6
+	AND.w #$00FF
+	STA $07,S
+	LDA $05,S
+	CLC
+	ADC.w !w_scratch+14
+	SEC
+	SBC.w #8
+	CMP.w !w_scratch+2
+	BCC +
+	SBC.w !w_scratch+2
++	CLC
+	ADC.w #8
+	STA $05,S
+	LDA $03,S
+	CLC
+	ADC.w !w_scratch+4
+	CMP.w #6
+	BCC +
+	SBC.w #6
++	STA $03,S
+	LDA $01,S
+	CLC
+	ADC.w !w_scratch+4
+	CMP.w #5
+	BCC +
+	SBC.w #5
++	STA $01,S
 	JMP .spark
 .done
+	PLA
+	PLA
+	PLA
+	PLA
+	PLA
 	RTS
 
 ; A16 = r (0-255), Y16 = s (signed, |s| <= 127) -> A16 = (r * s) >> 7.

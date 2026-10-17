@@ -173,3 +173,28 @@ world_div8:
 	NOP
 	LDA.l $004214
 	RTS
+
+; Frame budget for optional effect sprites: C set when the frame is past
+; !WORLD_FX_LINE_END (or already wrapped into the next frame), so Goku, the
+; shadow and the native vblank handshake still fit before line 225. Reads
+; the latched V counter. M16/X16. Preserves X/Y.
+!WORLD_FX_LINE_END = 208
+world_fx_budget:
+	SEP #$20
+	LDA.l $00213F                   ; reset the OPHCT/OPVCT flip-flops
+	LDA.l $002137                   ; latch H/V
+	LDA.l $00213D                   ; V low
+	XBA
+	LDA.l $00213D                   ; V bit 8 (bits 1-7 open bus)
+	AND.b #$01
+	XBA
+	REP #$20
+	CMP.w #!WORLD_FX_LINE_END
+	BCS .over
+	CMP.w #64                       ; below 64: wrapped into the next frame
+	BCC .over
+	CLC                             ; room
+	RTS
+.over
+	SEC
+	RTS

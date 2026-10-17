@@ -196,6 +196,7 @@ world_draw:
 	CMP.w #8
 	BCC +                            ; effect tiles still loading
 	JSR world_draw_front             ; drawn over Goku
+	JSR world_draw_back              ; also over Goku (layer.behindBody false)
 +	LDX.w !w_cursor
 	LDA.w !w_dock
 	BEQ .goku
@@ -254,11 +255,7 @@ world_draw:
 	BCC +
 	LDA.w #$00F0
 +	STA.w !w_oam_reserve
-	LDA.w !w_fx_state
-	CMP.w #8
-	BCC +
-	JSR world_draw_back
-+	RTS
+	RTS
 
 ; The shown cell buffer as four 16x16 OBJ at (w_scratch, w_scratch+2);
 ; empty quadrants (goku_cell_mask) are skipped. X = OAM cursor (in/out).
@@ -523,7 +520,7 @@ world_oam_hi:
 	PHY
 	PHX
 	AND.w #$0003
-	STA.w !w_scratch+14
+	PHA                              ; bits (stack temp: callers keep w_scratch)
 	TXA
 	LSR
 	LSR
@@ -532,8 +529,9 @@ world_oam_hi:
 	TAY                              ; high-table byte: slot >> 2
 	TXA
 	AND.w #$000C                     ; (slot & 3) * 4
-	ORA.w !w_scratch+14
+	ORA $01,S
 	TAX
+	PLA
 	SEP #$20
 	LDA.w $0A00,Y
 	AND.l world_hi_keep,X
