@@ -3,7 +3,7 @@
 // the title code and the menu, as a player would, and its end state is
 // compared with the browser reference (.local/snes-ref/<preset>/: state.json
 // and frame-00000.png, from snes/tools/ref-capture.mjs) when present.
-//   node snes/test/debug/run.mjs [preset ...] [--jobs=6]
+//   node snes/test/debug/run.mjs [preset ...] [--jobs=6] [--battery=sram.bin]
 // SNES_ROM selects the cartridge (default dist/snes/secret-of-goku.sfc).
 // Each preset is FULL when its native state (map, position, flags, party,
 // inventory, names, form, Goku and the ledger) equals the browser's, NATIVE
@@ -11,10 +11,10 @@
 // PARTIAL otherwise, FAILED when the recipe did not finish. Fails on PARTIAL
 // or FAILED. Report: .local/snes-test/debug/report.json.
 import {readFileSync,writeFileSync,mkdirSync,existsSync,copyFileSync} from 'node:fs';
-import {resolve,dirname,join} from 'node:path';
+import {resolve,dirname,join,basename} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {runMesen} from '../mesen.mjs';
-import {privateRom,cleanupRom,mainCheckout} from '../checkpoints.mjs';
+import {privateRom,cleanupRom,mainCheckout,mesenSaveDir} from '../checkpoints.mjs';
 import {comparePictures,compareState,referenceState} from './compare.mjs';
 
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
@@ -51,16 +51,27 @@ const gapOf=(kind,d)=>GAPS.find(g=>(g.preset==='*'||g.preset===kind)&&g.key.test
 // on this branch unless a module defines the hook).
 const HOOK_OWNER={1:'combat',2:'radio/ui',3:'combat',4:'world',5:'frieza',6:'frieza',7:'frieza/orbit',8:'frieza (Beast challenge)',9:'scene owner',10:'scene owner',11:'combat'};
 
-async function runOne(kind){
+async function runOne(kind,{battery=opt('battery',null),tag=''}={}){
   const index=kinds.indexOf(kind),p=catalog.presets[index];
-  const dir=join(out,kind);
+  const dir=join(out,kind+tag);
   const lua=readFileSync(join(here,'preset.lua'),'utf8');
   const prelude=`DBG_WORK=${work}\nPRESET=${index}\nMAXF=${kind==='sword'?26000:16000}\nSHOTS={60,240}\n`;
   const copy=privateRom(rom,`debug-${kind}`);
+  // --battery=<8 KiB original save area>: start with those native saves
+  // (GAME FILE becomes the game select's default); they must survive.
+  let saves=null;
+  if(battery){
+    const image=new Uint8Array(0x8000);saves=readFileSync(resolve(battery)).subarray(0,0x2000);image.set(saves);
+    writeFileSync(join(mesenSaveDir(),basename(copy).replace(/\.sfc$/,'.srm')),image);
+  }
   const r=await runMesen({rom:copy,test:prelude+lua,outDir:dir,timeoutMs:900000});
   cleanupRom(copy);
   const res=r.results??{};
-  const report={kind,label:p.label,status:['idle','running','done','failed','aborted'][res.status]??'error',
+  if(saves){
+    const after=existsSync(join(dir,'sram-saves.bin'))?readFileSync(join(dir,'sram-saves.bin')):null;
+    res.savesKept=!!after&&Buffer.compare(Buffer.from(saves),after)===0;
+  }
+  const report={kind:kind+tag,label:p.label,status:['idle','running','done','failed','aborted'][res.status]??'error',savesKept:res.savesKept,selectCursor:res.select_cursor,
     error:res.error,frames:res.frames,bootFrame:res.boot_frame,state:res.state,trace:res.trace,mesen:r.code};
   if(res.status===3)report.failedOp={op:res.error,pc:res.err_pc?.toString(16)};
   if(res.soft)report.softWaits={count:res.soft,pc:res.soft_pc?.toString(16)};
@@ -79,17 +90,21 @@ async function runOne(kind){
   const real=(report.diffs??[]).filter(d=>!d.transient);
   for(const d of real){const g=gapOf(kind,d);if(g){d.owner=g.owner;d.why=g.why;}}
   report.gaps=[...new Set(real.filter(d=>d.owner).map(d=>d.owner))];
-  report.result=report.status!=='done'?'FAILED':!ref?'DONE (no reference)':!real.length?'FULL':real.every(d=>d.owner)?'NATIVE':'PARTIAL';
+  report.result=report.status!=='done'||report.savesKept===false?'FAILED':!ref?'DONE (no reference)':!real.length?'FULL':real.every(d=>d.owner)?'NATIVE':'PARTIAL';
   return report;
 }
 
 const jobs=Number(opt('jobs','6'));
 const reports=[];
-const queue=[...list];
+// The full run also starts one preset with a battery that holds a native
+// save (GAME FILE is then the default) when that private fixture exists.
+const SAVE_FIXTURE=join(mainCheckout(),'.local/snes-import/power-flight-fixes__save-3/sram.bin');
+const queue=list.map(k=>[k,{}]);
+if(!only.length&&!opt('battery',null)&&existsSync(SAVE_FIXTURE))queue.push(['late',{battery:SAVE_FIXTURE,tag:'+saves'}]);
 await Promise.all(Array.from({length:Math.min(jobs,queue.length)},async()=>{
-  while(queue.length){const k=queue.shift();const r=await runOne(k);reports.push(r);console.log(`${k.padEnd(12)} ${r.result.padEnd(8)} map ${r.state?.map} (ref ${r.refMap??'-'}) frames ${r.frames} picture ${r.picture!=null?(r.picture*100).toFixed(0)+'%':'-'}/${r.picture240!=null?(r.picture240*100).toFixed(0)+'%':'-'}${r.diffs?.length?'  diffs: '+r.diffs.map(d=>d.k+(d.owner?'('+d.owner+')':'')).join(','):''}${r.softWaits?'  soft wait at '+r.softWaits.pc:''}${r.failedOp?'  failed op '+r.failedOp.op+' at '+r.failedOp.pc:''}`);}
+  while(queue.length){const[k,o]=queue.shift();const r=await runOne(k,o);reports.push(r);console.log(`${r.kind.padEnd(14)} ${r.result.padEnd(8)} map ${r.state?.map} (ref ${r.refMap??'-'}) frames ${r.frames} picture ${r.picture!=null?(r.picture*100).toFixed(0)+'%':'-'}/${r.picture240!=null?(r.picture240*100).toFixed(0)+'%':'-'}${r.diffs?.length?'  diffs: '+r.diffs.map(d=>d.k+(d.owner?'('+d.owner+')':'')).join(','):''}${r.softWaits?'  soft wait at '+r.softWaits.pc:''}${r.failedOp?'  failed op '+r.failedOp.op+' at '+r.failedOp.pc:''}`);}
 }));
-reports.sort((a,b)=>kinds.indexOf(a.kind)-kinds.indexOf(b.kind));
+reports.sort((a,b)=>kinds.indexOf(a.kind.split('+')[0])-kinds.indexOf(b.kind.split('+')[0])||a.kind.length-b.kind.length);
 writeFileSync(join(out,'report.json'),JSON.stringify(reports,null,1));
 const bad=reports.filter(r=>r.result==='FAILED'||r.result==='PARTIAL');
 const count=k=>reports.filter(r=>r.result===k).length;

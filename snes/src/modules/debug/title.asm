@@ -199,27 +199,21 @@ debug_menu_enter:
 	LDA.b #$0F
 	STA $2100
 	REP #$20
+; Each frame: VRAM changes in vblank, then the pad during the active display
+; (the auto-joypad read finished early in vblank, so $4218 is stable then;
+; reading it right after vblank starts could race the read on hardware).
 debug_menu_loop:
 	JSR debug_wait_vblank
 	JSR debug_menu_redraw
-	JSR debug_wait_joypad
-	JSR debug_menu_input
 	JSR debug_wait_active
+	JSR debug_menu_input
 	BRA debug_menu_loop
 
-; Wait for the start of vblank / the end of the auto-joypad read / the end
-; of vblank. M16, DB = $80.
+; Wait for the start / the end of vblank. M16, DB = $80.
 debug_wait_vblank:
 	SEP #$20
 -	LDA $4212
 	BPL -
-	REP #$20
-	RTS
-debug_wait_joypad:
-	SEP #$20
--	LDA $4212
-	LSR
-	BCS -
 	REP #$20
 	RTS
 debug_wait_active:
@@ -582,6 +576,30 @@ debug_menu_exit:
 ; JML $C00009, with M8 X16, D = 0, DB = 0, S = $01FF): the native game
 ; select and name editor follow, driven by debug_menu_frame.
 debug_menu_launch:
+	; Wait until every button is released, so the confirming press cannot
+	; reach the game select before the autopilot hides the pad.
+-	JSR debug_wait_vblank
+	JSR debug_wait_active
+	LDA $4218
+	AND.w #$FFF0
+	BNE -
+	; The title answers Start with the sound driver's fade (80 20 0F 0F)
+	; and a fade to black; do the same before handing over.
+	LDA.w #$2080
+	STA.l $7E1E00
+	LDA.w #$0F0F
+	STA.l $7E1E02
+	JSL $C30004
+	REP #$30
+	LDX.w #$000F
+-	JSR debug_wait_vblank
+	SEP #$20
+	TXA
+	STA $2100
+	REP #$20
+	JSR debug_wait_active
+	DEX
+	BPL -
 	SEP #$20
 	LDA.b #$80
 	STA $2100

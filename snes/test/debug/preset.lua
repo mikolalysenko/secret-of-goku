@@ -25,11 +25,20 @@ function test()
   H.result('cursor', H.r8(W + 0x18))
   H.shot('menu-cursor')
   H.tap('b', 4, 4)
+  -- The launch waits for the release and fades out, then arms the autopilot
+  -- (the work area holds whatever the battery held until then).
+  if not H.waitFor(function() return H.r16(W) == 0x4244 end, 120) then error('preset not armed') end
   local trace = {}
   local lastPh, lastPc = -1, -1
   local started = H.frame
+  local selects = {}
   for i = 1, MAXF do
     H.wait(1)
+    -- game select cursor ($A211: 1 GAME FILE, 0 NEW GAME) while the menu runs
+    if phase() == 1 and H.r8(0x101) == 0xA7 and H.r8(0x7EA202) == 0 and #selects < 8 then
+      local c = H.r8(0x7EA211)
+      if selects[#selects] ~= c then selects[#selects + 1] = c end
+    end
     local ph, pc = phase(), H.r16(W + 4)
     if ph ~= lastPh or pc ~= lastPc then
       if #trace < 400 then
@@ -40,6 +49,7 @@ function test()
     if status() ~= 1 then break end
   end
   H.result('trace', trace)
+  H.result('select_cursor', selects)
   H.result('status', status())
   H.result('error', H.r8(W + 0x0D))
   H.result('err_pc', H.r16(W + 0x0E))
@@ -71,6 +81,7 @@ function test()
   end
   s.world = {fa = H.r16(0x7E00FA), fc = H.r16(0x7E00FC), f6 = H.r16(0x7E00F6), f8 = H.r8(0x7E00F8)}
   H.result('state', s)
+  H.dumpfile('sram-saves.bin', emu.memType.snesSaveRam, 0, 0x2000)
   H.shot('frame-00000')
   local at = 0
   for _, f in ipairs(SHOTS or {}) do

@@ -10,40 +10,42 @@ const {PNG}=createRequire(resolve(repo,'package.json'))('pngjs');
 // player's canvas (724x633 at 26,23 in the 776x679 element capture).
 const REF_BOX={x:26,y:23,w:724,h:633};
 
-// A 256x224 RGB image (Uint8Array, 3 bytes per pixel) from a PNG: browser
-// references are sampled at each SNES pixel's centre, Mesen hi-res captures
-// (512 wide) are halved.
-export function snesPixels(path){
-  const im=PNG.sync.read(readFileSync(path)),out=new Uint8Array(256*224*3);
+// An RGB image (3 bytes per pixel) of the SNES picture at w x h: browser
+// references are sampled at each pixel's centre, Mesen captures scaled.
+export function snesPixels(path,w=256,h=224){
+  const im=PNG.sync.read(readFileSync(path)),out=new Uint8Array(w*h*3);
   const ref=im.width===776&&im.height===679;
-  for(let y=0;y<224;y++)for(let x=0;x<256;x++){
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
     let sx,sy;
-    if(ref){sx=Math.floor(REF_BOX.x+(x+0.5)*REF_BOX.w/256);sy=Math.floor(REF_BOX.y+(y+0.5)*REF_BOX.h/224);}
-    else{sx=Math.floor(x*im.width/256);sy=Math.floor(y*im.height/224);}
-    const i=(sy*im.width+sx)*4,o=(y*256+x)*3;
+    if(ref){sx=Math.floor(REF_BOX.x+(x+0.5)*REF_BOX.w/w);sy=Math.floor(REF_BOX.y+(y+0.5)*REF_BOX.h/h);}
+    else{sx=Math.floor(x*im.width/w);sy=Math.floor(y*im.height/h);}
+    const i=(sy*im.width+sx)*4,o=(y*w+x)*3;
     out[o]=im.data[i];out[o+1]=im.data[i+1];out[o+2]=im.data[i+2];
   }
   return out;
 }
 
 // Share of pixels whose colours agree within `tolerance` (sum of channel
-// differences, 8-bit), and a side-by-side image: reference | cartridge | diff.
+// differences, 8-bit), and a side-by-side image: reference | cartridge |
+// diff. Hi-res captures (Mode 5 menus, 512 wide) compare at 512x448.
 export function comparePictures(refPath,ourPath,outPath,tolerance=48){
   if(!existsSync(refPath)||!existsSync(ourPath))return null;
-  const a=snesPixels(refPath),b=snesPixels(ourPath);
+  const hires=PNG.sync.read(readFileSync(ourPath)).width>=512;
+  const w=hires?512:256,h=hires?448:224;
+  const a=snesPixels(refPath,w,h),b=snesPixels(ourPath,w,h);
   let same=0;
-  const sheet=new PNG({width:256*3,height:224});
-  for(let y=0;y<224;y++)for(let x=0;x<256;x++){
-    const o=(y*256+x)*3,d=Math.abs(a[o]-b[o])+Math.abs(a[o+1]-b[o+1])+Math.abs(a[o+2]-b[o+2]);
+  const sheet=new PNG({width:w*3,height:h});
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    const o=(y*w+x)*3,d=Math.abs(a[o]-b[o])+Math.abs(a[o+1]-b[o+1])+Math.abs(a[o+2]-b[o+2]);
     if(d<=tolerance)same++;
     for(let k=0;k<3;k++){
       const put=(px,v)=>{sheet.data[(y*sheet.width+px)*4+k]=v;};
-      put(x,a[o+k]);put(256+x,b[o+k]);put(512+x,d<=tolerance?(a[o+k]>>2):(k===0?255:0));
+      put(x,a[o+k]);put(w+x,b[o+k]);put(2*w+x,d<=tolerance?(a[o+k]>>2):(k===0?255:0));
     }
-    for(const px of[x,256+x,512+x])sheet.data[(y*sheet.width+px)*4+3]=255;
+    for(const px of[x,w+x,2*w+x])sheet.data[(y*sheet.width+px)*4+3]=255;
   }
   if(outPath)writeFileSync(outPath,PNG.sync.write(sheet));
-  return same/(256*224);
+  return same/(w*h);
 }
 
 // Native WRAM of a browser reference snapshot (engine/state.js format).

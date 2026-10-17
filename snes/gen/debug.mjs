@@ -90,7 +90,11 @@ export async function generate({rom,repo,outDir}){
   const qs=await engine('quick-start.js');
   const {eventRange,encodeText}=await engine('event-codec.js');
   const {friezaEvents}=await engine('frieza-events.js');
+  const {nativeOnlyEvents}=await engine('story-compiler.js');
   const labels=qs.quickStartLabels;
+  // The boot redirect expects the new game's first event at its original
+  // start: the story module must never relocate event 100.
+  if(!new Set(nativeOnlyEvents).has(0x100))throw Error('debug: event 100 is relocated by the story module; the boot redirect needs its original start');
   const browserKinds=Object.keys(labels).sort().join();
   if([...PRESETS].sort().join()!==browserKinds)throw Error(`debug: presets differ from quick-start.js (${browserKinds})`);
 
@@ -244,6 +248,7 @@ export async function generate({rom,repo,outDir}){
   const EMPTY=payloadOf({});
 
   const recipes={},boots={},catalog={presets:[]};
+  const wram=a=>{if(a<0||a>0xffff)throw Error(`debug: RAM write outside bank $7E (${hex(a,5)})`);return a;};
   for(const kind of PRESETS){
     const {trace,bootControl}=await record(kind);
     const ops=[],emit=(op,...args)=>ops.push([op,...args]);
@@ -288,7 +293,7 @@ export async function generate({rom,repo,outDir}){
           if(t.a>=0xcf00&&t.a<0xd000)emit(OP.FLAG,t.a-0xcf00,t.v);
           else if(t.a>=0xcc48&&t.a<0xcc48+12&&t.v===0xa5)emit(OP.SENZU);
           else if(t.a===0xf8&&tookOff()){/* WORLDAIM */}
-          else emit(OP.POKE8,t.a,t.v);
+          else emit(OP.POKE8,wram(t.a),t.v);
           break;
         case'poke16':{
           if((t.a===0xe382||t.a===0xe582)&&t.v===SENT_MAXHP){if(!ops.some(o=>o[0]===OP.REFILL))emit(OP.REFILL);break;}
@@ -309,14 +314,14 @@ export async function generate({rom,repo,outDir}){
             if(t.a===0xf4){const f8=trace[i+1];if(f8?.op!=='poke8'||f8.a!==0xf8||f8.v!==160)throw Error('debug: Fortress aim altitude changed');emit(OP.WORLDAIM);}
             break;
           }
-          emit(OP.POKE16,t.a,t.v);break;
+          emit(OP.POKE16,wram(t.a),t.v);break;
         }
         case'ramSet':
           if(t.a>=0xcf00&&t.a<0xd000){if(t.v<t.old)throw Error('debug: twilight lowered a flag');emit(OP.RAISE,t.a-0xcf00,t.v);}
           else emit(OP.POKE8,t.a,t.v);
           break;
-        case'pokeBlock':emit(OP.POKEN,t.a,t.bytes);break;
-        case'fill':emit(OP.FILL,t.a,t.n,t.v);break;
+        case'pokeBlock':emit(OP.POKEN,wram(t.a),t.bytes);break;
+        case'fill':emit(OP.FILL,wram(t.a),t.n,t.v);break;
         case'ledger':{const o=t.o;emit(OP.LEDGER,o.mask??0,o.seedMask??0,o.delivered??0,o.wished?1:0);break;}
         case'script':emit(OP.SCRIPT,scriptOf(t.bytes));break;
         case'option':
