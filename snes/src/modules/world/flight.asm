@@ -17,13 +17,12 @@ endif
 +	LDA.w #!CORE_MODE_WORLD
 	STA.w !w_mode_prev
 	INC.w !w_frame
-	LDA.w !w_input
-	STA.w !w_input_prev
 	LDA.w !core_pad&$FFFF
 	STA.w !w_input
 	JSR world_fx_upload
 	JSR world_shadow
 	JSR world_dock_track
+	JSR world_ki
 	JSR world_pose
 	JSR world_palettes
 	JSR world_draw
@@ -41,20 +40,23 @@ world_enter:
 	STZ.w !w_fx_state
 	STZ.w !w_frame
 	STZ.w !w_anim_age
+	STZ.w !w_anim_tick
+	STZ.w !w_anim_frame
 	STZ.w !w_shadow_t
 	STZ.w !w_dock
 	STZ.w !w_cell_show
-	STZ.w !w_dma_list
 	LDA.w #$FFFF
 	STA.w !w_cell_buf0
 	STA.w !w_cell_buf1
 	STA.w !w_mini
 	STA.w !w_pal_form
 	STA.w !w_cell_want
+	STA.w !w_cell_key
 	LDA.w #$0003
 	STA.w !w_pal_dirty
 	LDA.w #!WF_ACTIVE
 	TSB.w !w_flags
+	JSR world_ki_reset
 	; the takeoff pose ends with the world on screen (mana-mod.js)
 	STZ.w !w_trans_kind
 	STZ.w !w_trans_age
@@ -162,7 +164,7 @@ world_dock_track:
 	STA $BF
 	REP #$20
 +	; follow the Fortress on screen (C2:B1F7 records it each frame)
-	JSR world_project_fortress
+	JSR world_fort_fresh
 	BCS .done
 	LDA.w !w_fort_x
 	STA.w !w_dock_x
@@ -171,77 +173,3 @@ world_dock_track:
 .done
 	RTS
 
-; Project the Fortress (world object $0128/$012A, altitude $D0) through the
-; native projection C2:B287. C clear + !w_fort_x/y when it is on screen.
-world_project_fortress:
-	LDA.w $0128
-	STA.w !w_scratch+12
-	LDA.w $012A
-	STA.w !w_scratch+14
-	LDA.w #$00D0
-	JSR world_project
-	BCS .off
-	STA.w !w_fort_x
-	STX.w !w_fort_y
-	LDA.w !w_frame
-	STA.w !w_fort_frame
-	CLC
-.off
-	RTS
-
-; Native world-object projection (C2:B287, as used by the Fortress): A16 =
-; altitude (0-255), w_scratch+12/+14 = world x/y. Out: C clear when visible
-; with A16 = screen x, X16 = screen y; C set otherwise. Preserves direct
-; page $00-$0F (the routine's scratch). M16/X16, DB = $7E, D = 0.
-world_project:
-	PHA
-	LDX.w #$000E
--	LDA $00,X
-	STA.w !w_proj,X
-	DEX
-	DEX
-	BPL -
-	PLA
-	SEP #$20
-	STA $0B
-	REP #$20
-	LDA.w !w_scratch+12
-	STA $0C
-	LDA.w !w_scratch+14
-	STA $0E
-	PHB
-	PEA $0202                        ; the routine reads C2:FD22 through DB
-	PLB
-	PLB
-	PHK
-	PEA .back-1
-	PEA $B118-1                      ; RTS lands on the RTL at C2:B118
-	JML $02B287
-.back
-	PLB
-	REP #$30
-	BCS .hidden
-	LDA $08
-	AND.w #$00FF
-	PHA
-	LDA $09
-	AND.w #$00FF
-	PHA
-	JSR .restore
-	PLX
-	PLA
-	CLC
-	RTS
-.hidden
-	JSR .restore
-	SEC
-	RTS
-.restore
-	LDX.w #$000E
--	LDA.w !w_proj,X
-	STA $00,X
-	DEX
-	DEX
-	BPL -
-	RTS
-assert read1($C2B118) == $6B, "world_project needs the RTL at C2:B118"

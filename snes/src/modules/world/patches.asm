@@ -43,3 +43,11 @@
 %orig4($C2B230, $F4A520C2)
 %orig4($C2B234, $0006294A)
 %hijack_jsl($C2B230, world_dock_hook, 8, world)
+
+; Fortress drawn: C2:B1F7 SEP #$20 / LDA $C20000,X / INX, right after the
+; native projection left its screen position in $08/$09 (world-ki.js
+; fortScreen, native-flight.js docking target).
+%orig4($C2B1F7, $00BF20E2)
+%orig2($C2B1FB, $C200)
+%orig1($C2B1FD, $E8)
+%hijack_jsl($C2B1F7, world_fort_seen_hook, 7, world)

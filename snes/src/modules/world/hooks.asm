@@ -256,3 +256,24 @@ world_dock_hook:
 	LSR
 	AND.w #$0006
 	RTL
+
+; ---------------------------------------------------------------------------
+; C2:B1F7 (JSL, 7 bytes, replaced SEP #$20 / LDA $C20000,X / INX): the
+; Fortress is on screen and the native projection left its position in
+; $08/$09. Recorded for aiming and the docking curve. Entry: X16, D = 0.
+world_fort_seen_hook:
+	PHP
+	REP #$20
+	LDA $08
+	AND.w #$00FF
+	STA.l $7E0000|!w_fort_x
+	LDA $09
+	AND.w #$00FF
+	STA.l $7E0000|!w_fort_y
+	LDA.l $7E0000|!w_frame
+	STA.l $7E0000|!w_fort_seen
+	PLP
+	SEP #$20
+	LDA.l $C20000,X
+	INX
+	RTL

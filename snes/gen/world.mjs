@@ -140,6 +140,21 @@ export async function generate({rom,repo,outDir}){
   // quadratic): (1-t)^2 and 2(1-t)t in 1/255, one word per $BF value.
   const curve=[];for(let bf=0;bf<=160;bf++){const t=bf/160;curve.push(Math.round((1-t)**2*255)|Math.round(2*(1-t)*t*255)<<8);}
   a.label('world_dock_curve');a.dw(curve);
+  // Aerial wave profile (sprite-layer.js giantBeam radius() with world-ki.js
+  // aerialBeamGeometry: taper 18 / 26 (mega), farScale .72, rounded tip):
+  // per taper, length (multiples of 8, 0-112) and 16-px row centre d = 8+16j,
+  // the half-width factor in 1/256 (0 past the beam's end).
+  const beamF=[];
+  for(const taper of[18,26])for(let li=0;li<=14;li++){
+    const length=li*8;
+    for(let j=0;j<7;j++){
+      const d=8+16*j;
+      if(d>length||length===0){beamF.push(0);continue;}
+      const f=Math.min(1,(d+8)/taper)*(1-.28*d/length)*Math.min(1,Math.sqrt(Math.max(0,(length-d)/12)));
+      beamF.push(Math.min(255,Math.round(f*256)));
+    }
+  }
+  a.label('world_beam_f');a.db(beamF);
   writeFileSync(join(outDir,'data.asm'),a.text());
 
   const fv=blank(18*FX.length,18);

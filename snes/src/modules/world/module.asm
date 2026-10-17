@@ -23,9 +23,9 @@ assert !RAM_WORLD == ($7E0000|!WORLD_RAM), "!WORLD_RAM must match !RAM_WORLD"
 !w_trans_kind   = !WORLD_RAM+$04 ; word: flight pose transition (!TRANS_*)
 !w_trans_age    = !WORLD_RAM+$06 ; word
 !w_frame        = !WORLD_RAM+$08 ; word: world frames since entering flight
-!w_fx_state     = !WORLD_RAM+$0A ; word: effect tile upload step (!FX_STEPS = done)
+!w_fx_state     = !WORLD_RAM+$0A ; word: effect tile upload step (8 = done)
 !w_vram_ok      = !WORLD_RAM+$0C ; word: OBJ region A claimed
-!w_cell_want    = !WORLD_RAM+$0E ; word: goku cell id to display ($FFFF none); bit 15 = miniature
+!w_cell_want    = !WORLD_RAM+$0E ; word: goku cell id to display ($FFFF none)
 !w_cell_buf0    = !WORLD_RAM+$10 ; word: cell in buffer 0 ($FFFF none)
 !w_cell_buf1    = !WORLD_RAM+$12 ; word: cell in buffer 1
 !w_cell_show    = !WORLD_RAM+$14 ; word: buffer the OAM references (0/1)
@@ -43,11 +43,13 @@ assert !RAM_WORLD == ($7E0000|!WORLD_RAM), "!WORLD_RAM must match !RAM_WORLD"
 !w_dock         = !WORLD_RAM+$2C ; word: docking approach active (nonzero)
 !w_dock_x       = !WORLD_RAM+$2E ; word: projected Fortress screen x (docking target)
 !w_dock_y       = !WORLD_RAM+$30 ; word
-!w_fort_frame   = !WORLD_RAM+$32 ; word: w_frame when the Fortress was last projected
+!w_anim_frame   = !WORLD_RAM+$32 ; word: flight clip frame (0-3)
 !w_fort_x       = !WORLD_RAM+$34 ; word: Fortress screen position (native projection)
 !w_fort_y       = !WORLD_RAM+$36 ; word
 !w_pal_form     = !WORLD_RAM+$38 ; word: goku palette id written to OBJ palette 5 ($FFFF none)
-!w_dma_list     = !WORLD_RAM+$3A ; word: pending cell upload: $8000|buffer, 0 none
+!w_barrier_req  = !WORLD_RAM+$3A ; word: Tree cloud barrier hit (until destroy_tree_barrier_break merges)
+!w_frieza_barrier_lock = !WORLD_RAM+$3C ; word: request (frieza): keep the cloud barrier (unresolved / crisis)
+!w_sfx_last     = !WORLD_RAM+$3E ; word: last sound request (!SFX_*; audio stream stand-in)
 ; aerial ki / Kamehameha (ki.asm)
 !w_charge       = !WORLD_RAM+$40 ; word: charge frames (cap 45 SSJ / 90 base)
 !w_charging     = !WORLD_RAM+$42 ; word: nonzero while charging (local stand-in)
@@ -74,28 +76,36 @@ assert !RAM_WORLD == ($7E0000|!WORLD_RAM), "!WORLD_RAM must match !RAM_WORLD"
 !w_aim_x        = !WORLD_RAM+$6C ; word: its screen position
 !w_aim_y        = !WORLD_RAM+$6E ; word
 !w_input        = !WORLD_RAM+$70 ; word: physical pad this frame (after combat's claims)
-!w_input_prev   = !WORLD_RAM+$72 ; word
+!w_anim_tick    = !WORLD_RAM+$72 ; word: ticks into the flight clip frame
 !w_combat_owns  = !WORLD_RAM+$74 ; word: request: combat owns the charge (disables the stand-in)
 !w_msg          = !WORLD_RAM+$76 ; word: last message id raised (!MSG_*), for UI/story
 !w_msg_count    = !WORLD_RAM+$78 ; word: increments with every message
 !w_action_age   = !WORLD_RAM+$7A ; word: airBeam pose frames left
 !w_scar_pend    = !WORLD_RAM+$7C ; word: crater VRAM refresh rows left (scars.asm)
 !w_scar_row     = !WORLD_RAM+$7E ; word
-!w_bursts       = !WORLD_RAM+$80 ; 8 x 6 bytes: age (signed, $8000 none), world x, world y
+!w_bursts       = !WORLD_RAM+$80 ; 6 x 6 bytes: age (signed, $8000 none), world x, world y
+!w_fort_seen    = !WORLD_RAM+$A4 ; word: w_frame when C2:B1F7 last projected the Fortress
+!w_burst_live   = !WORLD_RAM+$A6 ; word: live bursts
+!w_beam_rows    = !WORLD_RAM+$A8 ; 7 bytes: OAM offset of each beam row's left edge ($FF none)
+; $AF free
 !w_scratch      = !WORLD_RAM+$B0 ; 16 bytes: call-local scratch
-!w_proj         = !WORLD_RAM+$C0 ; 16 bytes: saved direct page $00-$0F around the native projection
+!w_proj         = !WORLD_RAM+$C0 ; 7 bytes: beam row half-widths, +8 word: drawn length (edge sparks)
+!w_beam_sig     = !WORLD_RAM+$CA ; word: half-width << 8 | profile offset of the cached beam
+!w_beam_start   = !WORLD_RAM+$CC ; word: OAM cursor where the cached beam starts
+!w_beam_end     = !WORLD_RAM+$CE ; word: and ends
 !w_scar_x0      = !WORLD_RAM+$D0 ; word: crater refresh state (scars.asm)
 !w_scar_y0      = !WORLD_RAM+$D2 ; word
 !w_scar_w       = !WORLD_RAM+$D4 ; word
 !w_scar_h       = !WORLD_RAM+$D6 ; word
 !w_scar_id      = !WORLD_RAM+$D8 ; word
 !w_cell_tiles   = !WORLD_RAM+$DA ; word: offset of the pending cell's tiles in goku_cell_tiles
-!w_sfx_last     = !WORLD_RAM+$DC ; word: last sound request (stand-in for the audio stream)
-!w_pal_dirty    = !WORLD_RAM+$DE ; word: OBJ palettes 5/6 to rewrite in CGRAM this vblank
-!w_dock_cell    = !WORLD_RAM+$E0 ; word: docking: 0 full cell, 1 miniature
-!w_dock_px      = !WORLD_RAM+$E2 ; word: docking: drawn centre x
-!w_dock_py      = !WORLD_RAM+$E4 ; word: docking: drawn centre y
-!w_spare        = !WORLD_RAM+$E6 ; $18 bytes free
+!w_pal_dirty    = !WORLD_RAM+$DC ; word: OBJ palettes 5/6 to rewrite in CGRAM this vblank
+!w_dock_px      = !WORLD_RAM+$DE ; word: docking: drawn centre x
+!w_dock_py      = !WORLD_RAM+$E0 ; word: docking: drawn centre y
+!w_cursor       = !WORLD_RAM+$E2 ; word: OAM byte cursor while drawing
+!w_msg_arg      = !WORLD_RAM+$E4 ; word: message argument (town index for !MSG_TOWN)
+; $E6-$FB: targeting scratch (aim.asm)
+!w_cell_key     = !WORLD_RAM+$FC ; word: (column | legs $80) << 1 | form of w_cell_want
 !w_magic        = !WORLD_RAM+$FE ; word: !WORLD_MAGIC once the block is initialised
 !WORLD_MAGIC    = $574C
 !WORLD_RAM_END  = !WORLD_RAM+$100
@@ -107,6 +117,17 @@ assert !RAM_WORLD == ($7E0000|!WORLD_RAM), "!WORLD_RAM must match !RAM_WORLD"
 !WF_ACTIVE     = $0001   ; Goku replaces Flammie in this world session
 !WF_FORT_LAND  = $0002   ; the last landing was the Fortress (record 10)
 !WF_SKY_FIX    = $0004   ; diagnostic: the NMI sky repair fired (cleared by tests)
+
+; Sound requests (!w_sfx_last; the audio stream maps them to DBZ effects).
+!SFX_TAKEOFF = 1    ; 'flight' (takeoff, docking boost)
+!SFX_LANDING = 2    ; 'landing'
+!SFX_CHARGE  = 3    ; 'charge'
+!SFX_CHARGED = 4    ; 'charged'
+!SFX_BLAST   = 5    ; 'blast' (aerial ki)
+!SFX_BEAM    = 6    ; 'beam' (aerial wave)
+!SFX_DEFLECT = 7    ; 'deflect'
+!SFX_IMPACT  = 8    ; 'impact'
+!SFX_DISTANT = 9    ; 'distantImpact'
 
 !SHOT_KI   = 1
 !SHOT_WAVE = 2
@@ -161,7 +182,10 @@ incsrc "field.asm"
 incsrc "flight.asm"
 incsrc "sprite.asm"
 incsrc "nmi.asm"
+incsrc "aim.asm"
 incsrc "ki.asm"
+incsrc "scars.asm"
+incsrc "fxdraw.asm"
 incsrc "api.asm"
 incsrc "hooks.asm"
 world_code_end:

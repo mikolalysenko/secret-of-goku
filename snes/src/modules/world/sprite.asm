@@ -25,47 +25,60 @@ world_pose:
 	BRA ++
 +	LDA.w #$0000
 ++	STA.w !w_bank
-	; column: charge (with hover legs) > air beam > flight clip
-	LDA.w !w_charging
-	BEQ .notCharge
+	; flight clip (track(): 4 frames of 7 ticks, SSJ 5), kept incrementally
+	LDX.w #7
 	LDA.w !w_form
 	BEQ +
-	LDX.w #18
-	BRA .legs
-+	LDX.w #22
-	BRA .legs
+	LDX.w #5
++	STX.w !w_scratch
+	INC.w !w_anim_tick
+	LDA.w !w_anim_tick
+	CMP.w !w_scratch
+	BCC +
+	STZ.w !w_anim_tick
+	LDA.w !w_anim_frame
+	INC
+	AND.w #$0003
+	STA.w !w_anim_frame
++	; column: charge (with hover legs) > air beam > flight clip
+	LDA.w !w_charging
+	BEQ .notCharge
+	LDX.w #22|$80
+	LDA.w !w_form
+	BEQ .key
+	LDX.w #18|$80
+	BRA .key
 .notCharge
 	LDA.w !w_action_age
 	BEQ .flight
+	LDX.w #24
 	LDA.w !w_form
-	BEQ +
+	BEQ .key
 	LDX.w #20
-	BRA .plain
-+	LDX.w #24
-	BRA .plain
+	BRA .key
 .flight
-	; track(): (age mod total) / ticks; base 4 x 7 ticks, SSJ 4 x 5
-	LDA.w !w_form
-	BEQ .base
-	LDA.w !w_anim_age
-	LDX.w #20
-	JSR world_mod
-	LDX.w #5
-	JSR world_div8
-	CLC
-	ADC.w #36
-	TAX
-	BRA .plain
-.base
-	LDA.w !w_anim_age
-	LDX.w #28
-	JSR world_mod
-	LDX.w #7
-	JSR world_div8
+	LDA.w !w_anim_frame
 	CLC
 	ADC.w #40
 	TAX
-.plain
+	LDA.w !w_form
+	BEQ .key
+	TXA
+	SEC
+	SBC.w #4
+	TAX
+.key
+	; the cell only changes with the form, the column or the legs variant
+	TXA
+	ASL
+	ORA.w !w_form
+	CMP.w !w_cell_key
+	BNE +
+	RTS
++	STA.w !w_cell_key
+	TXA
+	BIT.w #$0080
+	BNE .legs
 	LDA.w !w_form
 	LDY.w #$0003
 	JSL goku_api_cell
@@ -73,6 +86,7 @@ world_pose:
 .legs
 	; goku_legs_index has the same layout as goku_cell_index
 	TXA
+	AND.w #$007F
 	ASL
 	ASL
 	STA.w !w_scratch
@@ -95,7 +109,6 @@ world_pose:
 
 ; A16 mod X16 (both small, positive). M16/X16. Clobbers X.
 world_mod:
-	STX.w !w_scratch+14
 	STA.l $004204
 	TXA
 	SEP #$20
@@ -162,11 +175,29 @@ world_palettes:
 ; Fortress); the Flammie builder hook leaves those slots alone and hides
 ; the rest of 0-63 every frame.
 world_draw:
+	STZ.w !w_cursor
 	LDX.w #$0000                     ; OAM byte cursor
 	LDA.w !w_vram_ok
 	BNE +
 	JMP .finish
-+	LDA.w !w_dock
++	; high table of slots 0-59: large, x bit 8 clear
+	LDA.w #$AAAA
+	STA.w $0A00
+	STA.w $0A02
+	STA.w $0A04
+	STA.w $0A06
+	STA.w $0A08
+	STA.w $0A0A
+	STA.w $0A0C
+	SEP #$20
+	STA.w $0A0E
+	REP #$20
+	LDA.w !w_fx_state
+	CMP.w #8
+	BCC +                            ; effect tiles still loading
+	JSR world_draw_front             ; drawn over Goku
++	LDX.w !w_cursor
+	LDA.w !w_dock
 	BEQ .goku
 	JSR world_draw_dock
 	BRA .shadow
@@ -210,7 +241,6 @@ world_draw:
 	BCS .hidden
 -	LDA.w #$E0FF
 	STA.w $0800,X
-	JSR world_oam_hi_clear
 	INX
 	INX
 	INX
@@ -224,7 +254,11 @@ world_draw:
 	BCC +
 	LDA.w #$00F0
 +	STA.w !w_oam_reserve
-	RTS
+	LDA.w !w_fx_state
+	CMP.w #8
+	BCC +
+	JSR world_draw_back
++	RTS
 
 ; The shown cell buffer as four 16x16 OBJ at (w_scratch, w_scratch+2);
 ; empty quadrants (goku_cell_mask) are skipped. X = OAM cursor (in/out).
@@ -438,6 +472,8 @@ world_put_fx:
 ; Write a large (16x16) OBJ: A = tile | attr<<8, x = w_scratch+10 (signed),
 ; y = w_scratch+12 (signed). Offscreen sprites are dropped. X = OAM byte
 ; cursor, advanced by 4 (at most slot 60). Preserves Y.
+; world_draw prefills the high table of our slots as large with x bit 8
+; clear ($AA), so only a sprite with a negative x takes the slow path.
 world_oam_put:
 	CPX.w #$00F0
 	BCS .full
@@ -458,19 +494,22 @@ world_oam_put:
 	LDA.w !w_scratch+12
 	STA.w $0801,X
 	REP #$20
-	PHY
-	LDA.w !w_scratch+10              ; bit 8 of x
-	XBA
-	AND.w #$0001
-	ORA.w #$0002                     ; large
-	JSR world_oam_hi
-	PLY
+	LDA.w !w_scratch+10
+	BMI .xneg
 	INX
 	INX
 	INX
 	INX
 .off
 .full
+	RTS
+.xneg
+	LDA.w #$0003                     ; x bit 8, large
+	JSR world_oam_hi
+	INX
+	INX
+	INX
+	INX
 	RTS
 
 ; High-table bits of the slot at OAM byte offset X: A = xhi | size<<1.

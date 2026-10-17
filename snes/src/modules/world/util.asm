@@ -69,11 +69,12 @@ world_vectors:
 	RTS
 
 ; Wrapped 12-bit difference: A16 = ((A - X + 2048) & 4095) - 2048 (world
-; pixels, signed). M16/X16, DB = $7E.
+; pixels, signed). M16/X16. Preserves X and Y.
 world_delta:
-	STX.w !w_scratch
+	PHX
 	SEC
-	SBC.w !w_scratch
+	SBC $01,S
+	PLX
 	CLC
 	ADC.w #2048
 	AND.w #$0FFF
@@ -83,8 +84,8 @@ world_delta:
 
 ; Signed multiply by a sine: A16 = a (|a| <= 4095), Y16 = s (signed, |s| <=
 ; 127, i.e. sin * 127) -> A16 = (a * s) >> 7 (signed). Uses the CPU's 8x8
-; multiplier, never Mode 7's (HDMA owns it during world flight).
-; M16/X16, DB = $7E. Clobbers X, Y, w_scratch+2..+7.
+; multiplier, never Mode 7's (HDMA owns it during world flight). Stack
+; temporaries only. M16/X16. Clobbers X and Y.
 world_mul7:
 	LDX.w #$0000                    ; sign
 	CMP.w #$8000
@@ -92,7 +93,7 @@ world_mul7:
 	EOR.w #$FFFF
 	INC
 	INX
-+	STA.w !w_scratch+2              ; |a|
++	PHA                             ; |a|
 	TYA
 	CMP.w #$8000
 	BCC +
@@ -105,43 +106,46 @@ world_mul7:
 	PLA
 +	SEP #$20
 	STA.l $004202                   ; |s|
-	LDA.w !w_scratch+2
-	STA.l $004203                   ; |s| * a.lo
-	NOP
-	NOP
-	NOP
-	NOP
+	LDA $02,S                       ; |a| high byte
+	STA.l $004203
+	LDA $01,S                       ; |a| low byte (kept in Y)
+	TAY
 	REP #$20
 	LDA.l $004216
-	STA.w !w_scratch+4
+	ASL                             ; high product << 8 >> 7
+	STA $01,S
 	SEP #$20
-	LDA.w !w_scratch+3
-	STA.l $004203                   ; |s| * a.hi
+	TYA
+	STA.l $004203                   ; |s| * low byte
 	NOP
 	NOP
 	NOP
 	NOP
 	REP #$20
-	LDA.w !w_scratch+4
-	ASL                             ; bit 7 of the low product -> high byte
-	XBA
-	AND.w #$00FF
-	STA.w !w_scratch+4              ; low product >> 7 (0-253)
 	LDA.l $004216
-	ASL                             ; high product << 1 (= << 8 >> 7)
+	ASL
+	XBA
+	AND.w #$00FF                    ; low product >> 7
 	CLC
-	ADC.w !w_scratch+4
+	ADC $01,S
+	PLY
 	CPX.w #$0000
 	BEQ +
 	EOR.w #$FFFF
 	INC
 +	RTS
 
+world_bit:
+	dw $0001,$0002,$0004,$0008,$0010,$0020,$0040,$0080
+	dw $0100,$0200,$0400,$0800,$1000,$2000,$4000,$8000
+
 ; sin(heading) * 127 for a world heading (10-bit, 1024 per turn): A16 =
 ; heading -> A16 signed. Cosine: add 256 first. M16/X16. Clobbers X.
 world_sin:
 	LSR
 	LSR
+; Same for an angle in 256 steps per turn (A16, any high bits).
+world_sin256:
 	AND.w #$00FF
 	TAX
 	LDA.l world_sine,X

@@ -13,7 +13,9 @@ W.a = {
   charge = ram(0x40), charging = ram(0x42), shot = ram(0x46), shot_age = ram(0x48), shot_max = ram(0x4A),
   shot_str = ram(0x4C), shot_flags = ram(0x4E), shot_tgt = ram(0x50), shot_tx = ram(0x52), shot_ty = ram(0x54),
   expl_age = ram(0x5C), cut_age = ram(0x64), land_queued = ram(0x66), warn_cd = ram(0x68), aim = ram(0x6A),
-  msg = ram(0x76), msg_count = ram(0x78), action_age = ram(0x7A), sfx = ram(0xDC),
+  msg = ram(0x76), msg_count = ram(0x78), action_age = ram(0x7A), sfx = ram(0x3E), barrier_req = ram(0x3A),
+  expl_x = ram(0x5E), expl_y = ram(0x60), expl_flags = ram(0x62), shot_ex = ram(0x56), shot_ey = ram(0x58), shot_side = ram(0x5A),
+  bursts = ram(0x80), combat_owns = ram(0x74),
 }
 W.GOKU = 0x7ED740                 -- goku module RAM (form at +0, mode at +8, mode age at +A)
 W.PERSIST_ACTIVE = 0x316001
