@@ -129,6 +129,16 @@ world_fortress_destroyed:
 	CLC
 	RTL
 
+; Story query FORTRESS_DESTROYED: A16 = 1 once Goku's wave destroyed the
+; Fortress (routes 429 to the post-destruction scene, ending rules).
+; M16/X16, DB = $7E.
+world_query_fortress:
+	LDA.l !pw_flags
+	AND.w #!PWF_FORTRESS
+	BEQ +
+	LDA.w #$0001
++	RTL
+
 ; world_town_destroyed: A16 = map id -> C set when a crater covers that
 ; town (one of world_town_maps). Exit M16/X16.
 world_town_destroyed:

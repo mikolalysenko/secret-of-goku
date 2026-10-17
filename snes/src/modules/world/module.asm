@@ -169,6 +169,11 @@ assert !pw_scars+(!WORLD_MAX_SCARS*4) <= !PERSIST_WORLD+$40, "world persistent b
 !WORLD_OBJ_ATTR_FX   = $3C  ; priority 3, palette 6
 !WORLD_VRAM_OWNER = $0D   ; core_vram_claim owner id (module bank AD/ED)
 
+; Story hooks and queries this module answers (story/hooks.asm, included
+; last by snes/src/modules.asm, picks these labels up).
+!STORY_HOOK_QUEST_WISH_SCARS = world_wish_restore
+!STORY_QUERY_FORTRESS_DESTROYED = world_query_fortress
+
 ; Generated tables
 pushpc
 org !CODE_WORLD

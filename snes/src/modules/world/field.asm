@@ -103,8 +103,8 @@ wf_takeoff_chord:
 	RTS
 
 ; After the Fortress fell, the landing on its deck starts the
-; post-destruction conversation (story event $8B, as the browser's
-; story.request(0x8b)) once the field is idle.
+; post-destruction conversation: story event $8B through story_api_request
+; (the browser's story.request(0x8b): nothing queued, Goku can act).
 wf_finale:
 	LDA.l !pw_flags
 	AND.w #!PWF_FINALE
@@ -114,8 +114,9 @@ wf_finale:
 	CMP.w #255
 	BNE .done
 	LDA.w #$008B
-	JSL core_event_request
-	BCS .done
+	LDX.w #$0000
+	JSL story_api_request
+	BCC .done                        ; carry set = queued
 	SEP #$20
 	LDA.l !pw_flags
 	AND.b #$FF^!PWF_FINALE
