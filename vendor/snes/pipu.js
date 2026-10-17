@@ -546,7 +546,8 @@ function Ppu(snes) {
   // {type: "paint", layers, colors, skipZero, layer, pixel, mainOnly} sets
   // the color to colors[x] - 1 (colors[x] === 0 leaves the pixel alone with
   // skipZero, else it stores -1 as the wrapper would) and, if layer >= 0,
-  // the layer and pixel too;
+  // the layer and pixel too; with skipZero, optional x0/x1 bound the x
+  // that can be non-zero;
   // {type: "channels", layers, r, g, b, layer, pixel, mainOnly} maps each
   // 5-bit channel through its 32-entry table (and sets layer/pixel alike);
   // {type: "line", layers, mainOnly, fn(sub, y, colors, layers, pixels,
@@ -1107,13 +1108,17 @@ function Ppu(snes) {
     let disabled = sub ? linePlan.disableSub : linePlan.disableMain;
     let suppress = linePlan.windowSuppress;
     let done = screenResolved, cgram = this.cgram, fused = colorOut !== undefined;
-    let remaining = 0;
-    for(let x = 0; x < 256; x++) {
-      pixOut[x] = 0;
-      layOut[x] = 5;
-      let open = need === null || need[x] === 1;
-      done[x] = open ? 0 : 1;
-      remaining += open ? 1 : 0;
+    let remaining = 256;
+    pixOut.fill(0);
+    layOut.fill(5);
+    if(need === null) {
+      done.fill(0);
+    } else {
+      for(let x = 0; x < 256; x++) {
+        let open = need[x] === 1 ? 1 : 0;
+        done[x] = 1 - open;
+        remaining -= 1 - open;
+      }
     }
     for(let j = 0; j < count && remaining > 0; j++) {
       let layer = this.layersPerMode[modeIndex + j];
@@ -1229,8 +1234,34 @@ function Ppu(snes) {
             end = 256;
           }
           let base = tag & 0x7fff;
+          if(mask === null) {
+            // Lanes shift down one nibble per pixel from the tile's first
+            // visible lane (the same extraction as below).
+            let first = ((start + fine) & 0x7) << 2;
+            let laneLo = lo >>> first, laneHi = hi >>> first;
+            for(let x = start; x < end; x++, laneLo >>>= 4, laneHi >>>= 4) {
+              if(done[x] === 1) {
+                continue;
+              }
+              let tileData = laneLo & 0xf;
+              if(wide === 1) {
+                tileData |= (laneHi & 0xf) << 4;
+              }
+              if(tileData > 0) {
+                let v = base + tileData;
+                pixOut[x] = v;
+                layOut[x] = layer;
+                if(fused) {
+                  colorOut[x] = cgram[v & 0xff];
+                }
+                done[x] = 1;
+                remaining--;
+              }
+            }
+            continue;
+          }
           for(let x = start; x < end; x++) {
-            if(done[x] === 1 || (mask !== null && mask[x] === 1)) {
+            if(done[x] === 1 || mask[x] === 1) {
               continue;
             }
             let shift = ((x + fine) & 0x7) << 2;
@@ -1273,8 +1304,33 @@ function Ppu(snes) {
             end = 256;
           }
           let base = tag & 0x7fff;
+          if(mask === null) {
+            // Two nibbles (sub, main) per pixel: shift a byte per pixel.
+            let first = (((start + fine) & 0x3) << 3) + half;
+            let laneLo = lo >>> first, laneHi = hi >>> first;
+            for(let x = start; x < end; x++, laneLo >>>= 8, laneHi >>>= 8) {
+              if(done[x] === 1) {
+                continue;
+              }
+              let tileData = laneLo & 0xf;
+              if(wide === 1) {
+                tileData |= (laneHi & 0xf) << 4;
+              }
+              if(tileData > 0) {
+                let v = base + tileData;
+                pixOut[x] = v;
+                layOut[x] = layer;
+                if(fused) {
+                  colorOut[x] = cgram[v & 0xff];
+                }
+                done[x] = 1;
+                remaining--;
+              }
+            }
+            continue;
+          }
           for(let x = start; x < end; x++) {
-            if(done[x] === 1 || (mask !== null && mask[x] === 1)) {
+            if(done[x] === 1 || mask[x] === 1) {
               continue;
             }
             let shift = (((x + fine) & 0x3) << 3) + half;
@@ -1501,19 +1557,25 @@ function Ppu(snes) {
         }
       }
     }
-    for(let x = 0; x < 256; x++) {
-      if(need !== null && need[x] !== 1) {
-        continue;
+    if(direct === 0 && need === null) {
+      for(let x = 0; x < 256; x++) {
+        colorOut[x] = cgram[pixIn[x] & 0xff];
       }
-      let pixel = pixIn[x], layer = layIn[x];
-      let color = cgram[pixel & 0xff];
-      if(((direct >> layer) & 1) === 1) {
-        let r = ((pixel & 0x7) << 2) | ((pixel & 0x100) >> 7);
-        let g = ((pixel & 0x38) >> 1) | ((pixel & 0x200) >> 8);
-        let b = ((pixel & 0xc0) >> 3) | ((pixel & 0x400) >> 8);
-        color = (b << 10) | (g << 5) | r;
+    } else {
+      for(let x = 0; x < 256; x++) {
+        if(need !== null && need[x] !== 1) {
+          continue;
+        }
+        let pixel = pixIn[x], layer = layIn[x];
+        let color = cgram[pixel & 0xff];
+        if(((direct >> layer) & 1) === 1) {
+          let r = ((pixel & 0x7) << 2) | ((pixel & 0x100) >> 7);
+          let g = ((pixel & 0x38) >> 1) | ((pixel & 0x200) >> 8);
+          let b = ((pixel & 0xc0) >> 3) | ((pixel & 0x400) >> 8);
+          color = (b << 10) | (g << 5) | r;
+        }
+        colorOut[x] = color;
       }
-      colorOut[x] = color;
     }
     for(let k = ops.length - 1; k >= 0; k--) {
       this.applyOp(ops[k], sub, need, pixIn, layIn, colorOut, line);
@@ -1594,7 +1656,12 @@ function Ppu(snes) {
     let layers = op.layers, setLayer = op.layer, setPixel = op.pixel;
     if(op.type === "paint") {
       let colors = op.colors, skipZero = op.skipZero;
-      for(let x = 0; x < 256; x++) {
+      let x0 = 0, x1 = 256;
+      if(skipZero && op.x1 !== undefined) {
+        x0 = op.x0 > 0 ? op.x0 : 0;
+        x1 = op.x1 < 256 ? op.x1 : 256;
+      }
+      for(let x = x0; x < x1; x++) {
         if(need !== null && need[x] !== 1) {
           continue;
         }
@@ -1914,17 +1981,29 @@ function Ppu(snes) {
       }
       return;
     }
-    for(let i = 0; i < 256; i++) {
-      let lay = mainLay[i];
-      let on = !(
-        preventMath === 3 ||
-        (preventMath === 2 && clipMask[i]) ||
-        (preventMath === 1 && !clipMask[i])
-      ) && ((mathBits >> lay) & 1) === 1 && (lay !== 4 || mainPix[i] >= 0xc0);
-      mathOn[i] = on ? 1 : 0;
-      let need = hires || pseudo || (on && addSub);
-      subNeed[i] = need ? 1 : 0;
-      anySub = anySub || need;
+    if(preventMath === 0 && !hires && !pseudo) {
+      // The common case: math by layer only, the sub screen where it adds.
+      let add = addSub ? 1 : 0;
+      for(let i = 0; i < 256; i++) {
+        let lay = mainLay[i];
+        let on = ((mathBits >> lay) & 1) === 1 && (lay !== 4 || mainPix[i] >= 0xc0) ? 1 : 0;
+        mathOn[i] = on;
+        subNeed[i] = on & add;
+        anySub = anySub || (on & add) === 1;
+      }
+    } else {
+      for(let i = 0; i < 256; i++) {
+        let lay = mainLay[i];
+        let on = !(
+          preventMath === 3 ||
+          (preventMath === 2 && clipMask[i]) ||
+          (preventMath === 1 && !clipMask[i])
+        ) && ((mathBits >> lay) & 1) === 1 && (lay !== 4 || mainPix[i] >= 0xc0);
+        mathOn[i] = on ? 1 : 0;
+        let need = hires || pseudo || (on && addSub);
+        subNeed[i] = need ? 1 : 0;
+        anySub = anySub || need;
+      }
     }
     if(anySub) {
       if(plainLine) {

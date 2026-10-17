@@ -14,6 +14,7 @@ incsrc "modules/story/module.asm"
 incsrc "modules/debug/module.asm"
 incsrc "modules/destroy/module.asm"
 incsrc "modules/orbit/module.asm"
+incsrc "modules/combat/module.asm"
 incsrc "modules/audio/module.asm"           ; after the modules whose sound flags it reads
 
 pushpc
@@ -24,6 +25,7 @@ modules_field_frame:
 	JSL title_field_frame
 	JSL story_field_frame
 	JSL debug_field_frame
+	JSL combat_field_frame     ; before goku: poses and form apply this frame
 	JSL world_field_frame
 	JSL orbit_field_frame
 	JSL goku_frame
@@ -42,6 +44,7 @@ modules_world_frame:
 	JSL destroy_world_frame
 	JSL world_world_frame
 	JSL debug_world_frame
+	JSL combat_world_frame
 	JSL fx_world_frame         ; after the modules that draw effects
 	JSL audio_frame
 	RTL
@@ -57,11 +60,13 @@ modules_menu_frame:
 	JSL goku_menu_frame
 	JSL title_menu_frame
 	JSL debug_menu_frame
+	JSL combat_menu_frame
 	JSL audio_pause
 	RTL
 ; Ring menu frame, in vblank (DB = $7E).
 modules_ring_frame:
 	JSL fx_ring_frame          ; first: puts PPU registers back inside vblank
+	JSL combat_menu_frame
 	JSL audio_pause
 	RTL
 ; Title program entry (power-on, soft reset, quit to title), after module
@@ -78,17 +83,23 @@ modules_save:
 ; After a GAME FILE loaded and core restored (or cleared) !SRAM_LIVE.
 modules_load:
 	JSL title_load
+	JSL combat_load
 	JSL story_load
 	JSL destroy_reset
 	RTL
 ; New game: !SRAM_LIVE was cleared and !persist_version set to 1.
 modules_new_game:
 	JSL title_new_game
+	JSL combat_new_game
 	JSL story_new_game
 	JSL debug_new_game
 	JSL destroy_reset
 	RTL
 pullpc
+
+; Combat bindings to optional modules: after every module include (its
+; defined() checks see them), before the story tables.
+incsrc "modules/combat/bind.asm"
 
 ; Debug preset hook table (generated): modules fill it by defining
 ; !DEBUG_PRESET_HOOK_<NAME> / _ANY in their own files (included above).
