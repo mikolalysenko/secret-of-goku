@@ -11,6 +11,7 @@ incsrc "modules/title/module.asm"
 incsrc "modules/story/module.asm"
 incsrc "modules/debug/module.asm"
 incsrc "modules/destroy/module.asm"
+incsrc "modules/orbit/module.asm"
 
 pushpc
 org !CODE_CORE+$7000
@@ -20,12 +21,14 @@ modules_field_frame:
 	JSL title_field_frame
 	JSL story_field_frame
 	JSL debug_field_frame
+	JSL orbit_field_frame
 	JSL goku_frame
 	JSL destroy_field_frame          ; last: its planner uses the frame time left
 	RTL
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
 modules_field_nmi:
 	JSL goku_nmi
+	JSL orbit_field_nmi
 	RTL
 ; World flight frame, after the world logic (DB = $7E).
 modules_world_frame:
