@@ -53,15 +53,14 @@ fz_battle_surging:
 +	CLC
 	RTS
 
-; C set while the fight is in space (the orbit stream's).
+; C set while the fight is in space or the orbit stream owns the picture.
 fz_battle_space:
 	LDA !fzf_flags
 	AND.w #!FZFF_SPACE
 	BEQ +
 	SEC
 	RTS
-+	CLC
-	RTS
++	JMP fz_bind_orbit_owns
 
 ; C set when the ground fight runs (s.boss, stage battle, map 246).
 fz_battle_live:

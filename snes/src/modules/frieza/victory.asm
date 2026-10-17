@@ -5,15 +5,7 @@
 ; stream runs it in space through frieza_victory_start/_tick/_draw; on the
 ; ground (without the orbit stream) the fight ends here and event C7 follows.
 
-; boss-victory.js bossVictoryTiming (frames from the fatal hit)
-!FZV_FADE      = 143
-!FZV_WHITE     = 306
-!FZV_VANISH    = 326
-!FZV_JINGLE    = 375
-!FZV_REVEAL    = 631
-!FZV_CLEAR     = 791
-!FZV_ACQUIRE   = 375+540          ; the chime once the 540-frame fanfare ends
-!FZV_DONE      = 375+540+120      ; then the 120-frame hold before travel
+; Timings (!FZV_*) are in module.asm.
 
 ; frieza_victory_start: A16 = x, X16 = y (map) of the fallen Frieza. Any DB.
 frieza_victory_start:
@@ -253,6 +245,56 @@ fz_win:
 	JSL frieza_victory_start
 	RTS
 
+; ---------------------------------------------------------------------------
+; Orbit stream hand-back (its space fight ends the battle).
+
+; frieza_orbit_won: Frieza fell in space (frieza.js win(): stage won,
+; attacks dropped, the theme stopped). The orbit stream plays the beat
+; itself through frieza_victory_start/_tick. JSL, any DB.
+frieza_orbit_won:
+	PHB
+	PHD
+	PHP
+	REP #$30
+	PEA $7E7E
+	PLB
+	PLB
+	LDA.w #$0000
+	TCD
+	LDA.w #!FZST_WON
+	JSR fz_set_stage
+	STZ !fzf_hp_lo
+	STZ !fzf_hp_hi
+	STZ !fzf_age
+	JSR fz_drop_attacks
+	JSR fz_scene_clear
+	LDA.w #!FZW_CANCEL
+	TSB !fz_pend
+	LDA.w #$00F0                      ; stop: F0 00 00 00
+	LDX.w #$0000
+	JSR fz_queue_sound
+	PLP
+	PLD
+	PLB
+	RTL
+
+; frieza_orbit_landed: Goku is back on the deck (returnToFortress done,
+; the landing over): the ground fight stays asleep and the victory event
+; is requested once Goku can act (frieza.js: F.victory at landed). JSL.
+frieza_orbit_landed:
+	PHB
+	PHP
+	SEP #$20
+	PHA
+	LDA.b #!FZFF_LANDED
+	ORA.l $7E0000|!fzf_flags
+	AND.b #~!FZFF_SPACE
+	STA.l $7E0000|!fzf_flags
+	PLA
+	PLP
+	PLB
+	RTL
+
 ; The won stage on the ground: the beat, then the victory event once the
 ; fanfare and the chime are done (frieza.js requests F.victory at landed).
 fz_won_tick:
@@ -262,6 +304,9 @@ fz_won_tick:
 	LDA $DC
 	CMP.w #246
 	BNE .out
+	LDA !fzf_flags
+	AND.w #!FZFF_LANDED
+	BNE .request                      ; back from orbit: the victory event
 	JSR fz_battle_space
 	BCS .out                          ; the orbit stream's
 	JSR fz_native_field

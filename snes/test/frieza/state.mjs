@@ -39,6 +39,9 @@ export function friezaWrites(f,challenge,{map}={}){
     if(f.crisis.flightNotified)crisis|=defs.FZC_NOTIFIED;if(f.crisis.deathBall)crisis|=defs.FZC_DEATHBALL;if(f.crisis.rearCamera)crisis|=defs.FZC_REAR;}
   let beast=0;
   if(challenge?.fed)beast|=defs.FZX_FED;if(challenge?.started)beast|=defs.FZX_STARTED;if(challenge?.won)beast|=defs.FZX_WON;
+  // the module checks its block and resets its WRAM once per session unless
+  // a load hook did (fz_guard): these writes stand for that load
+  put('fz_init',0xA5,1);
   put('fzp_version',1,1);put('fzp_stage',stageId(f.stage),1);put('fzp_tree',treeId(f.tree),1);
   put('fzp_flags',flags,2);put('fzp_mask',f.stolenMask??0,1);put('fzp_crisis',crisis,1);put('fzp_beast',beast,1);
   put('fzp_flyby',f.flyby?f.flyby.age:0xFFFF,2);

@@ -4,12 +4,68 @@
 ; modules_field_frame: after the game's logic and OAM build. M16/X16,
 ; DB = $7E, D = 0.
 frieza_field_frame:
-	JSR fz_spr_begin
+	; idle fast path: Frieza dormant or long defeated, nothing of his
+	; running, not on one of his maps (a dozen loads; the rest below)
+	LDA !fz_init
+	AND.w #$F8FF                      ; settled, no vblank work, no lock or danger
+	CMP.w #$00A5
+	BNE .busy
+	LDA !fz_pend
+	ORA !fz_scene                     ; scene kind and its flags
+	BNE .busy
+	SEP #$20
+	LDA !fz_music
+	ORA !fz_quake
+	ORA !fzd_on
+	REP #$20
+	BNE .busy
+	LDA !fzl_base
+	INC                               ; $FFFF: no Dark Lich tracked
+	BNE .busy
+	LDA $DC
+	CMP !fz_lastmap
+	BNE .busy
+	LDA !fz_mapflag
+	AND.w #$00FF
+	BNE .busy
+	LDA.l !fzp_stage
+	AND.w #$00FF
+	BEQ .idle
+	CMP.w #!FZST_DEFEATED
+	BNE .busy
+.idle
+	JSR fz_idle_tick
+	RTL
+.busy
+	; the first field frame of a session that did not come through the
+	; load or new-game hooks (title attract, imported states): settle the
+	; block and forget whatever the per-visit WRAM held
+	LDA !fz_init
+	AND.w #$00FF
+	CMP.w #$00A5
+	BEQ +
+	JSR fz_guard
+	JSR fz_reset_transient
+	SEP #$20
+	LDA.b #$A5
+	STA !fz_init
+	REP #$20
++	; leaving an idle stretch: loads and fades may have rewritten VRAM
+	LDA !fz_wasidle
+	AND.w #$00FF
+	BEQ +
+	SEP #$20
+	STZ !fz_wasidle
+	REP #$20
+	JSR fz_spr_invalidate
++	JSR fz_spr_begin
 	JSR fz_session
 	JSR fz_on
 	BCS +
+	JSR fz_danger_tick                ; Goku off: only a danger bit to drop
 	RTL
-+	JSR fz_apply_pending
++	JSR fz_danger_tick
+	JSR fz_apply_pending
 	JSR fz_quake_tick
 	JSR fz_story_tick
 	JSR fz_scene_tick
@@ -21,12 +77,12 @@ frieza_field_frame:
 	; Mode 7 arenas (Beast, Fortress bosses) have no Frieza sprites
 	LDA $29
 	AND.w #$0004
-	BNE .out
+	BNE .notdrawn
 	JSR fz_draw_scene
 	JSR fz_battle_draw
 	JSR fz_won_draw
 	JSR fz_holes_frame
-.out
+.notdrawn
 	JSR fz_music_tick
 	RTL
 
@@ -80,6 +136,69 @@ fz_lock_tick:
 .out
 	RTS
 
+; Dangerous encounters (native-hit-recovery.js dangerous()): the Frieza
+; fight (stage battle or won), the fed Beast before its defeat on map 253,
+; the empowered Dark Lich alive on his map. Combat then keeps the native
+; damage and deflects nothing; told every frame (two stores).
+fz_danger_tick:
+	JSR fz_dangerous
+	BCC .safe
+	LDA !fz_tflags
+	AND.w #!FZT_DANGER
+	BNE .out
+	SEP #$20
+	LDA.b #!FZT_DANGER
+	TSB !fz_tflags
+	REP #$20
+	JMP fz_bind_danger
+.safe
+	LDA !fz_tflags
+	AND.w #!FZT_DANGER
+	BEQ .out
+	SEP #$20
+	LDA.b #!FZT_DANGER
+	TRB !fz_tflags
+	REP #$20
+	JMP fz_bind_safe
+.out
+	RTS
+
+; C set while the encounter is dangerous.
+fz_dangerous:
+	JSR fz_on
+	BCC .no
+	JSR fz_stage
+	CMP.w #!FZST_BATTLE
+	BEQ .yes
+	CMP.w #!FZST_WON
+	BEQ .yes
+	LDA $DC
+	CMP.w #253
+	BNE .lich
+	LDA.l !fzp_beast
+	AND.w #!FZX_FED|!FZX_WON
+	CMP.w #!FZX_FED
+	BEQ .yes
+.lich
+	LDA !fzl_base
+	CMP.w #$FFFF
+	BEQ .no
+	LDA $DC
+	CMP !fzl_map
+	BNE .no
+	LDX !fzl_base
+	LDA $E182,X
+	BEQ .no
+	LDA $E191,X
+	AND.w #$0080
+	BNE .no
+.yes
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
 ; Session bookkeeping: VRAM residency survives only an unbroken run of field
 ; frames on one map with the picture on; map changes reset the per-room
 ; state (frieza.js tick(): s.lastMap, s.offered, scenes of other maps).
@@ -112,6 +231,10 @@ fz_session:
 	CMP !fz_lastmap
 	BEQ .same
 	STA !fz_lastmap
+	JSR fz_frieza_map
+	SEP #$20
+	STA !fz_mapflag
+	REP #$20
 	JSR fz_spr_invalidate
 	LDA.w !core_frame&$FFFF
 	STA !fz_room_since
@@ -126,6 +249,60 @@ fz_session:
 	BEQ .same
 	JSR fz_scene_clear
 .same
+	RTS
+
+; The idle frame: the first one quiets the vblank work of the last busy
+; frame; then the permanent form, the invitation (every 8th frame) and the
+; Dark Lich watch (every 16th).
+fz_idle_tick:
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BEQ .out
+	LDA !fz_wasidle
+	AND.w #$00FF
+	BNE +
+	JSR fz_spr_begin
+	LDA.w #$FFFF
+	STA !fz_spr_pend
+	SEP #$20
+	LDA.b #$01
+	STA !fz_wasidle
+	REP #$20
++	LDA.l !fzp_flags
+	AND.w #!FZFL_PERMANENT
+	BEQ +
+	JSR fz_story_permanent
++	LDA.w !core_frame&$FFFF
+	AND.w #$0007
+	BNE .out
+	JSR fz_story_hint_now
+	LDA.w !core_frame&$FFFF
+	AND.w #$0008
+	BNE .out
+	JMP fz_lich_tick_findnow
+.out
+	RTS
+
+; A16 = 1 when map $DC is one of Frieza's (arena 246, the Beast 253, the
+; altar 431, Rider III 419, the deck 195, the Tree 236), else 0.
+fz_frieza_map:
+	LDA $DC
+	CMP.w #246
+	BEQ .yes
+	CMP.w #253
+	BEQ .yes
+	CMP.w #431
+	BEQ .yes
+	CMP.w #419
+	BEQ .yes
+	CMP.w #195
+	BEQ .yes
+	CMP.w #236
+	BEQ .yes
+	LDA.w #$0000
+	RTS
+.yes
+	LDA.w #$0001
 	RTS
 
 ; Deferred hook work (hooks run inside the event dispatcher).
@@ -244,23 +421,57 @@ fz_revive_party:
 	STZ $E590
 +	RTS
 
-; Story-level per-frame work (tick() before the scene branch).
-fz_story_tick:
-	; permanent Super Saiyan holds outside the endings that relax it
+; The permanent Super Saiyan form holds outside the endings that relax it.
+fz_story_permanent:
 	LDA.w #!FZFL_PERMANENT
 	JSR fz_flag
-	BEQ +
+	BEQ .out
 	LDA !fzd_on                       ; a finale death reverts him
 	AND.w #$00FF
-	BNE +
+	BNE .out
 	JSR fz_bind_ending_relaxed
-	BCS +
+	BCS .out
 	LDA.l !goku_form|$7E0000
 	AND.w #$00FF
-	BNE +
+	BNE .out
 	LDA.w #$0001
-	JSR fz_bind_set_form
-+	; forced-blank establishing cues
+	JMP fz_bind_set_form
+.out
+	RTS
+
+; Dryad's invitation, once: eligible() (pendingEntrance && (all seven
+; seeds || CFAF >= 2)), looked at every eighth frame (the radio line comes
+; at most 7 frames after the browser's).
+fz_story_hint:
+	LDA.w !core_frame&$FFFF
+	AND.w #$0007
+	BEQ fz_story_hint_now
+	RTS
+fz_story_hint_now:
+	LDA.w #!FZFL_HINTED
+	JSR fz_flag
+	BNE .out
+	LDX.w #$00AF
+	JSR fz_cf
+	CMP.w #2
+	BCS +
+	JSR fz_quest
+	XBA
+	AND.w #$007F
+	CMP.w #$007F
+	BNE .out
++	JSR fz_pending_entrance
+	BCC .out
+	LDA.w #!FZFL_HINTED
+	JSR fz_set
+	JMP fz_bind_hint
+.out
+	RTS
+
+; Story-level per-frame work (tick() before the scene branch).
+fz_story_tick:
+	JSR fz_story_permanent
+	; forced-blank establishing cues
 	LDA !fz_tflags
 	AND.w #!FZT_FORCED
 	BEQ .hint
@@ -282,23 +493,19 @@ fz_story_tick:
 	LDA.w #!FZS_CORE_ARRIVAL
 	JSR fz_cue
 .hint
-	; Dryad's invitation, once
-	LDA.w #!FZFL_HINTED
-	JSR fz_flag
-	BNE .requests
-	JSR fz_eligible
-	BCC .requests
-	LDA.w #!FZFL_HINTED
-	JSR fz_set
-	JSR fz_bind_hint
+	JSR fz_story_hint
 .requests
-	JSR fz_pending_entrance
+	; only the altar room and Rider III's room take requests
+	LDA $DC
+	CMP.w #431
+	BEQ +
+	CMP.w #419
+	BNE .rider
++	JSR fz_pending_entrance
 	BCC .rider
 	LDA $DC
 	CMP.w #431
 	BEQ .altar
-	CMP.w #419
-	BNE .rider
 	; the retail room starts its old boss on one floor marker, which
 	; flight can skip: Frieza greets Goku on entering after Hexas
 	LDA.w #!FZFL_EMPEROR
@@ -413,9 +620,19 @@ fz_music_tick:
 	BEQ .same
 	STA !fz_music
 	REP #$20
+	AND.w #$00FF
+	BNE .bind
+	; won: win() stopped the theme (F0); nothing native comes back under
+	; the beat and its fanfare
+	JSR fz_stage
+	CMP.w #!FZST_WON
+	BEQ .out
+	LDA.w #$0000
+.bind
 	JMP fz_bind_music
 .same
 	REP #$20
+.out
 	RTS
 
 ; A8/16 = cue (!FZM_*, 0 = native).
@@ -424,7 +641,7 @@ fz_music_cue:
 	CMP.w #!FZST_BATTLE
 	BEQ .battle
 	CMP.w #!FZST_WON
-	BEQ .native                       ; orbit owns the won phase's cue
+	BEQ .won
 	CMP.w #!FZST_THEFT
 	BEQ .arrival
 	CMP.w #!FZST_SHOWDOWN
@@ -462,7 +679,22 @@ fz_music_cue:
 	LDA.w #!FZM_ARRIVAL
 	RTS
 .battle
-	JSR fz_battle_space
-	BCS .native
+	LDA !fzf_flags
+	AND.w #!FZFF_SPACE
+	BNE .orbit
 	LDA.w #!FZM_BATTLE
+	RTS
+.won
+	; the orbital victory keeps the orbit theme until its whiteout
+	LDA !fzf_flags
+	AND.w #!FZFF_SPACE
+	BEQ .native
+	LDA.l !fzv_on
+	AND.w #$00FF
+	BEQ .native
+	LDA.l !fzv_age
+	CMP.w #!FZV_WHITE
+	BCS .native
+.orbit
+	LDA.w #!FZM_ORBIT
 	RTS

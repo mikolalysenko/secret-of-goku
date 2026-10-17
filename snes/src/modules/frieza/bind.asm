@@ -81,7 +81,9 @@ if defined("AUDIO_IDS")
 .orbit
 	LDA.w #!AUDIO_SONG_FRIEZA_ORBIT
 .song
-	LDX.w #$0000
+	; the browser switches cues at once: cut the old song (p2 high nibble
+	; 0 skips the fade wait, the shortest load), full volume (p3 = $FF)
+	LDX.w #$FF00
 	JSL audio_song
 	RTS
 .restore
@@ -242,6 +244,17 @@ if defined("FRIEZA_ORBIT_RETURN")
 	JSL !FRIEZA_ORBIT_RETURN
 endif
 	RTS
+; C set while the orbit stream owns the picture (its !orbit_flags bit 0):
+; the ground fight neither ticks nor draws.
+fz_bind_orbit_owns:
+if defined("orbit_flags")
+	LDA.l $7E0000|!orbit_flags
+	LSR
+	RTS
+else
+	CLC
+	RTS
+endif
 ; C set while the orbit intro holds the controls (inputLocked).
 fz_bind_orbit_locked:
 if defined("FRIEZA_ORBIT_LOCKED")
@@ -309,8 +322,24 @@ endif
 fz_bind_beam_touches:
 	CLC
 	RTS
-; Combat's whole-pad lock while a surge or the victory beat runs.
+; Frieza's owner bit in combat's lock words.
 !FZ_COMBAT_OWNER = $0040
+; A dangerous encounter (combat keeps native damage, deflects nothing).
+fz_bind_danger:
+if defined("COMBAT_OWNER")
+	LDA.w #!FZ_COMBAT_OWNER
+	JSL combat_api_danger
+	REP #$30
+endif
+	RTS
+fz_bind_safe:
+if defined("COMBAT_OWNER")
+	LDA.w #!FZ_COMBAT_OWNER
+	JSL combat_api_safe
+	REP #$30
+endif
+	RTS
+; Combat's whole-pad lock while a surge or the victory beat runs.
 fz_bind_input_lock:
 if defined("COMBAT_OWNER")
 	LDA.w #!FZ_COMBAT_OWNER
@@ -342,14 +371,44 @@ if defined("UI_GROUP_FRIEZA_FULL_POWER_FRIEZA_SEQ_0")
 endif
 	RTS
 
+; Debug preset kinds Frieza does not answer go on to combat's handler: the
+; ANY slot holds one target and combat takes it only while it is free.
+; A16 = kind, X16 = preset, Y16 = payload (as the debug module passed them).
+fz_bind_debug_other:
+if defined("COMBAT_OWNER")
+	if defined("DEBUG_HOOK_FORM")
+	JML combat_debug_hook
+	endif
+endif
+	CLC
+	RTL
+
 ; Orbit: the second surge ('frieza-cosmic') and everything after it.
 ; Without the orbit stream, the ground fight goes on as the stand-in: the
 ; surge ends after 120 frames, Frieza fights on enraged with no HP floor,
 ; and his fall ends the battle (frieza.js win(), the ground path).
 fz_bind_orbit_surge:
 if defined("FRIEZA_ORBIT_SURGE")
+	; JSL with A16 = surge age (1 on its first frame), X16/Y16 = the strike
+	; target (the Fortress's screen position or 2000); Frieza's HP is in
+	; !fzf_hp_lo/_hi. C set back: the surge is over and the fight went to
+	; space (frieza.js enterOrbit): the ground fight sleeps from now on.
+	LDA.l !fzs_tgy
+	TAY
+	LDA.l !fzs_tgx
+	TAX
+	LDA.l !fzs_sage
 	JSL !FRIEZA_ORBIT_SURGE
-	RTS
+	REP #$30
+	BCC +
+	SEP #$20
+	LDA.b #!FZFF_SPACE
+	TSB !fzf_flags
+	LDA.b #$00
+	STA.l !fzs_surge
+	REP #$20
+	JSR fz_drop_attacks
++	RTS
 else
 	LDA.l !fzs_sage
 	CMP.w #120

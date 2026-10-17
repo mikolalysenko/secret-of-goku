@@ -68,8 +68,8 @@ assert !RAM_FRIEZA == $7E0000|!FZ, "!FZ must match !RAM_FRIEZA"
 !fz_px         = !FZ+$4A   ; word: screen x
 !fz_py         = !FZ+$4C   ; word: screen y
 !fz_pframe     = !FZ+$4E   ; byte: frame 0-7
-!fz_pvis       = !FZ+$4F   ; byte: 1 = draw
-!fz_req_ev     = !FZ+$50   ; word: story request pending (event id + 1), 0 = none
+!fz_mapflag    = !FZ+$4F   ; byte: 1 while the map is one of Frieza's (set on a map change)
+!fz_wasidle    = !FZ+$50   ; byte: the last field frame took the idle path
 !fz_room_since = !FZ+$52   ; word: core frame when the map was entered (Rider III)
 !fz_atlas      = !FZ+$54   ; word: $10 when Frieza draws in his full-power form, else 0
 !fz_quake      = !FZ+$56   ; byte: local quake frames left (without the fx module)
@@ -129,6 +129,7 @@ assert !FZ+$C0 <= !FZ+$C0, "frieza WRAM overflow"
 !FZFF_MUSCULAR = $02
 !FZFF_COUNTER  = $04
 !FZFF_SPACE    = $08       ; the orbit stream owns the fight (b.space)
+!FZFF_LANDED   = $10       ; back on the deck after the orbital victory
 
 !FRIEZA_HP_LO  = 96000&$FFFF
 !FRIEZA_HP_HI  = 96000>>16
@@ -239,6 +240,16 @@ assert !FZX_END <= !FZ+$C0, "frieza WRAM overflow (beast)"
 !fzv_white     = !FZSB+$152   ; byte: whiteout 0-31 this frame
 
 
+; boss-victory.js bossVictoryTiming (frames from the fatal hit)
+!FZV_FADE      = 143
+!FZV_WHITE     = 306
+!FZV_VANISH    = 326
+!FZV_JINGLE    = 375
+!FZV_REVEAL    = 631
+!FZV_CLEAR     = 791
+!FZV_ACQUIRE   = 375+540          ; the chime once the 540-frame fanfare ends
+!FZV_DONE      = 375+540+120      ; then the 120-frame hold before travel
+
 ; transient flags (!fz_tflags)
 !FZT_VRAM_OK   = $01       ; this map's Frieza VRAM region holds our buffers
 !FZT_FORCED    = $02       ; the frame ran under forced blank (map load)
@@ -249,6 +260,7 @@ assert !FZX_END <= !FZ+$C0, "frieza WRAM overflow (beast)"
 !FZT_HOLES     = $10       ; the broken floor is drawn this frame
 !FZT_WHITE     = $20       ; the victory whiteout is on this frame
 !FZT_WPREV     = $40       ; it was on last frame (the vblank restores)
+!FZT_DANGER    = $80       ; combat was told the encounter is dangerous
 
 ; deferred work (!fz_pend), applied in the next field frame callback
 !FZW_FADE      = $0001     ; trial fade (C0:8B16's ordinary 60-frame fade)

@@ -37,6 +37,15 @@ function reference(preset){
   const st=JSON.parse(readFileSync(join(refRoot,preset,'state.json'),'utf8'));
   return st.goku;
 }
+// The browser switches music cues at once; the cartridge's native loader
+// holds the game loop while a song uploads (audio.md, Load time: 37-55
+// frames for Frieza's cues after an import). Scene comparisons start with
+// the preset's cue marked as already playing so the frames stay aligned
+// with the references; the music case checks the cue itself.
+const presetCue={frieza:defs.FZM_ARRIVAL,thanatos:defs.FZM_ARRIVAL,battle:defs.FZM_BATTLE};
+function holdMusic(preset){
+  return `H.w8(0x${(0x7E0000|defs.fz_music).toString(16)}, ${presetCue[preset]??0})`;
+}
 
 // Import a preset, write its Frieza state, then shoot at the reference
 // frame offsets (a window of frames around each, as the two emulators'
@@ -50,6 +59,7 @@ function test()
   F.check(ok, 'import')
   H.w8(0x316001, 1)          -- !persist_goku_active (not part of browser bundles)
   F.apply(${luaWrites(writes)})
+  ${holdMusic(preset)}
   local shots = {}
   local boxes = {}
   local trace = {}
@@ -105,6 +115,7 @@ function test()
   F.check(ok, 'import')
   H.w8(0x316001, 1)
   F.apply(${luaWrites(writes)})
+  ${holdMusic('battle')}
   H.wait(2)
   local function hit(dmg, melee)
     H.w16(${v(defs.fzs_test)}+2, dmg)
@@ -152,6 +163,7 @@ function test()
   F.check(ok, 'import')
   H.w8(0x316001, 1)
   F.apply(${luaWrites(writes)})
+  ${holdMusic('battle')}
   H.w16(0x7EE182, 1)
   local died = H.waitFor(function() return H.r8(${v(defs.fzd_on)}) ~= 0 end, 400)
   F.check(died, 'the death sequence started')
@@ -189,6 +201,7 @@ function test()
   F.check(ok, 'import')
   H.w8(0x316001, 1)
   F.apply(${luaWrites(writes)})
+  ${holdMusic('battle')}
   H.w8(${v(defs.fzf_tier)}, 2)
   H.w16(${v(defs.fzf_hp_lo)}, 500)
   H.w16(${v(defs.fzf_hp_hi)}, 0)
@@ -232,6 +245,7 @@ function test()
   F.check(ok, 'import')
   H.w8(0x316001, 1)
   F.apply(${luaWrites(writes)})
+  ${holdMusic('battle')}
   H.wait(2)
   for _, s in ipairs({${shots.map(([x,y,r])=>`{${x},${y},${r}}`).join(',')}}) do
     H.w16(${v(defs.fzs_test)}+2, s[1])
@@ -288,6 +302,39 @@ function holeTiles(){
   }
   if(out.length!==512)throw Error('frieza_hole_tiles: '+out.length+' bytes');
   return out;
+}
+
+// Music: the battle preset without the held cue. Frieza's battle theme
+// must become the current song ($1E05 = $3C, audio's FRIEZA_BATTLE); the
+// load holds the game loop (reported, audio.md Load time).
+function musicTest(){
+  const g=reference('battle');
+  const writes=friezaWrites(g.frieza,g.challenge);
+  const sym=readFileSync(romSrc.replace(/\.sfc$/,'.sym'),'utf8').split('\n');
+  const line=sym.find(l=>l.endsWith(' modules_field_frame'));
+  const [bank,off]=line.split(' ')[0].split(':');
+  const at=parseInt(bank,16)*65536+parseInt(off,16);
+  return `
+function test()
+  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__battle'))})
+  F.check(ok, 'import')
+  H.w8(0x316001, 1)
+  F.apply(${luaWrites(writes)})
+  local frames = {}
+  emu.addMemoryCallback(function() frames[#frames + 1] = H.frame end, emu.callbackType.exec, ${at}, ${at}, emu.cpuType.snes, emu.memType.snesMemory)
+  local start = H.frame
+  local playing = H.waitFor(function() return H.r8(0x7E1E05) == 0x3C end, 200)
+  F.check(playing, 'Frieza battle theme is the current song')
+  H.result('songAt', H.frame - start)
+  H.wait(120)
+  local stall = 0
+  for i = 2, #frames do stall = math.max(stall, frames[i] - frames[i - 1] - 1) end
+  H.result('stall', stall)
+  H.result('cue', H.r8(0x${(0x7E0000|defs.fz_music).toString(16)}))
+  F.check(H.r8(0x${(0x7E0000|defs.fz_music).toString(16)}) == ${defs.FZM_BATTLE}, 'battle cue recorded')
+  F.done()
+end
+`;
 }
 
 const cases={
@@ -349,6 +396,17 @@ if(want('death')){
   const ok=r.code===0&&res.pass===true;
   results.push({name:'death',ok,failures});
   console.log(`frieza death: ${ok?'pass':'FAIL'} (${r.ms} ms) died at frame ${res.diedAt}, brightness ${res.brightness}, bank after Start ${res.bankAfterStart}`);
+  if(!ok)for(const f of failures)console.log('    !',f);
+}
+if(want('music')){
+  const rom=privateRom(romSrc,'frieza-music');
+  const r=await runMesen({rom,test:lib+'\n'+musicTest(),outDir:join(outRoot,'music'),state:join(cps,'waterfall.mss')});
+  cleanupRom(rom);
+  const res=r.results??{};
+  const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
+  const ok=r.code===0&&res.pass===true;
+  results.push({name:'music',ok,failures});
+  console.log(`frieza music: ${ok?'pass':'FAIL'} (${r.ms} ms) song $3C after ${res.songAt} frames, longest stall ${res.stall} frames`);
   if(!ok)for(const f of failures)console.log('    !',f);
 }
 for(const [name,c] of Object.entries(cases)){

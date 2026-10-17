@@ -9,6 +9,7 @@ frieza_h_beast_ordinary:              ; 95
 frieza_h_beast_feed:                  ; 96
 	LDA.w #$0001
 fz_beast_choose:
+	JSR fz_guard
 	STA !fz_t0
 	JSR fz_quest
 	XBA
@@ -28,6 +29,7 @@ fz_beast_choose:
 
 ; challenge.victory(): the native Beast fell before 42F chose the ending.
 frieza_h_beast_victory:
+	JSR fz_guard
 	LDA.l !fzp_beast
 	AND.w #!FZX_FED|!FZX_STARTED
 	CMP.w #!FZX_FED|!FZX_STARTED
@@ -403,12 +405,18 @@ fz_lich_tick:
 	BEQ .boosts
 	JSR fz_lich_reset
 .find
-	JSR fz_can_act
-	BCC .out
+	; looked for every 16th frame (an actor scan is costly): the first
+	; sight lands within 15 frames of the browser's, wounds kept
+	LDA.w !core_frame&$FFFF
+	AND.w #$000F
+	BNE .out
+.findnow                              ; (fz_lich_tick_findnow: the idle path)
 	LDX.w #$004E
 	JSR fz_cf
 	CMP.w #7
 	BCS .out
+	JSR fz_can_act
+	BCC .out
 	LDA.w #!FZ_SPECIES_LICH
 	JSR fz_find_boss
 	BCC .out

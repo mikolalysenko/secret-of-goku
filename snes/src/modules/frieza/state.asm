@@ -10,10 +10,81 @@
 fz_on:
 	LDA.l !persist_goku_active
 	AND.w #$00FF
-	BEQ +
+	BEQ .off
+	JSR fz_guard
 	SEC
 	RTS
-+	CLC
+.off
+	CLC
+	RTS
+
+; The persistent block is trusted once the load or new-game hook ran this
+; session (or a debug preset wrote it). A session that never saw them (a
+; state imported around the hooks, battery contents left by another run)
+; is treated like a save without the sidecar: derived from the native
+; flags. Every accessor of the block guards. !fz_init: $A4 block settled,
+; $A5 block settled and the per-visit WRAM reset (first field frame, load,
+; new game). Preserves A, X, Y.
+fz_guard:
+	PHA
+	LDA !fz_init
+	AND.w #$00FE
+	CMP.w #$00A4
+	BEQ +
+	PHX
+	PHY
+	SEP #$20
+	LDA.b #$A4
+	STA !fz_init
+	REP #$20
+	JSR fz_derive_legacy
+	PLY
+	PLX
++	PLA
+	RTS
+
+; A load: keep the sidecar when every field is in range, else derive it.
+
+fz_block_check:
+	SEP #$20
+	LDA.b #$A4
+	STA !fz_init
+	REP #$20
+	JSR fz_block_valid
+	BCS +
+	JSR fz_derive_legacy
++	RTS
+
+; C set when every field of the block is in range.
+fz_block_valid:
+	LDA.l !fzp_version
+	AND.w #$00FF
+	CMP.w #$0001
+	BNE .bad
+	LDA.l !fzp_stage
+	AND.w #$00FF
+	CMP.w #!FZST_DEFEATED+1
+	BCS .bad
+	LDA.l !fzp_tree
+	AND.w #$00FF
+	CMP.w #!FZTR_COMPLETE+1
+	BCS .bad
+	LDA.l !fzp_flags
+	AND.w #$C000
+	BNE .bad
+	LDA.l !fzp_mask
+	AND.w #$0080
+	BNE .bad
+	LDA.l !fzp_crisis
+	AND.w #$00C0
+	BNE .bad
+	LDA.l !fzp_beast
+	AND.w #$00F8
+	BNE .bad
+	SEC
+	RTS
+.bad
+	CLC
 	RTS
 
 ; mana-mod.js canAttack (as story_compute_can_act): field vectors, no fade,
@@ -66,13 +137,16 @@ fz_can_act:
 
 ; A16 = !FZFL_* mask -> Z clear when any of those flags is set.
 fz_flag:
+	JSR fz_guard
 	AND.l !fzp_flags
 	RTS
 fz_set:
+	JSR fz_guard
 	ORA.l !fzp_flags
 	STA.l !fzp_flags
 	RTS
 fz_clear:
+	JSR fz_guard
 	EOR.w #$FFFF
 	AND.l !fzp_flags
 	STA.l !fzp_flags
@@ -80,21 +154,25 @@ fz_clear:
 
 ; A16 = stage byte.
 fz_stage:
+	JSR fz_guard
 	LDA.l !fzp_stage
 	AND.w #$00FF
 	RTS
 ; Store A (low byte) as the stage.
 fz_set_stage:
+	JSR fz_guard
 	SEP #$20
 	STA.l !fzp_stage
 	REP #$20
 	RTS
 fz_set_tree:
+	JSR fz_guard
 	SEP #$20
 	STA.l !fzp_tree
 	REP #$20
 	RTS
 fz_tree:
+	JSR fz_guard
 	LDA.l !fzp_tree
 	AND.w #$00FF
 	RTS
@@ -818,6 +896,7 @@ frieza_h_revive:                      ; C9
 	RTL
 
 frieza_h_repair_core:                 ; story: the wish repairs the core
+	JSR fz_guard
 	LDA.l !fzp_crisis
 	AND.w #$00FF
 	BEQ +
@@ -832,6 +911,7 @@ frieza_h_repair_core:                 ; story: the wish repairs the core
 ; Story queries: A16 = value.
 
 frieza_q_crisis:
+	JSR fz_guard
 	LDA.l !fzp_crisis
 	AND.w #!FZC_ACTIVE
 	BEQ +
@@ -946,6 +1026,7 @@ frieza_q_beast_started:
 frieza_q_beast_won:
 	LDA.w #!FZX_WON
 fz_q_beast:
+	JSR fz_guard
 	AND.l !fzp_beast
 	BEQ +
 	LDA.w #$0001
@@ -981,8 +1062,8 @@ frieza_h_object:
 	STA $C809,X
 	REP #$20
 	RTL
-+	LDA.l !fzp_flags
-	AND.w #!FZFL_EMPEROR
++	LDA.w #!FZFL_EMPEROR
+	JSR fz_flag
 	BEQ .done
 	SEP #$20
 	LDA.b #$F0
@@ -1073,14 +1154,19 @@ frieza_new_game:
 	LDA.w #$FFFF
 	STA.l !fzp_flyby
 	JSR fz_reset_transient
+	SEP #$20
+	LDA.b #$A5
+	STA !fz_init
+	REP #$20
 	RTL
 
 frieza_load:
-	LDA.l !fzp_version
-	AND.w #$00FF
-	BNE +
-	JSR fz_derive_legacy
-+	JSR fz_reset_transient
+	JSR fz_block_check
+	JSR fz_reset_transient
+	SEP #$20
+	LDA.b #$A5
+	STA !fz_init
+	REP #$20
 	RTL
 
 ; A save without a valid sidecar: Frieza's state was never recorded. Keep
@@ -1108,6 +1194,7 @@ fz_derive_legacy:
 
 ; Forget per-visit state (scenes, battles, VRAM residency).
 fz_reset_transient:
+	JSR fz_bind_safe                  ; the danger bit goes with !fz_tflags
 	JSR fz_scene_clear
 	STZ !fz_pend
 	LDA.w #$FFFF
@@ -1138,6 +1225,7 @@ fz_reset_transient:
 ; Y = payload in bank !DEBUG_PAYLOAD_BANK (count byte, then key byte + value
 ; word entries). Carry clear = done.
 frieza_debug_preset:
+	JSR fz_guard
 	CMP.w #!DEBUG_HOOK_FRIEZA
 	BEQ .restore
 	CMP.w #!DEBUG_HOOK_FRIEZA_EVENT
@@ -1146,8 +1234,7 @@ frieza_debug_preset:
 	BEQ .challenge
 	CMP.w #!DEBUG_HOOK_SCENE
 	BEQ .scene
-	CLC
-	RTL
+	JML fz_bind_debug_other           ; another module's kind (combat's)
 .restore
 	JSR fz_debug_restore
 	CLC
@@ -1175,8 +1262,8 @@ frieza_debug_preset:
 	BEQ .stage
 	CMP.w #!DEBUG_KEY_STARTED
 	BEQ .started
-	CLC
-	RTL
+	LDA.w #!DEBUG_HOOK_SCENE
+	JML fz_bind_debug_other
 .stage
 	LDA.l !FZ_PAYLOAD+2,X
 	JSR fz_debug_stage_value
@@ -1249,6 +1336,16 @@ fz_debug_stage_value:
 ; payload, then the browser's derived fix-ups.
 fz_debug_restore:
 	PHY
+	; a preset state is trusted from now on; the per-visit WRAM starts clean
+	LDA !fz_init
+	AND.w #$00FF
+	CMP.w #$00A5
+	BEQ +
+	JSR fz_reset_transient
++	SEP #$20
+	LDA.b #$A5
+	STA !fz_init
+	REP #$20
 	; initial()
 	LDA.w #$0000
 	SEP #$20

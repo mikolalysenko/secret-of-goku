@@ -9,7 +9,8 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 `boss-rush-death.js`, `boss-victory.js`, `fortress-collapse.js`,
 `frieza-score.js`. The story module already compiled every Frieza event
 (see [story.md](story.md)); this module implements the hooks and queries
-those scripts call, Frieza's picture and the fights.
+those scripts call, Frieza's picture and the fights. The orbit stream
+(`orbit.md`) owns everything from the second power surge on.
 
 ## Status
 
@@ -17,15 +18,20 @@ those scripts call, Frieza's picture and the fights.
 | --- | --- |
 | Story state machine: every `FRIEZA_*` hook (frieza.js `onEvent`), all `FRIEZA_*` / `BEAST_*` queries, persistence, legacy loads | Done |
 | Object overlays: the Emperor (map 431), exterior Jema (195), arena 246 suppression and the trial's Dyluck/Thanatos staging; door 3FC entry beside the Emperor | Done |
-| Debug presets: `FRIEZA`, `FRIEZA_EVENT` (battle start), `CHALLENGE`, `SCENE` (stage palace, Beast started) | Done |
+| Debug presets: `FRIEZA`, `FRIEZA_EVENT` (battle start), `CHALLENGE`, `SCENE` (stage palace, Beast started); other kinds go on to combat's handler | Done |
 | Frieza's 48 px sprite (both forms, 24 px tiny frames) in every cutscene pose of `frieza-staging.js` / `frieza-intro.js` | Done (court, altar, temple, deck, depart) |
-| Music cues (`frieza-score.js` choice) through the audio module | Done (bound when audio is built in) |
-| Ground fight phase one and two, first power surge, floor scars | In progress (start position only) |
-| Emperor's execution beam, Death Balls, Balls rising, Tree vista, flyby | Not yet |
-| Beast challenge rules (`beast-challenge.js`): choose/feed, the Beast's HP (65,535 fed, 48,000 ordinary, wounds kept), start (Goku 999 HP), eruption lanes and their damage, victory; Goku's damage to the Beast (1/2, 1/8 fed) and the empowered Dark Lich (1/4) through combat's `!COMBAT_HOOK_DAMAGE` | Done (logic; the lanes' sprites wait for fx) |
-| Frieza's ki for Dark Lich: 48,000 HP, attack +48/+24, two boosts (+10% HP, +16 attack) with Frieza's taunts | Done (logic; the orbs and aura wait for fx) |
+| Music cues (`frieza-score.js` choice) through the audio module | Done; each change holds the game loop while the song loads (Known differences) |
+| Ground fight, phase one and two: patrol nodes, rushes, afterimages, Death Orb / disc / laser with warnings, enraged timings, homing discs that hurt Frieza and break the floor, eruptions, riposte, Goku's damage scaling, grace, the first power surge (muscular at 270, fractures at 270/294) | Done (logic and Frieza's sprite; shots drawn through fx) |
+| Broken floor: `frieza-arena.js` fractures, flight's missing floor, the holes drawn on BG1 | Done |
+| Second surge: hand-off to the orbit stream (`FRIEZA_ORBIT_SURGE`); without it a ground stand-in (enraged, no HP floor) | Done (hand-off) |
+| Victory beat on the ground (`boss-victory.js`): death cue, bursts, red/white flashes, music fade, whiteout, fanfare, pouch chime, event C7 | Done |
+| Finale deaths (`battle-retry.js`, `boss-rush-death.js`): Frieza, empowered Thanatos, the Mana Beast; native death kept, warp and boss-victory events gated, revert, fade, black / ending module's planet | Done |
+| Dangerous encounters for combat (`native-hit-recovery.js` `dangerous()`) | Done |
+| Beast challenge rules (`beast-challenge.js`): choose/feed, the Beast's HP (65,535 fed, 48,000 ordinary, wounds kept), start (Goku 999 HP), eruption lanes and their damage, victory; Goku's damage to the Beast (1/2, 1/8 fed) and the empowered Dark Lich (1/4) through combat's `!COMBAT_HOOK_DAMAGE` | Done (logic; the lanes' sprites wait for fx kinds) |
+| Frieza's ki for Dark Lich: 48,000 HP, attack +48/+24, two boosts (+10% HP, +16 attack) with Frieza's taunts | Done (logic; the orbs and aura wait for fx kinds) |
+| Goku's attacks reaching Frieza | Needs combat's virtual-target hook (Requests): until then the fight cannot be won with the pad |
 | Incoming-damage cap of the fed Beast (110/140, 75-frame grace) | Needs combat's damage-receive hook (Requests) |
-| Finale deaths, victory flow, Fortress collapse | Not yet |
+| Emperor's execution beam, the Balls rising, Death Ball charge/throw/eruption on the deck, Tree vista, flyby, Fortress collapse visuals, showdown lift/explode/gold effects | Not yet (scene logic and Frieza's poses run; the effects are missing) |
 
 ## Scenes and timings (from the JavaScript)
 
@@ -56,17 +62,64 @@ clock carried across scenes of the same map.
 | C6 | battle | 246 | the ground fight (below) |
 | C7 / C8 / C9 | victory, defeated, revive | 246 / ending | pouch recovered (`story_api_quest_recover`); companions back |
 
-Ground fight (`frieza.js`, `frieza-combat.js`): 96,000 HP; nodes around
-Goku at (-60,-50), (60,-50), (60,30), (-60,30), (0,-30); rush 7 px/frame
-every 105 frames; attacks orb / disc / laser with a 65-frame warning (55
-enraged) and a 180-frame recovery (140); Death Orb 310, disc 230, laser 170
-damage with 48 frames of grace, halved in phase one; discs home at .032
-rad/frame (.038 under half HP) and hurt Frieza after 40 frames (12,000, a
-75-frame stun, floor break); Goku's hits deal 15% (65% stunned); thresholds
-64,000 and 32,000 start the surges. Surge one: 380 frames, muscular at 270,
-floor breaks at 270 and 294. Phase two adds two discs, three orbs, an
-eruption every third attack (65-frame warning, radius 28, 280 damage) and
-a riposte after two melee hits within 120 frames.
+## The ground fight (`frieza.js`, `frieza-combat.js`, `frieza-arena.js`)
+
+96,000 HP (17 bits: `!fzf_hp_lo` word + `!fzf_hp_hi` byte). Nodes around
+Goku at (-60,-50), (60,-50), (60,30), (-60,30), (0,-30), each kept only
+where flight can land; a rush (7 px/frame) every 105 frames, one afterimage
+every third dash frame shown for 16 frames. Attacks orb / disc / laser with
+a 65-frame warning (55 enraged) and 180 frames of recovery (140); Death Orb
+310, disc 230, laser 170 damage with 48 frames of grace, halved in phase
+one; discs home at .032 rad/frame (.038 under half HP; table-driven:
+`frieza_cos/sin_table` for speeds 3, 4, 7 over 256 headings, the 257-entry
+`frieza_atan_table`) and hurt Frieza after 40 frames (12,000, a 75-frame
+stun, a floor break). Goku's hits deal 15% (65% stunned), `floor(d·k/20)`
+on 32 bits. Thresholds 64,000 and 32,000 end a phase; a threshold waits
+while Goku's beam still shines (projectiles dropped). Phase two adds two
+discs, three orbs, an eruption every third attack (65-frame warning, radius
+28, 280 damage) and a riposte after two melee hits within 120 frames.
+
+- **Surge one** (380 frames, the pad locked through combat's input lock):
+  the full-power lines (UI), muscular atlas at 270 with a power burst and a
+  fracture under him (radius 34), fractures around every node at 294
+  (19 + 3i), grace 60 and clock 150 after.
+- **Surge two** (`frieza-cosmic`): fractures at 24 (34) and 48 (29 + 5i),
+  then `FRIEZA_ORBIT_SURGE` every frame (the orbit stream). Without it the
+  ground stand-in ends the surge at 120 and Frieza fights on with no HP
+  floor; his fall ends the battle on the ground.
+- **Damage to Goku** goes through the native queue (`$E1F1`), so the native
+  numbers, knock-back and death play; combat is told the encounter is
+  dangerous (no scaling, no deflection).
+
+### Broken floor
+
+`fz_break_floor` is `fractureFortress()`: every 16x16 cell whose centre is
+within the radius (`(2dx)² + (3dy)² <= (2r)²`) and that is already broken
+or landable floor becomes a hole (the 1 KiB bitmap `!FZ_HOLES`, 128 x 64
+cells). Flight asks `frieza_floor_hole` (`!FLIGHT_MISSING_FLOOR`). On the
+screen each visible hole's four BG1 tilemap entries point at sixteen
+generated tiles: quadrant (TL, TR, BL, BR) x the two neighbours it touches,
+which is exactly what `ruinMask` depends on (the edge test looks at most 5
+px along the axes). Colours follow `scarColor` (cloud phases rotating every
+24 frames through BG palette 6, speckle, dark wall, edge, sparkle). The
+cloud, speckle and sparkle patterns use the cell's own coordinates instead
+of the world's (the same within a cell, repeating per cell).
+
+## Finale deaths and victory
+
+- **Deaths** (Frieza on 246, the empowered Thanatos, the Mana Beast on
+  253): at Goku's HP 0 the native death plays; events 7FF (all-party-dead
+  warp) and 42D/42F (boss victories) are skipped at `C1:E77B` while the
+  sequence runs. With the ending module, `ending_lose` (bit 3 gold, bit 4
+  orbit) draws the doomed planet and GAME OVER; without it the module
+  reverts the form at 18, fades 300-360 (brightness ceiling), holds black
+  and returns to the title on Start (`JML $C10010`).
+- **Victory on the ground** (`frieza_victory_*`): death cue `02 94 0F 80`
+  at the fatal hit, twelve bursts 36-257 at `orbitVectors[(i·7)&15]·(12 +
+  i%4·5)` plus the last at 326, the music fade at 143, Frieza flashing red
+  and white (8-frame phases, 4 after 180) until he vanishes at 326, the
+  whiteout 143-306, held to 631, cleared by 791, the boss fanfare at 375,
+  the pouch chime once the fanfare ends (915), event C7 at 1035.
 
 ## Hardware approach
 
@@ -94,6 +147,20 @@ a riposte after two melee hits within 120 frames.
 - **Depth**: in front of the native sprites (`core_oam_add_front`), as the
   browser draws its Frieza layer at OAM index 0; behind them when the front
   slots are taken. Priority 3 (under BG3 dialogue).
+- **Holes**: BG tiles `$1C0-$1CF` (word `$1C00`), unused by every map of
+  graphics set 21 (maps 177, 237, 242-251), uploaded once per stay by
+  Frieza's own vblank DMA before any entry points at them; BG palette 6
+  (unused by map 246's layers) in the game's CGRAM buffer. The write list
+  (two entries per tilemap row, at most 64 rows) is rebuilt when the camera
+  crosses a tile and every 64 frames (the native streamer may have redrawn
+  the cells) and written in vblank, about two rows a scanline.
+- **Whiteout**: fixed-colour addition on every layer (`CGWSEL 0`,
+  `CGADSUB $3F`, `COLDATA`) in vblank; the map's own colour math (`CGWSEL
+  2`, `CGADSUB = [$23]`, `COLDATA $E0`) comes back the vblank after.
+- **Vblank work is granted per frame**: the hole tiles and rows and the
+  whiteout run only when this frame's field logic set the matching
+  `!fz_tflags` bit (cleared at the start of every field frame), so stale
+  battery-backed scene SRAM never reaches VRAM or the PPU on other maps.
 - **Poses** are evaluated in the generator from `frieza-staging.js` /
   `frieza-intro.js` into per-age tables (court descent and climb, arrival,
   departure, altar reveal and leave) and the 192-entry hover table, so the
@@ -106,17 +173,23 @@ a riposte after two melee hits within 120 frames.
 | Resource | Use |
 | --- | --- |
 | Code `$A6:8000-EFFF` | `!CODE_FRIEZA`; `$A6:F000-FFFF` bindings (`bind.asm`, assembled after every module) |
-| Data `$E6:0000-7FFF` | frame descriptors, palettes, pose tables, timings (generated) |
+| Data `$E6:0000-7FFF` | frame descriptors, palettes, pose and trigonometry tables, hole tiles, timings (generated) |
 | ROM `$F0:0000-7FFF` | Frieza's OBJ tiles (15.5 KiB of 32) |
-| WRAM `$7E:DB00-DBBF` | `!RAM_FRIEZA`: scene `+$00-$53`, renderer, battle `+$58-$89` |
+| WRAM `$7E:DB00-DBBF` | `!RAM_FRIEZA`: scene `+$00-$57`, battle `+$58-$89`, Lich/Beast `+$8A-$AB`, scratch and death/victory `+$AC-$BF` |
 | SRAM `$31:6180-61FF` | `!PERSIST_FRIEZA`: `+$00` version, `+$01` stage, `+$02` tree, `+$03` flags (word), `+$05` stolenMask, `+$06` crisis, `+$07` Beast challenge, `+$08` flyby age; `+$40-$7F` reserved for the orbit stream |
-| VRAM | OBJ tiles `$0C0-$0FF` while Frieza is drawn |
-| CGRAM | one free OBJ palette, in vblank |
+| SRAM `$32:7000-7FFF` | scene work while Frieza's scenes run: `+$000` hole list and write list (`!FZHB`), `+$800` fight block (`!FZSB`: tag, warning, shots, hazards, afterimages, test mailbox, arena, victory), `+$C00` the hole bitmap. The orbit stream keeps to `$32:6000-6FFF` |
+| VRAM | OBJ tiles `$0C0-$0FF` while Frieza is drawn; BG tiles `$1C0-$1CF` and BG1 tilemap entries of visible holes on map 246 |
+| CGRAM | one free OBJ palette (two with afterimages), in vblank; BG palette 6 colours 1-7 in the game's buffer while holes show |
 | OAM | up to 8 front sprites for Frieza |
 | DMA | channel 7 in the field NMI |
 
-Original code patched: `C1:E7F2` (4, `LDA $C83002,X`, door table): door
-3FC's entry byte is 36 while the Emperor is present.
+Original code patched:
+
+- `C1:E7F2` (4, `LDA $C83002,X`, door table): door 3FC's entry byte is 36
+  while the Emperor is present.
+- `C1:E77B` (6, `REP #$30 / PHX / CMP #$0800`, event dispatcher): the
+  finale death gate (events 7FF, 42D, 42F skipped while a finale death
+  runs; `JML $C1E7C5`).
 
 ## API
 
@@ -129,7 +202,41 @@ because the trial is Frieza's.
 Dispatch: `modules_field_frame` -> `frieza_field_frame`,
 `modules_field_nmi` -> `frieza_field_nmi`, `modules_load` ->
 `frieza_load`, `modules_new_game` -> `frieza_new_game`,
-`!DEBUG_PRESET_HOOK_ANY` -> `frieza_debug_preset`.
+`modules_title_boot` -> `frieza_title_boot`, `!DEBUG_PRESET_HOOK_ANY` ->
+`frieza_debug_preset` (unanswered kinds continue to `combat_debug_hook`).
+
+| Entry | Contract |
+| --- | --- |
+| `frieza_virtual_target` | JSL, any DB. C set while Frieza can be struck: A16 = species (121), X16 = x, Y16 = y (map, his feet) |
+| `frieza_virtual_hit` | JSL, any DB. A16 = Goku's damage, X16 = 1 punch / 0 ki, beam, burst. Applies 15% (65% stunned), recoil, grace, thresholds; A16 = HP taken |
+| `frieza_victory_start` | JSL, any DB. A16 = x, X16 = y where Frieza fell: the death cue now, the beat from the next tick (the orbit stream calls it in space) |
+| `frieza_victory_tick` | JSL, any DB. Advances the beat; C set while it runs (`!fzv_age`, red/white phases, bursts, cues) |
+| `frieza_floor_hole` | `!FLIGHT_MISSING_FLOOR`: C set when (`!fl_q_x`, `!fl_q_y`) is a broken cell of the arena |
+| `frieza_combat_damage` | `!COMBAT_HOOK_DAMAGE`: A16 = Goku's damage, X16 = actor -> A16 (the Beast 1/2 or 1/8, the empowered Lich 1/4) |
+| `!fzx_pending` | WRAM word: the eruption damage the module queued on Goku (for a receive hook that must not cap it) |
+
+Optional modules are reached through `bind.asm` (`defined()` checks):
+audio (`audio_sfx`, `audio_song`, `audio_song_restore`), combat
+(`combat_api_cancel`, `_set_form`, `_state`, `_input_lock/_unlock`,
+`_danger/_safe`, `combat_debug_hook`), fx (`fx_spawn`, `fx_flash`,
+`fx_quake`), UI (`ui_say`, `ui_interrupt`, `ui_restore_first_flight`),
+world (`world_fortress_destroyed`), ending (`ending_lose`, `!ending_status`),
+flight (`!FLIGHT_API_CAN_LAND`), orbit (`!FRIEZA_ORBIT_SURGE`,
+`!FRIEZA_ORBIT_RETURN`, `!FRIEZA_ORBIT_LOCKED`).
+
+### Hand-off to the orbit stream
+
+At the second threshold (32,000 HP, tier 2) the module sets `!fzs_surge` =
+2, clears the shots, breaks the floor at surge ages 24 and 48 and from then
+on calls `!FRIEZA_ORBIT_SURGE` (JSL, DB = `$7E`, M16/X16) every field frame
+while the surge lasts; `!fzs_tgx/tgy` hold the Fortress's screen position
+(or 2000, `frieza-cinematic`'s target). The orbit stream sets `FZFF_SPACE`
+in `!fzf_flags` while the fight is in space (Frieza's ground logic and
+drawing stop, the encounter is no longer the ground one), calls
+`frieza_victory_start/_tick` for the orbital victory, and
+`!FRIEZA_ORBIT_RETURN` marks the descent. Frieza's scene SRAM stays at
+`$32:7000-7FFF`; the orbit stream owns `$32:6000-6FFF` and
+`!PERSIST_FRIEZA+$40-$7F`.
 
 ## Tests
 
@@ -138,47 +245,79 @@ Dispatch: `modules_field_frame` -> `frieza_field_frame`,
 a browser preset, writes the mod's Frieza state from its snapshot
 (`state.mjs` maps `goku.frieza` onto the module's fields by parsing the
 module's defines), runs, and compares screenshots with the browser frames
-(best of a +/-2-frame window, `snes/test/debug/compare.mjs`).
+(best of a +/-2-frame window, `snes/test/debug/compare.mjs`). The scene
+cases mark the preset's music cue as playing so the song load does not
+shift them against the references (the `music` case checks the cue).
+`surge`, `fracture` and `victory` use a `-DFRIEZA_TEST` build whose mailbox
+(`!fzs_test`) strikes Frieza through `frieza_virtual_hit` and breaks the
+floor on request.
 
 | Case | Checked |
 | --- | --- |
 | `court` | preset `frieza`: the trial court; Frieza's OBJ at the court anchor; 98% of pixels equal the browser at frames 60/240/600 (the rest is the reference's resampling) |
-| `thanatos` | preset `thanatos`: trial-entry with the full party; the native event moves on to `trial-taunt` through the hooks; 98-99.9% |
-| `battle` | preset `battle`: Frieza at his first node; 100% at frame 60 |
+| `thanatos` | preset `thanatos`: trial-entry with the full party; the native event moves on to `trial-taunt` through the hooks; 98-99.8% |
+| `battle` | preset `battle`: Frieza at his first node, 100% at frame 60, 98-99% later; Goku's HP 844 at 240 and 729 at 600 as in the browser |
+| `surge` | a 4,095 punch takes 614; hits stop at 64,000; the surge starts, muscular at 270, ends at 380 in phase two, the floor broken |
+| `fracture` | seven fractures give the same 39 cells as `fractureFortress()`; the hole tiles are in VRAM and every listed BG1 row is written |
+| `victory` | the fatal hit starts the beat, white 31 at 400, event C7 runs (stage defeated, ledger 127) |
+| `death` | Goku at 1 HP takes the first orb: no warp, black from 360, Start goes to the title |
+| `music` | Frieza's battle theme becomes the current song (`$1E05 = $3C`); reports the load's stall |
+
+## Known differences
+
+- **Song changes stall the game loop**: the native loader uploads a song on
+  the main thread (audio.md, Load time). Frieza's cues cut the old song
+  (no fade wait); the battle theme still holds the loop about 53 frames,
+  the arrival theme about 37, where the browser switches instantly.
+- **Hole texture**: the cloud, speckle and sparkle patterns repeat per cell
+  (they follow world coordinates in the browser); outlines and colours
+  match.
+- **Without fx** the shots, eruptions, bursts and auras are not drawn
+  (logic, sounds and damage run); the fx module is merged and draws the
+  kinds it has (impacts, explosions, the Death Ball, discs, finger beams,
+  orbs); laser beams, debris and auras wait for fx kinds.
 
 ## Requests
 
-- **combat**: Frieza is a virtual enemy in the browser (`entity()` index 12,
-  species 121, `hit()` with 15% / 65% scaling). Combat's target scans only
-  see native actors 3-11. Request: a virtual-target hook, e.g.
-  `!COMBAT_HOOK_VIRTUAL` (JSL; returns C set and X/Y = map position, A =
-  HP > 0 while a virtual foe exists) consulted by `cb_targets`, the
-  projectile scans and the transformation burst, and
-  `!COMBAT_HOOK_VIRTUAL_HIT` (A16 = damage, X16 = 0 punch / 1 other;
-  returns A16 = damage dealt) called instead of `cb_hit` for it. Instant
-  Transmission (flight) should list the same virtual target.
-- **flight**: a JSL `canLand(x, y, layer, terrain)` service
-  (`!FLIGHT_API_CAN_LAND`, A16 = x, X16 = y, Goku's layer/terrain) for the
-  patrol nodes, floor fractures and the landing search; a scripted camera
-  target at 1 px per frame through the dispatcher hooks it owns
-  (`C0:D651`/`C0:DA6E`) for the altar pan (300 frames to y 64) and the
-  court (152, 260), as `frieza-intro.js installAltarCamera`.
-- **core**: OBJ tiles `$0C0-$0FF` as a scene-scoped VRAM region in the
-  pool, so other modules can see the claim.
+- **combat** (blocking the fight): Frieza is a virtual enemy in the
+  browser (`entity()` index 12, species 121, `hit()` with 15% / 65%
+  scaling). Combat's target scans only see native actors 3-11. Please
+  consult `frieza_virtual_target` (C set, X/Y = his map position) in
+  `cb_targets`, the projectile and beam scans and the transformation burst,
+  and call `frieza_virtual_hit` (A16 = damage, X16 = 1 punch / 0 other)
+  instead of `cb_hit` for it; Instant Transmission (flight) should list the
+  same target. Until then Goku's attacks pass through Frieza.
 - **combat (2)**: the fed Beast caps Goku's incoming damage at 110 (140 in
   base form) with 75 frames of grace, except the eruption's own damage
-  (`beast-challenge.js` at `C0:4053`). Combat owns that patch site
-  (`cb_hook_receive`); request a hook there, e.g. `!COMBAT_HOOK_RECEIVE`
-  (A16 = queued damage on Goku, returns A16 = damage to apply). The module
-  exposes `!fzx_pending` (the eruption damage it queued) for it.
-- **debug**: `UNTIL map + CAN_ACT` is satisfied on the frame a door to that
-  map starts (before its fade), so the `hexas` capture can land on the
-  door frame with Goku still at the altar's coordinates (party0.pos
+  (`beast-challenge.js` at `C0:4053`). Combat owns that site
+  (`cb_hook_receive`); please add a hook there, e.g.
+  `!COMBAT_HOOK_RECEIVE` (A16 = queued damage on Goku, returns A16 =
+  damage to apply). The module exposes `!fzx_pending` (the eruption damage
+  it queued) for it.
+- **combat (3)**: `beamTouchesShot()` needs Goku's live beam geometry
+  (origin, direction, length, width) so a Kamehameha can cancel Frieza's
+  shots; `fz_bind_beam_touches` answers "no" until then.
+- **flight**: a JSL `canLand(x, y, layer, terrain)` service
+  (`!FLIGHT_API_CAN_LAND`, A16 = x, X16 = y, Goku's layer/terrain) for the
+  patrol nodes, floor fractures and the landing search (every cell counts
+  as landable without it); a scripted camera target at 1 px per frame
+  through the dispatcher hooks it owns (`C0:D651`/`C0:DA6E`) for the altar
+  pan (300 frames to y 64) and the court (152, 260), as `frieza-intro.js
+  installAltarCamera`.
+- **audio**: the cue changes happen mid-scene (the altar reveal, the fight
+  start, the gold aura); an upload spread over several frames (or the
+  Frieza songs' instruments kept resident) would remove the stall.
+- **core**: OBJ tiles `$0C0-$0FF` as a scene-scoped VRAM region in the
+  pool, so other modules can see the claim; the same for BG tiles
+  `$1C0-$1CF` on map 246.
+- **debug**: one `ANY` slot serves every module: Frieza takes it and
+  forwards unanswered kinds to `combat_debug_hook`; a module added later
+  (vegeta, orbit, ending) must join that chain, or the debug module could
+  dispatch by kind. `UNTIL map + CAN_ACT` is satisfied on the frame a door
+  to that map starts (before its fade), so the `hexas` capture can land on
+  the door frame with Goku still at the altar's coordinates (party0.pos
   248,442 expected, 232,242 captured; the picture 240 frames later matches
   100%). The wait should also require the load to finish (`$FF`, fade).
-  Test builds (`-DDEBUG_TEST`): the module's ANY hook logs through
-  `debug_test_hook_any` first (frieza's restores decide which route 429
-  takes); a forwarding define in the debug module would be cleaner.
 - **integration**: a 256-byte persistent extension for the browser's
   showdown snapshot of Primm's and Popoi's stats (`frieza.js` `s.primm`,
   `s.popoi`). Without it the revive only refills their HP and clears
