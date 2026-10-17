@@ -94,6 +94,8 @@ incsrc "story/data.asm"
 !story_p_spells    = !PERSIST_STORY+$08 ; 2 x 8: spell grants for girl/sprite slots
 
 !STORY_WATER_BUF   = !SRAM_WORK_STORY    ; $33:6000, Water Palace walk script (<= $200)
+!STORY_TEST_QUERIES = !SRAM_WORK_STORY+$0700 ; test builds: one byte per foreign query id
+!STORY_TEST_LOG     = !SRAM_WORK_STORY+$0800 ; test builds: word count, then (id, A, X) words
 
 pushpc
 org !CODE_STORY
@@ -103,8 +105,8 @@ story_code_start:
 ; Hook / query plumbing
 ; ===========================================================================
 
-; Call story_hook_table[A] with A = !story_hook_event. M16/X16, DB=$7E, D=0.
-; Preserves X and Y.
+; Call story_hook_table[A] with A = !story_hook_event and the caller's X/Y.
+; M16/X16, DB=$7E, D=0. Preserves X and Y.
 story_call_hook:
 	PHX
 	PHY
@@ -128,6 +130,11 @@ story_call_hook:
 	LDA.l story_hook_table,X
 	DEC
 	PHA
+	; stack: target(3) return(3) B(1) Y(2) X(2): hand the hook the caller's X/Y
+	LDA $08,S
+	TAY
+	LDA $0A,S
+	TAX
 	LDA.l !story_hook_event
 	RTL
 .back
@@ -919,7 +926,9 @@ story_api_quest_wish:
 	REP #$20
 	LDA.w #$0000
 	STA.w !story_hook_event&$FFFF
-	LDA.w #!STORY_H_QUEST_WISH_REPAIR
+	LDA.w #!STORY_H_QUEST_WISH_CEILING
+	JSR story_call_hook
+	LDA.w #!STORY_H_QUEST_WISH_SCARS
 	JSR story_call_hook
 .out
 	PLP
@@ -2668,6 +2677,39 @@ story_new_game:
 ; Addresses for tests and tools (read from ROM through the symbol file).
 story_addresses:
 	dl !persist_goku_active, !PERSIST_STORY, !RAM_STORY, !STORY_WATER_BUF
+	dl !STORY_TEST_LOG, !STORY_TEST_QUERIES
+
+; Test builds (-DSTORY_TEST): every hook appends (id, A, X) to a log and
+; every foreign query answers from a table (see the defines at the top).
+if defined("STORY_TEST")
+	incsrc "story/testhooks.asm"
+; A = hook id, event A pushed. M16/X16.
+story_test_log:
+	STA.l !story_tmp4
+	LDA.l !STORY_TEST_LOG
+	CMP.w #$0100
+	BCS .full
+	ASL
+	STA.l !story_tmp3
+	ASL
+	CLC
+	ADC.l !story_tmp3
+	PHX
+	TAX
+	LDA.l !story_tmp4
+	STA.l !STORY_TEST_LOG+2,X
+	LDA $03,S
+	STA.l !STORY_TEST_LOG+4,X
+	LDA $01,S
+	STA.l !STORY_TEST_LOG+6,X
+	PLX
+	LDA.l !STORY_TEST_LOG
+	INC
+	STA.l !STORY_TEST_LOG
+.full
+	PLA
+	RTL
+endif
 
 story_code_end:
 assert story_code_end <= !CODE_STORY+$7C00, "story code bank overflow"

@@ -21,18 +21,34 @@ const out=resolve(repo,'.local/snes-test/story');
 const mainCheckout=()=>{try{const r=spawnSync('git',['rev-parse','--git-common-dir'],{cwd:repo,encoding:'utf8'});return resolve(repo,r.stdout.trim(),'..');}catch{return repo;}};
 const imports=process.env.SNES_IMPORT??[resolve(repo,'.local/snes-import'),resolve(mainCheckout(),'.local/snes-import')].find(p=>existsSync(p))??resolve(repo,'.local/snes-import');
 const hex=(n,w=2)=>n.toString(16).toUpperCase().padStart(w,'0');
-const sym=new Map();
-for(const line of readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8').split('\n')){
-  const m=line.match(/^([0-9A-F]{2}):([0-9A-F]{4}) (\S+)/i);if(m)sym.set(m[3],parseInt(m[1]+m[2],16));
+// Symbols and the addresses the module exports at story_addresses (dl
+// goku_active, PERSIST_STORY, RAM_STORY, water buffer, test log, test
+// queries), read from a built ROM.
+function romInfo(path){
+  const sym=new Map();
+  for(const line of readFileSync(path.replace(/\.sfc$/,'.sym'),'utf8').split('\n')){
+    const m=line.match(/^([0-9A-F]{2}):([0-9A-F]{4}) (\S+)/i);if(m)sym.set(m[3],parseInt(m[1]+m[2],16));
+  }
+  const label=n=>{if(!sym.has(n))throw Error(`missing symbol ${n}`);return sym.get(n);};
+  const bytes=new Uint8Array(readFileSync(path));
+  const at=a=>bytes[((a>>16)&0x3f)<<16|(a&0xffff)],long=a=>at(a)|at(a+1)<<8|at(a+2)<<16;
+  const t=label('story_addresses');
+  return{path,label,addr:{goku:long(t),persist:long(t+3),ram:long(t+6),water:long(t+9),log:long(t+12),queries:long(t+15)}};
 }
-const label=n=>{if(!sym.has(n))throw Error(`missing symbol ${n}`);return sym.get(n);};
+const prod=romInfo(rom);
+// Test ROM: hooks log, foreign queries answer from a table (-DSTORY_TEST).
+let testRom=null;
+const testInfo=()=>{
+  if(testRom)return testRom;
+  const path=resolve(repo,'dist/snes/story-test.sfc');
+  const b=spawnSync(process.execPath,[join(repo,'snes/build.mjs'),'--quiet','-DSTORY_TEST',`--out=${path}`],{cwd:repo,stdio:'inherit'});
+  if(b.status!==0)throw Error('story test build failed');
+  return testRom=romInfo(path);
+};
+const label=prod.label,ADDR=prod.addr;
 const catalog=JSON.parse(readFileSync(resolve(repo,'dist/snes/gen/story/catalog.json'),'utf8'));
-// Addresses the module exports at story_addresses (dl goku_active,
-// PERSIST_STORY, RAM_STORY, water buffer), read from the built ROM.
-const romBytes=new Uint8Array(readFileSync(rom));
-const romAt=a=>romBytes[((a>>16)&0x3f)<<16|(a&0xffff)];
-const longAt=a=>romAt(a)|romAt(a+1)<<8|romAt(a+2)<<16;
-const ADDR={goku:longAt(label('story_addresses')),persist:longAt(label('story_addresses')+3),ram:longAt(label('story_addresses')+6),water:longAt(label('story_addresses')+9)};
+const hookId=name=>{const h=catalog.hooks.find(x=>x.name===name);if(!h)throw Error('no hook '+name);return h.id;};
+const queryId=name=>{const q=catalog.queries.find(x=>x.name===name);if(!q)throw Error('no query '+name);return q.id;};
 const base=new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')));
 const env=await loadStoryEnvironment(repo,base);
 const {eventRange}=await import(pathToFileURL(join(repo,'engine/event-codec.js')).href);
@@ -164,8 +180,8 @@ cases.push({name:'absent-skip',bundle:'emulator-probe__potos-state',writes:[...g
     ];
   }});
 // ---- crisis greeting prefix and resume -------------------------------------
-// The Frieza module owns crisisActive; route that query to the ledger's
-// wished bit for this test only (ROM write in Mesen) and set it.
+// The Frieza module owns crisisActive; the test ROM answers it from the
+// test query table.
 {
   const w=wramOf('emulator-probe__potos-state');
   let npc=null;
@@ -173,10 +189,7 @@ cases.push({name:'absent-skip',bundle:'emulator-probe__potos-state',writes:[...g
     const id=(w[0xe03e+slot]|w[0xe03f+slot]<<8)&0x7ff;
     if(id&&(w[0xe000+slot]&1)&&w[0xe180+slot]>=0x80&&env.greetingKinds.has(id)&&env.entries.has(0xc00000+eventRange(env.data,id).start)){npc={slot,id,kind:env.greetingKinds.get(id)};break;}
   }
-  const table=label('story_query_table'),target=label('story_query_quest_wished');
-  const pc=a=>((a>>16)&0x3f)<<16|(a&0xffff);
-  const entry=table+0x10*3;
-  if(npc)cases.push({name:'crisis-greeting',bundle:'emulator-probe__potos-state',writes:[...goku,[P_WISHED,1,1]],romWrites:[[pc(entry),target&255],[pc(entry)+1,target>>8&255],[pc(entry)+2,target>>16&255]],
+  if(npc)cases.push({name:'crisis-greeting',rom:'test',queries:[['friezaCrisis',1]],bundle:'emulator-probe__potos-state',writes:[...goku],
     request:[npc.id,npc.slot],frames:900,mash:24,stopIdle:true,shots:[30,90],
     check(r){
       const g=catalog.greetings.find(x=>x.kind===npc.kind),script=js(npc.id,0);
@@ -246,6 +259,44 @@ cases.push({name:'absent-skip',bundle:'emulator-probe__potos-state',writes:[...g
   }
 }
 
+// ---- hook and query contract (test ROM: hooks log, foreign queries set) ----
+{
+  const HK=hookId;
+  const entries=(r,name)=>(r.hooklog??[]).filter(e=>e[0]===HK(name));
+  const seq=(r,list)=>{let i=0;for(const e of r.hooklog??[])if(i<list.length&&e[0]===HK(list[i][0])&&e[1]===list[i][1])i++;return i===list.length;};
+  const logText=r=>(r.hooklog??[]).slice(0,12).map(([h,a,x])=>`${catalog.hooks.find(k=>k.id===h)?.name??h}(${hex(a,3)},${hex(x,4)})`).join(' ');
+  cases.push({name:'hooks-objects',rom:'test',bundle:'emulator-probe__potos-state',writes:[...goku],request:[0x800|0x9f,0],frames:150,
+    check(r){
+      const ok=[0,1,2].every(i=>['OBJECT_SANDSHIP','OBJECT_ENDING','OBJECT_FRIEZA','OBJECT_TRIAL'].every(n=>entries(r,n).some(e=>e[1]===i&&e[2]===i*16)));
+      return [['object list hooks get the map',entries(r,'OBJECT_LIST_SANDSHIP').some(e=>e[1]===408)&&entries(r,'OBJECT_LIST_ENDING').some(e=>e[1]===408),logText(r)],
+        ['record hooks get A = record, X = slot (3 records x 4 owners)',ok,'']];
+    }});
+  cases.push({name:'hooks-grant',rom:'test',bundle:'emulator-probe__potos-state',writes:[...goku,[P_MASK,0,1],[P_SEEDS,0,1],[0x7ecf90,0,1],[0x7ecf45,0,1]],request:[0x588,0],frames:700,mash:20,
+    check(r){return [['EVENT_ANY on entering 588',entries(r,'EVENT_ANY').some(e=>e[1]===0x588),''],['QUEST_COLLECTED with the Water index',entries(r,'QUEST_COLLECTED').some(e=>e[1]===0),logText(r)]];}});
+  cases.push({name:'hooks-opcode',rom:'test',bundle:'emulator-probe__potos-state',writes:[...goku],script:[ADDR.water+0x100,[0x3d,HK('OPCODE_SCRIPT'),0x00]],frames:20,
+    check(r){return [['3D hh calls story_hook_table[hh] and the script ends',entries(r,'OPCODE_SCRIPT').length===1&&r.d0===0,logText(r)]];}});
+  cases.push({name:'hooks-theft',rom:'test',bundle:'emulator-probe__potos-state',writes:[...goku],request:[0xa8,0],frames:180,
+    check(r){return [['theft: EVENT_ANY, FRIEZA_THEFT, then the Emperor prelude call',seq(r,[['EVENT_ANY',0xa8],['FRIEZA_THEFT',0xa8],['EVENT_ANY',0x4a7],['FRIEZA_EMPEROR_PRELUDE',0x4a7]]),logText(r)]];}});
+  const good=[['friezaDefeated',1],['beastFed',1],['beastStarted',1],['beastWon',1]];
+  cases.push({name:'hooks-ending',rom:'test',bundle:'emulator-probe__potos-state',writes:[...goku,[P_MASK,0x7f,1],[P_SEEDS,0x7f,1]],queries:good,request:[0x42f,0],frames:8,
+    check(r){
+      const want=js(0x42f,0,[['questSeedsAll',1],['questMaskAll',1],...good]),t=r.trace.find(x=>x[0]===0x42f);
+      return [['good ending chosen as in the browser',t&&t[1]===want,`native ${t?hex(t[1],6):'none'} browser ${hex(want,6)}`],
+        ['BEAST_VICTORY before EVENT_ANY and ENDING_BEGIN',seq(r,[['BEAST_VICTORY',0x42f],['EVENT_ANY',0x42f],['ENDING_BEGIN',0x42f]]),logText(r)]];
+    }});
+  for(const [title,id,queries] of[
+    ['4E1 pending',0x4e1,[['friezaPending',1]]],['4E1 tree',0x4e1,[['friezaNeedsTree',1]]],['4E1 showdown',0x4e1,[['friezaStolen',1],['friezaTrialWon',1]]],['4E1 trial',0x4e1,[['friezaStolen',1]]],
+    ['4A4 palace',0x4a4,[['friezaPalace',1]]],['4A4 crisis',0x4a4,[['friezaCrisis',1]]],['5F8 tree after',0x5f8,[['friezaTreeComplete',1]]],['429 destroyed',0x429,[['fortressDestroyed',1]]],
+    ['4E5 trial',0x4e5,[['trialActive',1],['trialParty',3]]],['28B weighted',0x28b,[['equipWeighted',1]]],['7A door 1A5',0x7a,[['sandshipDoor',6]]],
+  ]){
+    cases.push({name:'route-'+title.replace(/\s+/g,'-'),rom:'test',bundle:'emulator-probe__potos-state',writes:[...goku],queries,request:[id,0],frames:6,
+      check(r){
+        const want=js(id,0,queries),t=r.trace.find(x=>x[0]===id);
+        return [[`${hex(id,3)} ${title}`,t&&t[1]===want,`native ${t?hex(t[1],6):'none'} browser ${hex(want,6)}${alloc(want)?' ['+hex(alloc(want).id,3)+']':''}`]];
+      }});
+  }
+}
+
 const only=process.argv.slice(2);
 mkdirSync(out,{recursive:true});
 let failures=0;
@@ -254,8 +305,10 @@ const lua=v=>Array.isArray(v)?'{'+v.map(lua).join(',')+'}':typeof v==='string'?J
 for(const c of cases){
   if(only.length&&!only.includes(c.name))continue;
   if(!existsSync(bundle(c.bundle))){console.log(`skip ${c.name}: no bundle ${c.bundle}`);continue;}
-  const prelude=`CASE = {bundle=${lua(bundle(c.bundle))}, writes=${lua(c.writes)}, before=${lua(c.before??[])}, request=${lua(c.request)}, frames=${c.frames}, mash=${c.mash??0}, shots=${lua(c.shots??[])}, resolve=${label('story_resolve_done')}, ram=${ADDR.ram}, persist=${ADDR.persist}, water=${ADDR.water}, dump_water=${!!c.dump_water}, stop_idle=${!!c.stopIdle}, rom_writes=${lua(c.romWrites??[])}, timed=${lua(c.timed??[])}, dump=${lua(c.dump??[])}}\n`;
-  const r=await runMesen({rom,test:prelude+luaBody,outDir:join(out,c.name)});
+  const info=c.rom==='test'?testInfo():prod,A=info.addr;
+  const queries=c.rom==='test'?(c.queries??[]).map(([n,v])=>[queryId(n),v]):[];
+  const prelude=`CASE = {bundle=${lua(bundle(c.bundle))}, writes=${lua(c.writes)}, before=${lua(c.before??[])}, request=${lua(c.request)}, frames=${c.frames}, mash=${c.mash??0}, shots=${lua(c.shots??[])}, resolve=${info.label('story_resolve_done')}, ram=${A.ram}, persist=${A.persist}, water=${A.water}, dump_water=${!!c.dump_water}, stop_idle=${!!c.stopIdle}, rom_writes=${lua(c.romWrites??[])}, timed=${lua(c.timed??[])}, dump=${lua(c.dump??[])}, log=${c.rom==='test'?A.log:'nil'}, queries=${A.queries}, test_queries=${lua(queries)}, script=${lua(c.script??null)}}\n`;
+  const r=await runMesen({rom:info.path,test:prelude+luaBody,outDir:join(out,c.name)});
   const res=r.results??{};
   if(res.error||!res.trace){console.log(`FAIL ${c.name}: ${res.error??'no results'}\n${r.output.slice(-1500)}`);failures++;continue;}
   writeFileSync(join(out,c.name,'trace.txt'),res.trace.map(([id,p,f])=>`${f} ${hex(id,3)} -> ${hex(p,6)}${alloc(p)?' ['+hex(alloc(p).id,3)+' m'+alloc(p).mask+']':''}`).join('\n'));
