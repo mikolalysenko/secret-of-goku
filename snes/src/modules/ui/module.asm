@@ -60,7 +60,31 @@ endif
 !ui_row_want  = !RAM_UI+$46   ; word: BG3 row of the box for the current message
 !ui_test_charge = !RAM_UI+$48 ; word: UI_TEST builds: ui_charge_tick flags every frame
 !ui_bidx      = !RAM_UI+$4A   ; word: barrier index being judged
-; +$4C-$B7: radar, scouter, status, placement and fast-forward
+; world flight band and radar (world.asm)
+!ui_band      = !RAM_UI+$4C   ; word: 0 off, 1 content queued, 2 shown (IRQs armed)
+!ui_wirq      = !RAM_UI+$4E   ; byte: IRQ chain state (0 horizon, 1 band start, 2 band end)
+!ui_band_key  = !RAM_UI+$50   ; word: content on the band (radio id+1, or $8000 | radar key)
+!ui_band_par  = !RAM_UI+$52   ; word: radio parameter drawn
+!ui_watlas    = !RAM_UI+$54   ; word: world atlas upload: 0 none, 1 first half, 2 done
+!ui_claims    = !RAM_UI+$56   ; word: bit0 region B, bit1 region C claimed
+!ui_sweep_ph  = !RAM_UI+$58   ; word: sweep phase (65536 = one turn)
+!ui_sweep_up  = !RAM_UI+$5A   ; word: sweep angle in VRAM + 1 (0 none)
+!ui_blip_x    = !RAM_UI+$5C   ; word: blip centre in dial pixels
+!ui_blip_y    = !RAM_UI+$5E
+!ui_rguide    = !RAM_UI+$60   ; word: guide (0 land, 1 ahead, 2 around, 3 left, 4 right)
+!ui_rtarget   = !RAM_UI+$62   ; word: target (0-6 palace, 7 tree, 8 frieza, 9 dryad, 10 finale)
+!ui_rdist     = !RAM_UI+$64   ; word: distance in world pixels
+!ui_dial_up   = !RAM_UI+$66   ; word: dial upload steps done (7 = base and effect tiles in VRAM)
+!ui_radar_on  = !RAM_UI+$68   ; word: radar shown this frame
+!ui_rflags    = !RAM_UI+$6A   ; word: radar state flags (!UIR_*) this frame
+!ui_rmask     = !RAM_UI+$6C   ; word: held | collected << 8 this frame
+!ui_rtx       = !RAM_UI+$6E   ; word: target x
+!ui_rty       = !RAM_UI+$70   ; word: target y
+!ui_rrel      = !RAM_UI+$72   ; word: relative bearing (heading units, signed)
+!ui_stub_rf   = !RAM_UI+$74   ; word: stub radar flags without the providers
+!ui_sky       = !RAM_UI+$76   ; 14 bytes: the sky's CGRAM 9-15 (+$76..+$83)
+!ui_band_was  = !RAM_UI+$84   ; word: BG3 registers redirected (restore when the band goes)
+; +$86-$B7: scouter, status, placement and fast-forward
 !ui_name_buf  = !RAM_UI+$B8   ; 8 bytes: display name buffer ({n} codes)
 
 !UI_QMAX = 16
@@ -114,7 +138,10 @@ endif
 !ui_s_map   = !SRAM_WORK_UI+$000   ; $200: the window's 8 BG3 rows (32 words each)
 !ui_s_hdma  = !SRAM_WORK_UI+$200   ; $40: palette HDMA table (channel 5, mode 3 -> $2121)
 !ui_s_text  = !SRAM_WORK_UI+$240   ; 84 bytes: 3 x 28 glyph codes of the drawn message
-!ui_s_queue = !SRAM_WORK_UI+$300   ; !UI_QMAX x 8 bytes: id+1, param, map+1, frames left
+!ui_s_sweep = !SRAM_WORK_UI+$2A0   ; $A0: radar sweep tiles (world)
+!ui_s_queue = !SRAM_WORK_UI+$340   ; !UI_QMAX x 8 bytes: id+1, param, map+1, frames left
+!ui_s_wband = !SRAM_WORK_UI+$3C0   ; 28 bytes: world band colours (HDMA ch6 data: 09 09 lo hi ...)
+!ui_s_wsky  = !SRAM_WORK_UI+$3DC   ; 28 bytes: the sky's colours 9-15 in the same layout
 
 ; BG3 layout (field, Mode 1): chr $4000, tilemap $5800 (32x32).
 !UI_BG3_CHR    = $4000
@@ -131,11 +158,13 @@ ui_code_start:
 incsrc "main.asm"
 incsrc "radio.asm"
 incsrc "window.asm"
+incsrc "world.asm"
 if defined("UI_TEST")
 	incsrc "../../../test/ui/testmod.asm"
 endif
 ui_data_start:
 incsrc "ui/messages.asm"
+incsrc "ui/radar.asm"
 ui_atlas:
 	incbin "ui/atlas.bin"
 ui_atlas_end:
@@ -143,6 +172,17 @@ ui_window_tiles:
 	incbin "ui/window.bin"
 ui_zero_rows:
 	fillbyte $00 : fill $200
+ui_watlas_data:
+	incbin "ui/watlas.bin"
+ui_dial_data:
+	incbin "ui/dial.bin"
+ui_dialfx_data:
+	incbin "ui/dialfx.bin"
 ui_code_end:
 assert ui_code_end <= !CODE_UI+$8000, "ui bank overflow"
 pullpc
+
+; World IRQ entry (00:8A4B SEP #$20 / PHA / PHB / LDA #$00): the band IRQs.
+%orig4($C08A4B, $8B4820E2)
+%orig2($C08A4F, $00A9)
+%hijack($C08A4B, ui_world_irq, 6, ui)

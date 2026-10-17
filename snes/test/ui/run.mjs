@@ -174,6 +174,40 @@ const cases={
     if(warned.length<2)fails.push(`expected two rolled warnings, browser showed ${warned.join(',')}`);
     report('roll',!fails.length,[...fails,`warnings: ${warned.join(', ')}`,`saved attempts ${r.results?.attempts}`]);
   },
+
+  async radar(){
+    // World flight: the band (lines 152-215) and the dial, against
+    // dragon-radar.js run on the cartridge's own state for each screenshot.
+    const {renderRadar}=await import('./radar.mjs');
+    const {loadPng,rgb,compareRadio}=await import('./compare.mjs');
+    const scenarios=[
+      {name:'radar-frieza',quest:0x7f7f,flags:0x24,frieza:{stolen:true},crisis:true,
+       steer:[['left',40],['left',60],['left',60],['right',30]]},
+      {name:'radar-palace',quest:0x0b0b,flags:0,frieza:{},crisis:false,
+       steer:[['right',50],['right',70],['left',40]]},
+    ];
+    const fails=[],notes=[];
+    for(const sc of scenarios){
+      const r=await mesenCase(sc.name,{bundle:'preset__flight',prelude:{QUEST:sc.quest,FLAGS:sc.flags,STEER:sc.steer},test:'radar'});
+      if(r.code!==0||r.results?.error){fails.push(`${sc.name}: mesen ${r.results?.error??r.output.slice(-300)}`);continue;}
+      fails.push(...resultFails(r.results).map(f=>`${sc.name}: ${f}`));
+      for(const s of r.results.samples??[]){
+        const ex=await renderRadar({ram:s,quest:{held:sc.quest&0x7f,collected:sc.quest>>8},frieza:sc.frieza,crisis:sc.crisis,
+          sweepAngle:s.sweep,blink:(s.uiframe%30)<22});
+        const png=loadPng(join(r.outDir,`${s.name}.png`));
+        let bad=0,n=0;const where=[];
+        for(const [k,c] of ex.pixels){const [x,y]=k.split(',').map(Number);n++;
+          const at=(y*png.width+x)*4,want=rgb(c);
+          if(png.data[at]!==want[0]||png.data[at+1]!==want[1]||png.data[at+2]!==want[2]){bad++;if(where.length<6)where.push(`${x},${y}:${c.toString(16)}/${png.data[at]},${png.data[at+1]},${png.data[at+2]}`);}}
+        if(bad)fails.push(`${sc.name}/${s.name}: dial ${bad}/${n} pixels differ (${where.join(' ')}) sweep ${s.sweep}`);
+        const panel=await compareRadio({png,text:ex.text,x:8,y:152});
+        if(panel.mismatches)fails.push(`${sc.name}/${s.name}: panel ${panel.mismatches}/${panel.opaque} differ; browser "${ex.text.replace(/\n/g,' | ')}"`);
+        const guides=['LAND HERE','AHEAD','TURN AROUND','LEFT','RIGHT'];
+        notes.push(`${s.name} browser ${ex.bearing.guide} cart ${guides[s.guide]} d=${Math.round(ex.bearing.distance)}/${s.dist} f6=${s.f6} angle=${ex.bearing.angle.toFixed(3)} rel=${(s.rel<<16>>16)} blip ${s.bx},${s.by}`);
+      }
+    }
+    report('radar',!fails.length,[...fails,...notes]);
+  },
 };
 
 for(const [name,fn] of Object.entries(cases)){

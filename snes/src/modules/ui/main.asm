@@ -37,6 +37,11 @@ ui_reset_session:
 ; Field frame (also dialogue, events, Mode 7 arenas).
 ui_field_frame:
 	INC.w !ui_frame&$FFFF
+	LDA.w !ui_claims&$FFFF            ; back from world flight
+	ORA.w !ui_band&$FFFF
+	BEQ +
+	JSR ui_world_leave
++
 if defined("UI_TEST")
 	JSR ui_test_poll
 endif
@@ -57,10 +62,11 @@ if defined("UI_TEST")
 endif
 	JSR ui_window_leave_field
 	JSR ui_radio_tick
+	JSR ui_world_update
 	RTL
 
 ui_world_nmi:
-	RTL
+	JMP ui_world_vblank
 
 ; Ring menus: the field loop is paused; the window hides (never over a ring).
 ui_ring_frame:

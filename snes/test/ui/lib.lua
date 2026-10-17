@@ -19,10 +19,13 @@ function command(cmd, a, x)
   return ui(0x3A)
 end
 -- Import a browser-mod scene and stand Goku in (the bundle has no sidecar).
-function enter(bundle)
+-- setup(), when given, runs right after the import (before any UI frame).
+function enter(bundle, setup)
   H.wait(5)
   H.importSnesJs(bundle)
   H.w8(0x316001, 1)
+  for a = 0x316380, 0x3163DF do H.w8(a, 0) end   -- UI persistent fields: a new game
+  if setup then setup() end
   H.wait(20)
 end
 -- Replay a generated frame script; returns the current message (id + 1)
