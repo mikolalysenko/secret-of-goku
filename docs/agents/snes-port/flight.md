@@ -9,11 +9,12 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 parts of `mana-mod.js`.
 
 Status (this branch): **local flight, hovering, crossings with companion
-gathering, recovery and the camera follow are in and validated; the terrain
-classifier equals the browser's on every tile tested.** Whip-pad crossings,
-Instant Transmission, the ceiling escape, the opening-path exit catches,
-NPC pass-through and the Sandship hooks are next (see [Remaining](#remaining)).
-Flight still costs too much CPU in heavy scenes (see [Cost](#cost)).
+gathering, recovery, the camera follow and Instant Transmission are in and
+validated; the terrain classifier and the teleport landing search equal the
+browser's on every tile and query tested.** Whip-pad crossings, the ceiling
+escape, the opening-path exit catches, NPC pass-through and the Sandship
+hooks are next (see [Remaining](#remaining)). Flight still costs too much CPU
+in heavy scenes (see [Cost](#cost)).
 
 ## Behaviour (as the browser)
 
@@ -42,6 +43,32 @@ Flight still costs too much CPU in heavy scenes (see [Cost](#cost)).
   Y 292-432, and no step there scrolls the camera.
 - On foot the A button never reaches the game (it is the speed modifier, not
   the native dash).
+
+### Instant Transmission (L+B)
+
+- Pressing L+B (the chord's first frame) while Goku can act picks a target
+  among actor slots 3-11 that are active, species < $80 and not the orb $55,
+  with HP and not dying (`E191` bit 7), plus a scene's custom foe (Frieza as
+  slot 12, Vegeta in place of slot 3): the nearest reachable one the first
+  time on a map (ties: lower slot), then the next reachable slot after the
+  last target, wrapping. A foe is reachable when `findLanding` finds a spot.
+- The 12-frame action (`!goku_act = $14`) cancels combat
+  (`combat_api_cancel`), plays `teleport`, masks A and the directions, keeps
+  `E010` on its facing and stops local flight. At age 4 Goku lands beside the
+  target (if it is still the same live foe): `E002/E004`, `E00B` = the
+  landing floor's height (the target's level on stairs), `E006/E007/E045`
+  cleared, facing the foe, anchor and crossing forgotten, companions
+  gathered, and the camera follows in ≤15 px steps per frame while the
+  action holds age 4 (Goku and his shadow absent) and the pad is masked.
+  `teleportIn` sounds at age 6. Pressing again during the action queues the
+  next teleport when it ends. A map change, a menu or an event cancels it.
+- `findLanding`: distances 26, 22, 18, 32, 38, 46, 54 px; first the side
+  Goku came from (the larger axis of origin − target), then right, left,
+  down, up. A spot must be landable at the target's height (or flyable for
+  an airborne Frieza, who then leaves Goku hovering), with no door, trigger,
+  layer seam, stair cell (2x) or height above 2 under the 12×8 footprint,
+  and every 4 px from 6 px to the spot must also be clear (stairs allowed),
+  so he stays on the foe's side of walls and banks.
 
 ## How it is built
 
@@ -103,14 +130,18 @@ is a branch target of traced original code (`snes/test/flight/branchcheck.mjs`).
 | `C0:DA34` | 5 | `SEP #$20 / LDA $E000,X` | Vertical leader tether bypass (→ `DA68`) |
 | `C0:DA6E` | 4 | `SEP #$30 / LDA $FF` | Camera deltas: companions while the camera follows, every step in the Beast arena |
 
+`C0:D651` is flight's (`!FLIGHT_OWNS_D651 = 1` in `module.asm`): its hook
+calls combat's Saiyan recoil (`combat_recoil_vector`) first, through
+`bind.asm`. Flight does not hook `C0:D890`.
+
 ## Resources
 
 | Resource | Use |
 | --- | --- |
-| Code `$A3:8000-…` | `!CODE_FLIGHT` (about 13 KiB used) |
+| Code `$A3:8000-…` | `!CODE_FLIGHT` (about 13.5 KiB used; bindings to other modules at `$A3:F000`) |
 | Data `$E3:0000-…` | `!DATA_FLIGHT` (about 10 KiB: bitsets, map flags/extents, exits, routes, recovery order) |
 | WRAM `$7E:D900-D97F` | `!RAM_FLIGHT`, all $80 bytes (map in `module.asm`) |
-| SRAM `$33:7800-7BFF` | `!SRAM_WORK_FLIGHT`: tile cache, flood fill, anchor/crossing, hero grid, sweep/hero memos, camera follow, test mailbox |
+| SRAM `$33:7800-7BFF` | `!SRAM_WORK_FLIGHT`: tile cache, flood fill, anchor/crossing, hero grid, sweep/hero memos, Instant Transmission, camera follow, test mailbox (initialised on the first field frame after title entry: `!fl_magic`) |
 | SRAM `$31:62C0-62FF` | `!PERSIST_GROUND`: unused so far |
 | OAM / VRAM / CGRAM / DMA | none (Goku's pose comes from the goku module; effects will come from fx) |
 
@@ -124,13 +155,34 @@ WRAM fields (bank `$7E`, absolute with DB = `$7E`):
 | --- | --- | --- |
 | `!fl_state` | `$D900` byte | bit0 localFlight, bit1 Goku in play on the field, bit2 canAttack, bit4 charging |
 | `!fl_lift` | `$D901` byte | `mod.localLift` (0-12), also written to `!goku_lift` |
-| `!fl_events` | `$D974` word | one-frame events: `$01` takeoff (flight cue), `$02` landing cue, `$04` hovering with control (power-intro first-hover banter), `$08` crossing landed (onCross) |
+| `!fl_hook` | `$D932` word | bit 2 (`$04`): the camera follows a teleport/recovery (the browser's `teleport.pending`: the pad is masked and only the running action advances) |
+| `!fl_events` | `$D974` word | one-frame events: `$01` takeoff (flight cue), `$02` landing cue, `$04` hovering with control (power-intro first-hover banter), `$08` crossing landed (onCross), `$10` teleport started, `$20` Goku reappears (age 6) |
 | `!fl_lock` | `$D976` word | request (write every frame): nonzero forbids flight (scene owners, endings, input locks) |
 | `!fl_open_air` | `$D978` word | request: Sandship `openAir` (flight passes over every wall) |
 | `!fl_charging` | `$D97A` word | request from combat: a charge is running (halves speed, keeps the flight rules for the step) |
 
 Goku requests written by flight every field frame: `GOKU_CTL_LOCALFLY`
-(localFlight), `GOKU_CTL_AIRBORNE` (localFlight or lift > 0), `!goku_lift`.
+(localFlight), `GOKU_CTL_AIRBORNE` (localFlight or lift > 0), `!goku_lift`;
+while Instant Transmission runs `!goku_act = $14`, `!goku_act_age`,
+`!goku_act_facing`, `!goku_act_arg` bit 7 in Super Saiyan (cleared when it
+ends). Combat sees the foreign action through `cb_ext_kind` and starts
+nothing meanwhile (combat runs before flight in `modules_field_frame`).
+
+Custom teleport target (`!fl_tp_custom`, SRAM `$33:7B68`, 8 bytes): a scene
+module that owns a foe outside the actor table writes it every field frame
+(flight clears it after each frame): `+0` kind (2 Frieza = slot 12, 3 Vegeta
+= slot 3), `+1` species (121 / 46), `+2` x, `+4` y (Frieza: `y + 12` as
+`frieza.js` `entity()`), `+6` terrain byte, `+7` airborne (Frieza).
+
+Bindings (`bind.asm`, included by `modules.asm` after every module so the
+providers' defines are visible): combat `combat_recoil_vector`,
+`combat_api_cancel`, `combat_api_state` (charging); audio `audio_sfx` cues
+`FLIGHT` 18, `LANDING` 19, `TELEPORT` 16, `TELEPORT_IN` 17 and the `AIR`
+loop while flying (level .35 while charging), ids asserted against
+`AUDIO_IDS`; ui `ui_power_intro_flight` every frame Goku hovers with control,
+`ui_ceiling_escape`; world `!WORLD_TAKEOFF` (else the native `$0C00|map`
+request). Without the combat module flight hides B from the game while Goku
+can act (the browser always does; combat's input filter does it otherwise).
 
 `!FLIGHT_MISSING_FLOOR` (define, optional): a `JSL` routine of the module
 that owns floor holes (Frieza's broken deck, the Sandship), called by
@@ -138,7 +190,8 @@ canLand with `!fl_q_x/y/l`; carry = hole under the footprint.
 
 ## Tests
 
-`node snes/test/flight/run.mjs [classify|water]` (also via `run-all.mjs`):
+`node snes/test/flight/run.mjs [classify|landing|water|teleport]` (also via
+`run-all.mjs`):
 
 - `classify`: for 26 imported scenes (towns, woodland, Gaia's Navel caves,
   Haunted Forest, Water/Earth/Fire Palace, Witch castle, Sandship, Mana
@@ -151,15 +204,36 @@ canLand with `!fl_q_x/y/l`; carry = hole under the footprint.
   or left the field during the multi-frame dump (cutscene states), and the
   Mana Beast arena streams its art through the descriptor buffer every frame
   (its flight uses the fixed bounds).
+- `landing`: Instant Transmission differential. For 27 imported scenes the
+  cartridge answers `findLanding` for a grid of targets (every third tile,
+  both layers, terrain from the floor below, every seventh one airborne like
+  Frieza) with origins on each side (mailbox command 4), and
+  `engine/native-teleport.js` with the browser's collision answers the same
+  queries on the same WRAM: **19,996 / 19,996 queries equal** (8,510
+  landings: position, terrain, facing, hover).
 - `water`: the browser spec's Water Palace gap on the same fixture and warp:
   rises over the gap, hovers in place for 45 frames after release, crosses
   and lands on the far platform, flies back and lands.
+- `teleport`: `teleport.spec.mjs` on the rabite river field: from the low
+  bank Goku lands on the Rabite's far side at its height within punching
+  reach; an offscreen target (screen x −101) is reached with the camera
+  streaming in 15 px steps (17 frames, all of them absent at age 4), Goku
+  lands on screen, walks afterwards, the ring opens, `teleport` sounds at
+  the press and `teleportIn` once at age 6.
 - Dev aids: `compare.mjs` + `browser-ref.mjs` replay the scenarios of
   `scenarios.mjs` in the browser mod (Playwright, private ROM/fixture) and on
-  the cartridge and compare per-frame traces (Haunted Forest vines: same
-  8 px/frame Super Saiyan speed, same lift ramp, same landing, frame for
-  frame); `icount.mjs`, `callers.mjs`, `profile.mjs` count instructions per
-  routine; `branchcheck.mjs` checks patch ranges against the trace.
+  the cartridge and compare per-frame traces (`--shots=` takes screenshots).
+  Flight state, speed (8 px/frame Super Saiyan), lift ramp and landings
+  agree; positions drift where SnesJs lags (the browser then runs two
+  movement steps in one video frame, 8 + 6 px) or where an enemy hits Goku
+  (without the combat module the native hurt knockback applies). The three
+  teleport scenarios agree on targets (3 → 4 → 5 → 3 when cycling, queued
+  presses), landings (to the target's current position; Rabites wander a
+  little differently after the import) and the camera path (offscreen:
+  identical 15 px steps to the same camera). `icount.mjs`, `scost.mjs`
+  (instructions per video frame of a scenario, costliest routines),
+  `callers.mjs` profile; `branchcheck.mjs` checks patch ranges against the
+  trace.
 
 ## Cost
 
@@ -168,7 +242,11 @@ Measured in the Water Palace (an already heavy scene: logic ends at line
 (about 17 lines), flying ~3,700 per logic frame, so that scene runs at about
 45 Hz while flying (the browser mod at 60). `snes/test/perf/run.mjs` (walking
 only) reports +17-21 lines over main in its scenes, on top of main's own
-+27-33. Next steps: cheaper anchor tracking on foot, a leaner frame path,
++27-33. Instant Transmission adds ~4,300 instructions on the press (target
+search with landings) and ~3,500 at arrival (landing again, gather, camera),
+one-off; the river field then drops one frame at the arrival. Idle teleport
+bookkeeping costs ~45 instructions per frame (465 → 512 walking in the sword
+scene). Next steps: cheaper anchor tracking on foot, a leaner frame path,
 segment caching for long air routes. `CORE_FASTROM` would give module code
 25%.
 
@@ -176,12 +254,19 @@ segment caching for long air routes. `CORE_FASTROM` would give module code
 
 - Whip-pad gap crossings (`C0:B683` skip of 6D8 while flying; the `4E`
   conditional at `C1:F1F1` → 6F9 crossing with gap-flight pose `$23`).
-- Instant Transmission (L+B, enemy scan, landing search, gather, camera
-  follow — the follow is in), ceiling escape (L+R, 35 routes, punch pose
-  `$25`, fx debris/sparks, door then `world_takeoff`), opening-path exit
-  catches (`C0:D849`), NPC pass-through (`C1:CFE5/D017`), Sandship
-  `openAir`/`shipHull` rules, passengers hidden while carried, story hooks
-  `FLIGHT_LAND`, `QUEST_WISH_CEILING`, query `LOCAL_FLIGHT`.
+- Ceiling escape (L+R, 35 routes, punch pose `$25`, fx debris/sparks, door
+  then `world_takeoff`), opening-path exit catches (`C0:D849`), NPC
+  pass-through (`C1:CFE5/D017`), Sandship `openAir`/`shipHull` rules,
+  passengers hidden while carried, story hooks `FLIGHT_LAND`,
+  `QUEST_WISH_CEILING`, query `LOCAL_FLIGHT`.
+- Instant Transmission: `mod.facing` comes from `E010` (the browser also
+  turns it on the press frame's new direction, which combat's aim tracks);
+  the action advances once per logic frame (the browser: per video frame,
+  so a lagging scene stretches it); the Frieza/Vegeta custom targets wait for
+  their scene modules to post `!fl_tp_custom`.
+- Combat should mirror the browser's `teleport.pending` branch while
+  `!fl_hook` bit 2 is set (no new attacks, the current action only advances);
+  during a teleport it already waits through `cb_ext_kind`.
 
 ## Core requests
 

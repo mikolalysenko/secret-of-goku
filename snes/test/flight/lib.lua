@@ -31,12 +31,38 @@ function F.enter(map, x, y, layer, flags, frames)
   setRom(0x0742B0, oldEvent)
   setRom(0x08300C, oldDoor)
 end
+F.TP = 0x337B50
+local function s16(v) if v >= 0x8000 then return v - 0x10000 end return v end
 function F.status()
+  local x, y = H.r16(0x7EE002), H.r16(0x7EE004)
+  local last = H.r16(F.TP + 0x14)
   return {
-    map = H.r16(0x7E00DC), x = H.r16(0x7EE002), y = H.r16(0x7EE004),
+    map = H.r16(0x7E00DC), x = x, y = y,
     terrain = H.r8(0x7EE00B), fly = (H.r8(F.RAM) & 1) == 1, lift = H.r8(F.RAM + 1),
     can = (H.r8(F.RAM) & 4) == 4,
+    -- Instant Transmission: the published Goku action, its age, the camera
+    -- (hero map position minus screen position), the last target slot
+    act = H.r8(0x7ED742) == 0x14, age = H.r16(0x7ED744),
+    cx = x - s16(H.r16(0x7EE020)), cy = y - s16(H.r16(0x7EE022)),
+    tg = (last == 0xFFFF) and -1 or last,
+    pend = (H.r8(F.RAM + 0x32) & 4) == 4,
+    en = F.enemies(),
   }
+end
+-- Active actors 3-11 as "slot:x,y" (teleport targets).
+function F.enemies()
+  local out = {}
+  for i = 3, 11 do
+    local b = 0x7EE000 + i * 0x200
+    if (H.r8(b) & 1) == 1 then out[#out + 1] = string.format('%d:%d,%d', i, H.r16(b + 2), H.r16(b + 4)) end
+  end
+  return table.concat(out, ' ')
+end
+-- localFlightHook.restore() (FLIGHT_TEST mailbox command 3). Not waited
+-- for: the next flight frame applies it before anything else, so the
+-- scenario's first frame starts at once, as the browser's does.
+function F.restore()
+  H.w16(F.MAIL, 3)
 end
 function F.str(s)
   return string.format('map %d x %d y %d t %02x fly %s lift %d can %s', s.map, s.x, s.y, s.terrain, tostring(s.fly), s.lift, tostring(s.can))

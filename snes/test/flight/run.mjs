@@ -2,7 +2,11 @@
 // FLIGHT module tests in Mesen (also run by snes/test/run-all.mjs):
 //   classify  terrain differential: every tile of imported scenes classified
 //             by the cartridge and by engine/native-local-flight.js
+//   landing   Instant Transmission differential: findLanding() for a grid of
+//             targets/origins by the cartridge and engine/native-teleport.js
 //   water     Water Palace gap: fly over, hover on release, cross, return
+//   teleport  teleport.spec.mjs: riverbank landing, offscreen target with the
+//             camera follow, cues, walking and the ring afterwards
 //   ... (see docs/agents/snes-port/flight.md)
 //   node snes/test/flight/run.mjs [test ...]
 // ROM: $SNES_ROM or dist/snes/secret-of-goku.sfc (the classify test builds
@@ -56,10 +60,33 @@ if(want('classify')){
   results.push({test:'classify',ok:pass,ms:Date.now()-t0,failures,note:` ${scenes} scenes, ${tiles-bad}/${tiles} tiles equal to native-local-flight.js`});
 }
 
-for(const t of ['water']){
+if(want('landing')){
+  const {landings,LANDING_BUNDLES}=await import('./landing.mjs');
+  const testRom=resolve(repo,'.local/snes-test/roms/flight-test.sfc');
+  if(!want('classify')||!existsSync(testRom))build(testRom,['-DFLIGHT_TEST=1']);
+  const t0=Date.now();
+  const res=await landings({bundles:LANDING_BUNDLES,rom:testRom,outRoot:join(outRoot,'landing')});
+  let queries=0,found=0,bad=0,scenes=0;const failures=[];
+  for(const r of res){
+    if(r.skipped)continue;
+    if(r.error){failures.push(`${r.name}: ${r.error}`);continue;}
+    scenes++;queries+=r.queries;found+=r.found;bad+=r.bad;
+    if(r.bad||r.moved)failures.push(`${r.name} (map ${r.map}): ${r.bad} mismatches, moved ${r.moved} ${JSON.stringify(r.examples.slice(0,2))}`);
+  }
+  const pass=!failures.length;ok&&=pass;
+  results.push({test:'landing',ok:pass,ms:Date.now()-t0,failures,note:` ${scenes} scenes, ${queries-bad}/${queries} Instant Transmission queries (${found} landings) equal to native-teleport.js`});
+}
+
+// address of a flight routine in the ROM under test (its .sym file)
+const symAt=name=>{
+  const m=readFileSync(romSrc.replace(/\.sfc$/,'.sym'),'utf8').match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${name}$`,'mi'));
+  if(!m)throw Error('no symbol '+name);return `0x${m[1]}${m[2]}`;
+};
+for(const t of ['water','teleport']){
   if(!want(t)||!existsSync(join(here,`${t}.lua`)))continue;
   const rom=privateRom(romSrc,`flight-${t}`);
-  const r=await runMesen({rom,test:prelude()+readFileSync(join(here,`${t}.lua`),'utf8'),outDir:join(outRoot,t),state:join(cps,'waterfall.mss')});
+  const extra=t==='teleport'?`SFX=${symAt('fl_bind_sfx')}\n`:'';
+  const r=await runMesen({rom,test:extra+prelude()+readFileSync(join(here,`${t}.lua`),'utf8'),outDir:join(outRoot,t),state:join(cps,'waterfall.mss')});
   cleanupRom(rom);
   const pass=r.code===0&&r.results?.pass===true;ok&&=pass;
   results.push({test:t,ok:pass,ms:r.ms,failures:r.results?.failures??[r.results?.error??'no results'],note:'',log:r.results?.log});

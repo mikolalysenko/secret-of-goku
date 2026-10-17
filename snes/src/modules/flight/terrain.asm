@@ -384,6 +384,7 @@ fl_cache_clear:
 	STA.l !fl_cache,X
 	DEX : DEX : DEX : DEX : DEX : DEX
 	BPL .loop
+	STA.l !fl_hl+4               ; the hero's canLand memo key (byte $FF: none)
 	STZ.w !fl_cache_age
 	PLX
 	RTS

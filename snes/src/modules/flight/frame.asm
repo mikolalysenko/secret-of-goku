@@ -356,6 +356,11 @@ fl_hero_memo_off:
 
 ; ---------------------------------------------------------------------------
 flight_frame:
+	LDA.w !fl_magic
+	CMP.w #!FL_MAGIC
+	BEQ +
+	JSR fl_init_work
++
 	if defined("FLIGHT_TEST")
 		JSR fl_test_poll
 	endif
@@ -392,6 +397,10 @@ flight_frame:
 	JSR fl_land_now
 	JSR fl_anchor_none
 	JSR fl_crossing_none
+	LDA.w #$0000
+	STA.l !fl_tp_act
+	LDA.w #$FFFF
+	STA.l !fl_tp_last
 +	JSR fl_read_pad
 	JSR fl_can_attack
 	BCS .can
@@ -435,18 +444,107 @@ flight_frame:
 	JSR fl_settle
 	; --- beforeFrame (frame N+1) ---
 	JSR fl_lift_update
+	; a teleport's camera follow locks the pad; a new L+B queues the next
+	LDA.w !fl_hook
+	AND.w #!FLH_CAMERA
+	BEQ .nocam
+	LDA.l !fl_tp_act
+	BEQ .camadv
+	JSR fl_tp_chord_edge
+	BCC .camadv
+	LDA.w #$0001
+	STA.l !fl_tp_queued
+.camadv
+	LDA.l !fl_tp_act
+	BEQ +
+	JSR fl_tp_advance            ; held at age 4 until the camera arrives
++	LDA.w !core_pad_mask&$FFFF
+	ORA.w #$FFF0
+	STA.w !core_pad_mask&$FFFF
+	BRA .publish
+.nocam
 	LDA.w !fl_state
 	AND.w #!FLS_CAN
 	BNE .decide
+	; native menus, events and locks own the input (cancelCombat)
+	LDA.w #$0000
+	STA.l !fl_tp_act
 	JSR fl_event_or_menu
 	BCC .publish
 	JSR fl_land_now
 	BRA .publish
 .decide
-	JSR fl_decide
+	JSR fl_tp_chord_edge         ; L+B pressed: Instant Transmission
+	BCC +
+	JSR fl_tp_start
++	JSR fl_decide
+	JSR fl_tp_frame
 .publish
 	JSR fl_publish
+	SEP #$20
+	LDA.b #$00
+	STA.l !fl_tp_custom          ; scene modules re-post a custom target each frame
+	REP #$20
 	RTL
+
+; First frame since title entry (or a foreign savestate): the SRAM work
+; area holds whatever the battery kept.
+fl_init_work:
+	LDA.w #!FL_MAGIC
+	STA.w !fl_magic
+	LDA.w #$FFFF
+	STA.w !fl_map
+	STA.w !fl_lastmap
+	STA.l !fl_cam_map
+	STA.l !fl_tp_last
+	STA.l !fl_step_f4
+	STZ.w !fl_hook
+	LDA.w #$0000
+	STA.l !fl_tp_act
+	STA.l !fl_tp_queued
+	STA.l !fl_tp_custom
+	JSR fl_anchor_none
+	JSR fl_crossing_none
+	JSR fl_cache_clear
+	JSR fl_grid_off
+	JSR fl_sweep_forget
+	RTS
+
+; Carry = the teleport chord L+B is held now and was not held last frame.
+fl_tp_chord_edge:
+	LDA.w !fl_pad
+	AND.w #!PAD_L|!PAD_B
+	CMP.w #!PAD_L|!PAD_B
+	BNE .no
+	LDA.w !fl_pad_prev
+	AND.w #!PAD_L|!PAD_B
+	CMP.w #!PAD_L|!PAD_B
+	BEQ .no
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
+; The teleport action's frame: advance it, keep Goku facing its way and
+; hold the pad's directions and A.
+fl_tp_frame:
+	LDA.l !fl_tp_act
+	BEQ .done
+	JSR fl_tp_advance
+	LDA.l !fl_tp_act
+	BEQ .done
+	LDA.l !fl_tp_facing
+	TAX
+	SEP #$20
+	LDA.l fl_facing_native,X
+	STA $E010
+	REP #$20
+	LDA.w !core_pad_mask&$FFFF
+	ORA.w #!PAD_UP|!PAD_DOWN|!PAD_LEFT|!PAD_RIGHT|!PAD_A
+	STA.w !core_pad_mask&$FFFF
+.done
+	RTS
 
 ; D0 or a menu bit in EC: carry
 fl_event_or_menu:
@@ -470,8 +568,10 @@ fl_reset:
 	STZ.w !fl_hook
 	LDA.w #$FFFF
 	STA.l !fl_cam_map
-	LDA.w #$FFFF
 	STA.w !fl_map
+	STA.w !fl_lastmap            ; back on a field map: as a map change
+	LDA.w #$0000
+	STA.l !fl_tp_act
 	RTS
 
 ; localFlight = false, localLift = 0
@@ -579,7 +679,9 @@ fl_decide:
 ++	LDA.b #!FLS_FLY
 	TRB.w !fl_state
 	REP #$20
-	; teleport = L + B
+	; teleport = L + B, or an Instant Transmission running
+	LDA.l !fl_tp_act
+	BNE .done
 	LDA.w !fl_pad
 	AND.w #!PAD_L|!PAD_B
 	CMP.w #!PAD_L|!PAD_B
@@ -704,6 +806,10 @@ fl_publish:
 	LDA.w !core_pad_mask&$FFFF
 	ORA.w #!PAD_A
 	STA.w !core_pad_mask&$FFFF
+	LDA.w !fl_state
+	AND.w #!FLS_CAN
+	BEQ .nomask
+	JSR fl_bind_mask_b
 .nomask
 	; Goku: LOCALFLY = localFlight, AIRBORNE = localFlight || localLift > 0
 	SEP #$20
@@ -727,6 +833,66 @@ fl_publish:
 	LDA.w !fl_lift
 	AND.w #$00FF
 	STA.l $7E0000|!goku_lift
+	; Instant Transmission pose (goku action $14), until the action ends
+	LDA.l !fl_tp_act
+	BEQ .noact
+	SEP #$20
+	LDA.b #!GOKU_K_TELEPORT
+	STA.l $7E0000|!goku_act
+	LDA.l !fl_tp_facing
+	STA.l $7E0000|!goku_act_facing
+	LDA.l $7E0000|!goku_form
+	AND.b #$01
+	BEQ +
+	LDA.b #$80
++	STA.l $7E0000|!goku_act_arg
+	LDA.b #!TP_DURATION
+	STA.l $7E0000|!goku_act_dur
+	REP #$20
+	LDA.l !fl_tp_age
+	STA.l $7E0000|!goku_act_age
+	BRA .sounds
+.noact
+	LDA.l $7E0000|!goku_act
+	AND.w #$00FF
+	CMP.w #!GOKU_K_TELEPORT
+	BNE .sounds
+	SEP #$20
+	LDA.b #$00
+	STA.l $7E0000|!goku_act
+	REP #$20
+.sounds
+	; cues (ki-sound.js names in fl_events)
+	LDA.w !fl_events
+	BEQ .air
+	BIT.w #!FLE_TAKEOFF
+	BEQ +
+	LDA.w #!FL_SFX_FLIGHT
+	JSR fl_bind_sfx
++	LDA.w !fl_events
+	BIT.w #!FLE_LANDING
+	BEQ +
+	LDA.w #!FL_SFX_LANDING
+	JSR fl_bind_sfx
++	LDA.w !fl_events
+	BIT.w #!FLE_TELEPORT
+	BEQ +
+	LDA.w #!FL_SFX_TELEPORT
+	JSR fl_bind_sfx
++	LDA.w !fl_events
+	BIT.w #!FLE_TELEPORT_IN
+	BEQ .air
+	LDA.w #!FL_SFX_TELEPORT_IN
+	JSR fl_bind_sfx
+.air
+	; the air bed while flying (quieter while charging)
+	LDA.w !fl_state
+	AND.w #!FLS_FLY
+	BEQ +
+	LDA.w !fl_state
+	AND.w #!FLS_CHARGE
+	JSR fl_bind_air
++
 	; first hover with control (power-intro.js) and the tile cache's life
 	LDA.w !fl_state
 	AND.w #!FLS_FLY|!FLS_CAN
@@ -735,6 +901,7 @@ fl_publish:
 	LDA.w !fl_events
 	ORA.w #!FLE_HOVER
 	STA.w !fl_events
+	JSR fl_bind_ui_hover         ; power intro: the first hover's banter
 .cache
 	LDA.w !fl_cache_age
 	INC

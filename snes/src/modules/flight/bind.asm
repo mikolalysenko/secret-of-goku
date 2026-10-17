@@ -39,13 +39,19 @@ endif
 	CLC
 	RTS
 
-; Audio (snes/src/modules/audio): DBZ cues and the flight air bed.
-!FL_SFX_SWING       = 1
-!FL_SFX_IMPACT      = 6
-!FL_SFX_TELEPORT    = 16
-!FL_SFX_TELEPORT_IN = 17
-!FL_SFX_FLIGHT      = 18
-!FL_SFX_LANDING     = 19
+; Without the combat module B stays Goku's: the browser hides it from the
+; game whenever he can act (combat's own input filter does this otherwise).
+fl_bind_mask_b:
+if not(defined("CB"))
+	LDA.w !core_pad_mask&$FFFF
+	ORA.w #!PAD_B
+	STA.w !core_pad_mask&$FFFF
+endif
+	RTS
+
+; Audio (snes/src/modules/audio): DBZ cues and the flight air bed. The
+; !FL_SFX_* ids are defined in module.asm (the module uses them before this
+; file is included); they must match the audio module's.
 if defined("AUDIO_IDS")
 	assert !AUDIO_SFX_SWING == !FL_SFX_SWING, "flight: audio cue ids moved"
 	assert !AUDIO_SFX_IMPACT == !FL_SFX_IMPACT, "flight: audio cue ids moved"

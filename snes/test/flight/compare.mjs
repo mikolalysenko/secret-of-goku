@@ -6,7 +6,7 @@
 // comparison aligns the traces on the first frame of motion and reports the
 // largest position difference, the end state and the frames where flight
 // state differs.
-//   node snes/test/flight/compare.mjs [scenario ...] [--rom=path]
+//   node snes/test/flight/compare.mjs [scenario ...] [--rom=path] [--shots=1,2,...]
 import {readFileSync,existsSync,mkdirSync,writeFileSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -18,8 +18,8 @@ const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..')
 
 const lua=v=>Array.isArray(v)?`{${v.map(lua).join(',')}}`:v&&typeof v==='object'?`{${Object.entries(v).map(([k,x])=>`${k}=${lua(x)}`).join(',')}}`:typeof v==='string'?JSON.stringify(v):String(v);
 
-export async function runScenario(sc,rom,outDir){
-  const test=`SC=${lua(sc)}\nIMPORT=${JSON.stringify(join(mainCheckout(),'.local/snes-import')+'/')}\n`+readFileSync(join(here,'lib.lua'),'utf8')+'\n'+readFileSync(join(here,'scenario.lua'),'utf8');
+export async function runScenario(sc,rom,outDir,shots=[]){
+  const test=`SC=${lua(sc)}\nSHOTS={${shots.map(n=>`[${n}]=true`).join(',')}}\nIMPORT=${JSON.stringify(join(mainCheckout(),'.local/snes-import')+'/')}\n`+readFileSync(join(here,'lib.lua'),'utf8')+'\n'+readFileSync(join(here,'scenario.lua'),'utf8');
   const cart=privateRom(rom,`flight-${sc.name}`);
   const r=await runMesen({rom:cart,test,outDir,state:join(checkpointDir(),'waterfall.mss')});
   cleanupRom(cart);
@@ -50,9 +50,10 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
     if(b.status!==0)process.exit(1);
   }
   const want=args.filter(a=>!a.startsWith('--'));
+  const shots=(args.find(a=>a.startsWith('--shots='))?.slice(8)??'').split(',').filter(Boolean).map(Number);
   for(const sc of scenarios.filter(s=>!want.length||want.includes(s.name))){
     const outDir=resolve(repo,'.local/snes-test/flight/scenarios',sc.name);mkdirSync(outDir,{recursive:true});
-    const r=await runScenario(sc,rom,outDir);
+    const r=await runScenario(sc,rom,outDir,shots);
     if(r.error){console.log(`${sc.name}: ERROR ${r.error}`);continue;}
     const ref=resolve(repo,'.local/snes-test/flight/browser',`${sc.name}.json`);
     if(!existsSync(ref)){console.log(`${sc.name}: no browser reference (run browser-ref.mjs)`);continue;}

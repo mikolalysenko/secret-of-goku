@@ -78,8 +78,8 @@ assert !RAM_FLIGHT == $7E0000|!FLIGHT_RAM, "!FLIGHT_RAM must match !RAM_FLIGHT"
 !fl_cache_age  = !FLIGHT_RAM+$64   ; word: frames since the tile cache was cleared
 !fl_lastmap    = !FLIGHT_RAM+$66   ; word: map of the last field frame
 !fl_lasttick   = !FLIGHT_RAM+$68   ; word: core tick of the last field frame
-!fl_dx         = !FLIGHT_RAM+$6A   ; word: signed velocity this step (hooks)
-!fl_dy         = !FLIGHT_RAM+$6C
+!fl_magic      = !FLIGHT_RAM+$6A   ; word: !FL_MAGIC once the SRAM work area was initialised
+!fl_spare      = !FLIGHT_RAM+$6C   ; word: unused
 !fl_speed      = !FLIGHT_RAM+$6E   ; word: configured speed for the next steps
 !fl_gap        = !FLIGHT_RAM+$70   ; word: whip-pad crossing active (map+1), 0 none
 !fl_counter    = !FLIGHT_RAM+$72   ; word: frames the module ran (field)
@@ -111,6 +111,21 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !FLE_LANDING = $0002 ; lift reached the ground (browser 'landing' cue)
 !FLE_HOVER   = $0004 ; Goku hovers with control (power-intro first-hover banter)
 !FLE_CROSS   = $0008 ; a crossing ended on far ground (onCross)
+!FLE_TELEPORT    = $0010 ; Instant Transmission started ('teleport' cue)
+!FLE_TELEPORT_IN = $0020 ; Goku reappears ('teleportIn' cue)
+
+; Audio cue ids (docs/agents/snes-port/audio.md; bind.asm asserts them
+; against the audio module's !AUDIO_SFX_* when it is present).
+!FL_SFX_SWING       = 1
+!FL_SFX_IMPACT      = 6
+!FL_SFX_TELEPORT    = 16
+!FL_SFX_TELEPORT_IN = 17
+!FL_SFX_FLIGHT      = 18
+!FL_SFX_LANDING     = 19
+
+!TP_DURATION = 12      ; Instant Transmission action length (mana-mod.js)
+!FL_MAGIC = $4C46      ; 'FL': module WRAM is cleared at title entry; savestates
+                       ; from other builds carry other values here
 
 ; Map flags (fl_map_flags, generated)
 !FLM_CONTEXT = $0001 ; dungeon geometry context (dungeon-geometry.js context())
@@ -142,6 +157,43 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !fl_sram_test  = !FL_SRAM+$2A0     ; test mailbox ($90 bytes, FLIGHT_TEST builds)
 !fl_hl         = !FL_SRAM+$330     ; canLand memo at the hero: rect (4 bytes), layer|terrain<<1 (byte),
                                    ; verdict (byte), cell idx (4 words), cell tiles (4 bytes)
+!fl_tp         = !FL_SRAM+$350     ; Instant Transmission (teleport.asm):
+!fl_tp_act     = !fl_tp+$00        ;   word: action running
+!fl_tp_age     = !fl_tp+$02        ;   word: action age
+!fl_tp_target  = !fl_tp+$04        ;   word: target slot (3-11, 12 = custom)
+!fl_tp_species = !fl_tp+$06        ;   word: target species when chosen
+!fl_tp_ox      = !fl_tp+$08        ;   word: origin x (where Goku pressed L+B)
+!fl_tp_oy      = !fl_tp+$0A        ;   word: origin y
+!fl_tp_queued  = !fl_tp+$0C        ;   word: another press during the action
+!fl_tp_arrived = !fl_tp+$0E        ;   word
+!fl_tp_sounded = !fl_tp+$10        ;   word
+!fl_tp_facing  = !fl_tp+$12        ;   word: action facing (0 down 1 right 2 left 3 up)
+!fl_tp_last    = !fl_tp+$14        ;   word: last target slot, $FFFF none (lastTeleportTarget)
+!fl_tp_tried   = !fl_tp+$16        ;   word: slots tried by the nearest-first search
+!fl_tp_custom  = !fl_tp+$18        ;   custom target (scene modules write it every field frame;
+                                   ;   flight consumes it at the end of flight_frame):
+                                   ;     +0 byte kind: 0 none, 2 Frieza (slot 12), 3 Vegeta (slot 3)
+                                   ;     +1 byte species (Frieza 121, Vegeta 46)
+                                   ;     +2 word x, +4 word y, +6 byte terrain, +7 byte airborne
+!fl_tp_e_x     = !fl_tp+$20        ;   word: candidate target x (fl_tp_entity)
+!fl_tp_e_y     = !fl_tp+$22
+!fl_tp_e_terr  = !fl_tp+$24
+!fl_tp_e_species = !fl_tp+$26
+!fl_tp_e_air   = !fl_tp+$28
+!fl_tp_l_x     = !FL_SRAM+$3A6     ;   word: landing found by fl_tp_landing
+!fl_tp_l_y     = !FL_SRAM+$3A8
+!fl_tp_l_terr  = !FL_SRAM+$3AA
+!fl_tp_l_facing = !FL_SRAM+$3AC
+!fl_tp_l_air   = !FL_SRAM+$3AE
+!fl_tp_best_d  = !FL_SRAM+$3B0     ;   2 words: nearest search distance
+!fl_tp_best_i  = !FL_SRAM+$3B4     ;   word
+; WRAM aliases for the landing search (the sweep is idle meanwhile)
+!fl_tp_pref    = !fl_sw_x
+!fl_tp_dist    = !fl_sw_y
+!fl_tp_dir     = !fl_sw_dx
+!fl_tp_dx      = !fl_sw_dy
+!fl_tp_dy      = !fl_sw_n
+!fl_tp_stairs  = !fl_sw_s
 !fl_g         = !FL_SRAM+$380     ; hero grid (fl_grid_reset): 3x3 tile verdicts around Goku
 !fl_g_tx0      = !fl_g+$00         ; word: grid origin tile x
 !fl_g_ty0      = !fl_g+$02         ; word: grid origin tile y
@@ -203,6 +255,7 @@ flight_code_start:
 incsrc "frame.asm"
 incsrc "terrain.asm"
 incsrc "move.asm"
+incsrc "teleport.asm"
 if defined("FLIGHT_TEST")
 	incsrc "../../../test/flight/testmod.asm"
 endif

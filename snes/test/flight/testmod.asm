@@ -1,6 +1,8 @@
 ; Flight test mailbox (FLIGHT_TEST builds only), polled at the start of
 ; flight_frame. Lua writes the request at !fl_sram_test:
-;   +$00 word command: 1 = classify one map row
+;   +$00 word command: 1 = classify one map row, 2 = camera follow at the
+;        hero, 3 = forget the anchor/crossing (localFlightHook.restore()),
+;        4 = Instant Transmission landings (fl_test_landing)
 ;   +$02 word layer (0/1), +$04 word row (tile y)
 ;   +$06 word completion counter (incremented when a request is done)
 ;   +$08 word map width in tiles (written back), +$0A height
@@ -12,11 +14,26 @@ fl_test_poll:
 	LDA.l !fl_sram_test
 	CMP.w #$0001
 	BEQ .row
-	CMP.w #$0002
+	CMP.w #$0004
+	BNE +
+	JMP fl_test_landing
++	CMP.w #$0003
+	BNE +
+	; 3 = localFlightHook.restore(): no anchor or crossing, fresh travel
+	JSR fl_anchor_none
+	JSR fl_crossing_none
+	STZ.w !fl_travel_x
+	STZ.w !fl_travel_y
+	LDA.w #$FFFF
+	STA.w !fl_vframe
+	JSR fl_cache_clear
+	BRA .ack
++	CMP.w #$0002
 	BNE +
 	; 2 = teleport.follow() at the hero (companions, camera)
 	JSR fl_ctx_load
 	JSR fl_camera_follow_hero
+.ack
 	LDA.w #$0000
 	STA.l !fl_sram_test
 	LDA.l !fl_sram_test+$06
@@ -118,3 +135,74 @@ fl_test_poll:
 	RTS
 fl_test_landbit:
 	db $02, $04, $08, $10
+
+; 4 = findLanding() for +$02 (1-8) queries of 16 bytes at +$10:
+;   in  +0 target x, +2 target y, +4 origin x, +6 origin y,
+;       +8 byte target terrain (E00B), +9 byte airborne (Frieza)
+;   out +10 x, +12 y, +14 byte terrain, +15 byte bit0 found, bits 1-2
+;       facing, bit 3 hovering
+fl_test_landing:
+	JSR fl_ctx_load
+	LDX.w #$0000
+.q
+	TXA
+	LSR : LSR : LSR : LSR
+	CMP.l !fl_sram_test+$02
+	BCC +
+	JMP .done
++	PHX
+	LDA.l !fl_sram_test+$10,X
+	STA.l !fl_tp_e_x
+	LDA.l !fl_sram_test+$12,X
+	STA.l !fl_tp_e_y
+	LDA.l !fl_sram_test+$14,X
+	STA.l !fl_tp_ox
+	LDA.l !fl_sram_test+$16,X
+	STA.l !fl_tp_oy
+	LDA.l !fl_sram_test+$18,X
+	AND.w #$00FF
+	STA.l !fl_tp_e_terr
+	LDA.l !fl_sram_test+$19,X
+	AND.w #$00FF
+	STA.l !fl_tp_e_air
+	JSR fl_tp_landing
+	PLX
+	BCS .found
+	LDA.w #$0000
+	STA.l !fl_sram_test+$1A,X
+	STA.l !fl_sram_test+$1C,X
+	STA.l !fl_sram_test+$1E,X
+	BRA .next
+.found
+	LDA.l !fl_tp_l_x
+	STA.l !fl_sram_test+$1A,X
+	LDA.l !fl_tp_l_y
+	STA.l !fl_sram_test+$1C,X
+	LDA.l !fl_tp_l_facing
+	ASL
+	ORA.w #$0001
+	STA.w !fl_t0
+	LDA.l !fl_tp_l_air
+	BEQ +
+	LDA.w #$0008
+	TSB.w !fl_t0
++	LDA.w !fl_t0
+	XBA
+	STA.w !fl_t0
+	LDA.l !fl_tp_l_terr
+	AND.w #$00FF
+	ORA.w !fl_t0
+	STA.l !fl_sram_test+$1E,X
+.next
+	TXA
+	CLC
+	ADC.w #16
+	TAX
+	JMP .q
+.done
+	LDA.w #$0000
+	STA.l !fl_sram_test
+	LDA.l !fl_sram_test+$06
+	INC
+	STA.l !fl_sram_test+$06
+	RTS
