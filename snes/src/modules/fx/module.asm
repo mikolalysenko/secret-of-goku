@@ -87,8 +87,8 @@ assert !FX_SRAM == !SRAM_WORK_FX, "fx request block must sit at !SRAM_WORK_FX"
 !D_C = $C
 !D_T = $E
 !fx_vbl       = !FX_SRAM+$220  ; word: vblank lines left when fx_nmi started (last frame)
-!fx_vbl_end   = !FX_SRAM+$222  ; word: lines left after FX's vblank work (last frame)
-!fx_upl       = !FX_SRAM+$224  ; word: cells uploaded in the last vblank
+!fx_dseq      = !FX_SRAM+$222  ; word: destroy's effect record last drawn (its FX_SEQ)
+!fx_dshade    = !FX_SRAM+$224  ; word: map whose room shades !fx_dyn holds ($FFFF none)
 !fx_phase     = !FX_SRAM+$226  ; word: the game's streaming phase ($56) for the coming vblank
 !fx_cfail     = !FX_SRAM+$228  ; word: cache entries whose upload slipped (not drawn until done)
 !fx_nmiwork   = !FX_SRAM+$22A  ; word: nonzero when the coming vblank has FX work
@@ -197,7 +197,17 @@ pullpc
 
 if defined("FX_TEST")
 !FXT_BOX = $326000                 ; test mailbox (snes/test/fx/testmod.asm)
+!fx_vbl_end   = !FXT_BOX+$C4       ; lines left after FX's vblank work (last frame)
+!fx_upl       = !FXT_BOX+$C6       ; cells uploaded in the last vblank
 endif
+
+; destroy's effect record (docs/agents/snes-port/destroy.md, "Outputs";
+; SRAM !SRAM_WORK_DESTROY+$7F8): FX draws each new record.
+!FX_DREC      = !SRAM_WORK_DESTROY+$7F8
+!FX_DREC_SEQ  = !FX_DREC+0         ; word, increments per record
+!FX_DREC_KIND = !FX_DREC+2         ; 1 rubble burst, 2 brazier burst
+!FX_DREC_X    = !FX_DREC+4         ; map pixels
+!FX_DREC_Y    = !FX_DREC+6
 
 pushpc
 org !CODE_FX

@@ -13,6 +13,9 @@ endif
 	; at power-on reads nonzero here or initialises on the first request.
 	LDA.l !fx_busy
 	BNE .full
+	LDA.l !FX_DREC_SEQ           ; a new effect record from destroy
+	CMP.l !fx_dseq
+	BNE .full
 if defined("FX_TEST")
 	LDA.l !fx_frame              ; tests count fx frames
 	INC
@@ -51,6 +54,7 @@ fx_frame_body:
 	LDA.w #$FFFF
 	STA !d_lastc
 	STA !d_lasta
+	JSR fx_destroy_poll
 	JSR fx_begin
 	BCS .idle
 if defined("FX_TEST")
@@ -709,3 +713,269 @@ fx_finish:
 ; native-feedback.js: [0,1,2,4,6,9,13,17][flash]
 fx_flash_amounts:
 	dw 0, 1, 2, 4, 6, 9, 13, 17
+
+; ---------------------------------------------------------------------------
+; destroy's effect records (docs/agents/snes-port/destroy.md): a new record
+; spawns a rubble burst in the room's own shades (dungeon-demolition.js,
+; at most six alive) or a brazier burst at its map position. Runs before
+; fx_begin, inside the frame (D = the frame, !d_tiles free).
+fx_destroy_poll:
+	LDA.l !FX_DREC_SEQ
+	CMP.l !fx_dseq
+	BNE +
+	RTS
++	STA.l !fx_dseq
+	LDA.l !FX_DREC_KIND
+	CMP.w #2
+	BEQ .brazier
+	CMP.w #1
+	BEQ .rubble
+	RTS
+.brazier
+	SEP #$20
+	LDA.b #$02                   ; FX_EXPLODE style: brazier (three bursts)
+	STA.l !fx_style
+	LDA.b #$00
+	STA.l !fx_dir
+	REP #$20
+	LDA.w #!FX_EXPLODE
+	BRA .spawn
+.rubble
+	LDX.w #$0000                 ; at most six rubble bursts
+	LDY.w #$0000
+-	LDA.l !fx_slots+!S_KIND,X
+	AND.w #$00FF
+	CMP.w #!FX_DEBRIS
+	BNE +
+	INY
++	TXA
+	CLC
+	ADC.w #16
+	TAX
+	CPX.w #!FX_SLOTS*16
+	BCC -
+	CPY.w #6
+	BCC +
+	RTS
++	JSR fx_room_shades           ; !fx_rgb
+	SEP #$20
+	LDA.b #$00
+	STA.l !fx_style
+	REP #$20
+	LDA.w #$0000
+	STA.l !fx_a                  ; 4 chunks
+	STA.l !fx_b                  ; 32 frames
+	LDA.w #!FX_DEBRIS
+.spawn
+	PHA
+	LDA.l !FX_DREC_Y
+	TAY
+	LDA.l !FX_DREC_X
+	TAX
+	PLA
+	%fx_far(fx_spawn)
+	LDA.l !FX_DREC_KIND
+	CMP.w #1
+	BNE +
+	LDA.w $00DC                  ; !fx_dyn now holds this room's shades
+	STA.l !fx_dshade
++	RTS
+
+; dungeon-demolition.js shades: among the BG colours (CGRAM 0-127, the
+; game's buffer at $7E:0600) those with 18 < r+g+b < 75 that are grey
+; (max - min <= 8) or warm (r >= g >= b, steps < 12); the colours nearest
+; 20%, 50% and 85% of their lightness range (the browser takes the same
+; ranks of the sorted list) into !fx_rgb, defaults $18C6/$294A/$4631.
+; Cached per map (!fx_dshade).
+!rs_n    = !d_tiles+$00       ; qualifying colours kept (up to 20)
+!rs_min  = !d_tiles+$02
+!rs_max  = !d_tiles+$04
+!rs_c    = !d_tiles+$06       ; colour
+!rs_r    = !d_tiles+$08
+!rs_g    = !d_tiles+$0A
+!rs_b    = !d_tiles+$0C
+!rs_l    = !d_tiles+$0E       ; lightness
+!rs_list = !d_tiles+$10       ; 20 words: kept colours (32 bytes, to +$2F)
+!rs_t    = !d_ks+$0           ; target lightness
+!rs_best = !d_ks+$2           ; best distance
+!rs_k    = !d_ks+$4           ; target index (0, 2, 4)
+!rs_i    = !d_ks+$6           ; kept-colour index * 2
+fx_room_shades:
+	LDA.w $00DC
+	CMP.l !fx_dshade
+	BNE .compute
+	LDA.l !fx_dyn
+	STA.l !fx_rgb
+	LDA.l !fx_dyn+2
+	STA.l !fx_rgb+2
+	LDA.l !fx_dyn+4
+	STA.l !fx_rgb+4
+	RTS
+.compute
+	LDA.w #$18C6                 ; the browser's defaults
+	STA.l !fx_rgb
+	LDA.w #$294A
+	STA.l !fx_rgb+2
+	LDA.w #$4631
+	STA.l !fx_rgb+4
+	STZ !rs_n
+	LDA.w #$00FF
+	STA !rs_min
+	STZ !rs_max
+	LDX.w #$0000
+.scan
+	LDA.l $7E0600,X
+	STA !rs_c
+	AND.w #$001F
+	STA !rs_r
+	LDA !rs_c
+	LSR
+	LSR
+	LSR
+	LSR
+	LSR
+	AND.w #$001F
+	STA !rs_g
+	LDA !rs_c
+	XBA
+	LSR
+	LSR
+	AND.w #$001F
+	STA !rs_b
+	CLC
+	ADC !rs_g
+	CLC
+	ADC !rs_r
+	STA !rs_l
+	CMP.w #19
+	BCC .next
+	CMP.w #75
+	BCS .next
+	; grey: max - min <= 8
+	LDA !rs_r
+	CMP !rs_g
+	BCS +
+	LDA !rs_g
++	CMP !rs_b
+	BCS +
+	LDA !rs_b
++	STA !rs_t                    ; max
+	LDA !rs_r
+	CMP !rs_g
+	BCC +
+	LDA !rs_g
++	CMP !rs_b
+	BCC +
+	LDA !rs_b
++	EOR.w #$FFFF
+	SEC
+	ADC !rs_t                    ; max - min
+	CMP.w #9
+	BCC .keep
+	; warm: r >= g >= b, r - g < 12, g - b < 12
+	LDA !rs_r
+	SEC
+	SBC !rs_g
+	BCC .next
+	CMP.w #12
+	BCS .next
+	LDA !rs_g
+	SEC
+	SBC !rs_b
+	BCC .next
+	CMP.w #12
+	BCS .next
+.keep
+	LDA !rs_l
+	CMP !rs_min
+	BCS +
+	STA !rs_min
++	CMP !rs_max
+	BCC +
+	STA !rs_max
++	LDA !rs_n                    ; keep the first twenty
+	CMP.w #20
+	BCS .next
+	ASL
+	PHX
+	TAX
+	LDA !rs_c
+	STA !rs_list,X
+	PLX
+	INC !rs_n
+.next
+	INX
+	INX
+	CPX.w #256
+	BCS +
+	JMP .scan
++	LDA !rs_n
+	BNE +
+	RTS
++	; targets: min + (max-min) * {51, 128, 218} / 256
+	STZ !rs_k
+.target
+	LDX !rs_k
+	LDA.l .mul,X
+	TAX
+	LDA !rs_max
+	SEC
+	SBC !rs_min
+	JSR fx_mul8
+	XBA
+	AND.w #$00FF
+	CLC
+	ADC !rs_min
+	STA !rs_t
+	LDA.w #$7FFF
+	STA !rs_best
+	STZ !rs_i
+.near
+	LDX !rs_i
+	LDA !rs_list,X
+	STA !rs_c
+	AND.w #$001F                 ; lightness of the kept colour
+	STA !rs_l
+	LDA !rs_c
+	LSR
+	LSR
+	LSR
+	LSR
+	LSR
+	AND.w #$001F
+	CLC
+	ADC !rs_l
+	STA !rs_l
+	LDA !rs_c
+	XBA
+	LSR
+	LSR
+	AND.w #$001F
+	CLC
+	ADC !rs_l
+	SEC
+	SBC !rs_t
+	BPL +
+	EOR.w #$FFFF
+	INC
++	CMP !rs_best
+	BCS +
+	STA !rs_best
+	LDX !rs_k
+	LDA !rs_c
+	STA.l !fx_rgb,X
++	INC !rs_i
+	INC !rs_i
+	LDA !rs_i
+	LSR
+	CMP !rs_n
+	BCC .near
+	INC !rs_k
+	INC !rs_k
+	LDA !rs_k
+	CMP.w #6
+	BCS +
+	JMP .target
++	RTS
+.mul
+	dw 51, 128, 218

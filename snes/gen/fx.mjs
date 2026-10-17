@@ -394,6 +394,15 @@ export async function generate({rom,repo,outDir}){
   a.label('fx_ember_path');a.db(emberPath);
   a.label('fx_det_data');a.db(detBytes);
   a.def('FX_DET_FRAMES',detGroups.length);
+  // Ceiling dust (ceiling-escape.js draw): chunk i at angle i*2.39996,
+  // x = cos*(10+age*(1+(i%5)*.3)), y = sin*7 - age*(1.3+(i%4)*.4) +
+  // age^2*.095, rounded as the browser does; ages 0-45, words per (age, i).
+  const dustXY=[];
+  for(let age=0;age<46;age++)for(let i=0;i<20;i++){
+    const a=i*2.39996,speed=1+(i%5)*.3;
+    dustXY.push(Math.round(Math.cos(a)*(10+age*speed)),Math.round(Math.sin(a)*7-age*(1.3+(i%4)*.4)+age*age*.095));
+  }
+  a.label('fx_dust_xy');a.dw(dustXY);
   a.label('fx_wave_colors');for(const w of waves)a.dw(w);
   a.label('fx_aura_ramps');for(const r of auraRamps)a.dw(r.slice(0,4));
   writeFileSync(join(outDir,'data.asm'),a.text());

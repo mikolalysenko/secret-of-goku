@@ -105,11 +105,11 @@ Timed kinds (`fx_spawn`; FX owns the age and ends them):
 | `FX_IMPACT` | `$01` | `effect.kind==='impact'` | `!fx_dir` turn, `!fx_a` life (0 = 10), `!fx_b` hold frames | Lucent Beam impact spark (gold with `FX_F_GOLD`), frame `min(5,age/2)`, two extra sparks at ±(7,−3) for 5 frames. *front* |
 | `FX_KI` | `$02` | `effect.kind==='ki'` | `!fx_dir`, `!fx_a` range (0 = 256) | Ki shot from the palm: three charge-orb cells trailing at 7 px, front at `min(range,(age+1)·14)`, life 22, muzzle cell for 2 frames; gold with `FX_F_GOLD`. Combat computes the same front for hits and calls `fx_kill` at the first contact. *front* |
 | `FX_BURST` | `$03` | `powerBurst` | `!fx_a` radius (0 = 56) | Transformation blast ring: 16 gold arcs, then 8 sparks, radius `r+1.5·age`, life 14; blue with no `FX_F_GOLD` |
-| `FX_EXPLODE` | `$04` | `combustion('burst')` | `!fx_dir` turn 0–3, `!fx_style` bit0 flip | One Exploder burst, 7 native frames × 6 ticks |
+| `FX_EXPLODE` | `$04` | `combustion('burst')`, `brazierBurst` | `!fx_dir` turn 0–3, `!fx_style` bit 0 flip, bit 1 brazier | One Exploder burst, 7 native frames × 6 ticks; with bit 1 the brazier burst of `dungeon-demolition.js` (three bursts at 0/8/12 frames, (0,−8) turn 0, (−10,2) turn 3, (10,2) turn 1; 54 frames) |
 | `FX_EMBER` | `$05` | `combustion('ember')` | `!fx_dir` heading, `!fx_a` speed (px/frame, 8.8), `!fx_b` life | Fireball ember drifting outward and sinking |
 | `FX_DETONATE` | `$06` | `beam-detonation.js` | – | Rolling Exploder cluster + embers, 132 frames |
 | `FX_STATUS` | `$07` | `statusBurst` | `!fx_style` 0 plain, 1 fire, 2 ice, 3 balloon | Recovery burst: impact + eight fragments / embers |
-| `FX_DEBRIS` | `$08` | `rubble`, ceiling dust | `!fx_rgb` 3 colours, `!fx_a` count (0 = 4), `!fx_b` life (0 = 32) | Spinning chunks on ballistic arcs in the room's own colours (destruction, ceiling escape) |
+| `FX_DEBRIS` | `$08` | `rubble`, ceiling dust | `!fx_rgb` 3 colours (dark, mid, light), `!fx_style` 0 rubble / 1 ceiling dust, `!fx_a` rubble chunks (0 = 4, at most 8), `!fx_b` life (0 = 32 rubble, 46 dust) | Rubble: chunks of size 2/3 on the browser's ballistic arcs (seeded by position and frame); ceiling dust: the 20 chunks of `ceiling-escape.js` on their exact paths (the two stone specks under each chunk are not drawn; the gap pattern uses two of its eight turns so the chunks fit the VRAM cache). All debris shares one DYN palette (the latest colours). Behind the natives |
 | `FX_SPARKS` | `$09` | ceiling-escape impact ring | `!fx_a` count (0 = 8) | Ring of impact sparks spreading out (12 frames) |
 
 Continuous kinds (`fx_draw`, every frame the effect should show):
@@ -313,16 +313,30 @@ total lags (the game then runs at 30 fps); heavy scenes (Mana Beast
 | `FX_BEAM_KAME`, `FX_BEAM_FRIEZA`, `FX_BEAM_FIRE` | Done (OBJ strips, four facings) | `snes/test/fx/beams.lua` |
 | `FX_BEAM_WAVE`, `FINAL`, `GALICK` | Done (polygon + OBJ edges), four facings | beams: pixel checks of core, bands and rims, HDMA/flag/palette checks |
 | `fx_flash`, `fx_quake` | Done | gallery |
-| `FX_AURA`, `FX_LIGHTNING`, `FX_DEBRIS`, `FX_BEAM_LASER` | Not yet (draw nothing) | |
+| `FX_DEBRIS`, brazier burst | Done (OBJ); destroy's effect records are drawn by FX itself (below) | `snes/test/fx/debris.lua` |
+| `FX_AURA`, `FX_LIGHTNING`, `FX_BEAM_LASER` | Not yet (draw nothing) | |
 | Large Death Balls (polygon circle), world flight | Not yet | |
 
-Tests: `node snes/test/fx/run.mjs [gallery|beams]` (FX_TEST cartridge with
-a mailbox client, `snes/test/fx/testmod.asm`; Potos import). The beams
-test checks the wave colours on three consecutive PPU frames per wave
-(`F.grab`: Mesen's screen buffer, exact; its screenshots can lag a
-varying number of frames under load), two of three must pass
+**destroy's effect records** (`docs/agents/snes-port/destroy.md`,
+SRAM `$33:77F8`): FX polls the record's sequence word every field frame
+(also on its idle path) and draws each new record: kind 1 as a rubble
+burst in the room's own shades, kind 2 as a brazier burst, at the record's
+map position. The shades follow `dungeon-demolition.js`: BG colours with
+18 < r+g+b < 75 that are grey or warm, then (unlike the browser's ranks of
+the sorted list) the colours nearest 20/50/85% of their lightness range;
+computed once per map (~80 lines in that frame), defaults
+`$18C6/$294A/$4631`. At most six rubble bursts live at once.
+
+Tests: `node snes/test/fx/run.mjs [gallery|beams|debris]` (FX_TEST
+cartridge with a mailbox client, `snes/test/fx/testmod.asm`; Potos
+import). The beams test checks the wave colours on three consecutive PPU
+frames per wave (`F.grab`, Mesen's screen buffer), two of three must pass
 (`BEAM_CHECKS` in `run.mjs`), and that no BG colour changes, that `$2C`
-and the registers come back, and the cost of a wave held still.
+and the registers come back, and the cost of a wave held still. The
+runner starts Mesen with `--Snes.DisableFrameSkipping=true`: running
+unthrottled, Mesen otherwise renders only some frames (by wall clock), so
+screenshots and the screen buffer show a frame from an unknown moment (31
+of 39 consecutive grabs were identical in a measurement).
 
 ## Core requests
 
@@ -361,6 +375,10 @@ and the registers come back, and the cost of a wave held still.
   gradient included). A module palette hook right after the game's CGRAM
   upload (before the sprite streaming) would let FX write its palettes in
   time in every frame, so its sprites would not have to skip those frames.
+- **Test harness**: `snes/test/mesen.mjs` should pass
+  `--Snes.DisableFrameSkipping=true` for every test (see Tests above):
+  every screenshot comparison is otherwise subject to Mesen's
+  wall-clock frame skipping. FX's runner does it itself.
 - **OBJ palettes**: there is no core arbitration of OBJ palettes; FX picks
   palettes not used by the sprites already in OAM when it runs. Scene
   modules that add their own characters should add their sprites before

@@ -15,8 +15,10 @@ fx_nmi:
 	JSL core_vblank_lines
 	STA.l !fx_vbl
 	JSR fx_nmi_learn
+if defined("FX_TEST")
 	LDA.w #$0000
 	STA.l !fx_upl
+endif
 	; When the game's own vblank work left no time (in Potos one streaming
 	; phase in five ends near line 259), FX leaves HDMA, colour math and
 	; cell uploads as they are: the field NMI writes $420C right after the
@@ -165,9 +167,11 @@ fx_nmi_cells:
 	EOR.w #$FFFF
 	AND.l !fx_cpend
 	STA.l !fx_cpend
+if defined("FX_TEST")
 	LDA.l !fx_upl
 	INC
 	STA.l !fx_upl
+endif
 .next
 	INX
 	INX

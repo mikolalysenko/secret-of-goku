@@ -10,11 +10,11 @@
 //   budget   frame-logic end line and NMI end with heavy effects
 //   node snes/test/fx/run.mjs [test ...]
 // Outputs: .local/snes-test/fx/<test>/ (results.json, screenshots).
-import {spawnSync} from 'node:child_process';
-import {readFileSync,existsSync,mkdirSync} from 'node:fs';
+import {spawnSync,spawn} from 'node:child_process';
+import {readFileSync,writeFileSync,existsSync,mkdirSync,rmSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {runMesen} from '../mesen.mjs';
+import {mesenPath} from '../mesen.mjs';
 import {checkpointDir,privateRom,cleanupRom,mainCheckout} from '../checkpoints.mjs';
 import {readPng} from '../../tools/gfx.mjs';
 
@@ -96,6 +96,29 @@ function shotChecks(t,dir){
   }
   return out;
 }
+// snes/test/mesen.mjs's runMesen, plus --Snes.DisableFrameSkipping=true:
+// unthrottled, Mesen otherwise renders only some frames (wall-clock based),
+// so screenshots and emu.getScreenBuffer() show a frame from an unknown
+// moment (31 of 39 consecutive grabs identical in a measurement).
+async function runMesen({rom,test,outDir,state=null,timeoutMs=600000}){
+  outDir=resolve(outDir);
+  if(existsSync(outDir))rmSync(outDir,{recursive:true,force:true});
+  mkdirSync(outDir,{recursive:true});
+  const harness=readFileSync(resolve(here,'../lua/harness.lua'),'utf8');
+  const script=join(outDir,'test.lua');
+  writeFileSync(script,`H_OUT=${JSON.stringify(outDir)}\nH_STATE=${state?JSON.stringify(resolve(state)):'nil'}\n`+test+'\n'+harness);
+  const child=spawn(mesenPath(),['--testRunner','--Snes.DisableFrameSkipping=true',resolve(rom),script],{stdio:['ignore','pipe','pipe']});
+  let stdout='';
+  child.stdout.on('data',d=>{stdout+=d;});
+  child.stderr.on('data',d=>{stdout+=d;});
+  const timer=setTimeout(()=>child.kill('SIGKILL'),timeoutMs);
+  const code=await new Promise(res=>child.on('close',c=>res(c)));
+  clearTimeout(timer);
+  let results=null;
+  try{results=JSON.parse(readFileSync(join(outDir,'results.json'),'utf8'));}catch{}
+  return {code,results,output:stdout,outDir};
+}
+
 // asar does not report overlapping writes: make sure no other module's data
 // landed on FX's cells (bank !FX_DATA, snes/src/modules/fx/module.asm).
 function checkCells(rom){
@@ -111,7 +134,7 @@ for(const r of [testRom,process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-
   const err=checkCells(r);
   if(err){console.error(`fx: ${r}: ${err}`);process.exit(1);}
 }
-const tests=['gallery','beams','battle','budget'].filter(t=>existsSync(join(here,`${t}.lua`))&&(!only.length||only.includes(t)));
+const tests=['gallery','beams','debris','battle','budget'].filter(t=>existsSync(join(here,`${t}.lua`))&&(!only.length||only.includes(t)));
 let ok=true;
 for(const t of tests){
   const rom=privateRom(testRom,`fx-${t}`);

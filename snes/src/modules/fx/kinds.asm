@@ -179,6 +179,60 @@ fx_ring:
 fx_k_explode:
 	LDA.w #$0000
 	JSR fx_depth
+	LDA !d_cur+!C_A
+	AND.w #$0002
+	BEQ fx_explode_one
+	; dungeon-demolition.js brazierBurst: three Exploder animations (delay,
+	; offset, turn) = (0, 0,-8, 0), (8, -10,2, 3), (12, 10,2, 1).
+	LDX.w #$0000
+.burst
+	PHX
+	LDA !d_cur+!C_T
+	SEC
+	SBC.l .delay,X
+	BMI .skip
+	CMP.w #42
+	BCS .skip
+	STA !d_ks+2                  ; this burst's age
+	LDA.l .turn,X
+	STA !d_ks+4
+	LDA.l .dy,X
+	TAY
+	LDA.l .dx,X
+	TAX
+	JSR fx_at
+	LDA !d_ks+2
+	LDX.w #$0000                 ; frame = age / 6
+-	CMP.w #6
+	BCC +
+	SBC.w #6
+	INX
+	BRA -
++	TXA
+	ASL
+	ASL
+	ASL                          ; (frame*2 + 0)*4
+	CLC
+	ADC !d_ks+4
+	CLC
+	ADC.w #!FX_ASM_BURST
+	JSR fx_emit
+.skip
+	PLX
+	INX
+	INX
+	CPX.w #6
+	BCC .burst
+	RTS
+.delay
+	dw 0, 8, 12
+.dx
+	dw 0, -10, 10
+.dy
+	dw -8, 2, 2
+.turn
+	dw 0, 3, 1
+fx_explode_one:
 	LDA !d_cur+!C_T
 	LDX.w #$0000                 ; frame = age / 6
 -	CMP.w #6
@@ -188,7 +242,10 @@ fx_k_explode:
 	BRA -
 +	TXA
 	ASL                          ; (frame*2 + mirror)*4 + turn
-	ORA !d_cur+!C_A
+	STA !d_ks
+	LDA !d_cur+!C_A
+	AND.w #$0001
+	ORA !d_ks
 	ASL
 	ASL
 	STA !d_ks
@@ -293,7 +350,288 @@ fx_k_status:
 
 ; ---------------------------------------------------------------------------
 ; FX_DEBRIS: not implemented yet.
+;---------------------------------------------------------------------------
+; FX_DEBRIS: chunks in the caller's colours (DYN palette), behind the
+; natives. Style 0 rubble (sprite-layer.js rubble(): !C_A >> 8 chunks of
+; size 2/3 on ballistic arcs), style 1 ceiling dust (ceiling-escape.js: 20
+; chunks of size 2-4 spreading on the golden angle). !C_B seed, !C_T age.
+!dbr_n   = !d_ks+$0           ; chunks left
+!dbr_i   = !d_ks+$2           ; chunk index
+!dbr_h   = !d_ks+$4           ; hash
+!dbr_vx  = !d_ks+$6           ; x speed (1/8 px per frame), signed
+!dbr_dx  = !d_ks+$8           ; offset from the effect
+!dbr_dy  = !d_ks+$A
+!dbr_t   = !d_ks+$C
+!dbr_s   = !d_ks+$E           ; sign scratch
 fx_k_debris:
+	LDA.w #$0000
+	JSR fx_depth
+	LDA !d_cur+!C_A
+	AND.w #$0001
+	BEQ +
+	JMP fx_debris_dust
++	LDA !d_cur+!C_A
+	XBA
+	AND.w #$00FF
+	STA !dbr_n
+	STZ !dbr_i
+.chunk
+	; h = xorshift(seed + i*71)
+	LDA !dbr_i
+	ASL
+	ASL
+	ASL
+	SEC
+	SBC !dbr_i                   ; i*7
+	STA !dbr_t
+	LDA !dbr_i
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL                          ; i*64
+	CLC
+	ADC !dbr_t
+	CLC
+	ADC !d_cur+!C_B
+	STA !dbr_h
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL
+	EOR !dbr_h
+	STA !dbr_h
+	XBA
+	AND.w #$00FF
+	LSR
+	EOR !dbr_h
+	STA !dbr_h
+	XBA
+	AND.w #$FF00
+	EOR !dbr_h
+	STA !dbr_h
+	; vx = (h_hi * 25 >> 8) - 12, x offset = (h_lo * 15 >> 8) - 7
+	XBA
+	AND.w #$00FF
+	LDX.w #25
+	JSR fx_mul8
+	XBA
+	AND.w #$00FF
+	SEC
+	SBC.w #12
+	STA !dbr_vx
+	LDA !dbr_h
+	AND.w #$00FF
+	LDX.w #15
+	JSR fx_mul8
+	XBA
+	AND.w #$00FF
+	SEC
+	SBC.w #7
+	STA !dbr_dx
+	; dx += vx*age/8
+	LDA !dbr_vx
+	STA !dbr_s
+	BPL +
+	EOR.w #$FFFF
+	INC
++	LDX !d_cur+!C_T
+	JSR fx_mul8
+	LSR
+	LSR
+	LSR
+	BIT !dbr_s
+	BPL +
+	EOR.w #$FFFF
+	INC
++	CLC
+	ADC !dbr_dx
+	STA !dbr_dx
+	; dy = -5 + age*(age - 22 - 3i)/10
+	LDA !dbr_i
+	ASL
+	ADC !dbr_i
+	CLC
+	ADC.w #22
+	EOR.w #$FFFF
+	SEC
+	ADC !d_cur+!C_T              ; t = age - 22 - 3i
+	STA !dbr_s
+	BPL +
+	EOR.w #$FFFF
+	INC
++	LDX !d_cur+!C_T
+	JSR fx_mul8                  ; age*|t|
+	LDX.w #10
+	JSR fx_div8
+	BIT !dbr_s
+	BPL +
+	EOR.w #$FFFF
+	INC
++	SEC
+	SBC.w #5
+	STA !dbr_dy
+	CLC
+	ADC !d_cur+!C_Y              ; below line 208: not drawn
+	CMP.w #209
+	BPL .next
+	; size (i&1)+2, turn (age>>3)+i: assembly (size-2)*3 + turn%3
+	LDA !d_cur+!C_T
+	LSR
+	LSR
+	LSR
+	CLC
+	ADC !dbr_i
+-	CMP.w #3
+	BCC +
+	SBC.w #3
+	BRA -
++	STA !dbr_t
+	LDA !dbr_i
+	AND.w #$0001
+	STA !dbr_s
+	ASL
+	ADC !dbr_s
+	CLC
+	ADC !dbr_t
+	CLC
+	ADC.w #!FX_ASM_RUBBLE
+	PHA
+	LDX !dbr_dx
+	LDY !dbr_dy
+	JSR fx_at
+	PLA
+	JSR fx_emit
+.next
+	INC !dbr_i
+	DEC !dbr_n
+	BEQ +
+	JMP .chunk
++	RTS
+
+; Ceiling dust: 20 chunks on precomputed paths (fx_dust_xy, the browser's
+; rounded positions per age and chunk); size 2 + i%3, turn (age>>2) + i.
+fx_debris_dust:
+	LDA !d_cur+!C_T
+	CMP.w #46
+	BCC +
+	RTS
++	ASL                          ; age * 20 chunks * 4 bytes
+	ASL
+	STA !dbr_t
+	ASL
+	ASL
+	CLC
+	ADC !dbr_t
+	ASL
+	ASL
+	STA !dbr_h                   ; offset of this age's row
+	STZ !dbr_n                   ; position in the drawing order
+.chunk
+	LDX !dbr_n                   ; chunks sharing a cell in a row (the set-up
+	LDA.l .order,X               ; assembly is placed again without setup)
+	AND.w #$00FF
+	STA !dbr_i
+	ASL
+	ASL
+	CLC
+	ADC !dbr_h
+	TAX
+	LDA.l fx_dust_xy+2,X
+	TAY
+	LDA.l fx_dust_xy,X
+	TAX
+	JSR fx_at
+	LDX !dbr_i                   ; size 2 + i%3 -> (i%3)*8
+	LDA.l .size,X
+	AND.w #$00FF
+	STA !dbr_s
+	LDA !d_cur+!C_T              ; gap pattern: two of the eight turns, so
+	LSR                          ; the twenty chunks need at most six cells
+	LSR                          ; of the VRAM cache (fifteen)
+	CLC
+	ADC !dbr_i
+	AND.w #$0001
+	ASL
+	ASL
+	ORA !dbr_s
+	CLC
+	ADC.w #!FX_ASM_DUST
+	JSR fx_emit
+	INC !dbr_n
+	LDA !dbr_n
+	CMP.w #20
+	BCC .chunk
+	RTS
+.order                           ; i grouped by i % 6 (size i % 3, turn parity)
+	db 0, 6, 12, 18, 1, 7, 13, 19, 2, 8, 14, 3, 9, 15, 4, 10, 16, 5, 11, 17
+.size
+	for i = 0..20
+		db (!i%3)*8
+	endfor
+
+; A (0-255) * X (0-255) -> A. M16/X16.
+fx_mul8:
+	SEP #$20
+	STA.l $004202
+	TXA
+	STA.l $004203
+	REP #$20
+	NOP
+	NOP
+	NOP
+	LDA.l $004216
+	RTS
+
+; A (16-bit) * X (0-255) -> A (low 16 bits).
+fx_mul16x8:
+	PHA
+	SEP #$20
+	STA.l $004202
+	TXA
+	STA.l $004203                ; low byte * X
+	REP #$20
+	NOP
+	NOP
+	NOP
+	LDA.l $004216
+	STA !d_tmp+6
+	PLA
+	XBA
+	SEP #$20
+	STA.l $004202
+	TXA
+	STA.l $004203                ; high byte * X
+	REP #$20
+	NOP
+	NOP
+	NOP
+	LDA.l $004216
+	XBA
+	AND.w #$FF00
+	CLC
+	ADC !d_tmp+6
+	RTS
+
+; A (16-bit) / X (1-255) -> A. M16/X16.
+fx_div8:
+	STA.l $004204
+	SEP #$20
+	TXA
+	STA.l $004206
+	REP #$20
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	LDA.l $004214
 	RTS
 
 ; ---------------------------------------------------------------------------
