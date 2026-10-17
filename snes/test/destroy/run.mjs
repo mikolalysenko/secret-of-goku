@@ -70,6 +70,8 @@ export const scenarios=[
     note:'Mana Fortress deck (map 255, conditional BG2 pieces)'},
   {name:'demo-pure',timeline:true,bundle:'barrier-audit__tree-continuation-state',attack:{dir:2,kind:'mega',str:200},frames:240,
     note:'Pure Land (map 198, conditional pieces)'},
+  {name:'brazier-water',timeline:true,bundle:'barrier-audit__bosses__143-1-state',attack:{dir:1,kind:'mega',str:200},frames:200,fx:2,
+    note:'Water Palace (map 139): the full beam shatters three palace braziers (2x3 each) into the pedestal tile'},
   // Gates, switches, orbs: the module dispatches the original (or authored)
   // event; the JavaScript reference must select the same target.
   {name:'gate-forest',type:'event',bundle:'ending-fix__vine',door:0xac,map:29,teleport:[240,338],attack:{dir:3,kind:'punch'},walk:'up',expect:{passYlt:288},
@@ -120,6 +122,7 @@ function test()
   D.grid('after.bin')
   H.shot('after')
   H.result('queue', {qn = H.r16(ABI.d_qn), live = H.r16(ABI.d_qlive), cleared = H.r16(ABI.d_cn), rows = H.r16(ABI.out_rows)})
+  H.result('fx', {seq = H.r16(ABI.FX_SEQ), kind = H.r16(ABI.FX_KIND), x = H.r16(ABI.FX_X), y = H.r16(ABI.FX_Y)})
   H.result('writes', D.writes)
   if SCN.walk then
     H.hold(SCN.walk, SCN.walkFrames or 40)
@@ -290,6 +293,15 @@ async function run(s){
       if(!sub(r83,want83))problems.push(`redraw $83 ${JSON.stringify(r83)} want ${JSON.stringify(want83)}`);
       if(!sub(want95,r95)||want95.length&&!r95.length)problems.push(`sound $95 ${JSON.stringify(r95)} want a subsequence of ${JSON.stringify(want95)}`);
     }
+  }
+  // Demolition rows publish a rubble record at a demolished row; brazier
+  // rows one burst per brazier (at its centre column).
+  if(s.timeline&&grid.length){
+    const fx=res.fx??{},kind=s.fx??1,hit=grid.some(c=>Math.abs(c.tx*16+8-fx.x)<=96&&Math.abs(c.ty*16+8-fx.y)<=32);
+    if(!(fx.seq>0&&fx.kind===kind&&hit))problems.push(`effect record ${JSON.stringify(fx)}`);
+    if(kind===2&&ref){const braz=new Set(ref.rows.flatMap(r=>r.tiles.filter(t=>t.brazier).map(t=>t.ty*128+t.tx)));
+      // three braziers, three rows each: one record per brazier
+      const want=Math.round(braz.size/6);if(fx.seq!==want)problems.push(`brazier bursts ${fx.seq} want ${want}`);}
   }
   checkWalk(s,res,problems);
   if(s.expect?.blockedX!==undefined&&!(res.walked?.x<=s.expect.blockedX))problems.push(`not blocked: x ${res.walked?.x} > ${s.expect.blockedX}`);

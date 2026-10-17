@@ -101,6 +101,7 @@ dst_sync_map:
 	LDX.w #$7E
 -	STA.l !DW,X                        ; !DW, !NTO, !PL, !DH ($80 bytes)
 	DEX : DEX : BPL -
+	STA.l !FX_SEQ : STA.l !FX_KIND : STA.l !FX_X : STA.l !FX_Y
 	LDA.w #$D5A1 : STA.w !m_init
 	LDA.w #$FFFF : STA.w !d_map
 .inited

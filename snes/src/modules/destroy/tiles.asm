@@ -635,17 +635,45 @@ dst_replay:
 
 ; ---------------------------------------------------------------------------
 ; dst_row_outputs: a non-replay row was applied (lab.js onCut): counters for
-; the sound/sandship/radio modules and one effect request per row.
+; the sound/sandship/radio modules and the effect record (dungeon-demolition.js
+; demolitionEffects: one rubble burst per demolition row, one burst per
+; brazier object).
 dst_row_outputs:
 	INC.w !out_rows
 	INC.w !out_sfx
-	LDA.w !fx_demo : BEQ +
+	LDA.w !fx_braz : BEQ .demo
+	; brazier burst at the object's centre column; its three rows apply
+	; back to back, so later rows of the same brazier add nothing
+	LDA.w !fx_xmin : ASL : ASL : ASL : ASL : CLC : ADC.w #16 : STA.w !d_t0
+	LDA.w !fx_key : AND.w #$3F80 : LSR : LSR : LSR : CLC : ADC.w #8 : STA.w !d_t1
+	LDA.l !FX_KIND : CMP.w #2 : BNE .braz_new
+	LDA.l !FX_X : CMP.w !d_t0 : BNE .braz_new
+	LDA.w !d_t1 : SEC : SBC.l !FX_Y : BPL +
+	EOR.w #$FFFF : INC
++	CMP.w #33 : BCC .demo
+.braz_new
+	LDA.w #2 : JSR dst_fx_emit
+.demo
+	LDA.w !fx_demo : BEQ .done
 	LDA.w !FRAME : STA.w !out_demo
 	LDA.l !pj_dirty : INC : STA.l !pj_dirty
-	LDA.w !m_grp : BEQ +
+	; rubble at the row's centre
+	LDA.w !fx_xmin : CLC : ADC.w !fx_xmax : ASL : ASL : ASL : CLC : ADC.w #8 : STA.w !d_t0
+	LDA.w !fx_key : AND.w #$3F80 : LSR : LSR : LSR : CLC : ADC.w #8 : STA.w !d_t1
+	LDA.w #1 : JSR dst_fx_emit
+	LDA.w !m_grp : BEQ .done
 	CLC : ADC.w #!DESTROY_REACT_WALL_BASE-1 : STA.w !out_react
 	LDA.w !d_map : STA.w !out_rmap
-+	RTS
+.done
+	RTS
+
+; dst_fx_emit: A = kind; !d_t0/!d_t1 = map pixel x/y. Publishes the record.
+dst_fx_emit:
+	STA.l !FX_KIND
+	LDA.w !d_t0 : STA.l !FX_X
+	LDA.w !d_t1 : STA.l !FX_Y
+	LDA.l !FX_SEQ : INC : STA.l !FX_SEQ
+	RTS
 
 ; ---------------------------------------------------------------------------
 ; Tile classes: four bits per metatile and layer (!TK_*), computed on first

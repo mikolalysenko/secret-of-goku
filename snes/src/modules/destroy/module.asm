@@ -135,7 +135,13 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !PL          = !SRAM_WORK_DESTROY+$6C0   ; suspended breach plan (32 bytes)
 !DH          = !SRAM_WORK_DESTROY+$6E0   ; destroy_hit scratch (32 bytes)
 !DSTATE      = !SRAM_WORK_DESTROY+$700   ; $40 bytes of slower state below
-!DS          = !SRAM_WORK_DESTROY+$740   ; planner scratch $C0 (kept across frames)
+!DS          = !SRAM_WORK_DESTROY+$740   ; planner scratch $B8 (kept across frames)
+; effect record for an effects module (the last applied non-replay row that
+; asks for a burst); poll !FX_SEQ, which increments per record
+!FX_SEQ      = !SRAM_WORK_DESTROY+$7F8   ; word, wraps
+!FX_KIND     = !SRAM_WORK_DESTROY+$7FA   ; 1 rubble (demolition row), 2 brazier burst
+!FX_X        = !SRAM_WORK_DESTROY+$7FC   ; map pixels: centre of the row / brazier
+!FX_Y        = !SRAM_WORK_DESTROY+$7FE
 ; destroy_hit scratch
 !BC_LO    = !DH+$00   ; band inner range beyond the taper zone
 !BC_HI    = !DH+$02

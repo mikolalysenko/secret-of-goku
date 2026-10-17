@@ -52,7 +52,7 @@ export function createReference(wram,rom){
   // One boundary; the applied row in the drain() format, or null.
   function step(i=0){
     if(!frame())return null;
-    return{frame:i,redraw:[r[0x82],r[0x83]],sound:r[0x95],tiles:applied.at(-1).tiles.map(t=>({tx:t.tx,ty:t.ty,layer:t.layer,tile:t.tile,replacement:t.replacement,demolition:!!t.demolition}))};
+    return{frame:i,redraw:[r[0x82],r[0x83]],sound:r[0x95],tiles:applied.at(-1).tiles.map(t=>({tx:t.tx,ty:t.ty,layer:t.layer,tile:t.tile,replacement:t.replacement,demolition:!!t.demolition,brazier:!!t.brazier}))};
   }
   function drain(max=200){
     const rows=[];
