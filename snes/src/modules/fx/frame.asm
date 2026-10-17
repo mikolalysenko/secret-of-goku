@@ -134,6 +134,22 @@ endif
 	BCC +
 	LDA.w #8
 +	STA.l !fx_cbudget
+	; No time in that vblank (learned per phase) while HDMA runs (a wave or
+	; a dialogue box): FX could not rewrite its palettes there without
+	; pushing the field NMI's $420C write past the frame start, so its
+	; sprites skip this frame instead of showing the game's colours.
+	LDA.w #$0000
+	STA.l !fx_tight
+	LDA.l !fx_vblp,X
+	CMP.w #2
+	BCS +
+	LDA.w $002C
+	AND.w #$000F
+	ORA.l !fx_poly_on
+	BEQ +
+	LDA.w #$0001
+	STA.l !fx_tight
++
 	LDA.l !fx_frame
 	INC
 	STA.l !fx_frame
@@ -457,7 +473,11 @@ fx_palscan:
 	EOR.w #$00FF
 	AND.w #$00FC
 	STA.l !fx_palfree
-	RTS
+	LDA.l !fx_tight              ; a vblank without time: no palettes, no sprites
+	BEQ +
+	LDA.w #$0000
+	STA.l !fx_palfree
++	RTS
 
 ; OAM attribute byte -> bit of its palette (bits 1-3).
 fx_attr_palbit:

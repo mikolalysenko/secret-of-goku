@@ -55,6 +55,7 @@ assert !FX_SRAM == !SRAM_WORK_FX, "fx request block must sit at !SRAM_WORK_FX"
 !fx_nlive     = !FX_SRAM+$98   ; word: spawned effects alive
 !fx_hiwater   = !FX_SRAM+$9A   ; word: 16 * (highest slot used + 1) since the slots were last empty
 !fx_busy      = !FX_SRAM+$9C   ; word: nonzero while FX holds anything (regions, flash, quake, polygon, uploads)
+!fx_tight     = !FX_SRAM+$9E   ; word: the coming vblank has no time and HDMA runs: no FX sprites
 !FX_MAGIC     = $F0C6
 !fx_s         = !FX_SRAM+$A0   ; 16 bytes scratch for the API entry points
 !fx_e         = !FX_SRAM+$B0   ; 16 bytes scratch for the cache

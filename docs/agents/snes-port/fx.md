@@ -250,12 +250,22 @@ shows:
 - One polygon per frame: a second wave in the same frame, world flight,
   16-heading beams and scenes where the game itself runs HDMA on channels
   2/3 fall back to the 7-band OBJ strip.
-- HDMA channels may only be switched on inside vblank (the field NMI
-  writes `$420C` from `$2C` right after the modules; a channel enabled
-  after the frame's HDMA start runs from stale pointers and corrupts
-  CGRAM). When the game's vblank work leaves FX no time (line ≥ 257 at
-  `fx_nmi`), FX clears its `$2C` bits for that frame: the wave blinks off
-  for one frame instead.
+- Late vblanks. In Potos one streaming phase in five (and the vblank
+  after a lag frame) leaves no time: `fx_nmi` starts near line 259 and
+  the field NMI's `$420C` write lands at 260-261, or past the next frame's
+  HDMA start when FX adds work. FX then changes nothing while HDMA runs
+  (no reprogramming, no palettes), so the wave keeps its tables. A channel
+  switched on after the frame's HDMA start is not reloaded: its line
+  counter underflows into a 127-line repeat that writes whatever follows
+  its table (CGRAM corruption on hardware and in Mesen). Every table
+  therefore ends with a 127-line entry of the neutral record before its
+  end byte, so a resumed channel only counts down and stops.
+- FX's own sprites need their palettes rewritten every vblank (the game
+  uploads all of CGRAM each frame), which a late vblank cannot afford
+  while HDMA runs. `fx_frame` predicts those vblanks (learned per
+  streaming phase) and draws no sprites for that frame: during a wave or
+  a dialogue box in Potos the edge cells and orb skip one frame in five.
+  Without HDMA, palettes are rewritten even in a late vblank (harmless).
 - Deviations from the browser: the up/down two-colour bands; the ripple
   (bands +2 px every third 8 px, moving every 2 frames) is implemented but
   off, since it would force a rebuild every other frame; the horn steps
@@ -308,9 +318,11 @@ total lags (the game then runs at 30 fps); heavy scenes (Mana Beast
 
 Tests: `node snes/test/fx/run.mjs [gallery|beams]` (FX_TEST cartridge with
 a mailbox client, `snes/test/fx/testmod.asm`; Potos import). The beams
-test samples its screenshots for the wave colours (`BEAM_CHECKS` in
-`run.mjs`) and checks that no BG colour changes, that `$2C` and the
-registers come back, and the cost of a wave held still.
+test checks the wave colours on three consecutive PPU frames per wave
+(`F.grab`: Mesen's screen buffer, exact; its screenshots can lag a
+varying number of frames under load), two of three must pass
+(`BEAM_CHECKS` in `run.mjs`), and that no BG colour changes, that `$2C`
+and the registers come back, and the cost of a wave held still.
 
 ## Core requests
 
@@ -342,11 +354,13 @@ registers come back, and the cost of a wave held still.
   while a wave is shown. A core-owned mask ORed into `$420C` at `00:C15C`
   would avoid touching the game's byte. Clients that test `$2C` for "no
   dialogue" should test `$2C & 3`.
-- **Late vblanks**: the field NMI can finish its own work after line 257
-  (a streaming phase in busy scenes, or after lag frames); modules then
-  have no time and the `$420C` write risks landing after the frame's HDMA
-  start. A core flag "vblank over" (or `core_vblank_lines` = 0) is what FX
-  checks now.
+- **Late vblanks**: the field NMI ends its own work after line 257 in one
+  streaming phase in five in Potos (and after lag frames); with
+  `goku_nmi` and FX the `$420C` write can land after the next frame's
+  HDMA start, which breaks every HDMA user that frame (the game's dialogue
+  gradient included). A module palette hook right after the game's CGRAM
+  upload (before the sprite streaming) would let FX write its palettes in
+  time in every frame, so its sprites would not have to skip those frames.
 - **OBJ palettes**: there is no core arbitration of OBJ palettes; FX picks
   palettes not used by the sprites already in OAM when it runs. Scene
   modules that add their own characters should add their sprites before

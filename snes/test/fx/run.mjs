@@ -63,6 +63,17 @@ const BEAM_CHECKS={
     ['wave_after','no beam left',{x0:0,x1:255,y:100,want:[BLUE[1],BLUE[2]],max:.05}],
   ],
 };
+// F.grab's raw frames (exact) when present, else the screenshot.
+function readShot(dir,name){
+  const raw=join(dir,name+'.rgb');
+  if(existsSync(raw)){
+    const rgb=readFileSync(raw),data=new Uint8Array(256*224*4);
+    for(let i=0;i<256*224;i++){data[i*4]=rgb[i*3];data[i*4+1]=rgb[i*3+1];data[i*4+2]=rgb[i*3+2];data[i*4+3]=255;}
+    return {width:256,height:224,data};
+  }
+  const png=join(dir,name+'.png');
+  return existsSync(png)?readPng(png):null;
+}
 function spanFraction(img,c){
   const at=(x,y)=>{const i=(y*img.width+x)*4,d=img.data;return ((d[i+2]>>3)<<10)|((d[i+1]>>3)<<5)|(d[i]>>3);};
   let n=0,hit=0;
@@ -70,14 +81,18 @@ function spanFraction(img,c){
   else for(let x=c.x0;x<=c.x1;x++){n++;if(c.want.includes(at(x,c.y)))hit++;}
   return hit/n;
 }
+// A shot taken on three consecutive frames (name, name_1, name_2) passes
+// when two of them do: a vblank the game uses up may cost the wave a frame.
 function shotChecks(t,dir){
   const out=[];
   for(const [shot,label,c] of BEAM_CHECKS[t]??[]){
-    const path=join(dir,shot+'.png');
-    if(!existsSync(path)){out.push({ok:false,text:`${shot} ${label}: no screenshot`});continue;}
-    const f=spanFraction(readPng(path),c);
-    const ok=c.min!==undefined?f>=c.min:f<=c.max;
-    out.push({ok,text:`${shot} ${label}: ${(f*100).toFixed(0)}% (${c.min!==undefined?'min '+c.min*100:'max '+c.max*100}%)`});
+    const imgs=[shot,shot+'_1',shot+'_2'].map(n=>readShot(dir,n)).filter(Boolean);
+    if(!imgs.length){out.push({ok:false,text:`${shot} ${label}: no screenshot`});continue;}
+    const paths=imgs;
+    const fr=imgs.map(img=>spanFraction(img,c));
+    const pass=fr.filter(f=>c.min!==undefined?f>=c.min:f<=c.max).length;
+    const ok=pass>=Math.min(2,paths.length);
+    out.push({ok,text:`${shot} ${label}: ${fr.map(f=>(f*100).toFixed(0)+'%').join(' ')} (${c.min!==undefined?'min '+c.min*100:'max '+c.max*100}%, ${pass}/${paths.length})`});
   }
   return out;
 }

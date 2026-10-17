@@ -11,7 +11,9 @@
 
 !FX_PBASE = $310000                ; tables live in the SRAM work bank
 assert !FX_PBASE == (!FX_SRAM&$FF0000), "fx polygon tables: bank of !FX_SRAM"
-!FX_PLINES = 225                   ; HDMA lines described (0-224)
+!FX_PLINES = 224                   ; HDMA lines described (0-223); the end byte is
+                                   ; read on line 224, so a channel is always
+                                   ; terminated when its frame ends
 
 ; Locals while a polygon is built: !d_tiles and !d_ks are free in the beam
 ; renderer until its first emit; !d_tmp is the writer's scratch.
@@ -563,24 +565,37 @@ fx_pw_flush:
 .done
 	RTS
 
-; Finish a table: records X / Y to the last line, then the end byte.
+; Finish a table: records X / Y to the last line, then a 127-line entry of
+; the same (neutral) record and the end byte. HDMA stops at line 224 with
+; that entry still counting down: if the field NMI's $420C write lands
+; after the next frame's HDMA start, the channel resumes without its
+; start-of-frame reload and only counts that entry down (no transfers)
+; until it reads the end byte. A channel stopped right at its end byte
+; would instead underflow its line counter into a 127-line repeat and write
+; whatever follows in memory (hardware and Mesen alike).
 fx_pw_close:
 	LDA.w #!FX_PLINES
 	JSR fx_pw_to
 	JSR fx_pw_flush
+	LDA.w #127                   ; the padding entry (record unchanged)
+	STA !fxp_cnt
+	JSR fx_pw_flush
+	LDA !fxp_ovf
+	BNE .full
 	LDA !fxp_out
 	CMP !fxp_end
-	BCC +
-	LDA.w #$0001
-	STA !fxp_ovf
-	RTS
-+	TAX
+	BCS .full
+	TAX
 	INC
 	STA !fxp_out
 	SEP #$20
 	LDA.b #$00
-	STA.l !FX_PBASE,X
+	STA.l !FX_PBASE,X            ; end byte
 	REP #$20
+	RTS
+.full
+	LDA.w #$0001
+	STA !fxp_ovf
 	RTS
 
 ; Window record for pixels lo..hi (signed, !d_tmp / !d_tmp+2), clipped to

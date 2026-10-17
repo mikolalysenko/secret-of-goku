@@ -34,6 +34,15 @@ local function hold(name, n)
   H.log(name, F.statstr(s), string.format('build=%d steady=%d (%s) 2C=%02X on=%d', lines(first), steady,
     table.concat(costs, ','), H.r8(0x7E002C), H.r16(0x317890)))
   H.result(name .. '_lines', { build = lines(first), steady = steady })
+  -- Three consecutive frames of the PPU picture (F.grab): when the field
+  -- NMI's own work runs past the end of vblank, the frame after it may
+  -- legitimately lose the wave, so run.mjs passes a check when two of the
+  -- three show it. The screenshot is for people.
+  F.grab(name)
+  H.wait(1)
+  F.grab(name .. '_1')
+  H.wait(1)
+  F.grab(name .. '_2')
   F.shotAfter(name)
   return s, steady
 end
@@ -66,6 +75,7 @@ function test()
   F.check('wave_off_flag', H.r16(0x317890) == 0, 'poly_on=' .. H.r16(0x317890))
   F.check('wave_off_backdrop', H.cgram(0) == (base[1] & 0xFF) and H.cgram(1) == (base[1] >> 8), 'CGRAM 0')
   F.check('wave_off_bg_palettes', bgSame() == 0, bgSame() .. ' BG colours changed')
+  F.grab('wave_after')
   F.shotAfter('wave_after')
 
   -- Two waves in one frame: the second falls back to OBJ strips.
