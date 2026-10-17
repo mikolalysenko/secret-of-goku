@@ -27,6 +27,11 @@
 !ending_target_y = !RAM_ORBIT+$8E  ; word
 !ending_map0    = !RAM_ORBIT+$90   ; word  native map when the scene took the screen
 !ending_live    = !RAM_ORBIT+$92   ; byte  bit0: vblank work active, bit1: restore field registers once
+!ending_reason  = !RAM_ORBIT+$94   ; word  endingResult: 0 good, 1 fortress, 2 balls, 3 frieza, 4 beast
+!ending_depart_x = !RAM_ORBIT+$96  ; word  departure take-off point (cue 'depart': boy x + 26)
+!ending_depart_y = !RAM_ORBIT+$98  ; word
+!ending_tmp     = !RAM_ORBIT+$9A   ; word  scratch (hooks)
+!ending_tmp2    = !RAM_ORBIT+$9C   ; word
 
 ; Phases (match the browser's state.phase).
 !EP_TRANSITION = $01   ; good: whole-screen fade to black over 48 frames, then black
@@ -50,6 +55,8 @@
 !EF_SSJ     = $0004    ; Goku stays Super Saiyan (bad ending: permanent form)
 !EF_GOLD    = $0008    ; death started in Super Saiyan (revert cue at 18)
 !EF_ORBIT   = $0010    ; death in orbit: the orbit module draws until black
+!EF_NIGHT   = $0020    ; Frieza's crisis was active: the doomed globe shows its night side
+!EF_BEGUN   = $8000    ; the finale has begun (begin/lose); cues need it
 
 !ES_ACTIVE    = $01    ; a scene owns the picture
 !ES_NATIVEBOY = $02    ; the native boy actor is Randi: do not substitute Goku
@@ -175,6 +182,7 @@ hi_bits_ram = !SW+$DF0             ; 16 bytes (oam_put's high-table patterns)
 !l_fadeb2   = !s_x+$06          ; word  group-1 black of the current tables
 !s_vwcount  = !s_x+$08          ; word  queued single-word VRAM writes (s_stage)
 !s_win      = !s_x+$0A          ; byte  window HDMA active (channel 6)
+!s_objlist  = !s_x+$F0          ; 16 bytes: reunion object list copy (header + Dyluck)
 
 ; Parameter blocks in s_tmp (frame side).
 !o_x    = !s_tmp+0              ; oam_put / draw_quad: x (signed)
@@ -254,23 +262,45 @@ ending_cue:
 	PLP
 	RTL
 
-; Map a native event id (A, 16-bit) to a phase as native-story.js does:
-; 6B summon, A3 dragon/explode, A4 wish/escape, A5 village/kai, A6 complete,
-; 14F scatter, 176 reunion, DE depart, E4 kai. Unknown ids are ignored.
+; A native event id starts (A16): 6B summon, A3 dragon, A4 wish, A5 village,
+; A6 complete, 14F scatter, 176 reunion, DE depart, E4 kai cue the phase as
+; shenron-ending.js cue() does once the finale has begun (the bad outcome
+; plays explode, escape and kai for A3-A5). Unknown ids are ignored.
 ending_event:
+	PHB
 	PHP
 	REP #$30
 	PHX
+	PHY
 	PHA
+	PEA $7E7E : PLB : PLB
+	JSR cue_event
+	REP #$30
+	PLA
+	PLY
+	PLX
+	PLP
+	PLB
+	RTL
+
+; Event id A16 -> phase; side effects of cue(). DB = $7E. Clobbers A/X/Y.
+cue_event:
+	REP #$30
+	STA.l !ending_tmp
+	LDA.l !ending_flags
+	AND.w #!EF_BEGUN
+	BNE .begun
+	RTS                           ; browser: cue() needs a live state
+.begun
 	LDX.w #$0000
 .find
-	LDA $01,S
+	LDA.l !ending_tmp
 	CMP.l ending_event_ids,X
 	BEQ .hit
 	INX : INX : INX : INX
 	CPX.w #ending_event_ids_end-ending_event_ids
 	BCC .find
-	BRA .out
+	RTS
 .hit
 	LDA.l !ending_flags
 	AND.w #!EF_BAD
@@ -281,34 +311,89 @@ ending_event:
 	LDA.l ending_event_ids+2,X
 .set
 	AND.w #$00FF
-	BEQ .out
+	STA.l !ending_tmp
 	SEP #$20
 	STA.l !ending_request
-.out
 	REP #$30
-	PLA
-	PLX
-	PLP
-	RTL
-ending_event_ids:     ; id.w, good phase, bad phase
-	dw $006B : db !EP_SUMMON, $00
+	ASL
+	TAX
+	JMP (cue_effect_table,X)
+ending_event_ids:     ; id.w, good phase, bad phase (cue(): dragon, wish and
+                      ; village become explode, escape and kai when bad)
+	dw $006B : db !EP_SUMMON, !EP_SUMMON
 	dw $00A3 : db !EP_DRAGON, !EP_EXPLODE
 	dw $00A4 : db !EP_WISH, !EP_ESCAPE
 	dw $00A5 : db !EP_VILLAGE, !EP_KAI
 	dw $00A6 : db !EP_COMPLETE, !EP_COMPLETE
-	dw $014F : db !EP_SCATTER, $00
-	dw $0176 : db !EP_REUNION, $00
-	dw $00DE : db !EP_DEPART, $00
+	dw $014F : db !EP_SCATTER, !EP_SCATTER
+	dw $0176 : db !EP_REUNION, !EP_REUNION
+	dw $00DE : db !EP_DEPART, !EP_DEPART
 	dw $00E4 : db !EP_KAI, !EP_KAI
 ending_event_ids_end:
+cue_effect_table:
+	dw cue_none, cue_none, cue_summon, cue_dragon, cue_wish
+	dw cue_none, cue_none, cue_village, cue_depart, cue_kai
+	dw cue_none, cue_none, cue_none, cue_escape, cue_none
+cue_none:
+	RTS
+; summon: mod.options.superSaiyan = false.
+cue_summon:
+	LDA.w #$0000
+	JSL goku_api_set_form
+	RTS
+cue_dragon:
+	LDA.w #!ESFX_POWERBURST
+	BRA cue_sfx
+; wish: quest.wish() (story grants it only for a good ending).
+cue_wish:
+	JSL story_api_quest_wish
+	REP #$30
+	LDA.w #!ESFX_CHARGED
+	BRA cue_sfx
+cue_kai:
+	LDA.w #!ESFX_TELEPORTIN
+	BRA cue_sfx
+cue_escape:
+	LDA.w #!ESFX_TELEPORT
+cue_sfx:
+	SEP #$20
+	STA.l !ending_sfx
+	REP #$30
+	RTS
+; village: end with a living Randi, never a ghost left by the battle
+; state ($E190/$E191 = 0, HP = max).
+cue_village:
+	SEP #$20
+	LDA.b #$00
+	STA.l $7EE190
+	STA.l $7EE191
+	REP #$20
+	LDA.l $7EE184
+	STA.l $7EE182
+	RTS
+; depart: Goku's take-off point beside the boy (x + 26, y).
+cue_depart:
+	LDA.l $7EE020
+	CLC
+	ADC.w #26
+	STA.l !ending_depart_x
+	LDA.l $7EE022
+	STA.l !ending_depart_y
+	RTS
 
 ; Begin the finale (event 42F). A (low byte) = !EF_* flags (bit 0 bad).
-; Good starts the 48-frame transition, bad the doomed globe.
+; Good starts the 48-frame transition, bad the doomed globe. Ignored once
+; the finale has begun (shenron-ending.js begin()).
 ending_begin:
 	PHP
 	REP #$30
 	PHA
+	LDA.l !ending_flags
+	AND.w #!EF_BEGUN
+	BNE .out
+	LDA $01,S
 	AND.w #$00FF
+	ORA.w #!EF_BEGUN
 	STA.l !ending_flags
 	LDA.w #$0000
 	STA.l !ending_done
@@ -322,26 +407,180 @@ ending_begin:
 	LDA.b #!EP_TRANSITION
 .go
 	STA.l !ending_request
+.out
 	REP #$30
 	PLA
 	PLP
 	RTL
 
 ; Finale death (boss-rush-death.js). A (low byte): !EF_GOLD / !EF_ORBIT.
+; Ignored once the finale has begun (shenron-ending.js lose()).
 ending_lose:
 	PHP
 	REP #$30
 	PHA
+	LDA.l !ending_flags
+	AND.w #!EF_BEGUN
+	BNE .out
+	LDA $01,S
 	AND.w #!EF_GOLD|!EF_ORBIT
-	ORA.w #!EF_BAD
+	ORA.w #!EF_BAD|!EF_BEGUN
 	STA.l !ending_flags
 	SEP #$20
 	LDA.b #!EP_FATAL
 	STA.l !ending_request
+.out
 	REP #$30
 	PLA
 	PLP
 	RTL
+
+; ---------------------------------------------------------------------------
+; Story hooks and queries (docs/agents/snes-port/story.md): JSL with
+; P = M16/X16, DB = $7E, D = 0; A = the entered event id (the map for the
+; object list). The table in story/hooks.asm picks these labels up. Story's
+; test builds (-DSTORY_TEST) log every hook instead.
+if not(defined("STORY_TEST"))
+!STORY_HOOK_ENDING_BEGIN        = ending_hook_begin
+!STORY_HOOK_ENDING_CUE_DRAGON   = ending_hook_cue
+!STORY_HOOK_ENDING_CUE_WISH     = ending_hook_cue
+!STORY_HOOK_ENDING_CUE_VILLAGE  = ending_hook_cue
+!STORY_HOOK_ENDING_CUE_COMPLETE = ending_hook_cue
+!STORY_HOOK_ENDING_CUE_DEPART   = ending_hook_cue
+!STORY_HOOK_ENDING_CUE_KAI      = ending_hook_cue
+!STORY_HOOK_ENDING_CUE_SCATTER  = ending_hook_cue
+!STORY_HOOK_ENDING_CUE_REUNION  = ending_hook_cue
+!STORY_HOOK_ENDING_CUE_SUMMON   = ending_hook_cue
+!STORY_HOOK_OBJECT_LIST_ENDING  = ending_hook_object_list
+!STORY_QUERY_ENDING_ACTIVE      = ending_query_active
+endif
+
+; Entering 42F: endingResult() picks the outcome; Frieza's five-minute
+; crisis puts the doomed globe on its night side (planet-view crisisActive).
+; Presentation bits other modules set beforehand (!EF_SSJ, !EF_EIGHTH) stay.
+ending_hook_begin:
+	REP #$30
+	LDA.l !ending_flags
+	AND.w #!EF_BEGUN
+	BNE .out
+	JSL story_api_ending_result
+	REP #$30
+	STA.l !ending_reason
+	LDA.l !ending_flags
+	AND.w #!EF_SSJ|!EF_EIGHTH
+	STA.l !ending_tmp
+	LDA.l !ending_reason
+	BEQ .begin
+	LDA.l !ending_tmp
+	ORA.w #!EF_BAD
+	STA.l !ending_tmp
+	LDA.w #!STORY_Q_FRIEZA_CRISIS
+	JSR story_query_call
+	BEQ .begin
+	LDA.l !ending_tmp
+	ORA.w #!EF_NIGHT
+	STA.l !ending_tmp
+.begin
+	LDA.l !ending_tmp
+	JSL ending_begin
+.out
+	RTL
+
+ending_hook_cue:
+	REP #$30
+	JSR cue_event
+	RTL
+
+; Is the finale running (mana-mod canAttack gate: ending.active)?
+ending_query_active:
+	REP #$30
+	LDA.l !ending_flags
+	AND.w #!EF_BEGUN
+	BEQ .no
+	LDA.w #$0001
+.no
+	RTL
+
+; The reunion cliff (map 180) has no NPCs; during the good reunion its
+; object list gains Dyluck's record (native-story.js storyRead), so the
+; native loader brings him back with his graphics, palette and actor slot.
+; The list is copied to the scene work area (header + one record).
+!ENDING_REUNION_MAP = 180
+ending_hook_object_list:
+	REP #$30
+	CMP.w #!ENDING_REUNION_MAP
+	BNE .out
+	LDA.l !ending_flags
+	AND.w #!EF_BEGUN|!EF_BAD
+	CMP.w #!EF_BEGUN
+	BNE .out
+	LDA.l !ending_request
+	AND.w #$00FF
+	CMP.w #!EP_REUNION
+	BEQ .copy
+	LDA.l !ending_phase
+	AND.w #$00FF
+	CMP.w #!EP_REUNION
+	BNE .out
+.copy
+	LDA.l !story_objlist_start
+	TAX
+	LDY.w #$0000
+.header
+	LDA.l $C80000,X
+	PHX
+	TYX
+	STA.l (!SRAM_WORK_SCENE&$FF0000)|!s_objlist,X
+	PLX
+	INX : INX
+	INY : INY
+	CPY.w #$0008
+	BCC .header
+	LDX.w #$0000
+.record
+	LDA.l ending_dyluck_record,X
+	STA.l (!SRAM_WORK_SCENE&$FF0000)|!s_objlist+8,X
+	INX : INX
+	CPX.w #$0008
+	BCC .record
+	LDA.w #!s_objlist
+	STA.l !story_objlist_start
+	LDA.w #!s_objlist+16
+	STA.l !story_objlist_end
+	SEP #$20
+	LDA.b #!SRAM_WORK_SCENE>>16
+	STA.l !story_objlist_bank
+	REP #$20
+.out
+	RTL
+ending_dyluck_record:
+	db $4E,$8F,$8B,$88,$40,$AC,$00,$00
+
+; Query id A16 through story's table (same contract as story_query):
+; A16 = value, Z set when 0. DB = $7E.
+story_query_call:
+	PHX
+	AND.w #$007F
+	STA.l !ending_tmp2
+	ASL
+	CLC
+	ADC.l !ending_tmp2
+	TAX
+	PHK
+	PER .back-1
+	SEP #$20
+	LDA.l story_query_table+2,X
+	PHA
+	REP #$20
+	LDA.l story_query_table,X
+	DEC
+	PHA
+	RTL
+.back
+	REP #$30
+	PLX
+	AND.w #$00FF
+	RTS
 
 ; Release the picture and go idle.
 ending_stop:
