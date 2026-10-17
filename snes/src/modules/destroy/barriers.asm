@@ -7,14 +7,17 @@
 ; native-orbs.js: an orb's own puzzle event, with the spell byte its
 ; element test reads from $E181.
 
-!bh_x     = !cs+$0     ; attack origin
-!bh_y     = !cs+$2
-!bh_len   = !cs+$4     ; min(640, length)
-!bh_wid   = !cs+$6     ; half width
-!bh_horz  = !cs+$8
-!bh_sign  = !cs+$A
+!bh_x     = !arg_x     ; attack origin
+!bh_y     = !arg_y
+!bh_len   = !cs+$0     ; min(640, length)
+!bh_wid   = !cs+$2     ; half width
+!bh_horz  = !sc_horz   ; (dst_band_axes)
+!bh_sign  = !sc_sign
+!nt_plen  = !cs+$8     ; length already searched by this beam ($FFFF none)
+!nt_phalf = !cs+$A
 !bh_best  = !cs+$C     ; best candidate distance (low word, $FFFF none)
 !bh_bhi   = !cs+$E     ; best candidate distance (high word)
+; !bb_id/!bb_len/!bb_half (module.asm): the beam's searched extent
 
 !BS_NONE  = 0
 !BS_WAIT  = 1
@@ -33,24 +36,40 @@ dst_barrier_hit:
 	LDA.w !arg_id : BEQ +
 	CMP.w !d_abar : BNE +
 	RTS
-+	LDA.w !arg_x : STA.w !bh_x
-	LDA.w !arg_y : STA.w !bh_y
-	LDA.w !arg_len : CMP.w #641 : BCC +
++	LDA.w !arg_len : CMP.w #641 : BCC +
 	LDA.w #640
 +	STA.w !bh_len
 	LDA.w !arg_half : STA.w !bh_wid
-	LDA.w !arg_dir : AND.w #3 : TAX
-	LDA.l dst_dir_horz,X : AND.w #$00FF : STA.w !bh_horz
-	TXA : ASL : TAX
-	LDA.l dst_dir_sign,X : STA.w !bh_sign
+	LDA.w !arg_dir : LDX.w !arg_x : LDY.w !arg_y
+	JSR dst_band_axes
 	; authored gate rectangles first
 	LDA.w !m_bits : AND.w #!MAP_INFO_BARRIER : BEQ .native
 	JSR dst_ki_barrier : BCC .native
 	JMP dst_barrier_start
 .native
-	JSR dst_native_target : BCS +
+	; The browser searches the whole box every frame until a hit; cells
+	; this beam already searched cannot hold a target, so only new ones.
+	LDA.w #$FFFF : STA.w !nt_plen : STA.w !nt_phalf
+	LDA.w !arg_id : BEQ +
+	CMP.l !bb_id : BNE +
+	LDA.l !bb_len : STA.w !nt_plen
+	LDA.l !bb_half : STA.w !nt_phalf
++	JSR dst_native_target : BCS .hit
+	; remember the searched extent
+	LDA.w !arg_id : BEQ .none
+	CMP.l !bb_id : BEQ +
+	STA.l !bb_id
+	LDA.w !bh_len : STA.l !bb_len
+	LDA.w !bh_wid : STA.l !bb_half
 	RTS
-+	LDX.w #$FFFF
++	LDA.w !bh_len : CMP.l !bb_len : BCC +
+	STA.l !bb_len
++	LDA.w !bh_wid : CMP.l !bb_half : BCC .none
+	STA.l !bb_half
+.none
+	RTS
+.hit
+	LDX.w #$FFFF
 	JMP dst_barrier_start
 
 ; dst_ki_barrier: first kiBarriers record of this map that is closed, not
@@ -130,82 +149,96 @@ dst_touches:
 	RTS
 
 ; ---------------------------------------------------------------------------
-; dst_native_target: nativeTile(): the nearest native hit tile, floor
-; plate or locked door trigger on Goku's layer within the attack's box.
-; Carry set when found; the target is described in !DS+$40.. :
-;   +$40 event, +$42 door index ($FFFF), +$44 offset, +$46 tile, +$48 react
-!nt_tx   = !DS+$30
-!nt_ty   = !DS+$32
-!nt_tx0  = !DS+$34
-!nt_tx1  = !DS+$36
-!nt_ty1  = !DS+$38
-!nt_src  = !DS+$3A
-!nt_ev   = !DS+$3C
-!nt_door = !DS+$3E
-!nt_out  = !DS+$40
+; dst_native_target: nativeTile(): the nearest native hit tile, floor plate
+; or locked door trigger on Goku's layer that the band touches (cell centre
+; along the attack in [0, len+8], across <= width+8). Nearest by distance
+; to the cell corner; ties go to the browser's scan order (row, then
+; column). Carry set when found; the target is described in !nt_out:
+;   +0 event, +2 door index ($FFFF), +4 offset, +6 tile, +8 react,
+;   +A tx, +C ty
+!nt_src  = !NT_SRC
+!nt_ev   = !NT_EV
+!nt_door = !NT_DOOR
+!nt_out  = !NTO
 dst_native_target:
 	LDA.w #$FFFF : STA.w !bh_best : STA.w !bh_bhi
-	; box: x/y range of the segment padded by width+8, clipped to the map
-	LDA.w !bh_wid : CLC : ADC.w #8 : STA.w !d_t6        ; pad
-	LDA.w !bh_horz : BEQ .vbox
-	; x range: [min(x, x1) - pad, max(x, x1) + pad], y range: y +- pad
-	LDA.w !bh_sign : BMI +
-	LDA.w !bh_x : SEC : SBC.w !d_t6 : STA.w !d_t2
-	LDA.w !bh_x : CLC : ADC.w !bh_len : CLC : ADC.w !d_t6 : STA.w !d_t3
-	BRA ++
-+	LDA.w !bh_x : SEC : SBC.w !bh_len : SEC : SBC.w !d_t6 : STA.w !d_t2
-	LDA.w !bh_x : CLC : ADC.w !d_t6 : STA.w !d_t3
-++	LDA.w !bh_y : SEC : SBC.w !d_t6 : STA.w !d_t4
-	LDA.w !bh_y : CLC : ADC.w !d_t6 : STA.w !d_t5
-	BRA .box
-.vbox
-	LDA.w !bh_sign : BMI +
-	LDA.w !bh_y : SEC : SBC.w !d_t6 : STA.w !d_t4
-	LDA.w !bh_y : CLC : ADC.w !bh_len : CLC : ADC.w !d_t6 : STA.w !d_t5
-	BRA ++
-+	LDA.w !bh_y : SEC : SBC.w !bh_len : SEC : SBC.w !d_t6 : STA.w !d_t4
-	LDA.w !bh_y : CLC : ADC.w !d_t6 : STA.w !d_t5
-++	LDA.w !bh_x : SEC : SBC.w !d_t6 : STA.w !d_t2
-	LDA.w !bh_x : CLC : ADC.w !d_t6 : STA.w !d_t3
-.box
-	; tx from max(0, floor(x0/16)) while tx < min(W, ceil(x1/16))
-	LDA.w !d_t2 : JSR dst_floor16 : BPL +
-	LDA.w #0
-+	STA.l !nt_tx0
-	LDA.w !d_t3 : JSR dst_ceil16 : STA.w !d_t3
-	LDA $C0 : CMP.w #2048 : BCC +
-	LDA.w #2048
-+	LSR : LSR : LSR : LSR
-	CMP.w !d_t3 : BCS +
-	STA.w !d_t3
-+	LDA.w !d_t3 : STA.l !nt_tx1
-	LDA.w !d_t4 : JSR dst_floor16 : BPL +
-	LDA.w #0
-+	STA.l !nt_ty
-	LDA.w !d_t5 : JSR dst_ceil16 : STA.w !d_t5
-	LDA $C2 : CMP.w #2048 : BCC +
-	LDA.w #2048
-+	LSR : LSR : LSR : LSR
-	CMP.w !d_t5 : BCS +
-	STA.w !d_t5
-+	LDA.w !d_t5 : STA.l !nt_ty1
-	; layer of Goku
 	LDA.w $E00B : AND.w #$0080 : BEQ +
 	LDA.w #1
 +	STA.w !d_cl
-.row
-	LDA.l !nt_ty : CMP.l !nt_ty1 : BCC +
+	; outer cells: centre along in [0, len+8]
+	LDA.w !bh_sign : BMI .neg
+	LDA.w !s_a : SEC : SBC.w #8 : JSR dst_ceil16 : STA.w !s_o
+	LDA.w !s_a : CLC : ADC.w !bh_len : JSR dst_floor16 : STA.w !s_oend
+	LDA.w #1 : STA.w !s_ostep
+	BRA .clip
+.neg
+	LDA.w !s_a : SEC : SBC.w #8 : JSR dst_floor16 : STA.w !s_o
+	LDA.w !s_a : SEC : SBC.w !bh_len : SEC : SBC.w #16 : JSR dst_ceil16 : STA.w !s_oend
+	LDA.w #$FFFF : STA.w !s_ostep
+.clip
+	; clip both ends to [0, cells-1] of the axis
+	JSR dst_nt_outer_cells : STA.w !s_w
+	LDA.w !s_o : JSR dst_nt_clip : STA.w !s_o
+	LDA.w !s_oend : JSR dst_nt_clip : STA.w !s_oend
+	; empty when the ends crossed (both clipped to the same side)
+	LDA.w !bh_sign : BMI +
+	LDA.w !s_oend : CMP.w !s_o : BPL ++
 	JMP .end
-+	LDA.l !nt_tx0 : STA.l !nt_tx
-.col
-	LDA.l !nt_tx : CMP.l !nt_tx1 : BCC +
-	JMP .next_row
-+	JSR dst_native_cell
-	LDA.l !nt_tx : INC : STA.l !nt_tx
-	BRA .col
-.next_row
-	LDA.l !nt_ty : INC : STA.l !nt_ty
-	JMP .row
++	LDA.w !s_o : CMP.w !s_oend : BPL ++
+	JMP .end
+++	; not wider than before: skip straight past the searched length
+	LDA.w !nt_plen : BMI .outer
+	LDA.w !bh_wid : CMP.w !nt_phalf : BEQ + : BCS .outer
++	LDA.w !nt_plen : JSR dst_band_skip : BCC .outer
+	JMP .end
+	; the band has the same width everywhere: inner ranges once
+	LDA.w !bh_wid : STA.w !s_w
+	JSR dst_inner_range
+	JSR dst_nt_inner_cells : DEC : CMP.w !s_hi : BCS +
+	STA.w !s_hi
++	LDA.w !s_lo : STA.l !BC_LO
+	LDA.w !s_hi : STA.l !BC_HI
+	LDA.w #1 : STA.l !BC_PLO                  ; previous: empty unless known
+	LDA.w #0 : STA.l !BC_PHI
+	LDA.w !nt_plen : BMI .outer
+	LDA.w !nt_phalf : STA.w !s_w
+	JSR dst_inner_range
+	LDA.w !s_lo : STA.l !BC_PLO
+	LDA.w !s_hi : STA.l !BC_PHI
+.outer
+	JSR dst_band_along
+	LDA.w !s_along : BPL +
+	JMP .next_outer                          ; behind the origin
++	LDA.l !BC_LO : STA.w !s_lo
+	LDA.l !BC_HI : STA.w !s_hi
+	LDA.w #1 : STA.w !s_plo
+	STZ.w !s_phi
+	LDA.w !nt_plen : BMI +
+	CLC : ADC.w #8 : CMP.w !s_along : BMI +
+	LDA.l !BC_PLO : STA.w !s_plo
+	LDA.l !BC_PHI : STA.w !s_phi
++	LDA.w !s_lo : STA.w !s_i
+.cell
+	LDA.w !s_i : CMP.w !s_hi : BEQ + : BCS .next_outer
++	CMP.w !s_plo : BCC .visit
+	CMP.w !s_phi : BEQ + : BCS .visit
++	LDA.w !s_phi : INC : STA.w !s_i
+	BRA .cell
+.visit
+	LDA.w !bh_horz : BEQ +
+	LDA.w !s_o : STA.w !d_cx
+	LDA.w !s_i : STA.w !d_cy
+	BRA ++
++	LDA.w !s_i : STA.w !d_cx
+	LDA.w !s_o : STA.w !d_cy
+++	JSR dst_native_cell
+.skip
+	INC.w !s_i
+	BRA .cell
+.next_outer
+	LDA.w !s_o : CMP.w !s_oend : BEQ .end
+	CLC : ADC.w !s_ostep : STA.w !s_o
+	JMP .outer
 .end
 	LDA.w !bh_best : AND.w !bh_bhi : CMP.w #$FFFF : BEQ +
 	SEC
@@ -213,11 +246,42 @@ dst_native_target:
 +	CLC
 	RTS
 
-; One cell of nativeTile(); keeps the nearest candidate.
+; Cells along / across the attack axis on this map (min(2048, $C0/$C2)/16).
+dst_nt_outer_cells:
+	LDA.w !bh_horz : BNE dst_nt_width
+	BRA dst_nt_height
+dst_nt_inner_cells:
+	LDA.w !bh_horz : BNE dst_nt_height
+dst_nt_width:
+	LDA $C0 : CMP.w #2048 : BCC +
+	LDA.w #2048
++	LSR : LSR : LSR : LSR
+	RTS
+dst_nt_height:
+	LDA $C2 : CMP.w #2048 : BCC +
+	LDA.w #2048
++	LSR : LSR : LSR : LSR
+	RTS
+; A = outer cell -> clipped to [0, !s_w - 1]
+dst_nt_clip:
+	BPL +
+	LDA.w #0
+	RTS
++	CMP.w !s_w : BCC +
+	LDA.w !s_w : DEC
++	RTS
+
+; One cell of nativeTile(): keeps the nearest candidate.
 dst_native_cell:
-	LDA.l !nt_tx : STA.w !d_cx
-	LDA.l !nt_ty : STA.w !d_cy
-	JSR dst_load_cell : BCC +
+	; cheap pre-filter: an F-prefix hit code or a walk-on trigger
+	LDA.w !d_cy : XBA : LSR : ORA.w !d_cx
+	LDX.w !d_cl : BEQ +
+	ORA.w #$4000
++	TAX
+	LDA.l $7F0000,X
+	JSR dst_cell_class : AND.w #1 : BNE +
+	RTS
++	JSR dst_load_cell : BCC +
 	RTS
 +	LDA.w #$FFFF : STA.l !nt_ev : STA.l !nt_door
 	LDA.w !d_ccode : AND.w #$00F0 : CMP.w #$00F0 : BNE .floor
@@ -243,12 +307,6 @@ dst_native_cell:
 	REP #$20
 	BEQ +
 	RTS
-+	; touched? rect = the cell
-	LDA.w !d_cx : ASL : ASL : ASL : ASL : STA.w !d_t2
-	LDA.w !d_cy : ASL : ASL : ASL : ASL : STA.w !d_t3
-	LDA.w #16 : STA.w !d_t4 : STA.w !d_t5
-	JSR dst_touches : BCS +
-	RTS
 +	; distance^2 from the origin to the cell corner
 	LDA.w !d_cx : ASL : ASL : ASL : ASL : SEC : SBC.w !bh_x
 	JSR dst_square : STA.w !d_t0 : STX.w !d_t1
@@ -256,10 +314,16 @@ dst_native_cell:
 	JSR dst_square
 	CLC : ADC.w !d_t0 : STA.w !d_t0
 	TXA : ADC.w !d_t1 : STA.w !d_t1
-	; strictly nearer than the best so far (stable for ties)
+	; nearer, or as near and earlier in the browser's row-major scan
 	CMP.w !bh_bhi : BCC .take
-	BNE .keep
-	LDA.w !d_t0 : CMP.w !bh_best : BCS .keep
+	BNE .no
+	LDA.w !d_t0 : CMP.w !bh_best : BCC .take
+	BNE .no
+	LDA.w !d_cy : CMP.l !nt_out+$C : BCC .take
+	BNE .no
+	LDA.w !d_cx : CMP.l !nt_out+$A : BCC .take
+.no
+	RTS
 .take
 	LDA.w !d_t0 : STA.w !bh_best
 	LDA.w !d_t1 : STA.w !bh_bhi
@@ -267,6 +331,8 @@ dst_native_cell:
 	LDA.l !nt_door : STA.l !nt_out+2
 	LDA.w !d_coff : STA.l !nt_out+4
 	LDA.w !d_ctile : STA.l !nt_out+6
+	LDA.w !d_cx : STA.l !nt_out+$A
+	LDA.w !d_cy : STA.l !nt_out+$C
 	LDA.l !nt_src : TAX
 	LDA.w #0
 	CPX.w #!DESTROY_COMBO_LO : BCC +

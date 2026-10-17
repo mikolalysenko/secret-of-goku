@@ -103,36 +103,42 @@ dst_breakable:
 
 ; dst_chain: native damage stages (eligible() for object policies). Carry
 ; set when the replacement chain reaches a non-C tile without a cycle within
-; 16 steps (kinds <= 11); !d_brep = that final tile.
+; 16 steps (kinds <= 11); !d_brep = that final tile. A cycle is detected by
+; re-walking the (short) chain from the start for every new tile.
 dst_chain:
-	SEP #$20
-	LDA.w !d_ctile : STA.l !DS
-	REP #$20
-	LDA.w #1 : STA.w !d_t0             ; seen count
 	LDA.w !d_crep : STA.w !d_t1        ; next
-	LDA.w #16 : STA.w !d_t2
+	STZ.w !d_t0                        ; steps taken
 .loop
-	LDX.w #0
-.seen
-	LDA.l !DS,X : AND.w #$00FF
-	CMP.w !d_t1 : BEQ .fail
-	INX : CPX.w !d_t0 : BCC .seen
-	SEP #$20
-	LDA.w !d_t1 : STA.l !DS,X
-	REP #$20
-	INC.w !d_t0
+	; seen? the tile itself or any of the first t0 replacements
+	LDA.w !d_t1 : CMP.w !d_ctile : BEQ .fail
+	LDA.w !d_crep : STA.w !d_t2
+	LDX.w !d_t0
+-	DEX : BMI +
+	LDA.w !d_t2 : CMP.w !d_t1 : BEQ .fail
+	PHX
+	JSR dst_desc_rep : STA.w !d_t2
+	PLX
+	BRA -
++	; the next stage's code
 	LDA.w !d_t1 : JSR dst_desc
 	LDA.l $7F0002,X : AND.w #$00FF : STA.w !d_t3
 	AND.w #$00F0 : CMP.w #$00C0 : BNE .done
 	LDA.w !d_t3 : AND.w #$000F : CMP.w #12 : BCS .fail
 	LDA.l $7F0003,X : AND.w #$00FF : STA.w !d_t1
-	DEC.w !d_t2 : BNE .loop
+	INC.w !d_t0
+	LDA.w !d_t0 : CMP.w #16 : BCC .loop
 .fail
 	CLC
 	RTS
 .done
 	LDA.w !d_t1 : STA.w !d_brep
 	SEC
+	RTS
+
+; A = replacement of tile !d_t2 (same layer).
+dst_desc_rep:
+	LDA.w !d_t2 : JSR dst_desc
+	LDA.l $7F0003,X : AND.w #$00FF
 	RTS
 
 ; ---------------------------------------------------------------------------
@@ -395,6 +401,9 @@ dst_apply_frame:
 	JSR dst_sync_map
 	LDA.w !d_last : CMP.w !FRAME : BNE +
 	RTS
++	; a breach plan in progress sees one map: rows wait until it is done
+	LDA.l !pl_stage : BEQ +
+	RTS
 +	JSR dst_queue_expire
 	JSR dst_ground_ok : BCS +
 	STZ.w !d_qn
@@ -451,7 +460,10 @@ dst_apply_row:
 	JMP .first
 +	JSR dst_row_redraw
 	LDA.w !FRAME : STA.w !d_last
-	RTS
+	; keep searches short: drop dead entries once a few accumulate
+	LDA.w !d_qn : SEC : SBC.w !d_qlive : CMP.w #8 : BCC +
+	JSR dst_queue_compact
++	RTS
 
 ; Write one edit: map byte, smashed-object record, row statistics.
 dst_apply_cell:
@@ -568,11 +580,15 @@ dst_replay:
 +	LDX.w #0
 .loop
 	STX.w !fx_x
+	; still smashed? (one byte read)
+	LDA.l !DC+3,X : AND.w #$00FF : STA.w !d_t5
+	LDA.l !DC,X : TAX
+	LDA.l $7F0000,X : AND.w #$00FF : CMP.w !d_t5 : BNE +
+	JMP .next
++	LDX.w !fx_x
 	LDA.l !DC,X : JSR dst_load_offset
 	LDX.w !fx_x
-	LDA.l !DC+3,X : AND.w #$00FF : CMP.w !d_ctile : BNE +
-	JMP .next                                       ; still smashed
-+	LDA.l !DC+7,X : AND.w #$00FF : STA.w !d_t4
+	LDA.l !DC+7,X : AND.w #$00FF : STA.w !d_t4
 	AND.w #!QM_DEMO : BNE .demo
 	LDA.w !d_t4 : AND.w #$0003 : JSR dst_breakable : BCC .skip
 	LDX.w !fx_x
@@ -625,26 +641,175 @@ dst_row_outputs:
 	INC.w !out_sfx
 	LDA.w !fx_demo : BEQ +
 	LDA.w !FRAME : STA.w !out_demo
+	LDA.l !pj_dirty : INC : STA.l !pj_dirty
 	LDA.w !m_grp : BEQ +
 	CLC : ADC.w #!DESTROY_REACT_WALL_BASE-1 : STA.w !out_react
 	LDA.w !d_map : STA.w !out_rmap
-+	; effect request: frame, flags (1 demolition, 2 brazier, 4 BG2), row, x range
-	LDA.w !out_rows : AND.w #!DFX_MAX-1 : ASL : ASL : ASL : TAX
-	LDA.w !FRAME : ORA.w #1 : STA.l !DFX+0,X        ; nonzero = valid
-	LDA.w #0
-	LDY.w !fx_demo : BEQ +
-	ORA.w #1
-+	LDY.w !fx_braz : BEQ +
-	ORA.w #2
-+	LDY.w !fx_key : CPY.w #$4000 : BCC +
-	ORA.w #4
-+	STA.w !d_t5
-	LDA.w !fx_key : AND.w #$3F80 : ASL : XBA : STA.w !d_t6     ; ty
++	RTS
+
+; ---------------------------------------------------------------------------
+; Tile classes: four bits per metatile and layer (!TK_*), computed on first
+; use from the live descriptors (dst_cell_class) and forgotten after each map
+; load and native event. $F marks a class not computed yet: no class has
+; both !TK_END and !TK_WALL (a floor is not a wall).
+; dst_classes_watch (field frame): forget the classes when an event ends.
+dst_classes_watch:
+	LDA $D0 : AND.w #$00FF : BEQ +
+	STA.l !dk_d0
+	RTS
++	LDA.l !dk_d0 : BNE +
+	RTS
++	LDA.w #0 : STA.l !dk_d0
+	; fall through: the event may have changed the descriptors
+dst_classes_reset:
+	LDA.w #$FFFF
+	LDX.w #$00FE
+-	STA.l !DK,X
+	DEX : DEX : BPL -
+	RTS
+
+; dst_class_of: A = layer<<8 | tile -> A = class bits (!TK_*).
+; Mirrors dst_cls for a cell without protection (dungeon-geometry.js
+; ordinary / floor / wall / airMaterial; palace-braziers.js decoration).
+dst_class_of:
+	STA.w !d_t4
+	AND.w #$00FF : STA.w !d_ctile
+	LDA.w !d_t4 : XBA : AND.w #1 : STA.w !d_cl
+	LDA.w !d_ctile : JSR dst_meta
+	LDA.w !d_ctile : JSR dst_desc
+	LDA.l $7F0002,X : AND.w #$00FF : STA.w !d_t3  ; code
+	LDA.l $7F0000,X : STA.w !d_t2                 ; flags | behaviour<<8
+	STZ.w !d_t1
+	; scan target: cut or hit code, walk-on trigger, scenery map, brazier
+	LDA.w !d_t3 : AND.w #$00F0 : CMP.w #$00C0 : BEQ .cand
+	CMP.w #$00F0 : BEQ .cand
+	LDA.w !d_t2 : BMI .cand                       ; behaviour bit 7
+	LDA.w !m_bits : AND.w #!MAP_INFO_SCENERY : BEQ +
+	JSR dst_class_scenery : BCS .cand
++	JSR dst_class_deco : BCC .ord
+.cand
+	LDA.w #!TK_CAND : STA.w !d_t1
+.ord
+	LDA.w !d_t3 : BEQ +
+	JMP .done
++	LDA.w !d_t2 : BIT.w #$D008 : BNE .air_check
+	LDA.w !d_t1 : ORA.w #!TK_ORD : STA.w !d_t1
+.air_check
+	; dungeon air (code 0 here): an air metatile with no trigger bits
+	STZ.w !d_t0
+	LDA.w !d_t2 : BIT.w #$D008 : BNE +
+	LDA.w !d_cmeta : JSR dst_bit_air : BCC +
+	INC.w !d_t0
++	LDA.w !d_t1 : AND.w #!TK_ORD : BEQ .done
+	JSR dst_class_deco : BCS .done                ; braziers: neither
+	LDA.w !d_t2 : AND.w #$0007 : CMP.w #3 : BEQ .wall
+	BCS .done
+	; floor: not blank metatile 0, not a palace window recess, not air
+	LDA.w !d_cmeta : BNE +
+	LDX.w !m_ts
+	LDA.l destroy_blank_zero,X : AND.w #$00FF : BNE .done
++	LDA.w !m_ts : CMP.w #23 : BNE +
+	LDA.w !d_cl : BNE +
+	LDA.w !d_cmeta : JSR dst_bit_false_floor : BCS .done
++	LDA.w !d_t0 : BNE .done
+	LDA.w !d_t1 : ORA.w #!TK_END : STA.w !d_t1
+	BRA .done
+.wall
+	LDA.w !d_t0 : BNE .done
+	LDA.w !d_t1 : ORA.w #!TK_WALL : STA.w !d_t1
+.done
+	LDA.w !d_t1
+	RTS
+
+; Carry set when tile !d_ctile (code !d_t3, metatile !d_cmeta) on layer
+; !d_cl may be scenery (dst_scenery): the Sandship rail tile on its two deck
+; maps, or a vine metatile. Skull heads carry cut code C1 (candidates anyway).
+dst_class_scenery:
+	LDA.w !d_cl : BNE .no                         ; layer 0 only
+	LDA.w !d_t3 : BNE .no                         ; code 0
+	LDA.w !d_map : CMP.w #!DESTROY_RAIL_MAP_A : BEQ +
+	CMP.w #!DESTROY_RAIL_MAP_B : BNE .vine
++	LDA.w !d_ctile : CMP.w #!DESTROY_RAIL_TILE : BEQ .yes
+.vine
+	LDA.w !m_ts : CMP.w #!DESTROY_VINE_TILESET : BNE .no
+	LDA.w !d_cmeta : JSR dst_bit_vine : BCC .no
+.yes
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
+; Carry set when tile !d_ctile (code !d_t3) on layer !d_cl is a palace
+; brazier piece.
+dst_class_deco:
+	LDA.w !m_hdr : AND.w #$007F : CMP.w #!DESTROY_BRAZIER_TILESET : BNE .no
+	LDA.w !d_cl : BNE .no
+	LDA.w !d_t3 : BNE .no
+	LDX.w !d_ctile
+	LDA.l destroy_brazier_part,X : AND.w #$00FF : CMP.w #$00FF : BEQ .no
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
+; dst_cell_class: class bits of tile A (low byte) on layer !d_cl. Computes
+; and stores an unknown class first, keeping the caller's !d_t0-!d_t6,
+; !d_ctile, !d_cmeta and Y (the floor sampler's words live there).
+; Clobbers X.
+dst_cell_class:
+	AND.w #$00FF : PHA                       ; the tile
+	LSR
+	LDX.w !d_cl : BEQ +
+	ORA.w #$0080
++	TAX
+	LDA $01,s : LSR                          ; carry = odd tile: high nibble
+	LDA.l !DK,X
+	BCC +
+	LSR : LSR : LSR : LSR
++	AND.w #$000F
+	CMP.w #$000F : BEQ .miss
+	PLX
+	RTS
+.miss
+	PHY
+	LDA.w !d_t0 : PHA
+	LDA.w !d_t1 : PHA
+	LDA.w !d_t2 : PHA
+	LDA.w !d_t3 : PHA
+	LDA.w !d_t4 : PHA
+	LDA.w !d_t6 : PHA
+	LDA.w !d_ctile : PHA
+	LDA.w !d_cmeta : PHA                     ; the tile is at $13,s
+	LDA $13,s
+	LDX.w !d_cl : BEQ +
+	ORA.w #$0100
++	JSR dst_class_of
+	STA.l !DK_NEW
+	ASL : ASL : ASL : ASL : STA.l !DK_HI
+	LDA $13,s : LSR
+	LDX.w !d_cl : BEQ +
+	ORA.w #$0080
++	TAX
+	LDA $13,s : LSR
 	SEP #$20
-	LDA.w !d_t5 : STA.l !DFX+2,X
-	LDA.w !d_t6 : STA.l !DFX+3,X
-	LDA.w !fx_xmin : STA.l !DFX+4,X
-	LDA.w !fx_xmax : STA.l !DFX+5,X
-	LDA.w !fx_n : STA.l !DFX+6,X
+	BCS .odd
+	LDA.l !DK,X : AND.b #$F0 : ORA.l !DK_NEW : STA.l !DK,X
+	BRA .stored
+.odd
+	LDA.l !DK,X : AND.b #$0F : ORA.l !DK_HI : STA.l !DK,X
+.stored
 	REP #$20
+	PLA : STA.w !d_cmeta
+	PLA : STA.w !d_ctile
+	PLA : STA.w !d_t6
+	PLA : STA.w !d_t4
+	PLA : STA.w !d_t3
+	PLA : STA.w !d_t2
+	PLA : STA.w !d_t1
+	PLA : STA.w !d_t0
+	PLY
+	PLX
+	LDA.l !DK_NEW : AND.w #$000F
 	RTS

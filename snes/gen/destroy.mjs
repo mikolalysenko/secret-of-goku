@@ -149,6 +149,55 @@ export async function generate({rom,repo,outDir}){
     });
     const w=protectedRules.water;
     assert(w.count===(w.x1-w.x0+1-w.gap.length)*(w.y1-w.y0+1)&&w.gap.length===2&&w.gap[1]===w.gap[0]+1,'map 139 protection shape changed');
+    // The Water Palace cells are protected on both layers.
+    const layer1=probe(139,40,72,0,g=>{let n=0;for(let ty=0;ty<72;ty++)for(let tx=0;tx<40;tx++)if(g.blocked({tx,ty,layer:1,tile:1,flags:0x13,behavior:0,code:0,replacement:0}))n++;return n;});
+    assert(layer1===w.count,'map 139 protection must cover both layers');
+  }
+
+  // -------------------------------------------------------------------------
+  // The live map size ($C0/$C2) is the first placed piece's size (checked
+  // against all 370 native-loaded gameplay maps). Inside the planner's
+  // interior ([1,W-2] x [1,H-2]) every dungeon map's visible placement, for
+  // any story flags, is exactly the rectangle of its always-visible pieces,
+  // so the runtime placement test is two compares.
+  function firstPieceSize(map){
+    const list=pieces(map);return list.length?[Math.min(128,list[0].w),Math.min(128,list[0].h)]:[0,0];
+  }
+  for(let map=0;map<511;map++){
+    if(!contextGroup[map])continue;
+    const list=pieces(map),[W,H]=firstPieceSize(map),{ext}=extents(map);
+    for(let l=0;l<2;l++){
+      const always=list.filter(p=>p.layer===l&&p.min===0&&p.max===15),cond=list.filter(p=>p.layer===l&&!(p.min===0&&p.max===15));
+      const inRect=(x,y)=>x<ext[l][0]&&y<ext[l][1];
+      for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+        const covered=always.some(p=>y>=p.y&&y<p.y+p.h&&x>=p.x&&x<p.x+p.w);
+        assert(covered===inRect(x,y),`map ${map} layer ${l}: unconditional placement is not a rectangle at ${x},${y}`);
+        assert(!cond.some(p=>y>=p.y&&y<p.y+p.h&&x>=p.x&&x<p.x+p.w)||inRect(x,y),`map ${map} layer ${l}: conditional piece outside the rectangle at ${x},${y}`);
+      }
+    }
+  }
+  // The planner never needs the cave-void analysis: tileset 10's black
+  // metatile 5 is solid (height 3), so it is neither a floor nor a wall
+  // whatever its protection (collision tables C0:B0000 / B0:0400).
+  {
+    const type=rom[0xb0400+10*384+5];
+    assert((rom[0xb0000+type*4]&7)===3,'tileset 10 metatile 5 is no longer solid');
+  }
+
+  // Maps with the Sandship deck rail (scenery replacement), from the probe below.
+  const railMaps=[];
+  for(const map of shipMaps.concat([97,100])){
+    const ram=new Uint8Array(0x20000);ram[0xdc]=map&255;ram[0xdd]=map>>8;ram[0xc1]=4;ram[0xc3]=4;
+    ram.set([0x13,0,0,0],0x1b800+122*4);ram.set([0x01,0,0,0],0x1b800+1*4);
+    for(let y=0;y<64;y++)for(let x=0;x<64;x++)ram[0x10000+y*128+x]=1;
+    const lf=createNativeLocalFlight(fake(ram),{});
+    let found=false;
+    for(let ty=1;ty<20&&!found;ty++)for(let tx=0;tx<40&&!found;tx++){
+      ram[0x10000+ty*128+tx]=122;
+      if(lf.breakScenery({tx,ty,layer:0,tile:122,flags:0x13,behavior:0,code:0,replacement:0})!==null)found=true;
+      ram[0x10000+ty*128+tx]=1;
+    }
+    if(found)railMaps.push(map);
   }
 
   // -------------------------------------------------------------------------
@@ -157,7 +206,7 @@ export async function generate({rom,repo,outDir}){
   //  +1 dungeon family index+1 when the demolition planner applies, else 0
   //  +2 bits: 0 brazier-beam map, 1 Sandship map, 2 complex placement,
   //     3 Joch protection, 4 Water Palace protection, 5 ki barrier,
-  //     6 breakable-door map
+  //     6 breakable-door map, 7 scenery replacements possible
   //  +3 first ki-barrier record index or $FF
   //  +4..7 placed extents (cells): layer 0 x1,y1, layer 1 x1,y1
   const barrierList=[...kiBarriers].map((b,i)=>({...b,order:i})).sort((a,b)=>a.map-b.map||a.order-b.order);
@@ -178,6 +227,8 @@ export async function generate({rom,repo,outDir}){
     const first=barrierList.findIndex(b=>b.map===map);
     if(first>=0)bits|=32;
     if(doorMaps.has(map))bits|=64;
+    // Scenery replacements can apply (carved heads, vines, the deck rail).
+    if([1,7].includes(flags&63)||railMaps.includes(map))bits|=128;
     if(complex&&contextGroup[map])complexDungeons.push(map);
     mapInfo.push(flags,contextGroup[map],bits,first>=0?first:255,ext[0][0],ext[0][1],ext[1][0],ext[1][1]);
   }

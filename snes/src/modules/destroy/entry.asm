@@ -10,7 +10,9 @@
 ; planner, pending barrier events and orb events.
 destroy_field_frame:
 	REP #$30
+	JSR dst_vline : STA.w !d_vstart      ; the background work's budget
 	JSR dst_sync_map
+	JSR dst_classes_watch
 	JSR dst_debug_frame
 	JSR dst_walls_work
 	JSR dst_barrier_tick
@@ -90,10 +92,14 @@ destroy_redraw_hook:
 ; pending barrier/orb hits.
 dst_sync_map:
 	LDA.w !m_init : CMP.w #$D5A1 : BEQ .inited
-	; First call since reset (core_boot zeroes WRAM; SRAM holds garbage).
+	; First call since reset (core_boot zeroes WRAM; SRAM holds garbage):
+	; clear the slower state and the planner, barrier and hit words.
 	LDA.w #0
 	LDX.w #$3E
 -	STA.l !DSTATE,X
+	DEX : DEX : BPL -
+	LDX.w #$7E
+-	STA.l !DW,X                        ; !DW, !NTO, !PL, !DH ($80 bytes)
 	DEX : DEX : BPL -
 	LDA.w #$D5A1 : STA.w !m_init
 	LDA.w #$FFFF : STA.w !d_map
@@ -105,13 +111,18 @@ dst_sync_map:
 	STZ.w !d_qn
 	STZ.w !d_qlive
 	STZ.w !d_cn
-	STZ.w !d_wn
 	STZ.w !d_bnext
 	STZ.w !d_aid
 	LDA.w #0
 	STA.l !bp_state
 	STA.l !orb_base
+	STA.l !pj_state
+	STA.l !pl_stage
+	STA.l !pl_wait
+	STA.l !bb_id                       ; no beam's searched extent carries over
 	LDA.w #$FFFF : STA.w !d_last
+	JSR dst_run_fail_clear
+	JSR dst_classes_reset
 	; Map context from destroy_map_info (snes/gen/destroy.mjs).
 	LDA $DC : AND.w #$01FF : ASL : ASL : ASL : TAX
 	LDA.l destroy_map_info,X : AND.w #$00FF : STA.w !m_hdr

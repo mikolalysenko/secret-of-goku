@@ -29,7 +29,7 @@
 !d_cn       = !DST+$06  ; cleared (smashed object) entries
 !d_last     = !DST+$08  ; core frame of the last applied row
 !d_bnext    = !DST+$0A  ; next breach record (ring of !DQ_BREACHES)
-!d_wn       = !DST+$0C  ; queued wall candidates
+!d_vstart   = !DST+$0C  ; scanline destroy_field_frame began on (dst_budget)
 !d_flags    = !DST+$0E  ; destroy_hit result: bit0 queued, bit1 barrier, bit2 full
 ; current attack (destroy_hit arguments, filled by the caller)
 !arg_x      = !DST+$10  ; origin x (map pixels)
@@ -115,20 +115,89 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 
 ; ---------------------------------------------------------------------------
 ; Volatile SRAM work area (!SRAM_WORK_DESTROY, $800 bytes).
-!DQ          = !SRAM_WORK_DESTROY        ; queue: 96 x 8
-!DQ_MAX      = 96
-!DC          = !SRAM_WORK_DESTROY+$300   ; cleared: 64 x 8
-!DC_MAX      = 64
+!DQ          = !SRAM_WORK_DESTROY        ; queue: 88 x 8
+!DQ_MAX      = 88
+!DWF         = !SRAM_WORK_DESTROY+$2C0   ; settled runs: 16 x 4 (key.w, lo, hi)
+!DWF_MAX     = 16
+!DC          = !SRAM_WORK_DESTROY+$300   ; cleared: 32 x 8
+!DC_MAX      = 32
+!DK          = !SRAM_WORK_DESTROY+$400   ; tile classes: 2 layers x 256 tiles x 4 bits ($F unknown)
+; tile class bits (live descriptors, map context; position-independent
+; except on the two maps with protected zones):
+!TK_CAND = 1    ; cut-code object, hit tile, walk-on trigger, scenery or brazier
+!TK_ORD  = 2    ; ordinary (code 0, no trigger-wall bit, no special behaviour)
+!TK_END  = 4    ; floor that is not dungeon air (span end, floor sample)
+!TK_WALL = 8    ; ordinary solid that is neither decoration nor air
 !DB          = !SRAM_WORK_DESTROY+$500   ; breaches: 16 x 24 (4 witnesses x 6)
 !DQ_BREACHES = 16
-!DW          = !SRAM_WORK_DESTROY+$680   ; wall candidates: 24 x 4 (offset.w, dir.w)
-!DW_MAX      = 24
-!DFX         = !SRAM_WORK_DESTROY+$6E0   ; effect requests: 4 x 8
-!DFX_MAX     = 4
+!DW          = !SRAM_WORK_DESTROY+$680   ; demolition planner job ($30, below)
+!NTO         = !SRAM_WORK_DESTROY+$6B0   ; barrier search result (14 bytes)
+!PL          = !SRAM_WORK_DESTROY+$6C0   ; suspended breach plan (32 bytes)
+!DH          = !SRAM_WORK_DESTROY+$6E0   ; destroy_hit scratch (32 bytes)
 !DSTATE      = !SRAM_WORK_DESTROY+$700   ; $40 bytes of slower state below
-!DS          = !SRAM_WORK_DESTROY+$740   ; scratch $C0 (floor sampling)
+!DS          = !SRAM_WORK_DESTROY+$740   ; planner scratch $C0 (kept across frames)
+; destroy_hit scratch
+!BC_LO    = !DH+$00   ; band inner range beyond the taper zone
+!BC_HI    = !DH+$02
+!BC_PLO   = !DH+$04   ; previously scanned inner range (lo > hi: none)
+!BC_PHI   = !DH+$06
+!BC_FLAT  = !DH+$08   ; first row beyond the taper zone ($FFFF: not reached)
+!BC_PREV  = !DH+$0A   ; last outer cell within the previous length
+!BZ_CX    = !DH+$0C   ; brazier expansion: scanned cell and tile, origin
+!BZ_CY    = !DH+$0E
+!BZ_TILE  = !DH+$10
+!BZ_OX    = !DH+$12
+!BZ_OY    = !DH+$14
+!NT_SRC   = !DH+$16   ; barrier search: source event of a cell
+!NT_EV    = !DH+$18
+!NT_DOOR  = !DH+$1A
+!DK_NEW   = !DH+$1C   ; dst_cell_class: the class being stored
+!DK_HI    = !DH+$1E   ; (shifted to the high nibble)
+; suspended breach plan (dst_plan_*)
+!pl_stage = !PL+$00   ; 0 none, 1 floor sampling in progress
+!pl_off   = !PL+$02   ; wall cell and attack direction
+!pl_dir   = !PL+$04
+!pl_a     = !PL+$06   ; shores
+!pl_b     = !PL+$08
+!pl_n     = !PL+$0A   ; run cells (!WR_LIST)
+!pl_k     = !PL+$0C   ; breach record
+!pl_ox    = !PL+$0E   ; floor sample: origin, quality, best, queue, shore info
+!pl_oy    = !PL+$10
+!pl_q     = !PL+$12
+!pl_best  = !PL+$14
+!pl_head  = !PL+$16
+!pl_tail  = !PL+$18
+!pl_h     = !PL+$1A
+!pl_back  = !PL+$1C
+!pl_quota = !PL+$1E   ; sampler nodes left before the frame budget applies
+!pl_wait  = !NTO+$0E  ; frames a suspended plan had no time (after the 14 bytes)
 !DQW #= (!DQ)&$FFFF                      ; bank-$33 absolute views (DB = $33)
 !DCW #= (!DC)&$FFFF
+; demolition planner job (demolish.asm)
+!pj_state = !DW+$00   ; 0 none, 1 walking, 2 walked (waits for growth)
+!pj_id    = !DW+$02   ; attack id (0: one-shot)
+!pj_x     = !DW+$04
+!pj_y     = !DW+$06
+!pj_dir   = !DW+$08
+!pj_len   = !DW+$0A
+!pj_half  = !DW+$0C
+!pj_taper = !DW+$0E
+!pj_layer = !DW+$10
+!pj_o     = !DW+$12   ; cursor: outer cell
+!pj_oend  = !DW+$14
+!pj_step  = !DW+$16
+!pj_i     = !DW+$18   ; cursor: inner cell
+!pj_hi    = !DW+$1A   ; last inner cell of this outer cell
+!pj_left  = !DW+$1C   ; cells left this frame
+!pj_alive = !DW+$1E   ; core frame of the job's last destroy_hit call
+!pj_dirty = !DW+$20   ; demolition rows applied since the walk began
+!pj_plans = !DW+$22   ; complete plans this frame
+!pj_side  = !DW+$24   ; the band widened behind the cursor: walk again
+!bb_id    = !DW+$26   ; barrier search extent of the current beam (0: none)
+!bb_len   = !DW+$28
+!bb_half  = !DW+$2A
+!dk_d0    = !DW+$2E   ; $D0 seen last frame (recompute after native events)
+!DESTROY_PLAN_LINE = 160  ; the planner stops at this scanline (frame budget)
 ; barrier pending (native-barriers.js pending)
 !bp_state   = !DSTATE+$00  ; 0 none, 1 waiting 26 frames, 2 event requested
 !bp_event   = !DSTATE+$02
@@ -154,7 +223,14 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !dbg_n      = !DSTATE+$26  ; commands processed
 !dbg_ev     = !DSTATE+$28  ; last event dispatched by this module
 !dbg_evn    = !DSTATE+$2A  ; events dispatched
-!dbg_script = !DSTATE+$30  ; 16 bytes: event script for command 4
+!dw_frun    = !DSTATE+$2E  ; failed-run ring cursor
+!dbg_dry    = !DSTATE+$2C  ; nonzero: dst_breach plans without queueing
+!dbg_script = !DSTATE+$30  ; 8 bytes: event script for command 4
+; demolition context (dst_dm_context)
+!dm_w1      = !DSTATE+$38  ; map width - 1 (interior bound)
+!dm_h1      = !DSTATE+$3A  ; map height - 1
+!dm_ext0    = !DSTATE+$3C  ; BG1 placed extents: x1 | y1<<8
+!dm_ext1    = !DSTATE+$3E  ; BG2 placed extents
 ; queue entry: +0 offset.w ($FFFF dead) +2 tile +3 replacement (demolition)
 ;              +4 flags +5 behaviour +6 meta +7 frame
 ; meta: bits0-1 policy, bit2 replay, bit3 demolition, bits4-7 breach (demolition)
@@ -174,6 +250,7 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !MAP_INFO_WATER   = $10
 !MAP_INFO_BARRIER = $20
 !MAP_INFO_DOOR    = $40
+!MAP_INFO_SCENERY = $80
 
 !POL_PLANTS  = 0
 !POL_OBJECTS = 1

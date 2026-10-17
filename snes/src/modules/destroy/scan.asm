@@ -43,69 +43,63 @@ dst_scan_attack:
 	CMP.w !d_aid : BNE +
 	LDA.w !d_alen : STA.w !sc_plen
 	LDA.w !d_ahalf : STA.w !sc_phalf
-+	; Axis, sign, origin coordinates.
-	LDA.w !arg_dir : AND.w #3 : TAX
-	LDA.l dst_dir_horz,X : AND.w #$00FF : STA.w !sc_horz
-	TXA : ASL : TAX
-	LDA.l dst_dir_sign,X : STA.w !sc_sign
-	LDA.w !sc_horz : BEQ +
-	LDA.w !arg_x : STA.w !s_a
-	LDA.w !arg_y : STA.w !s_c
-	BRA ++
-+	LDA.w !arg_y : STA.w !s_a
-	LDA.w !arg_x : STA.w !s_c
-++	; Outer range and step, clamped to the 128-cell grid.
-	LDA.w !sc_sign : BMI .neg
-	; o in [ceil((a-16)/16), floor((a+len)/16)], ascending
-	LDA.w !s_a : SEC : SBC.w #16 : JSR dst_ceil16
-	BPL +
-	LDA.w #0
-+	STA.w !s_o
-	LDA.w !s_a : CLC : ADC.w !sc_len : JSR dst_floor16
-	CMP.w #128 : BMI +
-	LDA.w #127
-+	STA.w !s_oend
-	LDA.w #1 : STA.w !s_ostep
-	LDA.w !s_oend : CMP.w !s_o : BPL .outer
++	LDA.w !arg_dir : LDX.w !arg_x : LDY.w !arg_y
+	JSR dst_band_axes
+	LDA.w !sc_len : JSR dst_band_outer
+	BCC +
 	JMP .none
-.neg
-	; o in [ceil((a-len-16)/16), floor(a/16)], descending
-	LDA.w !s_a : JSR dst_floor16
-	CMP.w #128 : BMI +
-	LDA.w #127
-+	STA.w !s_o
-	LDA.w !s_a : SEC : SBC.w !sc_len : SEC : SBC.w #16 : JSR dst_ceil16
-	BPL +
-	LDA.w #0
-+	STA.w !s_oend
-	LDA.w #$FFFF : STA.w !s_ostep
-	LDA.w !s_o : CMP.w !s_oend : BPL .outer
++	JSR dst_band_flat_init
+	; not wider than before: skip straight past the covered length
+	LDA.w !sc_plen : BMI .outer
+	LDA.w !sc_half : CMP.w !sc_phalf : BEQ + : BCS .outer
++	LDA.w !sc_plen : JSR dst_band_skip : BCC .outer
 	JMP .none
 .outer
-	; along = sign * (o*16 + 8 - a)
-	LDA.w !s_o : ASL : ASL : ASL : ASL : CLC : ADC.w #8
-	SEC : SBC.w !s_a
-	LDX.w !sc_sign : BPL +
-	EOR.w #$FFFF : INC
-+	STA.w !s_along
-	; previously covered inner range at this along (empty: plo > phi)
-	LDA.w #1 : STA.w !s_plo
+	; once a row is beyond the taper zone, every later row is too
+	LDA.l !BC_FLAT : CMP.w #$FFFF : BEQ .row
+	JMP .flat_row
+.row
+	JSR dst_band_along
+	; inner ranges: computed for the taper zone, cached beyond it
+	LDA.w !arg_taper : BEQ .flat
+	LDA.w !s_along : CLC : ADC.w #8 : CMP.w !arg_taper : BCS .flat
+	LDA.w #1 : STA.w !s_plo                           ; empty: plo > phi
 	STZ.w !s_phi
 	LDA.w !sc_plen : BMI +
 	CLC : ADC.w #8 : CMP.w !s_along : BMI +            ; along > plen+8
-	LDA.w !sc_phalf : JSR dst_width : STA.w !s_w
-	JSR dst_inner_range
+	LDA.w !sc_phalf : LDX.w !arg_taper : JSR dst_band_row
 	LDA.w !s_lo : STA.w !s_plo
 	LDA.w !s_hi : STA.w !s_phi
-+	; current inner range
-	LDA.w !sc_half : JSR dst_width : STA.w !s_w
-	JSR dst_inner_range
++	LDA.w !sc_half : LDX.w !arg_taper : JSR dst_band_row
+	BRA .ranges
+.flat
+	JSR dst_band_flat
+	; the rest of the band is flat: rows only need their outer index
+	LDA.w !s_o : STA.l !BC_FLAT
+	BRA .ranges
+.flat_row
+	; previous extent covers this row iff it lies before the boundary row
+	LDA.l !BC_LO : STA.w !s_lo
+	LDA.l !BC_HI : STA.w !s_hi
+	LDA.w #1 : STA.w !s_plo
+	STZ.w !s_phi
+	LDA.l !BC_PREV : CMP.w #$FFFF : BEQ .ranges
+	LDA.w !sc_sign : BMI +
+	LDA.w !s_o : CMP.l !BC_PREV : BEQ .prev : BCC .prev
+	BRA .ranges
++	LDA.w !s_o : CMP.l !BC_PREV : BCC .ranges
+.prev
+	LDA.l !BC_PLO : STA.w !s_plo
+	LDA.l !BC_PHI : STA.w !s_phi
+.ranges
 	LDA.w !s_lo : STA.w !s_i
 .cell
 	LDA.w !s_i : CMP.w !s_hi : BEQ + : BCS .next_outer
-+	; skip cells already scanned by this beam
-	LDA.w !s_i : CMP.w !s_plo : BCC .visit
-	CMP.w !s_phi : BEQ .skip : BCC .skip
++	; jump over the cells this beam already scanned
+	CMP.w !s_plo : BCC .visit
+	CMP.w !s_phi : BEQ + : BCS .visit
++	LDA.w !s_phi : INC : STA.w !s_i
+	BRA .cell
 .visit
 	LDA.w !sc_horz : BEQ +
 	LDA.w !s_o : STA.w !d_cx
@@ -119,12 +113,14 @@ dst_scan_attack:
 	INC.w !s_i
 	BRA .cell
 .next_outer
-	LDA.w !s_o : CMP.w !s_oend : BEQ .done
+	LDA.w !s_o : CMP.w !s_oend : BEQ .none
 	CLC : ADC.w !s_ostep : STA.w !s_o
 	JMP .outer
-.done
 .none
-	; Remember the covered extent unless the queue overflowed.
+	; Walls are planned over the next frames along the same band.
+	JSR dst_demolishes : BCC +
+	JSR dst_job_update
++	; Remember the covered extent unless the queue overflowed.
 	LDA.w !arg_id : BEQ .exit
 	LDA.w !d_flags : AND.w #4 : BNE .exit
 	LDA.w !arg_id : CMP.w !d_aid : BEQ +
@@ -144,23 +140,144 @@ dst_dir_horz:
 dst_dir_sign:
 	dw $0001,$0001,$FFFF,$FFFF
 
-; dst_width: A = half width -> A = width at !s_along (taper with !arg_taper).
-dst_width:
-	STA.w !d_t2
-	LDA.w !arg_taper : BEQ .full
-	LDA.w !s_along : BPL +
-	LDA.w #0
-+	CLC : ADC.w #8
-	CMP.w !arg_taper : BCS .full
-	; floor(half * t / taper): t < taper <= 255
-	STA.w !d_t3
-	LDA.w !d_t2 : JSR dst_mul16          ; A = half * t
-	LDX.w !arg_taper : JSR dst_div16     ; A = A / X
+; ---------------------------------------------------------------------------
+; Band geometry shared by the scan and the demolition planner.
+; dst_band_axes: A = direction, X = origin x, Y = origin y -> !sc_horz,
+; !sc_sign, !s_a (origin along the axis), !s_c (origin across it).
+dst_band_axes:
+	AND.w #3
+	PHX
+	TAX
+	LDA.l dst_dir_horz,X : AND.w #$00FF : STA.w !sc_horz
+	TXA : ASL : TAX
+	LDA.l dst_dir_sign,X : STA.w !sc_sign
+	PLX
+	LDA.w !sc_horz : BEQ +
+	STX.w !s_a
+	STY.w !s_c
 	RTS
-.full
-	LDA.w !d_t2
++	STY.w !s_a
+	STX.w !s_c
 	RTS
 
+; dst_band_outer: A = length -> first outer cell !s_o, last !s_oend, step
+; !s_ostep (clamped to the grid). Carry set when the band is empty.
+dst_band_outer:
+	STA.w !s_w
+	LDA.w !sc_sign : BMI .neg
+	; o in [ceil((a-16)/16), floor((a+len)/16)], ascending
+	LDA.w !s_a : SEC : SBC.w #16 : JSR dst_ceil16
+	BPL +
+	LDA.w #0
++	STA.w !s_o
+	LDA.w !s_a : CLC : ADC.w !s_w : JSR dst_floor16
+	CMP.w #128 : BMI +
+	LDA.w #127
++	STA.w !s_oend
+	LDA.w #1 : STA.w !s_ostep
+	LDA.w !s_oend : CMP.w !s_o : BMI .empty
+	CLC
+	RTS
+.neg
+	; o in [ceil((a-len-16)/16), floor(a/16)], descending
+	LDA.w !s_a : JSR dst_floor16
+	CMP.w #128 : BMI +
+	LDA.w #127
++	STA.w !s_o
+	LDA.w !s_a : SEC : SBC.w !s_w : SEC : SBC.w #16 : JSR dst_ceil16
+	BPL +
+	LDA.w #0
++	STA.w !s_oend
+	LDA.w #$FFFF : STA.w !s_ostep
+	LDA.w !s_o : CMP.w !s_oend : BMI .empty
+	CLC
+	RTS
+.empty
+	SEC
+	RTS
+
+; dst_band_skip: A = covered length. Moves !s_o past the outer cells whose
+; centre lies within it (along <= len+8). Carry set when nothing is left.
+dst_band_skip:
+	STA.w !s_w
+	LDA.w !sc_sign : BMI .neg
+	; first o with o*16 > a + len
+	LDA.w !s_a : CLC : ADC.w !s_w : JSR dst_floor16 : INC
+	CMP.w !s_o : BMI .keep : BEQ .keep
+	STA.w !s_o
+	LDA.w !s_oend : CMP.w !s_o : BMI .empty
+	CLC
+	RTS
+.neg
+	; first o (descending) with o*16 < a - len - 16
+	LDA.w !s_a : SEC : SBC.w !s_w : SEC : SBC.w #16 : JSR dst_ceil16 : DEC
+	CMP.w !s_o : BPL .keep
+	STA.w !s_o
+	CMP.w !s_oend : BMI .empty
+	CLC
+	RTS
+.keep
+	CLC
+	RTS
+.empty
+	SEC
+	RTS
+
+; Full-width inner ranges of the scan (beyond the taper zone), cached in
+; SRAM scratch: !BC_LO lo, +$52 hi, +$54 previous lo, +$56 previous hi
+; (lo > hi when there is no previous extent).
+dst_band_flat_init:
+	LDA.w !sc_half : STA.w !s_w
+	JSR dst_inner_range
+	LDA.w !s_lo : STA.l !BC_LO
+	LDA.w !s_hi : STA.l !BC_HI
+	LDA.w #1 : STA.l !BC_PLO
+	LDA.w #0 : STA.l !BC_PHI
+	LDA.w #$FFFF : STA.l !BC_FLAT                  ; flat rows not reached yet
+	STA.l !BC_PREV
+	LDA.w !sc_plen : BMI +
+	LDA.w !sc_phalf : STA.w !s_w
+	JSR dst_inner_range
+	LDA.w !s_lo : STA.l !BC_PLO
+	LDA.w !s_hi : STA.l !BC_PHI
+	; last outer cell whose centre is within the previous length
+	LDA.w !sc_sign : BMI .neg
+	LDA.w !s_a : CLC : ADC.w !sc_plen : JSR dst_floor16
+	STA.l !BC_PREV
+	RTS
+.neg
+	LDA.w !s_a : SEC : SBC.w !sc_plen : SEC : SBC.w #16 : JSR dst_ceil16
+	BPL +
+	LDA.w #0
++	STA.l !BC_PREV
+	RTS
+; Ranges for a full-width row: the previous extent only covers it while its
+; along is within the previous length.
+dst_band_flat:
+	LDA.l !BC_LO : STA.w !s_lo
+	LDA.l !BC_HI : STA.w !s_hi
+	LDA.w #1 : STA.w !s_plo
+	STZ.w !s_phi
+	LDA.w !sc_plen : BMI +
+	CLC : ADC.w #8 : CMP.w !s_along : BMI +
+	LDA.l !BC_PLO : STA.w !s_plo
+	LDA.l !BC_PHI : STA.w !s_phi
++	RTS
+
+; dst_band_along: !s_along = sign * (o*16 + 8 - a) for !s_o.
+dst_band_along:
+	LDA.w !s_o : ASL : ASL : ASL : ASL : CLC : ADC.w #8
+	SEC : SBC.w !s_a
+	LDX.w !sc_sign : BPL +
+	EOR.w #$FFFF : INC
++	STA.w !s_along
+	RTS
+
+; dst_band_row: A = half width, X = taper -> !s_w and the inner cells
+; !s_lo..!s_hi at !s_along.
+dst_band_row:
+	JSR dst_width : STA.w !s_w
+	; fall through
 ; dst_inner_range: !s_lo/!s_hi = cells j with |j*16+8-c| <= w+8, 0..127.
 dst_inner_range:
 	LDA.w !s_c : SEC : SBC.w #16 : SEC : SBC.w !s_w
@@ -173,6 +290,24 @@ dst_inner_range:
 	CMP.w #128 : BMI +
 	LDA.w #127
 +	STA.w !s_hi
+	RTS
+
+; dst_width: A = half width, X = taper -> A = width at !s_along:
+; half * min(1, (max(0, along)+8)/taper), or half without a taper.
+dst_width:
+	STA.w !d_t2
+	STX.w !d_t5
+	TXA : BEQ .full
+	LDA.w !s_along : BPL +
+	LDA.w #0
++	CLC : ADC.w #8
+	CMP.w !d_t5 : BCS .full
+	STA.w !d_t3
+	LDA.w !d_t2 : JSR dst_mul16          ; half * t
+	LDX.w !d_t5 : JSR dst_div16          ; / taper
+	RTS
+.full
+	LDA.w !d_t2
 	RTS
 
 ; Signed floor/ceil of A/16 (arithmetic shifts).
@@ -213,53 +348,60 @@ dst_div16:
 
 ; ---------------------------------------------------------------------------
 ; dst_consider_cell: native-plants.js enqueueTiles() for one scanned cell
-; (current cell coordinates set, policy in !sc_pol), then a wall candidate
-; for the demolition planner when the policy demolishes.
+; (current cell coordinates set, policy in !sc_pol). Walls are planned
+; separately (dst_job_update).
 dst_consider_cell:
+	; fast rejection: not a cut-code object, and no scenery or brazier rule
+	; can apply on this map
+	LDA.w !d_cx : CMP.w #128 : BCS .out
+	LDA.w !d_cy : CMP.w #128 : BCS .out
+	XBA : LSR : ORA.w !d_cx
+	LDX.w !d_cl : BEQ +
+	ORA.w #$4000
++	TAX
+	LDA.l $7F0000,X
+	JSR dst_cell_class : AND.w #1 : BNE .full
+.out
+	RTS
+.full
 	JSR dst_load_cell : BCC +
 	RTS
 +	LDA.w !sc_pol : STA.w !d_pol
 	; Braziers expand to their complete 2x3 object (or nothing).
 	JSR dst_brazier_policy : BCC .single
 	JSR dst_brazier_rep : BCC .single
-	JSR dst_brazier_group
-	BRA .demolish
+	JMP dst_brazier_group
 .single
+	LDA.w !sc_pol : JSR dst_breakable : BCC .done
 	LDA.w !d_coff : JSR dst_queue_find : BCS .done
-	LDA.w !sc_pol : JSR dst_breakable : BCC .demolish
 	LDA.w !sc_pol
 	LDX.w !d_bbraz : BEQ +
 	ORA.w #!QM_BRAZIER
 +	JSR dst_queue_push
-	RTS
-.demolish
-	JSR dst_demolishes : BCC .done
-	LDA.w !sc_layer : STA.w !d_cl
-	JSR dst_wall_candidate
 .done
 	RTS
 
 ; dst_brazier_group: the cell is a brazier piece; queue all six cells of
 ; the first complete pattern containing it (palace-braziers.js), in order.
 dst_brazier_group:
-	LDA.w !d_cx : STA.l !DS+$20
-	LDA.w !d_cy : STA.l !DS+$22
-	LDA.w !d_ctile : STA.l !DS+$24
+	LDA.w !d_cx : STA.l !BZ_CX
+	LDA.w !d_cy : STA.l !BZ_CY
+	LDA.w !d_ctile : STA.l !BZ_TILE
 	LDX.w #0                             ; pattern offset
 .pattern
 	STX.w !d_t5
 	; index of the tile in this pattern
 	LDY.w #0
 -	LDA.l destroy_brazier_patterns,X : AND.w #$00FF
-	CMP.l !DS+$24 : BEQ .found
+	CMP.l !BZ_TILE : BEQ .found
 	INX : INY : CPY.w #6 : BCC -
 	BRA .next
 .found
 	; origin = (tx - index%2, ty - index/2)
 	TYA : AND.w #1 : STA.w !d_t6
-	LDA.l !DS+$20 : SEC : SBC.w !d_t6 : STA.l !DS+$26
+	LDA.l !BZ_CX : SEC : SBC.w !d_t6 : STA.l !BZ_OX
 	TYA : LSR : STA.w !d_t6
-	LDA.l !DS+$22 : SEC : SBC.w !d_t6 : STA.l !DS+$28
+	LDA.l !BZ_CY : SEC : SBC.w !d_t6 : STA.l !BZ_OY
 	; all six cells must match on BG1 with code 0
 	LDY.w #0
 .check
@@ -290,8 +432,8 @@ dst_brazier_group:
 ; Carry set when outside the grid.
 dst_brazier_cell:
 	PHY
-	TYA : AND.w #1 : CLC : ADC.l !DS+$26 : STA.w !d_cx
-	TYA : LSR : CLC : ADC.l !DS+$28 : STA.w !d_cy
+	TYA : AND.w #1 : CLC : ADC.l !BZ_OX : STA.w !d_cx
+	TYA : LSR : CLC : ADC.l !BZ_OY : STA.w !d_cy
 	STZ.w !d_cl
 	JSR dst_load_cell
 	PLY

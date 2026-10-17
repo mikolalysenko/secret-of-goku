@@ -28,6 +28,16 @@ function D.orb(actor)
   H.waitFor(function() return H.r16(ABI.dbg_n) ~= n end, 30)
   return H.r16(ABI.dbg_res)
 end
+-- Power-on SRAM is arbitrary on hardware: fill the module's work area
+-- ($800 bytes) with a fixed pseudo-random pattern before importing, which
+-- also keeps runs independent of the emulator's saved SRAM.
+function D.garbage()
+  local seed = 20261017
+  for a = ABI.DQ, ABI.DQ + 0x7FF do
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    H.w8(a, (seed // 65536) % 256)
+  end
+end
 function D.grid(name) H.dumpfile(name, WRAM, 0x10000, 0x8000) end
 function D.pos() return {x = H.r16(0x7EE002), y = H.r16(0x7EE004), map = H.r16(0x7E00DC)} end
 -- Log native redraw requests and cut sounds as the CPU writes them.

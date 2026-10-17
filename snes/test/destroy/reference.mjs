@@ -49,12 +49,14 @@ export function createReference(wram,rom){
     snes.cpu.r[1]=0;snes.cpu.br[4]=0xc7c3;snes.cpu.cyclesLeft=0;snes.cpu.cycle();
     return applied.length>before;
   }
+  // One boundary; the applied row in the drain() format, or null.
+  function step(i=0){
+    if(!frame())return null;
+    return{frame:i,redraw:[r[0x82],r[0x83]],sound:r[0x95],tiles:applied.at(-1).tiles.map(t=>({tx:t.tx,ty:t.ty,layer:t.layer,tile:t.tile,replacement:t.replacement,demolition:!!t.demolition}))};
+  }
   function drain(max=200){
     const rows=[];
-    for(let i=0;i<max&&(plants.pending||i<2);i++){
-      const n=applied.length,redraw=[r[0x82],r[0x83]];
-      if(frame())rows.push({frame:i,redraw:[r[0x82],r[0x83]],sound:r[0x95],tiles:applied.at(-1).tiles.map(t=>({tx:t.tx,ty:t.ty,layer:t.layer,tile:t.tile,replacement:t.replacement,demolition:!!t.demolition}))});
-    }
+    for(let i=0;i<max&&(plants.pending||i<2);i++){const row=step(i);if(row)rows.push(row);}
     return rows;
   }
   function barrierTarget(attack){
@@ -79,7 +81,34 @@ export function createReference(wram,rom){
     candidates.sort((a,b)=>Math.hypot(a.rect[0]-beam.x,a.rect[1]-beam.y)-Math.hypot(b.rect[0]-beam.x,b.rect[1]-beam.y));
     return candidates[0]??null;
   }
-  return{snes,plants,flight,frame,drain,barrierTarget,applied};
+  return{snes,plants,flight,frame,step,drain,barrierTarget,applied};
+}
+
+// The browser beam's frames (mana-mod.js releaseCharge / beamProfile /
+// beamGeometry): a point-blank strike from the feet at release, then one
+// call per frame for ages 1..max-1 with the growing (and, at full power,
+// tapering and fading) band. strength = charge / cap.
+export function beamTimeline({x,y,dir,kind='mega',strength=1,id=7}){
+  const mega=kind==='mega';
+  const width=mega?80:5+strength*14,range=mega?640:320,max=mega?64:24,speed=mega?48:32;
+  const steps=[{x,y,dir,length:28,halfWidth:9,taper:0,id:0}];
+  for(let age=1;age<max;age++){
+    const life=max-age;
+    steps.push({x,y,dir,length:Math.min(range,(age+1)*speed),halfWidth:width*(mega?Math.min(1,(age+1)/6,life/10):1),taper:mega?44:0,id});
+  }
+  return steps;
+}
+
+// Run a timeline through the browser pipeline: each frame one beam() call,
+// then the native redraw boundary; then drain the queue.
+export function simulateTimeline(ref,steps,policy){
+  const rows=[];
+  steps.forEach((st,i)=>{
+    const[dx,dy]=facing[st.dir];
+    ref.plants.beam({x:st.x,y:st.y,dx,dy,length:st.length,halfWidth:st.halfWidth,taper:st.taper,policy});
+    const row=ref.step(i);if(row)rows.push(row);
+  });
+  return rows.concat(ref.drain());
 }
 
 export function attackProfile(spec){

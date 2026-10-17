@@ -22,8 +22,8 @@ export function destroyAbi(){
     return Function(`return (${expr})`)();
   };
   const names=['RAM_DESTROY','arg_x','arg_y','arg_dir','arg_len','arg_half','arg_taper','arg_kind','arg_str','arg_id','arg_layer',
-    'd_qn','d_qlive','d_cn','d_wn','d_flags','out_react','out_rmap','out_rows','out_demo','out_sfx',
-    'dbg_cmd','dbg_arg','dbg_res','dbg_n','dbg_ev','dbg_evn','dbg_script','bp_state','bp_event','orb_base','P_DOORS','P_TREE','DQ','DC','DFX'];
+    'd_qn','d_qlive','d_cn','d_flags','out_react','out_rmap','out_rows','out_demo','out_sfx',
+    'dbg_cmd','dbg_arg','dbg_res','dbg_n','dbg_ev','dbg_evn','dbg_script','bp_state','bp_event','orb_base','P_DOORS','P_TREE','DQ','DC'];
   const abi={};
   for(const n of names){
     let v=value(n);
