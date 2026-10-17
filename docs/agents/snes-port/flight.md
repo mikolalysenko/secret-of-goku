@@ -261,13 +261,17 @@ loop while flying (level .35 while charging), ids asserted against
 request). Without the combat module flight hides B from the game while Goku
 can act (the browser always does; combat's input filter does it otherwise).
 
-`!FLIGHT_MISSING_FLOOR` (define, optional): a `JSL` routine of the module
-that owns floor holes (Frieza's broken deck, the Sandship), called by
-canLand with `!fl_q_x/y/l`; carry = hole under the footprint.
+`!FLIGHT_MISSING_FLOOR` (define, optional, seen through `bind.asm`): a
+`JSL` routine of the module that owns floor holes (Frieza's broken deck,
+the Sandship wreck), called with `!fl_q_x/y/l` set (M16/X16, DB = `$7E`);
+carry = a hole under the 12x8 footprint there. With one in the build,
+canLand fails over holes (the hero's canLand memo is bypassed, holes open
+without a tile change) and walking stops before them (`supported()` at
+`C0:D651`: the axis whose step would stand over a hole is zeroed).
 
 ## Tests
 
-`node snes/test/flight/run.mjs [classify|landing|water|teleport|whip|ceiling]`
+`node snes/test/flight/run.mjs [classify|landing|water|teleport|whip|ceiling|holes]`
 (also via `run-all.mjs`):
 
 - `classify`: for 26 imported scenes (towns, woodland, Gaia's Navel caves,
@@ -309,6 +313,10 @@ canLand with `!fl_q_x/y/l`; carry = hole under the footprint.
   event, lands within 14 px on landable ground with the companions close;
   walking onto the pad floats the whole party 93 px across in the
   gap-flight pose, the event ends and CF01/CF03 stay clear.
+- `holes`: the floor-hole contract on the `FLIGHT_TEST` cartridge (its
+  provider is a hole rectangle at `$33:7A96`): walking stops before the
+  hole, flight crosses it, Goku released over it keeps hovering, lands
+  when it closes and walks on.
 - `ceiling`: `indoor-flight.spec.mjs` from seven rooms entered through
   their real doors (Water Palace 137/139, Potos houses 257/259, Gaia's
   Navel 293, Matango inn 282, Gold City house 125): L+R starts the escape,

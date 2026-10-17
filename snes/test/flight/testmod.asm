@@ -1,3 +1,10 @@
+; A floor-hole provider for tests (the contract Frieza's deck and the
+; Sandship wreck will use): a hole rectangle in map pixels at SRAM
+; $33:7A96 (word enable, +2 x0, +4 x1, +6 y0, +8 y1, inclusive), outside
+; the mailbox (the classifier's rows fill it).
+!FLIGHT_MISSING_FLOOR = fl_test_hole
+!fl_test_hole_rect = !FL_SRAM+$296
+
 ; Flight test mailbox (FLIGHT_TEST builds only), polled at the start of
 ; flight_frame. Lua writes the request at !fl_sram_test:
 ;   +$00 word command: 1 = classify one map row, 2 = camera follow at the
@@ -269,3 +276,35 @@ fl_test_exits:
 	INC
 	STA.l !fl_sram_test+$06
 	RTS
+
+; carry = the 12x8 footprint at fl_q_x/y overlaps the test hole
+fl_test_hole:
+	LDA.l !fl_test_hole_rect
+	BEQ .no
+	LDA.w !fl_q_x
+	CLC
+	ADC.w #6
+	CMP.l !fl_test_hole_rect+2
+	BMI .no                      ; right edge left of the hole
+	LDA.w !fl_q_x
+	SEC
+	SBC.w #6
+	CMP.l !fl_test_hole_rect+4
+	BEQ +
+	BPL .no                      ; left edge right of it
++	LDA.w !fl_q_y
+	CLC
+	ADC.w #4
+	CMP.l !fl_test_hole_rect+6
+	BMI .no
+	LDA.w !fl_q_y
+	SEC
+	SBC.w #4
+	CMP.l !fl_test_hole_rect+8
+	BEQ +
+	BPL .no
++	SEC
+	RTL
+.no
+	CLC
+	RTL

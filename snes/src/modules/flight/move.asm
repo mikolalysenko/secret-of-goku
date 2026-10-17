@@ -212,7 +212,10 @@ fl_hook_d651:
 	JSR fl_bind_recoil           ; combat's Saiyan recoil adjusts $1E/$1F first
 	LDA $10
 	BNE .native
-	LDA.w !fl_hook
+	JSR fl_bind_holes
+	BCC +
+	JSR fl_walk_holes            ; walking stops at missing deck tiles
++	LDA.w !fl_hook
 	BEQ .native
 	AND.w #!FLH_CAMERA
 	BEQ .step
@@ -609,3 +612,54 @@ fl_hook_da34:
 	SEP #$20
 	LDA $E000,X
 	JML $00DA39
+
+; Walking stops at missing deck tiles (a floor-hole provider is in the
+; build): the hero's step on foot loses the axis whose footprint would stand
+; over a hole, x first, then y with the step that is left. Native doors,
+; stairs, collision and animation still run. M16/X16, DB = $7E.
+fl_walk_holes:
+	LDA.w !fl_state
+	AND.w #!FLS_FLY
+	BNE .out                     ; phasing: flight has its own rules
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BEQ .out
+	JSR fl_ground
+	BCC .out
+	LDA $E02C
+	AND.w #$0001
+	BEQ .out
+	LDA $E00B
+	AND.w #$0080
+	BEQ +
+	LDA.w #$0001
++	STA.w !fl_q_l
+	LDA $1E
+	JSR fl_unpack
+	CLC
+	ADC $E002
+	STA.w !fl_q_x
+	LDA $E004
+	STA.w !fl_q_y
+	JSR fl_bind_hole
+	BCC +
+	SEP #$20
+	STZ $1E
+	REP #$20
++	LDA $1E
+	JSR fl_unpack
+	CLC
+	ADC $E002
+	STA.w !fl_q_x
+	LDA $1F
+	JSR fl_unpack
+	CLC
+	ADC $E004
+	STA.w !fl_q_y
+	JSR fl_bind_hole
+	BCC .out
+	SEP #$20
+	STZ $1F
+	REP #$20
+.out
+	RTS

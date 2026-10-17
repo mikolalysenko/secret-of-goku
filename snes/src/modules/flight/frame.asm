@@ -216,9 +216,10 @@ fl_hero_land:
 	LSR
 	RTS
 fl_hland_calc:
-	if defined("FLIGHT_MISSING_FLOOR")
-		JMP fl_can_land
-	endif
+	JSR fl_bind_holes            ; holes can open without a tile change
+	BCC +
+	JMP fl_can_land
++
 	; bounds, then the tiles of the footprint's rectangle: the verdict of the
 	; last rectangle tested here is kept while its tiles, layer and terrain
 	; are unchanged
@@ -569,6 +570,10 @@ fl_init_work:
 	JSR fl_cache_clear
 	JSR fl_grid_off
 	JSR fl_sweep_forget
+	if defined("FLIGHT_TEST")
+		LDA.w #$0000
+		STA.l !FL_SRAM+$296      ; the test floor hole is off (testmod.asm)
+	endif
 	RTS
 
 ; Carry = the teleport chord L+B is held now and was not held last frame.

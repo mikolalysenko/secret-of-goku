@@ -163,6 +163,7 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !fl_rc_queue   = !FL_SRAM+$200     ; 64 words: flood fill queue (tile index)
 !fl_anchor     = !FL_SRAM+$280     ; last verified landing: map, x, y, layer, terrain (5 words)
 !fl_crossing   = !FL_SRAM+$28A     ; crossing start: map, x, y, layer, terrain, whip (6 words)
+                                   ; $296-$29F: the FLIGHT_TEST floor hole (testmod.asm)
 !fl_sram_test  = !FL_SRAM+$2A0     ; test mailbox ($90 bytes, FLIGHT_TEST builds)
 !fl_hl         = !FL_SRAM+$330     ; canLand memo at the hero: rect (4 bytes), layer|terrain<<1 (byte),
                                    ; verdict (byte), cell idx (4 words), cell tiles (4 bytes)

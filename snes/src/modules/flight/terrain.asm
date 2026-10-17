@@ -3607,14 +3607,11 @@ fl_can_fly:
 ; !FLIGHT_MISSING_FLOOR when a module defines it (JSL; carry = hole under
 ; the footprint at fl_q_x/y/l).
 fl_can_land:
-	if defined("FLIGHT_MISSING_FLOOR")
-		JSL !FLIGHT_MISSING_FLOOR
-		BCC +
-		CLC
-		RTS
-	+
-	endif
-	LDA.w #$0000
+	JSR fl_bind_hole             ; supported(): no hole under the footprint
+	BCC +
+	CLC
+	RTS
++	LDA.w #$0000
 	JMP fl_footprint
 
 ; canFloat = canFly && !canLand

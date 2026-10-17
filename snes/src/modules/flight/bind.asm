@@ -166,6 +166,27 @@ else
 	JMP fl_bind_world_takeoff
 endif
 
+; Floor holes (Frieza's broken deck, the Sandship wreck): the owner defines
+; !FLIGHT_MISSING_FLOOR = <routine>: JSL with !fl_q_x/y/l set (M16/X16,
+; DB = $7E), carry set when a hole lies under the 12x8 footprint there.
+; fl_bind_holes: carry set when such a provider is in the build.
+fl_bind_holes:
+if defined("FLIGHT_MISSING_FLOOR")
+	SEC
+else
+	CLC
+endif
+	RTS
+; carry = a hole under the footprint at fl_q_x/y/l
+fl_bind_hole:
+if defined("FLIGHT_MISSING_FLOOR")
+	JSL !FLIGHT_MISSING_FLOOR
+	RTS
+else
+	CLC
+	RTS
+endif
+
 ; Sandship runtime (no owner yet): sandship.takeoff() on L+R. The owner
 ; defines !SANDSHIP_TAKEOFF = <routine>: JSL, carry set when it handled the
 ; chord (an unfinished ship blows up instead of any takeoff).
