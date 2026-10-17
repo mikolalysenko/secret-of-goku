@@ -278,8 +278,10 @@ states (`preset__flight`).
 | `dock` | approach counter starts the timer, ki boost, curve with the full cell then the miniature, no native dragon, deck landing |
 | `item` | Fly from the item ring: Goku's icon tiles and palette 5, no drum animation, `$0C80` request, 104 frames to world flight |
 
-All pass, together with the boot, core, goku, story and title suites, on
-the branch merged with main.
+All pass on the branch merged with main (`ad901c3`), as do the boot, core,
+destroy, goku and story suites. The title suite's scene shot `impact-095`
+fails there with the same numbers on main alone (46.84% of the frame), so
+it does not come from this module.
 
 ## Known differences from the browser
 
