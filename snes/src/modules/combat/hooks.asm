@@ -1,6 +1,17 @@
 ; Every patch of original code made by combat, with the original bytes
 ; asserted (native.asm has the handlers; bind.asm the movement hooks).
 
+; Field vblank counter and per-vblank pad (the browser's 60 Hz combat clock
+; and input in lagging scenes).
+%orig4($C0C164, $EC14FFA9)           ; LDA #$FF / TRB $EC
+%hijack_jsl($C0C164, cb_nmi_vblank, 4, combat)
+
+; Combat runs inside the field frame logic, after the pad read (C0:B0AC
+; JSR $93B9 / JSR $B69C), as the browser runs it before each frame's logic.
+%orig4($C0B0AC, $2093B920)
+%orig2($C0B0B0, $B69C)
+%hijack_jsl($C0B0AC, cb_hook_logic, 6, combat)
+
 ; Weapon attacks for Goku (native-interaction.js).
 %orig4($C0B224, $7EE060BF)           ; LDA $7EE060,X
 %hijack_jsl($C0B224, cb_hook_weapon_charged, 4, combat)

@@ -66,7 +66,7 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
 !cb_rec_status = !CB+$3C   ; word: statuses that were broken
 !cb_quake      = !CB+$3E   ; byte: BG quake frames left
 !cb_quake_prev = !CB+$3F   ; byte: $49 before the quake
-!cb_flash      = !CB+$40   ; byte: burst flash frames left
+!cb_fieldv     = !CB+$40   ; byte: field interrupt vectors installed (cached per frame)
 !cb_attack_id  = !CB+$41   ; byte: destroy attack serial (beams)
 !cb_hr_frame   = !CB+$42   ; word: hit recovery: core tick of the hit
 !cb_hr_map     = !CB+$44   ; word
@@ -94,7 +94,7 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
 !cb_hits       = !CB+$6A   ; word: hits queued by combat (diagnostics)
 !cb_kb_iter    = !CB+$6C   ; word: launch loop mask
 !cb_phase      = !CB+$6E   ; byte: frame phase (staggered stat writes)
-!cb_drawn      = !CB+$6F   ; byte: placeholder sprites drawn last frame
+!cb_steps      = !CB+$6F   ; byte: steps left in this field frame (catch-up)
 !cb_t0         = !CB+$70   ; scratch words $70-$9F (call-local)
 !cb_t1         = !CB+$72
 !cb_t2         = !CB+$74
@@ -129,6 +129,7 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
 !bm_barrier    = !CB+$A7   ; byte: a barrier/switch reacted (once per beam)
 ; transform burst
 !cb_burst_done = !CB+$A8   ; byte (diagnostics: hits of the last burst)
+!cb_form_pub   = !CB+$A9   ; byte: form last written to !goku_form ($FF none)
 !cb_hit_dmg    = !CB+$AA   ; word: combat_hit argument: damage
 !cb_hit_dir    = !CB+$AC   ; word: direction 0-3, or $8000 radial (cb_hit_dx/dy)
 !cb_hit_dx     = !CB+$AE   ; word: radial: launch x offset at full distance (8.8)
@@ -144,25 +145,20 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
 !cb_fx_mask    = !CB+$BE   ; word: live effect records (bit = record)
 !cb_fx_iter    = !CB+$C0   ; word: effect loop mask
 !cb_kb_mask    = !CB+$C2   ; word: live launches (bit = enemy slot - 3)
-!cb_last_sfx   = !CB+$C4   ; word: last cue id (diagnostics: id | cb_frame low byte << 8)
-!cb_sfx_count  = !CB+$C6   ; word: cues requested (diagnostics)
+!cb_vblanks    = !CB+$C4   ; word: field vblanks (NMI hook C0:C0BA), the browser's 60 Hz clock
+!cb_vb_last    = !CB+$C6   ; word: cb_vblanks at the last field frame
 !cb_scale      = !CB+$C8   ; word: damageScale() of this frame
 !cb_gi         = !CB+$CA   ; byte: Heavy Gi worn
 !cb_active     = !CB+$CB   ; byte: Goku active (cached for the frame)
-; destroy_hit arguments (attack against the map; see bind.asm)
-!da_len        = !CB+$CC   ; word: reach in pixels
-!da_half       = !CB+$CE   ; word: half width
-!da_taper      = !CB+$D0   ; word: taper length (full wave 44) or 0
-!da_str        = !CB+$D2   ; word: strength 0-256
-!da_id         = !CB+$D4   ; word: attack id (beams), 0 one-shot
+!cb_basemask   = !CB+$CC   ; word: native mask from this field frame's gate (all steps)
+!cb_menuflag   = !CB+$CE   ; byte: a native menu owns the input this field frame
 !cb_d2         = !CB+$D6   ; word: burst: squared distance of the target
 !cb_mq         = !CB+$D8   ; 4 words: math scratch ($D8-$DF)
 !cb_mq1        = !CB+$DA
 !cb_mq2        = !CB+$DC
 !cb_mq3        = !CB+$DE
 !cb_recovering = !CB+$E0   ; word: a status recovery owns this frame's input
-!cb_react_pub  = !CB+$E2   ; byte: goku_mode holds combat's reaction
-!cb_audio_on   = !CB+$E3   ; byte: diagnostics
+!cb_raw        = !CB+$E2   ; word: physical pad of this step (catch-up: the last step gets the new read)
 !cb_m0         = !CB+$E4   ; math scratch words $E4-$F7 (cb_isqrt32, cb_div32)
 !cb_m1         = !CB+$E6
 !cb_m2         = !CB+$E8
@@ -175,7 +171,7 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
 !cb_m9         = !CB+$F6
 !cb_bx         = !CB+$F8   ; word: burst: target x - Goku x
 !cb_by         = !CB+$FA   ; word: burst: target y - Goku y
-!cb_bslot      = !CB+$FC   ; word: burst / strike: actor offset in the loop
+!cb_bslot      = !CB+$FC   ; word: burst: actor offset in the loop
 !cb_spare      = !CB+$FE
 !CB_END        = !CB+$100
 
@@ -195,7 +191,14 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
 !KB       = !CW+$100       ; 9 launches x 16 bytes (enemy slots 3-11)
 !SM       = !CW+$190       ; 9 sound marks x 8 bytes
 !BP       = !CW+$1D8       ; 9 beam pulses x 2 bytes (species, age)
-!CW_END   = !CW+$1EA
+!PADH     = !CW+$1F0       ; pad 1 at each of the last 4 field vblanks (NMI tail)
+; destroy_hit arguments (attack against the map; bind.asm), long addressing
+!da_len   = !CW+$1F8       ; word: reach in pixels
+!da_half  = !CW+$1FA       ; word: half width
+!da_taper = !CW+$1FC       ; word: taper length (full wave 44) or 0
+!da_str   = !CW+$1FE       ; word: strength 0-256
+!da_id    = !CW+$200       ; word: attack id (beams), 0 one-shot
+!CW_END   = !CW+$202
 ; effect record fields
 !fx_kind  = $00   ; byte: !FXK_*
 !fx_flags = $01   ; byte: !FXF_*

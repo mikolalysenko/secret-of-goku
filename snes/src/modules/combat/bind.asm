@@ -38,12 +38,6 @@ cb_sfx_long:
 	REP #$30
 	AND.w #$00FF
 	BEQ .out
-	STA.l $7E0000|!cb_last_sfx
-	PHA
-	LDA.l $7E0000|!cb_sfx_count
-	INC
-	STA.l $7E0000|!cb_sfx_count
-	PLA
 if defined("AUDIO_IDS")
 	JSL audio_sfx
 else
@@ -344,15 +338,15 @@ if defined("POL_PLANTS")
 	STA.w !arg_y
 	LDA !ag_dir
 	STA.w !arg_dir
-	LDA !da_len
+	LDA.l !da_len
 	STA.w !arg_len
-	LDA !da_half
+	LDA.l !da_half
 	STA.w !arg_half
-	LDA !da_taper
+	LDA.l !da_taper
 	STA.w !arg_taper
-	LDA !da_str
+	LDA.l !da_str
 	STA.w !arg_str
-	LDA !da_id
+	LDA.l !da_id
 	STA.w !arg_id
 	LDA.w #$FFFF
 	STA.w !arg_layer

@@ -309,7 +309,7 @@ cb_hr_old:
 	PHA
 +	PLA
 	STA.l $7E0000|!cb_t0
-	LDA.l !core_tick
+	LDA.l $7E0000|!cb_vblanks
 	SEC
 	SBC.l $7E0000|!cb_hr_frame
 	CMP.l $7E0000|!cb_t0
@@ -410,7 +410,7 @@ cb_receive:
 	; the hit (recovery window) and a resisting pose for ordinary hits
 	LDA.l $7E00DC
 	STA.l $7E0000|!cb_hr_map
-	LDA.l !core_tick
+	LDA.l $7E0000|!cb_vblanks
 	STA.l $7E0000|!cb_hr_frame
 	SEP #$20
 	LDA.l $7E0000|!cb_t1
@@ -429,7 +429,7 @@ cb_receive:
 	LDA.l $7E0000|!cb_facing
 	STA.l $7E0000|!cb_react_face
 	REP #$20
-	LDA.l !core_tick
+	LDA.l $7E0000|!cb_vblanks
 	STA.l $7E0000|!cb_react_tick
 	LDA.l $7E00DC
 	STA.l $7E0000|!cb_react_map
@@ -493,7 +493,7 @@ cb_parry:
 	LDA.l $7E0000|!cb_t0
 	BNE .noNear
 .window
-	LDA.l !core_tick
+	LDA.l $7E0000|!cb_vblanks
 	SEC
 	SBC.l $7E0000|!cb_parry_until
 	BPL .deflect
@@ -532,7 +532,7 @@ cb_parry:
 	LDA.b #!GOKU_K_DEFLECT
 	STA.l $7E0000|!cb_react
 	REP #$20
-	LDA.l !core_tick
+	LDA.l $7E0000|!cb_vblanks
 	STA.l $7E0000|!cb_react_tick
 	CLC
 	ADC.w #24

@@ -10,30 +10,168 @@ cb_native_facing:
 ; Pad direction bit for each facing.
 cb_dir_bits:
 	dw !IN_DN,!IN_RT,!IN_LT,!IN_UP
+; mana-mod.js aim(): facing for held directions (index: up 8 | down 4 |
+; left 2 | right 1) when nothing was pressed (+$00), a horizontal key was
+; pressed (+$10) or a vertical one (+$20); $FF keeps the facing.
+cb_aim_table:
+	db $FF,$01,$02,$02,$00,$FF,$FF,$FF,$03,$FF,$FF,$FF,$03,$FF,$FF,$FF
+	db $FF,$01,$02,$02,$FF,$01,$02,$02,$FF,$01,$02,$02,$FF,$01,$02,$02
+	db $FF,$FF,$FF,$FF,$00,$00,$00,$00,$03,$03,$03,$03,$03,$03,$03,$03
 
 ; ---------------------------------------------------------------------------
-; modules_field_frame: M16/X16, DB = $7E, D = 0.
-combat_field_frame:
+; C0:B0AC hook (bank 00, inside the field frame logic C0:B08C; replaced:
+; JSR $93B9 / JSR $B69C). The browser runs combat before each emulated
+; frame, so the game consumes its queued damage, launches and facing in that
+; same frame and draws the pose; here combat runs right after the game's pad
+; read and before movement, actor updates and the OAM build, which keeps
+; that order. Its pad and mask requests apply from the next read, as the
+; browser's joypad state is latched at the next vblank.
+cb_hook_logic:
+	; the game's pad read (JSR $93B9 in bank 00; RTS -> RTL at 00:B294)
+	PHK
+	PER .read-1
+	PEA $B294-1
+	JML $0093B9
+.read
+	PHP
+	PHB
+	PHD
 	REP #$30
+	PHA
+	PHX
+	PHY
+	LDA.w #$0000
+	TCD
+	PEA $7E7E
+	PLB
+	PLB
+	JSR cb_logic_frame
+	REP #$30
+	PLY
+	PLX
+	PLA
+	PLD
+	PLB
+	PLP
+	; movement (JSR $B69C)
+	PHK
+	PER .moved-1
+	PEA $B294-1
+	JML $00B69C
+.moved
+	RTL
+
+; One field frame of combat: a step per field vblank since the last frame
+; (the browser's 60 Hz clock also while the game's logic lags; at most 4:
+; menus and doors pause combat anyway).
+cb_logic_frame:
 	JSR cb_ensure_init
+	JSR cb_cache_active
 	SEP #$20
+	LDA !cb_world
 	STZ !cb_world
 	REP #$20
+	BEQ +
+	LDA !cb_vblanks               ; back from world flight: no catch-up
+	STA !cb_vb_last
++	JSR cb_session_track
+	JSR cb_stats_upkeep
+	JSR cb_gate
+	LDA !cb_vblanks
+	SEC
+	SBC !cb_vb_last
+	BNE +
+	INC
++	CMP.w #5
+	BCC +
+	LDA.w #4
++	SEP #$20
+	STA !cb_steps
+	REP #$20
+	LDA !cb_vblanks
+	STA !cb_vb_last
+	STZ !cb_spare                 ; injections of every step
+.step
+	; each step gets the pad of its own vblank (the browser's per-frame
+	; input): vblank = last - (steps left - 1)
+	LDA !cb_steps
+	AND.w #$00FF
+	DEC
+	STA !cb_t0
+	LDA !cb_vb_last
+	SEC
+	SBC !cb_t0
+	AND.w #$0003
+	ASL
+	TAX
+	LDA.l !PADH,X
+	STA !cb_raw
 	STZ !cb_mask
 	STZ !cb_inject
 	INC !cb_frame
-	JSR cb_cache_active
-	JSR cb_session_track
+	INC !cb_phase
 	JSR cb_hr_tick
 	JSR cb_quake_tick
 	JSR cb_read_input
 	JSR cb_goku_frame
-	JSR cb_publish
-	JSR cb_emit_input
+	LDA !cb_inject
+	TSB !cb_spare
+	LDA !cb_pad
+	STA !cb_pad_prev
+	LDA !cb_in
+	STA !cb_in_prev
+	SEP #$20
+	DEC !cb_steps
+	REP #$20
+	BNE .step
+	JMP cb_publish
+
+; modules_field_frame (M16/X16, DB = $7E, D = 0): the frame's input requests
+; for the core filter, energy beds, King Kai's charge policy, effects.
+combat_field_frame:
+	REP #$30
+	SEP #$20
+	LDA !cb_init
+	CMP.b #$A5
+	REP #$20
+	BNE .out                      ; the logic hook has not run yet
+	LDA !cb_mask
+	TSB.w !core_pad_mask&$FFFF
+	LDA !cb_spare
+	TSB.w !core_pad_inject&$FFFF
 	JSR cb_bind_loops
 	JSR cb_bind_charge_remark
 	JSR cb_effects_draw
+.out
 	REP #$30
+	RTL
+
+; C0:C164 hook (end of every field NMI, after the forced blank ends): count
+; field vblanks and keep pad 1 of each (the browser reads input every video
+; frame, also while the game's logic lags). Replaced: LDA #$FF / TRB $EC
+; (M8, D = 0).
+cb_nmi_vblank:
+	PHP
+	REP #$30
+	PHX
+	SEP #$20
+-	LDA.l $004212                 ; the auto-joypad read of this vblank
+	AND.b #$01
+	BNE -
+	REP #$20
+	LDA.l $7E0000|!cb_vblanks
+	INC
+	STA.l $7E0000|!cb_vblanks
+	AND.w #$0003
+	ASL
+	TAX
+	LDA.l $004218
+	AND.w #$FFF0
+	STA.l !PADH,X
+	PLX
+	PLP
+	LDA.b #$FF
+	TRB $EC
 	RTL
 
 ; modules_world_frame: focus, transformation and the form in world flight
@@ -70,6 +208,7 @@ combat_menu_frame:
 	STZ !cb_inject
 	JSR cb_cache_active
 	LDA.l !core_pad
+	STA !cb_raw
 	AND.w #!IN_B|!IN_Y|!IN_A|!IN_L
 	STA !cb_menu_held
 	JSR cb_menu_x
@@ -99,9 +238,13 @@ cb_ensure_init:
 	STA !cb_rec_map
 	SEP #$20
 	; the permanent Frieza-story form survives loads
+	; the form Goku shows (the permanent Frieza-story form survives loads)
 	LDA.l !persist_ssj_lock
+	ORA !goku_form
 	AND.b #$01
 	STA !cb_form
+	STA !cb_form_pub
+	STA !goku_form
 .done
 	REP #$20
 	RTS
@@ -116,26 +259,31 @@ cb_goku_active:
 cb_cache_active:
 	SEP #$20
 	STZ !cb_active
+	STZ !cb_fieldv
 	LDA.l !persist_goku_active
-	BEQ .no
+	BEQ +
 	LDA !goku_ctl
 	AND.b #!GOKU_CTL_SUPPRESS
-	BNE .no
+	BNE +
 	INC !cb_active
-.no
-	INC !cb_phase
-	REP #$20
-	RTS
-
-; Field interrupt vectors installed ($0100 JML $00C0A8, $0104 JML $00C1CF).
-; Z set when they are.
-cb_native_field:
++	REP #$20
+	; field interrupt vectors ($0100 JML $00C0A8, $0104 JML $00C1CF)
 	LDA $0101
 	CMP.w #$C0A8
-	BNE .out
+	BNE +
 	LDA $0105
 	CMP.w #$C1CF
-.out
+	BNE +
+	SEP #$20
+	INC !cb_fieldv
+	REP #$20
++	RTS
+
+; Z set when the field interrupt vectors are installed (cached per frame).
+cb_native_field:
+	LDA !cb_fieldv
+	AND.w #$00FF
+	EOR.w #$0001
 	RTS
 
 ; mana-mod.js updateMenu(): a native menu session lasts from the ring/menu
@@ -148,19 +296,16 @@ cb_session_track:
 	BNE .on
 	BIT $ED
 	BVS .on
-	REP #$20
-	JSR cb_native_field
-	BNE .keep
-	SEP #$20
+	LDA !cb_fieldv
+	BEQ .keep
 	LDA $2C
-	BNE .keep8
+	BNE .keep
 	LDA $EC
 	AND.b #$FE
-	BNE .keep8
+	BNE .keep
 	STZ !cb_sess
-.keep8
-	REP #$20
 .keep
+	REP #$20
 	RTS
 .on
 	LDA.b #$01
@@ -185,71 +330,116 @@ cb_menu_active:
 ; ---------------------------------------------------------------------------
 ; mana-mod.js canAttack: Goku active, settled field, player 1 owns Goku, no
 ; event, menu, fade, hurt pose or incapacitating status. Writes cb_can and
-; returns it in A16 (Z set when Goku cannot attack).
+; cb_gc; returns cb_can in A16 (Z set when Goku cannot attack).
 cb_compute_can:
-	JSR cb_goku_active
+	SEP #$20
+	STZ !cb_can
+	STZ !cb_gc
+	LDA !cb_active
+	BEQ .no
+	LDA $E02C
+	AND.b #$01
+	STA !cb_gc
+	BEQ .no
+	LDA !cb_fieldv
 	BEQ .no
 	LDA !cb_lock
+	ORA !cb_lock+1
+	ORA !cb_sess
+	ORA $D0
 	BNE .no
-	JSR cb_menu_active
+	LDA $EC
+	AND.b #$FE
 	BNE .no
-	JSR cb_native_field
+	LDA $ED
+	AND.b #$40
 	BNE .no
-	SEP #$20
+	LDA $E4
+	CMP.b #$01
+	BNE .no
+	LDA $E5
+	CMP.b #$01
+	BNE .no
+	LDA $E000
+	LSR
+	BCC .no
 	LDA $E011                     ; native hurt poses 8C-8F
 	CMP.b #$8C
 	BCC +
 	CMP.b #$90
-	BCC .no8
-+	LDA $E4
-	CMP.b #$01
-	BNE .no8
-	LDA $E5
-	CMP.b #$01
-	BNE .no8
-	LDA $E000
-	AND.b #$01
-	BEQ .no8
-	LDA $E02C
-	AND.b #$01
-	BEQ .no8
-	LDA $EC
-	AND.b #$FE
-	BNE .no8
-	LDA $ED
-	AND.b #$40
-	BNE .no8
-	LDA $D0
-	BNE .no8
-	LDA $E190
+	BCC .no
++	LDA $E190
 	AND.b #$70
-	BNE .no8
+	BNE .no
 	LDA $E191
 	AND.b #$D5
-	BNE .no8
-	LDA.b #$01
-	STA !cb_can
+	BNE .no
+	INC !cb_can
 	REP #$20
 	LDA.w #$0001
 	RTS
-.no8
-	REP #$20
 .no
-	SEP #$20
-	STZ !cb_can
 	REP #$20
 	LDA.w #$0000
 	RTS
 
 ; ---------------------------------------------------------------------------
-; Input pipeline (beforeFrame, up to the enabled check). Leaves cb_in /
-; cb_pad, cb_gc, cb_can and the base native mask/inject.
+; The gate of a field frame (game RAM does not change between its catch-up
+; steps): canAttack, gokuControls, menu, and the native mask they imply
+; (on foot A is flight speed, never the dash; Y is ki, never the native ring
+; command; X/L/R are combat's while Goku can fight; other modules may own
+; the whole pad).
+cb_gate:
+	JSR cb_compute_can
+	STZ !cb_basemask
+	SEP #$20
+	STZ !cb_menuflag
+	LDA !cb_sess
+	BNE .menu
+	LDA $EC
+	AND.b #$0C
+	BNE .menu
+	LDA $ED
+	AND.b #$40
+	BEQ .noMenu
+.menu
+	INC !cb_menuflag
+.noMenu
+	LDA !cb_active
+	BEQ .out8
+	LDA !cb_fieldv
+	BEQ .noA
+	LDA $EC
+	AND.b #$FE
+	ORA $D0
+	BNE .noA
+	LDA.b #!IN_A
+	TSB !cb_basemask
+.noA
+	LDA !cb_gc
+	BEQ .out8
+	LDA.b #!IN_Y>>8
+	TSB !cb_basemask+1
+	LDA !cb_can
+	BEQ .out8
+	LDA.b #!IN_X|!IN_L|!IN_R
+	TSB !cb_basemask
+.out8
+	REP #$20
+	LDA !cb_inlock
+	BEQ +
+	LDA.w #$FFF0
+	TSB !cb_basemask
++	RTS
+
+; One step's input (beforeFrame up to the enabled check): the pad of this
+; step's vblank, buttons held since a menu released first, the gate's mask
+; and the X route.
 cb_read_input:
-	LDA.l !core_pad
-	AND.w #$FFF0                  ; controller id bits
+	LDA !cb_raw
 	STA !cb_t0
-	; buttons held since a menu must be released first
-	JSR cb_menu_active
+	LDA !cb_menuflag
+	AND.w #$00FF
 	BEQ .free
 	LDA !cb_t0
 	AND.w #!IN_B|!IN_Y|!IN_A|!IN_L
@@ -257,6 +447,7 @@ cb_read_input:
 	BRA .held
 .free
 	LDA !cb_menu_held
+	BEQ .held
 	AND !cb_t0
 	STA !cb_menu_held
 	EOR.w #$FFFF
@@ -266,52 +457,14 @@ cb_read_input:
 	LDA !cb_t0
 	STA !cb_pad
 	STA !cb_in
-	; other modules own the player (Frieza/Vegeta scenes, ending)
-	LDA !cb_inlock
-	BEQ +
-	LDA.w #$FFF0
+	LDA !cb_basemask
 	TSB !cb_mask
-+	JSR cb_compute_can
-	; gokuControls: Goku is player 1's character
-	SEP #$20
-	STZ !cb_gc
-	REP #$20
-	JSR cb_goku_active
-	BEQ .x
-	SEP #$20
-	LDA $E02C
-	AND.b #$01
-	STA !cb_gc
-	REP #$20
-	; on foot A is flight speed, never the native dash
-	JSR cb_native_field
-	BNE .noA
-	SEP #$20
-	LDA $EC
-	AND.b #$FE
-	ORA $D0
-	REP #$20
-	BNE .noA
-	LDA.w #!IN_A
-	TSB !cb_mask
-.noA
-	LDA !cb_gc
-	AND.w #$00FF
-	BEQ .x
-	LDA.w #!IN_Y                  ; Y is ki, never the native ring command
-	TSB !cb_mask
-	LDA !cb_can
-	AND.w #$00FF
-	BEQ .x
-	LDA.w #!IN_X|!IN_L|!IN_R
-	TSB !cb_mask
-.x
 	JMP cb_menu_x
 
 ; X is ring / back: the game sees native Y (Start for the window and
 ; controller editors of the menu screens, as panelBack).
 cb_menu_x:
-	LDA.l !core_pad
+	LDA !cb_raw
 	BIT.w #!IN_X
 	BNE .held
 	STZ !cb_panel
@@ -362,6 +515,7 @@ cb_menu_x:
 ; while Goku flies (Mode 7 keeps A ascent and B descent).
 cb_read_input_world:
 	LDA.l !core_pad
+	STA !cb_raw
 	AND.w #$FFF0
 	STA !cb_t0
 	LDA !cb_menu_held
@@ -427,7 +581,36 @@ cb_goku_frame:
 +	LDA !cb_recovering
 	BEQ +
 	RTS
-+	; focus unless an L attack chord is held
++	; idle: no combat button (or A), nothing running, pending or held
+	LDA !cb_in
+	AND.w #!IN_B|!IN_Y|!IN_L|!IN_X|!IN_A
+	ORA !cb_fx_mask
+	ORA !cb_kb_mask
+	ORA !cb_power
+	BNE .busy
+	SEP #$20
+	LDA !cb_act
+	ORA !cb_ext_kind
+	ORA !cb_charging
+	ORA !cb_blast_cd
+	ORA !cb_tap
+	ORA !cb_queued
+	BNE .busy8
+	STZ !cb_blocked
+	STZ !cb_ki_blk
+	STZ !cb_pow_blk
+	LDA !cb_can
+	REP #$20
+	STZ !cb_held
+	AND.w #$00FF
+	BEQ +
+	LDA.w #!IN_B
+	TSB !cb_mask
++	RTS
+.busy8
+	REP #$20
+.busy
+	; focus unless an L attack chord is held
 	LDA !cb_in
 	BIT.w #!IN_L
 	BEQ .focus
@@ -527,6 +710,26 @@ cb_locked_frame:
 
 ; Attack inputs after the action advanced (beforeFrame tail).
 cb_attack_inputs:
+	; idle: no attack button, nothing running or pending
+	LDA !cb_in
+	AND.w #!IN_B|!IN_Y|!IN_L
+	BNE .work
+	SEP #$20
+	LDA !cb_act
+	ORA !cb_charging
+	ORA !cb_tap
+	ORA !cb_queued
+	REP #$20
+	BNE .work
+	SEP #$20
+	STZ !cb_blocked
+	STZ !cb_ki_blk
+	REP #$20
+	STZ !cb_held
+	LDA.w #!IN_B
+	TSB !cb_mask
+	RTS
+.work
 	; wave = L+Y without the teleport chord L+B
 	STZ !cb_t1
 	LDA !cb_in
@@ -723,9 +926,11 @@ cb_attack_inputs:
 	BEQ .end8
 	CMP.b #!GOKU_K_CHARGE
 	BEQ .end8
+	REP #$20
 	LDA !cb_act_face
-	AND.b #$03
+	AND.w #$0003
 	TAX
+	SEP #$20
 	LDA.l cb_native_facing,X
 	STA $E010
 .end8
@@ -737,57 +942,28 @@ cb_attack_inputs:
 ; otherwise; charge and A keep the native facing in step.
 cb_aim:
 	LDA !cb_in
-	EOR !cb_in_prev
-	AND !cb_in
-	STA !cb_t0                    ; pressed
-	; horizontal / vertical choices ($FF none)
-	LDX.w #$00FF
-	LDA !cb_in
-	BIT.w #!IN_LT
-	BEQ +
-	LDX.w #$0002
-	BRA ++
-+	BIT.w #!IN_RT
-	BEQ ++
-	LDX.w #$0001
-++	STX !cb_t1                    ; horizontal
-	LDX.w #$00FF
-	BIT.w #!IN_UP
-	BEQ +
-	LDX.w #$0003
-	BRA ++
-+	BIT.w #!IN_DN
-	BEQ ++
-	LDX.w #$0000
-++	STX !cb_t2                    ; vertical
-	LDA !cb_t0
-	BIT.w #!IN_LT|!IN_RT
-	BEQ .notHPress
-	LDA !cb_t1
-	BRA .set
-.notHPress
-	BIT.w #!IN_UP|!IN_DN
-	BEQ .held
-	LDA !cb_t2
-	BRA .set
-.held
-	LDA !cb_t1
-	CMP.w #$00FF
-	BEQ .vert
-	LDA !cb_t2
-	CMP.w #$00FF
-	BNE .keep
-	LDA !cb_t1
-	BRA .set
-.vert
-	LDA !cb_t2
-	CMP.w #$00FF
+	AND.w #!IN_DIRS
 	BEQ .keep
-	LDA !cb_t1
-	CMP.w #$00FF
-	BNE .keep
-	LDA !cb_t2
-.set
+	XBA
+	STA !cb_t1                    ; held directions: up 8, down 4, left 2, right 1
+	LDA !cb_in_prev
+	EOR.w #$FFFF
+	AND !cb_in
+	AND.w #!IN_DIRS
+	XBA                           ; newly pressed
+	LDX.w #$0000
+	BIT.w #$0003
+	BEQ +
+	LDX.w #$0010                  ; a horizontal press: the horizontal facing
+	BRA ++
++	BIT.w #$000C
+	BEQ ++
+	LDX.w #$0020                  ; a vertical press: the vertical facing
+++	TXA
+	ORA !cb_t1
+	TAX
+	LDA.l cb_aim_table,X
+	AND.w #$00FF
 	CMP.w #$00FF
 	BEQ .keep
 	SEP #$20
@@ -806,9 +982,11 @@ cb_aim:
 	BEQ .out
 	SEP #$20
 .write
+	REP #$20
 	LDA !cb_facing
-	AND.b #$03
+	AND.w #$0003
 	TAX
+	SEP #$20
 	LDA.l cb_native_facing,X
 	STA $E010
 .out
@@ -957,19 +1135,26 @@ cb_publish:
 	JSR cb_goku_active
 	BEQ .out
 	SEP #$20
+	; the form goes to the goku module when combat changes it (scenes and
+	; tests may set !goku_form themselves; combat_api_set_form keeps both)
 	LDA !cb_form
+	CMP !cb_form_pub
+	BEQ +
+	STA !cb_form_pub
 	STA !goku_form
-	LDA !cb_act
++	LDA !cb_act
 	BEQ .none
 	STA !goku_act
 	LDA !cb_act_face
 	STA !goku_act_facing
+	LDA !cb_act_super
+	BEQ +
+	LDA.b #$80
++	STA !cb_t0
 	LDA !cb_act_arg
 	AND.b #$03
-	LDX !cb_act_super
-	BEQ +
-	ORA.b #$80
-+	STA !goku_act_arg
+	ORA !cb_t0
+	STA !goku_act_arg
 	LDA !cb_act_dur
 	STA !goku_act_dur
 	REP #$20

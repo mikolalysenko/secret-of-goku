@@ -650,13 +650,15 @@ cb_strike:
 	STA !cb_tap
 	REP #$20
 +	LDA.w #28                     ; punches break objects just ahead
-	STA !da_len
+	STA.l !da_len
 	LDA.w #9
-	STA !da_half
-	STZ !da_taper
+	STA.l !da_half
+	LDA.w #$0000
+	STA.l !da_taper
 	LDA.w #256
-	STA !da_str
-	STZ !da_id
+	STA.l !da_str
+	LDA.w #$0000
+	STA.l !da_id
 	LDA.w #$0000                  ; kind 0: punch / kick
 	JSR cb_destroy_attack
 	BIT.w #$0002
@@ -910,15 +912,16 @@ cb_fire_beam:
 	LDA !cb_t8
 	STA !ag_dir
 	LDA.w #28
-	STA !da_len
+	STA.l !da_len
 	LDA.w #9
-	STA !da_half
-	STZ !da_taper
+	STA.l !da_half
+	LDA.w #$0000
+	STA.l !da_taper
 	JSR cb_beam_strength
-	STA !da_str
+	STA.l !da_str
 	LDA !bm_id
 	AND.w #$00FF
-	STA !da_id
+	STA.l !da_id
 	LDA !bm_mega
 	AND.w #$00FF
 	CLC
@@ -1260,16 +1263,16 @@ cb_beam_frame:
 .geom
 	; the map: plants, rocks, gates and switches under the beam
 	LDA !cb_t2
-	STA !da_len
+	STA.l !da_len
 	LDA !cb_t3
-	STA !da_half
+	STA.l !da_half
 	LDA !cb_t1
-	STA !da_taper
+	STA.l !da_taper
 	JSR cb_beam_strength
-	STA !da_str
+	STA.l !da_str
 	LDA !bm_id
 	AND.w #$00FF
-	STA !da_id
+	STA.l !da_id
 	LDA !bm_mega
 	AND.w #$00FF
 	CLC

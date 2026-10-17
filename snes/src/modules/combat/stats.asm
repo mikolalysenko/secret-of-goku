@@ -57,11 +57,28 @@ cb_power_stats:
 	LDA.w #999
 +	STA $E182
 .bytes
-	JSR cb_power_bytes
 	SEP #$20
 	STZ $E1ED
 	REP #$20
 	RTS
+
+; Once per field frame, every 4th: the per-frame upkeep of the browser's
+; stat writers (equipment.tick, hitRecovery.tick, updatePowerStats). The
+; native rebuild hooks apply the same rules at once; this catches writes
+; by other code (level tables, scripts) within 4 frames.
+cb_stats_upkeep:
+	LDA !cb_phase
+	AND.w #$0003
+	BEQ +
+	RTS
++	LDA.w #$0000
+	JSR cb_defense_stats
+	LDA.w #$0000
+	JSR cb_agility_stats
+	JSR cb_goku_active
+	BEQ +
+	JSR cb_power_bytes
++	RTS
 
 ; updatePowerStats(): strength 255 (230 with the Heavy Gi), attack byte
 ; min(255, damageScale) = 255. Wrapper combat keeps the real values.
@@ -252,10 +269,6 @@ cb_def_bonus:
 ; ---------------------------------------------------------------------------
 ; Per-frame hit recovery tick (native-hit-recovery.js tick()).
 cb_hr_tick:
-	LDA.w #$0000
-	JSR cb_defense_stats
-	LDA.w #$0000
-	JSR cb_agility_stats
 	; a reaction lasts 8 frames on its map while Goku defends
 	LDA !cb_react
 	AND.w #$00FF
@@ -265,7 +278,7 @@ cb_hr_tick:
 	LDA $DC
 	CMP !cb_react_map
 	BNE .endReact
-	LDA.l !core_tick
+	LDA.l $7E0000|!cb_vblanks
 	SEC
 	SBC !cb_react_tick
 	CMP.w #8
@@ -276,22 +289,22 @@ cb_hr_tick:
 	REP #$20
 .noReact
 	; the hit record follows an ordinary hurt pose
-	JSR cb_n_enabled
-	BCC .clear
 	SEP #$20
 	LDA $E011
 	CMP.b #$8D
-	BEQ .hurt
+	BEQ .hurt8
 	CMP.b #$8E
-	BEQ .hurt
+	BEQ .hurt8
 	REP #$20
 .clear
 	SEP #$20
 	STZ !cb_hr_tier
 	REP #$20
 	RTS
-.hurt
+.hurt8
 	REP #$20
+	JSR cb_n_enabled
+	BCC .clear
 	LDA !cb_hr_tier
 	AND.w #$00FF
 	BEQ .new
@@ -301,7 +314,7 @@ cb_hr_tick:
 .new
 	LDA $DC
 	STA !cb_hr_map
-	LDA.l !core_tick
+	LDA.l $7E0000|!cb_vblanks
 	STA !cb_hr_frame
 	JSR cb_threat
 	SEP #$20
@@ -330,7 +343,7 @@ cb_publish_reaction:
 	LDA !cb_react_face
 	STA !goku_mode_facing
 	REP #$20
-	LDA.l !core_tick
+	LDA.l $7E0000|!cb_vblanks
 	SEC
 	SBC !cb_react_tick
 	STA !goku_mode_age
@@ -418,10 +431,16 @@ cb_feedback_burst:
 ; frames of resistance to them. A16 = 1 while the pending recovery owns
 ; the input (the caller stops there).
 cb_status_recovery:
-	; an old record expires (map change, time)
+	; nothing to do without a recovery or a breakable status
 	LDA !cb_rec_map
 	CMP.w #$FFFF
-	BEQ .noRec
+	BNE .expiry
+	LDA $E190
+	AND.w #$4170
+	BNE .noRec
+	RTS                           ; A16 = 0
+.expiry
+	; an old record expires (map change, time)
 	CMP $DC
 	BNE .expire
 	LDA !cb_frame

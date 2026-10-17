@@ -79,7 +79,6 @@ cb_cancel_combat_quiet:
 	STZ !cb_charging
 	STZ !cb_blast_cd
 	STZ !cb_act_pause
-	STZ !cb_flash
 	REP #$20
 	STZ !cb_held
 	STZ !cb_charge
