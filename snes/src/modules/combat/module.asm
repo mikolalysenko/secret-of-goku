@@ -152,6 +152,9 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
 !cb_active     = !CB+$CB   ; byte: Goku active (cached for the frame)
 !cb_basemask   = !CB+$CC   ; word: native mask from this field frame's gate (all steps)
 !cb_menuflag   = !CB+$CE   ; byte: a native menu owns the input this field frame
+!cb_up_act     = !CB+$CF   ; byte: cb_active at the last stats upkeep pass
+!cb_sa_wr      = !CB+$D0   ; word: E188 / E189 (strength, agility) after the last stats upkeep
+!cb_pub_kind   = !CB+$D2   ; byte: action kind combat last wrote to !goku_act (0 none)
 !cb_d2         = !CB+$D6   ; word: burst: squared distance of the target
 !cb_mq         = !CB+$D8   ; 4 words: math scratch ($D8-$DF)
 !cb_mq1        = !CB+$DA
@@ -258,9 +261,13 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
 !IN_R  = $0010
 !IN_DIRS = $0F00
 
-; Story hooks / queries implemented by combat (story/hooks.asm).
-!STORY_HOOK_EQUIP_CONFISCATE = combat_equip_confiscate
-!STORY_QUERY_EQUIP_WEIGHTED = combat_q_weighted
+; Story hooks / queries implemented by combat (story/hooks.asm). Story's
+; test builds (-DSTORY_TEST) answer every foreign hook and query from their
+; own tables (story/testhooks.asm, included before this file): keep those.
+if not(defined("STORY_TEST"))
+	!STORY_HOOK_EQUIP_CONFISCATE = combat_equip_confiscate
+	!STORY_QUERY_EQUIP_WEIGHTED = combat_q_weighted
+endif
 
 ; Audio cue ids (snes/gen/audio.mjs SHOTS order; bind.asm asserts them
 ; against the audio module when it is present).

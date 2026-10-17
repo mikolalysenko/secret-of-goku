@@ -12,11 +12,16 @@ cb_power_stats:
 	AND.w #$00FF
 	BNE +
 	RTS
-+	; level and skills: every 8th frame (only native events change them)
++	; level and skills: at once when the level is off (load, import, level
+	; up), else every 8th frame (only native events change them)
+	LDA $E181
+	AND.w #$00FF
+	CMP.w #98
+	BNE +
 	LDA !cb_phase
 	AND.w #$0007
 	BNE .hp
-	SEP #$20
++	SEP #$20
 	LDA.b #98
 	STA $E181
 	LDA.b #$88
@@ -67,24 +72,46 @@ cb_power_stats:
 ; native rebuild hooks apply the same rules at once; this catches writes
 ; by other code (level tables, scripts) within 4 frames.
 cb_stats_upkeep:
-	; the browser rewrites these every frame: a form change applies at once,
-	; the rest (native gear / level changes) within four frames
+	; The browser rewrites these every frame. Every frame here: a form or
+	; power change, or any other writer's change to strength / agility / DEF
+	; applies at once; a full pass every 4th frame catches the rest (gear
+	; changed without a native rebuild).
 	LDA !cb_def_form
 	EOR !cb_form
 	AND.w #$00FF
-	BNE +
+	BNE .now
+	LDA !cb_up_act
+	EOR !cb_active
+	AND.w #$00FF
+	BNE .now
+	LDA $E1A5
+	CMP !cb_def_wr
+	BNE .now
+	LDA $E1A8
+	CMP !cb_def_wr+2
+	BNE .now
+	LDA $E188
+	CMP !cb_sa_wr
+	BNE .now
 	LDA !cb_phase
 	AND.w #$0003
-	BEQ +
+	BEQ .now
 	RTS
-+	LDA.w #$0000
+.now
+	LDA.w #$0000
 	JSR cb_defense_stats
 	LDA.w #$0000
 	JSR cb_agility_stats
 	JSR cb_goku_active
 	BEQ +
 	JSR cb_power_bytes
-+	RTS
++	LDA $E188
+	STA !cb_sa_wr
+	SEP #$20
+	LDA !cb_active
+	STA !cb_up_act
+	REP #$20
+	RTS
 
 ; updatePowerStats(): strength 255 (230 with the Heavy Gi), attack byte
 ; min(255, damageScale) = 255. Wrapper combat keeps the real values.
@@ -202,6 +229,11 @@ cb_defense_stats:
 	STZ !cb_def_valid
 	REP #$20
 .none
+	; (not ours while invalid: only settles the upkeep's per-frame check)
+	LDA $E1A5
+	STA !cb_def_wr
+	LDA $E1A8
+	STA !cb_def_wr+2
 	RTS
 .powered
 	LDA $E000

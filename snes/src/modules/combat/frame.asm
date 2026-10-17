@@ -135,7 +135,11 @@ combat_field_frame:
 	CMP.b #$A5
 	REP #$20
 	BNE .out                      ; the logic hook has not run yet
-	LDA !cb_mask
+	; never hide a button combat injects (X routed to native Y while Y is
+	; ki): the core applies a mask to two reads but an injection to one
+	LDA !cb_spare
+	EOR.w #$FFFF
+	AND !cb_mask
 	TSB.w !core_pad_mask&$FFFF
 	LDA !cb_spare
 	TSB.w !core_pad_inject&$FFFF
@@ -237,7 +241,6 @@ cb_ensure_init:
 	STA !cb_map
 	STA !cb_rec_map
 	SEP #$20
-	; the permanent Frieza-story form survives loads
 	; the form Goku shows (the permanent Frieza-story form survives loads)
 	LDA.l !persist_ssj_lock
 	ORA !goku_form
@@ -542,7 +545,9 @@ cb_read_input_world:
 
 ; Hand the native mask/inject requests to core.
 cb_emit_input:
-	LDA !cb_mask
+	LDA !cb_inject
+	EOR.w #$FFFF
+	AND !cb_mask
 	TSB.w !core_pad_mask&$FFFF
 	LDA !cb_inject
 	TSB.w !core_pad_inject&$FFFF
@@ -560,12 +565,16 @@ cb_goku_frame:
 	JSR cb_cancel_combat_quiet
 	RTS
 .active
-	; an action another module put in !goku_act (teleport) blocks ours
+	; an action another module put in !goku_act (teleport) blocks ours; our
+	; own kind is still there when an action ended in an earlier catch-up
+	; step of this field frame (cb_publish runs after the last step)
 	SEP #$20
 	STZ !cb_ext_kind
 	LDA !cb_act
 	BNE +
 	LDA !GOKU_ACT_ADDR
+	CMP !cb_pub_kind
+	BEQ +
 	STA !cb_ext_kind
 +	REP #$20
 	JSR cb_status_recovery
@@ -1145,6 +1154,7 @@ cb_publish:
 +	LDA !cb_act
 	BEQ .none
 	STA !goku_act
+	STA !cb_pub_kind
 	LDA !cb_act_face
 	STA !goku_act_facing
 	LDA !cb_act_super
@@ -1165,6 +1175,7 @@ cb_publish:
 	LDA !cb_ext_kind
 	BNE .modes8
 	STZ !goku_act
+	STZ !cb_pub_kind
 .modes8
 	REP #$20
 .modes

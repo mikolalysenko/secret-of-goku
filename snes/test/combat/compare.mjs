@@ -31,6 +31,9 @@ function matchSequence(name,js,cart,key,{slack=3,maxSkip=2}={}){
     if(Math.abs(a[k].i-s.i)>slack)failures.push(`${name}: ${s.k} at cartridge frame ${s.i}, browser frame ${a[k].i}`);
     skipped+=Math.max(0,skip);matched++;j=k;
   }
+  // and it must get to the end: no browser states left over (a cartridge
+  // that stops early otherwise matches the browser's idle states)
+  if(!failures.length&&b.length&&a.length-1-j>maxSkip)failures.push(`${name}: the cartridge stopped at ${b[b.length-1].k} (frame ${b[b.length-1].i}); browser went on to ${a.slice(j+1,j+4).map(x=>x.k).join(', ')}`);
   return {failures,matched,skipped,states:a.length};
 }
 

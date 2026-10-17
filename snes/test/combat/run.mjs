@@ -42,6 +42,11 @@ function luaFor(sc){
   return `IMPORT_ROOT=${JSON.stringify(importRoot)}\n${lib}
 function test()
   H.wait(5)
+  -- Goku active and a clean combat block before the import too: the import
+  -- restores only the game's 8 KiB of SRAM, and the frame it lands in
+  -- already runs with these
+  H.w8(0x316001, 1)
+  H.w8(0x316200, 0)
   if not C.import(${JSON.stringify(sc.bundle)}) then return end
   H.w8(0x316001, 1)
   H.w8(0x316200, 0)
