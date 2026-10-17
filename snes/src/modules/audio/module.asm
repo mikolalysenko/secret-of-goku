@@ -29,8 +29,9 @@ incsrc "audio/ids.asm"
 !au_status   #= !aw+$06   ; last port 3 status
 !au_cnt      #= !aw+$07   ; protocol counter
 !au_groups   #= !aw+$08   ; groups in the command being sent
-!au_flags    #= !aw+$09   ; bit0 stop all now, bit2 chant latched, bit3 stop all with the next
-                          ; transfer, bit6 disabled (APU timeout), bit7 synced
+!au_flags    #= !aw+$09   ; bit0 stop all now, bit1 a transfer is wanted (until one completes),
+                          ; bit2 chant latched, bit3 stop all with the next transfer,
+                          ; bit6 disabled (APU timeout or no extension), bit7 synced
 !au_lvl      #= !aw+$0A   ; 4 loop levels requested (0 off)
 !au_rate     #= !aw+$0E   ; 4 loop rates ($80 = 1.0)
 !au_age      #= !aw+$12   ; 4 frames since the loop was requested
@@ -83,6 +84,9 @@ incsrc "audio/ids.asm"
 !AU_SONG_HOLD = 16   ; frames after a song change: the driver clears its
                      ; echo ring and does not poll the ports for ~15 frames
 !AU_FIRST  = 6
+!AU_LINE_LIMIT = 218 ; a frame's transfer ends before this scanline (vblank at 225)
+!AU_CHUNK_LINES = 20 ; one chunk: 13 groups at ~95 us (Mesen, arrival scene)
+!AU_CMD_LINES = 6    ; the command's own handshakes
 
 pushpc
 org !DATA_AUDIO
@@ -314,9 +318,34 @@ audio_frame:
 	REP #$10
 	JSR audio_track_native
 	JSR audio_test_poll
+if defined("title_sfx")
+	JSR audio_title_cues
+endif
 	JSR audio_service
 	PLP
 	RTL
+
+if defined("title_sfx")
+; Goku's arrival (title module): !title_sfx = 1 when the pod's descent
+; begins, 2 at the impact, the browser's playSound('flight') / ('impact').
+; The consumer clears it.
+audio_title_cues:
+	LDA.w !title_sfx&$FFFF
+	BEQ .none
+	STZ.w !title_sfx&$FFFF
+	CMP.b #$02
+	BEQ .impact
+	CMP.b #$01
+	BNE .none
+	LDA.b #!AUDIO_SFX_FLIGHT
+	BRA .play
+.impact
+	LDA.b #!AUDIO_SFX_IMPACT
+.play
+	JSL audio_sfx
+.none
+	RTS
+endif
 
 ; Remember the native song playing (loader state $1E05-$1E07: id, echo
 ; preset, p3) so audio_song_restore can return to it after a new cue. A
@@ -368,7 +397,9 @@ audio_service:
 +	INC.w !au_frame
 	BIT.b #$80
 	BNE .synced
-	ORA.b #$88                ; first service since boot / title: stop both
+	ORA.b #$83                ; first service since boot / title / import:
+                              ; stop both now (this also tells whether the
+                              ; driver has the extension, au_end)
 	STA.w !au_flags
 	STZ.w !au_ch+!c_base
 	LDA.b #$07
@@ -388,9 +419,14 @@ audio_service:
 	JSR au_stop_channel
 	PLA
 	AND.b #$01
-	BNE .busy
-+	LDA.w !au_ch+!c_kind      ; idle (most frames): nothing playing or asked
-	ORA.w !au_ch+!AU_CH+!c_kind ; for
+	BEQ +
+	LDA.w !au_flags           ; stop now: send it even if nothing else is due
+	ORA.b #$02
+	STA.w !au_flags
++	LDA.w !au_flags           ; idle (most frames): nothing playing, asked
+	AND.b #$02                ; for or due
+	ORA.w !au_ch+!c_kind
+	ORA.w !au_ch+!AU_CH+!c_kind
 	ORA.w !au_reqn
 	ORA.w !au_voicereq
 	ORA.w !au_lvl
@@ -415,6 +451,7 @@ audio_service:
 	JSR au_shot_requests
 	JSR au_loops
 	JSR au_plan
+	JSR au_budget
 	JMP au_send
 
 ; X = channel: in-flight count, and idle once the SPC reports it inactive.
@@ -962,6 +999,70 @@ au_start_clip:
 	STA.w !au_ch+!c_ctl,X
 	RTS
 
+; Never make the frame late: only as many chunks as fit before
+; !AU_LINE_LIMIT; a heavy frame sends fewer and the next one catches up (the
+; 7-slot rings hold about two frames of sound; past that the voice plays
+; silence, never stale data). Channel 0 gets at most half when both want
+; more than fits. A8 X16.
+au_budget:
+	LDA.w !au_ch+!c_k
+	ORA.w !au_ch+!AU_CH+!c_k
+	BNE +
+	RTS
++	JSR au_lines_left
+	SEC
+	SBC.b #!AU_CMD_LINES
+	BCS +
+	LDA.b #$00
++	LDY.w #$0000              ; chunks that fit = lines / !AU_CHUNK_LINES
+-	CMP.b #!AU_CHUNK_LINES
+	BCC +
+	SBC.b #!AU_CHUNK_LINES
+	INY
+	BRA -
++	TYA
+	STA.w !au_tmp+$0F
+	LDA.w !au_ch+!c_k
+	CLC
+	ADC.w !au_ch+!AU_CH+!c_k
+	CMP.w !au_tmp+$0F
+	BCC .ok
+	BEQ .ok
+	LDA.w !au_tmp+$0F
+	INC
+	LSR                       ; channel 0: at most (budget + 1) / 2
+	CMP.w !au_ch+!c_k
+	BCS +
+	STA.w !au_ch+!c_k
++	LDA.w !au_tmp+$0F         ; channel 1: what is left
+	SEC
+	SBC.w !au_ch+!c_k
+	CMP.w !au_ch+!AU_CH+!c_k
+	BCS .ok
+	STA.w !au_ch+!AU_CH+!c_k
+.ok
+	RTS
+
+; A = scanlines left before !AU_LINE_LIMIT (0 when past it or in vblank).
+au_lines_left:
+	LDA.l $00213F             ; reset the counter read flip-flops
+	LDA.l $002137             ; latch H/V
+	LDA.l $00213D             ; V low
+	XBA
+	LDA.l $00213D             ; V bit 8 (bits 1-7 open bus)
+	AND.b #$01
+	BNE .none
+	XBA
+	CMP.b #!AU_LINE_LIMIT
+	BCS .none
+	EOR.b #$FF
+	SEC
+	ADC.b #!AU_LINE_LIMIT
+	RTS
+.none
+	LDA.b #$00
+	RTS
+
 ; How many chunks each channel sends this frame.
 au_plan:
 	LDX.w #$0000
@@ -1020,7 +1121,14 @@ au_send:
 	LDA.w !au_groups
 	BNE +
 	RTS
-+	STA.l $002141
++	JSR au_lines_left         ; too late in the frame even for the command:
+	CMP.b #!AU_CMD_LINES      ; try again next frame
+	BCS +
+	RTS
++	STA.w !au_tmp+$05         ; bounds the echo wait
+	STZ.w !au_tmp+$15         ; set when chunks are left for the next frame
+	LDA.w !au_groups
+	STA.l $002141
 	LDA.b #$8A
 	STA.l $002140
 	JSR au_wait_cmd
@@ -1034,7 +1142,14 @@ au_send:
 	LDX.w #!AU_CH
 	JSR au_send_channel
 	BCS .ret
-	JSR au_group0             ; end group, acknowledged after processing
+	LDA.w !au_tmp+$15         ; fewer groups than announced: end record
+	BEQ +
+	STZ.w !au_tmp+$10
+	STZ.w !au_tmp+$11
+	STZ.w !au_tmp+$12
+	JSR au_group
+	BCS .ret
++	JSR au_end                ; end group, acknowledged after processing
 	BCS .ret
 	LDA.b #$00
 	STA.l $002140
@@ -1091,10 +1206,24 @@ au_wait_a:
 ; costs little.
 au_wait_cmd:
 	PHY
-	LDY.w #!AU_CMD_WAIT
+	PHA                       ; the command byte to see echoed
+	LDA.w !au_tmp+$05         ; at most until the frame's line limit:
+	REP #$20                  ; ~15 tries per scanline
+	AND.w #$00FF
 	PHA
-	LDA.w !au_misses
+	ASL : ASL : ASL : ASL
+	SEC
+	SBC $01,S
+	PLY
+	TAY
+	SEP #$20
+	CPY.w #!AU_CMD_WAIT
+	BCC +
+	LDY.w #!AU_CMD_WAIT
++	LDA.w !au_misses          ; after a miss only a short probe
 	BEQ +
+	CPY.w #!AU_PROBE_WAIT
+	BCC +
 	LDY.w #!AU_PROBE_WAIT
 +	PLA
 -	CMP.l $002140
@@ -1122,6 +1251,36 @@ au_wait_cmd:
 	RTS
 .ok
 	STZ.w !au_misses
+	PLY
+	CLC
+	RTS
+
+; The end group. The extension acknowledges it with counter | $80 once the
+; records are processed; an unextended driver (an imported browser state)
+; echoes the counter like any command: then streams cannot play, and the
+; module switches them off (au_flags bit 6) instead of feeding the void.
+au_end:
+	LDA.w !au_cnt
+	STA.l $002140
+	ORA.b #$80
+	STA.w !au_tmp+$05
+	PHY
+	LDY.w #$0000
+-	LDA.l $002140
+	CMP.w !au_tmp+$05
+	BEQ .ok
+	CMP.w !au_cnt
+	BEQ .plain
+	DEY
+	BNE -
+.plain
+	LDA.w !au_flags
+	ORA.b #$40
+	STA.w !au_flags
+.ok
+	LDA.w !au_flags           ; the wanted transfer went out
+	AND.b #$FD
+	STA.w !au_flags
 	PLY
 	CLC
 	RTS
@@ -1205,10 +1364,17 @@ au_send_channel:
 .data
 	LDA.w !au_ch+!c_k,X
 	BEQ .done
+	JSR au_lines_left         ; a chunk only while it fits in this frame
+	CMP.b #!AU_CHUNK_LINES
+	BCC .late
 	JSR au_send_chunk
 	BCS .ret
 	DEC.w !au_ch+!c_k,X
 	BRA .data
+.late
+	STZ.w !au_ch+!c_k,X
+	LDA.b #$01
+	STA.w !au_tmp+$15
 .done
 	CLC
 .ret

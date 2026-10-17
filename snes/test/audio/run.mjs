@@ -8,7 +8,7 @@ import {readFileSync,existsSync,mkdirSync,writeFileSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {runMesen} from '../mesen.mjs';
-import {checkpointDir,privateRom,cleanupRom} from '../checkpoints.mjs';
+import {checkpointDir,privateRom,cleanupRom,mainCheckout} from '../checkpoints.mjs';
 import {createApu,loadRom,loadSong} from './apu.mjs';
 import {compareSongs} from './songs.mjs';
 
@@ -46,7 +46,12 @@ if(!only.length||only.includes('render')){
  for(const m of bad)console.log('   '+m);
  if(bad.length)ok=false;
 }
-const mesenTests=[['stream','waterfall'],['songs','waterfall']].filter(([n])=>!only.length||only.includes(n));
+// [name, checkpoint (null: power-on)]; arrival and imported import the
+// browser state before the sword pull (skipped when the bundle is missing).
+const fromCheckpoint=n=>n==='stream'||n==='songs';
+const arrivalBundle=join(mainCheckout(),'.local/snes-import/arrival-research__probe__before-pull');
+const mesenTests=[['stream','waterfall'],['songs','waterfall'],['arrival',null],['imported',null]]
+ .filter(([n])=>!only.length||only.includes(n)).filter(([n])=>fromCheckpoint(n)||existsSync(arrivalBundle));
 if(!mesenTests.length)process.exit(ok?0:1);
 
 // Voices sounding in the first 4 s of each song (frames 15-225 after the
@@ -76,7 +81,8 @@ const summary=[];
 for(const [name,cp] of tests){
  const copy=privateRom(rom,`audio-${name}`);
  const t0=Date.now();
- const r=await runMesen({rom:copy,test:lib+'\n'+readFileSync(join(here,`${name}.lua`),'utf8'),outDir:join(outRoot,name),state:join(cps,`${cp}.mss`),timeoutMs:600000});
+ const pre=fromCheckpoint(name)?'':`IMPORT=${JSON.stringify(arrivalBundle)}\n`;
+ const r=await runMesen({rom:copy,test:pre+lib+'\n'+readFileSync(join(here,`${name}.lua`),'utf8'),outDir:join(outRoot,name),state:cp?join(cps,`${cp}.mss`):null,timeoutMs:600000});
  cleanupRom(copy);
  const res=r.results??{};
  const fails=Object.entries(res).filter(([k,v])=>typeof v==='string'&&v.startsWith('FAIL'));

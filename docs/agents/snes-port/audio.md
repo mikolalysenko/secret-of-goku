@@ -198,14 +198,32 @@ extends the driver (uploaded after it at boot):
   every voice off and cleared `$AE`. A loop that its caller keeps
   requesting comes back by itself (Mesen: 2 frames after the new song's
   tracks start).
+- **Never making a frame late**: the service runs last in the field and
+  world frames, and a transfer ends before scanline 218 (vblank at 225):
+  it starts only with 6 scanlines left, the echo wait lasts at most until
+  the limit (~15 tries per line), each chunk is sent only while 20 lines are
+  left, and if the frame runs out the CPU sends an end record (byte 0 = 0;
+  `ext_cmd` jumps to its end) and the rest goes out next frame. A static
+  estimate (`au_budget`) already trims the announced chunks, channel 0
+  getting at most half when both want more than fits.
+- **Extension handshake**: the end group comes back as counter | `$80`
+  from the extension and as the plain counter from an unextended driver (an
+  imported browser state); then the module switches streams off (`au_flags`
+  bit 6) instead of feeding a driver that never plays them. The first
+  service after boot, title or an import sends both STOPs at once (when the
+  song hold-off allows), so this is known before the first cue.
 - **Driver patches** (ARAM only, asserted against the ROM image): `$020A`
   DP clear limit, `$0279` main-loop poll, `$0299` port 3, `$02E1`/`$0378`
   effect-pass masks, `$02F4` tick hook, `$14C6` command `$8A`.
 
 Rates and budget: clips are 12 kHz BRR (the browser's material is low-passed
-at 5.6 kHz). One channel consumes ~3.1 chunks per 60 Hz frame; a transfer
-costs ~49 µs per 3-byte group (SPC-bound), so ~2 ms per active channel per
-frame. Seven slots give ~32 ms of buffer per channel (30 Hz scenes survive).
+at 5.6 kHz). One channel consumes ~3.1 chunks per 60 Hz frame. Measured in
+Mesen (arrival scene): a 3-byte group costs ~95 µs (1.5 scanlines; the
+SPC700's receive loop is 59 cycles, the CPU's about as long), so a chunk is
+~20 lines and one playing stream ~60 lines a frame, plus the wait for the
+driver to notice the command (median well under a line, up to ~8 ms when it
+is inside a tick). Seven slots give ~32 ms of buffer per channel; frames
+that run out of time send less and the ring absorbs it.
 
 ### Music
 
@@ -329,8 +347,9 @@ any one-shot and restart when a channel is free again; `charge` > `aura` >
 native effect (highest voice no effect holds) and returned when it ends.
 
 **Costs.** Each active channel streams 12 kHz BRR: about 3 chunks (39
-groups, ~2 ms of CPU busy-wait) per frame while it plays, nothing when idle.
-Menus and rings stop all streams. For 16 frames after any song change no
+groups, ~4 ms of CPU busy-wait, ~60 scanlines) per frame while it plays,
+never past scanline 218, nothing when idle (an idle frame returns before
+touching the ports). Menus and rings stop all streams. For 16 frames after any song change no
 stream starts (requests wait, see "Never blocking the game"), and a song
 change cuts whatever streams were playing, as it cuts native effects.
 
@@ -362,6 +381,13 @@ The browser also lowers its cue by 3.3 dB while Goku charges
 sent). Each change stalls the game loop for the upload (section 3, Load
 time), so change songs at scene or phase boundaries, not every few frames.
 
+**Goku's arrival** (title module): `audio_frame` reads `!title_sfx`
+(`$7E:DD87`, set by `title_field_frame` earlier in the same frame): 1 plays
+`FLIGHT` (the browser's `playSound('flight')` when the pod's descent
+begins), 2 plays `IMPACT`; it then clears the byte. Mesen (imported probe
+state, extension injected): the descent starts at frame 145 and its sound
+is audible at 146, the impact at 205 and 205.
+
 **Test mailbox** (Mesen tests): word `!RAM_AUDIO+$16` = op | arg<<8 —
 1 shot, 2 voice, 3 song, 4 stop, 5 loop on (kept every frame), 6 loop off,
 7 fade, 8 native effect `02 arg 0F 88`, 9 `audio_song_restore`.
@@ -371,7 +397,8 @@ time), so change songs at scene or phase boundaries, not every few frames.
 Done: driver research (this page); SPC700 assembler/disassembler, BRR codec,
 S-DSP model with echo, APU harness running the real driver; the stream
 extension; the 65816 module and the API above; the 12 kHz DBZ/voice bank;
-the five songs. `node snes/test/audio/run.mjs [unit|render|stream|songs]`:
+the five songs; the arrival's pod cues.
+`node snes/test/audio/run.mjs [unit|render|stream|songs|arrival|imported]`:
 
 - **unit** (Node): assembler round trip, BRR, DSP model, the extension's
   ARAM footprint, a gapless stream, native effects beside two streams, a
@@ -395,6 +422,16 @@ the five songs. `node snes/test/audio/run.mjs [unit|render|stream|songs]`:
   stall frames (section 3); a song change while the charge loop plays (loop
   silenced by the song start, back on its voice, released after); the game's
   fade; `audio_song_restore` back to `$1C` with its echo preset and `p3`.
+- **arrival** (Mesen, the browser state before the sword pull, imported,
+  extension injected): `FLIGHT` streams within 1 frame of the descent,
+  `IMPACT` with the impact, `!title_sfx` never left set.
+- **imported** (Mesen, the same state without the extension): streams are
+  switched off after the first sync, a requested hit never reaches a voice,
+  and the game's own effect still answers.
+
+`snes/test/title` (arrival e2e, with the extension) checks that no frame of
+the impact is made late by the modules: 0 of 140 with both pod sounds
+streaming.
 
 Not verified: real hardware (timing margins are from the harness and
 Mesen); the CPU cost of streams inside the perf scenes (those import
@@ -403,65 +440,24 @@ sine) by ear.
 
 ## 6. Imported test states and the APU
 
-`H.importSnesJs` (`snes/test/lua/harness.lua`) writes a browser state's
-ARAM, DSP registers and SPC700 registers from a CPU-side callback. Two
-pieces of APU state cannot be set that way, and either one can leave the
-SPC700 dead right after an import:
+`H.importSnesJs` used to set the SPC700's registers from a CPU-side
+callback, in the middle of whatever instruction the sound CPU was running;
+it then finished that instruction against the new state and could resume
+misaligned or with a broken stack (seen on this branch: `STOP` executed
+from the operand at `$0CF2`, a run into the ADSR table at `$1881`), after
+which every native sound call waited forever. Main `e2f2fe2` applies the
+APU state at a sound-CPU instruction boundary; with it all goku, title and
+story tests pass on this branch.
 
-- **The S-DSP's echo pointer.** Its write position in the ring and the ring
-  length latched at the last wrap belong to the previous scene. The echo
-  unit keeps writing with them from the bundle's ESA, and when that runs
-  past `$FFFF` it wraps into `$0000-$01FF`, the driver's direct page and
-  stack (seen: `barrier-audit__potos-probe` then runs at `$0000-$0007`).
-- **The SPC700's position inside an instruction.** The new PC takes effect
-  in the middle of whatever instruction the SPC700 was executing, so it can
-  resume misaligned (seen: in `goku/budget.lua`'s second potos import it
-  executed the `$FF` operand of `MOV A,#$FF` at `$0CF1` as `STOP` and halted;
-  `graphics-audit__status__shrink` ran off into `$FFxx`).
-
-Which import is hit depends on the APU's phase at that moment, so the same
-bundle survives on one build and dies on another. Everything that talks to
-the APU afterwards then waits forever: the native song loader (`C3:0198`;
-the upload at `C3:065C` that the story tests stop at) and native effects
-(`C3:059F`: in `goku/field.lua` the push sound `02 8B 0F 88`, in
-`goku/budget.lua` the walk's first sound at frame 47, which the "no added
-lag frames" check then reports). The audio module itself never waits more
-than one ~10-13 ms try, then ~1.5 ms probes with growing back-off.
-
-Recommended fix for the harness: do not import the APU at all. Leave out
-`aram.bin`, `dsp.bin` and every `spc.*` field, so the cartridge's own
-driver (with the stream extension) keeps running undisturbed, and make the
-CPU-side loader forget the browser's song and instrument cache, so the next
-song command uploads everything:
-
-```lua
--- in H.importSnesJs, instead of the aram/dsp blits and the spc.* state:
-emu.write(0x1E05, 0xFF, emu.memType.snesWorkRam)                      -- no current song
-for a = 0x1E28, 0x1E47 do emu.write(a, 0, emu.memType.snesWorkRam) end -- empty instrument cache
-```
-
-The scene then keeps the previous music until its next song command (a
-test that needs the scene's own song can send it: byte `$1E05` of the
-bundle's `wram.bin` names it), and DBZ streams work in imported states.
-Checked with a wrapper that imports this way, running `goku/menu.lua` and
-`goku/budget.lua` on main `594d740` and on this branch: `goku/menu.lua`
-passes on both, `goku/budget.lua` runs all 160
-logic frames on both and measures the same growth on both (p90 395 → 416 on
-main, 396 → 417 here; the test's own limit is 20 lines, so it is borderline
-for Goku either way).
-
-A milder fix that keeps the browser's APU state (empty the echo ring one
-frame before the import: FLG |= `$20`, EDL = 0; afterwards restart the
-driver at `$0279` with SP = `$FF` through a NOP landing pad at `$17F0`)
-fixed `goku/field.lua` and `goku/budget.lua` but not every import (a later
-import in `goku/menu.lua` still ran into the ADSR table at `$1881` on main).
-
-Without a fix, which test meets a dead APU is luck. On this branch after
-merging main `594d740` the losers are `goku/budget.lua` (second import: SPC
-halted at `$0CF3`, the walk's first sound at frame 47 never returns: 46 of
-160 logic frames) and `goku/menu.lua` (second import: the ring's first
-sound hangs at `C3:05D4`); main passes both by the same luck, and the audio
-module is idle in both (no stream, no transfer).
+An imported state still runs the browser's own driver, without the stream
+extension. The module notices at its first transfer (section 3, extension
+handshake) and switches streams off, so imported scenes cost no streaming
+time; `snes/test/audio/imported.lua` covers this. Tests that need DBZ
+sounds in an imported state call `injectExtension()`
+(`snes/test/audio/lib.lua`) right after the import, as `arrival.lua` does.
+The S-DSP's internal echo write position is not part of a bundle either; if
+a test ever sees direct page or stack bytes change right after an import,
+empty the echo ring first (FLG |= `$20`, EDL = 0, one frame).
 
 ## 7. Integration summary
 
@@ -476,7 +472,7 @@ original-byte assertions):
 | `C3:4682`, `C3:46A2`, `C3:46C2`, `C3:46E2`, `C3:4702` | 32 each | instrument lists of songs `$3B-$3F` |
 
 **ARAM** (uploaded at boot, asserted against the driver image by the
-build): code `$1598-$17FA`, `$FF89-$FFF7`, `$1898-$18B8`; tables
+build): code `$1598-$17FC`, `$FF89-$FFFA`, `$1898-$18B8`; tables
 `$1818-$183C`, `$1930-$1977`; chunk slots `$FA00-$FBF7`; DP `$E3-$EF` and the
 gaps listed in section 1; driver patches at `$020A`, `$0279`, `$0299`,
 `$02E1`, `$02F4`, `$0378`, `$14C6`.
@@ -486,6 +482,7 @@ HDMA); code bank `$AA`; tables, extension image and sequences in `$EA`
 (`audio_data_end` asserted inside the bank); DBZ clips in `$FC-$FF`
 (231 KiB). Frame hooks: `audio_frame` last in the field frame and in the
 world frame, `audio_pause` in the menu and ring frames. Native commands go
-through `core_sound_queue`.
+through `core_sound_queue`. Reads (and clears) the title module's
+`!title_sfx` (`$7E:DD87`) when that module is built in.
 
-**Core requests**: none. Harness request: section 6.
+**Core requests**: none.

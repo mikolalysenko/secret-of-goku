@@ -39,6 +39,8 @@
 ;   $3c volL volR                     volume
 ;   $4c pitchL pitchH                 pitch
 ;   $5c 0 0                           stop (KOF with the next tick, release)
+;   $00 0 0                           end: no more records (the CPU ran out of
+;                                     frame time); the end group follows
 ; Port 3 (output) holds the stream status at all times; the CPU never reads
 ; port 3 natively, so the driver's own copy of $AE there is dropped:
 ;   bits 0-2 chunks consumed on channel 0 (mod 8), bit 3 channel 0 active,
@@ -321,10 +323,12 @@ ec_go:
 cmd_next:
  MOV A,groups
  BNE cn_rec
+cn_end:
  JMP cmd_end
 cn_rec:
  CALL recv
  MOV A,$34
+ BEQ cn_end             ; record 0: the CPU ends the command early
  AND A,#$01
  MOV X,A
  MOV A,$34
@@ -479,7 +483,9 @@ cmd_end:
 ce_group:
  CMP Y,P0
  BNE ce_group
- MOV P0,Y
+ MOV A,Y
+ OR A,#$80              ; counter|$80: "extension here, records done"
+ MOV P0,A
 ce_wait:
  MOV A,P0
  BNE ce_wait

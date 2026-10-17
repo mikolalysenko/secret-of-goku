@@ -49,7 +49,8 @@ export function createApu({rom=loadRom(),extension=true}={}){
    h.cpuWrite(1,groups.length);h.cpuWrite(0,0x8A);
    h.waitFor(()=>h.cpuRead(0)===0x8A);
    let c=0x20;
-   for(const g of [...groups,[0,0,0]]){h.cpuWrite(1,g[0]);h.cpuWrite(2,g[1]);h.cpuWrite(3,g[2]);h.cpuWrite(0,c);h.waitFor(()=>h.cpuRead(0)===c);c=c===0x7F?0x20:c+1;}
+   const all=[...groups,[0,0,0]];
+   all.forEach((g,i)=>{const ack=i===all.length-1&&h.ext?c|0x80:c;h.cpuWrite(1,g[0]);h.cpuWrite(2,g[1]);h.cpuWrite(3,g[2]);h.cpuWrite(0,c);h.waitFor(()=>h.cpuRead(0)===ack);c=c===0x7F?0x20:c+1;});
    h.cpuWrite(0,0);h.waitFor(()=>h.cpuRead(0)===0);
   },
   status(){const s=h.cpuRead(3);return {cons:[s&7,(s>>4)&7],active:[!!(s&8),!!(s&0x80)]};},
