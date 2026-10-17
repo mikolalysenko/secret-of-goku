@@ -112,7 +112,31 @@ export function createShenronEnding(snes,mod){
   const pixel=surface[y*256+x];if(pixel){c[0]=pixel-1;c[1]=4;c[2]=0x86;}return c;
  }
  p.getColor=function(sub,x,y){return shade(sub,x,y,previous.call(this,sub,x,y));};
+ // shade() for a whole scanline as compositor ops (Ppu.registerLineHook).
+ const rows=Array.from({length:224},(_,y)=>surface.subarray(y*256,y*256+256)),none=new Uint16Array(256),black=new Uint16Array(256).fill(1);
+ const tint={type:'channels',layers:63,r:new Int32Array(32),g:null,b:null,layer:4,pixel:0x86,mainOnly:false};tint.g=tint.b=tint.r;
+ const paint={type:'paint',layers:63,colors:null,skipZero:true,layer:4,pixel:0x86,mainOnly:true};
+ function plan(y,linePlan){
+  // idle(): a live state (not fatal or reunion) and y <= 224.
+  const phase=state.phase;linePlan.skipPost=true;
+  if(phase==='transition'){
+   const fade=Math.max(0,1-state.age/48);for(let c=0;c<32;c++)tint.r[c]=Math.round(c*fade);
+   tint.mainOnly=false;linePlan.extra.push(tint);return true;
+  }
+  if(y===224&&phase!=='village'&&phase!=='depart'&&phase!=='complete'){
+   paint.layers=63;paint.colors=black;paint.skipZero=false;paint.layer=4;linePlan.extra.push(paint);return true;
+  }
+  if(prepared!==mod.frame)prepare();
+  paint.colors=y<224?rows[y]:none;paint.skipZero=true;
+  if(phase==='depart'){
+   // The surface, else the inner color, mixed toward white as one pixel.
+   const white=departureWhite;for(let c=0;c<32;c++)tint.r[c]=Math.round(c+(31-c)*white);
+   paint.layers=63;paint.layer=-1;tint.mainOnly=true;linePlan.extra.push(paint,tint);return true;
+  }
+  paint.layers=phase!=='scatter'&&y<170?63&~4:63;paint.layer=4;linePlan.extra.push(paint);return true;
+ }
  p.registerLineHook?.('getColor',p.getColor,previous,(ppu,line)=>!state||state.fatal||state.phase==='reunion'||!mod.options.enabled||line>224,{name:'shenron',
+  plan:(ppu,line,linePlan)=>plan(line,linePlan),
   post:(ppu,sub,x,y,r)=>{const t=shade(sub,x,y,r);if(t!==r){r[0]=t[0];r[1]=t[1];r[2]=t[2];}}});
  return{
   ready,
