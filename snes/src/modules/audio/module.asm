@@ -48,6 +48,7 @@ incsrc "audio/ids.asm"
 !au_native   #= !aw+$3C   ; last native song: id|$80 (0 none), echo preset, p3
 !au_song     #= !aw+$3F   ; song id seen last frame ($1E05)
 !au_misses   #= !aw+$5C   ; commands withdrawn in a row (saturates at $FF)
+!au_dsfx     #= !aw+$5D   ; destroy's !out_sfx (low byte) when last seen
 !AU_CH = $20
 ; channel fields (X = channel offset 0 / $20)
 !c_kind  = $00   ; 0 idle, 1 shot, 2 loop
@@ -321,6 +322,9 @@ audio_frame:
 if defined("title_sfx")
 	JSR audio_title_cues
 endif
+if defined("out_sfx")
+	JSR audio_destroy_cues
+endif
 	JSR audio_service
 	PLP
 	RTL
@@ -342,6 +346,25 @@ audio_title_cues:
 .impact
 	LDA.b #!AUDIO_SFX_IMPACT
 .play
+	JSL audio_sfx
+.none
+	RTS
+endif
+
+if defined("out_sfx")
+; Destructible scenery (destroy module): !out_sfx counts impact sounds, one
+; per applied row or broken barrier (the browser's playSound('impact') in
+; lab.js onCut and native-barriers.js). Play IMPACT when it moved; IMPACT
+; sounds at most once every 2 frames. Before the first sync after boot or an
+; import the count is only taken.
+audio_destroy_cues:
+	LDA.w !out_sfx&$FFFF
+	CMP.w !au_dsfx
+	BEQ .none
+	STA.w !au_dsfx
+	LDA.w !au_flags
+	BPL .none
+	LDA.b #!AUDIO_SFX_IMPACT
 	JSL audio_sfx
 .none
 	RTS

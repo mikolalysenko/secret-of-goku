@@ -75,7 +75,10 @@ if(!existsSync(join(cps,'waterfall.mss'))){
 const songs=JSON.parse(readFileSync(join(gen,'songs.json'),'utf8'));
 const native=loadRom(),songFile=s=>join(gen,`song_${s.id.toString(16)}.bin`);
 const songsLua='SONGS={'+songs.map(s=>`{id=${s.id},edl=${s.echo.edl},evol=${s.echo.evol},efb=${s.echo.efb},voices=${expectedVoices(native,s,readFileSync(songFile(s)))},file=${JSON.stringify(songFile(s))}}`).join(',')+'}';
-const lib=[`UPLOAD=${JSON.stringify(join(gen,'upload.bin'))}`,...ids,songsLua,readFileSync(join(here,'lib.lua'),'utf8')].join('\n');
+// modules whose sound flags the audio module consumes (built in?)
+const sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8');
+const consumers=[`DESTROY=${/ audio_destroy_cues$/m.test(sym)}`];
+const lib=[`UPLOAD=${JSON.stringify(join(gen,'upload.bin'))}`,...ids,...consumers,songsLua,readFileSync(join(here,'lib.lua'),'utf8')].join('\n');
 const tests=mesenTests;
 const summary=[];
 for(const [name,cp] of tests){

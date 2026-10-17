@@ -388,6 +388,13 @@ begins), 2 plays `IMPACT`; it then clears the byte. Mesen (imported probe
 state, extension injected): the descent starts at frame 145 and its sound
 is audible at 146, the impact at 205 and 205.
 
+**Destructible scenery** (destroy module): `audio_frame` compares the low
+byte of `!out_sfx` (`$7E:D9BE`, one count per applied row or broken barrier,
+the browser's `playSound('impact')` in `lab.js` / `native-barriers.js`)
+with the value it saw last and plays `IMPACT` when it moved (`IMPACT`
+sounds at most once every 2 frames); before the first sync after boot or
+an import it only takes the count. The stream test checks it.
+
 **Test mailbox** (Mesen tests): word `!RAM_AUDIO+$16` = op | arg<<8 —
 1 shot, 2 voice, 3 song, 4 stop, 5 loop on (kept every frame), 6 loop off,
 7 fade, 8 native effect `02 arg 0F 88`, 9 `audio_song_restore`.
@@ -411,7 +418,8 @@ the five songs; the arrival's pod cues.
 - **stream** (Mesen, waterfall checkpoint, current extension injected): a
   hit on the first free voice with full envelope and audible output, the
   chant beside the game's own hit effect, the shout, a 4 s charge loop and
-  its stop, voices returned, native music before and after.
+  its stop, voices returned, native music before and after; a move of
+  destroy's `!out_sfx` starting `IMPACT`.
 - **songs** (Mesen): each new song through the native song command:
   sequence intact at `$1A00`, the tracks start, echo EDL/EVOL/EFB and ESA
   as in `audio_echo_table`, instruments allocated after the effect samples
@@ -483,6 +491,8 @@ HDMA); code bank `$AA`; tables, extension image and sequences in `$EA`
 (231 KiB). Frame hooks: `audio_frame` last in the field frame and in the
 world frame, `audio_pause` in the menu and ring frames. Native commands go
 through `core_sound_queue`. Reads (and clears) the title module's
-`!title_sfx` (`$7E:DD87`) when that module is built in.
+`!title_sfx` (`$7E:DD87`) and reads the destroy module's `!out_sfx`
+(`$7E:D9BE`) when those modules are built in, so `modules.asm` includes
+audio after them.
 
 **Core requests**: none.

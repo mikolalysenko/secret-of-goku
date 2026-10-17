@@ -84,6 +84,18 @@ function test()
   local after = 0
   watch(30, function() for v = 0, 7 do after = math.max(after, dsp(v * 16 + 8)) end end)
   check('music_after', after > 0, after)
+  -- the destroy module's impact counter (!out_sfx, $7E:D9BE) moving plays IMPACT
+  if DESTROY then
+    H.w8(0x7ED9BE, (H.r8(0x7ED9BE) + 1) & 0xFF)
+    local played = H.waitFor(function()
+      for ch = 0, 1 do
+        local v = streamVoice(ch)
+        if H.r8(AU + 0x20 + ch * 0x20) == 1 and H.r8(AU + 0x21 + ch * 0x20) == AUDIO_SFX_IMPACT and v ~= 0xFF and dsp(v * 16 + 8) > 0 then return true end
+      end
+      return false
+    end, 6)
+    check('destroy_impact', played, 'no IMPACT stream')
+  end
   H.result('status_final', port3())
   finish()
 end
