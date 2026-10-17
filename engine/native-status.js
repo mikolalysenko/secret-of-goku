@@ -98,6 +98,15 @@ export function createNativeStatus(snes,mod){
   let color;try{screens[1]=false;color=previous.call(this,sub,x,y);}finally{screens[1]=enabled;}
   const pixel=raster[y*512+x*2+(sub?0:1)];return pixel?[pixel-1,1,3]:color;
  };
- p.registerLineHook?.('getColor',p.getColor,previous,ppu=>{refresh();return !active||ppu.mode!==5;});
+ // The wrapper for a whole scanline (Ppu.registerLineHook): BG2 off while the
+ // inner screen composes, then the raster as BG2 pixel 3, per screen.
+ const mainLine=new Uint16Array(256),subLine=new Uint16Array(256);
+ const mainPaint={type:'paint',layers:63,colors:mainLine,skipZero:true,layer:1,pixel:3,mainOnly:true};
+ const subPaint={type:'paint',layers:63,colors:subLine,skipZero:true,layer:1,pixel:3,subOnly:true};
+ p.registerLineHook?.('getColor',p.getColor,previous,ppu=>{refresh();return !active||ppu.mode!==5;},{name:'native-status',plan:(ppu,y,plan)=>{
+  plan.disableMain|=2;plan.disableSub|=2;
+  for(let x=0,at=y*512;x<256;x++){subLine[x]=raster[at+x*2]||0;mainLine[x]=raster[at+x*2+1]||0;}
+  plan.extra.push(mainPaint,subPaint);plan.skipPost=true;return true;
+ }});
  return{get active(){return isGokuStatus(snes,mod);},get stats(){return gokuStats(mod);},dispose(){p.getColor=previous;}};
 }

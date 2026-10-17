@@ -83,6 +83,80 @@ goku_hud_hook:
 	PLB
 	JML $01E6CB              ; skip the boy's JSR $E6DA
 
+; C0:66BD hook (replaced JSL $D0CDF9): ring set-up uploads its ten 2-tile
+; graphics (cursor, the three party markers, ...) from D2:C680 on DMA
+; channel 5. While Goku stands in, his 10x10 head (current form, at +3,+2
+; in the 16x16 cell, engine/sprite-layer.js injectPortrait) then replaces
+; the boy's marker, bank-1 tiles 0A/0B and 1A/1B, the same way. The marker
+; draws with palette 1, which holds Goku's colours.
+goku_ring_setup:
+	JSL $D0CDF9
+	PHP
+	PHB
+	REP #$30
+	JSR goku_check_on
+	BCC .done
+	PEA $7E7E
+	PLB
+	PLB
+	LDA !goku_form
+	AND.w #$0001
+	ASL
+	ASL
+	ASL
+	CLC
+	ADC.w #16                ; marker entries follow the two HUD portraits
+	TAX
+	LDA.w #$70A0             ; tiles 0A/0B
+	JSR goku_marker_row
+	LDA.w #$71A0             ; tiles 1A/1B
+	JSR goku_marker_row
+.done
+	PLB
+	PLP
+	RTL
+
+; Two tiles (X -> goku_portrait_tiles entries, advanced by 4) to VRAM word
+; A16 on DMA channel 5. M16 X16, DB = $7E.
+goku_marker_row:
+	STA.l $002116
+	SEP #$20
+	LDA.b #$80
+	STA.l $002115
+	REP #$20
+	LDY.w #2
+.tile
+	LDA.l goku_portrait_tiles,X
+	PHA
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL
+	STA.l $004352
+	LDA.w #$1801
+	STA.l $004350
+	LDA.w #$0020
+	STA.l $004355
+	PLA
+	XBA
+	AND.w #$00FF
+	LSR
+	LSR
+	LSR
+	CLC
+	ADC.w #$00F8
+	SEP #$20
+	STA.l $004354
+	LDA.b #$20
+	STA.l $00420B
+	REP #$20
+	INX
+	INX
+	DEY
+	BNE .tile
+	RTS
+
 ; Upload the 16x16 HUD portrait for the current form. A16 = VRAM word
 ; address of E8. M16 X16 in, any DB; uses channel 7. Exit M16 X16.
 goku_hud_dma:
@@ -104,6 +178,11 @@ goku_hud_dma:
 	ASL                      ; form * 8 bytes (4 tile words)
 	TAX
 	PLA
+	PLB
+; A16 = VRAM word address of the top-left tile, X = offset of a portrait's
+; four tile words in goku_portrait_tiles (top row, then the bottom row at
+; +$100). Channel 7. M16 X16; any DB.
+goku_portrait_dma:
 	PHA
 	STA.l $002116
 	LDA.l goku_portrait_tiles+0,X
@@ -118,7 +197,6 @@ goku_hud_dma:
 	JSR goku_dma_tile7
 	LDA.l goku_portrait_tiles+6,X
 	JSR goku_dma_tile7
-	PLB
 	RTS
 
 ; DMA one 32-byte tile (A16 = global tile index) to the current VRAM address

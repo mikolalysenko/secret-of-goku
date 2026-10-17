@@ -292,7 +292,8 @@ export async function generate({rom,repo,outDir}){
   }
   // Portraits (engine/sprite-layer.js injectPortrait): HUD 16x16 head crop of
   // the form's front idle cell; ring marker uses the same crop at 10x10 placed
-  // at (+3,+2) inside its 16x16 OBJ.
+  // at (+3,+2) inside its 16x16 OBJ. The base-form HUD crop is also the GAME
+  // FILE face (savePortrait). Menu figures use whole cells (menu.asm).
   const portrait=(form,size,ox,oy)=>{
     const c=cells.find(x=>x.key===`${form}:0:0`),out=new Uint8Array(256);
     for(let row=0;row<size;row++)for(let col=0;col<size;col++){
@@ -302,14 +303,6 @@ export async function generate({rom,repo,outDir}){
     return store.addImage(out,16,16);
   };
   const portraits=[portrait('goku',16,0,0),portrait('ssj',16,0,0),portrait('goku',10,3,2),portrait('ssj',10,3,2)];
-  // Menu figure (Status / Action Grid, 2x4 8x8 cells): the front idle cell's
-  // central 16 columns, as 8 tiles in native order 30..37.
-  const menuFigure=form=>{
-    const c=cells.find(x=>x.key===`${form}:0:0`),out=new Uint8Array(16*32);
-    for(let y=0;y<32;y++)for(let x=0;x<16;x++)out[y*16+x]=c.idx[y*32+x+8];
-    return store.addImage(out,16,32);
-  };
-  const figures=[menuFigure('goku'),menuFigure('ssj')];
 
   const tileCount=store.tiles.length;
   if(tileCount>TILES_PER_BANK*ASSET_BANKS)throw Error(`goku: ${tileCount} tiles exceed ${ASSET_BANKS} asset banks`);
@@ -395,7 +388,6 @@ export async function generate({rom,repo,outDir}){
   a.label('goku_legs_index');a.dw(legs);
   a.label('goku_push_cells');a.dw(pushCells);
   a.label('goku_portrait_tiles');a.dw(portraits.flat());
-  a.label('goku_figure_tiles');a.dw(figures.flat());
   a.label('goku_clip_ptr');a.dw(clipPtr);
   a.label('goku_clip_data');a.db(clipBytes);
   a.label('goku_action_ptr');a.dw(actPtr);
