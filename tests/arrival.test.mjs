@@ -26,9 +26,12 @@ test('native event overlay changes cartridge reads only, including restoring the
 });
 
 function fixture(rom){
-  const ram=new Uint8Array(0x20000),ppu={mode:1,cgram:new Uint16Array(256),renderLine(){},selectedLayer:0,getColor(){return [1234,this.selectedLayer,33];}},snes={ram,ppu,cart:cartridge(rom)};
+  // The camera sits at (400, 828): Goku's actor position below, and the tile
+  // stream origin with BG1's scroll that place the crater on the map.
+  const ram=new Uint8Array(0x20000),ppu={mode:1,cgram:new Uint16Array(256),bgHoff:[400,0,0,0],bgVoff:[828,0,0,0],renderLine(){},selectedLayer:0,getColor(){return [1234,this.selectedLayer,33];}},snes={ram,ppu,cart:cartridge(rom)};
   const mod={options:{enabled:true},read8:a=>ram[a],read16:a=>ram[a]|ram[a+1]<<8,readSigned16:a=>(ram[a]|ram[a+1]<<8)<<16>>16,write8:(a,v)=>{ram[a]=v;},write16:(a,v)=>{ram[a]=v;ram[a+1]=v>>8;}};
   mod.write16(0xdc,128);ram[0xe4]=ram[0xe5]=ram[0xe000]=1;mod.write16(0xe002,500);mod.write16(0xe004,948);mod.write16(0xe020,100);mod.write16(0xe022,120);
+  mod.write16(0xa8,400);mod.write16(0xaa,828);
   const arrival=createArrival(snes,mod);arrival.load(rom);return{snes,mod,arrival,ppu,ram};
 }
 
