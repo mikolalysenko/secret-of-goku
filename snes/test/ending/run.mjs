@@ -9,6 +9,7 @@ import {readFileSync,writeFileSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {runMesen} from '../mesen.mjs';
+const gfx=await import(new URL('../../tools/gfx.mjs',import.meta.url).href);
 import {kaiReference,compare,writeRef,bestPlanetMatch} from './reference.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const rom=process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-goku.sfc');
@@ -66,9 +67,34 @@ async function spaceCheck(r,out){
   }
 }
 
+// Finale death: native collapse and fade, black, then planet-view's own
+// fatal view (globe, explosion, GAME OVER); Start returns to the title.
+const meanLight=png=>{const img=gfx.readPng(png);let s=0;for(let i=0;i<img.data.length;i+=4)s+=img.data[i]+img.data[i+1]+img.data[i+2];return s/(img.data.length/4);};
+async function fatalCheck(r,out){
+  expect((r.status_200&0x44)===0x44,`defeated and muted while the native collapse plays (status ${r.status_200})`);
+  const l200=meanLight(join(out,'fatal-200.png')),l330=meanLight(join(out,'fatal-330.png')),l390=meanLight(join(out,'fatal-390.png'));
+  r.light=`${l200.toFixed(0)}/${l330.toFixed(0)}/${l390.toFixed(0)}`;
+  expect(l200>20,`the native picture shows during the collapse (${l200.toFixed(1)})`);
+  expect(l330<l200*.75,`the picture fades from 300 (${l330.toFixed(1)} vs ${l200.toFixed(1)})`);
+  expect(l390<3,`black before the planet (${l390.toFixed(1)})`);
+  expect((r.status_905&0x20)!==0,'GAME OVER reached (complete status)');
+  expect(r.done===1,'fatal timeline done flag');
+  expect(r.lag_frames<=3,`lag ${r.lag_frames} frames`);
+  expect(r.overruns===0,`vblank overran ${r.overruns} times (${r.overrun_at})`);
+  expect(r.after_phase===0,`Start leaves for the title (phase ${r.after_phase})`);
+  for(const [name,min] of [['fatal-500',.95],['fatal-560',.9],['fatal-600',.85],['fatal-650',.6],['fatal-700',.6],['fatal-810',.8],['fatal-905',.95]]){
+    if(r[name]===undefined){problems.push(`no still ${name}`);continue;}
+    const best=await bestPlanetMatch(join(out,`${name}.png`),{rom:baseRom,phase:'fatal',fatal:true},r[name]);
+    writeFileSync(join(out,`${name}-ref.png`),writeRef(null,best.ref));
+    r[`${name}_match`]=best.score;
+    expect(best.score>=min,`${name} matches planet-view at ${(best.score*100).toFixed(1)}% (age ${best.age})`);
+  }
+}
+
 const tests=[
   {name:'kai',check:kaiCheck},
   {name:'space',check:spaceCheck},
+  {name:'fatal',check:fatalCheck},
 ];
 let ok=true;
 for(const t of tests){

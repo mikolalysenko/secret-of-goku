@@ -904,6 +904,16 @@ cell_tile:
 pal_commit:
 	PHP
 	REP #$30
+	; the buffer the field NMI will upload: 7E:0600, or 7E:BE00 while $2A
+	; is set (C0:C0F5)
+	LDA.w #$0600
+	STA.w !l_pcbase
+	LDA.w $002A
+	AND.w #$00FF
+	BEQ .base
+	LDA.w #$BE00
+	STA.w !l_pcbase
+.base
 	LDX.w #$0000
 .range
 	CPX.w #$0008
@@ -920,8 +930,8 @@ pal_commit:
 	ASL
 	STA.w !l_m0               ; first * 2
 	CLC
-	ADC.w #$0600
-	STA.w $2181               ; WRAM address 7E:0600 + first * 2
+	ADC.w !l_pcbase
+	STA.w $2181               ; WRAM address: the buffer + first * 2
 	SEP #$20
 	STZ.w $2183
 	LDA.w !s_palgrp,Y
@@ -960,13 +970,22 @@ pal_commit:
 	; per-frame colours over a direct range (the fragments' seam and depth)
 	LDA.w !s_edgeon
 	BEQ .out
+	LDA.w !l_pcbase
+	CLC
+	ADC.w #$0180+28           ; OBJ palette 4, colour 14
+	TAY
 	LDX.w #$0000
-	LDY.w #$0180+28           ; OBJ palette 4, colour 14
 .edge
+	PHX
 	LDA.w !s_edge,X
-	STA.w $0600,Y
+	TYX
+	STA.l $7E0000,X
+	PLX
+	PHX
 	LDA.w !s_edge+2,X
-	STA.w $0602,Y
+	TYX
+	STA.l $7E0002,X
+	PLX
 	TYA
 	CLC
 	ADC.w #$0020

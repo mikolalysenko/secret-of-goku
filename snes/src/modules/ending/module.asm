@@ -210,6 +210,7 @@ hi_bits_ram = !SW+$DF0             ; 16 bytes (oam_put's high-table patterns)
 !l_pbn      = !s_x+$E4
 !l_pbgrp    = !s_x+$E6
 !l_pbstop   = !s_x+$E8
+!l_pcbase   = !s_x+$EA          ; word  pal_commit: the game's palette buffer
 !s_dirsrc   = !s_x+$C0          ; word  code-bank palette of the direct range (group 2)
 !s_edgeon   = !s_x+$C2          ; word  s_edge colours go over the direct range
 !s_edge     = !s_x+$C4          ; 16 bytes: 4 x (colour 14, colour 15) of OBJ palettes 4-7
@@ -1083,6 +1084,7 @@ loading_frame:
 incsrc "lib.asm"
 incsrc "kai.asm"
 incsrc "space.asm"
+incsrc "fatal.asm"
 incsrc "stubs.asm"
 
 ; Generated palettes and small tables.

@@ -2,15 +2,7 @@
 -- fragments, sparks, shock ring) and Goku's escape. Stills are taken at
 -- recorded scene ages; run.mjs compares them with planet-view.js itself.
 local FLAGS = 0x8021            -- begun, bad, night globe (Frieza's crisis)
--- Mesen's screenshots show the picture of 5 frames earlier (measured at
--- the explosion's first white frame): a still for scene age a is taken at
--- a + 5 and recorded as a.
-E.SHOT_LAG = 5
-local function shot(name)
-  local age = H.r16(E.age) - E.SHOT_LAG
-  H.shot(name)
-  H.result(name, age)
-end
+local shot = E.shot
 local function waitAge(n, limit)
   return H.waitFor(function() return H.r16(E.age) >= n end, limit or 400)
 end

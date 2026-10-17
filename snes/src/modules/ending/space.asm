@@ -66,6 +66,7 @@
 !sp_chrok   = !s_var+$46   ; word  fragment tiles/attributes are in their OAM slots
 !sp_dots    = !s_var+$48   ; word  ring dot mask byte (code bank)
 !sp_bit     = !s_var+$4A   ; byte  mask bit
+!sp_eage    = !s_var+$50   ; word  explosion age (explodingPlanet's clock)
 
 ; ---------------------------------------------------------------------------
 ; Phase start (DOOMED, EXPLODE, ESCAPE). A live space picture is kept when
@@ -358,17 +359,46 @@ frame_doomed:
 	JSR space_sky
 	JMP mark_done
 
-; Explosion: seams spread for 48 frames (shaking after 25), then the
-; fragments drift for 115 (planet-view explodingPlanet).
+; Explosion (bad ending): explodingPlanet(age), the blast sound at 48;
+; BG1 takes the teleport lines and the spark strip Goku's escape pose once
+; they are free.
 frame_explode:
 	REP #$30
-	JSR oam_begin
 	LDA.l !ending_age
+	CMP.w #48
+	BNE .notBlast
+	SEP #$20
+	LDA.b #!ESFX_POWERBURST
+	STA.l !ending_sfx
+	REP #$20
+	JSR space_queue_curtain
+.notBlast
+	LDA.l !ending_age
+	CMP.w #48+70
+	BNE .noGoku
+	JSR space_queue_goku
+.noGoku
+	LDA.l !ending_age
+	JSR space_explode
+	LDA.l !ending_age
+	CMP.w #48+115
+	BCC .out
+	JMP mark_done
+.out
+	RTS
+
+; planet-view explodingPlanet(A): seams spread for 48 frames (shaking
+; after 25), then the fragments drift for 115.
+space_explode:
+	REP #$30
+	STA.w !sp_eage
+	JSR oam_begin
+	LDA.w !sp_eage
 	CMP.w #48
 	BCS .drift
 	JSR space_cracks
 	; seams: hot below 30, white-hot after
-	LDA.l !ending_age
+	LDA.w !sp_eage
 	CMP.w #30
 	BNE .noGlow
 	LDA.w #!SP_CRACK_GLOW
@@ -379,32 +409,10 @@ frame_explode:
 	JSR space_sky
 	RTS
 .drift
-	BNE .later
-	; t = 0: the globe is gone; the blast sound; BG1 takes the teleport
-	; lines for a later escape.
-	SEP #$20
-	LDA.b #!ESFX_POWERBURST
-	STA.l !ending_sfx
-	REP #$20
-	JSR space_queue_curtain
-.later
-	; once the sparks are over (t = 70), Goku's escape pose goes into
-	; their strip ahead of the escape
-	LDA.l !ending_age
-	CMP.w #48+70
-	BNE .drift2
-	JSR space_queue_goku
-.drift2
-	LDA.l !ending_age
 	SEC
 	SBC.w #48
 	JSR space_drift
 	JSR space_sky
-	LDA.l !ending_age
-	CMP.w #48+115
-	BCC .out
-	JMP mark_done
-.out
 	RTS
 
 ; Escape: the drift continues from t = 77; Goku stands in front of the
@@ -480,7 +488,7 @@ space_globe_layers:
 
 ; Shake after age 25: the globe and its seams move 1 px left/right.
 space_shake:
-	LDA.l !ending_age
+	LDA.w !sp_eage
 	CMP.w #26
 	BCC .still
 	AND.w #$0003
@@ -612,7 +620,7 @@ space_twinkle_reset:
 ; changed span. Tables from snes/gen/ending.mjs (ending_crack_*).
 space_cracks:
 	REP #$30
-	LDA.l !ending_age
+	LDA.w !sp_eage
 	ASL : ASL : ASL
 	TAX
 	LDA.l ending_crack_ages+2,X
@@ -635,7 +643,7 @@ space_cracks:
 	TAX
 	LDA.l ending_crack_seed,X
 	AND.w #$00FF
-	CMP.l !ending_age
+	CMP.w !sp_eage
 	BEQ .seedOne
 	BCS .events
 .seedOne
@@ -644,7 +652,7 @@ space_cracks:
 	BNE .aheadLoop
 .events
 	LDA.w !sp_crack
-	CMP.l !ending_age
+	CMP.w !sp_eage
 	BEQ .apply
 	BCC .apply
 	RTS

@@ -8,6 +8,10 @@ E.done    = 0x7EDC86
 E.status  = 0x7EDC88
 E.sfx     = 0x7EDC89
 E.SW = 0x4000             -- !SRAM_WORK_SCENE ($32:6000) as an SRAM offset
+-- Mesen's screenshots show the picture of 5 frames earlier (measured at
+-- the explosion's first white frame): a still for scene age a is taken at
+-- a + 5 and recorded as a.
+E.SHOT_LAG = 5
 E.P = {transition=1, summon=2, dragon=3, wish=4, scatter=5, reunion=6, village=7,
        depart=8, kai=9, complete=10, doomed=11, explode=12, escape=13, fatal=14}
 function E.sram16(off) return H.sram(E.SW + off) | (H.sram(E.SW + off + 1) << 8) end
@@ -53,3 +57,13 @@ function E.watchVblank(slack)
 end
 -- Arm only while the scene is visible (not loading).
 function E.arm(on) E.watchArmed = on end
+
+-- A still of scene age (now - SHOT_LAG), recorded under its name.
+function E.shot(name)
+  local age = H.r16(E.age) - E.SHOT_LAG
+  H.shot(name)
+  H.result(name, age)
+end
+function E.waitAge(n, limit)
+  return H.waitFor(function() return H.r16(E.age) >= n end, limit or 400)
+end

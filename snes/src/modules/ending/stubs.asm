@@ -64,7 +64,6 @@ hold_black:
 start_vista:
 start_scatter:
 start_depart:
-start_fatal:
 	JMP hold_black
 
 start_village:
@@ -76,5 +75,4 @@ frame_wish:
 frame_scatter:
 frame_village:
 frame_depart:
-frame_fatal:
 	RTS
