@@ -23,13 +23,17 @@ export function createFortressCollapse(snes,mod,destroyed){
   // and each scanline's actual BG1 scroll (including quake), never from the
   // actor camera, which trails the background while scrolling and is offset
   // in flight. Their texture is in world coordinates for the same reason.
-  let cameraLine=-1;
+  let cameraLine=-1,tintAge=-1;const scarRows=new Uint8Array(224);
   const sceneCamera=y=>{
     if(cameraLine!==y){
       cameraLine=y;const x0=w(0xa8),y0=w(0xaa);
       camera.cameraX=x0+((p.bgHoff[0]-x0+8)&15)-8;camera.cameraY=y0+((p.bgVoff[0]-y0+8)&15)-8;
       const key=`${state.arena.revision}:${camera.cameraX}:${camera.cameraY}`;
-      if(key!==maskKey){maskKey=key;mask=ruinMask(state.arena,camera.cameraX,camera.cameraY);}
+      if(key!==maskKey){
+        maskKey=key;mask=ruinMask(state.arena,camera.cameraX,camera.cameraY);
+        // Rows with any scar, so line plans can skip the rest.
+        for(let row=0;row<224;row++){let any=0;for(let x=0,at=row*256;x<256&&!any;x++)any=mask[at+x];scarRows[row]=any?1:0;}
+      }
     }
     return camera;
   };
@@ -59,11 +63,17 @@ export function createFortressCollapse(snes,mod,destroyed){
     return !renderActive||ppu.mode!==1||line>=224;
   },{name:'fortress-collapse',plan:(ppu,y,plan)=>{
     sceneCamera(y);
-    let any=false;
-    for(let x=0;x<256;x++){const scar=mask?.[y*256+x];scarLine[x]=scar?scarColor(scar,x,y)+1:0;any||=!!scar;}
-    if(any)plan.extra.push(scarPaint);
-    const phase=state.age%84,alarm=phase<16?Math.round(Math.sin(phase*Math.PI/16)*9):0;
-    for(let c=0;c<32;c++){tint.r[c]=Math.min(31,c+2+alarm);tint.g[c]=Math.max(0,c-2-(alarm>>1));tint.b[c]=Math.max(0,c-3-(alarm>>1));}
+    if(mask&&scarRows[y]){
+      let any=false;
+      for(let x=0;x<256;x++){const scar=mask[y*256+x];scarLine[x]=scar?scarColor(scar,x,y)+1:0;any||=!!scar;}
+      if(any)plan.extra.push(scarPaint);
+    }
+    // The tint depends on the frame's alarm phase alone.
+    if(state.age!==tintAge){
+      tintAge=state.age;
+      const phase=state.age%84,alarm=phase<16?Math.round(Math.sin(phase*Math.PI/16)*9):0;
+      for(let c=0;c<32;c++){tint.r[c]=Math.min(31,c+2+alarm);tint.g[c]=Math.max(0,c-2-(alarm>>1));tint.b[c]=Math.max(0,c-3-(alarm>>1));}
+    }
     plan.extra.push(tint);plan.skipPost=true;return true;
   }});
   function fracture(spot,radius){

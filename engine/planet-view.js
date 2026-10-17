@@ -32,6 +32,7 @@ const stars=(()=>{
 export function createPlanetView(snes,mod){
   const p=snes.ppu,previous=p.getColor,surface=new Uint16Array(256*224);
   let texture=null,frame=-1,preparedState=null,globe=null,globeKey='',fragments=null,card=null,cardKey='';
+  let globeX0=0,globeX1=-1,globeY0=0,globeY1=-1;
   let viewFrame=-1,viewLine=-1,viewX=256,view=null;
   const rgb=(r,g,b)=>1+r+(g<<5)+(b<<10);
   // Per-fragment channel shades for explodingPlanet.
@@ -63,9 +64,10 @@ export function createPlanetView(snes,mod){
     // gradients introducing hundreds of interpolated sprite colors.
     target={x:Math.round(target.x/8)*8,y:Math.round(target.y/8)*8};
     const key=`${target.x}:${target.y}:${night}:${view.x}:${view.y}:${view.r}`;if(key===globeKey&&globe)return;
-    globeKey=key;globe=new Uint16Array(256*224);fragments=null;
+    globeKey=key;if(globe)globe.fill(0);else globe=new Uint16Array(256*224);fragments=null;
     // Put the actual strike site on the upper-right limb of the globe.
     const cx=Math.round(view.x),cy=Math.round(view.y),r=Math.round(view.r),hitX=.62,hitY=-.69,hitZ=Math.sqrt(1-hitX*hitX-hitY*hitY);
+    globeY0=Math.max(0,cy-r-3);globeY1=Math.min(223,cy+r+3);globeX0=Math.max(0,cx-r-3);globeX1=Math.min(255,cx+r+3);
     const lon=target.x/4096*Math.PI*2-Math.atan2(hitX,hitZ),lat=target.y/4096*Math.PI-Math.asin(hitY);
     for(let y=Math.max(0,cy-r-3);y<=Math.min(223,cy+r+3);y++)for(let x=Math.max(0,cx-r-3);x<=Math.min(255,cx+r+3);x++){
       const nx=(x-cx)/r,ny=(y-cy)/r,d=nx*nx+ny*ny;if(d>1.07)continue;
@@ -82,7 +84,11 @@ export function createPlanetView(snes,mod){
   }
   function drawPlanet(target,night,shake=0,view){
     planet(target,night,view);
-    for(let y=0;y<224;y++)for(let x=0;x<256;x++){const c=globe[y*256+x];if(c)put(x+shake,y,c);}
+    // put() of every globe pixel, in the same order: only the globe's box
+    // can be non-zero, and its coordinates are already integers.
+    for(let y=globeY0;y<=globeY1;y++)for(let x=globeX0,at=y*256+x;x<=globeX1;x++,at++){
+      const c=globe[at],sx=x+shake;if(c&&sx>=0&&sx<256)surface[y*256+sx]=c;
+    }
   }
   const pale=(color,alpha)=>{
     const c=color-1,mix=(n,t)=>Math.round(n+(t-n)*alpha);
