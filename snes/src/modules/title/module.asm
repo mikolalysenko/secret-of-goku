@@ -44,7 +44,9 @@
 !title_count        = !RAM_MISC+$46   ; word: loop counter
 !title_ox           = !RAM_MISC+$48   ; word: sprite list origin x
 !title_oy           = !RAM_MISC+$4A   ; word: sprite list origin y
-; +$4C-$5F free
+!title_map_x        = !RAM_MISC+$4C   ; word: sword screen x on BG1's scroll (crater, resting pod)
+!title_map_y        = !RAM_MISC+$4E   ; word: sword screen y on BG1's scroll
+; +$50-$5F free
 !title_palstate     = !RAM_MISC+$60   ; byte: bit0 our OBJ palettes are in 7E:0600
 !title_palfx        = !RAM_MISC+$62   ; word: effect palette variant last written
 

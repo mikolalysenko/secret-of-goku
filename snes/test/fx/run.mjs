@@ -81,6 +81,21 @@ function shotChecks(t,dir){
   }
   return out;
 }
+// asar does not report overlapping writes: make sure no other module's data
+// landed on FX's cells (bank !FX_DATA, snes/src/modules/fx/module.asm).
+function checkCells(rom){
+  const sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8').match(/^([0-9A-F]{2}):([0-9A-F]{4}) fx_cells$/im);
+  if(!sym)return 'no fx_cells symbol';
+  const bank=parseInt(sym[1],16),addr=parseInt(sym[2],16),off=((bank&0x3F)<<16)|addr;
+  const cells=readFileSync(resolve(repo,'dist/snes/gen/fx/cells.bin')),img=readFileSync(rom);
+  for(let i=0;i<cells.length;i++)if(img[off+i]!==cells[i])return `fx cells overwritten at ${sym[1]}:${(addr+i).toString(16).toUpperCase()} (another module writes into FX's data bank)`;
+  return null;
+}
+for(const r of [testRom,process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-goku.sfc')]){
+  if(!existsSync(r))continue;
+  const err=checkCells(r);
+  if(err){console.error(`fx: ${r}: ${err}`);process.exit(1);}
+}
 const tests=['gallery','beams','battle','budget'].filter(t=>existsSync(join(here,`${t}.lua`))&&(!only.length||only.includes(t)));
 let ok=true;
 for(const t of tests){

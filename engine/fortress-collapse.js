@@ -5,7 +5,8 @@ const initial=()=>({age:0,arena:newFriezaArena(),spots:[],camera:null,music:null
 // collision, palette RAM, Mode 7 matrices, or the native landing choreography.
 export function createFortressCollapse(snes,mod,destroyed){
   const r=snes.ram,c=snes.cpu,p=snes.ppu,w=a=>r[a]|r[a+1]<<8,cycle=c.cycle,color=p?.getColor;
-  let state=initial(),mask=null,maskKey='',renderFrame=-1,renderActive=false,camera=null;
+  let state=initial(),mask=null,maskKey='',renderFrame=-1,renderActive=false;
+  const camera={cameraX:0,cameraY:0};
   const damaged=()=>mod.options.enabled&&mod.gokuActive&&destroyed()&&w(0xdc)===255;
   const active=()=>damaged()&&!mod.worldFlight&&!mod.nativeFlight&&!mod.ending?.active&&p?.mode===1;
   c.cycle=function(){
@@ -18,15 +19,34 @@ export function createFortressCollapse(snes,mod,destroyed){
     return cycle.call(this);
   };
   c.registerBreakpoints?.(c.cycle,cycle,[[3,0x0004]]);
+  // Scars are deck decoration: place them from the tile stream's origin
+  // and each scanline's actual BG1 scroll (including quake), never from the
+  // actor camera, which trails the background while scrolling and is offset
+  // in flight. Their texture is in world coordinates for the same reason.
+  let cameraLine=-1,tintAge=-1;const scarRows=new Uint8Array(224);
+  const sceneCamera=y=>{
+    if(cameraLine!==y){
+      cameraLine=y;const x0=w(0xa8),y0=w(0xaa);
+      camera.cameraX=x0+((p.bgHoff[0]-x0+8)&15)-8;camera.cameraY=y0+((p.bgVoff[0]-y0+8)&15)-8;
+      const key=`${state.arena.revision}:${camera.cameraX}:${camera.cameraY}`;
+      if(key!==maskKey){
+        maskKey=key;mask=ruinMask(state.arena,camera.cameraX,camera.cameraY);
+        // Rows with any scar, so line plans can skip the rest.
+        for(let row=0;row<224;row++){let any=0;for(let x=0,at=row*256;x<256&&!any;x++)any=mask[at+x];scarRows[row]=any?1:0;}
+      }
+    }
+    return camera;
+  };
+  const scarColor=(scar,x,y)=>scar===1?0x0425:scar===2?0x0849:((x+camera.cameraX+y+camera.cameraY)%9===0?0x2674:0x14cd);
+  const refresh=()=>{if(renderFrame!==mod.frame){renderFrame=mod.frame;renderActive=active();cameraLine=-1;}};
   if(color)p.getColor=function(sub,x,y){
     const result=color.call(this,sub,x,y);
-    if(renderFrame!==mod.frame){renderFrame=mod.frame;renderActive=active();camera=renderActive?mod.status:null;}
+    refresh();
     if(!renderActive||sub||this.mode!==1||y>=224||result[1]>1)return result;
     if(result[1]===0){
-      const key=`${state.arena.revision}:${camera.cameraX}:${camera.cameraY}`;
-      if(key!==maskKey){maskKey=key;mask=ruinMask(state.arena,camera.cameraX,camera.cameraY);}
+      sceneCamera(y);
       const scar=mask?.[y*256+x];
-      if(scar)result[0]=scar===1?0x0425:scar===2?0x0849:((x+y)%9===0?0x2674:0x14cd);
+      if(scar)result[0]=scarColor(scar,x,y);
     }
     // A warm scorched deck with a short red alarm pulse. Keep the native
     // fade/color math and leave dialogue, HUD and sprites readable.
@@ -39,16 +59,21 @@ export function createFortressCollapse(snes,mod,destroyed){
   const scarLine=new Uint16Array(256),scarPaint={type:'paint',layers:1,colors:scarLine,skipZero:true,layer:-1,pixel:0,mainOnly:true};
   const tint={type:'channels',layers:3,r:new Int32Array(32),g:new Int32Array(32),b:new Int32Array(32),layer:-1,pixel:0,mainOnly:true};
   if(color)p.registerLineHook?.('getColor',p.getColor,color,(ppu,line)=>{
-    if(renderFrame!==mod.frame){renderFrame=mod.frame;renderActive=active();camera=renderActive?mod.status:null;}
+    refresh();
     return !renderActive||ppu.mode!==1||line>=224;
   },{name:'fortress-collapse',plan:(ppu,y,plan)=>{
-    const key=`${state.arena.revision}:${camera.cameraX}:${camera.cameraY}`;
-    if(key!==maskKey){maskKey=key;mask=ruinMask(state.arena,camera.cameraX,camera.cameraY);}
-    let any=false;
-    for(let x=0;x<256;x++){const scar=mask?.[y*256+x];scarLine[x]=scar?(scar===1?0x0425:scar===2?0x0849:((x+y)%9===0?0x2674:0x14cd))+1:0;any||=!!scar;}
-    if(any)plan.extra.push(scarPaint);
-    const phase=state.age%84,alarm=phase<16?Math.round(Math.sin(phase*Math.PI/16)*9):0;
-    for(let c=0;c<32;c++){tint.r[c]=Math.min(31,c+2+alarm);tint.g[c]=Math.max(0,c-2-(alarm>>1));tint.b[c]=Math.max(0,c-3-(alarm>>1));}
+    sceneCamera(y);
+    if(mask&&scarRows[y]){
+      let any=false;
+      for(let x=0;x<256;x++){const scar=mask[y*256+x];scarLine[x]=scar?scarColor(scar,x,y)+1:0;any||=!!scar;}
+      if(any)plan.extra.push(scarPaint);
+    }
+    // The tint depends on the frame's alarm phase alone.
+    if(state.age!==tintAge){
+      tintAge=state.age;
+      const phase=state.age%84,alarm=phase<16?Math.round(Math.sin(phase*Math.PI/16)*9):0;
+      for(let c=0;c<32;c++){tint.r[c]=Math.min(31,c+2+alarm);tint.g[c]=Math.max(0,c-2-(alarm>>1));tint.b[c]=Math.max(0,c-3-(alarm>>1));}
+    }
     plan.extra.push(tint);plan.skipPost=true;return true;
   }});
   function fracture(spot,radius){
