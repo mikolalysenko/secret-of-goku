@@ -3,7 +3,7 @@
 --   PADS    pad word per frame (core $4218 layout), frame 0 first
 --   SHOTS   frames to screenshot
 -- Starts the fight (OC_TEST_FIGHT) and logs its state every frame.
-local SB = 0x326000
+local SB = SCENE_RAM
 local FB = SB + 0xA80
 local function s16(a) local v = H.r16(a); if v >= 0x8000 then v = v - 0x10000 end; return v end
 local keys = {
@@ -64,23 +64,23 @@ function test()
   H.wait(10 + (EXTRA or 0))
   H.w16(SB + 0x06, LON or 1848)
   H.w16(SB + 0x08, LAT or 3527)
-  H.w16(0x7EDC0E, HP or 32000)
-  H.w8(0x7ED740, 1)              -- goku_form: Super Saiyan
-  H.w8(0x7EDC09, 0)
-  H.w8(0x7EDC01, 3)              -- OC_TEST_FIGHT
-  local live = H.waitFor(function() return H.r8(0x7EDC00) == 2 end, 60)
+  H.w16((ORBIT_RAM + 0x0E), HP or 32000)
+  H.w8(GOKU_FORM, 1)             -- goku_form: Super Saiyan
+  H.w8((ORBIT_RAM + 0x09), 0)
+  H.w8((ORBIT_RAM + 0x01), 3)              -- OC_TEST_FIGHT
+  local live = H.waitFor(function() return H.r8((ORBIT_RAM + 0x00)) == 2 end, 60)
   H.result('live', live)
   local shots = {}
   for _, f in ipairs(SHOTS or {}) do shots[f] = true end
   local log = {}
   local lagged = 0
-  local lastFrame = H.r16(0x7EDC04)
+  local lastFrame = H.r16((ORBIT_RAM + 0x04))
   for f = 0, #PADS - 1 do
     H.input = input(PADS[f + 1])
     H.wait(1)
     log[#log + 1] = state()
     if shots[f] then H.shot(string.format('fight%04d', f)) end
-    local fr = H.r16(0x7EDC04)
+    local fr = H.r16((ORBIT_RAM + 0x04))
     if fr == lastFrame then lagged = lagged + 1 end
     lastFrame = fr
   end

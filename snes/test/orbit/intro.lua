@@ -2,16 +2,17 @@
 -- orbit_api_enter with the intro). Prelude globals (snes/test/orbit/run.mjs):
 --   BUNDLE  import bundle (a map 246 state)
 --   MARKS   frames after the scene went live to log and screenshot
-local SB = 0x326000
+local SB = SCENE_RAM
 local FB = SB + 0xA80
 function test()
   H.wait(20)
   H.result('imported', H.importSnesJs(BUNDLE))
   H.wait(10)
-  H.w8(0x7ED740, 1)              -- goku_form: Super Saiyan
-  H.w8(0x7EDC01, 4)              -- OC_API_INTRO
-  local live = H.waitFor(function() return H.r8(0x7EDC00) == 2 end, 60)
+  H.w8(GOKU_FORM, 1)             -- goku_form: Super Saiyan
+  H.w8((ORBIT_RAM + 0x01), 4)              -- OC_API_INTRO
+  local live = H.waitFor(function() return H.r8((ORBIT_RAM + 0x00)) == 2 end, 60)
   H.result('live', live)
+  H.result('owner_live', H.r16(SCENE_OWNER))
   local marks = {}
   local last = 0
   for _, m in ipairs(MARKS) do marks[m] = true; if m > last then last = m end end
@@ -24,4 +25,8 @@ function test()
     end
   end
   H.result('states', log)
+  H.w8((ORBIT_RAM + 0x01), 2)              -- OC_STOP: the field back, the area given back
+  H.wait(4)
+  H.result('state_after', H.r8((ORBIT_RAM + 0x00)))
+  H.result('owner_after', H.r16(SCENE_OWNER))
 end

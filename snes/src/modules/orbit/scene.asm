@@ -20,7 +20,13 @@ orbit_field_frame:
 	JSR orbit_command
 .noCmd
 	SEP #$20
-	LDA.l !orbit_state
+	LDA.l !orbit_enter
+	BEQ +
+	PEA.w $3232 : PLB : PLB
+	REP #$30
+	JSR orbit_enter_try
+	SEP #$20
++	LDA.l !orbit_state
 	BEQ .out
 	PEA.w $3232 : PLB : PLB
 	REP #$30
@@ -94,10 +100,36 @@ orbit_command:
 .done
 	RTS
 
+; The scene work area (core_scene_claim, !SCENE_ORBIT) becomes the orbit's
+; before its scene first writes there; Frieza's fight hands it over (his
+; claim is given back for him: his module then runs only its WRAM work
+; until the orbit releases the area; the orbit leaves his fight block,
+; $32:7800-7BFF, alone, as frieza_orbit_won still clears his shots
+; there). Carry set while another set piece holds it. M16/X16.
+orbit_claim:
+	LDA.w #!SCENE_ORBIT
+	JSL core_scene_claim
+	BCC .done
+	JSL core_scene_owner
+	CMP.w #!SCENE_FRIEZA
+	BNE .busy
+	JSL core_scene_release
+	LDA.w #!SCENE_ORBIT
+	JSL core_scene_claim
+	BRA .done
+.busy
+	SEC
+.done
+	REP #$30
+	RTS
+
 ; Tests: show the globe with the camera already written to the scene block.
 orbit_start_test:
 	REP #$30
-	JSR orbit_scene_init
+	JSR orbit_claim
+	BCC +
+	RTS                            ; (another set piece holds the area)
++	JSR orbit_scene_init
 	SEP #$20
 	LDA.b #!OS_LOADING
 	STA.l !orbit_state
@@ -455,6 +487,10 @@ orbit_field_nmi:
 	STA.l !orbit_state
 	LDA.b #$00
 	STA.l !orbit_flags
+	REP #$30
+	LDA.w #!SCENE_ORBIT            ; the scene work area is free again
+	JSL core_scene_release
+	SEP #$20
 .done
 if defined("ORBIT_TIMING")
 	REP #$30

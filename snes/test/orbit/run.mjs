@@ -3,12 +3,14 @@
 //   node snes/test/orbit/run.mjs [case ...]
 // Builds dist/snes/orbit-test.sfc (-DORBIT_TIMING) unless SNES_ROM is set,
 // writes outputs under .local/snes-test/orbit/<case>/ and exits non-zero on
-// failure. Cases:
+// failure. Addresses of core's and other modules' fields come from their
+// sources (readDefines). Default: every case. Cases:
 //   globe  the Mode 7 globe and starfield at the browser's cameras, compared
 //          with reference.mjs (the browser's planet()/sky() formulas)
 //   intro  the orbit intro through the public API (orbit_api_enter): the
 //          message schedule against frieza-cinematic.js orbitIntroText and
-//          each panel's pixels against the browser's radioPixels
+//          each panel's pixels against the browser's radioPixels; the scene
+//          work area is the orbit's while it runs and given back at the stop
 //   fight  the space fight frame by frame against the browser's own
 //          frieza.js orbital battle (fight-ref.mjs) under a scripted pad:
 //          movement, ki, the charged wave, Instant Transmission and the
@@ -19,6 +21,11 @@
 //          against the same reference: gather, charge, launch, a lost
 //          struggle (recoil, 420 damage), a won one under steady B taps,
 //          the 'won' clock with the native victory commands, the return
+//   handoff the frieza module's ground fight in phase two takes a hit across
+//          32,000 (its FRIEZA_TEST mailbox): the second surge hands over
+//          to the orbit, which takes the scene work area from Frieza's
+//          claim; Frieza's fight sleeps in space; nothing else writes the
+//          area while the orbit runs
 import {readFileSync,existsSync,mkdirSync,writeFileSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -37,13 +44,38 @@ const bundleDir=name=>existsSync(join(imports,name))?join(imports,name):join(mai
 const mainCheckpoint='/Users/mikolalysenko/Projects/secret-of-goku/.local/snes-checkpoints/waterfall.mss';
 const state=existsSync(checkpoint)?checkpoint:mainCheckpoint;
 
-function buildRom(){
-  if(process.env.SNES_ROM)return process.env.SNES_ROM;
-  const rom=resolve(repo,'dist/snes/orbit-test.sfc');
-  const r=spawnSync('node',[resolve(repo,'snes/build.mjs'),'--quiet','--strict',`--out=${rom}`,'-DORBIT_TIMING'],{encoding:'utf8'});
+function buildRom(name='orbit-test',extra=[]){
+  if(process.env.SNES_ROM&&!extra.length)return process.env.SNES_ROM;
+  const rom=resolve(repo,`dist/snes/${name}.sfc`);
+  const r=spawnSync('node',[resolve(repo,'snes/build.mjs'),'--quiet','--strict',`--out=${rom}`,'-DORBIT_TIMING',...extra],{encoding:'utf8'});
   if(r.status!==0){console.error(r.stdout+r.stderr);process.exit(1);}
   return rom;
 }
+// Addresses other modules and core own, from their sources (not fixed in
+// the tests): !NAME = expression lines with !defines, $hex, decimals, + and -.
+function readDefines(files){
+  const raw=new Map();
+  for(const f of files)for(const line of readFileSync(resolve(repo,f),'utf8').split('\n')){
+    const m=/^\s*!(\w+)\s*#?=\s*([^;]+)/.exec(line);if(m&&!raw.has(m[1]))raw.set(m[1],m[2].trim());
+  }
+  const val=(name,seen=new Set())=>{
+    if(seen.has(name))throw Error('define loop '+name);seen.add(name);
+    const e=raw.get(name);if(e===undefined)throw Error('no define '+name);
+    let total=0,sign=1;
+    for(const tok of e.match(/!\w+|\$[0-9A-Fa-f]+|\d+|[+-]/g)){
+      if(tok==='+'){sign=1;continue;}if(tok==='-'){sign=-1;continue;}
+      const v=tok[0]==='!'?val(tok.slice(1),new Set(seen)):tok[0]==='$'?parseInt(tok.slice(1),16):Number(tok);
+      total+=sign*v;sign=1;
+    }
+    return total;
+  };
+  return val;
+}
+const def=readDefines(['snes/src/core/shared.asm','snes/src/core/core.asm','snes/src/core/ram.asm','snes/src/modules/goku/module.asm']);
+const GOKU_FORM=0x7E0000|def('goku_form');           // the goku module's form byte (Super Saiyan: 1)
+const SCENE_OWNER=def('core_scene_owner'),SCENE_ORBIT=def('SCENE_ORBIT');
+const ORBIT_RAM=0x7E0000|(def('RAM_ORBIT')&0xFFFF),SCENE_RAM=def('SRAM_WORK_SCENE');
+const ADDR=`GOKU_FORM=${GOKU_FORM}\nSCENE_OWNER=${SCENE_OWNER}\nSCENE_ORBIT=${SCENE_ORBIT}\nORBIT_RAM=${ORBIT_RAM}\nSCENE_RAM=${SCENE_RAM}\n`;
 const lua=(v)=>Array.isArray(v)?'{'+v.map(lua).join(',')+'}':typeof v==='object'?'{'+Object.entries(v).map(([k,x])=>`${k}=${lua(x)}`).join(',')+'}':typeof v==='string'?JSON.stringify(v):String(v);
 
 // Scripted pad for the fight case (core $4218 bits), frame 0 first.
@@ -133,7 +165,7 @@ const cases={
     ];
     const dir=join(out,'globe');
     const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nCAMS=${lua(cams)}\nSPIN=240\n`;
-    const r=await runMesen({rom,state,test:pre+readFileSync(join(here,'globe.lua'),'utf8'),outDir:dir});
+    const r=await runMesen({rom,state,test:ADDR+pre+readFileSync(join(here,'globe.lua'),'utf8'),outDir:dir});
     const res=r.results??{};
     const report={live:res.live,imported:res.imported,shots:{}};
     let ok=r.code===0&&res.live===true;
@@ -162,7 +194,7 @@ const cases={
     const marks=[20,59,61,135,209,211,285,360,435,510,585,660,735,809,811,860];
     const dir=join(out,'intro');
     const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nMARKS={${marks.join(',')}}\n`;
-    const r=await runMesen({rom,state,test:pre+readFileSync(join(here,'intro.lua'),'utf8'),outDir:dir});
+    const r=await runMesen({rom,state,test:ADDR+pre+readFileSync(join(here,'intro.lua'),'utf8'),outDir:dir});
     const res=r.results??{};
     let ok=r.code===0&&res.live===true&&Array.isArray(res.states);
     if(!ok){console.log('intro: FAIL (no run)',r.code,res.error??'');return false;}
@@ -187,6 +219,9 @@ const cases={
       panels++;
       if(bad)fails.push(`frame ${f}: ${bad} of ${n} panel pixels differ from radioPixels`);
     }
+    // the scene work area is the orbit's while it runs, free of it after
+    if(res.owner_live!==SCENE_ORBIT)fails.push(`scene work owner while live: ${res.owner_live} (want ${SCENE_ORBIT})`);
+    if(res.owner_after===SCENE_ORBIT||res.state_after!==0)fails.push(`after the stop: owner ${res.owner_after}, state ${res.state_after}`);
     ok=ok&&fails.length===0&&panels>=5;
     writeFileSync(join(dir,'report.json'),JSON.stringify({states:res.states,fails,panels},null,1));
     console.log(`intro: ${ok?'pass':'FAIL'} ${panels} panels checked`);
@@ -197,7 +232,7 @@ const cases={
     const frames=Number(process.env.ORBIT_FIGHT_FRAMES??660),pads=fightPads(frames);
     const dir=join(out,'fight');
     const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nPADS=${lua(pads)}\nSHOTS={0,60,150,200,240,320,600}\nEXTRA=${Number(process.env.ORBIT_FIGHT_EXTRA??0)}\n`;
-    const r=await runMesen({rom,state,test:pre+readFileSync(join(here,'fight.lua'),'utf8'),outDir:dir});
+    const r=await runMesen({rom,state,test:ADDR+pre+readFileSync(join(here,'fight.lua'),'utf8'),outDir:dir});
     const res=r.results??{};
     let ok=r.code===0&&res.live===true&&Array.isArray(res.states);
     if(!ok){console.log('fight: FAIL (no run)',r.code,res.error??'',r.output?.slice(-2000));return false;}
@@ -244,7 +279,7 @@ const cases={
     const dir=join(out,'clash');
     const shots=[0,100,200,300,320,360,400,560,900,1300,1560,1700,1900,2500,2700,2880];
     const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nPADS=${lua(pads)}\nSHOTS={${shots.join(',')}}\nHP=6000\n`;
-    const r=await runMesen({rom,state,test:pre+readFileSync(join(here,'clash.lua'),'utf8'),outDir:dir,timeoutMs:900000});
+    const r=await runMesen({rom,state,test:ADDR+pre+readFileSync(join(here,'clash.lua'),'utf8'),outDir:dir,timeoutMs:900000});
     const res=r.results??{};
     let ok=r.code===0&&res.live===true&&Array.isArray(res.states);
     if(!ok){console.log('clash: FAIL (no run)',r.code,res.error??'',r.output?.slice(-2000));return false;}
@@ -294,13 +329,74 @@ const cases={
     for(const m of mismatches.slice(0,10))console.log('  '+m);
     return ok;
   },
+  async handoff(){
+    const rom=process.env.SNES_HANDOFF_ROM??buildRom('orbit-frieza-test',['-DFRIEZA_TEST=1']);
+    const {friezaWrites,luaWrites,defs:fz}=await import('../frieza/state.mjs');
+    const wram=n=>{if(!(n in fz))throw Error('frieza define '+n);return fz[n]<0x10000?0x7E0000|fz[n]:fz[n];};
+    const refRoot=existsSync(resolve(repo,'.local/snes-ref/battle'))?resolve(repo,'.local/snes-ref'):'/Users/mikolalysenko/Projects/secret-of-goku/.local/snes-ref';
+    const g=JSON.parse(readFileSync(join(refRoot,'battle','state.json'),'utf8')).goku;
+    const dir=join(out,'handoff');
+    const test=`${ADDR}BUNDLE=${JSON.stringify(bundleDir('preset__battle'))}
+WRITES=${luaWrites(friezaWrites(g.frieza,g.challenge))}
+local OBJ_PALS = SCENE_RAM + 0x1C00
+local fails = {}
+local function check(c, m) if not c then fails[#fails + 1] = m end return c end
+local function pals() local t = {} for i = 0, 191 do t[#t + 1] = H.r8(OBJ_PALS + i) end return t end
+function test()
+  check(H.importSnesJs(BUNDLE), 'import')
+  H.w8(${def('persist_goku_active')}, 1)
+  for _, w in ipairs(WRITES) do if w[3] == 2 then H.w16(w[1], w[2]) else H.w8(w[1], w[2]) end end
+  H.w8(${wram('fz_music')}, ${fz.FZM_BATTLE})
+  H.w8(${wram('fzf_tier')}, 1)     -- phase two: its threshold, 32,000, starts the cosmic surge
+  H.w16(${wram('fzf_hp_lo')}, 32500)
+  H.w16(${wram('fzf_hp_hi')}, 0)
+  H.wait(2)
+  H.result('owner_before', H.r16(SCENE_OWNER))
+  H.w16(${wram('fzs_test')} + 2, 60000)
+  H.w16(${wram('fzs_test')}, 2)
+  H.waitFor(function() return H.r16(${wram('fzs_test')}) == 0 end, 30)
+  H.result('after_hit', string.format('hp %d tier %d surge %d sage %d flags %02x enter %d state %d oflags %d', H.r16(${wram('fzf_hp_lo')}), H.r8(${wram('fzf_tier')}), H.r8(${wram('fzs_surge')}), H.r16(${wram('fzs_sage')}), H.r8(${wram('fzf_flags')}), H.r8(ORBIT_RAM + 0x26), H.r8(ORBIT_RAM), H.r8(ORBIT_RAM + 2)))
+  H.wait(10)
+  H.result('after_10', string.format('hp %d tier %d surge %d sage %d flags %02x enter %d state %d oflags %d', H.r16(${wram('fzf_hp_lo')}), H.r8(${wram('fzf_tier')}), H.r8(${wram('fzs_surge')}), H.r16(${wram('fzs_sage')}), H.r8(${wram('fzf_flags')}), H.r8(ORBIT_RAM + 0x26), H.r8(ORBIT_RAM), H.r8(ORBIT_RAM + 2)))
+  local live = H.waitFor(function() return H.r8(ORBIT_RAM) == 2 end, 240)
+  H.result('live', live)
+  check(live, 'the orbit went live')
+  H.result('owner_live', H.r16(SCENE_OWNER))
+  check(H.r16(SCENE_OWNER) == SCENE_ORBIT, 'scene work owner ' .. H.r16(SCENE_OWNER) .. ' while live')
+  check((H.r8(${wram('fzf_flags')}) & ${fz.FZFF_SPACE}) ~= 0, 'frieza: the fight is in space')
+  H.wait(2)
+  local before = pals()
+  for f = 1, 300 do
+    H.wait(1)
+    if f == 60 or f == 300 then H.shot(string.format('handoff%04d', f)) end
+    if H.r16(SCENE_OWNER) ~= SCENE_ORBIT then check(false, 'owner ' .. H.r16(SCENE_OWNER) .. ' at ' .. f) break end
+  end
+  local after = pals()
+  local same = 0
+  for i = 1, 64 do if before[i] == after[i] then same = same + 1 end end
+  for i = 129, 192 do if before[i] == after[i] then same = same + 1 end end
+  H.result('pals_same', same)
+  check(same == 128, 'OBJ palettes 0, 1, 6, 7 of the scene image unchanged (' .. same .. ' of 128 bytes)')
+  H.result('intro', H.r16(SCENE_RAM + 0xA80 + 0x02))
+  H.result('failures', fails)
+end
+`;
+    const r=await runMesen({rom,state,test,outDir:dir});
+    const res=r.results??{};
+    const ok=r.code===0&&res.live===true&&Array.isArray(res.failures)&&res.failures.length===0;
+    console.log(`handoff: ${ok?'pass':'FAIL'} owner ${res.owner_before} -> ${res.owner_live}, palette bytes kept ${res.pals_same}/128`);
+    if(!ok)console.log('  after the hit:',res.after_hit,'| 10 frames on:',res.after_10);
+    for(const m of (res.failures??[]).slice(0,8))console.log('  '+m);
+    if(!res.failures)console.log(r.output?.slice(-1500));
+    return ok;
+  },
 };
 
 const rom=buildRom();
 mkdirSync(out,{recursive:true});
 const names=process.argv.slice(2).filter(a=>!a.startsWith('-'));
 let failed=0;
-const defaults=['globe','intro','fight'];
+const defaults=['globe','intro','fight','clash','handoff'];
 for(const name of names.length?names:defaults){
   if(!cases[name]){console.log(`unknown case ${name}`);failed++;continue;}
   if(!await cases[name](rom))failed++;

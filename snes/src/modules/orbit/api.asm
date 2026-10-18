@@ -31,27 +31,54 @@ orbit_api_defaults:
 	REP #$30
 	RTL
 
-; orbit_api_enter: A16 = !OE_* mode. Takes the picture from the next field
-; frame (art loads during ~12 vblanks with the screen black), then runs the
-; orbit with Frieza's state from the inputs (frieza.js enterOrbit: Frieza
-; at the first patrol node, clock 150, Goku's grace 60). Ignored while the
-; orbit already runs.
+; orbit_api_enter: A16 = !OE_* mode. The orbit owns the picture from now
+; (!orbit_flags bit 0); its scene starts in the orbit's own field frame,
+; once the scene work area is its (orbit_claim: Frieza's fight hands it
+; over), with art loading during ~12 vblanks with the screen black, then
+; runs the orbit with Frieza's state from the inputs (frieza.js
+; enterOrbit: Frieza at the first patrol node, clock 150, Goku's grace 60).
+; Nothing is written to the scene work area here. Ignored while the orbit
+; already runs or waits to start.
 orbit_api_enter:
-	PHB
 	PHP
 	REP #$30
 	PHA
-	PEA.w $3232 : PLB : PLB
 	SEP #$20
 	LDA.l !orbit_state
-	REP #$20
+	ORA.l !orbit_enter
 	BEQ +
+	REP #$20
 	PLA
 	PLP
-	PLB
 	REP #$30
 	RTL
-+	LDA.l !orbit_in_tx
++	REP #$20
+	PLA
+	INC
+	SEP #$20
+	STA.l !orbit_enter
+	LDA.l !orbit_flags
+	ORA.b #!OF_ACTIVE
+	STA.l !orbit_flags
+	PLP
+	REP #$30
+	RTL
+
+; The waiting entry (orbit_field_frame, DB = $32): once orbit_claim has
+; the scene work area, the scene starts. M16/X16.
+orbit_enter_try:
+	JSR orbit_claim
+	BCC +
+	RTS                            ; another set piece holds it: next frame
++	LDA.l !orbit_enter
+	AND.w #$00FF
+	DEC
+	PHA
+	SEP #$20
+	LDA.b #$00
+	STA.l !orbit_enter
+	REP #$20
+	LDA.l !orbit_in_tx
 	AND.w #$0FFF
 	STA.w !cam_lon
 	LDA.l !orbit_in_ty
@@ -77,10 +104,8 @@ orbit_api_enter:
 	LDA.w #!ORBIT_INTRO_FRAMES
 	STA.w !f_intro
 +	JSR orbit_fight_on
-	PLP
-	PLB
 	REP #$30
-	RTL
+	RTS
 
 ; orbit_api_status -> A16 = !orbit_flags (bit 0 the orbit owns the picture,
 ; bit 1 live).
