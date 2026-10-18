@@ -46,6 +46,17 @@
 !CODE_DEBUG   = $AF8000   ; debug scene select (upper half only)
 !CODE_SPARE3  = $AF8000
 
+; Spare code quarters. The ROM ownership check (build.mjs) works per 16 KiB
+; quarter, so a module whose code half is full can be given one of these;
+; the half's owner asserts that its own code ends before the quarter. Assign
+; one by defining !CODE_<MODULE>2 = the quarter and noting it here.
+;   $A1:C000-FFFF  goku's half (goku code asserts <= $A1C000)   free
+;   $AA:C000-FFFF  audio's half (audio code asserts <= $AAC000) free
+;   $AB:C000-FFFF  title's half (title code asserts <= $ABC000) free
+!CODE_QUARTER_GOKU  = $A1C000
+!CODE_QUARTER_AUDIO = $AAC000
+!CODE_QUARTER_MISC  = $ABC000
+
 !DATA_CORE    = $E00000
 !DATA_GOKU    = $E10000
 !DATA_COMBAT  = $E20000

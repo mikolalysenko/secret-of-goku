@@ -202,7 +202,7 @@ frame_scatter:
 	LDA.l !ending_age
 	CMP.w #30
 	BCC .wish
-	JMP flight_frame
+	JMP ending_wish_frame
 .wish
 	XBA
 	LDY.w #30
