@@ -878,6 +878,17 @@ fx_beam_strips:
 	LDX.w #4
 	LDY.w #$0000
 	JSR fx_stamp
+	; Left / right: the strip rows as a polygon (poly.asm), no sprites.
+	LDA !d_dy
+	BNE .obj
+	JSR fx_poly_strip
+	PHP
+	LDA.w #$FFFF                 ; the builder used !d_tiles
+	STA !d_lasta
+	PLP
+	BCS .obj
+	RTS
+.obj
 	; Strips behind the natives.
 	LDA.w #$0000
 	JSR fx_depth
@@ -922,7 +933,15 @@ fx_beam_strips:
 	JSR fx_at
 	LDA.w #16
 	STA !d_rstep
-	PLA
+	LDA !d_dy                    ; a row of strips across the screen: leave
+	BNE +                        ; the natives on its lines their slivers
+	LDA !d_y
+	JSR fx_row_room
+	CMP $01,S
+	BCS +
+	STA $01,S                    ; fewer strips: the far end goes first
++	PLA
+	BEQ .done
 	JSR fx_emit_run
 .done
 	RTS

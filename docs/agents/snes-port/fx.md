@@ -15,9 +15,9 @@ the result. FX animates the timed particles it is asked to spawn and draws
 the continuous effects (charge orb, aura, beams, lightning) that a client
 re-requests every frame.
 
-Status: **API frozen; OBJ kinds, beams and the full-screen wave polygon
-work** in the field (see [Status](#status) for each kind). Kinds not yet
-implemented (aura, charge lightning, debris, Death Beam laser, large Death
+Status: **API frozen; OBJ kinds, debris, beams and the full-screen wave
+polygon work** in the field (see [Status](#status) for each kind). Kinds
+not yet implemented (aura, charge lightning, Death Beam laser, large Death
 Balls, world flight) are safe to call and draw nothing.
 
 ## Calling convention
@@ -28,6 +28,26 @@ A/X/Y unless noted. Call them from a `modules_field_frame` callback (or a
 world-flight frame callback). FX itself runs last in `modules_field_frame`
 (`fx_frame`) and last in `modules_field_nmi` (`fx_nmi`), so everything a
 client requests in a frame is drawn in that same frame.
+
+**Continuous draws (`fx_draw`, `fx_beam`) must be requested from a frame
+callback, every frame the effect should show.** The draw list belongs to
+the dispatched frame (`!core_tick`): `fx_frame` draws the entries requested
+since that frame's dispatch began and then empties the list, so a request
+made anywhere else (a `%hijack` in the game's own code, which runs after
+`fx_frame` or before the next dispatch; an NMI; a frame the client skipped)
+belongs to another tick and is dropped. A beam or aura therefore disappears
+in exactly the frames its client does not call FX, which is the intended
+way to end it. Timed effects (`fx_spawn`, `fx_kill`, `fx_move`) may be
+called from any main-loop code, hooks included (never from an NMI): FX
+ages them itself, and a spawn made after `fx_frame` shows from the next
+frame.
+
+`!FX_DRAWS` (8) is the number of draw-list entries per frame, shared by
+`fx_draw` and `fx_beam` (the ninth request in a frame returns C set). It is
+defined by the library itself (`modules/fx/module.asm`), not by
+`defs.asm`, so a module included after FX in `modules.asm` can test
+`if defined("FX_DRAWS")` to know that the real library is in the build
+(combat's placeholder sprites, for example).
 
 Extra parameters go through a small **request block in SRAM** (bank `$31`,
 write with long addressing, e.g. `STA.l !fx_a`). It is read by the next
@@ -84,7 +104,7 @@ field a kind uses.
 | Routine | In | Out |
 | --- | --- | --- |
 | `fx_spawn` | A = kind \| flags<<8, X = x, Y = y, request block | C clear: A = handle; C set: no free slot (nothing spawned) |
-| `fx_draw` | same | Draws one frame of a continuous kind. C set if dropped (8 draws and beams per frame) |
+| `fx_draw` | same | Draws one frame of a continuous kind. C set if dropped (`!FX_DRAWS` = 8 draws and beams per frame) |
 | `fx_beam` | A = style \| flags<<8, X/Y = palms, `!fx_dir`, `!fx_a` length, `!fx_b` width, `!fx_c` taper, `!fx_t` beam age | One frame of a beam. C set if dropped (shares the 8 draw entries) |
 | `fx_flash` | A = frames (7 for the transformation) | Gold-white screen flash, as `native-feedback.js` `burst()` |
 | `fx_quake` | A = frames | Native BG quake pulse (`$49 = $E0`), ignored in Mode 7 and when an event owns `$49` |
@@ -133,13 +153,13 @@ Beams (`fx_beam`, every frame; geometry from the client, as the browser's
 
 | Style | Id | Browser | `!fx_b` | Rendering |
 | --- | --- | --- | --- | --- |
-| `FX_BEAM_KAME` | `$00` | regular Kamehameha | width (5 + 14·strength); bands `max(1,round(w/4))` (+2 with `FX_F_SSJ`) | Lucent Beam 16×4 strips every 16 px, head at the front, orb frame 4 at the palms |
+| `FX_BEAM_KAME` | `$00` | regular Kamehameha | width (5 + 14·strength); bands `max(1,round(w/4))` (+2 with `FX_F_SSJ`) | Lucent Beam 16×4 strips every 16 px, head at the front, orb frame 4 at the palms. Left/right: the strips' lines as a polygon (see strategy) |
 | `FX_BEAM_WAVE` | `$01` | full SSJ wave (`giantBeam`) | current half-width (80 grown over 6 frames, collapsing over 10) | Colour-math polygon (see strategy): white core, Lucent Beam bands; impact and Thunderbolt cells along both edges every 28 px; orb at the palms. `!fx_c` taper (0 = 44) |
 | `FX_BEAM_FINAL` | `$02` | Final Flash | half-width | As WAVE in the training gold ramp, gold sparks and arcs, gold orb |
 | `FX_BEAM_GALICK` | `$03` | Galick Gun | half-width | As WAVE in the training purple ramp (blue sparks and orb, as the browser) |
-| `FX_BEAM_FRIEZA` | `$04` | `beam(...,'frieza')` | width | Lucent strip in Frieza's pink, pink orb |
+| `FX_BEAM_FRIEZA` | `$04` | `beam(...,'frieza')` | width | Lucent strip in Frieza's pink, pink orb (polygon left/right, as KAME) |
 | `FX_BEAM_LASER` | `$05` | `deathBeam` | – | Death Beam: 3 px pink line with a white core, finger glint |
-| `FX_BEAM_FIRE` | `$06` | `beam(...,hot)` | width | Lucent strip in the Fireball colours, gold orb |
+| `FX_BEAM_FIRE` | `$06` | `beam(...,hot)` | width | Lucent strip in the Fireball colours, gold orb (polygon left/right, as KAME) |
 
 `!fx_a` is the current length from the palms in pixels, `!fx_t` the beam's
 age (phase = age/2 as the browser). `FX_F_HEADING` gives 16 directions
@@ -196,7 +216,11 @@ cells it will draw, keeps cells drawn recently, and uploads missing ones in
 its vblank callback (two 64-byte halves per cell). The upload budget is
 learned per streaming phase of the game (`$56`: in Potos one phase in five
 leaves no vblank time); a cell whose upload slipped is not drawn until it
-lands. World flight will use the world regions.
+lands. A spawned effect whose new animation frame needs cells that the
+coming vblank cannot upload would blink for a frame; FX then takes back
+that effect's sprites and draws its previous age instead (cells still
+resident), while its age runs on, so the client's timing is kept. World
+flight will use the world regions.
 
 **Palettes**: effect colours are grouped into 15-colour classes, BLUE
 (Lucent Beam, ki, impacts), PINK (Frieza: pink beams, discs, Death
@@ -219,6 +243,31 @@ Assemblies are pre-flipped per cell; a fully visible assembly takes a fast
 path of one 16-bit add per part, and beam strips and wave edges are runs
 (`fx_emit_run`, a fixed spacing along the beam). On crowded lines the far
 end of a long beam drops out first, never a native sprite.
+
+**Sprites per line.** The PPU shows at most 34 8-pixel slivers per line and,
+when a line has more ("time over"), drops the slivers of the *first*
+sprites in OAM: the natives (Goku, enemies), since FX's sprites come after
+them. A left/right row of 16×16 strips across the screen is 32 slivers, so
+on Goku's own lines a Kamehameha used to blank parts of Goku and of the
+enemies next to him. Two measures:
+- **Left/right strip beams are a polygon** (`fx_poly_strip`, the wave's
+  HDMA machinery): every row of a strip assembly (the band unions, one
+  16×16 cell or two stacked from 6 bands) is one colour across the cell,
+  which `snes/gen/fx.mjs` asserts while it emits `fx_strip_ptr` /
+  `fx_strip_data` (per union and half turn: the first coloured line's
+  offset from the palms, the line count, each line's colour index). Window
+  1 per line spans the strips (palms to the last strip) and the backdrop
+  per line takes the line's colour, with BG1/BG2 masked inside the window
+  and no colour math there: exactly the OBJ strips' picture (the beams
+  test compares the two, both half turns), without a single sprite. The
+  head and the orb stay OBJ. It takes the frame's one polygon, so a
+  second left/right beam, a wave, up/down beams, 16-heading beams and
+  scenes where the game runs HDMA on channels 2/3 keep the OBJ strips.
+- **OBJ strip rows are budgeted** (`fx_row_room`): before a left/right run
+  of strips FX counts the slivers of every sprite already in OAM or staged
+  in front that overlaps the row's 16 lines and draws at most
+  `(34 - 2 - that) / 2` strips (an overestimate, as the sprites need not
+  share a line); the far end goes first.
 
 **Full-screen waves** (`FX_BEAM_WAVE`, `FINAL`, `GALICK`): a colour-math
 polygon, `snes/src/modules/fx/poly.asm`. HDMA channel 2 writes window 1
@@ -259,7 +308,12 @@ shows:
   counter underflows into a 127-line repeat that writes whatever follows
   its table (CGRAM corruption on hardware and in Mesen). Every table
   therefore ends with a 127-line entry of the neutral record before its
-  end byte, so a resumed channel only counts down and stops.
+  end byte, so a resumed channel only counts down and stops; and when
+  `fx_nmi` programs new tables it also primes each channel's table address
+  and line counter ($43x8-$43xA) as if it had just counted down a
+  127-line entry that ends at a zero byte (the first byte of every table
+  buffer), which covers a wave's very first frame. In time, the frame's
+  HDMA start reloads all of this.
 - FX's own sprites need their palettes rewritten every vblank (the game
   uploads all of CGRAM each frame), which a late vblank cannot afford
   while HDMA runs. `fx_frame` predicts those vblanks (learned per
@@ -281,16 +335,20 @@ math; the quake writes the native quake byte `$49` exactly as
 SRAM read in `fx_frame` and one in `fx_nmi`; charge orb ~17; impact ~22;
 ki shot ~30; one 3-band Kamehameha ~42 (four beams at once ~150); ring
 ~31; wave held still ~80 (polygon 7, orb 9, edge cells ~55), wave
-being built (growing or collapsing) ~85-110. A frame over ~225 lines in
-total lags (the game then runs at 30 fps); heavy scenes (Mana Beast
-~180 lines native) lag with a wave on screen.
+being built (growing or collapsing) ~85-110. With FastROM (the default
+now) the beams test measures a wave held still at ~70; a left/right
+Kamehameha as a polygon ~25 held and ~57 in the frames its strip frame
+changes (every second frame; a 7-band beam ~85), against ~70-80 for the
+same beam as OBJ strips. A frame over ~225 lines in total lags (the game
+then runs at 30 fps); heavy scenes (Mana Beast ~180 lines native) lag
+with a wave on screen.
 
 ## Resources
 
 | Resource | Use |
 | --- | --- |
 | Code `$AE:8000-FFFF` | `!CODE_FX` (upper half only; `$EE` lower half holds ending art) |
-| ROM | One bank (`!FX_DATA`, 59 KiB used) for cell tiles, assemblies and palettes, generated by `snes/gen/fx.mjs`. **Needs an allocation**: bank `$FC` went to audio in the layout, so FX uses `$FB` (orbit's reservation, not merged yet) until the core defines `!DATA_FX` |
+| ROM | One bank (`!DATA_FX` = `$FB`, 62 of 64 KiB used) for cell tiles, assemblies, palettes and paths, generated by `snes/gen/fx.mjs`; the aura and lightning cells will need room elsewhere (the code half `$AE:8000-FFFF` has ~20 KiB free) |
 | SRAM `$31:7800-7BFF` | `!SRAM_WORK_FX`: request block, 14 effect slots, 8 draw entries, VRAM cache, polygon tables (2 × 187 bytes) |
 | WRAM | None (a 148-byte direct-page frame on the stack inside `fx_frame`) |
 | VRAM | `!VRAM_FIELD_OBJ_A/B/C` while effects are active (owner `$0E`); released after 120 idle frames and at every map or mode change |
@@ -310,12 +368,32 @@ total lags (the game then runs at 30 fps); heavy scenes (Mana Beast
 | `FX_ORB` | Done; `FX_F_GOKU` draws only in poses with a hand socket (charge, beam, blast) | gallery (screen points), beams (no socket in the idle pose) |
 | `FX_DEATHBALL` | 16 and 32 px OBJ balls; larger diameters draw the 32 px ball | gallery |
 | `FX_DISC`, `FX_FINGER`, `FX_CELL` | Done (OBJ) | gallery |
-| `FX_BEAM_KAME`, `FX_BEAM_FRIEZA`, `FX_BEAM_FIRE` | Done (OBJ strips, four facings) | `snes/test/fx/beams.lua` |
+| `FX_BEAM_KAME`, `FX_BEAM_FRIEZA`, `FX_BEAM_FIRE` | Done: OBJ strips (four facings); the first left/right beam of a frame as a polygon | `snes/test/fx/beams.lua` (polygon against OBJ strips, pixel-exact, right and left) |
 | `FX_BEAM_WAVE`, `FINAL`, `GALICK` | Done (polygon + OBJ edges), four facings | beams: pixel checks of core, bands and rims, HDMA/flag/palette checks |
 | `fx_flash`, `fx_quake` | Done | gallery |
 | `FX_DEBRIS`, brazier burst | Done (OBJ); destroy's effect records are drawn by FX itself (below) | `snes/test/fx/debris.lua` |
 | `FX_AURA`, `FX_LIGHTNING`, `FX_BEAM_LASER` | Not yet (draw nothing) | |
 | Large Death Balls (polygon circle), world flight | Not yet | |
+
+**Combat review** (combat reported that in the lagging Rabite field its
+Kamehameha strip and charge orb did not appear and the full wave was
+misplaced, although `fx_beam` / `fx_draw` got the expected arguments every
+frame). Reproduced with combat's own input (L+Y charge and release in a
+Rabite field import): combat's side is correct; the causes were FX's and
+the test harness's.
+- Kamehameha: the left/right strips put 32 slivers on Goku's lines, so
+  the PPU's time over dropped the slivers of the first sprites in OAM,
+  Goku's body and the Rabites. Now a polygon (see Sprites per line):
+  Goku, the Rabites and the whole beam show.
+- Super Saiyan wave: its first frame could write garbage to CGRAM when the
+  field NMI's `$420C` write landed after the frame's HDMA start; fixed by
+  priming the channels (see Late vblanks).
+- Charge orb and the misplaced wave: not reproducible on exact frames.
+  Mesen's `--testRunner` skips rendering frames by wall clock unless
+  `--Snes.DisableFrameSkipping=true` is given, so a screenshot shows a
+  frame from an unknown earlier moment (no orb yet, or a wave of an
+  earlier frame at its earlier size). FX's runner sets the flag;
+  `snes/test/mesen.mjs` does not yet (see Core requests).
 
 **destroy's effect records** (`docs/agents/snes-port/destroy.md`,
 SRAM `$33:77F8`): FX polls the record's sequence word every field frame
@@ -329,10 +407,14 @@ computed once per map (~80 lines in that frame), defaults
 
 Tests: `node snes/test/fx/run.mjs [gallery|beams|debris]` (FX_TEST
 cartridge with a mailbox client, `snes/test/fx/testmod.asm`; Potos
-import). The beams test checks the wave colours on three consecutive PPU
+import; `FX_DEFINES='-DCORE_SLOWROM=1'` builds it with other defines). The beams test checks the wave colours on three consecutive PPU
 frames per wave (`F.grab`, Mesen's screen buffer), two of three must pass
 (`BEAM_CHECKS` in `run.mjs`), and that no BG colour changes, that `$2C`
-and the registers come back, and the cost of a wave held still. The
+and the registers come back, and the cost of a wave held still; it also
+draws a left/right Kamehameha as a polygon and as OBJ strips (behind a
+beam that takes the polygon) and requires the two pictures to be
+identical on the beam's lines (a right 3-band beam, a left 7-band Super
+Saiyan beam). The
 runner starts Mesen with `--Snes.DisableFrameSkipping=true`: running
 unthrottled, Mesen otherwise renders only some frames (by wall clock), so
 screenshots and the screen buffer show a frame from an unknown moment (31
@@ -350,20 +432,26 @@ of 39 consecutive grabs were identical in a measurement).
   `modules_title_boot`. `modules/fx/module.asm` is included before its
   clients. FX's private defines carry `fx` prefixes (asar defines are
   global; `!d_*` are its direct-page frame).
-- **A data bank for FX** (blocking for merges): 59 KiB of cells and tables
-  in one bank. `snes/src/core/layout.asm` gives `$FC-$FF` to audio and
-  every other free range to unmerged modules; FX's bank `$FC` was
-  overwritten by audio's clips in the merged build (FX then looped on
-  garbage assemblies). Define `!DATA_FX` (one whole bank) and FX uses it;
-  meanwhile it sits in `$FB`. asar does not report overlapping writes: a
-  build-time overlap check in `snes/build.mjs` would catch the next one
-  (`snes/test/fx/run.mjs` now checks FX's cells in both ROMs).
-- **FastROM**: the core's opt-in `CORE_FASTROM` build would make FX
-  ~25% faster (its code runs from bank `$AE`); FX's per-sprite cost is the
-  main budget item of a wave, so turning it on by default would help.
+- Granted: the data bank (`!DATA_FX` = `$FB` in `core/layout.asm`, with the
+  build's ROM ownership check) and FastROM by default (`-DCORE_SLOWROM=1`
+  opts out). `snes/test/fx/run.mjs` still checks FX's cells in both ROMs.
 - **SRAM for the polygon**: 2 × 512 bytes (instead of 2 × 187 inside FX's
   1 KiB) would give exact left/right horns and the ripple, and circles for
   the large Death Balls.
+- **Frame / NMI handshake race** (seen in a SlowROM build of the beams
+  test, where two beams make the frame end right at vblank):
+  `core_field_frame` sets `!core_dma_ready` before the game's
+  `TSB $EC` at `00:B077` marks the frame complete. An NMI landing between
+  the two runs the module NMI work (`fx_nmi`, the VRAM queue) in a vblank
+  where the game skipped its own uploads, and the next vblank uploads the
+  game's OAM and CGRAM without any module NMI work. FX's sprites then show
+  the game's colours in that OBJ palette for a frame (FX rewrites its
+  palettes only in `fx_nmi`), and a cache cell evicted that frame is
+  overwritten while the old OAM still shows it. Proposed fix: run the
+  module NMI work only when the game's NMI processed a frame, e.g. by
+  setting `!core_dma_ready` from a hook on the game's own completion test
+  in its NMI, or by checking in `core_field_nmi` that the interrupted code
+  was not between `core_field_frame`'s return and `B079`.
 - **HDMA arbitration**: FX ORs bits 2/3 into the game's HDMA shadow `$2C`
   while a wave is shown. A core-owned mask ORed into `$420C` at `00:C15C`
   would avoid touching the game's byte. Clients that test `$2C` for "no
@@ -378,7 +466,8 @@ of 39 consecutive grabs were identical in a measurement).
 - **Test harness**: `snes/test/mesen.mjs` should pass
   `--Snes.DisableFrameSkipping=true` for every test (see Tests above):
   every screenshot comparison is otherwise subject to Mesen's
-  wall-clock frame skipping. FX's runner does it itself.
+  wall-clock frame skipping (combat's review screenshots showed effects
+  of earlier frames, see Combat review). FX's runner does it itself.
 - **OBJ palettes**: there is no core arbitration of OBJ palettes; FX picks
   palettes not used by the sprites already in OAM when it runs. Scene
   modules that add their own characters should add their sprites before

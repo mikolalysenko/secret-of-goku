@@ -92,10 +92,72 @@ function test()
   F.beam(2, F.B.KAME, S, F.DIR.down, 60, 20, 120, 12, 0, 0)
   F.beam(3, F.B.KAME, S, F.DIR.up, 200, 190, 120, 12, 0, 0)
   s = hold('kame', 6)
-  F.check('kame_sprites', s.sprites >= 40, F.statstr(s))
-  F.check('kame_no_polygon', (H.r8(0x7E002C) & 0x0C) == 0, string.format('$2C=%02X', H.r8(0x7E002C)))
+  -- The first left/right beam is a polygon (its strip rows are one colour
+  -- each); the second one, and up/down beams, are OBJ strips.
+  F.check('kame_sprites', s.sprites >= 20, F.statstr(s))
+  F.check('kame_polygon', (H.r8(0x7E002C) & 0x0C) == 0x0C and H.r16(0x317890) == 2,
+    string.format('$2C=%02X on=%d', H.r8(0x7E002C), H.r16(0x317890)))
   for i = 0, 3 do F.stop(i) end
   F.waitFx(3)
+
+  -- The polygon strip against the OBJ strips: a left/right Kamehameha
+  -- alone is a polygon; behind another left/right beam (which takes the
+  -- polygon) the same beam is OBJ strips. Their lines must match between
+  -- the orb and the head, two lines around them included. The mailbox
+  -- advances the beam's age, so the strips alternate between two band
+  -- frames every two frames, and FX skips its sprites in the vblanks it
+  -- predicts late: each polygon frame is compared with four OBJ frames.
+  local function diff(a, b)
+    local n = 0
+    for i = 1, #a do if a[i] ~= b[i] then n = n + 1 end end
+    return n
+  end
+  local function polyRows(name, flags, dir, kx, ky, width)
+    local x0 = dir == F.DIR.left and kx - 79 or kx + 16
+    local function region()
+      local b, t = emu.getScreenBuffer(), {}
+      for y = ky - 10, ky + 9 do
+        for x = x0, x0 + 63 do t[#t + 1] = b[(y + 7) * 256 + x + 1] or 0 end
+      end
+      return t
+    end
+    local function frames(n, costs)
+      local t = {}
+      for i = 1, n do
+        H.wait(1)
+        t[i] = region()
+        if costs then costs[#costs + 1] = lines(F.stats()) end
+      end
+      return t
+    end
+    local plain = frames(1)[1]
+    F.beam(0, F.B.KAME, S | flags, dir, kx, ky, 160, width, 0, 0)
+    F.waitFx(4)
+    local pc, oc = {}, {}
+    local poly = frames(4, pc)
+    local pon = H.r16(0x317890)
+    F.grab(name .. '_poly')
+    F.beam(0, F.B.KAME, S, F.DIR.right, 40, 200, 160, 12, 0, 0)
+    F.beam(1, F.B.KAME, S | flags, dir, kx, ky, 160, width, 0, 0)
+    F.waitFx(4)
+    local obj = frames(4, oc)
+    F.grab(name .. '_obj')
+    F.stop(0); F.stop(1)
+    F.waitFx(3)
+    local matched, drawn = 0, 0
+    for _, p in ipairs(poly) do
+      drawn = math.max(drawn, diff(p, plain))
+      local best = #plain
+      for _, o in ipairs(obj) do best = math.min(best, diff(p, o)) end
+      if best == 0 then matched = matched + 1 end
+    end
+    local detail = string.format('on=%d drawn=%d/%d matched=%d/%d lines poly=%s obj+other=%s', pon, drawn, #plain,
+      matched, #poly, table.concat(pc, ','), table.concat(oc, ','))
+    H.log(name, detail)
+    F.check(name, pon == 2 and drawn >= #plain // 3 and matched >= 3, detail)
+  end
+  polyRows('kame_rows_right', 0, F.DIR.right, 40, 60, 12)
+  polyRows('kame_rows_left_ssj', F.F.SSJ, F.DIR.left, 216, 120, 19)
 
   -- Charge orb anchored at Goku (FX_F_GOKU): the idle pose has no hand
   -- socket (goku_api_hand), so nothing is drawn; combat shows it in the

@@ -501,8 +501,9 @@ fx_run_slots:
 .loop
 	LDA.l !fx_slots+!S_KIND,X
 	AND.w #$00FF
-	BEQ .next
-	LDA.l !fx_slots+!S_AGE,X
+	BNE +
+	JMP .next
++	LDA.l !fx_slots+!S_AGE,X
 	CMP.w #$FFFF
 	BNE .old
 	LDA.w #$0000                 ; spawned this frame: age 0
@@ -529,7 +530,43 @@ fx_run_slots:
 	BCC .kill
 	PHX
 	JSR fx_load_slot
+	LDA.l !fx_front              ; the OAM state before this effect
+	PHA
+	LDA.w !core_oam_front_n&$FFFF
+	PHA
+	LDA.w !core_oam_cursor&$FFFF
+	PHA
+	LDA.w #$0000
+	STA.l !fx_bmiss
 	JSR fx_draw_current
+	LDA.l !fx_bmiss
+	BEQ .shown
+	; A new animation frame whose cells cannot be uploaded in the coming
+	; vblank (no time left in this streaming phase) would leave a blank
+	; frame: show the previous age instead, whose cells are resident. The
+	; age itself runs on, so the effect keeps its client's timing.
+	LDA $07,S
+	TAX
+	LDA.l !fx_slots+!S_AGE,X
+	BEQ .shown
+	PLA
+	STA !d_tmp
+	PLA
+	STA !d_tmp+2
+	PLA
+	STA !d_tmp+4
+	JSR fx_oam_rollback
+	LDA $01,S
+	TAX
+	JSR fx_load_slot
+	DEC !d_cur+!C_T
+	JSR fx_draw_current
+	PLX
+	BRA .next
+.shown
+	PLA
+	PLA
+	PLA
 	PLX
 	BRA .next
 .kill

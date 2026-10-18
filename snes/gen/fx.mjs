@@ -163,8 +163,24 @@ export async function generate({rom,repo,outDir}){
   // beams) keep 1, 3 and 5 and round other widths to the nearest.
   const BAND_SETS=[['beam-body',0,[1,2,3,4,5,6,7]],['pink-beam-body',1,[1,3,5]],['fire-beam-body',3,[1,3,5]]];
   const bandIndex=[];                   // ((set*2+frame)*7 + n-1)*4 + turn -> assembly
+  // Strip lines for the left/right polygon (poly.asm fx_poly_strip): per
+  // band union and half turn (right, left) the offset of its first
+  // coloured line from the palms' line, the line count and each line's
+  // colour index in the set's class (0: none). The polygon draws one
+  // colour per line, so every row of a union must be one colour across the
+  // cell (asserted). A half turn maps the offset v to -v (pixel centres).
+  const stripPtr=[],stripData=[],stripSeen=new Map();
+  const stripRec=(rows,first)=>{
+    let a=0,b=rows.length-1;
+    while(a<=b&&!rows[a])a++;
+    while(b>=a&&!rows[b])b--;
+    const rec=a>b?[0,0]:[(first+a)&255,b-a+1,...rows.slice(a,b+1)];
+    const key=rec.join(',');
+    if(!stripSeen.has(key)){stripSeen.set(key,stripData.length);stripData.push(...rec);}
+    return stripSeen.get(key);
+  };
   for(const [g,cls,counts] of BAND_SETS)for(let f=0;f<2;f++){
-    const made={};
+    const made={},madeRows={};
     for(const n of counts){
       const src=groups[g][f],canvas=new Uint16Array(16*32); // rows v=-16..15
       for(let b=0;b<n;b++){
@@ -178,10 +194,18 @@ export async function generate({rom,repo,outDir}){
         parts.push({pair:cellPair(canvas.slice(256),cls,`${g}#${f}x${n}b`),ox:-8,oy:0,fx:false,fy:false});
       }
       made[n]=addTurns(parts);
+      const top=n<=5?8:0,h=n<=5?16:32,rows=[];   // canvas rows the parts cover
+      for(let r=top;r<top+h;r++){
+        const line=canvas.slice(r*16,r*16+16),c=line[0];
+        if(line.some(v=>v!==c))throw Error(`fx: ${g} frame ${f} x${n} row ${r} is not one colour`);
+        rows.push(indexIn(cls,c));
+      }
+      madeRows[n]=[stripRec(rows,top-16),stripRec([...rows].reverse(),-(top-16+h-1))];
     }
     for(let n=1;n<=7;n++){
       const near=counts.reduce((a,b)=>Math.abs(b-n)<Math.abs(a-n)?b:a);
       for(let t=0;t<4;t++)bandIndex.push(made[near]+t);
+      stripPtr.push(...madeRows[near]);
     }
   }
 
@@ -390,6 +414,8 @@ export async function generate({rom,repo,outDir}){
   a.label('fx_asm_ptr');a.dw(asmPtr);
   a.label('fx_asm_data');a.db(asmBytes);
   a.label('fx_band_index');a.dw(bandIndex);
+  a.label('fx_strip_ptr');a.dw(stripPtr);
+  a.label('fx_strip_data');a.db(stripData);
   a.label('fx_det_ptr');a.dw(detPtr);
   a.label('fx_ember_path');a.db(emberPath);
   a.label('fx_det_data');a.db(detBytes);

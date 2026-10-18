@@ -434,11 +434,17 @@ fx_poly_tables:
 	LDA.l !fx_pbuf
 	CLC
 	ADC.w #!fx_poly&$FFFF
-	STA !fxp_out
-	STA.l !fx_ptab3
-	CLC
-	ADC.w #!FX_PBUF_SIZE
+	TAX                          ; the buffer's first byte stays 0: fx_nmi
+	ADC.w #!FX_PBUF_SIZE         ; points idle channels at it (fx_nmi_poly)
 	STA !fxp_end
+	SEP #$20
+	LDA.b #$00
+	STA.l !FX_PBASE,X
+	REP #$20
+	INX
+	STX !fxp_out
+	TXA
+	STA.l !fx_ptab3
 	JSR fx_poly_kind
 	CMP.w #1
 	BEQ .vert
@@ -470,6 +476,250 @@ fx_poly_tables:
 	STA.l !fx_poly_req
 .off
 	RTS
+
+;---------------------------------------------------------------------------
+; Left / right Kamehameha-type strips (fx_beam_strips) as a polygon. Every
+; row of the strip assemblies (band unions of Lucent Beam's 16x4 strip, one
+; cell or two stacked) is one colour across the cell (fx.mjs asserts it),
+; so every line of the beam is one colour from the palms to the last strip:
+; window 1 per line and the backdrop colour per line give exactly the OBJ
+; strips without their sprites. Sixteen 16x16 strips on a row are 32 of the
+; PPU's 34 slivers per line, so next to the natives on Goku's lines they
+; cannot all show (and the PPU drops the natives' slivers).
+; In: !d_ks+2 bands, +4 set (0 blue, 1 pink, 2 fire), +6 phase, !d_dx,
+; !d_turn, !d_cur. C clear when drawn (or nothing to draw); C set: OBJ
+; strips (!d_ks+0-7 are kept for them).
+!fxs_rec  = !d_ks+$08         ; the strip's record in fx_strip_data
+!fxs_n    = !d_ks+$0C         ; its lines
+!fxs_cls  = !d_ks+$0E         ; palette class * 32
+!fxs_o    = !d_r0+$00         ; window record of the beam's lines
+fx_poly_strip:
+	LDA.w !core_mode&$FFFF
+	CMP.w #!CORE_MODE_FIELD
+	BNE .no0
+	LDA.l !fx_poly_req           ; one polygon per frame
+	BNE .no0
+	LDA.l !fx_poly_on
+	BNE +
+	LDA.w $002C
+	AND.w #$000C
+	BNE .no0
++	LDA !d_cur+!C_KIND
+	BIT.w #!FX_F_HEADING<<8
+	BEQ .go
+.no0
+	SEC
+	RTS
+.go
+	LDA !d_cur+!C_A              ; strips at d = 8, 24, ... while d < length
+	SEC
+	SBC.w #8
+	BEQ .none
+	BMI .none
+	CLC
+	ADC.w #15
+	AND.w #$FFF0
+	STA !fxp_len                 ; 16 * strips
+	LDA !d_cur+!C_X
+	STA !fxp_x
+	LDA !d_cur+!C_Y
+	STA !fxp_y
+	LDA !d_ks+4                  ; key fields: bands | set << 4, frame
+	ASL
+	ASL
+	ASL
+	ASL
+	ORA !d_ks+2
+	STA !fxp_hw
+	LDA !d_ks+6
+	AND.w #$0001
+	STA !fxp_t
+	STZ !fxp_rip
+	LDX !d_ks+4                  ; palette class of the set
+	LDA.l .class,X
+	AND.w #$00FF
+	STA !fxs_cls
+	; the strip's lines: fx_strip_ptr[((set*2 + frame)*7 + bands-1)*2 + left]
+	LDA !d_ks+4
+	ASL
+	ORA !fxp_t
+	STA !fxp_ds
+	ASL
+	ASL
+	ASL
+	SEC
+	SBC !fxp_ds                  ; (set*2 + frame) * 7
+	CLC
+	ADC !d_ks+2
+	DEC
+	ASL
+	STA !fxp_ds
+	LDA !d_turn                  ; 0 right, 2 left
+	LSR
+	ORA !fxp_ds
+	ASL
+	TAX
+	LDA.l fx_strip_ptr,X
+	STA !fxs_rec
+	TAX
+	LDA.l fx_strip_data,X        ; first line - palms' line (signed) | lines << 8
+	XBA
+	AND.w #$00FF
+	BEQ .none
+	STA !fxs_n
+	JSR fx_poly_key
+	BCS .build
+	LDA.l !fx_pshown             ; the same picture: show those tables again
+	STA.l !fx_preuse
+	LDA.w #$0002
+	STA.l !fx_poly_req
+	CLC
+	RTS
+.none
+	CLC
+	RTS
+.build
+	LDA.w #$FFFF
+	STA.l !fx_pkey+8
+	LDA.w #$0000
+	STA.l !fx_preuse
+	STZ !fxp_ovf
+	LDA.l !fx_pbuf
+	CLC
+	ADC.w #!fx_poly&$FFFF
+	TAX
+	ADC.w #!FX_PBUF_SIZE
+	STA !fxp_end
+	SEP #$20
+	LDA.b #$00
+	STA.l !FX_PBASE,X            ; the buffer's first byte stays 0
+	REP #$20
+	INX
+	STX !fxp_out
+	TXA
+	STA.l !fx_ptab3
+	; window: x0..x1 of the strips (right: palms .. +len-1; left: mirrored)
+	LDA !d_dx
+	BMI +
+	LDA !fxp_x
+	STA !fxp_top
+	CLC
+	ADC !fxp_len
+	DEC
+	STA !fxp_axis
+	BRA ++
++	LDA !fxp_x
+	STA !fxp_axis
+	SEC
+	SBC !fxp_len
+	INC
+	STA !fxp_top
+++	LDA !fxp_top                 ; record for the beam's lines
+	STA !d_tmp
+	LDA !fxp_axis
+	STA !d_tmp+2
+	JSR fx_pw_lohi
+	STA !fxs_o
+	LDX !fxs_rec                 ; the first line
+	LDA.l fx_strip_data,X
+	AND.w #$00FF
+	EOR.w #$0080
+	SEC
+	SBC.w #$0080
+	CLC
+	ADC !fxp_y
+	STA !fxp_first
+	; Channel 3: the game's backdrop, each line's colour, the backdrop.
+	LDA.w #5
+	JSR fx_pw_open
+	LDA.w #4
+	JSR fx_pw_colour
+	LDA !fxp_first
+	JSR fx_pw_to
+	STZ !fxp_d
+.crow
+	JSR .line
+	BEQ +
+	ASL
+	CLC
+	ADC !fxs_cls
+	TAX
+	LDA.l fx_class_palettes,X
+	TAY
+	LDX.w #$0000
+	BRA ++
++	LDA.l $7E0600
+	TAY
+	LDX.w #$0000
+++	LDA !fxp_first
+	CLC
+	ADC !fxp_d
+	CMP.w #!FX_PLINES            ; off the screen (above: negative)
+	BCS +
+	LDA.w #1
+	JSR fx_pw
++	INC !fxp_d
+	LDA !fxp_d
+	CMP !fxs_n
+	BCC .crow
+	LDA.w #4
+	JSR fx_pw_colour
+	JSR fx_pw_close
+	; Channel 2 (mode 1): the strips' span on lines with colour.
+	LDA !fxp_out
+	STA.l !fx_ptab2
+	LDA.w #3
+	JSR fx_pw_open
+	LDX.w #$00FF
+	LDY.w #$0000
+	LDA !fxp_first
+	JSR fx_pw_to
+	STZ !fxp_d
+.wrow
+	JSR .line
+	BEQ +
+	LDX !fxs_o
+	BRA ++
++	LDX.w #$00FF
+++	LDY.w #$0000
+	LDA !fxp_first
+	CLC
+	ADC !fxp_d
+	CMP.w #!FX_PLINES
+	BCS +
+	LDA.w #1
+	JSR fx_pw
++	INC !fxp_d
+	LDA !fxp_d
+	CMP !fxs_n
+	BCC .wrow
+	LDX.w #$00FF
+	LDY.w #$0000
+	JSR fx_pw_close
+	LDA !fxp_ovf
+	BEQ +
+	SEC
+	RTS
++	LDA.w #$0001
+	STA.l !fx_pdmap
+	LDA.w #$0002
+	STA.l !fx_poly_req
+	LDA.l !fx_s                  ; the key now describes these tables
+	STA.l !fx_pkey+8
+	LDA.w #$0000
+	STA.l !fx_pshown
+	CLC
+	RTS
+.line                            ; A = colour index of line !fxp_d (Z set: none)
+	LDA !fxs_rec
+	CLC
+	ADC !fxp_d
+	TAX
+	LDA.l fx_strip_data+2,X
+	AND.w #$00FF
+	RTS
+.class                           ; palette class of the band sets
+	db !FX_CLASS_BLUE*32, !FX_CLASS_PINK*32, !FX_CLASS_FIRE*32
 
 ; ---------------------------------------------------------------------------
 ; Table writer. fx_pw_open: A = entry size (3: two-byte records, 5: four).
@@ -1331,7 +1581,18 @@ fx_nmi_poly:
 	STA $4322
 	LDA.l !fx_ptab3
 	STA $4332
+	; Prime both channels as if they had just counted down a 127-line entry
+	; that ends at a 0 byte (the buffer's first byte): if the field NMI's
+	; $420C write lands after the next frame's HDMA start, a channel that
+	; is switched on without its frame-start reload only counts down and
+	; stops. In time, the frame-start reload replaces all of this.
+	DEC
+	STA $4328
+	STA $4338
 	SEP #$20
+	LDA.b #$7F
+	STA $432A
+	STA $433A
 	LDA.b #$22                   ; BG1 / BG2 masked inside window 1 ...
 	STA $2123
 	LDA.b #$03                   ; ... on the main screen

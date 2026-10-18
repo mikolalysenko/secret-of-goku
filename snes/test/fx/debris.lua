@@ -41,8 +41,9 @@ function test()
   -- Brazier burst: Exploder at 0, 8 and 12 frames.
   F.style(2)
   F.spawn(0, F.K.EXPLODE, S, 0, 128, 110, 0, 0)
+  F.waitFx(1)                          -- the mailbox reads the style when it spawns
   F.style(0)
-  local a = F.waitFx(3).sprites
+  local a = F.waitFx(2).sprites
   local b = F.waitFx(11).sprites
   s = shot('brazier_age14', F.stats())
   H.log('brazier sprites', a, b)

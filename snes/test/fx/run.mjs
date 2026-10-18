@@ -9,6 +9,7 @@
 //   battle   effects over the Frieza arena (preset__battle)
 //   budget   frame-logic end line and NMI end with heavy effects
 //   node snes/test/fx/run.mjs [test ...]
+//   FX_DEFINES='-DCORE_SLOWROM=1' node snes/test/fx/run.mjs   (extra build defines)
 // Outputs: .local/snes-test/fx/<test>/ (results.json, screenshots).
 import {spawnSync,spawn} from 'node:child_process';
 import {readFileSync,writeFileSync,existsSync,mkdirSync,rmSync} from 'node:fs';
@@ -23,7 +24,8 @@ const only=process.argv.slice(2).filter(a=>!a.startsWith('--'));
 const outRoot=resolve(repo,'.local/snes-test/fx');
 mkdirSync(outRoot,{recursive:true});
 const testRom=resolve(repo,'.local/snes-test/roms/fx-test.sfc');
-const b=spawnSync(process.execPath,[join(repo,'snes/build.mjs'),'--quiet','--strict',`--out=${testRom}`,'-DFX_TEST=1'],{cwd:repo,stdio:'inherit'});
+const extraDefines=(process.env.FX_DEFINES||'').split(/\s+/).filter(d=>/^-D\w+(=\w+)?$/.test(d));
+const b=spawnSync(process.execPath,[join(repo,'snes/build.mjs'),'--quiet','--strict',`--out=${testRom}`,'-DFX_TEST=1',...extraDefines],{cwd:repo,stdio:'inherit'});
 if(b.status!==0){console.error('fx: FX_TEST build failed');process.exit(1);}
 const cps=checkpointDir();
 if(!existsSync(join(cps,'waterfall.mss'))){
