@@ -28,6 +28,11 @@ function Snes() {
   this.dmaOffLengths = [1, 2, 2, 4, 4, 4, 2, 4];
 
   this.apuCyclesPerMaster = (32040 * 32) / (1364 * 262 * 60);
+  // Master-cycle pairs whose APU catch-up additions skipIdleCycles has not
+  // applied yet. Every pair adds the same step, so the float depends only
+  // on how many additions precede each catch-up: catchUpApu applies them
+  // first (exactly, see addRepeated), and a frame always ends with one.
+  let apuPending = 0;
 
   // for dma
   this.dmaBadr = new Uint8Array(8);
@@ -66,6 +71,7 @@ function Snes() {
     this.cpuCyclesLeft = 5 * 8 + 12; // reset: 5 read cycles + 2 IO cycles
     this.cpuMemOps = 0;
     this.apuCatchCycles = 0;
+    apuPending = 0;
 
     // for cpu-ports
     this.ramAdr = 0;
@@ -233,6 +239,12 @@ function Snes() {
   }
 
   this.catchUpApu = function() {
+    if(apuPending > 0) {
+      this.apuCatchCycles = addRepeated(
+        this.apuCatchCycles, this.apuCyclesPerMaster * 2, apuPending
+      );
+      apuPending = 0;
+    }
     let catchUpCycles = this.apuCatchCycles & 0xffffffff;
     let apu = this.apu;
     if(apu.cycle !== apuCoreCycle) {
@@ -296,10 +308,10 @@ function Snes() {
   // runs inline. Stops before any pair with (H)DMA activity, an IRQ, HDMA,
   // render or line event; returns the number of pairs advanced (0 means
   // cycle() must run next). State afterwards is identical to calling
-  // cycle() that many times.
+  // cycle() that many times, once catchUpApu has applied the pairs' APU
+  // catch-up additions (apuPending).
   this.skipIdleCycles = function() {
     let advanced = 0;
-    let step = this.apuCyclesPerMaster * 2;
     for(;;) {
       let x = this.xPos;
       if(
@@ -332,11 +344,7 @@ function Snes() {
         } else {
           this.dmaTimer -= n * 2;
         }
-        let apu = this.apuCatchCycles;
-        for(let i = 0; i < n; i++) {
-          apu += step;
-        }
-        this.apuCatchCycles = apu;
+        apuPending += n;
         if(this.joypadStrobe) {
           this.joypad1Val = this.joypad1State;
           this.joypad2Val = this.joypad2State;
@@ -355,7 +363,7 @@ function Snes() {
           // instructions ago.
           let cpu = this.cpu, pc = (cpu.r[1] << 16) | cpu.br[4];
           if(pc === spinPrev2 || pc === spinPrev3) {
-            let pairs = this.spinWait(x, pc, step);
+            let pairs = this.spinWait(x, pc);
             if(pairs > 0) {
               advanced += pairs;
               continue;
@@ -366,7 +374,7 @@ function Snes() {
           spinPrev1 = pc;
         }
         // cycle() for a plain dot that starts an instruction.
-        this.apuCatchCycles += step;
+        apuPending++;
         if(this.joypadStrobe) {
           this.joypad1Val = this.joypad1State;
           this.joypad2Val = this.joypad2State;
@@ -412,12 +420,7 @@ function Snes() {
       if(n <= 0) {
         return advanced;
       }
-      // Repeated addition keeps the APU catch-up float bit-identical.
-      let apu = this.apuCatchCycles;
-      for(let i = 0; i < n; i++) {
-        apu += step;
-      }
-      this.apuCatchCycles = apu;
+      apuPending += n;
       if(this.joypadStrobe) {
         this.joypad1Val = this.joypad1State;
         this.joypad2Val = this.joypad2State;
@@ -1207,43 +1210,46 @@ function Snes() {
   // multiple of the binade's ulp, so each addition adds the same rounded
   // increment while the sum stays below the binade's top, unless step lies
   // exactly halfway between two multiples (a tie, which rounds to even);
-  // tie binades, the binade's top and zero take single additions. Used for
-  // long runs only (short ones loop faster).
-  let incStep = NaN, incLow = 0, incTop = 0, incDelta = 0, incOk = false;
+  // tie binades, the binade's top and values outside 2^-60..2^60 take
+  // single additions. Each binade's increment is computed once per step,
+  // indexed by the biased exponent read from the double's bits.
+  const f64 = new Float64Array(1), f64Words = new Uint32Array(f64.buffer);
+  const highWord = new Uint8Array(new Uint32Array([1]).buffer)[0] === 1 ? 1 : 0;
+  const binKind = new Uint8Array(2048), binDelta = new Float64Array(2048);
+  const binTop = new Float64Array(2048);
+  let binStep = NaN;
   const addRepeated = (apu, step, n) => {
+    if(step !== binStep) {
+      binStep = step;
+      binKind.fill(0);
+    }
     while(n > 0) {
-      if(step !== incStep || !(apu >= incLow && apu < incTop)) {
-        incStep = step;
-        incLow = incTop = 0;
-        incOk = false;
-        if(apu > 0 && apu < 0x40000000) {
-          let e = Math.floor(Math.log2(apu)), low = Math.pow(2, e);
-          if(low > apu) {
-            low /= 2;
-            e--;
-          } else if(low * 2 <= apu) {
-            low *= 2;
-            e++;
-          }
+      f64[0] = apu;
+      let b = (f64Words[highWord] >>> 20) & 0x7ff;
+      if(apu > 0 && b >= 1023 - 60 && b <= 1023 + 60) {
+        let kind = binKind[b];
+        if(kind === 0) {
+          let e = b - 1023, low = Math.pow(2, e);
           let units = step * Math.pow(2, 52 - e);
-          incLow = low;
-          incTop = low * 2;
-          incOk = units - Math.floor(units) !== 0.5;
-          incDelta = (low + step) - low;
+          kind = units - Math.floor(units) !== 0.5 ? 1 : 2;
+          binKind[b] = kind;
+          binDelta[b] = (low + step) - low;
+          binTop[b] = low * 2;
         }
-      }
-      if(incOk) {
-        let k = Math.floor((incTop - step - apu) / incDelta);
-        if(k > n) {
-          k = n;
-        }
-        while(k > 0 && apu + (k - 1) * incDelta + step >= incTop) {
-          k--;
-        }
-        if(k > 0) {
-          apu += k * incDelta;
-          n -= k;
-          continue;
+        if(kind === 1) {
+          let delta = binDelta[b], top = binTop[b];
+          let k = Math.floor((top - step - apu) / delta);
+          if(k > n) {
+            k = n;
+          }
+          while(k > 0 && apu + (k - 1) * delta + step >= top) {
+            k--;
+          }
+          if(k > 0) {
+            apu += k * delta;
+            n -= k;
+            continue;
+          }
         }
       }
       apu += step;
@@ -1413,7 +1419,7 @@ function Snes() {
   // At an instruction start at pc (24-bit) that the CPU also started two or
   // three instructions ago: returns the master-cycle pairs skipped (whole
   // loop iterations), or 0 to step normally.
-  this.spinWait = function(x, pc, step) {
+  this.spinWait = function(x, pc) {
     let cpu = this.cpu;
     if(
       cpu.waiting || cpu.stopped || (cpu.irqWanted && !cpu.i) ||
@@ -1486,7 +1492,7 @@ function Snes() {
       return 0;
     }
     let pairs = k * spinPairs;
-    this.apuCatchCycles = addRepeated(this.apuCatchCycles, step, pairs);
+    apuPending += pairs;
     if(this.joypadStrobe) {
       this.joypad1Val = this.joypad1State;
       this.joypad2Val = this.joypad2State;
