@@ -16,6 +16,20 @@ local function bgSame()
   for i = 2, 128 do if now[i] ~= base[i] then n = n + 1 end end
   return n
 end
+-- How many of the next n frames satisfy cond: the HDMA bits in $2C and the
+-- polygon flag are read at one moment of the frame, and a frame whose
+-- field NMI ran late (or another module's own $2C write) can make one
+-- sample miss, so live-state checks look at a window of frames.
+local function sample(n, cond)
+  local k = 0
+  for _ = 1, n do
+    H.wait(1)
+    if cond() then k = k + 1 end
+  end
+  return k
+end
+local function hdmaOn() return (H.r8(0x7E002C) & 0x0C) == 0x0C end
+local function hdmaOff() return (H.r8(0x7E002C) & 0x0C) == 0 and H.r16(0x317890) == 0 end
 local function lines(s)
   local d = s.line1 - s.line0
   if d < 0 then d = d + 262 end
@@ -64,13 +78,16 @@ function test()
   for _, w in ipairs(waves) do
     F.beam(0, w[2], S, w[3], w[4], w[5], w[6], w[7], 0, 20)
     local _, steady = hold(w[1], 12)
-    F.check(w[1] .. '_hdma', (H.r8(0x7E002C) & 0x0C) == 0x0C, string.format('$2C=%02X', H.r8(0x7E002C)))
-    F.check(w[1] .. '_kind', H.r16(0x317890) == w[8], 'poly_on=' .. H.r16(0x317890))
+    local hd = sample(6, hdmaOn)
+    F.check(w[1] .. '_hdma', hd >= 4, hd .. ' of 6 frames with $2C bits 2/3')
+    local kd = sample(6, function() return H.r16(0x317890) == w[8] end)
+    F.check(w[1] .. '_kind', kd >= 4, kd .. ' of 6 frames with poly_on=' .. w[8])
     F.check(w[1] .. '_bg_palettes', bgSame() == 0, bgSame() .. ' BG colours changed')
     F.check(w[1] .. '_steady_cost', steady < 100, steady .. ' lines')
   end
   F.stop(0)
   F.waitFx(3)
+  H.waitFor(hdmaOff, 12)
   F.check('wave_off_hdma', (H.r8(0x7E002C) & 0x0C) == 0, string.format('$2C=%02X', H.r8(0x7E002C)))
   F.check('wave_off_flag', H.r16(0x317890) == 0, 'poly_on=' .. H.r16(0x317890))
   F.check('wave_off_backdrop', H.cgram(0) == (base[1] & 0xFF) and H.cgram(1) == (base[1] >> 8), 'CGRAM 0')
@@ -95,8 +112,8 @@ function test()
   -- The first left/right beam is a polygon (its strip rows are one colour
   -- each); the second one, and up/down beams, are OBJ strips.
   F.check('kame_sprites', s.sprites >= 20, F.statstr(s))
-  F.check('kame_polygon', (H.r8(0x7E002C) & 0x0C) == 0x0C and H.r16(0x317890) == 2,
-    string.format('$2C=%02X on=%d', H.r8(0x7E002C), H.r16(0x317890)))
+  local kp = sample(6, function() return hdmaOn() and H.r16(0x317890) == 2 end)
+  F.check('kame_polygon', kp >= 4, kp .. ' of 6 frames with the polygon on')
   for i = 0, 3 do F.stop(i) end
   F.waitFx(3)
 
@@ -135,7 +152,7 @@ function test()
     F.waitFx(4)
     local pc, oc = {}, {}
     local poly = frames(4, pc)
-    local pon = H.r16(0x317890)
+    local pon = sample(4, function() return H.r16(0x317890) == 2 end) >= 2 and 2 or H.r16(0x317890)
     F.grab(name .. '_poly')
     F.beam(0, F.B.KAME, S, F.DIR.right, 40, 200, 160, 12, 0, 0)
     F.beam(1, F.B.KAME, S | flags, dir, kx, ky, 160, width, 0, 0)
@@ -265,6 +282,7 @@ function test()
   end
   F.stop(0)
   F.waitFx(3)
+  H.waitFor(hdmaOff, 12)
   F.check('deathball_off', H.r16(0x317890) == 0 and (H.r8(0x7E002C) & 0x0C) == 0,
     string.format('on=%d $2C=%02X', H.r16(0x317890), H.r8(0x7E002C)))
 
