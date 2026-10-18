@@ -3057,16 +3057,33 @@ fl_pred_small:
 fl_footprint:
 	PHA                          ; [mode]
 	LDA.l !fl_g_stale
-	BEQ +
+	BEQ .anchored
+	CMP.w #2
+	BEQ .lazy
 	LDA.w #$0000
 	STA.l !fl_g_stale
 	JSR fl_grid_reset
-+	; a grid well inside the map: a footprint it covers is in bounds
+	BRA .anchored
+.lazy
+	; on foot (fl_onfoot): the grid moves only when the footprint leaves it
+	LDA.w #$0000
+	STA.l !fl_g_stale
+	LDA $01,S
+	JSR fl_fp_cover
+	BCC .relazy
+	LDA.l !fl_g_inner
+	BNE .covered                 ; fl_t4 = its cells
+	BRA .anchored
+.relazy
+	JSR fl_grid_reset
+.anchored
+	; a grid well inside the map: a footprint it covers is in bounds
 	LDA.l !fl_g_inner
 	BEQ .bounds
 	LDA $01,S
 	JSR fl_fp_cover
 	BCC .bounds
+.covered
 	LDA $01,S
 	BEQ .answer
 	LDA.w !fl_open_air
@@ -3195,6 +3212,60 @@ fl_grid_reset:
 	BNE .new
 	RTS                          ; same grid: cells are checked when tested
 .new
+	; one cell over on the same layer and terrain: the cells both grids
+	; share keep their verdicts (the old grid's tiles are checked first)
+	LDA.w !fl_t2
+	CMP.l !fl_g_l
+	BNE .fresh
+	LDA.w !fl_t3
+	CMP.l !fl_g_t
+	BNE .fresh
+	LDA.w !fl_t0
+	SEC
+	SBC.l !fl_g_tx0
+	INC
+	CMP.w #3
+	BCS .fresh
+	STA.w !fl_t5                 ; dx + 1
+	LDA.w !fl_t1
+	SEC
+	SBC.l !fl_g_ty0
+	INC
+	CMP.w #3
+	BCS .fresh
+	STA.w !fl_t4
+	ASL
+	ADC.w !fl_t4
+	ADC.w !fl_t5
+	STA.w !fl_t5                 ; (dy + 1) * 3 + dx + 1
+	JSR fl_grid_check            ; (keeps fl_t5)
+	LDA.w !fl_t5
+	ASL
+	TAX
+	LDA.l fl_grid_shift_n,X
+	STA.w !fl_t6                 ; new cell (r, c) = old (r + dy, c + dx): bit b <- b + 3dy + dx
+	LDA.l fl_grid_shift_m,X
+	STA.w !fl_t7                 ; cells the old grid also covered
+	LDA.l !fl_g_akn
+	JSR fl_grid_shift1
+	STA.l !fl_g_akn
+	LDA.l !fl_g_aok
+	JSR fl_grid_shift1
+	STA.l !fl_g_aok
+	LDA.l !fl_g_gkn
+	JSR fl_grid_shift1
+	STA.l !fl_g_gkn
+	LDA.l !fl_g_gok
+	JSR fl_grid_shift1
+	STA.l !fl_g_gok
+	BRA .origin
+.fresh
+	LDA.w #$0000
+	STA.l !fl_g_akn
+	STA.l !fl_g_aok
+	STA.l !fl_g_gkn
+	STA.l !fl_g_gok
+.origin
 	LDA.w !fl_t0
 	STA.l !fl_g_tx0
 	LDA.w !fl_t1
@@ -3212,13 +3283,9 @@ fl_grid_reset:
 	BEQ +
 	ORA.w #$4000
 +	STA.l !fl_g_base
-	LDA.w #$0000
-	STA.l !fl_g_akn
-	STA.l !fl_g_aok
-	STA.l !fl_g_gkn
-	STA.l !fl_g_gok
 	; inside: tx0 >= 1, ty0 >= 1, tx0*16 + 49 <= map width, ty0*16 + 51 <=
 	; map height (then every covered footprint is 8 px inside the edges)
+	LDA.w #$0000
 	STA.l !fl_g_inner
 	LDA.w !fl_t0
 	BEQ +
@@ -3358,6 +3425,29 @@ fl_grid_verify:
 	RTS
 fl_grid_offs:
 	dw 0, 1, 2, 128, 129, 130, 256, 257, 258
+; A grid one cell over (index (dy + 1) * 3 + dx + 1): the bit offset 3dy + dx
+; of each new cell's old one, and the new cells the old grid covered.
+fl_grid_shift_n:
+	dw -4, -3, -2, -1, 0, 1, 2, 3, 4
+fl_grid_shift_m:
+	dw $01B0, $01F8, $00D8, $01B6, $01FF, $00DB, $0036, $003F, $001B
+; A = a verdict mask, shifted by fl_t6 bits (right when positive) and kept
+; to the cells fl_t7.
+fl_grid_shift1:
+	LDY.w !fl_t6
+	BEQ .keep
+	BMI .left
+-	LSR
+	DEY
+	BNE -
+	BRA .keep
+.left
+-	ASL
+	INY
+	BNE -
+.keep
+	AND.w !fl_t7
+	RTS
 ; X = idx of grid cell Y (0-8) on the grid's layer.
 fl_grid_idx:
 	TYA

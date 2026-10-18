@@ -176,6 +176,46 @@ function test()
   local fl = assert(io.open(H_OUT .. '/apiland.json', 'w'))
   fl:write(H.json(lands))
   fl:close()
+  -- a walk (command 9): settle()'s on-foot canLand and canFly at the hero
+  -- along rows and columns in steps of a few pixels, so the hero grid
+  -- moves one cell at a time and keeps the cells it shares
+  local walk = {}
+  local function step(x, y, layer)
+    local tile = H.r8(0x7F0000 + layer * 0x4000 + (y >> 4) * 128 + (x >> 4))
+    local flags = H.r8(0x7FB800 + layer * 0x400 + tile * 4) & 3
+    walk[#walk + 1] = {x = x, y = y, t = ((flags == 1 or flags == 2) and flags or 0) | (layer * 0x80)}
+  end
+  for ty = 2, Hh - 3, 7 do
+    local layer = ((ty // 7) % 3 == 2) and 1 or 0
+    local y0 = ty * 16 + 8
+    if (ty // 7) % 2 == 0 then
+      for x = 16, W * 16 - 16, 6 do step(x, y0 + ((x // 6) % 7) - 3, layer) end
+    else
+      for x = W * 16 - 16, 16, -6 do step(x, y0 + ((x // 6) % 7) - 3, layer) end
+    end
+  end
+  for tx = 3, W - 4, 11 do
+    for y = 16, Hh * 16 - 16, 5 do step(tx * 16 + 8 + ((y // 5) % 5) - 2, y, 0) end
+  end
+  for i = 1, #walk, 12 do
+    local n = math.min(12, #walk - i + 1)
+    for j = 0, n - 1 do
+      local q, b = walk[i + j], MAIL + 0x10 + j * 8
+      H.w16(b, q.x); H.w16(b + 2, q.y); H.w8(b + 4, q.t)
+    end
+    local done5 = H.r16(MAIL + 6)
+    H.w16(MAIL + 2, n)
+    H.w16(MAIL, 9)
+    if not H.waitFor(function() return H.r16(MAIL + 6) ~= done5 end, 600) then error('walk queries timed out') end
+    for j = 0, n - 1 do
+      local v = H.r8(MAIL + 0x10 + j * 8 + 6)
+      walk[i + j].land = (v & 1) == 1
+      walk[i + j].fly = (v & 2) == 2
+    end
+  end
+  local fw = assert(io.open(H_OUT .. '/walk.json', 'w'))
+  fw:write(H.json(walk))
+  fw:close()
   local fe = assert(io.open(H_OUT .. '/exits.json', 'w'))
   fe:write(H.json(exits))
   fe:close()

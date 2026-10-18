@@ -87,6 +87,14 @@ export async function landings({bundles,rom,outRoot}){
       if(ok!==q.pass||!q.intact){apiBad++;if(examples.length<8)examples.push({canLand:{q,js:ok}});}
     }
     bad+=apiBad;
+    // the on-foot walk (command 9): canLand and canFly at each hero position
+    const wk=JSON.parse(readFileSync(join(outDir,'walk.json'),'utf8'));
+    let walkBad=0;
+    for(const q of wk){
+      const l=(q.t&0x80)?1:0,land=!!h.canLand(q.x,q.y,l,q.t&3),fly=!!h.canFly(q.x,q.y,l);
+      if(land!==q.land||fly!==q.fly){walkBad++;if(examples.length<8)examples.push({walk:{q,js:{land,fly}}});}
+    }
+    bad+=walkBad;
     t.dispose();h.dispose();
     // flightExit() through the browser's own C0:D84C hook on the same WRAM:
     // the hero's position and velocity set, Y = the destination's idx; the
@@ -121,7 +129,7 @@ export async function landings({bundles,rom,outRoot}){
     const want=roofColors(roof.palette);
     const roofOk=!roof.stable||(want[1]===roof.stone&&want[2]===roof.highlight);
     if(!roofOk)examples.push({roof:{js:want.slice(1),cart:[roof.stone,roof.highlight]}});
-    results.push({name,map:r.results.map,queries:qs.length,found,bad:bad+(roofOk?0:1),examples,moved,ms:r.ms,roof:[roof.stone,roof.highlight],roofStable:roof.stable,exits:ex.length,exitHits,sweeps:sw.length,sweepPass,sweepBad,apiLand:al.length,apiPass,apiBad});
+    results.push({name,map:r.results.map,queries:qs.length,found,bad:bad+(roofOk?0:1),examples,moved,ms:r.ms,roof:[roof.stone,roof.highlight],roofStable:roof.stable,exits:ex.length,exitHits,sweeps:sw.length,sweepPass,sweepBad,apiLand:al.length,apiPass,apiBad,walk:wk.length,walkBad});
   }
   return results;
 }
@@ -141,7 +149,7 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
     if(r.skipped){console.log(`${r.name}: skipped (no bundle)`);continue;}
     if(r.error){fail++;console.log(`${r.name}: ERROR ${r.error}`);continue;}
     if(r.bad||r.moved)fail++;
-    console.log(`${r.name.padEnd(44)} map ${String(r.map).padStart(3)} queries ${String(r.queries).padStart(5)} landings ${String(r.found).padStart(5)}  mismatches ${r.bad}${r.moved?` (map changed: ${r.moved})`:''} roof ${r.roof.map(c=>c.toString(16).padStart(4,'0')).join('/')}${r.roofStable?'':' (palette animated)'}${r.exits?` exits ${r.exits} (${r.exitHits} caught)`:''} sweeps ${r.sweeps} (${r.sweepPass} clear, ${r.sweepBad} differ) canLand service ${r.apiLand} (${r.apiPass} landable, ${r.apiBad} differ) ${r.ms}ms`);
+    console.log(`${r.name.padEnd(44)} map ${String(r.map).padStart(3)} queries ${String(r.queries).padStart(5)} landings ${String(r.found).padStart(5)}  mismatches ${r.bad}${r.moved?` (map changed: ${r.moved})`:''} roof ${r.roof.map(c=>c.toString(16).padStart(4,'0')).join('/')}${r.roofStable?'':' (palette animated)'}${r.exits?` exits ${r.exits} (${r.exitHits} caught)`:''} sweeps ${r.sweeps} (${r.sweepPass} clear, ${r.sweepBad} differ) canLand service ${r.apiLand} (${r.apiPass} landable, ${r.apiBad} differ) walk ${r.walk} (${r.walkBad} differ) ${r.ms}ms`);
     for(const e of r.examples.slice(0,r.bad?5:0))console.log('   ',JSON.stringify(e));
   }
   process.exit(fail?1:0);

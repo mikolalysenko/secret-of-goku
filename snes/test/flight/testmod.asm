@@ -15,7 +15,8 @@ endif
 ;        4 = Instant Transmission landings (fl_test_landing),
 ;        5 = the ceiling escape's roof colours (fl_ce_colors),
 ;        6 = opening exits (fl_test_exits), 7 = sweeps (fl_test_sweeps),
-;        8 = the canLand services (fl_test_api_land)
+;        8 = the canLand services (fl_test_api_land), 9 = a walk of the
+;        on-foot canLand/canFly at the hero (fl_test_walk)
 ;   +$02 word layer (0/1), +$04 word row (tile y)
 ;   +$06 word completion counter (incremented when a request is done)
 ;   +$08 word map width in tiles (written back), +$0A height
@@ -36,6 +37,9 @@ fl_test_poll:
 +	CMP.w #$0008
 	BNE +
 	JMP fl_test_api_land
++	CMP.w #$0009
+	BNE +
+	JMP fl_test_walk
 +	CMP.w #$0006
 	BNE +
 	JMP fl_test_exits
@@ -516,3 +520,73 @@ fl_test_posts:
 	LDA.l !fl_test_post+$0E
 	STA.l !fl_tp_custom+6
 +	RTS
+
+; 9 = a walk: for +$02 (1-12) hero positions of 8 bytes at +$10 (in +0 x,
+; +2 y, +4 byte terrain byte) Goku stands there and settle()'s canLand and
+; canFly at the hero are asked as on foot (fl_onfoot: the hero grid moves
+; only when the footprint leaves it, keeping the cells it shares); out +6
+; byte bit 0 canLand, bit 1 canFly. Consecutive positions a few pixels
+; apart walk the grid across the map. Goku's position comes back after.
+fl_test_walk:
+	JSR fl_ctx_update
+	LDA $E002
+	PHA
+	LDA $E004
+	PHA
+	LDA $E00B
+	PHA
+	LDX.w #$0000
+.q
+	TXA
+	LSR : LSR : LSR
+	CMP.l !fl_sram_test+$02
+	BCC +
+	JMP .done
++	PHX
+	LDA.l !fl_sram_test+$10,X
+	STA $E002
+	LDA.l !fl_sram_test+$12,X
+	STA $E004
+	SEP #$20
+	LDA.l !fl_sram_test+$14,X
+	STA $E00B
+	REP #$20
+	LDA.w #$0000
+	STA.l !fl_g_chk              ; a new phase
+	LDA.w #$FFFF
+	STA.l !fl_hm_land+4
+	STA.l !fl_hm_fly+4
+	LDA.w #$0002
+	STA.l !fl_g_stale
+	JSR fl_hero_land_foot
+	LDA.w #$0000
+	ROL
+	PHA
+	JSR fl_hero_fly
+	BCC +
+	LDA $01,S
+	ORA.w #$0002
+	STA $01,S
++	PLA
+	PLX
+	SEP #$20
+	STA.l !fl_sram_test+$16,X
+	REP #$20
+	TXA
+	CLC
+	ADC.w #8
+	TAX
+	JMP .q
+.done
+	PLA
+	STA $E00B
+	PLA
+	STA $E004
+	PLA
+	STA $E002
+	LDA.w #$0000
+	STA.l !fl_sram_test
+	LDA.l !fl_sram_test+$06
+	INC
+	STA.l !fl_sram_test+$06
+	RTS

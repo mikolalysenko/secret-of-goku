@@ -124,6 +124,7 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !FLS_HOVERED = $08   ; localFlight on the previous frame (sound edge)
 !FLS_CHARGE  = $10   ; charging (request from combat, or the L+Y stand-in)
 !FLS_LANDING = $20   ; lift is coming down (landing cue armed)
+!FLS_QUIET   = $40   ; nothing to do until Goku plays or the event ends (fl_quiet_check)
 
 ; fl_hook bits: work the movement hooks may have (set per frame, re-validated live)
 !FLH_STEP    = $0001 ; velocity override (flight or charge)

@@ -93,6 +93,10 @@ fl_hook_f1f1:
 	LDA $DC
 	INC
 	STA.w !fl_gap                ; the crossing runs on this map
+	SEP #$20
+	LDA.b #!FLS_QUIET
+	TRB.w !fl_state              ; flight's frames run it (an event may have quieted them)
+	REP #$20
 	JSR fl_bind_cancel
 	JSR fl_land_now
 	LDA.w #!FL_SFX_FLIGHT

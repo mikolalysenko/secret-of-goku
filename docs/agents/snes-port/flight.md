@@ -16,7 +16,8 @@ terrain classifier, the teleport landing search, the exit catches and the
 roof colours equal the browser's on every tile, query, probe and palette
 tested.** Flying costs 35-45 scanlines per frame in towns and fields (they
 keep 60 Hz) and 55-70 in dungeons, which then drop to 30-36 Hz while Goku
-flies (see [Cost](#cost)); what other streams still owe is under
+flies; idle frames (Goku out of play, events) cost 0.2-0.5 lines and on
+foot 4-8 (see [Cost](#cost)); what other streams still owe is under
 [Remaining](#remaining).
 
 ## Behaviour (as the browser)
@@ -156,7 +157,20 @@ cells never flood fill.
   depend on neighbours expire every 32 frames and on map loads.
 - A 3×3 "hero grid" of tile verdicts around Goku, filled lazily and kept
   across movement steps; cells whose tile id changed lose their verdict.
-  Footprints inside it are mask tests.
+  Footprints inside it are mask tests. When the grid moves one cell over
+  (same layer and terrain), the cells both positions share keep their
+  verdicts, shifted, after the old grid's tiles are checked.
+- Quiet frames: while Goku is out of play, or an event owns the field
+  (no control), with flight reset (landed, no lift, charge, teleport,
+  camera follow, whip crossing, ceiling escape, owned Goku requests, cues,
+  latched buttons or passengers), `flight_frame` returns after a few
+  checks; inside an event it keeps the pad history for the whip pad's
+  conditional and the frame after. A whip crossing, Goku's return or the
+  event's end wake it.
+- On foot with nothing of flight's running and neither A nor L held, the
+  frame is `settle()`'s anchor, the A/B masks and the cache's aging
+  (`fl_onfoot`); the hero grid then moves only when the footprint leaves
+  it, and the anchor's canLand is a mask test when its cells are known.
 - Sweeps: a straight sweep is one union rectangle plus bounds at both ends
   (positions are monotonic); a diagonal sweep tests only rectangle changes;
   D778 reuses D651's sweep; the frame logic memoises canLand/canFly at the
@@ -298,7 +312,12 @@ the Sandship wreck), called with `!fl_q_x/y/l` set (M16/X16, DB = `$7E`);
 carry = a hole under the 12x8 footprint there. With one in the build,
 canLand fails over holes (the hero's canLand memo is bypassed, holes open
 without a tile change) and walking stops before them (`supported()` at
-`C0:D651`: the axis whose step would stand over a hole is zeroed).
+`C0:D651`: the axis whose step would stand over a hole is zeroed). Several
+modules own holes (destroy's Sandship wreck, frieza's deck), and asar
+keeps only the last definition, so each provider must call the one
+defined before it when the point is not its own hole (destroy keeps it in
+`!DESTROY_NEXT_FLOOR := !FLIGHT_MISSING_FLOOR`); a provider that only
+redefines it hides every earlier one.
 
 ## Tests
 
@@ -339,7 +358,11 @@ without a tile change) and walking stops before them (`supported()` at
   at every terrain (one in five at Goku's own terrain byte), called through
   `!FLIGHT_API_CAN_LAND`/`_T` with DB = `$00` and D = `$0123` (command 8),
   against `canLand(x, y, layer, terrain)`: all equal (2,206 calls in the
-  Time Chamber alone), X, Y, DB and D handed back every time.
+  Time Chamber alone), X, Y, DB and D handed back every time. And a walk
+  (command 9): Goku placed along rows and columns in 5-6 px steps, both
+  layers, `settle()`'s on-foot canLand and canFly asked at each position
+  as `fl_onfoot` asks them (the hero grid moving lazily and shifting its
+  verdicts one cell at a time), against `canLand`/`canFly`.
 - `scene` (`FLIGHT_TEST` cartridge; `testmod.asm` posts after flight's
   frame, as a scene module later in the field frame does): a custom target
   posted as Vegeta (kind 3) is picked by L+B and Goku lands exactly where
@@ -430,13 +453,25 @@ game's own code takes ~125 lines, goku ~24, story ~11, combat ~7, flight
 foot (game code ~140 lines a frame). Combat also costs more while Goku
 flies (10-12 lines instead of 6-7): A held wakes its full frame.
 
+`flight_frame` itself (JSL to return, scanlines; a Potos state, the same
+walk before and after the quiet and on-foot paths):
+
+| Frame | Before | Now |
+| --- | --- | --- |
+| Goku out of play (the boy, the title arrival) | 2.76 | 0.20 |
+| An event owns the field (a door) | 5.9 | 0.35-0.48 (the first frame 10.7) |
+| Standing on foot | 6.2 | 4.2 |
+| Walking on foot | 11.8 (max 18.4) | 8.4 (max 18.1) |
+
 On foot (`phases.mjs probe-walk`, goku's budget walk in the Potos probe)
-flight runs 430-870 instructions a frame: the frame ~130, publish ~100,
-hooks ~90, and settle's anchor canLand (36 standing on the anchor, ~240
-walking, ~460 when the footprint enters new tiles). goku's budget test
-(Goku on against Goku off, every Goku-gated module included) reads p90
-400 → 432, a 32-line delta against its 24-line limit (main without flight:
-395 → 417, 22).
+flight runs about 470 instructions a walking frame: the frame ~170 (pad,
+canAttack, context, the idle checks), settle's anchor ~120 (a mask test on
+the hero grid), the masks and the cache's aging ~45, the movement hooks
+~90 (D651, D359 per actor, D778, DA6E); a step that moves the grid onto
+new tiles adds 550-700 for their classes. goku's budget test (Goku on
+against Goku off, every Goku-gated module included) read p90 400 → 432
+before these paths, a 32-line delta against its 24-line limit (main
+without flight: 395 → 417, 22).
 
 `phases.mjs` splits a steady flying frame (~2,200 flight instructions,
 26-33 master cycles each: the tile cache and the hero grid are SRAM,
@@ -458,7 +493,9 @@ the map), the grid's tiles checked once per phase, hero canLand through
 the grid with a per-frame position memo, whip rays by index arithmetic with
 a quick pad pre-check, unit `fl_step`s by index arithmetic, the D778
 endpoint canFly implied by the sweep, rolling tile-cache expiry (two slots
-a frame), the on-foot settle skipped on an anchor at the same spot.
+a frame), the on-foot settle skipped on an anchor at the same spot, quiet
+frames for Goku out of play and events, the on-foot frame (`fl_onfoot`)
+with the lazily moving hero grid and its shifted verdicts.
 
 Next steps: per-direction distance-to-shore memos for the bank, gap and
 air-route walks (each new tile repeats its neighbours' walks), one

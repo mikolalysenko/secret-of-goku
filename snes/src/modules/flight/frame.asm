@@ -218,6 +218,40 @@ fl_hero_land:
 fl_hland_calc:
 	JMP fl_can_land              ; (the hero grid answers it)
 
+; canLand at the hero for settle() on foot (fl_onfoot: the hero grid moves
+; lazily, fl_g_stale = 2): with the footprint inside the grid and its cells'
+; verdicts known, a mask test; anything else (cells to classify, a grid
+; near the map's edge, floor holes in the build) takes fl_hero_land. Carry.
+fl_hero_land_foot:
+	LDA.l !fl_g_stale
+	CMP.w #2
+	BNE .full
+	JSR fl_bind_holes            ; holes: the provider answers each query
+	BCS .full
+	JSR fl_q_hero
+	LDA.w #$0000
+	JSR fl_fp_cover              ; carry: inside (layer, terrain), fl_t4 = cells
+	BCC .full
+	LDA.l !fl_g_inner
+	BEQ .full
+	JSR fl_grid_check            ; the phase's tile check (keeps fl_t4)
+	LDA.l !fl_g_gkn
+	AND.w !fl_t4
+	CMP.w !fl_t4
+	BNE .full
+	LDA.w #$0000
+	STA.l !fl_g_stale            ; the grid stays where it is
+	LDA.l !fl_g_gok
+	AND.w !fl_t4
+	CMP.w !fl_t4
+	BEQ +
+	CLC
+	RTS
++	SEC
+	RTS
+.full
+	JMP fl_hero_land
+
 fl_hero_fly:
 	JSR fl_q_hero
 	LDA.l !fl_hm_fly
@@ -256,6 +290,46 @@ fl_hero_memo_off:
 
 ; ---------------------------------------------------------------------------
 flight_frame:
+	LDA.w !fl_state
+	BIT.w #!FLS_QUIET
+	BEQ .full
+	; Quiet (fl_quiet_check): flight is reset and Goku is out of play or an
+	; event owns the field, so the frame below would change nothing; it
+	; waits here at a fraction of a scanline until that ends.
+	if defined("FLIGHT_TEST")
+		LDA.l !fl_sram_test
+		BNE .wake                ; a test request
+	endif
+	LDA $D0
+	AND.w #$00FF
+	BNE .event
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BNE .wake
+	STZ.w !fl_hook               ; a scene's camera post lasts one frame
+	RTL
+.event
+	; fl_read_pad's history goes on (the previous pad aside: the waking
+	; frame takes it from here) for the whip pad's conditional (gap.asm)
+	; and the frame after the event; another mode in between (a shop
+	; menu) takes the full reader and its latch
+	LDA.w !core_tick&$FFFF
+	SEC
+	SBC.w !fl_lasttick
+	CMP.w #$0002
+	BCS .wake
+	LDA.w !core_tick&$FFFF
+	STA.w !fl_lasttick
+	LDA.w !core_pad&$FFFF        ; (nothing is latched while quiet)
+	STA.w !fl_pad
+	STZ.w !fl_hook
+	RTL
+.wake
+	SEP #$20
+	LDA.b #!FLS_QUIET
+	TRB.w !fl_state
+	REP #$20
+.full
 	LDA.w !fl_magic
 	CMP.w #!FL_MAGIC
 	BEQ +
@@ -324,6 +398,9 @@ flight_frame:
 	JSR fl_ctx_update
 	LDA.w #$0001
 	STA.l !fl_g_stale            ; re-anchor the grid at Goku when first used
+	JSR fl_onfoot_idle
+	BCC .after
+	JMP fl_onfoot                ; on foot with nothing of flight's running
 .after
 	; --- afterFrame (frame N) ---
 	LDA.w !fl_state
@@ -419,7 +496,125 @@ flight_frame:
 	if defined("FLIGHT_TEST")
 		JSR fl_test_posts        ; a scene module's posts, after flight's frame
 	endif
+	JSR fl_quiet_check
 	RTL
+
+; Carry: Goku can act on foot with nothing of flight's running (no flight,
+; lift, hover edge, charge, teleport, camera follow, whip crossing, ceiling
+; escape, owned Goku requests, Sandship or Beast arena rules) and neither A
+; nor L held, so no takeoff, charge, teleport or roof chord can start.
+fl_onfoot_idle:
+	LDA.w !fl_state              ; low byte state, high byte lift
+	AND.w #$FF00|!FLS_FLY|!FLS_HOVERED
+	BNE .no
+	LDA.w !fl_pad
+	AND.w #!PAD_A|!PAD_L
+	ORA.w !fl_gap
+	ORA.w !fl_charging
+	ORA.w !fl_open_air
+	BNE .no
+	LDA.w !fl_hook
+	AND.w #!FLH_CAMERA
+	BNE .no
+	LDA.w !fl_mflags
+	AND.w #!FLM_BEAST
+	BNE .no
+	LDA.l !fl_tp_act
+	ORA.l !fl_tp_queued
+	ORA.l !fl_ce_phase
+	ORA.l !fl_owned
+	BNE .no
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
+; flight_frame's on-foot frame (fl_onfoot_idle): settle() keeps the last
+; landing, A stays the speed modifier (and B hidden without combat), the
+; tile cache ages; the rest of the frame (afterFrame's hover keep, the
+; lift, the ticks, the decision, the teleport frame and the rest of
+; fl_publish) would leave everything as it is. Ends flight_frame (RTL).
+fl_onfoot:
+	LDA.w #$0002
+	STA.l !fl_g_stale            ; the hero grid moves only when the footprint leaves it
+	JSR fl_settle
+	LDA.w !fl_events
+	BEQ +
+	JSR fl_publish               ; settle reported something: the full publish
+	BRA .end
++	SEP #$20
+	LDA.b #!FLS_CHARGE
+	TRB.w !fl_state
+	REP #$20
+	LDA.w #2
+	STA.w !fl_speed
+	STZ.w !fl_hook               ; (a scene's camera post lasts one frame)
+	LDA.w !core_pad_mask&$FFFF
+	ORA.w #!PAD_A
+	STA.w !core_pad_mask&$FFFF
+	JSR fl_bind_mask_b
+	JSR fl_cache_age
+.end
+	SEP #$20
+	LDA.b #$00
+	STA.l !fl_tp_custom          ; scene modules re-post a custom target each frame
+	REP #$20
+	if defined("FLIGHT_TEST")
+		JSR fl_test_posts
+	endif
+	RTL
+
+; Quiet from the next field frame on (flight_frame's first lines) when the
+; frame has nothing left for flight: Goku out of play, or an event owning
+; the field (no control), with flight reset: landed, no lift or charge, no
+; teleport, camera follow, whip crossing or ceiling escape, no Goku requests
+; to drop, no cues, no latched buttons, no passengers. The idle path then
+; costs a fraction of a scanline (the coordinator's integration run measured
+; 2.75 lines a frame for the full path in the title arrival and endings).
+fl_quiet_check:
+	LDA $D0
+	AND.w #$00FF
+	BEQ .noevent
+	LDA.w !fl_state
+	AND.w #!FLS_CAN
+	BNE .no
+	BRA .reset
+.noevent
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BNE .no
+.reset
+	LDA.w !fl_state
+	AND.w #!FLS_FLY|!FLS_LANDING|!FLS_CHARGE
+	BNE .no
+	LDA.w !fl_lift
+	AND.w #$00FF
+	ORA.w !fl_gap
+	ORA.w !fl_events
+	ORA.w !fl_held
+	ORA.w !fl_passengers
+	BNE .no
+	LDA.w !fl_hook
+	AND.w #$FFFF-!FLH_SCRIPT
+	BNE .no
+	LDA.l !fl_tp_act
+	ORA.l !fl_tp_queued
+	ORA.l !fl_ce_phase
+	ORA.l !fl_owned
+	BNE .no
+	if defined("FLIGHT_TEST")
+		LDA.l !fl_sram_test
+		ORA.l !fl_test_post
+		ORA.l !fl_test_post+$06
+		BNE .no
+	endif
+	SEP #$20
+	LDA.b #!FLS_QUIET
+	TSB.w !fl_state
+	REP #$20
+.no
+	RTS
 
 ; First frame since title entry (or a foreign savestate): the SRAM work
 ; area holds whatever the battery kept.
@@ -913,9 +1108,11 @@ fl_publish:
 	STA.w !fl_events
 	JSR fl_bind_ui_hover         ; power intro: the first hover's banter
 .cache
-	; rolling expiry: two cache slots a frame, so no result is older than
-	; 32 frames (results that depend on neighbouring tiles), and the hero
-	; grid's verdicts every 32 frames
+	; (falls through)
+; Rolling expiry: two cache slots a frame, so no result is older than 32
+; frames (results that depend on neighbouring tiles), and the hero grid's
+; verdicts every 32 frames.
+fl_cache_age:
 	LDA.w !fl_cache_age
 	INC
 	STA.w !fl_cache_age
@@ -984,7 +1181,7 @@ fl_settle:
 	BNE .onfoot
 	RTS
 .onfoot
-	JSR fl_hero_land
+	JSR fl_hero_land_foot
 	BCC +
 	JSR fl_anchor_here
 +	RTS
