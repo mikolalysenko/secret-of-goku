@@ -1,5 +1,14 @@
 # Changelog
 
+## SNES nonblocking resident effects (2026-10-18)
+
+- Resident sound effects release the main CPU immediately and complete the
+  SPC port handshake on a later callback. Busy effects are dropped without
+  overwriting a pending command; music and control commands remain ordered.
+- Emulator checks cover audible effects, repeated hits, bounded CPU time,
+  charge pulses, sample integrity, song loading and native-song restoration.
+  Core sound/event, world and menu regressions pass.
+
 ## SNES Goku sprite upload budget (2026-10-18)
 
 - Pack field animation cells into contiguous ROM rows: four DMA transfers

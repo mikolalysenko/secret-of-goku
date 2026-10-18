@@ -51,6 +51,7 @@ incsrc "audio/ids.asm"
 !au_dsfx     #= !aw+$5D   ; destroy's !out_sfx (low byte) when last seen
 !au_bed      #= !aw+$5E   ; native charge bed was requested last frame
 !au_bed_wait #= !aw+$5F   ; frames before another native charge pulse
+!au_pending  #= !au_ch   ; native build only: command awaiting the SPC echo
 !AU_CH = $20
 ; channel fields (X = channel offset 0 / $20)
 !c_kind  = $00   ; 0 idle, 1 shot, 2 loop
@@ -319,6 +320,7 @@ audio_frame:
 	PHP
 	SEP #$20
 	REP #$10
+	JSL audio_native_poll
 	JSR audio_track_native
 	JSR audio_test_poll
 if defined("title_sfx")
@@ -402,6 +404,7 @@ audio_pause:
 	PHP
 	SEP #$20
 	REP #$10
+	JSL audio_native_poll
 if not(defined("AUDIO_PCM"))
 	STZ.w !au_reqn
 	STZ.w !au_voicereq
@@ -1682,6 +1685,11 @@ if defined("AUDIO_PCM")
 %orig4($C30106, $8C0200A0)
 %orig2($C3010A, $2142)
 %hijack($C30106, audio_boot_upload, 6, audio)
+else
+; Native resident effects need no data transfer. Finish their port echo
+; on a later frame instead of busy-waiting in the gameplay thread.
+%orig4($C30175, $00A520E2)
+%hijack($C30175, audio_native_command, 4, audio)
 endif
 ; Echo parameter reads in C3:060A (LDA $C30708..B,X).
 %orig4($C30618, $C30708BF)

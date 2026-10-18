@@ -27,6 +27,18 @@ for the historical streaming tests. `node snes/test/audio/run.mjs native unit`
 checks audible resident effects, bounded charge pulses, music continuity,
 intact samples and the absence of BRR stream commands.
 
+Resident effect command `02` also uses an asynchronous CPU-side handshake
+in the shipping build. The hook at `C3:0175` writes the four ports and
+returns; `audio_native_poll` releases the SPC's echo on the next field,
+world or menu callback, or before another command. A busy driver drops new
+effects without changing pending parameters. Songs, fades and stop commands
+first finish any pending effect and keep their native synchronous behavior.
+The native effect test measures less than two scanlines per dispatcher call
+(1.35 maximum in the October 18 run), checks audible cues and intact
+parameters, then loads and restores music. This avoids the old effect
+busy-wait; it does not eliminate the native song loader's transition pauses.
+The pending byte aliases the unused PCM channel state in a native build.
+
 ## 1. The native sound driver
 
 ### Boot upload

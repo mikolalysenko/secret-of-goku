@@ -4,6 +4,70 @@
 ; the browser's native-sound.js fallback (swing/hit/charge/beam/transform).
 ; -DAUDIO_PCM=1 retains the old streamer for comparison and audio research.
 
+; Complete an outstanding effect handshake without waiting. Main thread
+; only: field/world frames, menus, and before another native command. No
+; interrupt can change the ports halfway through the command's four writes.
+; Preserve the caller's widths, flags and registers; any DB and D.
+audio_native_poll:
+if not(defined("AUDIO_PCM"))
+	PHP
+	SEP #$20
+	PHA
+	LDA.l $7E0000|!au_pending
+	BEQ .done
+	CMP.l $002140
+	BNE .done
+	LDA.b #$00
+	STA.l $002140
+	STA.l $7E0000|!au_pending
+.done
+	PLA
+	PLP
+endif
+	RTL
+
+; C3:0175, inside the native driver's saved-register prologue. D=$1E00,
+; DB=0, X/Y16. Only command 02 is asynchronous: all its samples/sequences
+; are resident. The SPC echoes 02 after latching all four ports, then waits
+; for port 0 to change before playing it. Drop a new effect if still busy;
+; never overwrite the pending parameters or accumulate stale impacts.
+audio_native_command:
+	SEP #$20
+	JSL audio_native_poll
+	LDA $00
+	CMP.b #$02
+	BNE .native
+	STZ $00
+	LDA.l $7E0000|!au_pending
+	BNE .done
+	LDA.l $002140
+	BNE .done                  ; the SPC has not released the previous echo
+	LDA $03
+	STA.l $002143
+	LDA $02
+	STA.l $002142
+	LDA $01
+	STA.l $002141
+	LDA.b #$02
+	STA.l $7E0000|!au_pending
+	STA.l $002140
+.done
+	JML $C3018D                ; the original register restore and RTL
+.native
+	LDA.l $7E0000|!au_pending
+	BEQ .ready
+	; A song, fade or stop command must follow the effect in order. These
+	; infrequent commands keep the native synchronous contract.
+.wait
+	CMP.l $002140
+	BNE .wait
+	LDA.b #$00
+	STA.l $002140
+	STA.l $7E0000|!au_pending
+.ready
+	LDA $00                    ; displaced LDA $00; native STZ $00 follows
+	JML $C30179
+
 audio_native_ids:
 	db $00,$03,$03,$50,$50,$03,$50,$50
 	db $B0,$2A,$12,$12,$12,$50,$50,$50
