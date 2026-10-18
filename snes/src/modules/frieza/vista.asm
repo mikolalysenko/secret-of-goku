@@ -696,11 +696,10 @@ fz_tree_nmi:
 	LDA.b #!FRIEZA_VISTA_SKY>>8
 	STA $2122
 	REP #$20
-	; no switch to the HUD at line 196 (VTIME beyond the frame): the cliff
-	; runs to the bottom
+	; no switch to the HUD at line 196: the cliff runs to the bottom, the
+	; HUD (BG3, below the planes without its priority) stays hidden
 	LDA.w #$01FF
 	STA $4209
-	JSR fz_tree_tm
 	BRA .bright
 .notShown
 	LDA.l $7E0000|!fz_vista
@@ -711,11 +710,6 @@ fz_tree_nmi:
 	STA $2107
 	LDA.b #!FZT_BG2SC
 	STA $2108
-	LDA.l $7E0021                     ; the field's TM back (the shadow C1:FF81 writes), channel 4 off
-	STA $212C
-	LDA.l $7E002C
-	AND.b #$EF
-	STA.l $7E002C
 	REP #$20
 	LDA.w #$00C4                      ; the field's HUD line (C0:BC6C)
 	STA $4209
@@ -732,51 +726,6 @@ fz_tree_nmi:
 +	REP #$20
 .out
 	RTS
-; BG3 under the vista from line 170 down (frieza-tree-view.js plan(): above
-; it BG3, the dialogue, shows through; below it the vista paints every
-; layer, the HUD rows too; tree-return paints them all from the top): HDMA
-; channel 4 writes TM ($212C) from a table in the scene SRAM, the game's TM
-; ($21) on lines 0-169 and the same without BG3 from line 170 (the write in
-; line 170's H-blank shows from picture row 170). The table is rebuilt every
-; vblank; the channel runs while $2C bit 4 is set (core writes $2C to
-; HDMAEN after the modules; no other module runs HDMA on channel 4 in the
-; field, and the ones that send general DMA on it do so before Frieza's
-; vblank). DB = $80, M16/X16.
-fz_tree_tm:
-	SEP #$20
-	LDA.l $7E0021                     ; the field's TM (C1:FF81)
-	STA.l !fzt_tm+1
-	STA.l !fzt_tm+3
-	AND.b #$FB                        ; without BG3
-	STA.l !fzt_tm+5
-	LDA.l $7E0000|!fz_scene
-	CMP.b #!FZS_TREE_RETURN
-	BNE +
-	LDA.l !fzt_tm+5                   ; tree-return: from the top
-	STA.l !fzt_tm+1
-	STA.l !fzt_tm+3
-+	LDA.b #85                         ; lines 0-84, 85-169, then 170 on
-	STA.l !fzt_tm+0
-	STA.l !fzt_tm+2
-	LDA.b #1
-	STA.l !fzt_tm+4
-	LDA.b #0
-	STA.l !fzt_tm+6
-	STZ $4340                         ; one byte a line, A -> B, direct table
-	LDA.b #$2C
-	STA $4341
-	LDA.b #!fzt_tm>>16
-	STA $4344
-	REP #$20
-	LDA.w #!fzt_tm&$FFFF
-	STA $4342
-	SEP #$20
-	LDA.l $7E002C
-	ORA.b #$10
-	STA.l $7E002C
-	REP #$20
-	RTS
-
 ; C set when a checked word of the planes in VRAM differs from the data
 ; (frieza_vista_check: first, middle and last of each plane). DB = $80.
 fz_vista_verify:

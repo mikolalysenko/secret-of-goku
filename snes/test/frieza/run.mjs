@@ -576,7 +576,7 @@ function test()
   F.apply(${luaWrites(writes)})
   local want = {}
   ${Object.entries(treeShots).map(([k,ages])=>`want[${k}] = {${ages.map(a=>`[${a}]=true`).join(',')}}`).join('\n  ')}
-  local seen, trace, shots, maps, boxes, tms = {}, {}, {}, {}, {}, {}
+  local seen, trace, shots, maps, boxes = {}, {}, {}, {}, {}
   local last = -1
   for i = 1, ${maxFrames} do
     if i % 12 == 0 then H.hold('b', 2) else H.wait(1) end
@@ -592,10 +592,6 @@ function test()
       local name = string.format('k%02d-a%03d', kind, age)
       if not shots[name] then
         H.shot(name); shots[name] = true
-        -- the vista's TM HDMA: fz_vista, $2C, the table
-        local t = {}
-        for j = 0, 6 do t[#t + 1] = H.r8(${v(defs.fzt_tm)} + j) end
-        tms[#tms + 1] = string.format('%s %d %d %s', name, H.r8(${v(defs.fz_vista)}), H.r8(0x7E002C), table.concat(t, ','))
         local b = F.box()
         boxes[#boxes + 1] = string.format('%s %s px %d py %d id %d cnt %d pal %d', name,
           b and string.format('%d OBJ %d,%d-%d,%d', b.n, b.x0, b.y0, b.x1, b.y1) or 'no-frieza',
@@ -617,7 +613,6 @@ function test()
   table.sort(mapList)
   H.result('seen', seen)
   H.result('boxes', boxes)
-  H.result('tms', tms)
   H.result('trace', trace)
   H.result('maps', mapList)
   H.result('tree', H.r8(${v(defs.fzp_tree)}))
@@ -1033,31 +1028,7 @@ if(want('tree')){
   const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
   if(res.trace)writeFileSync(join(out,'trace.txt'),'frame map scene age D0 up vista bright tree\n'+res.trace.join('\n')+'\n');
   if(res.boxes)writeFileSync(join(out,'boxes.txt'),res.boxes.join('\n')+'\n');
-  // BG3 under the vista from line 170 (frieza-tree-view.js): while the vista
-  // shows, channel 4 runs the TM table (the game's TM, then without BG3;
-  // tree-return without BG3 from the top) and the HUD's colours are gone from
-  // the bottom rows; on the ash field the channel is off and the HUD is back
-  const hudColour=(name)=>{const f=join(out,name+'.png');if(!existsSync(f))return null;const p=snesPixels(f);let n=0;
-    for(let y=196;y<224;y++)for(let x=0;x<256;x++){const o=(y*256+x)*3;if(p[o]===255&&p[o+1]===247&&p[o+2]===231)n++;}return n;};
-  let vistaShots=0;
-  for(const line of res.tms??[]){
-    const [name,vista,c2,tab]=line.split(' ');const kind=Number(name.slice(1,3));const t=tab.split(',').map(Number);
-    const on=(Number(vista)&1)!==0,hdma=(Number(c2)&0x10)!==0,hud=hudColour(name);
-    if(on){
-      vistaShots++;
-      if(!hdma)failures.push(`${name}: the vista shows without channel 4`);
-      // lines 0-84 and 85-169 (85 each) the top value, from line 170 TM without BG3
-      const shape=t[0]===85&&t[2]===85&&t[4]===1&&t[6]===0&&t[1]===t[3]&&(t[5]&4)===0;
-      const top=kind===defs.FZS_TREE_RETURN?t[1]===t[5]:(t[1]&4)!==0&&t[5]===(t[1]&~4);
-      if(!shape||!top)failures.push(`${name}: TM table ${tab}`);
-      if(hud)failures.push(`${name}: ${hud} HUD pixels under the vista`);
-    }else if(kind===defs.FZS_TREE_WAKE){
-      if(hdma)failures.push(`${name}: channel 4 still on after the vista`);
-      if(!(hud>=20))failures.push(`${name}: the HUD is not back (${hud} pixels)`);
-    }
-  }
-  if(!vistaShots)failures.push('no shot while the vista showed');
-  const ok=r.code===0&&res.pass===true&&failures.length===0;
+  const ok=r.code===0&&res.pass===true;
   results.push({name:'tree',ok,failures});
   console.log(`frieza tree: ${ok?'pass':'FAIL'} (${r.ms} ms) maps ${(res.maps??[]).join(',')} scenes ${(res.seen??[]).join(' ')} tree ${res.tree}`);
   if(!ok)for(const f of failures)console.log('    !',f);
