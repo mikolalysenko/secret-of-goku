@@ -169,6 +169,14 @@ bank; split larger data into 32 KiB pieces.
 `%hijack_jsl`, `%patch` and `%origN` byte assertions. Every patch of original
 bytes goes through them; `build.mjs` rejects overlapping patches.
 
+asar overwrites silently when two `org` blocks overlap, so `build.mjs` also
+checks ROM ownership: every 16 KiB quarter of the added banks may hold labels
+of one module only (`--strict` makes a shared quarter an error). Each module
+asserts the end of its code and data blocks. When a module's code half is
+full, it can be given a spare quarter of a mostly empty half
+(`!CODE_QUARTER_*` in `core/layout.asm`: goku's, audio's and title's halves
+end their code before `$C000`).
+
 asar does not track `REP`/`SEP`: an immediate's width comes from how it is
 written, so `CMP #8` in 16-bit code assembles as two bytes and desynchronises
 the instruction stream. Write every accumulator/index immediate with an
