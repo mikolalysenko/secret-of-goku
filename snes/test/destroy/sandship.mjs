@@ -26,10 +26,11 @@ const lua=v=>typeof v==='string'?JSON.stringify(v):typeof v==='boolean'?String(v
 // block, helpers to play until Goku is back in control.
 const prelude=`
 S = {}
--- Native writes into the core's event request word ($7E:6E8E, inside the
--- WRAM block the core assumes free) start spurious events; report them.
--- S.shield: keep the word as it was (what a core with the word elsewhere
--- would see), for scenarios whose rooms load such graphics.
+-- Native writes into the core's event request word (!core_event_req; while
+-- it lived at $7E:6E8E the game's tile decoder overwrote it on some map
+-- loads) start spurious events; report them. S.shield: keep the word as it
+-- was (what a core with the word elsewhere sees), for scenarios whose rooms
+-- load such graphics.
 S.clobbers = {}
 S.shield = false
 emu.addMemoryCallback(function(a, v)
@@ -40,7 +41,7 @@ emu.addMemoryCallback(function(a, v)
     H.result(S.shield and 'shielded' or 'clobbers', S.clobbers)
     if S.shield then return H.r8(a) end
   end
-end, emu.callbackType.write, 0x7E6E8E, 0x7E6E8F)
+end, emu.callbackType.write, ABI.core_event_req, ABI.core_event_req + 1)
 function S.reset()
   D.garbage()
   H.w8(ABI.P_DOORS, 0); H.w8(ABI.P_TREE, 0)

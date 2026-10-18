@@ -436,7 +436,7 @@ event the reference selects; walking checks prove collision.
 | `beam-earth-tile`, `beam-earth-timeline` | the full beam's native target in the Earth Palace (event `6F2`), as the browser picks it, for one call and frame by frame | pass |
 | `orb-earth` | Earth Palace orb: event `239` with spell byte `06` | pass |
 | `ship-wave-hold` | a full-power wave in the hold while captive: white-out, the hold reloads with the guards gone and monsters in, the boss alarm plays, Goku gets his Gi back | pass |
-| `ship-rescues` | the wreck's rescues: walking into the kitchen and the cabin, then the deck starts Geshtar and the Mech Rider (party 3). The cabin's graphics load writes the core's event request word (core request below): the test keeps the word as it was and reports the writes | pass |
+| `ship-rescues` | the wreck's rescues: walking into the kitchen and the cabin, then the deck starts Geshtar and the Mech Rider (party 3). The cabin's tile load wrote the core's event request word while it lived at `$7E:6E8E` (core request below): the test keeps the word as it was and reports the writes | pass |
 | `ship-crash-breaks` | still sneaking: a punch opens a hold bulkhead (one strike), four more blow the ship up into the Mech Rider; after 2A1 everyone reunites on the dunes with their own gear | pass |
 | `ship-leave` | an unplanned door off the ship blows it up: Uh oh, the crash, the Mech Rider | pass |
 | `dunes-exit` | leaving the dunes any other way than 2A8 sets stage 14 and repeats the hint | pass |
@@ -501,18 +501,16 @@ of scenes whose own frame logic ends near line 120-160.
 
 ## Requests
 
-- Core: the game's NPC graphics decompression (`01:C86E`/`C877`, writing
-  `$7E:2000+X` with sprite sets up to `$7E:6FFF`) writes the extended core
-  block `$7E:6E40-6FFF` when a map's sprite sets fill its buffer. Seen in
-  the wrecked Sandship's cabin (339, with the fled guards left out of the
-  object list): `$7E:6E8E-8F` (`!core_event_req`) = `$C828`, the pump then
-  starts event `$0828` (door 28 → map 165), and the Sandship takes that as
-  an unplanned departure and crashes. Two modules cannot race on the word
-  (`core_event_request` refuses while one is pending); the trouble is the
-  game writing it. Needed: the request word (and the block's DMA table,
-  sound queue, OAM front list and VRAM owners) moved out of `$7E:6000-6FFF`
-  to memory the game never writes, or at least a request validated by a
-  second word (e.g. `id ^ $A5A5`) and dropped at map loads.
+- Core (being fixed): the game's tile decoder (`C1:C5D1-C9FF`) writes 4bpp
+  tiles to `$7E:2000+X` during map loads, up to `$7E:77FF`, over the
+  extended core block. In the wrecked Sandship's cabin (339) it wrote
+  `$C828` into `!core_event_req` (`$7E:6E8E`); the pump started event
+  `$0828` (door 28 → map 165) and the Sandship took that as an unplanned
+  departure and crashed. Two modules cannot race on the word
+  (`core_event_request` refuses while one is pending). Core is moving its
+  persistent fields to battery RAM (`!CORE_SAFE`); this module reads the
+  word with long addressing (`!CORE_EVREQ`), and `ship-rescues` shields
+  the word until then (the watcher follows the ABI address).
 - Core: `!SSW` uses the tail of `!SRAM_WORK_SCENE` (`$32:7600-7FFF`) while
   the player is aboard (no set-piece scene runs on the ship maps), claimed
   with a magic word; please keep that range out of the scene modules'

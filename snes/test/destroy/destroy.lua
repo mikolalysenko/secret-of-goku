@@ -32,8 +32,8 @@ end
 -- ($800 bytes) with a fixed pseudo-random pattern before importing, which
 -- also keeps runs independent of the emulator's saved SRAM. A browser
 -- bundle carries no cartridge-side persistent state, so the live block is
--- set as a GAME FILE with an empty sidecar would leave it (all zero,
--- version 1), with Goku arrived, as in the browser mod's states.
+-- set as core_live_clear leaves it (zero, the magic), version 1, with Goku
+-- arrived, as in the browser mod's states.
 function D.garbage()
   local seed = 20261017
   for a = ABI.DQ, ABI.DQ + 0x7FF do
@@ -41,6 +41,7 @@ function D.garbage()
     H.w8(a, (seed // 65536) % 256)
   end
   for a = ABI.SRAM_LIVE, ABI.SRAM_LIVE + 0x3FF do H.w8(a, 0) end
+  H.w16(ABI.persist_magic, ABI.SIDE_MAGIC)          -- as core_live_clear leaves it
   H.w8(ABI.persist_version, 1)
   H.w8(ABI.persist_goku_active, 1)
 end

@@ -858,10 +858,12 @@ destroy_palette_dma:
 	PHP
 	REP #$30
 	; A vblank whose frame did not complete (a lag frame; with a window open
-	; the game uploads every vblank) runs no module vblank callbacks: the
-	; OBJ palettes they wrote (the effects library's) stay in CGRAM and only
-	; the BG colours go up.
+	; the game uploads every vblank) runs no module vblank callbacks: while
+	; the Sandship's look is on, the OBJ palettes they wrote (the effects
+	; library's, for the fires) stay in CGRAM and only the BG colours go up.
+	; Everywhere else the upload is the original's 512 bytes.
 	LDY.w #512
+	LDA.l !ss_vis : AND.w #$FF00 : CMP.w #!SS_VIS_MAGIC : BNE +   ; (the Sandship's look only)
 	LDA.l !core_dma_ready : BNE +
 	LDY.w #256
 +	LDA.l !ss_vis : AND.w #$FF00|!SS_VIS_PAL : CMP.w #!SS_VIS_MAGIC|!SS_VIS_PAL : BNE .native0

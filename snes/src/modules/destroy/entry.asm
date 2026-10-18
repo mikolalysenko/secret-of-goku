@@ -210,7 +210,7 @@ dst_run_event:
 	STX.w !d_t1
 	; Same idle field as core_event_pump, and no other module's request
 	; waiting there.
-	LDA.w !CORE_EVREQ : BNE .no
+	LDA.l !CORE_EVREQ : BNE .no
 	SEP #$20
 	LDA $D0 : BNE .no8
 	LDA $FF : BNE .no8
