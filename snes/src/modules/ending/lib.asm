@@ -1318,12 +1318,20 @@ pal_set:
 	TYA
 	ASL
 	TAY
-.next
+.next                                ; pal_store inline, the colour read again
+	LDA.l !CB,X                    ; from ROM rather than kept on the stack
+	AND.w #$001F
+	ASL
+	STA.w !s_compr,Y
 	LDA.l !CB,X
-	PHX
-	TYX
-	JSR pal_store
-	PLX
+	LSR : LSR : LSR : LSR
+	AND.w #$003E
+	STA.w !s_compg,Y
+	LDA.l !CB,X
+	XBA
+	LSR
+	AND.w #$003E
+	STA.w !s_compb,Y
 	INX : INX
 	INY : INY
 	DEC.w !l_palc
@@ -1461,9 +1469,11 @@ palette_build:
 	RTS
 .budget
 	SEP #$20
-	LDA.w !s_pbnow
+	LDA.w !s_ldvis                ; a load the picture shows (the departure's,
+	EOR.b #$01                    ; under white) keeps the round robin
+	AND.w !s_loading
+	ORA.w !s_pbnow
 	STZ.w !s_pbnow
-	ORA.w !s_loading
 	REP #$20
 	AND.w #$00FF
 	ORA.w !l_pbjump
@@ -1499,7 +1509,7 @@ palette_build:
 ; next frame need the rest), at least 16, at most 192. The scanline comes
 ; from the latched V counter (bit 8 of the second read; bits 1-7 of it are
 ; open bus and masked).
-!PB_LINE_END = 200
+!PB_LINE_END = 190                ; leaves the later modules (audio) their lines before vblank
 pb_time_budget:
 	SEP #$20
 	LDA.w $213F               ; reset the OPHCT/OPVCT flip-flops

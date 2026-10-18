@@ -20,7 +20,19 @@ const baseRom=new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sf
 // The audio module's entries the scenes call (lib.lua E.watchAudio).
 const sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8');
 const symAddr=label=>{const m=sym.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${label}$`,'m'));return m?`0x${m[1]}${m[2]}`:'nil';};
-const lib=`AUDIO_SFX=${symAddr('audio_sfx')}\nAUDIO_FADE=${symAddr('audio_fade')}\nNMI_OUT=${symAddr('ending_world_nmi_out')}\nNMI_IN=${symAddr('ending_world_nmi')}\nNMI_RESTORE=${symAddr('ending_world_nmi_restore')}\nNMI_DMA=${symAddr('cut_footprint_ran')}\n`+readFileSync(resolve(here,'lib.lua'),'utf8');
+// Core's event request word (core_event_request's pending slot), from the
+// core's own defines: the loads test starts doors through it.
+function coreDefine(name){
+  const defs=new Map();
+  for(const f of ['ram.asm','core.asm','shared.asm'])for(const line of readFileSync(resolve(repo,'snes/src/core',f),'utf8').split('\n')){
+    const m=line.match(/^!(\w+)\s*=\s*([^;]+)/);if(m&&!defs.has(m[1]))defs.set(m[1],m[2].trim());
+  }
+  const ev=n=>{const e=defs.get(n);if(e===undefined)throw Error(`core define ${n} not found`);
+    return e.split('+').map(t=>t.trim()).reduce((a,t)=>a+(t.startsWith('!')?ev(t.slice(1)):t.startsWith('$')?parseInt(t.slice(1),16):Number(t)),0);};
+  return ev(name);
+}
+const lib0=`EVENT_MAILBOX=0x${coreDefine('core_event_req').toString(16)}\n`;
+const lib=lib0+`AUDIO_SFX=${symAddr('audio_sfx')}\nAUDIO_FADE=${symAddr('audio_fade')}\nNMI_OUT=${symAddr('ending_world_nmi_out')}\nNMI_IN=${symAddr('ending_world_nmi')}\nNMI_RESTORE=${symAddr('ending_world_nmi_restore')}\nNMI_DMA=${symAddr('cut_footprint_ran')}\n`+readFileSync(resolve(here,'lib.lua'),'utf8');
 // 'sfx<id>@<age>' / 'fade<byte>@<age>' calls recorded by E.watchAudio.
 const audioCalls=r=>(r.audio??'').split(' ').filter(Boolean);
 const heard=(r,call)=>audioCalls(r).includes(call);

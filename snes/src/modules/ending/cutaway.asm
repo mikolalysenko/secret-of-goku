@@ -1,5 +1,5 @@
 ; ===========================================================================
-; The Fortress cutaway in world flight (second code area, ED:0000).
+; The Fortress cutaway in world flight (second code area, $AA:C000).
 ; planet-view.js prepare() with a shot (world-ki.js cutaway, 186 frames):
 ; the world module counts !w_cut_age 0-185 after its Fortress explosion and
 ; keeps flying the world underneath; while it runs, the picture is ours:
@@ -28,12 +28,21 @@
 !CUT_OBJ_CHR = $6400
 
 ; World frame (modules_world_frame, after the world module): M16/X16, DB = $7E.
+; The cutaway runs while the world module's block is live (its magic word),
+; its explosion was the Fortress's and !w_cut_age counts 0-185.
 ending_world_frame:
 	PHP
 	REP #$30
+	LDA.l $7E0000|!w_magic
+	CMP.w #!WORLD_MAGIC
+	BNE .idle
+	LDA.l $7E0000|!w_expl_flags
+	AND.w #$0002
+	BEQ .idle
 	LDA.l $7E0000|!w_cut_age
 	CMP.w #!ENDING_CUT_AGES
 	BCC .running
+.idle
 	SEP #$20
 	LDA.l !ending_cut_on
 	BEQ .out

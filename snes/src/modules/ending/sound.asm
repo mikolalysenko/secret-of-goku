@@ -1,4 +1,4 @@
-; Native music while a scene is muted (second code area, ED:0000).
+; Native music while a scene is muted (second code area, $AA:C000).
 ; shenron-ending musicMuted: the scatter and the finale death play over a
 ; silent native song (ki-sound nativeGain 0). ES_MUTED drives the native
 ; music volume through audio_fade: $00 silences it at once, $0F brings it

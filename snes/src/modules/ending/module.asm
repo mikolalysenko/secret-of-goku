@@ -301,11 +301,11 @@ incsrc "audio/ids.asm"
 
 incsrc "ending/ending_cut_defs.asm"
 
-; Second code area: the lower half of $ED (FastROM), after the art moved to
-; extended data. Its code runs with PB = $ED, sets DB itself and reads its
-; tables with long addressing; it reaches the main bank's routines through
-; JSL entries.
-!CODE_ENDING_X = $ED0000
+; Second code area: the spare upper quarter of audio's code half
+; ($AA:C000, core/layout.asm !CODE_QUARTER_AUDIO; FastROM). Its code sets DB
+; itself and reads its tables with long addressing; it reaches the main
+; bank's routines through JSL entries.
+!CODE_ENDING_X = !CODE_QUARTER_AUDIO
 
 pushpc
 org !CODE_ENDING
@@ -1321,5 +1321,5 @@ org !CODE_ENDING_X
 incsrc "sound.asm"
 incsrc "cutaway.asm"
 ending_x_end:
-assert ending_x_end <= !CODE_ENDING_X+$8000, "ending second code area overflow"
+assert ending_x_end <= !CODE_ENDING_X+$4000, "ending second code area overflow"
 pullpc
