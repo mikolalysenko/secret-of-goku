@@ -196,7 +196,7 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
 !ER_SIZE  = 16
 !KB       = !CW+$100       ; 9 launches x 16 bytes (enemy slots 3-11)
 !SM       = !CW+$190       ; 9 sound marks x 8 bytes
-!BP       = !CW+$1D8       ; 9 beam pulses x 2 bytes (species, age)
+                           ; $1D8-$1EF free (the beam pulses moved to !BP below)
 !PADH     = !CW+$1F0       ; pad 1 at each of the last 4 field vblanks (NMI tail)
 ; destroy_hit arguments (attack against the map; bind.asm), long addressing
 !da_len   = !CW+$1F8       ; word: reach in pixels
@@ -215,7 +215,55 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
 !bd_half  = !CW+$20E       ; word: half width
 !bd_taper = !CW+$210       ; word: taper (full wave 44) or 0
 !bd_age   = !CW+$212       ; word: beam age
-!CW_END   = !CW+$214
+; beam pulse timers per target bit (bits 0-8 = actor slots 3-11, 9-15 =
+; virtual targets): byte species, byte beam age of the last pulse
+!BP       = !CW+$214       ; 16 x 2 bytes
+; Virtual targets (virtual.asm; registered in modules.asm
+; modules_combat_targets): the step's cache of every entry's query.
+!VT       = !CW+$234
+!vt_state = !VT+$00        ; word: $8000 | live entries (bit i = entry i = target bit 9+i)
+                           ; once filled this field frame, 0 = stale (frame start, hits)
+!vt_spare = !VT+$02        ; word (free)
+!vt_hits  = !VT+$04        ; word: virtual hits (diagnostics; the log index)
+!VT_E     = !VT+$06        ; 7 entries x 8 bytes: +0 species | terrain << 8, +2 x, +4 y, +6 spare
+!VT_N     = 7
+!VT_LOG   = !VT_E+$38      ; (7 x 8) the last 8 virtual hits x 8 bytes (tests): +0 cb_frame,
+                           ; +2 damage, +4 entry | melee << 8, +6 HP taken
+!VT_END   = !VT_LOG+$40    ; (8 x 8)
+; (asar evaluates left to right: these offsets are written out, not multiplied)
+; combat_api_beam's record (beamGeometry of the live beam, long addressing)
+!cb_beam       = !VT_END
+!cb_beam_x     = !cb_beam+$00   ; word: palms (map)
+!cb_beam_y     = !cb_beam+$02
+!cb_beam_dx    = !cb_beam+$04   ; word: -1 / 0 / 1
+!cb_beam_dy    = !cb_beam+$06
+!cb_beam_len   = !cb_beam+$08   ; word: length (px)
+!cb_beam_half  = !cb_beam+$0A   ; word: half width (8.8)
+!cb_beam_super = !cb_beam+$0C   ; byte: 1 fired as Super Saiyan
+!cb_beam_mega  = !cb_beam+$0D   ; byte: 1 full Super Saiyan wave
+!cb_beam_age   = !cb_beam+$0E   ; word: max - life
+!cb_beam_life  = !cb_beam+$10   ; word
+!cb_beam_taper = !cb_beam+$12   ; word: 44 for the full wave, else 0
+!cb_inhold     = !cb_beam+$14   ; word: owner bits of !cb_inlock that keep effects running
+!cb_vq         = !cb_beam+$16   ; word: combat_api_vtarget: terrain | entry flags << 8 (+2: its scratch)
+!CW_END   = !cb_beam+$1A
+assert !CW_END <= !CW+$400, "combat SRAM work area overflow"
+assert !vt_hits == $317E38, "snes/test/combat/lib.lua reads !vt_hits at $31:7E38"
+assert !VT_LOG == $317E72, "snes/test/combat/lib.lua reads !VT_LOG at $31:7E72"
+; Test builds (-DCOMBAT_TEST, snes/test/combat): a mailbox the logic reads at
+; the start of each field frame, a receive hook (modules.asm) and the beam
+; API's answer at each frame end.
+!CBT          = !CW+$300
+!cbt_cmd      = !CBT+$00   ; word: 1 input hold, 2 input lock, 3 unlock (owner !cbt_owner); 0 when done
+!cbt_owner    = !CBT+$02   ; word
+!cbt_rx_mode  = !CBT+$04   ; word: test receive hook: 0 keep, 1 cap at !cbt_rx_cap, 2 none
+!cbt_rx_cap   = !CBT+$06   ; word
+!cbt_rx_in    = !CBT+$08   ; word: the damage the hook saw last
+!cbt_rx_n     = !CBT+$0A   ; word: its calls
+!cbt_beam_c   = !CBT+$0C   ; word: combat_api_beam at the frame end: 1 live, 0 none
+!cbt_beam_a   = !CBT+$0E   ; word: its A (facing | flags)
+!cbt_beam     = !CBT+$10   ; $14 bytes: its !cb_beam record
+assert !CBT == $317F00, "snes/test/combat/lib.lua reads the test block at $31:7F00"
 ; effect record fields
 !er_kind  = $00   ; byte: !ERK_*
 !er_flags = $01   ; byte: !ERF_*
@@ -322,6 +370,16 @@ if not(defined("COMBAT_FX_PLACEHOLDER"))
 endif
 !COMBAT_OWNER = $02                 ; core_vram_claim owner id
 
+; Virtual targets (virtual.asm), registered in modules.asm
+; modules_combat_targets: `dl <query>, <hit> : db <browser entity index>,
+; <flags>` per target; at most 7 (target bits 9-15).
+!VT_TABLE = modules_combat_targets
+!VT_TABLE_LEN = modules_combat_targets_end-modules_combat_targets
+!VT_BIT0 = 9                        ; target bit of entry 0 (bits 0-8: actor slots 3-11)
+!CVT_AIRBORNE = $01                 ; flag: hovers (Instant Transmission may end in the air)
+; Goku's live beam geometry for other modules (api.asm combat_api_beam).
+!COMBAT_API_BEAM = combat_api_beam
+
 pushpc
 org !DATA_COMBAT
 combat_data_start:
@@ -341,6 +399,7 @@ incsrc "attack.asm"
 incsrc "native.asm"
 incsrc "stats.asm"
 incsrc "effects.asm"
+incsrc "virtual.asm"
 incsrc "api.asm"
 combat_code_end:
 assert combat_code_end <= !CODE_COMBAT+$7000, "combat code overflows into the binding area ($A2:F000)"

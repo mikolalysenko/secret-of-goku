@@ -128,13 +128,255 @@ combat_api_hit:
 ; combat_api_targets: hostile actors in an attack box (the same rules as
 ; Goku's attacks). In: !ag_x/!ag_y origin (map), !ag_dir facing, !ag_range,
 ; !ag_width, !ag_behind, !ag_cy (write them with long addressing at
-; $7E0000|define). Out: A16 = slot mask (bit 0 = actor slot 3).
+; $7E0000|define). Out: A16 = target mask (bit 0 = actor slot 3; bits 9-15
+; the virtual targets, entry 0 first, queried afresh).
 combat_api_targets:
 	%cb_api_enter()
+	JSR cb_vt_stale
 	JSR cb_targets
 	LDA !ag_list
 	%cb_api_leave()
 	RTL
+
+; combat_api_vtarget: X16 = the browser's entity index of a virtual target
+; (modules.asm modules_combat_targets; frieza.js 12). C set when a
+; registered target with that index can be struck now (its query, asked
+; afresh): A16 = species, X16 = x, Y16 = y (map), and the long word !cb_vq
+; = its terrain byte (the query's high byte) | the entry's flags << 8
+; (!CVT_AIRBORNE). C clear otherwise. JSL, any M/X/DB; exit M16/X16, DB
+; and D preserved.
+combat_api_vtarget:
+	PHB
+	PHD
+	REP #$30
+	PEA $7E7E
+	PLB
+	PLB
+	LDA.w #$0000
+	TCD
+	TXA
+	AND.w #$00FF
+	STA.l !cb_vq                  ; the index looked for
+	LDX.w #$0000
+.find
+	CPX.w #!VT_TABLE_LEN
+	BCS .none
+	LDA.l !VT_TABLE+6,X
+	AND.w #$00FF
+	CMP.l !cb_vq
+	BEQ .found
+	TXA
+	CLC
+	ADC.w #8
+	TAX
+	BRA .find
+.found
+	LDA.l !VT_TABLE+6,X
+	AND.w #$FF00
+	STA.l !cb_vq                  ; flags << 8
+	JSR cb_vt_query
+	BCC .none
+	STA.l !cb_vq+2                ; species | terrain << 8
+	AND.w #$00FF
+	CMP.w #$0080
+	BCS .none
+	LDA.l !cb_vq+2
+	XBA
+	AND.w #$00FF
+	ORA.l !cb_vq
+	STA.l !cb_vq                  ; terrain | flags << 8
+	LDA.l !cb_vq+2
+	AND.w #$00FF
+	PLD
+	PLB
+	SEC
+	RTL
+.none
+	PLD
+	PLB
+	CLC
+	RTL
+
+; The virtual target cache is stale (the next scan queries every entry).
+cb_vt_stale:
+	LDA.w #$0000
+	STA.l !vt_state
+	RTS
+
+; combat_api_beam: C set while Goku's Kamehameha is live (mana-mod.js: a
+; 'beam' effect with life > 0). Then X16 = palms x, Y16 = palms y (map),
+; A16 = facing (0 down, 1 right, 2 left, 3 up) | $0100 when fired as Super
+; Saiyan | $0200 for the full wave, and the long record !cb_beam holds
+; beamGeometry() of its current frame (module.asm: palms, dx/dy, length,
+; half width 8.8, flags, age, life, taper; its first 14 bytes have the
+; layout of vegeta's !vs_gb_* block). C clear otherwise. JSL, any M/X/DB;
+; exit M16/X16, DB and D preserved. Uses only combat's math scratch, so a
+; virtual target's hit() may call it (vegeta's counterBeam).
+combat_api_beam:
+	PHB
+	PHD
+	REP #$30
+	PEA $7E7E
+	PLB
+	PLB
+	LDA.w #$0000
+	TCD
+	JSR cb_beam_find
+	BCS +
+	PLD
+	PLB
+	CLC
+	RTL
++	JSR cb_beam_geometry
+	LDA !cb_m7                    ; full wave
+	ASL
+	ORA !cb_m6                    ; fired as Super Saiyan
+	XBA
+	ORA !cb_m5                    ; facing
+	PHA
+	LDA.l !cb_beam_x
+	TAX
+	LDA.l !cb_beam_y
+	TAY
+	PLA
+	PLD
+	PLB
+	SEC
+	RTL
+
+; X16 = the live beam's effect record, C set; C clear when there is none.
+; (combat keeps one beam record; a freed record has kind 0.)
+cb_beam_find:
+	LDY !cb_fx_mask
+	LDX.w #$0000
+.loop
+	TYA
+	BEQ .none
+	LSR
+	TAY
+	BCC .next
+	LDA.l !ER+!er_kind,X
+	AND.w #$00FF
+	CMP.w #!ERK_BEAM
+	BEQ .found
+.next
+	TXA
+	CLC
+	ADC.w #!ER_SIZE
+	TAX
+	BRA .loop
+.found
+	SEC
+	RTS
+.none
+	CLC
+	RTS
+
+; beamGeometry() of beam record X into !cb_beam; cb_m5 = facing. Uses
+; cb_mq*, cb_m5-cb_m9 only.
+cb_beam_geometry:
+	LDA.l !ER+!er_x,X
+	STA.l !cb_beam_x
+	LDA.l !ER+!er_y,X
+	STA.l !cb_beam_y
+	LDA.l !ER+!er_dir,X
+	AND.w #$0003
+	STA !cb_m5
+	LDA.w #$0000
+	STA !cb_m6                    ; fired as Super Saiyan
+	STA !cb_m7                    ; full wave
+	LDA.l !ER+!er_flags,X
+	BIT.w #!ERF_SUPER
+	BEQ +
+	INC !cb_m6
++	BIT.w #!ERF_MEGA
+	BEQ +
+	INC !cb_m7
++	SEP #$20
+	LDA !cb_m6
+	STA.l !cb_beam_super
+	LDA !cb_m7
+	STA.l !cb_beam_mega
+	REP #$20
+	; age = max - life
+	LDA.l !ER+!er_life,X
+	AND.w #$00FF
+	STA.l !cb_beam_life
+	STA !cb_m8
+	LDA.l !ER+!er_max,X
+	AND.w #$00FF
+	SEC
+	SBC !cb_m8
+	STA.l !cb_beam_age
+	STA !cb_m9
+	; dx, dy of the facing
+	PHX
+	LDX !cb_m5
+	LDA.l cb_dir_dx,X
+	AND.w #$00FF
+	CMP.w #$0080
+	BCC +
+	ORA.w #$FF00
++	STA.l !cb_beam_dx
+	LDA.l cb_dir_dy,X
+	AND.w #$00FF
+	CMP.w #$0080
+	BCC +
+	ORA.w #$FF00
++	STA.l !cb_beam_dy
+	PLX
+	; length = min(range, (age + 1) * speed)
+	LDA !cb_m9
+	INC
+	STA !cb_mq
+	LDA !bm_speed
+	JSR cb_mul16
+	LDA !cb_mq2
+	BNE .range
+	LDA !cb_mq1
+	CMP !bm_range
+	BCC +
+.range
+	LDA !bm_range
++	STA.l !cb_beam_len
+	; half width (8.8): the full wave by age, normal beams by the charge
+	LDA !cb_m7
+	BEQ .normal
+	LDA.w #44
+	STA.l !cb_beam_taper
+	LDA !cb_m9
+	CMP.w #64
+	BCC +
+	LDA.w #63
++	ASL
+	TAX
+	LDA.l combat_mega_half88,X
+	STA.l !cb_beam_half
+	RTS
+.normal
+	LDA.w #$0000
+	STA.l !cb_beam_taper
+	LDA !bm_charge
+	AND.w #$00FF
+	LDX !cb_m6
+	BNE .ssj
+	CMP.w #90
+	BCC +
+	LDA.w #90
++	ASL
+	TAX
+	LDA.l combat_beam_half88_base,X
+	STA.l !cb_beam_half
+	RTS
+.ssj
+	CMP.w #45
+	BCC +
+	LDA.w #45
++	ASL
+	TAX
+	LDA.l combat_beam_half88_ssj,X
+	STA.l !cb_beam_half
+	RTS
 
 ; combat_api_lock / combat_api_unlock: A16 = owner bit. While any lock is
 ; set Goku cannot attack (the ending, cinematics); input passes natively.
@@ -153,26 +395,54 @@ combat_api_unlock:
 	STA.l $7E0000|!cb_lock
 	PLP
 	RTL
-; combat_api_input_lock / _unlock: A16 = owner bit. The owner takes the
-; whole pad (all native input masked, combat paused).
+; combat_api_input_lock / _hold / _unlock: A16 = owner bit; A preserved.
+; lock: the owner takes the whole pad (all native input masked, combat
+; input zero, nothing injected) and combat's action, charge and effects
+; end (mana-mod.js frieza.inputLocked plus cancelCombat).
+; hold: the same pad, but what was fired runs on (mana-mod.js
+; trial.inputLocked: while Goku can act, every effect ages, the action
+; advances and projectiles hit; nothing new starts). Any owner's lock wins
+; over holds. unlock releases the owner's lock or hold.
 combat_api_input_lock:
 	PHP
 	REP #$20
+	PHA
 	ORA.l $7E0000|!cb_inlock
 	STA.l $7E0000|!cb_inlock
-	PHA
+	LDA $01,S
+	EOR.w #$FFFF
+	AND.l !cb_inhold
+	STA.l !cb_inhold              ; this owner's is a full lock
 	LDA.w #$0000
 	STA.l $7E0000|!cb_quiet       ; the next field frame takes the full path
+	PLA
+	PLP
+	RTL
+combat_api_input_hold:
+	PHP
+	REP #$20
+	PHA
+	ORA.l $7E0000|!cb_inlock
+	STA.l $7E0000|!cb_inlock
+	LDA $01,S
+	ORA.l !cb_inhold
+	STA.l !cb_inhold
+	LDA.w #$0000
+	STA.l $7E0000|!cb_quiet
 	PLA
 	PLP
 	RTL
 combat_api_input_unlock:
 	PHP
 	REP #$20
+	PHA
 	EOR.w #$FFFF
+	PHA
 	AND.l $7E0000|!cb_inlock
 	STA.l $7E0000|!cb_inlock
-	PHA
+	PLA
+	AND.l !cb_inhold
+	STA.l !cb_inhold
 	LDA.w #$0000
 	STA.l $7E0000|!cb_quiet
 	PLA
@@ -347,4 +617,75 @@ cb_debug_value:
 	LDA.w #$0000
 	CLC
 	RTS
+endif
+
+; ---------------------------------------------------------------------------
+; Test builds (-DCOMBAT_TEST): the mailbox and probes of snes/test/combat.
+if defined("COMBAT_TEST")
+; Start of a field frame's logic: !cbt_cmd 1 holds, 2 locks, 3 unlocks the
+; input for owner !cbt_owner (as a scene module would), then clears.
+cb_test_mailbox:
+	LDA.l !cbt_cmd
+	BEQ .out
+	CMP.w #1
+	BNE +
+	LDA.l !cbt_owner
+	JSL combat_api_input_hold
+	BRA .done
++	CMP.w #2
+	BNE +
+	LDA.l !cbt_owner
+	JSL combat_api_input_lock
+	BRA .done
++	LDA.l !cbt_owner
+	JSL combat_api_input_unlock
+.done
+	LDA.w #$0000
+	STA.l !cbt_cmd
+.out
+	RTS
+
+; Frame end: combat_api_beam's answer for the test probe.
+cb_test_beam_probe:
+	JSL combat_api_beam
+	BCS +
+	LDA.w #$0000
+	STA.l !cbt_beam_c
+	RTS
++	STA.l !cbt_beam_a
+	LDA.w #$0001
+	STA.l !cbt_beam_c
+	LDX.w #$0012
+-	LDA.l !cb_beam,X
+	STA.l !cbt_beam,X
+	DEX
+	DEX
+	BPL -
+	RTS
+
+; A receive hook (modules.asm modules_combat_receive, test builds): A16 =
+; the damage queued on Goku -> A16 by !cbt_rx_mode.
+combat_test_receive:
+	STA.l !cbt_rx_in
+	PHA
+	LDA.l !cbt_rx_n
+	INC
+	STA.l !cbt_rx_n
+	LDA.l !cbt_rx_mode
+	CMP.w #1
+	BEQ .cap
+	CMP.w #2
+	BEQ .none
+	PLA
+	RTL
+.cap
+	PLA
+	CMP.l !cbt_rx_cap
+	BCC +
+	LDA.l !cbt_rx_cap
++	RTL
+.none
+	PLA
+	LDA.w #$0000
+	RTL
 endif

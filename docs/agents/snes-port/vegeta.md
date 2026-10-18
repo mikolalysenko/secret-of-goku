@@ -122,7 +122,9 @@ Goku's hits (`vegeta_api_hit`) and the draw keep the browser's order.
   1/500000 (32-bit), lock 36 / focus 48 / struggle (B or Y taps 5 frames
   apart, drain, surges at 100/220/340) / release with the detonation; a win
   removes 34% of the maximum HP, a loss queues 230/320 on Goku. Goku holds his
-  firing pose (`!goku_act` = beam, age 7) under combat's input lock.
+  firing pose (`!goku_act` = beam, age 7) under combat's input lock. The
+  draw holds the pad instead (`combat_api_input_hold`, `trial.inputLocked`):
+  Goku's last wave finishes before the draw starts counting.
 
 ### Goku's attacks on Vegeta
 
@@ -146,22 +148,20 @@ the slot to combat's step only:
   natives, and only below 84); `E602/E604/E60B` and `E782` (max(1, HP)) are
   kept by the tick and `hit()` as in the browser. `vegeta_combat_close`
   restores the flags, species and `E7F0/E7EC` and clears `E7F1`.
-- `!COMBAT_HOOK_DAMAGE = vegeta_combat_damage` (combat's per-hit hook): a
-  hit on slot 3 during the window is `trial.hit(amount)`, melee while
-  combat's action is a punch, and returns 1 when his HP dropped, else 0, so
-  combat's contact test (`after < before`: hit pause, impact spark, `hit`
-  cue, ki first contact, beam pulses) answers as the browser's; the 1 lands
-  in `E7F1`, which the close clears. Once beaten he leaves the target list
-  in the same step. Other actors go to the hook bound before vegeta's
-  module (`!VEGETA_DAMAGE_NEXT`); `bind.asm` refuses to assemble if a later
-  module rebinds the hook.
+- `vegeta_combat_damage`, listed in combat's damage hooks (`modules.asm`
+  `modules_combat_damage`): a hit on slot 3 during the window is
+  `trial.hit(amount)`, melee while combat's action is a punch, and returns 1
+  when his HP dropped, else 0, so combat's contact test (`after < before`:
+  hit pause, impact spark, `hit` cue, ki first contact, beam pulses)
+  answers as the browser's; the 1 lands in `E7F1`, which the close clears.
+  Once beaten he leaves the target list in the same step. Other actors keep
+  their damage (the list calls every module's hook in turn).
 - Goku's beam for the clash and the volley cancellation (`vb_goku_beam`):
-  combat's live beam record (`!ER`, kind beam, life > 0) and the beam
-  globals (`!bm_charge/_range/_speed`) with `beamGeometry()`: age
-  = max - life, length = min(range, (age + 1) * speed), half width
-  5 + 14 * min(1, charge / cap) (cap 45 when fired as Super Saiyan, else
-  90) or 80 * min(1, (age + 1) / 6, life / 10) for the full wave, in 8.8.
-  `combat_api_beam` replaces it when combat provides one.
+  `combat_api_beam` (`beamGeometry()` of the live beam; the first 14 bytes
+  of its record have the `!vs_gb_*` layout), after a test build's stand-in.
+  Without the API (`!COMBAT_API_BEAM` undefined) `vb_combat_beam` reads
+  combat's beam record (`!ER`, kind beam, life > 0) and globals
+  (`!bm_charge/_range/_speed`) itself.
 - Instant Transmission: with the flight module, `vb_flight_target` writes
   the custom teleport target (`!fl_tp_custom`: kind 3, species 46, his
   position and terrain) every field frame while `entity()` is non-null.
@@ -192,8 +192,8 @@ bursts and embers, `FX_DETONATE`, `fx_quake`/`fx_flash` for
 `feedback.pulse/burst`), audio (`audio_sfx` with the browser's cue names,
 `audio_song` `$3E`/`$3F` and `audio_song_restore` for the music cue), ui
 (`ui_say`/`ui_interrupt` with `!UI_MSG_JOCH_TRIAL_0..9`), combat
-(`combat_api_cancel`, `_set_form`, `_danger`, `_input_lock`, and the
-requested `combat_api_beam`).
+(`combat_api_cancel`, `_set_form`, `_danger`, `_input_lock` for the clash,
+`_input_hold` for the draw, `combat_api_beam`).
 
 ## Resources
 
@@ -302,7 +302,7 @@ All `JSL`, M16/X16 in and out, any DB (they set DB = `$7E` themselves).
 | Routine | Contract |
 | --- | --- |
 | `vegeta_api_hit` | Goku's attack landed on Vegeta (`trial.hit`): A16 = damage before Vegeta's damage scale (×0.55 base, ×0.32 Super Saiyan, rounded, at least 1; `$FFFF` = an overwhelming blow), X16 bit 0 = melee (a punch or kick: two within 100 frames start a teleport counter). Out: A16 = HP before, X16 = HP after, C set when it was taken (battle phase, not won, no clash; a live Kamehameha that opposes his beam starts the clash instead). |
-| `vegeta_combat_damage` | combat's `!COMBAT_HOOK_DAMAGE` (A16 = damage, X16 = actor offset; returns A16): slot 3 while the window is open is `hit()`; others are chained |
+| `vegeta_combat_damage` | combat's damage hook (`modules_combat_damage`; A16 = damage, X16 = actor offset; returns A16): slot 3 while the window is open is `hit()`; other actors keep their damage |
 | `vegeta_combat_open`, `vegeta_combat_close` | the hijacks at `C0:B0A6` / `C0:B0B2` (not for calling) |
 | `vegeta_story_trial_start` | story hook `TRIAL_START` |
 | `vegeta_q_trial_active`, `vegeta_q_trial_party` | story queries `TRIAL_ACTIVE`, `TRIAL_PARTY` |
@@ -320,32 +320,15 @@ record the tick saw at `$32:6290`.
 
 ## Requests
 
-- **combat — custom target.** The slot-3 window (two hijacks around
-  combat's step, a boss species against the launch) works but leans on
-  combat's internals: `cb_targets`' active/species/HP/dead tests, the
-  launch threshold 84, and `cb_hit` calling the damage hook before it
-  queues. A registered custom target would replace it: attack boxes
-  (punch, ki, beam, burst) include it at its position and a hit calls its
-  routine instead of the native queue (no number, no launch; beam pulses,
-  the ki first contact and the impact spark/sound as for natives). Frieza's
-  custom entity needs the same (frieza.md asks for
-  `!COMBAT_HOOK_VIRTUAL`).
-- **combat — the damage hook is single-owner.** Vegeta binds
-  `!COMBAT_HOOK_DAMAGE` and chains the one bound before its module
-  (`!VEGETA_DAMAGE_NEXT`); frieza binds it unconditionally. When both are
-  merged, include frieza's module before vegeta's (or chain frieza's to
-  `vegeta_combat_damage`); `bind.asm` stops the build otherwise. A chain in
-  combat (several hooks) would remove the ordering rule.
-- **combat — Goku's beam.** `combat_api_beam`: C set while Goku's beam
-  effect is live (life > 0); out the palms (x, y), direction (dx, dy), the
-  current length and half width (8.8) from `beamGeometry`, and flags (fired
-  as Super Saiyan, full wave). Until then `bind.asm` reads combat's beam
-  record and globals (`!ER`, `!er_*`, `!ERK_BEAM`, `!bm_charge/_range/_speed`);
-  with `!COMBAT_API_BEAM` defined it calls the API instead.
-- **combat — input lock.** The draw blocks new input but lets the last wave
-  finish (`inputLocked` in `mana-mod.js`); `combat_api_input_lock` cancels
-  combat, so the wave ends at once and the draw's first count starts a few
-  frames earlier. A lock flavour that keeps effects running would match.
+- **combat — custom target.** Combat now has a registry of virtual targets
+  (`modules.asm` `modules_combat_targets`: attack boxes include them at
+  their position and a hit calls their routine instead of the native
+  queue), which can replace the slot-3 window (two hijacks around combat's
+  step, a boss species against the launch).
+- **combat — done:** the damage hook is a list (`modules_combat_damage`, no
+  include-order rule), `combat_api_beam` provides the beam geometry (used
+  by `vb_goku_beam`), and `combat_api_input_hold` keeps the last wave
+  running during the draw.
 - **combat — clash pose.** During a clash vegeta writes `!goku_act` = beam
   (age 7, facing of the clash, Super Saiyan art from the shot) every frame
   under the input lock; combat leaves an external action alone

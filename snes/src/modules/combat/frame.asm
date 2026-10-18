@@ -61,6 +61,11 @@ cb_hook_logic:
 ; menus and doors pause combat anyway).
 cb_logic_frame:
 	JSR cb_ensure_init
+if defined("COMBAT_TEST")
+	JSR cb_test_mailbox
+endif
+	LDA.w #$0000                  ; the virtual targets may have moved since
+	STA.l !vt_state               ; the last field frame: query them again
 	JSR cb_field_gate
 	SEP #$20
 	LDA !cb_world
@@ -315,6 +320,9 @@ combat_field_frame:
 +	JSR cb_effects_draw
 .out
 	REP #$30
+if defined("COMBAT_TEST")
+	JSR cb_test_beam_probe
+endif
 	RTL
 
 ; C0:C164 hook (end of every field NMI, after the forced blank ends): count
@@ -892,8 +900,7 @@ cb_goku_frame:
 	JSR cb_facing_from_native
 	LDA !cb_inlock
 	BEQ +
-	JSR cb_cancel_combat_quiet
-	RTS
+	JMP cb_locked_input           ; another module owns the pad
 +	LDA !cb_recovering
 	BEQ +
 	RTS
@@ -980,6 +987,35 @@ cb_goku_frame:
 	BEQ +
 	JSR cb_update_launches
 +	JSR cb_attack_inputs
+	RTS
+
+; Another module owns the pad (combat_api_input_lock / _hold; mana-mod.js
+; frieza.inputLocked / trial.inputLocked): no input this step and nothing
+; injected (the browser zeroes the whole pad). A full lock ends combat's
+; action, charge and effects; when every owner holds instead, what was
+; fired runs on: while Goku can act, every effect ages (life only: holds
+; are not honoured there), the action advances and projectiles hit.
+cb_locked_input:
+	STZ !cb_in
+	STZ !cb_pad
+	STZ !cb_inject
+	LDA.l !cb_inhold
+	EOR.w #$FFFF
+	AND !cb_inlock
+	BEQ .hold
+	JMP cb_cancel_combat_quiet
+.hold
+	LDA !cb_can
+	AND.w #$00FF
+	BEQ .out
+	LDA !cb_fx_mask
+	BEQ +
+	JSR cb_effects_age
++	JSR cb_advance_action
+	LDA !cb_fx_mask
+	BEQ .out
+	JSR cb_update_projectiles
+.out
 	RTS
 
 ; A canAttack-false frame: everything incompatible is cancelled; a held
