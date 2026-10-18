@@ -4,6 +4,18 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## 2026-10-18 — SNES cartridge: Frieza's ground arc, deterministic power-on, Goku fixes (integration)
+
+- **Frieza's ground arc** is merged into the cartridge, as the browser plays it: the entrance and theft, the Emperor's execution, the Death Balls, the Mana Tree sequence, the three-phase fight, the Fortress collapse on its destroyed deck, the Beast challenge, and victory and death. It uses flight's landing check and scripted camera, Goku's scripted cells, combat's virtual target (Goku's attacks now reach Frieza), destroy's door-record hook and core's scene claims (VRAM regions and the scene work area). Its idle cost is 0.32 lines a frame and 0.11 a vblank. See [snes-port/frieza.md](snes-port/frieza.md).
+- **Power-on:** the original game reads three things before writing them: the moving Fortress's placement (`7E:0126`), the first map's camera edges (`7E:0A80–0AB1`) and an effect record of ours. These varied with each power-on in Mesen and on hardware; the browser's emulator zero-fills them. Core now zeroes them at boot, so every console and emulator starts like the browser.
+- **Goku:**
+  - A scripted-cell API draws Goku at a scene's screen spot (the temple exit, the deck, the Tree's cliff).
+  - Cell uploads are cheaper and sent less often.
+  - Two regressions from the first version are fixed: fx bursts lost a palette, and a timing-sensitive Sandship colour check failed.
+  - The fixes exposed a real race in the ending's palette commit: a channel-7 DMA set up from the frame thread can copy 64 KiB over WRAM if an NMI lands mid-setup. It is with the ending stream, and goku keeps its old NMI prologue meanwhile.
+- **Build:** generator output folders left by another branch no longer break builds.
+- Validation: each merge re-ran the suites it touches (frieza, combat, vegeta, goku, fx, destroy, ending, ui). All pass. The scene select has 21 presets full and `trial` native; `hexas` is still partial (a capture-timing difference in the debug recipe). The DMA-timing watch finds no module DMA into VRAM, OAM or CGRAM during display over the opening and all presets.
+
 ## 2026-10-18 — SNES cartridge: Goku's attacks reach Frieza, and combat hooks for the set pieces (combat)
 
 - **Frieza can be struck.** Combat keeps a registry of virtual targets: enemies the browser mod adds to the native actors, such as Frieza in the ground fight. Punches, ki blasts, the Kamehameha and the transformation burst include them. A hit goes to the module's own routine, with no damage number or launch, and keeps the contact hold, impact spark, sound, the ki shot ending at its first contact, and the beam's pulses of an ordinary enemy. Six new tests run the battle state on the cartridge and the browser's own Frieza module side by side: every hit's damage, melee flag, HP taken and frame agree.
