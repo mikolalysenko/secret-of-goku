@@ -85,7 +85,6 @@ incsrc "audio/ids.asm"
 !s_ctop     = !SB+$074            ;   culling: line of the first rim row
 !s_cn       = !SB+$076            ;   rows (0: none)
 !s_cblk     = !SB+$078            ;   window block (bank $32)
-!STARS_STEP = 24
 !s_tw       = !SB+$07A            ; twinkle bits of the bright stars
 !s_twhave   = !SB+$07C            ; twinkle bits of the built depth-3 list
 !s_bd       = !SB+$07E            ; depth being built (d*2)
@@ -120,7 +119,7 @@ incsrc "audio/ids.asm"
 !g_bld_cx = !SB+$0F0              ; its centre column
 !g_bld_a  = !SB+$0F2              ; next row (0..R)
 !g_bld_n  = !SB+$0F4              ; rows per frame
-!GLOBE_ROWS_STEP = 28             ; a whole block (R <= 108) in four frames
+!ORBIT_DEADLINE = 196             ; spare-time work stops at this scanline
 
 ; Window blocks (4 bytes per row, rows -R..R, R <= 108) and the empty record.
 !gb_empty = !SB+$0F8              ; 4 bytes: empty windows
@@ -244,7 +243,15 @@ assert !SB_END <= $8000, "orbit scene block overflow"
 !f_power    = !FB+$228             ; focus power (mana-mod powerCharge, 0-96)
 !f_focus    = !FB+$22A             ; L alone held this frame (focus stance)
 !f_disc     = !FB+$22C             ; hurt: the hit is Frieza's own disc
-!FIGHT_END  = !FB+$230
+!f_exact    = !FB+$22E             ; hurt: the amount is already weighted
+!fb_damage9 = !FB+$230             ; the wave's damage under the training gi
+!f_gi       = !FB+$232             ; the hero's armor this frame ($E1E1)
+; (kept by fight_start: the step clock)
+!FIGHT_END  = !FB+$240
+!f_vbl      = !FB+$240             ; combat's field vblank count at the last step
+!f_steps    = !FB+$242             ; fight steps this frame
+!f_menus    = !FB+$244             ; ring + menu frames seen (a change: no catch-up)
+!ORBIT_COMBAT_OWNER = $0100        ; owner bit for combat's input lock and danger
 assert !FIGHT_END <= !SB+$D00, "orbit fight block overflow"
 
 ; ---------------------------------------------------------------------------

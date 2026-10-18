@@ -57,11 +57,11 @@ globe_frame:
 	BEQ +
 	JSR globe_mode_table
 +	REP #$30
-	; Window block for the radius and the centre column: built over a few
-	; frames into the back block (the fight camera steps every 4 frames),
-	; at once when there is none yet.
+	; Window block for the radius and the centre column: started here and
+	; built in the frame's spare time (orbit_background) into the back
+	; block; the scene's first block is built at once.
 	LDA.w !g_bld
-	BNE .building
+	BNE .shapeOk
 	JSR globe_clamp_r
 	CMP.w !g_lr
 	BNE .start
@@ -69,15 +69,13 @@ globe_frame:
 	CMP.w !g_cx
 	BEQ .shapeOk
 .start
-	LDY.w #!GLOBE_ROWS_STEP
-	LDA.w !g_lr
-	CMP.w #$FFFF
-	BNE +
-	LDY.w #$00FF
-+	STY.w !g_bld_n
 	JSR globe_clamp_r
 	JSR globe_build_start
-.building
+	LDA.w !g_lr
+	CMP.w #$FFFF
+	BNE .shapeOk
+	LDA.w #$00FF
+	STA.w !g_bld_n
 	JSR globe_build_step
 	; the M7 registers follow the published block
 	LDA.w !g_x0
@@ -262,9 +260,23 @@ globe_build_step:
 	INX : INX
 	INY : INY : INY : INY
 	DEC.w !g_tmp+4
-	BEQ +
+	BEQ .rowsDone
+	LDA.w !g_lr+1                  ; the scene's first block is built at once
+	CMP.b #$FF
+	BEQ .rowNext
+	JSR orbit_late
+	BCC .rowNext
+	; out of time: the rows left wait for the next frame
+	REP #$30
+	LDA.w !g_tmp+4
+	AND.w #$00FF
+	EOR.w #$FFFF : INC
+	CLC : ADC.w !g_bld_a
+	STA.w !g_bld_a
+	RTS
+.rowNext
 	JMP .row
-+
+.rowsDone
 	REP #$30
 	LDA.w !g_bR
 	CMP.w !g_bld_a

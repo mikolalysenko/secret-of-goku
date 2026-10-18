@@ -14,7 +14,7 @@
 ; (the browser rounds their sum; they differ by a pixel at most, and only
 ; while the camera zooms). Each depth keeps its visible stars as a list of
 ; OAM entries, rebuilt when that depth's offsets or zoom, the globe or a
-; twinkle change: one depth at a time, !STARS_STEP stars per frame. A star
+; twinkle change: one depth at a time, in the frame's spare time. A star
 ; under the globe's rim chord on its line (the published window block, so
 ; exactly the pixels the browser's planet paints over it) is left out;
 ; every frame copies the lists into OAM.
@@ -113,7 +113,12 @@ stars_frame:
 .twDone
 	LDA.w !s_tmp+2
 	STA.w !s_tw
-	; a rebuild in progress continues; else the first stale depth starts
+	RTS
+
+; Spare time (orbit_background): continue the rebuild in progress, else
+; start the first stale depth; A16 = stars to process at most.
+stars_background:
+	STA.w !s_left
 	LDA.w !s_bd
 	BEQ +
 	JMP stars_build_step
@@ -141,7 +146,11 @@ stars_frame:
 	BCC .stale
 	RTS
 .rebuild
+	LDA.w !s_left
+	PHA
 	JSR stars_build_start
+	PLA
+	STA.w !s_left
 	JMP stars_build_step
 
 ; A16 = A16 * d, d = X/2 (1-3).
@@ -253,7 +262,7 @@ stars_build_start:
 	STA.w !s_cblk
 +	RTS
 
-; Up to !STARS_STEP stars of the list being rebuilt.
+; Up to s_left stars of the list being rebuilt.
 stars_build_step:
 	LDX.w !s_bd
 	LDA.w !sx_have,X : STA.w !s_tmp+0   ; O_x
@@ -263,8 +272,6 @@ stars_build_step:
 	SEP #$20
 	STA.w $4202                    ; |dz| (< 256) for the zoom products
 	REP #$20
-	LDA.w #!STARS_STEP
-	STA.w !s_left
 	LDY.w !s_bout
 	LDX.w !s_bpos
 .star
@@ -272,7 +279,10 @@ stars_build_step:
 	BCC +
 	JMP .done
 +	DEC.w !s_left
-	BPL +
+	BMI .stop
+	JSR orbit_late
+	BCC +
+.stop
 	STX.w !s_bpos                  ; the rest next frame
 	STY.w !s_bout
 	RTS

@@ -26,8 +26,8 @@ local function state()
   -- warning kind, age; Goku HP; camera
   p[#p + 1] = string.format('%d,%d,%d', H.r16(FB + 0x5A), H.r16(FB + 0x5C), H.r16(0x7EE182))
   p[#p + 1] = string.format('%d,%d,%d,%d,%d', H.r16(SB), H.r16(SB + 2), H.r16(SB + 4), H.r16(SB + 6), H.r16(SB + 8))
-  -- wave: on, age
-  p[#p + 1] = string.format('%d,%d', H.r16(FB + 0x20), H.r16(FB + 0x28))
+  -- wave: on, age; the pad the fight read this frame
+  p[#p + 1] = string.format('%d,%d,%d', H.r16(FB + 0x20), H.r16(FB + 0x28), H.r16(FB + 0x1A))
   -- Frieza's shots: kind:x:y:age
   local shots = {}
   for i = 0, 11 do

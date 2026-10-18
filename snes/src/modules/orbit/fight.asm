@@ -57,8 +57,6 @@ fight_start:
 ; Frieza's shots), then spaceInput.
 fight_frame:
 	REP #$30
-	STZ.w !cam_tdx
-	STZ.w !cam_tdy
 	JSR fight_tick
 	JMP fight_input
 
@@ -75,7 +73,10 @@ fight_tick:
 	AND.w #$0080
 	BEQ +
 	RTS
-+	; b.age++, grace/hurt/recoil/guard count down; afterimages age
++	LDA.l $7EE1E1                  ; the hero's armor (22: the training gi)
+	AND.w #$00FF
+	STA.w !f_gi
+	; b.age++, grace/hurt/recoil/guard count down; afterimages age
 	INC.w !b_age
 	LDX.w #!f_grace : JSR fight_dec
 	LDX.w #!b_hurt : JSR fight_dec
@@ -464,24 +465,33 @@ fight_fire_wave:
 	LDA.w $4216
 	CLC : ADC.w #2048
 	STA.w !fb_width
-	; damage = 400 + charge * 500 / 45 = 400 + charge * 11.11
+	; damage = 400 + 500 * charge / 45, kept fractional by the browser and
+	; floored by hurt after the training gi's 0.9: unscaled
+	; 400 + floor(charge * 100 / 9), weighted exactly 360 + 10 * charge
 	LDA.w !f_charge
 	SEP #$20
 	STA.w $4202
-	LDA.b #222                     ; 11.11 * 20 = 222.2 (then / 20)
+	LDA.b #100
 	STA.w $4203
 	REP #$20
 	NOP : NOP : NOP
-	LDA.w $4216                    ; charge * 222
+	LDA.w $4216                    ; charge * 100
 	STA.w $4204
 	SEP #$20
-	LDA.b #20
+	LDA.b #9
 	STA.w $4206
 	REP #$20
 	NOP : NOP : NOP : NOP : NOP : NOP : NOP : NOP
 	LDA.w $4214
 	CLC : ADC.w #400
 	STA.w !fb_damage
+	LDA.w !f_charge
+	ASL
+	STA.w !fb_damage9
+	ASL : ASL
+	CLC : ADC.w !fb_damage9        ; 10 * charge
+	CLC : ADC.w #360
+	STA.w !fb_damage9
 	LDA.w #$0001
 	STA.w !fb_on
 	STZ.w !f_charge
@@ -512,6 +522,19 @@ fight_new_shot:
 ; struggle). A16 = amount -> A16 = hit.
 fight_hurt:
 	STZ.w !f_disc
+	STZ.w !f_exact
+	BRA fight_hurt_any
+; Same with the amount already final (the wave's exact weighted damage).
+fight_hurt_exact:
+	STZ.w !f_disc
+	LDX.w #$0001
+	STX.w !f_exact
+	BRA fight_hurt_any
+; hurt(12000, true): Frieza's own returning disc.
+fight_hurt_disc:
+	LDX.w #$0001
+	STX.w !f_disc
+	STZ.w !f_exact
 fight_hurt_any:
 	STA.w !f_tmp+14
 	LDA.w !f_intro
@@ -521,9 +544,9 @@ fight_hurt_any:
 	LDA.w #$0000
 	RTS
 +	LDA.w !f_disc
+	ORA.w !f_exact
 	BNE .scaled
-	LDA.l $7EE1E1
-	AND.w #$00FF
+	LDA.w !f_gi
 	CMP.w #22
 	BNE .scaled
 	LDA.w !f_tmp+14                ; amount * 9 / 10 (amounts here <= 900)
@@ -577,12 +600,6 @@ fight_hurt_any:
 .done
 	LDA.w !f_tmp+14
 	RTS
-
-; hurt(12000, true): Frieza's own returning disc.
-fight_hurt_disc:
-	LDX.w #$0001
-	STX.w !f_disc
-	JMP fight_hurt_any
 
 ; frieza.js melee: a hit right after Instant Transmission starts the
 ; four-hit exchange; two hits within 120 frames send him to a far node.
@@ -1146,7 +1163,11 @@ fight_tick_wave:
 	JSR fight_mod6
 	BNE .boss
 	LDA.w !fb_damage
-	JSR fight_hurt
+	LDX.w #22
+	CPX.w !f_gi
+	BNE +
+	LDA.w !fb_damage9
++	JSR fight_hurt_exact
 	LDA.w #!AUDIO_SFX_FRIEZA_IMPACT
 	JSL audio_sfx
 .boss

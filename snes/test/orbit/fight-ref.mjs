@@ -35,14 +35,17 @@ function installGlobals(){
 }
 
 // start: {hp, age, cycle, node, clock, target:{x,y}, hero:{x,y}, ...boss fields}
-export async function runFightReference({rom=readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')),frames=600,pad=()=>0,start={},trace=null}={}){
+// wram: the import bundle's wram.bin (bank 7E first), so the equipment and
+// Goku's HP are the cartridge test's.
+export async function runFightReference({rom=readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')),frames=600,pad=()=>0,start={},trace=null,wram=null}={}){
   installGlobals();
   const {createFrieza}=await import(resolve(repo,'engine/frieza.js'));
   const {newOrbit}=await import(resolve(repo,'engine/frieza-orbit.js'));
   const {newFriezaArena}=await import(resolve(repo,'engine/frieza-arena.js'));
   const ram=new Uint8Array(0x20000);
+  if(wram)ram.set(wram.subarray(0,0x20000));
   const w16=(a,v)=>{ram[a&0x1ffff]=v&255;ram[(a+1)&0x1ffff]=(v>>8)&255;};
-  w16(0xdc,246);w16(0xe182,999);ram[0xe000]=1;
+  w16(0xdc,246);w16(0xe182,999);ram[0xe000]=1;ram[0xd0]=0;ram[0xec]=0;w16(0xe1f1,0);ram[0xe191]=0;
   const sounds=[];
   const snes={cpu:{cycle(){},r:new Uint8Array(8),br:new Uint16Array(8),registerBreakpoints(){}},ram,cart:{data:rom,read(){return 0;}},frames:0,ppu:{forcedBlank:false,mode:1},joypad1State:0};
   const mod={
@@ -51,7 +54,9 @@ export async function runFightReference({rom=readFileSync(resolve(repo,'rom/secr
     read8:a=>ram[a&0x1ffff],read16:a=>ram[a&0x1ffff]|ram[(a+1)&0x1ffff]<<8,readSigned16(a){const v=this.read16(a);return v&0x8000?v-65536:v;},
     write8(a,v){ram[a&0x1ffff]=v&255;},write16:w16,
     playSound(n){sounds.push(n);},feedback:{pulse(){},clearFlash(){}},cancelCombat(){},cancelInput(){},configure(){},
-    radio:{restore(){},interrupt(){}},equipment:{powerScale:1},status:{cameraX:0,cameraY:0},story:{request(){}},
+    radio:{restore(){},interrupt(){}},
+    // native-equipment.js powerScale: the training gi (armor 22) weighs 0.9
+    equipment:{get powerScale(){return ram[0xe1e1]===22?.9:1;}},status:{cameraX:0,cameraY:0},story:{request(){}},
     localFlightHook:{canLand:()=>true},
     // mana-mod.js focus (L alone): powerCharge to 96.
     focus(input){const held=!!(input&0x400);if(!held){this.powerCharge=0;if(this.action?.kind==='focus')this.action=null;return false;}

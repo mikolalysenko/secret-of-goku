@@ -13,8 +13,8 @@ incsrc "modules/title/module.asm"
 incsrc "modules/story/module.asm"
 incsrc "modules/debug/module.asm"
 incsrc "modules/destroy/module.asm"
-incsrc "modules/orbit/module.asm"
 incsrc "modules/combat/module.asm"
+incsrc "modules/orbit/module.asm"           ; after combat (reads its public !cb_vblanks)
 incsrc "modules/audio/module.asm"           ; after the modules whose sound flags it reads
 
 pushpc

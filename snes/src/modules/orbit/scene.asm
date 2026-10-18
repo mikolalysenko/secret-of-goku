@@ -39,6 +39,13 @@ orbit_field_frame:
 .common
 	JSR orbit_suppress_native
 	JSR orbit_oam_frame
+	SEP #$20
+	LDA.l !orbit_state
+	CMP.b #!OS_LIVE
+	REP #$30
+	BNE +
+	JSR orbit_background
++
 if defined("ORBIT_TIMING")
 	JSR orbit_vcount
 	STA.l !orbit_fline
@@ -64,6 +71,9 @@ orbit_command:
 	BEQ .done
 	LDA.b #!OS_STOP
 	STA.l !orbit_state
+	REP #$30
+	JSR orbit_fight_off
+	SEP #$20
 .done
 	RTS
 
@@ -89,8 +99,37 @@ orbit_start_fight_test:
 	LDY.w !cam_lat
 	JSR fight_start
 	STZ.w !f_intro
+	JSR orbit_fight_on
+	RTS
+
+; The fight takes over: Goku's pad and combat (combat_api_input_lock: native
+; input masked, combat paused; combat_api_danger: Frieza's hits unscaled, as
+; the browser's damagePlayer), the 60 Hz step clock.
+orbit_fight_on:
 	LDA.w #$0001
 	STA.w !f_on
+	LDA.l $7E0000|!cb_vblanks
+	STA.w !f_vbl
+	LDA.l !core_frame_ring
+	CLC : ADC.l !core_frame_menu
+	STA.w !f_menus
+	LDA.w #!ORBIT_COMBAT_OWNER
+	JSL combat_api_input_lock
+	LDA.w #!ORBIT_COMBAT_OWNER
+	JSL combat_api_danger
+	REP #$30
+	RTS
+
+; Give Goku's pad and combat back.
+orbit_fight_off:
+	LDA.w !f_on
+	BEQ +
+	STZ.w !f_on
+	LDA.w #!ORBIT_COMBAT_OWNER
+	JSL combat_api_input_unlock
+	LDA.w #!ORBIT_COMBAT_OWNER
+	JSL combat_api_safe
++	REP #$30
 	RTS
 
 ; Fresh scene state (the camera fields are the caller's).
@@ -164,6 +203,48 @@ orbit_suppress_native:
 	REP #$30
 	RTS
 
+; The frame's spare time, after the picture's registers and OAM are ready:
+; the globe's next window block, then the starfield's rebuild, each until
+; the scanline reaches !ORBIT_DEADLINE (leaving the modules after us and
+; the frame's end their usual lines). Measured costs: about one line per
+; window row, two per star.
+orbit_background:
+	JSR orbit_vcount
+	CMP.w #!ORBIT_DEADLINE
+	BCS .done
+	LDA.w !g_bld
+	BEQ .stars
+	LDA.w #$00FF                   ; rows: as many as the deadline allows
+	STA.w !g_bld_n
+	JSR globe_build_step
+	REP #$30
+.stars
+	JSR orbit_vcount
+	CMP.w #!ORBIT_DEADLINE
+	BCS .done
+	LDA.w #100                     ; stars: as many as the deadline allows
+	JSR stars_background
+.done
+	REP #$30
+	RTS
+
+; Carry set once the scanline reached !ORBIT_DEADLINE (any M/X; keeps A).
+orbit_late:
+	PHP
+	REP #$20
+	PHA
+	JSR orbit_vcount
+	CMP.w #!ORBIT_DEADLINE
+	PLA
+	BCS .late
+	PLP
+	CLC
+	RTS
+.late
+	PLP
+	SEC
+	RTS
+
 ; Current scanline (A16), for timing tests.
 orbit_vcount:
 	SEP #$20
@@ -187,8 +268,32 @@ orbit_live_frame:
 	REP #$30
 	LDA.w !f_on
 	BEQ .noFight
-	JSR fight_frame
+	; The browser runs the fight once per video frame, also while the
+	; game's own logic lags: one step per field vblank since the last frame
+	; (combat's public counter), at most 4; a step only after a ring or
+	; full-screen menu (the fight was paused there).
+	LDA.l $7E0000|!cb_vblanks
+	SEC : SBC.w !f_vbl
+	BEQ +
+	CMP.w #5
+	BCC ++
++	LDA.w #1
+++	STA.w !f_steps
+	LDA.l $7E0000|!cb_vblanks
+	STA.w !f_vbl
+	LDA.l !core_frame_ring
+	CLC : ADC.l !core_frame_menu
+	CMP.w !f_menus
+	BEQ +
+	STA.w !f_menus
+	LDA.w #1
+	STA.w !f_steps
++	STZ.w !cam_tdx
+	STZ.w !cam_tdy
+-	JSR fight_frame
 	REP #$30
+	DEC.w !f_steps
+	BNE -
 	INC.w !cam_age
 	JSR globe_frame
 	JSR stars_frame
@@ -640,8 +745,9 @@ orbit_nmi_cells:
 	SEP #$20
 	RTS
 
-; Carry set when the scanline is past 255 or not in vblank (a 512-byte
-; cell takes about three lines; vblank ends after line 261). M16.
+; Carry set when the scanline is past 247 or not in vblank (a 512-byte
+; cell takes about three lines; the field NMI's own work follows ours and
+; must end inside vblank, after line 261). M16.
 orbit_nmi_time:
 	SEP #$20
 	LDA.w $213F
@@ -654,7 +760,7 @@ orbit_nmi_time:
 	REP #$20
 	CMP.w #225
 	BCC .late
-	CMP.w #256
+	CMP.w #248
 	BCS .late
 	CLC
 	RTS
