@@ -302,6 +302,9 @@ assert !FZX_END <= !FZ+$C0, "frieza WRAM overflow (beast)"
 !fzp_beast      = !FZPB+$07   ; byte: !FZX_* (Beast challenge)
 !fzp_flyby      = !FZPB+$08   ; word: flyby age ($FFFF = none)
 ; $0A-$3F free (Frieza); $40-$7F reserved for the orbit stream (frieza.md)
+if defined("FRIEZA_TEST")
+!fzp_test       = !FZPB+$20   ; test builds: the floor-provider mailbox on any map (frame.asm)
+endif
 !FZPB_ORBIT      = !FZPB+$40
 
 !FZFL_EMPEROR    = $0001     ; emperorKilled
@@ -518,7 +521,13 @@ if not(defined("STORY_TEST"))
 !STORY_QUERY_BEAST_WON              = frieza_q_beast_won
 endif
 
-; Local flight: the broken deck has no floor (frieza.js floorHole).
+; Local flight: the broken deck has no floor (frieza.js floorHole). A
+; provider bound before Frieza's (destroy's Sandship breach, flight's test
+; hole) answers wherever the deck has no hole (lab.js missingFloor: Frieza's
+; or the Sandship's): chained as destroy chains it.
+if defined("FLIGHT_MISSING_FLOOR")
+	!FRIEZA_NEXT_FLOOR := !FLIGHT_MISSING_FLOOR   ; expanded now (= would follow the redefinition)
+endif
 !FLIGHT_MISSING_FLOOR = frieza_floor_hole
 
 ; Debug scene select: restore Frieza / Beast state for the presets.
@@ -594,6 +603,7 @@ incsrc "emperor.asm"
 incsrc "collapse.asm"
 incsrc "vista.asm"
 incsrc "follower.asm"
+incsrc "world.asm"
 frieza_code_end:
 assert frieza_code_end <= !CODE_FRIEZA+$7000, "frieza code bank overflow"
 pullpc

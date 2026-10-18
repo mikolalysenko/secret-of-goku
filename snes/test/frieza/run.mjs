@@ -250,6 +250,87 @@ end
 `;
 }
 
+// The fed Beast (preset beast: map 253, fed and started, Super Saiyan as
+// the snapshot's options) through combat's receive list: 600 frames
+// untouched as the browser ran them (the eruption's 210 lands whole and
+// starts the grace; Goku's HP at 600 as the reference's), then damage
+// queued at the native consumer (beast-challenge.js, the C0:4053
+// intercept): 600 takes the cap (110 Super Saiyan, 140 base) and starts the
+// 75-frame grace, nothing lands during it, 50 lands whole, and the
+// eruption's pending damage lands whole. The grace counts only frames in
+// which Goku can act and the Beast is a target (canAttack, beast()), so the
+// checks after the first end it by hand instead of waiting on the Beast.
+function beastTest(){
+  const g=reference('beast');
+  const writes=friezaWrites(g.frieza,g.challenge);
+  const v=n=>'0x'+(n<0x10000?(0x7E0000|n):n).toString(16);
+  const cbForm='0x'+(0x7E0000|moduleDefine('combat','cb_form')).toString(16);
+  const gokuForm='0x'+(0x7E0000|moduleDefine('goku','goku_form')).toString(16);
+  const ssj=g.options?.superSaiyan?1:0;
+  return `
+function test()
+  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__beast'))})
+  F.check(ok, 'import')
+  H.w8(0x316001, 1)
+  H.w8(${cbForm}, ${ssj})
+  H.w8(${gokuForm}, ${ssj})
+  F.apply(${luaWrites(writes)})
+  local hp = H.r16(0x7EE182)
+  local drops = {}
+  for f = 1, 600 do
+    H.wait(1)
+    local h = H.r16(0x7EE182)
+    if h ~= hp then drops[#drops + 1] = f .. ':' .. (hp - h) hp = h end
+  end
+  H.result('drops', drops)
+  H.result('hp600', hp)
+  F.check(H.r8(${v(defs.fzx_grace)}) == 0, 'the eruption\\'s grace ran out by 600')
+  -- no eruption from here on (its clock far off)
+  H.w8(${v(defs.fzx_bon)}, 0)
+  H.w16(${v(defs.fzx_clock)}, 3000)
+  local function queue(d)
+    local h0 = H.r16(0x7EE182)
+    H.w8(0x7EE1EC, 0)
+    H.w16(0x7EE1F1, d)
+    F.check(H.waitFor(function() return H.r16(0x7EE1F1) == 0 end, 30), 'the native consumer took the queue')
+    H.wait(1)
+    return h0 - H.r16(0x7EE182)
+  end
+  local function endGrace() H.w8(${v(defs.fzx_grace)}, 0) H.wait(1) end
+  local a = queue(600)
+  H.result('cap1', a)
+  F.check(a == ${ssj?110:140}, 'a queued 600 takes the cap ${ssj?110:140}, took ' .. a)
+  F.check(H.r8(${v(defs.fzx_grace)}) >= 70, 'the hit started the grace')
+  local b = queue(600)
+  H.result('inGrace', b)
+  F.check(b == 0, 'nothing lands during the grace, took ' .. b)
+  endGrace()
+  -- the other form (the permanent gold form keeps Super Saiyan, as
+  -- mana-mod.js configure(): lift it first)
+  H.w16(${v(defs.fzp_flags)}, H.r16(${v(defs.fzp_flags)}) & ${0xFFFF^defs.FZFL_PERMANENT})
+  H.w8(${cbForm}, ${1-ssj})
+  H.w8(${gokuForm}, ${1-ssj})
+  H.wait(2)
+  F.check(H.r8(${gokuForm}) == ${1-ssj}, 'the form changed')
+  local c = queue(600)
+  H.result('cap2', c)
+  F.check(c == ${ssj?140:110}, 'in the other form a queued 600 takes ${ssj?140:110}, took ' .. c)
+  endGrace()
+  local d = queue(50)
+  H.result('under', d)
+  F.check(d == 50, 'under the cap the damage lands whole, took ' .. d)
+  endGrace()
+  H.w16(${v(defs.fzx_pending)}, 300)
+  local e = queue(300)
+  H.result('pending', e)
+  F.check(e == 300, 'the eruption\\'s pending damage lands whole, took ' .. e)
+  F.check(H.r16(${v(defs.fzx_pending)}) == 0, 'the pending damage is spent')
+  H.result('hits', H.r8(${v(defs.fzx_hits)}))
+  F.done()
+end
+`;
+}
+
 // The ground stand-in for the last phase (no orbit stream in the build):
 // at tier 2 Frieza has no HP floor; his fall plays Mantis Ant's beat
 // (flashes, bursts, whiteout, fanfare, chime) and then the victory event
@@ -354,6 +435,82 @@ end
 `;
   return {lua,want};
 }
+// The floor-hole providers chained behind flight's !FLIGHT_MISSING_FLOOR
+// (lab.js missingFloor: Frieza's deck or the Sandship's breach), queried
+// through the FRIEZA_TEST mailbox: on the Sandship (preset sandship, map
+// 67) with destroy's wreck breach planted at Goku, the breach's centre is a
+// hole (destroy's provider, reached through Frieza's) and a point 120 px off
+// is floor; on the deck (preset battle) after seven fractures, a broken
+// cell is a hole at the deck's layer (Frieza's) and floor at the other
+// layer, an unbroken cell is floor. Needs flight in the build (destroy and
+// the mailbox bind to its query fields).
+async function floorTest(){
+  const arena=await import(join(repo,'engine/frieza-arena.js'));
+  const g=reference('battle');
+  const writes=friezaWrites(g.frieza,g.challenge);
+  const v=n=>'0x'+(n<0x10000?(0x7E0000|n):n).toString(16);
+  const shots=[[280,400,34],[263,377,20],[301,413,28],[220,444,26],[340,376,19],[350,420,32],[200,360,29]];
+  const a=arena.newFriezaArena();
+  for(const [x,y,r] of shots)arena.fractureFortress(a,x,y,r,()=>true);
+  const holes=arena.arenaHoles(a),hole=[...holes].sort((p,q)=>p-q)[Math.floor(holes.size/2)];
+  let solid=0;for(let c=2*256+2;holes.has(c);c++)solid=c+1;solid=solid||2*256+2;
+  const layer=(g.frieza.boss.terrain&128)?1:0;
+  const ss=n=>'0x'+moduleDefine('destroy',n).toString(16);
+  const wreck=moduleDefine('destroy','SSF_WRECK');
+  const q=`
+  local function floor(x, y, l)
+    H.w16(${v(defs.fzp_test)}+2, x)
+    H.w16(${v(defs.fzp_test)}+4, y)
+    H.w16(${v(defs.fzp_test)}+6, l)
+    H.w16(${v(defs.fzp_test)}, 1)
+    F.check(H.waitFor(function() return H.r16(${v(defs.fzp_test)}) == 0 end, 30), 'floor query taken')
+    return H.r16(${v(defs.fzp_test)}+8)
+  end`;
+  return `
+function test()
+  ${q}
+  -- the deck: seven fractures, then a broken and an unbroken cell
+  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__battle'))})
+  F.check(ok, 'import battle')
+  H.w8(0x316001, 1)
+  F.apply(${luaWrites(writes)})
+  ${holdMusic('battle')}
+  H.wait(2)
+  for _, s in ipairs({${shots.map(([x,y,r])=>`{${x},${y},${r}}`).join(',')}}) do
+    H.w16(${v(defs.fzs_test)}+2, s[1])
+    H.w16(${v(defs.fzs_test)}+8, s[2])
+    H.w16(${v(defs.fzs_test)}+10, s[3])
+    H.w16(${v(defs.fzs_test)}, 3)
+    F.check(H.waitFor(function() return H.r16(${v(defs.fzs_test)}) == 0 end, 30), 'fracture command taken')
+  end
+  H.wait(2)
+  local hx, hy = ${(hole&255)*16+8}, ${(hole>>8)*16+8}
+  local d1, d2, d3 = floor(hx, hy, ${layer}), floor(hx, hy, ${1-layer}), floor(${(solid&255)*16+8}, ${(solid>>8)*16+8}, ${layer})
+  H.result('deck', {x = hx, y = hy, hole = d1, otherLayer = d2, solid = d3})
+  F.check(d1 == 1, 'a broken cell of the deck is a hole (Frieza), got ' .. d1)
+  F.check(d2 == 0, 'the same cell on the other layer is floor, got ' .. d2)
+  F.check(d3 == 0, 'an unbroken cell is floor, got ' .. d3)
+  -- the Sandship: destroy's breach at Goku (s.wreck, the breach's map and centre)
+  ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__sandship'))})
+  F.check(ok, 'import sandship')
+  H.w8(0x316001, 1)
+  H.wait(4)
+  local map, bx, by = H.r16(0x7E00DC), H.r16(0x7EE002), H.r16(0x7EE004)
+  local flags = H.r16(${ss('ss_flags')})
+  H.w16(${ss('ss_bmap')}, map)
+  H.w16(${ss('ss_bx')}, bx)
+  H.w16(${ss('ss_by')}, by)
+  H.w16(${ss('ss_flags')}, flags | ${wreck})
+  local s1, s2 = floor(bx, by, 0), floor(bx + 120, by, 0)
+  H.w16(${ss('ss_flags')}, flags)
+  H.result('ship', {map = map, x = bx, y = by, centre = s1, off = s2})
+  F.check(s1 == 1, 'the breach centre is a hole (destroy, through Frieza), got ' .. s1)
+  F.check(s2 == 0, '120 px off the breach is floor, got ' .. s2)
+  F.done()
+end
+`;
+}
+
 // frieza_hole_tiles from the generated data (16 tiles, 512 bytes).
 function holeTiles(){
   const asm=readFileSync(join(repo,'dist/snes/gen/frieza/data.asm'),'utf8').split('\n');
@@ -502,15 +659,80 @@ end
 `;
 }
 
+// The Death Ball flyby (frieza.js tick(), world flight): from the Fortress
+// deck with the deck's Death Ball thrown (stage theft, deckBall), event D8
+// (the escape) arms it and runs 1F04, the native flyby over the sinking
+// continent ($8C set in world flight). The flyby starts with $8C, its age
+// counts every world frame; the impact (age 404) makes the Death Ball's
+// crisis; once 1F04 has ended (age >= 560, $8C clear) Goku holds the eighth
+// Ball and Frieza heads for the Tree (tree pursuit); in the overhead view
+// the module asks the native camera for the rear view ($F8 = $90, $CC bit
+// 4), then Kai's warning goes out (the crisis notified).
+function flybyTest(){
+  const g=reference('fortress');
+  const writes=friezaWrites({...g.frieza,stage:'theft',deckBall:true,flyby:null,crisis:null,eighth:false,tree:null,scene:null,boss:null},g.challenge);
+  const ram=storyRequestBlock(romSrc);
+  const v=n=>'0x'+(n<0x10000?(0x7E0000|n):n).toString(16);
+  return `
+function test()
+  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__fortress'))})
+  F.check(ok, 'import')
+  H.w8(0x316001, 1)
+  F.apply(${luaWrites(writes)})
+  H.wait(4)
+  H.w16(${ram+8}, 0x00D8)
+  H.w16(${ram+10}, 0)
+  H.w8(${ram+6}, 1)
+  local function flags() return H.r16(${v(defs.fzp_flags)}) end
+  local function crisis() return H.r8(${v(defs.fzp_crisis)}) end
+  local ev = {}
+  local function mark(k, v) if ev[k] == nil then ev[k] = v end end
+  for i = 1, 2400 do
+    if i % 24 == 0 then H.hold('b', 2) else H.wait(1) end
+    local fl, age, c8 = flags(), H.r16(${v(defs.fzp_flyby)}), H.r8(0x7E008C)
+    if (fl & ${defs.FZFL_FLYBY}) ~= 0 then mark('armed', i) end
+    if (fl & ${defs.FZFL_FLYBY_GO}) ~= 0 then mark('started', i) end
+    if ev.started and age == 404 then mark('impactCrisis', crisis()) end
+    if ev.started and age == 403 then mark('beforeImpact', crisis()) end
+    if ev.started and (fl & ${defs.FZFL_FLYBY}) == 0 then
+      mark('done', i)
+      mark('doneFlags', fl)
+      mark('doneTree', H.r8(${v(defs.fzp_tree)}))
+      mark('doneAge', age)
+    end
+    if ev.started and c8 == 0 then mark('end1F04', i) end
+    if (crisis() & ${defs.FZC_REAR}) ~= 0 then mark('rear', i) mark('rearF8', H.r8(0x7E00F8)) end
+    if (crisis() & ${defs.FZC_NOTIFIED}) ~= 0 then mark('notified', i) H.shot('notified') break end
+  end
+  for k, v in pairs(ev) do H.result(k, v) end
+  H.result('crisis', crisis())
+  F.check(ev.armed ~= nil, 'D8 armed the flyby')
+  F.check(ev.started ~= nil, 'the flyby started with 1F04')
+  F.check(ev.beforeImpact == 0, 'no crisis before the impact, got ' .. tostring(ev.beforeImpact))
+  F.check(ev.impactCrisis == ${defs.FZC_ON|defs.FZC_ACTIVE|defs.FZC_DEATHBALL}, 'the impact makes the Death Ball crisis, got ' .. tostring(ev.impactCrisis))
+  F.check(ev.done ~= nil and ev.end1F04 ~= nil and ev.done >= ev.end1F04, 'the flyby ends after 1F04')
+  F.check(ev.doneFlags ~= nil and (ev.doneFlags & ${defs.FZFL_EIGHTH}) ~= 0 and (ev.doneFlags & ${defs.FZFL_FLYBY_GO}) == 0, 'eighth set, flyby cleared')
+  F.check(ev.doneTree == ${defs.FZTR_PURSUIT}, 'tree pursuit, got ' .. tostring(ev.doneTree))
+  F.check(ev.doneAge == 0xFFFF, 'no flyby age left')
+  F.check(ev.rear ~= nil and ev.rearF8 == 0x90, 'the rear view requested ($F8 = $90)')
+  F.check(ev.notified ~= nil and ev.notified > ev.rear, 'Kai\\'s warning after the rear view')
+  F.done()
+end
+`;
+}
+
 // Core's scene-scoped VRAM pool: Frieza draws only while !VRAM_SCENE_OBJ
 // is free or his (owner !FZ_VRAM_OWNER), claims it on the frames he is
 // drawn and gives it back when his scene ends.
-function coreDefine(name){
-  const dir=join(repo,'snes/src/core'),src=readdirSync(dir).filter(f=>f.endsWith('.asm')).map(f=>readFileSync(join(dir,f),'utf8')).join('\n');
-  const val=n=>{const m=src.match(new RegExp(`^!${n}\\s*=\\s*([^;\\n]+)`,'m'));if(!m)throw Error(`frieza: core define ${n} missing`);
+function asmDefine(dirs,name){
+  const src=[dirs].flat().map(dir=>readdirSync(dir).filter(f=>f.endsWith('.asm')).map(f=>readFileSync(join(dir,f),'utf8')).join('\n')).join('\n');
+  const val=n=>{const m=src.match(new RegExp(`^!${n}\\s*=\\s*([^;\\n]+)`,'m'));if(!m)throw Error(`frieza: define ${n} missing in ${dirs}`);
     return Function(`return (${m[1].trim().replace(/!(\w+)/g,(_,k)=>val(k)).replace(/\$([0-9A-Fa-f]+)/g,'0x$1')})`)();};
   return val(name);
 }
+const coreDefine=name=>asmDefine(join(repo,'snes/src/core'),name);
+// a module's define (its own sources, then core's for the blocks it builds on)
+const moduleDefine=(module,name)=>asmDefine([join(repo,'snes/src/modules',module),join(repo,'snes/src/core')],name);
 function vramTest(){
   const g=reference('frieza');
   const writes=friezaWrites(g.frieza,g.challenge);
@@ -589,6 +811,33 @@ end
 `;
 }
 
+// World flight with nothing of Frieza's to do there (preset flight: the
+// flyby long over, the crisis notified): frieza_world_frame's idle cost.
+function worldCostTest(rom,frames=300){
+  const g=reference('flight');
+  const writes=friezaWrites(g.frieza,g.challenge);
+  const wJ=jslSite(rom,'modules_world_frame','frieza_world_frame');
+  const cb=(at,body)=>`emu.addMemoryCallback(function() ${body} end, emu.callbackType.exec, ${at}, ${at}, emu.cpuType.snes, emu.memType.snesMemory)`;
+  return `
+function test()
+  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__flight'))})
+  F.check(ok, 'import')
+  H.w8(0x316001, 1)
+  F.apply(${luaWrites(writes)})
+  H.wait(30)
+  local ws, w0 = {}, nil
+  local function clock() return emu.getState()['masterClock'] end
+  ${cb(wJ,'w0 = clock()')}
+  ${cb(wJ+4,'if w0 then ws[#ws + 1] = clock() - w0 w0 = nil end')}
+  H.wait(${frames})
+  local sum, mx = 0, 0
+  for _, v in ipairs(ws) do sum = sum + v; if v > mx then mx = v end end
+  H.result('world', {n = #ws, avg = (#ws > 0) and (sum / #ws / 1364) or 0, max = mx / 1364})
+  F.done()
+end
+`;
+}
+
 const cases={
   court:{preset:'frieza',frames:[60,240,600]},
   thanatos:{preset:'thanatos',frames:[60,240]},
@@ -627,6 +876,24 @@ if(want('fracture')){
   console.log(`frieza fracture: ${ok?'pass':'FAIL'} (${r.ms} ms) ${got.length} cells (browser ${cellsWant.length})`);
   if(!ok)for(const f of failures)console.log('    !',f);
 }
+if(want('floor')){
+  buildTestRom();
+  const sym=readFileSync(testRom.replace(/\.sfc$/,'.sym'),'utf8');
+  if(!/ destroy_ss_floor_hole\n/.test(sym))console.log('frieza floor: skipped (no flight and destroy floor providers in this build)');
+  else{
+    const lua=await floorTest();
+    const rom=privateRom(testRom,'frieza-floor');
+    const r=await runMesen({rom,test:lib+'\n'+lua,outDir:join(outRoot,'floor'),state:join(cps,'waterfall.mss')});
+    cleanupRom(rom);
+    const res=r.results??{};
+    const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
+    const ok=r.code===0&&res.pass===true&&failures.length===0;
+    results.push({name:'floor',ok,failures});
+    const s=res.ship??{},d=res.deck??{};
+    console.log(`frieza floor: ${ok?'pass':'FAIL'} (${r.ms} ms) Sandship map ${s.map} breach (${s.x},${s.y}) ${s.centre}, off ${s.off}; deck cell (${d.x},${d.y}) ${d.hole}, other layer ${d.otherLayer}, unbroken ${d.solid}`);
+    if(!ok)for(const f of failures)console.log('    !',f);
+  }
+}
 if(want('victory')){
   buildTestRom();
   const rom=privateRom(testRom,'frieza-victory');
@@ -649,6 +916,29 @@ if(want('death')){
   results.push({name:'death',ok,failures});
   console.log(`frieza death: ${ok?'pass':'FAIL'} (${r.ms} ms) died at frame ${res.diedAt}, brightness ${res.brightness}, bank after Start ${res.bankAfterStart}`);
   if(!ok)for(const f of failures)console.log('    !',f);
+}
+if(want('beast')){
+  // needs combat's receive list calling frieza_combat_receive
+  const sym=readFileSync(romSrc.replace(/\.sfc$/,'.sym'),'utf8');
+  if(!/ modules_combat_receive\n/.test(sym))console.log('frieza beast: skipped (no modules_combat_receive in this build)');
+  else{
+    const failures=[];
+    try{jslSite(romSrc,'modules_combat_receive','frieza_combat_receive');}catch{failures.push('modules_combat_receive does not call frieza_combat_receive');}
+    const rom=privateRom(romSrc,'frieza-beast');
+    const r=await runMesen({rom,test:lib+'\n'+beastTest(),outDir:join(outRoot,'beast'),state:join(cps,'waterfall.mss')});
+    cleanupRom(rom);
+    const res=r.results??{};
+    failures.push(...(res.failures??[]),...(res.error?[res.error]:[]));
+    const info=JSON.parse(readFileSync(join(refRoot,'beast','info.json'),'utf8'));
+    const want600=info.info?.status?.hp;
+    if(res.hp600!==want600)failures.push(`Goku HP at 600: ${res.hp600}, browser ${want600}`);
+    const first=(res.drops??[])[0];
+    if(!first||Number(first.split(':')[1])!==210)failures.push(`the first hit should be the eruption's 210 (whole), got ${first}`);
+    const ok=r.code===0&&res.pass===true&&failures.length===0;
+    results.push({name:'beast',ok,failures});
+    console.log(`frieza beast: ${ok?'pass':'FAIL'} (${r.ms} ms) hits ${(res.drops??[]).join(' ')}, HP at 600 ${res.hp600} (browser ${want600}); queued 600 -> ${res.cap1}, in the grace -> ${res.inGrace}, other form -> ${res.cap2}, 50 -> ${res.under}, pending 300 -> ${res.pending}`);
+    if(!ok)for(const f of failures)console.log('    !',f);
+  }
 }
 if(want('music')){
   const rom=privateRom(romSrc,'frieza-music');
@@ -676,6 +966,19 @@ if(want('cost')){
   results.push({name:'cost',ok,failures});
   console.log(`frieza cost: ${ok?'pass':'FAIL'} (${r.ms} ms) frame ${fr.avg?.toFixed(3)} lines (max ${fr.max?.toFixed(2)}), vblank ${nm.avg?.toFixed(3)} lines, ${fr.n} frames`);
   if(!ok)for(const f of failures)console.log('    !',f);
+  // world flight: the idle check
+  const rw=privateRom(romSrc,'frieza-cost-world');
+  const w=await runMesen({rom:rw,test:lib+'\n'+worldCostTest(romSrc),outDir:join(outRoot,'cost-world'),state:join(cps,'waterfall.mss')});
+  cleanupRom(rw);
+  const wres=w.results??{},wf=wres.world??{};
+  const wfail=[...(wres.failures??[]),...(wres.error?[wres.error]:[])];
+  if(!(wf.n>=200))wfail.push(`only ${wf.n} world frames measured`);
+  if(!(wf.avg<=0.25))wfail.push(`idle world frame ${wf.avg?.toFixed(3)} lines on average (budget 0.25)`);
+  if(!(wf.max<=0.5))wfail.push(`idle world frame peaks at ${wf.max?.toFixed(2)} lines (budget 0.5)`);
+  const wok=w.code===0&&wres.pass===true&&wfail.length===0;
+  results.push({name:'cost-world',ok:wok,failures:wfail});
+  console.log(`frieza cost-world: ${wok?'pass':'FAIL'} (${w.ms} ms) world frame ${wf.avg?.toFixed(3)} lines (max ${wf.max?.toFixed(2)}), ${wf.n} frames`);
+  if(!wok)for(const f of wfail)console.log('    !',f);
 }
 if(want('vram')){
   const rom=privateRom(romSrc,'frieza-vram');
@@ -704,6 +1007,17 @@ if(want('door')){
     console.log(`frieza ${name}: ${ok?'pass':'FAIL'} (${r.ms} ms) map ${res.map} at (${res.x},${res.y}) tile y ${got}`);
     if(!ok)for(const f of failures)console.log('    !',f);
   }
+}
+if(want('flyby')){
+  const rom=privateRom(romSrc,'frieza-flyby');
+  const r=await runMesen({rom,test:lib+'\n'+flybyTest(),outDir:join(outRoot,'flyby'),state:join(cps,'waterfall.mss')});
+  cleanupRom(rom);
+  const res=r.results??{};
+  const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
+  const ok=r.code===0&&res.pass===true&&failures.length===0;
+  results.push({name:'flyby',ok,failures});
+  console.log(`frieza flyby: ${ok?'pass':'FAIL'} (${r.ms} ms) armed @${res.armed}, started @${res.started}, impact crisis $${(res.impactCrisis??0).toString(16)}, 1F04 ended @${res.end1F04}, done @${res.done} (tree ${res.doneTree}), rear @${res.rear}, notified @${res.notified}`);
+  if(!ok)for(const f of failures)console.log('    !',f);
 }
 if(want('tree')){
   const rom=privateRom(romSrc,'frieza-tree');
