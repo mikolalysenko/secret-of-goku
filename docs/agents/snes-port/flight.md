@@ -182,11 +182,11 @@ is a branch target of traced original code (`snes/test/flight/branchcheck.mjs`).
 | Address | Bytes | Replaced | Purpose |
 | --- | --- | --- | --- |
 | `C0:D359` | 7 | `LDA $E048,X / STA $00 / AND #$F0` | Airborne hero skips stair/current guidance (→ `D38E`) |
-| `C0:D651` | 4 | `SEP #$20 / LDA $1F` | Flight velocity, travel limit, sweep; camera follow steps (→ `D6AC` / `D65C`) |
+| `C0:D651` | 4 | `SEP #$20 / LDA $1F` | Flight velocity, travel limit, sweep; camera follow steps (→ `D6AC` / `D65C`); a standing leader runs the dispatcher for a scene's camera target (→ `D6AC`) |
 | `C0:D778` | 4 | `SEP #$20 / LDA $11` | Airborne steps over low obstacles skip `C1:B93E` (→ `D7F3`) |
 | `C0:D9AE` | 5 | `SEP #$20 / LDA $E000,X` | Horizontal leader tether bypass (→ `D9E2`) |
 | `C0:DA34` | 5 | `SEP #$20 / LDA $E000,X` | Vertical leader tether bypass (→ `DA68`) |
-| `C0:DA6E` | 4 | `SEP #$30 / LDA $FF` | Camera deltas: companions while the camera follows, every step in the Beast arena |
+| `C0:DA6E` | 4 | `SEP #$30 / LDA $FF` | Camera deltas: companions while the camera follows, every step in the Beast arena; a scene's camera target (one pixel per axis per video frame, `$1B` = Goku's terrain) |
 | `C0:B683` | 5 | `REP #$20 / LDA #$0000` | Floor event dispatch: a whip pad (6D8) is dropped while Goku flies (→ `B678`) |
 | `C1:F1F1` | 4 | `LDY #$02 / REP #$20` | Conditionals 49-4E: at 6D8/6FA's whip check, END or JUMP 6F9 for Goku (→ `E9C4` / `EAF0`) |
 | `C0:D849` | 5 | `STA $08 / TAY / LDA [$0A],Y` | Destination metatile sample: an opening exit's marker for an airborne exit move |
@@ -216,13 +216,29 @@ world flight).
 
 ## API for other modules
 
+Services (`api.asm`; the defines are set in `module.asm`, so modules
+included after flight test them with `defined()`):
+
+| Service | Call | Result |
+| --- | --- | --- |
+| `!FLIGHT_API_CAN_LAND` | JSL, M16/X16, any DB and D. A16 = x, X16 = y (map pixels, centre of the 12x8 footprint), at Goku's layer and terrain (`E00B`) | C = `mod.localFlightHook.canLand(x, y)`: no hole from `!FLIGHT_MISSING_FLOOR` under the footprint and every sample tile is floor at that terrain. A, X, Y, DB, D kept |
+| `!FLIGHT_API_CAN_LAND_T` | the same with Y16 = a terrain byte (bit 7 layer 1, bits 0-1 terrain), as `frieza.js` passes the terrain it recorded when the fight began | as above |
+| `!FLIGHT_API_CAMERA` | JSL, M16/X16, any DB. A16 = camera x, X16 = camera y (the tile-stream origin `$A8/$AA`). Post it every field frame the scene holds the camera | During the next frame's movement the dispatcher (`C0:D651`/`DA6E`) moves the camera one pixel per axis per video frame toward it, also while Goku stands, and other actors' steps give it no deltas (`frieza-intro.js installAltarCamera`: rows stream as for a walk, NPCs stay in the room). A frame without a post ends it; the camera stays where it got to. It takes precedence over a teleport's follow. A, X, Y, DB kept |
+
+The canLand services work outside flight's frames too (they load the map's
+context and re-check the hero grid's tiles); a call costs about 150-450
+instructions, more for tiles the tile cache has not seen, so a wide search
+(`frieza.js` `returnToFortress`, 33x33 points) has to be spread over frames.
+Not callable from inside a `!FLIGHT_MISSING_FLOOR` provider (it shares
+flight's query fields).
+
 WRAM fields (bank `$7E`, absolute with DB = `$7E`):
 
 | Field | Address | Meaning |
 | --- | --- | --- |
 | `!fl_state` | `$D900` byte | bit0 localFlight, bit1 Goku in play on the field, bit2 canAttack, bit4 charging |
 | `!fl_lift` | `$D901` byte | `mod.localLift` (0-12), also written to `!goku_lift` |
-| `!fl_hook` | `$D932` word | bit 2 (`$04`): the camera follows a teleport/recovery (the browser's `teleport.pending`: the pad is masked and only the running action advances) |
+| `!fl_hook` | `$D932` word | bit 2 (`$04`): the camera follows a teleport/recovery (the browser's `teleport.pending`: the pad is masked and only the running action advances); bit 4 (`$10`): a scene's camera target is posted |
 | `!fl_passengers` | `$D96C` word | CPU companions Goku carries this frame (bit 0 `$E200`, bit 1 `$E400`): `sprite-layer.js` hides their body, attachment and shadow cells |
 | `!fl_gap` | `$D970` word | a native whip crossing runs (map + 1), 0 none (`gapFlight.active`) |
 | `!fl_events` | `$D974` word | one-frame events: `$01` takeoff (flight cue), `$02` landing cue, `$04` hovering with control (power-intro first-hover banter), `$08` crossing landed (onCross), `$10` teleport started, `$20` Goku reappears (age 6) |
@@ -245,9 +261,16 @@ the foreign action through `cb_ext_kind` and starts nothing meanwhile
 
 Custom teleport target (`!fl_tp_custom`, SRAM `$33:7B68`, 8 bytes): a scene
 module that owns a foe outside the actor table writes it every field frame
-(flight clears it after each frame): `+0` kind (2 Frieza = slot 12, 3 Vegeta
-= slot 3), `+1` species (121 / 46), `+2` x, `+4` y (Frieza: `y + 12` as
-`frieza.js` `entity()`), `+6` terrain byte, `+7` airborne (Frieza).
+(flight clears it at the end of its own frame, so a post made later in the
+field frame is read in the next one): `+0` kind (2 Frieza = slot 12, 3
+Vegeta = slot 3), `+1` species (121 / 46), `+2` x, `+4` y (Frieza: `y + 12`
+as `frieza.js` `entity()`), `+6` terrain byte, `+7` airborne (Frieza). The
+vegeta module posts Vegeta (`vb_flight_target`); Frieza can post himself
+the same way until combat's virtual-target API exists, which Instant
+Transmission will then list too. As in the browser
+(`mana-mod.js startTeleport`), a target is picked only when `findLanding`
+finds a spot beside it, and the arrival lands only if the same live target
+is still posted.
 
 Story hooks/queries defined in `module.asm`: `!STORY_HOOK_FLIGHT_LAND`,
 `!STORY_HOOK_QUEST_WISH_CEILING`, `!STORY_QUERY_LOCAL_FLIGHT` (`story.asm`),
@@ -279,7 +302,7 @@ without a tile change) and walking stops before them (`supported()` at
 
 ## Tests
 
-`node snes/test/flight/run.mjs [classify|landing|water|teleport|whip|ceiling|holes]`
+`node snes/test/flight/run.mjs [classify|landing|water|teleport|whip|ceiling|scene|vegeta|holes]`
 (also via `run-all.mjs`):
 
 - `classify`: for 26 imported scenes (towns, woodland, Gaia's Navel caves,
@@ -312,6 +335,28 @@ without a tile change) and walking stops before them (`supported()` at
   rounded step: about 200,000 sweeps, all equal. (This check found a hero
   grid bug, now fixed: a sweep whose union spanned three tile columns or
   rows inside the grid got an empty cell mask and passed through walls.)
+  Last, the canLand services: points off the tile centres on both layers
+  at every terrain (one in five at Goku's own terrain byte), called through
+  `!FLIGHT_API_CAN_LAND`/`_T` with DB = `$00` and D = `$0123` (command 8),
+  against `canLand(x, y, layer, terrain)`: all equal (2,206 calls in the
+  Time Chamber alone), X, Y, DB and D handed back every time.
+- `scene` (`FLIGHT_TEST` cartridge; `testmod.asm` posts after flight's
+  frame, as a scene module later in the field frame does): a custom target
+  posted as Vegeta (kind 3) is picked by L+B and Goku lands exactly where
+  `findLanding` (command 4) says, facing it; a post that stops right after
+  the press leaves him where he was (the arrival finds no target, as
+  `finishTeleport`); Frieza (kind 2, airborne) is reached at slot 12. A
+  camera target moves the origin exactly one pixel a frame (30 frames up,
+  then 12 across and 8 down together), holds it, Goku stays put, and walking
+  moves the camera natively again once the posts stop.
+- `vegeta` (builds with the vegeta module, e.g. the coordinator's
+  integration branch): the Time Chamber trial entered as vegeta's own tests
+  do; with Vegeta posted and Goku free, L+B is pressed and the press is
+  compared with the browser's `findLanding` on the WRAM dumped at that
+  frame. Both engines find no spot around the arena (`canLand` and `canFly`
+  are false over the chamber's floor tiles where the fight stands), so L+B
+  does nothing there; a landing would have been checked against Vegeta's
+  position at the arrival.
 - `water`: the browser spec's Water Palace gap on the same fixture and warp:
   rises over the gap, hovers in place for 45 frames after release, crosses
   and lands on the far platform, flies back and lands.
@@ -424,11 +469,16 @@ in WRAM or direct page (shorter addressing), a larger tile cache.
 ## Remaining
 
 - Sandship runtime (wreck, crash, flying out past the hull, floor holes,
-  gear; story.md lists it under destroy) is still unowned: its
-  `sandship.takeoff()` plugs into flight's L+R through `!SANDSHIP_TAKEOFF`
-  (JSL, carry set = handled) and its floor holes through
-  `!FLIGHT_MISSING_FLOOR`. The flight-door path itself is a direct port;
-  the hatch scenario takes the native door first in both engines.
+  gear): destroy's Sandship work on the coordinator's integration branch
+  plugs `sandship.takeoff()` into flight's L+R through `!SANDSHIP_TAKEOFF`
+  (JSL, carry set = handled) and its floor holes through a chained
+  `!FLIGHT_MISSING_FLOOR` (it calls the provider defined before it). The
+  frieza module, included after destroy there, redefines
+  `!FLIGHT_MISSING_FLOOR` without chaining, which drops destroy's Sandship
+  holes (and the `FLIGHT_TEST_HOLES` provider, so `holes` fails on that
+  branch); frieza should call the previous provider as destroy does. The
+  flight-door path itself is a direct port; the hatch scenario takes the
+  native door first in both engines.
 - Passengers: hiding the companions listed in `!fl_passengers` needs the
   sprite owner (goku's per-actor passes); `sprite-layer.js` also hides the
   whip attachment during a crossing (goku draws no weapon cells for Goku
@@ -442,8 +492,12 @@ in WRAM or direct page (shorter addressing), a larger tile cache.
 - Instant Transmission: `mod.facing` comes from `E010` (the browser also
   turns it on the press frame's new direction, which combat's aim tracks);
   the action advances once per logic frame (the browser: per video frame,
-  so a lagging scene stretches it); the Frieza/Vegeta custom targets wait for
-  their scene modules to post `!fl_tp_custom`.
+  so a lagging scene stretches it). The vegeta module posts Vegeta, but in
+  the Time Chamber no spot around the arena passes `findLanding` in either
+  engine (its floor tiles are not floor flight accepts), so L+B does nothing
+  there; if the trial is meant to allow it, the chamber needs tiles
+  `canLand` accepts (or a landing rule of its own in both engines). Frieza
+  can post kind 2 until combat's virtual-target API exists.
 - Combat should mirror the browser's `teleport.pending` branch while
   `!fl_hook` bit 2 is set (no new attacks, the current action only advances);
   during a teleport it already waits through `cb_ext_kind`.

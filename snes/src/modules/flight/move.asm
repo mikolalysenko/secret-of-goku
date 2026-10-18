@@ -164,12 +164,17 @@ fl_clamp15:
 
 ; 00:DA6E (replaced SEP #$30 / LDA $FF): the camera dispatcher. While the
 ; camera follows, companions' steps do not move it; in the Mana Beast's
-; Mode 7 arena no step does (its art is not an ordinary tile map).
+; Mode 7 arena no step does (its art is not an ordinary tile map). A
+; scene's camera target replaces every step's deltas: the leader's first
+; call in a video frame moves one pixel per axis toward it, every other
+; call none, with Goku's terrain for the dispatcher.
 fl_hook_da6e:
 	REP #$20
 	LDA.w !fl_hook
-	AND.w #!FLH_CAMERA|!FLH_BEAST
+	AND.w #!FLH_CAMERA|!FLH_BEAST|!FLH_SCRIPT
 	BEQ .native
+	BIT.w #!FLH_SCRIPT
+	BNE .script
 	AND.w #!FLH_BEAST
 	BNE .zero
 	LDA $10
@@ -182,6 +187,45 @@ fl_hook_da6e:
 	SEP #$30
 	LDA $FF
 	JML $00DA72
+.script
+	SEP #$20
+	LDA $FF
+	BNE .native                  ; a map load: nothing scripted
+	LDA $E00B
+	STA $1B
+	STZ $84
+	STZ $86
+	REP #$20
+	LDA $10
+	BNE .native                  ; not the leader: no deltas
+	LDA $F4
+	AND.w #$00FF
+	CMP.l !fl_scam_frame
+	BEQ .native                  ; already stepped this video frame
+	STA.l !fl_scam_frame
+	LDA.l !fl_scam_x
+	SEC
+	SBC $A8
+	JSR fl_unit_packed
+	SEP #$20
+	STA $84
+	REP #$20
+	LDA.l !fl_scam_y
+	SEC
+	SBC $AA
+	JSR fl_unit_packed
+	SEP #$20
+	STA $86
+	BRA .native
+; A16 = a signed difference (flags from it): its sign as a packed delta
+; (0, 1 or $81 for -1).
+fl_unit_packed:
+	BEQ +
+	BMI ++
+	LDA.w #$0001
++	RTS
+++	LDA.w #$0081
+	RTS
 
 ; Signed-magnitude helpers ($1E/$1F: bit 7 = negative, low 7 bits = pixels)
 ; fl_unpack: A8 in, A16 signed out. fl_pack: A16 signed in, A16 packed out.
@@ -217,6 +261,21 @@ fl_hook_d651:
 	JSR fl_walk_holes            ; walking stops at missing deck tiles
 +	LDA.w !fl_hook
 	BEQ .native
+	BIT.w #!FLH_SCRIPT
+	BEQ .follow
+	; a scene's camera target (flight_api_camera, frieza-intro.js
+	; installAltarCamera): a standing leader runs the camera dispatcher
+	; too (natively it skips it); the teleport's follow waits
+	SEP #$20
+	LDA $FF
+	BNE +
+	LDA $1E
+	ORA $1F
+	BNE +
+	JML $00D6AC                  ; JSR $DA6E (camera) / CLC / RTS
++	REP #$20
+	BRA .step
+.follow
 	AND.w #!FLH_CAMERA
 	BEQ .step
 	JSR fl_camera_step

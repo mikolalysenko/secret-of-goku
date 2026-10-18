@@ -33,6 +33,12 @@ if not(defined("STORY_TEST"))
 	!STORY_QUERY_SANDSHIP_DOOR = fl_story_ship_door
 endif
 
+; Services for other modules (api.asm; flight.md "API for other modules").
+; Modules included after flight check them with defined().
+!FLIGHT_API_CAN_LAND   = flight_api_can_land     ; JSL: A16 x, X16 y at Goku's layer/terrain -> C
+!FLIGHT_API_CAN_LAND_T = flight_api_can_land_t   ; JSL: the same, Y16 = terrain byte (bit 7 layer)
+!FLIGHT_API_CAMERA     = flight_api_camera       ; JSL: A16 x, X16 y camera target, posted per frame
+
 ; ---------------------------------------------------------------------------
 ; WRAM (!RAM_FLIGHT = $7ED900, $80 bytes; absolute addressing with DB = $7E)
 !FLIGHT_RAM = $D900
@@ -124,6 +130,7 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !FLH_PHASE   = $0002 ; flight collision rules (localFlight)
 !FLH_CAMERA  = $0004 ; teleport camera follow pending
 !FLH_BEAST   = $0008 ; Mana Beast arena: zero camera deltas
+!FLH_SCRIPT  = $0010 ; a scene's camera target (flight_api_camera, posted last frame)
 
 ; fl_events bits (valid for one frame, read by UI/audio/story)
 !FLE_TAKEOFF = $0001 ; local flight started (browser 'flight' cue)
@@ -184,10 +191,13 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !fl_g_inner    = !FL_SRAM+$330     ; word: the hero grid lies far enough inside the map that every
                                    ; footprint it covers is in bounds
 !fl_g_chk      = !FL_SRAM+$332     ; word: the grid's tiles were checked in this phase (frame, step)
-!fl_ht         = !FL_SRAM+$334     ; hero tile memo: +0 x, +2 y, +4 layer bit, +6 idx, +8 1 = off the map
-                                   ; ($FFFF in +4: none)
+!fl_scam      = !FL_SRAM+$334     ; a scene's camera target (flight_api_camera):
+!fl_scam_x     = !fl_scam+$00      ;   word: camera x ($A8) to reach
+!fl_scam_y     = !fl_scam+$02      ;   word: camera y ($AA)
+!fl_scam_frame = !fl_scam+$04      ;   word: $F4 of the last step ($33A-$33D free)
 !fl_owned      = !FL_SRAM+$33E     ; word: Goku requests flight wrote (!FLO_*); flight clears only
-                                   ; these, once, so other writers' requests stay; $340-$34F free
+                                   ; these, once, so other writers' requests stay
+!fl_test_post  = !FL_SRAM+$340     ; 16 bytes: FLIGHT_TEST posts (testmod.asm), free otherwise
 !fl_tp         = !FL_SRAM+$350     ; Instant Transmission (teleport.asm):
 !fl_tp_act     = !fl_tp+$00        ;   word: action running
 !fl_tp_age     = !fl_tp+$02        ;   word: action age
@@ -307,6 +317,7 @@ incsrc "ceiling.asm"
 incsrc "exits.asm"
 incsrc "sandship.asm"
 incsrc "story.asm"
+incsrc "api.asm"
 if defined("FLIGHT_TEST")
 	incsrc "../../../test/flight/testmod.asm"
 endif

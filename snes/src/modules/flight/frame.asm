@@ -416,6 +416,9 @@ flight_frame:
 	LDA.b #$00
 	STA.l !fl_tp_custom          ; scene modules re-post a custom target each frame
 	REP #$20
+	if defined("FLIGHT_TEST")
+		JSR fl_test_posts        ; a scene module's posts, after flight's frame
+	endif
 	RTL
 
 ; First frame since title entry (or a foreign savestate): the SRAM work
@@ -445,6 +448,8 @@ fl_init_work:
 	if defined("FLIGHT_TEST")
 		LDA.w #$0000
 		STA.l !FL_SRAM+$296      ; the test floor hole is off (testmod.asm)
+		STA.l !fl_test_post      ; no test posts
+		STA.l !fl_test_post+$06
 	endif
 	RTS
 

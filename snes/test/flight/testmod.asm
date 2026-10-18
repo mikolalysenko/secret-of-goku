@@ -14,7 +14,8 @@ endif
 ;        hero, 3 = forget the anchor/crossing (localFlightHook.restore()),
 ;        4 = Instant Transmission landings (fl_test_landing),
 ;        5 = the ceiling escape's roof colours (fl_ce_colors),
-;        6 = opening exits (fl_test_exits), 7 = sweeps (fl_test_sweeps)
+;        6 = opening exits (fl_test_exits), 7 = sweeps (fl_test_sweeps),
+;        8 = the canLand services (fl_test_api_land)
 ;   +$02 word layer (0/1), +$04 word row (tile y)
 ;   +$06 word completion counter (incremented when a request is done)
 ;   +$08 word map width in tiles (written back), +$0A height
@@ -32,6 +33,9 @@ fl_test_poll:
 +	CMP.w #$0007
 	BNE +
 	JMP fl_test_sweeps
++	CMP.w #$0008
+	BNE +
+	JMP fl_test_api_land
 +	CMP.w #$0006
 	BNE +
 	JMP fl_test_exits
@@ -395,3 +399,120 @@ fl_test_sweeps:
 	INC
 	STA.l !fl_sram_test+$06
 	RTS
+
+; 8 = the canLand services (api.asm) for +$02 (1-12) queries of 8 bytes at
+; +$10: in +0 x, +2 y, +4 byte terrain byte (bit 7 layer), +5 byte 1 = at
+; Goku's own terrain (!FLIGHT_API_CAN_LAND), 0 = with the terrain byte
+; (!FLIGHT_API_CAN_LAND_T); out +6 byte 1 = canLand, +7 byte 1 = X, Y, DB
+; and D came back as passed. Called with DB = $00 and D = $0123: the
+; services must not depend on either.
+fl_test_api_land:
+	LDX.w #$0000
+.q
+	TXA
+	LSR : LSR : LSR
+	CMP.l !fl_sram_test+$02
+	BCC +
+	JMP .done
++	PHX                          ; [off]
+	LDA.l !fl_sram_test+$12,X
+	PHA                          ; [y][off]
+	LDA.l !fl_sram_test+$10,X
+	PHA                          ; [x][y][off]
+	LDA.l !fl_sram_test+$14,X
+	AND.w #$00FF
+	PHA                          ; [terr][x][y][off]
+	LDA.l !fl_sram_test+$15,X
+	AND.w #$00FF
+	PHA                          ; [mode][terr][x][y][off]
+	LDA $03,S
+	TAY                          ; Y = terrain byte
+	LDA $07,S
+	TAX                          ; X = y
+	PHB
+	PHD                          ; [D][B][mode][terr][x][y][off]
+	PEA $0000
+	PLB
+	PLB
+	PEA $0123
+	PLD
+	LDA $04,S
+	BEQ .t
+	LDA $08,S
+	JSL flight_api_can_land
+	BRA .got
+.t
+	LDA $08,S
+	JSL flight_api_can_land_t
+.got
+	PHP                          ; [P][D][B][mode][terr][x][y][off]
+	TXA
+	CMP $0B,S
+	BNE .bad
+	TYA
+	CMP $07,S
+	BNE .bad
+	TDC
+	CMP.w #$0123
+	BNE .bad
+	SEP #$20
+	PHB
+	PLA
+	REP #$20
+	AND.w #$00FF
+	BNE .bad
+	LDY.w #$0100
+	BRA +
+.bad
+	LDY.w #$0000
++	PLP
+	PLD
+	PLB                          ; flight's DB and D again (carry kept)
+	LDA.w #$0000
+	ROL
+	STY.w !fl_t1
+	ORA.w !fl_t1
+	PLY : PLY : PLY : PLY
+	PLX
+	STA.l !fl_sram_test+$16,X
+	TXA
+	CLC
+	ADC.w #8
+	TAX
+	JMP .q
+.done
+	LDA.w #$0000
+	STA.l !fl_sram_test
+	LDA.l !fl_sram_test+$06
+	INC
+	STA.l !fl_sram_test+$06
+	RTS
+
+; Posts at the end of flight_frame, after its clears, as a scene module
+; running later in the field frame does (!fl_test_post, Lua writes them):
+;   +$00 word frames left to post a camera target (flight_api_camera) at
+;        +$02 x, +$04 y
+;   +$06 word frames left to post a custom teleport target: the 8 bytes at
+;        +$08 go to !fl_tp_custom (kind, species, x, y, terrain, airborne)
+fl_test_posts:
+	LDA.l !fl_test_post
+	BEQ +
+	DEC
+	STA.l !fl_test_post
+	LDA.l !fl_test_post+$04
+	TAX
+	LDA.l !fl_test_post+$02
+	JSL flight_api_camera
++	LDA.l !fl_test_post+$06
+	BEQ +
+	DEC
+	STA.l !fl_test_post+$06
+	LDA.l !fl_test_post+$08
+	STA.l !fl_tp_custom
+	LDA.l !fl_test_post+$0A
+	STA.l !fl_tp_custom+2
+	LDA.l !fl_test_post+$0C
+	STA.l !fl_tp_custom+4
+	LDA.l !fl_test_post+$0E
+	STA.l !fl_tp_custom+6
++	RTS

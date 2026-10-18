@@ -138,6 +138,44 @@ function test()
   local fs = assert(io.open(H_OUT .. '/sweeps.json', 'w'))
   fs:write(H.json(sweeps))
   fs:close()
+  -- the canLand services other modules call (!FLIGHT_API_CAN_LAND and _T,
+  -- command 8): points off the tile centres, both layers, every terrain,
+  -- every fifth one at Goku's own terrain byte
+  local lands = {}
+  local k3 = 0
+  for ty = 1, Hh - 2, 3 do
+    for tx = 1, W - 2, 3 do
+      local x = tx * 16 + ((tx * 3 + ty) % 16)
+      local y = ty * 16 + ((ty * 11 + tx) % 16)
+      for _, t in ipairs({0, 1, 2, 3, 0x80, 0x82}) do
+        if t < 0x80 or (tx + ty) % 2 == 0 then
+          lands[#lands + 1] = {x = x, y = y, t = t, own = (k3 % 5 == 2) and 1 or 0}
+          k3 = k3 + 1
+        end
+      end
+    end
+  end
+  local own = H.r8(0x7EE00B)
+  for i = 1, #lands, 12 do
+    local n = math.min(12, #lands - i + 1)
+    for j = 0, n - 1 do
+      local q, b = lands[i + j], MAIL + 0x10 + j * 8
+      H.w16(b, q.x); H.w16(b + 2, q.y); H.w8(b + 4, q.t); H.w8(b + 5, q.own)
+    end
+    local done4 = H.r16(MAIL + 6)
+    H.w16(MAIL + 2, n)
+    H.w16(MAIL, 8)
+    if not H.waitFor(function() return H.r16(MAIL + 6) ~= done4 end, 600) then error('canLand service queries timed out') end
+    for j = 0, n - 1 do
+      local q, b = lands[i + j], MAIL + 0x10 + j * 8
+      q.pass = H.r8(b + 6) == 1
+      q.intact = H.r8(b + 7) == 1
+      if q.own == 1 then q.t = own end
+    end
+  end
+  local fl = assert(io.open(H_OUT .. '/apiland.json', 'w'))
+  fl:write(H.json(lands))
+  fl:close()
   local fe = assert(io.open(H_OUT .. '/exits.json', 'w'))
   fe:write(H.json(exits))
   fe:close()
