@@ -357,6 +357,7 @@ floor on request.
 | `fracture` | seven fractures give the same 39 cells as `fractureFortress()`; the hole tiles are in VRAM and every listed BG1 row is written |
 | `victory` | the fatal hit starts the beat, white 31 at 400, event C7 runs (stage defeated, ledger 127) |
 | `death` | Goku at 1 HP takes the first orb: no warp, black from 360, Start goes to the title; with the ending module, the hand-off (`fzd_on` 2, `ES_DEFEATED`, key 1) instead |
+| `beast` | preset `beast` (map 253, the fed Beast started, Super Saiyan) through combat's receive list: 600 frames untouched as in the browser (the eruption's 210 lands whole at frame 261, Goku's HP 789 at 600 as the reference), then damage queued at the native consumer: 600 takes 110 (140 in base form, the permanent form lifted), nothing during the grace, 50 and the eruption's pending 300 land whole. Skipped while the build has no `modules_combat_receive` |
 | `cost` | Potos with Goku present: the module settles on the quiet path; field frame at most 0.36 lines on average and 2.5 at peak, vblank at most 0.13 (from the dispatcher's JSL to the next instruction, master clocks) |
 | `vram` | preset `frieza`: not drawn while another owner holds `!VRAM_SCENE_OBJ` or the scene SRAM (`!SCENE_VEGETA` planted), drawn and both claimed once free (owners 6 and `!SCENE_FRIEZA`), the VRAM given back when the scene ends |
 | `door` | door 3FC from the `intro` preset: tile y 18 beside the living Emperor, 30 (native) after his death |

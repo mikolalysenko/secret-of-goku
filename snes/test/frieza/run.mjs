@@ -250,6 +250,87 @@ end
 `;
 }
 
+// The fed Beast (preset beast: map 253, fed and started, Super Saiyan as
+// the snapshot's options) through combat's receive list: 600 frames
+// untouched as the browser ran them (the eruption's 210 lands whole and
+// starts the grace; Goku's HP at 600 as the reference's), then damage
+// queued at the native consumer (beast-challenge.js, the C0:4053
+// intercept): 600 takes the cap (110 Super Saiyan, 140 base) and starts the
+// 75-frame grace, nothing lands during it, 50 lands whole, and the
+// eruption's pending damage lands whole. The grace counts only frames in
+// which Goku can act and the Beast is a target (canAttack, beast()), so the
+// checks after the first end it by hand instead of waiting on the Beast.
+function beastTest(){
+  const g=reference('beast');
+  const writes=friezaWrites(g.frieza,g.challenge);
+  const v=n=>'0x'+(n<0x10000?(0x7E0000|n):n).toString(16);
+  const cbForm='0x'+(0x7E0000|moduleDefine('combat','cb_form')).toString(16);
+  const gokuForm='0x'+(0x7E0000|moduleDefine('goku','goku_form')).toString(16);
+  const ssj=g.options?.superSaiyan?1:0;
+  return `
+function test()
+  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__beast'))})
+  F.check(ok, 'import')
+  H.w8(0x316001, 1)
+  H.w8(${cbForm}, ${ssj})
+  H.w8(${gokuForm}, ${ssj})
+  F.apply(${luaWrites(writes)})
+  local hp = H.r16(0x7EE182)
+  local drops = {}
+  for f = 1, 600 do
+    H.wait(1)
+    local h = H.r16(0x7EE182)
+    if h ~= hp then drops[#drops + 1] = f .. ':' .. (hp - h) hp = h end
+  end
+  H.result('drops', drops)
+  H.result('hp600', hp)
+  F.check(H.r8(${v(defs.fzx_grace)}) == 0, 'the eruption\\'s grace ran out by 600')
+  -- no eruption from here on (its clock far off)
+  H.w8(${v(defs.fzx_bon)}, 0)
+  H.w16(${v(defs.fzx_clock)}, 3000)
+  local function queue(d)
+    local h0 = H.r16(0x7EE182)
+    H.w8(0x7EE1EC, 0)
+    H.w16(0x7EE1F1, d)
+    F.check(H.waitFor(function() return H.r16(0x7EE1F1) == 0 end, 30), 'the native consumer took the queue')
+    H.wait(1)
+    return h0 - H.r16(0x7EE182)
+  end
+  local function endGrace() H.w8(${v(defs.fzx_grace)}, 0) H.wait(1) end
+  local a = queue(600)
+  H.result('cap1', a)
+  F.check(a == ${ssj?110:140}, 'a queued 600 takes the cap ${ssj?110:140}, took ' .. a)
+  F.check(H.r8(${v(defs.fzx_grace)}) >= 70, 'the hit started the grace')
+  local b = queue(600)
+  H.result('inGrace', b)
+  F.check(b == 0, 'nothing lands during the grace, took ' .. b)
+  endGrace()
+  -- the other form (the permanent gold form keeps Super Saiyan, as
+  -- mana-mod.js configure(): lift it first)
+  H.w16(${v(defs.fzp_flags)}, H.r16(${v(defs.fzp_flags)}) & ${0xFFFF^defs.FZFL_PERMANENT})
+  H.w8(${cbForm}, ${1-ssj})
+  H.w8(${gokuForm}, ${1-ssj})
+  H.wait(2)
+  F.check(H.r8(${gokuForm}) == ${1-ssj}, 'the form changed')
+  local c = queue(600)
+  H.result('cap2', c)
+  F.check(c == ${ssj?140:110}, 'in the other form a queued 600 takes ${ssj?140:110}, took ' .. c)
+  endGrace()
+  local d = queue(50)
+  H.result('under', d)
+  F.check(d == 50, 'under the cap the damage lands whole, took ' .. d)
+  endGrace()
+  H.w16(${v(defs.fzx_pending)}, 300)
+  local e = queue(300)
+  H.result('pending', e)
+  F.check(e == 300, 'the eruption\\'s pending damage lands whole, took ' .. e)
+  F.check(H.r16(${v(defs.fzx_pending)}) == 0, 'the pending damage is spent')
+  H.result('hits', H.r8(${v(defs.fzx_hits)}))
+  F.done()
+end
+`;
+}
+
 // The ground stand-in for the last phase (no orbit stream in the build):
 // at tier 2 Frieza has no HP floor; his fall plays Mantis Ant's beat
 // (flashes, bursts, whiteout, fanfare, chime) and then the victory event
@@ -505,12 +586,14 @@ end
 // Core's scene-scoped VRAM pool: Frieza draws only while !VRAM_SCENE_OBJ
 // is free or his (owner !FZ_VRAM_OWNER), claims it on the frames he is
 // drawn and gives it back when his scene ends.
-function coreDefine(name){
-  const dir=join(repo,'snes/src/core'),src=readdirSync(dir).filter(f=>f.endsWith('.asm')).map(f=>readFileSync(join(dir,f),'utf8')).join('\n');
-  const val=n=>{const m=src.match(new RegExp(`^!${n}\\s*=\\s*([^;\\n]+)`,'m'));if(!m)throw Error(`frieza: core define ${n} missing`);
+function asmDefine(dir,name){
+  const src=readdirSync(dir).filter(f=>f.endsWith('.asm')).map(f=>readFileSync(join(dir,f),'utf8')).join('\n');
+  const val=n=>{const m=src.match(new RegExp(`^!${n}\\s*=\\s*([^;\\n]+)`,'m'));if(!m)throw Error(`frieza: define ${n} missing in ${dir}`);
     return Function(`return (${m[1].trim().replace(/!(\w+)/g,(_,k)=>val(k)).replace(/\$([0-9A-Fa-f]+)/g,'0x$1')})`)();};
   return val(name);
 }
+const coreDefine=name=>asmDefine(join(repo,'snes/src/core'),name);
+const moduleDefine=(module,name)=>asmDefine(join(repo,'snes/src/modules',module),name);
 function vramTest(){
   const g=reference('frieza');
   const writes=friezaWrites(g.frieza,g.challenge);
@@ -649,6 +732,29 @@ if(want('death')){
   results.push({name:'death',ok,failures});
   console.log(`frieza death: ${ok?'pass':'FAIL'} (${r.ms} ms) died at frame ${res.diedAt}, brightness ${res.brightness}, bank after Start ${res.bankAfterStart}`);
   if(!ok)for(const f of failures)console.log('    !',f);
+}
+if(want('beast')){
+  // needs combat's receive list calling frieza_combat_receive
+  const sym=readFileSync(romSrc.replace(/\.sfc$/,'.sym'),'utf8');
+  if(!/ modules_combat_receive\n/.test(sym))console.log('frieza beast: skipped (no modules_combat_receive in this build)');
+  else{
+    const failures=[];
+    try{jslSite(romSrc,'modules_combat_receive','frieza_combat_receive');}catch{failures.push('modules_combat_receive does not call frieza_combat_receive');}
+    const rom=privateRom(romSrc,'frieza-beast');
+    const r=await runMesen({rom,test:lib+'\n'+beastTest(),outDir:join(outRoot,'beast'),state:join(cps,'waterfall.mss')});
+    cleanupRom(rom);
+    const res=r.results??{};
+    failures.push(...(res.failures??[]),...(res.error?[res.error]:[]));
+    const info=JSON.parse(readFileSync(join(refRoot,'beast','info.json'),'utf8'));
+    const want600=info.info?.status?.hp;
+    if(res.hp600!==want600)failures.push(`Goku HP at 600: ${res.hp600}, browser ${want600}`);
+    const first=(res.drops??[])[0];
+    if(!first||Number(first.split(':')[1])!==210)failures.push(`the first hit should be the eruption's 210 (whole), got ${first}`);
+    const ok=r.code===0&&res.pass===true&&failures.length===0;
+    results.push({name:'beast',ok,failures});
+    console.log(`frieza beast: ${ok?'pass':'FAIL'} (${r.ms} ms) hits ${(res.drops??[]).join(' ')}, HP at 600 ${res.hp600} (browser ${want600}); queued 600 -> ${res.cap1}, in the grace -> ${res.inGrace}, other form -> ${res.cap2}, 50 -> ${res.under}, pending 300 -> ${res.pending}`);
+    if(!ok)for(const f of failures)console.log('    !',f);
+  }
 }
 if(want('music')){
   const rom=privateRom(romSrc,'frieza-music');
