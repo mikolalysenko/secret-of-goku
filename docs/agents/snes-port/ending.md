@@ -40,9 +40,10 @@ sequence (story hooks, below) exactly as `native-story.js` does. The
 Fortress cutaway runs in world flight instead (`ending_world_frame` after
 `fx_world_frame`, `ending_world_nmi` first in the world vblank).
 
-Code: the main bank `$A9` (FastROM) and a second code area in the lower
-half of `$ED` (`!CODE_ENDING_X`, the cutaway and the music sync), reached
-with `JSL` both ways. Art only DMA or HDMA reads lives in extended data
+Code: the main bank `$A9` (FastROM) and a second code area in the spare
+upper quarter of audio's code half (`$AA:C000`, `!CODE_QUARTER_AUDIO` as
+`!CODE_ENDING_X`: the cutaway and the music sync), reached with `JSL`
+both ways. Art only DMA or HDMA reads lives in extended data
 (ExHiROM banks `$40-$7D`, `ending_<blob>` labels from `!XDATA_ENDING_*`);
 blobs the CPU reads in its loops stay in fast ROM (`E9:0000`, `EC:0000`).
 
@@ -294,6 +295,13 @@ all).
 | Departure from 144 | the space stage, day globe only | as space | 1 | 5 |
 | Fortress cutaway (world flight) | BG1 tiles `$34D0-$4810`, map `$4C00`; BG2 map `$6000`, tiles `$7000-$7B30`; OBJ tiles 64-93 (`$6400`) | all 256 (per fade level) | ≤ 64 | none (the world's off) |
 
+The departure's load frame (144, the space stage under white) skips the
+spark and fragment palettes the distant globe never shows, keeps the
+palette round robin during that visible load and queues Goku's miniature
+a frame later (about 80 lines, was 190). The palette round robin stops at
+line 190, leaving the modules after `ending_frame` their lines. On the
+all-streams integration build: departure lag 2, vista 7, flight 8.
+
 Measured frame cost of the module (game logic not included, SlowROM):
 vista 40-50 lines (65-80 during its palette fades), flight 30-45 (80-90
 during the scatter's burst at 300-340), overlay 11-17 (the cloud ~45).
@@ -357,7 +365,7 @@ WRAM block `!RAM_ORBIT+$80..$B3`:
 
 | Resource | Use |
 | --- | --- |
-| Code | `$A9:8000-FF1C` (227 bytes free); second area `$ED:0000-07D9` (30 KiB free) |
+| Code | `$A9:8000-FF65` (154 bytes free); second area `$AA:C000-C7EB` (14 KiB of the quarter free) |
 | Fast data | `E9:0000` (31.3 KiB: fade sets, fragment and spark OAM, window lookups, the flight's tables), `EC:0000` (10.7 KiB: crack events); `EE:0000`, `EF:0000` free |
 | Extended data | 41 blobs, 325 KiB in `$40-$7D`: King Kai 40 KiB, space 70 KiB, vista and flight OBJ/maps, the cutaway 208 KiB (OAM images 101, footprint runs 83, palettes 22) |
 | WRAM | `!RAM_ORBIT+$80..$B3` |
@@ -410,9 +418,10 @@ WRAM block `!RAM_ORBIT+$80..$B3`:
   browser's references show the night one.
 - **world**: `world_nmi_scars` returns while `!w_cut_age` runs (the
   cutaway's VRAM); nothing else changed there.
-- **core** / **layout**: the comments of `core/layout.asm` still name
-  `$EC-$EF` lower halves as ending art; they now hold fast tables (`E9`,
-  `EC`), the second code area (`ED`) and nothing (`EE`, `EF`).
+- **core** / **layout**: the ending uses `!CODE_QUARTER_AUDIO`
+  (`$AA:C000`) as its second code area (note it in `core/layout.asm`).
+  The comments there still name the `$EC-$EF` lower halves as ending art;
+  they now hold fast tables (`EC`) and nothing (`ED`, `EE`, `EF`).
 - **core**: `core_spr_cull` accepts y down to -64, but an 8-bit OBJ Y below
   -16 (16x16) or -32 (32x32) shows at the bottom of the screen; the overlay
   culls itself to [-32, 224). A "map loaded" notification would replace
