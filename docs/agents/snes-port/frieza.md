@@ -112,12 +112,15 @@ of the world's (the same within a cell, repeating per cell).
 ## Finale deaths and victory
 
 - **Deaths** (Frieza on 246, the empowered Thanatos, the Mana Beast on
-  253): at Goku's HP 0 the native death plays; events 7FF (all-party-dead
-  warp) and 42D/42F (boss victories) are skipped at `C1:E77B` while the
-  sequence runs. With the ending module, `ending_lose` (bit 3 gold, bit 4
-  orbit) draws the doomed planet and GAME OVER; without it the module
-  reverts the form at 18, fades 300-360 (brightness ceiling), holds black
-  and returns to the title on Start (`JML $C10010`).
+  253): `fz_death_tick` is `battle-retry.js` `check()`. The encounter key
+  (`frieza_api_encounter`) is remembered while Goku can act on 246/253 and
+  forgotten elsewhere; at Goku's HP 0 with a key (remembered or live) the
+  native death plays. With the ending module, `ending_lose` (A: bit 3
+  gold, bit 4 orbit; X: the key) draws the doomed planet and GAME OVER, and
+  the ending's gate at `C1:E77E` skips events 7FF (all-party-dead warp) and
+  42D/42F (boss victories); without it the module's own gate at `C1:E77B`
+  does, and the module reverts the form at 18, fades 300-360 (brightness
+  ceiling), holds black and returns to the title on Start (`JML $C10010`).
 - **Victory on the ground** (`frieza_victory_*`): death cue `02 94 0F 80`
   at the fatal hit, twelve bursts 36-257 at `orbitVectors[(i·7)&15]·(12 +
   i%4·5)` plus the last at 326, the music fade at 143, Frieza flashing red
@@ -260,6 +263,9 @@ Dispatch: `modules_field_frame` -> `frieza_field_frame`,
 | `frieza_victory_start` | JSL, any DB. A16 = x, X16 = y where Frieza fell: the death cue now, the beat from the next tick (the orbit stream calls it in space) |
 | `frieza_victory_tick` | JSL, any DB. Advances the beat; C set while it runs (`!fzv_age`, red/white phases, bursts, cues) |
 | `frieza_floor_hole` | `!FLIGHT_MISSING_FLOOR`: C set when (`!fl_q_x`, `!fl_q_y`) is a broken cell of the arena |
+| `frieza_api_encounter` | JSL, M16/X16, D = 0, any DB. A16: low byte the dangerous fight now (`battle-retry.js` `encounter()`): 0 none, 1 Frieza's ground fight (stage battle on 246, no surge, not in space), 2 the empowered Thanatos (species 121 alive on 246), 3 the Mana Beast (127 on 253); high byte Frieza's tier with 1 (`frieza:<tier>`). X, Y, DB kept |
+| `!fzd_key` | WRAM byte: the key of the death in progress (or the last fight Goku could act in on 246/253); also passed to `ending_lose` in X |
+| `frieza_q_crisis` | `STORY_Q_FRIEZA_CRISIS` (`frieza.crisisActive`): 1 from the core's impact (event D7, `newCoreCrisis`) until the wish repairs the core (`FRIEZA_REPAIR_CORE`); a restored preset that is stolen or permanent gets it active unless the wish was made (`restore()`'s fix-up). The ending's bad presets read it for the night globe |
 | `frieza_combat_damage` | `!COMBAT_HOOK_DAMAGE`: A16 = Goku's damage, X16 = actor -> A16 (the Beast 1/2 or 1/8, the empowered Lich 1/4) |
 | `!fzx_pending` | WRAM word: the eruption damage the module queued on Goku (for a receive hook that must not cap it) |
 

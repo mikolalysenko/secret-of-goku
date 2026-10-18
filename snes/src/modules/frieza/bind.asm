@@ -179,6 +179,11 @@ endif
 ; OVER). A: bit 3 died as a Super Saiyan. C set when the ending runs it.
 fz_bind_ending_lose:
 if defined("EP_FATAL")
+	; X16 = the encounter key (frieza_api_encounter's format)
+	LDA !fzd_key
+	AND.w #$00FF
+	JSR fz_encounter_tier
+	TAX
 	LDA !fzd_gold
 	AND.w #$00FF
 	BEQ +

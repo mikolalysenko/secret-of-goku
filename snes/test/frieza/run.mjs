@@ -217,6 +217,7 @@ function test()
   F.check(H.r16(0x7E00DC) == 246, 'still in the arena (no wake-up warp)')
   if ${ending} then
     F.check(H.r8(${v(defs.fzd_on)}) == 2, 'the ending module runs the finale death')
+    F.check(H.r8(${v(defs.fzd_key)}) == ${defs.FZE_FRIEZA}, 'the encounter handed over: Frieza')
     F.check((H.r8(0x7EDC88) & 0x40) ~= 0, 'ending status: fatal sequence (ES_DEFEATED)')
     H.wait(240)
     H.shot('death-300')

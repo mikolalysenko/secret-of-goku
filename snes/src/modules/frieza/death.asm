@@ -18,6 +18,36 @@
 !FZE_THANATOS  = 2
 !FZE_BEAST     = 3
 
+; API: the dangerous fight running now (battle-retry.js encounter(), with
+; frieza.js `encounter`). JSL with M16/X16, D = 0, any DB. Returns A16:
+; low byte the key (!FZE_*: 0 none, 1 Frieza's ground fight, 2 the
+; empowered Thanatos (species 121 on map 246), 3 the Mana Beast (127 on
+; 253)), high byte Frieza's tier with key 1 (0 before the first surge, 1
+; after; frieza.js `frieza:<tier>`). X, Y and DB preserved.
+frieza_api_encounter:
+	PHB
+	PHX
+	PHY
+	PEA $7E7E
+	PLB
+	PLB
+	JSR fz_encounter
+	JSR fz_encounter_tier
+	PLY
+	PLX
+	PLB
+	RTL
+
+; A16 = key -> A16 = key | tier << 8 for Frieza's fight.
+fz_encounter_tier:
+	CMP.w #!FZE_FRIEZA
+	BNE +
+	LDA !fzf_tier
+	AND.w #$00FF
+	XBA
+	ORA.w #!FZE_FRIEZA
++	RTS
+
 ; encounter(): the dangerous fight running on this map (A16 = key, 0 none).
 fz_encounter:
 	LDA $DC
@@ -31,11 +61,12 @@ fz_encounter:
 	LDA.w #!FZE_BEAST
 	RTS
 .arena
-	; frieza.encounter: stage battle, no surge, not in space
+	; frieza.encounter: stage battle, no surge, not in space; otherwise the
+	; native boss (battle-retry.js falls back to species 121)
 	JSR fz_battle_live
 	BCC .lich
 	JSR fz_battle_surging
-	BCS .none
+	BCS .lich
 	LDA.w #!FZE_FRIEZA
 	RTS
 .lich
