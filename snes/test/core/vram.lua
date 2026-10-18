@@ -44,7 +44,7 @@ function test()
   -- Claims.
   local c1 = command(6, { [0x1E] = 2 })
   check('claim_region', c1 == 0 and ct(0x20) == 0x7220, tostring(c1) .. ' ' .. string.format('%04X', ct(0x20)))
-  H.w16(CORE_EXT + 0xE0 + 2 * 3, 0x0011)   -- another owner holds region 3
+  H.w16(CORE_SAFE + 0x40 + 2 * 3, 0x0011)   -- another owner holds region 3
   local c2 = command(6, { [0x1E] = 3 })
   check('claim_taken_region_refused', c2 == 1, c2)
   local c3 = command(6, { [0x1E] = 9 })

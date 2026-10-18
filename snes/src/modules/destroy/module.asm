@@ -22,7 +22,7 @@
 ; computed addresses use #= so no expression depends on operator order.
 !DST #= (!RAM_DESTROY)&$FFFF
 !FRAME #= (!core_frame)&$FFFF
-!CORE_EVREQ #= (!core_event_req)&$FFFF
+!CORE_EVREQ = !core_event_req   ; core's pending event request (battery RAM: long addressing)
 !d_map      = !DST+$00  ; map the transient state belongs to
 !d_qn       = !DST+$02  ; queue slots used (live + dead)
 !d_qlive    = !DST+$04  ; live queue entries
