@@ -23,20 +23,36 @@ Browser sources ported: `engine/shenron-ending.js`, `wish-flight.js`,
 | kai (9), complete (10) | King Kai's planet, end cards | done | `kai`: 93.1% |
 | doomed (11), explode (12), escape (13) | planet-view globe, explosion, teleport | done | `space`: 15 stills, 65-100% (fragments differ in shape, see below); `loads`: the globe after door 2F 99.9% |
 | fatal (14) | boss-rush death, planet explosion, GAME OVER | done | `fatal`: 7 stills 65-100%, Start returns to the title |
-| Fortress cutaway (world flight) | planet-view `isShot` + `beam()` | **not ported** (ROM, see Requests) | — |
+| Fortress cutaway (world flight) | planet-view `isShot`: globe, `beam()`, ring, dust, fade | done (the default target's globe) | `cutaway`: 11 stills 99.7-100% |
 
-All seven tests pass (`node snes/test/ending/run.mjs`), together with the
+All eight tests pass (`node snes/test/ending/run.mjs`), together with the
 story tests that exercise the hooks and the scene select's good-ending,
 bad-ending and explosion presets (`node snes/test/debug/run.mjs`).
 
 ## How the scenes run
 
-Every scene runs **inside the native field loop**: `ending_frame` after
-the game's logic (`modules_field_frame`, after `goku_frame`, before
-`destroy`/`fx`/`audio`) and `ending_nmi` in vblank after the game's uploads
+Every finale scene runs **inside the native field loop**: `ending_frame`
+after the game's logic (`modules_field_frame`, after `fx_frame`, before
+`audio_frame`) and `ending_nmi` in vblank after the game's uploads
 (`modules_field_nmi`, before `fx_nmi`). The event interpreter, its waits
 and the native dialogue keep running; the native script drives the
-sequence (story hooks, below) exactly as `native-story.js` does.
+sequence (story hooks, below) exactly as `native-story.js` does. The
+Fortress cutaway runs in world flight instead (`ending_world_frame` after
+`fx_world_frame`, `ending_world_nmi` first in the world vblank).
+
+Code: the main bank `$A9` (FastROM) and a second code area in the lower
+half of `$ED` (`!CODE_ENDING_X`, the cutaway and the music sync), reached
+with `JSL` both ways. Art only DMA or HDMA reads lives in extended data
+(ExHiROM banks `$40-$7D`, `ending_<blob>` labels from `!XDATA_ENDING_*`);
+blobs the CPU reads in its loops stay in fast ROM (`E9:0000`, `EC:0000`).
+
+Sound goes through the audio module (`docs/agents/snes-port/audio.md`):
+every cue through `ending_sound` (`!ending_sfx` records the last, `audio_sfx`
+plays it), and `ES_MUTED` (the whole scatter and the finale death, as
+`musicMuted`) through `ending_music_sync` at the end of every field
+frame: `audio_fade $00` silences the native music at once (re-sent every
+32 frames, since a native song command sets its own volume), `$0F` brings
+it back when the scene lets go.
 
 Code runs with DB = `$32` (the SRAM work bank: low WRAM mirror, I/O and
 the scene work area `$32:6000-7FFF` are all absolute); ROM tables through
@@ -234,6 +250,38 @@ then the teleport lines (a TM band) and Goku's escape pose.
 warp (7FF) and both boss-victory events (42D, 42F) are refused by a gate in
 the event dispatcher (`C1:E77E`), as `installFinaleDeathGate`.
 
+### The Fortress cutaway (world flight)
+
+`world-ki.js` starts it 24 frames after the full wave destroyed the
+Fortress; the world module counts `!w_cut_age` 0-185 and keeps flying
+underneath (its own stand-in fades `$E6`, which keeps the world black
+after the cutaway until the deck landing). planet-view.js `prepare()` with
+the shot, rebuilt per age by `ending-cutaway.mjs` with the browser's own
+`sky()`/`beam()` formulas:
+
+- BG1: the space stage's globe (night during Frieza's crisis,
+  `STORY_Q_FRIEZA_CRISIS`), at planet-view's default target.
+- BG2: the stars; every cell the beam, the shock ring or a twinkling
+  star touches (102) is a high-priority footprint slot redrawn per age
+  (the band, the ring and the stars outside the globe composited), in an
+  order that keeps each age's changes in a few runs (1-7).
+- OBJ: the 64 dust particles, one 544-byte OAM image per age written into
+  the game's OAM buffer by WRAM DMA.
+- CGRAM: one image per globe and fade level (164-186: floor per channel,
+  as the browser), uploaded when the level changes or world flight's NMI
+  has put its own palette in (`C0:8A79`).
+
+The first frame loads everything under forced blank (one black frame),
+then each vblank sets Mode 1 and the scene's registers, keeps the world's
+HDMA off, lifts VTIME above 256 so the horizon IRQ (`C0:8A4B`, which
+switches to Mode 7) cannot fire over the picture (put back when the
+cutaway ends), and uploads each age's footprint runs within the vblank
+budget. VRAM avoids what world flight still writes (Mode 7 characters
+`$2200-$2FFF`, sky map rows in `$5000-$5FFF`, the world module's OBJ region
+`$6600-$6FFF`); the native Mode 7 row/column uploads are dropped and the
+world module pauses its crater refresh meanwhile (the landing reloads it
+all).
+
 ## Budgets
 
 | Scene | VRAM | CGRAM | OBJ sprites | HDMA channels |
@@ -244,6 +292,7 @@ the event dispatcher (`C1:E77E`), as `installFinaleDeathGate`.
 | Flight | Mode 7 `$0000-$3FFF`, OBJ table 1 `$5000-$57FF` | backdrop, 64-127, 128-255 | ≤ 128 | 2, 3 (matrix), 4 (mode), 5 (TM), 6 (gradient) |
 | Overlay (village, departure to 144) | `FIELD_OBJ_A` (`$7220`/`$7320`) | OBJ 6-7 (all 256 in the cloud) | 6 front | — |
 | Departure from 144 | the space stage, day globe only | as space | 1 | 5 |
+| Fortress cutaway (world flight) | BG1 tiles `$34D0-$4810`, map `$4C00`; BG2 map `$6000`, tiles `$7000-$7B30`; OBJ tiles 64-93 (`$6400`) | all 256 (per fade level) | ≤ 64 | none (the world's off) |
 
 Measured frame cost of the module (game logic not included, SlowROM):
 vista 40-50 lines (65-80 during its palette fades), flight 30-45 (80-90
@@ -282,7 +331,7 @@ explosion's wait runs, the hook advances the prose as the browser's held
 R does (B on a button wait without a choice, through `!core_pad_inject`)
 until the bad ending's A3 cue starts the explosion.
 
-WRAM block `!RAM_ORBIT+$80..$A1`:
+WRAM block `!RAM_ORBIT+$80..$B3`:
 
 | Address | Field |
 | --- | --- |
@@ -292,7 +341,7 @@ WRAM block `!RAM_ORBIT+$80..$A1`:
 | +$84 | `!ending_flags` (word): `EF_BAD` 1, `EF_EIGHTH` 2, `EF_SSJ` 4, `EF_GOLD` 8, `EF_ORBIT` $10, `EF_NIGHT` $20, `EF_BEGUN` $8000 |
 | +$86 | `!ending_done` (word): bit n set when phase n's timeline finished (event scripts can wait on it) |
 | +$88 | `!ending_status` (byte): `ES_ACTIVE` 1, `ES_NATIVEBOY` 2, `ES_MUTED` 4, `ES_AIRBORNE` 8, `ES_CHARGING` $10, `ES_COMPLETE` $20, `ES_DEFEATED` $40, `ES_LOADING` $80 |
-| +$89 | `!ending_sfx` (byte): last sound cue: 1 power burst, 2 charged, 3 flight, 4 teleport, 5 teleport in, 6 revert, 7 Frieza orb, 8 Fortress break (the audio module clears it) |
+| +$89 | `!ending_sfx` (byte): last sound cue: 1 power burst, 2 charged, 3 flight, 4 teleport, 5 teleport in, 6 revert, 7 Frieza orb, 8 Fortress break (each also played with `audio_sfx`) |
 | +$8C/$8E | `!ending_target_x/y`: globe target (0 = planet-view's default) |
 | +$90 | `!ending_map0`: the map the scene took the screen on |
 | +$92 | `!ending_live` |
@@ -301,17 +350,20 @@ WRAM block `!RAM_ORBIT+$80..$A1`:
 | +$9A-$9E | scratch, `!ending_gokuctl` |
 | +$9F | `!ending_reload`: a native map load ran under a scene (object-list hook) |
 | +$A0 | `!ending_pulse`: the explosion preset's prose pulse |
+| +$A2 | `!ending_mute`: frames the native music has been silenced (0 = not) |
+| +$A3-$B3 | the cutaway: on, load, age, shown age, night, end, runs, run pointer, DMA bank, fade level, DMA budget |
 
 ## Resources
 
 | Resource | Use |
 | --- | --- |
-| Code | `$A9:8000-FEED` (274 bytes free) |
-| Data | `$E9`, `$EC`-`$EF` lower halves (160 KiB, 2.1 KiB free): King Kai 40 KiB, space 84 KiB, vista 15.8 KiB, fade sets 12.4 KiB, flight 4.7 KiB, departure 0.6 KiB |
-| WRAM | `!RAM_ORBIT+$80..$A1` |
+| Code | `$A9:8000-FF1C` (227 bytes free); second area `$ED:0000-07D9` (30 KiB free) |
+| Fast data | `E9:0000` (31.3 KiB: fade sets, fragment and spark OAM, window lookups, the flight's tables), `EC:0000` (10.7 KiB: crack events); `EE:0000`, `EF:0000` free |
+| Extended data | 41 blobs, 325 KiB in `$40-$7D`: King Kai 40 KiB, space 70 KiB, vista and flight OBJ/maps, the cutaway 208 KiB (OAM images 101, footprint runs 83, palettes 22) |
+| WRAM | `!RAM_ORBIT+$80..$B3` |
 | SRAM | `!SRAM_WORK_SCENE` (`$32:6000-7FFF`) while a scene runs: state, palette components and outputs, curves, queue, HDMA tables, the flight's matrix tables, row and star buffers |
 | VRAM | per scene above; core region `FIELD_OBJ_A` (owner `$09`) for the overlay |
-| HDMA | channels 2-6 in full-screen scenes (5 the TM cut, 2/3/4/6 windows or the flight's matrix, mode and gradient); fx keeps 2/3 only while its polygons run |
+| HDMA | channels 2-6 in full-screen scenes (5 the TM cut, 2/3/4/6 windows or the flight's matrix, mode and gradient); fx keeps 2/3 only while its polygons run; none in the cutaway (world flight's 0-5 off) |
 | DMA | channel 7 (vblank transfers, palette commit, OAM copies) |
 | Hijack | `C1:E77E` (5 bytes, the finale death's event gate) |
 | Generated | `dist/snes/gen/ending/` (never committed) |
@@ -339,25 +391,28 @@ WRAM block `!RAM_ORBIT+$80..$A1`:
   robin).
 - Fades are exact per channel, but palette-based: they apply to the
   scene's colours, never to BG3's dialogue (as the browser's `dim`).
+- Fortress cutaway: the globe is always planet-view's default target's
+  (the browser turns it so that the Fortress, wherever it was hit, sits
+  under the strike point); the beam, ring, dust and fade are the same.
+  Globes per target would cost ~16 KiB of extended data each (a grid of
+  8 x 4 per day and night: ~1 MiB). The first frame is black (the load),
+  and on the first frames, where all 64 dust particles start on the same
+  lines, the hardware's 32 sprites per line can drop some.
 
 ## Integration and requests
 
-- **combat**: call `ending_lose` (with `EF_GOLD`/`EF_ORBIT`) where the
-  browser's `lose(encounter)` runs; nothing calls it on main yet.
-- **audio**: play `!ending_sfx` cues and silence native music while
-  `ES_MUTED` (scatter, death).
-- **world** / **orbit**: the Fortress cutaway (planet-view `isShot`: the
-  globe at the Fortress, `beam()`, shock ring, dust, the 164-186 fade)
-  needs the space stage in world-flight mode. The world module exposes
-  `!w_cut_age`; drawing it needs a world-mode hook pair
-  (`modules_world_frame/nmi` entries), the world's HDMA channels 0-5 and
-  its OBJ handed over for 186 frames, and **ROM**: this module's code bank
-  has 410 bytes left and its data banks 2.1 KiB, while the cutaway needs
-  ~3 KiB of code (beam, ring, dust as window tables and sprites, the
-  world-mode vblank) and a globe centred on the Fortress (~12 KiB, or the
-  default globe with the beam at the browser's fixed strike point).
-- **integrator**: a further 32 KiB data bank and 8 KiB of code for the
-  cutaway and Shenron's scaled frames in the flight.
+- **frieza**: calls `ending_lose` (A = `EF_GOLD`, X = the encounter
+  key) on the death frame, as `battle-retry.js` (its `fz_death_tick`);
+  the ending module keeps only the event gate at `C1:E77E`. Its
+  `STORY_Q_FRIEZA_CRISIS` answer (from the core's impact until the wish)
+  puts the doomed globe and the cutaway's globe on their night side;
+  until it merges, the bad-ending presets show the day globe where the
+  browser's references show the night one.
+- **world**: `world_nmi_scars` returns while `!w_cut_age` runs (the
+  cutaway's VRAM); nothing else changed there.
+- **core** / **layout**: the comments of `core/layout.asm` still name
+  `$EC-$EF` lower halves as ending art; they now hold fast tables (`E9`,
+  `EC`), the second code area (`ED`) and nothing (`EE`, `EF`).
 - **core**: `core_spr_cull` accepts y down to -64, but an 8-bit OBJ Y below
   -16 (16x16) or -32 (32x32) shows at the bottom of the screen; the overlay
   culls itself to [-32, 224). A "map loaded" notification would replace
@@ -365,15 +420,12 @@ WRAM block `!RAM_ORBIT+$80..$A1`:
 - **story**: keep the finale scripts' doors where `frieza-events.js` has
   them (2F after 42F, 3FF right after cue 176, 08E before A5): the module
   reloads or releases its picture on those loads.
-- **frieza**: `STORY_Q_FRIEZA_CRISIS` puts the doomed globe on its night
-  side; until it answers, the bad-ending presets show the day globe
-  where the browser's references show the night one.
 - **goku**: with `GOKU_CTL_SUPPRESS` in the village the HUD portrait stays
   Goku's; the browser shows the native boy there too.
 
 ## Tests
 
-`node snes/test/ending/run.mjs [kai|space|fatal|depart|vista|flight]`
+`node snes/test/ending/run.mjs [kai|space|fatal|depart|vista|flight|loads|cutaway]`
 (Mesen at `.local/tools/mesen`, outputs under `.local/snes-test/ending/`).
 Each scene is cued through the module's request byte from an imported
 browser-mod field state; references are composed with the browser
@@ -394,6 +446,15 @@ overruns) are measured on a separate untouched run.
 | `vista` | `ending-fix__end-20` (map 180) | 12 stills 95.5-96.0%, done flags, Shenron's rise without lag, lag ≤ 12 |
 | `flight` | `ending-fix__end-20` (map 180) | 11 stills 90.6-99.0%, load ≤ 30 frames, muted/airborne/sound/done, lag ≤ 20, no overruns |
 | `loads` | `emulator-probe__potos-state` | doors through core's event mailbox: 2F under the doomed globe (reloaded, clock on, 99.9%), cue 176 after the flight holds black, door 3FF: the cliff 99.1% of a native load of it, Dyluck present |
+| `cutaway` | the world tests' waterfall checkpoint | Super Saiyan takeoff, the Fortress 400 px ahead at the default target, the full wave: 11 stills 99.7-100% against planet-view itself (age held), footprint DMA ends by line 254, the age trails by at most 1, the field's IRQ line (VTIME 196) back after the deck landing |
+
+Sounds are checked on the calls into the audio module (`audio_sfx`,
+`audio_fade` watched in Mesen): silence at the scatter's and the death's
+first frame, full volume back at the release, flight 60 / charged 300,
+flight at the launch (56), power burst at the blast (48), Frieza's orb 408
+and the Fortress break 624 in the death. Every test runs on a private ROM
+copy (its own battery file) with Goku's persistent flag set after the
+import.
 
 The scene select's ending presets (`node snes/test/debug/run.mjs
 good-ending bad-ending explosion`) start from power-on: bad-ending and
