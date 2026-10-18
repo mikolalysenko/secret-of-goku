@@ -220,6 +220,54 @@ function test()
   F.stop(0)
   F.waitFx(3)
 
+  -- Death Balls above 32 px: a polygon of the 16 px art upscaled by nearest
+  -- neighbour (death-ball-art.js). The outline must be the browser's (every
+  -- texel inside the art's circle changed, nothing outside), the rim ring
+  -- darker than the rows' inner colour while the game uses no colour math.
+  local BX, BY = 60, 112
+  local plainBall = emu.getScreenBuffer()
+  local function luma(v) return ((v >> 16) & 255) * 3 + ((v >> 8) & 255) * 6 + (v & 255) end
+  for _, size in ipairs({ 24, 48, 80 }) do
+    F.draw(0, F.K.DEATHBALL, S, 0, BX, BY, size, 0, 0, 0)
+    F.waitFx(4)
+    local best, detail = -1, ''
+    for _ = 1, 3 do
+      H.wait(1)
+      local buf = emu.getScreenBuffer()
+      local left, top = BX - size // 2, BY - size // 2
+      local inside, changed, outside, spill, rimL, rimN, inL, inN = 0, 0, 0, 0, 0, 0, 0, 0
+      for py = top - 4, top + size + 3 do
+        for px = left - 4, left + size + 3 do
+          local i = (py + 7) * 256 + px + 1
+          local sx, sy = (px - left) * 16 // size, (py - top) * 16 // size
+          local r = (2 * sx - 15) ^ 2 + (2 * sy - 15) ^ 2
+          local inBox = px >= left and px < left + size and py >= top and py < top + size
+          if inBox and r <= 149 then
+            inside = inside + 1
+            if buf[i] ~= plainBall[i] then changed = changed + 1 end
+            if r > 120 then rimL, rimN = rimL + luma(buf[i]), rimN + 1 else inL, inN = inL + luma(buf[i]), inN + 1 end
+          else
+            outside = outside + 1
+            if buf[i] ~= plainBall[i] then spill = spill + 1 end
+          end
+        end
+      end
+      local math23 = H.r8(0x7E0023)
+      local rimDark = math23 ~= 0 or (rimN > 0 and rimL / rimN < inL / math.max(1, inN))
+      local pass = changed >= inside * 0.97 and spill <= outside * 0.01 and rimDark and H.r16(0x317890) == 3
+      local d = string.format('inside=%d changed=%d outside=%d spill=%d rim=%d inner=%d $23=%02X on=%d', inside, changed,
+        outside, spill, rimN > 0 and rimL // rimN or 0, inN > 0 and inL // inN or 0, math23, H.r16(0x317890))
+      if pass then best, detail = 1, d elseif best < 0 then best, detail = 0, d end
+    end
+    H.log('deathball_' .. size, detail)
+    F.check('deathball_' .. size, best == 1, detail)
+    if size == 80 then F.grab('deathball_80') end
+  end
+  F.stop(0)
+  F.waitFx(3)
+  F.check('deathball_off', H.r16(0x317890) == 0 and (H.r8(0x7E002C) & 0x0C) == 0,
+    string.format('on=%d $2C=%02X', H.r16(0x317890), H.r8(0x7E002C)))
+
   -- Charge orb anchored at Goku (FX_F_GOKU): the idle pose has no hand
   -- socket (goku_api_hand), so nothing is drawn; combat shows it in the
   -- charge pose.

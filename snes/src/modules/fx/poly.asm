@@ -774,6 +774,223 @@ fx_poly_rows:
 	AND.w #$00FF
 	RTS
 
+;---------------------------------------------------------------------------
+; Death Balls above 32 px (death-ball-art.js, 16 px art upscaled by nearest
+; neighbour): each art row is a band of screen lines with one outline, so
+; the polygon has at most 16 rows. Window 1 = the circle's span, window 2 =
+; its span without the rim texels; the backdrop is the row's most frequent
+; inner colour (fx.mjs fx_dball_colours) and the rim ring (window 1 xor 2)
+; subtracts fixed colour towards the art's rim violet (kind 3 in fx_nmi).
+; In: !d_ks frame 0-11, +2 size index (fx_dball_sizes), !d_cur X/Y centre.
+; C clear when drawn, C set: the polygon is taken (draw the OBJ ball).
+!fxd_b    = !d_ks+$04         ; offset of this size's boundaries in fx_dball_bounds
+!fxd_r    = !d_ks+$06         ; art row 0-16
+!fxd_c    = !d_ks+$08         ; offset of this frame's colours in fx_dball_colours
+!fxd_w1   = !d_ks+$0A         ; records of the rows so far (channel 3: 0 / colour;
+!fxd_w2   = !d_ks+$0C         ; channel 2: window 1 / window 2)
+fx_poly_dball:
+	JSR fx_poly_avail
+	BCC +
+	RTS
++	LDA !d_ks+2                  ; size
+	ASL
+	TAX
+	LDA.l fx_dball_sizes,X
+	STA !fxp_len
+	LSR
+	STA !d_tmp
+	LDA !d_cur+!C_X              ; left / top = centre - size/2
+	SEC
+	SBC !d_tmp
+	STA !fxp_x
+	LDA !d_cur+!C_Y
+	SEC
+	SBC !d_tmp
+	STA !fxp_y
+	LDA.w #$00E0                 ; key fields: the ball's tag, frame
+	STA !fxp_hw
+	LDA !d_ks
+	STA !fxp_t
+	STZ !fxp_rip
+	LDA.l fx_dball_fix           ; COLDATA for the rim (fx_nmi_poly kind 3)
+	STA.l !fx_pfix
+	LDA.l fx_dball_fix+2
+	STA.l !fx_pfix+2
+	JSR fx_poly_key
+	BCS .build
+	LDA.l !fx_pshown             ; the same picture: show those tables again
+	STA.l !fx_preuse
+	LDA.w #$0003
+	STA.l !fx_poly_req
+	CLC
+	RTS
+.build
+	LDA.w #$FFFF
+	STA.l !fx_pkey+8
+	LDA.w #$0000
+	STA.l !fx_preuse
+	STZ !fxp_ovf
+	LDA.l !fx_pbuf
+	CLC
+	ADC.w #!fx_poly&$FFFF
+	TAX
+	ADC.w #!FX_PBUF_SIZE
+	STA !fxp_end
+	SEP #$20
+	LDA.b #$00
+	STA.l !FX_PBASE,X            ; the buffer's first byte stays 0
+	REP #$20
+	INX
+	STX !fxp_out
+	TXA
+	STA.l !fx_ptab3
+	LDA !d_ks+2                  ; this size's boundaries: 17 bytes per size
+	ASL
+	ASL
+	ASL
+	ASL
+	CLC
+	ADC !d_ks+2
+	STA !fxd_b
+	LDA !d_ks                    ; this frame's colours: 16 words per frame
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL
+	STA !fxd_c
+	; Channel 3: the game's backdrop, each art row's colour, the backdrop.
+	LDA.w #5
+	JSR fx_pw_open
+	LDA.w #4
+	JSR fx_pw_colour
+	STX !fxd_w1
+	STY !fxd_w2
+	STZ !fxd_r
+.crow
+	JSR .rowLine                 ; lines up to this row: the previous record
+	LDX !fxd_w1
+	LDY !fxd_w2
+	JSR fx_pw_to
+	LDA !fxd_r
+	CMP.w #16
+	BCS .cdone
+	ASL
+	ASL
+	TAX
+	LDA.l fx_dball_rows,X
+	AND.w #$00FF
+	CMP.w #$00FF
+	BEQ +
+	LDA !fxd_r                   ; a row with a span: its colour
+	ASL
+	CLC
+	ADC !fxd_c
+	TAX
+	LDA.l fx_dball_colours,X
+	STA !fxd_w2
+	STZ !fxd_w1
+	BRA ++
++	LDA.w #4                     ; none: the game's backdrop
+	JSR fx_pw_colour
+	STX !fxd_w1
+	STY !fxd_w2
+++	INC !fxd_r
+	BRA .crow
+.cdone
+	LDA.w #4
+	JSR fx_pw_colour
+	JSR fx_pw_close
+	; Channel 2 (mode 4): window 1 the span, window 2 its inner span.
+	LDA !fxp_out
+	STA.l !fx_ptab2
+	LDA.w #5
+	JSR fx_pw_open
+	LDA.w #$00FF
+	STA !fxd_w1
+	STA !fxd_w2
+	STZ !fxd_r
+.wrow
+	JSR .rowLine
+	LDX !fxd_w1
+	LDY !fxd_w2
+	JSR fx_pw_to
+	LDA !fxd_r
+	CMP.w #16
+	BCS .wdone
+	ASL
+	ASL
+	TAX
+	LDA.l fx_dball_rows,X        ; x0 | (x1+1) << 8
+	JSR .span
+	STA !fxd_w1
+	LDA !fxd_r
+	ASL
+	ASL
+	TAX
+	LDA.l fx_dball_rows+2,X      ; inner x0 | (x1+1) << 8
+	JSR .span
+	STA !fxd_w2
+	INC !fxd_r
+	BRA .wrow
+.wdone
+	LDX.w #$00FF
+	LDY.w #$00FF
+	JSR fx_pw_close
+	LDA !fxp_ovf
+	BEQ +
+	SEC
+	RTS
++	LDA.w #$0004
+	STA.l !fx_pdmap
+	LDA.w #$0003
+	STA.l !fx_poly_req
+	LDA.l !fx_s                  ; the key now describes these tables
+	STA.l !fx_pkey+8
+	LDA.w #$0000
+	STA.l !fx_pshown
+	CLC
+	RTS
+.rowLine                         ; A = top + boundary[row]: the row's first line
+	LDA !fxd_r
+	CLC
+	ADC !fxd_b
+	TAX
+	LDA.l fx_dball_bounds,X
+	AND.w #$00FF
+	CLC
+	ADC !fxp_y
+	RTS
+.span                            ; A = texel x0 | (x1+1) << 8 ($FFFF: none) -> window record
+	CMP.w #$FFFF
+	BEQ .empty
+	PHA
+	AND.w #$00FF
+	CLC
+	ADC !fxd_b
+	TAX
+	LDA.l fx_dball_bounds,X
+	AND.w #$00FF
+	CLC
+	ADC !fxp_x
+	STA !d_tmp                   ; first column
+	PLA
+	XBA
+	AND.w #$00FF
+	CLC
+	ADC !fxd_b
+	TAX
+	LDA.l fx_dball_bounds,X
+	AND.w #$00FF
+	CLC
+	ADC !fxp_x
+	DEC
+	STA !d_tmp+2                 ; last column
+	JMP fx_pw_lohi
+.empty
+	LDA.w #$00FF
+	RTS
+
 ; ---------------------------------------------------------------------------
 ; Table writer. fx_pw_open: A = entry size (3: two-byte records, 5: four).
 fx_pw_open:
@@ -1651,6 +1868,8 @@ fx_nmi_poly:
 	LDA.b #$03                   ; ... on the main screen
 	STA $212E
 	LDA.l !fx_poly_req
+	CMP.b #$03
+	BEQ .ring
 	CMP.b #$01
 	BNE .flat
 	LDA.b #$80                   ; colour window = window 2 (the core)
@@ -1669,6 +1888,35 @@ fx_nmi_poly:
 .flat
 	LDA.b #$20                   ; colour window = window 1: no math on the
 	STA $2125                    ; beam, the game's own math elsewhere
+	LDA.b #$22
+	STA $2130
+	LDA.l $7E0023
+	STA $2131
+	LDA.b #$E0
+	STA $2132
+	BRA .enable
+.ring                            ; Death Ball: window 1 = span, 2 = inner span
+	LDA.b #$AA                   ; BG1 / BG2 masked inside window 1 or 2
+	STA $2123
+	LDA.b #$A0                   ; colour window: windows 1 and 2 ...
+	STA $2125
+	LDA.l $7E0023                ; the game's own colour math in use: the
+	BNE .ringFlat                ; ball keeps it outside, no rim
+	LDA.b #$08                   ; ... xor: the rim ring
+	STA $212B
+	LDA.b #$10                   ; math only inside it, fixed colour
+	STA $2130
+	LDA.b #$A0                   ; subtracted from the backdrop
+	STA $2131
+	LDA.l !fx_pfix
+	STA $2132
+	LDA.l !fx_pfix+1
+	STA $2132
+	LDA.l !fx_pfix+2
+	STA $2132
+	BRA .enable
+.ringFlat
+	STZ $212B                    ; ... or: the whole ball, no math there
 	LDA.b #$22
 	STA $2130
 	LDA.l $7E0023
@@ -1701,6 +1949,7 @@ fx_poly_restore:
 	LDA.b #$00
 	STA.l $002123
 	STA.l $002125
+	STA.l $00212B
 	STA.l $00212E
 	LDA.b #$02
 	STA.l $002130

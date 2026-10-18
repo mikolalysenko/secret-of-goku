@@ -36,10 +36,11 @@ endif
 	BCS +
 	JSR fx_nmi_cells
 	JSR fx_nmi_palettes
-+	LDA.l !fx_poly_req           ; a wave polygon owns the colour math,
-	CMP.w #$0001                 ; otherwise the flash may use it
-	BEQ .end
-	JSR fx_nmi_math
++	LDA.l !fx_poly_req           ; up/down waves and Death Balls own the
+	BEQ +                        ; colour math; otherwise the flash may use it
+	CMP.w #$0002
+	BNE .end
++	JSR fx_nmi_math
 	BRA .end
 .late
 	LDA.l $7E002C

@@ -686,8 +686,11 @@ fx_k_lightning:
 	RTS
 
 ; ---------------------------------------------------------------------------
-; FX_DEATHBALL: !C_A diameter, !C_T frame (0-11). 16 and 32 px balls are
-; OBJ; larger sizes draw the 32 px ball until the polygon renderer lands.
+; FX_DEATHBALL (death-ball-art.js draw(), not cinematic): !fx_t frame
+; (wrapped to 12), !fx_a diameter snapped to deathBallSizes (nearest, ties
+; to the smaller, as the browser). 16 and 32 px are OBJ art; the other sizes
+; are a polygon (poly.asm fx_poly_dball) while it is free, else the 32 px
+; ball.
 fx_k_deathball:
 	LDA.w #$0000
 	JSR fx_depth
@@ -696,14 +699,54 @@ fx_k_deathball:
 	BCC +
 	SBC.w #12
 	BRA -
-+	STA !d_ks
-	LDA !d_cur+!C_A
-	CMP.w #25
-	BCS +
++	STA !d_ks                    ; frame
+	LDA !d_cur+!C_A              ; the first size >= the diameter ...
+	STA !d_tmp
+	LDX.w #$0000
+-	LDA.l fx_dball_sizes,X
+	CMP !d_tmp
+	BCS .found
+	INX
+	INX
+	CPX.w #!FX_DBALL_SIZES*2
+	BCC -
+	DEX                          ; above them all: the largest
+	DEX
+	BRA .snapped
+.found
+	CPX.w #$0000                 ; ... or the one below when it is nearer
+	BEQ .snapped
+	SEC
+	SBC !d_tmp
+	STA !d_tmp+2                 ; size[i] - diameter
+	LDA !d_tmp
+	SEC
+	SBC.l fx_dball_sizes-2,X     ; diameter - size[i-1]
+	CMP !d_tmp+2
+	BEQ +
+	BCS .snapped
++	DEX
+	DEX
+.snapped
+	TXA
+	LSR
+	STA !d_ks+2                  ; size index
+	BEQ .obj16
+	CMP.w #2
+	BEQ .obj32
+	JSR fx_poly_dball
+	PHP
+	LDA.w #$FFFF                 ; the builder used !d_tiles
+	STA !d_lasta
+	PLP
+	BCS .obj32
+	RTS
+.obj32
+	LDA.w #!FX_ASM_DEATH32
+	BRA +
+.obj16
 	LDA.w #!FX_ASM_DEATH16
-	BRA ++
-+	LDA.w #!FX_ASM_DEATH32
-++	CLC
++	CLC
 	ADC !d_ks
 	JMP fx_emit_here
 

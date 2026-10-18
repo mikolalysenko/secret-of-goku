@@ -17,8 +17,8 @@ re-requests every frame.
 
 Status: **API frozen; OBJ kinds, debris, beams and the full-screen wave
 polygon work** in the field (see [Status](#status) for each kind). Kinds
-not yet implemented (aura, charge lightning, large Death Balls, world
-flight) are safe to call and draw nothing.
+not yet implemented (aura, charge lightning, world flight) are safe to
+call and draw nothing.
 
 ## Calling convention
 
@@ -139,7 +139,7 @@ Continuous kinds (`fx_draw`, every frame the effect should show):
 | `FX_ORB` | `$10` | charge orb | `!fx_a` frame 0–4 (charge `min(4,strength·5)`; full charge alternates 3/4 every 4 frames) | Charge orb at the palm; *front* except facing up. Gold/pink with flags |
 | `FX_AURA` | `$11` | `ki-aura.js` | `!fx_style` tone 0 blue, 1 gold, 2 pink; `!fx_a` power 0–256; `!fx_b` body height 16/32/40; `!fx_t` clock | Flame aura around a body, drawn behind it. X/Y = centre of the body cell |
 | `FX_LIGHTNING` | `$12` | `charge-lightning.js` | `!fx_a` bolts (2 or 3); `!fx_t` clock | Super Saiyan charge bolts from X/Y to nearby actors, solid tiles or air, regenerated every 3 frames |
-| `FX_DEATHBALL` | `$13` | `death-ball-art.js` | `!fx_a` diameter (16–224), `!fx_t` frame; `!fx_style` 0 violet (combat), 1 red (planet killer) | Small sizes are OBJ; large ones a filled circle (see strategy) |
+| `FX_DEATHBALL` | `$13` | `death-ball-art.js` | `!fx_a` diameter (snapped to `deathBallSizes`, 16–224, as the browser), `!fx_t` frame (wraps at 12) | 16 and 32 px: the art as OBJ; 24 and 48–224 px: a polygon (see strategy), else the 32 px ball. The cinematic red planet killer (64 px art) is not FX's: its scene draws it |
 | `FX_DISC` | `$14` | `orbit-effects.js` `disc` | `!fx_t` age (tilt = (age>>3)&3) | Frieza's Death Disc, 20×6 in four tilts |
 | `FX_FINGER` | `$15` | `fingerCharge` | `!fx_t` age | Pink finger-laser charge glint |
 | `FX_CELL` | `$16` | `stamp()` | `!fx_a` group (below), `!fx_b` frame, `!fx_dir` turn | Any native spell cell, quarter turns, gold/pink variants |
@@ -340,6 +340,19 @@ for the horizontal headings 0 / 8: those are three lines of one colour
 each, drawn as a polygon when the frame's polygon is free (as the strip
 beams). Two cells per heading and colour frame.
 
+**Death Balls above 32 px** (`fx_poly_dball`): the browser upscales the
+16 px art by nearest neighbour, so each art row is a band of screen lines
+with one outline, and the polygon has at most 16 rows at any size (about
+165 bytes of tables). Window 1 is the art circle's span, window 2 its
+span without the rim texels; BG1/BG2 are masked inside either. The
+backdrop of each band is the mean of the row's inner colours in that frame
+(`fx_dball_colours`), and the rim ring (window 1 xor window 2) subtracts
+one fixed colour, fitted in `fx.mjs` to bring the rows' colours closest
+to the art's rim violet. The outline matches the browser's exactly; the
+art's pink patches become tints of their rows, and the sparks outside the
+circle are not drawn. While the game's own colour math is on (`$23` not
+zero) the ball keeps it outside and shows no rim.
+
 **Screen effects**: the flash is fixed-colour addition (R/G +amount, B
 +amount/2 with the browser's `[0,1,2,4,6,9,13,17]` ramp) on BG1/BG2/OBJ
 4-7/backdrop for 7 frames, skipped while an up/down wave owns the colour
@@ -381,7 +394,7 @@ with a wave on screen.
 | --- | --- | --- |
 | `FX_IMPACT`, `FX_KI`, `FX_BURST`, `FX_EXPLODE`, `FX_EMBER`, `FX_DETONATE`, `FX_STATUS`, `FX_SPARKS` | Done (OBJ) | `snes/test/fx/gallery.lua` screenshots in Potos |
 | `FX_ORB` | Done; `FX_F_GOKU` draws only in poses with a hand socket (charge, beam, blast) | gallery (screen points), beams (no socket in the idle pose) |
-| `FX_DEATHBALL` | 16 and 32 px OBJ balls; larger diameters draw the 32 px ball | gallery |
+| `FX_DEATHBALL` | Done: 16 / 32 px OBJ, other sizes a polygon | gallery; beams: 24, 48 and 80 px outlines against the browser's, rim |
 | `FX_DISC`, `FX_FINGER`, `FX_CELL` | Done (OBJ) | gallery |
 | `FX_BEAM_KAME`, `FX_BEAM_FRIEZA`, `FX_BEAM_FIRE` | Done: OBJ strips (four facings); the first left/right beam of a frame as a polygon | `snes/test/fx/beams.lua` (polygon against OBJ strips, pixel-exact, right and left) |
 | `FX_BEAM_WAVE`, `FINAL`, `GALICK` | Done (polygon + OBJ edges), four facings | beams: pixel checks of core, bands and rims, HDMA/flag/palette checks |
@@ -389,7 +402,7 @@ with a wave on screen.
 | `FX_DEBRIS`, brazier burst | Done (OBJ); destroy's effect records are drawn by FX itself (below) | `snes/test/fx/debris.lua` |
 | `FX_BEAM_LASER` | Done: 16 headings (OBJ windows; headings 0 / 8 as a polygon when free) | beams: every heading against the browser's pixels |
 | `FX_AURA`, `FX_LIGHTNING` | Not yet (draw nothing) | |
-| Large Death Balls (polygon circle), world flight | Not yet | |
+| World flight | Not yet | |
 
 **Combat review** (combat reported that in the lagging Rabite field its
 Kamehameha strip and charge orb did not appear and the full wave was
