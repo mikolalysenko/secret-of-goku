@@ -14,6 +14,7 @@ incsrc "modules/story/module.asm"
 incsrc "modules/flight/module.asm"
 incsrc "modules/debug/module.asm"
 incsrc "modules/destroy/module.asm"
+incsrc "modules/ending/module.asm"
 incsrc "modules/combat/module.asm"
 incsrc "modules/audio/module.asm"           ; after the modules whose sound flags it reads
 
@@ -32,11 +33,13 @@ modules_field_frame:
 	JSL goku_frame
 	JSL destroy_field_frame          ; last: its planner uses the frame time left
 	JSL fx_frame               ; after every module that draws effects: shows this frame's requests
+	JSL ending_frame          ; after the modules that draw sprites: a full-screen scene takes the whole OAM
 	JSL audio_frame                 ; last: sends what other modules requested this frame
 	RTL
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
 modules_field_nmi:
 	JSL goku_nmi
+	JSL ending_nmi
 	JSL fx_nmi                 ; keep last: programs HDMA channels 2/3 after all vblank DMA
 	RTL
 ; World flight frame, after the world logic (DB = $7E).

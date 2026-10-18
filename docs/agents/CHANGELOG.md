@@ -4,6 +4,13 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## 2026-10-17 — SNES cartridge: 64 Mbit ExHiROM, unflashed Goku, fresh cartridges (integration)
+
+- The cartridge is now 64 Mbit ExHiROM (the mapping of Tales of Phantasia). The first 4 MiB is unchanged apart from the header, and the second 4 MiB mirrors it. Generators can place up to 1984 KiB of DMA sources and bulk tables in banks `$40–$7D` through `xdata(name, bytes)`, which frees room in the fast banks for the remaining set pieces. Save RAM stays where the original game keeps it, because bsnes, Mesen2, snes9x and the FXPak map ExHiROM save RAM like HiROM. See [snes-rom.md](snes-rom.md#extended-data-exhirom).
+- Goku keeps his own colours during native screen flashes while a scene shows him (the arrival's hop, matching the browser's scene renderers), and the Goku tests follow combat's remapped controls under FastROM. On the arrival frames compared, the cartridge moved closer to the browser (impact 3.1% → 0.3% of pixels differ).
+- A NEW GAME can no longer start with Goku already a Super Saiyan. Combat had seeded his form on the title from noise in a new cartridge's battery RAM, or from the previous playthrough's permanent transformation. NEW GAME now resets the form and loading sets it from the save. The cartridge also clears its persistent Goku block at power-on when the block lacks the cartridge's magic.
+- Validation: the full Mesen suite passes on the ExHiROM build except the effects library's `beams` test (fixed on its branch). Goku: 12,751/12,751 pose frames match. Scene select: 19 presets match the browser fully and 4 natively, none partially. New core tests: `live` and `xdata`.
+
 ## 2026-10-17 — Release 0.2.3
 
 - Release 0.2.3 (`v0.2.3`) and its Pages build include everything since 0.2.2:
@@ -71,6 +78,13 @@ stay traceable even when they are committed together.
   - **Core equivalence:** the SnesJs core matches over 42 states.
   - **Browser equivalence:** composed and per-pixel rendering match with every mod hook across 41 saved states and 16 story and set-piece scenes. They also match in the overlay scenarios, 49 forced ending and defeat branches, every arrival phase (with edge clipping) and the tree and emperor scenes.
   - **Browser suite:** only the 21 known failures, plus a controls layout test that is also flaky on 0.2.1. All 28 phone tests pass.
+
+## 2026-10-17 — SNES cartridge: finale cinematics (ending stream)
+
+- The finale plays on the cartridge inside the native field loop, driven by the story module's event hooks as in the browser: the good ending's fade, Shenron's vista over the Mana Tree (summon, dragon, wish), the wish flight over a Mode 7 night world with the seven Balls scattering, the reunion cliff with Dyluck, Goku beside Randi in Potos and his departure (power-up, launch, whiteout, distant globe), King Kai's planet with both end cards; the bad ending's doomed globe, explosion and escape; and the finale death (collapse, black, the planet exploding, GAME OVER). See [snes-port/ending.md](snes-port/ending.md).
+- Scenes stay up over the finale scripts' native map loads (reloaded after the loader's blocking pass), the reunion holds black until its cliff reloads, and the scene select's good-ending, bad-ending and explosion presets reach their scenes from power-on.
+- Validation: `snes/test/ending/run.mjs` (seven Mesen suites against references composed by the browser engine's own code): King Kai 93%, globes and escape 86-100% (the explosion's brick fragments 65-80% during the drift), death 67-100%, village and departure 99-100%, vista 95-96%, flight 91-99%, native loads 99%; lag and vblank checks per scene.
+- Open: the Fortress cutaway in world flight (needs ROM and world-mode hooks), the combat module's call into the finale death, the audio module's ending cues, and the frieza module's crisis answer (night globe). The finale has not yet been played end to end through the story's own scripts, nor on real hardware.
 
 ## 2026-10-17 — SNES cartridge: destructible scenery, barriers and demolition (destroy stream)
 

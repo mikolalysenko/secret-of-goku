@@ -83,6 +83,7 @@ function Cart(data, header, isHirom) {
   };
   this.registerReadHook = function(fn, previous, mark) {
     readHooks.set(fn, {previous: previous, mark: mark});
+    readVersion++;
     readHead = null;
     readMiss = null;
   }
@@ -106,6 +107,32 @@ function Cart(data, header, isHirom) {
   let gateEnabled = true;
   this.setReadGate = function(enabled) {
     gateEnabled = !!enabled;
+    readVersion++;
+  }
+  // Whether gatedRead(bank, adr) would run read wrappers for this address
+  // (always, for an unverified chain or a disabled gate), and the core value
+  // without counting or side effects.
+  let readVersion = 0;
+  this.readVersion = function() {
+    return readVersion;
+  }
+  this.readHooked = function(bank, adr) {
+    let fn = this.read;
+    if(fn === coreRead) {
+      return false;
+    }
+    if(!gateEnabled) {
+      return true;
+    }
+    if(fn !== readHead && (fn === readMiss || !rebuildReadGate(fn))) {
+      readMiss = fn;
+      return true;
+    }
+    let key = (bank << 16) | adr;
+    return (watchBits[key >> 3] & (1 << (key & 7))) !== 0;
+  }
+  this.peek = function(bank, adr) {
+    return coreRead.call(this, bank, adr);
   }
   this.gatedRead = function(bank, adr) {
     let fn = this.read;

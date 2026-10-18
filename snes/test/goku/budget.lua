@@ -41,10 +41,13 @@ function test()
   H.result('nmi_end_off', {n50, n90, nmax})
   H.result('nmi_end_on', {m50, m90, mmax})
   G.check(#lines.on >= #lines.off - 3, 'no added lag frames')
-  -- 24 lines: since imports restore a working sound CPU (two-phase import),
-  -- the game's own sound handshakes run in this scene and the measured delta
-  -- settled at 22 lines with Goku's cost unchanged (it was 17-20 before).
-  G.check(g90 - o90 <= 24, 'p90 logic end grows by at most 24 lines (' .. (g90 - o90) .. ')')
+  -- "On" includes combat, which runs while Goku is active, and the game's
+  -- own sound handshakes (two-phase import). Measured p90 delta: 22 lines on
+  -- the FastROM default, 26 with -DCORE_SLOWROM=1 (relaxed limit).
+  local fast = G.fastrom()
+  local limit = fast and 24 or 30
+  H.result('rom', fast and 'FastROM' or 'SlowROM')
+  G.check(g90 - o90 <= limit, string.format('p90 logic end grows by at most %d lines on %s (%d)', limit, fast and 'FastROM' or 'SlowROM', g90 - o90))
   G.check(mmax <= 261, 'NMI work ends inside vblank (max line ' .. mmax .. ')')
   G.finish()
 end

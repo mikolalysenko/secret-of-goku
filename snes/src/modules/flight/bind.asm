@@ -128,7 +128,7 @@ if defined("WORLD_MAGIC")
 else
 	; Goku can act, nothing queued, idle native field, and the map header's
 	; world-flight bit (C8:7000 header + 4, bit 7)
-	LDA.w !fl_state
+	LDA.w !FLIGHT_B_STATE
 	AND.w #!FLS_CAN
 	BEQ .no
 	LDA.w !core_event_req&$FFFF
@@ -214,9 +214,9 @@ if defined("FX_DEBRIS")
 	PHY
 	LDA.w #$0000
 	STA.l !fx_rgb
-	LDA.w !fl_t0
+	LDA.w !FLIGHT_B_T0
 	STA.l !fx_rgb+2
-	LDA.w !fl_t1
+	LDA.w !FLIGHT_B_T1
 	STA.l !fx_rgb+4
 	LDA.w #8
 	STA.l !fx_a

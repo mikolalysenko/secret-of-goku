@@ -1,4 +1,5 @@
-; Bank layout of the expanded 32 Mbit HiROM image.
+; Bank layout of the expanded 32 Mbit HiROM image (the first 4 MiB of the
+; 64 Mbit ExHiROM cartridge; extended data in $40-$7D is placed by build.mjs).
 ; Original game: C0-DF (ROM 0x000000-0x1FFFFF), untouched except hijacks.
 ; Code is assembled at the 80-BF mirror of each bank's upper half
 ; ($A0:8000 = ROM 0x208000), so it runs with low WRAM and I/O visible when
@@ -44,6 +45,17 @@
 !CODE_SPARE2  = $AE8000
 !CODE_DEBUG   = $AF8000   ; debug scene select (upper half only)
 !CODE_SPARE3  = $AF8000
+
+; Spare code quarters. The ROM ownership check (build.mjs) works per 16 KiB
+; quarter, so a module whose code half is full can be given one of these;
+; the half's owner asserts that its own code ends before the quarter. Assign
+; one by defining !CODE_<MODULE>2 = the quarter and noting it here.
+;   $A1:C000-FFFF  goku's half (goku code asserts <= $A1C000)   free
+;   $AA:C000-FFFF  audio's half (audio code asserts <= $AAC000) free
+;   $AB:C000-FFFF  title's half (title code asserts <= $ABC000) free
+!CODE_QUARTER_GOKU  = $A1C000
+!CODE_QUARTER_AUDIO = $AAC000
+!CODE_QUARTER_MISC  = $ABC000
 
 !DATA_CORE    = $E00000
 !DATA_GOKU    = $E10000

@@ -204,8 +204,10 @@ class ManaMod {
     // The cartridge's window/controller editors finish with Start; ordinary
     // Status/Level/Action pages and rings cancel with Y. Keep X/back usable
     // everywhere, latching the route until release if the panel closes.
+    // $1876 is the open option; $180A is only the cursor relative to the
+    // option the ring last opened at, so Status could read as an editor.
     if(!(input&0x200))this.panelBack=false;
-    else if(!(this.lastPadInput&0x200))this.panelBack=this.read8(0xe4)===1&&this.read8(0xe5)===1&&!this.read8(0xd0)&&this.snes.ppu.mode===5&&this.read8(0x1809)===2&&[5,6].includes(this.read8(0x180a))&&[0x5c,0xa7,0x20,0xc0,0x5c,0xcf,0xc1,0].every((v,i)=>this.read8(0x100+i)===v)?8:2;
+    else if(!(this.lastPadInput&0x200))this.panelBack=this.read8(0xe4)===1&&this.read8(0xe5)===1&&!this.read8(0xd0)&&this.snes.ppu.mode===5&&this.read8(0x1809)===2&&[5,6].includes(this.read8(0x1876))&&[0x5c,0xa7,0x20,0xc0,0x5c,0xcf,0xc1,0].every((v,i)=>this.read8(0x100+i)===v)?8:2;
     if(input&0x200)this.snes.joypad1State=(this.snes.joypad1State&~0x200)|(this.panelBack||2);
     if(input&0x200)input=(input&~0x200)|2;
     if(this.ending?.complete)this.snes.joypad1State=0;

@@ -4,15 +4,17 @@
 -- menu's own OAM buffer (7E:9C00) is never changed. GAME FILE and the save
 -- confirmation are in file.lua (a fresh emulator: the save dialog of an
 -- imported state stops answering after several imports in one session).
--- Field (Potos) -> select the boy -> X ring -> config ring -> item `rot` -> B
+-- Field (Potos, the boy in control) -> X: his ring (combat maps the
+-- player's X to native Y, as the browser mod; combat.md) -> config ring ->
+-- item `rot` (2 Status, 4 Action Grid) -> B. Goku's ring opens on the
+-- config ring; the native boy's opens on his weapon ring, one ring above.
 local function ring_item(rot, on, form)
   G.import('barrier-audit__potos-probe')
   if on then G.on() else G.off() end
   H.w8(G.addr.form, form or 0)
   H.wait(10)
-  H.tap('select', 4, 30)
   H.tap('x', 6, 50)
-  H.tap('down', 4, 40)
+  if not on then H.tap('down', 4, 40) end
   for _ = 1, rot do H.tap('left', 4, 30) end
   H.tap('b', 4, 150)
 end

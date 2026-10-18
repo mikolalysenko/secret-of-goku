@@ -12,10 +12,16 @@ Work streams, hardware strategies and status: [snes-port/plan.md](snes-port/plan
   combat, flight, destruction, sequence breaks, dialogue edits, the Frieza and
   Vegeta fights, endings, music and sound — must run as 65816/SPC700 code and
   data inside the cartridge. No emulator hooks.
-- Standard hardware only. The image is **32 Mbit HiROM** (`$FFD7=$0C`) with
-  **32 KiB battery SRAM** (`$FFD8=$05`), the same mapping class as Chrono
-  Trigger. If space runs out the next step is ExHiROM. SA-1 is a last resort
-  for CPU budget; MSU-1 is not used (no real cartridge carries it).
+- Standard hardware only. The cartridge is **64 Mbit ExHiROM** (map mode
+  `$35`, `$FFD7=$0D`; the mapping of Tales of Phantasia) with **32 KiB battery
+  SRAM** (`$FFD8=$05`). bsnes, Mesen2, snes9x and the FXPak map ExHiROM save
+  RAM at `$20–$3F/$A0–$BF:6000–7FFF` exactly like HiROM, so the original saves
+  stay at `$30:6000`. (Only a board wired like Tales of Phantasia's
+  SHVC-LJ3M, which decodes save RAM at `$80–$BF` alone, would need the
+  accesses moved to `$B0–$B3`.) `node snes/build.mjs --hirom` still builds
+  the 32 Mbit HiROM image while no data lives in the extended banks. SA-1 is
+  a last resort for CPU budget; MSU-1 is not used (no real cartridge carries
+  it).
 - The original cartridge (`rom/secret-of-mana-us.sfc`, SHA-256 `4c1501…2d5f`)
   is read, verified and expanded at build time. It is never modified on disk.
 
@@ -118,6 +124,7 @@ savestate), `H.saveStable(name)`, `H.load(path)`, `H.importSnesJs(dir)`,
 | ROM E0–EF | One code bank per module, assembled at the `$A0–$AF:8000` mirror so code sees low WRAM and I/O; lower halves `$Ex:0000–7FFF` hold that module's tables |
 | ROM F0–F7 | Compiled story events and dialogue |
 | ROM F8–FF | Packed graphics and samples |
+| ROM `$40–$7D:0000–7FFF` | Extended data (xdata): DMA sources and bulk tables from `snes/gen` (second 4 MiB, slow banks) |
 | WRAM `7E:D700–DDFF` | Module state blocks (`snes/src/core/ram.asm`) |
 | WRAM `7E:6E40–6FFF` | Core queues and staging |
 | WRAM `7E:7E40–7FFF` | UI block, then spare |
@@ -129,9 +136,46 @@ The three WRAM ranges are the only ones the original game never touches; the
 core tests re-check that, and that the game never reads or writes the added
 SRAM pages, from power-on through the opening and in seven imported scenes.
 
+### Extended data (ExHiROM)
+
+The assembled image is still the 32 Mbit HiROM layout above; `build.mjs`
+then widens it (`toExHiRom`). Banks `$C0–$FF` and their `$80–$BF` mirrors read
+the first 4 MiB as before. Banks `$00–$3F:8000–FFFF` and `$40–$7D` read the
+second 4 MiB, which starts as a byte copy of the first, so every HiROM mirror
+(`$00:8000` code, vectors, hijacks, `$40–$7D` mirrors of `$C0–$FD`) returns
+the same bytes. Tracing boot, the title, save/load and eight imported scenes
+found no reads of `$40–$7D:0000–7FFF` by the original game, so those lower
+halves (62 × 32 KiB = 1984 KiB) are free for extended data.
+
+A generator registers a blob with the `xdata` function in its context:
+
+```js
+export function generate({rom,outDir,xdata}){
+  xdata('ending_fortress_tiles',tileBytes);   // <= 32 KiB per blob
+}
+```
+
+The build places blobs first-fit (largest first, from bank `$7D` down)
+before assembling, and writes `dist/snes/gen/xdata.asm` with
+`!XDATA_ENDING_FORTRESS_TILES` (a 24-bit address such as `$7D0000`) and
+`!XDATA_ENDING_FORTRESS_TILES_SIZE`. Read them with DMA (source bank = the
+address's bank byte) or long addressing. The second 4 MiB is reachable only
+through slow banks (no FastROM; 8 master cycles per byte), so keep code and
+tables read in hot loops in the first 4 MiB and move art, tilemaps,
+palettes, samples and rarely read tables to xdata. A blob may not cross a
+bank; split larger data into 32 KiB pieces.
+
 `snes/src/core/macros.asm` provides `%hijack(addr, target, len, module)`,
 `%hijack_jsl`, `%patch` and `%origN` byte assertions. Every patch of original
 bytes goes through them; `build.mjs` rejects overlapping patches.
+
+asar overwrites silently when two `org` blocks overlap, so `build.mjs` also
+checks ROM ownership: every 16 KiB quarter of the added banks may hold labels
+of one module only (`--strict` makes a shared quarter an error). Each module
+asserts the end of its code and data blocks. When a module's code half is
+full, it can be given a spare quarter of a mostly empty half
+(`!CODE_QUARTER_*` in `core/layout.asm`: goku's, audio's and title's halves
+end their code before `$C000`).
 
 asar does not track `REP`/`SEP`: an immediate's width comes from how it is
 written, so `CMP #8` in 16-bit code assembles as two bytes and desynchronises
@@ -160,7 +204,7 @@ of each hook in `snes/src/modules.asm`.
 | Hook | When |
 | --- | --- |
 | `modules_field_frame` | Every completed field frame (towns, dungeons, dialogue, events, Mode 7 boss arenas) after the game logic and OAM build, before the NMI handshake (`00:B073`) |
-| `modules_field_nmi` | Field vblank after the game's uploads, still force-blanked (`00:C158`); only for frames the loop completed |
+| `modules_field_nmi` | Field vblank after the game's uploads, still force-blanked (`00:C158`); only for frames the loop completed. Afterwards the core writes the game's HDMAEN shadow `$2C` to `$420C`. If the vblank work ran into the next frame's display (scanline 0–224), only channels already running stay on: a channel switched on after HDMA started would run from stale tables. Newly requested channels then start with the next vblank (`!core_hdmaen` holds the value written; core test `hdmaen`) |
 | `modules_world_frame` | World flight frame end (`00:8085`) |
 | `modules_world_nmi` | World vblank after the game's uploads and HDMA setup (`00:8903`); not force-blanked |
 | `modules_menu_frame` | Full-screen menus (game select, name entry, file list, status/equipment, save screen), once per frame in vblank after the menu's uploads (`C0:1E08`) |
@@ -180,7 +224,7 @@ of each hook in `snes/src/modules.asm`.
 | `core_vram_claim`, `core_vram_release` | A = region (`!VRAM_*`, `core/vram.asm`), X = owner id: exclusive use of a free OBJ VRAM region; returns Y = its VRAM word address |
 | `core_sound_queue` | A = command bytes 0–1, X = bytes 2–3 for the native driver (`$1E00`, `C3:0004`); one command sent per frame; carry set when 7 are pending |
 | `core_event_request` | A = native event id (`C1:E76D`: script events, `$0800\|door`, `$0C00\|map` takeoff); started at the end of an idle field frame. `!core_event_req` pending, `!core_event_last` started |
-| `!SRAM_LIVE`, `!PERSIST_*` | Live persistent block (`core/shared.asm`): written to the slot's sidecar after each native save; restored on load when the sidecar matches that slot's record (primary or backup); zeroed for NEW GAME (`!persist_version` = 1) and for saves without a valid sidecar (version 0) |
+| `!SRAM_LIVE`, `!PERSIST_*` | Live persistent block (`core/shared.asm`): written to the slot's sidecar after each native save; restored on load when the sidecar matches that slot's record (primary or backup); zeroed for NEW GAME (`!persist_version` = 1) and for saves without a valid sidecar (version 0). Every clear writes the `'GK'` magic (`!persist_magic`, `+$3E`); power-on clears a block without it (a new cartridge's battery RAM is noise), so modules that read it on the title see zeros, not noise |
 | `!core_frame`, `!core_frame_world`, `!core_frame_menu`, `!core_frame_ring`, `!core_tick`, `!core_mode` | Frame counters per mode, any-mode tick, mode of the last dispatch (`!CORE_MODE_*`) |
 
 Limits: 128 sprites, 32 per line, 34 eight-pixel slivers per line. Modules
@@ -204,7 +248,11 @@ and call `H.importSnesJs`.
 `node snes/test/core/run.mjs [test ...]` builds a `CORE_TEST` cartridge (a
 client of every service driven through a WRAM mailbox, `snes/test/core/testmod.asm`)
 and runs the core tests; `node snes/test/core/measure.mjs` reprints the
-per-scene timing table in engine.md.
+per-scene timing table in engine.md. `live` checks the power-on clear of
+the live block, and `xdata` reads the 32-byte probe that
+`snes/gen/core-xdata.mjs` places in the extended banks back through the
+CPU bus, together with the ExHiROM mirrors, both header copies and the save
+RAM banks.
 
 ## Engine anchors
 

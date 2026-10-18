@@ -104,6 +104,12 @@ assert !RAM_FLIGHT == $7E0000|!FLIGHT_RAM, "!FLIGHT_RAM must match !RAM_FLIGHT"
 !fl_rc_tmp     = !FLIGHT_RAM+$7E   ; word: scratch for the flood fill
 !FLIGHT_RAM_END = !FLIGHT_RAM+$80
 assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
+; bind.asm is assembled after every module, and a later module may reuse a
+; field's name (the ending's wish flight has its own !fl_t1): it reads
+; these evaluated copies.
+!FLIGHT_B_STATE #= !fl_state
+!FLIGHT_B_T0    #= !fl_t0
+!FLIGHT_B_T1    #= !fl_t1
 
 ; fl_state bits
 !FLS_FLY     = $01   ; mod.localFlight (phase)
