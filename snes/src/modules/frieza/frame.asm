@@ -66,6 +66,7 @@ frieza_field_frame:
 	JSR fz_on
 	BCS +
 	JSR fz_danger_tick                ; Goku off: only a danger bit to drop
+	JSR fz_vram_settle
 	RTL
 +	JSR fz_danger_tick
 	JSR fz_apply_pending
@@ -94,6 +95,7 @@ frieza_field_frame:
 	JSR fz_holes_frame
 .notdrawn
 	JSR fz_balls_tick
+	JSR fz_vram_settle
 	JSR fz_music_tick
 	RTL
 
@@ -281,6 +283,7 @@ fz_idle_tick:
 	JSR fz_spr_begin
 	LDA.w #$FFFF
 	STA !fz_spr_pend
+	JSR fz_vram_settle                ; scene VRAM back to core's pool
 	SEP #$20
 	LDA.b #$01
 	STA !fz_wasidle

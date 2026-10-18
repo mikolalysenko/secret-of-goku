@@ -488,6 +488,42 @@ end
 `;
 }
 
+// Core's scene-scoped VRAM pool: Frieza draws only while !VRAM_SCENE_OBJ
+// is free or his (owner !FZ_VRAM_OWNER), claims it on the frames he is
+// drawn and gives it back when his scene ends.
+function coreDefine(name){
+  const src=['ram.asm','core.asm','vram.asm'].map(f=>readFileSync(join(repo,'snes/src/core',f),'utf8')).join('\n');
+  const val=n=>{const m=src.match(new RegExp(`^!${n}\\s*=\\s*([^;\\n]+)`,'m'));if(!m)throw Error(`frieza: core define ${n} missing`);
+    return Function(`return (${m[1].trim().replace(/!(\w+)/g,(_,k)=>val(k)).replace(/\$([0-9A-Fa-f]+)/g,'0x$1')})`)();};
+  return val(name);
+}
+function vramTest(){
+  const g=reference('frieza');
+  const writes=friezaWrites(g.frieza,g.challenge);
+  const owner=coreDefine('core_vram_owner')+2*coreDefine('VRAM_SCENE_OBJ');
+  return `
+function test()
+  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__frieza'))})
+  F.check(ok, 'import')
+  H.w8(0x316001, 1)
+  F.apply(${luaWrites(writes)})
+  ${holdMusic('frieza')}
+  H.w16(${owner}, 9)                -- another scene holds the region
+  H.wait(60)
+  F.check(F.box() == nil, 'not drawn while another owner holds the region')
+  F.check(H.r16(${owner}) == 9, 'the other claim stands')
+  H.w16(${owner}, 0)
+  H.wait(6)
+  F.check(F.box() ~= nil, 'drawn once the region is free')
+  F.check(H.r16(${owner}) == ${defs.FZ_VRAM_OWNER}, 'claimed by Frieza while drawn, owner ' .. H.r16(${owner}))
+  H.w8(${0x7E0000|defs.fz_scene}, 0)  -- the scene ends
+  H.wait(3)
+  F.check(H.r16(${owner}) == 0, 'given back when the scene ends, owner ' .. H.r16(${owner}))
+  F.done()
+end
+`;
+}
+
 const cases={
   court:{preset:'frieza',frames:[60,240,600]},
   thanatos:{preset:'thanatos',frames:[60,240]},
@@ -558,6 +594,17 @@ if(want('music')){
   const ok=r.code===0&&res.pass===true;
   results.push({name:'music',ok,failures});
   console.log(`frieza music: ${ok?'pass':'FAIL'} (${r.ms} ms) song $3C after ${res.songAt} frames, longest stall ${res.stall} frames`);
+  if(!ok)for(const f of failures)console.log('    !',f);
+}
+if(want('vram')){
+  const rom=privateRom(romSrc,'frieza-vram');
+  const r=await runMesen({rom,test:lib+'\n'+vramTest(),outDir:join(outRoot,'vram'),state:join(cps,'waterfall.mss')});
+  cleanupRom(rom);
+  const res=r.results??{};
+  const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
+  const ok=r.code===0&&res.pass===true;
+  results.push({name:'vram',ok,failures});
+  console.log(`frieza vram: ${ok?'pass':'FAIL'} (${r.ms} ms)`);
   if(!ok)for(const f of failures)console.log('    !',f);
 }
 if(want('door')){

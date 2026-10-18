@@ -228,7 +228,7 @@ of the world's (the same within a cell, repeating per cell).
 | WRAM `$7E:DB00-DBBF` | `!RAM_FRIEZA`: scene `+$00-$57`, battle `+$58-$89`, Lich/Beast `+$8A-$AB`, scratch and death/victory `+$AC-$BF` |
 | SRAM `$31:6180-61FF` | `!PERSIST_FRIEZA`: `+$00` version, `+$01` stage, `+$02` tree, `+$03` flags (word), `+$05` stolenMask, `+$06` crisis, `+$07` Beast challenge, `+$08` flyby age; `+$40-$7F` reserved for the orbit stream |
 | SRAM `$32:7000-7FFF` | scene work while Frieza's scenes run: `+$000` hole list and write list (`!FZHB`), `+$800` fight block (`!FZSB`: tag, warning, shots, hazards, afterimages, test mailbox, arena, victory), `+$C00` the hole bitmap. The orbit stream keeps to `$32:6000-6FFF` |
-| VRAM | OBJ tiles `$0C0-$0FF` while Frieza is drawn; core's `FIELD_OBJ_A` (owner `$06`) while the Dragon Balls show; BG tiles `$1C0-$1CF` (free on every map of graphics sets 20 and 21) and BG1 tilemap entries of visible holes on maps 246 and 255 |
+| VRAM | core pool regions, owner `$06` (`!FZ_VRAM_OWNER`), claimed by the frames that use them and given back on the first busy frame that does not (`fz_vram_settle`): `!VRAM_SCENE_OBJ` (OBJ tiles `$0C0-$0FF`) while Frieza is drawn, `!VRAM_SCENE_BG` (BG tiles `$1C0-$1CF`) while holes show on maps 246 and 255, `!VRAM_FIELD_OBJ_A` while the Dragon Balls show; a region another scene holds is not drawn into. Plus the BG1 tilemap entries of visible holes |
 | CGRAM | one free OBJ palette (two with afterimages or the Balls), in vblank; BG palette 6 (map 246) or 2 (map 255) colours 1-7 in the game's buffer while holes show |
 | OAM | up to 8 front sprites for Frieza, 7 for the Balls; native slots rewritten during the Emperor's black frame |
 | Registers | in vblank, per frame and only when this frame's logic asked: the whiteout (CGWSEL/CGADSUB/COLDATA), the black frame (TM, CGADSUB, CGRAM 0), the collapse tint; the map's values come back the vblank after |
@@ -327,7 +327,10 @@ floor on request.
 | `surge` | a 4,095 punch takes 614; hits stop at 64,000; the surge starts, muscular at 270, ends at 380 in phase two, the floor broken |
 | `fracture` | seven fractures give the same 39 cells as `fractureFortress()`; the hole tiles are in VRAM and every listed BG1 row is written |
 | `victory` | the fatal hit starts the beat, white 31 at 400, event C7 runs (stage defeated, ledger 127) |
-| `death` | Goku at 1 HP takes the first orb: no warp, black from 360, Start goes to the title |
+| `death` | Goku at 1 HP takes the first orb: no warp, black from 360, Start goes to the title; with the ending module, the hand-off (`fzd_on` 2, `ES_DEFEATED`, key 1) instead |
+| `vram` | preset `frieza`: not drawn while another owner holds `!VRAM_SCENE_OBJ`, drawn and claimed (owner 6) once it is free, given back when the scene ends |
+| `door` | door 3FC from the `intro` preset: tile y 18 beside the living Emperor, 30 (native) after his death |
+| `tree` | (explicit) preset `tree`: event 5F8 end to end with B tapped every 20 frames; every Tree scene on maps 236 and 198, shots at chosen ages, a trace of the vista's state |
 | `effects` | scenes no preset reaches, set up by `scenarios.mjs` on a preset in the browser (`capture.mjs`: restore the snapshot with an edited `goku.frieza`, run, screenshot into `.local/snes-ref-frieza/`) and replayed on the cartridge: Popoi's end 95-99%, the steal without the altar 99.5%, the empower orbs 97-99.9%, the eruption 93-99%, the collapse 87-90% after its first alarm; the Death Ball, Fanha's beam and the auras show where fx's kinds differ |
 | `music` | Frieza's battle theme becomes the current song (`$1E05 = $3C`); reports the load's stall |
 
@@ -398,15 +401,6 @@ floor on request.
 - **audio**: the cue changes happen mid-scene (the altar reveal, the fight
   start, the gold aura); an upload spread over several frames (or the
   Frieza songs' instruments kept resident) would remove the stall.
-- **core**: OBJ tiles `$0C0-$0FF` (words `$6C00-$6FFF`, OBJSEL `$63`) as a
-  scene-scoped VRAM region in the pool, so other modules can see the claim:
-  natively part of the actor cell streamer's fixed area (`C1:950D`,
-  immediates `C1:9FB4-A3E4`, `C1:A709-A78D`, `C1:AF7F-AFDF`), which no
-  active actor uses in Frieza's scenes (maps 246, 255, 418, 431, 237, 253,
-  195, the vista on 236); held from the first upload of a scene until it
-  ends or the map or mode changes. The same for BG tiles `$1C0-$1CF`
-  (words `$1C00-$1CFF`, char base 0) on maps 246 and 255, free in their
-  graphics sets for the whole stay once the map's own load is done.
 - **debug**: one `ANY` slot serves every module: Frieza takes it and
   forwards unanswered kinds to `combat_debug_hook`; a module added later
   (vegeta, orbit, ending) must join that chain, or the debug module could

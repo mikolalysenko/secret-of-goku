@@ -125,6 +125,12 @@ fz_holes_frame:
 +	LDA.l !fzh_count
 	BNE +
 	RTS
++	; core's !VRAM_SCENE_BG (tiles $1C0-$1CF): drawn only while it is ours
+	LDA.w #!VRAM_SCENE_BG
+	LDX.w #!FZ_VRAM_OWNER
+	JSL core_vram_claim
+	BCC +
+	RTS
 +	SEP #$20
 	LDA.b #!FZT_HOLES                 ; the vblank may upload and write
 	TSB !fz_tflags

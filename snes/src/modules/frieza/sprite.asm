@@ -9,6 +9,37 @@
 ; to a free OBJ palette in vblank, after the game's own CGRAM upload.
 
 ; Forget what the buffers hold (map or mode change, fades, loads).
+; Scene-scoped VRAM in core's pool: Frieza's OBJ buffers (!VRAM_SCENE_OBJ)
+; and the hole tiles (!VRAM_SCENE_BG) are claimed by the frames that use
+; them (fz_spr_draw, fz_holes_frame) and given back on every frame that
+; does not (the scene ended, the map changed, nothing drawn), so orbit,
+; ending or Vegeta scenes can take them; what was resident is uploaded
+; again after the next claim.
+fz_vram_settle:
+	LDA !fz_spr_cnt
+	AND.w #$00FF
+	BNE +
+	LDA !fz_spr_pend
+	CMP.w #$FFFF
+	BNE +
+	LDA.w #!VRAM_SCENE_OBJ
+	LDX.w #!FZ_VRAM_OWNER
+	JSL core_vram_release
+	LDA.w #$FFFF
+	STA !fz_spr_res0
+	STA !fz_spr_res1
++	LDA !fz_tflags
+	AND.w #!FZT_HOLES
+	BNE +
+	LDA.w #!VRAM_SCENE_BG
+	LDX.w #!FZ_VRAM_OWNER
+	JSL core_vram_release
+	SEP #$20
+	LDA.b #0
+	STA.l !fzh_tiles
+	REP #$20
++	RTS
+
 fz_spr_invalidate:
 	LDA.w #$FFFF
 	STA !fz_spr_res0
@@ -206,9 +237,19 @@ fz_pal_bit:
 	db $01,$02,$04,$08,$10,$20,$40,$80
 
 ; Draw Frieza: !fz_spr_id (atlas<<4 | tiny<<3 | frame), anchor at
-; (!fz_spr_x, !fz_spr_y) in screen pixels, !fz_spr_fl (!FZD_*).
+; (!fz_spr_x, !fz_spr_y) in screen pixels, !fz_spr_fl (!FZD_*). Nothing is
+; drawn while another scene holds core's !VRAM_SCENE_OBJ.
 fz_spr_draw:
-	LDA !fz_tflags
+	PHX
+	PHY
+	LDA.w #!VRAM_SCENE_OBJ
+	LDX.w #!FZ_VRAM_OWNER
+	JSL core_vram_claim
+	PLY
+	PLX
+	BCC +
+	RTS
++	LDA !fz_tflags
 	AND.w #!FZT_VRAM_OK
 	BNE +
 	JSR fz_spr_invalidate

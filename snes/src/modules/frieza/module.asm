@@ -428,6 +428,7 @@ assert !FZX_END <= !FZ+$C0, "frieza WRAM overflow (beast)"
 
 ; VRAM: two buffers of 8 cells each (16x16 OBJ), OBJ name table 0 rows
 ; C-D and E-F (tiles $0C0-$0FF, word $6C00-$6FFF).
+!FZ_VRAM_OWNER = $0006     ; core_vram_claim owner id (core's pool: !VRAM_SCENE_OBJ, !VRAM_SCENE_BG, !VRAM_FIELD_OBJ_A)
 !FZ_VRAM_BUF0  = $6C00
 !FZ_VRAM_BUF1  = $6E00
 !FZ_TILE_BUF0  = $00C0

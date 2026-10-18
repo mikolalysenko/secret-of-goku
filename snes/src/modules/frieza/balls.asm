@@ -9,7 +9,6 @@
 !FZB_CELL0 = $0122                    ; FIELD_OBJ_A: cell k at $122 + 2k
 !FZB_VRAM_TOP = $7220
 !FZB_VRAM_BOT = $7320
-!FZ_VRAM_OWNER = $0006                ; core_vram_claim owner id (bank A6/E6)
 
 ; The ball scenes on their map: claim the region, ask for the set, draw.
 ; Called from fz_draw_scene (steal, before Frieza: the browser draws the
