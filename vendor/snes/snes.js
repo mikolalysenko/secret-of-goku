@@ -1292,7 +1292,7 @@ function Snes() {
   let spinEnabled = true, spinPrev1 = -1, spinPrev2 = -1, spinPrev3 = -1;
   let spinStart = -1, spinKind = 0, spinSeen = false, spinMeasured = false;
   let spinX = 0, spinY = -1, spinReads = 0, spinWrites = 0, spinPairs = 0;
-  let spinFast = false;
+  let spinFast = false, spinBatched = false;
   const spinNot = new Int32Array([-1, -1, -1, -1]);
   let spinNotAt = 0;
   const spinRegs = new Int32Array(9), spinNow = new Int32Array(9);
@@ -1329,23 +1329,43 @@ function Snes() {
   };
   const spinIterReads = (kind, m) => kind === 1 ? (m ? 5 : 6) : 9;
   // The last verified combination (wrapper heads, hook registries, pc, kind,
-  // operand, direct page and width): later visits re-read only the always()
-  // hooks and the loop's bytes.
+  // direct page and width) and the loop's bytes: later visits re-read only
+  // the always() hooks and the bytes themselves, without the hook lookups
+  // that the unchanged registries already answered.
   let plainPc = -1, plainDpr = -1, plainM = false, plainCycle = null;
   let plainRead = null, plainCart = null, plainGate = -1, plainBus = -1;
-  let plainRom = -1, plainBusGate = true, plainKind = 0, plainOperand = -1;
+  let plainRom = -1, plainBusGate = true, plainKind = 0, plainSize = 0;
+  const plainBytes = new Int16Array(8);
+  // peekPlain's byte for work RAM or ROM no hook watches.
+  const rawByte = (snes, adr) => {
+    let bank = adr >> 16, low = adr & 0xffff;
+    if(bank === 0x7e || bank === 0x7f) {
+      return snes.ram[((bank & 0x1) << 16) | low];
+    }
+    let rom = bank >= 0xc0 || (bank >= 0x40 && bank < 0x80);
+    if(!rom && low < 0x2000) {
+      return snes.ram[low & 0x1fff];
+    }
+    return rom || low >= 0x8000 ? snes.cart.peek(bank, low) : -1;
+  };
+  const plainSame = (snes, pc) => {
+    for(let k = 0; k < plainSize; k++) {
+      if(rawByte(snes, pc + k) !== plainBytes[k]) {
+        return false;
+      }
+    }
+    return true;
+  };
   const spinPlain = (snes, cpu, pc) => {
     let cart = snes.cart;
     if(
       pc === plainPc && cpu.br[5] === plainDpr && cpu.m === plainM &&
-      peekPlain(snes, pc + 1) === plainOperand &&
       cpu.cycle === plainCycle && snes.read === plainRead &&
       cart.read === plainCart && cpu.gateVersion() === plainGate &&
       busVersion === plainBus && cart.readVersion() === plainRom &&
-      busGateEnabled === plainBusGate
+      busGateEnabled === plainBusGate && plainSame(snes, pc)
     ) {
-      return cpu.corePlainNow() && spinPattern(snes, pc, cpu.m) === plainKind ?
-        plainKind : 0;
+      return cpu.corePlainNow() ? plainKind : 0;
     }
     plainPc = -1;
     let kind = spinPattern(snes, pc, cpu.m);
@@ -1354,7 +1374,10 @@ function Snes() {
     }
     plainPc = pc;
     plainKind = kind;
-    plainOperand = peekPlain(snes, pc + 1);
+    plainSize = kind === 1 ? 4 : 8;
+    for(let k = 0; k < plainSize; k++) {
+      plainBytes[k] = peekPlain(snes, pc + k);
+    }
     plainDpr = cpu.br[5];
     plainM = cpu.m;
     plainCycle = cpu.cycle;
@@ -1401,13 +1424,13 @@ function Snes() {
   // reads a value that leaves that state unchanged and branches back: BIT
   // sets N, V and Z from its flag, and the poll's A and flags come from
   // HVBJOY, read right after its operand's bank byte (0) left the open bus.
-  const spinRepeats = (snes, cpu, pc, kind) => {
+  const spinRepeats = (snes, cpu, kind) => {
     if(kind === 2) {
       let val = (snes.autoJoyTimer > 0 ? 0x1 : 0) |
         (snes.inHblank ? 0x40 : 0) | (snes.inVblank ? 0x80 : 0);
-      return (val & peekPlain(snes, pc + 5)) === (cpu.br[0] & 0xff);
+      return (val & plainBytes[5]) === (cpu.br[0] & 0xff);
     }
-    let a = (cpu.br[5] + peekPlain(snes, pc + 1)) & 0xffff;
+    let a = (cpu.br[5] + plainBytes[1]) & 0xffff;
     let value = snes.ram[a], top = 0x80;
     if(!cpu.m) {
       value |= snes.ram[(a + 1) & 0xffff] << 8;
@@ -1420,6 +1443,14 @@ function Snes() {
   // three instructions ago: returns the master-cycle pairs skipped (whole
   // loop iterations), or 0 to step normally.
   this.spinWait = function(x, pc) {
+    if(spinBatched) {
+      // The visit right after a batch, before any instruction: less than
+      // one iteration fits before the event, so it steps either way.
+      spinBatched = false;
+      if(x === spinX && readSerial === spinReads) {
+        return 0;
+      }
+    }
     let cpu = this.cpu;
     if(
       cpu.waiting || cpu.stopped || (cpu.irqWanted && !cpu.i) ||
@@ -1478,7 +1509,7 @@ function Snes() {
     spinWrites = writeSerial;
     spinFast = this.fastMem;
     spinRegs.set(spinNow);
-    if(!spinMeasured || !spinRepeats(this, cpu, pc, kind)) {
+    if(!spinMeasured || !spinRepeats(this, cpu, kind)) {
       return 0;
     }
     let room = spanEnd(this, x) - x;
@@ -1507,6 +1538,7 @@ function Snes() {
     this.xPos = x + 2 * pairs;
     spinX = this.xPos;
     spinReads = readSerial;
+    spinBatched = true;
     return pairs;
   }
 
