@@ -265,7 +265,7 @@ class Asm{
   text(){return this.lines.join('\n')+'\n';}
 }
 
-export async function generate({rom,repo,outDir}){
+export async function generate({rom,repo,outDir,xdata}){
   const {data,actions,atlases}=loadInputs(repo);
   const boy=boyPalette(rom);
   const cells=collectCells(atlases);
@@ -381,6 +381,19 @@ export async function generate({rom,repo,outDir}){
   a.label('goku_tint_shade');for(const t of tints)a.db(t.shade);
   a.label('goku_cell_tiles');for(const c of cells)a.dw(c.tiles);
   a.label('goku_cell_mini');for(const c of cells)a.dw(c.mini);
+  // Field uploads use contiguous rows: four 128-byte transfers instead of
+  // sixteen scattered tiles. Keep the deduplicated tables for menu figures
+  // and byte-level references. A complete cell stays inside one ROM bank.
+  for(const [kind,bytes,perBank] of [['tiles',512,64],['mini',128,256]]){
+    const prefix=`GOKU_DMA_${kind.toUpperCase()}`;
+    for(let start=0;start<cells.length;start+=perBank){
+      const group=cells.slice(start,start+perBank),packed=new Uint8Array(group.length*bytes);
+      group.forEach((c,i)=>c[kind].forEach((tile,j)=>packed.set(store.tiles[tile],i*bytes+j*32)));
+      xdata(`${prefix}_${start/perBank}`,packed);
+    }
+    a.label(`goku_dma_${kind}`);
+    cells.forEach((c,i)=>a.raw(`\tdl !XDATA_${prefix}_${Math.floor(i/perBank)}+$${((i%perBank)*bytes).toString(16)} : db $00`));
+  }
   a.label('goku_cell_mask');a.db(cells.map(c=>c.mask));
   a.label('goku_cell_pal');a.db(cells.map(c=>c.pal));
   a.label('goku_cell_index');a.dw(index);

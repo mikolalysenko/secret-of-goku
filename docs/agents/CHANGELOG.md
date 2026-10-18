@@ -1,5 +1,17 @@
 # Changelog
 
+## SNES Goku sprite upload budget (2026-10-18)
+
+- Pack field animation cells into contiguous ROM rows: four DMA transfers
+  replace sixteen tile transfers, preserving every pixel and the miniature
+  form. The measured Goku NMI path drops from about 8.9 to 5.5 scanlines and
+  uses only DMA channel 7.
+- Avoid rewriting the airborne palette mirror when its native buffer and
+  desired colours are unchanged; keep flash handling and landing restore.
+- Validate all 465 packed cells and miniatures byte for byte, plus emulator
+  palette, form, animation, portrait and menu checks. Generated ROMs and
+  timing output remain private.
+
 Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.

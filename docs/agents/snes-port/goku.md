@@ -28,17 +28,26 @@ port of `GokuAnimation.pose()` and is checked frame by frame against it
 
 | Resource | Use |
 | --- | --- |
-| Code `$A1:8000-$A1:A623` | `!CODE_GOKU` (about 9.5 KiB used) |
-| Data `$E1:0000-$E1:68B9` | `!DATA_GOKU`: palettes, cell/variant tables, clips, the 51 native actions, sockets, lift tables |
+| Code `$A1:8000-FFFF` | `!CODE_GOKU`; see the build map for current usage |
+| Data `$E1:0000-7FFF` | `!DATA_GOKU`: palettes, cell/variant tables, packed-cell pointers, clips, the 51 native actions, sockets, lift tables |
 | ROM `$F8-$FA` | 4,837 de-duplicated 8×8 4bpp tiles (151 KiB). `$FB` of the F8–FB reservation is still free |
+| Extended ROM | 465 packed full-size cells (512 bytes each) and miniatures (128 bytes each), 297,600 bytes total. Every cell stays inside its source bank; four-byte pointers in `goku_dma_tiles` / `goku_dma_mini` |
 | WRAM `$7E:D740-$7E:D7FF` | `!RAM_GOKU`, all $C0 bytes (fields below). Full-screen menus keep their state in the field's scratch `pal_work` (`$7E:D7D0-D7EF`); a menu session restarts whenever another mode ran in between (`!core_tick`). Unused palette entry 0 of `pal_native`/`pal_out` and the old `up_phase` byte hold the frame's actor-0 OAM slots for `goku_api_scripted` (`!rec_body0/1`, `!rec_shadow`, `!rec_stamp`) and its this-frame flag `!scr_shown` |
 | VRAM | OBJ tiles `C0-C7`/`D0-D7` of name table 1 (word `$7C00/$7D00`, the boy's own cells; claimed as core region `!VRAM_FIELD_HERO` with owner `$01`), HUD portrait `E8/E9/F8/F9` (word `$7E80/$7F80`), ring marker `0A/0B/1A/1B` of name table 1 (word `$70A0/$71A0`, the boy's marker, rewritten when a ring opens). Full-screen menus: OBJ name table 2 (base `$4000` + `$1000`) tiles `C0-C9/D0-D9` and `E0-E7/F0-F7` (word `$5C00-$5F7F`): the idle and blink cells and the GAME FILE face. No menu screen uses that area (surveyed: Status, Action Grid, Controller/Window Edit, Weapon Skill, game select, GAME FILE load/save, save confirmation) and the field reloads it on return |
 | CGRAM | The boy's OBJ palette through the game's buffer `$7E:0600`: palette 1, or palette 5 on water maps (the slot his body descriptor uses); during a native flash with a scene or scripted cell also its copy in `$7E:BE00` (colours 2-15). Menus: OBJ palette 1 directly (the boy's colours there, `C8:1F00`) |
 | OAM | The boy's body entries are replaced in place by up to four 16×16 OBJ (empty quadrants are skipped), or one for the miniature. `goku_api_scripted`: up to four 16×16 OBJ through `core_oam_add_front` (behind the natives through `core_oam_add` when the 16 front slots are taken), and `core_oam_hide` on actor 0's body and shadow slots of that frame. Menus: the PPU's OAM directly, after the menu's own upload: the boy's eight figure entries moved off screen, entries 120-123 Goku's figure, 124-127 the GAME FILE faces (only when the menu leaves 120-127 unused) |
-| DMA | In `modules_field_nmi`: channels 4-7 for one cell (16 tile DMAs, 512 B, 7.5 lines on FastROM) when it changed; with fewer than 6 lines left before line 258 it waits one frame (never when its palette or size changes), then goes anyway. The game's 5-frame party refresh no longer re-sends it (the hook skips the boy's tiles, and menus and rings leave the slot alone, checked in VRAM), except every eighth refresh as a safety net when the vblank has room. `goku_nmi` returns after two compares when nothing is pending (on by default since ending's frame-thread DMA set-ups wait out the lines before the NMI; `-DGOKU_NMI_SLOW=1` keeps the old prologue). Channel 7 for the HUD portrait (128 B). Ring set-up: channel 5 (128 B) right after the game's own marker uploads on that channel (measured: the whole set-up ends by scanline 249). Menus: channels 4-7 for the two cells (512 B each, one per frame, when 14+ lines remain) and 7 for the face (128 B), only when the menu runs no HDMA there (`$2C`) |
-| SRAM | None written. Test builds only (`-DGOKU_TRACE`): a 27-byte trace at `$7E:7F00` |
+| DMA | In `modules_field_nmi`: channel 7, four contiguous 128-byte rows for a full cell or two 64-byte rows for a miniature. Channels 4–6 are untouched. With fewer than 6 lines left before line 258 it waits one frame (never when its palette or size changes), then goes anyway. The game's 5-frame party refresh skips the boy's tiles, except every eighth refresh requests a safety upload when room allows. `goku_nmi` has a two-compare idle exit (`-DGOKU_NMI_SLOW=1` retains the old prologue). Channel 7 for the HUD portrait (128 B). Ring set-up: channel 5 (128 B) after the native markers. Menus retain channels 4–7 for figures and 7 for faces, with their existing vblank/HDMA guards |
+| SRAM | `$31:7520–7561`: airborne palette backup, last output and validity. Test builds (`-DGOKU_TRACE`) also use a 27-byte WRAM trace at `$7E:7F00` |
 
-Measured cost (Potos walk, `snes/test/goku/budget.lua`, Goku on against
+October 18 upload revision: the packed rows reproduce every pixel of the
+deduplicated tables (`goku packed`: all 465 full cells and miniatures,
+every tile byte and source-bank bound). The full `goku_nmi` path with a cell
+measured about 5.5 scanlines, down from 8.9 before packing. The water-flight
+palette mirror also skips unchanged writes while still checking the native
+buffer, desired tint and flash buffer. `status`, `forms`, `scripted`,
+`actions` and `api` cover the resulting palettes and animation cells.
+
+Earlier measured cost (Potos walk, `snes/test/goku/budget.lua`, Goku on against
 off; "on" includes combat and every other module that runs while Goku is
 active): p90 frame-logic end +23 lines on the FastROM default (limit 24;
 main with ui, vegeta, ending, destroy and fx), +26 with `-DCORE_SLOWROM=1`

@@ -1,8 +1,8 @@
 ; VRAM uploads: Goku's current cell into the boy's OBJ slot (bank-1 tiles
 ; C0-C7 / D0-D7), the HUD portrait (E8/E9/F8/F9) and, when replacement ends,
 ; the boy's own tiles. All transfers run inside the field NMI after the
-; game's uploads (modules_field_nmi), using DMA channels 4-7 like the game's
-; own party-tile routine C1:950D.
+; game's uploads (modules_field_nmi). Packed Goku cells and portraits use
+; channel 7; restoring the native boy still uses the game's channels 4-7.
 
 !VRAM_ROW0 = $7C00     ; C0-C3: cell rows 0-7
 !VRAM_ROW1 = $7D00     ; D0-D3: rows 8-15
@@ -370,26 +370,19 @@ endif
 	PLB
 	RTL
 
-; Upload cell up_cell (full or miniature) into the boy's slot. DB = $7E,
-; M16 X16. Four bursts of four 32-byte tiles on channels 4-7 (D = $4300).
+; Upload the same pixels as the deduplicated tile table, packed into rows
+; in extended ROM. One channel and four row transfers avoid sixteen tile
+; address decodes and leave channels 4-6 (including UI HDMA 5) alone.
+; DB = $7E, M16 X16. Every packed cell stays within its source bank.
 goku_upload_cell:
 	LDA !up_cell
 	ASL
 	ASL
-	ASL
-	ASL
-	ASL                      ; cell * 32 bytes
-	TAY
+	TAX                      ; cell * 4-byte pointer
 	LDA.w #$4300
 	TCD
 	LDA.w #$1801
-	STA $40
-	STA $50
-	STA $60
 	STA $70
-	STZ $45                  ; sizes $00xx: each tile writes the low byte
-	STZ $55
-	STZ $65
 	STZ $75
 	SEP #$20
 	LDA.b #$80
@@ -398,29 +391,41 @@ goku_upload_cell:
 	LDA !up_small
 	AND.w #$00FF
 	BNE .small
-	TYX
+	LDA.l goku_dma_tiles,X
+	STA $72
+	LDA.l goku_dma_tiles+2,X
+	STA $74                  ; source bank, initial size low byte 0
+	LDX.w #128
 	LDA.w #!VRAM_ROW0
-	JSR goku_burst4
+	JSR .row
 	LDA.w #!VRAM_ROW1
-	JSR goku_burst4
+	JSR .row
 	LDA.w #!VRAM_ROW2
-	JSR goku_burst4
+	JSR .row
 	LDA.w #!VRAM_ROW3
-	JSR goku_burst4
+	JSR .row
 	BRA .done
 .small
-	; miniature: 4 tiles (TL, TR, BL, BR) at cell*8 in goku_cell_mini
-	TYA
-	LSR
-	LSR                      ; cell * 8
-	TAX
+	LDA.l goku_dma_mini,X
+	STA $72
+	LDA.l goku_dma_mini+2,X
+	STA $74
+	LDX.w #64
 	LDA.w #!VRAM_ROW0
-	JSR goku_burst2_mini
+	JSR .row
 	LDA.w #!VRAM_ROW1
-	JSR goku_burst2_mini
+	JSR .row
 .done
 	LDA.w #$0000
 	TCD
+	RTS
+.row
+	STA.l $002116
+	STX $75
+	SEP #$20
+	LDA.b #$80
+	STA.l $00420B
+	REP #$20
 	RTS
 
 ; One burst: A16 = VRAM word address, X = offset of 4 tile words in

@@ -446,13 +446,19 @@ goku_palette_air:
 	SEP #$20
 	LDA !pal_slot
 	CMP.b #5
-	BNE .off
+	BEQ +
+	JMP .off
++
 	LDA !rec_stamp
 	CMP.w !core_frame&$FFFF
-	BNE .off
+	BEQ +
+	JMP .off
++
 	LDA !rec_body0
 	CMP !rec_body1
-	BCS .off
+	BCC +
+	JMP .off
++
 	REP #$20
 	AND.w #$007F
 	ASL : ASL
@@ -460,7 +466,38 @@ goku_palette_air:
 	LDA $0803,X
 	AND.w #$000E
 	CMP.w #$0002
-	BNE .off
+	BEQ +
+	JMP .off
++
+	LDA.l !pal_air_valid
+	BNE +
+	JMP .changed
++
+	; Most flying frames keep both the native slot and our tint unchanged.
+	; Check them without rewriting fourteen SRAM colors every frame.
+	for color = 2..16
+		LDA.w $0720+(!color*2)
+		CMP.l !pal_air_out+(!color*2)
+		BEQ +
+		JMP .changed
++		CMP.w !pal_out+(!color*2)
+		BEQ +
+		JMP .changed
++
+	endfor
+	LDA $2A
+	AND.w #$00FF
+	BEQ .quickDone
+	LDX.w #$001E
+.flash
+	LDA $BFA0,X
+	STA $BF20,X
+	DEX : DEX
+	CPX.w #4
+	BCS .flash
+.quickDone
+	RTS
+.changed
 	LDX.w #$001E
 .copy
 	LDA $0720,X

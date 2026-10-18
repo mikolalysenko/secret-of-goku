@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // GOKU module tests in Mesen, from browser-mod states imported with
 // H.importSnesJs:
+//   packed   every full-size/miniature row-DMA byte matches the tile tables
 //   field    four facings, walk cycle, push, palette, OAM, VRAM bytes, HUD,
 //            a native weapon swing draws no sword cells under Goku
 //   status   poison / petrify / ghost / sleep / moogle / snowman / pygmy /
@@ -30,6 +31,7 @@ import {fileURLToPath} from 'node:url';
 import {runMesen} from '../mesen.mjs';
 import {checkpointDir,privateRom,cleanupRom,mainCheckout} from '../checkpoints.mjs';
 import {diff} from './difftest.mjs';
+import {hiromToPc} from '../../tools/w65816.mjs';
 
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const args=process.argv.slice(2);
@@ -66,6 +68,24 @@ function prelude(rom){
 }
 const tests=[['field',romSrc],['status',romSrc],['forms',romSrc],['ring',romSrc],['menu',romSrc],['file',romSrc],['load',romSrc],['scripted',traceRom],['actions',traceRom],['api',traceRom],['budget',romSrc]].filter(([t])=>existsSync(join(here,`${t}.lua`)));
 const results=[];
+if(want('packed')){
+  const rom=readFileSync(romSrc),failures=[];
+  const sym=new Map([...readFileSync(romSrc.replace(/\.sfc$/,'.sym'),'utf8').matchAll(/^([\dA-F]{2}):([\dA-F]{4}) (\S+)$/gmi)].map(m=>[m[3],parseInt(m[1]+m[2],16)]));
+  const read=(addr,n)=>rom.subarray(hiromToPc(addr,rom.length),hiromToPc(addr,rom.length)+n);
+  const count=JSON.parse(readFileSync(join(repo,'dist/snes/gen/goku/manifest.json'),'utf8')).cells.length;
+  for(const [kind,tiles] of [['tiles',16],['mini',4]])for(let cell=0;cell<count;cell++){
+    const p=read(sym.get('goku_dma_'+kind)+cell*4,3).readUIntLE(0,3);
+    if((p&0xffff)+tiles*32>0x8000)failures.push(`${kind} ${cell} crosses its extended-ROM allocation`);
+    const packed=read(p,tiles*32);
+    for(let j=0;j<tiles;j++){
+      const tile=read(sym.get('goku_cell_'+kind)+(cell*tiles+j)*2,2).readUInt16LE();
+      const original=read(0xF80000+tile*32,32);
+      if(!packed.subarray(j*32,j*32+32).equals(original))failures.push(`${kind} ${cell} tile ${j} differs`);
+    }
+  }
+  results.push({test:'packed',ok:!failures.length,failures});
+  console.log(`goku packed: ${failures.length?'FAIL':'pass'} (${count} full cells and miniatures, every tile byte)`);
+}
 for(const[t,src]of tests){
   if(!want(t))continue;
   const rom=privateRom(src,`goku-${t}`);
