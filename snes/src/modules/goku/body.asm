@@ -64,11 +64,23 @@ goku_shadow_hook:
 	CPX.w #$0000
 	BNE .native
 	LDA !shadow_hidden
-	BEQ .native
+	BEQ .record
 	JML $00E76C              ; RTS: no shadow this frame
+.record
+	JSR goku_rec_slot        ; where actor 0's shadow goes (if drawn)
+	STA !rec_shadow
 .native
 	LDY.w #$FFF8
 	JML $00E765
+
+; A8 = the OAM slot the next appended sprite takes ($7C / 4). M8 in/out.
+goku_rec_slot:
+	REP #$20
+	LDA $7C
+	LSR
+	LSR
+	SEP #$20
+	RTS
 
 ; Should Goku stand in for the boy right now? C set = yes. Preserves M/X;
 ; any DB (long addressing only).
@@ -122,6 +134,18 @@ goku_render_boy:
 	LDA !p_flags
 	AND.b #!GOKU_PF_HIDDEN
 	TSB !shadow_hidden
+	; actor 0's OAM slots this frame, for goku_api_scripted (frame = the
+	; callbacks' !core_frame, which counts this frame on completion)
+	REP #$20
+	LDA.l !core_frame
+	INC
+	SEP #$20
+	STA !rec_stamp
+	LDA.b #$FF
+	STA !rec_shadow
+	JSR goku_rec_slot
+	STA !rec_body0
+	STA !rec_body1
 	LDA !p_flags
 	AND.b #!GOKU_PF_HIDDEN
 	BNE .hidden
@@ -130,6 +154,9 @@ goku_render_boy:
 	BNE .hidden
 	JSR goku_request_cell
 	JSR goku_emit
+	SEP #$20
+	JSR goku_rec_slot
+	STA !rec_body1
 .hidden
 	REP #$30
 	PLY
