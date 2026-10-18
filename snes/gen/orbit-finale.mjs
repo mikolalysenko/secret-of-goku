@@ -222,5 +222,38 @@ export async function generate({repo,outDir,xdata}){
   // boss-victory.js cues: the burst ages
   lines.push('; boss-victory.js burst ages (words)','orbit_fn_bursts:','\tdw '+bossVictoryTiming.bursts.join(', '));
   def('FNT_B_NBURSTS',bossVictoryTiming.bursts.length);
+  // The orbital death (boss-rush-death.js bossRushDeathPose with state.orbit):
+  // the clock, and per age of the fall (fall to fallen) the 0.16 fraction
+  // q = ceil(u^2 65536): the cartridge's x = from + round(d q / 65536) for d
+  // = target - from >= 0 (half up), from - round_down(|d| (q - 1) / 65536)
+  // for d < 0 (half toward zero), as the browser's Math.round(from + d u^2);
+  // the cell and its half size. The browser's doubles land a few exact
+  // halves a hair off (counted below against bossRushDeathPose itself).
+  // Before the fall the pose stands at 'from': column 29 (gold, before the
+  // revert) or 33.
+  {
+    const {bossRushDeathTiming:dt,bossRushDeathPose}=await eng('boss-rush-death.js');
+    for(const[k,v]of Object.entries(dt))def(`FND_${k.toUpperCase()}`,v);
+    const rnd=(d,q)=>d>=0?(d*q+32768)>>16:-((-d*(q-1)+32767)>>16);
+    const rows=[];let miss=0,checked=0;
+    for(let age=dt.fall;age<dt.fallen;age++){
+      const u=Math.max(0,Math.min(1,(age-dt.fall)/(dt.fallen-dt.fall))),q=Math.ceil(u*u*65536);
+      const probe=(fx,fy,cx,cy,cr)=>bossRushDeathPose({age,gold:false,orbit:{camera:{x:cx,y:cy,r:cr},hero:{x:fx,y:fy}}});
+      for(let fx=0;fx<256;fx+=17)for(const[cx,cy,cr]of[[95,154,104],[114,164,56],[99,150,84],[118,146,92]]){
+        const fy=(fx*7)%224,p=probe(fx,fy,cx,cy,cr);
+        const tx=cx+Math.floor(((fx-cx)*28+50)/100),ty=Math.min(192,cy+Math.floor((cr+2)/4));
+        if(Math.round(cx+(fx-cx)*.28)!==tx||Math.min(192,Math.round(cy+cr*.25))!==ty)throw Error('orbit-finale: the fall target differs');
+        checked+=2;if(p.x!==fx+rnd(tx-fx,q))miss++;if(p.y!==fy+rnd(ty-fy,q))miss++;
+      }
+      const pose=probe(156,155,95,154,104),size=pose.size,column=pose.column;
+      if(column<48||column>51)throw Error('orbit-finale: fall column '+column);
+      const cell=size===16?`!OSP_GOKU_FALL_${column}`:column===51?`!OSP_GOKU_FALL_51_${size}`:null;
+      if(!cell)throw Error(`orbit-finale: no fall cell for column ${column} at ${size} px`);
+      rows.push(`\tdw ${q},${cell},${size/2}`);
+    }
+    if(miss>checked/200)throw Error(`orbit-finale: the fall misses ${miss} of ${checked} browser pixels`);
+    lines.push(`; the orbital death's fall per age from FND_FALL: q (0.16), cell, half size (words); ${miss} of ${checked} sampled browser pixels one off`,'orbit_fn_fall:',...rows);
+  }
+
   writeFileSync(join(outDir,'finale.asm'),lines.join('\n')+'\n');
 }

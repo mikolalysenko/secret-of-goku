@@ -205,6 +205,10 @@ orbit_scene_init:
 	STZ.w !g_ichg
 	STZ.w !g_bld
 	STZ.w !f_on
+	LDX.w #(!FN_END)-(!FN)-2       ; no struggle, no death
+-	STZ.w !FN,X
+	DEX : DEX
+	BPL -
 	STZ.w !v_pband
 	STZ.w !v_pmode
 	STZ.w !t_want
@@ -340,7 +344,10 @@ orbit_vcount:
 orbit_live_frame:
 	REP #$30
 	%orbit_mark(0)
-	LDA.w !f_on
+	JSR death_check
+	BCC +
+	JMP death_live                 ; Goku fell in space
++	LDA.w !f_on
 	BNE +
 	JMP .noFight
 +
@@ -447,8 +454,12 @@ orbit_oam_frame:
 	CMP.b #!OS_LIVE
 	REP #$20
 	BNE .close
-	JSR fight_draw
-	%orbit_mark(7)
+	LDA.w !od_on
+	BEQ +
+	JSR death_draw
+	BRA ++
++	JSR fight_draw
+++	%orbit_mark(7)
 	JSR stars_oam
 	REP #$30
 	JSR orbit_pals_frame
@@ -819,7 +830,10 @@ orbit_nmi_obj_palettes:
 	LDA.w #$2200                   ; DMA mode 0 to $2122
 	STA.w $4370
 	LDA.w #orbit_obj_pals_01
-	STA.w $4372
+	LDX.w !od_base                 ; (the orbital death after the revert)
+	BEQ +
+	LDA.w #orbit_obj_pals_01b
++	STA.w $4372
 	LDA.w #64
 	STA.w $4375
 	SEP #$20

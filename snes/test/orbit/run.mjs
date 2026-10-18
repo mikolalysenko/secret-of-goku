@@ -21,6 +21,11 @@
 //          against the same reference: gather, charge, launch, a lost
 //          struggle (recoil, 420 damage), a won one under steady B taps,
 //          the 'won' clock with the native victory commands, the return
+//   death  from the hand-off, Goku at 1 HP: Frieza's first hit ends him;
+//          the frieza module starts the ending's fatal sequence, the orbit
+//          freezes and Goku falls (positions against the browser's own
+//          bossRushDeathPose), and the orbit gives the picture and the
+//          scene work area back before black
 //   handoff the frieza module's ground fight in phase two takes a hit across
 //          32,000 (its FRIEZA_TEST mailbox): the second surge hands over
 //          to the orbit, which takes the scene work area from Frieza's
@@ -150,6 +155,47 @@ async function clashText(c){
   if(c.phase==='struggle'&&c.age>100){const s=clashSurge(c);return s?13+s.index:0;}
   if(c.phase==='win')return c.age>=victoryTiming.quiet&&c.age<victoryTiming.descent?12:0;
   return id[c.phase]??0;
+}
+
+// The frieza module's phase-two fight on the browser's 'battle' preset (its
+// FRIEZA_TEST build: the mailbox lands hits): a hit across 32,000 starts the
+// second surge, which hands over to the orbit. Lua prelude with
+// enterOrbit() (true once the orbit is live; checks the area's claim),
+// check() and the fails list.
+async function friezaHandoff(){
+  const rom=process.env.SNES_HANDOFF_ROM??buildRom('orbit-frieza-test',['-DFRIEZA_TEST=1']);
+  const {friezaWrites,luaWrites,defs:fz}=await import('../frieza/state.mjs');
+  const wram=n=>{if(!(n in fz))throw Error('frieza define '+n);return fz[n]<0x10000?0x7E0000|fz[n]:fz[n];};
+  const refRoot=existsSync(resolve(repo,'.local/snes-ref/battle'))?resolve(repo,'.local/snes-ref'):'/Users/mikolalysenko/Projects/secret-of-goku/.local/snes-ref';
+  const g=JSON.parse(readFileSync(join(refRoot,'battle','state.json'),'utf8')).goku;
+  const prelude=`${ADDR}BUNDLE=${JSON.stringify(bundleDir('preset__battle'))}
+WRITES=${luaWrites(friezaWrites(g.frieza,g.challenge))}
+fails = {}
+function check(c, m) if not c then fails[#fails + 1] = m end return c end
+function enterOrbit()
+  check(H.importSnesJs(BUNDLE), 'import')
+  H.w8(${def('persist_goku_active')}, 1)
+  for _, w in ipairs(WRITES) do if w[3] == 2 then H.w16(w[1], w[2]) else H.w8(w[1], w[2]) end end
+  H.w8(${wram('fz_music')}, ${fz.FZM_BATTLE})
+  H.w8(${wram('fzf_tier')}, 1)     -- phase two: its threshold, 32,000, starts the cosmic surge
+  H.w16(${wram('fzf_hp_lo')}, 32500)
+  H.w16(${wram('fzf_hp_hi')}, 0)
+  H.wait(2)
+  H.result('owner_before', H.r16(SCENE_OWNER))
+  H.w16(${wram('fzs_test')} + 2, 60000)
+  H.w16(${wram('fzs_test')}, 2)
+  H.waitFor(function() return H.r16(${wram('fzs_test')}) == 0 end, 30)
+  H.result('after_hit', string.format('hp %d tier %d surge %d flags %02x enter %d state %d oflags %d', H.r16(${wram('fzf_hp_lo')}), H.r8(${wram('fzf_tier')}), H.r8(${wram('fzs_surge')}), H.r8(${wram('fzf_flags')}), H.r8(ORBIT_RAM + 0x26), H.r8(ORBIT_RAM), H.r8(ORBIT_RAM + 2)))
+  local live = H.waitFor(function() return H.r8(ORBIT_RAM) == 2 end, 240)
+  H.result('live', live)
+  check(live, 'the orbit went live')
+  H.result('owner_live', H.r16(SCENE_OWNER))
+  check(H.r16(SCENE_OWNER) == SCENE_ORBIT, 'scene work owner ' .. H.r16(SCENE_OWNER) .. ' while live')
+  check((H.r8(${wram('fzf_flags')}) & ${fz.FZFF_SPACE}) ~= 0, 'frieza: the fight is in space')
+  return live
+end
+`;
+  return {rom,prelude};
 }
 
 const cases={
@@ -330,40 +376,13 @@ const cases={
     return ok;
   },
   async handoff(){
-    const rom=process.env.SNES_HANDOFF_ROM??buildRom('orbit-frieza-test',['-DFRIEZA_TEST=1']);
-    const {friezaWrites,luaWrites,defs:fz}=await import('../frieza/state.mjs');
-    const wram=n=>{if(!(n in fz))throw Error('frieza define '+n);return fz[n]<0x10000?0x7E0000|fz[n]:fz[n];};
-    const refRoot=existsSync(resolve(repo,'.local/snes-ref/battle'))?resolve(repo,'.local/snes-ref'):'/Users/mikolalysenko/Projects/secret-of-goku/.local/snes-ref';
-    const g=JSON.parse(readFileSync(join(refRoot,'battle','state.json'),'utf8')).goku;
+    const h=await friezaHandoff();
     const dir=join(out,'handoff');
-    const test=`${ADDR}BUNDLE=${JSON.stringify(bundleDir('preset__battle'))}
-WRITES=${luaWrites(friezaWrites(g.frieza,g.challenge))}
+    const test=`${h.prelude}
 local FZ_BLOCK = SCENE_RAM + 0x1800    -- the frieza module's fight block and hole bitmap
-local fails = {}
-local function check(c, m) if not c then fails[#fails + 1] = m end return c end
 local function block() local t = {} for i = 0, 0x7FF do t[#t + 1] = H.r8(FZ_BLOCK + i) end return t end
 function test()
-  check(H.importSnesJs(BUNDLE), 'import')
-  H.w8(${def('persist_goku_active')}, 1)
-  for _, w in ipairs(WRITES) do if w[3] == 2 then H.w16(w[1], w[2]) else H.w8(w[1], w[2]) end end
-  H.w8(${wram('fz_music')}, ${fz.FZM_BATTLE})
-  H.w8(${wram('fzf_tier')}, 1)     -- phase two: its threshold, 32,000, starts the cosmic surge
-  H.w16(${wram('fzf_hp_lo')}, 32500)
-  H.w16(${wram('fzf_hp_hi')}, 0)
-  H.wait(2)
-  H.result('owner_before', H.r16(SCENE_OWNER))
-  H.w16(${wram('fzs_test')} + 2, 60000)
-  H.w16(${wram('fzs_test')}, 2)
-  H.waitFor(function() return H.r16(${wram('fzs_test')}) == 0 end, 30)
-  H.result('after_hit', string.format('hp %d tier %d surge %d sage %d flags %02x enter %d state %d oflags %d', H.r16(${wram('fzf_hp_lo')}), H.r8(${wram('fzf_tier')}), H.r8(${wram('fzs_surge')}), H.r16(${wram('fzs_sage')}), H.r8(${wram('fzf_flags')}), H.r8(ORBIT_RAM + 0x26), H.r8(ORBIT_RAM), H.r8(ORBIT_RAM + 2)))
-  H.wait(10)
-  H.result('after_10', string.format('hp %d tier %d surge %d sage %d flags %02x enter %d state %d oflags %d', H.r16(${wram('fzf_hp_lo')}), H.r8(${wram('fzf_tier')}), H.r8(${wram('fzs_surge')}), H.r16(${wram('fzs_sage')}), H.r8(${wram('fzf_flags')}), H.r8(ORBIT_RAM + 0x26), H.r8(ORBIT_RAM), H.r8(ORBIT_RAM + 2)))
-  local live = H.waitFor(function() return H.r8(ORBIT_RAM) == 2 end, 240)
-  H.result('live', live)
-  check(live, 'the orbit went live')
-  H.result('owner_live', H.r16(SCENE_OWNER))
-  check(H.r16(SCENE_OWNER) == SCENE_ORBIT, 'scene work owner ' .. H.r16(SCENE_OWNER) .. ' while live')
-  check((H.r8(${wram('fzf_flags')}) & ${fz.FZFF_SPACE}) ~= 0, 'frieza: the fight is in space')
+  if not enterOrbit() then H.result('failures', fails) return end
   local before = block()
   for f = 1, 300 do
     H.wait(1)
@@ -375,17 +394,104 @@ function test()
   for i = 1, 0x800 do if before[i] == after[i] then same = same + 1 end end
   H.result('block_same', same)
   check(same == 0x800, 'the frieza block ($32:7800-7FFF) unchanged while the orbit runs (' .. same .. ' of 2048 bytes)')
-  H.result('intro', H.r16(SCENE_RAM + 0xA80 + 0x02))
   H.result('failures', fails)
 end
 `;
-    const r=await runMesen({rom,state,test,outDir:dir});
+    const r=await runMesen({rom:h.rom,state,test,outDir:dir});
     const res=r.results??{};
     const ok=r.code===0&&res.live===true&&Array.isArray(res.failures)&&res.failures.length===0;
     console.log(`handoff: ${ok?'pass':'FAIL'} owner ${res.owner_before} -> ${res.owner_live}, Frieza's block kept ${res.block_same}/2048 bytes`);
-    if(!ok)console.log('  after the hit:',res.after_hit,'| 10 frames on:',res.after_10);
+    if(!ok)console.log('  after the hit:',res.after_hit);
     for(const m of (res.failures??[]).slice(0,8))console.log('  '+m);
     if(!res.failures)console.log(r.output?.slice(-1500));
+    return ok;
+  },
+  async death(){
+    // From the hand-off: the intro cut short, Goku at 1 HP; Frieza's first
+    // hit ends him. The frieza module starts the ending's fatal sequence;
+    // the orbit freezes, Goku falls (positions against the browser's own
+    // bossRushDeathPose), and the orbit gives the picture and the scene
+    // work area back before black.
+    const h=await friezaHandoff();
+    const {bossRushDeathPose,bossRushDeathTiming:dt}=await import(resolve(repo,'engine/boss-rush-death.js'));
+    const dir=join(out,'death');
+    const ages=[1,10,30,53,54,60,100,138,150,170,200,230,263,264];
+    const test=`${h.prelude}
+AGES={${ages.join(',')}}
+local FN = SCENE_RAM + 0x1500
+local function gokuOam()
+  for e = 0, 127 do
+    local t = H.r8(0x7E0802 + e * 4)
+    local a = H.r8(0x7E0803 + e * 4)
+    if t == 0x88 and (a & 1) == 0 and ((a >> 1) & 7) == 1 then
+      local x = H.r8(0x7E0800 + e * 4)
+      local y = H.r8(0x7E0801 + e * 4)
+      local hi = H.r8(0x7E0A00 + (e >> 2))
+      if (hi >> ((e & 3) * 2)) & 1 == 1 then x = x - 256 end
+      return x, y
+    end
+  end
+  return nil, nil
+end
+function test()
+  if not enterOrbit() then H.result('failures', fails) return end
+  H.w16(SCENE_RAM + 0xA80 + 0x02, 1)       -- the intro's last frame
+  H.wait(2)
+  H.w16(0x7EE182, 1)                       -- Goku at 1 HP
+  local fell = H.waitFor(function() return H.r16(FN + 0x7C) ~= 0 end, 900)
+  check(fell, 'Goku fell in space')
+  H.result('fell', fell)
+  H.result('start', string.format('%d,%d,%d,%d,%d,%d,%d,%d', H.r16(FN + 0x80), H.r16(FN + 0x82), H.r16(FN + 0x84), H.r16(FN + 0x86), H.r16(FN + 0x96), H.r16(FN + 0x98), H.r16(FN + 0x9A), H.r16(FN + 0x88)))
+  local want = {}
+  for _, a in ipairs(AGES) do want[a] = true end
+  local log = {}
+  local shots = {[10]=true, [100]=true, [230]=true, [330]=true}
+  local stopped, ownerAfter, endingStatus = nil, nil, 0
+  for f = 1, 420 do
+    H.wait(1)
+    local state = H.r8(ORBIT_RAM)
+    local age = H.r16(FN + 0x7E)
+    if state == 2 and want[age] then
+      local x, y = gokuOam()
+      log[#log + 1] = string.format('%d,%s,%s', age, tostring(x), tostring(y))
+      want[age] = nil
+    end
+    if state == 2 and shots[age] then H.shot(string.format('death%04d', age)); shots[age] = nil end
+    endingStatus = endingStatus | H.r8(ORBIT_RAM + 0x88)
+    if not stopped and state == 0 then stopped = age; ownerAfter = H.r16(SCENE_OWNER) end
+  end
+  H.result('poses', log)
+  H.result('stopped', stopped)
+  H.result('owner_after', ownerAfter)
+  H.result('ending_status', endingStatus)
+  H.result('ending_age', H.r16(ORBIT_RAM + 0x82))
+  H.result('failures', fails)
+end
+`;
+    const r=await runMesen({rom:h.rom,state,test,outDir:dir,timeoutMs:900000});
+    const res=r.results??{};
+    const fails=[...(res.failures??[])];
+    if(r.code!==0||!res.fell)fails.push('no death ('+(res.error??r.code)+')');
+    let compared=0;
+    if(res.start){
+      const [fx,fy,dx,dy,cx,cy,cr,gold]=res.start.split(',').map(Number);
+      const s16=v=>v>=0x8000?v-0x10000:v;
+      for(const line of res.poses??[]){
+        const [age,x,y]=line.split(',');const a=Number(age);
+        const p=bossRushDeathPose({age:a,gold:!!gold,orbit:{camera:{x:cx,y:cy,r:cr},hero:{x:fx,y:fy}}});
+        if(!p.visible){if(x!=='nil')fails.push(`age ${a}: Goku still drawn after the fall`);continue;}
+        const half=(a<dt.fall?16:p.size)/2,wx=p.x-half,wy=p.y-half;compared++;
+        if(Number(x)!==wx||Number(y)!==wy)fails.push(`age ${a}: Goku at ${x},${y}, browser ${wx},${wy} (size ${p.size})`);
+      }
+      if(s16(dx)+fx!==Math.round(cx+(fx-cx)*.28))fails.push('the fall target x differs');
+    }
+    // the orbit stops two frames before black; the area is free for the ending
+    if(res.stopped==null||res.stopped<dt.black-3||res.stopped>dt.black)fails.push(`the orbit stopped at age ${res.stopped} (want ${dt.black-2})`);
+    if(res.owner_after===SCENE_ORBIT)fails.push('the scene work area is still the orbit\'s after the stop');
+    if(!(res.ending_status&0x40))fails.push('the ending\'s fatal sequence did not run');
+    const ok=fails.length===0&&compared>=10;
+    console.log(`death: ${ok?'pass':'FAIL'} ${compared} poses against bossRushDeathPose, stopped at ${res.stopped}, ending age ${res.ending_age}, area owner after ${res.owner_after}`);
+    for(const m of fails.slice(0,8))console.log('  '+m);
     return ok;
   },
 };
@@ -394,7 +500,7 @@ const rom=buildRom();
 mkdirSync(out,{recursive:true});
 const names=process.argv.slice(2).filter(a=>!a.startsWith('-'));
 let failed=0;
-const defaults=['globe','intro','fight','clash','handoff'];
+const defaults=['globe','intro','fight','clash','handoff','death'];
 for(const name of names.length?names:defaults){
   if(!cases[name]){console.log(`unknown case ${name}`);failed++;continue;}
   if(!await cases[name](rom))failed++;

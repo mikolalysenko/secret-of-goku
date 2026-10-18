@@ -437,7 +437,21 @@ assert !n_turn+2 <= !SB+$1800, "orbit scene work past $32:77FF (the frieza modul
 !fr_r     = !FN+$70                ; the end's x offset (Frieza's)
 !fr_len   = !FN+$74
 !fr_ex    = !FN+$78
-!FN_END   = !FN+$7C
+!od_on    = !FN+$7C                ; the orbital death (death.asm): running
+!od_age   = !FN+$7E                ;   its clock
+!od_fx    = !FN+$80                ;   Goku's place at the fatal hit
+!od_fy    = !FN+$82
+!od_dx    = !FN+$84                ;   the fall's target minus that place
+!od_dy    = !FN+$86
+!od_gold  = !FN+$88                ;   died a Super Saiyan
+!od_base  = !FN+$8A                ;   OBJ palette 1 holds the base form's colours
+!od_t     = !FN+$8C                ;   scratch
+!od_q     = !FN+$8E
+!od_q2    = !FN+$90
+!od_m     = !FN+$92
+!od_lo    = !FN+$94
+!od_cam   = !FN+$96                ;   the camera at the fatal hit (x, y, r, longitude, latitude)
+!FN_END   = !FN+$A0
 assert !FN_END <= !SB+$15A0, "orbit finale block overflow"
 
 ; The band layers (bands.asm): two window tables (lines 0-105, 4 bytes a
@@ -564,6 +578,7 @@ incsrc "text.asm"
 incsrc "finale.asm"
 incsrc "fdraw.asm"
 incsrc "bands.asm"
+incsrc "death.asm"
 incsrc "api.asm"
 orbit_code_end:
 assert orbit_code_end <= !CODE_ORBIT+$7C00, "orbit code bank overflow (bind.asm sits at $FC00)"

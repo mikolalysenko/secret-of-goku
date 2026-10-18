@@ -33,7 +33,7 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 | Struggle picture: the rays above the globe on BG1/BG2 band layers, below it as OBJ chains; Goku, Frieza, charges, sparks | **Done** (`bands.asm`, `fdraw.asm`) |
 | Victory clock: impact, beam fade, the native victory commands (death, bursts, fade, fanfare, acquire chime) in `boss-victory.js` order, the pouch, the return at 1,392 | **Done** (logic, sound, pouch); Frieza's red/white flash, the boss bursts, the whiteout and the particle oval are next |
 | Descent (globe zoom 56-230), return to the deck, landing (84 frames), the native victory event | Next (`orbit_return` is a stub; `frieza_orbit_landed` / C7 are bound) |
-| Orbital death (revert, fall), hand-off to the ending's explosion | Planned |
+| Orbital death (revert, fall), hand-off to the ending's explosion | **Done** (`death.asm`): the fight or clash freezes, Frieza watches, Goku falls as `bossRushDeathPose`; the orbit stops two frames before black for the ending; test `death` |
 
 ## The sequence (browser timings)
 
@@ -323,6 +323,25 @@ the whiteout; the 'won' clock waits with it). The pouch flies from Frieza's
 point back to Goku from 927 to 1032; Goku's descent poses from 1152; the
 return at 1392.
 
+### Orbital death
+
+When Goku's HP reaches 0 while the fight or the clash runs, the frieza
+module starts the ending's fatal sequence (`ending_lose`) and the orbit
+plays `shenron-ending.js`'s fatal view with the orbit (`frieza-orbit-view.js`
+`draw(o, fallen)`, `boss-rush-death.js` `bossRushDeathPose`) until black:
+the camera, the globe, the sky clock and Frieza (frame 4, facing Goku)
+freeze; Goku keeps his place until 54 (gold until the revert at 18 if he
+died a Super Saiyan), then drops toward a point between the camera and him
+(`x + (hero.x - x) .28`, `min(192, y + r / 4)`), along `u^2`, shrinking 16
+-> 12 -> 8 -> 4 px, and is gone at 264. The fall's positions come from a
+generated table of 0.16 fractions of `u^2` per age; `orbit-finale.mjs`
+counts them against the browser's own pose (14 of 26,880 sampled pixels
+one off: the browser's doubles land some exact halves a hair low). OBJ
+palette 1 switches to the base form's colours after the revert
+(`orbit_obj_pals_01b`). The ending fades the picture from 300; at 358 the
+orbit stops (the pad and combat go back), and the vblank that restores the
+field releases the scene work area for the ending's stage at 360.
+
 ### Vblank budget
 
 The field NMI turns HDMA off (`STZ $420C` at 00:C0BF), sends the palette,
@@ -438,6 +457,10 @@ come from their sources. Results on the merged build:
   mailbox) takes a hit across 32,000: the second surge hands over, the
   orbit goes live with the area's owner 1 -> 2, Frieza's fight is in space,
   and his 2 KiB at `$32:7800-7FFF` stay unchanged for 300 frames.
+- `death`: from the hand-off, the intro cut short and Goku at 1 HP:
+  Frieza's first hit ends him; 12 of Goku's positions over the fall equal
+  `bossRushDeathPose`'s, the orbit stops at 358, the ending's fatal
+  sequence runs on (age 413 at the end) and the scene work area is free.
 
 ## API
 
@@ -486,8 +509,22 @@ come from their sources. Results on the merged build:
   sprites); keep the HUD portrait. The orbit writes OBJ palette 1 with the
   Super Saiyan colours each vblank, so the HUD portrait should be the Super
   Saiyan one.
-- **ending**: the orbital death draws until black, then `ending_lose` with
-  bit 4 (died in orbit), as `!EF_ORBIT` anticipates; the orbit releases the
-  scene work area first, so the ending's claim in its own frame succeeds.
+- **ending**: (1) the fatal start (`start_fatal`) writes the scene work
+  area (`!s_family` at `$32:6000`, `!s_ldptr`, ...) while the orbit still
+  holds it: in the `death` test it overwrote the orbit's camera (`cam_x`
+  became 1, `cam_r` 0). The orbit keeps its own copy of the death camera
+  for now; the ending should write that area only once its claim
+  (`!SCENE_ENDING`) succeeds, which during an orbital death is at black
+  (the orbit releases at 358). (2) `!EF_ORBIT` is not set: the frieza
+  module's `fz_bind_ending_lose` could pass it while `FZFF_SPACE` is set
+  (frieza), if the ending wants to tell the two deaths apart.
+- **core (lag vblanks)**: on a vblank whose frame the game did not finish,
+  the game still sends its palette when `$EC` bit 2 asks for it (its colour
+  animations, the hero's death colours), while module vblank work is
+  skipped: the orbit's colours (the globe, its OBJ palettes) are replaced
+  for that frame. Seen once in the `death` test's first frames (the native
+  death runs long). A lag-vblank hook for scenes that own colours, or
+  skipping the game's palette upload on those vblanks while a scene owns
+  CGRAM, would close it.
 - **world**: no field effects while `!orbit_flags` bit 0 is set. Combat is
   quieted through its input lock (owner `$0100`).
