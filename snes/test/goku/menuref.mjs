@@ -9,7 +9,10 @@ import {join} from 'node:path';
 import {renderJsRef,BUTTONS as B} from './jsref.mjs';
 import {readPng,writePng,blank} from '../../tools/gfx.mjs';
 
-const ring=rot=>[{buttons:B.select,frames:4},{frames:30},{buttons:B.x,frames:6},{frames:50},{buttons:B.down,frames:4},{frames:40},
+// The reference runs sprite-layer.js without mana-mod.js's input layer, so it
+// presses the native buttons behind the player's: X -> native Y (the
+// controlled character's ring), which natively opens on the weapon ring.
+const ring=rot=>[{buttons:B.y,frames:6},{frames:50},{buttons:B.down,frames:4},{frames:40},
   ...Array.from({length:rot},()=>[{buttons:B.left,frames:4},{frames:30}]).flat(),{buttons:B.b,frames:4},{frames:150,shot:'menu'}];
 
 // Cartridge shots of Mode 5 screens are 512x448: sample (2x, 2y) like jsref.

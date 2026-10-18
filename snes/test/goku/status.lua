@@ -2,7 +2,8 @@
 -- poison/ghost tint Goku's colours, petrify uses the native stone shades,
 -- moogle and snowman keep the native sprite and palette, sleep and death
 -- use the prone cells, pygmy draws the 16x16 miniature, barrel keeps its
--- native overlay, and the waterfall substitutes palette 5 instead of 1.
+-- native overlay, the waterfall substitutes palette 5 instead of 1, and a
+-- native flash leaves Goku's colours unflashed.
 local A = G.addr
 local function set(t) local s = {} for _, v in ipairs(t) do s[v] = true end return s end
 local function case(name, frames)
@@ -71,5 +72,15 @@ function test()
   G.check(H.r8(A.pal_slot) == 5, 'waterfall: palette slot 5 tracked')
   G.check(G.pal_equal(G.cgram_pal(5), base), 'waterfall: Goku colours in palette 5')
   G.check(G.cgram_pal(1)[1] == 0x7FFF, 'waterfall: the map palette 1 untouched')
+
+  -- native flash ($2A: CGRAM from 7E:BE00, rebuilt with an offset every
+  -- frame): Goku stays unflashed as in the browser; entry 1, every actor's
+  -- shadow, keeps the flash
+  s = case('arrival-research__browser-ghost')
+  local slot = H.r8(A.pal_slot)
+  local cg = G.cgram_pal(slot)
+  G.check(H.r8(0x7E002A) ~= 0 and s.repl == 1, 'flash: native flash active with Goku')
+  G.check(G.pal_equal(cg, G.rom_pal(H.r8(G.RAM + 0x48)), 2), 'flash: Goku colours 2-15 unflashed in palette ' .. slot .. ': ' .. G.pal_str(cg))
+  G.check(cg[1] ~= 0x10A6, 'flash: the shadow colour keeps the native flash')
   G.finish()
 end
