@@ -224,6 +224,17 @@ export async function generate({repo,outDir}){
   const heading=[];for(let i=0;i<256;i++){const a=(i+.5)*Math.PI*2/256;heading.push(op.orbitHeading(Math.cos(a)*1000,Math.sin(a)*1000));}
   out.push('frieza_heading_table:',...bytes(heading));
   out.push('frieza_orbit_vectors:',...words(op.orbitVectors.flat()));
+  // Large bursts (orbit-effects.js burst large): burst i (0-8) at radius r
+  // (0-32) sits at ((v * r) >> 8) along orbitVectors[(i * 6) & 15].
+  {
+    const off=[];
+    for(let i=0;i<9;i++)for(let r=0;r<=32;r++){const [vx,vy]=op.orbitVectors[(i*6)&15];off.push((vx*r)>>8,(vy*r)>>8);}
+    out.push('frieza_lb_offsets:',...bytes(off));
+    // victory bursts (boss-victory.js): burst i (0-11) at orbitVectors[(i*7)&15] * (12 + i%4*5) >> 8
+    const vb=[];
+    for(let i=0;i<12;i++){const [vx,vy]=op.orbitVectors[(i*7)&15],d=12+i%4*5;vb.push((vx*d)>>8,(vy*d)>>8);}
+    out.push('frieza_victory_offsets:',...words(vb));
+  }
   // Broken floor (frieza-arena.js ruinMask / frieza.js scarColor): a hole
   // cell's pixels depend only on which of its four neighbours are holes,
   // and each 8x8 quadrant only on the two neighbours it touches, so 16 BG
@@ -263,6 +274,27 @@ export async function generate({repo,outDir}){
     // cloud phases (2+k, 1, 5+k), speckle, wall, edge, sparkle
     const holeColors=[rgb555(2,1,5),rgb555(3,1,6),rgb555(4,1,7),0x316b,0x0842,0x31a8,0x3296];
     out.push('frieza_hole_colors:',...words(holeColors));
+  }
+  // The Death Ball on the deck (frieza-staging.js friezaDeathBallPose,
+  // core-charge / core-shot), on whole pixels as the browser places it.
+  // Charge: the diameter by age (the y follows his pose at run time).
+  // Shot: x, diameter and y for the three hover bobs of the throw pose.
+  {
+    const charge=[];
+    for(let a=0;a<=144;a++)charge.push(staging.friezaDeathBallPose({kind:'core-charge',age:a,clock:0},{x:180,y:145}).size);
+    const shotX=[],shotSize=[],shotY=[[],[],[]];
+    let len=0;
+    for(let a=0;;a++){
+      const p=staging.friezaDeathBallPose({kind:'core-shot',age:a,clock:0},{x:180,y:145});
+      if(!p.visible){len=a;break;}
+      shotX.push(p.x);shotSize.push(p.size);
+      for(let b=-1;b<=1;b++)shotY[b+1].push(staging.friezaDeathBallPose({kind:'core-shot',age:a,clock:0},{x:180,y:145+b}).y);
+    }
+    if(Math.max(...charge,...shotSize)>255||Math.max(...shotX)>255||Math.min(...shotX)<0)throw Error('frieza gen: core Death Ball out of byte range');
+    out.push('frieza_core_charge_size:',...bytes(charge));
+    out.push(`!FRIEZA_CORE_SHOT_LEN = ${len}`);
+    out.push('frieza_core_shot_x:',...bytes(shotX),'frieza_core_shot_size:',...bytes(shotSize));
+    out.push('frieza_core_shot_y0:',...words(shotY[0]),'frieza_core_shot_y1:',...words(shotY[1]),'frieza_core_shot_y2:',...words(shotY[2]));
   }
 
   // frieza-combat.js constants

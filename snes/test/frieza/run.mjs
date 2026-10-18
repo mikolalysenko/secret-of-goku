@@ -95,6 +95,44 @@ end
 `;
 }
 
+// Scenario scenes (scenarios.mjs, browser references from capture.mjs):
+// the preset bundle, the edited Frieza state, shots around each frame.
+function scenarioTest(sc){
+  const writes=friezaWrites(sc.frieza,sc.challenge);
+  return `
+function test()
+  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__'+sc.preset))})
+  F.check(ok, 'import')
+  H.w8(0x316001, 1)
+  F.apply(${luaWrites(writes)})
+  H.w8(0x${(0x7E0000|defs.fz_music).toString(16)}, ${sc.music??0})
+  local shots = {}
+  local boxes = {}
+  local frame = 0
+  local targets = {${sc.frames.join(',')}}
+  local t = 1
+  while t <= #targets do
+    local target = targets[t]
+    H.wait(1)
+    frame = frame + 1
+    if frame >= target - 2 and frame <= target + 2 then
+      local name = string.format('f%05d', frame)
+      H.shot(name)
+      local b = F.box()
+      boxes[name] = b or false
+      shots[#shots + 1] = name
+    end
+    if frame >= target + 2 then t = t + 1 end
+  end
+  H.result('shots', shots)
+  H.result('boxes', boxes)
+  H.result('scene', F.ram(0x${defs.fz_scene.toString(16)}|0x7E0000))
+  H.result('age', F.ram16(0x${defs.fz_sage.toString(16)}|0x7E0000))
+  F.done()
+end
+`;
+}
+
 // Test ROM with the FRIEZA_TEST mailbox (combat's virtual hits).
 const testRom=resolve(repo,'.local/snes-test/roms/frieza-test.sfc');
 function buildTestRom(){
@@ -408,6 +446,39 @@ if(want('music')){
   results.push({name:'music',ok,failures});
   console.log(`frieza music: ${ok?'pass':'FAIL'} (${r.ms} ms) song $3C after ${res.songAt} frames, longest stall ${res.stall} frames`);
   if(!ok)for(const f of failures)console.log('    !',f);
+}
+// Scene effects against the browser (run capture.mjs first).
+const scenarioRoot=resolve(repo,'.local/snes-ref-frieza');
+if(want('effects')&&existsSync(scenarioRoot)){
+  const {scenarios}=await import('./scenarios.mjs');
+  for(const name of Object.keys(scenarios)){
+    const file=join(scenarioRoot,name,'scenario.json');
+    if(!existsSync(file))continue;
+    const sc={...JSON.parse(readFileSync(file,'utf8')),music:scenarios[name].music};
+    const rom=privateRom(romSrc,`frieza-fx-${name}`);
+    const out=join(outRoot,'effects',name);
+    const r=await runMesen({rom,test:lib+'\n'+scenarioTest(sc),outDir:out,state:join(cps,'waterfall.mss')});
+    cleanupRom(rom);
+    const res=r.results??{};
+    const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
+    const notes=[];
+    for(const f of sc.frames){
+      const ref=join(scenarioRoot,name,`frame-${String(f).padStart(5,'0')}.png`);
+      let best=null;
+      for(let d=-2;d<=2;d++){
+        const shot=join(out,`f${String(f+d).padStart(5,'0')}.png`);
+        if(!existsSync(shot))continue;
+        const score=comparePictures(ref,shot,join(out,`compare-${f}${d>=0?'+':''}${d}.png`));
+        if(score!==null&&(!best||score>best.score))best={score,d};
+      }
+      if(best)notes.push(`frame ${f}: ${(best.score*100).toFixed(1)}% (shift ${best.d})`);
+    }
+    const ok=r.code===0&&res.pass===true&&failures.length===0;
+    results.push({name:'effects:'+name,ok,failures,notes});
+    console.log(`frieza effects ${name}: ${ok?'pass':'FAIL'} (${r.ms} ms) scene ${res.scene} age ${res.age}`);
+    for(const n of notes)console.log('   ',n);
+    if(!ok)for(const f of failures)console.log('    !',f);
+  }
 }
 for(const [name,c] of Object.entries(cases)){
   if(!want(name))continue;

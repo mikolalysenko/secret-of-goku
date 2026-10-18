@@ -71,7 +71,11 @@ fz_spr_palette2:
 	REP #$20
 	RTS
 
-; Palettes used by this frame's native sprites -> !fz_spr_used (once).
+; Palettes the native sprites use -> !fz_spr_used (once a frame). The
+; native OAM is read in eight chunks of 16 slots, one chunk a frame, each
+; chunk's palettes kept in the scene SRAM block; after a frame without
+; Frieza (or the first time) all eight are read at once. A palette a new
+; native sprite takes is seen within 8 frames.
 fz_pal_scan:
 	LDA !fz_tflags
 	AND.w #!FZT_PALSCAN
@@ -80,38 +84,88 @@ fz_pal_scan:
 +	SEP #$20
 	LDA.b #!FZT_PALSCAN
 	TSB !fz_tflags
-	STZ !fz_spr_used
 	REP #$20
+	LDA.w !core_frame&$FFFF
+	SEC
+	SBC.l !fzs_palframe
+	CMP.w #2
+	BCC .step
+	LDA.w #7
+-	PHA
+	JSR fz_pal_chunk
+	PLA
+	DEC
+	BPL -
+	BRA .merge
+.step
+	LDA.w !core_frame&$FFFF
+	AND.w #$0007
+	JSR fz_pal_chunk
+.merge
+	LDA.w !core_frame&$FFFF
+	STA.l !fzs_palframe
+	SEP #$20
+	LDA.l !fzs_palmask
+	ORA.l !fzs_palmask+1
+	ORA.l !fzs_palmask+2
+	ORA.l !fzs_palmask+3
+	ORA.l !fzs_palmask+4
+	ORA.l !fzs_palmask+5
+	ORA.l !fzs_palmask+6
+	ORA.l !fzs_palmask+7
+	STA !fz_spr_used
+	REP #$20
+	RTS
+
+; Chunk A16 (0-7): the palettes of native slots 16k..16k+15 (below the
+; first module slot) -> !fzs_palmask+k. Hidden slots count too (cheaper;
+; at worst a palette looks taken).
+fz_pal_chunk:
+	PHA
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL
+	TAY                               ; first byte offset (k * 64)
+	CLC
+	ADC.w #64
+	STA !fz_m1                        ; chunk end
 	LDA.w !core_oam_native&$FFFF
 	CMP.w #129
 	BCC +
 	LDA.w #128
 +	ASL
 	ASL
+	CMP !fz_m1
+	BCS +
+	STA !fz_m1                        ; the native end comes first
++	SEP #$20
+	STZ !fz_m0
+.loop
+	CPY !fz_m1
+	BCS .done
+	LDA.w $0803,Y                     ; attributes: palette in bits 1-3
+	AND.b #$0E
 	TAX
-.scan
-	DEX
-	DEX
-	DEX
-	DEX
-	BMI .done
-	LDA.w $0801,X                     ; y
-	AND.w #$00FF
-	CMP.w #$00E0                      ; hidden slot
-	BEQ .scan
-	LDA.w $0803,X                     ; attributes: palette in bits 1-3
-	AND.w #$000E
-	LSR
-	PHX
-	TAX
-	LDA.l fz_pal_bit,X
+	LDA.l fz_pal_bit2,X
+	TSB !fz_m0
+	INY
+	INY
+	INY
+	INY
+	BRA .loop
+.done
+	REP #$20
 	PLX
 	SEP #$20
-	TSB !fz_spr_used
+	LDA !fz_m0
+	STA.l !fzs_palmask,X
 	REP #$20
-	BRA .scan
-.done
 	RTS
+fz_pal_bit2:                          ; (attributes & $0E) -> palette bit
+	db $01,$00,$02,$00,$04,$00,$08,$00,$10,$00,$20,$00,$40,$00,$80,$00
 
 ; A16 = the first free palette in the preferred order (marked used).
 fz_pal_pick:

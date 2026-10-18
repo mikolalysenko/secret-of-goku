@@ -107,34 +107,12 @@ fz_victory_cues:
 	BCS .out                          ; the last one has no burst of its own
 	ASL
 	ASL
-	ASL
-	SEC
-	SBC !fz_t0                        ; i * 7
-	AND.w #$000F
-	ASL
-	ASL
-	TAX
-	LDA.l frieza_orbit_vectors,X
-	STA !fz_t1
-	LDA.l frieza_orbit_vectors+2,X
-	STA !fz_t2
-	LDA !fz_t0
-	AND.w #$0003
-	STA !fz_t3
-	ASL
-	ASL
-	CLC
-	ADC !fz_t3
-	CLC
-	ADC.w #12                         ; 12 + i%4*5
-	TAY
-	LDA !fz_t1
-	JSR fz_smul_dist
+	TAX                               ; (generated: frieza_victory_offsets)
+	LDA.l frieza_victory_offsets,X
 	CLC
 	ADC.l !fzv_x
 	STA !fz_ax
-	LDA !fz_t2
-	JSR fz_smul_dist
+	LDA.l frieza_victory_offsets+2,X
 	CLC
 	ADC.l !fzv_y
 	SEC
@@ -145,13 +123,6 @@ fz_victory_cues:
 	RTS
 fz_victory_bursts:
 	dw 36,56,76,96,116,137,157,177,197,217,237,257,326
-
-; A16 = vector component (8.8), Y16 = distance -> A16 = v * d / 256.
-fz_smul_dist:
-	STA !fz_t5
-	TYA
-	LDY !fz_t5
-	JMP fz_smul88
 
 ; A16 = command bytes 0-1, X16 = bytes 2-3: through core's sound queue.
 fz_queue_sound:

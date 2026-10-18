@@ -233,6 +233,9 @@ assert !FZX_END <= !FZ+$C0, "frieza WRAM overflow (beast)"
 !fzh_tiles     = !FZHB+$008   ; byte: hole tiles 0 needed, 1 wanted, 2 in VRAM (set in vblank)
 !FZ_HLIST      = !FZHB+$010   ; 400 x 3 bytes: cx, cy, broken neighbours (W1 E2 N4 S8)
 !FZ_HWRITE     = !FZHB+$500   ; 64 x 6 bytes: VRAM address, two tilemap entries
+!fzs_palmask   = !FZHB+$680   ; 8 bytes: native OBJ palettes seen per 16-slot chunk
+!fzs_palframe  = !FZHB+$688   ; word: core frame of the last palette scan
+; !FZHB+$700: the large-burst table (effects.asm)
 !fzv_on        = !FZSB+$14A   ; byte: the victory beat runs
 !fzv_age       = !FZSB+$14C   ; word: frames since the fatal hit
 !fzv_x         = !FZSB+$14E   ; word: where Frieza fell (map)
@@ -547,6 +550,7 @@ incsrc "holes.asm"
 incsrc "beast.asm"
 incsrc "death.asm"
 incsrc "victory.asm"
+incsrc "effects.asm"
 frieza_code_end:
 assert frieza_code_end <= !CODE_FRIEZA+$7000, "frieza code bank overflow"
 pullpc

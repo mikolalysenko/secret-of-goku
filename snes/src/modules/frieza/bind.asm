@@ -591,6 +591,107 @@ if defined("FX_IMPACT")
 endif
 	RTS
 
+; One Exploder burst at map (!fz_ax, !fz_ay): X16 = turn 0-3, Y16 = flip
+; (bit 0). C clear: A16 = fx handle; C set: no slot (or no fx).
+fz_fx_explode_turned:
+if defined("FX_IMPACT")
+	TXA
+	SEP #$20
+	STA.l !fx_dir
+	TYA
+	STA.l !fx_style
+	REP #$20
+	JSR fz_fx_xy
+	LDA.w #!FX_EXPLODE
+	JSL fx_spawn
+	RTS
+else
+	SEC
+	RTS
+endif
+
+; Move fx effect A16 to map (X16, Y16).
+fz_fx_move:
+if defined("FX_IMPACT")
+	JSL fx_move
+endif
+	RTS
+
+; The cinematic (red, planet-killing) Death Ball at screen (X16, Y16):
+; A16 = diameter, !fz_t3 = art frame.
+fz_fx_deathball_screen:
+if defined("FX_IMPACT")
+	STA.l !fx_a
+	LDA !fz_t3
+	STA.l !fx_t
+	SEP #$20
+	LDA.b #1
+	STA.l !fx_style
+	REP #$20
+	LDA.w #!FX_DEATHBALL|(!FX_F_SCREEN<<8)
+	JSL fx_draw
+endif
+	RTS
+
+; A fiery Lucent strip from (280, -16) on the screen: heading !fz_t4,
+; length !fz_t5, age !fz_t6, width 2 (orbit-effects.js beam(..., hot)).
+fz_fx_fire_beam:
+if defined("FX_IMPACT")
+	LDA !fz_t4
+	SEP #$20
+	STA.l !fx_dir
+	REP #$20
+	LDA !fz_t5
+	STA.l !fx_a
+	LDA.w #2
+	STA.l !fx_b
+	LDA.w #0
+	STA.l !fx_c
+	LDA !fz_t6
+	STA.l !fx_t
+	LDX.w #280
+	LDY.w #-16
+	LDA.w #!FX_BEAM_FIRE|((!FX_F_HEADING|!FX_F_SCREEN)<<8)
+	JSL fx_beam
+endif
+	RTS
+
+; A pink charge-orb cell (frame 1) at screen (!fz_ax, !fz_ay).
+fz_fx_pink_orb_screen:
+if defined("FX_IMPACT")
+	LDA.w #!FX_G_ORB
+	STA.l !fx_a
+	LDA.w #1
+	STA.l !fx_b
+	SEP #$20
+	LDA.b #0
+	STA.l !fx_dir
+	REP #$20
+	JSR fz_fx_xy
+	LDA.w #!FX_CELL|((!FX_F_PINK|!FX_F_SCREEN)<<8)
+	JSL fx_draw
+endif
+	RTS
+
+; A ki aura behind the body at screen (!fz_ax, !fz_ay): A16 = tone (0 blue,
+; 1 gold, 2 pink), X16 = power 0-256, Y16 = body height, !fz_t3 = clock.
+fz_fx_aura_screen:
+if defined("FX_IMPACT")
+	SEP #$20
+	STA.l !fx_style
+	REP #$20
+	TXA
+	STA.l !fx_a
+	TYA
+	STA.l !fx_b
+	LDA !fz_t3
+	STA.l !fx_t
+	JSR fz_fx_xy
+	LDA.w #!FX_AURA|((!FX_F_BACK|!FX_F_SCREEN)<<8)
+	JSL fx_draw
+endif
+	RTS
+
 ; Debris burst of a fracture (drawFriezaDebris): chunks in the deck's
 ; colours and a ring of sparks.
 fz_fx_debris:

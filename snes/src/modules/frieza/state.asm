@@ -1195,6 +1195,9 @@ fz_derive_legacy:
 ; Forget per-visit state (scenes, battles, VRAM residency).
 fz_reset_transient:
 	JSR fz_bind_safe                  ; the danger bit goes with !fz_tflags
+	JSR fz_lb_reset
+	LDA.w #$0000
+	STA.l !fzs_palframe               ; the next palette scan reads all of OAM
 	JSR fz_scene_clear
 	STZ !fz_pend
 	LDA.w #$FFFF

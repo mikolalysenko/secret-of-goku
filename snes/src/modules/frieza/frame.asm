@@ -79,6 +79,8 @@ frieza_field_frame:
 	AND.w #$0004
 	BNE .notdrawn
 	JSR fz_draw_scene
+	JSR fz_scene_effects
+	JSR fz_lb_tick
 	JSR fz_battle_draw
 	JSR fz_won_draw
 	JSR fz_holes_frame
