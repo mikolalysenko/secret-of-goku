@@ -41,15 +41,20 @@ goku_request_cell:
 	RTS
 
 ; C1:95BC hook in the field NMI (replaced LDA $7EE083). M16 X8, D = $4300.
-; While Goku stands in for the boy, skip the game's boy-tile upload and let
-; goku_nmi refresh Goku's cell on the same 5-frame cadence instead.
+; While Goku stands in for the boy, skip the game's boy-tile upload: the cell
+; in VRAM stays Goku's (menus and rings leave the slot alone). Every eighth
+; of these 5-frame refreshes asks goku_nmi to re-send it as a safety net.
 goku_upload_hook:
 	PHP
 	SEP #$20
 	LDA.l $7E0000|!replacing
 	BEQ .native
-	LDA.b #!GOKU_UP_REFRESH
-	ORA.l $7E0000|!up_flags
+	LDA.l $7E0000|!up_flags
+	CLC
+	ADC.b #!GOKU_UP_COUNT1   ; bits 5-7 count the refreshes
+	BCC .count
+	ORA.b #!GOKU_UP_REFRESH  ; the eighth
+.count
 	STA.l $7E0000|!up_flags
 	PLP
 	JML $019678              ; continue with the girl's tiles
@@ -276,22 +281,15 @@ goku_nmi:
 	STA !up_cell
 	BRL .hud
 .refresh
-	; the game's 5-frame party refresh came round (goku_upload_hook skipped
-	; the boy's tiles; menus and rings leave the slot alone, measured): the
-	; cell in VRAM is still ours. Re-send it every eighth refresh only, as a
-	; safety net, and only into a vblank with room for it.
+	; every eighth party refresh (goku_upload_hook): re-send the cell in
+	; VRAM as a safety net, into a vblank with room for it
 	LDA !up_flags
 	AND.w #!GOKU_UP_REFRESH
 	BEQ .cell
 	SEP #$20
-	LDA !up_flags
-	AND.b #$FF^!GOKU_UP_REFRESH
-	CLC
-	ADC.b #!GOKU_UP_COUNT1
-	STA !up_flags
-	AND.b #!GOKU_UP_COUNT
+	LDA.b #!GOKU_UP_REFRESH
+	TRB !up_flags
 	REP #$20
-	BNE .cell
 	LDA !up_cell
 	CMP.w #!GOKU_NONE
 	BNE .cell
