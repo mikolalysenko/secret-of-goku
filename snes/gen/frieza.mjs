@@ -173,8 +173,10 @@ export async function generate({repo,outDir}){
   const red=pal(palValues.map(v=>bossDeathColor(v,0)));
   const white=pal(palValues.map(v=>bossDeathColor(v,16)));
   const ghost=pal(palValues.map(()=>1+10+(7<<5)+(18<<10)));
+  // the Emperor's hit silhouette (frieza-intro.js): white, pink at 13-14
+  const silhouette=[0,...Array(15).fill(0x7FFF)],silhouettePink=[0,...Array(15).fill(rgb555(31,8,23))];
   out.push('frieza_palettes:');
-  for(const p of[normal,red,white,ghost])out.push(...words(p));
+  for(const p of[normal,red,white,ghost,silhouette,silhouettePink])out.push(...words(p));
 
   // hover(): Math.round(Math.sin(clock*PI/96)), period 192.
   const hover=[];for(let c=0;c<192;c++)hover.push(Math.round(Math.sin(c*Math.PI/96))|0);

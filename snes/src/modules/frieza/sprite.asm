@@ -355,7 +355,7 @@ fz_spr_nmi:
 	STA $2121
 	REP #$20
 	LDA.l $7E0000|!fz_spr_var
-	AND.w #$0003
+	AND.w #$0007
 	XBA
 	LSR
 	LSR

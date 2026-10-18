@@ -39,7 +39,8 @@ try{
       // the edit runs in the page: (frieza, status, challenge) -> void
       const edited=await page.evaluate(src=>{
         const st=mana.snapshot(),edit=eval(src);
-        edit(st.goku.frieza,{x:mana.mod.status.x,y:mana.mod.status.y,map:mana.mod.read16(0xdc),cameraX:mana.mod.read16(0xa8),cameraY:mana.mod.read16(0xaa)},st.goku.challenge);
+        const entities=(mana.mod.entities?.()??[]).map(e=>({base:e.base,species:e.species,x:e.x,y:e.y,active:e.active,index:e.index}));
+        edit(st.goku.frieza,{x:mana.mod.status.x,y:mana.mod.status.y,map:mana.mod.read16(0xdc),cameraX:mana.mod.read16(0xa8),cameraY:mana.mod.read16(0xaa),entities},st.goku.challenge);
         mana.restore(st);
         return {frieza:st.goku.frieza,challenge:st.goku.challenge,map:mana.mod.read16(0xdc)};
       },sc.edit.toString());

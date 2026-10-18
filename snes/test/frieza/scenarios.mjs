@@ -20,6 +20,8 @@ export const scenarios={
     edit:(f,s)=>{f.stage='theft';f.stolen=true;f.stolenMask=0x25;f.scene={kind:'steal',age:0,clock:0,map:s.map,x:s.x,y:s.y};}},
   'eighth':{preset:'late',frames:[10,40],music:1,
     edit:(f,s)=>{f.eighth=true;f.scene={kind:'eighth',age:0,clock:0,map:s.map,x:s.x,y:s.y};}},
+  'emperor-shot':{preset:'intro',frames:[3,8,13,18,24,32],music:1,
+    edit:(f,s)=>{const e=s.entities.find(e=>e.active&&e.species===176);f.stage='theft';f.scene={kind:'emperor-shot',age:0,clock:0,map:s.map,x:s.x,y:s.y,...(e?{target:{x:e.x,y:e.y},base:e.base}:{})};}},
   'empower':{preset:'late',frames:[20,50,80,120],music:1,
     edit:(f,s)=>{f.stage='trial';f.scene={kind:'empower',age:0,clock:0,map:s.map,x:s.x,y:s.y,target:{x:s.x-60,y:s.y-20}};}},
 };

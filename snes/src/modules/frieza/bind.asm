@@ -692,6 +692,50 @@ if defined("FX_IMPACT")
 endif
 	RTS
 
+; The Emperor's execution ray: fx's Death Beam from (280, !fz_t4) on the
+; screen to the left, length !fz_t5, age !fz_t6.
+fz_fx_ray_screen:
+if defined("FX_IMPACT")
+	LDA !fz_t6
+	STA.l !fx_t
+	LDA !fz_t5
+	STA.l !fx_a
+	LDA.w #3
+	STA.l !fx_b
+	SEP #$20
+	LDA.b #8                          ; heading 8: to the left
+	STA.l !fx_dir
+	REP #$20
+	LDX.w #280
+	LDY !fz_t4
+	LDA.w #!FX_BEAM_LASER|((!FX_F_HEADING|!FX_F_SCREEN)<<8)
+	JSL fx_beam
+endif
+	RTS
+
+; An impact-spark cell at screen (!fz_ax, !fz_ay): A16 = 1 pink / 0 its
+; own colours, X16 = frame.
+fz_fx_spark_screen:
+if defined("FX_IMPACT")
+	PHA
+	TXA
+	STA.l !fx_b
+	LDA.w #!FX_G_IMPACT
+	STA.l !fx_a
+	SEP #$20
+	LDA.b #0
+	STA.l !fx_dir
+	REP #$20
+	JSR fz_fx_xy
+	PLA
+	BEQ +
+	LDA.w #!FX_CELL|((!FX_F_PINK|!FX_F_SCREEN)<<8)
+	BRA ++
++	LDA.w #!FX_CELL|(!FX_F_SCREEN<<8)
+++	JSL fx_draw
+endif
+	RTS
+
 ; Debris burst of a fracture (drawFriezaDebris): chunks in the deck's
 ; colours and a ring of sparks.
 fz_fx_debris:

@@ -288,6 +288,8 @@ fz_won_tick:
 	SEP #$20
 	STA.l !fzv_white
 	BEQ +
+	LDA.b #0
+	STA.l !fzv_mode                   ; the whiteout
 	LDA.b #!FZT_WHITE                 ; the vblank whitens this frame
 	TSB !fz_tflags
 +	REP #$20
@@ -354,6 +356,21 @@ fz_won_nmi:
 	LDA.l $7E0000|!fz_tflags
 	AND.w #!FZT_WHITE
 	BEQ .off
+	LDA.l !fzv_mode
+	AND.w #$00FF
+	BEQ .white
+	; black (the Emperor's hit): sprites only, on a black backdrop, no math
+	SEP #$20
+	LDA.b #$10
+	STA $212C
+	LDA.b #$00
+	STA $2131
+	STA $2121
+	STA $2122
+	STA $2122
+	REP #$20
+	RTS
+.white
 	SEP #$20
 	LDA.b #$00
 	STA $2130                         ; colour math always on, fixed colour
@@ -376,6 +393,8 @@ fz_won_nmi:
 	STA $2131
 	LDA.b #$E0
 	STA $2132
+	LDA.l $000021                     ; the map's main screen (C2:AAB3)
+	STA $212C
 	REP #$20
 .out
 	RTS

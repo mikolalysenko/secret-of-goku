@@ -245,6 +245,7 @@ assert !FZX_END <= !FZ+$C0, "frieza WRAM overflow (beast)"
 !fzv_x         = !FZSB+$14E   ; word: where Frieza fell (map)
 !fzv_y         = !FZSB+$150   ; word
 !fzv_white     = !FZSB+$152   ; byte: whiteout 0-31 this frame
+!fzv_mode      = !FZSB+$154   ; byte: screen override with FZT_WHITE: 0 the whiteout, 1 black
 
 
 ; boss-victory.js bossVictoryTiming (frames from the fatal hit)
@@ -556,6 +557,7 @@ incsrc "death.asm"
 incsrc "victory.asm"
 incsrc "effects.asm"
 incsrc "balls.asm"
+incsrc "emperor.asm"
 frieza_code_end:
 assert frieza_code_end <= !CODE_FRIEZA+$7000, "frieza code bank overflow"
 pullpc
