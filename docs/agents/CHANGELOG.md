@@ -4,6 +4,13 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## 2026-10-18 — SNES cartridge: snes9x and bsnes second opinions
+
+- The cartridge now also runs headless in snes9x and bsnes through their libretro cores and a small frontend, `snes/tools/retro-host` (`make -C snes/tools/retro-host cores` builds pinned cores under `.local/`). `node snes/test/emulators/run.mjs` (part of `run-all`, skipped without cores) plays one power-on scenario on snes9x, bsnes and bsnes with its accurate PPU, with Mesen as the reference. It covers ExHiROM detection and a CPU-bus probe of the extended banks and save RAM, the title, the name editor, the opening to the first field, and a save, power cycle and load. All three cores pass. Their pictures match Mesen's, and the game reaches each step on the same frame. `--presets` runs the 22 scene-select presets on every core: all end in Mesen's state, and their pictures match. See [snes-rom.md](snes-rom.md#second-opinions-snes9x-and-bsnes).
+- `--power-on --bisect` runs each preset from zeroed RAM and again from noise, then narrows any change down to single bytes. The original game reads three things before anything writes them: it seeds the moving Fortress's placement from `7E:0126`, places the first map's camera from the map-edge words `7E:0A80–0AB0`, and seeds its RNG from the save checksums. One read is ours, from destroy's and fx's code: the effects library polls destroy's effect record `$33:77F8` before destroy clears it on its first map sync. With battery noise, this costs one frame in the `battle` preset, and no effect is drawn.
+- `--dma-watch` checks in Mesen for DMA into VRAM, OAM or CGRAM outside vblank and forced blank. Across the opening and all presets, the only such DMA is the original menu's last upload on the name editor's exit (`C0:25F6`). The unmodified game does the same, and hardware drops it.
+- Mesen screenshots were several frames stale in animated scenes, because unthrottled Mesen skips rendering. `runMesen({exactFrames: true})` renders every frame, at about 20-25% more time. The new reference runs use it.
+
 ## 2026-10-18 — SNES cartridge: effects, Sandship, finale, telepathy, Time Chamber and core fixes (integration)
 
 - Merged on the cartridge:
