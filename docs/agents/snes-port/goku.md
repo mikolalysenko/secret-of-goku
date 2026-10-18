@@ -375,15 +375,16 @@ transition palettes follow the browser's `transform` clip).
 
 ## Requests
 
-- **combat** (input): X becomes native Y through `!core_pad_mask`, but
-  combat masks X only after its own frame has seen the press. The game's
-  pad read of that first frame comes before it, so when the game polls the
-  ring button in that frame the press arrives as native X and opens member
-  1's ring instead of the controlled character's (`$1808` = 1). With Goku
-  inactive on `barrier-audit__potos-probe` this happens for presses 9 and
-  14 frames after the import on main and 10 and 30 with every stream
-  merged (the merged frame timing moved it onto `menu`'s press). Masking X
-  whenever combat owns it (it is "ring / back everywhere") would close it.
+- **combat** (input): while Goku is inactive (before the arrival, the
+  native boy) X becomes native Y through `!core_pad_mask`, but combat masks
+  X only after its own frame has seen the press. The game's pad read of
+  that first frame comes before it, so when the game polls the ring button
+  in that frame the press arrives as native X and opens member 1's ring
+  instead of the controlled character's (`$1808` = 1): one press frame in
+  five on `barrier-audit__potos-probe` (9 and 14 frames after the import
+  on main; 10 and 30 with integration-trial's streams, which moved it onto
+  `menu`'s press). With Goku active X is masked up front and never leaks.
+  Masking X whenever combat remaps it would close the gap.
 
 ## Core requests
 

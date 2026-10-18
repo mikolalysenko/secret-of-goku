@@ -10,11 +10,10 @@
 -- config ring; the native boy's opens on his weapon ring, one ring above.
 -- With Goku inactive the player's Y is the game's own ring button (combat
 -- remaps it to ki only while Goku is player 1's character). X would go
--- through combat's remap, which masks X only after its frame has seen the
--- press: when the game polls the ring button first, the press arrives as
--- native X and opens member 1's ring (on main for presses 9 or 14 frames
--- after this import, with all streams merged 10 or 30; goku.md, requests
--- to combat).
+-- through combat's remap, which then masks X only after its frame has seen
+-- the press: when the game polls the ring button first, the press arrives
+-- as native X and opens member 1's ring (one press frame in five; goku.md,
+-- Requests). With Goku active X is masked up front.
 local function ring_item(rot, on, form)
   G.import('barrier-audit__potos-probe')
   if on then G.on() else G.off() end
