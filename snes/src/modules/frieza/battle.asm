@@ -2162,4 +2162,35 @@ fz_test_mailbox:
 	STA.l !fzs_test
 .out
 	RTS
+
+; Test builds: the chained floor provider (!FLIGHT_MISSING_FLOOR) on any
+; map, through a battery-RAM mailbox (the scene SRAM belongs to whichever
+; scene runs): +0 cmd (1 = query), +2 x, +4 y, +6 layer, +8 result (1 hole,
+; 0 floor, $FFFF no flight in the build), +10 count. Polled at the top of
+; every field frame.
+fz_test_floor:
+	LDA.l !fzp_test
+	CMP.w #1
+	BNE .out
+if defined("FLIGHT_RAM")
+	LDA.l !fzp_test+2
+	STA.w !fl_q_x
+	LDA.l !fzp_test+4
+	STA.w !fl_q_y
+	LDA.l !fzp_test+6
+	STA.w !fl_q_l
+	JSL !FLIGHT_MISSING_FLOOR
+	LDA.w #0
+	ROL                               ; the provider's carry
+else
+	LDA.w #$FFFF
+endif
+	STA.l !fzp_test+8
+	LDA.l !fzp_test+10
+	INC
+	STA.l !fzp_test+10
+	LDA.w #0
+	STA.l !fzp_test
+.out
+	RTS
 endif

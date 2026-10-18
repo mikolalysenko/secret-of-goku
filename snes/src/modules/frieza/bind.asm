@@ -220,6 +220,30 @@ if defined("UI_MSG_FRIEZA_QUEST")
 endif
 	RTS
 
+; The flyby's announcement after the impact (frieza-crisis.js
+; deathBallAnnouncement, radio.interrupt kind story).
+fz_bind_flyby_lines:
+if defined("UI_GROUP_DEATH_BALL")
+	LDA.w #!UI_GROUP_DEATH_BALL
+	LDX.w #$0000
+	JSL ui_interrupt
+endif
+	RTS
+; Kai's warning in flight once 1F04 ended (radio.interrupt kind
+; core-crisis): A16 nonzero the Death Ball's aftermath (deathBallAftermath),
+; else crisisFlightMessages.
+fz_bind_crisis_lines:
+if defined("UI_GROUP_DEATH_BALL_AFTER")
+	CMP.w #$0000
+	BEQ +
+	LDA.w #!UI_GROUP_DEATH_BALL_AFTER
+	BRA ++
++	LDA.w #!UI_GROUP_CRISIS_FLIGHT
+++	LDX.w #$0000
+	JSL ui_interrupt
+endif
+	RTS
+
 ; The fed Beast's start ('GOKU:Now THAT is a fight!...', kind challenge).
 fz_bind_say_challenge:
 if defined("UI_MSG_BEAST_CHALLENGE")

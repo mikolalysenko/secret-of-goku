@@ -4,6 +4,9 @@
 ; modules_field_frame: after the game's logic and OAM build. M16/X16,
 ; DB = $7E, D = 0.
 frieza_field_frame:
+if defined("FRIEZA_TEST")
+	JSR fz_test_floor
+endif
 	; quiet fast path (about a third of a scanline): nothing of Frieza's
 	; runs until a hook, a map change, a query's guard or Goku's arrival
 	; wakes the module (fz_try_quiet)

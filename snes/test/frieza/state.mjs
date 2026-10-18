@@ -46,6 +46,16 @@ export function friezaWrites(f,challenge,{map}={}){
   put('fzp_version',1,1);put('fzp_stage',stageId(f.stage),1);put('fzp_tree',treeId(f.tree),1);
   put('fzp_flags',flags,2);put('fzp_mask',f.stolenMask??0,1);put('fzp_crisis',crisis,1);put('fzp_beast',beast,1);
   put('fzp_flyby',f.flyby?f.flyby.age:0xFFFF,2);
+  // the challenge's per-visit state (beast-challenge.js restore(): hits,
+  // clock, grace, the Beast's body, the eruption and its pending damage)
+  if(challenge){
+    put('fzx_clock',challenge.clock??0,2);put('fzx_grace',challenge.grace??0,1);put('fzx_hits',challenge.hits??0,1);
+    put('fzx_pending',challenge.pendingBeam??0,2);put('fzx_body',challenge.beastBody?challenge.beastBody.base-0xE000:0xFFFF,2);
+    const b=challenge.burst?.kind==='beam'?challenge.burst:null;
+    put('fzx_bon',b?1:0,1);
+    if(b){put('fzx_bx',b.x,2);put('fzx_btop',b.top,2);put('fzx_bbot',b.bottom,2);put('fzx_bwidth',b.width,2);
+      put('fzx_bwarn',b.warning,2);put('fzx_bdmg',b.damage,2);put('fzx_bage',b.age,2);put('fzx_bhit',b.hit?1:0,1);}
+  }
   const c=f.scene;
   if(c){
     let sf=0;if(c.court)sf|=defs.FZSF_COURT;if(c.altar)sf|=defs.FZSF_ALTAR;if(c.target)sf|=defs.FZSF_TARGET;
