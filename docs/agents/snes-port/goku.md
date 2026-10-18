@@ -28,7 +28,7 @@ port of `GokuAnimation.pose()` and is checked frame by frame against it
 | VRAM | OBJ tiles `C0-C7`/`D0-D7` of name table 1 (word `$7C00/$7D00`, the boy's own cells; claimed as core region `!VRAM_FIELD_HERO` with owner `$01`), HUD portrait `E8/E9/F8/F9` (word `$7E80/$7F80`), ring marker `0A/0B/1A/1B` of name table 1 (word `$70A0/$71A0`, the boy's marker, rewritten when a ring opens). Full-screen menus: OBJ name table 2 (base `$4000` + `$1000`) tiles `C0-C9/D0-D9` and `E0-E7/F0-F7` (word `$5C00-$5F7F`): the idle and blink cells and the GAME FILE face. No menu screen uses that area (surveyed: Status, Action Grid, Controller/Window Edit, Weapon Skill, game select, GAME FILE load/save, save confirmation) and the field reloads it on return |
 | CGRAM | The boy's OBJ palette through the game's buffer `$7E:0600`: palette 1, or palette 5 on water maps (the slot his body descriptor uses); during a native flash with a scene or scripted cell also its copy in `$7E:BE00` (colours 2-15). Menus: OBJ palette 1 directly (the boy's colours there, `C8:1F00`) |
 | OAM | The boy's body entries are replaced in place by up to four 16×16 OBJ (empty quadrants are skipped), or one for the miniature. `goku_api_scripted`: up to four 16×16 OBJ through `core_oam_add_front` (behind the natives through `core_oam_add` when the 16 front slots are taken), and `core_oam_hide` on actor 0's body and shadow slots of that frame. Menus: the PPU's OAM directly, after the menu's own upload: the boy's eight figure entries moved off screen, entries 120-123 Goku's figure, 124-127 the GAME FILE faces (only when the menu leaves 120-127 unused) |
-| DMA | In `modules_field_nmi`: channels 4-7 for one cell (16 tile DMAs, 512 B, 7.5 lines on FastROM) when it changed; with fewer than 6 lines left before line 258 it waits one frame (never when its palette or size changes), then goes anyway. The game's 5-frame party refresh no longer re-sends it (the hook skips the boy's tiles, and menus and rings leave the slot alone, checked in VRAM), except every eighth refresh as a safety net when the vblank has room. Nothing pending: `goku_nmi` returns after two compares. Channel 7 for the HUD portrait (128 B). Ring set-up: channel 5 (128 B) right after the game's own marker uploads on that channel (measured: the whole set-up ends by scanline 249). Menus: channels 4-7 for the two cells (512 B each, one per frame, when 14+ lines remain) and 7 for the face (128 B), only when the menu runs no HDMA there (`$2C`) |
+| DMA | In `modules_field_nmi`: channels 4-7 for one cell (16 tile DMAs, 512 B, 7.5 lines on FastROM) when it changed; with fewer than 6 lines left before line 258 it waits one frame (never when its palette or size changes), then goes anyway. The game's 5-frame party refresh no longer re-sends it (the hook skips the boy's tiles, and menus and rings leave the slot alone, checked in VRAM), except every eighth refresh as a safety net when the vblank has room. With `-DGOKU_NMI_FAST` `goku_nmi` returns after two compares when nothing is pending; off by default until ending's palette DMA race is fixed (Requests). Channel 7 for the HUD portrait (128 B). Ring set-up: channel 5 (128 B) right after the game's own marker uploads on that channel (measured: the whole set-up ends by scanline 249). Menus: channels 4-7 for the two cells (512 B each, one per frame, when 14+ lines remain) and 7 for the face (128 B), only when the menu runs no HDMA there (`$2C`) |
 | SRAM | None written. Test builds only (`-DGOKU_TRACE`): a 27-byte trace at `$7E:7F00` |
 
 Measured cost (Potos walk, `snes/test/goku/budget.lua`, Goku on against
@@ -36,10 +36,10 @@ off; "on" includes combat and every other module that runs while Goku is
 active): p90 frame-logic end +23 lines on the FastROM default (limit 24;
 main with ui, vegeta, ending, destroy and fx), +26 with `-DCORE_SLOWROM=1`
 (limit 30); no added lag frames; NMI work ends by scanline 260 (FastROM).
-`goku_nmi` (master clocks over the walk, FastROM): 0.17 lines when nothing
-is pending, 8.9 with a cell (the upload itself 7.5), a cell on 70 of 250
-frames. Before October 2026 it took 0.6 and 10.0 lines and re-sent the
-cell on every party refresh (104 of 250 frames). With integration-trial's
+`goku_nmi` (master clocks over the walk, FastROM): 0.6 lines when nothing
+is pending (0.17 with `-DGOKU_NMI_FAST`), 8.9 with a cell (the upload
+itself 7.5), a cell on 70 of 250 frames. Before October 2026 a cell took
+10.0 lines and was re-sent on every party refresh (104 of 250 frames). With integration-trial's
 streams (flight, frieza, orbit as well) the NMI still reached line 262 on
 a frame with a new cell, and the logic grew by 29 lines, mostly
 `flight_frame` (8.9 lines a frame with Goku on, 2.7 off; `goku_frame` 3.8).
@@ -380,6 +380,19 @@ transition palettes follow the browser's `transform` clip).
 
 ## Requests
 
+- **ending** (WRAM wipe): `pal_commit` (lib.asm, frame thread) sets up DMA
+  channel 7 to WMDATA and then writes `$420B`. When the field NMI lands
+  between `STA $4375` and the trigger (a lag frame: only the game's own
+  vblank work runs, and with a window open that includes its 512-byte
+  CGRAM upload on channel 7), the NMI's transfer ends with a zero size, so
+  the commit then copies 64 KiB through WMDATA and overwrites WRAM from
+  the palette buffer on, core and ending state included (seen in the
+  wish-flight test's second run: `$7E:D700` and `$7E:DC82` written from
+  `A9:92C7`, DAS7 = 0 at the trigger). Any change in NMI length can move
+  the NMI into that window: goku's two-compare idle exit (100 cycles
+  shorter) did, and so did 240 extra cycles. A copy that an NMI cannot
+  break (MVN), the transfer in the vblank, or a channel the game's NMI
+  never uses would close it; `goku_nmi` keeps its old prologue until then.
 - **combat** (input): while Goku is inactive (before the arrival, the
   native boy) X becomes native Y through `!core_pad_mask`, but combat masks
   X only after its own frame has seen the press. The game's pad read of
