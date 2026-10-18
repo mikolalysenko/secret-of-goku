@@ -98,7 +98,7 @@ function compareView(shotPath,cam,hero,diffPath){
 
 // A whole match recorded in Mesen and replayed through engine/joch-trial.js:
 // the trial state after every tick must equal the browser's.
-async function fightCase(name,{script,hits,bundle,beam,pilotBeam,shots,fxLog,profile,check}){
+async function fightCase(name,{script,hits,bundle,beam,pilotBeam,shots,fxLog,profile,gokuHp,check}){
   const {parseRecording,replay}=await import('./replay.mjs');
   const romPath=buildTestRom();
   const extra=beam?{V_BEAM_AGE:beam.age,V_BEAM_LEN:beam.len??200,V_BEAM_HALF:beam.half??12,...(beam.mash?{V_MASH:beam.mash}:{}),...(beam.super?{V_BEAM_SUPER:'true'}:{})}:{};
@@ -106,6 +106,7 @@ async function fightCase(name,{script,hits,bundle,beam,pilotBeam,shots,fxLog,pro
   if(pilotBeam?.holdHp)extra.V_PILOT_HOLD_HP=pilotBeam.holdHp;
   if(shots)extra.V_SHOTS='true';
   if(fxLog)extra.V_FX_LOG='true';
+  if(gokuHp)extra.V_GOKU_HP=gokuHp;
   if(profile)extra.V_PROFILE=profile(romPath);
   const r=await mesen(name,'fight.lua',{romPath,globals:{V_TICK:sym('vg_tick',romPath),V_HOOK:sym('vegeta_story_trial_start',romPath),V_SCRIPT:script,V_HITS:hits,...(bundle?{V_BUNDLE:bundle}:{}),...extra}});
   const recs=parseRecording(readFileSync(join(r.outDir,'fight.txt'),'utf8'));
@@ -118,10 +119,25 @@ async function fightCase(name,{script,hits,bundle,beam,pilotBeam,shots,fxLog,pro
   const phases=[...new Set(results.map((x,i)=>recs[i+1]).map(rec=>rec.vg[0]===0x5a?['intro','battle','transform','draw'][rec.vg[1]]:'off'))];
   for(const e of events)if(e.kind==='error')fails.push(e.text);
   const landed=events.filter(e=>e.kind==='hit');
-  if(check)fails.push(...check({events,landed,recs,results}));
+  if(check)fails.push(...check({events,landed,recs,results,final:r.results.final}));
   writeFileSync(join(r.outDir,'replay.json'),JSON.stringify({bad:bad.slice(0,50),events},null,1));
-  return {fails,info:{ticks:results.length,differing:bad.length,phases,events:events.length,hits:landed.length,
+  return {fails,info:{ticks:results.length,differing:bad.length,phases,final:r.results.final,events:events.length,hits:landed.length,
     taken:landed.filter(e=>e.after<e.before).length,melee:landed.filter(e=>e.melee).length,beamHits:landed.filter(e=>e.beam).length}};
+}
+
+// The trial asked story for its return event and the game came back to
+// Jehk's room (map 18) with the borrowed party, the trial over.
+function returnChecks(events,final,id,party,cf3f){
+  const f=[],req=events.filter(e=>e.kind==='request').map(e=>e.id);
+  if(!req.includes(id))f.push(`requests ${req.map(x=>x.toString(16)).join(',')||'none'}, not ${id.toString(16)}`);
+  if(!final)f.push('no final state');
+  else{
+    if(final.map!==18)f.push(`ended on map ${final.map}, not 18`);
+    if(final.trial)f.push('the trial state is still on');
+    if(final.girl!==party.girl||final.sprite!==party.sprite)f.push(`party girl ${final.girl} sprite ${final.sprite}, want ${party.girl}/${party.sprite}`);
+    if(final.cf3f!==cf3f)f.push(`trial stage CF3F ${final.cf3f}, want ${cf3f}`);
+  }
+  return f;
 }
 
 const cases={
@@ -207,6 +223,23 @@ const cases={
       for(let i=0;i+1<points.length;i++)info[k][points[i]+'>'+points[i+1]]=stats(b.seg[i]);
     }
     return {fails:r.fails,info:{...r.info,budget:info}};
+  },
+  // The returns through the story module's per-party scripts (TRIAL_ACTIVE,
+  // TRIAL_PARTY): Super Saiyan Vegeta beaten (two overwhelming blows) is
+  // the draw, 4E5; dialogue advanced with A until the reveal is over.
+  async 'return-draw'(){
+    return fightCase('return-draw',{
+      script:[[900,''],[2700,'taps']],hits:[[60,65535,0],[700,65535,0]],
+      check:({events,final})=>returnChecks(events,final,0x4e5,{girl:1,sprite:1},6),
+    });
+  },
+  // Goku at 30 HP: the first blow that would floor him ends the match
+  // (finish(false)), the rest route 025.
+  async 'return-rest'(){
+    return fightCase('return-rest',{
+      script:[[1200,''],[2400,'taps']],hits:[],gokuHp:30,
+      check:({events,final})=>returnChecks(events,final,0x25,{girl:1,sprite:1},4),
+    });
   },
   async chamber(){
     const r=await mesen('chamber','chamber.lua');

@@ -178,7 +178,11 @@ function test()
         for k = 1, #V_PROFILE do profRow[k] = -1 end
       end
       local mash = V_MASH and H.r8(0x7EDBEF) ~= 0 and (H.frame % V_MASH) < 2
-      if buttons == 'pilot' then
+      if V_GOKU_HP and f == 1 and step == (V_SCRIPT or {})[1] then H.w16(0x7EE182, V_GOKU_HP) end
+      if buttons == 'taps' then
+        -- dialogue: A for 2 frames every 8
+        if (H.frame % 8) < 2 then H.hold('a', 1) else H.wait(1) end
+      elseif buttons == 'pilot' then
         local b = V.pilot()
         if b ~= '' then H.hold(b, 1) else H.wait(1) end
       elseif mash then H.hold('b', 1)
@@ -197,6 +201,9 @@ function test()
   local f = assert(io.open(H_OUT .. '/fight.txt', 'w'))
   f:write(table.concat(recs, '\n'))
   f:close()
+  -- where the match left the game (the return events)
+  H.result('final', {map = V.map(), cf3f = H.r8(0x7ECF3F), girl = H.r8(0x7EE200) & 1, sprite = H.r8(0x7EE400) & 1,
+    trial = H.r8(0x7EDBC0) == 0x5A, phase = H.r8(0x7EDBC1), hp = H.r16(0x7EE182), maxhp = H.r16(0x7EE184), d0 = H.r8(0x7E00D0)})
   H.result('records', #recs)
   H.result('hook', hookAt)
   H.result('start', start)
