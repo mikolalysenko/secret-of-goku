@@ -2,7 +2,8 @@
 // Second and third opinions: the cartridge on snes9x and bsnes (their
 // libretro cores, driven headless by snes/tools/retro-host) next to Mesen.
 //   node snes/test/emulators/run.mjs [snes9x|bsnes|bsnes-accurate ...]
-//        [--presets[=late,flight,...]] [--no-mesen] [--refresh-mesen]
+//        [--presets[=late,flight,...]] [--power-on[=...] [--bisect]]
+//        [--dma-watch[=scenario,late,...]] [--no-mesen] [--refresh-mesen]
 // Each core plays snes/test/emulators/scenario.mjs from power-on with noise
 // in battery RAM and WRAM: ExHiROM detection (core log, CPU-bus probe of the
 // extended banks and save RAM), title pictures against Mesen's at the same
@@ -34,6 +35,7 @@ const args=process.argv.slice(2);
 const only=args.filter(a=>!a.startsWith('--'));
 const presetArg=args.find(a=>a==='--presets'||a.startsWith('--presets='));
 const powerArg=args.find(a=>a==='--power-on'||a.startsWith('--power-on='));
+const dmaArg=args.find(a=>a==='--dma-watch'||a.startsWith('--dma-watch='));
 const listOf=(arg,all)=>arg?.includes('=')?arg.split('=')[1].split(',').filter(Boolean):all;
 const outRoot=join(repo,'.local/snes-test/emulators');
 
@@ -291,7 +293,51 @@ async function powerOnMain(avail,romFile){
   return true;
 }
 
+// DMA timing in Mesen (dma-watch.lua) over the scenario and presets: DMA
+// into VRAM/OAM/CGRAM during active display without forced blank, HDMA into
+// VRAM/OAM. Hits from module/core code (banks $A0-$AF) fail; native ones are
+// reported (C0:25F6, the menu's last upload on the name editor's faded exit,
+// is in the original cartridge too).
+const NATIVE_DMA_KNOWN={'dma VRAM C0:25F6':'native menu upload on the name editor\'s exit (the original cartridge does the same)'};
+async function dmaWatchMain(romFile,rom,xprobe){
+  const {m,skipped}=await mesenModule();
+  if(!m){console.log(`emulators dma-watch: skipped (${skipped})`);return true;}
+  const {kinds,work}=presetSetup(romFile);
+  const jobs=listOf(dmaArg,['scenario',...kinds]);
+  const watch=readFileSync(join(here,'dma-watch.lua'),'utf8');
+  const {privateRom,cleanupRom}=await import('../checkpoints.mjs');
+  const report=[];
+  let failed=false;
+  for(const job of jobs){
+    let test;
+    if(job==='scenario')test=`PROBE_CODE={${probeCode(xprobe,0).join(',')}}\nTITLE_FRAMES={${TITLE_FRAMES.join(',')}}\n`+readFileSync(join(here,'mesen-ref.lua'),'utf8');
+    else if(kinds.includes(job))test=`DBG_WORK=${work}\nPRESET=${kinds.indexOf(job)}\nMAXF=${maxFramesOf(job)}\nSHOTS={60,240}\n`+readFileSync(join(repo,'snes/test/debug/preset.lua'),'utf8');
+    else{console.error(`emulators: unknown dma-watch job ${job}`);return false;}
+    const copy=privateRom(romFile,`dma-${job}`);
+    const r=await m.runMesen({rom:copy,test:test+'\n'+watch,outDir:join(outRoot,'dma-watch',job),timeoutMs:1800000,args:['--snes.ramPowerOnState=AllZeros']});
+    cleanupRom(copy);
+    const hits=(r.results?.dma_watch??[]).map(h=>{
+      const bank=parseInt(h.pc.slice(0,2),16),key=`${h.kind} ${h.pc}`;
+      const ours=(bank>=0xA0&&bank<=0xAF)||(bank>=0xE0&&bank<=0xEF);
+      return {...h,ours,native:NATIVE_DMA_KNOWN[key]??null};
+    });
+    const bad=hits.filter(h=>h.ours);
+    const error=r.results?.error??(r.code!==0?r.output.slice(-500):null);
+    if(bad.length||error)failed=true;
+    report.push({job,frames:r.results?.frames,error,hits});
+    console.log(`${job.padEnd(12)} ${bad.length||error?'FAIL':'ok  '} ${String(r.results?.frames??'-').padStart(5)} frames  ${hits.length?hits.map(h=>`${h.kind} at ${h.pc} (frame ${h.frame}, line ${h.line}, brightness ${h.brightness}, ${h.extra}, ${h.count}x)${h.ours?' MODULE CODE':h.native?' native':' native, unverified'}`).join('; '):'none'}${error?' error '+error:''}`);
+  }
+  writeFileSync(join(outRoot,'dma-watch.json'),JSON.stringify({rom:romFile,romSha256:sha(rom),report},null,1));
+  console.log(`\nemulators dma-watch: ${failed?'FAIL':'pass'} (details: ${join(outRoot,'dma-watch.json')})`);
+  return !failed;
+}
+
 async function main(){
+  if(dmaArg){
+    const romFile=romPath(),rom=new Uint8Array(readFileSync(romFile)),xprobe=findProbe(rom)??0x7D0000;
+    mkdirSync(outRoot,{recursive:true});
+    process.exit(await dmaWatchMain(romFile,rom,xprobe)?0:1);
+  }
   const variants=VARIANTS.filter(v=>!only.length||only.includes(v.name)).map(v=>({...v,corePath:findCore(v.core)}));
   const avail=variants.filter(v=>v.corePath);
   if(!avail.length){

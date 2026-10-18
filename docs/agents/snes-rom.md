@@ -281,6 +281,7 @@ make -C snes/tools/retro-host cores    # snes9x + bsnes (pinned commits) -> .loc
 node snes/test/emulators/run.mjs       # also in run-all; skips (exit 0) without cores
 node snes/test/emulators/run.mjs --presets[=late,flight]   # scene-select presets vs Mesen
 node snes/test/emulators/run.mjs --power-on[=flight] --bisect  # uninitialised-RAM sweep
+node snes/test/emulators/run.mjs --dma-watch[=scenario,late]   # DMA outside vblank (Mesen)
 ```
 
 Sources go to `.local/tools/emu-src/`, cores and the host binary to
@@ -330,8 +331,15 @@ Mesen running that Lua file; all emulators start from zeroed RAM there
 and again with noise or `ff` in WRAM and with noise in battery RAM; any
 change in the trace, end state or pictures means something read memory it
 never wrote, and `--bisect` narrows it to single bytes (`power-on.json`).
+`--dma-watch` (Mesen only, zeroed power-on RAM) appends
+`snes/test/emulators/dma-watch.lua` to the scenario and every preset: any
+DMA started into VRAM, OAM or CGRAM while the screen is not force-blanked
+and the scanline is visible (brightness 0 does not count), and any HDMA
+into VRAM or OAM. Real hardware ignores those VRAM and OAM writes. Module
+code writes the PPU's memories only through DMA, so a hit from banks
+`$A0-$AF` fails the run (`dma-watch.json`, about 3 minutes for all).
 
-### Results (cartridge of 2026-10-18)
+### Results (cartridge of 2026-10-18, after the integration merge)
 
 | | snes9x 1.63 (`1bcc369`) | bsnes 115 (`78474e5`) | bsnes accurate PPU/DSP |
 | --- | --- | --- | --- |
@@ -344,43 +352,71 @@ never wrote, and `--bisect` narrows it to single bytes (`power-on.json`).
 | 22 presets vs Mesen (`--presets`) | all done, end states equal, pictures 100% (within one level) | same | same |
 | Speed (7,900 frames) | 2.7 s | 11.5 s | 26 s |
 
-In the presets the recipes end within 1-4 frames of Mesen (sandship 4145
-against 4149, hexas 3995/3996/3997), with the same end state. At `intro`
+In the presets the recipes end within 0-3 frames of Mesen (hexas 4041/4042
+against 4044, rider 5452 against 5455), with the same end state. At `intro`
 +60 all three cores agree with each other and differ from Mesen by one
 colour level in 35% of the pixels (a fade's brightness rounding).
 
-Power-on sensitivity (`--power-on --bisect`, snes9x): 20 of 22 presets are
-unaffected by noise or `$FF` in WRAM and noise in battery RAM. The two
-others depend on bytes that the **original** game reads before writing, so
-the unmodified cartridge does the same on every console:
+Power-on sensitivity (`--power-on --bisect`, snes9x): 19 of 22 presets are
+unaffected by noise or `$FF` in WRAM and noise in battery RAM. Four values
+are read before anything writes them. The first three readers are
+**original** code, which the unmodified cartridge runs the same way on
+every console; the fourth is ours:
 
-- **`7E:0126`, the moving Fortress's wander seed** (`flight`, `rider`).
-  `C2:B0D7` (bank `C2`, run during the legend's world fly-over) does
-  `LDA $0126 / ADC #$37 / STA $0126` and places the Mana Fortress at the
-  camera ± that seed (`$0128/$012A`); nothing writes `$0126` earlier, in the
-  original cartridge or ours (zeros give `$0738/$0DC7`, `$FF` `$0737/$0DC8`).
-  The world module aims at that position (`world/aim.asm`), and the debug
-  module's `WORLDAIM` parks the camera south of it, so the `flight` preset's
-  end position and `rider`'s timing (one frame) follow power-on WRAM. A
-  preset that must be reproducible on hardware would have to set `$0126`
-  itself (e.g. in `debug_arm`); zeroing it in `core_boot` would make the
-  game's own Fortress placement fixed.
+- **`7E:0126`, the moving Fortress's wander seed** (`flight`; before the
+  merge also `rider`'s timing). `C2:B0D7` (bank `C2`, run during the
+  legend's world fly-over) does `LDA $0126 / ADC #$37 / STA $0126` and
+  places the Mana Fortress at the camera ± that seed (`$0128/$012A`);
+  nothing writes `$0126` earlier, in the original cartridge or ours (zeros
+  give `$0738/$0DC7`, `$FF` `$0737/$0DC8`). The world module aims at that
+  position (`world/aim.asm`), and the debug module's `WORLDAIM` parks the
+  camera south of it, so the `flight` preset's end position follows
+  power-on WRAM. A preset that must be reproducible on hardware would have
+  to set `$0126` itself (e.g. in `debug_arm`); zeroing it in `core_boot`
+  would make the game's own Fortress placement fixed.
+- **The map-edge words `7E:0A80/0A90/0AA0/0AB0`** (`space`, `battle`, with
+  WRAM all `$FF`: one frame later). The camera placement at `C1:CBF3`
+  (`C1:CC0D-CC33`) tests them before the map loader writes them on the first
+  map; the original cartridge's opening does the same (`C1:CC1A`, frame
+  1086).
 - **The RNG seed is the save checksums.** The title program (`7E:ADB0`,
   decompressed from `C7:7C00`) XORs the four slots' checksums
   (`$30:6001/6401/6801/6C01`) and seeds its LFSR (`7E:C2D9`; `$7524` when
-  the XOR is 0). A fresh cartridge's battery noise seeds it at random; it
-  changes `rider`'s timing by one frame.
+  the XOR is 0). A fresh cartridge's battery noise seeds it at random
+  (before the merge it moved `rider`'s end by one frame).
+- **Module code: destroy's effect record `$33:77F8`** (`battle`, with battery
+  noise: one frame later). `!FX_SEQ` (`!SRAM_WORK_DESTROY+$7F8`, volatile)
+  is zeroed only by destroy's first `dst_sync_map` after a reset
+  (`destroy/entry.asm`, `!m_init` check). The effects library compares it
+  every field frame (`fx/frame.asm` `fx_frame`: `LDA !FX_DREC_SEQ / CMP
+  !fx_dseq`, and `fx_destroy_poll`), and `fx_ensure_init` adopts whatever it
+  holds. With battery noise, fx sees a "new record" until the two agree and
+  takes its full path, costing a frame of CPU in a busy scene; destroy
+  clears `!FX_KIND` with it, so no effect is drawn. Fix (owners: destroy,
+  fx): clear the effect record at title entry or power-on, not on the first
+  map sync; or have `fx_title_boot` adopt `!FX_DREC_SEQ` into `!fx_dseq` and
+  clear `!fx_busy`.
+
+DMA timing (`--dma-watch`, scenario and all 22 presets): the only DMA into
+the PPU's memories outside vblank and forced blank is the original menu's
+last VRAM upload on the name editor's exit (`C0:25CC-25F6`, channel 7,
+2 KiB at brightness 0 but not force-blanked, line 153; the original
+cartridge does it at line 189). Hardware drops it; the next frames are
+force-blanked and the field loads its own graphics. No module DMA or HDMA
+lands outside vblank. HDMA colour gradients write CGRAM during H-blank, as
+designed.
 
 Other differences: snes9x rounds colour math (in translucent areas such as
 the waterfall, green is one 5-bit level higher than in Mesen and bsnes), and
 the Mesen frame skipping and one-frame screenshot offset above. With
 Mesen's power-on RAM random, one `flight` run entered its first room one
 frame later (two more did not; AllZeros, AllOnes and noise in audio RAM,
-VRAM, OAM or CGRAM never did). No difference so far traces to module or
-core code: no VRAM, DMA or open-bus behaviour differed between the
-emulators in these scenes. Tools for future runs: `snes/tools/disasm.mjs`
-for ROM code, a Mesen `emu.addMemoryCallback` on the byte (`snesWorkRam` or
-`snesSaveRam`) for the reader's PC.
+VRAM, OAM or CGRAM never did). No picture, state or timing difference
+between the emulators traces to module or core code. Tools for further
+digging: `snes/tools/disasm.mjs` for ROM code, a Mesen
+`emu.addMemoryCallback` on the byte (`snesWorkRam` or `snesSaveRam`) for
+the reader's PC; for read-before-write, track writes to the byte and report
+reads before the first (DMA writes do not reach those callbacks).
 
 ## Engine anchors
 
