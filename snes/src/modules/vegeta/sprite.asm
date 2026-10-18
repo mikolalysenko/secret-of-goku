@@ -587,7 +587,7 @@ vegeta_nmi:
 	PLB
 	RTL
 
-; DMA helper: A = bytes, X = source offset (from vegeta_tiles, bank $F4),
+; DMA helper: A = bytes, X = source offset (from vegeta_tiles, an xdata bank),
 ; Y = VRAM word address. Channel 6 (the game's vblank DMA uses 7 and the
 ; sprite cells 4-7 before us; HDMA uses 0-1 in the field). DB = $7E.
 vg_dma:

@@ -299,6 +299,14 @@ incsrc "vegeta/vegeta_gen.asm"
 incsrc "vegeta/clash_gen.asm"
 vegeta_data_end:
 assert vegeta_data_end <= !DATA_VEGETA+$8000, "vegeta data bank overflow"
+; The art is read only by DMA: the generator places it in the ExHiROM
+; extended banks ($40-$7D lower halves, dist/snes/gen/xdata.asm); a 4 MiB
+; build (no xdata) keeps it in $F4/$F5.
+if defined("XDATA_VEGETA_SPRITE_TILES")
+	vegeta_chamber_tiles = !XDATA_VEGETA_CHAMBER_TILES
+	vegeta_tiles = !XDATA_VEGETA_SPRITE_TILES
+	vegeta_ball_tiles = !XDATA_VEGETA_BALL_TILES
+else
 org $F40000
 vegeta_chamber_tiles:
 incbin "vegeta/chamber_tiles.bin"
@@ -311,6 +319,7 @@ vegeta_ball_tiles:
 incbin "vegeta/clash_tiles.bin"
 vegeta_art2_end:
 assert vegeta_art2_end <= $F58000, "vegeta art exceeds $F5:0000-7FFF"
+endif
 pullpc
 
 ; ---------------------------------------------------------------------------

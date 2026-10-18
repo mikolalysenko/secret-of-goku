@@ -374,12 +374,18 @@ async function clashData(repo,out){
   return {radii:32,maxBlocks,bytes:bytes.length};
 }
 
-export async function generate({rom,repo,outDir}){
+export async function generate({rom,repo,outDir,xdata}){
   mkdirSync(outDir,{recursive:true});
   const sample=await sampleChamber(repo,rom);
   const chamber=chamberData(repo,rom,outDir,sample);
   const vegeta=await vegetaData(repo,outDir);
   const clash=await clashData(repo,outDir);
+  // The art is read only by DMA: the extended banks (ExHiROM xdata) hold it.
+  if(xdata){
+    xdata('vegeta_chamber_tiles',readFileSync(join(outDir,'chamber_tiles.bin')));
+    xdata('vegeta_sprite_tiles',readFileSync(join(outDir,'vegeta_tiles.bin')));
+    xdata('vegeta_ball_tiles',readFileSync(join(outDir,'clash_tiles.bin')));
+  }
   writeFileSync(join(outDir,'summary.json'),JSON.stringify({chamber,vegeta,clash},null,1));
   return {chamber,vegeta,clash};
 }

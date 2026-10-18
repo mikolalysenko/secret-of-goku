@@ -169,8 +169,8 @@ the slot to combat's step only:
 ### Vegeta's sprite
 
 - 56×40 cells from `decodeVegetaSheet()` (32 frames: base/gold × 16 poses)
-  cut into at most five 16×16 OBJ blocks per frame (146 blocks, 18.7 KiB in
-  `$F4`), one OBJ palette (4, the Doppelganger's) for both forms; the hit
+  cut into at most five 16×16 OBJ blocks per frame (146 blocks, 18.7 KiB of
+  extended data), one OBJ palette (4, the Doppelganger's) for both forms; the hit
   flash writes it white.
 - VRAM: the OBJ region the native streamer uses for actor slot 3 (held
   inactive): two frame buffers (tiles `$080-$099`, `$0E0-$0F9`) and the
@@ -201,8 +201,7 @@ requested `combat_api_beam`).
 | --- | --- |
 | Code `$A8:8000-EFFF` | `!CODE_VEGETA`; `$A8:F000-FFFF` the bindings (`bind.asm`) |
 | Data `$E8:0000-` | chamber BG2 metatiles (584 B), palettes (192 B), BG2 grid (4 KiB); Vegeta's frame table, the ball table |
-| ROM `$F4:0000-` | chamber BG tiles (6.5 KiB), Vegeta's OBJ blocks (18.7 KiB) |
-| ROM `$F5:0000-` | the clash ball's quadrants, radius 1-32 (9.8 KiB) |
+| Extended data (ExHiROM `$40-$7D` lower halves, placed by the build: `$7C:0000`, `$7D:0000`, `$7D:4900` today) | `xdata` blobs read only by DMA: `vegeta_chamber_tiles` (chamber BG tiles, 6.5 KiB), `vegeta_sprite_tiles` (Vegeta's OBJ blocks, 18.7 KiB), `vegeta_ball_tiles` (the clash ball's quadrants, radius 1-32, 9.8 KiB). A 4 MiB build without xdata keeps them in `$F4`/`$F5`; the lower halves of `$F4`/`$F5` are otherwise free again |
 | ROM patches | `CF:E243` (189 B), `CD:0596` (2 B), `C8:3C11` (1 B) |
 | VRAM, map 72 | BG tiles `$0000-$0CEF` (the cave tileset is not used there); OBJ tiles of the inactive clone slots: slot 3 (`$068-$07F`, `$080-$099`, `$0C8/$0D8`, `$0E0-$0F9`: Vegeta's two frame buffers and the echo), slot 4 (`$0A0-$0BB`, `$100-$11B`: the ball) |
 | CGRAM | BG palettes 2-7 through the game's buffer `$7E:0640-$06FF` (map 72); OBJ palette 4 (Vegeta) and 5 (the ball) through `$7E:0780/$07A0` while the trial draws |
