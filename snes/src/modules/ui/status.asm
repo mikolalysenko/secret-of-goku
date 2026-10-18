@@ -87,6 +87,11 @@ assert !ui_ptr+4 <= !ui_frame, "status: scratch overlap"
 ; ---------------------------------------------------------------------------
 ; Menu frame (in vblank after the menu's own uploads). DB = $7E, M16/X16.
 ui_status_frame:
+	JSL core_vblank_lines             ; (VRAM reads and writes: a late frame
+	CMP.w #1                          ; does nothing)
+	BCS .vblank
+	RTS
+.vblank
 	JSR ui_st_detect
 	BCS .page
 	LDA.w !ui_st&$FFFF
