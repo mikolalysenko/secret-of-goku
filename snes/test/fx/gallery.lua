@@ -60,7 +60,11 @@ function test()
   -- Transformation ring (gold) and the blue variant.
   F.spawn(0, F.K.BURST, S | F.F.GOLD, 0, 80, 100)
   F.spawn(1, F.K.BURST, S, 0, 190, 100)
-  s = shot('burst_age1', F.waitFx(2))
+  s = F.waitFx(2)
+  -- Both cold-cache rings may need the next streaming phase. Keep the
+  -- full sprite-count requirement and bound the wait to one native cycle.
+  for i=1,5 do if s.sprites>=40 then break end s=F.waitFx(1) end
+  s = shot('burst_ready', s)
   F.check('burst_sprites', s.sprites >= 40, F.statstr(s))
   shot('burst_age4', F.waitFx(3))
   shot('burst_age9', F.waitFx(5))

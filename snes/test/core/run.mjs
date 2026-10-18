@@ -33,6 +33,7 @@ if(need.some(n=>!existsSync(join(cps,`${n}.mss`)))){
 const tests=[
   ['title',null],
   ['frames','waterfall'],
+  ['party','waterfall'],
   ['input','waterfall'],
   ['menu','name-entry'],
   ['oam','waterfall'],

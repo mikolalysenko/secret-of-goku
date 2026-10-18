@@ -135,7 +135,7 @@ fx_nmi_cells:
 	; Starting a cell at 257-258 let an otherwise valid frame finish on
 	; visible line 0/1. Pending cells keep their previous resident age.
 	JSR fx_nmi_vline
-	CMP.w #255
+	CMP.w #254
 	BCS .done
 	CMP.w #225
 	BCC .done

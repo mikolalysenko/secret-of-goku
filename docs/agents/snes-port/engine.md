@@ -236,3 +236,14 @@ These mirrors retain the low WRAM/IO mapping; the original `$00` outer loop,
 interrupts and map-transition return stay in place. Core frame, input, OAM,
 VRAM, save, world, lag, HDMA, WRAM and extended-ROM tests pass. The timing
 measurements above describe the older experiment, before those call changes.
+
+While Goku is active, the native party status/AI/animation pass updates the
+girl in phase 0, Goku in phase 3 and the sprite in phase 4. Each still runs
+once in every five completed field frames; movement, collision and drawing
+run for everyone every frame. This spreads the original phase-3 CPU burst
+without dropping updates. Before Goku's arrival and during native event
+scripts, all three retain phase 3 so scripted party movements stay synchronized.
+`-DCORE_PARTY_SYNC=1` restores the old schedule for comparisons. The core
+`party` test counts 20 calls per actor across 100 field frames with Goku off,
+on, a second player assigned and an event owning the field, and checks that
+the actors stay active. The whip-pad crossing tests the real scripted handoff.

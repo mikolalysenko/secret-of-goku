@@ -1,5 +1,19 @@
 # Changelog
 
+## SNES party update scheduling (2026-10-18)
+
+- Spread native companion status, AI and animation across the game's
+  existing five phases while Goku is active. Preserve every actor's update
+  frequency, per-frame movement/collision/drawing and player assignments.
+  The original schedule remains in use before Goku arrives and during native
+  event scripts, including scripted whip-pad crossings.
+- Reserve more vblank time around Goku's cell upload. A deferred pose no
+  longer forces an upload merely because it waited one frame.
+- The integrated walking and ordinary-flight cases now meet every video
+  frame. Crowded punch/ki and teleport cases improve further; rapid ki fire
+  during flight remains the largest measured CPU bottleneck. Core cadence,
+  input, menus, sound/events, world, save and lag regressions pass.
+
 ## SNES teleport responsiveness (2026-10-18)
 
 - Advance Instant Transmission with the field video clock, so CPU stalls

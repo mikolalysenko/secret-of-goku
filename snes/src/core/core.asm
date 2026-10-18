@@ -317,12 +317,60 @@ core_field_actors:
 	PEA $B294-1
 	JML $80B0D3
 .actors
+if not(defined("CORE_PARTY_SYNC"))
+	SEP #$20
+	REP #$10
+	LDA $D0
+	BNE .sprites_start          ; event scripts keep the native phase order
+	LDA.l !persist_goku_active
+	BEQ .sprites_start
+	LDA $56
+	CMP.b #0
+	BEQ .girl
+	CMP.b #4
+	BNE .sprites_start
+	LDX.w #$0400
+	BRA .party
+.girl
+	LDX.w #$0200
+.party
+	JSR core_party_actor
+.sprites_start
+endif
 	PHK
 	PER .sprites-1
 	PEA $B294-1
 	JML $80E38E
 .sprites
 	RTL
+
+if not(defined("CORE_PARTY_SYNC"))
+; Retain the native once-per-five-frame party update rate, putting the
+; girl in phase 0 and the sprite in phase 4 while Goku is active. Movement,
+; collision and OBJ construction still run for the whole party every frame.
+; CORE_PARTY_SYNC restores the original phase-3 burst for comparisons.
+core_party_pair:
+	SEP #$20
+	REP #$10
+	LDA $D0
+	BNE .native
+	LDA.l !persist_goku_active
+	BNE .done
+.native
+	LDX.w #$0200
+	JSR core_party_actor
+	LDX.w #$0400
+	JSR core_party_actor
+.done
+	RTL
+core_party_actor:
+	PHK
+	PER .done-1
+	PEA $B294-1
+	JML $80F4CB
+.done
+	RTS
+endif
 
 ; ---------------------------------------------------------------------------
 ; Field main loop, 00:B073 (bank 00 mirror of C0): after the frame's game

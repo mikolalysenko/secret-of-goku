@@ -236,16 +236,12 @@ goku_dma_tile7:
 
 ; ---------------------------------------------------------------------------
 ; Field NMI work (modules_field_nmi): M16 X16, DB = $80, D = 0, in vblank.
-; A cell takes 16 tile DMAs on channels 4-7: 7.5 lines on FastROM (budget
-; walk), about 2 more with slow ROM. With fewer than 6 lines left before
-; line 258 it waits a frame, then goes anyway (an overrun beats a frozen
-; pose). It never waits when its palette or size differs from the cell in
-; VRAM: the frame's palette is already in CGRAM, and the two must match.
-; (Waiting whenever fewer than 9 lines were left moved uploads onto other
-; frames and with them the vblank the effects library finds: in fx's gallery
-; the second burst then had no palette yet at age 1. 6 is the threshold the
-; other modules' timings were measured with.)
-!GOKU_CELL_LINES = 6
+; Four packed-row DMAs plus this callback take about 5.5 scanlines. Leave
+; room for the remaining modules, FX palettes and the interrupt return.
+; A same-palette/size pose waits for a suitable streaming phase; waiting a
+; frame is never a reason to overrun. Palette and size changes still upload
+; together because the native CGRAM buffer already contains the new colours.
+!GOKU_CELL_LINES = 10
 goku_nmi:
 if not(defined("GOKU_NMI_SLOW"))
 	; most frames have nothing to send: leave before any set-up (0.17 lines
@@ -331,8 +327,6 @@ endif
 	CMP.l goku_cell_pal,X
 	BNE .send8               ; palette change: send now
 	LDA !up_flags
-	BIT.b #!GOKU_UP_WAITED
-	BNE .send8               ; waited a frame already: send anyway
 	ORA.b #!GOKU_UP_WAITED
 	STA !up_flags
 	REP #$20

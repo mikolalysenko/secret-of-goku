@@ -21,6 +21,15 @@
 %orig2($C0B0CE, $E38E)
 %hijack_jsl($C0B0CA, core_field_actors, 6, core)
 
+; Spread companion status/AI/animation across the existing five phases.
+; The original phase-3 pair is retained while the boy is still native.
+if not(defined("CORE_PARTY_SYNC"))
+%orig4($C0F4BA, $200200A2)
+%orig4($C0F4BE, $00A2F4CB)
+%orig4($C0F4C2, $F4CB2004)
+%hijack_jsl($C0F4BA, core_party_pair, 12, core)
+endif
+
 ; The same ROM and low WRAM/IO mappings in banks $81/$82, with fast
 ; instruction fetches for the field's interaction, HUD and status passes.
 %orig4($C0D5CC, $01CD4E22)
