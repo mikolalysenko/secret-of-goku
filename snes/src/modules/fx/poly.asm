@@ -11,7 +11,9 @@
 
 !FX_PBASE = $310000                ; tables live in the SRAM work bank
 assert !FX_PBASE == (!FX_SRAM&$FF0000), "fx polygon tables: bank of !FX_SRAM"
-!FX_PLINES = 225                   ; HDMA lines described (0-224)
+!FX_PLINES = 224                   ; HDMA lines described (0-223); the end byte is
+                                   ; read on line 224, so a channel is always
+                                   ; terminated when its frame ends
 
 ; Locals while a polygon is built: !d_tiles and !d_ks are free in the beam
 ; renderer until its first emit; !d_tmp is the writer's scratch.
@@ -432,11 +434,17 @@ fx_poly_tables:
 	LDA.l !fx_pbuf
 	CLC
 	ADC.w #!fx_poly&$FFFF
-	STA !fxp_out
-	STA.l !fx_ptab3
-	CLC
-	ADC.w #!FX_PBUF_SIZE
+	TAX                          ; the buffer's first byte stays 0: fx_nmi
+	ADC.w #!FX_PBUF_SIZE         ; points idle channels at it (fx_nmi_poly)
 	STA !fxp_end
+	SEP #$20
+	LDA.b #$00
+	STA.l !FX_PBASE,X
+	REP #$20
+	INX
+	STX !fxp_out
+	TXA
+	STA.l !fx_ptab3
 	JSR fx_poly_kind
 	CMP.w #1
 	BEQ .vert
@@ -467,6 +475,990 @@ fx_poly_tables:
 	LDA.w #$0001
 	STA.l !fx_poly_req
 .off
+	RTS
+
+;---------------------------------------------------------------------------
+; Left / right beams of one colour per line as a polygon: the strip beams
+; (fx_beam_strips: every row of their band unions, one cell or two stacked,
+; is one colour across the cell, fx.mjs asserts it) and the horizontal
+; Death Beam. Window 1 per line spans the beam and the backdrop per line
+; takes the line's colour: exactly the OBJ picture without its sprites.
+; Sixteen 16x16 sprites on a row are 32 of the PPU's 34 slivers per line,
+; so next to the natives on Goku's lines they cannot all show (and the PPU
+; drops the natives' slivers). The lines come from fx_strip_ptr /
+; fx_strip_data (fx.mjs): the first line's offset from the anchor's line,
+; the count, each line's colour index in the palette class.
+!fxs_rec  = !d_ks+$08         ; the record in fx_strip_data
+!fxs_n    = !d_ks+$0C         ; its lines
+!fxs_cls  = !d_ks+$0E         ; palette class * 32
+!fxs_o    = !d_r0+$00         ; window record of the beam's lines
+
+; C clear when this frame's polygon is free.
+fx_poly_avail:
+	LDA.w !core_mode&$FFFF
+	CMP.w #!CORE_MODE_FIELD
+	BNE .no
+	LDA.l !fx_poly_req           ; one polygon per frame
+	BNE .no
+	LDA.l !fx_poly_on
+	BNE +
+	LDA.w $002C                  ; the game's own HDMA on channels 2/3
+	AND.w #$000C
+	BNE .no
+	CLC
+	RTS
++	CMP.w #$0004                 ; an aura's tables in both buffers on screen
+	BNE +
+	LDA.l !fx_pbig
+	AND.w #$0002
+	BNE .no
++	CLC
+	RTS
+.no
+	SEC
+	RTS
+
+; Strip beams. In: !d_ks+2 bands, +4 set (0 blue, 1 pink, 2 fire), +6
+; phase, !d_turn, !d_cur. C clear when drawn (or nothing to draw); C set:
+; OBJ strips (!d_ks+0-7 are kept for them).
+fx_poly_strip:
+	LDA !d_cur+!C_KIND
+	BIT.w #!FX_F_HEADING<<8
+	BNE .no
+	JSR fx_poly_avail
+	BCC .go
+.no
+	SEC
+	RTS
+.go
+	LDA !d_cur+!C_A              ; strips at d = 8, 24, ... while d < length
+	SEC
+	SBC.w #8
+	BEQ .none
+	BMI .none
+	CLC
+	ADC.w #15
+	AND.w #$FFF0
+	STA !fxp_len                 ; 16 * strips
+	LDA !d_ks+4                  ; key fields: bands | set << 4, frame
+	ASL
+	ASL
+	ASL
+	ASL
+	ORA !d_ks+2
+	STA !fxp_hw
+	LDA !d_ks+6
+	AND.w #$0001
+	STA !fxp_t
+	LDX !d_ks+4                  ; palette class of the set
+	LDA.l .class,X
+	AND.w #$00FF
+	STA !fxs_cls
+	; the lines: fx_strip_ptr[((set*2 + frame)*7 + bands-1)*2 + left]
+	LDA !d_ks+4
+	ASL
+	ORA !fxp_t
+	STA !fxp_ds
+	ASL
+	ASL
+	ASL
+	SEC
+	SBC !fxp_ds                  ; (set*2 + frame) * 7
+	CLC
+	ADC !d_ks+2
+	DEC
+	ASL
+	STA !fxp_ds
+	LDA !d_turn                  ; 0 right, 2 left
+	LSR
+	ORA !fxp_ds
+	JMP fx_poly_rows
+.none
+	CLC
+	RTS
+.class                           ; palette class of the band sets
+	db !FX_CLASS_BLUE*32, !FX_CLASS_PINK*32, !FX_CLASS_FIRE*32
+
+; Death Beam, headings 0 / 8: three lines from the finger to its reach.
+; In: !d_ks heading, +2 colour frame, !d_cur. C as fx_poly_strip.
+fx_poly_laser:
+	JSR fx_poly_avail
+	BCC +
+	RTS
++	LDA !d_cur+!C_A              ; pixels u = 0 .. reach
+	INC
+	STA !fxp_len
+	LDA !d_ks                    ; key fields: the laser's tag | left, frame
+	LSR
+	LSR
+	LSR
+	STA !fxp_ds                  ; 0 right, 1 left
+	ORA.w #$0080
+	STA !fxp_hw
+	LDA !d_ks+2
+	STA !fxp_t
+	LDA.w #!FX_CLASS_PINK*32
+	STA !fxs_cls
+	LDA !d_ks+2                  ; fx_strip_ptr[FX_STRIP_LASER + frame*2 + left]
+	ASL
+	CLC
+	ADC.w #!FX_STRIP_LASER
+	ORA !fxp_ds
+	; fall through
+
+; The polygon of a strip record. A = index in fx_strip_ptr (bit 0: the beam
+; runs left of the anchor); !fxp_len its length in pixels, !fxp_hw /
+; !fxp_t key fields, !fxs_cls; anchor !d_cur X/Y. C clear when drawn.
+fx_poly_rows:
+	PHA
+	AND.w #$0001
+	STA !fxp_sd                  ; 1: the beam runs to smaller x
+	PLA
+	ASL
+	TAX
+	LDA.l fx_strip_ptr,X
+	STA !fxs_rec
+	TAX
+	LDA.l fx_strip_data,X        ; first line - anchor line (signed) | lines << 8
+	XBA
+	AND.w #$00FF
+	BEQ .none
+	STA !fxs_n
+	LDA !d_cur+!C_X
+	STA !fxp_x
+	LDA !d_cur+!C_Y
+	STA !fxp_y
+	STZ !fxp_rip
+	JSR fx_poly_key
+	BCS .build
+	LDA.l !fx_pshown             ; the same picture: show those tables again
+	STA.l !fx_preuse
+	LDA.w #$0002
+	STA.l !fx_poly_req
+	CLC
+	RTS
+.none
+	CLC
+	RTS
+.build
+	LDA.w #$FFFF
+	STA.l !fx_pkey+8
+	LDA.w #$0000
+	STA.l !fx_preuse
+	STZ !fxp_ovf
+	LDA.l !fx_pbuf
+	CLC
+	ADC.w #!fx_poly&$FFFF
+	TAX
+	ADC.w #!FX_PBUF_SIZE
+	STA !fxp_end
+	SEP #$20
+	LDA.b #$00
+	STA.l !FX_PBASE,X            ; the buffer's first byte stays 0
+	REP #$20
+	INX
+	STX !fxp_out
+	TXA
+	STA.l !fx_ptab3
+	; window: x0..x1 (right: anchor .. +len-1; left: mirrored)
+	LDA !fxp_sd
+	BNE +
+	LDA !fxp_x
+	STA !fxp_top
+	CLC
+	ADC !fxp_len
+	DEC
+	STA !fxp_axis
+	BRA ++
++	LDA !fxp_x
+	STA !fxp_axis
+	SEC
+	SBC !fxp_len
+	INC
+	STA !fxp_top
+++	LDA !fxp_top                 ; record for the beam's lines
+	STA !d_tmp
+	LDA !fxp_axis
+	STA !d_tmp+2
+	JSR fx_pw_lohi
+	STA !fxs_o
+	LDX !fxs_rec                 ; the first line
+	LDA.l fx_strip_data,X
+	AND.w #$00FF
+	EOR.w #$0080
+	SEC
+	SBC.w #$0080
+	CLC
+	ADC !fxp_y
+	STA !fxp_first
+	; Channel 3: the game's backdrop, each line's colour, the backdrop.
+	LDA.w #5
+	JSR fx_pw_open
+	LDA.w #4
+	JSR fx_pw_colour
+	LDA !fxp_first
+	JSR fx_pw_to
+	STZ !fxp_d
+.crow
+	JSR .line
+	BEQ +
+	ASL
+	CLC
+	ADC !fxs_cls
+	TAX
+	LDA.l fx_class_palettes,X
+	TAY
+	LDX.w #$0000
+	BRA ++
++	LDA.l $7E0600
+	TAY
+	LDX.w #$0000
+++	LDA !fxp_first
+	CLC
+	ADC !fxp_d
+	CMP.w #!FX_PLINES            ; off the screen (above: negative)
+	BCS +
+	LDA.w #1
+	JSR fx_pw
++	INC !fxp_d
+	LDA !fxp_d
+	CMP !fxs_n
+	BCC .crow
+	LDA.w #4
+	JSR fx_pw_colour
+	JSR fx_pw_close
+	; Channel 2 (mode 1): the beam's span on lines with colour.
+	LDA !fxp_out
+	STA.l !fx_ptab2
+	LDA.w #3
+	JSR fx_pw_open
+	LDX.w #$00FF
+	LDY.w #$0000
+	LDA !fxp_first
+	JSR fx_pw_to
+	STZ !fxp_d
+.wrow
+	JSR .line
+	BEQ +
+	LDX !fxs_o
+	BRA ++
++	LDX.w #$00FF
+++	LDY.w #$0000
+	LDA !fxp_first
+	CLC
+	ADC !fxp_d
+	CMP.w #!FX_PLINES
+	BCS +
+	LDA.w #1
+	JSR fx_pw
++	INC !fxp_d
+	LDA !fxp_d
+	CMP !fxs_n
+	BCC .wrow
+	LDX.w #$00FF
+	LDY.w #$0000
+	JSR fx_pw_close
+	LDA !fxp_ovf
+	BEQ +
+	SEC
+	RTS
++	LDA.w #$0001
+	STA.l !fx_pdmap
+	LDA.w #$0002
+	STA.l !fx_poly_req
+	LDA.l !fx_s                  ; the key now describes these tables
+	STA.l !fx_pkey+8
+	LDA.w #$0000
+	STA.l !fx_pshown
+	CLC
+	RTS
+.line                            ; A = colour index of line !fxp_d (Z set: none)
+	LDA !fxs_rec
+	CLC
+	ADC !fxp_d
+	TAX
+	LDA.l fx_strip_data+2,X
+	AND.w #$00FF
+	RTS
+
+;---------------------------------------------------------------------------
+; Death Balls above 32 px (death-ball-art.js, 16 px art upscaled by nearest
+; neighbour): each art row is a band of screen lines with one outline, so
+; the polygon has at most 16 rows. Window 1 = the circle's span, window 2 =
+; its span without the rim texels; the backdrop is the row's most frequent
+; inner colour (fx.mjs fx_dball_colours) and the rim ring (window 1 xor 2)
+; subtracts fixed colour towards the art's rim violet (kind 3 in fx_nmi).
+; In: !d_ks frame 0-11, +2 size index (fx_dball_sizes), !d_cur X/Y centre.
+; C clear when drawn, C set: the polygon is taken (draw the OBJ ball).
+!fxd_b    = !d_ks+$04         ; offset of this size's boundaries in fx_dball_bounds
+!fxd_r    = !d_ks+$06         ; art row 0-16
+!fxd_c    = !d_ks+$08         ; offset of this frame's colours in fx_dball_colours
+!fxd_w1   = !d_ks+$0A         ; records of the rows so far (channel 3: 0 / colour;
+!fxd_w2   = !d_ks+$0C         ; channel 2: window 1 / window 2)
+fx_poly_dball:
+	JSR fx_poly_avail
+	BCC +
+	RTS
++	LDA !d_ks+2                  ; size
+	ASL
+	TAX
+	LDA.l fx_dball_sizes,X
+	STA !fxp_len
+	LSR
+	STA !d_tmp
+	LDA !d_cur+!C_X              ; left / top = centre - size/2
+	SEC
+	SBC !d_tmp
+	STA !fxp_x
+	LDA !d_cur+!C_Y
+	SEC
+	SBC !d_tmp
+	STA !fxp_y
+	LDA.w #$00E0                 ; key fields: the ball's tag, frame
+	STA !fxp_hw
+	LDA !d_ks
+	STA !fxp_t
+	STZ !fxp_rip
+	LDA.l fx_dball_fix           ; COLDATA for the rim (fx_nmi_poly kind 3)
+	STA.l !fx_pfix
+	LDA.l fx_dball_fix+2
+	STA.l !fx_pfix+2
+	JSR fx_poly_key
+	BCS .build
+	LDA.l !fx_pshown             ; the same picture: show those tables again
+	STA.l !fx_preuse
+	LDA.w #$0003
+	STA.l !fx_poly_req
+	CLC
+	RTS
+.build
+	LDA.w #$FFFF
+	STA.l !fx_pkey+8
+	LDA.w #$0000
+	STA.l !fx_preuse
+	STZ !fxp_ovf
+	LDA.l !fx_pbuf
+	CLC
+	ADC.w #!fx_poly&$FFFF
+	TAX
+	ADC.w #!FX_PBUF_SIZE
+	STA !fxp_end
+	SEP #$20
+	LDA.b #$00
+	STA.l !FX_PBASE,X            ; the buffer's first byte stays 0
+	REP #$20
+	INX
+	STX !fxp_out
+	TXA
+	STA.l !fx_ptab3
+	LDA !d_ks+2                  ; this size's boundaries: 17 bytes per size
+	ASL
+	ASL
+	ASL
+	ASL
+	CLC
+	ADC !d_ks+2
+	STA !fxd_b
+	LDA !d_ks                    ; this frame's colours: 16 words per frame
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL
+	STA !fxd_c
+	; Channel 3: the game's backdrop, each art row's colour, the backdrop.
+	LDA.w #5
+	JSR fx_pw_open
+	LDA.w #4
+	JSR fx_pw_colour
+	STX !fxd_w1
+	STY !fxd_w2
+	STZ !fxd_r
+.crow
+	JSR .rowLine                 ; lines up to this row: the previous record
+	LDX !fxd_w1
+	LDY !fxd_w2
+	JSR fx_pw_to
+	LDA !fxd_r
+	CMP.w #16
+	BCS .cdone
+	ASL
+	ASL
+	TAX
+	LDA.l fx_dball_rows,X
+	AND.w #$00FF
+	CMP.w #$00FF
+	BEQ +
+	LDA !fxd_r                   ; a row with a span: its colour
+	ASL
+	CLC
+	ADC !fxd_c
+	TAX
+	LDA.l fx_dball_colours,X
+	STA !fxd_w2
+	STZ !fxd_w1
+	BRA ++
++	LDA.w #4                     ; none: the game's backdrop
+	JSR fx_pw_colour
+	STX !fxd_w1
+	STY !fxd_w2
+++	INC !fxd_r
+	BRA .crow
+.cdone
+	LDA.w #4
+	JSR fx_pw_colour
+	JSR fx_pw_close
+	; Channel 2 (mode 4): window 1 the span, window 2 its inner span.
+	LDA !fxp_out
+	STA.l !fx_ptab2
+	LDA.w #5
+	JSR fx_pw_open
+	LDA.w #$00FF
+	STA !fxd_w1
+	STA !fxd_w2
+	STZ !fxd_r
+.wrow
+	JSR .rowLine
+	LDX !fxd_w1
+	LDY !fxd_w2
+	JSR fx_pw_to
+	LDA !fxd_r
+	CMP.w #16
+	BCS .wdone
+	ASL
+	ASL
+	TAX
+	LDA.l fx_dball_rows,X        ; x0 | (x1+1) << 8
+	JSR .span
+	STA !fxd_w1
+	LDA !fxd_r
+	ASL
+	ASL
+	TAX
+	LDA.l fx_dball_rows+2,X      ; inner x0 | (x1+1) << 8
+	JSR .span
+	STA !fxd_w2
+	INC !fxd_r
+	BRA .wrow
+.wdone
+	LDX.w #$00FF
+	LDY.w #$00FF
+	JSR fx_pw_close
+	LDA !fxp_ovf
+	BEQ +
+	SEC
+	RTS
++	LDA.w #$0004
+	STA.l !fx_pdmap
+	LDA.w #$0003
+	STA.l !fx_poly_req
+	LDA.l !fx_s                  ; the key now describes these tables
+	STA.l !fx_pkey+8
+	LDA.w #$0000
+	STA.l !fx_pshown
+	CLC
+	RTS
+.rowLine                         ; A = top + boundary[row]: the row's first line
+	LDA !fxd_r
+	CLC
+	ADC !fxd_b
+	TAX
+	LDA.l fx_dball_bounds,X
+	AND.w #$00FF
+	CLC
+	ADC !fxp_y
+	RTS
+.span                            ; A = texel x0 | (x1+1) << 8 ($FFFF: none) -> window record
+	CMP.w #$FFFF
+	BEQ .empty
+	PHA
+	AND.w #$00FF
+	CLC
+	ADC !fxd_b
+	TAX
+	LDA.l fx_dball_bounds,X
+	AND.w #$00FF
+	CLC
+	ADC !fxp_x
+	STA !d_tmp                   ; first column
+	PLA
+	XBA
+	AND.w #$00FF
+	CLC
+	ADC !fxd_b
+	TAX
+	LDA.l fx_dball_bounds,X
+	AND.w #$00FF
+	CLC
+	ADC !fxp_x
+	DEC
+	STA !d_tmp+2                 ; last column
+	JMP fx_pw_lohi
+.empty
+	LDA.w #$00FF
+	RTS
+
+;---------------------------------------------------------------------------
+; Ki aura (ki-aura.js drawKiAura): the flame's rows from fx.mjs, taken from
+; the browser's own pixels (xdata, one blob per height; per frame a header,
+; then per row window 1 and window 2 as columns from the anchor + 128, an
+; empty window as first > last). BG1/BG2 are masked inside either window
+; and show the backdrop, the rim colour; the inner part of one-span rows
+; (window 1 and 2) adds COLDATA up to the inner colour (HDMA kind 4). The
+; flame strobes (shown on even clocks only), so when nothing is on screen
+; its tables may take both buffers. While the flame is on screen in full
+; and fits, its rows are one repeat-mode entry (4 bytes a line) written
+; with one 16-bit add per window (.fast); otherwise entries of 1-8 lines.
+; In: !d_ks height index (0-2), +2 level-1, +4 phase, +6 tone, !d_cur X/Y
+; anchor. C clear when drawn.
+!fxa_rows  = !d_ks+$08        ; rows of this frame
+!fxa_step  = !d_ks+$0A        ; rows per table entry
+!fxa_k     = !d_ks+$0C        ; row index
+!fxa_cap   = !d_ks+$0E        ; table capacity in bytes
+!fxa_split = !d_r0+$02        ; rows of the tongues (inner colour, no math)
+!fxa_mm    = !d_r0+$04        ; smallest | largest column byte of this frame
+!FX_AURA_LATE = 168           ; a build starting this late would end past vblank
+fx_poly_aura:
+	JSR fx_poly_avail
+	BCC +
+	RTS
++	LDA !d_ks                    ; fx_aura_index[((hi*8 + level-1)*12 + phase)]
+	ASL
+	ASL
+	ASL
+	CLC
+	ADC !d_ks+2
+	STA !d_tmp
+	ASL
+	CLC
+	ADC !d_tmp                   ; *3
+	ASL
+	ASL                          ; *12
+	CLC
+	ADC !d_ks+4
+	ASL
+	ASL                          ; 4 bytes per entry
+	TAX
+	LDA.l fx_aura_index+2,X      ; first line (signed) | rows << 8
+	XBA
+	AND.w #$00FF
+	STA !fxa_rows
+	LDA.l fx_aura_index+2,X
+	AND.w #$00FF
+	EOR.w #$0080
+	SEC
+	SBC.w #$0080
+	CLC
+	ADC !d_cur+!C_Y
+	STA !fxp_y                   ; the flame's first line
+	LDA.l fx_aura_index,X        ; offset of its rows in the height's blob
+	STA !d_tmp
+	LDA !d_ks                    ; long pointer to them
+	ASL
+	CLC
+	ADC !d_ks
+	TAX
+	LDA.l .blob,X
+	CLC
+	ADC !d_tmp
+	STA !d_ptr                   ; (no carry: a blob stays in its bank)
+	SEP #$20
+	LDA.l .blob+2,X
+	STA !d_ptr+2
+	REP #$20
+	LDA [!d_ptr]                 ; header: the tongues' rows, the smallest and
+	AND.w #$00FF                 ; largest column byte; then 4 bytes per row
+	STA !fxa_split
+	LDY.w #$0001
+	LDA [!d_ptr],Y
+	STA !fxa_mm
+	LDA !d_ptr
+	CLC
+	ADC.w #3
+	STA !d_ptr
+	LDA !d_cur+!C_X
+	STA !fxp_x
+	LDA !d_ks                    ; key fields: height | level, tone, phase
+	ASL
+	ASL
+	ASL
+	ASL
+	ORA !d_ks+2
+	STA !fxp_len
+	LDA !d_ks+6
+	ORA.w #$00C0
+	STA !fxp_hw
+	LDA !d_ks+4
+	STA !fxp_t
+	STZ !fxp_rip
+	LDA !d_ks+6                  ; COLDATA for the inner part (fx_nmi kind 4)
+	ASL
+	ASL
+	ASL
+	TAX
+	LDA.l fx_aura_tone+4,X
+	STA.l !fx_pfix
+	LDA.l fx_aura_tone+6,X
+	STA.l !fx_pfix+2
+	; Late in the frame a build (~35 lines) would push the frame past its
+	; vblank: show the tables of this flame built for an earlier phase, if
+	; they are still there, or nothing this time.
+	JSR fx_frame_vline
+	CMP.w #!FX_AURA_LATE
+	BCC .fresh
+	CMP.w #225
+	BCS .fresh                   ; past vblank already: the next one is far
+	LDA.l !fx_pkey+8             ; tables of this flame: same place, height,
+	CMP.w #$FFFF                 ; level and tone
+	BEQ .none
+	LDA.l !fx_pkey
+	CMP !fxp_x
+	BNE .none
+	LDA.l !fx_pkey+2
+	CMP !fxp_y
+	BNE .none
+	LDA.l !fx_pkey+4
+	CMP !fxp_len
+	BNE .none
+	LDA.l !fx_pkey+6
+	AND.w #$00FF
+	CMP !fxp_hw
+	BNE .none
+	BRA .shown
+.none
+	SEC
+	RTS
+.fresh
+	JSR fx_poly_key
+	BCS .build
+.shown
+	LDA.l !fx_pshown             ; the same picture: show those tables again
+	STA.l !fx_preuse
+	LDA.w #$0004
+	STA.l !fx_poly_req
+	LDA.l !fx_pbig               ; both buffers if they were built there
+	AND.w #$0004
+	LSR
+	LSR
+	ORA.l !fx_pbig
+	STA.l !fx_pbig
+	CLC
+	RTS
+.build
+	LDA.w #$FFFF
+	STA.l !fx_pkey+8
+	LDA.w #$0000
+	STA.l !fx_preuse
+	STZ !fxp_ovf
+	LDA.l !fx_poly_on            ; nothing on screen: both buffers
+	BNE .half
+	LDA.w #!fx_poly&$FFFF
+	TAX
+	CLC
+	ADC.w #2*!FX_PBUF_SIZE
+	STA !fxp_end
+	LDA.w #2*!FX_PBUF_SIZE
+	STA !fxa_cap
+	LDA.l !fx_pbig
+	ORA.w #$0005
+	BRA ++
+.half
+	LDA.l !fx_pbuf
+	CLC
+	ADC.w #!fx_poly&$FFFF
+	TAX
+	ADC.w #!FX_PBUF_SIZE
+	STA !fxp_end
+	LDA.w #!FX_PBUF_SIZE
+	STA !fxa_cap
+	LDA.l !fx_pbig
+	AND.w #$FFFA
+++	STA.l !fx_pbig
+	SEP #$20
+	LDA.b #$00
+	STA.l !FX_PBASE,X            ; the buffer's first byte stays 0
+	REP #$20
+	INX
+	STX !fxp_out
+	TXA
+	STA.l !fx_ptab3
+	; rows per entry: as fine as the capacity allows (5 bytes an entry,
+	; about 50 more for the backdrop table and the ends)
+	LDA.w #1
+	STA !fxa_step
+-	LDA !fxa_rows
+	CLC
+	ADC !fxa_step
+	DEC
+	STA.l $004204
+	SEP #$20
+	LDA !fxa_step
+	STA.l $004206
+	REP #$20
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	LDA.l $004214                ; entries
+	STA !d_tmp
+	ASL
+	ASL
+	CLC
+	ADC !d_tmp
+	CLC
+	ADC.w #50
+	CMP !fxa_cap
+	BCC +
+	INC !fxa_step
+	LDA !fxa_step
+	CMP.w #8
+	BCC -
++	; Channel 3: the game's backdrop, the inner colour on the tongues' rows,
+	; the rim colour below (the inner colour while the game's colour math is
+	; on), the backdrop.
+	LDA.w #5
+	JSR fx_pw_open
+	LDA.w #4
+	JSR fx_pw_colour
+	LDA !fxp_y
+	JSR fx_pw_to
+	LDA !d_ks+6
+	ASL
+	ASL
+	ASL
+	STA !d_tmp+4                 ; this tone's colours
+	TAX
+	LDA.l fx_aura_tone+2,X
+	TAY
+	LDX.w #$0000
+	LDA !fxp_y
+	CLC
+	ADC !fxa_split
+	JSR fx_pw_to
+	LDX !d_tmp+4
+	LDA.l $7E0023
+	AND.w #$00FF
+	BEQ +
+	INX
+	INX
++	LDA.l fx_aura_tone,X
+	TAY
+	LDX.w #$0000
+	LDA !fxp_y
+	CLC
+	ADC !fxa_rows
+	JSR fx_pw_to
+	LDA.w #4
+	JSR fx_pw_colour
+	JSR fx_pw_close
+	; Channel 2 (mode 4): window 1 and window 2 per entry.
+	LDA !fxp_out
+	STA.l !fx_ptab2
+	LDA.w #5
+	JSR fx_pw_open
+	LDX.w #$00FF
+	LDY.w #$00FF
+	LDA !fxp_y
+	JSR fx_pw_to
+	JSR .fastOk
+	BCS +
+	JSR .fast
+	JMP .ch2done
++	STZ !fxa_k
+.row
+	LDA !fxa_k                   ; this entry's row
+	ASL
+	ASL
+	TAY
+	LDA [!d_ptr],Y               ; window 1: first | last column (signed)
+	JSR .window
+	PHA
+	INY
+	INY
+	LDA [!d_ptr],Y               ; window 2
+	JSR .window
+	TAY
+	PLX
+	LDA !fxa_k
+	CLC
+	ADC !fxa_step
+	STA !fxa_k
+	CMP !fxa_rows
+	BCC +
+	LDA !fxa_rows
++	CLC
+	ADC !fxp_y
+	JSR fx_pw_to
+	LDA !fxa_k
+	CMP !fxa_rows
+	BCC .row
+.ch2done
+	LDX.w #$00FF
+	LDY.w #$00FF
+	JSR fx_pw_close
+	LDA !fxp_ovf
+	BEQ +
+	SEC
+	RTS
++	LDA.w #$0004
+	STA.l !fx_pdmap
+	LDA.w #$0004
+	STA.l !fx_poly_req
+	LDA.l !fx_s                  ; the key now describes these tables
+	STA.l !fx_pkey+8
+	LDA.w #$0000
+	STA.l !fx_pshown
+	CLC
+	RTS
+.window                          ; A = first | last column + 128 -> record (clipped)
+	PHY
+	PHA
+	AND.w #$00FF
+	SEC
+	SBC.w #128
+	CLC
+	ADC !fxp_x
+	STA !d_tmp
+	PLA
+	XBA
+	AND.w #$00FF
+	SEC
+	SBC.w #128
+	CLC
+	ADC !fxp_x
+	STA !d_tmp+2
+	JSR fx_pw_lohi
+	PLY
+	RTS
+; C clear when the whole flame is on screen: its lines inside the table's
+; and every column byte + (x - 128) inside 0-255. !d_tmp+4 = x - 128.
+.fastOk
+	LDA !fxa_rows                ; 4 bytes a line, about 60 for the rest
+	ASL
+	ASL
+	CLC
+	ADC.w #60
+	CMP !fxa_cap
+	BCS .slowPath
+	LDA !fxp_y
+	BMI .slowPath
+	CLC
+	ADC !fxa_rows
+	CMP.w #!FX_PLINES+1
+	BCS .slowPath
+	LDA !fxp_x
+	SEC
+	SBC.w #128
+	STA !d_tmp+4
+	BMI +
+	LDA !fxa_mm                  ; largest + d <= 255
+	XBA
+	AND.w #$00FF
+	CLC
+	ADC !d_tmp+4
+	CMP.w #$0100
+	BCS .slowPath
+	CLC
+	RTS
++	LDA !fxa_mm                  ; smallest + d >= 0
+	AND.w #$00FF
+	CLC
+	ADC !d_tmp+4
+	BMI .slowPath
+	CLC
+	RTS
+.slowPath
+	SEC
+	RTS
+; The flame's lines as one repeat-mode entry ($80 | lines, then 4 bytes a
+; line): no window byte leaves 0-255, so one 16-bit add (or subtract) moves
+; both columns of a window, and the same index reads the row and writes it.
+.fast
+	JSR fx_pw_flush              ; the lines before the flame
+	LDA !d_tmp+4                 ; |x - 128| in both bytes
+	BPL +
+	EOR.w #$FFFF
+	INC
++	AND.w #$00FF
+	STA !d_tmp
+	XBA
+	ORA !d_tmp
+	STA !d_tmp
+	LDX !fxp_out
+	SEP #$20
+	LDA !fxa_rows
+	ORA.b #$80
+	STA.l !FX_PBASE,X
+	REP #$20
+	INX
+	STX !d_ptr2                  ; long pointer to the entry's data
+	SEP #$20
+	LDA.b #!FX_PBASE>>16
+	STA !d_ptr2+2
+	REP #$20
+	LDX !fxa_rows
+	LDY.w #$0000
+	BIT !d_tmp+4                 ; x - 128 < 0: subtract
+	BMI .fsub
+.fadd
+	LDA [!d_ptr],Y
+	CLC
+	ADC !d_tmp
+	STA [!d_ptr2],Y
+	INY
+	INY
+	LDA [!d_ptr],Y
+	CLC
+	ADC !d_tmp
+	STA [!d_ptr2],Y
+	INY
+	INY
+	DEX
+	BNE .fadd
+	BRA .fend
+.fsub
+	LDA [!d_ptr],Y
+	SEC
+	SBC !d_tmp
+	STA [!d_ptr2],Y
+	INY
+	INY
+	LDA [!d_ptr],Y
+	SEC
+	SBC !d_tmp
+	STA [!d_ptr2],Y
+	INY
+	INY
+	DEX
+	BNE .fsub
+.fend
+	TYA                          ; past the data
+	CLC
+	ADC !d_ptr2
+	STA !fxp_out
+	LDA !fxp_y                   ; the writer resumes after the flame
+	CLC
+	ADC !fxa_rows
+	STA !fxp_line
+	STZ !fxp_cnt
+	RTS
+.blob                            ; fx.mjs xdata: rows per height
+	dl !XDATA_FX_AURA16, !XDATA_FX_AURA32, !XDATA_FX_AURA40
+
+; A16 = the current scanline (fx_frame; any DB).
+fx_frame_vline:
+	SEP #$20
+	LDA.l $00213F                ; reset the counter read flip-flop
+	LDA.l $002137                ; latch H/V
+	LDA.l $00213D
+	XBA
+	LDA.l $00213D
+	AND.b #$01
+	XBA
+	REP #$20
 	RTS
 
 ; ---------------------------------------------------------------------------
@@ -563,24 +1555,37 @@ fx_pw_flush:
 .done
 	RTS
 
-; Finish a table: records X / Y to the last line, then the end byte.
+; Finish a table: records X / Y to the last line, then a 127-line entry of
+; the same (neutral) record and the end byte. HDMA stops at line 224 with
+; that entry still counting down: if the field NMI's $420C write lands
+; after the next frame's HDMA start, the channel resumes without its
+; start-of-frame reload and only counts that entry down (no transfers)
+; until it reads the end byte. A channel stopped right at its end byte
+; would instead underflow its line counter into a 127-line repeat and write
+; whatever follows in memory (hardware and Mesen alike).
 fx_pw_close:
 	LDA.w #!FX_PLINES
 	JSR fx_pw_to
 	JSR fx_pw_flush
+	LDA.w #127                   ; the padding entry (record unchanged)
+	STA !fxp_cnt
+	JSR fx_pw_flush
+	LDA !fxp_ovf
+	BNE .full
 	LDA !fxp_out
 	CMP !fxp_end
-	BCC +
-	LDA.w #$0001
-	STA !fxp_ovf
-	RTS
-+	TAX
+	BCS .full
+	TAX
 	INC
 	STA !fxp_out
 	SEP #$20
 	LDA.b #$00
-	STA.l !FX_PBASE,X
+	STA.l !FX_PBASE,X            ; end byte
 	REP #$20
+	RTS
+.full
+	LDA.w #$0001
+	STA !fxp_ovf
 	RTS
 
 ; Window record for pixels lo..hi (signed, !d_tmp / !d_tmp+2), clipped to
@@ -1316,12 +2321,27 @@ fx_nmi_poly:
 	STA $4322
 	LDA.l !fx_ptab3
 	STA $4332
+	; Prime both channels as if they had just counted down a 127-line entry
+	; that ends at a 0 byte (the buffer's first byte): if the field NMI's
+	; $420C write lands after the next frame's HDMA start, a channel that
+	; is switched on without its frame-start reload only counts down and
+	; stops. In time, the frame-start reload replaces all of this.
+	DEC
+	STA $4328
+	STA $4338
 	SEP #$20
+	LDA.b #$7F
+	STA $432A
+	STA $433A
 	LDA.b #$22                   ; BG1 / BG2 masked inside window 1 ...
 	STA $2123
 	LDA.b #$03                   ; ... on the main screen
 	STA $212E
 	LDA.l !fx_poly_req
+	CMP.b #$04
+	BEQ .aura
+	CMP.b #$03
+	BEQ .ring
 	CMP.b #$01
 	BNE .flat
 	LDA.b #$80                   ; colour window = window 2 (the core)
@@ -1336,10 +2356,59 @@ fx_nmi_poly:
 	STA $2132
 	LDA.l !fx_pfix+2
 	STA $2132
-	BRA .enable
+	JMP .enable
 .flat
 	LDA.b #$20                   ; colour window = window 1: no math on the
 	STA $2125                    ; beam, the game's own math elsewhere
+	LDA.b #$22
+	STA $2130
+	LDA.l $7E0023
+	STA $2131
+	LDA.b #$E0
+	STA $2132
+	JMP .enable
+.ring                            ; Death Ball: window 1 = span, 2 = inner span
+	LDA.b #$AA                   ; BG1 / BG2 masked inside window 1 or 2
+	STA $2123
+	LDA.b #$A0                   ; colour window: windows 1 and 2 ...
+	STA $2125
+	LDA.l $7E0023                ; the game's own colour math in use: the
+	BNE .ringFlat                ; ball keeps it outside, no rim
+	LDA.b #$08                   ; ... xor: the rim ring
+	STA $212B
+	LDA.b #$10                   ; math only inside it, fixed colour
+	STA $2130
+	LDA.b #$A0                   ; subtracted from the backdrop
+	STA $2131
+	LDA.l !fx_pfix
+	STA $2132
+	LDA.l !fx_pfix+1
+	STA $2132
+	LDA.l !fx_pfix+2
+	STA $2132
+	JMP .enable
+.aura                            ; ki aura: window 1 = span, 2 = inner part
+	LDA.b #$AA                   ; BG1 / BG2 masked inside window 1 or 2
+	STA $2123
+	LDA.b #$A0                   ; colour window: windows 1 and 2 ...
+	STA $2125
+	LDA.l $7E0023                ; the game's own colour math in use: one
+	BNE .ringFlat                ; colour (fx_poly_aura chose the inner one)
+	LDA.b #$04                   ; ... and: the inner part of one-span rows
+	STA $212B
+	LDA.b #$10                   ; math only inside it, fixed colour
+	STA $2130
+	LDA.b #$20                   ; added to the backdrop
+	STA $2131
+	LDA.l !fx_pfix
+	STA $2132
+	LDA.l !fx_pfix+1
+	STA $2132
+	LDA.l !fx_pfix+2
+	STA $2132
+	JMP .enable
+.ringFlat
+	STZ $212B                    ; ... or: the whole shape, no math there
 	LDA.b #$22
 	STA $2130
 	LDA.l $7E0023
@@ -1353,6 +2422,19 @@ fx_nmi_poly:
 	REP #$20
 	LDA.l !fx_poly_req
 	STA.l !fx_poly_on
+	LDA.l !fx_pbig               ; tables in both buffers: no other build
+	BIT.w #$0001                 ; until they are off the screen
+	BEQ .small
+	ORA.w #$0002
+	STA.l !fx_pbig
+	LDA.l !fx_preuse
+	BNE +
+	LDA.w #$0001
+	STA.l !fx_pshown
++	RTS
+.small
+	AND.w #$FFFD
+	STA.l !fx_pbig
 	LDA.l !fx_preuse             ; tables already on screen: same buffer
 	BNE +
 	LDA.l !fx_pbuf               ; the next build goes to the other buffer
@@ -1372,6 +2454,7 @@ fx_poly_restore:
 	LDA.b #$00
 	STA.l $002123
 	STA.l $002125
+	STA.l $00212B
 	STA.l $00212E
 	LDA.b #$02
 	STA.l $002130
@@ -1392,6 +2475,9 @@ fx_poly_restore:
 	LDA.w #$0000
 	STA.l !fx_poly_on
 	STA.l !fx_mathon             ; any flash state went with it
+	LDA.l !fx_pbig
+	AND.w #$FFFD
+	STA.l !fx_pbig
 	RTS
 
 ; Ring menu frame (in vblank, DB = $7E): the field NMI stops running FX

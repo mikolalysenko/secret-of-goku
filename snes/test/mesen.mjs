@@ -23,7 +23,10 @@ export async function runMesen({rom,test,outDir,state=null,timeoutMs=600000,clea
   if(clean&&existsSync(outDir))rmSync(outDir,{recursive:true,force:true});
   mkdirSync(outDir,{recursive:true});
   const harness=readFileSync(join(here,'lua/harness.lua'),'utf8');
-  const prelude=`H_OUT=${luaString(outDir)}\nH_STATE=${state?luaString(resolve(state)):'nil'}\n`;
+  // SNES_LUA_PRELUDE: an extra Lua file run before every test (tracers that
+  // ride along existing suites); it may only register callbacks at load.
+  const extra=process.env.SNES_LUA_PRELUDE?readFileSync(process.env.SNES_LUA_PRELUDE,'utf8')+'\n':'';
+  const prelude=`H_OUT=${luaString(outDir)}\nH_STATE=${state?luaString(resolve(state)):'nil'}\n`+extra;
   const script=join(outDir,'test.lua');
   writeFileSync(script,prelude+test+'\n'+harness);
   const started=Date.now();

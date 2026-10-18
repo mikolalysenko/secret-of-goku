@@ -46,12 +46,13 @@ const rot1=p=>{ // r1(qx,qy) = p(qy, 15-qx): the browser's (dx,dy)=(0,1) turn
 const recolor=(p,f)=>p.map(c=>c?f(c):0);
 const empty=p=>p.every(c=>!c);
 
-export async function generate({rom,repo,outDir}){
+export async function generate({rom,repo,outDir,xdata}){
   const eng=f=>import(pathToFileURL(join(repo,'engine',f)).href);
   const {decodeEffectFrame,decodeEffectTile}=await eng('native-effects.js');
+  const {createChargeLightning}=await eng('charge-lightning.js');
   const {combustionCells,combustionFrames}=await eng('native-combustion-data.js');
-  const {friezaKiPalette}=await eng('ki-aura.js');
-  const {createDeathBallArt}=await eng('death-ball-art.js');
+  const {friezaKiPalette,drawKiAura}=await eng('ki-aura.js');
+  const {createDeathBallArt,deathBallSizes}=await eng('death-ball-art.js');
   const {trainingBeamPalettes}=await eng('vegeta-clash.js');
   const manifest=JSON.parse(readFileSync(join(repo,'engine/native-effects.json'),'utf8'));
 
@@ -163,8 +164,24 @@ export async function generate({rom,repo,outDir}){
   // beams) keep 1, 3 and 5 and round other widths to the nearest.
   const BAND_SETS=[['beam-body',0,[1,2,3,4,5,6,7]],['pink-beam-body',1,[1,3,5]],['fire-beam-body',3,[1,3,5]]];
   const bandIndex=[];                   // ((set*2+frame)*7 + n-1)*4 + turn -> assembly
+  // Strip lines for the left/right polygon (poly.asm fx_poly_strip): per
+  // band union and half turn (right, left) the offset of its first
+  // coloured line from the palms' line, the line count and each line's
+  // colour index in the set's class (0: none). The polygon draws one
+  // colour per line, so every row of a union must be one colour across the
+  // cell (asserted). A half turn maps the offset v to -v (pixel centres).
+  const stripPtr=[],stripData=[],stripSeen=new Map();
+  const stripRec=(rows,first)=>{
+    let a=0,b=rows.length-1;
+    while(a<=b&&!rows[a])a++;
+    while(b>=a&&!rows[b])b--;
+    const rec=a>b?[0,0]:[(first+a)&255,b-a+1,...rows.slice(a,b+1)];
+    const key=rec.join(',');
+    if(!stripSeen.has(key)){stripSeen.set(key,stripData.length);stripData.push(...rec);}
+    return stripSeen.get(key);
+  };
   for(const [g,cls,counts] of BAND_SETS)for(let f=0;f<2;f++){
-    const made={};
+    const made={},madeRows={};
     for(const n of counts){
       const src=groups[g][f],canvas=new Uint16Array(16*32); // rows v=-16..15
       for(let b=0;b<n;b++){
@@ -178,10 +195,18 @@ export async function generate({rom,repo,outDir}){
         parts.push({pair:cellPair(canvas.slice(256),cls,`${g}#${f}x${n}b`),ox:-8,oy:0,fx:false,fy:false});
       }
       made[n]=addTurns(parts);
+      const top=n<=5?8:0,h=n<=5?16:32,rows=[];   // canvas rows the parts cover
+      for(let r=top;r<top+h;r++){
+        const line=canvas.slice(r*16,r*16+16),c=line[0];
+        if(line.some(v=>v!==c))throw Error(`fx: ${g} frame ${f} x${n} row ${r} is not one colour`);
+        rows.push(indexIn(cls,c));
+      }
+      madeRows[n]=[stripRec(rows,top-16),stripRec([...rows].reverse(),-(top-16+h-1))];
     }
     for(let n=1;n<=7;n++){
       const near=counts.reduce((a,b)=>Math.abs(b-n)<Math.abs(a-n)?b:a);
       for(let t=0;t<4;t++)bandIndex.push(made[near]+t);
+      stripPtr.push(...madeRows[near]);
     }
   }
 
@@ -230,6 +255,66 @@ export async function generate({rom,repo,outDir}){
     for(let py=0;py<8;py++)for(let px=0;px<8;px++){const v=src[py*32+px*2];if(v)c[(py+4)*16+px+4]=pink(v);}
     asms.push([{cell:addCell(c,1,'finger'),x:-8,y:-8,h:false,v:false}].filter(q=>q.cell>=0));
   }
+  // Death Beam (orbit-effects.js beam(x,y,xx,yy,1,age,'pink')): the pixels
+  // with |v| <= 1 across and u >= 0 along (u, v from orbitVectors, >> 8),
+  // v = 0 white, v = -1 / +1 the pinks of Lucent Beam's strip rows 6 / 8 in
+  // frame (age >> 2) & 1. Headings 0-3 here; their quarter turns are the
+  // other twelve (the rasterisation turns with them exactly). A 16x16
+  // window steps along the beam by LSTEP: window 0 holds the finger end
+  // (u >= 0), window 1 the body, which repeats. Headings 0 and 2 repeat
+  // exactly; 1 and 3 drift from the browser's line by under a pixel over
+  // 360 px (asserted below against the browser's pixels).
+  const LV=[[256,0],[229,114],[181,181],[114,229]];
+  const LSTEP=[[16,0],[16,8],[8,8],[8,16]];
+  const LORG=[[0,-8],[0,-3],[-7,-8],[-3,0]];   // window 0, top-left from the finger
+  const laserBase=asms.length,laserDrift=[];    // ((heading*2 + frame)*2 + body)*4 + turn
+  for(let h=0;h<4;h++)for(let f=0;f<2;f++){
+    const [vx,vy]=LV[h],src=groups['pink-beam-body'][f];
+    const colour=(ox,oy)=>{
+      const u=(ox*vx+oy*vy)>>8,v=(-ox*vy+oy*vx)>>8;
+      return u<0||v<-1||v>1?0:v===0?0x8000:src[(v<0?6:8)*16];
+    };
+    const windowPx=j=>{
+      const px=new Uint16Array(256),wx=LORG[h][0]+LSTEP[h][0]*j,wy=LORG[h][1]+LSTEP[h][1]*j;
+      for(let y=0;y<16;y++)for(let x=0;x<16;x++)px[y*16+x]=colour(wx+x,wy+y);
+      return px;
+    };
+    const start=windowPx(0),body=windowPx(1);
+    // What the cartridge draws (window 0, then window 1 repeated) against
+    // the browser's pixels over 360 px.
+    const drawn=new Map();
+    for(let j=0;j<=24;j++){
+      const px=j?body:start,wx=LORG[h][0]+LSTEP[h][0]*j,wy=LORG[h][1]+LSTEP[h][1]*j;
+      for(let i=0;i<256;i++)if(px[i])drawn.set((wx+(i&15))+','+(wy+(i>>4)),px[i]);
+    }
+    let miss=0,extra=0;
+    const far=Math.min(360,((LSTEP[h][0]*vx+LSTEP[h][1]*vy)*23)>>8);
+    for(let oy=-40;oy<=400;oy++)for(let ox=-40;ox<=400;ox++){
+      if(((ox*vx+oy*vy)>>8)>far)continue;
+      const want=colour(ox,oy),got=drawn.get(ox+','+oy)??0;
+      if(want&&got!==want)miss++;else if(!want&&got)extra++;
+    }
+    if((h===0||h===2)&&(miss||extra))throw Error(`fx: laser heading ${h} differs from the browser (${miss}/${extra})`);
+    laserDrift.push(miss+extra);
+    for(const px of[start,body])
+      addTurns([{pair:cellPair(px,1,`laser#${h}.${f}`),ox:LORG[h][0],oy:LORG[h][1],fx:false,fy:false}]);
+  }
+  // Headings 0 / 8 as three polygon lines (fx_poly_laser): v = y - finger
+  // to the right, finger - y to the left; strip records after the bands'.
+  const laserStrip=stripPtr.length;
+  for(let f=0;f<2;f++){
+    const src=groups['pink-beam-body'][f],minus=indexIn(1,src[6*16]),core=indexIn(1,0x8000),plus=indexIn(1,src[8*16]);
+    stripPtr.push(stripRec([minus,core,plus],-1),stripRec([plus,core,minus],-1));
+  }
+  // Steps per heading 0-15 (quarter turns of LSTEP) and the u length of a
+  // step (16ths of a pixel) for the beam's reach.
+  const laserStep=[],laserLen=[];
+  for(let H=0;H<16;H++){
+    let [sx,sy]=LSTEP[H&3];
+    for(let t=0;t<(H>>2);t++)[sx,sy]=[-sy,sx];
+    laserStep.push(sx&255,sy&255);
+  }
+  for(let h=0;h<4;h++)laserLen.push(Math.floor((LSTEP[h][0]*LV[h][0]+LSTEP[h][1]*LV[h][1])/64)); // quarter pixels
   // Debris chunks in caller colours (DYN indices 1 dark, 2 mid, 3 light):
   // rubble (sprite-layer.js rubble(): size 2/3, pattern turn%3) and ceiling
   // dust (ceiling-escape.js: size 2-4, gap where (x+y+turn)&7 == 0).
@@ -373,6 +458,132 @@ export async function generate({rom,repo,outDir}){
   const ramp=g=>[...new Set(groups[g].flatMap(p=>[...p]))].filter(Boolean).sort((a,b)=>luma(a)-luma(b)).map(c=>c-1);
   const auraRamps=[ramp('charge-orb'),ramp('gold-arc'),friezaKiPalette.map(c=>c-1)];
 
+  // Ki aura (ki-aura.js drawKiAura): the cartridge draws the flame as a
+  // window polygon (poly.asm fx_poly_aura, HDMA kind 4) from rows taken
+  // from drawKiAura's own pixels for every height, level and phase. Per
+  // frame: a header (below), then per row 4 bytes, window 1 and window 2
+  // as columns from the anchor + 128: one span: window 1 = the span,
+  // window 2 = the extent of its pixels that are not rim (they show the
+  // inner colour, window 1 and 2; the rest shows the rim colour); two
+  // spans: one window each; more: the smallest gaps are filled. One xdata
+  // blob per height; fx_aura_index (offset, first line from the anchor,
+  // rows) per (height, level, phase) in tables.asm.
+  const AURA_H=[16,32,40],auraIndex=[],auraBlobs=[];
+  const auraFx={'charge-orb':groups['charge-orb'],'gold-arc':groups['gold-arc']};
+  const auraRim=1+auraRamps[0][0];          // drawKiAura's blue rim colour (1+555)
+  for(const height of AURA_H){
+    const blob=[];
+    for(let level=1;level<=8;level++)for(let phase=0;phase<12;phase++){
+      const rows=new Map();
+      drawKiAura(auraFx,0,0,phase*3,(x,y,c)=>{if(!rows.has(y))rows.set(y,new Map());rows.get(y).set(x,c);},
+        {tone:'blue',power:level/8,height,seed:0,clock:0});
+      const ys=[...rows.keys()],y0=Math.min(...ys),y1=Math.max(...ys);
+      auraIndex.push(blob.length,(y0&255)|((y1-y0+1)<<8));
+      const spanRows=[];
+      for(let y=y0;y<=y1;y++){
+        const row=rows.get(y)??new Map(),xs=[...row.keys()].sort((a,b)=>a-b),sp=[];
+        for(const x of xs){if(sp.length&&sp.at(-1)[1]===x-1)sp.at(-1)[1]=x;else sp.push([x,x]);}
+        spanRows.push({row,xs,sp});
+      }
+      // The tongues: down to the last row with two spans or more the
+      // backdrop is the inner colour (most of a tongue's pixels), with no
+      // colour math; below it the rim colour, and the inner part of each
+      // one-span row adds up to the inner colour.
+      const split=spanRows.reduce((k,r,i)=>r.sp.length>1?i+1:k,0),bytes=[];
+      spanRows.forEach(({row,xs,sp},i)=>{
+        while(sp.length>2){
+          let bi=1;for(let k=2;k<sp.length;k++)if(sp[k][0]-sp[k-1][1]<sp[bi][0]-sp[bi-1][1])bi=k;
+          sp.splice(bi-1,2,[sp[bi-1][0],sp[bi][1]]);
+        }
+        // An empty window is first > last next to the other one, so that
+        // moving both by the anchor keeps it empty.
+        let w1=[0,-1],w2=[0,-1];
+        if(sp.length===1){
+          w1=sp[0];w2=[w1[0],w1[0]-1];
+          const inner=xs.filter(x=>row.get(x)!==auraRim);
+          if(inner.length&&i>=split)w2=[inner[0],inner.at(-1)];
+        }else if(sp.length===2){w1=sp[0];w2=sp[1];}
+        for(const v of[...w1,...w2]){if(v<-128||v>127)throw Error('fx: aura row out of range');bytes.push(v+128);}
+      });
+      // Header: the tongues' rows, then the smallest and largest column
+      // byte (columns are stored + 128: as if the anchor were at x = 128).
+      blob.push(split,Math.min(...bytes),Math.max(...bytes),...bytes);
+    }
+    if(blob.length>0x8000)throw Error(`fx: aura ${height} rows take ${blob.length} bytes`);
+    auraBlobs.push(blob.length);
+    xdata?.(`fx_aura${height}`,Uint8Array.from(blob));
+  }
+  // Super Saiyan charge lightning (charge-lightning.js): the browser's bolts
+  // for seeds 0-63 (phase + map * 71, wrapped), from its own arcs() with no
+  // solid tiles or actors nearby (every bolt ends in the air). The cartridge
+  // draws each bolt as Thunderbolt cells along its points instead of the
+  // browser's 2-pixel line: a cell on every second point from the first
+  // jag and on the browser's own middle-point stamp, turned to the bolt
+  // (horizontal: turn 0, else 1). fx_bolt_ptr: per (seed, bolt) an offset
+  // in the xdata blob fx_bolts: count, then x, y, turn per cell (from the
+  // origin).
+  const boltPtr=[],boltData=[];
+  for(let seed=0;seed<64;seed++){
+    const arcs=createChargeLightning({frame:seed*3,read16:()=>0,charge:45,entities:()=>[],worldFlight:false})({x:0,y:0});
+    if(arcs.length!==3)throw Error('fx: charge lightning: expected three bolts');
+    for(const arc of arcs){
+      const p=arc.points,mid=Math.floor(p.length/2),a=p[0],b=arc.target;
+      const turn=Math.abs(b.x-a.x)>Math.abs(b.y-a.y)?0:1,at=new Set([mid]);
+      for(let k=1;k<p.length;k+=2)at.add(k);
+      const cells=[...at].sort((x,y)=>x-y).map(k=>[p[k].x,p[k].y,turn]);
+      for(const [x,y] of cells)if(x<-128||x>127||y<-128||y>127)throw Error('fx: bolt out of range');
+      boltPtr.push(boltData.length);
+      boltData.push(cells.length,...cells.flatMap(([x,y,t])=>[x&255,y&255,t]));
+    }
+  }
+
+  // Per tone: the rim colour, the inner colour, COLDATA for inner - rim.
+  const auraTone=auraRamps.flatMap(r=>{
+    const ch=c=>[c&31,(c>>5)&31,(c>>10)&31],d=ch(r[1]).map((x,k)=>x-ch(r[0])[k]);
+    if(d.some(x=>x<0))throw Error('fx: aura inner colour darker than its rim in a channel');
+    return [r[0]&255,r[0]>>8,r[1]&255,r[1]>>8,0x20|d[0],0x40|d[1],0x80|d[2],0];
+  });
+
+  // Death Balls above 32 px (death-ball-art.js draw(), non-cinematic): the
+  // 16 px art upscaled by nearest neighbour, so each art row is a band of
+  // screen lines with the same outline. The cartridge draws them as a window
+  // polygon (poly.asm fx_poly_dball): per art row the circle's span
+  // (window 1), its inner span without the rim texels (window 2), and the
+  // mean of the row's inner colours per frame as the backdrop (the art's
+  // pink patches become a tint of their rows); the rim ring (window 1 xor 2)
+  // subtracts one fixed colour, chosen to bring the rows' colours closest
+  // to the rim's violet. The sparks outside the circle are not drawn.
+  const dballIn=(x,y)=>(2*x-15)**2+(2*y-15)**2;
+  const dballRows=[];                       // per art row: x0, x1+1, inner x0, inner x1+1 ($FF none)
+  for(let y=0;y<16;y++){
+    const xs=[...Array(16).keys()].filter(x=>dballIn(x,y)<=149),inner=xs.filter(x=>dballIn(x,y)<=120);
+    dballRows.push(...(xs.length?[xs[0],xs.at(-1)+1]:[255,255]),...(inner.length?[inner[0],inner.at(-1)+1]:[255,255]));
+  }
+  const dballColours=[],dballRim=deathSmall.map(p=>{
+    for(let i=0;i<256;i++){const x=i&15,y=i>>4,r=dballIn(x,y);if(r>120&&r<=149&&p[i])return p[i];}return 0;});
+  if(new Set(dballRim).size!==1)throw Error('fx: Death Ball rim colour varies');
+  const ch=c=>[c&31,(c>>5)&31,(c>>10)&31],rimCh=ch(dballRim[0]-1),dballWeight=[];
+  for(const p of deathSmall)for(let y=0;y<16;y++){
+    const sum=[0,0,0];let n=0;
+    for(let x=0;x<16;x++){const c=p[y*16+x];if(c&&dballIn(x,y)<=120){ch(c-1).forEach((v,k)=>sum[k]+=v);n++;}}
+    dballColours.push(n?sum.map(v=>Math.round(v/n)).reduce((c,v,k)=>c|v<<(5*k),0):dballRim[0]-1);
+    dballWeight.push([...Array(16).keys()].filter(x=>{const r=dballIn(x,y);return r>120&&r<=149;}).length);
+  }
+  // Fixed colour subtracted on the rim: per channel the value that brings
+  // the rows' colours closest to the rim colour (weighted by rim texels).
+  const dballSub=[0,1,2].map(k=>{
+    let best=0,err=Infinity;
+    for(let v=0;v<32;v++){
+      const e=dballColours.reduce((a,c,i)=>a+dballWeight[i]*(Math.max(0,ch(c)[k]-v)-rimCh[k])**2,0);
+      if(e<err){err=e;best=v;}
+    }
+    return best;
+  });
+  // Snapped sizes (death-ball-art.js deathBallSizes) and, per size above 16,
+  // the screen column / line of each art texel boundary: ceil(k*size/16).
+  const dballSizes=deathBallSizes.slice(),dballBounds=[];
+  for(const size of dballSizes)for(let k=0;k<=16;k++)dballBounds.push(Math.ceil(k*size/16));
+
   const a=new Asm();
   a.raw('; Generated by snes/gen/fx.mjs - do not edit.');
   a.def('FX_CELL_COUNT',cells.length);a.def('FX_ASM_COUNT',asms.length);a.def('FX_CLASS_COUNT',CLASS.length);
@@ -381,7 +592,7 @@ export async function generate({rom,repo,outDir}){
   a.def('FX_STAMP_GROUPS',STAMP_GROUPS.length);
   a.def('FX_ASM_BURST',burstBase);a.def('FX_ASM_EMBER',emberBase);
   a.def('FX_ASM_DEATH16',deathBase);a.def('FX_ASM_DEATH32',death32Base);a.def('FX_ASM_DISC',discBase);
-  a.def('FX_ASM_FINGER',fingerBase);a.def('FX_ASM_FRAGMENT',fragBase);
+  a.def('FX_ASM_FINGER',fingerBase);a.def('FX_ASM_FRAGMENT',fragBase);a.def('FX_ASM_LASER',laserBase);
   a.def('FX_ASM_RING',ringBase);a.def('FX_ASM_SPARKS',sparksBase);a.def('FX_ASM_STATUS',statusBase);a.def('FX_ASM_RUBBLE',rubbleBase);a.def('FX_ASM_DUST',dustBase);
   a.label('fx_class_palettes');for(const p of palettes){const row=[0,...p.map(c=>c-1)];while(row.length<16)row.push(0);a.dw(row);}
   a.label('fx_cell_class');a.db(cells.map(c=>c.cls));
@@ -390,13 +601,45 @@ export async function generate({rom,repo,outDir}){
   a.label('fx_asm_ptr');a.dw(asmPtr);
   a.label('fx_asm_data');a.db(asmBytes);
   a.label('fx_band_index');a.dw(bandIndex);
-  a.label('fx_det_ptr');a.dw(detPtr);
-  a.label('fx_ember_path');a.db(emberPath);
-  a.label('fx_det_data');a.db(detBytes);
   a.def('FX_DET_FRAMES',detGroups.length);
+  a.def('FX_STRIP_LASER',laserStrip);
+  a.def('FX_DBALL_SIZES',deathBallSizes.length);
+  // Tables read only with long indexed loads go to tables.asm, which
+  // module.asm places after the code in FX's code bank (the data bank is
+  // kept for cells, assemblies and palettes).
+  const t=new Asm();
+  t.raw('; Generated by snes/gen/fx.mjs - do not edit.');
+  t.label('fx_strip_ptr');t.dw(stripPtr);
+  t.label('fx_strip_data');t.db(stripData);
+  t.label('fx_det_ptr');t.dw(detPtr);
+  t.label('fx_ember_path');t.db(emberPath);
+  t.label('fx_det_data');t.db(detBytes);
+  t.label('fx_laser_step');t.db(laserStep);
+  t.label('fx_laser_len');t.dw(laserLen);
+  t.label('fx_aura_index');t.dw(auraIndex);
+  t.label('fx_bolt_ptr');t.dw(boltPtr);
+  if(boltData.length>0x8000)throw Error('fx: bolts too large');
+  xdata?.('fx_bolts',Uint8Array.from(boltData));
+  t.label('fx_aura_tone');t.db(auraTone);
+  t.label('fx_dball_rows');t.db(dballRows);
+  t.label('fx_dball_colours');t.dw(dballColours);
+  t.label('fx_dball_sizes');t.dw(dballSizes);
+  t.label('fx_dball_bounds');t.db(dballBounds);
+  t.label('fx_dball_fix');t.db([0x20|dballSub[0],0x40|dballSub[1],0x80|dballSub[2],0]);
+
+  // Ceiling dust (ceiling-escape.js draw): chunk i at angle i*2.39996,
+  // x = cos*(10+age*(1+(i%5)*.3)), y = sin*7 - age*(1.3+(i%4)*.4) +
+  // age^2*.095, rounded as the browser does; ages 0-45, words per (age, i).
+  const dustXY=[];
+  for(let age=0;age<46;age++)for(let i=0;i<20;i++){
+    const a=i*2.39996,speed=1+(i%5)*.3;
+    dustXY.push(Math.round(Math.cos(a)*(10+age*speed)),Math.round(Math.sin(a)*7-age*(1.3+(i%4)*.4)+age*age*.095));
+  }
+  t.label('fx_dust_xy');t.dw(dustXY);
   a.label('fx_wave_colors');for(const w of waves)a.dw(w);
   a.label('fx_aura_ramps');for(const r of auraRamps)a.dw(r.slice(0,4));
   writeFileSync(join(outDir,'data.asm'),a.text());
+  writeFileSync(join(outDir,'tables.asm'),t.text());
 
   // Preview: every cell in its class palette (DYN in grey).
   const cols=32,prev=blank(cols*17,17*Math.ceil(cells.length/cols));
@@ -405,5 +648,5 @@ export async function generate({rom,repo,outDir}){
       const v=cell.cls===DYN?[0x2108,0x4210,0x6318][c-1]:c-1,d=((oy+(i>>4))*prev.width+ox+(i&15))*4;
       prev.data[d]=(v&31)*255/31;prev.data[d+1]=((v>>5)&31)*255/31;prev.data[d+2]=((v>>10)&31)*255/31;prev.data[d+3]=255;}});
   writeFileSync(join(outDir,'preview.png'),writePng(prev));
-  return {cells:cells.length,asms:asms.length,cellBytes:bin.length,asmBytes:asmBytes.length,detBytes:detBytes.length,maxCells};
+  return {cells:cells.length,asms:asms.length,cellBytes:bin.length,asmBytes:asmBytes.length,detBytes:detBytes.length,maxCells,laserDrift,auraBlobs};
 }

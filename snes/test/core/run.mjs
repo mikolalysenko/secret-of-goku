@@ -42,6 +42,7 @@ const tests=[
   ['save','waterfall'],
   ['lag','waterfall'],
   ['hdmaen','waterfall'],
+  ['decode','waterfall'],
   ['wram',null],
   ['live',null],
   ['xdata',null],

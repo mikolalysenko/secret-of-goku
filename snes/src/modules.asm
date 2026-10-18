@@ -40,6 +40,7 @@ modules_field_frame:
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
 modules_field_nmi:
 	JSL goku_nmi
+	JSL destroy_field_nmi            ; first: switches the breach's HDMA on while vblank lasts
 	JSL frieza_field_nmi
 	JSL ending_nmi
 	JSL fx_nmi                 ; keep last: programs HDMA channels 2/3 after all vblank DMA
@@ -72,6 +73,7 @@ modules_menu_frame:
 modules_ring_frame:
 	JSL fx_ring_frame          ; first: puts PPU registers back inside vblank
 	JSL combat_menu_frame
+	JSL destroy_ring_frame
 	JSL audio_pause
 	RTL
 ; Title program entry (power-on, soft reset, quit to title), after module
@@ -82,6 +84,7 @@ modules_title_boot:
 	JSL frieza_title_boot
 	JSL world_title_boot
 	JSL fx_title_boot
+	JSL destroy_title_boot
 	RTL
 ; Before the game writes a GAME FILE: put persistent state into !SRAM_LIVE.
 modules_save:

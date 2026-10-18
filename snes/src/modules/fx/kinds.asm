@@ -179,6 +179,60 @@ fx_ring:
 fx_k_explode:
 	LDA.w #$0000
 	JSR fx_depth
+	LDA !d_cur+!C_A
+	AND.w #$0002
+	BEQ fx_explode_one
+	; dungeon-demolition.js brazierBurst: three Exploder animations (delay,
+	; offset, turn) = (0, 0,-8, 0), (8, -10,2, 3), (12, 10,2, 1).
+	LDX.w #$0000
+.burst
+	PHX
+	LDA !d_cur+!C_T
+	SEC
+	SBC.l .delay,X
+	BMI .skip
+	CMP.w #42
+	BCS .skip
+	STA !d_ks+2                  ; this burst's age
+	LDA.l .turn,X
+	STA !d_ks+4
+	LDA.l .dy,X
+	TAY
+	LDA.l .dx,X
+	TAX
+	JSR fx_at
+	LDA !d_ks+2
+	LDX.w #$0000                 ; frame = age / 6
+-	CMP.w #6
+	BCC +
+	SBC.w #6
+	INX
+	BRA -
++	TXA
+	ASL
+	ASL
+	ASL                          ; (frame*2 + 0)*4
+	CLC
+	ADC !d_ks+4
+	CLC
+	ADC.w #!FX_ASM_BURST
+	JSR fx_emit
+.skip
+	PLX
+	INX
+	INX
+	CPX.w #6
+	BCC .burst
+	RTS
+.delay
+	dw 0, 8, 12
+.dx
+	dw 0, -10, 10
+.dy
+	dw -8, 2, 2
+.turn
+	dw 0, 3, 1
+fx_explode_one:
 	LDA !d_cur+!C_T
 	LDX.w #$0000                 ; frame = age / 6
 -	CMP.w #6
@@ -188,7 +242,10 @@ fx_k_explode:
 	BRA -
 +	TXA
 	ASL                          ; (frame*2 + mirror)*4 + turn
-	ORA !d_cur+!C_A
+	STA !d_ks
+	LDA !d_cur+!C_A
+	AND.w #$0001
+	ORA !d_ks
 	ASL
 	ASL
 	STA !d_ks
@@ -293,7 +350,288 @@ fx_k_status:
 
 ; ---------------------------------------------------------------------------
 ; FX_DEBRIS: not implemented yet.
+;---------------------------------------------------------------------------
+; FX_DEBRIS: chunks in the caller's colours (DYN palette), behind the
+; natives. Style 0 rubble (sprite-layer.js rubble(): !C_A >> 8 chunks of
+; size 2/3 on ballistic arcs), style 1 ceiling dust (ceiling-escape.js: 20
+; chunks of size 2-4 spreading on the golden angle). !C_B seed, !C_T age.
+!dbr_n   = !d_ks+$0           ; chunks left
+!dbr_i   = !d_ks+$2           ; chunk index
+!dbr_h   = !d_ks+$4           ; hash
+!dbr_vx  = !d_ks+$6           ; x speed (1/8 px per frame), signed
+!dbr_dx  = !d_ks+$8           ; offset from the effect
+!dbr_dy  = !d_ks+$A
+!dbr_t   = !d_ks+$C
+!dbr_s   = !d_ks+$E           ; sign scratch
 fx_k_debris:
+	LDA.w #$0000
+	JSR fx_depth
+	LDA !d_cur+!C_A
+	AND.w #$0001
+	BEQ +
+	JMP fx_debris_dust
++	LDA !d_cur+!C_A
+	XBA
+	AND.w #$00FF
+	STA !dbr_n
+	STZ !dbr_i
+.chunk
+	; h = xorshift(seed + i*71)
+	LDA !dbr_i
+	ASL
+	ASL
+	ASL
+	SEC
+	SBC !dbr_i                   ; i*7
+	STA !dbr_t
+	LDA !dbr_i
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL                          ; i*64
+	CLC
+	ADC !dbr_t
+	CLC
+	ADC !d_cur+!C_B
+	STA !dbr_h
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL
+	ASL
+	EOR !dbr_h
+	STA !dbr_h
+	XBA
+	AND.w #$00FF
+	LSR
+	EOR !dbr_h
+	STA !dbr_h
+	XBA
+	AND.w #$FF00
+	EOR !dbr_h
+	STA !dbr_h
+	; vx = (h_hi * 25 >> 8) - 12, x offset = (h_lo * 15 >> 8) - 7
+	XBA
+	AND.w #$00FF
+	LDX.w #25
+	JSR fx_mul8
+	XBA
+	AND.w #$00FF
+	SEC
+	SBC.w #12
+	STA !dbr_vx
+	LDA !dbr_h
+	AND.w #$00FF
+	LDX.w #15
+	JSR fx_mul8
+	XBA
+	AND.w #$00FF
+	SEC
+	SBC.w #7
+	STA !dbr_dx
+	; dx += vx*age/8
+	LDA !dbr_vx
+	STA !dbr_s
+	BPL +
+	EOR.w #$FFFF
+	INC
++	LDX !d_cur+!C_T
+	JSR fx_mul8
+	LSR
+	LSR
+	LSR
+	BIT !dbr_s
+	BPL +
+	EOR.w #$FFFF
+	INC
++	CLC
+	ADC !dbr_dx
+	STA !dbr_dx
+	; dy = -5 + age*(age - 22 - 3i)/10
+	LDA !dbr_i
+	ASL
+	ADC !dbr_i
+	CLC
+	ADC.w #22
+	EOR.w #$FFFF
+	SEC
+	ADC !d_cur+!C_T              ; t = age - 22 - 3i
+	STA !dbr_s
+	BPL +
+	EOR.w #$FFFF
+	INC
++	LDX !d_cur+!C_T
+	JSR fx_mul8                  ; age*|t|
+	LDX.w #10
+	JSR fx_div8
+	BIT !dbr_s
+	BPL +
+	EOR.w #$FFFF
+	INC
++	SEC
+	SBC.w #5
+	STA !dbr_dy
+	CLC
+	ADC !d_cur+!C_Y              ; below line 208: not drawn
+	CMP.w #209
+	BPL .next
+	; size (i&1)+2, turn (age>>3)+i: assembly (size-2)*3 + turn%3
+	LDA !d_cur+!C_T
+	LSR
+	LSR
+	LSR
+	CLC
+	ADC !dbr_i
+-	CMP.w #3
+	BCC +
+	SBC.w #3
+	BRA -
++	STA !dbr_t
+	LDA !dbr_i
+	AND.w #$0001
+	STA !dbr_s
+	ASL
+	ADC !dbr_s
+	CLC
+	ADC !dbr_t
+	CLC
+	ADC.w #!FX_ASM_RUBBLE
+	PHA
+	LDX !dbr_dx
+	LDY !dbr_dy
+	JSR fx_at
+	PLA
+	JSR fx_emit
+.next
+	INC !dbr_i
+	DEC !dbr_n
+	BEQ +
+	JMP .chunk
++	RTS
+
+; Ceiling dust: 20 chunks on precomputed paths (fx_dust_xy, the browser's
+; rounded positions per age and chunk); size 2 + i%3, turn (age>>2) + i.
+fx_debris_dust:
+	LDA !d_cur+!C_T
+	CMP.w #46
+	BCC +
+	RTS
++	ASL                          ; age * 20 chunks * 4 bytes
+	ASL
+	STA !dbr_t
+	ASL
+	ASL
+	CLC
+	ADC !dbr_t
+	ASL
+	ASL
+	STA !dbr_h                   ; offset of this age's row
+	STZ !dbr_n                   ; position in the drawing order
+.chunk
+	LDX !dbr_n                   ; chunks sharing a cell in a row (the set-up
+	LDA.l .order,X               ; assembly is placed again without setup)
+	AND.w #$00FF
+	STA !dbr_i
+	ASL
+	ASL
+	CLC
+	ADC !dbr_h
+	TAX
+	LDA.l fx_dust_xy+2,X
+	TAY
+	LDA.l fx_dust_xy,X
+	TAX
+	JSR fx_at
+	LDX !dbr_i                   ; size 2 + i%3 -> (i%3)*8
+	LDA.l .size,X
+	AND.w #$00FF
+	STA !dbr_s
+	LDA !d_cur+!C_T              ; gap pattern: two of the eight turns, so
+	LSR                          ; the twenty chunks need at most six cells
+	LSR                          ; of the VRAM cache (fifteen)
+	CLC
+	ADC !dbr_i
+	AND.w #$0001
+	ASL
+	ASL
+	ORA !dbr_s
+	CLC
+	ADC.w #!FX_ASM_DUST
+	JSR fx_emit
+	INC !dbr_n
+	LDA !dbr_n
+	CMP.w #20
+	BCC .chunk
+	RTS
+.order                           ; i grouped by i % 6 (size i % 3, turn parity)
+	db 0, 6, 12, 18, 1, 7, 13, 19, 2, 8, 14, 3, 9, 15, 4, 10, 16, 5, 11, 17
+.size
+	for i = 0..20
+		db (!i%3)*8
+	endfor
+
+; A (0-255) * X (0-255) -> A. M16/X16.
+fx_mul8:
+	SEP #$20
+	STA.l $004202
+	TXA
+	STA.l $004203
+	REP #$20
+	NOP
+	NOP
+	NOP
+	LDA.l $004216
+	RTS
+
+; A (16-bit) * X (0-255) -> A (low 16 bits).
+fx_mul16x8:
+	PHA
+	SEP #$20
+	STA.l $004202
+	TXA
+	STA.l $004203                ; low byte * X
+	REP #$20
+	NOP
+	NOP
+	NOP
+	LDA.l $004216
+	STA !d_tmp+6
+	PLA
+	XBA
+	SEP #$20
+	STA.l $004202
+	TXA
+	STA.l $004203                ; high byte * X
+	REP #$20
+	NOP
+	NOP
+	NOP
+	LDA.l $004216
+	XBA
+	AND.w #$FF00
+	CLC
+	ADC !d_tmp+6
+	RTS
+
+; A (16-bit) / X (1-255) -> A. M16/X16.
+fx_div8:
+	STA.l $004204
+	SEP #$20
+	TXA
+	STA.l $004206
+	REP #$20
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	LDA.l $004214
 	RTS
 
 ; ---------------------------------------------------------------------------
@@ -341,15 +679,201 @@ fx_k_orb:
 	JMP fx_stamp
 
 ; ---------------------------------------------------------------------------
-; FX_AURA and FX_LIGHTNING: not implemented yet.
+; FX_AURA (ki-aura.js drawKiAura): !fx_style tone (0 blue, 1 gold, 2 pink),
+; !fx_a power 0-256 (level ceil(power * 8), 1-8; 0 draws nothing), !fx_b
+; body height (up to 20: 16, from 36: 40, else 32), !fx_c phase seed,
+; !fx_t clock: shown on even clocks only (the browser's ghost strobe), phase
+; (clock / 3 + seed) % 12. X/Y: the body's centre, as the browser's aura();
+; FX_F_GOKU: Goku's body centre + X/Y. A polygon (poly.asm fx_poly_aura):
+; one aura per frame, nothing while the polygon is taken.
 fx_k_aura:
+	LDA !d_cur+!C_T
+	LSR
+	BCC +
+	RTS                          ; odd clock: the strobe's empty half
++	LDA !d_cur+!C_A              ; level - 1 = ceil(power * 8 / 256) - 1
+	BNE +
 	RTS
-fx_k_lightning:
++	CLC
+	ADC.w #31
+	LSR
+	LSR
+	LSR
+	LSR
+	LSR
+	CMP.w #9
+	BCC +
+	LDA.w #8
++	DEC
+	STA !d_ks+2
+	LDA !d_cur+!C_B              ; height: 16 / 32 / 40
+	LDX.w #$0000
+	CMP.w #21
+	BCC +
+	INX
+	CMP.w #36
+	BCC +
+	INX
++	STX !d_ks
+	LDA !d_cur+!C_T              ; phase = (clock / 3 + seed) % 12
+	LDX.w #3
+	JSR fx_div8
+	CLC
+	ADC !d_cur+!C_C
+	LDX.w #12
+	STA.l $004204
+	SEP #$20
+	TXA
+	STA.l $004206
+	REP #$20
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	LDA.l $004216                ; remainder
+	STA !d_ks+4
+	LDA !d_cur+!C_STYLE          ; tone
+	AND.w #$00FF
+	CMP.w #3
+	BCC +
+	LDA.w #$0000
++	STA !d_ks+6
+	LDA !d_cur+!C_KIND
+	BIT.w #!FX_F_GOKU<<8
+	BEQ +
+	LDA.w $E020                  ; Goku's cell centre: x, feet - 15 (lift not known)
+	CLC
+	ADC !d_cur+!C_X
+	STA !d_cur+!C_X
+	LDA.w $E022
+	SEC
+	SBC.w $E045
+	SEC
+	SBC.w #15
+	CLC
+	ADC !d_cur+!C_Y
+	STA !d_cur+!C_Y
++	JSR fx_poly_aura
+	PHP
+	LDA.w #$FFFF                 ; the builder used !d_tiles and !d_ptr
+	STA !d_lasta
+	PLP
 	RTS
 
+; FX_LIGHTNING (charge-lightning.js arcs(), sprite-layer.js
+; chargeLightning): !fx_a bolts (2 or 3; 0: 2), !fx_t clock: new bolts every
+; 3 frames (phase = clock / 3, seed = phase + map * 71, wrapped to 64).
+; Each bolt is Thunderbolt cells along the browser's points (fx.mjs
+; xdata fx_bolts), frame (phase + bolt) % 3, in front; every bolt ends in the
+; air. X/Y: the charge point.
+fx_k_lightning:
+	LDA.w #!FX_E_FRONT
+	JSR fx_depth
+	LDA !d_cur+!C_T              ; phase = clock / 3
+	LDX.w #3
+	JSR fx_div8
+	STA !d_ks
+	LDA.w $00DC                  ; seed = (phase + map * 71) & 63
+	LDX.w #71
+	JSR fx_mul16x8
+	CLC
+	ADC !d_ks
+	AND.w #$003F
+	STA !d_ks+2
+	LDA !d_cur+!C_A              ; bolts: 2 or 3
+	BNE +
+	LDA.w #2
++	CMP.w #4
+	BCC +
+	LDA.w #3
++	STA !d_ks+4
+	STZ !d_ks+6                  ; bolt
+.bolt
+	LDA !d_ks+2                  ; fx_bolt_ptr[seed * 3 + bolt]
+	ASL
+	CLC
+	ADC !d_ks+2
+	CLC
+	ADC !d_ks+6
+	ASL
+	TAX
+	LDA.l fx_bolt_ptr,X
+	TAX
+	LDA.l !XDATA_FX_BOLTS,X         ; cells
+	AND.w #$00FF
+	BEQ .next
+	STA !d_ks+8
+	INX
+	STX !d_ks+$A
+	LDA !d_ks                    ; frame: (phase + bolt) % 3
+	CLC
+	ADC !d_ks+6
+	STA.l $004204
+	SEP #$20
+	LDA.b #3
+	STA.l $004206
+	REP #$20
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	LDA.l $004216
+	TAX                          ; the bolt's assembly (frame, its turn)
+	PHX
+	LDX !d_ks+$A
+	LDA.l !XDATA_FX_BOLTS+2,X
+	AND.w #$00FF
+	TAY
+	PLX
+	LDA.w #!FX_SG_LIGHTNING
+	JSR fx_stamp_id
+	STA !d_ks+$C
+.cell
+	LDX !d_ks+$A
+	LDA.l !XDATA_FX_BOLTS,X         ; x, y from the charge point (signed bytes)
+	AND.w #$00FF
+	EOR.w #$0080
+	SEC
+	SBC.w #$0080
+	CLC
+	ADC !d_cur+!C_X
+	STA !d_x
+	LDA.l !XDATA_FX_BOLTS+1,X
+	AND.w #$00FF
+	EOR.w #$0080
+	SEC
+	SBC.w #$0080
+	CLC
+	ADC !d_cur+!C_Y
+	STA !d_y
+	LDA !d_ks+$C
+	JSR fx_emit
+	LDA !d_ks+$A
+	CLC
+	ADC.w #3
+	STA !d_ks+$A
+	DEC !d_ks+8
+	BNE .cell
+.next
+	INC !d_ks+6
+	LDA !d_ks+6
+	CMP !d_ks+4
+	BCS +
+	JMP .bolt
++	RTS
+
 ; ---------------------------------------------------------------------------
-; FX_DEATHBALL: !C_A diameter, !C_T frame (0-11). 16 and 32 px balls are
-; OBJ; larger sizes draw the 32 px ball until the polygon renderer lands.
+; FX_DEATHBALL (death-ball-art.js draw(), not cinematic): !fx_t frame
+; (wrapped to 12), !fx_a diameter snapped to deathBallSizes (nearest, ties
+; to the smaller, as the browser). 16 and 32 px are OBJ art; the other sizes
+; are a polygon (poly.asm fx_poly_dball) while it is free, else the 32 px
+; ball.
 fx_k_deathball:
 	LDA.w #$0000
 	JSR fx_depth
@@ -358,14 +882,54 @@ fx_k_deathball:
 	BCC +
 	SBC.w #12
 	BRA -
-+	STA !d_ks
-	LDA !d_cur+!C_A
-	CMP.w #25
-	BCS +
++	STA !d_ks                    ; frame
+	LDA !d_cur+!C_A              ; the first size >= the diameter ...
+	STA !d_tmp
+	LDX.w #$0000
+-	LDA.l fx_dball_sizes,X
+	CMP !d_tmp
+	BCS .found
+	INX
+	INX
+	CPX.w #!FX_DBALL_SIZES*2
+	BCC -
+	DEX                          ; above them all: the largest
+	DEX
+	BRA .snapped
+.found
+	CPX.w #$0000                 ; ... or the one below when it is nearer
+	BEQ .snapped
+	SEC
+	SBC !d_tmp
+	STA !d_tmp+2                 ; size[i] - diameter
+	LDA !d_tmp
+	SEC
+	SBC.l fx_dball_sizes-2,X     ; diameter - size[i-1]
+	CMP !d_tmp+2
+	BEQ +
+	BCS .snapped
++	DEX
+	DEX
+.snapped
+	TXA
+	LSR
+	STA !d_ks+2                  ; size index
+	BEQ .obj16
+	CMP.w #2
+	BEQ .obj32
+	JSR fx_poly_dball
+	PHP
+	LDA.w #$FFFF                 ; the builder used !d_tiles
+	STA !d_lasta
+	PLP
+	BCS .obj32
+	RTS
+.obj32
+	LDA.w #!FX_ASM_DEATH32
+	BRA +
+.obj16
 	LDA.w #!FX_ASM_DEATH16
-	BRA ++
-+	LDA.w #!FX_ASM_DEATH32
-++	CLC
++	CLC
 	ADC !d_ks
 	JMP fx_emit_here
 
@@ -471,7 +1035,7 @@ fx_b_kame:
 	INC !d_ks+2
 	INC !d_ks+2
 +	LDA.w #$0000                 ; band set 0: blue
-	BRA fx_beam_strips
+	JMP fx_beam_strips
 
 ; FX_BEAM_FRIEZA / FX_BEAM_FIRE: the orbit beam() strip in Frieza's pink or
 ; the Fireball colours; width / 3 bands.
@@ -491,13 +1055,142 @@ fx_b_strip:
 	AND.w #$007F
 	CMP.w #!FX_BEAM_FIRE
 	LDA.w #1                     ; pink
-	BCC fx_beam_strips
+	BCC +
 	LDA.w #2                     ; fire
-	BRA fx_beam_strips
++	JMP fx_beam_strips
 
-; FX_BEAM_LASER: not implemented yet (needs diagonal strips).
+; FX_BEAM_LASER (orbit-effects.js deathBeam: beam(...,1,age,'pink')): the
+; Death Beam from the finger (X/Y) in 16 headings (!C_DIR with
+; FX_F_HEADING, else the facing), !C_A reach, !C_T age; colour frame
+; (age >> 2) & 1; the finger glint on top. Headings 0 / 8 are three lines
+; across the screen, a polygon when it is free; otherwise 16x16 windows
+; step along the beam (fx.mjs: window 0 at the finger, then the body
+; window), behind the natives.
 fx_b_laser:
+	LDA !d_cur+!C_KIND
+	BIT.w #!FX_F_HEADING<<8
+	BNE +
+	LDA !d_cur+!C_DIR
+	AND.w #$0003
+	TAX
+	LDA.l .face,X
+	BRA ++
++	LDA !d_cur+!C_DIR
+++	AND.w #$000F
+	STA !d_ks                    ; heading
+	LDA !d_cur+!C_T
+	LSR
+	LSR
+	AND.w #$0001
+	STA !d_ks+2                  ; colour frame
+	JSR fx_k_finger
+	LDA !d_ks
+	AND.w #$0007
+	BNE .obj
+	JSR fx_poly_laser
+	PHP
+	LDA.w #$FFFF                 ; the builder used !d_tiles
+	STA !d_lasta
+	PLP
+	BCS .obj
 	RTS
+.obj
+	LDA.w #$0000                 ; behind the natives
+	JSR fx_depth
+	LDA !d_ks                    ; FX_ASM_LASER + ((h&3)*2 + frame)*8 + h/4
+	AND.w #$0003
+	ASL
+	ORA !d_ks+2
+	ASL
+	ASL
+	ASL
+	STA !d_ks+4
+	LDA !d_ks
+	LSR
+	LSR
+	CLC
+	ADC !d_ks+4
+	ADC.w #!FX_ASM_LASER
+	STA !d_ks+4                  ; window 0; the body window is 4 on
+	LDA !d_ks                    ; step (signed bytes)
+	ASL
+	TAX
+	LDA.l fx_laser_step,X
+	AND.w #$00FF
+	CMP.w #$0080
+	BCC +
+	ORA.w #$FF00
++	STA !d_ks+6
+	LDA.l fx_laser_step+1,X
+	AND.w #$00FF
+	CMP.w #$0080
+	BCC +
+	ORA.w #$FF00
++	STA !d_ks+8
+	LDA !d_ks                    ; body windows: reach / step length
+	AND.w #$0003
+	ASL
+	TAX
+	LDA.l fx_laser_len,X         ; quarter pixels
+	TAX
+	LDA !d_cur+!C_A
+	ASL
+	ASL
+	JSR fx_div8
+	STA !d_ks+$A
+	LDX.w #$0000
+	LDY.w #$0000
+	JSR fx_at
+	LDA !d_ks+4
+	JSR fx_emit
+	LDA !d_ks+4
+	CLC
+	ADC.w #4
+	STA !d_ks+4
+.window
+	LDA !d_ks+$A
+	BEQ .done
+	DEC !d_ks+$A
+	LDA !d_x
+	CLC
+	ADC !d_ks+6
+	STA !d_x
+	LDA !d_y
+	CLC
+	ADC !d_ks+8
+	STA !d_y
+	; stop once the beam has left the screen for good
+	LDA !d_x
+	BPL +
+	CMP.w #-32
+	BCS ++
+	LDA !d_ks+6
+	BEQ .done
+	BMI .done
+	BRA ++
++	CMP.w #288
+	BCC ++
+	LDA !d_ks+6
+	BPL .done
+++	LDA !d_y
+	BPL +
+	CMP.w #-32
+	BCS ++
+	LDA !d_ks+8
+	BEQ .done
+	BMI .done
+	BRA ++
++	CMP.w #256
+	BCC ++
+	LDA !d_ks+8
+	BPL .done
+++	LDA !d_ks+4
+	JSR fx_emit
+	BRA .window
+.done
+	RTS
+.face                            ; facing (down, right, left, up) -> heading
+	db 4, 0, 8, 12
 
 ; Strip beam: A = band set (0 blue, 1 pink, 2 fire), !d_ks+2 bands.
 fx_beam_strips:
@@ -540,6 +1233,17 @@ fx_beam_strips:
 	LDX.w #4
 	LDY.w #$0000
 	JSR fx_stamp
+	; Left / right: the strip rows as a polygon (poly.asm), no sprites.
+	LDA !d_dy
+	BNE .obj
+	JSR fx_poly_strip
+	PHP
+	LDA.w #$FFFF                 ; the builder used !d_tiles
+	STA !d_lasta
+	PLP
+	BCS .obj
+	RTS
+.obj
 	; Strips behind the natives.
 	LDA.w #$0000
 	JSR fx_depth
@@ -584,7 +1288,15 @@ fx_beam_strips:
 	JSR fx_at
 	LDA.w #16
 	STA !d_rstep
-	PLA
+	LDA !d_dy                    ; a row of strips across the screen: leave
+	BNE +                        ; the natives on its lines their slivers
+	LDA !d_y
+	JSR fx_row_room
+	CMP $01,S
+	BCS +
+	STA $01,S                    ; fewer strips: the far end goes first
++	PLA
+	BEQ .done
 	JSR fx_emit_run
 .done
 	RTS

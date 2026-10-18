@@ -9,7 +9,7 @@
 //   node snes/test/frieza/run.mjs [case ...]
 // ROM: $SNES_ROM or dist/snes/secret-of-goku.sfc. Outputs: .local/snes-test/frieza/
 import {spawnSync} from 'node:child_process';
-import {readFileSync,writeFileSync,existsSync,mkdirSync} from 'node:fs';
+import {readFileSync,writeFileSync,existsSync,mkdirSync,readdirSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {runMesen} from '../mesen.mjs';
@@ -175,11 +175,18 @@ function test()
   local surge = H.r8(${v(defs.fzs_surge)})
   F.check(surge == 1, 'the first surge started, got ' .. surge)
   H.shot('surge-0')
-  H.wait(268)
+  -- the surge counts the game's frames (a heavy frame lags the picture,
+  -- not the clock): wait on its age, report the lag
+  local f0 = H.frame
+  local function age() return H.r16(${v(defs.fzs_sage)}) end
+  H.waitFor(function() return age() >= 269 end, 600)
+  F.check((H.r8(${v(defs.fzf_flags)}) & ${defs.FZFF_MUSCULAR}) == 0, 'not muscular before 270')
+  H.waitFor(function() return age() >= 270 end, 10)
+  H.result('lag270', (H.frame - f0) - age())
   F.check((H.r8(${v(defs.fzf_flags)}) & ${defs.FZFF_MUSCULAR}) ~= 0, 'muscular at 270')
   H.shot('surge-270')
-  H.wait(120)
-  F.check(H.r8(${v(defs.fzs_surge)}) == 0, 'the surge ended after 380 frames')
+  H.waitFor(function() return H.r8(${v(defs.fzs_surge)}) == 0 or age() > 380 end, 400)
+  F.check(H.r8(${v(defs.fzs_surge)}) == 0 and age() == 380, 'the surge ended at 380, age ' .. age())
   F.check(H.r8(${v(defs.fzf_tier)}) == 1, 'phase two (tier 1)')
   H.result('holes', H.r16(${v(defs.fzs_holes_n)}))
   F.check(H.r16(${v(defs.fzs_holes_n)}) > 0, 'the floor fractured')
@@ -499,7 +506,7 @@ end
 // is free or his (owner !FZ_VRAM_OWNER), claims it on the frames he is
 // drawn and gives it back when his scene ends.
 function coreDefine(name){
-  const src=['ram.asm','core.asm','vram.asm'].map(f=>readFileSync(join(repo,'snes/src/core',f),'utf8')).join('\n');
+  const dir=join(repo,'snes/src/core'),src=readdirSync(dir).filter(f=>f.endsWith('.asm')).map(f=>readFileSync(join(dir,f),'utf8')).join('\n');
   const val=n=>{const m=src.match(new RegExp(`^!${n}\\s*=\\s*([^;\\n]+)`,'m'));if(!m)throw Error(`frieza: core define ${n} missing`);
     return Function(`return (${m[1].trim().replace(/!(\w+)/g,(_,k)=>val(k)).replace(/\$([0-9A-Fa-f]+)/g,'0x$1')})`)();};
   return val(name);
@@ -591,7 +598,7 @@ if(want('surge')){
   const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
   const ok=r.code===0&&res.pass===true;
   results.push({name:'surge',ok,failures});
-  console.log(`frieza surge: ${ok?'pass':'FAIL'} (${r.ms} ms) punch ${res.punch} hp at surge ${res.hpAtSurge} holes ${res.holes}`);
+  console.log(`frieza surge: ${ok?'pass':'FAIL'} (${r.ms} ms) punch ${res.punch} hp at surge ${res.hpAtSurge} holes ${res.holes}, ${res.lag270} lag frames by surge age 270`);
   if(!ok)for(const f of failures)console.log('    !',f);
 }
 if(want('fracture')){

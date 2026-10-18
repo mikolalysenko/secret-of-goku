@@ -1170,6 +1170,8 @@ frieza_door_record:
 
 ; Builds without destroy's C1:E7DF patch: replaces C1:E7F2 LDA $C83002,X
 ; (M16, X = door * 4, DB = $7E, D = 0).
+if not(defined("DESTROY_DOOR_HOOK"))
+if not(defined("SS_ESCAPE_DOOR"))
 frieza_door_entry:
 	LDA.l $C83002,X
 	CPX.w #$03FC*4
@@ -1184,6 +1186,8 @@ frieza_door_entry:
 	ORA.w #36
 .out
 	RTL
+endif
+endif
 
 ; ---------------------------------------------------------------------------
 ; Saves, loads and new games (core hooks).

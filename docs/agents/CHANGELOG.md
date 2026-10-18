@@ -4,6 +4,83 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## 2026-10-18 — Release 0.2.5
+
+- Release 0.2.5 (`v0.2.5`) and its Pages build add one exact fast path to 0.2.4:
+  - **Sound driver idle loop skipped:** about 60% of the SPC's instructions are the sound driver's wait (`CALL` / `MOV X,port` / `BEQ` / `RET` / `MOV Y,timer` / `BEQ`). While the CPU port and the timer counter it polls both read 0, `catchUpApu` applies whole passes at once. A batch ends within the catch-up, since a port cannot change inside one, and its last counter read comes no later than the counter's next increment. The DSP and timers still run every cycle.
+- Every scene against 0.2.3, Chrome full-render frames/s, median of three in the same session. The machine was busy (load average 8–11), so these rates sit below an idle machine's:
+
+  | Scene | 0.2.3 | 0.2.5 | Change | Real time |
+  | --- | --- | --- | --- | --- |
+  | Sandship wreck | 542 | 646 | ×1.19 | 10.8× |
+  | World flight | 629 | 685 | ×1.09 | 11.4× |
+  | Beast challenge | 604 | 694 | ×1.15 | 11.6× |
+  | Waterfall, first flight | 631 | 703 | ×1.12 | 11.7× |
+  | Throne room (map 431) | 606 | 711 | ×1.17 | 11.9× |
+  | Fortress deck | 584 | 711 | ×1.22 | 11.9× |
+  | Waterfall after the arrival | 558 | 719 | ×1.29 | 12.0× |
+  | Sandship | 599 | 732 | ×1.22 | 12.2× |
+  | Field | 654 | 736 | ×1.12 | 12.3× |
+  | Explosion | 586 | 754 | ×1.29 | 12.6× |
+  | Ending | 625 | 777 | ×1.24 | 13.0× |
+  | Buffy | 656 | 782 | ×1.19 | 13.0× |
+  | Trial | 630 | 791 | ×1.26 | 13.2× |
+  | Field combat | 623 | 811 | ×1.30 | 13.5× |
+  | Status page | 618 | 811 | ×1.31 | 13.5× |
+  | Title | 842 | 842 | ×1.00 | 14.0× |
+  | Name entry | 658 | 860 | ×1.31 | 14.3× |
+  | Fortress | 686 | 864 | ×1.26 | 14.4× |
+  | Tree | 681 | 878 | ×1.29 | 14.6× |
+  | Battle | 663 | 883 | ×1.33 | 14.7× |
+  | File select | 653 | 907 | ×1.39 | 15.1× |
+  | Space | 721 | 948 | ×1.31 | 15.8× |
+  | Orbit | 739 | 1008 | ×1.36 | 16.8× |
+
+- Validation:
+  - **Unit tests:** 380 pass. A new test compares SPC RAM, every DSP sample, the timers and the SPC registers with stepping each pass, from power-on and on the saved states. It fails if a batch runs one pass past the timer.
+  - **Exactness:** the original SnesJs core equivalence passes (SPC RAM and audio every frame), and every saved state, scene and forced branch renders identically to 0.2.4 with every mod hook.
+  - **Browser suite:** only the known failures; all 28 phone tests pass.
+
+## 2026-10-17 — SNES cartridge: the Sandship arc (destroy stream)
+
+- The Sandship runs on the cartridge: a full-power KAMEHAMEHA below deck while captive (or Sergo's plan) whites out the screen and reloads Goku's room as the wreck, with the fled crew gone, desert monsters in, the boss battle alarm, the rescues, Geshtar on deck, bulkheads that break, unplanned departures and the roof takeoff that blow the ship up into the Mech Rider, the reunion with everyone's own gear, and the dunes' exit rule.
+- The wreck's look on the SNES's own hardware: the white-out and the alarm tint as transformed palettes riding the game's CGRAM upload, the breach as an indirect HDMA window over the desert's sand, and fires through the effects library within the frame's time. The white-out tables and the sand use the new extended data banks.
+- Flight bindings: the breach is a floor hole for flight, the roof takeoff and flight's hull rule report through `SANDSHIP_TAKEOFF`, and `SANDSHIP_HULL_KEY` keys flight's hull cache.
+- A beam's hit scan and barrier search now grow in steps across frames (largest single call 84 scanlines for a full wave, was 219 on FastROM).
+- Details, deviations and core/effects requests (the game's tile decoder overwrote the core's event request word in the wrecked cabin) in [snes-port/destroy.md](snes-port/destroy.md).
+- Validation: `snes/test/destroy/run.mjs`, 27 destroy and 9 Sandship scenarios, each on a private ROM copy.
+
+## 2026-10-17 — Release 0.2.4
+
+- Release 0.2.4 (`v0.2.4`) and its Pages build include everything since 0.2.3:
+  - **Menu/back closes Status again:** on menu pages, Menu/back (the phone Menu button, X on a pad) sends the cartridge's cancel button, Y, or Start for the window and controller editors. The editors were recognized by the ring cursor `$180A`, which counts from the option the ring last opened at. After opening option 3 or 4, Status sat at cursor 6 or 5, so Menu/back sent Start, and Y is Goku's ki: no button could leave the page. The editors also failed to close from most starting points. The open option `$1876` now decides. All 147 combinations of party member, starting option and page close (36 could not), and a browser test covers Status at cursors 5 and 6 and both editors.
+  - **Wait loops skipped exactly:** the game's main wait (`BIT dp` / `BNE`, two thirds of the instructions in field and story scenes) and the menu and title HVBJOY polls skip whole iterations up to the next display event. One stepped iteration measures the loop. Each batch first checks that what the loop reads now (the flag, or HVBJOY after a blanking edge) leaves the CPU state unchanged. Loops at addresses any mod hook watches are never batched.
+  - **APU catch-up deferred:** each master-cycle pair adds the same step to the APU catch-up float, so the batched paths only count pairs, and `catchUpApu` applies them exactly by binade before it runs.
+  - **Set pieces:** the Sandship wreck tints lines without mask checks outside the breach, fire sprites draw only their opaque pixels, and smoke puffs visit only the pixels they can draw.
+- Chrome full-render frames/s, median of three on a busy machine (other emulators running), so absolute rates sit below an idle machine's:
+
+  | Scene | Frames/s | Real time |
+  | --- | --- | --- |
+  | Orbit | 952 | 15.9× |
+  | Combat | 919 | 15.3× |
+  | Space | 892 | 14.9× |
+  | File select | 888 | 14.8× |
+  | Status page | 791 | 13.2× |
+  | Explosion | 746 | 12.4× |
+  | Field | 734 | 12.2× |
+  | World flight | 716 | 11.9× |
+  | Waterfall after the arrival | 709 | 11.8× |
+  | Sandship | 693 | 11.6× |
+  | Sandship wreck | 632 | 10.5× |
+  | Fortress deck | 619 | 10.3× |
+  | Throne-room set piece (map 431) | 583 | 9.7× |
+
+  Against the previous web build (which already skipped the `BIT` / `BNE` wait), the wreck went ×1.12, the status page ×1.14, combat ×1.11 and orbit ×1.12. File select and name entry went ×1.20 with the HVBJOY polls.
+- Validation:
+  - **Unit tests:** 379 pass. They now include two wait programs run from work RAM: HVBJOY polls across both blanking edges and the auto-joypad read, and a `BIT` loop whose flag HDMA clears through WMDATA. Both fail on the earlier scheduler.
+  - **Exactness:** the original SnesJs core equivalence passes (picture, work RAM, VRAM, CGRAM, OAM, SPC RAM, audio and CPU timing every frame). Every saved state, scene and forced branch renders identically to 0.2.3 with every mod hook. The fire and smoke drawers issue the same pixel writes in the same order.
+  - **Browser suite:** only the known failures; all 28 phone tests pass. In real iOS Safari (Simulator), Status opened at cursor 5 closes with one tap of Menu.
+
 ## 2026-10-17 — SNES cartridge: 64 Mbit ExHiROM, unflashed Goku, fresh cartridges (integration)
 
 - The cartridge is now 64 Mbit ExHiROM (the mapping of Tales of Phantasia). The first 4 MiB is unchanged apart from the header, and the second 4 MiB mirrors it. Generators can place up to 1984 KiB of DMA sources and bulk tables in banks `$40–$7D` through `xdata(name, bytes)`, which frees room in the fast banks for the remaining set pieces. Save RAM stays where the original game keeps it, because bsnes, Mesen2, snes9x and the FXPak map ExHiROM save RAM like HiROM. See [snes-rom.md](snes-rom.md#extended-data-exhirom).
