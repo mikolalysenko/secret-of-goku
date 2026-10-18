@@ -444,6 +444,10 @@ export async function generate({repo,outDir,rom:baseRom}){
     out.push('frieza_vista_bg:',...words(bgMap));
     out.push('frieza_vista_ruins:',...words(ruinsMap));
     out.push('frieza_vista_zero:',...bytes(Array(32).fill(0)));
+    // words the vblank reads back to notice a load that rewrote the planes
+    // (the Tree's event reloads its map): the first, middle and last of each
+    const pick=m=>[m[0],m[m.length>>1],m[m.length-1]];
+    out.push('frieza_vista_check:',...words([...pick(fgMap),...pick(bgMap),...pick(ruinsMap)]));
     out.push(`!FRIEZA_VISTA_SKY = ${hex(sky,4)}`);
     // the tiny Frieza: treeFriezaPose(kind, age, elapsed) for the arrival
     // (96 frames) and the departure (120), x and y for the hover -1/0/+1
@@ -473,6 +477,22 @@ export async function generate({repo,outDir,rom:baseRom}){
   // Timings used by the runtime (asserted against the engine's exports).
   const t=intro.introTiming;
   out.push(`!FRIEZA_INTRO_HIT = ${t.hit}`,`!FRIEZA_INTRO_BLACK_END = ${t.blackEnd}`,`!FRIEZA_INTRO_BEAM_END = ${t.beamEnd}`,`!FRIEZA_INTRO_PAN = ${t.pan}`,`!FRIEZA_INTRO_ENTRY = ${t.entry}`);
+  // installAltarCamera's pan: ease(age / pan) in 1/65536 for ages below the
+  // pan; the runtime's y = acy + floor((64 - acy) * e + 1/2) equals
+  // altarCamera() for the reveal's camera from the door beside the Emperor
+  // (y 184); other start heights may differ by a pixel at a few ages, where
+  // the browser's value is an exact half
+  const camEase=[];
+  for(let a=0;a<t.pan;a++){const u=a/t.pan;camEase.push(Math.min(65535,Math.round(u*u*(3-2*u)*65536)));}
+  for(let acy=0;acy<=1024;acy++){
+    for(let a=0;a<t.pan;a++){
+      const want=intro.altarCamera({kind:'reveal',age:a,altar:{cameraX:0,cameraY:acy}}).y;
+      const d=64-acy,got=acy+Math.floor((d*camEase[a]+32768)/65536);
+      if(got===want)continue;
+      if(acy===184||Math.abs(got-want)>1)throw Error(`frieza: altar camera ease off at camera y ${acy}, age ${a}: ${got} vs ${want}`);
+    }
+  }
+  out.push('frieza_altar_cam_ease:',...words(camEase));
   const tt=staging.treeTiming,ct=staging.coreTiming;
   out.push(`!FRIEZA_TREE_ARRIVAL = ${tt.arrival}`,`!FRIEZA_TREE_THROW = ${tt.throw}`,`!FRIEZA_CORE_THROW = ${ct.throw}`,`!FRIEZA_CORE_ERUPTION = ${ct.eruption}`);
 

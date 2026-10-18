@@ -191,6 +191,18 @@ fz_tree_frame:
 	JSR fz_tree_bursts
 +	RTS
 
+; The vista's tilemaps are no longer known to be in VRAM (a map load, a
+; dark frame, frames without the module): the next vista frame uploads them.
+fz_vista_invalidate:
+	LDA !fz_wasidle
+	AND.w #!FZI_SRAM
+	BEQ +
+	SEP #$20
+	LDA.b #0
+	STA.l !fzt_up
+	REP #$20
++	RTS
+
 ; A16 += the impact's shake this frame (!fzt_shake, signed; the routines
 ; the vista calls use the scratch words). X, Y kept.
 fz_tree_addshake:
@@ -564,7 +576,19 @@ fz_tree_nmi:
 	LDA.l $7E0000|!fz_vista
 	AND.w #!FZV_UP
 	BEQ .show
+	; a load may have rewritten the planes since they went up (the Tree's
+	; event reloads its map without a field frame seeing it dark)
 	LDA.l !fzt_up
+	AND.w #$00FF
+	CMP.w #4
+	BCC +
+	JSR fz_vista_verify
+	BCC +
+	SEP #$20
+	LDA.b #0
+	STA.l !fzt_up
+	REP #$20
++	LDA.l !fzt_up
 	AND.w #$00FF
 	CMP.w #4
 	BCS .show
@@ -602,8 +626,18 @@ fz_tree_nmi:
 .show
 	LDA.l $7E0000|!fz_vista
 	AND.w #!FZV_ON
-	BEQ .notShown
-	; scroll = -shake (10 bits)
+	BNE +
+	JMP .notShown
++	LDA.l !fzt_up                     ; planes lost this vblank: black until they are back
+	AND.w #$00FF
+	CMP.w #4
+	BCS +
+	SEP #$20
+	LDA.b #$80
+	STA $2100
+	REP #$20
+	RTS
++	; scroll = -shake (10 bits)
 	LDA.l !fzt_shake
 	AND.w #$00FF
 	CMP.w #$0080
@@ -642,6 +676,10 @@ fz_tree_nmi:
 	LDA.b #!FRIEZA_VISTA_SKY>>8
 	STA $2122
 	REP #$20
+	; no switch to the HUD at line 196: the cliff runs to the bottom, the
+	; HUD (BG3, below the planes without its priority) stays hidden
+	LDA.w #$01FF
+	STA $4209
 	BRA .bright
 .notShown
 	LDA.l $7E0000|!fz_vista
@@ -653,6 +691,8 @@ fz_tree_nmi:
 	LDA.b #!FZT_BG2SC
 	STA $2108
 	REP #$20
+	LDA.w #$00C4                      ; the field's HUD line (C0:BC6C)
+	STA $4209
 .bright
 	LDA.l $7E0000|!fz_vista
 	AND.w #!FZV_BRIGHT
@@ -666,6 +706,32 @@ fz_tree_nmi:
 +	REP #$20
 .out
 	RTS
+; C set when a checked word of the planes in VRAM differs from the data
+; (frieza_vista_check: first, middle and last of each plane). DB = $80.
+fz_vista_verify:
+	SEP #$20
+	LDA.b #$80
+	STA $2115                         ; increment after the high byte
+	REP #$20
+	LDX.w #0
+-	LDA.l fz_vista_probe,X
+	STA $2116
+	LDA $2139                         ; the prefetched word (low, high)
+	CMP.l frieza_vista_check,X
+	BNE .lost
+	INX
+	INX
+	CPX.w #18
+	BCC -
+	CLC
+	RTS
+.lost
+	SEC
+	RTS
+fz_vista_probe:
+	dw !FZT_FG, !FZT_FG+$200, !FZT_FG+$3FF
+	dw !FZT_BG, !FZT_BG+$200, !FZT_BG+$3FF
+	dw !FZT_RUINS, !FZT_RUINS+$200, !FZT_RUINS+$3FF
 fz_vista_dest:
 	dw !FZT_FG, !FZT_BG, !FZT_RUINS, !FZT_BLANKV
 fz_vista_src:

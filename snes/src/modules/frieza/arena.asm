@@ -112,9 +112,14 @@ fz_break_floor:
 	BCC .skipCell
 	JSR fz_hole_test                  ; already broken?
 	BCS .mark
-	; landable floor?
-	JSR fz_bind_can_land              ; (!fz_t5, !fz_t6), Goku's layer
-	BCC .skipCell
+	; landable floor? (the fight's terrain; the collapse: Goku's)
+	LDA !fzf_flags
+	AND.w #!FZFF_ACTIVE
+	BEQ +
+	JSR fz_bind_can_land_t            ; (!fz_t5, !fz_t6)
+	BRA ++
++	JSR fz_bind_can_land
+++	BCC .skipCell
 .mark
 	JSR fz_hole_set
 .skipCell

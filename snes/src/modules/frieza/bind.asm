@@ -272,8 +272,11 @@ endif
 
 ; ---------------------------------------------------------------------------
 ; Flight: canLand(x = !fz_t5, y = !fz_t6, Goku's layer and terrain).
-; C set when the point is landable floor. Without the flight module every
-; point is accepted (frieza.md).
+; C set when (!fz_t5, !fz_t6) is landable floor (flight's canLand) at
+; Goku's layer and terrain ($E00B: the patrol nodes, the collapse), or with
+; fz_bind_can_land_t at the terrain the fight recorded (!fzf_terrain, its
+; fractures; frieza.js b.terrain). Without the flight module every point
+; is accepted (frieza.md).
 fz_bind_can_land:
 if defined("FLIGHT_API_CAN_LAND")
 	LDA !fz_t5
@@ -284,6 +287,25 @@ else
 	SEC
 	RTS
 endif
+fz_bind_can_land_t:
+if defined("FLIGHT_API_CAN_LAND_T")
+	LDA !fz_t5
+	LDX !fz_t6
+	LDY !fzf_terrain
+	JSL !FLIGHT_API_CAN_LAND_T
+	RTS
+else
+	JMP fz_bind_can_land
+endif
+
+; Flight's scripted camera (frieza-intro.js installAltarCamera): A16 =
+; camera x, X16 = y (the tile-stream origin), posted every field frame a
+; scene holds the camera; a frame without a post gives it back.
+fz_bind_camera:
+if defined("FLIGHT_API_CAMERA")
+	JSL !FLIGHT_API_CAMERA
+endif
+	RTS
 
 ; Flight's canLand query point for frieza_floor_hole: A16 = x, X16 = y;
 ; C clear when the query's layer is not the deck's.

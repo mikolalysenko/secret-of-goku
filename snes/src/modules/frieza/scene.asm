@@ -656,3 +656,76 @@ fz_draw_scene:
 	JSR fz_spr_draw
 .out
 	RTS
+
+; frieza-intro.js installAltarCamera: while a scene holds the camera on its
+; map, flight's camera service gets the target every field frame and moves
+; the camera a pixel per axis toward it: the court (152, 260); at the altar
+; (431) the reveal's pan from the camera at its cue to y 64 over 300 frames
+; (smoothstep, frieza_altar_cam_ease), then y 64.
+fz_scene_camera:
+	JSR fz_scene_kind
+	BEQ .none
+	LDA !fz_smap
+	CMP $DC
+	BNE .none
+	LDA $FF
+	AND.w #$00FF
+	BNE .none                         ; a map load runs
+	LDA !fz_sflags
+	AND.w #!FZSF_COURT
+	BEQ .altar
+	LDA.w #152
+	LDX.w #260
+	JMP fz_bind_camera
+.none
+	RTS
+.altar
+	LDA !fz_sflags
+	AND.w #!FZSF_ALTAR
+	BEQ .none
+	LDA $DC
+	CMP.w #431
+	BNE .none
+	LDA.w #64
+	STA !fz_t0                        ; y once the pan is done
+	JSR fz_scene_kind
+	CMP.w #!FZS_REVEAL
+	BNE .post
+	LDA !fz_sage
+	CMP.w #!FRIEZA_INTRO_PAN
+	BCS .post
+	; y = acy + round((64 - acy) * ease(age / 300))
+	ASL
+	TAX
+	LDA.l frieza_altar_cam_ease,X
+	STA !fz_m1
+	LDA.w #64
+	SEC
+	SBC !fz_acy
+	STA !fz_t1                        ; d (signed)
+	JSR fz_abs
+	STA !fz_m0
+	JSR fz_mul16                      ; |d| * e: !fz_m2 low, !fz_m3 high
+	LDA !fz_t1
+	BPL +
+	LDA !fz_m2                        ; d < 0: negate the product
+	EOR.w #$FFFF
+	CLC
+	ADC.w #1
+	STA !fz_m2
+	LDA !fz_m3
+	EOR.w #$FFFF
+	ADC.w #0
+	STA !fz_m3
++	LDA !fz_m2
+	CLC
+	ADC.w #$8000                      ; + 1/2, then the whole part
+	LDA !fz_m3
+	ADC.w #0
+	CLC
+	ADC !fz_acy
+	STA !fz_t0
+.post
+	LDA !fz_acx
+	LDX !fz_t0
+	JMP fz_bind_camera

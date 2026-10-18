@@ -78,6 +78,7 @@ frieza_field_frame:
 	JSR fz_quake_tick
 	JSR fz_story_tick
 	JSR fz_scene_tick
+	JSR fz_scene_camera
 	JSR fz_battle_tick
 	JSR fz_collapse_tick
 	JSR fz_beast_tick
@@ -355,10 +356,11 @@ fz_session:
 	DEC
 	CMP !fz_lasttick
 	BEQ +
-	JSR fz_spr_invalidate
+	JSR fz_spr_invalidate             ; frames passed without us: a load
+	JSR fz_vista_invalidate
 +	LDA.l !core_tick
 	STA !fz_lasttick
-	; picture off (forced blank or brightness 0): loads may rewrite OBJ VRAM
+	; picture off (forced blank or brightness 0): loads may rewrite VRAM
 	SEP #$20
 	LDA $E6
 	BMI .blank
@@ -369,6 +371,7 @@ fz_session:
 	TSB !fz_tflags
 	REP #$20
 	JSR fz_spr_invalidate
+	JSR fz_vista_invalidate
 	BRA .map
 .lit
 	LDA.b #!FZT_FORCED
@@ -383,14 +386,8 @@ fz_session:
 	SEP #$20
 	STA !fz_mapflag
 	REP #$20
-	LDA !fz_wasidle
-	AND.w #!FZI_SRAM
-	BEQ +
-	SEP #$20
-	LDA.b #0
-	STA.l !fzt_up                     ; a new map's tiles: the vista uploads again
-	REP #$20
-+	JSR fz_spr_invalidate
+	JSR fz_vista_invalidate           ; a new map's tiles: the vista uploads again
+	JSR fz_spr_invalidate
 	LDA.l !core_frame
 	STA !fz_room_since
 	LDA.w #!FZFL_OFFERED
@@ -603,15 +600,28 @@ fz_story_hint_now:
 ; Story-level per-frame work (tick() before the scene branch).
 fz_story_tick:
 	JSR fz_story_permanent
-	; forced-blank establishing cues
+	; establishing cues while the new map's picture is not up: forced blank,
+	; or (the Tree) the first two field frames on the map
 	LDA !fz_tflags
 	AND.w #!FZT_FORCED
-	BEQ .hint
+	BNE +
+	LDA $DC
+	CMP.w #236
+	BNE .hint
 	JSR fz_scene_kind
+	BNE .hint
+	LDA.l !core_frame
+	SEC
+	SBC !fz_room_since
+	CMP.w #2
+	BCC .tree
+	BRA .hint
++	JSR fz_scene_kind
 	BNE .hint
 	LDA $DC
 	CMP.w #236
 	BNE +
+.tree
 	JSR fz_needs_tree
 	BCC .hint
 	LDA.w #!FZS_TREE_ESTABLISH
