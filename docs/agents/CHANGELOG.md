@@ -4,6 +4,17 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## 0.2.5 social teaser preparation (2026-10-18)
+
+- Capture six spoiler-free gameplay techniques with synchronized game audio
+  and compose a 24.65-second square teaser with captions and a play link.
+- Prepare a Twitter draft linking the browser game and 0.2.5 downloads.
+  Keep the MP4, thumbnail, draft and raw capture output outside Git; nothing
+  is posted or uploaded by this workflow.
+- Validate the action and map checks, all 1,479 decoded video frames, stereo
+  AAC audio, safe audio peaks and the final framing. Reproduction notes are
+  in [public media](readme-media.md#025-social-teaser).
+
 ## SNES port merged into main (2026-10-18)
 
 - Bring the standalone cartridge source, build tools, tests and IPS packager

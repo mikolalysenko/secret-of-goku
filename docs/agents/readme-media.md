@@ -41,3 +41,47 @@ Use `--url http://127.0.0.1:PORT/` for another local server or `--fixture /path/
 ## Teaser
 
 The published teaser supplied by the maintainer is [Secret of Goku on YouTube](https://www.youtube.com/watch?v=5lp2piNqMsg). Both README teaser links point to this video.
+
+## 0.2.5 social teaser
+
+`scripts/capture-teaser.mjs` records a 24.65-second, spoiler-free social cut:
+punches on the forest trail, cliff flight, ki blasts, Instant Transmission,
+waterfall focus and a full Kamehameha, followed by a 3.4-second play card.
+It uses the six ordinary areas from the README capture, real controls and
+base-form Goku. The captured browser runtime and assets match `v0.2.5`;
+this video promotes the browser/desktop release, whose version is separate
+from the standalone SNES preview.
+
+```sh
+PORT=5187 node scripts/serve.mjs
+# In another terminal:
+node scripts/capture-teaser.mjs
+# Re-edit the captured frames without playing the scenes again:
+node scripts/capture-teaser.mjs --render-only
+```
+
+The default private output is `.local/teaser-0.2.5/`. `--out`, `--url`,
+`--fixture` and `--version` override the corresponding inputs; capture
+rejects a version label that differs from `package.json`. `--capture-only`
+records without composing. Chrome, ffmpeg and the same private solo fixture
+as the README capture are required. Captions use local system fonts.
+
+Every emulated frame is captured and played once at 60 fps, without speed-up
+or interpolated frames. Native DSP samples, effects and speech share that
+frame clock through an offline audio context; this is promotional footage,
+not a real-time performance benchmark. The chant finishes before release,
+and the final scene's music continues under the end card. The export uses
+H.264/yuv420p and stereo AAC in a fast-start 1080×1080 MP4, following
+[X's media encoding guidance](https://help.x.com/en/using-x/media-studio-faqs).
+
+The first export has 1,479 video frames, 24.65 seconds of video and 24.647
+seconds of audio, and is about 5.4 MB. Verification covered all six expected
+techniques, stable map IDs, loaded sampled effects, no JavaScript errors,
+decoded frame count, audio peaks and visual review of action frames and the
+end card. The decoded audio's true peak is −2.93 dBTP.
+
+The prepared MP4, thumbnail and `twitter-post.txt` are copied to ignored
+`release/social/0.2.5/` for the maintainer. The draft includes the public play
+URL and `v0.2.5` release URL. Preparing these files does not publish a post,
+upload a video or replace the README's existing YouTube link. Raw frames,
+audio, contact sheets and capture proof stay private and out of Git.
