@@ -5,6 +5,8 @@
 ; Contracts: docs/agents/snes-rom.md (core API) and
 ; docs/agents/snes-port/engine.md (what the game is doing at each hook).
 
+!DOOR_RECORD_HOOK = frieza_door_record   ; destroy's door record (C1:E7DF) -> door 3FC beside the Emperor
+
 ; incsrc "modules/<name>/module.asm"
 incsrc "modules/goku/module.asm"
 incsrc "modules/fx/module.asm"         ; before its clients (they use the !FX_* defines)
@@ -15,6 +17,7 @@ incsrc "modules/ui/module.asm"
 incsrc "modules/debug/module.asm"
 incsrc "modules/destroy/module.asm"
 incsrc "modules/ending/module.asm"
+incsrc "modules/frieza/module.asm"         ; before combat (combat reads its !COMBAT_HOOK_DAMAGE)
 incsrc "modules/combat/module.asm"
 incsrc "modules/vegeta/module.asm"
 incsrc "modules/audio/module.asm"           ; after the modules whose sound flags it reads
@@ -30,6 +33,7 @@ modules_field_frame:
 	JSL combat_field_frame     ; before goku: poses and form apply this frame
 	JSL ui_field_frame
 	JSL world_field_frame
+	JSL frieza_field_frame
 	JSL vegeta_field_frame
 	JSL goku_frame
 	JSL destroy_field_frame          ; last: its planner uses the frame time left
@@ -42,6 +46,7 @@ modules_field_nmi:
 	JSL ui_field_nmi                  ; channels 0/1 for a moved native window; re-arms channel 5 after the game's DMA on 4-7
 	JSL destroy_field_nmi            ; first: switches the breach's HDMA on while vblank lasts
 	JSL goku_nmi
+	JSL frieza_field_nmi
 	JSL vegeta_nmi
 	JSL ending_nmi
 	JSL fx_nmi                 ; keep last: programs HDMA channels 2/3 after all vblank DMA
@@ -88,6 +93,7 @@ modules_ring_frame:
 modules_title_boot:
 	JSL title_title_boot
 	JSL debug_title_boot
+	JSL frieza_title_boot
 	JSL world_title_boot
 	JSL fx_title_boot
 	JSL ui_title_boot
@@ -101,6 +107,7 @@ modules_load:
 	JSL title_load
 	JSL combat_load
 	JSL story_load
+	JSL frieza_load
 	JSL ui_load
 	JSL destroy_reset
 	JSL vegeta_reset
@@ -110,6 +117,7 @@ modules_new_game:
 	JSL title_new_game
 	JSL combat_new_game
 	JSL story_new_game
+	JSL frieza_new_game
 	JSL ui_new_game
 	JSL debug_new_game
 	JSL destroy_reset
@@ -117,6 +125,8 @@ modules_new_game:
 	RTL
 pullpc
 
+; Frieza bindings to optional modules (after every module's defines).
+incsrc "modules/frieza/bind.asm"
 ; Combat bindings to optional modules: after every module include (its
 ; defined() checks see them), before the story tables.
 incsrc "modules/combat/bind.asm"
