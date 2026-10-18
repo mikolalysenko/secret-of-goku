@@ -26,18 +26,22 @@ port of `GokuAnimation.pose()` and is checked frame by frame against it
 | ROM `$F8-$FA` | 4,837 de-duplicated 8×8 4bpp tiles (151 KiB). `$FB` of the F8–FB reservation is still free |
 | WRAM `$7E:D740-$7E:D7FF` | `!RAM_GOKU`, all $C0 bytes (fields below). Full-screen menus keep their state in the field's scratch `pal_work` (`$7E:D7D0-D7EF`); a menu session restarts whenever another mode ran in between (`!core_tick`) |
 | VRAM | OBJ tiles `C0-C7`/`D0-D7` of name table 1 (word `$7C00/$7D00`, the boy's own cells; claimed as core region `!VRAM_FIELD_HERO` with owner `$01`), HUD portrait `E8/E9/F8/F9` (word `$7E80/$7F80`), ring marker `0A/0B/1A/1B` of name table 1 (word `$70A0/$71A0`, the boy's marker, rewritten when a ring opens). Full-screen menus: OBJ name table 2 (base `$4000` + `$1000`) tiles `C0-C9/D0-D9` and `E0-E7/F0-F7` (word `$5C00-$5F7F`): the idle and blink cells and the GAME FILE face. No menu screen uses that area (surveyed: Status, Action Grid, Controller/Window Edit, Weapon Skill, game select, GAME FILE load/save, save confirmation) and the field reloads it on return |
-| CGRAM | The boy's OBJ palette through the game's buffer `$7E:0600`: palette 1, or palette 5 on water maps (the slot his body descriptor uses). Menus: OBJ palette 1 directly (the boy's colours there, `C8:1F00`) |
+| CGRAM | The boy's OBJ palette through the game's buffer `$7E:0600`: palette 1, or palette 5 on water maps (the slot his body descriptor uses); during a native flash in a scene cell also its copy in `$7E:BE00` (colours 2-15). Menus: OBJ palette 1 directly (the boy's colours there, `C8:1F00`) |
 | OAM | The boy's body entries are replaced in place by up to four 16×16 OBJ (empty quadrants are skipped), or one for the miniature. Menus: the PPU's OAM directly, after the menu's own upload: the boy's eight figure entries moved off screen, entries 120-123 Goku's figure, 124-127 the GAME FILE faces (only when the menu leaves 120-127 unused) |
 | DMA | In `modules_field_nmi`: channels 4-7 (one cell, 16 tiles = 512 B, only when it changed or on the game's 5-frame party refresh; skipped while `core_vblank_lines` < 6) and channel 7 for the HUD portrait (128 B). Ring set-up: channel 5 (128 B) right after the game's own marker uploads on that channel (measured: the whole set-up ends by scanline 249). Menus: channels 4-7 for the two cells (512 B each, one per frame, when 14+ lines remain) and 7 for the face (128 B), only when the menu runs no HDMA there (`$2C`) |
 | SRAM | None written. Test builds only (`-DGOKU_TRACE`): a 27-byte trace at `$7E:7F00` |
 
-Measured cost (Potos walk, `snes/test/goku/budget.lua`): frame logic ends
-about 17 scanlines later at p90 (median +23), no added lag frames; the NMI
-work ends by scanline 261 at worst. Main-thread work is ~3,600 CPU cycles a
-frame (pose ~1,570, OAM ~990, palette ~730 with its no-change fast path).
+Measured cost (Potos walk, `snes/test/goku/budget.lua`, Goku on against
+off; "on" includes combat, which runs while Goku is active): p90 frame-logic
+end +22 lines on the FastROM default (limit 24), +26 with `-DCORE_SLOWROM=1`
+(limit 30); no added lag frames; NMI work ends by scanline 259 (FastROM) /
+260 (SlowROM). Goku's own main-thread work was ~3,600 CPU cycles a frame on
+SlowROM (pose ~1,570, OAM ~990, palette ~730 with its no-change fast path);
+module code runs 25% faster on FastROM.
 Menus (`menu.lua`, `file.lua`): the hook starts at scanline ~229 and ends by
-241-245 on average, 256 at worst (the two upload frames); it skips work
-when fewer than 16 lines are left and re-checks before each PPU write.
+238-241 on average, 255 at worst (the two upload frames) on FastROM (241-245
+and 256 on SlowROM); it skips work when fewer than 16 lines are left and
+re-checks before each PPU write.
 
 ## Original code patched
 
@@ -100,6 +104,20 @@ replacement), `modules_field_nmi` → `goku_nmi` (uploads), `modules_menu_frame`
   Goku's palette only when the game wrote something, the displayed cell's
   palette id or the petrify bit changed. Replacement ending restores the
   game's values.
+- **Native flash**: while `$2A` is set the field NMI uploads `7E:BE00`, which
+  the flash (`C2:C820`, in the frame logic) rebuilds from `0600` every frame
+  with a brightness offset (OBJ palettes too while bit 6 is set), Goku's
+  slot included. On the field that matches the browser, whose `tint()`
+  follows the CGRAM flash; its scene renderers (`arrival.drawScene`, the
+  Frieza scenes) draw Goku unflashed. So while a scene shows an explicit
+  cell (`!goku_cell_req`, e.g. the arrival's hop) `goku_palette_unflash`
+  puts his colours 2-15 back into the BE00 copy of his slot. Entry 1, every
+  actor's shadow, keeps the flash (Goku's cells use it for only 50 of
+  ~159,000 pixels). Title's arrival comparison against the browser, main ->
+  this change: impact-060 3.07% -> 0.27%, the settled impact-120/130 0.81%
+  -> 0.16%, dialogue-030 0.59% -> 0.22%, ghost-005 0.68% -> 0.66%; no frame
+  worse (single runs; the impact frames vary a little between runs).
+  Unflashing in every flash frame instead made ghost and dialogue worse.
 - **Uploads** (`upload.asm`): see Resources. When replacement ends (snowman,
   moogle, `GOKU_CTL_SUPPRESS`, flag cleared) the boy's own tiles are
   re-uploaded from the game's `$0C00` table that very vblank.
@@ -224,13 +242,18 @@ transition palettes follow the browser's `transform` clip).
   ready, focus, transform, revert, deflect, resist, hover, gap flight,
   ceiling escape, takeoff and landing, both forms, replayed the same way:
   **1,716 / 1,716 frames agree**.
-- `ring`: weapon ring opened from Potos (X); VRAM `0A/0B/1A/1B` equal the
+- Inputs are what a player presses with combat's controls (`combat.md`,
+  as the browser mod): X opens the controlled character's ring (native Y),
+  Select hands control to the next character, B confirms in rings and menus.
+- `ring`: Primm's weapon ring opened from Potos (Select, X); VRAM `0A/0B/1A/1B` equal the
   marker tiles in ROM for both forms, the girl's (`0C`) and sprite's (`0E`)
   markers equal `D2:C680`'s, and with the flag cleared the boy's marker is
   native again; screenshots once the marker OBJ has come to rest.
 - `field` also swings the native weapon (`emulator-probe__weapon-test`, B):
   the boy draws his sword cells, Goku none.
-- `menu`: Status (both forms) and the Action Grid (moved with the pad):
+- `menu`: Status (both forms) and the Action Grid (moved with the pad),
+  opened from Goku's own ring (X; his ring opens on the config ring, the
+  native boy's on his weapon ring):
   the boy's entries hidden in OAM but kept in the buffer, Goku's four
   quadrants at (x - 8, y) with the figure's priority, idle and blink cells
   in VRAM byte for byte, palette 1 = the form's; the blink shows for 5
@@ -245,7 +268,24 @@ transition palettes follow the browser's `transform` clip).
   figures at the same position with the same sheet/cell, and the figures
   and the GAME FILE face align pixel for pixel (best shift 0,0); side by
   side in `.local/snes-test/goku/menu-compare.png`.
-- `budget`: frame-logic end and NMI end with Goku off and on.
+- `status` also checks a native flash (`arrival-research__browser-ghost`,
+  `$2A` set): on the field Goku's colours follow the flash; with a scene
+  cell requested they are unflashed in his palette slot; the shadow colour
+  stays flashed.
+- `budget`: frame-logic end and NMI end with Goku off and on; limits per
+  build (read from the header's map mode).
+- Builds: the suite runs the FastROM default; `--slowrom` builds both ROMs
+  with `-DCORE_SLOWROM=1` (outputs in `.local/snes-test/goku-slowrom/`).
+  After each state import the tests set MEMSEL again (bundles come from
+  the SlowROM original); the core also sets it every frame.
+- Field reference: the reference harness runs the bare original game, which
+  reads the pad one frame later than the cartridge's pad path (core filter
+  and combat), and it poses Goku at the start of a frame from the previous
+  frame's state; `run.mjs` feeds it each input one frame early and samples
+  it one frame later. The native positions then agree at every sample and
+  30/42 poses match; the rest are the first walk, whose first two moving
+  frames the reference still counts as idle (its cycle trails by one step),
+  while every later walk, push and idle sample agrees.
 
 ## Remaining work
 
@@ -266,18 +306,16 @@ transition palettes follow the browser's `transform` clip).
 
 - More WRAM would let the palette tracker keep a separate copy for palette 5
   (now it follows one slot at a time) and drop some shared scratch.
-- The module would run ~25% faster under the core's `CORE_FASTROM` option
-  ([engine notes](engine.md#fastrom)); worth enabling if the combined module
-  budget gets tight.
 - Test builds (`-DGOKU_TRACE`) write a 27-byte trace to `$7E:7F00`
   (`!RAM_SPARE`); release builds never touch it.
 - `snes/test/goku/actions.lua` writes a test event into its own Mesen copy
   of the ROM (`$E1:7F00`); a sanctioned scratch-event area in the core's
   test build would be tidier.
-- Harness: after a soft reset (`emu.reset()`), or after about four
-  `H.importSnesJs` imports in one Mesen session, an imported state's sound
-  CPU stops answering and the game waits in its driver handshake (`C3:05D3`,
-  `$2140-$2143` read 0) the first time it plays a sound (e.g. answering
-  "Save your game?"). `file.lua` and `load.lua` therefore run separately
-  with one import / one reset each. Restoring the SPC fully on import (or a
-  clean savestate load before each import) would remove the limit.
+- Harness: reading emulator memory while a test script loads (outside the
+  test coroutine) stalls Mesen's test runner before the test starts; the
+  GOKU helpers read the header lazily. A note in the harness would save
+  others the hunt.
+- Harness: `file.lua` and `load.lua` run separately (one import, one reset)
+  because the sound CPU used to stop answering after several imports or a
+  reset in one session (`C3:05D3`); the two-phase import should have fixed
+  this, but the split is kept.
