@@ -43,7 +43,7 @@ core_vram_claim:
 	ASL
 	PHX
 	TAX
-	LDA.w !core_vram_owner&$FFFF,X
+	LDA.l !core_vram_owner,X
 	BEQ .take
 	CMP $01,S
 	BEQ .mine
@@ -53,7 +53,7 @@ core_vram_claim:
 	RTL
 .take
 	LDA $01,S
-	STA.w !core_vram_owner&$FFFF,X
+	STA.l !core_vram_owner,X
 .mine
 	LDA.l core_vram_base,X
 	TAY
@@ -67,11 +67,56 @@ core_vram_release:
 	ASL
 	PHX
 	TAX
-	LDA.w !core_vram_owner&$FFFF,X
+	LDA.l !core_vram_owner,X
 	CMP $01,S
 	BNE .notMine
-	STZ.w !core_vram_owner&$FFFF,X
+	PHA
+	LDA.w #$0000
+	STA.l !core_vram_owner,X
+	PLA
 .notMine
 	PLX
 .done
+	RTL
+
+; ---------------------------------------------------------------------------
+; Scene work area (!SRAM_WORK_SCENE, $32:6000-7FFF): one set piece at a time
+; (Frieza, orbit, endings, Vegeta's trial, the Sandship). A module claims it
+; before its scene first writes there and releases it when the scene ends;
+; the claim is cleared at power-on and title entry. Owner ids: !SCENE_*
+; (core/shared.asm).
+; core_scene_claim:   A16 = owner id. Carry set if another owner holds it.
+; core_scene_release: A16 = owner id; frees the area if that owner holds it.
+; core_scene_owner:   returns A16 = the current owner (0 = free).
+; Any DB, M16/X16; X and Y kept.
+core_scene_claim:
+	PHA
+	LDA.l !core_scene_owner
+	BEQ .take
+	CMP $01,S
+	BEQ .mine
+	PLA
+	SEC
+	RTL
+.take
+	LDA $01,S
+	STA.l !core_scene_owner
+.mine
+	PLA
+	CLC
+	RTL
+
+core_scene_release:
+	PHA
+	LDA.l !core_scene_owner
+	CMP $01,S
+	BNE .notMine
+	LDA.w #$0000
+	STA.l !core_scene_owner
+.notMine
+	PLA
+	RTL
+
+core_scene_owner:
+	LDA.l !core_scene_owner
 	RTL

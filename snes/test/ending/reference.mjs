@@ -182,6 +182,29 @@ export async function planetReference({rom,phase,age,night=true,ssj=false,fatal=
   for(let y=0;y<224;y++)for(let x=0;x<256;x++){const c=ppu.getColor(0,x,y)[0],i=(y*256+x)*4;out[i]=(c&31)<<3|(c&31)>>2;out[i+1]=(c>>5&31)<<3|(c>>5&31)>>2;out[i+2]=(c>>10&31)<<3|(c>>10&31)>>2;out[i+3]=255;}
   return out;
 }
+// planet-view.js itself with a shot (world-ki.js cutaway): the Fortress
+// cutaway's whole picture at age, for the given target and crisis.
+let cutView=null;
+export async function cutawayReference({rom,age,target={x:2432,y:3024},night=false}){
+  if(!cutView){
+    const {createPlanetView}=await engine('planet-view.js');
+    const {createNativeEffects}=await engine('native-effects.js');
+    const a=await loadKaiArt();
+    const ppu={getColor:()=>[0,5,0]},shot={age:0,max:186,target,mega:true};
+    const mod={options:{enabled:true},gokuActive:true,frame:0,frieza:{crisisActive:false,permanent:false},
+      worldKi:{get cinematic(){return shot;}},ending:null,
+      read8:()=>0,read16:()=>0,nativeField:true,
+      spriteLayer:{effects:createNativeEffects(rom,JSON.parse(readFileSync(join(repo,'engine/native-effects.json'),'utf8'))),atlas:{goku:a.goku,ssj:a.ssj}}};
+    const view=createPlanetView({ppu,cart:{data:rom},ram:new Uint8Array(0x20000)},mod);view.load(rom);
+    cutView={ppu,shot,mod};
+  }
+  const {ppu,shot,mod}=cutView;
+  Object.assign(shot,{age,target});mod.frieza.crisisActive=night;mod.frame++;
+  const out=new Uint8Array(256*224*4);
+  for(let y=0;y<224;y++)for(let x=0;x<256;x++){const c=ppu.getColor(0,x,y)[0],i=(y*256+x)*4;out[i]=(c&31)<<3|(c&31)>>2;out[i+1]=(c>>5&31)<<3|(c>>5&31)>>2;out[i+2]=(c>>10&31)<<3|(c>>10&31)>>2;out[i+3]=255;}
+  return out;
+}
+
 // Best match among the browser ages a-spread..a+spread around the still's
 // recorded age: {score, age, ref}.
 export async function bestPlanetMatch(pngPath,opts,age,{tol=24,rect=null,spread=1}={}){

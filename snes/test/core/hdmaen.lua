@@ -1,7 +1,7 @@
 -- HDMAEN guard (core_hdmaen_write): a channel switched on in a vblank that
 -- ran into the next frame's display would run from stale table pointers, so
 -- the core keeps only channels already running; on time, it is written as is.
-local HDMAEN = CORE_EXT + 0x180
+local HDMAEN = CORE_SAFE + 0x16
 local function on7() return (H.r8(HDMAEN) & 0x80) ~= 0 end
 function test()
   H.wait(4)

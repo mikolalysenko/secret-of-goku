@@ -4,6 +4,9 @@
 // formulas (engine/kai-planet.js, planet-view.js, planet-fragments.js,
 // mana-tree-vista.js, wish-flight.js, native-radio.js), then converted to
 // SNES tiles. Output: dist/snes/gen/ending/ending_data.asm (+ .bin files).
+// Blobs the CPU reads (tables, block-move sources) stay in the module's fast
+// data banks; everything only DMA or HDMA reads goes to extended data
+// (ExHiROM banks $40-$7D, ctx.xdata), named ending_<blob> there too.
 import {createHash} from 'node:crypto';
 import {readFileSync,writeFileSync,existsSync,mkdirSync} from 'node:fs';
 import {join,dirname} from 'node:path';
@@ -22,10 +25,15 @@ function radioCard(rom,radioPixels,text,x0,y0,paletteBase,tileBase){
 }
 
 const here=dirname(fileURLToPath(import.meta.url));
-const VERSION=5;
-// Data banks for the ending (lower halves): its own data bank and the spare
-// code banks' lower halves assigned by the integrator.
-export const DATA_BANKS=[0xE9,0xEC,0xED,0xEE,0xEF];
+const VERSION=7;
+// Fast data banks for the ending (lower halves): its own data bank and the
+// spare code banks' lower halves assigned by the integrator. ED:0000 holds
+// the module's second code area (module.asm), so it is not packed here.
+export const DATA_BANKS=[0xE9,0xEC,0xEE,0xEF];
+// Blobs the CPU reads in its loops (long,X or block moves into palettes):
+// these stay in fast ROM. All others are DMA/HDMA sources: extended data.
+const FAST_BLOBS=new Set(['fade_words','space_frag_oam','space_crack_events','space_spark_oam','space_win_ta',
+  'flight_pose','flight_t12','flight_turn','flight_stars','flight_ring']);
 
 const hex=(n,w=2)=>n.toString(16).toUpperCase().padStart(w,'0');
 
@@ -451,6 +459,11 @@ async function spaceAssets(o,{rom,repo}){
   ]));
   o.stats.space={stars:S,night:ng0.tileCount,day:dg.tileCount,card:cd.tileCount,twinkleTiles:twTiles.length,bgTiles:twBase+twTiles.length,pieces:fr.pieces.length,sprites:sprites.length,objTiles:top,load:fr.load,winData:winData.length,
     sparksDropped:budget.keep.reduce((a,m)=>a+sp.SPARKS-m.toString(2).split('').filter(c=>c==='1').length,0)};
+  // What the Fortress cutaway shares with the space stage.
+  const globeMask=new Uint8Array(256*224),day=sp.planetSurface(rom,{night:false});
+  for(let i=0;i<globeMask.length;i++)globeMask[i]=day[i]?1:0;
+  return {S,stars,starMap:st.map,globeMask,pal7,blue,
+    globePals:{day:dg.palettes.flat().map(c=>c&0x7fff),night:ng0.palettes.flat().map(c=>c&0x7fff)}};
 }
 // makeBgFit for a full picture with the space conventions: palettes 1-6.
 function makeBgFitTiles(img,{tileBase,colors,unique=null}){
@@ -496,29 +509,49 @@ function pack(o){
 function inputsHash(repo,rom){
   const h=createHash('sha256');
   h.update(String(VERSION));
-  for(const f of ['snes/gen/ending.mjs','snes/gen/ending-art.mjs','snes/gen/ending-space.mjs','engine/planet-view.js','engine/planet-fragments.js','engine/native-effects.js','engine/native-effects.json','engine/ending-departure.js','snes/gen/ending-vista.mjs','snes/gen/ending-flight.mjs','engine/wish-flight.js','engine/orbit-pixels.js','engine/world-texture.js','engine/mana-tree-vista.js','engine/cinematic-map.js','tools/rom/map-codec.mjs','assets/sprites/shenron.png','assets/sprites/dragon-balls.png','snes/tools/gfx.mjs','assets/sprites/kai-planet.png','assets/sprites/kai-npcs.png','engine/kai-planet.js','engine/native-radio.js'])
+  for(const f of ['snes/gen/ending.mjs','snes/gen/ending-art.mjs','snes/gen/ending-space.mjs','engine/planet-view.js','engine/planet-fragments.js','engine/native-effects.js','engine/native-effects.json','engine/ending-departure.js','snes/gen/ending-vista.mjs','snes/gen/ending-flight.mjs','snes/gen/ending-cutaway.mjs','engine/wish-flight.js','engine/orbit-pixels.js','engine/world-texture.js','engine/mana-tree-vista.js','engine/cinematic-map.js','tools/rom/map-codec.mjs','assets/sprites/shenron.png','assets/sprites/dragon-balls.png','snes/tools/gfx.mjs','assets/sprites/kai-planet.png','assets/sprites/kai-npcs.png','engine/kai-planet.js','engine/native-radio.js'])
     h.update(readFileSync(join(repo,f)));
   h.update(rom);
   return h.digest('hex');
 }
 
-export async function generate({rom,repo,outDir}){
-  const hash=inputsHash(repo,rom),stamp=join(outDir,'stamp.txt');
-  if(existsSync(stamp)&&readFileSync(stamp,'utf8')===hash&&existsSync(join(outDir,'ending_data.asm')))return;
+// Extended data is registered on every build (the build places it afresh),
+// from the cached .bin files when the generator's inputs are unchanged.
+function registerXdata(outDir,names,xdata){
+  if(!xdata)throw Error('ending: the build has no extended data (ExHiROM) support');
+  for(const name of names)xdata(`ending_${name}`,readFileSync(join(outDir,`${name}.bin`)));
+}
+
+export async function generate({rom,repo,outDir,xdata}){
+  const hash=inputsHash(repo,rom),stamp=join(outDir,'stamp.txt'),manifest=join(outDir,'xdata.json');
+  if(existsSync(stamp)&&readFileSync(stamp,'utf8')===hash&&existsSync(join(outDir,'ending_data.asm'))&&existsSync(manifest)){
+    registerXdata(outDir,JSON.parse(readFileSync(manifest,'utf8')),xdata);
+    return;
+  }
   const o=new Out();o.stats={};
   fadeTables(o);
   await kaiAssets(o,{rom,repo});
-  await spaceAssets(o,{rom,repo});
+  const space=await spaceAssets(o,{rom,repo});
+  o.cut=new Out();
+  const {cutawayAssets}=await import('./ending-cutaway.mjs');
+  cutawayAssets(o,{gfx,u16bytes,xblob:(n,d)=>o.blob(n,d),space});
   await departAssets(o,{rom,repo});
   const {vistaAssets}=await import('./ending-vista.mjs');
   await vistaAssets(o,{rom,repo,engine});
   const {flightAssets}=await import('./ending-flight.mjs');
   await flightAssets(o,{rom,repo,engine});
-  const bins=pack(o);
+  const fast=o.blobs.filter(b=>FAST_BLOBS.has(b.name)),ext=o.blobs.filter(b=>!FAST_BLOBS.has(b.name));
+  const bins=pack({blobs:fast});
   mkdirSync(outDir,{recursive:true});
   const asm=['; Generated by snes/gen/ending.mjs. Do not edit.'];
   asm.push(...o.lines.filter(l=>l.startsWith('!')));
   for(const b of o.blobs)asm.push(`!ENDING_${b.name.toUpperCase()}_SIZE = $${hex(b.data.length,4)}`);
+  // DMA/HDMA sources in extended data (dist/snes/gen/xdata.asm, included
+  // before the modules, defines !XDATA_ENDING_<NAME>).
+  for(const b of ext){
+    writeFileSync(join(outDir,`${b.name}.bin`),b.data);
+    asm.push(`ending_${b.name} = !XDATA_ENDING_${b.name.toUpperCase()}`);
+  }
   asm.push('pushpc');
   for(const bin of bins){
     if(!bin.items.length)continue;
@@ -533,6 +566,12 @@ export async function generate({rom,repo,outDir}){
   writeFileSync(join(outDir,'ending_data.asm'),asm.join('\n')+'\n');
   // Tables (palettes, small descriptors) are included in the code bank.
   writeFileSync(join(outDir,'ending_tables.asm'),['; Generated by snes/gen/ending.mjs. Do not edit.',...o.lines.filter(l=>!l.startsWith('!'))].join('\n')+'\n');
-  writeFileSync(join(outDir,'stats.json'),JSON.stringify({stats:o.stats,banks:bins.map(b=>({bank:hex(b.bank),used:b.used,items:b.items.map(i=>`${i.name}:${i.data.length}`)}))},null,1));
+  // The cutaway's defines and per-age tables (the second code area).
+  writeFileSync(join(outDir,'ending_cut_defs.asm'),['; Generated by snes/gen/ending.mjs. Do not edit.',...o.cut.lines.filter(l=>l.startsWith('!'))].join('\n')+'\n');
+  writeFileSync(join(outDir,'ending_cut_tables.asm'),['; Generated by snes/gen/ending.mjs. Do not edit.',...o.cut.lines.filter(l=>!l.startsWith('!'))].join('\n')+'\n');
+  writeFileSync(join(outDir,'stats.json'),JSON.stringify({stats:o.stats,banks:bins.map(b=>({bank:hex(b.bank),used:b.used,items:b.items.map(i=>`${i.name}:${i.data.length}`)})),
+    xdata:ext.map(b=>`${b.name}:${b.data.length}`)},null,1));
+  writeFileSync(manifest,JSON.stringify(ext.map(b=>b.name)));
+  registerXdata(outDir,ext.map(b=>b.name),xdata);
   writeFileSync(stamp,hash);
 }

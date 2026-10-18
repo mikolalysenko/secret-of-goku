@@ -28,9 +28,14 @@ function E.waitLoaded(name, frames)
     return H.r8(E.phase) == p and (H.r8(E.status) & 0x80) == 0 and H.r16(E.age) >= 1
   end, frames or 120)
 end
+-- The finale's states all have Goku: the persistent live block's active
+-- flag lives in battery SRAM, which other suites' runs can leave cleared
+-- (Mesen keeps one battery file per ROM name), and story's object-list
+-- hooks only run with it set.
 function E.import(bundle)
   H.wait(20)
   H.importSnesJs('/Users/mikolalysenko/Projects/secret-of-goku/.local/snes-import/' .. bundle)
+  H.w8(0x316001, 1)
   H.wait(3)
 end
 
@@ -57,6 +62,25 @@ function E.watchVblank(slack)
 end
 -- Arm only while the scene is visible (not loading).
 function E.arm(on) E.watchArmed = on end
+
+-- Calls into the audio module (run.mjs passes AUDIO_SFX / AUDIO_FADE, the
+-- entry addresses): 'sfx<id>@<age>' and 'fade<byte>@<age>' while armed.
+E.audio = {}
+E.audioArmed = false
+function E.watchAudio()
+  local function hook(addr, kind, fmt)
+    if not addr then return end
+    emu.addMemoryCallback(function()
+      if E.audioArmed and #E.audio < 64 then
+        E.audio[#E.audio + 1] = string.format(fmt, emu.getState()['cpu.a'] & 0xFF, H.r16(E.age))
+      end
+    end, emu.callbackType.exec, addr, addr)
+  end
+  hook(AUDIO_SFX, 'sfx', 'sfx%d@%d')
+  hook(AUDIO_FADE, 'fade', 'fade%02X@%d')
+  E.audioArmed = true
+end
+function E.audioResult() H.result('audio', table.concat(E.audio, ' ')) end
 
 -- A still of scene age (now - SHOT_LAG), recorded under its name.
 function E.shot(name)

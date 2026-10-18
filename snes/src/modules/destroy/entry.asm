@@ -17,7 +17,40 @@ destroy_field_frame:
 	JSR dst_walls_work
 	JSR dst_barrier_tick
 	JSR dst_orb_tick
+	JSR dst_hit_continue
+	JSR ss_frame
 	RTL
+
+; A beam's band or barrier box left for later (dst_step_next) that no
+; destroy_hit call worked on this frame: continue them from the saved
+; arguments. Dropped when the field stops being idle (an event, a menu: the
+; beam ended).
+dst_hit_continue:
+	LDA.l !hp_id : BNE +
+	RTS
++	LDA.l !hp_frame : CMP.w !FRAME : BNE +
+	RTS
++	JSR dst_ground_ok : BCS +
+	LDA.w #0 : STA.l !hp_id : STA.l !hp_left
+	RTS
++	LDA.w !FRAME : STA.l !hp_frame
+	JSR dst_vline : STA.l !cl_t0
+	LDA.l !hp_id : STA.w !arg_id
+	LDA.l !hp_x : STA.w !arg_x
+	LDA.l !hp_y : STA.w !arg_y
+	LDA.l !hp_dir : STA.w !arg_dir
+	LDA.l !hp_len : STA.w !arg_len
+	LDA.l !hp_half : STA.w !arg_half
+	LDA.l !hp_taper : STA.w !arg_taper
+	LDA.l !hp_kind : STA.w !arg_kind
+	LDA.l !hp_str : STA.w !arg_str
+	LDA.l !hp_layer : STA.w !arg_layer
+	STZ.w !d_flags
+	LDA.l !hp_left : AND.w #1 : BEQ +
+	JSR dst_scan_attack
++	LDA.l !hp_left : AND.w #2 : BEQ +
+	JSR dst_barrier_hit
++	RTS
 
 ; ---------------------------------------------------------------------------
 ; destroy_hit (JSL): one attack against the map. Arguments in !arg_*.
@@ -37,6 +70,9 @@ destroy_hit:
 	JSR dst_ground_ok
 	BCC .done
 	LDA.w !arg_kind : CMP.w #1 : BEQ .done
+	JSR ss_hit                   ; the Sandship breakout wave
+	LDA.w !FRAME : STA.l !hp_frame
+	JSR dst_vline : STA.l !cl_t0 ; the growth steps' time span starts
 	JSR dst_scan_attack          ; plants, objects, braziers, wall candidates
 	JSR dst_barrier_hit          ; gates, locks, hit/floor switches
 .done
@@ -102,6 +138,8 @@ dst_sync_map:
 -	STA.l !DW,X                        ; !DW, !NTO, !PL, !DH ($80 bytes)
 	DEX : DEX : BPL -
 	STA.l !FX_SEQ : STA.l !FX_KIND : STA.l !FX_X : STA.l !FX_Y
+	STA.l !ss_vis : STA.l !ss_work          ; the Sandship work restarts in its window
+	STA.l !hp_id : STA.l !hp_left
 	LDA.w #$D5A1 : STA.w !m_init
 	LDA.w #$FFFF : STA.w !d_map
 .inited
@@ -121,6 +159,8 @@ dst_sync_map:
 	STA.l !pl_stage
 	STA.l !pl_wait
 	STA.l !bb_id                       ; no beam's searched extent carries over
+	STA.l !hp_id                       ; nor a beam's band left for later
+	STA.l !hp_left
 	LDA.w #$FFFF : STA.w !d_last
 	JSR dst_run_fail_clear
 	JSR dst_classes_reset
@@ -170,7 +210,7 @@ dst_run_event:
 	STX.w !d_t1
 	; Same idle field as core_event_pump, and no other module's request
 	; waiting there.
-	LDA.w !CORE_EVREQ : BNE .no
+	LDA.l !CORE_EVREQ : BNE .no
 	SEP #$20
 	LDA $D0 : BNE .no8
 	LDA $FF : BNE .no8
@@ -221,6 +261,14 @@ dst_run_event:
 destroy_reset:
 	REP #$30
 	STZ.w !m_init
+	RTL
+
+; destroy_title_boot (JSL, modules_title_boot): nothing of the Sandship's
+; vblank work survives a reset (the persistent block keeps its words).
+destroy_title_boot:
+	REP #$30
+	LDA.w #0
+	STA.l !ss_vis : STA.l !ss_work : STA.l !ss_own
 	RTL
 
 ; destroy_world_frame (JSL, modules_world_frame): the broken Mana Tree cloud

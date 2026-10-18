@@ -19,10 +19,10 @@
 ; E9    endings                   ending tables
 ; EA    audio                     audio tables
 ; EB    title / arrival / misc    misc tables
-; EC    UI code (upper half)        ending art (lower half)
-; ED    world-flight code (upper)     ending art (lower half)
-; EE    effects library code (upper)  ending art (lower half)
-; EF    debug scene-select code (upper) ending art (lower half)
+; EC    UI code (upper half)        ending tables (lower half)
+; ED    world-flight code (upper)     free (lower half)
+; EE    effects library code (upper)  free (lower half)
+; EF    debug scene-select code (upper) free (lower half)
 ; F0-F7 story events and dialogue (whole banks)
 ; F8-FF graphics and samples (whole banks, packed by snes/gen)
 !CODE_CORE    = $A08000
@@ -37,7 +37,7 @@
 !CODE_ENDING  = $A98000
 !CODE_AUDIO   = $AA8000
 !CODE_MISC    = $AB8000
-!CODE_UI      = $AC8000   ; UI module (upper half only; $EC-$EF lower halves hold ending art)
+!CODE_UI      = $AC8000   ; UI module (upper half only; $EC lower half holds ending tables)
 !CODE_SPARE0  = $AC8000
 !CODE_WORLD   = $AD8000   ; world-flight module (upper half only)
 !CODE_SPARE1  = $AD8000
@@ -51,7 +51,7 @@
 ; the half's owner asserts that its own code ends before the quarter. Assign
 ; one by defining !CODE_<MODULE>2 = the quarter and noting it here.
 ;   $A1:C000-FFFF  goku's half (goku code asserts <= $A1C000)   free
-;   $AA:C000-FFFF  audio's half (audio code asserts <= $AAC000) free
+;   $AA:C000-FFFF  audio's half (audio code asserts <= $AAC000) ending's second code area
 ;   $AB:C000-FFFF  title's half (title code asserts <= $ABC000) free
 !CODE_QUARTER_GOKU  = $A1C000
 !CODE_QUARTER_AUDIO = $AAC000
