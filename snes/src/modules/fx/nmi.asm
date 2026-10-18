@@ -121,8 +121,6 @@ fx_nmi_cells:
 +	SEP #$20
 	LDA.b #$80
 	STA $2115
-	LDA.b #fx_cells>>16
-	STA $4304,Y
 	REP #$20
 	LDA.w #$1801                 ; A->B, $2118/$2119
 	STA $4300,Y
@@ -130,23 +128,45 @@ fx_nmi_cells:
 .loop
 	LDA.l fx_entry_bit,X
 	AND.l !fx_cpend
-	BEQ .next
-	JSR fx_nmi_vline             ; start a cell only before line 258
+	BNE +
+	JMP .next
++	JSR fx_nmi_vline             ; start a cell only before line 258
 	CMP.w #258
-	BCS .done
-	CMP.w #225
-	BCC .done
+	BCC +
+	RTS
++	CMP.w #225
+	BCS +
+	RTS
++
 	LDA.l !fx_nmi_reg
 	TAY
 	LDA.l fx_entry_vram,X
 	STA $2116
-	LDA.l !fx_ccell,X            ; source = cells + cell*128
+	LDA.l !fx_ccell,X            ; cells 0-255 / 256-511 in two xdata blobs
+	BIT.w #$0100
+	BEQ .loCells
+	SEP #$20
+	LDA.b #fx_cells_hi>>16
+	STA $4304,Y
+	REP #$20
+	LDA.w #fx_cells_hi&$FFFF
+	BRA .cellBase
+.loCells
+	SEP #$20
+	LDA.b #fx_cells>>16
+	STA $4304,Y
+	REP #$20
+	LDA.w #fx_cells&$FFFF
+.cellBase
+	STA.l !fx_s+4
+	LDA.l !fx_ccell,X
+	AND.w #$00FF
 	LSR
 	XBA
 	BCC +
 	ORA.w #$0080
 +	CLC
-	ADC.w #fx_cells&$FFFF
+	ADC.l !fx_s+4
 	STA $4302,Y
 	LDA.w #64
 	STA $4305,Y
@@ -258,7 +278,7 @@ fx_nmi_palettes:
 	REP #$20
 .next
 	INX
-	CPX.w #6
+	CPX.w #!FX_CLASS_COUNT
 	BCS +
 	JMP .loop
 +	RTS

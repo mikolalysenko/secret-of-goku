@@ -110,6 +110,9 @@ fx_begin:
 	STA.l !fx_clspal
 	STA.l !fx_clspal+2
 	STA.l !fx_clspal+4
+	SEP #$20
+	STA.l !fx_clspal+6
+	REP #$20
 	LDA.w #$0000
 	STA.l !fx_front
 	STA.l !fx_poly_req
@@ -477,7 +480,6 @@ fx_palscan:
 	LDA !d_tmp+2
 	ASL
 	ASL
-	STA.l !fx_palused
 	EOR.w #$00FF
 	AND.w #$00FC
 	STA.l !fx_palfree
@@ -733,6 +735,13 @@ fx_finish:
 	AND.l !fx_e
 	STA.l !fx_e
 	TXA
+	AND.l !fx_e
+	STA.l !fx_e
+	LDA.l !fx_clspal+6
+	SEP #$20
+	STA.l !fx_nmipal+6
+	REP #$20
+	ORA.w #$FF00
 	AND.l !fx_e
 	EOR.w #$FFFF                 ; nonzero when some class got a palette
 	ORA.l !fx_cpend

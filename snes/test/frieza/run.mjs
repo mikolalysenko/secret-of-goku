@@ -720,7 +720,7 @@ if(want('tree')){
   if(!ok)for(const f of failures)console.log('    !',f);
 }
 // Scene effects against the browser (run capture.mjs first).
-const scenarioRoot=resolve(repo,'.local/snes-ref-frieza');
+const scenarioRoot=resolve(process.env.FRIEZA_REFS??join(repo,'.local/snes-ref-frieza'));
 if(want('effects')&&existsSync(scenarioRoot)){
   const {scenarios}=await import('./scenarios.mjs');
   for(const name of Object.keys(scenarios)){

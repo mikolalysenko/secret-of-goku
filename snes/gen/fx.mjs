@@ -89,10 +89,13 @@ export async function generate({rom,repo,outDir,xdata}){
   // Combustion cells (engine/native-combustion.js) and Dark Force particles.
   const combustion=combustionCells.map(frame=>decode(frame));
   const deathArt=createDeathBallArt(rom);
-  const deathSmall=[];
-  for(let f=0;f<12;f++){const p=new Uint16Array(256);deathArt(f,8,8,16,(x,y,c)=>{if(x>=0&&y>=0&&x<16&&y<16)p[y*16+x]=c;});deathSmall.push(p);}
-  const death32=[];
-  for(let f=0;f<12;f++){const p=new Uint16Array(1024);deathArt(f,16,16,32,(x,y,c)=>{if(x>=0&&y>=0&&x<32&&y<32)p[y*32+x]=c;});death32.push(p);}
+  const deathPixels=(size,cinematic)=>Array.from({length:12},(_,f)=>{
+    const p=new Uint16Array(size*size);
+    deathArt(f,size/2,size/2,size,(x,y,c)=>{p[y*size+x]=c;},{cinematic});
+    return p;
+  });
+  const deathSmall=deathPixels(16,false),death32=deathPixels(32,false);
+  const red16=deathPixels(16,true),red32=deathPixels(32,true),red64=deathPixels(64,true);
 
   // --- palette classes -------------------------------------------------------
   // Each class is one 15-colour OBJ palette; FX maps classes to free OBJ
@@ -101,7 +104,7 @@ export async function generate({rom,repo,outDir,xdata}){
   // (Super Saiyan sparks, ring and charge lightning); FIRE (explosions);
   // PINK (Frieza: lasers, discs, Death Balls). DYN holds caller colours
   // (debris) at indices 1-3; WHITE is an override (all entries white).
-  const CLASS=['BLUE','PINK','GOLD','FIRE','DYN','WHITE'];
+  const CLASS=['BLUE','PINK','GOLD','FIRE','DYN','WHITE','RED'];
   const classColors=CLASS.map(()=>new Set());
   const classOf={};
   const assign=(names,k)=>{for(const n of names){classOf[n]=k;for(const p of groups[n]??[])for(const c of p)if(c)classColors[k].add(c);}};
@@ -112,6 +115,7 @@ export async function generate({rom,repo,outDir,xdata}){
   for(const p of death32)for(const c of p)if(c)classColors[1].add(c);
   assign(['fire-beam-body'],3);
   for(const p of combustion)for(const c of p)if(c)classColors[3].add(c);
+  for(const p of [...red16,...red32])for(const c of p)if(c)classColors[6].add(c);
   const palettes=classColors.map((set,k)=>{
     if(CLASS[k]==='WHITE')return Array(15).fill(0x8000); // override: any cell drawn all white
     const list=[...set].sort((a,b)=>luma(a)-luma(b));
@@ -406,6 +410,21 @@ export async function generate({rom,repo,outDir,xdata}){
       x:p.x,y:p.y,white:!!p.white})));
   }
 
+  // Cinematic Death Ball: the browser's 64 px art sampled at the OBJ sizes,
+  // including its moving corona. Keep it separate from the violet battle art.
+  const red16Base=asms.length;
+  for(const p of red16)asms.push([{cell:addCell(p,6,'red16'),x:-8,y:-8,h:false,v:false}]);
+  const red32Base=asms.length;
+  for(const p of red32){
+    const parts=[];
+    for(const qy of [0,16])for(const qx of [0,16]){
+      const c=new Uint16Array(256);
+      for(let y=0;y<16;y++)c.set(p.subarray((qy+y)*32+qx,(qy+y)*32+qx+16),y*16);
+      const cell=addCell(c,6,'red32');if(cell>=0)parts.push({cell,x:qx-16,y:qy-16,h:false,v:false});
+    }
+    asms.push(parts);
+  }
+
   // --- encode ------------------------------------------------------------------
   if(cells.length>512)throw Error(`fx: ${cells.length} cells exceed 9-bit ids`);
   const bin=new Uint8Array(cells.length*CELL_BYTES);
@@ -415,6 +434,8 @@ export async function generate({rom,repo,outDir,xdata}){
     for(const[x,y]of[[0,0],[8,0],[0,8],[8,8]]){bin.set(encodeTile(idx,16,x,y),o);o+=32;}
   });
   writeFileSync(join(outDir,'cells.bin'),bin);
+  xdata('fx_cells_lo',bin.subarray(0,0x8000));
+  xdata('fx_cells_hi',bin.subarray(0x8000));
 
   // Assembly records: part count, cell count, bounding box of the parts'
   // top-left corners (min x, min y, max x, max y: signed bytes), the
@@ -584,6 +605,46 @@ export async function generate({rom,repo,outDir,xdata}){
   const dballSizes=deathBallSizes.slice(),dballBounds=[];
   for(const size of dballSizes)for(let k=0;k<=16;k++)dballBounds.push(Math.ceil(k*size/16));
 
+  // The cinematic sphere uses the same two-window polygon setup. Retain the
+  // 64 px source's horizontal precision; sample each four-row band's middle
+  // for the outline, and average its surface colours. Corona stays OBJ-only.
+  const redRows=[],redColours=[],redWeight=[];
+  const redIn=(x,y)=>(2*x-63)**2+(2*y-63)**2;
+  for(let row=0;row<16;row++){
+    const y=row*4+2,xs=[...Array(64).keys()].filter(x=>redIn(x,y)<=57*57);
+    const inner=xs.filter(x=>redIn(x,y)<=55*55);
+    redRows.push(...(xs.length?[xs[0],xs.at(-1)+1]:[255,255]),...(inner.length?[inner[0],inner.at(-1)+1]:[255,255]));
+    redWeight.push(xs.length-inner.length);
+  }
+  for(const p of red64)for(let row=0;row<16;row++){
+    const sum=[0,0,0];let n=0;
+    for(let y=row*4;y<row*4+4;y++)for(let x=0;x<64;x++)if(p[y*64+x]&&redIn(x,y)<=55*55){
+      ch(p[y*64+x]-1).forEach((v,k)=>sum[k]+=v);n++;
+    }
+    redColours.push(n?sum.reduce((c,v,k)=>c|Math.round(v/n)<<(5*k),0):0x0810);
+  }
+  const redSub=[16,0,2].map((rim,k)=>{
+    let best=0,err=Infinity;
+    for(let v=0;v<32;v++){
+      const e=redColours.reduce((a,c,i)=>a+redWeight[i%16]*(Math.max(0,ch(c)[k]-v)-rim)**2,0);
+      if(e<err){err=e;best=v;}
+    }
+    return best;
+  });
+  // Pre-scaled geometry for the direct HDMA writer. Fourteen surface bands
+  // plus the bottom boundary; each record is y, W1 left/right, W2 left/right.
+  // The two 183-byte buffers fit worst-case 18 five-byte entries + terminator
+  // per channel (including neutral padding for late HDMA starts).
+  const redGeometry=[];
+  for(let size=16;size<=224;size+=2)for(let row=1;row<=15;row++){
+    redGeometry.push(Math.ceil(row*size/16));
+    for(let w=0;w<2;w++){
+      const l=redRows[row*4+w*2],r=redRows[row*4+w*2+1];
+      redGeometry.push(...(l===255?[255,0]:[Math.ceil(l*size/64),Math.ceil(r*size/64)-1]));
+    }
+  }
+  xdata('fx_red_geometry',Uint8Array.from(redGeometry));
+
   const a=new Asm();
   a.raw('; Generated by snes/gen/fx.mjs - do not edit.');
   a.def('FX_CELL_COUNT',cells.length);a.def('FX_ASM_COUNT',asms.length);a.def('FX_CLASS_COUNT',CLASS.length);
@@ -591,6 +652,7 @@ export async function generate({rom,repo,outDir,xdata}){
   STAMP_GROUPS.forEach((g,i)=>a.def(`FX_SG_${g.replace(/-/g,'_').toUpperCase()}`,i));
   a.def('FX_STAMP_GROUPS',STAMP_GROUPS.length);
   a.def('FX_ASM_BURST',burstBase);a.def('FX_ASM_EMBER',emberBase);
+  a.def('FX_ASM_RED16',red16Base);a.def('FX_ASM_RED32',red32Base);
   a.def('FX_ASM_DEATH16',deathBase);a.def('FX_ASM_DEATH32',death32Base);a.def('FX_ASM_DISC',discBase);
   a.def('FX_ASM_FINGER',fingerBase);a.def('FX_ASM_FRAGMENT',fragBase);a.def('FX_ASM_LASER',laserBase);
   a.def('FX_ASM_RING',ringBase);a.def('FX_ASM_SPARKS',sparksBase);a.def('FX_ASM_STATUS',statusBase);a.def('FX_ASM_RUBBLE',rubbleBase);a.def('FX_ASM_DUST',dustBase);
@@ -625,6 +687,8 @@ export async function generate({rom,repo,outDir,xdata}){
   t.label('fx_dball_colours');t.dw(dballColours);
   t.label('fx_dball_sizes');t.dw(dballSizes);
   t.label('fx_dball_bounds');t.db(dballBounds);
+  t.label('fx_red_colours');t.dw(redColours);
+  t.label('fx_red_fix');t.db([0x20|redSub[0],0x40|redSub[1],0x80|redSub[2],0]);
   t.label('fx_dball_fix');t.db([0x20|dballSub[0],0x40|dballSub[1],0x80|dballSub[2],0]);
 
   // Ceiling dust (ceiling-escape.js draw): chunk i at angle i*2.39996,

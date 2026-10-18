@@ -138,7 +138,7 @@ Continuous kinds (`fx_draw`, every frame the effect should show):
 | `FX_ORB` | `$10` | charge orb | `!fx_a` frame 0–4 (charge `min(4,strength·5)`; full charge alternates 3/4 every 4 frames) | Charge orb at the palm; *front* except facing up. Gold/pink with flags |
 | `FX_AURA` | `$11` | `ki-aura.js` | `!fx_style` tone 0 blue, 1 gold, 2 pink; `!fx_a` power 0–256 (0: none); `!fx_b` body height (≤ 20: 16, ≥ 36: 40, else 32); `!fx_c` phase seed; `!fx_t` clock (shown on even clocks only, phase `(clock/3 + seed) % 12`) | Flame aura behind every sprite (a polygon, see strategy). X/Y = centre of the body cell as the browser's `aura()`; with `FX_F_GOKU` Goku's cell centre + X/Y. One aura per frame: give a second one the other clock parity |
 | `FX_LIGHTNING` | `$12` | `charge-lightning.js` | `!fx_a` bolts (2 or 3; 0: 2); `!fx_t` clock | Super Saiyan charge bolts from X/Y (the charge point), regenerated every 3 frames, as Thunderbolt cells along the browser's bolt points; every bolt ends in the air (see strategy). *front* |
-| `FX_DEATHBALL` | `$13` | `death-ball-art.js` | `!fx_a` diameter (snapped to `deathBallSizes`, 16–224, as the browser), `!fx_t` frame (wraps at 12) | 16 and 32 px: the art as OBJ; 24 and 48–224 px: a polygon (see strategy), else the 32 px ball. The cinematic red planet killer (64 px art) is not FX's: its scene draws it |
+| `FX_DEATHBALL` | `$13` | `death-ball-art.js` | `!fx_style` = `FX_DBALL_BATTLE` (0, violet) or `FX_DBALL_CINEMATIC` (1, red); `!fx_a` diameter 16–224; `!fx_t` frame (wraps at 12) | 16/32 px: browser art as OBJ. Other sizes: polygon, else the 32 px ball. Battle sizes snap to `deathBallSizes`; cinematic sizes round to even pixels, as the browser |
 | `FX_DISC` | `$14` | `orbit-effects.js` `disc` | `!fx_t` age (tilt = (age>>3)&3) | Frieza's Death Disc, 20×6 in four tilts |
 | `FX_FINGER` | `$15` | `fingerCharge` | `!fx_t` age | Pink finger-laser charge glint |
 | `FX_CELL` | `$16` | `stamp()` | `!fx_a` group (below), `!fx_b` frame, `!fx_dir` turn | Any native spell cell, quarter turns, gold/pink variants |
@@ -225,7 +225,7 @@ flight will use the world regions.
 (Lucent Beam, ki, impacts), PINK (Frieza: pink beams, discs, Death
 Balls), GOLD (Super Saiyan sparks, arcs, ring and the Thunderbolt cells in
 Lucid Barrier's gold ramp), FIRE (Exploder / Fireball), DYN (caller
-colours) and WHITE (an override). Each frame FX scans the OBJ palettes used
+colours), WHITE (an override) and RED (the cinematic Death Ball). Each frame FX scans the OBJ palettes used
 by the sprites already in OAM (natives and the modules that drew before
 it) and maps the classes it draws to free OBJ palettes, preferring 3 and 2
 (never in OBJ colour math), then 7, 6, 5, 4; the vblank callback writes
@@ -288,7 +288,7 @@ shows:
   edge cells and the orb are OBJ on top of it.
 - The game's backdrop colour returns on every line outside the beam (the
   HUD lines included), and CGRAM 0 is put back when the wave ends.
-- Tables are double-buffered in FX's SRAM (2 × 187 bytes): fx_frame builds
+- Tables are double-buffered in FX's SRAM (2 × 183 bytes): fx_frame builds
   the back buffer, fx_nmi programs it and swaps. An unchanged picture
   (same palms, visible length, width, taper, style, backdrop colour) is not
   rebuilt: a wave held still costs ~7 lines for the polygon. The build
@@ -355,6 +355,29 @@ art's pink patches become tints of their rows, and the sparks outside the
 circle are not drawn. While the game's own colour math is on (`$23` not
 zero) the ball keeps it outside and shows no rim.
 
+**Red cinematic Death Ball** (`FX_DBALL_CINEMATIC`, `red.asm`): the
+16/32 px OBJ sizes use all twelve frames sampled directly from the browser's
+64 px cinematic art, including the corona, in a seventh palette class RED.
+The polygon uses the same window/rim-subtraction setup as the violet ball,
+with fourteen four-source-row bands, 64 px horizontal precision and the mean
+surface colour per band. Sizes round to even pixels (16–224). Geometry is
+pre-scaled in `fx_red_geometry` xdata; a direct table writer handles screen
+clipping and the neutral late-HDMA tail in at most 183 bytes. It avoids the
+much slower generic run-merging writer. The polygon omits the corona and
+flattens surface patches into horizontal bands; native sprites and BG3 keep
+their usual priority. With native colour math active the rim is flat, as for
+the violet ball. The cache key includes the style, so switching red/violet at
+the same position, size and frame rebuilds correctly.
+
+`cinematic` checks every OBJ frame **100% pixel-exact** against
+`createDeathBallArt`, even diameter 54, sizes 24/80/128/224, clipping, a
+red-to-violet switch and HDMA release. Large silhouettes have **93–96% IoU**
+with the browser (native OBJ rectangles and BG3 HUD excluded). Comparison
+PNGs and JSON go under `.local/snes-test/fx/cinematic/`. Complete FX callback
+cost in Potos, including the test instrumentation: changing diameter/art
+**55 lines median, 56 p90/max**, held **13 median, 14 p90/max**. The first
+generic-writer prototype was 111 lines p90 and was replaced before shipping.
+
 **Ki aura** (`fx_poly_aura`, HDMA kind 4): the flame is up to 80 lines
 of 50 pixels whose cells would not fit the VRAM cache (10-19 cells a
 frame, about 2000 different ones), so it is a window polygon. `fx.mjs`
@@ -419,8 +442,8 @@ with a wave on screen.
 | Resource | Use |
 | --- | --- |
 | Code `$AE:8000-FFFF` | `!CODE_FX` (upper half only; `$EE` lower half holds ending art) |
-| ROM | `!DATA_FX` = `$FB` (57 of 64 KiB used): cell tiles, assemblies and palettes, generated by `snes/gen/fx.mjs` (`data.asm`, `cells.bin`). The tables read only with long indexed loads (detonation clusters, ember and dust paths, strip lines, laser steps, Death Ball and aura indexes: `tables.asm`) follow the code in `$AE:8000-FFFF` (26 of 32 KiB used). xdata (ExHiROM): the aura's lines, `fx_aura16`, `fx_aura32`, `fx_aura40` (51 KiB), and the bolts, `fx_bolts` (2 KiB) |
-| SRAM `$31:7800-7BFF` | `!SRAM_WORK_FX`: request block, 14 effect slots, 8 draw entries, VRAM cache, polygon tables (2 × 187 bytes) |
+| ROM | `!DATA_FX` = `$FB` (17.2 of 64 KiB used): assemblies and palettes generated by `snes/gen/fx.mjs` (`data.asm`). All 373 cell tiles (46.6 KiB, `cells.bin`) are DMA-only xdata, split at cell 256 into `fx_cells_lo/hi`. The tables read only with long indexed loads (detonation clusters, ember and dust paths, strip lines, laser steps, Death Ball and aura indexes: `tables.asm`) follow the code in `$AE:8000-FFFF` (27.7 of 32 KiB used). xdata (ExHiROM): the aura's lines, `fx_aura16`, `fx_aura32`, `fx_aura40` (51 KiB), the bolts, `fx_bolts` (2 KiB), and `fx_red_geometry` (7.7 KiB) |
+| SRAM `$31:7800-7BFF` | `!SRAM_WORK_FX`: request block, 14 effect slots, 8 draw entries, VRAM cache, polygon tables (2 × 183 bytes) |
 | WRAM | None (a 148-byte direct-page frame on the stack inside `fx_frame`) |
 | VRAM | `!VRAM_FIELD_OBJ_A/B/C` while effects are active (owner `$0E`); released after 120 idle frames and at every map or mode change |
 | CGRAM | Free OBJ palettes per frame, written in vblank (never the game's buffer); CGRAM 0 per scanline (HDMA) while a wave is shown |
@@ -437,7 +460,7 @@ with a wave on screen.
 | --- | --- | --- |
 | `FX_IMPACT`, `FX_KI`, `FX_BURST`, `FX_EXPLODE`, `FX_EMBER`, `FX_DETONATE`, `FX_STATUS`, `FX_SPARKS` | Done (OBJ) | `snes/test/fx/gallery.lua` screenshots in Potos |
 | `FX_ORB` | Done; `FX_F_GOKU` draws only in poses with a hand socket (charge, beam, blast) | gallery (screen points), beams (no socket in the idle pose) |
-| `FX_DEATHBALL` | Done: 16 / 32 px OBJ, other sizes a polygon | gallery; beams: 24, 48 and 80 px outlines against the browser's, rim |
+| `FX_DEATHBALL` | Done: violet battle / red cinematic; 16 / 32 px OBJ, other sizes a polygon | gallery; beams: 24, 48 and 80 px outlines against the browser's, rim |
 | `FX_DISC`, `FX_FINGER`, `FX_CELL` | Done (OBJ) | gallery |
 | `FX_BEAM_KAME`, `FX_BEAM_FRIEZA`, `FX_BEAM_FIRE` | Done: OBJ strips (four facings); the first left/right beam of a frame as a polygon | `snes/test/fx/beams.lua` (polygon against OBJ strips, pixel-exact, right and left) |
 | `FX_BEAM_WAVE`, `FINAL`, `GALICK` | Done (polygon + OBJ edges), four facings | beams: pixel checks of core, bands and rims, HDMA/flag/palette checks |
@@ -478,7 +501,7 @@ the sorted list) the colours nearest 20/50/85% of their lightness range;
 computed once per map (~80 lines in that frame), defaults
 `$18C6/$294A/$4631`. At most six rubble bursts live at once.
 
-Tests: `node snes/test/fx/run.mjs [gallery|beams|debris]` (FX_TEST
+Tests: `node snes/test/fx/run.mjs [gallery|beams|debris|cinematic]` (FX_TEST
 cartridge with a mailbox client, `snes/test/fx/testmod.asm`; Potos
 import; `FX_DEFINES='-DCORE_SLOWROM=1'` builds it with other defines). The beams test checks the wave colours on three consecutive PPU
 frames per wave (`F.grab`, Mesen's screen buffer), two of three must pass

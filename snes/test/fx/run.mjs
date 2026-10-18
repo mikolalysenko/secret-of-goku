@@ -18,6 +18,7 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {mesenPath} from '../mesen.mjs';
 import {checkpointDir,privateRom,cleanupRom,mainCheckout} from '../checkpoints.mjs';
 import {readPng} from '../../tools/gfx.mjs';
+import {cinematicChecks} from './cinematic.mjs';
 
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const only=process.argv.slice(2).filter(a=>!a.startsWith('--'));
@@ -158,13 +159,17 @@ async function runMesen({rom,test,outDir,state=null,timeoutMs=600000}){
 }
 
 // asar does not report overlapping writes: make sure no other module's data
-// landed on FX's cells (bank !FX_DATA, snes/src/modules/fx/module.asm).
+// landed on FX's DMA-only cells in either extended data blob.
 function checkCells(rom){
-  const sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8').match(/^([0-9A-F]{2}):([0-9A-F]{4}) fx_cells$/im);
-  if(!sym)return 'no fx_cells symbol';
-  const bank=parseInt(sym[1],16),addr=parseInt(sym[2],16),off=((bank&0x3F)<<16)|addr;
+  const symbols=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8');
   const cells=readFileSync(resolve(repo,'dist/snes/gen/fx/cells.bin')),img=readFileSync(rom);
-  for(let i=0;i<cells.length;i++)if(img[off+i]!==cells[i])return `fx cells overwritten at ${sym[1]}:${(addr+i).toString(16).toUpperCase()} (another module writes into FX's data bank)`;
+  for(const [name,start,end] of [['fx_cells',0,0x8000],['fx_cells_hi',0x8000,cells.length]]){
+    const sym=symbols.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${name}$`,'im'));
+    if(!sym)return `no ${name} symbol`;
+    const bank=parseInt(sym[1],16),addr=parseInt(sym[2],16);
+    const off=(bank>=0x40&&bank<0x80?0x400000:0)+((bank&0x3F)<<16)+addr;
+    for(let i=start;i<end;i++)if(img[off+i-start]!==cells[i])return `${name} overwritten at byte ${i-start}`;
+  }
   return null;
 }
 for(const r of [testRom,process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-goku.sfc')]){
@@ -172,7 +177,7 @@ for(const r of [testRom,process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-
   const err=checkCells(r);
   if(err){console.error(`fx: ${r}: ${err}`);process.exit(1);}
 }
-const tests=['gallery','beams','debris','battle','budget'].filter(t=>existsSync(join(here,`${t}.lua`))&&(!only.length||only.includes(t)));
+const tests=['gallery','beams','debris','cinematic','battle','budget'].filter(t=>existsSync(join(here,`${t}.lua`))&&(!only.length||only.includes(t)));
 let ok=true;
 for(const t of tests){
   const rom=privateRom(testRom,`fx-${t}`);
@@ -183,6 +188,7 @@ for(const t of tests){
   const fails=Object.entries(res).filter(([k,v])=>typeof v==='string'&&v.startsWith('FAIL'));
   const shots=shotChecks(t,join(outRoot,t));
   if(t==='beams')for(const [name,text,good] of await auraChecks(join(outRoot,t)))shots.push({ok:good,text:`${name} silhouette: ${text}`});
+  if(t==='cinematic')shots.push(...await cinematicChecks(join(outRoot,t),repo));
   const pass=r.code===0&&!res.error&&res.failures===0&&shots.every(c=>c.ok);
   if(!pass)ok=false;
   console.log(`fx ${t.padEnd(10)} ${pass?'pass':'FAIL'} (${((Date.now()-t0)/1000).toFixed(1)} s)${res.error?' error: '+res.error:''}`);

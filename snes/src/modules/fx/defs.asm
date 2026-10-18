@@ -38,10 +38,12 @@
 !FX_ORB       = $10         ; charge orb
 !FX_AURA      = $11         ; ki aura (style 0 blue,1 gold,2 pink)
 !FX_LIGHTNING = $12         ; SSJ charge lightning
-!FX_DEATHBALL = $13         ; Death Ball (style 0 violet,1 red)
+!FX_DEATHBALL = $13         ; Death Ball (FX_DBALL_BATTLE / FX_DBALL_CINEMATIC)
 !FX_DISC      = $14         ; Frieza's Death Disc
 !FX_FINGER    = $15         ; finger-laser charge glint
 !FX_CELL      = $16         ; any native spell cell
+!FX_DBALL_BATTLE = 0
+!FX_DBALL_CINEMATIC = 1     ; red planet killer, browser cinematic 64 px art
 ; FX_CELL groups (!fx_a)
 !FX_G_ORB       = 0
 !FX_G_BODY      = 1

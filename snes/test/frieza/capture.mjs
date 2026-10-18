@@ -16,7 +16,7 @@ import {fileURLToPath} from 'node:url';
 import {scenarios} from './scenarios.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const only=process.argv.slice(2).filter(a=>!a.startsWith('--'));
-const out=resolve(repo,'.local/snes-ref-frieza');
+const out=resolve(process.env.FRIEZA_REFS??join(repo,'.local/snes-ref-frieza'));
 const port=5199;
 const server=spawn(process.execPath,[resolve(repo,'scripts/serve.mjs')],{cwd:repo,env:{...process.env,PORT:String(port)},stdio:'ignore'});
 // wait until the dev server answers

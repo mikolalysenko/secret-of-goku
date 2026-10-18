@@ -32,7 +32,7 @@ those scripts call, Frieza's picture and the fights. The orbit stream
 | Goku's attacks reaching Frieza | Through combat's virtual targets (`modules_combat_targets`: `frieza_virtual_target` / `_hit`, index 12, airborne); combat's `frieza-punch`, `-ki`, `-ki-held`, `-beam`, `-wave`, `-burst` cases pass against the browser's `hit()` on a trial merge with combat's branch |
 | Incoming-damage cap of the fed Beast (110/140, 75-frame grace) | `frieza_combat_receive` for combat's `modules_combat_receive` list (one line in `modules.asm` once combat's lists are on main) |
 | Goku's beam cancelling Frieza's shots (`beamTouchesShot`) | From `combat_api_beam`'s record when combat provides it |
-| Cutscene effects (`frieza.js` draw(), the scene branch): the deck's Death Ball (charge and throw poses from `friezaDeathBallPose`), the eruption's column of large bursts, Fanha's beam and burst, Popoi's end, the empowering orbs and Thanatos's aura, Goku's gold aura | Done through fx (auras as fx's polygon); the cinematic red Death Ball is drawn as fx's violet ball (Known differences) |
+| Cutscene effects (`frieza.js` draw(), the scene branch): the deck's Death Ball (charge and throw poses from `friezaDeathBallPose`), the eruption's column of large bursts, Fanha's beam and burst, Popoi's end, the empowering orbs and Thanatos's aura, Goku's gold aura | Done through fx (auras as fx's polygon); the cinematic Death Ball uses fx's red style (Known differences) |
 | The Dragon Balls rising to the altar (steal) and the eighth Ball | Done (own art, generated) |
 | The Emperor's execution: ray, black frame with his silhouette, sparks | Done (the ray is fx's Death Beam) |
 | The Fortress's collapse on its destroyed deck (map 255): fractures, scars, red alarm | Done (alarm as a red add only; fractures on landable floor with flight's canLand) |
@@ -141,8 +141,9 @@ of the world's (the same within a cell, repeating per cell).
   age (64 -> 224 px from age 24, then shrinking with the throw) and the
   throw path for the three hover bobs are generated from
   `friezaDeathBallPose`; drawn as fx's red (cinematic) Death Ball at the
-  ball's centre. fx draws 16/32 px balls today; larger diameters are its
-  planned polygon circle.
+  ball's centre. The shared wrapper explicitly requests `FX_DBALL_CINEMATIC`;
+  the Tree uses the same wrapper. FX draws the browser's red art at 16/32 px
+  and a red window polygon at the other even diameters.
 - **Large bursts** (`orbit-effects.js` burst large): nine Exploder bursts
   four frames apart, burst i > 0 moving out along `orbitVectors[(i*6)&15]`
   to radius 8 + min(24, t); offsets generated with the browser's `>> 8`.
@@ -394,9 +395,12 @@ floor on request.
 - **Without fx** the shots, eruptions, bursts and auras are not drawn
   (logic, sounds and damage run).
 - **The cinematic Death Ball** (the deck's 64-224 px planet killer, the
-  Tree's 16-32 px ball, `death-ball-art.js` `cinematic`): fx draws only the
-  violet battle ball, so these show fx's violet ball at the browser's
-  positions and sizes instead of the red 64 px art.
+  Tree's 16-32 px ball, `death-ball-art.js` `cinematic`): fx now supplies the red style. Its 16/32 px art is exact;
+  the large polygon averages the surface into fourteen horizontal bands
+  and omits the corona (see [fx.md](fx.md)). `tree` and the `core-charge` /
+  `core-shot` effect scenarios pass. Browser captures may be kept inside a
+  worktree with `FRIEZA_REFS=.local/snes-test/frieza-refs` for both
+  `capture.mjs` and `run.mjs`, avoiding shared reference directories.
 - **Lag with fx's polygons**: the first power surge holds the pink aura
   around Frieza every frame; fx's polygon aura costs about 100 lines on its
   frames, so with the fight's own ~45 the surge lags about 80 frames by age
@@ -414,10 +418,9 @@ floor on request.
   `modules_combat_targets` and `modules_combat_damage` already list
   Frieza's entries; `!COMBAT_HOOK_DAMAGE` stays defined for builds with
   the older single hook.
-- **fx**: the cinematic red Death Ball (`death-ball-art.js` `giant`, 64 px
-  art scaled 16-224 px): at least the red ramp for FX_DEATHBALL's OBJ sizes
-  and polygon, so the deck's and the Tree's balls are not violet; and a
-  cheaper polygon aura (about 100 lines a frame during the surge).
+- **fx**: the cinematic red Death Ball is supplied (`FX_DBALL_CINEMATIC`).
+  The cheaper polygon aura request remains (about 100 lines a frame during
+  the surge in the earlier measurement).
 - **goku**: a way to draw Goku's own cell at a scripted screen spot with the
   native body hidden (`frieza.js` introHero: the temple exit and the deck's
   follower poses; the Tree vista's Goku).

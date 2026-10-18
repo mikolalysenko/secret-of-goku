@@ -799,10 +799,16 @@ fx_poly_dball:
 	JSR fx_poly_avail
 	BCC +
 	RTS
-+	LDA !d_ks+2                  ; size
++	LDA !fxd_style
+	BEQ .violetSize
+	LDA !d_cur+!C_A
+	BRA .size
+.violetSize
+	LDA !d_ks+2                  ; size
 	ASL
 	TAX
 	LDA.l fx_dball_sizes,X
+.size
 	STA !fxp_len
 	LSR
 	STA !d_tmp
@@ -814,14 +820,23 @@ fx_poly_dball:
 	SEC
 	SBC !d_tmp
 	STA !fxp_y
-	LDA.w #$00E0                 ; key fields: the ball's tag, frame
+	LDA !fxd_style
+	ORA.w #$00E0                 ; key fields: the ball style tag, frame
 	STA !fxp_hw
 	LDA !d_ks
 	STA !fxp_t
 	STZ !fxp_rip
+	LDA !fxd_style
+	BEQ .violetFix
+	LDA.l fx_red_fix
+	STA.l !fx_pfix
+	LDA.l fx_red_fix+2
+	BRA .fix
+.violetFix
 	LDA.l fx_dball_fix           ; COLDATA for the rim (fx_nmi_poly kind 3)
 	STA.l !fx_pfix
 	LDA.l fx_dball_fix+2
+.fix
 	STA.l !fx_pfix+2
 	JSR fx_poly_key
 	BCS .build
@@ -851,6 +866,11 @@ fx_poly_dball:
 	STX !fxp_out
 	TXA
 	STA.l !fx_ptab3
+	LDA !fxd_style
+	BEQ +
+	JSR fx_red_tables
+	JMP .ready
++
 	LDA !d_ks+2                  ; this size's boundaries: 17 bytes per size
 	ASL
 	ASL
@@ -948,7 +968,9 @@ fx_poly_dball:
 	BEQ +
 	SEC
 	RTS
-+	LDA.w #$0004
++
+.ready
+	LDA.w #$0004
 	STA.l !fx_pdmap
 	LDA.w #$0003
 	STA.l !fx_poly_req
