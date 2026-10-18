@@ -39,6 +39,8 @@ function F.rgb(a, b, c) H.w16(F.BOX + 0xA2, a); H.w16(F.BOX + 0xA4, b); H.w16(F.
 function F.spawn(slot, kind, flags, dir, x, y, a, b) F.post(slot, 1, kind, flags, dir, x, y, a, b) end
 function F.draw(slot, kind, flags, dir, x, y, a, b, c, t) F.post(slot, 2, kind, flags, dir, x, y, a, b, c, t) end
 function F.beam(slot, style, flags, dir, x, y, len, width, taper, t) F.post(slot, 3, style, flags, dir, x, y, len, width, taper, t) end
+-- A continuous kind drawn every frame with its clock !fx_t held at t.
+function F.drawHold(slot, kind, flags, dir, x, y, a, b, c, t) F.post(slot, 7, kind, flags, dir, x, y, a, b, c, t) end
 function F.flash(frames) F.post(7, 4, 0, 0, 0, 0, 0, frames) end
 function F.quake(frames) F.post(7, 5, 0, 0, 0, 0, 0, frames) end
 function F.killAll() F.post(7, 6, 0, 0, 0, 0, 0) end
@@ -76,6 +78,24 @@ end
 function F.shotAfter(name)
   H.wait(4)
   H.shot(name)
+end
+-- The PPU picture of the frame that just ended, as raw RGB (256x224, the
+-- visible rows 7-230 of Mesen's 239-row buffer) in H_OUT/<name>.rgb.
+-- Unlike the screenshot (the video decoder's last frame, which can lag a
+-- varying number of frames), this is exact.
+function F.grab(name)
+  local b = emu.getScreenBuffer()
+  local f = io.open(H_OUT .. '/' .. name .. '.rgb', 'wb')
+  for y = 7, 230 do
+    local row = {}
+    local base = y * 256
+    for x = 0, 255 do
+      local v = b[base + x + 1] or 0
+      row[#row + 1] = string.char((v >> 16) & 255, (v >> 8) & 255, v & 255)
+    end
+    f:write(table.concat(row))
+  end
+  f:close()
 end
 function F.import(name)
   local ok = H.importSnesJs(FX_IMPORT .. name)
