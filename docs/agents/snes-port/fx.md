@@ -312,7 +312,10 @@ shows:
   and line counter ($43x8-$43xA) as if it had just counted down a
   127-line entry that ends at a zero byte (the first byte of every table
   buffer), which covers a wave's very first frame. In time, the frame's
-  HDMA start reloads all of this.
+  HDMA start reloads all of this. The core now also keeps channels that
+  were off out of a late `$420C` write (`core_hdmaen_write`): a polygon
+  switched on in such a vblank starts one frame later; FX's padding and
+  priming stay as the second guard.
 - FX's own sprites need their palettes rewritten every vblank (the game
   uploads all of CGRAM each frame), which a late vblank cannot afford
   while HDMA runs. `fx_frame` predicts those vblanks (learned per
