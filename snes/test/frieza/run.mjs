@@ -435,6 +435,82 @@ end
 `;
   return {lua,want};
 }
+// The floor-hole providers chained behind flight's !FLIGHT_MISSING_FLOOR
+// (lab.js missingFloor: Frieza's deck or the Sandship's breach), queried
+// through the FRIEZA_TEST mailbox: on the Sandship (preset sandship, map
+// 67) with destroy's wreck breach planted at Goku, the breach's centre is a
+// hole (destroy's provider, reached through Frieza's) and a point 120 px off
+// is floor; on the deck (preset battle) after seven fractures, a broken
+// cell is a hole at the deck's layer (Frieza's) and floor at the other
+// layer, an unbroken cell is floor. Needs flight in the build (destroy and
+// the mailbox bind to its query fields).
+async function floorTest(){
+  const arena=await import(join(repo,'engine/frieza-arena.js'));
+  const g=reference('battle');
+  const writes=friezaWrites(g.frieza,g.challenge);
+  const v=n=>'0x'+(n<0x10000?(0x7E0000|n):n).toString(16);
+  const shots=[[280,400,34],[263,377,20],[301,413,28],[220,444,26],[340,376,19],[350,420,32],[200,360,29]];
+  const a=arena.newFriezaArena();
+  for(const [x,y,r] of shots)arena.fractureFortress(a,x,y,r,()=>true);
+  const holes=arena.arenaHoles(a),hole=[...holes].sort((p,q)=>p-q)[Math.floor(holes.size/2)];
+  let solid=0;for(let c=2*256+2;holes.has(c);c++)solid=c+1;solid=solid||2*256+2;
+  const layer=(g.frieza.boss.terrain&128)?1:0;
+  const ss=n=>'0x'+moduleDefine('destroy',n).toString(16);
+  const wreck=moduleDefine('destroy','SSF_WRECK');
+  const q=`
+  local function floor(x, y, l)
+    H.w16(${v(defs.fzp_test)}+2, x)
+    H.w16(${v(defs.fzp_test)}+4, y)
+    H.w16(${v(defs.fzp_test)}+6, l)
+    H.w16(${v(defs.fzp_test)}, 1)
+    F.check(H.waitFor(function() return H.r16(${v(defs.fzp_test)}) == 0 end, 30), 'floor query taken')
+    return H.r16(${v(defs.fzp_test)}+8)
+  end`;
+  return `
+function test()
+  ${q}
+  -- the deck: seven fractures, then a broken and an unbroken cell
+  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__battle'))})
+  F.check(ok, 'import battle')
+  H.w8(0x316001, 1)
+  F.apply(${luaWrites(writes)})
+  ${holdMusic('battle')}
+  H.wait(2)
+  for _, s in ipairs({${shots.map(([x,y,r])=>`{${x},${y},${r}}`).join(',')}}) do
+    H.w16(${v(defs.fzs_test)}+2, s[1])
+    H.w16(${v(defs.fzs_test)}+8, s[2])
+    H.w16(${v(defs.fzs_test)}+10, s[3])
+    H.w16(${v(defs.fzs_test)}, 3)
+    F.check(H.waitFor(function() return H.r16(${v(defs.fzs_test)}) == 0 end, 30), 'fracture command taken')
+  end
+  H.wait(2)
+  local hx, hy = ${(hole&255)*16+8}, ${(hole>>8)*16+8}
+  local d1, d2, d3 = floor(hx, hy, ${layer}), floor(hx, hy, ${1-layer}), floor(${(solid&255)*16+8}, ${(solid>>8)*16+8}, ${layer})
+  H.result('deck', {x = hx, y = hy, hole = d1, otherLayer = d2, solid = d3})
+  F.check(d1 == 1, 'a broken cell of the deck is a hole (Frieza), got ' .. d1)
+  F.check(d2 == 0, 'the same cell on the other layer is floor, got ' .. d2)
+  F.check(d3 == 0, 'an unbroken cell is floor, got ' .. d3)
+  -- the Sandship: destroy's breach at Goku (s.wreck, the breach's map and centre)
+  ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__sandship'))})
+  F.check(ok, 'import sandship')
+  H.w8(0x316001, 1)
+  H.wait(4)
+  local map, bx, by = H.r16(0x7E00DC), H.r16(0x7EE002), H.r16(0x7EE004)
+  local flags = H.r16(${ss('ss_flags')})
+  H.w16(${ss('ss_bmap')}, map)
+  H.w16(${ss('ss_bx')}, bx)
+  H.w16(${ss('ss_by')}, by)
+  H.w16(${ss('ss_flags')}, flags | ${wreck})
+  local s1, s2 = floor(bx, by, 0), floor(bx + 120, by, 0)
+  H.w16(${ss('ss_flags')}, flags)
+  H.result('ship', {map = map, x = bx, y = by, centre = s1, off = s2})
+  F.check(s1 == 1, 'the breach centre is a hole (destroy, through Frieza), got ' .. s1)
+  F.check(s2 == 0, '120 px off the breach is floor, got ' .. s2)
+  F.done()
+end
+`;
+}
+
 // frieza_hole_tiles from the generated data (16 tiles, 512 bytes).
 function holeTiles(){
   const asm=readFileSync(join(repo,'dist/snes/gen/frieza/data.asm'),'utf8').split('\n');
@@ -653,14 +729,15 @@ end
 // Core's scene-scoped VRAM pool: Frieza draws only while !VRAM_SCENE_OBJ
 // is free or his (owner !FZ_VRAM_OWNER), claims it on the frames he is
 // drawn and gives it back when his scene ends.
-function asmDefine(dir,name){
-  const src=readdirSync(dir).filter(f=>f.endsWith('.asm')).map(f=>readFileSync(join(dir,f),'utf8')).join('\n');
-  const val=n=>{const m=src.match(new RegExp(`^!${n}\\s*=\\s*([^;\\n]+)`,'m'));if(!m)throw Error(`frieza: define ${n} missing in ${dir}`);
+function asmDefine(dirs,name){
+  const src=[dirs].flat().map(dir=>readdirSync(dir).filter(f=>f.endsWith('.asm')).map(f=>readFileSync(join(dir,f),'utf8')).join('\n')).join('\n');
+  const val=n=>{const m=src.match(new RegExp(`^!${n}\\s*=\\s*([^;\\n]+)`,'m'));if(!m)throw Error(`frieza: define ${n} missing in ${dirs}`);
     return Function(`return (${m[1].trim().replace(/!(\w+)/g,(_,k)=>val(k)).replace(/\$([0-9A-Fa-f]+)/g,'0x$1')})`)();};
   return val(name);
 }
 const coreDefine=name=>asmDefine(join(repo,'snes/src/core'),name);
-const moduleDefine=(module,name)=>asmDefine(join(repo,'snes/src/modules',module),name);
+// a module's define (its own sources, then core's for the blocks it builds on)
+const moduleDefine=(module,name)=>asmDefine([join(repo,'snes/src/modules',module),join(repo,'snes/src/core')],name);
 function vramTest(){
   const g=reference('frieza');
   const writes=friezaWrites(g.frieza,g.challenge);
@@ -803,6 +880,24 @@ if(want('fracture')){
   results.push({name:'fracture',ok,failures});
   console.log(`frieza fracture: ${ok?'pass':'FAIL'} (${r.ms} ms) ${got.length} cells (browser ${cellsWant.length})`);
   if(!ok)for(const f of failures)console.log('    !',f);
+}
+if(want('floor')){
+  buildTestRom();
+  const sym=readFileSync(testRom.replace(/\.sfc$/,'.sym'),'utf8');
+  if(!/ destroy_ss_floor_hole\n/.test(sym))console.log('frieza floor: skipped (no flight and destroy floor providers in this build)');
+  else{
+    const lua=await floorTest();
+    const rom=privateRom(testRom,'frieza-floor');
+    const r=await runMesen({rom,test:lib+'\n'+lua,outDir:join(outRoot,'floor'),state:join(cps,'waterfall.mss')});
+    cleanupRom(rom);
+    const res=r.results??{};
+    const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
+    const ok=r.code===0&&res.pass===true&&failures.length===0;
+    results.push({name:'floor',ok,failures});
+    const s=res.ship??{},d=res.deck??{};
+    console.log(`frieza floor: ${ok?'pass':'FAIL'} (${r.ms} ms) Sandship map ${s.map} breach (${s.x},${s.y}) ${s.centre}, off ${s.off}; deck cell (${d.x},${d.y}) ${d.hole}, other layer ${d.otherLayer}, unbroken ${d.solid}`);
+    if(!ok)for(const f of failures)console.log('    !',f);
+  }
 }
 if(want('victory')){
   buildTestRom();

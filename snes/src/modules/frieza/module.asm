@@ -303,6 +303,9 @@ assert !FZX_END <= !FZ+$C0, "frieza WRAM overflow (beast)"
 !fzp_beast      = !FZPB+$07   ; byte: !FZX_* (Beast challenge)
 !fzp_flyby      = !FZPB+$08   ; word: flyby age ($FFFF = none)
 ; $0A-$3F free (Frieza); $40-$7F reserved for the orbit stream (frieza.md)
+if defined("FRIEZA_TEST")
+!fzp_test       = !FZPB+$20   ; test builds: the floor-provider mailbox on any map (frame.asm)
+endif
 !FZPB_ORBIT      = !FZPB+$40
 
 !FZFL_EMPEROR    = $0001     ; emperorKilled
@@ -522,7 +525,13 @@ endif
 ; Combat: Goku's damage to the Beast and the empowered Dark Lich
 ; (beast-challenge.js damage()), bound by combat's bind.asm when present.
 !COMBAT_HOOK_DAMAGE = frieza_combat_damage
-; Local flight: the broken deck has no floor (frieza.js floorHole).
+; Local flight: the broken deck has no floor (frieza.js floorHole). A
+; provider bound before Frieza's (destroy's Sandship breach, flight's test
+; hole) answers wherever the deck has no hole (lab.js missingFloor: Frieza's
+; or the Sandship's): chained as destroy chains it.
+if defined("FLIGHT_MISSING_FLOOR")
+	!FRIEZA_NEXT_FLOOR := !FLIGHT_MISSING_FLOOR   ; expanded now (= would follow the redefinition)
+endif
 !FLIGHT_MISSING_FLOOR = frieza_floor_hole
 
 ; Debug scene select: restore Frieza / Beast state for the presets.

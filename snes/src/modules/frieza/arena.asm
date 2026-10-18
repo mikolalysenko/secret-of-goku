@@ -241,8 +241,12 @@ fz_arena_owned:
 	RTS
 
 ; floorHole(x, y, layer) for local flight (!FLIGHT_MISSING_FLOOR): JSL,
-; !fl_q_x / !fl_q_y in flight's WRAM are the footprint centre. C set over a
-; hole of the fight's deck. Any DB.
+; M16/X16, DB = $7E (flight's contract), !fl_q_x / !fl_q_y / !fl_q_l in
+; flight's WRAM: the footprint centre and its layer. C set over a hole of
+; the fight's deck (frieza.js floorHole: map 246 while Frieza owns the
+; arena, not in space, the deck's layer). Elsewhere the provider bound
+; before Frieza's answers (!FRIEZA_NEXT_FLOOR: the Sandship's breach,
+; flight's test hole). X, Y, DB and D kept.
 frieza_floor_hole:
 	PHB
 	PHP
@@ -250,10 +254,13 @@ frieza_floor_hole:
 	PEA $7E7E
 	PLB
 	PLB
+	LDA.w $00DC
+	CMP.w #246
+	BNE .no
 	JSR fz_arena_owned
 	BCC .no
 	LDA.l !fzs_arena_map
-	CMP $DC
+	CMP.w $00DC
 	BNE .no
 	PHX
 	PHY
@@ -261,7 +268,8 @@ frieza_floor_hole:
 	PHA
 	LDA !fz_t3
 	PHA
-	JSR fz_bind_flight_query          ; A16 = x, X16 = y of the query
+	JSR fz_bind_flight_query          ; A16 = x, X16 = y; C clear: another layer
+	BCC +
 	TXY
 	JSR fz_cell_of
 	STA !fz_t3
@@ -269,7 +277,7 @@ frieza_floor_hole:
 	JSR fz_cell_of
 	STA !fz_t1
 	JSR fz_hole_test
-	PLA
++	PLA                               ; (the restores keep C)
 	STA !fz_t3
 	PLA
 	STA !fz_t1
@@ -283,5 +291,9 @@ frieza_floor_hole:
 .no
 	PLP
 	PLB
+if defined("FRIEZA_NEXT_FLOOR")
+	JML !FRIEZA_NEXT_FLOOR
+else
 	CLC
 	RTL
+endif
