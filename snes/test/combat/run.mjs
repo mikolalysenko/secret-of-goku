@@ -17,7 +17,6 @@ import {checkpointDir,privateRom,cleanupRom,mainCheckout} from '../checkpoints.m
 import {runJsRef,parseScript} from './jsref.mjs';
 import {compare} from './compare.mjs';
 import {SCENARIOS} from './scenarios.mjs';
-import {friezaWrites,luaWrites,defs as fz} from '../frieza/state.mjs';
 
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const args=process.argv.slice(2);
@@ -48,11 +47,17 @@ function friezaSnapshot(sc){
   if(sc.frieza.permanent===false)f.permanent=false;
   return {frieza:f,challenge:goku.challenge};
 }
+// Frieza's field mapping (snes/test/frieza/state.mjs) comes with the frieza
+// module; its scenarios run only when that module is in the build and
+// registered with combat (frieza_virtual_target in the ROM's symbols).
+const fzState=existsSync(join(here,'../frieza/state.mjs'))?await import('../frieza/state.mjs'):null;
+const fz=fzState?.defs;
+const friezaReady=rom=>!!fzState&&symbols(rom).has('frieza_virtual_target');
 const w=n=>`0x${(0x7E0000|fz[n]).toString(16)}`;
 function friezaLua(sc){
   const {frieza,challenge}=friezaSnapshot(sc),{x,y}=sc.frieza;
   return [
-    `for _, v in ipairs(${luaWrites(friezaWrites(frieza,challenge))}) do if v[3] == 2 then H.w16(v[1], v[2]) else H.w8(v[1], v[2]) end end`,
+    `for _, v in ipairs(${fzState.luaWrites(fzState.friezaWrites(frieza,challenge))}) do if v[3] == 2 then H.w16(v[1], v[2]) else H.w8(v[1], v[2]) end end`,
     `H.w8(0x316002, ${frieza.permanent?1:0})          -- !persist_ssj_lock`,
     `H.w8(${w('fz_music')}, ${fz.FZM_BATTLE})          -- the battle theme counts as playing (no song load)`,
     `emu.addMemoryCallback(function() H.w16(${w('fzf_x')}, ${x}) H.w16(${w('fzf_y')}, ${y}) H.w16(${w('fzf_clock')}, 9999) end, emu.callbackType.exec, 0x00B0AC, 0x00B0AC)`,
@@ -188,6 +193,7 @@ for(const sc of SCENARIOS){
   if(only.length&&!only.includes(sc.name))continue;
   const state=sourceOf(sc.bundle);
   if(!existsSync(join(importRoot,sc.bundle))||!state||!existsSync(state)){console.log(`combat ${sc.name}: skipped (no ${sc.bundle})`);continue;}
+  if(sc.frieza&&!friezaReady(sc.testRom?buildTestRom():romSrc)){console.log(`combat ${sc.name}: skipped (no frieza module in the build)`);continue;}
   const romUsed=sc.testRom?buildTestRom():romSrc,rom=privateRom(romUsed,`combat-${sc.name}`);
   const r=await runMesen({rom,test:luaFor(sc,romUsed),outDir:join(outRoot,sc.name),state:join(cps,'waterfall.mss')});
   cleanupRom(rom);

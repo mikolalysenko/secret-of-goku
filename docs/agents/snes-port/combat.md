@@ -35,7 +35,7 @@ ui (King Kai) and destroy (the map) through `bind.asm`.
 | World flight: focus and transformation | Done (`combat_world_frame`) | — |
 | World flight: the aerial charge | The world module's stand-in (`!w_combat_owns` = 0) | world tests pass |
 | Virtual targets (mana-mod.js `entities()` extras: frieza.js `entity()` / `hit()`), registered in `modules.asm`: punches, ki, beams and the burst include them; a hit calls the module's routine (no native queue, number, launch or damage hook) with the spark, cue, contact hold, ki first contact and beam pulses of an actor | Done | `frieza-punch`, `frieza-ki`, `frieza-ki-held`, `frieza-beam`, `frieza-wave`, `frieza-burst` against the browser's own frieza.js `hit()`: every call (damage, melee, HP taken) and its frame, Frieza's HP, sparks, shots |
-| Receive hooks at `C0:4053`: other modules see Goku's queued damage before Saiyan resilience (the fed Beast's cap, `beast-challenge.js`) | Done in combat; the Beast's hook is frieza's to add | `receive-cap`, `receive-none` (a test hook) |
+| Receive hooks at `C0:4053`: other modules see Goku's queued damage before Saiyan resilience (the fed Beast's cap, `beast-challenge.js`) | Done; frieza's `frieza_combat_receive` listed (the fed Beast's 110 / 140 cap, 75-frame grace) | `receive-cap`, `receive-none` (a test hook) |
 | `combat_api_beam`: the live beam's `beamGeometry()` for other modules | Done | `beam-api`, `wave-api` (every age equals the browser's); vegeta's clash cases read it |
 | Damage hooks as a list (no include-order rule) | Done | frieza's (Beast, Lich) and vegeta's (slot-3 window) both listed; vegeta suite |
 | Input hold: the pad taken, what was fired runs on (`trial.inputLocked`) | Done | `input-hold`; vegeta's draw holds |
@@ -49,7 +49,7 @@ ui (King Kai) and destroy (the map) through `bind.asm`.
 | Code `$A2:8000-$A2:B72F` | `!CODE_COMBAT` (about 14 KiB; asserted below `$A2:F000`) |
 | Code `$A2:F000-$A2:F44A` | `bind.asm`: bindings to optional modules, assembled after every module include |
 | Data `$E2:0000-$E2:0BCC` | `!DATA_COMBAT` (`snes/gen/combat.mjs`): damage, beam damage/width by charge, beam half width 8.8 by charge and wave age (`combat_api_beam`), wave envelope by age, strength and focus tables, launch arcs, lift, radial ease, hand sockets, item names, placeholder cells |
-| Core `$A0:F122-$A0:F133` | The extension lists in `modules.asm` (`modules_combat_targets`, `_damage`, `_receive`), core's bank |
+| Core `$A0:F10E-$A0:F123` | The extension lists in `modules.asm` (`modules_combat_targets`, `_damage`, `_receive`), core's bank |
 | WRAM `$7E:D800-$7E:D8FF` | `!RAM_COMBAT` (map in `module.asm`); public fields below |
 | SRAM `$31:7C00-$31:7FFF` | `!SRAM_WORK_COMBAT`: 16 effect records, 9 launch records, 9 sound marks, the pad of the last four field vblanks (`!PADH`), destroy_hit arguments, the beam picture, 16 beam pulse timers (per target bit), the virtual target cache and the log of the last 8 virtual hits (`!VT`, `$31:7E34`), `combat_api_beam`'s record (`!cb_beam`), the hold owners (`!cb_inhold`); test builds `$31:7F00-7F23` (`!CBT`) |
 | SRAM `$31:6200` | `!PERSIST_COMBAT` byte 0: `PCF_REVEALED` (the first transformation reveal was seen). Shared: `!persist_ssj_lock` (permanent form), `!persist_goku_active` (read). NEW GAME resets the form (combat's and `!goku_form`) to base; a load sets both from `!persist_ssj_lock`, whatever the title-time init saw |
@@ -167,7 +167,7 @@ apply the rules immediately.
 - **Frieza / Vegeta / orbit.** Virtual targets, damage hooks and receive
   hooks are lists in `snes/src/modules.asm` (below): add a line for the
   module, in any include order. The single-owner `!COMBAT_HOOK_DAMAGE`
-  define is no longer read. `combat_api_danger` while a dangerous encounter
+  define is gone. `combat_api_danger` while a dangerous encounter
   runs; `combat_api_input_lock` / `_hold` while a scene takes the pad;
   `combat_api_beam` for Goku's live beam.
 - **Debug scene select.** `combat_debug_hook` answers `CANCEL_COMBAT`,
@@ -253,6 +253,9 @@ melee flag, HP taken) within 3 frames, Frieza's settled HP, the live ki
 shots and spark positions of every cartridge frame equal to the browser's
 within 2 frames, no launch, no native queue. On the build before the
 registry the same cases fail (no hit, no hold, the shot flies through).
+They run only when the frieza module is in the build and registered
+(`frieza_virtual_target` in the ROM's symbols, `snes/test/frieza/state.mjs`
+present); otherwise they report skipped.
 
 **Test ROM** (`-DCOMBAT_TEST`, built once per run into
 `.local/snes-test/roms/combat-test.sfc` for scenarios with `testRom`): a
@@ -283,12 +286,11 @@ master clocks, from the ROM's symbols): its logic hook per combat step, its
 frame end per field frame, and the virtual targets' queries and hits per
 call (the module's routine included).
 
-On this branch (main and integration-trial merged) all 34 pass, with the
-vegeta (11 cases, every tick), debug (21 full, `trial` native, `hexas`
-partial as before) and perf suites. frieza's `surge` (its timings in video
-frames) and goku's `budget` (Goku on against off: 34 lines, limit 24) fail
-here as they do on the same merge without combat's changes; goku's `menu`
-passes again with the X race closed.
+On main with the frieza module (78d7955) all 34 pass, the Frieza cases
+included; the frieza (13 cases), vegeta (11, every tick), goku (11) and
+perf suites pass, and the scene select has 21 presets full, `trial` native
+(vegeta) and `hexas` partial (Goku's position after the preset; main's own
+build gives the same).
 
 ## Performance
 
@@ -307,17 +309,20 @@ field 44 lines on this branch; main without combat measures 45, 31, 37, 33,
 38, 43, so combat adds about 4-8 lines where the scene is busy and the
 40-line limit is already reached on main in two scenes.
 
-Virtual targets (`run.mjs --profile`, master clocks, integration-trial
-merged): a query costs 0.88 lines when the target is elsewhere (frieza's
-`frieza_virtual_target` on another map) and 1.4 when it is live, once per
-field frame in which an attack scans; each scan then adds about 25 cycles.
-Combat's logic per step in the Rabite scenarios against the same build
-without the registry: punch +0.06, beam +0.15, combo +0.17, SSJ ki +0.42,
-base ki +0.54 lines; idle frames do no scan (+9 cycles for the cache
-reset). A virtual hit costs 11-12.5 lines, almost all of it frieza's
-`frieza_virtual_hit` (its 32-step shift-subtract division, the burst and
-the cue); combat's side is under a line. `snes/test/perf` is unchanged by
-the registry (p90 within a line in all six scenes).
+Virtual targets (`run.mjs --profile`, master clocks, main with frieza
+listed): a query costs 0.3 lines when the target is elsewhere
+(`frieza_virtual_target` leaves at once off map 246) and 1.5 when it is
+live, once per field frame in which an attack scans; each scan then adds
+about 25 cycles. With the earlier 0.88-line query, combat's logic per step
+in the Rabite scenarios grew against the same build without the registry
+by punch +0.06, beam +0.15, combo +0.17, SSJ ki +0.42, base ki +0.54 lines;
+idle frames do no scan (+9 cycles for the cache reset). A virtual hit
+costs 5.5-6.5 lines, almost all of it frieza's `frieza_virtual_hit` (the
+scaling on the hardware divider, the burst and the cue); combat's side is
+under a line. `snes/test/perf` is unchanged by these changes: on main at
+78d7955 its p90 and lag frames are equal with and without them in all six
+scenes (the build over the original: sword +20, Sandship +23, battle +21,
+Beast +2, Fortress +16, flight +13 lines).
 
 The title arrival's impact (`snes/test/title`, "no frames made late by the
 modules") has every fifth frame (the game's party refresh) start the
@@ -372,17 +377,18 @@ another 2-3. With `CORE_FASTROM` (MEMSEL set) the same frames end at
   (combat, frieza, radio, world) answer kinds of the same presets.
 - **destroy**: a full Super Saiyan wave's first frames (band growth) cost up
   to ~600 lines in one `destroy_hit` call.
-- **frieza**: the registry calls `frieza_virtual_target` / `_hit` (entry in
-  `modules.asm`, index 12, airborne). Still to do on frieza's side: the fed
-  Beast's receive hook (`modules_combat_receive`: grace 75, cap 110 / 140,
-  `!fzx_pending` kept); `fz_bind_beam_touches` through `combat_api_beam`
-  (`beamTouchesShot()`); the terrain byte in the query's high byte (Instant
-  Transmission's landing); delete the unread `!COMBAT_HOOK_DAMAGE` define
-  (the damage hook is listed). Cheaper: the query could test map 246 before
-  its DB/D set-up (0.88 lines per attacking frame on every other map), and
-  `fz_scale_hit` could use the hardware divider (floor(3a/20) =
-  floor(floor(3a/4)/5)). The hit's X16 is "combat's action is a punch",
+- **frieza**: listed in all three lists (`modules_combat_targets`: index
+  12, airborne; `modules_combat_damage`; `modules_combat_receive`), and its
+  unread `!COMBAT_HOOK_DAMAGE` define is deleted. frieza.md and the comment
+  over `frieza_combat_damage` (`beast.asm`) still name that define and the
+  include order it needed. The hit's X16 is "combat's action is a punch",
   the browser's rule, also for a ki shot landing during a punch.
+- **vegeta**: the registry can replace the slot-3 window. A version that
+  does it (commit c0b2c19 on branch `worktree-agent-a988f7ddad4064d41`;
+  every tick of every vegeta case agrees with joch-trial.js) changed the
+  frame pacing enough on the integration build that `combat-final`'s pilot
+  reached the Final Flash at 19 HP and missed the gold clash; re-apply it
+  with a pilot that keeps Goku standing until the Final Flash.
 - **flight**: Instant Transmission can list the same targets through
   `combat_api_vtarget` (X16 = slot index 3-15: C set with the species,
   position, terrain and airborne flag of a live virtual target registered at
