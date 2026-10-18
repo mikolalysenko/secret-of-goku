@@ -41,6 +41,7 @@ const tests=[
   ['world','waterfall'],
   ['save','waterfall'],
   ['lag','waterfall'],
+  ['hdmaen','waterfall'],
   ['wram',null],
   ['live',null],
   ['xdata',null],

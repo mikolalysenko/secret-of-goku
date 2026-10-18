@@ -204,7 +204,7 @@ of each hook in `snes/src/modules.asm`.
 | Hook | When |
 | --- | --- |
 | `modules_field_frame` | Every completed field frame (towns, dungeons, dialogue, events, Mode 7 boss arenas) after the game logic and OAM build, before the NMI handshake (`00:B073`) |
-| `modules_field_nmi` | Field vblank after the game's uploads, still force-blanked (`00:C158`); only for frames the loop completed |
+| `modules_field_nmi` | Field vblank after the game's uploads, still force-blanked (`00:C158`); only for frames the loop completed. Afterwards the core writes the game's HDMAEN shadow `$2C` to `$420C`. If the vblank work ran into the next frame's display (scanline 0–224), only channels already running stay on: a channel switched on after HDMA started would run from stale tables. Newly requested channels then start with the next vblank (`!core_hdmaen` holds the value written; core test `hdmaen`) |
 | `modules_world_frame` | World flight frame end (`00:8085`) |
 | `modules_world_nmi` | World vblank after the game's uploads and HDMA setup (`00:8903`); not force-blanked |
 | `modules_menu_frame` | Full-screen menus (game select, name entry, file list, status/equipment, save screen), once per frame in vblank after the menu's uploads (`C0:1E08`) |
