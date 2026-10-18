@@ -21,21 +21,23 @@ port of `GokuAnimation.pose()` and is checked frame by frame against it
 
 | Resource | Use |
 | --- | --- |
-| Code `$A1:8000-$A1:A5F6` | `!CODE_GOKU` (about 9.5 KiB used) |
+| Code `$A1:8000-$A1:A623` | `!CODE_GOKU` (about 9.5 KiB used) |
 | Data `$E1:0000-$E1:68B9` | `!DATA_GOKU`: palettes, cell/variant tables, clips, the 51 native actions, sockets, lift tables |
 | ROM `$F8-$FA` | 4,837 de-duplicated 8×8 4bpp tiles (151 KiB). `$FB` of the F8–FB reservation is still free |
 | WRAM `$7E:D740-$7E:D7FF` | `!RAM_GOKU`, all $C0 bytes (fields below). Full-screen menus keep their state in the field's scratch `pal_work` (`$7E:D7D0-D7EF`); a menu session restarts whenever another mode ran in between (`!core_tick`). Unused palette entry 0 of `pal_native`/`pal_out` and the old `up_phase` byte hold the frame's actor-0 OAM slots for `goku_api_scripted` (`!rec_body0/1`, `!rec_shadow`, `!rec_stamp`) and its this-frame flag `!scr_shown` |
 | VRAM | OBJ tiles `C0-C7`/`D0-D7` of name table 1 (word `$7C00/$7D00`, the boy's own cells; claimed as core region `!VRAM_FIELD_HERO` with owner `$01`), HUD portrait `E8/E9/F8/F9` (word `$7E80/$7F80`), ring marker `0A/0B/1A/1B` of name table 1 (word `$70A0/$71A0`, the boy's marker, rewritten when a ring opens). Full-screen menus: OBJ name table 2 (base `$4000` + `$1000`) tiles `C0-C9/D0-D9` and `E0-E7/F0-F7` (word `$5C00-$5F7F`): the idle and blink cells and the GAME FILE face. No menu screen uses that area (surveyed: Status, Action Grid, Controller/Window Edit, Weapon Skill, game select, GAME FILE load/save, save confirmation) and the field reloads it on return |
 | CGRAM | The boy's OBJ palette through the game's buffer `$7E:0600`: palette 1, or palette 5 on water maps (the slot his body descriptor uses); during a native flash with a scene or scripted cell also its copy in `$7E:BE00` (colours 2-15). Menus: OBJ palette 1 directly (the boy's colours there, `C8:1F00`) |
 | OAM | The boy's body entries are replaced in place by up to four 16×16 OBJ (empty quadrants are skipped), or one for the miniature. `goku_api_scripted`: up to four 16×16 OBJ through `core_oam_add_front` (behind the natives through `core_oam_add` when the 16 front slots are taken), and `core_oam_hide` on actor 0's body and shadow slots of that frame. Menus: the PPU's OAM directly, after the menu's own upload: the boy's eight figure entries moved off screen, entries 120-123 Goku's figure, 124-127 the GAME FILE faces (only when the menu leaves 120-127 unused) |
-| DMA | In `modules_field_nmi`: channels 4-7 (one cell, 16 tiles = 512 B, only when it changed or on the game's 5-frame party refresh; skipped while `core_vblank_lines` < 6) and channel 7 for the HUD portrait (128 B). Ring set-up: channel 5 (128 B) right after the game's own marker uploads on that channel (measured: the whole set-up ends by scanline 249). Menus: channels 4-7 for the two cells (512 B each, one per frame, when 14+ lines remain) and 7 for the face (128 B), only when the menu runs no HDMA there (`$2C`) |
+| DMA | In `modules_field_nmi`: channels 4-7 for one cell (16 tile DMAs, 512 B, 7-8 lines on FastROM) when it changed; with fewer than 9 lines left before line 258 (11 on SlowROM) it waits one frame, then goes anyway. The game's 5-frame party refresh no longer re-sends it (the hook skips the boy's tiles, and menus and rings leave the slot alone, checked in VRAM), except every eighth refresh as a safety net when the vblank has room. Nothing pending: `goku_nmi` returns after two compares. Channel 7 for the HUD portrait (128 B). Ring set-up: channel 5 (128 B) right after the game's own marker uploads on that channel (measured: the whole set-up ends by scanline 249). Menus: channels 4-7 for the two cells (512 B each, one per frame, when 14+ lines remain) and 7 for the face (128 B), only when the menu runs no HDMA there (`$2C`) |
 | SRAM | None written. Test builds only (`-DGOKU_TRACE`): a 27-byte trace at `$7E:7F00` |
 
 Measured cost (Potos walk, `snes/test/goku/budget.lua`, Goku on against
 off; "on" includes combat, which runs while Goku is active): p90 frame-logic
 end +22 lines on the FastROM default (limit 24), +26 with `-DCORE_SLOWROM=1`
-(limit 30); no added lag frames; NMI work ends by scanline 259 (FastROM) /
-260 (SlowROM). Goku's own main-thread work was ~3,600 CPU cycles a frame on
+(limit 30); no added lag frames; NMI work ends by scanline 258 (FastROM) /
+255 (SlowROM). In the NMI a cell upload costs 7-8 lines (FastROM); before
+October 2026 it took about 10 and was also re-sent on every party refresh,
+which with every stream merged ended the NMI at line 262 on those frames. Goku's own main-thread work was ~3,600 CPU cycles a frame on
 SlowROM (pose ~1,570, OAM ~990, palette ~730 with its no-change fast path);
 module code runs 25% faster on FastROM.
 Menus (`menu.lua`, `file.lua`): the hook starts at scanline ~229 and ends by
@@ -286,6 +288,9 @@ transition palettes follow the browser's `transform` clip).
 - Inputs are what a player presses with combat's controls (`combat.md`,
   as the browser mod): X opens the controlled character's ring (native Y),
   Select hands control to the next character, B confirms in rings and menus.
+  With Goku inactive `menu` presses Y, the game's own ring button (combat
+  turns Y into ki only while Goku is player 1's character): through X it
+  would meet combat's first-frame race (Requests).
 - `ring`: Primm's weapon ring opened from Potos (Select, X); VRAM `0A/0B/1A/1B` equal the
   marker tiles in ROM for both forms, the girl's (`0C`) and sprite's (`0E`)
   markers equal `D2:C680`'s, and with the flag cleared the boy's marker is
@@ -332,7 +337,9 @@ transition palettes follow the browser's `transform` clip).
   pixels apart by more than colour rounding, all where the cell's
   15-colour palette quantizes the art (limit 32).
 - `budget`: frame-logic end and NMI end with Goku off and on; limits per
-  build (read from the header's map mode).
+  build (read from the header's map mode: bit 4, `$35` FastROM ExHiROM,
+  `$25` SlowROM; until October 2026 the check expected `$31` and the
+  ExHiROM builds ran with the SlowROM limits).
 - Builds: the suite runs the FastROM default; `--slowrom` builds both ROMs
   with `-DCORE_SLOWROM=1` (outputs in `.local/snes-test/goku-slowrom/`).
   After each state import the tests set MEMSEL again (bundles come from
@@ -362,6 +369,18 @@ transition palettes follow the browser's `transform` clip).
 - No module calls `goku_api_scripted`, `goku_api_socket` or `goku_api_hand`
   yet; the frieza stream asked for the first (its follower poses and the
   Tree vista).
+
+## Requests
+
+- **combat** (input): X becomes native Y through `!core_pad_mask`, but
+  combat masks X only after its own frame has seen the press. The game's
+  pad read of that first frame comes before it, so when the game polls the
+  ring button in that frame the press arrives as native X and opens member
+  1's ring instead of the controlled character's (`$1808` = 1). With Goku
+  inactive on `barrier-audit__potos-probe` this happens for presses 9 and
+  14 frames after the import on main and 10 and 30 with every stream
+  merged (the merged frame timing moved it onto `menu`'s press). Masking X
+  whenever combat owns it (it is "ring / back everywhere") would close it.
 
 ## Core requests
 

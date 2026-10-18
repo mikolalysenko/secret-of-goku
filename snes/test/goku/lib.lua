@@ -19,13 +19,14 @@ function G.fail(msg) G.failures[#G.failures + 1] = msg; H.log('FAIL', msg) end
 function G.check(cond, msg) if not cond then G.fail(msg) end return cond end
 function G.on() H.w8(G.PERSIST_ACTIVE, 1) end
 function G.off() H.w8(G.PERSIST_ACTIVE, 0) end
--- FastROM cartridges (the default; header map mode $31; -DCORE_SLOWROM=1
--- builds $21) run banks $80-$FF at 3.58 MHz with MEMSEL set (the core sets
--- it every frame). Browser bundles come from the original SlowROM game and
--- restore $420D = 0: set it again at once. Read lazily: emulator memory is
--- not readable while the script loads (Mesen stalls).
+-- FastROM cartridges (the default; header map mode bit 4: $35 ExHiROM, $31
+-- HiROM; -DCORE_SLOWROM=1 builds $25/$21) run banks $80-$FF at 3.58 MHz with
+-- MEMSEL set (the core sets it every frame). Browser bundles come from the
+-- original SlowROM game and restore $420D = 0: set it again at once. Read
+-- lazily: emulator memory is not readable while the script loads (Mesen
+-- stalls).
 function G.fastrom()
-  if G._fastrom == nil then G._fastrom = H.r8(0x00FFD5) == 0x31 end
+  if G._fastrom == nil then G._fastrom = (H.r8(0x00FFD5) & 0x10) ~= 0 end
   return G._fastrom
 end
 function G.import(name)

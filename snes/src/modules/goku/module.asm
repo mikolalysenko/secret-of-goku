@@ -129,7 +129,10 @@ assert !GOKU_RAM_END <= !GOKU_RAM+$C0, "goku RAM overflow"
 ; up_flags
 !GOKU_UP_HUD     = $01  ; re-upload the HUD portrait
 !GOKU_UP_NATIVE  = $02  ; restore the boy's native tiles (replacement ended)
-!GOKU_UP_REFRESH = $04  ; the game's 5-frame party refresh came round: resend the cell
+!GOKU_UP_REFRESH = $04  ; the game's 5-frame party refresh came round
+!GOKU_UP_WAITED  = $08  ; the pending cell already waited a frame for vblank room
+!GOKU_UP_COUNT   = $E0  ; bits 5-7: party refreshes counted (re-send on wrap)
+!GOKU_UP_COUNT1  = $20
 
 ; Pose kinds (engine/goku-animation.js kind strings). Native action keys
 ; that are not generic kinds use $80 | key index (see goku_action_data).
