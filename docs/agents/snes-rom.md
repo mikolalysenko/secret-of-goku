@@ -126,15 +126,21 @@ savestate), `H.saveStable(name)`, `H.load(path)`, `H.importSnesJs(dir)`,
 | ROM F8–FF | Packed graphics and samples |
 | ROM `$40–$7D:0000–7FFF` | Extended data (xdata): DMA sources and bulk tables from `snes/gen` (second 4 MiB, slow banks) |
 | WRAM `7E:D700–DDFF` | Module state blocks (`snes/src/core/ram.asm`) |
-| WRAM `7E:6E40–6FFF` | Core queues and staging |
+| WRAM `7E:6E40–6FFF` | Core per-frame staging (OAM, scratch, test mailbox) only: the game's BG tile decoder overwrites it during some map loads |
+| SRAM `$31:7480–751F` | Core state that must survive map loads (`!CORE_SAFE`: event request, sound queue, pad latches, VRAM claims, DMA queue, OAM high-water marks, HDMAEN shadow; long addressing, cleared at power-on and title entry, revalidated each frame) |
 | WRAM `7E:7E40–7FFF` | UI block, then spare |
 | SRAM `$30:6000–7FFF` | Original saves, untouched |
 | SRAM `$31:6000–747F` | Persistent Goku state: live block (`$31:6000`) and one sidecar per native slot |
 | SRAM `$31:7480–$33:7FFF` | Volatile work buffers (`core/shared.asm`) |
 
-The three WRAM ranges are the only ones the original game never touches; the
-core tests re-check that, and that the game never reads or writes the added
-SRAM pages, from power-on through the opening and in seven imported scenes.
+The three WRAM ranges were never written in 321 replayed browser states, and
+the core tests re-check that, and that the game never reads or writes the
+added SRAM pages, from power-on through the opening and in seven imported
+scenes. Map loads are the exception: the BG tile decoder (`C1:C5D1–C9FF`)
+writes 4bpp tiles to `7E:2000+X`, up to `7E:77FF` (X ≤ `$5800`, measured over
+the scene-select presets). Map 153's set reaches `7E:6E8E`, so `7E:6E40–6FFF`
+may only hold data rebuilt every frame (core test `decode`). `7E:7E40–7FFF`
+lies above the decoder's maximum.
 
 ### Extended data (ExHiROM)
 
@@ -169,6 +175,14 @@ bank; split larger data into 32 KiB pieces.
 `%hijack_jsl`, `%patch` and `%origN` byte assertions. Every patch of original
 bytes goes through them; `build.mjs` rejects overlapping patches.
 
+asar overwrites silently when two `org` blocks overlap, so `build.mjs` also
+checks ROM ownership: every 16 KiB quarter of the added banks may hold labels
+of one module only (`--strict` makes a shared quarter an error). Each module
+asserts the end of its code and data blocks. When a module's code half is
+full, it can be given a spare quarter of a mostly empty half
+(`!CODE_QUARTER_*` in `core/layout.asm`: goku's, audio's and title's halves
+end their code before `$C000`).
+
 asar does not track `REP`/`SEP`: an immediate's width comes from how it is
 written, so `CMP #8` in 16-bit code assembles as two bytes and desynchronises
 the instruction stream. Write every accumulator/index immediate with an
@@ -196,7 +210,7 @@ of each hook in `snes/src/modules.asm`.
 | Hook | When |
 | --- | --- |
 | `modules_field_frame` | Every completed field frame (towns, dungeons, dialogue, events, Mode 7 boss arenas) after the game logic and OAM build, before the NMI handshake (`00:B073`) |
-| `modules_field_nmi` | Field vblank after the game's uploads, still force-blanked (`00:C158`); only for frames the loop completed |
+| `modules_field_nmi` | Field vblank after the game's uploads, still force-blanked (`00:C158`); only for frames the loop completed. Afterwards the core writes the game's HDMAEN shadow `$2C` to `$420C`. If the vblank work ran into the next frame's display (scanline 0–224), only channels already running stay on: a channel switched on after HDMA started would run from stale tables. Newly requested channels then start with the next vblank (`!core_hdmaen` holds the value written; core test `hdmaen`) |
 | `modules_world_frame` | World flight frame end (`00:8085`) |
 | `modules_world_nmi` | World vblank after the game's uploads and HDMA setup (`00:8903`); not force-blanked |
 | `modules_menu_frame` | Full-screen menus (game select, name entry, file list, status/equipment, save screen), once per frame in vblank after the menu's uploads (`C0:1E08`) |
@@ -213,7 +227,8 @@ of each hook in `snes/src/modules.asm`.
 | `core_oam_hide`, `!core_oam_native` | Hide slot A; first slot after this frame's native sprites (inspect or edit natives below it) |
 | `core_queue_vram` | A = VRAM word address, X = bytes, Y = source address, `!core_scratch` byte = source bank. Uploaded in this mode's vblank on a DMA channel no HDMA uses; a transfer that would not end by line 258 waits for the next vblank. Carry set when the queue (8) or the per-frame budget (3 KiB) is full |
 | `core_vblank_lines` | A = scanlines left before line 258 (0 outside vblank), for modules' own vblank work |
-| `core_vram_claim`, `core_vram_release` | A = region (`!VRAM_*`, `core/vram.asm`), X = owner id: exclusive use of a free OBJ VRAM region; returns Y = its VRAM word address |
+| `core_vram_claim`, `core_vram_release` | A = region (`!VRAM_*`, `core/vram.asm`), X = owner id: exclusive use of a free OBJ VRAM region; returns Y = its VRAM word address. `!VRAM_SCENE_OBJ` (OBJ `$6C00`) and `!VRAM_SCENE_BG` (BG `$1C00`, maps 246/255) are scene-scoped: free only in the set pieces listed in `core/vram.asm`. The claimer releases them when its scene ends or the map changes |
+| `core_scene_claim`, `core_scene_release`, `core_scene_owner` | A16 = owner id (`!SCENE_FRIEZA`/`_ORBIT`/`_ENDING`/`_VEGETA`/`_SANDSHIP`, `core/shared.asm`): exclusive use of the scene work area `!SRAM_WORK_SCENE` (`$32:6000–7FFF`). Claim before a scene first writes there, release when it ends. Carry set if another scene holds it. Cleared at power-on and title entry |
 | `core_sound_queue` | A = command bytes 0–1, X = bytes 2–3 for the native driver (`$1E00`, `C3:0004`); one command sent per frame; carry set when 7 are pending |
 | `core_event_request` | A = native event id (`C1:E76D`: script events, `$0800\|door`, `$0C00\|map` takeoff); started at the end of an idle field frame. `!core_event_req` pending, `!core_event_last` started |
 | `!SRAM_LIVE`, `!PERSIST_*` | Live persistent block (`core/shared.asm`): written to the slot's sidecar after each native save; restored on load when the sidecar matches that slot's record (primary or backup); zeroed for NEW GAME (`!persist_version` = 1) and for saves without a valid sidecar (version 0). Every clear writes the `'GK'` magic (`!persist_magic`, `+$3E`); power-on clears a block without it (a new cartridge's battery RAM is noise), so modules that read it on the title see zeros, not noise |
@@ -385,3 +400,12 @@ for ROM code, a Mesen `emu.addMemoryCallback` on the byte (`snesWorkRam` or
   marks bytes never executed in the trace.
 - `snes/tools/wram-usage.mjs [--replay]` finds WRAM never used by the
   original game.
+- `snes/tools/modprof.mjs [--rom=…] [scene …]` measures each module's cost
+  in the field dispatch tables (`modules_field_frame`, `modules_field_nmi`), in
+  scanlines per call, over 300 walking frames from the perf states. With all
+  modules merged, the idle costs add up, so each module should early-out to
+  about 0.3 lines per frame callback and 0.1 per vblank callback when its
+  feature is not active.
+- `SNES_LUA_PRELUDE=file.lua` (any runner using `snes/test/mesen.mjs`) runs an
+  extra Lua file before every test, e.g. a tracer that logs to a file while
+  existing suites play (it may only register callbacks at load).

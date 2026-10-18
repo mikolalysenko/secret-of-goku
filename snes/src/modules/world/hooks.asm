@@ -131,6 +131,9 @@ world_land_hook:
 ;   for a whole frame. Restore Mode 1 and the cached sky scroll (as
 ;   C0:89EE-89FD) unless the overhead map (Mode 7 throughout) is shown.
 world_nmi_sky_hook:
+	LDA $EC                         ; for core_world_nmi: did the game run its frame work
+	AND.b #$01                      ; this vblank? (C0:890B clears the bit)
+	STA.l !core_world_done
 	LDA.l !persist_goku_active
 	BEQ .native
 	STZ $212E

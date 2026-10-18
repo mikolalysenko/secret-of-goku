@@ -42,29 +42,44 @@
 !core_vline        = !RAM_CORE+$3E   ; word: scanline when the last vblank flush started
 
 ; Extended core WRAM (!RAM_CORE_EXT, 7E:6E40-6FFF)
-!core_dma_table    = !RAM_CORE_EXT+$000 ; !CORE_DMA_MAX x 8: src.w bank.w vram.w size.w
-!core_pad_mask_live   = !RAM_CORE_EXT+$040 ; word: mask applied at the game's pad reads
-!core_pad_inject_live = !RAM_CORE_EXT+$042 ; word: buttons added at the next pad read
-!core_pad_reads       = !RAM_CORE_EXT+$044 ; word: pad reads left for the latched mask
-!core_pad_seen        = !RAM_CORE_EXT+$046 ; word: pad 1 as last delivered to the game
-!core_pad_bios        = !RAM_CORE_EXT+$048 ; word: pad 1 from the game's last read, before filtering
-!core_snd_head        = !RAM_CORE_EXT+$04A ; word: next queued sound command (0-7)
-!core_snd_tail        = !RAM_CORE_EXT+$04C ; word: next free sound slot (0-7)
-!core_event_req       = !RAM_CORE_EXT+$04E ; word: $8000|event id while a request is pending
+; Core state that must survive map loads lives in battery RAM (!CORE_SAFE =
+; !SRAM_WORK_CORE, $31:7480; long addressing): the game's BG tile decoder
+; (C1:C5D1-C9FF, 4bpp tiles at 7E:2000+X during map loads, up to 7E:77FF)
+; overwrites 7E:6E40-6FFF on some maps (153 reaches 7E:6E8E), so that WRAM
+; block only holds per-frame staging and scratch.
+!CORE_SAFE = !SRAM_WORK_CORE        ; +$000 CORE_TEST title-boot counter (kept across boots)
+!CORE_SAFE_CLEAR = $002             ; cleared at power-on and title entry: +$002-$09F
+!CORE_SAFE_END   = $0A0
+!core_scene_owner = !CORE_SAFE+$01C ; word: owner of !SRAM_WORK_SCENE (core_scene_claim; 0 = free)
+!core_world_done = !CORE_SAFE+$01A  ; byte: this world vblank ran the game's frame work ($EC bit 0 at
+                                    ; 00:88FB; written by the world module's hook there, which owns the site)
+!core_safe_magic = !CORE_SAFE+$018  ; word 'CS' while the block is valid; any frame
+!CORE_SAFE_MAGIC = $5343            ; that finds it missing (state loaded from an older
+                                    ; build, battery noise) clears the block first
+!core_dma_table    = !CORE_SAFE+$060 ; !CORE_DMA_MAX x 8: src.w bank.w vram.w size.w
+!core_pad_mask_live   = !CORE_SAFE+$002 ; word: mask applied at the game's pad reads
+!core_pad_inject_live = !CORE_SAFE+$004 ; word: buttons added at the next pad read
+!core_pad_reads       = !CORE_SAFE+$006 ; word: pad reads left for the latched mask
+!core_pad_seen        = !CORE_SAFE+$008 ; word: pad 1 as last delivered to the game
+!core_pad_bios        = !CORE_SAFE+$00A ; word: pad 1 from the game's last read, before filtering
+!core_snd_head        = !CORE_SAFE+$00C ; word: next queued sound command (0-7)
+!core_snd_tail        = !CORE_SAFE+$00E ; word: next free sound slot (0-7)
+!core_event_req       = !CORE_SAFE+$010 ; word: $8000|event id while a request is pending
 !core_oam_cursor      = !RAM_CORE_EXT+$050 ; word: byte offset of the next back sprite
 !core_oam_limit       = !RAM_CORE_EXT+$052 ; word: byte offset end of the module area
 !core_oam_front_n     = !RAM_CORE_EXT+$054 ; word: staged front sprites (field)
-!core_oam_world_hw    = !RAM_CORE_EXT+$056 ; word: byte offset end of module sprites drawn in world mode
-!core_oam_field_hw    = !RAM_CORE_EXT+$058 ; word: byte offset end of module sprites drawn in the field
+!core_oam_world_hw    = !CORE_SAFE+$012 ; word: byte offset end of module sprites drawn in world mode
+!core_oam_field_hw    = !CORE_SAFE+$014 ; word: byte offset end of module sprites drawn in the field
 !core_tmp0            = !RAM_CORE_EXT+$05A ; word: internal scratch
 !core_tmp1            = !RAM_CORE_EXT+$05C ; word: internal scratch
 !core_tmp2            = !RAM_CORE_EXT+$05E ; word: internal scratch
-!core_snd_queue       = !RAM_CORE_EXT+$060 ; 8 x 4 bytes
+!core_snd_queue       = !CORE_SAFE+$020 ; 8 x 4 bytes
 !core_oam_front       = !RAM_CORE_EXT+$080 ; 16 x 4 bytes staged front sprites
 !core_oam_front_hi    = !RAM_CORE_EXT+$0C0 ; 16 x 2 bytes: size/xhi bits (bit0 xhi, bit1 size)
-!core_vram_owner      = !RAM_CORE_EXT+$0E0 ; 32 bytes: VRAM pool cell owners (core/vram.asm)
+!core_vram_owner      = !CORE_SAFE+$040 ; 32 bytes: VRAM pool cell owners (core/vram.asm)
 !core_test            = !RAM_CORE_EXT+$100 ; 128 bytes: CORE_TEST mailbox (test builds only)
-; !RAM_CORE_EXT+$180-$1BF reserved for core.
+!core_hdmaen          = !CORE_SAFE+$016 ; byte: HDMAEN written by the last field vblank
+; !RAM_CORE_EXT+$181-$1BF reserved for core.
 
 !CORE_DMA_MAX      = 8
 !CORE_DMA_BUDGET   = $0C00           ; bytes per frame accepted by core_queue_vram
@@ -155,12 +170,26 @@ core_clear_wram:
 	STA.l !RAM_CORE_EXT,X
 	DEX : DEX
 	BPL .ext
+	JSR core_safe_clear
+	LDA.w #$0000
 	; UI and world blocks (7E:7E40-7FFF): random at power-on on hardware.
 	LDX.w #(!RAM_SPARE_END-!RAM_UI-2)
 .spare
 	STA.l !RAM_UI,X
 	DEX : DEX
 	BPL .spare
+	RTS
+
+; Clear the battery-RAM core block (+$002-$09F) and mark it valid. M16/X16.
+core_safe_clear:
+	LDA.w #$0000
+	LDX.w #(!CORE_SAFE_END-!CORE_SAFE_CLEAR-2)
+.loop
+	STA.l !CORE_SAFE+!CORE_SAFE_CLEAR,X
+	DEX : DEX
+	BPL .loop
+	LDA.w #!CORE_SAFE_MAGIC
+	STA.l !core_safe_magic
 	RTS
 
 ; Title program entries (C1:4CF6 JML $7EAF0B, C1:4D0B JML $7EAF28). Every way
@@ -201,6 +230,12 @@ endif
 ; ---------------------------------------------------------------------------
 ; Shared frame bookkeeping. A = mode. M16/X16, DB = $7E, D = 0.
 core_frame_begin:
+	PHA
+	LDA.l !core_safe_magic
+	CMP.w #!CORE_SAFE_MAGIC
+	BEQ +
+	JSR core_safe_clear
++	PLA
 	CMP.w !core_mode&$FFFF
 	BEQ .same
 	STA.w !core_mode&$FFFF
@@ -277,6 +312,16 @@ core_field_nmi:
 	PEA $8080 : PLB : PLB          ; I/O visible through bank $80
 	LDA.l !core_dma_ready
 	BEQ .done
+	; Only in a vblank whose frame the game completed: core_field_frame sets
+	; the ready word just before the loop's TSB $EC (00:B077), so an NMI in
+	; between finds $EC bit 0 clear; the game skips its uploads then and the
+	; module work waits for the next vblank (D = 0 here; the native NMI
+	; clears $EC at C0:C164, after this hook).
+	SEP #$20
+	LDA.b $EC
+	LSR
+	REP #$20
+	BCC .done
 	LDA.w #$0000 : STA.l !core_dma_ready
 if defined("CORE_TEST")
 	JSL core_test_field_nmi
@@ -288,9 +333,27 @@ endif
 	PLB
 	PLP
 	SEP #$20
-	LDA $2C
-	STA $420C
+	JSR core_hdmaen_write
 	RTL
+
+; The replaced C0:C15A LDA $2C / STA $420C (M8 in and out; A = the value
+; written; D and DB the native NMI's). When the vblank work ran into the next
+; frame (scanline 0-224), that frame's HDMA has already started, and a
+; channel switched on now would run from stale table pointers (garbage CGRAM
+; or scroll writes for a frame, ui.md): then only channels already running
+; stay on, and the rest start with the next vblank.
+core_hdmaen_write:
+	REP #$20
+	JSR core_vcount
+	CMP.w #225
+	SEP #$20
+	LDA $2C
+	BCS .store
+	AND.l !core_hdmaen
+.store
+	STA.l !core_hdmaen
+	STA.l $00420C
+	RTS
 
 ; ---------------------------------------------------------------------------
 ; World flight (Mode 7 overworld), 00:8085: after the world frame's logic,
@@ -326,6 +389,9 @@ core_world_nmi:
 	PEA $8080 : PLB : PLB
 	LDA.l !core_dma_ready
 	BEQ .done
+	LDA.l !core_world_done          ; the world NMI ran its frame work (set by world_nmi_sky_hook at 00:88FB)
+	AND.w #$00FF
+	BEQ .done
 	LDA.w #$0000 : STA.l !core_dma_ready
 if defined("CORE_TEST")
 	JSL core_test_world_nmi
@@ -342,6 +408,7 @@ endif
 	PLX
 	PLA
 	RTI
+
 
 ; ---------------------------------------------------------------------------
 ; Full-screen menus (file select, name entry, status/equipment/save
@@ -522,7 +589,7 @@ core_flush_vram:
 	LDA.l !core_dma_count
 	ASL : ASL : ASL : DEC
 	PHB
-	MVN $7E,$7E
+	MVN (!core_dma_table>>16),(!core_dma_table>>16)
 	PLB
 	RTS
 .end

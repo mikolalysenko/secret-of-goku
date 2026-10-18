@@ -20,7 +20,7 @@ function test()
   for _ = 1, 30 do
     H.wait(1)
     if H.r16(CORE + 0x02) & PAD.right ~= 0 then seenPhysical = true end
-    if H.r16(CORE_EXT + 0x46) & PAD.right ~= 0 then seenGame = true end
+    if H.r16(CORE_SAFE + 0x08) & PAD.right ~= 0 then seenGame = true end
   end
   H.input = nil
   H.wait(8)

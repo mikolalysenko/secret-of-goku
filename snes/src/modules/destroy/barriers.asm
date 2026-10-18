@@ -27,15 +27,19 @@
 ; dst_barrier_hit: native-barriers.js hit() for the current destroy_hit.
 dst_barrier_hit:
 	LDA.l !bp_state : BEQ +
-	RTS
+	BRA .nothing
 +	; strength: punches always qualify; beams need >= 85% charge
 	LDA.w !arg_kind : BEQ +
 	LDA.w !arg_str : CMP.w #218 : BCS +
-	RTS
+	BRA .nothing
 +	; one barrier per beam
 	LDA.w !arg_id : BEQ +
 	CMP.w !d_abar : BNE +
-	RTS
+.nothing
+	; nothing (more) to search for this beam
+	LDA.w !arg_id : BEQ ++
+	LDA.w #2 : JMP dst_hit_done
+++	RTS
 +	LDA.w !arg_len : CMP.w #641 : BCC +
 	LDA.w #640
 +	STA.w !bh_len
@@ -54,21 +58,45 @@ dst_barrier_hit:
 	CMP.l !bb_id : BNE +
 	LDA.l !bb_len : STA.w !nt_plen
 	LDA.l !bb_half : STA.w !nt_phalf
-+	JSR dst_native_target : BCS .hit
++	LDA.w !arg_id : BNE .steps
+	JSR dst_native_target : BCC +
+	LDX.w #$FFFF
+	JMP dst_barrier_start
++	RTS
+.steps
+	; a beam's box grows in steps (dst_step_next), nearest rows first, a
+	; step at least per call and more while the call has time
+	LDA.w !bh_len : STA.l !cl_rl
+	LDA.w !bh_wid : STA.l !cl_rh
+.step
+	LDA.w !nt_plen : BPL +
+	LDA.w #0 : STA.l !cl_l0 : STA.l !cl_h0
+	BRA ++
++	STA.l !cl_l0
+	LDA.w !nt_phalf : STA.l !cl_h0
+++	JSR dst_step_next : BCS .searched
+	LDA.l !cl_tl : STA.w !bh_len
+	LDA.l !cl_th : STA.w !bh_wid
+	JSR dst_native_target : BCS .hit
 	; remember the searched extent
-	LDA.w !arg_id : BEQ .none
-	CMP.l !bb_id : BEQ +
+	LDA.w !arg_id : CMP.l !bb_id : BEQ +
 	STA.l !bb_id
 	LDA.w !bh_len : STA.l !bb_len
 	LDA.w !bh_wid : STA.l !bb_half
-	RTS
+	BRA ++
 +	LDA.w !bh_len : CMP.l !bb_len : BCC +
 	STA.l !bb_len
-+	LDA.w !bh_wid : CMP.l !bb_half : BCC .none
++	LDA.w !bh_wid : CMP.l !bb_half : BCC ++
 	STA.l !bb_half
-.none
-	RTS
+++	LDA.l !bb_len : STA.w !nt_plen
+	LDA.l !bb_half : STA.w !nt_phalf
+	JSR dst_hit_time : BCC .step
+	; the rest of the box later
+	LDA.w #2 : JMP dst_hit_left
+.searched
+	LDA.w #2 : JMP dst_hit_done
 .hit
+	LDA.w #2 : JSR dst_hit_done
 	LDX.w #$FFFF
 	JMP dst_barrier_start
 

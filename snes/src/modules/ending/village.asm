@@ -383,10 +383,8 @@ depart_status:
 	LDA.l !ending_age
 	CMP.w #!DP_LAUNCH
 	BNE .done
-	SEP #$20
-	LDA.b #!ESFX_FLIGHT
-	STA.l !ending_sfx
-	REP #$20
+	LDA.w #!ESFX_FLIGHT
+	JSR ending_sound
 .done
 	RTS
 
@@ -565,24 +563,32 @@ depart_space:
 	SEP #$20
 	LDA.b #$01
 	STA.w !s_ldvis
+	LDA.b #$00                    ; under pure white: the new ranges join the
+	STA.w !s_pbnow                ; round robin rather than all in this frame
 	REP #$30
 	JSR space_phase_init
 	REP #$30
 	STZ.w !s_fadeb
 	LDA.w #$0100
 	STA.w !s_fadew
-	; the miniature of the flight pose (sheet 0, column 38, row 3)
+	JMP depart_status
+.live
+	LDA.w !ov_space
+	CMP.w #$0002
+	BCS .shown
+	INC.w !ov_space
+	; the miniature of the flight pose (sheet 0, column 38, row 3), one
+	; frame after the load (the picture is still all white)
 	LDA.w #$0000
 	LDX.w #38
 	LDY.w #3
 	JSL goku_api_cell
 	REP #$30
 	CMP.w #$FFFF
-	BEQ .noMini
+	BEQ .shown
 	JSR queue_goku_mini
-.noMini
-	JMP depart_status
-.live
+.shown
+	REP #$30
 	JSR depart_status
 	JSR oam_begin
 	SEP #$20

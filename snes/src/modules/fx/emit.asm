@@ -634,6 +634,49 @@ fx_hibits:
 fx_hiv:
 	db $00,$00,$00,$00, $01,$04,$10,$40, $02,$08,$20,$80, $03,$0C,$30,$C0
 
+; Take back the sprites added since the OAM state in !d_tmp (core cursor),
+; +2 (core front list count) and +4 (FX's front count): clear the
+; high-table bits ORed in for the back sprites and drop the staged front
+; ones. M16/X16.
+fx_oam_rollback:
+	LDY !d_tmp                   ; OAM offset of the first sprite taken back
+.clear
+	CPY.w !core_oam_cursor&$FFFF
+	BCS .done
+	TYA
+	LSR
+	LSR
+	AND.w #$0003
+	TAX
+	LDA.l fx_himask,X
+	STA !d_tmp+6
+	TYA
+	LSR
+	LSR
+	LSR
+	LSR
+	TAX
+	SEP #$20
+	LDA.w $0A00,X
+	AND !d_tmp+6
+	STA.w $0A00,X
+	REP #$20
+	INY
+	INY
+	INY
+	INY
+	BRA .clear
+.done
+	LDA !d_tmp
+	STA.w !core_oam_cursor&$FFFF
+	LDA !d_tmp+2
+	STA.w !core_oam_front_n&$FFFF
+	LDA !d_tmp+4
+	STA.l !fx_front
+	JMP fx_oam_limit
+fx_himask:
+	db $FC,$F3,$CF,$3F
+
 ; Back sprites go straight after the core's OAM cursor, exactly as
 ; core_oam_add places them (same room rule: cursor + 4 + the staged front
 ; group <= limit; the game clears the high table each frame, so only set
@@ -744,7 +787,12 @@ fx_cache_get:
 	RTS
 .miss
 	LDA.l !fx_cbudget
-	BEQ .fail
+	BNE +
+	LDA.w #$0001                 ; no upload time left: the caller may show
+	STA.l !fx_bmiss              ; an earlier picture instead
+	SEC
+	RTS
++
 	; One pass: the first free entry wins, else the least recently drawn
 	; usable entry that was not drawn this frame.
 	STZ !d_tmp+2                 ; oldest age seen
@@ -1044,3 +1092,115 @@ fx_emit_group:
 	STA !d_lastc
 	STA !d_lasta
 	RTS
+
+; Sprites a row of 16x16 FX sprites centred on line A may still add without
+; pushing a line past the PPU's 34 slivers (time over drops the slivers of
+; the FIRST sprites in OAM, i.e. the natives): 34 - 2 spare - the slivers
+; of every sprite already in OAM or staged in front that overlaps the row
+; (an overestimate: they need not share one line), / 2. M16/X16.
+!fr_y0 = !d_tmp+0             ; first line of the row
+!fr_y1 = !d_tmp+2             ; line after it
+!fr_n  = !d_tmp+4             ; slivers seen
+!fr_i  = !d_tmp+6             ; sprite index
+fx_row_room:
+	SEC
+	SBC.w #8
+	STA !fr_y0
+	CLC
+	ADC.w #16
+	STA !fr_y1
+	STZ !fr_n
+	STZ !fr_i
+	LDX.w #$0000
+.slot
+	CPX.w !core_oam_cursor&$FFFF
+	BCS .front
+	LDA.w $0801,X                ; OAM Y; the picture shows it from Y+1
+	AND.w #$00FF
+	CMP.w #224
+	BCS .next                    ; hidden
+	INC
+	PHA
+	LDA !fr_i                    ; size bit: high table bit 2*(i&3)+1
+	LSR
+	LSR
+	TAY
+	LDA.w $0A00,Y
+	TAY
+	LDA !fr_i
+	AND.w #$0003
+	BEQ +
+-	PHA
+	TYA
+	LSR
+	LSR
+	TAY
+	PLA
+	DEC
+	BNE -
++	TYA
+	AND.w #$0002
+	TAY                          ; 0 small (16), 2 large (32)
+	PLA
+	JSR .overlap
+.next
+	INX
+	INX
+	INX
+	INX
+	INC !fr_i
+	BRA .slot
+.front
+	LDA.w !core_oam_front_n&$FFFF
+	BEQ .done
+	ASL
+	ASL
+	STA !fr_i                    ; end offset
+	LDX.w #$0000
+-	LDA.w (!core_oam_front&$FFFF)+1,X
+	AND.w #$00FF
+	CMP.w #224
+	BCS +
+	INC
+	PHA
+	TXA
+	LSR
+	TAY
+	LDA.w !core_oam_front_hi&$FFFF,Y
+	AND.w #$0002
+	TAY
+	PLA
+	JSR .overlap
++	INX
+	INX
+	INX
+	INX
+	CPX !fr_i
+	BCC -
+.done
+	LDA.w #34-2
+	SEC
+	SBC !fr_n
+	BPL +
+	LDA.w #$0000
++	LSR
+	RTS
+.overlap                         ; A = first line, Y = 0 small / 2 large
+	CMP !fr_y1
+	BCS ++
+	CLC
+	ADC.w #16
+	CPY.w #2
+	BNE +
+	ADC.w #16
++	CMP !fr_y0
+	BEQ ++
+	BCC ++
+	LDA !fr_n                    ; 2 slivers (16 px) or 4 (32 px)
+	CLC
+	ADC.w #2
+	CPY.w #2
+	BNE +
+	ADC.w #2
++	STA !fr_n
+++	RTS

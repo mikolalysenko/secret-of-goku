@@ -30,13 +30,20 @@ function D.orb(actor)
 end
 -- Power-on SRAM is arbitrary on hardware: fill the module's work area
 -- ($800 bytes) with a fixed pseudo-random pattern before importing, which
--- also keeps runs independent of the emulator's saved SRAM.
+-- also keeps runs independent of the emulator's saved SRAM. A browser
+-- bundle carries no cartridge-side persistent state, so the live block is
+-- set as core_live_clear leaves it (zero, the magic), version 1, with Goku
+-- arrived, as in the browser mod's states.
 function D.garbage()
   local seed = 20261017
   for a = ABI.DQ, ABI.DQ + 0x7FF do
     seed = (seed * 1103515245 + 12345) % 2147483648
     H.w8(a, (seed // 65536) % 256)
   end
+  for a = ABI.SRAM_LIVE, ABI.SRAM_LIVE + 0x3FF do H.w8(a, 0) end
+  H.w16(ABI.persist_magic, ABI.SIDE_MAGIC)          -- as core_live_clear leaves it
+  H.w8(ABI.persist_version, 1)
+  H.w8(ABI.persist_goku_active, 1)
 end
 function D.grid(name) H.dumpfile(name, WRAM, 0x10000, 0x8000) end
 function D.pos() return {x = H.r16(0x7EE002), y = H.r16(0x7EE004), map = H.r16(0x7E00DC)} end
@@ -93,4 +100,38 @@ function D.teleport(x, y, terrain)
   if terrain then H.w8(0x7EE00B, terrain) end
   H.w8(0x7EE006, 0); H.w8(0x7EE007, 0); H.w8(0x7EE045, 0)
   H.wait(90)
+end
+
+-- Cost of code regions per call (DESTROY_PROFILE): spec = {name = {enter =
+-- address, leave = address}}; master clock between the two, in scanlines.
+function D.profile(spec)
+  D.prof = {}
+  for name, sp in pairs(spec) do
+    local rec = {calls = 0, total = 0, max = 0, list = {}}
+    D.prof[name] = rec
+    local t0 = nil
+    emu.addMemoryCallback(function() t0 = emu.getState()['masterClock'] end, emu.callbackType.exec, sp.enter, sp.enter)
+    emu.addMemoryCallback(function()
+      if t0 then
+        local dt = (emu.getState()['masterClock'] - t0) / 1364
+        rec.calls = rec.calls + 1; rec.total = rec.total + dt
+        if dt > rec.max then rec.max = dt end
+        if #rec.list < 48 then rec.list[#rec.list + 1] = math.floor(dt) end
+        t0 = nil
+      end
+    end, emu.callbackType.exec, sp.leave, sp.leave)
+  end
+end
+
+-- Instruction counts per PC inside destroy_hit calls (DESTROY_PCPROF): the
+-- first `calls` calls; results as {pc = count}.
+function D.pcprofile(enter, leave, calls)
+  local inside, n = false, 0
+  D.pcs = {}
+  local cur = nil
+  emu.addMemoryCallback(function() if n < calls then inside = true; cur = {}; D.pcs[n + 1] = cur end end, emu.callbackType.exec, enter, enter)
+  emu.addMemoryCallback(function() if inside then inside = false; n = n + 1 end end, emu.callbackType.exec, leave, leave)
+  emu.addMemoryCallback(function(a)
+    if inside then cur[a] = (cur[a] or 0) + 1 end
+  end, emu.callbackType.exec, 0xA48000, 0xA4FFFF)
 end

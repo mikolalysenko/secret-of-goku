@@ -66,6 +66,11 @@ start_vista:
 
 start_scatter:
 	JSR flight_reset
+	SEP #$20
+	LDA.l !ending_status
+	ORA.b #!ES_MUTED              ; musicMuted for the whole scatter
+	STA.l !ending_status
+	REP #$30
 	JMP start_vista
 
 vista_load:
@@ -202,7 +207,7 @@ frame_scatter:
 	LDA.l !ending_age
 	CMP.w #30
 	BCC .wish
-	JMP flight_frame
+	JMP ending_wish_frame
 .wish
 	XBA
 	LDY.w #30

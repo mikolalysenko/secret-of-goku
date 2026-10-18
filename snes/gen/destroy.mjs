@@ -4,7 +4,7 @@
 // inside a function are recovered by probing the exported functions and are
 // asserted against them, so a change in the engine fails the build here
 // instead of drifting silently. Output: dist/snes/gen/destroy/tables.asm.
-import {writeFileSync} from 'node:fs';
+import {writeFileSync,readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 
@@ -13,7 +13,7 @@ const hex4=v=>'$'+(v&0xffff).toString(16).toUpperCase().padStart(4,'0');
 const fail=m=>{throw Error('destroy generator: '+m);};
 const assert=(c,m)=>{if(!c)fail(m);};
 
-export async function generate({rom,repo,outDir}){
+export async function generate({rom,repo,outDir,xdata}){
   const engine=name=>import(pathToFileURL(join(repo,'engine',name)).href);
   const {createNativePlants}=await engine('native-plants.js');
   const {createNativeLocalFlight}=await engine('native-local-flight.js');
@@ -491,6 +491,206 @@ export async function generate({rom,repo,outDir}){
   for(const ship of shipMaps)assert(ship<512,'ship map range');
   emit(`; complex-placement dungeon maps (runtime piece walk): ${complexDungeons.join(',')}`);
   emit(`; special scenes excluded from demolition: ${[...dungeonSpecialScenes.keys()].join(',')}`);
+
+  // -------------------------------------------------------------------------
+  // Sandship runtime (engine/sandship.js createSandship, sandship-wreck.js).
+  // Exported constants are imported; the ones the engine keeps private in
+  // its module scope are read from the source text with exact patterns, so a
+  // changed constant fails here instead of drifting.
+  {
+    const ss=await engine('sandship.js'),sw=await engine('sandship-wreck.js');
+    const text=name=>readFileSync(join(repo,'engine',name),'utf8');
+    const ssText=text('sandship.js'),swText=text('sandship-wreck.js');
+    const grab=(src,re,what)=>{const m=src.match(re);assert(m,`sandship: ${what} not found`);return m;};
+    const [,geshtar,deck,decksA,decksB,kitchen,cabin]=grab(ssText,/const geshtar=(\d+),deck=(\d+),decks=\[(\d+),(\d+)\],kitchen=(\d+),cabin=(\d+);/,'actors and rooms').map(Number);
+    const [,dunes,leftDunes]=grab(ssText,/const dunes=(\d+),leftDunes=(\d+);/,'dunes').map(Number);
+    const [,breakLimit,endingHex]=grab(ssText,/const breakLimit=(\d+),ending=0x([0-9a-f]+),/,'break limit');
+    const fled=grab(swText,/const fled=new Set\(\[([\d,]+)\]\);/,'fled species')[1].split(',').map(Number);
+    const monsters=grab(swText,/const monsters=\[([\d,]+)\];/,'monster species')[1].split(',').map(Number);
+    const counts=Object.fromEntries(grab(swText,/const monsterCount=\{([\d:,]+)\};/,'monster counts')[1].split(',').map(e=>e.split(':').map(Number)));
+    const escapeDoor=parseInt(grab(swText,/const escapeDoor=0x([0-9a-f]+);/,'escape door')[1],16);
+    // The placement order hash, evaluated from its own source line.
+    const hashSrc=grab(swText,/const hash=\(a,b=0\)=>\{[^\n]*\};/,'hash')[0];
+    const hash=new Function(hashSrc+'return hash;')();
+    assert(ss.holdMaps.length===3&&ss.shipDoors[0]===0x1a0&&ss.shipDoors.length===32,'hold maps / ship doors');
+    assert(monsters.length===2&&fled.length===5,'wreck actor sets');
+    assert(sw.alarmSong.length===4&&sw.alarmSong[0]===1,'alarm song command');
+    emit('; Sandship runtime');
+    emit(`!SS_DECK = ${deck}`);emit(`!SS_DECK_A = ${decksA}`);emit(`!SS_DECK_B = ${decksB}`);
+    emit(`!SS_KITCHEN = ${kitchen}`);emit(`!SS_CABIN = ${cabin}`);emit(`!SS_GESHTAR = ${geshtar}`);
+    emit(`!SS_DUNES = ${dunes}`);emit(`!SS_LEFT_DUNES = ${leftDunes}`);emit(`!SS_BREAK_LIMIT = ${breakLimit}`);
+    emit(`!SS_ENDING = $${endingHex}`);emit(`!SS_ARENA = 340`);
+    emit(`!SS_ESCAPE_DOOR = ${hex4(escapeDoor)}`);
+    emit(`!SS_DOOR_FIRST = ${hex4(ss.shipDoors[0])}`);emit(`!SS_DOORS = ${ss.shipDoors.length}`);
+    emit(`!SS_FLIGHT_DOOR = ${hex4(ss.flightDoor)}`);emit(`!SS_CRASH_EVENT = ${hex4(ss.crashEvents.crash)}`);
+    for(const [k,v] of Object.entries(ss.breakout))emit(`!SS_EV_${k.toUpperCase()} = ${hex4(v)}`);
+    emit(`!SS_SHIP_SONG = ${hex2(sw.shipSong)}`);
+    emit(`!SS_ALARM_SONG = ${hex4(sw.alarmSong[0]|sw.alarmSong[1]<<8)}`);
+    emit(`!SS_ALARM_PARAMS = ${hex4(sw.alarmSong[2]|sw.alarmSong[3]<<8)}`);
+    emit(`!SS_MONSTER_A = ${monsters[0]}`);emit(`!SS_MONSTER_B = ${monsters[1]}`);
+    // Map tables: ship maps, hold maps, fled species, monsters per room.
+    bytes('ss_fled',[...fled,0]);
+    words('ss_ship_maps',[...sw.shipMaps,0xffff]);
+    words('ss_hold_maps',[...ss.holdMaps,0xffff]);
+    // The same as one byte per map (bit 0 ship, bit 1 hold): a lookup, not a
+    // walk, for the per-frame tests.
+    const mapSets=new Array(512).fill(0);
+    for(const m of sw.shipMaps)mapSets[m]|=1;
+    for(const m of ss.holdMaps)mapSets[m]|=2;
+    bytes('ss_map_sets',mapSets);
+    words('ss_squares',Array.from({length:128},(_,i)=>i*i));
+    // Per ship map: monster count, then the browser's floor-spot orders for
+    // the monster grid (16 px) and the fire sites (24 px), each sorted by
+    // hash(map*977+x, y) over the whole map (stable for ties, like
+    // Array.sort), stored as cell indices (x, y bytes).
+    const firstPiece=map=>{const list=pieces(map);return list.length?[list[0].w,list[0].h]:[0,0];};
+    const orders=[];
+    for(const map of sw.shipMaps){
+      const [W,H]=firstPiece(map);assert(W>0&&H>0&&W<=128&&H<=128,'ship map size '+map);
+      const order=(step)=>{const out=[];const w=W*16,h=H*16;
+        for(let y=step/2;y<h;y+=step)for(let x=step/2;x<w;x+=step)out.push({x,y,i:(x-step/2)/step,j:(y-step/2)/step,o:hash(map*977+x,y)});
+        return out.map((s,k)=>({...s,k})).sort((a,b)=>a.o-b.o||a.k-b.k);};
+      // Only the head of each order is kept: the runtime takes the first
+      // landable, spread-out spots, a few out of the first hundreds.
+      const keep=256,monsterSpots=(counts[map]??0)?order(16).slice(0,keep):[],siteSpots=order(24).slice(0,keep);
+      orders.push({map,W,H,count:counts[map]??0,monsterSpots,siteSpots});
+    }
+    // Fire sites per room (prepareSites): spread(floorSpots(map, 24, 40),
+    // big rooms 10 else 7, 52).
+    const sitesSrc=grab(swText,/spread\(floorSpots\(map,24,40\),((?:map===\d+\|\|)*map===\d+)\?(\d+):(\d+),52\)/,'fire sites');
+    const bigRooms=[...sitesSrc[1].matchAll(/map===(\d+)/g)].map(m=>Number(m[1])),siteBig=Number(sitesSrc[2]),siteSmall=Number(sitesSrc[3]);
+    // Directory: map.w, count.w, monster spots ptr.w + n.w, site spots ptr.w + n.w, fire sites.w
+    emit('ss_ship_dir:');
+    for(const o of orders)emit(`\tdw ${o.map},${o.count},ss_spots_m_${o.map},${o.monsterSpots.length},ss_spots_s_${o.map},${o.siteSpots.length},${bigRooms.includes(o.map)?siteBig:siteSmall}`);
+    emit('\tdw $FFFF');
+    for(const o of orders){
+      emit(`ss_spots_m_${o.map}:`);for(let k=0;k<o.monsterSpots.length;k+=16)emit('\tdb '+o.monsterSpots.slice(k,k+16).flatMap(s=>[hex2(s.i),hex2(s.j)]).join(','));
+      emit(`ss_spots_s_${o.map}:`);for(let k=0;k<o.siteSpots.length;k+=16)emit('\tdb '+o.siteSpots.slice(k,k+16).flatMap(s=>[hex2(s.i),hex2(s.j)]).join(','));
+    }
+    emit(`; sandship: ${sw.shipMaps.length} ship maps, monsters ${monsters.join('/')} (counts ${JSON.stringify(counts)}), fled ${fled.join('/')}`);
+
+    // --- The wreck's look (sandship-wreck.js getColor / renderLine) -------
+    // Palette transforms: a colour word is split into its low byte (red, green
+    // bits 0-2) and high byte (green bits 3-4, blue), each looked up in a
+    // 16-bit table; the two halves add up to the transformed colour.
+    // White-out (renderLine: out + (255 - out) * white): SS_WHITE_LEVELS + 1
+    // levels f = L / SS_WHITE_LEVELS.
+    const WL=12;
+    const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+    const whiteLo=[],whiteHi=[];
+    for(let L=0;L<=WL;L++){
+      const f=L/WL,W=v=>Math.round(v+(31-v)*f);
+      for(let lo=0;lo<256;lo++){const r=lo&31,gl=lo>>5;whiteLo.push(W(r)|Math.floor(gl*(1-f))<<5);}
+      for(let hi=0;hi<128;hi++){const b=hi>>2,gh=hi&3;whiteHi.push(W(b)<<10|Math.round(8*gh*(1-f)+31*f)<<5);}
+    }
+    // Every transformed colour of every level stays a valid 15-bit colour
+    // within one unit of the exact per-channel blend.
+    for(let L=0;L<=WL;L++)for(let c=0;c<0x8000;c+=7){
+      const v=whiteLo[L*256+(c&255)]+whiteHi[L*128+(c>>8)],f=L/WL;
+      assert(v<0x8000,'white table overflow');
+      const g=c>>5&31,want=Math.round(g+(31-g)*f);assert(Math.abs((v>>5&31)-want)<=1,'white table green');
+    }
+    // Firelight and the red alarm (getColor, BG1/BG2 pixels): red + dr,
+    // green + dg, blue + db, dr 2..7, dg -2..0, db -4..-2 (integer parts of
+    // the browser's per-frame offsets). Lo tables by dr, hi tables by (dg, db).
+    const tintLo=[],tintHi=[];
+    for(let dr=2;dr<=7;dr++)for(let lo=0;lo<256;lo++){const r=lo&31,gl=lo>>5;tintLo.push(Math.min(31,r+dr)|gl<<5);}
+    for(let dg=-2;dg<=0;dg++)for(let db=-4;db<=-2;db++)for(let hi=0;hi<128;hi++){const b=hi>>2,gh=hi&3;tintHi.push(Math.max(0,b+db)<<10|clamp(8*gh+dg,0,24)<<5);}
+    // The alarm pulse and the firelight flicker, from the browser's formulas:
+    // alarm = phase<24 ? sin(phase*pi/24)*4 : 0 over a 120-frame cycle, flicker
+    // = hash(age>>2, block)*2 (one block for the whole screen: the centre one).
+    const alarmSrc=grab(swText,/const phase=age%120,alarm=phase<24\?Math\.sin\(phase\*Math\.PI\/24\)\*4:0,flicker=hash\(age>>2,\(x>>5\)\+\(y>>5\)\*8\)\*2/,'alarm formula')[0];
+    assert(alarmSrc,'alarm');
+    const block=(128>>5)+(112>>5)*8;
+    const alarmA=[],alarmB=[],alarmC=[];
+    for(let ph=0;ph<120;ph++){const a=ph<24?Math.sin(ph*Math.PI/24)*4:0;alarmA.push(Math.round(a*256));alarmB.push(Math.round(a*0.4*256));alarmC.push(Math.round(a*0.5*256));}
+    const flickA=[],flickB=[];
+    for(let k=0;k<256;k++){const f=hash(k,block)*2;flickA.push(Math.min(511,Math.round(f*256)));flickB.push(Math.round(f*0.5*256));}
+    // Breach outline (breachDepth >= 0) per scanline, for 4 x 4 quantised
+    // phases of its jagged edge (sin(5a + bx), sin(11a + by)): left and right
+    // offsets from the centre for dy = -SS_BREACH_H..SS_BREACH_H, biased by
+    // SS_BREACH_BIAS (so both bytes are positive and a 16-bit add of the
+    // screen x reaches both without carries), and per outline its first line
+    // and line count (every line between them has a span: the outline is
+    // star-shaped around the centre, so its rows form one interval).
+    const [,radiusSrc]=grab(swText,/export function findBreach\(canLand,\{x,y,dx,dy\},radius=(\d+)\)/,'breach radius');
+    const radius=Number(radiusSrc);
+    grab(swText,/const reach=\(b,a\)=>b\.radius\*\(1\+\.18\*Math\.sin\(a\*5\+b\.x\)\+\.1\*Math\.sin\(a\*11\+b\.y\)\+\.06\*Math\.sin\(a\*23\)\);/,'breach reach');
+    grab(swText,/const dx=x-b\.x,dy=\(y-b\.y\)\*1\.25,d=Math\.hypot\(dx,dy\);/,'breach depth');
+    const reach=(b,a)=>b.radius*(1+.18*Math.sin(a*5+b.x)+.1*Math.sin(a*11+b.y)+.06*Math.sin(a*23));
+    const depth=(b,dx,dy)=>{const yy=dy*1.25;return reach(b,Math.atan2(yy,dx))-Math.hypot(dx,yy);};
+    const BH=Math.ceil(radius*1.34/1.25)+1;
+    const outlines=[],rims=[];
+    for(let py=0;py<4;py++)for(let px=0;px<4;px++){
+      const b={radius,x:(px+.5)*Math.PI/2,y:(py+.5)*Math.PI/2};
+      const lines=[];
+      for(let dy=-BH;dy<=BH;dy++){
+        let l=null,r=null;
+        for(let dx=-80;dx<=80;dx++)if(depth(b,dx,dy)>=0){if(l===null)l=dx;r=dx;}
+        lines.push(l===null?null:[l,r]);
+      }
+      outlines.push(lines);
+      // The five rim fires (prepareSites): angle i*2pi/5 + .4, 4 px up.
+      for(let i=0;i<5;i++){const a=i*Math.PI*2/5+.4,rr=reach(b,a);rims.push(Math.round(Math.cos(a)*rr)&255,Math.round(Math.sin(a)*rr/1.25-4)&255);}
+    }
+    grab(swText,/list\.push\(\{x:b\.x\+Math\.cos\(a\)\*rr,y:b\.y\+Math\.sin\(a\)\*rr\/1\.25-4,seed:40\+i\*5,rim:true\}\);/,'rim sites');
+    let bias=0,rmax=-1e9;
+    for(const lines of outlines)for(const sp of lines)if(sp){bias=Math.max(bias,-sp[0]);rmax=Math.max(rmax,sp[1]);}
+    assert(bias>0&&rmax>0&&rmax+bias<=255,'breach span bias');
+    const spans=[],trim=[];
+    for(const lines of outlines){
+      const top=lines.findIndex(Boolean),last=lines.length-1-[...lines].reverse().findIndex(Boolean);
+      assert(top>=0&&lines.slice(top,last+1).every(Boolean),'breach rows form one interval');
+      trim.push(top,last-top+1);
+      for(const sp of lines)spans.push(sp?sp[0]+bias:0,sp?sp[1]+bias:0);
+    }
+    // The desert under the hull (sand()): its colour down a column, as a
+    // 128-line pattern scrolled by 1.5 px per frame.
+    grab(swText,/s>1\?rgb\(31,25,17\):s>\.2\?rgb\(29,21,13\):s>-\.8\?rgb\(26,18,11\):rgb\(21,13,8\)/,'sand colours');
+    const rgb=(r,g,b)=>clamp(r|0,0,31)|clamp(g|0,0,31)<<5|clamp(b|0,0,31)<<10;
+    const sand=[];
+    for(let k=0;k<128;k++){
+      const wy=k*0.546875,u=0,s=Math.sin(u*.16+Math.sin(wy*.09)*2.4)+Math.sin(u*.05-wy*.07)*.6;
+      sand.push(s>1?rgb(31,25,17):s>.2?rgb(29,21,13):s>-.8?rgb(26,18,11):rgb(21,13,8));
+    }
+    // Fires (draw()): a blast's five Exploder bursts (golden-angle spiral, at
+    // the spread they reach after six frames), the crash's blasts around Goku
+    // every 10 frames, the embers' rise ((t+seed*5)%24*.6).
+    grab(swText,/const a=i\*2\.39996,spread=i\?8\+Math\.min\(age,12\)\*1\.3:0;/,'blast spiral');
+    const burstOff=[];for(let i=0;i<5;i++){const a=i*2.39996,sp=i?8+6*1.3:0;burstOff.push(Math.round(Math.cos(a)*sp)&255,Math.round(Math.sin(a)*sp*.6)&255);}
+    grab(ssText,/const a=c\.age\*2\.4,d=24\+\(c\.age\*13\)%70;/,'crash blasts');
+    const crashOff=[];for(let age=0;age<=1200;age+=10){const a=age*2.4,d=24+(age*13)%70;crashOff.push(Math.round(Math.cos(a)*d)&255,Math.round(Math.sin(a)*d*.7)&255);}
+    grab(swText,/-\(t\+s\.seed\*5\)%24\*\.6/,'ember rise');
+    const emberRise=Array.from({length:24},(_,k)=>Math.round(k*.6));
+    bytes('ss_burst_off',burstOff);
+    bytes('ss_crash_off',crashOff);
+    bytes('ss_ember_rise',emberRise);
+    emit(`!SS_WHITE_LEVELS = ${WL}`);
+    emit(`!SS_BREACH_H = ${BH}`);
+    emit(`!SS_BREACH_LINES = ${2*BH+1}`);
+    emit(`!SS_BREACH_BIAS = ${bias}`);
+    emit(`!SS_BREACH_RMAX = ${rmax}`);
+    words('ss_tint_lo',tintLo);
+    words('ss_tint_hi',tintHi);
+    words('ss_alarm_a',alarmA);words('ss_alarm_b',alarmB);words('ss_alarm_c',alarmC);
+    words('ss_flick_a',flickA);words('ss_flick_b',flickB);
+    bytes('ss_breach_spans',spans);
+    bytes('ss_breach_trim',trim);
+    bytes('ss_breach_bias',[bias]);
+    bytes('ss_breach_rims',rims);
+    // Extended data: the white-out tables (13 levels of the low-byte then the
+    // high-byte tables), and the desert under the hull for the breach's HDMA
+    // (channel 3, indirect: CGADD 0 twice, then the colour) at every white
+    // level, 128 lines each.
+    const white=(L,c)=>whiteLo[L*256+(c&255)]+whiteHi[L*128+(c>>8)];
+    const wb=new Uint8Array((whiteLo.length+whiteHi.length)*2);
+    [...whiteLo,...whiteHi].forEach((v,i)=>{wb[2*i]=v&255;wb[2*i+1]=v>>8;});
+    xdata('destroy_white',wb);
+    const quads=new Uint8Array((WL+1)*128*4);
+    for(let L=0;L<=WL;L++)for(let k=0;k<128;k++){const c=white(L,sand[k]),o=(L*128+k)*4;quads[o+2]=c&255;quads[o+3]=c>>8;}
+    xdata('destroy_sand_quads',quads);
+    emit(`; wreck look: ${WL+1} white levels, tint 6 x 9 tables, breach ${2*BH+1} lines x 16 phases`);
+  }
 
   writeFileSync(join(outDir,'tables.asm'),out.join('\n')+'\n');
   writeFileSync(join(outDir,'reactions.json'),JSON.stringify(reactions,null,1));

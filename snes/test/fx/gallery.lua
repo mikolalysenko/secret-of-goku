@@ -95,6 +95,19 @@ function test()
   shot('sparks_age6', F.waitFx(5))
   F.waitFx(8)
 
+  -- Super Saiyan charge lightning: three bolts of Thunderbolt cells around
+  -- a charge point, clock held (the same bolts while the phase stays).
+  F.drawHold(0, F.K.LIGHTNING, S, 0, 128, 100, 3, 0, 0, 30)
+  s = F.waitFx(4)
+  F.check('lightning_cells', s.sprites >= 6, F.statstr(s))
+  shot('lightning', s)
+  F.drawHold(0, F.K.LIGHTNING, S, 0, 128, 100, 2, 0, 0, 33)
+  local s2 = F.waitFx(4)
+  F.check('lightning_two_bolts', s2.sprites >= 3 and s2.sprites < s.sprites + 6, F.statstr(s2))
+  shot('lightning_next', s2)
+  F.stop(0)
+  F.waitFx(3)
+
   -- Native cells through FX_CELL: lightning (three frames) and gold arcs in
   -- quarter turns.
   for f = 0, 2 do F.draw(f, F.K.CELL, S, 0, 40 + f * 30, 60, 4, f) end

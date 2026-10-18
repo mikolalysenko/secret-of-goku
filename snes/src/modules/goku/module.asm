@@ -201,7 +201,7 @@ incsrc "upload.asm"
 incsrc "api.asm"
 incsrc "menu.asm"
 goku_code_end:
-assert goku_code_end <= !CODE_GOKU+$8000, "goku code bank overflow"
+assert goku_code_end <= !CODE_QUARTER_GOKU, "goku code overflow (E1:C000-FFFF is a spare quarter, core/layout.asm)"
 pullpc
 
 ; ---------------------------------------------------------------------------

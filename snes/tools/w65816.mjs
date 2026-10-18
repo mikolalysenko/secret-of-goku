@@ -84,12 +84,15 @@ export function decode(read, pc, m, x) {
   }
   return { op, name: e.name, mode: e.mode, len: n, bytes: [op, ...b], text, target };
 }
-// HiROM address helpers for a 4 MiB-or-smaller image.
-export function hiromToPc(addr) {
-  const bank = (addr >> 16) & 0xff, a = addr & 0xffff;
+// HiROM address helpers. With size > 4 MiB (the 64 Mbit ExHiROM cartridge)
+// banks 00-3F and 40-7D read the second 4 MiB (extended data lives in the
+// lower halves of 40-7D); otherwise they mirror C0-FF.
+export function hiromToPc(addr, size = 0x400000) {
+  const bank = (addr >> 16) & 0xff, a = addr & 0xffff, ext = size > 0x400000 ? 0x400000 : 0;
   if (bank >= 0xc0) return ((bank - 0xc0) << 16) | a;
-  if (bank >= 0x40 && bank < 0x7e) return ((bank - 0x40) << 16) | a;
-  if ((bank < 0x40 || (bank >= 0x80 && bank < 0xc0)) && a >= 0x8000) return ((bank & 0x3f) << 16) | a;
+  if (bank >= 0x40 && bank < 0x7e) return ext + (((bank - 0x40) << 16) | a);
+  if (bank >= 0x80 && bank < 0xc0 && a >= 0x8000) return ((bank & 0x3f) << 16) | a;
+  if (bank < 0x40 && a >= 0x8000) return ext + ((bank << 16) | a);
   return -1;
 }
 export const hex = { h2, h4, h6 };

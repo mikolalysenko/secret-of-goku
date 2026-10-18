@@ -35,6 +35,10 @@ fx_ensure_init:
 	STA.l !fx_vblp+4
 	STA.l !fx_vblp+6
 	STA.l !fx_vblp+8
+	LDA.l !FX_DREC_SEQ           ; destroy's records from now on
+	STA.l !fx_dseq
+	LDA.w #$FFFF
+	STA.l !fx_dshade
 	LDA.w #!FX_MAGIC
 	STA.l !fx_magic
 	LDA.w #$0001
@@ -162,6 +166,18 @@ fx_spawn_init:
 	REP #$20
 	JMP .life
 .notImpact
+	CMP.w #!FX_EXPLODE
+	BNE .notExplode0
+	LDA.l !fx_style
+	AND.w #$0003
+	STA.l !fx_slots+!S_A,X       ; bit 0 mirror, bit 1 brazier (three bursts)
+	AND.w #$0002
+	BNE +
+	JMP .life
++	LDA.w #54                    ; dungeon-demolition.js brazierBurst
+	STA.l !fx_s
+	JMP .life
+.notExplode0
 	CMP.w #!FX_KI
 	BNE .notKi
 	LDA.l !fx_slots+!S_A,X       ; range (0 = 256)
@@ -216,21 +232,46 @@ fx_spawn_init:
 	CMP.w #!FX_DEBRIS
 	BEQ +
 	JMP .life
-+
-	LDA.l !fx_rgb                ; debris colours are shared by all debris
++	LDA.l !fx_rgb                ; debris colours are shared by all debris
 	STA.l !fx_dyn
 	LDA.l !fx_rgb+2
 	STA.l !fx_dyn+2
 	LDA.l !fx_rgb+4
 	STA.l !fx_dyn+4
+	LDA.w #$FFFF                 ; no longer a room's cached shades
+	STA.l !fx_dshade
+	LDA.l !fx_slots+!S_A,X       ; chunks (0 = 4) in the high byte
+	AND.w #$00FF
+	BNE +
+	LDA.w #4
++	CMP.w #9
+	BCC +
+	LDA.w #8
++	XBA
+	STA.l !fx_e
 	LDA.l !fx_style
 	AND.w #$0001
-	STA.l !fx_slots+!S_A,X       ; 0 rubble, 1 ceiling dust
-	LDA.l !fx_slots+!S_B,X       ; life (0 = default)
-	BNE +
-	JMP .life
-+
+	ORA.l !fx_e
+	STA.l !fx_slots+!S_A,X       ; style (0 rubble, 1 ceiling dust) | chunks << 8
+	AND.w #$0001
+	BEQ +
+	LDA.w #46                    ; ceiling dust: ceiling-escape.js phase 22-68
 	STA.l !fx_s
++	LDA.l !fx_slots+!S_B,X       ; life (0 = default)
+	BEQ +
+	STA.l !fx_s
++	LDA.l !fx_slots+!S_X,X       ; seed (sprite-layer.js e.seed)
+	ASL
+	ASL
+	ASL
+	ASL
+	CLC
+	ADC.l !fx_slots+!S_X,X
+	CLC
+	ADC.l !fx_slots+!S_Y,X
+	CLC
+	ADC.l !fx_frame
+	STA.l !fx_slots+!S_B,X
 .life
 	SEP #$20
 	LDA.l !fx_s

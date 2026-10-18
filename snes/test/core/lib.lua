@@ -3,6 +3,7 @@
 CT = 0x7E6F40
 CORE = 0x7ED700
 CORE_EXT = 0x7E6E40
+CORE_SAFE = 0x317480   -- core state kept in battery RAM (!CORE_SAFE)
 LIVE = 0x316000
 SLOTS = 0x316400
 PAD = { b = 0x8000, y = 0x4000, select = 0x2000, start = 0x1000, up = 0x0800, down = 0x0400,
