@@ -81,6 +81,8 @@ Every master-cycle pair adds the same step to the APU catch-up float, so its val
 
 Release 0.2.4 skips whole iterations of the game's wait loops, defers the APU catch-up additions, and trims the Sandship wreck's tint and its fire and smoke drawing. Against the previous web build, in the same session on a busy machine: Sandship wreck ×1.12, status page ×1.14, orbit ×1.12, combat ×1.11, waterfall ×1.08 and field ×1.06; file select and name entry ×1.20 from the HVBJOY polls. Every scene measured at least 10.3× real time except one throne-room set piece (map 431, 9.7×), which composes a translucent BG2 over BG1 on every line.
 
+Release 0.2.5 skips the sound driver's idle loop (the table above). Against 0.2.3 in one session on a busy machine, every scene measured 9–39% faster; the title was unchanged. Every scene now runs at least 10× real time: the slowest, the Sandship wreck, at 646 frames/s (10.8×). The full table is in the [changelog](CHANGELOG.md).
+
 At 4× CPU throttling, a proxy for phones and CI runners, the 30 Hz title-music check went from 35 frames/s with 8 underruns to a steady 60 frames/s with none. In real iOS Safari 26.5 (simulator), with an extra 20 ms of main-thread work per frame, file select dropped to 45 frames/s on the old build but holds 60 frames/s with zero underruns now. Holding R to fast-forward a cutscene is capped at 12×; it ran at about 3× on the old build under the same load and about 8× now.
 
 ## Audio streaming
