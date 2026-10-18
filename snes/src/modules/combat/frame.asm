@@ -517,7 +517,11 @@ cb_field_gate:
 	STZ !cb_can
 	STZ !cb_gc
 	STZ !cb_menuflag
-	STZ !cb_basemask
+	; X is ring / back in every frame combat sees (cb_menu_x remaps it):
+	; hidden up front, also while Goku is inactive, so the game's read of a
+	; press frame never gets native X (member 1's ring) before combat's step
+	LDA.b #!IN_X
+	STA !cb_basemask
 	STZ !cb_basemask+1
 	LDA.l !persist_goku_active
 	BEQ +
@@ -576,7 +580,7 @@ cb_field_gate:
 	ORA $D0
 	BNE .noA
 	LDA.b #!IN_A
-	STA !cb_basemask
+	TSB !cb_basemask
 .noA
 	; player 1 owns Goku: Y is ki
 	LDA $E02C
@@ -693,7 +697,8 @@ cb_compute_can:
 ; the whole pad).
 cb_gate:
 	JSR cb_compute_can
-	STZ !cb_basemask
+	LDA.w #!IN_X                  ; X is always ring / back (cb_field_gate)
+	STA !cb_basemask
 	SEP #$20
 	STZ !cb_menuflag
 	LDA !cb_sess
@@ -764,8 +769,12 @@ cb_read_input:
 	JMP cb_menu_x
 
 ; X is ring / back: the game sees native Y (Start for the window and
-; controller editors of the menu screens, as panelBack).
+; controller editors of the menu screens, as panelBack), never native X:
+; the mask is requested in every frame, not only once a press is seen (the
+; game's read of the press frame comes before combat's).
 cb_menu_x:
+	LDA.w #!IN_X
+	TSB !cb_mask
 	LDA !cb_raw
 	BIT.w #!IN_X
 	BNE .held

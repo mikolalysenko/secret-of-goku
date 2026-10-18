@@ -40,15 +40,16 @@ ui (King Kai) and destroy (the map) through `bind.asm`.
 | Damage hooks as a list (no include-order rule) | Done | frieza's (Beast, Lich) and vegeta's (slot-3 window) both listed; vegeta suite |
 | Input hold: the pad taken, what was fired runs on (`trial.inputLocked`) | Done | `input-hold`; vegeta's draw holds |
 | X / back on the options pages decided by the open option `$1876` (browser f376330) | Done | `panel`: the browser test's 8 page pairs (3 stayed open before) |
+| X never reaches the game as native X (hidden up front in every frame, also while Goku is inactive) | Done | `xrace`: 25 press offsets after the Potos import open the controlled character's ring (4 opened member 1's before) |
 
 ## Resources
 
 | Resource | Use |
 | --- | --- |
-| Code `$A2:8000-$A2:B724` | `!CODE_COMBAT` (about 14 KiB; asserted below `$A2:F000`) |
+| Code `$A2:8000-$A2:B72F` | `!CODE_COMBAT` (about 14 KiB; asserted below `$A2:F000`) |
 | Code `$A2:F000-$A2:F44A` | `bind.asm`: bindings to optional modules, assembled after every module include |
 | Data `$E2:0000-$E2:0BCC` | `!DATA_COMBAT` (`snes/gen/combat.mjs`): damage, beam damage/width by charge, beam half width 8.8 by charge and wave age (`combat_api_beam`), wave envelope by age, strength and focus tables, launch arcs, lift, radial ease, hand sockets, item names, placeholder cells |
-| Core `$A0:F11A-$A0:F12B` | The extension lists in `modules.asm` (`modules_combat_targets`, `_damage`, `_receive`), core's bank |
+| Core `$A0:F122-$A0:F133` | The extension lists in `modules.asm` (`modules_combat_targets`, `_damage`, `_receive`), core's bank |
 | WRAM `$7E:D800-$7E:D8FF` | `!RAM_COMBAT` (map in `module.asm`); public fields below |
 | SRAM `$31:7C00-$31:7FFF` | `!SRAM_WORK_COMBAT`: 16 effect records, 9 launch records, 9 sound marks, the pad of the last four field vblanks (`!PADH`), destroy_hit arguments, the beam picture, 16 beam pulse timers (per target bit), the virtual target cache and the log of the last 8 virtual hits (`!VT`, `$31:7E34`), `combat_api_beam`'s record (`!cb_beam`), the hold owners (`!cb_inhold`); test builds `$31:7F00-7F23` (`!CBT`) |
 | SRAM `$31:6200` | `!PERSIST_COMBAT` byte 0: `PCF_REVEALED` (the first transformation reveal was seen). Shared: `!persist_ssj_lock` (permanent form), `!persist_goku_active` (read). NEW GAME resets the form (combat's and `!goku_form`) to base; a load sets both from `!persist_ssj_lock`, whatever the title-time init saw |
@@ -109,8 +110,12 @@ game's next pad read). B is always combat's (a miss pulses native B for
 talking and chests); Y is ki while Goku is player 1's character; X/L/R are
 combat's while he can attack; on foot A never reaches the native dash.
 X is ring / back everywhere: native Y, or Start in the status-window and
-controller editors (`panelBack`). Buttons held when a menu closes stay away
-from combat until released.
+controller editors (`panelBack`: the open option `$1876` is 5 or 6), and X
+itself is hidden in every frame combat sees, also while Goku is inactive:
+a mask requested only once combat's step saw the press came after the
+game's read of that frame, so one press frame in five opened member 1's
+ring. Buttons held when a menu closes stay away from combat until
+released.
 
 **Hits.** `cb_hit` queues damage at `+1F1` with `+1F0 = +1EC = 0`, leaves
 1 HP when the total would kill (the native lethal hit then runs death,
@@ -265,17 +270,22 @@ rule, or taken away.
 f376330 (`tests/browser/native-status.spec.mjs`): from the party state, X
 opens the ring, right rotates it to an option, B opens it, X backs out;
 eight page pairs, including Status opened at cursor 5 after option 4.
+`xrace`: with Goku inactive (the native boy in the Potos probe state), X
+pressed 8-32 frames after the import must open the controlled character's
+ring (`$1808` = 0) every time; before, offsets 14, 19, 24 and 29 opened
+member 1's.
 
 `--profile` adds combat's cost to each scenario's line (scanlines of 1364
 master clocks, from the ROM's symbols): its logic hook per combat step, its
 frame end per field frame, and the virtual targets' queries and hits per
 call (the module's routine included).
 
-On this branch (integration-trial merged) all 33 pass, with the vegeta (11
-cases, every tick), frieza (10; `effects` needs captures), debug (21 full,
-`hexas` partial as before) and perf suites; the goku suite's `menu` and `budget`
-fail as they do on integration-trial without these changes (both pass on
-main).
+On this branch (main and integration-trial merged) all 34 pass, with the
+vegeta (11 cases, every tick), debug (21 full, `trial` native, `hexas`
+partial as before) and perf suites. frieza's `surge` (its timings in video
+frames) and goku's `budget` (Goku on against off: 34 lines, limit 24) fail
+here as they do on the same merge without combat's changes; goku's `menu`
+passes again with the X race closed.
 
 ## Performance
 
@@ -345,6 +355,8 @@ another 2-3. With `CORE_FASTROM` (MEMSEL set) the same frames end at
   character's ring through native Y, and Y is ki. Their browser reference
   (`menuref.mjs`) runs without `mana-mod.js`'s input layer. The budget test
   compares Goku on and off, which now includes combat (25 lines, limit 24).
+  The X race of goku.md's request is closed (X is hidden up front in every
+  frame, `xrace`): `menu` can open the boy's ring with X again if wanted.
 - **title**: the arrival test's ring round trip presses native Y, which is
   Goku's ki with combat (the browser mod's player presses X); see also the
   impact frames under Performance.

@@ -156,6 +156,23 @@ const CASES={
     if(reported&&reported.cursor!==5)failures.push(`Status after option 4 opened at cursor ${reported.cursor}, not 5 (the reported case)`);
     return {ok:r.code===0&&!failures.length,failures,ms:r.ms,note:rows.map(x=>`${x.first}>${x.option}@${x.cursor}${x.closed?'':' STUCK'}`).join(' ')};
   },
+  // X never reaches the game as native X while Goku is inactive: a press at
+  // every offset 8-32 frames after the Potos import opens the controlled
+  // character's ring (goku.md, Requests: member 1's ring on one press frame
+  // in five while combat masked X only after seeing the press).
+  async xrace(){
+    const bundle='barrier-audit__potos-probe';
+    if(!existsSync(join(importRoot,bundle)))return {skip:`no ${bundle}`};
+    const rom=privateRom(romSrc,'combat-xrace');
+    const test=`IMPORT_ROOT=${JSON.stringify(importRoot)}\nXRACE_BUNDLE=${JSON.stringify(bundle)}\n${lib}\n${readFileSync(join(here,'xrace.lua'),'utf8')}`;
+    const r=await runMesen({rom,test,outDir:join(outRoot,'xrace'),state:join(cps,'waterfall.mss')});
+    cleanupRom(rom);
+    const failures=[...(r.results?.failures??[]),...(r.results?.error?[r.results.error]:[])];
+    const rows=r.results?.rows??[];
+    if(rows.length!==25)failures.push(`${rows.length} of 25 presses tried`);
+    const bad=rows.filter(x=>!x.opened||x.owner!==0);
+    return {ok:r.code===0&&!failures.length,failures,ms:r.ms,note:`${rows.length-bad.length}/${rows.length} presses opened the boy's ring${bad.length?` (not at ${bad.map(x=>x.offset).join(', ')})`:''}`};
+  },
 };
 
 const results=[];
