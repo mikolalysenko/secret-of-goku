@@ -33,30 +33,24 @@ ss_say:                                   ; A = !SS_SAY_* remark
 	LDA.l !ssw_dismiss : INC : STA.l !ssw_dismiss
 	RTS
 
-; A = map -> carry = in the table ($FFFF-terminated words). A and X kept;
-; no work memory (also used outside the arc's window).
-macro ss_member(name, table)
+; A = map -> carry = in the set (ss_map_sets bit). A and X kept; no work
+; memory (also used outside the arc's window).
+macro ss_member(name, bit)
 <name>:
+	CMP.w #512 : BCS .no
 	PHX
 	PHA
-	LDX.w #0
--	LDA.l <table>,X : CMP.w #$FFFF : BEQ .no
-	CMP $01,S : BEQ .yes
-	INX : INX
-	BRA -
-.no
+	TAX
+	LDA.l ss_map_sets,X : AND.w #<bit> : CMP.w #1   ; carry = the bit
 	PLA
 	PLX
+	RTS
+.no
 	CLC
 	RTS
-.yes
-	PLA
-	PLX
-	SEC
-	RTS
 endmacro
-%ss_member(ss_ship_map, ss_ship_maps)
-%ss_member(ss_hold_map, ss_hold_maps)
+%ss_member(ss_ship_map, $0001)
+%ss_member(ss_hold_map, $0002)
 
 ; Captive (createSandship captive()): stage 1-6 in the hold, kitchen or
 ; engine room. Carry.
@@ -129,6 +123,10 @@ ss_reset_work:
 	STA.l !ssw_pal_mode : STA.l !ssw_pal_up : STA.l !ssw_pal_done : STA.l !ssw_pal_ups
 	STA.l !ssw_pal_left : STA.l !ssw_pal_wait : STA.l !ssw_pal_cols : STA.l !ssw_pal_load
 	STA.l !ssw_br_on : STA.l !ssw_br_lines
+	STA.l !ssw_ck_ok : STA.l !ssw_br_cpb : STA.l !ssw_br_ppb : STA.l !ssw_br_tpb
+	STA.l !ssw_sq_fill : STA.l !ssw_sq_ok : STA.l !ssw_white_lvl
+	STA.l !ssw_fire_vn : STA.l !ssw_fire_done : STA.l !ssw_br_vok : STA.l !ssw_fire_on
+	LDA.w #$FFFF : STA.l !ssw_sq_lvl : STA.l !ssw_pal_kin
 	LDA.w #$FFFF : STA.l !ssw_pal_room
 	STA.l !ssw_site_n : STA.l !ssw_site_map : STA.l !ssw_blast_a : STA.l !ssw_blast_b
 	LDA.w #0 : STA.l !ssw_blast_end
@@ -209,7 +207,9 @@ ss_tick:
 ; ---------------------------------------------------------------------------
 ; leaving(): the dunes' exit after the arc, and unplanned ways off the ship.
 ss_leaving:
-	LDA.w $00DC : STA.l !ssw_tmp+8         ; now
+	LDA.w $00DC : CMP.l !ssw_lastmap : BNE +
+	RTS                                    ; the same room
++	STA.l !ssw_tmp+8                       ; now
 	LDA.l !ssw_lastmap : STA.l !ssw_tmp+10 ; was
 	LDA.l !ssw_tmp+8 : STA.l !ssw_lastmap
 	LDA.l !ssw_tmp+10 : CMP.w #!SS_DUNES : BNE .ship
@@ -663,14 +663,15 @@ ss_outside:
 ; rescue (their walk-ons arm only in the original story order).
 ss_rescues:
 	LDA.l !ss_flags : AND.w #!SSF_WRECK : BEQ .ret
-	LDA.l !ssw_stage : CMP.w #10 : BCS .ret
+	LDA.w $00DC : CMP.w #!SS_KITCHEN : BEQ +
+	CMP.w #!SS_CABIN : BNE .ret
++	LDA.l !ssw_stage : CMP.w #10 : BCS .ret
 	JSR ss_can_attack : BCC .ret
 	JSR ss_captives : STA.l !ssw_tmp+4
 	LDA.w $00DC : CMP.w #!SS_KITCHEN : BNE +
 	LDA.l !ssw_tmp+4 : AND.w #2 : BEQ .ret
 	LDA.w #$0295 : BRA .request
-+	CMP.w #!SS_CABIN : BNE .ret
-	LDA.l !ssw_tmp+4 : AND.w #1 : BEQ .ret
++	LDA.l !ssw_tmp+4 : AND.w #1 : BEQ .ret
 	LDA.w #$029C
 .request
 	LDX.w #0
@@ -1045,8 +1046,10 @@ ss_far_enough:
 ; C8:3000+4*door; M16/X16, X = 4*door, D = 0): the escape reloads the room
 ; Goku stands in through its own door, so guards leave and monsters arrive
 ; with the fade (sandship-wreck.js read view of C8:3000+4*1A9).
-; !DOOR_RECORD_HOOK (define, optional): another module's JSL with X =
-; 4*door, A = record bytes 0-1, Y = bytes 2-3; it returns A/Y.
+; !DOOR_RECORD_HOOK (define, optional, set before this module is included):
+; another module's JSL, M16/X16, D = 0, the game's DB, X = 4*door, A =
+; record bytes 0-1, Y = bytes 2-3 (after the Sandship's own override); it
+; returns A/Y and keeps X (destroy_door_record returns X as it came).
 destroy_door_record:
 	LDA.l $C83000,X : PHA
 	LDA.l $C83002,X : TAY

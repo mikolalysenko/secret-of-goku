@@ -30,13 +30,19 @@ function D.orb(actor)
 end
 -- Power-on SRAM is arbitrary on hardware: fill the module's work area
 -- ($800 bytes) with a fixed pseudo-random pattern before importing, which
--- also keeps runs independent of the emulator's saved SRAM.
+-- also keeps runs independent of the emulator's saved SRAM. A browser
+-- bundle carries no cartridge-side persistent state, so the live block is
+-- set as a GAME FILE with an empty sidecar would leave it (all zero,
+-- version 1), with Goku arrived, as in the browser mod's states.
 function D.garbage()
   local seed = 20261017
   for a = ABI.DQ, ABI.DQ + 0x7FF do
     seed = (seed * 1103515245 + 12345) % 2147483648
     H.w8(a, (seed // 65536) % 256)
   end
+  for a = ABI.SRAM_LIVE, ABI.SRAM_LIVE + 0x3FF do H.w8(a, 0) end
+  H.w8(ABI.persist_version, 1)
+  H.w8(ABI.persist_goku_active, 1)
 end
 function D.grid(name) H.dumpfile(name, WRAM, 0x10000, 0x8000) end
 function D.pos() return {x = H.r16(0x7EE002), y = H.r16(0x7EE004), map = H.r16(0x7E00DC)} end

@@ -9,6 +9,7 @@ import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {runMesen} from '../mesen.mjs';
+import {privateRom,cleanupRom} from '../checkpoints.mjs';
 import {destroyAbi} from './abi.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 
@@ -27,13 +28,17 @@ const prelude=`
 S = {}
 -- Native writes into the core's event request word ($7E:6E8E, inside the
 -- WRAM block the core assumes free) start spurious events; report them.
+-- S.shield: keep the word as it was (what a core with the word elsewhere
+-- would see), for scenarios whose rooms load such graphics.
 S.clobbers = {}
+S.shield = false
 emu.addMemoryCallback(function(a, v)
   local st = emu.getState()
   local k = st['cpu.k']
   if k < 0xA0 or k > 0xAF then
-    if #S.clobbers < 8 then S.clobbers[#S.clobbers + 1] = string.format('%06X=%02X by %02X:%04X map %03X', a, v, k, st['cpu.pc'], H.r16(0x7E00DC)) end
-    H.result('clobbers', S.clobbers)
+    if #S.clobbers < 8 then S.clobbers[#S.clobbers + 1] = string.format('%06X=%02X by %02X:%04X map %d', a, v, k, st['cpu.pc'], H.r16(0x7E00DC)) end
+    H.result(S.shield and 'shielded' or 'clobbers', S.clobbers)
+    if S.shield then return H.r8(a) end
   end
 end, emu.callbackType.write, 0x7E6E8E, 0x7E6E8F)
 function S.reset()
@@ -198,8 +203,9 @@ export const scenarios=[
 
 scenarios.push(
   {name:'ship-rescues',bundle:'sandship-wreck__qs-captured',
-    note:'in the wreck each captive is fetched by walking into the kitchen and the cabin; the deck then starts Geshtar and the Mech Rider (spec wreckAndEscape, party 3)',
+    note:'in the wreck each captive is fetched by walking into the kitchen and the cabin; the deck then starts Geshtar and the Mech Rider (spec wreckAndEscape, party 3). The cabin\'s graphics load writes the core\'s event request word (core WRAM overlap): the word is shielded here and the writes are reported',
     body:`
+  S.shield = true
   S.reset()
   assert(H.importSnesJs(SCN.bundlePath), 'import failed')
   H.wait(12)
@@ -387,6 +393,35 @@ function S.palette()
   end
   return out
 end
+-- Colours 0-15 as the vblank upload wrote them (the game's own HDMA on
+-- channels 0/1 rewrites some of them during the frame for its window, so
+-- CGRAM itself cannot be compared): {written, equal} against the buffer.
+function S.vblankLow(frames)
+  local addr, latch, low = 0, nil, {}
+  local function cb(a, v)
+    if emu.getState()['ppu.scanline'] < 225 then return end
+    if (a & 0xFFFF) == 0x2121 then addr = v; latch = nil
+    elseif latch == nil then latch = v
+    else
+      if addr < 16 then low[addr] = latch | (v << 8) end
+      addr = (addr + 1) & 255; latch = nil
+    end
+  end
+  -- the CPU writes through the bank of its DB ($00 or the $80 mirror)
+  local id1 = emu.addMemoryCallback(cb, emu.callbackType.write, 0x002121, 0x002122)
+  local id2 = emu.addMemoryCallback(cb, emu.callbackType.write, 0x802121, 0x802122)
+  for f = 1, frames or 10 do H.wait(1); if low[15] then break end end
+  emu.removeMemoryCallback(id1, emu.callbackType.write, 0x002121, 0x002122)
+  emu.removeMemoryCallback(id2, emu.callbackType.write, 0x802121, 0x802122)
+  local out = {written = 0, equal = 0, diff = {}}
+  for i = 0, 15 do
+    if low[i] then
+      out.written = out.written + 1
+      if (low[i] & 0x7FFF) == S.buf(i) then out.equal = out.equal + 1 else out.diff[#out.diff + 1] = string.format('%d:%04X/%04X', i, low[i], S.buf(i)) end
+    end
+  end
+  return out
+end
 -- fx sprites: OBJ palettes fx owns this frame and missing-cell garbage
 -- ($FFFF words: tile $1FF, attribute $FF)
 function S.sprites()
@@ -438,6 +473,7 @@ scenarios.push(
   S.untilControl(6000)
   H.wait(20)
   H.result('wreckPal', S.palette()); H.result('tintBad', S.tintShape())
+  H.result('wreckLow', S.vblankLow(10))
   H.result('own', H.r16(ABI.ss_own)); H.result('hdma', H.r8(0x7E002C)); H.result('vis', H.r16(ABI.ss_vis))
   H.result('breach', {sx = H.r16(ABI.ssw_br_sx), sy = H.r16(ABI.ssw_br_sy), lines = H.r16(ABI.ssw_br_lines), map = H.r16(ABI.ss_bmap), x = H.r16(ABI.ss_bx), y = H.r16(ABI.ss_by)})
   H.result('cg0', S.cg(0))
@@ -466,7 +502,8 @@ scenarios.push(
       if(!(res.ramp?.white<200&&res.ramp?.bgDiff>100))problems.push(`ramp: ${JSON.stringify(res.ramp)}`);
       const w=res.wreckPal??{};
       if(!(w.bgDiff>=90))problems.push(`wreck tint: only ${w.bgDiff} BG colours tinted`);
-      if(w.lowEqual!==16)problems.push(`text/HUD colours changed (${w.lowEqual}/16 equal)`);
+      const lo=res.wreckLow??{};
+      if(lo.written!==16||lo.equal!==16)problems.push(`text/HUD colours changed in the upload (${lo.equal}/${lo.written} equal)`);
       // (the effects library writes its own OBJ palettes: at most two)
       if(!(w.objEqual>=96))problems.push(`sprite colours changed (${w.objEqual}/128 equal)`);
       if(res.garbage)problems.push(`${res.garbage} garbage sprite frames (fx missing cells)`);
@@ -487,7 +524,7 @@ const breachDepth=(b,x,y)=>{const dx=x-b.x,dy=(y-b.y)*1.25,d=Math.hypot(dx,dy),a
   return b.radius*(1+.18*Math.sin(a*5+b.x)+.1*Math.sin(a*11+b.y)+.06*Math.sin(a*23))-d;};
 const FOOT=[-4,0,4].flatMap(dy=>[-6,0,6].map(dx=>[dx,dy]));
 scenarios.push(
-  {name:'ship-hole',bundle:'sandship-wreck__qs-captured',syms:['ss_breach_spans'],
+  {name:'ship-hole',bundle:'sandship-wreck__qs-captured',syms:['ss_breach_spans','ss_breach_trim','ss_breach_bias'],
     note:'the wreck\'s breach is a floor hole for flight (FLIGHT_MISSING_FLOOR): the footprint test follows the drawn outline\'s spans exactly and the browser\'s breachDepth() away from the jagged edge; none once the room is left or the ship is whole',
     body:`
   S.reset()
@@ -506,6 +543,8 @@ scenarios.push(
   local v = ph(bx) | (ph(by) << 2)
   local spans = {}
   for i = 0, 153 do spans[#spans + 1] = H.r8(SCN.sym.ss_breach_spans + v * 154 + i) end
+  H.result('trim', {H.r8(SCN.sym.ss_breach_trim + v * 2), H.r8(SCN.sym.ss_breach_trim + v * 2 + 1)})
+  H.result('bias', H.r8(SCN.sym.ss_breach_bias))
   local q = {}
   for y = by - 56, by + 56, 8 do
     for x = bx - 64, bx + 64, 8 do
@@ -534,9 +573,10 @@ scenarios.push(
 `,
     check(res,problems){
       const b=res.breach??{},spans=res.spans??[],holes=res.holes??[],H=(spans.length/2-1)/2;
+      const [top,cnt]=res.trim??[0,0],bias=res.bias??0;
       if(b.map!==b.dc)problems.push(`breach map ${b.map}, Goku on ${b.dc}`);
-      const sb=v=>v>=128?v-256:v;
-      const model=(x,y)=>FOOT.some(([dx,dy])=>{const k=y+dy-b.y+H;if(k<0||k>2*H||spans[2*k]===0x80)return false;const d=x+dx-b.x;return d>=sb(spans[2*k])&&d<=sb(spans[2*k+1]);});
+      // the outline's rows top..top+cnt-1, spans biased by the generator's bias
+      const model=(x,y)=>FOOT.some(([dx,dy])=>{const k=y+dy-b.y+H;if(k<top||k>=top+cnt)return false;const d=x+dx-b.x;return d>=spans[2*k]-bias&&d<=spans[2*k+1]-bias;});
       let i=0,exact=0,browser=0,edge=0,inside=0;
       for(let y=b.y-56;y<=b.y+56;y+=8)for(let x=b.x-64;x<=b.x+64;x+=8,i++){
         const got=holes[i]===1;if(got)inside++;
@@ -597,16 +637,20 @@ export async function runSandship({rom,only=[],log=console.log}){
     const syms=s.syms?Object.fromEntries(s.syms.map(n=>[n,addr(n)])):null;
     const test=`ABI=${lua(abi)}\nSCN=${lua({name:s.name,bundlePath,debug,sym:syms})}\n`+readFileSync(join(here,'destroy.lua'),'utf8')+prelude+`\nfunction test()\n${s.body}\nend\n`;
     const outDir=join(outRoot,s.name);
-    const m=await runMesen({rom,test,outDir});
+    // its own copy of the ROM: fresh battery RAM ($31-$33) for every case
+    const copy=privateRom(rom,`sandship-${s.name}`);
+    let m;
+    try{m=await runMesen({rom:copy,test,outDir});}finally{cleanupRom(copy);}
     const res=m.results??{};
     const problems=[];
     if(m.code!==0||res.error)problems.push('mesen: '+(res.error??m.code)+(res.error?'':' '+m.output.slice(-400)));
     else s.check(res,problems);
     if(res.clobbers?.length)problems.push(`the game wrote the core's event request word (core WRAM overlap, see destroy.md core requests): ${res.clobbers.join(', ')}`);
     const r={name:s.name,ok:!problems.length,problems,ms:m.ms,note:s.note};
+    if(res.shielded?.length)r.coreNote=`the game wrote the core's event request word (shielded): ${res.shielded.join(', ')}`;
     writeFileSync(join(outDir,'summary.json'),JSON.stringify({...r,results:res},null,1));
     results.push(r);
-    log(`${r.ok?'pass':'FAIL'}  ${s.name.padEnd(16)} ${problems.join('; ')}`);
+    log(`${r.ok?'pass':'FAIL'}  ${s.name.padEnd(16)} ${problems.join('; ')}${r.coreNote?(problems.length?'; ':'')+r.coreNote:''}`);
   }
   return results;
 }

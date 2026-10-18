@@ -407,22 +407,22 @@ assert !hp_end <= !PERSIST_DESTROY+$80, "destroy persistent block overflow"
 !ssw_pal_load = !SSW+$2BC ; word: and its room load (!ssw_loads)
 !ssw_pal_cols = !SSW+$2BE ; word: statistics: colours transformed
 !ssw_pal_wait = !SSW+$2C0 ; word: frames a pending pass had no time
-!SS_PAL_LINE  = 185       ; palette chunks start only before this scanline
-!SS_PAL_LINE_WHITE = 200  ; ... during a white-out (Goku is held)
-!SS_PAL_STARVE = 8        ; ... or after this many frames without one
+!SS_PAL_STARVE = 8        ; a palette chunk anyway after this many frames without time
 ; the fires (fire.asm)
 !ssw_site_p  = !SSW+$2C2 ; 15 x 4 bytes: per-site animation constants
 !ssw_site_n  = !SSW+$980 ; word: fire sites of this load ($FFFF none yet)
 !ssw_site_load = !SSW+$982 ; word: the load (!ssw_loads) they belong to
 !ssw_site_map = !SSW+$984 ; word: and its map
 !ssw_site_rr = !SSW+$986 ; word: first site drawn this frame (rotates)
-!ssw_blast_a = !SSW+$988 ; 3 words: a blast's age ($FFFF idle), x, y
-!ssw_blast_b = !SSW+$98E ; 3 words: a second one
-!ssw_fire_t7 = !SSW+$994 ; word: wreck age / 7
-!ssw_fire_r7 = !SSW+$996 ; word: wreck age % 7
-!ssw_fire_e3 = !SSW+$998 ; word: (wreck age / 5) % 3
-!ssw_fire_m24 = !SSW+$99A ; word: wreck age % 24
-!ssw_fire_left = !SSW+$99C ; word: fx draw entries left this frame
+!ssw_blast_a = !SSW+$988 ; 4 words: a blast's age ($FFFF idle), x, y, bursts
+!ssw_blast_b = !SSW+$990 ; 4 words: a second one
+!ssw_blast_n = !SSW+$998 ; word: bursts of the latest blast (fx's work while they burn)
+!ssw_fire_t7 = !ssw_ck_q7  ; wreck age / 7 (the clock)
+!ssw_fire_r7 = !ssw_ck_r7  ; wreck age % 7
+!ssw_fire_e3 = !ssw_ck_e3  ; (wreck age / 5) % 3
+!ssw_fire_m24 = !ssw_ck_m24 ; wreck age % 24
+!ssw_fire_on = !SSW+$99A ; word: the fires are drawn this frame
+; +$99C-$99D free
 !ssw_fire_cx = !SSW+$99E ; word: fx's camera
 !ssw_fire_cy = !SSW+$9A0
 !ssw_fire_k  = !SSW+$9A2 ; word: site being drawn
@@ -434,9 +434,53 @@ assert !hp_end <= !PERSIST_DESTROY+$80, "destroy persistent block overflow"
 !ssw_site_y  = !SSW+$9C4 ; 15 words (ends at $9E2)
 assert !ssw_site_y+30 <= !SSW+$A00, "Sandship work overflow"
 !SS_STAGE    = !SSW+$300 ; 512 bytes: transformed CGRAM
-!SS_HB       = !SSW+$500 ; 2 x !SS_HB_SIZE: HDMA tables (channel 2 at +0, 3 at +$C0)
-!SS_HB_SIZE  = $240
-!SS_HB_CH3   = $C0
+; The breach's HDMA (both channels indirect, tables and data in this bank)
+!SS_HB       = !SSW+$500
+!SS_BQ       = !SS_HB+$000 ; 128 x 4: the sand of the current white level (CGADD 0, 0, colour)
+!SS_BQ_BK    = !SS_HB+$200 ; 4: the room's backdrop, the same way
+!SS_BW_NONE  = !SS_HB+$204 ; 2: an empty window (WH0 = $FF, WH1 = 0)
+!SS_BT2      = !SS_HB+$210 ; 2 x !SS_BT_SIZE: channel 2 tables
+!SS_BT3      = !SS_HB+$238 ; 2 x !SS_BT_SIZE: channel 3 tables
+!SS_BT_SIZE  = $14
+!SS_BP       = !SS_HB+$260 ; 2 x !SS_BP_SIZE: window positions of the outline's rows
+!SS_BP_SIZE  = $A0
+; the wreck's clock (age modulo the browser's periods), kept in step with
+; !ss_wage (wreck.asm ss_clock)
+!ssw_ck_ok   = !SSW+$8A0 ; word: the counters hold !ssw_ck_age
+!ssw_ck_age  = !SSW+$8A2
+!ssw_ck_120  = !SSW+$8A4 ; age % 120 (the alarm)
+!ssw_ck_q7   = !SSW+$8A6 ; age / 7, age % 7 (the flames)
+!ssw_ck_r7   = !SSW+$8A8
+!ssw_ck_r5   = !SSW+$8AA ; age % 5, (age / 5) % 3 (the embers)
+!ssw_ck_e3   = !SSW+$8AC
+!ssw_ck_m24  = !SSW+$8AE ; age % 24 (the embers' rise)
+!ssw_ck_150  = !SSW+$8B0 ; age % 150, age / 150 (the blasts)
+!ssw_ck_q150 = !SSW+$8B2
+; the breach's outline and its cached window positions
+!ssw_br_var  = !SSW+$8B4 ; word: outline variant (phases of the edge)
+!ssw_br_top  = !SSW+$8B6 ; word: its first row (span index) and row count
+!ssw_br_cnt  = !SSW+$8B8
+!ssw_br_ys   = !SSW+$8BA ; word: screen line of the first row (signed)
+!ssw_br_psx  = !SSW+$8BC ; word: screen x the cached positions were made for
+!ssw_br_pvar = !SSW+$8BE ; word: and the variant
+!ssw_br_cpb  = !SSW+$8C0 ; word: the buffer holding them (0 none)
+!ssw_br_tpb  = !SSW+$8C2 ; word: the buffer this frame's tables use
+!ssw_br_ppb  = !SSW+$8C4 ; word: NMI: the buffer of the programmed tables
+!ssw_sq_lvl  = !SSW+$8C6 ; word: white level of the sand being copied ($FFFF none)
+!ssw_sq_fill = !SSW+$8C8 ; word: bytes of it copied
+!ssw_sq_ok   = !SSW+$8CA ; word: a full set of sand is there
+!ssw_white_lvl = !SSW+$8CC ; word: this frame's white level (0 none)
+; the fires on screen this frame (fire.asm)
+!ssw_fire_vn = !SSW+$8CE ; word: count
+!ssw_fire_done = !SSW+$8D0 ; word: fx draws made
+!ssw_fire_vis = !SSW+$8D2 ; 15 words: their site indices, in drawing order
+!ssw_fx_debt = !SSW+$8F2 ; word: scanlines of fx work this frame's draws (and blasts) add
+!ssw_pal_kin = !SSW+$8F4 ; word: the tint's inputs the current key was made from
+!ssw_br_vok  = !SSW+$8F6 ; word: !ssw_br_var/top/cnt hold the outline of the breach at
+!ssw_br_vx   = !SSW+$8F8 ; words: ... this centre
+!ssw_br_vy   = !SSW+$8FA
+assert !ssw_br_vy+2 <= !SSW+$980, "Sandship work overflow"
+assert !SS_BP+(2*!SS_BP_SIZE) <= !ssw_ck_ok, "Sandship HDMA area overflow"
 ; remarks published in !ssw_remark (the browser's radio lines)
 !SS_SAY_WEAK = 1         ; GOKU: Too weak! I have to charge it all the way.
 !SS_SAY_HINT = 2         ; GOKU: Hold L and Y to charge ... KA... ME... HA...
@@ -543,8 +587,6 @@ incsrc "sandship.asm"
 incsrc "wreck.asm"
 incsrc "fire.asm"
 incsrc "debug.asm"
-destroy_code_tables:
-incsrc "destroy/white.asm"
 destroy_code_end:
 assert destroy_code_end <= !CODE_DESTROY+$8000, "destroy code bank overflow"
 pullpc
@@ -564,7 +606,10 @@ pullpc
 ; C1:E7DF-E7F7: the door event's record loads (map, x, y/layer and the last
 ; byte from C8:3000+4*door) -> destroy_door_record (the Sandship escape
 ; door reloads Goku's own room; other modules can override via
-; !DOOR_RECORD_HOOK).
+; !DOOR_RECORD_HOOK: JSL, M16/X16, X = 4*door, A = bytes 0-1, Y = bytes
+; 2-3, returning A/Y with X kept). !DESTROY_DOOR_HOOK tells other modules
+; this patch (and so the hook) is in the build.
+!DESTROY_DOOR_HOOK = 1
 %orig4($C1E7DF, $C83000BF)
 %orig4($C1E7E3, $8501FF29)
 %orig4($C1E7E7, $3001BFDC)

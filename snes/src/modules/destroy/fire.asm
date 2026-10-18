@@ -14,19 +14,30 @@
 ;
 ; Deviations: fx keeps at most 8 continuous draws a frame for every client,
 ; so the fires on screen share !SS_FIRE_DRAWS of them, rotating a site each
-; frame when there are more (sites farther down the list flicker); no smoke
+; frame when there are more (sites farther down the list flicker); each draw
+; costs fx about 9 (Exploder) or 5 (Fireball) scanlines, so draws are made
+; only while the frame has time for them (ss_room), and a busy frame shows
+; fewer fires or none; a blast in the wreck has one burst and the crash's
+; three, not five (each burning burst costs fx about 18 scanlines); no smoke
 ; columns; bursts sit at the spiral's 6-frame spread instead of drifting;
 ; Exploder cells are not mirrored; the exploding site follows a fixed
 ; pseudo-random order instead of the browser's hash.
 
 !SS_FIRE_DRAWS = 6      ; fx draw entries the fires may take per frame
+!SS_BURSTS = 1          ; Exploder bursts of a wreck blast (the browser's five cost fx too much)
+!SS_CRASH_BURSTS = 3    ; ... of a crash blast (the cut holds Goku)
+!SS_FX_BURST = 33       ; fx's work for a burning burst (scanlines, its largest frames)
 
 if defined("FX_EXPLODE")
 	incsrc "audio/ids.asm"
 
 ; ---------------------------------------------------------------------------
 ; Field side (ss_visuals, inside the arc's window), M16/X16, DB = $7E.
-ss_fires:
+; The fires in two steps: ss_fires_prep before the palette pass (the
+; sites, a blast starting, its bursts, and fx's work for them, which the
+; pass must leave time for), ss_fires after it (the draws).
+ss_fires_prep:
+	LDA.w #0 : STA.l !ssw_fire_on
 	LDA.l !ss_flags : AND.w #!SSF_WRECK : BNE +
 	RTS
 +	; fx colours its own palettes after the CGRAM upload: no fires over a
@@ -37,10 +48,15 @@ ss_fires:
 	RTS
 +	JSR ss_fire_sites : BCS +
 	RTS
-+	JSR ss_fire_clock
-	JSR ss_fire_draw
-	JSR ss_fire_blast
-	JMP ss_blasts_tick
++	JSR ss_fire_blast
+	JSR ss_blasts_tick
+	JSR ss_fire_debt
+	LDA.w #1 : STA.l !ssw_fire_on
+	RTS
+ss_fires:
+	LDA.l !ssw_fire_on : BNE +
+	RTS
++	JMP ss_fire_draw
 
 ; This load's sites (once the room's collision is under Goku's feet).
 ; Carry set when they are ready.
@@ -191,73 +207,93 @@ ss_divmod:
 	BRA -
 +	RTS
 
-; The fires' clock from the wreck's age: t / 7 and t % 7, (t / 5) % 3, t % 24.
-ss_fire_clock:
-	LDA.l !ss_wage : LDX.w #7 : JSR dst_div16 : STA.l !ssw_fire_t7
-	ASL : ASL : ASL : SEC : SBC.l !ssw_fire_t7              ; q * 7
-	EOR.w #$FFFF : SEC : ADC.l !ss_wage : STA.l !ssw_fire_r7
-	LDA.l !ss_wage : LDX.w #5 : JSR dst_div16 : STA.l !ssw_tmp+4   ; t / 5
-	LDX.w #3 : JSR dst_div16 : STA.l !ssw_tmp+6
-	ASL : CLC : ADC.l !ssw_tmp+6                          ; q * 3
-	EOR.w #$FFFF : SEC : ADC.l !ssw_tmp+4 : STA.l !ssw_fire_e3
-	LDA.l !ss_wage : LDX.w #24 : JSR dst_div16 : STA.l !ssw_tmp+4
-	ASL : CLC : ADC.l !ssw_tmp+4 : ASL : ASL : ASL         ; q * 24
-	EOR.w #$FFFF : SEC : ADC.l !ss_wage : STA.l !ssw_fire_m24
-	RTS
-
-; Draw the sites on screen, a rotating start so every site gets its turn.
+; Draw the sites on screen as the frame's time allows: the list of those on
+; screen (the rim's first), from a start that moves on by the draws of the
+; previous frame, so with fewer draws than sites they take turns. Flames
+; first, then the extras with the draws and time left.
 ss_fire_draw:
 	LDA.l !ssw_site_n : BNE +
 	RTS
-+	LDA.w #!SS_FIRE_DRAWS : STA.l !ssw_fire_left
-	; the camera of fx (actor 0)
++	; the camera of fx (actor 0)
 	LDA.w $E002 : SEC : SBC.w $E020 : STA.l !ssw_fire_cx
 	LDA.w $E004 : SEC : SBC.w $E022 : STA.l !ssw_fire_cy
-	; each site's flame (the rim's first, the others from a rotating start),
-	; then the embers with the entries left
-	LDA.w #0 : STA.l !ssw_fire_pass
--	LDA.w #0 : STA.l !ssw_fire_cnt
-.site
-	LDA.l !ssw_fire_left : BEQ .pass_done
-	LDA.l !ssw_fire_cnt : CMP.l !ssw_site_n : BCS .pass_done
-	JSR ss_fire_order : STA.l !ssw_fire_k
+	; the sites on screen (with the cells' reach): the rim's (nr..n-1),
+	; then the others (0..nr-1)
+	LDA.w #0 : STA.l !ssw_fire_vn : STA.l !ssw_fire_done
+	LDA.l !ssw_site_nr : STA.l !ssw_fire_k
+-	LDA.l !ssw_fire_k : CMP.l !ssw_site_n : BCS +
+	JSR .test
+	LDA.l !ssw_fire_k : INC : STA.l !ssw_fire_k
+	BRA -
++	LDA.w #0 : STA.l !ssw_fire_k
+-	LDA.l !ssw_fire_k : CMP.l !ssw_site_nr : BCS .scanned
+	JSR .test
+	LDA.l !ssw_fire_k : INC : STA.l !ssw_fire_k
+	BRA -
+; site !ssw_fire_k: appended to the list when on screen
+.test
 	ASL : TAX
-	; on screen (with the cells' reach)?
 	LDA.l !ssw_site_x,X : SEC : SBC.l !ssw_fire_cx : CLC : ADC.w #24
-	CMP.w #256+48 : BCS .skip
+	CMP.w #256+48 : BCS .off
 	LDA.l !ssw_site_y,X : SEC : SBC.l !ssw_fire_cy : CLC : ADC.w #32
-	CMP.w #224+48 : BCS .skip
-	TXA : ASL : TAX                                       ; params at 4k
+	CMP.w #224+48 : BCS .off
+	LDA.l !ssw_fire_vn : ASL : TAX
+	LDA.l !ssw_fire_k : STA.l !ssw_fire_vis,X
+	LDA.l !ssw_fire_vn : INC : STA.l !ssw_fire_vn
+.off
+	RTS
+.scanned
+	LDA.l !ssw_fire_vn : BNE +
+	RTS
++	LDA.l !ssw_site_rr : CMP.l !ssw_fire_vn : BCC +
+	LDA.w #0 : STA.l !ssw_site_rr                 ; fewer on screen now
++	LDA.w #0 : STA.l !ssw_fire_pass
+.pass
+	LDA.w #0 : STA.l !ssw_fire_cnt
+.site
+	LDA.l !ssw_fire_cnt : CMP.l !ssw_fire_vn : BCC +
+	JMP .pass_done
++	LDA.l !ssw_fire_done : CMP.w #!SS_FIRE_DRAWS : BCC +
+	JMP .out
++	; time for it (and fx's frame work, with the first draw)?
+	LDA.l !ssw_fire_pass : BEQ +
+	LDA.w #!SS_FX_EMBER
+	BRA ++
++	LDA.w #!SS_FX_FLAME
+++	STA.l !ssw_vtmp+12
+	LDA.l !ssw_fx_debt : BNE +
+	LDA.l !ssw_vtmp+12 : CLC : ADC.w #!SS_FX_BASE : STA.l !ssw_vtmp+12
++	LDA.l !ssw_vtmp+12
+	JSR ss_room : BCC +
+	JMP .out
++	LDA.l !ssw_fx_debt : CLC : ADC.l !ssw_vtmp+12 : STA.l !ssw_fx_debt
+	; the j-th from the rotating start
+	LDA.l !ssw_fire_cnt : CLC : ADC.l !ssw_site_rr
+	CMP.l !ssw_fire_vn : BCC +
+	SBC.l !ssw_fire_vn
++	ASL : TAX
+	LDA.l !ssw_fire_vis,X : ASL : ASL : TAX       ; params at 4k
 	LDA.l !ssw_fire_pass : BNE +
 	JSR ss_fire_main
-	BRA .skip
+	BRA ++
 +	JSR ss_fire_extra
-.skip
-	LDA.l !ssw_fire_cnt : INC : STA.l !ssw_fire_cnt
-	BRA .site
+++	LDA.l !ssw_fire_cnt : INC : STA.l !ssw_fire_cnt
+	JMP .site
 .pass_done
-	LDA.l !ssw_fire_pass : BNE +
+	LDA.l !ssw_fire_pass : BNE .out
 	INC : STA.l !ssw_fire_pass
-	LDA.l !ssw_fire_left : BNE -
-+	; the next frame starts the others one site later
-	LDA.l !ssw_site_nr : BEQ +
-	LDA.l !ssw_site_rr : INC
-	CMP.l !ssw_site_nr : BCC ++
-	LDA.w #0
-++	STA.l !ssw_site_rr
-+	RTS
-
-; The site visited j-th (!ssw_fire_cnt): the rim's sites first, then the
-; others from !ssw_site_rr on. A = site index.
-ss_fire_order:
-	LDA.l !ssw_site_n : SEC : SBC.l !ssw_site_nr : STA.l !ssw_tmp+4   ; rim sites
-	LDA.l !ssw_fire_cnt : CMP.l !ssw_tmp+4 : BCS +
-	CLC : ADC.l !ssw_site_nr
+	JMP .pass
+.out
+	; the next frame starts after the flames drawn in this one
+	LDA.l !ssw_fire_pass : BNE +
+	LDA.l !ssw_fire_cnt : BRA ++
++	LDA.l !ssw_fire_vn
+++	CLC : ADC.l !ssw_site_rr
+-	CMP.l !ssw_fire_vn : BCC +
+	SBC.l !ssw_fire_vn
+	BRA -
++	STA.l !ssw_site_rr
 	RTS
-+	SEC : SBC.l !ssw_tmp+4 : CLC : ADC.l !ssw_site_rr
-	CMP.l !ssw_site_nr : BCC +
-	SBC.l !ssw_site_nr
-+	RTS
 
 ; A site's flame (X = params offset): its Exploder frame swelling every 7
 ; frames (3/4, the larger fires 4/5 and 4 px lower), the smallest sites their
@@ -302,7 +338,7 @@ ss_fire_extra:
 	LDA.l !ssw_site_x,X : CLC : ADC.w #5 : TAX
 	LDA.w #!FX_CELL
 	JSL fx_draw
-	LDA.l !ssw_fire_left : DEC : STA.l !ssw_fire_left
+	LDA.l !ssw_fire_done : INC : STA.l !ssw_fire_done
 	RTS
 
 ; A site's ember (X = params offset): frame (t/5 + seed) % 3, turn seed % 4,
@@ -332,7 +368,7 @@ ss_fire_ember:
 	LDA.l !ssw_site_x,X : CLC : ADC.l !ssw_tmp+10 : TAX
 	LDA.w #!FX_CELL
 	JSL fx_draw
-	LDA.l !ssw_fire_left : DEC : STA.l !ssw_fire_left
+	LDA.l !ssw_fire_done : INC : STA.l !ssw_fire_done
 	RTS
 ss_mod3:
 -	CMP.w #3 : BCC +
@@ -353,25 +389,30 @@ ss_fire_burst:
 	LDA.w #!FX_CELL
 	JSL fx_draw
 	PLX
-	LDA.l !ssw_fire_left : DEC : STA.l !ssw_fire_left
+	LDA.l !ssw_fire_done : INC : STA.l !ssw_fire_done
 	RTS
+
+; fx's work for the blasts alive this frame (their bursts are fx effects,
+; drawn whatever the time): counted before anything else is drawn.
+ss_fire_debt:
+	LDA.l !ssw_blast_end : BEQ +
+	LDA.l !ssw_blast_n : BEQ +                    ; n * !SS_FX_BURST + base
+	TAY
+	LDA.w #!SS_FX_BASE
+-	CLC : ADC.w #!SS_FX_BURST
+	DEY : BNE -
+	STA.l !ssw_fx_debt
++	RTS
 
 ; Every 150 frames (at 75) a site explodes.
 ss_fire_blast:
 	; a blast's bursts live 42 frames after their 12 frames of starts
 	LDA.l !ssw_blast_end : BEQ +
 	DEC : STA.l !ssw_blast_end
-+
-	LDA.l !ss_wage : LDX.w #150 : JSR dst_div16 : STA.l !ssw_tmp+4
-	ASL : ASL : ASL : ASL : SEC : SBC.l !ssw_tmp+4         ; q * 15
-	ASL                                                   ; q * 30 ... *5 below
-	STA.l !ssw_tmp+6
-	ASL : ASL : CLC : ADC.l !ssw_tmp+6                    ; q * 150
-	EOR.w #$FFFF : SEC : ADC.l !ss_wage
-	CMP.w #75 : BEQ +
++	LDA.l !ssw_ck_150 : CMP.w #75 : BEQ +         ; age % 150 (the clock)
 	RTS
-+	; a fixed pseudo-random site: (q * 7 + loads * 3) % n
-	LDA.l !ssw_tmp+4 : ASL : ASL : ASL : SEC : SBC.l !ssw_tmp+4 : STA.l !ssw_tmp+6
++	; a fixed pseudo-random site: (q * 7 + loads * 3) % n, q = age / 150
+	LDA.l !ssw_ck_q150 : ASL : ASL : ASL : SEC : SBC.l !ssw_ck_q150 : STA.l !ssw_tmp+6
 	LDA.l !ssw_site_n : BNE +
 	RTS
 +	STA.w !cs+$0
@@ -382,15 +423,18 @@ ss_fire_blast:
 +	ASL : TAX
 	LDA.l !ssw_site_y,X : TAY
 	LDA.l !ssw_site_x,X : TAX
+	LDA.w #!SS_BURSTS
 	JSR ss_blast_start
 	LDA.w #6 : JSL fx_quake
 	LDA.w #!AUDIO_SFX_FORTRESS_BREAK : JSL audio_sfx
 	RTS
 
-; X = x, Y = y: a blast (five bursts, 3 frames apart) in a free slot (else
-; the older one is replaced).
+; A = bursts, X = x, Y = y: a blast (its bursts 3 frames apart) in a free
+; slot (else the older one is replaced).
 ss_blast_start:
-	LDA.w #54 : STA.l !ssw_blast_end
+	STA.l !ssw_blast_n
+	DEC : STA.l !ssw_vtmp+12                      ; (n - 1) * 3 + 42
+	ASL : CLC : ADC.l !ssw_vtmp+12 : CLC : ADC.w #42 : STA.l !ssw_blast_end
 	LDA.l !ssw_blast_a : CMP.w #$FFFF : BEQ .a
 	LDA.l !ssw_blast_b : CMP.w #$FFFF : BEQ .b
 	LDA.l !ssw_blast_a : CMP.l !ssw_blast_b : BCS .a
@@ -398,30 +442,32 @@ ss_blast_start:
 	LDA.w #0 : STA.l !ssw_blast_b
 	TXA : STA.l !ssw_blast_b+2
 	TYA : STA.l !ssw_blast_b+4
+	LDA.l !ssw_blast_n : STA.l !ssw_blast_b+6
 	RTS
 .a
 	LDA.w #0 : STA.l !ssw_blast_a
 	TXA : STA.l !ssw_blast_a+2
 	TYA : STA.l !ssw_blast_a+4
+	LDA.l !ssw_blast_n : STA.l !ssw_blast_a+6
 	RTS
 
 ; The blasts' bursts: burst i at age 3i (FX_EXPLODE: 7 Exploder frames x 6).
 ss_blasts_tick:
 	LDX.w #0
 	JSR .slot
-	LDX.w #6
+	LDX.w #8
 .slot
 	LDA.l !ssw_blast_a,X : CMP.w #$FFFF : BNE +
 	RTS
 +	PHX
-	; i = age / 3 when age % 3 == 0, i < 5
+	; i = age / 3 when age % 3 == 0, i < the slot's bursts
 	LDY.w #0
 -	CMP.w #3 : BCC +
 	SBC.w #3
 	INY
 	BRA -
 +	CMP.w #0 : BNE .later
-	CPY.w #5 : BCS .later
+	TYA : CMP.l !ssw_blast_a+6,X : BCS .later
 	TYA : AND.w #3
 	SEP #$20 : STA.l !fx_dir : REP #$20
 	TYA : AND.w #1
@@ -436,28 +482,35 @@ ss_blasts_tick:
 	JSL fx_spawn
 .later
 	PLX
-	LDA.l !ssw_blast_a,X : INC
-	CMP.w #13 : BCC +
-	LDA.w #$FFFF
-+	STA.l !ssw_blast_a,X
+	; idle after the last burst's start: age (n - 1) * 3
+	LDA.l !ssw_blast_a+6,X : DEC : STA.l !ssw_vtmp+12
+	ASL : CLC : ADC.l !ssw_vtmp+12 : STA.l !ssw_vtmp+12
+	LDA.l !ssw_blast_a,X : CMP.l !ssw_vtmp+12 : BCC +
+	LDA.w #$FFFE                                  ; -> $FFFF
++	INC
+	STA.l !ssw_blast_a,X
 	RTS
 
 ; crashTick's blasts around Goku (every 10 frames of the crash while aboard,
 ; ss_crash_tick): A = the crash's age.
 ss_crash_blast:
 	PHA
-	LDA.l !ss_flags : AND.w #!SSF_WRECK : BEQ .no
-	LDA.w $00DC : JSR ss_ship_map : BCC .no
+	LDA.l !ss_flags : AND.w #!SSF_WRECK : BEQ .no0
+	LDA.w $00DC : JSR ss_ship_map : BCC .no0
 	LDA $01,S : LDX.w #10 : JSR dst_div16 : STA.l !ssw_tmp+4
 	ASL : ASL : CLC : ADC.l !ssw_tmp+4 : ASL                ; q * 10
-	EOR.w #$FFFF : SEC : ADC $01,S : BNE .no              ; not a multiple of 10
-	LDA.l !ssw_tmp+4 : CMP.w #121 : BCS .no
+	EOR.w #$FFFF : SEC : ADC $01,S : BNE .no0             ; not a multiple of 10
+	LDA.l !ssw_tmp+4 : CMP.w #121 : BCC +
+.no0
+	JMP .no
++
 	ASL : TAX
 	LDA.l ss_crash_off,X : AND.w #$00FF : EOR.w #$0080 : SEC : SBC.w #$0080
 	CLC : ADC.w $E002 : STA.l !ssw_tmp+6
 	LDA.l ss_crash_off+1,X : AND.w #$00FF : EOR.w #$0080 : SEC : SBC.w #$0080
 	CLC : ADC.w $E004 : TAY
 	LDA.l !ssw_tmp+6 : TAX
+	LDA.w #!SS_CRASH_BURSTS
 	JSR ss_blast_start
 	; pulse(4 + min(8, age >> 4))
 	LDA $01,S : LSR : LSR : LSR : LSR : CMP.w #8 : BCC +
@@ -469,6 +522,7 @@ ss_crash_blast:
 	RTS
 
 else
+ss_fires_prep:
 ss_fires:
 	RTS
 ss_crash_blast:

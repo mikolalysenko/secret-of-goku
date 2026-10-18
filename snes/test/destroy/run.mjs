@@ -10,9 +10,17 @@ import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {runMesen} from '../mesen.mjs';
+import {privateRom,cleanupRom} from '../checkpoints.mjs';
 import {destroyAbi} from './abi.mjs';
 import {createReference,attackProfile,facing,loadRom,beamTimeline,simulateTimeline} from './reference.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
+// Each case runs on its own copy of the ROM, so Mesen starts it with fresh
+// battery RAM (it keeps SRAM per ROM file name).
+async function runPrivate(rom,name,opts){
+  const copy=privateRom(rom,`destroy-${name}`);
+  try{return await runMesen({rom:copy,...opts});}
+  finally{cleanupRom(copy);}
+}
 const rom=process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-goku.sfc');
 // Import bundles: SNES_IMPORT, this checkout's .local, or the main checkout's
 // (git worktrees share it).
@@ -258,7 +266,7 @@ async function runEvent(s){
     steps=beamTimeline({x,y,dir:attack.dir,kind:attack.kind}).map(t=>({x:t.x,y:t.y,dir:t.dir,length:t.length,halfWidth:Math.floor(t.halfWidth),taper:t.taper,id:t.id,code:attack.code,str:attack.str}));
   }
   const test=`ABI=${lua(abi)}\nSCN=${lua({...s,bundlePath,attack,steps,timeline:undefined,opened:undefined})}\n`+readFileSync(join(here,'destroy.lua'),'utf8')+bodyEvent;
-  const m=await runMesen({rom,test,outDir});
+  const m=await runPrivate(rom,s.name,{test,outDir});
   const res=m.results??{};
   const problems=[];
   if(m.code!==0||res.error)problems.push('mesen: '+(res.error??m.code));
@@ -334,7 +342,7 @@ async function run(s){
   const outDir=join(outRoot,s.name);
   const luaSteps=timeline?timeline.map(t=>({x:t.x,y:t.y,dir:t.dir,length:t.length,halfWidth:Math.floor(t.halfWidth),taper:t.taper,id:t.id,code:attack.code,str:attack.str})):undefined;
   const test=`ABI=${lua(abi)}\nSCN=${lua({...s,bundlePath,attack,timeline:luaSteps,profile:profileSpec(),pcprof:pcprofSpec()})}\n`+readFileSync(join(here,'destroy.lua'),'utf8')+body;
-  const m=await runMesen({rom,test,outDir});
+  const m=await runPrivate(rom,s.name,{test,outDir});
   const res=m.results??{};
   const problems=[];
   if(m.code!==0||res.error)problems.push('mesen: '+(res.error??m.code));
