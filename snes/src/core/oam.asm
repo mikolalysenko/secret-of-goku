@@ -57,11 +57,12 @@ core_oam_begin:
 	RTS
 .world
 	LDX.w #!CORE_WORLD_FIRST*4
-	LDY.w !core_oam_world_hw&$FFFF
+	LDA.l !core_oam_world_hw
+	TAY
 	JSR core_oam_hide_range
 	LDA.w #!CORE_WORLD_FIRST*4
 	STA.w !core_oam_cursor&$FFFF
-	STA.w !core_oam_world_hw&$FFFF
+	STA.l !core_oam_world_hw
 	LDA.w #!CORE_WORLD_FIRST
 	STA.w !core_oam_native&$FFFF
 	LDA.w #$0200
@@ -84,9 +85,11 @@ core_oam_mode_changed:
 	CMP.w #!CORE_WORLD_FIRST*4
 	BCC +
 	TAX
-+	LDY.w !core_oam_world_hw&$FFFF
++	LDA.l !core_oam_world_hw
+	TAY
 	JSR core_oam_hide_range
-	STZ.w !core_oam_world_hw&$FFFF
+	LDA.w #$0000
+	STA.l !core_oam_world_hw
 	BRA .store
 .notWorld
 	CMP.w #!CORE_MODE_FIELD
@@ -96,7 +99,8 @@ core_oam_mode_changed:
 	BNE .store
 	; Field -> world: world natives own 0-83; hide field module slots >= 84.
 	LDX.w #!CORE_WORLD_NATIVE_END*4
-	LDY.w !core_oam_field_hw&$FFFF
+	LDA.l !core_oam_field_hw
+	TAY
 	JSR core_oam_hide_range
 .store
 	PLA
@@ -355,11 +359,11 @@ core_oam_commit_field:
 .done
 	LDA.w !core_oam_cursor&$FFFF
 	STA.w $0120                       ; next frame's C0:BCAB hides up to here
-	STA.w !core_oam_field_hw&$FFFF
+	STA.l !core_oam_field_hw
 	RTS
 
 ; World commit: remember what to hide next frame.
 core_oam_commit_world:
 	LDA.w !core_oam_cursor&$FFFF
-	STA.w !core_oam_world_hw&$FFFF
+	STA.l !core_oam_world_hw
 	RTS
