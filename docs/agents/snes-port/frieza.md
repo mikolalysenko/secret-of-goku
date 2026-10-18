@@ -31,7 +31,11 @@ those scripts call, Frieza's picture and the fights. The orbit stream
 | Frieza's ki for Dark Lich: 48,000 HP, attack +48/+24, two boosts (+10% HP, +16 attack) with Frieza's taunts | Done (logic; the orbs and aura wait for fx kinds) |
 | Goku's attacks reaching Frieza | Needs combat's virtual-target hook (Requests): until then the fight cannot be won with the pad |
 | Incoming-damage cap of the fed Beast (110/140, 75-frame grace) | Needs combat's damage-receive hook (Requests) |
-| Emperor's execution beam, the Balls rising, Death Ball charge/throw/eruption on the deck, Tree vista, flyby, Fortress collapse visuals, showdown lift/explode/gold effects | Not yet (scene logic and Frieza's poses run; the effects are missing) |
+| Cutscene effects (`frieza.js` draw(), the scene branch): the deck's Death Ball (charge and throw poses from `friezaDeathBallPose`), the eruption's column of large bursts, Fanha's beam and burst, Popoi's end, the empowering orbs and Thanatos's aura, Goku's gold aura | Done through fx; fx draws the ball at <= 32 px, its strip beams in four facings only and no auras yet (fx requests) |
+| The Dragon Balls rising to the altar (steal) and the eighth Ball | Done (own art, generated) |
+| The Emperor's execution: ray, black frame with his silhouette, sparks | Done (the ray is fx's Death Beam, not drawn by fx yet) |
+| The Fortress's collapse on its destroyed deck (map 255): fractures, scars, red alarm | Done (alarm as a red add only; fractures need flight's canLand) |
+| Altar camera pan (reveal, steal), intro follower poses (temple exit, the deck), Tree vista, flyby in world flight | Not yet (Requests: flight's camera dispatcher, goku's scene drawing) |
 
 ## Scenes and timings (from the JavaScript)
 
@@ -121,6 +125,49 @@ of the world's (the same within a cell, repeating per cell).
   whiteout 143-306, held to 631, cleared by 791, the boss fanfare at 375,
   the pouch chime once the fanfare ends (915), event C7 at 1035.
 
+## Cutscene effects
+
+`effects.asm` draws the scene branch of `frieza.js` draw() through fx
+(`bind.asm` wrappers; nothing without fx):
+
+- **Death Ball on the deck** (`core-charge`, `core-shot`): the diameter by
+  age (64 -> 224 px from age 24, then shrinking with the throw) and the
+  throw path for the three hover bobs are generated from
+  `friezaDeathBallPose`; drawn as fx's red (cinematic) Death Ball at the
+  ball's centre. fx draws 16/32 px balls today; larger diameters are its
+  planned polygon circle.
+- **Large bursts** (`orbit-effects.js` burst large): nine Exploder bursts
+  four frames apart, burst i > 0 moving out along `orbitVectors[(i*6)&15]`
+  to radius 8 + min(24, t); offsets generated with the browser's `>> 8`.
+  Each is an fx effect moved every frame from a 12-entry table; fx's 14
+  slots bound how many show at once (the browser draws every one). Used by
+  the eruption (seven bursts rooted below the screen, 12 frames apart),
+  Fanha's end and Popoi's end.
+- **Empower**: three pink charge-orb cells travel from Frieza's hand to
+  Thanatos (72 frames each, 24 apart, the browser's rounding), then fx's
+  pink aura on him; **gold**: fx's gold aura behind Goku, power over 28
+  frames. **Fanha**: fx's fire strip from (280, -16) to him (a 16-step
+  heading; fx's strips have four facings so far).
+- **The Dragon Balls** (`balls.asm`): `dragon-balls.png` cropped and
+  sampled as `ki-art.js` does (11 px, the eighth 18 px), 15 colours per
+  palette by median cut. The seven rise in an opening ring (ring offsets
+  by age generated; the straight part from Goku's spot to the altar at run
+  time, whole and fractional pixels apart) and are drawn before Frieza (the
+  browser draws them over him). VRAM: core's `FIELD_OBJ_A` region, claimed
+  while a Ball scene draws and filled in Frieza's vblank before any sprite
+  points at it; the second free OBJ palette.
+- **The Emperor's execution** (`emperor.asm`): the hit's black frame keeps
+  only sprites on the main screen (TM = OBJ) over a black backdrop without
+  colour math; native sprites outside his body box are hidden and his
+  cells take the silhouette palette (white, pink at 13-14). The ray is
+  fx's Death Beam at his chest, the sparks fx's impact-spark cells.
+- **The collapse** (`collapse.asm`): the spot grid (every 32 px of the
+  view, away from Goku, on landable floor), three fractures at once and one
+  every 32 frames with the break sound and a pulse; the scars use the holes
+  renderer with the deck's colours in BG palette 2 (the only one map 255
+  leaves free); the alarm is a fixed-colour add of red 2 + alarm to BG1 and
+  BG2 in vblank.
+
 ## Hardware approach
 
 - **Frieza** is up to eight 16x16 OBJ per frame. `snes/gen/frieza.mjs`
@@ -178,9 +225,10 @@ of the world's (the same within a cell, repeating per cell).
 | WRAM `$7E:DB00-DBBF` | `!RAM_FRIEZA`: scene `+$00-$57`, battle `+$58-$89`, Lich/Beast `+$8A-$AB`, scratch and death/victory `+$AC-$BF` |
 | SRAM `$31:6180-61FF` | `!PERSIST_FRIEZA`: `+$00` version, `+$01` stage, `+$02` tree, `+$03` flags (word), `+$05` stolenMask, `+$06` crisis, `+$07` Beast challenge, `+$08` flyby age; `+$40-$7F` reserved for the orbit stream |
 | SRAM `$32:7000-7FFF` | scene work while Frieza's scenes run: `+$000` hole list and write list (`!FZHB`), `+$800` fight block (`!FZSB`: tag, warning, shots, hazards, afterimages, test mailbox, arena, victory), `+$C00` the hole bitmap. The orbit stream keeps to `$32:6000-6FFF` |
-| VRAM | OBJ tiles `$0C0-$0FF` while Frieza is drawn; BG tiles `$1C0-$1CF` and BG1 tilemap entries of visible holes on map 246 |
-| CGRAM | one free OBJ palette (two with afterimages), in vblank; BG palette 6 colours 1-7 in the game's buffer while holes show |
-| OAM | up to 8 front sprites for Frieza |
+| VRAM | OBJ tiles `$0C0-$0FF` while Frieza is drawn; core's `FIELD_OBJ_A` (owner `$06`) while the Dragon Balls show; BG tiles `$1C0-$1CF` (free on every map of graphics sets 20 and 21) and BG1 tilemap entries of visible holes on maps 246 and 255 |
+| CGRAM | one free OBJ palette (two with afterimages or the Balls), in vblank; BG palette 6 (map 246) or 2 (map 255) colours 1-7 in the game's buffer while holes show |
+| OAM | up to 8 front sprites for Frieza, 7 for the Balls; native slots rewritten during the Emperor's black frame |
+| Registers | in vblank, per frame and only when this frame's logic asked: the whiteout (CGWSEL/CGADSUB/COLDATA), the black frame (TM, CGADSUB, CGRAM 0), the collapse tint; the map's values come back the vblank after |
 | DMA | channel 7 in the field NMI |
 
 Original code patched:
@@ -261,9 +309,17 @@ floor on request.
 | `fracture` | seven fractures give the same 39 cells as `fractureFortress()`; the hole tiles are in VRAM and every listed BG1 row is written |
 | `victory` | the fatal hit starts the beat, white 31 at 400, event C7 runs (stage defeated, ledger 127) |
 | `death` | Goku at 1 HP takes the first orb: no warp, black from 360, Start goes to the title |
+| `effects` | scenes no preset reaches, set up by `scenarios.mjs` on a preset in the browser (`capture.mjs`: restore the snapshot with an edited `goku.frieza`, run, screenshot into `.local/snes-ref-frieza/`) and replayed on the cartridge: Popoi's end 95-99%, the steal without the altar 99.5%, the empower orbs 97-99.9%, the eruption 93-99%, the collapse 87-90% after its first alarm; the Death Ball, Fanha's beam and the auras show where fx's kinds differ |
 | `music` | Frieza's battle theme becomes the current song (`$1E05 = $3C`); reports the load's stall |
 
 ## Known differences
+
+- **Frame cost**: Frieza's sprite takes about 9 scanlines per frame (up to
+  eight `core_oam_add_front` calls), the fight about 45 in all; the idle
+  path about one. The fight's logic still ends by line ~190 in the battle
+  preset.
+- **Large bursts**: fx's 14 effect slots and the sprite limits show part of
+  the browser's nine-burst clusters.
 
 - **Song changes stall the game loop**: the native loader uploads a song on
   the main thread (audio.md, Load time). Frieza's cues cut the old song
@@ -297,6 +353,13 @@ floor on request.
 - **combat (3)**: `beamTouchesShot()` needs Goku's live beam geometry
   (origin, direction, length, width) so a Kamehameha can cancel Frieza's
   shots; `fz_bind_beam_touches` answers "no" until then.
+- **fx**: FX_DEATHBALL at 64-224 px (the deck's charge and throw), FX_AURA
+  (Thanatos's pink aura, Goku's gold aura), FX_BEAM_LASER (the Emperor's
+  ray and Frieza's lasers), 16-step headings for the strip beams (Fanha's
+  end), FX_DEBRIS (the floor chunks).
+- **goku**: a way to draw Goku's own cell at a scripted screen spot with the
+  native body hidden (`frieza.js` introHero: the temple exit and the deck's
+  follower poses; the Tree vista's Goku).
 - **flight**: a JSL `canLand(x, y, layer, terrain)` service
   (`!FLIGHT_API_CAN_LAND`, A16 = x, X16 = y, Goku's layer/terrain) for the
   patrol nodes, floor fractures and the landing search (every cell counts
