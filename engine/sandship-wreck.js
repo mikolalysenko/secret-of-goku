@@ -322,10 +322,14 @@ export function createSandshipWreck(snes,mod,state){
      if(age<10)continue;
      // Every other pixel only, thinning at the rim: the room shows through.
      const dark=1+rgb(5+age/24,4+age/24,4+age/24),light=1+rgb(9+age/20,8+age/20,8+age/20);
-     for(let py=-rad;py<=rad;py++)for(let px=-rad;px<=rad;px++){
-      const d=px*px+py*py*1.4;if(d>rad*rad||((sx+px+sy+py)&1))continue;
-      if(d>rad*rad*.5&&hash(sx+px,sy+py+(t>>3))<.5)continue;
-      put(sx+px,sy+py,py<-rad/3?light:dark);
+     // Only the even-parity pixels of each row, in the same order.
+     for(let py=-rad;py<=rad;py++){
+      const dy=py*py*1.4;
+      for(let px=-rad+((sx+sy+py-rad)&1);px<=rad;px+=2){
+       const d=px*px+dy;if(d>rad*rad)continue;
+       if(d>rad*rad*.5&&hash(sx+px,sy+py+(t>>3))<.5)continue;
+       put(sx+px,sy+py,py<-rad/3?light:dark);
+      }
      }
     }
     // Steady fires in three sizes: the Exploder's flame frames swell and

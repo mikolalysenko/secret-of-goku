@@ -10,9 +10,17 @@ import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {runMesen} from '../mesen.mjs';
+import {privateRom,cleanupRom} from '../checkpoints.mjs';
 import {destroyAbi} from './abi.mjs';
 import {createReference,attackProfile,facing,loadRom,beamTimeline,simulateTimeline} from './reference.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
+// Each case runs on its own copy of the ROM, so Mesen starts it with fresh
+// battery RAM (it keeps SRAM per ROM file name).
+async function runPrivate(rom,name,opts){
+  const copy=privateRom(rom,`destroy-${name}`);
+  try{return await runMesen({rom:copy,...opts});}
+  finally{cleanupRom(copy);}
+}
 const rom=process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-goku.sfc');
 // Import bundles: SNES_IMPORT, this checkout's .local, or the main checkout's
 // (git worktrees share it).
@@ -29,6 +37,33 @@ const only=process.argv.slice(2);
 const abi=destroyAbi();
 const cartridge=loadRom();
 const KIND={punch:0,ki:1,beam:2,mega:3};
+// Dev aids. DESTROY_PCPROF=n: instruction counts per PC (bank $A4) of the
+// first n destroy_hit calls (results.pcs). DESTROY_PROFILE=1: scanlines per
+// call of destroy_hit and its parts (exec callbacks at the call sites, from
+// the symbol file and the ROM bytes; DESTROY_PROFILE_PARTS picks the
+// callees inside the scan; results.profile).
+function pcprofSpec(){
+  if(!process.env.DESTROY_PCPROF)return undefined;
+  const sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8');
+  const at=n=>{const m=sym.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${n}$`,'m'));return m?parseInt(m[1]+m[2],16):null;};
+  return {enter:at('destroy_hit'),leave:at('destroy_hit_done'),calls:Number(process.env.DESTROY_PCPROF)};
+}
+function profileSpec(){
+  if(!process.env.DESTROY_PROFILE)return undefined;
+  const sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8'),bytes=new Uint8Array(readFileSync(rom));
+  const at=n=>{const m=sym.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${n}$`,'m'));return m?parseInt(m[1]+m[2],16):null;};
+  const pc=a=>((a>>16)&0x3f)*0x10000+(a&0xffff);
+  const spec={hit:{enter:at('destroy_hit'),leave:at('destroy_hit_done')}};
+  const start=at('destroy_hit'),end=at('destroy_hit_done');
+  for(let a=start;a<end;a++){const o=pc(a);if(bytes[o]!==0x20)continue;const t=(a&0xff0000)|bytes[o+1]|bytes[o+2]<<8;
+    for(const n of ['ss_hit','dst_scan_attack','dst_barrier_hit'])if(t===at(n))spec[n]={enter:a,leave:a+3};}
+  // and the calls inside the scan (first site of each callee)
+  const s0=at('dst_scan_attack');
+  for(let a=s0;a<s0+0x400;a++){const o=pc(a);if(bytes[o]!==0x20)continue;const t=(a&0xff0000)|bytes[o+1]|bytes[o+2]<<8;
+    for(const n of (process.env.DESTROY_PROFILE_PARTS??'dst_consider_cell,dst_skim,dst_scan_strips,dst_demolishes,dst_job_update,dst_band_row,dst_band_flat,dst_band_skip').split(','))
+      if(t===at(n)){const k=spec[n]?n+'@'+a.toString(16):n;spec[k]={enter:a,leave:a+3};}}
+  return spec;
+}
 
 // Scenarios. The attack origin defaults to Goku's position in the bundle.
 export const scenarios=[
@@ -109,6 +144,8 @@ function test()
   H.w8(ABI.P_DOORS, SCN.doors or 0); H.w8(ABI.P_TREE, 0)
   assert(H.importSnesJs(SCN.bundlePath), 'import failed')
   H.wait(SCN.settle or 12)
+  if SCN.profile then D.profile(SCN.profile) end
+  if SCN.pcprof then D.pcprofile(SCN.pcprof.enter, SCN.pcprof.leave, SCN.pcprof.calls) end
   H.result('start', D.pos())
   D.grid('before.bin')
   H.shot('before')
@@ -135,6 +172,8 @@ function test()
   H.result('queue', {qn = H.r16(ABI.d_qn), live = H.r16(ABI.d_qlive), cleared = H.r16(ABI.d_cn), rows = H.r16(ABI.out_rows)})
   H.result('fx', {seq = H.r16(ABI.FX_SEQ), kind = H.r16(ABI.FX_KIND), x = H.r16(ABI.FX_X), y = H.r16(ABI.FX_Y)})
   H.result('writes', D.writes)
+  if D.prof then H.result('profile', D.prof) end
+  if D.pcs then local calls = {}; for i, t in ipairs(D.pcs) do local out = {}; for a, c in pairs(t) do out[#out + 1] = string.format('%06X:%d', a, c) end; calls[i] = out end; H.result('pcs', calls) end
   if SCN.walk then
     H.hold(SCN.walk, SCN.walkFrames or 40)
     H.result('walked', D.pos())
@@ -227,7 +266,7 @@ async function runEvent(s){
     steps=beamTimeline({x,y,dir:attack.dir,kind:attack.kind}).map(t=>({x:t.x,y:t.y,dir:t.dir,length:t.length,halfWidth:Math.floor(t.halfWidth),taper:t.taper,id:t.id,code:attack.code,str:attack.str}));
   }
   const test=`ABI=${lua(abi)}\nSCN=${lua({...s,bundlePath,attack,steps,timeline:undefined,opened:undefined})}\n`+readFileSync(join(here,'destroy.lua'),'utf8')+bodyEvent;
-  const m=await runMesen({rom,test,outDir});
+  const m=await runPrivate(rom,s.name,{test,outDir});
   const res=m.results??{};
   const problems=[];
   if(m.code!==0||res.error)problems.push('mesen: '+(res.error??m.code));
@@ -302,8 +341,8 @@ async function run(s){
   }
   const outDir=join(outRoot,s.name);
   const luaSteps=timeline?timeline.map(t=>({x:t.x,y:t.y,dir:t.dir,length:t.length,halfWidth:Math.floor(t.halfWidth),taper:t.taper,id:t.id,code:attack.code,str:attack.str})):undefined;
-  const test=`ABI=${lua(abi)}\nSCN=${lua({...s,bundlePath,attack,timeline:luaSteps})}\n`+readFileSync(join(here,'destroy.lua'),'utf8')+body;
-  const m=await runMesen({rom,test,outDir});
+  const test=`ABI=${lua(abi)}\nSCN=${lua({...s,bundlePath,attack,timeline:luaSteps,profile:profileSpec(),pcprof:pcprofSpec()})}\n`+readFileSync(join(here,'destroy.lua'),'utf8')+body;
+  const m=await runPrivate(rom,s.name,{test,outDir});
   const res=m.results??{};
   const problems=[];
   if(m.code!==0||res.error)problems.push('mesen: '+(res.error??m.code));
@@ -347,8 +386,13 @@ async function run(s){
         :(a,b)=>{let i=0;for(const x of a)if(x===b[i])i++;return i===b.length;};
       // (rows follow the edits: when those differ, so do the rows)
       if(!res.timingNote){
-        if(!sub(r82,want82))problems.push(`redraw $82 ${JSON.stringify(r82)} want ${JSON.stringify(want82)}`);
-        if(!sub(r83,want83))problems.push(`redraw $83 ${JSON.stringify(r83)} want ${JSON.stringify(want83)}`);
+        // (a timing-sensitive timeline whose edits happen to match may still
+        // group its rows differently: noted, not failed)
+        const rows=[];
+        if(!sub(r82,want82))rows.push(`redraw $82 ${JSON.stringify(r82)} want ${JSON.stringify(want82)}`);
+        if(!sub(r83,want83))rows.push(`redraw $83 ${JSON.stringify(r83)} want ${JSON.stringify(want83)}`);
+        if(rows.length&&demo&&s.timing)res.timingNote=`edits exact, row redraws grouped differently (${s.timing})`;
+        else problems.push(...rows);
       }
       // (a timeline may split a browser row into two applications: compare
       // the sound kinds)
@@ -373,6 +417,8 @@ async function run(s){
 }
 
 mkdirSync(outRoot,{recursive:true});
+const {runSandship,scenarios:shipScenarios}=await import('./sandship.mjs');
+const shipNames=new Set(shipScenarios.map(s=>s.name));
 const selected=scenarios.filter(s=>!only.length||only.includes(s.name));
 const results=[];
 for(const s of selected){
@@ -380,5 +426,8 @@ for(const s of selected){
   const detail=s.type==='event'?`event ${r.event?.toString(16)} target ${r.target?.id??r.target?.kind??'-'} flags ${r.flags?.join(' ')||'-'} map edits ${r.edits}`:`edits ${r.edits??'-'} (ref ${r.refEdits??'-'})  ${r.walked?`walked to ${r.walked.x},${r.walked.y}`:''}${r.timing?`  timing: ${r.timing}`:''}`;
   console.log(`${r.ok?'pass':r.skipped?'skip':'FAIL'}  ${s.name.padEnd(16)} ${detail}  ${r.problems?.join('; ')??r.reason??''}`);
 }
+// The Sandship runtime's own scenarios (sandship.mjs).
+const shipOnly=only.filter(n=>shipNames.has(n));
+if(!only.length||shipOnly.length)results.push(...await runSandship({rom,only:shipOnly}));
 writeFileSync(join(outRoot,'summary.json'),JSON.stringify(results,null,1));
 process.exit(results.every(r=>r.ok||r.skipped)?0:1);

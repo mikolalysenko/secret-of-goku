@@ -43,7 +43,7 @@ core_vram_claim:
 	ASL
 	PHX
 	TAX
-	LDA.w !core_vram_owner&$FFFF,X
+	LDA.l !core_vram_owner,X
 	BEQ .take
 	CMP $01,S
 	BEQ .mine
@@ -53,7 +53,7 @@ core_vram_claim:
 	RTL
 .take
 	LDA $01,S
-	STA.w !core_vram_owner&$FFFF,X
+	STA.l !core_vram_owner,X
 .mine
 	LDA.l core_vram_base,X
 	TAY
@@ -67,10 +67,13 @@ core_vram_release:
 	ASL
 	PHX
 	TAX
-	LDA.w !core_vram_owner&$FFFF,X
+	LDA.l !core_vram_owner,X
 	CMP $01,S
 	BNE .notMine
-	STZ.w !core_vram_owner&$FFFF,X
+	PHA
+	LDA.w #$0000
+	STA.l !core_vram_owner,X
+	PLA
 .notMine
 	PLX
 .done
