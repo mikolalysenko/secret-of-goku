@@ -445,6 +445,12 @@ endif
 ; or scroll writes for a frame, ui.md): then only channels already running
 ; stay on, and the rest start with the next vblank.
 core_hdmaen_write:
+	; Disabling channels, or keeping the same mask, is safe even after
+	; frame start. Only newly enabled channels need the scanline guard.
+	LDA $2C
+	EOR.l !core_hdmaen
+	AND $2C
+	BEQ .same
 	REP #$20
 	JSR core_vcount
 	CMP.w #225
@@ -452,6 +458,9 @@ core_hdmaen_write:
 	LDA $2C
 	BCS .store
 	AND.l !core_hdmaen
+	BRA .store
+.same
+	LDA $2C
 .store
 	STA.l !core_hdmaen
 	STA.l $00420C
@@ -747,6 +756,7 @@ core_flush_main:
 	RTS
 
 incsrc "input.asm"
+incsrc "native.asm"
 incsrc "oam.asm"
 incsrc "services.asm"
 incsrc "save.asm"

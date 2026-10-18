@@ -12,7 +12,21 @@ fx_nmi:
 	LDA.l !fx_magic
 	CMP.w #!FX_MAGIC
 	BNE .done
-	JSL core_vblank_lines
+	; Latch once; the old path read the same scanline twice and paid the
+	; generic service's width/flag prologue during the tightest vblanks.
+	JSR fx_nmi_vline
+	PHA
+	CMP.w #225
+	BCC .noTime
+	CMP.w #258
+	BCS .noTime
+	EOR.w #$FFFF
+	SEC
+	ADC.w #258
+	BRA .haveTime
+.noTime
+	LDA.w #0
+.haveTime
 	STA.l !fx_vbl
 	JSR fx_nmi_learn
 if defined("FX_TEST")
@@ -26,10 +40,10 @@ endif
 	; or the channels skip that frame. Its palettes are rewritten only while
 	; no HDMA channel runs (then a late $420C write is harmless); with HDMA
 	; running, fx_frame predicted this vblank and drew no sprites.
-	JSR fx_nmi_vline
+	PLA
 	CMP.w #225
 	BCC .late
-	CMP.w #257
+	CMP.w #256
 	BCS .late
 	JSR fx_nmi_poly              ; HDMA first, then the uploads
 	JSR fx_nmi_channel

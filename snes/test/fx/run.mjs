@@ -39,7 +39,7 @@ function prelude(rom){
     const m=line.match(/^([0-9A-F]{2}):([0-9A-F]{4}) (fx_\w+)$/i);
     if(m)sym[m[3]]=parseInt(m[1]+m[2],16);
   }
-  return `AURA_POLY=${extraDefines.includes('-DFX_AURA_POLY=1')}\nSYM={${Object.entries(sym).map(([k,v])=>`${k}=0x${v.toString(16)}`).join(',')}}\nFX_IMPORT=${JSON.stringify(importRoot)}\n`+readFileSync(join(here,'lib.lua'),'utf8')+'\n';
+  return `FX_DETAIL=${extraDefines.includes('-DFX_DETAIL=1')}\nAURA_POLY=${extraDefines.includes('-DFX_AURA_POLY=1')}\nSYM={${Object.entries(sym).map(([k,v])=>`${k}=0x${v.toString(16)}`).join(',')}}\nFX_IMPORT=${JSON.stringify(importRoot)}\n`+readFileSync(join(here,'lib.lua'),'utf8')+'\n';
 }
 // Screenshot checks: fraction of pixels in a span (x0..x1 on row y, or
 // rows y0..y1 at column x) whose 5-bit colour is one of `want`, at least

@@ -23,15 +23,8 @@ macro cb_native_target(slot)
 	LDA.w $E000+(<slot>*$200)
 	AND.w #$0001
 	BEQ ?next
-	LDA.w $E180+(<slot>*$200)
-	AND.w #$00FF
-	CMP.w #$0080
-	BCS ?next
-	LDA.w $E182+(<slot>*$200)
-	BEQ ?next
-	LDA.w $E191+(<slot>*$200)
-	AND.w #$0080
-	BNE ?next
+	; Reject distant actors before reading species, HP and defeat status.
+	; Most projectile queries cover a small moving segment of the field.
 	LDA.w $E002+(<slot>*$200)
 	SEC
 	SBC !cb_t4
@@ -42,6 +35,15 @@ macro cb_native_target(slot)
 	SBC !cb_t5
 	CMP !cb_t7
 	BCS ?next
+	LDA.w $E180+(<slot>*$200)
+	AND.w #$00FF
+	CMP.w #$0080
+	BCS ?next
+	LDA.w $E182+(<slot>*$200)
+	BEQ ?next
+	LDA.w $E191+(<slot>*$200)
+	AND.w #$0080
+	BNE ?next
 	LDA.w #1<<(<slot>-3)
 	TSB !ag_list
 ?next:
@@ -1303,6 +1305,16 @@ cb_ki_frame:
 	LDA.w #256
 +	STA !ag_range
 	STA !cb_t2                    ; length
+	; Only the front 30 px can hit. Fold that existing narrow-phase test
+	; into the query rectangle, keeping the launch-frame rear limit (-8).
+	; A negative behind value moves the rear edge ahead of the origin.
+	CMP.w #22
+	BCC +
+	LDA.w #30
+	SEC
+	SBC !cb_t2
+	STA !ag_behind
++
 	LDX !cb_tf
 	LDA.l !ER+!er_flags,X
 	AND.w #!ERF_SUPER

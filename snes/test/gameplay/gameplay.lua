@@ -4,6 +4,14 @@ function test()
   H.w8(0x316001, 1)
   if PCM then assert(injectExtension(), 'audio extension injection failed') end
   H.wait(45)
+  local grid={};for i=0,0x3FFF do grid[i]=H.r8(0x7F0000+i) end
+  for buttons,n in SETUP:gmatch('([^,:]+):(%d+)') do
+    H.input={};for b in buttons:gmatch('[^+]+') do if b~='none' then H.input[b]=true end end
+    H.wait(tonumber(n))
+  end
+  H.input=nil
+  local grassCuts=0
+  for i=0,0x3FFF do if grid[i]~=0 and H.r8(0x7F0000+i)==0 then grassCuts=grassCuts+1 end end
   local measuring = false
   local done, frames, paletteErrors, staminaFrames = 0, 0, 0, 0
   local started, maxLogic = nil, 0
@@ -15,8 +23,16 @@ function test()
   local nmiParts, lateNmis = {}, {}
   local nmiFrames, visibleFrames, flightFrames = 0, 0, 0
   local actions, maps = {}, {}
+  local forms,sounds={},{}
+  local maxPower,auraFrames,maxAuraSprites,auraBgWrites=0,0,0,0
   local x0,y0=H.r16(0x7EE002),H.r16(0x7EE004)
   local maxTravel=0
+  if SETUP~="" then emu.addMemoryCallback(function()
+    if not measuring then return end
+    local act=H.r8(0x7ED814)
+    local s=emu.getState()
+    if (act==24 or act==21) and s['cpu.k']==0xAE and s['ppu.cgramAddress']<128 then auraBgWrites=auraBgWrites+1 end
+  end,emu.callbackType.write,0x002122,0x002122) end
   emu.addMemoryCallback(function()
     if measuring then nmiStart=emu.getState()['masterClock']; nmiParts={}; nmiFrames=nmiFrames+1 end
     if measuring and H.r8(0x7E00EC)&1==0 then
@@ -77,6 +93,20 @@ function test()
     if not measuring then return end
     local act=H.r8(0x7ED742)
     actions[tostring(act)]=(actions[tostring(act)] or 0)+1
+    local form=tostring(H.r8(0x7ED811));forms[form]=(forms[form] or 0)+1
+    maxPower=math.max(maxPower,H.r16(0x7ED82E))
+    if SETUP~="" then
+      local auraTiles={}
+      for i=0,14 do
+        local cell=H.r16(0x317840+i*2)
+        if AURA_CELLS[cell] then auraTiles[H.r16(FX_TILES+i*2)&0x1FF]=true end
+      end
+      local aura=0
+      for i=0,127 do
+        if H.oam(i*4+1)<224 and auraTiles[(H.oam(i*4+2)|(H.oam(i*4+3)<<8))&0x1FF] then aura=aura+1 end
+      end
+      if aura>0 then auraFrames=auraFrames+1;maxAuraSprites=math.max(maxAuraSprites,aura) end
+    end
     maps[tostring(H.r16(0x7E00DC))]=true
     if H.r8(0x7ED900)&1~=0 then flightFrames=flightFrames+1 end
     maxTravel=math.max(maxTravel,math.abs(H.r16(0x7EE002)-x0)+math.abs(H.r16(0x7EE004)-y0))
@@ -102,9 +132,19 @@ function test()
     for i=1,tonumber(n) do
       H.wait(1); frames=frames+1
       if H.r8(0x00213E)&0xC0~=0 then overflows=overflows+1 end
+      for v=0,7 do
+        if aram(0xAE)&(1<<v)~=0 and dsp(v*16+8)>0 then
+          local id=tostring(aram(0xFF80+v));sounds[id]=(sounds[id] or 0)+1
+        end
+      end
     end
   end
   H.input=nil; measuring=false
+  local chargeTailVoices=0
+  for v=0,7 do
+    local id=aram(0xFF80+v)
+    if aram(0xAE)&(1<<v)~=0 and (id==0xDF or id==0xE0) then chargeTailVoices=chargeTailVoices+1 end
+  end
   local profile={}
   for k,v in pairs(timing) do profile[k]={mean=v.sum/math.max(1,v.n), max=v.max, calls=v.n} end
   H.result('videoFrames',frames); H.result('completed',done); H.result('lag',frames-done)
@@ -117,6 +157,9 @@ function test()
   H.result('nmiFrames',nmiFrames); H.result('visibleFrames',visibleFrames)
   H.result('flightFrames',flightFrames); H.result('actions',actions)
   H.result('maps',maps); H.result('maxTravel',maxTravel)
+  H.result('forms',forms);H.result('sounds',sounds);H.result('maxPower',maxPower)
+  H.result('grassCuts',grassCuts);H.result('auraFrames',auraFrames);H.result('maxAuraSprites',maxAuraSprites)
+  H.result('auraBgWrites',auraBgWrites);H.result('chargeTailVoices',chargeTailVoices)
   H.result('bank',emu.getState()['cpu.k'])
   H.shot('end')
 end

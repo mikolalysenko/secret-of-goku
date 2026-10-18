@@ -101,6 +101,8 @@ fx_k_ki:
 	BCC +
 	LDA !d_cur+!C_A
 +	STA !d_ks+2                   ; front distance
+	JSR fx_scale_dir
+	JSR fx_at
 	; Once the palm flash ends, all three orb cells fit within 32 px of
 	; the front (14 px trail plus the 16 px cell). Do not resolve palettes,
 	; cache cells or retry uploads for a shot that has left the screen.
@@ -108,9 +110,6 @@ fx_k_ki:
 	LDA !d_cur+!C_T
 	CMP.w #2
 	BCC .visible
-	LDA !d_ks+2
-	JSR fx_scale_dir
-	JSR fx_at
 	LDA !d_x
 	CLC
 	ADC.w #32
@@ -124,6 +123,13 @@ fx_k_ki:
 .culled
 	RTS
 .visible
+if not(defined("FX_DETAIL"))
+	; The single-orb path already has its final position from culling.
+	LDX.w #2
+	LDY !d_turn
+	LDA !d_ks
+	JSR fx_stamp
+else
 	STZ !d_ks+4                   ; i
 .loop
 	LDA !d_ks+4                   ; d = distance - 7i
@@ -137,11 +143,7 @@ fx_k_ki:
 	ADC !d_ks+2
 	JSR fx_scale_dir
 	JSR fx_at
-if defined("FX_DETAIL")
 	LDA.w #3
-else
-	LDA.w #2
-endif
 	SEC
 	SBC !d_ks+4
 	TAX
@@ -150,7 +152,6 @@ endif
 	JSR fx_stamp
 	INC !d_ks+4
 	LDA !d_ks+4
-if defined("FX_DETAIL")
 	CMP.w #3
 	BCC .loop
 endif
@@ -204,7 +205,11 @@ fx_ring:
 	CLC
 	ADC !d_cur+!C_T
 	CLC
+if defined("FX_DETAIL")
 	ADC.w #!FX_ASM_RING
+else
+	ADC.w #!FX_ASM_RING_COMPACT
+endif
 	JMP fx_emit_here
 
 ; ---------------------------------------------------------------------------

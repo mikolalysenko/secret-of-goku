@@ -124,7 +124,29 @@ if defined("AUDIO_IDS")
 	AND.w #$00FF
 	BNE +
 	RTS
-+	; focus amount 0-256 (powerCharge / 96) and charge strength 0-256
++
+if not(defined("AUDIO_PCM"))
+	; Resident audio only needs an active charge pulse. Its level/rate is
+	; fixed by the short SPC sequence, so skip the PCM envelope arithmetic
+	; and the second aura-bed request. Keep the same action/charge gates.
+	LDA !cb_act
+	AND.w #$00FF
+	CMP.w #!GOKU_K_FOCUS
+	BEQ .nativePulse
+	CMP.w #!GOKU_K_TRANSFORM
+	BEQ .nativePulse
+	LDA !cb_charging
+	AND.w #$00FF
+	BNE .nativePulse
+	RTS
+.nativePulse
+	LDA.w #!AUDIO_LOOP_CHARGE
+	LDX.w #128
+	LDY.w #128
+	JSL audio_loop
+	RTS
+endif
+	; focus amount 0-256 (powerCharge / 96) and charge strength 0-256
 	LDA !cb_power
 	CMP.w #96
 	BCC +

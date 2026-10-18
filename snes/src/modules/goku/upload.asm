@@ -29,13 +29,36 @@ goku_request_cell:
 	REP #$20
 	TXA
 	CMP !vram_cell
-	BEQ .done
+	BNE .request
+	; A deferred pose may already be obsolete when Goku returns to the
+	; resident cell. Cancel it instead of uploading that stale pose later.
+	LDA.w #!GOKU_NONE
+	STA !up_cell
+	BRA .done
 .request
 	SEP #$20
 	LDA !t_a
 	STA !up_small
 	REP #$20
 	STX !up_cell
+	; Decide compatibility outside vblank. The native CGRAM upload has
+	; already happened by goku_nmi, so size/palette changes remain mandatory.
+	SEP #$20
+	LDA !up_flags
+	AND.b #$FF-!GOKU_UP_COMPAT
+	STA !up_flags
+	LDA !up_small
+	CMP !vram_small
+	BNE .done
+	LDX !vram_cell
+	CPX.w #!GOKU_NONE
+	BEQ .done
+	LDA !cur_pal
+	CMP.l goku_cell_pal,X
+	BNE .done
+	LDA !up_flags
+	ORA.b #!GOKU_UP_COMPAT
+	STA !up_flags
 .done
 	REP #$30
 	RTS
@@ -251,10 +274,22 @@ if not(defined("GOKU_NMI_SLOW"))
 	; prologue.)
 	LDA.l $7E0000|!up_cell
 	CMP.w #!GOKU_NONE
-	BNE .work
+	BNE .pending
 	LDA.l $7E0000|!up_flags
 	AND.w #!GOKU_UP_HUD|!GOKU_UP_NATIVE|!GOKU_UP_REFRESH
 	BNE .work
+	RTL
+.pending
+	; A compatible pose can wait without the bank/frame setup or another
+	; palette lookup. This matters when the native uploader leaves only
+	; five lines for all modules, FX palettes and the interrupt return.
+	LDA.l $7E0000|!up_flags
+	AND.w #!GOKU_UP_HUD|!GOKU_UP_NATIVE|!GOKU_UP_REFRESH|!GOKU_UP_COMPAT
+	CMP.w #!GOKU_UP_COMPAT
+	BNE .work
+	JSL core_vblank_lines
+	CMP.w #!GOKU_CELL_LINES
+	BCS .work
 	RTL
 endif
 .work

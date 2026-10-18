@@ -42,8 +42,8 @@ combat is not yet guaranteed to run without missed video frames.
 `snes/test/gameplay/run.mjs` drives real controller input with Goku active
 and the APU running in Mesen. Each row is 240 video frames from the same
 private imported fixture, with the same warm-up and input on both builds.
-“Before” is `482fab3` with its PCM extension installed; “after” is the
-current native-audio build. Counts are actual NMIs where field logic was
+“Before” is `482fab3` with its PCM extension installed; “after” is
+`1cd6efc`, the first native-audio gameplay review. Counts are actual NMIs where field logic was
 not ready, not wall-clock emulator speed. Menus and map transitions are
 excluded from these cases.
 
@@ -75,6 +75,52 @@ water flight additionally require zero CPU misses.
 the crowded cases; a normal suite pass does not mean those timing issues
 are solved.
 
+## Sound and aura follow-up
+
+The looping transform sound was retail effect `$12`, which never releases
+its two voices. Seven short resident sequences now replace that cue and
+the other common combat effects. Each owns one voice and ends in 90–470 ms;
+the hit's measured peak is 1.64 times the swing's, with headroom and a silent
+tail. No gameplay PCM is transferred. See [audio](audio.md).
+
+The aura now uses OBJ palettes and resident sprites, so cut grass and native
+background transparency cannot change its colours. Three mirrored cells
+cover the full flame, and the transform burst uses 12 sprites at its peak
+instead of 32. Native-audio charge handling skips PCM envelope arithmetic.
+Ki queries reject targets outside the existing contact segment early, and
+a native AI mask lookup replaces repeated shifting without reducing actor
+updates. Goku cancels obsolete deferred poses and checks compatibility
+before vblank; FX and core avoid redundant scanline reads.
+
+The final short runs remain 240 video frames each, with all actors enabled:
+
+| Scenario | Previous review (`1cd6efc`) | Follow-up CPU misses |
+| --- | ---: | ---: |
+| Quiet punches / quiet ki / water flight | 0 / 0 / 0 | 0 / 0 / 0 |
+| Walking / punching / ki with the party | 11 / 10 / 23 | 8 / 10 / 21 |
+| Ordinary flight / flying punches | 24 / 35 | 24 / 35 |
+| Flying while repeatedly firing ki | 88 | 96 |
+| Repeated teleports | 33 | 31 |
+| Kamehameha charge and release | 46 | 44 |
+| Focus after cutting grass | — | 0 |
+| Transform after cutting grass | — | 1 |
+
+Performance gains are modest and uneven: the short flight-and-ki input is
+worse, while a longer 1,200-frame repeat improves from 414 misses with the
+initial audio/aura fixes (`6ec0808`) to 398 after the CPU/vblank changes.
+Do not describe the crowded scenes as zero-drop. Native actor/status/AI,
+collision and reward/graphics work remain the major bottlenecks.
+
+All 13 final cases and the 1,200-frame flight-and-ki repeat have zero palette
+mismatches, meter leaks, OBJ overflow and complete-NMI overruns. Separate
+1,200-frame quiet-punch, quiet-ki and water-flight runs have zero CPU misses
+as well. The grass tests use real punches and controller chords, verify
+six aura sprites, full focus, the transformed form, audible charge/reveal
+cues and no lingering charge/reveal voice after release. FX pixel checks,
+core cadence/HDMA/input/save tests, Goku forms/status/menus and combat
+comparisons pass. These are emulator measurements, not physical-console
+certification. Generated results remain under `.local/snes-test/followup/`.
+
 ```sh
 node snes/build.mjs --quiet --strict
 node snes/test/gameplay/run.mjs
@@ -83,7 +129,8 @@ node snes/test/gameplay/run.mjs --strict-timing
 ```
 
 The last command is the remaining all-scenes timing target. `--profile`
-prints module timing; `--native-profile` and `--flight-profile` add detailed
+prints module timing; `--native-profile`, `--flight-profile`, `--fx-profile`
+and `--combat-profile` add detailed
 execution probes. Generated summaries, screenshots and private ROM copies
 stay under `.local/snes-test/`, outside Git. No physical console was tested.
 

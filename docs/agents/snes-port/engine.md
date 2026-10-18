@@ -250,3 +250,12 @@ the actors stay active and their native timers advance 20 times. These calls
 explicitly set DB to `$7E`, just as the original party wrapper does; counting
 entry calls alone would miss reads from the wrong actor bank. The whip-pad
 crossing tests the real scripted handoff.
+
+The sound/aura follow-up replaces `C1:2710`'s highest-set-bit loop with a
+byte lookup in `core/native.asm`. It keeps the original A/X result, Y/DB/D,
+stack and flags (including PLD's NZ result). `node --test
+snes/test/core/native.test.mjs` executes both implementations on all 65,536
+inputs and additional 8-bit/decimal flag combinations. No AI updates are
+removed. The HDMA-enable guard also skips its scanline read when the mask
+only retains/disables existing channels; newly enabled channels keep the
+same late-frame protection, covered by the core `hdmaen` test.

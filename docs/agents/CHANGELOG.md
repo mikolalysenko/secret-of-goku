@@ -1,5 +1,25 @@
 # Changelog
 
+## SNES aura and gameplay budget follow-up (2026-10-18)
+
+- Mirror the full-size flame from three resident cells and limit the
+  transformation ring to eight arcs plus four inner sparks. Keep its
+  radius, duration, flash and damage; `FX_DETAIL` retains the denser ring.
+- Reduce ki collision queries to the existing moving contact segment,
+  reject distant actors earlier, and reuse the orb's computed position.
+  Replace a hot native AI bit scan with a lookup verified against the
+  original machine code for all 65,536 inputs. Actor cadence is unchanged.
+- Skip unused PCM envelope calculations in native-audio builds. Move
+  compatible-pose checks out of tight vblanks, cancel obsolete deferred
+  poses, and remove redundant scanline reads while retaining HDMA guards.
+- Controller-driven cut-grass focus/transform tests verify complete auras,
+  no FX writes to background palettes, audible cues and silent tails.
+  The 13-case gameplay run and 1,200-frame flight/attack stress runs have
+  no palette errors, meter leaks, OBJ overflow or NMI overruns. Quiet
+  attacks, water flight and cut-grass focus have zero CPU misses; crowded
+  scenes still drop frames. Results are mixed across short inputs; see
+  the [measured follow-up](snes-port/gameplay-performance.md#sound-and-aura-follow-up).
+
 ## SNES aura isolation from background palettes (2026-10-18)
 
 - Use a compact sprite flame for charging and transformation. Its blue,

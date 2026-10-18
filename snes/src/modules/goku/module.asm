@@ -134,6 +134,7 @@ assert !GOKU_RAM_END <= !GOKU_RAM+$C0, "goku RAM overflow"
 !GOKU_UP_NATIVE  = $02  ; restore the boy's native tiles (replacement ended)
 !GOKU_UP_REFRESH = $04  ; every eighth party refresh: re-send the cell (safety net)
 !GOKU_UP_WAITED  = $08  ; the pending cell already waited a frame for vblank room
+!GOKU_UP_COMPAT  = $10  ; main thread proved the pending pose has the resident size/palette
 !GOKU_UP_COUNT1  = $20  ; bits 5-7 count the game's 5-frame party refreshes
 
 ; Pose kinds (engine/goku-animation.js kind strings). Native action keys

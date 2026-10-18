@@ -42,6 +42,15 @@ endif
 %hijack_jsl($C0B0BF, $81BFE0, 4, core)
 
 ; Hot native actor and collision calls (verified instruction sites).
+%orig4($C12710, $30C2080B)
+%orig1($C12714, $8A)
+%patch($C12710, 5, core)
+pushpc
+org $C12710
+	JSL core_native_high_bit
+	RTS
+pullpc
+
 %orig4($C0F509, $01808922)
 %hijack_jsl($C0F509, $818089, 4, core)
 %orig4($C0F9CA, $01D5C022)

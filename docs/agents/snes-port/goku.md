@@ -47,6 +47,13 @@ palette mirror also skips unchanged writes while still checking the native
 buffer, desired tint and flash buffer. `status`, `forms`, `scripted`,
 `actions` and `api` cover the resulting palettes and animation cells.
 
+The sound/aura follow-up computes pending-pose size/palette compatibility
+in the main thread (`GOKU_UP_COMPAT`, bit 4). A tight NMI can defer that
+pose before its bank/setup work, leaving time for FX palettes and the final
+interrupt return. Palette and size changes still upload together. Returning
+to the already resident cell cancels an older deferred request, preventing
+a stale pose from appearing later; `forms` includes that regression.
+
 Earlier measured cost (Potos walk, `snes/test/goku/budget.lua`, Goku on against
 off; "on" includes combat and every other module that runs while Goku is
 active): p90 frame-logic end +23 lines on the FastROM default (limit 24;

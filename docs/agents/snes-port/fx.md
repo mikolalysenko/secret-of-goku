@@ -136,7 +136,7 @@ Continuous kinds (`fx_draw`, every frame the effect should show):
 | Kind | Id | Browser source | Arguments | Notes |
 | --- | --- | --- | --- | --- |
 | `FX_ORB` | `$10` | charge orb | `!fx_a` frame 0–4 (charge `min(4,strength·5)`; full charge alternates 3/4 every 4 frames) | Charge orb at the palm; *front* except facing up. Gold/pink with flags |
-| `FX_AURA` | `$11` | `ki-aura.js` | `!fx_style` tone 0 blue, 1 gold, 2 pink; `!fx_a` power 0–256 (0: none); `!fx_b` body height (≤ 20: 16, ≥ 36: 40, else 32); `!fx_c` phase seed; `!fx_t` clock (shown on even clocks only, phase `(clock/3 + seed) % 12`) | Flame aura behind every sprite (a polygon, see strategy). X/Y = centre of the body cell as the browser's `aura()`; with `FX_F_GOKU` Goku's cell centre + X/Y. One aura per frame: give a second one the other clock parity |
+| `FX_AURA` | `$11` | `ki-aura.js` | `!fx_style` tone 0 blue, 1 gold, 2 pink; `!fx_a` power 0–256 (0: none); `!fx_b` body height (≤ 20 miniature, otherwise full); `!fx_t` clock (shown on even clocks, two poses selected by bit 2) | Resident sprite flame behind the body, independent of BG palette/colour math. X/Y = body centre; with `FX_F_GOKU` Goku's cell centre + X/Y. `FX_AURA_POLY` retains the older geometric renderer and its seed/phase rules |
 | `FX_LIGHTNING` | `$12` | `charge-lightning.js` | `!fx_a` bolts (2 or 3; 0: 2); `!fx_t` clock | Super Saiyan charge bolts from X/Y (the charge point), regenerated every 3 frames, as Thunderbolt cells along the browser's bolt points; every bolt ends in the air (see strategy). *front* |
 | `FX_DEATHBALL` | `$13` | `death-ball-art.js` | `!fx_a` diameter (snapped to `deathBallSizes`, 16–224, as the browser), `!fx_t` frame (wraps at 12) | 16 and 32 px: the art as OBJ; 24 and 48–224 px: a polygon (see strategy), else the 32 px ball. The cinematic red planet killer (64 px art) is not FX's: its scene draws it |
 | `FX_DISC` | `$14` | `orbit-effects.js` `disc` | `!fx_t` age (tilt = (age>>3)&3) | Frieza's Death Disc, 20×6 in four tilts |
@@ -366,9 +366,10 @@ circle are not drawn. While the game's own colour math is on (`$23` not
 zero) the ball keeps it outside and shows no rim.
 
 **Ki aura (shipping build)** (`fx_k_aura_obj`): a 32×48 flame made of six
-16×16 OBJ cells, or two cells for a 16×32 miniature. Blue, gold and pink
-ramps use the existing palette allocator. The two poses mirror the same
-tiles; the visible half of the 30 Hz strobe does the cache work, and a new
+16×16 sprites sharing three mirrored cells, or two cells for a 16×32
+miniature. Blue, gold and pink ramps use the existing palette allocator.
+The full flame's second pose rises one pixel; the miniature mirrors. Both
+reuse their cells. The visible half of the 30 Hz strobe does the cache work, and a new
 flame waits until every cell is resident before it appears. No backdrop,
 background palette, colour-math or HDMA registers are changed. This keeps
 the aura independent of cut grass and native background transparency.
@@ -380,6 +381,13 @@ pixel, cuts grass with real punches, checks that the glow draws completely
 without writing BG palettes, and verifies animation needs no tile uploads
 after warmup. Background palette 6 animates natively in the grass scene,
 so the test watches the FX writer instead of freezing that native palette.
+The integrated gameplay suite also performs L focus and L+A transformation
+after cutting grass, with the party and enemies still enabled.
+
+The default transformation burst keeps eight outer arcs and four inner
+sparks (12 sprites at its peak, previously 32), fading to four sparks.
+Its radius and lifetime are unchanged; gameplay damage is separate.
+`FX_DETAIL` selects the original denser assemblies.
 
 **Diagnostic polygon aura** (`-DFX_AURA_POLY=1`, `fx_poly_aura`, HDMA kind 4): the flame is up to 80 lines
 of 50 pixels whose cells would not fit the VRAM cache (10-19 cells a
@@ -534,7 +542,7 @@ of 39 consecutive grabs were identical in a measurement).
 - Granted: the data bank (`!DATA_FX` = `$FB` in `core/layout.asm`, with the
   build's ROM ownership check) and FastROM by default (`-DCORE_SLOWROM=1`
   opts out). `snes/test/fx/run.mjs` still checks FX's cells in both ROMs.
-- **SRAM for the polygon**: 2 × 512 bytes (instead of 2 × 187 inside FX's
+- **SRAM for the polygon**: 2 × 512 bytes (instead of 2 × 185 inside FX's
   1 KiB) would give exact left/right horns and the ripple, and circles for
   the large Death Balls.
 - **Frame / NMI handshake race** (seen in a SlowROM build of the beams
