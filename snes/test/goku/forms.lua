@@ -44,6 +44,7 @@ function test()
   -- and VRAM then show the previous frame's cell (uploaded together).
   local seenPals = {}
   local prev = s.cell
+  local prev2 = prev
   for age = 0, 31 do
     H.w16(A.act_age, age)
     H.wait(1)
@@ -51,7 +52,10 @@ function test()
     local want = G.rom_pal(cell_pal(prev))
     seenPals[cell_pal(s.cell)] = true
     G.check(G.pal_equal(G.cgram_pal(1), want), string.format('transform age %d: palette %d of cell %d in CGRAM', age, cell_pal(prev), prev))
-    G.check(s.vram == prev or s.vram == s.cell, string.format('transform age %d: cell %d uploaded with its palette', age, prev))
+    -- a cell with the same palette may wait one frame for vblank room
+    G.check(s.vram == prev or s.vram == s.cell or (s.vram == prev2 and cell_pal(prev2) == cell_pal(prev)),
+      string.format('transform age %d: cell %d uploaded with its palette (VRAM %d)', age, prev, s.vram))
+    prev2 = prev
     prev = s.cell
     if age == 2 or age == 12 or age == 20 or age == 30 then shot('transform' .. age) end
   end

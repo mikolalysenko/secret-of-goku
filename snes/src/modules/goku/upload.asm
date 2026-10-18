@@ -41,15 +41,20 @@ goku_request_cell:
 	RTS
 
 ; C1:95BC hook in the field NMI (replaced LDA $7EE083). M16 X8, D = $4300.
-; While Goku stands in for the boy, skip the game's boy-tile upload and let
-; goku_nmi refresh Goku's cell on the same 5-frame cadence instead.
+; While Goku stands in for the boy, skip the game's boy-tile upload: the cell
+; in VRAM stays Goku's (menus and rings leave the slot alone). Every eighth
+; of these 5-frame refreshes asks goku_nmi to re-send it as a safety net.
 goku_upload_hook:
 	PHP
 	SEP #$20
 	LDA.l $7E0000|!replacing
 	BEQ .native
-	LDA.b #!GOKU_UP_REFRESH
-	ORA.l $7E0000|!up_flags
+	LDA.l $7E0000|!up_flags
+	CLC
+	ADC.b #!GOKU_UP_COUNT1   ; bits 5-7 count the refreshes
+	BCC .count
+	ORA.b #!GOKU_UP_REFRESH  ; the eighth
+.count
 	STA.l $7E0000|!up_flags
 	PLP
 	JML $019678              ; continue with the girl's tiles
@@ -231,7 +236,26 @@ goku_dma_tile7:
 
 ; ---------------------------------------------------------------------------
 ; Field NMI work (modules_field_nmi): M16 X16, DB = $80, D = 0, in vblank.
+; A cell takes 16 tile DMAs on channels 4-7: 7-8 lines on FastROM (budget
+; walk), about 2 more with slow ROM. With less vblank left than that it waits
+; a frame, then goes anyway (an overrun beats a frozen pose). It never waits
+; when its palette or size differs from the cell in VRAM: the frame's
+; palette is already in CGRAM, and the two must match.
+if defined("CORE_SLOWROM")
+	!GOKU_CELL_LINES = 11
+else
+	!GOKU_CELL_LINES = 9
+endif
 goku_nmi:
+	; most frames have nothing to send: leave before any set-up
+	LDA.l $7E0000|!up_cell
+	CMP.w #!GOKU_NONE
+	BNE .work
+	LDA.l $7E0000|!up_flags
+	AND.w #!GOKU_UP_HUD|!GOKU_UP_NATIVE|!GOKU_UP_REFRESH
+	BNE .work
+	RTL
+.work
 	PHB
 	PHD
 	PEA $7E7E
@@ -250,14 +274,15 @@ goku_nmi:
 .native_go
 	JSR goku_upload_native
 	SEP #$20
-	LDA.b #!GOKU_UP_NATIVE|!GOKU_UP_REFRESH
+	LDA.b #!GOKU_UP_NATIVE|!GOKU_UP_REFRESH|!GOKU_UP_WAITED
 	TRB !up_flags
 	REP #$20
 	LDA.w #!GOKU_NONE
 	STA !up_cell
-	BRA .hud
+	BRL .hud
 .refresh
-	; the game's 5-frame party refresh: re-send the cell in VRAM
+	; every eighth party refresh (goku_upload_hook): re-send the cell in
+	; VRAM as a safety net, into a vblank with room for it
 	LDA !up_flags
 	AND.w #!GOKU_UP_REFRESH
 	BEQ .cell
@@ -271,6 +296,10 @@ goku_nmi:
 	LDA !vram_cell
 	CMP.w #!GOKU_NONE
 	BEQ .hud
+	JSL core_vblank_lines
+	CMP.w #!GOKU_CELL_LINES
+	BCC .hud
+	LDA !vram_cell
 	STA !up_cell
 	SEP #$20
 	LDA !vram_small
@@ -280,16 +309,39 @@ goku_nmi:
 	LDA !up_cell
 	CMP.w #!GOKU_NONE
 	BEQ .hud
-	; 512 bytes need about 4 lines: keep it pending if vblank is too short
 	JSL core_vblank_lines
-	CMP.w #6
-	BCC .hud
+	CMP.w #!GOKU_CELL_LINES
+	BCS .send
+	LDA !vram_cell
+	CMP.w #!GOKU_NONE
+	BEQ .send
+	TAX
+	SEP #$20
+	LDA !up_small
+	CMP !vram_small
+	BNE .send8               ; size change: send now
+	LDA.l goku_cell_pal,X
+	LDX !up_cell
+	CMP.l goku_cell_pal,X
+	BNE .send8               ; palette change: send now
+	LDA !up_flags
+	BIT.b #!GOKU_UP_WAITED
+	BNE .send8               ; waited a frame already: send anyway
+	ORA.b #!GOKU_UP_WAITED
+	STA !up_flags
+	REP #$20
+	BRA .hud
+.send8
+	REP #$20
+.send
 	JSR goku_upload_cell
 	LDA !up_cell
 	STA !vram_cell
 	SEP #$20
 	LDA !up_small
 	STA !vram_small
+	LDA.b #!GOKU_UP_WAITED
+	TRB !up_flags
 	REP #$20
 	LDA.w #!GOKU_NONE
 	STA !up_cell
@@ -329,6 +381,10 @@ goku_upload_cell:
 	STA $50
 	STA $60
 	STA $70
+	STZ $45                  ; sizes $00xx: each tile writes the low byte
+	STZ $55
+	STZ $65
+	STZ $75
 	SEP #$20
 	LDA.b #$80
 	STA.l $002115
@@ -362,27 +418,24 @@ goku_upload_cell:
 	RTS
 
 ; One burst: A16 = VRAM word address, X = offset of 4 tile words in
-; goku_cell_tiles (advanced by 8). D = $4300, M16 X16.
+; goku_cell_tiles (advanced by 8). D = $4300, M16 X16. Tile t lives at
+; bank $F8 + t/2048, address (t*32) & $FFFF; the size's high byte is 0
+; (goku_upload_cell, and every finished transfer leaves it so).
 macro goku_dma_src(table, n, ch)
 	LDA.l <table>+(<n>*2),X
-	PHA
 	ASL
 	ASL
 	ASL
 	ASL
 	ASL
 	STA <ch>+2
-	PLA
-	XBA
-	AND.w #$00FF
+	LDA.l <table>+(<n>*2)+1,X
+	AND.w #$0018             ; t >> 11, times 8
 	LSR
 	LSR
 	LSR
-	CLC
-	ADC.w #$00F8
-	STA <ch>+4               ; bank (high byte overwritten by the size below)
-	LDA.w #$0020
-	STA <ch>+5
+	ORA.w #$20F8             ; bank $F8 + t/2048, size low byte $20
+	STA <ch>+4
 endmacro
 
 goku_burst4:

@@ -78,7 +78,7 @@ incsrc "patches.asm"
 incsrc "arrival.asm"
 incsrc "title/arrival-code.asm"
 title_code_end:
-assert title_code_end <= !CODE_MISC+$8000, "title code bank overflow"
+assert title_code_end <= !CODE_QUARTER_MISC, "title code overflow (EB:C000-FFFF is a spare quarter, core/layout.asm)"
 pullpc
 
 incsrc "hooks.asm"

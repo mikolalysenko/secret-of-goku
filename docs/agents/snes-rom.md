@@ -126,15 +126,21 @@ savestate), `H.saveStable(name)`, `H.load(path)`, `H.importSnesJs(dir)`,
 | ROM F8–FF | Packed graphics and samples |
 | ROM `$40–$7D:0000–7FFF` | Extended data (xdata): DMA sources and bulk tables from `snes/gen` (second 4 MiB, slow banks) |
 | WRAM `7E:D700–DDFF` | Module state blocks (`snes/src/core/ram.asm`) |
-| WRAM `7E:6E40–6FFF` | Core queues and staging |
+| WRAM `7E:6E40–6FFF` | Core per-frame staging (OAM, scratch, test mailbox) only: the game's BG tile decoder overwrites it during some map loads |
+| SRAM `$31:7480–751F` | Core state that must survive map loads (`!CORE_SAFE`: event request, sound queue, pad latches, VRAM claims, DMA queue, OAM high-water marks, HDMAEN shadow; long addressing, cleared at power-on and title entry, revalidated each frame) |
 | WRAM `7E:7E40–7FFF` | UI block, then spare |
 | SRAM `$30:6000–7FFF` | Original saves, untouched |
 | SRAM `$31:6000–747F` | Persistent Goku state: live block (`$31:6000`) and one sidecar per native slot |
 | SRAM `$31:7480–$33:7FFF` | Volatile work buffers (`core/shared.asm`) |
 
-The three WRAM ranges are the only ones the original game never touches; the
-core tests re-check that, and that the game never reads or writes the added
-SRAM pages, from power-on through the opening and in seven imported scenes.
+The three WRAM ranges were never written in 321 replayed browser states, and
+the core tests re-check that, and that the game never reads or writes the
+added SRAM pages, from power-on through the opening and in seven imported
+scenes. Map loads are the exception: the BG tile decoder (`C1:C5D1–C9FF`)
+writes 4bpp tiles to `7E:2000+X`, up to `7E:77FF` (X ≤ `$5800`, measured over
+the scene-select presets). Map 153's set reaches `7E:6E8E`, so `7E:6E40–6FFF`
+may only hold data rebuilt every frame (core test `decode`). `7E:7E40–7FFF`
+lies above the decoder's maximum.
 
 ### Extended data (ExHiROM)
 
@@ -169,6 +175,14 @@ bank; split larger data into 32 KiB pieces.
 `%hijack_jsl`, `%patch` and `%origN` byte assertions. Every patch of original
 bytes goes through them; `build.mjs` rejects overlapping patches.
 
+asar overwrites silently when two `org` blocks overlap, so `build.mjs` also
+checks ROM ownership: every 16 KiB quarter of the added banks may hold labels
+of one module only (`--strict` makes a shared quarter an error). Each module
+asserts the end of its code and data blocks. When a module's code half is
+full, it can be given a spare quarter of a mostly empty half
+(`!CODE_QUARTER_*` in `core/layout.asm`: goku's, audio's and title's halves
+end their code before `$C000`).
+
 asar does not track `REP`/`SEP`: an immediate's width comes from how it is
 written, so `CMP #8` in 16-bit code assembles as two bytes and desynchronises
 the instruction stream. Write every accumulator/index immediate with an
@@ -196,7 +210,7 @@ of each hook in `snes/src/modules.asm`.
 | Hook | When |
 | --- | --- |
 | `modules_field_frame` | Every completed field frame (towns, dungeons, dialogue, events, Mode 7 boss arenas) after the game logic and OAM build, before the NMI handshake (`00:B073`) |
-| `modules_field_nmi` | Field vblank after the game's uploads, still force-blanked (`00:C158`); only for frames the loop completed |
+| `modules_field_nmi` | Field vblank after the game's uploads, still force-blanked (`00:C158`); only for frames the loop completed. Afterwards the core writes the game's HDMAEN shadow `$2C` to `$420C`. If the vblank work ran into the next frame's display (scanline 0–224), only channels already running stay on: a channel switched on after HDMA started would run from stale tables. Newly requested channels then start with the next vblank (`!core_hdmaen` holds the value written; core test `hdmaen`) |
 | `modules_world_frame` | World flight frame end (`00:8085`) |
 | `modules_world_nmi` | World vblank after the game's uploads and HDMA setup (`00:8903`); not force-blanked |
 | `modules_menu_frame` | Full-screen menus (game select, name entry, file list, status/equipment, save screen), once per frame in vblank after the menu's uploads (`C0:1E08`) |
@@ -213,10 +227,11 @@ of each hook in `snes/src/modules.asm`.
 | `core_oam_hide`, `!core_oam_native` | Hide slot A; first slot after this frame's native sprites (inspect or edit natives below it) |
 | `core_queue_vram` | A = VRAM word address, X = bytes, Y = source address, `!core_scratch` byte = source bank. Uploaded in this mode's vblank on a DMA channel no HDMA uses; a transfer that would not end by line 258 waits for the next vblank. Carry set when the queue (8) or the per-frame budget (3 KiB) is full |
 | `core_vblank_lines` | A = scanlines left before line 258 (0 outside vblank), for modules' own vblank work |
-| `core_vram_claim`, `core_vram_release` | A = region (`!VRAM_*`, `core/vram.asm`), X = owner id: exclusive use of a free OBJ VRAM region; returns Y = its VRAM word address |
+| `core_vram_claim`, `core_vram_release` | A = region (`!VRAM_*`, `core/vram.asm`), X = owner id: exclusive use of a free OBJ VRAM region; returns Y = its VRAM word address. `!VRAM_SCENE_OBJ` (OBJ `$6C00`) and `!VRAM_SCENE_BG` (BG `$1C00`, maps 246/255) are scene-scoped: free only in the set pieces listed in `core/vram.asm`. The claimer releases them when its scene ends or the map changes |
+| `core_scene_claim`, `core_scene_release`, `core_scene_owner` | A16 = owner id (`!SCENE_FRIEZA`/`_ORBIT`/`_ENDING`/`_VEGETA`/`_SANDSHIP`, `core/shared.asm`): exclusive use of the scene work area `!SRAM_WORK_SCENE` (`$32:6000–7FFF`). Claim before a scene first writes there, release when it ends. Carry set if another scene holds it. Cleared at power-on and title entry |
 | `core_sound_queue` | A = command bytes 0–1, X = bytes 2–3 for the native driver (`$1E00`, `C3:0004`); one command sent per frame; carry set when 7 are pending |
 | `core_event_request` | A = native event id (`C1:E76D`: script events, `$0800\|door`, `$0C00\|map` takeoff); started at the end of an idle field frame. `!core_event_req` pending, `!core_event_last` started |
-| `!SRAM_LIVE`, `!PERSIST_*` | Live persistent block (`core/shared.asm`): written to the slot's sidecar after each native save; restored on load when the sidecar matches that slot's record (primary or backup); zeroed for NEW GAME (`!persist_version` = 1) and for saves without a valid sidecar (version 0) |
+| `!SRAM_LIVE`, `!PERSIST_*` | Live persistent block (`core/shared.asm`): written to the slot's sidecar after each native save; restored on load when the sidecar matches that slot's record (primary or backup); zeroed for NEW GAME (`!persist_version` = 1) and for saves without a valid sidecar (version 0). Every clear writes the `'GK'` magic (`!persist_magic`, `+$3E`); power-on clears a block without it (a new cartridge's battery RAM is noise), so modules that read it on the title see zeros, not noise |
 | `!core_frame`, `!core_frame_world`, `!core_frame_menu`, `!core_frame_ring`, `!core_tick`, `!core_mode` | Frame counters per mode, any-mode tick, mode of the last dispatch (`!CORE_MODE_*`) |
 
 Limits: 128 sprites, 32 per line, 34 eight-pixel slivers per line. Modules
@@ -240,7 +255,168 @@ and call `H.importSnesJs`.
 `node snes/test/core/run.mjs [test ...]` builds a `CORE_TEST` cartridge (a
 client of every service driven through a WRAM mailbox, `snes/test/core/testmod.asm`)
 and runs the core tests; `node snes/test/core/measure.mjs` reprints the
-per-scene timing table in engine.md.
+per-scene timing table in engine.md. `live` checks the power-on clear of
+the live block, and `xdata` reads the 32-byte probe that
+`snes/gen/core-xdata.mjs` places in the extended banks back through the
+CPU bus, together with the ExHiROM mirrors, both header copies and the save
+RAM banks.
+
+## Second opinions: snes9x and bsnes
+
+The cartridge also runs headless in the two most used cores, through their
+libretro builds and a small frontend, `snes/tools/retro-host/retro-host.c`
+(libretro.h vendored, MIT). It loads a core and a ROM and runs a JSON
+script, or one JSON step per line on stdin with a one-line reply each:
+hold/tap/wait, PNG shots (XRGB8888, RGB565, 0RGB1555; `back: n` takes one
+of the last 8 frames), WRAM/SRAM/VRAM read, write, fill and dump, battery
+RAM and WRAM preloaded with zeros, `ff`, seeded noise or a file, reset,
+power cycle with battery RAM kept, savestates. No audio, no timing: one
+`retro_run` per frame. bsnes' libretro core exposes no memory
+(`retro_get_memory_data` returns NULL), so the host finds save RAM and the
+128 KiB of WRAM in its serialized state with a calibration load and reads
+and writes them there; bsnes keeps battery RAM in `<save dir>/<rom>.srm`.
+
+```sh
+make -C snes/tools/retro-host cores    # snes9x + bsnes (pinned commits) -> .local/tools/emu/
+node snes/test/emulators/run.mjs       # also in run-all; skips (exit 0) without cores
+node snes/test/emulators/run.mjs --presets[=late,flight]   # scene-select presets vs Mesen
+node snes/test/emulators/run.mjs --power-on[=flight] --bisect  # uninitialised-RAM sweep
+node snes/test/emulators/run.mjs --dma-watch[=scenario,late]   # DMA outside vblank (Mesen)
+```
+
+Sources go to `.local/tools/emu-src/`, cores and the host binary to
+`.local/tools/emu/` (or `SNES_CORES`); neither is committed. Variants:
+`snes9x` (defaults), `bsnes` (default fast PPU and DSP) and
+`bsnes-accurate` (`bsnes_ppu_fast=OFF`, `bsnes_dsp_fast=OFF`); bsnes runs with
+`bsnes_entropy=None` because its power-on randomisation is seeded by the
+process clock, and the host fills WRAM with seeded noise instead.
+
+The default run plays `snes/test/emulators/scenario.mjs` from power-on with
+noise in WRAM and battery RAM: the reset vector reaches `core_boot` (the
+live block gets its `GK` magic), the title program runs patched; the title
+at frames 700 and 940; game select, NEW GAME and the BOY prefill; the
+opening with text advanced until map 128 is controllable; field frames
+advancing; a CPU-bus probe (the NMI trampoline's `JML` pointed at a routine
+in `7E:6F40` for three idle field frames, the borrowed WRAM restored after)
+that reads the xdata probe in bank `$7D`, the header through `$00` and
+`$C0`, the `$FD` mirror, save RAM through `$30`, `$31`/`$B1` and
+`$33`/`$B3`; the save point's event (`$05D8`) through `!core_event_req`
+(`$31:7490`), into the first slot (`$30:6000` = `$C5`, sidecar `GK`); a
+power cycle; GAME FILE, first slot, map 128 with the sidecar restored; then
+a second process started from the battery image the first one left (for
+bsnes its own `.srm`) loads the same save. Mesen plays the same
+steps once per ROM (`mesen-ref.lua`, cached under
+`.local/snes-test/emulators/mesen/`). Pictures are compared in SNES colours
+(each PNG decoded with its emulator's output curve: bsnes' libretro palette
+applies a 1.5 gamma to the lower half of each channel) over a ±6 (title) or
+±2 frame window; outputs in `.local/snes-test/emulators/<variant>/`
+(`diff-*.png`: Mesen, core, red where colours differ) and `summary.json`.
+
+Mesen notes for any picture test: unthrottled, Mesen skips rendering frames
+unless SNES `DisableFrameSkipping` is set, so `emu.takeScreenshot()` can be
+several frames stale (in the name editor, whose forest scrolls every 4th
+frame, Mesen's picture changed at frames 1109, 1115, 1118, 1121 instead of
+every 4); `runMesen({exactFrames: true})` passes
+`--snes.disableFrameSkipping=true`, about 20-25% slower. Even then its
+screenshot at frame N equals the libretro cores' frame N-1 (game state and
+input agree frame for frame: a press at 1100 reaches `!core_pad` at 1101 in
+all three). Mesen's default `RamPowerOnState` is Random (WRAM and battery
+RAM); `--snes.ramPowerOnState=AllZeros` pins it.
+
+`--presets` starts scene-select presets on every core exactly as
+`snes/test/debug/preset.lua` does (code, cursor, B), follows the recipe
+trace, and compares the end state and the pictures at +0/+60/+240 with
+Mesen running that Lua file; all emulators start from zeroed RAM there
+(`presets.json`). `--power-on` runs each preset on snes9x from zeroed RAM
+and again with noise or `ff` in WRAM and with noise in battery RAM; any
+change in the trace, end state or pictures means something read memory it
+never wrote, and `--bisect` narrows it to single bytes (`power-on.json`).
+`--dma-watch` (Mesen only, zeroed power-on RAM) appends
+`snes/test/emulators/dma-watch.lua` to the scenario and every preset: any
+DMA started into VRAM, OAM or CGRAM while the screen is not force-blanked
+and the scanline is visible (brightness 0 does not count), and any HDMA
+into VRAM or OAM. Real hardware ignores those VRAM and OAM writes. Module
+code writes the PPU's memories only through DMA, so a hit from banks
+`$A0-$AF` fails the run (`dma-watch.json`, about 3 minutes for all).
+
+### Results (cartridge of 2026-10-18, after the integration merge)
+
+| | snes9x 1.63 (`1bcc369`) | bsnes 115 (`78474e5`) | bsnes accurate PPU/DSP |
+| --- | --- | --- | --- |
+| ExHiROM | core log `ExHiROM: 64 Mbit, SRAM: 256 Kbit` (`Map_ExtendedHiROMMap`); bus probe exact | bus probe exact (board `EXHIROM-RAM`: save RAM `20-3f,a0-bf:6000-7fff`) | same |
+| Save RAM at `$30-$33`/`$B0-$B3` | yes | yes | yes |
+| Title 700/940 vs Mesen | 100% | 100% | 100% |
+| Name editor, waterfall, loaded game | 100%; field 96% exact, 100% within one level | 100% | 100% (editor 99.8%) |
+| Opening to map 128 | frame 7134, as Mesen | same | same |
+| Save, power cycle, load | slot header, sidecar, position (488,442 as Mesen) | same | same |
+| 22 presets vs Mesen (`--presets`) | all done, end states equal, pictures 100% (within one level) | same | same |
+| Speed (7,900 frames) | 2.7 s | 11.5 s | 26 s |
+
+In the presets the recipes end within 0-3 frames of Mesen (hexas 4041/4042
+against 4044, rider 5452 against 5455), with the same end state. At `intro`
++60 all three cores agree with each other and differ from Mesen by one
+colour level in 35% of the pixels (a fade's brightness rounding).
+
+Power-on sensitivity (`--power-on --bisect`, snes9x): 19 of 22 presets are
+unaffected by noise or `$FF` in WRAM and noise in battery RAM. Four values
+are read before anything writes them. The first three readers are
+**original** code, which the unmodified cartridge runs the same way on
+every console; the fourth is ours:
+
+- **`7E:0126`, the moving Fortress's wander seed** (`flight`; before the
+  merge also `rider`'s timing). `C2:B0D7` (bank `C2`, run during the
+  legend's world fly-over) does `LDA $0126 / ADC #$37 / STA $0126` and
+  places the Mana Fortress at the camera ± that seed (`$0128/$012A`);
+  nothing writes `$0126` earlier, in the original cartridge or ours (zeros
+  give `$0738/$0DC7`, `$FF` `$0737/$0DC8`). The world module aims at that
+  position (`world/aim.asm`), and the debug module's `WORLDAIM` parks the
+  camera south of it, so the `flight` preset's end position follows
+  power-on WRAM. A preset that must be reproducible on hardware would have
+  to set `$0126` itself (e.g. in `debug_arm`); zeroing it in `core_boot`
+  would make the game's own Fortress placement fixed.
+- **The map-edge words `7E:0A80/0A90/0AA0/0AB0`** (`space`, `battle`, with
+  WRAM all `$FF`: one frame later). The camera placement at `C1:CBF3`
+  (`C1:CC0D-CC33`) tests them before the map loader writes them on the first
+  map; the original cartridge's opening does the same (`C1:CC1A`, frame
+  1086).
+- **The RNG seed is the save checksums.** The title program (`7E:ADB0`,
+  decompressed from `C7:7C00`) XORs the four slots' checksums
+  (`$30:6001/6401/6801/6C01`) and seeds its LFSR (`7E:C2D9`; `$7524` when
+  the XOR is 0). A fresh cartridge's battery noise seeds it at random
+  (before the merge it moved `rider`'s end by one frame).
+- **Module code: destroy's effect record `$33:77F8`** (`battle`, with battery
+  noise: one frame later). `!FX_SEQ` (`!SRAM_WORK_DESTROY+$7F8`, volatile)
+  is zeroed only by destroy's first `dst_sync_map` after a reset
+  (`destroy/entry.asm`, `!m_init` check). The effects library compares it
+  every field frame (`fx/frame.asm` `fx_frame`: `LDA !FX_DREC_SEQ / CMP
+  !fx_dseq`, and `fx_destroy_poll`), and `fx_ensure_init` adopts whatever it
+  holds. With battery noise, fx sees a "new record" until the two agree and
+  takes its full path, costing a frame of CPU in a busy scene; destroy
+  clears `!FX_KIND` with it, so no effect is drawn. Fix (owners: destroy,
+  fx): clear the effect record at title entry or power-on, not on the first
+  map sync; or have `fx_title_boot` adopt `!FX_DREC_SEQ` into `!fx_dseq` and
+  clear `!fx_busy`.
+
+DMA timing (`--dma-watch`, scenario and all 22 presets): the only DMA into
+the PPU's memories outside vblank and forced blank is the original menu's
+last VRAM upload on the name editor's exit (`C0:25CC-25F6`, channel 7,
+2 KiB at brightness 0 but not force-blanked, line 153; the original
+cartridge does it at line 189). Hardware drops it; the next frames are
+force-blanked and the field loads its own graphics. No module DMA or HDMA
+lands outside vblank. HDMA colour gradients write CGRAM during H-blank, as
+designed.
+
+Other differences: snes9x rounds colour math (in translucent areas such as
+the waterfall, green is one 5-bit level higher than in Mesen and bsnes), and
+the Mesen frame skipping and one-frame screenshot offset above. With
+Mesen's power-on RAM random, one `flight` run entered its first room one
+frame later (two more did not; AllZeros, AllOnes and noise in audio RAM,
+VRAM, OAM or CGRAM never did). No picture, state or timing difference
+between the emulators traces to module or core code. Tools for further
+digging: `snes/tools/disasm.mjs` for ROM code, a Mesen
+`emu.addMemoryCallback` on the byte (`snesWorkRam` or `snesSaveRam`) for
+the reader's PC; for read-before-write, track writes to the byte and report
+reads before the first (DMA writes do not reach those callbacks).
 
 ## Engine anchors
 
@@ -263,3 +439,12 @@ per-scene timing table in engine.md.
   marks bytes never executed in the trace.
 - `snes/tools/wram-usage.mjs [--replay]` finds WRAM never used by the
   original game.
+- `snes/tools/modprof.mjs [--rom=…] [scene …]` measures each module's cost
+  in the field dispatch tables (`modules_field_frame`, `modules_field_nmi`), in
+  scanlines per call, over 300 walking frames from the perf states. With all
+  modules merged, the idle costs add up, so each module should early-out to
+  about 0.3 lines per frame callback and 0.1 per vblank callback when its
+  feature is not active.
+- `SNES_LUA_PRELUDE=file.lua` (any runner using `snes/test/mesen.mjs`) runs an
+  extra Lua file before every test, e.g. a tracer that logs to a file while
+  existing suites play (it may only register callbacks at load).

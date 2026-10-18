@@ -5,7 +5,7 @@
 -- script's next command, brings the cliff back with Dyluck's record and
 -- gives the field the screen). A control run loads the cliff without a
 -- scene. Doors go through core's event mailbox from the idle Potos field.
-local MAILBOX = 0x7E6E8E            -- !core_event_req: $8000 | event id
+local MAILBOX = EVENT_MAILBOX        -- !core_event_req (run.mjs, core's defines): $8000 | event id
 local function door(d) H.w16(MAILBOX, 0x8000 | 0x0800 | d) end
 local function bright() return H.r8(0x7E00E6) end
 local function actors()             -- live actor slots after the party

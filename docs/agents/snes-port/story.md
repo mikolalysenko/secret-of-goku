@@ -265,7 +265,7 @@ native CALLs to one-byte marker events; entering one fires its hook.
 | 46 | `OBJECT_SANDSHIP` | destroy (Sandship) | per object record at load: A = record index, X = slot offset (bytes at `$7E:C808+X`) |
 | 47 | `OBJECT_ENDING` | ending | same, reunion cliff |
 | 48 | `OBJECT_FRIEZA` | frieza | same: Emperor (map 431 record 3), exterior Jema (195), arena 246 suppression |
-| 49 | `OBJECT_TRIAL` | vegeta | same: Dyluck/Thanatos staging on 246 |
+| 49 | `OBJECT_TRIAL` | frieza (covered by `OBJECT_FRIEZA`; stays a stub) | Dyluck/Thanatos staging on 246: `frieza_h_object` applies it on records 0 and 1 while the trial runs or is pending |
 | 4A | `OBJECT_LIST_SANDSHIP` | destroy (Sandship) | per map load, A = map: may substitute the object list (wreck view: hidden crew, enemy-map header, appended monsters) |
 | 4B | `OBJECT_LIST_ENDING` | ending | same: map 180 gains Dyluck's record |
 | 4C | `OPCODE_SCRIPT` | any | free for scripts using `3D` |

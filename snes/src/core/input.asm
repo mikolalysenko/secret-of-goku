@@ -50,11 +50,11 @@ core_pad_bios:
 ; Latch this frame's requests (core_frame_end). M16/X16, DB = $7E.
 core_pad_latch:
 	LDA.w !core_pad_mask&$FFFF
-	STA.w !core_pad_mask_live&$FFFF
+	STA.l !core_pad_mask_live
 	LDA.w !core_pad_inject&$FFFF
 	AND.w #$FFF0                       ; bits 0-3 are the controller ID
-	ORA.w !core_pad_inject_live&$FFFF
-	STA.w !core_pad_inject_live&$FFFF
+	ORA.l !core_pad_inject_live
+	STA.l !core_pad_inject_live
 	LDA.w #$0002
-	STA.w !core_pad_reads&$FFFF
+	STA.l !core_pad_reads
 	RTS

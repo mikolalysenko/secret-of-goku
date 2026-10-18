@@ -47,6 +47,12 @@ async function runGenerators(base){
   mkdirSync(genDir,{recursive:true});
   const dir=join(here,'gen');
   const names=existsSync(dir)?readdirSync(dir).filter(f=>f.endsWith('.mjs')&&!f.startsWith('_')).sort():[];
+  // Output folders of generators that no longer exist (another branch built
+  // in this checkout) would still be included by modules that probe for
+  // generated files, so they go; current generators keep their caches.
+  const current=new Set(names.map(n=>n.replace(/\.mjs$/,'')));
+  for(const e of readdirSync(genDir,{withFileTypes:true}))
+    if(e.isDirectory()&&!current.has(e.name))rmSync(join(genDir,e.name),{recursive:true,force:true});
   const manifest=[],xblobs=[];
   for(const name of names){
     const mod=await import(pathToFileURL(join(dir,name)).href);
@@ -172,13 +178,16 @@ function checkOwnership(symPath){
     if(pc<0x200000)continue;
     const owner=owners.get(name);
     if(!owner)continue;
-    const half=pc>>15;
-    if(!halves.has(half))halves.set(half,new Map());
-    const h=halves.get(half);h.set(owner,(h.get(owner)??0)+1);
+    // 16 KiB quarters: a module may own a quarter of another module's half
+    // (allocated in core/layout.asm; the half's owner asserts its own end).
+    const quarter=pc>>14;
+    if(!halves.has(quarter))halves.set(quarter,new Map());
+    const h=halves.get(quarter);h.set(owner,(h.get(owner)??0)+1);
   }
   const problems=[];
-  for(const[half,h]of[...halves].sort((a,b)=>a[0]-b[0]))if(h.size>1){
-    const bank=0xC0+(half>>1),side=half&1?'8000-FFFF':'0000-7FFF';
+  for(const[quarter,h]of[...halves].sort((a,b)=>a[0]-b[0]))if(h.size>1){
+    const bank=0xC0+(quarter>>2),start=(quarter&3)*0x4000;
+    const side=`${start.toString(16).toUpperCase().padStart(4,'0')}-${(start+0x3FFF).toString(16).toUpperCase()}`;
     problems.push(`$${bank.toString(16).toUpperCase()}:${side}: ${[...h].map(([o,n])=>`${o} (${n} labels)`).join(', ')}`);
   }
   return problems;

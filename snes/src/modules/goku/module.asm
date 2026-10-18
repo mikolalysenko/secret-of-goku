@@ -80,9 +80,13 @@ assert !RAM_GOKU == $7E0000|!GOKU_RAM, "!GOKU_RAM must match !RAM_GOKU"
 !pal_id_out       = !GOKU_RAM+$4C   ; byte: palette id last substituted
 !pal_status       = !GOKU_RAM+$4D   ; byte: status code last substituted
 !shadow_hidden    = !GOKU_RAM+$4E   ; byte: hide actor 0's shadow this frame
-!up_phase         = !GOKU_RAM+$4F   ; byte: refresh cadence counter
-!pal_native       = !GOKU_RAM+$50   ; 16 words: what the game wrote to palette 1
-!pal_out          = !GOKU_RAM+$70   ; 16 words: what we last wrote to palette 1
+!rec_shadow       = !GOKU_RAM+$4F   ; byte: OAM slot of actor 0's shadow this frame ($FF none)
+!pal_native       = !GOKU_RAM+$50   ; 16 words: what the game wrote to palette 1 (entry 0 unused:)
+!rec_body0        = !GOKU_RAM+$50   ;   byte: first OAM slot of Goku's body this frame
+!rec_body1        = !GOKU_RAM+$51   ;   byte: slot after it
+!pal_out          = !GOKU_RAM+$70   ; 16 words: what we last wrote to palette 1 (entry 0 unused:)
+!rec_stamp        = !GOKU_RAM+$70   ;   byte: !core_frame (low) when the slots were recorded
+!scr_shown        = !GOKU_RAM+$71   ;   byte: goku_api_scripted drew this frame (goku_frame clears it)
 !pal_work         = !GOKU_RAM+$90   ; 16 words: scratch (palette build; OAM emit; menu state, menu.asm)
 ; Scratch shared by pose, emit and palette code (never live across calls)
 !t_age            = !p_tmp+0        ; word: age argument for pose_track
@@ -125,7 +129,9 @@ assert !GOKU_RAM_END <= !GOKU_RAM+$C0, "goku RAM overflow"
 ; up_flags
 !GOKU_UP_HUD     = $01  ; re-upload the HUD portrait
 !GOKU_UP_NATIVE  = $02  ; restore the boy's native tiles (replacement ended)
-!GOKU_UP_REFRESH = $04  ; the game's 5-frame party refresh came round: resend the cell
+!GOKU_UP_REFRESH = $04  ; every eighth party refresh: re-send the cell (safety net)
+!GOKU_UP_WAITED  = $08  ; the pending cell already waited a frame for vblank room
+!GOKU_UP_COUNT1  = $20  ; bits 5-7 count the game's 5-frame party refreshes
 
 ; Pose kinds (engine/goku-animation.js kind strings). Native action keys
 ; that are not generic kinds use $80 | key index (see goku_action_data).
@@ -201,7 +207,7 @@ incsrc "upload.asm"
 incsrc "api.asm"
 incsrc "menu.asm"
 goku_code_end:
-assert goku_code_end <= !CODE_GOKU+$8000, "goku code bank overflow"
+assert goku_code_end <= !CODE_QUARTER_GOKU, "goku code overflow (E1:C000-FFFF is a spare quarter, core/layout.asm)"
 pullpc
 
 ; ---------------------------------------------------------------------------
