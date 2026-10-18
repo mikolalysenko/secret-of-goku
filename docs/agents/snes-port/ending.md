@@ -21,7 +21,7 @@ Browser sources ported: `engine/shenron-ending.js`, `wish-flight.js`,
 | village (7) | Goku beside the native Randi | done | `depart`: village 99.1% |
 | depart (8) | power-up, launch, whiteout, distant globe, fade | done | `depart`: 15 stills 99.1-100% |
 | kai (9), complete (10) | King Kai's planet, end cards | done | `kai`: 93.1% |
-| doomed (11), explode (12), escape (13) | planet-view globe, explosion, teleport | done | `space`: 15 stills, 65-100% (fragments differ in shape, see below) |
+| doomed (11), explode (12), escape (13) | planet-view globe, explosion, teleport | done | `space`: 15 stills, 65-100% (fragments differ in shape, see below); `loads`: the globe after door 2F 99.9% |
 | fatal (14) | boss-rush death, planet explosion, GAME OVER | done | `fatal`: 7 stills 65-100%, Start returns to the title |
 | Fortress cutaway (world flight) | planet-view `isShot` + `beam()` | **not ported** (ROM, see Requests) | — |
 
@@ -136,7 +136,7 @@ Done flags: summon at 48, dragon at 96, wish at 72.
 ### The scatter (5): the vista fading, then the wish flight
 
 Ages 0-29: the wish picture at age 96, `dim(age/30)`. At 30 the flight
-stage loads under black (the clock waits; 27-30 frames), then
+stage loads under black (the clock waits; 25 frames), then
 `createWishFlight` from 30 to 480 (`dim((60 - age)/30)` until 60):
 
 - **Floor**: Mode 7 BG1. The world's own characters (`C6:0000` packed
@@ -245,16 +245,20 @@ the event dispatcher (`C1:E77E`), as `installFinaleDeathGate`.
 | Overlay (village, departure to 144) | `FIELD_OBJ_A` (`$7220`/`$7320`) | OBJ 6-7 (all 256 in the cloud) | 6 front | — |
 | Departure from 144 | the space stage, day globe only | as space | 1 | 5 |
 
-Measured frame cost of the module (game logic not included): vista 40-50
-lines (65-80 during its palette fades), flight 30-45 (80-90 during the
-scatter's burst at 300-340), overlay 11-17 (the cloud ~45).
+Measured frame cost of the module (game logic not included, SlowROM):
+vista 40-50 lines (65-80 during its palette fades), flight 30-45 (80-90
+during the scatter's burst at 300-340), overlay 11-17 (the cloud ~45).
+FastROM (core's default since main `c81158d`) runs the module's code and
+data about a third faster.
 
-Lag measured on the finale's map (180): vista 9 frames over the whole
-sequence (the load frame, the wish's flash), flight 10 over 450, King Kai
-0-2, space 0-2, death ≤ 3, departure 3 (its first frame, the space load
-under white). On a busier map (Potos with its NPCs, ~150 lines of game
-logic) the flight drops one frame in eight. No vblank overruns while a
-picture shows.
+Lag with FastROM (the ending tests on the finale's map 180 and the
+imported states): vista 5 frames over the whole sequence (was 9 with
+SlowROM: the load frame, the wish's flash), flight 6 over 450 (was 10),
+King Kai, space and death 0, departure 1 (was 3: its first frame, the
+space load under white). The flight's stage loads in 25 frames (27-30
+with SlowROM). With SlowROM on a busier map (Potos with its NPCs, ~150
+lines of game logic) the flight dropped one frame in eight. No vblank
+overruns while a picture shows.
 
 ## API
 
@@ -302,7 +306,7 @@ WRAM block `!RAM_ORBIT+$80..$A1`:
 
 | Resource | Use |
 | --- | --- |
-| Code | `$A9:8000-FE67` (31.6 of 32 KiB) |
+| Code | `$A9:8000-FEED` (274 bytes free) |
 | Data | `$E9`, `$EC`-`$EF` lower halves (160 KiB, 2.1 KiB free): King Kai 40 KiB, space 84 KiB, vista 15.8 KiB, fade sets 12.4 KiB, flight 4.7 KiB, departure 0.6 KiB |
 | WRAM | `!RAM_ORBIT+$80..$A1` |
 | SRAM | `!SRAM_WORK_SCENE` (`$32:6000-7FFF`) while a scene runs: state, palette components and outputs, curves, queue, HDMA tables, the flight's matrix tables, row and star buffers |
@@ -323,7 +327,7 @@ WRAM block `!RAM_ORBIT+$80..$A1`:
   ~53 px while he rises away; no ROM for scaled copies). The floor is the
   world inside a 128x128-tile window; beyond it (the last lines before the
   horizon) the window repeats. The turn updates the matrix tables about
-  every 8 frames rather than every frame. The stage load adds 27-30 black
+  every 8 frames rather than every frame. The stage load adds 25 black
   frames at age 30 (the clock waits, so the native 480-frame wait ends the
   scene up to that much earlier, on the empty sky). Sprites crossing the
   left edge pop in whole; on the scatter's crowded lines the hardware's 34
@@ -356,9 +360,8 @@ WRAM block `!RAM_ORBIT+$80..$A1`:
   cutaway and Shenron's scaled frames in the flight.
 - **core**: `core_spr_cull` accepts y down to -64, but an 8-bit OBJ Y below
   -16 (16x16) or -32 (32x32) shows at the bottom of the screen; the overlay
-  culls itself to [-32, 224). FastROM (`CORE_FASTROM`) would give every
-  scene about a quarter more frame time (the flight's scatter, the vista's
-  fades).
+  culls itself to [-32, 224). A "map loaded" notification would replace
+  the module's use of the object-list hook as the load signal.
 - **story**: keep the finale scripts' doors where `frieza-events.js` has
   them (2F after 42F, 3FF right after cue 176, 08E before A5): the module
   reloads or releases its picture on those loads.
@@ -387,7 +390,7 @@ overruns) are measured on a separate untouched run.
 | `kai` | `preset__bad-ending` | both outcomes, end cards 93.1%, Bubbles on the lawn, done/complete bits, lag ≤ 2 |
 | `space` | `preset__bad-ending` | doomed (night/day), explosion, escape against planet-view; lag ≤ 2, no overruns |
 | `fatal` | `preset__bad-ending` | collapse light, fade, black, globe, explosion, GAME OVER; Start to the title |
-| `depart` | `emulator-probe__potos-state` (Potos) | village 99.1%, 15 departure stills 99.1-100%, Randi native, status/sound/done, lag 3, release |
+| `depart` | `emulator-probe__potos-state` (Potos) | village 99.1%, 15 departure stills 99.1-100%, Randi native, status/sound/done, lag 1, release |
 | `vista` | `ending-fix__end-20` (map 180) | 12 stills 95.5-96.0%, done flags, Shenron's rise without lag, lag ≤ 12 |
 | `flight` | `ending-fix__end-20` (map 180) | 11 stills 90.6-99.0%, load ≤ 30 frames, muted/airborne/sound/done, lag ≤ 20, no overruns |
 | `loads` | `emulator-probe__potos-state` | doors through core's event mailbox: 2F under the doomed globe (reloaded, clock on, 99.9%), cue 176 after the flight holds black, door 3FF: the cliff 99.1% of a native load of it, Dyluck present |
