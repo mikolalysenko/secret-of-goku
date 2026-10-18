@@ -4,6 +4,12 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## 2026-10-18 — Bazzite Steam box installation
+
+- Built and installed the Bazzite desktop app from `656bdb3`, added a direct Steam shortcut and Favorites entry, and assigned the Gamepad template.
+- Added portrait and wide Steam artwork under `assets/steam/`, applied it through Steam's live artwork API, and verified the card in the Gaming Mode home carousel.
+- Fixed this installation's Steam overlay startup crash with a per-game preload override. Native fullscreen launch, offline startup and save/restart checks passed on Bazzite. Physical controller and TV-wall checks remain untested. See [deployment and artwork notes](bazzite-steam.md).
+
 ## 2026-10-18 — SNES cartridge: Frieza's ground arc, deterministic power-on, Goku fixes (integration)
 
 - **Frieza's ground arc** is merged into the cartridge, as the browser plays it: the entrance and theft, the Emperor's execution, the Death Balls, the Mana Tree sequence, the three-phase fight, the Fortress collapse on its destroyed deck, the Beast challenge, and victory and death. It uses flight's landing check and scripted camera, Goku's scripted cells, combat's virtual target (Goku's attacks now reach Frieza), destroy's door-record hook and core's scene claims (VRAM regions and the scene work area). Its idle cost is 0.32 lines a frame and 0.11 a vblank. See [snes-port/frieza.md](snes-port/frieza.md).
