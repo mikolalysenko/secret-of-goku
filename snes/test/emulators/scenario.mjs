@@ -15,12 +15,15 @@ export const A={
   nameLen:0x7EA1CC,
   coreFrame:0x7ED700, coreFlags:0x7ED73A,
   titleFlags:0x7EDD9E,     // bit 1: title program patched by the title module
-  eventReq:0x7E6E8E,       // core_event_request mailbox: $8000|event id
-  probeCode:0x7E6F40,      // free in release builds (CORE_TEST mailbox / reserved core WRAM)
+  // Borrowed for three idle field frames and restored: the CORE_TEST mailbox
+  // and reserved core WRAM, unused in release builds (the native tile
+  // decoder may leave map data there, which the probe puts back).
+  probeCode:0x7E6F40,
   probeOut:0x7E6FC0,
 };
 // SRAM offsets ($30:6000 = 0, $31:6000 = 0x2000, ...)
-export const S={slot0:0x0000, liveMagic:0x203E, sidecar0:0x2400};
+export const S={slot0:0x0000, liveMagic:0x203E, sidecar0:0x2400,
+  eventReq:0x3490};        // !core_event_req ($31:7490): $8000|event id, started at the next idle field frame
 export const SAVE_EVENT=0x05D8;      // the save point's script event (C9 table)
 export const NMI_FIELD=[0x5C,0xA8,0xC0,0x00], NMI_MENU=[0x5C,0xA7,0x20,0xC0];
 export const TITLE_FRAMES=[700,940];
@@ -161,7 +164,7 @@ export async function playScenario(h,{rom,xprobe,log=()=>{}}){
 
   // 6. Native save from the field: the save point's own event.
   const slot0Before=await h.sram(S.slot0);
-  await h.w16(A.eventReq,0x8000|SAVE_EVENT);
+  await h.write('sram',S.eventReq,[SAVE_EVENT&255,0x80|SAVE_EVENT>>8]);
   const menu=await h.waitFor(inMenu,300,2);
   check('save_menu_opened',menu,`frame ${h.frame}`);
   if(!menu)return res;
@@ -247,18 +250,17 @@ export async function playBatteryLoad(h,{savedHero}){
 }
 
 async function busProbe(h,res,check,{rom,xprobe,inField}){
-  const region=await h.bytes('wram',A.probeCode,0xC0);
-  if(region.some(v=>v)){check('bus_probe',false,'probe WRAM 7E:6F40-6FFF is in use by this build');return;}
   const t=await h.bytes('wram',A.tramp,4);
   if(!same(t,NMI_FIELD)){check('bus_probe',false,`NMI trampoline ${hexs(t)}`);return;}
   const target=t[1]|t[2]<<8|t[3]<<16;
-  await h.write('wram',A.probeCode,probeCode(xprobe,target));
+  const saved=await h.bytes('wram',A.probeCode,0xC0);
+  await h.write('wram',A.probeCode,[...probeCode(xprobe,target),...new Array(0xC0).fill(0)].slice(0,0xC0));
   await h.write('wram',A.tramp+1,long(A.probeCode));
   await h.wait(3);
   await h.write('wram',A.tramp+1,long(target));
   const got=await h.bytes('wram',A.probeOut,0x40);
   const sram=await h.bytes('sram',0,0x8000);
-  await h.write('wram',A.probeCode,new Array(0xC0).fill(0));
+  await h.write('wram',A.probeCode,saved);
   await h.wait(2);
   check('bus_probe_ran',got[0x3F]>=1,`${got[0x3F]} NMIs through the probe`);
   const want=[...Array(32)].map((_,i)=>exhiromByte(rom,null,xprobe+i));

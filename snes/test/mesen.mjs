@@ -38,8 +38,8 @@ export async function runMesen({rom,test,outDir,state=null,timeoutMs=600000,clea
   const started=Date.now();
   // Mesen's own test-runner limit defaults to 100 s, which long tests hit on a
   // loaded machine; this harness enforces timeoutMs itself.
-  const extra=[...(exactFrames?EXACT_FRAMES:[]),...args];
-  const child=spawn(mesenPath(),['--testRunner',`--timeout=${Math.ceil(timeoutMs/1000)+30}`,...extra,resolve(rom),script],{stdio:['ignore','pipe','pipe']});
+  const switches=[...(exactFrames?EXACT_FRAMES:[]),...args];
+  const child=spawn(mesenPath(),['--testRunner',`--timeout=${Math.ceil(timeoutMs/1000)+30}`,...switches,resolve(rom),script],{stdio:['ignore','pipe','pipe']});
   let stdout='';
   child.stdout.on('data',d=>{stdout+=d;if(stdout.length>1e6)stdout=stdout.slice(-5e5);});
   child.stderr.on('data',d=>{stdout+=d;});

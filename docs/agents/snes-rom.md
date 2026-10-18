@@ -296,11 +296,14 @@ live block gets its `GK` magic), the title program runs patched; the title
 at frames 700 and 940; game select, NEW GAME and the BOY prefill; the
 opening with text advanced until map 128 is controllable; field frames
 advancing; a CPU-bus probe (the NMI trampoline's `JML` pointed at a routine
-in `7E:6F40` for three frames) that reads the xdata probe in bank `$7D`,
-the header through `$00` and `$C0`, the `$FD` mirror, save RAM through
-`$30`, `$31`/`$B1` and `$33`/`$B3`; the save point's event (`$05D8`) through
-`!core_event_req`, into the first slot (`$30:6000` = `$C5`, sidecar `GK`); a
-power cycle; GAME FILE, first slot, map 128 with the sidecar restored. Mesen plays the same
+in `7E:6F40` for three idle field frames, the borrowed WRAM restored after)
+that reads the xdata probe in bank `$7D`, the header through `$00` and
+`$C0`, the `$FD` mirror, save RAM through `$30`, `$31`/`$B1` and
+`$33`/`$B3`; the save point's event (`$05D8`) through `!core_event_req`
+(`$31:7490`), into the first slot (`$30:6000` = `$C5`, sidecar `GK`); a
+power cycle; GAME FILE, first slot, map 128 with the sidecar restored; then
+a second process started from the battery image the first one left (for
+bsnes its own `.srm`) loads the same save. Mesen plays the same
 steps once per ROM (`mesen-ref.lua`, cached under
 `.local/snes-test/emulators/mesen/`). Pictures are compared in SNES colours
 (each PNG decoded with its emulator's output curve: bsnes' libretro palette

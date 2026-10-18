@@ -5,7 +5,7 @@
 -- TITLE_FRAMES and the addresses below.
 local A = { tramp = 0x7E0100, d0 = 0x7E00D0, map = 0x7E00DC, heroX = 0x7EE002, heroY = 0x7EE004,
   menuPage = 0x7EA202, menuCursor = 0x7EA211, nameLen = 0x7EA1CC, coreFrame = 0x7ED700,
-  coreFlags = 0x7ED73A, titleFlags = 0x7EDD9E, eventReq = 0x7E6E8E, probeCode = 0x7E6F40,
+  coreFlags = 0x7ED73A, titleFlags = 0x7EDD9E, eventReq = 0x317490, probeCode = 0x7E6F40,
   probeOut = 0x7E6FC0 }
 local events = {}
 local function tramp() return { H.r8(A.tramp), H.r8(A.tramp + 1), H.r8(A.tramp + 2), H.r8(A.tramp + 3) } end
@@ -70,19 +70,20 @@ local function scenario()
   H.result('field_frames_60', H.r16(A.coreFrame) - cf0)
   H.result('map', H.r16(A.map))
   H.result('hero', { H.r16(A.heroX), H.r16(A.heroY) })
-  -- 5. bus probe (same routine as scenario.mjs)
+  -- 5. bus probe (same routine as scenario.mjs), borrowed WRAM restored
   local t = tramp()
   local n = #PROBE_CODE
   PROBE_CODE[n - 2], PROBE_CODE[n - 1], PROBE_CODE[n] = t[2], t[3], t[4]
-  for i = 1, n do H.w8(A.probeCode + i - 1, PROBE_CODE[i]) end
+  local saved = bytes(A.probeCode, 0xC0)
+  for i = 0, 0xBF do H.w8(A.probeCode + i, PROBE_CODE[i + 1] or 0) end
   H.w8(A.tramp + 1, A.probeCode & 0xFF); H.w8(A.tramp + 2, (A.probeCode >> 8) & 0xFF); H.w8(A.tramp + 3, A.probeCode >> 16)
   H.wait(3)
   H.w8(A.tramp + 1, t[2]); H.w8(A.tramp + 2, t[3]); H.w8(A.tramp + 3, t[4])
   H.result('probe', bytes(A.probeOut, 0x40))
   H.result('probe_sram', { H.sram(0), H.sram(0x203E), H.sram(0x7FFF) })
-  for i = 0, 0xBF do H.w8(A.probeCode + i, 0) end
+  for i = 0, 0xBF do H.w8(A.probeCode + i, saved[i + 1]) end
   H.wait(2)
-  -- 6. save through the save point's event
+  -- 6. save through the save point's event (!core_event_req, battery RAM)
   H.w16(A.eventReq, 0x8000 | 0x05D8)
   if not waitFor(inMenu, 300, 2) then H.result('save_menu', false) return end
   H.wait(30)
