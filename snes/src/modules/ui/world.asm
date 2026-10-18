@@ -154,13 +154,13 @@ ui_band_prepare:
 	CMP.w #$0002
 	BCS .ready
 	TAX
-	LDA.w #ui_watlas_data>>16
+	LDA.w #!XDATA_UI_WATLAS>>16
 	STA.w !core_scratch&$FFFF
 	CPX.w #$0000
 	BNE .half2
 	LDA.w #!UI_WCHR+(!UI_WATLAS_TILE*8)
 	LDX.w #!UI_WATLAS_BYTES/2
-	LDY.w #ui_watlas_data&$FFFF
+	LDY.w #!XDATA_UI_WATLAS&$FFFF
 	JSL core_queue_vram
 	BCS .busy
 	INC.w !ui_watlas&$FFFF
@@ -169,7 +169,7 @@ ui_band_prepare:
 .half2
 	LDA.w #!UI_WCHR+(!UI_WATLAS_TILE*8)+(!UI_WATLAS_BYTES/4)
 	LDX.w #!UI_WATLAS_BYTES-(!UI_WATLAS_BYTES/2)
-	LDY.w #(ui_watlas_data+(!UI_WATLAS_BYTES/2))&$FFFF
+	LDY.w #(!XDATA_UI_WATLAS+(!UI_WATLAS_BYTES/2))&$FFFF
 	JSL core_queue_vram
 	BCS .busy
 	INC.w !ui_watlas&$FFFF
@@ -1676,10 +1676,10 @@ ui_dial_upload:
 	ADC.w !ui_dial_up&$FFFF
 	ASL
 	TAX                               ; 6 bytes per step
-	LDA.w #ui_dial_data>>16
+	LDA.w #!XDATA_UI_DIAL>>16
 	STA.w !core_scratch&$FFFF
 	LDA.l ui_dial_ups+2,X
-	CLC : ADC.w #ui_dial_data
+	CLC : ADC.w #!XDATA_UI_DIAL&$FFFF
 	TAY
 	LDA.l ui_dial_ups+4,X
 	PHA

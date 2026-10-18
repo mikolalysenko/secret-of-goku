@@ -8,6 +8,10 @@
 //   radar.asm     radar targets, strings and the dial picture
 //   atlas.bin     79 glyphs x (top, bottom) 2bpp BG3 tiles with the window
 //                 dither, decoded from the cartridge font (PC 0x12D600)
+//   window.bin, watlas.bin, dial.bin  window tiles, world atlas, radar dial
+// The four tile sets are DMA sources only: they also go to extended data
+// (xdata UI_ATLAS, UI_WINDOW_TILES, UI_WATLAS, UI_DIAL), the .bin copies
+// are for the tests.
 //   catalog.json  every message with its id, source, kind and frames
 //
 // Message sources: exported constant tables (native-radio.js, power-intro.js,
@@ -108,7 +112,7 @@ const PARAMS={
   'fresh[0][1]':{code:0xf0,table:'town'},
 };
 
-export async function generate({rom,repo,outDir}){
+export async function generate({rom,repo,outDir,xdata}){
   const eng=name=>import(pathToFileURL(join(repo,'engine',name)).href);
   const codec=await eng('event-codec.js');
   const radio=await eng('native-radio.js');
@@ -261,8 +265,12 @@ export async function generate({rom,repo,outDir}){
     }
   }
   writeFileSync(join(outDir,'atlas.bin'),Uint8Array.from(atlas));
+  xdata('ui_atlas',Uint8Array.from(atlas));
+  // the UI blanks BG3 rows from 512 zero bytes of the cartridge (!UI_ZERO_ROWS)
+  if(rom.slice(0x187d22,0x187f22).some(b=>b))throw Error('ui gen: the zero run at PC 0x187D22 is not zero');
   // The four window tiles (corner, horizontal, -, vertical), as BG3 $110-$113.
   writeFileSync(join(outDir,'window.bin'),rom.slice(WINDOW_TILES,WINDOW_TILES+64));
+  xdata('ui_window_tiles',rom.slice(WINDOW_TILES,WINDOW_TILES+64));
 
   // ---------------------------------------------------------------------------
   const hex=(v,w=2)=>'$'+v.toString(16).toUpperCase().padStart(w,'0');
@@ -295,7 +303,32 @@ export async function generate({rom,repo,outDir}){
   for(const m of messages)dat.push(`\tdb ${m.table==='palace'?1:m.table==='town'?2:0}`);
   dat.push('ui_kind_bits:');
   for(const [,bits] of KINDS)dat.push(`\tdb ${bits}`);
-  for(const m of messages)dat.push(`ui_txt_${m.id}: db ${[...m.bytes,0].map(b=>hex(b)).join(',')}  ; ${m.name}`);
+  // Dictionary: up to 16 byte runs (glyphs and newlines only) shared by the
+  // messages become one code each ($E0-$EF; ui_bt_byte expands them), chosen
+  // greedily by bytes saved. Entries never nest.
+  const DICT_FIRST=0xe0,plain=b=>b>=0x7f&&b<=0xce;
+  if(messages.some(m=>m.bytes.some(b=>b>=DICT_FIRST&&b<DICT_FIRST+16)))throw Error('ui gen: a message uses a dictionary code');
+  let packed=messages.map(m=>[...m.bytes]);const dict=[];
+  const keyOf=a=>a.join(',');
+  for(let k=0;k<16;k++){
+    const count=new Map();
+    for(const b of packed)for(let i=0;i<b.length;i++)for(let L=2;L<=16&&i+L<=b.length;L++){
+      if(!plain(b[i+L-1]))break;
+      const key=keyOf(b.slice(i,i+L));count.set(key,(count.get(key)??0)+1);
+    }
+    let best=null,gain=0;
+    for(const [key,n] of count){const L=key.split(',').length,g=n*(L-1)-(L+1);if(g>gain){gain=g;best=key;}}
+    if(!best||gain<8)break;
+    const run=best.split(',').map(Number),code=DICT_FIRST+dict.length;dict.push(run);
+    packed=packed.map(b=>{const out=[];for(let i=0;i<b.length;){if(run.every((v,j)=>b[i+j]===v)){out.push(code);i+=run.length;}else out.push(b[i++]);}return out;});
+  }
+  // the expansion gives back every message
+  packed.forEach((b,i)=>{const out=b.flatMap(v=>v>=DICT_FIRST&&v<DICT_FIRST+dict.length?dict[v-DICT_FIRST]:[v]);
+    if(keyOf(out)!==keyOf(messages[i].bytes))throw Error(`ui gen: dictionary round trip failed (${messages[i].name})`);});
+  dat.push('ui_dict:        ; message dictionary entries ($E0-$EF)');
+  dict.forEach((r,i)=>dat.push(`\tdw ui_dict_${i}`));
+  dict.forEach((r,i)=>dat.push(`ui_dict_${i}: db ${[...r,0].map(b=>hex(b)).join(',')}`));
+  messages.forEach((m,i)=>dat.push(`ui_txt_${m.id}: db ${[...packed[i],0].map(b=>hex(b)).join(',')}  ; ${m.name}`));
   dat.push('ui_barrier_first:');
   for(const b of barriers)dat.push(`\tdw ${b.first}  ; ${b.id}`);
   dat.push('ui_barrier_count:');
@@ -386,6 +419,7 @@ export async function generate({rom,repo,outDir}){
   const W_TILE=0x6c;                                     // BG3 chr base $7000: tile $6C = VRAM $7360
   if(W_TILE+wAtlas.length/16>0x100)throw Error('ui gen: world atlas exceeds BG3 tiles $6C-$FF');
   writeFileSync(join(outDir,'watlas.bin'),Uint8Array.from(wAtlas));
+  xdata('ui_watlas',Uint8Array.from(wAtlas));
   const wMap=new Array(ATLAS_LAST-ATLAS_FIRST+1).fill(W_TILE);   // unknown glyphs: space
   wGlyphs.forEach((g,i)=>{wMap[g-ATLAS_FIRST]=W_TILE+i*2;});
   const wFrame=W_TILE+wGlyphs.length*2;
@@ -477,6 +511,7 @@ export async function generate({rom,repo,outDir}){
   }
   const fxBytes=[];for(const t of fx)fxBytes.push(...t);
   writeFileSync(join(outDir,'dial.bin'),Uint8Array.from([...dialBase,...fxBytes]));
+  xdata('ui_dial',Uint8Array.from([...dialBase,...fxBytes]));
   // upload steps: VRAM word address, source offset in dial.bin, bytes
   const ups=[];
   for(let r=0;r<6;r++)ups.push([DIAL_VRAM+r*0x100,r*192,192]);

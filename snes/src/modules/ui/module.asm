@@ -126,7 +126,7 @@ endif
 ; +$A6-$A9: fast-forward (ff.asm)
 ; +$AA-$AD: window placement (place.asm)
 ; +$AE-$AF: scouter (scouter.asm)
-; +$B0-$B7: free
+; +$B0-$B7: STATUS page (status.asm)
 
 !ui_name_buf  = !RAM_UI+$B8   ; 8 bytes: display name buffer ({n} codes)
 
@@ -207,6 +207,10 @@ endif
 !ui_front   = !SRAM_WORK_UI+$200   ; 8 x 8 bytes (world only; the field's HDMA table otherwise):
                                    ; native sprites moved behind the dial (slot, x/y, tile)
 
+; 512 zero bytes of the original cartridge (PC 0x187D22-0x188001 are 736
+; zeros; the generator checks them): the source that blanks BG3 rows.
+!UI_ZERO_ROWS = $D87D22
+
 ; BG3 layout (field, Mode 1): chr $4000, tilemap $5800 (32x32).
 !UI_BG3_CHR    = $4000
 !UI_BG3_MAP    = $5800
@@ -216,7 +220,8 @@ endif
 !UI_KB_ASIDE   = $02
 !UI_KB_BOTTOM  = $04
 
-; ui_hide owner bit of the endings: also keeps native windows in place
+; ui_hide owner bit of the endings: also keeps native windows in place and
+; the STATUS page native
 !UI_HIDE_ENDING = $4000
 
 pushpc
@@ -229,23 +234,15 @@ incsrc "world.asm"
 incsrc "ff.asm"
 incsrc "place.asm"
 incsrc "scouter.asm"
+incsrc "status.asm"
 if defined("UI_TEST")
 	incsrc "../../../test/ui/testmod.asm"
 endif
 ui_data_start:
 incsrc "ui/messages.asm"
 incsrc "ui/radar.asm"
-ui_atlas:
-	incbin "ui/atlas.bin"
-ui_atlas_end:
-ui_window_tiles:
-	incbin "ui/window.bin"
-ui_zero_rows:
-	fillbyte $00 : fill $200
-ui_watlas_data:
-	incbin "ui/watlas.bin"
-ui_dial_data:
-	incbin "ui/dial.bin"
+; (the glyph atlas, window tiles, world atlas and radar dial are DMA
+; sources in extended data: !XDATA_UI_ATLAS, _WINDOW_TILES, _WATLAS, _DIAL)
 ui_code_end:
 assert ui_code_end <= !CODE_UI+$8000, "ui bank overflow"
 pullpc

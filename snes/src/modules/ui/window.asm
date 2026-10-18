@@ -136,7 +136,7 @@ ui_window_clear:
 	LDA.w #!UIS_DRAWN|!UIS_HDMA
 	TRB.w !ui_state&$FFFF
 	STZ.w !ui_drawn&$FFFF
-	LDA.w #ui_zero_rows>>16
+	LDA.w #!UI_ZERO_ROWS>>16
 	STA.w !core_scratch&$FFFF
 	LDA.w !ui_place&$FFFF
 	CMP.w #!UI_ROW_TOP
@@ -155,7 +155,7 @@ ui_window_clear:
 	SEC : SBC.w !ui_tmp0&$FFFF
 	TAX
 	PLA
-	LDY.w #ui_zero_rows&$FFFF
+	LDY.w #!UI_ZERO_ROWS&$FFFF
 	JSL core_queue_vram
 	RTS
 .all
@@ -163,7 +163,7 @@ ui_window_clear:
 	ASL : ASL : ASL : ASL : ASL
 	CLC : ADC.w #!UI_BG3_MAP
 	LDX.w #$0200
-	LDY.w #ui_zero_rows&$FFFF
+	LDY.w #!UI_ZERO_ROWS&$FFFF
 	JSL core_queue_vram
 .done
 	RTS
@@ -186,27 +186,27 @@ ui_window_sync_2c:
 
 ; Queue the first atlas half plus the four window tiles. Carry set = retry.
 ui_queue_atlas_a:
-	LDA.w #ui_window_tiles>>16
+	LDA.w #!XDATA_UI_WINDOW_TILES>>16
 	STA.w !core_scratch&$FFFF
 	LDA.w #(!UI_BG3_CHR+($110*8))
 	LDX.w #$0040
-	LDY.w #ui_window_tiles&$FFFF
+	LDY.w #!XDATA_UI_WINDOW_TILES&$FFFF
 	JSL core_queue_vram
 	BCS .out
-	LDA.w #ui_atlas>>16
+	LDA.w #!XDATA_UI_ATLAS>>16
 	STA.w !core_scratch&$FFFF
 	LDA.w #!UI_ATLAS_VRAM
 	LDX.w #!UI_ATLAS_A_BYTES
-	LDY.w #ui_atlas&$FFFF
+	LDY.w #!XDATA_UI_ATLAS&$FFFF
 	JSL core_queue_vram
 .out
 	RTS
 ui_queue_atlas_b:
-	LDA.w #ui_atlas>>16
+	LDA.w #!XDATA_UI_ATLAS>>16
 	STA.w !core_scratch&$FFFF
 	LDA.w #(!UI_ATLAS_VRAM+(!UI_ATLAS_A_BYTES/2))
 	LDX.w #!UI_ATLAS_B_BYTES
-	LDY.w #((ui_atlas+!UI_ATLAS_A_BYTES)&$FFFF)
+	LDY.w #((!XDATA_UI_ATLAS+!UI_ATLAS_A_BYTES)&$FFFF)
 	JSL core_queue_vram
 	RTS
 
@@ -326,6 +326,7 @@ ui_jsr_x:
 !ui_bt_src  = !ui_tmp0              ; text address in this bank
 !ui_bt_line = !ui_tmp1              ; offset of the line (0, 28, 56)
 !ui_bt_col  = !ui_tmp2              ; column
+!ui_bt_ret  = !ui_tmp5              ; message position while in a dictionary entry
 ui_build_text:
 	LDA.w #$0000                      ; space
 	LDX.w #166
@@ -339,6 +340,7 @@ ui_build_text:
 	TAX
 	LDA.l ui_msg_text,X
 	STA.w !ui_bt_src&$FFFF
+	STZ.w !ui_bt_ret&$FFFF
 	STZ.w !ui_bt_line&$FFFF
 	STZ.w !ui_bt_col&$FFFF
 .next
@@ -360,6 +362,7 @@ ui_build_text:
 	JSR ui_bt_byte                    ; n
 	JSL !UI_NAME_FN                   ; X16 = name in bank $7E
 	REP #$30
+	STZ.w !ui_bt_ret&$FFFF            ; (the name source may use it)
 .name
 	LDA.l $7E0000,X
 	AND.w #$00FF
@@ -449,12 +452,34 @@ ui_build_text:
 	JSR ui_bt_put
 	JMP .next
 
-; Next text byte in A16 (Z from the value).
+; Next text byte in A16 (Z from the value). Dictionary codes $E0-$EF read
+; their entry (ui_dict) first; !ui_bt_ret holds the message position
+; meanwhile (0 outside an entry).
 ui_bt_byte:
 	LDX.w !ui_bt_src&$FFFF
 	LDA.l !UI_BANKBASE,X
 	INC.w !ui_bt_src&$FFFF
 	AND.w #$00FF
+	BEQ .end
+	CMP.w #$00E0
+	BCC .out
+	CMP.w #$00F0
+	BCS .out
+	SBC.w #$00DF                      ; (C clear: - $E0)
+	ASL
+	TAX
+	LDA.w !ui_bt_src&$FFFF
+	STA.w !ui_bt_ret&$FFFF
+	LDA.l ui_dict,X
+	STA.w !ui_bt_src&$FFFF
+	BRA ui_bt_byte
+.end
+	LDX.w !ui_bt_ret&$FFFF            ; the end of an entry: back to the
+	BEQ .out                          ; message (A = 0, Z: the message end)
+	STX.w !ui_bt_src&$FFFF
+	STZ.w !ui_bt_ret&$FFFF
+	BRA ui_bt_byte
+.out
 	RTS
 
 ; Store glyph A at the cursor as its atlas word ((code - $80) * 2; codes

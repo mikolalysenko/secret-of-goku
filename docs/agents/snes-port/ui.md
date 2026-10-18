@@ -15,9 +15,9 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 | Message policy: queue, `interrupt`, `dismiss`, SSJ charge remarks (saved attempts and xorshift roll), barrier and ceiling reactions, first-flight banter, power intro | Done: frame-identical to `createNativeRadio` + `createPowerIntro` |
 | Telepathy in world flight (bottom panel) and the Dragon Radar | Done: panel pixel-identical to the browser's; dial identical for the same sweep angle (64 steps) and blink phase; guide, distance and blip from `radarBearing` (the blip may round the other way within 0.05 px of a half pixel); 60 Hz kept |
 | Scouter option and readouts | Switch done (`scouter.asm`): Goku's Targeting ring item reads "Scouter: ON/OFF" and toggles the saved switch, a scan (teleport sound) tells King Kai's joke for the form once; the power-level readouts and Analyzer hits are not drawn yet (OBJ VRAM, see the core requests) |
-| Goku's STATUS page text | Not yet |
+| Goku's STATUS page | Done (`status.asm`): BG2 as the browser shows `statusPixels()`, pixel-identical but for 2–3 cells per page whose fourth colour shows as its nearest; built band by band in about 55 frames with the menu at 60 Hz |
 | Dialogue window placement | Done (`place.asm`): the scene's windows move above the HUD when the first one would cover more faces where it is, as `window-placement.js`; moved window pixel-identical to the native one, HUD untouched |
-| R fast-forward | Auto-confirm done (`ff.asm`): R held in a scene hides R, pulses B on two of every eight frames for prose and stops at choices, as `scene-fast-forward.js`'s input filter; the browser's 12× emulation speed has no cartridge equivalent and instant text is not done |
+| R fast-forward | Auto-confirm done (`ff.asm`): R held in a scene hides R, pulses B on two of every eight frames for prose and stops at choices, as `scene-fast-forward.js`'s input filter; the browser's 12× emulation speed has no cartridge equivalent and instant text is not done (the text engine's limits are traced below) |
 
 ## One source of truth: `snes/gen/ui.mjs`
 
@@ -41,6 +41,9 @@ The generator imports the browser engine and writes `dist/snes/gen/ui/`:
   `FRIEZA_FULL_POWER_FRIEZA_SEQ_0`), `!UI_KIND_<KIND>`,
   `!UI_BARRIER_<ID>` (one per `barrierReactions` key, e.g.
   `!UI_BARRIER_WITCH_CASTLE`, `!UI_BARRIER_DUNGEON_WALL_FIRE`).
+- **Extended data** (ExHiROM banks `$40-$7D`, `xdata`): the four DMA-only
+  tile sets below (`!XDATA_UI_ATLAS`, `_WINDOW_TILES`, `_WATLAS`,
+  `_DIAL`, 7.3 KiB); the `.bin` copies stay in `dist/` for the tests.
 - **`atlas.bin`.** The 79 glyphs `$80-$CE` of the cartridge font (PC
   `0x12D600`), each an 8×16 cell (two 2bpp tiles) drawn exactly as
   `radioPixels()` does: white glyph, black 3×3 outline, the window dither.
@@ -55,6 +58,11 @@ The generator imports the browser engine and writes `dist/snes/gen/ui/`:
   per-angle sweep sprites (`ui_sweep_oam`) and colours; sin and sec tables.
 - **`watlas.bin`, `dial.bin`**: the opaque world-band atlas and frame tiles;
   the dial's base cells and effect tiles.
+- **Messages are compressed** with a 16-entry dictionary of glyph runs
+  (codes `$E0-$EF`, never nested), checked by a round trip at build time.
+
+`snes/gen/ui-status.mjs` writes the STATUS page's tables
+(`dist/snes/gen/ui-status/`) and two extended-data blobs; see below.
 
 ## Telepathy window on the ground (BG3)
 
@@ -299,6 +307,61 @@ else "OVER 9000" with or without the weights line (story query
 `!UI_SC_*` font and colours are generated) and Analyzer hits; they need
 OBJ VRAM for the rendered numbers (see the core requests).
 
+## Goku's STATUS page (`status.asm`)
+
+As `native-status.js`: when Goku's STATUS page is up (`isGokuStatus`: Goku
+active, the menu's `$2C` = 3, no transition (`$EC`), character 0 (`$1808`,
+`$19FE`), ring 2 item 2 (`$1809`, `$1876`) and the page's window corners in
+the BG2 tilemap, the game's or this module's), its text and window layer
+(Mode 5 BG2: 2bpp, 16×8 hi-res cells, map `$5800`, tiles `$6000`) shows
+the browser's raster: name, level, HP, form, a double-width power level
+(90,000 / 150,000,000, ×0.9 with the weights), the weights lines, MANA and
+money, and ten stat rows with values and bounded two-tone meters (attack:
+combat's damage scale).
+
+- **Generator** (`snes/gen/ui-status.mjs`): the page as drawing operations
+  in `statusPixels()` order (text: colour, scale, alignment, a fixed string
+  or a dynamic one; meters), checked against `statusPixels()` on 13 stat
+  sets at build time; per band (cell row) the operations touching it; a
+  palette for each of the 64 colour sets. Palette 0 is the game's window
+  palette, palettes 4–7 (CGRAM 16–31, unused by the page's BG1 forest) are
+  the module's: black/dim/gold, dim/gold/red, black/dim/white,
+  black/gold/red. A set no palette holds (a value's outline over a meter)
+  takes the palette holding most of it; the others show as their nearest.
+- **Rows**: the browser paints its raster from scanline 1
+  (`getColor(sub, x, line)`), so screen row s shows raster row s + 1; BG
+  rows here hold page rows + 1 too. The native window tiles match that at
+  the tops but not at the bottoms (`statusPixels()` flips the ROM tiles
+  whole and its bottoms sit higher), so the windows are not the game's
+  either: the generator renders `statusPixels()`'
+  windows into 10 static cells (320 bytes) and a tilemap holding only them
+  (1,792 bytes), both extended data. Every text x is a multiple of 8 (the
+  generator checks it), so glyphs sit on byte boundaries.
+- **Phases** (menu frames: `C0:1E08`, in vblank after the menu's uploads):
+  0, a new page: CGRAM 16–31 saved (DMA from `$213B`), values read as
+  `gokuStats()` (weights: story query `EQUIP_WEIGHTED`; form: Goku's
+  module), strings with `toLocaleString` separators, meter fills.
+  1, takeover: the window cells and the tilemap in one vblank (2.1 KiB of
+  DMA, 12.4 lines) when at least 15 lines are left, in parts after eight
+  short ones. 2, build: band by band, every cell an operation touches is
+  composed in SRAM staging as a 16-pixel mask per colour and row (column 0:
+  drawn pixels): window pixels, then the band's operations in drawing order
+  (text: per glyph row the four font bytes over x−8…x+23 through four font
+  pointers give the glyph mask and the outline, (x−1, y) and (x+1, y+1) of
+  every glyph pixel; meters: spans); the colours present pick the palette
+  and the planes become two 2bpp tiles (unrolled, DB = the staging bank).
+  The next vblank uploads up to 8 cells (one DMA for their consecutive tile
+  pairs, then each tilemap word). No cell starts after line 160 of the next
+  frame (the longest takes about 44 lines; the menu's own work after the
+  hook about 15), so the menu keeps 60 Hz: about 24 lines per cell, 372
+  cells, the page complete in about 55 frames, drawn top to bottom. 3,
+  shown: palettes 4–7 rewritten every vblank; the first uploaded cell's
+  tilemap word is a canary that restarts the takeover if the menu redraws.
+- **Leaving**: a failed detection puts CGRAM 16–31 back; field and ring
+  frames end the session (the game reloads the field's colours; X, the
+  combat module's ring/back button, sends the page's cancel). The endings'
+  hide bit (`!UI_HIDE_ENDING`) keeps the page native.
+
 ## R fast-forward (`ff.asm`)
 
 Field frames: with R held (and L not), in a scene (`$D0` ≠ 0, `$E4` ≠ 0,
@@ -312,8 +375,15 @@ prose is pulsed without the choice check, as in the browser. Story flags
 and choices are untouched: the native interpreter runs every event command.
 Built out when the story module's reference copy is (`-DSTORY_FAST_FORWARD`).
 Not done: the browser also runs these frames up to 12× faster, and the
-cartridge has no instant-text mode yet (the native text engine's character
-timing has not been traced).
+cartridge has no instant-text mode. Traced: the native text engine (per
+frame from `C0:0140`, text pointer `$1D01-$1D03`) draws a glyph in
+sub-steps (`$A15D` through the handlers at `$1A0C`, entered from the
+glyph opcode `C0:111A`; in Mode 7, `$A162` = 1, they all run in one
+frame), then requests the NMI's upload of it (`$1D04` bit 1, `$1D06` /
+`$1D08` from `$9400`) and processes nothing until that is done, so prose
+prints at most one glyph per vblank. An instant mode would need a path
+that renders many glyphs into the window buffer and uploads whole rows;
+not attempted.
 
 ## Foreign savestates
 
@@ -372,17 +442,19 @@ byte boundary.
 
 | Resource | Use |
 | --- | --- |
-| Code/data `$AC:8000-` | `!CODE_UI`: `$AC:8000-$E900` used (about 26 KiB: code, 6 KiB messages, 2.5 KiB field atlas, 2.2 KiB world atlas, 2.6 KiB dial tiles, radar tables); about 5.8 KiB left |
-| WRAM `$7E:7E40-$7E:7EFF` | `!RAM_UI`: state, current message, cooldowns, band/radar state, scratch, `!ui_magic` (`module.asm`), fast-forward (`+$A6`), window placement (`+$AA`), scouter (`+$AE`); `+$B0`–`+$B7` free |
-| SRAM `$33:7C00-$33:7FFF` | staging: window/band rows (`+$000`), the radio's HDMA table, the moved window's colour records or moved natives (`+$200`), text words (`+$240`), radar trig cache (`+$2E8`), build state (`+$2F4`), radar key (`+$2FC`), bearing inputs (`+$2FE`, `+$308`), placement scroll table and the game's channel 0/1 tables (`+$312`, `+$322`), queue (`+$340`), band and sky HDMA colour blocks (`+$3C0`, `+$3DC`) |
+| Code/data `$AC:8000-` | `!CODE_UI`: `$AC:8000-$DF01` used (about 24 KiB: code, 5 KiB compressed messages, radar tables, the STATUS page's 3.8 KiB of code and 1.2 KiB of tables); about 8.2 KiB left |
+| Extended data | `$7D:0000-$7D:255F` (9.6 KiB, placed by the build): field glyph atlas, window tiles, world atlas, dial tiles, the STATUS page's window cells and tilemap |
+| WRAM `$7E:7E40-$7E:7EFF` | `!RAM_UI`: state, current message, cooldowns, band/radar state, scratch, `!ui_magic` (`module.asm`), fast-forward (`+$A6`), window placement (`+$AA`), scouter (`+$AE`), STATUS page (`+$B0`–`+$B7`); in menus the world and radio scratch words serve the STATUS composition |
+| SRAM `$33:7C00-$33:7FFF` | staging: window/band rows (`+$000`), the radio's HDMA table, the moved window's colour records or moved natives (`+$200`), text words (`+$240`), radar trig cache (`+$2E8`), build state (`+$2F4`), radar key (`+$2FC`), bearing inputs (`+$2FE`, `+$308`), placement scroll table and the game's channel 0/1 tables (`+$312`, `+$322`), queue (`+$340`), band and sky HDMA colour blocks (`+$3C0`, `+$3DC`); while the STATUS page is built (menus) `+$000`–`+$395` hold its strings, CGRAM copy, band records, cell masks and upload buffer (the radio and radar rebuild theirs) |
 | SRAM persistent | `!PERSIST_UI` = `!PERSIST_MISC+$80` (`$31:6380`, `$60` bytes) — **request** |
 | VRAM (field) | BG3 tiles `$110-$113`, `$122-$1BF` and rows 1–8 / 17–24 while the window shows |
+| VRAM (STATUS page) | BG2 tilemap `$5800-$5B7F`, tiles `$040-$053` (window cells) and `$054` up (composed cells, two per cell: up to about `$330`, VRAM `$6200-$7980`) |
 | VRAM (world flight) | core OBJ region B (`$7100-$78FF`: band map rows 19–26 and the world atlas, read as BG3) and region C (`$7900-$7FFF`: dial tiles), claimed while shown |
-| CGRAM | field: colours 9–11, 13–15 on lines 0–205 while the window shows (HDMA); world: 9–15 on lines 145–223 while the band shows (HDMA), OBJ palette 3 colours 1–6 for the dial |
+| CGRAM | field: colours 9–11, 13–15 on lines 0–205 while the window shows (HDMA); world: 9–15 on lines 145–223 while the band shows (HDMA), OBJ palette 3 colours 1–6 for the dial; STATUS page: 16–31 (BG2 palettes 4–7) |
 | HDMA | channel 5 in the field (`$2C` bit 5) for the radio; channels 0/1 (the game's window HDMA, reprogrammed, `$2C` bits 0–1) while a native window is moved; channel 6 in world flight (`$2C` bit 6) |
 | IRQ | world flight: `C0:8A4B` hijacked (6 bytes, `%orig4`-checked); V=152 / V=216 at H=160 while the band shows |
 | Patched code | `C0:8A4B` (world IRQ, 6 bytes), `C0:73F4` (ring option dispatch, 5 bytes), `C0:1926` (string reference pointer, 4 bytes), all `%orig`-checked |
-| OAM (world flight) | 12–14 module slots for the dial (first module slots) plus a slot per native moved behind it (at most 8) |
+| OAM (world flight) | 12–14 module slots for the dial (first module slots) plus a slot per native moved behind it (at most 8); none in menus (Goku's menu figures keep entries 120–127) |
 
 Persistent layout (`!PERSIST_UI`): `+$00` flags (first flight, power intro
 flight/super, scouter jokes, scouter switch), `+$01` warning rotation, `+$02` charge
@@ -405,8 +477,9 @@ scenes and compares with the browser's own code:
 | `nocrash` | production build from `.local/snes-checkpoints/after-arrival.mss` (a savestate of another build: stale UI WRAM) and from `preset__sword`, while Goku walks: a dispatched frame per video frame, no code running from low RAM, the UI block set up |
 | `mul` | the rotation's multiplier routine against exact integer products (47 cases) |
 | `ff` | from `potos.mss` (a NEW GAME, Goku made active), Luka's menu (`$134`): with R held the spear gift's prose is confirmed (`$CFC3` = 1) and the interpreter waits on the menu's choice (`story_api_window_has_choice`); without input the prose waits (`$D0` = `$83`) |
-| `place` | `preset__late` (Goku under the window: lower) and `potos.mss` (Luka's window covers nobody: native), event `$134` through the story API, each against a reference run with placement off: the moved window's 10,124 opaque pixels equal the native window's, the HUD (lines 199–223) and lines 7–50 are unchanged; every frame with a window up in the lower scene (1,957, through pages, Luka's menu, its choice box and the closing windows) is checked at the display level (a BG3VOFS HDMA write on line 7) unless its vblank ended late; switching placement off gives the game's channel setup back and the window returns; after the scene the session closes, the channels and `$2C` are the game's; potos frame-identical |
+| `place` | `preset__late` (Goku under the window: lower) and `potos.mss` (Luka's window covers nobody: native), event `$134` through the story API, each against a reference run with placement off: the moved window's 10,124 opaque pixels equal the native window's, the HUD (lines 199–223) and lines 7–50 are unchanged; every frame with a window up in the lower scene (1,952, through pages, Luka's menu, its choice box and the closing windows) is checked at the display level (a BG3VOFS HDMA write on line 7) unless its vblank ended late with no window channel running; switching placement off gives the game's channel setup back and the window returns; after the scene the session closes, the channels and `$2C` are the game's; potos frame-identical but for sprites (ambient creatures follow the RNG, which advances with idle CPU time) |
 | `scouter` | `barrier-audit__potos-probe` with Sylphid's powers: the ring opens on Goku's configuration ring, Targeting's title pointer is `ui_sc_title_off` (bank `$AC`), B switches it on (saved bit, the ring stays on the item, title now `ui_sc_title_on`), closing the ring scans once and King Kai says the joke for Goku's form and gi (`SCOUTER_GOLD` or `SCOUTER_GOKU_0/1`, saved); switching off and on again scans without repeating it |
+| `status` | `barrier-audit__potos-probe`, base form and Super Saiyan: Goku's STATUS page opened from the ring; BG2 decoded from VRAM and CGRAM equals `statusPixels()` of the same values (one row up, as the browser paints it) on every pixel but the conflict cells' (2 and 3 cells, 18 and 62 pixels as their nearest colour; shape always exact); the menu runs every frame while the page is built (53 and 56 frames); X leaves the page, the session ends and CGRAM 17–31 match a round trip with the page kept native (16 pulses) |
 | `radar` | `preset__flight` with two quest states, steering between samples: band panel pixels against `radioPixels()` of the browser's panel text, dial pixels against `dragon-radar.js` for the sampled sweep angle and blink phase, guide and blip against `radarBearing` (UI_TEST builds compute the far blip every frame); then the world module's state: a Y ki shot, an L+Y charge and the weak wave it releases hide the dial (but the first frame), which comes back after them |
 
 ## Core requests
@@ -430,5 +503,4 @@ scenes and compares with the browser's own code:
   `ui_field_nmi` first in `modules_field_nmi` (a few register writes,
   before Goku's cell DMA) is applied by `snes/tools/order-dispatch.mjs` on
   the integration merge.
-- **Optional FastROM**: the UI code runs in bank `$AC`; a FastROM build
-  (`CORE_FASTROM`) would cut its world-flight cost by roughly a fifth.
+- **FastROM** (done on main): the UI code runs in bank `$AC` at 3.58 MHz.

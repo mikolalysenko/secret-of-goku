@@ -9,6 +9,10 @@
 //             hidden frames) replayed frame by frame against createNativeRadio
 //   roll      saved charge attempts and xorshift state from a GAME FILE
 //   radar     world flight: band panel and dial against dragon-radar.js
+//   place     dialogue window placement above the HUD (native-window.js)
+//   scouter   Goku's Targeting ring item as the scouter switch, scan joke
+//   status    Goku's STATUS page: BG2 against native-status.js statusPixels
+//             (base form and Super Saiyan), menu frame rate, leaving it
 //   nocrash   production build from the arrival checkpoint (a savestate of
 //             another build) and from preset__sword: keeps running
 //   node      generator: every message encodes, atlas == radioPixels glyphs
@@ -340,6 +344,62 @@ const cases={
       if(q.scans2!==2)fails.push(`switching on again: ${q.scans2} scans (expected 2, no second joke)`);
     }
     report('scouter',!fails.length,[...fails,`titles ${q.title_off} -> ${q.title_on}, joke ${q.said-1} (form ${q.form}, weighted ${q.weighted}), scans ${q.scans}/${q.scans2}`]);
+  },
+
+  async status(){
+    // native-status.js: Goku's STATUS page. BG2 as the PPU shows it (from
+    // VRAM and CGRAM) against statusPixels() of the same values, base form
+    // and Super Saiyan. Cells whose colours no palette holds (the
+    // generator's conflict sets) may show a colour as its nearest one, never
+    // a different shape.
+    const eng=name=>import(pathToFileURL(resolve(repo,'engine',name)).href);
+    const {statusPixels}=await eng('native-status.js');
+    const {decodeText}=await eng('event-codec.js');
+    let rom=new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')));
+    if(rom.length%0x8000===512)rom=rom.slice(512);
+    const PAL=[[0,0x5250,0x739c],[0,0x294a,0x2fff],[0x294a,0x2fff,0x285f],[0,0x294a,0x739c],[0,0x2fff,0x285f]];
+    const CH='0123456789abcdefghijklmnopqrstuv';
+    const fails=[],notes=[];
+    for(const form of [0,1]){
+      const tag=form?'super saiyan':'base form';
+      const r=await mesenCase(`status-${form}`,{bundle:'barrier-audit__potos-probe',prelude:{SET_FORM:form},test:'status'});
+      const q=r.results??{};
+      if(r.code!==0||q.error){fails.push(`${tag}: mesen ${q.error??r.output.slice(-400)}`);continue;}
+      fails.push(...resultFails(q).map(f=>`${tag}: ${f}`));
+      if(q.built<0){fails.push(`${tag}: the page was not built (phases ${q.phases})`);continue;}
+      const s=q.stats,ssj=s.form?1:0,w=s.weighted?1:0;
+      if(ssj!==form)fails.push(`${tag}: Goku's form is ${s.form}`);
+      const stats={form:ssj?'SUPER SAIYAN':'SAIYAN',weighted:!!w,level:s.level,hp:s.hp,maxHp:s.maxHp,
+        power:[[90000,81000],[150000000,135000000]][ssj][w],strength:s.strength,agility:s.agility,
+        constitution:s.constitution,intelligence:s.intelligence,wisdom:s.wisdom,attack:[[4095,3686],[8191,7372]][ssj][w],
+        hit:s.hit,defense:s.defense,evade:s.evade,magicDefense:s.magicDefense,mana:s.mana,money:s.money};
+      // the browser paints the raster from scanline 1: BG row b shows its row b + 1
+      const page=statusPixels(rom,stats,decodeText(s.name.split(',').map(Number)));
+      const ref=new Uint16Array(512*224);ref.set(page.subarray(512));
+      const cg=q.cgram.split(' ').map(h=>parseInt(h,16));
+      const conflict=new Set();
+      for(let cy=0;cy<28;cy++)for(let cx=0;cx<32;cx++){
+        const set=new Set();
+        for(let y=cy*8;y<cy*8+8;y++)for(let x=cx*16;x<cx*16+16;x++)if(ref[y*512+x])set.add(ref[y*512+x]-1);
+        if(set.size&&!PAL.some(p=>[...set].every(c=>p.includes(c))))conflict.add(cy*32+cx);
+      }
+      let shape=0,colour=0,near=0,opaque=0;const where=[];
+      for(let y=0;y<224;y++)for(let x=0;x<512;x++){
+        const v=ref[y*512+x],ch=q.bg2[y*512+x],mine=ch==='.'?-1:cg[CH.indexOf(ch)];
+        if(v)opaque++;
+        const bad=!v!==(mine<0)?'shape':v&&mine!==v-1?(conflict.has((y>>3)*32+(x>>4))?'near':'colour'):null;
+        if(bad==='near')near++;
+        else if(bad){if(bad==='shape')shape++;else colour++;if(where.length<6)where.push(`${x},${y} ${v?(v-1).toString(16):'none'}/${mine<0?'none':mine.toString(16)}`);}
+      }
+      if(shape||colour)fails.push(`${tag}: ${shape} pixels differ in shape, ${colour} in colour from statusPixels (${where.join('; ')})`);
+      if(q.build_hooks<q.build_frames-2)fails.push(`${tag}: the menu ran ${q.build_hooks} frames of ${q.build_frames} while the page was built`);
+      if(q.phase_after!==0)fails.push(`${tag}: the session did not end after leaving (phase ${q.phase_after}, ring ${q.mode_after})`);
+      if(q.native_phase!==0)fails.push(`${tag}: the endings' hide bit did not keep the page native (phase ${q.native_phase})`);
+      // (CGRAM 16 pulses in the ring: compared from 17)
+      if(q.cgram_after.slice(5)!==q.cgram_native.slice(5))fails.push(`${tag}: CGRAM 17-31 after leaving ${q.cgram_after.slice(5)} (native page: ${q.cgram_native.slice(5)})`);
+      notes.push(`${tag}: built in ${q.built} frames (menu frames ${q.build_hooks}/${q.build_frames}), ${opaque} opaque pixels as statusPixels, ${conflict.size} conflict cells (${near} pixels as their nearest colour)`);
+    }
+    report('status',!fails.length,[...fails,...notes]);
   },
 
   async radar(){

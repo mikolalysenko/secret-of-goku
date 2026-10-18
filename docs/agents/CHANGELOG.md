@@ -4,6 +4,14 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## 2026-10-17 — SNES cartridge: Goku's STATUS page, window placement, scouter switch (UI stream)
+
+- Goku's STATUS page shows the browser's raster on the cartridge: name, level, HP, form, the double-width power level, the weights lines, MANA and money, and ten stat rows with bounded two-tone meters. The page's text and window layer is composed cell by cell from the same drawing operations as `native-status.js`, which the generator checks against `statusPixels()` at build time. It is built top to bottom in about 55 frames while the menu keeps 60 Hz. Like the browser, which paints its raster from scanline 1, it sits one row above the raster's coordinates, and its window art comes from the browser's windows rather than the game's tiles. See [snes-port/ui.md](snes-port/ui.md#gokus-status-page-statusasm).
+- Dialogue windows move above the HUD when the first one would cover more faces where it is (`window-placement.js`). With the core's new HDMAEN guard, closing windows stay moved too: all 1,952 window frames of the test scene.
+- Goku's Targeting ring item is the scouter switch ("Scouter: ON/OFF"), with the scan sound and King Kai's joke for the form; the power-level readouts are not drawn yet.
+- The UI's DMA-only tile sets (radio glyphs, window tiles, world atlas, radar dial) and the STATUS page's window cells and tilemap live in extended data. Messages are dictionary-compressed, and bank `$AC` has 8.2 KiB left.
+- Validation: `snes/test/ui/run.mjs`, 11 Mesen and node cases. STATUS (base form and Super Saiyan): BG2 from VRAM equals `statusPixels()` on every pixel except 2–3 cells per page that need a fourth colour, which shows as its nearest. Open: the scouter readouts (they need OBJ VRAM) and instant text for R fast-forward (the native engine prints at most one glyph per vblank).
+
 ## 2026-10-17 — SNES cartridge: 64 Mbit ExHiROM, unflashed Goku, fresh cartridges (integration)
 
 - The cartridge is now 64 Mbit ExHiROM (the mapping of Tales of Phantasia). The first 4 MiB is unchanged apart from the header, and the second 4 MiB mirrors it. Generators can place up to 1984 KiB of DMA sources and bulk tables in banks `$40–$7D` through `xdata(name, bytes)`, which frees room in the fast banks for the remaining set pieces. Save RAM stays where the original game keeps it, because bsnes, Mesen2, snes9x and the FXPak map ExHiROM save RAM like HiROM. See [snes-rom.md](snes-rom.md#extended-data-exhirom).

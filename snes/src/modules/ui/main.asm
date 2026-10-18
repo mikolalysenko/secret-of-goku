@@ -92,6 +92,7 @@ ui_reset_session:
 ; Field frame (also dialogue, events, Mode 7 arenas).
 ui_field_frame:
 	JSR ui_ram_check
+	JSR ui_status_leave
 	INC.w !ui_frame&$FFFF
 	JSR ui_fast_forward
 	LDA.w !ui_claims&$FFFF            ; back from world flight
@@ -139,11 +140,15 @@ ui_world_nmi:
 ; Ring menus: the field loop is paused; the window hides (never over a ring).
 ui_ring_frame:
 	JSR ui_ram_check
+	JSR ui_status_leave
 	JSR ui_window_leave_field
 	RTL
 
-; Full-screen menus (status page).
+; Full-screen menus: Goku's STATUS page (in vblank after the menu's
+; uploads).
 ui_menu_frame:
+	JSR ui_ram_check
+	JSR ui_status_frame
 	RTL
 
 ; ---------------------------------------------------------------------------
