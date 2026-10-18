@@ -134,54 +134,85 @@ vg_slot_live:
 vg_safe:
 	PHX
 	PHY
-	STA.l !vs_s6
-	TXA
-	STA.l !vs_s7
-	LDA.l !vs_s6
-	CMP.w #8
-	BCC .no
+	TAY                           ; Y = x, X = y
+	CPY.w #8
+	BCC .out
 	LDA $C0
 	SEC
 	SBC.w #8
-	CMP.l !vs_s6
-	BCC .no
-	LDA.l !vs_s7
-	CMP.w #8
-	BCC .no
+	STA !vg_t0
+	CPY !vg_t0
+	BEQ +
+	BCS .out                      ; x > width - 8
++	CPX.w #8
+	BCC .out
 	LDA $C2
 	SEC
 	SBC.w #8
-	CMP.l !vs_s7
-	BCC .no
-	LDX.w #8*2                    ; 9 samples, (dx, dy) word pairs
-.sample
-	LDA.l !vs_s7
-	CLC
-	ADC.l vg_safe_dy,X
-	AND.w #$FFF0
-	ASL : ASL : ASL               ; (y >> 4) * 128
 	STA !vg_t0
-	LDA.l !vs_s6
+	CPX !vg_t0
+	BEQ .cells
+	BCC .cells                    ; y <= height - 8
+.out
+	PLY
+	PLX
 	CLC
-	ADC.l vg_safe_dx,X
-	LSR : LSR : LSR : LSR
+	RTS
+.cells
+	; The nine samples (x-6, x, x+6) x (y-4, y, y+4) lie in at most two
+	; columns and two rows of 16 px cells, and all four corners are among
+	; them: the footprint is safe when those cells are floor (70). A word
+	; read gives a row's two cells; the second column counts when x-6 is 4+
+	; px into its cell, the second row when y-4 is 8+ px into its cell.
+	TXA
+	SEC
+	SBC.w #4
+	PHA                           ; y - 4
+	AND.w #$FFF0
+	ASL
+	ASL
+	ASL
+	STA !vg_t0                    ; r0 * 128
+	TYA
+	SEC
+	SBC.w #6
+	PHA                           ; x - 6
+	LSR
+	LSR
+	LSR
+	LSR
 	CLC
 	ADC !vg_t0
-	PHX
-	TAX
+	TAX                           ; (r0, c0)
+	LDA $01,S
+	AND.w #$000F
+	CMP.w #4
+	LDA.w #$00FF
+	BCC +
+	LDA.w #$FFFF
++	STA !vg_t0                    ; the columns that count
 	LDA.l $7F0000,X
-	PLX
-	AND.w #$00FF
-	CMP.w #70
-	BNE .no
-	DEX
-	DEX
-	BPL .sample
+	EOR.w #$4646
+	AND !vg_t0
+	BNE .no2
+	LDA $03,S
+	AND.w #$000F
+	CMP.w #8
+	BCC .yes
+	LDA.l $7F0000+128,X           ; (r1, c0)
+	EOR.w #$4646
+	AND !vg_t0
+	BNE .no2
+.yes
+	PLA
+	PLA
 	PLY
 	PLX
 	SEC
 	RTS
-.no
+.no2
+	PLA
+	PLA
 	PLY
 	PLX
 	CLC
@@ -429,6 +460,8 @@ vg_start:
 
 vg_clear_shots:
 	SEP #$20
+	LDA.b #$00
+	STA.l !vs_live_shots
 	LDX.w #(!VS_SHOTS-1)*8
 -	LDA.b #$FF
 	STA.l !vs_shots+7,X
@@ -443,6 +476,10 @@ vg_clear_shots:
 	RTS
 
 vg_clear_rocks:
+	SEP #$20
+	LDA.b #$00
+	STA.l !vs_live_rocks
+	REP #$20
 	LDX.w #(!VS_ROCKS-1)*6
 -	LDA.w #$FFFF
 	STA.l !vs_rocks+4,X

@@ -117,6 +117,14 @@ assert !RAM_VEGETA == $7E0000|!VG, "!VG must match !RAM_VEGETA"
 !vs_gb_cap      #= !VS+$0E8  ; word
 !vs_hit_amount  #= !VS+$0EA  ; word: vg_hit's arguments (amount, flags)
 !vs_hit_flags   #= !VS+$0EC  ; word
+; nonzero while a list may hold live records (set on add, recounted by
+; its update): empty lists are skipped by the draw and the update
+!vs_live_shots  #= !VS+$0EE  ; byte
+!vs_live_bursts #= !VS+$0EF  ; byte
+!vs_live_rocks  #= !VS+$0F0  ; byte
+!vs_live_echoes #= !VS+$0F1  ; byte
+!vs_step_inc    #= !VS+$0FC  ; word: vg_step_dir's |dx| + |dy|
+!vs_step_back   #= !VS+$0FE  ; byte: vg_step_dir's backstep
 !vs_clash       #= !VS+$100  ; clash record (clash.asm)
 ; drawing scratch (sprite.asm)
 !vs_draw_frame  #= !VS+$180  ; word

@@ -103,6 +103,7 @@ async function fightCase(name,{script,hits,bundle,beam,pilotBeam,shots,fxLog,pro
   const romPath=buildTestRom();
   const extra=beam?{V_BEAM_AGE:beam.age,V_BEAM_LEN:beam.len??200,V_BEAM_HALF:beam.half??12,...(beam.mash?{V_MASH:beam.mash}:{}),...(beam.super?{V_BEAM_SUPER:'true'}:{})}:{};
   if(pilotBeam)extra.V_PILOT_BEAM='true';
+  if(pilotBeam?.holdHp)extra.V_PILOT_HOLD_HP=pilotBeam.holdHp;
   if(shots)extra.V_SHOTS='true';
   if(fxLog)extra.V_FX_LOG='true';
   if(profile)extra.V_PROFILE=profile(romPath);
@@ -162,7 +163,7 @@ const cases={
   // beam record (vb_combat_beam) locks the Galick Gun; B mashing wins.
   async 'combat-clash'(){
     return fightCase('combat-clash',{
-      script:[[3600,'pilot']],hits:[],pilotBeam:true,shots:true,
+      script:[[3600,'pilot']],hits:[],pilotBeam:{holdHp:12000},shots:true,
       check:({events})=>{
         const f=[];
         if(!events.some(e=>e.kind==='say'&&/Push back/.test(e.text)))f.push('no clash started from a real Kamehameha');

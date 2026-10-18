@@ -64,6 +64,13 @@ function V.pilot()
   P.beam = 'idle'
   local adx, ady = math.abs(dx), math.abs(dy)
   local along, across = math.max(adx, ady), math.min(adx, ady)
+  -- V_PILOT_HOLD_HP: below that HP (base form) stop punching (two punches
+  -- in 100 frames provoke counters, which keep his cycle from the beam)
+  -- and wait about 80 px away for his wave
+  if V_PILOT_HOLD_HP and H.r8(0x7EDBC4) == 0 and H.r16(0x7EDBC6) <= V_PILOT_HOLD_HP then
+    if along < 80 then return towards(-dx, -dy) end
+    return ''
+  end
   if along <= 34 and across <= 12 then
     if P.t % 12 == 0 then return face end
     if P.t % 12 == 2 then return 'b' end

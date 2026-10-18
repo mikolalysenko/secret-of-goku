@@ -271,8 +271,25 @@ vg_strike_pose:
 
 ; Unsigned A / X -> A (quotient), Y = remainder. X != 0. Small values.
 vg_udiv16:
+	CPX.w #256
+	BCS .wide
+	STA.l $004204                 ; 8-bit divisor: the CPU's divider
+	SEP #$20
+	TXA
+	STA.l $004206
+	REP #$20
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	LDA.l $004216
+	TAY
+	LDA.l $004214
+	RTS
+.wide
 	STX !vg_t1
-	LDY.w #$0000
 	STA !vg_t0
 	LDA.w #$0000
 	LDX.w #16
@@ -286,6 +303,7 @@ vg_udiv16:
 	BNE -
 	TAY
 	LDA !vg_t0
+	LDX !vg_t1
 	RTS
 ; Unsigned A % X -> A.
 vg_umod16:
@@ -345,91 +363,67 @@ vg_camera:
 ; byte bits (palette/priority/flip), !vs_draw_front = 1 front, 0 behind.
 ; Uses !vs_draw_* scratch in SRAM.
 vg_draw_frame:
-	STA.l !vs_draw_frame
+	AND.w #$001F
+	STA !vg_t3                    ; frame
 	TXA
 	SEC
 	SBC.l !vs_cam_x
-	STA.l !vs_draw_x               ; anchor screen x
+	STA !vg_t0                    ; anchor screen x
 	TYA
 	SEC
 	SBC.l !vs_cam_y
-	DEC                            ; OBJ rows show one line below their Y
-	STA.l !vs_draw_y
-	; frame table entry: count, data offset, offsets pointer
-	LDA.l !vs_draw_frame
-	AND.w #$001F
+	DEC                           ; OBJ rows show one line below their Y
+	STA !vg_t1                    ; anchor OAM y
+	LDA.l !vs_draw_attr
+	STA !vg_t2                    ; palette, priority, flip ($4000)
+	AND.w #$4000
+	BEQ +
+	LDA !vg_t0                    ; flipped: x = anchor - (dx + 16)
+	SEC
+	SBC.w #16
 	STA !vg_t0
-	ASL : ASL
++	STZ.w !core_spr_size&$FFFF
+	; frame table entry: count, data offset, offsets pointer
+	LDA !vg_t3
+	ASL
+	ASL
 	CLC
-	ADC !vg_t0                     ; *5
+	ADC !vg_t3                    ; * 5
 	TAX
 	LDA.l vegeta_frame_table,X
 	AND.w #$00FF
-	STA.l !vs_draw_n
+	BEQ .done
+	TAY                           ; blocks left
 	LDA.l vegeta_frame_table+3,X
-	STA.l !vs_draw_ptr
-	LDA.w #$0000
-	STA.l !vs_draw_i
+	TAX                           ; dx, dy (signed bytes) at !DATA_VEGETA + X
+	LDA.l !vs_draw_tile
+	STA !vg_t3                    ; tile of this block
 .loop
-	LDA.l !vs_draw_i
-	CMP.l !vs_draw_n
-	BCC +
-	RTS
-+	; offsets dx, dy (signed bytes) at bank(vegeta_frame_table):ptr + 2i
-	ASL
+	LDA.l !DATA_VEGETA+1,X
+	AND.w #$00FF
+	EOR.w #$0080
+	SEC
+	SBC.w #$0080
 	CLC
-	ADC.l !vs_draw_ptr
-	TAX
-	LDA.l !DATA_VEGETA,X
-	PHA
-	AND.w #$00FF
-	CMP.w #$0080
-	BCC +
-	ORA.w #$FF00
-+	STA !vg_t0                     ; dx
-	PLA
-	XBA
-	AND.w #$00FF
-	CMP.w #$0080
-	BCC +
-	ORA.w #$FF00
-+	CLC
-	ADC.l !vs_draw_y
+	ADC !vg_t1
 	STA.w !core_spr_y&$FFFF
-	; flipped: x = -(dx + 16)
-	LDA.l !vs_draw_attr
-	AND.w #$4000
-	BEQ .noflip
-	LDA !vg_t0
-	CLC
-	ADC.w #16
+	LDA.l !DATA_VEGETA,X
+	AND.w #$00FF
+	EOR.w #$0080
+	SEC
+	SBC.w #$0080
+	BIT !vg_t2                    ; V = flip
+	BVC +
 	EOR.w #$FFFF
 	INC
-	STA !vg_t0
-.noflip
-	LDA !vg_t0
-	CLC
-	ADC.l !vs_draw_x
++	CLC
+	ADC !vg_t0
 	STA.w !core_spr_x&$FFFF
-	; tile: first + block index * 2 (4 blocks per 8-tile run; block 4 of
-	; the echo continues at !VGB_E4_TILE)
-	LDA.l !vs_draw_i
-	ASL
-	CLC
-	ADC.l !vs_draw_tile
-	STA !vg_t0
-	LDA.l !vs_draw_tile
-	CMP.w #!VGB_E_TILE
-	BNE +
-	LDA.l !vs_draw_i
-	CMP.w #4
-	BNE +
-	LDA.w #!VGB_E4_TILE
-	STA !vg_t0
-+	LDA !vg_t0
-	ORA.l !vs_draw_attr
+	LDA !vg_t3
+	ORA !vg_t2
 	STA.w !core_spr_tile&$FFFF
-	STZ.w !core_spr_size&$FFFF
+	PHX
+	PHY
 	LDA.l !vs_draw_front
 	BEQ .back
 	JSL core_oam_add_front
@@ -437,10 +431,22 @@ vg_draw_frame:
 .back
 	JSL core_oam_add
 .next
-	LDA.l !vs_draw_i
+	PLY
+	PLX
+	INX
+	INX
+	; the next block's tiles (the echo's fifth block is at !VGB_E4_TILE)
+	LDA !vg_t3
 	INC
-	STA.l !vs_draw_i
-	JMP .loop
+	INC
+	CMP.w #!VGB_E_TILE+8
+	BNE +
+	LDA.w #!VGB_E4_TILE
++	STA !vg_t3
+	DEY
+	BNE .loop
+.done
+	RTS
 
 ; ---------------------------------------------------------------------------
 ; Vegeta's body this frame: pick the buffer holding the pose (or request

@@ -164,6 +164,35 @@ vg_hero_dist2:
 vg_step_dir:
 	TYA
 	STA.l !vs_s3
+	; travel per pixel |dx| + |dy|, backstep = dx*fx + dy*fy <= 0 (facing
+	; vector): the same for every pixel of the step
+	LDA.l !vs_s0
+	JSR vg_abs
+	STA !vg_t3
+	LDA.l !vs_s1
+	JSR vg_abs
+	CLC
+	ADC !vg_t3
+	STA.l !vs_step_inc
+	LDA !vg_facing
+	AND.w #$0003
+	ASL
+	TAX
+	LDA.l vg_dir_dx,X
+	JSR vg_mul_sign_s0
+	STA !vg_t3
+	LDA.l vg_dir_dy,X
+	JSR vg_mul_sign_s1
+	CLC
+	ADC !vg_t3
+	SEP #$20
+	BEQ +
+	BMI +
+	LDA.b #$00
+	BRA ++
++	LDA.b #$01
+++	STA.l !vs_step_back
+	REP #$20
 .pixel
 	LDA.l !vs_s3
 	BNE +
@@ -181,20 +210,12 @@ vg_step_dir:
 	JSR vg_safe
 	BCS +
 	RTS                           ; C clear: blocked
-+	STA !vg_t3                    ; (vg_safe preserves X; recompute x)
-	LDA !vg_x
++	LDA !vg_x                     ; (vg_safe preserves X = y)
 	CLC
 	ADC.l !vs_s0
 	STA !vg_x
 	STX !vg_y
-	; travel += |dx| + |dy|; movingUntil = age + 3
-	LDA.l !vs_s0
-	JSR vg_abs
-	STA !vg_t3
-	LDA.l !vs_s1
-	JSR vg_abs
-	CLC
-	ADC !vg_t3
+	LDA.l !vs_step_inc
 	CLC
 	ADC !vg_travel
 	STA !vg_travel
@@ -202,25 +223,11 @@ vg_step_dir:
 	CLC
 	ADC.w #3
 	STA !vg_moving_until
-	; backstep = dx*fx + dy*fy <= 0 (facing vector)
-	LDA !vg_facing
-	AND.w #$0003
-	ASL
-	TAX
-	LDA.l vg_dir_dx,X
-	JSR vg_mul_sign_s0
-	STA !vg_t3
-	LDA.l vg_dir_dy,X
-	JSR vg_mul_sign_s1
-	CLC
-	ADC !vg_t3
 	SEP #$20
-	STZ !vg_backstep
-	BEQ +
-	BPL ++
-+	INC !vg_backstep
-++	REP #$20
-	JMP .pixel
+	LDA.l !vs_step_back
+	STA !vg_backstep
+	REP #$20
+	BRA .pixel
 
 ; A (-1/0/1) * !vs_s0 (or !vs_s1) for small values.
 vg_mul_sign_s0:
@@ -352,6 +359,10 @@ vg_burst:
 	STA.l !vs_bursts+2,X
 	LDA.w #$0000
 	STA.l !vs_bursts+4,X
+	SEP #$20
+	LDA.b #$01
+	STA.l !vs_live_bursts
+	REP #$20
 	JSR vb_burst_spawn             ; X = record offset
 .sound
 	PLY
@@ -364,6 +375,11 @@ vg_burst:
 +	RTS
 
 vg_age_bursts:
+	LDA.l !vs_live_bursts
+	AND.w #$00FF
+	BNE +
+	RTS
++	LDY.w #0                      ; still live
 	LDX.w #0
 .loop
 	LDA.l !vs_bursts+4,X
@@ -373,7 +389,9 @@ vg_age_bursts:
 	CMP.w #28
 	BCC +
 	LDA.w #$FFFF
-+	STA.l !vs_bursts+4,X
+	BRA ++
++	INY
+++	STA.l !vs_bursts+4,X
 .next
 	TXA
 	CLC
@@ -381,9 +399,18 @@ vg_age_bursts:
 	TAX
 	CPX.w #!VS_BURSTS*6
 	BCC .loop
+	TYA
+	SEP #$20
+	STA.l !vs_live_bursts
+	REP #$20
 	RTS
 
 vg_age_echoes:
+	LDA.l !vs_live_echoes
+	AND.w #$00FF
+	BNE +
+	RTS
++	LDY.w #0                      ; still live
 	LDX.w #0
 .loop
 	LDA.l !vs_echoes+4,X
@@ -393,7 +420,9 @@ vg_age_echoes:
 	CMP.w #18
 	BCC +
 	LDA.w #$FFFF
-+	STA.l !vs_echoes+4,X
+	BRA ++
++	INY
+++	STA.l !vs_echoes+4,X
 .next
 	TXA
 	CLC
@@ -401,6 +430,10 @@ vg_age_echoes:
 	TAX
 	CPX.w #!VS_ECHOES*8
 	BCC .loop
+	TYA
+	SEP #$20
+	STA.l !vs_live_echoes
+	REP #$20
 	RTS
 
 ; ---------------------------------------------------------------------------
@@ -425,6 +458,10 @@ vg_teleport:
 	STA.l !vs_echoes+2,X
 	LDA.w #$0000
 	STA.l !vs_echoes+4,X
+	SEP #$20
+	LDA.b #$01
+	STA.l !vs_live_echoes
+	REP #$20
 	LDA !vg_tier
 	AND.w #$0001
 	ASL : ASL : ASL
@@ -483,12 +520,6 @@ vg_pick_spot:
 	CLC
 	ADC.l $7EE004
 	STA.l !vs_s1                  ; y
-	TAX
-	LDA.l !vs_s0
-	JSR vg_safe
-	BCS +
-	JMP .skip
-+
 	; d = |x - s.x| + |y - s.y|
 	LDA.l !vs_s0
 	SEC
@@ -502,7 +533,55 @@ vg_pick_spot:
 	CLC
 	ADC !vg_t3
 	STA.l !vs_s2
+	; framed: x - camX in [28, 228], y - camY in [104, 184]
+	LDA.w #$0000
+	STA.l !vs_s3
+	LDA.l !vs_s0
+	SEC
+	SBC.l !vs_p_cx
+	SEC
+	SBC.w #28
+	CMP.w #228-28+1
+	BCS +
+	LDA.l !vs_s1
+	SEC
+	SBC.l !vs_p_cy
+	SEC
+	SBC.w #104
+	CMP.w #184-104+1
+	BCS +
+	LDA.w #$0001
+	STA.l !vs_s3
++	; Only a spot that would be chosen needs the footprint test (the
+	; browser keeps the first of the farthest: a later spot must be
+	; strictly farther than the best of all, or a framed one than the
+	; best framed one).
 	LDA.l !vs_p_ad
+	CMP.w #$FFFF
+	BEQ .test
+	LDA.l !vs_s2
+	CMP.l !vs_p_ad
+	BEQ +
+	BCS .test
++	LDA.l !vs_s3
+	BNE +
+	JMP .skip
++	LDA.l !vs_p_fd
+	CMP.w #$FFFF
+	BEQ .test
+	LDA.l !vs_s2
+	CMP.l !vs_p_fd
+	BEQ +
+	BCS .test
++	JMP .skip
+.test
+	LDA.l !vs_s1
+	TAX
+	LDA.l !vs_s0
+	JSR vg_safe
+	BCS +
+	JMP .skip
++	LDA.l !vs_p_ad
 	CMP.w #$FFFF
 	BEQ .takeAny
 	LDA.l !vs_s2
@@ -517,21 +596,8 @@ vg_pick_spot:
 	LDA.l !vs_s1
 	STA.l !vs_p_ay
 .framed
-	; x - camX in [28, 228], y - camY in [104, 184]
-	LDA.l !vs_s0
-	SEC
-	SBC.l !vs_p_cx
-	SEC
-	SBC.w #28
-	CMP.w #228-28+1
-	BCS .skip
-	LDA.l !vs_s1
-	SEC
-	SBC.l !vs_p_cy
-	SEC
-	SBC.w #104
-	CMP.w #184-104+1
-	BCS .skip
+	LDA.l !vs_s3
+	BEQ .skip
 	LDA.l !vs_p_fd
 	CMP.w #$FFFF
 	BEQ .takeFramed
@@ -739,10 +805,18 @@ vg_add_rock:
 	STA.l !vs_rocks+2,X
 	LDA.w #$0000
 	STA.l !vs_rocks+4,X
+	SEP #$20
+	LDA.b #$01
+	STA.l !vs_live_rocks
+	REP #$20
 	RTS
 
 vg_update_rocks:
-	LDX.w #0
+	LDA.l !vs_live_rocks
+	AND.w #$00FF
+	BNE +
+	RTS
++	LDX.w #0
 .loop
 	LDA.l !vs_rocks+4,X
 	CMP.w #$FFFF
@@ -788,12 +862,30 @@ vg_update_rocks:
 	TAX
 	CPX.w #!VS_ROCKS*6
 	BCC .loop
-	RTS
+	; still any live?
+	LDX.w #(!VS_ROCKS-1)*6
+-	LDA.l !vs_rocks+4,X
+	CMP.w #$FFFF
+	BNE +
+	TXA
+	SEC
+	SBC.w #6
+	TAX
+	BPL -
+	SEP #$20
+	LDA.b #$00
+	STA.l !vs_live_rocks
+	REP #$20
++	RTS
 
 ; ---------------------------------------------------------------------------
 ; Volley shots: whole-pixel steps in one of eight directions, no homing.
 vg_update_shots:
-	LDX.w #0
+	LDA.l !vs_live_shots
+	AND.w #$00FF
+	BNE +
+	RTS
++	LDX.w #0
 .loop
 	SEP #$20
 	LDA.l !vs_shots+7,X
@@ -913,6 +1005,21 @@ vg_update_shots:
 	CPX.w #!VS_SHOTS*8
 	BCS +
 	JMP .loop
++	; still any live?
+	LDX.w #(!VS_SHOTS-1)*8
+-	LDA.l !vs_shots+7,X
+	AND.w #$00FF
+	CMP.w #$00FF
+	BNE +
+	TXA
+	SEC
+	SBC.w #8
+	TAX
+	BPL -
+	SEP #$20
+	LDA.b #$00
+	STA.l !vs_live_shots
+	REP #$20
 +	RTS
 
 ; sweptDistance(h.x, h.y-12, old, new) < 12 for shot X (old in !vs_s0/s1).

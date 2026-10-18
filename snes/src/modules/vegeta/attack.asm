@@ -311,6 +311,8 @@ vg_fire_shot:
 +	STA.l !vs_shots+6,X
 	LDA.b #0
 	STA.l !vs_shots+7,X
+	LDA.b #$01
+	STA.l !vs_live_shots
 	REP #$20
 	LDA.w #!VSFX_BLAST
 	JMP vb_sfx

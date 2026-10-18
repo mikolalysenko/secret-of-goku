@@ -226,11 +226,13 @@ requested `combat_api_beam`).
 
 | Case | Checks |
 | --- | --- |
-| `fight` | test ROM (`-DVEGETA_TEST`): door `304` with the full party, the trial from the walk-on event to the draw; scripted walking and four mailbox hits (two melee → counter, an overwhelming blow → transformation, another → the draw). Every tick is recorded (game RAM it reads, its state) and replayed through the browser's own `engine/joch-trial.js` (`replay.mjs`): **2,994 / 2,994 ticks agree** on phase, HP, position, facing, timers, action (kind, age, direction, origin, contact, beam length/width), shots, bursts, rocks, echoes and flags |
-| `clash-win` | the same with a Kamehameha stand-in (the test record `!vs_tb_*` replaces combat's beam) opposing the Galick Gun: lock, focus, struggle with B taps 6 frames apart (38 taps), release won at 96.6%, Vegeta loses 10,880 HP (34%); a second clash on his next beam. Replayed with the clash internals (pressure and shown in 1/500000, taps, last tap, phase, result): **3,284 / 3,284 ticks agree** |
-| `clash-lose` | no mashing: Vegeta's drain and surges win at 3.8%, Goku takes 230: **2,969 / 2,969 ticks agree** |
-| `combat` | the test ROM with **combat's real input**: `fight.lua`'s pilot walks Goku up to Vegeta and punches (B) as a player would; the punches reach him through the slot-3 window and combat's damage hook (12 hits, the kick finisher, two counters), his attacks wear Goku down to the rest route (`025`). Each hit is logged on the cartridge (amount, melee, combat's beam record) and replayed through `trial.hit()` with the beam it saw: **4,554 / 4,554 ticks agree**, including actor slot 3 after every frame (inactive, position, HP and maximum, nothing pending, species) |
-| `combat-clash` | the same pilot also steps back along his lane, charges a Kamehameha (L+Y) during each Galick Gun windup and releases when his wave is out: a **real clash** from combat's beam record ("Push back, Kakarot!"), B mashing wins, the detonation takes 34% and he transforms; Final Flash, the rest route. **3,925 / 3,925 ticks agree** |
+| `fight` | test ROM (`-DVEGETA_TEST`): door `304` with the full party, the trial from the walk-on event to the draw; scripted walking and four mailbox hits (two melee → counter, an overwhelming blow → transformation, another → the draw). Every tick is recorded (game RAM it reads, its state) and replayed through the browser's own `engine/joch-trial.js` (`replay.mjs`): **2,947 / 2,947 ticks agree** on phase, HP, position, facing, timers, action (kind, age, direction, origin, contact, beam length/width), shots, bursts, rocks, echoes and flags |
+| `clash-win` | the same with a Kamehameha stand-in (the test record `!vs_tb_*` replaces combat's beam) opposing the Galick Gun: lock, focus, struggle with B taps 6 frames apart (38 taps), release won at 96.6%, Vegeta loses 10,880 HP (34%); a second clash on his next beam. Replayed with the clash internals (pressure and shown in 1/500000, taps, last tap, phase, result): **3,044 / 3,044 ticks agree** |
+| `clash-lose` | no mashing: Vegeta's drain and surges win at 3.8%, Goku takes 230: **2,720 / 2,720 ticks agree** |
+| `combat` | the test ROM with **combat's real input**: `fight.lua`'s pilot walks Goku up to Vegeta and punches (B) as a player would; the punches reach him through the slot-3 window and combat's damage hook (12 hits, the kick finisher, two counters), his attacks wear Goku down to the rest route (`025`). Each hit is logged on the cartridge (amount, melee, combat's beam record) and replayed through `trial.hit()` with the beam it saw: **4,575 / 4,575 ticks agree**, including actor slot 3 after every frame (inactive, position, HP and maximum, nothing pending, species) |
+| `combat-clash` | the same pilot, which stops punching below 12,000 HP (two punches in 100 frames provoke counters, which keep his cycle from the beam), steps back along his lane at each Galick Gun windup, charges a Kamehameha (L+Y) and releases when his wave is out: a **real clash** from combat's beam record ("Push back, Kakarot!"), B mashing wins, the detonation takes 34% and he transforms; Final Flash, the rest route. **3,806 / 3,806 ticks agree**; screenshots of the moments (`V_SHOTS`) |
+| `waves` | pictures of the Galick Gun and the Final Flash (an overwhelming blow at 700 frames) with fx's polygon state per frame (`$2C`, request/programmed) |
+| `budget` | the same match with the scanline at chosen labels each frame (`VEGETA_PROFILE=label,...`, default the field frame's parts): medians/p90/max per part for beam frames, other attacks and the rest, and the lag frames |
 | `chamber` | door `304` from a Potos state (`graphics-audit__party`, `CF3F`=5): VRAM tiles, CGRAM 32-127, BG1 metatiles 70/11, BG2 metatiles and grid equal the generator's outputs; BG1 grid equals `chamberLayout()`; four views (entrance, the steps, mid-room after scrolling, the east border) match the cartridge picture 100% and the browser's floor/seam/border colours 100% (pavilion views 84-86% of all pixels, the rest is palette quantisation of the 1,275-colour pavilion art); the pavilion's front wall and the east border block Goku |
 
 `replay.mjs` hosts the browser module with the recorded RAM: `canFly` is the
@@ -241,6 +243,33 @@ stand-in), `cancelCombat()` drops it, radio/sounds/story requests are
 collected; logged hits (combat's or the mailbox's, a ring of four per frame)
 are applied after the tick they follow, the story hook before the tick it
 precedes, as on the cartridge.
+
+## CPU budget
+
+Measured with `budget` (FastROM, test ROM; scanlines of the 262-line frame):
+
+| Part | Rest of the fight | Attacks | His beams |
+| --- | --- | --- | --- |
+| `vegeta_field_frame` draw | 15 | 15 | 29 |
+| tick | 4 (p90 11, max 37) | 7 (p90 21, max 29) | 4 (p90 9) |
+| fx (`fx_frame`) | 3 | 3 | 32 (p90 69, max 90: the wave polygon being built) |
+| native logic and other modules | 76-128 (heavier every fifth frame) | | |
+
+Without a trial the module costs about one line a frame (the field frame's
+short path, the two combat-window hooks and the NMI check).
+
+The draw's floor is Vegeta's five OBJ blocks through `core_oam_add_front`
+(~10 lines; the core API costs ~230 cycles a sprite) and each fx request
+(~2 lines per `fx_draw`: the charge's orb and four sparks ~11 lines, the
+aura ~4 lines though fx draws no aura yet). Optimised so far: hardware
+multiply/divide in `math.asm` (`vg_mul8/16`, `vg_div32`, `vg_udiv16`),
+the footprint test as two word reads of the grid, pickSpot testing only
+spots that could be chosen, per-step constants out of the pixel loop,
+skipped scans of empty shot/burst/rock/echo lists, the sprite loop on
+WRAM. During his waves the field still lags on heavy frames (34 of 340
+beam frames): the polygon build (fx) plus the native load leave little
+room; outside the waves lag frames are the native ones (dialogue, the
+door).
 
 ## Status
 
@@ -334,6 +363,12 @@ record the tick saw at `$32:6290`.
   commands; the browser captured 240 frames after the travel, before them
   (its frame 60 already shows the borrowed party). The `GAPS` entry in
   `snes/test/debug/run.mjs` can name debug's timing instead of vegeta.
+- **core.** A batch OAM entry (several sprites sharing tile/attribute
+  bases and an anchor) would cut Vegeta's ~10 lines of `core_oam_add_front`.
+- **fx.** `fx_draw` costs ~2 lines a call (the charge: orb, four sparks,
+  aura = 6 calls); `FX_AURA` costs ~4 lines while drawing nothing. The
+  wave polygon's build (up to 90 lines) is what makes his beams lag on
+  heavy frames.
 - **flight.** `vb_flight_target` writes `!fl_tp_custom` every field frame
   after the tick (kind 3, species 46, position, terrain); please read it in
   the same frame or the next (it is rewritten each frame).

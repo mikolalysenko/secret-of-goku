@@ -1,5 +1,7 @@
-; Integer helpers (M16/X16, DB = $7E). Software arithmetic only: the
-; hardware multiplier/divider registers are left to the game.
+; Integer helpers (M16/X16, DB = $7E). Products and quotients use the CPU's
+; multiplier/divider ($4202-$4206, results in $4214/$4216) as combat does:
+; the game's interrupt handlers never use them, and module NMIs only run
+; after the frame's logic.
 
 ; Scratch for the 32-bit routines (WRAM, call-local; never live across a
 ; call of another module).
@@ -92,65 +94,152 @@ vg_square8:
 
 ; X * Y (both 0-255) -> A (16-bit). Clobbers X/Y.
 vg_mul8:
-	STX !vg_t3
-	LDA.w #$0000
--	CPY.w #$0000
-	BEQ +
-	PHA
+	SEP #$20
+	TXA
+	STA.l $004202
 	TYA
-	LSR
-	TAY
-	PLA
-	BCC .skip
-	CLC
-	ADC !vg_t3
-.skip
-	ASL !vg_t3
-	BRA -
-+	RTS
+	STA.l $004203                 ; product 8 cycles later
+	REP #$20
+	NOP
+	NOP
+	NOP
+	LDA.l $004216
+	RTS
 
-; Unsigned 16 x 16 -> 32: A * X -> vm_a0 (low) / vm_a1 (high). Clobbers
-; vm_b0/vm_b1, Y.
+; Unsigned 16 x 16 -> 32: A * X -> vm_a0 (low) / vm_a1 (high), from the
+; four 8 x 8 products. Preserves X; clobbers vm_b0/vm_b1, Y.
 vg_mul16:
-	STA !vm_b0
-	STX !vm_b1                    ; multiplier (shifted right)
-	STZ !vm_a0
-	STZ !vm_a1
-	LDY.w #$0000                  ; high word of the shifted multiplicand
-.loop
+	STA !vm_b0                    ; a
+	STX !vm_b1                    ; b
+	PHX
+	SEP #$20
+	LDA !vm_b0                    ; al * bl
+	STA.l $004202
 	LDA !vm_b1
-	BEQ .done
-	LSR
-	STA !vm_b1
-	BCC .shift
-	LDA !vm_a0
-	CLC
-	ADC !vm_b0
+	STA.l $004203
+	NOP
+	NOP
+	NOP
+	REP #$20
+	LDA.l $004216
 	STA !vm_a0
-	TYA
+	SEP #$20
+	LDA !vm_b1+1                  ; al * bh
+	STA.l $004203
+	NOP
+	NOP
+	NOP
+	REP #$20
+	LDA.l $004216
+	STA !vm_a1
+	SEP #$20
+	LDA !vm_b0+1                  ; ah * bl
+	STA.l $004202
+	LDA !vm_b1
+	STA.l $004203
+	NOP
+	NOP
+	NOP
+	REP #$20
+	LDA.l $004216
+	CLC
+	ADC !vm_a1                    ; cross = al*bh + ah*bl (17 bits)
+	TAX
+	LDA.w #$0000
+	ROL
+	XBA
+	STA !vm_a1                    ; the cross sum's carry, << 8 into the high word
+	SEP #$20
+	LDA !vm_b1+1                  ; ah * bh
+	STA.l $004203
+	NOP
+	NOP
+	NOP
+	REP #$20
+	LDA.l $004216
+	CLC
 	ADC !vm_a1
 	STA !vm_a1
-.shift
-	ASL !vm_b0
-	TYA
-	ROL
-	TAY
-	BRA .loop
-.done
+	TXA                           ; low += cross << 8, high += cross >> 8 + carry
+	XBA
+	AND.w #$FF00
+	CLC
+	ADC !vm_a0
+	STA !vm_a0
+	TXA
+	XBA
+	AND.w #$00FF
+	ADC !vm_a1
+	STA !vm_a1
+	PLX
 	RTS
 
 ; Unsigned 32 / 16 -> 16: (vm_a1:vm_a0) / X -> A (quotient, saturated at
 ; $FFFF), X preserved. Clobbers vm scratch, Y.
 vg_div32:
 	STX !vm_b0
-	LDA.w #$0000
+	LDA !vm_a1
+	CMP !vm_b0
+	BCC +
+	LDA.w #$FFFF                  ; the quotient needs 17+ bits (or X = 0)
+	RTS
++	CPX.w #256
+	BCC +
+	JMP .wide
++
+	; 8-bit divisor: two 16 / 8 divisions, a byte of the low word each
+	; (the high word and then each remainder are < X, so they fit a byte)
+	XBA
+	AND.w #$FF00
+	STA !vm_b1
+	LDA !vm_a0
+	XBA
+	AND.w #$00FF
+	ORA !vm_b1
+	STA.l $004204
+	SEP #$20
+	TXA
+	STA.l $004206                 ; quotient and remainder 16 cycles later
+	REP #$20
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	LDA.l $004214
+	XBA
+	AND.w #$FF00
+	STA !vm_a1                    ; quotient high byte
+	LDA.l $004216
+	XBA
+	AND.w #$FF00
+	STA !vm_b1
+	LDA !vm_a0
+	AND.w #$00FF
+	ORA !vm_b1
+	STA.l $004204
+	SEP #$20
+	TXA
+	STA.l $004206
+	REP #$20
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	LDA.l $004214
+	ORA !vm_a1
+	RTS
+.wide
+	; 16-bit divisor: 16 steps of long division from the high word
 	STA !vm_b1                    ; remainder
-	LDY.w #32
+	LDY.w #16
 .loop
 	ASL !vm_a0
-	ROL !vm_a1
 	ROL !vm_b1
-	BCS .sub                      ; remainder overflowed 16 bits: always >= divisor
+	BCS .sub                      ; remainder overflowed 16 bits: >= divisor
 	LDA !vm_b1
 	CMP !vm_b0
 	BCC .next
@@ -159,16 +248,11 @@ vg_div32:
 	SEC
 	SBC !vm_b0
 	STA !vm_b1
-	INC !vm_a0                    ; quotient bit (low bit is 0 after the shift)
+	INC !vm_a0                    ; quotient bit (the low bit is 0 after the shift)
 .next
 	DEY
 	BNE .loop
-	LDA !vm_a1
-	BNE .sat
 	LDA !vm_a0
-	RTS
-.sat
-	LDA.w #$FFFF
 	RTS
 
 ; round(A * num / den) for unsigned A: X = num, Y = den. A = result.

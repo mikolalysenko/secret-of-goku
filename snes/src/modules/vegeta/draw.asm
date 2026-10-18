@@ -264,7 +264,11 @@ vg_lane_point:
 
 ; Volley shots: the charge orb cell, frame (age >> 2) % 3.
 vg_draw_shots:
-	LDX.w #0
+	LDA.l !vs_live_shots
+	AND.w #$00FF
+	BNE +
+	RTS
++	LDX.w #0
 .loop
 	SEP #$20
 	LDA.l !vs_shots+7,X
@@ -299,7 +303,11 @@ vg_draw_shots:
 
 ; Bursts: native Exploder frames min(6, age >> 2).
 vg_draw_bursts:
-	LDX.w #0
+	LDA.l !vs_live_bursts
+	AND.w #$00FF
+	BNE +
+	RTS
++	LDX.w #0
 .loop
 	LDA.l !vs_bursts+4,X
 	CMP.w #$FFFF
@@ -328,7 +336,11 @@ vg_draw_bursts:
 
 ; Rocks: a warning spark, then a falling ember until it lands at 62.
 vg_draw_rocks:
-	LDX.w #0
+	LDA.l !vs_live_rocks
+	AND.w #$00FF
+	BNE +
+	RTS
++	LDX.w #0
 .loop
 	LDA.l !vs_rocks+4,X
 	CMP.w #$FFFF
