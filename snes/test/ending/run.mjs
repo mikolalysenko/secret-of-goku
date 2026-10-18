@@ -9,16 +9,18 @@ import {readFileSync,writeFileSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {runMesen} from '../mesen.mjs';
-import {privateRom,cleanupRom} from '../checkpoints.mjs';
+import {privateRom,cleanupRom,checkpointDir} from '../checkpoints.mjs';
+import {spawnSync} from 'node:child_process';
+import {existsSync} from 'node:fs';
 const gfx=await import(new URL('../../tools/gfx.mjs',import.meta.url).href);
-import {kaiReference,compare,writeRef,bestPlanetMatch,gokuAtlas,nativeEffects,vistaReference,flightReference} from './reference.mjs';
+import {kaiReference,compare,writeRef,bestPlanetMatch,gokuAtlas,nativeEffects,vistaReference,flightReference,cutawayReference} from './reference.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const rom=process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-goku.sfc');
 const baseRom=new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')));
 // The audio module's entries the scenes call (lib.lua E.watchAudio).
 const sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8');
 const symAddr=label=>{const m=sym.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${label}$`,'m'));return m?`0x${m[1]}${m[2]}`:'nil';};
-const lib=`AUDIO_SFX=${symAddr('audio_sfx')}\nAUDIO_FADE=${symAddr('audio_fade')}\n`+readFileSync(resolve(here,'lib.lua'),'utf8');
+const lib=`AUDIO_SFX=${symAddr('audio_sfx')}\nAUDIO_FADE=${symAddr('audio_fade')}\nNMI_OUT=${symAddr('ending_world_nmi_out')}\nNMI_IN=${symAddr('ending_world_nmi')}\nNMI_RESTORE=${symAddr('ending_world_nmi_restore')}\nNMI_DMA=${symAddr('cut_footprint_ran')}\n`+readFileSync(resolve(here,'lib.lua'),'utf8');
 // 'sfx<id>@<age>' / 'fade<byte>@<age>' calls recorded by E.watchAudio.
 const audioCalls=r=>(r.audio??'').split(' ').filter(Boolean);
 const heard=(r,call)=>audioCalls(r).includes(call);
@@ -246,6 +248,30 @@ async function loadsCheck(r,out){
   expect(m>=.95,`reunion cliff matches the native load at ${(m*100).toFixed(1)}%`);
 }
 
+// The Fortress cutaway in world flight (planet-view with a world-ki shot)
+// from a native session: stills against planet-view itself at the default
+// target, the vblank work inside vblank, the footprint keeping up, and the
+// field's IRQ back after the deck landing.
+async function cutawayCheck(r,out){
+  expect(r.reached&&r.still_reached,'the full wave reached the cutaway');
+  expect(r.target==='2432,3024',`the shot's target ${r.target}`);
+  expect(r.cut_frames>=185&&r.cut_frames<=188,`the cutaway ran ${r.cut_frames} frames`);
+  // Footprint DMA (VRAM) must end inside vblank (225-261); the bookkeeping
+  // after it may run a few lines on.
+  expect(r.dma_end_max>0&&r.dma_end_max<=261,`footprint uploads ended by line ${r.dma_end_max}`);
+  expect(r.nmi_end_max>0&&r.nmi_end_max<=270,`vblank work ended by line ${r.nmi_end_max}`);
+  expect(r.footprint_trail<=3,`the footprint trailed the age by ${r.footprint_trail}`);
+  expect(r.landed,'deck landing after the cutaway');
+  expect(r.restores===1&&r.field_vtime<225,`the field's HUD IRQ line is back (VTIME ${r.field_vtime}, ${r.restores} restore)`);
+  for(const a of [2,6,12,30,60,85,95,110,140,170,180]){
+    const name=`cut-${a}`;if(r[name]===undefined){problems.push(`no still ${name}`);continue;}
+    const ref=await cutawayReference({rom:baseRom,age:a});
+    writeFileSync(join(out,`${name}-ref.png`),writeRef(null,ref));
+    const m=compare(join(out,`${name}.png`),ref);r[`${name}_match`]=m;
+    expect(m>=.9,`${name} matches planet-view at ${(m*100).toFixed(1)}%`);
+  }
+}
+
 const tests=[
   {name:'kai',check:kaiCheck},
   {name:'space',check:spaceCheck},
@@ -254,6 +280,7 @@ const tests=[
   {name:'vista',check:vistaCheck},
   {name:'flight',check:flightCheck},
   {name:'loads',check:loadsCheck},
+  {name:'cutaway',check:cutawayCheck,checkpoint:'waterfall.mss'},
 ];
 let ok=true;
 for(const t of tests){
@@ -263,7 +290,12 @@ for(const t of tests){
   // A private copy: its own (fresh) battery file, not one shared with
   // other suites running the same ROM name.
   const copy=privateRom(rom,`ending-${t.name}`);
-  const r=await runMesen({rom:copy,test:lib+readFileSync(resolve(here,`${t.name}.lua`),'utf8'),outDir:out});
+  let state=null;
+  if(t.checkpoint){
+    state=join(checkpointDir(),t.checkpoint);
+    if(!existsSync(state))spawnSync(process.execPath,[resolve(repo,'snes/test/checkpoints.mjs')],{cwd:repo,stdio:'inherit'});
+  }
+  const r=await runMesen({rom:copy,test:lib+readFileSync(resolve(here,`${t.name}.lua`),'utf8'),outDir:out,state});
   cleanupRom(copy);
   if(r.code!==0||!r.results||r.results.error)problems.push(`mesen: ${r.results?.error??r.code}`);
   else await t.check(r.results,out);

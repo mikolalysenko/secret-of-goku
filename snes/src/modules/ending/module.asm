@@ -36,6 +36,18 @@
 !ending_reload  = !RAM_ORBIT+$9F   ; byte  a native map load ran under a full-screen scene
 !ending_pulse   = !RAM_ORBIT+$A0   ; word  explosion preset: prose advance pulse (debug hook)
 !ending_mute    = !RAM_ORBIT+$A2   ; byte  native music silenced for ES_MUTED (frames, 0 = not)
+; The Fortress cutaway in world flight (cutaway.asm).
+!ending_cut_on    = !RAM_ORBIT+$A3 ; byte  1 while the cutaway owns the picture
+!ending_cut_load  = !RAM_ORBIT+$A4 ; byte  1: the next vblank loads the stage
+!ending_cut_age   = !RAM_ORBIT+$A5 ; word  the world's cutaway age this frame
+!ending_cut_shown = !RAM_ORBIT+$A7 ; word  the age the footprint in VRAM shows
+!ending_cut_night = !RAM_ORBIT+$A9 ; byte  night globe (Frieza's crisis)
+!ending_cut_end   = !RAM_ORBIT+$AA ; byte  1: VTIME back below 256 next vblank
+!ending_cut_runs  = !RAM_ORBIT+$AB ; word  runs left of the age being uploaded (0 none)
+!ending_cut_ptr   = !RAM_ORBIT+$AD ; long  its next run
+!ending_cut_bank  = !RAM_ORBIT+$B0 ; byte  DMA source bank
+!ending_cut_level = !RAM_ORBIT+$B1 ; byte  fade level in CGRAM ($FF none)
+!ending_cut_budget = !RAM_ORBIT+$B2 ; word DMA bytes left in this vblank
 
 ; Phases (match the browser's state.phase).
 !EP_TRANSITION = $01   ; good: whole-screen fade to black over 48 frames, then black
@@ -286,6 +298,8 @@ endmacro
 ; Generated art (data banks) and its size/count defines.
 incsrc "ending/ending_data.asm"
 incsrc "audio/ids.asm"
+
+incsrc "ending/ending_cut_defs.asm"
 
 ; Second code area: the lower half of $ED (FastROM), after the art moved to
 ; extended data. Its code runs with PB = $ED, sets DB itself and reads its
@@ -699,6 +713,15 @@ reunion_due:
 .yes
 	SEC
 	RTS
+
+; story_query_call for the second code area (JSL; DB set to $7E): A16 =
+; the value. Flags are not kept.
+ending_query_far:
+	PHB
+	PEA $7E7E : PLB : PLB
+	JSR story_query_call
+	PLB
+	RTL
 
 ; Query id A16 through story's table (same contract as story_query):
 ; A16 = value, Z set when 0. DB = $7E.
@@ -1296,6 +1319,7 @@ pullpc
 pushpc
 org !CODE_ENDING_X
 incsrc "sound.asm"
+incsrc "cutaway.asm"
 ending_x_end:
 assert ending_x_end <= !CODE_ENDING_X+$8000, "ending second code area overflow"
 pullpc
