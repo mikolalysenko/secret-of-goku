@@ -30,12 +30,16 @@ local function marker_pos()
     if y < 224 and tile == 0x0A and (attr & 1) == 1 then return H.oam(i * 4) .. ',' .. y end
   end
 end
--- Open the weapon ring (X) and wait until the marker has stopped moving.
+-- Open Primm's weapon ring, which lists the party's weapons with their
+-- owners' markers, and wait until the marker has stopped moving. As a player
+-- does with combat's buttons (combat.md, as the browser mod): Select hands
+-- control to Primm, X opens the controlled character's ring (native Y).
 local function open_ring(on, form)
   G.import('barrier-audit__potos-probe')
   if on then G.on() else G.off() end
   H.w8(G.addr.form, form)
   H.wait(10)
+  H.tap('select', 4, 30)
   H.tap('x', 6, 0)
   local last, still = nil, 0
   for _ = 1, 120 do

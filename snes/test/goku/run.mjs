@@ -19,7 +19,7 @@
 //            flight, ceiling escape, takeoff, landing), replayed the same way
 // plus browser-mod reference frames for the field walk (jsref.mjs) and the
 // menus (menuref.mjs).
-//   node snes/test/goku/run.mjs [test ...] [--no-ref]
+//   node snes/test/goku/run.mjs [test ...] [--no-ref] [--slowrom]
 // ROM: $SNES_ROM or dist/snes/secret-of-goku.sfc. Outputs: .local/snes-test/goku/
 import {spawnSync} from 'node:child_process';
 import {readFileSync,writeFileSync,existsSync,mkdirSync} from 'node:fs';
@@ -33,16 +33,20 @@ const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..')
 const args=process.argv.slice(2);
 const only=args.filter(a=>!a.startsWith('--'));
 const want=t=>!only.length||only.includes(t);
-const outRoot=resolve(repo,'.local/snes-test/goku');
+const outRoot=resolve(repo,args.includes('--slowrom')?'.local/snes-test/goku-slowrom':'.local/snes-test/goku');
 mkdirSync(outRoot,{recursive:true});
 const build=(out,defs=[])=>{
   const b=spawnSync(process.execPath,[join(repo,'snes/build.mjs'),'--quiet','--strict',`--out=${out}`,...defs],{cwd:repo,stdio:'inherit'});
   if(b.status!==0){console.error('goku: build failed');process.exit(1);}
 };
-const romSrc=resolve(process.env.SNES_ROM??join(repo,'dist/snes/secret-of-goku.sfc'));
-if(!existsSync(romSrc))build(romSrc);
-const traceRom=resolve(repo,'.local/snes-test/roms/goku-trace.sfc');
-if(want('actions')||want('api'))build(traceRom,['-DGOKU_TRACE=1']);
+// Builds are FastROM by default; --slowrom builds both ROMs with
+// -DCORE_SLOWROM=1 (the tests read the map mode from the header).
+const slowrom=args.includes('--slowrom');
+const romSrc=slowrom?resolve(repo,'.local/snes-test/roms/goku-slowrom.sfc'):resolve(process.env.SNES_ROM??join(repo,'dist/snes/secret-of-goku.sfc'));
+if(slowrom)build(romSrc,['-DCORE_SLOWROM=1']);
+else if(!existsSync(romSrc))build(romSrc);
+const traceRom=resolve(repo,slowrom?'.local/snes-test/roms/goku-trace-slowrom.sfc':'.local/snes-test/roms/goku-trace.sfc');
+if(want('actions')||want('api'))build(traceRom,slowrom?['-DGOKU_TRACE=1','-DCORE_SLOWROM=1']:['-DGOKU_TRACE=1']);
 const cps=checkpointDir();
 if(!existsSync(join(cps,'waterfall.mss'))){
   const r=spawnSync(process.execPath,[join(repo,'snes/test/checkpoints.mjs')],{cwd:repo,stdio:'inherit'});
@@ -82,9 +86,19 @@ if(!args.includes('--no-ref')&&want('field')){
   const {renderJsRef}=await import('./jsref.mjs');
   const state=join(mainCheckout(),'.local/barrier-audit/potos-probe.json');
   if(existsSync(state)){
-    const steps=[{frames:20,shot:'idle'}];
-    for(const[b,n]of[['up',12],['right',8],['left',8],['down',12]])for(let i=0;i<n;i++)steps.push({buttons:{up:16,right:128,left:64,down:32}[b],frames:3,shot:b});
-    steps.push({frames:8,shot:'idle_down'});
+    const plan=[{frames:20,shot:'idle'}];
+    for(const[b,n]of[['up',12],['right',8],['left',8],['down',12]])for(let i=0;i<n;i++)plan.push({buttons:{up:16,right:128,left:64,down:32}[b],frames:3,shot:b});
+    plan.push({frames:8,shot:'idle_down'});
+    // Two timing differences: the cartridge's pad path (core pad filter,
+    // combat's input layer, as the browser mod's mana-mod.js) hands the game
+    // each pad one frame sooner than the bare original read this reference
+    // runs, so the reference gets every input one frame early; and the
+    // browser poses Goku at the start of a frame from the previous frame's
+    // state, while the cartridge's sample is the pose built this frame, so
+    // each reference sample is taken one frame later.
+    const LEAD=1,pads=[],shots=[];
+    for(const st of plan){for(let i=0;i<st.frames;i++)pads.push(st.buttons??0);shots[pads.length-1]=st.shot;}
+    const steps=[...pads,0].map((_,f)=>({buttons:pads[f+LEAD]??0,frames:1,shot:shots[f-1]}));
     await renderJsRef({state,outDir:join(outRoot,'field-js'),steps});
     const c=spawnSync(process.execPath,[join(here,'compare.mjs'),join(outRoot,'field'),join(outRoot,'field-js'),join(outRoot,'field-compare.png')],{cwd:repo,encoding:'utf8'});
     console.log('goku field vs browser mod:',(c.stdout.trim().split('\n').pop()??''),'->',join(outRoot,'field-compare.png'));
