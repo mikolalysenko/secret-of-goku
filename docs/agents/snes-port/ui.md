@@ -443,7 +443,7 @@ byte boundary.
 | Resource | Use |
 | --- | --- |
 | Code/data `$AC:8000-` | `!CODE_UI`: `$AC:8000-$DF01` used (about 24 KiB: code, 5 KiB compressed messages, radar tables, the STATUS page's 3.8 KiB of code and 1.2 KiB of tables); about 8.2 KiB left |
-| Extended data | `$7D:0000-$7D:255F` (9.6 KiB, placed by the build): field glyph atlas, window tiles, world atlas, dial tiles, the STATUS page's window cells and tilemap |
+| Extended data | six blobs, 9.3 KiB, placed by the build (today `$7D:0000-$7D:255F`): field glyph atlas, window tiles, world atlas, dial tiles, the STATUS page's window cells and tilemap |
 | WRAM `$7E:7E40-$7E:7EFF` | `!RAM_UI`: state, current message, cooldowns, band/radar state, scratch, `!ui_magic` (`module.asm`), fast-forward (`+$A6`), window placement (`+$AA`), scouter (`+$AE`), STATUS page (`+$B0`–`+$B7`); in menus the world and radio scratch words serve the STATUS composition |
 | SRAM `$33:7C00-$33:7FFF` | staging: window/band rows (`+$000`), the radio's HDMA table, the moved window's colour records or moved natives (`+$200`), text words (`+$240`), radar trig cache (`+$2E8`), build state (`+$2F4`), radar key (`+$2FC`), bearing inputs (`+$2FE`, `+$308`), placement scroll table and the game's channel 0/1 tables (`+$312`, `+$322`), queue (`+$340`), band and sky HDMA colour blocks (`+$3C0`, `+$3DC`); while the STATUS page is built (menus) `+$000`–`+$395` hold its strings, CGRAM copy, band records, cell masks and upload buffer (the radio and radar rebuild theirs) |
 | SRAM persistent | `!PERSIST_UI` = `!PERSIST_MISC+$80` (`$31:6380`, `$60` bytes) — **request** |
