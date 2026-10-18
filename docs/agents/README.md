@@ -7,6 +7,7 @@ These notes include complete gameplay, story and ending spoilers. The top-level 
 | [Code map](code-map.md) | Runtime subsystems, native hooks and developer entry points |
 | [Development](development.md) | Local setup, ROM import, tests, browser build and Pages deployment |
 | [Releases](releases.md) | Offline Windows/macOS/Linux packaging, Steam Deck/Bazzite profiles and CI |
+| [Bazzite Steam box](bazzite-steam.md) | Installed build, Steam launch workaround, controller template and card artwork |
 | [Changelog](CHANGELOG.md) | Changes and implementation summaries |
 | [Gameplay reference](gameplay.md) | Full feature behavior, detailed controls and story/debug starts |
 | [README media](readme-media.md) | Spoiler boundaries, capture process and teaser URL |
@@ -14,6 +15,7 @@ These notes include complete gameplay, story and ending spoilers. The top-level 
 | Subsystem | Notes |
 | --- | --- |
 | Emulator and ROM | [Engine lab](engine-lab.md), [Performance and audio streaming](performance.md), [ROM research](rom-research.md) |
+| Standalone cartridge | [SNES ROM port](snes-rom.md): build, layout, test harness and porting status |
 | Mobile player | [Fullscreen, Home Screen mode and viewport checks](mobile-fullscreen.md) |
 | Combat and presentation | [Combat](combat.md), [Native effects](native-effects.md), [Graphics audit](graphics-audit.md) |
 | World traversal | [Dungeon shortcuts](dungeon-shortcuts.md) |

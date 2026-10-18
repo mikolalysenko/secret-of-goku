@@ -4,6 +4,138 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES port merged into main (2026-10-18)
+
+- Bring the standalone cartridge source, build tools, tests and IPS packager
+  onto `main`, retaining the current 0.2.5 browser and desktop code.
+- Preserve both branches' development notes and link the cartridge build
+  instructions from the shared release guide. The published preview stays
+  pinned to its original tag.
+- Validation: 380 browser unit tests, web build, strict SNES build, five
+  IPS/CPU-helper tests, boot, 12 audio unit tests, native audio and all 13
+  gameplay scenarios pass. The rebuilt ROM matches the preview byte for
+  byte (SHA-256 `dc595f44ba0683bd39f7210be8f08e03d451a0f68a57b7ccb46698cc605929be`).
+  Known crowded-scene CPU misses remain; the gameplay checks report no
+  palette errors, charge-meter leaks, sprite overflow or vblank overruns.
+
+## SNES preview release packaging (2026-10-18)
+
+- Add a patch-only SNES release builder with verified base-ROM hashes,
+  SNES controller instructions, preview limitations and checksums.
+- Verify standard IPS records, RLE, expansion, record boundaries and the
+  reserved EOF offset. Check both the standalone and archived IPS against
+  the exact strict-build ROM, and cross-check with RomPatcher.js.
+- Prepare native-resolution screenshots and a separate `snes-v` preview
+  release so the cartridge download is distinct from desktop packages.
+
+## SNES aura and gameplay budget follow-up (2026-10-18)
+
+- Mirror the full-size flame from three resident cells and limit the
+  transformation ring to eight arcs plus four inner sparks. Keep its
+  radius, duration, flash and damage; `FX_DETAIL` retains the denser ring.
+- Reduce ki collision queries to the existing moving contact segment,
+  reject distant actors earlier, and reuse the orb's computed position.
+  Replace a hot native AI bit scan with a lookup verified against the
+  original machine code for all 65,536 inputs. Actor cadence is unchanged.
+- Skip unused PCM envelope calculations in native-audio builds. Move
+  compatible-pose checks out of tight vblanks, cancel obsolete deferred
+  poses, and remove redundant scanline reads while retaining HDMA guards.
+- Controller-driven cut-grass focus/transform tests verify complete auras,
+  no FX writes to background palettes, audible cues and silent tails.
+  The 13-case gameplay run and 1,200-frame flight/attack stress runs have
+  no palette errors, meter leaks, OBJ overflow or NMI overruns. Quiet
+  attacks, water flight and cut-grass focus have zero CPU misses; crowded
+  scenes still drop frames. Results are mixed across short inputs; see
+  the [measured follow-up](snes-port/gameplay-performance.md#sound-and-aura-follow-up).
+
+## SNES aura isolation from background palettes (2026-10-18)
+
+- Use a compact sprite flame for charging and transformation. Its blue,
+  gold and pink palettes no longer change the backdrop or background
+  colour math, including on cut grass. Two poses share resident tiles;
+  incomplete uploads wait before the flame appears.
+- Validate both sizes and all tones against the generated pixels, real
+  grass cuts, background-palette ownership and animation without uploads.
+  Existing FX gallery and beam pixel checks pass. The older polygon
+  renderer remains available with `FX_AURA_POLY` for comparison.
+
+## SNES short resident combat sounds (2026-10-18)
+
+- Replace the indefinitely looping transformation rumble and long generic
+  impacts with seven short resident effects. Each uses one SPC voice, ends
+  on its own within half a second, and needs no gameplay sample transfer.
+  Punch contact has a stronger attack than a missed swing.
+- Preserve all retail effects, samples and music. Native emulator and SPC
+  tests cover transformations, reversion, impacts, voice release, silent
+  tails, repeated commands and song restoration.
+
+## SNES party update scheduling (2026-10-18)
+
+- Spread native companion status, AI and animation across the game's
+  existing five phases while Goku is active. Preserve every actor's update
+  frequency, per-frame movement/collision/drawing and player assignments.
+  The original schedule remains in use before Goku arrives and during native
+  event scripts, including scripted whip-pad crossings.
+- Reserve more vblank time around Goku's cell upload. A deferred pose no
+  longer forces an upload merely because it waited one frame.
+- The integrated walking, combat and flight cases improve, but still miss
+  some video frames in crowded scenes. Rapid ki fire during flight remains
+  the largest measured CPU bottleneck. Core cadence,
+  input, menus, sound/events, world, save and lag regressions pass.
+
+The final audit corrected the moved calls' actor-data bank and selected
+phases 1/2 for the companions. The cadence test now checks actual native
+timer progress as well as entry counts; it rejects the earlier experimental
+build. Final measurements are in the
+[gameplay performance review](snes-port/gameplay-performance.md).
+
+## SNES teleport responsiveness (2026-10-18)
+
+- Advance Instant Transmission with the field video clock, so CPU stalls
+  no longer lengthen its vanish and recovery animation. Keep the camera's
+  streaming hold and cap catch-up at four frames, as combat already does.
+- Test recovery and the arrival cue after three injected missed frames,
+  including the 16-bit clock wrap; existing offscreen teleport and scene
+  camera checks pass.
+
+## SNES flight and rendering performance (2026-10-18)
+
+- Reuse shoreline collision results while flying instead of repeatedly
+  decoding the same tiles. All 289,324 terrain comparisons, 19,996 teleport
+  queries and 191,964 movement sweeps still match the browser's rules.
+- Run selected native actor, collision and sprite routines through their
+  FastROM mirrors. Carried CPU companions no longer draw bodies, attachments
+  or shadows; their actors remain live, and human players remain visible.
+- Use a compact impact spark and a single moving ki orb. Preserve attack
+  range, speed and damage, and cull offscreen shots before allocating art.
+  Reserve the end of vblank for palette updates and the interrupt return;
+  defer radio text expansion when the frame has insufficient time.
+- Core, flight, effects and UI regressions pass. Integrated gameplay checks
+  find no palette errors, native charge-meter leaks, sprite overflow or
+  vblank overruns. Quiet attacks and water flight meet the frame budget;
+  crowded native-party scenes still need CPU scheduling work.
+
+## SNES nonblocking resident effects (2026-10-18)
+
+- Resident sound effects release the main CPU immediately and complete the
+  SPC port handshake on a later callback. Busy effects are dropped without
+  overwriting a pending command; music and control commands remain ordered.
+- Emulator checks cover audible effects, repeated hits, bounded CPU time,
+  charge pulses, sample integrity, song loading and native-song restoration.
+  Core sound/event, world and menu regressions pass.
+
+## SNES Goku sprite upload budget (2026-10-18)
+
+- Pack field animation cells into contiguous ROM rows: four DMA transfers
+  replace sixteen tile transfers, preserving every pixel and the miniature
+  form. The measured Goku NMI path drops from about 8.9 to 5.5 scanlines and
+  uses only DMA channel 7.
+- Avoid rewriting the airborne palette mirror when its native buffer and
+  desired colours are unchanged; keep flash handling and landing restore.
+- Validate all 465 packed cells and miniatures byte for byte, plus emulator
+  palette, form, animation, portrait and menu checks. Generated ROMs and
+  timing output remain private.
+
 ## SNES preview download (2026-10-18)
 
 - Publish the standalone cartridge preview as a verified IPS and patch-only
@@ -11,6 +143,78 @@ stay traceable even when they are committed together.
 - Link the separate `snes-port` source and `snes-v0.1.0-preview.1` release
   from the project overview. The preview explicitly retains known
   crowded-scene slowdowns; existing desktop downloads stay available.
+
+## 2026-10-18 — SNES gameplay follow-up
+
+- Fixed Goku's water-flight palette through takeoff and landing. The airborne
+  sprite now receives the same tinted colors as the native water palette,
+  and landing restores the map's palette. Validated with the Goku status,
+  forms and scripted tests, including rendered airborne colors.
+- Replaced streamed gameplay effects with resident SNES sounds by default.
+  Impacts, shots, punches and beams stay audible; charge uses sparse pulses,
+  and continuous flight/voice streams are omitted. Music stays native. The
+  old streamer is an explicit `AUDIO_PCM` diagnostic build. Native sound,
+  audio unit, optional stream, song, arrival and imported-state tests pass.
+- Cleared the native weapon-charge meter and sparkle while Goku attacks,
+  keeping his ki charging intact. Recovery-camera scrolling now blocks new
+  attacks/focus. Faster rectangular hit tests retain attack range and damage;
+  192 geometry cases, stale-meter checks and combat reference comparisons
+  pass, along with water, teleport, whip, ceiling, holes and scene flight tests.
+
+## 2026-10-18 — Bazzite Steam box installation
+
+- Built and installed the Bazzite desktop app from `656bdb3`, added a direct Steam shortcut and Favorites entry, and assigned the Gamepad template.
+- Added portrait and wide Steam artwork under `assets/steam/`, applied it through Steam's live artwork API, and verified the card in the Gaming Mode home carousel.
+- Fixed this installation's Steam overlay startup crash with a per-game preload override. Native fullscreen launch, offline startup and save/restart checks passed on Bazzite. Physical controller and TV-wall checks remain untested. See [deployment and artwork notes](bazzite-steam.md).
+
+## 2026-10-18 — SNES cartridge: Frieza's ground arc, deterministic power-on, Goku fixes (integration)
+
+- **Frieza's ground arc** is merged into the cartridge, as the browser plays it: the entrance and theft, the Emperor's execution, the Death Balls, the Mana Tree sequence, the three-phase fight, the Fortress collapse on its destroyed deck, the Beast challenge, and victory and death. It uses flight's landing check and scripted camera, Goku's scripted cells, combat's virtual target (Goku's attacks now reach Frieza), destroy's door-record hook and core's scene claims (VRAM regions and the scene work area). Its idle cost is 0.32 lines a frame and 0.11 a vblank. See [snes-port/frieza.md](snes-port/frieza.md).
+- **Power-on:** the original game reads three things before writing them: the moving Fortress's placement (`7E:0126`), the first map's camera edges (`7E:0A80–0AB1`) and an effect record of ours. These varied with each power-on in Mesen and on hardware; the browser's emulator zero-fills them. Core now zeroes them at boot, so every console and emulator starts like the browser.
+- **Goku:**
+  - A scripted-cell API draws Goku at a scene's screen spot (the temple exit, the deck, the Tree's cliff).
+  - Cell uploads are cheaper and sent less often.
+  - Two regressions from the first version are fixed: fx bursts lost a palette, and a timing-sensitive Sandship colour check failed.
+  - The fixes exposed a real race in the ending's palette commit: a channel-7 DMA set up from the frame thread can copy 64 KiB over WRAM if an NMI lands mid-setup. It is with the ending stream, and goku keeps its old NMI prologue meanwhile.
+- **Build:** generator output folders left by another branch no longer break builds.
+- Validation: each merge re-ran the suites it touches (frieza, combat, vegeta, goku, fx, destroy, ending, ui). All pass. The scene select has 21 presets full and `trial` native; `hexas` is still partial (a capture-timing difference in the debug recipe). The DMA-timing watch finds no module DMA into VRAM, OAM or CGRAM during display over the opening and all presets.
+
+## 2026-10-18 — SNES cartridge: Goku's attacks reach Frieza, and combat hooks for the set pieces (combat)
+
+- **Frieza can be struck.** Combat keeps a registry of virtual targets: enemies the browser mod adds to the native actors, such as Frieza in the ground fight. Punches, ki blasts, the Kamehameha and the transformation burst include them. A hit goes to the module's own routine, with no damage number or launch, and keeps the contact hold, impact spark, sound, the ki shot ending at its first contact, and the beam's pulses of an ordinary enemy. Six new tests run the battle state on the cartridge and the browser's own Frieza module side by side: every hit's damage, melee flag, HP taken and frame agree.
+- **Hooks the set pieces asked for:**
+  - Damage hooks are a list, so Frieza's and Vegeta's modules no longer depend on include order.
+  - Receive hooks see the damage queued on Goku before Saiyan resilience; the fed Mana Beast's cap uses one.
+  - Other modules can read Goku's live beam with the browser's own geometry. Vegeta's beam clash and volley cancellation now use it.
+  - An input hold takes the pad but lets the last wave finish. Vegeta's draw uses it, so the draw waits for Goku's wave as in the browser.
+  - Instant Transmission can look up the same targets.
+- **Menu/back fixes:** X closes Status and the window and controller editors wherever the options ring last stopped, as in browser commit f376330 (3 of 8 tested pages stayed open). X also never reaches the game as the native button while Goku is inactive; before, one press in five opened the second party member's ring.
+- **Costs:** an attack's target scan asks each registered target once per field frame (0.3 lines on maps without Frieza, 1.5 on his). Combat's logic grows by at most about half a line per step in busy scenes, and idle frames are unchanged. A hit on Frieza costs about 6 lines, nearly all in Frieza's own routine.
+- Validation on main with the frieza module: combat 34/34 (the six Frieza cases, the beam API at every age, the input hold, receive hooks, `panel`, `xrace`), frieza 13/13, vegeta 11/11 with every tick equal to the browser's module, goku 11/11, and perf equal to main's in all six scenes. Scene select: 21 presets full, `trial` native, and `hexas` partial, as on main without these changes.
+
+## 2026-10-18 — SNES cartridge: snes9x and bsnes second opinions
+
+- The cartridge now also runs headless in snes9x and bsnes through their libretro cores and a small frontend, `snes/tools/retro-host` (`make -C snes/tools/retro-host cores` builds pinned cores under `.local/`). `node snes/test/emulators/run.mjs` (part of `run-all`, skipped without cores) plays one power-on scenario on snes9x, bsnes and bsnes with its accurate PPU, with Mesen as the reference. It covers ExHiROM detection and a CPU-bus probe of the extended banks and save RAM, the title, the name editor, the opening to the first field, and a save, power cycle and load. All three cores pass. Their pictures match Mesen's, and the game reaches each step on the same frame. `--presets` runs the 22 scene-select presets on every core: all end in Mesen's state, and their pictures match. See [snes-rom.md](snes-rom.md#second-opinions-snes9x-and-bsnes).
+- `--power-on --bisect` runs each preset from zeroed RAM and again from noise, then narrows any change down to single bytes. The original game reads three things before anything writes them: it seeds the moving Fortress's placement from `7E:0126`, places the first map's camera from the map-edge words `7E:0A80–0AB0`, and seeds its RNG from the save checksums. One read is ours, from destroy's and fx's code: the effects library polls destroy's effect record `$33:77F8` before destroy clears it on its first map sync. With battery noise, this costs one frame in the `battle` preset, and no effect is drawn.
+- `--dma-watch` checks in Mesen for DMA into VRAM, OAM or CGRAM outside vblank and forced blank. Across the opening and all presets, the only such DMA is the original menu's last upload on the name editor's exit (`C0:25F6`). The unmodified game does the same, and hardware drops it.
+- Mesen screenshots were several frames stale in animated scenes, because unthrottled Mesen skips rendering. `runMesen({exactFrames: true})` renders every frame, at about 20-25% more time. The new reference runs use it.
+
+## 2026-10-18 — SNES cartridge: effects, Sandship, finale, telepathy, Time Chamber and core fixes (integration)
+
+- Merged on the cartridge:
+  - **Effects library:** beams drawn as polygons, the Death Beam in 16 headings, large Death Balls, the ki aura from the browser's own pixels, and charge lightning.
+  - **The Sandship arc** at 60 Hz, with breach, fires, blasts and white-out.
+  - **The finale's Fortress cutaway** in world flight, with its art moved to extended data.
+  - **The telepathy radio:** window placement, Dragon Radar, the scouter switch and Goku's STATUS page.
+  - **Joch's trial in the Time Chamber:** Goku's real attacks, clashes and both returns, matching `joch-trial.js` on every frame.
+  - Stream entries below and in `docs/agents/snes-port/`.
+- Core fixes found while merging everything at once:
+  - **Map loads:** during some map loads (153, in the Sandship) the game's background tile decoder writes up to `7E:77FF`, through the WRAM the core used for its queues. It once started a spurious door. That state now lives in battery RAM, which is revalidated every frame.
+  - **Module vblank work** runs only in vblanks whose frame the game completed. An NMI landing between the core's ready flag and the game's own flag used to run it one vblank early.
+  - **HDMA channels** are no longer switched on after a frame's HDMA started, which caused garbage window scroll for a frame.
+  - **Scene work area** (`$32:6000–7FFF`): a module can now claim it, so one scene can't silently overwrite another's. Frieza had written into the ending's buffer.
+- Budget: with every module merged, idle frames cost about 15 scanlines before the streams cut their idle paths: Frieza from 1.76 to 0.32 lines (vblank 1.03 to 0.11), UI from 2.34 to 0.26. `snes/tools/modprof.mjs` measures each module.
+- Validation: each merge re-ran the suites it touches (core, fx, combat, destroy, goku, ending, world, audio, ui, vegeta, debug). All pass on main. The scene select has 19 presets full and 4 native, whose differences belong to Frieza and Vegeta.
 
 ## 2026-10-18 — Release 0.2.5
 
@@ -49,6 +253,24 @@ stay traceable even when they are committed together.
   - **Exactness:** the original SnesJs core equivalence passes (SPC RAM and audio every frame), and every saved state, scene and forced branch renders identically to 0.2.4 with every mod hook.
   - **Browser suite:** only the known failures; all 28 phone tests pass.
 
+
+## 2026-10-17 — SNES cartridge: Goku's STATUS page, window placement, scouter switch (UI stream)
+
+- Goku's STATUS page shows the browser's raster on the cartridge: name, level, HP, form, the double-width power level, the weights lines, MANA and money, and ten stat rows with bounded two-tone meters. The page's text and window layer is composed cell by cell from the same drawing operations as `native-status.js`, which the generator checks against `statusPixels()` at build time. It is built top to bottom in about 55 frames while the menu keeps 60 Hz. Like the browser, which paints its raster from scanline 1, it sits one row above the raster's coordinates, and its window art comes from the browser's windows rather than the game's tiles. See [snes-port/ui.md](snes-port/ui.md#gokus-status-page-statusasm).
+- Dialogue windows move above the HUD when the first one would cover more faces where it is (`window-placement.js`). With the core's new HDMAEN guard, closing windows stay moved too: all 1,952 window frames of the test scene.
+- Goku's Targeting ring item is the scouter switch ("Scouter: ON/OFF"), with the scan sound and King Kai's joke for the form; the power-level readouts are not drawn yet.
+- The UI's DMA-only tile sets (radio glyphs, window tiles, world atlas, radar dial) and the STATUS page's window cells and tilemap live in extended data. Messages are dictionary-compressed, and bank `$AC` has 8.2 KiB left.
+- Validation: `snes/test/ui/run.mjs`, 11 Mesen and node cases. STATUS (base form and Super Saiyan): BG2 from VRAM equals `statusPixels()` on every pixel except 2–3 cells per page that need a fourth colour, which shows as its nearest. Open: the scouter readouts (they need OBJ VRAM) and instant text for R fast-forward (the native engine prints at most one glyph per vblank).
+
+## 2026-10-17 — SNES cartridge: the Sandship arc (destroy stream)
+
+- The Sandship runs on the cartridge: a full-power KAMEHAMEHA below deck while captive (or Sergo's plan) whites out the screen and reloads Goku's room as the wreck, with the fled crew gone, desert monsters in, the boss battle alarm, the rescues, Geshtar on deck, bulkheads that break, unplanned departures and the roof takeoff that blow the ship up into the Mech Rider, the reunion with everyone's own gear, and the dunes' exit rule.
+- The wreck's look on the SNES's own hardware: the white-out and the alarm tint as transformed palettes riding the game's CGRAM upload, the breach as an indirect HDMA window over the desert's sand, and fires through the effects library within the frame's time. The white-out tables and the sand use the new extended data banks.
+- Flight bindings: the breach is a floor hole for flight, the roof takeoff and flight's hull rule report through `SANDSHIP_TAKEOFF`, and `SANDSHIP_HULL_KEY` keys flight's hull cache.
+- A beam's hit scan and barrier search now grow in steps across frames (largest single call 84 scanlines for a full wave, was 219 on FastROM).
+- Details, deviations and core/effects requests (the game's tile decoder overwrote the core's event request word in the wrecked cabin) in [snes-port/destroy.md](snes-port/destroy.md).
+- Validation: `snes/test/destroy/run.mjs`, 27 destroy and 9 Sandship scenarios, each on a private ROM copy.
+
 ## 2026-10-17 — Release 0.2.4
 
 - Release 0.2.4 (`v0.2.4`) and its Pages build include everything since 0.2.3:
@@ -79,6 +301,14 @@ stay traceable even when they are committed together.
   - **Unit tests:** 379 pass. They now include two wait programs run from work RAM: HVBJOY polls across both blanking edges and the auto-joypad read, and a `BIT` loop whose flag HDMA clears through WMDATA. Both fail on the earlier scheduler.
   - **Exactness:** the original SnesJs core equivalence passes (picture, work RAM, VRAM, CGRAM, OAM, SPC RAM, audio and CPU timing every frame). Every saved state, scene and forced branch renders identically to 0.2.3 with every mod hook. The fire and smoke drawers issue the same pixel writes in the same order.
   - **Browser suite:** only the known failures; all 28 phone tests pass. In real iOS Safari (Simulator), Status opened at cursor 5 closes with one tap of Menu.
+
+
+## 2026-10-17 — SNES cartridge: 64 Mbit ExHiROM, unflashed Goku, fresh cartridges (integration)
+
+- The cartridge is now 64 Mbit ExHiROM (the mapping of Tales of Phantasia). The first 4 MiB is unchanged apart from the header, and the second 4 MiB mirrors it. Generators can place up to 1984 KiB of DMA sources and bulk tables in banks `$40–$7D` through `xdata(name, bytes)`, which frees room in the fast banks for the remaining set pieces. Save RAM stays where the original game keeps it, because bsnes, Mesen2, snes9x and the FXPak map ExHiROM save RAM like HiROM. See [snes-rom.md](snes-rom.md#extended-data-exhirom).
+- Goku keeps his own colours during native screen flashes while a scene shows him (the arrival's hop, matching the browser's scene renderers), and the Goku tests follow combat's remapped controls under FastROM. On the arrival frames compared, the cartridge moved closer to the browser (impact 3.1% → 0.3% of pixels differ).
+- A NEW GAME can no longer start with Goku already a Super Saiyan. Combat had seeded his form on the title from noise in a new cartridge's battery RAM, or from the previous playthrough's permanent transformation. NEW GAME now resets the form and loading sets it from the save. The cartridge also clears its persistent Goku block at power-on when the block lacks the cartridge's magic.
+- Validation: the full Mesen suite passes on the ExHiROM build except the effects library's `beams` test (fixed on its branch). Goku: 12,751/12,751 pose frames match. Scene select: 19 presets match the browser fully and 4 natively, none partially. New core tests: `live` and `xdata`.
 
 ## 2026-10-17 — Release 0.2.3
 
@@ -147,6 +377,62 @@ stay traceable even when they are committed together.
   - **Core equivalence:** the SnesJs core matches over 42 states.
   - **Browser equivalence:** composed and per-pixel rendering match with every mod hook across 41 saved states and 16 story and set-piece scenes. They also match in the overlay scenarios, 49 forced ending and defeat branches, every arrival phase (with edge clipping) and the tree and emperor scenes.
   - **Browser suite:** only the 21 known failures, plus a controls layout test that is also flaky on 0.2.1. All 28 phone tests pass.
+
+
+## 2026-10-17 — SNES cartridge: finale cinematics (ending stream)
+
+- The finale plays on the cartridge inside the native field loop, driven by the story module's event hooks as in the browser: the good ending's fade, Shenron's vista over the Mana Tree (summon, dragon, wish), the wish flight over a Mode 7 night world with the seven Balls scattering, the reunion cliff with Dyluck, Goku beside Randi in Potos and his departure (power-up, launch, whiteout, distant globe), King Kai's planet with both end cards; the bad ending's doomed globe, explosion and escape; and the finale death (collapse, black, the planet exploding, GAME OVER). See [snes-port/ending.md](snes-port/ending.md).
+- Scenes stay up over the finale scripts' native map loads (reloaded after the loader's blocking pass), the reunion holds black until its cliff reloads, and the scene select's good-ending, bad-ending and explosion presets reach their scenes from power-on.
+- Validation: `snes/test/ending/run.mjs` (seven Mesen suites against references composed by the browser engine's own code): King Kai 93%, globes and escape 86-100% (the explosion's brick fragments 65-80% during the drift), death 67-100%, village and departure 99-100%, vista 95-96%, flight 91-99%, native loads 99%; lag and vblank checks per scene.
+- Open: the Fortress cutaway in world flight (needs ROM and world-mode hooks), the combat module's call into the finale death, the audio module's ending cues, and the frieza module's crisis answer (night globe). The finale has not yet been played end to end through the story's own scripts, nor on real hardware.
+
+## 2026-10-17 — SNES cartridge: destructible scenery, barriers and demolition (destroy stream)
+
+- Goku's punches, kicks and beams break what the boy's weapons could on the cartridge, through the game's own cut-map pipeline: plants, rocks, pillars and multi-stage objects, tall grass, Haunted Forest vines, skull heads, the Sandship rail, and palace braziers for the full Super Saiyan beam. Edits are queued and applied one row per frame at the native redraw consumer (`C0:C7C3`), with the native redraw request and cut sound, and smashed objects are replayed silently after native rebuilds, as in the browser.
+- Gates, locks, hit switches, floor plates, the Grand Palace buttons and crystal orbs start their original or story-authored events; the three breakable doors persist in the GAME FILE and story routes their trigger events on the module's `DOOR_*` queries. Watts's shortcut entrance stays open across visits once its door broke (piece loader hook at `C0:CC2D`).
+- The full beam melts dungeon partitions on both layers in the 22 dungeon families (eight scenes compared end to end) with the browser's breach rules (span, heights, floor sample, partner layer, protected cells), planned within a per-frame scanline budget that can suspend a plan between frames. Rubble and brazier bursts are published as effect records for the effects library.
+- API for combat (`destroy_hit`, `destroy_orb_hit`), outputs for radio/feedback and the catalogue with data sources are in [snes-port/destroy.md](snes-port/destroy.md).
+- Validation: `snes/test/destroy/run.mjs` (29 Mesen scenarios against the browser modules on the same imported states): 26 match exactly; three timing-sensitive demolition scenes open the same walls with some different floor tiles or one fewer breach (documented). A full beam adds 0–8 lag frames over about 140 frames in most scenes measured, 15 in the heaviest (a BG2 room).
+
+## 2026-10-17 — SNES cartridge: combat and effects (integration)
+
+- Goku fights natively on the cartridge: punch/cross/kick combos, ki blasts, partial and full Kamehameha (including the 160-pixel Super Saiyan wave), focus, transformation with its radial burst, reversion, Saiyan defense and deflection, the Heavy Gi penalty, level 99 and 999 HP, Senzu Beans and the Dust Bag, all through the native damage queue so XP, rewards and boss events stay native. Twenty-one Mesen-versus-browser comparisons on the same states and inputs match. See [snes-port/combat.md](snes-port/combat.md).
+- The effects library draws charge orbs, ki shots, beams, sparks and explosions from the cartridge's own spell cells; the full-screen Super Saiyan wave, Final Flash and Galick Gun are HDMA-driven window polygons with sprite edge sparks. See [snes-port/fx.md](snes-port/fx.md).
+- Build: a ROM ownership check now flags bank halves holding two modules' labels (asar overwrites silently); the effects library has its own bank. Core hides sprites with one store and culls sprites entirely above the screen.
+- Known open items: FastROM (planned default for CPU headroom) still breaks the title's BOY prefill; title and goku tests are being updated for combat's remapped controls; a full wave's first frames stall in destroy's hit scan.
+
+## 2026-10-17 — SNES cartridge: audio and world flight (integration)
+
+- The cartridge's sound driver now carries the DBZ effects, the continuous Japanese Kamehameha chant with its release shout, sustained charge loops and the pod arrival cues, streamed from ROM alongside native music, plus five new native songs ($3B–$3F): Frieza's entrance, battle and orbit cues and Vegeta's two themes, rendered from Secret of Mana's own instruments (loudness within ±0.2 dB of the browser's renderer). See [snes-port/audio.md](snes-port/audio.md).
+- Goku flies the Mode 7 world himself: L+R or the Fly item takes off without Flammie's summon, landing skips the fly-by, aerial ki and the charged Kamehameha work, the Fortress shield deflects weaker waves and a full one destroys it, struck towns keep their craters until the wish, and a full wave opens the Mana Tree's cloud barrier. See [snes-port/world.md](snes-port/world.md).
+- Validation: audio, boot, core, debug, destroy, goku, perf, story and world suites pass on the merged build; the title module's arrival comparison is being updated for the browser's newer crater compositing.
+
+## 2026-10-17 — SNES cartridge: destruction and scene select (integration)
+
+- Punches and beams on the cartridge break bushes, grass, vines and multi-stage objects through the native redraw, open authored gates and native hit/floor switches, light crystal orbs through their original events, keep Watts's shortcut entrance open, and let a full Super Saiyan wave demolish dungeon partitions; five demolition families match the browser edit for edit. See [snes-port/destroy.md](snes-port/destroy.md).
+- A hidden scene select on the title (Up Up Down Down Left Right Left Right) lists the 22 `?start=` presets; each runs the real NEW GAME and replays `quick-start.js`'s steps natively, with hooks the Frieza, orbit, Vegeta and ending modules fill. See [snes-port/debug.md](snes-port/debug.md).
+- Core clears every module WRAM block at power-on and title entry (random WRAM on hardware), and the Mesen harness no longer stops long tests at Mesen's 100-second limit.
+
+## 2026-10-17 — SNES cartridge: title, arrival, Goku menus (integration)
+
+- The cartridge's title reads **Secret of GOKU** in gold with the extended credit, the name editor starts with an editable BOY, and the original opening plays as the boy until the sword pull. Goku's Saiyan pod then crashes in, with its descent, impact, quake and flash, obliterates the boy and the sword, leaves the Potos-hole crater, and the five arrival pages and the native event tail follow. Phase timing matches the browser within one frame; settled frames differ from the browser's in under 1% of pixels. Goku takes over the hero slot (GOKU, the typed name kept in the slot's tail) at impact, and the crater persists across menus and doors. See [snes-port/title.md](snes-port/title.md).
+- Goku now also appears in the ring marker, the Status, Action Grid and save-confirmation figures, and on GAME FILE faces for valid GOKU records; native weapon swings draw no sword cells while he stands in.
+- Test tooling: imported browser states restore the sound CPU at its own instruction boundary, fixing sound-handshake stalls after imports.
+- Validation: boot, core, goku, perf, story and title suites pass on the merged build.
+
+## 2026-10-17 — SNES cartridge: Goku sprite and story (integration)
+
+- Goku replaces the boy on the cartridge once he has arrived: every native action and facing, distance-driven walk cycles, pushing, falls, status colours, the water palette, the pygmy miniature, the HUD portrait and the Super Saiyan form with its transformation. Art is converted from the browser sheets at build time (4,837 tiles in banks F8–FA) and poses port `goku-animation.js`; Mesen replays of all 51 native actions match the browser's pose choice on 12,740 of 12,740 frames. The pose API for combat, flight and scenes is in [snes-port/goku.md](snes-port/goku.md).
+- The story stack is compiled at build time from the browser's own story sources into banks F0–F7 (four party variants), with native event dispatch, party variants, story-area floors, object overlays, names, the Dragon Ball ledger, Luka's Advice, the five-minute crisis greeting, the Potos gatekeeper and the Water Palace walk. A sweep of all 324 dispatch programs (2,592 choices) and nine differential runs match the browser. Details and the hook table other modules fill are in [snes-port/story.md](snes-port/story.md).
+- Test tooling: imported browser states now neutralise idle text pointers into the browser's own story-bank layout, which otherwise redraw stale text every frame on the cartridge.
+- Validation: `node snes/test/run-all.mjs` — boot, core, goku, perf and story all pass on the merged build; strict build clean.
+
+## 2026-10-17 — SNES cartridge: core runtime (core stream)
+
+- The standalone cartridge's core gives every module frame callbacks in the field (including dialogue and Mode 7 boss arenas), world flight, ring menus and full-screen menus, vblank callbacks for the field and world NMIs, and a title-program entry hook that resets module state on power-on and soft reset.
+- Services: a pad 1 filter after the game's multitap BIOS (hide or add buttons for movement, rings, dialogue, menus and steering), extra sprites behind or in front of the native ones, a VRAM upload queue that never runs past vblank, OBJ VRAM region claims, the native sound driver queue and native event requests (doors, world takeoff, save point).
+- GAME FILE saves carry the Goku state in per-slot SRAM sidecars, bound so that saving another slot (which rewrites every slot's native checksum) keeps them valid; damaged or missing sidecars load as legacy saves and NEW GAME clears the state.
+- `snes/test/checkpoints.mjs` plays the opening from power-on into shared name-entry, waterfall and Potos checkpoints. Eleven Mesen tests cover every service, the WRAM claims and the untouched SRAM pages. Engine research (loops, interrupts, input, OAM, VRAM, DMA budget, saves, FastROM evaluation) is in [snes-port/engine.md](snes-port/engine.md); the API is in [snes-rom.md](snes-rom.md#modules-and-core-api).
 
 ## 2026-10-16 — Mobile fullscreen and Home Screen play
 
