@@ -23,7 +23,7 @@ does draw: palettes, an HDMA breach and fires through the effects library.
 
 | Resource | Use |
 | --- | --- |
-| Code `$A4:8000-$A4:DA9F` | `!CODE_DESTROY` (about 22.7 KiB of 32) |
+| Code `$A4:8000-$A4:DAAC` | `!CODE_DESTROY` (about 22.7 KiB of 32) |
 | Data `$E4:0000-$E4:62CB` | `!DATA_DESTROY` (about 24.7 KiB of 32, all generated) |
 | Extended data (xdata, placed by the build; `$7D:0000-$7D:40FF` today) | `destroy_white`: the Sandship white-out tables, 13 levels (9,984 bytes); `destroy_sand_quads`: the breach's desert for channel 3 at each white level (6,656 bytes) |
 | WRAM `$7E:D980-$7E:D9FF` | `!RAM_DESTROY`: state words `+$00-$0F`, API arguments `+$10-$23`, beam scan memory, map context, outputs `+$36-$3F`, call-local scratch `+$40-$7F` |
