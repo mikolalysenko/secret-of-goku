@@ -10,6 +10,8 @@
 !FZH_VRAM      = $1C00
 !FZH_PAL       = 6               ; BG palette 6: unused by map 246's layers
 !FZH_PALADDR #= $0600+((16*!FZH_PAL+1)*2)   ; its colour 1 in the game's CGRAM buffer
+!FZH_PAL255    = 2               ; the collapsed deck (map 255) leaves only palette 2 free
+!FZH_PALADDR255 #= $0600+((16*!FZH_PAL255+1)*2)
 !FZH_MAX       = 400             ; listed hole cells
 !FZH_WMAX      = 64              ; tilemap row pairs per rebuild (32 cells)
 
@@ -127,6 +129,18 @@ fz_holes_frame:
 	LDA.b #!FZT_HOLES                 ; the vblank may upload and write
 	TSB !fz_tflags
 	REP #$20
+	LDA $DC
+	CMP.w #255
+	BNE .arena
+	; the deck's scar colours (no cloud)
+	LDX.w #12
+-	LDA.l frieza_collapse_hole_colors,X
+	STA.w !FZH_PALADDR255,X
+	DEX
+	DEX
+	BPL -
+	BRA .colours
+.arena
 	; the hole colours, cloud phases rotating every 24 frames
 	LDA !fzf_age
 	LDX.w #24
@@ -164,6 +178,7 @@ fz_holes_frame:
 	INX
 	CPX.w #14
 	BCC -
+.colours
 	; the tiles, once per stay on the map: fz_holes_nmi uploads them before
 	; any tilemap entry may point at them
 	LDA.l !fzh_tiles
@@ -208,6 +223,13 @@ fz_holes_frame:
 
 ; The write list: for each visible hole, two tilemap rows of two entries.
 fz_holes_build:
+	; the palette bits of the entries: 6 on the arena, 2 on the deck
+	LDA.w #!FZH_PAL<<10
+	LDX $DC
+	CPX.w #255
+	BNE +
+	LDA.w #!FZH_PAL255<<10
++	STA !fz_t1
 	; tilemap offsets of the map: (scroll register - camera) mod 512 / 256
 	LDA $5E
 	AND.w #$0002
@@ -329,7 +351,8 @@ fz_holes_emit:
 	AND.w #$0004                      ; N
 	LSR
 	ORA !fz_m3
-	ORA.w #!FZH_TILE|(!FZH_PAL<<10)
+	ORA.w #!FZH_TILE
+	ORA !fz_t1
 	STA !fz_m3                        ; TL
 	LDA !fz_t7
 	AND.w #$0002                      ; E
@@ -339,7 +362,8 @@ fz_holes_emit:
 	AND.w #$0004
 	LSR
 	ORA !fz_m4
-	ORA.w #(!FZH_TILE+4)|(!FZH_PAL<<10)
+	ORA.w #!FZH_TILE+4
+	ORA !fz_t1
 	STA !fz_m4                        ; TR
 	LDA !fz_t7
 	AND.w #$0001
@@ -349,7 +373,8 @@ fz_holes_emit:
 	LSR
 	LSR
 	ORA !fz_m5
-	ORA.w #(!FZH_TILE+8)|(!FZH_PAL<<10)
+	ORA.w #!FZH_TILE+8
+	ORA !fz_t1
 	STA !fz_m5                        ; BL
 	LDA !fz_t7
 	AND.w #$0002
@@ -360,7 +385,8 @@ fz_holes_emit:
 	LSR
 	LSR
 	ORA !fz_m6
-	ORA.w #(!FZH_TILE+12)|(!FZH_PAL<<10)
+	ORA.w #!FZH_TILE+12
+	ORA !fz_t1
 	STA !fz_m6                        ; BR
 	; append (addr, TL, TR) and (addr + 32, BL, BR)
 	LDA.l !fzh_wcount

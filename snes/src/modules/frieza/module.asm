@@ -245,7 +245,13 @@ assert !FZX_END <= !FZ+$C0, "frieza WRAM overflow (beast)"
 !fzv_x         = !FZSB+$14E   ; word: where Frieza fell (map)
 !fzv_y         = !FZSB+$150   ; word
 !fzv_white     = !FZSB+$152   ; byte: whiteout 0-31 this frame
-!fzv_mode      = !FZSB+$154   ; byte: screen override with FZT_WHITE: 0 the whiteout, 1 black
+!fzv_mode      = !FZSB+$154   ; byte: screen override with FZT_WHITE: 0 the whiteout, 1 black, 2 the collapse tint
+; the Fortress's collapse on its deck (collapse.asm)
+!fzc_age       = !FZSB+$160   ; word: frames of the collapse (paused with the field)
+!fzc_n         = !FZSB+$162   ; word: fracture spots in view
+!fzc_cx        = !FZSB+$164   ; word: camera x when the spots were laid out
+!fzc_cy        = !FZSB+$166   ; word: camera y
+!FZC_SPOTS     = !FZSB+$168   ; 48 x 4 bytes: spot x, y (map)
 
 
 ; boss-victory.js bossVictoryTiming (frames from the fatal hit)
@@ -558,6 +564,7 @@ incsrc "victory.asm"
 incsrc "effects.asm"
 incsrc "balls.asm"
 incsrc "emperor.asm"
+incsrc "collapse.asm"
 frieza_code_end:
 assert frieza_code_end <= !CODE_FRIEZA+$7000, "frieza code bank overflow"
 pullpc

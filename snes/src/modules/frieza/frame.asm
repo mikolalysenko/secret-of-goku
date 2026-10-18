@@ -73,6 +73,7 @@ frieza_field_frame:
 	JSR fz_story_tick
 	JSR fz_scene_tick
 	JSR fz_battle_tick
+	JSR fz_collapse_tick
 	JSR fz_beast_tick
 	JSR fz_death_tick
 	JSR fz_won_tick
@@ -306,6 +307,8 @@ fz_frieza_map:
 	CMP.w #195
 	BEQ .yes
 	CMP.w #236
+	BEQ .yes
+	CMP.w #255                        ; the deck (its collapse)
 	BEQ .yes
 	LDA.w #$0000
 	RTS

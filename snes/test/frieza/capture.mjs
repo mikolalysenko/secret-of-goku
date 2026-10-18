@@ -37,13 +37,14 @@ try{
       await page.waitForFunction(()=>window.mana&&mana.ready,{},{timeout:240000});
       await page.evaluate(()=>{mana.pause();const p=document.querySelector('#native-pause');if(p)p.hidden=true;});
       // the edit runs in the page: (frieza, status, challenge) -> void
-      const edited=await page.evaluate(src=>{
+      const edited=await page.evaluate(([src,gsrc])=>{
         const st=mana.snapshot(),edit=eval(src);
+        if(gsrc)eval(gsrc)(st.goku);
         const entities=(mana.mod.entities?.()??[]).map(e=>({base:e.base,species:e.species,x:e.x,y:e.y,active:e.active,index:e.index}));
         edit(st.goku.frieza,{x:mana.mod.status.x,y:mana.mod.status.y,map:mana.mod.read16(0xdc),cameraX:mana.mod.read16(0xa8),cameraY:mana.mod.read16(0xaa),entities},st.goku.challenge);
         mana.restore(st);
         return {frieza:st.goku.frieza,challenge:st.goku.challenge,map:mana.mod.read16(0xdc)};
-      },sc.edit.toString());
+      },[sc.edit.toString(),sc.goku?sc.goku.toString():null]);
       let at=0;
       for(const f of sc.frames){
         if(f>at){await page.evaluate(n=>mana.run(n),f-at);at=f;}

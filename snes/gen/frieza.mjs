@@ -276,6 +276,8 @@ export async function generate({repo,outDir}){
     // cloud phases (2+k, 1, 5+k), speckle, wall, edge, sparkle
     const holeColors=[rgb555(2,1,5),rgb555(3,1,6),rgb555(4,1,7),0x316b,0x0842,0x31a8,0x3296];
     out.push('frieza_hole_colors:',...words(holeColors));
+    // the collapsed deck (fortress-collapse.js scarColor): 1 -> $0425, 2 -> $0849, 3 -> $14CD with $2674 sparkles
+    out.push('frieza_collapse_hole_colors:',...words([0x0425,0x0425,0x0425,0x0425,0x0849,0x14cd,0x2674]));
   }
   // The Death Ball on the deck (frieza-staging.js friezaDeathBallPose,
   // core-charge / core-shot), on whole pixels as the browser places it.

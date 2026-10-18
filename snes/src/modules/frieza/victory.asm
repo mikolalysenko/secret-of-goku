@@ -359,6 +359,23 @@ fz_won_nmi:
 	LDA.l !fzv_mode
 	AND.w #$00FF
 	BEQ .white
+	CMP.w #2
+	BNE .black
+	; the collapse tint: BG1 and BG2 plus red 2 + alarm
+	SEP #$20
+	LDA.b #$00
+	STA $2130
+	LDA.b #$03
+	STA $2131
+	LDA.b #$C0                        ; green, blue 0
+	STA $2132
+	LDA.l !fzv_white
+	CLC
+	ADC.b #$22                        ; red 2 + a
+	STA $2132
+	REP #$20
+	RTS
+.black
 	; black (the Emperor's hit): sprites only, on a black backdrop, no math
 	SEP #$20
 	LDA.b #$10

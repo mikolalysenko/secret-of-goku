@@ -212,7 +212,11 @@ fz_hole_set:
 
 ; ownsArena() && s.boss && !space: the deck's holes count.
 fz_arena_owned:
-	JSR fz_on
+	LDA $DC
+	CMP.w #255
+	BNE +
+	JMP fz_collapse_active
++	JSR fz_on
 	BCC .no
 	LDA $DC
 	CMP.w #246

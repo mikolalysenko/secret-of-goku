@@ -105,6 +105,7 @@ function test()
   F.check(ok, 'import')
   H.w8(0x316001, 1)
   F.apply(${luaWrites(writes)})
+  F.apply(${luaWrites(sc.writes??[])})
   H.w8(0x${(0x7E0000|defs.fz_music).toString(16)}, ${sc.music??0})
   local shots = {}
   local boxes = {}
@@ -454,7 +455,7 @@ if(want('effects')&&existsSync(scenarioRoot)){
   for(const name of Object.keys(scenarios)){
     const file=join(scenarioRoot,name,'scenario.json');
     if(!existsSync(file))continue;
-    const sc={...JSON.parse(readFileSync(file,'utf8')),music:scenarios[name].music};
+    const sc={...JSON.parse(readFileSync(file,'utf8')),music:scenarios[name].music,writes:scenarios[name].writes};
     const rom=privateRom(romSrc,`frieza-fx-${name}`);
     const out=join(outRoot,'effects',name);
     const r=await runMesen({rom,test:lib+'\n'+scenarioTest(sc),outDir:out,state:join(cps,'waterfall.mss')});
