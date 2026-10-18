@@ -32,6 +32,8 @@ function enter(bundle, setup)
   H.w16(UI + 0x82, 0x4B41)
   for a = 0x337EF8, 0x337EFB do H.w8(a, 0) end   -- nothing staged (!ui_s_bmode/bstep)
   H.w16(0x337EE8, 0)                               -- no cached radar heading (!ui_s_trig)
+  H.w16(0x337F3C, 1)                               -- the radio hears only the test
+  H.w16(0x337F3E, 0)                               --   (other modules' calls counted)
   if setup then setup() end
   H.wait(20)
 end

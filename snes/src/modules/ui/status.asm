@@ -38,22 +38,23 @@ incsrc "ui-status/defines.asm"
 !UI_ST_STOP  = 160            ; no cell starts from this line to the vblank
 !UI_ST_MAPROWS = 4            ; tilemap rows per DMA while taking the page over
 
-; SRAM staging while the page is built (the radio's map, text and build
-; state, the radar's caches and the placement tables: none is used in
-; menus, and the radio and radar rebuild theirs: !ui_s_bmode and
-; !ui_s_trig are cleared)
+; SRAM staging while the page is built: the radio's map, text and build
+; state, the radar's caches and the placement tables, none used in menus
+; (the radio and radar rebuild theirs: !ui_s_bmode and !ui_s_trig are
+; cleared). Never the radio's queue (+$340) or the band's colour blocks.
 !ui_s_ststr   = !SRAM_WORK_UI+$000 ; 176 bytes: dynamic strings (codes, 0-terminated)
 !ui_s_stoff   = !SRAM_WORK_UI+$0B0 ; 19 words: string offsets (+38: lengths)
 !ui_s_stmeter = !SRAM_WORK_UI+$0FC ; 10 words: meter fills (0-96)
 !ui_s_stcg    = !SRAM_WORK_UI+$110 ; 32 bytes: the game's CGRAM 16-31
 !ui_s_stband  = !SRAM_WORK_UI+$130 ; word: band whose operations are set up, + 1
 !ui_s_stcan   = !SRAM_WORK_UI+$132 ; 2 words: first uploaded cell (map address, word), 0 none
-!ui_s_strec   = !SRAM_WORK_UI+$136 ; 16 x 8 bytes: the band's operations (below)
-!ui_s_stmark  = !SRAM_WORK_UI+$1B6 ; 32 words: per cell of the band, a bit per operation on it
-!ui_s_stcol   = !SRAM_WORK_UI+$1F6 ; 8 rows x 8 words: the cell's mask per colour (0: drawn; 7: none)
-!ui_s_stbuf   = !SRAM_WORK_UI+$276 ; !UI_ST_BATCH x 32 bytes: composed tiles
-!ui_s_stcell  = !SRAM_WORK_UI+$376 ; !UI_ST_BATCH x 2 words: tilemap word, map address
-assert !ui_s_stcell+(!UI_ST_BATCH*4) <= !SRAM_WORK_UI+$400, "status: staging overflow"
+!ui_s_strec   = !SRAM_WORK_UI+$136 ; 8 x 8 bytes: the band's operations (below)
+!ui_s_stmark  = !SRAM_WORK_UI+$176 ; 32 bytes: per cell of the band, a bit per operation on it
+!ui_s_stcol   = !SRAM_WORK_UI+$196 ; 8 rows x 8 words: the cell's mask per colour (0: drawn; 7: none)
+!ui_s_stbuf   = !SRAM_WORK_UI+$216 ; !UI_ST_BATCH x 32 bytes: composed tiles
+!ui_s_stcell  = !SRAM_WORK_UI+$316 ; !UI_ST_BATCH x 2 words: tilemap word, map address
+assert !ui_s_stcell+(!UI_ST_BATCH*4) <= !ui_s_queue, "status: staging over the radio's queue"
+assert !UI_ST_BAND_OPS <= 8, "status: band operations (8 records, a byte of bits per cell)"
 assert !UI_ST_DYNS*2 <= 38, "status: string table overflow"
 ; band record: +0 operation offset, +2 x0 (text left edge; meters: end of
 ; the fill), +4 string (address in this bank / offset in !ui_s_ststr),
@@ -891,9 +892,9 @@ ui_st_build:
 .ready
 	LDA.w !ui_st_cell&$FFFF
 	AND.w #$001F
-	ASL
 	TAX
 	LDA.l !ui_s_stmark,X
+	AND.w #$00FF
 	BEQ .skip
 	STA.w !st_ops&$FFFF
 	JSR ui_st_compose
@@ -920,7 +921,7 @@ ui_st_band:
 	TAX
 	LDA.l ui_st_bands,X
 	STA.w !st_ops&$FFFF               ; the band's list (this bank)
-	LDX.w #62
+	LDX.w #30
 	LDA.w #$0000
 .clear
 	STA.l !ui_s_stmark,X
@@ -957,20 +958,18 @@ ui_st_band:
 .text
 	JSR ui_st_geometry
 .mark
-	LDA.w !st_gm&$FFFF                ; first cell * 2 (clamped to the screen)
+	LDA.w !st_gm&$FFFF                ; first cell (clamped to the screen)
 	BPL .from
 	LDA.w #$0000
 .from
-	LSR : LSR : LSR
-	AND.w #$FFFE
+	LSR : LSR : LSR : LSR
 	STA.w !st_u&$FFFF
-	LDA.w !st_om&$FFFF                ; last cell * 2
+	LDA.w !st_om&$FFFF                ; last cell
 	CMP.w #512
 	BCC .to
 	LDA.w #511
 .to
-	LSR : LSR : LSR
-	AND.w #$FFFE
+	LSR : LSR : LSR : LSR
 	STA.w !st_u2&$FFFF
 	LDA.w !st_rec&$FFFF               ; this operation's bit
 	LSR : LSR
@@ -978,14 +977,16 @@ ui_st_band:
 	LDA.l ui_st_bits,X
 	STA.w !st_m&$FFFF
 	LDX.w !st_u&$FFFF
+	SEP #$20
 .cell
 	LDA.l !ui_s_stmark,X
 	ORA.w !st_m&$FFFF
 	STA.l !ui_s_stmark,X
-	INX : INX
+	INX
 	CPX.w !st_u2&$FFFF
 	BCC .cell
 	BEQ .cell
+	REP #$20
 	LDA.w !st_rec&$FFFF
 	CLC
 	ADC.w #8

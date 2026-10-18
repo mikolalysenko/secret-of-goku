@@ -136,6 +136,10 @@ ui_window_clear:
 	LDA.w #!UIS_DRAWN|!UIS_HDMA
 	TRB.w !ui_state&$FFFF
 	STZ.w !ui_drawn&$FFFF
+	SEP #$20                          ; the radio's HDMA channel off (only ours:
+	LDA.b #$20                        ; other modules may use channel 5 while
+	TRB.w $002C                       ; the box is down)
+	REP #$20
 	LDA.w #!UI_ZERO_ROWS>>16
 	STA.w !core_scratch&$FFFF
 	LDA.w !ui_place&$FFFF
@@ -169,19 +173,17 @@ ui_window_clear:
 	RTS
 
 ; $2C bit 5 follows the HDMA state (the field NMI writes $2C to HDMAEN).
+; ($2C bit 5 is set again every frame the HDMA is armed, as the game may
+; rewrite $2C; it is cleared once, when the box goes: ui_window_clear.)
 ui_window_sync_2c:
 	LDA.w !ui_state&$FFFF
 	AND.w #!UIS_HDMA
-	SEP #$20
 	BEQ .off
+	SEP #$20
 	LDA.b #$20
 	TSB.w $002C
 	REP #$20
-	RTS
 .off
-	LDA.b #$20
-	TRB.w $002C
-	REP #$20
 	RTS
 
 ; Queue the first atlas half plus the four window tiles. Carry set = retry.

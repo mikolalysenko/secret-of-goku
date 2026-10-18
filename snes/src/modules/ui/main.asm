@@ -32,7 +32,7 @@ ui_ram_check:
 	CMP.w #!UI_MAGIC
 	BNE .reset
 	LDA.w !ui_state&$FFFF
-	AND.w #(!UIS_DRAWN|!UIS_ATLAS|!UIS_HDMA|!UIS_INIT)^$FFFF
+	AND.w #(!UIS_DRAWN|!UIS_ATLAS|!UIS_HDMA|!UIS_INIT|!UIS_IDLE|!UIS_PLACE)^$FFFF
 	BNE .reset
 	LDA.w !ui_qn&$FFFF
 	CMP.w #!UI_QMAX+1
@@ -77,6 +77,8 @@ ui_load:
 	RTL
 
 ui_reset_session:
+	LDA.w #!UIS_IDLE
+	TRB.w !ui_state&$FFFF
 	STZ.w !ui_cur&$FFFF
 	STZ.w !ui_qn&$FFFF
 	STZ.w !ui_held&$FFFF
@@ -89,8 +91,28 @@ ui_reset_session:
 	RTS
 
 ; ---------------------------------------------------------------------------
-; Field frame (also dialogue, events, Mode 7 arenas).
+; Field frame (also dialogue, events, Mode 7 arenas). Idle (idle.asm: the
+; last full frame left nothing shown, queued, pending or moved), outside
+; events and with R up, nothing can start but a public API call, which
+; clears !UIS_IDLE: only the frame count moves.
 ui_field_frame:
+	LDA.w !ui_state&$FFFF
+	AND.w #!UIS_IDLE
+	BEQ .full
+	LDA.w $00D0                       ; an event (placement, fast-forward)
+	AND.w #$00FF
+	BNE .full
+	LDA.l !core_pad                   ; R (fast-forward, Frieza's input lock)
+	AND.w #!PAD_R
+	BNE .full
+if defined("UI_TEST")
+	LDA.w !ui_test&$FFFF              ; (the test mailbox)
+	ORA.w !ui_test_charge&$FFFF
+	BNE .full
+endif
+	INC.w !ui_frame&$FFFF
+	RTL
+.full
 	JSR ui_ram_check
 	JSR ui_status_leave
 	INC.w !ui_frame&$FFFF
@@ -107,11 +129,17 @@ endif
 	JSR ui_radio_tick
 	JSR ui_window_update
 	JSR ui_place_frame
-	RTL
+	JMP ui_field_idle
 
 ; Field vblank (DB = $80, forced blank): switch the window HDMA channels
-; for a moved native window, arm the radio's palette HDMA.
+; for a moved native window, arm the radio's palette HDMA. Nothing to do
+; unless the radio's HDMA is armed or placement holds the channels.
 ui_field_nmi:
+	LDA.l !ui_state
+	AND.w #!UIS_HDMA|!UIS_PLACE
+	BNE .work
+	RTL
+.work
 	%ui_ram_ok_long()
 	BNE +
 	JSR ui_place_nmi
@@ -122,6 +150,8 @@ ui_field_nmi:
 ; is not drawn in Mode 7 (the world panel is a separate renderer).
 ui_world_frame:
 	JSR ui_ram_check
+	LDA.w #!UIS_IDLE                  ; (the field comes back through a full frame)
+	TRB.w !ui_state&$FFFF
 	INC.w !ui_frame&$FFFF
 if defined("UI_TEST")
 	JSR ui_test_poll
@@ -140,6 +170,8 @@ ui_world_nmi:
 ; Ring menus: the field loop is paused; the window hides (never over a ring).
 ui_ring_frame:
 	JSR ui_ram_check
+	LDA.w #!UIS_IDLE
+	TRB.w !ui_state&$FFFF
 	JSR ui_status_leave
 	JSR ui_window_leave_field
 	RTL
@@ -148,6 +180,8 @@ ui_ring_frame:
 ; uploads).
 ui_menu_frame:
 	JSR ui_ram_check
+	LDA.w #!UIS_IDLE
+	TRB.w !ui_state&$FFFF
 	JSR ui_status_frame
 	RTL
 

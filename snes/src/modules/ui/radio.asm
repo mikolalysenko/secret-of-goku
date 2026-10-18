@@ -20,6 +20,20 @@ macro ui_api_enter()
 	PLB
 	PLB
 	JSR ui_ram_check
+	PHA                               ; something to do: the next field frame
+	LDA.w #!UIS_IDLE                  ; is a full one
+	TRB.w !ui_state&$FFFF
+	PLA
+if defined("UI_TEST")
+	JSR ui_test_gate                  ; carry set: another module's call while a
+	BCC ?go                           ; test drives the radio alone (ignored)
+	PLD
+	PLB
+	PLP
+	SEC
+	RTL
+?go:
+endif
 endmacro
 ; Leave with the carry from the body (PLD/PLB keep it; PLP is replaced).
 macro ui_api_leave()
@@ -863,6 +877,9 @@ ui_charge_tick:
 	REP #$20
 	ORA.w #$8000
 	STA.l !ui_charge_in
+	LDA.l !ui_state                   ; the next field frame is a full one
+	AND.w #!UIS_IDLE^$FFFF
+	STA.l !ui_state
 	PLP
 	RTL
 

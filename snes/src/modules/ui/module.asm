@@ -137,6 +137,8 @@ endif
 !UIS_ATLAS = $0002            ; glyph atlas resident in BG3 tiles $122-$1C1
 !UIS_HDMA  = $0004            ; palette HDMA (channel 5) armed
 !UIS_INIT  = $0008            ; WRAM initialised since the last title entry
+!UIS_IDLE  = $0010            ; the last full field frame left nothing to do (idle.asm)
+!UIS_PLACE = $0020            ; window placement has vblank work (!ui_wp NOW/TAKEN/FORCED)
 
 ; build steps (!ui_s_bstep): one per frame, so a new message or radar text
 ; never costs a frame more than one step
@@ -235,6 +237,7 @@ incsrc "ff.asm"
 incsrc "place.asm"
 incsrc "scouter.asm"
 incsrc "status.asm"
+incsrc "idle.asm"
 if defined("UI_TEST")
 	incsrc "../../../test/ui/testmod.asm"
 endif

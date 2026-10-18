@@ -385,6 +385,23 @@ prints at most one glyph per vblank. An instant mode would need a path
 that renders many glyphs into the window buffer and uploads whole rows;
 not attempted.
 
+## Idle frames (`idle.asm`)
+
+After each full field frame `ui_field_idle` sets `!UIS_IDLE` when nothing
+is shown, queued, cooling down, pending (scouter scan), moved (placement),
+left over from world flight or fast-forwarded. The next field frames then
+only count (`!ui_frame`) while no event runs (`$D0` = 0) and R is up; a
+public API call (`ui_api_enter`), `ui_charge_tick`, world, ring and menu
+frames and loads clear the bit. The map history (`!ui_lastmap`) restarts
+at 0 when idle, which the radio reads as "no previous map" (a warning
+only follows a map change while it is up). The field NMI returns at once
+unless the radio's HDMA is armed or placement has channel work
+(`!UIS_PLACE`). Measured on `barrier-audit__potos-probe` and
+`preset__late` (300 idle frames, production build): field frame 2.34 →
+0.27 lines, field NMI 0.31 → 0.12 lines, both including the dispatch's
+JSL and RTL. `$2C` bit 5 is cleared once when the radio's box goes (not
+every frame), so other modules may use channel 5 while the box is down.
+
 ## Foreign savestates
 
 `!RAM_UI` is only valid if this cartridge set it up: `ui_title_boot` writes
@@ -445,7 +462,7 @@ byte boundary.
 | Code/data `$AC:8000-` | `!CODE_UI`: `$AC:8000-$DF01` used (about 24 KiB: code, 5 KiB compressed messages, radar tables, the STATUS page's 3.8 KiB of code and 1.2 KiB of tables); about 8.2 KiB left |
 | Extended data | six blobs, 9.3 KiB, placed by the build (today `$7D:0000-$7D:255F`): field glyph atlas, window tiles, world atlas, dial tiles, the STATUS page's window cells and tilemap |
 | WRAM `$7E:7E40-$7E:7EFF` | `!RAM_UI`: state, current message, cooldowns, band/radar state, scratch, `!ui_magic` (`module.asm`), fast-forward (`+$A6`), window placement (`+$AA`), scouter (`+$AE`), STATUS page (`+$B0`–`+$B7`); in menus the world and radio scratch words serve the STATUS composition |
-| SRAM `$33:7C00-$33:7FFF` | staging: window/band rows (`+$000`), the radio's HDMA table, the moved window's colour records or moved natives (`+$200`), text words (`+$240`), radar trig cache (`+$2E8`), build state (`+$2F4`), radar key (`+$2FC`), bearing inputs (`+$2FE`, `+$308`), placement scroll table and the game's channel 0/1 tables (`+$312`, `+$322`), queue (`+$340`), band and sky HDMA colour blocks (`+$3C0`, `+$3DC`); while the STATUS page is built (menus) `+$000`–`+$395` hold its strings, CGRAM copy, band records, cell masks and upload buffer (the radio and radar rebuild theirs) |
+| SRAM `$33:7C00-$33:7FFF` | staging: window/band rows (`+$000`), the radio's HDMA table, the moved window's colour records or moved natives (`+$200`), text words (`+$240`), radar trig cache (`+$2E8`), build state (`+$2F4`), radar key (`+$2FC`), bearing inputs (`+$2FE`, `+$308`), placement scroll table and the game's channel 0/1 tables (`+$312`, `+$322`), queue (`+$340`), band and sky HDMA colour blocks (`+$3C0`, `+$3DC`); while the STATUS page is built (menus) `+$000`–`+$335` hold its strings, CGRAM copy, band records, cell masks and upload buffer (the radio and radar rebuild theirs; the queue and the band blocks are kept); UI_TEST builds: test isolation (`+$33C`, `+$33E`) |
 | SRAM persistent | `!PERSIST_UI` = `!PERSIST_MISC+$80` (`$31:6380`, `$60` bytes) — **request** |
 | VRAM (field) | BG3 tiles `$110-$113`, `$122-$1BF` and rows 1–8 / 17–24 while the window shows |
 | VRAM (STATUS page) | BG2 tilemap `$5800-$5B7F`, tiles `$040-$053` (window cells) and `$054` up (composed cells, two per cell: up to about `$330`, VRAM `$6200-$7980`) |
@@ -466,7 +483,10 @@ barrier keys (64 bits), `+$20` maps with a ceiling exit (512 bits).
 
 Builds a `UI_TEST` cartridge whose test client (`snes/test/ui/testmod.asm`)
 stands in for the modules that will call the API, imports browser-mod
-scenes and compares with the browser's own code:
+scenes and compares with the browser's own code. The radio hears only the
+test: while `lib.lua`'s `enter()` isolation flag is set, public calls from
+other banks (Frieza's Dryad invitation in a late state, story hooks) are
+ignored and counted, since the browser references model the radio alone.
 
 | Case | Checked |
 | --- | --- |
