@@ -296,6 +296,74 @@ export async function generate({repo,outDir}){
     out.push('frieza_core_shot_x:',...bytes(shotX),'frieza_core_shot_size:',...bytes(shotSize));
     out.push('frieza_core_shot_y0:',...words(shotY[0]),'frieza_core_shot_y1:',...words(shotY[1]),'frieza_core_shot_y2:',...words(shotY[2]));
   }
+  // The Dragon Balls (ki-art.js 'dragon': assets/sprites/dragon-balls.png,
+  // 4 x 2 frames cropped to their opaque boxes, nearest-sampled to `size`):
+  // the seven at 11 px rising from the pouch (steal) and the eighth at
+  // 18 px (eighth). Colours are reduced to 15 per palette (seven balls
+  // share one, the eighth has its own) by median cut over the sampled
+  // pixels. Each ball sits at the top-left of its 16 x 16 cell (the eighth
+  // spans four cells); the drawn anchor is x - floor(w / 2), y - floor(h / 2)
+  // as layer.pixel rounds x - w / 2 + xx.
+  {
+    const img=readPng(join(repo,'assets/sprites/dragon-balls.png'));
+    const W=img.width,H=img.height,pix=new Uint16Array(W*H);
+    for(let i=0;i<W*H;i++)if(img.data[i*4+3]>=128)pix[i]=1+(img.data[i*4]>>3)+((img.data[i*4+1]>>3)<<5)+((img.data[i*4+2]>>3)<<10);
+    const frames=[];
+    for(let i=0;i<8;i++){
+      const x0=Math.round(i%4*W/4),x1=Math.round((i%4+1)*W/4),y0=Math.round(Math.floor(i/4)*H/2),y1=Math.round((Math.floor(i/4)+1)*H/2);
+      let x=x1,y=y1,right=x0,bottom=y0;
+      for(let yy=y0;yy<y1;yy++)for(let xx=x0;xx<x1;xx++)if(pix[yy*W+xx]){x=Math.min(x,xx);right=Math.max(right,xx);y=Math.min(y,yy);bottom=Math.max(bottom,yy);}
+      frames.push({x,y,w:right-x+1,h:bottom-y+1});
+    }
+    const sample=(i,size)=>{
+      const f=frames[i],w=Math.round(size*f.w/Math.max(f.w,f.h)),h=Math.round(size*f.h/Math.max(f.w,f.h)),px=[];
+      for(let yy=0;yy<h;yy++)for(let xx=0;xx<w;xx++)px.push(pix[(f.y+Math.floor(yy*f.h/h))*W+f.x+Math.floor(xx*f.w/w)]);
+      return {w,h,px};
+    };
+    // Median cut to 15 colours (deterministic), then nearest colour.
+    const quantize=colors=>{
+      const rgb=c=>[(c-1)&31,((c-1)>>5)&31,((c-1)>>10)&31];
+      let boxes=[colors.filter(Boolean).map(rgb)];
+      while(boxes.length<15){
+        let best=-1,axis=0,range=-1;
+        boxes.forEach((b,bi)=>{if(b.length<2)return;for(let a=0;a<3;a++){const v=b.map(p=>p[a]),r=Math.max(...v)-Math.min(...v);if(r>range){range=r;best=bi;axis=a;}}});
+        if(best<0||range<=0)break;
+        const b=boxes[best].slice().sort((p,q)=>p[axis]-q[axis]||p[0]-q[0]||p[1]-q[1]||p[2]-q[2]),mid=b.length>>1;
+        boxes.splice(best,1,b.slice(0,mid),b.slice(mid));
+      }
+      const pal=boxes.map(b=>[0,1,2].map(a=>Math.round(b.reduce((s,p)=>s+p[a],0)/b.length)));
+      const index=c=>{if(!c)return 0;const p=rgb(c);let bi=0,bd=1e9;pal.forEach((q,i)=>{const d=(p[0]-q[0])**2+(p[1]-q[1])**2+(p[2]-q[2])**2;if(d<bd){bd=d;bi=i;}});return bi+1;};
+      return {pal:[0,...pal.map(([r,g,b])=>rgb555(r,g,b))].concat(Array(15-pal.length).fill(0)),index};
+    };
+    // the four 8x8 tiles (TL, TR, BL, BR) of the 16x16 cell at (cx, cy)
+    const cellTiles=(idx,w,cx,cy)=>[[0,0],[8,0],[0,8],[8,8]].map(([tx,ty])=>encodeTile(idx,w,cx+tx,cy+ty));
+    const seven=[0,1,2,3,4,5,6].map(i=>sample(i,11)),eighth=sample(7,18);
+    const q7=quantize(seven.flatMap(s=>s.px)),q8=quantize(eighth.px);
+    // seven cells: tops (TL, TR of each) then bottoms (BL, BR of each)
+    const tops=[],bottoms=[];
+    for(const s of seven){
+      const idx=new Uint8Array(16*16);
+      for(let y=0;y<s.h;y++)for(let x=0;x<s.w;x++)idx[y*16+x]=q7.index(s.px[y*s.w+x]);
+      const t=cellTiles(idx,16,0,0);tops.push(t[0],t[1]);bottoms.push(t[2],t[3]);
+    }
+    const idx8=new Uint8Array(32*32);
+    for(let y=0;y<eighth.h;y++)for(let x=0;x<eighth.w;x++)idx8[y*32+x]=q8.index(eighth.px[y*eighth.w+x]);
+    const tops8=[],bottoms8=[];
+    for(const [cx,cy] of [[0,0],[16,0],[0,16],[16,16]]){const t=cellTiles(idx8,32,cx,cy);tops8.push(t[0],t[1]);bottoms8.push(t[2],t[3]);}
+    const flat=list=>[...Uint8Array.from(list.flatMap(t=>[...t]))];
+    out.push('frieza_balls_top:',...bytes(flat(tops)),'frieza_balls_bottom:',...bytes(flat(bottoms)));
+    out.push('frieza_ball8_top:',...bytes(flat(tops8)),'frieza_ball8_bottom:',...bytes(flat(bottoms8)));
+    out.push('frieza_balls_palette:',...words(q7.pal),'frieza_ball8_palette:',...words(q8.pal));
+    out.push(`!FRIEZA_BALL_W = ${seven[0].w}`,`!FRIEZA_BALL_H = ${seven[0].h}`,`!FRIEZA_BALL8_W = ${eighth.w}`,`!FRIEZA_BALL8_H = ${eighth.h}`);
+    // steal: offsets (1/256 px) of each ball around the straight rise, by age
+    // (cos(a) * 18 * spread, sin(a) * 14 * spread, spread = sin(pi * t), t = age / 60)
+    const ox=[],oy=[];
+    for(let i=0;i<7;i++)for(let a=0;a<64;a++){
+      const t=Math.min(1,a/60),ang=i*Math.PI*2/7,spread=Math.sin(t*Math.PI);
+      ox.push(Math.round(Math.cos(ang)*18*spread*256));oy.push(Math.round(Math.sin(ang)*14*spread*256));
+    }
+    out.push('frieza_steal_ox:',...words(ox),'frieza_steal_oy:',...words(oy));
+  }
 
   // frieza-combat.js constants
   const combat=await eng('frieza-combat.js');

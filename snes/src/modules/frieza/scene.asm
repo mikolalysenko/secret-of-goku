@@ -640,7 +640,11 @@ fz_draw_scene:
 	CMP $DC
 	BNE .out
 	JSR fz_scene_pose
-	LDA !fz_pframe
+	JSR fz_scene_kind
+	CMP.w #!FZS_STEAL
+	BNE +
+	JSR fz_balls_steal                ; drawn over him in the browser
++	LDA !fz_pframe
 	AND.w #$0007
 	ORA !fz_atlas                     ; full-power art once he is muscular
 	STA !fz_spr_id

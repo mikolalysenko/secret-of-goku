@@ -39,6 +39,8 @@ fz_spr_begin:
 	AND.b #~(!FZT_PALSCAN|!FZT_HOLES|!FZT_WHITE|!FZT_WPREV)
 	ORA !fz_t0
 	STA !fz_tflags
+	LDA.b #0
+	STA.l !fzb_req                    ; no Ball set drawn yet
 	REP #$20
 	RTS
 
@@ -385,6 +387,29 @@ fz_spr_nmi:
 	SEP #$20
 	STA $2121
 	REP #$20
+	LDA.l !fzb_palsrc
+	AND.w #$00FF
+	BEQ .ghostpal
+	DEC
+	XBA
+	LSR
+	LSR
+	LSR                               ; (source - 1) * 32
+	TAX
+	LDY.w #15
+.balls
+	LDA.l frieza_balls_palette+2,X
+	SEP #$20
+	STA $2122
+	XBA
+	STA $2122
+	REP #$20
+	INX
+	INX
+	DEY
+	BNE .balls
+	BRA .frame
+.ghostpal
 	LDX.w #3*32
 	LDY.w #15
 .ghost

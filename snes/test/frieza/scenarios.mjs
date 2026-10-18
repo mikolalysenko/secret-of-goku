@@ -14,6 +14,12 @@ export const scenarios={
     edit:(f,s)=>{f.scene={kind:'fanha-finish',age:0,clock:0,map:s.map,x:s.x,y:s.y,target:{x:s.x-40,y:s.y-10}};}},
   'explode':{preset:'late',frames:[8,24,48],music:1,
     edit:(f,s)=>{f.stage='showdown';f.scene={kind:'explode',age:0,clock:0,map:s.map,x:s.x,y:s.y,target:{x:s.x-30,y:s.y-40}};}},
+  'steal':{preset:'late',frames:[10,30,50,62],music:1,
+    edit:(f,s)=>{f.stage='theft';f.stolen=true;f.stolenMask=127;f.scene={kind:'steal',age:0,clock:0,map:s.map,x:s.x,y:s.y,altar:{x:228,y:132,cameraX:s.cameraX,cameraY:s.cameraY}};}},
+  'steal-some':{preset:'late',frames:[20,40],music:1,
+    edit:(f,s)=>{f.stage='theft';f.stolen=true;f.stolenMask=0x25;f.scene={kind:'steal',age:0,clock:0,map:s.map,x:s.x,y:s.y};}},
+  'eighth':{preset:'late',frames:[10,40],music:1,
+    edit:(f,s)=>{f.eighth=true;f.scene={kind:'eighth',age:0,clock:0,map:s.map,x:s.x,y:s.y};}},
   'empower':{preset:'late',frames:[20,50,80,120],music:1,
     edit:(f,s)=>{f.stage='trial';f.scene={kind:'empower',age:0,clock:0,map:s.map,x:s.x,y:s.y,target:{x:s.x-60,y:s.y-20}};}},
 };

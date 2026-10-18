@@ -22,6 +22,9 @@ frieza_field_frame:
 	LDA !fzl_base
 	INC                               ; $FFFF: no Dark Lich tracked
 	BNE .busy
+	LDA.l !fzb_claim                  ; the Balls' VRAM region to give back
+	AND.w #$00FF
+	BNE .busy
 	LDA $DC
 	CMP !fz_lastmap
 	BNE .busy
@@ -85,11 +88,13 @@ frieza_field_frame:
 	JSR fz_won_draw
 	JSR fz_holes_frame
 .notdrawn
+	JSR fz_balls_tick
 	JSR fz_music_tick
 	RTL
 
 ; modules_field_nmi: in vblank after the game's uploads (DB = $80).
 frieza_field_nmi:
+	JSR fz_balls_nmi
 	JSR fz_spr_nmi
 	JSR fz_won_nmi
 	JSR fz_holes_nmi
@@ -106,6 +111,7 @@ frieza_title_boot:
 	BPL -
 	LDX.w #$000E
 -	STA.l !FZHB,X
+	STA.l !FZHB+$680,X
 	DEX
 	DEX
 	BPL -

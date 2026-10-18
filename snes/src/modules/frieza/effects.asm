@@ -208,6 +208,9 @@ fz_scene_effects:
 +	CMP.w #!FZS_GOLD
 	BNE +
 	JMP fz_fx_gold
++	CMP.w #!FZS_EIGHTH
+	BNE +
+	JMP fz_balls_eighth
 +	RTS
 
 ; core-charge / core-shot: friezaDeathBallPose (tables from the generator);
