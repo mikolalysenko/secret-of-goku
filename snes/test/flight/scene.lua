@@ -184,7 +184,39 @@ local function recoveryCamera()
   F.check(H.r8(0x7ED828)~=0, 'charging works after recovery camera arrives')
   H.wait(6)
 end
+local function passengers()
+  F.import('graphics-audit__party')
+  F.on()
+  H.wait(8)
+  local mode='carried'
+  local shown={carried=0,landed=0,player=0}
+  -- Exercise the renderer contract with settle's published mask, after
+  -- movement and before OBJ construction. Actors remain active throughout.
+  local setup=emu.addMemoryCallback(function()
+    H.w16(0x7ED96C,mode=='landed' and 0 or 3)
+    H.w8(0x7ED900,H.r8(0x7ED900)|3)
+    H.w8(0x7EE22C,mode=='player' and 2 or 0)
+    H.w8(0x7EE42C,0)
+  end,emu.callbackType.exec,0x00B0CA,0x00B0CA)
+  local body=emu.addMemoryCallback(function()
+    local x=emu.getState()['cpu.x']
+    if x==0x200 or x==0x400 then shown[mode]=shown[mode]+1 end
+  end,emu.callbackType.exec,0x80E40E,0x80E40E)
+  H.wait(8)
+  F.check(shown.carried==0,'carried companions have no body/attachment/shadow pass')
+  F.check(H.r8(0x7EE200)&1==1 and H.r8(0x7EE400)&1==1,'carried actors remain active')
+  mode='landed'; H.wait(8)
+  F.check(shown.landed>=8,'companions render again after landing')
+  mode='player'; H.wait(8)
+  F.check(shown.player>=4,'a human-controlled companion stays visible')
+  emu.removeMemoryCallback(setup,emu.callbackType.exec,0x00B0CA,0x00B0CA)
+  emu.removeMemoryCallback(body,emu.callbackType.exec,0x80E40E,0x80E40E)
+  H.w8(0x7EE22C,0)
+  H.w16(0x7ED96C,0)
+  H.wait(2)
+end
 function test()
+  passengers()
   recoveryCamera()
   teleports()
   pan()

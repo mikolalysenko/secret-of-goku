@@ -542,29 +542,17 @@ in WRAM or direct page (shorter addressing), a larger tile cache.
 
 ## Remaining
 
-- Sandship runtime (wreck, crash, flying out past the hull, floor holes,
-  gear): destroy's Sandship work on the coordinator's integration branch
-  plugs `sandship.takeoff()` into flight's L+R through `!SANDSHIP_TAKEOFF`
-  (JSL, carry set = handled) and its floor holes through a chained
-  `!FLIGHT_MISSING_FLOOR` (it calls the provider defined before it). The
-  frieza module, included after destroy, redefines `!FLIGHT_MISSING_FLOOR`
-  without chaining, which drops destroy's Sandship holes (and the
-  `FLIGHT_TEST_HOLES` provider, so `holes` fails on builds with frieza);
-  frieza should call the previous provider as destroy does. frieza's
-  provider also answers on map 255 (the Fortress collapse's fractures); the
-  browser keeps those out of `missingFloor` (`fortress-collapse.js` has no
-  `floorHole`), and so does flight's `!FLM_HOLES` gate: Goku walks and
-  lands over them as in the browser. The flight-door path itself is a
-  direct port; the hatch scenario takes the native door first in both
-  engines.
-- Passengers: hiding the companions listed in `!fl_passengers` needs the
-  sprite owner (goku's per-actor passes); `sprite-layer.js` also hides the
-  whip attachment during a crossing (goku draws no weapon cells for Goku
-  anyway).
-- Ceiling escape: fx draws the impact sparks (`FX_SPARKS`) and the quake;
-  the 20 roof chunks are requested as `FX_DEBRIS` style 1 (fx's "ceiling
-  dust", in the room's colours), which fx accepts but does not draw yet.
-  The Vegeta trial counts as a boss only through its custom
+- Resolved before this review: floor-hole providers now chain, including
+  Sandship and the test provider; `holes` passes. Map 255 fractures stay out
+  of `!FLM_HOLES`, matching the browser. FX now draws ceiling debris; its
+  `debris` suite and flight's roof escapes pass.
+- Resolved 2026-10-18: the native actor OBJ entry skips carried CPU
+  companions' bodies, attachments and shadows. Actor state stays live;
+  landing shows them again, and a human-controlled companion is never hidden.
+  `scene` checks those three cases. Shore searches also reuse their fetched
+  descriptors and known dungeon result instead of repeating those checks
+  along every ray.
+- The Vegeta trial counts as a boss only through its custom
   target post (kind 3). The world module's own L+R takeoff does not check
   the boss lock the browser's `requestFlight()` applies to both routes.
 - Instant Transmission: `mod.facing` comes from `E010` (the browser also
@@ -574,8 +562,8 @@ in WRAM or direct page (shorter addressing), a larger tile cache.
   the Time Chamber no spot around the arena passes `findLanding` in either
   engine (its floor tiles are not floor flight accepts), so L+B does nothing
   there; if the trial is meant to allow it, the chamber needs tiles
-  `canLand` accepts (or a landing rule of its own in both engines). Frieza
-  can post kind 2 until combat's virtual-target API exists.
+  `canLand` accepts (or a landing rule of its own in both engines). Frieza's
+  custom target and combat virtual-target API are already wired.
 - Resolved 2026-10-18: combat mirrors the browser's `teleport.pending`
   branch while `!fl_hook` bit 2 is set: no new attacks/focus, the current
   action only advances. `scene` exercises a recovery-camera scroll, holding

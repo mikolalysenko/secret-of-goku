@@ -2900,18 +2900,28 @@ fl_shore_dir:
 	PLY
 	BCS .no
 	; realShore(next) = clear(next, 0, true) && !(blank ground metatile 0)
+	; The descriptor is already fetched, bit 3 is clear and blocked() was
+	; false. All checks below keep that descriptor. Do not fetch it another
+	; two times or repeat the dungeon search for every tile along the ray.
+	JSR fl_tile0_cave
+	BCS .accept
 	PHY
-	JSR fl_clear_air
+	JSR fl_ferry_gap
 	PLY
+	BCS .clear
+	LDA.w !fl_d_flags
+	AND.w #$0007
+	CMP.w #$0003
+	BEQ .accept
+	JSR fl_code_ok
 	BCC .accept
-	JSR fl_fetch
+.clear
 	LDA.w !fl_tsf
 	AND.w #!TSF_BLANKGROUND
 	BEQ .shore
 	LDA.w !fl_d_meta
 	BNE .shore
 .accept
-	JSR fl_fetch
 	PHY
 	PEA.w .ret-1
 	LDA $0B,S                    ; pred (ret, Y and delta above it)

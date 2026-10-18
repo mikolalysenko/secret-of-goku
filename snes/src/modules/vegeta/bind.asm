@@ -766,12 +766,12 @@ vegeta_combat_open:
 	PHK
 	PER .faded-1
 	PEA $B294-1
-	JML $008B5E
+	JML $808B5E
 .faded
 	PHK
 	PER .cycled-1
 	PEA $B294-1
-	JML $00DB1E
+	JML $80DB1E
 .cycled
 	PHP
 	SEP #$20
@@ -844,7 +844,7 @@ vegeta_combat_close:
 	PHK
 	PER .moved-1
 	PEA $B294-1
-	JML $00D5C0
+	JML $80D5C0
 .moved
 	PHK
 	PER .done-1

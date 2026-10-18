@@ -221,6 +221,15 @@ that effect's sprites and draws its previous age instead (cells still
 resident), while its age runs on, so the client's timing is kept. World
 flight will use the world regions.
 
+The gameplay build uses one impact spark and one moving ki orb, with a
+two-frame palm flash. `-DFX_DETAIL=1` restores the extra impact satellites
+and three-orb trail for comparisons. Projectile speed, reach and damage are
+unchanged. Offscreen shots are culled before palette/cache work. Cell DMA
+does not start at line 255 or later, reserving time for palettes, colour math
+and the NMI return; missing animation cells retain the prior resident age.
+The gallery waits up to one native five-phase upload cycle for its five
+simultaneous cold-cache orb frames, then requires all five sprites.
+
 **Palettes**: effect colours are grouped into 15-colour classes, BLUE
 (Lucent Beam, ki, impacts), PINK (Frieza: pink beams, discs, Death
 Balls), GOLD (Super Saiyan sparks, arcs, ring and the Thunderbolt cells in

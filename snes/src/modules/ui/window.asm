@@ -79,6 +79,15 @@ ui_window_update:
 	JSR ui_hdma_refresh
 	BRA .out
 .draw
+	; Text expansion can cost almost 80 lines. During field gameplay it
+	; is background work: wait for a frame with enough room for this step,
+	; the remaining effects, and the frame-end sound command. Never delay
+	; input/movement just to introduce a radio message.
+	JSR ui_st_vline
+	CMP.w #96
+	BCC +
+	JMP .out
++
 	; a different placement: clear the old rows first
 	LDA.w !ui_state&$FFFF
 	AND.w #!UIS_DRAWN

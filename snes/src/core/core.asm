@@ -308,6 +308,23 @@ core_frame_end:
 	RTS
 
 ; ---------------------------------------------------------------------------
+; The $80 mirror has the same WRAM/IO mapping as $00 and fast ROM fetches.
+; Each native RTS goes through the cartridge's RTL at B294, returning to
+; this bank even if a module's continuation switches back to bank $00.
+core_field_actors:
+	PHK
+	PER .actors-1
+	PEA $B294-1
+	JML $80B0D3
+.actors
+	PHK
+	PER .sprites-1
+	PEA $B294-1
+	JML $80E38E
+.sprites
+	RTL
+
+; ---------------------------------------------------------------------------
 ; Field main loop, 00:B073 (bank 00 mirror of C0): after the frame's game
 ; logic and OAM build (JSR $B08C), before signalling NMI. Replaced bytes:
 ; SEP #$20 / LDA #$01. Also runs for Mode 7 boss arenas, dialogue and

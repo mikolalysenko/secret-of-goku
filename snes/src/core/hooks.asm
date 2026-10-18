@@ -15,6 +15,37 @@
 %orig4($C0B073, $01A920E2)
 %hijack_jsl($C0B073, core_field_frame, 4, core)
 
+; Run the native actor/OBJ pass through the FastROM mirror. The outer
+; field loop and interrupts keep their original bank and timing contract.
+%orig4($C0B0CA, $20B0D320)
+%orig2($C0B0CE, $E38E)
+%hijack_jsl($C0B0CA, core_field_actors, 6, core)
+
+; The same ROM and low WRAM/IO mappings in banks $81/$82, with fast
+; instruction fetches for the field's interaction, HUD and status passes.
+%orig4($C0D5CC, $01CD4E22)
+%hijack_jsl($C0D5CC, $81CD4E, 4, core)
+%orig4($C0E38E, $01E61D22)
+%hijack_jsl($C0E38E, $81E61D, 4, core)
+%orig4($C0B0BB, $01B03322)
+%hijack_jsl($C0B0BB, $81B033, 4, core)
+%orig4($C0B0BF, $01BFE022)
+%hijack_jsl($C0B0BF, $81BFE0, 4, core)
+
+; Hot native actor and collision calls (verified instruction sites).
+%orig4($C0F509, $01808922)
+%hijack_jsl($C0F509, $818089, 4, core)
+%orig4($C0F9CA, $01D5C022)
+%hijack_jsl($C0F9CA, $81D5C0, 4, core)
+%orig4($C0D7AA, $01B93E22)
+%hijack_jsl($C0D7AA, $81B93E, 4, core)
+%orig4($C0F8E9, $01D94222)
+%hijack_jsl($C0F8E9, $81D942, 4, core)
+%orig4($C0F1EC, $01818F22)
+%hijack_jsl($C0F1EC, $81818F, 4, core)
+%orig4($C0F9E5, $01D52A22)
+%hijack_jsl($C0F9E5, $81D52A, 4, core)
+
 ; Field NMI before HDMA enable (00:C158 SEP #$20 / LDA $2C / STA $420C).
 %orig4($00C158, $2CA520E2)
 %orig3($00C15C, $420C8D)

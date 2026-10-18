@@ -131,8 +131,11 @@ fx_nmi_cells:
 	LDA.l fx_entry_bit,X
 	AND.l !fx_cpend
 	BEQ .next
-	JSR fx_nmi_vline             ; start a cell only before line 258
-	CMP.w #258
+	; Reserve the palette writes, math registers and core NMI return.
+	; Starting a cell at 257-258 let an otherwise valid frame finish on
+	; visible line 0/1. Pending cells keep their previous resident age.
+	JSR fx_nmi_vline
+	CMP.w #255
 	BCS .done
 	CMP.w #225
 	BCC .done

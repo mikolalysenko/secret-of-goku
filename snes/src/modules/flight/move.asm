@@ -1,7 +1,7 @@
 ; Movement hooks (native-local-flight.js cpu.cycle breakpoints). The party
-; movement step runs in bank 00 with DB = $7E, D = 0, X16; $10 = the moving
+; movement step runs in bank 00/80 with DB = $7E, D = 0, X16; $10 = the moving
 ; actor's offset (0 = the hero). Each hook re-executes the original
-; instructions it replaced and returns to bank 00, or takes the branch the
+; instructions it replaced and continues in FastROM bank 80, or takes the branch the
 ; browser takes. Work is gated per frame by fl_hook and re-validated live
 ; (fl_eligible), as the browser evaluates its predicates at the hooked
 ; instruction.
@@ -174,7 +174,7 @@ fl_hook_da6e:
 	AND.b #!FLH_CAMERA|!FLH_BEAST|!FLH_SCRIPT
 	BNE +
 	LDA $FF
-	JML $00DA72
+	JML $80DA72
 +	REP #$20
 	BIT.w #!FLH_SCRIPT
 	BNE .script
@@ -189,7 +189,7 @@ fl_hook_da6e:
 .native
 	SEP #$30
 	LDA $FF
-	JML $00DA72
+	JML $80DA72
 .script
 	SEP #$20
 	LDA $FF
@@ -273,7 +273,7 @@ fl_hook_d651:
 	LDA $1E
 	ORA $1F
 	BNE +
-	JML $00D6AC                  ; JSR $DA6E (camera) / CLC / RTS
+	JML $80D6AC                  ; JSR $DA6E (camera) / CLC / RTS
 +	REP #$20
 	BRA .step
 .follow
@@ -284,10 +284,10 @@ fl_hook_d651:
 	; the hero's step is the camera's this frame
 	BMI .skip
 	SEP #$20
-	JML $00D6AC                  ; JSR $DA6E (camera) / CLC / RTS
+	JML $80D6AC                  ; JSR $DA6E (camera) / CLC / RTS
 .skip
 	SEP #$20
-	JML $00D65C                  ; RTS: one row/column upload per frame
+	JML $80D65C                  ; RTS: one row/column upload per frame
 .step
 	LDA.w !fl_hook
 	AND.w #!FLH_STEP
@@ -309,7 +309,7 @@ fl_hook_d651:
 .native
 	SEP #$20
 	LDA $1F
-	JML $00D655
+	JML $80D655
 
 fl_step_velocity:
 	; a new video frame resets the per-frame travel
@@ -552,7 +552,7 @@ fl_hook_d778:
 	BNE +
 .native1
 	LDA $11
-	JML $00D77C
+	JML $80D77C
 +	REP #$30
 	JSR fl_step_eligible
 	BCC .native
@@ -599,11 +599,11 @@ fl_hook_d778:
 	BCS .native
 .phase
 	SEP #$20
-	JML $00D7F3
+	JML $80D7F3
 .native
 	SEP #$20
 	LDA $11
-	JML $00D77C
+	JML $80D77C
 
 ; ---------------------------------------------------------------------------
 ; 00:D359 (replaced LDA $E048,X / STA $00 / AND #$F0): stairs (2x) and
@@ -627,14 +627,14 @@ fl_hook_d359:
 	BNE .pnative
 .skip
 	PLP
-	JML $00D38E
+	JML $80D38E
 .pnative
 	PLP
 .native
 	LDA $E048,X
 	STA $00
 	AND.b #$F0
-	JML $00D360
+	JML $80D360
 
 ; ---------------------------------------------------------------------------
 ; 00:D9AE / 00:DA34 (replaced SEP #$20 / LDA $E000,X): the leader tether.
@@ -655,11 +655,11 @@ fl_hook_d9ae:
 	PLX
 	BCC .native
 	SEP #$20
-	JML $00D9E2
+	JML $80D9E2
 .native
 	SEP #$20
 	LDA $E000,X
-	JML $00D9B3
+	JML $80D9B3
 fl_hook_da34:
 	SEP #$20
 	LDA $10
@@ -674,11 +674,11 @@ fl_hook_da34:
 	PLX
 	BCC .native
 	SEP #$20
-	JML $00DA68
+	JML $80DA68
 .native
 	SEP #$20
 	LDA $E000,X
-	JML $00DA39
+	JML $80DA39
 
 ; Walking stops at missing deck tiles (a floor-hole provider is in the
 ; build): the hero's step on foot loses the axis whose footprint would stand
@@ -780,3 +780,30 @@ fl_walk_holes:
 	LDA $1F
 	AND.w #$00FF
 	BRA .ystep
+; Native actor OBJ entry (M8/X16, DB=$7E). Settle publishes the passengers
+; for this render. Check the current player assignment too: a second player
+; must never disappear because of the previous frame's passenger mask.
+fl_hook_passenger:
+	SEP #$20
+	CPX.w #$0200
+	BEQ .girl
+	CPX.w #$0400
+	BNE .native
+	LDA.w !fl_passengers
+	AND.b #$02
+	BRA .check
+.girl
+	LDA.w !fl_passengers
+	AND.b #$01
+.check
+	BEQ .native
+	LDA $E02C,X
+	BNE .native
+	LDA.w !fl_state
+	AND.b #!FLS_FLY|!FLS_ON
+	CMP.b #!FLS_FLY|!FLS_ON
+	BNE .native
+	JML $80E403                  ; native RTS before body and shadow
+.native
+	STX $14
+	JML $80E3D3

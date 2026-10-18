@@ -16,13 +16,13 @@ function test()
   local gx, gy, sx, sy = F.goku()
   H.log('goku map', gx, gy, 'screen', sx, sy)
 
-  -- Impact sparks in four turns, plain and gold.
+  -- Four compact impact sparks (one assembly each), plain and gold.
   F.spawn(0, F.K.IMPACT, S, F.DIR.right, 60, 60)
   F.spawn(1, F.K.IMPACT, S, F.DIR.down, 100, 60)
   F.spawn(2, F.K.IMPACT, S | F.F.GOLD, F.DIR.left, 140, 60)
   F.spawn(3, F.K.IMPACT, S | F.F.GOLD, F.DIR.up, 180, 60)
   local s = shot('impact_age2', F.waitFx(2))
-  F.check('impact_sprites', s.sprites >= 8, F.statstr(s))
+  F.check('impact_sprites', s.sprites >= 4, F.statstr(s))
   F.check('regions_claimed', s.regions == 7, F.statstr(s))
   shot('impact_age5', F.waitFx(3))
   s = F.waitFx(8)
@@ -31,7 +31,12 @@ function test()
 
   -- Charge orb frames 0-4 (continuous draws), plain / gold / pink.
   for f = 0, 4 do F.draw(f, F.K.ORB, S, 1, 40 + f * 40, 100, f) end
-  s = shot('orb_frames', F.waitFx(3))
+  s = F.waitFx(3)
+  -- Five different cold-cache cells may span a native five-phase upload
+  -- cycle. Wait for residency; all five must appear, without relaxing the
+  -- actual sprite-count assertion below.
+  for i=1,5 do if s.sprites==5 then break end s=F.waitFx(1) end
+  s = shot('orb_frames', s)
   F.check('orb_sprites', s.sprites == 5, F.statstr(s))
   for f = 0, 4 do F.draw(f, F.K.ORB, S | F.F.GOLD, 1, 40 + f * 40, 100, f) end
   shot('orb_gold', F.waitFx(3))

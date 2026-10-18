@@ -66,6 +66,11 @@ The generator imports the browser engine and writes `dist/snes/gen/ui/`:
 
 ## Telepathy window on the ground (BG3)
 
+Text expansion can consume about 75 scanlines. During field play it starts
+only before line 96, leaving room for effects and the rest of the frame.
+Busy frames defer a new message's drawing. Window pixels, placement and
+message policy retain their existing tests.
+
 The browser draws a 240×64 surface over everything at (8, 8): the native
 window's twin. The cartridge builds the same thing on BG3, where the native
 dialogue window lives, while no native window is open:

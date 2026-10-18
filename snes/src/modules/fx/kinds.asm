@@ -24,8 +24,8 @@ fx_emit_here:
 	JMP fx_emit
 
 ; ---------------------------------------------------------------------------
-; FX_IMPACT (sprite-layer.js 'impact'): spark frame min(5,age/2) turned to
-; the hit direction, two more at (-7,+3) and (+7,-3) for five frames.
+; FX_IMPACT: one native spark, frame min(5,age/2), turned to the hit.
+; Keep the contact bright without three overlapping sprite assemblies.
 fx_k_impact:
 	LDA.w #!FX_E_FRONT
 	JSR fx_depth
@@ -46,6 +46,9 @@ fx_k_impact:
 	LDY !d_turn
 	LDA !d_ks
 	JSR fx_stamp
+if not(defined("FX_DETAIL"))
+	RTS
+endif
 	LDA !d_cur+!C_T
 	CMP.w #5
 	BCS .done
@@ -71,9 +74,10 @@ fx_k_impact:
 	RTS
 
 ; ---------------------------------------------------------------------------
-; FX_KI (sprite-layer.js 'ki'): three charge-orb cells 7 px apart behind the
-; front at min(range,(age+1)*14), frames 3/2/1 front to back, turned along
-; the flight; the palm cell (frame 1) for the first two frames.
+; FX_KI: a compact native orb at min(range,(age+1)*14), turned along the
+; flight; the palm flash lasts two frames. FX_DETAIL restores the browser's
+; three overlapping orbs for visual comparisons. Shot speed, range and
+; collisions are unchanged; basic shots must leave CPU and OBJ room for Goku.
 fx_k_ki:
 	LDA.w #!FX_E_FRONT
 	JSR fx_depth
@@ -97,6 +101,29 @@ fx_k_ki:
 	BCC +
 	LDA !d_cur+!C_A
 +	STA !d_ks+2                   ; front distance
+	; Once the palm flash ends, all three orb cells fit within 32 px of
+	; the front (14 px trail plus the 16 px cell). Do not resolve palettes,
+	; cache cells or retry uploads for a shot that has left the screen.
+	; Combat's projectile and collisions continue independently of drawing.
+	LDA !d_cur+!C_T
+	CMP.w #2
+	BCC .visible
+	LDA !d_ks+2
+	JSR fx_scale_dir
+	JSR fx_at
+	LDA !d_x
+	CLC
+	ADC.w #32
+	CMP.w #256+64
+	BCS .culled
+	LDA !d_y
+	CLC
+	ADC.w #32
+	CMP.w #224+64
+	BCC .visible
+.culled
+	RTS
+.visible
 	STZ !d_ks+4                   ; i
 .loop
 	LDA !d_ks+4                   ; d = distance - 7i
@@ -110,7 +137,11 @@ fx_k_ki:
 	ADC !d_ks+2
 	JSR fx_scale_dir
 	JSR fx_at
+if defined("FX_DETAIL")
 	LDA.w #3
+else
+	LDA.w #2
+endif
 	SEC
 	SBC !d_ks+4
 	TAX
@@ -119,8 +150,10 @@ fx_k_ki:
 	JSR fx_stamp
 	INC !d_ks+4
 	LDA !d_ks+4
+if defined("FX_DETAIL")
 	CMP.w #3
 	BCC .loop
+endif
 	LDA !d_cur+!C_T
 	CMP.w #2
 	BCS .done

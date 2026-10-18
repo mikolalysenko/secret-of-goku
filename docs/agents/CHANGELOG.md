@@ -1,5 +1,22 @@
 # Changelog
 
+## SNES flight and rendering performance (2026-10-18)
+
+- Reuse shoreline collision results while flying instead of repeatedly
+  decoding the same tiles. All 289,324 terrain comparisons, 19,996 teleport
+  queries and 191,964 movement sweeps still match the browser's rules.
+- Run selected native actor, collision and sprite routines through their
+  FastROM mirrors. Carried CPU companions no longer draw bodies, attachments
+  or shadows; their actors remain live, and human players remain visible.
+- Use a compact impact spark and a single moving ki orb. Preserve attack
+  range, speed and damage, and cull offscreen shots before allocating art.
+  Reserve the end of vblank for palette updates and the interrupt return;
+  defer radio text expansion when the frame has insufficient time.
+- Core, flight, effects and UI regressions pass. Integrated gameplay checks
+  find no palette errors, native charge-meter leaks, sprite overflow or
+  vblank overruns. Quiet attacks and water flight meet the frame budget;
+  crowded native-party scenes still need CPU scheduling work.
+
 ## SNES nonblocking resident effects (2026-10-18)
 
 - Resident sound effects release the main CPU immediately and complete the

@@ -29,13 +29,13 @@ fl_hook_d849:
 	TAY                          ; the exit's marker cell
 	PLX
 	LDA [$0A],Y
-	JML $00D84E
+	JML $80D84E
 .pull
 	PLY
 	PLX
 .native
 	LDA [$0A],Y
-	JML $00D84E
+	JML $80D84E
 
 ; flightExit(): carry set with A = idx (layer 0) of the exit's marker.
 fl_flight_exit:
@@ -232,19 +232,19 @@ fl_hook_cfe5:
 	BCS .pass
 	SEP #$20
 	LDA $E074,Y
-	JML $01CFEA
+	JML $81CFEA
 .pass
-	JML $01CFE4                  ; the contact routine's RTS
+	JML $81CFE4                  ; the contact routine's RTS
 ; 01:D017 (replaced LDA $E006,X / BEQ $D042), reached with either M width
 fl_hook_d017:
 	JSR fl_npc_pass
 	BCS .pass
 	LDA.w $E006,X
 	BEQ +
-	JML $01D01C
-+	JML $01D042
+	JML $81D01C
++	JML $81D042
 .pass
-	JML $01CFE4
+	JML $81CFE4
 
 ; Carry set when this contact is Goku (phasing, eligible) with an NPC.
 ; Preserves P (except carry), X and Y. DB = $7E, X16.

@@ -7,9 +7,12 @@ Core services built on these facts: [snes-rom.md](../snes-rom.md#modules-and-cor
 Timing numbers come from `node snes/test/core/measure.mjs` (Mesen, 240
 frames per scene with walking input; re-run it after engine-heavy changes).
 
-Banks: the field loop, its NMI/IRQ and many subsystems execute in bank `$00`
+Banks: the field loop and its NMI/IRQ execute in bank `$00`
 (the HiROM mirror of `C0`), so Mesen exec callbacks and savestate PCs use
-`00:xxxx` for them; other code runs in `C0`–`DF` through `JSL`.
+`00:xxxx` for them. The port runs selected native movement, actor, collision
+and OBJ passes through the equivalent FastROM mirrors `$80/$81`; the outer
+loop and interrupt vectors retain bank `$00`. Other code runs in `C0`–`DF`
+through `JSL`.
 
 ## Modes, loops and interrupts
 
@@ -43,7 +46,8 @@ Banks: the field loop, its NMI/IRQ and many subsystems execute in bank `$00`
   `$2105=$09`, `$212C=$14` (BG3 + OBJ). The switch lands at x≈248 of line 195.
 - `$D0`: event interpreter (0 idle, 1 starting, `$81` printing, `$82` command
   wait, `$83` waiting for a button, `$85` timed wait). `$E4/$E5`: brightness
-  fade timers (1/1 settled). `$F4`: NMI frame counter. `$DC`: map id.
+  fade timers (1/1 settled). `$F4` advances only for completed field frames;
+  combat's `!cb_vblanks` counts every field NMI, including lag. `$DC`: map id.
 
 ## Input
 
@@ -225,7 +229,10 @@ sets `MEMSEL` because `C1:4D0F` clears it on every title entry):
   world-flight line samples differently), and animation phase shifts where
   the original lags.
 
-Not adopted: SlowROM stays the default because those splits are original
-behavior and the original code barely benefits. Keep `CORE_FASTROM` for when
-module CPU time runs short; real hardware then needs 120 ns ROM (any current
-reproduction board).
+FastROM is now the default (`-DCORE_SLOWROM=1` opts out). The October 18
+gameplay pass also redirects verified hot native calls and hook continuations
+through `$80/$81`, with original-byte assertions at every patched call.
+These mirrors retain the low WRAM/IO mapping; the original `$00` outer loop,
+interrupts and map-transition return stay in place. Core frame, input, OAM,
+VRAM, save, world, lag, HDMA, WRAM and extended-ROM tests pass. The timing
+measurements above describe the older experiment, before those call changes.
