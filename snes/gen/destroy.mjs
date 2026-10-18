@@ -550,9 +550,13 @@ export async function generate({rom,repo,outDir}){
       const keep=256,monsterSpots=(counts[map]??0)?order(16).slice(0,keep):[],siteSpots=order(24).slice(0,keep);
       orders.push({map,W,H,count:counts[map]??0,monsterSpots,siteSpots});
     }
-    // Directory: map.w, count.w, monster spots ptr.w + n.w, site spots ptr.w + n.w
+    // Fire sites per room (prepareSites): spread(floorSpots(map, 24, 40),
+    // big rooms 10 else 7, 52).
+    const sitesSrc=grab(swText,/spread\(floorSpots\(map,24,40\),((?:map===\d+\|\|)*map===\d+)\?(\d+):(\d+),52\)/,'fire sites');
+    const bigRooms=[...sitesSrc[1].matchAll(/map===(\d+)/g)].map(m=>Number(m[1])),siteBig=Number(sitesSrc[2]),siteSmall=Number(sitesSrc[3]);
+    // Directory: map.w, count.w, monster spots ptr.w + n.w, site spots ptr.w + n.w, fire sites.w
     emit('ss_ship_dir:');
-    for(const o of orders)emit(`\tdw ${o.map},${o.count},ss_spots_m_${o.map},${o.monsterSpots.length},ss_spots_s_${o.map},${o.siteSpots.length}`);
+    for(const o of orders)emit(`\tdw ${o.map},${o.count},ss_spots_m_${o.map},${o.monsterSpots.length},ss_spots_s_${o.map},${o.siteSpots.length},${bigRooms.includes(o.map)?siteBig:siteSmall}`);
     emit('\tdw $FFFF');
     for(const o of orders){
       emit(`ss_spots_m_${o.map}:`);for(let k=0;k<o.monsterSpots.length;k+=16)emit('\tdb '+o.monsterSpots.slice(k,k+16).flatMap(s=>[hex2(s.i),hex2(s.j)]).join(','));
@@ -629,6 +633,18 @@ export async function generate({rom,repo,outDir}){
       const wy=k*0.546875,u=0,s=Math.sin(u*.16+Math.sin(wy*.09)*2.4)+Math.sin(u*.05-wy*.07)*.6;
       sand.push(s>1?rgb(31,25,17):s>.2?rgb(29,21,13):s>-.8?rgb(26,18,11):rgb(21,13,8));
     }
+    // Fires (draw()): a blast's five Exploder bursts (golden-angle spiral, at
+    // the spread they reach after six frames), the crash's blasts around Goku
+    // every 10 frames, the embers' rise ((t+seed*5)%24*.6).
+    grab(swText,/const a=i\*2\.39996,spread=i\?8\+Math\.min\(age,12\)\*1\.3:0;/,'blast spiral');
+    const burstOff=[];for(let i=0;i<5;i++){const a=i*2.39996,sp=i?8+6*1.3:0;burstOff.push(Math.round(Math.cos(a)*sp)&255,Math.round(Math.sin(a)*sp*.6)&255);}
+    grab(ssText,/const a=c\.age\*2\.4,d=24\+\(c\.age\*13\)%70;/,'crash blasts');
+    const crashOff=[];for(let age=0;age<=1200;age+=10){const a=age*2.4,d=24+(age*13)%70;crashOff.push(Math.round(Math.cos(a)*d)&255,Math.round(Math.sin(a)*d*.7)&255);}
+    grab(swText,/-\(t\+s\.seed\*5\)%24\*\.6/,'ember rise');
+    const emberRise=Array.from({length:24},(_,k)=>Math.round(k*.6));
+    bytes('ss_burst_off',burstOff);
+    bytes('ss_crash_off',crashOff);
+    bytes('ss_ember_rise',emberRise);
     emit(`!SS_WHITE_LEVELS = ${WL}`);
     emit(`!SS_BREACH_H = ${BH}`);
     emit(`!SS_BREACH_LINES = ${2*BH+1}`);

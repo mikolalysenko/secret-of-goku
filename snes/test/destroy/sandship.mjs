@@ -387,6 +387,19 @@ function S.palette()
   end
   return out
 end
+-- fx sprites: OBJ palettes fx owns this frame and missing-cell garbage
+-- ($FFFF words: tile $1FF, attribute $FF)
+function S.sprites()
+  local out = {garbage = 0, fire = 0, pals = {}}
+  for i = 0, 127 do
+    local y, t, a = H.oam(i * 4 + 1), H.oam(i * 4 + 2), H.oam(i * 4 + 3)
+    if y < 224 or y >= 240 then
+      if t == 0xFF and a == 0xFF then out.garbage = out.garbage + 1 end
+      out.pals[((a >> 1) & 7) + 1] = true
+    end
+  end
+  return out
+end
 -- tinted colour check: red never lower, blue never higher than the buffer's
 function S.tintShape()
   local bad = 0
@@ -429,7 +442,17 @@ scenarios.push(
   H.result('breach', {sx = H.r16(ABI.ssw_br_sx), sy = H.r16(ABI.ssw_br_sy), lines = H.r16(ABI.ssw_br_lines), map = H.r16(ABI.ss_bmap), x = H.r16(ABI.ss_bx), y = H.r16(ABI.ss_by)})
   H.result('cg0', S.cg(0))
   H.shot('look-4-wreck')
-  for k = 1, 3 do H.wait(40); H.shot('look-' .. (4 + k) .. '-wreck') end
+  local garbage, fires = 0, 0
+  for k = 1, 3 do
+    for f = 1, 40 do
+      H.wait(1)
+      local sp = S.sprites()
+      garbage = garbage + sp.garbage
+    end
+    H.shot('look-' .. (4 + k) .. '-wreck')
+  end
+  H.result('garbage', garbage)
+  H.result('sites', H.r16(ABI.SSW + 0x980))
   -- leaving the breach's room gives the channels back
   S.enter(318, 28, 46, 0)
   H.wait(10)
@@ -444,7 +467,10 @@ scenarios.push(
       const w=res.wreckPal??{};
       if(!(w.bgDiff>=90))problems.push(`wreck tint: only ${w.bgDiff} BG colours tinted`);
       if(w.lowEqual!==16)problems.push(`text/HUD colours changed (${w.lowEqual}/16 equal)`);
-      if(!(w.objEqual>=120))problems.push(`sprite colours changed (${w.objEqual}/128 equal)`);
+      // (the effects library writes its own OBJ palettes: at most two)
+      if(!(w.objEqual>=96))problems.push(`sprite colours changed (${w.objEqual}/128 equal)`);
+      if(res.garbage)problems.push(`${res.garbage} garbage sprite frames (fx missing cells)`);
+      if(!(res.sites>0&&res.sites<16))problems.push(`fire sites ${res.sites}`);
       if(res.tintBad)problems.push(`${res.tintBad} BG colours not warmer than the game's`);
       if(res.own!==1||(res.hdma&0x0C)!==0x0C)problems.push(`breach HDMA: own ${res.own} $2C ${res.hdma}`);
       if(!(res.breach?.lines>0))problems.push('breach never programmed');

@@ -36,6 +36,7 @@ ss_visuals:
 	JSR ss_pal_choose
 	JSR ss_pal_run
 	JSR ss_breach_build
+	JSR ss_fires
 	LDA.w #!SS_VIS_MAGIC : STA.l !ssw_vtmp
 	LDA.l !ssw_pal_up : BEQ +
 	LDA.l !ssw_vtmp : ORA.w #!SS_VIS_PAL : STA.l !ssw_vtmp
@@ -564,15 +565,25 @@ destroy_palette_dma:
 	PHY
 	PHP
 	REP #$30
-	LDA.l !ss_vis : AND.w #$FF00|!SS_VIS_PAL : CMP.w #!SS_VIS_MAGIC|!SS_VIS_PAL : BNE .native
-	LDA.l !ssw_pal_room : CMP.l $7E00DC : BNE .native   ; made for another room
-	LDA.l !ssw_pal_up : BEQ .native
+	; A vblank whose frame did not complete (a lag frame; with a window open
+	; the game uploads every vblank) runs no module vblank callbacks: the
+	; OBJ palettes they wrote (the effects library's) stay in CGRAM and only
+	; the BG colours go up.
+	LDY.w #512
+	LDA.l !core_dma_ready : BNE +
+	LDY.w #256
++	LDA.l !ss_vis : AND.w #$FF00|!SS_VIS_PAL : CMP.w #!SS_VIS_MAGIC|!SS_VIS_PAL : BNE .native0
+	LDA.l !ssw_pal_room : CMP.l $7E00DC : BNE .native0  ; made for another room
+	LDA.l !ssw_pal_up : BNE +
+.native0
+	JMP .native
++	TYA : STA.l !ssw_vtmp+12                       ; end of the upload
 	; the game's buffer before the staged range
 	LDA.l !ssw_pal_upat : BEQ +
 	TAY
 	LDA.w #0
 	JSR ss_cg_native
-+	; the staged range
++	; the staged range (up to the end)
 	LDA.l !ssw_pal_upat : PHA
 	LSR : SEP #$20 : STA $2121 : REP #$20
 	LDA.w #$2200 : STA $4370                      ; A->B, CGDATA
@@ -580,21 +591,25 @@ destroy_palette_dma:
 	SEP #$20
 	LDA.b #(!SS_STAGE)>>16 : STA $4374
 	REP #$20
-	LDA.l !ssw_pal_up : STA $4375
+	LDA.l !ssw_pal_upat : CLC : ADC.l !ssw_pal_up
+	CMP.l !ssw_vtmp+12 : BCC +
+	LDA.l !ssw_vtmp+12
++	SEC : SBC.l !ssw_pal_upat : BEQ +
+	STA $4375
 	SEP #$20
 	LDA.b #$80 : STA $420B
 	REP #$20
-	; and the game's buffer after it
++	; and the game's buffer after it
 	LDA.l !ssw_pal_upat : CLC : ADC.l !ssw_pal_up
-	CMP.w #512 : BCS +
+	CMP.l !ssw_vtmp+12 : BCS +
 	PHA
-	EOR.w #$FFFF : SEC : ADC.w #512 : TAY         ; 512 - offset
+	EOR.w #$FFFF : SEC : ADC.l !ssw_vtmp+12 : TAY   ; end - offset
 	PLA
 	JSR ss_cg_native
 +	LDA.l !ssw_pal_ups : INC : STA.l !ssw_pal_ups
 	BRA .back
 .native
-	LDA.w #0 : LDY.w #512
+	LDA.w #0
 	JSR ss_cg_native
 .back
 	LDA.w #$0080

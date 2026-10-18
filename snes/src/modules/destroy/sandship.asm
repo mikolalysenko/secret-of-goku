@@ -130,6 +130,8 @@ ss_reset_work:
 	STA.l !ssw_pal_left : STA.l !ssw_pal_wait : STA.l !ssw_pal_cols : STA.l !ssw_pal_load
 	STA.l !ssw_br_on : STA.l !ssw_br_buf : STA.l !ssw_br_lines
 	LDA.w #$FFFF : STA.l !ssw_pal_room
+	STA.l !ssw_site_n : STA.l !ssw_site_map : STA.l !ssw_blast_a : STA.l !ssw_blast_b
+	LDA.w #0 : STA.l !ssw_blast_end
 	LDA.w #$FFFF : STA.l !ssw_dbgdoor
 	RTS
 
@@ -578,6 +580,7 @@ ss_crash:
 
 ; crashTick(): the crash event, then the white fades once the deck is up.
 ss_crash_tick:
+	LDA.l !ss_cage : JSR ss_crash_blast
 	LDA.l !ss_cbits : BIT.w #!SSC_REQ : BNE +
 	LDA.w #!SS_CRASH_EVENT : LDX.w #0
 	JSL story_api_request : BCC +
@@ -937,7 +940,7 @@ ss_ship_entry:
 	LDX.w #0
 -	LDA.l ss_ship_dir,X : CMP.w #$FFFF : BEQ .none
 	CMP.w $00DC : BEQ .found
-	TXA : CLC : ADC.w #12 : TAX
+	TXA : CLC : ADC.w #14 : TAX
 	BRA -
 .found
 	LDA.l ss_ship_dir+2,X

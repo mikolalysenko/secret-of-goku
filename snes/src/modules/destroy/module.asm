@@ -414,6 +414,29 @@ assert !hp_end <= !PERSIST_DESTROY+$80, "destroy persistent block overflow"
 !SS_PAL_LINE  = 185       ; palette chunks start only before this scanline
 !SS_PAL_LINE_WHITE = 200  ; ... during a white-out (Goku is held)
 !SS_PAL_STARVE = 8        ; ... or after this many frames without one
+; the fires (fire.asm)
+!ssw_site_p  = !SSW+$2C2 ; 15 x 4 bytes: per-site animation constants
+!ssw_site_n  = !SSW+$980 ; word: fire sites of this load ($FFFF none yet)
+!ssw_site_load = !SSW+$982 ; word: the load (!ssw_loads) they belong to
+!ssw_site_map = !SSW+$984 ; word: and its map
+!ssw_site_rr = !SSW+$986 ; word: first site drawn this frame (rotates)
+!ssw_blast_a = !SSW+$988 ; 3 words: a blast's age ($FFFF idle), x, y
+!ssw_blast_b = !SSW+$98E ; 3 words: a second one
+!ssw_fire_t7 = !SSW+$994 ; word: wreck age / 7
+!ssw_fire_r7 = !SSW+$996 ; word: wreck age % 7
+!ssw_fire_e3 = !SSW+$998 ; word: (wreck age / 5) % 3
+!ssw_fire_m24 = !SSW+$99A ; word: wreck age % 24
+!ssw_fire_left = !SSW+$99C ; word: fx draw entries left this frame
+!ssw_fire_cx = !SSW+$99E ; word: fx's camera
+!ssw_fire_cy = !SSW+$9A0
+!ssw_fire_k  = !SSW+$9A2 ; word: site being drawn
+!ssw_fire_cnt = !SSW+$9A4 ; word: sites looked at in this pass
+!ssw_blast_end = !SSW+$2FE ; word: frames until the last blast's bursts are gone
+!ssw_site_nr = !SSW+$250 ; word: sites before the rim's (the rotating ones)
+!ssw_fire_pass = !SSW+$252 ; word: 0 flames, 1 embers
+!ssw_site_x  = !SSW+$9A6 ; 15 words
+!ssw_site_y  = !SSW+$9C4 ; 15 words (ends at $9E2)
+assert !ssw_site_y+30 <= !SSW+$A00, "Sandship work overflow"
 !SS_STAGE    = !SSW+$300 ; 512 bytes: transformed CGRAM
 !SS_HB       = !SSW+$500 ; 2 x !SS_HB_SIZE: HDMA tables (channel 2 at +0, 3 at +$C0)
 !SS_HB_SIZE  = $240
@@ -506,6 +529,7 @@ incsrc "demolish.asm"
 incsrc "barriers.asm"
 incsrc "sandship.asm"
 incsrc "wreck.asm"
+incsrc "fire.asm"
 incsrc "debug.asm"
 destroy_code_tables:
 incsrc "destroy/white.asm"
