@@ -50,6 +50,8 @@
 !CORE_SAFE = !SRAM_WORK_CORE        ; +$000 CORE_TEST title-boot counter (kept across boots)
 !CORE_SAFE_CLEAR = $002             ; cleared at power-on and title entry: +$002-$09F
 !CORE_SAFE_END   = $0A0
+!core_world_done = !CORE_SAFE+$01A  ; byte: this world vblank ran the game's frame work ($EC bit 0 at
+                                    ; 00:88FB; written by the world module's hook there, which owns the site)
 !core_safe_magic = !CORE_SAFE+$018  ; word 'CS' while the block is valid; any frame
 !CORE_SAFE_MAGIC = $5343            ; that finds it missing (state loaded from an older
                                     ; build, battery noise) clears the block first
@@ -309,6 +311,16 @@ core_field_nmi:
 	PEA $8080 : PLB : PLB          ; I/O visible through bank $80
 	LDA.l !core_dma_ready
 	BEQ .done
+	; Only in a vblank whose frame the game completed: core_field_frame sets
+	; the ready word just before the loop's TSB $EC (00:B077), so an NMI in
+	; between finds $EC bit 0 clear; the game skips its uploads then and the
+	; module work waits for the next vblank (D = 0 here; the native NMI
+	; clears $EC at C0:C164, after this hook).
+	SEP #$20
+	LDA.b $EC
+	LSR
+	REP #$20
+	BCC .done
 	LDA.w #$0000 : STA.l !core_dma_ready
 if defined("CORE_TEST")
 	JSL core_test_field_nmi
@@ -376,6 +388,9 @@ core_world_nmi:
 	PEA $8080 : PLB : PLB
 	LDA.l !core_dma_ready
 	BEQ .done
+	LDA.l !core_world_done          ; the world NMI ran its frame work (set by world_nmi_sky_hook at 00:88FB)
+	AND.w #$00FF
+	BEQ .done
 	LDA.w #$0000 : STA.l !core_dma_ready
 if defined("CORE_TEST")
 	JSL core_test_world_nmi
@@ -392,6 +407,7 @@ endif
 	PLX
 	PLA
 	RTI
+
 
 ; ---------------------------------------------------------------------------
 ; Full-screen menus (file select, name entry, status/equipment/save
