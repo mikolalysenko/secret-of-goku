@@ -14,7 +14,7 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 | Telepathy window on the ground (King Kai / Luka, three lines, native font and window art) | Done: pixel-identical to `radioPixels()` |
 | Message policy: queue, `interrupt`, `dismiss`, SSJ charge remarks (saved attempts and xorshift roll), barrier and ceiling reactions, first-flight banter, power intro | Done: frame-identical to `createNativeRadio` + `createPowerIntro` |
 | Telepathy in world flight (bottom panel) and the Dragon Radar | Done: panel pixel-identical to the browser's; dial identical for the same sweep angle (64 steps) and blink phase; guide, distance and blip from `radarBearing` (the blip may round the other way within 0.05 px of a half pixel); 60 Hz kept |
-| Scouter option and readouts | Switch done (`scouter.asm`): Goku's Targeting ring item reads "Scouter: ON/OFF" and toggles the saved switch, a scan (teleport sound) tells King Kai's joke for the form once; the power-level readouts and Analyzer hits are not drawn yet (OBJ VRAM, see the core requests) |
+| Scouter option and readouts | Switch done (`scouter.asm`): Goku's Targeting ring item reads "Scouter: ON/OFF" and toggles the saved switch, a scan (teleport sound) tells King Kai's joke for the form once; power-level readouts and Analyzer hits remain unimplemented. Native damage digits are streamed into temporary effect cells, not a resident OBJ atlas (see Scouter). |
 | Goku's STATUS page | Done (`status.asm`): BG2 as the browser shows `statusPixels()`, pixel-identical but for 2–3 cells per page whose fourth colour shows as its nearest; built band by band in about 55 frames with the menu at 60 Hz |
 | Dialogue window placement | Done (`place.asm`): the scene's windows move above the HUD when the first one would cover more faces where it is, as `window-placement.js`; moved window pixel-identical to the native one, HUD untouched |
 | R fast-forward | Done (`ff.asm`, `ff-text.asm`): R hides R, batches eight prepared glyphs per upload and auto-confirms prose; choices stop. The browser's 12× emulation speed becomes faster text without skipping event commands. |
@@ -304,8 +304,45 @@ else "OVER 9000" with or without the weights line (story query
 `EQUIP_WEIGHTED`, answered by combat). The Frieza joke needs his actor
 (the Frieza module does not publish one yet). Not done: the readouts
 (reticle corners and a 3×5 power-level number over every actor on screen,
-`!UI_SC_*` font and colours are generated) and Analyzer hits; they need
-OBJ VRAM for the rendered numbers (see the core requests).
+`!UI_SC_*` font and colours are generated) and Analyzer hits.
+
+### Readout behavior and the native digit constraint
+
+In `scouter.js`, readings follow living, on-screen party members and enemies
+while the owned scouter is enabled (species `$55`, the crystal orb, is
+excluded). Numbers are centered at `(screenX, screenY - 40)`; reticle corners
+span `screenX ± 12`, `screenY - 28` through `screenY + 2`. New readings
+blink for 24 frames, with four frames off and four on. Ordinary scouter
+readings persist; an Analyzer write of `$17` to an actor's `+$181` restarts
+that target's blink and gives its entry a 240-frame lifetime, after which
+the enabled scouter repopulates it. The radio covers readout pixels above
+line 72. Native enemy power is four times max HP, rounded to two significant
+figures; party members use three times max HP, with Goku's canonical values
+and the browser's charge, weights, Beast and Frieza modifiers applied.
+
+The proposed resident-digit approach was investigated on the original ROM:
+
+- `C1:810E–8182` creates damage-number effects. `C1:85F1` decompresses
+  50 tiles from `D1:F100` into actor WRAM through `C1:C599`.
+- `C1:8425` / `C1:842B` select only the required decimal glyphs from that
+  buffer. The native sprite-cell uploader (`C1:950D`) transfers them into
+  the actor's current effect cells; `C1:8136–8155` derives the three OAM
+  tile words from the actor's `+$86` base.
+- In imported `animation-audit__native__rabite-field-b`, a native
+  12-damage hit creates effect kind `$40` and tile words `$38C8`, `$38CA`,
+  `$38CC` for actor 3. These are three reusable effect cells, not permanent
+  tiles for digits 0–9. The complete font exists in WRAM, not resident OBJ
+  VRAM. Idle field VRAM captures likewise contain no complete digit atlas.
+- The HUD's numbers are BG3 cells (character base `$4000`); field OBJSEL
+  `$63` addresses `$6000` / `$7000`, so OBJ cannot directly use them.
+
+No new field VRAM region is requested. `core_oam_add_front` and
+`core_oam_meta_front` already supply the required sprite ordering. A possible
+adaptation is to borrow the existing native damage/effect cells, upload the
+needed digits, and yield whenever native effects own them. That changes the
+resident-only approach and still needs approval, ownership handling and a
+browser comparison test. No readout implementation or readout CPU timing is
+claimed by the current tests.
 
 ## Goku's STATUS page (`status.asm`)
 
@@ -488,7 +525,7 @@ byte boundary.
 
 | Resource | Use |
 | --- | --- |
-| Code/data `$AC:8000-` | `!CODE_UI`: `$AC:8000-$DF01` used (about 24 KiB: code, 5 KiB compressed messages, radar tables, the STATUS page's 3.8 KiB of code and 1.2 KiB of tables); about 8.2 KiB left |
+| Code/data `$AC:8000-` | `!CODE_UI`: `$AC:8000-$E170` used (24.4 KiB: code, 5 KiB compressed messages, radar tables, the STATUS page's 3.8 KiB of code and 1.2 KiB of tables); 7.6 KiB left |
 | Extended data | six blobs, 9.3 KiB, placed by the build (today `$7D:0000-$7D:255F`): field glyph atlas, window tiles, world atlas, dial tiles, the STATUS page's window cells and tilemap |
 | WRAM `$7E:7E40-$7E:7EFF` | `!RAM_UI`: state, current message, cooldowns, band/radar state, scratch, `!ui_magic` (`module.asm`), fast-forward (`+$A6`), window placement (`+$AA`), scouter (`+$AE`), STATUS page (`+$B0`–`+$B7`); in menus the world and radio scratch words serve the STATUS composition |
 | SRAM `$33:7C00-$33:7FFF` | staging: window/band rows (`+$000`), the radio's HDMA table, the moved window's colour records or moved natives (`+$200`), text words (`+$240`), radar trig cache (`+$2E8`), pending text DMA (`+$2F2`), build state (`+$2F4`), radar key (`+$2FC`), bearing inputs (`+$2FE`, `+$308`), placement scroll table and the game's channel 0/1 tables (`+$312`, `+$322`), queue (`+$340`), band and sky HDMA colour blocks (`+$3C0`, `+$3DC`); while the STATUS page is built (menus) `+$000`–`+$335` hold its strings, CGRAM copy, band records, cell masks and upload buffer (the radio and radar rebuild theirs; the queue and the band blocks are kept); UI_TEST builds: test isolation (`+$33C`, `+$33E`) |
@@ -532,6 +569,14 @@ ignored and counted, since the browser references model the radio alone.
 | `status` | `barrier-audit__potos-probe`, base form and Super Saiyan: Goku's STATUS page opened from the ring; BG2 decoded from VRAM and CGRAM equals `statusPixels()` of the same values (one row up, as the browser paints it) on every pixel but the conflict cells' (2 and 3 cells, 18 and 62 pixels as their nearest colour; shape always exact); the menu runs every frame while the page is built (53 and 56 frames); X leaves the page, the session ends and CGRAM 17–31 match a round trip with the page kept native (16 pulses) |
 | `radar` | `preset__flight` with two quest states, steering between samples: band panel pixels against `radioPixels()` of the browser's panel text, dial pixels against `dragon-radar.js` for the sampled sweep angle and blink phase, guide and blip against `radarBearing` (UI_TEST builds compute the far blip every frame); then the world module's state: a Y ki shot, an L+Y charge and the weak wave it releases hide the dial (but the first frame), which comes back after them |
 
+Fast-forward validation (2026-10-18): strict production and UI_TEST builds
+pass; UI **12/12**, Goku **11/11**, ending **8/8**, Frieza **13/13**, and
+performance **6/6** pass. The performance scenes show no increased lag
+counts. `modprof.mjs` measures the UI field callback at **0.29 scanlines
+mean** in both sword and battle, and field NMI at **0.12–0.13**. Those
+callback measurements exclude the active text-engine hooks; their combined
+32.3-line peak is measured separately by `text` above.
+
 ## Core requests
 
 - **Persistent range**: `!PERSIST_UI` (`$60` bytes) inside `!PERSIST_MISC`
@@ -554,14 +599,6 @@ ignored and counted, since the browser references model the radio alone.
   before Goku's cell DMA) is applied by `snes/tools/order-dispatch.mjs` on
   the integration merge.
 - **FastROM** (done on main): the UI code runs in bank `$AC` at 3.58 MHz.
-- **Scouter readouts (open)**: `scouter.js` draws, for 240 frames after a
-  scan or an Analyzer hit, reticle corners and a 3×5 power-level number
-  with a dark outline over every actor on screen, above everything but
-  King Kai's window. As sprites that is about 4 corner sprites plus up to 6
-  number sprites per actor (numbers up to `150,000,000`), with their tiles
-  rendered per number (about 200 bytes of 4bpp tiles per actor). Every
-  field OBJ VRAM region is claimed (fx, goku) and module sprites sit behind
-  the natives. Needed: an OBJ VRAM region of 1–2 KiB the UI may use while
-  readouts show, and OAM entries in front of the native ones (or a shared
-  front-sprite allocator). The font and colours (`!UI_SC_*`) are
-  generated; the per-actor drawing is not written yet.
+- **Scouter readouts**: no core change requested. Front-sprite allocation
+  is available; see the Scouter section for the native digit investigation
+  and the unresolved adaptation to existing effect cells.
