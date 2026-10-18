@@ -717,9 +717,12 @@ fx_k_orb:
 ; body height (up to 20: 16, from 36: 40, else 32), !fx_c phase seed,
 ; !fx_t clock: shown on even clocks only (the browser's ghost strobe), phase
 ; (clock / 3 + seed) % 12. X/Y: the body's centre, as the browser's aura();
-; FX_F_GOKU: Goku's body centre + X/Y. A polygon (poly.asm fx_poly_aura):
-; one aura per frame, nothing while the polygon is taken.
+; FX_F_GOKU: Goku's body centre + X/Y. Shipping: compact resident OBJ flame;
+; FX_AURA_POLY selects the original scalable HDMA implementation below.
 fx_k_aura:
+if not(defined("FX_AURA_POLY"))
+	JMP fx_k_aura_obj
+endif
 	LDA !d_cur+!C_T
 	LSR
 	BCC +
@@ -794,6 +797,84 @@ fx_k_aura:
 	LDA.w #$FFFF                 ; the builder used !d_tiles and !d_ptr
 	STA !d_lasta
 	PLP
+	RTS
+
+; The gameplay flame is a small resident OBJ assembly behind Goku. Its
+; palette is owned by the existing FX allocator; no BG palette, backdrop,
+; colour math or HDMA state changes. Only complete assemblies are drawn,
+; on the same 30 Hz strobe as before; odd frames do no tile-cache work.
+fx_k_aura_obj:
+	LDA !d_cur+!C_T
+	LSR
+	BCC +
+	RTS
++
+	LDA !d_cur+!C_A
+	BNE +
+	RTS
++	STZ !d_ef
+	LDA !d_cur+!C_STYLE
+	AND.w #$00FF
+	CMP.w #3
+	BCC +
+	LDA.w #0
++	ASL
+	ASL
+	STA !d_ks
+	LDA !d_cur+!C_B
+	CMP.w #21
+	BCC +
+	INC !d_ks
+	INC !d_ks
++	LDA !d_cur+!C_T
+	LSR
+	LSR
+	AND.w #1
+	CLC
+	ADC !d_ks
+	CLC
+	ADC.w #!FX_ASM_AURA
+	JSR fx_emit_setup
+	BCS .done
+	LDA.l !fx_cpend             ; warm all cells before displaying any
+	BNE .done
+	LDX.w #0
+	LDA [!d_ptr]
+	XBA
+	AND.w #$00FF
+	TAY
+.ready
+	LDA !d_tiles,X
+	CMP.w #$FFFF
+	BEQ .done
+	TXA
+	CLC
+	ADC.w #8
+	TAX
+	DEY
+	BNE .ready
+	LDA !d_cur+!C_X
+	STA !d_x
+	LDA !d_cur+!C_Y
+	STA !d_y
+	LDA !d_cur+!C_KIND
+	BIT.w #!FX_F_GOKU<<8
+	BEQ .emit
+	LDA.w $E020
+	CLC
+	ADC !d_x
+	STA !d_x
+	LDA.w $E022
+	SEC
+	SBC.w $E045
+	SEC
+	SBC.w #15
+	CLC
+	ADC !d_y
+	STA !d_y
+.emit
+	JMP fx_emit_place
+.done
 	RTS
 
 ; FX_LIGHTNING (charge-lightning.js arcs(), sprite-layer.js

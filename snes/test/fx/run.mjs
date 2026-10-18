@@ -39,7 +39,7 @@ function prelude(rom){
     const m=line.match(/^([0-9A-F]{2}):([0-9A-F]{4}) (fx_\w+)$/i);
     if(m)sym[m[3]]=parseInt(m[1]+m[2],16);
   }
-  return `SYM={${Object.entries(sym).map(([k,v])=>`${k}=0x${v.toString(16)}`).join(',')}}\nFX_IMPORT=${JSON.stringify(importRoot)}\n`+readFileSync(join(here,'lib.lua'),'utf8')+'\n';
+  return `AURA_POLY=${extraDefines.includes('-DFX_AURA_POLY=1')}\nSYM={${Object.entries(sym).map(([k,v])=>`${k}=0x${v.toString(16)}`).join(',')}}\nFX_IMPORT=${JSON.stringify(importRoot)}\n`+readFileSync(join(here,'lib.lua'),'utf8')+'\n';
 }
 // Screenshot checks: fraction of pixels in a span (x0..x1 on row y, or
 // rows y0..y1 at column x) whose 5-bit colour is one of `want`, at least
@@ -69,6 +69,24 @@ const BEAM_CHECKS={
 // drawKiAura (engine/ki-aura.js) gives the browser's silhouette.
 const AURA_CASES=[['aura_h32_l8_p0',32,256,0],['aura_h32_l4_p5',32,128,5],['aura_h16_l8_p3',16,256,3],['aura_h40_l6_p7',40,192,7]];
 const AURA_AT=[60,124];
+function residentAuraChecks(dir){
+  const frames=JSON.parse(readFileSync(join(repo,'dist/snes/gen/fx/aura-sprites.json'),'utf8'));
+  return frames.map((f,k)=>{
+    const name=`aura_${Math.floor(k/2)}_${k%2}`,results=[];
+    for(let n=0;n<3;n++){
+      const img=readShot(dir,`${name}_${n}`);if(!img)continue;
+      let pixels=0,matching=0;
+      for(let y=0;y<f.h;y++)for(let x=0;x<f.w;x++){
+        const c=f.px[y*f.w+x];if(!c)continue;
+        const at=((124+f.y+y)*256+60+f.x+x)*4;
+        const got=(img.data[at]>>3)|((img.data[at+1]>>3)<<5)|((img.data[at+2]>>3)<<10);
+        pixels++;if(got===c-1)matching++;
+      }
+      results.push(matching/Math.max(1,pixels));
+    }
+    return {ok:results.length===3&&results.every(r=>r>.99),text:`${name} resident pixels: ${results.map(r=>(r*100).toFixed(1)+'%').join(' ')}`};
+  });
+}
 async function auraChecks(dir){
   const {drawKiAura}=await import(pathToFileURL(join(repo,'engine/ki-aura.js')).href);
   const fake={'charge-orb':[Uint16Array.from([1,2,3,4,5])],'gold-arc':[Uint16Array.from([1,2,3,4,5])]};
@@ -172,7 +190,7 @@ for(const r of [testRom,process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-
   const err=checkCells(r);
   if(err){console.error(`fx: ${r}: ${err}`);process.exit(1);}
 }
-const tests=['gallery','beams','debris','battle','budget'].filter(t=>existsSync(join(here,`${t}.lua`))&&(!only.length||only.includes(t)));
+const tests=['gallery','beams','aura','debris','battle','budget'].filter(t=>existsSync(join(here,`${t}.lua`))&&(!only.length||only.includes(t)));
 let ok=true;
 for(const t of tests){
   const rom=privateRom(testRom,`fx-${t}`);
@@ -182,7 +200,8 @@ for(const t of tests){
   const res=r.results??{};
   const fails=Object.entries(res).filter(([k,v])=>typeof v==='string'&&v.startsWith('FAIL'));
   const shots=shotChecks(t,join(outRoot,t));
-  if(t==='beams')for(const [name,text,good] of await auraChecks(join(outRoot,t)))shots.push({ok:good,text:`${name} silhouette: ${text}`});
+  if(t==='aura')shots.push(...residentAuraChecks(join(outRoot,t)));
+  if(t==='beams'&&extraDefines.includes('-DFX_AURA_POLY=1'))for(const [name,text,good] of await auraChecks(join(outRoot,t)))shots.push({ok:good,text:`${name} silhouette: ${text}`});
   const pass=r.code===0&&!res.error&&res.failures===0&&shots.every(c=>c.ok);
   if(!pass)ok=false;
   console.log(`fx ${t.padEnd(10)} ${pass?'pass':'FAIL'} (${((Date.now()-t0)/1000).toFixed(1)} s)${res.error?' error: '+res.error:''}`);

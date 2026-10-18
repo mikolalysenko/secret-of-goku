@@ -1,5 +1,16 @@
 # Changelog
 
+## SNES aura isolation from background palettes (2026-10-18)
+
+- Use a compact sprite flame for charging and transformation. Its blue,
+  gold and pink palettes no longer change the backdrop or background
+  colour math, including on cut grass. Two poses share resident tiles;
+  incomplete uploads wait before the flame appears.
+- Validate both sizes and all tones against the generated pixels, real
+  grass cuts, background-palette ownership and animation without uploads.
+  Existing FX gallery and beam pixel checks pass. The older polygon
+  renderer remains available with `FX_AURA_POLY` for comparison.
+
 ## SNES short resident combat sounds (2026-10-18)
 
 - Replace the indefinitely looping transformation rumble and long generic

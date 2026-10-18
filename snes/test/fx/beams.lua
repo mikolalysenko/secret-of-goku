@@ -291,6 +291,7 @@ function test()
   -- clock held even, the phase from the seed. Its tables take both buffers,
   -- so a flame requested on consecutive frames shows on every other one
   -- (the browser's strobe never asks for that): four frames are grabbed.
+  if AURA_POLY then
   local AX, AY = 60, 124
   F.grab('aura_plain')
   local cases = { { 'aura_h32_l8_p0', 32, 256, 0 }, { 'aura_h32_l4_p5', 32, 128, 5 },
@@ -324,6 +325,8 @@ function test()
   F.check('aura_strobe', shown >= 2 and shown <= 4, shown .. ' of 6 frames')
   F.stop(0)
   F.waitFx(3)
+
+  end
 
   -- Charge orb anchored at Goku (FX_F_GOKU): the idle pose has no hand
   -- socket (goku_api_hand), so nothing is drawn; combat shows it in the

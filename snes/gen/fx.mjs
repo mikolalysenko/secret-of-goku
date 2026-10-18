@@ -110,6 +110,7 @@ export async function generate({rom,repo,outDir,xdata}){
   assign(['gold-spark','gold-arc','gold-charge-orb','gold-beam-body','gold-beam-head','lightning','lightning-impact'],2);
   for(const p of deathSmall)for(const c of p)if(c)classColors[1].add(c);
   for(const p of death32)for(const c of p)if(c)classColors[1].add(c);
+  for(const c of friezaKiPalette)classColors[1].add(c);
   assign(['fire-beam-body'],3);
   for(const p of combustion)for(const c of p)if(c)classColors[3].add(c);
   const palettes=classColors.map((set,k)=>{
@@ -407,6 +408,31 @@ export async function generate({rom,repo,outDir,xdata}){
   }
 
   // --- encode ------------------------------------------------------------------
+  // Compact gameplay aura: two mini cells or six full-size cells. A second
+  // pose mirrors the same resident tiles, so animation needs no new DMA.
+  // Ordinary OBJ transparency never changes the backdrop under cut grass.
+  const auraSpriteBase=asms.length,auraSprites=[];
+  const auraEffects={'charge-orb':groups['charge-orb'],'gold-arc':groups['gold-arc']};
+  for(const [tone,cls] of [['blue',0],['gold',2],['pink',1]])for(const mini of [true,false]){
+    const w=mini?16:32,h=mini?32:48,oy=(mini?8:16)-h,source=new Map();
+    drawKiAura(auraEffects,0,0,9,(x,y,c)=>source.set(`${x},${y}`,c),{tone,power:1,height:mini?16:32,clock:0});
+    const xy=[...source.keys()].map(k=>k.split(',').map(Number));
+    const x0=Math.min(...xy.map(p=>p[0])),x1=Math.max(...xy.map(p=>p[0]));
+    const y0=Math.min(...xy.map(p=>p[1])),y1=Math.max(...xy.map(p=>p[1]));
+    const px=new Uint16Array(w*h),parts=[];
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++)
+      px[y*w+x]=source.get(`${x0+Math.floor(x*(x1-x0+1)/w)},${y0+Math.floor(y*(y1-y0+1)/h)}`)??0;
+    for(let y=0;y<h;y+=16)for(let x=0;x<w;x+=16){
+      const tile=new Uint16Array(256);
+      for(let j=0;j<16;j++)tile.set(px.subarray((y+j)*w+x,(y+j)*w+x+16),j*16);
+      const cell=addCell(tile,cls,`aura-${tone}-${mini?'mini':'full'}-${x}-${y}`);
+      if(cell>=0)parts.push({cell,x:x-w/2,y:y+oy,h:false,v:false});
+    }
+    asms.push(parts,parts.map(p=>({...p,x:-p.x-16,h:true})));
+    auraSprites.push({tone,w,h,x:-w/2,y:oy,px:[...px]});
+  }
+  writeFileSync(join(outDir,'aura-sprites.json'),JSON.stringify(auraSprites));
+
   if(cells.length>512)throw Error(`fx: ${cells.length} cells exceed 9-bit ids`);
   const bin=new Uint8Array(cells.length*CELL_BYTES);
   cells.forEach((cell,i)=>{
@@ -591,6 +617,7 @@ export async function generate({rom,repo,outDir,xdata}){
   STAMP_GROUPS.forEach((g,i)=>a.def(`FX_SG_${g.replace(/-/g,'_').toUpperCase()}`,i));
   a.def('FX_STAMP_GROUPS',STAMP_GROUPS.length);
   a.def('FX_ASM_BURST',burstBase);a.def('FX_ASM_EMBER',emberBase);
+  a.def('FX_ASM_AURA',auraSpriteBase);
   a.def('FX_ASM_DEATH16',deathBase);a.def('FX_ASM_DEATH32',death32Base);a.def('FX_ASM_DISC',discBase);
   a.def('FX_ASM_FINGER',fingerBase);a.def('FX_ASM_FRAGMENT',fragBase);a.def('FX_ASM_LASER',laserBase);
   a.def('FX_ASM_RING',ringBase);a.def('FX_ASM_SPARKS',sparksBase);a.def('FX_ASM_STATUS',statusBase);a.def('FX_ASM_RUBBLE',rubbleBase);a.def('FX_ASM_DUST',dustBase);
