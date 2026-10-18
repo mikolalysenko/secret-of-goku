@@ -1,5 +1,5 @@
-; Audio module: DBZ effects, Kamehameha voice and loops streamed through the
-; SPC700 driver extension (spc/stream.s), plus the new songs.
+; Audio module: resident SNES effects and native music. -DAUDIO_PCM=1
+; enables the optional DBZ effect/voice streamer for diagnostic builds.
 ; docs/agents/snes-port/audio.md describes the driver, protocol and API.
 ;
 ; Public API (JSL from main-loop code; any M/X; DB and D preserved):
@@ -49,6 +49,8 @@ incsrc "audio/ids.asm"
 !au_song     #= !aw+$3F   ; song id seen last frame ($1E05)
 !au_misses   #= !aw+$5C   ; commands withdrawn in a row (saturates at $FF)
 !au_dsfx     #= !aw+$5D   ; destroy's !out_sfx (low byte) when last seen
+!au_bed      #= !aw+$5E   ; native charge bed was requested last frame
+!au_bed_wait #= !aw+$5F   ; frames before another native charge pulse
 !AU_CH = $20
 ; channel fields (X = channel offset 0 / $20)
 !c_kind  = $00   ; 0 idle, 1 shot, 2 loop
@@ -400,6 +402,18 @@ audio_pause:
 	PHP
 	SEP #$20
 	REP #$10
+if not(defined("AUDIO_PCM"))
+	STZ.w !au_reqn
+	STZ.w !au_voicereq
+	STZ.w !au_bed
+	STZ.w !au_bed_wait
+	STZ.w !au_lvl
+	STZ.w !au_lvl+1
+	STZ.w !au_lvl+2
+	STZ.w !au_lvl+3
+	PLP
+	RTL
+endif
 	LDA.w !au_ch+!c_kind
 	ORA.w !au_ch+!AU_CH+!c_kind
 	BEQ +
@@ -413,6 +427,9 @@ audio_pause:
 ; ---------------------------------------------------------------- service
 ; A8 X16, DB = $7E. Runs once per field/world frame.
 audio_service:
+if not(defined("AUDIO_PCM"))
+	JMP audio_native_service
+endif
 	LDA.w !au_flags
 	BIT.b #$40
 	BEQ +
@@ -1651,15 +1668,21 @@ audio_test_poll:
 	JSL audio_song_restore
 +	RTS
 
+incsrc "native.asm"
+
 audio_code_end:
 assert audio_code_end <= !CODE_QUARTER_AUDIO, "audio code overflow (EA:C000-FFFF is a spare quarter, core/layout.asm)"
 pullpc
 
 ; ---------------------------------------------------------------- patches
 ; Driver upload end (C3:0106 LDY #$0200 / STY $2142).
+; The shipping ROM keeps the original driver: no stream polling overhead
+; on the SPC either. Native music's echo patches below remain active.
+if defined("AUDIO_PCM")
 %orig4($C30106, $8C0200A0)
 %orig2($C3010A, $2142)
 %hijack($C30106, audio_boot_upload, 6, audio)
+endif
 ; Echo parameter reads in C3:060A (LDA $C30708..B,X).
 %orig4($C30618, $C30708BF)
 %hijack_jsl($C30618, audio_echo0, 4, audio)

@@ -1,4 +1,4 @@
-# Audio module: Secret of Mana's sound driver, DBZ effects, voices and new music
+# Audio module: native SNES effects and music
 
 Spoilers follow the rest of `docs/agents/`. Module: `snes/src/modules/audio/`
 (65816 code bank `$AA`, tables `$EA`, BRR/sequence assets in `$FC-$FF`,
@@ -7,6 +7,25 @@ WRAM `!RAM_AUDIO`), generators `snes/gen/audio*.mjs`, tests `snes/test/audio/`.
 Everything below about the native driver was reverse-engineered from the US
 cartridge (`snes/gen/audio-spc700.mjs` disassembles it) and cross-checked
 against 277 ARAM/DSP snapshots of the browser mod (`.local/snes-import/`).
+
+## Shipping sound policy (October 18, 2026)
+
+The default cartridge uses effects already resident in the original SPC
+driver. It does not upload the stream extension or transfer BRR chunks
+during gameplay. Punches and ki shots use effect `$03`, impacts `$50`,
+charge `$2A`, beams `$B0`, and transformations `$12`, matching the browser's
+native-sound fallback. A priority selector sends at most one new effect per
+frame and drops stale requests when a script or song owns the sound queue.
+Charge beds pulse every 25 frames; continuous flight noise and sampled
+voice lines are omitted. Native music and its arrangements remain enabled.
+
+`snes/src/modules/audio/native.asm` implements this policy behind the same
+module API. `-DAUDIO_PCM=1` restores the historical streamer for diagnostics;
+the streaming design below describes that optional build. The audio runner
+tests `native` against the shipping ROM and explicitly builds the PCM option
+for the historical streaming tests. `node snes/test/audio/run.mjs native unit`
+checks audible resident effects, bounded charge pulses, music continuity,
+intact samples and the absence of BRR stream commands.
 
 ## 1. The native sound driver
 

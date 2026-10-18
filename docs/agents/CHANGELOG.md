@@ -10,6 +10,11 @@ stay traceable even when they are committed together.
   sprite now receives the same tinted colors as the native water palette,
   and landing restores the map's palette. Validated with the Goku status,
   forms and scripted tests, including rendered airborne colors.
+- Replaced streamed gameplay effects with resident SNES sounds by default.
+  Impacts, shots, punches and beams stay audible; charge uses sparse pulses,
+  and continuous flight/voice streams are omitted. Music stays native. The
+  old streamer is an explicit `AUDIO_PCM` diagnostic build. Native sound,
+  audio unit, optional stream, song, arrival and imported-state tests pass.
 
 ## 2026-10-18 — Bazzite Steam box installation
 
