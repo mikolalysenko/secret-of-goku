@@ -169,6 +169,14 @@ bank; split larger data into 32 KiB pieces.
 `%hijack_jsl`, `%patch` and `%origN` byte assertions. Every patch of original
 bytes goes through them; `build.mjs` rejects overlapping patches.
 
+asar overwrites silently when two `org` blocks overlap, so `build.mjs` also
+checks ROM ownership: every 16 KiB quarter of the added banks may hold labels
+of one module only (`--strict` makes a shared quarter an error). Each module
+asserts the end of its code and data blocks. When a module's code half is
+full, it can be given a spare quarter of a mostly empty half
+(`!CODE_QUARTER_*` in `core/layout.asm`: goku's, audio's and title's halves
+end their code before `$C000`).
+
 asar does not track `REP`/`SEP`: an immediate's width comes from how it is
 written, so `CMP #8` in 16-bit code assembles as two bytes and desynchronises
 the instruction stream. Write every accumulator/index immediate with an
@@ -196,7 +204,7 @@ of each hook in `snes/src/modules.asm`.
 | Hook | When |
 | --- | --- |
 | `modules_field_frame` | Every completed field frame (towns, dungeons, dialogue, events, Mode 7 boss arenas) after the game logic and OAM build, before the NMI handshake (`00:B073`) |
-| `modules_field_nmi` | Field vblank after the game's uploads, still force-blanked (`00:C158`); only for frames the loop completed |
+| `modules_field_nmi` | Field vblank after the game's uploads, still force-blanked (`00:C158`); only for frames the loop completed. Afterwards the core writes the game's HDMAEN shadow `$2C` to `$420C`. If the vblank work ran into the next frame's display (scanline 0–224), only channels already running stay on: a channel switched on after HDMA started would run from stale tables. Newly requested channels then start with the next vblank (`!core_hdmaen` holds the value written; core test `hdmaen`) |
 | `modules_world_frame` | World flight frame end (`00:8085`) |
 | `modules_world_nmi` | World vblank after the game's uploads and HDMA setup (`00:8903`); not force-blanked |
 | `modules_menu_frame` | Full-screen menus (game select, name entry, file list, status/equipment, save screen), once per frame in vblank after the menu's uploads (`C0:1E08`) |
@@ -216,7 +224,7 @@ of each hook in `snes/src/modules.asm`.
 | `core_vram_claim`, `core_vram_release` | A = region (`!VRAM_*`, `core/vram.asm`), X = owner id: exclusive use of a free OBJ VRAM region; returns Y = its VRAM word address |
 | `core_sound_queue` | A = command bytes 0–1, X = bytes 2–3 for the native driver (`$1E00`, `C3:0004`); one command sent per frame; carry set when 7 are pending |
 | `core_event_request` | A = native event id (`C1:E76D`: script events, `$0800\|door`, `$0C00\|map` takeoff); started at the end of an idle field frame. `!core_event_req` pending, `!core_event_last` started |
-| `!SRAM_LIVE`, `!PERSIST_*` | Live persistent block (`core/shared.asm`): written to the slot's sidecar after each native save; restored on load when the sidecar matches that slot's record (primary or backup); zeroed for NEW GAME (`!persist_version` = 1) and for saves without a valid sidecar (version 0) |
+| `!SRAM_LIVE`, `!PERSIST_*` | Live persistent block (`core/shared.asm`): written to the slot's sidecar after each native save; restored on load when the sidecar matches that slot's record (primary or backup); zeroed for NEW GAME (`!persist_version` = 1) and for saves without a valid sidecar (version 0). Every clear writes the `'GK'` magic (`!persist_magic`, `+$3E`); power-on clears a block without it (a new cartridge's battery RAM is noise), so modules that read it on the title see zeros, not noise |
 | `!core_frame`, `!core_frame_world`, `!core_frame_menu`, `!core_frame_ring`, `!core_tick`, `!core_mode` | Frame counters per mode, any-mode tick, mode of the last dispatch (`!CORE_MODE_*`) |
 
 Limits: 128 sprites, 32 per line, 34 eight-pixel slivers per line. Modules
@@ -240,7 +248,11 @@ and call `H.importSnesJs`.
 `node snes/test/core/run.mjs [test ...]` builds a `CORE_TEST` cartridge (a
 client of every service driven through a WRAM mailbox, `snes/test/core/testmod.asm`)
 and runs the core tests; `node snes/test/core/measure.mjs` reprints the
-per-scene timing table in engine.md.
+per-scene timing table in engine.md. `live` checks the power-on clear of
+the live block, and `xdata` reads the 32-byte probe that
+`snes/gen/core-xdata.mjs` places in the extended banks back through the
+CPU bus, together with the ExHiROM mirrors, both header copies and the save
+RAM banks.
 
 ## Engine anchors
 

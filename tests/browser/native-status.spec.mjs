@@ -58,3 +58,27 @@ test('companion status and other native menu pages keep their own displays',asyn
  });
  for(const row of result){expect(row.mode,JSON.stringify(row)).toBe(5);expect(row.active,JSON.stringify(row)).toBe(row.actor===0&&row.item===2);}
 });
+
+test('Menu/back closes Status and the editors wherever the options ring last stopped',async({page})=>{
+ await load(page);
+ const rows=await page.evaluate(()=>{
+  const m=mana.mod,r=mana.snes.ram,base=mana.snapshot(),out=[];
+  const tap=b=>{mana.run(2,[b]);mana.run(70);};
+  // $1876 is the option under the cursor; $180A counts from the option the
+  // ring last opened, which becomes the ring's starting point.
+  const toOption=o=>{for(let i=0;i<8&&r[0x1876]!==o;i++)tap(7);return r[0x1876]===o;};
+  const back=()=>{for(let i=0;i<5&&m.menuActive;i++)tap(9);return !m.menuActive;};
+  for(const [first,option] of [[0,2],[3,2],[4,2],[4,4],[0,5],[5,5],[0,6],[2,6]]){
+   mana.restore(base);mana.run(4);
+   tap(9);toOption(first);tap(0);const reset=back();
+   tap(9);const reached=toOption(option),cursor=r[0x180a];tap(0);
+   out.push({first,option,cursor,reset,reached,opened:mana.snes.ppu.mode===5,status:m.statPage.active,closed:back()});
+  }
+  return out;
+ });
+ for(const row of rows){
+  expect(row,JSON.stringify(row)).toMatchObject({reset:true,reached:true,opened:true,closed:true,status:row.option===2});
+ }
+ // The reported case: Status opened with the cursor at 5, where editors sit.
+ expect(rows.find(row=>row.first===4&&row.option===2).cursor).toBe(5);
+});

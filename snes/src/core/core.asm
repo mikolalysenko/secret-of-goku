@@ -64,7 +64,8 @@
 !core_oam_front_hi    = !RAM_CORE_EXT+$0C0 ; 16 x 2 bytes: size/xhi bits (bit0 xhi, bit1 size)
 !core_vram_owner      = !RAM_CORE_EXT+$0E0 ; 32 bytes: VRAM pool cell owners (core/vram.asm)
 !core_test            = !RAM_CORE_EXT+$100 ; 128 bytes: CORE_TEST mailbox (test builds only)
-; !RAM_CORE_EXT+$180-$1BF reserved for core.
+!core_hdmaen          = !RAM_CORE_EXT+$180 ; byte: HDMAEN written by the last field vblank
+; !RAM_CORE_EXT+$181-$1BF reserved for core.
 
 !CORE_DMA_MAX      = 8
 !CORE_DMA_BUDGET   = $0C00           ; bytes per frame accepted by core_queue_vram
@@ -126,6 +127,7 @@ core_boot:
 	PHP
 	REP #$30
 	JSR core_clear_wram
+	JSR core_live_check
 	PLP
 	JML $C10010
 
@@ -287,9 +289,27 @@ endif
 	PLB
 	PLP
 	SEP #$20
-	LDA $2C
-	STA $420C
+	JSR core_hdmaen_write
 	RTL
+
+; The replaced C0:C15A LDA $2C / STA $420C (M8 in and out; A = the value
+; written; D and DB the native NMI's). When the vblank work ran into the next
+; frame (scanline 0-224), that frame's HDMA has already started, and a
+; channel switched on now would run from stale table pointers (garbage CGRAM
+; or scroll writes for a frame, ui.md): then only channels already running
+; stay on, and the rest start with the next vblank.
+core_hdmaen_write:
+	REP #$20
+	JSR core_vcount
+	CMP.w #225
+	SEP #$20
+	LDA $2C
+	BCS .store
+	AND.l !core_hdmaen
+.store
+	STA.l !core_hdmaen
+	STA.l $00420C
+	RTS
 
 ; ---------------------------------------------------------------------------
 ; World flight (Mode 7 overworld), 00:8085: after the world frame's logic,

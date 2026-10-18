@@ -1652,7 +1652,7 @@ audio_test_poll:
 +	RTS
 
 audio_code_end:
-assert audio_code_end <= !CODE_AUDIO+$8000, "audio code bank overflow"
+assert audio_code_end <= !CODE_QUARTER_AUDIO, "audio code overflow (EA:C000-FFFF is a spare quarter, core/layout.asm)"
 pullpc
 
 ; ---------------------------------------------------------------- patches

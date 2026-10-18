@@ -41,11 +41,16 @@ const tests=[
   ['world','waterfall'],
   ['save','waterfall'],
   ['lag','waterfall'],
+  ['hdmaen','waterfall'],
   ['wram',null],
+  ['live',null],
+  ['xdata',null],
 ].filter(([n])=>!only.length||only.includes(n));
 
 const importDir=process.env.SNES_IMPORT??join(dirname(cps),'snes-import');
-const lib=`IMPORT_DIR=${JSON.stringify(importDir)}\n`+readFileSync(join(here,'lib.lua'),'utf8');
+// The xdata probe's address, assigned by build.mjs (dist/snes/gen/xdata.asm).
+const xm=readFileSync(join(repo,'dist/snes/gen/xdata.asm'),'utf8').match(/^!XDATA_CORE_PROBE = \$([0-9A-F]{6})$/m);
+const lib=`IMPORT_DIR=${JSON.stringify(importDir)}\nXPROBE=${xm?parseInt(xm[1],16):-1}\n`+readFileSync(join(here,'lib.lua'),'utf8');
 const summary=[];
 for(const [name,cp] of tests){
   const rom=privateRom(testRom,`core-${name}`);
