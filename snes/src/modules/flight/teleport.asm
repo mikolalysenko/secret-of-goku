@@ -7,8 +7,9 @@
 ; at age 4 he lands beside the target (same side as he came from when
 ; possible), companions gather and the camera follows (the action holds age
 ; 4 until it arrives). Pressing again during the action queues the next one.
-; A custom target (Frieza, or Vegeta in place of slot 3) comes from the
-; scene module through !fl_tp_custom (see flight.md).
+; Frieza (index 12) is combat's virtual target there (combat_api_vtarget),
+; unless a scene module posts one through !fl_tp_custom (kind 2); Vegeta
+; stands in for slot 3 through the post (kind 3; see flight.md).
 
 ; Start (or queue) Instant Transmission. Carry set when an action started.
 fl_tp_start:
@@ -195,12 +196,14 @@ fl_tp_finish:
 fl_tp_entity:
 	CPX.w #12
 	BCC .actor
-	; custom target (Frieza): index 12
+	; Frieza, index 12: a scene module's post (!fl_tp_custom kind 2), else
+	; combat's virtual target at that index (frieza.js entity())
 	LDA.l !fl_tp_custom
 	AND.w #$00FF
 	CMP.w #2
-	BNE .no
+	BNE +
 	JMP fl_tp_custom_fill
++	JMP fl_bind_vtarget          ; X = 12
 .actor
 	CPX.w #3
 	BNE .native
