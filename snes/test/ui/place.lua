@@ -23,6 +23,22 @@ function window_mask()
   end
   return table.concat(t)
 end
+-- Boxes of the sprites on screen (x, y, size: small 16, large 32; the
+-- reference run's ambient creatures move with the game's RNG).
+local function sprite_boxes()
+  local t = {}
+  for i = 0, 127 do
+    local hi = (H.oam(512 + (i >> 2)) >> ((i & 3) * 2)) & 3
+    local x = H.oam(i * 4) | ((hi & 1) << 8)
+    if x >= 256 then x = x - 512 end
+    local y = H.oam(i * 4 + 1)
+    if y < 224 or y > 240 then
+      if y > 240 then y = y - 256 end
+      t[#t + 1] = string.format('%d,%d,%d', x, y, (hi & 2) ~= 0 and 32 or 16)
+    end
+  end
+  return table.concat(t, ' ')
+end
 local function regs()
   local t = {}
   for _, a in ipairs({0x4300, 0x4301, 0x4302, 0x4303, 0x4304, 0x4307, 0x4310, 0x4311, 0x4312, 0x4313, 0x4314, 0x4317}) do
@@ -68,22 +84,15 @@ local function shown()
 end
 -- After one frame: the frame just shown had a window tile on rows 1-8 (the
 -- browser's windowPresent) in a scene that goes lower: it must have been
--- scrolled down unless its vblank ran late.
--- (UI_TEST builds count, at $33:7F26, the vblanks that ran too late for
--- the UI to switch the scroll channel on: those frames show a closing
--- window at its native place by design)
-local stats = {shown = 0, moved = 0, late = 0, guarded = 0, top = 0}
-local guard = 0
+-- scrolled down unless its vblank ran late (the core then starts no new
+-- channel; one already running keeps going).
+local stats = {shown = 0, moved = 0, late = 0, top = 0}
 local function check(i)
   local wp = ui(WP)
-  local g = H.r16(0x337F26)
-  local guarded = g ~= guard
-  guard = g
   if (wp & 2) ~= 0 and shown() then
     stats.shown = stats.shown + 1
     if fs.vofs then stats.moved = stats.moved + 1
     elseif fs.late then stats.late = stats.late + 1
-    elseif guarded then stats.guarded = stats.guarded + 1
     else
       stats.top = stats.top + 1
       H.log('top', i, string.format('wp %04X 2C %02X D0 %02X 1D04 %02X regs %s', wp, H.r8(0x7E002C), H.r8(0x7E00D0), H.r8(0x7E1D04), regs()))
@@ -111,7 +120,6 @@ function test()
     H.wait(2)
   end
   H.result('queued', queued)
-  H.w16(0x337F26, 0)
   hook()
   local decided, waits = nil, false
   for i = 1, 600 do
@@ -125,6 +133,7 @@ function test()
   unhook()
   H.wait(30)                     -- the page waits for a button: a still frame
   H.shot('window')
+  H.result('objs', sprite_boxes())
   H.result('wp', ui(WP))
   H.result('regs', regs())
   H.result('mask', window_mask())
@@ -160,7 +169,6 @@ function test()
   H.result('shown_frames', stats.shown)
   H.result('moved_frames', stats.moved)
   H.result('late_frames', stats.late)
-  H.result('guarded_frames', stats.guarded)
   H.result('top_frames', stats.top)
   finish()
 end

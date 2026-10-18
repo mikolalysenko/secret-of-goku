@@ -39,11 +39,8 @@
                                ; the radio's HDMA table otherwise (never both)
 !ui_s_wpv = !SRAM_WORK_UI+$312 ; 16 bytes: BG3VOFS table (channel 1)
 !ui_s_wpo = !SRAM_WORK_UI+$322 ; 4 bytes: the game's channel 0 / 1 table addresses
-                               ; (UI_TEST builds: +4, a word, counts late vblanks
-                               ; that left a closing window at the native place)
 
 !UI_WP_BUF = $9C00            ; native window rows 1-8 in WRAM (32 words each)
-!UI_WP_LAST_LINE = 258        ; HDMAEN bits are only set before this line
 
 ; ---------------------------------------------------------------------------
 ; Field frame, after the radio's window update. DB = $7E, M16/X16.
@@ -358,7 +355,9 @@ ui_place_cgtab:
 ; given back otherwise. While a window closes the game turns its window
 ; HDMA off every vblank (C0:C0E1 clears $2C bits 0-1, which the core then
 ; writes to HDMAEN): bit 1 is set again so the scroll channel keeps the
-; window where it was. Idle cost: one test.
+; window where it was. (When the vblank's work runs late the core keeps only
+; the channels already running: never one from stale pointers.) Idle cost:
+; one test.
 ui_place_nmi:
 	LDA.l !ui_wp
 	BIT.w #!UIW_NOW|!UIW_TAKEN|!UIW_FORCED
@@ -404,14 +403,6 @@ ui_place_nmi:
 	AND.w #$0003
 	CMP.w #$0003
 	BEQ .gameOn                       ; the game runs its window HDMA
-	; Channels switched on in HDMAEN once the frame's HDMA has started run
-	; from stale pointers: no bit is set when this vblank's work already
-	; reaches its last lines (the core writes $2C to HDMAEN after FX).
-	JSR ui_place_vline
-	CMP.w #225
-	BCC .late
-	CMP.w #!UI_WP_LAST_LINE
-	BCS .late
 	LDA.w $1D04                       ; (DB = $80: WRAM mirror) a window
 	AND.w #$0020                      ; open: the game's setup (C0:C1E7)
 	BEQ .closing                      ; would turn both channels on now, but
@@ -434,13 +425,6 @@ ui_place_nmi:
 	ORA.w #!UIW_FORCED
 	STA.l !ui_wp
 .done
-	RTS
-.late
-if defined("UI_TEST")
-	LDA.l !ui_s_wpo+4                 ; frames left at the native place
-	INC
-	STA.l !ui_s_wpo+4
-endif
 	RTS
 .gameOn
 	LDA.l !ui_wp
@@ -483,15 +467,3 @@ endif
 	STA.l !ui_wp
 	RTS
 
-; Current scanline in A16 (DB = $80, NMI side).
-ui_place_vline:
-	SEP #$20
-	LDA $213F                         ; reset the counter latch flip-flop
-	LDA $2137                         ; latch H/V
-	LDA $213D
-	XBA
-	LDA $213D
-	AND.b #$01
-	XBA
-	REP #$20
-	RTS

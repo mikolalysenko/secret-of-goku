@@ -296,16 +296,21 @@ const cases={
         if(q.regs_end!==n.regs)fails.push(`after the scene: channels ${q.regs_end} (game: ${n.regs})`);
         if(q.c2c_end&3)fails.push(`after the scene: $2C = ${q.c2c_end.toString(16)}`);
       }
-      notes.push(`preset__late: decided on frame ${q.decided} (faces ${q.faces}); ${q.shown_frames} frames with a window up: ${q.moved_frames} moved, ${q.late_frames} after a late vblank (no HDMA can start), ${q.guarded_frames} closing ones left in place by the vblank guard, ${q.top_frames} at the top otherwise; ${opaque} window pixels, HUD and channels intact`);
+      notes.push(`preset__late: decided on frame ${q.decided} (faces ${q.faces}); ${q.shown_frames} frames with a window up: ${q.moved_frames} moved, ${q.late_frames} after a late vblank with no window channel running, ${q.top_frames} at the top otherwise; ${opaque} window pixels, HUD and channels intact`);
     }
     if(existsSync(potos)){
       const stay=await run('place-stay',{POTOS:true},potos),ref=await run('place-stay-native',{POTOS:true,NOPLACE:true},potos);
       if(ok('place-stay',stay)&&ok('place-stay-native',ref)){
         if((stay.results.wp&7)!==1)fails.push(`potos: placement bits ${stay.results.wp} (expected a decided scene that stays native)`);
         const S=loadPng(join(stay.outDir,'window.png')),R=loadPng(join(ref.outDir,'window.png'));
-        let d=0;for(let y=0;y<224;y++)for(let x=0;x<256;x++)if(px(S,x,y)!==px(R,x,y))d++;
+        // sprites of either run (ambient creatures follow the game's RNG,
+        // which advances with idle CPU time) are left out, 2 pixels wider
+        const boxes=[stay,ref].flatMap(r=>(r.results.objs||'').split(' ').filter(Boolean).map(b=>b.split(',').map(Number)));
+        const inSprite=(x,y)=>boxes.some(([bx,by,n])=>x>=bx-2&&x<bx+n+2&&y>=by-2&&y<by+n+2);
+        let d=0,skipped=0;
+        for(let y=0;y<224;y++)for(let x=0;x<256;x++)if(px(S,x,y)!==px(R,x,y)){if(inSprite(x,y))skipped++;else d++;}
         if(d)fails.push(`potos: ${d} pixels differ from the reference`);
-        notes.push(`potos: decided on frame ${stay.results.decided} (faces ${stay.results.faces}), stays native, frame identical`);
+        notes.push(`potos: decided on frame ${stay.results.decided} (faces ${stay.results.faces}), stays native, frame identical${skipped?` but for ${skipped} sprite pixels`:''}`);
       }
     }else notes.push(`potos: skipped, no ${potos}`);
     report('place',!fails.length,[...fails,...notes]);

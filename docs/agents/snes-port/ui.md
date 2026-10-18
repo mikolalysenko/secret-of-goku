@@ -265,12 +265,12 @@ clears `$2C` bits 0–1 every vblank (`C0:C0E1`); the NMI sets bit 1 again
 (`!UIW_FORCED`) so the scroll keeps the closing window down, and sets both
 bits when a window is open but the game skipped its setup because bit 1
 was ours. A channel switched on in HDMAEN after the frame's HDMA started
-runs from stale pointers, so no bit is set when the vblank's work already
-reached line 258 (the core writes `$2C` to HDMAEN after FX): such a frame
-shows the window at its native position (in the test scene 2 of 1,953
-window frames, closing ones: one vblank that ended past line 261 anyway,
-one that reached line 258). Putting `ui_field_nmi` first in
-`modules_field_nmi` would make this rarer (see the core requests).
+would run from stale pointers; the core's field NMI checks the scanline
+before writing `$2C` to HDMAEN and, past the vblank, keeps only the
+channels already running (`ceed2d2`), so the UI sets its bits whatever the
+line. A closing window's scroll channel is already running, so in the test
+scene all 1,952 window frames show the window moved, the closing ones
+included.
 
 ## Scouter (`scouter.asm`)
 
@@ -425,15 +425,10 @@ scenes and compares with the browser's own code:
   RAM (`ui_world_yield`); its sprites in native slots 0..n-1 that touch the
   dial's box (8–55, 8–55) are moved behind the dial every other frame, as
   for any native.
-- **Late field vblanks**: in heavy frames (a window opening or closing,
-  sprite uploads) the field NMI's work runs up to line 261 and sometimes
-  past it, so the core's `$2C` → HDMAEN write lands after the frame's HDMA
-  started; every channel enabled then runs from stale pointers (garbage
-  CGRAM / scroll writes for that frame, natively too when the window HDMA
-  is on). Suggest the core checks the V counter before that write and
-  writes 0 when it is already past vblank. The UI only sets `$2C` bits
-  when the vblank is before line 258; with `ui_field_nmi` first in
-  `modules_field_nmi` (a few register writes, before Goku's cell DMA) it
-  would check earlier in the vblank.
+- **Late field vblanks** (done, `ceed2d2`): the core's `$2C` → HDMAEN
+  write checks the scanline and, past the vblank, starts no new channel.
+  `ui_field_nmi` first in `modules_field_nmi` (a few register writes,
+  before Goku's cell DMA) is applied by `snes/tools/order-dispatch.mjs` on
+  the integration merge.
 - **Optional FastROM**: the UI code runs in bank `$AC`; a FastROM build
   (`CORE_FASTROM`) would cut its world-flight cost by roughly a fifth.
