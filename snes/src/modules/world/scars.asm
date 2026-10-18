@@ -406,8 +406,13 @@ world_scar_tick:
 ; NMI: the crater characters (32 x 64 high bytes at VRAM word $3800) in four
 ; chunks on entering flight, then up to 8 cells per vblank of the row being
 ; refreshed (low bytes), only within the 121 columns around the camera that
-; the tilemap holds. D = $4300, DB = $7E; channel in w_scratch/+2.
+; the tilemap holds. D = $4300, DB = $7E; channel in w_scratch/+2. Paused
+; while the Fortress cutaway runs: the ending module's picture then uses
+; that VRAM (the deck landing reloads the world).
 world_nmi_scars:
+	LDA.w !w_cut_age
+	CMP.w #$FFFF
+	BNE .done
 	LDA.w !w_crater_up
 	CMP.w #4
 	BCS .row

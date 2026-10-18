@@ -30,6 +30,7 @@ function test()
   H.wait(4)
 
   E.arm(true)
+  E.watchAudio()
   local f0, c0 = H.frame, H.r16(0x7ED700)
   takeOff()
   H.result('depart_origin', H.r16(0x7EDC96) .. ',' .. H.r16(0x7EDC98))
@@ -47,6 +48,8 @@ function test()
   H.result('overruns', E.overruns)
   H.result('overrun_at', table.concat(E.overrunAt, ' '))
   E.arm(false)
+  E.audioArmed = false
+  E.audioResult()
   -- an explicit stop gives the field back
   H.w8(E.request, 0xFF)
   H.wait(8)

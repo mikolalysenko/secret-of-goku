@@ -47,11 +47,13 @@ modules_world_frame:
 	JSL debug_world_frame
 	JSL combat_world_frame
 	JSL fx_world_frame         ; after the modules that draw effects
+	JSL ending_world_frame     ; after fx: the Fortress cutaway takes the whole OAM
 	JSL audio_frame
 	RTL
 ; World vblank, after the game's uploads and HDMA setup; not force-blanked,
 ; so check core_vblank_lines before long uploads (DB = $80).
 modules_world_nmi:
+	JSL ending_world_nmi       ; the Fortress cutaway's picture
 	JSL world_world_nmi
 	JSL fx_world_nmi           ; keep last
 	RTL
