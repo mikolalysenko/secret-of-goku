@@ -471,6 +471,27 @@ export async function generate({repo,outDir,rom:baseRom}){
   }
 
   // frieza-combat.js constants
+  // frieza.js introHero: Goku's scripted follower poses (row 3, the back).
+  // Temple exit: offsets from the cue's screen point by age (constant from
+  // 160); the deck's arrival by age (constant from 84); the escape's climb
+  // by launch = age - 12 (off the picture after the table).
+  {
+    const tx=[],ty=[];
+    for(let a=0;a<=160;a++){const p=staging.templeFollowerPose({age:a,x:0,y:0},{cameraX:0,cameraY:0});tx.push(p.x);ty.push(p.y);}
+    const ax=[],ay=[];
+    for(let a=0;a<=84;a++){const p=staging.exteriorFollowerPose({kind:'core-arrival',age:a});ax.push(p.x);ay.push(p.y);}
+    const ey=[];
+    for(let l=0;;l++){const p=staging.exteriorFollowerPose({kind:'core-escape',age:12+l});if(p.y<-40)break;ey.push(p.y);}
+    const rest=staging.exteriorFollowerPose({kind:'depart',age:0});
+    // the knee columns the runtime uses (base 38, Super Saiyan 34) and their
+    // switch ages
+    const k0=staging.templeFollowerPose({age:47,x:0,y:0},{},false),k1=staging.templeFollowerPose({age:48,x:0,y:0},{},false),k2=staging.templeFollowerPose({age:48,x:0,y:0},{},true);
+    if(k0.column!==37||k1.column!==38||k2.column!==34||staging.templeFollowerPose({age:39,x:0,y:0},{}).column!==0)throw Error('frieza: follower columns changed');
+    out.push('frieza_follow_temple_x:',...words(tx),'frieza_follow_temple_y:',...words(ty),
+      'frieza_follow_arrive_x:',...words(ax),'frieza_follow_arrive_y:',...words(ay),
+      `!FRIEZA_FOLLOW_ESCAPE_N = ${ey.length}`,'frieza_follow_escape_y:',...words(ey),
+      `!FRIEZA_FOLLOW_REST_X = ${rest.x}`,`!FRIEZA_FOLLOW_REST_Y = ${rest.y}`);
+  }
   const combat=await eng('frieza-combat.js');
   out.push(`!FRIEZA_HP = ${combat.FRIEZA_HP}`);
 

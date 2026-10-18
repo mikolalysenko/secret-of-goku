@@ -165,6 +165,7 @@ fz_tree_frame:
 	STA.l !fzt_shake
 	REP #$20
 	JSR fz_tree_natives
+	JSR fz_tree_goku
 	; the tiny Frieza (not while the vista establishes or fades)
 	JSR fz_scene_kind
 	CMP.w #!FZS_TREE_ESTABLISH
@@ -201,6 +202,25 @@ fz_vista_invalidate:
 	LDA.b #0
 	STA.l !fzt_up
 	REP #$20
++	RTS
+
+; Goku on the cliff: his back cell (column 0, row 3) with its top-left at
+; (112 + shake, 156), as frieza-tree-view.js blits it.
+fz_tree_goku:
+	LDA.l !goku_form|$7E0000
+	AND.w #$0001
+	LDX.w #0
+	LDY.w #3
+	JSL goku_api_cell
+	CMP.w #$FFFF
+	BEQ +
+	PHA
+	LDA.w #128
+	JSR fz_tree_addshake
+	TAX
+	LDY.w #187
+	PLA
+	JSL goku_api_scripted
 +	RTS
 
 ; A16 += the impact's shake this frame (!fzt_shake, signed; the routines

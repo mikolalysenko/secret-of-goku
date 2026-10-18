@@ -104,6 +104,7 @@ frieza_field_frame:
 	BCS .notdrawn
 	JSR fz_draw_scene
 	JSR fz_scene_effects
+	JSR fz_follower
 	JSR fz_tree_frame
 	JSR fz_lb_tick
 	JSR fz_battle_draw

@@ -705,7 +705,7 @@ if(want('door')){
     if(!ok)for(const f of failures)console.log('    !',f);
   }
 }
-if(only.includes('tree')){                     // explicit: the native tail still stalls (frieza.md)
+if(want('tree')){
   const rom=privateRom(romSrc,'frieza-tree');
   const out=join(outRoot,'tree');
   const r=await runMesen({rom,test:lib+'\n'+treeTest(),outDir:out,state:join(cps,'waterfall.mss'),timeoutMs:1500000});
