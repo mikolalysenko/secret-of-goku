@@ -12,10 +12,16 @@ Work streams, hardware strategies and status: [snes-port/plan.md](snes-port/plan
   combat, flight, destruction, sequence breaks, dialogue edits, the Frieza and
   Vegeta fights, endings, music and sound — must run as 65816/SPC700 code and
   data inside the cartridge. No emulator hooks.
-- Standard hardware only. The image is **32 Mbit HiROM** (`$FFD7=$0C`) with
-  **32 KiB battery SRAM** (`$FFD8=$05`), the same mapping class as Chrono
-  Trigger. If space runs out the next step is ExHiROM. SA-1 is a last resort
-  for CPU budget; MSU-1 is not used (no real cartridge carries it).
+- Standard hardware only. The cartridge is **64 Mbit ExHiROM** (map mode
+  `$35`, `$FFD7=$0D`; the mapping of Tales of Phantasia) with **32 KiB battery
+  SRAM** (`$FFD8=$05`). bsnes, Mesen2, snes9x and the FXPak map ExHiROM save
+  RAM at `$20–$3F/$A0–$BF:6000–7FFF` exactly like HiROM, so the original saves
+  stay at `$30:6000`. (Only a board wired like Tales of Phantasia's
+  SHVC-LJ3M, which decodes save RAM at `$80–$BF` alone, would need the
+  accesses moved to `$B0–$B3`.) `node snes/build.mjs --hirom` still builds
+  the 32 Mbit HiROM image while no data lives in the extended banks. SA-1 is
+  a last resort for CPU budget; MSU-1 is not used (no real cartridge carries
+  it).
 - The original cartridge (`rom/secret-of-mana-us.sfc`, SHA-256 `4c1501…2d5f`)
   is read, verified and expanded at build time. It is never modified on disk.
 
@@ -118,6 +124,7 @@ savestate), `H.saveStable(name)`, `H.load(path)`, `H.importSnesJs(dir)`,
 | ROM E0–EF | One code bank per module, assembled at the `$A0–$AF:8000` mirror so code sees low WRAM and I/O; lower halves `$Ex:0000–7FFF` hold that module's tables |
 | ROM F0–F7 | Compiled story events and dialogue |
 | ROM F8–FF | Packed graphics and samples |
+| ROM `$40–$7D:0000–7FFF` | Extended data (xdata): DMA sources and bulk tables from `snes/gen` (second 4 MiB, slow banks) |
 | WRAM `7E:D700–DDFF` | Module state blocks (`snes/src/core/ram.asm`) |
 | WRAM `7E:6E40–6FFF` | Core queues and staging |
 | WRAM `7E:7E40–7FFF` | UI block, then spare |
@@ -128,6 +135,35 @@ savestate), `H.saveStable(name)`, `H.load(path)`, `H.importSnesJs(dir)`,
 The three WRAM ranges are the only ones the original game never touches; the
 core tests re-check that, and that the game never reads or writes the added
 SRAM pages, from power-on through the opening and in seven imported scenes.
+
+### Extended data (ExHiROM)
+
+The assembled image is still the 32 Mbit HiROM layout above; `build.mjs`
+then widens it (`toExHiRom`). Banks `$C0–$FF` and their `$80–$BF` mirrors read
+the first 4 MiB as before. Banks `$00–$3F:8000–FFFF` and `$40–$7D` read the
+second 4 MiB, which starts as a byte copy of the first, so every HiROM mirror
+(`$00:8000` code, vectors, hijacks, `$40–$7D` mirrors of `$C0–$FD`) returns
+the same bytes. Tracing boot, the title, save/load and eight imported scenes
+found no reads of `$40–$7D:0000–7FFF` by the original game, so those lower
+halves (62 × 32 KiB = 1984 KiB) are free for extended data.
+
+A generator registers a blob with the `xdata` function in its context:
+
+```js
+export function generate({rom,outDir,xdata}){
+  xdata('ending_fortress_tiles',tileBytes);   // <= 32 KiB per blob
+}
+```
+
+The build places blobs first-fit (largest first, from bank `$7D` down)
+before assembling, and writes `dist/snes/gen/xdata.asm` with
+`!XDATA_ENDING_FORTRESS_TILES` (a 24-bit address such as `$7D0000`) and
+`!XDATA_ENDING_FORTRESS_TILES_SIZE`. Read them with DMA (source bank = the
+address's bank byte) or long addressing. The second 4 MiB is reachable only
+through slow banks (no FastROM; 8 master cycles per byte), so keep code and
+tables read in hot loops in the first 4 MiB and move art, tilemaps,
+palettes, samples and rarely read tables to xdata. A blob may not cross a
+bank; split larger data into 32 KiB pieces.
 
 `snes/src/core/macros.asm` provides `%hijack(addr, target, len, module)`,
 `%hijack_jsl`, `%patch` and `%origN` byte assertions. Every patch of original
