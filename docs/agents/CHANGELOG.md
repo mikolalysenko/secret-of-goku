@@ -4,6 +4,13 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## 2026-10-18 — SNES gameplay follow-up
+
+- Fixed Goku's water-flight palette through takeoff and landing. The airborne
+  sprite now receives the same tinted colors as the native water palette,
+  and landing restores the map's palette. Validated with the Goku status,
+  forms and scripted tests, including rendered airborne colors.
+
 ## 2026-10-18 — Bazzite Steam box installation
 
 - Built and installed the Bazzite desktop app from `656bdb3`, added a direct Steam shortcut and Favorites entry, and assigned the Gamepad template.

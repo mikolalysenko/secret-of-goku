@@ -26,6 +26,7 @@
 
 ; Volatile SRAM work areas (contents undefined at boot; owners clear them).
 !SRAM_WORK_CORE   = $317480   ; $0180 core / misc (through $3175FF)
+!SRAM_WORK_GOKU   = $317520   ; $0042 secondary water-flight palette, after core's $A0-byte block
 !SRAM_WORK_DEBUG  = $317600   ; $0200 debug scene select (through $3177FF)
 !SRAM_WORK_FX     = $317800   ; $0400 effects library slots (beams, sparks, orbs, auras)
 !SRAM_WORK_COMBAT = $317C00   ; $0400 combat tables (projectiles, launches, per-target timers)

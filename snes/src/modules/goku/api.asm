@@ -18,6 +18,7 @@ goku_ensure_init:
 	STA.l $7E0000|!up_cell
 	LDA.w #$0000
 	STA.l $7E0000|!hud_form
+	STA.l !pal_air_valid
 .done
 	PLP
 	RTS

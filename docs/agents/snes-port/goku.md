@@ -1,5 +1,12 @@
 # GOKU module: sprite, animation, palettes, portraits and forms
 
+October 18 gameplay review: water flight now mirrors Goku's correctly tinted
+palette into slot 1 when this frame's emitted body OAM uses it. The native
+descriptor still names palette 5; slot 1 originally contains unrelated map
+colours, so it must not become the tint source. A secondary tracker in
+`$31:7520–7561` preserves and restores slot 1 on landing. `status` checks every displayed body through
+four takeoff/flight/landing cycles, in addition to native status tints.
+
 Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md)).
 Source: `snes/src/modules/goku/`, generator `snes/gen/goku.mjs`, tests
 `snes/test/goku/`. Browser references: `engine/sprite-layer.js`,
