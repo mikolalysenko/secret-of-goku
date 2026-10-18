@@ -292,8 +292,8 @@ door).
 | Clash (logic, mash, ball) | done: every tick equals `vegeta-clash.js` (`clash-win`, `clash-lose`, and from a real Kamehameha in `combat-clash`) |
 | Goku's attacks on Vegeta | done through the slot-3 window and combat's damage hook (`combat`, `combat-clash`); a combat custom-target API would replace the window (Requests) |
 | Instant Transmission to Vegeta | written for flight's `!fl_tp_custom` (flight is not merged here: untested) |
-| Effects | bound to fx (beams, orbs, sparks, bursts, embers, aura, detonation, quake/flash) |
-| Telepathy | bound to ui's `!UI_MSG_JOCH_TRIAL_0..9`; ui is not merged here (the lines are logged only) |
+| Effects | bound to fx (beams, orbs, sparks, bursts, embers, aura, detonation, quake/flash); pictures of the charge, both waves, the volley, the rush and the clash checked (`waves`, `combat-clash`); fx draws no aura yet |
+| Telepathy | bound to ui's `!UI_MSG_JOCH_TRIAL_0..9`; ui is not merged here (the lines are logged only); works in a scratch merge with the ui branch |
 
 ## API
 
@@ -350,17 +350,26 @@ record the tick saw at `$32:6290`.
   (age 7, facing of the clash, Super Saiyan art from the shot) every frame
   under the input lock; combat leaves an external action alone
   (`cb_ext_kind`). Please keep that behaviour.
-- **fx.** A horizontal clash puts two waves of different colours on the same
-  scanlines (blue Kamehameha against purple/yellow); a colour-math polygon
-  has one fixed colour per line, so one of them needs OBJ strips (or a second
-  window/colour). Vegeta uses OBJ palettes 4 and 5 in map 72 (drawn before
-  `fx_frame`, so FX's OAM scan sees them).
-- **ui.** `bind.asm` expects the generator's names for `joch-trial.js`'s ten
-  lines, `!UI_MSG_JOCH_TRIAL_0`..`_9` in source order (asserted).
+- **fx.** A clash puts two waves on the same scanlines; fx draws the first
+  (Goku's) as the polygon and falls back to OBJ strips for the second, as
+  its one-polygon rule says (checked in pictures; the waves are short when
+  the fighters stand close). A two-colour polygon would match the browser
+  more closely. Vegeta uses OBJ palettes 4 and 5 in map 72 (drawn before
+  `fx_frame`, so FX's OAM scan sees them). Costs: `fx_draw` ~2 lines a call
+  (the charge: orb, four sparks, aura = 6 calls); `FX_AURA` ~4 lines while
+  it draws nothing; the wave polygon's build (up to 90 lines) is what makes
+  his beams lag on heavy native frames.
+- **ui.** `bind.asm` calls `ui_say`/`ui_interrupt` with
+  `!UI_MSG_JOCH_TRIAL_0`..`_9` when ui is present; the ui branch generates
+  exactly these ids in the same order. Checked in a scratch merge with the
+  ui branch: the transformation's line shows in the telepathy window.
 - **core.** The OBJ regions of actor slots 3 and 4 used above (only in map 72,
-  where the clones are held inactive) could become claimable regions; and a
+  where the clones are held inactive) could become claimable regions; a
   claim byte for `!SRAM_WORK_SCENE` would make "one scene at a time"
-  explicit (vegeta uses `$32:6000-$32:6203` while the trial runs).
+  explicit (vegeta uses `$32:6000-$32:6207` while the trial runs, test
+  builds to `$32:62B3`); a batch OAM entry (several sprites sharing tile
+  and attribute bases and an anchor) would cut Vegeta's ~10 lines of
+  `core_oam_add_front`.
 - **story.** `OBJECT_TRIAL` (hook 49) is listed for vegeta but is the
   Thanatos trial's Dyluck/Thanatos staging on map 246 (`mod.frieza.trial` in
   `native-story.js`); it belongs to frieza.
@@ -373,12 +382,6 @@ record the tick saw at `$32:6290`.
   commands; the browser captured 240 frames after the travel, before them
   (its frame 60 already shows the borrowed party). The `GAPS` entry in
   `snes/test/debug/run.mjs` can name debug's timing instead of vegeta.
-- **core.** A batch OAM entry (several sprites sharing tile/attribute
-  bases and an anchor) would cut Vegeta's ~10 lines of `core_oam_add_front`.
-- **fx.** `fx_draw` costs ~2 lines a call (the charge: orb, four sparks,
-  aura = 6 calls); `FX_AURA` costs ~4 lines while drawing nothing. The
-  wave polygon's build (up to 90 lines) is what makes his beams lag on
-  heavy frames.
 - **flight.** `vb_flight_target` writes `!fl_tp_custom` every field frame
   after the tick (kind 3, species 46, position, terrain); please read it in
   the same frame or the next (it is rewritten each frame).
