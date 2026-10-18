@@ -28,9 +28,9 @@ modules_field_frame:
 	JSL combat_field_frame     ; before goku: poses and form apply this frame
 	JSL world_field_frame
 	JSL goku_frame
-	JSL ending_frame          ; after the modules that draw sprites: a full-screen scene takes the whole OAM
 	JSL destroy_field_frame          ; last: its planner uses the frame time left
 	JSL fx_frame               ; after every module that draws effects: shows this frame's requests
+	JSL ending_frame          ; after the modules that draw sprites: a full-screen scene takes the whole OAM
 	JSL audio_frame                 ; last: sends what other modules requested this frame
 	RTL
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
