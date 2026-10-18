@@ -236,18 +236,25 @@ goku_dma_tile7:
 
 ; ---------------------------------------------------------------------------
 ; Field NMI work (modules_field_nmi): M16 X16, DB = $80, D = 0, in vblank.
-; A cell takes 16 tile DMAs on channels 4-7: 7-8 lines on FastROM (budget
-; walk), about 2 more with slow ROM. With less vblank left than that it waits
-; a frame, then goes anyway (an overrun beats a frozen pose). It never waits
-; when its palette or size differs from the cell in VRAM: the frame's
-; palette is already in CGRAM, and the two must match.
-if defined("CORE_SLOWROM")
-	!GOKU_CELL_LINES = 11
-else
-	!GOKU_CELL_LINES = 9
-endif
+; A cell takes 16 tile DMAs on channels 4-7: 7.5 lines on FastROM (budget
+; walk), about 2 more with slow ROM. With fewer than 6 lines left before
+; line 258 it waits a frame, then goes anyway (an overrun beats a frozen
+; pose). It never waits when its palette or size differs from the cell in
+; VRAM: the frame's palette is already in CGRAM, and the two must match.
+; (Waiting whenever fewer than 9 lines were left moved uploads onto other
+; frames and with them the vblank the effects library finds: in fx's gallery
+; the second burst then had no palette yet at age 1. 6 is the threshold the
+; other modules' timings were measured with.)
+!GOKU_CELL_LINES = 6
 goku_nmi:
-	; most frames have nothing to send: leave before any set-up
+if defined("GOKU_NMI_FAST")
+	; most frames have nothing to send: leave before any set-up (0.17 lines
+	; instead of 0.6). Off by default: ending's pal_commit sets up a channel-7
+	; DMA to WMDATA from the frame thread, and an NMI landing between its
+	; register writes and $420B (the field NMI's own channel-7 transfers end
+	; with a zero size) turns it into a 64 KiB copy over WRAM. A field NMI
+	; about 100 cycles shorter moved the wish flight's NMI into that window
+	; (goku.md, Requests).
 	LDA.l $7E0000|!up_cell
 	CMP.w #!GOKU_NONE
 	BNE .work
@@ -255,6 +262,7 @@ goku_nmi:
 	AND.w #!GOKU_UP_HUD|!GOKU_UP_NATIVE|!GOKU_UP_REFRESH
 	BNE .work
 	RTL
+endif
 .work
 	PHB
 	PHD
