@@ -657,6 +657,7 @@ dst_row_outputs:
 	LDA.w !fx_demo : BEQ .done
 	LDA.w !FRAME : STA.w !out_demo
 	LDA.l !pj_dirty : INC : STA.l !pj_dirty
+	JSR ss_on_demolish                    ; Sandship: a broken bulkhead
 	; rubble at the row's centre
 	LDA.w !fx_xmin : CLC : ADC.w !fx_xmax : ASL : ASL : ASL : CLC : ADC.w #8 : STA.w !d_t0
 	LDA.w !fx_key : AND.w #$3F80 : LSR : LSR : LSR : CLC : ADC.w #8 : STA.w !d_t1

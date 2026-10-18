@@ -250,6 +250,246 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !P_DOORS     = !PERSIST_DESTROY+$00      ; bit n: breakable door n broken
 !P_TREE      = !PERSIST_DESTROY+$01      ; bit0: Mana Tree cloud barrier broken
 
+; Sandship runtime (sandship.asm, engine/sandship.js createSandship). Saved
+; with the GAME FILE like the browser's sandship snapshot (native-mod-save).
+!SS          = !PERSIST_DESTROY+$10
+!ss_flags    = !SS+$00   ; word: !SSF_* below
+!ss_breaks   = !SS+$02   ; word: bulkheads broken (breakLimit blows the ship up)
+!ss_door     = !SS+$04   ; word: door for the flight door slot (7A), 0 none (flight answers SANDSHIP_DOOR itself when present)
+!ss_lastbrk  = !SS+$06   ; word: core frame of the last counted break
+!ss_wage     = !SS+$08   ; word: wreck age (frames)
+!ss_cut      = !SS+$0A   ; word: white-out sequence: 0 none, 1 breakout, 2 crash
+!ss_cage     = !SS+$0C   ; word: its age
+!ss_cmap     = !SS+$0E   ; word: the room it reloads (breakout) / the deck (crash)
+!ss_ctx      = !SS+$10   ; word: Goku's tile x when the wave broke out
+!ss_cty      = !SS+$12   ; word: tile y
+!ss_clayer   = !SS+$14   ; word: layer 0/1
+!ss_cafter   = !SS+$16   ; word: frames since the reloaded room came up
+!ss_cbits    = !SS+$18   ; word: !SSC_* below
+!ss_flash    = !SS+$1A   ; word: white 0-256
+!ss_bmap     = !SS+$1C   ; word: map of the breach ($FFFF none)
+!ss_bx       = !SS+$1E   ; word: breach centre (map pixels)
+!ss_by       = !SS+$20
+!ss_breach_reach = !SS+$22 ; word: distance to the wall the wave tore through
+!ss_box      = !SS+$24   ; word: beam origin (the scorch starts there)
+!ss_boy      = !SS+$26
+!ss_gear     = !SS+$28   ; 3 x 4 bytes: equipped slots ($1E0-$1E3) the capture stowed
+!ss_gbits    = !SS+$34   ; word: bit i member i has stowed gear, bit 4+i seen held
+; Volatile words kept here, outside the set-piece scene area, because the
+; vblank callback and the hooks must know whether !SSW belongs to the
+; Sandship (cleared at load, new game and the title).
+!ss_vis      = !SS+$36   ; word: !SS_VIS_MAGIC | bits: staged palette / breach tables ready
+!ss_work     = !SS+$38   ; word: !SS_WORK_MAGIC while !SSW holds the arc's work
+!ss_own      = !SS+$3A   ; word: HDMA channels 2/3 programmed by the breach
+!ss_end      = !SS+$3C
+; A beam's band growth left for later calls (dst_scan_clamp): its arguments,
+; continued by destroy_field_frame (dst_hit_continue). Volatile: cleared at
+; load, new game and map changes.
+!HP          = !PERSIST_DESTROY+$4C
+!hp_id       = !HP+$00   ; word: beam id with cells left to scan, 0 none
+!hp_frame    = !HP+$02   ; word: core frame of the last scan of it
+!hp_x        = !HP+$04   ; words: its arguments (as !arg_x .. !arg_layer)
+!hp_y        = !HP+$06
+!hp_dir      = !HP+$08
+!hp_len      = !HP+$0A
+!hp_half     = !HP+$0C
+!hp_taper    = !HP+$0E
+!hp_kind     = !HP+$10
+!hp_str      = !HP+$12
+!hp_layer    = !HP+$14
+!hp_left     = !HP+$16   ; word: bit 0 its band scan, bit 1 its barrier search unfinished
+; growth steps of the current call (dst_step_next)
+!cl_rl       = !HP+$18   ; word: requested length
+!cl_rh       = !HP+$1A   ; word: requested half width
+!cl_l0       = !HP+$1C   ; word: covered length
+!cl_h0       = !HP+$1E   ; word: covered half width
+!cl_tl       = !HP+$20   ; word: next step's length
+!cl_th       = !HP+$22   ; word: next step's half width
+!cl_t        = !HP+$24   ; word: scratch
+!cl_t0       = !HP+$26   ; word: scanline the call began on
+!hp_end      = !HP+$28
+assert !hp_end <= !PERSIST_DESTROY+$80, "destroy persistent block overflow"
+; New cells per growth step, and the scanlines a call may spend on steps
+; after its first (it always takes one of each kind).
+!DESTROY_STEP_CELLS = 16
+!DESTROY_HIT_SPAN   = 16
+!SS_VIS_PAL    = $0001
+!SS_VIS_BREACH = $0002
+!SS_VIS_MAGIC  = $A500
+!SS_WORK_MAGIC = $5157
+!SSF_WRECK   = $0001     ; s.wreck
+!SSF_WPLAN   = $0002     ; s.wreck.planned
+!SSF_CRASH   = $0004     ; s.ending === 'crash'
+!SSF_BOSS    = $0008
+!SSF_DECKDONE = $0010
+!SSF_DECKHINT = $0020
+!SSF_ARMED   = $0040
+!SSF_HINTED  = $0080
+!SSF_ESCAPED = $0100
+!SSC_REQ     = $0001     ; event requested
+!SSC_DOOR    = $0002     ; the escape door was read with the override
+!SSC_LOADED  = $0004     ; the reloaded room's objects loaded
+!SSC_PLANNED = $0008     ; cut.planned (Sergo's plan)
+!SSC_FRESH   = $0010     ; started inside this frame's destroy_hit: tick next frame
+; Volatile Sandship work (CORE REQUEST: the tail of the set-piece scene area,
+; free while the player is aboard: no scene runs on the ship maps).
+!SSW         = !SRAM_WORK_SCENE+$1600    ; $A00 bytes ($32:7600-7FFF)
+!ssw_lastmap = !SSW+$00  ; word: map of the previous field frame
+!ssw_beam    = !SSW+$02  ; word: last beam id considered
+; +$04-$0D free (flyThroughDoor and unstick are flight's: flight/sandship.asm)
+!ssw_remark  = !SSW+$0E  ; word: last remark for a radio module (!SS_SAY_*)
+!ssw_rseq    = !SSW+$10  ; word: increments per remark
+!ssw_songs   = !SSW+$12  ; word: alarm songs sent (status)
+!ssw_dismiss = !SSW+$24C ; word: increments when the Sandship lines are dismissed
+!ssw_dbgactor = !SSW+$24E ; word: tests: actor slot for debug command 7
+!ssw_lastsong = !SSW+$14 ; word: last song command sent
+!ssw_loads   = !SSW+$16  ; word: wrecked room loads
+!ssw_stage   = !SSW+$18  ; word: CF28 this frame
+!ssw_dbgdoor = !SSW+$3A  ; word: tests: door id whose record !ssw_dbgrec replaces once ($FFFF none)
+!ssw_dbgrec  = !SSW+$3C  ; 4 bytes: map/x/y/layer record (tests' enter(), like the browser spec's)
+!ssw_tmp     = !SSW+$1A  ; 16 words scratch (+0..+31)
+!ssw_list    = !SSW+$40  ; object list copy: header + records (max $1C0)
+!SS_LIST_MAX = $1C0
+!ssw_fp_x    = !SSW+$208 ; word: ss_floor_px scratch
+!ssw_fp_o    = !SSW+$20A
+!ssw_fe_min  = !SSW+$20C ; word: ss_far_enough scratch
+!ssw_fe_sq   = !SSW+$20E
+!ssw_ray_d   = !SSW+$210 ; word: ss_ray_point distance
+!ssw_norig   = !SSW+$220 ; word: original records of the copied list
+!ssw_mcount  = !SSW+$222 ; word: monsters appended
+!ssw_mentry  = !SSW+$224 ; word: the room's ship directory entry
+!ssw_rec     = !SSW+$226 ; word: per-record hook: record index
+!ssw_slot    = !SSW+$228 ; word: its slot offset
+!ssw_k       = !SSW+$22A ; word: monster k
+!sp_n        = !SSW+$230 ; word: monster spots chosen ($FFFF: not yet for this load)
+!sp_k        = !SSW+$232 ; word: spot list cursor
+!sp_left     = !SSW+$234 ; word: spots left in the order
+!sp_x        = !SSW+$236 ; word: spot being tried
+!sp_y        = !SSW+$238
+!sp_out      = !SSW+$23A
+!sp_cx       = !SSW+$240 ; 3 words: chosen spots
+!sp_cy       = !SSW+$246
+; The wreck's look (wreck.asm): palette transforms staged for CGRAM and the
+; breach's HDMA tables.
+!ssw_pal_mode = !SSW+$260 ; word: 0 none, 1 alarm tint, 2 white-out
+!ssw_pal_key  = !SSW+$262 ; word: transform key of the current mode
+!ssw_pal_tl   = !SSW+$264 ; long: low-byte table of the transform
+!ssw_pal_th   = !SSW+$268 ; long: high-byte table
+!ssw_pal_cur  = !SSW+$26C ; word: next byte offset to transform
+!ssw_pal_first = !SSW+$26E ; word: range start (bytes)
+!ssw_pal_end  = !SSW+$270 ; word: range end (bytes)
+!ssw_pal_done = !SSW+$272 ; word: bytes of the range made since the mode/room began (uploaded)
+!ssw_pal_up   = !SSW+$274 ; word: NMI: bytes to upload (0 none)
+!ssw_pal_upat = !SSW+$276 ; word: NMI: first byte offset to upload
+!ssw_pal_src  = !SSW+$278 ; word: source buffer ($0600 or $BE00)
+!ssw_br_on    = !SSW+$280 ; word: breach tables built for this frame
+!ssw_br_own   = !SSW+$282 ; word: NMI: HDMA channels 2/3 programmed by us
+; +$284 free
+!ssw_br_t2    = !SSW+$286 ; word: channel 2 table (window) of the built frame
+!ssw_br_t3    = !SSW+$288 ; word: channel 3 table (backdrop)
+!ssw_br_p2    = !SSW+$28A ; word: table addresses programmed last NMI
+!ssw_br_p3    = !SSW+$28C
+!ssw_br_cx    = !SSW+$28E ; word: camera (BG1, map pixels)
+!ssw_br_cy    = !SSW+$290
+!ssw_br_sx    = !SSW+$292 ; word: breach centre on screen (signed)
+!ssw_br_sy    = !SSW+$294
+!ssw_br_y0    = !SSW+$296 ; word: first / last screen line of the outline
+!ssw_br_y1    = !SSW+$298
+!ssw_br_span  = !SSW+$29A ; word: span table offset of the outline variant
+!ssw_br_bk    = !SSW+$29C ; word: the room's backdrop colour (transformed)
+!ssw_br_sand  = !SSW+$29E ; word: sand pattern phase
+!ssw_br_n     = !SSW+$2A0 ; word: scratch
+!ssw_vtmp     = !SSW+$2A2 ; 8 words scratch (wreck.asm)
+!ssw_br_lines = !SSW+$2B4 ; word: NMI statistics: breach frames programmed
+!ssw_pal_ups  = !SSW+$2B6 ; word: palette uploads
+!ssw_pal_left = !SSW+$2B8 ; word: bytes left in the current pass
+!ssw_pal_room = !SSW+$2BA ; word: map the staged colours were made for
+!ssw_pal_load = !SSW+$2BC ; word: and its room load (!ssw_loads)
+!ssw_pal_cols = !SSW+$2BE ; word: statistics: colours transformed
+!ssw_pal_wait = !SSW+$2C0 ; word: frames a pending pass had no time
+!SS_PAL_STARVE = 8        ; a palette chunk anyway after this many frames without time
+; the fires (fire.asm)
+!ssw_site_p  = !SSW+$2C2 ; 15 x 4 bytes: per-site animation constants
+!ssw_site_n  = !SSW+$980 ; word: fire sites of this load ($FFFF none yet)
+!ssw_site_load = !SSW+$982 ; word: the load (!ssw_loads) they belong to
+!ssw_site_map = !SSW+$984 ; word: and its map
+!ssw_site_rr = !SSW+$986 ; word: first site drawn this frame (rotates)
+!ssw_blast_a = !SSW+$988 ; 4 words: a blast's age ($FFFF idle), x, y, bursts
+!ssw_blast_b = !SSW+$990 ; 4 words: a second one
+!ssw_blast_n = !SSW+$998 ; word: bursts of the latest blast (fx's work while they burn)
+!ssw_fire_t7 = !ssw_ck_q7  ; wreck age / 7 (the clock)
+!ssw_fire_r7 = !ssw_ck_r7  ; wreck age % 7
+!ssw_fire_e3 = !ssw_ck_e3  ; (wreck age / 5) % 3
+!ssw_fire_m24 = !ssw_ck_m24 ; wreck age % 24
+!ssw_fire_on = !SSW+$99A ; word: the fires are drawn this frame
+; +$99C-$99D free
+!ssw_fire_cx = !SSW+$99E ; word: fx's camera
+!ssw_fire_cy = !SSW+$9A0
+!ssw_fire_k  = !SSW+$9A2 ; word: site being drawn
+!ssw_fire_cnt = !SSW+$9A4 ; word: sites looked at in this pass
+!ssw_blast_end = !SSW+$2FE ; word: frames until the last blast's bursts are gone
+!ssw_site_nr = !SSW+$250 ; word: sites before the rim's (the rotating ones)
+!ssw_fire_pass = !SSW+$252 ; word: 0 flames, 1 embers
+!ssw_site_x  = !SSW+$9A6 ; 15 words
+!ssw_site_y  = !SSW+$9C4 ; 15 words (ends at $9E2)
+assert !ssw_site_y+30 <= !SSW+$A00, "Sandship work overflow"
+!SS_STAGE    = !SSW+$300 ; 512 bytes: transformed CGRAM
+; The breach's HDMA (both channels indirect, tables and data in this bank)
+!SS_HB       = !SSW+$500
+!SS_BQ       = !SS_HB+$000 ; 128 x 4: the sand of the current white level (CGADD 0, 0, colour)
+!SS_BQ_BK    = !SS_HB+$200 ; 4: the room's backdrop, the same way
+!SS_BW_NONE  = !SS_HB+$204 ; 2: an empty window (WH0 = $FF, WH1 = 0)
+!SS_BT2      = !SS_HB+$210 ; 2 x !SS_BT_SIZE: channel 2 tables
+!SS_BT3      = !SS_HB+$238 ; 2 x !SS_BT_SIZE: channel 3 tables
+!SS_BT_SIZE  = $14
+!SS_BP       = !SS_HB+$260 ; 2 x !SS_BP_SIZE: window positions of the outline's rows
+!SS_BP_SIZE  = $A0
+; the wreck's clock (age modulo the browser's periods), kept in step with
+; !ss_wage (wreck.asm ss_clock)
+!ssw_ck_ok   = !SSW+$8A0 ; word: the counters hold !ssw_ck_age
+!ssw_ck_age  = !SSW+$8A2
+!ssw_ck_120  = !SSW+$8A4 ; age % 120 (the alarm)
+!ssw_ck_q7   = !SSW+$8A6 ; age / 7, age % 7 (the flames)
+!ssw_ck_r7   = !SSW+$8A8
+!ssw_ck_r5   = !SSW+$8AA ; age % 5, (age / 5) % 3 (the embers)
+!ssw_ck_e3   = !SSW+$8AC
+!ssw_ck_m24  = !SSW+$8AE ; age % 24 (the embers' rise)
+!ssw_ck_150  = !SSW+$8B0 ; age % 150, age / 150 (the blasts)
+!ssw_ck_q150 = !SSW+$8B2
+; the breach's outline and its cached window positions
+!ssw_br_var  = !SSW+$8B4 ; word: outline variant (phases of the edge)
+!ssw_br_top  = !SSW+$8B6 ; word: its first row (span index) and row count
+!ssw_br_cnt  = !SSW+$8B8
+!ssw_br_ys   = !SSW+$8BA ; word: screen line of the first row (signed)
+!ssw_br_psx  = !SSW+$8BC ; word: screen x the cached positions were made for
+!ssw_br_pvar = !SSW+$8BE ; word: and the variant
+!ssw_br_cpb  = !SSW+$8C0 ; word: the buffer holding them (0 none)
+!ssw_br_tpb  = !SSW+$8C2 ; word: the buffer this frame's tables use
+!ssw_br_ppb  = !SSW+$8C4 ; word: NMI: the buffer of the programmed tables
+!ssw_sq_lvl  = !SSW+$8C6 ; word: white level of the sand being copied ($FFFF none)
+!ssw_sq_fill = !SSW+$8C8 ; word: bytes of it copied
+!ssw_sq_ok   = !SSW+$8CA ; word: a full set of sand is there
+!ssw_white_lvl = !SSW+$8CC ; word: this frame's white level (0 none)
+; the fires on screen this frame (fire.asm)
+!ssw_fire_vn = !SSW+$8CE ; word: count
+!ssw_fire_done = !SSW+$8D0 ; word: fx draws made
+!ssw_fire_vis = !SSW+$8D2 ; 15 words: their site indices, in drawing order
+!ssw_fx_debt = !SSW+$8F2 ; word: scanlines of fx work this frame's draws (and blasts) add
+!ssw_pal_kin = !SSW+$8F4 ; word: the tint's inputs the current key was made from
+!ssw_br_vok  = !SSW+$8F6 ; word: !ssw_br_var/top/cnt hold the outline of the breach at
+!ssw_br_vx   = !SSW+$8F8 ; words: ... this centre
+!ssw_br_vy   = !SSW+$8FA
+assert !ssw_br_vy+2 <= !SSW+$980, "Sandship work overflow"
+assert !SS_BP+(2*!SS_BP_SIZE) <= !ssw_ck_ok, "Sandship HDMA area overflow"
+; remarks published in !ssw_remark (the browser's radio lines)
+!SS_SAY_WEAK = 1         ; GOKU: Too weak! I have to charge it all the way.
+!SS_SAY_HINT = 2         ; GOKU: Hold L and Y to charge ... KA... ME... HA...
+!SS_SAY_NOTYET = 3       ; GOKU: Not yet! My friends are still down below.
+!SS_SAY_BROKE = 4        ; GOKU: Uh oh. I think I broke the whole ship.
+!SS_SAY_STOP = 5         ; KING KAI: Goku, STOP! The ship can't take much more
+!SS_SAY_DUNES = 6        ; KING KAI: Goku! North to Kakkara, then west to the Fire Palace.
+!SS_SAY_DISMISS = 7      ; (not a remark: dismiss the Sandship lines, !ssw_dismiss)
+
 !MAP_INFO_BRAZIER = $01
 !MAP_INFO_SHIP    = $02
 !MAP_INFO_COMPLEX = $04
@@ -279,6 +519,53 @@ endif
 if not(defined("STORY_QUERY_DOOR_NORTHTOWN_RUINS_SEAL"))
 	!STORY_QUERY_DOOR_NORTHTOWN_RUINS_SEAL = destroy_query_door_northtown
 endif
+; The Sandship runtime (sandship.asm): its hooks and queries.
+if not(defined("STORY_HOOK_SANDSHIP_CAPTURE"))
+	!STORY_HOOK_SANDSHIP_CAPTURE = destroy_ss_capture
+endif
+if not(defined("STORY_HOOK_SANDSHIP_CRASH"))
+	!STORY_HOOK_SANDSHIP_CRASH = destroy_ss_crash
+endif
+if not(defined("STORY_HOOK_SANDSHIP_WAVE"))
+	!STORY_HOOK_SANDSHIP_WAVE = destroy_ss_wave
+endif
+if not(defined("STORY_HOOK_SANDSHIP_DECK"))
+	!STORY_HOOK_SANDSHIP_DECK = destroy_ss_deck
+endif
+if not(defined("STORY_HOOK_OBJECT_LIST_SANDSHIP"))
+	!STORY_HOOK_OBJECT_LIST_SANDSHIP = destroy_ss_object_list
+endif
+if not(defined("STORY_HOOK_OBJECT_SANDSHIP"))
+	!STORY_HOOK_OBJECT_SANDSHIP = destroy_ss_object
+endif
+if not(defined("STORY_QUERY_SANDSHIP_CRASH"))
+	!STORY_QUERY_SANDSHIP_CRASH = destroy_ss_q_crash
+endif
+if not(defined("STORY_QUERY_SANDSHIP_WRECKED"))
+	!STORY_QUERY_SANDSHIP_WRECKED = destroy_ss_q_wrecked
+endif
+if not(defined("STORY_QUERY_SANDSHIP_PLANNED"))
+	!STORY_QUERY_SANDSHIP_PLANNED = destroy_ss_q_planned
+endif
+if not(defined("STORY_QUERY_SANDSHIP_DOOR"))
+	!STORY_QUERY_SANDSHIP_DOOR = destroy_ss_q_door
+endif
+; Flight's Sandship bindings (flight/bind.asm, included after the modules):
+; sandship.takeoff() on L+R (carry = the ship takes it as an unplanned
+; departure; flight's hull rule may call it too), the wreck's floor hole
+; (chained after a provider defined earlier) and shipHull()'s cache key.
+if not(defined("SANDSHIP_TAKEOFF"))
+	!SANDSHIP_TAKEOFF = destroy_ss_takeoff
+endif
+if not(defined("SANDSHIP_HULL_KEY"))
+	!SANDSHIP_HULL_KEY = destroy_ss_hull_key
+endif
+if defined("FLIGHT_RAM")
+	if defined("FLIGHT_MISSING_FLOOR")
+		!DESTROY_NEXT_FLOOR := !FLIGHT_MISSING_FLOOR   ; expanded now (= would follow the redefinition)
+	endif
+	!FLIGHT_MISSING_FLOOR = destroy_ss_floor_hole
+endif
 
 pushpc
 org !DATA_DESTROY
@@ -296,6 +583,9 @@ incsrc "tiles.asm"
 incsrc "scan.asm"
 incsrc "demolish.asm"
 incsrc "barriers.asm"
+incsrc "sandship.asm"
+incsrc "wreck.asm"
+incsrc "fire.asm"
 incsrc "debug.asm"
 destroy_code_end:
 assert destroy_code_end <= !CODE_DESTROY+$8000, "destroy code bank overflow"
@@ -312,3 +602,30 @@ pullpc
 ; entrance after its door broke.
 %orig4($C0CC2D, $7ECF00BF)
 %hijack_jsl($C0CC2D, destroy_piece_flag, 4, destroy)
+
+; C1:E7DF-E7F7: the door event's record loads (map, x, y/layer and the last
+; byte from C8:3000+4*door) -> destroy_door_record (the Sandship escape
+; door reloads Goku's own room; other modules can override via
+; !DOOR_RECORD_HOOK: JSL, M16/X16, X = 4*door, A = bytes 0-1, Y = bytes
+; 2-3, returning A/Y with X kept). !DESTROY_DOOR_HOOK tells other modules
+; this patch (and so the hook) is in the build.
+!DESTROY_DOOR_HOOK = 1
+%orig4($C1E7DF, $C83000BF)
+%orig4($C1E7E3, $8501FF29)
+%orig4($C1E7E7, $3001BFDC)
+%orig4($C1E7EB, $00FF29C8)
+%orig4($C1E7EF, $BFDE854A)
+%orig4($C1E7F3, $85C83002)
+%orig1($C1E7F7, $DF)
+%hijack_jsl($C1E7DF, destroy_door_record, 25, destroy)
+
+; C0:C0F0 (LDA #$00 / STA $2121, the start of the field NMI's 512-byte CGRAM
+; upload, C0:C0F0-C117): the Sandship's staged colours replace their range
+; of the upload (destroy_palette_dma returns to C0:C118).
+%orig4($C0C0F0, $218D00A9)
+%hijack($C0C0F0, destroy_palette_dma, 4, destroy)
+
+; C3:0004 (JMP $0160), the sound driver entry: the wrecked ship's room song
+; becomes the boss battle alarm.
+%orig4($C30004, $EA01604C)
+%hijack($C30004, destroy_song_hook, 4, destroy)
