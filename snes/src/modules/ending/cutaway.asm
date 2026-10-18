@@ -107,6 +107,7 @@ cut_oam:
 	ADC.l !ending_tmp2             ; * 544
 	CLC
 	ADC.l ending_cut_oam_blobs,X
+	JSL ending_dma_guard           ; not across the world vblank NMI
 	STA.w $4372
 	SEP #$20
 	LDA.l ending_cut_oam_blobs+2,X
@@ -123,6 +124,7 @@ cut_oam:
 	STA.w $4375
 	SEP #$20
 	LDA.b #$80
+.trigger
 	STA.w $420B
 	REP #$30
 	PLB
