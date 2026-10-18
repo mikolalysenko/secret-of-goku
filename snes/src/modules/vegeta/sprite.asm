@@ -522,6 +522,16 @@ vg_write_palette:
 ; Field vblank (modules_field_nmi, DB = $80): upload a requested pose into
 ; the back buffer, and the echo frame, when the vblank has room.
 vegeta_nmi:
+	; no trial: back at once (every field vblank runs this, ahead of the
+	; modules whose uploads follow)
+	PHP
+	SEP #$20
+	LDA.l $7E0000|!vg_on
+	CMP.b #!VG_ON
+	BEQ +
+	PLP
+	RTL
++	PLP
 	PHB
 	PHP
 	REP #$30
@@ -529,11 +539,7 @@ vegeta_nmi:
 	PLB
 	PLB
 	SEP #$20
-	LDA !vg_on
-	CMP.b #!VG_ON
-	BEQ +
-	JMP .out
-+	LDA !vg_want
+	LDA !vg_want
 	CMP.b #$FF
 	BEQ .echo
 	REP #$20

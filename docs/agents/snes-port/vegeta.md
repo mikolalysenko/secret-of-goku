@@ -206,7 +206,7 @@ requested `combat_api_beam`).
 | VRAM, map 72 | BG tiles `$0000-$0CEF` (the cave tileset is not used there); OBJ tiles of the inactive clone slots: slot 3 (`$068-$07F`, `$080-$099`, `$0C8/$0D8`, `$0E0-$0F9`: Vegeta's two frame buffers and the echo), slot 4 (`$0A0-$0BB`, `$100-$11B`: the ball) |
 | CGRAM | BG palettes 2-7 through the game's buffer `$7E:0640-$06FF` (map 72); OBJ palette 4 (Vegeta) and 5 (the ball) through `$7E:0780/$07A0` while the trial draws |
 | WRAM | `!RAM_VEGETA` (`$7E:DBC0`, 64 bytes: phase, flags, HP, position, timers, action, sprite buffers, music cue, scratch); map 72's native tables 7F:C000 (ids 70/11), 7F:C808-, 7F:4000 |
-| SRAM | `!SRAM_WORK_SCENE` `$32:6000-$32:6207` while the trial runs: entrance view, beam, shots, bursts, rocks, echoes, the clash record, drawing scratch, logs, the test mailbox, slot 3's bytes held during combat's step; test builds log hits and beams up to `$32:62AF`. Initialised by `start()`; valid only while `!vg_on` = `$5A` |
+| SRAM | `!SRAM_WORK_SCENE` `$32:6000-$32:6207` while the trial runs: entrance view, beam, shots, bursts, rocks, echoes, the clash record, drawing scratch, logs, the test mailbox, slot 3's bytes held during combat's step; test builds log hits, beams and the drawn pose up to `$32:62B3`. Initialised by `start()`; valid only while `!vg_on` = `$5A` |
 | DMA | channel 6 in `vegeta_nmi` after the game's uploads: a changed pose (≤ 640 B), the echo cell, the ball (≤ 768 B), each only with 10+ vblank lines left |
 
 ## Original code patched
