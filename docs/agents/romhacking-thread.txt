@@ -1,0 +1,56 @@
+Subject: [SNES] Secret of Goku - Secret of Mana with Goku (playable preview)
+
+Body (BBCode; paste from the next line):
+I've been working on [b]Secret of Goku[/b], a personal project that puts Goku into Secret of Mana. The premise is simple: explore Mana's world with the original companions, but solve problems with punches, flight and excessive amounts of ki.
+
+There's now a playable standalone SNES patch. Goku's movement and combat run inside the patched cartridge, with no browser overlay or emulator hooks required.
+
+[b]What you can do[/b]
+[list]
+[*]Punch enemies and fire ki blasts.
+[*]Charge and release a Kamehameha.
+[*]Fly around the maps and use Instant Transmission.
+[*]Focus to build power, transform into Super Saiyan, and revert.
+[/list]
+
+[b]Screenshots from the SNES preview[/b]
+These are native 256x224 captures of the released cartridge running in Mesen 2.
+
+[img]https://github.com/mikolalysenko/secret-of-goku/releases/download/snes-v0.1.0-preview.1/snes-title.png[/img]
+[img]https://github.com/mikolalysenko/secret-of-goku/releases/download/snes-v0.1.0-preview.1/snes-flight.png[/img]
+[img]https://github.com/mikolalysenko/secret-of-goku/releases/download/snes-v0.1.0-preview.1/snes-power-up.png[/img]
+[img]https://github.com/mikolalysenko/secret-of-goku/releases/download/snes-v0.1.0-preview.1/snes-kamehameha.png[/img]
+
+[b]Download and patching[/b]
+The current SNES release is [b]0.1.0-preview.1[/b].
+
+[url=https://github.com/mikolalysenko/secret-of-goku/releases/tag/snes-v0.1.0-preview.1]SNES release page[/url]
+[url=https://github.com/mikolalysenko/secret-of-goku/releases/download/snes-v0.1.0-preview.1/secret-of-goku-snes-0.1.0-preview.1.zip]Download the IPS patch ZIP with instructions and credits[/url]
+[url=https://github.com/mikolalysenko/secret-of-goku/releases/download/snes-v0.1.0-preview.1/secret-of-goku-snes-0.1.0-preview.1.ips]Direct IPS download[/url]
+
+Apply the IPS to a clean, unmodified [b]Secret of Mana (USA)[/b] ROM, original retail revision, without a 512-byte copier header. The base ROM must be 2,097,152 bytes with CRC32 [b]D0176B24[/b]. The patch expands it to 8 MiB automatically. The ZIP contains the patch and documentation; it does not contain a ROM.
+
+[b]Quick controls (SNES button labels)[/b]
+[list]
+[*]D-pad: move; B: punch/talk; Y: ki blast; X: ring menu.
+[*]A + direction: fly fast.
+[*]Hold L: focus/build power.
+[*]Hold L + Y, then release: Kamehameha.
+[*]L + B: Instant Transmission.
+[*]L + A: transform/revert.
+[/list]
+Goku's abilities become available after his opening arrival. Full controls and patching details are included in the download.
+
+[b]Current progress[/b]
+The recent work has focused on movement, responsiveness and the cost of effects. Streamed gameplay sound effects have been replaced with a small set of short resident SNES sounds. I've also fixed the lingering transformation rumble, aura colours over cut grass, flight palette handling, and the original weapon-charge meter filling during Goku's attacks.
+
+This is still a preview. Crowded fights can slow down, especially when firing ki repeatedly while flying with the party. Quiet attacks and water flight have passed longer emulator tests without dropped gameplay frames, but there's more optimization and broader playtesting to do. Some status/equipment interactions and later game paths still need review. I've tested this release in Mesen 2; it hasn't been tested on a physical console.
+
+[b]Source and other editions[/b]
+[url=https://github.com/mikolalysenko/secret-of-goku]GitHub project[/url] | [url=https://github.com/mikolalysenko/secret-of-goku/tree/main/snes]SNES source[/url]
+
+There are also separate [url=https://mikolalysenko.github.io/secret-of-goku/]browser[/url] and [url=https://github.com/mikolalysenko/secret-of-goku/releases/tag/v0.2.5]desktop editions at 0.2.5[/url]. Those have a different runtime and release version from the SNES patch above.
+
+I'd appreciate feedback on how movement and combat feel, plus reports of flight/palette problems, sound effects that hang, or particularly slow scenes. Please include the patch version, emulator/version or hardware, location, party and steps to reproduce. A short clip or save file would help too. SNES optimization advice is welcome.
+
+This is an unofficial, noncommercial fan project, developed with AI assistance. [url=https://github.com/mikolalysenko/secret-of-goku/blob/snes-v0.1.0-preview.1/CREDITS.md]Credits and asset sources[/url].

@@ -11,6 +11,7 @@ These notes include complete gameplay, story and ending spoilers. The top-level 
 | [Changelog](CHANGELOG.md) | Changes and implementation summaries |
 | [Gameplay reference](gameplay.md) | Full feature behavior, detailed controls and story/debug starts |
 | [README media](readme-media.md) | Spoiler boundaries, capture process and teaser URL |
+| [Romhacking.net thread draft](romhacking-thread.txt) | Subject and BBCode for the SNES personal-project announcement; prepared for manual posting |
 
 | Subsystem | Notes |
 | --- | --- |
