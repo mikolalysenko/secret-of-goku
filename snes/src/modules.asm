@@ -13,6 +13,7 @@ incsrc "modules/fx/module.asm"         ; before its clients (they use the !FX_* 
 incsrc "modules/world/module.asm"
 incsrc "modules/title/module.asm"
 incsrc "modules/story/module.asm"
+incsrc "modules/flight/module.asm"
 incsrc "modules/ui/module.asm"
 incsrc "modules/debug/module.asm"
 incsrc "modules/destroy/module.asm"
@@ -32,8 +33,10 @@ modules_field_frame:
 	JSL story_field_frame
 	JSL debug_field_frame
 	JSL combat_field_frame     ; before goku: poses and form apply this frame
+	JSL flight_frame           ; before goku: hover pose and lift requests
 	JSL ui_field_frame
 	JSL world_field_frame
+	JSL flight_pose_frame      ; after world: the ceiling escape's pose wins over its takeoff pose
 	JSL frieza_field_frame
 	JSL orbit_field_frame
 	JSL vegeta_field_frame
@@ -61,6 +64,7 @@ modules_world_frame:
 	JSL world_world_frame
 	JSL debug_world_frame
 	JSL combat_world_frame
+	JSL flight_world_frame     ; a ceiling escape completes in world flight
 	JSL fx_world_frame         ; after the modules that draw effects
 	JSL ending_world_frame     ; after fx: the Fortress cutaway takes the whole OAM
 	JSL audio_frame
@@ -158,6 +162,10 @@ endif
 	JSL frieza_combat_receive  ; the fed Mana Beast's cap and grace
 	RTL
 pullpc
+
+; Flight's bindings to optional modules (combat, audio, ui, world): after
+; every module so their defines are visible.
+incsrc "modules/flight/bind.asm"
 
 ; Orbit bindings to optional modules (after every module's defines; before
 ; frieza's, which test its !FRIEZA_ORBIT_* entries).

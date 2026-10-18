@@ -1,0 +1,2052 @@
+; Per-frame flight state (engine/mana-mod.js beforeFrame/afterFrame and
+; native-local-flight.js settle()). flight_frame runs in modules_field_frame
+; before goku_frame, at the end of native frame N: it finishes frame N
+; (afterFrame: event/menu cancel, keep hovering off a narrow shore, settle)
+; and prepares frame N+1 (beforeFrame: lift, the flight decision, the A
+; mask, Goku's pose requests and the work the movement hooks may do).
+
+; Field controllability (mana-mod.js canAttack: the native part and the
+; finale). Carry.
+fl_can_attack:
+	LDA.w !fl_lock
+	BNE .no
+	JSR fl_bind_ending           ; !mod.ending.active
+	BCS .no
+	SEP #$20
+	LDA.w !fl_state
+	AND.b #!FLS_ON               ; Goku in play, field vectors (this frame)
+	BEQ .no8
+	LDA $E4
+	CMP.b #$01
+	BNE .no8
+	LDA $E5
+	CMP.b #$01
+	BNE .no8
+	LDA $E000
+	AND.b #$01
+	BEQ .no8
+	LDA $E02C
+	AND.b #$01
+	BEQ .no8
+	LDA $EC
+	AND.b #$FE
+	BNE .no8
+	LDA $ED
+	AND.b #$40
+	BNE .no8
+	LDA $D0
+	BNE .no8
+	LDA $E190
+	AND.b #$70
+	BNE .no8
+	LDA $E191
+	AND.b #$D5
+	BNE .no8
+	LDA $E011                    ; native hurt poses 8C-8F
+	CMP.b #$8C
+	BCC .ok
+	CMP.b #$90
+	BCC .no8
+.ok
+	REP #$20
+	SEC
+	RTS
+.no8
+	REP #$20
+.no
+	CLC
+	RTS
+
+; nativeField: the field NMI/IRQ vectors are installed ($0100 = JML $00C0A8,
+; $0104 = JML $00C1CF).
+fl_native_field:
+	LDA $0100
+	CMP.w #$A85C
+	BNE .no
+	LDA $0102
+	CMP.w #$00C0
+	BNE .no
+	LDA $0104
+	CMP.w #$CF5C
+	BNE .no
+	LDA $0106
+	CMP.w #$00C1
+	BNE .no
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
+; ground() of native-local-flight.js: field vectors, no event, no menu, no
+; load. Carry.
+fl_ground:
+	SEP #$20
+	LDA.w !fl_state
+	AND.b #!FLS_ON
+	BEQ .no8
+	LDA $D0
+	BNE .no8
+	LDA $EC
+	AND.b #$FE
+	BNE .no8
+	LDA $ED
+	AND.b #$40
+	BNE .no8
+	LDA $FF
+	BNE .no8
+	REP #$20
+	SEC
+	RTS
+.no8
+	REP #$20
+.no
+	CLC
+	RTS
+
+; eligible(): active (Goku flies or charges, can act) and the hero is free
+; to move (no hurt pose, status, attack or knock-back). Carry. Live: the
+; movement hooks call it at the instruction they hook, as the browser does.
+fl_eligible:
+	LDA.w !fl_lock
+	BNE .no
+	JSR fl_bind_ending           ; (canAttack's finale)
+	BCS .no
+	SEP #$20
+	LDA.w !fl_state
+	BIT.b #!FLS_ON               ; Goku in play, native field (this frame)
+	BEQ .no8
+	AND.b #!FLS_FLY|!FLS_CHARGE
+	BEQ .no8
+	LDA $E4
+	CMP.b #$01
+	BNE .no8
+	LDA $E5
+	CMP.b #$01
+	BNE .no8
+	LDA $E000
+	AND $E02C
+	AND.b #$01
+	BEQ .no8
+	LDA $EC
+	AND.b #$FE
+	ORA $D0
+	ORA $FF
+	BNE .no8
+	LDA $ED
+	AND.b #$40
+	BNE .no8
+	LDA $E190
+	AND.b #$70
+	BNE .no8
+	LDA $E191
+	AND.b #$D7
+	BNE .no8
+	LDA $E011                    ; native hurt poses 8C-8F
+	CMP.b #$8C
+	BCC +
+	CMP.b #$90
+	BCC .no8
++	LDA $E01C
+	ORA $E060
+	ORA $E00A
+	ORA $E008
+	BNE .no8
+	REP #$20
+	SEC
+	RTS
+.no8
+	REP #$20
+.no
+	CLC
+	RTS
+
+; phasing() && eligible()
+fl_phasing:
+	LDA.w !fl_state
+	AND.w #!FLS_FLY
+	BEQ .no
+	JMP fl_eligible
+.no
+	CLC
+	RTS
+
+; Hero position into the query (current layer and terrain).
+fl_q_hero:
+	LDA $E002
+	STA.w !fl_q_x
+	LDA $E004
+	STA.w !fl_q_y
+	LDA $E00B
+	AND.w #$0080
+	BEQ +
+	LDA.w #$0001
++	STA.w !fl_q_l
+	LDA $E00B
+	AND.w #$0003
+	STA.w !fl_q_t
+	RTS
+
+; canLand / canFly at the hero's position, layer and terrain, memoised
+; while those stay the same (the frame logic asks several times).
+fl_hero_land:
+	JSR fl_q_hero
+	; the same position, layer and terrain as the last call this frame
+	LDA.l !fl_hm_land
+	CMP $E002
+	BNE .calc
+	LDA.l !fl_hm_land+2
+	CMP $E004
+	BNE .calc
+	LDA $E00B
+	AND.w #$00FF
+	CMP.l !fl_hm_land+4
+	BNE .calc
+	LDA.l !fl_hm_land+6
+	LSR
+	RTS
+.calc
+	JSR fl_hland_calc
+	LDA.w #$0000
+	ROL
+	STA.l !fl_hm_land+6
+	LDA $E002
+	STA.l !fl_hm_land
+	LDA $E004
+	STA.l !fl_hm_land+2
+	LDA $E00B
+	AND.w #$00FF
+	STA.l !fl_hm_land+4
+	LDA.l !fl_hm_land+6
+	LSR
+	RTS
+fl_hland_calc:
+	JMP fl_can_land              ; (the hero grid answers it)
+
+; canLand at the hero for settle() on foot (fl_onfoot: the hero grid moves
+; lazily, fl_g_stale = 2): with the footprint inside the grid and its cells'
+; verdicts known, a mask test; anything else (cells to classify, a grid
+; near the map's edge, floor holes in the build) takes fl_hero_land. Carry.
+fl_hero_land_foot:
+	LDA.l !fl_g_stale
+	CMP.w #2
+	BNE .full
+	JSR fl_q_hero
+	JSR fl_land_lean
+	BCC .full
+	PHA
+	LDA.w #$0000
+	STA.l !fl_g_stale            ; the grid stays where it is
+	PLA
+	LSR                          ; carry = landable
+	RTS
+.full
+	JMP fl_hero_land
+
+; canLand at fl_q_x/y/l/t without classifying a tile: a floor hole (any
+; provider), else the hero grid's known verdicts. Carry set when decided,
+; with A = 1 landable, 0 not; carry clear when a tile would need classifying
+; (outside the grid, a grid near the map's edge, a cell not known yet).
+fl_land_lean:
+	JSR fl_hole_q                ; supported(): a hole under the footprint
+	BCC +
+	LDA.w #$0000
+	SEC
+	RTS
++	LDA.w #$0000
+	JSR fl_fp_cover              ; carry: inside (layer, terrain), fl_t4 = cells
+	BCC .no
+	LDA.l !fl_g_inner
+	BEQ .no
+	JSR fl_grid_check            ; the phase's tile check (keeps fl_t4)
+	LDA.l !fl_g_gkn
+	AND.w !fl_t4
+	CMP.w !fl_t4
+	BNE .no
+	LDA.l !fl_g_gok
+	AND.w !fl_t4
+	CMP.w !fl_t4
+	BNE +
+	LDA.w #$0001
+	SEC
+	RTS
++	LDA.w #$0000
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
+fl_hero_fly:
+	JSR fl_q_hero
+	LDA.l !fl_hm_fly
+	CMP $E002
+	BNE .eval
+	LDA.l !fl_hm_fly+2
+	CMP $E004
+	BNE .eval
+	LDA $E00B
+	AND.w #$00FF
+	CMP.l !fl_hm_fly+4
+	BNE .eval
+	LDA.l !fl_hm_fly+6
+	LSR
+	RTS
+.eval
+	JSR fl_can_fly
+	LDA.w #$0000
+	ROL
+	STA.l !fl_hm_fly+6
+	LDA $E002
+	STA.l !fl_hm_fly
+	LDA $E004
+	STA.l !fl_hm_fly+2
+	LDA $E00B
+	AND.w #$00FF
+	STA.l !fl_hm_fly+4
+	LDA.l !fl_hm_fly+6
+	LSR
+	RTS
+fl_hero_memo_off:
+	LDA.w #$FFFF
+	STA.l !fl_hm_land+4
+	STA.l !fl_hm_fly+4
+	RTS
+
+; ---------------------------------------------------------------------------
+flight_frame:
+	LDA.w !fl_state
+	BIT.w #!FLS_WALK
+	BEQ .notwalk
+	; Walk mode (fl_walk_enter): Goku on foot with nothing of flight's
+	; running. The frame keeps the A mask (the speed modifier; B too without
+	; combat) and the one-frame posts, and ends the walk for anything the
+	; full frame would decide or change.
+	if defined("FLIGHT_TEST")
+		JSR fl_test_busy
+		BCS .walkend             ; a test request, or test posts (fl_test_posts)
+	endif
+	LDA.w !core_pad&$FFFF
+	BIT.w #!PAD_A|!PAD_L
+	BNE .walkend                 ; a takeoff, charge, teleport or roof chord to decide
+	LDA.w !fl_lasttick
+	INC
+	CMP.w !core_tick&$FFFF
+	BNE .walkend                 ; frames of another mode: the full reader latches
+	TAY
+	LDA $EC
+	AND.w #$40FE
+	BNE .walkend                 ; a menu ($EC & $FE), or $ED bit 6 (canAttack)
+	LDA $D0
+	AND.w #$00FF
+	ORA.w !fl_gap
+	ORA.w !fl_charging
+	BNE .walkend                 ; an event; a whip crossing or a charge to run
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BEQ .walkend
+	STY.w !fl_lasttick           ; fl_read_pad's history (its pad: fl_walk_end)
+	LDA $DC
+	CMP.w !fl_lastmap
+	BNE .walkmap
+	TYA
+	AND.w #$000F
+	BEQ .walksample
+.walkmask
+	LDA.l fl_walk_mask
+	TSB.w !core_pad_mask&$FFFF
+	STZ.w !fl_hook               ; a scene's camera post lasts one frame
+	LDA.w #$0000
+	STA.l !fl_tp_custom          ; and so does a custom teleport target (kind, species)
+	RTL
+.walksample
+	JSR fl_walk_sample           ; every 16th tick (carry: off the native field)
+	BCC .walkmask
+	BRA .walkend
+.walkmap
+	; a new map: the walk ends here and the next frame runs in full (the
+	; map's context loads there, on a lighter frame than the load's own);
+	; the anchor and samples belonged to the old map
+	SEP #$20
+	LDA.b #!FLS_WALK
+	TRB.w !fl_state
+	REP #$20
+	LDA.w !core_pad&$FFFF
+	STA.w !fl_pad
+	BRA .walkmask
+.walkend
+	JSR fl_walk_end
+	JMP .full
+.notwalk
+	BIT.w #!FLS_QUIET
+	BNE .quiet
+	JMP .full
+.quiet
+	; Quiet (fl_quiet_check): flight is reset and Goku is out of play or
+	; cannot act, so the frame below would change nothing; it waits here
+	; while the condition that stopped him (!fl_quiet_why) still holds.
+	if defined("FLIGHT_TEST")
+		JSR fl_test_busy
+		BCS .wake                ; a test request, or test posts (fl_test_posts)
+	endif
+	LDX.w !fl_quiet_why
+	BEQ .inactive
+	CPX.w #$FFFE
+	BEQ .ending
+	; fl_read_pad's frame count goes on; frames of another mode in between
+	; (a shop inside an event) wake it, so the full reader latches the
+	; buttons held through them
+	LDA.w !fl_lasttick
+	INC
+	CMP.w !core_tick&$FFFF
+	BNE .wake
+	STA.w !fl_lasttick
+	LDA $D0
+	AND.w #$00FF
+	BNE .stay                    ; an event owns the field: Goku cannot act
+	TXA
+	BMI .vectors
+	LDA.l fl_quiet_addr,X
+	TAY
+	LDA $0000,Y
+	AND.l fl_quiet_mask,X
+	CMP.l fl_quiet_ok,X
+	BEQ .wake                    ; that reason has passed
+.stay
+	STZ.w !fl_hook               ; a scene's camera post lasts one frame
+	RTL
+.inactive
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BEQ .stay
+	BRA .wake
+.ending
+	JSR fl_bind_ending
+	BCS .stay
+	BRA .wake
+.vectors
+	JSR fl_native_field
+	BCC .stay
+.wake
+	SEP #$20
+	LDA.b #!FLS_QUIET
+	TRB.w !fl_state
+	REP #$20
+	; the pad of the last quiet frame, as fl_read_pad would have kept it
+	; (nothing is latched while quiet; after another mode the reader
+	; latches anyway)
+	LDA.w !core_pad_prev&$FFFF
+	STA.w !fl_pad
+.full
+	LDA.w !fl_magic
+	CMP.w #!FL_MAGIC
+	BEQ +
+	JSR fl_init_work
++
+	if defined("FLIGHT_TEST")
+		JSR fl_test_poll
+	endif
+	STZ.w !fl_events
+	LDA.w #$0000
+	STA.l !fl_g_chk              ; the grid's tiles are checked once per phase
+	LDA.w #$FFFF
+	STA.l !fl_hm_land+4          ; hero canFly/canLand memos and the last sweep
+	STA.l !fl_hm_fly+4
+	STA.l !fl_sw_last+8
+	; Native field with Goku in play?
+	SEP #$20
+	LDA.w !fl_state
+	AND.b #~(!FLS_ON|!FLS_CAN)
+	STA.w !fl_state
+	REP #$20
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BEQ .off
+	JSR fl_native_field
+	BCS .on
+.off
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BNE +
+	LDA.w #$0000
+	STA.l !fl_ce_phase           ; Goku left play: the escape ends
++	JSR fl_reset
+	JMP .publish
+.on
+	SEP #$20
+	LDA.b #!FLS_ON
+	TSB.w !fl_state
+	REP #$20
+	; a new map cancels flight (mana-mod lastMap)
+	LDA $DC
+	CMP.w !fl_lastmap
+	BEQ +
+	STA.w !fl_lastmap
+	JSR fl_land_now
+	JSR fl_anchor_none
+	JSR fl_crossing_none
+	LDA.w #$0000
+	STA.l !fl_tp_act
+	LDA.w #$FFFF
+	STA.l !fl_tp_last
++	JSR fl_read_pad
+	JSR fl_can_attack
+	BCS .can
+	; not controllable: the next controllable frame reloads the context
+	LDA.w #$FFFF
+	STA.w !fl_map
+	JSR fl_grid_off
+	BRA .after
+.can
+	SEP #$20
+	LDA.b #!FLS_CAN
+	TSB.w !fl_state
+	REP #$20
+	JSR fl_ctx_update
+	LDA.w #$0001
+	STA.l !fl_g_stale            ; re-anchor the grid at Goku when first used
+	JSR fl_onfoot_idle
+	BCC .after
+	JMP fl_onfoot                ; on foot with nothing of flight's running
+.after
+	; --- afterFrame (frame N) ---
+	LDA.w !fl_state
+	AND.w #!FLS_CAN
+	BNE .canafter
+	JSR fl_event_or_menu         ; (canAttack implies no event or menu)
+	BCC .settle
+	JSR fl_land_now
+	BRA .settle
+.canafter
+	; native sampling can finish one step after release: keep hovering when
+	; that step carried the feet off a narrow shore
+	LDA.w !fl_lift
+	AND.w #$00FF
+	BEQ .settle
+	JSR fl_hero_land
+	BCS .settle
+	JSR fl_hero_fly
+	BCC .settle
+	SEP #$20
+	LDA.b #!FLS_FLY
+	TSB.w !fl_state
+	REP #$20
+.settle
+	JSR fl_settle
+	; --- beforeFrame (frame N+1) ---
+	LDA.w !fl_gap
+	BEQ +
+	JSR fl_gap_tick              ; a whip crossing ends with its event
++	JSR fl_lift_update
+	; a ceiling escape owns the frame's input while it runs
+	JSR fl_ce_tick
+	BCC +
+	JMP .publish
++	JSR fl_ship_tick             ; Sandship doors and walls
+	; a teleport's camera follow locks the pad; a new L+B queues the next
+	LDA.w !fl_hook
+	AND.w #!FLH_CAMERA
+	BEQ .nocam
+	LDA.l !fl_tp_act
+	BEQ .camadv
+	JSR fl_tp_chord_edge
+	BCC .camadv
+	LDA.w #$0001
+	STA.l !fl_tp_queued
+.camadv
+	LDA.l !fl_tp_act
+	BEQ +
+	JSR fl_tp_advance            ; held at age 4 until the camera arrives
++	LDA.w !core_pad_mask&$FFFF
+	ORA.w #$FFF0
+	STA.w !core_pad_mask&$FFFF
+	BRA .publish
+.nocam
+	LDA.w !fl_state
+	AND.w #!FLS_CAN
+	BNE .decide
+	; native menus, events and locks own the input (cancelCombat)
+	LDA.w #$0000
+	STA.l !fl_tp_act
+	JSR fl_event_or_menu
+	BCC .publish
+	JSR fl_land_now
+	BRA .publish
+.decide
+	; L+R pressed: world takeoff (the world module) or the ceiling escape
+	LDA.w !fl_pad
+	AND.w #!PAD_L|!PAD_R
+	CMP.w #!PAD_L|!PAD_R
+	BNE .noLR
+	LDA.w !fl_pad_prev
+	AND.w #!PAD_L|!PAD_R
+	CMP.w #!PAD_L|!PAD_R
+	BEQ .noLR
+	JSR fl_ce_lr
+	BCC .noLR
+	LDA.w !core_pad_mask&$FFFF
+	ORA.w #$FFF0
+	STA.w !core_pad_mask&$FFFF
+	JMP .publish
+.noLR
+	JSR fl_tp_chord_edge         ; L+B pressed: Instant Transmission
+	BCC +
+	JSR fl_tp_start
++	JSR fl_decide
+	JSR fl_tp_frame
+.publish
+	JSR fl_publish
+	SEP #$20
+	LDA.b #$00
+	STA.l !fl_tp_custom          ; scene modules re-post a custom target each frame
+	REP #$20
+	if defined("FLIGHT_TEST")
+		JSR fl_test_posts        ; a scene module's posts, after flight's frame
+	endif
+	JSR fl_quiet_check
+	RTL
+
+; Carry: Goku can act on foot with nothing of flight's running (no flight,
+; lift, hover edge, charge, teleport, camera follow, whip crossing, ceiling
+; escape, owned Goku requests, Sandship or Beast arena rules) and neither A
+; nor L held, so no takeoff, charge, teleport or roof chord can start.
+fl_onfoot_idle:
+	LDA.w !fl_state              ; low byte state, high byte lift
+	AND.w #$FF00|!FLS_FLY|!FLS_HOVERED
+	BNE .no
+	LDA.w !fl_pad
+	AND.w #!PAD_A|!PAD_L
+	ORA.w !fl_gap
+	ORA.w !fl_charging
+	ORA.w !fl_open_air
+	BNE .no
+	LDA.w !fl_hook
+	AND.w #!FLH_CAMERA
+	BNE .no
+	LDA.w !fl_mflags
+	AND.w #!FLM_BEAST
+	BNE .no
+	LDA.l !fl_tp_act
+	ORA.l !fl_tp_queued
+	ORA.l !fl_ce_phase
+	ORA.l !fl_owned
+	BNE .no
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
+; flight_frame's on-foot frame (fl_onfoot_idle): settle() keeps the last
+; landing, A stays the speed modifier (and B hidden without combat), the
+; tile cache ages; the rest of the frame (afterFrame's hover keep, the
+; lift, the ticks, the decision, the teleport frame and the rest of
+; fl_publish) would leave everything as it is. Ends flight_frame (RTL).
+fl_onfoot:
+	LDA.w #$0002
+	STA.l !fl_g_stale            ; the hero grid moves only when the footprint leaves it
+	JSR fl_settle
+	LDA.w !fl_events
+	BEQ +
+	JSR fl_publish               ; settle reported something: the full publish
+	BRA .end
++	SEP #$20
+	LDA.b #!FLS_CHARGE
+	TRB.w !fl_state
+	REP #$20
+	LDA.w #2
+	STA.w !fl_speed
+	STZ.w !fl_hook               ; (a scene's camera post lasts one frame)
+	LDA.w !core_pad_mask&$FFFF
+	ORA.w #!PAD_A
+	STA.w !core_pad_mask&$FFFF
+	JSR fl_bind_mask_b
+	JSR fl_cache_age
+	JSR fl_walk_enter            ; the next frames walk (flight_frame)
+.end
+	SEP #$20
+	LDA.b #$00
+	STA.l !fl_tp_custom          ; scene modules re-post a custom target each frame
+	REP #$20
+	if defined("FLIGHT_TEST")
+		JSR fl_test_posts
+	endif
+	RTL
+
+; ---------------------------------------------------------------------------
+; Walk mode: Goku on foot with nothing of flight's running and neither A nor
+; L held. flight_frame (its first lines) then keeps only what the browser's
+; frame changes: the pad history, A masked as the speed modifier (B without
+; combat), settle()'s anchor, and the one-frame posts. Any button that
+; starts a decision (A, L), another mode's frames, a map change, Goku
+; leaving play, an event, a menu, a whip crossing or a charge ends it
+; (fl_walk_end) and the full frame runs; other field vectors end it at the
+; next 16th tick (fl_walk_sample). Can Goku act? Only decisions need
+; canAttack, and they all start with A or L; the A mask holds on the native
+; field without an event or menu either way (fl_publish).
+;
+; The anchor is lazy: canLand is asked when the walk ends, for Goku's spot
+; then and, if that one is not landable, for two samples of his walk
+; (fl_walk_sample, every 16th tick), the newest landable one becoming the
+; anchor. (The browser asks canLand at every step and keeps the newest
+; landable one: here a spot up to 16 ticks older can stand in for it, and
+; the anchor from before the walk stays when none of the three is
+; landable; both only matter for the recovery point and a crossing's
+; start.)
+fl_walk_enter:
+	LDA.w !fl_held
+	ORA.w !fl_events
+	ORA.w !fl_passengers
+	BNE .no
+	LDA.l !fl_crossing+10
+	BNE .no
+	if defined("FLIGHT_TEST")
+		LDA.l !fl_sram_test
+		ORA.l !fl_test_post
+		ORA.l !fl_test_post+$06
+		BNE .no
+	endif
+	LDA.w #$FFFF
+	STA.w !fl_wk_s1x             ; no samples yet (this frame's settle() took this spot)
+	STA.w !fl_wk_s2x
+	LDA.w !core_tick&$FFFF
+	STA.l !fl_wk_t0
+	SEP #$20
+	LDA.b #!FLS_WALK
+	TSB.w !fl_state
+	REP #$20
+.no
+	RTS
+
+; Every 16th walked tick: the field's vectors (fl_native_field; carry set
+; when they are not the native field's: the walk ends), and Goku's spot
+; becomes the newer sample, the newer the older one (settle() records
+; nothing during a load). The game switches the vectors only with a mode, a
+; map, an event or a menu, which end the walk at once; this catches any
+; other switch within 16 frames.
+fl_walk_sample:
+	JSR fl_native_field
+	BCC .off
+	SEP #$20
+	LDA $FF
+	REP #$20
+	BNE .out
+	LDA $E002
+	CMP.w !fl_wk_s1x
+	BNE +
+	LDA $E004
+	CMP.w !fl_wk_s1y
+	BEQ .out                     ; still there
++	LDA.w !fl_wk_s1x
+	STA.w !fl_wk_s2x
+	LDA.w !fl_wk_s1y
+	STA.w !fl_wk_s2y
+	LDA.w !fl_wk_s1t
+	STA.w !fl_wk_s2t
+	LDA $E002
+	STA.w !fl_wk_s1x
+	LDA $E004
+	STA.w !fl_wk_s1y
+	LDA $E00B
+	STA.w !fl_wk_s1t
+.out
+	CLC
+	RTS
+.off
+	SEC
+	RTS
+
+; The walk ends (flight_frame's .walkend; the full frame follows): the pad
+; history as fl_read_pad would have kept it, the tile cache's aging caught
+; up, and settle()'s anchor from the walk.
+fl_walk_end:
+	SEP #$20
+	LDA.b #!FLS_WALK
+	TRB.w !fl_state
+	REP #$20
+	LDA.w !core_pad_prev&$FFFF
+	STA.w !fl_pad                ; the last walked frame's pad
+	LDA $DC
+	CMP.w !fl_lastmap
+	BEQ +
+	RTS                          ; a new map: the full frame drops the anchor and loads its context
++	; the cache ages two slots a frame (fl_cache_age): after 8 walked frames
+	; it starts afresh (every slot would have aged within 32 frames)
+	LDA.w !fl_lasttick
+	SEC
+	SBC.l !fl_wk_t0
+	BEQ fl_walk_flush
+	CMP.w #8
+	BCC +
+	JSR fl_cache_clear
+	BRA fl_walk_flush
++	TAY
+-	PHY
+	JSR fl_cache_age
+	PLY
+	DEY
+	BNE -
+	; (falls through)
+
+; settle()'s anchor from the walk: Goku's spot now, else the newer, else the
+; older sample; the first landable one (the newest of them).
+fl_walk_flush:
+	LDA.w #$0000
+	STA.l !fl_g_chk              ; a phase of its own
+	LDA.w #$0002
+	STA.l !fl_g_stale            ; the hero grid moves only when the footprint leaves it
+	SEP #$20
+	LDA $FF
+	REP #$20
+	BNE .samples                 ; a load now: settle() records nothing here
+	; an anchor already at this very spot stays (fl_settle)
+	LDA.l !fl_anchor
+	CMP $DC
+	BNE +
+	LDA.l !fl_anchor+2
+	CMP $E002
+	BNE +
+	LDA.l !fl_anchor+4
+	CMP $E004
+	BNE +
+	LDA $E00B
+	AND.w #$00FF
+	CMP.l !fl_anchor+8
+	BEQ .out
++	JSR fl_q_hero
+	JSR fl_can_land
+	BCC .samples
+	JMP fl_anchor_here
+.samples
+	LDX.w #0                     ; the newer sample
+	JSR fl_walk_try
+	BCS .out
+	LDX.w #6                     ; the older one
+	JMP fl_walk_try
+.out
+	RTS
+; X = 0 or 6: canLand at that sample; landable: it is the anchor (carry).
+fl_walk_try:
+	LDA.w !fl_wk_s1x,X
+	CMP.w #$FFFF
+	BEQ .no
+	STA.w !fl_q_x
+	LDA.w !fl_wk_s1y,X
+	STA.w !fl_q_y
+	LDA.w !fl_wk_s1t,X
+	AND.w #$0003
+	STA.w !fl_q_t
+	LDA.w !fl_wk_s1t,X
+	AND.w #$0080
+	BEQ +
+	LDA.w #$0001
++	STA.w !fl_q_l
+	PHX
+	JSR fl_can_land
+	PLX
+	BCC .no
+	LDA $DC                      ; fl_anchor_here's fields
+	STA.l !fl_anchor
+	LDA.w !fl_wk_s1x,X
+	STA.l !fl_anchor+2
+	LDA.w !fl_wk_s1y,X
+	STA.l !fl_anchor+4
+	LDA.w !fl_q_l
+	STA.l !fl_anchor+6
+	LDA.w !fl_wk_s1t,X
+	AND.w #$00FF
+	STA.l !fl_anchor+8
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
+; Quiet from the next field frame on (flight_frame's first lines) when the
+; frame has nothing left for flight: Goku out of play, or an event owning
+; the field (no control), with flight reset: landed, no lift or charge, no
+; teleport, camera follow, whip crossing or ceiling escape, no Goku requests
+; to drop, no cues, no latched buttons, no passengers. The idle path then
+; costs a fraction of a scanline (the coordinator's integration run measured
+; 2.75 lines a frame for the full path in the title arrival and endings).
+fl_quiet_check:
+	; flight reset?
+	LDA.w !fl_state
+	AND.w #!FLS_FLY|!FLS_LANDING|!FLS_CHARGE|!FLS_CAN
+	BNE .no0
+	LDA.w !fl_lift
+	AND.w #$00FF
+	ORA.w !fl_gap
+	ORA.w !fl_events
+	ORA.w !fl_held
+	ORA.w !fl_passengers
+	BNE .no0
+	LDA.w !fl_hook
+	AND.w #$FFFF-!FLH_SCRIPT
+	BEQ +
+.no0
+	RTS
++
+	LDA.l !fl_tp_act
+	ORA.l !fl_tp_queued
+	ORA.l !fl_ce_phase
+	ORA.l !fl_owned
+	BNE .no
+	if defined("FLIGHT_TEST")
+		LDA.l !fl_sram_test
+		ORA.l !fl_test_post
+		ORA.l !fl_test_post+$06
+		BNE .no
+	endif
+	; why Goku cannot act: out of play, off the native field, or the first
+	; of fl_can_attack's conditions that fails (a hurt pose, the last one,
+	; passes by itself: no quiet then)
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BEQ .why
+	JSR fl_bind_ending
+	BCC +
+	LDA.w #$FFFE                 ; the finale: for good
+	BRA .why
++	LDA.w !fl_state
+	AND.w #!FLS_ON
+	BNE +
+	LDA.w #$FFFF                 ; the field's vectors
+	BRA .why
++	LDX.w #2
+.find
+	LDA.l fl_quiet_addr,X
+	BEQ .no
+	TAY
+	LDA $0000,Y
+	AND.l fl_quiet_mask,X
+	CMP.l fl_quiet_ok,X
+	BNE +
+	INX
+	INX
+	BRA .find
++	TXA
+.why
+	STA.w !fl_quiet_why
+	SEP #$20
+	LDA.b #!FLS_QUIET
+	TSB.w !fl_state
+	REP #$20
+.no
+	RTS
+; fl_can_attack's conditions, in its order (index 2, 4, ...): Goku can act
+; only while (word at addr) & mask = ok for each of them.
+fl_quiet_addr:
+	dw 0, !fl_lock, $00E4, $00E5, $E000, $E02C, $00EC, $00ED, $00D0, $E190, $E191, 0
+fl_quiet_mask:
+	dw 0, $FFFF, $00FF, $00FF, $0001, $0001, $00FE, $0040, $00FF, $0070, $00D5, 0
+fl_quiet_ok:
+	dw 0, $0000, $0001, $0001, $0001, $0001, $0000, $0000, $0000, $0000, $0000, 0
+; First frame since title entry (or a foreign savestate): the SRAM work
+; area holds whatever the battery kept.
+fl_init_work:
+	LDA.w #!FL_MAGIC
+	STA.w !fl_magic
+	LDA.w #$FFFF
+	STA.w !fl_map
+	STA.w !fl_lastmap
+	STA.l !fl_cam_map
+	STA.l !fl_tp_last
+	STA.l !fl_step_f4
+	STZ.w !fl_hook
+	STZ.w !fl_gap
+	LDA.w #$0000
+	STA.l !fl_ce_phase
+	STA.l !fl_tp_act
+	STA.l !fl_tp_queued
+	STA.l !fl_tp_custom
+	STA.l !fl_owned
+	JSR fl_anchor_none
+	JSR fl_crossing_none
+	JSR fl_cache_clear
+	JSR fl_grid_off
+	JSR fl_sweep_forget
+	if defined("FLIGHT_TEST")
+		LDA.w #$0000
+		STA.l !FL_SRAM+$296      ; the test floor hole is off (testmod.asm)
+		STA.l !fl_test_post      ; no test posts
+		STA.l !fl_test_post+$06
+	endif
+	RTS
+
+; Carry = the teleport chord L+B is held now and was not held last frame.
+fl_tp_chord_edge:
+	LDA.w !fl_pad
+	AND.w #!PAD_L|!PAD_B
+	CMP.w #!PAD_L|!PAD_B
+	BNE .no
+	LDA.w !fl_pad_prev
+	AND.w #!PAD_L|!PAD_B
+	CMP.w #!PAD_L|!PAD_B
+	BEQ .no
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
+; The teleport action's frame: advance it, keep Goku facing its way and
+; hold the pad's directions and A.
+fl_tp_frame:
+	LDA.l !fl_tp_act
+	BEQ .done
+	JSR fl_tp_advance
+	LDA.l !fl_tp_act
+	BEQ .done
+	LDA.l !fl_tp_facing
+	TAX
+	SEP #$20
+	LDA.l fl_facing_native,X
+	STA $E010
+	REP #$20
+	LDA.w !core_pad_mask&$FFFF
+	ORA.w #!PAD_UP|!PAD_DOWN|!PAD_LEFT|!PAD_RIGHT|!PAD_A
+	STA.w !core_pad_mask&$FFFF
+.done
+	RTS
+
+; D0 or a menu bit in EC: carry
+fl_event_or_menu:
+	SEP #$20
+	LDA $D0
+	BNE .yes
+	LDA $EC
+	AND.b #$FE
+	BNE .yes
+	REP #$20
+	CLC
+	RTS
+.yes
+	REP #$20
+	SEC
+	RTS
+
+; Not in play: forget flight and the requests made to Goku.
+fl_reset:
+	JSR fl_land_now
+	STZ.w !fl_hook
+	LDA.w #$FFFF
+	STA.l !fl_cam_map
+	STA.w !fl_map
+	STA.w !fl_lastmap            ; back on a field map: as a map change
+	LDA.w #$0000
+	STA.l !fl_tp_act
+	STZ.w !fl_gap
+	RTS
+
+; localFlight = false, localLift = 0
+fl_land_now:
+	SEP #$20
+	LDA.b #!FLS_FLY|!FLS_HOVERED
+	TRB.w !fl_state
+	STZ.w !fl_lift
+	REP #$20
+	RTS
+
+; A = the pad as fl_read_pad last saw it, for hooks inside the game's logic:
+; while flight is quiet or walks its frames keep no pad (nothing is latched
+; then), and the core's pad is still the one read at the last field frame.
+fl_pad_now:
+	LDA.w !fl_state
+	BIT.w #!FLS_QUIET|!FLS_WALK
+	BNE +
+	LDA.w !fl_pad
+	RTS
++	LDA.w !core_pad&$FFFF
+	RTS
+
+; Pad as the browser's padInput: physical pad 1, with buttons that were held
+; when a ring or menu closed ignored until released (menuInputHeld).
+fl_read_pad:
+	LDA.w !fl_pad
+	STA.w !fl_pad_prev
+	LDA.w !core_tick&$FFFF
+	SEC
+	SBC.w !fl_lasttick
+	CMP.w #$0002
+	LDA.w !core_tick&$FFFF
+	STA.w !fl_lasttick
+	BCC .same
+	; frames of another mode ran since our last field frame (rings, menus)
+	LDA.w !core_pad&$FFFF
+	AND.w #!PAD_B|!PAD_Y|!PAD_A|!PAD_L
+	STA.w !fl_held
+.same
+	LDA.w !fl_held
+	AND.w !core_pad&$FFFF
+	STA.w !fl_held
+	EOR.w #$FFFF
+	AND.w !core_pad&$FFFF
+	STA.w !fl_pad
+	RTS
+
+; localLift steps 3 px a frame toward 12 (flying) or 0; reaching the ground
+; raises the landing cue (mana-mod beforeFrame).
+fl_lift_update:
+	LDA.w !fl_lift
+	AND.w #$00FF
+	BNE +
+	LDA.w !fl_state
+	AND.w #!FLS_FLY
+	BNE +
+	RTS                          ; on the ground and staying there
++	LDA.w !fl_lift
+	AND.w #$00FF
+	STA.w !fl_t0
+	LDA.w !fl_state
+	AND.w #!FLS_FLY
+	BEQ .down
+	LDA.w !fl_t0
+	CLC
+	ADC.w #3
+	CMP.w #13
+	BCC .store
+	LDA.w #12
+	BRA .store
+.down
+	LDA.w !fl_t0
+	SEC
+	SBC.w #3
+	BCS .store
+	LDA.w #$0000
+.store
+	SEP #$20
+	STA.w !fl_lift
+	REP #$20
+	AND.w #$00FF
+	BNE .done
+	LDA.w !fl_t0
+	BEQ .done
+	LDA.w !fl_events
+	ORA.w #!FLE_LANDING
+	STA.w !fl_events
+.done
+	RTS
+
+; The flight decision (mana-mod beforeFrame): A with a direction (L only
+; with the Kamehameha wave, never with L+B), or keep hovering where Goku
+; cannot land.
+fl_decide:
+	SEP #$20
+	LDA.w !fl_state
+	BIT.b #!FLS_FLY|!FLS_HOVERED
+	BNE .full
+	LDA.w !fl_pad+1
+	BIT.b #(!PAD_A>>8)
+	BNE .full
+	LDA.w !fl_pad
+	BIT.b #!PAD_A
+	BNE .full
+	REP #$20
+	RTS                          ; on foot, A not held: nothing to decide
+.full
+	LDA.w !fl_state
+	AND.b #!FLS_FLY
+	BEQ +
+	LDA.b #!FLS_HOVERED
+	TSB.w !fl_state
+	BRA ++
++	LDA.b #!FLS_HOVERED
+	TRB.w !fl_state
+++	LDA.b #!FLS_FLY
+	TRB.w !fl_state
+	REP #$20
+	; teleport = L + B, or an Instant Transmission running
+	LDA.l !fl_tp_act
+	BNE .done
+	LDA.w !fl_pad
+	AND.w #!PAD_L|!PAD_B
+	CMP.w #!PAD_L|!PAD_B
+	BEQ .done
+	; A held with a direction
+	LDA.w !fl_pad
+	AND.w #!PAD_A
+	BEQ .hover
+	LDA.w !fl_pad
+	AND.w #!PAD_UP|!PAD_DOWN|!PAD_LEFT|!PAD_RIGHT
+	BEQ .hover
+	LDA.w !fl_pad
+	AND.w #!PAD_L
+	BEQ .fly
+	LDA.w !fl_pad
+	AND.w #!PAD_Y                ; wave = L + Y (not L + B)
+	BNE .fly
+.hover
+	LDA.w !fl_state
+	AND.w #!FLS_HOVERED
+	BEQ .done
+	JSR fl_hero_land
+	BCS .done
+.fly
+	SEP #$20
+	LDA.b #!FLS_FLY
+	TSB.w !fl_state
+	REP #$20
+	LDA.w !fl_state
+	AND.w #!FLS_HOVERED
+	BNE .done
+	LDA.w !fl_events
+	ORA.w #!FLE_TAKEOFF
+	STA.w !fl_events
+.done
+	RTS
+
+; Requests to Goku, the A mask and the hook work for the next frame.
+fl_publish:
+	; charging (mod.charging): combat's state (combat_api_state bit 1) or a
+	; request in fl_charging, else the L+Y test stand-in
+	SEP #$20
+	LDA.b #!FLS_CHARGE
+	TRB.w !fl_state
+	REP #$20
+	LDA.w !fl_charging
+	BNE .charge
+	LDA.w !fl_pad                ; a charge needs the wave chord (L+Y) held
+	AND.w #!PAD_L|!PAD_Y
+	CMP.w #!PAD_L|!PAD_Y
+	BNE +
+	JSR fl_bind_charging
+	BCS .charge
++
+	if defined("FLIGHT_CHARGE_STANDIN")
+		; test stand-in until combat owns the charge: L+Y without B
+		LDA.w !fl_state
+		AND.w #!FLS_CAN
+		BEQ .nocharge
+		LDA.w !fl_pad
+		AND.w #!PAD_L|!PAD_Y|!PAD_B
+		CMP.w #!PAD_L|!PAD_Y
+		BEQ .charge
+	endif
+	BRA .nocharge
+.charge
+	SEP #$20
+	LDA.b #!FLS_CHARGE
+	TSB.w !fl_state
+	REP #$20
+.nocharge
+	; speed: localFlight with A held -> 6 (8 Super Saiyan), else 2;
+	; charging halves it
+	LDA.w #2
+	STA.w !fl_speed
+	LDA.w !fl_state
+	AND.w #!FLS_FLY
+	BEQ .slow
+	LDA.w !fl_pad
+	AND.w #!PAD_A
+	BEQ .slow
+	LDA.w #6
+	STA.w !fl_speed
+	LDA.l $7E0000|!goku_form
+	AND.w #$0001
+	BEQ .slow
+	LDA.w #8
+	STA.w !fl_speed
+.slow
+	LDA.w !fl_state
+	AND.w #!FLS_CHARGE
+	BEQ +
+	LSR.w !fl_speed
++	; hook work (the camera follow persists until done)
+	LDA.w !fl_hook
+	AND.w #!FLH_CAMERA
+	STA.w !fl_hook
+	LDA.w !fl_mflags
+	AND.w #!FLM_BEAST
+	BEQ +
+	JSR fl_beast_arena
+	BCC +
+	JSR fl_ground
+	BCC +
+	LDA.w #!FLH_BEAST
+	TSB.w !fl_hook
++	LDA.w !fl_state
+	AND.w #!FLS_CAN
+	BEQ .hooks
+	LDA.w !fl_state
+	AND.w #!FLS_FLY|!FLS_CHARGE
+	BEQ .hooks
+	LDA.w #!FLH_STEP
+	TSB.w !fl_hook
+	LDA.w !fl_state
+	AND.w #!FLS_FLY
+	BEQ .hooks
+	LDA.w #!FLH_PHASE
+	TSB.w !fl_hook
+.hooks
+	; the A button is a speed modifier on foot, never the native dash
+	LDA.w !fl_state
+	BIT.w #!FLS_CAN
+	BNE .mask
+	AND.w #!FLS_ON
+	BEQ .nomask
+	JSR fl_event_or_menu
+	BCS .nomask
+.mask
+	LDA.w !core_pad_mask&$FFFF
+	ORA.w #!PAD_A
+	STA.w !core_pad_mask&$FFFF
+	LDA.w !fl_state
+	AND.w #!FLS_CAN
+	BEQ .nomask
+	JSR fl_bind_mask_b
+.nomask
+	; Goku: LOCALFLY = localFlight, AIRBORNE = localFlight || localLift > 0.
+	; Flight writes them and goku_lift while it wants one of them, clears
+	; them once when it stops wanting them, and otherwise leaves them to
+	; their other writers (fl_owned).
+	LDA.w #$0000
+	STA.w !fl_t0                 ; the bits flight wants
+	LDA.w !fl_state
+	AND.w #!FLS_FLY
+	BEQ +
+	LDA.w #!GOKU_CTL_LOCALFLY|!GOKU_CTL_AIRBORNE
+	STA.w !fl_t0
++	LDA.w !fl_lift
+	AND.w #$00FF
+	BEQ +
+	LDA.w !fl_t0
+	ORA.w #!GOKU_CTL_AIRBORNE
+	STA.w !fl_t0
++	LDA.w !fl_t0
+	BNE .ctl
+	LDA.l !fl_owned
+	AND.w #!FLO_CTL
+	BEQ .act
+.ctl
+	SEP #$20
+	LDA.l $7E0000|!goku_ctl
+	AND.b #~(!GOKU_CTL_LOCALFLY|!GOKU_CTL_AIRBORNE)
+	ORA.w !fl_t0
+	STA.l $7E0000|!goku_ctl
+	REP #$20
+	LDA.w !fl_lift
+	AND.w #$00FF
+	STA.l $7E0000|!goku_lift
+	LDA.w !fl_t0
+	BEQ +
+	LDA.l !fl_owned
+	ORA.w #!FLO_CTL
+	BRA ++
++	LDA.l !fl_owned
+	AND.w #$FFFF-!FLO_CTL
+++	STA.l !fl_owned
+.act
+	; Instant Transmission pose (goku action $14), until the action ends
+	LDA.l !fl_tp_act
+	BEQ .noact
+	SEP #$20
+	LDA.b #!GOKU_K_TELEPORT
+	STA.l $7E0000|!goku_act
+	LDA.l !fl_tp_facing
+	STA.l $7E0000|!goku_act_facing
+	LDA.l $7E0000|!goku_form
+	AND.b #$01
+	BEQ +
+	LDA.b #$80
++	STA.l $7E0000|!goku_act_arg
+	LDA.b #!TP_DURATION
+	STA.l $7E0000|!goku_act_dur
+	REP #$20
+	LDA.l !fl_tp_age
+	STA.l $7E0000|!goku_act_age
+	LDA.l !fl_owned
+	ORA.w #!FLO_ACT
+	STA.l !fl_owned
+	BRA .sounds
+.noact
+	; the action ended: drop flight's pose once, unless another owner
+	; replaced it meanwhile
+	LDA.l !fl_owned
+	AND.w #!FLO_ACT
+	BEQ .sounds
+	LDA.l !fl_owned
+	AND.w #$FFFF-!FLO_ACT
+	STA.l !fl_owned
+	LDA.l $7E0000|!goku_act
+	AND.w #$00FF
+	CMP.w #!GOKU_K_TELEPORT
+	BNE .sounds
+	SEP #$20
+	LDA.b #$00
+	STA.l $7E0000|!goku_act
+	REP #$20
+.sounds
+	; cues (ki-sound.js names in fl_events)
+	LDA.w !fl_events
+	BEQ .air
+	BIT.w #!FLE_TAKEOFF
+	BEQ +
+	LDA.w #!FL_SFX_FLIGHT
+	JSR fl_bind_sfx
++	LDA.w !fl_events
+	BIT.w #!FLE_LANDING
+	BEQ +
+	LDA.w #!FL_SFX_LANDING
+	JSR fl_bind_sfx
++	LDA.w !fl_events
+	BIT.w #!FLE_TELEPORT
+	BEQ +
+	LDA.w #!FL_SFX_TELEPORT
+	JSR fl_bind_sfx
++	LDA.w !fl_events
+	BIT.w #!FLE_TELEPORT_IN
+	BEQ .air
+	LDA.w #!FL_SFX_TELEPORT_IN
+	JSR fl_bind_sfx
+.air
+	; the gap-flight hover over a native whip crossing (goku mode $23)
+	LDA.w !fl_gap
+	BEQ .nogap
+	SEP #$20
+	LDA.b #!GOKU_K_GAPFLIGHT
+	STA.l $7E0000|!goku_mode
+	REP #$20
+	LDA.l !fl_owned
+	ORA.w #!FLO_GAP
+	STA.l !fl_owned
+	BRA .bed
+.nogap
+	LDA.l !fl_owned
+	AND.w #!FLO_GAP
+	BEQ +
+	LDA.l !fl_owned
+	AND.w #$FFFF-!FLO_GAP
+	STA.l !fl_owned
+	LDA.l $7E0000|!goku_mode
+	AND.w #$00FF
+	CMP.w #!GOKU_K_GAPFLIGHT
+	BNE +
+	SEP #$20
+	LDA.b #$00
+	STA.l $7E0000|!goku_mode     ; only the mode flight set
+	REP #$20
++	JSR fl_ce_pose               ; the ceiling escape's punch-and-rise pose
+	LDA.w !fl_state
+	AND.w #!FLS_FLY
+	BEQ +
+.bed
+	; the air bed while flying or crossing (quieter while charging)
+	LDA.w !fl_state
+	AND.w #!FLS_CHARGE
+	JSR fl_bind_air
++
+	; first hover with control (power-intro.js) and the tile cache's life
+	LDA.w !fl_state
+	AND.w #!FLS_FLY|!FLS_CAN
+	CMP.w #!FLS_FLY|!FLS_CAN
+	BNE .cache
+	LDA.w !fl_events
+	ORA.w #!FLE_HOVER
+	STA.w !fl_events
+	JSR fl_bind_ui_hover         ; power intro: the first hover's banter
+.cache
+	; (falls through)
+; Rolling expiry: two cache slots a frame, so no result is older than 32
+; frames (results that depend on neighbouring tiles), and the hero grid's
+; verdicts every 32 frames.
+fl_cache_age:
+	LDA.w !fl_cache_age
+	INC
+	STA.w !fl_cache_age
+	AND.w #$001F
+	BNE +
+	STA.l !fl_g_akn
+	STA.l !fl_g_gkn
++	LDA.w !fl_cache_age
+	AND.w #$001F
+	ASL : ASL
+	STA.w !fl_t0
+	ASL
+	CLC
+	ADC.w !fl_t0                 ; (age & 31) * 12: slots 2k and 2k+1
+	TAX
+	LDA.w #$FFFF
+	STA.l !fl_cache,X
+	STA.l !fl_cache+6,X
+.done
+	RTS
+
+; ---------------------------------------------------------------------------
+; settle() (native-local-flight.js): companions trail an airborne Goku,
+; crossings adopt the far floor's height, the last verified landing is kept,
+; long gaps carry the party, and a Goku left inside a wall or outside the
+; map returns to safe ground.
+fl_settle:
+	STZ.w !fl_passengers
+	LDA.w !fl_state
+	AND.w #!FLS_CAN
+	BNE .can
+	JSR fl_ground
+	BCS +
+	JMP fl_crossing_none
++	RTS                          ; context not loaded (not controllable)
+.can
+	; canAttack covers ground() except the load flag $FF
+	SEP #$20
+	LDA $FF
+	REP #$20
+	BEQ +
+	JMP fl_crossing_none
++	; on foot without a whip crossing, settle() only clears the crossing and
+	; records the last landing
+	LDA.w !fl_state
+	AND.w #!FLS_FLY
+	BNE .full
+	LDA.l !fl_crossing+10
+	BNE .full
+	JSR fl_crossing_none
+	LDA.l !fl_anchor
+	CMP $DC
+	BEQ +
+	JSR fl_anchor_none
+	BRA .onfoot
++	; an anchor already at this very spot stays whatever canLand says now
+	LDA.l !fl_anchor+2
+	CMP $E002
+	BNE .onfoot
+	LDA.l !fl_anchor+4
+	CMP $E004
+	BNE .onfoot
+	LDA $E00B
+	AND.w #$00FF
+	CMP.l !fl_anchor+8
+	BNE .onfoot
+	RTS
+.onfoot
+	JSR fl_hero_land_foot
+	BCC +
+	JSR fl_anchor_here
++	RTS
+.full
+	JSR fl_phasing
+	LDA.w #$0000
+	ROL
+	PHA                          ; [elig] = phasing && eligible
+	BEQ .nofollow
+	JSR fl_follow
+.nofollow
+	; anchor / crossing belong to this map
+	LDA.l !fl_anchor
+	CMP $DC
+	BEQ +
+	JSR fl_anchor_none
++	LDA.l !fl_crossing
+	CMP $DC
+	BNE .dropx
+	LDA.l !fl_crossing+10        ; whip
+	BNE +
+	LDA $01,S
+	BNE +
+.dropx
+	JSR fl_crossing_none
++	; flight adopts the floor height under a complete landing
+	LDA $01,S
+	BEQ .whip
+	JSR fl_hero_tile
+	BCS .whip
+	JSR fl_fetch
+	LDA.w !fl_d_flags
+	AND.w #$0003
+	BEQ .whip
+	CMP.w #$0003
+	BEQ .whip
+	STA.w !fl_t6
+	LDA $E00B
+	AND.w #$0003
+	CMP.w !fl_t6
+	BEQ .whip
+	JSR fl_q_hero
+	LDA.w !fl_t6
+	STA.w !fl_q_t
+	PHA
+	JSR fl_can_land
+	PLA
+	BCC .whip
+	STA.w !fl_t6
+	SEP #$20
+	LDA $E00B
+	AND.b #$FC
+	ORA.w !fl_t6
+	STA $E00B
+	REP #$20
+.whip
+	; withinWhip = (crossing.whip || elig) && crossable(tileAt(hero))
+	LDA.w #$0000
+	PHA                          ; [within][elig]
+	LDA.l !fl_crossing+10
+	ORA $03,S
+	BEQ .nowhip
+	JSR fl_hero_tile
+	BCS .nowhip
+	JSR fl_whip_crossable
+	BCC .nowhip
+	LDA.w #$0001
+	STA $01,S
+	; a whip corridor flown from an anchor becomes a whip crossing
+	LDA $03,S
+	BEQ .nowhip
+	LDA.l !fl_anchor
+	CMP.w #$FFFF
+	BEQ .nowhip
+	LDA.l !fl_crossing
+	CMP.w #$FFFF
+	BNE +
+	JSR fl_crossing_from_anchor
++	LDA.w #$0001
+	STA.l !fl_crossing+10
+.nowhip
+	; on usable ground?
+	JSR fl_hero_land
+	BCC .air
+	LDA.l !fl_crossing+10
+	BEQ .landed
+	LDA $01,S
+	BNE .done                    ; still between whip pads
+.landed
+	; passengers over the Beast's deck (beastArena())
+	LDA $03,S
+	BEQ +
+	JSR fl_beast_arena
+	BCC +
+	JSR fl_passengers_set
++	LDA.l !fl_crossing
+	CMP.w #$FFFF
+	BEQ .anchor
+	LDA.l !fl_crossing+6         ; layer
+	CMP.w !fl_q_l
+	BNE .anchor
+	JSR fl_crossing_dist
+	BCC .anchor
+	; onCross: bring the companions over
+	JSR fl_gather_here
+	LDA.w !fl_events
+	ORA.w #!FLE_CROSS
+	STA.w !fl_events
+.anchor
+	JSR fl_crossing_none
+	JSR fl_anchor_here
+.done
+	PLA
+	PLA
+	RTS
+.air
+	LDA $03,S
+	BEQ .done
+	; leaving from a verified landing starts a crossing
+	LDA.l !fl_anchor
+	CMP.w #$FFFF
+	BEQ .carry
+	JSR fl_hero_fly
+	BCC .carry
+	LDA.l !fl_crossing
+	CMP.w #$FFFF
+	BNE .carry
+	JSR fl_crossing_from_anchor
+.carry
+	; the Beast's open sky and long gaps carry the CPU companions
+	JSR fl_beast_arena
+	BCC .gaps
+	JSR fl_passengers_set
+	JSR fl_hero_fly
+	BCC .gaps
+	JSR fl_gather_here
+	BRA .done
+.gaps
+	JSR fl_hero_tile
+	BCS .recover_check
+	JSR fl_fetch
+	JSR fl_ferry_gap
+	BCS .carried
+	JSR fl_dungeon_air
+	BCC .recover_check
+.carried
+	JSR fl_passengers_set
+	JSR fl_gather_here
+.recover_check
+	; outside the map, or embedded in a solid cell that is not a low obstacle
+	LDA $E002
+	CMP.w #8
+	BCC .recover
+	CLC
+	ADC.w #8
+	CMP.w !fl_wpx
+	BEQ +
+	BCS .recover
++	LDA $E004
+	CMP.w #8
+	BCC .recover
+	CLC
+	ADC.w #8
+	CMP.w !fl_hpx
+	BEQ +
+	BCS .recover
++	JSR fl_hero_tile
+	BCS .ret
+	JSR fl_fetch
+	LDA.w !fl_d_code
+	BNE .ret
+	LDA.w !fl_d_flags
+	AND.w #$0007
+	CMP.w #$0003
+	BNE .ret
+	LDA.w !fl_open_air
+	BNE .ret
+	JSR fl_low
+	BCC .recover
+.ret
+	JMP .done
+.recover
+	JSR fl_recover
+	JMP .done
+
+; X = idx of tileAt(hero) (pixel bounds); carry set when outside the map.
+fl_hero_tile:
+	LDA $E002
+	CMP.w !fl_wpx
+	BCS .out
+	LDA $E004
+	CMP.w !fl_hpx
+	BCS .out
+	AND.w #$FFF0
+	ASL
+	ASL
+	ASL
+	STA.w !fl_t5
+	LDA $E002
+	LSR : LSR : LSR : LSR
+	ORA.w !fl_t5
+	STA.w !fl_t5
+	LDA $E00B
+	AND.w #$0080
+	BEQ +
+	LDA.w #$4000
++	ORA.w !fl_t5
+	TAX
+	CLC
+	RTS
+.out
+	SEC
+	RTS
+
+; follow(): CPU companions trail an airborne Goku inside the boxes the
+; native tether keeps on screen (girl 36x26, sprite 56x40).
+fl_follow:
+	LDX.w #$0200
+	LDA.w #36
+	LDY.w #26
+	JSR fl_follow_one
+	LDX.w #$0400
+	LDA.w #56
+	LDY.w #40
+	; fall through
+fl_follow_one:
+	STA.w !fl_t0                 ; rx
+	STY.w !fl_t1                 ; ry
+	LDA.l $7EE000,X
+	AND.w #$0001
+	BEQ .skip
+	LDA.l $7EE02C,X
+	AND.w #$0001
+	BNE .skip                    ; player-controlled
+	; nx = clamp(fx, x - rx, x + rx)
+	LDA $E002
+	SEC
+	SBC.w !fl_t0
+	STA.w !fl_t2                 ; lo
+	LDA $E002
+	CLC
+	ADC.w !fl_t0
+	STA.w !fl_t3                 ; hi
+	LDA.l $7EE002,X
+	JSR fl_clamp_signed
+	STA.l $7EE002,X
+	LDA $E004
+	SEC
+	SBC.w !fl_t1
+	STA.w !fl_t2
+	LDA $E004
+	CLC
+	ADC.w !fl_t1
+	STA.w !fl_t3
+	LDA.l $7EE004,X
+	JSR fl_clamp_signed
+	STA.l $7EE004,X
+.skip
+	RTS
+; A = clamp(A, fl_t2, fl_t3), signed (Math.max/min; values are map pixels
+; +- a few hundred, so differences never overflow)
+fl_clamp_signed:
+	PHA
+	SEC
+	SBC.w !fl_t2
+	BPL +
+	PLA
+	LDA.w !fl_t2
+	RTS
++	LDA $01,S
+	SEC
+	SBC.w !fl_t3
+	BMI +
+	BEQ +
+	PLA
+	LDA.w !fl_t3
+	RTS
++	PLA
+	RTS
+
+; teleport.gather(): CPU companions join Goku (position, terrain, no motion).
+fl_gather_here:
+	LDA $E002
+	STA.w !fl_t0
+	LDA $E004
+	STA.w !fl_t1
+	LDA $E00B
+	AND.w #$00FF
+	STA.w !fl_t2
+fl_gather:                       ; fl_t0/t1 = x/y, fl_t2 = terrain byte
+	LDX.w #$0200
+	JSR .one
+	LDX.w #$0400
+.one
+	LDA.l $7EE000,X
+	AND.w #$0001
+	BEQ .skip
+	LDA.l $7EE02C,X
+	AND.w #$00FF
+	BNE .skip                    ; any player owns it
+	LDA.l $7EE00E,X
+	AND.w #$0080
+	BNE .skip
+	LDA.w !fl_t0
+	STA.l $7EE002,X
+	LDA.w !fl_t1
+	STA.l $7EE004,X
+	SEP #$20
+	LDA.w !fl_t2
+	STA.l $7EE00B,X
+	LDA.b #$00
+	STA.l $7EE006,X
+	STA.l $7EE007,X
+	STA.l $7EE02D,X
+	STA.l $7EE045,X
+	REP #$20
+.skip
+	RTS
+
+; anchor = {map, x, y, layer, terrain} of the hero; crossing helpers
+fl_anchor_here:
+	LDA $DC
+	STA.l !fl_anchor
+	LDA $E002
+	STA.l !fl_anchor+2
+	LDA $E004
+	STA.l !fl_anchor+4
+	LDA.w !fl_q_l
+	STA.l !fl_anchor+6
+	LDA $E00B
+	AND.w #$00FF
+	STA.l !fl_anchor+8
+	RTS
+fl_anchor_none:
+	LDA.w #$FFFF
+	STA.l !fl_anchor
+	RTS
+fl_crossing_none:
+	LDA.w #$FFFF
+	STA.l !fl_crossing
+	LDA.w #$0000
+	STA.l !fl_crossing+10
+	RTS
+fl_crossing_from_anchor:
+	LDA.l !fl_anchor
+	STA.l !fl_crossing
+	LDA.l !fl_anchor+2
+	STA.l !fl_crossing+2
+	LDA.l !fl_anchor+4
+	STA.l !fl_crossing+4
+	LDA.l !fl_anchor+6
+	STA.l !fl_crossing+6
+	LDA.l !fl_anchor+8
+	STA.l !fl_crossing+8
+	LDA.w #$0000
+	STA.l !fl_crossing+10
+	RTS
+; carry = hypot(hero - crossing start) >= 24
+fl_crossing_dist:
+	LDA $E002
+	SEC
+	SBC.l !fl_crossing+2
+	JSR fl_square
+	STA.w !fl_t0
+	LDA $E004
+	SEC
+	SBC.l !fl_crossing+4
+	JSR fl_square
+	CLC
+	ADC.w !fl_t0
+	BCS .far                     ; >= 65536
+	CMP.w #576
+	RTS
+.far
+	SEC
+	RTS
+; A = min(A*A, $FFFF) for a signed 16-bit A
+fl_square:
+	BPL +
+	EOR.w #$FFFF
+	INC
++	CMP.w #256
+	BCS .big
+	SEP #$20
+	STA.l $004202
+	STA.l $004203
+	REP #$20
+	NOP
+	NOP
+	NOP
+	NOP
+	LDA.l $004216
+	RTS
+.big
+	LDA.w #$FFFF
+	RTS
+
+; Recovery: back to the last verified landing on this layer, else to the
+; nearest landable point of a +-128 px grid (8 px steps), nearest first in
+; the browser's order (generated table).
+fl_recover:
+	JSR fl_q_hero
+	LDA.l !fl_anchor
+	CMP $DC
+	BNE .search
+	LDA.l !fl_anchor+6
+	CMP.w !fl_q_l
+	BNE .search
+	LDA.l !fl_anchor+2
+	STA.w !fl_q_x
+	LDA.l !fl_anchor+4
+	STA.w !fl_q_y
+	JSR fl_can_land
+	BCC .search
+	LDA.l !fl_anchor+2
+	STA $E002
+	LDA.l !fl_anchor+4
+	STA $E004
+	SEP #$20
+	LDA.l !fl_anchor+8
+	STA $E00B
+	REP #$20
+	BRL .moved
+.search
+	; centre clamped into [8, size-8]
+	LDA $E002
+	CMP.w #8
+	BCS +
+	LDA.w #8
++	STA.w !fl_t4
+	LDA.w !fl_wpx
+	SEC
+	SBC.w #8
+	CMP.w !fl_t4
+	BCS +
+	STA.w !fl_t4
++	LDA $E004
+	CMP.w #8
+	BCS +
+	LDA.w #8
++	STA.w !fl_t5
+	LDA.w !fl_hpx
+	SEC
+	SBC.w #8
+	CMP.w !fl_t5
+	BCS +
+	STA.w !fl_t5
++	LDX.w #$0000
+.cand
+	CPX.w #(33*33)*2
+	BCS .none
+	PHX
+	LDA.l fl_recover_order,X
+	PHA
+	AND.w #$00FF
+	BIT.w #$0080
+	BEQ +
+	ORA.w #$FF00
++	ASL : ASL : ASL
+	CLC
+	ADC.w !fl_t4
+	STA.w !fl_q_x
+	PLA
+	XBA
+	AND.w #$00FF
+	BIT.w #$0080
+	BEQ +
+	ORA.w #$FF00
++	ASL : ASL : ASL
+	CLC
+	ADC.w !fl_t5
+	STA.w !fl_q_y
+	LDA.w !fl_t4 : PHA
+	LDA.w !fl_t5 : PHA
+	JSR fl_can_land
+	PLA : STA.w !fl_t5
+	PLA : STA.w !fl_t4
+	PLX
+	BCS .found
+	INX
+	INX
+	BRA .cand
+.found
+	LDA.w !fl_q_x
+	STA $E002
+	LDA.w !fl_q_y
+	STA $E004
+.moved
+	SEP #$20
+	STZ $E006
+	STZ $E007
+	REP #$20
+	JSR fl_crossing_none
+	JSR fl_gather_here
+	; the camera follows like a teleport (native-teleport.js follow)
+	LDA $E00B
+	AND.w #$00FF
+	LDX $E002
+	LDY $E004
+	JSR fl_camera_follow
+.none
+	RTS
+
+; passengers (native-local-flight.js): while Goku flies (eligible) over the
+; Beast's sky, the ferry gap or dungeon air, the CPU companions he carries
+; are hidden (sprite-layer.js hides their body, attachment and shadow
+; cells). Set by settle where it decides the carry; !fl_passengers bit 0 =
+; $E200, bit 1 = $E400, for the sprite owner.
+fl_passengers_set:
+	SEP #$20
+	LDA $E200
+	AND.b #$01
+	BEQ +
+	LDA $E22C
+	BNE +
+	LDA $E20E
+	BMI +
+	LDA.b #$01
+	TSB.w !fl_passengers
++	LDA $E400
+	AND.b #$01
+	BEQ +
+	LDA $E42C
+	BNE +
+	LDA $E40E
+	BMI +
+	LDA.b #$02
+	TSB.w !fl_passengers
++	REP #$20
+	RTS
