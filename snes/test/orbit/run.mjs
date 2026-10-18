@@ -13,6 +13,8 @@
 //          frieza.js orbital battle (fight-ref.mjs) under a scripted pad:
 //          movement, ki, the charged wave, Instant Transmission and the
 //          exchange, Frieza's patrol, warnings and shots, damage both ways
+//          (ORBIT_FIGHT_EXTRA=n: start n frames later, another phase of the
+//          game's own frame cycle)
 //   clash  the beam struggle from 6,000 HP and the victory, frame by frame
 //          against the same reference: gather, charge, launch, a lost
 //          struggle (recoil, 420 damage), a won one under steady B taps,
@@ -194,7 +196,7 @@ const cases={
   async fight(rom){
     const frames=Number(process.env.ORBIT_FIGHT_FRAMES??660),pads=fightPads(frames);
     const dir=join(out,'fight');
-    const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nPADS=${lua(pads)}\nSHOTS={0,60,150,200,240,320,600}\n`;
+    const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nPADS=${lua(pads)}\nSHOTS={0,60,150,200,240,320,600}\nEXTRA=${Number(process.env.ORBIT_FIGHT_EXTRA??0)}\n`;
     const r=await runMesen({rom,state,test:pre+readFileSync(join(here,'fight.lua'),'utf8'),outDir:dir});
     const res=r.results??{};
     let ok=r.code===0&&res.live===true&&Array.isArray(res.states);
@@ -202,8 +204,11 @@ const cases={
     // The reference is fed exactly the pad word the cartridge's fight read
     // at each of its frames (logged with the state), so lag frames do not
     // shift the input; lag is checked on its own below. Goku's HP passes
-    // through the game's damage queue, which the native code applies a few
-    // frames later than the browser's stub does: it may trail by 4 frames.
+    // through the game's damage queue, which the native code applies 1-5
+    // frames later than the browser's stub does, depending on where the
+    // fight's frames fall in the game's own cycle (ORBIT_FIGHT_EXTRA=n
+    // starts the fight n frames later: n = 0-7 cover every phase): it may
+    // trail by 8 frames, as in the clash case.
     const cart=res.states.map(parseState);
     // (a frame that ran two steps, after a lagging game frame, gave both
     // the same pad: an age without its own log takes the next one's)
@@ -211,23 +216,26 @@ const cases={
     for(let a=Math.max(...padAt.keys());a>0;a--)if(!padAt.has(a)&&padAt.has(a+1))padAt.set(a,padAt.get(a+1));
     const wram=readFileSync(join(bundleDir('preset__space'),'wram.bin'));
     const ref=await runFightReference({frames:frames+4,pad:f=>padAt.get(f+1)??0,wram});
-    const mismatches=[];let compared=0;const seen=new Set();
+    const mismatches=[];let compared=0,trail=0;const seen=new Set();
     for(const c of cart){
       if(seen.has(c.boss.age))continue;seen.add(c.boss.age);  // a lag frame logs the same state twice
       const b=ref[c.boss.age-1];if(!b)continue;compared++;
       const want=refState(b);delete c.pad;
-      if(c.gokuHp!==want.gokuHp&&[1,2,3,4].some(k=>ref[c.boss.age-1-k]?.gokuHp===c.gokuHp))want.gokuHp=c.gokuHp;
+      if(c.gokuHp!==want.gokuHp){
+        const k=[1,2,3,4,5,6,7,8].find(k=>ref[c.boss.age-1-k]?.gokuHp===c.gokuHp);
+        if(k){trail=Math.max(trail,k);want.gokuHp=c.gokuHp;}
+      }
       const d=diff(c,want);
       if(d.length)mismatches.push(`age ${c.boss.age}: ${d.slice(0,4).join('; ')}`);
     }
-    const report={compared,mismatchFrames:mismatches.length,first:mismatches.slice(0,12),lagged:res.lagged,
+    const report={compared,mismatchFrames:mismatches.length,first:mismatches.slice(0,12),lagged:res.lagged,hpTrail:trail,
       end:{cart:cart.at(-1),browser:ref[cart.at(-1).boss.age-1]?refState(ref[cart.at(-1).boss.age-1]):null}};
     writeFileSync(join(dir,'report.json'),JSON.stringify(report,null,1));
     // The fight steps once per field vblank (catching up after a slow game
     // frame, as the browser's clock does); a few pictures may still repeat
     // when the game's own frame runs long (its damage reaction).
     ok=ok&&compared>=frames-80&&mismatches.length===0&&res.lagged<=3;
-    console.log(`fight: ${ok?'pass':'FAIL'} compared ${compared} frames, ${mismatches.length} differ, ${res.lagged} lagged`);
+    console.log(`fight: ${ok?'pass':'FAIL'} compared ${compared} frames, ${mismatches.length} differ, ${res.lagged} lagged, HP trail ${trail}`);
     for(const m of mismatches.slice(0,8))console.log('  '+m);
     return ok;
   },
@@ -267,7 +275,9 @@ const cases={
       if(cl&&cl.phase!=='win'&&c.charge!==b.charge)d.push(`charge ${c.charge} / ${b.charge}`);
       for(const k of['x','y','r'])if(c.view[k]!==b.view[k])d.push(`camera.${k} ${c.view[k]} / ${b.view[k]}`);
       if(c.lon!==b.camera.lon)d.push(`lon ${c.lon} / ${b.camera.lon}`);
-      const ghp=[0,1,2,3,4].some(k=>ref[ref.indexOf(b)-k]?.gokuHp===c.gokuHp);
+      // (the game applies the damage queue itself: a few frames later, more
+      // when its own frame runs long)
+      const ghp=[0,1,2,3,4,5,6,7,8].some(k=>ref[ref.indexOf(b)-k]?.gokuHp===c.gokuHp);
       if(!ghp)d.push(`gokuHp ${c.gokuHp} / ${b.gokuHp}`);
       const text=await clashText(cl);
       if(text!==c.text)d.push(`text ${c.text} / ${text}`);

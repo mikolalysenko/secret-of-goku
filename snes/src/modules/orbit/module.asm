@@ -40,6 +40,16 @@ incsrc "audio/ids.asm"
 !orbit_in_dodge = !RAM_ORBIT+$20  ; b.dodgeCooldown
 !orbit_in_stun  = !RAM_ORBIT+$22  ; b.stun
 !orbit_land     = !RAM_ORBIT+$24  ; word: frames since the return to the deck (0: none)
+!orbit_marks    = !RAM_ORBIT+$40  ; 8 words (ORBIT_TIMING builds): scanlines at the frame's stages
+
+; ORBIT_TIMING builds: the scanline at stage n of the frame (orbit_marks).
+macro orbit_mark(n)
+if defined("ORBIT_TIMING")
+	JSR orbit_vcount
+	STA.l !orbit_marks+(<n>*2)
+	REP #$30
+endif
+endmacro
 !OE_SURGE = 0                     ; orbit_api_enter modes: the second surge's cinematic first
 !OE_INTRO = 1                     ; the orbit with its intro
 !OE_FIGHT = 2                     ; straight into the fight
@@ -91,6 +101,11 @@ incsrc "audio/ids.asm"
 !g_tmp      = !SB+$030            ; 16 bytes scratch ($30-$3F)
 !g_text     = !SB+$040            ; byte: lines 0..g_text-1 are Mode 1 (BG3 panel)
 !g_textset  = !SB+$041            ; byte: g_text the BGMODE table holds ($FF none)
+!g_shown_it = !SB+$042            ; the indirect table set the last vblank gave the HDMA
+!g_itband   = !SB+$044            ; 2 words: the band window table each set points at (0: none)
+!bd_shown   = !SB+$048            ; the band window table the HDMA reads now (0: none)
+!g_itend    = !SB+$04A            ; 2 words: the band lines each set gives them (0: none)
+!bd_sline   = !SB+$04E            ; the band lines the HDMA shows now
 ; Starfield (stars.asm). Per-depth words are indexed by depth*2 (2, 4, 6).
 !o_slot     = !SB+$090            ; word: next OAM byte offset
 !o_tmp      = !SB+$092            ; 6 bytes
@@ -342,6 +357,22 @@ assert !DRAW_END <= $8000, "orbit draw block overflow"
 !bg_tmp    = !SB+$E00              ; 16 bytes (beam_want arguments, scratch)
 !bg_mask   = !BB+$60               ; 8 bytes: plane 1 (outer) then plane 0 masks
 !bg_ct     = !BB+$68               ; beam_class_offset scratch
+!bg_src    = !BB+$6A               ; the waiting picture: source (offset, bank)
+!bg_bank   = !BB+$6C
+!bq_n      = !SB+$1770             ; class-1 pictures for the vblank: count,
+!bq_i      = !SB+$1772             ;   next to send,
+!BQ_E      = !SB+$1774             ;   4 x (slot * 2, source, bank, key) (to $1793)
+!bc_wait   = !SB+$1794             ; 2 words: frames each group's rebuild has waited (beam_defer)
+!n_cost    = !SB+$1798             ; orbit_nmi_room: the upload's lines
+!OBJ_PALS  = !SB+$17A0             ; OBJ palettes 0-1 (64 bytes) then 4-7 (128), as sent (to $185F)
+!BG_PALS   = !SB+$1860             ; BG colours 32-114: the globe's, then Goku's band (to $1905)
+!BG_PALS_N = 83                    ;   colours
+assert !ORBIT_GLOBE_CGRAM == 32 && !ORBIT_GLOBE_COLORS == 113-32, "orbit: BG_PALS holds the globe's colours as entries 32-112"
+!n_static  = !SB+$1906             ; nonzero: the vblank wrote the scene's fixed registers
+!n_turn    = !SB+$1908             ; nonzero: the beam pictures' turn before the band map (vblank)
+!ORBIT_NMI_END = 257               ; the scene's vblank uploads end by this scanline
+!ORBIT_NMI_LATE = 244              ; a vblank of ours starting this late keeps the fixed registers
+!BEAM_LATE = 180                   ; a build that can wait ends by this scanline
 !BB_END    = !BB+$70
 !BEAM_BUF  = !SB+$1000             ; 512-byte picture buffer ($7000-$71FF)
 
@@ -398,8 +429,46 @@ assert !DRAW_END <= $8000, "orbit draw block overflow"
 !fn_m     = !FN+$2C                ; 16 bytes: mix scratch
 !fn_q     = !FN+$3C                ; 8 bytes: |d| * t
 !fn_d     = !FN+$44                ; 32 bytes: drawing scratch
-!FN_END   = !FN+$64
-assert !FN_END <= !SB+$1800, "orbit finale block overflow"
+!fr_x     = !FN+$64                ; this frame's rays (fdraw.asm fc_rays), per
+!fr_y     = !FN+$68                ; group (0 Goku's, 1 Frieza's): origin,
+!fr_head  = !FN+$6C                ; heading, band radius (0: none), length,
+!fr_r     = !FN+$70                ; the end's x offset (Frieza's)
+!fr_len   = !FN+$74
+!fr_ex    = !FN+$78
+!FN_END   = !FN+$7C
+assert !FN_END <= !SB+$15A0, "orbit finale block overflow"
+
+; The band layers (bands.asm): two window tables (lines 0-105, 4 bytes a
+; line: W1 left/right, W2 left/right), the BG1 scroll split, state.
+!BD_TAB_A  = !SB+$E10              ; $6E10-$6FB7
+!BD_TAB_B  = !SB+$15A0             ; $75A0-$7747
+!BD_SCROLL = !SB+$1750             ; HDMA tables: +0 $210D/$210E (11 bytes), +12 $2131 (5 bytes)
+!bd_on     = !SB+$FB8              ; 2 words: group drawn by its layer this frame
+!bd_mr     = !SB+$FBC              ; 2 words: the radius its map holds (0: none)
+!bd_key    = !SB+$FC0              ; 4 words: the column each table holds (table * 4 + group * 2)
+!bd_rch    = !SB+$FC8              ; 2 words: the column's far end (reach)
+!bd_q      = !SB+$FCC              ; far end DDA: quotient (screen x)
+!bd_rm     = !SB+$FCE              ;   remainder (0-228)
+!bd_src    = !SB+$FD0              ; static rows (offset in the band data)
+!bd_end    = !SB+$FD2              ; lines the layers cover (0: none)
+!bd_tab    = !SB+$FD4              ; the published window table (0: none)
+!bd_up     = !SB+$FD6              ; map upload wanted: group * 2 + 2 (0: none)
+!bd_upr    = !SB+$FD8              ;   its radius
+!bd_lines  = !SB+$FDA
+!bd_out    = !SB+$FDC
+!bd_n      = !SB+$FDE
+!bd_kofs   = !SB+$FE0
+!bd_wrote  = !SB+$FE2
+!bd_t      = !SB+$FE4              ; 10 bytes scratch (to $FED)
+!bd_to1    = !SB+$FEE              ; 2 words: the rays' cross-section bounds (x + 2y)
+!bd_to2    = !SB+$FF2
+!bd_ulo    = !SB+$FF6              ; 2 words: their ends (2x - y), for the stars
+!bd_uhi    = !SB+$FFA
+!bd_g      = !SB+$FFE              ; (to $FFF)
+!BD_TILES  = $5000                 ; VRAM: the band tiles (orbit-fx band.bin)
+!BD_MAP1   = $5400                 ;   BG1 map (Frieza's band; the field's BG1 map area)
+!BD_MAP2   = $5C00                 ;   BG2 map (Goku's)
+!bw_ymin   = !SB+$DB4              ; 2 words: beam cells above this line are the layers'
 
 
 ; OBJ VRAM the scene owns while it shows (name base $6000, 16/32 sizes).
@@ -409,6 +478,7 @@ assert !FN_END <= !SB+$1800, "orbit finale block overflow"
 !OV_D16    = $08A                  ; 16x16, dynamic
 ; Sprite attributes (high byte of the OAM tile word): palette << 9, priority << 12.
 !OA_PRI    = $2000                 ; priority 2 (over the Mode 7 globe)
+!OA_PRI1   = $1000                 ; priority 1 (over the globe, under the finale's band layers)
 !OA_HFLIP  = $4000
 !OA_VFLIP  = $8000
 
@@ -418,7 +488,7 @@ assert !FN_END <= !SB+$1800, "orbit finale block overflow"
 !WK_ORB   = 4
 
 ; HDMA channels the scene programs (bits in the game's shadow $2C).
-!ORBIT_HDMA = $7C                  ; channels 2 (BGMODE), 3 (M7A), 4 (M7D), 5 (BG3VOFS), 6 (windows)
+!ORBIT_HDMA = $7F                  ; channels 0 ($2131 colour math), 1 ($210D/E: BG1 / Mode 7 scroll), 2 (BGMODE), 3 (M7A), 4 (M7D), 5 (BG3VOFS), 6 (windows)
 
 ; VRAM / OAM / CGRAM.
 !ORBIT_STAR_TILE  = $160           ; OBJ tiles $160-$17F (VRAM $7600-$77FF): star cells
@@ -471,6 +541,7 @@ orbit_fx_vram_c:  incbin "orbit-fx/vram_c.bin"   ; $180-$1BF
 orbit_fx_vram_d:  incbin "orbit-fx/vram_d.bin"   ; $000-$03F (resident cells beside the dynamic ones)
 orbit_fx_death:   incbin "orbit-fx/death.bin"    ; Death Balls: 12 x 32x32, 12 x 16x16
 orbit_text_tiles: incbin "orbit-text/tiles.bin"  ; BG3 text panel tiles
+orbit_band_tiles: incbin "orbit-fx/band.bin"     ; the finale's band layer tiles (BG1/BG2)
 orbit_f7_end:
 assert orbit_f7_end <= $F80000, "orbit bank F7 overflow"
 org $FA8000
@@ -490,6 +561,7 @@ incsrc "beam.asm"
 incsrc "text.asm"
 incsrc "finale.asm"
 incsrc "fdraw.asm"
+incsrc "bands.asm"
 incsrc "api.asm"
 orbit_code_end:
 assert orbit_code_end <= !CODE_ORBIT+$7C00, "orbit code bank overflow (bind.asm sits at $FC00)"

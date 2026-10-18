@@ -43,7 +43,11 @@ text_frame:
 	BEQ +
 	LDA.b #!ORBIT_TEXT_LINES
 +	STA.w !g_text
-	REP #$30
+	LDA.w !bd_end                  ; the finale's band layers are Mode 1 lines too
+	CMP.w !g_text
+	BCC +
+	STA.w !g_text
++	REP #$30
 	RTS
 
 ; frieza-finale-view.js: the phase's line (clashLines); the struggle's
@@ -85,7 +89,8 @@ text_nmi:
 	CMP.w !t_have
 	BNE +
 	RTS
-+	JSR orbit_nmi_time
++	LDA.w #6
+	JSR orbit_nmi_room
 	BCC +
 	RTS
 +	LDA.w !t_want
@@ -147,12 +152,18 @@ text_nmi:
 text_palettes:
 	LDA.b #4
 	STA.w $2121
-	LDX.w #$0000
--	LDA.l orbit_text_pal,X
-	STA.w $2122
-	INX
-	CPX.w #16
-	BCC -
+	REP #$20
+	LDA.w #$2200                   ; DMA mode 0 to $2122
+	STA.w $4370
+	LDA.w #orbit_text_pal
+	STA.w $4372
+	LDA.w #16
+	STA.w $4375
+	SEP #$20
+	LDA.b #orbit_text_pal>>16
+	STA.w $4374
+	LDA.b #$80
+	STA.w $420B
 	RTS
 
 ; BG3VOFS by HDMA (channel 5): -1 down to the panel's last line, then 0.

@@ -61,7 +61,7 @@ end
 function test()
   H.wait(20)
   H.result('imported', H.importSnesJs(BUNDLE))
-  H.wait(10)
+  H.wait(10 + (EXTRA or 0))
   H.w16(SB + 0x06, LON or 1848)
   H.w16(SB + 0x08, LAT or 3527)
   H.w16(0x7EDC0E, HP or 32000)

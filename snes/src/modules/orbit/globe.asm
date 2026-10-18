@@ -305,7 +305,15 @@ globe_build_step:
 ; lines [top, bot] = rows cy-R..cy+R clipped to 0..195.
 globe_itables:
 	REP #$30
-	STZ.w !g_ichg
+	; a set published but not yet taken by a vblank (a frame that ran
+	; long): the other one is still on screen, so wait a frame
+	LDA.w !g_cur_it
+	CMP.w !g_shown_it
+	BEQ +
+	LDA.w #$0001
+	STA.w !g_ichg
+	RTS
++	STZ.w !g_ichg
 	INC.w !s_kgen                  ; the stars' culling rows moved
 	LDA.w !cam_y
 	STA.w !g_icy
@@ -342,18 +350,23 @@ globe_itables:
 	BEQ .some
 	BCC .some
 .none
-	; nothing on screen: windows empty all frame
-	LDX.w !g_it
+	; nothing on screen: windows empty all frame (after the finale's band
+	; lines, if any)
+	LDA.w !g_it
+	CLC : ADC.w #!IT_BASE
+	TAY
+	STZ.w !g_tmp+14
+	JSR .bandLead
 	SEP #$20
 	LDA.b #$01
-	STA.w !IT_BASE+!it_win,X
+	STA.w !it_win,Y
 	LDA.b #$00
-	STA.w !IT_BASE+!it_win+3,X
-	STA.w !IT_BASE+!it_m7a,X
-	STA.w !IT_BASE+!it_m7d,X
+	STA.w !it_win+3,Y
+	STA.w !it_m7a,Y
+	STA.w !it_m7d,Y
 	REP #$20
 	LDA.w #!gb_empty
-	STA.w !IT_BASE+!it_win+1,X
+	STA.w !it_win+1,Y
 	JMP .publish
 .some
 	; first row on screen: (top - line of row -R), entry offsets
@@ -380,11 +393,15 @@ globe_itables:
 	LDA.w !g_it
 	CLC : ADC.w #!IT_BASE
 	TAY
-	; lead: lines [0, top), at most two entries of <= 127 lines
+	; lead: lines [0, top): the finale's band lines (their window table),
+	; then at most two entries of <= 127 lines
 	LDA.w !g_top
+	STA.w !g_tmp+14
+	JSR .bandLead
+	LDA.w !g_tmp+14
 	BEQ .body
 	JSR .lead
-	LDA.w !g_top
+	LDA.w !g_tmp+14
 	SEC : SBC.w #127
 	BMI .body
 	BEQ .body
@@ -414,8 +431,53 @@ globe_itables:
 	LDA.w #!gb_empty
 	STA.w !it_win+1,Y
 .publish
+	; the band table this set points at and its lines (bands.asm
+	; double-buffers on it; the vblank sets the layers up from them)
+	LDX.w #$0000
+	LDY.w !g_it
+	BEQ +
+	LDX.w #$0002
++	STZ.w !g_itband,X
+	STZ.w !g_itend,X
+	LDA.w !bd_end
+	BEQ +
+	LDA.w !bd_tab
+	BEQ +
+	STA.w !g_itband,X
+	LDA.w !bd_end
+	STA.w !g_itend,X
++
 	LDA.w !g_it
 	STA.w !g_cur_it
+	RTS
+; The finale's band lines (bands.asm): the windows from the band table,
+; a record a line; g_tmp+14 = the lead lines left after them. (The tables
+; stay within their 16 bytes: band lines end where the globe starts.)
+.bandLead
+	LDA.w !bd_end
+	BEQ .noBand
+	LDA.w !bd_tab
+	BEQ .noBand
+	LDA.w !bd_end
+	SEP #$20
+	STA.w !it_m7a,Y
+	STA.w !it_m7d,Y
+	ORA.b #$80
+	STA.w !it_win,Y
+	REP #$20
+	LDA.w !bd_tab
+	STA.w !it_win+1,Y
+	LDA.w !g_la
+	STA.w !it_m7a+1,Y
+	LDA.w !g_ld
+	STA.w !it_m7d+1,Y
+	INY : INY : INY
+	LDA.w !g_tmp+14
+	SEC : SBC.w !bd_end
+	BPL +
+	LDA.w #$0000
++	STA.w !g_tmp+14
+.noBand
 	RTS
 ; A16 = count of lead lines (uses min(A, 127)); points at harmless data.
 .lead

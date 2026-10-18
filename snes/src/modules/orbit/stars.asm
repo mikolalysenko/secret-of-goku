@@ -339,7 +339,14 @@ stars_build_step:
 	REP #$20
 	LDY.w !s_tmp+14
 .emit
-	LDA.l orbit_stars+2,X          ; flags | phase << 8
+	; well inside one of the finale's rays: hidden by it (its sprite
+	; would only take slivers from the beam's cells)
+	LDA.w !fn_phase
+	BEQ +
+	JSR stars_band_hidden
+	BCC +
+	JMP .next
++	LDA.l orbit_stars+2,X          ; flags | phase << 8
 	STA.w !s_tmp+10
 	AND.w #$0003
 	ASL
@@ -450,4 +457,70 @@ stars_oam:
 	INX : INX
 	CPX.w #$0008
 	BCC .list
+	RTS
+
+; Carry set when the star at (s_tmp+6, s_tmp+8) lies well inside one of
+; the finale's rays (3 pixels in): within its cross-section (To1 + 3 <=
+; x + 2y <= To2 - 3) and between its ends (Ulo + 6 <= 2x - y <= Uhi - 6;
+; bands.asm bands_bounds). Its sprite would only take slivers from the
+; beam's cells. Keeps X and Y.
+stars_band_hidden:
+	PHX
+	; around the band layers' last line the beam's cells straddle it (32
+	; lines tall, mostly hidden behind the layers, yet each still takes its
+	; slivers): no stars there, so the sparks in front keep theirs
+	LDA.w !bd_end
+	BEQ +
+	SEC : SBC.w #24
+	CMP.w !s_tmp+8
+	BEQ .yes
+	BCS +
+	LDA.w !bd_end
+	CLC : ADC.w #8
+	CMP.w !s_tmp+8
+	BCS .yes
++	LDA.w !s_tmp+8
+	ASL
+	CLC : ADC.w !s_tmp+6
+	STA.w !s_tmp+12                ; d = x + 2y
+	LDA.w !s_tmp+6
+	ASL
+	SEC : SBC.w !s_tmp+8
+	STA.w !s_tmp+14                ; e = 2x - y
+	LDX.w #$0000
+	JSR .in
+	BCS .yes
+	LDX.w #$0002
+	JSR .in
+	BCS .yes
+	PLX
+	CLC
+	RTS
+.yes
+	PLX
+	SEC
+	RTS
+.in
+	LDA.w !bd_to1,X
+	CLC : ADC.w #3
+	CMP.w !s_tmp+12
+	BEQ +
+	BCS .no                        ; (To1 = $7FFF: no ray)
++	LDA.w !bd_to2,X
+	SEC : SBC.w #3
+	CMP.w !s_tmp+12
+	BCC .no
+	LDA.w !bd_ulo,X
+	CLC : ADC.w #6
+	SEC : SBC.w !s_tmp+14
+	BEQ +
+	BPL .no                        ; Ulo + 6 > e
++	LDA.w !bd_uhi,X
+	SEC : SBC.w #6
+	SEC : SBC.w !s_tmp+14
+	BMI .no                        ; Uhi - 6 < e
+	SEC
+	RTS
+.no
+	CLC
 	RTS

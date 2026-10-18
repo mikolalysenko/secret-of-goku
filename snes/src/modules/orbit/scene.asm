@@ -39,6 +39,7 @@ orbit_field_frame:
 .common
 	JSR orbit_suppress_native
 	JSR orbit_oam_frame
+	%orbit_mark(6)
 	SEP #$20
 	LDA.l !orbit_state
 	CMP.b #!OS_LIVE
@@ -157,6 +158,13 @@ orbit_scene_init:
 	STA.w !g_icy
 	STZ.w !g_lw
 	STZ.w !g_cur_it
+	STZ.w !g_shown_it
+	STZ.w !g_itband
+	STZ.w !g_itband+2
+	STZ.w !g_itend
+	STZ.w !g_itend+2
+	STZ.w !bd_shown
+	STZ.w !bd_sline
 	STZ.w !g_ichg
 	STZ.w !g_bld
 	STZ.w !f_on
@@ -165,6 +173,8 @@ orbit_scene_init:
 	STZ.w !t_want
 	STZ.w !t_have
 	JSR beam_init
+	JSR bands_reset
+	JSR orbit_obj_pals_init
 	STZ.w !v_band
 	LDA.w #$FFFF                   ; no dynamic cell uploaded or wanted
 	STA.w !v_frieza
@@ -292,8 +302,11 @@ orbit_vcount:
 ; Live frame: camera, globe tables, stars.
 orbit_live_frame:
 	REP #$30
+	%orbit_mark(0)
 	LDA.w !f_on
-	BEQ .noFight
+	BNE +
+	JMP .noFight
++
 	; The browser runs the fight once per video frame, also while the
 	; game's own logic lags: one step per field vblank since the last frame
 	; (combat's public counter), at most 4; a step only after a ring or
@@ -320,13 +333,20 @@ orbit_live_frame:
 	REP #$30
 	DEC.w !f_steps
 	BNE -
+	%orbit_mark(1)
 	LDA.w !fn_phase
 	BEQ +
 	JSR finale_camera              ; the clash's own camera (clashCamera)
-+	JSR text_frame
+	JSR fc_rays                    ; its rays, for the band layers
++	%orbit_mark(2)
+	JSR bands_frame
+	%orbit_mark(3)
+	JSR text_frame
 	INC.w !cam_age
 	JSR globe_frame
+	%orbit_mark(4)
 	JSR stars_frame
+	%orbit_mark(5)
 	STZ.w !cam_tdx
 	STZ.w !cam_tdy
 	RTS
@@ -391,7 +411,11 @@ orbit_oam_frame:
 	REP #$20
 	BNE .close
 	JSR fight_draw
+	%orbit_mark(7)
 	JSR stars_oam
+	REP #$30
+	JSR orbit_pals_frame
+	JSR beam_queue
 .close
 	; Close the module area at our end: other modules add nothing while
 	; the orbit owns the picture, and the game's next OAM pass (C0:BCAB,
@@ -497,12 +521,16 @@ orbit_nmi_load:
 .effects
 	; Steps 9-11: the fight's resident effect cells (OBJ tiles $080-$0FF,
 	; $100-$13F, $180-$1BF); step 12: the text panel's BG3 tiles; step 13:
-	; OBJ tiles $000-$03F (the cells beside the dynamic ones).
+	; OBJ tiles $000-$03F (the cells beside the dynamic ones); step 14: the
+	; finale's band layer tiles.
 	CMP.b #$0C
 	BEQ .text
 	CMP.b #$0D
 	BNE +
 	JMP .fxd
++	CMP.b #$0E
+	BNE +
+	JMP .bands
 +	BCS .finish
 	REP #$20
 	AND.w #$00FF
@@ -558,6 +586,24 @@ orbit_nmi_load:
 	LDA.b #$80
 	STA.w $420B
 	JMP .next
+.bands
+	REP #$20
+	LDA.w #!BD_TILES
+	STA.w $2116
+	LDA.w #orbit_band_tiles
+	STA.w $4372
+	LDA.w #$1801
+	STA.w $4370
+	LDA.w #45*32
+	STA.w $4375
+	SEP #$20
+	LDA.b #orbit_band_tiles>>16
+	STA.w $4374
+	LDA.b #$80
+	STA.w $2115
+	LDA.b #$80
+	STA.w $420B
+	JMP .next
 .fxd
 	REP #$20
 	LDA.w #$6000
@@ -586,31 +632,33 @@ orbit_nmi_load:
 orbit_nmi_live:
 	PHB
 	PEA.w $3232 : PLB : PLB
+	; The registers only the scene writes (the game's own vblank leaves
+	; them alone): once, and again each vblank that has the time. A late
+	; one (the game's own work ran long: its digits after a hit) keeps
+	; them, so that ours still ends inside vblank. (BG1 / main screen /
+	; window masks: bands_nmi.)
+	REP #$20
+	JSR orbit_vcount
+	CMP.w #!ORBIT_NMI_LATE
 	SEP #$20
+	BCC .fixed
+	LDA.w !n_static
+	BNE .dynamic
+.fixed
+	LDA.b #$01
+	STA.w !n_static
 	LDA.b #$07
 	STA.w $2105
 	STZ.w $211A                    ; M7SEL: wrap, no flips
 	LDA.b #$00                     ; M7B = M7C = 0 (M7A, M7D come by HDMA)
 	STA.w $211C : STA.w $211C
 	STA.w $211D : STA.w $211D
-	LDA.w !g_m7x : STA.w $211F
-	LDA.w !g_m7x+1 : STA.w $211F
-	LDA.w !g_ybase : STA.w $2120
-	LDA.w !g_ybase+1 : STA.w $2120
-	LDA.w !g_hofs : STA.w $210D
-	LDA.w !g_hofs+1 : STA.w $210D
-	LDA.w !g_vofs : STA.w $210E
-	LDA.w !g_vofs+1 : STA.w $210E
-	LDA.b #$03                     ; BG1: window 1, inverted (shown inside W1)
-	STA.w $2123
 	STZ.w $2124
 	LDA.b #$A0                     ; colour window: W1 and W2
 	STA.w $2125
 	STZ.w $212A
 	LDA.b #$08                     ; colour window = W1 XOR W2 (the rim)
 	STA.w $212B
-	LDA.b #$01                     ; mask BG1 on the main screen
-	STA.w $212E
 	STZ.w $212F
 	LDA.b #$10                     ; colour math inside the colour window only
 	STA.w $2130
@@ -619,10 +667,19 @@ orbit_nmi_live:
 	LDA.b #$20|!ORBIT_RIM_R : STA.w $2132
 	LDA.b #$40|!ORBIT_RIM_G : STA.w $2132
 	LDA.b #$80|!ORBIT_RIM_B : STA.w $2132
-	LDA.b #$15                     ; BG1, BG3, OBJ
-	STA.w $212C
 	STZ.w $212D
-	; Colours: backdrop = sky, the globe (light level 3), the stars.
+.dynamic
+	LDA.w !g_m7x : STA.w $211F
+	LDA.w !g_m7x+1 : STA.w $211F
+	LDA.w !g_ybase : STA.w $2120
+	LDA.w !g_ybase+1 : STA.w $2120
+	LDA.w !g_hofs : STA.w $210D
+	LDA.w !g_hofs+1 : STA.w $210D
+	LDA.w !g_vofs : STA.w $210E
+	LDA.w !g_vofs+1 : STA.w $210E
+	; Colours (the game's vblank sent its whole palette before us): the
+	; backdrop = sky; entries 32-114, the globe (light level 3) and Goku's
+	; band; our OBJ palettes; the text panel's, while one shows.
 	STZ.w $2121
 	LDA.b #!ORBIT_SKY : STA.w $2122
 	LDA.b #!ORBIT_SKY>>8 : STA.w $2122
@@ -631,17 +688,20 @@ orbit_nmi_live:
 	REP #$20
 	LDA.w #$2200                   ; DMA mode 0 to $2122
 	STA.w $4370
-	LDA.w #orbit_globe_pal+(2*2*96) ; light level 3
+	LDA.w #!BG_PALS
 	STA.w $4372
-	LDA.w #2*!ORBIT_GLOBE_COLORS
+	LDA.w #2*!BG_PALS_N
 	STA.w $4375
 	SEP #$20
-	LDA.b #orbit_globe_pal>>16
+	LDA.b #$32
 	STA.w $4374
 	LDA.b #$80
 	STA.w $420B
 	JSR orbit_nmi_obj_palettes
+	LDA.w !t_have
+	BEQ +
 	JSR text_palettes
++
 	; HDMA: channel 2 BGMODE, 3 M7A, 4 M7Y, 6 windows (tables in bank $32).
 	REP #$20
 	LDA.w #$0500                   ; mode 0, $2105
@@ -663,6 +723,17 @@ orbit_nmi_live:
 	LDA.w !g_cur_it
 	CLC : ADC.w #!IT_BASE+!it_win
 	STA.w $4362
+	; what the HDMA reads from now on (the frame's double buffers wait on it)
+	LDA.w !g_cur_it
+	STA.w !g_shown_it
+	LDX.w #$0000
+	CMP.w #$0000
+	BEQ +
+	LDX.w #$0002
++	LDA.w !g_itband,X
+	STA.w !bd_shown
+	LDA.w !g_itend,X
+	STA.w !bd_sline
 	; channel 5: BG3VOFS -1 over a text panel's lines (BG rows show one
 	; line earlier than sprites and the browser's overlay), 0 for the HUD
 	LDA.w #$1202                   ; mode 2, $2112 (twice)
@@ -687,6 +758,8 @@ orbit_nmi_live:
 	LDA.w !N_HDMA
 	ORA.b #!ORBIT_HDMA
 	STA.w !N_HDMA
+	JSR bands_nmi                  ; the finale's band layers (or the plain layers)
+	SEP #$20
 	JSR orbit_nmi_cells
 	REP #$30
 	JSR text_nmi
@@ -699,74 +772,109 @@ orbit_nmi_live:
 ; form and HUD portrait); the beam bands (entries 2-3 of 4 and 5) take this frame's
 ; beam-body colours. A8, DB = $32.
 orbit_nmi_obj_palettes:
+	; palettes 0-1 and 4-7 from the scene's image (orbit_obj_pals_init)
 	REP #$20
 	LDA.w #$2200                   ; DMA mode 0 to $2122
 	STA.w $4370
-	LDA.w #32
-	STA.w $4375
-	SEP #$20
-	LDA.b #orbit_fx_pal_fire>>16
-	STA.w $4374
-	LDX.w #$0000
-.pal
-	LDA.l .cgram,X
-	STA.w $2121
-	REP #$20
-	LDA.l .src,X
+	LDA.w #!OBJ_PALS
 	STA.w $4372
-	LDA.w #32
+	LDA.w #64
 	STA.w $4375
 	SEP #$20
+	LDA.b #$32
+	STA.w $4374
+	LDA.b #128
+	STA.w $2121
 	LDA.b #$80
 	STA.w $420B
-	INX : INX
-	CPX.w #$000C
-	BCC .pal
-	; band colours: blue entries 2-3, pink entries 2-3
 	REP #$20
+	LDA.w #!OBJ_PALS+64
+	STA.w $4372
+	LDA.w #128
+	STA.w $4375
+	SEP #$20
+	LDA.b #192
+	STA.w $2121
+	LDA.b #$80
+	STA.w $420B
+	RTS
+
+; This frame's band colours into the images the vblank sends (the drawing
+; picked their frames): Goku's (blue) in entries 2-3 of OBJ palette 4 and
+; BG 113-114; Frieza's (pink) in entries 1-3 of OBJ palette 5: beam (1
+; white, 2 A, 3 B) or laser (1 A, 2 B, 3 white). M16/X16, DB = $32.
+orbit_pals_frame:
 	LDA.w !v_band
 	AND.w #$0001
 	ASL : ASL
 	TAX
-	SEP #$20
-	LDA.b #192+2
-	STA.w $2121
-	LDA.l orbit_fx_band_blue,X : STA.w $2122
-	LDA.l orbit_fx_band_blue+1,X : STA.w $2122
-	LDA.l orbit_fx_band_blue+2,X : STA.w $2122
-	LDA.l orbit_fx_band_blue+3,X : STA.w $2122
-	; pink: beam (1 white, 2 A, 3 B) or laser (1 A, 2 B, 3 white), with
-	; its own colour frame
-	REP #$20
+	LDA.l orbit_fx_band_blue,X
+	STA.w !OBJ_PALS+64+4
+	STA.w !BG_PALS+(2*(113-32))
+	LDA.l orbit_fx_band_blue+2,X
+	STA.w !OBJ_PALS+64+6
+	STA.w !BG_PALS+(2*(114-32))
 	LDA.w !v_pband
 	AND.w #$0001
 	ASL : ASL
 	TAX
-	SEP #$20
-	LDA.b #208+1
-	STA.w $2121
 	LDA.w !v_pmode
 	BNE .laser
-	LDA.b #$FF : STA.w $2122       ; 1: white
-	LDA.b #$7F : STA.w $2122
-	LDA.l orbit_fx_band_pink,X : STA.w $2122
-	LDA.l orbit_fx_band_pink+1,X : STA.w $2122
-	LDA.l orbit_fx_band_pink+2,X : STA.w $2122
-	LDA.l orbit_fx_band_pink+3,X : STA.w $2122
+	LDA.w #$7FFF
+	STA.w !OBJ_PALS+96+2
+	LDA.l orbit_fx_band_pink,X
+	STA.w !OBJ_PALS+96+4
+	LDA.l orbit_fx_band_pink+2,X
+	STA.w !OBJ_PALS+96+6
 	RTS
 .laser
-	LDA.l orbit_fx_band_pink,X : STA.w $2122
-	LDA.l orbit_fx_band_pink+1,X : STA.w $2122
-	LDA.l orbit_fx_band_pink+2,X : STA.w $2122
-	LDA.l orbit_fx_band_pink+3,X : STA.w $2122
-	LDA.b #$FF : STA.w $2122       ; 3: white
-	LDA.b #$7F : STA.w $2122
+	LDA.l orbit_fx_band_pink,X
+	STA.w !OBJ_PALS+96+2
+	LDA.l orbit_fx_band_pink+2,X
+	STA.w !OBJ_PALS+96+4
+	LDA.w #$7FFF
+	STA.w !OBJ_PALS+96+6
 	RTS
-.cgram
-	dw 128, 192, 208, 224, 240, 144
-.src
-	dw orbit_fx_pal_fire, orbit_fx_pal_blue, orbit_fx_pal_pink, orbit_pal_frieza, orbit_fx_pal_gold
-	dw orbit_pal_goku_ssj          ; palette 1: the goku module's Super Saiyan colours
+
+; The scene's OBJ palette image (!OBJ_PALS) as the vblank sends it: 0 fire,
+; 1 Goku (Super Saiyan, as the goku module sets it for his form and HUD
+; portrait), then 4 blue, 5 pink, 6 Frieza, 7 gold and the stars. M16/X16,
+; DB = $32.
+orbit_obj_pals_init:
+	PHB
+	LDX.w #orbit_fx_pal_fire
+	LDY.w #!OBJ_PALS
+	LDA.w #31
+	MVN $32,orbit_fx_pal_fire>>16
+	LDX.w #orbit_pal_goku_ssj
+	LDY.w #!OBJ_PALS+32
+	LDA.w #31
+	MVN $32,orbit_pal_goku_ssj>>16
+	LDX.w #orbit_fx_pal_blue
+	LDY.w #!OBJ_PALS+64
+	LDA.w #31
+	MVN $32,orbit_fx_pal_blue>>16
+	LDX.w #orbit_fx_pal_pink
+	LDY.w #!OBJ_PALS+96
+	LDA.w #31
+	MVN $32,orbit_fx_pal_pink>>16
+	LDX.w #orbit_pal_frieza
+	LDY.w #!OBJ_PALS+128
+	LDA.w #31
+	MVN $32,orbit_pal_frieza>>16
+	LDX.w #orbit_fx_pal_gold
+	LDY.w #!OBJ_PALS+160
+	LDA.w #31
+	MVN $32,orbit_fx_pal_gold>>16
+	; the globe's colours (light level 3), Goku's band after them
+	LDX.w #orbit_globe_pal+(2*2*96)
+	LDY.w #!BG_PALS
+	LDA.w #2*!ORBIT_GLOBE_COLORS-1
+	MVN $32,orbit_globe_pal>>16
+	PLB
+	STZ.w !n_static
+	STZ.w !n_turn
+	JMP orbit_pals_frame
 
 ; Dynamic cells wanted by the frame (Frieza's frame, Goku's pose, the Death
 ; Ball frames), each sent once, while the vblank lasts. A8, DB = $32.
@@ -776,10 +884,9 @@ orbit_nmi_cells:
 	LDA.w !v_frieza
 	CMP.w !v_frieza_h
 	BEQ .goku
-	JSR orbit_nmi_time
-	BCC +
-	JMP .out
-+
+	LDA.w #5
+	JSR orbit_nmi_room
+	BCS .goku
 	LDA.w !v_frieza
 	STA.w !v_frieza_h
 	STA.w !n_src
@@ -796,10 +903,9 @@ orbit_nmi_cells:
 	LDA.w !v_goku
 	CMP.w !v_goku_h
 	BEQ .d32
-	JSR orbit_nmi_time
-	BCC +
-	JMP .out
-+
+	LDA.w #2
+	JSR orbit_nmi_room
+	BCS .d32
 	LDA.w !v_goku
 	STA.w !v_goku_h
 	STA.w !n_src
@@ -816,10 +922,9 @@ orbit_nmi_cells:
 	LDA.w !v_d32
 	CMP.w !v_d32_h
 	BEQ .d16
-	JSR orbit_nmi_time
-	BCC +
-	JMP .out
-+
+	LDA.w #5
+	JSR orbit_nmi_room
+	BCS .d16
 	LDA.w !v_d32
 	STA.w !v_d32_h
 	XBA : ASL                      ; * 512
@@ -838,8 +943,9 @@ orbit_nmi_cells:
 	LDA.w !v_d16
 	CMP.w !v_d16_h
 	BEQ .beam
-	JSR orbit_nmi_time
-	BCS .out
+	LDA.w #2
+	JSR orbit_nmi_room
+	BCS .beam
 	LDA.w !v_d16
 	STA.w !v_d16_h
 	XBA : LSR                      ; * 128
@@ -858,7 +964,8 @@ orbit_nmi_cells:
 	; a finished beam picture: 4 rows of 128 bytes to its slot
 	LDA.w !bg_ready
 	BEQ .out
-	JSR orbit_nmi_time
+	LDA.w #5
+	JSR orbit_nmi_room
 	BCS .out
 	LDA.w !bg_ready
 	DEC
@@ -869,9 +976,9 @@ orbit_nmi_cells:
 	LDA.w !bg_key
 	STA.w !bs_have,X
 	STZ.w !bg_ready
-	LDA.w #!BEAM_BUF
+	LDA.w !bg_src                  ; the buffer, or a picture made by the generator
 	STA.w !n_src
-	LDA.w #$0032
+	LDA.w !bg_bank
 	STA.w !n_bank
 	LDA.w #4
 	STA.w !n_rows
@@ -879,13 +986,59 @@ orbit_nmi_cells:
 	STA.w !n_len
 	JSR orbit_nmi_rows
 .out
+	; what is left: the band layer's map and the generator's class-1
+	; pictures, taking turns when both wait
+	LDA.w !n_turn
+	BEQ +
+	JSR orbit_nmi_queue
+	JSR bands_nmi_map
+	SEP #$20
+	RTS
++	JSR bands_nmi_map
+	JSR orbit_nmi_queue
 	SEP #$20
 	RTS
 
-; Carry set when the scanline is past 247 or not in vblank (a 512-byte
-; cell takes about three lines; the field NMI's own work follows ours and
-; must end inside vblank, after line 261). M16.
-orbit_nmi_time:
+; The generator's class-1 pictures the frame queued (beam_queue), in its
+; order, while the vblank has room. M16/X16.
+orbit_nmi_queue:
+-	LDA.w !bq_i
+	CMP.w !bq_n
+	BCS +
+	LDA.w #5
+	JSR orbit_nmi_room
+	BCS +
+	LDA.w !bq_i
+	ASL : ASL : ASL
+	TAY
+	LDX.w !BQ_E+0,Y
+	LDA.l beam_slot_vram,X
+	STA.w !n_vram
+	LDA.w !BQ_E+6,Y
+	STA.w !bs_have,X
+	LDA.w !BQ_E+2,Y
+	STA.w !n_src
+	LDA.w !BQ_E+4,Y
+	STA.w !n_bank
+	LDA.w #4
+	STA.w !n_rows
+	LDA.w #128
+	STA.w !n_len
+	JSR orbit_nmi_rows
+	INC.w !bq_i
+	STZ.w !n_turn
+	BRA -
++	RTS
+
+; Carry clear when the vblank has room for an upload of A16 scanlines: it
+; would end by !ORBIT_NMI_END. The modules after ours and the field's HDMA
+; enable must still come before line 262: past it the HDMA misses its
+; start of frame and the picture is lost for a frame. A 512-byte cell in
+; 4 rows takes 4.3 lines, a band map (896 bytes) 5.5, a text panel 6.
+; The game's own vblank (its palette, OAM and, during a hit, its digits)
+; ends anywhere from line 236 to 250. M16.
+orbit_nmi_room:
+	STA.w !n_cost
 	SEP #$20
 	LDA.w $213F
 	LDA.w $2137
@@ -897,7 +1050,8 @@ orbit_nmi_time:
 	REP #$20
 	CMP.w #225
 	BCC .late
-	CMP.w #248
+	CLC : ADC.w !n_cost
+	CMP.w #!ORBIT_NMI_END+1
 	BCS .late
 	CLC
 	RTS

@@ -286,8 +286,14 @@ fc_frieza_at:
 	SEC : SBC.w #12
 	STA.w !d_x
 	LDA.w !b_y : SEC : SBC.w #12 : STA.w !d_y
+	; behind the rays he fires (priority 1, under the band layers); over
+	; the victory wave, which the view draws before him
+	LDA.w #!OV_FRIEZA|(!OFX_PAL_FRIEZA<<9)|!OA_PRI1
+	LDX.w !fn_phase
+	CPX.w #!FN_WIN
+	BNE +
 	LDA.w #!OV_FRIEZA|(!OFX_PAL_FRIEZA<<9)|!OA_PRI
-	STA.w !d_ta
++	STA.w !d_ta
 	LDA.w #$0001
 	STA.w !d_big
 	JMP ofx_put
@@ -361,20 +367,17 @@ fc_purple:
 +	RTS
 
 ; ---------------------------------------------------------------------------
-; This frame's rays for beam.asm: group 0 Goku's (blue, from his hands),
-; group 1 Frieza's (pink, ending where they meet), and the band colour
-; frames of the clash's age.
-fc_beam_wants:
-	LDA.w !fn_age
-	LSR : LSR
-	AND.w #$0001
-	STA.w !v_band
-	STA.w !v_pband
-	STZ.w !v_pmode
-	LDX.w #$0000
-	JSR beam_off
-	LDX.w #$0002
-	JSR beam_off
+; This frame's rays (frame side, before the band layers and the globe's
+; tables): group 0 Goku's (blue, from his hands), group 1 Frieza's (pink,
+; to where they meet): origin, heading, band radius (0: no ray), length,
+; and the end's x offset along the quantised heading (fx.beam's own end).
+fc_rays:
+	STZ.w !fr_r
+	STZ.w !fr_r+2
+	LDA.w !f_hx : STA.w !fr_x
+	LDA.w !f_hy : STA.w !fr_y
+	LDA.w !b_x : STA.w !fr_x+2
+	LDA.w !b_y : STA.w !fr_y+2
 	LDA.w !fn_phase
 	CMP.w #!FN_LAUNCH
 	BEQ .launch
@@ -392,15 +395,11 @@ fc_beam_wants:
 	CMP.w #!FNT_V_BEAMEND
 	BCC +
 	RTS
-+	STA.w !fn_d+4
-	ASL
-	CLC : ADC.w !fn_d+4
-	ASL
-	TAX
-	LDA.l orbit_fn_win,X : STA.w !fn_d+6       ; R
-	LDA.l orbit_fn_win+2,X : STA.w !fn_d+8     ; length
-	LDA.l orbit_fn_win+4,X : STA.w !fn_d+10    ; heading
-	JMP fc_want_blue
++	JSR fc_x6
+	LDA.l orbit_fn_win,X : STA.w !fr_r
+	LDA.l orbit_fn_win+2,X : STA.w !fr_len
+	LDA.l orbit_fn_win+4,X : STA.w !fr_head
+	RTS
 .launch
 	LDA.w !fn_age
 	CMP.w #!FNT_LAUNCH+1
@@ -408,30 +407,23 @@ fc_beam_wants:
 	LDA.w #!FNT_LAUNCH
 +	ASL : ASL : ASL
 	TAX
-	LDA.l orbit_fn_launch,X : STA.w !fn_d+8
-	LDA.l orbit_fn_launch+2,X : STA.w !fn_d+10
-	LDA.l orbit_fn_launch+4,X : STA.w !fn_d+12
-	LDA.l orbit_fn_launch+6,X : STA.w !fn_d+14
-	LDA.w #28 : STA.w !fn_d+6
-	JSR fc_want_blue
-	LDA.w !fn_d+12 : STA.w !fn_d+8
-	LDA.w !fn_d+14 : STA.w !fn_d+10
-	LDA.w #30 : STA.w !fn_d+6
-	JMP fc_want_purple
+	LDA.l orbit_fn_launch,X : STA.w !fr_len
+	LDA.l orbit_fn_launch+2,X : STA.w !fr_head
+	LDA.l orbit_fn_launch+4,X : STA.w !fr_len+2
+	LDA.l orbit_fn_launch+6,X : STA.w !fr_head+2
+	LDA.w #28 : STA.w !fr_r
+	LDA.w #30 : STA.w !fr_r+2
+	JMP fc_ray_end
 .recoil
 	LDA.w !fn_age
 	CMP.w #32
 	BCC +
 	RTS
-+	STA.w !fn_d+4
-	ASL
-	CLC : ADC.w !fn_d+4
-	ASL
-	TAX
-	LDA.l orbit_fn_recoil,X : STA.w !fn_d+6
-	LDA.l orbit_fn_recoil+2,X : STA.w !fn_d+8
-	LDA.l orbit_fn_recoil+4,X : STA.w !fn_d+10
-	JMP fc_want_purple
++	JSR fc_x6
+	LDA.l orbit_fn_recoil,X : STA.w !fr_r+2
+	LDA.l orbit_fn_recoil+2,X : STA.w !fr_len+2
+	LDA.l orbit_fn_recoil+4,X : STA.w !fr_head+2
+	JMP fc_ray_end
 .struggle
 	; p = point(shown): round(h + (b - h) * shown)
 	LDA.w !fn_s
@@ -444,8 +436,17 @@ fc_beam_wants:
 	LDA.w #$FFFF
 	STA.w !fn_t
 	STA.w !fn_t+2
-+	LDA.w #28 : LDX.w #204 : JSR finale_mix : STA.w !fn_px
-	LDA.w #136 : LDX.w #48 : JSR finale_mix : STA.w !fn_py
++	; (for the picture only: round(176 s) and round(88 s) from s's top 16
+	; bits)
+	LDA.w #176
+	JSR fc_scale_t
+	CLC : ADC.w #28
+	STA.w !fn_px
+	LDA.w #88
+	JSR fc_scale_t
+	EOR.w #$FFFF
+	SEC : ADC.w #136
+	STA.w !fn_py
 	; Goku's: 28 + pulse, pulse = (age >> 3) % 3
 	LDA.w !fn_age
 	LSR : LSR : LSR
@@ -459,11 +460,13 @@ fc_beam_wants:
 	STA.w !fn_d+0                  ; pulse
 	CLC : ADC.w #28
 	JSR fc_band_radius
-	STA.w !fn_d+6
+	STA.w !fr_r
 	LDA.w !fn_px : SEC : SBC.w #28 : STA.w !fn_d+12
 	LDA.w !fn_py : SEC : SBC.w #136 : STA.w !fn_d+14
-	JSR fc_ray_to
-	JSR fc_want_blue
+	LDA.w #15
+	JSR fc_ray_meet
+	LDA.w !fn_d+8 : STA.w !fr_len
+	LDA.w !fn_d+10 : STA.w !fr_head
 	; Frieza's: 35 - pulse + power * 4, power during a surge =
 	; min(3, 1 + (s >> 3), ceil((90 - s) / 12))
 	STZ.w !fn_d+2
@@ -497,11 +500,79 @@ fc_beam_wants:
 	SEC : SBC.w !fn_d+0
 	CLC : ADC.w #35
 	JSR fc_band_radius
-	STA.w !fn_d+6
+	STA.w !fr_r+2
 	LDA.w !fn_px : SEC : SBC.w #204 : STA.w !fn_d+12
 	LDA.w !fn_py : SEC : SBC.w #48 : STA.w !fn_d+14
-	JSR fc_ray_to
-	JMP fc_want_purple
+	LDA.w #7
+	JSR fc_ray_meet
+	LDA.w !fn_d+8 : STA.w !fr_len+2
+	LDA.w !fn_d+10 : STA.w !fr_head+2
+	; (fall through)
+
+; Frieza's ray's end x offset, along its quantised heading as fx.beam
+; recomputes it: round(vx * length / 256).
+fc_ray_end:
+	LDA.w !fr_head+2
+	JSR orbit_vec                  ; X = vx
+	LDA.w !fr_len+2
+	JSR ofx_mulr
+	STA.w !fr_ex+2
+	RTS
+
+; A16 = k (< 256) -> A16 = round(k * t), t = fn_t's top 16 bits (1 at
+; $FFFF).
+fc_scale_t:
+	STA.w !fn_d+22
+	LDA.w !fn_t+2
+	CMP.w #$FFFF
+	BNE +
+	LDA.w !fn_d+22
+	RTS
++	SEP #$20
+	LDA.w !fn_d+22 : STA.w $4202
+	LDA.w !fn_t+2 : STA.w $4203    ; k * t_lo
+	REP #$20
+	NOP : NOP : NOP
+	LDA.w $4216
+	XBA : AND.w #$00FF
+	STA.w !fn_d+24
+	SEP #$20
+	LDA.w !fn_t+3 : STA.w $4203    ; k * t_hi
+	REP #$20
+	NOP : NOP : NOP
+	LDA.w $4216
+	CLC : ADC.w !fn_d+24           ; k * t >> 8 (8.8)
+	CLC : ADC.w #$0080             ; round
+	XBA : AND.w #$00FF
+	RTS
+
+; A16 = age -> X16 = age * 6 (three-word table rows).
+fc_x6:
+	STA.w !fn_d+4
+	ASL
+	CLC : ADC.w !fn_d+4
+	ASL
+	TAX
+	RTS
+
+; This frame's sprite cells for the rays (drawing side) and the band
+; colour frames of the clash's age. Where a band layer draws a ray (bands.asm)
+; its cells cover only the lines below it.
+fc_beam_wants:
+	LDA.w !fn_age
+	LSR : LSR
+	AND.w #$0001
+	STA.w !v_band
+	STA.w !v_pband
+	STZ.w !v_pmode
+	LDX.w #$0000
+	JSR beam_off
+	LDX.w #$0002
+	JSR beam_off
+	LDX.w #$0000
+	JSR fc_want
+	LDX.w #$0002
+	JMP fc_want
 
 ; A16 = an integer width -> max(2, round(width / 2) * 2).
 fc_band_radius:
@@ -511,6 +582,40 @@ fc_band_radius:
 	BCS +
 	LDA.w #2
 +	RTS
+
+; The struggle's rays to where they meet (a 1:2 slope): fn_d+12/+14 =
+; the end minus the origin, A16 = the long ray's heading -> fn_d+8 =
+; Math.round(Math.hypot) from orbit_fn_hyp, fn_d+10 = the heading (worked
+; out for the shortest rays only).
+fc_ray_meet:
+	STA.w !fn_d+10
+	LDA.w !fn_d+12
+	JSR orbit_abs
+	STA.w !fn_d+16                 ; |dx|
+	CMP.w #8
+	BCS +
+	JMP fc_ray_to                  ; a short ray: its own heading and length
++	LDA.w !fn_d+14
+	JSR orbit_abs
+	STA.w !fn_d+18
+	LDA.w !fn_d+16
+	LSR
+	EOR.w #$FFFF
+	SEC : ADC.w !fn_d+18           ; |dy| - (|dx| >> 1)
+	CLC : ADC.w #2
+	CMP.w #5
+	BCC +
+	JMP fc_ray_to                  ; (off the table: worked out)
++	STA.w !fn_d+18
+	LDA.w !fn_d+16
+	ASL : ASL
+	CLC : ADC.w !fn_d+16           ; |dx| * 5
+	CLC : ADC.w !fn_d+18
+	TAX
+	LDA.l orbit_fn_hyp,X
+	AND.w #$00FF
+	STA.w !fn_d+8
+	RTS
 
 ; fn_d+12/+14 = the ray's end minus its origin -> fn_d+8 = length
 ; (rounded), fn_d+10 = orbitHeading.
@@ -525,62 +630,48 @@ fc_ray_to:
 	STA.w !fn_d+10
 	RTS
 
-; Group 0 from Goku's hands: band radius fn_d+6, length fn_d+8, heading
-; fn_d+10; the far end runs on under Frieza's band (or off screen).
-fc_want_blue:
-	LDA.w !fn_d+8
-	BEQ .none
-	LDA.w !fn_d+6
-	BEQ .none
-	LDA.w !f_hx : STA.w !bw_x
-	LDA.w !f_hy : STA.w !bw_y
-	LDA.w !fn_d+10 : STA.w !bg_tmp
-	LDA.w !fn_d+6 : STA.w !bg_tmp+2
-	STZ.w !bg_tmp+4
-	LDA.w !fn_d+8 : STA.w !bg_tmp+6
-	LDA.w #(!OFX_PAL_BLUE<<9)|!OA_PRI : STA.w !bg_tmp+8
-	LDX.w #$0000
-	JSR beam_want
-	; cells: ceil(length / period)
-	LDA.w !fn_d+8
-	LDX.w #$0000
-	JSR fc_cells
-	STA.w !bw_len
-.none
-	RTS
-
-; Group 1 from Frieza, its band ending at the ray's end: for the shallow
-; headings (class 1, period (32, 16) = 16 steps of (2, 1), steps that keep
-; the band's picture) the chain lattice is pushed back behind him so that
-; the last cells' far edge falls on the end's column.
-fc_want_purple:
-	LDA.w !fn_d+8
+; X16 = group: its ray's cells (beam.asm), behind the band layers (sprite
+; priority 1). Goku's run on from his hands (the far end under Frieza's
+; band, or off screen); Frieza's, for the shallow heading 7 (class 1,
+; period (32, 16) = 16 steps of (2, 1), steps that keep the band's
+; picture), are pushed back behind him so that the last cells' far edge
+; falls on the end's column.
+fc_want:
+	LDA.w !fr_r,X
 	BNE +
 	RTS
-+	LDA.w !fn_d+6
++	LDA.w !fr_len,X
 	BNE +
 	RTS
-+	LDA.w !b_x : STA.w !bw_x+2
-	LDA.w !b_y : STA.w !bw_y+2
-	LDA.w !fn_d+10 : STA.w !bg_tmp
-	LDA.w !fn_d+6 : STA.w !bg_tmp+2
++	STX.w !fn_d+20
+	LDA.w !fr_x,X : STA.w !bw_x,X
+	LDA.w !fr_y,X : STA.w !bw_y,X
+	LDA.w !fr_head,X : STA.w !bg_tmp
+	LDA.w !fr_r,X : STA.w !bg_tmp+2
 	STZ.w !bg_tmp+4
-	LDA.w !fn_d+8 : STA.w !bg_tmp+6
-	LDA.w #(!OFX_PAL_PINK<<9)|!OA_PRI : STA.w !bg_tmp+8
-	LDX.w #$0002
+	LDA.w !fr_len,X : STA.w !bg_tmp+6
+	LDA.l .pal,X : STA.w !bg_tmp+8
 	JSR beam_want
-	LDA.w !fn_d+8
-	LDX.w #$0002
+	LDX.w !fn_d+20
+	LDA.w !fr_len,X
 	JSR fc_cells
-	STA.w !bw_len+2
-	LDA.w !fn_d+10
+	LDX.w !fn_d+20
+	STA.w !bw_len,X
+	; the lines the band layer draws are not the cells'
+	LDA.w !bd_on,X
+	BEQ +
+	LDA.w !bd_end
++	STA.w !bw_ymin,X
+	CPX.w #$0002
+	BNE .done
+	LDA.w !fr_head+2
 	CMP.w #7
-	BNE .none
+	BNE .done
 	; heading 7 (-229, 114): cells run left; cell i's left edge is at
 	; x0 - 32 i - 31 (x0 = the origin column). With n = ceil((b.x - e.x
 	; + 1) / 32) cells and k = (e.x - b.x + 32 n - 1) >> 1 steps of (2, -1)
 	; back, the last left edge lands on e.x or the column before it.
-	LDA.w !fn_d+12                 ; e.x - b.x (negative)
+	LDA.w !fr_ex+2                 ; e.x - b.x (negative)
 	EOR.w #$FFFF : INC
 	CLC : ADC.w #32                ; b.x - e.x + 1 + 31
 	LSR : LSR : LSR : LSR : LSR
@@ -591,22 +682,24 @@ fc_want_purple:
 	LDA.w #12
 +	STA.w !bw_len+2
 	XBA : LSR : LSR : LSR          ; 32 n
-	CLC : ADC.w !fn_d+12
+	CLC : ADC.w !fr_ex+2
 	DEC
-	BMI .none
+	BMI .done
 	LSR                            ; k
 	CMP.w #16
 	BCC +
 	LDA.w #15
 +	STA.w !fn_d+4
 	ASL
-	CLC : ADC.w !b_x
+	CLC : ADC.w !fr_x+2
 	STA.w !bw_x+2
-	LDA.w !b_y
+	LDA.w !fr_y+2
 	SEC : SBC.w !fn_d+4
 	STA.w !bw_y+2
-.none
+.done
 	RTS
+.pal
+	dw (!OFX_PAL_BLUE<<9)|!OA_PRI1, (!OFX_PAL_PINK<<9)|!OA_PRI1
 
 ; A16 = length, X16 = group -> A16 = cells along the beam: ceil(length /
 ; period) (beam_want's period per class), 1-12.

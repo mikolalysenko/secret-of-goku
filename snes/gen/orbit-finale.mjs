@@ -104,70 +104,120 @@ export async function generate({repo,outDir,xdata}){
     }
     words('orbit_fn_descent','descent: Goku\'s top left x, y and size per age from the descent',v);
   }
+  // The struggle's ray lengths from where the beams meet: for |dx| = 0-176
+  // and |dy| - floor(|dx| / 2) = -2..2, Math.round(Math.hypot(dx, dy))
+  // (both rays run at a 1:2 slope; checked over every shown value).
+  {
+    const L=[];for(let d=0;d<=176;d++)for(let e=-2;e<=2;e++){const dy=(d>>1)+e;L.push(Math.round(Math.hypot(d,dy)));}
+    for(let i=0;i<=20000;i++){
+      const t=i/20000,p={x:Math.round(28+176*t),y:Math.round(136-88*t)};
+      for(const o of[H,B]){const dx=Math.abs(p.x-o.x),dy=Math.abs(p.y-o.y),e=dy-(dx>>1);
+        if(e<-2||e>2)throw Error(`orbit-finale: meeting point off the table (${dx}, ${dy})`);
+        if(dx>=8&&orbitHeading(p.x-o.x,p.y-o.y)!==(o===H?15:7))throw Error('orbit-finale: struggle heading');}
+    }
+    lines.push('; struggle ray lengths: |dx| 0-176 x (|dy| - |dx| / 2) -2..2 (bytes)','orbit_fn_hyp:');
+    for(let i=0;i<L.length;i+=20)lines.push('\tdb '+L.slice(i,i+20).join(','));
+  }
   {
     const v=[];
     for(let a=victoryTiming.reward;a<victoryTiming.acquire;a++){const p=point(1-ease((a-victoryTiming.reward)/(victoryTiming.acquire-victoryTiming.reward)));v.push(Math.round(p.x),Math.round(p.y));}
     words('orbit_fn_pouch','pouch: centre x, y per age from the reward',v);
   }
-  // Beam bands above the globe: per band and radius, each row's band extent
-  // (|v| <= R and u >= 0, exactly as orbit-effects.js tests each pixel; the
-  // far end is cut at run time), and the BG map profile of its inner half:
-  // the inner/outer edges x + 2y = T1, T2 fitted to the browser's pixels
-  // (the edge's true slope is -114/229, half a pixel off -1/2 across the
-  // screen), as entries of the band tiles (orbit-fx.mjs band.bin).
+  // Beam bands above the globe (bands.asm). Per band and radius, the BG map
+  // profile of the band's cross-section along d = x + 2y: clear, outer
+  // quarter, inner half, outer quarter, clear (thresholds To1 < T1 < T2 <
+  // To2 fitted to orbit-effects.js's own pixels, |v| <= R; the true edges
+  // have slope -114/229, half a pixel off -1/2 across the screen), as
+  // entries of the band tiles (orbit-fx.mjs band.bin: 0 clear, 1 outer,
+  // 2 inner, 3 + c - 1 clear|outer at c, 24 + c - 1 outer|inner at c; turned
+  // half round they read outer|clear and inner|outer at 22 - c). The
+  // windows only cut the band's two ends (u = 0 at the origin, u = reach):
+  // per row, the origin's cut and, per reach, the far end's (exact).
   {
-    const stat=[],prof=[];
+    const tilePx=(id,flip,d)=>{if(flip)d=21-d;if(id===0)return 0;if(id===1)return 1;if(id===2)return 2;
+      if(id<24){const c=id-2;return d<c?0:1;}const c=id-23;return d<c?1:2;};
+    const cands=[[0,0],[1,0],[2,0]];for(let id=3;id<45;id++)cands.push([id,0],[id,1]);
+    const prof=[],thr=[];
     for(const b of BANDS){
-      const st=[],pr=[];
       for(let k=0;k<BAND_RS;k++){
-        const R=2+k*2,hist=[0,0,0].map(()=>new Int32Array(512));
-        for(let y=0;y<BAND_LINES;y++){
-          let lo=999,hi=-999;
-          for(let x=0;x<256;x++){
-            const ox=x-b.x,oy=y-b.y,u=(ox*b.vx+oy*b.vy)>>8,v=(-ox*b.vy+oy*b.vx)>>8;
-            if(u<0||Math.abs(v)>R)continue;
-            if(x<lo)lo=x;if(x>hi)hi=x;
-            const idx=Math.min(3,Math.floor((v+R)*4/(2*R+1)));
-            hist[idx===1||idx===2?1:idx===0?0:2][x+2*y]++;
-          }
-          // the static extent; contiguous by construction (two half planes)
-          st.push(...(lo<=hi?[lo,hi]:[0xff,0]));
+        // classes per d: 0 clear (low d), 1 outer (low), 2 inner, 3 outer (high), 4 clear (high)
+        const R=2+k*2,h=[0,1,2,3,4].map(()=>new Int32Array(560));
+        for(let y=0;y<BAND_LINES;y++)for(let x=0;x<256;x++){
+          const ox=x-b.x,oy=y-b.y,v=(-ox*b.vy+oy*b.vx)>>8,d=x+2*y;
+          // v grows with d for Goku's band, falls with it for Frieza's
+          const w=b.vx>0?v:-v;
+          let c;
+          if(w<-R)c=0;else if(w>R)c=4;
+          else{const idx=Math.min(3,Math.floor((v+R)*4/(2*R+1)));c=idx===1||idx===2?2:(b.vx>0?(idx===0?1:3):(idx===3?1:3));}
+          h[c][d]++;
         }
-        // T1, T2: fewest pixels on the wrong side (outer for d < T1 and
-        // d >= T2, inner between)
-        const inner=hist[1],outer=hist[0].map((c,i)=>c+hist[2][i]),cumI=[0],cumO=[0];
-        for(let d=0;d<512;d++){cumI.push(cumI[d]+inner[d]);cumO.push(cumO[d]+outer[d]);}
-        let best=Infinity,T1=0,T2=0;
-        for(let t1=0;t1<=511;t1++)for(let t2=t1;t2<=512;t2++){
-          const e=cumI[t1]+(cumO[t2]-cumO[t1])+(cumI[512]-cumI[t2]);
-          if(e<best){best=e;T1=t1;T2=t2;}
-        }
+        // each threshold fitted on its own pair of classes: e(T) = #lo at d >= T + #hi at d < T
+        const fit=(lo,hi)=>{let e=0;for(let d=0;d<560;d++)e+=h[lo][d];let best=e,T=0;
+          for(let d=0;d<560;d++){e+=h[hi][d]-h[lo][d];if(e<best){best=e;T=d+1;}}return T;};
+        const To1=fit(0,1),T1=fit(1,2),T2=fit(2,3),To2=fit(3,4);
+        if(!(To1<=T1&&T1<=T2&&T2<=To2))throw Error(`orbit-finale: band thresholds out of order ${b.name} R ${R}`);
+        const col=d=>d<To1?0:d<T1?1:d<T2?2:d<To2?1:0;
         for(let i=0;i<BAND_PROF;i++){
-          const c1=T1-8*i,c2=T2-8*i;
-          let t;
-          if(c2<=0||c1>=22)t=0;                       // outer
-          else if(c1<=0&&c2>=22)t=1;                  // inner
-          else if(c1>=1&&c2>=22)t=2+c1-1;             // outer, then inner
-          else if(c1<=0)t=23+c2-1;                    // inner, then outer
-          else{                                       // a thin inner half: the nearer edge
-            let below=0,above=0;for(let py=0;py<8;py++)for(let px=0;px<8;px++){const d=px+2*py;if(d<c1)below++;if(d>=c2)above++;}
-            t=above<=below?2+c1-1:23+c2-1;
+          let best=Infinity,pick=null;
+          for(const[id,flip]of cands){
+            let e=0;for(let py=0;py<8;py++)for(let px=0;px<8;px++){const d=px+2*py;if(tilePx(id,flip,d)!==col(8*i+d))e++;}
+            if(e<best){best=e;pick=[id,flip];}
           }
-          pr.push(t|(b.pal<<10));
+          prof.push(pick[0]|(b.pal<<10)|(pick[1]?0xc000:0));
         }
-        lines.push(`; band ${b.name} R ${R}: T1 ${T1} T2 ${T2}, ${best} of the inner/outer pixels off`);
+        thr.push(To1,T1,T2,To2);
+        lines.push(`; band ${b.name} R ${R}: To1 ${To1} T1 ${T1} T2 ${T2} To2 ${To2}`);
       }
-      stat.push(...st);prof.push(...pr);
-      b.statBytes=st;b.profWords=pr;
     }
-    const bytes=new Uint8Array(BANDS.length*BAND_RS*(BAND_LINES*2+BAND_PROF*2));
-    let at=0;
-    for(const b of BANDS){bytes.set(b.statBytes,at);at+=b.statBytes.length;for(const w of b.profWords){bytes[at++]=w&255;bytes[at++]=w>>8;}}
-    xdata('orbit_bands',bytes);
-    def('OB_LINES',BAND_LINES);def('OB_RS',BAND_RS);def('OB_PROF',BAND_PROF);
-    def('OB_STAT_SIZE',BAND_LINES*2);def('OB_PROF_SIZE',BAND_PROF*2);
-    def('OB_BAND_SIZE',BAND_RS*(BAND_LINES*2+BAND_PROF*2));
-    def('OB_PROF_AT',BAND_RS*BAND_LINES*2);
+    // the ends: per row, the origin's cut (Goku's left bound, Frieza's right)
+    // and per reach the far end's (Goku's right bound, Frieza's left)
+    const clamp=v=>v<0?0:v>255?255:v;
+    const fdiv=(n,d)=>Math.floor(n/d),cdiv=(n,d)=>Math.ceil(n/d);
+    const origin=[],far=[[],[]];
+    for(let y=0;y<BAND_LINES;y++)origin.push(clamp(28+cdiv(114*(y-136),229)));
+    for(let y=0;y<BAND_LINES;y++)origin.push(clamp(204+fdiv(114*(y-48),229)));
+    for(let L=0;L<=360;L++)for(let y=0;y<BAND_LINES;y++)far[0].push(clamp(28+fdiv(256*L+255+114*(y-136),229)));
+    for(let L=0;L<=255;L++)for(let y=0;y<BAND_LINES;y++)far[1].push(clamp(204+cdiv(114*(y-48)-256*L-255,229)));
+    // what these windows and tiles show, against the browser's pixels for
+    // a spread of radii and reaches (counted, not fixed)
+    {
+      let off=0,tot=0;
+      const perR={};
+      for(const[g,b]of BANDS.entries())for(const R of[4,8,12,16,20,24,28,30,34,40,48])for(const L of[20,60,100,140,196]){
+        const k=R/2-1;
+        for(let y=0;y<BAND_LINES;y++){
+          const lo=g?far[1][L*BAND_LINES+y]:origin[y],hi=g?origin[BAND_LINES+y]:far[0][L*BAND_LINES+y];
+          for(let x=0;x<256;x++){
+            const ox=x-b.x,oy=y-b.y,u=(ox*b.vx+oy*b.vy)>>8,v=(-ox*b.vy+oy*b.vx)>>8,want=u>=0&&u<=L&&Math.abs(v)<=R;
+            const i=(x>>3)+2*(y>>3),e=prof[(g*BAND_RS+k)*BAND_PROF+i],t=e&0x3ff,fl=!!(e&0xc000),d=(x&7)+2*(y&7);
+            const got=x>=lo&&x<=hi&&tilePx(t,fl,d)!==0;
+            if(want||got){tot++;if(want!==got){off++;perR[R]=(perR[R]??0)+1;}}
+          }
+        }
+      }
+      lines.push(`; band pixels off (sampled radii and reaches): ${off} of ${tot}; by radius ${JSON.stringify(perR)}`);
+    }
+    // each band's maps, rows 0-13 (row ty, column tx: profile entry tx +
+    // 2 ty), one blob per band, radius-major: a whole map is one DMA
+    const MAP_ROWS=14,mapSize=MAP_ROWS*32*2;
+    for(const[g,b]of BANDS.entries()){
+      const m=new Uint8Array(BAND_RS*mapSize);
+      for(let k=0;k<BAND_RS;k++)for(let ty=0;ty<MAP_ROWS;ty++)for(let tx=0;tx<32;tx++){
+        const w=prof[(g*BAND_RS+k)*BAND_PROF+tx+2*ty],o=k*mapSize+(ty*32+tx)*2;m[o]=w&255;m[o+1]=w>>8;
+      }
+      xdata(g?'orbit_band_maps_f':'orbit_band_maps_g',m);
+    }
+    const empty=new Uint8Array(BAND_LINES*2);empty.fill(0xff,0,BAND_LINES);
+    xdata('orbit_bands',Uint8Array.from([...origin,...empty]));
+    def('OB_LINES',BAND_LINES);def('OB_RS',BAND_RS);def('OB_MAP_SIZE',mapSize);
+    def('OB_ORIGIN',0);def('OB_EMPTY',origin.length);
+    // far cuts: Goku's in two blobs (reach 0-299, 300-360), Frieza's (0-255)
+    xdata('orbit_cut_g0',Uint8Array.from(far[0].slice(0,300*BAND_LINES)));
+    xdata('orbit_cut_g1',Uint8Array.from(far[0].slice(300*BAND_LINES)));
+    xdata('orbit_cut_f',Uint8Array.from(far[1]));
+    // star culling: To1, To2 per band and radius (words, band-major)
+    lines.push('; band outer thresholds To1, To2 per band and radius (words)','orbit_fn_bthr:');
+    for(let i=0;i<thr.length;i+=4)lines.push(`\tdw ${thr[i]},${thr[i+3]}`);
   }
   // boss-victory.js cues: the burst ages
   lines.push('; boss-victory.js burst ages (words)','orbit_fn_bursts:','\tdw '+bossVictoryTiming.bursts.join(', '));

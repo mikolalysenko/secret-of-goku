@@ -35,6 +35,8 @@ beam_init:
 	BPL -
 	STZ.w !bg_on
 	STZ.w !bg_ready
+	STZ.w !bq_n
+	STZ.w !bq_i
 	; no cached runs
 	LDA.w #$FFFF
 	LDX.w #30
@@ -43,6 +45,8 @@ beam_init:
 	BPL -
 	STZ.w !BC_BYTES
 	STZ.w !BC_BYTES+2
+	STZ.w !bc_wait
+	STZ.w !bc_wait+2
 	LDA.w #$0000
 	STA.w !BEAM_BUF
 	LDX.w #!BEAM_BUF
@@ -58,6 +62,7 @@ beam_init:
 ; caller), heading in !bg_tmp, radius in !bg_tmp+2 (even, >= 1), laser flag
 ; in !bg_tmp+4, length (pixels) in !bg_tmp+6, palette word in !bg_tmp+8.
 beam_want:
+	STZ.w !bw_ymin,X
 	LDA.w !bg_tmp
 	AND.w #$000F
 	ASL
@@ -199,7 +204,13 @@ beam_update:
 	CMP.w !bs_have,X
 	BEQ .have
 	PLX
+	PHA
+	JSR beam_rom                   ; (class 1's come from the queue)
+	PLA
+	BCS .have2
 	JMP beam_start                 ; A = key, bg_tmp+2 = slot * 2
+.have2
+	PHX
 .have
 	PLX
 	INY
@@ -213,9 +224,126 @@ beam_update:
 	BCC .group
 	RTS
 
+; Every frame, after the drawing: each chain whose slot lacks its class-1
+; picture for this frame's key goes to the vblank's queue (bq, at most 4),
+; chain 0 of both groups first, then 1, then 2 (the vblank sends what it
+; has room for; the rest waits for the next frame's queue, made afresh).
+beam_queue:
+	STZ.w !bq_n
+	STZ.w !bq_i
+	LDY.w #$0000                   ; chain
+.chain
+	LDX.w #$0000                   ; group
+.group
+	LDA.w !bw_key,X
+	CMP.w #$FFFF
+	BEQ .next
+	TYA
+	CMP.w !bw_j,X
+	BEQ +
+	BCS .next                      ; (beyond the group's chains)
++	TXA
+	LSR
+	STA.w !bg_tmp
+	ASL
+	CLC : ADC.w !bg_tmp
+	STY.w !bg_tmp
+	CLC : ADC.w !bg_tmp
+	ASL
+	STA.w !bg_tmp+2                ; slot * 2
+	TYA
+	XBA : ASL
+	ORA.w !bw_key,X
+	PHX
+	LDX.w !bg_tmp+2
+	CMP.w !bs_have,X
+	BEQ .skip
+	PHY
+	JSR beam_rom
+	PLY
+	BCC .skip
+	; queue: slot * 2, source, bank, key
+	LDA.w !bq_n
+	ASL : ASL : ASL
+	TAX
+	LDA.w !bg_tmp+2 : STA.w !BQ_E+0,X
+	LDA.w !bg_tmp+8 : STA.w !BQ_E+2,X
+	LDA.w !bg_tmp+10 : STA.w !BQ_E+4,X
+	LDA.w !bg_tmp+12 : STA.w !BQ_E+6,X
+	INC.w !bq_n
+	LDA.w !bq_n
+	CMP.w #4
+	BCC .skip
+	PLX
+	RTS
+.skip
+	PLX
+.next
+	INX : INX
+	CPX.w #$0004
+	BCC .group
+	INY
+	CPY.w #3
+	BCC .chain
+	RTS
+
+; Key A16: a class-1 band picture (radius 2-48, even, chain 0-2) the
+; generator made (orbit-fx.mjs)? Carry set with bg_tmp+8 = its source
+; offset, +10 its bank, +12 the key. Otherwise carry clear.
+beam_rom:
+	STA.w !bg_tmp+12
+	AND.w #$01C0|!BK_LASER         ; class 1, not the laser
+	CMP.w #$0040
+	BNE .no
+	LDA.w !bg_tmp+12
+	AND.w #$003F
+	CMP.w #2
+	BCC .no
+	CMP.w #49
+	BCS .no
+	LSR
+	BCS .no                        ; (odd radius)
+	DEC
+	STA.w !bg_tmp+4                ; R / 2 - 1
+	LDA.w !bg_tmp+12
+	XBA : LSR
+	AND.w #$0003                   ; chain
+	CMP.w #3
+	BCS .no
+	CMP.w #2
+	BEQ .c2
+	; chains 0-1: (index * 2 + chain) * 512
+	STA.w !bg_tmp+6
+	LDA.w !bg_tmp+4
+	ASL
+	CLC : ADC.w !bg_tmp+6
+	XBA : ASL
+	CLC : ADC.w #(!XDATA_ORBIT_BEAM_C1A)&$FFFF
+	STA.w !bg_tmp+8
+	LDA.w #(!XDATA_ORBIT_BEAM_C1A)>>16
+	BRA .ready
+.c2
+	LDA.w !bg_tmp+4
+	XBA : ASL
+	CLC : ADC.w #(!XDATA_ORBIT_BEAM_C1B)&$FFFF
+	STA.w !bg_tmp+8
+	LDA.w #(!XDATA_ORBIT_BEAM_C1B)>>16
+.ready
+	STA.w !bg_tmp+10
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
 ; Start the picture of key A16 for slot bg_tmp+2 / 2.
 beam_start:
 	STA.w !bg_key
+	LDA.w #!BEAM_BUF
+	STA.w !bg_src
+	LDA.w #$0032
+	STA.w !bg_bank
+	LDA.w !bg_key
 	LDA.w !bg_tmp+2
 	LSR
 	STA.w !bg_slot
@@ -560,9 +688,93 @@ beam_draw:
 	RTS
 +	STX.w !bg_tmp+14
 	JSR beam_signature
-	BEQ +
+	BEQ .copy
+	JSR beam_defer
+	BCS .copy
 	JSR beam_build_run
-+	JMP beam_copy_run
+.copy
+	JMP beam_copy_run
+
+; The signature differs from the cached run's. Carry set: the run can wait
+; for a frame with time to spare. That is when only the set of slots that
+; hold a picture grew (every cell of the cached run is still right; the
+; new chains join at the next build) and the build would end past
+; !BEAM_LATE (a cell costs about 1.2 lines, 1.5 when on screen; a whole
+; build of 5 chains is some 75 lines), or past !BEAM_LATE + 20 once the
+; run has waited 8 frames.
+beam_defer:
+	LDX.w !bg_tmp+14
+	LDA.w !BC_BYTES,X
+	BEQ .now0                      ; nothing cached
+	TXA
+	ASL : ASL : ASL
+	TAX                            ; the cached signature (group * 16)
+	LDA.w !bc_sig+12               ; no slot lost its picture
+	EOR.w #$FFFF
+	AND.w !BC_SIG+12,X
+	BNE .now0
+	LDY.w #$0000                   ; every other word equal
+-	LDA.w !bc_sig,Y
+	CMP.w !BC_SIG,X
+	BEQ +
+	CPY.w #12
+	BNE .now0
++	INX : INX
+	INY : INY
+	CPY.w #16
+	BCC -
+	BRA +
+.now0
+	JMP .now
++	LDX.w !bg_tmp+14
+	; cells: chains with a picture (chain 0; +-1, +-2 count twice) times
+	; the indices built (below a band layer its length, else 12)
+	LDA.w !bc_sig+12
+	AND.w #$0001
+	STA.w !bc_tmp
+	LDA.w !bc_sig+12
+	AND.w #$0002
+	CLC : ADC.w !bc_tmp
+	STA.w !bc_tmp
+	LDA.w !bc_sig+12
+	AND.w #$0004
+	LSR
+	CLC : ADC.w !bc_tmp
+	STA.w $4202                    ; (low byte: chains, at most 5)
+	LDA.w #12
+	LDY.w !bw_ymin,X
+	BEQ +
+	LDA.w !bw_len,X
++	SEP #$20
+	STA.w $4203
+	REP #$20
+	NOP : NOP : NOP : NOP
+	LDA.w $4216                    ; cells
+	STA.w !bc_tmp
+	LSR : LSR
+	CLC : ADC.w !bc_tmp            ; * 1.25
+	CLC : ADC.w #4
+	STA.w !bc_tmp
+	JSR orbit_vcount
+	CLC : ADC.w !bc_tmp
+	LDX.w !bg_tmp+14
+	LDY.w !bc_wait,X
+	CPY.w #8
+	BCC +
+	SEC : SBC.w #20                ; (waited long: a little later is fine)
++	CMP.w #!BEAM_LATE
+	BCC .now
+	LDA.w !bc_wait,X
+	CMP.w #$00FF
+	BCS +
+	INC.w !bc_wait,X
++	SEC
+	RTS
+.now
+	LDX.w !bg_tmp+14
+	STZ.w !bc_wait,X
+	CLC
+	RTS
 
 ; The group's signature into bc_sig (8 words); Z set when the cached run
 ; was built for it.
@@ -576,7 +788,7 @@ beam_signature:
 	LDA.w !bw_y,X    : STA.w !bc_sig+6
 	LDA.w !bw_flip,X : STA.w !bc_sig+8
 	LDA.w !bw_pal,X  : STA.w !bc_sig+10
-	; which of the group's slots hold a picture (any radius)
+	; which of the group's slots hold a picture it can show
 	TXA
 	LSR
 	STA.w !bc_tmp
@@ -585,19 +797,25 @@ beam_signature:
 	ASL
 	TAY
 	STZ.w !bc_sig+12
-	LDA.w !bs_have,Y
-	CMP.w #$FFFF
-	BEQ +
+	JSR beam_usable
+	BCC +
 	LDA.w #1 : TSB.w !bc_sig+12
-+	LDA.w !bs_have+2,Y
-	CMP.w #$FFFF
-	BEQ +
++	INY : INY
+	JSR beam_usable
+	BCC +
 	LDA.w #2 : TSB.w !bc_sig+12
-+	LDA.w !bs_have+4,Y
-	CMP.w #$FFFF
-	BEQ +
++	INY : INY
+	JSR beam_usable
+	BCC +
 	LDA.w #4 : TSB.w !bc_sig+12
-+	STZ.w !bc_sig+14
++	; below a band layer (bw_ymin): only the run's own length is built,
+	; so the length joins the signature
+	LDA.w !bw_ymin,X
+	BEQ +
+	LDA.w !bw_len,X
+	XBA
+	ORA.w !bw_ymin,X
++	STA.w !bc_sig+14
 	; compare (group * 8 words)
 	TXA
 	ASL : ASL : ASL
@@ -686,6 +904,9 @@ beam_build_run:
 	CLC : ADC.w #31
 	CMP.w #255
 	BCS .nextChain
+	LDX.w !bg_tmp+14               ; entirely in the band layers' lines
+	CMP.w !bw_ymin,X
+	BCC .nextChain
 	LDX.w !bp_ptr
 	SEP #$20
 	LDA.w !bp_x,Y : STA.w $0000,X
@@ -734,10 +955,15 @@ beam_build_run:
 	STA.w !BC_BND,X
 	INC.w !bp_i
 	LDA.w !bp_i
-	CMP.w #12
-	BCS +
+	LDX.w !bg_tmp+14
+	LDY.w !bw_ymin,X
+	BEQ +
+	CMP.w !bw_len,X                ; below a band layer: its length only
+	BCS ++
++	CMP.w #12
+	BCS ++
 	JMP .index
-+	; the last partial group of high bits
+++	; the last partial group of high bits
 	LDA.w !bg_mask+6
 	BEQ +
 	JSR beam_hi_store
@@ -778,9 +1004,44 @@ beam_hi_store:
 	STZ.w !bg_mask+6
 	RTS
 
+; Carry set when slot Y / 2 holds a picture group X can show: of its
+; class (and laser or not) and, beside chain 0, its radius at most 4 over
+; the wanted one. A smaller one only leaves the band thinner while it
+; grows; a larger one on an outer chain (the band narrowed, its pictures
+; still on their way) would paint whole cells outside it, so that chain
+; waits; chain 0 shows a wider core meanwhile. Keeps X and Y.
+beam_usable:
+	LDA.w !bs_have,Y
+	CMP.w #$FFFF
+	BEQ .no
+	EOR.w !bw_key,X
+	AND.w #$01C0|!BK_LASER
+	BNE .no
+	TXA
+	STA.w !bc_tmp
+	ASL
+	CLC : ADC.w !bc_tmp
+	STA.w !bc_tmp                  ; chain 0's slot * 2
+	CPY.w !bc_tmp
+	BEQ .yes
+	LDA.w !bw_key,X
+	AND.w #$003F
+	CLC : ADC.w #5
+	STA.w !bc_tmp
+	LDA.w !bs_have,Y
+	AND.w #$003F
+	CMP.w !bc_tmp
+	BCS .no
+.yes
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
 ; Chain d_t4 (signed) of group bg_tmp+14 (class row d_t5): its tile word
 ; and the top-left of its cell 0 into the bp arrays, if its slot holds a
-; picture.
+; picture it can show (beam_usable).
 beam_prep_chain:
 	LDX.w !bg_tmp+14
 	LDA.w !d_t4
@@ -794,9 +1055,8 @@ beam_prep_chain:
 	CLC : ADC.w !d_t0
 	ASL
 	TAY                            ; slot * 2
-	LDA.w !bs_have,Y
-	CMP.w #$FFFF
-	BNE +
+	JSR beam_usable
+	BCS +
 	RTS
 +	TYX
 	LDA.l beam_slot_tile,X

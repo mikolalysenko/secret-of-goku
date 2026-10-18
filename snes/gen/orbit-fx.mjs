@@ -26,11 +26,11 @@
 //               stay zero until they are streamed)
 //   death.bin   Death Ball frames: 12 x 32x32 (512 bytes, 4 rows of 4
 //               tiles), then 12 x 16x16 (128 bytes, 2 rows of 2 tiles)
-//   band.bin    the finale's beam-band BG tiles (4bpp, 44): solid outer
-//               (colour 1), solid inner (2), then the outer/inner edges
-//               x + 2y = c for c = 1-21 (outer before the edge, then inner
-//               after it), and the inner/outer ones; fdraw.asm lays the
-//               bands above the globe on BG1/BG2 with them
+//   band.bin    the finale's beam-band BG tiles (4bpp, 45): clear, solid
+//               outer (colour 1), solid inner (2), then the clear/outer
+//               edges x + 2y = c for c = 1-21 and the outer/inner ones;
+//               turned half round they give the other two; bands.asm lays
+//               the bands above the globe on BG1/BG2 with them
 //   fx.asm      tile and palette defines, palettes, burst parts and offsets,
 //               beam band colours
 //   preview.png every cell (not shipped)
@@ -53,7 +53,7 @@ const SLOTS=[0x08C,0x08E,0x0A8,0x0AA,0x0AC,0x0AE,
   0x008,0x00A,0x00C,0x00E,0x028,0x02A,0x02C,0x02E];
 const REGIONS=[{name:'vram_a',first:0x080,count:128},{name:'vram_b',first:0x100,count:64},{name:'vram_c',first:0x180,count:64},{name:'vram_d',first:0x000,count:64}];
 
-export async function generate({rom,repo,outDir}){
+export async function generate({rom,repo,outDir,xdata}){
   const eng=f=>import(pathToFileURL(join(repo,'engine',f)).href);
   const {createNativeEffects,decodeEffectFrame}=await eng('native-effects.js');
   const {combustionCells,combustionFrames}=await eng('native-combustion-data.js');
@@ -147,9 +147,9 @@ export async function generate({rom,repo,outDir}){
   // of the beam struggle).
   {
     const band=[],tile=f=>{const idx=new Uint8Array(64);for(let y=0;y<8;y++)for(let x=0;x<8;x++)idx[y*8+x]=f(x+2*y);band.push(...encodeTile(idx,8,0,0));};
-    tile(()=>1);tile(()=>2);
+    tile(()=>0);tile(()=>1);tile(()=>2);
+    for(let c=1;c<=21;c++)tile(d=>d<c?0:1);
     for(let c=1;c<=21;c++)tile(d=>d<c?1:2);
-    for(let c=1;c<=21;c++)tile(d=>d<c?2:1);
     writeFileSync(join(outDir,'band.bin'),Uint8Array.from(band));
   }
 
@@ -201,6 +201,27 @@ export async function generate({rom,repo,outDir}){
     return{vx,vy,qi:vy?Math.floor(vx/vy):0,rr:vy?vx%vy:0,A,P,S,V0:-A[0]*vy+A[1]*vx,Vs:-S[0]*vy+S[1]*vx,
       across:Math.abs(-S[0]*vy+S[1]*vx),half:16*(vx+vy)};
   });
+  // Class 1's pictures (headings 1, 7, 9, 15: the beam struggle's rays,
+  // which change radius every few frames) are made here instead, by the
+  // same rule beam.asm applies: the cell of chain j at A0 + j * S, V =
+  // -ox vy + oy vx, outer for floor(V / 256) in [-R, R] (colour 2), inner
+  // in [((R + 2) >> 1) - R, ((3R + 3) >> 1) - R - 1] (colour 3); radii 2-48
+  // (even), chains 0-2, 512 bytes each (4 rows of 4 tiles), in two blobs:
+  // chains 0-1 by radius, then chain 2 by radius.
+  {
+    const c=classes[1],pics=[[],[]];
+    for(let R=2;R<=48;R+=2)for(let j=0;j<3;j++){
+      const iLo=((R+2)>>1)-R,iHi=((3*R+3)>>1)-R-1,idx=new Uint8Array(32*32);
+      for(let py=0;py<32;py++)for(let px=0;px<32;px++){
+        const ox=c.A[0]+j*c.S[0]+px,oy=c.A[1]+j*c.S[1]+py,v=Math.floor((-ox*c.vy+oy*c.vx)/256);
+        if(v>=-R&&v<=R)idx[py*32+px]=v>=iLo&&v<=iHi?3:2;
+      }
+      const bytes=[];for(let ty=0;ty<4;ty++)for(let tx=0;tx<4;tx++)bytes.push(...encodeTile(idx,32,tx*8,ty*8));
+      pics[j<2?0:1].push(...bytes);
+    }
+    xdata('orbit_beam_c1a',Uint8Array.from(pics[0]));
+    xdata('orbit_beam_c1b',Uint8Array.from(pics[1]));
+  }
   data.push('; beam classes: vx, vy, qi, rr, A0x, A0y, Px, Py, Sx, Sy, V0, Vstep, across, half (words)','orbit_fx_beam_class:');
   for(const c of classes)data.push('\tdw '+[c.vx,c.vy,c.qi,c.rr,c.A[0],c.A[1],c.P[0],c.P[1],c.S[0],c.S[1],c.V0,c.Vs,c.across,c.half].map(hex4).join(','));
   // heading -> class | sx < 0 (bit 8) | sy < 0 (bit 9)
