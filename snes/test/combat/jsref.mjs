@@ -23,6 +23,34 @@ const adapters={
   senzu:(await import(resolve(repo,'engine/native-senzu.js'))).createNativeSenzu,
   powerIntro:(await import(resolve(repo,'engine/power-intro.js'))).createPowerIntro,
 };
+const {createFrieza}=await import(resolve(repo,'engine/frieza.js'));
+
+// frieza.js as mana-mod.js's virtual enemy (entities() index 12, hit()):
+// the browser module itself, restored from a snapshot (goku.frieza) and
+// never ticked, so Frieza stays where the scenario pins him (the cartridge
+// test writes the same spot before each combat step). The proxy logs every
+// hit() and keeps Frieza's own impact bursts out of combat's effect list
+// (the cartridge's frieza module draws those itself).
+function friezaReference(snes,mod,snapshot,frameOf){
+  globalThis.Image=class{decode(){return new Promise(()=>{});}};   // its atlases never load here
+  const real=createFrieza(snes,mod);
+  delete globalThis.Image;
+  real.restore(JSON.parse(JSON.stringify(snapshot)));
+  const hits=[];
+  const proxy={
+    entity:()=>real.entity(),
+    hit(enemy,amount){
+      const n=mod.effects.length,melee=mod.action?.kind==='punch',r=real.hit(enemy,amount);
+      mod.effects.splice(n);
+      hits.push({f:frameOf(),dmg:amount,melee,taken:r.before-r.after});
+      return r;
+    },
+    tick(){},spaceInput:()=>false,floorHole:()=>false,inputLocked:false,orbit:null,
+    get permanent(){return real.permanent;},get fighting(){return real.fighting;},
+    restore(){},snapshot:()=>null,
+  };
+  return {proxy,hits,hp:()=>real.entity()?.hp??0};
+}
 
 export const BUTTONS={b:1,y:2,select:4,start:8,up:16,down:32,left:64,right:128,a:256,x:512,l:1024,r:2048};
 export function parseScript(text){
@@ -48,7 +76,18 @@ export function probe(read8,read16){
   return r;
 }
 
-export function runJsRef({state,steps,superSaiyan=false,gi=null,pokes=[],pokeBase=0,romPath=resolve(repo,'rom/secret-of-mana-us.sfc')}){
+// The beam other modules read (mana-mod.js beamGeometry of the live beam):
+// combat_api_beam's fields, half width floor(256 * w).
+function beamProbe(mod){
+  const e=mod.effects.find(e=>e.kind==='beam'&&e.life>0);
+  if(!e)return null;
+  const g=mod.beamGeometry(e);
+  return {x:e.x,y:e.y,dx:e.dx,dy:e.dy,len:g.length,half:Math.floor(g.halfWidth*256),super:e.super?1:0,mega:e.mega?1:0,age:e.max-e.life,life:e.life,taper:g.taper};
+}
+
+// locks: [[frame, 'hold' | 'unlock']] as mana-mod.js trial.inputLocked (a
+// stand-in trial with nothing else), applied before the frame like pokes.
+export function runJsRef({state,steps,superSaiyan=false,gi=null,pokes=[],pokeBase=0,frieza=null,locks=null,romPath=resolve(repo,'rom/secret-of-mana-us.sfc')}){
   const s=loadCore(new Uint8Array(readFileSync(romPath)));
   restore(s,{...JSON.parse(readFileSync(state,'utf8')),romHash:hash(s.cart.data)});
   const context={window:{ManaSpriteLayer:class{load(){}destroy(){}}},Image:class{decode(){return Promise.resolve();}},Promise,Math,JSON,Array,Object,Number,Set,Map,Error};
@@ -68,18 +107,26 @@ export function runJsRef({state,steps,superSaiyan=false,gi=null,pokes=[],pokeBas
   if(gi!==null)s.ram[0xe1e1]=gi?22:21;
   const read8=a=>s.ram[a&0x1ffff],read16=a=>read8(a)|read8(a+1)<<8;
   const frames=[];
-  let n=0;
+  let n=0,fz=null,fzHits=0;
+  if(frieza){fz=friezaReference(s,mod,frieza,()=>n);mod.frieza=fz.proxy;}
+  if(locks)mod.trial={inputLocked:false,dangerous:false,tick(){},clashInput:()=>false,entity:()=>null,restore(){}};
   for(const st of steps)for(let i=0;i<st.frames;i++){
     sounds.length=0;
     // scheduled RAM writes ([frame, address, value, bytes]) before the frame
     for(const [at,addr,value,bytes=1] of pokes)if(at+pokeBase===n){s.ram[addr&0x1ffff]=value&255;if(bytes===2)s.ram[(addr+1)&0x1ffff]=value>>8&255;}
+    for(const [at,what] of locks??[])if(at+pokeBase===n)mod.trial.inputLocked=what==='hold';
     s.joypad1State=st.mask;mod.beforeFrame(st.mask);s.runFrame(true);mod.afterFrame();
     const a=mod.action;
     frames.push({n:n++,input:st.mask,hurt:read8(0xe011),act:a?a.kind:null,age:a?.age??null,combo:a?.combo??null,pause:a?.hitPause??0,
       charge:mod.charge,charging:mod.charging,ssj:mod.options.superSaiyan,power:mod.powerCharge,
       deflected:mod.hitRecovery.deflected,recovered:mod.hitRecovery.recovered,
       kb:mod.knockbacks.reduce((m,k)=>m|1<<((k.base-0xe600)>>9),0),
-      k0:Object.fromEntries(mod.knockbacks.map(k=>[(k.base-0xe600)>>9,[k.x,k.y]])),fx:mod.effects.map(e=>`${e.kind}:${e.life}`).join(' '),sounds:[...sounds],...probe(read8,read16)});
+      k0:Object.fromEntries(mod.knockbacks.map(k=>[(k.base-0xe600)>>9,[k.x,k.y]])),fx:mod.effects.map(e=>`${e.kind}:${e.life}`).join(' '),sounds:[...sounds],
+      // (a spent ki shot keeps life 0 until the next frame's filter; the cartridge frees it at once)
+      kis:mod.effects.filter(e=>e.kind==='ki'&&e.life>0).length,
+      sparks:mod.effects.filter(e=>e.kind==='impact'&&e.life>0).map(e=>`${e.x},${e.y}`).sort().join(' '),
+      ...(fz?{fzhp:fz.hp(),vt:fz.hits.slice(fzHits)}:{}),beam:beamProbe(mod),...probe(read8,read16)});
+    if(fz)fzHits=fz.hits.length;
   }
   return {frames,logs};
 }

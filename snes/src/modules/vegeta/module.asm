@@ -66,7 +66,7 @@ assert !RAM_VEGETA == $7E0000|!VG, "!VG must match !RAM_VEGETA"
 !vg_echo_frame  #= !VG+$34   ; byte: frame in the echo area ($FF none)
 !vg_echo_want   #= !VG+$35   ; byte
 !vg_pal_flash   #= !VG+$36   ; byte: palette written last (0 colours, 1 white)
-!vg_misc        #= !VG+$37   ; byte: bit0 combat danger set, bit1 input lock held, bit2 locks held
+!vg_misc        #= !VG+$37   ; byte: bit0 combat danger set, bit1 input lock held, bit2 locks held, bit3 the lock is a hold (the draw)
 !vg_t0          #= !VG+$38   ; scratch words $38-$3F (call-local)
 !vg_t1          #= !VG+$3A
 !vg_t2          #= !VG+$3C
@@ -249,12 +249,8 @@ if not(defined("STORY_QUERY_TRIAL_PARTY"))
 endif
 
 ; Goku's attacks on Vegeta: combat's per-hit damage hook (bind.asm
-; vegeta_combat_damage) owns slot 3 while the trial runs and hands every
-; other actor to the hook bound before this module, if any.
-if defined("COMBAT_HOOK_DAMAGE")
-	!VEGETA_DAMAGE_NEXT := !COMBAT_HOOK_DAMAGE
-endif
-!COMBAT_HOOK_DAMAGE = vegeta_combat_damage
+; vegeta_combat_damage, listed in modules.asm modules_combat_damage) owns
+; slot 3 while the trial runs and leaves every other actor's damage alone.
 ; slot 3's species while combat's step sees him: a boss's (>= 84, not the
 ; orb $55), so no launch moves him (mana-mod.js hit(): custom foes return
 ; before the knockback)

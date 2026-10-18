@@ -42,6 +42,63 @@ function matchSequence(name,js,cart,key,{slack=3,maxSkip=2}={}){
   return {failures,matched,skipped,states:a.length};
 }
 
+// A virtual target (frieza.js entity()/hit()): every hit() call in order
+// (damage passed, melee, HP taken) within `slack` frames of the browser's,
+// Frieza's settled HP, and nothing native: no launch, no queue. Combat's
+// live ki shots (each spent at its first contact) and its impact sparks
+// (positions) on every cartridge frame equal the browser's within `near`
+// frames (a lag frame shows two steps at once, so counts are compared per
+// frame, not as a sequence). Cartridge hits carry combat's step counter
+// (cb_frame); a record's last step is its frame, earlier steps of a
+// catch-up frame come before it.
+function compareVirtual(js,cart,sc,failures){
+  const slack=sc.slack??3,near=2;
+  const hits=(t,cartridge)=>t.flatMap(f=>(f.vt??[]).map(h=>({...h,i:cartridge?f._i-((f.cbf-h.f)&0xffff):f._i})));
+  const a=hits(js,false),b=hits(cart,true);
+  if(a.length!==b.length)failures.push(`virtual hits: browser ${a.length}, cartridge ${b.length}`);
+  for(let k=0;k<Math.min(a.length,b.length);k++){
+    const x=a[k],y=b[k];
+    if(x.dmg!==y.dmg||x.melee!==y.melee||x.taken!==y.taken)failures.push(`virtual hit ${k}: browser ${x.dmg}${x.melee?' melee':''} took ${x.taken}, cartridge ${y.dmg}${y.melee?' melee':''} took ${y.taken}`);
+    if(Math.abs(x.i-y.i)>slack)failures.push(`virtual hit ${k} at cartridge frame ${y.i}, browser frame ${x.i}`);
+  }
+  const hp=matchSequence('frieza hp',js,cart,f=>String(f.fzhp),{slack,maxSkip:2});
+  failures.push(...hp.failures);
+  for(const [name,key] of [['ki shots',f=>f.kis],['impact sparks',f=>f.sparks]]){
+    const bad=cart.filter(f=>!js.slice(Math.max(0,f._i-near),f._i+near+1).some(g=>key(g)===key(f)));
+    if(bad.length)failures.push(`${name}: ${bad.length} cartridge frames differ, first ${bad[0]._i}: "${key(bad[0])}" (browser ${js.slice(Math.max(0,bad[0]._i-near),bad[0]._i+near+1).map(g=>`"${key(g)}"`).join(' ')})`);
+  }
+  if(cart.some(f=>f.kb))failures.push('a launch started (virtual targets never fly)');
+  if(cart.some(f=>f.hits!==cart[0].hits))failures.push('combat queued native damage');
+  const taken=b.reduce((n,h)=>n+h.taken,0);
+  return `virtual hits ${b.length} (${b.filter(h=>h.melee).length} melee, ${taken} HP)`;
+}
+
+// combat_api_beam (test ROM, asked at every frame end) against mana-mod.js
+// beamGeometry() of the browser's live beam with the same age: the palms
+// relative to Goku (his walk may differ by a lagging frame), direction,
+// length, half width (8.8), taper, flags and life; and no beam reported
+// where the browser has none within a frame.
+function compareBeamApi(js,cart,failures){
+  const byAge=new Map();
+  for(const f of js)if(f.beam&&!byAge.has(f.beam.age))byAge.set(f.beam.age,{...f.beam,rx:f.beam.x-f.gx,ry:f.beam.y-f.gy});
+  let n=0;const bad=[];
+  for(const f of cart){
+    if(!f.beam){
+      if(js.slice(Math.max(0,f._i-1),f._i+2).every(g=>g.beam))bad.push(`frame ${f._i}: no beam on the cartridge`);
+      continue;
+    }
+    const b={...f.beam,rx:f.beam.x-f.gx,ry:f.beam.y-f.gy},g=byAge.get(b.age);
+    if(!g){bad.push(`frame ${f._i}: beam age ${b.age} never seen in the browser`);continue;}
+    for(const k of ['rx','ry','dx','dy','len','half','super','mega','life','taper'])if(g[k]!==b[k])bad.push(`age ${b.age}: ${k} cartridge ${b[k]}, browser ${g[k]}`);
+    const facing=[[0,1],[1,0],[-1,0],[0,-1]].findIndex(([dx,dy])=>dx===g.dx&&dy===g.dy);
+    if(b.a!==(facing|g.super<<8|g.mega<<9))bad.push(`age ${b.age}: A ${b.a.toString(16)}, expected ${(facing|g.super<<8|g.mega<<9).toString(16)}`);
+    n++;
+  }
+  if(!n)bad.push('combat_api_beam never reported a beam');
+  if(bad.length)failures.push(`beam API: ${bad.length} differences, ${bad.slice(0,4).join('; ')}`);
+  return `beam API ${n} frames (browser ages ${byAge.size})`;
+}
+
 export function compare(js,cart,sc={}){
   const failures=[],notes=[];
   if(!cart.length)return {failures:['empty cartridge trace'],summary:''};
@@ -105,6 +162,8 @@ export function compare(js,cart,sc={}){
     // (no end check: the native death effect may end before the arc does)
   }
   notes.push(`enemy states ${dmg}`,`queues ${queued}`,`launch points ${path}`);
+  if(sc.frieza)notes.push(compareVirtual(js,cart,sc,failures));
+  if(sc.beamApi)notes.push(compareBeamApi(js,cart,failures));
   // Rewards
   const d=(t,k)=>t[t.length-1][k]-t[0][k];
   // (companions also fight on their own: scenarios without attacks skip it)

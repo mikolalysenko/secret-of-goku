@@ -321,10 +321,14 @@ cb_hr_old:
 	RTS
 
 ; C0:4053 (bank C0): Goku's queued damage before the native consumer.
-; Ordinary threats chip (1-12, 1-5 in Super Saiyan), native bosses hurt
-; more (<= 80 / 40), dangerous scenes keep the native amount; the native
-; code still subtracts HP, shows the number and handles a lethal hit.
-; Entered with X = actor offset. Replaced: REP #$20 / LDA $E1F1,X.
+; First the receive hooks of other modules (modules.asm
+; modules_combat_receive: the fed Beast's cap and grace, as
+; beast-challenge.js runs before native-hit-recovery.js at this address),
+; then Saiyan resilience: ordinary threats chip (1-12, 1-5 in Super
+; Saiyan), native bosses hurt more (<= 80 / 40), dangerous scenes keep the
+; native amount; the native code still subtracts HP, shows the number and
+; handles a lethal hit. Entered with X = actor offset. Replaced: REP #$20 /
+; LDA $E1F1,X.
 cb_hook_receive:
 	CPX.w #$0000
 	BNE .native
@@ -333,6 +337,7 @@ cb_hook_receive:
 	PHA
 	PHX
 	PHY
+	JSR cb_receive_hooks
 	JSR cb_receive
 	PLY
 	PLX
@@ -342,6 +347,31 @@ cb_hook_receive:
 	REP #$20
 	LDA.l $7EE1F1,X
 	RTL
+; Goku active, damage (not a heal: $E1B0 bit 12) queued: every receive hook
+; in turn with A16 = the queue, which takes the result.
+cb_receive_hooks:
+	LDA.l $7EE1F1
+	BEQ .out
+	LDA.l $7EE1B0
+	AND.w #$1000
+	BNE .out
+	JSR cb_n_active
+	BCC .out
+	PHB
+	PHD
+	PEA $7E7E
+	PLB
+	PLB
+	LDA.w #$0000
+	TCD
+	LDA.l $7EE1F1
+	JSL modules_combat_receive
+	REP #$30
+	STA.l $7EE1F1
+	PLD
+	PLB
+.out
+	RTS
 cb_receive:
 	LDA.l $7EE1F1
 	BNE +
