@@ -1034,6 +1034,7 @@ flight_sprites:
 	SEC
 	SBC.w !s_oamslot
 	BEQ .stars
+	JSL ending_dma_guard          ; not across the vblank NMI
 	STA.w $4375
 	LDA.w !s_oamslot
 	CLC
@@ -1050,6 +1051,7 @@ flight_sprites:
 	LDA.b #flight_hidden>>16
 	STA.w $4374
 	LDA.b #$80
+.trigger
 	STA.w $420B
 	REP #$20
 .stars
@@ -1444,6 +1446,7 @@ flight_dragon:
 	LDA.w !fl_tmp2
 	CMP.w #5
 	BCC .row
+	JSL ending_dma_guard          ; not across the vblank NMI
 	LDA.w #!N_OAM+(7*4)
 	STA.w $2181
 	SEP #$20
@@ -1459,6 +1462,7 @@ flight_dragon:
 	LDA.b #$32
 	STA.w $4374
 	LDA.b #$80
+.trigger
 	STA.w $420B
 	REP #$20
 	LDA.w #(7+!ENDING_FLIGHT_DRAGON_CELLS)*4
@@ -1484,6 +1488,7 @@ flight_stars:
 	STA.w !fl_q18
 	JSR flight_stars_y
 .ySame
+	JSL ending_dma_guard          ; not across the vblank NMI
 	LDA.w #!N_OAM+(!FL_FRONT*4)
 	STA.w $2181
 	SEP #$20
@@ -1499,6 +1504,7 @@ flight_stars:
 	LDA.b #$32
 	STA.w $4374
 	LDA.b #$80
+.trigger
 	STA.w $420B
 	REP #$20
 	LDA.w #$0200

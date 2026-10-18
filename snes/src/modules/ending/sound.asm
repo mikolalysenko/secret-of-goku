@@ -6,6 +6,7 @@
 ; (a map's music) sets its own volume, so the silence is re-sent every 32
 ; frames while muted.
 ; JSL from ending_frame on every field frame (any DB, M16/X16 or not).
+; (ending_dma_guard below serves every frame-thread DMA of the module.)
 ending_music_sync:
 	PHP
 	SEP #$20
@@ -33,5 +34,35 @@ ending_music_sync:
 .fade
 	JSL audio_fade
 .out
+	PLP
+	RTL
+
+; Frame-thread DMA (channel 7 to WMDATA: the palette commit and the
+; OAM-buffer copies) must not have its set-up straddle the vblank NMI: the
+; NMI fires at line 225 and the game's and the modules' vblank transfers
+; reprogram channel 7, leaving its size at 0, so a trigger after them would
+; copy 64 KiB. Called right before each set-up (a few dozen cycles to the
+; trigger), it waits out lines 216-225; the NMI comes and goes meanwhile.
+; JSL; any M/X; preserves A, X, Y, P and DB.
+ending_dma_guard:
+	PHP
+	REP #$20
+	PHA
+.wait
+	SEP #$20
+	LDA.l $00213F                  ; reset the OPHCT/OPVCT flip-flops
+	LDA.l $002137                  ; latch H/V
+	LDA.l $00213D                  ; V low
+	XBA
+	LDA.l $00213D                  ; V bit 8 (bits 1-7 open bus)
+	AND.b #$01
+	XBA
+	REP #$20
+	CMP.w #216
+	BCC .ok
+	CMP.w #226
+	BCC .wait
+.ok
+	PLA
 	PLP
 	RTL
