@@ -21,6 +21,7 @@ end
 function test()
   E.import(BUNDLE or 'preset__bad-ending')
   E.watchVblank(1)
+  E.watchAudio()
   local t0 = H.frame
   E.cue('doomed', FLAGS)
   local loaded = E.waitLoaded('doomed', 120)
@@ -63,6 +64,8 @@ function test()
   H.result('overruns', E.overruns)
   H.result('overrun_max', E.overrunMax)
   H.result('overrun_at', table.concat(E.overrunAt, ' '))
+  E.audioArmed = false
+  E.audioResult()
   -- A doomed globe without the crisis shows the day side (fresh start).
   E.arm(false)
   E.cue('doomed', 0x8001)

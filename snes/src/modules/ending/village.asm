@@ -383,10 +383,8 @@ depart_status:
 	LDA.l !ending_age
 	CMP.w #!DP_LAUNCH
 	BNE .done
-	SEP #$20
-	LDA.b #!ESFX_FLIGHT
-	STA.l !ending_sfx
-	REP #$20
+	LDA.w #!ESFX_FLIGHT
+	JSR ending_sound
 .done
 	RTS
 

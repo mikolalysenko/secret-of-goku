@@ -66,6 +66,11 @@ start_vista:
 
 start_scatter:
 	JSR flight_reset
+	SEP #$20
+	LDA.l !ending_status
+	ORA.b #!ES_MUTED              ; musicMuted for the whole scatter
+	STA.l !ending_status
+	REP #$30
 	JMP start_vista
 
 vista_load:

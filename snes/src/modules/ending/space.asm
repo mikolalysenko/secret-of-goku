@@ -374,10 +374,8 @@ frame_explode:
 	LDA.l !ending_age
 	CMP.w #48
 	BNE .notBlast
-	SEP #$20
-	LDA.b #!ESFX_POWERBURST
-	STA.l !ending_sfx
-	REP #$20
+	LDA.w #!ESFX_POWERBURST
+	JSR ending_sound
 	JSR space_queue_curtain
 .notBlast
 	LDA.l !ending_age

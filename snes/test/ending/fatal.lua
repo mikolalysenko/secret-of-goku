@@ -6,6 +6,7 @@
 function test()
   E.import(BUNDLE or 'preset__bad-ending')
   E.watchVblank(1)
+  E.watchAudio()
   E.cue('fatal', 0x8001)
   E.waitAge(200 + E.SHOT_LAG, 400)
   E.shot('fatal-200')
@@ -30,6 +31,8 @@ function test()
   H.result('overruns', E.overruns)
   H.result('overrun_at', table.concat(E.overrunAt, ' '))
   E.arm(false)
+  E.audioArmed = false
+  E.audioResult()
   -- Start returns to the title: the module WRAM is cleared at title entry
   H.hold('start', 4)
   H.wait(90)

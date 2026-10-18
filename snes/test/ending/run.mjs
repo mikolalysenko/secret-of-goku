@@ -9,12 +9,19 @@ import {readFileSync,writeFileSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {runMesen} from '../mesen.mjs';
+import {privateRom,cleanupRom} from '../checkpoints.mjs';
 const gfx=await import(new URL('../../tools/gfx.mjs',import.meta.url).href);
 import {kaiReference,compare,writeRef,bestPlanetMatch,gokuAtlas,nativeEffects,vistaReference,flightReference} from './reference.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const rom=process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-goku.sfc');
 const baseRom=new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')));
-const lib=readFileSync(resolve(here,'lib.lua'),'utf8');
+// The audio module's entries the scenes call (lib.lua E.watchAudio).
+const sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8');
+const symAddr=label=>{const m=sym.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${label}$`,'m'));return m?`0x${m[1]}${m[2]}`:'nil';};
+const lib=`AUDIO_SFX=${symAddr('audio_sfx')}\nAUDIO_FADE=${symAddr('audio_fade')}\n`+readFileSync(resolve(here,'lib.lua'),'utf8');
+// 'sfx<id>@<age>' / 'fade<byte>@<age>' calls recorded by E.watchAudio.
+const audioCalls=r=>(r.audio??'').split(' ').filter(Boolean);
+const heard=(r,call)=>audioCalls(r).includes(call);
 const only=process.argv.slice(2);
 const problems=[];
 const expect=(ok,msg)=>{if(!ok)problems.push(msg);return ok;};
@@ -43,6 +50,7 @@ async function kaiCheck(r,out){
 
 // Bad ending in space: stills against planet-view.js at the recorded ages.
 async function spaceCheck(r,out){
+  expect(heard(r,'sfx12@48'),`audio_sfx power burst at the explosion's blast (${r.audio})`);
   expect(r.doomed_loaded,'doomed globe loaded');
   expect(r.doomed_load_frames<=12,`doomed load took ${r.doomed_load_frames} frames`);
   expect(!r.explode_reloaded,'explosion continues on the live globe');
@@ -71,6 +79,9 @@ async function spaceCheck(r,out){
 // fatal view (globe, explosion, GAME OVER); Start returns to the title.
 const meanLight=png=>{const img=gfx.readPng(png);let s=0;for(let i=0;i<img.data.length;i+=4)s+=img.data[i]+img.data[i+1]+img.data[i+2];return s/(img.data.length/4);};
 async function fatalCheck(r,out){
+  // (the sync runs at the end of the start frame, after the clock's tick)
+  expect(/^fade00@[01]$/.test(audioCalls(r)[0]??''),`native music silenced for the death (${r.audio})`);
+  expect(heard(r,'sfx20@408')&&heard(r,'sfx25@624'),`audio_sfx Frieza orb at 408, Fortress break at 624 (${r.audio})`);
   expect((r.status_200&0x44)===0x44,`defeated and muted while the native collapse plays (status ${r.status_200})`);
   const l200=meanLight(join(out,'fatal-200.png')),l330=meanLight(join(out,'fatal-330.png')),l390=meanLight(join(out,'fatal-390.png'));
   r.light=`${l200.toFixed(0)}/${l330.toFixed(0)}/${l390.toFixed(0)}`;
@@ -96,6 +107,7 @@ async function fatalCheck(r,out){
 // whitened by (age - 114) / 30, the space half against planet-view's depart.
 const c8=v=>v<<3|v>>2;
 async function departCheck(r,out){
+  expect(heard(r,`sfx18@56`),`audio_sfx flight at the launch (${r.audio})`);
   const atlas=await gokuAtlas(),orbs=(await nativeEffects(baseRom))['charge-orb'];
   // A transparent composition: Goku's cell at (x0, y0), then the orbs.
   const compose=(parts)=>{const s=new Uint16Array(256*224);
@@ -187,6 +199,11 @@ async function flightCheck(r,out){
   expect((r.status_end&0x0C)===0x04,`muted, landed after 420 (status ${r.status_end})`);
   expect(r.sfx_310===2,`charged sound at the scatter (${r.sfx_310})`);
   expect(r.done===1,'flight timeline done flag');
+  // musicMuted: the native music silenced at once for the whole scatter and
+  // back at full volume when the picture lets go; flight 60, charged 300.
+  expect(/^fade00@[01]$/.test(audioCalls(r)[0]??''),`native music silenced as the scatter starts (${r.audio})`);
+  expect(heard(r,'sfx18@60')&&heard(r,'sfx9@300'),`audio_sfx flight at 60, charged at 300 (${r.audio})`);
+  expect(audioCalls(r).at(-1)?.startsWith('fade0F'),`native music back at the release (${r.audio})`);
   // On the finale's own map (180); the scatter's 28 sprites (300-340) are
   // the heaviest frames.
   expect(r.lag_frames<=20,`lag ${r.lag_frames} frames`);
@@ -243,7 +260,11 @@ for(const t of tests){
   if(only.length&&!only.includes(t.name))continue;
   problems.length=0;
   const out=resolve(repo,'.local/snes-test/ending',t.name);
-  const r=await runMesen({rom,test:lib+readFileSync(resolve(here,`${t.name}.lua`),'utf8'),outDir:out});
+  // A private copy: its own (fresh) battery file, not one shared with
+  // other suites running the same ROM name.
+  const copy=privateRom(rom,`ending-${t.name}`);
+  const r=await runMesen({rom:copy,test:lib+readFileSync(resolve(here,`${t.name}.lua`),'utf8'),outDir:out});
+  cleanupRom(copy);
   if(r.code!==0||!r.results||r.results.error)problems.push(`mesen: ${r.results?.error??r.code}`);
   else await t.check(r.results,out);
   const pass=!problems.length;

@@ -22,7 +22,7 @@
 !ending_flags   = !RAM_ORBIT+$84   ; word  !EF_* outcome/presentation flags
 !ending_done    = !RAM_ORBIT+$86   ; word  bit n set once phase n's timeline has finished
 !ending_status  = !RAM_ORBIT+$88   ; byte  !ES_* live status for other modules
-!ending_sfx     = !RAM_ORBIT+$89   ; byte  last sound cue (!ESFX_*); the audio module clears it
+!ending_sfx     = !RAM_ORBIT+$89   ; byte  last sound cue (!ESFX_*), also sent to audio_sfx
 !ending_target_x = !RAM_ORBIT+$8C  ; word  globe target (planet-view target), 0 = default
 !ending_target_y = !RAM_ORBIT+$8E  ; word
 !ending_map0    = !RAM_ORBIT+$90   ; word  native map when the scene took the screen
@@ -35,6 +35,7 @@
 !ending_gokuctl = !RAM_ORBIT+$9E   ; byte  we set the goku module's SUPPRESS for a full-screen scene
 !ending_reload  = !RAM_ORBIT+$9F   ; byte  a native map load ran under a full-screen scene
 !ending_pulse   = !RAM_ORBIT+$A0   ; word  explosion preset: prose advance pulse (debug hook)
+!ending_mute    = !RAM_ORBIT+$A2   ; byte  native music silenced for ES_MUTED (frames, 0 = not)
 
 ; Phases (match the browser's state.phase).
 !EP_TRANSITION = $01   ; good: whole-screen fade to black over 48 frames, then black
@@ -284,6 +285,13 @@ endmacro
 
 ; Generated art (data banks) and its size/count defines.
 incsrc "ending/ending_data.asm"
+incsrc "audio/ids.asm"
+
+; Second code area: the lower half of $ED (FastROM), after the art moved to
+; extended data. Its code runs with PB = $ED, sets DB itself and reads its
+; tables with long addressing; it reaches the main bank's routines through
+; JSL entries.
+!CODE_ENDING_X = $ED0000
 
 pushpc
 org !CODE_ENDING
@@ -395,10 +403,27 @@ cue_kai:
 cue_escape:
 	LDA.w #!ESFX_TELEPORT
 cue_sfx:
+	JMP ending_sound
+
+; Sound cue A16 = !ESFX_*: recorded in !ending_sfx and played through the
+; audio module (audio_sfx, at the end of this frame). Main-loop code only.
+; Returns M16/X16; preserves X and Y.
+ending_sound:
 	SEP #$20
 	STA.l !ending_sfx
 	REP #$30
+	PHX
+	AND.w #$000F
+	TAX
+	LDA.l ending_sound_ids-1,X
+	AND.w #$00FF
+	JSL audio_sfx
+	REP #$30
+	PLX
 	RTS
+ending_sound_ids:                 ; !ESFX_* 1-8 -> !AUDIO_SFX_*
+	db !AUDIO_SFX_POWER_BURST, !AUDIO_SFX_CHARGED, !AUDIO_SFX_FLIGHT, !AUDIO_SFX_TELEPORT
+	db !AUDIO_SFX_TELEPORT_IN, !AUDIO_SFX_REVERT, !AUDIO_SFX_FRIEZA_ORB, !AUDIO_SFX_FORTRESS_BREAK
 ; village: end with a living Randi, never a ghost left by the battle
 ; state ($E190/$E191 = 0, HP = max).
 cue_village:
@@ -736,7 +761,7 @@ ending_frame:
 	AND.w #$00FF
 	BNE .run
 	PLB
-	RTL
+	JML ending_music_sync
 .run
 	INC.w !s_frame
 	; A native map load since the scene took the screen: the loader has
@@ -784,7 +809,7 @@ ending_frame:
 .out
 	REP #$30
 	PLB
-	RTL
+	JML ending_music_sync
 
 ; A full-screen scene stays up over native map loads, as the browser's
 ; picture does. A door changes $DC at once and fades the field (and the
@@ -876,7 +901,7 @@ start_phase:
 	LDA.l !ending_phase
 	STA.w !s_prevphase
 	LDA.l !ending_status
-	AND.b #~(!ES_NATIVEBOY|!ES_AIRBORNE|!ES_CHARGING)
+	AND.b #~(!ES_NATIVEBOY|!ES_AIRBORNE|!ES_CHARGING|!ES_MUTED)
 	STA.l !ending_status
 	REP #$30
 	PLA
@@ -1266,4 +1291,11 @@ incsrc "ending/ending_tables.asm"
 
 ending_code_end:
 assert ending_code_end <= !CODE_ENDING+$8000, "ending code bank overflow"
+pullpc
+
+pushpc
+org !CODE_ENDING_X
+incsrc "sound.asm"
+ending_x_end:
+assert ending_x_end <= !CODE_ENDING_X+$8000, "ending second code area overflow"
 pullpc
