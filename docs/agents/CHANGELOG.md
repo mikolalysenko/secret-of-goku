@@ -4,6 +4,43 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## 2026-10-18 — Release 0.2.5
+
+- Release 0.2.5 (`v0.2.5`) and its Pages build add one exact fast path to 0.2.4:
+  - **Sound driver idle loop skipped:** about 60% of the SPC's instructions are the sound driver's wait (`CALL` / `MOV X,port` / `BEQ` / `RET` / `MOV Y,timer` / `BEQ`). While the CPU port and the timer counter it polls both read 0, `catchUpApu` applies whole passes at once. A batch ends within the catch-up, since a port cannot change inside one, and its last counter read comes no later than the counter's next increment. The DSP and timers still run every cycle.
+- Every scene against 0.2.3, Chrome full-render frames/s, median of three in the same session. The machine was busy (load average 8–11), so these rates sit below an idle machine's:
+
+  | Scene | 0.2.3 | 0.2.5 | Change | Real time |
+  | --- | --- | --- | --- | --- |
+  | Sandship wreck | 542 | 646 | ×1.19 | 10.8× |
+  | World flight | 629 | 685 | ×1.09 | 11.4× |
+  | Beast challenge | 604 | 694 | ×1.15 | 11.6× |
+  | Waterfall, first flight | 631 | 703 | ×1.12 | 11.7× |
+  | Throne room (map 431) | 606 | 711 | ×1.17 | 11.9× |
+  | Fortress deck | 584 | 711 | ×1.22 | 11.9× |
+  | Waterfall after the arrival | 558 | 719 | ×1.29 | 12.0× |
+  | Sandship | 599 | 732 | ×1.22 | 12.2× |
+  | Field | 654 | 736 | ×1.12 | 12.3× |
+  | Explosion | 586 | 754 | ×1.29 | 12.6× |
+  | Ending | 625 | 777 | ×1.24 | 13.0× |
+  | Buffy | 656 | 782 | ×1.19 | 13.0× |
+  | Trial | 630 | 791 | ×1.26 | 13.2× |
+  | Field combat | 623 | 811 | ×1.30 | 13.5× |
+  | Status page | 618 | 811 | ×1.31 | 13.5× |
+  | Title | 842 | 842 | ×1.00 | 14.0× |
+  | Name entry | 658 | 860 | ×1.31 | 14.3× |
+  | Fortress | 686 | 864 | ×1.26 | 14.4× |
+  | Tree | 681 | 878 | ×1.29 | 14.6× |
+  | Battle | 663 | 883 | ×1.33 | 14.7× |
+  | File select | 653 | 907 | ×1.39 | 15.1× |
+  | Space | 721 | 948 | ×1.31 | 15.8× |
+  | Orbit | 739 | 1008 | ×1.36 | 16.8× |
+
+- Validation:
+  - **Unit tests:** 380 pass. A new test compares SPC RAM, every DSP sample, the timers and the SPC registers with stepping each pass, from power-on and on the saved states. It fails if a batch runs one pass past the timer.
+  - **Exactness:** the original SnesJs core equivalence passes (SPC RAM and audio every frame), and every saved state, scene and forced branch renders identically to 0.2.4 with every mod hook.
+  - **Browser suite:** only the known failures; all 28 phone tests pass.
+
 ## 2026-10-17 — Release 0.2.4
 
 - Release 0.2.4 (`v0.2.4`) and its Pages build include everything since 0.2.3:
