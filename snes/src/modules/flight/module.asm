@@ -21,13 +21,17 @@
 !FLIGHT_OWNS_D651 = 1
 
 ; Story hooks and queries flight implements (story.asm; the tables in
-; story/hooks.asm, included last, pick these labels up).
-!STORY_HOOK_FLIGHT_LAND = fl_story_land
-!STORY_HOOK_QUEST_WISH_CEILING = fl_story_wish_ceiling
-!STORY_QUERY_LOCAL_FLIGHT = fl_story_local_flight
-; The Sandship runtime has no owner yet; the door the flight-door event 07A
-; takes is flight's (sandship.js flyThroughDoor sets s.door).
-!STORY_QUERY_SANDSHIP_DOOR = fl_story_ship_door
+; story/hooks.asm, included last, pick these labels up). Story's test builds
+; (-DSTORY_TEST) answer every foreign hook and query from their own tables
+; (story/testhooks.asm, included before this file): keep those.
+if not(defined("STORY_TEST"))
+	!STORY_HOOK_FLIGHT_LAND = fl_story_land
+	!STORY_HOOK_QUEST_WISH_CEILING = fl_story_wish_ceiling
+	!STORY_QUERY_LOCAL_FLIGHT = fl_story_local_flight
+	; The Sandship runtime has no owner yet; the door the flight-door event
+	; 07A takes is flight's (sandship.js flyThroughDoor sets s.door).
+	!STORY_QUERY_SANDSHIP_DOOR = fl_story_ship_door
+endif
 
 ; ---------------------------------------------------------------------------
 ; WRAM (!RAM_FLIGHT = $7ED900, $80 bytes; absolute addressing with DB = $7E)
@@ -123,6 +127,12 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !FLE_TELEPORT    = $0010 ; Instant Transmission started ('teleport' cue)
 !FLE_TELEPORT_IN = $0020 ; Goku reappears ('teleportIn' cue)
 
+; fl_owned bits: Goku request fields flight wrote
+!FLO_ACT     = $0001 ; goku_act = teleport (Instant Transmission)
+!FLO_GAP     = $0002 ; goku_mode = gap flight (whip crossing)
+!FLO_CEIL    = $0004 ; goku_mode = ceiling (ceiling escape)
+!FLO_CTL     = $0008 ; goku_ctl LOCALFLY/AIRBORNE and goku_lift
+
 ; Audio cue ids (docs/agents/snes-port/audio.md; bind.asm asserts them
 ; against the audio module's !AUDIO_SFX_* when it is present).
 !FL_SFX_SWING       = 1
@@ -169,7 +179,9 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
                                    ; footprint it covers is in bounds
 !fl_g_chk      = !FL_SRAM+$332     ; word: the grid's tiles were checked in this phase (frame, step)
 !fl_ht         = !FL_SRAM+$334     ; hero tile memo: +0 x, +2 y, +4 layer bit, +6 idx, +8 1 = off the map
-                                   ; ($FFFF in +4: none); $33E-$34F free
+                                   ; ($FFFF in +4: none)
+!fl_owned      = !FL_SRAM+$33E     ; word: Goku requests flight wrote (!FLO_*); flight clears only
+                                   ; these, once, so other writers' requests stay; $340-$34F free
 !fl_tp         = !FL_SRAM+$350     ; Instant Transmission (teleport.asm):
 !fl_tp_act     = !fl_tp+$00        ;   word: action running
 !fl_tp_age     = !fl_tp+$02        ;   word: action age

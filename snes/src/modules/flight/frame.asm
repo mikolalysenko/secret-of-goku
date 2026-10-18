@@ -436,6 +436,7 @@ fl_init_work:
 	STA.l !fl_tp_act
 	STA.l !fl_tp_queued
 	STA.l !fl_tp_custom
+	STA.l !fl_owned
 	JSR fl_anchor_none
 	JSR fl_crossing_none
 	JSR fl_cache_clear
@@ -757,28 +758,47 @@ fl_publish:
 	BEQ .nomask
 	JSR fl_bind_mask_b
 .nomask
-	; Goku: LOCALFLY = localFlight, AIRBORNE = localFlight || localLift > 0
+	; Goku: LOCALFLY = localFlight, AIRBORNE = localFlight || localLift > 0.
+	; Flight writes them and goku_lift while it wants one of them, clears
+	; them once when it stops wanting them, and otherwise leaves them to
+	; their other writers (fl_owned).
+	LDA.w #$0000
+	STA.w !fl_t0                 ; the bits flight wants
+	LDA.w !fl_state
+	AND.w #!FLS_FLY
+	BEQ +
+	LDA.w #!GOKU_CTL_LOCALFLY|!GOKU_CTL_AIRBORNE
+	STA.w !fl_t0
++	LDA.w !fl_lift
+	AND.w #$00FF
+	BEQ +
+	LDA.w !fl_t0
+	ORA.w #!GOKU_CTL_AIRBORNE
+	STA.w !fl_t0
++	LDA.w !fl_t0
+	BNE .ctl
+	LDA.l !fl_owned
+	AND.w #!FLO_CTL
+	BEQ .act
+.ctl
 	SEP #$20
 	LDA.l $7E0000|!goku_ctl
 	AND.b #~(!GOKU_CTL_LOCALFLY|!GOKU_CTL_AIRBORNE)
-	STA.w !fl_t0
-	LDA.w !fl_state
-	AND.b #!FLS_FLY
-	BEQ +
-	LDA.w !fl_t0
-	ORA.b #!GOKU_CTL_LOCALFLY|!GOKU_CTL_AIRBORNE
-	STA.w !fl_t0
-+	LDA.w !fl_lift
-	BEQ +
-	LDA.w !fl_t0
-	ORA.b #!GOKU_CTL_AIRBORNE
-	STA.w !fl_t0
-+	LDA.w !fl_t0
+	ORA.w !fl_t0
 	STA.l $7E0000|!goku_ctl
 	REP #$20
 	LDA.w !fl_lift
 	AND.w #$00FF
 	STA.l $7E0000|!goku_lift
+	LDA.w !fl_t0
+	BEQ +
+	LDA.l !fl_owned
+	ORA.w #!FLO_CTL
+	BRA ++
++	LDA.l !fl_owned
+	AND.w #$FFFF-!FLO_CTL
+++	STA.l !fl_owned
+.act
 	; Instant Transmission pose (goku action $14), until the action ends
 	LDA.l !fl_tp_act
 	BEQ .noact
@@ -797,8 +817,19 @@ fl_publish:
 	REP #$20
 	LDA.l !fl_tp_age
 	STA.l $7E0000|!goku_act_age
+	LDA.l !fl_owned
+	ORA.w #!FLO_ACT
+	STA.l !fl_owned
 	BRA .sounds
 .noact
+	; the action ended: drop flight's pose once, unless another owner
+	; replaced it meanwhile
+	LDA.l !fl_owned
+	AND.w #!FLO_ACT
+	BEQ .sounds
+	LDA.l !fl_owned
+	AND.w #$FFFF-!FLO_ACT
+	STA.l !fl_owned
 	LDA.l $7E0000|!goku_act
 	AND.w #$00FF
 	CMP.w #!GOKU_K_TELEPORT
@@ -838,8 +869,17 @@ fl_publish:
 	LDA.b #!GOKU_K_GAPFLIGHT
 	STA.l $7E0000|!goku_mode
 	REP #$20
+	LDA.l !fl_owned
+	ORA.w #!FLO_GAP
+	STA.l !fl_owned
 	BRA .bed
 .nogap
+	LDA.l !fl_owned
+	AND.w #!FLO_GAP
+	BEQ +
+	LDA.l !fl_owned
+	AND.w #$FFFF-!FLO_GAP
+	STA.l !fl_owned
 	LDA.l $7E0000|!goku_mode
 	AND.w #$00FF
 	CMP.w #!GOKU_K_GAPFLIGHT

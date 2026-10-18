@@ -14,15 +14,17 @@ whip-pad crossings, the ceiling escape, the opening-path exit catches, NPC
 pass-through and the Sandship's flight-side rules are in and validated; the
 terrain classifier, the teleport landing search, the exit catches and the
 roof colours equal the browser's on every tile, query, probe and palette
-tested.** Flight still costs too much CPU in heavy scenes (see
-[Cost](#cost)); what other streams still owe is under
+tested.** Flying costs 35-45 scanlines per frame in towns and fields (they
+keep 60 Hz) and 55-70 in dungeons, which then drop to 30-36 Hz while Goku
+flies (see [Cost](#cost)); what other streams still owe is under
 [Remaining](#remaining).
 
 ## Behaviour (as the browser)
 
 - **A + direction** flies at 6 px/frame (8 in Super Saiyan; diagonals
   `round(v·√½)`), never more than 14 px per axis per video frame, inside the
-  map. Charging (combat's `!fl_charging`) halves it. With L held flight only
+  map. Charging (combat's charge state while L+Y is held, or a
+  `!fl_charging` request) halves it. With L held flight only
   starts during the Kamehameha wave (L+Y), never with L+B.
 - Released over a gap Goku keeps hovering until he reaches ground he can
   land on; `!goku_lift` rises/falls 3 px a frame (0-12) and the landing cue
@@ -199,14 +201,16 @@ calls combat's Saiyan recoil (`combat_recoil_vector`) first, through
 
 | Resource | Use |
 | --- | --- |
-| Code `$A3:8000-…` | `!CODE_FLIGHT` (about 13.5 KiB used; bindings to other modules at `$A3:F000`) |
-| Data `$E3:0000-…` | `!DATA_FLIGHT` (about 10 KiB: bitsets, map flags/extents, exits, routes, recovery order) |
+| Code `$A3:8000-…` | `!CODE_FLIGHT` (16.7 KiB used, to `$A3:C2E7`; bindings to other modules at `$A3:F000-F0AD`) |
+| Data `$E3:0000-…` | `!DATA_FLIGHT` (9.3 KiB, to `$E3:254F`: bitsets, map flags/extents, exits, routes, recovery order) |
 | WRAM `$7E:D900-D97F` | `!RAM_FLIGHT`, all $80 bytes (map in `module.asm`) |
-| SRAM `$33:7800-7BFF` | `!SRAM_WORK_FLIGHT`: tile cache, flood fill, anchor/crossing, hero grid, sweep/hero memos, Instant Transmission, camera follow, ceiling escape (`$7BF0`), test mailbox (initialised on the first field frame after title entry: `!fl_magic`); the roof-colour search borrows the tile cache once per escape |
+| SRAM `$33:7800-7BFF` | `!SRAM_WORK_FLIGHT`: tile cache, flood fill, anchor/crossing, hero grid, sweep/hero memos, Instant Transmission, camera follow, ceiling escape (`$7BF0`), Goku request ownership (`$7B3E`), test mailbox (initialised on the first field frame after title entry: `!fl_magic`); the roof-colour search borrows the tile cache once per escape |
 | SRAM `$31:62C0-62FF` | `!PERSIST_GROUND`: unused so far |
-| OAM / VRAM / CGRAM / DMA | none (Goku's pose comes from the goku module; effects will come from fx) |
+| OAM / VRAM / CGRAM / DMA | none (Goku's pose comes from the goku module, effects from fx) |
 
-Dispatch: `modules_field_frame` → `flight_frame` (first, before goku);
+Dispatch: `modules_field_frame` → `flight_frame` (after combat, before
+world and goku) and `flight_pose_frame` (after `world_field_frame`, so the
+ceiling escape's pose wins over world's takeoff pose);
 `modules_world_frame` → `flight_world_frame` (a ceiling escape completes in
 world flight).
 
@@ -226,14 +230,18 @@ WRAM fields (bank `$7E`, absolute with DB = `$7E`):
 | `!fl_open_air` | `$D978` word | Sandship/dunes `openAir` (flight passes over every wall), set with the map context |
 | `!fl_charging` | `$D97A` word | request from combat: a charge is running (halves speed, keeps the flight rules for the step) |
 
-Goku requests written by flight every field frame: `GOKU_CTL_LOCALFLY`
-(localFlight), `GOKU_CTL_AIRBORNE` (localFlight or lift > 0), `!goku_lift`,
-`!goku_mode = $23` during a native whip crossing (cleared only if flight set
-it);
-while Instant Transmission runs `!goku_act = $14`, `!goku_act_age`,
-`!goku_act_facing`, `!goku_act_arg` bit 7 in Super Saiyan (cleared when it
-ends). Combat sees the foreign action through `cb_ext_kind` and starts
-nothing meanwhile (combat runs before flight in `modules_field_frame`).
+Goku requests flight writes: `GOKU_CTL_LOCALFLY` (localFlight),
+`GOKU_CTL_AIRBORNE` (localFlight, lift > 0 or a ceiling escape) and
+`!goku_lift`, every field frame while it wants one of them;
+`!goku_mode = $23` during a native whip crossing and `$25` (with
+`!goku_mode_age`) during a ceiling escape; while Instant Transmission runs
+`!goku_act = $14`, `!goku_act_age`, `!goku_act_facing`, `!goku_act_arg`
+bit 7 in Super Saiyan. `!fl_owned` (SRAM `$33:7B3E`) records which of them
+flight wrote: each is cleared once when flight stops wanting it (a mode or
+action only while it still holds flight's value), and requests other
+writers make (combat, world, the goku tests) are never touched. Combat sees
+the foreign action through `cb_ext_kind` and starts nothing meanwhile
+(combat runs before flight in `modules_field_frame`).
 
 Custom teleport target (`!fl_tp_custom`, SRAM `$33:7B68`, 8 bytes): a scene
 module that owns a foe outside the actor table writes it every field frame
@@ -244,7 +252,8 @@ module that owns a foe outside the actor table writes it every field frame
 Story hooks/queries defined in `module.asm`: `!STORY_HOOK_FLIGHT_LAND`,
 `!STORY_HOOK_QUEST_WISH_CEILING`, `!STORY_QUERY_LOCAL_FLIGHT` (`story.asm`),
 `!STORY_QUERY_SANDSHIP_DOOR` (`sandship.asm`; listed under the Sandship
-owner in story.md, but only the flight door sets it).
+owner in story.md, but only the flight door sets it). Story's `-DSTORY_TEST`
+builds keep their own table answers instead (as combat's and destroy's).
 
 Bindings (`bind.asm`, included by `modules.asm` after every module so the
 providers' defines are visible): world (`!WORLD_MAGIC`) `world_takeoff`,
@@ -257,8 +266,7 @@ highlight), `fx_quake` 24, `fx_kill_all` on a cancel; combat `combat_recoil_vect
 `FLIGHT` 18, `LANDING` 19, `TELEPORT` 16, `TELEPORT_IN` 17 and the `AIR`
 loop while flying (level .35 while charging), ids asserted against
 `AUDIO_IDS`; ui `ui_power_intro_flight` every frame Goku hovers with control,
-`ui_ceiling_escape`; world `!WORLD_TAKEOFF` (else the native `$0C00|map`
-request). Without the combat module flight hides B from the game while Goku
+`ui_ceiling_escape`. Without the combat module flight hides B from the game while Goku
 can act (the browser always does; combat's input filter does it otherwise).
 
 `!FLIGHT_MISSING_FLOOR` (define, optional, seen through `bind.asm`): a
@@ -326,13 +334,13 @@ without a tile change) and walking stops before them (`supported()` at
   their real doors (Water Palace 137/139, Potos houses 257/259, Gaia's
   Navel 293, Matango inn 282, Gold City house 125): L+R starts the escape,
   the pose shows, the exterior loads, Goku never reappears on its ground,
-  the whole party leaves; plus `ceiling-escape.test.mjs`'s boss lock (a
-  live species-100 boss keeps it, a dying one frees it). This branch has no
-  world module, so the fallback native request takes off with Flammie's
-  summon: world flight after 780-1,070 frames from five rooms; from the
-  Water Palace exterior the native summon does not complete (the world
-  module skips the summon, as the browser does), so there the test checks
-  the escape up to its takeoff request.
+  the whole party leaves, world flight runs (299-359 frames after the
+  press, through the world module's takeoff) and the escape completes;
+  plus `ceiling-escape.test.mjs`'s boss lock (a live species-100 boss
+  keeps it, a dying one frees it). In a build without the world module
+  the native `$0C00|map` request takes off with Flammie's summon instead,
+  which does not complete from the Water Palace exterior, so there the
+  test then stops at the takeoff request.
 - Scenarios also cover `event-barriers.spec.mjs`'s Pandora castle guards
   (flying past them: the NPC pass fires, both engines end at 88,148 on map
   266 with the story flags unchanged), flying out of Potos (both take
@@ -359,39 +367,59 @@ without a tile change) and walking stops before them (`supported()` at
 
 ## Cost
 
-Measured in the Water Palace (an already heavy scene: logic ends at line
-~140 with goku and story): walking costs ~800 flight instructions per frame
-(about 17 lines), flying ~3,700 per logic frame, so that scene runs at about
-45 Hz while flying (the browser mod at 60). `snes/test/perf/run.mjs` (walking
-only) reports +17-21 lines over main in its scenes, on top of main's own
-+27-33. Instant Transmission adds ~4,300 instructions on the press (target
-search with landings) and ~3,500 at arrival (landing again, gather, camera),
-one-off; the river field then drops one frame at the arrival. Idle teleport
-bookkeeping costs ~45 instructions per frame (465 → 512 walking in the sword
-scene).
+Measured on the FastROM build with every module of main: scanlines of
+flight code per logic frame (the master clock between code-bank changes,
+`Mesen` Lua), and the logic rate while Goku flies:
 
-Earth Palace whip corridor (`phases.mjs whip-fly`): walking ~490
-instructions per frame; flying 800-3,700 per logic frame (whip routes and
-dungeon air for each new tile, settle) and hovering ~1,800, so that scene
-runs at 30 Hz while flying (the cartridge covers the corridor in twice the
-browser's frames; the outcome is the same). Gaia's Navel at Super Saiyan
-speed (`phases.mjs gaia-ledges`): ~2,500 per frame, ~4,000 when a new row
-of bank tiles enters the sweep (the bank rule walks up to 16 tiles each
-way), at 60 Hz. Done so far: footprints inside the hero grid answered from
-column/row pattern tables (no tile rectangle, no bounds when the grid is
-well inside the map), the grid's tiles checked once per phase, hero canLand
-through the grid, whip rays by index arithmetic with a quick pad
-pre-check, unit `fl_step`s by index arithmetic, the D778 endpoint canFly
-implied by the sweep.
+| Scene | Standing | Walking | Flying | Rate while flying |
+| --- | --- | --- | --- | --- |
+| Potos (town, map 131) | 7 | 8 | 42-46 | 60 Hz |
+| Pandora castle (266) | 8 | – | 40 | 52 Hz |
+| Water Palace gap (139) | 8 | 11 | 70 | 36 Hz |
+| Earth Palace whip corridor (313) | 8 | – | 63 (hovering 38) | 34 Hz (45 hovering) |
+| Gaia's Navel (25) | 7 | 14 | 57 | 32 Hz |
 
-Ceiling escape: the roof-colour search costs ~12,000 instructions once, at
-the impact (one dropped frame during the quake).
+The dungeons are heavy before flight: in the Water Palace on foot the
+game's own code takes ~125 lines, goku ~24, story ~11, combat ~7, flight
+~11 (60 Hz); Gaia's Navel and the Earth Palace already drop to 48-57 Hz on
+foot (game code ~140 lines a frame). Combat also costs more while Goku
+flies (10-12 lines instead of 6-7): A held wakes its full frame.
+
+On foot (`phases.mjs probe-walk`, goku's budget walk in the Potos probe)
+flight runs 430-870 instructions a frame: the frame ~130, publish ~100,
+hooks ~90, and settle's anchor canLand (36 standing on the anchor, ~240
+walking, ~460 when the footprint enters new tiles). goku's budget test
+(Goku on against Goku off, every Goku-gated module included) reads p90
+400 → 432, a 32-line delta against its 24-line limit (main without flight:
+395 → 417, 22).
+
+`phases.mjs` splits a steady flying frame (~2,200 flight instructions,
+26-33 master cycles each: the tile cache and the hero grid are SRAM,
+reached with long addressing):
+the D651 movement hook ~530 (sweep, grid masks, bounds), settle ~525 (four
+hero-tile lookups, companion follow), the frame ~480 (hero canLand/canFly,
+grid refresh), D778 ~340, publish ~155, D359 70-100, lift and decide ~100.
+A new row or column of tiles entering the hero grid costs ~2,400 more
+(tile classes, air routes; ~4,000 for a row of bank tiles, whose rule walks
+up to 16 tiles each way). Instant Transmission adds ~4,300 instructions on
+the press (target search with landings) and ~3,500 at arrival (landing
+again, gather, camera), one-off; idle teleport bookkeeping ~45 per frame.
+The ceiling escape's roof-colour search costs ~12,000 once, at the impact
+(one dropped frame during the quake).
+
+Done so far: footprints inside the hero grid answered from column/row
+pattern tables (no tile rectangle, no bounds when the grid is well inside
+the map), the grid's tiles checked once per phase, hero canLand through
+the grid with a per-frame position memo, whip rays by index arithmetic with
+a quick pad pre-check, unit `fl_step`s by index arithmetic, the D778
+endpoint canFly implied by the sweep, rolling tile-cache expiry (two slots
+a frame), the on-foot settle skipped on an anchor at the same spot.
 
 Next steps: per-direction distance-to-shore memos for the bank, gap and
-air-route walks (each new tile repeats its neighbours' walks), a leaner
-settle (~500 per frame while flying: four hero-tile lookups and fetches),
-more WRAM/SRAM for a larger tile cache. `CORE_FASTROM` would give module
-code 25%.
+air-route walks (each new tile repeats its neighbours' walks), one
+hero-tile fetch per settle instead of four, D778's endpoint canLand handed
+to the next frame's hero memo (keyed by a grid epoch), the hottest fields
+in WRAM or direct page (shorter addressing), a larger tile cache.
 
 ## Remaining
 
@@ -405,9 +433,10 @@ code 25%.
   sprite owner (goku's per-actor passes); `sprite-layer.js` also hides the
   whip attachment during a crossing (goku draws no weapon cells for Goku
   anyway).
-- Ceiling escape: the debris and sparks are requested from fx (style 1 for
-  `ceiling-escape.js`'s 20-chunk layout); fx draws them once it implements
-  those kinds. The Vegeta trial counts as a boss only through its custom
+- Ceiling escape: fx draws the impact sparks (`FX_SPARKS`) and the quake;
+  the 20 roof chunks are requested as `FX_DEBRIS` style 1 (fx's "ceiling
+  dust", in the room's colours), which fx accepts but does not draw yet.
+  The Vegeta trial counts as a boss only through its custom
   target post (kind 3). The world module's own L+R takeoff does not check
   the boss lock the browser's `requestFlight()` applies to both routes.
 - Instant Transmission: `mod.facing` comes from `E010` (the browser also
@@ -426,5 +455,6 @@ code 25%.
   air-route walks.
 - A core-provided per-frame `canAttack`/field state would remove duplicate
   checks across combat, story and flight.
-- `CORE_FASTROM` (see engine.md) is worth enabling once the module budget
-  is tight; flight is the heaviest field module so far.
+- WRAM for flight's hot work fields (the hero grid, sweep memos, about
+  $100 bytes): SRAM is as fast per access, but only long addressing
+  reaches it (a byte more per access, X-only indexing).

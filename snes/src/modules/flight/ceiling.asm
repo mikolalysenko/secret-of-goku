@@ -504,6 +504,9 @@ fl_ce_pose:
 	ORA.b #!GOKU_CTL_AIRBORNE
 	STA.l $7E0000|!goku_ctl
 	REP #$20
+	LDA.l !fl_owned
+	ORA.w #!FLO_CEIL|!FLO_CTL    ; fl_publish drops AIRBORNE once it ends
+	STA.l !fl_owned
 	LDA.l !fl_ce_phase
 	CMP.w #1
 	BNE +
@@ -513,6 +516,12 @@ fl_ce_pose:
 ++	STA.l $7E0000|!goku_mode_age
 	RTS
 .none
+	LDA.l !fl_owned
+	AND.w #!FLO_CEIL
+	BEQ +
+	LDA.l !fl_owned
+	AND.w #$FFFF-!FLO_CEIL
+	STA.l !fl_owned
 	LDA.l $7E0000|!goku_mode
 	AND.w #$00FF
 	CMP.w #!GOKU_K_CEILING
@@ -556,13 +565,7 @@ flight_world_frame:
 .done
 	LDA.w #$0000
 	STA.l !fl_ce_phase
-	SEP #$20
-	LDA.l $7E0000|!goku_mode
-	CMP.b #!GOKU_K_CEILING
-	BNE +
-	LDA.b #$00
-	STA.l $7E0000|!goku_mode
-+	REP #$20
+	JSR fl_ce_pose               ; phase 0: flight's pose is dropped
 	LDA.l !fl_ce_src
 	JSR fl_bind_ui_ceiling       ; radio.escapedCeiling(source)
 .out

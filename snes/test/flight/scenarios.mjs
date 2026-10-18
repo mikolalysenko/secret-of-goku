@@ -56,6 +56,10 @@ export const scenarios=[
   // focusing (L), standing — the module's on-foot cost.
   {name:'rabite-walk',fixture:'animation-audit__native__rabite-field-b',
     steps:[{b:['right'],n:20},{b:['l'],n:40},{n:20}]},
+  // goku's budget walk (snes/test/goku/budget.lua): 160 frames on foot in
+  // the Potos probe, 40 each way — flight's on-foot cost there.
+  {name:'probe-walk',fixture:'barrier-audit__potos-probe',
+    steps:[{n:10},{b:['up'],n:40},{b:['right'],n:40},{b:['down'],n:40},{b:['left'],n:40}]},
   // Potos river banks and fences (town flight).
   {name:'potos-river',fixture:'graphics-audit__party',enter:{map:131,x:18,y:22},prep:['clearActors'],
     steps:[{n:10},{b:['a','right'],n:40},{n:10},{b:['a','down'],n:40},{n:10},{b:['a','left'],n:40},{n:20}]},
