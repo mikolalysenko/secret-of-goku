@@ -701,6 +701,16 @@ export async function generate({rom,repo,outDir,xdata}){
   }
   t.label('fx_dust_xy');t.dw(dustXY);
   a.label('fx_wave_colors');for(const w of waves)a.dw(w);
+  // Opposed clash waves: the same horn/cap approximation as fx_ph_rec,
+  // precomputed for taper 36 and the browser's maximum half-width 82.
+  const dualOffsets=[],dualRows=[];
+  for(let h=0;h<=82;h++){
+    dualOffsets.push(dualRows.length);
+    for(let y=0;y<=h;y++)dualRows.push(h?Math.max(0,Math.ceil(y*36/h)-8):0,h?Math.ceil(12*(y/h)**2):0);
+  }
+  a.label('fx_dual_offsets');a.dw(dualOffsets);
+  a.label('fx_dual_rows');a.db(dualRows);
+  a.label('fx_dual_colours');a.dw([trainingBeamPalettes.blue[1]-1,trainingBeamPalettes.gold[1]-1,trainingBeamPalettes.purple[1]-1]);
   a.label('fx_aura_ramps');for(const r of auraRamps)a.dw(r.slice(0,4));
   writeFileSync(join(outDir,'data.asm'),a.text());
   writeFileSync(join(outDir,'tables.asm'),t.text());

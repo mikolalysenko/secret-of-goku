@@ -107,6 +107,7 @@ fx_world_frame:
 ; to draw this frame.
 fx_begin:
 	LDA.w #$FFFF
+	STA.l !fx_dual_pair
 	STA.l !fx_clspal
 	STA.l !fx_clspal+2
 	STA.l !fx_clspal+4
@@ -625,6 +626,7 @@ fx_run_draws:
 	TXA
 	CMP.l !fx_ndraw
 	BCS .done
+	STA.l !fx_dual_cur
 	PHX
 	LDA.l !fx_draws+$0,X
 	STA !d_cur+$0

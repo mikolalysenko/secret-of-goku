@@ -212,7 +212,7 @@ free in the field (`!VRAM_FIELD_OBJ_A/B/C`: 15 cells), claimed with
 after 120 idle frames or at a map or mode change (so a scene module such as
 the arrival can claim them while FX idles). Each frame FX looks up the
 cells it will draw, keeps cells drawn recently, and uploads missing ones in
-its vblank callback (two 64-byte halves per cell). The upload budget is
+its vblank callback (two 64-byte halves per cell). A generated four-byte source pointer per cell avoids bank selection and address multiplication during vblank. The upload budget is
 learned per streaming phase of the game (`$56`: in Potos one phase in five
 leaves no vblank time); a cell whose upload slipped is not drawn until it
 lands. A spawned effect whose new animation frame needs cells that the
@@ -231,7 +231,9 @@ it) and maps the classes it draws to free OBJ palettes, preferring 3 and 2
 (never in OBJ colour math), then 7, 6, 5, 4; the vblank callback writes
 those 32-byte palettes after the game's own CGRAM upload (the game
 uploads all of CGRAM every completed frame), so its buffer at `$7E:0600`
-is never modified. A class with no free palette is not drawn that frame;
+is never modified. A class with no free palette is not drawn that frame.
+Allocation sets the palette-work bit directly (bit 8 of `!fx_palfree`),
+so finishing a frame need not reduce all seven class bytes to find work.
 Potos leaves two free palettes, so the usual pairs (BLUE + GOLD for a
 Super Saiyan beam, FIRE alone for explosions) fit.
 
@@ -326,6 +328,82 @@ shows:
   (bands +2 px every third 8 px, moving every 2 frames) is implemented but
   off, since it would force a rebuild every other frame; the horn steps
   above; native sprites in front.
+
+**Paired horizontal clashes** (`clash.asm`, HDMA kind 5): Goku's blue
+wave and the opposing Galick Gun / Final Flash now share the two window
+spans. The existing Vegeta requests select this automatically; no Vegeta
+code or core changes are needed. It applies to map-coordinate waves with
+no flags, taper 36, half-widths 1–82, opposite horizontal facings, meeting
+endpoints, palm Y difference −3..4, and Goku's screen X −256..511. Other
+pairs keep the ordinary polygon + OBJ fallback. Native colour math and an
+aura occupying both table buffers also prevent pairing.
+
+Window 1 exposes the blue backdrop. Window 2 clips the main screen to
+black, then adds its independent purple/gold COLDATA colour. **BG3 and OBJ
+are masked on the main screen only inside window 2 and mirrored unmasked
+on the subscreen**: their own colours replace the fixed colour there, so
+the fighters, collision ball and HUD retain their priority. The normal
+field subscreen shadow (`$22`) and window registers are restored when the
+pair ends, including a transition to a single polygon or the ring menu.
+`clash-colour.lua` demonstrates why the mirror matters: clipping alone
+blackens 879 native sprite pixels; the subscreen restores all 879 exactly.
+
+The pair uses one middle-ramp colour per wave and eight-line outline
+steps. It gives the second wave its full breadth and correct purple/gold
+colour, but flattens both browser ramps and retains the single-wave
+horn/cap approximation (no ripple). The collision ball, edge sparks and
+hand orbs remain OBJ. `fx_dual_rows` precomputes the horn/cap divisions for
+taper 36; the direct writer needs no per-row multiplication. Both tables,
+terminators, dummy byte and neutral late-HDMA guards use **at most 183
+bytes**. An exact six-word cache key includes both origins, lengths,
+widths, directions, enemy colour and backdrop (the meeting endpoint and
+bounded Y difference remove redundant fields).
+
+The independent reference audit (`node snes/test/fx/clash-audit.mjs`, after
+Vegeta's clash tests) evaluates `drawTrainingClash` / `giantBeam` on recorded
+states. Exact paired outline tables alone reach **286 bytes for Galick
+Gun and 581 for Final Flash**, before colour-table overhead; the widest
+Final Flash requires eight-line sampling to fit. Ordinary fixed-colour
+add/subtract cannot produce the browser's six non-white blue/enemy band
+pairs, even with half-colour math, so independent colours require the
+clipping/subscreen composition above. Reproducing both complete ramps
+would additionally need per-line COLDATA updates or a scene-owned colour
+surface; the existing two channels are occupied by windows and CGRAM.
+
+`node snes/test/fx/clash-profile.mjs` measures a real-input clash pilot in a
+VEGETA_TEST cartridge (`--rom=...`, `--out=...` for A/B; `--final` selects
+the gold-wave pilot). Compared with the pre-change cartridge:
+
+| Phase | Baseline FX elapsed median / p90 | Paired FX median / p90 | Baseline → paired lag / video frames |
+| --- | --- | --- | --- |
+| Lock | 88 / 176 lines | 69 / 119 lines | 69/141 → 64/136 |
+| Focus | 174 / 185 | 97 / 111 | 96/192 → 96/192 |
+| Struggle | 76 / 170 | 71 / 86 | 494/988 → 494/988 |
+| Release | 44 / 104 | 45 / 101 | 93/429 → 96/432 |
+
+These are complete-call elapsed times, including NMI interruptions. Total
+Galick-pilot lag falls from 752 to 750 video frames. The Final Flash pilot's lock/focus/struggle medians also fall from 92/193/118
+to about 73/121/84 lines. Its corresponding lag counts remain 35/49/246;
+full-fight release counts differ (61/229 before, 65/233 after). To isolate
+release from earlier fight timing, the profiler saves `release.mss` at the
+original `$00:B079` wait loop. Replaying that **same state** with
+`--state=... --final` on the red-ball checkpoint and paired build gives
+**60 lag / 227 video frames in both**, with FX median 51.6 → 52.0 and p90
+111.1 → 108.2 lines. The full-fight difference is therefore consistent
+with earlier timing changing the native streaming phase, not evidence of
+an added release cost in the matched-state test.
+
+FX vblank work during the locked pair is about **5.2–5.3 lines median**,
+versus 4.9–5.1 before; native uploads leave 1–20 lines at FX entry. The
+paired path adds no DMA tiles or extra HDMA channel. Idle `modprof` cost
+remains about 0.2 frame lines and 0.1 NMI lines. The complete FX, Frieza,
+Vegeta and combat suites pass, as do all six shared performance scenes.
+
+`clash.lua` checks both palettes, both facings, cache reuse, table bounds,
+single-wave transition and PPU release. Audit JSON, browser-wave pictures
+and browser-effect/cartridge comparisons stay in
+`.local/snes-test/fx-clash-audit/`; native pixel probes and paired captures
+are in `.local/snes-test/fx/clash-colour/` and `fx/clash/`.
 
 **Death Beam** (`FX_BEAM_LASER`): the browser rasterises the line per
 pixel (`u`, `v` from `orbitVectors`, `>> 8`), and a quarter turn of the
@@ -442,13 +520,13 @@ with a wave on screen.
 | Resource | Use |
 | --- | --- |
 | Code `$AE:8000-FFFF` | `!CODE_FX` (upper half only; `$EE` lower half holds ending art) |
-| ROM | `!DATA_FX` = `$FB` (17.2 of 64 KiB used): assemblies and palettes generated by `snes/gen/fx.mjs` (`data.asm`). All 373 cell tiles (46.6 KiB, `cells.bin`) are DMA-only xdata, split at cell 256 into `fx_cells_lo/hi`. The tables read only with long indexed loads (detonation clusters, ember and dust paths, strip lines, laser steps, Death Ball and aura indexes: `tables.asm`) follow the code in `$AE:8000-FFFF` (27.7 of 32 KiB used). xdata (ExHiROM): the aura's lines, `fx_aura16`, `fx_aura32`, `fx_aura40` (51 KiB), the bolts, `fx_bolts` (2 KiB), and `fx_red_geometry` (7.7 KiB) |
+| ROM | `!DATA_FX` = `$FB` (25.6 of 64 KiB used): assemblies, palettes, DMA source pointers and paired-wave geometry generated by `snes/gen/fx.mjs` (`data.asm`). All 373 cell tiles (46.6 KiB, `cells.bin`) are DMA-only xdata, split at cell 256 into `fx_cells_lo/hi`. The tables read only with long indexed loads (detonation clusters, ember and dust paths, strip lines, laser steps, Death Ball and aura indexes: `tables.asm`) follow the code in `$AE:8000-FFFF` (28.6 of 32 KiB used). xdata (ExHiROM): the aura's lines, `fx_aura16`, `fx_aura32`, `fx_aura40` (51 KiB), the bolts, `fx_bolts` (2 KiB), and `fx_red_geometry` (7.7 KiB) |
 | SRAM `$31:7800-7BFF` | `!SRAM_WORK_FX`: request block, 14 effect slots, 8 draw entries, VRAM cache, polygon tables (2 × 183 bytes) |
 | WRAM | None (a 148-byte direct-page frame on the stack inside `fx_frame`) |
 | VRAM | `!VRAM_FIELD_OBJ_A/B/C` while effects are active (owner `$0E`); released after 120 idle frames and at every map or mode change |
 | CGRAM | Free OBJ palettes per frame, written in vblank (never the game's buffer); CGRAM 0 per scanline (HDMA) while a wave is shown |
 | HDMA | Channels 2/3 and `$2C` bits 2/3 while a wave is shown |
-| PPU | W12SEL, WOBJSEL, TMW, CGWSEL, CGADSUB, COLDATA, WH0-WH3 while a wave or flash is shown; put back to the field's values (CGWSEL 2, CGADSUB from `$23`, black) afterwards |
+| PPU | W12SEL, W34SEL, WOBJSEL, TMW, TSW, TS, CGWSEL, CGADSUB, COLDATA, WH0-WH3 while a wave or flash is shown; put back to the field's values (CGWSEL 2, CGADSUB from `$23`, black) afterwards |
 | DMA | Channel 7 (6 when 7 runs HDMA) inside `fx_nmi` |
 | Math | `$4202-$4206` multiplier/divider inside `fx_frame` |
 | Hooks | `modules_field_frame` / `modules_field_nmi` (last), `modules_world_frame` / `_nmi`, `modules_ring_frame` (switches a wave off while the ring menu stops the field NMI), `modules_title_boot` (drops the battery-backed state) |
@@ -463,7 +541,7 @@ with a wave on screen.
 | `FX_DEATHBALL` | Done: violet battle / red cinematic; 16 / 32 px OBJ, other sizes a polygon | gallery; beams: 24, 48 and 80 px outlines against the browser's, rim |
 | `FX_DISC`, `FX_FINGER`, `FX_CELL` | Done (OBJ) | gallery |
 | `FX_BEAM_KAME`, `FX_BEAM_FRIEZA`, `FX_BEAM_FIRE` | Done: OBJ strips (four facings); the first left/right beam of a frame as a polygon | `snes/test/fx/beams.lua` (polygon against OBJ strips, pixel-exact, right and left) |
-| `FX_BEAM_WAVE`, `FINAL`, `GALICK` | Done (polygon + OBJ edges), four facings | beams: pixel checks of core, bands and rims, HDMA/flag/palette checks |
+| `FX_BEAM_WAVE`, `FINAL`, `GALICK` | Done (polygon + OBJ edges), four facings; paired horizontal clash windows | beams: core/bands/rims; clash: independent colours, table/cache/restore; clash-colour: native pixels |
 | `fx_flash`, `fx_quake` | Done | gallery |
 | `FX_DEBRIS`, brazier burst | Done (OBJ); destroy's effect records are drawn by FX itself (below) | `snes/test/fx/debris.lua` |
 | `FX_BEAM_LASER` | Done: 16 headings (OBJ windows; headings 0 / 8 as a polygon when free) | beams: every heading against the browser's pixels |
@@ -501,7 +579,7 @@ the sorted list) the colours nearest 20/50/85% of their lightness range;
 computed once per map (~80 lines in that frame), defaults
 `$18C6/$294A/$4631`. At most six rubble bursts live at once.
 
-Tests: `node snes/test/fx/run.mjs [gallery|beams|debris|cinematic]` (FX_TEST
+Tests: `node snes/test/fx/run.mjs [gallery|beams|debris|cinematic|clash|clash-colour]` (FX_TEST
 cartridge with a mailbox client, `snes/test/fx/testmod.asm`; Potos
 import; `FX_DEFINES='-DCORE_SLOWROM=1'` builds it with other defines). The beams test checks the wave colours on three consecutive PPU
 frames per wave (`F.grab`, Mesen's screen buffer), two of three must pass
@@ -531,7 +609,7 @@ of 39 consecutive grabs were identical in a measurement).
 - Granted: the data bank (`!DATA_FX` = `$FB` in `core/layout.asm`, with the
   build's ROM ownership check) and FastROM by default (`-DCORE_SLOWROM=1`
   opts out). `snes/test/fx/run.mjs` still checks FX's cells in both ROMs.
-- **SRAM for the polygon**: 2 × 512 bytes (instead of 2 × 187 inside FX's
+- **SRAM for the polygon**: 2 × 512 bytes (instead of 2 × 183 inside FX's
   1 KiB) would give exact left/right horns and the ripple, and circles for
   the large Death Balls.
 - **Frame / NMI handshake race** (seen in a SlowROM build of the beams

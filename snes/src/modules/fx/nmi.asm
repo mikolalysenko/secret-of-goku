@@ -142,32 +142,18 @@ fx_nmi_cells:
 	TAY
 	LDA.l fx_entry_vram,X
 	STA $2116
-	LDA.l !fx_ccell,X            ; cells 0-255 / 256-511 in two xdata blobs
-	BIT.w #$0100
-	BEQ .loCells
-	SEP #$20
-	LDA.b #fx_cells_hi>>16
-	STA $4304,Y
-	REP #$20
-	LDA.w #fx_cells_hi&$FFFF
-	BRA .cellBase
-.loCells
-	SEP #$20
-	LDA.b #fx_cells>>16
-	STA $4304,Y
-	REP #$20
-	LDA.w #fx_cells&$FFFF
-.cellBase
-	STA.l !fx_s+4
 	LDA.l !fx_ccell,X
-	AND.w #$00FF
-	LSR
-	XBA
-	BCC +
-	ORA.w #$0080
-+	CLC
-	ADC.l !fx_s+4
+	PHX
+	ASL
+	ASL
+	TAX
+	LDA.l fx_cell_dma,X
 	STA $4302,Y
+	SEP #$20
+	LDA.l fx_cell_dma+2,X
+	STA $4304,Y
+	REP #$20
+	PLX
 	LDA.w #64
 	STA $4305,Y
 	SEP #$20

@@ -333,15 +333,22 @@ record the tick saw at `$32:6290`.
   (age 7, facing of the clash, Super Saiyan art from the shot) every frame
   under the input lock; combat leaves an external action alone
   (`cb_ext_kind`). Please keep that behaviour.
-- **fx.** A clash puts two waves on the same scanlines; fx draws the first
-  (Goku's) as the polygon and falls back to OBJ strips for the second, as
-  its one-polygon rule says (checked in pictures; the waves are short when
-  the fighters stand close). A two-colour polygon would match the browser
-  more closely. Vegeta uses OBJ palettes 4 and 5 in map 72 (drawn before
-  `fx_frame`, so FX's OAM scan sees them). Costs: `fx_draw` ~2 lines a call
-  (the charge: orb, four sparks, aura = 6 calls); `FX_AURA` ~4 lines while
-  it draws nothing; the wave polygon's build (up to 90 lines) is what makes
-  his beams lag on heavy native frames.
+- **fx — paired horizontal clash implemented.** FX recognises the existing
+  two opposing taper-36 wave requests and draws blue + purple/gold in one
+  HDMA window pair. Main-screen masking and subscreen copies preserve the
+  fighters, ball and BG3 HUD. No Vegeta gameplay or binding change was
+  required. The waves use flat middle-ramp colours and eight-line outline
+  steps; other orientations/unsupported pairs still use polygon + OBJ.
+  See [FX's renderer and measurements](fx.md): exact Final Flash outline
+  tables need up to 581 bytes, versus 183 available; the sampled pair fits.
+  The real-input pilot reduces FX elapsed medians to about 69/97/71 lines
+  in lock/focus/struggle. Full-fight release timings can shift; the same
+  Final Flash release state takes 60 lag / 227 video frames in both the
+  prior and paired builds. Vblank work is about 5.2–5.3 lines median. Complete
+  browser colour ramps would need per-line fixed-colour updates or a
+  scene-owned second colour surface. Reproduce pictures and timing with
+  `snes/test/fx/clash-audit.mjs` and `clash-profile.mjs` after the Vegeta cases.
+
 - **ui.** `bind.asm` calls `ui_say`/`ui_interrupt` with
   `!UI_MSG_JOCH_TRIAL_0`..`_9` when ui is present; the ui branch generates
   exactly these ids in the same order. Checked in a scratch merge with the

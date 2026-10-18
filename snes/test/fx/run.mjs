@@ -163,12 +163,21 @@ async function runMesen({rom,test,outDir,state=null,timeoutMs=600000}){
 function checkCells(rom){
   const symbols=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8');
   const cells=readFileSync(resolve(repo,'dist/snes/gen/fx/cells.bin')),img=readFileSync(rom);
+  const bases=[];
   for(const [name,start,end] of [['fx_cells',0,0x8000],['fx_cells_hi',0x8000,cells.length]]){
     const sym=symbols.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${name}$`,'im'));
     if(!sym)return `no ${name} symbol`;
     const bank=parseInt(sym[1],16),addr=parseInt(sym[2],16);
+    bases.push(bank*0x10000+addr);
     const off=(bank>=0x40&&bank<0x80?0x400000:0)+((bank&0x3F)<<16)+addr;
     for(let i=start;i<end;i++)if(img[off+i-start]!==cells[i])return `${name} overwritten at byte ${i-start}`;
+  }
+  const table=symbols.match(/^([0-9A-F]{2}):([0-9A-F]{4}) fx_cell_dma$/im);
+  if(!table)return 'no fx_cell_dma symbol';
+  const p=parseInt(table[1]+table[2],16)&0x3FFFFF;
+  for(let c=0;c<cells.length/128;c++){
+    const expected=bases[c<256?0:1]+(c&255)*128;
+    if(img.readUInt32LE(p+c*4)!==expected)return `wrong DMA pointer for cell ${c}`;
   }
   return null;
 }
@@ -177,7 +186,7 @@ for(const r of [testRom,process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-
   const err=checkCells(r);
   if(err){console.error(`fx: ${r}: ${err}`);process.exit(1);}
 }
-const tests=['gallery','beams','debris','cinematic','battle','budget'].filter(t=>existsSync(join(here,`${t}.lua`))&&(!only.length||only.includes(t)));
+const tests=['gallery','beams','debris','cinematic','clash','clash-colour','battle','budget'].filter(t=>existsSync(join(here,`${t}.lua`))&&(!only.length||only.includes(t)));
 let ok=true;
 for(const t of tests){
   const rom=privateRom(testRom,`fx-${t}`);
