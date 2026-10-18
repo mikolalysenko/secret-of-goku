@@ -478,36 +478,49 @@ fx_poly_tables:
 	RTS
 
 ;---------------------------------------------------------------------------
-; Left / right Kamehameha-type strips (fx_beam_strips) as a polygon. Every
-; row of the strip assemblies (band unions of Lucent Beam's 16x4 strip, one
-; cell or two stacked) is one colour across the cell (fx.mjs asserts it),
-; so every line of the beam is one colour from the palms to the last strip:
-; window 1 per line and the backdrop colour per line give exactly the OBJ
-; strips without their sprites. Sixteen 16x16 strips on a row are 32 of the
-; PPU's 34 slivers per line, so next to the natives on Goku's lines they
-; cannot all show (and the PPU drops the natives' slivers).
-; In: !d_ks+2 bands, +4 set (0 blue, 1 pink, 2 fire), +6 phase, !d_dx,
-; !d_turn, !d_cur. C clear when drawn (or nothing to draw); C set: OBJ
-; strips (!d_ks+0-7 are kept for them).
-!fxs_rec  = !d_ks+$08         ; the strip's record in fx_strip_data
+; Left / right beams of one colour per line as a polygon: the strip beams
+; (fx_beam_strips: every row of their band unions, one cell or two stacked,
+; is one colour across the cell, fx.mjs asserts it) and the horizontal
+; Death Beam. Window 1 per line spans the beam and the backdrop per line
+; takes the line's colour: exactly the OBJ picture without its sprites.
+; Sixteen 16x16 sprites on a row are 32 of the PPU's 34 slivers per line,
+; so next to the natives on Goku's lines they cannot all show (and the PPU
+; drops the natives' slivers). The lines come from fx_strip_ptr /
+; fx_strip_data (fx.mjs): the first line's offset from the anchor's line,
+; the count, each line's colour index in the palette class.
+!fxs_rec  = !d_ks+$08         ; the record in fx_strip_data
 !fxs_n    = !d_ks+$0C         ; its lines
 !fxs_cls  = !d_ks+$0E         ; palette class * 32
 !fxs_o    = !d_r0+$00         ; window record of the beam's lines
-fx_poly_strip:
+
+; C clear when this frame's polygon is free.
+fx_poly_avail:
 	LDA.w !core_mode&$FFFF
 	CMP.w #!CORE_MODE_FIELD
-	BNE .no0
+	BNE .no
 	LDA.l !fx_poly_req           ; one polygon per frame
-	BNE .no0
+	BNE .no
 	LDA.l !fx_poly_on
 	BNE +
-	LDA.w $002C
+	LDA.w $002C                  ; the game's own HDMA on channels 2/3
 	AND.w #$000C
-	BNE .no0
-+	LDA !d_cur+!C_KIND
+	BNE .no
++	CLC
+	RTS
+.no
+	SEC
+	RTS
+
+; Strip beams. In: !d_ks+2 bands, +4 set (0 blue, 1 pink, 2 fire), +6
+; phase, !d_turn, !d_cur. C clear when drawn (or nothing to draw); C set:
+; OBJ strips (!d_ks+0-7 are kept for them).
+fx_poly_strip:
+	LDA !d_cur+!C_KIND
 	BIT.w #!FX_F_HEADING<<8
-	BEQ .go
-.no0
+	BNE .no
+	JSR fx_poly_avail
+	BCC .go
+.no
 	SEC
 	RTS
 .go
@@ -520,10 +533,6 @@ fx_poly_strip:
 	ADC.w #15
 	AND.w #$FFF0
 	STA !fxp_len                 ; 16 * strips
-	LDA !d_cur+!C_X
-	STA !fxp_x
-	LDA !d_cur+!C_Y
-	STA !fxp_y
 	LDA !d_ks+4                  ; key fields: bands | set << 4, frame
 	ASL
 	ASL
@@ -534,12 +543,11 @@ fx_poly_strip:
 	LDA !d_ks+6
 	AND.w #$0001
 	STA !fxp_t
-	STZ !fxp_rip
 	LDX !d_ks+4                  ; palette class of the set
 	LDA.l .class,X
 	AND.w #$00FF
 	STA !fxs_cls
-	; the strip's lines: fx_strip_ptr[((set*2 + frame)*7 + bands-1)*2 + left]
+	; the lines: fx_strip_ptr[((set*2 + frame)*7 + bands-1)*2 + left]
 	LDA !d_ks+4
 	ASL
 	ORA !fxp_t
@@ -557,16 +565,63 @@ fx_poly_strip:
 	LDA !d_turn                  ; 0 right, 2 left
 	LSR
 	ORA !fxp_ds
+	JMP fx_poly_rows
+.none
+	CLC
+	RTS
+.class                           ; palette class of the band sets
+	db !FX_CLASS_BLUE*32, !FX_CLASS_PINK*32, !FX_CLASS_FIRE*32
+
+; Death Beam, headings 0 / 8: three lines from the finger to its reach.
+; In: !d_ks heading, +2 colour frame, !d_cur. C as fx_poly_strip.
+fx_poly_laser:
+	JSR fx_poly_avail
+	BCC +
+	RTS
++	LDA !d_cur+!C_A              ; pixels u = 0 .. reach
+	INC
+	STA !fxp_len
+	LDA !d_ks                    ; key fields: the laser's tag | left, frame
+	LSR
+	LSR
+	LSR
+	STA !fxp_ds                  ; 0 right, 1 left
+	ORA.w #$0080
+	STA !fxp_hw
+	LDA !d_ks+2
+	STA !fxp_t
+	LDA.w #!FX_CLASS_PINK*32
+	STA !fxs_cls
+	LDA !d_ks+2                  ; fx_strip_ptr[FX_STRIP_LASER + frame*2 + left]
+	ASL
+	CLC
+	ADC.w #!FX_STRIP_LASER
+	ORA !fxp_ds
+	; fall through
+
+; The polygon of a strip record. A = index in fx_strip_ptr (bit 0: the beam
+; runs left of the anchor); !fxp_len its length in pixels, !fxp_hw /
+; !fxp_t key fields, !fxs_cls; anchor !d_cur X/Y. C clear when drawn.
+fx_poly_rows:
+	PHA
+	AND.w #$0001
+	STA !fxp_sd                  ; 1: the beam runs to smaller x
+	PLA
 	ASL
 	TAX
 	LDA.l fx_strip_ptr,X
 	STA !fxs_rec
 	TAX
-	LDA.l fx_strip_data,X        ; first line - palms' line (signed) | lines << 8
+	LDA.l fx_strip_data,X        ; first line - anchor line (signed) | lines << 8
 	XBA
 	AND.w #$00FF
 	BEQ .none
 	STA !fxs_n
+	LDA !d_cur+!C_X
+	STA !fxp_x
+	LDA !d_cur+!C_Y
+	STA !fxp_y
+	STZ !fxp_rip
 	JSR fx_poly_key
 	BCS .build
 	LDA.l !fx_pshown             ; the same picture: show those tables again
@@ -598,9 +653,9 @@ fx_poly_strip:
 	STX !fxp_out
 	TXA
 	STA.l !fx_ptab3
-	; window: x0..x1 of the strips (right: palms .. +len-1; left: mirrored)
-	LDA !d_dx
-	BMI +
+	; window: x0..x1 (right: anchor .. +len-1; left: mirrored)
+	LDA !fxp_sd
+	BNE +
 	LDA !fxp_x
 	STA !fxp_top
 	CLC
@@ -665,7 +720,7 @@ fx_poly_strip:
 	LDA.w #4
 	JSR fx_pw_colour
 	JSR fx_pw_close
-	; Channel 2 (mode 1): the strips' span on lines with colour.
+	; Channel 2 (mode 1): the beam's span on lines with colour.
 	LDA !fxp_out
 	STA.l !fx_ptab2
 	LDA.w #3
@@ -718,8 +773,6 @@ fx_poly_strip:
 	LDA.l fx_strip_data+2,X
 	AND.w #$00FF
 	RTS
-.class                           ; palette class of the band sets
-	db !FX_CLASS_BLUE*32, !FX_CLASS_PINK*32, !FX_CLASS_FIRE*32
 
 ; ---------------------------------------------------------------------------
 ; Table writer. fx_pw_open: A = entry size (3: two-byte records, 5: four).

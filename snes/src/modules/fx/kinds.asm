@@ -809,7 +809,7 @@ fx_b_kame:
 	INC !d_ks+2
 	INC !d_ks+2
 +	LDA.w #$0000                 ; band set 0: blue
-	BRA fx_beam_strips
+	JMP fx_beam_strips
 
 ; FX_BEAM_FRIEZA / FX_BEAM_FIRE: the orbit beam() strip in Frieza's pink or
 ; the Fireball colours; width / 3 bands.
@@ -829,13 +829,142 @@ fx_b_strip:
 	AND.w #$007F
 	CMP.w #!FX_BEAM_FIRE
 	LDA.w #1                     ; pink
-	BCC fx_beam_strips
+	BCC +
 	LDA.w #2                     ; fire
-	BRA fx_beam_strips
++	JMP fx_beam_strips
 
-; FX_BEAM_LASER: not implemented yet (needs diagonal strips).
+; FX_BEAM_LASER (orbit-effects.js deathBeam: beam(...,1,age,'pink')): the
+; Death Beam from the finger (X/Y) in 16 headings (!C_DIR with
+; FX_F_HEADING, else the facing), !C_A reach, !C_T age; colour frame
+; (age >> 2) & 1; the finger glint on top. Headings 0 / 8 are three lines
+; across the screen, a polygon when it is free; otherwise 16x16 windows
+; step along the beam (fx.mjs: window 0 at the finger, then the body
+; window), behind the natives.
 fx_b_laser:
+	LDA !d_cur+!C_KIND
+	BIT.w #!FX_F_HEADING<<8
+	BNE +
+	LDA !d_cur+!C_DIR
+	AND.w #$0003
+	TAX
+	LDA.l .face,X
+	BRA ++
++	LDA !d_cur+!C_DIR
+++	AND.w #$000F
+	STA !d_ks                    ; heading
+	LDA !d_cur+!C_T
+	LSR
+	LSR
+	AND.w #$0001
+	STA !d_ks+2                  ; colour frame
+	JSR fx_k_finger
+	LDA !d_ks
+	AND.w #$0007
+	BNE .obj
+	JSR fx_poly_laser
+	PHP
+	LDA.w #$FFFF                 ; the builder used !d_tiles
+	STA !d_lasta
+	PLP
+	BCS .obj
 	RTS
+.obj
+	LDA.w #$0000                 ; behind the natives
+	JSR fx_depth
+	LDA !d_ks                    ; FX_ASM_LASER + ((h&3)*2 + frame)*8 + h/4
+	AND.w #$0003
+	ASL
+	ORA !d_ks+2
+	ASL
+	ASL
+	ASL
+	STA !d_ks+4
+	LDA !d_ks
+	LSR
+	LSR
+	CLC
+	ADC !d_ks+4
+	ADC.w #!FX_ASM_LASER
+	STA !d_ks+4                  ; window 0; the body window is 4 on
+	LDA !d_ks                    ; step (signed bytes)
+	ASL
+	TAX
+	LDA.l fx_laser_step,X
+	AND.w #$00FF
+	CMP.w #$0080
+	BCC +
+	ORA.w #$FF00
++	STA !d_ks+6
+	LDA.l fx_laser_step+1,X
+	AND.w #$00FF
+	CMP.w #$0080
+	BCC +
+	ORA.w #$FF00
++	STA !d_ks+8
+	LDA !d_ks                    ; body windows: reach / step length
+	AND.w #$0003
+	ASL
+	TAX
+	LDA.l fx_laser_len,X         ; quarter pixels
+	TAX
+	LDA !d_cur+!C_A
+	ASL
+	ASL
+	JSR fx_div8
+	STA !d_ks+$A
+	LDX.w #$0000
+	LDY.w #$0000
+	JSR fx_at
+	LDA !d_ks+4
+	JSR fx_emit
+	LDA !d_ks+4
+	CLC
+	ADC.w #4
+	STA !d_ks+4
+.window
+	LDA !d_ks+$A
+	BEQ .done
+	DEC !d_ks+$A
+	LDA !d_x
+	CLC
+	ADC !d_ks+6
+	STA !d_x
+	LDA !d_y
+	CLC
+	ADC !d_ks+8
+	STA !d_y
+	; stop once the beam has left the screen for good
+	LDA !d_x
+	BPL +
+	CMP.w #-32
+	BCS ++
+	LDA !d_ks+6
+	BEQ .done
+	BMI .done
+	BRA ++
++	CMP.w #288
+	BCC ++
+	LDA !d_ks+6
+	BPL .done
+++	LDA !d_y
+	BPL +
+	CMP.w #-32
+	BCS ++
+	LDA !d_ks+8
+	BEQ .done
+	BMI .done
+	BRA ++
++	CMP.w #256
+	BCC ++
+	LDA !d_ks+8
+	BPL .done
+++	LDA !d_ks+4
+	JSR fx_emit
+	BRA .window
+.done
+	RTS
+.face                            ; facing (down, right, left, up) -> heading
+	db 4, 0, 8, 12
 
 ; Strip beam: A = band set (0 blue, 1 pink, 2 fire), !d_ks+2 bands.
 fx_beam_strips:

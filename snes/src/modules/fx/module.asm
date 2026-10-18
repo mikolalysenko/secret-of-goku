@@ -224,6 +224,8 @@ incsrc "nmi.asm"
 if defined("FX_TEST")
 	incsrc "../../../test/fx/testmod.asm"
 endif
+fx_tables:
+incsrc "fx/tables.asm"             ; generated tables read with long loads
 fx_code_end:
 assert fx_code_end <= !CODE_FX+$8000, "fx code bank overflow"
 pullpc

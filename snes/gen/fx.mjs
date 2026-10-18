@@ -254,6 +254,66 @@ export async function generate({rom,repo,outDir}){
     for(let py=0;py<8;py++)for(let px=0;px<8;px++){const v=src[py*32+px*2];if(v)c[(py+4)*16+px+4]=pink(v);}
     asms.push([{cell:addCell(c,1,'finger'),x:-8,y:-8,h:false,v:false}].filter(q=>q.cell>=0));
   }
+  // Death Beam (orbit-effects.js beam(x,y,xx,yy,1,age,'pink')): the pixels
+  // with |v| <= 1 across and u >= 0 along (u, v from orbitVectors, >> 8),
+  // v = 0 white, v = -1 / +1 the pinks of Lucent Beam's strip rows 6 / 8 in
+  // frame (age >> 2) & 1. Headings 0-3 here; their quarter turns are the
+  // other twelve (the rasterisation turns with them exactly). A 16x16
+  // window steps along the beam by LSTEP: window 0 holds the finger end
+  // (u >= 0), window 1 the body, which repeats. Headings 0 and 2 repeat
+  // exactly; 1 and 3 drift from the browser's line by under a pixel over
+  // 360 px (asserted below against the browser's pixels).
+  const LV=[[256,0],[229,114],[181,181],[114,229]];
+  const LSTEP=[[16,0],[16,8],[8,8],[8,16]];
+  const LORG=[[0,-8],[0,-3],[-7,-8],[-3,0]];   // window 0, top-left from the finger
+  const laserBase=asms.length,laserDrift=[];    // ((heading*2 + frame)*2 + body)*4 + turn
+  for(let h=0;h<4;h++)for(let f=0;f<2;f++){
+    const [vx,vy]=LV[h],src=groups['pink-beam-body'][f];
+    const colour=(ox,oy)=>{
+      const u=(ox*vx+oy*vy)>>8,v=(-ox*vy+oy*vx)>>8;
+      return u<0||v<-1||v>1?0:v===0?0x8000:src[(v<0?6:8)*16];
+    };
+    const windowPx=j=>{
+      const px=new Uint16Array(256),wx=LORG[h][0]+LSTEP[h][0]*j,wy=LORG[h][1]+LSTEP[h][1]*j;
+      for(let y=0;y<16;y++)for(let x=0;x<16;x++)px[y*16+x]=colour(wx+x,wy+y);
+      return px;
+    };
+    const start=windowPx(0),body=windowPx(1);
+    // What the cartridge draws (window 0, then window 1 repeated) against
+    // the browser's pixels over 360 px.
+    const drawn=new Map();
+    for(let j=0;j<=24;j++){
+      const px=j?body:start,wx=LORG[h][0]+LSTEP[h][0]*j,wy=LORG[h][1]+LSTEP[h][1]*j;
+      for(let i=0;i<256;i++)if(px[i])drawn.set((wx+(i&15))+','+(wy+(i>>4)),px[i]);
+    }
+    let miss=0,extra=0;
+    const far=Math.min(360,((LSTEP[h][0]*vx+LSTEP[h][1]*vy)*23)>>8);
+    for(let oy=-40;oy<=400;oy++)for(let ox=-40;ox<=400;ox++){
+      if(((ox*vx+oy*vy)>>8)>far)continue;
+      const want=colour(ox,oy),got=drawn.get(ox+','+oy)??0;
+      if(want&&got!==want)miss++;else if(!want&&got)extra++;
+    }
+    if((h===0||h===2)&&(miss||extra))throw Error(`fx: laser heading ${h} differs from the browser (${miss}/${extra})`);
+    laserDrift.push(miss+extra);
+    for(const px of[start,body])
+      addTurns([{pair:cellPair(px,1,`laser#${h}.${f}`),ox:LORG[h][0],oy:LORG[h][1],fx:false,fy:false}]);
+  }
+  // Headings 0 / 8 as three polygon lines (fx_poly_laser): v = y - finger
+  // to the right, finger - y to the left; strip records after the bands'.
+  const laserStrip=stripPtr.length;
+  for(let f=0;f<2;f++){
+    const src=groups['pink-beam-body'][f],minus=indexIn(1,src[6*16]),core=indexIn(1,0x8000),plus=indexIn(1,src[8*16]);
+    stripPtr.push(stripRec([minus,core,plus],-1),stripRec([plus,core,minus],-1));
+  }
+  // Steps per heading 0-15 (quarter turns of LSTEP) and the u length of a
+  // step (16ths of a pixel) for the beam's reach.
+  const laserStep=[],laserLen=[];
+  for(let H=0;H<16;H++){
+    let [sx,sy]=LSTEP[H&3];
+    for(let t=0;t<(H>>2);t++)[sx,sy]=[-sy,sx];
+    laserStep.push(sx&255,sy&255);
+  }
+  for(let h=0;h<4;h++)laserLen.push(Math.floor((LSTEP[h][0]*LV[h][0]+LSTEP[h][1]*LV[h][1])/64)); // quarter pixels
   // Debris chunks in caller colours (DYN indices 1 dark, 2 mid, 3 light):
   // rubble (sprite-layer.js rubble(): size 2/3, pattern turn%3) and ceiling
   // dust (ceiling-escape.js: size 2-4, gap where (x+y+turn)&7 == 0).
@@ -405,7 +465,7 @@ export async function generate({rom,repo,outDir}){
   a.def('FX_STAMP_GROUPS',STAMP_GROUPS.length);
   a.def('FX_ASM_BURST',burstBase);a.def('FX_ASM_EMBER',emberBase);
   a.def('FX_ASM_DEATH16',deathBase);a.def('FX_ASM_DEATH32',death32Base);a.def('FX_ASM_DISC',discBase);
-  a.def('FX_ASM_FINGER',fingerBase);a.def('FX_ASM_FRAGMENT',fragBase);
+  a.def('FX_ASM_FINGER',fingerBase);a.def('FX_ASM_FRAGMENT',fragBase);a.def('FX_ASM_LASER',laserBase);
   a.def('FX_ASM_RING',ringBase);a.def('FX_ASM_SPARKS',sparksBase);a.def('FX_ASM_STATUS',statusBase);a.def('FX_ASM_RUBBLE',rubbleBase);a.def('FX_ASM_DUST',dustBase);
   a.label('fx_class_palettes');for(const p of palettes){const row=[0,...p.map(c=>c-1)];while(row.length<16)row.push(0);a.dw(row);}
   a.label('fx_cell_class');a.db(cells.map(c=>c.cls));
@@ -414,12 +474,20 @@ export async function generate({rom,repo,outDir}){
   a.label('fx_asm_ptr');a.dw(asmPtr);
   a.label('fx_asm_data');a.db(asmBytes);
   a.label('fx_band_index');a.dw(bandIndex);
-  a.label('fx_strip_ptr');a.dw(stripPtr);
-  a.label('fx_strip_data');a.db(stripData);
-  a.label('fx_det_ptr');a.dw(detPtr);
-  a.label('fx_ember_path');a.db(emberPath);
-  a.label('fx_det_data');a.db(detBytes);
   a.def('FX_DET_FRAMES',detGroups.length);
+  a.def('FX_STRIP_LASER',laserStrip);
+  // Tables read only with long indexed loads go to tables.asm, which
+  // module.asm places after the code in FX's code bank (the data bank is
+  // kept for cells, assemblies and palettes).
+  const t=new Asm();
+  t.raw('; Generated by snes/gen/fx.mjs - do not edit.');
+  t.label('fx_strip_ptr');t.dw(stripPtr);
+  t.label('fx_strip_data');t.db(stripData);
+  t.label('fx_det_ptr');t.dw(detPtr);
+  t.label('fx_ember_path');t.db(emberPath);
+  t.label('fx_det_data');t.db(detBytes);
+  t.label('fx_laser_step');t.db(laserStep);
+  t.label('fx_laser_len');t.dw(laserLen);
   // Ceiling dust (ceiling-escape.js draw): chunk i at angle i*2.39996,
   // x = cos*(10+age*(1+(i%5)*.3)), y = sin*7 - age*(1.3+(i%4)*.4) +
   // age^2*.095, rounded as the browser does; ages 0-45, words per (age, i).
@@ -428,10 +496,11 @@ export async function generate({rom,repo,outDir}){
     const a=i*2.39996,speed=1+(i%5)*.3;
     dustXY.push(Math.round(Math.cos(a)*(10+age*speed)),Math.round(Math.sin(a)*7-age*(1.3+(i%4)*.4)+age*age*.095));
   }
-  a.label('fx_dust_xy');a.dw(dustXY);
+  t.label('fx_dust_xy');t.dw(dustXY);
   a.label('fx_wave_colors');for(const w of waves)a.dw(w);
   a.label('fx_aura_ramps');for(const r of auraRamps)a.dw(r.slice(0,4));
   writeFileSync(join(outDir,'data.asm'),a.text());
+  writeFileSync(join(outDir,'tables.asm'),t.text());
 
   // Preview: every cell in its class palette (DYN in grey).
   const cols=32,prev=blank(cols*17,17*Math.ceil(cells.length/cols));
@@ -440,5 +509,5 @@ export async function generate({rom,repo,outDir}){
       const v=cell.cls===DYN?[0x2108,0x4210,0x6318][c-1]:c-1,d=((oy+(i>>4))*prev.width+ox+(i&15))*4;
       prev.data[d]=(v&31)*255/31;prev.data[d+1]=((v>>5)&31)*255/31;prev.data[d+2]=((v>>10)&31)*255/31;prev.data[d+3]=255;}});
   writeFileSync(join(outDir,'preview.png'),writePng(prev));
-  return {cells:cells.length,asms:asms.length,cellBytes:bin.length,asmBytes:asmBytes.length,detBytes:detBytes.length,maxCells};
+  return {cells:cells.length,asms:asms.length,cellBytes:bin.length,asmBytes:asmBytes.length,detBytes:detBytes.length,maxCells,laserDrift};
 }

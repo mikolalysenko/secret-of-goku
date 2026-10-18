@@ -159,6 +159,67 @@ function test()
   polyRows('kame_rows_right', 0, F.DIR.right, 40, 60, 12)
   polyRows('kame_rows_left_ssj', F.F.SSJ, F.DIR.left, 216, 120, 19)
 
+  -- Death Beam in 16 headings against the browser's pixels (orbit-effects.js
+  -- beam(), width 1, pink): |v| <= 1 across, u along, from orbitVectors.
+  -- The core (v = 0) is white, the sides are pinks of the beam ramp (two
+  -- colour frames). Headings 0/2 mod 4 are exact; 1/3 repeat one window
+  -- (fx.mjs) and may sit a pixel off the browser's line further out, so
+  -- they only need their pixels within the band's neighbourhood. Natives
+  -- stand in front of the beam, hence the margins.
+  local OV = { { 256, 0 }, { 229, 114 }, { 181, 181 }, { 114, 229 }, { 0, 256 }, { -114, 229 }, { -181, 181 },
+    { -229, 114 }, { -256, 0 }, { -229, -114 }, { -181, -181 }, { -114, -229 }, { 0, -256 }, { 114, -229 },
+    { 181, -181 }, { 229, -114 } }
+  local PINKS = { [0x4479] = true, [0x5D1F] = true, [0x727F] = true, [0x7FFF] = true }
+  local function c555(v)
+    local r, g, b = (v >> 16) & 255, (v >> 8) & 255, v & 255
+    return ((b >> 3) << 10) | ((g >> 3) << 5) | (r >> 3)
+  end
+  local LX, LY, REACH = 60, 112, 56     -- clear of the natives and the HUD
+  for h = 0, 15 do
+    F.beam(0, F.B.LASER, S | F.F.HEADING, h, LX, LY, REACH, 0, 0, 0)
+    F.waitFx(5)
+    local best, detail = -1, ''
+    for _ = 1, 3 do
+      H.wait(1)
+      local buf = emu.getScreenBuffer()
+      local vx, vy = OV[h + 1][1], OV[h + 1][2]
+      local band, ok, core, coreOk, spill, near = 0, 0, 0, 0, 0, 0
+      for y = 0, 223 do
+        for x = 0, 255 do
+          local ox, oy = x - LX, y - LY
+          local u, v = (ox * vx + oy * vy) >> 8, (-ox * vy + oy * vx) >> 8
+          if u >= 8 and u <= REACH - 16 and v >= -4 and v <= 4 then
+            local c = c555(buf[(y + 7) * 256 + x + 1] or 0)
+            if v >= -1 and v <= 1 then
+              band = band + 1
+              if PINKS[c] then ok = ok + 1 end
+              if v == 0 then core = core + 1; if c == 0x7FFF then coreOk = coreOk + 1 end end
+            elseif v == 2 or v == -2 then
+              if PINKS[c] then near = near + 1 end
+            elseif PINKS[c] then
+              spill = spill + 1
+            end
+          end
+        end
+      end
+      local exact = h % 2 == 0
+      local score = ok / math.max(1, band)
+      local pass
+      if exact then
+        pass = score >= 0.85 and coreOk >= core * 0.85 and near + spill <= band * 0.03
+      else
+        pass = score >= 0.6 and spill <= band * 0.03
+      end
+      local d = string.format('band=%d ok=%d core=%d/%d near=%d spill=%d', band, ok, coreOk, core, near, spill)
+      if pass and best < 1 then best, detail = 1, d elseif best < 0 then best, detail = 0, d end
+    end
+    H.log('laser_h' .. h, detail)
+    F.check('laser_h' .. h, best == 1, detail)
+    if h == 1 or h == 2 or h == 4 or h == 8 or h == 12 then F.grab('laser_h' .. h) end
+  end
+  F.stop(0)
+  F.waitFx(3)
+
   -- Charge orb anchored at Goku (FX_F_GOKU): the idle pose has no hand
   -- socket (goku_api_hand), so nothing is drawn; combat shows it in the
   -- charge pose.
