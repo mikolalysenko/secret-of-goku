@@ -15,10 +15,9 @@ the result. FX animates the timed particles it is asked to spawn and draws
 the continuous effects (charge orb, aura, beams, lightning) that a client
 re-requests every frame.
 
-Status: **API frozen; OBJ kinds, debris, beams and the full-screen wave
-polygon work** in the field (see [Status](#status) for each kind). Kinds
-not yet implemented (aura, charge lightning, world flight) are safe to
-call and draw nothing.
+Status: **API frozen; every kind draws** in the field (see
+[Status](#status) for each kind and its deviations). FX draws nothing in
+world flight (the world module draws its own effects there).
 
 ## Calling convention
 
@@ -72,7 +71,7 @@ field a kind uses.
   `$E004-$E022`), exactly as the browser's `cameraX/Y`. With `FX_F_SCREEN`
   they are screen pixels (cinematics, orbit, world flight).
 - The point is the **centre** of the effect, as the browser's `stamp()`
-  origin (cell pixel 8,8), except where a kind says otherwise (aura: feet
+  origin (cell pixel 8,8), except where a kind says otherwise (aura: body
   line; beam: the palms).
 - `FX_F_GOKU` anchors to Goku instead: `FX_ORB` to the hand socket of the
   displayed pose (`goku_api_hand`), `FX_AURA` to his body; X/Y are then an
@@ -137,8 +136,8 @@ Continuous kinds (`fx_draw`, every frame the effect should show):
 | Kind | Id | Browser source | Arguments | Notes |
 | --- | --- | --- | --- | --- |
 | `FX_ORB` | `$10` | charge orb | `!fx_a` frame 0–4 (charge `min(4,strength·5)`; full charge alternates 3/4 every 4 frames) | Charge orb at the palm; *front* except facing up. Gold/pink with flags |
-| `FX_AURA` | `$11` | `ki-aura.js` | `!fx_style` tone 0 blue, 1 gold, 2 pink; `!fx_a` power 0–256; `!fx_b` body height 16/32/40; `!fx_t` clock | Flame aura around a body, drawn behind it. X/Y = centre of the body cell |
-| `FX_LIGHTNING` | `$12` | `charge-lightning.js` | `!fx_a` bolts (2 or 3); `!fx_t` clock | Super Saiyan charge bolts from X/Y to nearby actors, solid tiles or air, regenerated every 3 frames |
+| `FX_AURA` | `$11` | `ki-aura.js` | `!fx_style` tone 0 blue, 1 gold, 2 pink; `!fx_a` power 0–256 (0: none); `!fx_b` body height (≤ 20: 16, ≥ 36: 40, else 32); `!fx_c` phase seed; `!fx_t` clock (shown on even clocks only, phase `(clock/3 + seed) % 12`) | Flame aura behind every sprite (a polygon, see strategy). X/Y = centre of the body cell as the browser's `aura()`; with `FX_F_GOKU` Goku's cell centre + X/Y. One aura per frame: give a second one the other clock parity |
+| `FX_LIGHTNING` | `$12` | `charge-lightning.js` | `!fx_a` bolts (2 or 3; 0: 2); `!fx_t` clock | Super Saiyan charge bolts from X/Y (the charge point), regenerated every 3 frames, as Thunderbolt cells along the browser's bolt points; every bolt ends in the air (see strategy). *front* |
 | `FX_DEATHBALL` | `$13` | `death-ball-art.js` | `!fx_a` diameter (snapped to `deathBallSizes`, 16–224, as the browser), `!fx_t` frame (wraps at 12) | 16 and 32 px: the art as OBJ; 24 and 48–224 px: a polygon (see strategy), else the 32 px ball. The cinematic red planet killer (64 px art) is not FX's: its scene draws it |
 | `FX_DISC` | `$14` | `orbit-effects.js` `disc` | `!fx_t` age (tilt = (age>>3)&3) | Frieza's Death Disc, 20×6 in four tilts |
 | `FX_FINGER` | `$15` | `fingerCharge` | `!fx_t` age | Pink finger-laser charge glint |
@@ -353,6 +352,47 @@ art's pink patches become tints of their rows, and the sparks outside the
 circle are not drawn. While the game's own colour math is on (`$23` not
 zero) the ball keeps it outside and shows no rim.
 
+**Ki aura** (`fx_poly_aura`, HDMA kind 4): the flame is up to 80 lines
+of 50 pixels whose cells would not fit the VRAM cache (10-19 cells a
+frame, about 2000 different ones), so it is a window polygon. `fx.mjs`
+renders every height, level and phase with `drawKiAura` itself and stores
+per line the windows (xdata blobs `fx_aura16/32/40`, 51 KiB; an index in
+`tables.asm`): one span: window 1 = the span, window 2 = its pixels that
+are not rim; two spans: one each; a line crossing three or more tongues
+fills its narrowest gaps (two windows per line). BG1/BG2 are masked inside
+either window and show the backdrop, the ramp's rim colour; window 1 and
+2 adds COLDATA up to the inner colour; the tongues' lines (down to the
+last line with two spans) show the inner colour without math. The
+browser's lighter band inside the rim and the pale tongue streaks are not
+drawn. The flame strobes (the browser shows it on even clocks only), so
+the frame before it showed no polygon and its tables may take both
+buffers (`!fx_pbig`): a full flame is one HDMA repeat-mode entry of 4
+bytes a line, written with one 16-bit add per window (about 33 lines of
+`fx_frame` with FastROM when the phase or position changes, ~5 when it
+shows the same picture). A build that would start after line 168 would
+push the frame past its vblank (combat's lagging Rabite field starts
+`fx_frame` at 150-250): the flame then shows its tables built for an
+earlier phase, when they are still there (same place, height, level and
+tone), or nothing that frame, so it animates less often there but the
+game keeps its timing. While those tables are on screen no other
+polygon is built (a strip beam that frame is OBJ strips). Partly off
+screen or with another polygon on screen the lines are written one entry
+per 1-8 lines. With the game's own colour math on, the flame is one
+colour.
+
+**Charge lightning** (`FX_LIGHTNING`): the browser draws 2-pixel lines
+along jagged points from the charge point to solid tiles, actors or the
+air, one Thunderbolt cell at each bolt's middle point, and a spark where a
+bolt hits something. Lines in any direction do not fit the VRAM cache,
+so `fx.mjs` runs the browser's own `arcs()` for seeds 0-63 (the seed is
+`phase + map * 71`; the cartridge wraps it to 64) with nothing nearby to
+hit, and stores per bolt a Thunderbolt cell on every second point and on
+the middle point, turned to the bolt as the browser turns its stamp
+(`fx_bolt_ptr`, xdata `fx_bolts`). The cells take the frame `(phase +
+bolt) % 3` and sit in front of the natives. About 3 lines of `fx_frame`
+per cell (9 for three bolts); bolts never end on tiles or actors (no
+impact sparks).
+
 **Screen effects**: the flash is fixed-colour addition (R/G +amount, B
 +amount/2 with the browser's `[0,1,2,4,6,9,13,17]` ramp) on BG1/BG2/OBJ
 4-7/backdrop for 7 frames, skipped while an up/down wave owns the colour
@@ -376,7 +416,7 @@ with a wave on screen.
 | Resource | Use |
 | --- | --- |
 | Code `$AE:8000-FFFF` | `!CODE_FX` (upper half only; `$EE` lower half holds ending art) |
-| ROM | `!DATA_FX` = `$FB` (57 of 64 KiB used): cell tiles, assemblies and palettes, generated by `snes/gen/fx.mjs` (`data.asm`, `cells.bin`). The tables read only with long indexed loads (detonation clusters, ember and dust paths, strip lines, laser steps: `tables.asm`) follow the code in `$AE:8000-FFFF` (23 of 32 KiB used) |
+| ROM | `!DATA_FX` = `$FB` (57 of 64 KiB used): cell tiles, assemblies and palettes, generated by `snes/gen/fx.mjs` (`data.asm`, `cells.bin`). The tables read only with long indexed loads (detonation clusters, ember and dust paths, strip lines, laser steps, Death Ball and aura indexes: `tables.asm`) follow the code in `$AE:8000-FFFF` (26 of 32 KiB used). xdata (ExHiROM): the aura's lines, `fx_aura16`, `fx_aura32`, `fx_aura40` (51 KiB), and the bolts, `fx_bolts` (2 KiB) |
 | SRAM `$31:7800-7BFF` | `!SRAM_WORK_FX`: request block, 14 effect slots, 8 draw entries, VRAM cache, polygon tables (2 × 187 bytes) |
 | WRAM | None (a 148-byte direct-page frame on the stack inside `fx_frame`) |
 | VRAM | `!VRAM_FIELD_OBJ_A/B/C` while effects are active (owner `$0E`); released after 120 idle frames and at every map or mode change |
@@ -401,8 +441,9 @@ with a wave on screen.
 | `fx_flash`, `fx_quake` | Done | gallery |
 | `FX_DEBRIS`, brazier burst | Done (OBJ); destroy's effect records are drawn by FX itself (below) | `snes/test/fx/debris.lua` |
 | `FX_BEAM_LASER` | Done: 16 headings (OBJ windows; headings 0 / 8 as a polygon when free) | beams: every heading against the browser's pixels |
-| `FX_AURA`, `FX_LIGHTNING` | Not yet (draw nothing) | |
-| World flight | Not yet | |
+| `FX_AURA` | Done (polygon; two colours, tongue gaps filled where a line crosses three or more tongues) | beams: four heights/levels/phases against drawKiAura's silhouette, strobe |
+| `FX_LIGHTNING` | Done as Thunderbolt cells along the browser's bolts (no 2-pixel lines, no tile or actor targets) | gallery |
+| World flight | Nothing drawn: the world module draws its own effects there | |
 
 **Combat review** (combat reported that in the lagging Rabite field its
 Kamehameha strip and charge orb did not appear and the full wave was
@@ -497,6 +538,9 @@ of 39 consecutive grabs were identical in a measurement).
   every screenshot comparison is otherwise subject to Mesen's
   wall-clock frame skipping (combat's review screenshots showed effects
   of earlier frames, see Combat review). FX's runner does it itself.
+- **goku**: an API for the displayed cell's centre (`goku_api_hand`'s
+  origin + 16, lift included) would anchor `FX_AURA` with `FX_F_GOKU`
+  exactly; FX uses `$E020`, `$E022 - $E045 - 15` (no lift) meanwhile.
 - **OBJ palettes**: there is no core arbitration of OBJ palettes; FX picks
   palettes not used by the sprites already in OAM when it runs. Scene
   modules that add their own characters should add their sprites before

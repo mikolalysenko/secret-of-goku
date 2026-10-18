@@ -39,6 +39,8 @@ function F.rgb(a, b, c) H.w16(F.BOX + 0xA2, a); H.w16(F.BOX + 0xA4, b); H.w16(F.
 function F.spawn(slot, kind, flags, dir, x, y, a, b) F.post(slot, 1, kind, flags, dir, x, y, a, b) end
 function F.draw(slot, kind, flags, dir, x, y, a, b, c, t) F.post(slot, 2, kind, flags, dir, x, y, a, b, c, t) end
 function F.beam(slot, style, flags, dir, x, y, len, width, taper, t) F.post(slot, 3, style, flags, dir, x, y, len, width, taper, t) end
+-- A continuous kind drawn every frame with its clock !fx_t held at t.
+function F.drawHold(slot, kind, flags, dir, x, y, a, b, c, t) F.post(slot, 7, kind, flags, dir, x, y, a, b, c, t) end
 function F.flash(frames) F.post(7, 4, 0, 0, 0, 0, 0, frames) end
 function F.quake(frames) F.post(7, 5, 0, 0, 0, 0, 0, frames) end
 function F.killAll() F.post(7, 6, 0, 0, 0, 0, 0) end

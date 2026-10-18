@@ -46,11 +46,12 @@ const rot1=p=>{ // r1(qx,qy) = p(qy, 15-qx): the browser's (dx,dy)=(0,1) turn
 const recolor=(p,f)=>p.map(c=>c?f(c):0);
 const empty=p=>p.every(c=>!c);
 
-export async function generate({rom,repo,outDir}){
+export async function generate({rom,repo,outDir,xdata}){
   const eng=f=>import(pathToFileURL(join(repo,'engine',f)).href);
   const {decodeEffectFrame,decodeEffectTile}=await eng('native-effects.js');
+  const {createChargeLightning}=await eng('charge-lightning.js');
   const {combustionCells,combustionFrames}=await eng('native-combustion-data.js');
-  const {friezaKiPalette}=await eng('ki-aura.js');
+  const {friezaKiPalette,drawKiAura}=await eng('ki-aura.js');
   const {createDeathBallArt,deathBallSizes}=await eng('death-ball-art.js');
   const {trainingBeamPalettes}=await eng('vegeta-clash.js');
   const manifest=JSON.parse(readFileSync(join(repo,'engine/native-effects.json'),'utf8'));
@@ -457,6 +458,92 @@ export async function generate({rom,repo,outDir}){
   const ramp=g=>[...new Set(groups[g].flatMap(p=>[...p]))].filter(Boolean).sort((a,b)=>luma(a)-luma(b)).map(c=>c-1);
   const auraRamps=[ramp('charge-orb'),ramp('gold-arc'),friezaKiPalette.map(c=>c-1)];
 
+  // Ki aura (ki-aura.js drawKiAura): the cartridge draws the flame as a
+  // window polygon (poly.asm fx_poly_aura, HDMA kind 4) from rows taken
+  // from drawKiAura's own pixels for every height, level and phase. Per
+  // frame: a header (below), then per row 4 bytes, window 1 and window 2
+  // as columns from the anchor + 128: one span: window 1 = the span,
+  // window 2 = the extent of its pixels that are not rim (they show the
+  // inner colour, window 1 and 2; the rest shows the rim colour); two
+  // spans: one window each; more: the smallest gaps are filled. One xdata
+  // blob per height; fx_aura_index (offset, first line from the anchor,
+  // rows) per (height, level, phase) in tables.asm.
+  const AURA_H=[16,32,40],auraIndex=[],auraBlobs=[];
+  const auraFx={'charge-orb':groups['charge-orb'],'gold-arc':groups['gold-arc']};
+  const auraRim=1+auraRamps[0][0];          // drawKiAura's blue rim colour (1+555)
+  for(const height of AURA_H){
+    const blob=[];
+    for(let level=1;level<=8;level++)for(let phase=0;phase<12;phase++){
+      const rows=new Map();
+      drawKiAura(auraFx,0,0,phase*3,(x,y,c)=>{if(!rows.has(y))rows.set(y,new Map());rows.get(y).set(x,c);},
+        {tone:'blue',power:level/8,height,seed:0,clock:0});
+      const ys=[...rows.keys()],y0=Math.min(...ys),y1=Math.max(...ys);
+      auraIndex.push(blob.length,(y0&255)|((y1-y0+1)<<8));
+      const spanRows=[];
+      for(let y=y0;y<=y1;y++){
+        const row=rows.get(y)??new Map(),xs=[...row.keys()].sort((a,b)=>a-b),sp=[];
+        for(const x of xs){if(sp.length&&sp.at(-1)[1]===x-1)sp.at(-1)[1]=x;else sp.push([x,x]);}
+        spanRows.push({row,xs,sp});
+      }
+      // The tongues: down to the last row with two spans or more the
+      // backdrop is the inner colour (most of a tongue's pixels), with no
+      // colour math; below it the rim colour, and the inner part of each
+      // one-span row adds up to the inner colour.
+      const split=spanRows.reduce((k,r,i)=>r.sp.length>1?i+1:k,0),bytes=[];
+      spanRows.forEach(({row,xs,sp},i)=>{
+        while(sp.length>2){
+          let bi=1;for(let k=2;k<sp.length;k++)if(sp[k][0]-sp[k-1][1]<sp[bi][0]-sp[bi-1][1])bi=k;
+          sp.splice(bi-1,2,[sp[bi-1][0],sp[bi][1]]);
+        }
+        // An empty window is first > last next to the other one, so that
+        // moving both by the anchor keeps it empty.
+        let w1=[0,-1],w2=[0,-1];
+        if(sp.length===1){
+          w1=sp[0];w2=[w1[0],w1[0]-1];
+          const inner=xs.filter(x=>row.get(x)!==auraRim);
+          if(inner.length&&i>=split)w2=[inner[0],inner.at(-1)];
+        }else if(sp.length===2){w1=sp[0];w2=sp[1];}
+        for(const v of[...w1,...w2]){if(v<-128||v>127)throw Error('fx: aura row out of range');bytes.push(v+128);}
+      });
+      // Header: the tongues' rows, then the smallest and largest column
+      // byte (columns are stored + 128: as if the anchor were at x = 128).
+      blob.push(split,Math.min(...bytes),Math.max(...bytes),...bytes);
+    }
+    if(blob.length>0x8000)throw Error(`fx: aura ${height} rows take ${blob.length} bytes`);
+    auraBlobs.push(blob.length);
+    xdata?.(`fx_aura${height}`,Uint8Array.from(blob));
+  }
+  // Super Saiyan charge lightning (charge-lightning.js): the browser's bolts
+  // for seeds 0-63 (phase + map * 71, wrapped), from its own arcs() with no
+  // solid tiles or actors nearby (every bolt ends in the air). The cartridge
+  // draws each bolt as Thunderbolt cells along its points instead of the
+  // browser's 2-pixel line: a cell on every second point from the first
+  // jag and on the browser's own middle-point stamp, turned to the bolt
+  // (horizontal: turn 0, else 1). fx_bolt_ptr: per (seed, bolt) an offset
+  // in the xdata blob fx_bolts: count, then x, y, turn per cell (from the
+  // origin).
+  const boltPtr=[],boltData=[];
+  for(let seed=0;seed<64;seed++){
+    const arcs=createChargeLightning({frame:seed*3,read16:()=>0,charge:45,entities:()=>[],worldFlight:false})({x:0,y:0});
+    if(arcs.length!==3)throw Error('fx: charge lightning: expected three bolts');
+    for(const arc of arcs){
+      const p=arc.points,mid=Math.floor(p.length/2),a=p[0],b=arc.target;
+      const turn=Math.abs(b.x-a.x)>Math.abs(b.y-a.y)?0:1,at=new Set([mid]);
+      for(let k=1;k<p.length;k+=2)at.add(k);
+      const cells=[...at].sort((x,y)=>x-y).map(k=>[p[k].x,p[k].y,turn]);
+      for(const [x,y] of cells)if(x<-128||x>127||y<-128||y>127)throw Error('fx: bolt out of range');
+      boltPtr.push(boltData.length);
+      boltData.push(cells.length,...cells.flatMap(([x,y,t])=>[x&255,y&255,t]));
+    }
+  }
+
+  // Per tone: the rim colour, the inner colour, COLDATA for inner - rim.
+  const auraTone=auraRamps.flatMap(r=>{
+    const ch=c=>[c&31,(c>>5)&31,(c>>10)&31],d=ch(r[1]).map((x,k)=>x-ch(r[0])[k]);
+    if(d.some(x=>x<0))throw Error('fx: aura inner colour darker than its rim in a channel');
+    return [r[0]&255,r[0]>>8,r[1]&255,r[1]>>8,0x20|d[0],0x40|d[1],0x80|d[2],0];
+  });
+
   // Death Balls above 32 px (death-ball-art.js draw(), non-cinematic): the
   // 16 px art upscaled by nearest neighbour, so each art row is a band of
   // screen lines with the same outline. The cartridge draws them as a window
@@ -529,6 +616,11 @@ export async function generate({rom,repo,outDir}){
   t.label('fx_det_data');t.db(detBytes);
   t.label('fx_laser_step');t.db(laserStep);
   t.label('fx_laser_len');t.dw(laserLen);
+  t.label('fx_aura_index');t.dw(auraIndex);
+  t.label('fx_bolt_ptr');t.dw(boltPtr);
+  if(boltData.length>0x8000)throw Error('fx: bolts too large');
+  xdata?.('fx_bolts',Uint8Array.from(boltData));
+  t.label('fx_aura_tone');t.db(auraTone);
   t.label('fx_dball_rows');t.db(dballRows);
   t.label('fx_dball_colours');t.dw(dballColours);
   t.label('fx_dball_sizes');t.dw(dballSizes);
@@ -556,5 +648,5 @@ export async function generate({rom,repo,outDir}){
       const v=cell.cls===DYN?[0x2108,0x4210,0x6318][c-1]:c-1,d=((oy+(i>>4))*prev.width+ox+(i&15))*4;
       prev.data[d]=(v&31)*255/31;prev.data[d+1]=((v>>5)&31)*255/31;prev.data[d+2]=((v>>10)&31)*255/31;prev.data[d+3]=255;}});
   writeFileSync(join(outDir,'preview.png'),writePng(prev));
-  return {cells:cells.length,asms:asms.length,cellBytes:bin.length,asmBytes:asmBytes.length,detBytes:detBytes.length,maxCells,laserDrift};
+  return {cells:cells.length,asms:asms.length,cellBytes:bin.length,asmBytes:asmBytes.length,detBytes:detBytes.length,maxCells,laserDrift,auraBlobs};
 }

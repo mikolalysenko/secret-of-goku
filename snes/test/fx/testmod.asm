@@ -5,7 +5,8 @@
 ;
 ; 8 entries of 16 bytes at $32:6000:
 ;   +0 op: 0 none, 1 spawn (once), 2 draw (every frame), 3 beam (every
-;      frame), 4 flash (once, frames in +8), 5 quake (once), 6 kill all (once)
+;      frame), 4 flash (once, frames in +8), 5 quake (once), 6 kill all
+;      (once), 7 draw (every frame, +E t held)
 ;   +1 kind / beam style   +2 flags   +3 dir   +4 x   +6 y
 ;   +8 a   +A b   +C c   +E t (draws and beams: advanced every frame)
 ; $32:6080: last handle; $32:6082..: stats of the previous fx frame;
@@ -79,6 +80,15 @@ fx_test_frame:
 	BEQ .quake
 	CMP.w #6
 	BEQ .killall
+	CMP.w #7
+	BEQ .hold
+	PLX
+	BRA .next
+.hold
+	LDA $01,S
+	TAX
+	JSR .args
+	JSL fx_draw
 	PLX
 	BRA .next
 .spawn

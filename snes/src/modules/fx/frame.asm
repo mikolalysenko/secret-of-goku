@@ -113,6 +113,10 @@ fx_begin:
 	LDA.w #$0000
 	STA.l !fx_front
 	STA.l !fx_poly_req
+	LDA.l !fx_pbig               ; no request yet this frame
+	AND.w #$FFFE
+	STA.l !fx_pbig
+	LDA.w #$0000
 if defined("FX_TEST")
 	STA.l !fx_sprites
 	STA.l !fx_dropped

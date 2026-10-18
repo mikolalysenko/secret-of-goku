@@ -14,7 +14,7 @@
 import {spawnSync,spawn} from 'node:child_process';
 import {readFileSync,writeFileSync,existsSync,mkdirSync,rmSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 import {mesenPath} from '../mesen.mjs';
 import {checkpointDir,privateRom,cleanupRom,mainCheckout} from '../checkpoints.mjs';
 import {readPng} from '../../tools/gfx.mjs';
@@ -65,6 +65,42 @@ const BEAM_CHECKS={
     ['wave_after','no beam left',{x0:0,x1:255,y:100,want:[BLUE[1],BLUE[2]],max:.05}],
   ],
 };
+// Ki aura cases (beams.lua): name, height, power, phase at the anchor;
+// drawKiAura (engine/ki-aura.js) gives the browser's silhouette.
+const AURA_CASES=[['aura_h32_l8_p0',32,256,0],['aura_h32_l4_p5',32,128,5],['aura_h16_l8_p3',16,256,3],['aura_h40_l6_p7',40,192,7]];
+const AURA_AT=[60,124];
+async function auraChecks(dir){
+  const {drawKiAura}=await import(pathToFileURL(join(repo,'engine/ki-aura.js')).href);
+  const fake={'charge-orb':[Uint16Array.from([1,2,3,4,5])],'gold-arc':[Uint16Array.from([1,2,3,4,5])]};
+  const plain=readShot(dir,'aura_plain'),out=[];
+  if(!plain)return [['aura','no plain grab',false]];
+  for(const [name,height,power,phase] of AURA_CASES){
+    const mask=new Set(),spans=new Map();
+    drawKiAura(fake,AURA_AT[0],AURA_AT[1],phase*3,(x,y)=>mask.add(x+','+y),{power:power/256,height,seed:0,clock:0});
+    // Rows where the browser has more than two spans: the cartridge fills
+    // the narrowest gaps (two windows per line), so pixels there may differ.
+    for(let y=AURA_AT[1]-60;y<=AURA_AT[1]+25;y++){
+      let n=0;for(let x=AURA_AT[0]-36;x<=AURA_AT[0]+36;x++)if(mask.has(x+','+y)&&!mask.has((x-1)+','+y))n++;
+      spans.set(y,n);
+    }
+    let best=null;
+    for(const shot of [name,name+'_1',name+'_2',name+'_3']){
+      const img=readShot(dir,shot);if(!img)continue;
+      const px=(x,y)=>{const i=(y*256+x)*4;return img.data[i]<<16|img.data[i+1]<<8|img.data[i+2];};
+      const pl=(x,y)=>{const i=(y*256+x)*4;return plain.data[i]<<16|plain.data[i+1]<<8|plain.data[i+2];};
+      let inside=0,changed=0,outside=0,spill=0,merged=0;
+      for(let y=AURA_AT[1]-60;y<=AURA_AT[1]+25;y++)for(let x=AURA_AT[0]-36;x<=AURA_AT[0]+36;x++){
+        if(x<0||y<0||x>255||y>223)continue;
+        if(mask.has(x+','+y)){inside++;if(px(x,y)!==pl(x,y))changed++;}
+        else{outside++;if(px(x,y)!==pl(x,y)){if(spans.get(y)>2)merged++;else spill++;}}
+      }
+      const r={shot,inside,changed,outside,spill,merged,ok:changed>=inside*.97&&spill<=outside*.005};
+      if(!best||(r.ok&&!best.ok))best=r;
+    }
+    out.push([name,best?`${best.changed}/${best.inside} inside changed, ${best.spill}/${best.outside} outside (+${best.merged} in filled gaps) (${best.shot})`:'no grab',!!best?.ok]);
+  }
+  return out;
+}
 // F.grab's raw frames (exact) when present, else the screenshot.
 function readShot(dir,name){
   const raw=join(dir,name+'.rgb');
@@ -146,6 +182,7 @@ for(const t of tests){
   const res=r.results??{};
   const fails=Object.entries(res).filter(([k,v])=>typeof v==='string'&&v.startsWith('FAIL'));
   const shots=shotChecks(t,join(outRoot,t));
+  if(t==='beams')for(const [name,text,good] of await auraChecks(join(outRoot,t)))shots.push({ok:good,text:`${name} silhouette: ${text}`});
   const pass=r.code===0&&!res.error&&res.failures===0&&shots.every(c=>c.ok);
   if(!pass)ok=false;
   console.log(`fx ${t.padEnd(10)} ${pass?'pass':'FAIL'} (${((Date.now()-t0)/1000).toFixed(1)} s)${res.error?' error: '+res.error:''}`);

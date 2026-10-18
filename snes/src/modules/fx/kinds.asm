@@ -679,11 +679,194 @@ fx_k_orb:
 	JMP fx_stamp
 
 ; ---------------------------------------------------------------------------
-; FX_AURA and FX_LIGHTNING: not implemented yet.
+; FX_AURA (ki-aura.js drawKiAura): !fx_style tone (0 blue, 1 gold, 2 pink),
+; !fx_a power 0-256 (level ceil(power * 8), 1-8; 0 draws nothing), !fx_b
+; body height (up to 20: 16, from 36: 40, else 32), !fx_c phase seed,
+; !fx_t clock: shown on even clocks only (the browser's ghost strobe), phase
+; (clock / 3 + seed) % 12. X/Y: the body's centre, as the browser's aura();
+; FX_F_GOKU: Goku's body centre + X/Y. A polygon (poly.asm fx_poly_aura):
+; one aura per frame, nothing while the polygon is taken.
 fx_k_aura:
+	LDA !d_cur+!C_T
+	LSR
+	BCC +
+	RTS                          ; odd clock: the strobe's empty half
++	LDA !d_cur+!C_A              ; level - 1 = ceil(power * 8 / 256) - 1
+	BNE +
 	RTS
++	CLC
+	ADC.w #31
+	LSR
+	LSR
+	LSR
+	LSR
+	LSR
+	CMP.w #9
+	BCC +
+	LDA.w #8
++	DEC
+	STA !d_ks+2
+	LDA !d_cur+!C_B              ; height: 16 / 32 / 40
+	LDX.w #$0000
+	CMP.w #21
+	BCC +
+	INX
+	CMP.w #36
+	BCC +
+	INX
++	STX !d_ks
+	LDA !d_cur+!C_T              ; phase = (clock / 3 + seed) % 12
+	LDX.w #3
+	JSR fx_div8
+	CLC
+	ADC !d_cur+!C_C
+	LDX.w #12
+	STA.l $004204
+	SEP #$20
+	TXA
+	STA.l $004206
+	REP #$20
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	LDA.l $004216                ; remainder
+	STA !d_ks+4
+	LDA !d_cur+!C_STYLE          ; tone
+	AND.w #$00FF
+	CMP.w #3
+	BCC +
+	LDA.w #$0000
++	STA !d_ks+6
+	LDA !d_cur+!C_KIND
+	BIT.w #!FX_F_GOKU<<8
+	BEQ +
+	LDA.w $E020                  ; Goku's cell centre: x, feet - 15 (lift not known)
+	CLC
+	ADC !d_cur+!C_X
+	STA !d_cur+!C_X
+	LDA.w $E022
+	SEC
+	SBC.w $E045
+	SEC
+	SBC.w #15
+	CLC
+	ADC !d_cur+!C_Y
+	STA !d_cur+!C_Y
++	JSR fx_poly_aura
+	PHP
+	LDA.w #$FFFF                 ; the builder used !d_tiles and !d_ptr
+	STA !d_lasta
+	PLP
+	RTS
+
+; FX_LIGHTNING (charge-lightning.js arcs(), sprite-layer.js
+; chargeLightning): !fx_a bolts (2 or 3; 0: 2), !fx_t clock: new bolts every
+; 3 frames (phase = clock / 3, seed = phase + map * 71, wrapped to 64).
+; Each bolt is Thunderbolt cells along the browser's points (fx.mjs
+; xdata fx_bolts), frame (phase + bolt) % 3, in front; every bolt ends in the
+; air. X/Y: the charge point.
 fx_k_lightning:
-	RTS
+	LDA.w #!FX_E_FRONT
+	JSR fx_depth
+	LDA !d_cur+!C_T              ; phase = clock / 3
+	LDX.w #3
+	JSR fx_div8
+	STA !d_ks
+	LDA.w $00DC                  ; seed = (phase + map * 71) & 63
+	LDX.w #71
+	JSR fx_mul16x8
+	CLC
+	ADC !d_ks
+	AND.w #$003F
+	STA !d_ks+2
+	LDA !d_cur+!C_A              ; bolts: 2 or 3
+	BNE +
+	LDA.w #2
++	CMP.w #4
+	BCC +
+	LDA.w #3
++	STA !d_ks+4
+	STZ !d_ks+6                  ; bolt
+.bolt
+	LDA !d_ks+2                  ; fx_bolt_ptr[seed * 3 + bolt]
+	ASL
+	CLC
+	ADC !d_ks+2
+	CLC
+	ADC !d_ks+6
+	ASL
+	TAX
+	LDA.l fx_bolt_ptr,X
+	TAX
+	LDA.l !XDATA_FX_BOLTS,X         ; cells
+	AND.w #$00FF
+	BEQ .next
+	STA !d_ks+8
+	INX
+	STX !d_ks+$A
+	LDA !d_ks                    ; frame: (phase + bolt) % 3
+	CLC
+	ADC !d_ks+6
+	STA.l $004204
+	SEP #$20
+	LDA.b #3
+	STA.l $004206
+	REP #$20
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	NOP
+	LDA.l $004216
+	TAX                          ; the bolt's assembly (frame, its turn)
+	PHX
+	LDX !d_ks+$A
+	LDA.l !XDATA_FX_BOLTS+2,X
+	AND.w #$00FF
+	TAY
+	PLX
+	LDA.w #!FX_SG_LIGHTNING
+	JSR fx_stamp_id
+	STA !d_ks+$C
+.cell
+	LDX !d_ks+$A
+	LDA.l !XDATA_FX_BOLTS,X         ; x, y from the charge point (signed bytes)
+	AND.w #$00FF
+	EOR.w #$0080
+	SEC
+	SBC.w #$0080
+	CLC
+	ADC !d_cur+!C_X
+	STA !d_x
+	LDA.l !XDATA_FX_BOLTS+1,X
+	AND.w #$00FF
+	EOR.w #$0080
+	SEC
+	SBC.w #$0080
+	CLC
+	ADC !d_cur+!C_Y
+	STA !d_y
+	LDA !d_ks+$C
+	JSR fx_emit
+	LDA !d_ks+$A
+	CLC
+	ADC.w #3
+	STA !d_ks+$A
+	DEC !d_ks+8
+	BNE .cell
+.next
+	INC !d_ks+6
+	LDA !d_ks+6
+	CMP !d_ks+4
+	BCS +
+	JMP .bolt
++	RTS
 
 ; ---------------------------------------------------------------------------
 ; FX_DEATHBALL (death-ball-art.js draw(), not cinematic): !fx_t frame

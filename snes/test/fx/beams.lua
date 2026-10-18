@@ -286,6 +286,45 @@ function test()
   F.check('deathball_off', H.r16(0x317890) == 0 and (H.r8(0x7E002C) & 0x0C) == 0,
     string.format('on=%d $2C=%02X', H.r16(0x317890), H.r8(0x7E002C)))
 
+  -- Ki aura: the flame's silhouette against drawKiAura's (run.mjs renders
+  -- the browser's pixels for each case and compares the grabs: AURA_CASES),
+  -- clock held even, the phase from the seed. Its tables take both buffers,
+  -- so a flame requested on consecutive frames shows on every other one
+  -- (the browser's strobe never asks for that): four frames are grabbed.
+  local AX, AY = 60, 124
+  F.grab('aura_plain')
+  local cases = { { 'aura_h32_l8_p0', 32, 256, 0 }, { 'aura_h32_l4_p5', 32, 128, 5 },
+    { 'aura_h16_l8_p3', 16, 256, 3 }, { 'aura_h40_l6_p7', 40, 192, 7 } }
+  for _, c in ipairs(cases) do
+    F.style(0)
+    F.drawHold(0, F.K.AURA, S, 0, AX, AY, c[3], c[2], c[4], 0)
+    F.waitFx(4)
+    local on = 0
+    for k = 0, 3 do
+      if H.r16(0x317890) == 4 and (H.r8(0x7E002C) & 0x0C) == 0x0C then on = on + 1 end
+      F.grab(k == 0 and c[1] or (c[1] .. '_' .. k))
+      H.wait(1)
+    end
+    F.check(c[1] .. '_polygon', on >= 1, on .. ' of 4 frames with the polygon on')
+  end
+  F.stop(0)
+  F.waitFx(3)
+  H.waitFor(hdmaOff, 12)
+  F.check('aura_off', H.r16(0x317890) == 0 and (H.r8(0x7E002C) & 0x0C) == 0,
+    string.format('on=%d $2C=%02X', H.r16(0x317890), H.r8(0x7E002C)))
+  -- Strobe: with the clock running the flame shows on every other frame.
+  F.draw(0, F.K.AURA, S, 0, AX, AY, 256, 32, 0, 0)
+  F.waitFx(4)
+  local shown = 0
+  for _ = 1, 6 do
+    F.waitFx(1)
+    if H.r16(0x317890) == 4 then shown = shown + 1 end
+  end
+  -- (a late vblank keeps the previous HDMA state for a frame)
+  F.check('aura_strobe', shown >= 2 and shown <= 4, shown .. ' of 6 frames')
+  F.stop(0)
+  F.waitFx(3)
+
   -- Charge orb anchored at Goku (FX_F_GOKU): the idle pose has no hand
   -- socket (goku_api_hand), so nothing is drawn; combat shows it in the
   -- charge pose.
