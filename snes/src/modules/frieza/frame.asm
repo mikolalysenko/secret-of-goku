@@ -61,20 +61,30 @@ frieza_field_frame:
 	JMP fz_try_quiet
 +	JSR fz_danger_tick
 	JSR fz_bind_ending_active
-	BCC .own
+	BCC .notEnding
 	; during an ending only what lives outside the scene SRAM runs
+	JSR fz_scene_free
 	JSR fz_apply_pending
 	JSR fz_story_permanent
 	JSR fz_death_tick
 	JSR fz_lock_tick
 	JSR fz_vram_settle
 	JMP fz_try_quiet
+.notEnding
+	JSR fz_scene_sram                 ; C set: the scene SRAM is Frieza's this frame
+	BCS .own
+	; nothing of Frieza's there (or another set piece holds it): story-level
+	; work only
+	JSR fz_apply_pending
+	JSR fz_quake_tick
+	JSR fz_story_tick
+	JSR fz_death_tick
+	JSR fz_lock_tick
+	JSR fz_vram_settle
+	JSR fz_music_tick
+	JMP fz_try_quiet
 .own
-	LDA !fz_wasidle
-	AND.w #!FZI_SRAM
-	BNE +
-	JSR fz_sram_reset
-+	JSR fz_apply_pending
+	JSR fz_apply_pending
 	JSR fz_quake_tick
 	JSR fz_story_tick
 	JSR fz_scene_tick

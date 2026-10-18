@@ -514,7 +514,7 @@ function coreDefine(name){
 function vramTest(){
   const g=reference('frieza');
   const writes=friezaWrites(g.frieza,g.challenge);
-  const owner=coreDefine('core_vram_owner')+2*coreDefine('VRAM_SCENE_OBJ');
+  const owner=coreDefine('core_vram_owner')+2*coreDefine('VRAM_SCENE_OBJ'),sceneOwner=coreDefine('core_scene_owner');
   return `
 function test()
   local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__frieza'))})
@@ -530,9 +530,19 @@ function test()
   H.wait(6)
   F.check(F.box() ~= nil, 'drawn once the region is free')
   F.check(H.r16(${owner}) == ${defs.FZ_VRAM_OWNER}, 'claimed by Frieza while drawn, owner ' .. H.r16(${owner}))
+  -- core's scene SRAM: another set piece holds it, Frieza draws nothing and
+  -- leaves it alone; once free he claims it again
+  H.w16(${sceneOwner}, ${coreDefine('SCENE_VEGETA')})
+  H.wait(4)
+  F.check(F.box() == nil, 'not drawn while another set piece holds the scene SRAM')
+  F.check(H.r16(${sceneOwner}) == ${coreDefine('SCENE_VEGETA')}, 'the other scene claim stands')
+  H.w16(${sceneOwner}, 0)
+  H.wait(6)
+  F.check(F.box() ~= nil, 'drawn once the scene SRAM is free')
+  F.check(H.r16(${sceneOwner}) == ${coreDefine('SCENE_FRIEZA')}, 'scene SRAM claimed by Frieza, owner ' .. H.r16(${sceneOwner}))
   H.w8(${0x7E0000|defs.fz_scene}, 0)  -- the scene ends
   H.wait(3)
-  F.check(H.r16(${owner}) == 0, 'given back when the scene ends, owner ' .. H.r16(${owner}))
+  F.check(H.r16(${owner}) == 0, 'VRAM given back when the scene ends, owner ' .. H.r16(${owner}))
   F.done()
 end
 `;

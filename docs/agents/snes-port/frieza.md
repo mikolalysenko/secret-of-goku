@@ -218,11 +218,19 @@ of the world's (the same within a cell, repeating per cell).
   flag and stage setters, the guard's derivation). The vblank reads one bit
   (`!FZV_NMI`, set by `fz_vram_settle` when the frame left it work) and the
   first quiet vblank clears the requests.
-- **Scene SRAM ownership**: an ending scene uses all of `$32:6000-7FFF`.
-  `!FZI_SRAM` marks Frieza's half as his; an active ending clears it and the
-  module then runs only its WRAM work; `fz_sram_reset` forgets the area
-  before Frieza uses it again. Per-frame requests the vblank acts on (the
-  Ball set, the vista) live in WRAM (`!fz_vista`), never in the shared SRAM.
+- **Scene SRAM ownership** (core's `core_scene_claim`, owner
+  `!SCENE_FRIEZA`): the module holds `!SRAM_WORK_SCENE` while something of
+  Frieza's needs it (a scene, the fight, one of his maps: `fz_scene_sram`)
+  and gives it back on the first busy frame nothing does, when an ending
+  starts, and before going quiet. A fresh claim forgets what the area held
+  (`fz_sram_reset`); a session's start (load, new game, an imported state,
+  a debug restore) claims it at once so restores can write there. While
+  another set piece holds it (an ending, Vegeta's trial, the Sandship's
+  `$32:7600-7FFF`) only the module's WRAM work runs: no scene logic, no
+  drawing. `!FZI_SRAM` records that the area holds Frieza's state. The
+  orbit stream works in `$32:6000-6FFF` inside Frieza's fight, under his
+  claim. Per-frame requests the vblank acts on (the Ball set, the vista)
+  live in WRAM (`!fz_vista`), never in the shared SRAM.
 - **Vblank work is granted per frame**: the hole tiles and rows and the
   whiteout run only when this frame's field logic set the matching
   `!fz_tflags` bit (cleared at the start of every field frame), so stale
@@ -345,7 +353,7 @@ floor on request.
 | `victory` | the fatal hit starts the beat, white 31 at 400, event C7 runs (stage defeated, ledger 127) |
 | `death` | Goku at 1 HP takes the first orb: no warp, black from 360, Start goes to the title; with the ending module, the hand-off (`fzd_on` 2, `ES_DEFEATED`, key 1) instead |
 | `cost` | Potos with Goku present: the module settles on the quiet path; field frame at most 0.36 lines on average and 2.5 at peak, vblank at most 0.13 (from the dispatcher's JSL to the next instruction, master clocks) |
-| `vram` | preset `frieza`: not drawn while another owner holds `!VRAM_SCENE_OBJ`, drawn and claimed (owner 6) once it is free, given back when the scene ends |
+| `vram` | preset `frieza`: not drawn while another owner holds `!VRAM_SCENE_OBJ` or the scene SRAM (`!SCENE_VEGETA` planted), drawn and both claimed once free (owners 6 and `!SCENE_FRIEZA`), the VRAM given back when the scene ends |
 | `door` | door 3FC from the `intro` preset: tile y 18 beside the living Emperor, 30 (native) after his death |
 | `tree` | (explicit) preset `tree`: event 5F8 end to end with B tapped every 20 frames; every Tree scene on maps 236 and 198, shots at chosen ages, a trace of the vista's state |
 | `effects` | scenes no preset reaches, set up by `scenarios.mjs` on a preset in the browser (`capture.mjs`: restore the snapshot with an edited `goku.frieza`, run, screenshot into `.local/snes-ref-frieza/`) and replayed on the cartridge: Popoi's end 95-99%, the steal without the altar 99.5%, the empower orbs 97-99.9%, the eruption 93-99%, the collapse 87-90% after its first alarm; the Death Ball, Fanha's beam and the auras show where fx's kinds differ |

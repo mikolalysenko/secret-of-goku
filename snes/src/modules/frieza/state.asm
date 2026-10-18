@@ -1264,6 +1264,9 @@ fz_reset_transient:
 	JSL core_vram_release
 	JSR fz_bind_ending_active
 	BCS +
+	LDA.w #!SCENE_FRIEZA              ; a session's start: the area becomes his
+	JSL core_scene_claim              ; when free, so restores can write there
+	BCS +
 	JSR fz_sram_reset
 +	JSR fz_scene_clear
 	STZ !fz_pend
@@ -1284,6 +1287,53 @@ fz_reset_transient:
 	SEP #$20
 	STZ !fzd_on
 	STZ !fzd_key
+	REP #$20
+	RTS
+
+; Core's scene work area (!SRAM_WORK_SCENE, $32:6000-7FFF; core_scene_claim,
+; owner !SCENE_FRIEZA): Frieza holds it while something of his needs it (a
+; scene, the fight, one of his maps) and gives it back otherwise. C set when
+; the area is his this frame; a fresh claim forgets what it held. With
+; another owner (an ending, Vegeta's trial, the Sandship) C is clear and
+; only the WRAM work runs.
+fz_scene_sram:
+	LDA !fz_mapflag
+	AND.w #$00FF
+	BNE .need
+	LDA !fz_scene
+	AND.w #$00FF
+	BNE .need
+	LDA !fzf_flags
+	AND.w #!FZFF_ACTIVE
+	BNE .need
+	JSR fz_scene_free
+	CLC
+	RTS
+.need
+	LDA.w #!SCENE_FRIEZA
+	JSL core_scene_claim
+	BCS .elsewhere
+	LDA !fz_wasidle
+	AND.w #!FZI_SRAM
+	BNE +
+	JSR fz_sram_reset
++	SEC
+	RTS
+.elsewhere
+	SEP #$20
+	LDA.b #!FZI_SRAM
+	TRB !fz_wasidle
+	REP #$20
+	CLC
+	RTS
+
+; Give core's claim back (when Frieza holds it); his state there is gone.
+fz_scene_free:
+	LDA.w #!SCENE_FRIEZA
+	JSL core_scene_release
+	SEP #$20
+	LDA.b #!FZI_SRAM
+	TRB !fz_wasidle
 	REP #$20
 	RTS
 
