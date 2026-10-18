@@ -361,23 +361,118 @@ ss_breach_build:
 	RTS
 
 ; A = map coordinate (0..2047) -> A = floor(A * 4 / 2pi) & 3 (A * 163 / 256,
-; the generator's phase buckets).
+; the generator's phase buckets). X clobbered; no work memory (the floor
+; query may come before the room's first frame).
 ss_phase4:
 	PHA
 	SEP #$20
 	LDA.b #163 : STA.l $004202
-	LDA $01,S : STA.l $004203
+	LDA $02,S : STA.l $004203                     ; high byte * 163
 	REP #$20
 	NOP : NOP : NOP : NOP
-	LDA.l $004216 : XBA : AND.w #$00FF : STA.l !ssw_vtmp+2
+	LDA.l $004216 : TAX
 	SEP #$20
-	LDA $02,S : STA.l $004203
+	LDA $01,S : STA.l $004203                     ; low byte * 163 / 256
 	REP #$20
 	NOP : NOP : NOP : NOP
-	LDA.l $004216 : CLC : ADC.l !ssw_vtmp+2
+	LDA.l $004216 : XBA : AND.w #$00FF : STA $01,S
+	TXA : CLC : ADC $01,S
 	PLX
 	AND.w #$0003
 	RTS
+
+; floorHole() for flight's supported() (native-local-flight.js): carry set
+; when the breach lies under one of the footprint's nine points around X, Y
+; (map pixels; x -6/0/6, y -4/0/4): wrecked, Goku on, in the breach's room,
+; inside the outline's span on that line (the window the hole is drawn
+; through). M16/X16; X, Y kept; no work memory.
+ss_floor_hole:
+	LDA.l !persist_goku_active : AND.w #$00FF : BEQ .no
+	LDA.l !ss_flags : AND.w #!SSF_WRECK : BEQ .no
+	LDA.l !ss_bmap : CMP.l $7E00DC : BEQ +
+.no
+	CLC
+	RTS
++	PHX
+	PHY
+	; the outline variant's spans: (phase(bx) | phase(by) << 2) * lines * 2
+	LDA.l !ss_by : JSR ss_phase4 : ASL : ASL : PHA
+	LDA.l !ss_bx : JSR ss_phase4 : ORA $01,S
+	SEP #$20
+	STA.l $004202
+	LDA.b #!SS_BREACH_LINES*2 : STA.l $004203
+	REP #$20
+	NOP : NOP : NOP : NOP
+	LDA.l $004216 : STA $01,S                     ; [base][y][x]
+	; x - bx biased by $1000 (unsigned compares), the line of y - 4
+	LDA $05,S : SEC : SBC.l !ss_bx : CLC : ADC.w #$1000 : STA $05,S
+	LDA $03,S : SEC : SBC.l !ss_by : CLC : ADC.w #!SS_BREACH_H-4 : STA $03,S
+	LDY.w #3
+.line
+	LDA $03,S : CMP.w #!SS_BREACH_LINES : BCS .next ; above or below the outline
+	ASL : CLC : ADC $01,S : TAX
+	LDA.l ss_breach_spans,X : AND.w #$00FF
+	CMP.w #$0080 : BEQ .next                      ; no span on this line
+	LDA.l ss_breach_spans+1,X : AND.w #$00FF
+	EOR.w #$0080 : CLC : ADC.w #$1000-$0080 : PHA ; right, biased
+	LDA.l ss_breach_spans,X : AND.w #$00FF
+	EOR.w #$0080 : CLC : ADC.w #$1000-$0080 : PHA ; [left][right][base][line][x]
+	LDA $09,S : SEC : SBC.w #6
+	CMP $01,S : BCC +
+	CMP $03,S : BCC .hit : BEQ .hit
++	LDA $09,S
+	CMP $01,S : BCC +
+	CMP $03,S : BCC .hit : BEQ .hit
++	LDA $09,S : CLC : ADC.w #6
+	CMP $01,S : BCC +
+	CMP $03,S : BCC .hit : BEQ .hit
++	PLA
+	PLA
+.next
+	LDA $03,S : CLC : ADC.w #4 : STA $03,S
+	DEY : BNE .line
+	PLA
+	PLY
+	PLX
+	CLC
+	RTS
+.hit
+	PLA
+	PLA
+	PLA
+	PLY
+	PLX
+	SEC
+	RTS
+
+; FLIGHT_MISSING_FLOOR (flight/bind.asm: JSL, M16/X16, DB = $7E): carry set
+; when a hole lies under the 12x8 footprint at !fl_q_x/y. A provider defined
+; before this one (!DESTROY_NEXT_FLOOR: Frieza's deck, flight's test hole)
+; answers everywhere off the wreck's breach.
+if defined("FLIGHT_RAM")
+destroy_ss_floor_hole:
+	PHP
+	REP #$30
+	PHX
+	PHY
+	LDX.w !fl_q_x
+	LDY.w !fl_q_y
+	JSR ss_floor_hole
+	PLY
+	PLX
+	BCS .hole
+	PLP
+if defined("DESTROY_NEXT_FLOOR")
+	JML !DESTROY_NEXT_FLOOR
+else
+	CLC
+	RTL
+endif
+.hole
+	PLP
+	SEC
+	RTL
+endif
 
 ; Lines before the outline: one entry holding an empty window / the room's
 ; backdrop for !ssw_br_y0 lines (split at 127). Y = write offset (DB = $32),

@@ -7,6 +7,8 @@
 ;   5  plan the breach of wall offset !dbg_arg, no edits  -> dbg_res = 1 planned
 ;   6  Sandship: count a bulkhead strike (onDemolish)    -> dbg_res = breaks
 ;   7  story_api_request(!dbg_arg, actor !ssw_dbgactor)  -> dbg_res = 1 queued
+;   8  Sandship floorHole footprint at (!arg_x, !arg_y)  -> dbg_res = 1 hole
+;   9  Sandship takeoff (flight's L+R binding)            -> dbg_res = 1 taken
 dst_debug_frame:
 	LDA.l !dbg_cmd : BNE +
 	RTS
@@ -55,7 +57,21 @@ dst_debug_frame:
 	CMP.w #5 : BEQ +
 	CMP.w #6 : BEQ .strike
 	CMP.w #7 : BEQ .request
+	CMP.w #8 : BEQ .hole
+	CMP.w #9 : BEQ .takeoff
 	JMP .unknown
+.takeoff
+	; 9: flight's L+R takeoff binding (!SANDSHIP_TAKEOFF)
+	JSL destroy_ss_takeoff
+	LDA.w #0 : ROL
+	JMP .done
+.hole
+	; 8: the wreck's floor hole under the footprint at (arg_x, arg_y)
+	LDX.w !arg_x
+	LDY.w !arg_y
+	JSR ss_floor_hole
+	LDA.w #0 : ROL
+	JMP .done
 +
 	LDA.l !pl_stage : BEQ +
 	RTS                                ; a walk's plan is open: next frame

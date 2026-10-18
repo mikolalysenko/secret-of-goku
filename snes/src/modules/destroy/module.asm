@@ -510,6 +510,22 @@ endif
 if not(defined("STORY_QUERY_SANDSHIP_DOOR"))
 	!STORY_QUERY_SANDSHIP_DOOR = destroy_ss_q_door
 endif
+; Flight's Sandship bindings (flight/bind.asm, included after the modules):
+; sandship.takeoff() on L+R (carry = the ship takes it as an unplanned
+; departure; flight's hull rule may call it too), the wreck's floor hole
+; (chained after a provider defined earlier) and shipHull()'s cache key.
+if not(defined("SANDSHIP_TAKEOFF"))
+	!SANDSHIP_TAKEOFF = destroy_ss_takeoff
+endif
+if not(defined("SANDSHIP_HULL_KEY"))
+	!SANDSHIP_HULL_KEY = destroy_ss_hull_key
+endif
+if defined("FLIGHT_RAM")
+	if defined("FLIGHT_MISSING_FLOOR")
+		!DESTROY_NEXT_FLOOR := !FLIGHT_MISSING_FLOOR   ; expanded now (= would follow the redefinition)
+	endif
+	!FLIGHT_MISSING_FLOOR = destroy_ss_floor_hole
+endif
 
 pushpc
 org !DATA_DESTROY

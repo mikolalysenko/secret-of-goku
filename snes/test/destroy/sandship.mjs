@@ -479,6 +479,112 @@ scenarios.push(
     }},
 );
 
+// Flight's bindings (flight/bind.asm), through the debug mailbox: the wreck's
+// floor hole (FLIGHT_MISSING_FLOOR: floorHole() under supported()'s nine
+// footprint points) and the roof takeoff (SANDSHIP_TAKEOFF).
+// The browser's breachDepth() (sandship-wreck.js), for the agreement check.
+const breachDepth=(b,x,y)=>{const dx=x-b.x,dy=(y-b.y)*1.25,d=Math.hypot(dx,dy),a=Math.atan2(dy,dx);
+  return b.radius*(1+.18*Math.sin(a*5+b.x)+.1*Math.sin(a*11+b.y)+.06*Math.sin(a*23))-d;};
+const FOOT=[-4,0,4].flatMap(dy=>[-6,0,6].map(dx=>[dx,dy]));
+scenarios.push(
+  {name:'ship-hole',bundle:'sandship-wreck__qs-captured',syms:['ss_breach_spans'],
+    note:'the wreck\'s breach is a floor hole for flight (FLIGHT_MISSING_FLOOR): the footprint test follows the drawn outline\'s spans exactly and the browser\'s breachDepth() away from the jagged edge; none once the room is left or the ship is whole',
+    body:`
+  S.reset()
+  assert(H.importSnesJs(SCN.bundlePath), 'import failed')
+  H.wait(12)
+  local slots = {H.r8(0x7EE1E0), 0x16, H.r8(0x7EE1E2), H.r8(0x7EE1E3)}
+  for i, v in ipairs(slots) do H.w8(ABI.ss_gear + i - 1, v) end
+  H.w16(ABI.ss_gbits, 1)
+  H.w16(0x7EE002, 136); H.w16(0x7EE004, 210); H.wait(40)
+  D.hit({x = 136, y = 210, dir = 3, length = 96, halfWidth = 19, taper = 0, code = 2, str = 256, id = 21})
+  for f = 1, 400 do H.wait(1); if H.r16(ABI.ss_cut) == 0 and f > 100 then break end end
+  S.untilControl(6000)
+  H.wait(10)
+  local bx, by = H.r16(ABI.ss_bx), H.r16(ABI.ss_by)
+  local function ph(c) return ((c >> 8) * 163 + (((c & 255) * 163) >> 8)) & 3 end
+  local v = ph(bx) | (ph(by) << 2)
+  local spans = {}
+  for i = 0, 153 do spans[#spans + 1] = H.r8(SCN.sym.ss_breach_spans + v * 154 + i) end
+  local q = {}
+  for y = by - 56, by + 56, 8 do
+    for x = bx - 64, bx + 64, 8 do
+      H.w16(ABI.arg_x, x); H.w16(ABI.arg_y, y)
+      q[#q + 1] = S.cmd(8)
+    end
+  end
+  H.result('breach', {x = bx, y = by, map = H.r16(ABI.ss_bmap), dc = H.r16(0x7E00DC), v = v})
+  H.result('spans', spans); H.result('holes', q)
+  H.w16(ABI.arg_x, bx); H.w16(ABI.arg_y, by)
+  H.result('centre', S.cmd(8))
+  -- another room of the ship: no hole there
+  S.enter(318, 28, 46, 0)
+  H.wait(10)
+  H.w16(ABI.arg_x, bx); H.w16(ABI.arg_y, by)
+  H.result('away', S.cmd(8))
+  -- back in the breach's room, the ship whole again (the flag only)
+  S.enter(H.r16(ABI.ss_bmap), 8, 13, 0)
+  H.wait(10)
+  local fl = H.r16(ABI.ss_flags)
+  H.w16(ABI.arg_x, bx); H.w16(ABI.arg_y, by)
+  H.result('back', S.cmd(8))
+  H.w16(ABI.ss_flags, fl & 0xFFFE)
+  H.result('whole', S.cmd(8))
+  H.w16(ABI.ss_flags, fl)
+`,
+    check(res,problems){
+      const b=res.breach??{},spans=res.spans??[],holes=res.holes??[],H=(spans.length/2-1)/2;
+      if(b.map!==b.dc)problems.push(`breach map ${b.map}, Goku on ${b.dc}`);
+      const sb=v=>v>=128?v-256:v;
+      const model=(x,y)=>FOOT.some(([dx,dy])=>{const k=y+dy-b.y+H;if(k<0||k>2*H||spans[2*k]===0x80)return false;const d=x+dx-b.x;return d>=sb(spans[2*k])&&d<=sb(spans[2*k+1]);});
+      let i=0,exact=0,browser=0,edge=0,inside=0;
+      for(let y=b.y-56;y<=b.y+56;y+=8)for(let x=b.x-64;x<=b.x+64;x+=8,i++){
+        const got=holes[i]===1;if(got)inside++;
+        if(got!==model(x,y))exact++;
+        const depths=FOOT.map(([dx,dy])=>breachDepth({x:b.x,y:b.y,radius:34},x+dx,y+dy));
+        const want=depths.some(d=>d>=0);
+        if(got!==want){if(depths.every(d=>Math.abs(d)>8))browser++;else edge++;}
+      }
+      if(holes.length!==i)problems.push(`${holes.length} answers for ${i} queries`);
+      if(exact)problems.push(`${exact} footprints differ from the outline's spans`);
+      if(browser)problems.push(`${browser} footprints differ from breachDepth() away from the edge`);
+      if(!(inside>=20))problems.push(`only ${inside} footprints over the hole`);
+      res.edgeDiffs=edge;
+      if(res.centre!==1)problems.push(`no hole at the breach centre (${res.centre})`);
+      if(res.away!==0)problems.push(`a hole in another room (${res.away})`);
+      if(res.back!==1)problems.push(`no hole back in the breach's room (${res.back})`);
+      if(res.whole!==0)problems.push(`a hole with the ship whole (${res.whole})`);
+    }},
+  {name:'ship-takeoff',bundle:'sandship-wreck__qs-captured',
+    note:'the roof takeoff (flight\'s L+R through SANDSHIP_TAKEOFF) off the unfinished ship is taken as an unplanned departure: it blows up (Uh oh, the crash, Geshtar\'s Mech Rider); with the ship gone the chord is left to flight',
+    body:`
+  S.reset()
+  assert(H.importSnesJs(SCN.bundlePath), 'import failed')
+  H.wait(12)
+  H.result('stage', H.r8(0x7ECF28))
+  H.result('take', S.cmd(9))
+  local white, said = 0, {}
+  for f = 1, 400 do H.wait(1); white = math.max(white, H.r16(ABI.ss_flash)); said[H.r16(ABI.ssw_remark)] = true end
+  H.result('white', white)
+  local list = {}
+  for k, _ in pairs(said) do list[#list + 1] = k end
+  H.result('said', list)
+  H.result('frames', S.reach(340, 9000))
+  H.result('fight', S.state())
+  H.result('again', S.cmd(9))
+`,
+    check(res,problems){
+      if(!(res.stage>=1&&res.stage<10))problems.push(`start stage ${res.stage}`);
+      if(res.take!==1)problems.push(`takeoff not taken (${res.take})`);
+      if(res.white!==256)problems.push(`white-out ${res.white}`);
+      if(!(res.said??[]).includes(4))problems.push(`'broke the whole ship' not said (${JSON.stringify(res.said)})`);
+      const f=res.fight??{};
+      for(const [k,v] of Object.entries({map:340,control:true,stage:11}))if(JSON.stringify(f[k])!==JSON.stringify(v))problems.push(`fight.${k} ${JSON.stringify(f[k])} want ${JSON.stringify(v)}`);
+      if(((f.flags??0)&4)!==4)problems.push(`flags ${f.flags}: want the crash`);
+      if(res.again!==0)problems.push(`takeoff taken again at the fight (${res.again})`);
+    }},
+);
+
 export async function runSandship({rom,only=[],log=console.log}){
   const abi=destroyAbi(),imports=importDir(),outRoot=resolve(repo,'.local/snes-test/destroy/sandship');
   mkdirSync(outRoot,{recursive:true});
@@ -488,7 +594,8 @@ export async function runSandship({rom,only=[],log=console.log}){
     if(!existsSync(bundlePath)){results.push({name:s.name,ok:false,skipped:true,reason:'missing bundle '+s.bundle});log(`skip  ${s.name.padEnd(16)} missing bundle`);continue;}
     const sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8'),addr=n=>{const m=sym.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${n}$`,'m'));return m?parseInt(m[1]+m[2],16):null;};
     const debug=process.env.SS_DEBUG?Object.fromEntries(process.env.SS_DEBUG.split(',').map(n=>[n,addr(n)]).filter(([,a])=>a!==null)):null;
-    const test=`ABI=${lua(abi)}\nSCN=${lua({name:s.name,bundlePath,debug})}\n`+readFileSync(join(here,'destroy.lua'),'utf8')+prelude+`\nfunction test()\n${s.body}\nend\n`;
+    const syms=s.syms?Object.fromEntries(s.syms.map(n=>[n,addr(n)])):null;
+    const test=`ABI=${lua(abi)}\nSCN=${lua({name:s.name,bundlePath,debug,sym:syms})}\n`+readFileSync(join(here,'destroy.lua'),'utf8')+prelude+`\nfunction test()\n${s.body}\nend\n`;
     const outDir=join(outRoot,s.name);
     const m=await runMesen({rom,test,outDir});
     const res=m.results??{};

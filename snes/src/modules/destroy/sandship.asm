@@ -763,6 +763,20 @@ destroy_ss_takeoff:
 	CLC
 	RTL
 
+; destroy_ss_hull_key (JSL, for flight's shipHull() cache): A = a word that
+; changes whenever the ship's floor may have (the key's wreck.status().loads
+; and s.breaks: room loads seen while wrecked, bulkheads broken).
+destroy_ss_hull_key:
+	PHP
+	REP #$30
+	LDA.l !ss_work : CMP.w #!SS_WORK_MAGIC : BEQ +
+	LDA.w #0
+	BRA ++
++	LDA.l !ssw_loads : XBA : AND.w #$FF00
+++	ORA.l !ss_breaks
+	PLP
+	RTL
+
 ; ---------------------------------------------------------------------------
 ; OBJECT_LIST_SANDSHIP (story hook, per map load; the list is at
 ; !story_objlist_*): while wrecked, a copy with the enemy-map header byte,
