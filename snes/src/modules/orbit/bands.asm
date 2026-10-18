@@ -522,9 +522,20 @@ bands_nmi:
 	STA.w $212E
 	LDA.b #$C3                     ; BG1 shown in W1, BG2 in W2
 	STA.w $2123
-	; colours 1-2 of BG palette 1 (Frieza's, CGRAM 17-18): the band
-	; frame's outer and inner (Goku's, BG palette 7's 113-114, come with
-	; the globe's colours: orbit_pals_frame)
+	; colours 1-2 of BG palette 7 (Goku's, CGRAM 113-114) and of BG
+	; palette 1 (Frieza's, CGRAM 17-18): the band frame's outer and inner
+	REP #$20
+	LDA.w !v_band
+	AND.w #$0001
+	ASL : ASL
+	TAX
+	SEP #$20
+	LDA.b #113
+	STA.w $2121
+	LDA.l orbit_fx_band_blue,X : STA.w $2122
+	LDA.l orbit_fx_band_blue+1,X : STA.w $2122
+	LDA.l orbit_fx_band_blue+2,X : STA.w $2122
+	LDA.l orbit_fx_band_blue+3,X : STA.w $2122
 	REP #$20
 	LDA.w !v_pband
 	AND.w #$0001

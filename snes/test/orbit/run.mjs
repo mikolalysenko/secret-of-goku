@@ -24,8 +24,8 @@
 //   handoff the frieza module's ground fight in phase two takes a hit across
 //          32,000 (its FRIEZA_TEST mailbox): the second surge hands over
 //          to the orbit, which takes the scene work area from Frieza's
-//          claim; Frieza's fight sleeps in space; nothing else writes the
-//          area while the orbit runs
+//          claim; Frieza's fight sleeps in space; his block ($32:7800-
+//          7FFF: fight block, hole bitmap) is untouched while the orbit runs
 import {readFileSync,existsSync,mkdirSync,writeFileSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -338,10 +338,10 @@ const cases={
     const dir=join(out,'handoff');
     const test=`${ADDR}BUNDLE=${JSON.stringify(bundleDir('preset__battle'))}
 WRITES=${luaWrites(friezaWrites(g.frieza,g.challenge))}
-local OBJ_PALS = SCENE_RAM + 0x1C00
+local FZ_BLOCK = SCENE_RAM + 0x1800    -- the frieza module's fight block and hole bitmap
 local fails = {}
 local function check(c, m) if not c then fails[#fails + 1] = m end return c end
-local function pals() local t = {} for i = 0, 191 do t[#t + 1] = H.r8(OBJ_PALS + i) end return t end
+local function block() local t = {} for i = 0, 0x7FF do t[#t + 1] = H.r8(FZ_BLOCK + i) end return t end
 function test()
   check(H.importSnesJs(BUNDLE), 'import')
   H.w8(${def('persist_goku_active')}, 1)
@@ -364,19 +364,17 @@ function test()
   H.result('owner_live', H.r16(SCENE_OWNER))
   check(H.r16(SCENE_OWNER) == SCENE_ORBIT, 'scene work owner ' .. H.r16(SCENE_OWNER) .. ' while live')
   check((H.r8(${wram('fzf_flags')}) & ${fz.FZFF_SPACE}) ~= 0, 'frieza: the fight is in space')
-  H.wait(2)
-  local before = pals()
+  local before = block()
   for f = 1, 300 do
     H.wait(1)
     if f == 60 or f == 300 then H.shot(string.format('handoff%04d', f)) end
     if H.r16(SCENE_OWNER) ~= SCENE_ORBIT then check(false, 'owner ' .. H.r16(SCENE_OWNER) .. ' at ' .. f) break end
   end
-  local after = pals()
+  local after = block()
   local same = 0
-  for i = 1, 64 do if before[i] == after[i] then same = same + 1 end end
-  for i = 129, 192 do if before[i] == after[i] then same = same + 1 end end
-  H.result('pals_same', same)
-  check(same == 128, 'OBJ palettes 0, 1, 6, 7 of the scene image unchanged (' .. same .. ' of 128 bytes)')
+  for i = 1, 0x800 do if before[i] == after[i] then same = same + 1 end end
+  H.result('block_same', same)
+  check(same == 0x800, 'the frieza block ($32:7800-7FFF) unchanged while the orbit runs (' .. same .. ' of 2048 bytes)')
   H.result('intro', H.r16(SCENE_RAM + 0xA80 + 0x02))
   H.result('failures', fails)
 end
@@ -384,7 +382,7 @@ end
     const r=await runMesen({rom,state,test,outDir:dir});
     const res=r.results??{};
     const ok=r.code===0&&res.live===true&&Array.isArray(res.failures)&&res.failures.length===0;
-    console.log(`handoff: ${ok?'pass':'FAIL'} owner ${res.owner_before} -> ${res.owner_live}, palette bytes kept ${res.pals_same}/128`);
+    console.log(`handoff: ${ok?'pass':'FAIL'} owner ${res.owner_before} -> ${res.owner_live}, Frieza's block kept ${res.block_same}/2048 bytes`);
     if(!ok)console.log('  after the hit:',res.after_hit,'| 10 frames on:',res.after_10);
     for(const m of (res.failures??[]).slice(0,8))console.log('  '+m);
     if(!res.failures)console.log(r.output?.slice(-1500));

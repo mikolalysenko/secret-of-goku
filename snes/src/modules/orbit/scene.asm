@@ -714,8 +714,8 @@ orbit_nmi_live:
 	LDA.w !g_vofs : STA.w $210E
 	LDA.w !g_vofs+1 : STA.w $210E
 	; Colours (the game's vblank sent its whole palette before us): the
-	; backdrop = sky; entries 32-114, the globe (light level 3) and Goku's
-	; band; our OBJ palettes; the text panel's, while one shows.
+	; backdrop = sky; the globe (light level 3); our OBJ palettes; the text
+	; panel's, while one shows (the band layers': bands_nmi).
 	STZ.w $2121
 	LDA.b #!ORBIT_SKY : STA.w $2122
 	LDA.b #!ORBIT_SKY>>8 : STA.w $2122
@@ -724,12 +724,12 @@ orbit_nmi_live:
 	REP #$20
 	LDA.w #$2200                   ; DMA mode 0 to $2122
 	STA.w $4370
-	LDA.w #!BG_PALS
+	LDA.w #orbit_globe_pal+(2*2*96) ; light level 3
 	STA.w $4372
-	LDA.w #2*!BG_PALS_N
+	LDA.w #2*!ORBIT_GLOBE_COLORS
 	STA.w $4375
 	SEP #$20
-	LDA.b #$32
+	LDA.b #orbit_globe_pal>>16
 	STA.w $4374
 	LDA.b #$80
 	STA.w $420B
@@ -808,48 +808,61 @@ orbit_nmi_live:
 ; form and HUD portrait); the beam bands (entries 2-3 of 4 and 5) take this frame's
 ; beam-body colours. A8, DB = $32.
 orbit_nmi_obj_palettes:
-	; palettes 0-1 and 4-7 from the scene's image (orbit_obj_pals_init)
+	; palettes 0-1 and 6-7 laid out in CGRAM order in ROM (orbit-sprites.mjs),
+	; 4-5 from the scene's image with this frame's band colours
 	REP #$20
 	LDA.w #$2200                   ; DMA mode 0 to $2122
 	STA.w $4370
-	LDA.w #!OBJ_PALS
+	LDA.w #orbit_obj_pals_01
 	STA.w $4372
 	LDA.w #64
 	STA.w $4375
 	SEP #$20
-	LDA.b #$32
+	LDA.b #orbit_obj_pals_01>>16
 	STA.w $4374
 	LDA.b #128
 	STA.w $2121
 	LDA.b #$80
 	STA.w $420B
 	REP #$20
-	LDA.w #!OBJ_PALS+64
+	LDA.w #!OBJ_PALS45
 	STA.w $4372
-	LDA.w #128
+	LDA.w #64
 	STA.w $4375
 	SEP #$20
+	LDA.b #$32
+	STA.w $4374
 	LDA.b #192
+	STA.w $2121
+	LDA.b #$80
+	STA.w $420B
+	REP #$20
+	LDA.w #orbit_obj_pals_67
+	STA.w $4372
+	LDA.w #64
+	STA.w $4375
+	SEP #$20
+	LDA.b #orbit_obj_pals_67>>16
+	STA.w $4374
+	LDA.b #224
 	STA.w $2121
 	LDA.b #$80
 	STA.w $420B
 	RTS
 
-; This frame's band colours into the images the vblank sends (the drawing
-; picked their frames): Goku's (blue) in entries 2-3 of OBJ palette 4 and
-; BG 113-114; Frieza's (pink) in entries 1-3 of OBJ palette 5: beam (1
-; white, 2 A, 3 B) or laser (1 A, 2 B, 3 white). M16/X16, DB = $32.
+; This frame's band colours into OBJ palettes 4-5 as the vblank sends them
+; (the drawing picked their frames): Goku's (blue) in entries 2-3 of
+; palette 4; Frieza's (pink) in entries 1-3 of palette 5: beam (1 white,
+; 2 A, 3 B) or laser (1 A, 2 B, 3 white). M16/X16, DB = $32.
 orbit_pals_frame:
 	LDA.w !v_band
 	AND.w #$0001
 	ASL : ASL
 	TAX
 	LDA.l orbit_fx_band_blue,X
-	STA.w !OBJ_PALS+64+4
-	STA.w !BG_PALS+(2*(113-32))
+	STA.w !OBJ_PALS45+4
 	LDA.l orbit_fx_band_blue+2,X
-	STA.w !OBJ_PALS+64+6
-	STA.w !BG_PALS+(2*(114-32))
+	STA.w !OBJ_PALS45+6
 	LDA.w !v_pband
 	AND.w #$0001
 	ASL : ASL
@@ -857,56 +870,29 @@ orbit_pals_frame:
 	LDA.w !v_pmode
 	BNE .laser
 	LDA.w #$7FFF
-	STA.w !OBJ_PALS+96+2
+	STA.w !OBJ_PALS45+32+2
 	LDA.l orbit_fx_band_pink,X
-	STA.w !OBJ_PALS+96+4
+	STA.w !OBJ_PALS45+32+4
 	LDA.l orbit_fx_band_pink+2,X
-	STA.w !OBJ_PALS+96+6
+	STA.w !OBJ_PALS45+32+6
 	RTS
 .laser
 	LDA.l orbit_fx_band_pink,X
-	STA.w !OBJ_PALS+96+2
+	STA.w !OBJ_PALS45+32+2
 	LDA.l orbit_fx_band_pink+2,X
-	STA.w !OBJ_PALS+96+4
+	STA.w !OBJ_PALS45+32+4
 	LDA.w #$7FFF
-	STA.w !OBJ_PALS+96+6
+	STA.w !OBJ_PALS45+32+6
 	RTS
 
-; The scene's OBJ palette image (!OBJ_PALS) as the vblank sends it: 0 fire,
-; 1 Goku (Super Saiyan, as the goku module sets it for his form and HUD
-; portrait), then 4 blue, 5 pink, 6 Frieza, 7 gold and the stars. M16/X16,
-; DB = $32.
+; Scene start: OBJ palettes 4-5 (blue, pink: adjacent in orbit-fx.mjs's
+; data) into the scene's image, the vblank's flags. M16/X16, DB = $32.
 orbit_obj_pals_init:
 	PHB
-	LDX.w #orbit_fx_pal_fire
-	LDY.w #!OBJ_PALS
-	LDA.w #31
-	MVN $32,orbit_fx_pal_fire>>16
-	LDX.w #orbit_pal_goku_ssj
-	LDY.w #!OBJ_PALS+32
-	LDA.w #31
-	MVN $32,orbit_pal_goku_ssj>>16
 	LDX.w #orbit_fx_pal_blue
-	LDY.w #!OBJ_PALS+64
-	LDA.w #31
+	LDY.w #!OBJ_PALS45
+	LDA.w #63
 	MVN $32,orbit_fx_pal_blue>>16
-	LDX.w #orbit_fx_pal_pink
-	LDY.w #!OBJ_PALS+96
-	LDA.w #31
-	MVN $32,orbit_fx_pal_pink>>16
-	LDX.w #orbit_pal_frieza
-	LDY.w #!OBJ_PALS+128
-	LDA.w #31
-	MVN $32,orbit_pal_frieza>>16
-	LDX.w #orbit_fx_pal_gold
-	LDY.w #!OBJ_PALS+160
-	LDA.w #31
-	MVN $32,orbit_fx_pal_gold>>16
-	; the globe's colours (light level 3), Goku's band after them
-	LDX.w #orbit_globe_pal+(2*2*96)
-	LDY.w #!BG_PALS
-	LDA.w #2*!ORBIT_GLOBE_COLORS-1
-	MVN $32,orbit_globe_pal>>16
 	PLB
 	STZ.w !n_static
 	STZ.w !n_turn

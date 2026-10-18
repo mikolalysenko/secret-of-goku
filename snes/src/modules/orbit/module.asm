@@ -365,14 +365,13 @@ assert !DRAW_END <= $8000, "orbit draw block overflow"
 !BQ_E      = !SB+$1774             ;   4 x (slot * 2, source, bank, key) (to $1793)
 !bc_wait   = !SB+$1794             ; 2 words: frames each group's rebuild has waited (beam_defer)
 !n_cost    = !SB+$1798             ; orbit_nmi_room: the upload's lines
-; $32:7800-7BFF stays the frieza module's fight block (!FZSB) during the
-; orbit: frieza_orbit_won clears his shots and hazards there.
-!OBJ_PALS  = !SB+$1C00             ; OBJ palettes 0-1 (64 bytes) then 4-7 (128), as sent (to $7CBF)
-!BG_PALS   = !SB+$1CC0             ; BG colours 32-114: the globe's, then Goku's band (to $7D65)
-!BG_PALS_N = 83                    ;   colours
-assert !ORBIT_GLOBE_CGRAM == 32 && !ORBIT_GLOBE_COLORS == 113-32, "orbit: BG_PALS holds the globe's colours as entries 32-112"
-!n_static  = !SB+$1D66             ; nonzero: the vblank wrote the scene's fixed registers
-!n_turn    = !SB+$1D68             ; nonzero: the beam pictures' turn before the band map (vblank)
+!OBJ_PALS45 = !SB+$17A0           ; OBJ palettes 4-5 (blue, pink) with this frame's band colours, as sent (to $77DF)
+!n_static  = !SB+$17E0             ; nonzero: the vblank wrote the scene's fixed registers
+!n_turn    = !SB+$17E2             ; nonzero: the beam pictures' turn before the band map (vblank)
+; $32:7800-7FFF stays the frieza module's (his fight block !FZSB and the
+; deck's hole bitmap): frieza_orbit_won clears his shots there, and his
+; arena could outlive the orbit.
+assert !n_turn+2 <= !SB+$1800, "orbit scene work past $32:77FF (the frieza module's block)"
 !ORBIT_NMI_END = 257               ; the scene's vblank uploads end by this scanline
 !ORBIT_NMI_LATE = 244              ; a vblank of ours starting this late keeps the fixed registers
 !BEAM_LATE = 180                   ; a build that can wait ends by this scanline
