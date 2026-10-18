@@ -5,6 +5,8 @@
 ; Contracts: docs/agents/snes-rom.md (core API) and
 ; docs/agents/snes-port/engine.md (what the game is doing at each hook).
 
+!DOOR_RECORD_HOOK = frieza_door_record   ; destroy's door record (C1:E7DF) -> door 3FC beside the Emperor
+
 ; incsrc "modules/<name>/module.asm"
 incsrc "modules/goku/module.asm"
 incsrc "modules/fx/module.asm"         ; before its clients (they use the !FX_* defines)
@@ -16,6 +18,7 @@ incsrc "modules/ui/module.asm"
 incsrc "modules/debug/module.asm"
 incsrc "modules/destroy/module.asm"
 incsrc "modules/ending/module.asm"
+incsrc "modules/frieza/module.asm"
 incsrc "modules/combat/module.asm"
 incsrc "modules/vegeta/module.asm"
 incsrc "modules/audio/module.asm"           ; after the modules whose sound flags it reads
@@ -33,6 +36,7 @@ modules_field_frame:
 	JSL ui_field_frame
 	JSL world_field_frame
 	JSL flight_pose_frame      ; after world: the ceiling escape's pose wins over its takeoff pose
+	JSL frieza_field_frame
 	JSL vegeta_field_frame
 	JSL goku_frame
 	JSL destroy_field_frame          ; last: its planner uses the frame time left
@@ -45,6 +49,7 @@ modules_field_nmi:
 	JSL ui_field_nmi                  ; channels 0/1 for a moved native window; re-arms channel 5 after the game's DMA on 4-7
 	JSL destroy_field_nmi            ; first: switches the breach's HDMA on while vblank lasts
 	JSL goku_nmi
+	JSL frieza_field_nmi
 	JSL vegeta_nmi
 	JSL ending_nmi
 	JSL fx_nmi                 ; keep last: programs HDMA channels 2/3 after all vblank DMA
@@ -92,6 +97,7 @@ modules_ring_frame:
 modules_title_boot:
 	JSL title_title_boot
 	JSL debug_title_boot
+	JSL frieza_title_boot
 	JSL world_title_boot
 	JSL fx_title_boot
 	JSL ui_title_boot
@@ -105,6 +111,7 @@ modules_load:
 	JSL title_load
 	JSL combat_load
 	JSL story_load
+	JSL frieza_load
 	JSL ui_load
 	JSL destroy_reset
 	JSL vegeta_reset
@@ -114,10 +121,42 @@ modules_new_game:
 	JSL title_new_game
 	JSL combat_new_game
 	JSL story_new_game
+	JSL frieza_new_game
 	JSL ui_new_game
 	JSL debug_new_game
 	JSL destroy_reset
 	JSL vegeta_reset
+	RTL
+
+; ---------------------------------------------------------------------------
+; Combat's extension lists (contracts: docs/agents/snes-port/combat.md, API).
+; Add a line for your module; the order inside a list carries no meaning.
+;
+; Virtual targets: enemies that are not native actors (the browser's
+; entities() extras). One entry each, at most 7:
+;   dl <query>, <hit> : db <browser entity index>, <flags (!CVT_*)>
+; query (C set while it can be struck: A16 = species | terrain << 8, X16 =
+; x, Y16 = y) and hit (A16 = damage, X16 = 1 while combat's action is a
+; punch -> A16 = HP taken) are JSL, DB = $7E, D = 0, M16/X16.
+modules_combat_targets:
+	dl frieza_virtual_target, frieza_virtual_hit : db 12, !CVT_AIRBORNE
+modules_combat_targets_end:
+assert (modules_combat_targets_end-modules_combat_targets) <= 56, "combat: at most 7 virtual targets (8 bytes each)"
+; Damage hooks: Goku's damage A16 on native actor X16 (offset), JSL each,
+; DB = $7E, D = 0, M16/X16; each returns A16 = the damage and keeps X.
+modules_combat_damage:
+	JSL frieza_combat_damage   ; the Mana Beast, the empowered Dark Lich
+	JSL vegeta_combat_damage   ; Vegeta in slot 3 while the trial shows him to combat
+	RTL
+; Receive hooks: damage queued on Goku at the native consumer (C0:4053),
+; before combat's Saiyan resilience: A16 = $E1F1 (nonzero, not a heal),
+; JSL each, DB = $7E, D = 0, M16/X16; each returns A16 = the damage to
+; apply (0 = none).
+modules_combat_receive:
+if defined("COMBAT_TEST")
+	JSL combat_test_receive    ; snes/test/combat (receive cases)
+endif
+	JSL frieza_combat_receive  ; the fed Mana Beast's cap and grace
 	RTL
 pullpc
 
@@ -125,6 +164,8 @@ pullpc
 ; every module so their defines are visible.
 incsrc "modules/flight/bind.asm"
 
+; Frieza bindings to optional modules (after every module's defines).
+incsrc "modules/frieza/bind.asm"
 ; Combat bindings to optional modules: after every module include (its
 ; defined() checks see them), before the story tables.
 incsrc "modules/combat/bind.asm"

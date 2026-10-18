@@ -152,6 +152,33 @@ cb_effects_tick:
 	BNE .loop
 	RTS
 
+; One frame of life under an input hold (mana-mod.js trial.inputLocked:
+; `e.life--` for every effect, holds not honoured), then expiry.
+cb_effects_age:
+	LDA !cb_fx_mask
+	STA !cb_fx_iter
+	LDX.w #$0000
+.loop
+	LSR !cb_fx_iter
+	BCC .next
+	SEP #$20
+	LDA.l !ER+!er_life,X
+	DEC
+	STA.l !ER+!er_life,X
+	BNE .next8
+	REP #$20
+	JSR cb_effect_free
+.next8
+	REP #$20
+.next
+	TXA
+	CLC
+	ADC.w #!ER_SIZE
+	TAX
+	LDA !cb_fx_iter
+	BNE .loop
+	RTS
+
 ; Impact spark: cb_t4/cb_t5 position (map), cb_t6 hold, cb_t7 life, cb_t8
 ; facing, cb_t9 super. Preserves cb_t0-cb_t3, cb_td-cb_tf, ag_*.
 cb_effect_impact:

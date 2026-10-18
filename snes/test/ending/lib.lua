@@ -33,6 +33,7 @@ end
 -- (Mesen keeps one battery file per ROM name), and story's object-list
 -- hooks only run with it set.
 function E.import(bundle)
+  E.watchDma()
   H.wait(20)
   H.importSnesJs('/Users/mikolalysenko/Projects/secret-of-goku/.local/snes-import/' .. bundle)
   H.w8(0x316001, 1)
@@ -62,6 +63,28 @@ function E.watchVblank(slack)
 end
 -- Arm only while the scene is visible (not loading).
 function E.arm(on) E.watchArmed = on end
+
+-- Frame-thread DMA triggers (run.mjs passes DMA_TRIGGERS, the addresses
+-- of their STA $420B): channel 7's size must never be 0 there (a vblank
+-- NMI that reprogrammed the channel in the middle of the set-up would make
+-- it copy 64 KiB over WRAM). Armed once per run, from the first import.
+E.dmaTriggers, E.dmaBad = 0, 0
+local dmaArmed = false
+function E.watchDma()
+  if dmaArmed or not DMA_TRIGGERS then return end
+  dmaArmed = true
+  for _, a in ipairs(DMA_TRIGGERS) do
+    emu.addMemoryCallback(function()
+      E.dmaTriggers = E.dmaTriggers + 1
+      if emu.getState()['dmaController.channel[7].transferSize'] == 0 then
+        E.dmaBad = E.dmaBad + 1
+        H.result('dma_bad', E.dmaBad)
+        H.result('dma_bad_at', string.format('%06X line %d', a, emu.getState()['ppu.scanline']))
+      end
+      H.result('dma_triggers', E.dmaTriggers)
+    end, emu.callbackType.exec, a, a)
+  end
+end
 
 -- Calls into the audio module (run.mjs passes AUDIO_SFX / AUDIO_FADE, the
 -- entry addresses): 'sfx<id>@<age>' and 'fade<byte>@<age>' while armed.

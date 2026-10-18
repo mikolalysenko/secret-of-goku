@@ -100,6 +100,20 @@ export async function generate({rom,repo,outDir}){
     lines.push('combat_mega_h3: ; 3 x half width of the full SSJ wave by age',...chunk(h3,16).map(l=>`\tdw ${dw(l)}`));
     lines.push('combat_mega_hw: ; floor(half width) by age',...chunk(hf,16).map(l=>`\tdb ${db(l)}`));
   }
+  // combat_api_beam: beamGeometry().halfWidth in 8.8, floor(256 * w) of the
+  // browser's doubles: normal beams 5 + 14 * min(1, charge / cap) by the
+  // charge (cap 45 when fired as Super Saiyan, else 90), the full wave
+  // 80 * min(1, (age + 1) / 6, life / 10) by age (life = 64 - age).
+  for(const ssj of [false,true]){
+    const cap=ssj?45:90,list=[];
+    for(let c=0;c<=cap;c++)list.push(Math.floor((5+Math.min(1,c/cap)*14)*256));
+    lines.push(`combat_beam_half88_${ssj?'ssj':'base'}: ; floor(256 * halfWidth) of a normal beam by charge`,...chunk(list,16).map(l=>`\tdw ${dw(l)}`));
+  }
+  {
+    const list=[];
+    for(let age=0;age<64;age++)list.push(Math.floor(80*Math.min(1,(age+1)/6,(64-age)/10)*256));
+    lines.push('combat_mega_half88: ; floor(256 * halfWidth) of the full SSJ wave by age',...chunk(list,16).map(l=>`\tdw ${dw(l)}`));
+  }
   // --- launch arcs: offsets for 56/88 px, both directions; height
   for(const d of [56,88]){
     const pos=[0],neg=[0];

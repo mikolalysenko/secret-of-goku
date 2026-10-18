@@ -43,6 +43,7 @@ const tests=[
   ['lag','waterfall'],
   ['hdmaen','waterfall'],
   ['decode','waterfall'],
+  ['meta','waterfall'],
   ['wram',null],
   ['live',null],
   ['xdata',null],
@@ -51,7 +52,10 @@ const tests=[
 const importDir=process.env.SNES_IMPORT??join(dirname(cps),'snes-import');
 // The xdata probe's address, assigned by build.mjs (dist/snes/gen/xdata.asm).
 const xm=readFileSync(join(repo,'dist/snes/gen/xdata.asm'),'utf8').match(/^!XDATA_CORE_PROBE = \$([0-9A-F]{6})$/m);
-const lib=`IMPORT_DIR=${JSON.stringify(importDir)}\nXPROBE=${xm?parseInt(xm[1],16):-1}\n`+readFileSync(join(here,'lib.lua'),'utf8');
+// Labels the meta-sprite test times (the JSL into core_oam_meta and its return).
+const sym=readFileSync(testRom.replace(/\.sfc$/,'.sym'),'utf8');
+const label=n=>{const m=sym.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${n}$`,'m'));return m?parseInt(m[1]+m[2],16):-1;};
+const lib=`IMPORT_DIR=${JSON.stringify(importDir)}\nXPROBE=${xm?parseInt(xm[1],16):-1}\nMETA_CALL=${label('core_oam_meta')}\nMETA_RET=${label('core_test_frame_metaRet')}\n`+readFileSync(join(here,'lib.lua'),'utf8');
 const summary=[];
 for(const [name,cp] of tests){
   const rom=privateRom(testRom,`core-${name}`);

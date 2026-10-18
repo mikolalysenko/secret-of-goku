@@ -153,14 +153,11 @@ endif
 
 ; Goku's live Kamehameha (mod.effects beam with life > 0): C set and
 ; !vs_gb_x/y (palms), !vs_gb_dx/dy, !vs_gb_len, !vs_gb_half (8.8),
-; !vs_gb_super, !vs_gb_mega filled. From combat_api_beam when combat has
-; one (requested), else from combat's beam record (vb_combat_beam); test
-; builds use the stand-in record a test wrote at !vs_tb_* first.
+; !vs_gb_super, !vs_gb_mega filled. Test builds use the stand-in record a
+; test wrote at !vs_tb_* first; then combat_api_beam (its record's first
+; 14 bytes have this block's layout), else combat's beam record itself
+; (vb_combat_beam).
 vb_goku_beam:
-if defined("COMBAT_API_BEAM")
-	JSL combat_api_beam
-	RTS
-else
 if defined("VEGETA_TEST")
 	LDA.l !vs_tb_on
 	AND.w #$00FF
@@ -175,12 +172,25 @@ if defined("VEGETA_TEST")
 	RTS
 .combat
 endif
-if defined("COMBAT_OWNER")
+if defined("COMBAT_API_BEAM")
+	JSL !COMBAT_API_BEAM
+	BCC .none
+	LDX.w #$000C
+-	LDA.l !cb_beam,X
+	STA.l !vs_gb_x,X
+	DEX
+	DEX
+	BPL -
+	SEC
+	RTS
+.none
+	CLC
+	RTS
+elseif defined("COMBAT_OWNER")
 	JMP vb_combat_beam
 else
 	CLC
 	RTS
-endif
 endif
 vb_goku_beam_live:
 	JMP vb_goku_beam
@@ -307,13 +317,20 @@ endif
 	RTS
 
 vb_input_lock:
-	; A = 1 on, 0 off
+	; A = 1 lock (the clash: combat's action and effects end), 2 hold (the
+	; draw: the last wave runs on, mana-mod.js trial.inputLocked), 0 off.
+	; !vg_misc bit 1 = held, bit 3 = held as a hold.
 	SEP #$20
 	CMP.b #$00
 	BEQ .off
+	CMP.b #$02
+	BEQ .hold
 	LDA !vg_misc
-	BIT.b #$02
-	BNE .done
+	AND.b #$0A
+	CMP.b #$02
+	BEQ .done                     ; a lock already
+	LDA !vg_misc
+	AND.b #$F7
 	ORA.b #$02
 	STA !vg_misc
 	REP #$20
@@ -322,11 +339,25 @@ if defined("COMBAT_OWNER")
 	JSL combat_api_input_lock
 endif
 	RTS
+.hold
+	LDA !vg_misc
+	AND.b #$0A
+	CMP.b #$0A
+	BEQ .done                     ; a hold already
+	LDA !vg_misc
+	ORA.b #$0A
+	STA !vg_misc
+	REP #$20
+if defined("COMBAT_OWNER")
+	LDA.w #!VEGETA_OWNER
+	JSL combat_api_input_hold
+endif
+	RTS
 .off
 	LDA !vg_misc
 	BIT.b #$02
 	BEQ .done
-	AND.b #$FD
+	AND.b #$F5
 	STA !vg_misc
 	REP #$20
 if defined("COMBAT_OWNER")
@@ -720,9 +751,6 @@ vb_burst_spawn:
 ; Nothing else runs in that window: the native actors run before it
 ; (JSL $02C786 at C0:B08C) and see the slot inactive, as in the browser.
 if defined("COMBAT_OWNER")
-if not(stringsequal("!COMBAT_HOOK_DAMAGE", "vegeta_combat_damage"))
-	error "vegeta: !COMBAT_HOOK_DAMAGE was rebound after vegeta/module.asm. Include that module first (vegeta chains the earlier hook through !VEGETA_DAMAGE_NEXT) or chain to vegeta_combat_damage."
-endif
 
 %orig4($C0B0A6, $208B5E20)            ; JSR $8B5E (fade) / JSR $DB1E
 %orig2($C0B0AA, $DB1E)
@@ -886,12 +914,12 @@ vg_target_close:
 .out
 	RTS
 
-; Combat's damage hook (combat/bind.asm cb_bind_damage_hook): JSL with
+; Combat's damage hook (modules.asm modules_combat_damage): JSL with
 ; A16 = damage, X16 = actor offset, DB = $7E; returns A16 = the damage
 ; combat queues natively. Slot 3 in the window is Vegeta: trial.hit(amount)
 ; (melee while combat's action is a punch) and 1 when his HP dropped
-; (combat's contact test is after < before), else 0. Other actors go to the
-; hook bound before this module.
+; (combat's contact test is after < before), else 0. Other actors keep
+; their damage (the list calls every module's hook).
 vegeta_combat_damage:
 	CPX.w #!VEGETA_SLOT
 	BNE .next
@@ -901,11 +929,7 @@ vegeta_combat_damage:
 	BNE .ours
 	PLA
 .next
-if defined("VEGETA_DAMAGE_NEXT")
-	JML !VEGETA_DAMAGE_NEXT
-else
 	RTL
-endif
 .ours
 	PLA
 	PHP

@@ -23,6 +23,10 @@
 ;                        (max 16); the commit shifts the native sprites up by
 ;                        a multiple of 4 slots. Carry set when it cannot fit.
 ;   core_oam_hide      - A = slot: hide it (X=$FF, Y=$E0).
+;   core_oam_meta, core_oam_meta_front - a meta-sprite: up to 16 pieces that
+;                        share an anchor, a base tile word and a mirror (see
+;                        below). _front stages pieces in front while the 16
+;                        front slots last, then the rest behind.
 ; !core_oam_native = first slot after this frame's native sprites (before the
 ; front shift) so modules can inspect or modify native entries [0, native).
 ; Limits: 128 sprites, 32 sprites or 34 8-pixel slivers per scanline (a 16x16
@@ -260,6 +264,199 @@ core_oam_add_front:
 .full
 	SEC
 	RTL
+
+; ---------------------------------------------------------------------------
+; Meta-sprites. In: !core_spr_x/y = anchor (signed screen px), !core_spr_tile
+; = base tile word (tile | attr << 8: name bit, palette, priority, flips),
+; !core_meta_ptr = long pointer to the pieces, A16 = count (1-16), X16 bit 0 =
+; mirror (each dx becomes -dx - width; the caller sets the h-flip bit in the
+; base word). Piece: 4 bytes {dx s8, dy s8, tile u8 (added to the base word),
+; flags u8: bit 0 large}. Each piece is culled like core_spr_cull. Carry set if
+; any piece found no slot. JSL, M16/X16, DB = $7E (kept); clobbers A/X/Y.
+core_oam_meta_front:
+	PHA
+	LDA.w #$0001
+	BRA core_oam_meta_go
+core_oam_meta:
+	PHA
+	LDA.w #$0000
+core_oam_meta_go:
+	STA.w !core_meta_front&$FFFF
+	PLA
+	AND.w #$001F
+	BNE +
+	CLC
+	RTL
++	CMP.w #17
+	BCC +
+	LDA.w #16
++	STA.w !core_meta_n&$FFFF
+	STZ.w !core_meta_fail&$FFFF
+	; Anchors: a mirrored piece sits at ax - dx - width.
+	TXA : AND.w #$0001 : STA.w !core_meta_mir&$FFFF
+	LDA.w !core_spr_x&$FFFF
+	STA.w !core_meta_axs&$FFFF
+	STA.w !core_meta_axl&$FFFF
+	LDA.w !core_meta_mir&$FFFF
+	BEQ +
+	LDA.w !core_spr_x&$FFFF
+	SEC : SBC.w #16 : STA.w !core_meta_axs&$FFFF
+	SEC : SBC.w #16 : STA.w !core_meta_axl&$FFFF
++	LDA.w !core_spr_y&$FFFF : STA.w !core_meta_ay&$FFFF
+	LDA.w !core_spr_tile&$FFFF : STA.w !core_meta_base&$FFFF
+	; Room, once: front slots (field, up to 16 staged; every 4 shift the
+	; natives by 4 slots) and back slots behind the natives.
+	STZ.w !core_meta_ffree&$FFFF
+	STZ.w !core_meta_bfree&$FFFF
+	LDA.w !core_oam_limit&$FFFF
+	BEQ .roomDone
+	LDA.w !core_oam_front_n&$FFFF
+	CLC : ADC.w #$0003 : AND.w #$FFFC : ASL : ASL
+	CLC : ADC.w !core_oam_cursor&$FFFF
+	STA.w !core_tmp0&$FFFF              ; first byte the back sprites cannot use
+	LDA.w !core_oam_limit&$FFFF
+	SEC : SBC.w !core_tmp0&$FFFF
+	BCC .roomDone
+	STA.w !core_meta_bfree&$FFFF
+	LDA.w !core_meta_front&$FFFF
+	BEQ .roomDone
+	LDA.w !core_mode&$FFFF
+	CMP.w #!CORE_MODE_FIELD
+	BNE .roomDone
+	LDA.w #16
+	SEC : SBC.w !core_oam_front_n&$FFFF
+	BCC .roomDone
+	STA.w !core_meta_ffree&$FFFF
+.roomDone
+	; Copy the pieces (any bank) into !core_meta_buf, a word at a time.
+	LDA.w !core_meta_n&$FFFF
+	ASL : ASL : TAX                     ; byte count (4-64)
+	CLC : ADC.w !core_meta_ptr&$FFFF
+	TAY                                 ; source end in its bank
+	PHB
+	SEP #$20
+	LDA.w (!core_meta_ptr&$FFFF)+2 : PHA : PLB
+	REP #$20
+.copy
+	DEY : DEY
+	DEX : DEX
+	LDA $0000,Y
+	STA.l !core_meta_buf,X
+	TXA
+	BNE .copy
+	PLB
+	LDX.w #$0000
+.piece
+	; X = piece offset in the buffer for the whole body.
+	LDA.w (!core_meta_buf&$FFFF)+3,X    ; flags
+	LSR                                 ; C = large
+	LDA.w !core_meta_axs&$FFFF
+	BCC +
+	LDA.w !core_meta_axl&$FFFF
++	STA.w !core_meta_x&$FFFF
+	LDA.w !core_meta_buf&$FFFF,X        ; dx (s8)
+	AND.w #$00FF
+	CMP.w #$0080
+	BCC +
+	ORA.w #$FF00
++	LDY.w !core_meta_mir&$FFFF
+	BEQ +
+	EOR.w #$FFFF : INC
++	CLC : ADC.w !core_meta_x&$FFFF
+	STA.w !core_meta_x&$FFFF
+	CLC : ADC.w #$0040                ; x in [-64, 256)
+	CMP.w #$0140
+	BCC +
+	JMP .next
++	LDA.w (!core_meta_buf&$FFFF)+1,X    ; dy (s8)
+	AND.w #$00FF
+	CMP.w #$0080
+	BCC +
+	ORA.w #$FF00
++	CLC : ADC.w !core_meta_ay&$FFFF
+	STA.w !core_meta_y&$FFFF
+	CLC : ADC.w #$0040                ; y in [-64, 224)
+	CMP.w #$0120
+	BCC +
+	JMP .next
++	LDA.w !core_meta_y&$FFFF
+	BPL .yok
+	CLC : ADC.w #16                     ; entirely above the screen: y + height <= 0
+	PHA
+	LDA.w (!core_meta_buf&$FFFF)+3,X
+	LSR
+	PLA
+	BCC +
+	ADC.w #15                           ; C set: +16 more for a 32x32 piece
++	CMP.w #$0001
+	BPL .yok
+	JMP .next
+.yok
+	; high bits: size << 1 | x bit 8
+	LDA.w (!core_meta_buf&$FFFF)+3,X
+	AND.w #$0001
+	ASL
+	STA.w !core_meta_hib&$FFFF
+	LDA.w !core_meta_x&$FFFF
+	AND.w #$0100
+	BEQ +
+	INC.w !core_meta_hib&$FFFF
++	LDA.w (!core_meta_buf&$FFFF)+2,X
+	AND.w #$00FF
+	CLC : ADC.w !core_meta_base&$FFFF
+	STA.w !core_meta_tile&$FFFF
+	STX.w !core_meta_pi&$FFFF
+	LDA.w !core_meta_ffree&$FFFF
+	BEQ .back
+	DEC.w !core_meta_ffree&$FFFF
+	; stage in front
+	LDA.w !core_oam_front_n&$FFFF
+	ASL : ASL : TAY
+	SEP #$20
+	LDA.w !core_meta_x&$FFFF : STA.w !core_oam_front&$FFFF,Y
+	LDA.w !core_meta_y&$FFFF : STA.w (!core_oam_front&$FFFF)+1,Y
+	REP #$20
+	LDA.w !core_meta_tile&$FFFF : STA.w (!core_oam_front&$FFFF)+2,Y
+	TYA : LSR : TAY
+	LDA.w !core_meta_hib&$FFFF : STA.w !core_oam_front_hi&$FFFF,Y
+	INC.w !core_oam_front_n&$FFFF
+	BRA .placed
+.back
+	LDA.w !core_meta_bfree&$FFFF
+	BEQ .nofit
+	SEC : SBC.w #$0004
+	STA.w !core_meta_bfree&$FFFF
+	JSR core_meta_back_put
+	BRA .placed
+.nofit
+	LDA.w #$0001 : STA.w !core_meta_fail&$FFFF
+.placed
+	LDX.w !core_meta_pi&$FFFF
+.next
+	INX : INX : INX : INX
+	DEC.w !core_meta_n&$FFFF
+	BEQ .done
+	JMP .piece
+.done
+	LDA.w !core_meta_fail&$FFFF
+	LSR                               ; carry = a piece found no slot
+	RTL
+
+; Put the piece behind the natives at the cursor (room was counted). DB = $7E.
+core_meta_back_put:
+	LDY.w !core_oam_cursor&$FFFF
+	SEP #$20
+	LDA.w !core_meta_x&$FFFF : STA.w $0800,Y
+	LDA.w !core_meta_y&$FFFF : STA.w $0801,Y
+	REP #$20
+	LDA.w !core_meta_tile&$FFFF : STA.w $0802,Y
+	TYA : LSR : LSR : TAY
+	LDA.w !core_meta_hib&$FFFF
+	JSR core_oam_set_hi
+	LDA.w !core_oam_cursor&$FFFF
+	CLC : ADC.w #$0004
+	STA.w !core_oam_cursor&$FFFF
+	RTS
 
 ; Hide slot A16 (0-127).
 core_oam_hide:

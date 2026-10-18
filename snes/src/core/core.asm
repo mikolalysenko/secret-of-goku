@@ -65,6 +65,26 @@
 !core_snd_head        = !CORE_SAFE+$00C ; word: next queued sound command (0-7)
 !core_snd_tail        = !CORE_SAFE+$00E ; word: next free sound slot (0-7)
 !core_event_req       = !CORE_SAFE+$010 ; word: $8000|event id while a request is pending
+!core_meta_ptr        = !RAM_CORE_EXT+$000 ; 3 bytes: core_oam_meta piece list (caller sets)
+!core_meta_n          = !RAM_CORE_EXT+$004 ; word: core_oam_meta pieces left (internal from here)
+!core_meta_ax         = !RAM_CORE_EXT+$006 ; word: anchor x
+!core_meta_ay         = !RAM_CORE_EXT+$008 ; word: anchor y
+!core_meta_base       = !RAM_CORE_EXT+$00A ; word: base tile word
+!core_meta_mir        = !RAM_CORE_EXT+$00C ; word: 1 = mirrored
+!core_meta_front      = !RAM_CORE_EXT+$00E ; word: 1 = in front (core_oam_meta_front)
+!core_meta_fail       = !RAM_CORE_EXT+$010 ; word: 1 = a piece found no slot
+!core_meta_x          = !RAM_CORE_EXT+$012 ; word: piece screen x
+!core_meta_y          = !RAM_CORE_EXT+$014 ; word: piece screen y
+!core_meta_size       = !RAM_CORE_EXT+$016 ; word: piece size (0 small, 1 large)
+!core_meta_tile       = !RAM_CORE_EXT+$018 ; word: piece tile word
+!core_meta_hib        = !RAM_CORE_EXT+$01A ; word: piece high bits (xhi | size<<1)
+!core_meta_axs        = !RAM_CORE_EXT+$01C ; word: anchor x for small pieces (mirror: ax - 16)
+!core_meta_axl        = !RAM_CORE_EXT+$01E ; word: anchor x for large pieces (mirror: ax - 32)
+!core_meta_buf        = !RAM_CORE_EXT+$020 ; 64 bytes: the pieces, copied (16 x 4)
+!core_meta_h          = !RAM_CORE_EXT+$060 ; word: piece height (16/32)
+!core_meta_pi         = !RAM_CORE_EXT+$062 ; word: piece offset in the buffer
+!core_meta_bfree      = !RAM_CORE_EXT+$064 ; word: back slots left (bytes, multiple of 4)
+!core_meta_ffree      = !RAM_CORE_EXT+$066 ; word: front slots left
 !core_oam_cursor      = !RAM_CORE_EXT+$050 ; word: byte offset of the next back sprite
 !core_oam_limit       = !RAM_CORE_EXT+$052 ; word: byte offset end of the module area
 !core_oam_front_n     = !RAM_CORE_EXT+$054 ; word: staged front sprites (field)
@@ -142,6 +162,18 @@ core_boot:
 	REP #$30
 	JSR core_clear_wram
 	JSR core_live_check
+	; Native reads of WRAM the game never wrote first (second-emulator checks,
+	; snes-rom.md): C2:B0D7 places the moving Mana Fortress from 7E:0126 and
+	; C1:CBF3 the first map's camera from the edge words 7E:0A80-0AB1. The
+	; browser's emulator zero-fills WRAM at power-on; zero them so every
+	; console and emulator starts like it.
+	LDA.w #$0000
+	STA.l $7E0126
+	LDX.w #$0030
+.edges
+	STA.l $7E0A80,X
+	DEX : DEX
+	BPL .edges
 	PLP
 	JML $C10010
 

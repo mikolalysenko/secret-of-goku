@@ -33,6 +33,7 @@ local function toCutaway()
 end
 
 function test()
+  E.watchDma()
   H.wait(4)
   local ok = toCutaway()
   H.result('reached', ok)
