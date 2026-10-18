@@ -4,6 +4,23 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## 2026-10-18 — SNES cartridge: effects, Sandship, finale, telepathy, Time Chamber and core fixes (integration)
+
+- Merged on the cartridge:
+  - **Effects library:** beams drawn as polygons, the Death Beam in 16 headings, large Death Balls, the ki aura from the browser's own pixels, and charge lightning.
+  - **The Sandship arc** at 60 Hz, with breach, fires, blasts and white-out.
+  - **The finale's Fortress cutaway** in world flight, with its art moved to extended data.
+  - **The telepathy radio:** window placement, Dragon Radar, the scouter switch and Goku's STATUS page.
+  - **Joch's trial in the Time Chamber:** Goku's real attacks, clashes and both returns, matching `joch-trial.js` on every frame.
+  - Stream entries below and in `docs/agents/snes-port/`.
+- Core fixes found while merging everything at once:
+  - **Map loads:** during some map loads (153, in the Sandship) the game's background tile decoder writes up to `7E:77FF`, through the WRAM the core used for its queues. It once started a spurious door. That state now lives in battery RAM, which is revalidated every frame.
+  - **Module vblank work** runs only in vblanks whose frame the game completed. An NMI landing between the core's ready flag and the game's own flag used to run it one vblank early.
+  - **HDMA channels** are no longer switched on after a frame's HDMA started, which caused garbage window scroll for a frame.
+  - **Scene work area** (`$32:6000–7FFF`): a module can now claim it, so one scene can't silently overwrite another's. Frieza had written into the ending's buffer.
+- Budget: with every module merged, idle frames cost about 15 scanlines before the streams cut their idle paths: Frieza from 1.76 to 0.32 lines (vblank 1.03 to 0.11), UI from 2.34 to 0.26. `snes/tools/modprof.mjs` measures each module.
+- Validation: each merge re-ran the suites it touches (core, fx, combat, destroy, goku, ending, world, audio, ui, vegeta, debug). All pass on main. The scene select has 19 presets full and 4 native, whose differences belong to Frieza and Vegeta.
+
 ## 2026-10-18 — Release 0.2.5
 
 - Release 0.2.5 (`v0.2.5`) and its Pages build add one exact fast path to 0.2.4:
