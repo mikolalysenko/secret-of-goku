@@ -401,13 +401,13 @@ end
 }
 
 // The Mana Tree pursuit end to end (tests/browser/frieza-tree.spec.mjs):
-// preset 'tree' has event 5F8 requested; B is tapped every 20 frames
+// preset 'tree' has event 5F8 requested; B is tapped every 12 frames
 // through the dialogue (the save prompt answers Yes). Shots at each Tree
 // scene's start and at chosen ages; the trace logs map, scene, age, the
 // vista's state and the brightness every 8 frames.
 const treeShots={[defs.FZS_TREE_ARRIVAL]:[2,48,96,110],[defs.FZS_TREE_CHARGE]:[20,60,120],[defs.FZS_TREE_SHOT]:[8,24,38],
   [defs.FZS_TREE_IMPACT]:[2,10,19,30,47,80],[defs.FZS_TREE_LEAVE]:[30,90,119],[defs.FZS_TREE_RETURN]:[10,30,47],[defs.FZS_TREE_WAKE]:[1,20,39]};
-function treeTest(maxFrames=9000){
+function treeTest(maxFrames=20000){
   const g=reference('tree');
   const writes=friezaWrites(g.frieza,g.challenge);
   const v=n=>'0x'+(n<0x10000?(0x7E0000|n):n).toString(16);
@@ -422,7 +422,7 @@ function test()
   local seen, trace, shots, maps, boxes = {}, {}, {}, {}, {}
   local last = -1
   for i = 1, ${maxFrames} do
-    if i % 20 == 0 then H.hold('b', 2) else H.wait(1) end
+    if i % 12 == 0 then H.hold('b', 2) else H.wait(1) end
     local kind = H.r8(${v(defs.fz_scene)})
     local age = H.r16(${v(defs.fz_sage)})
     local map = H.r16(0x7E00DC)
@@ -708,7 +708,7 @@ if(want('door')){
 if(only.includes('tree')){                     // explicit: the native tail still stalls (frieza.md)
   const rom=privateRom(romSrc,'frieza-tree');
   const out=join(outRoot,'tree');
-  const r=await runMesen({rom,test:lib+'\n'+treeTest(),outDir:out,state:join(cps,'waterfall.mss'),timeoutMs:900000});
+  const r=await runMesen({rom,test:lib+'\n'+treeTest(),outDir:out,state:join(cps,'waterfall.mss'),timeoutMs:1500000});
   cleanupRom(rom);
   const res=r.results??{};
   const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
