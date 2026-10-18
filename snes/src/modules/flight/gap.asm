@@ -79,10 +79,10 @@ fl_hook_f1f1:
 	LDA.w !fl_state
 	AND.w #!FLS_FLY
 	BNE .end
-	LDA.w !fl_pad
+	JSR fl_pad_now
 	AND.w #!PAD_A
 	BEQ +
-	LDA.w !fl_pad
+	JSR fl_pad_now
 	AND.w #!PAD_UP|!PAD_DOWN|!PAD_LEFT|!PAD_RIGHT
 	BNE .end
 +	JSR fl_gap_post

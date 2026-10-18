@@ -15,7 +15,7 @@ function test()
   H.wait(20)
   F.on()
   H.w8(0x7ECF3F, 4)
-  H.w16(0x7E6E8E, 0x8000 | 0x0800 | 0x304)
+  H.w16(0x317490, 0x8000 | 0x0800 | 0x304)   -- !core_event_req (battery RAM, core/core.asm)
   F.check(H.waitFor(function() return H.r16(0x7E00DC) == 72 end, 900), 'entered the Time Chamber (map ' .. H.r16(0x7E00DC) .. ')')
   -- advance the trial's dialogue until Goku can act and Vegeta is posted
   local ready = false

@@ -5,10 +5,13 @@
 ; and prepares frame N+1 (beforeFrame: lift, the flight decision, the A
 ; mask, Goku's pose requests and the work the movement hooks may do).
 
-; Field controllability (mana-mod.js canAttack, native part). Carry.
+; Field controllability (mana-mod.js canAttack: the native part and the
+; finale). Carry.
 fl_can_attack:
 	LDA.w !fl_lock
 	BNE .no
+	JSR fl_bind_ending           ; !mod.ending.active
+	BCS .no
 	SEP #$20
 	LDA.w !fl_state
 	AND.b #!FLS_ON               ; Goku in play, field vectors (this frame)
@@ -107,6 +110,8 @@ fl_ground:
 fl_eligible:
 	LDA.w !fl_lock
 	BNE .no
+	JSR fl_bind_ending           ; (canAttack's finale)
+	BCS .no
 	SEP #$20
 	LDA.w !fl_state
 	BIT.b #!FLS_ON               ; Goku in play, native field (this frame)
@@ -293,42 +298,61 @@ flight_frame:
 	LDA.w !fl_state
 	BIT.w #!FLS_QUIET
 	BEQ .full
-	; Quiet (fl_quiet_check): flight is reset and Goku is out of play or an
-	; event owns the field, so the frame below would change nothing; it
-	; waits here at a fraction of a scanline until that ends.
+	; Quiet (fl_quiet_check): flight is reset and Goku is out of play or
+	; cannot act, so the frame below would change nothing; it waits here
+	; while the condition that stopped him (!fl_quiet_why) still holds.
 	if defined("FLIGHT_TEST")
 		LDA.l !fl_sram_test
 		BNE .wake                ; a test request
 	endif
+	LDX.w !fl_quiet_why
+	BEQ .inactive
+	CPX.w #$FFFE
+	BEQ .ending
+	; fl_read_pad's frame count goes on; frames of another mode in between
+	; (a shop inside an event) wake it, so the full reader latches the
+	; buttons held through them
+	LDA.w !fl_lasttick
+	INC
+	CMP.w !core_tick&$FFFF
+	BNE .wake
+	STA.w !fl_lasttick
 	LDA $D0
 	AND.w #$00FF
-	BNE .event
-	LDA.l !persist_goku_active
-	AND.w #$00FF
-	BNE .wake
+	BNE .stay                    ; an event owns the field: Goku cannot act
+	TXA
+	BMI .vectors
+	LDA.l fl_quiet_addr,X
+	TAY
+	LDA $0000,Y
+	AND.l fl_quiet_mask,X
+	CMP.l fl_quiet_ok,X
+	BEQ .wake                    ; that reason has passed
+.stay
 	STZ.w !fl_hook               ; a scene's camera post lasts one frame
 	RTL
-.event
-	; fl_read_pad's history goes on (the previous pad aside: the waking
-	; frame takes it from here) for the whip pad's conditional (gap.asm)
-	; and the frame after the event; another mode in between (a shop
-	; menu) takes the full reader and its latch
-	LDA.w !core_tick&$FFFF
-	SEC
-	SBC.w !fl_lasttick
-	CMP.w #$0002
-	BCS .wake
-	LDA.w !core_tick&$FFFF
-	STA.w !fl_lasttick
-	LDA.w !core_pad&$FFFF        ; (nothing is latched while quiet)
-	STA.w !fl_pad
-	STZ.w !fl_hook
-	RTL
+.inactive
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BEQ .stay
+	BRA .wake
+.ending
+	JSR fl_bind_ending
+	BCS .stay
+	BRA .wake
+.vectors
+	JSR fl_native_field
+	BCC .stay
 .wake
 	SEP #$20
 	LDA.b #!FLS_QUIET
 	TRB.w !fl_state
 	REP #$20
+	; the pad of the last quiet frame, as fl_read_pad would have kept it
+	; (nothing is latched while quiet; after another mode the reader
+	; latches anyway)
+	LDA.w !core_pad_prev&$FFFF
+	STA.w !fl_pad
 .full
 	LDA.w !fl_magic
 	CMP.w #!FL_MAGIC
@@ -338,7 +362,6 @@ flight_frame:
 	if defined("FLIGHT_TEST")
 		JSR fl_test_poll
 	endif
-	INC.w !fl_counter
 	STZ.w !fl_events
 	LDA.w #$0000
 	STA.l !fl_g_chk              ; the grid's tiles are checked once per phase
@@ -573,31 +596,23 @@ fl_onfoot:
 ; costs a fraction of a scanline (the coordinator's integration run measured
 ; 2.75 lines a frame for the full path in the title arrival and endings).
 fl_quiet_check:
-	LDA $D0
-	AND.w #$00FF
-	BEQ .noevent
+	; flight reset?
 	LDA.w !fl_state
-	AND.w #!FLS_CAN
-	BNE .no
-	BRA .reset
-.noevent
-	LDA.l !persist_goku_active
-	AND.w #$00FF
-	BNE .no
-.reset
-	LDA.w !fl_state
-	AND.w #!FLS_FLY|!FLS_LANDING|!FLS_CHARGE
-	BNE .no
+	AND.w #!FLS_FLY|!FLS_LANDING|!FLS_CHARGE|!FLS_CAN
+	BNE .no0
 	LDA.w !fl_lift
 	AND.w #$00FF
 	ORA.w !fl_gap
 	ORA.w !fl_events
 	ORA.w !fl_held
 	ORA.w !fl_passengers
-	BNE .no
+	BNE .no0
 	LDA.w !fl_hook
 	AND.w #$FFFF-!FLH_SCRIPT
-	BNE .no
+	BEQ +
+.no0
+	RTS
++
 	LDA.l !fl_tp_act
 	ORA.l !fl_tp_queued
 	ORA.l !fl_ce_phase
@@ -609,13 +624,50 @@ fl_quiet_check:
 		ORA.l !fl_test_post+$06
 		BNE .no
 	endif
+	; why Goku cannot act: out of play, off the native field, or the first
+	; of fl_can_attack's conditions that fails (a hurt pose, the last one,
+	; passes by itself: no quiet then)
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BEQ .why
+	JSR fl_bind_ending
+	BCC +
+	LDA.w #$FFFE                 ; the finale: for good
+	BRA .why
++	LDA.w !fl_state
+	AND.w #!FLS_ON
+	BNE +
+	LDA.w #$FFFF                 ; the field's vectors
+	BRA .why
++	LDX.w #2
+.find
+	LDA.l fl_quiet_addr,X
+	BEQ .no
+	TAY
+	LDA $0000,Y
+	AND.l fl_quiet_mask,X
+	CMP.l fl_quiet_ok,X
+	BNE +
+	INX
+	INX
+	BRA .find
++	TXA
+.why
+	STA.w !fl_quiet_why
 	SEP #$20
 	LDA.b #!FLS_QUIET
 	TSB.w !fl_state
 	REP #$20
 .no
 	RTS
-
+; fl_can_attack's conditions, in its order (index 2, 4, ...): Goku can act
+; only while (word at addr) & mask = ok for each of them.
+fl_quiet_addr:
+	dw 0, !fl_lock, $00E4, $00E5, $E000, $E02C, $00EC, $00ED, $00D0, $E190, $E191, 0
+fl_quiet_mask:
+	dw 0, $FFFF, $00FF, $00FF, $0001, $0001, $00FE, $0040, $00FF, $0070, $00D5, 0
+fl_quiet_ok:
+	dw 0, $0000, $0001, $0001, $0001, $0001, $0000, $0000, $0000, $0000, $0000, 0
 ; First frame since title entry (or a foreign savestate): the SRAM work
 ; area holds whatever the battery kept.
 fl_init_work:
@@ -720,6 +772,18 @@ fl_land_now:
 	TRB.w !fl_state
 	STZ.w !fl_lift
 	REP #$20
+	RTS
+
+; A = the pad as fl_read_pad last saw it, for hooks inside the game's logic:
+; while flight is quiet its frames keep no pad (nothing is latched then),
+; and the core's pad is still the one read at the last field frame.
+fl_pad_now:
+	LDA.w !fl_state
+	BIT.w #!FLS_QUIET
+	BNE +
+	LDA.w !fl_pad
+	RTS
++	LDA.w !core_pad&$FFFF
 	RTS
 
 ; Pad as the browser's padInput: physical pad 1, with buttons that were held

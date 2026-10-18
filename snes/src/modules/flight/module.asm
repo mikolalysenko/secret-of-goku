@@ -101,7 +101,7 @@ assert !RAM_FLIGHT == $7E0000|!FLIGHT_RAM, "!FLIGHT_RAM must match !RAM_FLIGHT"
 !fl_passengers = !FLIGHT_RAM+$6C   ; word: carried CPU companions to hide (bit 0 $E200, bit 1 $E400)
 !fl_speed      = !FLIGHT_RAM+$6E   ; word: configured speed for the next steps
 !fl_gap        = !FLIGHT_RAM+$70   ; word: whip-pad crossing active (map+1), 0 none
-!fl_counter    = !FLIGHT_RAM+$72   ; word: frames the module ran (field)
+!fl_quiet_why  = !FLIGHT_RAM+$72   ; word: why flight is quiet: 0 Goku out of play, $FFFF off the native field, else fl_quiet_addr index
 !fl_events     = !FLIGHT_RAM+$74   ; word: !FLE_* one-frame events for other modules
 !fl_lock       = !FLIGHT_RAM+$76   ; word: request: nonzero forbids flight this frame (other modules)
 !fl_open_air   = !FLIGHT_RAM+$78   ; word: Sandship/dunes openAir (flight passes every wall), set with the map context
@@ -124,7 +124,7 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !FLS_HOVERED = $08   ; localFlight on the previous frame (sound edge)
 !FLS_CHARGE  = $10   ; charging (request from combat, or the L+Y stand-in)
 !FLS_LANDING = $20   ; lift is coming down (landing cue armed)
-!FLS_QUIET   = $40   ; nothing to do until Goku plays or the event ends (fl_quiet_check)
+!FLS_QUIET   = $40   ; nothing to do while Goku is out of play or cannot act (fl_quiet_check)
 
 ; fl_hook bits: work the movement hooks may have (set per frame, re-validated live)
 !FLH_STEP    = $0001 ; velocity override (flight or charge)

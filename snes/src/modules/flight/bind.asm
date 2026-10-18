@@ -166,6 +166,21 @@ else
 	JMP fl_bind_world_takeoff
 endif
 
+; Endings (snes/src/modules/ending): Goku cannot act once the finale has
+; begun (mana-mod.js canAttack: !mod.ending.active, shenron-ending.js
+; active = a state since begin()). Carry set = it has. M16; A changes.
+fl_bind_ending:
+if defined("ending_flags")
+	LDA.l !ending_flags
+	AND.w #!EF_BEGUN
+	BEQ +
+	SEC
+	RTS
++
+endif
+	CLC
+	RTS
+
 ; Floor holes (Frieza's broken deck, the Sandship wreck): the owner defines
 ; !FLIGHT_MISSING_FLOOR = <routine>: JSL with !fl_q_x/y/l set (M16/X16,
 ; DB = $7E), carry set when a hole lies under the 12x8 footprint there.
