@@ -1220,13 +1220,28 @@ fz_derive_legacy:
 	JSR fz_set
 +	RTS
 
-; Forget per-visit state (scenes, battles, VRAM residency).
+; Forget per-visit state (scenes, battles, VRAM residency and claims). The
+; scene SRAM is reset now, or by the first busy frame after an ending owned
+; it (fz_sram_reset).
 fz_reset_transient:
 	JSR fz_bind_safe                  ; the danger bit goes with !fz_tflags
-	JSR fz_lb_reset
-	LDA.w #$0000
-	STA.l !fzs_palframe               ; the next palette scan reads all of OAM
-	JSR fz_scene_clear
+	SEP #$20
+	LDA.b #!FZI_SRAM|!FZI_BALLS
+	TRB !fz_wasidle
+	REP #$20
+	LDA.w #!VRAM_FIELD_OBJ_A
+	LDX.w #!FZ_VRAM_OWNER
+	JSL core_vram_release
+	LDA.w #!VRAM_SCENE_OBJ
+	LDX.w #!FZ_VRAM_OWNER
+	JSL core_vram_release
+	LDA.w #!VRAM_SCENE_BG
+	LDX.w #!FZ_VRAM_OWNER
+	JSL core_vram_release
+	JSR fz_bind_ending_active
+	BCS +
+	JSR fz_sram_reset
++	JSR fz_scene_clear
 	STZ !fz_pend
 	LDA.w #$FFFF
 	STA !fz_lastmap
@@ -1245,9 +1260,32 @@ fz_reset_transient:
 	SEP #$20
 	STZ !fzd_on
 	STZ !fzd_key
-	LDA.b #0
-	STA.l !fzv_on
-	STA.l !fzv_white
+	REP #$20
+	RTS
+
+; The scene SRAM ($32:7000-7FFF) becomes Frieza's again: forget whatever
+; it holds (an ending's scene, a battery left by another run), as the
+; title boot does, and the large-burst table.
+fz_sram_reset:
+	LDA.w #$0000
+	LDX.w #$01FE
+-	STA.l !FZSB,X
+	DEX
+	DEX
+	BPL -
+	LDX.w #$000E
+-	STA.l !FZHB,X
+	STA.l !FZHB+$680,X
+	STA.l !FZHB+$690,X
+	DEX
+	DEX
+	BPL -
+	JSR fz_lb_reset
+	LDA.w #$FFFF
+	STA.l !fzh_key
+	SEP #$20
+	LDA.b #!FZI_SRAM
+	TSB !fz_wasidle
 	REP #$20
 	RTS
 

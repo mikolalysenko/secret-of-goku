@@ -34,6 +34,9 @@ fz_vram_settle:
 	LDA.w #!VRAM_SCENE_BG
 	LDX.w #!FZ_VRAM_OWNER
 	JSL core_vram_release
+	LDA !fz_wasidle
+	AND.w #!FZI_SRAM
+	BEQ +
 	SEP #$20
 	LDA.b #0
 	STA.l !fzh_tiles
@@ -45,12 +48,16 @@ fz_spr_invalidate:
 	STA !fz_spr_res0
 	STA !fz_spr_res1
 	STA !fz_spr_pend
+	LDA !fz_wasidle
+	AND.w #!FZI_SRAM
+	BEQ +
+	LDA.w #$FFFF
 	STA.l !fzh_key                    ; the broken floor too
 	SEP #$20
 	LDA.b #0
 	STA.l !fzh_tiles
 	REP #$20
-	RTS
++	RTS
 
 ; Start of a field frame: nothing drawn yet, no vblank work allowed until
 ; this frame's logic grants it (the whiteout of last frame is remembered
@@ -70,8 +77,6 @@ fz_spr_begin:
 	AND.b #~(!FZT_PALSCAN|!FZT_HOLES|!FZT_WHITE|!FZT_WPREV)
 	ORA !fz_t0
 	STA !fz_tflags
-	LDA.b #0
-	STA.l !fzb_req                    ; no Ball set drawn yet
 	LDA !fz_vista
 	AND.b #$01                        ; !FZV_ON -> !FZV_PREV, the rest cleared
 	ASL

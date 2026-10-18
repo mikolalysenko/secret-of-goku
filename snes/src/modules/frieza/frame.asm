@@ -22,8 +22,8 @@ frieza_field_frame:
 	LDA !fzl_base
 	INC                               ; $FFFF: no Dark Lich tracked
 	BNE .busy
-	LDA.l !fzb_claim                  ; the Balls' VRAM region to give back
-	AND.w #$00FF
+	LDA !fz_wasidle                   ; the Balls' VRAM region to give back
+	AND.w #!FZI_BALLS
 	BNE .busy
 	LDA $DC
 	CMP !fz_lastmap
@@ -40,7 +40,15 @@ frieza_field_frame:
 	JSR fz_idle_tick
 	RTL
 .busy
-	; the first field frame of a session that did not come through the
+	; an ending scene owns the picture and all of the scene SRAM
+	; ($32:6000-7FFF): Frieza's state there is gone
+	JSR fz_bind_ending_active
+	BCC +
+	SEP #$20
+	LDA.b #!FZI_SRAM
+	TRB !fz_wasidle
+	REP #$20
++	; the first field frame of a session that did not come through the
 	; load or new-game hooks (title attract, imported states): settle the
 	; block and forget whatever the per-visit WRAM held
 	LDA !fz_init
@@ -55,10 +63,11 @@ frieza_field_frame:
 	REP #$20
 +	; leaving an idle stretch: loads and fades may have rewritten VRAM
 	LDA !fz_wasidle
-	AND.w #$00FF
+	AND.w #!FZI_IDLE
 	BEQ +
 	SEP #$20
-	STZ !fz_wasidle
+	LDA.b #!FZI_IDLE
+	TRB !fz_wasidle
 	REP #$20
 	JSR fz_spr_invalidate
 +	JSR fz_spr_begin
@@ -69,7 +78,21 @@ frieza_field_frame:
 	JSR fz_vram_settle
 	RTL
 +	JSR fz_danger_tick
+	JSR fz_bind_ending_active
+	BCC .own
+	; during an ending only what lives outside the scene SRAM runs
 	JSR fz_apply_pending
+	JSR fz_story_permanent
+	JSR fz_death_tick
+	JSR fz_lock_tick
+	JSR fz_vram_settle
+	RTL
+.own
+	LDA !fz_wasidle
+	AND.w #!FZI_SRAM
+	BNE +
+	JSR fz_sram_reset
++	JSR fz_apply_pending
 	JSR fz_quake_tick
 	JSR fz_story_tick
 	JSR fz_scene_tick
@@ -251,10 +274,15 @@ fz_session:
 	JSR fz_frieza_map
 	SEP #$20
 	STA !fz_mapflag
+	REP #$20
+	LDA !fz_wasidle
+	AND.w #!FZI_SRAM
+	BEQ +
+	SEP #$20
 	LDA.b #0
 	STA.l !fzt_up                     ; a new map's tiles: the vista uploads again
 	REP #$20
-	JSR fz_spr_invalidate
++	JSR fz_spr_invalidate
 	LDA.w !core_frame&$FFFF
 	STA !fz_room_since
 	LDA.w #!FZFL_OFFERED
@@ -278,15 +306,15 @@ fz_idle_tick:
 	AND.w #$00FF
 	BEQ .out
 	LDA !fz_wasidle
-	AND.w #$00FF
+	AND.w #!FZI_IDLE
 	BNE +
 	JSR fz_spr_begin
 	LDA.w #$FFFF
 	STA !fz_spr_pend
 	JSR fz_vram_settle                ; scene VRAM back to core's pool
 	SEP #$20
-	LDA.b #$01
-	STA !fz_wasidle
+	LDA.b #!FZI_IDLE
+	TSB !fz_wasidle
 	REP #$20
 +	LDA.l !fzp_flags
 	AND.w #!FZFL_PERMANENT

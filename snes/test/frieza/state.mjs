@@ -42,6 +42,7 @@ export function friezaWrites(f,challenge,{map}={}){
   // the module checks its block and resets its WRAM once per session unless
   // a load hook did (fz_guard): these writes stand for that load
   put('fz_init',0xA5,1);
+  put('fz_wasidle',defs.FZI_SRAM,1);              // the scene SRAM the writes below fill is Frieza's
   put('fzp_version',1,1);put('fzp_stage',stageId(f.stage),1);put('fzp_tree',treeId(f.tree),1);
   put('fzp_flags',flags,2);put('fzp_mask',f.stolenMask??0,1);put('fzp_crisis',crisis,1);put('fzp_beast',beast,1);
   put('fzp_flyby',f.flyby?f.flyby.age:0xFFFF,2);

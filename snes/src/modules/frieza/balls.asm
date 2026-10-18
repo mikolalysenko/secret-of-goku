@@ -221,10 +221,14 @@ fz_balls_want:
 	JSL core_vram_claim
 	BCS .no
 	SEP #$20
+	LDA.b #!FZI_BALLS
+	TSB !fz_wasidle
 	LDA !fz_t3
-	STA.l !fzb_req
-	LDA.b #1
-	STA.l !fzb_claim
+	ASL
+	ASL
+	ASL
+	ASL
+	TSB !fz_vista                     ; this frame's request (!FZV_BALLS)
 	LDA !fz_t3
 	STA.l !fzb_palsrc                 ; the second palette holds the Balls
 	CMP.l !fzb_have
@@ -239,19 +243,25 @@ fz_balls_want:
 ; Every busy frame (after the draws): give the region back once no ball
 ; scene drew this frame.
 fz_balls_tick:
-	LDA.l !fzb_claim
-	AND.w #$00FF
+	LDA !fz_wasidle
+	AND.w #!FZI_BALLS
 	BEQ .out
-	LDA.l !fzb_req
-	AND.w #$00FF
+	LDA !fz_vista
+	AND.w #!FZV_BALLS
 	BNE .out
 	SEP #$20
+	LDA.b #!FZI_BALLS
+	TRB !fz_wasidle
+	REP #$20
+	LDA !fz_wasidle
+	AND.w #!FZI_SRAM
+	BEQ +
+	SEP #$20
 	LDA.b #0
-	STA.l !fzb_claim
 	STA.l !fzb_have
 	STA.l !fzb_palsrc
 	REP #$20
-	LDA.w #!VRAM_FIELD_OBJ_A
++	LDA.w #!VRAM_FIELD_OBJ_A
 	LDX.w #!FZ_VRAM_OWNER
 	JSL core_vram_release
 .out
@@ -259,10 +269,17 @@ fz_balls_tick:
 
 ; Vblank (DB = $80): the requested set into the region (two DMAs).
 fz_balls_nmi:
-	LDA.l !fzb_req
-	AND.w #$00FF
+	LDA.l $7E0000|!fz_vista           ; this frame's request (WRAM)
+	AND.w #!FZV_BALLS
 	BEQ .out
+	LSR
+	LSR
+	LSR
+	LSR
+	STA.l $7E0000|!fz_t3
+	SEP #$20
 	CMP.l !fzb_have
+	REP #$20
 	BNE +
 .out
 	RTS
@@ -270,8 +287,7 @@ fz_balls_nmi:
 	JSL core_vblank_lines
 	CMP.w #8
 	BCC .out
-	LDA.l !fzb_req
-	AND.w #$00FF
+	LDA.l $7E0000|!fz_t3
 	CMP.w #2
 	BEQ .eight
 	LDA.w #frieza_balls_top
@@ -317,7 +333,7 @@ fz_balls_nmi:
 	SEP #$20
 	LDA.b #$80
 	STA $420B
-	LDA.l !fzb_req
+	LDA.l $7E0000|!fz_t3
 	STA.l !fzb_have
 	REP #$20
 	RTS

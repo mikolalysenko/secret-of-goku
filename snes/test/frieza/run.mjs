@@ -412,7 +412,7 @@ function test()
   F.apply(${luaWrites(writes)})
   local want = {}
   ${Object.entries(treeShots).map(([k,ages])=>`want[${k}] = {${ages.map(a=>`[${a}]=true`).join(',')}}`).join('\n  ')}
-  local seen, trace, shots, maps = {}, {}, {}, {}
+  local seen, trace, shots, maps, boxes = {}, {}, {}, {}, {}
   local last = -1
   for i = 1, ${maxFrames} do
     if i % 20 == 0 then H.hold('b', 2) else H.wait(1) end
@@ -426,7 +426,13 @@ function test()
     end
     if want[kind] and want[kind][age] then
       local name = string.format('k%02d-a%03d', kind, age)
-      if not shots[name] then H.shot(name); shots[name] = true end
+      if not shots[name] then
+        H.shot(name); shots[name] = true
+        local b = F.box()
+        boxes[#boxes + 1] = string.format('%s %s px %d py %d id %d cnt %d pal %d', name,
+          b and string.format('%d OBJ %d,%d-%d,%d', b.n, b.x0, b.y0, b.x1, b.y1) or 'no-frieza',
+          H.r16(${v(defs.fz_px)}), H.r16(${v(defs.fz_py)}), H.r16(${v(defs.fz_spr_id)}), H.r8(${v(defs.fz_spr_cnt)}), H.r8(${v(defs.fz_spr_pal)}))
+      end
     end
     if i % 8 == 0 then
       trace[#trace + 1] = string.format('%d %d %d %d %d %d %d %d %d', i, map, kind, age, H.r8(0x7E00D0),
@@ -442,6 +448,7 @@ function test()
   for m in pairs(maps) do mapList[#mapList + 1] = m end
   table.sort(mapList)
   H.result('seen', seen)
+  H.result('boxes', boxes)
   H.result('trace', trace)
   H.result('maps', mapList)
   H.result('tree', H.r8(${v(defs.fzp_tree)}))
@@ -632,6 +639,7 @@ if(only.includes('tree')){                     // explicit: the native tail stil
   const res=r.results??{};
   const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
   if(res.trace)writeFileSync(join(out,'trace.txt'),'frame map scene age D0 up vista bright tree\n'+res.trace.join('\n')+'\n');
+  if(res.boxes)writeFileSync(join(out,'boxes.txt'),res.boxes.join('\n')+'\n');
   const ok=r.code===0&&res.pass===true;
   results.push({name:'tree',ok,failures});
   console.log(`frieza tree: ${ok?'pass':'FAIL'} (${r.ms} ms) maps ${(res.maps??[]).join(',')} scenes ${(res.seen??[]).join(' ')} tree ${res.tree}`);

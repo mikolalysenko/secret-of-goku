@@ -69,7 +69,7 @@ assert !RAM_FRIEZA == $7E0000|!FZ, "!FZ must match !RAM_FRIEZA"
 !fz_py         = !FZ+$4C   ; word: screen y
 !fz_pframe     = !FZ+$4E   ; byte: frame 0-7
 !fz_mapflag    = !FZ+$4F   ; byte: 1 while the map is one of Frieza's (set on a map change)
-!fz_wasidle    = !FZ+$50   ; byte: the last field frame took the idle path
+!fz_wasidle    = !FZ+$50   ; byte: !FZI_* (idle path, the Balls' claim, scene SRAM ownership)
 !fz_vista      = !FZ+$51   ; byte: the Tree vista's vblank requests (!FZV_*), rebuilt every frame
 !fz_room_since = !FZ+$52   ; word: core frame when the map was entered (Rider III)
 !fz_atlas      = !FZ+$54   ; word: $10 when Frieza draws in his full-power form, else 0
@@ -236,9 +236,7 @@ assert !FZX_END <= !FZ+$C0, "frieza WRAM overflow (beast)"
 !FZ_HWRITE     = !FZHB+$500   ; 64 x 6 bytes: VRAM address, two tilemap entries
 !fzs_palmask   = !FZHB+$680   ; 8 bytes: native OBJ palettes seen per 16-slot chunk
 !fzs_palframe  = !FZHB+$688   ; word: core frame of the last palette scan
-!fzb_req       = !FZHB+$68A   ; byte: Ball set drawn this frame (1 seven, 2 eighth)
 !fzb_have      = !FZHB+$68B   ; byte: Ball set in VRAM (uploaded in vblank)
-!fzb_claim     = !FZHB+$68C   ; byte: FIELD_OBJ_A is claimed for the Balls
 !fzb_palsrc    = !FZHB+$68D   ; byte: second palette holds 0 ghost, 1 the seven, 2 the eighth
 !fzt_up        = !FZHB+$690   ; byte: Tree vista chunks in VRAM (4 = all)
 !fzt_ruins     = !FZHB+$691   ; byte: the vista shows the Tree's ruins
@@ -428,6 +426,15 @@ assert !FZX_END <= !FZ+$C0, "frieza WRAM overflow (beast)"
 
 ; VRAM: two buffers of 8 cells each (16x16 OBJ), OBJ name table 0 rows
 ; C-D and E-F (tiles $0C0-$0FF, word $6C00-$6FFF).
+; !fz_wasidle bits (WRAM)
+!FZI_IDLE      = $01       ; the last field frame took the idle path
+!FZI_BALLS     = $02       ; core's FIELD_OBJ_A is claimed for the Balls
+!FZI_SRAM      = $80       ; the scene SRAM ($32:7000-7FFF) holds Frieza's state: an
+                           ; ending scene uses all of $32:6000-7FFF, so the module
+                           ; neither reads nor writes there until it reset it
+; !fz_vista bits 4-5 (rebuilt every frame): the Ball set drawn this frame
+!FZV_BALLS     = $30       ; (1 the seven, 2 the eighth) << 4
+
 !FZ_VRAM_OWNER = $0006     ; core_vram_claim owner id (core's pool: !VRAM_SCENE_OBJ, !VRAM_SCENE_BG, !VRAM_FIELD_OBJ_A)
 !FZ_VRAM_BUF0  = $6C00
 !FZ_VRAM_BUF1  = $6E00
