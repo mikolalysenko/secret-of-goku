@@ -41,6 +41,10 @@ fz_spr_begin:
 	STA !fz_tflags
 	LDA.b #0
 	STA.l !fzb_req                    ; no Ball set drawn yet
+	LDA !fz_vista
+	AND.b #$01                        ; !FZV_ON -> !FZV_PREV, the rest cleared
+	ASL
+	STA !fz_vista
 	REP #$20
 	RTS
 

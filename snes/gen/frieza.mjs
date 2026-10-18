@@ -88,7 +88,7 @@ function cover(idx,w,h){
   return boxes;
 }
 
-export async function generate({repo,outDir}){
+export async function generate({repo,outDir,rom:baseRom}){
   const eng=f=>import(pathToFileURL(join(repo,'engine',f)).href);
   const sprite=await eng('frieza-sprite.js');
   const staging=await eng('frieza-staging.js');
@@ -367,6 +367,103 @@ export async function generate({repo,outDir}){
       ox.push(Math.round(Math.cos(ang)*18*spread*256));oy.push(Math.round(Math.sin(ang)*14*spread*256));
     }
     out.push('frieza_steal_ox:',...words(ox),'frieza_steal_oy:',...words(oy));
+  }
+
+  // The Tree vista (frieza-tree-view.js, mana-tree-vista.js): map 236's two
+  // picture planes as BG tilemaps over the native tile set. The background
+  // is layer 1 seen from (8, 104), whole or with the Tree's ruins (16x16
+  // cells copied as tile(x, y, sx, sy) does); the foreground is layer 0 from
+  // (0, 184). 32 x 32 entries each (28 rows shown); empty cells use the
+  // blank tile !FRIEZA_VISTA_BLANK; the background drops its priority bits,
+  // the foreground sets them (it is drawn over the background, sprites over
+  // both). Also the sky colour (palette entry 101) and the tiny Frieza's
+  // poses and the 16-32 px Death Ball of the tree scenes.
+  {
+    const {readFileSync:rf}=await import('node:fs');
+    const {decodeMapPiece,decodeMetatiles}=await import(pathToFileURL(join(repo,'tools/rom/map-codec.mjs')).href);
+    const rom=baseRom??rf(join(repo,'rom/secret-of-mana-us.sfc'));
+    const word=a=>rom[a]|rom[a+1]<<8,long=a=>word(a)|rom[a+2]<<16,id=236;
+    const header=0x80000+word(0x87000+id*2),set=rom[header+2]&63;
+    const metatiles=decodeMetatiles(rom.subarray(long(0xb4000+set*3),long(0xb4003+set*3))).metatiles;
+    const pieces=[];let layer=0,width=0,height=0;
+    for(let a=0x80000+word(0x85000+id*2),end=0x80000+word(0x85002+id*2);a<end;){
+      if(rom[a]>=254){layer=rom[a++]===255?1:0;continue;}
+      const flag=rom[a],min=rom[a+1]>>4,max=rom[a+1]&15,part=rom[a+2]|(rom[a+3]&1)<<8|(rom[a+4]&1)<<9;
+      const bank=part<0xa3?13:part<0x206?14:part<0x300?15:12,at=bank*65536+word(0xd0004+part*2);
+      const pc=decodeMapPiece(rom.subarray(at));pc.x=rom[a+3]>>1;pc.y=rom[a+4]>>1;pc.layer=layer;
+      const value=flag===0x10?6:0;if(value>=min&&value<=max)pieces.push(pc);
+      width=Math.max(width,pc.x+pc.width);height=Math.max(height,pc.y+pc.height);a+=5;
+    }
+    const cells=[new Int16Array(width*height).fill(-1),new Int16Array(width*height).fill(-1)];
+    for(const pc of pieces)for(let y=0;y<pc.height;y++)for(let x=0;x<pc.width;x++)cells[pc.layer][(pc.y+y)*width+pc.x+x]=pc.tiles[y*pc.width+x]+(rom[header+2]&(pc.layer?128:64)?192:0);
+    const ruins=cells[1].slice();
+    const copy=(x,y,sx=14,sy=14)=>{ruins[y*width+x]=cells[1][sy*width+sx];};
+    copy(9,12,16,12);copy(10,12,17,12);
+    for(let y=13;y<=16;y++)for(let x=8;x<=(y<15?11:10);x++)if(y!==16||x!==9)copy(x,y);
+    const BLANK=0x2FF;
+    const tilemap=(grid,ox,oy,priority)=>{
+      const t=new Array(32*32).fill(BLANK);
+      for(let ty=0;ty<28;ty++)for(let tx=0;tx<32;tx++){
+        const px=tx*8+ox,py=ty*8+oy,cx=px>>4,cy=py>>4;
+        if(cx>=width||cy>=height)continue;
+        const m=grid[cy*width+cx];if(m<0)continue;
+        const n=metatiles[m]?.[((py>>3)&1)*2+((px>>3)&1)];if(n===undefined)continue;
+        if(!((n>>10)&7))continue;           // palette 0 is empty in the browser's planes (sky)
+        t[ty*32+tx]=priority?(n|0x2000):(n&~0x2000);
+      }
+      return t;
+    };
+    const fgMap=tilemap(cells[0],0,184,true),bgMap=tilemap(cells[1],8,104,false),ruinsMap=tilemap(ruins,8,104,false);
+    const sky=word(0xc8000+(rom[header+1]&127)*210+101*2)&0x7fff;
+    // Check: these tilemaps over the native tiles and palettes give exactly
+    // the browser's vista picture (mana-tree-vista.js), whole and in ruins.
+    {
+      const {createManaTreeVista}=await eng('mana-tree-vista.js');
+      const vista=createManaTreeVista(rom);
+      const gfx=[],gfxId=rom[header]&63;
+      const tile=(at,bpp=4,fill=0)=>{const o=new Uint8Array(64);for(let y=0;y<8;y++)for(let x=0;x<8;x++){let c=fill;for(let pl=0;pl<bpp;pl++)c|=(rom[at+(bpp===3&&pl===2?16+y:(pl>>1)*16+y*2+(pl&1))]>>(7-x)&1)<<pl;o[y*8+x]=c;}return o;};
+      for(let a=0xc0000+word(0xce27e+gfxId*2),end=0xc0000+word(0xce280+gfxId*2);a<end;a+=3){
+        const n=word(a),mode=n>>>13,bpp=mode===6?4:mode>=4?3:2,fill=bpp===2?((mode&2)?4:0)|((mode&1)?8:0):bpp===3&&(mode&1)?8:0;
+        for(let i=0;i<=rom[a+2];i++)gfx.push(tile(long(0xce270+(bpp-2)*3)+((n&8191)+i)*bpp*8,bpp,fill));
+      }
+      for(let g=0;g<8;g++)for(let i=0;i<4;i++)gfx[864+g*4+i]=tile(0x1c8000+(rom[0x80441+rom[0x80400+gfxId]*2+g]&63)*512+i*32);
+      const palette=0xc8000+(rom[header+1]&127)*210;
+      const color=(p,c)=>p?1+(word(palette+(p-1)*30+(c-1)*2)&0x7fff):0;
+      const draw=(map,pix,opaque)=>{for(let ty=0;ty<28;ty++)for(let tx=0;tx<32;tx++){const n=map[ty*32+tx];if(n===BLANK)continue;const art=gfx[n&1023];if(!art)continue;
+        for(let y=0;y<8;y++)for(let x=0;x<8;x++){const c=art[(n&32768?7-y:y)*8+(n&16384?7-x:x)];if(c)pix[(ty*8+y)*256+tx*8+x]=color(n>>10&7,c);}}};
+      for(const [name,bg,destroyed] of [['whole',bgMap,false],['ruins',ruinsMap,true]]){
+        const mine=new Uint16Array(256*224).fill(1+sky);draw(bg,mine);draw(fgMap,mine);
+        const want=new Uint16Array(256*224);const put=(x,y,c)=>{x=Math.round(x);y=Math.round(y);if(x>=0&&x<256&&y>=0&&y<224)want[y*256+x]=c;};
+        vista(put,{destroyed});vista(put,{foreground:true,x:0,y:184});
+        let bad=0;for(let i=0;i<want.length;i++)if(want[i]!==mine[i])bad++;
+        if(bad)throw Error(`frieza gen: Tree vista (${name}) differs from mana-tree-vista.js in ${bad} pixels`);
+      }
+    }
+    out.push(`!FRIEZA_VISTA_BLANK = ${hex(BLANK,3)}`);
+    out.push('frieza_vista_fg:',...words(fgMap));
+    out.push('frieza_vista_bg:',...words(bgMap));
+    out.push('frieza_vista_ruins:',...words(ruinsMap));
+    out.push('frieza_vista_zero:',...bytes(Array(32).fill(0)));
+    out.push(`!FRIEZA_VISTA_SKY = ${hex(sky,4)}`);
+    // the tiny Frieza: treeFriezaPose(kind, age, elapsed) for the arrival
+    // (96 frames) and the departure (120), x and y for the hover -1/0/+1
+    const tp=(kind,len)=>{const x=[],y=[[],[],[]];for(let a=0;a<=len;a++){
+      for(let b=-1;b<=1;b++){
+        // a clock whose hover is b: search the 192-frame period
+        let clk=0;while(Math.round(Math.sin(clk*Math.PI/96))!==b)clk++;
+        const p=staging.treeFriezaPose(kind,a,clk);if(b===0)x.push(p.x);y[b+1].push(p.y);
+      }}
+      return {x,y};};
+    const arr=tp('tree-arrival',96),lv=tp('tree-leave',120);
+    out.push('frieza_tree_arrive_x:',...words(arr.x),'frieza_tree_arrive_y0:',...words(arr.y[0]),'frieza_tree_arrive_y1:',...words(arr.y[1]),'frieza_tree_arrive_y2:',...words(arr.y[2]));
+    out.push('frieza_tree_leave_x:',...words(lv.x),'frieza_tree_leave_y0:',...words(lv.y[0]),'frieza_tree_leave_y1:',...words(lv.y[1]),'frieza_tree_leave_y2:',...words(lv.y[2]));
+    // the tree Death Ball: charge diameter by age (16 -> 32), throw path
+    const charge=[];for(let a=0;a<=88;a++)charge.push(staging.friezaDeathBallPose({kind:'tree-charge',age:a,clock:0},{x:182,y:126},{tree:true}).size);
+    const shotX=[],shotY=[[],[],[]];let shotLen=0;
+    for(let a=0;;a++){const p=staging.friezaDeathBallPose({kind:'tree-shot',age:a,clock:0},{x:182,y:126},{tree:true});if(!p.visible){shotLen=a;break;}
+      shotX.push(p.x);for(let b=-1;b<=1;b++)shotY[b+1].push(staging.friezaDeathBallPose({kind:'tree-shot',age:a,clock:0},{x:182,y:126+b},{tree:true}).y);}
+    out.push('frieza_tree_charge_size:',...bytes(charge),`!FRIEZA_TREE_SHOT_LEN = ${shotLen}`,'frieza_tree_shot_x:',...words(shotX),
+      'frieza_tree_shot_y0:',...words(shotY[0]),'frieza_tree_shot_y1:',...words(shotY[1]),'frieza_tree_shot_y2:',...words(shotY[2]));
   }
 
   // frieza-combat.js constants

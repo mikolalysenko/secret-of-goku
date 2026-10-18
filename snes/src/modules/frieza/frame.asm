@@ -84,6 +84,7 @@ frieza_field_frame:
 	BNE .notdrawn
 	JSR fz_draw_scene
 	JSR fz_scene_effects
+	JSR fz_tree_frame
 	JSR fz_lb_tick
 	JSR fz_battle_draw
 	JSR fz_won_draw
@@ -98,6 +99,7 @@ frieza_field_nmi:
 	JSR fz_balls_nmi
 	JSR fz_spr_nmi
 	JSR fz_won_nmi
+	JSR fz_tree_nmi
 	JSR fz_holes_nmi
 	RTL
 
@@ -113,6 +115,7 @@ frieza_title_boot:
 	LDX.w #$000E
 -	STA.l !FZHB,X
 	STA.l !FZHB+$680,X
+	STA.l !FZHB+$690,X
 	DEX
 	DEX
 	BPL -
@@ -243,6 +246,8 @@ fz_session:
 	JSR fz_frieza_map
 	SEP #$20
 	STA !fz_mapflag
+	LDA.b #0
+	STA.l !fzt_up                     ; a new map's tiles: the vista uploads again
 	REP #$20
 	JSR fz_spr_invalidate
 	LDA.w !core_frame&$FFFF

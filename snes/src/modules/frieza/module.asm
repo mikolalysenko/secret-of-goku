@@ -70,6 +70,7 @@ assert !RAM_FRIEZA == $7E0000|!FZ, "!FZ must match !RAM_FRIEZA"
 !fz_pframe     = !FZ+$4E   ; byte: frame 0-7
 !fz_mapflag    = !FZ+$4F   ; byte: 1 while the map is one of Frieza's (set on a map change)
 !fz_wasidle    = !FZ+$50   ; byte: the last field frame took the idle path
+!fz_vista      = !FZ+$51   ; byte: the Tree vista's vblank requests (!FZV_*), rebuilt every frame
 !fz_room_since = !FZ+$52   ; word: core frame when the map was entered (Rider III)
 !fz_atlas      = !FZ+$54   ; word: $10 when Frieza draws in his full-power form, else 0
 !fz_quake      = !FZ+$56   ; byte: local quake frames left (without the fx module)
@@ -239,6 +240,10 @@ assert !FZX_END <= !FZ+$C0, "frieza WRAM overflow (beast)"
 !fzb_have      = !FZHB+$68B   ; byte: Ball set in VRAM (uploaded in vblank)
 !fzb_claim     = !FZHB+$68C   ; byte: FIELD_OBJ_A is claimed for the Balls
 !fzb_palsrc    = !FZHB+$68D   ; byte: second palette holds 0 ghost, 1 the seven, 2 the eighth
+!fzt_up        = !FZHB+$690   ; byte: Tree vista chunks in VRAM (4 = all)
+!fzt_ruins     = !FZHB+$691   ; byte: the vista shows the Tree's ruins
+!fzt_shake     = !FZHB+$692   ; byte: the impact's shake (signed)
+!fzt_bright    = !FZHB+$693   ; byte: brightness forced with !FZV_BRIGHT
 ; !FZHB+$700: the large-burst table (effects.asm)
 !fzv_on        = !FZSB+$14A   ; byte: the victory beat runs
 !fzv_age       = !FZSB+$14C   ; word: frames since the fatal hit
@@ -565,6 +570,7 @@ incsrc "effects.asm"
 incsrc "balls.asm"
 incsrc "emperor.asm"
 incsrc "collapse.asm"
+incsrc "vista.asm"
 frieza_code_end:
 assert frieza_code_end <= !CODE_FRIEZA+$7000, "frieza code bank overflow"
 pullpc
