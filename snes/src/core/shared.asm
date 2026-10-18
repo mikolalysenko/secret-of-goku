@@ -29,7 +29,14 @@
 !SRAM_WORK_DEBUG  = $317600   ; $0200 debug scene select (through $3177FF)
 !SRAM_WORK_FX     = $317800   ; $0400 effects library slots (beams, sparks, orbs, auras)
 !SRAM_WORK_COMBAT = $317C00   ; $0400 combat tables (projectiles, launches, per-target timers)
-!SRAM_WORK_SCENE  = $326000   ; $2000 set-piece scenes (Frieza, orbit, endings, Vegeta) — one scene at a time
+!SRAM_WORK_SCENE  = $326000   ; $2000 set-piece scenes (Frieza, orbit, endings, Vegeta, the Sandship's
+                               ; $32:7600-7FFF) — one scene at a time: core_scene_claim / _release
+; Scene work owner ids (core_scene_claim).
+!SCENE_FRIEZA   = 1
+!SCENE_ORBIT    = 2
+!SCENE_ENDING   = 3
+!SCENE_VEGETA   = 4
+!SCENE_SANDSHIP = 5
 !SRAM_WORK_STORY  = $336000   ; $1000 story runtime
 !SRAM_WORK_DESTROY = $337000  ; $0800 destruction
 !SRAM_WORK_FLIGHT = $337800   ; $0400 flight / traversal

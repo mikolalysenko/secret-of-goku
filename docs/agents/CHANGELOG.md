@@ -4,6 +4,23 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## 2026-10-18 — SNES cartridge: effects, Sandship, finale, telepathy, Time Chamber and core fixes (integration)
+
+- Merged on the cartridge:
+  - **Effects library:** beams drawn as polygons, the Death Beam in 16 headings, large Death Balls, the ki aura from the browser's own pixels, and charge lightning.
+  - **The Sandship arc** at 60 Hz, with breach, fires, blasts and white-out.
+  - **The finale's Fortress cutaway** in world flight, with its art moved to extended data.
+  - **The telepathy radio:** window placement, Dragon Radar, the scouter switch and Goku's STATUS page.
+  - **Joch's trial in the Time Chamber:** Goku's real attacks, clashes and both returns, matching `joch-trial.js` on every frame.
+  - Stream entries below and in `docs/agents/snes-port/`.
+- Core fixes found while merging everything at once:
+  - **Map loads:** during some map loads (153, in the Sandship) the game's background tile decoder writes up to `7E:77FF`, through the WRAM the core used for its queues. It once started a spurious door. That state now lives in battery RAM, which is revalidated every frame.
+  - **Module vblank work** runs only in vblanks whose frame the game completed. An NMI landing between the core's ready flag and the game's own flag used to run it one vblank early.
+  - **HDMA channels** are no longer switched on after a frame's HDMA started, which caused garbage window scroll for a frame.
+  - **Scene work area** (`$32:6000–7FFF`): a module can now claim it, so one scene can't silently overwrite another's. Frieza had written into the ending's buffer.
+- Budget: with every module merged, idle frames cost about 15 scanlines before the streams cut their idle paths: Frieza from 1.76 to 0.32 lines (vblank 1.03 to 0.11), UI from 2.34 to 0.26. `snes/tools/modprof.mjs` measures each module.
+- Validation: each merge re-ran the suites it touches (core, fx, combat, destroy, goku, ending, world, audio, ui, vegeta, debug). All pass on main. The scene select has 19 presets full and 4 native, whose differences belong to Frieza and Vegeta.
+
 ## 2026-10-18 — Release 0.2.5
 
 - Release 0.2.5 (`v0.2.5`) and its Pages build add one exact fast path to 0.2.4:
@@ -40,6 +57,14 @@ stay traceable even when they are committed together.
   - **Unit tests:** 380 pass. A new test compares SPC RAM, every DSP sample, the timers and the SPC registers with stepping each pass, from power-on and on the saved states. It fails if a batch runs one pass past the timer.
   - **Exactness:** the original SnesJs core equivalence passes (SPC RAM and audio every frame), and every saved state, scene and forced branch renders identically to 0.2.4 with every mod hook.
   - **Browser suite:** only the known failures; all 28 phone tests pass.
+
+## 2026-10-17 — SNES cartridge: Goku's STATUS page, window placement, scouter switch (UI stream)
+
+- Goku's STATUS page shows the browser's raster on the cartridge: name, level, HP, form, the double-width power level, the weights lines, MANA and money, and ten stat rows with bounded two-tone meters. The page's text and window layer is composed cell by cell from the same drawing operations as `native-status.js`, which the generator checks against `statusPixels()` at build time. It is built top to bottom in about 55 frames while the menu keeps 60 Hz. Like the browser, which paints its raster from scanline 1, it sits one row above the raster's coordinates, and its window art comes from the browser's windows rather than the game's tiles. See [snes-port/ui.md](snes-port/ui.md#gokus-status-page-statusasm).
+- Dialogue windows move above the HUD when the first one would cover more faces where it is (`window-placement.js`). With the core's new HDMAEN guard, closing windows stay moved too: all 1,952 window frames of the test scene.
+- Goku's Targeting ring item is the scouter switch ("Scouter: ON/OFF"), with the scan sound and King Kai's joke for the form; the power-level readouts are not drawn yet.
+- The UI's DMA-only tile sets (radio glyphs, window tiles, world atlas, radar dial) and the STATUS page's window cells and tilemap live in extended data. Messages are dictionary-compressed, and bank `$AC` has 8.2 KiB left.
+- Validation: `snes/test/ui/run.mjs`, 11 Mesen and node cases. STATUS (base form and Super Saiyan): BG2 from VRAM equals `statusPixels()` on every pixel except 2–3 cells per page that need a fourth colour, which shows as its nearest. Open: the scouter readouts (they need OBJ VRAM) and instant text for R fast-forward (the native engine prints at most one glyph per vblank).
 
 ## 2026-10-17 — SNES cartridge: the Sandship arc (destroy stream)
 

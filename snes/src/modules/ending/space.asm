@@ -161,6 +161,21 @@ space_load:
 	LDY.w #$0070
 	JSR pal_set
 	LDA.w #$0010
+	LDX.w #$0070
+	JSR pal_range             ; BG palettes 1-7 (palette 0 holds the dialogue's BG3 colours)
+	; The departure's distant globe has no sparks or fragments: its load
+	; frame (under white, the clock running) skips their 80 colours and
+	; keeps OBJ palette 1 (Goku's miniature).
+	LDA.l !ending_phase
+	AND.w #$00FF
+	CMP.w #!EP_DEPART
+	BNE .withFrag
+	LDA.w #$0090
+	LDX.w #$0010
+	JSR pal_range             ; OBJ palette 1
+	BRA .noFrag
+.withFrag
+	LDA.w #$0010
 	LDX.w #ending_spark_pal
 	LDY.w #$0080
 	JSR pal_set
@@ -168,9 +183,6 @@ space_load:
 	LDX.w #ending_frag_pal
 	LDY.w #$00C0
 	JSR pal_set
-	LDA.w #$0010
-	LDX.w #$0070
-	JSR pal_range             ; BG palettes 1-7 (palette 0 holds the dialogue's BG3 colours)
 	LDA.w #$0080
 	LDX.w #$0020
 	JSR pal_range             ; OBJ palettes 0-1
@@ -180,6 +192,7 @@ space_load:
 	SEP #$20
 	LDA.b #$02
 	STA.w !s_palgrp+3         ; ... a direct range (generator palettes)
+.noFrag
 	REP #$30
 	LDA.w #ending_frag_fadepal
 	STA.w !s_dirsrc
@@ -374,10 +387,8 @@ frame_explode:
 	LDA.l !ending_age
 	CMP.w #48
 	BNE .notBlast
-	SEP #$20
-	LDA.b #!ESFX_POWERBURST
-	STA.l !ending_sfx
-	REP #$20
+	LDA.w #!ESFX_POWERBURST
+	JSR ending_sound
 	JSR space_queue_curtain
 .notBlast
 	LDA.l !ending_age
