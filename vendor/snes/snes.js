@@ -350,6 +350,21 @@ function Snes() {
       }
       let cpuRuns = x < 536 || x >= 576;
       if(cpuRuns && this.cpuCyclesLeft === 0) {
+        if(spinEnabled) {
+          // A loop back to the instruction started two or three
+          // instructions ago.
+          let cpu = this.cpu, pc = (cpu.r[1] << 16) | cpu.br[4];
+          if(pc === spinPrev2 || pc === spinPrev3) {
+            let pairs = this.spinWait(x, pc, step);
+            if(pairs > 0) {
+              advanced += pairs;
+              continue;
+            }
+          }
+          spinPrev3 = spinPrev2;
+          spinPrev2 = spinPrev1;
+          spinPrev1 = pc;
+        }
         // cycle() for a plain dot that starts an instruction.
         this.apuCatchCycles += step;
         if(this.joypadStrobe) {
@@ -997,6 +1012,7 @@ function Snes() {
   let busGateEnabled = true;
   this.registerBusReadHook = function(fn, previous, mark) {
     busHooks.set(fn, {previous: previous, mark: mark});
+    busVersion++;
     busHead = null;
     busMiss = null;
   }
@@ -1133,6 +1149,7 @@ function Snes() {
     return true;
   };
   this.cpuWrite = function(adr, value) {
+    writeSerial++;
     let fn = this.write;
     if(fn !== coreWrite) {
       if(!busGateEnabled) {
@@ -1147,6 +1164,344 @@ function Snes() {
       }
     }
     return coreWrite.call(this, adr, value);
+  }
+
+  // Whether cpuRead(adr) would run a bus read wrapper.
+  let writeSerial = 0, busVersion = 0;
+  const busHooked = (snes, adr) => {
+    let fn = snes.read;
+    if(fn === coreRead) {
+      return false;
+    }
+    if(!busGateEnabled) {
+      return true;
+    }
+    if(fn !== busHead && (fn === busMiss || !rebuildBusGate(fn))) {
+      busMiss = fn;
+      return true;
+    }
+    return busBits[adr & 0xffff] === 1;
+  };
+  // The byte cpuRead(adr) would return for plain work RAM or ROM that no
+  // read wrapper sees, without its side effects; -1 otherwise.
+  const peekPlain = (snes, adr) => {
+    adr &= 0xffffff;
+    if(busHooked(snes, adr)) {
+      return -1;
+    }
+    let bank = adr >> 16, low = adr & 0xffff;
+    if(bank === 0x7e || bank === 0x7f) {
+      return snes.ram[((bank & 0x1) << 16) | low];
+    }
+    let rom = bank >= 0xc0 || (bank >= 0x40 && bank < 0x80);
+    if(!rom && low < 0x2000) {
+      return snes.ram[low & 0x1fff];
+    }
+    if(rom || low >= 0x8000) {
+      return snes.cart.readHooked(bank, low) ? -1 : snes.cart.peek(bank, low);
+    }
+    return -1;
+  };
+  // apu + step added n times with one rounding per addition, as a loop of
+  // `apu += step` gives. Within a binade [2^e, 2^(e+1)) every double is a
+  // multiple of the binade's ulp, so each addition adds the same rounded
+  // increment while the sum stays below the binade's top, unless step lies
+  // exactly halfway between two multiples (a tie, which rounds to even);
+  // tie binades, the binade's top and zero take single additions. Used for
+  // long runs only (short ones loop faster).
+  let incStep = NaN, incLow = 0, incTop = 0, incDelta = 0, incOk = false;
+  const addRepeated = (apu, step, n) => {
+    while(n > 0) {
+      if(step !== incStep || !(apu >= incLow && apu < incTop)) {
+        incStep = step;
+        incLow = incTop = 0;
+        incOk = false;
+        if(apu > 0 && apu < 0x40000000) {
+          let e = Math.floor(Math.log2(apu)), low = Math.pow(2, e);
+          if(low > apu) {
+            low /= 2;
+            e--;
+          } else if(low * 2 <= apu) {
+            low *= 2;
+            e++;
+          }
+          let units = step * Math.pow(2, 52 - e);
+          incLow = low;
+          incTop = low * 2;
+          incOk = units - Math.floor(units) !== 0.5;
+          incDelta = (low + step) - low;
+        }
+      }
+      if(incOk) {
+        let k = Math.floor((incTop - step - apu) / incDelta);
+        if(k > n) {
+          k = n;
+        }
+        while(k > 0 && apu + (k - 1) * incDelta + step >= incTop) {
+          k--;
+        }
+        if(k > 0) {
+          apu += k * incDelta;
+          n -= k;
+          continue;
+        }
+      }
+      apu += step;
+      n--;
+    }
+    return apu;
+  };
+  // The end of the run of master-cycle pairs from x with no dot event, CPU
+  // pause or H-IRQ dot (as in skipIdleCycles).
+  const spanEnd = (snes, x) => {
+    let end = x < 512 ? 512 : x < 1024 ? 1024 : 1362;
+    if(x < 536 && end > 536) {
+      end = 536;
+    }
+    let hPos = snes.hTimer * 4;
+    if(hPos > x && hPos < end) {
+      end = hPos;
+    }
+    return end;
+  };
+
+  // Wait loops spin until an interrupt handler or the display changes what
+  // they test. Two are recognized, by their exact bytes:
+  //   BIT dp; BNE -4                      (a work-RAM flag, 2 instructions)
+  //   LDA $004212; AND #imm; BEQ/BNE -8   (HVBJOY, 8-bit A, 3 instructions)
+  // Within a run of pairs with no dot event nothing can change what they
+  // read: no DMA or HDMA starts, no interrupt is raised, the loop writes
+  // nothing, and HVBJOY's V/H-blank bits change only at event dots (its
+  // auto-joypad bit when that countdown ends, which caps the run; its other
+  // bits are the open bus left by the loop's own previous read). So once
+  // one iteration has been stepped from the same CPU state, with exactly its
+  // own reads and no write in between, the further whole iterations that fit
+  // before the next event are applied at once: the same APU catch-up
+  // additions, auto-joypad countdown, read count and open bus as stepping
+  // them. The measured duration carries over to later runs, but each batch
+  // first checks that what the loop reads now (the flag, or HVBJOY after a
+  // blanking edge) leaves the CPU state unchanged and takes the branch. Only
+  // code and work RAM that no instruction, bus or cartridge hook sees
+  // qualify. Kept in the closure.
+  let spinEnabled = true, spinPrev1 = -1, spinPrev2 = -1, spinPrev3 = -1;
+  let spinStart = -1, spinKind = 0, spinSeen = false, spinMeasured = false;
+  let spinX = 0, spinY = -1, spinReads = 0, spinWrites = 0, spinPairs = 0;
+  let spinFast = false;
+  const spinNot = new Int32Array([-1, -1, -1, -1]);
+  let spinNotAt = 0;
+  const spinRegs = new Int32Array(9), spinNow = new Int32Array(9);
+  this.setSpinWait = function(enabled) {
+    spinEnabled = !!enabled;
+    spinSeen = spinMeasured = false;
+  }
+  const cpuState = (cpu, out) => {
+    out[0] = cpu.r[0];
+    out[1] = cpu.r[1];
+    for(let i = 0; i < 6; i++) {
+      out[2 + i] = cpu.br[i];
+    }
+    out[8] = (cpu.n ? 1 : 0) | (cpu.v ? 2 : 0) | (cpu.m ? 4 : 0) |
+      (cpu.x ? 8 : 0) | (cpu.d ? 16 : 0) | (cpu.i ? 32 : 0) |
+      (cpu.z ? 64 : 0) | (cpu.c ? 128 : 0) | (cpu.e ? 256 : 0);
+  };
+  // The loop kind at pc from its bytes (1: BIT/BNE, 2: HVBJOY poll, 0:
+  // neither), and the reads one iteration of each kind makes.
+  const spinPattern = (snes, pc, m) => {
+    let op = peekPlain(snes, pc);
+    if(op === 0x24) {
+      return peekPlain(snes, pc + 2) === 0xd0 && peekPlain(snes, pc + 3) === 0xfc &&
+        peekPlain(snes, pc + 1) >= 0 ? 1 : 0;
+    }
+    if(op === 0xaf && m) {
+      let branch = peekPlain(snes, pc + 6);
+      return peekPlain(snes, pc + 1) === 0x12 && peekPlain(snes, pc + 2) === 0x42 &&
+        peekPlain(snes, pc + 3) === 0x00 && peekPlain(snes, pc + 4) === 0x29 &&
+        peekPlain(snes, pc + 5) >= 0 && (branch === 0xf0 || branch === 0xd0) &&
+        peekPlain(snes, pc + 7) === 0xf8 ? 2 : 0;
+    }
+    return 0;
+  };
+  const spinIterReads = (kind, m) => kind === 1 ? (m ? 5 : 6) : 9;
+  // The last verified combination (wrapper heads, hook registries, pc, kind,
+  // operand, direct page and width): later visits re-read only the always()
+  // hooks and the loop's bytes.
+  let plainPc = -1, plainDpr = -1, plainM = false, plainCycle = null;
+  let plainRead = null, plainCart = null, plainGate = -1, plainBus = -1;
+  let plainRom = -1, plainBusGate = true, plainKind = 0, plainOperand = -1;
+  const spinPlain = (snes, cpu, pc) => {
+    let cart = snes.cart;
+    if(
+      pc === plainPc && cpu.br[5] === plainDpr && cpu.m === plainM &&
+      peekPlain(snes, pc + 1) === plainOperand &&
+      cpu.cycle === plainCycle && snes.read === plainRead &&
+      cart.read === plainCart && cpu.gateVersion() === plainGate &&
+      busVersion === plainBus && cart.readVersion() === plainRom &&
+      busGateEnabled === plainBusGate
+    ) {
+      return cpu.corePlainNow() && spinPattern(snes, pc, cpu.m) === plainKind ?
+        plainKind : 0;
+    }
+    plainPc = -1;
+    let kind = spinPattern(snes, pc, cpu.m);
+    if(kind === 0 || !spinVerify(snes, cpu, pc, kind)) {
+      return 0;
+    }
+    plainPc = pc;
+    plainKind = kind;
+    plainOperand = peekPlain(snes, pc + 1);
+    plainDpr = cpu.br[5];
+    plainM = cpu.m;
+    plainCycle = cpu.cycle;
+    plainRead = snes.read;
+    plainCart = cart.read;
+    plainGate = cpu.gateVersion();
+    plainBus = busVersion;
+    plainRom = cart.readVersion();
+    plainBusGate = busGateEnabled;
+    return kind;
+  };
+  // Every instruction of the loop runs the plain core and every byte it
+  // reads is plain: its code, and the direct-page flag in bank 0 work RAM
+  // or HVBJOY (no bus hook).
+  const spinVerify = (snes, cpu, pc, kind) => {
+    let bank = pc >> 16, low = pc & 0xffff, size = kind === 1 ? 4 : 8;
+    let starts = kind === 1 ? [0, 2] : [0, 4, 6];
+    for(let k = 0; k < starts.length; k++) {
+      if(!cpu.coreAt(bank, low + starts[k])) {
+        return false;
+      }
+    }
+    for(let k = 0; k < size; k++) {
+      if(peekPlain(snes, pc + k) < 0) {
+        return false;
+      }
+    }
+    if(kind === 2) {
+      return !busHooked(snes, 0x4212);
+    }
+    let a = (cpu.br[5] + peekPlain(snes, pc + 1)) & 0xffff;
+    if(a >= 0x2000 || busHooked(snes, a)) {
+      return false;
+    }
+    if(!cpu.m) {
+      let b = (a + 1) & 0xffff;
+      if(b >= 0x2000 || busHooked(snes, b)) {
+        return false;
+      }
+    }
+    return true;
+  };
+  // Whether an iteration starting now (with the state the last one left)
+  // reads a value that leaves that state unchanged and branches back: BIT
+  // sets N, V and Z from its flag, and the poll's A and flags come from
+  // HVBJOY, read right after its operand's bank byte (0) left the open bus.
+  const spinRepeats = (snes, cpu, pc, kind) => {
+    if(kind === 2) {
+      let val = (snes.autoJoyTimer > 0 ? 0x1 : 0) |
+        (snes.inHblank ? 0x40 : 0) | (snes.inVblank ? 0x80 : 0);
+      return (val & peekPlain(snes, pc + 5)) === (cpu.br[0] & 0xff);
+    }
+    let a = (cpu.br[5] + peekPlain(snes, pc + 1)) & 0xffff;
+    let value = snes.ram[a], top = 0x80;
+    if(!cpu.m) {
+      value |= snes.ram[(a + 1) & 0xffff] << 8;
+      top = 0x8000;
+    }
+    return (cpu.br[0] & value & (top * 2 - 1)) !== 0 && !cpu.z &&
+      cpu.n === (value & top) > 0 && cpu.v === (value & (top >> 1)) > 0;
+  };
+  // At an instruction start at pc (24-bit) that the CPU also started two or
+  // three instructions ago: returns the master-cycle pairs skipped (whole
+  // loop iterations), or 0 to step normally.
+  this.spinWait = function(x, pc, step) {
+    let cpu = this.cpu;
+    if(
+      cpu.waiting || cpu.stopped || (cpu.irqWanted && !cpu.i) ||
+      cpu.nmiWanted || cpu.aboWanted || (pc & 0xffff) > 0xfff7
+    ) {
+      spinSeen = spinMeasured = false;
+      return 0;
+    }
+    if(pc !== spinStart) {
+      if(
+        pc === spinNot[0] || pc === spinNot[1] || pc === spinNot[2] ||
+        pc === spinNot[3]
+      ) {
+        return 0;
+      }
+      let op = peekPlain(this, pc);
+      if(op !== 0x24 && op !== 0xaf) {
+        spinNot[spinNotAt] = pc;
+        spinNotAt = (spinNotAt + 1) & 3;
+        return 0;
+      }
+      spinStart = pc;
+      spinSeen = spinMeasured = false;
+    }
+    let kind = spinPlain(this, cpu, pc);
+    if(kind !== spinKind) {
+      spinKind = kind;
+      spinSeen = spinMeasured = false;
+    }
+    if(kind === 0) {
+      spinSeen = spinMeasured = false;
+      return 0;
+    }
+    let iterReads = spinIterReads(kind, cpu.m);
+    cpuState(cpu, spinNow);
+    let same = spinSeen && spinFast === this.fastMem;
+    for(let i = 0; i < 9 && same; i++) {
+      same = spinNow[i] === spinRegs[i];
+    }
+    if(!same) {
+      spinMeasured = false;
+    } else if(
+      !spinMeasured && this.yPos === spinY && x > spinX &&
+      spanEnd(this, spinX) >= x && writeSerial === spinWrites &&
+      readSerial - spinReads === iterReads
+    ) {
+      // Exactly one iteration (its own reads, its branch taken back here)
+      // since the last visit.
+      spinPairs = (x - spinX) >> 1;
+      spinMeasured = true;
+    }
+    spinSeen = true;
+    spinX = x;
+    spinY = this.yPos;
+    spinReads = readSerial;
+    spinWrites = writeSerial;
+    spinFast = this.fastMem;
+    spinRegs.set(spinNow);
+    if(!spinMeasured || !spinRepeats(this, cpu, pc, kind)) {
+      return 0;
+    }
+    let room = spanEnd(this, x) - x;
+    if(kind === 2 && this.autoJoyTimer > 0) {
+      // HVBJOY's auto-joypad bit must stay set for every read.
+      let left = this.autoJoyTimer - 2 * spinPairs;
+      room = Math.min(room, left > 0 ? left : 0);
+    }
+    let k = Math.floor(room / (2 * spinPairs));
+    if(k < 1) {
+      return 0;
+    }
+    let pairs = k * spinPairs;
+    this.apuCatchCycles = addRepeated(this.apuCatchCycles, step, pairs);
+    if(this.joypadStrobe) {
+      this.joypad1Val = this.joypad1State;
+      this.joypad2Val = this.joypad2State;
+    }
+    if(this.autoJoyTimer > 0) {
+      let t = this.autoJoyTimer, n = (t + 1) >> 1;
+      this.autoJoyTimer = t - 2 * (pairs < n ? pairs : n);
+    }
+    readSerial += k * iterReads;
+    // Each iteration ends by reading its branch offset.
+    this.openBus = kind === 1 ? 0xfc : 0xf8;
+    this.xPos = x + 2 * pairs;
+    spinX = this.xPos;
+    spinReads = readSerial;
+    return pairs;
   }
 
   this.getAccessTime = function(adr) {
