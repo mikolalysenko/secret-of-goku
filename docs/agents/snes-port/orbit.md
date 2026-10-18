@@ -403,8 +403,8 @@ are untouched).
 
 | Resource | Use |
 | --- | --- |
-| Code `$A7:8000-DB07` | `!CODE_ORBIT`: 23.3 KiB of 31 KiB; bindings at `$A7:FC00-FCBA` |
-| Data `$E7:0000-5BF3` | stars, asin rows, chord scales, rim tables, palettes, star tiles, heading/step tables, burst parts and offsets, text maps, finale tables (23 KiB of 32 KiB) |
+| Code `$A7:8000-DD4A` | `!CODE_ORBIT`: 23.9 KiB of 31 KiB; bindings at `$A7:FC00-FCBA` |
+| Data `$E7:0000-615F` | stars, asin rows, chord scales, rim tables, palettes, star tiles, heading/step tables, burst parts and offsets, text maps, finale and fall tables (24.4 KiB of 32 KiB) |
 | ROM `$F6:0000-7FFF` | Mode 7 globe VRAM image (32 KiB) |
 | ROM `$F7:0000-F14E` | fight line tables (41 KiB), resident effect cells, Death Ball frames, text tiles, band tiles (60 KiB of 64) |
 | ROM `$FA:8000-` | Goku's orbit poses, descent and fall cells, aerial-melee cells; Frieza's tiny and full frames (27 KiB) |
