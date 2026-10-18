@@ -126,6 +126,7 @@ core_boot:
 	PHP
 	REP #$30
 	JSR core_clear_wram
+	JSR core_live_check
 	PLP
 	JML $C10010
 

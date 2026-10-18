@@ -22,6 +22,7 @@
 !persist_goku_active = !PERSIST_CORE+$01 ; 1 once Goku has replaced the boy (arrival impact)
 !persist_ssj_lock    = !PERSIST_CORE+$02 ; 1 after the permanent Frieza-story transformation
 !persist_scouter     = !PERSIST_CORE+$03 ; bit0 owned (Sylphid), bit1 enabled
+!persist_magic       = !PERSIST_CORE+$3E ; word 'GK' ($4B47): written by this cartridge; boot clears a block without it
 
 ; Volatile SRAM work areas (contents undefined at boot; owners clear them).
 !SRAM_WORK_CORE   = $317480   ; $0180 core / misc (through $3175FF)
