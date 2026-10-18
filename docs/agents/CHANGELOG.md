@@ -9,10 +9,16 @@
   event scripts, including scripted whip-pad crossings.
 - Reserve more vblank time around Goku's cell upload. A deferred pose no
   longer forces an upload merely because it waited one frame.
-- The integrated walking and ordinary-flight cases now meet every video
-  frame. Crowded punch/ki and teleport cases improve further; rapid ki fire
-  during flight remains the largest measured CPU bottleneck. Core cadence,
+- The integrated walking, combat and flight cases improve, but still miss
+  some video frames in crowded scenes. Rapid ki fire during flight remains
+  the largest measured CPU bottleneck. Core cadence,
   input, menus, sound/events, world, save and lag regressions pass.
+
+The final audit corrected the moved calls' actor-data bank and selected
+phases 1/2 for the companions. The cadence test now checks actual native
+timer progress as well as entry counts; it rejects the earlier experimental
+build. Final measurements are in the
+[gameplay performance review](snes-port/gameplay-performance.md).
 
 ## SNES teleport responsiveness (2026-10-18)
 

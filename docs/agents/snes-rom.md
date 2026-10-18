@@ -5,6 +5,8 @@ overlay) to a single `.sfc` that runs on real hardware and mainstream
 emulators. Spoilers follow the rest of `docs/agents/`.
 
 Work streams, hardware strategies and status: [snes-port/plan.md](snes-port/plan.md).
+Current Goku movement, audio and frame-budget review:
+[gameplay performance](snes-port/gameplay-performance.md).
 
 ## Goal and constraints
 

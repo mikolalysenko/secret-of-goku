@@ -325,9 +325,9 @@ if not(defined("CORE_PARTY_SYNC"))
 	LDA.l !persist_goku_active
 	BEQ .sprites_start
 	LDA $56
-	CMP.b #0
+	CMP.b #1
 	BEQ .girl
-	CMP.b #4
+	CMP.b #2
 	BNE .sprites_start
 	LDX.w #$0400
 	BRA .party
@@ -346,7 +346,7 @@ endif
 
 if not(defined("CORE_PARTY_SYNC"))
 ; Retain the native once-per-five-frame party update rate, putting the
-; girl in phase 0 and the sprite in phase 4 while Goku is active. Movement,
+; girl in phase 1 and the sprite in phase 2 while Goku is active. Movement,
 ; collision and OBJ construction still run for the whole party every frame.
 ; CORE_PARTY_SYNC restores the original phase-3 burst for comparisons.
 core_party_pair:
@@ -364,11 +364,16 @@ core_party_pair:
 .done
 	RTL
 core_party_actor:
+	PHB
+	LDA.b #$7E                  ; F4AB normally supplies the actor-data bank
+	PHA
+	PLB
 	PHK
 	PER .done-1
 	PEA $B294-1
 	JML $80F4CB
 .done
+	PLB
 	RTS
 endif
 
