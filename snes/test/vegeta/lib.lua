@@ -11,7 +11,7 @@ function V.gokuActive(on)
 end
 
 -- Native door request through the core service (idle field frame).
-function V.door(id) H.w16(0x7E6E8E, 0x8000 | 0x0800 | id) end
+function V.door(id) H.w16(0x317490, 0x8000 | 0x0800 | id) end   -- !core_event_req (battery RAM, core/core.asm)
 
 function V.map() return H.r16(0x7E00DC) end
 function V.hero() return H.r16(0x7EE002), H.r16(0x7EE004) end
