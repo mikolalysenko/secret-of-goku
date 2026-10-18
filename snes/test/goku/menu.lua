@@ -8,12 +8,19 @@
 -- player's X to native Y, as the browser mod; combat.md) -> config ring ->
 -- item `rot` (2 Status, 4 Action Grid) -> B. Goku's ring opens on the
 -- config ring; the native boy's opens on his weapon ring, one ring above.
+-- With Goku inactive the player's Y is the game's own ring button (combat
+-- remaps it to ki only while Goku is player 1's character). X would go
+-- through combat's remap, which then masks X only after its frame has seen
+-- the press: when the game polls the ring button first, the press arrives
+-- as native X and opens member 1's ring (one press frame in five; goku.md,
+-- Requests). With Goku active X is masked up front.
 local function ring_item(rot, on, form)
   G.import('barrier-audit__potos-probe')
   if on then G.on() else G.off() end
   H.w8(G.addr.form, form or 0)
   H.wait(10)
-  H.tap('x', 6, 50)
+  H.tap(on and 'x' or 'y', 6, 50)
+  G.check(H.r8(0x7E1808) == 0, "the boy's ring")
   if not on then H.tap('down', 4, 40) end
   for _ = 1, rot do H.tap('left', 4, 30) end
   H.tap('b', 4, 150)

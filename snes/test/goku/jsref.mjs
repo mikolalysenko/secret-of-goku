@@ -32,7 +32,10 @@ function atlas(name){
 
 // steps: [{buttons, frames, shot}] ; returns per-shot info
 // sramState: another state whose cartridge SRAM (saved games) replaces this one's.
-export async function renderJsRef({state,outDir,superSaiyan=false,steps,goku=true,sramState=null}){
+// introHero: {x,y,column,row} (or a function of the frame) drawn as frieza.js
+// does for its scene follower: actor 0's own sprites hidden (not the HUD
+// portrait), the current form's cell blitted with its anchor at (x, y).
+export async function renderJsRef({state,outDir,superSaiyan=false,steps,goku=true,sramState=null,introHero=null}){
   mkdirSync(outDir,{recursive:true});
   const rom=new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')));
   const s=loadCore(rom);
@@ -51,6 +54,16 @@ export async function renderJsRef({state,outDir,superSaiyan=false,steps,goku=tru
     get status(){const x=read16(0xe002),y=read16(0xe004),sx=read16(0xe020)<<16>>16,sy=read16(0xe022)<<16>>16;return{map:read16(0xdc),x,y,screenX:sx,screenY:sy,cameraX:x-sx,cameraY:y-sy};},
     get canAttack(){return read8(0xe4)===1&&read8(0xe5)===1&&(read8(0xe000)&1)!==0&&(read8(0xe02c)&1)!==0&&(read8(0xec)&0xfe)===0&&!(read8(0xed)&0x40)&&read8(0xd0)===0&&!(read8(0xe190)&0x70)&&!(read8(0xe191)&0xd5);},
   };
+  if(introHero){
+    const pose=()=>typeof introHero==='function'?introHero(mod.frame):introHero;
+    mod.frieza={
+      get introHero(){return pose();},ownsArena(){return false;},treeScene:false,
+      hideOwner(owner){return !!pose()&&owner?.base===0xe000&&owner.kind!=='portrait';},
+      draw(layer){const f=pose();if(!f)return;const sheet=mod.options.superSaiyan?'ssj':'goku';
+        layer.blit(sheet,f.column,f.row,f.x-16,f.y-31);
+        layer.plan.sprite={x:f.x-16,y:f.y-31,width:32,height:32,sheet,row:f.row,column:f.column,kind:'introFlight'};},
+    };
+  }
   const layer=new w.ManaSpriteLayer(s,mod);
   layer.drawKiAura=drawKiAura;
   layer.atlas={goku:atlas('goku'),ssj:atlas('ssj')};
