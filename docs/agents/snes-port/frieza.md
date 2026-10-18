@@ -236,19 +236,31 @@ of the world's (the same within a cell, repeating per cell).
 
 Original code patched:
 
-- `C1:E7F2` (4, `LDA $C83002,X`, door table): door 3FC's entry byte is 36
-  while the Emperor is present.
+- Door 3FC's entry byte is 36 while the Emperor is present: with destroy's
+  door record patch (`C1:E7DF`, 25 bytes) through `!DOOR_RECORD_HOOK =
+  frieza_door_record` (defined at the top of `modules.asm`); builds without
+  it (no `DESTROY_DOOR_HOOK` or `SS_ESCAPE_DOOR` define) patch `C1:E7F2`
+  (4, `LDA $C83002,X`) themselves.
 - `C1:E77B` (6, `REP #$30 / PHX / CMP #$0800`, event dispatcher): the
   finale death gate (events 7FF, 42D, 42F skipped while a finale death
-  runs; `JML $C1E7C5`).
+  runs; `JML $C1E7C5`), built only without the ending module, whose own
+  gate at `C1:E77E` does the same.
+
+Include order (`modules.asm`): before combat, which binds its damage hook
+to `!COMBAT_HOOK_DAMAGE`, and before vegeta, which chains the hook bound
+before it.
 
 ## API
 
 Story hooks (all `FRIEZA_*`, `BEAST_CHOOSE_*`, `BEAST_VICTORY`,
 `OBJECT_FRIEZA`) and queries (all `FRIEZA_*`, `BEAST_*`) are defined in
 `module.asm`. The trial staging of map 246 (Dyluck, Thanatos), which the
-story catalogue lists under `OBJECT_TRIAL`, is part of `OBJECT_FRIEZA`
-because the trial is Frieza's.
+story catalogue lists under `OBJECT_TRIAL` (hook 49, left a stub), is part
+of `OBJECT_FRIEZA` because the trial is Frieza's: records 0 and 1 get bytes
+2-3 `$978F` / `$9792` while the trial runs or is pending, else every record
+is hidden while Frieza is active or his entrance pending, the two exclusive
+cases of `native-story.js` storyRead (no story overlay touches map 246, so
+the earlier position in the overlay order changes nothing).
 
 Dispatch: `modules_field_frame` -> `frieza_field_frame`,
 `modules_field_nmi` -> `frieza_field_nmi`, `modules_load` ->
@@ -266,6 +278,7 @@ Dispatch: `modules_field_frame` -> `frieza_field_frame`,
 | `frieza_api_encounter` | JSL, M16/X16, D = 0, any DB. A16: low byte the dangerous fight now (`battle-retry.js` `encounter()`): 0 none, 1 Frieza's ground fight (stage battle on 246, no surge, not in space), 2 the empowered Thanatos (species 121 alive on 246), 3 the Mana Beast (127 on 253); high byte Frieza's tier with 1 (`frieza:<tier>`). X, Y, DB kept |
 | `!fzd_key` | WRAM byte: the key of the death in progress (or the last fight Goku could act in on 246/253); also passed to `ending_lose` in X |
 | `frieza_q_crisis` | `STORY_Q_FRIEZA_CRISIS` (`frieza.crisisActive`): 1 from the core's impact (event D7, `newCoreCrisis`) until the wish repairs the core (`FRIEZA_REPAIR_CORE`); a restored preset that is stolen or permanent gets it active unless the wish was made (`restore()`'s fix-up). The ending's bad presets read it for the night globe |
+| `frieza_door_record` | `!DOOR_RECORD_HOOK` (destroy's door record): JSL, M16/X16, D = 0, X = door * 4, A = record bytes 0-1, Y = bytes 2-3; door 3FC's byte 2 becomes 36 while the Emperor is present. Returns A and Y, keeps X |
 | `frieza_combat_damage` | `!COMBAT_HOOK_DAMAGE`: A16 = Goku's damage, X16 = actor -> A16 (the Beast 1/2 or 1/8, the empowered Lich 1/4) |
 | `!fzx_pending` | WRAM word: the eruption damage the module queued on Goku (for a receive hook that must not cap it) |
 
@@ -326,6 +339,15 @@ floor on request.
   preset.
 - **Large bursts**: fx's 14 effect slots and the sprite limits show part of
   the browser's nine-burst clusters.
+- **The revive needs no snapshot**: the browser copies Primm's and Popoi's
+  `$x180-$x1FF` at the showdown (`s.primm`, `s.popoi`) and writes them back
+  at the revive. On the cartridge the native ops already give that block:
+  REMOVE (`2C`) leaves it, ADD (`2B`) keeps level, experience, equipment and
+  magic of a companion who joined before and recomputes the stats from the
+  level (tested with planted values: level 20 and strength `$77` came back
+  as level 20's own stats; with real data only `$x1B9` changed). The revive
+  then refills HP and clears the status as the browser does; `$x1B9` (reset
+  by REMOVE) is the one byte the browser would restore.
 
 - **Song changes stall the game loop**: the native loader uploads a song on
   the main thread (audio.md, Load time). Frieza's cues cut the old song
@@ -376,9 +398,15 @@ floor on request.
 - **audio**: the cue changes happen mid-scene (the altar reveal, the fight
   start, the gold aura); an upload spread over several frames (or the
   Frieza songs' instruments kept resident) would remove the stall.
-- **core**: OBJ tiles `$0C0-$0FF` as a scene-scoped VRAM region in the
-  pool, so other modules can see the claim; the same for BG tiles
-  `$1C0-$1CF` on map 246.
+- **core**: OBJ tiles `$0C0-$0FF` (words `$6C00-$6FFF`, OBJSEL `$63`) as a
+  scene-scoped VRAM region in the pool, so other modules can see the claim:
+  natively part of the actor cell streamer's fixed area (`C1:950D`,
+  immediates `C1:9FB4-A3E4`, `C1:A709-A78D`, `C1:AF7F-AFDF`), which no
+  active actor uses in Frieza's scenes (maps 246, 255, 418, 431, 237, 253,
+  195, the vista on 236); held from the first upload of a scene until it
+  ends or the map or mode changes. The same for BG tiles `$1C0-$1CF`
+  (words `$1C00-$1CFF`, char base 0) on maps 246 and 255, free in their
+  graphics sets for the whole stay once the map's own load is done.
 - **debug**: one `ANY` slot serves every module: Frieza takes it and
   forwards unanswered kinds to `combat_debug_hook`; a module added later
   (vegeta, orbit, ending) must join that chain, or the debug module could
@@ -387,7 +415,6 @@ floor on request.
   the door frame with Goku still at the altar's coordinates (party0.pos
   248,442 expected, 232,242 captured; the picture 240 frames later matches
   100%). The wait should also require the load to finish (`$FF`, fade).
-- **integration**: a 256-byte persistent extension for the browser's
-  showdown snapshot of Primm's and Popoi's stats (`frieza.js` `s.primm`,
-  `s.popoi`). Without it the revive only refills their HP and clears
-  their status.
+- **story**: hook 49 `OBJECT_TRIAL` is listed for vegeta; it is Frieza's
+  and answered inside `OBJECT_FRIEZA` (API), so the catalogue can name
+  frieza or drop it.
