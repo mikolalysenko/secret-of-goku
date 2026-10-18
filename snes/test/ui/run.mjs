@@ -11,6 +11,7 @@
 //   radar     world flight: band panel and dial against dragon-radar.js
 //   place     dialogue window placement above the HUD (native-window.js)
 //   scouter   Goku's Targeting ring item as the scouter switch, scan joke
+//   text      R batches native glyphs, release/L+R, deferred DMA, raster/CPU
 //   status    Goku's STATUS page: BG2 against native-status.js statusPixels
 //             (base form and Super Saiyan), menu frame rate, leaving it
 //   nocrash   production build from the arrival checkpoint (a savestate of
@@ -222,6 +223,7 @@ const cases={
       const r=await runMesen({rom,state,test:pre+lib+'\n'+readFileSync(join(here,'ff.lua'),'utf8'),outDir:join(outRoot,name),timeoutMs:600000});
       cleanupRom(rom);
       const q=r.results??{};
+      fails.push(...resultFails(q));
       if(r.code!==0||q.error){fails.push(`${name}: mesen ${q.error??r.output.slice(-300)}`);continue;}
       if(q.queued!==1||!q.started)fails.push(`${name}: event 134 not started (queued ${q.queued})`);
       if(hold){
@@ -231,6 +233,34 @@ const cases={
       notes.push(`${name}: D0 ${q.d0?.toString(16)}, CFC3 ${q.gift}, choice window ${q.choice}`);
     }
     report('ff',!fails.length,[...fails,...notes]);
+  },
+
+  async text(){
+    const state=join(process.env.SNES_CHECKPOINTS??join(mainCheckout(),'.local/snes-checkpoints'),'potos.mss');
+    const sym=Object.fromEntries(readFileSync(testRom.replace(/\.sfc$/,'.sym'),'utf8').split('\n')
+      .map(l=>l.match(/^([0-9A-F]{2}):([0-9A-F]{4}) (\S+)/)).filter(Boolean)
+      .map(m=>[m[3],parseInt(m[1]+m[2],16)]));
+    const SYM={ui_sc_frame:sym.ui_sc_frame,ui_ff_text:sym.ui_ff_text,ui_ff_text_complete:sym.ui_ff_text_complete,ui_ff_text_complete_end:sym.ui_ff_text_complete_end,core_flush_auto:sym.core_flush_auto};
+    const fails=[],notes=[],runs=[];
+    for(const [hold,defer,native] of [[null,false,false],['r',false,false],['l r',false,false],['mid',false,false],['r',true,false],['r',false,true]]){
+      const name=`text-${hold?.replace(' ','-')??'normal'}${defer?'-deferred':''}${native?'-native':''}`, rom=privateRom(testRom,`ui-${name}`);
+      if(native){
+        const bytes=readFileSync(rom),original=readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc'));
+        for(const at of [0x15f,0x1175])for(const mirror of [0,0x400000])original.copy(bytes,mirror+at,at,at+6);
+        writeFileSync(rom,bytes);
+      }
+      const pre=`HOLD=${hold?lua(hold):'nil'}\nSYM=${lua(SYM)}\nDEFER=${defer}\n`;
+      const r=await runMesen({rom,state,test:pre+lib+'\n'+readFileSync(join(here,'ff-text.lua'),'utf8'),outDir:join(outRoot,name),exactFrames:true});
+      cleanupRom(rom);
+      const q=r.results??{};runs.push(q);fails.push(...resultFails(q));
+      if(r.code!==0||q.error)fails.push(`${name}: ${q.error??r.output.slice(-300)}`);
+      notes.push(`${name}: ${q.glyphs} glyphs in ${q.reveal_frames} frames, max ${q.max_glyphs}/frame, queue CPU ${q.text_cpu?.max?.toFixed(2)}, reveal CPU ${q.reveal_cpu?.max?.toFixed(2)}, frame CPU ${q.text_frame_cpu_max?.toFixed(2)} lines, lag ${q.lag_frames}`);
+    }
+    if((runs[1].max_glyphs<8||runs[1].max_glyphs>9)||runs[0].max_glyphs!==1||runs[2].max_glyphs!==1)fails.push('R must batch eight glyphs; normal and L+R must keep native speed');
+    if(runs.some(q=>q.lag_frames>runs[5].lag_frames))fails.push('text batching added lag frames');
+    if(!(runs[1].reveal_frames<runs[0].reveal_frames*.65))fails.push('R reveal did not accelerate enough');
+    if(runs.some(q=>q.raster!==runs[0].raster||q.glyphs!==runs[0].glyphs))fails.push('revealed window differs from native text');
+    report('text',!fails.length,[...fails,...notes]);
   },
 
   async mul(){

@@ -17,7 +17,7 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 | Scouter option and readouts | Switch done (`scouter.asm`): Goku's Targeting ring item reads "Scouter: ON/OFF" and toggles the saved switch, a scan (teleport sound) tells King Kai's joke for the form once; the power-level readouts and Analyzer hits are not drawn yet (OBJ VRAM, see the core requests) |
 | Goku's STATUS page | Done (`status.asm`): BG2 as the browser shows `statusPixels()`, pixel-identical but for 2–3 cells per page whose fourth colour shows as its nearest; built band by band in about 55 frames with the menu at 60 Hz |
 | Dialogue window placement | Done (`place.asm`): the scene's windows move above the HUD when the first one would cover more faces where it is, as `window-placement.js`; moved window pixel-identical to the native one, HUD untouched |
-| R fast-forward | Auto-confirm done (`ff.asm`): R held in a scene hides R, pulses B on two of every eight frames for prose and stops at choices, as `scene-fast-forward.js`'s input filter; the browser's 12× emulation speed has no cartridge equivalent and instant text is not done (the text engine's limits are traced below) |
+| R fast-forward | Done (`ff.asm`, `ff-text.asm`): R hides R, batches eight prepared glyphs per upload and auto-confirms prose; choices stop. The browser's 12× emulation speed becomes faster text without skipping event commands. |
 
 ## One source of truth: `snes/gen/ui.mjs`
 
@@ -370,20 +370,44 @@ interpreter shows prose (`$D0` = `$81` text engine or `$83` button wait)
 and its window holds no choice (`story_api_window_has_choice`, rescanned
 when `$D1-$D3` moves), B is injected on two of every eight field frames
 (`!core_pad_inject`), as `scene-fast-forward.js` pulses it. During
-Frieza's input lock (story query `FRIEZA_INPUT_LOCKED`) R is hidden and
-prose is pulsed without the choice check, as in the browser. Story flags
-and choices are untouched: the native interpreter runs every event command.
-Built out when the story module's reference copy is (`-DSTORY_FAST_FORWARD`).
-Not done: the browser also runs these frames up to 12× faster, and the
-cartridge has no instant-text mode. Traced: the native text engine (per
-frame from `C0:0140`, text pointer `$1D01-$1D03`) draws a glyph in
-sub-steps (`$A15D` through the handlers at `$1A0C`, entered from the
-glyph opcode `C0:111A`; in Mode 7, `$A162` = 1, they all run in one
-frame), then requests the NMI's upload of it (`$1D04` bit 1, `$1D06` /
-`$1D08` from `$9400`) and processes nothing until that is done, so prose
-prints at most one glyph per vblank. An instant mode would need a path
-that renders many glyphs into the window buffer and uploads whole rows;
-not attempted.
+Frieza's input lock the same choice check applies, so a locked scene also
+stops at choices. Built out when the story module's reference copy is
+(`-DSTORY_FAST_FORWARD`). Story flags and event commands are untouched.
+
+`ff-text.asm` accelerates the native Mode 1 reveal step at `C0:1175`.
+The preceding substeps (`C0:1150–1174`) have already composed a line of
+8×16 glyphs into `$7E:9000`; the ordinary reveal copies one 32-byte glyph
+from `$A189` to `$9400`, maps it through `C0:13A0`, and waits for NMI.
+With R held, L up, and a matching cached prose/choice scan, the hook queues
+up to **eight glyphs / 256 bytes** directly from that prepared line through
+`core_queue_vram`. It stops at the native line or text-run boundary. New
+or unknown windows use the native path until the field callback scans them.
+Mode 7 retains its native bulk-text path.
+
+A word at SRAM `+$2F2` (`$F100 | count`) retains the pending run;
+`!UIS_TEXT` in WRAM identifies its owner, so the STATUS page can reuse
+that staging address without being mistaken for a pending text upload. A hook at
+`C0:015F`, before the text engine pushes DB/D, waits until the DMA queue
+has drained before updating the native glyph pointers and mapping the run.
+This protects both the source and the tilemap when vblank defers an upload:
+no unuploaded glyph is exposed. Rendering and tilemap composition stay on
+the CPU path; the vblank queue only transfers bytes. The next run can be
+queued on the completion frame. A final single glyph uses the native path,
+so a frame can reveal eight queued glyphs plus one native glyph. Releasing
+R allows an already queued run to finish, then resumes native speed. L+R
+keeps native speed. No message-speed preference is changed.
+
+Measured from the same Potos state, first page of event `$134`: **63 glyphs
+in 32 reveal frames with R, versus 83 with native text** (66 frames from
+requesting the event, including window opening and line composition).
+The eight-glyph mapping costs at most **23.7 scanlines**; queue submission
+about **1.7**, and a final native glyph about **9.1**. The combined
+text hooks peak at **32.3 scanlines in one frame**. The maximum data per
+batch is 256 bytes (about 1.5 scanlines of DMA bus time, plus queue setup).
+A whole-line experiment reached 71.7 lines and added lag, so the shipped
+batch is eight. The test sees 13 native lag frames with R both before and
+after this change (12 without R); that extra frame already occurs with the
+existing R input filter. No additional lag comes from batching.
 
 ## Idle frames (`idle.asm`)
 
@@ -467,7 +491,7 @@ byte boundary.
 | Code/data `$AC:8000-` | `!CODE_UI`: `$AC:8000-$DF01` used (about 24 KiB: code, 5 KiB compressed messages, radar tables, the STATUS page's 3.8 KiB of code and 1.2 KiB of tables); about 8.2 KiB left |
 | Extended data | six blobs, 9.3 KiB, placed by the build (today `$7D:0000-$7D:255F`): field glyph atlas, window tiles, world atlas, dial tiles, the STATUS page's window cells and tilemap |
 | WRAM `$7E:7E40-$7E:7EFF` | `!RAM_UI`: state, current message, cooldowns, band/radar state, scratch, `!ui_magic` (`module.asm`), fast-forward (`+$A6`), window placement (`+$AA`), scouter (`+$AE`), STATUS page (`+$B0`–`+$B7`); in menus the world and radio scratch words serve the STATUS composition |
-| SRAM `$33:7C00-$33:7FFF` | staging: window/band rows (`+$000`), the radio's HDMA table, the moved window's colour records or moved natives (`+$200`), text words (`+$240`), radar trig cache (`+$2E8`), build state (`+$2F4`), radar key (`+$2FC`), bearing inputs (`+$2FE`, `+$308`), placement scroll table and the game's channel 0/1 tables (`+$312`, `+$322`), queue (`+$340`), band and sky HDMA colour blocks (`+$3C0`, `+$3DC`); while the STATUS page is built (menus) `+$000`–`+$335` hold its strings, CGRAM copy, band records, cell masks and upload buffer (the radio and radar rebuild theirs; the queue and the band blocks are kept); UI_TEST builds: test isolation (`+$33C`, `+$33E`) |
+| SRAM `$33:7C00-$33:7FFF` | staging: window/band rows (`+$000`), the radio's HDMA table, the moved window's colour records or moved natives (`+$200`), text words (`+$240`), radar trig cache (`+$2E8`), pending text DMA (`+$2F2`), build state (`+$2F4`), radar key (`+$2FC`), bearing inputs (`+$2FE`, `+$308`), placement scroll table and the game's channel 0/1 tables (`+$312`, `+$322`), queue (`+$340`), band and sky HDMA colour blocks (`+$3C0`, `+$3DC`); while the STATUS page is built (menus) `+$000`–`+$335` hold its strings, CGRAM copy, band records, cell masks and upload buffer (the radio and radar rebuild theirs; the queue and the band blocks are kept); UI_TEST builds: test isolation (`+$33C`, `+$33E`) |
 | SRAM persistent | `!PERSIST_UI` = `!PERSIST_MISC+$80` (`$31:6380`, `$60` bytes) — **request** |
 | VRAM (field) | BG3 tiles `$110-$113`, `$122-$1BF` and rows 1–8 / 17–24 while the window shows |
 | VRAM (STATUS page) | BG2 tilemap `$5800-$5B7F`, tiles `$040-$053` (window cells) and `$054` up (composed cells, two per cell: up to about `$330`, VRAM `$6200-$7980`) |
@@ -475,7 +499,7 @@ byte boundary.
 | CGRAM | field: colours 9–11, 13–15 on lines 0–205 while the window shows (HDMA); world: 9–15 on lines 145–223 while the band shows (HDMA), OBJ palette 3 colours 1–6 for the dial; STATUS page: 16–31 (BG2 palettes 4–7) |
 | HDMA | channel 5 in the field (`$2C` bit 5) for the radio; channels 0/1 (the game's window HDMA, reprogrammed, `$2C` bits 0–1) while a native window is moved; channel 6 in world flight (`$2C` bit 6) |
 | IRQ | world flight: `C0:8A4B` hijacked (6 bytes, `%orig4`-checked); V=152 / V=216 at H=160 while the band shows |
-| Patched code | `C0:8A4B` (world IRQ, 6 bytes), `C0:73F4` (ring option dispatch, 5 bytes), `C0:1926` (string reference pointer, 4 bytes), all `%orig`-checked |
+| Patched code | `C0:8A4B` (world IRQ, 6 bytes), `C0:73F4` (ring option dispatch, 5 bytes), `C0:1926` (string reference pointer, 4 bytes), `C0:015F` (pending text DMA guard, 6 bytes), `C0:1175` (glyph reveal, 6 bytes), all `%orig`-checked |
 | OAM (world flight) | 12–14 module slots for the dial (first module slots) plus a slot per native moved behind it (at most 8); none in menus (Goku's menu figures keep entries 120–127) |
 
 Persistent layout (`!PERSIST_UI`): `+$00` flags (first flight, power intro
@@ -501,7 +525,8 @@ ignored and counted, since the browser references model the radio alone.
 | `roll` | saved attempt count and xorshift state (attempts 48–52): the 10% rolls win on attempts 50 and 52 on the same frames, rotation continues from the saved index, the attempt count is saved |
 | `nocrash` | production build from `.local/snes-checkpoints/after-arrival.mss` (a savestate of another build: stale UI WRAM) and from `preset__sword`, while Goku walks: a dispatched frame per video frame, no code running from low RAM, the UI block set up |
 | `mul` | the rotation's multiplier routine against exact integer products (47 cases) |
-| `ff` | from `potos.mss` (a NEW GAME, Goku made active), Luka's menu (`$134`): with R held the spear gift's prose is confirmed (`$CFC3` = 1) and the interpreter waits on the menu's choice (`story_api_window_has_choice`); without input the prose waits (`$D0` = `$83`) |
+| `ff` | from `potos.mss` (a NEW GAME, Goku made active), Luka's menu (`$134`): with R held the spear gift's prose is confirmed (`$CFC3` = 1) and the interpreter waits on the menu's choice (`story_api_window_has_choice`); without input the prose waits (`$D0` = `$83`); an additional 240 R-held frames leave the choice pointer unchanged |
+| `text` | First page of `$134`: native, R, L+R, R pressed/released mid-line, and a three-vblank deferred upload; all 16,384 window pixels (including palette indices) and all 63 mapped glyphs equal the native result. Counts glyphs/frame, CPU and lag against an R-held run with the two new hijacks restored to original bytes. The deferred run holds its source and tilemap until DMA completes. |
 | `place` | `preset__late` (Goku under the window: lower) and `potos.mss` (Luka's window covers nobody: native), event `$134` through the story API, each against a reference run with placement off: the moved window's 10,124 opaque pixels equal the native window's, the HUD (lines 199–223) and lines 7–50 are unchanged; every frame with a window up in the lower scene (1,952, through pages, Luka's menu, its choice box and the closing windows) is checked at the display level (a BG3VOFS HDMA write on line 7) unless its vblank ended late with no window channel running; switching placement off gives the game's channel setup back and the window returns; after the scene the session closes, the channels and `$2C` are the game's; potos frame-identical but for sprites (ambient creatures follow the RNG, which advances with idle CPU time) |
 | `scouter` | `barrier-audit__potos-probe` with Sylphid's powers: the ring opens on Goku's configuration ring, Targeting's title pointer is `ui_sc_title_off` (bank `$AC`), B switches it on (saved bit, the ring stays on the item, title now `ui_sc_title_on`), closing the ring scans once and King Kai says the joke for Goku's form and gi (`SCOUTER_GOLD` or `SCOUTER_GOKU_0/1`, saved); switching off and on again scans without repeating it |
 | `status` | `barrier-audit__potos-probe`, base form and Super Saiyan: Goku's STATUS page opened from the ring; BG2 decoded from VRAM and CGRAM equals `statusPixels()` of the same values (one row up, as the browser paints it) on every pixel but the conflict cells' (2 and 3 cells, 18 and 62 pixels as their nearest colour; shape always exact); the menu runs every frame while the page is built (53 and 56 frames); X leaves the page, the session ends and CGRAM 17–31 match a round trip with the page kept native (16 pulses) |

@@ -139,6 +139,7 @@ endif
 !UIS_INIT  = $0008            ; WRAM initialised since the last title entry
 !UIS_IDLE  = $0010            ; the last full field frame left nothing to do (idle.asm)
 !UIS_PLACE = $0020            ; window placement has vblank work (!ui_wp NOW/TAKEN/FORCED)
+!UIS_TEXT  = $0040            ; a queued text run owns its source until DMA completes
 
 ; build steps (!ui_s_bstep): one per frame, so a new message or radar text
 ; never costs a frame more than one step
@@ -194,7 +195,7 @@ endif
 !ui_s_hdma  = !SRAM_WORK_UI+$200   ; $40: palette HDMA table (channel 5, mode 3 -> $2121)
 !ui_s_text  = !SRAM_WORK_UI+$240   ; 168 bytes: 3 x 28 glyph words ((code - $80) * 2) of the message
 !ui_s_trig  = !SRAM_WORK_UI+$2E8   ; 10 bytes: heading + 1, sin, cos, |sin|, |cos| (radar cache)
-                                   ; $2F2-$2F3 free
+!ui_ff_upload = !SRAM_WORK_UI+$2F2 ; word: $F100 | glyph count while text DMA is pending
 !ui_s_bkey  = !SRAM_WORK_UI+$2F4   ; word: content staged in !ui_s_map/!ui_s_text (id+1, or $8000|radar key)
 !ui_s_bpar  = !SRAM_WORK_UI+$2F6   ; word: its parameter
 !ui_s_bmode = !SRAM_WORK_UI+$2F8   ; word: 1 field window, 2 world band, 0 nothing staged
@@ -234,6 +235,7 @@ incsrc "radio.asm"
 incsrc "window.asm"
 incsrc "world.asm"
 incsrc "ff.asm"
+incsrc "ff-text.asm"
 incsrc "place.asm"
 incsrc "scouter.asm"
 incsrc "status.asm"
