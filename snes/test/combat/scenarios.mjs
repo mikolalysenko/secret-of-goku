@@ -24,8 +24,11 @@ export const SCENARIOS=[
   // Full Super Saiyan wave (45 frames): 64-frame beam, 6-frame pulses.
   {name:'wave',bundle:RABITES,ssj:true,script:'right:4,l+y:50,none:80'},
   // Focus builds 96 frames; L+A at full power transforms (first reveal: 72
-  // frames, the burst on age 26 hits everything within 56 px).
-  {name:'transform',bundle:RABITES,radial:88,script:'right:20,l:100,l+a:4,l:2,none:90'},
+  // frames, the burst on age 26 hits everything within 56 px). The walk
+  // ends where the browser's does (x 324) on both sides: a lagging field
+  // frame walks 2 px less, and a Rabite 4 px farther stays out of the
+  // burst's reach (and ignores Goku).
+  {name:'transform',bundle:RABITES,radial:88,script:'right:20,l:100,l+a:4,l:2,none:90',pokes:[[22,0x7EE002,324,2]]},
   // Mantis Ant (boss species $57): one jab leaves 1 HP, the native lethal hit
   // starts its own death and the cave's defeat/rescue event; bosses never fly.
   {name:'mantis',bundle:'emulator-probe__map-260-state',script:'up:2,b:2,none:420',

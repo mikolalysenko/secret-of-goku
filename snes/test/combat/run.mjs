@@ -61,7 +61,37 @@ end
 `;
 }
 
+// Cases checked on the cartridge alone (the browser behaviour they follow
+// is pinned by the browser's own tests).
+const CASES={
+  // X / Menu-back closes every options page wherever the ring last stopped
+  // (mana-mod.js panelBack reads the open option $1876; browser f376330):
+  // the same eight page pairs as tests/browser/native-status.spec.mjs.
+  async panel(){
+    const bundle='graphics-audit__party';
+    if(!existsSync(join(importRoot,bundle)))return {skip:`no ${bundle}`};
+    const rom=privateRom(romSrc,'combat-panel');
+    const test=`IMPORT_ROOT=${JSON.stringify(importRoot)}\nPANEL_BUNDLE=${JSON.stringify(bundle)}\n${lib}\n${readFileSync(join(here,'panel.lua'),'utf8')}`;
+    const r=await runMesen({rom,test,outDir:join(outRoot,'panel'),state:join(cps,'waterfall.mss')});
+    cleanupRom(rom);
+    const failures=[...(r.results?.failures??[]),...(r.results?.error?[r.results.error]:[])];
+    const rows=r.results?.rows??[];
+    if(rows.length!==8)failures.push(`${rows.length} of 8 pages tried`);
+    const reported=rows.find(x=>x.first===4&&x.option===2);
+    if(reported&&reported.cursor!==5)failures.push(`Status after option 4 opened at cursor ${reported.cursor}, not 5 (the reported case)`);
+    return {ok:r.code===0&&!failures.length,failures,ms:r.ms,note:rows.map(x=>`${x.first}>${x.option}@${x.cursor}${x.closed?'':' STUCK'}`).join(' ')};
+  },
+};
+
 const results=[];
+for(const [name,run] of Object.entries(CASES)){
+  if(only.length&&!only.includes(name))continue;
+  const c=await run();
+  if(c.skip){console.log(`combat ${name}: skipped (${c.skip})`);continue;}
+  results.push({scenario:name,ok:c.ok,ms:c.ms,failures:c.failures,note:c.note});
+  console.log(`combat ${name}: ${c.ok?'pass':'FAIL'} (${c.ms} ms) ${c.note}`);
+  if(!c.ok)for(const f of c.failures.slice(0,12))console.log('   ',f);
+}
 for(const sc of SCENARIOS){
   if(only.length&&!only.includes(sc.name))continue;
   const state=sourceOf(sc.bundle);

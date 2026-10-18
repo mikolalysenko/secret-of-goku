@@ -772,19 +772,35 @@ cb_menu_x:
 	LDA.l !core_mode
 	CMP.w #!CORE_MODE_MENU
 	BNE .keep
-	; status window / controller editors: ring category 2, entry 5 or 6,
-	; menu interrupt vectors (JML $C020A7 / JML $00C1CF)
-	LDA $0101
-	CMP.w #$20A7
+	; the window and controller editors finish with Start (mana-mod.js
+	; panelBack): settled brightness ($E4 = $E5 = 1), no event, a menu
+	; screen with the menu interrupt vectors (JML $C020A7 / JML $00C1CF),
+	; options ring (category 2) with option 5 or 6 open. $1876 is the open
+	; option; $180A is only the cursor counted from the option the ring last
+	; opened at, so after options 3 or 4 Status read as an editor (Start)
+	; and nothing could close it (browser fix f376330).
+	LDA $E4
+	CMP.w #$0101
+	BNE .keep
+	LDA $0100
+	CMP.w #$A75C                  ; 5C A7 20 C0
+	BNE .keep
+	LDA $0102
+	CMP.w #$C020
+	BNE .keep
+	LDA $0104
+	CMP.w #$CF5C                  ; 5C CF C1 00
+	BNE .keep
+	LDA $0106
+	CMP.w #$00C1
 	BNE .keep
 	SEP #$20
-	LDA $0103
-	CMP.b #$C0
+	LDA $D0
 	BNE .keep8
 	LDA $1809
 	CMP.b #$02
 	BNE .keep8
-	LDA $180A
+	LDA $1876
 	CMP.b #$05
 	BEQ .start
 	CMP.b #$06
