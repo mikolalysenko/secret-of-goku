@@ -9,6 +9,17 @@ pushpc
 org !CODE_COMBAT+$7000
 combat_bind_start:
 
+; teleport.pending also covers recovery camera moves with no teleport
+; action. Keep attacks/focus from starting until its streamed rows arrive.
+cb_bind_camera_pending:
+if defined("FLIGHT_API_CAMERA")
+	LDA.l $7E0000|!fl_hook
+	AND.w #!FLH_CAMERA
+else
+	LDA.w #$0000
+endif
+	RTS
+
 ; ---------------------------------------------------------------------------
 ; Audio (docs/agents/snes-port/audio.md): streamed DBZ cues, Kamehameha
 ; voice and loops. Without the module a few cues fall back to the game's

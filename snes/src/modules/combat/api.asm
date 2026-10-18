@@ -637,6 +637,12 @@ cb_test_mailbox:
 	LDA.l !cbt_owner
 	JSL combat_api_input_lock
 	BRA .done
++	CMP.w #4
+	BNE +
+	JSR cb_targets
+	LDA !ag_list
+	STA.l !cbt_owner
+	BRA .done
 +	LDA.l !cbt_owner
 	JSL combat_api_input_unlock
 .done

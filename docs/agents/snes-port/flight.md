@@ -576,9 +576,10 @@ in WRAM or direct page (shorter addressing), a larger tile cache.
   there; if the trial is meant to allow it, the chamber needs tiles
   `canLand` accepts (or a landing rule of its own in both engines). Frieza
   can post kind 2 until combat's virtual-target API exists.
-- Combat should mirror the browser's `teleport.pending` branch while
-  `!fl_hook` bit 2 is set (no new attacks, the current action only advances);
-  during a teleport it already waits through `cb_ext_kind`.
+- Resolved 2026-10-18: combat mirrors the browser's `teleport.pending`
+  branch while `!fl_hook` bit 2 is set: no new attacks/focus, the current
+  action only advances. `scene` exercises a recovery-camera scroll, holding
+  L+Y during it and checking that charging works once it finishes.
 
 ## Core requests
 

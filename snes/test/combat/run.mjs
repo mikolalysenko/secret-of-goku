@@ -144,6 +144,23 @@ end
 // Cases checked on the cartridge alone (the browser behaviour they follow
 // is pinned by the browser's own tests).
 const CASES={
+  async geometry(){
+    const rom=privateRom(buildTestRom(),'combat-geometry');
+    const test=`IMPORT_ROOT=${JSON.stringify(importRoot)}\n${lib}\n${readFileSync(join(here,'geometry.lua'),'utf8')}`;
+    const r=await runMesen({rom,test,outDir:join(outRoot,'geometry'),state:join(cps,'waterfall.mss')});
+    cleanupRom(rom);
+    const failures=[...(r.results?.failures??[]),...(r.results?.error?[r.results.error]:[])];
+    if(r.results?.queries!==192)failures.push('geometry cases did not finish');
+    return {ok:r.code===0&&!failures.length,failures,ms:r.ms,note:`${r.results?.queries??0} facing/boundary/target eligibility queries`};
+  },
+  async meter(){
+    const rom=privateRom(romSrc,'combat-meter');
+    const test=`IMPORT_ROOT=${JSON.stringify(importRoot)}\n${lib}\n${readFileSync(join(here,'meter.lua'),'utf8')}`;
+    const r=await runMesen({rom,test,outDir:join(outRoot,'meter'),state:join(cps,'waterfall.mss')});
+    cleanupRom(rom);
+    const failures=[...(r.results?.failures??[]),...(r.results?.error?[r.results.error]:[])];
+    return {ok:r.code===0&&!failures.length,failures,ms:r.ms,note:'native stamina/charge HUD cleanup and ki charging'};
+  },
   // X / Menu-back closes every options page wherever the ring last stopped
   // (mana-mod.js panelBack reads the open option $1876; browser f376330):
   // the same eight page pairs as tests/browser/native-status.spec.mjs.

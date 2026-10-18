@@ -81,6 +81,19 @@ unless noted.
 
 ## Runtime
 
+**Gameplay follow-up (2026-10-18).** Goku now clears the native sword's
+stamina percentage, charge latch and charged sparkle before the HUD uploads,
+including native writes made after combat's logic. His ki charge remains
+independent. A recovery/teleport camera follow blocks new attacks and focus,
+matching the browser's pending-camera branch. The input and movement calls
+use the FastROM mirror. Native target checks resolve facing into a rectangle
+once per query and unroll the nine slots; range, inclusive edges, eligibility,
+damage and virtual targets are unchanged. `combat meter` covers the stale
+HUD and ordinary hero fallback; `combat geometry` checks 192 combinations of
+facings, boundaries and excluded targets. Punch, combo, ki, beam, wave,
+transform and Frieza comparison cases pass; `flight scene` checks charging
+during and after recovery-camera movement.
+
 **Clock.** `cb_nmi_vblank` counts field vblanks (`!cb_vblanks`) and stores
 each vblank's pad in `!PADH`. The logic hook runs one combat step per field
 vblank since the previous field frame (at most 4), each with its own

@@ -15,6 +15,11 @@ stay traceable even when they are committed together.
   and continuous flight/voice streams are omitted. Music stays native. The
   old streamer is an explicit `AUDIO_PCM` diagnostic build. Native sound,
   audio unit, optional stream, song, arrival and imported-state tests pass.
+- Cleared the native weapon-charge meter and sparkle while Goku attacks,
+  keeping his ki charging intact. Recovery-camera scrolling now blocks new
+  attacks/focus. Faster rectangular hit tests retain attack range and damage;
+  192 geometry cases, stale-meter checks and combat reference comparisons
+  pass, along with water, teleport, whip, ceiling, holes and scene flight tests.
 
 ## 2026-10-18 — Bazzite Steam box installation
 

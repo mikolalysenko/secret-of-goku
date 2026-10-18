@@ -62,9 +62,38 @@ cb_power_stats:
 	LDA.w #999
 +	STA $E182
 .bytes
+	JMP cb_ready_meter
+
+; Clearing E1ED before native logic prevents stamina from ticking down,
+; but also bypasses the native completion path (EBB6): a loaded percentage
+; and its charge/flash latch can remain on the HUD indefinitely. Finish
+; that cleanup after native logic as well, before its HUD buffer uploads.
+; Goku's techniques use cb_charge/cb_power; they never charge a sword.
+cb_ready_meter:
+	LDA !cb_can
+	AND.w #$00FF
+	BEQ .out
 	SEP #$20
+	LDA $E1ED
+	ORA $E063
+	ORA $E01A
+	BEQ .out8
 	STZ $E1ED
+	STZ $E063
+	STZ $E01A
+	STZ $0A50
+	STZ $0A51
+	STZ $0A52
+	STZ $0A53
+	STZ $0A54
+	PHX
+	LDX.w #$0000
+	SEC
+	JSL $81CA04                  ; retire the native full-charge sparkle
+	PLX
+.out8
 	REP #$20
+.out
 	RTS
 
 ; Once per field frame, every 4th: the per-frame upkeep of the browser's

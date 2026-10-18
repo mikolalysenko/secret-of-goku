@@ -17,59 +17,98 @@
 ; Out: ag_list = slot mask (bit 0 = slot 3), then the virtual targets
 ; (bits 9-15, virtual.asm). Party, NPC species >= 128, inactive, defeated
 ; and 0-HP actors are never targets.
-cb_targets:
-	STZ !ag_list
-	LDX.w #!ACT_FIRST
-	LDY.w #$0001
-.loop
-	LDA $E000,X
+macro cb_native_target(slot)
+	; Unrolled slots avoid rebuilding X and the slot mask for every shot.
+	; Native actor coordinates are map pixels (well inside signed 16-bit).
+	LDA.w $E000+(<slot>*$200)
 	AND.w #$0001
-	BEQ .next
-	LDA $E180,X
+	BEQ ?next
+	LDA.w $E180+(<slot>*$200)
 	AND.w #$00FF
 	CMP.w #$0080
-	BCS .next
-	LDA $E182,X
-	BEQ .next
-	LDA $E191,X
+	BCS ?next
+	LDA.w $E182+(<slot>*$200)
+	BEQ ?next
+	LDA.w $E191+(<slot>*$200)
 	AND.w #$0080
-	BNE .next
-	LDA $E002,X
+	BNE ?next
+	LDA.w $E002+(<slot>*$200)
 	SEC
-	SBC !ag_x
-	STA !cb_t4                    ; x
-	LDA $E004,X
+	SBC !cb_t4
+	CMP !cb_t6
+	BCS ?next
+	LDA.w $E004+(<slot>*$200)
 	SEC
-	SBC !ag_cy
-	SEC
-	SBC !ag_y
-	STA !cb_t5                    ; y
-	JSR cb_along_across           ; A = along, cb_t6 = across
-	STA !cb_t7
+	SBC !cb_t5
+	CMP !cb_t7
+	BCS ?next
+	LDA.w #1<<(<slot>-3)
+	TSB !ag_list
+?next:
+endmacro
+
+cb_targets:
+	STZ !ag_list
+	; Resolve the facing once into an inclusive axis-aligned rectangle.
+	; (position - minimum) < extent+1 also rejects a negative distance,
+	; removing the per-actor rotation, absolute value and signed branches.
+	LDA !ag_width
+	ASL
+	INC
+	STA !cb_t6                    ; cross-axis extent + 1
+	LDA !ag_range
 	CLC
 	ADC !ag_behind
-	BMI .next                     ; along < -behind
-	LDA !cb_t7
+	INC
+	STA !cb_t7                    ; along-axis extent + 1
+	LDA !ag_dir
+	CMP.w #$0001
+	BEQ .horizontal
+	CMP.w #$0002
+	BEQ .horizontal
+	LDA !ag_x
+	SEC
+	SBC !ag_width
+	STA !cb_t4
+	LDA !ag_y
+	CLC
+	ADC !ag_cy
+	LDX !ag_dir
+	BEQ .down
 	SEC
 	SBC !ag_range
-	BEQ +
-	BPL .next                     ; along > range
-+	LDA !cb_t6
-	CMP !ag_width
-	BEQ +
-	BCS .next
-+	TYA
-	TSB !ag_list
-.next
-	TYA
-	ASL
-	TAY
-	TXA
+	BRA .y
+.down
+	SEC
+	SBC !ag_behind
+	BRA .y
+.horizontal
+	LDA !cb_t6
+	LDX !cb_t7
+	STA !cb_t7
+	STX !cb_t6
+	LDA !ag_x
+	LDX !ag_dir
+	CPX.w #$0001
+	BEQ .right
+	SEC
+	SBC !ag_range
+	BRA .x
+.right
+	SEC
+	SBC !ag_behind
+.x
+	STA !cb_t4
+	LDA !ag_y
 	CLC
-	ADC.w #$0200
-	TAX
-	CPX.w #!ACT_END
-	BCC .loop
+	ADC !ag_cy
+	SEC
+	SBC !ag_width
+.y
+	STA !cb_t5
+	for slot = 3..12
+		%cb_native_target(!slot)
+	endfor
 	; after the actors: the registered virtual targets (modules.asm), from
 	; the field frame's cache (virtual.asm)
 	LDA.l !vt_state

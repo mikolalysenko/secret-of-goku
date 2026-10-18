@@ -31,7 +31,7 @@ cb_hook_logic:
 	PHK
 	PER .read-1
 	PEA $B294-1
-	JML $0093B9
+	JML $8093B9
 .read
 	; (C0:B69C starts with SEP #$30 and loads what it uses: only P, DB and
 	; D need to survive combat)
@@ -52,7 +52,7 @@ cb_hook_logic:
 	PHK
 	PER .moved-1
 	PEA $B294-1
-	JML $00B69C
+	JML $80B69C
 .moved
 	RTL
 
@@ -298,6 +298,7 @@ combat_field_frame:
 	CMP.b #$A5
 	REP #$20
 	BNE .out                      ; the logic hook has not run yet
+	JSR cb_ready_meter
 	; never hide a button combat injects (X routed to native Y while Y is
 	; ki): the core applies a mask to two reads but an injection to one
 	LDA !cb_inj_all
@@ -918,6 +919,12 @@ cb_goku_frame:
 +	LDA !cb_recovering
 	BEQ +
 	RTS
++	JSR cb_bind_camera_pending
+	BEQ +
+	STZ !cb_inject
+	LDA.w #$FFF0
+	TSB !cb_mask
+	JMP cb_advance_action          ; flight handles queued teleports itself
 +	; idle: no combat button (or A), nothing running, pending or held
 	LDA !cb_in
 	AND.w #!IN_B|!IN_Y|!IN_L|!IN_X|!IN_A

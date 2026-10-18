@@ -160,7 +160,32 @@ local function pan()
   F.check(wx ~= hx2 or wy ~= hy2, 'after the pan: the native camera follows Goku again')
   H.shot('pan')
 end
+local function recoveryCamera()
+  -- Recovery uses the same camera follower without a teleport action.
+  -- L+Y during the scroll must not start a charge or spend time on its FX.
+  F.import('animation-audit__native__rabite-field-b')
+  F.on()
+  H.wait(3)
+  F.clearActors()
+  H.w16(0x7EE002, math.max(40, H.r16(0x7EE002) - 192))
+  F.follow()
+  local pending, bad = 0, 0
+  for i=1,90 do
+    if not F.status().pend then break end
+    pending=pending+1
+    H.hold('l y',1)
+    if H.r8(0x7ED828)~=0 or H.r16(0x7ED82E)~=0 then bad=bad+1 end
+  end
+  H.wait(4)
+  F.check(pending>4, 'recovery camera scroll exercised')
+  F.check(bad==0, 'no charge/focus during recovery camera scroll: '..bad)
+  F.check(not F.status().pend, 'recovery camera completed')
+  H.hold('l y',6)
+  F.check(H.r8(0x7ED828)~=0, 'charging works after recovery camera arrives')
+  H.wait(6)
+end
 function test()
+  recoveryCamera()
   teleports()
   pan()
   H.result('failures', F.fail)
