@@ -233,7 +233,7 @@ calls combat's Saiyan recoil (`combat_recoil_vector`) first, through
 
 | Resource | Use |
 | --- | --- |
-| Code `$A3:8000-…` | `!CODE_FLIGHT` (16.7 KiB used, to `$A3:C2E7`; bindings to other modules at `$A3:F000-F0AD`) |
+| Code `$A3:8000-…` | `!CODE_FLIGHT` (18.7 KiB used, to `$A3:CAA1`; bindings to other modules at `$A3:F000-F0DD`) |
 | Data `$E3:0000-…` | `!DATA_FLIGHT` (9.3 KiB, to `$E3:254F`: bitsets, map flags/extents, exits, routes, recovery order) |
 | WRAM `$7E:D900-D97F` | `!RAM_FLIGHT`, all $80 bytes (map in `module.asm`) |
 | SRAM `$33:7800-7BFF` | `!SRAM_WORK_FLIGHT`: tile cache, flood fill, anchor/crossing, hero grid, sweep/hero memos, Instant Transmission, camera follow, ceiling escape (`$7BF0`), Goku request ownership (`$7B3E`), test mailbox (initialised on the first field frame after title entry: `!fl_magic`); the roof-colour search borrows the tile cache once per escape |
