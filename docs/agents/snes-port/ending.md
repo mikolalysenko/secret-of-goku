@@ -103,7 +103,7 @@ set-up it splits would copy 64 KiB over WRAM. `ending_dma_guard` (called
 right before each set-up) waits out lines 216-225: the NMI fires at 225
 and has come and gone before the set-up starts. The ending tests check
 channel 7's size at every one of these triggers (about 16,000 per suite
-run; also with goku's `-DGOKU_NMI_FAST`).
+run; also with goku's fast idle NMI, now the default).
 
 Uploads: a load script (ROM entries) and a dynamic queue (cell swaps)
 through a transfer engine in `ending_nmi` that counts its own time per DMA

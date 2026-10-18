@@ -247,14 +247,12 @@ goku_dma_tile7:
 ; other modules' timings were measured with.)
 !GOKU_CELL_LINES = 6
 goku_nmi:
-if defined("GOKU_NMI_FAST")
+if not(defined("GOKU_NMI_SLOW"))
 	; most frames have nothing to send: leave before any set-up (0.17 lines
-	; instead of 0.6). Off by default: ending's pal_commit sets up a channel-7
-	; DMA to WMDATA from the frame thread, and an NMI landing between its
-	; register writes and $420B (the field NMI's own channel-7 transfers end
-	; with a zero size) turns it into a 64 KiB copy over WRAM. A field NMI
-	; about 100 cycles shorter moved the wish flight's NMI into that window
-	; (goku.md, Requests).
+	; instead of 0.6). (It once moved the wish flight's NMI into a channel-7
+	; race in ending's frame-thread DMA set-ups; ending now waits out the
+	; lines before the vblank NMI, f6f9cb8. -DGOKU_NMI_SLOW=1 keeps the old
+	; prologue.)
 	LDA.l $7E0000|!up_cell
 	CMP.w #!GOKU_NONE
 	BNE .work
