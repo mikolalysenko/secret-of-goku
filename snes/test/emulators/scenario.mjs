@@ -218,6 +218,34 @@ export async function playScenario(h,{rom,xprobe,log=()=>{}}){
   return res;
 }
 
+// A new power-on with the battery RAM the scenario left (the core's own
+// .srm for bsnes): GAME FILE is offered and the first slot loads.
+export async function playBatteryLoad(h,{savedHero}){
+  const res={checks:[]};
+  const check=(name,ok,detail='')=>{res.checks.push({name,pass:!!ok,detail:String(detail)});return !!ok;};
+  const tramp=async()=>h.bytes('wram',A.tramp,4);
+  const inField=async()=>same(await tramp(),NMI_FIELD);
+  const inMenu=async()=>same(await tramp(),NMI_MENU);
+  check('battery_file_header',(await h.sram(S.slot0))===0xC5,`SRAM[0] ${hex(await h.sram(S.slot0))}`);
+  let sel=false;
+  for(let i=1;i<=60;i++){
+    if(await inMenu()){sel=true;break;}
+    if(i%3===0)await h.tap('start',4,4);else await h.wait(20);
+  }
+  if(!check('battery_game_select',sel,`frame ${h.frame}`))return res;
+  await h.wait(40);
+  const cursor=await h.r8(A.menuCursor);
+  check('battery_game_file_default',cursor===1,`cursor ${cursor} (1 = GAME FILE)`);
+  await h.tap('b',6,60);
+  await h.tap('b',6,60);
+  const loaded=await h.waitFor(async()=>await inField()&&(await h.r8(A.d0))===0,900,2);
+  const pos=[await h.r16(A.heroX),await h.r16(A.heroY)];
+  check('battery_loaded',loaded&&(await h.r16(A.map))===128&&(!savedHero||(pos[0]===savedHero[0]&&pos[1]===savedHero[1])),
+    `map ${await h.r16(A.map)}, hero ${pos} (power-cycle load ${savedHero})`);
+  check('battery_sidecar_restored',((await h.r16(A.coreFlags))&1)===1,`core flags ${hex(await h.r16(A.coreFlags),4)}`);
+  return res;
+}
+
 async function busProbe(h,res,check,{rom,xprobe,inField}){
   const region=await h.bytes('wram',A.probeCode,0xC0);
   if(region.some(v=>v)){check('bus_probe',false,'probe WRAM 7E:6F40-6FFF is in use by this build');return;}

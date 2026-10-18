@@ -24,7 +24,7 @@ import {spawnSync} from 'node:child_process';
 import {join,resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {RetroHost,buildHost,findCore,coreDirs,mainCheckout} from './retro.mjs';
-import {playScenario,probeCode,probeReads,exhiromByte,TITLE_FRAMES,WINDOW,SHOT_WINDOW} from './scenario.mjs';
+import {playScenario,playBatteryLoad,probeCode,probeReads,exhiromByte,TITLE_FRAMES,WINDOW,SHOT_WINDOW} from './scenario.mjs';
 import {load15,bestMatch,agreement,diffSheet} from './compare.mjs';
 import {presetSetup,playPreset,mesenPreset,stateDiffs,maxFramesOf,PRESET_SHOTS,PRESET_POWER_ON} from './presets.mjs';
 import {FILLS,presetRun,sigDiffs,bisect} from './poweron.mjs';
@@ -145,8 +145,19 @@ function pictureCheck(p){
 }
 
 async function scenarioMain(avail,romFile,rom,xprobe){
+  // The scenario, then a second process started with the battery RAM the
+  // first one left (sram.bin; for bsnes its own .srm), as a player's next day.
   const [ref,...runs]=await Promise.all([mesenReference(rom,romFile,xprobe),
-    ...avail.map(v=>session(v,romFile,join(outRoot,v.name),h=>playScenario(h,{rom,xprobe})))]);
+    ...avail.map(async v=>{
+      const out=join(outRoot,v.name);
+      const run=await session(v,romFile,out,h=>playScenario(h,{rom,xprobe}));
+      if(existsSync(join(out,'sram.bin'))){
+        const again=await session(v,romFile,join(out,'battery'),h=>playBatteryLoad(h,{savedHero:run.res?.values?.loaded_hero}),
+          {sram:join(out,'sram.bin'),wramInit:'noise:7'});
+        run.battery=again;
+      }
+      return run;
+    })]);
   if(ref.skipped)console.log(`emulators: Mesen comparison skipped: ${ref.skipped}`);
   if(ref.error)console.log(`emulators: Mesen reference failed: ${ref.error}`);
   const mr=ref.results;
@@ -164,6 +175,8 @@ async function scenarioMain(avail,romFile,rom,xprobe){
     const v=run.variant,det=detection(run.results);
     const checks=[...(run.res?.checks??[])];
     if(run.error)checks.push({name:'scenario_error',pass:false,detail:run.error});
+    if(run.battery)checks.push(...(run.battery.res?.checks??[]),...(run.battery.error?[{name:'battery_error',pass:false,detail:run.battery.error}]:[]));
+    else checks.push({name:'battery_image',pass:false,detail:'no sram.bin after the scenario'});
     if(v.core==='snes9x')checks.push({name:'core_logged_exhirom',pass:det.exhirom,detail:det.logged??'no map in the core log'});
     const specs=[
       ...TITLE_FRAMES.map(F=>({name:`title-${F}`,kindName:'title',ref:`title-${F}.png`,base:k=>`title-${F}-${F+k}.png`,offsets:span(WINDOW)})),
