@@ -15,6 +15,9 @@
 ; +$3A world frames, +$3C field frames, +$3E lines left at the last field NMI
 ; +$40 busy-loop count per frame callback (lag tests)
 ; cmd 7: queue +$44 uploads of +$22 bytes from VRAM +$20 on; +$48 = accepted
+; +$4A busy-loop count in the field NMI callback (overruns vblank)
+; +$4C bits the field NMI callback sets in the game's HDMAEN shadow $2C,
+; +$4E bits it clears there (HDMAEN guard test)
 !ct = (!core_test&$FFFF)
 
 core_test_frame:
@@ -138,6 +141,20 @@ core_test_field_nmi:
 	LDA.l !core_test+$2A : INC : STA.l !core_test+$2A
 	JSL core_vblank_lines
 	STA.l !core_test+$3E
+	SEP #$20
+	LDA.l !core_test+$4E
+	EOR.b #$FF
+	AND.l $7E002C
+	ORA.l !core_test+$4C
+	STA.l $7E002C
+	REP #$20
+	LDA.l !core_test+$4A
+	BEQ .noBurn
+	TAX
+.burn
+	DEX
+	BNE .burn
+.noBurn
 	RTL
 core_test_world_nmi:
 	LDA.l !core_test+$2C : INC : STA.l !core_test+$2C

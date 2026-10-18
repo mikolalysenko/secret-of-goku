@@ -214,7 +214,7 @@ flight_floor_pal:
 
 ; ---------------------------------------------------------------------------
 ; Scatter frame from age 30 (frame_scatter): the flight.
-flight_frame:
+ending_wish_frame:
 	LDA.w !fl_live
 	BNE .live
 	JMP flight_load

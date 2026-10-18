@@ -80,6 +80,21 @@ core_live_clear:
 	STA.l !SRAM_LIVE,X
 	DEX : DEX
 	BPL .loop
+	LDA.w #!SIDE_MAGIC
+	STA.l !persist_magic
+	RTS
+
+; Power-on (core_boot, M16/X16): a new cartridge's battery RAM is noise, and
+; modules read the live block before NEW GAME or a load replaces it (combat
+; seeds Goku's form from !persist_ssj_lock). Without the magic the block is
+; cleared to the legacy state (version 0). A valid block from the previous
+; session is kept as before.
+core_live_check:
+	LDA.l !persist_magic
+	CMP.w #!SIDE_MAGIC
+	BEQ .ok
+	JSR core_live_clear
+.ok
 	RTS
 
 ; Slot offsets: !core_tmp0 = slot * $400 (record), X = slot * $420 (sidecar).
@@ -242,6 +257,8 @@ core_sidecar_restore:
 	PHB
 	MVN (!SRAM_LIVE>>16),(!SRAM_SLOTS>>16)
 	PLB
+	LDA.w #!SIDE_MAGIC                ; sidecars written before the magic existed
+	STA.l !persist_magic
 	LDA.w !core_flags&$FFFF
 	ORA.w #$0001
 	STA.w !core_flags&$FFFF

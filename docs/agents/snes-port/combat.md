@@ -44,7 +44,7 @@ ui (King Kai) and destroy (the map) through `bind.asm`.
 | Data `$E2:0000-$E2:0A3A` | `!DATA_COMBAT` (`snes/gen/combat.mjs`): damage, beam damage/width by charge, wave envelope by age, strength and focus tables, launch arcs, lift, radial ease, hand sockets, item names, placeholder cells |
 | WRAM `$7E:D800-$7E:D8FF` | `!RAM_COMBAT` (map in `module.asm`); public fields below |
 | SRAM `$31:7C00-$31:7FFF` | `!SRAM_WORK_COMBAT`: 16 effect records, 9 launch records, 9 sound marks, 9 beam pulse timers, the pad of the last four field vblanks (`!PADH`), destroy_hit arguments |
-| SRAM `$31:6200` | `!PERSIST_COMBAT` byte 0: `PCF_REVEALED` (the first transformation reveal was seen). Shared: `!persist_ssj_lock` (permanent form), `!persist_goku_active` (read) |
+| SRAM `$31:6200` | `!PERSIST_COMBAT` byte 0: `PCF_REVEALED` (the first transformation reveal was seen). Shared: `!persist_ssj_lock` (permanent form), `!persist_goku_active` (read). NEW GAME resets the form (combat's and `!goku_form`) to base; a load sets both from `!persist_ssj_lock`, whatever the title-time init saw |
 | OAM / VRAM | Placeholder effects only (`!COMBAT_FX_PLACEHOLDER`: 1 unless the real fx library is in the build, detected by its `!fx_busy`): OBJ region `!VRAM_FIELD_OBJ_B` (owner `$02`, tiles `$184+`) |
 | Other modules' RAM written | `!goku_form`, `!goku_act`, `!goku_act_facing/_age/_arg/_dur`, `!goku_mode/_facing/_age` (reactions); destroy's `!arg_*`; fx's request block; core `!core_pad_mask/_inject` |
 

@@ -242,7 +242,10 @@ combat_new_game:
 	STZ !cb_quiet
 	JSR cb_cancel_combat_quiet
 	SEP #$20
+	; a new game starts in base form whatever the title-time init saw
 	STZ !cb_form
+	STZ !cb_form_pub
+	STZ !goku_form
 	REP #$20
 	LDA.w #$0000
 	STA.l !pc_flags
@@ -256,6 +259,8 @@ combat_load:
 	LDA.l !persist_ssj_lock
 	AND.b #$01
 	STA !cb_form
+	STA !cb_form_pub                  ; the loaded form is the shown form
+	STA !goku_form
 	STZ !cb_def_valid
 	STZ !cb_agi_valid
 	STZ !cb_hr_tier
