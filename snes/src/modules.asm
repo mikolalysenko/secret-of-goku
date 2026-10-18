@@ -12,10 +12,12 @@ incsrc "modules/world/module.asm"
 incsrc "modules/title/module.asm"
 incsrc "modules/story/module.asm"
 incsrc "modules/flight/module.asm"
+incsrc "modules/ui/module.asm"
 incsrc "modules/debug/module.asm"
 incsrc "modules/destroy/module.asm"
 incsrc "modules/ending/module.asm"
 incsrc "modules/combat/module.asm"
+incsrc "modules/vegeta/module.asm"
 incsrc "modules/audio/module.asm"           ; after the modules whose sound flags it reads
 
 pushpc
@@ -28,8 +30,10 @@ modules_field_frame:
 	JSL debug_field_frame
 	JSL combat_field_frame     ; before goku: poses and form apply this frame
 	JSL flight_frame           ; before goku: hover pose and lift requests
+	JSL ui_field_frame
 	JSL world_field_frame
 	JSL flight_pose_frame      ; after world: the ceiling escape's pose wins over its takeoff pose
+	JSL vegeta_field_frame
 	JSL goku_frame
 	JSL destroy_field_frame          ; last: its planner uses the frame time left
 	JSL fx_frame               ; after every module that draws effects: shows this frame's requests
@@ -38,23 +42,30 @@ modules_field_frame:
 	RTL
 ; Field vblank, after the game's own uploads, still force-blanked (DB = $80).
 modules_field_nmi:
+	JSL ui_field_nmi                  ; channels 0/1 for a moved native window; re-arms channel 5 after the game's DMA on 4-7
+	JSL destroy_field_nmi            ; first: switches the breach's HDMA on while vblank lasts
 	JSL goku_nmi
+	JSL vegeta_nmi
 	JSL ending_nmi
 	JSL fx_nmi                 ; keep last: programs HDMA channels 2/3 after all vblank DMA
 	RTL
 ; World flight frame, after the world logic (DB = $7E).
 modules_world_frame:
+	JSL ui_world_frame               ; first: the dial takes the first module slots
 	JSL destroy_world_frame
 	JSL world_world_frame
 	JSL debug_world_frame
 	JSL combat_world_frame
 	JSL flight_world_frame     ; a ceiling escape completes in world flight
 	JSL fx_world_frame         ; after the modules that draw effects
+	JSL ending_world_frame     ; after fx: the Fortress cutaway takes the whole OAM
 	JSL audio_frame
 	RTL
 ; World vblank, after the game's uploads and HDMA setup; not force-blanked,
 ; so check core_vblank_lines before long uploads (DB = $80).
 modules_world_nmi:
+	JSL ending_world_nmi       ; the Fortress cutaway's picture
+	JSL ui_world_nmi                  ; first: a few register and CGRAM writes
 	JSL world_world_nmi
 	JSL fx_world_nmi           ; keep last
 	RTL
@@ -63,6 +74,7 @@ modules_world_nmi:
 modules_menu_frame:
 	JSL goku_menu_frame
 	JSL title_menu_frame
+	JSL ui_menu_frame
 	JSL debug_menu_frame
 	JSL combat_menu_frame
 	JSL audio_pause
@@ -70,7 +82,9 @@ modules_menu_frame:
 ; Ring menu frame, in vblank (DB = $7E).
 modules_ring_frame:
 	JSL fx_ring_frame          ; first: puts PPU registers back inside vblank
+	JSL ui_ring_frame
 	JSL combat_menu_frame
+	JSL destroy_ring_frame
 	JSL audio_pause
 	RTL
 ; Title program entry (power-on, soft reset, quit to title), after module
@@ -80,6 +94,8 @@ modules_title_boot:
 	JSL debug_title_boot
 	JSL world_title_boot
 	JSL fx_title_boot
+	JSL ui_title_boot
+	JSL destroy_title_boot
 	RTL
 ; Before the game writes a GAME FILE: put persistent state into !SRAM_LIVE.
 modules_save:
@@ -89,15 +105,19 @@ modules_load:
 	JSL title_load
 	JSL combat_load
 	JSL story_load
+	JSL ui_load
 	JSL destroy_reset
+	JSL vegeta_reset
 	RTL
 ; New game: !SRAM_LIVE was cleared and !persist_version set to 1.
 modules_new_game:
 	JSL title_new_game
 	JSL combat_new_game
 	JSL story_new_game
+	JSL ui_new_game
 	JSL debug_new_game
 	JSL destroy_reset
+	JSL vegeta_reset
 	RTL
 pullpc
 
@@ -108,6 +128,8 @@ incsrc "modules/flight/bind.asm"
 ; Combat bindings to optional modules: after every module include (its
 ; defined() checks see them), before the story tables.
 incsrc "modules/combat/bind.asm"
+; Vegeta's bindings to optional modules (audio, ui, fx, combat).
+incsrc "modules/vegeta/bind.asm"
 
 ; Debug preset hook table (generated): modules fill it by defining
 ; !DEBUG_PRESET_HOOK_<NAME> / _ANY in their own files (included above).

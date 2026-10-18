@@ -1,5 +1,7 @@
 ; FX module public definitions (docs/agents/snes-port/fx.md). Defines only,
-; no code or labels: clients may incsrc this file themselves.
+; no code or labels: clients may incsrc this file themselves. !FX_DRAWS
+; (draw entries per frame) is defined by module.asm, so it also tells a
+; client that the real library is in the build.
 
 ; Request block (SRAM, write with long addressing before fx_spawn / fx_draw /
 ; fx_beam; read by the next call, never cleared).

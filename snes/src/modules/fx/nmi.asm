@@ -15,14 +15,17 @@ fx_nmi:
 	JSL core_vblank_lines
 	STA.l !fx_vbl
 	JSR fx_nmi_learn
+if defined("FX_TEST")
 	LDA.w #$0000
 	STA.l !fx_upl
-	; When the game's own vblank work left (almost) no time, FX only
-	; rewrites its palettes (the game uploaded all of CGRAM in this vblank,
-	; and this frame's sprites need them) and leaves HDMA, colour math and
+endif
+	; When the game's own vblank work left no time (in Potos one streaming
+	; phase in five ends near line 259), FX leaves HDMA, colour math and
 	; cell uploads as they are: the field NMI writes $420C right after the
-	; modules and that write must land inside vblank (a channel switched on
-	; after the frame's HDMA start runs from stale pointers).
+	; modules and that write must land before the next frame's HDMA start,
+	; or the channels skip that frame. Its palettes are rewritten only while
+	; no HDMA channel runs (then a late $420C write is harmless); with HDMA
+	; running, fx_frame predicted this vblank and drew no sprites.
 	JSR fx_nmi_vline
 	CMP.w #225
 	BCC .late
@@ -33,20 +36,17 @@ fx_nmi:
 	BCS +
 	JSR fx_nmi_cells
 	JSR fx_nmi_palettes
-+	LDA.l !fx_poly_req           ; a wave polygon owns the colour math,
-	CMP.w #$0001                 ; otherwise the flash may use it
-	BEQ .end
-	JSR fx_nmi_math
++	LDA.l !fx_poly_req           ; up/down waves and Death Balls own the
+	BEQ +                        ; colour math; otherwise the flash may use it
+	CMP.w #$0002
+	BNE .end
++	JSR fx_nmi_math
 	BRA .end
 .late
-	LDA.l !fx_poly_on            ; the late $420C write must not switch FX's
-	BEQ +                        ; channels on mid-frame: off for this frame
-	SEP #$20                     ; (the registers stay; the next vblank in
-	LDA.l $7E002C                ; time programs or restores them)
-	AND.b #$F3
-	STA.l $7E002C
-	REP #$20
-+	JSR fx_nmi_channel
+	LDA.l $7E002C
+	AND.w #$000F
+	BNE .end
+	JSR fx_nmi_channel
 	BCS .end
 	JSR fx_nmi_palettes
 .end
@@ -168,9 +168,11 @@ fx_nmi_cells:
 	EOR.w #$FFFF
 	AND.l !fx_cpend
 	STA.l !fx_cpend
+if defined("FX_TEST")
 	LDA.l !fx_upl
 	INC
 	STA.l !fx_upl
+endif
 .next
 	INX
 	INX

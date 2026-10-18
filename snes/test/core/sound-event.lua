@@ -9,8 +9,8 @@ function test()
   check('sound_queued', r == 0, r)
   H.wait(2)
   check('sound_dispatched', calls > before, calls - before)
-  check('sound_queue_empty', H.r16(CORE_EXT + 0x4A) == H.r16(CORE_EXT + 0x4C),
-    H.r16(CORE_EXT + 0x4A) .. ' ' .. H.r16(CORE_EXT + 0x4C))
+  check('sound_queue_empty', H.r16(CORE_SAFE + 0x0C) == H.r16(CORE_SAFE + 0x0E),
+    H.r16(CORE_SAFE + 0x0C) .. ' ' .. H.r16(CORE_SAFE + 0x0E))
   check('driver_command_consumed', H.r8(0x7E1E00) == 0, H.r8(0x7E1E00))
   emu.removeMemoryCallback(id, emu.callbackType.exec, 0xC30160, 0xC30160)
   -- Event: door 3 ($0800 | door), started at an idle field boundary.

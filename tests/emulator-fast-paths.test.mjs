@@ -185,6 +185,25 @@ test('wait loops are skipped exactly, and not under an instruction hook that see
  lockstep(b,a,30,'hooked loop');
  assert.ok(ha()>1000&&ha()===hb(),`${ha()} vs ${hb()} hook calls`);
 });
+test('the sound driver\'s idle loop is skipped exactly',t=>{
+ // SPC RAM, every DSP sample and the timers match a core that steps each
+ // iteration, across music, sound commands and timer ticks.
+ const bytes=a=>new Uint8Array(a.buffer,a.byteOffset,a.byteLength);
+ const audio=s=>{const a=s.apu;return[digest(a.ram),digest(bytes(a.dsp.samplesL)),digest(bytes(a.dsp.samplesR)),a.cycles,a.timer1counter,a.timer1div,a.timer1int,a.spc.br[0],a.spc.cyclesLeft,a.spc.r[1],a.spc.r[2]];};
+ const compare=(fast,slow,frames,label)=>{
+  for(let i=0;i<frames;i++){for(const s of[slow,fast]){s.joypad1State=input(i);s.runFrame(i%3===1);}assert.deepEqual([...frameState(fast),...audio(fast)],[...frameState(slow),...audio(slow)],`${label}: frame ${i}`);}
+ };
+ const fast=core(),slow=core();slow.setSpcIdleSkip(false);
+ compare(fast,slow,400,'power-on');
+ assert.ok(fast.spcIdleSkipped()>5000,`${fast.spcIdleSkipped()} idle iterations skipped`);
+ assert.equal(slow.spcIdleSkipped(),0);
+ if(!fixtures.length){t.skip('Private emulator states not present');return;}
+ for(const f of fixtures){
+  const a=core(),b=core();b.setSpcIdleSkip(false);const st=JSON.parse(readFileSync(f,'utf8'));
+  for(const s of[a,b])restore(s,{...st,romHash:hash(s.cart.data)});
+  compare(a,b,12,f);
+ }
+});
 test('instruction hooks run at registered breakpoints, and unregistered hooks see every instruction',()=>{
  // Watch two instructions that the opening really executes, one rarely.
  const probe=core(),counts=new Map(),previousProbe=probe.cpu.cycle;

@@ -9,12 +9,33 @@ import {readFileSync,writeFileSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {runMesen} from '../mesen.mjs';
+import {privateRom,cleanupRom,checkpointDir} from '../checkpoints.mjs';
+import {spawnSync} from 'node:child_process';
+import {existsSync} from 'node:fs';
 const gfx=await import(new URL('../../tools/gfx.mjs',import.meta.url).href);
-import {kaiReference,compare,writeRef,bestPlanetMatch,gokuAtlas,nativeEffects,vistaReference,flightReference} from './reference.mjs';
+import {kaiReference,compare,writeRef,bestPlanetMatch,gokuAtlas,nativeEffects,vistaReference,flightReference,cutawayReference} from './reference.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const rom=process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-goku.sfc');
 const baseRom=new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')));
-const lib=readFileSync(resolve(here,'lib.lua'),'utf8');
+// The audio module's entries the scenes call (lib.lua E.watchAudio).
+const sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8');
+const symAddr=label=>{const m=sym.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${label}$`,'m'));return m?`0x${m[1]}${m[2]}`:'nil';};
+// Core's event request word (core_event_request's pending slot), from the
+// core's own defines: the loads test starts doors through it.
+function coreDefine(name){
+  const defs=new Map();
+  for(const f of ['ram.asm','core.asm','shared.asm'])for(const line of readFileSync(resolve(repo,'snes/src/core',f),'utf8').split('\n')){
+    const m=line.match(/^!(\w+)\s*=\s*([^;]+)/);if(m&&!defs.has(m[1]))defs.set(m[1],m[2].trim());
+  }
+  const ev=n=>{const e=defs.get(n);if(e===undefined)throw Error(`core define ${n} not found`);
+    return e.split('+').map(t=>t.trim()).reduce((a,t)=>a+(t.startsWith('!')?ev(t.slice(1)):t.startsWith('$')?parseInt(t.slice(1),16):Number(t)),0);};
+  return ev(name);
+}
+const lib0=`EVENT_MAILBOX=0x${coreDefine('core_event_req').toString(16)}\n`;
+const lib=lib0+`AUDIO_SFX=${symAddr('audio_sfx')}\nAUDIO_FADE=${symAddr('audio_fade')}\nNMI_OUT=${symAddr('ending_world_nmi_out')}\nNMI_IN=${symAddr('ending_world_nmi')}\nNMI_RESTORE=${symAddr('ending_world_nmi_restore')}\nNMI_DMA=${symAddr('cut_footprint_ran')}\n`+readFileSync(resolve(here,'lib.lua'),'utf8');
+// 'sfx<id>@<age>' / 'fade<byte>@<age>' calls recorded by E.watchAudio.
+const audioCalls=r=>(r.audio??'').split(' ').filter(Boolean);
+const heard=(r,call)=>audioCalls(r).includes(call);
 const only=process.argv.slice(2);
 const problems=[];
 const expect=(ok,msg)=>{if(!ok)problems.push(msg);return ok;};
@@ -43,6 +64,7 @@ async function kaiCheck(r,out){
 
 // Bad ending in space: stills against planet-view.js at the recorded ages.
 async function spaceCheck(r,out){
+  expect(heard(r,'sfx12@48'),`audio_sfx power burst at the explosion's blast (${r.audio})`);
   expect(r.doomed_loaded,'doomed globe loaded');
   expect(r.doomed_load_frames<=12,`doomed load took ${r.doomed_load_frames} frames`);
   expect(!r.explode_reloaded,'explosion continues on the live globe');
@@ -71,6 +93,9 @@ async function spaceCheck(r,out){
 // fatal view (globe, explosion, GAME OVER); Start returns to the title.
 const meanLight=png=>{const img=gfx.readPng(png);let s=0;for(let i=0;i<img.data.length;i+=4)s+=img.data[i]+img.data[i+1]+img.data[i+2];return s/(img.data.length/4);};
 async function fatalCheck(r,out){
+  // (the sync runs at the end of the start frame, after the clock's tick)
+  expect(/^fade00@[01]$/.test(audioCalls(r)[0]??''),`native music silenced for the death (${r.audio})`);
+  expect(heard(r,'sfx20@408')&&heard(r,'sfx25@624'),`audio_sfx Frieza orb at 408, Fortress break at 624 (${r.audio})`);
   expect((r.status_200&0x44)===0x44,`defeated and muted while the native collapse plays (status ${r.status_200})`);
   const l200=meanLight(join(out,'fatal-200.png')),l330=meanLight(join(out,'fatal-330.png')),l390=meanLight(join(out,'fatal-390.png'));
   r.light=`${l200.toFixed(0)}/${l330.toFixed(0)}/${l390.toFixed(0)}`;
@@ -96,6 +121,7 @@ async function fatalCheck(r,out){
 // whitened by (age - 114) / 30, the space half against planet-view's depart.
 const c8=v=>v<<3|v>>2;
 async function departCheck(r,out){
+  expect(heard(r,`sfx18@56`),`audio_sfx flight at the launch (${r.audio})`);
   const atlas=await gokuAtlas(),orbs=(await nativeEffects(baseRom))['charge-orb'];
   // A transparent composition: Goku's cell at (x0, y0), then the orbs.
   const compose=(parts)=>{const s=new Uint16Array(256*224);
@@ -187,6 +213,11 @@ async function flightCheck(r,out){
   expect((r.status_end&0x0C)===0x04,`muted, landed after 420 (status ${r.status_end})`);
   expect(r.sfx_310===2,`charged sound at the scatter (${r.sfx_310})`);
   expect(r.done===1,'flight timeline done flag');
+  // musicMuted: the native music silenced at once for the whole scatter and
+  // back at full volume when the picture lets go; flight 60, charged 300.
+  expect(/^fade00@[01]$/.test(audioCalls(r)[0]??''),`native music silenced as the scatter starts (${r.audio})`);
+  expect(heard(r,'sfx18@60')&&heard(r,'sfx9@300'),`audio_sfx flight at 60, charged at 300 (${r.audio})`);
+  expect(audioCalls(r).at(-1)?.startsWith('fade0F'),`native music back at the release (${r.audio})`);
   // On the finale's own map (180); the scatter's 28 sprites (300-340) are
   // the heaviest frames.
   expect(r.lag_frames<=20,`lag ${r.lag_frames} frames`);
@@ -229,6 +260,30 @@ async function loadsCheck(r,out){
   expect(m>=.95,`reunion cliff matches the native load at ${(m*100).toFixed(1)}%`);
 }
 
+// The Fortress cutaway in world flight (planet-view with a world-ki shot)
+// from a native session: stills against planet-view itself at the default
+// target, the vblank work inside vblank, the footprint keeping up, and the
+// field's IRQ back after the deck landing.
+async function cutawayCheck(r,out){
+  expect(r.reached&&r.still_reached,'the full wave reached the cutaway');
+  expect(r.target==='2432,3024',`the shot's target ${r.target}`);
+  expect(r.cut_frames>=185&&r.cut_frames<=188,`the cutaway ran ${r.cut_frames} frames`);
+  // Footprint DMA (VRAM) must end inside vblank (225-261); the bookkeeping
+  // after it may run a few lines on.
+  expect(r.dma_end_max>0&&r.dma_end_max<=261,`footprint uploads ended by line ${r.dma_end_max}`);
+  expect(r.nmi_end_max>0&&r.nmi_end_max<=270,`vblank work ended by line ${r.nmi_end_max}`);
+  expect(r.footprint_trail<=3,`the footprint trailed the age by ${r.footprint_trail}`);
+  expect(r.landed,'deck landing after the cutaway');
+  expect(r.restores===1&&r.field_vtime<225,`the field's HUD IRQ line is back (VTIME ${r.field_vtime}, ${r.restores} restore)`);
+  for(const a of [2,6,12,30,60,85,95,110,140,170,180]){
+    const name=`cut-${a}`;if(r[name]===undefined){problems.push(`no still ${name}`);continue;}
+    const ref=await cutawayReference({rom:baseRom,age:a});
+    writeFileSync(join(out,`${name}-ref.png`),writeRef(null,ref));
+    const m=compare(join(out,`${name}.png`),ref);r[`${name}_match`]=m;
+    expect(m>=.9,`${name} matches planet-view at ${(m*100).toFixed(1)}%`);
+  }
+}
+
 const tests=[
   {name:'kai',check:kaiCheck},
   {name:'space',check:spaceCheck},
@@ -237,13 +292,23 @@ const tests=[
   {name:'vista',check:vistaCheck},
   {name:'flight',check:flightCheck},
   {name:'loads',check:loadsCheck},
+  {name:'cutaway',check:cutawayCheck,checkpoint:'waterfall.mss'},
 ];
 let ok=true;
 for(const t of tests){
   if(only.length&&!only.includes(t.name))continue;
   problems.length=0;
   const out=resolve(repo,'.local/snes-test/ending',t.name);
-  const r=await runMesen({rom,test:lib+readFileSync(resolve(here,`${t.name}.lua`),'utf8'),outDir:out});
+  // A private copy: its own (fresh) battery file, not one shared with
+  // other suites running the same ROM name.
+  const copy=privateRom(rom,`ending-${t.name}`);
+  let state=null;
+  if(t.checkpoint){
+    state=join(checkpointDir(),t.checkpoint);
+    if(!existsSync(state))spawnSync(process.execPath,[resolve(repo,'snes/test/checkpoints.mjs')],{cwd:repo,stdio:'inherit'});
+  }
+  const r=await runMesen({rom:copy,test:lib+readFileSync(resolve(here,`${t.name}.lua`),'utf8'),outDir:out,state});
+  cleanupRom(copy);
   if(r.code!==0||!r.results||r.results.error)problems.push(`mesen: ${r.results?.error??r.code}`);
   else await t.check(r.results,out);
   const pass=!problems.length;

@@ -17,20 +17,20 @@
 core_sound_queue:
 	PHA
 	PHX
-	LDA.w !core_snd_tail&$FFFF
+	LDA.l !core_snd_tail
 	INC
 	AND.w #$0007
-	CMP.w !core_snd_head&$FFFF
+	CMP.l !core_snd_head
 	BEQ .full
 	PHA                               ; next tail
-	LDA.w !core_snd_tail&$FFFF
+	LDA.l !core_snd_tail
 	ASL : ASL : TAX
 	LDA $05,S                         ; caller A
-	STA.w !core_snd_queue&$FFFF,X
+	STA.l !core_snd_queue,X
 	LDA $03,S                         ; caller X
-	STA.w (!core_snd_queue&$FFFF)+2,X
+	STA.l !core_snd_queue+2,X
 	PLA
-	STA.w !core_snd_tail&$FFFF
+	STA.l !core_snd_tail
 	PLX
 	PLA
 	CLC
@@ -43,22 +43,22 @@ core_sound_queue:
 
 ; Send one queued command (core_frame_end). M16/X16, DB = $7E, D = 0.
 core_sound_pump:
-	LDA.w !core_snd_head&$FFFF
-	CMP.w !core_snd_tail&$FFFF
+	LDA.l !core_snd_head
+	CMP.l !core_snd_tail
 	BEQ .none
 	LDA.w $1E00
 	AND.w #$00FF
 	BNE .none                         ; a native command is still pending
-	LDA.w !core_snd_head&$FFFF
+	LDA.l !core_snd_head
 	ASL : ASL : TAX
-	LDA.w (!core_snd_queue&$FFFF)+2,X
+	LDA.l !core_snd_queue+2,X
 	STA.w $1E02
-	LDA.w !core_snd_queue&$FFFF,X
+	LDA.l !core_snd_queue,X
 	STA.w $1E00
-	LDA.w !core_snd_head&$FFFF
+	LDA.l !core_snd_head
 	INC
 	AND.w #$0007
-	STA.w !core_snd_head&$FFFF
+	STA.l !core_snd_head
 	JSL $C30004
 	REP #$30
 .none
@@ -79,12 +79,12 @@ core_sound_pump:
 ;   (write 0 to cancel); !core_event_last is the last id started.
 core_event_request:
 	PHA
-	LDA.w !core_event_req&$FFFF
+	LDA.l !core_event_req
 	BNE .busy
 	PLA
 	AND.w #$0FFF
 	ORA.w #$8000
-	STA.w !core_event_req&$FFFF
+	STA.l !core_event_req
 	CLC
 	RTL
 .busy
@@ -93,7 +93,7 @@ core_event_request:
 	RTL
 
 core_event_pump:
-	LDA.w !core_event_req&$FFFF
+	LDA.l !core_event_req
 	BEQ .none
 	SEP #$20
 	LDA $D0
@@ -113,11 +113,13 @@ core_event_pump:
 	AND.b #$04
 	BNE .wait
 	REP #$20
-	LDA.w !core_event_req&$FFFF
+	LDA.l !core_event_req
 	AND.w #$0FFF
 	STA.w !core_event_last&$FFFF
-	STZ.w !core_event_req&$FFFF
+	LDA.w #$0000
+	STA.l !core_event_req
 	STZ $D4
+	LDA.w !core_event_last&$FFFF
 	JSL $C1E76D
 	REP #$30
 	LDA.w #$0000 : TCD

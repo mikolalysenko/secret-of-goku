@@ -69,7 +69,7 @@ world_takeoff_check:
 	BCC .no
 	LDA.w !w_lock
 	BNE .no
-	LDA.w !core_event_req&$FFFF
+	LDA.l !core_event_req
 	BNE .no
 	LDA.w !core_mode&$FFFF
 	CMP.w #!CORE_MODE_FIELD

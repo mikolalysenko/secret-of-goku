@@ -258,10 +258,7 @@ fatal_layers:
 	RTS
 
 fatal_sfx:
-	SEP #$20
-	STA.l !ending_sfx
-	REP #$20
-	RTS
+	JMP ending_sound
 
 ; C1:E77E (inside the native event dispatcher C1:E77B, after REP #$30 /
 ; PHX; A = event id): replaced CMP #$0800 / BCS $E7C9. While the finale's
