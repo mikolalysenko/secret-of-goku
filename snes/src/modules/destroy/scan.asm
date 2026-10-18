@@ -60,8 +60,8 @@ dst_scan_attack:
 ; scanning all of it at once cost one frame several hundred scanlines. A
 ; beam (arg_id != 0) is covered in steps of about !DESTROY_STEP_CELLS new
 ; cells: the covered length widened to the requested width first, then
-; longer at that width; a step at least per call, more while the frame has
-; time (scanline < !DESTROY_HIT_LINE). What is left waits for the beam's
+; longer at that width; a step at least per call, more while the call is
+; young (under !DESTROY_HIT_SPAN scanlines). What is left waits for the beam's
 ; next call or, if it stops calling, destroy_field_frame's continuation
 ; (dst_hit_continue) from its saved arguments. Cells per row ~ half/8 + 2,
 ; rows ~ len/16 + 2 (dst_band_row, dst_band_outer).

@@ -122,13 +122,13 @@ ss_fade45:
 ; Volatile state at boot, load and new game (the browser restores a fresh
 ; or saved state and its module-level trackers start over).
 ss_reset_work:
-	LDA.w #$FFFF : STA.l !ssw_lastmap : STA.l !ssw_beam : STA.l !ssw_doorkey : STA.l !ssw_doorroom
+	LDA.w #$FFFF : STA.l !ssw_lastmap : STA.l !ssw_beam
 	LDA.w #0
-	STA.l !ssw_doorf : STA.l !ssw_clear : STA.l !ssw_embed : STA.l !ssw_remark : STA.l !ssw_rseq
+	STA.l !ssw_remark : STA.l !ssw_rseq
 	STA.l !ssw_songs : STA.l !ssw_lastsong : STA.l !ssw_loads : STA.l !ssw_dismiss
 	STA.l !ssw_pal_mode : STA.l !ssw_pal_up : STA.l !ssw_pal_done : STA.l !ssw_pal_ups
 	STA.l !ssw_pal_left : STA.l !ssw_pal_wait : STA.l !ssw_pal_cols : STA.l !ssw_pal_load
-	STA.l !ssw_br_on : STA.l !ssw_br_buf : STA.l !ssw_br_lines
+	STA.l !ssw_br_on : STA.l !ssw_br_lines
 	LDA.w #$FFFF : STA.l !ssw_pal_room
 	STA.l !ssw_site_n : STA.l !ssw_site_map : STA.l !ssw_blast_a : STA.l !ssw_blast_b
 	LDA.w #0 : STA.l !ssw_blast_end
@@ -486,9 +486,10 @@ ss_dir_dy:
 	dw 1,0,0,-1
 
 ; ss_floor_px: A = x, !ssw_tmp+2 = y (map pixels) on Goku's layer ->
-; carry = landable ship floor. The flight module's canLand when present;
-; otherwise the browser's shipHull walk(): no trigger wall, height below 3,
-; no code or a stair/ledge code (2x/3x), or a walk-on trigger.
+; carry = ship floor. The browser asks flight's canLand (a 12x8 footprint);
+; flight exports no such entry, so this tests the one tile with shipHull's
+; walk(): no trigger wall, height below 3, no code or a stair/ledge code
+; (2x/3x), or a walk-on trigger.
 ss_floor_px:
 	STA.l !ssw_fp_x
 	BMI .no
@@ -650,7 +651,9 @@ ss_escaping:
 	RTS
 
 ; outside(): flying more than four tiles from every stretch of ship floor.
-; Needs the flight module's hover state (bound when it is present).
+; shipHull() and outside() are flight's (it owns the hover state and the
+; map walk); it reports the escape through !SANDSHIP_TAKEOFF, which sets
+; !SSF_ESCAPED under the same guards.
 ss_outside:
 	CLC
 	RTS
