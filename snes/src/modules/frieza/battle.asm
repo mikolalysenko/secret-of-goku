@@ -1993,7 +1993,10 @@ frieza_virtual_target:
 	CLC
 	ADC.w #12
 	TAY
-	LDA.w #121
+	LDA !fzf_terrain                  ; high byte: the terrain he fights on
+	XBA
+	AND.w #$FF00
+	ORA.w #121
 	PLD
 	PLB
 	SEC

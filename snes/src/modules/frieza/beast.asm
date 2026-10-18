@@ -616,3 +616,58 @@ frieza_combat_damage:
 .same
 	LDA !fz_t0
 	RTL
+
+; Combat's receive hook (modules_combat_receive, the native damage consumer
+; C0:4053; beast-challenge.js): while the fed Beast's challenge runs (fed,
+; started, not won, map 253) a hit on Goku costs at most 110 (140 in base
+; form) and grants 75 frames of grace; the eruption's own damage
+; (!fzx_pending) lands whole. A16 = $E1F1 (nonzero, not a heal) -> A16 = the
+; damage to apply. JSL, DB = $7E, D = 0, M16/X16.
+frieza_combat_receive:
+	PHA
+	LDA $DC
+	CMP.w #253
+	BNE .same
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BEQ .same
+	LDA.l !fzp_beast
+	AND.w #!FZX_FED|!FZX_STARTED|!FZX_WON
+	CMP.w #!FZX_FED|!FZX_STARTED
+	BNE .same
+	LDA !fzx_grace
+	AND.w #$00FF
+	BEQ .hit
+	STZ !fzx_pending                  ; within the grace: nothing
+	PLA
+	LDA.w #0
+	RTL
+.hit
+	SEP #$20
+	INC !fzx_hits
+	LDA.b #75
+	STA !fzx_grace
+	REP #$20
+	LDA $01,S
+	CMP !fzx_pending
+	BEQ .whole
+	LDA.l !goku_form|$7E0000
+	AND.w #$00FF
+	BEQ +
+	LDA.w #110
+	BRA ++
++	LDA.w #140
+++	CMP $01,S
+	BCC +
+	LDA $01,S                         ; under the cap
++	STZ !fzx_pending
+	PLY
+	RTL
+.whole
+	STZ !fzx_pending
+	PLA
+	RTL
+.same
+	PLA
+	RTL
+

@@ -344,11 +344,135 @@ if defined("COMBAT_OWNER")
 endif
 	CLC
 	RTS
-; beamTouchesShot(): Goku's beam covers shot X (needs combat's beam
-; geometry: see frieza.md, Requests). C set when it does.
+; beamTouchesShot() (frieza-combat.js): Goku's live beam (combat's
+; combat_api_beam record, beamGeometry()) covers shot X now or where it was
+; last frame. Radius: orb 10, disc 6, else 4. C set when it does.
 fz_bind_beam_touches:
+if defined("COMBAT_API_BEAM")
+	PHX
+	JSL !COMBAT_API_BEAM
+	REP #$30
+	PLX
+	BCS +
+	RTS
++	LDA.l !FZ_SHOTS+!sh_kind,X
+	AND.w #$00FF
+	LDY.w #10
+	CMP.w #1
+	BEQ +
+	LDY.w #6
+	CMP.w #2
+	BEQ +
+	LDY.w #4
++	STY !fz_t3                        ; radius
+	LDA.l !FZ_SHOTS+!sh_x,X
+	STA !fz_t0
+	LDA.l !FZ_SHOTS+!sh_y,X
+	STA !fz_t1
+	PHX
+	JSR .point
+	PLX
+	BCS .out
+	LDA.l !FZ_SHOTS+!sh_px,X
+	STA !fz_t0
+	LDA.l !FZ_SHOTS+!sh_py,X
+	STA !fz_t1
+	PHX
+	JSR .point
+	PLX
+.out
+	RTS
+; (!fz_t0, !fz_t1) against the beam, radius !fz_t3: C set when touched
+.point
+	LDA !fz_t0
+	SEC
+	SBC.l !cb_beam+0
+	STA !fz_t4                        ; relx
+	LDA !fz_t1
+	SEC
+	SBC.l !cb_beam+2
+	STA !fz_t5                        ; rely
+	LDA.l !cb_beam+4                  ; dx -1/0/1
+	BEQ .vertical
+	BPL +
+	LDA !fz_t4
+	EOR.w #$FFFF
+	INC
+	BRA ++
++	LDA !fz_t4
+++	STA !fz_t6                        ; along
+	LDA !fz_t5
+	BRA .across
+.vertical
+	LDA.l !cb_beam+6                  ; dy
+	BPL +
+	LDA !fz_t5
+	EOR.w #$FFFF
+	INC
+	BRA ++
++	LDA !fz_t5
+++	STA !fz_t6
+	LDA !fz_t4
+.across
+	JSR fz_abs
+	STA !fz_t7                        ; across
+	; along within [-r, length + r]
+	LDA !fz_t6
+	CLC
+	ADC !fz_t3
+	BMI .miss
+	LDA.l !cb_beam+8
+	CLC
+	ADC !fz_t3
+	CMP !fz_t6
+	BMI .miss
+	; half width (8.8), tapered over the first taper pixels
+	LDA.l !cb_beam+10
+	STA !fz_t2
+	LDA.l !cb_beam+18
+	AND.w #$00FF
+	BEQ .wide
+	LDA !fz_t6                        ; clamp(along, 0, taper)
+	BPL +
+	LDA.w #0
++	CMP.w #44                         ; the taper (combat's +18: 44 or 0)
+	BCC +
+	BRA .wide
++	STA !fz_m1
+	LDA !fz_t2
+	LSR
+	LSR
+	STA !fz_m0
+	JSR fz_mul16                      ; (half width / 4) * along
+	LDA !fz_m2
+	LDX.w #11
+	JSR fz_divmod                     ; / 11: half width * along / taper (44)
+	LDA !fz_m5
+	STA !fz_t2
+.wide
+	; across <= width + r (in 1/256 px; far misses first)
+	LDA !fz_t7
+	CMP.w #64
+	BCS .miss
+	XBA                               ; across * 256
+	SEC
+	SBC !fz_t2
+	BCC .hit
+	STA !fz_t7
+	LDA !fz_t3
+	XBA
+	CMP !fz_t7
+	BCC .miss
+.hit
+	SEC
+	RTS
+.miss
 	CLC
 	RTS
+else
+	CLC
+	RTS
+endif
 ; Frieza's owner bit in combat's lock words.
 !FZ_COMBAT_OWNER = $0040
 ; A dangerous encounter (combat keeps native damage, deflects nothing).
