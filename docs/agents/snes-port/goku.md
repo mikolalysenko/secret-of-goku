@@ -35,9 +35,12 @@ Measured cost (Potos walk, `snes/test/goku/budget.lua`, Goku on against
 off; "on" includes combat, which runs while Goku is active): p90 frame-logic
 end +22 lines on the FastROM default (limit 24), +26 with `-DCORE_SLOWROM=1`
 (limit 30); no added lag frames; NMI work ends by scanline 258 (FastROM) /
-255 (SlowROM). In the NMI a cell upload costs 7-8 lines (FastROM); before
-October 2026 it took about 10 and was also re-sent on every party refresh,
-which with every stream merged ended the NMI at line 262 on those frames. Goku's own main-thread work was ~3,600 CPU cycles a frame on
+255 (SlowROM). `goku_nmi` (master clocks over the walk, FastROM): 0.17
+lines when nothing is pending, 8.9 with a cell (the upload itself 7.5), a
+cell on 70 of 250 frames. Before October 2026 it took 0.6 and 10.0 lines
+and re-sent the cell on every party refresh (104 of 250 frames); with every
+stream merged (integration-trial plus the UI status page) the NMI then
+ended at line 262 on those frames, now at 260. Goku's own main-thread work was ~3,600 CPU cycles a frame on
 SlowROM (pose ~1,570, OAM ~990, palette ~730 with its no-change fast path);
 module code runs 25% faster on FastROM.
 Menus (`menu.lua`, `file.lua`): the hook starts at scanline ~229 and ends by
