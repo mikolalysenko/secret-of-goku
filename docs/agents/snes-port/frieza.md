@@ -31,11 +31,13 @@ those scripts call, Frieza's picture and the fights. The orbit stream
 | Frieza's ki for Dark Lich: 48,000 HP, attack +48/+24, two boosts (+10% HP, +16 attack) with Frieza's taunts | Done (logic; the orbs and aura wait for fx kinds) |
 | Goku's attacks reaching Frieza | Needs combat's virtual-target hook (Requests): until then the fight cannot be won with the pad |
 | Incoming-damage cap of the fed Beast (110/140, 75-frame grace) | Needs combat's damage-receive hook (Requests) |
-| Cutscene effects (`frieza.js` draw(), the scene branch): the deck's Death Ball (charge and throw poses from `friezaDeathBallPose`), the eruption's column of large bursts, Fanha's beam and burst, Popoi's end, the empowering orbs and Thanatos's aura, Goku's gold aura | Done through fx; fx draws the ball at <= 32 px, its strip beams in four facings only and no auras yet (fx requests) |
+| Cutscene effects (`frieza.js` draw(), the scene branch): the deck's Death Ball (charge and throw poses from `friezaDeathBallPose`), the eruption's column of large bursts, Fanha's beam and burst, Popoi's end, the empowering orbs and Thanatos's aura, Goku's gold aura | Done through fx (auras as fx's polygon); the cinematic red Death Ball is drawn as fx's violet ball (Known differences) |
 | The Dragon Balls rising to the altar (steal) and the eighth Ball | Done (own art, generated) |
-| The Emperor's execution: ray, black frame with his silhouette, sparks | Done (the ray is fx's Death Beam, not drawn by fx yet) |
-| The Fortress's collapse on its destroyed deck (map 255): fractures, scars, red alarm | Done (alarm as a red add only; fractures need flight's canLand) |
-| Altar camera pan (reveal, steal), intro follower poses (temple exit, the deck), Tree vista, flyby in world flight | Not yet (Requests: flight's camera dispatcher, goku's scene drawing) |
+| The Emperor's execution: ray, black frame with his silhouette, sparks | Done (the ray is fx's Death Beam) |
+| The Fortress's collapse on its destroyed deck (map 255): fractures, scars, red alarm | Done (alarm as a red add only; fractures on landable floor with flight's canLand) |
+| Altar camera pan (reveal, steal) and the court camera | Done through flight's scripted camera (`!FLIGHT_API_CAMERA`; checked on a trial merge with flight) |
+| The Tree (event 5F8): establishing view, arrival, the 32 px ball, throw, impact (shake, white, five large bursts, ruins), departure, return to black, wake on the ash field | Plays end to end on the cartridge (case `tree`); Goku on the cliff needs goku's scripted cell; the HUD stays visible over the cliff (Known differences) |
+| Intro follower poses (temple exit, the deck), flyby in world flight | Not yet (Requests: goku's scripted cell; the flyby belongs to world flight) |
 
 ## Scenes and timings (from the JavaScript)
 
@@ -387,9 +389,19 @@ floor on request.
   (they follow world coordinates in the browser); outlines and colours
   match.
 - **Without fx** the shots, eruptions, bursts and auras are not drawn
-  (logic, sounds and damage run); the fx module is merged and draws the
-  kinds it has (impacts, explosions, the Death Ball, discs, finger beams,
-  orbs); laser beams, debris and auras wait for fx kinds.
+  (logic, sounds and damage run).
+- **The cinematic Death Ball** (the deck's 64-224 px planet killer, the
+  Tree's 16-32 px ball, `death-ball-art.js` `cinematic`): fx draws only the
+  violet battle ball, so these show fx's violet ball at the browser's
+  positions and sizes instead of the red 64 px art.
+- **Lag with fx's polygons**: the first power surge holds the pink aura
+  around Frieza every frame; fx's polygon aura costs about 100 lines on its
+  frames, so with the fight's own ~45 the surge lags about 80 frames by age
+  270 (the logic follows the game's clock; the `surge` case reports it).
+- **The Tree vista and the HUD**: the field keeps BG3's priority, so the
+  HUD rows (BG3 map rows 25-27) stay over the cliff where the browser
+  paints them away; the line-196 switch to the HUD is off while the vista
+  shows (VTIME beyond the frame).
 
 ## Requests
 
@@ -411,20 +423,20 @@ floor on request.
 - **combat (3)**: `beamTouchesShot()` needs Goku's live beam geometry
   (origin, direction, length, width) so a Kamehameha can cancel Frieza's
   shots; `fz_bind_beam_touches` answers "no" until then.
-- **fx**: FX_DEATHBALL at 64-224 px (the deck's charge and throw), FX_AURA
-  (Thanatos's pink aura, Goku's gold aura), FX_BEAM_LASER (the Emperor's
-  ray and Frieza's lasers), 16-step headings for the strip beams (Fanha's
-  end), FX_DEBRIS (the floor chunks).
+- **fx**: the cinematic red Death Ball (`death-ball-art.js` `giant`, 64 px
+  art scaled 16-224 px): at least the red ramp for FX_DEATHBALL's OBJ sizes
+  and polygon, so the deck's and the Tree's balls are not violet; and a
+  cheaper polygon aura (about 100 lines a frame during the surge).
 - **goku**: a way to draw Goku's own cell at a scripted screen spot with the
   native body hidden (`frieza.js` introHero: the temple exit and the deck's
   follower poses; the Tree vista's Goku).
-- **flight**: a JSL `canLand(x, y, layer, terrain)` service
-  (`!FLIGHT_API_CAN_LAND`, A16 = x, X16 = y, Goku's layer/terrain) for the
-  patrol nodes, floor fractures and the landing search (every cell counts
-  as landable without it); a scripted camera target at 1 px per frame
-  through the dispatcher hooks it owns (`C0:D651`/`C0:DA6E`) for the altar
-  pan (300 frames to y 64) and the court (152, 260), as `frieza-intro.js
-  installAltarCamera`.
+- **flight**: none left; `bind.asm` binds `!FLIGHT_API_CAN_LAND`,
+  `_CAN_LAND_T` and `!FLIGHT_API_CAMERA` when flight is built in.
+- **ending / orbit (scene SRAM)**: Frieza releases `!SRAM_WORK_SCENE` on the
+  first field frame he sees `ES_ACTIVE`, so the ending should claim it in
+  its own frame (after Frieza's) or retry until the claim succeeds. The
+  orbit stream works in `$32:6000-6FFF` during Frieza's fight, under his
+  claim (`!SCENE_FRIEZA`), and should not claim the area itself then.
 - **audio**: the cue changes happen mid-scene (the altar reveal, the fight
   start, the gold aura); an upload spread over several frames (or the
   Frieza songs' instruments kept resident) would remove the stall.
