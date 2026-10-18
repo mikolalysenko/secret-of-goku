@@ -225,6 +225,7 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !fl_tp_e_terr  = !fl_tp+$24
 !fl_tp_e_species = !fl_tp+$26
 !fl_tp_e_air   = !fl_tp+$28
+!fl_tp_clock   = !fl_tp+$2A        ;   word: field video clock of the last action step
 !fl_tp_l_x    = !FL_SRAM+$3A6     ;   word: landing found by fl_tp_landing
 !fl_tp_l_y     = !FL_SRAM+$3A8
 !fl_tp_l_terr  = !FL_SRAM+$3AA

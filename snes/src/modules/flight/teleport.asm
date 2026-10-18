@@ -40,6 +40,8 @@ fl_tp_start:
 	STA.l !fl_tp_queued
 	STA.l !fl_tp_arrived
 	STA.l !fl_tp_sounded
+	JSR fl_bind_clock
+	STA.l !fl_tp_clock
 	JSR fl_hero_facing
 	STA.l !fl_tp_facing
 	LDA.w #$0001
@@ -77,12 +79,30 @@ fl_hero_facing:
 fl_facing_native:
 	db $01, $02, $82, $00
 
-; Advance the action one frame (beforeFrame advanceAction). Called every
-; field frame while fl_tp_act is set.
+; Advance by elapsed video frames, capped at four like combat's clock.
+; Rendering/AI lag must not stretch the vanish and recovery animation.
+; Camera streaming still holds age 4 until its rows have arrived.
 fl_tp_advance:
+	JSR fl_bind_clock
+	PHA
+	SEC
+	SBC.l !fl_tp_clock
+	BNE .elapsed
 	LDA.l !fl_tp_age
-	INC
+	BEQ .first                   ; a new action advances on the press frame
+	PLA
+	RTS
+.first
+	LDA.w #1
+.elapsed
+	CMP.w #5
+	BCC +
+	LDA.w #4
++	CLC
+	ADC.l !fl_tp_age
 	STA.l !fl_tp_age
+	PLA
+	STA.l !fl_tp_clock
 	LDA.l !fl_tp_arrived
 	BNE .arrived
 	LDA.l !fl_tp_age

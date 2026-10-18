@@ -29,6 +29,31 @@ if defined("CB")
 	JSL combat_api_cancel
 endif
 	RTS
+; A16 = field video clock, including NMIs whose logic frame was not ready.
+; A flight-only build has no combat NMI hook and uses completed frames.
+fl_bind_clock:
+if defined("CB")
+	LDA.l $7E0000|!cb_vblanks
+else
+	LDA.l !core_frame
+endif
+	RTS
+if defined("FLIGHT_TEST")
+fl_bind_test_lag:
+if defined("CB")
+	; Leave NMI running while the frame thread misses three video frames.
+	; Defined here, after combat's clock provider is known to the assembler.
+	JSR fl_bind_clock
+	PHA
+-	JSR fl_bind_clock
+	SEC
+	SBC $01,S
+	CMP.w #3
+	BCC -
+	PLA
+endif
+	RTS
+endif
 ; Carry = combat is charging (combat_api_state bit 1).
 fl_bind_charging:
 if defined("CB")

@@ -557,8 +557,10 @@ in WRAM or direct page (shorter addressing), a larger tile cache.
   the boss lock the browser's `requestFlight()` applies to both routes.
 - Instant Transmission: `mod.facing` comes from `E010` (the browser also
   turns it on the press frame's new direction, which combat's aim tracks);
-  the action advances once per logic frame (the browser: per video frame,
-  so a lagging scene stretches it). The vegeta module posts Vegeta, but in
+  the action now advances by elapsed field vblanks, capped at four like
+  combat, while the camera still holds age 4 until its rows arrive. `scene`
+  injects three real missed frames across the 16-bit clock wrap and checks
+  catch-up, recovery and the arrival cue. The vegeta module posts Vegeta, but in
   the Time Chamber no spot around the arena passes `findLanding` in either
   engine (its floor tiles are not floor flight accepts), so L+B does nothing
   there; if the trial is meant to allow it, the chamber needs tiles

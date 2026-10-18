@@ -1,5 +1,14 @@
 # Changelog
 
+## SNES teleport responsiveness (2026-10-18)
+
+- Advance Instant Transmission with the field video clock, so CPU stalls
+  no longer lengthen its vanish and recovery animation. Keep the camera's
+  streaming hold and cap catch-up at four frames, as combat already does.
+- Test recovery and the arrival cue after three injected missed frames,
+  including the 16-bit clock wrap; existing offscreen teleport and scene
+  camera checks pass.
+
 ## SNES flight and rendering performance (2026-10-18)
 
 - Reuse shoreline collision results while flying instead of repeatedly

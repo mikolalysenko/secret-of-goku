@@ -215,9 +215,46 @@ local function passengers()
   H.w16(0x7ED96C,0)
   H.wait(2)
 end
+local function teleportClock()
+  F.import('animation-audit__native__rabite-field-b')
+  F.on()
+  H.wait(2)
+  F.clearActors()
+  F.restore()
+  H.wait(2)
+  local gx,gy=H.r16(0x7EE002),H.r16(0x7EE004)
+  postTarget(3,46,gx+40,gy,H.r8(0x7EE00B),0,200)
+  H.wait(2)
+  -- Start next to the 16-bit video-clock wrap; the subtraction must work
+  -- across zero as well as across the deliberately missed frames.
+  H.w16(0x7ED8C4,0xFFFD)
+  H.w16(0x7ED8C6,0xFFFD)
+  H.hold('l b',1)
+  H.input=nil
+  F.check(H.r16(F.TP)~=0,'video clock: teleport starts')
+  local before=H.r16(F.TP+2)
+  local done=H.r16(F.MAIL+6)
+  H.w16(F.MAIL,10)
+  F.check(H.waitFor(function() return H.r16(F.MAIL+6)~=done end,12),'video clock: injected lag completed')
+  -- The completion mailbox is written before the ordinary flight step.
+  -- At the next video boundary that step has advanced by all three NMIs.
+  local after=H.r16(F.TP+2)
+  F.check(after>=before+3,'video clock: teleport catches up after three missed frames ('..before..' -> '..after..')')
+  F.check(H.r16(0x7ED8C4)<10,'video clock: regression crossed the counter wrap')
+  local sounds=0
+  for i=1,32 do
+    H.wait(1)
+    if H.r16(F.TP+0x10)~=0 then sounds=sounds+1 end
+    if H.r16(F.TP)==0 then break end
+  end
+  F.check(H.r16(F.TP)==0,'video clock: teleport recovers after lag')
+  F.check(sounds>0,'video clock: arrival cue survives skipped ages')
+  postTarget(0,0,0,0,0,0,0)
+end
 function test()
   passengers()
   recoveryCamera()
+  teleportClock()
   teleports()
   pan()
   H.result('failures', F.fail)
