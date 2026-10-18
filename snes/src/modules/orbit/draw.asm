@@ -179,7 +179,8 @@ fight_draw:
 	LDA.w !f_on
 	BNE +
 	RTS
-+	JSR fd_hits
++	JSR fd_beam_wants
+	JSR fd_hits
 	JSR fd_warning
 	JSR fd_boss_shots
 	JSR fd_ki
@@ -542,6 +543,8 @@ fd_disc:
 ; the origin; the line itself with the beams), beams (pink orb at the
 ; origin; the band with the beams).
 fd_boss_shots:
+	LDX.w #$0002                   ; Frieza's beam or laser band
+	JSR beam_draw
 	LDX.w #(!BS_N-1)*16
 .shot
 	STX.w !d_hit
@@ -634,10 +637,201 @@ fd_wave:
 	LDA.w !fb_on
 	BNE +
 	RTS
-+	LDY.w #!OFX_ORB_4|(!OFX_PAL_BLUE<<9)|!OA_PRI
++	LDX.w #$0000
+	JSR beam_draw
+	LDY.w #!OFX_ORB_4|(!OFX_PAL_BLUE<<9)|!OA_PRI
 	LDX.w !fb_y
 	LDA.w !fb_x
 	JMP ofx_stamp
+
+; This frame's beam bands (frieza-orbit-view.js ray / deathBeam): Goku's
+; wave (group 0) and Frieza's laser, else his youngest beam (group 1); the
+; band colour frames.
+fd_beam_wants:
+	LDA.w !f_age
+	LSR : LSR
+	AND.w #$0001
+	STA.w !v_band
+	STA.w !v_pband
+	STZ.w !v_pmode
+	; Goku's wave: w = max(2, round(width * envelope / 2) * 2)
+	LDX.w #$0000
+	LDA.w !fb_on
+	BNE +
+	JSR beam_off
+	BRA .frieza
++	LDA.w !fb_x : STA.w !bw_x
+	LDA.w !fb_y : STA.w !bw_y
+	LDA.w !fb_head : STA.w !bg_tmp
+	JSR fd_wave_width8
+	JSR fd_band_radius
+	STA.w !bg_tmp+2
+	STZ.w !bg_tmp+4
+	LDA.w #350 : STA.w !bg_tmp+6
+	LDA.w #(!OFX_PAL_BLUE<<9)|!OA_PRI : STA.w !bg_tmp+8
+	LDX.w #$0000
+	JSR beam_want
+.frieza
+	; the laser in flight, else the youngest beam
+	LDA.w #$FFFF
+	STA.w !d_t0                    ; chosen shot
+	LDX.w #(!BS_N-1)*16
+-	LDA.w !FS_BOSS+!bs_kind,X
+	CMP.w #!WK_LASER
+	BNE +
+	LDA.w !FS_BOSS+!bs_age,X
+	CMP.w #16
+	BCS +
+	STX.w !d_t0
+	JMP .laser
++	TXA : SEC : SBC.w #$0010 : TAX
+	BPL -
+	LDA.w #999
+	STA.w !d_t1
+	LDX.w #(!BS_N-1)*16
+-	LDA.w !FS_BOSS+!bs_kind,X
+	CMP.w #!WK_BEAM
+	BNE +
+	LDA.w !FS_BOSS+!bs_age,X
+	CMP.w #42
+	BCS +
+	CMP.w !d_t1
+	BCS +
+	STA.w !d_t1
+	STX.w !d_t0
++	TXA : SEC : SBC.w #$0010 : TAX
+	BPL -
+	LDX.w !d_t0
+	BPL .beam
+	LDX.w #$0002
+	JMP beam_off
+.beam
+	LDA.w !FS_BOSS+!bs_x,X : STA.w !bw_x+2
+	LDA.w !FS_BOSS+!bs_y,X : STA.w !bw_y+2
+	LDA.w !FS_BOSS+!bs_head,X : STA.w !bg_tmp
+	; width 12 min(1, age/6, (42-age)/8) in 8.8: 512 age, 384 (42-age)
+	LDA.w !FS_BOSS+!bs_age,X
+	STA.w !d_t2
+	XBA : LSR                      ; 128 age
+	ASL : ASL                      ; 512 age
+	CMP.w #3072
+	BCC +
+	LDA.w #3072
++	STA.w !d_t3
+	LDA.w #42
+	SEC : SBC.w !d_t2
+	SEP #$20
+	STA.w $4202
+	LDA.b #192
+	STA.w $4203
+	REP #$20
+	NOP : NOP : NOP
+	LDA.w $4216
+	ASL                            ; 384 (42 - age)
+	CMP.w !d_t3
+	BCS +
+	STA.w !d_t3
++	LDA.w !d_t3
+	JSR fd_band_radius
+	STA.w !bg_tmp+2
+	STZ.w !bg_tmp+4
+	; length min(360, age * 30)
+	LDA.w !d_t2
+	SEP #$20
+	STA.w $4202
+	LDA.b #30
+	STA.w $4203
+	REP #$20
+	NOP : NOP : NOP
+	LDA.w $4216
+	CMP.w #360
+	BCC +
+	LDA.w #360
++	STA.w !bg_tmp+6
+	LDA.w #(!OFX_PAL_PINK<<9)|!OA_PRI : STA.w !bg_tmp+8
+	LDX.w #$0002
+	JMP beam_want
+.laser
+	LDA.w !FS_BOSS+!bs_x,X : STA.w !bw_x+2
+	LDA.w !FS_BOSS+!bs_y,X : STA.w !bw_y+2
+	LDA.w !FS_BOSS+!bs_head,X : STA.w !bg_tmp
+	LDA.w !FS_BOSS+!bs_age,X
+	LSR : LSR
+	AND.w #$0001
+	STA.w !v_pband
+	LDA.w #$0001
+	STA.w !v_pmode
+	STA.w !bg_tmp+2                ; R 1
+	STA.w !bg_tmp+4                ; laser
+	LDA.w #350 : STA.w !bg_tmp+6
+	LDA.w #(!OFX_PAL_PINK<<9)|!OA_PRI : STA.w !bg_tmp+8
+	LDX.w #$0002
+	JMP beam_want
+
+; A16 = width in 8.8 -> A16 = max(2, round(width / 2) * 2).
+fd_band_radius:
+	CLC : ADC.w #256
+	XBA : AND.w #$00FF
+	LSR
+	ASL
+	CMP.w #2
+	BCS +
+	LDA.w #2
++	RTS
+
+; Goku's wave width (8.8) times min(1, age/6, (max-age)/10).
+fd_wave_width8:
+	LDA.w !fb_age
+	CMP.w #6
+	BCS .full
+	; fb_width * age / 6
+	LDA.w !fb_width
+	STA.w $4204
+	SEP #$20
+	LDA.b #6
+	STA.w $4206
+	REP #$20
+	NOP : NOP : NOP : NOP : NOP : NOP : NOP : NOP
+	LDA.w $4214                    ; fb_width / 6
+	STA.w !d_t3
+	LDA.w #0
+	LDX.w !fb_age
+	BEQ +
+-	CLC : ADC.w !d_t3
+	DEX
+	BNE -
++	BRA .tail
+.full
+	LDA.w !fb_width
+.tail
+	STA.w !d_t3
+	LDA.w !fb_max
+	SEC : SBC.w !fb_age
+	CMP.w #10
+	BCS .done
+	; (max - age) / 10 * fb_width: (fb_width / 10) * (max - age)
+	STA.w !d_t4
+	LDA.w !fb_width
+	STA.w $4204
+	SEP #$20
+	LDA.b #10
+	STA.w $4206
+	REP #$20
+	NOP : NOP : NOP : NOP : NOP : NOP : NOP : NOP
+	LDA.w $4214
+	STA.w !d_t5
+	LDA.w #0
+	LDX.w !d_t4
+	BEQ +
+-	CLC : ADC.w !d_t5
+	DEX
+	BNE -
++	CMP.w !d_t3
+	BCS .done
+	RTS
+.done
+	LDA.w !d_t3
+	RTS
 
 ; The hand charge while L+Y builds the wave: charge-orb frame
 ; floor(charge * 4 / 45) sampled 2:1, at the charge cell's hand socket.

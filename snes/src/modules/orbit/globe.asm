@@ -56,6 +56,9 @@ globe_frame:
 	CMP.w !g_textset
 	BEQ +
 	JSR globe_mode_table
+	REP #$30
+	LDA.w #$0001
+	STA.w !g_ichg                  ; the window rows start below the band
 +	REP #$30
 	; Window block for the radius and the centre column: started here and
 	; built in the frame's spare time (orbit_background) into the back
@@ -315,11 +318,15 @@ globe_itables:
 	STA.w !gb_empty
 	STA.w !gb_empty+2
 	; top / bot, first row index
+	LDA.w !g_text
+	AND.w #$00FF
+	STA.w !g_tmp+2                 ; first Mode 7 line
 	LDA.w !cam_y
 	SEC : SBC.w !g_lR
 	STA.w !g_tmp+0                 ; line of row -R (signed)
+	CMP.w !g_tmp+2
 	BPL +
-	LDA.w #$0000
+	LDA.w !g_tmp+2
 +	STA.w !g_top
 	LDA.w !cam_y
 	CLC : ADC.w !g_lR

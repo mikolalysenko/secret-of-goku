@@ -6,6 +6,9 @@
 // failure. Cases:
 //   globe  the Mode 7 globe and starfield at the browser's cameras, compared
 //          with reference.mjs (the browser's planet()/sky() formulas)
+//   intro  the orbit intro through the public API (orbit_api_enter): the
+//          message schedule against frieza-cinematic.js orbitIntroText and
+//          each panel's pixels against the browser's radioPixels
 //   fight  the space fight frame by frame against the browser's own
 //          frieza.js orbital battle (fight-ref.mjs) under a scripted pad:
 //          movement, ki, the charged wave, Instant Transmission and the
@@ -122,6 +125,43 @@ const cases={
     if(res.error)console.log(res.error);
     return ok;
   },
+  async intro(rom){
+    const {orbitIntroFrames,orbitIntroLines,orbitIntroText}=await import(resolve(repo,'engine/frieza-cinematic.js'));
+    const {radioPixels}=await import(resolve(repo,'engine/native-radio.js'));
+    const marks=[20,59,61,135,209,211,285,360,435,510,585,660,735,809,811,860];
+    const dir=join(out,'intro');
+    const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nMARKS={${marks.join(',')}}\n`;
+    const r=await runMesen({rom,state,test:pre+readFileSync(join(here,'intro.lua'),'utf8'),outDir:dir});
+    const res=r.results??{};
+    let ok=r.code===0&&res.live===true&&Array.isArray(res.states);
+    if(!ok){console.log('intro: FAIL (no run)',r.code,res.error??'');return false;}
+    const romBytes=readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc'));
+    const fails=[];let panels=0;
+    for(const line of res.states){
+      const [f,intro,want,have]=line.split(',').map(Number);
+      // the cartridge's intro counter is the browser's o.intro after this frame
+      const text=orbitIntroText(intro),id=text?orbitIntroLines.indexOf(text)+1:0;
+      if(want!==id)fails.push(`frame ${f} (intro ${intro}): message ${want}, browser ${id}`);
+      // the screenshot trails the frame by up to two frames: check panels
+      // well inside a line only
+      const age=orbitIntroFrames-intro,inLine=age>=64&&age<orbitIntroFrames-49&&(age-60)%150>=4&&(age-60)%150<=146;
+      if(!text||!inLine)continue;
+      const shot=readPng(join(dir,`intro${String(f).padStart(4,'0')}.png`)),px=radioPixels(romBytes,text);
+      let bad=0,n=0;
+      for(let y=0;y<64;y++)for(let x=0;x<240;x++){
+        const v=px[y*240+x];if(!v)continue;n++;
+        const c=v-1,want=[c&31,(c>>5)&31,(c>>10)&31].map(k=>(k<<3)|(k>>2)),at=((y+8)*shot.width+x+8)*4;
+        if(want.some((k,i)=>Math.abs(shot.data[at+i]-k)>8))bad++;
+      }
+      panels++;
+      if(bad)fails.push(`frame ${f}: ${bad} of ${n} panel pixels differ from radioPixels`);
+    }
+    ok=ok&&fails.length===0&&panels>=5;
+    writeFileSync(join(dir,'report.json'),JSON.stringify({states:res.states,fails,panels},null,1));
+    console.log(`intro: ${ok?'pass':'FAIL'} ${panels} panels checked`);
+    for(const m of fails.slice(0,8))console.log('  '+m);
+    return ok;
+  },
   async fight(rom){
     const frames=Number(process.env.ORBIT_FIGHT_FRAMES??660),pads=fightPads(frames);
     const dir=join(out,'fight');
@@ -168,7 +208,7 @@ const rom=buildRom();
 mkdirSync(out,{recursive:true});
 const names=process.argv.slice(2).filter(a=>!a.startsWith('-'));
 let failed=0;
-const defaults=['globe','fight'];
+const defaults=['globe','intro','fight'];
 for(const name of names.length?names:defaults){
   if(!cases[name]){console.log(`unknown case ${name}`);failed++;continue;}
   if(!await cases[name](rom))failed++;

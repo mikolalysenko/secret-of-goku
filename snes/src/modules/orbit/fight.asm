@@ -12,7 +12,7 @@ fight_start:
 	PHA
 	STX.w !cam_lon
 	STY.w !cam_lat
-	LDX.w #!FIGHT_END-!FB-2
+	LDX.w #(!FIGHT_END)-(!FB)-2
 .clr
 	STZ.w !FB,X
 	DEX : DEX

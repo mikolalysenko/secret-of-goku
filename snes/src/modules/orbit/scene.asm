@@ -65,6 +65,22 @@ orbit_command:
 	BNE .notFight
 	JMP orbit_start_fight_test
 .notFight
+	CMP.b #!OC_API_INTRO
+	BEQ .api
+	CMP.b #!OC_API_FIGHT
+	BNE .notApi
+.api
+	; through the public entry, as the frieza module and the debug presets
+	REP #$30
+	AND.w #$00FF
+	SEC : SBC.w #!OC_API_INTRO-!OE_INTRO
+	PHA
+	JSL orbit_api_defaults
+	PLA
+	JSL orbit_api_enter
+	SEP #$20
+	RTS
+.notApi
 	CMP.b #!OC_STOP
 	BNE .done
 	LDA.l !orbit_state
@@ -144,6 +160,11 @@ orbit_scene_init:
 	STZ.w !g_ichg
 	STZ.w !g_bld
 	STZ.w !f_on
+	STZ.w !v_pband
+	STZ.w !v_pmode
+	STZ.w !t_want
+	STZ.w !t_have
+	JSR beam_init
 	STZ.w !v_band
 	LDA.w #$FFFF                   ; no dynamic cell uploaded or wanted
 	STA.w !v_frieza
@@ -209,6 +230,11 @@ orbit_suppress_native:
 ; the frame's end their usual lines). Measured costs: about one line per
 ; window row, two per star.
 orbit_background:
+	JSR orbit_vcount
+	CMP.w #!ORBIT_DEADLINE
+	BCS .done
+	JSR beam_update                ; beam pictures first: the most visible
+	REP #$30
 	JSR orbit_vcount
 	CMP.w #!ORBIT_DEADLINE
 	BCS .done
@@ -294,6 +320,7 @@ orbit_live_frame:
 	REP #$30
 	DEC.w !f_steps
 	BNE -
+	JSR text_frame
 	INC.w !cam_age
 	JSR globe_frame
 	JSR stars_frame
@@ -461,8 +488,9 @@ orbit_nmi_load:
 	BRA .next
 .effects
 	; Steps 9-11: the fight's resident effect cells (OBJ tiles $080-$0FF,
-	; $100-$13F, $180-$1BF).
+	; $100-$13F, $180-$1BF); step 12: the text panel's BG3 tiles.
 	CMP.b #$0C
+	BEQ .text
 	BCS .finish
 	REP #$20
 	AND.w #$00FF
@@ -500,6 +528,24 @@ orbit_nmi_load:
 	INC
 	STA.l !orbit_load
 	RTS
+.text
+	REP #$20
+	LDA.w #$4000+(!OTXT_TILE0*8)
+	STA.w $2116
+	LDA.w #orbit_text_tiles
+	STA.w $4372
+	LDA.w #$1801
+	STA.w $4370
+	LDA.w #!OTXT_TILES*16
+	STA.w $4375
+	SEP #$20
+	LDA.b #orbit_text_tiles>>16
+	STA.w $4374
+	LDA.b #$80
+	STA.w $2115
+	LDA.b #$80
+	STA.w $420B
+	JMP .next
 .fxSteps
 	dw $6800, orbit_fx_vram_a
 	dw $7000, orbit_fx_vram_b
@@ -565,6 +611,7 @@ orbit_nmi_live:
 	LDA.b #$80
 	STA.w $420B
 	JSR orbit_nmi_obj_palettes
+	JSR text_palettes
 	; HDMA: channel 2 BGMODE, 3 M7A, 4 M7Y, 6 windows (tables in bank $32).
 	REP #$20
 	LDA.w #$0500                   ; mode 0, $2105
@@ -586,7 +633,18 @@ orbit_nmi_live:
 	LDA.w !g_cur_it
 	CLC : ADC.w #!IT_BASE+!it_win
 	STA.w $4362
+	; channel 5: BG3VOFS -1 over a text panel's lines (BG rows show one
+	; line earlier than sprites and the browser's overlay), 0 for the HUD
+	LDA.w #$1202                   ; mode 2, $2112 (twice)
+	STA.w $4350
+	LDA.w #orbit_vofs_plain
+	LDX.w !t_have
+	BEQ +
+	LDA.w #orbit_vofs_panel
++	STA.w $4352
 	SEP #$20
+	LDA.b #orbit_vofs_plain>>16
+	STA.w $4354
 	LDA.b #$32
 	STA.w $4324
 	STA.w $4334
@@ -600,6 +658,9 @@ orbit_nmi_live:
 	ORA.b #!ORBIT_HDMA
 	STA.w !N_HDMA
 	JSR orbit_nmi_cells
+	REP #$30
+	JSR text_nmi
+	SEP #$20
 	PLB
 	RTS
 
@@ -644,12 +705,32 @@ orbit_nmi_obj_palettes:
 	LDA.l orbit_fx_band_blue+1,X : STA.w $2122
 	LDA.l orbit_fx_band_blue+2,X : STA.w $2122
 	LDA.l orbit_fx_band_blue+3,X : STA.w $2122
-	LDA.b #208+2
+	; pink: beam (1 white, 2 A, 3 B) or laser (1 A, 2 B, 3 white), with
+	; its own colour frame
+	REP #$20
+	LDA.w !v_pband
+	AND.w #$0001
+	ASL : ASL
+	TAX
+	SEP #$20
+	LDA.b #208+1
 	STA.w $2121
+	LDA.w !v_pmode
+	BNE .laser
+	LDA.b #$FF : STA.w $2122       ; 1: white
+	LDA.b #$7F : STA.w $2122
 	LDA.l orbit_fx_band_pink,X : STA.w $2122
 	LDA.l orbit_fx_band_pink+1,X : STA.w $2122
 	LDA.l orbit_fx_band_pink+2,X : STA.w $2122
 	LDA.l orbit_fx_band_pink+3,X : STA.w $2122
+	RTS
+.laser
+	LDA.l orbit_fx_band_pink,X : STA.w $2122
+	LDA.l orbit_fx_band_pink+1,X : STA.w $2122
+	LDA.l orbit_fx_band_pink+2,X : STA.w $2122
+	LDA.l orbit_fx_band_pink+3,X : STA.w $2122
+	LDA.b #$FF : STA.w $2122       ; 3: white
+	LDA.b #$7F : STA.w $2122
 	RTS
 .cgram
 	dw 128, 192, 208, 224, 240, 144
@@ -706,7 +787,9 @@ orbit_nmi_cells:
 	CMP.w !v_d32_h
 	BEQ .d16
 	JSR orbit_nmi_time
-	BCS .out
+	BCC +
+	JMP .out
++
 	LDA.w !v_d32
 	STA.w !v_d32_h
 	XBA : ASL                      ; * 512
@@ -724,7 +807,7 @@ orbit_nmi_cells:
 .d16
 	LDA.w !v_d16
 	CMP.w !v_d16_h
-	BEQ .out
+	BEQ .beam
 	JSR orbit_nmi_time
 	BCS .out
 	LDA.w !v_d16
@@ -739,6 +822,30 @@ orbit_nmi_cells:
 	LDA.w #2
 	STA.w !n_rows
 	LDA.w #64
+	STA.w !n_len
+	JSR orbit_nmi_rows
+.beam
+	; a finished beam picture: 4 rows of 128 bytes to its slot
+	LDA.w !bg_ready
+	BEQ .out
+	JSR orbit_nmi_time
+	BCS .out
+	LDA.w !bg_ready
+	DEC
+	ASL
+	TAX
+	LDA.l beam_slot_vram,X
+	STA.w !n_vram
+	LDA.w !bg_key
+	STA.w !bs_have,X
+	STZ.w !bg_ready
+	LDA.w #!BEAM_BUF
+	STA.w !n_src
+	LDA.w #$0032
+	STA.w !n_bank
+	LDA.w #4
+	STA.w !n_rows
+	LDA.w #128
 	STA.w !n_len
 	JSR orbit_nmi_rows
 .out

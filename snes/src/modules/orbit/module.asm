@@ -12,6 +12,7 @@
 incsrc "orbit/defines.asm"
 incsrc "orbit-sprites/sprites.asm"
 incsrc "orbit-fx/defines.asm"
+incsrc "debug/defines.asm"
 incsrc "audio/ids.asm"
 
 ; ---------------------------------------------------------------------------
@@ -27,6 +28,23 @@ incsrc "audio/ids.asm"
 !orbit_vline   = !RAM_ORBIT+$0A   ; word: scanline at which the last NMI hook ended (tests)
 !orbit_fline   = !RAM_ORBIT+$0C   ; word: scanline at which the last frame hook ended (tests)
 !orbit_arg     = !RAM_ORBIT+$0E   ; word: command argument
+; orbit_api_enter inputs (written by the caller, frieza: its boss state).
+!orbit_in_hp    = !RAM_ORBIT+$10  ; Frieza's HP
+!orbit_in_tx    = !RAM_ORBIT+$12  ; the strike target ($128): the globe's longitude
+!orbit_in_ty    = !RAM_ORBIT+$14  ; ($12A): latitude
+!orbit_in_age   = !RAM_ORBIT+$16  ; b.age (patrol nodes every 105)
+!orbit_in_cycle = !RAM_ORBIT+$18  ; b.cycle (attack pattern position)
+!orbit_in_limp  = !RAM_ORBIT+$1A  ; b.lastImpact (an age; -100 when none)
+!orbit_in_lmel  = !RAM_ORBIT+$1C  ; b.lastMelee (-200 when none)
+!orbit_in_mhits = !RAM_ORBIT+$1E  ; b.meleeHits
+!orbit_in_dodge = !RAM_ORBIT+$20  ; b.dodgeCooldown
+!orbit_in_stun  = !RAM_ORBIT+$22  ; b.stun
+!OE_SURGE = 0                     ; orbit_api_enter modes: the second surge's cinematic first
+!OE_INTRO = 1                     ; the orbit with its intro
+!OE_FIGHT = 2                     ; straight into the fight
+!ORBIT_INTRO_FRAMES = 855         ; frieza-cinematic.js orbitIntroFrames
+!DEBUG_PRESET_HOOK_ORBIT = orbit_debug_orbit
+!DEBUG_PRESET_HOOK_SPACE = orbit_debug_space
 
 !OS_OFF     = $00
 !OS_LOADING = $01                 ; art uploads; picture held black
@@ -36,6 +54,8 @@ incsrc "audio/ids.asm"
 !OC_NONE      = $00
 !OC_TEST_GLOBE = $01              ; tests: show the globe with the camera in the scene block
 !OC_STOP      = $02
+!OC_API_INTRO  = $04              ; tests: orbit_api_enter(!OE_INTRO) with orbit_api_defaults
+!OC_API_FIGHT  = $05              ; tests: orbit_api_enter(!OE_FIGHT) with orbit_api_defaults
 !OC_TEST_FIGHT = $03              ; tests: the space fight from its first combat frame
                                   ; (Frieza's HP in !orbit_arg, globe target in !cam_lon/lat)
 
@@ -286,8 +306,65 @@ assert !FIGHT_END <= !SB+$D00, "orbit fight block overflow"
 !n_vram     = !DB+$36
 !n_rows     = !DB+$38
 !n_len      = !DB+$3A
+!v_pband    = !DB+$3C              ; pink band colour frame (0/1)
+!v_pmode    = !DB+$3E              ; pink band layout: 0 beam (2 A, 3 B), 1 laser (1 A, 2 B, 3 white)
 !DRAW_END   = !DB+$40
 assert !DRAW_END <= $8000, "orbit draw block overflow"
+!BB = !SB+$D40                     ; beam bands (beam.asm), to !BB_END
+!BEAM_ROWS = 16                    ; picture rows generated per call at most
+; Key: R (bits 0-5) | class (6-8) | chain (9-10) | laser (11).
+!BK_LASER = $0800
+
+; Per group (word arrays indexed by group*2).
+!bw_key    = !BB+$00               ; wanted key of chain 0 ($FFFF: group off)
+!bw_j      = !BB+$04               ; chains each side (0-2)
+!bw_x      = !BB+$08               ; origin
+!bw_y      = !BB+$0C
+!bw_flip   = !BB+$10               ; OAM flips of the mirror ($4000 h, $8000 v)
+!bw_sx     = !BB+$14               ; $FFFF when x is mirrored
+!bw_sy     = !BB+$18
+!bw_len    = !BB+$1C               ; cells along the axis (length / period)
+!bw_pal    = !BB+$20               ; palette << 9 | priority
+; Slots (6).
+!bs_have   = !BB+$24               ; key the slot's VRAM holds ($FFFF none)
+; Generation.
+!bg_on     = !BB+$30               ; nonzero: rows left to make
+!bg_ready  = !BB+$32               ; slot + 1 when the buffer waits for the NMI
+!bg_slot   = !BB+$34
+!bg_key    = !BB+$36
+!bg_row    = !BB+$38
+!bg_cls    = !BB+$3A               ; class * 28 (table offset)
+!bg_vr     = !BB+$3C               ; V of the row (class 0 and 4)
+!bg_q      = !BB+$40               ; 4 words: floor((V_row - t) / vy), thresholds
+!bg_m      = !BB+$48               ; 4 words: remainders
+!bg_t      = !BB+$50               ; 4 words: thresholds (lo1, hi1, lo0, hi0)
+!bg_tmp    = !SB+$E00              ; 16 bytes (beam_want arguments, scratch)
+!bg_mask   = !BB+$60               ; 8 bytes: plane 1 (outer) then plane 0 masks
+!bg_ct     = !BB+$68               ; beam_class_offset scratch
+!BB_END    = !BB+$70
+!BEAM_BUF  = !SB+$1000             ; 512-byte picture buffer ($7000-$71FF)
+
+; Cached beam runs (beam.asm beam_draw): per group (index group*2).
+!bc_sig   = !SB+$DC0               ; 8 words: this frame's signature
+!bc_tmp   = !SB+$DD0
+!bp_n     = !SB+$DD2               ; build: chains (x2)
+!bp_i     = !SB+$DD4               ;   cell index
+!bp_dx    = !SB+$DD6               ;   step along the axis
+!bp_dy    = !SB+$DD8
+!bp_ptr   = !SB+$DDA               ;   write pointer (bank $32)
+!bp_base  = !SB+$DDC
+!bp_hib   = !SB+$DDE
+!bp_tile  = !SB+$DE0               ;   5 words: chain tile words
+!bp_x     = !SB+$DEA               ;   5 words: chain cell x
+!bp_y     = !SB+$DF4               ;   5 words: chain cell y
+!BC_SIG   = !SB+$1200              ; 2 x 8 words: the cached runs' signatures
+!BC_BYTES = !SB+$1220              ; 2 words: OAM bytes in each cached run (0: none)
+!BC_BND   = !SB+$1224              ; 2 x 12 words: run bytes after each cell index
+!BC_HI    = !SB+$1260              ; 2 x 16 bytes: the high-table bytes
+!BC_OAM   = !SB+$1300              ; 2 x 256 bytes: the entries (60 at most)
+!t_want = !SB+$DB0                 ; text panel wanted (0: none, !OTXT_*)
+!t_have = !SB+$DB2                 ; text panel in BG3 now
+
 
 ; OBJ VRAM the scene owns while it shows (name base $6000, 16/32 sizes).
 !OV_FRIEZA = $000                  ; 32x32, dynamic
@@ -305,7 +382,7 @@ assert !DRAW_END <= $8000, "orbit draw block overflow"
 !WK_ORB   = 4
 
 ; HDMA channels the scene programs (bits in the game's shadow $2C).
-!ORBIT_HDMA = $5C                  ; channels 2 (BGMODE), 3 (M7A), 4 (M7D), 6 (windows)
+!ORBIT_HDMA = $7C                  ; channels 2 (BGMODE), 3 (M7A), 4 (M7D), 5 (BG3VOFS), 6 (windows)
 
 ; VRAM / OAM / CGRAM.
 !ORBIT_STAR_TILE  = $160           ; OBJ tiles $160-$17F (VRAM $7600-$77FF): star cells
@@ -344,6 +421,7 @@ orbit_star_tiles:
 	; row stay empty so each 16x16 sprite shows only its own star.
 	incbin "orbit/star_tiles.bin"
 incsrc "orbit-fx/data.asm"
+incsrc "orbit-text/text.asm"
 orbit_data_end:
 assert orbit_data_end <= !DATA_ORBIT+$8000, "orbit data bank overflow"
 org $F60000
@@ -354,6 +432,7 @@ orbit_fx_vram_a:  incbin "orbit-fx/vram_a.bin"   ; OBJ tiles $080-$0FF
 orbit_fx_vram_b:  incbin "orbit-fx/vram_b.bin"   ; $100-$13F
 orbit_fx_vram_c:  incbin "orbit-fx/vram_c.bin"   ; $180-$1BF
 orbit_fx_death:   incbin "orbit-fx/death.bin"    ; Death Balls: 12 x 32x32, 12 x 16x16
+orbit_text_tiles: incbin "orbit-text/tiles.bin"  ; BG3 text panel tiles
 orbit_f7_end:
 assert orbit_f7_end <= $F80000, "orbit bank F7 overflow"
 org $FA8000
@@ -369,6 +448,9 @@ incsrc "stars.asm"
 incsrc "math.asm"
 incsrc "fight.asm"
 incsrc "draw.asm"
+incsrc "beam.asm"
+incsrc "text.asm"
+incsrc "api.asm"
 orbit_code_end:
 assert orbit_code_end <= !CODE_ORBIT+$8000, "orbit code bank overflow"
 pullpc
