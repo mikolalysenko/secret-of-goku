@@ -5,6 +5,8 @@
 ; Contracts: docs/agents/snes-rom.md (core API) and
 ; docs/agents/snes-port/engine.md (what the game is doing at each hook).
 
+!DOOR_RECORD_HOOK = frieza_door_record   ; destroy's door record (C1:E7DF) -> door 3FC beside the Emperor
+
 ; incsrc "modules/<name>/module.asm"
 incsrc "modules/goku/module.asm"
 incsrc "modules/fx/module.asm"         ; before its clients (they use the !FX_* defines)

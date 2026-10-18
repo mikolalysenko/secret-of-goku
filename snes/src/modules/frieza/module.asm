@@ -541,10 +541,17 @@ pullpc
 
 ; ---------------------------------------------------------------------------
 ; Original code patched (asserted).
-; Door table read (C1:E7F2 LDA $C83002,X): door 3FC's entry while the
-; Emperor is present (native-story.js storyRead of C8:3FF2).
+; Door table read: door 3FC's entry while the Emperor is present
+; (native-story.js storyRead of C8:3FF2). Destroy's door record at C1:E7DF
+; (included before this file) calls frieza_door_record through
+; !DOOR_RECORD_HOOK (modules.asm); without that patch the module replaces
+; C1:E7F2 LDA $C83002,X itself.
+if not(defined("DESTROY_DOOR_HOOK"))
+if not(defined("SS_ESCAPE_DOOR"))
 %orig4($C1E7F2, $C83002BF)
 %hijack_jsl($C1E7F2, frieza_door_entry, 4, frieza)
+endif
+endif
 ; Event dispatcher (C1:E77B REP #$30 / PHX / CMP #$0800): the finale death
 ; gate (boss-rush-death.js installFinaleDeathGate). The ending module (when
 ; built in, included before this file) owns the same gate at C1:E77E and

@@ -1120,8 +1120,36 @@ frieza_h_object:
 
 ; ---------------------------------------------------------------------------
 ; Door 3FC (the altar room's entry): while the Emperor is present the party
-; enters beside him and Dryad's seal (storyRead C8:3FF2 = 36). Replaces
-; C1:E7F2 LDA $C83002,X (M16, X = door * 4, DB = $7E, D = 0).
+; enters beside him and Dryad's seal (native-story.js storyRead of C8:3FF2
+; = 36, byte 2 of the door's record).
+; !DOOR_RECORD_HOOK (modules.asm), called by destroy's door record at
+; C1:E7DF: JSL, M16/X16, D = 0, X = door * 4, A = record bytes 0-1, Y =
+; bytes 2-3; returns A and Y, keeps X.
+frieza_door_record:
+	CPX.w #$03FC*4
+	BEQ +
+	RTL
++	PHB
+	PHA
+	PHX
+	PHY
+	PEA $7E7E
+	PLB
+	PLB
+	JSR fz_emperor_present
+	PLY
+	PLX
+	BCC +
+	TYA
+	AND.w #$FF00
+	ORA.w #36
+	TAY
++	PLA
+	PLB
+	RTL
+
+; Builds without destroy's C1:E7DF patch: replaces C1:E7F2 LDA $C83002,X
+; (M16, X = door * 4, DB = $7E, D = 0).
 frieza_door_entry:
 	LDA.l $C83002,X
 	CPX.w #$03FC*4

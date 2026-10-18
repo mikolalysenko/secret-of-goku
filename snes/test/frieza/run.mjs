@@ -393,6 +393,101 @@ end
 `;
 }
 
+// The Mana Tree pursuit end to end (tests/browser/frieza-tree.spec.mjs):
+// preset 'tree' has event 5F8 requested; B is tapped every 20 frames
+// through the dialogue (the save prompt answers Yes). Shots at each Tree
+// scene's start and at chosen ages; the trace logs map, scene, age, the
+// vista's state and the brightness every 8 frames.
+const treeShots={[defs.FZS_TREE_ARRIVAL]:[2,48,96,110],[defs.FZS_TREE_CHARGE]:[20,60,120],[defs.FZS_TREE_SHOT]:[8,24,38],
+  [defs.FZS_TREE_IMPACT]:[2,10,19,30,47,80],[defs.FZS_TREE_LEAVE]:[30,90,119],[defs.FZS_TREE_RETURN]:[10,30,47],[defs.FZS_TREE_WAKE]:[1,20,39]};
+function treeTest(maxFrames=9000){
+  const g=reference('tree');
+  const writes=friezaWrites(g.frieza,g.challenge);
+  const v=n=>'0x'+(n<0x10000?(0x7E0000|n):n).toString(16);
+  return `
+function test()
+  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__tree'))})
+  F.check(ok, 'import')
+  H.w8(0x316001, 1)
+  F.apply(${luaWrites(writes)})
+  local want = {}
+  ${Object.entries(treeShots).map(([k,ages])=>`want[${k}] = {${ages.map(a=>`[${a}]=true`).join(',')}}`).join('\n  ')}
+  local seen, trace, shots, maps = {}, {}, {}, {}
+  local last = -1
+  for i = 1, ${maxFrames} do
+    if i % 20 == 0 then H.hold('b', 2) else H.wait(1) end
+    local kind = H.r8(${v(defs.fz_scene)})
+    local age = H.r16(${v(defs.fz_sage)})
+    local map = H.r16(0x7E00DC)
+    maps[map] = true
+    if kind ~= last then
+      seen[#seen + 1] = string.format('%d:%d@%d', kind, map, i)
+      last = kind
+    end
+    if want[kind] and want[kind][age] then
+      local name = string.format('k%02d-a%03d', kind, age)
+      if not shots[name] then H.shot(name); shots[name] = true end
+    end
+    if i % 8 == 0 then
+      trace[#trace + 1] = string.format('%d %d %d %d %d %d %d %d %d', i, map, kind, age, H.r8(0x7E00D0),
+        H.r8(${v(defs.fzt_up)}), H.r8(${v(defs.fz_vista)}), H.r8(0x7E00E6) & 0x0F, H.r8(${v(defs.fzp_tree)}))
+    end
+    if H.r8(${v(defs.fzp_tree)}) == ${defs.FZTR_COMPLETE} and kind == 0 and H.r8(0x7E00D0) == 0 and i > 200 then
+      H.wait(30)
+      H.shot('complete')
+      break
+    end
+  end
+  local mapList = {}
+  for m in pairs(maps) do mapList[#mapList + 1] = m end
+  table.sort(mapList)
+  H.result('seen', seen)
+  H.result('trace', trace)
+  H.result('maps', mapList)
+  H.result('tree', H.r8(${v(defs.fzp_tree)}))
+  F.check(H.r8(${v(defs.fzp_tree)}) == ${defs.FZTR_COMPLETE}, 'the Tree is complete')
+  F.done()
+end
+`;
+}
+
+// Door 3FC (the altar room's entry, record C8:3FF0 = AF 1D 3C 8B: map 431
+// at tile (14, 30)): while the Emperor is present the party enters beside
+// him (byte 2 = 36: tile y 18); after his death the native record stands.
+// The door event is requested through the story module's request block.
+function storyRequestBlock(rom){
+  const sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8');
+  const m=sym.match(/^([0-9A-F]{2}):([0-9A-F]{4}) story_addresses$/mi);
+  if(!m)throw Error('frieza door: no story_addresses symbol');
+  const bytes=readFileSync(rom),a=parseInt(m[1]+m[2],16)+6;
+  const at=x=>bytes[((x>>16)&0x3f)<<16|(x&0xffff)];
+  return at(a)|at(a+1)<<8|at(a+2)<<16;
+}
+function doorTest(killed){
+  const g=reference('intro');
+  const writes=friezaWrites({...g.frieza,stage:'theft',emperorKilled:killed},g.challenge);
+  const ram=storyRequestBlock(romSrc);
+  return `
+function test()
+  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__intro'))})
+  F.check(ok, 'import')
+  H.w8(0x316001, 1)
+  F.apply(${luaWrites(writes)})
+  H.wait(4)
+  H.w16(${ram+8}, 0x0BFC)
+  H.w16(${ram+10}, 0)
+  H.w8(${ram+6}, 1)
+  H.wait(240)
+  H.result('map', H.r16(0x7E00DC))
+  H.result('y', H.r16(0x7EE004))
+  H.result('x', H.r16(0x7EE002))
+  H.shot('arrived')
+  F.check(H.r16(0x7E00DC) == 431, 'door 3FC loads map 431')
+  F.done()
+end
+`;
+}
+
 const cases={
   court:{preset:'frieza',frames:[60,240,600]},
   thanatos:{preset:'thanatos',frames:[60,240]},
@@ -463,6 +558,36 @@ if(want('music')){
   const ok=r.code===0&&res.pass===true;
   results.push({name:'music',ok,failures});
   console.log(`frieza music: ${ok?'pass':'FAIL'} (${r.ms} ms) song $3C after ${res.songAt} frames, longest stall ${res.stall} frames`);
+  if(!ok)for(const f of failures)console.log('    !',f);
+}
+if(want('door')){
+  // tile y 18 beside the living Emperor, 30 (native) after his death
+  for(const [killed,tile] of [[false,18],[true,30]]){
+    const rom=privateRom(romSrc,`frieza-door-${killed?'native':'emperor'}`);
+    const r=await runMesen({rom,test:lib+'\n'+doorTest(killed),outDir:join(outRoot,'door-'+(killed?'native':'emperor')),state:join(cps,'waterfall.mss')});
+    cleanupRom(rom);
+    const res=r.results??{};
+    const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
+    const got=(res.y+14)>>4;                    // the door puts the leader at y = tile * 16 - 14
+    if(got!==tile)failures.push(`Goku at tile y ${got} (${res.x},${res.y}), want ${tile}`);
+    const ok=r.code===0&&res.pass===true&&failures.length===0;
+    const name=`door-${killed?'native':'emperor'}`;
+    results.push({name,ok,failures});
+    console.log(`frieza ${name}: ${ok?'pass':'FAIL'} (${r.ms} ms) map ${res.map} at (${res.x},${res.y}) tile y ${got}`);
+    if(!ok)for(const f of failures)console.log('    !',f);
+  }
+}
+if(only.includes('tree')){                     // explicit: the native tail still stalls (frieza.md)
+  const rom=privateRom(romSrc,'frieza-tree');
+  const out=join(outRoot,'tree');
+  const r=await runMesen({rom,test:lib+'\n'+treeTest(),outDir:out,state:join(cps,'waterfall.mss'),timeoutMs:900000});
+  cleanupRom(rom);
+  const res=r.results??{};
+  const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
+  if(res.trace)writeFileSync(join(out,'trace.txt'),'frame map scene age D0 up vista bright tree\n'+res.trace.join('\n')+'\n');
+  const ok=r.code===0&&res.pass===true;
+  results.push({name:'tree',ok,failures});
+  console.log(`frieza tree: ${ok?'pass':'FAIL'} (${r.ms} ms) maps ${(res.maps??[]).join(',')} scenes ${(res.seen??[]).join(' ')} tree ${res.tree}`);
   if(!ok)for(const f of failures)console.log('    !',f);
 }
 // Scene effects against the browser (run capture.mjs first).
