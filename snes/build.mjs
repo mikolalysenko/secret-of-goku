@@ -47,6 +47,12 @@ async function runGenerators(base){
   mkdirSync(genDir,{recursive:true});
   const dir=join(here,'gen');
   const names=existsSync(dir)?readdirSync(dir).filter(f=>f.endsWith('.mjs')&&!f.startsWith('_')).sort():[];
+  // Output folders of generators that no longer exist (another branch built
+  // in this checkout) would still be included by modules that probe for
+  // generated files, so they go; current generators keep their caches.
+  const current=new Set(names.map(n=>n.replace(/\.mjs$/,'')));
+  for(const e of readdirSync(genDir,{withFileTypes:true}))
+    if(e.isDirectory()&&!current.has(e.name))rmSync(join(genDir,e.name),{recursive:true,force:true});
   const manifest=[],xblobs=[];
   for(const name of names){
     const mod=await import(pathToFileURL(join(dir,name)).href);
