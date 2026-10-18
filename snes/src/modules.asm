@@ -58,6 +58,7 @@ modules_world_frame:
 	JSL world_world_frame
 	JSL debug_world_frame
 	JSL combat_world_frame
+	JSL frieza_world_frame     ; the Death Ball flyby (1F04), the crisis's flight warning
 	JSL fx_world_frame         ; after the modules that draw effects
 	JSL ending_world_frame     ; after fx: the Fortress cutaway takes the whole OAM
 	JSL audio_frame

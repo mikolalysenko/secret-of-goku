@@ -598,6 +598,7 @@ incsrc "emperor.asm"
 incsrc "collapse.asm"
 incsrc "vista.asm"
 incsrc "follower.asm"
+incsrc "world.asm"
 frieza_code_end:
 assert frieza_code_end <= !CODE_FRIEZA+$7000, "frieza code bank overflow"
 pullpc

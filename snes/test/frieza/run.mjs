@@ -588,6 +588,68 @@ end
 `;
 }
 
+// The Death Ball flyby (frieza.js tick(), world flight): from the Fortress
+// deck with the deck's Death Ball thrown (stage theft, deckBall), event D8
+// (the escape) arms it and runs 1F04, the native flyby over the sinking
+// continent ($8C set in world flight). The flyby starts with $8C, its age
+// counts every world frame; the impact (age 404) makes the Death Ball's
+// crisis; once 1F04 has ended (age >= 560, $8C clear) Goku holds the eighth
+// Ball and Frieza heads for the Tree (tree pursuit); in the overhead view
+// the module asks the native camera for the rear view ($F8 = $90, $CC bit
+// 4), then Kai's warning goes out (the crisis notified).
+function flybyTest(){
+  const g=reference('fortress');
+  const writes=friezaWrites({...g.frieza,stage:'theft',deckBall:true,flyby:null,crisis:null,eighth:false,tree:null,scene:null,boss:null},g.challenge);
+  const ram=storyRequestBlock(romSrc);
+  const v=n=>'0x'+(n<0x10000?(0x7E0000|n):n).toString(16);
+  return `
+function test()
+  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__fortress'))})
+  F.check(ok, 'import')
+  H.w8(0x316001, 1)
+  F.apply(${luaWrites(writes)})
+  H.wait(4)
+  H.w16(${ram+8}, 0x00D8)
+  H.w16(${ram+10}, 0)
+  H.w8(${ram+6}, 1)
+  local function flags() return H.r16(${v(defs.fzp_flags)}) end
+  local function crisis() return H.r8(${v(defs.fzp_crisis)}) end
+  local ev = {}
+  local function mark(k, v) if ev[k] == nil then ev[k] = v end end
+  for i = 1, 2400 do
+    if i % 24 == 0 then H.hold('b', 2) else H.wait(1) end
+    local fl, age, c8 = flags(), H.r16(${v(defs.fzp_flyby)}), H.r8(0x7E008C)
+    if (fl & ${defs.FZFL_FLYBY}) ~= 0 then mark('armed', i) end
+    if (fl & ${defs.FZFL_FLYBY_GO}) ~= 0 then mark('started', i) end
+    if ev.started and age == 404 then mark('impactCrisis', crisis()) end
+    if ev.started and age == 403 then mark('beforeImpact', crisis()) end
+    if ev.started and (fl & ${defs.FZFL_FLYBY}) == 0 then
+      mark('done', i)
+      mark('doneFlags', fl)
+      mark('doneTree', H.r8(${v(defs.fzp_tree)}))
+      mark('doneAge', age)
+    end
+    if ev.started and c8 == 0 then mark('end1F04', i) end
+    if (crisis() & ${defs.FZC_REAR}) ~= 0 then mark('rear', i) mark('rearF8', H.r8(0x7E00F8)) end
+    if (crisis() & ${defs.FZC_NOTIFIED}) ~= 0 then mark('notified', i) H.shot('notified') break end
+  end
+  for k, v in pairs(ev) do H.result(k, v) end
+  H.result('crisis', crisis())
+  F.check(ev.armed ~= nil, 'D8 armed the flyby')
+  F.check(ev.started ~= nil, 'the flyby started with 1F04')
+  F.check(ev.beforeImpact == 0, 'no crisis before the impact, got ' .. tostring(ev.beforeImpact))
+  F.check(ev.impactCrisis == ${defs.FZC_ON|defs.FZC_ACTIVE|defs.FZC_DEATHBALL}, 'the impact makes the Death Ball crisis, got ' .. tostring(ev.impactCrisis))
+  F.check(ev.done ~= nil and ev.end1F04 ~= nil and ev.done >= ev.end1F04, 'the flyby ends after 1F04')
+  F.check(ev.doneFlags ~= nil and (ev.doneFlags & ${defs.FZFL_EIGHTH}) ~= 0 and (ev.doneFlags & ${defs.FZFL_FLYBY_GO}) == 0, 'eighth set, flyby cleared')
+  F.check(ev.doneTree == ${defs.FZTR_PURSUIT}, 'tree pursuit, got ' .. tostring(ev.doneTree))
+  F.check(ev.doneAge == 0xFFFF, 'no flyby age left')
+  F.check(ev.rear ~= nil and ev.rearF8 == 0x90, 'the rear view requested ($F8 = $90)')
+  F.check(ev.notified ~= nil and ev.notified > ev.rear, 'Kai\\'s warning after the rear view')
+  F.done()
+end
+`;
+}
+
 // Core's scene-scoped VRAM pool: Frieza draws only while !VRAM_SCENE_OBJ
 // is free or his (owner !FZ_VRAM_OWNER), claims it on the frames he is
 // drawn and gives it back when his scene ends.
@@ -672,6 +734,33 @@ function test()
   H.result('frame', stats(fs))
   H.result('nmi', stats(ns))
   H.result('quiet', (H.r8(${0x7E0000|defs.fz_wasidle}) & ${defs.FZI_IDLE}) ~= 0)
+  F.done()
+end
+`;
+}
+
+// World flight with nothing of Frieza's to do there (preset flight: the
+// flyby long over, the crisis notified): frieza_world_frame's idle cost.
+function worldCostTest(rom,frames=300){
+  const g=reference('flight');
+  const writes=friezaWrites(g.frieza,g.challenge);
+  const wJ=jslSite(rom,'modules_world_frame','frieza_world_frame');
+  const cb=(at,body)=>`emu.addMemoryCallback(function() ${body} end, emu.callbackType.exec, ${at}, ${at}, emu.cpuType.snes, emu.memType.snesMemory)`;
+  return `
+function test()
+  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__flight'))})
+  F.check(ok, 'import')
+  H.w8(0x316001, 1)
+  F.apply(${luaWrites(writes)})
+  H.wait(30)
+  local ws, w0 = {}, nil
+  local function clock() return emu.getState()['masterClock'] end
+  ${cb(wJ,'w0 = clock()')}
+  ${cb(wJ+4,'if w0 then ws[#ws + 1] = clock() - w0 w0 = nil end')}
+  H.wait(${frames})
+  local sum, mx = 0, 0
+  for _, v in ipairs(ws) do sum = sum + v; if v > mx then mx = v end end
+  H.result('world', {n = #ws, avg = (#ws > 0) and (sum / #ws / 1364) or 0, max = mx / 1364})
   F.done()
 end
 `;
@@ -787,6 +876,19 @@ if(want('cost')){
   results.push({name:'cost',ok,failures});
   console.log(`frieza cost: ${ok?'pass':'FAIL'} (${r.ms} ms) frame ${fr.avg?.toFixed(3)} lines (max ${fr.max?.toFixed(2)}), vblank ${nm.avg?.toFixed(3)} lines, ${fr.n} frames`);
   if(!ok)for(const f of failures)console.log('    !',f);
+  // world flight: the idle check
+  const rw=privateRom(romSrc,'frieza-cost-world');
+  const w=await runMesen({rom:rw,test:lib+'\n'+worldCostTest(romSrc),outDir:join(outRoot,'cost-world'),state:join(cps,'waterfall.mss')});
+  cleanupRom(rw);
+  const wres=w.results??{},wf=wres.world??{};
+  const wfail=[...(wres.failures??[]),...(wres.error?[wres.error]:[])];
+  if(!(wf.n>=200))wfail.push(`only ${wf.n} world frames measured`);
+  if(!(wf.avg<=0.25))wfail.push(`idle world frame ${wf.avg?.toFixed(3)} lines on average (budget 0.25)`);
+  if(!(wf.max<=0.5))wfail.push(`idle world frame peaks at ${wf.max?.toFixed(2)} lines (budget 0.5)`);
+  const wok=w.code===0&&wres.pass===true&&wfail.length===0;
+  results.push({name:'cost-world',ok:wok,failures:wfail});
+  console.log(`frieza cost-world: ${wok?'pass':'FAIL'} (${w.ms} ms) world frame ${wf.avg?.toFixed(3)} lines (max ${wf.max?.toFixed(2)}), ${wf.n} frames`);
+  if(!wok)for(const f of wfail)console.log('    !',f);
 }
 if(want('vram')){
   const rom=privateRom(romSrc,'frieza-vram');
@@ -815,6 +917,17 @@ if(want('door')){
     console.log(`frieza ${name}: ${ok?'pass':'FAIL'} (${r.ms} ms) map ${res.map} at (${res.x},${res.y}) tile y ${got}`);
     if(!ok)for(const f of failures)console.log('    !',f);
   }
+}
+if(want('flyby')){
+  const rom=privateRom(romSrc,'frieza-flyby');
+  const r=await runMesen({rom,test:lib+'\n'+flybyTest(),outDir:join(outRoot,'flyby'),state:join(cps,'waterfall.mss')});
+  cleanupRom(rom);
+  const res=r.results??{};
+  const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
+  const ok=r.code===0&&res.pass===true&&failures.length===0;
+  results.push({name:'flyby',ok,failures});
+  console.log(`frieza flyby: ${ok?'pass':'FAIL'} (${r.ms} ms) armed @${res.armed}, started @${res.started}, impact crisis $${(res.impactCrisis??0).toString(16)}, 1F04 ended @${res.end1F04}, done @${res.done} (tree ${res.doneTree}), rear @${res.rear}, notified @${res.notified}`);
+  if(!ok)for(const f of failures)console.log('    !',f);
 }
 if(want('tree')){
   const rom=privateRom(romSrc,'frieza-tree');

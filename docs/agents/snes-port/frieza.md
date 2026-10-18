@@ -39,7 +39,7 @@ those scripts call, Frieza's picture and the fights. The orbit stream
 | Altar camera pan (reveal, steal) and the court camera | Done through flight's scripted camera (`!FLIGHT_API_CAMERA`; checked on a trial merge with flight) |
 | The Tree (event 5F8): establishing view, arrival, the 32 px ball, throw, impact (shake, white, five large bursts, ruins), departure, return to black, wake on the ash field; Goku on the cliff | Plays end to end on the cartridge (case `tree`); BG3 shows above line 170 only (the dialogue at the top; the HUD rows under the cliff, as the browser paints them) |
 | Goku as the scripted follower (`introHero`): the temple exit (431), the deck's scenes (195: core-*, depart, eighth) | Done through goku's `goku_api_scripted` (poses generated from `frieza-staging.js`) |
-| Flyby in world flight | Not yet (world flight's Mode 7 view) |
+| Flyby in world flight (1F04, `frieza.js` tick()'s world branches) | Story logic done (`frieza_world_frame`, case `flyby`): the flyby's clock from 1F04's `$8C`, its cues, the Death Ball's crisis at the impact, the announcement, the eighth Ball and the Tree pursuit at its end; the rear-view request and Kai's warning once 1F04 ends; the outdoor intro dropped in flight. The picture (Frieza, the cinematic Death Ball, the bursts, the white checker) is not drawn yet (Known differences) |
 
 ## Scenes and timings (from the JavaScript)
 
@@ -292,7 +292,8 @@ cases of `native-story.js` storyRead (no story overlay touches map 246, so
 the earlier position in the overlay order changes nothing).
 
 Dispatch: `modules_field_frame` -> `frieza_field_frame`,
-`modules_field_nmi` -> `frieza_field_nmi`, `modules_load` ->
+`modules_field_nmi` -> `frieza_field_nmi`, `modules_world_frame` ->
+`frieza_world_frame`, `modules_load` ->
 `frieza_load`, `modules_new_game` -> `frieza_new_game`,
 `modules_title_boot` -> `frieza_title_boot`, `!DEBUG_PRESET_HOOK_ANY` ->
 `frieza_debug_preset` (unanswered kinds continue to `combat_debug_hook`).
@@ -359,6 +360,8 @@ floor on request.
 | `victory` | the fatal hit starts the beat, white 31 at 400, event C7 runs (stage defeated, ledger 127) |
 | `death` | Goku at 1 HP takes the first orb: no warp, black from 360, Start goes to the title; with the ending module, the hand-off (`fzd_on` 2, `ES_DEFEATED`, key 1) instead |
 | `beast` | preset `beast` (map 253, the fed Beast started, Super Saiyan) through combat's receive list: 600 frames untouched as in the browser (the eruption's 210 lands whole at frame 261, Goku's HP 789 at 600 as the reference), then damage queued at the native consumer: 600 takes 110 (140 in base form, the permanent form lifted), nothing during the grace, 50 and the eruption's pending 300 land whole. Skipped while the build has no `modules_combat_receive` |
+| `flyby` | preset `fortress` with the deck's Death Ball thrown (stage theft): event D8 arms the flyby and runs 1F04; the flyby starts with `$8C` in world flight, the impact (age 404) makes the Death Ball's crisis (`$13`), its end after 1F04 sets the eighth Ball and the Tree pursuit, the overhead view gets the rear-view request (`$F8` = `$90`), then Kai's warning (the crisis notified; the radio shows the aftermath) |
+| `cost-world` | preset `flight` (nothing of Frieza's in flight): `frieza_world_frame` at most 0.25 lines on average, 0.5 at peak |
 | `cost` | Potos with Goku present: the module settles on the quiet path; field frame at most 0.36 lines on average and 2.5 at peak, vblank at most 0.13 (from the dispatcher's JSL to the next instruction, master clocks) |
 | `vram` | preset `frieza`: not drawn while another owner holds `!VRAM_SCENE_OBJ` or the scene SRAM (`!SCENE_VEGETA` planted), drawn and both claimed once free (owners 6 and `!SCENE_FRIEZA`), the VRAM given back when the scene ends |
 | `door` | door 3FC from the `intro` preset: tile y 18 beside the living Emperor, 30 (native) after his death |
@@ -403,6 +406,13 @@ floor on request.
   around Frieza every frame; fx's polygon aura costs about 100 lines on its
   frames, so with the fight's own ~45 the surge lags about 80 frames by age
   270 (the logic follows the game's clock; the `surge` case reports it).
+
+- **The flyby's picture**: during 1F04 the browser draws Frieza hovering
+  over the flight, the cinematic Death Ball growing past the screen's
+  edges (16-280 px) and hurled into the continent, seven large bursts and
+  an 8-frame white checker; the cartridge runs the flyby's logic, cues
+  and radio lines but draws none of it yet (world flight has the Mode 7
+  view, OBJ sizes 8/16 and the world's HDMA on channels 0-5).
 
 ## Requests
 
