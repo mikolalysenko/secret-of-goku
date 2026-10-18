@@ -4,9 +4,14 @@
 
 ; ---------------------------------------------------------------------------
 ; modules_field_frame: after the game's logic and OAM build, before the NMI
-; handshake. M16/X16, DB = $7E, D = 0.
+; handshake. M16/X16, DB = $7E, D = 0. Idle (no scene, command or waiting
+; entry): three loads.
 orbit_field_frame:
-	PHB
+	LDA.l !orbit_state             ; (the state and the command byte)
+	ORA.l !orbit_enter             ; (the waiting entry and a spare byte)
+	BNE +
+	RTL
++	PHB
 	PHP
 	REP #$30
 	SEP #$20
@@ -462,12 +467,12 @@ orbit_oam_frame:
 ; modules_field_nmi: after the game's uploads, still force-blanked.
 ; M16/X16, DB = $80, D = 0.
 orbit_field_nmi:
-	PHP
-	SEP #$20
 	LDA.l !orbit_state
-	BNE .on
-	PLP
+	AND.w #$00FF
+	BNE +
 	RTL
++	PHP
+	SEP #$20
 .on
 	CMP.b #!OS_LOADING
 	BNE .notLoading

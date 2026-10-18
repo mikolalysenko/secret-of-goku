@@ -40,7 +40,7 @@ incsrc "audio/ids.asm"
 !orbit_in_dodge = !RAM_ORBIT+$20  ; b.dodgeCooldown
 !orbit_in_stun  = !RAM_ORBIT+$22  ; b.stun
 !orbit_land     = !RAM_ORBIT+$24  ; word: frames since the return to the deck (0: none)
-!orbit_enter    = !RAM_ORBIT+$26  ; byte: orbit_api_enter's mode + 1, waiting for the orbit's own frame (0: none)
+!orbit_enter    = !RAM_ORBIT+$26  ; byte: orbit_api_enter's mode + 1, waiting for the orbit's own frame (0: none); +$27 stays 0 (read as a word)
 !orbit_marks    = !RAM_ORBIT+$40  ; 8 words (ORBIT_TIMING builds): scanlines at the frame's stages
 
 ; ORBIT_TIMING builds: the scanline at stage n of the frame (orbit_marks).
