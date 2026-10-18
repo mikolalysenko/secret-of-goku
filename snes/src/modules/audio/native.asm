@@ -1,7 +1,7 @@
 ; Resident SPC effects for gameplay. One priority-selected command per
 ; frame, with no BRR transfer, chant stream or continuous air stream.
-; The native driver already holds these samples. IDs 03/50/2A/B0/12 are
-; the browser's native-sound.js fallback (swing/hit/charge/beam/transform).
+; The native driver already holds these samples. resident.asm adds short
+; single-voice sequences in unused effect slots DC-E2, all self-ending.
 ; -DAUDIO_PCM=1 retains the old streamer for comparison and audio research.
 
 ; Complete an outstanding effect handshake without waiting. Main thread
@@ -69,10 +69,10 @@ audio_native_command:
 	JML $C30179
 
 audio_native_ids:
-	db $00,$03,$03,$50,$50,$03,$50,$50
-	db $B0,$2A,$12,$12,$12,$50,$50,$50
-	db $03,$03,$03,$50,$03,$03,$03,$B0
-	db $50,$50,$03,$B0,$00,$00,$00,$2A,$B0
+	db $00,$DC,$DC,$DD,$DD,$DE,$DD,$DD
+	db $E2,$DF,$E0,$E1,$E0,$DD,$DD,$DD
+	db $E1,$E1,$DC,$DD,$DE,$DE,$DE,$E2
+	db $DD,$E2,$DC,$E2,$00,$00,$00,$DF,$E2
 audio_native_priority:
 	db 0,1,1,5,5,3,5,2,7,4,8,8,8,5,5,5
 	db 6,6,2,2,3,3,3,7,5,7,3,7,0,0,0,4,7
@@ -165,7 +165,7 @@ audio_native_service:
 	AND.w #$00FF
 	XBA
 	ORA.w #$0002
-	LDX.w #$880F               ; reuse the same effect voice, centred
+	LDX.w #$880F               ; reuse this cue's voice, centred
 	JSL core_sound_queue
 	SEP #$20
 .done

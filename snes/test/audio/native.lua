@@ -24,18 +24,28 @@ function test()
   emu.addMemoryCallback(function()
     if H.r8(AU+0x20)~=0 then clobbers=clobbers+1 end
   end, emu.callbackType.write, 0x002141, 0x002143)
-  for _, cue in ipairs({{AUDIO_SFX_HIT,0x50},{AUDIO_SFX_SWING,3},{AUDIO_SFX_BLAST,3},
-    {AUDIO_SFX_TELEPORT,3},{AUDIO_SFX_LANDING,0x50},{AUDIO_SFX_BEAM,0xB0}}) do
-    local first, heard = #commands, false
+  for _, cue in ipairs({{AUDIO_SFX_HIT,0xDD},{AUDIO_SFX_SWING,0xDC},{AUDIO_SFX_BLAST,0xDE},
+    {AUDIO_SFX_TELEPORT,0xE1},{AUDIO_SFX_LANDING,0xDD},{AUDIO_SFX_BEAM,0xE2},
+    {AUDIO_SFX_TRANSFORM,0xE0},{AUDIO_SFX_REVERT,0xE1},{AUDIO_SFX_POWER_BURST,0xE0}}) do
+    local first, heard, maxVoices = #commands, false, 0
     cmd(1,cue[1])
     for f=1,45 do
       H.wait(1)
+      local voices=0
       for v=0,7 do
-        if aram(0xFF80+v)==cue[2] and dsp(v*16+8)>0 then heard=true end
+        if aram(0xAE)&(1<<v)~=0 and aram(0xFF80+v)==cue[2] then
+          voices=voices+1
+          if dsp(v*16+8)>0 then heard=true end
+        end
       end
+      maxVoices=math.max(maxVoices,voices)
     end
     check('native_cue_'..cue[1], #commands>first and commands[first+1].id==cue[2] and heard,
       'effect was not sent/audible')
+    check('one_voice_'..cue[1],maxVoices==1,maxVoices)
+    local playing=false
+    for v=0,7 do if aram(0xAE)&(1<<v)~=0 and aram(0xFF80+v)==cue[2] then playing=true end end
+    check('cue_ends_'..cue[1],not playing,'effect still owns a voice after 45 frames')
   end
   local first=#commands
   cmd(5,AUDIO_LOOP_CHARGE)

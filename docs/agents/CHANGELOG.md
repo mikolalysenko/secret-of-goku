@@ -1,5 +1,15 @@
 # Changelog
 
+## SNES short resident combat sounds (2026-10-18)
+
+- Replace the indefinitely looping transformation rumble and long generic
+  impacts with seven short resident effects. Each uses one SPC voice, ends
+  on its own within half a second, and needs no gameplay sample transfer.
+  Punch contact has a stronger attack than a missed swing.
+- Preserve all retail effects, samples and music. Native emulator and SPC
+  tests cover transformations, reversion, impacts, voice release, silent
+  tails, repeated commands and song restoration.
+
 ## SNES party update scheduling (2026-10-18)
 
 - Spread native companion status, AI and animation across the game's

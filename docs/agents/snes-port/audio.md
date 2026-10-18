@@ -12,9 +12,14 @@ against 277 ARAM/DSP snapshots of the browser mod (`.local/snes-import/`).
 
 The default cartridge uses effects already resident in the original SPC
 driver. It does not upload the stream extension or transfer BRR chunks
-during gameplay. Punches and ki shots use effect `$03`, impacts `$50`,
-charge `$2A`, beams `$B0`, and transformations `$12`, matching the browser's
-native-sound fallback. A priority selector sends at most one new effect per
+during gameplay. Seven short, single-voice sequences occupy previously
+unused effect slots
+`$DC-$E2`: swing, hit, ki, charge, transformation, teleport and beam. They
+reuse the boot-resident instruments and finish in 90-470 ms. The native
+`$12` rumble loop is no longer used by transformations; it never stopped
+on its own. Contact has a stronger attack than an empty swing, and the
+old two-voice, roughly two-second `$50` impact has a short replacement.
+A priority selector sends at most one new effect per
 frame and drops stale requests when a script or song owns the sound queue.
 Charge beds pulse every 25 frames; continuous flight noise and sampled
 voice lines are omitted. Native music and its arrangements remain enabled.
@@ -25,7 +30,16 @@ the streaming design below describes that optional build. The audio runner
 tests `native` against the shipping ROM and explicitly builds the PCM option
 for the historical streaming tests. `node snes/test/audio/run.mjs native unit`
 checks audible resident effects, bounded charge pulses, music continuity,
-intact samples and the absence of BRR stream commands.
+intact samples, one-voice ownership, automatic cue termination and the
+absence of BRR stream commands. The SPC tests additionally check silent
+tails, output headroom and unchanged retail effects/samples.
+
+`resident.asm` uses 115 of the 144 zero bytes at ARAM `$2F70-$2FFF`: seven
+pointer pairs followed by 87 sequence bytes. Slots `$E3-$FF` are reserved
+for sequence storage. The existing boot and song-reload transfers already
+include this region, so it needs no new upload, samples or SPC extension.
+The test importer installs this small region from the cartridge when
+restoring a retail checkpoint; live driver state is preserved.
 
 Resident effect command `02` also uses an asynchronous CPU-side handshake
 in the shipping build. The hook at `C3:0175` writes the four ports and

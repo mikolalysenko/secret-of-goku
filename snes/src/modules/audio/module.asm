@@ -1678,6 +1678,7 @@ assert audio_code_end <= !CODE_QUARTER_AUDIO, "audio code overflow (EA:C000-FFFF
 pullpc
 
 ; ---------------------------------------------------------------- patches
+incsrc "resident.asm"
 ; Driver upload end (C3:0106 LDY #$0200 / STY $2142).
 ; The shipping ROM keeps the original driver: no stream polling overhead
 ; on the SPC either. Native music's echo patches below remain active.
