@@ -124,14 +124,47 @@ test('batched idle cycles match cycle-by-cycle stepping, including skipped pictu
  lockstep(slow,fast,300,'stepping',(s,i)=>{s.joypad1State=input(i);s.runFrame(i%3===1);});
  assert.equal(fast.apuCatchCycles,slow.apuCatchCycles,'APU catch-up stays bit-identical');
 });
-test('BIT/BNE wait loops are skipped exactly, and not under an instruction hook that sees them',t=>{
+// Wait loops in work RAM ($7E:2000, 8-bit registers, no interrupts) that
+// meet each edge a batch must not cross blindly. Counters at $10-$12 record
+// when every loop exits.
+const waitPrograms={
+ // HVBJOY polls: vblank end, then a count to vblank start; the auto-joypad
+ // read, then a count to hblank; hblank end, then a count to hblank.
+ polls:[0xaf,0x12,0x42,0x00,0x29,0x80,0xd0,0xf8, 0xe8,0xaf,0x12,0x42,0x00,0x29,0x80,0xf0,0xf7, 0x8e,0x10,0x00,
+  0xaf,0x12,0x42,0x00,0x29,0x01,0xd0,0xf8, 0xc8,0xaf,0x12,0x42,0x00,0x29,0x40,0xf0,0xf7, 0x8c,0x11,0x00,
+  0xaf,0x12,0x42,0x00,0x29,0x40,0xd0,0xf8, 0xe8,0xaf,0x12,0x42,0x00,0x29,0x40,0xf0,0xf7, 0x8e,0x12,0x00, 0x80,0xc2],
+ // BIT $EC / BNE on a flag that HDMA channel 0 clears through WMDATA at
+ // line 0's hblank (table at $7E:2100), then a count to vblank start, and
+ // the flag and WMADD re-armed.
+ hdmaFlag:[0xa9,0x00,0x8d,0x00,0x43, 0xa9,0x80,0x8d,0x01,0x43, 0xa9,0x00,0x8d,0x02,0x43, 0xa9,0x21,0x8d,0x03,0x43,
+  0xa9,0x7e,0x8d,0x04,0x43, 0xa9,0x01,0x8d,0x0c,0x42,
+  0xa9,0xec,0x8d,0x81,0x21, 0x9c,0x82,0x21, 0x9c,0x83,0x21, 0xa9,0xff,0x85,0xec,
+  0x24,0xec,0xd0,0xfc, 0xe8,0xaf,0x12,0x42,0x00,0x29,0x80,0xf0,0xf7, 0x8e,0x10,0x00, 0x80,0xdf],
+};
+function runProgram(s,bytes){
+ s.ram.set(bytes,0x2000);s.ram.set([0x01,0x00,0x00],0x2100);
+ const c=s.cpu;Object.assign(c,{m:true,x:true,e:false,i:true,d:false,waiting:false,stopped:false,irqWanted:false,nmiWanted:false});
+ c.r[0]=0;c.r[1]=0x7e;c.br[1]=c.br[2]=0;c.br[3]=0x1ff;c.br[4]=0x2000;c.br[5]=0;
+ Object.assign(s,{nmiEnabled:false,hIrqEnabled:false,vIrqEnabled:false,autoJoyRead:true});
+}
+test('wait loops are skipped exactly, and not under an instruction hook that sees them',t=>{
  const state=s=>[...frameState(s),s.apuCatchCycles,s.readSerial(),s.openBus,s.cpu.cyclesLeft,s.autoJoyTimer];
- const counted=s=>{let batched=0;const spin=s.spinWait;s.spinWait=function(...a){const p=spin.apply(this,a);if(p>0)batched+=p;return p;};return()=>batched;};
+ // Pairs skipped per loop opcode: 0x24 (BIT dp / BNE) or 0xaf (an HVBJOY poll).
+ const counted=s=>{const by=new Map(),spin=s.spinWait;
+  s.spinWait=function(x,pc,...a){const p=spin.call(this,x,pc,...a);if(p>0){const bank=pc>>16,op=bank===0x7e?this.ram[pc&0xffff]:this.cart.peek(bank,pc&0xffff);by.set(op,(by.get(op)??0)+p);}return p;};
+  return op=>by.get(op)??0;};
  const compare=(fast,slow,frames,label,step=(s,i)=>{s.joypad1State=input(i);s.runFrame(i%3===1);})=>{
   for(let i=0;i<frames;i++){step(slow,i);step(fast,i);assert.deepEqual(state(fast),state(slow),`${label}: frame ${i}`);}
  };
- // From power-on (the title and intro wait on I/O, which never batches).
- {const fast=core(),slow=core();slow.setSpinWait(false);compare(fast,slow,300,'power-on');}
+ // From power-on: the title and the opening poll HVBJOY.
+ {const fast=core(),slow=core();slow.setSpinWait(false);const batched=counted(fast);compare(fast,slow,300,'power-on');
+  assert.ok(batched(0xaf)>100000,`${batched(0xaf)} poll pairs skipped`);}
+ for(const [name,op] of [['polls',0xaf],['hdmaFlag',0x24]]){
+  const fast=core(),slow=core();slow.setSpinWait(false);
+  for(const s of[fast,slow]){for(let i=0;i<4;i++)s.runFrame(false);runProgram(s,waitPrograms[name]);}
+  const batched=counted(fast);compare(fast,slow,30,name);
+  assert.ok(batched(op)>100000,`${name}: ${batched(op)} pairs skipped`);
+ }
  // The game's main loop waits in BIT $EC / BNE in field and story scenes.
  if(!fixtures.length){t.skip('Private emulator states not present');return;}
  let total=0,loop=-1,loopState=null;
@@ -140,9 +173,9 @@ test('BIT/BNE wait loops are skipped exactly, and not under an instruction hook 
   for(const s of[fast,slow])restore(s,{...st,romHash:hash(s.cart.data)});
   const batched=counted(fast),spin=fast.spinWait;
   fast.spinWait=function(x,pc,...a){const p=spin.call(this,x,pc,...a);if(p>0&&loop<0){loop=pc;loopState=st;}return p;};
-  compare(fast,slow,12,f);total+=batched();
+  compare(fast,slow,12,f);total+=batched(0x24);
  }
- assert.ok(total>100000,`${total} pairs skipped`);
+ assert.ok(total>100000,`${total} BIT/BNE pairs skipped`);
  // An instruction hook with a breakpoint on the loop sees every iteration.
  const hooked=(s,register)=>{const cpu=s.cpu,previous=cpu.cycle;let hits=0;
   cpu.cycle=function(){if((((this.r[1]&63)<<16)|this.br[4])===(loop&0x3fffff))hits++;return previous.call(this);};

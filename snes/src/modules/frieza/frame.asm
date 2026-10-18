@@ -78,10 +78,13 @@ frieza_field_frame:
 	JSR fz_death_tick
 	JSR fz_won_tick
 	JSR fz_lock_tick
-	; Mode 7 arenas (Beast, Fortress bosses) have no Frieza sprites
+	; Mode 7 arenas (Beast, Fortress bosses) have no Frieza sprites; an
+	; ending scene owns the picture
 	LDA $29
 	AND.w #$0004
 	BNE .notdrawn
+	JSR fz_bind_ending_active
+	BCS .notdrawn
 	JSR fz_draw_scene
 	JSR fz_scene_effects
 	JSR fz_tree_frame

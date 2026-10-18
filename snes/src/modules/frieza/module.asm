@@ -546,10 +546,14 @@ pullpc
 %orig4($C1E7F2, $C83002BF)
 %hijack_jsl($C1E7F2, frieza_door_entry, 4, frieza)
 ; Event dispatcher (C1:E77B REP #$30 / PHX / CMP #$0800): the finale death
-; gate (boss-rush-death.js installFinaleDeathGate).
+; gate (boss-rush-death.js installFinaleDeathGate). The ending module (when
+; built in, included before this file) owns the same gate at C1:E77E and
+; runs it from ending_lose; the module's own gate is for builds without it.
+if not(defined("ES_DEFEATED"))
 %orig4($C1E77B, $C9DA30C2)
 %orig2($C1E77F, $0800)
 %hijack($C1E77B, frieza_event_gate, 6, frieza)
+endif
 
 pushpc
 org !CODE_FRIEZA

@@ -26,6 +26,12 @@ folder and tests under `snes/test/<name>/`.
 
 ## Hardware strategies (recommended, not mandatory)
 
+- **ROM space**: the cartridge is 64 Mbit ExHiROM. Code and data read in hot
+  loops stay in the first 4 MiB (FastROM banks `$80–$FF`). Art, tilemaps,
+  palettes, samples and rarely read tables can go to the extended banks
+  `$40–$7D:0000–7FFF` through a generator's `xdata(name, bytes)` (DMA or long
+  reads; see [snes-rom.md](../snes-rom.md#extended-data-exhirom)). Moving a
+  module's DMA-only art there frees its bank in the first 4 MiB for code.
 - **Goku and other characters**: native OAM substitution plus per-frame DMA of
   the current 32×32 cell (512 bytes) into the boy's own OBJ tiles. SoM's
   OBJSEL is `$63` (16×16 / 32×32 sprites), so a 32×32 cell can be one OBJ.

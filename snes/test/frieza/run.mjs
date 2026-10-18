@@ -192,10 +192,15 @@ end
 // A finale death: Goku at 1 HP takes the first Death Orb. The native death
 // plays (no all-party-dead warp, event 7FF is gated), the screen fades out
 // from 300 to 360 frames and holds black; Start returns to the title.
+// With the ending module in the build its fatal sequence takes over at the
+// death (ending_lose: the doomed planet and GAME OVER, its own test); the
+// module's checks are the hand-off and the gated warp.
 function deathTest(){
   const g=reference('battle');
   const writes=friezaWrites(g.frieza,g.challenge);
   const v=n=>'0x'+(n<0x10000?(0x7E0000|n):n).toString(16);
+  const sym=readFileSync(romSrc.replace(/\.sfc$/,'.sym'),'utf8');
+  const ending=/ ending_lose\n/.test(sym);
   return `
 function test()
   local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__battle'))})
@@ -210,6 +215,17 @@ function test()
   H.wait(60)
   H.shot('death-60')
   F.check(H.r16(0x7E00DC) == 246, 'still in the arena (no wake-up warp)')
+  if ${ending} then
+    F.check(H.r8(${v(defs.fzd_on)}) == 2, 'the ending module runs the finale death')
+    F.check((H.r8(0x7EDC88) & 0x40) ~= 0, 'ending status: fatal sequence (ES_DEFEATED)')
+    H.wait(240)
+    H.shot('death-300')
+    F.check(H.r16(0x7E00DC) == 246, 'no warp while it runs')
+    H.result('brightness', -1)
+    H.result('bankAfterStart', -1)
+    F.done()
+    return
+  end
   H.wait(240)
   H.shot('death-300')
   H.wait(70)

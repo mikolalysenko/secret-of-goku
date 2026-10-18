@@ -1,4 +1,5 @@
-; Bank layout of the expanded 32 Mbit HiROM image.
+; Bank layout of the expanded 32 Mbit HiROM image (the first 4 MiB of the
+; 64 Mbit ExHiROM cartridge; extended data in $40-$7D is placed by build.mjs).
 ; Original game: C0-DF (ROM 0x000000-0x1FFFFF), untouched except hijacks.
 ; Code is assembled at the 80-BF mirror of each bank's upper half
 ; ($A0:8000 = ROM 0x208000), so it runs with low WRAM and I/O visible when
