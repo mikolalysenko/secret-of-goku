@@ -50,7 +50,163 @@ dst_scan_attack:
 	CMP.w !d_aid : BNE +
 	LDA.w !d_alen : STA.w !sc_plen
 	LDA.w !d_ahalf : STA.w !sc_phalf
-+	LDA.w !arg_dir : LDX.w !arg_x : LDY.w !arg_y
++	LDA.w !arg_id : BNE dst_scan_grow
+	; a one-shot attack (punch): the whole band now
+	JSR dst_scan_band
+	JMP dst_scan_finish
+
+; ---------------------------------------------------------------------------
+; Amortised growth. A full wave's band grows over its first frames and
+; scanning all of it at once cost one frame several hundred scanlines. A
+; beam (arg_id != 0) is covered in steps of about !DESTROY_STEP_CELLS new
+; cells: the covered length widened to the requested width first, then
+; longer at that width; a step at least per call, more while the frame has
+; time (scanline < !DESTROY_HIT_LINE). What is left waits for the beam's
+; next call or, if it stops calling, destroy_field_frame's continuation
+; (dst_hit_continue) from its saved arguments. Cells per row ~ half/8 + 2,
+; rows ~ len/16 + 2 (dst_band_row, dst_band_outer).
+dst_scan_grow:
+	; another beam's leftover is dropped
+	LDA.l !hp_id : BEQ +
+	CMP.w !arg_id : BEQ +
+	LDA.w #0 : STA.l !hp_id : STA.l !hp_left
++	LDA.w !sc_len : STA.l !cl_rl
+	LDA.w !sc_half : STA.l !cl_rh
+.step
+	JSR dst_scan_next : BCS .complete
+	JSR dst_scan_band
+	; a full queue keeps the old extent: the next call retries
+	LDA.w !d_flags : AND.w #4 : BNE .left
+	JSR dst_scan_remember
+	JSR dst_hit_time : BCC .step
+	JSR dst_scan_next : BCS .complete
+.left
+	; the rest of the band: the beam's arguments for the continuation
+	LDA.w #1 : JSR dst_hit_left
+	JMP dst_scan_finish
+.complete
+	LDA.w #1 : JSR dst_hit_done
+	JMP dst_scan_finish
+
+; The next step of the band scan from the covered extent (!sc_plen /
+; !sc_phalf, $FFFF none) toward !cl_rl/!cl_rh -> !sc_len/!sc_half. Carry
+; set when it is all covered.
+dst_scan_next:
+	LDA.w !sc_plen : BPL +
+	LDA.w #0 : STA.l !cl_l0 : STA.l !cl_h0
+	BRA ++
++	STA.l !cl_l0
+	LDA.w !sc_phalf : STA.l !cl_h0
+++	JSR dst_step_next : BCS +
+	LDA.l !cl_tl : STA.w !sc_len
+	LDA.l !cl_th : STA.w !sc_half
++	RTS
+
+; dst_step_next: the next growth step from the covered extent (!cl_l0 /
+; !cl_h0, 0 / 0 when nothing yet) toward the requested one (!cl_rl / !cl_rh)
+; -> !cl_tl / !cl_th, about !DESTROY_STEP_CELLS new cells: the covered
+; length widened first (8 px a time), then longer at the requested width.
+; Carry set when everything requested is covered.
+dst_step_next:
+	LDA.l !cl_l0 : CMP.l !cl_rl : BCC .open
+	LDA.l !cl_h0 : CMP.l !cl_rh : BCC .open
+	SEC
+	RTS
+.open
+	LDA.l !cl_l0 : BEQ .longer                 ; nothing yet: full width at once
+	LDA.l !cl_h0 : CMP.l !cl_rh : BCS .longer
+	; wider over the covered length: 8 px per step-cells / rows
+	LDA.l !cl_l0 : LSR : LSR : LSR : LSR : INC : INC : STA.l !cl_t
+	LDA.w #!DESTROY_STEP_CELLS : JSR .per : ASL : ASL : ASL
+	CLC : ADC.l !cl_h0
+	CMP.l !cl_rh : BCC +
+	LDA.l !cl_rh
++	STA.l !cl_th
+	LDA.l !cl_l0 : STA.l !cl_tl
+	CLC
+	RTS
+.longer
+	; longer at the requested width: step-cells / cols rows
+	LDA.l !cl_rh : LSR : LSR : LSR : INC : INC : STA.l !cl_t
+	LDA.w #!DESTROY_STEP_CELLS : JSR .per : ASL : ASL : ASL : ASL
+	CLC : ADC.l !cl_l0
+	CMP.l !cl_rl : BCC +
+	LDA.l !cl_rl
++	STA.l !cl_tl
+	LDA.l !cl_rh : STA.l !cl_th
+	CLC
+	RTS
+; A = max(1, A / !cl_t) (small numbers)
+.per
+	LDX.w #0
+-	CMP.l !cl_t : BCC +
+	SEC : SBC.l !cl_t
+	INX
+	BRA -
++	TXA : BNE +
+	INC
++	RTS
+
+; A = part bit (1 band scan, 2 barrier search): this beam has more of it
+; for later; its arguments are kept for destroy_field_frame's continuation.
+dst_hit_left:
+	ORA.l !hp_left : STA.l !hp_left
+	LDA.w !arg_id : STA.l !hp_id
+	LDA.w !arg_x : STA.l !hp_x
+	LDA.w !arg_y : STA.l !hp_y
+	LDA.w !arg_dir : STA.l !hp_dir
+	LDA.w !arg_len : STA.l !hp_len
+	LDA.w !arg_half : STA.l !hp_half
+	LDA.w !arg_taper : STA.l !hp_taper
+	LDA.w !arg_kind : STA.l !hp_kind
+	LDA.w !arg_str : STA.l !hp_str
+	LDA.w !arg_layer : STA.l !hp_layer
+	RTS
+; A = part bit: that part of this beam is done (nothing left of it once both
+; parts are).
+dst_hit_done:
+	EOR.w #$FFFF : AND.l !hp_left : STA.l !hp_left
+	BNE +
+	LDA.l !hp_id : CMP.w !arg_id : BNE +
+	LDA.w #0 : STA.l !hp_id
++	RTS
+
+; A step's extent is covered (the beam's id keeps it across calls).
+dst_scan_remember:
+	LDA.w !arg_id : CMP.w !d_aid : BEQ +
+	STA.w !d_aid
+	LDA.w !sc_len : STA.w !d_alen
+	LDA.w !sc_half : STA.w !d_ahalf
+	BRA ++
++	LDA.w !sc_len : CMP.w !d_alen : BCC +
+	STA.w !d_alen
++	LDA.w !sc_half : CMP.w !d_ahalf : BCC ++
+	STA.w !d_ahalf
+++	LDA.w !d_alen : STA.w !sc_plen
+	LDA.w !d_ahalf : STA.w !sc_phalf
+	RTS
+
+; Carry clear while this call has time for another growth step: fewer than
+; !DESTROY_HIT_SPAN scanlines since it began (!cl_t0, set by destroy_hit and
+; the continuation).
+dst_hit_time:
+	JSR dst_vline
+	SEC : SBC.l !cl_t0 : BPL +
+	CLC : ADC.w #262                           ; wrapped past the frame's end
++	CMP.w #!DESTROY_HIT_SPAN
+	RTS
+
+; Walls are planned over the next frames along the same band.
+dst_scan_finish:
+	JSR dst_demolishes : BCC +
+	JSR dst_job_update
++	RTS
+
+; ---------------------------------------------------------------------------
+; The band between the covered extent (!sc_plen/!sc_phalf) and !sc_len /
+; !sc_half: its new cells in the browser mod's order.
+dst_scan_band:
+	LDA.w !arg_dir : LDX.w !arg_x : LDY.w !arg_y
 	JSR dst_band_axes
 	LDA.w !sc_len : JSR dst_band_outer
 	BCC +
@@ -138,22 +294,6 @@ dst_scan_attack:
 	CLC : ADC.w !s_ostep : STA.w !s_o
 	JMP .outer
 .none
-	; Walls are planned over the next frames along the same band.
-	JSR dst_demolishes : BCC +
-	JSR dst_job_update
-+	; Remember the covered extent unless the queue overflowed.
-	LDA.w !arg_id : BEQ .exit
-	LDA.w !d_flags : AND.w #4 : BNE .exit
-	LDA.w !arg_id : CMP.w !d_aid : BEQ +
-	STA.w !d_aid
-	LDA.w !sc_len : STA.w !d_alen
-	LDA.w !sc_half : STA.w !d_ahalf
-	RTS
-+	LDA.w !sc_len : CMP.w !d_alen : BCC +
-	STA.w !d_alen
-+	LDA.w !sc_half : CMP.w !d_ahalf : BCC .exit
-	STA.w !d_ahalf
-.exit
 	RTS
 
 dst_dir_horz:
@@ -324,11 +464,36 @@ dst_width:
 +	CLC : ADC.w #8
 	CMP.w !d_t5 : BCS .full
 	STA.w !d_t3
+	; half, t and taper below 256 (always for the cartridge's beams): the
+	; hardware multiplier/divider, run twice so an interrupt that uses
+	; them in between cannot slip a wrong width through
+	LDA.w !d_t2 : ORA.w !d_t5 : AND.w #$FF00 : BNE .soft
+-	JSR .hw : PHA
+	JSR .hw : CMP $01,S : BNE .retry
+	PLA
+	RTS
+.retry
+	PLA
+	BRA -
+.soft
 	LDA.w !d_t2 : JSR dst_mul16          ; half * t
 	LDX.w !d_t5 : JSR dst_div16          ; / taper
 	RTS
 .full
 	LDA.w !d_t2
+	RTS
+.hw
+	SEP #$20
+	LDA.w !d_t2 : STA.l $004202
+	LDA.w !d_t3 : STA.l $004203
+	REP #$20
+	NOP : NOP : NOP : NOP
+	LDA.l $004216 : STA.l $004204
+	SEP #$20
+	LDA.w !d_t5 : STA.l $004206
+	REP #$20
+	NOP : NOP : NOP : NOP : NOP : NOP : NOP : NOP
+	LDA.l $004214
 	RTS
 
 ; Signed floor/ceil of A/16 (arithmetic shifts).

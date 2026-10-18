@@ -94,3 +94,37 @@ function D.teleport(x, y, terrain)
   H.w8(0x7EE006, 0); H.w8(0x7EE007, 0); H.w8(0x7EE045, 0)
   H.wait(90)
 end
+
+-- Cost of code regions per call (DESTROY_PROFILE): spec = {name = {enter =
+-- address, leave = address}}; master clock between the two, in scanlines.
+function D.profile(spec)
+  D.prof = {}
+  for name, sp in pairs(spec) do
+    local rec = {calls = 0, total = 0, max = 0, list = {}}
+    D.prof[name] = rec
+    local t0 = nil
+    emu.addMemoryCallback(function() t0 = emu.getState()['masterClock'] end, emu.callbackType.exec, sp.enter, sp.enter)
+    emu.addMemoryCallback(function()
+      if t0 then
+        local dt = (emu.getState()['masterClock'] - t0) / 1364
+        rec.calls = rec.calls + 1; rec.total = rec.total + dt
+        if dt > rec.max then rec.max = dt end
+        if #rec.list < 48 then rec.list[#rec.list + 1] = math.floor(dt) end
+        t0 = nil
+      end
+    end, emu.callbackType.exec, sp.leave, sp.leave)
+  end
+end
+
+-- Instruction counts per PC inside destroy_hit calls (DESTROY_PCPROF): the
+-- first `calls` calls; results as {pc = count}.
+function D.pcprofile(enter, leave, calls)
+  local inside, n = false, 0
+  D.pcs = {}
+  local cur = nil
+  emu.addMemoryCallback(function() if n < calls then inside = true; cur = {}; D.pcs[n + 1] = cur end end, emu.callbackType.exec, enter, enter)
+  emu.addMemoryCallback(function() if inside then inside = false; n = n + 1 end end, emu.callbackType.exec, leave, leave)
+  emu.addMemoryCallback(function(a)
+    if inside then cur[a] = (cur[a] or 0) + 1 end
+  end, emu.callbackType.exec, 0xA48000, 0xA4FFFF)
+end

@@ -282,7 +282,37 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !ss_work     = !SS+$38   ; word: !SS_WORK_MAGIC while !SSW holds the arc's work
 !ss_own      = !SS+$3A   ; word: HDMA channels 2/3 programmed by the breach
 !ss_end      = !SS+$3C
-assert !ss_end <= !PERSIST_DESTROY+$80, "destroy persistent block overflow"
+; A beam's band growth left for later calls (dst_scan_clamp): its arguments,
+; continued by destroy_field_frame (dst_hit_continue). Volatile: cleared at
+; load, new game and map changes.
+!HP          = !PERSIST_DESTROY+$4C
+!hp_id       = !HP+$00   ; word: beam id with cells left to scan, 0 none
+!hp_frame    = !HP+$02   ; word: core frame of the last scan of it
+!hp_x        = !HP+$04   ; words: its arguments (as !arg_x .. !arg_layer)
+!hp_y        = !HP+$06
+!hp_dir      = !HP+$08
+!hp_len      = !HP+$0A
+!hp_half     = !HP+$0C
+!hp_taper    = !HP+$0E
+!hp_kind     = !HP+$10
+!hp_str      = !HP+$12
+!hp_layer    = !HP+$14
+!hp_left     = !HP+$16   ; word: bit 0 its band scan, bit 1 its barrier search unfinished
+; growth steps of the current call (dst_step_next)
+!cl_rl       = !HP+$18   ; word: requested length
+!cl_rh       = !HP+$1A   ; word: requested half width
+!cl_l0       = !HP+$1C   ; word: covered length
+!cl_h0       = !HP+$1E   ; word: covered half width
+!cl_tl       = !HP+$20   ; word: next step's length
+!cl_th       = !HP+$22   ; word: next step's half width
+!cl_t        = !HP+$24   ; word: scratch
+!cl_t0       = !HP+$26   ; word: scanline the call began on
+!hp_end      = !HP+$28
+assert !hp_end <= !PERSIST_DESTROY+$80, "destroy persistent block overflow"
+; New cells per growth step, and the scanlines a call may spend on steps
+; after its first (it always takes one of each kind).
+!DESTROY_STEP_CELLS = 16
+!DESTROY_HIT_SPAN   = 16
 !SS_VIS_PAL    = $0001
 !SS_VIS_BREACH = $0002
 !SS_VIS_MAGIC  = $A500
