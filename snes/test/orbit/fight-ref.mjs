@@ -42,12 +42,18 @@ export async function runFightReference({rom=readFileSync(resolve(repo,'rom/secr
   const {createFrieza}=await import(resolve(repo,'engine/frieza.js'));
   const {newOrbit}=await import(resolve(repo,'engine/frieza-orbit.js'));
   const {newFriezaArena}=await import(resolve(repo,'engine/frieza-arena.js'));
+  const {clashCamera}=await import(resolve(repo,'engine/frieza-finale.js'));
   const ram=new Uint8Array(0x20000);
   if(wram)ram.set(wram.subarray(0,0x20000));
   const w16=(a,v)=>{ram[a&0x1ffff]=v&255;ram[(a+1)&0x1ffff]=(v>>8)&255;};
   w16(0xdc,246);w16(0xe182,999);ram[0xe000]=1;ram[0xd0]=0;ram[0xec]=0;w16(0xe1f1,0);ram[0xe191]=0;
   const sounds=[];
-  const snes={cpu:{cycle(){},r:new Uint8Array(8),br:new Uint16Array(8),registerBreakpoints(){}},ram,cart:{data:rom,read(){return 0;}},frames:0,ppu:{forcedBlank:false,mode:1},joypad1State:0};
+  // The CPU stub lets boss-victory.js's dispatcher run: it hooks cycle()
+  // at C0:B073 and sends one queued native command per frame (below).
+  const cpu={cycle(){},r:new Uint8Array(8),br:new Uint16Array(8),registerBreakpoints(){},cyclesLeft:0,waiting:false,stopped:false,
+    nmiWanted:false,abortWanted:false,irqWanted:false,i:true,getP(){return 0;},setP(){},pushByte(){},pushWord(){}};
+  const snes={cpu,ram,cart:{data:rom,read(){return 0;}},frames:0,ppu:{forcedBlank:false,mode:1},joypad1State:0};
+  const requests=[];
   const mod={
     options:{enabled:true,superSaiyan:true,power:false},gokuActive:true,nativeField:true,canAttack:true,
     lastInput:0,charge:0,charging:false,powerCharge:0,powerBlocked:false,action:null,frame:0,effects:[],snes,
@@ -56,7 +62,9 @@ export async function runFightReference({rom=readFileSync(resolve(repo,'rom/secr
     playSound(n){sounds.push(n);},feedback:{pulse(){},clearFlash(){}},cancelCombat(){},cancelInput(){},configure(){},
     radio:{restore(){},interrupt(){}},
     // native-equipment.js powerScale: the training gi (armor 22) weighs 0.9
-    equipment:{get powerScale(){return ram[0xe1e1]===22?.9:1;}},status:{cameraX:0,cameraY:0},story:{request(){}},
+    equipment:{get powerScale(){return ram[0xe1e1]===22?.9:1;}},
+    get status(){return{x:this.read16(0xe002),y:this.read16(0xe004),cameraX:0,cameraY:0};},
+    story:{request(id){requests.push(id);}},teleport:{follow(){}},
     localFlightHook:{canLand:()=>true},
     // mana-mod.js focus (L alone): powerCharge to 96.
     focus(input){const held=!!(input&0x400);if(!held){this.powerCharge=0;if(this.action?.kind==='focus')this.action=null;return false;}
@@ -69,20 +77,28 @@ export async function runFightReference({rom=readFileSync(resolve(repo,'rom/secr
   if(start.hero)space.hero={...start.hero};
   const boss={x:202,y:57,nodes:[{x:202,y:57},{x:54,y:48},{x:208,y:148},{x:48,y:132}],node:0,hp:32000,age:0,clock:150,cycle:0,stun:0,
     grace:60,hurt:0,warning:null,shots:[],terrain:0,tier:2,surge:null,arena:newFriezaArena(),afterimages:[],hazards:[],dash:0,
-    orbital:true,muscular:true,guard:0,space,...start.boss};
+    orbital:true,muscular:true,guard:0,space,ground:{x:mod.read16(0xe002)||120,y:mod.read16(0xe004)||120},...start.boss};
   frieza.restore({stage:'battle',permanent:true,fallen:true,boss});
   const out=[];let last=0;
   for(let f=0;f<frames;f++){
     const p=pad(f),input=browserInput(p);
-    sounds.length=0;
+    sounds.length=0;requests.length=0;
     frieza.tick();
     frieza.spaceInput(input);
     mod.lastInput=input;mod.frame++;snes.frames++;
+    // The frame's CPU run: the victory dispatcher sends one queued command
+    // (the native driver takes it at once), then sees it complete.
+    for(let k=0;k<2;k++){cpu.r[1]=0;cpu.br[4]=0xb073;cpu.br[3]=0x1ff;cpu.cyclesLeft=0;cpu.cycle();}
+    const native=ram[0x1e00]?Array.from(ram.slice(0x1e00,0x1e04)):null;ram[0x1e00]=0;
     // Native damage queue: the game applies E1F1 to Goku's HP (no defense
     // here; the cartridge test reads its own HP the same way).
     const queued=mod.read16(0xe1f1);if(queued){w16(0xe182,Math.max(0,mod.read16(0xe182)-queued));w16(0xe1f1,0);}
     const s=frieza.snapshot(),b=s.boss,o=b.space;
-    out.push({f,hero:{...o.hero},heading:o.heading,charge:o.charge,teleport:o.teleport,punch:o.punch,cooldown:o.cooldown,
+    if(!o){out.push({f,stage:s.stage,boss:{age:b.age,hp:b.hp},returned:true,native,requests:[...requests],sounds:[...sounds],gokuHp:mod.read16(0xe182)});if(trace)trace(out.at(-1));continue;}
+    const c=o.clash,cam=c?clashCamera(o):o.camera;
+    out.push({f,stage:s.stage,clash:c?{phase:c.phase,age:c.age,pressure:c.pressure,shown:c.shown,taps:c.taps}:null,
+      view:{x:cam.x,y:cam.y,r:cam.r},native,requests:[...requests],grace:b.grace,spaceAge:o.age,
+      hero:{...o.hero},heading:o.heading,charge:o.charge,teleport:o.teleport,punch:o.punch,cooldown:o.cooldown,
       beam:o.beam?{x:o.beam.x,y:o.beam.y,age:o.beam.age,max:o.beam.max,width:o.beam.width}:null,
       camera:{x:o.camera.x,y:o.camera.y,r:o.camera.r,lon:o.camera.longitude,lat:o.camera.latitude},
       boss:{x:b.x,y:b.y,hp:b.hp,clock:b.clock,cycle:b.cycle,node:b.node,dash:b.dash,stun:b.stun,age:b.age},

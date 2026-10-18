@@ -283,3 +283,73 @@ orbit_ray_hit:
 .no
 	CLC
 	RTS
+
+; Math.round(Math.hypot(dx, dy)): A16 = dx, X16 = dy (|dx|, |dy| < 256) ->
+; A16. The integer square root of dx^2 + dy^2 (17 bits) bit by bit, then
+; up when the remainder exceeds the root (n >= r^2 + r + 1: the root's
+; fraction is at least one half; it is never exactly a half).
+orbit_hypot:
+	JSR orbit_abs
+	STA.w !m_t0
+	TXA
+	JSR orbit_abs
+	STA.w !m_t1
+	SEP #$20
+	LDA.w !m_t0 : STA.w $4202 : STA.w $4203
+	REP #$20
+	NOP : NOP : NOP
+	LDA.w $4216
+	STA.w !m_t2                    ; n (low word)
+	STZ.w !m_t3                    ; n (high word)
+	SEP #$20
+	LDA.w !m_t1 : STA.w $4202 : STA.w $4203
+	REP #$20
+	NOP : NOP : NOP
+	LDA.w $4216
+	CLC : ADC.w !m_t2
+	STA.w !m_t2
+	BCC +
+	INC.w !m_t3
++	STZ.w !m_t4                    ; res (32 bits: m_t4, m_t5)
+	STZ.w !m_t5
+	STZ.w !m_t6                    ; bit = 1 << 16
+	LDA.w #$0001
+	STA.w !m_t7
+.root
+	; t = res + bit; n >= t ?
+	LDA.w !m_t4 : CLC : ADC.w !m_t6 : STA.w !m_t0
+	LDA.w !m_t5 : ADC.w !m_t7 : STA.w !m_t1
+	LDA.w !m_t3
+	CMP.w !m_t1
+	BCC .less
+	BNE .more
+	LDA.w !m_t2
+	CMP.w !m_t0
+	BCC .less
+.more
+	; n -= t; res = (res >> 1) + bit
+	LDA.w !m_t2 : SEC : SBC.w !m_t0 : STA.w !m_t2
+	LDA.w !m_t3 : SBC.w !m_t1 : STA.w !m_t3
+	LSR.w !m_t5 : ROR.w !m_t4
+	LDA.w !m_t4 : CLC : ADC.w !m_t6 : STA.w !m_t4
+	LDA.w !m_t5 : ADC.w !m_t7 : STA.w !m_t5
+	BRA .next
+.less
+	LSR.w !m_t5 : ROR.w !m_t4
+.next
+	; bit >>= 2
+	LSR.w !m_t7 : ROR.w !m_t6
+	LSR.w !m_t7 : ROR.w !m_t6
+	LDA.w !m_t6
+	ORA.w !m_t7
+	BNE .root
+	; round: remainder (< 2^16 here) > root -> root + 1
+	LDA.w !m_t2
+	CMP.w !m_t4
+	BEQ +
+	BCC +
+	LDA.w !m_t4
+	INC
+	RTS
++	LDA.w !m_t4
+	RTS

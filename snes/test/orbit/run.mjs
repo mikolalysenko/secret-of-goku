@@ -13,6 +13,10 @@
 //          frieza.js orbital battle (fight-ref.mjs) under a scripted pad:
 //          movement, ki, the charged wave, Instant Transmission and the
 //          exchange, Frieza's patrol, warnings and shots, damage both ways
+//   clash  the beam struggle from 6,000 HP and the victory, frame by frame
+//          against the same reference: gather, charge, launch, a lost
+//          struggle (recoil, 420 damage), a won one under steady B taps,
+//          the 'won' clock with the native victory commands, the return
 import {readFileSync,existsSync,mkdirSync,writeFileSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -87,6 +91,31 @@ function diff(a,b,path='',out=[]){
   if(typeof a!=='object'||a===null||typeof b!=='object'||b===null){if(JSON.stringify(a)!==JSON.stringify(b))out.push(`${path}: cart ${JSON.stringify(a)} browser ${JSON.stringify(b)}`);return out;}
   for(const k of new Set([...Object.keys(a),...Object.keys(b)]))diff(a[k],b[k],path?path+'.'+k:k,out);
   return out;
+}
+
+// Clash script: no taps through the first struggle (it is lost), then a
+// fresh B every 6 frames from the second launch on.
+export function clashPads(n){
+  const pads=[];
+  for(let f=0;f<n;f++)pads.push(f>=840&&f<1800&&f%6===0?P.B:0);
+  return pads;
+}
+const PHASES=['','gather','charge','launch','struggle','recoil','win'];
+// clash.lua state() -> fields
+function parseClash(line){
+  const v=line.split(',').map(Number);
+  const [bage,wage,phase,age,p,sv,taps,hx,hy,bx,by,hp,charge,cx,cy,cr,lon,ghp,pad,ret,fage,grace,text]=v;
+  return {key:phase===6?`w${wage}`:`b${bage}`,phase:PHASES[phase]??'',age,pressure:p/2**31,shown:sv/2**31,taps,hero:{x:hx,y:hy},
+    boss:{x:bx,y:by,hp},charge,view:{x:cx,y:cy,r:cr},lon,gokuHp:ghp,pad,returned:!!ret,text,bage,wage};
+}
+// frieza-finale-view.js: the message the clash shows (orbit-text.mjs ids).
+async function clashText(c){
+  const {clashSurge,victoryTiming}=await import(resolve(repo,'engine/frieza-finale.js'));
+  if(!c)return 0;
+  const id={gather:7,charge:8,launch:9,struggle:10,recoil:11};
+  if(c.phase==='struggle'&&c.age>100){const s=clashSurge(c);return s?13+s.index:0;}
+  if(c.phase==='win')return c.age>=victoryTiming.quiet&&c.age<victoryTiming.descent?12:0;
+  return id[c.phase]??0;
 }
 
 const cases={
@@ -200,6 +229,59 @@ const cases={
     ok=ok&&compared>=frames-80&&mismatches.length===0&&res.lagged<=3;
     console.log(`fight: ${ok?'pass':'FAIL'} compared ${compared} frames, ${mismatches.length} differ, ${res.lagged} lagged`);
     for(const m of mismatches.slice(0,8))console.log('  '+m);
+    return ok;
+  },
+  async clash(rom){
+    const frames=Number(process.env.ORBIT_CLASH_FRAMES??3000),pads=clashPads(frames);
+    const dir=join(out,'clash');
+    const shots=[0,100,200,300,320,360,400,560,900,1300,1560,1700,1900,2500,2700,2880];
+    const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nPADS=${lua(pads)}\nSHOTS={${shots.join(',')}}\nHP=6000\n`;
+    const r=await runMesen({rom,state,test:pre+readFileSync(join(here,'clash.lua'),'utf8'),outDir:dir,timeoutMs:900000});
+    const res=r.results??{};
+    let ok=r.code===0&&res.live===true&&Array.isArray(res.states);
+    if(!ok){console.log('clash: FAIL (no run)',r.code,res.error??'',r.output?.slice(-2000));return false;}
+    const cart=res.states.map(parseClash);
+    // the reference steps with the pad the cartridge's fight read at the
+    // same step (battle steps are keyed by b.age; the won stage ignores it)
+    const padAt=new Map();for(const c of cart)if(c.key[0]==='b')padAt.set(Number(c.key.slice(1)),c.pad);
+    // (a frame that ran two steps gave both its pad: a step without its own
+    // log takes the next one's)
+    for(let a=Math.max(...padAt.keys());a>0;a--)if(!padAt.has(a)&&padAt.has(a+1))padAt.set(a,padAt.get(a+1));
+    const wram=readFileSync(join(bundleDir('preset__space'),'wram.bin'));
+    const ref=await runFightReference({frames:frames+8,pad:f=>padAt.get(f+1)??0,wram,start:{boss:{hp:6000}}});
+    const byKey=new Map();
+    for(const b of ref){const k=b.returned?null:b.stage==='won'?`w${b.boss.age}`:`b${b.boss.age}`;if(k&&!byKey.has(k))byKey.set(k,b);}
+    const mismatches=[];let compared=0;const seen=new Set();
+    for(const c of cart){
+      if(seen.has(c.key)||c.returned)continue;seen.add(c.key);
+      const b=byKey.get(c.key);if(!b)continue;compared++;
+      const d=[];
+      const cl=b.clash;
+      if((cl?.phase??'')!==c.phase)d.push(`phase ${c.phase} / ${cl?.phase}`);
+      if(cl&&cl.age!==c.age)d.push(`age ${c.age} / ${cl.age}`);
+      if(cl&&Math.abs(cl.pressure-c.pressure)>1e-6)d.push(`pressure ${c.pressure} / ${cl.pressure}`);
+      if(cl&&Math.abs(cl.shown-c.shown)>1e-6)d.push(`shown ${c.shown} / ${cl.shown}`);
+      if(cl&&cl.phase!=='win'&&cl.taps!==c.taps)d.push(`taps ${c.taps} / ${cl.taps}`);
+      for(const k of['x','y'])if(c.hero[k]!==b.hero[k])d.push(`hero.${k} ${c.hero[k]} / ${b.hero[k]}`);
+      for(const k of['x','y','hp'])if(c.boss[k]!==b.boss[k])d.push(`boss.${k} ${c.boss[k]} / ${b.boss[k]}`);
+      if(cl&&cl.phase!=='win'&&c.charge!==b.charge)d.push(`charge ${c.charge} / ${b.charge}`);
+      for(const k of['x','y','r'])if(c.view[k]!==b.view[k])d.push(`camera.${k} ${c.view[k]} / ${b.view[k]}`);
+      if(c.lon!==b.camera.lon)d.push(`lon ${c.lon} / ${b.camera.lon}`);
+      const ghp=[0,1,2,3,4].some(k=>ref[ref.indexOf(b)-k]?.gokuHp===c.gokuHp);
+      if(!ghp)d.push(`gokuHp ${c.gokuHp} / ${b.gokuHp}`);
+      const text=await clashText(cl);
+      if(text!==c.text)d.push(`text ${c.text} / ${text}`);
+      if(d.length)mismatches.push(`${c.key}: ${d.slice(0,5).join('; ')}`);
+    }
+    // the native victory commands, in order (each is sent once by both)
+    const want=ref.filter(b=>b.native).map(b=>b.native.map(v=>v.toString(16)).join(' '));
+    const returned=cart.find(c=>c.returned),refReturn=ref.find(b=>b.returned);
+    const report={compared,mismatchFrames:mismatches.length,first:mismatches.slice(0,16),lagged:res.lagged,nativeWant:want,
+      returnedAt:returned?.wage,refReturnedAt:refReturn?refReturn.boss.age:null,end:cart.at(-1)};
+    writeFileSync(join(dir,'report.json'),JSON.stringify(report,null,1));
+    ok=ok&&compared>=frames-200&&mismatches.length===0&&!!returned&&returned.wage===refReturn?.boss.age;
+    console.log(`clash: ${ok?'pass':'FAIL'} compared ${compared} frames, ${mismatches.length} differ, ${res.lagged} lagged, back at ${returned?.wage} / ${refReturn?.boss.age}`);
+    for(const m of mismatches.slice(0,10))console.log('  '+m);
     return ok;
   },
 };

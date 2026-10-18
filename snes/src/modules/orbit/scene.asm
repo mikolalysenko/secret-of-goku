@@ -320,7 +320,10 @@ orbit_live_frame:
 	REP #$30
 	DEC.w !f_steps
 	BNE -
-	JSR text_frame
+	LDA.w !fn_phase
+	BEQ +
+	JSR finale_camera              ; the clash's own camera (clashCamera)
++	JSR text_frame
 	INC.w !cam_age
 	JSR globe_frame
 	JSR stars_frame
@@ -346,6 +349,11 @@ orbit_live_frame:
 	JSR stars_frame
 	STZ.w !cam_tdx
 	STZ.w !cam_tdy
+	RTS
+
+; frieza.js returnToFortress (finale.asm, at victoryTiming.return): the
+; picture goes back to the native deck. (Next: the deck's reload.)
+orbit_return:
 	RTS
 
 ; ---------------------------------------------------------------------------
@@ -488,10 +496,14 @@ orbit_nmi_load:
 	BRA .next
 .effects
 	; Steps 9-11: the fight's resident effect cells (OBJ tiles $080-$0FF,
-	; $100-$13F, $180-$1BF); step 12: the text panel's BG3 tiles.
+	; $100-$13F, $180-$1BF); step 12: the text panel's BG3 tiles; step 13:
+	; OBJ tiles $000-$03F (the cells beside the dynamic ones).
 	CMP.b #$0C
 	BEQ .text
-	BCS .finish
+	CMP.b #$0D
+	BNE +
+	JMP .fxd
++	BCS .finish
 	REP #$20
 	AND.w #$00FF
 	SEC : SBC.w #$0009
@@ -540,6 +552,24 @@ orbit_nmi_load:
 	STA.w $4375
 	SEP #$20
 	LDA.b #orbit_text_tiles>>16
+	STA.w $4374
+	LDA.b #$80
+	STA.w $2115
+	LDA.b #$80
+	STA.w $420B
+	JMP .next
+.fxd
+	REP #$20
+	LDA.w #$6000
+	STA.w $2116
+	LDA.w #orbit_fx_vram_d
+	STA.w $4372
+	LDA.w #$1801
+	STA.w $4370
+	LDA.w #$0800
+	STA.w $4375
+	SEP #$20
+	LDA.b #orbit_fx_vram_d>>16
 	STA.w $4374
 	LDA.b #$80
 	STA.w $2115

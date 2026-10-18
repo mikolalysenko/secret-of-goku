@@ -14,13 +14,23 @@
 //     dynamic), dynamic small cells $088 (Goku) and $08A (Death Ball 16),
 //     resident small cells in the rest
 //   tiles $100-$13F and $180-$1BF: resident small cells
+//   tiles $008-$00F and $028-$02F (beside the dynamic Frieza and Death Ball
+//     cells of rows 0-3): resident small cells (the finale's gold sparks,
+//     the pouch)
 //
 // Outputs (dist/snes/gen/orbit-fx/):
 //   vram_a.bin  OBJ tiles $080-$0FF (VRAM words $6800-$6FFF)
 //   vram_b.bin  OBJ tiles $100-$13F ($7000-$73FF)
 //   vram_c.bin  OBJ tiles $180-$1BF ($7800-$7BFF)
+//   vram_d.bin  OBJ tiles $000-$03F ($6000-$63FF; the dynamic cells' tiles
+//               stay zero until they are streamed)
 //   death.bin   Death Ball frames: 12 x 32x32 (512 bytes, 4 rows of 4
 //               tiles), then 12 x 16x16 (128 bytes, 2 rows of 2 tiles)
+//   band.bin    the finale's beam-band BG tiles (4bpp, 44): solid outer
+//               (colour 1), solid inner (2), then the outer/inner edges
+//               x + 2y = c for c = 1-21 (outer before the edge, then inner
+//               after it), and the inner/outer ones; fdraw.asm lays the
+//               bands above the globe on BG1/BG2 with them
 //   fx.asm      tile and palette defines, palettes, burst parts and offsets,
 //               beam band colours
 //   preview.png every cell (not shipped)
@@ -39,8 +49,9 @@ const hex2=v=>'$'+(v&0xff).toString(16).padStart(2,'0');
 export const ORBIT_FX_PAL={FIRE:0,BLUE:4,PINK:5,FRIEZA:6,GOLD:7};
 // Resident small-cell slots (16x16: tiles t, t+1, t+16, t+17).
 const SLOTS=[0x08C,0x08E,0x0A8,0x0AA,0x0AC,0x0AE,
-  ...[0x0C0,0x0E0,0x100,0x120,0x180,0x1A0].flatMap(r=>[0,2,4,6,8,10,12,14].map(c=>r+c))];
-const REGIONS=[{name:'vram_a',first:0x080,count:128},{name:'vram_b',first:0x100,count:64},{name:'vram_c',first:0x180,count:64}];
+  ...[0x0C0,0x0E0,0x100,0x120,0x180,0x1A0].flatMap(r=>[0,2,4,6,8,10,12,14].map(c=>r+c)),
+  0x008,0x00A,0x00C,0x00E,0x028,0x02A,0x02C,0x02E];
+const REGIONS=[{name:'vram_a',first:0x080,count:128},{name:'vram_b',first:0x100,count:64},{name:'vram_c',first:0x180,count:64},{name:'vram_d',first:0x000,count:64}];
 
 export async function generate({rom,repo,outDir}){
   const eng=f=>import(pathToFileURL(join(repo,'engine',f)).href);
@@ -82,8 +93,16 @@ export async function generate({rom,repo,outDir}){
     }
     for(let q=0;q<2;q++){const p=new Uint16Array(256);for(let y=0;y<16;y++)for(let x=0;x<16;x++)p[y*16+x]=canvas[y*32+q*16+x];add(`disc_${label}${q}`,'PINK',p);}
   }
-  // Gold: Frieza's ricochets and distant shots (gold-charge-orb 0-1).
+  // Gold: Frieza's ricochets and distant shots (gold-charge-orb 0-1), the
+  // beam struggle's gold sparks (gold-spark 0-3), the recovered pouch
+  // (frieza-finale-view.js: two discs and a line around the centre).
   for(let f=0;f<2;f++)add(`gorb_${f}`,'GOLD',groups['gold-charge-orb'][f]);
+  groups['gold-spark'].forEach((p,f)=>add(`gspark_${f}`,'GOLD',p));
+  {
+    const px=new Uint16Array(256),disc=(cx,cy,r,c)=>{for(let y=-r;y<=r;y++)for(let x=-r;x<=r;x++)if(x*x+y*y<=r*r)px[(cy+y)*16+cx+x]=c;};
+    disc(8,8,3,rgb([15,8,2]));disc(8,7,2,rgb([29,20,7]));for(let x=7;x<=9;x++)px[4*16+x]=rgb([31,29,15]);
+    add('pouch','GOLD',px);
+  }
   if(cells.length>SLOTS.length)throw Error(`orbit-fx: ${cells.length} cells for ${SLOTS.length} slots`);
 
   // Death Balls (death-ball-art.js, violet): 32 px and 16 px, 12 frames.
@@ -123,6 +142,16 @@ export async function generate({rom,repo,outDir}){
     for(let ty=0;ty<size;ty+=8)for(let tx=0;tx<size;tx+=8)deathBytes.push(...encodeTile(idx,size,tx,ty));
   }
   writeFileSync(join(outDir,'death.bin'),Uint8Array.from(deathBytes));
+  // Beam-band tiles (orbit-effects.js beam: outer quarters in colour 1, the
+  // inner half in colour 2; edges of slope -1/2, the 26.6-degree heading
+  // of the beam struggle).
+  {
+    const band=[],tile=f=>{const idx=new Uint8Array(64);for(let y=0;y<8;y++)for(let x=0;x<8;x++)idx[y*8+x]=f(x+2*y);band.push(...encodeTile(idx,8,0,0));};
+    tile(()=>1);tile(()=>2);
+    for(let c=1;c<=21;c++)tile(d=>d<c?1:2);
+    for(let c=1;c<=21;c++)tile(d=>d<c?2:1);
+    writeFileSync(join(outDir,'band.bin'),Uint8Array.from(band));
+  }
 
   // --- tables ------------------------------------------------------------------
   // Burst frames (native-combustion.js draw, kind 'burst'): per frame a count,

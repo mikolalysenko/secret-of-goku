@@ -39,6 +39,7 @@ incsrc "audio/ids.asm"
 !orbit_in_mhits = !RAM_ORBIT+$1E  ; b.meleeHits
 !orbit_in_dodge = !RAM_ORBIT+$20  ; b.dodgeCooldown
 !orbit_in_stun  = !RAM_ORBIT+$22  ; b.stun
+!orbit_land     = !RAM_ORBIT+$24  ; word: frames since the return to the deck (0: none)
 !OE_SURGE = 0                     ; orbit_api_enter modes: the second surge's cinematic first
 !OE_INTRO = 1                     ; the orbit with its intro
 !OE_FIGHT = 2                     ; straight into the fight
@@ -218,7 +219,7 @@ assert !SB_END <= $8000, "orbit scene block overflow"
 !f_hits     = !FB+$64              ; Goku hit count (browser playerHits)
 !f_shake    = !FB+$66              ; feedback pulse request (frames)
 !f_tmp      = !FB+$68              ; 16 bytes scratch
-!f_won      = !FB+$78              ; clash requested (HP at the 6,000 floor)
+!f_spare78  = !FB+$78              ; (spare)
 !f_firing   = !FB+$7A              ; a laser is out (frieza.js firing)
 !f_evading  = !FB+$7C              ; Frieza side-steps this frame
 ; Arrays.
@@ -365,6 +366,41 @@ assert !DRAW_END <= $8000, "orbit draw block overflow"
 !t_want = !SB+$DB0                 ; text panel wanted (0: none, !OTXT_*)
 !t_have = !SB+$DB2                 ; text panel in BG3 now
 
+; The beam struggle and the victory (finale.asm, fdraw.asm), after the
+; beam cache in the orbit's part of the Frieza fight's hole-drawing cache
+; ($32:7000-77FF, borrowed while the orbit owns the picture: see orbit.md).
+!FN = !SB+$1500
+!FN_GATHER   = 1                   ; clash phases (frieza-finale.js)
+!FN_CHARGE   = 2
+!FN_LAUNCH   = 3
+!FN_STRUGGLE = 4
+!FN_RECOIL   = 5
+!FN_WIN      = 6
+!fn_phase = !FN+$00                ; 0 none, !FN_GATHER .. !FN_WIN
+!fn_age   = !FN+$02                ; clash.age
+!fn_p     = !FN+$04                ; pressure (Q31, 4 bytes)
+!fn_s     = !FN+$08                ; shown (Q31, 4 bytes)
+!fn_taps  = !FN+$0C
+!fn_last  = !FN+$0E                ; lastTap (signed)
+!fn_hx0   = !FN+$10                ; clash.from: hero, boss, camera
+!fn_hy0   = !FN+$12
+!fn_bx0   = !FN+$14
+!fn_by0   = !FN+$16
+!fn_cx0   = !FN+$18
+!fn_cy0   = !FN+$1A
+!fn_cr0   = !FN+$1C
+!fn_bage  = !FN+$1E                ; b.age since the win
+!fn_ret   = !FN+$20                ; nonzero: back on the deck
+!fn_shout = !FN+$22                ; the release shout this frame (audio)
+!fn_px    = !FN+$24                ; the struggle's meeting point (screen)
+!fn_py    = !FN+$26
+!fn_t     = !FN+$28                ; ease (32-bit fraction)
+!fn_m     = !FN+$2C                ; 16 bytes: mix scratch
+!fn_q     = !FN+$3C                ; 8 bytes: |d| * t
+!fn_d     = !FN+$44                ; 32 bytes: drawing scratch
+!FN_END   = !FN+$64
+assert !FN_END <= !SB+$1800, "orbit finale block overflow"
+
 
 ; OBJ VRAM the scene owns while it shows (name base $6000, 16/32 sizes).
 !OV_FRIEZA = $000                  ; 32x32, dynamic
@@ -422,6 +458,7 @@ orbit_star_tiles:
 	incbin "orbit/star_tiles.bin"
 incsrc "orbit-fx/data.asm"
 incsrc "orbit-text/text.asm"
+incsrc "orbit-finale/finale.asm"
 orbit_data_end:
 assert orbit_data_end <= !DATA_ORBIT+$8000, "orbit data bank overflow"
 org $F60000
@@ -431,6 +468,7 @@ orbit_fight_lines: incbin "orbit/fight_lines.bin"
 orbit_fx_vram_a:  incbin "orbit-fx/vram_a.bin"   ; OBJ tiles $080-$0FF
 orbit_fx_vram_b:  incbin "orbit-fx/vram_b.bin"   ; $100-$13F
 orbit_fx_vram_c:  incbin "orbit-fx/vram_c.bin"   ; $180-$1BF
+orbit_fx_vram_d:  incbin "orbit-fx/vram_d.bin"   ; $000-$03F (resident cells beside the dynamic ones)
 orbit_fx_death:   incbin "orbit-fx/death.bin"    ; Death Balls: 12 x 32x32, 12 x 16x16
 orbit_text_tiles: incbin "orbit-text/tiles.bin"  ; BG3 text panel tiles
 orbit_f7_end:
@@ -450,7 +488,9 @@ incsrc "fight.asm"
 incsrc "draw.asm"
 incsrc "beam.asm"
 incsrc "text.asm"
+incsrc "finale.asm"
+incsrc "fdraw.asm"
 incsrc "api.asm"
 orbit_code_end:
-assert orbit_code_end <= !CODE_ORBIT+$8000, "orbit code bank overflow"
+assert orbit_code_end <= !CODE_ORBIT+$7C00, "orbit code bank overflow (bind.asm sits at $FC00)"
 pullpc

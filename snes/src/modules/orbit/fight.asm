@@ -19,6 +19,11 @@ fight_start:
 	BPL .clr
 	PLA
 	STA.w !b_hp
+	; no beam struggle yet
+	LDX.w #(!FN_END)-(!FN)-2
+-	STZ.w !FN,X
+	DEX : DEX
+	BPL -
 	LDA.w #156 : STA.w !f_hx
 	LDA.w #155 : STA.w !f_hy
 	LDA.w #12 : STA.w !f_heading
@@ -61,9 +66,13 @@ fight_frame:
 	JMP fight_input
 
 ; frieza.js tick (orbit). Menus and dialogue pause the battle; a fallen
-; Goku stops it.
+; Goku stops it. After the win, the 'won' stage's own clock.
 fight_tick:
-	JSR fight_paused
+	LDA.w !fn_phase
+	CMP.w #!FN_WIN
+	BNE +
+	JMP finale_won
++	JSR fight_paused
 	BCC +
 	RTS
 +	LDA.l $7EE182
@@ -105,7 +114,9 @@ fight_tick:
 +	JSR fight_exchange
 	BCC +
 	RTS
-+	; At 6,000 HP the beam struggle takes over (frieza-finale.js beginClash).
++	LDA.w !fn_phase
+	BNE .clash
+	; At 6,000 HP the beam struggle takes over (frieza-finale.js beginClash).
 	LDA.w !b_hp
 	CMP.w #6001
 	BCS .ai
@@ -114,9 +125,12 @@ fight_tick:
 	JSR fight_clear_boss_shots     ; the wave finishes first
 	STZ.w !w_kind
 	RTS
-+	LDA.w #$0001
-	STA.w !f_won
-	RTS
++	JSR finale_begin
+.clash
+	JSR finale_tick
+	BCC +
+	JSR finale_win
++	RTS
 .ai
 	JSR fight_ai
 	JMP fight_boss_shots
@@ -197,6 +211,17 @@ fight_input:
 +	LDA.w !f_duel
 	BEQ +
 	RTS
++	LDA.w !fn_phase
+	BEQ +
+	; the clash: the scene charges and releases Goku's counter; fresh B or
+	; Y presses push once the beams have met
+	LDA.w !f_padprev
+	EOR.w #$FFFF
+	AND.w !f_pad
+	AND.w #!PAD_B|!PAD_Y
+	BEQ ++
+	JSR finale_tap
+++	RTS
 +	; wave = L + Y; focus = L alone (no B, Y, A, R)
 	LDA.w !f_pad
 	AND.w #!PAD_L|!PAD_Y
@@ -539,7 +564,7 @@ fight_hurt_any:
 	STA.w !f_tmp+14
 	LDA.w !f_intro
 	ORA.w !b_guard
-	ORA.w !f_won
+	ORA.w !fn_phase
 	BEQ +
 	LDA.w #$0000
 	RTS
@@ -794,7 +819,7 @@ fight_defense:
 	ORA.w !b_stun
 	ORA.w !b_dash
 	ORA.w !f_duel
-	ORA.w !f_won
+	ORA.w !fn_phase
 	ORA.w !f_intro
 	BEQ +
 	CLC
@@ -958,6 +983,8 @@ fight_tick_orbit:
 	LDA.w !cam_tdx
 	CLC : ADC.w #2
 	STA.w !cam_tdx
+	LDA.w !fn_phase                ; (not during the clash)
+	BNE .camDone
 	LDA.w !f_age
 	AND.w #$0003
 	BNE .camDone
@@ -1011,7 +1038,7 @@ fight_tick_orbit:
 	BEQ +
 	DEC.w !f_intro
 	RTS
-+	LDA.w !f_won
++	LDA.w !fn_phase
 	BEQ +
 	RTS
 +	JSR fight_tick_shots
@@ -1342,7 +1369,7 @@ fight_tick_ricochets:
 fight_begin_exchange:
 	LDA.w !f_duel
 	ORA.w !f_duelcd
-	ORA.w !f_won
+	ORA.w !fn_phase
 	BEQ +
 	CLC
 	RTS

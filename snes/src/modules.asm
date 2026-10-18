@@ -103,6 +103,7 @@ pullpc
 ; Combat bindings to optional modules: after every module include (its
 ; defined() checks see them), before the story tables.
 incsrc "modules/combat/bind.asm"
+incsrc "modules/orbit/bind.asm"            ; before frieza's bindings (they test !FRIEZA_ORBIT_*)
 
 ; Debug preset hook table (generated): modules fill it by defining
 ; !DEBUG_PRESET_HOOK_<NAME> / _ANY in their own files (included above).

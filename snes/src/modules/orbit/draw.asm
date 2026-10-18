@@ -179,6 +179,9 @@ fight_draw:
 	LDA.w !f_on
 	BNE +
 	RTS
++	LDA.w !fn_phase
+	BEQ +
+	JMP fc_draw                    ; the finale's own picture (fdraw.asm)
 +	JSR fd_beam_wants
 	JSR fd_hits
 	JSR fd_warning

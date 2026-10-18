@@ -12,6 +12,11 @@ text_frame:
 	STZ.w !t_want
 	LDA.w !f_on
 	BEQ .set
+	LDA.w !fn_phase
+	BEQ .intro
+	JSR text_finale
+	BRA .set
+.intro
 	; frieza-cinematic.js orbitIntroText: 60 quiet frames, five 150-frame
 	; lines, 45 quiet
 	LDA.w !f_intro
@@ -39,6 +44,39 @@ text_frame:
 	LDA.b #!ORBIT_TEXT_LINES
 +	STA.w !g_text
 	REP #$30
+	RTS
+
+; frieza-finale-view.js: the phase's line (clashLines); the struggle's
+; after 100 frames only during Frieza's surges; the victory's aftermath
+; between the fanfare and the descent.
+text_finale:
+	LDA.w !fn_phase
+	CMP.w #!FN_STRUGGLE
+	BNE .notStruggle
+	LDA.w !fn_age
+	CMP.w #101
+	BCC .phase
+	JSR finale_surge               ; A = surge + 1
+	BEQ .none
+	CLC : ADC.w #!OTXT_SURGE1-1
+	STA.w !t_want
+	RTS
+.notStruggle
+	CMP.w #!FN_WIN
+	BNE .phase
+	LDA.w !fn_age
+	CMP.w #!FNT_V_QUIET
+	BCC .none
+	CMP.w #!FNT_V_DESCENT
+	BCS .none
+	LDA.w #!OTXT_AFTERMATH
+	STA.w !t_want
+	RTS
+.phase
+	LDA.w !fn_phase
+	CLC : ADC.w #!OTXT_GATHER-!FN_GATHER
+	STA.w !t_want
+.none
 	RTS
 
 ; NMI side (DB = $32, M16): the map rows of a new message, or blank rows.
