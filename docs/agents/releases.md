@@ -48,6 +48,20 @@ Optional macOS signing secrets: `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_I
 
 Update `package.json` and `package-lock.json` to the release version first. Dispatch from the intended commit. The default run only creates Actions artifacts. Enable `draft_release` to assemble archives, regenerate combined checksums, and create a **draft** GitHub release tagged `v<package version>`. Existing tags/releases are not overwritten; review the draft before publishing. The workflow never automatically publishes a public release.
 
+## Standalone SNES preview
+
+The [SNES preview release](https://github.com/mikolalysenko/secret-of-goku/releases/tag/snes-v0.1.0-preview.1)
+provides a verified IPS patch, a patch-only ZIP, ROM hashes, player
+instructions and native-resolution cartridge screenshots. It is separate
+from the browser and desktop packages. Crowded flight/combat still slows
+down; physical-console compatibility has not been certified.
+
+The cartridge source and packaging tools are on the
+[`snes-port` branch](https://github.com/mikolalysenko/secret-of-goku/tree/snes-port),
+with the exact release pinned by `snes-v0.1.0-preview.1`. See that branch's
+[`snes/release.mjs`](https://github.com/mikolalysenko/secret-of-goku/blob/snes-v0.1.0-preview.1/snes/release.mjs)
+and [performance notes](https://github.com/mikolalysenko/secret-of-goku/blob/snes-v0.1.0-preview.1/docs/agents/snes-port/gameplay-performance.md).
+
 ## Code map
 
 | File | Responsibility |

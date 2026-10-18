@@ -4,6 +4,14 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES preview download (2026-10-18)
+
+- Publish the standalone cartridge preview as a verified IPS and patch-only
+  ZIP, with instructions, base/output hashes and native SNES screenshots.
+- Link the separate `snes-port` source and `snes-v0.1.0-preview.1` release
+  from the project overview. The preview explicitly retains known
+  crowded-scene slowdowns; existing desktop downloads stay available.
+
 ## 2026-10-18 — Release 0.2.5
 
 - Release 0.2.5 (`v0.2.5`) and its Pages build add one exact fast path to 0.2.4:
