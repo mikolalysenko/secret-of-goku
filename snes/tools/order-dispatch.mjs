@@ -11,7 +11,9 @@ const path=process.argv[2]??'snes/src/modules.asm';
 // Per block: [early..., '*', late...]; '*' marks where unlisted calls go.
 const ORDER={
   modules_field_frame:['title_field_frame','story_field_frame','debug_field_frame','combat_frame','combat_field_frame','flight_frame','flight_field_frame','ui_field_frame','world_field_frame','*','goku_frame','destroy_field_frame','fx_frame','ending_frame','audio_frame'],
-  modules_field_nmi:['goku_nmi','*','ending_nmi','fx_nmi','ui_field_nmi'],
+  // ui and destroy only write HDMA registers: first, so they check the
+  // vblank line before Goku's cell DMA; fx programs channels 2/3 after all DMA.
+  modules_field_nmi:['ui_field_nmi','destroy_field_nmi','goku_nmi','*','ending_nmi','fx_nmi'],
   modules_world_frame:['ui_world_frame','destroy_world_frame','world_world_frame','*','fx_world_frame','ending_world_frame','audio_frame'],
   modules_world_nmi:['ending_world_nmi','ui_world_nmi','world_world_nmi','*','fx_world_nmi'],
   modules_menu_frame:['goku_menu_frame','title_menu_frame','ui_menu_frame','*','audio_pause'],

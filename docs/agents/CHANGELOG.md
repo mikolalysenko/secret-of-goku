@@ -41,6 +41,14 @@ stay traceable even when they are committed together.
   - **Exactness:** the original SnesJs core equivalence passes (SPC RAM and audio every frame), and every saved state, scene and forced branch renders identically to 0.2.4 with every mod hook.
   - **Browser suite:** only the known failures; all 28 phone tests pass.
 
+## 2026-10-17 — SNES cartridge: Goku's STATUS page, window placement, scouter switch (UI stream)
+
+- Goku's STATUS page shows the browser's raster on the cartridge: name, level, HP, form, the double-width power level, the weights lines, MANA and money, and ten stat rows with bounded two-tone meters. The page's text and window layer is composed cell by cell from the same drawing operations as `native-status.js`, which the generator checks against `statusPixels()` at build time. It is built top to bottom in about 55 frames while the menu keeps 60 Hz. Like the browser, which paints its raster from scanline 1, it sits one row above the raster's coordinates, and its window art comes from the browser's windows rather than the game's tiles. See [snes-port/ui.md](snes-port/ui.md#gokus-status-page-statusasm).
+- Dialogue windows move above the HUD when the first one would cover more faces where it is (`window-placement.js`). With the core's new HDMAEN guard, closing windows stay moved too: all 1,952 window frames of the test scene.
+- Goku's Targeting ring item is the scouter switch ("Scouter: ON/OFF"), with the scan sound and King Kai's joke for the form; the power-level readouts are not drawn yet.
+- The UI's DMA-only tile sets (radio glyphs, window tiles, world atlas, radar dial) and the STATUS page's window cells and tilemap live in extended data. Messages are dictionary-compressed, and bank `$AC` has 8.2 KiB left.
+- Validation: `snes/test/ui/run.mjs`, 11 Mesen and node cases. STATUS (base form and Super Saiyan): BG2 from VRAM equals `statusPixels()` on every pixel except 2–3 cells per page that need a fourth colour, which shows as its nearest. Open: the scouter readouts (they need OBJ VRAM) and instant text for R fast-forward (the native engine prints at most one glyph per vblank).
+
 ## 2026-10-17 — SNES cartridge: the Sandship arc (destroy stream)
 
 - The Sandship runs on the cartridge: a full-power KAMEHAMEHA below deck while captive (or Sergo's plan) whites out the screen and reloads Goku's room as the wreck, with the fled crew gone, desert monsters in, the boss battle alarm, the rescues, Geshtar on deck, bulkheads that break, unplanned departures and the roof takeoff that blow the ship up into the Mech Rider, the reunion with everyone's own gear, and the dunes' exit rule.
