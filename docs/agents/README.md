@@ -7,6 +7,7 @@ These notes include complete gameplay, story and ending spoilers. The top-level 
 | [Code map](code-map.md) | Runtime subsystems, native hooks and developer entry points |
 | [Development](development.md) | Local setup, ROM import, tests, browser build and Pages deployment |
 | [Releases](releases.md) | Offline Windows/macOS/Linux packaging, Steam Deck/Bazzite profiles and CI |
+| [Bazzite Steam box](bazzite-steam.md) | Installed build, Steam launch workaround, controller template and card artwork |
 | [Changelog](CHANGELOG.md) | Changes and implementation summaries |
 | [Gameplay reference](gameplay.md) | Full feature behavior, detailed controls and story/debug starts |
 | [README media](readme-media.md) | Spoiler boundaries, capture process and teaser URL |

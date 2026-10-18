@@ -4,6 +4,37 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## 2026-10-18 — Bazzite Steam box installation
+
+- Built and installed the Bazzite desktop app from `656bdb3`, added a direct Steam shortcut and Favorites entry, and assigned the Gamepad template.
+- Added portrait and wide Steam artwork under `assets/steam/`, applied it through Steam's live artwork API, and verified the card in the Gaming Mode home carousel.
+- Fixed this installation's Steam overlay startup crash with a per-game preload override. Native fullscreen launch, offline startup and save/restart checks passed on Bazzite. Physical controller and TV-wall checks remain untested. See [deployment and artwork notes](bazzite-steam.md).
+
+## 2026-10-18 — SNES cartridge: Frieza's ground arc, deterministic power-on, Goku fixes (integration)
+
+- **Frieza's ground arc** is merged into the cartridge, as the browser plays it: the entrance and theft, the Emperor's execution, the Death Balls, the Mana Tree sequence, the three-phase fight, the Fortress collapse on its destroyed deck, the Beast challenge, and victory and death. It uses flight's landing check and scripted camera, Goku's scripted cells, combat's virtual target (Goku's attacks now reach Frieza), destroy's door-record hook and core's scene claims (VRAM regions and the scene work area). Its idle cost is 0.32 lines a frame and 0.11 a vblank. See [snes-port/frieza.md](snes-port/frieza.md).
+- **Power-on:** the original game reads three things before writing them: the moving Fortress's placement (`7E:0126`), the first map's camera edges (`7E:0A80–0AB1`) and an effect record of ours. These varied with each power-on in Mesen and on hardware; the browser's emulator zero-fills them. Core now zeroes them at boot, so every console and emulator starts like the browser.
+- **Goku:**
+  - A scripted-cell API draws Goku at a scene's screen spot (the temple exit, the deck, the Tree's cliff).
+  - Cell uploads are cheaper and sent less often.
+  - Two regressions from the first version are fixed: fx bursts lost a palette, and a timing-sensitive Sandship colour check failed.
+  - The fixes exposed a real race in the ending's palette commit: a channel-7 DMA set up from the frame thread can copy 64 KiB over WRAM if an NMI lands mid-setup. It is with the ending stream, and goku keeps its old NMI prologue meanwhile.
+- **Build:** generator output folders left by another branch no longer break builds.
+- Validation: each merge re-ran the suites it touches (frieza, combat, vegeta, goku, fx, destroy, ending, ui). All pass. The scene select has 21 presets full and `trial` native; `hexas` is still partial (a capture-timing difference in the debug recipe). The DMA-timing watch finds no module DMA into VRAM, OAM or CGRAM during display over the opening and all presets.
+
+## 2026-10-18 — SNES cartridge: Goku's attacks reach Frieza, and combat hooks for the set pieces (combat)
+
+- **Frieza can be struck.** Combat keeps a registry of virtual targets: enemies the browser mod adds to the native actors, such as Frieza in the ground fight. Punches, ki blasts, the Kamehameha and the transformation burst include them. A hit goes to the module's own routine, with no damage number or launch, and keeps the contact hold, impact spark, sound, the ki shot ending at its first contact, and the beam's pulses of an ordinary enemy. Six new tests run the battle state on the cartridge and the browser's own Frieza module side by side: every hit's damage, melee flag, HP taken and frame agree.
+- **Hooks the set pieces asked for:**
+  - Damage hooks are a list, so Frieza's and Vegeta's modules no longer depend on include order.
+  - Receive hooks see the damage queued on Goku before Saiyan resilience; the fed Mana Beast's cap uses one.
+  - Other modules can read Goku's live beam with the browser's own geometry. Vegeta's beam clash and volley cancellation now use it.
+  - An input hold takes the pad but lets the last wave finish. Vegeta's draw uses it, so the draw waits for Goku's wave as in the browser.
+  - Instant Transmission can look up the same targets.
+- **Menu/back fixes:** X closes Status and the window and controller editors wherever the options ring last stopped, as in browser commit f376330 (3 of 8 tested pages stayed open). X also never reaches the game as the native button while Goku is inactive; before, one press in five opened the second party member's ring.
+- **Costs:** an attack's target scan asks each registered target once per field frame (0.3 lines on maps without Frieza, 1.5 on his). Combat's logic grows by at most about half a line per step in busy scenes, and idle frames are unchanged. A hit on Frieza costs about 6 lines, nearly all in Frieza's own routine.
+- Validation on main with the frieza module: combat 34/34 (the six Frieza cases, the beam API at every age, the input hold, receive hooks, `panel`, `xrace`), frieza 13/13, vegeta 11/11 with every tick equal to the browser's module, goku 11/11, and perf equal to main's in all six scenes. Scene select: 21 presets full, `trial` native, and `hexas` partial, as on main without these changes.
+
 ## 2026-10-18 — SNES cartridge: snes9x and bsnes second opinions
 
 - The cartridge now also runs headless in snes9x and bsnes through their libretro cores and a small frontend, `snes/tools/retro-host` (`make -C snes/tools/retro-host cores` builds pinned cores under `.local/`). `node snes/test/emulators/run.mjs` (part of `run-all`, skipped without cores) plays one power-on scenario on snes9x, bsnes and bsnes with its accurate PPU, with Mesen as the reference. It covers ExHiROM detection and a CPU-bus probe of the extended banks and save RAM, the title, the name editor, the opening to the first field, and a save, power cycle and load. All three cores pass. Their pictures match Mesen's, and the game reaches each step on the same frame. `--presets` runs the 22 scene-select presets on every core: all end in Mesen's state, and their pictures match. See [snes-rom.md](snes-rom.md#second-opinions-snes9x-and-bsnes).

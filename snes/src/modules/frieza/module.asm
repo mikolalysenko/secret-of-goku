@@ -518,9 +518,6 @@ if not(defined("STORY_TEST"))
 !STORY_QUERY_BEAST_WON              = frieza_q_beast_won
 endif
 
-; Combat: Goku's damage to the Beast and the empowered Dark Lich
-; (beast-challenge.js damage()), bound by combat's bind.asm when present.
-!COMBAT_HOOK_DAMAGE = frieza_combat_damage
 ; Local flight: the broken deck has no floor (frieza.js floorHole).
 !FLIGHT_MISSING_FLOOR = frieza_floor_hole
 

@@ -1222,6 +1222,7 @@ pal_commit:
 	STA.w !l_m0               ; first * 2
 	CLC
 	ADC.w !l_pcbase
+	JSL ending_dma_guard      ; not across the vblank NMI (it reprograms channel 7)
 	STA.w $2181               ; WRAM address: the buffer + first * 2
 	SEP #$20
 	STZ.w $2183
@@ -1253,6 +1254,7 @@ pal_commit:
 	STA.w $4370
 	SEP #$20
 	LDA.b #$80
+.trigger
 	STA.w $420B
 	REP #$20
 	INX : INX

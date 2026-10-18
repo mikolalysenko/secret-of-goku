@@ -61,6 +61,11 @@ cb_hook_logic:
 ; menus and doors pause combat anyway).
 cb_logic_frame:
 	JSR cb_ensure_init
+if defined("COMBAT_TEST")
+	JSR cb_test_mailbox
+endif
+	LDA.w #$0000                  ; the virtual targets may have moved since
+	STA.l !vt_state               ; the last field frame: query them again
 	JSR cb_field_gate
 	SEP #$20
 	LDA !cb_world
@@ -315,6 +320,9 @@ combat_field_frame:
 +	JSR cb_effects_draw
 .out
 	REP #$30
+if defined("COMBAT_TEST")
+	JSR cb_test_beam_probe
+endif
 	RTL
 
 ; C0:C164 hook (end of every field NMI, after the forced blank ends): count
@@ -385,6 +393,11 @@ combat_menu_frame:
 	AND.w #!IN_B|!IN_Y|!IN_A|!IN_L
 	STA !cb_menu_held
 	JSR cb_menu_x
+	; padInput is this frame's pad in menus too (mana-mod.js): the next
+	; frame's X press edge (cb_pad_prev) must not see a stale field pad,
+	; or a ring opened with X kept every later X on its first route (Y)
+	LDA !cb_raw
+	STA !cb_pad
 	JSR cb_emit_input
 	JSR cb_cancel_combat_quiet
 	REP #$30
@@ -509,7 +522,11 @@ cb_field_gate:
 	STZ !cb_can
 	STZ !cb_gc
 	STZ !cb_menuflag
-	STZ !cb_basemask
+	; X is ring / back in every frame combat sees (cb_menu_x remaps it):
+	; hidden up front, also while Goku is inactive, so the game's read of a
+	; press frame never gets native X (member 1's ring) before combat's step
+	LDA.b #!IN_X
+	STA !cb_basemask
 	STZ !cb_basemask+1
 	LDA.l !persist_goku_active
 	BEQ +
@@ -568,7 +585,7 @@ cb_field_gate:
 	ORA $D0
 	BNE .noA
 	LDA.b #!IN_A
-	STA !cb_basemask
+	TSB !cb_basemask
 .noA
 	; player 1 owns Goku: Y is ki
 	LDA $E02C
@@ -685,7 +702,8 @@ cb_compute_can:
 ; the whole pad).
 cb_gate:
 	JSR cb_compute_can
-	STZ !cb_basemask
+	LDA.w #!IN_X                  ; X is always ring / back (cb_field_gate)
+	STA !cb_basemask
 	SEP #$20
 	STZ !cb_menuflag
 	LDA !cb_sess
@@ -756,8 +774,12 @@ cb_read_input:
 	JMP cb_menu_x
 
 ; X is ring / back: the game sees native Y (Start for the window and
-; controller editors of the menu screens, as panelBack).
+; controller editors of the menu screens, as panelBack), never native X:
+; the mask is requested in every frame, not only once a press is seen (the
+; game's read of the press frame comes before combat's).
 cb_menu_x:
+	LDA.w #!IN_X
+	TSB !cb_mask
 	LDA !cb_raw
 	BIT.w #!IN_X
 	BNE .held
@@ -772,19 +794,35 @@ cb_menu_x:
 	LDA.l !core_mode
 	CMP.w #!CORE_MODE_MENU
 	BNE .keep
-	; status window / controller editors: ring category 2, entry 5 or 6,
-	; menu interrupt vectors (JML $C020A7 / JML $00C1CF)
-	LDA $0101
-	CMP.w #$20A7
+	; the window and controller editors finish with Start (mana-mod.js
+	; panelBack): settled brightness ($E4 = $E5 = 1), no event, a menu
+	; screen with the menu interrupt vectors (JML $C020A7 / JML $00C1CF),
+	; options ring (category 2) with option 5 or 6 open. $1876 is the open
+	; option; $180A is only the cursor counted from the option the ring last
+	; opened at, so after options 3 or 4 Status read as an editor (Start)
+	; and nothing could close it (browser fix f376330).
+	LDA $E4
+	CMP.w #$0101
+	BNE .keep
+	LDA $0100
+	CMP.w #$A75C                  ; 5C A7 20 C0
+	BNE .keep
+	LDA $0102
+	CMP.w #$C020
+	BNE .keep
+	LDA $0104
+	CMP.w #$CF5C                  ; 5C CF C1 00
+	BNE .keep
+	LDA $0106
+	CMP.w #$00C1
 	BNE .keep
 	SEP #$20
-	LDA $0103
-	CMP.b #$C0
+	LDA $D0
 	BNE .keep8
 	LDA $1809
 	CMP.b #$02
 	BNE .keep8
-	LDA $180A
+	LDA $1876
 	CMP.b #$05
 	BEQ .start
 	CMP.b #$06
@@ -876,8 +914,7 @@ cb_goku_frame:
 	JSR cb_facing_from_native
 	LDA !cb_inlock
 	BEQ +
-	JSR cb_cancel_combat_quiet
-	RTS
+	JMP cb_locked_input           ; another module owns the pad
 +	LDA !cb_recovering
 	BEQ +
 	RTS
@@ -964,6 +1001,35 @@ cb_goku_frame:
 	BEQ +
 	JSR cb_update_launches
 +	JSR cb_attack_inputs
+	RTS
+
+; Another module owns the pad (combat_api_input_lock / _hold; mana-mod.js
+; frieza.inputLocked / trial.inputLocked): no input this step and nothing
+; injected (the browser zeroes the whole pad). A full lock ends combat's
+; action, charge and effects; when every owner holds instead, what was
+; fired runs on: while Goku can act, every effect ages (life only: holds
+; are not honoured there), the action advances and projectiles hit.
+cb_locked_input:
+	STZ !cb_in
+	STZ !cb_pad
+	STZ !cb_inject
+	LDA.l !cb_inhold
+	EOR.w #$FFFF
+	AND !cb_inlock
+	BEQ .hold
+	JMP cb_cancel_combat_quiet
+.hold
+	LDA !cb_can
+	AND.w #$00FF
+	BEQ .out
+	LDA !cb_fx_mask
+	BEQ +
+	JSR cb_effects_age
++	JSR cb_advance_action
+	LDA !cb_fx_mask
+	BEQ .out
+	JSR cb_update_projectiles
+.out
 	RTS
 
 ; A canAttack-false frame: everything incompatible is cancelled; a held

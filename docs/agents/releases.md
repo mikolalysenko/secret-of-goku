@@ -24,6 +24,8 @@ npm run release -- --platform mac --arch x64
 
 Linux creates AppImage and tar.gz files; Windows creates a ZIP containing an executable and its runtime; macOS creates a ZIP containing the application bundle. Steam Deck and Bazzite are explicit Linux x64 profiles that start fullscreen; the desktop profile also detects SteamDeck/gamescope. The three profiles share the same app ID and save location. See [player instructions](../../desktop/PLAYING.md) for controls and Steam setup.
 
+The [installed Bazzite Steam box](bazzite-steam.md) uses a per-game `env -u LD_PRELOAD %command% --ozone-platform=x11` launch option. Its Steam overlay library crashed during Electron 44.8.0 startup; removing that preload was verified in the live gamescope session. The deployment notes include its artwork, controller template and update paths.
+
 Build macOS on macOS and AppImages on Linux. `--archive-only` creates only a tar.gz or ZIP and allows cross-packaging Linux and Windows from this Mac without Wine, Docker or an installer compiler. Cross-packaging is not evidence of native runtime testing. macOS signing/notarization requires maintainer credentials; Windows ZIPs are unsigned. No credentials are required for local archives.
 
 Output is ignored under `release/<version>/<profile>-<platform>-<arch>/`. Each directory contains archives and `SHA256SUMS`; distribute those files only, not builder debug/config files. The ignored `.local/desktop/` staging area and the browser `dist/` build both include the verified tracked ROM. A repeated release replaces only that target's stage/output.
