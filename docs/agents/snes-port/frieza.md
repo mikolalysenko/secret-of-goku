@@ -207,6 +207,22 @@ of the world's (the same within a cell, repeating per cell).
 - **Whiteout**: fixed-colour addition on every layer (`CGWSEL 0`,
   `CGADSUB $3F`, `COLDATA`) in vblank; the map's own colour math (`CGWSEL
   2`, `CGADSUB = [$23]`, `COLDATA $E0`) comes back the vblank after.
+- **Quiet path**: a busy frame that ends with nothing of Frieza's running
+  (dormant or defeated, no scene, pending work, cue, quake, death, Lich,
+  Balls or Frieza map; or Goku not yet arrived) sets `!FZI_IDLE`
+  (`fz_try_quiet`). Quiet frames compare `$DC` with the last map and
+  return; every 4th frame they check the state again (the safety net), and
+  in turn Goku's arrival (every 16 frames) and Dryad's hint (every 64). The
+  permanent form is put back on any quiet frame Goku lost it. Every state
+  change wakes the module (`fz_wake`: hooks' deferred work `fz_defer`, cues,
+  flag and stage setters, the guard's derivation). The vblank reads one bit
+  (`!FZV_NMI`, set by `fz_vram_settle` when the frame left it work) and the
+  first quiet vblank clears the requests.
+- **Scene SRAM ownership**: an ending scene uses all of `$32:6000-7FFF`.
+  `!FZI_SRAM` marks Frieza's half as his; an active ending clears it and the
+  module then runs only its WRAM work; `fz_sram_reset` forgets the area
+  before Frieza uses it again. Per-frame requests the vblank acts on (the
+  Ball set, the vista) live in WRAM (`!fz_vista`), never in the shared SRAM.
 - **Vblank work is granted per frame**: the hole tiles and rows and the
   whiteout run only when this frame's field logic set the matching
   `!fz_tflags` bit (cleared at the start of every field frame), so stale
@@ -328,6 +344,7 @@ floor on request.
 | `fracture` | seven fractures give the same 39 cells as `fractureFortress()`; the hole tiles are in VRAM and every listed BG1 row is written |
 | `victory` | the fatal hit starts the beat, white 31 at 400, event C7 runs (stage defeated, ledger 127) |
 | `death` | Goku at 1 HP takes the first orb: no warp, black from 360, Start goes to the title; with the ending module, the hand-off (`fzd_on` 2, `ES_DEFEATED`, key 1) instead |
+| `cost` | Potos with Goku present: the module settles on the quiet path; field frame at most 0.36 lines on average and 2.5 at peak, vblank at most 0.13 (from the dispatcher's JSL to the next instruction, master clocks) |
 | `vram` | preset `frieza`: not drawn while another owner holds `!VRAM_SCENE_OBJ`, drawn and claimed (owner 6) once it is free, given back when the scene ends |
 | `door` | door 3FC from the `intro` preset: tile y 18 beside the living Emperor, 30 (native) after his death |
 | `tree` | (explicit) preset `tree`: event 5F8 end to end with B tapped every 20 frames; every Tree scene on maps 236 and 198, shots at chosen ages, a trace of the vista's state |
@@ -337,9 +354,11 @@ floor on request.
 ## Known differences
 
 - **Frame cost**: Frieza's sprite takes about 9 scanlines per frame (up to
-  eight `core_oam_add_front` calls), the fight about 45 in all; the idle
-  path about one. The fight's logic still ends by line ~190 in the battle
-  preset.
+  eight `core_oam_add_front` calls), the fight about 45 in all. The fight's
+  logic still ends by line ~190 in the battle preset. Quiet (nothing of
+  Frieza's running): 0.32 lines per field frame on average, 2 at most (Dryad's
+  hint, looked at every 64 frames, up to 63 frames after the browser's), and
+  0.11 lines per vblank (case `cost`).
 - **Large bursts**: fx's 14 effect slots and the sprite limits show part of
   the browser's nine-burst clusters.
 - **The revive needs no snapshot**: the browser copies Primm's and Popoi's

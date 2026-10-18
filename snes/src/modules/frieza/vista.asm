@@ -177,8 +177,7 @@ fz_tree_frame:
 	ORA.w #$0008                      ; tiny
 	STA !fz_spr_id
 	LDA !fz_px
-	CLC
-	ADC !fz_t7
+	JSR fz_tree_addshake
 	STA !fz_spr_x
 	LDA !fz_py
 	STA !fz_spr_y
@@ -191,6 +190,21 @@ fz_tree_frame:
 	BNE +
 	JSR fz_tree_bursts
 +	RTS
+
+; A16 += the impact's shake this frame (!fzt_shake, signed; the routines
+; the vista calls use the scratch words). X, Y kept.
+fz_tree_addshake:
+	PHA
+	LDA.l !fzt_shake
+	AND.w #$00FF
+	CMP.w #$0080
+	BCC +
+	ORA.w #$FF00
++	CLC
+	ADC $01,S
+	STA $01,S
+	PLA
+	RTS
 
 ; A16 = brightness 0-15 for the vblank to force.
 fz_tree_bright:
@@ -304,8 +318,7 @@ fz_tree_ball:
 	AND.w #$00FF
 	PHA
 	LDA !fz_px
-	CLC
-	ADC !fz_t7
+	JSR fz_tree_addshake
 	TAX
 	LDA !fz_py
 	SEC
@@ -321,8 +334,7 @@ fz_tree_ball:
 +	ASL
 	TAX
 	LDA.l frieza_tree_shot_x,X
-	CLC
-	ADC !fz_t7
+	JSR fz_tree_addshake
 	PHA
 	; y by the throw pose's bob (p.y = 126 + bob)
 	LDA !fz_py
@@ -357,8 +369,7 @@ fz_tree_bursts:
 	LDA.l fz_tree_burst_x,X
 	CLC
 	ADC !fz_cam_x
-	CLC
-	ADC !fz_t7
+	JSR fz_tree_addshake
 	STA !fz_ax
 	LDA.l fz_tree_burst_y,X
 	CLC
@@ -403,8 +414,7 @@ fz_tree_natives:
 	STA !fz_t2
 	STY !fz_t3
 	LDA.w #102
-	CLC
-	ADC !fz_t7
+	JSR fz_tree_addshake
 	SEC
 	SBC !fz_t2
 	STA !fz_m2
@@ -423,8 +433,7 @@ fz_tree_natives:
 	STA !fz_t4
 	STY !fz_t5
 	LDA.w #154
-	CLC
-	ADC !fz_t7
+	JSR fz_tree_addshake
 	SEC
 	SBC !fz_t4
 	STA !fz_m4
@@ -437,7 +446,7 @@ fz_tree_natives:
 	LDA.w #$7FFF
 	STA !fz_t4
 +	; the native slots
-	LDA.w !core_oam_native&$FFFF
+	LDA.l !core_oam_native
 	CMP.w #129
 	BCC +
 	LDA.w #128

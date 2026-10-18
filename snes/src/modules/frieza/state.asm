@@ -37,6 +37,7 @@ fz_guard:
 	LDA.b #$A4
 	STA !fz_init
 	REP #$20
+	JSR fz_wake                       ; the next frame resets the per-visit state
 	JSR fz_derive_legacy
 	PLY
 	PLX
@@ -142,14 +143,30 @@ fz_flag:
 	RTS
 fz_set:
 	JSR fz_guard
+	JSR fz_wake
 	ORA.l !fzp_flags
 	STA.l !fzp_flags
 	RTS
 fz_clear:
 	JSR fz_guard
+	JSR fz_wake
 	EOR.w #$FFFF
 	AND.l !fzp_flags
 	STA.l !fzp_flags
+	RTS
+; A16 = !FZW_* bits: work deferred to the next field frame.
+fz_defer:
+	TSB !fz_pend
+; The state changes: the next field frame re-evaluates the quiet path
+; (fz_try_quiet). Preserves A, X, Y and P's width.
+fz_wake:
+	PHP
+	SEP #$20
+	PHA
+	LDA.b #!FZI_IDLE
+	TRB !fz_wasidle
+	PLA
+	PLP
 	RTS
 
 ; A16 = stage byte.
@@ -161,12 +178,14 @@ fz_stage:
 ; Store A (low byte) as the stage.
 fz_set_stage:
 	JSR fz_guard
+	JSR fz_wake
 	SEP #$20
 	STA.l !fzp_stage
 	REP #$20
 	RTS
 fz_set_tree:
 	JSR fz_guard
+	JSR fz_wake
 	SEP #$20
 	STA.l !fzp_tree
 	REP #$20
@@ -371,6 +390,7 @@ fz_find_species:
 ; Scene cue (frieza.js cue()). A16 = kind. The new scene keeps the clock,
 ; altar and court of the previous scene on the same map.
 fz_cue:
+	JSR fz_wake
 	STA !fz_t0
 	LDA !fz_scene
 	AND.w #$00FF
@@ -424,7 +444,7 @@ fz_scene_kind:
 ; next frame callback (hooks run inside the event dispatcher).
 fz_defer_cancel:
 	LDA.w #!FZW_CANCEL
-	TSB !fz_pend
+	JSR fz_defer
 	RTS
 
 ; ---------------------------------------------------------------------------
@@ -479,7 +499,7 @@ frieza_h_trial_leave:                 ; 6F
 
 frieza_h_trial_fade:                  ; 71
 	LDA.w #!FZW_FADE
-	TSB !fz_pend
+	JSR fz_defer
 	RTL
 
 frieza_h_after_trial:                 ; 12A
@@ -795,7 +815,7 @@ frieza_h_showdown:                    ; C1
 	JSR fz_clear
 	JSR fz_defer_cancel
 	LDA.w #!FZW_FORM_BASE
-	TSB !fz_pend
+	JSR fz_defer
 	; membership at the showdown
 	LDA $E200
 	AND.w #$0001
@@ -811,7 +831,7 @@ frieza_h_showdown:                    ; C1
 .guest
 	; an unrecruited Popoi has no actor graphics descriptor yet (frame)
 	LDA.w #!FZW_POPOI
-	TSB !fz_pend
+	JSR fz_defer
 .cue
 	LDA.w #!FZS_TAUNT
 	JSR fz_cue
@@ -863,7 +883,7 @@ frieza_h_gold:                        ; C5
 	LDA.w #!FZFL_PERMANENT
 	JSR fz_set
 	LDA.w #!FZW_FORM_SSJ
-	TSB !fz_pend
+	JSR fz_defer
 	LDA.w #!FZS_GOLD
 	JSR fz_cue
 	LDA.w #!FZ_SFX_TRANSFORM
@@ -892,7 +912,7 @@ frieza_h_revive:                      ; C9
 	LDA.w #!FZFL_FALLEN|!FZFL_EIGHTH
 	JSR fz_clear
 	LDA.w #!FZW_REVIVE
-	TSB !fz_pend
+	JSR fz_defer
 	RTL
 
 frieza_h_repair_core:                 ; story: the wish repairs the core
@@ -1226,7 +1246,7 @@ fz_derive_legacy:
 fz_reset_transient:
 	JSR fz_bind_safe                  ; the danger bit goes with !fz_tflags
 	SEP #$20
-	LDA.b #!FZI_SRAM|!FZI_BALLS
+	LDA.b #!FZI_SRAM|!FZI_BALLS|!FZI_IDLE
 	TRB !fz_wasidle
 	REP #$20
 	LDA.w #!VRAM_FIELD_OBJ_A
@@ -1492,7 +1512,7 @@ fz_debug_restore:
 	JSR fz_flag
 	BEQ +
 	LDA.w #!FZW_FORM_SSJ
-	TSB !fz_pend
+	JSR fz_defer
 +	RTS
 
 fz_bit_table:

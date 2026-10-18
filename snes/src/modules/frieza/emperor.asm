@@ -165,7 +165,7 @@ fz_emperor_black:
 	ASL
 	STA !fz_t2                        ; palette bits of the attribute byte
 	; native slots [0, native)
-	LDA.w !core_oam_native&$FFFF
+	LDA.l !core_oam_native
 	CMP.w #129
 	BCC +
 	LDA.w #128

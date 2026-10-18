@@ -149,7 +149,7 @@ fz_start_battle:
 	STZ !fz_atlas
 	JSR fz_battle_clear_sram
 	LDA.w #!FZW_CANCEL
-	TSB !fz_pend
+	JSR fz_defer
 	JSR fz_bind_radio_restore
 	RTS
 
@@ -398,7 +398,7 @@ fz_begin_surge:
 	LDA.w #2000
 +	STA.l !fzs_tgy
 	LDA.w #!FZW_CANCEL
-	TSB !fz_pend
+	JSR fz_defer
 	JSR fz_bind_radio_restore
 	LDA.w #!FZ_SFX_ORB
 	JSR fz_sfx
@@ -1606,7 +1606,7 @@ fz_riposte_tick:
 	LDA.w #280
 	JSR fz_damage_player
 	LDA.w #!FZW_CANCEL
-	TSB !fz_pend
+	JSR fz_defer
 +	LDA !fzf_x
 	STA !fz_ax
 	LDA !fzf_y

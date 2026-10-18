@@ -102,7 +102,7 @@ fz_balls_steal:
 	SBC !fz_cam_x
 	SEC
 	SBC.w #!FRIEZA_BALL_W/2           ; the left edge
-	STA.w !core_spr_x&$FFFF
+	STA.l !core_spr_x
 	LDA.l frieza_steal_oy,X
 	CLC
 	ADC !fz_t1
@@ -119,7 +119,7 @@ fz_balls_steal:
 	SBC !fz_cam_y
 	SEC
 	SBC.w #!FRIEZA_BALL_H/2           ; the top edge
-	STA.w !core_spr_y&$FFFF
+	STA.l !core_spr_y
 	LDA !fz_t7
 	LSR                               ; ball i (X held i * 2)
 	ASL                               ; cell i: tile $122 + 2i
@@ -175,11 +175,11 @@ fz_balls_eighth:
 	LDA.l fz_ball8_dx,X
 	CLC
 	ADC !fz_t4
-	STA.w !core_spr_x&$FFFF
+	STA.l !core_spr_x
 	LDA.l fz_ball8_dy,X
 	CLC
 	ADC !fz_t5
-	STA.w !core_spr_y&$FFFF
+	STA.l !core_spr_y
 	TXA
 	CLC
 	ADC.w #!FZB_CELL0
@@ -205,8 +205,9 @@ fz_balls_put:
 	ASL
 	ORA.w #$3000                      ; priority 3
 	ORA !fz_t3
-	STA.w !core_spr_tile&$FFFF
-	STZ.w !core_spr_size&$FFFF
+	STA.l !core_spr_tile
+	LDA.w #$0000
+	STA.l !core_spr_size
 	JSL core_oam_add_front
 	BCC +
 	JSL core_oam_add

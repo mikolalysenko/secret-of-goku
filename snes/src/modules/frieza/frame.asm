@@ -4,41 +4,23 @@
 ; modules_field_frame: after the game's logic and OAM build. M16/X16,
 ; DB = $7E, D = 0.
 frieza_field_frame:
-	; idle fast path: Frieza dormant or long defeated, nothing of his
-	; running, not on one of his maps (a dozen loads; the rest below)
-	LDA !fz_init
-	AND.w #$F8FF                      ; settled, no vblank work, no lock or danger
-	CMP.w #$00A5
-	BNE .busy
-	LDA !fz_pend
-	ORA !fz_scene                     ; scene kind and its flags
-	BNE .busy
-	SEP #$20
-	LDA !fz_music
-	ORA !fz_quake
-	ORA !fzd_on
-	REP #$20
-	BNE .busy
-	LDA !fzl_base
-	INC                               ; $FFFF: no Dark Lich tracked
-	BNE .busy
-	LDA !fz_wasidle                   ; the Balls' VRAM region to give back
-	AND.w #!FZI_BALLS
-	BNE .busy
-	LDA $DC
+	; quiet fast path (about a third of a scanline): nothing of Frieza's
+	; runs until a hook, a map change, a query's guard or Goku's arrival
+	; wakes the module (fz_try_quiet)
+	LDA !fz_wasidle
+	LSR                               ; C: quiet
+	BCC .busy
+	AND.w #!FZI_PERM>>1
+	BEQ +
+	JSR fz_quiet_perm
++	LDA $DC
 	CMP !fz_lastmap
 	BNE .busy
-	LDA !fz_mapflag
-	AND.w #$00FF
-	BNE .busy
-	LDA.l !fzp_stage
-	AND.w #$00FF
-	BEQ .idle
-	CMP.w #!FZST_DEFEATED
-	BNE .busy
-.idle
-	JSR fz_idle_tick
+	LDA $F4                           ; the NMI frame counter: a slot every 4th
+	AND.w #$0003
+	BEQ +
 	RTL
++	JMP fz_quiet_slot
 .busy
 	; an ending scene owns the picture and all of the scene SRAM
 	; ($32:6000-7FFF): Frieza's state there is gone
@@ -76,7 +58,7 @@ frieza_field_frame:
 	BCS +
 	JSR fz_danger_tick                ; Goku off: only a danger bit to drop
 	JSR fz_vram_settle
-	RTL
+	JMP fz_try_quiet
 +	JSR fz_danger_tick
 	JSR fz_bind_ending_active
 	BCC .own
@@ -86,7 +68,7 @@ frieza_field_frame:
 	JSR fz_death_tick
 	JSR fz_lock_tick
 	JSR fz_vram_settle
-	RTL
+	JMP fz_try_quiet
 .own
 	LDA !fz_wasidle
 	AND.w #!FZI_SRAM
@@ -120,16 +102,142 @@ frieza_field_frame:
 	JSR fz_balls_tick
 	JSR fz_vram_settle
 	JSR fz_music_tick
+	JMP fz_try_quiet
+
+; End of a busy frame (JMP, ends in RTL): when nothing of Frieza's runs, the
+; next frames take the quiet path. Cached for it: Goku's presence (his
+; arrival wakes the module), the permanent form's upkeep and Dryad's pending
+; hint. The Dark Lich (species 121) fights only on map 246, which is always
+; busy, so quiet frames do not look for him.
+fz_try_quiet:
+	LDA !fz_init
+	AND.w #$F8FF
+	CMP.w #$00A5
+	BNE .stay
+	LDA !fz_pend
+	ORA !fz_scene
+	BEQ +
+.stay
+	RTL
++	SEP #$20
+	LDA !fz_music
+	ORA !fz_quake
+	ORA !fzd_on
+	REP #$20
+	BNE .no
+	LDA !fzl_base
+	INC                               ; $FFFF: no Dark Lich tracked
+	BNE .no
+	LDA !fz_wasidle                   ; the Balls' VRAM region to give back
+	AND.w #!FZI_BALLS
+	BNE .no
+	LDA !fz_mapflag
+	AND.w #$00FF
+	BNE .no
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BEQ .away
+	LDA.l !fzp_stage
+	AND.w #$00FF
+	BEQ +
+	CMP.w #!FZST_DEFEATED
+	BNE .no
++	LDA.w #!FZI_IDLE|!FZI_GOKU
+	STA !fz_t0
+	LDA.w #!FZFL_PERMANENT
+	JSR fz_flag
+	BEQ +
+	LDA.w #!FZI_PERM
+	TSB !fz_t0
++	LDA.w #!FZFL_HINTED
+	JSR fz_flag
+	BNE .set
+	LDA.w #!FZI_HINT
+	TSB !fz_t0
+	BRA .set
+.away
+	LDA.w #!FZI_IDLE                  ; Goku has not arrived: nothing runs
+	STA !fz_t0
+.set
+	SEP #$20
+	LDA !fz_wasidle
+	AND.b #~(!FZI_GOKU|!FZI_PERM|!FZI_HINT)
+	ORA !fz_t0
+	STA !fz_wasidle
+	STZ !fz_tflags                    ; (quiet requires them clear: the fast path compares the word)
+	REP #$20
+.no
+	RTL
+
+; Quiet frames: the permanent form back whenever Goku lost it.
+fz_quiet_perm:
+	LDA.l !goku_form|$7E0000
+	AND.w #$00FF
+	BNE +
+	JMP fz_story_permanent
++	RTS
+
+; Every 4th quiet frame (JMP, ends in RTL): the state checked again (hooks,
+; cues and the guard wake the module themselves; this is the safety net),
+; then Goku's arrival (every 16 frames) or Dryad's hint (every 64).
+fz_quiet_slot:
+	LDA !fz_init                      ; $A5 settled, transient flags all clear
+	EOR.w #$00A5
+	ORA !fz_pend
+	ORA !fz_scene                     ; scene kind and its flags
+	BNE .wake
+	LDA $F4
+	AND.w #$000C
+	BEQ .goku
+	CMP.w #$0004
+	BEQ .hint
+	RTL
+.goku
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BEQ +
+	LDA.w #!FZI_GOKU
++	EOR !fz_wasidle
+	AND.w #!FZI_GOKU
+	BNE .wake
+	RTL
+.hint
+	LDA $F4
+	AND.w #$0030
+	BNE .out
+	LDA !fz_wasidle
+	AND.w #!FZI_HINT
+	BEQ .out
+	JSR fz_story_hint_now             ; (speaking sets a flag: that wakes the module)
+	RTL
+.out
+	RTL
+.wake
+	SEP #$20
+	LDA.b #!FZI_IDLE
+	TRB !fz_wasidle
+	REP #$20
 	RTL
 
 ; modules_field_nmi: in vblank after the game's uploads (DB = $80).
 frieza_field_nmi:
-	JSR fz_balls_nmi
+	LDA.l $7E0000|!fz_wasidle         ; high byte !fz_vista: N = !FZV_NMI, the frame
+	BMI +                             ; asked for vblank work (fz_vram_settle)
+	RTL
++	JSR fz_balls_nmi
 	JSR fz_spr_nmi
 	JSR fz_won_nmi
 	JSR fz_tree_nmi
 	JSR fz_holes_nmi
-	RTL
+	; quiet frames rebuild no requests: this vblank was their last
+	LDA.l $7E0000|!fz_wasidle
+	AND.w #!FZI_IDLE
+	BEQ +
+	SEP #$20
+	LDA.b #0
+	STA.l $7E0000|!fz_vista
+	REP #$20
++	RTL
 
 ; modules_title_boot: the scene SRAM block is battery backed (and random at
 ; power-on): forget every Frieza scene's state there.
@@ -155,7 +263,7 @@ fz_lock_tick:
 	JSR fz_input_locked
 	BCC .free
 	LDA.w #$FFFF
-	TSB.w !core_pad_mask&$FFFF
+	STA.l !core_pad_mask              ; every button hidden
 	LDA !fz_tflags
 	AND.w #!FZT_LOCKED
 	BNE .out
@@ -243,12 +351,12 @@ fz_dangerous:
 ; frames on one map with the picture on; map changes reset the per-room
 ; state (frieza.js tick(): s.lastMap, s.offered, scenes of other maps).
 fz_session:
-	LDA.w !core_tick&$FFFF
+	LDA.l !core_tick
 	DEC
 	CMP !fz_lasttick
 	BEQ +
 	JSR fz_spr_invalidate
-+	LDA.w !core_tick&$FFFF
++	LDA.l !core_tick
 	STA !fz_lasttick
 	; picture off (forced blank or brightness 0): loads may rewrite OBJ VRAM
 	SEP #$20
@@ -283,7 +391,7 @@ fz_session:
 	STA.l !fzt_up                     ; a new map's tiles: the vista uploads again
 	REP #$20
 +	JSR fz_spr_invalidate
-	LDA.w !core_frame&$FFFF
+	LDA.l !core_frame
 	STA !fz_room_since
 	LDA.w #!FZFL_OFFERED
 	JSR fz_clear
@@ -296,39 +404,6 @@ fz_session:
 	BEQ .same
 	JSR fz_scene_clear
 .same
-	RTS
-
-; The idle frame: the first one quiets the vblank work of the last busy
-; frame; then the permanent form, the invitation (every 8th frame) and the
-; Dark Lich watch (every 16th).
-fz_idle_tick:
-	LDA.l !persist_goku_active
-	AND.w #$00FF
-	BEQ .out
-	LDA !fz_wasidle
-	AND.w #!FZI_IDLE
-	BNE +
-	JSR fz_spr_begin
-	LDA.w #$FFFF
-	STA !fz_spr_pend
-	JSR fz_vram_settle                ; scene VRAM back to core's pool
-	SEP #$20
-	LDA.b #!FZI_IDLE
-	TSB !fz_wasidle
-	REP #$20
-+	LDA.l !fzp_flags
-	AND.w #!FZFL_PERMANENT
-	BEQ +
-	JSR fz_story_permanent
-+	LDA.w !core_frame&$FFFF
-	AND.w #$0007
-	BNE .out
-	JSR fz_story_hint_now
-	LDA.w !core_frame&$FFFF
-	AND.w #$0008
-	BNE .out
-	JMP fz_lich_tick_findnow
-.out
 	RTS
 
 ; A16 = 1 when map $DC is one of Frieza's (arena 246, the Beast 253, the
@@ -493,7 +568,7 @@ fz_story_permanent:
 ; seeds || CFAF >= 2)), looked at every eighth frame (the radio line comes
 ; at most 7 frames after the browser's).
 fz_story_hint:
-	LDA.w !core_frame&$FFFF
+	LDA.l !core_frame
 	AND.w #$0007
 	BEQ fz_story_hint_now
 	RTS
@@ -501,6 +576,13 @@ fz_story_hint_now:
 	LDA.w #!FZFL_HINTED
 	JSR fz_flag
 	BNE .out
+	; pendingEntrance's cheap parts first: the quest query costs lines
+	JSR fz_stage
+	BNE .out
+	LDX.w #$004E
+	JSR fz_cf
+	CMP.w #9
+	BCS .out
 	LDX.w #$00AF
 	JSR fz_cf
 	CMP.w #2
@@ -609,7 +691,7 @@ fz_story_tick:
 	JSR fz_cf
 	CMP.w #6
 	BNE .out
-	LDA.w !core_frame&$FFFF
+	LDA.l !core_frame
 	SEC
 	SBC !fz_room_since
 	CMP.w #46

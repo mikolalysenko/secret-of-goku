@@ -207,7 +207,7 @@ fz_win:
 	JSR fz_drop_attacks
 	JSR fz_scene_clear
 	LDA.w #!FZW_CANCEL
-	TSB !fz_pend
+	JSR fz_defer
 	LDA.w #$00F0                      ; stop: F0 00 00 00
 	LDX.w #$0000
 	JSR fz_queue_sound
@@ -240,7 +240,7 @@ frieza_orbit_won:
 	JSR fz_drop_attacks
 	JSR fz_scene_clear
 	LDA.w #!FZW_CANCEL
-	TSB !fz_pend
+	JSR fz_defer
 	LDA.w #$00F0                      ; stop: F0 00 00 00
 	LDX.w #$0000
 	JSR fz_queue_sound

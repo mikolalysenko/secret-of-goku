@@ -407,10 +407,10 @@ fz_lich_tick:
 .find
 	; looked for every 16th frame (an actor scan is costly): the first
 	; sight lands within 15 frames of the browser's, wounds kept
-	LDA.w !core_frame&$FFFF
+	LDA.l !core_frame
 	AND.w #$000F
 	BNE .out
-.findnow                              ; (fz_lich_tick_findnow: the idle path)
+.findnow
 	LDX.w #$004E
 	JSR fz_cf
 	CMP.w #7

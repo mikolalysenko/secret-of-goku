@@ -289,7 +289,7 @@ fz_draw_afterimages:
 	LDA !fzf_dash
 	AND.w #$00FF
 	BEQ .out
-	LDA.w !core_frame&$FFFF
+	LDA.l !core_frame
 	AND.w #$0001
 	BNE .out
 	LDX.w #(!FZ_AFTER_N-1)*6
@@ -331,7 +331,7 @@ fz_draw_surge:
 	AND.w #$00FF
 	BEQ .riposte
 	; lightning on even frames at (bx -/+ 16, by - 18), frame t >> 3
-	LDA.w !core_frame&$FFFF
+	LDA.l !core_frame
 	AND.w #$0001
 	BNE .aura
 	LDA !fzf_x

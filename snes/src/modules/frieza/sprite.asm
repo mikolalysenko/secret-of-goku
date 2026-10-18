@@ -41,7 +41,29 @@ fz_vram_settle:
 	LDA.b #0
 	STA.l !fzh_tiles
 	REP #$20
-+	RTS
++	; the vblank's early-out (!FZV_NMI): does this frame leave it any work?
+	LDA !fz_tflags
+	AND.w #!FZT_WHITE|!FZT_WPREV|!FZT_HOLES
+	BNE .nmi
+	LDA !fz_vista
+	AND.w #$003F                      ; the vista's requests, the Balls
+	BNE .nmi
+	LDA !fz_spr_pend
+	INC                               ; $FFFF: no frame to upload
+	BNE .nmi
+	LDA !fz_spr_pal
+	AND.w #$00F8                      ; a palette 0-7 to write
+	BEQ .nmi
+	LDA !fz_spr_pal2
+	AND.w #$00F8
+	BEQ .nmi
+	RTS
+.nmi
+	SEP #$20
+	LDA.b #!FZV_NMI
+	TSB !fz_vista
+	REP #$20
+	RTS
 
 fz_spr_invalidate:
 	LDA.w #$FFFF
@@ -127,7 +149,7 @@ fz_pal_scan:
 	LDA.b #!FZT_PALSCAN
 	TSB !fz_tflags
 	REP #$20
-	LDA.w !core_frame&$FFFF
+	LDA.l !core_frame
 	SEC
 	SBC.l !fzs_palframe
 	CMP.w #2
@@ -140,11 +162,11 @@ fz_pal_scan:
 	BPL -
 	BRA .merge
 .step
-	LDA.w !core_frame&$FFFF
+	LDA.l !core_frame
 	AND.w #$0007
 	JSR fz_pal_chunk
 .merge
-	LDA.w !core_frame&$FFFF
+	LDA.l !core_frame
 	STA.l !fzs_palframe
 	SEP #$20
 	LDA.l !fzs_palmask
@@ -174,7 +196,7 @@ fz_pal_chunk:
 	CLC
 	ADC.w #64
 	STA !fz_m1                        ; chunk end
-	LDA.w !core_oam_native&$FFFF
+	LDA.l !core_oam_native
 	CMP.w #129
 	BCC +
 	LDA.w #128
@@ -357,7 +379,7 @@ fz_spr_draw:
 +	LDA !fz_t3
 	CLC
 	ADC !fz_spr_x
-	STA.w !core_spr_x&$FFFF
+	STA.l !core_spr_x
 	LDA.l !DATA_FRIEZA+1,X
 	AND.w #$00FF
 	CMP.w #$0080
@@ -365,10 +387,11 @@ fz_spr_draw:
 	ORA.w #$FF00
 +	CLC
 	ADC !fz_spr_y
-	STA.w !core_spr_y&$FFFF
+	STA.l !core_spr_y
 	LDA !fz_t2
-	STA.w !core_spr_tile&$FFFF
-	STZ.w !core_spr_size&$FFFF
+	STA.l !core_spr_tile
+	LDA.w #$0000
+	STA.l !core_spr_size
 	LDA !fz_spr_fl
 	AND.w #!FZD_BACK
 	BNE .back
@@ -385,8 +408,9 @@ fz_spr_draw:
 	INC !fz_t2                        ; next cell: tile + 2
 	INC !fz_t2
 	DEC !fz_t0
-	BNE .piece
-	RTS
+	BEQ +
+	JMP .piece
++	RTS
 
 ; ---------------------------------------------------------------------------
 ; Vblank (frieza_field_nmi): DB = $80, M16/X16, D unknown (not used).

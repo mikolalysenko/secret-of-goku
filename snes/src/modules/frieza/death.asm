@@ -142,7 +142,7 @@ fz_death_start:
 	STA !fzd_gold
 	REP #$20
 	LDA.w #!FZW_CANCEL
-	TSB !fz_pend
+	JSR fz_defer
 	JSR fz_bind_ending_lose           ; C set when the ending module runs it
 	BCC +
 	SEP #$20
@@ -204,8 +204,8 @@ fz_death_run:
 	CMP.w #!FZD_BLACK
 	BCC .out
 	LDA.w #$FFFF
-	TSB.w !core_pad_mask&$FFFF
-	LDA.w !core_pad_new&$FFFF
+	STA.l !core_pad_mask              ; every button hidden
+	LDA.l !core_pad_new
 	AND.w #!PAD_START
 	BEQ .out
 	JML $C10010                       ; the game's own soft-reset path

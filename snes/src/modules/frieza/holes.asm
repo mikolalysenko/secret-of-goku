@@ -215,7 +215,7 @@ fz_holes_frame:
 	AND.w #$FF00                      ; (camY >> 3) << 8
 	ORA !fz_t0
 	STA !fz_t0                        ; camera tile key
-	LDA.w !core_frame&$FFFF
+	LDA.l !core_frame
 	AND.w #$003F
 	BEQ .rebuild
 	LDA !fz_t0

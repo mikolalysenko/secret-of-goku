@@ -531,6 +531,47 @@ end
 `;
 }
 
+// Quiet cost: with nothing of Frieza's running (Potos, Goku present), the
+// field frame takes the quiet path and the vblank its early-out. Measured
+// from the dispatcher's JSL to the instruction after it, in master clocks
+// (1364 a scanline), over 600 frames.
+function jslSite(rom,dispatch,target){
+  const sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8'),bytes=readFileSync(rom);
+  const addr=n=>{const m=sym.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${n}$`,'mi'));if(!m)throw Error(`frieza cost: no ${n}`);return parseInt(m[1]+m[2],16);};
+  const at=a=>bytes[((a>>16)&0x3f)<<16|(a&0xffff)];
+  const t=addr(target)&0x3fffff;
+  for(let a=addr(dispatch),i=0;i<256;i++,a++)if(at(a)===0x22&&((at(a+1)|at(a+2)<<8|at(a+3)<<16)&0x3fffff)===t)return a;
+  throw Error(`frieza cost: no JSL ${target} in ${dispatch}`);
+}
+function costTest(rom,frames=600){
+  const fJ=jslSite(rom,'modules_field_frame','frieza_field_frame'),nJ=jslSite(rom,'modules_field_nmi','frieza_field_nmi');
+  const cb=(at,body)=>`emu.addMemoryCallback(function() ${body} end, emu.callbackType.exec, ${at}, ${at}, emu.cpuType.snes, emu.memType.snesMemory)`;
+  return `
+function test()
+  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'emulator-probe__potos-state'))})
+  F.check(ok, 'import')
+  H.w8(0x316001, 1)
+  H.wait(30)
+  local fs, ns, f0, n0 = {}, {}, nil, nil
+  local function clock() return emu.getState()['masterClock'] end
+  ${cb(fJ,'f0 = clock()')}
+  ${cb(fJ+4,'if f0 then fs[#fs + 1] = clock() - f0 f0 = nil end')}
+  ${cb(nJ,'n0 = clock()')}
+  ${cb(nJ+4,'if n0 then ns[#ns + 1] = clock() - n0 n0 = nil end')}
+  H.wait(${frames})
+  local function stats(t)
+    local sum, mx = 0, 0
+    for _, v in ipairs(t) do sum = sum + v; if v > mx then mx = v end end
+    return {n = #t, avg = (#t > 0) and (sum / #t / 1364) or 0, max = mx / 1364}
+  end
+  H.result('frame', stats(fs))
+  H.result('nmi', stats(ns))
+  H.result('quiet', (H.r8(${0x7E0000|defs.fz_wasidle}) & ${defs.FZI_IDLE}) ~= 0)
+  F.done()
+end
+`;
+}
+
 const cases={
   court:{preset:'frieza',frames:[60,240,600]},
   thanatos:{preset:'thanatos',frames:[60,240]},
@@ -601,6 +642,22 @@ if(want('music')){
   const ok=r.code===0&&res.pass===true;
   results.push({name:'music',ok,failures});
   console.log(`frieza music: ${ok?'pass':'FAIL'} (${r.ms} ms) song $3C after ${res.songAt} frames, longest stall ${res.stall} frames`);
+  if(!ok)for(const f of failures)console.log('    !',f);
+}
+if(want('cost')){
+  const rom=privateRom(romSrc,'frieza-cost');
+  const r=await runMesen({rom,test:lib+'\n'+costTest(romSrc),outDir:join(outRoot,'cost'),state:join(cps,'waterfall.mss')});
+  cleanupRom(rom);
+  const res=r.results??{};
+  const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
+  const fr=res.frame??{},nm=res.nmi??{};
+  if(!res.quiet)failures.push('the module did not settle on the quiet path');
+  if(!(fr.avg<=0.36))failures.push(`quiet field frame ${fr.avg?.toFixed(3)} lines on average (budget 0.36)`);
+  if(!(fr.max<=2.5))failures.push(`quiet field frame peaks at ${fr.max?.toFixed(2)} lines (budget 2.5)`);
+  if(!(nm.avg<=0.13))failures.push(`quiet vblank ${nm.avg?.toFixed(3)} lines (budget 0.13)`);
+  const ok=r.code===0&&res.pass===true&&failures.length===0;
+  results.push({name:'cost',ok,failures});
+  console.log(`frieza cost: ${ok?'pass':'FAIL'} (${r.ms} ms) frame ${fr.avg?.toFixed(3)} lines (max ${fr.max?.toFixed(2)}), vblank ${nm.avg?.toFixed(3)} lines, ${fr.n} frames`);
   if(!ok)for(const f of failures)console.log('    !',f);
 }
 if(want('vram')){

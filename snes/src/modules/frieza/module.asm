@@ -125,6 +125,7 @@ assert !FZ+$C0 <= !FZ+$C0, "frieza WRAM overflow"
 !fz_m5 #= !fz_m0+10
 !fz_m6 #= !fz_m0+12
 !fz_m7 #= !fz_m0+14
+assert (!core_scratch>>16)&$FF == $7E, "fz_m0-m7 address core's scratch with DB = $7E"
 
 !FZFF_ACTIVE   = $01       ; s.boss exists
 !FZFF_MUSCULAR = $02
@@ -427,13 +428,18 @@ assert !FZX_END <= !FZ+$C0, "frieza WRAM overflow (beast)"
 ; VRAM: two buffers of 8 cells each (16x16 OBJ), OBJ name table 0 rows
 ; C-D and E-F (tiles $0C0-$0FF, word $6C00-$6FFF).
 ; !fz_wasidle bits (WRAM)
-!FZI_IDLE      = $01       ; the last field frame took the idle path
+!FZI_IDLE      = $01       ; quiet: field frames take the fast path (fz_try_quiet)
 !FZI_BALLS     = $02       ; core's FIELD_OBJ_A is claimed for the Balls
+!FZI_GOKU      = $04       ; quiet with Goku present (his arrival wakes the module)
+!FZI_PERM      = $08       ; quiet frames keep the permanent form
+!FZI_HINT      = $10       ; quiet frames look for Dryad's hint
 !FZI_SRAM      = $80       ; the scene SRAM ($32:7000-7FFF) holds Frieza's state: an
                            ; ending scene uses all of $32:6000-7FFF, so the module
                            ; neither reads nor writes there until it reset it
 ; !fz_vista bits 4-5 (rebuilt every frame): the Ball set drawn this frame
 !FZV_BALLS     = $30       ; (1 the seven, 2 the eighth) << 4
+!FZV_NMI       = $80       ; the vblank has work this frame (its early-out)
+assert !fz_vista == !fz_wasidle+1, "the vblank reads !FZV_NMI as bit 15 of !fz_wasidle"
 
 !FZ_VRAM_OWNER = $0006     ; core_vram_claim owner id (core's pool: !VRAM_SCENE_OBJ, !VRAM_SCENE_BG, !VRAM_FIELD_OBJ_A)
 !FZ_VRAM_BUF0  = $6C00
