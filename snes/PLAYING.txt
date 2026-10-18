@@ -1,0 +1,96 @@
+SECRET OF GOKU - SNES PREVIEW {{VERSION}}
+
+Secret of Mana. With Goku.
+
+This is the standalone SNES cartridge port of Secret of Goku. Play with
+Goku's punches, ki blasts, Kamehameha, local flight, Instant Transmission
+and Super Saiyan transformation inside Secret of Mana's action RPG.
+
+This preview uses short native SNES combat sounds and compact effects.
+It includes the fixes for lingering transformation audio, cut-grass aura
+colours, flight palettes, the attack meter and deferred animation uploads.
+Crowded flight/combat can still slow down. This is an in-progress preview,
+not a claim of a completed, fully tested port or constant 60 fps.
+
+DOWNLOADS AND SOURCE
+
+Release: {{RELEASE_URL}}
+GitHub: https://github.com/mikolalysenko/secret-of-goku
+SNES source: https://github.com/mikolalysenko/secret-of-goku/tree/snes-port
+Browser edition: https://mikolalysenko.github.io/secret-of-goku/
+Source commit: {{COMMIT}}
+
+The browser and desktop editions are separate builds. The screenshots
+attached to this SNES release were captured from its actual cartridge.
+
+APPLY THE PATCH
+
+1. Start with an unmodified Secret of Mana (USA) ROM, original retail
+   revision, with no 512-byte copier header. Keep an untouched backup.
+2. Verify the base ROM against the size and hashes below. IPS itself does
+   not identify a wrong base ROM, so the hash check matters.
+3. Apply {{PATCH_NAME}} to that ROM with an IPS-compatible patcher such as
+   Rom Patcher JS: https://www.marcrobledo.com/RomPatcher.js/
+   Do not apply this patch on top of a previous Secret of Goku build.
+4. Save the result as Secret of Goku.sfc. The result must be 8,388,608 bytes
+   (8 MiB), with the output SHA-256 listed below. No separate expansion or
+   additional patches are needed.
+5. Open the resulting .sfc in a SNES emulator that supports ExHiROM and
+   32 KiB save RAM. This release was tested in Mesen 2. Physical-console
+   and flash-cartridge compatibility have not been certified.
+
+This archive contains a patch and documentation. No playable ROM is
+included in the archive.
+
+Required base ROM (without copier header):
+  Game:    Secret of Mana (USA), original retail revision
+  Bytes:   {{BASE_SIZE}}
+  CRC32:   {{BASE_CRC32}}
+  SHA-1:   {{BASE_SHA1}}
+  SHA-256: {{BASE_SHA256}}
+
+Output ROM SHA-256:
+  {{ROM_SHA256}}
+IPS SHA-256:
+  {{PATCH_SHA256}}
+
+CONTROLS - ORIGINAL SNES BUTTON LABELS
+
+  D-pad       Move
+  B           Punch / talk / confirm
+  Y           Ki blast
+  A + D-pad   Fly fast
+  X           Ring menu / back
+  Hold L      Focus / build power
+  L + Y       Charge Kamehameha; release to fire
+  L + B       Instant Transmission
+  L + A       Transform / revert
+  L + R       World flight where available
+  Start       Start / resume
+  Select      Switch party member
+
+Goku's powers become available after his opening arrival. Use the game's
+normal save points and retain the emulator's battery-save file. Browser
+checkpoints and emulator save states are not interchangeable with this ROM.
+Do not assume save states from an older build work after updating.
+
+KNOWN LIMITATIONS
+
+Dense scenes, especially repeated ki shots while flying with the party,
+still have CPU slowdowns. The reviewed gameplay scenarios have no observed
+palette mismatches, native weapon-meter leaks, sprite overflow or vblank
+overruns. Quiet punches, quiet ki and water flight passed 1,200-frame
+emulator runs without dropped gameplay frames. Those measurements do not
+guarantee every map, boss, scripted scene or physical device.
+
+Less common status/equipment interactions and some story, boss and ending
+paths still need further review. Detailed status and test results:
+https://github.com/mikolalysenko/secret-of-goku/blob/snes-port/docs/agents/snes-port/gameplay-performance.md
+
+CREDITS
+
+Project by Mikola Lysenko (mikolalysenko), developed with AI assistance.
+An unofficial, noncommercial fan project, unaffiliated with the owners of
+Secret of Mana or Dragon Ball. Original games, characters, artwork and
+music retain their respective ownership. See CREDITS.md for asset sources
+and LICENSE.txt for the original project code license.

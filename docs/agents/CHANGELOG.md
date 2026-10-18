@@ -1,5 +1,15 @@
 # Changelog
 
+## SNES preview release packaging (2026-10-18)
+
+- Add a patch-only SNES release builder with verified base-ROM hashes,
+  SNES controller instructions, preview limitations and checksums.
+- Verify standard IPS records, RLE, expansion, record boundaries and the
+  reserved EOF offset. Check both the standalone and archived IPS against
+  the exact strict-build ROM, and cross-check with RomPatcher.js.
+- Prepare native-resolution screenshots and a separate `snes-v` preview
+  release so the cartridge download is distinct from desktop packages.
+
 ## SNES aura and gameplay budget follow-up (2026-10-18)
 
 - Mirror the full-size flame from three resident cells and limit the

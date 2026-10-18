@@ -37,6 +37,10 @@ node snes/build.mjs                  # -> dist/snes/secret-of-goku.sfc (+ .sym)
 `dist/` is ignored by Git; the built cartridge contains the original game and
 is never committed.
 
+The public [SNES preview](https://github.com/mikolalysenko/secret-of-goku/releases/tag/snes-v0.1.0-preview.1)
+distributes an IPS patch and player instructions. `node snes/release.mjs`
+builds and verifies the patch-only ZIP; see [release packaging](releases.md#standalone-snes-patch).
+
 Headless checks use **Mesen2** in `--testRunner` mode (accurate, runs
 unthrottled, Lua API for input, memory, screenshots and savestates). Unpack
 the macOS/Linux release under `.local/tools/mesen/` (or set `MESEN`), launch
