@@ -396,15 +396,18 @@ function S.palette()
 end
 -- Colours 0-15 as the vblank upload wrote them (the game's own HDMA on
 -- channels 0/1 rewrites some of them during the frame for its window, so
--- CGRAM itself cannot be compared): {written, equal} against the buffer.
+-- CGRAM itself cannot be compared): {written, equal} against the buffer as
+-- the upload read it. While a window is open the game also changes colours
+-- 2-3 and 6-7 in its buffer from one frame to the next, so the buffer is
+-- read at each write, not after the frame.
 function S.vblankLow(frames)
-  local addr, latch, low = 0, nil, {}
+  local addr, latch, low, src = 0, nil, {}, {}
   local function cb(a, v)
     if emu.getState()['ppu.scanline'] < 225 then return end
     if (a & 0xFFFF) == 0x2121 then addr = v; latch = nil
     elseif latch == nil then latch = v
     else
-      if addr < 16 then low[addr] = latch | (v << 8) end
+      if addr < 16 then low[addr] = latch | (v << 8); src[addr] = S.buf(addr) end
       addr = (addr + 1) & 255; latch = nil
     end
   end
@@ -418,7 +421,7 @@ function S.vblankLow(frames)
   for i = 0, 15 do
     if low[i] then
       out.written = out.written + 1
-      if (low[i] & 0x7FFF) == S.buf(i) then out.equal = out.equal + 1 else out.diff[#out.diff + 1] = string.format('%d:%04X/%04X', i, low[i], S.buf(i)) end
+      if (low[i] & 0x7FFF) == src[i] then out.equal = out.equal + 1 else out.diff[#out.diff + 1] = string.format('%d:%04X/%04X', i, low[i], src[i]) end
     end
   end
   return out
