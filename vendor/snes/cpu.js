@@ -208,6 +208,7 @@ Cpu = (function() {
     let gateAlways = [];
     this.registerBreakpoints = function(fn, previous, points, always) {
       breakpointHooks.set(fn, {previous: previous, points: points, always: always});
+      gateVersion++;
       gateHead = null;
       gateMiss = null;
     }
@@ -238,6 +239,54 @@ Cpu = (function() {
     let gateEnabled = true;
     this.setBreakpointGate = function(enabled) {
       gateEnabled = !!enabled;
+    }
+    // Whether gatedCycle() would run the plain core for an instruction at
+    // (bank, pc) now: no wrapper, or a verified chain with no breakpoint
+    // there and no always() hook armed.
+    // Changes whenever an instruction hook registers (see coreAt).
+    let gateVersion = 0;
+    this.gateVersion = function() {
+      return gateVersion;
+    }
+    // For a pc that coreAt() accepted under this head and gate version:
+    // whether gatedCycle() still runs the plain core there (gate on, chain
+    // still the verified one, no always() hook armed).
+    this.corePlainNow = function() {
+      if(this.cycle === coreCycle) {
+        return true;
+      }
+      if(!gateEnabled || this.cycle !== gateHead) {
+        return false;
+      }
+      for(let i = 0; i < gateAlways.length; i++) {
+        if(gateAlways[i]()) {
+          return false;
+        }
+      }
+      return true;
+    }
+    this.coreAt = function(bank, pc) {
+      let fn = this.cycle;
+      if(fn === coreCycle) {
+        return true;
+      }
+      if(!gateEnabled) {
+        return false;
+      }
+      if(fn !== gateHead && (fn === gateMiss || !rebuildGate(fn))) {
+        gateMiss = fn;
+        return false;
+      }
+      let key = ((bank & 0x3f) << 16) | pc;
+      if((breakpointBits[key >> 3] & (1 << (key & 7))) !== 0) {
+        return false;
+      }
+      for(let i = 0; i < gateAlways.length; i++) {
+        if(gateAlways[i]()) {
+          return false;
+        }
+      }
+      return true;
     }
     this.gatedCycle = function() {
       let fn = this.cycle;
