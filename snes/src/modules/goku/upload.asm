@@ -233,7 +233,9 @@ goku_dma_tile7:
 ; Field NMI work (modules_field_nmi): M16 X16, DB = $80, D = 0, in vblank.
 ; A cell takes 16 tile DMAs on channels 4-7: 7-8 lines on FastROM (budget
 ; walk), about 2 more with slow ROM. With less vblank left than that it waits
-; a frame, then goes anyway (an overrun beats a frozen pose).
+; a frame, then goes anyway (an overrun beats a frozen pose). It never waits
+; when its palette or size differs from the cell in VRAM: the frame's
+; palette is already in CGRAM, and the two must match.
 if defined("CORE_SLOWROM")
 	!GOKU_CELL_LINES = 11
 else
@@ -312,7 +314,18 @@ goku_nmi:
 	JSL core_vblank_lines
 	CMP.w #!GOKU_CELL_LINES
 	BCS .send
+	LDA !vram_cell
+	CMP.w #!GOKU_NONE
+	BEQ .send
+	TAX
 	SEP #$20
+	LDA !up_small
+	CMP !vram_small
+	BNE .send8               ; size change: send now
+	LDA.l goku_cell_pal,X
+	LDX !up_cell
+	CMP.l goku_cell_pal,X
+	BNE .send8               ; palette change: send now
 	LDA !up_flags
 	BIT.b #!GOKU_UP_WAITED
 	BNE .send8               ; waited a frame already: send anyway
