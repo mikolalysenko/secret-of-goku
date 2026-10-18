@@ -12,9 +12,16 @@ flight_bind_start:
 ; Combat (snes/src/modules/combat): Saiyan recoil at C0:D651 (flight owns
 ; that patch site, !FLIGHT_OWNS_D651), cancelCombat() for Instant
 ; Transmission, and the Kamehameha charge state.
-fl_bind_recoil:                  ; any M/X; preserves everything
+fl_bind_recoil:                  ; M16/X16 (fl_hook_d651's first lines); A and flags not kept
 if defined("CB")
+	; as combat's own C0:D651 hook (combat_hook_move_vector): the recoil
+	; runs only in an ordinary hit recovery (cb_hr_tier 1)
+	LDA.l $7E0000|!cb_hr_tier
+	AND.w #$00FF
+	CMP.w #$0001
+	BNE +
 	JSL combat_recoil_vector
++
 endif
 	RTS
 fl_bind_cancel:
@@ -48,6 +55,13 @@ if not(defined("CB"))
 	STA.w !core_pad_mask&$FFFF
 endif
 	RTS
+; walk mode's pad mask (flight_frame .walk, ORA.l): A, and B as above
+fl_walk_mask:
+if defined("CB")
+	dw !PAD_A
+else
+	dw !PAD_A|!PAD_B
+endif
 
 ; Audio (snes/src/modules/audio): DBZ cues and the flight air bed. The
 ; !FL_SFX_* ids are defined in module.asm (the module uses them before this
@@ -183,15 +197,16 @@ endif
 
 ; Floor holes (Frieza's broken deck, the Sandship wreck): the owner defines
 ; !FLIGHT_MISSING_FLOOR = <routine>: JSL with !fl_q_x/y/l set (M16/X16,
-; DB = $7E), carry set when a hole lies under the 12x8 footprint there.
-; fl_bind_holes: carry set when such a provider is in the build.
-fl_bind_holes:
+; DB = $7E), carry set when a hole lies under the 12x8 footprint there; it
+; leaves !fl_q_x/y/l as they were (fl_walk_holes asks twice in a step).
+; fl_bind_walk_holes: the hero step's check (fl_walk_holes) when such a
+; provider is in the build.
+fl_bind_walk_holes:
 if defined("FLIGHT_MISSING_FLOOR")
-	SEC
+	JMP fl_walk_holes
 else
-	CLC
-endif
 	RTS
+endif
 ; carry = a hole under the footprint at fl_q_x/y/l
 fl_bind_hole:
 if defined("FLIGHT_MISSING_FLOOR")
@@ -201,6 +216,24 @@ else
 	CLC
 	RTS
 endif
+; the same as a JSL target (fl_walk_holes, at every hero step on foot)
+fl_bind_hole_l:
+if defined("FLIGHT_MISSING_FLOOR")
+	JML !FLIGHT_MISSING_FLOOR
+else
+	CLC
+	RTL
+endif
+; Flight asks only on the maps where the browser's providers have holes
+; (!FLM_HOLES: the Sandship's maps, Frieza's arena). A provider with holes
+; elsewhere defines !FLIGHT_FLOOR_ANYWHERE (flight's test hole does): carry.
+fl_bind_floor_anywhere:
+if defined("FLIGHT_FLOOR_ANYWHERE")
+	SEC
+else
+	CLC
+endif
+	RTS
 
 ; Sandship runtime (no owner yet): sandship.takeoff() on L+R. The owner
 ; defines !SANDSHIP_TAKEOFF = <routine>: JSL, carry set when it handled the

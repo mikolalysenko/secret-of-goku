@@ -5,6 +5,7 @@
 ; it). Other test builds keep the cartridge's own memos and timing.
 if defined("FLIGHT_TEST_HOLES")
 	!FLIGHT_MISSING_FLOOR = fl_test_hole
+	!FLIGHT_FLOOR_ANYWHERE = 1   ; on any map, not only !FLM_HOLES ones
 endif
 !fl_test_hole_rect = !FL_SRAM+$296
 
@@ -27,8 +28,9 @@ endif
 fl_test_poll:
 	LDA.l !fl_sram_test
 	CMP.w #$0001
-	BEQ .row
-	CMP.w #$0004
+	BNE +
+	JMP .row
++	CMP.w #$0004
 	BNE +
 	JMP fl_test_landing
 +	CMP.w #$0007
@@ -75,7 +77,11 @@ fl_test_poll:
 	LDA.l !fl_sram_test+$06
 	INC
 	STA.l !fl_sram_test+$06
-+	RTS
+	RTS
++	; anything else is what the battery kept (no request): drop it
+	LDA.w #$0000
+	STA.l !fl_sram_test
+	RTS
 .row
 	JSR fl_ctx_load
 	LDA.w !fl_W
@@ -490,6 +496,18 @@ fl_test_api_land:
 	LDA.l !fl_sram_test+$06
 	INC
 	STA.l !fl_sram_test+$06
+	RTS
+
+; Carry: a mailbox request or test posts are pending, so flight_frame's walk
+; and quiet paths hand the frame to the full one (it polls and posts).
+fl_test_busy:
+	LDA.l !fl_sram_test
+	ORA.l !fl_test_post
+	ORA.l !fl_test_post+$06
+	BEQ +
+	SEC
+	RTS
++	CLC
 	RTS
 
 ; Posts at the end of flight_frame, after its clears, as a scene module

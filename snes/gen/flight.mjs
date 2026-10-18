@@ -188,6 +188,24 @@ export async function generate({rom,repo,outDir}){
       ext[map][l*2]=x1;ext[map][l*2+1]=y1;
     }
   }
+  // Floor holes (supported(): canLand and the walking check): the browser's
+  // only providers (lab.js missingFloor) report holes on the Sandship's maps
+  // (sandship-wreck.js floorHole needs active(), which needs onShip()) and in
+  // Frieza's arena (frieza.js floorHole needs ownsArena(), one map). Flight
+  // asks the cartridge's providers on those maps only (!FLM_HOLES).
+  const engineSrc=name=>readFileSync(join(repo,'engine',name),'utf8');
+  const labSrc=engineSrc('lab.js'),wreckSrc=engineSrc('sandship-wreck.js'),shipSrc=engineSrc('sandship.js'),friezaSrc=engineSrc('frieza.js');
+  assert(labSrc.includes('missingFloor:(x,y,l)=>!!(mod.frieza?.floorHole(x,y,l)||mod.sandship?.floorHole(x,y))'),'lab.js missingFloor providers changed');
+  assert(shipSrc.includes('floorHole:(x,y)=>wreck.floorHole(x,y)'),'sandship.js floorHole changed');
+  assert(wreckSrc.includes('floorHole(x,y){const b=state().wreck?.breach;return !!(b&&active()&&'),'sandship-wreck.js floorHole no longer needs active()');
+  assert(/const active=\(\)=>[^\n;]*&&onShip\(\)/.test(wreckSrc)&&wreckSrc.includes('const onShip=()=>shipMaps.includes(word(0xdc));'),'sandship-wreck.js active() no longer needs onShip()');
+  const shipMapsM=wreckSrc.match(/export const shipMaps=(\[[\d,]+\]);/);
+  assert(shipMapsM,'sandship-wreck.js shipMaps moved');
+  assert(friezaSrc.includes('floorHole(x,y,layer){const b=s.boss;return !!(api.ownsArena()&&'),'frieza.js floorHole no longer needs ownsArena()');
+  const arenaM=friezaSrc.match(/ownsArena\(\)\{return [^}\n]*&&map\(\)===(\d+);\}/);
+  assert(arenaM,'frieza.js ownsArena() no longer names one map');
+  const holeMaps=new Set([...JSON.parse(shipMapsM[1]),Number(arenaM[1])]);
+
   // Map flags, bit per special rule (terrain.asm !FLM_*). Rules that also
   // name a tileset are folded in here.
   const mapFlags=new Uint16Array(512);
@@ -204,6 +222,7 @@ export async function generate({rom,repo,outDir}){
     if(ts===21&&map>=248&&map<=251)f|=0x0100;               // Fortress chasms
     if(map===72)f|=0x0200;                                  // Joch's training room
     if(map===139)f|=0x0400;                                 // Water Palace stair pockets
+    if(holeMaps.has(map))f|=0x0800;                         // floor holes possible
     mapFlags[map]=f;
   }
   words('fl_map_flags',Array.from(mapFlags));

@@ -169,10 +169,13 @@ fl_clamp15:
 ; call in a video frame moves one pixel per axis toward it, every other
 ; call none, with Goku's terrain for the dispatcher.
 fl_hook_da6e:
-	REP #$20
-	LDA.w !fl_hook
-	AND.w #!FLH_CAMERA|!FLH_BEAST|!FLH_SCRIPT
-	BEQ .native
+	SEP #$30
+	LDA.w !fl_hook               ; (the three bits are in its low byte)
+	AND.b #!FLH_CAMERA|!FLH_BEAST|!FLH_SCRIPT
+	BNE +
+	LDA $FF
+	JML $00DA72
++	REP #$20
 	BIT.w #!FLH_SCRIPT
 	BNE .script
 	AND.w #!FLH_BEAST
@@ -256,10 +259,8 @@ fl_hook_d651:
 	JSR fl_bind_recoil           ; combat's Saiyan recoil adjusts $1E/$1F first
 	LDA $10
 	BNE .native
-	JSR fl_bind_holes
-	BCC +
-	JSR fl_walk_holes            ; walking stops at missing deck tiles
-+	LDA.w !fl_hook
+	JSR fl_bind_walk_holes       ; walking stops at missing deck tiles
+	LDA.w !fl_hook
 	BEQ .native
 	BIT.w #!FLH_SCRIPT
 	BEQ .follow
@@ -683,49 +684,99 @@ fl_hook_da34:
 ; build): the hero's step on foot loses the axis whose footprint would stand
 ; over a hole, x first, then y with the step that is left. Native doors,
 ; stairs, collision and animation still run. M16/X16, DB = $7E.
+macro fl_unpack_a()
+	; A16 = a packed step byte (high byte clear) -> signed pixels (fl_unpack)
+	BIT.w #$0080
+	BEQ ?pos
+	EOR.w #$FF7F                 ; ~(A & $7F) ...
+	INC                          ; ... + 1 = -(A & $7F)
+?pos:
+endmacro
 fl_walk_holes:
+	LDA $1E                      ; ($1E and $1F: a still step zeroes nothing)
+	AND.w #$7F7F
+	BNE +
+.quit
+	RTS
+.quit8
+	REP #$20
+	RTS
++	; the providers have holes only on !FLM_HOLES maps (fl_hole_q)
+	LDA $DC
+	CMP.w !fl_map
+	BNE +                        ; this map's context is not loaded yet
+	LDA.w !fl_mflags
+	AND.w #!FLM_HOLES
+	BEQ .quit
++	; enabled() && ground() && !phasing() && (E02C & 1): Goku in play on the
+	; native field and on foot, no event, menu or load now, the hero's actor
+	; active. In walk mode flight's last frame found Goku in play on the
+	; native field without a menu; an event or a load can start in this
+	; frame's logic.
 	LDA.w !fl_state
-	AND.w #!FLS_FLY
-	BNE .out                     ; phasing: flight has its own rules
+	BIT.w #!FLS_WALK
+	BNE .ask
+	AND.w #!FLS_FLY|!FLS_ON
+	CMP.w #!FLS_ON
+	BNE .quit
 	LDA.l !persist_goku_active
 	AND.w #$00FF
-	BEQ .out
-	JSR fl_ground
-	BCC .out
+	BEQ .quit
+	LDA $EC
+	AND.w #$40FE                 ; a menu, $ED bit 6
+	BNE .quit
+.ask
+	SEP #$20
+	LDA $D0
+	ORA $FF
+	BNE .quit8
 	LDA $E02C
-	AND.w #$0001
-	BEQ .out
+	LSR
+	BCC .quit8
+	REP #$20
 	LDA $E00B
 	AND.w #$0080
 	BEQ +
 	LDA.w #$0001
 +	STA.w !fl_q_l
 	LDA $1E
-	JSR fl_unpack
+	AND.w #$00FF
+	BIT.w #$007F
+	BEQ .yonly                   ; no x step to zero (so a y step)
+	%fl_unpack_a()
 	CLC
 	ADC $E002
 	STA.w !fl_q_x
 	LDA $E004
 	STA.w !fl_q_y
-	JSR fl_bind_hole
-	BCC +
+	JSL fl_bind_hole_l
+	BCC .y
 	SEP #$20
-	STZ $1E
+	STZ $1E                      ; (fl_q_x was x + the x step)
 	REP #$20
-+	LDA $1E
-	JSR fl_unpack
-	CLC
-	ADC $E002
+	LDA $E002
 	STA.w !fl_q_x
+.y
 	LDA $1F
-	JSR fl_unpack
+	AND.w #$00FF
+	BIT.w #$007F
+	BEQ .out                     ; no y step to zero
+.ystep
+	; fl_q_x = x + the x step that is left
+	%fl_unpack_a()
 	CLC
 	ADC $E004
 	STA.w !fl_q_y
-	JSR fl_bind_hole
+	JSL fl_bind_hole_l
 	BCC .out
 	SEP #$20
 	STZ $1F
 	REP #$20
 .out
 	RTS
+.yonly
+	LDA $E002
+	STA.w !fl_q_x
+	LDA $1F
+	AND.w #$00FF
+	BRA .ystep

@@ -17,7 +17,8 @@ roof colours equal the browser's on every tile, query, probe and palette
 tested.** Flying costs 35-45 scanlines per frame in towns and fields (they
 keep 60 Hz) and 55-70 in dungeons, which then drop to 30-36 Hz while Goku
 flies; idle frames (Goku out of play, events) cost 0.2-0.5 lines and on
-foot 4-8 (see [Cost](#cost)); what other streams still owe is under
+foot about 2.7 with the movement hooks (`flight_frame` itself 0.7; see
+[Cost](#cost)); what other streams still owe is under
 [Remaining](#remaining).
 
 ## Behaviour (as the browser)
@@ -160,17 +161,34 @@ cells never flood fill.
   Footprints inside it are mask tests. When the grid moves one cell over
   (same layer and terrain), the cells both positions share keep their
   verdicts, shifted, after the old grid's tiles are checked.
-- Quiet frames: while Goku is out of play, or an event owns the field
-  (no control), with flight reset (landed, no lift, charge, teleport,
+- Quiet frames: with flight reset (landed, no lift, charge, teleport,
   camera follow, whip crossing, ceiling escape, owned Goku requests, cues,
-  latched buttons or passengers), `flight_frame` returns after a few
-  checks; inside an event it keeps the pad history for the whip pad's
-  conditional and the frame after. A whip crossing, Goku's return or the
-  event's end wake it.
+  latched buttons or passengers) and Goku out of play, off the native
+  field, in the finale, or held by the first of `canAttack`'s conditions
+  that fails (`!fl_quiet_why`: a lock, an event, a menu, a hurt status...),
+  `flight_frame` returns after testing only that reason; the pad history
+  goes on for the whip pad's conditional. A whip crossing or the reason's
+  end wakes it.
 - On foot with nothing of flight's running and neither A nor L held, the
-  frame is `settle()`'s anchor, the A/B masks and the cache's aging
-  (`fl_onfoot`); the hero grid then moves only when the footprint leaves
-  it, and the anchor's canLand is a mask test when its cells are known.
+  first full frame is `settle()`'s anchor, the A/B masks and the cache's
+  aging (`fl_onfoot`; the hero grid moves only when the footprint leaves
+  it, and the anchor's canLand is a mask test when its cells are known),
+  and the frames after it walk (`!FLS_WALK`): the A/B mask, the one-frame
+  posts and a check of everything that would end the walk (A or L, another
+  mode's frames, an event or menu, Goku leaving play, a map change, a whip
+  crossing or a charge request; the field's vectors every 16th tick). The
+  walk's end asks canLand for Goku's spot, else for two samples of the
+  walk taken every 16th tick, and the newest landable one is the anchor
+  (the browser keeps the newest landable step; the difference is at most
+  16 ticks of walking, and only the recovery point and a crossing's start
+  use it); the tile cache's aging catches up there (a walk of 8 frames or
+  more starts it afresh). A new map ends the walk on its own frame and
+  loads its context on the next.
+- Floor holes: the browser's providers report holes only on the Sandship's
+  maps and in Frieza's arena (the generator reads both from their sources
+  into `!FLM_HOLES`), so canLand and the walking check ask the cartridge's
+  providers only there (and where the map's context is not loaded yet);
+  elsewhere a hero step costs a few instructions.
 - Sweeps: a straight sweep is one union rectangle plus bounds at both ends
   (positions are monotonic); a diagonal sweep tests only rectangle changes;
   D778 reuses D651's sweep; the frame logic memoises canLand/canFly at the
@@ -250,7 +268,7 @@ WRAM fields (bank `$7E`, absolute with DB = `$7E`):
 
 | Field | Address | Meaning |
 | --- | --- | --- |
-| `!fl_state` | `$D900` byte | bit0 localFlight, bit1 Goku in play on the field, bit2 canAttack, bit4 charging |
+| `!fl_state` | `$D900` byte | bit0 localFlight, bit1 Goku in play on the field, bit2 canAttack, bit4 charging; bits 1-2 are those of the last full frame (bit 7 set: Goku walks, and the walk frames keep them; bit 6: quiet) |
 | `!fl_lift` | `$D901` byte | `mod.localLift` (0-12), also written to `!goku_lift` |
 | `!fl_hook` | `$D932` word | bit 2 (`$04`): the camera follows a teleport/recovery (the browser's `teleport.pending`: the pad is masked and only the running action advances); bit 4 (`$10`): a scene's camera target is posted |
 | `!fl_passengers` | `$D96C` word | CPU companions Goku carries this frame (bit 0 `$E200`, bit 1 `$E400`): `sprite-layer.js` hides their body, attachment and shadow cells |
@@ -309,15 +327,23 @@ can act (the browser always does; combat's input filter does it otherwise).
 `!FLIGHT_MISSING_FLOOR` (define, optional, seen through `bind.asm`): a
 `JSL` routine of the module that owns floor holes (Frieza's broken deck,
 the Sandship wreck), called with `!fl_q_x/y/l` set (M16/X16, DB = `$7E`);
-carry = a hole under the 12x8 footprint there. With one in the build,
-canLand fails over holes (the hero's canLand memo is bypassed, holes open
-without a tile change) and walking stops before them (`supported()` at
-`C0:D651`: the axis whose step would stand over a hole is zeroed). Several
-modules own holes (destroy's Sandship wreck, frieza's deck), and asar
-keeps only the last definition, so each provider must call the one
-defined before it when the point is not its own hole (destroy keeps it in
-`!DESTROY_NEXT_FLOOR := !FLIGHT_MISSING_FLOOR`); a provider that only
-redefines it hides every earlier one.
+carry = a hole under the 12x8 footprint there. It must leave `!fl_q_x/y/l`
+as they were (the walking check asks twice in a diagonal step). With one in
+the build, canLand fails over holes (the hero's canLand memo is bypassed,
+holes open without a tile change) and walking stops before them
+(`supported()` at `C0:D651`: the axis whose step would stand over a hole is
+zeroed). Flight asks only on maps flagged `!FLM_HOLES`, the maps where the
+browser's providers can have holes (`sandship-wreck.js` `floorHole` needs
+`onShip()`: the eight ship maps; `frieza.js` `floorHole` needs
+`ownsArena()`: map 246); the generator reads the maps from those sources
+and fails when the conditions change. A provider with holes on other maps
+defines `!FLIGHT_FLOOR_ANYWHERE` (flight's `FLIGHT_TEST_HOLES` provider
+does) and is then asked everywhere. Several modules own holes (destroy's
+Sandship wreck, frieza's deck), and asar keeps only the last definition,
+so each provider must call the one defined before it when the point is not
+its own hole (destroy keeps it in `!DESTROY_NEXT_FLOOR :=
+!FLIGHT_MISSING_FLOOR`); a provider that only redefines it hides every
+earlier one.
 
 ## Tests
 
@@ -454,24 +480,33 @@ foot (game code ~140 lines a frame). Combat also costs more while Goku
 flies (10-12 lines instead of 6-7): A held wakes its full frame.
 
 `flight_frame` itself (JSL to return, scanlines; a Potos state, the same
-walk before and after the quiet and on-foot paths):
+walk before and after the quiet, on-foot and walk paths):
 
 | Frame | Before | Now |
 | --- | --- | --- |
-| Goku out of play (the boy, the title arrival) | 2.76 | 0.20 |
-| An event owns the field (a door) | 5.9 | 0.35-0.48 (the first frame 10.7) |
-| Standing on foot | 6.2 | 4.2 |
-| Walking on foot | 11.8 (max 18.4) | 8.4 (max 18.1) |
+| Goku out of play (the boy, the title arrival) | 2.76 | 0.24 |
+| An event owns the field (a door) | 5.9 | 0.34 |
+| Standing on foot | 6.2 | 0.68 (max 1.4) |
+| Walking on foot | 11.8 (max 18.4) | 0.71 (max 1.45) |
 
-On foot (`phases.mjs probe-walk`, goku's budget walk in the Potos probe)
-flight runs about 470 instructions a walking frame: the frame ~170 (pad,
-canAttack, context, the idle checks), settle's anchor ~120 (a mask test on
-the hero grid), the masks and the cache's aging ~45, the movement hooks
-~90 (D651, D359 per actor, D778, DA6E); a step that moves the grid onto
-new tiles adds 550-700 for their classes. goku's budget test (Goku on
-against Goku off, every Goku-gated module included) read p90 400 → 432
-before these paths, a 32-line delta against its 24-line limit (main
-without flight: 395 → 417, 22).
+In goku's budget walk (the Potos probe, 160 frames, maps 131 and 16)
+flight's code takes 2.67 lines a frame at the median and 3.16 at p90 with
+Goku walking, 2.19 and 2.71 with Goku out of play: most of it is the
+movement hooks, which run for every actor either way (D359 ~27
+instructions a frame, D651 ~24 with combat's recoil gate ~15, D778 ~14,
+D849 ~12, DA6E ~10). Walking adds the walk frame (~35 instructions: the
+pad, tick, menu, event, play and map checks, the A mask and the posts) and
+the step's hole check (~10 off the hole maps). goku's budget test (p90
+logic end, Goku on against Goku off): 401 → 424 (23; fractional p90s 401.04
+→ 424.71), main without flight 399 → 422 (23; 22.62 fractional), limit 24.
+Before the walk mode it read 401 → 429 (28), and 400 → 432 (32) before the
+on-foot paths.
+
+The walk's end pays what the walk deferred: the first frame after a long
+walk asks canLand on a fresh tile cache (a takeoff press after 60 walked
+frames: 24 lines on that frame, 70 on the next; the per-frame anchor took
+10 and 78), and a new map's context loads on the frame after the map
+change (about 13 lines).
 
 `phases.mjs` splits a steady flying frame (~2,200 flight instructions,
 26-33 master cycles each: the tile cache and the hero grid are SRAM,
@@ -494,8 +529,10 @@ the grid with a per-frame position memo, whip rays by index arithmetic with
 a quick pad pre-check, unit `fl_step`s by index arithmetic, the D778
 endpoint canFly implied by the sweep, rolling tile-cache expiry (two slots
 a frame), the on-foot settle skipped on an anchor at the same spot, quiet
-frames for Goku out of play and events, the on-foot frame (`fl_onfoot`)
-with the lazily moving hero grid and its shifted verdicts.
+frames for every reason Goku cannot act, the on-foot frame (`fl_onfoot`)
+with the lazily moving hero grid and its shifted verdicts, the walk mode
+(the anchor asked at the walk's end), floor-hole providers asked only on
+the maps that can have holes, an unrolled tile-cache clear (7 lines → 1).
 
 Next steps: per-direction distance-to-shore memos for the bank, gap and
 air-route walks (each new tile repeats its neighbours' walks), one
@@ -510,12 +547,16 @@ in WRAM or direct page (shorter addressing), a larger tile cache.
   plugs `sandship.takeoff()` into flight's L+R through `!SANDSHIP_TAKEOFF`
   (JSL, carry set = handled) and its floor holes through a chained
   `!FLIGHT_MISSING_FLOOR` (it calls the provider defined before it). The
-  frieza module, included after destroy there, redefines
-  `!FLIGHT_MISSING_FLOOR` without chaining, which drops destroy's Sandship
-  holes (and the `FLIGHT_TEST_HOLES` provider, so `holes` fails on that
-  branch); frieza should call the previous provider as destroy does. The
-  flight-door path itself is a direct port; the hatch scenario takes the
-  native door first in both engines.
+  frieza module, included after destroy, redefines `!FLIGHT_MISSING_FLOOR`
+  without chaining, which drops destroy's Sandship holes (and the
+  `FLIGHT_TEST_HOLES` provider, so `holes` fails on builds with frieza);
+  frieza should call the previous provider as destroy does. frieza's
+  provider also answers on map 255 (the Fortress collapse's fractures); the
+  browser keeps those out of `missingFloor` (`fortress-collapse.js` has no
+  `floorHole`), and so does flight's `!FLM_HOLES` gate: Goku walks and
+  lands over them as in the browser. The flight-door path itself is a
+  direct port; the hatch scenario takes the native door first in both
+  engines.
 - Passengers: hiding the companions listed in `!fl_passengers` needs the
   sprite owner (goku's per-actor passes); `sprite-layer.js` also hides the
   whip attachment during a crossing (goku draws no weapon cells for Goku

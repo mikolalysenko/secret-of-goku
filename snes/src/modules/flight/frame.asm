@@ -231,31 +231,51 @@ fl_hero_land_foot:
 	LDA.l !fl_g_stale
 	CMP.w #2
 	BNE .full
-	JSR fl_bind_holes            ; holes: the provider answers each query
-	BCS .full
 	JSR fl_q_hero
-	LDA.w #$0000
-	JSR fl_fp_cover              ; carry: inside (layer, terrain), fl_t4 = cells
+	JSR fl_land_lean
 	BCC .full
+	PHA
+	LDA.w #$0000
+	STA.l !fl_g_stale            ; the grid stays where it is
+	PLA
+	LSR                          ; carry = landable
+	RTS
+.full
+	JMP fl_hero_land
+
+; canLand at fl_q_x/y/l/t without classifying a tile: a floor hole (any
+; provider), else the hero grid's known verdicts. Carry set when decided,
+; with A = 1 landable, 0 not; carry clear when a tile would need classifying
+; (outside the grid, a grid near the map's edge, a cell not known yet).
+fl_land_lean:
+	JSR fl_hole_q                ; supported(): a hole under the footprint
+	BCC +
+	LDA.w #$0000
+	SEC
+	RTS
++	LDA.w #$0000
+	JSR fl_fp_cover              ; carry: inside (layer, terrain), fl_t4 = cells
+	BCC .no
 	LDA.l !fl_g_inner
-	BEQ .full
+	BEQ .no
 	JSR fl_grid_check            ; the phase's tile check (keeps fl_t4)
 	LDA.l !fl_g_gkn
 	AND.w !fl_t4
 	CMP.w !fl_t4
-	BNE .full
-	LDA.w #$0000
-	STA.l !fl_g_stale            ; the grid stays where it is
+	BNE .no
 	LDA.l !fl_g_gok
 	AND.w !fl_t4
 	CMP.w !fl_t4
-	BEQ +
+	BNE +
+	LDA.w #$0001
+	SEC
+	RTS
++	LDA.w #$0000
+	SEC
+	RTS
+.no
 	CLC
 	RTS
-+	SEC
-	RTS
-.full
-	JMP fl_hero_land
 
 fl_hero_fly:
 	JSR fl_q_hero
@@ -296,14 +316,78 @@ fl_hero_memo_off:
 ; ---------------------------------------------------------------------------
 flight_frame:
 	LDA.w !fl_state
+	BIT.w #!FLS_WALK
+	BEQ .notwalk
+	; Walk mode (fl_walk_enter): Goku on foot with nothing of flight's
+	; running. The frame keeps the A mask (the speed modifier; B too without
+	; combat) and the one-frame posts, and ends the walk for anything the
+	; full frame would decide or change.
+	if defined("FLIGHT_TEST")
+		JSR fl_test_busy
+		BCS .walkend             ; a test request, or test posts (fl_test_posts)
+	endif
+	LDA.w !core_pad&$FFFF
+	BIT.w #!PAD_A|!PAD_L
+	BNE .walkend                 ; a takeoff, charge, teleport or roof chord to decide
+	LDA.w !fl_lasttick
+	INC
+	CMP.w !core_tick&$FFFF
+	BNE .walkend                 ; frames of another mode: the full reader latches
+	TAY
+	LDA $EC
+	AND.w #$40FE
+	BNE .walkend                 ; a menu ($EC & $FE), or $ED bit 6 (canAttack)
+	LDA $D0
+	AND.w #$00FF
+	ORA.w !fl_gap
+	ORA.w !fl_charging
+	BNE .walkend                 ; an event; a whip crossing or a charge to run
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BEQ .walkend
+	STY.w !fl_lasttick           ; fl_read_pad's history (its pad: fl_walk_end)
+	LDA $DC
+	CMP.w !fl_lastmap
+	BNE .walkmap
+	TYA
+	AND.w #$000F
+	BEQ .walksample
+.walkmask
+	LDA.l fl_walk_mask
+	TSB.w !core_pad_mask&$FFFF
+	STZ.w !fl_hook               ; a scene's camera post lasts one frame
+	LDA.w #$0000
+	STA.l !fl_tp_custom          ; and so does a custom teleport target (kind, species)
+	RTL
+.walksample
+	JSR fl_walk_sample           ; every 16th tick (carry: off the native field)
+	BCC .walkmask
+	BRA .walkend
+.walkmap
+	; a new map: the walk ends here and the next frame runs in full (the
+	; map's context loads there, on a lighter frame than the load's own);
+	; the anchor and samples belonged to the old map
+	SEP #$20
+	LDA.b #!FLS_WALK
+	TRB.w !fl_state
+	REP #$20
+	LDA.w !core_pad&$FFFF
+	STA.w !fl_pad
+	BRA .walkmask
+.walkend
+	JSR fl_walk_end
+	JMP .full
+.notwalk
 	BIT.w #!FLS_QUIET
-	BEQ .full
+	BNE .quiet
+	JMP .full
+.quiet
 	; Quiet (fl_quiet_check): flight is reset and Goku is out of play or
 	; cannot act, so the frame below would change nothing; it waits here
 	; while the condition that stopped him (!fl_quiet_why) still holds.
 	if defined("FLIGHT_TEST")
-		LDA.l !fl_sram_test
-		BNE .wake                ; a test request
+		JSR fl_test_busy
+		BCS .wake                ; a test request, or test posts (fl_test_posts)
 	endif
 	LDX.w !fl_quiet_why
 	BEQ .inactive
@@ -578,6 +662,7 @@ fl_onfoot:
 	STA.w !core_pad_mask&$FFFF
 	JSR fl_bind_mask_b
 	JSR fl_cache_age
+	JSR fl_walk_enter            ; the next frames walk (flight_frame)
 .end
 	SEP #$20
 	LDA.b #$00
@@ -587,6 +672,195 @@ fl_onfoot:
 		JSR fl_test_posts
 	endif
 	RTL
+
+; ---------------------------------------------------------------------------
+; Walk mode: Goku on foot with nothing of flight's running and neither A nor
+; L held. flight_frame (its first lines) then keeps only what the browser's
+; frame changes: the pad history, A masked as the speed modifier (B without
+; combat), settle()'s anchor, and the one-frame posts. Any button that
+; starts a decision (A, L), another mode's frames, a map change, Goku
+; leaving play, an event, a menu, a whip crossing or a charge ends it
+; (fl_walk_end) and the full frame runs; other field vectors end it at the
+; next 16th tick (fl_walk_sample). Can Goku act? Only decisions need
+; canAttack, and they all start with A or L; the A mask holds on the native
+; field without an event or menu either way (fl_publish).
+;
+; The anchor is lazy: canLand is asked when the walk ends, for Goku's spot
+; then and, if that one is not landable, for two samples of his walk
+; (fl_walk_sample, every 16th tick), the newest landable one becoming the
+; anchor. (The browser asks canLand at every step and keeps the newest
+; landable one: here a spot up to 16 ticks older can stand in for it, and
+; the anchor from before the walk stays when none of the three is
+; landable; both only matter for the recovery point and a crossing's
+; start.)
+fl_walk_enter:
+	LDA.w !fl_held
+	ORA.w !fl_events
+	ORA.w !fl_passengers
+	BNE .no
+	LDA.l !fl_crossing+10
+	BNE .no
+	if defined("FLIGHT_TEST")
+		LDA.l !fl_sram_test
+		ORA.l !fl_test_post
+		ORA.l !fl_test_post+$06
+		BNE .no
+	endif
+	LDA.w #$FFFF
+	STA.w !fl_wk_s1x             ; no samples yet (this frame's settle() took this spot)
+	STA.w !fl_wk_s2x
+	LDA.w !core_tick&$FFFF
+	STA.l !fl_wk_t0
+	SEP #$20
+	LDA.b #!FLS_WALK
+	TSB.w !fl_state
+	REP #$20
+.no
+	RTS
+
+; Every 16th walked tick: the field's vectors (fl_native_field; carry set
+; when they are not the native field's: the walk ends), and Goku's spot
+; becomes the newer sample, the newer the older one (settle() records
+; nothing during a load). The game switches the vectors only with a mode, a
+; map, an event or a menu, which end the walk at once; this catches any
+; other switch within 16 frames.
+fl_walk_sample:
+	JSR fl_native_field
+	BCC .off
+	SEP #$20
+	LDA $FF
+	REP #$20
+	BNE .out
+	LDA $E002
+	CMP.w !fl_wk_s1x
+	BNE +
+	LDA $E004
+	CMP.w !fl_wk_s1y
+	BEQ .out                     ; still there
++	LDA.w !fl_wk_s1x
+	STA.w !fl_wk_s2x
+	LDA.w !fl_wk_s1y
+	STA.w !fl_wk_s2y
+	LDA.w !fl_wk_s1t
+	STA.w !fl_wk_s2t
+	LDA $E002
+	STA.w !fl_wk_s1x
+	LDA $E004
+	STA.w !fl_wk_s1y
+	LDA $E00B
+	STA.w !fl_wk_s1t
+.out
+	CLC
+	RTS
+.off
+	SEC
+	RTS
+
+; The walk ends (flight_frame's .walkend; the full frame follows): the pad
+; history as fl_read_pad would have kept it, the tile cache's aging caught
+; up, and settle()'s anchor from the walk.
+fl_walk_end:
+	SEP #$20
+	LDA.b #!FLS_WALK
+	TRB.w !fl_state
+	REP #$20
+	LDA.w !core_pad_prev&$FFFF
+	STA.w !fl_pad                ; the last walked frame's pad
+	LDA $DC
+	CMP.w !fl_lastmap
+	BEQ +
+	RTS                          ; a new map: the full frame drops the anchor and loads its context
++	; the cache ages two slots a frame (fl_cache_age): after 8 walked frames
+	; it starts afresh (every slot would have aged within 32 frames)
+	LDA.w !fl_lasttick
+	SEC
+	SBC.l !fl_wk_t0
+	BEQ fl_walk_flush
+	CMP.w #8
+	BCC +
+	JSR fl_cache_clear
+	BRA fl_walk_flush
++	TAY
+-	PHY
+	JSR fl_cache_age
+	PLY
+	DEY
+	BNE -
+	; (falls through)
+
+; settle()'s anchor from the walk: Goku's spot now, else the newer, else the
+; older sample; the first landable one (the newest of them).
+fl_walk_flush:
+	LDA.w #$0000
+	STA.l !fl_g_chk              ; a phase of its own
+	LDA.w #$0002
+	STA.l !fl_g_stale            ; the hero grid moves only when the footprint leaves it
+	SEP #$20
+	LDA $FF
+	REP #$20
+	BNE .samples                 ; a load now: settle() records nothing here
+	; an anchor already at this very spot stays (fl_settle)
+	LDA.l !fl_anchor
+	CMP $DC
+	BNE +
+	LDA.l !fl_anchor+2
+	CMP $E002
+	BNE +
+	LDA.l !fl_anchor+4
+	CMP $E004
+	BNE +
+	LDA $E00B
+	AND.w #$00FF
+	CMP.l !fl_anchor+8
+	BEQ .out
++	JSR fl_q_hero
+	JSR fl_can_land
+	BCC .samples
+	JMP fl_anchor_here
+.samples
+	LDX.w #0                     ; the newer sample
+	JSR fl_walk_try
+	BCS .out
+	LDX.w #6                     ; the older one
+	JMP fl_walk_try
+.out
+	RTS
+; X = 0 or 6: canLand at that sample; landable: it is the anchor (carry).
+fl_walk_try:
+	LDA.w !fl_wk_s1x,X
+	CMP.w #$FFFF
+	BEQ .no
+	STA.w !fl_q_x
+	LDA.w !fl_wk_s1y,X
+	STA.w !fl_q_y
+	LDA.w !fl_wk_s1t,X
+	AND.w #$0003
+	STA.w !fl_q_t
+	LDA.w !fl_wk_s1t,X
+	AND.w #$0080
+	BEQ +
+	LDA.w #$0001
++	STA.w !fl_q_l
+	PHX
+	JSR fl_can_land
+	PLX
+	BCC .no
+	LDA $DC                      ; fl_anchor_here's fields
+	STA.l !fl_anchor
+	LDA.w !fl_wk_s1x,X
+	STA.l !fl_anchor+2
+	LDA.w !fl_wk_s1y,X
+	STA.l !fl_anchor+4
+	LDA.w !fl_q_l
+	STA.l !fl_anchor+6
+	LDA.w !fl_wk_s1t,X
+	AND.w #$00FF
+	STA.l !fl_anchor+8
+	SEC
+	RTS
+.no
+	CLC
+	RTS
 
 ; Quiet from the next field frame on (flight_frame's first lines) when the
 ; frame has nothing left for flight: Goku out of play, or an event owning
@@ -775,11 +1049,11 @@ fl_land_now:
 	RTS
 
 ; A = the pad as fl_read_pad last saw it, for hooks inside the game's logic:
-; while flight is quiet its frames keep no pad (nothing is latched then),
-; and the core's pad is still the one read at the last field frame.
+; while flight is quiet or walks its frames keep no pad (nothing is latched
+; then), and the core's pad is still the one read at the last field frame.
 fl_pad_now:
 	LDA.w !fl_state
-	BIT.w #!FLS_QUIET
+	BIT.w #!FLS_QUIET|!FLS_WALK
 	BNE +
 	LDA.w !fl_pad
 	RTS

@@ -85,7 +85,7 @@ fl_ctx_load:
 	LDA.w !fl_map
 	CMP.w #512
 	BCC .header
-	RTS                          ; header() null: no tileset rules
+	JMP fl_holes_anywhere        ; header() null: no tileset rules
 .header
 	ASL
 	TAX
@@ -128,6 +128,7 @@ fl_ctx_load:
 	TAX
 	LDA.l fl_map_flags,X
 	STA.w !fl_mflags
+	JSR fl_holes_anywhere
 	TXA
 	ASL
 	TAX
@@ -177,6 +178,15 @@ fl_ctx_load:
 	STA.w !fl_tsf
 .nowhip
 	RTS
+; !FLM_HOLES on every map when a floor-hole provider has holes anywhere
+; (!FLIGHT_FLOOR_ANYWHERE, bind.asm). Preserves X.
+fl_holes_anywhere:
+	JSR fl_bind_floor_anywhere
+	BCC +
+	LDA.w !fl_mflags
+	ORA.w #!FLM_HOLES
+	STA.w !fl_mflags
++	RTS
 
 ; ---------------------------------------------------------------------------
 ; Leaf helpers
@@ -441,19 +451,20 @@ fl_load_d:
 ; ---------------------------------------------------------------------------
 ; Tile cache: 64 entries of location (word), tile id, value (word, !FLC_*).
 
+; Unrolled (a map load and a long walk's end clear it; the loop took about
+; 7 scanlines). Preserves X and Y.
 fl_cache_clear:
-	PHX
-	LDX.w #(!FL_CACHE_N-1)*6
 	LDA.w #$FFFF
-.loop
-	STA.l !fl_cache,X
-	DEX : DEX : DEX : DEX : DEX : DEX
-	BPL .loop
+	!fl_i = 0
+	while !fl_i < !FL_CACHE_N
+		!fl_o #= !fl_cache+(!fl_i*6)
+		STA.l !fl_o
+		!fl_i #= !fl_i+1
+	endwhile
 	LDA.w #$0000
 	STA.l !fl_g_akn              ; grid verdicts expire with the cache (they
 	STA.l !fl_g_gkn              ; may depend on neighbouring tiles)
 	STZ.w !fl_cache_age
-	PLX
 	RTS
 
 ; fl_cache_slot: X = idx -> Y = entry offset; carry set when the entry
@@ -3882,12 +3893,27 @@ fl_can_fly:
 ; !FLIGHT_MISSING_FLOOR when a module defines it (JSL; carry = hole under
 ; the footprint at fl_q_x/y/l).
 fl_can_land:
-	JSR fl_bind_hole             ; supported(): no hole under the footprint
+	JSR fl_hole_q                ; supported(): no hole under the footprint
 	BCC +
 	CLC
 	RTS
 +	LDA.w #$0000
 	JMP fl_footprint
+
+; supported() failed: carry = a floor-hole provider has a hole under the
+; footprint at fl_q_x/y/l. The browser's providers have holes only on the
+; maps flagged !FLM_HOLES (the generator reads them from their sources), so
+; flight asks only there, and wherever the map's context is not loaded yet.
+fl_hole_q:
+	LDA $DC
+	CMP.w !fl_map
+	BNE +
+	LDA.w !fl_mflags
+	AND.w #!FLM_HOLES
+	BNE +
+	CLC
+	RTS
++	JMP fl_bind_hole
 
 ; canFloat = canFly && !canLand
 fl_can_float:

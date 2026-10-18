@@ -125,6 +125,7 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !FLS_CHARGE  = $10   ; charging (request from combat, or the L+Y stand-in)
 !FLS_LANDING = $20   ; lift is coming down (landing cue armed)
 !FLS_QUIET   = $40   ; nothing to do while Goku is out of play or cannot act (fl_quiet_check)
+!FLS_WALK    = $80   ; on foot with nothing to decide: the lean frame (flight_frame .walk)
 
 ; fl_hook bits: work the movement hooks may have (set per frame, re-validated live)
 !FLH_STEP    = $0001 ; velocity override (flight or charge)
@@ -172,6 +173,7 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !FLM_FORT    = $0100 ; Fortress chasms (tileset 21, maps 248-251)
 !FLM_JOCH    = $0200 ; map 72: Joch's training room
 !FLM_POCKETS = $0400 ; map 139: Water Palace stair pockets
+!FLM_HOLES   = $0800 ; floor-hole providers can have holes here (fl_hole_q; or everywhere: !FLIGHT_FLOOR_ANYWHERE)
 
 ; Tileset flags (fl_ts_flags, generated)
 !TSF_BLANKGROUND = $01 ; metatile 0 is not ground (realShore)
@@ -195,7 +197,8 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !fl_scam      = !FL_SRAM+$334     ; a scene's camera target (flight_api_camera):
 !fl_scam_x     = !fl_scam+$00      ;   word: camera x ($A8) to reach
 !fl_scam_y     = !fl_scam+$02      ;   word: camera y ($AA)
-!fl_scam_frame = !fl_scam+$04      ;   word: $F4 of the last step ($33A-$33D free)
+!fl_scam_frame = !fl_scam+$04      ;   word: $F4 of the last step ($33A-$33B free)
+!fl_wk_t0      = !FL_SRAM+$33C     ; word: walk mode: core tick when it began
 !fl_owned      = !FL_SRAM+$33E     ; word: Goku requests flight wrote (!FLO_*); flight clears only
                                    ; these, once, so other writers' requests stay
 !fl_test_post  = !FL_SRAM+$340     ; 16 bytes: FLIGHT_TEST posts (testmod.asm), free otherwise
@@ -222,7 +225,7 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !fl_tp_e_terr  = !fl_tp+$24
 !fl_tp_e_species = !fl_tp+$26
 !fl_tp_e_air   = !fl_tp+$28
-!fl_tp_l_x     = !FL_SRAM+$3A6     ;   word: landing found by fl_tp_landing
+!fl_tp_l_x    = !FL_SRAM+$3A6     ;   word: landing found by fl_tp_landing
 !fl_tp_l_y     = !FL_SRAM+$3A8
 !fl_tp_l_terr  = !FL_SRAM+$3AA
 !fl_tp_l_facing = !FL_SRAM+$3AC
@@ -243,6 +246,16 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !fl_tp_dx      = !fl_sw_dy
 !fl_tp_dy      = !fl_sw_n
 !fl_tp_stairs  = !fl_sw_s
+; WRAM aliases for walk mode's samples (fl_walk_sample; on foot nothing
+; sweeps, and canLand never does): x, y, E00B word of the newer sample
+; ($FFFF x: none), then of the older one
+!fl_wk_s1x     = !fl_sw_x
+!fl_wk_s1y     = !fl_sw_y
+!fl_wk_s1t     = !fl_sw_dx
+!fl_wk_s2x     = !fl_sw_dy
+!fl_wk_s2y     = !fl_sw_n
+!fl_wk_s2t     = !fl_sw_s
+assert !fl_wk_s2x == !fl_wk_s1x+6 && !fl_wk_s2t == !fl_wk_s1t+6, "flight: walk samples must be 6 bytes apart"
 !fl_g         = !FL_SRAM+$380     ; hero grid (fl_grid_reset): 3x3 tile verdicts around Goku
 !fl_g_tx0      = !fl_g+$00         ; word: grid origin tile x
 !fl_g_ty0      = !fl_g+$02         ; word: grid origin tile y
