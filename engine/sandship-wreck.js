@@ -152,6 +152,8 @@ export function createSandshipWreck(snes,mod,state){
  // is then a lookup, not some 57,000 fresh evaluations per new position.
  let memoKey='',memo=null,known=null,boxX=0,boxY=0,boxW=0,boxH=0;
  const screenMask=new Uint8Array(256*224),screenShade=new Uint8Array(256*224);
+ // Each row's first and past-last column with a nonzero mask value.
+ const maskFirst=new Uint16Array(224),maskEnd=new Uint16Array(224);
  function memoize(b){
   const key=`${b.x}:${b.y}:${b.radius}:${b.reach}:${b.origin?.x}:${b.origin?.y}`;
   if(key===memoKey)return;
@@ -166,11 +168,16 @@ export function createSandshipWreck(snes,mod,state){
  }
  // Screen-space breach and soot mask for one camera position.
  function breachMask(b,cx,cy){
-  memoize(b);const out=screenMask;out.fill(0);screenShade.fill(0);
+  memoize(b);const out=screenMask;out.fill(0);screenShade.fill(0);maskFirst.fill(0);maskEnd.fill(0);
   const yA=Math.max(0,boxY-cy),yB=Math.min(224,boxY+boxH-cy),xA=Math.max(0,boxX-cx),xB=Math.min(256,boxX+boxW-cx);
-  for(let y=yA;y<yB;y++)for(let x=xA,i=(y+cy-boxY)*boxW+(xA+cx-boxX);x<xB;x++,i++){
-   if(!known[i]){known[i]=1;memo[i]=breachValue(b,x+cx,y+cy);}
-   const v=memo[i];out[y*256+x]=v&7;screenShade[y*256+x]=v>>3;
+  for(let y=yA;y<yB;y++){
+   let first=-1,last=-1;
+   for(let x=xA,i=(y+cy-boxY)*boxW+(xA+cx-boxX);x<xB;x++,i++){
+    if(!known[i]){known[i]=1;memo[i]=breachValue(b,x+cx,y+cy);}
+    const v=memo[i];out[y*256+x]=v&7;screenShade[y*256+x]=v>>3;
+    if(v&7){if(first<0)first=x;last=x;}
+   }
+   if(first>=0){maskFirst[y]=first;maskEnd[y]=last+1;}
   }
   return out;
  }
@@ -236,12 +243,15 @@ export function createSandshipWreck(snes,mod,state){
    for(let k=0;k<8;k++){const flicker=flickers[k];for(let c=0;c<32;c++){tintR[k*32+c]=channel(c+2+alarm+flicker);tintG[k*32+c]=channel(c-alarm*.4+flicker*.5);}}
    for(let c=0;c<32;c++)tintB[c]=channel(c-2-alarm*.5);
   }
+  // Outside the columns the mask marks on this line, the tint alone.
+  const first=cut?maskFirst[y]:0,end=cut?maskEnd[y]:0;
+  tint(colors,layers,0,first);tint(colors,layers,end,256);
   // sand(wx, wy, age) with its row term computed once per line.
   const wy=y+camera.cameraY,row=Math.sin(wy*.09)*2.4;
-  for(let x=0,at=y*256;x<256;x++){
+  for(let x=first,at=y*256;x<end;x++){
    if(layers[x]>1)continue;
    const v=colors[x];let r=v&31,g=v>>5&31,bl=v>>10&31;
-   if(cut){
+   {
     const m=cut[at+x];
     if(m===1){
      const u=x+camera.cameraX+age*1.5,s=Math.sin(u*.16+row)+Math.sin(u*.05-wy*.07)*.6;
@@ -254,6 +264,13 @@ export function createSandshipWreck(snes,mod,state){
    }
    const k=(x>>5)*32;
    colors[x]=tintR[k+r]|(tintG[k+g]<<5)|(tintB[bl]<<10);
+  }
+ };
+ const tint=(colors,layers,x0,x1)=>{
+  for(let x=x0;x<x1;x++){
+   if(layers[x]>1)continue;
+   const v=colors[x],k=(x>>5)*32;
+   colors[x]=tintR[k+(v&31)]|(tintG[k+(v>>5&31)]<<5)|(tintB[v>>10&31]<<10);
   }
  };
  const wreckOp={type:'line',layers:3,mainOnly:true,fn:wreckLine};

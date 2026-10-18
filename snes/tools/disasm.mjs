@@ -17,7 +17,7 @@ const parse=s=>parseInt(s.replace(/[:$]/g,''),16);
 let pc=parse(pos[0]??'C08004');
 const count=Number(pos[1]??40);
 let m=!args.includes('--m16'),x=!args.includes('--x16');
-const read=a=>{const o=hiromToPc(a);return o>=0&&o<rom.length?rom[o]:0;};
+const read=a=>{const o=hiromToPc(a,rom.length);return o>=0&&o<rom.length?rom[o]:0;};
 const lines=[];
 for(let i=0;i<count;i++){
  const off=hiromToPc(pc),c=cov&&off>=0?cov[off]:0;
