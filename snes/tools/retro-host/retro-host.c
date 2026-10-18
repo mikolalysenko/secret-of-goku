@@ -31,11 +31,13 @@
  *   {"op":"wait","frames":N}                     run N frames, no buttons
  *   {"op":"hold","buttons":"a b","frames":N}     hold buttons for N frames
  *   {"op":"tap","buttons":"b","frames":3,"gap":3}  hold, then wait gap
- *   {"op":"shot","name":"title"}                 DIR/title.png of the last frame
+ *   {"op":"shot","name":"title","back":0}        DIR/title.png of the last frame
+ *                                                (back: 1-7 frames earlier)
  *   {"op":"read","name":"k","mem":"wram","addr":N,"size":1..4 | "len":N}
  *   {"op":"dump","name":"k","mem":"sram","addr":0,"len":N,"format":"bin|hex|json"}
  *   {"op":"write","mem":"wram","addr":N,"bytes":[..] | "value":V,"size":S}
  *   {"op":"fill","mem":"sram","value":V | "seed":S,"addr":0,"len":N}
+ *                    ("absolute":true: the bytes of a whole-memory fill)
  *   {"op":"loadmem","mem":"sram","file":"path","addr":0}
  *   {"op":"until","mem":"wram","addr":N,"size":1,"cmp":"eq|ne|lt|le|gt|ge",
  *    "value":V,"mask":M,"frames":MAX,"buttons":"start","every":20,"hold":4}
@@ -68,6 +70,7 @@
 
 #define HOST_VERSION 1
 #define WRAM_SIZE 0x20000
+#define HISTORY 8 /* frames kept for {"op":"shot","back":n} */
 
 /* ------------------------------------------------------------------ */
 /* Small utilities                                                     */
@@ -408,11 +411,16 @@ static struct {
   uint8_t *rom;
   size_t rom_size;
 
-  /* last frame */
-  uint8_t *fbuf;
+  /* the last HISTORY frames (ring; fw/fh describe the newest) */
+  struct {
+    uint8_t *buf;
+    size_t cap;
+    unsigned w, h;
+    enum retro_pixel_format fmt;
+    unsigned long long frame;
+  } ring[HISTORY];
+  int ring_head, ring_count;
   unsigned fw, fh;
-  size_t fcap;
-  enum retro_pixel_format ffmt;
   unsigned long long frames_drawn, dupes;
 
   uint16_t buttons;
@@ -597,19 +605,36 @@ static bool env_cb(unsigned cmd, void *data) {
   }
 }
 
+/* Each frame goes into the next ring slot; a duplicated frame (NULL data)
+ * repeats the previous picture. */
 static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch) {
-  if (!data || data == RETRO_HW_FRAME_BUFFER_VALID) { G.dupes++; return; }
-  unsigned bpp = G.fmt == RETRO_PIXEL_FORMAT_XRGB8888 ? 4 : 2;
-  size_t need = (size_t)w * h * bpp;
-  if (need > G.fcap) {
-    G.fbuf = realloc(G.fbuf, need);
-    G.fcap = need;
+  int prev = G.ring_head, slot = G.ring_count ? (G.ring_head + 1) % HISTORY : 0;
+  bool dupe = !data || data == RETRO_HW_FRAME_BUFFER_VALID;
+  if (dupe) {
+    G.dupes++;
+    if (!G.ring_count) return;
+    w = G.ring[prev].w;
+    h = G.ring[prev].h;
   }
-  for (unsigned y = 0; y < h; y++) memcpy(G.fbuf + (size_t)y * w * bpp, (const uint8_t *)data + (size_t)y * pitch, (size_t)w * bpp);
+  unsigned bpp = (dupe ? G.ring[prev].fmt : G.fmt) == RETRO_PIXEL_FORMAT_XRGB8888 ? 4 : 2;
+  size_t need = (size_t)w * h * bpp;
+  if (need > G.ring[slot].cap) {
+    G.ring[slot].buf = realloc(G.ring[slot].buf, need);
+    G.ring[slot].cap = need;
+  }
+  if (dupe) memcpy(G.ring[slot].buf, G.ring[prev].buf, need);
+  else
+    for (unsigned y = 0; y < h; y++)
+      memcpy(G.ring[slot].buf + (size_t)y * w * bpp, (const uint8_t *)data + (size_t)y * pitch, (size_t)w * bpp);
+  G.ring[slot].w = w;
+  G.ring[slot].h = h;
+  G.ring[slot].fmt = dupe ? G.ring[prev].fmt : G.fmt;
+  G.ring[slot].frame = G.frame + 1; /* the frame being run */
+  G.ring_head = slot;
+  if (G.ring_count < HISTORY) G.ring_count++;
   G.fw = w;
   G.fh = h;
-  G.ffmt = G.fmt;
-  G.frames_drawn++;
+  if (!dupe) G.frames_drawn++;
 }
 static void audio_sample_cb(int16_t l, int16_t r) { (void)l; (void)r; }
 static size_t audio_batch_cb(const int16_t *d, size_t frames) { (void)d; return frames; }
@@ -915,22 +940,29 @@ static bool write_png(const char *path, const uint8_t *rgb, unsigned w, unsigned
 static const char *fmt_name(enum retro_pixel_format f) {
   return f == RETRO_PIXEL_FORMAT_XRGB8888 ? "XRGB8888" : f == RETRO_PIXEL_FORMAT_RGB565 ? "RGB565" : "0RGB1555";
 }
-/* RGB888 of the last frame; each 5/6-bit channel expanded by bit
- * replication, 8-bit channels kept. */
-static uint8_t *frame_rgb(void) {
-  if (!G.fbuf || !G.fw) return NULL;
-  uint8_t *rgb = malloc((size_t)G.fw * G.fh * 3);
-  size_t n = (size_t)G.fw * G.fh;
+/* RGB888 of the frame `back` frames before the newest; each 5/6-bit channel
+ * expanded by bit replication, 8-bit channels kept. */
+static uint8_t *frame_rgb(int back, unsigned *w, unsigned *h, enum retro_pixel_format *fmt, unsigned long long *frame) {
+  if (back < 0 || back >= G.ring_count) return NULL;
+  int slot = ((G.ring_head - back) % HISTORY + HISTORY) % HISTORY;
+  const uint8_t *buf = G.ring[slot].buf;
+  enum retro_pixel_format f = G.ring[slot].fmt;
+  *w = G.ring[slot].w;
+  *h = G.ring[slot].h;
+  *fmt = f;
+  *frame = G.ring[slot].frame;
+  uint8_t *rgb = malloc((size_t)*w * *h * 3);
+  size_t n = (size_t)*w * *h;
   for (size_t i = 0; i < n; i++) {
     unsigned r, g, b;
-    if (G.ffmt == RETRO_PIXEL_FORMAT_XRGB8888) {
+    if (f == RETRO_PIXEL_FORMAT_XRGB8888) {
       uint32_t v;
-      memcpy(&v, G.fbuf + i * 4, 4);
+      memcpy(&v, buf + i * 4, 4);
       r = (v >> 16) & 255; g = (v >> 8) & 255; b = v & 255;
     } else {
       uint16_t v;
-      memcpy(&v, G.fbuf + i * 2, 2);
-      if (G.ffmt == RETRO_PIXEL_FORMAT_RGB565) {
+      memcpy(&v, buf + i * 2, 2);
+      if (f == RETRO_PIXEL_FORMAT_RGB565) {
         unsigned r5 = v >> 11, g6 = (v >> 5) & 63, b5 = v & 31;
         r = r5 << 3 | r5 >> 2; g = g6 << 2 | g6 >> 4; b = b5 << 3 | b5 >> 2;
       } else {
@@ -1103,18 +1135,22 @@ static int run_step(const jval *step, sb_t *reply) {
     run_frames((unsigned long long)jnum(step, "gap", 3), 0);
   } else if (!strcmp(op, "shot")) {
     if (!name) return fail(reply, "shot needs a name");
-    uint8_t *rgb = frame_rgb();
-    if (!rgb) return fail(reply, "no frame yet");
+    int back = (int)jnum(step, "back", 0);
+    unsigned w, h;
+    enum retro_pixel_format f;
+    unsigned long long at;
+    uint8_t *rgb = frame_rgb(back, &w, &h, &f, &at);
+    if (!rgb) return fail(reply, back ? "no frame %d back (history %d)" : "no frame yet", back, HISTORY);
     char path[PATH_MAX];
     snprintf(path, sizeof path, "%s/%s.png", G.out, name);
-    bool w = write_png(path, rgb, G.fw, G.fh);
+    bool ok = write_png(path, rgb, w, h);
     free(rgb);
-    if (!w) return fail(reply, "cannot write %s", path);
+    if (!ok) return fail(reply, "cannot write %s", path);
     if (G.nshots++) sb_puts(&G.shots, ",");
     sb_printf(&G.shots, "{\"name\":");
     sb_json_str(&G.shots, name);
-    sb_printf(&G.shots, ",\"frame\":%llu,\"width\":%u,\"height\":%u,\"format\":\"%s\"}", G.frame, G.fw, G.fh, fmt_name(G.ffmt));
-    sb_printf(reply, ",\"width\":%u,\"height\":%u", G.fw, G.fh);
+    sb_printf(&G.shots, ",\"frame\":%llu,\"width\":%u,\"height\":%u,\"format\":\"%s\"}", at, w, h, fmt_name(f));
+    sb_printf(reply, ",\"width\":%u,\"height\":%u,\"shot_frame\":%llu", w, h, at);
   } else if (!strcmp(op, "read")) {
     memview v;
     long addr, len;
@@ -1188,8 +1224,17 @@ static int run_step(const jval *step, sb_t *reply) {
     memview v;
     long addr, len;
     if (get_mem(step, reply, &v, &addr, &len, -1)) return 1;
-    if (jget(step, "seed")) noise_fill(v.p + addr, (size_t)len, (uint32_t)jnum(step, "seed", 1));
-    else memset(v.p + addr, (int)jnum(step, "value", 0), (size_t)len);
+    if (jget(step, "seed")) {
+      uint32_t seed = (uint32_t)jnum(step, "seed", 1);
+      bool absolute = jget(step, "absolute") && jget(step, "absolute")->b;
+      if (absolute) {
+        /* the bytes this range holds in a fill of the whole memory */
+        uint8_t *all = malloc(v.size);
+        noise_fill(all, v.size, seed);
+        memcpy(v.p + addr, all + addr, (size_t)len);
+        free(all);
+      } else noise_fill(v.p + addr, (size_t)len, seed);
+    } else memset(v.p + addr, (int)jnum(step, "value", 0), (size_t)len);
     mem_touched(&v);
   } else if (!strcmp(op, "loadmem")) {
     memview v;

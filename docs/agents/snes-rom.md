@@ -246,6 +246,124 @@ the live block, and `xdata` reads the 32-byte probe that
 CPU bus, together with the ExHiROM mirrors, both header copies and the save
 RAM banks.
 
+## Second opinions: snes9x and bsnes
+
+The cartridge also runs headless in the two most used cores, through their
+libretro builds and a small frontend, `snes/tools/retro-host/retro-host.c`
+(libretro.h vendored, MIT). It loads a core and a ROM and runs a JSON
+script, or one JSON step per line on stdin with a one-line reply each:
+hold/tap/wait, PNG shots (XRGB8888, RGB565, 0RGB1555; `back: n` takes one
+of the last 8 frames), WRAM/SRAM/VRAM read, write, fill and dump, battery
+RAM and WRAM preloaded with zeros, `ff`, seeded noise or a file, reset,
+power cycle with battery RAM kept, savestates. No audio, no timing: one
+`retro_run` per frame. bsnes' libretro core exposes no memory
+(`retro_get_memory_data` returns NULL), so the host finds save RAM and the
+128 KiB of WRAM in its serialized state with a calibration load and reads
+and writes them there; bsnes keeps battery RAM in `<save dir>/<rom>.srm`.
+
+```sh
+make -C snes/tools/retro-host cores    # snes9x + bsnes (pinned commits) -> .local/tools/emu/
+node snes/test/emulators/run.mjs       # also in run-all; skips (exit 0) without cores
+node snes/test/emulators/run.mjs --presets[=late,flight]   # scene-select presets vs Mesen
+node snes/test/emulators/run.mjs --power-on[=flight] --bisect  # uninitialised-RAM sweep
+```
+
+Sources go to `.local/tools/emu-src/`, cores and the host binary to
+`.local/tools/emu/` (or `SNES_CORES`); neither is committed. Variants:
+`snes9x` (defaults), `bsnes` (default fast PPU and DSP) and
+`bsnes-accurate` (`bsnes_ppu_fast=OFF`, `bsnes_dsp_fast=OFF`); bsnes runs with
+`bsnes_entropy=None` because its power-on randomisation is seeded by the
+process clock, and the host fills WRAM with seeded noise instead.
+
+The default run plays `snes/test/emulators/scenario.mjs` from power-on with
+noise in WRAM and battery RAM: the reset vector reaches `core_boot` (the
+live block gets its `GK` magic), the title program runs patched; the title
+at frames 700 and 940; game select, NEW GAME and the BOY prefill; the
+opening with text advanced until map 128 is controllable; field frames
+advancing; a CPU-bus probe (the NMI trampoline's `JML` pointed at a routine
+in `7E:6F40` for three frames) that reads the xdata probe in bank `$7D`,
+the header through `$00` and `$C0`, the `$FD` mirror, save RAM through
+`$30`, `$31`/`$B1` and `$33`/`$B3`; the save point's event (`$05D8`) through
+`!core_event_req`, into the first slot (`$30:6000` = `$C5`, sidecar `GK`); a
+power cycle; GAME FILE, first slot, map 128 with the sidecar restored. Mesen plays the same
+steps once per ROM (`mesen-ref.lua`, cached under
+`.local/snes-test/emulators/mesen/`). Pictures are compared in SNES colours
+(each PNG decoded with its emulator's output curve: bsnes' libretro palette
+applies a 1.5 gamma to the lower half of each channel) over a ±6 (title) or
+±2 frame window; outputs in `.local/snes-test/emulators/<variant>/`
+(`diff-*.png`: Mesen, core, red where colours differ) and `summary.json`.
+
+Mesen notes for any picture test: unthrottled, Mesen skips rendering frames
+unless SNES `DisableFrameSkipping` is set, so `emu.takeScreenshot()` can be
+several frames stale (in the name editor, whose forest scrolls every 4th
+frame, Mesen's picture changed at frames 1109, 1115, 1118, 1121 instead of
+every 4); `runMesen({exactFrames: true})` passes
+`--snes.disableFrameSkipping=true`, about 20-25% slower. Even then its
+screenshot at frame N equals the libretro cores' frame N-1 (game state and
+input agree frame for frame: a press at 1100 reaches `!core_pad` at 1101 in
+all three). Mesen's default `RamPowerOnState` is Random (WRAM and battery
+RAM); `--snes.ramPowerOnState=AllZeros` pins it.
+
+`--presets` starts scene-select presets on every core exactly as
+`snes/test/debug/preset.lua` does (code, cursor, B), follows the recipe
+trace, and compares the end state and the pictures at +0/+60/+240 with
+Mesen running that Lua file; all emulators start from zeroed RAM there
+(`presets.json`). `--power-on` runs each preset on snes9x from zeroed RAM
+and again with noise or `ff` in WRAM and with noise in battery RAM; any
+change in the trace, end state or pictures means something read memory it
+never wrote, and `--bisect` narrows it to single bytes (`power-on.json`).
+
+### Results (cartridge of 2026-10-18)
+
+| | snes9x 1.63 (`1bcc369`) | bsnes 115 (`78474e5`) | bsnes accurate PPU/DSP |
+| --- | --- | --- | --- |
+| ExHiROM | core log `ExHiROM: 64 Mbit, SRAM: 256 Kbit` (`Map_ExtendedHiROMMap`); bus probe exact | bus probe exact (board `EXHIROM-RAM`: save RAM `20-3f,a0-bf:6000-7fff`) | same |
+| Save RAM at `$30-$33`/`$B0-$B3` | yes | yes | yes |
+| Title 700/940 vs Mesen | 100% | 100% | 100% |
+| Name editor, waterfall, loaded game | 100%; field 96% exact, 100% within one level | 100% | 100% (editor 99.8%) |
+| Opening to map 128 | frame 7134, as Mesen | same | same |
+| Save, power cycle, load | slot header, sidecar, position (488,442 as Mesen) | same | same |
+| 22 presets vs Mesen (`--presets`) | all done, end states equal, pictures 100% (within one level) | same | same |
+| Speed (7,900 frames) | 2.7 s | 11.5 s | 26 s |
+
+In the presets the recipes end within 1-4 frames of Mesen (sandship 4145
+against 4149, hexas 3995/3996/3997), with the same end state. At `intro`
++60 all three cores agree with each other and differ from Mesen by one
+colour level in 35% of the pixels (a fade's brightness rounding).
+
+Power-on sensitivity (`--power-on --bisect`, snes9x): 20 of 22 presets are
+unaffected by noise or `$FF` in WRAM and noise in battery RAM. The two
+others depend on bytes that the **original** game reads before writing, so
+the unmodified cartridge does the same on every console:
+
+- **`7E:0126`, the moving Fortress's wander seed** (`flight`, `rider`).
+  `C2:B0D7` (bank `C2`, run during the legend's world fly-over) does
+  `LDA $0126 / ADC #$37 / STA $0126` and places the Mana Fortress at the
+  camera ± that seed (`$0128/$012A`); nothing writes `$0126` earlier, in the
+  original cartridge or ours (zeros give `$0738/$0DC7`, `$FF` `$0737/$0DC8`).
+  The world module aims at that position (`world/aim.asm`), and the debug
+  module's `WORLDAIM` parks the camera south of it, so the `flight` preset's
+  end position and `rider`'s timing (one frame) follow power-on WRAM. A
+  preset that must be reproducible on hardware would have to set `$0126`
+  itself (e.g. in `debug_arm`); zeroing it in `core_boot` would make the
+  game's own Fortress placement fixed.
+- **The RNG seed is the save checksums.** The title program (`7E:ADB0`,
+  decompressed from `C7:7C00`) XORs the four slots' checksums
+  (`$30:6001/6401/6801/6C01`) and seeds its LFSR (`7E:C2D9`; `$7524` when
+  the XOR is 0). A fresh cartridge's battery noise seeds it at random; it
+  changes `rider`'s timing by one frame.
+
+Other differences: snes9x rounds colour math (in translucent areas such as
+the waterfall, green is one 5-bit level higher than in Mesen and bsnes), and
+the Mesen frame skipping and one-frame screenshot offset above. With
+Mesen's power-on RAM random, one `flight` run entered its first room one
+frame later (two more did not; AllZeros, AllOnes and noise in audio RAM,
+VRAM, OAM or CGRAM never did). No difference so far traces to module or
+core code: no VRAM, DMA or open-bus behaviour differed between the
+emulators in these scenes. Tools for future runs: `snes/tools/disasm.mjs`
+for ROM code, a Mesen `emu.addMemoryCallback` on the byte (`snesWorkRam` or
+`snesSaveRam`) for the reader's PC.
+
 ## Engine anchors
 
 | Address | Meaning |
