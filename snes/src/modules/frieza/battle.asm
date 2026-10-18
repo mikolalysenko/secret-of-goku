@@ -1973,9 +1973,14 @@ fz_node_far:
 ; frieza_virtual_target: C set while Frieza can be struck: A16 = species
 ; (121), X16 = x, Y16 = y (map, the feet). Any DB; M16/X16 out.
 frieza_virtual_target:
-	PHB
-	PHD
 	REP #$30
+	LDA.l $7E00DC                     ; only his arena: an early out elsewhere
+	CMP.w #246
+	BEQ +
+	CLC
+	RTL
++	PHB
+	PHD
 	PEA $7E7E
 	PLB
 	PLB
@@ -2044,21 +2049,35 @@ fz_scale_hit:
 	BRA ++
 +	LDA.w #3
 ++	STA !fz_m1
-	JSR fz_mul16                      ; (m3:m2) = amount * k
-	LDA.w #0
-	STA !fz_m4                        ; quotient
-	LDY.w #32
--	ASL !fz_m2
-	ROL !fz_m3
-	ROL
-	ASL !fz_m4
-	CMP.w #20
-	BCC +
-	SBC.w #20
-	INC !fz_m4
-+	DEY
-	BNE -
-	LDA !fz_m4
+	JSR fz_mul16                      ; (m3:m2) = amount * k, below 2^20
+	; / 20 on the hardware divider in two steps: the product's top 12 bits,
+	; then the remainder with its low byte
+	LDA !fz_m2
+	XBA
+	AND.w #$00FF
+	STA !fz_m4
+	LDA !fz_m3
+	XBA
+	AND.w #$FF00
+	ORA !fz_m4                        ; product >> 8 (at most 12 bits)
+	LDX.w #20
+	JSR fz_divmod                     ; A16 = remainder, !fz_m5 = quotient
+	XBA
+	AND.w #$FF00
+	STA !fz_m4
+	LDA !fz_m2
+	AND.w #$00FF
+	ORA !fz_m4                        ; remainder * 256 + low byte (< 5120)
+	PHA
+	LDA !fz_m5
+	XBA
+	AND.w #$FF00                      ; the high quotient * 256
+	STA !fz_m4
+	PLA
+	LDX.w #20
+	JSR fz_divmod
+	LDA !fz_m5
+	ORA !fz_m4
 	RTS
 
 ; ---------------------------------------------------------------------------
