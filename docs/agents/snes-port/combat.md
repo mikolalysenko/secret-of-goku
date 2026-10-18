@@ -114,8 +114,11 @@ controller editors (`panelBack`: the open option `$1876` is 5 or 6), and X
 itself is hidden in every frame combat sees, also while Goku is inactive:
 a mask requested only once combat's step saw the press came after the
 game's read of that frame, so one press frame in five opened member 1's
-ring. Buttons held when a menu closes stay away from combat until
-released.
+ring. The press edge that picks Y or Start compares with the previous
+frame's pad in menus too (mana-mod.js `lastPadInput`): with the last
+field pad instead, a ring opened with X kept every later press of a menu
+on its first route. Buttons held when a menu closes stay away from combat
+until released.
 
 **Hits.** `cb_hit` queues damage at `+1F1` with `+1F0 = +1EC = 0`, leaves
 1 HP when the total would kill (the native lethal hit then runs death,

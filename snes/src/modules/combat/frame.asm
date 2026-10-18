@@ -393,6 +393,11 @@ combat_menu_frame:
 	AND.w #!IN_B|!IN_Y|!IN_A|!IN_L
 	STA !cb_menu_held
 	JSR cb_menu_x
+	; padInput is this frame's pad in menus too (mana-mod.js): the next
+	; frame's X press edge (cb_pad_prev) must not see a stale field pad,
+	; or a ring opened with X kept every later X on its first route (Y)
+	LDA !cb_raw
+	STA !cb_pad
 	JSR cb_emit_input
 	JSR cb_cancel_combat_quiet
 	REP #$30
