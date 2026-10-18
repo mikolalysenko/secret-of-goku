@@ -9,6 +9,7 @@ The browser player must emulate 60 SNES frames per second on phones; any shortfa
 | Idle-cycle batching | `Snes.skipIdleCycles` (`snes.js`) | Runs of master-cycle pairs where the CPU is mid-instruction (or paused at dots 536–575), or (H)DMA is only counting down, and no IRQ, render or line event is due. Plain instruction-start pairs run inline. Their APU catch-up additions are only counted; `catchUpApu` applies the count first (see below). |
 | Wait-loop batching | `Snes.spinWait` (`snes.js`) | Whole iterations of the game's `BIT dp` / `BNE` flag wait (field and story scenes) and of HVBJOY polls (`LDA $004212` / `AND #imm` / `BEQ` or `BNE`, menus and title) up to the next dot event. One iteration is stepped to measure it. Each batch first checks that what the loop reads now leaves the CPU state unchanged, since HDMA, blanking edges and the auto-joypad read change it only at events. Loops at addresses an instruction, bus or cartridge hook watches are never batched. |
 | APU batching | `Snes.catchUpApu` | Countdown cycles between SPC instruction starts, DSP samples and timer ticks. |
+| Sound driver idle loop | `spcIdleBatch` (`snes.js`) | Whole iterations of the driver's `CALL` / `MOV X,port` / `BEQ` / `RET` / `MOV Y,timer` / `BEQ` wait (about 60% of SPC instructions), while the port and timer counter read 0. Ports cannot change within one catch-up, and a batch ends before the counter's next increment and within the catch-up. The DSP and timers still run every cycle. |
 | Scanline compositor | `Ppu.composeLine` (`pipu.js`) | Keeps plain background layers as fetched tiles (planar-to-chunky lanes) and extracts a pixel only while it is still unresolved, evaluates windows by span, and resolves each screen slot by slot over unresolved pixels, skipping layers with nothing at that priority. On lines without plans, posts or direct color it writes palette colors during resolution. It has dedicated paths for paired hires decoding, inline Mode 7 texels and lines without color math or clipping. Offset-per-tile modes 2/4/6 always use the original path. |
 | Sprite evaluation | `Ppu.spriteSpans`, `forEachSpriteEntry` | Per-line 128-bit masks of the OAM entries that cover each line, rebuilt on any OAM/OBJSEL write, reset or checkpoint restore (`invalidateLineCaches`); evaluation still visits entries in native order with the same 32/34 limits. |
 | Instruction gate | `Cpu.gatedCycle` (`cpu.js`) | Calls the `cpu.cycle` wrapper chain only at registered `(bank & 0x3f, PC)` breakpoints, or while a hook's `always()` test is true. |
@@ -19,7 +20,7 @@ Every path re-validates the actual wrapper chain. The compositor and both gates 
 
 `Ppu.setPixels` fills the 512×480 ImageData one 32-bit word per pixel (byte loop on big-endian hosts or other targets), and the player writes its charge meter and option boxes to the DOM only when they change.
 
-`ppu.setLineComposer(false)`, `cpu.setBreakpointGate(false)`, `cart.setReadGate(false)`, `snes.setBusReadGate(false)` (reads and writes) and `snes.setSpinWait(false)` force the slow paths for diagnosis.
+`ppu.setLineComposer(false)`, `cpu.setBreakpointGate(false)`, `cart.setReadGate(false)`, `snes.setBusReadGate(false)` (reads and writes), `snes.setSpinWait(false)` and `snes.setSpcIdleSkip(false)` force the slow paths for diagnosis.
 
 ## Registering hooks
 
