@@ -269,6 +269,9 @@ destroy_title_boot:
 	REP #$30
 	LDA.w #0
 	STA.l !ss_vis : STA.l !ss_work : STA.l !ss_own
+	; the effect record fx polls every frame: battery noise until the first
+	; map change otherwise (second-emulator checks)
+	STA.l !FX_SEQ : STA.l !FX_KIND
 	RTL
 
 ; destroy_world_frame (JSL, modules_world_frame): the broken Mana Tree cloud

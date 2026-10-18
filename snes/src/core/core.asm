@@ -142,6 +142,18 @@ core_boot:
 	REP #$30
 	JSR core_clear_wram
 	JSR core_live_check
+	; Native reads of WRAM the game never wrote first (second-emulator checks,
+	; snes-rom.md): C2:B0D7 places the moving Mana Fortress from 7E:0126 and
+	; C1:CBF3 the first map's camera from the edge words 7E:0A80-0AB1. The
+	; browser's emulator zero-fills WRAM at power-on; zero them so every
+	; console and emulator starts like it.
+	LDA.w #$0000
+	STA.l $7E0126
+	LDX.w #$0030
+.edges
+	STA.l $7E0A80,X
+	DEX : DEX
+	BPL .edges
 	PLP
 	JML $C10010
 
