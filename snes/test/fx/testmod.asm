@@ -20,6 +20,7 @@ fx_test_frame:
 	LDA.l !fx_front
 	STA.l !FXT_BOX+$86
 	LDA.l !fx_palfree
+	AND.w #$00FF
 	STA.l !FXT_BOX+$88
 	LDA.l !fx_regions
 	STA.l !FXT_BOX+$8A

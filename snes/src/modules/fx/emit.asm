@@ -892,6 +892,7 @@ fx_class_pal:
 	RTS
 .got
 	EOR.l !fx_palfree
+	ORA.w #$0100                 ; palette work for fx_finish / fx_nmi
 	STA.l !fx_palfree
 	LDA.l fx_pal_pref_num,X
 	PLX

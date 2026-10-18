@@ -114,6 +114,7 @@ fx_begin:
 	STA.l !fx_clspal+6
 	REP #$20
 	LDA.w #$0000
+	STA.l !fx_palfree
 	STA.l !fx_front
 	STA.l !fx_poly_req
 	LDA.l !fx_pbig               ; no request yet this frame
@@ -726,24 +727,16 @@ fx_finish:
 .pal
 	LDA.l !fx_clspal
 	STA.l !fx_nmipal
-	TAX                          ; vblank work: palettes, uploads, colour math
 	LDA.l !fx_clspal+2
 	STA.l !fx_nmipal+2
-	STA.l !fx_e
 	LDA.l !fx_clspal+4
 	STA.l !fx_nmipal+4
-	AND.l !fx_e
-	STA.l !fx_e
-	TXA
-	AND.l !fx_e
-	STA.l !fx_e
-	LDA.l !fx_clspal+6
 	SEP #$20
+	LDA.l !fx_clspal+6
 	STA.l !fx_nmipal+6
 	REP #$20
-	ORA.w #$FF00
-	AND.l !fx_e
-	EOR.w #$FFFF                 ; nonzero when some class got a palette
+	LDA.l !fx_palfree            ; bit 8: a class acquired a palette this frame
+	AND.w #$0100                ; no seven-class reduction on the busy path
 	ORA.l !fx_cpend
 	ORA.l !fx_flashamt
 	ORA.l !fx_mathon

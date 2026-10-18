@@ -35,7 +35,7 @@ assert !FX_SRAM == !SRAM_WORK_FX, "fx request block must sit at !SRAM_WORK_FX"
 !fx_gen       = !FX_SRAM+$1A   ; word: last handle generation (1-255)
 !fx_ndraw     = !FX_SRAM+$1C   ; word: draw-list bytes used
 !fx_idle      = !FX_SRAM+$1E   ; word: consecutive frames without effects
-!fx_palfree   = !FX_SRAM+$20   ; word: OBJ palettes FX may still take this frame
+!fx_palfree   = !FX_SRAM+$20   ; low byte: free OBJ palettes; bit 8: a palette acquired
 !fx_clspal    = !FX_SRAM+$22   ; 7 bytes: OBJ palette per class this frame ($FF none)
 !fx_nmipal    = !FX_SRAM+$29   ; 7 bytes: copy handed to fx_nmi
 !fx_regions   = !FX_SRAM+$30   ; word: claimed VRAM regions (bit0 A, bit1 B, bit2 C)
