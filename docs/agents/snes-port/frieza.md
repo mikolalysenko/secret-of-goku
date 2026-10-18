@@ -29,8 +29,9 @@ those scripts call, Frieza's picture and the fights. The orbit stream
 | Dangerous encounters for combat (`native-hit-recovery.js` `dangerous()`) | Done |
 | Beast challenge rules (`beast-challenge.js`): choose/feed, the Beast's HP (65,535 fed, 48,000 ordinary, wounds kept), start (Goku 999 HP), eruption lanes and their damage, victory; Goku's damage to the Beast (1/2, 1/8 fed) and the empowered Dark Lich (1/4) through combat's `!COMBAT_HOOK_DAMAGE` | Done (logic; the lanes' sprites wait for fx kinds) |
 | Frieza's ki for Dark Lich: 48,000 HP, attack +48/+24, two boosts (+10% HP, +16 attack) with Frieza's taunts | Done (logic; the orbs and aura wait for fx kinds) |
-| Goku's attacks reaching Frieza | Needs combat's virtual-target hook (Requests): until then the fight cannot be won with the pad |
-| Incoming-damage cap of the fed Beast (110/140, 75-frame grace) | Needs combat's damage-receive hook (Requests) |
+| Goku's attacks reaching Frieza | Through combat's virtual targets (`modules_combat_targets`: `frieza_virtual_target` / `_hit`, index 12, airborne); combat's `frieza-punch`, `-ki`, `-ki-held`, `-beam`, `-wave`, `-burst` cases pass against the browser's `hit()` on a trial merge with combat's branch |
+| Incoming-damage cap of the fed Beast (110/140, 75-frame grace) | `frieza_combat_receive` for combat's `modules_combat_receive` list (one line in `modules.asm` once combat's lists are on main) |
+| Goku's beam cancelling Frieza's shots (`beamTouchesShot`) | From `combat_api_beam`'s record when combat provides it |
 | Cutscene effects (`frieza.js` draw(), the scene branch): the deck's Death Ball (charge and throw poses from `friezaDeathBallPose`), the eruption's column of large bursts, Fanha's beam and burst, Popoi's end, the empowering orbs and Thanatos's aura, Goku's gold aura | Done through fx (auras as fx's polygon); the cinematic red Death Ball is drawn as fx's violet ball (Known differences) |
 | The Dragon Balls rising to the altar (steal) and the eighth Ball | Done (own art, generated) |
 | The Emperor's execution: ray, black frame with his silhouette, sparks | Done (the ray is fx's Death Beam) |
@@ -297,7 +298,8 @@ Dispatch: `modules_field_frame` -> `frieza_field_frame`,
 
 | Entry | Contract |
 | --- | --- |
-| `frieza_virtual_target` | JSL, any DB. C set while Frieza can be struck: A16 = species (121), X16 = x, Y16 = y (map, his feet) |
+| `frieza_virtual_target` | JSL, any DB. C set while Frieza can be struck: A16 = species (121) with the fight's terrain byte in the high byte, X16 = x, Y16 = y (map, his feet + 12, as frieza.js `entity()`) |
+| `frieza_combat_receive` | Combat's receive hook (`modules_combat_receive`): A16 = Goku's queued damage -> A16 = damage to apply (the fed Beast's cap) |
 | `frieza_virtual_hit` | JSL, any DB. A16 = Goku's damage, X16 = 1 punch / 0 ki, beam, burst. Applies 15% (65% stunned), recoil, grace, thresholds; A16 = HP taken |
 | `frieza_victory_start` | JSL, any DB. A16 = x, X16 = y where Frieza fell: the death cue now, the beat from the next tick (the orbit stream calls it in space) |
 | `frieza_victory_tick` | JSL, any DB. Advances the beat; C set while it runs (`!fzv_age`, red/white phases, bursts, cues) |
@@ -406,24 +408,12 @@ floor on request.
 
 ## Requests
 
-- **combat** (blocking the fight): Frieza is a virtual enemy in the
-  browser (`entity()` index 12, species 121, `hit()` with 15% / 65%
-  scaling). Combat's target scans only see native actors 3-11. Please
-  consult `frieza_virtual_target` (C set, X/Y = his map position) in
-  `cb_targets`, the projectile and beam scans and the transformation burst,
-  and call `frieza_virtual_hit` (A16 = damage, X16 = 1 punch / 0 other)
-  instead of `cb_hit` for it; Instant Transmission (flight) should list the
-  same target. Until then Goku's attacks pass through Frieza.
-- **combat (2)**: the fed Beast caps Goku's incoming damage at 110 (140 in
-  base form) with 75 frames of grace, except the eruption's own damage
-  (`beast-challenge.js` at `C0:4053`). Combat owns that site
-  (`cb_hook_receive`); please add a hook there, e.g.
-  `!COMBAT_HOOK_RECEIVE` (A16 = queued damage on Goku, returns A16 =
-  damage to apply). The module exposes `!fzx_pending` (the eruption damage
-  it queued) for it.
-- **combat (3)**: `beamTouchesShot()` needs Goku's live beam geometry
-  (origin, direction, length, width) so a Kamehameha can cancel Frieza's
-  shots; `fz_bind_beam_touches` answers "no" until then.
+- **integration (combat's lists)**: when combat's `modules_combat_receive`
+  lands, add `JSL frieza_combat_receive` to it (checked on a trial merge
+  with combat's branch: its `receive-*` and `frieza-*` cases pass). Its
+  `modules_combat_targets` and `modules_combat_damage` already list
+  Frieza's entries; `!COMBAT_HOOK_DAMAGE` stays defined for builds with
+  the older single hook.
 - **fx**: the cinematic red Death Ball (`death-ball-art.js` `giant`, 64 px
   art scaled 16-224 px): at least the red ramp for FX_DEATHBALL's OBJ sizes
   and polygon, so the deck's and the Tree's balls are not violet; and a
