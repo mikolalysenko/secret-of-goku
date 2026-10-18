@@ -9,6 +9,7 @@ function Snes() {
   // The unhooked APU step (catchUpApu batches it only while unchanged).
   const apuCoreCycle = this.apu.cycle;
   const spcCoreCycle = this.apu.spc?.cycle;
+  const apuCoreRead = this.apu.read, apuCoreWrite = this.apu.write;
 
   this.ram = new Uint8Array(0x20000);
 
@@ -255,7 +256,12 @@ function Snes() {
       // Between SPC instruction starts, DSP samples (every 32 cycles) and
       // timer ticks, apu.cycle() only counts down; apply such runs at once.
       let spc = apu.spc, left = catchUpCycles;
+      let idle = spcIdle && spc.mem === apu && apu.read === apuCoreRead &&
+        apu.write === apuCoreWrite && spc.cycle === spcCoreCycle;
       while(left > 0) {
+        if(idle && spc.cyclesLeft === 0) {
+          spcIdleBatch(apu, spc, left);
+        }
         let n = spc.cyclesLeft;
         let dsp = (32 - (apu.cycles & 0x1f)) & 0x1f;
         if(dsp < n) {
@@ -301,6 +307,93 @@ function Snes() {
     }
     this.apuCatchCycles -= catchUpCycles;
   }
+
+  // The sound driver idles in a loop, recognized by its bytes:
+  //   L: CALL T; MOV Y,dd; BEQ L      (dd: a timer counter, $FD-$FF)
+  //   T: MOV X,pp; BEQ R              (pp: a CPU port, $F4-$F7)
+  //   R: RET
+  // Within one catch-up the ports cannot change (a CPU port access catches
+  // the APU up first), and a timer counter changes only when its divider
+  // reaches the target. While both read 0, every iteration does the same:
+  // the same two pushes, X = Y = 0, Z set and N clear, PC back at L. So the
+  // whole iterations whose counter read comes no later than the counter's
+  // next increment, and that end within this catch-up, are applied at the
+  // first one's start, and the SPC counts their cycles down while the DSP
+  // and timers run every cycle as before (the loop touches neither).
+  let spcIdle = true, spcIdleCount = 0;
+  this.setSpcIdleSkip = function(enabled) {
+    spcIdle = !!enabled;
+  }
+  // Iterations skipped so far (for tests).
+  this.spcIdleSkipped = function() {
+    return spcIdleCount;
+  }
+  const spcPlain = (a, n) => a + n - 1 < 0xf0 || (a >= 0x100 && a + n - 1 < 0xffc0);
+  const spcIdleBatch = (apu, spc, left) => {
+    let ram = apu.ram, l = spc.br[0];
+    if(
+      ram[l] !== 0x3f || ram[(l + 3) & 0xffff] !== 0xeb ||
+      ram[(l + 5) & 0xffff] !== 0xf0 || ram[(l + 6) & 0xffff] !== 0xf9 ||
+      spc.p || !spcPlain(l, 7)
+    ) {
+      return;
+    }
+    let t = ram[l + 1] | (ram[l + 2] << 8), dd = ram[l + 4];
+    if(
+      dd < 0xfd || !spcPlain(t, 4) || ram[t] !== 0xf8 ||
+      ram[t + 1] < 0xf4 || ram[t + 1] > 0xf7 || ram[t + 2] !== 0xf0
+    ) {
+      return;
+    }
+    let off = ram[t + 3], r = (t + 4 + (off > 127 ? off - 256 : off)) & 0xffff;
+    if(!spcPlain(r, 1) || ram[r] !== 0x6f || apu.spcReadPorts[ram[t + 1] - 0xf4] !== 0) {
+      return;
+    }
+    // The pushes must not land on the loop's own code.
+    let sp = spc.r[3], hiAt = 0x100 | sp, loAt = 0x100 | ((sp - 1) & 0xff);
+    for(let a of [hiAt, loAt]) {
+      if((a >= l && a < l + 7) || (a >= t && a < t + 4) || a === r) {
+        return;
+      }
+    }
+    // Cycles until the counter next increments (when enabled).
+    let counter, tick, div, target, enabled, period = 128;
+    if(dd === 0xfd) {
+      counter = apu.timer1counter; tick = apu.timer1int; div = apu.timer1div;
+      target = apu.timer1target; enabled = apu.timer1enabled;
+    } else if(dd === 0xfe) {
+      counter = apu.timer2counter; tick = apu.timer2int; div = apu.timer2div;
+      target = apu.timer2target; enabled = apu.timer2enabled;
+    } else {
+      counter = apu.timer3counter; tick = apu.timer3int; div = apu.timer3div;
+      target = apu.timer3target; enabled = apu.timer3enabled; period = 16;
+    }
+    if(counter !== 0) {
+      return;
+    }
+    let c = spc.cycles, branch = c[0xf0] + 2;
+    let read = c[0x3f] + c[0xf8] + branch + c[0x6f], length = read + c[0xeb] + branch;
+    let k = Math.floor(left / length);
+    if(enabled) {
+      let increment = tick + period * ((target - div - 1) & 0xff);
+      let fit = increment < read ? 0 : Math.floor((increment - read) / length) + 1;
+      if(fit < k) {
+        k = fit;
+      }
+    }
+    if(k < 1) {
+      return;
+    }
+    let ret = (l + 3) & 0xffff;
+    ram[hiAt] = ret >> 8;
+    ram[loAt] = ret & 0xff;
+    spc.r[1] = 0;
+    spc.r[2] = 0;
+    spc.z = true;
+    spc.n = false;
+    spc.cyclesLeft = k * length;
+    spcIdleCount += k;
+  };
 
   // Advances master-cycle pairs that need none of cycle()'s dot events:
   // runs where the CPU is mid-instruction (or paused at dots 536-575) are
