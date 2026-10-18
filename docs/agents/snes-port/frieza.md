@@ -27,11 +27,11 @@ those scripts call, Frieza's picture and the fights. The orbit stream
 | Victory beat on the ground (`boss-victory.js`): death cue, bursts, red/white flashes, music fade, whiteout, fanfare, pouch chime, event C7 | Done |
 | Finale deaths (`battle-retry.js`, `boss-rush-death.js`): Frieza, empowered Thanatos, the Mana Beast; native death kept, warp and boss-victory events gated, revert, fade, black / ending module's planet | Done |
 | Dangerous encounters for combat (`native-hit-recovery.js` `dangerous()`) | Done |
-| Beast challenge rules (`beast-challenge.js`): choose/feed, the Beast's HP (65,535 fed, 48,000 ordinary, wounds kept), start (Goku 999 HP), eruption lanes and their damage, victory; Goku's damage to the Beast (1/2, 1/8 fed) and the empowered Dark Lich (1/4) through combat's `!COMBAT_HOOK_DAMAGE` | Done (logic; the lanes' sprites wait for fx kinds) |
+| Beast challenge rules (`beast-challenge.js`): choose/feed, the Beast's HP (65,535 fed, 48,000 ordinary, wounds kept), start (Goku 999 HP), eruption lanes and their damage, victory; Goku's damage to the Beast (1/2, 1/8 fed) and the empowered Dark Lich (1/4) through combat's damage list (`modules_combat_damage`) | Done (logic; the lanes' sprites wait for fx kinds) |
 | Frieza's ki for Dark Lich: 48,000 HP, attack +48/+24, two boosts (+10% HP, +16 attack) with Frieza's taunts | Done (logic; the orbs and aura wait for fx kinds) |
-| Goku's attacks reaching Frieza | Through combat's virtual targets (`modules_combat_targets`: `frieza_virtual_target` / `_hit`, index 12, airborne); combat's `frieza-punch`, `-ki`, `-ki-held`, `-beam`, `-wave`, `-burst` cases pass against the browser's `hit()` on a trial merge with combat's branch |
-| Incoming-damage cap of the fed Beast (110/140, 75-frame grace) | `frieza_combat_receive` for combat's `modules_combat_receive` list (one line in `modules.asm` once combat's lists are on main) |
-| Goku's beam cancelling Frieza's shots (`beamTouchesShot`) | From `combat_api_beam`'s record when combat provides it |
+| Goku's attacks reaching Frieza | Through combat's virtual targets (`modules_combat_targets`: `frieza_virtual_target` / `_hit`, index 12, airborne); combat's `frieza-punch`, `-ki`, `-ki-held`, `-beam`, `-wave`, `-burst` cases pass against the browser's `hit()` |
+| Incoming-damage cap of the fed Beast (110/140, 75-frame grace) | Done: `frieza_combat_receive` in combat's `modules_combat_receive` (case `beast`: 110 / 140, nothing in the grace, the eruption's pending damage whole) |
+| Goku's beam cancelling Frieza's shots (`beamTouchesShot`) | Done: `fz_bind_beam_touches` on `combat_api_beam`'s record (`beamGeometry()`, the full wave's taper) |
 | Cutscene effects (`frieza.js` draw(), the scene branch): the deck's Death Ball (charge and throw poses from `friezaDeathBallPose`), the eruption's column of large bursts, Fanha's beam and burst, Popoi's end, the empowering orbs and Thanatos's aura, Goku's gold aura | Done through fx (auras as fx's polygon); the cinematic red Death Ball is drawn as fx's violet ball (Known differences) |
 | The Dragon Balls rising to the altar (steal) and the eighth Ball | Done (own art, generated) |
 | The Emperor's execution: ray, black frame with his silhouette, sparks | Done (the ray is fx's Death Beam) |
@@ -104,7 +104,8 @@ discs, three orbs, an eruption every third attack (65-frame warning, radius
 `fz_break_floor` is `fractureFortress()`: every 16x16 cell whose centre is
 within the radius (`(2dx)² + (3dy)² <= (2r)²`) and that is already broken
 or landable floor becomes a hole (the 1 KiB bitmap `!FZ_HOLES`, 128 x 64
-cells). Flight asks `frieza_floor_hole` (`!FLIGHT_MISSING_FLOOR`). On the
+cells). Flight asks `frieza_floor_hole` (`!FLIGHT_MISSING_FLOOR`, chained:
+off the deck's holes the provider bound before it answers). On the
 screen each visible hole's four BG1 tilemap entries point at sixteen
 generated tiles: quadrant (TL, TR, BL, BR) x the two neighbours it touches,
 which is exactly what `ruinMask` depends on (the edge test looks at most 5
@@ -275,9 +276,10 @@ Original code patched:
   runs; `JML $C1E7C5`), built only without the ending module, whose own
   gate at `C1:E77E` does the same.
 
-Include order (`modules.asm`): before combat, which binds its damage hook
-to `!COMBAT_HOOK_DAMAGE`, and before vegeta, which chains the hook bound
-before it.
+Include order (`modules.asm`): none against combat (its lists name
+Frieza's routines); `!FLIGHT_MISSING_FLOOR` keeps whatever provider was
+bound before Frieza's (`!FRIEZA_NEXT_FLOOR`: destroy's breach, flight's
+test hole) and jumps to it, so any order of those modules works.
 
 ## API
 
@@ -305,12 +307,12 @@ Dispatch: `modules_field_frame` -> `frieza_field_frame`,
 | `frieza_virtual_hit` | JSL, any DB. A16 = Goku's damage, X16 = 1 punch / 0 ki, beam, burst. Applies 15% (65% stunned), recoil, grace, thresholds; A16 = HP taken |
 | `frieza_victory_start` | JSL, any DB. A16 = x, X16 = y where Frieza fell: the death cue now, the beat from the next tick (the orbit stream calls it in space) |
 | `frieza_victory_tick` | JSL, any DB. Advances the beat; C set while it runs (`!fzv_age`, red/white phases, bursts, cues) |
-| `frieza_floor_hole` | `!FLIGHT_MISSING_FLOOR`: C set when (`!fl_q_x`, `!fl_q_y`) is a broken cell of the arena |
+| `frieza_floor_hole` | `!FLIGHT_MISSING_FLOOR` (JSL, M16/X16, DB = `$7E`): C set when (`!fl_q_x`, `!fl_q_y`) is a broken cell of the arena on map 246 at the deck's layer (`!fl_q_l`); otherwise the provider bound before Frieza's answers (`!FRIEZA_NEXT_FLOOR`, JML) |
 | `frieza_api_encounter` | JSL, M16/X16, D = 0, any DB. A16: low byte the dangerous fight now (`battle-retry.js` `encounter()`): 0 none, 1 Frieza's ground fight (stage battle on 246, no surge, not in space), 2 the empowered Thanatos (species 121 alive on 246), 3 the Mana Beast (127 on 253); high byte Frieza's tier with 1 (`frieza:<tier>`). X, Y, DB kept |
 | `!fzd_key` | WRAM byte: the key of the death in progress (or the last fight Goku could act in on 246/253); also passed to `ending_lose` in X |
 | `frieza_q_crisis` | `STORY_Q_FRIEZA_CRISIS` (`frieza.crisisActive`): 1 from the core's impact (event D7, `newCoreCrisis`) until the wish repairs the core (`FRIEZA_REPAIR_CORE`); a restored preset that is stolen or permanent gets it active unless the wish was made (`restore()`'s fix-up). The ending's bad presets read it for the night globe |
 | `frieza_door_record` | `!DOOR_RECORD_HOOK` (destroy's door record): JSL, M16/X16, D = 0, X = door * 4, A = record bytes 0-1, Y = bytes 2-3; door 3FC's byte 2 becomes 36 while the Emperor is present. Returns A and Y, keeps X |
-| `frieza_combat_damage` | `!COMBAT_HOOK_DAMAGE`: A16 = Goku's damage, X16 = actor -> A16 (the Beast 1/2 or 1/8, the empowered Lich 1/4) |
+| `frieza_combat_damage` | Combat's damage list (`modules_combat_damage`): A16 = Goku's damage, X16 = actor -> A16 (the Beast 1/2 or 1/8, the empowered Lich 1/4) |
 | `!fzx_pending` | WRAM word: the eruption damage the module queued on Goku (for a receive hook that must not cap it) |
 
 Optional modules are reached through `bind.asm` (`defined()` checks):
@@ -360,6 +362,7 @@ floor on request.
 | `victory` | the fatal hit starts the beat, white 31 at 400, event C7 runs (stage defeated, ledger 127) |
 | `death` | Goku at 1 HP takes the first orb: no warp, black from 360, Start goes to the title; with the ending module, the hand-off (`fzd_on` 2, `ES_DEFEATED`, key 1) instead |
 | `beast` | preset `beast` (map 253, the fed Beast started, Super Saiyan) through combat's receive list: 600 frames untouched as in the browser (the eruption's 210 lands whole at frame 261, Goku's HP 789 at 600 as the reference), then damage queued at the native consumer: 600 takes 110 (140 in base form, the permanent form lifted), nothing during the grace, 50 and the eruption's pending 300 land whole. Skipped while the build has no `modules_combat_receive` |
+| `floor` | test build with flight and destroy (skipped without them): the chained `!FLIGHT_MISSING_FLOOR` through the test mailbox (`FZPB+$20`): the Sandship's breach centre is a hole (destroy's answer through Frieza's), 120 px off is floor; a broken deck cell after seven fractures is a hole at the deck's layer (Frieza's), floor at the other layer, an unbroken cell is floor |
 | `flyby` | preset `fortress` with the deck's Death Ball thrown (stage theft): event D8 arms the flyby and runs 1F04; the flyby starts with `$8C` in world flight, the impact (age 404) makes the Death Ball's crisis (`$13`), its end after 1F04 sets the eighth Ball and the Tree pursuit, the overhead view gets the rear-view request (`$F8` = `$90`), then Kai's warning (the crisis notified; the radio shows the aftermath) |
 | `cost-world` | preset `flight` (nothing of Frieza's in flight): `frieza_world_frame` at most 0.25 lines on average, 0.5 at peak |
 | `cost` | Potos with Goku present: the module settles on the quiet path; field frame at most 0.36 lines on average and 2.5 at peak, vblank at most 0.13 (from the dispatcher's JSL to the next instruction, master clocks) |
@@ -416,19 +419,10 @@ floor on request.
 
 ## Requests
 
-- **integration (combat's lists)**: when combat's `modules_combat_receive`
-  lands, add `JSL frieza_combat_receive` to it (checked on a trial merge
-  with combat's branch: its `receive-*` and `frieza-*` cases pass). Its
-  `modules_combat_targets` and `modules_combat_damage` already list
-  Frieza's entries; `!COMBAT_HOOK_DAMAGE` stays defined for builds with
-  the older single hook.
 - **fx**: the cinematic red Death Ball (`death-ball-art.js` `giant`, 64 px
   art scaled 16-224 px): at least the red ramp for FX_DEATHBALL's OBJ sizes
   and polygon, so the deck's and the Tree's balls are not violet; and a
   cheaper polygon aura (about 100 lines a frame during the surge).
-- **goku**: a way to draw Goku's own cell at a scripted screen spot with the
-  native body hidden (`frieza.js` introHero: the temple exit and the deck's
-  follower poses; the Tree vista's Goku).
 - **flight**: none left; `bind.asm` binds `!FLIGHT_API_CAN_LAND`,
   `_CAN_LAND_T` and `!FLIGHT_API_CAMERA` when flight is built in.
 - **ending / orbit (scene SRAM)**: Frieza releases `!SRAM_WORK_SCENE` on the

@@ -576,7 +576,7 @@ fz_div10:
 	LDX.w #10
 	JMP fz_divx
 
-; COMBAT damage hook (combat's bind.asm !COMBAT_HOOK_DAMAGE): Goku's damage
+; Combat's damage list (modules.asm modules_combat_damage): Goku's damage
 ; to native actor X. The Beast takes half (an eighth when fed), the
 ; empowered Lich a quarter (beast-challenge.js damage()). A16 = damage.
 frieza_combat_damage:
