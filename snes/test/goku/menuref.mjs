@@ -16,8 +16,8 @@ const ring=rot=>[{buttons:B.y,frames:6},{frames:50},{buttons:B.down,frames:4},{f
   ...Array.from({length:rot},()=>[{buttons:B.left,frames:4},{frames:30}]).flat(),{buttons:B.b,frames:4},{frames:150,shot:'menu'}];
 
 // Cartridge shots of Mode 5 screens are 512x448: sample (2x, 2y) like jsref.
-const pixel=(img,x,y)=>{const fx=img.width>=512?2:1,fy=img.height>=448?2:1,i=((y*fy)*img.width+x*fx)*4;return [img.data[i],img.data[i+1],img.data[i+2]];};
-function bestShift(cart,js,x,y,w,h){
+export const pixel=(img,x,y)=>{const fx=img.width>=512?2:1,fy=img.height>=448?2:1,i=((y*fy)*img.width+x*fx)*4;return [img.data[i],img.data[i+1],img.data[i+2]];};
+export function bestShift(cart,js,x,y,w,h){
   let best=null;
   for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){
     let sum=0;

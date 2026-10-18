@@ -17,6 +17,9 @@
 ; modules_field_frame entry: M16 X16, DB = $7E, D = 0, after the frame's logic.
 goku_frame:
 	PHP
+if defined("GOKU_TRACE")
+	JSR goku_test_scripted
+endif
 	JSR goku_ensure_init
 	REP #$30
 	SEP #$20
@@ -61,6 +64,7 @@ goku_frame:
 	STA !up_cell
 .end
 	SEP #$20
+	STZ !scr_shown           ; a scripted cell lasts one frame
 	LDA !replacing
 	STA !was_replacing
 	PLP
@@ -430,9 +434,10 @@ goku_stone_ramp:
 ; set), Goku's slot included. On the field the browser's tint() follows that
 ; flash too, but its scene renderers (arrival.drawScene, the Frieza scenes)
 ; draw Goku unflashed: so while a scene shows an explicit cell
-; (!goku_cell_req, e.g. the arrival's hop) his colours 2-15 go back into the
-; BE00 copy of his slot. Entry 1 is every actor's shadow (and only 50 of
-; Goku's ~159,000 pixels): it keeps the native flash. DB = $7E.
+; (!goku_cell_req, e.g. the arrival's hop, or a goku_api_scripted cell this
+; frame) his colours 2-15 go back into the BE00 copy of his slot. Entry 1 is
+; every actor's shadow (and only 50 of Goku's ~159,000 pixels): it keeps the
+; native flash. DB = $7E.
 !PALFLASH = $BE00
 goku_palette_unflash:
 	SEP #$20
@@ -442,6 +447,7 @@ goku_palette_unflash:
 	BEQ .done
 	LDA !goku_cell_req
 	ORA !goku_cell_req+1
+	ORA !scr_shown
 	BEQ .done
 	REP #$30
 	LDA !pal_slot

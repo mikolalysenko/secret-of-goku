@@ -80,9 +80,13 @@ assert !RAM_GOKU == $7E0000|!GOKU_RAM, "!GOKU_RAM must match !RAM_GOKU"
 !pal_id_out       = !GOKU_RAM+$4C   ; byte: palette id last substituted
 !pal_status       = !GOKU_RAM+$4D   ; byte: status code last substituted
 !shadow_hidden    = !GOKU_RAM+$4E   ; byte: hide actor 0's shadow this frame
-!up_phase         = !GOKU_RAM+$4F   ; byte: refresh cadence counter
-!pal_native       = !GOKU_RAM+$50   ; 16 words: what the game wrote to palette 1
-!pal_out          = !GOKU_RAM+$70   ; 16 words: what we last wrote to palette 1
+!rec_shadow       = !GOKU_RAM+$4F   ; byte: OAM slot of actor 0's shadow this frame ($FF none)
+!pal_native       = !GOKU_RAM+$50   ; 16 words: what the game wrote to palette 1 (entry 0 unused:)
+!rec_body0        = !GOKU_RAM+$50   ;   byte: first OAM slot of Goku's body this frame
+!rec_body1        = !GOKU_RAM+$51   ;   byte: slot after it
+!pal_out          = !GOKU_RAM+$70   ; 16 words: what we last wrote to palette 1 (entry 0 unused:)
+!rec_stamp        = !GOKU_RAM+$70   ;   byte: !core_frame (low) when the slots were recorded
+!scr_shown        = !GOKU_RAM+$71   ;   byte: goku_api_scripted drew this frame (goku_frame clears it)
 !pal_work         = !GOKU_RAM+$90   ; 16 words: scratch (palette build; OAM emit; menu state, menu.asm)
 ; Scratch shared by pose, emit and palette code (never live across calls)
 !t_age            = !p_tmp+0        ; word: age argument for pose_track

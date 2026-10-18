@@ -21,13 +21,13 @@ port of `GokuAnimation.pose()` and is checked frame by frame against it
 
 | Resource | Use |
 | --- | --- |
-| Code `$A1:8000-$A1:A32A` | `!CODE_GOKU` (about 8.8 KiB used) |
+| Code `$A1:8000-$A1:A5F6` | `!CODE_GOKU` (about 9.5 KiB used) |
 | Data `$E1:0000-$E1:68B9` | `!DATA_GOKU`: palettes, cell/variant tables, clips, the 51 native actions, sockets, lift tables |
 | ROM `$F8-$FA` | 4,837 de-duplicated 8×8 4bpp tiles (151 KiB). `$FB` of the F8–FB reservation is still free |
-| WRAM `$7E:D740-$7E:D7FF` | `!RAM_GOKU`, all $C0 bytes (fields below). Full-screen menus keep their state in the field's scratch `pal_work` (`$7E:D7D0-D7EF`); a menu session restarts whenever another mode ran in between (`!core_tick`) |
+| WRAM `$7E:D740-$7E:D7FF` | `!RAM_GOKU`, all $C0 bytes (fields below). Full-screen menus keep their state in the field's scratch `pal_work` (`$7E:D7D0-D7EF`); a menu session restarts whenever another mode ran in between (`!core_tick`). Unused palette entry 0 of `pal_native`/`pal_out` and the old `up_phase` byte hold the frame's actor-0 OAM slots for `goku_api_scripted` (`!rec_body0/1`, `!rec_shadow`, `!rec_stamp`) and its this-frame flag `!scr_shown` |
 | VRAM | OBJ tiles `C0-C7`/`D0-D7` of name table 1 (word `$7C00/$7D00`, the boy's own cells; claimed as core region `!VRAM_FIELD_HERO` with owner `$01`), HUD portrait `E8/E9/F8/F9` (word `$7E80/$7F80`), ring marker `0A/0B/1A/1B` of name table 1 (word `$70A0/$71A0`, the boy's marker, rewritten when a ring opens). Full-screen menus: OBJ name table 2 (base `$4000` + `$1000`) tiles `C0-C9/D0-D9` and `E0-E7/F0-F7` (word `$5C00-$5F7F`): the idle and blink cells and the GAME FILE face. No menu screen uses that area (surveyed: Status, Action Grid, Controller/Window Edit, Weapon Skill, game select, GAME FILE load/save, save confirmation) and the field reloads it on return |
-| CGRAM | The boy's OBJ palette through the game's buffer `$7E:0600`: palette 1, or palette 5 on water maps (the slot his body descriptor uses); during a native flash in a scene cell also its copy in `$7E:BE00` (colours 2-15). Menus: OBJ palette 1 directly (the boy's colours there, `C8:1F00`) |
-| OAM | The boy's body entries are replaced in place by up to four 16×16 OBJ (empty quadrants are skipped), or one for the miniature. Menus: the PPU's OAM directly, after the menu's own upload: the boy's eight figure entries moved off screen, entries 120-123 Goku's figure, 124-127 the GAME FILE faces (only when the menu leaves 120-127 unused) |
+| CGRAM | The boy's OBJ palette through the game's buffer `$7E:0600`: palette 1, or palette 5 on water maps (the slot his body descriptor uses); during a native flash with a scene or scripted cell also its copy in `$7E:BE00` (colours 2-15). Menus: OBJ palette 1 directly (the boy's colours there, `C8:1F00`) |
+| OAM | The boy's body entries are replaced in place by up to four 16×16 OBJ (empty quadrants are skipped), or one for the miniature. `goku_api_scripted`: up to four 16×16 OBJ through `core_oam_add_front` (behind the natives through `core_oam_add` when the 16 front slots are taken), and `core_oam_hide` on actor 0's body and shadow slots of that frame. Menus: the PPU's OAM directly, after the menu's own upload: the boy's eight figure entries moved off screen, entries 120-123 Goku's figure, 124-127 the GAME FILE faces (only when the menu leaves 120-127 unused) |
 | DMA | In `modules_field_nmi`: channels 4-7 (one cell, 16 tiles = 512 B, only when it changed or on the game's 5-frame party refresh; skipped while `core_vblank_lines` < 6) and channel 7 for the HUD portrait (128 B). Ring set-up: channel 5 (128 B) right after the game's own marker uploads on that channel (measured: the whole set-up ends by scanline 249). Menus: channels 4-7 for the two cells (512 B each, one per frame, when 14+ lines remain) and 7 for the face (128 B), only when the menu runs no HDMA there (`$2C`) |
 | SRAM | None written. Test builds only (`-DGOKU_TRACE`): a 27-byte trace at `$7E:7F00` |
 
@@ -105,19 +105,25 @@ replacement), `modules_field_nmi` → `goku_nmi` (uploads), `modules_menu_frame`
   palette id or the petrify bit changed. Replacement ending restores the
   game's values.
 - **Native flash**: while `$2A` is set the field NMI uploads `7E:BE00`, which
-  the flash (`C2:C820`, in the frame logic) rebuilds from `0600` every frame
-  with a brightness offset (OBJ palettes too while bit 6 is set), Goku's
-  slot included. On the field that matches the browser, whose `tint()`
+  the flash (`C2:C820`, in the frame logic) rebuilds from `0600` whenever
+  its level steps (every fifth frame in the arrival) with a brightness
+  offset (OBJ palettes too while bit 6 is set), Goku's slot included. On the field that matches the browser, whose `tint()`
   follows the CGRAM flash; its scene renderers (`arrival.drawScene`, the
   Frieza scenes) draw Goku unflashed. So while a scene shows an explicit
-  cell (`!goku_cell_req`, e.g. the arrival's hop) `goku_palette_unflash`
-  puts his colours 2-15 back into the BE00 copy of his slot. Entry 1, every
+  cell (`!goku_cell_req`, e.g. the arrival's hop, or a `goku_api_scripted`
+  cell) `goku_palette_unflash` puts his colours 2-15 back into the BE00
+  copy of his slot. Entry 1, every
   actor's shadow, keeps the flash (Goku's cells use it for only 50 of
   ~159,000 pixels). Title's arrival comparison against the browser, main ->
   this change: impact-060 3.07% -> 0.27%, the settled impact-120/130 0.81%
   -> 0.16%, dialogue-030 0.59% -> 0.22%, ghost-005 0.68% -> 0.66%; no frame
   worse (single runs; the impact frames vary a little between runs).
   Unflashing in every flash frame instead made ghost and dialogue worse.
+  When the game overruns a rebuild frame (the ghost scene does, with either
+  ROM speed), the NMI uploads BE00 before `goku_frame` has run and that one
+  frame shows Goku flashed (or, mid-loop, partly flashed); module NMI work
+  is skipped on such frames. A hook right after the rebuild (`C2:C8D2`)
+  would close the gap, for title's unflashed colours too.
 - **Uploads** (`upload.asm`): see Resources. When replacement ends (snowman,
   moogle, `GOKU_CTL_SUPPRESS`, flag cleared) the boy's own tiles are
   re-uploaded from the game's `$0C00` table that very vblank.
@@ -204,7 +210,42 @@ Routines (JSL, any DB; preserve M/X unless noted):
 | `goku_api_set_form` | A low byte = form. Equivalent to writing `!goku_form` |
 | `goku_api_active` | C set while Goku stands in for the boy this frame |
 | `goku_api_cell` | A = sheet (0 base, 1 ssj, 2 SSJ jab), X = column, Y = row → A16 = cell id or `$FFFF`. Exit M16/X16 |
-| `goku_api_hand` | C set and A16 = x, X16 = y (screen) of the hand socket for poses that have one (charge, beam, blast cells of either form); C clear otherwise. Exit M16/X16 |
+| `goku_api_hand` | C set and A16 = x, X16 = y (screen) of the hand socket of the pose Goku shows on the field this frame (charge, beam, blast cells of either form, at the native anchor); C clear otherwise. Exit M16/X16 |
+| `goku_api_socket` | A = sheet (0 base, 1 Super Saiyan), X = column, Y = row: C set and A16 = dx, X16 = dy (signed) of that pose's hand socket from its anchor (the cell's centre column, feet line); C clear when the pose has none. Stateless, for scenes that place a cell themselves. Exit M16/X16 |
+| `goku_api_scripted` | Show cell A16 (from `goku_api_cell`) with its anchor at screen X16, Y16 (signed: the cell's centre column and feet line; top-left at x − 16, y − 31) for this frame: front-most, OBJ priority 3, Goku's palette slot, as the browser's scene renderers (`frieza.js` introHero). Actor 0's own body and shadow sprites are hidden for the frame (the HUD portrait stays); its game state is never touched. C set when drawn (Goku stands in and the cell exists). Any M/X (A, X, Y read as 16 bits); exit M16/X16 |
+| `goku_api_scripted_prio` | The same with the OBJ priority (0-3) in the low byte of `!core_scratch` |
+
+Scripted cells (scene staging: the temple exit and deck followers, the Tree
+vista): call `goku_api_scripted` from a field-frame callback every frame the
+scene shows Goku, before `goku_frame` in `modules_field_frame` (frieza's
+callback is): `goku_frame` then gives the slot the cell's palette and keeps
+it unflashed; a caller after it would show the field cell's colours. It
+takes effect in that same frame: the cell is uploaded to the hero OBJ tiles in the
+coming vblank, the body and shadow the frame's OAM build already placed are
+hidden, so there is no double Goku on the first frame and no gap on the
+last. **Release: stop calling**; the next frame is the ordinary Goku again,
+with nothing to undo. Pose and facing are the cell: `goku_api_cell` with
+sheet = `!goku_form` (or 1 for Super Saiyan art), the column and the row of
+the facing (0 front, 1 left, 2 right, 3 back; the browser's follower uses
+row 3 and columns 0, 37/38 base or 33/34 Super Saiyan). The palette follows
+the cell (base, Super Saiyan or transition colours); during a native flash
+($2A) the cell keeps Goku's unflashed colours 2-15, as the browser's scene
+renderers draw him (the shadow colour, entry 1, stays flashed). Front
+sprites keep call order, so a scene that wants its own sprites over Goku
+adds them with `core_oam_add_front` before the call. Scenes that need Goku's
+hand (a charge in a scripted pose) add `goku_api_socket` of the same pose to
+their anchor; on the field, `goku_api_hand` gives the shown pose's hand
+directly (combat's beam and blast origin, a Kamehameha's start for vegeta).
+Goku inactive (before the arrival, `GOKU_CTL_SUPPRESS` for the ending's
+native boy, snowman or moogle): C clear and nothing changes.
+
+How it relates to the other controls: `!goku_cell_req` keeps a cell at the
+native anchor (actor 0's position, shadow and lift), and `GOKU_CTL_HIDE`
+hides body and shadow until it is cleared; both are state a scene must
+reset. The scripted call shares the cell upload and palette selection of
+`!goku_cell_req` but leaves no state behind: it hides only the sprites actor 0 placed this
+frame, so it works with either set (the scripted cell wins) and needs no
+release step.
 
 Example (combat, a punch): on the press, `!goku_act = $10`, `!goku_act_arg
 = combo | (ssj ? $80 : 0)`, `!goku_act_facing = facing`, `!goku_act_age =
@@ -272,6 +313,24 @@ transition palettes follow the browser's `transform` clip).
   `$2A` set): on the field Goku's colours follow the flash; with a scene
   cell requested they are unflashed in his palette slot; the shadow colour
   stays flashed.
+- `scripted` (test build, `-DGOKU_TRACE`: a caller in `goku_frame` fed by
+  `7E:7F40`): the browser's follower hover pose from behind at (112,172) is
+  drawn as four front 16×16 OBJ at (x − 16, y − 31) with priority 3 in
+  Goku's palette slot, it is the only sprite with the hero tiles, actor 0's
+  shadow is hidden, the HUD portraits stay, VRAM holds the cell and actor
+  0's position, facing and animation are unchanged; a point moving off the
+  left edge with priority 1; a Super Saiyan cell with its colours; release
+  brings the field Goku and his shadow back; with Goku inactive the call
+  returns C clear; during a native flash (the arrival ghost bundle, palette
+  slot 5, 8 frames sampled each) the field Goku follows the flash, the
+  scripted cell has Goku's unflashed colours 2-15 (at most two single
+  overrun frames flashed, as above), the shadow colour stays flashed and
+  after release Goku follows the flash again. `goku_api_socket` for seven poses equals
+  `engine/goku-animation-data.js` (`run.mjs`), and the scripted cell
+  matches the browser's `introHero` follower render (`jsref.mjs` with a
+  stand-in for `frieza.js`'s draw): best shift 0,0, and 16 of the 1,024
+  pixels apart by more than colour rounding, all where the cell's
+  15-colour palette quantizes the art (limit 32).
 - `budget`: frame-logic end and NMI end with Goku off and on; limits per
   build (read from the header's map mode).
 - Builds: the suite runs the FastROM default; `--slowrom` builds both ROMs
@@ -300,7 +359,9 @@ transition palettes follow the browser's `transform` clip).
 - World flight (Mode 7 Flammie replacement), the orbital/scene renderers
   and Tree-scene stand-in (map 236, species 138) belong to their modules;
   they can use `goku_api_cell` / `goku_cell_req` and the tile tables.
-- `goku_api_hand` is not yet exercised by a client module.
+- No module calls `goku_api_scripted`, `goku_api_socket` or `goku_api_hand`
+  yet; the frieza stream asked for the first (its follower poses and the
+  Tree vista).
 
 ## Core requests
 
