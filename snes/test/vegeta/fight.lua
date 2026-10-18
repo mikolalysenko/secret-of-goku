@@ -45,6 +45,13 @@ function V.pilot()
   local face = towards(dx, dy)
   -- a clash: mash B
   if H.r8(0x7EDBEF) ~= 0 then P.beam = 'idle'; return (P.t % 6 < 2) and 'b' or '' end
+  -- V_PILOT_SSJ: while he transforms, Goku powers up too (focus with L,
+  -- then L+A at full power)
+  if V_PILOT_SSJ and H.r8(0x7EDBC1) == 2 and H.r8(0x7ED811) == 0 then
+    P.focus = (P.focus or 0) + 1
+    if P.focus > 104 then P.focus = 0; return 'l a' end
+    return 'l'
+  end
   -- his beam: step back along his lane (the waves must meet more than 16 px
   -- past the palms), face him, charge (L+Y), release when his wave is out
   if V_PILOT_BEAM and H.r8(0x7EDBE0) == 3 then
@@ -53,7 +60,7 @@ function V.pilot()
     local age = H.r16(0x7EDBE4)
     local ahead = -dx * bx - dy * by          -- Goku ahead of him on the lane
     if P.beam == 'idle' or P.beam == 'back' then
-      if ahead < 72 and age < 70 then P.beam = 'back'; return towards(bx, by) end
+      if ahead < 72 and age < (H.r8(0x7EDBC4) == 1 and 40 or 70) then P.beam = 'back'; return towards(bx, by) end
       P.beam = 'face'; return towards(-bx, -by)
     end
     if P.beam == 'face' then P.beam = 'charge' end

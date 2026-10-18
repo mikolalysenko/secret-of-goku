@@ -104,6 +104,7 @@ async function fightCase(name,{script,hits,bundle,beam,pilotBeam,shots,fxLog,pro
   const extra=beam?{V_BEAM_AGE:beam.age,V_BEAM_LEN:beam.len??200,V_BEAM_HALF:beam.half??12,...(beam.mash?{V_MASH:beam.mash}:{}),...(beam.super?{V_BEAM_SUPER:'true'}:{})}:{};
   if(pilotBeam)extra.V_PILOT_BEAM='true';
   if(pilotBeam?.holdHp)extra.V_PILOT_HOLD_HP=pilotBeam.holdHp;
+  if(pilotBeam?.ssj)extra.V_PILOT_SSJ='true';
   if(shots)extra.V_SHOTS='true';
   if(fxLog)extra.V_FX_LOG='true';
   if(gokuHp)extra.V_GOKU_HP=gokuHp;
@@ -183,6 +184,20 @@ const cases={
       check:({events})=>{
         const f=[];
         if(!events.some(e=>e.kind==='say'&&/Push back/.test(e.text)))f.push('no clash started from a real Kamehameha');
+        return f;
+      },
+    });
+  },
+  // Against Super Saiyan Vegeta: Goku transforms while he does (focus,
+  // L+A) and answers the Final Flash with a Kamehameha fired as Super
+  // Saiyan, the only beam that locks it.
+  async 'combat-final'(){
+    return fightCase('combat-final',{
+      script:[[5400,'pilot']],hits:[],pilotBeam:{holdHp:12000,ssj:true},shots:true,
+      check:({recs})=>{
+        const f=[];
+        const ssjClash=recs.some(r=>r.vg[0]===0x5a&&r.vg[4]===1&&r.vg[0x2f]);
+        if(!ssjClash)f.push('no clash with Super Saiyan Vegeta');
         return f;
       },
     });
