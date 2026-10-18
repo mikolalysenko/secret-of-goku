@@ -27,7 +27,7 @@ const PHASES=['intro','battle','transform','draw'],KINDS=[null,'rush','volley','
 
 // The test log (module.asm !vs_hl / !vs_tk, recorded from $32:6210): a ring
 // of 4 hits x 32 bytes, then the beam record the tick saw.
-const HIT_RING=0x00,TICK_BEAM=0x80;
+const HIT_RING=0x00,TICK_BEAM=0x80,POSE=0xA0;
 // Goku's Kamehameha as a mana-mod.js effect, rebuilt from combat's beam
 // record (combat/module.asm !er_*) with releaseCharge()'s beamProfile: the
 // browser's own geometry then decides, not the cartridge's.
@@ -118,7 +118,7 @@ function diff(a,b,path='',out=[]){
 }
 
 export async function replay(recs,{hookAt=[],onFrame=null}={}){
-  const {createJochTrial}=await import(pathToFileURL(resolve(repo,'engine/joch-trial.js')).href);
+  const {createJochTrial,vegetaPose}=await import(pathToFileURL(resolve(repo,'engine/joch-trial.js')).href);
   const ram=new Uint8Array(0x20000);
   const r=ram,w=a=>r[a]|r[a+1]<<8,sw=a=>(w(a)<<16)>>16;
   const ppu={mode:1,forcedBlank:false,getColor(){return[0,0,0];}};
@@ -176,12 +176,17 @@ export async function replay(recs,{hookAt=[],onFrame=null}={}){
     // hits after this tick (combat's step, then the mailbox in the next
     // frame's callback), each with the beam it saw, in order
     const next=cartridgeState(recs[i+1]);
+    // the pose the next frame drew: state after this tick and combat's hits,
+    // before the mailbox's
+    let posed=null;
+    const pose=()=>{posed??=vegetaPose(trial.status??{});};
     if(next){
       const log=recs[i+1].log;
       if(((next.dbg.n-lastDbg)&0xff)>4)events.push({frame,kind:'error',text:`${(next.dbg.n-lastDbg)&0xff} hits in one frame overran the log`});
       for(let n=(lastDbg+1)&0xff;lastDbg!==next.dbg.n;n=(n+1)&0xff){
         lastDbg=n;
         const o=HIT_RING+(n&3)*32,amount=w16(log,o),flags=w16(log,o+2);
+        if(flags&4)pose();
         const beam=combatBeam(log,o);
         mod.effects=standIn().length?standIn():beam?[beam]:[];
         mod.action=flags&1?{kind:'punch'}:null;
@@ -198,6 +203,18 @@ export async function replay(recs,{hookAt=[],onFrame=null}={}){
       trial.clashInput(input);
     }
     const want=browserState(trial),got=cartridgeState(recs[i+1]);
+    // Vegeta's drawn pose (frame and recoil) as vegetaPose()
+    {
+      const log=recs[i+1].log,frame=log?.[POSE];
+      if(frame!==undefined&&frame!==0xff&&want&&got){
+        pose();
+        const status=trial.status;
+        if(status?.spawned){
+          want.pose={frame:posed.frame,dx:posed.dx||0,dy:posed.dy||0};
+          got.pose={frame,dx:s8(log,POSE+1),dy:s8(log,POSE+2)};
+        }
+      }
+    }
     // what the trial keeps in actor slot 3 (combat's window must leave it
     // as the tick did): inactive, his position, HP and maximum, nothing
     // pending, alive, the Doppel's species

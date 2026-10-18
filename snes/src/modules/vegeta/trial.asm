@@ -246,6 +246,12 @@ vegeta_field_frame:
 	RTL
 .trial
 	REP #$30
+if defined("VEGETA_TEST")
+	SEP #$20
+	LDA.b #$FF
+	STA.l !vs_log_pose
+	REP #$20
+endif
 	JSR vg_draw
 .room
 	REP #$30
@@ -323,11 +329,13 @@ vg_test_mailbox:
 	CMP.w #1
 	BNE .done
 	LDA.l !vs_dbg_b
+	ORA.w #$0004                  ; (the log's mailbox bit)
 	TAX
 	LDA.l !vs_dbg_a
 	JSR vg_test_log_hit           ; counts the hit in !vs_dbg_n
 	STA.l !vs_s0
 	TXA
+	AND.w #$FFFB
 	STA.l !vs_s1
 	JSR vg_hit
 .done

@@ -20,6 +20,16 @@ vg_draw:
 	STA.l !vs_s5                  ; recoil dx
 	LDA !vg_t1
 	STA.l !vs_s6                  ; recoil dy
+if defined("VEGETA_TEST")
+	SEP #$20
+	LDA.l !vs_s4
+	STA.l !vs_log_pose
+	LDA.l !vs_s5
+	STA.l !vs_log_pose+1
+	LDA.l !vs_s6
+	STA.l !vs_log_pose+2
+	REP #$20
+endif
 	; aura: the transformation, or a beam still charging
 	SEP #$20
 	LDA !vg_phase

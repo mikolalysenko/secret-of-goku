@@ -237,6 +237,13 @@ requested `combat_api_beam`).
 | `budget` | the same match with the scanline at chosen labels each frame (`VEGETA_PROFILE=label,...`, default the field frame's parts): medians/p90/max per part for beam frames, other attacks and the rest, and the lag frames |
 | `chamber` | door `304` from a Potos state (`graphics-audit__party`, `CF3F`=5): VRAM tiles, CGRAM 32-127, BG1 metatiles 70/11, BG2 metatiles and grid equal the generator's outputs; BG1 grid equals `chamberLayout()`; four views (entrance, the steps, mid-room after scrolling, the east border) match the cartridge picture 100% and the browser's floor/seam/border colours 100% (pavilion views 84-86% of all pixels, the rest is palette quantisation of the 1,275-colour pavilion art); the pavilion's front wall and the east border block Goku |
 
+Every fight case also compares Vegeta's drawn pose each frame (the frame
+index and the hit recoil the draw logged, test builds) with
+`vegetaPose()` of the browser state the draw saw (after combat's hits,
+before the mailbox's). That check found the recoil offset taking the
+rush/counter strike helper's scratch (he was drawn up to 68 px off during
+rushes); the recoil is now set after the helpers.
+
 `replay.mjs` hosts the browser module with the recorded RAM: `canFly` is the
 chamber footprint, `mod.status` the camera from Goku's screen position,
 `mod.effects` Goku's beam (rebuilt from combat's raw record with

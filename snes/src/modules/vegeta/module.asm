@@ -194,12 +194,14 @@ assert !RAM_VEGETA == $7E0000|!VG, "!VG must match !RAM_VEGETA"
 !vs_cw_e7ec     #= !VS+$207  ; byte
 ; test log (VEGETA_TEST builds; snes/test/vegeta/replay.mjs): every hit
 ; (mailbox or combat) as a ring of 4 x 32 bytes at !vs_hl indexed by
-; !vs_dbg_n: +0 damage, +2 flags (bit0 melee, bit1 combat beam record),
+; !vs_dbg_n: +0 damage, +2 flags (bit0 melee, bit1 combat beam record,
+; bit2 from the mailbox),
 ; +4 combat's beam record (16 bytes), +20 charge, +22 range, +24 speed.
 ; !vs_tk: the beam record as the tick saw it (+2 flags, +4.. as above).
 !vs_hl          #= !VS+$210
 !vs_tk          #= !VS+$290
-!vs_log_end     #= !VS+$2B0
+!vs_log_pose    #= !VS+$2B0  ; frame drawn this field frame ($FF none), recoil dx, dy
+!vs_log_end     #= !VS+$2B4
 assert (!vs_echoes+(!VS_ECHOES*8)) <= !vs_clash, "vegeta SRAM layout overlap"
 
 ; Sound cues (the audio module's !AUDIO_SFX_* ids; bind.asm asserts them)

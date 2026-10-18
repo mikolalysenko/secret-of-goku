@@ -14,32 +14,6 @@ assert !VEGETA_MAX_BLOCKS <= 5, "vegeta frames need more than 5 blocks"
 ; ---------------------------------------------------------------------------
 ; vegetaPose(s): A = frame index 0-31; !vg_t0 = recoil dx, !vg_t1 = recoil dy.
 vg_pose:
-	STZ !vg_t0
-	STZ !vg_t1
-	; recoil = hurt > 6 ? 2 : hurt > 2 ? 1 : 0, opposite to the facing
-	LDA !vg_hurt
-	AND.w #$00FF
-	LDX.w #$0000
-	CMP.w #7
-	BCC +
-	INX
-+	CMP.w #3
-	BCC +
-	INX
-+	TXA
-	BEQ .norecoil
-	STA !vg_t2
-	LDA !vg_facing
-	AND.w #$0003
-	ASL
-	TAX
-	LDA.l vg_dir_dx,X
-	JSR .times                    ; -dx * recoil
-	STA !vg_t0
-	LDA.l vg_dir_dy,X
-	JSR .times
-	STA !vg_t1
-.norecoil
 	; gold = tier * 8
 	LDA !vg_tier
 	AND.w #$0001
@@ -85,6 +59,35 @@ vg_pose:
 .gold
 	CLC
 	ADC !vg_t2
+	PHA
+	; recoil = hurt > 6 ? 2 : hurt > 2 ? 1 : 0, opposite to the facing (set
+	; last: the pose helpers use the vg_t* words)
+	STZ !vg_t0
+	STZ !vg_t1
+	LDA !vg_hurt
+	AND.w #$00FF
+	LDX.w #$0000
+	CMP.w #7
+	BCC +
+	INX
++	CMP.w #3
+	BCC +
+	INX
++	TXA
+	BEQ .norecoil
+	STA !vg_t2
+	LDA !vg_facing
+	AND.w #$0003
+	ASL
+	TAX
+	LDA.l vg_dir_dx,X
+	JSR .times                    ; -dx * recoil
+	STA !vg_t0
+	LDA.l vg_dir_dy,X
+	JSR .times
+	STA !vg_t1
+.norecoil
+	PLA
 	RTS
 ; A = signed unit (-1/0/1), !vg_t2 = recoil -> A = -unit * recoil
 .times

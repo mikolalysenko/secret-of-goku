@@ -27,7 +27,7 @@ local function record()
     hex(W, 0xDBC0, 0x40),         -- vegeta WRAM
     hex(S, 0x4000, 0x210),        -- vegeta SRAM record ($32:6000)
     string.format('%04x', emu.read(0x7ED702, emu.memType.snesMemory) | (emu.read(0x7ED703, emu.memType.snesMemory) << 8)), -- core_pad
-    hex(S, 0x4210, 0xA0),         -- test log: hit ring, the tick's beam record
+    hex(S, 0x4210, 0xA4),         -- test log: hit ring, the tick's beam record, the drawn pose
   }, ' ')
 end
 -- Goku's sparring (real combat input). Facing follows the last direction
