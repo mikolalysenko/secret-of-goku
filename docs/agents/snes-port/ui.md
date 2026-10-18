@@ -504,3 +504,14 @@ scenes and compares with the browser's own code:
   before Goku's cell DMA) is applied by `snes/tools/order-dispatch.mjs` on
   the integration merge.
 - **FastROM** (done on main): the UI code runs in bank `$AC` at 3.58 MHz.
+- **Scouter readouts (open)**: `scouter.js` draws, for 240 frames after a
+  scan or an Analyzer hit, reticle corners and a 3×5 power-level number
+  with a dark outline over every actor on screen, above everything but
+  King Kai's window. As sprites that is about 4 corner sprites plus up to 6
+  number sprites per actor (numbers up to `150,000,000`), with their tiles
+  rendered per number (about 200 bytes of 4bpp tiles per actor). Every
+  field OBJ VRAM region is claimed (fx, goku) and module sprites sit behind
+  the natives. Needed: an OBJ VRAM region of 1–2 KiB the UI may use while
+  readouts show, and OAM entries in front of the native ones (or a shared
+  front-sprite allocator). The font and colours (`!UI_SC_*`) are
+  generated; the per-actor drawing is not written yet.
