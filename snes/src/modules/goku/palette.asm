@@ -427,15 +427,21 @@ goku_stone_ramp:
 ; Native flash: while $2A is set the field NMI uploads 7E:BE00, which the
 ; flash (C2:C820, in the frame logic before this hook) rebuilds from 0600
 ; every frame with a brightness offset (OBJ palettes too while bit 6 is
-; set). The browser draws Goku unflashed, so his colours 2-15 go back into
-; the BE00 copy of his slot. Entry 1 is every actor's shadow (and only 50
-; of Goku's ~159,000 pixels): it keeps the native flash. DB = $7E.
+; set), Goku's slot included. On the field the browser's tint() follows that
+; flash too, but its scene renderers (arrival.drawScene, the Frieza scenes)
+; draw Goku unflashed: so while a scene shows an explicit cell
+; (!goku_cell_req, e.g. the arrival's hop) his colours 2-15 go back into the
+; BE00 copy of his slot. Entry 1 is every actor's shadow (and only 50 of
+; Goku's ~159,000 pixels): it keeps the native flash. DB = $7E.
 !PALFLASH = $BE00
 goku_palette_unflash:
 	SEP #$20
 	LDA $2A
 	BEQ .done
 	LDA !pal_valid
+	BEQ .done
+	LDA !goku_cell_req
+	ORA !goku_cell_req+1
 	BEQ .done
 	REP #$30
 	LDA !pal_slot
