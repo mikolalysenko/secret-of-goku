@@ -2,6 +2,9 @@
 -- root) before this file.
 C = {}
 C.CB = 0x7ED800
+C.ER = 0x317C00            -- combat's effect records (module.asm !ER)
+C.VT_HITS = 0x317E38       -- !vt_hits (module.asm asserts these addresses)
+C.VT_LOG = 0x317E72        -- !VT_LOG: the last 8 virtual hits x 8 bytes
 C.failures = {}
 function C.fail(msg) C.failures[#C.failures + 1] = msg; H.log('FAIL', msg) end
 function C.check(cond, msg) if not cond then C.fail(msg) end return cond end
@@ -37,7 +40,67 @@ function C.probe()
       p.e[#p.e + 1] = {sp = r8(b + 0x180), hp = r16(b + 0x182), q = r16(b + 0x1F1), x = r16(b + 2), y = r16(b + 4), h = r8(b + 0x45), dead = r8(b + 0x191) >> 7}
     end
   end
+  -- combat's step counter, its ki and impact records, and the virtual
+  -- hits logged since the last probe (cb_frame, damage, melee, HP taken)
+  p.cbf = r16(C.CB + 0x0C)
+  p.kis = 0
+  local sparks = {}
+  for i = 0, 15 do
+    if (p.fxmask >> i) & 1 == 1 then
+      local base = C.ER + i * 16
+      local k = r8(base)
+      if k == 3 then p.kis = p.kis + 1
+      elseif k == 1 then sparks[#sparks + 1] = r16(base + 2) .. ',' .. r16(base + 4) end
+    end
+  end
+  table.sort(sparks)
+  p.sparks = table.concat(sparks, ' ')
+  local n = r16(C.VT_HITS)
+  C.vtSeen = C.vtSeen or n
+  if n ~= C.vtSeen then
+    p.vt = {}
+    local h = C.vtSeen
+    if (n - h) & 0xFFFF > 8 then h = (n - 8) & 0xFFFF end
+    while h ~= n do
+      local e = C.VT_LOG + (h % 8) * 8
+      p.vt[#p.vt + 1] = {f = r16(e), dmg = r16(e + 2), entry = r8(e + 4), melee = r8(e + 5) ~= 0, taken = r16(e + 6)}
+      h = (h + 1) & 0xFFFF
+    end
+    C.vtSeen = n
+  end
+  -- test builds (-DCOMBAT_TEST): the receive hook's log and combat_api_beam
+  -- at the frame end (module.asm !CBT)
+  if C.TEST then
+    local t = 0x317F00
+    p.rx = {n = r16(t + 0x0A), seen = r16(t + 0x08)}
+    if r16(t + 0x0C) == 1 then
+      local b = t + 0x10
+      local function s16(v) if v >= 0x8000 then return v - 0x10000 end return v end
+      p.beam = {x = r16(b), y = r16(b + 2), dx = s16(r16(b + 4)), dy = s16(r16(b + 6)), len = r16(b + 8), half = r16(b + 10),
+        super = r8(b + 12), mega = r8(b + 13), age = r16(b + 14), life = r16(b + 16), taper = r16(b + 18), a = r16(t + 0x0E)}
+    end
+  end
+  if C.extra then C.extra(p) end
+  if C.profile then p.prof = C.profile() end
   return p
+end
+-- --profile (run.mjs): master clocks spent between each {entry, exit} pair
+-- of addresses (summed over the calls of a field frame) and the calls;
+-- C.profile() hands the frame's row to the probe and starts the next
+function C.spansAt(pairs)
+  local acc, cnt, start = {}, {}, {}
+  for k, p in ipairs(pairs) do
+    acc[k], cnt[k] = 0, 0
+    emu.addMemoryCallback(function() start[k] = emu.getState()['masterClock'] end, emu.callbackType.exec, p[1], p[1])
+    emu.addMemoryCallback(function()
+      if start[k] then acc[k] = acc[k] + emu.getState()['masterClock'] - start[k]; cnt[k] = cnt[k] + 1; start[k] = nil end
+    end, emu.callbackType.exec, p[2], p[2])
+  end
+  C.profile = function()
+    local out = {}
+    for k = 1, #pairs do out[#out + 1] = acc[k]; out[#out + 1] = cnt[k]; acc[k], cnt[k] = 0, 0 end
+    return out
+  end
 end
 -- Run a script ("right:12,b:3,none:20"), one input per video frame. Probes
 -- are taken once per field frame at 00:B07D (after the field loop's NMI

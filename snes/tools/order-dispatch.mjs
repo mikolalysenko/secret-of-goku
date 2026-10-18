@@ -27,10 +27,14 @@ for(let i=0;i<lines.length;i++){
   if(!m){out.push(lines[i]);continue;}
   out.push(lines[i]);
   // Collect the block's body up to its RTL. Conditional (if/endif) lines and
-  // comments stay in place relative to the block start.
+  // comments stay in place relative to the block start. A block is a
+  // dispatch list only when it reaches its RTL before the next label and
+  // holds no data: data tables (combat's modules_combat_targets: dl/db
+  // entries) stay exactly as written.
   const body=[];
   let j=i+1;
-  while(j<lines.length&&!/^\tRTL\b/.test(lines[j])){body.push(lines[j]);j++;}
+  while(j<lines.length&&!/^\tRTL\b/.test(lines[j])&&!/^[A-Za-z_]\w*:/.test(lines[j])){body.push(lines[j]);j++;}
+  if(j>=lines.length||!/^\tRTL\b/.test(lines[j])||body.some(l=>/^\s*(dl|dw|db|dd)\b/.test(l))){out.push(...body);i=j-1;continue;}
   const jsl=[],other=[];
   const seen=new Set();
   let inCond=0;

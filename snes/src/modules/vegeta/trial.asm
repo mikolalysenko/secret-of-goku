@@ -305,6 +305,9 @@ vg_locks:
 	BNE .unlock
 	LDA $D0
 	BNE .unlock
+	REP #$20
+	LDA.w #2                      ; the draw: the last wave finishes (a hold)
+	JMP vb_input_lock
 .lock
 	REP #$20
 	LDA.w #1

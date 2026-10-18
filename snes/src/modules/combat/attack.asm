@@ -14,8 +14,9 @@
 ; combat_targets: living hostile actors inside an attack box.
 ; In: ag_x/ag_y origin (map), ag_dir facing, ag_range, ag_width (across,
 ; inclusive), ag_behind, ag_cy (subtracted from the actor's y).
-; Out: ag_list = slot mask (bit 0 = slot 3). Party, NPC species >= 128,
-; inactive, defeated and 0-HP actors are never targets.
+; Out: ag_list = slot mask (bit 0 = slot 3), then the virtual targets
+; (bits 9-15, virtual.asm). Party, NPC species >= 128, inactive, defeated
+; and 0-HP actors are never targets.
 cb_targets:
 	STZ !ag_list
 	LDX.w #!ACT_FIRST
@@ -69,7 +70,15 @@ cb_targets:
 	TAX
 	CPX.w #!ACT_END
 	BCC .loop
-	RTS
+	; after the actors: the registered virtual targets (modules.asm), from
+	; the field frame's cache (virtual.asm)
+	LDA.l !vt_state
+	BMI +
+	JSR cb_vt_refresh
++	AND.w #$7FFF
+	BEQ +
+	JMP cb_vt_targets
++	RTS
 
 ; along = x*dx + y*dy, across = |x*dy - y*dx| for the facing in ag_dir,
 ; x/y in cb_t4/cb_t5. Out: A16 = along (signed), cb_t6 = across.
@@ -644,9 +653,15 @@ cb_strike:
 	LSR !cb_td
 	BCC .nextBit
 	LDA !cb_tf
+	CMP.w #!VT_BIT0
+	BCC .actor
+	JSR cb_vt_hit                 ; a virtual target: its own hit()
+	BRA .took
+.actor
 	JSR cb_slot_offset
 	TAX
 	JSR cb_hit
+.took
 	LDA !cb_hit_orb
 	AND.w #$00FF
 	BNE .nextBit
@@ -717,11 +732,8 @@ cb_strike:
 	LSR !cb_td
 	BCC .nextSpark
 	LDA !cb_tf
-	JSR cb_slot_offset
-	TAX
-	LDA $E002,X
-	STA !cb_t4
-	LDA $E004,X
+	JSR cb_target_xy              ; the actor's or the virtual target's spot
+	LDA !cb_t5
 	SEC
 	SBC.w #12
 	STA !cb_t5
@@ -999,7 +1011,7 @@ cb_fire_beam:
 	STA.l !ER+!er_hits,X
 	; per-target pulse timers start empty (species $FF never matches)
 	LDA.w #$FFFF
-	LDX.w #16
+	LDX.w #30
 -	STA.l !BP,X
 	DEX : DEX
 	BPL -
@@ -1186,7 +1198,8 @@ cb_proj_along:
 	STA !cb_t5
 	JMP cb_along_across
 
-; A projectile (record cb_tf) hit actor Y: damage, cue and an impact spark.
+; A projectile (record cb_tf) hit target bit cb_te (actor Y for bits 0-8):
+; damage, cue and an impact spark.
 cb_proj_hit:
 	LDX !cb_tf
 	LDA.l !ER+!er_dmg,X
@@ -1201,6 +1214,9 @@ cb_proj_hit:
 	LDA.b #$01
 	STA !cb_hit_launch
 	REP #$20
+	LDA !cb_te
+	CMP.w #!VT_BIT0
+	BCS .virtual
 	TYX
 	JSR cb_hit
 	PHX
@@ -1210,6 +1226,15 @@ cb_proj_hit:
 	LDA $E002,X
 	STA !cb_t4
 	LDA $E004,X
+	BRA .spark
+.virtual
+	JSR cb_vt_hit
+	LDA.w #!AUDIO_SFX_IMPACT_ID
+	JSR cb_sfx
+	LDA !cb_te
+	JSR cb_target_xy
+	LDA !cb_t5
+.spark
 	SEC
 	SBC.w #12
 	STA !cb_t5
@@ -1258,6 +1283,8 @@ cb_ki_frame:
 +	LSR !cb_td
 	BCC .nextBit
 	LDA !cb_te
+	CMP.w #!VT_BIT0
+	BCS .virtual
 	JSR cb_slot_offset
 	TAY
 	LDA !cb_te
@@ -1271,6 +1298,18 @@ cb_ki_frame:
 	BCS .nextBit
 	; only the front segment: along >= length - 14 - 16
 	JSR cb_proj_along
+	BRA .front
+.virtual
+	; a virtual target: nothing pending (custom entities), its own spot
+	JSR cb_bit_of
+	STA !cb_t3
+	LDX !cb_tf
+	LDA.l !ER+!er_hits,X
+	AND !cb_t3
+	BNE .nextBit
+	LDA !cb_te
+	JSR cb_proj_along_bit
+.front
 	CLC
 	ADC.w #14+16
 	SEC
@@ -1376,14 +1415,21 @@ cb_beam_frame:
 	BCS +
 	JMP .nextBit
 +	LDA !cb_te
-	JSR cb_slot_offset
-	TAY
-	LDA !cb_te
 	JSR cb_bit_of
 	STA !cb_bx                    ; bit
-	; orbs: one activation per beam
+	LDA !cb_te
+	CMP.w #!VT_BIT0
+	BCC .actor
+	JSR cb_vt_species             ; a virtual target: never an orb
+	STA !cb_bslot                 ; species (until cb_proj_hit)
+	BRA .pulse
+.actor
+	JSR cb_slot_offset
+	TAY
 	LDA $E180,Y
 	AND.w #$00FF
+	STA !cb_bslot                 ; species (until cb_proj_hit)
+	; orbs: one activation per beam
 	CMP.w #$0055
 	BNE .pulse
 	LDX !cb_tf
@@ -1398,10 +1444,7 @@ cb_beam_frame:
 	TAX
 	LDA.l !BP,X
 	AND.w #$00FF
-	STA !cb_by
-	LDA $E180,Y
-	AND.w #$00FF
-	CMP !cb_by
+	CMP !cb_bslot
 	BNE .live
 	LDA.l !BP,X
 	XBA
@@ -1422,14 +1465,23 @@ cb_beam_frame:
 	BCC .live
 	JMP .nextBit
 .live
+	LDA !cb_te
+	CMP.w #!VT_BIT0
+	BCS .taper                    ; virtual targets have nothing pending
 	JSR cb_lethal_pending
-	BCC +
+	BCC .taper
 	JMP .nextBit
-+	; the wave's taper: across - 8 <= hw * min(1, (max(0,along)+8)/44)
+.taper
+	; the wave's taper: across - 8 <= hw * min(1, (max(0,along)+8)/44)
 	LDA !cb_t1
 	BEQ .take
+	LDA !cb_te
+	CMP.w #!VT_BIT0
+	BCS +
 	JSR cb_proj_along             ; A = along, cb_t6 = across
-	CMP.w #$8000
+	BRA ++
++	JSR cb_proj_along_bit
+++	CMP.w #$8000
 	BCC +
 	LDA.w #$0000
 +	CLC
@@ -1474,7 +1526,7 @@ cb_beam_frame:
 	ASL
 	TAX
 	SEP #$20
-	LDA $E180,Y
+	LDA !cb_bslot
 	STA.l !BP,X
 	LDA !cb_t0
 	STA.l !BP+1,X
@@ -1543,6 +1595,11 @@ cb_transform_burst:
 	BCS +
 	JMP .nextBit
 +	LDA !cb_te
+	CMP.w #!VT_BIT0
+	BCC .actor
+	JSR cb_target_xy              ; a virtual target: no orb, nothing pending
+	BRA .dist
+.actor
 	JSR cb_slot_offset
 	STA !cb_bslot
 	TAX
@@ -1556,12 +1613,17 @@ cb_transform_burst:
 +	JSR cb_lethal_pending
 	BCC +
 	JMP .nextBit
-+	; distance <= 56
-	LDA $E002,X
++	LDA $E002,X
+	STA !cb_t4
+	LDA $E004,X
+	STA !cb_t5
+.dist
+	; distance <= 56
+	LDA !cb_t4
 	SEC
 	SBC $E002
 	STA !cb_bx
-	LDA $E004,X
+	LDA !cb_t5
 	SEC
 	SBC $E004
 	STA !cb_by
@@ -1602,9 +1664,14 @@ cb_transform_burst:
 	LDA.w #$0080
 	STA !cb_hit_dir
 .hit
-	LDX !cb_bslot
+	LDA !cb_te
+	CMP.w #!VT_BIT0
+	BCC +
+	JSR cb_vt_hit                 ; a virtual target: its own hit()
+	BRA ++
++	LDX !cb_bslot
 	JSR cb_hit
-	SEP #$20
+++	SEP #$20
 	INC !cb_burst_done
 	REP #$20
 	JSR cb_burst_spark
@@ -1612,7 +1679,8 @@ cb_transform_burst:
 	INC !cb_te
 	JMP .each
 
-; The burst's spark on actor cb_bslot, along the dominant axis of (x, y).
+; The burst's spark on the target at Goku + (cb_bx, cb_by), along the
+; dominant axis of (x, y).
 cb_burst_spark:
 	LDA !cb_d2
 	BNE +
@@ -1644,13 +1712,16 @@ cb_burst_spark:
 +	LDA.w #$0003
 .dir
 	STA !cb_t8
-	LDX !cb_bslot
-	LDA $E002,X
-	STA !cb_t4
-	LDA $E004,X
+	LDA $E002
+	CLC
+	ADC !cb_bx
+	STA !cb_t4                    ; the target's x
+	LDA $E004
+	CLC
+	ADC !cb_by
 	SEC
 	SBC.w #12
-	STA !cb_t5
+	STA !cb_t5                    ; its y - 12
 	STZ !cb_t6
 	LDA.w #10
 	STA !cb_t7

@@ -17,7 +17,7 @@ incsrc "modules/ui/module.asm"
 incsrc "modules/debug/module.asm"
 incsrc "modules/destroy/module.asm"
 incsrc "modules/ending/module.asm"
-incsrc "modules/frieza/module.asm"         ; before combat (combat reads its !COMBAT_HOOK_DAMAGE)
+incsrc "modules/frieza/module.asm"
 incsrc "modules/combat/module.asm"
 incsrc "modules/vegeta/module.asm"
 incsrc "modules/audio/module.asm"           ; after the modules whose sound flags it reads
@@ -123,6 +123,37 @@ modules_new_game:
 	JSL debug_new_game
 	JSL destroy_reset
 	JSL vegeta_reset
+	RTL
+
+; ---------------------------------------------------------------------------
+; Combat's extension lists (contracts: docs/agents/snes-port/combat.md, API).
+; Add a line for your module; the order inside a list carries no meaning.
+;
+; Virtual targets: enemies that are not native actors (the browser's
+; entities() extras). One entry each, at most 7:
+;   dl <query>, <hit> : db <browser entity index>, <flags (!CVT_*)>
+; query (C set while it can be struck: A16 = species | terrain << 8, X16 =
+; x, Y16 = y) and hit (A16 = damage, X16 = 1 while combat's action is a
+; punch -> A16 = HP taken) are JSL, DB = $7E, D = 0, M16/X16.
+modules_combat_targets:
+	dl frieza_virtual_target, frieza_virtual_hit : db 12, !CVT_AIRBORNE
+modules_combat_targets_end:
+assert (modules_combat_targets_end-modules_combat_targets) <= 56, "combat: at most 7 virtual targets (8 bytes each)"
+; Damage hooks: Goku's damage A16 on native actor X16 (offset), JSL each,
+; DB = $7E, D = 0, M16/X16; each returns A16 = the damage and keeps X.
+modules_combat_damage:
+	JSL frieza_combat_damage   ; the Mana Beast, the empowered Dark Lich
+	JSL vegeta_combat_damage   ; Vegeta in slot 3 while the trial shows him to combat
+	RTL
+; Receive hooks: damage queued on Goku at the native consumer (C0:4053),
+; before combat's Saiyan resilience: A16 = $E1F1 (nonzero, not a heal),
+; JSL each, DB = $7E, D = 0, M16/X16; each returns A16 = the damage to
+; apply (0 = none).
+modules_combat_receive:
+if defined("COMBAT_TEST")
+	JSL combat_test_receive    ; snes/test/combat (receive cases)
+endif
+	JSL frieza_combat_receive  ; the fed Mana Beast's cap and grace
 	RTL
 pullpc
 

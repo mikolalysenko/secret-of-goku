@@ -93,6 +93,18 @@ the field NMI uploads (`7E:0600`, or `7E:BE00` while `$2A` is set). The
 game's buffer is saved when a scene takes the screen and restored when it
 lets go on the same map.
 
+Frame-thread DMA: the palette commit (`pal_commit`, the scene's colours
+into the game's palette buffer, which the field NMI uploads to CGRAM in
+its force-blanked vblank) and the OAM-buffer copies (the flight's stars,
+dragon and hidden slots, the cutaway's dust) use channel 7 through
+WMDATA from the frame thread. The vblank NMI (the game's uploads, every
+module's vblank work) reprograms channel 7 and leaves its size at 0, so a
+set-up it splits would copy 64 KiB over WRAM. `ending_dma_guard` (called
+right before each set-up) waits out lines 216-225: the NMI fires at 225
+and has come and gone before the set-up starts. The ending tests check
+channel 7's size at every one of these triggers (about 16,000 per suite
+run; also with goku's fast idle NMI, now the default).
+
 Uploads: a load script (ROM entries) and a dynamic queue (cell swaps)
 through a transfer engine in `ending_nmi` that counts its own time per DMA
 and per entry and stops with the vblank (`core_vblank_lines`). While a

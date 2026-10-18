@@ -347,13 +347,12 @@ endif
 	RTS
 
 ; ---------------------------------------------------------------------------
-; Frieza module: resistance of special bosses (the Mana Beast, the
-; empowered Dark Lich). Define !COMBAT_HOOK_DAMAGE = <label>: JSL with
-; A16 = damage, X16 = actor offset, DB = $7E; return A16 = damage.
+; Damage hooks on native actors (the Mana Beast, the empowered Dark Lich):
+; every module listed in modules.asm modules_combat_damage, in turn (JSL
+; with A16 = damage, X16 = actor offset, DB = $7E; each returns A16). The
+; single-owner !COMBAT_HOOK_DAMAGE define is no longer read.
 cb_bind_damage_hook:
-if defined("COMBAT_HOOK_DAMAGE")
-	JSL !COMBAT_HOOK_DAMAGE
-endif
+	JSL modules_combat_damage
 	RTS
 
 ; ---------------------------------------------------------------------------

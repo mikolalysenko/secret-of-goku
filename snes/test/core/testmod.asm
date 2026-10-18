@@ -18,6 +18,9 @@
 ; +$4A busy-loop count in the field NMI callback (overruns vblank)
 ; +$4C bits the field NMI callback sets in the game's HDMAEN shadow $2C,
 ; +$4E bits it clears there (HDMAEN guard test)
+; +$50 meta-sprite: 0 off, 1 behind (core_oam_meta), 2 front (_front);
+; +$52/+$54 anchor x/y, +$56 base tile word, +$58 count, +$5A mirror,
+; +$5C carry of the last call
 !ct = (!core_test&$FFFF)
 
 core_test_frame:
@@ -55,6 +58,30 @@ core_test_frame:
 	BCC .noFront
 	LDA.w #$0002 : TSB.w !ct+$1C
 .noFront
+	LDA.w !ct+$50
+	BEQ .noMeta
+	LDA.w !ct+$52 : STA.w !core_spr_x&$FFFF
+	LDA.w !ct+$54 : STA.w !core_spr_y&$FFFF
+	LDA.w !ct+$56 : STA.w !core_spr_tile&$FFFF
+	LDA.w #core_test_meta&$FFFF : STA.w !core_meta_ptr&$FFFF
+	SEP #$20
+	LDA.b #core_test_meta>>16 : STA.w (!core_meta_ptr&$FFFF)+2
+	REP #$20
+	LDX.w !ct+$5A
+	LDA.w !ct+$50
+	CMP.w #$0002
+	BEQ .metaFront
+	LDA.w !ct+$58
+	JSL core_oam_meta
+	BRA .metaRet
+.metaFront
+	LDA.w !ct+$58
+	JSL core_oam_meta_front
+.metaRet
+	LDA.w #$0000
+	ROL
+	STA.w !ct+$5C
+.noMeta
 	LDA.w !ct+$00
 	BNE .cmd
 	JMP .done
@@ -175,6 +202,15 @@ core_test_load:
 core_test_new_game:
 	INC.w !ct+$38
 	RTL
+
+; Meta-sprite pieces {dx, dy, tile, flags}: a 2x2 block of 16x16 pieces and
+; one 32x32 piece to the left.
+core_test_meta:
+	db $00,$00,$00,$00
+	db $10,$00,$02,$00
+	db $00,$10,$20,$00
+	db $10,$10,$22,$00
+	db $E0,$F8,$40,$01
 
 ; 256 bytes: an 8x8 4bpp checkerboard of colors 1/2, repeated.
 core_test_pattern:
