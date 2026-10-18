@@ -918,6 +918,16 @@ ui_power_intro_super:
 ; The first time Goku can act while hovering, queue the two banter lines.
 ; Carry clear when they were queued.
 ui_power_intro_flight:
+	PHP                               ; (called every hover frame: once given,
+	REP #$20                          ; nothing to do, and the radio may idle)
+	LDA.l !ui_p_flags
+	AND.w #!UIF_INTRO_FLIGHT
+	BEQ .first
+	PLP
+	SEC
+	RTL
+.first
+	PLP
 	%ui_api_enter()
 	SEP #$20
 	LDA.l !ui_p_flags

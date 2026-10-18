@@ -202,29 +202,63 @@ ui_map_id:
 
 ; Native field state allowing the window on the ground: the browser's
 ; canAttack (mana-mod.js) plus the radio's own guards ($2C battle-message
-; window, BG3 scroll and mode). Carry set = visible.
+; window, BG3 scroll and mode). Carry set = visible. DB = $7E (WRAM).
 ui_field_can_show:
-	LDX.w #ui_field_checks-ui_checks
-	BRA ui_can_attack_list
+	LDA.w $002C                       ; native window / effect HDMA
+	AND.w #$000F
+	BNE ui_attack_no
+	LDA.w $1D04                       ; native window drawing or open
+	AND.w #$0060
+	BNE ui_attack_no
+	LDA.w $0029                       ; Mode 7 arena (BG3 only below line 196)
+	AND.w #$0004
+	BNE ui_attack_no
+	LDA.w $003E                       ; BG3 scrolled (quakes, special scenes):
+	BNE ui_attack_no                  ; $3E, $3F
+	LDA.w $0040                       ; and $40
+	AND.w #$00FF
+	BNE ui_attack_no
 ; The browser's canAttack alone. Carry set = Goku can act.
 ui_can_attack:
-	LDX.w #ui_attack_checks-ui_checks
-ui_can_attack_list:
-	JSR ui_check_list
-	BCC .no
-	SEP #$20
+	JSR ui_goku_active
+	BEQ ui_attack_no
+	LDA.w !ui_block&$FFFF
+	BNE ui_attack_no
+	LDA.w $0100                       ; NMI trampoline JML $00C0A8: the field
+	CMP.w #$A85C
+	BNE ui_attack_no
+	LDA.w $0102
+	AND.w #$00FF
+	CMP.w #$00C0
+	BNE ui_attack_no
+	LDA.w $00D0                       ; no event
+	AND.w #$00FF
+	BNE ui_attack_no
+	LDA.w $00E4                       ; no fade ($E4, $E5 = 1)
+	CMP.w #$0101
+	BNE ui_attack_no
+	LDA.w $00EC                       ; no menu or transition ($EC & $FE), no
+	AND.w #$40FE                      ; ring opening request ($ED & $40)
+	BNE ui_attack_no
+	LDA.w $E000                       ; Goku's actor active
+	LSR
+	BCC ui_attack_no
+	LDA.w $E02C                       ; and owned by player 1
+	LSR
+	BCC ui_attack_no
+	LDA.w $E190                       ; incapacitating / covering status
+	AND.w #$D570                      ; ($E190 & $70, $E191 & $D5)
+	BNE ui_attack_no
 	LDA.w $E011                       ; native hurt poses $8C-$8F
-	CMP.b #$8C
+	AND.w #$00FF
+	CMP.w #$008C
 	BCC .ok
-	CMP.b #$90
-	BCC .no8
+	CMP.w #$0090
+	BCC ui_attack_no
 .ok
-	REP #$20
 	SEC
 	RTS
-.no8
-	REP #$20
-.no
+ui_attack_no:
 	CLC
 	RTS
 
@@ -255,58 +289,6 @@ ui_world_can_show:
 .no
 	CLC
 	RTS
-
-; Goku active, no hide request, and every (byte & mask) == value entry of
-; the list at ui_checks+X holds. Carry set = all hold.
-ui_check_list:
-	JSR ui_goku_active
-	BEQ .no
-	LDA.w !ui_block&$FFFF
-	BNE .no
-.loop
-	LDA.l ui_checks,X
-	CMP.w #$FFFF
-	BEQ .yes
-	TAY
-	SEP #$20
-	LDA.w $0000,Y                     ; DB = $7E: WRAM
-	AND.l ui_checks+2,X
-	CMP.l ui_checks+3,X
-	REP #$20
-	BNE .no
-	INX : INX : INX : INX
-	BRA .loop
-.yes
-	SEC
-	RTS
-.no
-	CLC
-	RTS
-
-ui_checks:
-; Ground: the browser's canAttack (mana-mod.js) plus the radio's guards.
-ui_field_checks:
-	dw $002C : db $0F,$00             ; native window / effect HDMA
-	dw $1D04 : db $60,$00             ; native window drawing or open
-	dw $0029 : db $04,$00             ; Mode 7 arena (BG3 only below line 196)
-	dw $003E : db $FF,$00             ; BG3 scrolled (quakes, special scenes)
-	dw $003F : db $FF,$00
-	dw $0040 : db $FF,$00
-; canAttack alone
-ui_attack_checks:
-	dw $0100 : db $FF,$5C             ; NMI trampoline JML $00C0A8: the field
-	dw $0101 : db $FF,$A8
-	dw $0102 : db $FF,$C0
-	dw $00D0 : db $FF,$00             ; no event
-	dw $00E4 : db $FF,$01             ; no fade
-	dw $00E5 : db $FF,$01
-	dw $00EC : db $FE,$00             ; no menu / transition
-	dw $00ED : db $40,$00             ; no ring opening request
-	dw $E000 : db $01,$01             ; Goku's actor active
-	dw $E02C : db $01,$01             ; and owned by player 1
-	dw $E190 : db $70,$00             ; incapacitating / covering status
-	dw $E191 : db $D5,$00
-	dw $FFFF
 
 ; Default display name for {n} codes: the native slot, or the retail
 ; default when it is empty. A16 = n -> X16 = address (bank $7E) of a

@@ -14,9 +14,10 @@ ui_field_idle:
 .noPlace
 	LDA.w #!UIS_PLACE
 	TRB.w !ui_state&$FFFF
-	LDA.w !ui_cur&$FFFF               ; the radio
+	LDA.w !ui_cur&$FFFF               ; the radio (a line up: busy at once)
 	ORA.w !ui_qn&$FFFF
-	ORA.w !ui_cool&$FFFF
+	BNE .busy
+	LDA.w !ui_cool&$FFFF
 	ORA.w !ui_bcool&$FFFF
 	ORA.w !ui_rcool&$FFFF
 	ORA.w !ui_held&$FFFF

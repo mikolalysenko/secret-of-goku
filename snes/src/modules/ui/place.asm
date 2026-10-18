@@ -48,7 +48,14 @@ ui_place_frame:
 	; a scene ends after 30 idle frames (chained events hand over sooner)
 	LDA.w $00D0
 	AND.w #$00FF
-	BEQ .idle
+	BNE .event
+	LDA.w !ui_wp&$FFFF                ; no event, no session, the last one
+	BNE .idle                         ; long over: nothing can change
+	LDA.w !ui_wp_idle&$FFFF
+	CMP.w #31
+	BCC .idle
+	RTS
+.event
 	STZ.w !ui_wp_idle&$FFFF
 	BRA .scene
 .idle

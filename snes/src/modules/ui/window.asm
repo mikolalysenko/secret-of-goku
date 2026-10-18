@@ -599,32 +599,26 @@ ui_hdma_build:
 	CPX.w #ui_hdma_template_end-ui_hdma_template
 	BCC .copy
 	; fall through
+!ui_hr = !ui_s_hdma+(ui_hdma_restore-ui_hdma_template)+2   ; the restore block's colours
 ui_hdma_refresh:
 	LDX.w #$0600
 	LDA.w $002A
 	AND.w #$00FF
 	BEQ +
 	LDX.w #$BE00
-+	STX.w !ui_tmp3&$FFFF
-	LDY.w #$0000
-.r
-	TYA
-	ASL : ASL
-	TAX                               ; table entry offset
-	LDA.l ui_hdma_index,X              ; CGRAM index (word)
-	ASL
-	CLC : ADC.w !ui_tmp3&$FFFF
-	PHX
-	TAX
-	LDA.l $7E0000,X
-	PLX
-	STA.l !ui_s_hdma+(ui_hdma_restore-ui_hdma_template)+2,X
-	INY
-	CPY.w #6
-	BCC .r
++	LDA.l $7E0000+(9*2),X
+	STA.l !ui_hr
+	LDA.l $7E0000+(10*2),X
+	STA.l !ui_hr+4
+	LDA.l $7E0000+(11*2),X
+	STA.l !ui_hr+8
+	LDA.l $7E0000+(13*2),X
+	STA.l !ui_hr+12
+	LDA.l $7E0000+(14*2),X
+	STA.l !ui_hr+16
+	LDA.l $7E0000+(15*2),X
+	STA.l !ui_hr+20
 	RTS
-ui_hdma_index:
-	dw 9,0, 10,0, 11,0, 13,0, 14,0, 15,0
 
 ui_hdma_template:
 	db $86

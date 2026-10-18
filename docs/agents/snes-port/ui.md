@@ -401,6 +401,11 @@ unless the radio's HDMA is armed or placement has channel work
 0.27 lines, field NMI 0.31 → 0.12 lines, both including the dispatch's
 JSL and RTL. `$2C` bit 5 is cleared once when the radio's box goes (not
 every frame), so other modules may use channel 5 while the box is down.
+While a line is up (King Kai's first warning on `preset__late`) the field
+frame costs 5.7 lines and the NMI 0.5: the visibility guards are unrolled
+(`ui_field_can_show`, `ui_can_attack`), the HDMA colour refresh too, and
+placement returns at once outside events; `ui_power_intro_flight` (called
+every hover frame) returns before the API entry once its lines were said.
 
 ## Foreign savestates
 
