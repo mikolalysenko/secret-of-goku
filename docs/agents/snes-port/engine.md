@@ -10,7 +10,8 @@ frames per scene with walking input; re-run it after engine-heavy changes).
 Banks: the field outer loop and its NMI/IRQ execute in bank `$00`
 (the HiROM mirror of `C0`), so Mesen exec callbacks and savestate PCs use
 `00:xxxx` for them. The port runs selected native movement, actor, collision
-and OBJ passes through the equivalent FastROM mirrors `$80/$81`; the
+and OBJ passes, background scrolling and actor preparation through the
+equivalent FastROM mirrors `$80/$81/$82`; the
 field outer loop and interrupt vectors retain bank `$00`. World flight now
 runs its loop and helpers through `$80/$81` too, while its NMI/IRQ vectors
 retain `$00`. Other code runs in `C0`–`DF` through `JSL`.

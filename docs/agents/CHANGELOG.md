@@ -4,6 +4,20 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES remaining field FastROM paths (2026-10-19)
+
+- Run the native background-scroll and actor-preparation passes, plus two
+  field helpers, through equivalent FastROM mirrors. Preserve the outer
+  field loop, interrupts and map-change path. Update test callback sites
+  for the combined actor-preparation hook.
+- Strict build, core frames/party/input/OAM/sound-event/lag/HDMA, flight
+  water/teleport/whip/scene and Goku field/status/forms checks pass. All 13
+  gameplay cases retain zero palette, meter, OBJ and NMI errors.
+- The long flying-punch run improves from 95 to 53 misses per 1,200
+  frames and charge from 166 to 160. Flying ki rises from 422 to 429 and
+  teleport from 136 to 148 as changed timing affects the fight. Grass
+  transformation has one CPU miss again. The zero-drop target remains open.
+
 ## SNES FX palette-upload headroom (2026-10-19)
 
 - Unroll the six fixed FX palette uploads and calculate their ROM offsets

@@ -25,7 +25,7 @@ local function run(tag,on,player2,event)
     end
     frames=frames+1
     if event then H.w8(0x7E00D0,1) end
-  end,emu.callbackType.exec,0x00B0CA,0x00B0CA)
+  end,emu.callbackType.exec,0x00B0C7,0x00B0C7)
   -- Exercise the scheduling gate without asking the event interpreter to
   -- follow a synthetic pointer: restore idle after the actor/OBJ pass.
   local restore=emu.addMemoryCallback(function()
@@ -42,7 +42,7 @@ local function run(tag,on,player2,event)
   local fast=emu.addMemoryCallback(count,emu.callbackType.exec,0x80F4CB,0x80F4CB)
   local slow=emu.addMemoryCallback(count,emu.callbackType.exec,0x00F4CB,0x00F4CB)
   check(tag..'_running',H.waitFor(function() return finished end,400),frames)
-  emu.removeMemoryCallback(frame,emu.callbackType.exec,0x00B0CA,0x00B0CA)
+  emu.removeMemoryCallback(frame,emu.callbackType.exec,0x00B0C7,0x00B0C7)
   emu.removeMemoryCallback(restore,emu.callbackType.exec,0x00B0D0,0x00B0D0)
   emu.removeMemoryCallback(fast,emu.callbackType.exec,0x80F4CB,0x80F4CB)
   emu.removeMemoryCallback(slow,emu.callbackType.exec,0x00F4CB,0x00F4CB)

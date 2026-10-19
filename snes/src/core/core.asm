@@ -311,7 +311,20 @@ core_frame_end:
 ; The $80 mirror has the same WRAM/IO mapping as $00 and fast ROM fetches.
 ; Each native RTS goes through the cartridge's RTL at B294, returning to
 ; this bank even if a module's continuation switches back to bank $00.
+core_field_scroll:
+	PHK
+	PER .scroll-1
+	PEA $B294-1
+	JML $80C59F
+.scroll
+	JML $81B033
+
 core_field_actors:
+	PHK
+	PER .prepare-1
+	PEA $B294-1
+	JML $80EB06
+.prepare
 	PHK
 	PER .actors-1
 	PEA $B294-1

@@ -32,8 +32,15 @@ const nmiModules=readFileSync(join(repo,'snes/src/modules.asm'),'utf8').split('m
 for(const [i,n] of nmiModules.entries())spans.push(`{${JSON.stringify('nmi_'+n)},${symbols.get(n)},${symbols.get('modules_field_nmi')+4*(i+1)}}`);
 spans.push('{"nmi_native",49320,49496}'); // C0A8 -> C158
 spans.push(`{"combat_logic",${symbols.get('cb_hook_logic_read')},${symbols.get('cb_hook_logic_read')+17}}`);
-const calls=[0xB08C,0xB0A0,0xB0A3,0xB0A6,0xB0AC,0xB0B2,0xB0B8,0xB0BB,0xB0BF,0xB0C3,0xB0C7,0xB0CA,0xB0D0];
-for(let i=0;i<calls.length-1;i++)spans.push(`{"native_${calls[i].toString(16)}",${calls[i]},${calls[i+1]}}`);
+const fastField=symbols.has('core_field_scroll');
+const calls=[0xB08C,0xB0A0,0xB0A3,0xB0A6,0xB0AC,0xB0B2,0xB0B8,...(fastField?[]:[0xB0BB]),0xB0BF,0xB0C3,0xB0C7,...(fastField?[]:[0xB0CA]),0xB0D0];
+for(let i=0;i<calls.length-1;i++){
+  if(fastField&&calls[i]===0xB0C7){
+    const prepare=symbols.get('core_field_actors_prepare');
+    spans.push(`{"native_b0c7",${calls[i]},${prepare}}`);
+    spans.push(`{"native_b0ca",${prepare},${calls[i+1]}}`);
+  }else spans.push(`{"native_${calls[i].toString(16)}",${calls[i]},${calls[i+1]}}`);
+}
 spans.push(`{"core_tail",${symbols.get('core_frame_end')},${symbols.get('core_event_pump')}}`);
 spans.push('{"native_party0",8451255,8451258}'); // 80:F4B7 -> F4BA
 spans.push('{"native_ai",8452329,8452333}'); // 80:F8E9 -> F8ED

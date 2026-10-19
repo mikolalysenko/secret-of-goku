@@ -15,11 +15,18 @@
 %orig4($C0B073, $01A920E2)
 %hijack_jsl($C0B073, core_field_frame, 4, core)
 
-; Run the native actor/OBJ pass through the FastROM mirror. The outer
+; Run native scrolling and actor/OBJ passes through FastROM.
+; The same low WRAM and I/O mirrors retain the native return contracts.
+%orig4($C0B0B8, $22C59F20)
+%orig3($C0B0BC, $01B033)
+%hijack_jsl($C0B0B8, core_field_scroll, 7, core)
+
+; Run the native actor preparation/OBJ pass through FastROM. The outer
 ; field loop and interrupts keep their original bank and timing contract.
+%orig3($C0B0C7, $EB0620)
 %orig4($C0B0CA, $20B0D320)
 %orig2($C0B0CE, $E38E)
-%hijack_jsl($C0B0CA, core_field_actors, 6, core)
+%hijack_jsl($C0B0C7, core_field_actors, 9, core)
 
 ; Spread companion status/AI/animation across the existing five phases.
 ; The original phase-3 pair is retained while the boy is still native.
@@ -36,10 +43,12 @@ endif
 %hijack_jsl($C0D5CC, $81CD4E, 4, core)
 %orig4($C0E38E, $01E61D22)
 %hijack_jsl($C0E38E, $81E61D, 4, core)
-%orig4($C0B0BB, $01B03322)
-%hijack_jsl($C0B0BB, $81B033, 4, core)
 %orig4($C0B0BF, $01BFE022)
 %hijack_jsl($C0B0BF, $81BFE0, 4, core)
+%orig4($C0B08C, $02C78622)
+%hijack_jsl($C0B08C, $82C786, 4, core)
+%orig4($C0B0C3, $02BAD622)
+%hijack_jsl($C0B0C3, $82BAD6, 4, core)
 
 ; Hot native actor and collision calls (verified instruction sites).
 ; Common death and weapon sheets are already expanded in ROM. Other
