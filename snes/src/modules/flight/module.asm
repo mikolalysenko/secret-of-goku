@@ -301,6 +301,9 @@ assert !fl_wk_s2x == !fl_wk_s1x+6 && !fl_wk_s2t == !fl_wk_s1t+6, "flight: walk s
 !FLC_LANDB  = $0004   ; clear(t, terrain, false) for a terrain its height admits
 !FLC_H1     = $0008   ; height 1 (excludes terrain 2)
 !FLC_H2     = $0010   ; height 2 (excludes terrain 1)
+!FLC_TPSPOT = $0020   ; teleport ground endpoint (height checked separately)
+!FLC_TPPATH = $0040   ; teleport ground corridor, including stairs
+!FLC_TPV    = $0080   ; teleport bits above are known
 !FLC_LOWV   = $0100   ; FLC_LOW is known
 !FLC_LOW    = $0200   ; lowObstacle(t)
 !FLC_BLKV   = $0400   ; FLC_BLK is known

@@ -4,6 +4,28 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES teleport terrain and native upload cost (2026-10-19)
+
+- Combine ordinary ground teleport's landing and descriptor checks in one
+  tile walk, with cached endpoint/path verdicts. Keep pixel queries for
+  airborne targets and floor-hole providers. Both implementations pass
+  the assembled descriptor/cache tests; the optimized code matches all
+  19,996 browser landing queries and 191,964 sweeps across 27 scenes.
+- Run native actor graphics uploads through FastROM and reduce ground
+  tilemap/HUD upload overhead. Preserve the original airborne map/HUD
+  timing after an unrestricted trial regressed sustained flying ki.
+  Ordered hardware writes, RAM and CPU state match the native paths.
+- Long crowded teleport improves 67 → 52 missed frames per 1,200 and
+  charging 80 → 79. Ground punches/ki, corridor flying ki and flying
+  punches remain 2/8/19/5. All 13 short cases and six long repeats have
+  zero palette, meter, OBJ, complete-NMI or graphics-DMA errors. The
+  teleport trial's 38.73-line native-upload spike falls to 36.84 lines.
+  Strict zero-drop crowded gameplay remains open.
+- Passenger/local-flight, world takeoff/landing/controls/ki/radar/map,
+  Goku poses/forms/menus/save/load and core frame/input/OAM/audio/HDMA
+  regressions pass. `FLIGHT_TP_GROUND_SLOW` and `CORE_NATIVE_NMI_SLOW`
+  retain the previous paths for comparisons.
+
 ## SNES word copies for message graphics (2026-10-19)
 
 - Copy large, disjoint native text buffers with descending unrolled

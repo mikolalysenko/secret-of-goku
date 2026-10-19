@@ -116,6 +116,22 @@ checks. The October 19 differential run matches all 19,996 landing queries
 across 27 scenes; the long crowded teleport case improves from 105 to 73
 missed frames out of 1,200, so strict timing is still open.
 
+The follow-up ground query combines landability and teleport's descriptor
+restrictions in a single rectangle walk. Three spare tile-cache bits hold
+the endpoint/path verdicts and their validity; only teleport populates
+them. Height bands remain separate, tile changes and collisions replace
+the entry, and normal cache expiry still applies. Temporary enemy queries
+do not move or fill the hero's movement grid. Airborne targets and maps
+with hole providers retain their original pixel queries.
+
+The assembled descriptor tests cover all flag, movement-code and behaviour
+bytes, both layers, all terrain bands, footprint boundaries, cache
+replacement and interleaving with the flight classifier. A single-cell
+endpoint falls from 1,587 to 1,014 CPU cycles on a cold cache and 1,131 to
+576 when warm. The full 27-scene browser comparison still matches all
+19,996 landings and 191,964 sweeps. `FLIGHT_TP_GROUND_SLOW` restores the
+previous ground implementation for comparisons.
+
 - Pressing L+B (the chord's first frame) while Goku can act picks a target
   among actor slots 3-11 that are active, species < $80 and not the orb $55,
   with HP and not dying (`E191` bit 7), plus a scene's custom foe (Frieza as
@@ -163,9 +179,9 @@ cells never flood fill.
 **Speed** comes from caching, all exact:
 
 - A 64-entry tile cache in SRAM keyed by location *and tile id*: class bits
-  (clear in air / ground base / height), lowObstacle, blocked, air route and
-  whip corridor results. A changed tile gets a fresh entry; results that
-  depend on neighbours expire every 32 frames and on map loads.
+  (clear in air / ground base / height), teleport endpoint/path, lowObstacle,
+  blocked, air route and whip corridor results. A changed tile gets a fresh
+  entry; results that depend on neighbours expire every 32 frames and on map loads.
 - A 3×3 "hero grid" of tile verdicts around Goku, filled lazily and kept
   across movement steps; cells whose tile id changed lose their verdict.
   Footprints inside it are mask tests. When the grid moves one cell over

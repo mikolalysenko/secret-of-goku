@@ -80,11 +80,19 @@ goku_upload_hook:
 .count
 	STA.l $7E0000|!up_flags
 	PLP
+if defined("CORE_NATIVE_NMI_SLOW")
 	JML $019678              ; continue with the girl's tiles
+else
+	JML $819678              ; keep the native uploader in FastROM
+endif
 .native
 	PLP
 	LDA.l $7EE083
+if defined("CORE_NATIVE_NMI_SLOW")
 	JML $0195C0
+else
+	JML $8195C0
+endif
 
 ; C1:E6C4 hook (replaced LDA $7EE180): HUD portrait upload, boy part.
 ; Runs right after an NMI (or in forced blank), M8 X16, D = 0, $00 = VRAM

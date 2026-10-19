@@ -241,6 +241,17 @@ predecoded terrain rows. Core frame, input, OAM,
 VRAM, save, world, lag, HDMA, WRAM and extended-ROM tests pass. The timing
 measurements above describe the older experiment, before those call changes.
 
+The field NMI's native actor graphics uploader also uses bank `$81`,
+including Goku's skip/refresh continuations. Ground tilemap uploads use a
+byte-identical copy of `C0:C692-C7C2` in the core bank, avoiding an RTS bank
+bridge; the following HUD upload uses `$80`. Airborne tilemap/HUD uploads
+retain the original bank timing because the unrestricted trial worsened
+the sustained flying-ki scenario. `CORE_NATIVE_NMI_SLOW` restores all three
+original upload paths. The assembled comparison checks ordered hardware
+writes, RAM, registers and flags across all five phases, actor sizes,
+Goku replacement/refresh states, scrolling layers and both flight states.
+No transfer is omitted or deferred by this change.
+
 While Goku is active, the native party status/AI/animation pass updates the
 girl in phase 4, Goku in phase 3 and the sprite in phase 0. Each still runs
 once in every five completed field frames; movement, collision and drawing

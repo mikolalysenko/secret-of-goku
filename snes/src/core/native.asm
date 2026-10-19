@@ -586,6 +586,38 @@ core_native_hp_request:
 	LDA.b #$00
 	JML $81E32B                  ; original PHA / PLB / wait and redraw
 
+; C0:C148's two native JSRs. The tilemap routine is position independent;
+; keep a byte-identical local copy to avoid its RTS bank bridge. The HUD
+; routine uses bank $80's identical mapping and returns through B294's RTL.
+core_native_field_uploads:
+	; Keep the measured airborne schedule while its CPU peaks remain open.
+	; A is dead here: C692 writes its low byte and C238 replaces both bytes
+	; before either can use it. BIT immediate preserves carry and overflow.
+	LDA.l !RAM_FLIGHT
+	BIT.w #1
+	BNE .air
+	JSR core_native_tilemap_uploads
+	PEA $B294-1
+	JML $80C238
+.air
+	PHK
+	PER .air_hud-1
+	PEA $B294-1
+	JML $00C692
+.air_hud
+	PEA $B294-1
+	JML $00C238
+
+; C0:C692-C7C2 has only internal relative branches, absolute I/O and DP
+; WRAM accesses. Copy the verified cartridge bytes, including the RTS;
+; no graphics transfer or register write is omitted or reordered.
+core_native_tilemap_uploads:
+assert read4($C0C692) == $10C220E2, "native tilemap upload entry changed"
+assert read3($C0C7C0) == $602E64, "native tilemap upload return changed"
+for offset = 0..$0131
+	db read1($C0C692+!offset)
+endfor
+
 ; M16/X16, DB=$80, D=0. Called only after a completed field frame, after
 ; other NMI uploads. Reserve twelve scanlines for the full three-member
 ; retail redraw and restore its DP scratch. It uses no DMA channel.

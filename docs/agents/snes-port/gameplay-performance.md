@@ -418,6 +418,27 @@ worsen from 19/80 to 22/82 misses, despite teleport improving 67 → 64.
 The source retains the three-piece threshold; private results are under
 `small-body/`. Strict crowded timing remains open.
 
+Ground teleport subsequently combines its footprint and descriptor checks
+and caches endpoint/path verdicts without changing the hero's movement
+grid. All 19,996 browser landing queries and 191,964 sweeps still match.
+The long teleport case improves from 67 to 52 misses and the short case
+from 13 to 12. Its changed workload exposes a native upload peak of
+38.73 scanlines; FastROM actor uploads and reduced ground tilemap/HUD
+overhead bring that down to 36.84, with zero complete-NMI overruns.
+
+The unrestricted FastROM tilemap/HUD trial is excluded because sustained
+flying ki rises from 19 to 51 misses. Keeping that path's original airborne
+bank timing preserves 19; charging improves 80 → 79 and ground punches/ki
+and flying punches remain 2/8/5 per 1,200 frames. All 13 short cases and
+six long repeats retain zero palette, meter, OBJ, NMI and graphics-DMA
+errors. Assembled checks compare all descriptor bytes, cache replacement,
+ordered native upload writes and CPU/RAM results. Core, Goku, local flight
+and world/radar regressions pass. Measurements and rejected trials are in
+`teleport-ground/`, with final runs in `final-short`, `compact-uploads-long`
+and `final-rest-long`. The production image matches `compact-uploads.sfc`.
+This checkpoint improves the worst teleport work but does not close the
+strict crowded timing target.
+
 The asynchronous scheduling trials are not in the playable ROM. Deferring companion
 AI improved the long walking/punching/ki/teleport cases from 39/24/47/73
 to 3/3/17/39 misses, but worsened flying ki from 36 to 50. Deferring normal

@@ -647,6 +647,68 @@ fl_tp_candidate:
 	SEC
 	RTS
 
+if not(defined("FLIGHT_TP_GROUND_SLOW"))
+; Teleport's ground class combines landability with its descriptor rules.
+; X = idx, A = cached verdict; height 1/2 excludes terrain 2/1 as usual.
+; Only teleport populates these bits: ordinary flight keeps its existing
+; classifier cost. Tile changes, collisions and expiry use the same cache.
+fl_tp_class:
+	JSR fl_cache_slot
+	BCC .calc
+	BIT.w #!FLC_TPV
+	BEQ .calc
+	RTS
+.calc
+	JSR fl_fetch
+	LDA.w !fl_d_flags
+	AND.w #$000F                ; solid bit or height >= 3 cannot pass
+	CMP.w #3
+	BCS .no
+	JSR fl_tile0_cave
+	BCS .no
+	JSR fl_ferry_gap
+	BCS .no
+	JSR fl_code_ok
+	BCC .no
+	JSR fl_blocked              ; keeps the fetched descriptor
+	BCS .no
+	LDA.w !fl_d_beh
+	BIT.w #$0010
+	BNE .no
+	LDA.w #!FLC_TPV|!FLC_TPPATH
+	STA.w !fl_t2
+	LDA.w !fl_d_flags
+	AND.w #7
+	BEQ .spot
+	CMP.w #1
+	BNE .h2
+	LDA.w !fl_t2
+	ORA.w #!FLC_H1
+	BRA .height
+.h2
+	LDA.w !fl_t2
+	ORA.w #!FLC_H2
+.height
+	STA.w !fl_t2
+.spot
+	LDA.w !fl_d_beh
+	BIT.w #$0080
+	BNE .put
+	LDA.w !fl_d_code
+	AND.w #$00F0
+	CMP.w #$0020
+	BEQ .put
+	LDA.w !fl_t2
+	ORA.w #!FLC_TPSPOT
+	JMP fl_cache_put
+.put
+	LDA.w !fl_t2
+	JMP fl_cache_put
+.no
+	LDA.w #!FLC_TPV
+	JMP fl_cache_put
+endif
+
 ; Connected ground footprints at distances 6,10,... < fl_tp_dist.
 ; The steps overlap on one axis, so their tile sets equal the bounding
 ; rectangle of the first and last footprint. Bounds are convex as well.
@@ -692,7 +754,15 @@ fl_tp_ground_path:
 	CMP.w !fl_t0
 	BCS +
 	STA.w !fl_t0
-+	; Keep bounds on the stack: classification uses fl_t0..fl_t7.
++
+if not(defined("FLIGHT_TP_GROUND_SLOW"))
+	LDA.w #1
+	STA.w !fl_tp_stairs
+; The endpoint and connected path share one rectangle walk. Unlike the
+; hero grid, it never moves or fills a grid for temporary enemy positions.
+fl_tp_ground_rect:
+endif
+	; Keep bounds on the stack: classification uses fl_t0..fl_t7.
 	LDA.w !fl_t1 : PHA           ; col1
 	LDA.w !fl_t3 : PHA           ; row1
 	LDA.w !fl_t0 : PHA           ; col0
@@ -707,9 +777,20 @@ fl_tp_ground_path:
 +	ORA $03,S
 	TAX
 .col
+if defined("FLIGHT_TP_GROUND_SLOW")
 	JSR fl_class
 	BIT.w #!FLC_LANDB
 	BEQ .fail
+else
+	JSR fl_tp_class
+	BIT.w #!FLC_TPPATH
+	BEQ .fail
+	LDY.w !fl_tp_stairs
+	BNE +
+	BIT.w #!FLC_TPSPOT
+	BEQ .fail
++
+endif
 	BIT.w #!FLC_H1|!FLC_H2
 	BEQ .extra
 	AND.w #!FLC_H1
@@ -723,6 +804,7 @@ fl_tp_ground_path:
 	CMP.w #1
 	BEQ .fail
 .extra
+if defined("FLIGHT_TP_GROUND_SLOW")
 	; Same stairs-allowed checks as fl_tp_clear, on the same cells.
 	JSR fl_fetch
 	LDA.w !fl_d_flags
@@ -732,6 +814,7 @@ fl_tp_ground_path:
 	LDA.w !fl_d_beh
 	AND.w #$0010
 	BNE .fail
+endif
 	TXA
 	AND.w #$007F
 	CMP $07,S
@@ -799,6 +882,24 @@ fl_tp_clear:
 	LDA.l !fl_tp_e_terr
 	AND.w #$0003
 	STA.w !fl_q_t
+if not(defined("FLIGHT_TP_GROUND_SLOW"))
+	; Hole providers and airborne targets still need the original pixel
+	; queries. Plain ground can answer all requirements in one tile pass.
+	LDA.l !fl_tp_e_air
+	BNE .normal
+	LDA.w !fl_mflags
+	AND.w #!FLM_HOLES
+	BNE .normal
+	LDA $DC
+	CMP.w !fl_map
+	BNE .normal
+	JSR fl_fp_bounds
+	BCS +
+	RTS
++	JSR fl_fp_rect
+	JMP fl_tp_ground_rect
+.normal
+endif
 	LDA.w !fl_q_x : PHA
 	LDA.w !fl_q_y : PHA
 	JSR fl_can_land
