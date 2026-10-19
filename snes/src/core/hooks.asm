@@ -113,6 +113,13 @@ if not(defined("CORE_NATIVE_AI_RANDOM_SLOW"))
 %hijack($C116F4, core_native_ai_random, 4, core)
 endif
 
+if not(defined("CORE_NATIVE_VISIBLE_SLOW"))
+%orig4($C10537, $C9034320)
+%hijack($C10537, core_native_visible, 6, core)
+%orig4($C10562, $C9034320)
+%hijack($C10562, core_native_target_visible, 6, core)
+endif
+
 if not(defined("CORE_NATIVE_SPRITES_SLOW"))
 ; Body/weapon anchor path only. Calls directly into E640 (shadows and
 ; smaller attachments) retain the original emitter without an entry probe.

@@ -8,22 +8,45 @@ combat is not yet guaranteed to run without missed video frames.
 
 ## Current checkpoint
 
-The latest 1,200-video-frame runs use the FX cache build in
-`.local/snes-test/fx-wide-hash/game.sfc`. All rendering and hardware
+The latest 1,200-video-frame runs use the native visibility build in
+`.local/snes-test/target-visible/game.sfc`. All rendering and hardware
 checks pass; flight, teleport and charging still miss frames.
 
 | Scenario | Missed frames | Longest field update (scanlines) |
 | --- | ---: | ---: |
 | Ground punches | 0 | 237.39 |
 | Ground ki | 0 | 237.94 |
-| Flying ki, corridor | 13 | 252.18 |
-| Flying punches | 1 | 280.58 |
-| Teleports | 15 | 281.39 |
-| Charge and release | 44 | 274.97 |
+| Flying ki, corridor | 13 | 251.60 |
+| Flying punches | 1 | 280.53 |
+| Teleports | 15 | 280.38 |
+| Charge and release | 41 | 276.95 |
 
 The measurements below preserve the history of this review; their earlier
 counts are not the current release result. Passing a normal gameplay run
 does not imply zero-drop timing for every case.
+
+### Native target visibility follow-up
+
+The two native visibility checks inline their height subtraction after
+the active/self/horizontal rejection tests. They keep the original
+carry/overflow, decimal arithmetic, CPU widths and comparison results.
+Rejected actors take the original path without an added bank handoff.
+The visible-target examples fall 95 → 79 and 124 → 108 CPU cycles; all
+147,874 assembled comparisons retain complete CPU context and live RAM.
+
+Short charging improves 30 → 22 misses per 240 video frames, and long
+charging improves 44 → 41 per 1,200. Other short/long counts stay unchanged.
+The longest charging update changes 274.97 → 276.95 scanlines as the
+input/actor schedule changes, so fewer misses do not imply a lower worst
+case. All gameplay hardware/rendering checks remain clean. Results are
+under `.local/snes-test/target-visible/`. Ten combat reference comparisons,
+six local-flight checks (including passengers), all 14 available world/
+radar/map checks and native frame/party cadence checks pass. The production
+ROM matches the measured candidate byte for byte.
+
+A separate body-cursor batching trial passed its native sprite comparisons
+but did not improve long missed-frame counts; it is excluded. Its private
+patch and measurements remain under `.local/snes-test/body-cursor/`.
 
 ### FX residency lookup and reset follow-up
 

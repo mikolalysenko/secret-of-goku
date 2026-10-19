@@ -4,6 +4,22 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES native target visibility (2026-10-19)
+
+- Inline the height subtraction in the two native target-visibility checks,
+  retaining the original flags, decimal arithmetic, self exclusion, status
+  checks and target selection. Visible-target examples save 16 CPU cycles;
+  early rejections incur no additional work.
+- All 147,874 assembled comparisons and the short/long gameplay hardware
+  checks pass. Charging improves 30 → 22 misses per 240 frames and 44 → 41
+  per 1,200; other counts stay unchanged. The charge peak changes
+  274.97 → 276.95 scanlines. Strict crowded zero-drop timing remains open.
+- Ten combat comparisons, six local-flight checks, all 14 available world/
+  radar/map cases and native frame/party cadence checks pass. Rebuild the
+  production ROM to match the tested candidate byte for byte.
+- Exclude a body-cursor batching trial: it passed native sprite comparisons
+  but did not reduce long missed-frame counts.
+
 ## SNES effect cache setup (2026-10-19)
 
 - Expand resident-cell hints to 128 buckets in unused work SRAM and avoid

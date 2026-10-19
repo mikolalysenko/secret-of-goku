@@ -2,6 +2,26 @@
 
 incsrc "core-math/data.asm"
 
+; Native target visibility. Inline the height subtraction only after the
+; active/self/horizontal tests pass. CMP replaces the height helper's N/Z,
+; while PHP/PLP retains its C/V and width contract. Rejected actors do not
+; pay for a bank handoff. Both call sites enter with M16.
+macro core_native_visible_height(name, continuation)
+<name>:
+	PHP
+	LDA.w $0045,X
+	AND.w #$00FF
+	EOR.w #$FFFF
+	INC
+	CLC
+	ADC.w $0022,X
+	PLP
+	CMP.w #224
+	JML <continuation>
+endmacro
+%core_native_visible_height(core_native_visible, $C1053D)
+%core_native_visible_height(core_native_target_visible, $C10568)
+
 ; C0:5AA7: a status-effect request with no bits set emits no commands.
 ; Avoid sixteen empty bit tests while retaining the original scratch,
 ; A/C/V and saved-register epilogue. Nonempty masks use the retail loop.
