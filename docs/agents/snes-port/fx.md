@@ -245,6 +245,16 @@ is never modified. A class with no free palette is not drawn that frame;
 Potos leaves two free palettes, so the usual pairs (BLUE + GOLD for a
 Super Saiyan beam, FIRE alone for explosions) fit.
 
+The occupied native OAM groups use an unrolled reverse scan, with the
+same conservative rounding to four sprites and separate staged-front
+scan. An 80-sprite scan costs 1,308 CPU cycles versus 1,829 for the corrected
+loop (`FX_PALSCAN_SLOW=1`). The old loop failed to clear accumulator B after
+its cursor reached `$100`: byte `TAX` then indexed past the palette-marker
+table and missed palettes used after sprite 64. Both paths now keep B zero.
+`palette-scan.test.mjs` compares every cursor boundary, palette subset,
+front group and tight-vblank case with a corrected loop and an independent
+palette-set model, including palettes first appearing after sprite 64.
+
 **OAM**: one 16×16 OBJ per cell (field OBJSEL `$63`). Most sprites go behind
 the natives through the core's module area; front sprites (impact sparks,
 the charge orb, ki heads) are staged in the core's front list (at most 12).

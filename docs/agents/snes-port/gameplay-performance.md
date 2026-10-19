@@ -8,18 +8,18 @@ combat is not yet guaranteed to run without missed video frames.
 
 ## Current checkpoint
 
-The latest 1,200-video-frame runs use the default airborne-attribute build in
-`.local/snes-test/goku-air-attr/final.sfc`. All rendering and hardware
+The latest 1,200-video-frame runs use the default FX palette-scan build in
+`.local/snes-test/fx-palscan/final.sfc`. All rendering and hardware
 checks pass; flight, teleport and charging still miss frames.
 
 | Scenario | Missed frames | Longest field update (scanlines) |
 | --- | ---: | ---: |
-| Ground punches | 0 | 239.68 |
-| Ground ki | 0 | 239.36 |
-| Flying ki, corridor | 19 | 271.32 |
-| Flying punches | 1 | 287.40 |
+| Ground punches | 0 | 239.04 |
+| Ground ki | 0 | 238.86 |
+| Flying ki, corridor | 13 | 252.18 |
+| Flying punches | 1 | 287.01 |
 | Teleports | 14 | 312.24 |
-| Charge and release | 44 | 275.61 |
+| Charge and release | 44 | 274.93 |
 
 The measurements below preserve the history of this review; their earlier
 counts are not the current release result. Passing a normal gameplay run
@@ -784,6 +784,19 @@ ki improves 20 → 19 (peak 272.67 → 271.32 lines); other counts stay unchange
 with zero hardware/rendering errors. Artifacts are under
 `.local/snes-test/goku-air-attr/`; `final.sfc` matches `game.sfc` byte for byte.
 Strict crowded timing remains open.
+
+The FX palette scan now enters an unrolled sequence at the occupied OAM
+group. The differential test also exposed a correctness bug in the old
+loop: its 16-bit cursor update retained accumulator B after sprite 64,
+so byte `TAX` wrote past the marker table and overlooked later palettes.
+The new path and the comparison loop both keep B zero. An 80-sprite scan
+falls 1,829 → 1,308 CPU cycles against that corrected reference. All cursor,
+palette, front-group and buffer comparisons pass, along with all 18 FX
+assembly checks, gallery, beam/aura pixels, debris, local flight and world
+tests. Long flying ki improves 19 → 13 misses (peak 271.32 → 252.18 lines);
+other short/long counts stay unchanged, with zero hardware/rendering errors.
+Artifacts are under `.local/snes-test/fx-palscan/`, and the default final ROM
+matches the measured candidate. Strict crowded timing remains open.
 
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's

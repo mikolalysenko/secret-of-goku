@@ -4,6 +4,21 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES crowded sprite palette scan (2026-10-19)
+
+- Fix the FX palette scan after native sprite 64: the loop's 16-bit cursor
+  left a high accumulator byte in byte-to-index transfers, writing beyond
+  its marker table and overlooking later palettes. Keep that byte zero.
+- Enter an unrolled scan at the occupied OAM group, preserving conservative
+  stale-slot and staged-front-sprite handling. An 80-sprite scan falls
+  1,829 → 1,308 CPU cycles against the corrected reference loop.
+- All cursor/palette/buffer comparisons, 18 assembled FX checks, gallery,
+  beam/aura pixel checks, debris, local flight and world/radar/map checks
+  pass. Short/long gameplay retains zero hardware/rendering errors.
+- Long flying ki improves 19 → 13 misses per 1,200 frames and its peak
+  falls 271.32 → 252.18 scanlines. Other counts remain unchanged; strict
+  crowded zero-drop timing is still open.
+
 ## SNES airborne body attributes (2026-10-19)
 
 - Use flight's fixed OBJ palette 1 and priority 3 before scanning native
