@@ -314,6 +314,22 @@ assembled helpers' registers, flags and live RAM for every limit/index,
 cycles. This reduces overhead without imposing a new rejection limit.
 `-DCORE_NATIVE_AI_RANDOM_SLOW=1` restores the original entry.
 
+`C1:E05A` copies the native actor palette's fifteen words to `$0700,Y`
+and `$DF00,Y` using constant offsets. Its saved X/Y are restored by the
+original epilogue; narrow indexes, index wrap and unusual counts retain
+the original loop. `palette.test.mjs` checks every species and party
+status, both mirrors, register/flag contracts and boundary fallbacks.
+A representative full helper falls 618 → 398 CPU cycles;
+`CORE_NATIVE_PALETTE_SLOW` restores the original copy.
+
+`C0:5AA7` skips sixteen empty bit tests when a status-effect request's
+mask is zero. It preserves the original scratch `$B6/$CC/$D0`, A/C/V
+and saved-register epilogue. Nonempty masks retain the original loop.
+`status-empty.test.mjs` compares every nonempty mask at that continuation
+and empty masks across CPU flags, direct pages and data banks. The empty
+scan falls 478 → 65 CPU cycles. `CORE_NATIVE_STATUS_EMPTY_SLOW` restores
+retail. Neither replacement changes palette colors or status effects.
+
 Native message graphics use exact replacements at `C0:14C6`, `C0:15B9`
 and `C0:162C`. The first copies disjoint WRAM blocks with interruptible
 word copies (64–896 bytes) or MVN (smaller copies). The second combines

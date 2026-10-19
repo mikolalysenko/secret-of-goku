@@ -548,6 +548,17 @@ comparisons, Goku rendering/menus/save/load and local flight checks pass.
 Private measurements are under `.local/snes-test/goku-division/`; this
 removes avoidable pose cost rather than solving the larger native spikes.
 
+The native actor palette's fixed copy and an empty status-effect mask
+scan are subsequently shortened without changing their output. The
+short charging case's native status peak falls 67.67 → 64.41 scanlines;
+long ground punch/ki/flying-punch logic peaks fall 261.22/286.26/310.58
+to 258.00/283.03/307.28. Miss counts remain 1/3/20/3/54/66. The 13 short
+and six long cases keep zero hardware/rendering errors; core, Goku,
+FX/aura, passengers/local flight and world/radar/map checks pass.
+Measurements are under `.local/snes-test/native-palette/`; the reference
+instruction profile is `status-hot/cycles-span/`. The larger beam and
+native actor spikes still prevent strict crowded zero-drop timing.
+
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's
 virtual combat targets are wired, and FastROM is the default. The carried

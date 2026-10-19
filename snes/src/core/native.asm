@@ -2,6 +2,59 @@
 
 incsrc "core-math/data.asm"
 
+; C0:5AA7: a status-effect request with no bits set emits no commands.
+; Avoid sixteen empty bit tests while retaining the original scratch,
+; A/C/V and saved-register epilogue. Nonempty masks use the retail loop.
+core_native_status_empty:
+	REP #$20
+	LDA $D8
+	BNE .native
+	LDA.w #$FFFF
+	STA $D0
+	STZ $CC
+	SEP #$20
+	LDA.b #$C0
+	STA $B6
+	REP #$20
+	LDA.w #1
+	CLV
+	SEC
+	JML $C05AC7
+.native
+	LDA.w #15
+	JML $C05AAC
+
+; C1:E05A: the actor palette's fixed fifteen-word copy. X/Y are restored
+; immediately afterwards, so offset operands replace their increments.
+; Retain the original loop for narrow indexes, unusual counters or index
+; wrap; only its usual full copy takes the straight-line path.
+core_native_palette:
+	PHP
+	LDA $01,S
+	BIT.w #$0010
+	BNE .native
+	CPX.w #$FFE4
+	BCS .native
+	CPY.w #$FFE4
+	BCS .native
+	LDA $00
+	CMP.w #15
+	BEQ .copy
+.native
+	PLP
+	LDA.l $C81000,X
+	STA.w $0700,Y
+	JML $81E061
+.copy
+	PLP
+	for word = 0..15
+		LDA.l $C81000+(!word*2),X
+		STA.w $0700+(!word*2),Y
+		STA.w $DF00+(!word*2),Y
+	endfor
+	STZ $00
+	JML $81E06C
+
 ; C1:16F4 selects 0..(script argument & 15) by rejecting random nibbles.
 ; Keep the exact RNG draws/state and result, but inline the byte generator
 ; inside that loop instead of repeating its three wrapper stack frames.

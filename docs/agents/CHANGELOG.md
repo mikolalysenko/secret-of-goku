@@ -4,6 +4,24 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES native palette and empty status work (2026-10-19)
+
+- Copy the native actor palette's fifteen words directly to both WRAM
+  mirrors, avoiding repeated index/counter updates. Preserve the original
+  loop for narrow indexes, index wrap and unusual counts. Skip the native
+  status-effect bit scan when its mask is empty, retaining its scratch,
+  flags and saved-register epilogue. Nonempty masks keep the retail loop.
+- Assembled checks compare all palette species/party-status combinations,
+  CPU contexts, boundaries and all 65,535 nonempty masks against retail.
+  Representative palette/empty-scan costs fall 618 → 398 and 478 → 65
+  CPU cycles. The crowded charge case's native status peak falls
+  67.67 → 64.41 scanlines; ground punch/ki peaks fall by about 3.2 lines.
+- All 13 short and six long gameplay cases retain zero palette, meter,
+  OBJ, complete-NMI, graphics-DMA and duplicate-work errors. Core, Goku
+  rendering/forms/menus/save/load, FX/aura, passengers/local flight and
+  world/radar/map checks pass. Long counts remain 1/3/20/3/54/66 per 1,200
+  frames, so the strict crowded zero-drop target remains open.
+
 ## SNES Goku pose division (2026-10-19)
 
 - Return immediately when a pose dividend is smaller than its divisor,

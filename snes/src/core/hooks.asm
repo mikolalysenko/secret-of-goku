@@ -78,6 +78,19 @@ endif
 %orig1($C1E32A, $00)
 %hijack($C1E326, core_native_hp_request, 5, core)
 
+; The native actor palette always copies fifteen words into both mirrors.
+if not(defined("CORE_NATIVE_PALETTE_SLOW"))
+%orig4($C1E05A, $C81000BF)
+%orig3($C1E05E, $070099)
+%hijack($C1E05A, core_native_palette, 7, core)
+endif
+
+if not(defined("CORE_NATIVE_STATUS_EMPTY_SLOW"))
+%orig4($C05AA7, $0FA920C2)
+%orig1($C05AAB, $00)
+%hijack($C05AA7, core_native_status_empty, 5, core)
+endif
+
 ; Native message graphics: copy the same WRAM bytes with interruptible MVN.
 if not(defined("CORE_NATIVE_TEXT_SLOW"))
 %orig4($C00754, $8DA165AD)
