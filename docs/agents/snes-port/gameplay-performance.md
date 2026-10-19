@@ -515,6 +515,17 @@ core, Goku, FX, local flight and world/radar regressions pass. These are
 CPU reductions, not a zero-drop result. Private measurements are under
 `.local/snes-test/passenger-target/` (`fx-direction-*`).
 
+An exact inline replacement for AI's random-choice rejection loop then
+reduces the long six-case total from 157 to 141 misses. The resulting
+punch/ki/flying-ki/flying-punch/teleport/charge counts are 1/3/20/3/48/66;
+the prior counts were 2/2/35/3/52/63. Ground ki and charge become slightly
+worse as changed missed-frame timing alters later input and actor work.
+All short/long hardware and gameplay checks, core services, Goku menus
+and save/load, local passengers/flight, world/radar/map regressions pass.
+The helper itself preserves every random draw and reduces a tested
+68-draw sequence from 14,569 to 4,487 CPU cycles. Measurements are under
+`.local/snes-test/ai-random/`. Crowded zero-drop timing remains open.
+
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's
 virtual combat targets are wired, and FastROM is the default. The carried

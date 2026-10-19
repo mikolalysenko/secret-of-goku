@@ -2,6 +2,70 @@
 
 incsrc "core-math/data.asm"
 
+; C1:16F4 selects 0..(script argument & 15) by rejecting random nibbles.
+; Keep the exact RNG draws/state and result, but inline the byte generator
+; inside that loop instead of repeating its three wrapper stack frames.
+; The native RNG's index, 15 state bytes and $03CC scratch are unchanged.
+; Decimal and eight-bit-index callers retain the original routine.
+core_native_ai_random:
+	PHD
+	PHP
+	REP #$20
+	LDA $01,S
+	BIT.w #$0018
+	BEQ .fast
+	JML $C116F8
+.fast
+	PHB
+	TSC
+	TCD
+	SEP #$20
+	PHY
+	LDX.w $0144,Y
+	LDA.l $D04F16,X
+	AND.b #$0F
+	BEQ .done
+	STA $01
+	PHX
+	PHB
+	LDA.b #$7E
+	PHA
+	PLB
+	SEP #$10
+.roll
+	LDX.w $03F0
+	LDA.w $03F1,X
+	STA.w $03CC
+	DEX
+	BPL +
+	LDX.b #14
++	LDA.w $03F1,X
+	CLC
+	ADC.w $03CC
+	STA.w $03F1,X
+	XBA
+	INC.w $03F0
+	LDA.b #15
+	CMP.w $03F0
+	BNE +
+	STZ.w $03F0
++	XBA
+	AND.b #$0F
+	CMP $01
+	BEQ .accepted
+	BCS .roll
+.accepted
+	REP #$10
+	PLB
+	PLX
+.done
+	PLY
+	STA $01,S
+	PLA
+	PLP
+	PLD
+	JML $C1171C
+
 ; C1:0358: classify the screen-space distance between actors X/Y, subtracting
 ; their individual heights first. The lookup retains the retail unsigned
 ; absolute differences, inclusive radius thresholds and wrapped square sum.

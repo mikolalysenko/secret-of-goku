@@ -4,6 +4,24 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES native AI random-choice overhead (2026-10-19)
+
+- Inline the native byte generator inside AI's random-nibble rejection
+  loop instead of rebuilding three wrapper stack frames for each draw.
+  Keep every rejected draw, RNG state/scratch byte, result and CPU return
+  contract; decimal and eight-bit-index callers retain the original path.
+- Assembled differential checks cover all 16 limits, all 15 RNG indexes,
+  131 seed states and CPU-state fallbacks. One draw falls 284 → 185 CPU
+  cycles; the longest tested sequence (68 draws) falls 14,569 → 4,487.
+- Six long gameplay repeats total 157 → 141 misses: punches/ki/flying
+  ki/flying punches/teleport/charge become 1/3/20/3/48/66 per 1,200 frames,
+  versus 2/2/35/3/52/63. Timing changes alter subsequent input/workload;
+  ground ki and charge are slightly worse, so this is not a uniform gain
+  or the final zero-drop result. All 13 short and six long cases retain
+  zero palette, meter, OBJ, complete-NMI, graphics-DMA and duplicate-work
+  errors. Core, Goku menus/save/load, local passengers/flight and world
+  controls/radar/map checks pass.
+
 ## SNES repeated AI and effect work (2026-10-19)
 
 - Replace native pursuit-direction classification with an exact byte

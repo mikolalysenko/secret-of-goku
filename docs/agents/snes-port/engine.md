@@ -303,6 +303,17 @@ decimal callers are compared at the unchanged retail continuation before
 its original stack arithmetic. A representative call falls 367 → 291 CPU
 cycles. `-DCORE_NATIVE_DIRECTION_SLOW=1` restores the original entry.
 
+`C1:16F4` retains AI's random-nibble rejection sampler but inlines the
+native byte generator within the loop. The RNG index/state at `$03F0-03FF`
+and scratch `$03CC` receive exactly the same writes; no draws are skipped
+and the distribution is unchanged. The DB/index-width setup and register
+saves occur once rather than through three wrappers per rejection. Decimal
+and eight-bit-index callers keep retail. `ai-random.test.mjs` compares the
+assembled helpers' registers, flags and live RAM for every limit/index,
+131 seed states and CPU fallbacks. A 68-draw case falls 14,569 → 4,487 CPU
+cycles. This reduces overhead without imposing a new rejection limit.
+`-DCORE_NATIVE_AI_RANDOM_SLOW=1` restores the original entry.
+
 Native message graphics use exact replacements at `C0:14C6`, `C0:15B9`
 and `C0:162C`. The first copies disjoint WRAM blocks with interruptible
 word copies (64–896 bytes) or MVN (smaller copies). The second combines
