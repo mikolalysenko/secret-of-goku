@@ -20,7 +20,7 @@ The older module profile is retained under [Cost](#cost); remaining
 integration work is under
 [Remaining](#remaining).
 
-## Behaviour (as the browser)
+## Behaviour
 
 - **A + direction** flies at 6 px/frame (8 in Super Saiyan; diagonals
   `round(v·√½)`), never more than 14 px per axis per video frame, inside the
@@ -37,11 +37,15 @@ integration work is under
   Goku cannot land; walls, map edges, rock caps, layer changes and event
   cells stay native. A blocked sweep gives the native collision one pixel per
   axis per step.
-- Airborne Goku ignores stair guidance and currents (2x/3x movement codes),
-  the leader tether (companions are dragged to 36×26 / 56×40 boxes instead),
-  adopts the floor height under a complete landing, carries CPU companions
-  over long gaps (ferry, dungeon air, the Beast's sky) and gathers them after
-  a crossing of 24 px or more. A Goku embedded in a wall or outside the map
+- Airborne Goku ignores stair guidance and currents (2x/3x movement codes)
+  and the leader tether, and adopts the floor height under a complete
+  landing. The cartridge carries CPU companions during all local flight:
+  they share his position and terrain, pause ground AI, movement, contacts
+  and rendering, then resume after landing. Their actor slots remain active
+  and native status/timer updates continue. Human-controlled companions,
+  menus, map loads and scripted ownership retain native handling. This
+  differs from the browser's trailing companions and reduces airborne CPU
+  work. Crossings of 24 px or more also gather the party. A Goku embedded in a wall or outside the map
   returns to the last verified landing (else the nearest landable point of a
   ±128 px grid, in the browser's order) and the camera follows.
 - On the four opening-path maps (128-131) an airborne Goku moving out
@@ -59,8 +63,7 @@ integration work is under
   every door since entering the room, takes it through the story's
   flight-door event 07A (flight answers its `SANDSHIP_DOOR` query); a Goku
   left standing where he cannot land for eight frames (a breached wall)
-  lifts into a hover. Carried CPU companions (the Beast's sky, the ferry
-  gap, dungeon air) are listed in `!fl_passengers` for hiding.
+  lifts into a hover. Carried CPU companions are listed in `!fl_passengers`.
 - The Mana Beast's Mode 7 arena allows flight only inside X 184-408,
   Y 292-432, and no step there scrolls the camera.
 - On foot the A button never reaches the game (it is the speed modifier, not

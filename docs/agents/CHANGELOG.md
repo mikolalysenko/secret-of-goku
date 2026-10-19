@@ -4,6 +4,22 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES carried companions during local flight (2026-10-19)
+
+- Carry CPU companions during all local flight, as requested. Keep their
+  actor slots and native status timers active while pausing ground AI,
+  movement, contacts and sprites. Landing resumes their normal updates;
+  live controller changes, events, menus, loads and scene locks override
+  a stale carry mask. Remove stale enemy contact distances on takeoff.
+- Strict build, carry-gate machine-code checks, flight passenger/water/
+  teleport/whip/scene, core frames/party/input/OAM/lag/HDMA and Goku field/
+  status/forms pass. All 13 gameplay cases retain zero palette, meter,
+  sprite-limit and vblank errors.
+- Over 1,200 frames, flying ki improves from 429 to 35 CPU misses and
+  flying punches from 53 to 3. Teleport has 129 and charging 166 misses;
+  crowded combat still fails strict timing. This is a validated flight
+  improvement, with the zero-drop performance goal still open.
+
 ## SNES remaining field FastROM paths (2026-10-19)
 
 - Run the native background-scroll and actor-preparation passes, plus two

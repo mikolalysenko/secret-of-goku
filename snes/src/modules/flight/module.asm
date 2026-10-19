@@ -99,7 +99,7 @@ assert !RAM_FLIGHT == $7E0000|!FLIGHT_RAM, "!FLIGHT_RAM must match !RAM_FLIGHT"
 !fl_lastmap    = !FLIGHT_RAM+$66   ; word: map of the last field frame
 !fl_lasttick   = !FLIGHT_RAM+$68   ; word: core tick of the last field frame
 !fl_magic      = !FLIGHT_RAM+$6A   ; word: !FL_MAGIC once the SRAM work area was initialised
-!fl_passengers = !FLIGHT_RAM+$6C   ; word: carried CPU companions to hide (bit 0 $E200, bit 1 $E400)
+!fl_passengers = !FLIGHT_RAM+$6C   ; word: carried CPU companions (bit 0 $E200, bit 1 $E400)
 !fl_speed      = !FLIGHT_RAM+$6E   ; word: configured speed for the next steps
 !fl_gap        = !FLIGHT_RAM+$70   ; word: whip-pad crossing active (map+1), 0 none
 !fl_quiet_why  = !FLIGHT_RAM+$72   ; word: why flight is quiet: 0 Goku out of play, $FFFF off the native field, else fl_quiet_addr index

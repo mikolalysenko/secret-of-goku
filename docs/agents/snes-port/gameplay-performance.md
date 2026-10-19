@@ -246,6 +246,18 @@ zero-drop target is still open. Results: `combat-graphics-fast` and
 
 ## Validation and remaining work from Claude's notes
 
+The subsequent carried-companion checkpoint implements the requested SNES
+flight rule: CPU companions ride Goku, retain status/timer updates and
+resume ground AI, contacts, movement and rendering after landing. Human
+ownership and live scene/menu/load locks take precedence. Machine-code
+gate checks and controller-driven passenger/landing checks pass, along
+with core party cadence, flight regressions and Goku status/forms. All
+13 gameplay cases keep zero palette/meter/OBJ/NMI errors. The 1,200-frame
+flight repeats improve from 429/53 misses to 35/3 for ki/punches. Teleport
+and charging remain at 129/166; strict crowded-combat timing is still open.
+Measurements: `.local/snes-test/combat-carry-guarded/` and
+`.local/snes-test/combat-carry-all/`.
+
 The terrain optimization matches the browser on 289,324 tile comparisons,
 19,996 teleport landing queries and 191,964 movement sweeps. Goku's packed
 cells match every source byte; native animations and API poses match the

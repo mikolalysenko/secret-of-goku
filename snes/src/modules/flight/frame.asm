@@ -1198,6 +1198,9 @@ fl_decide:
 
 ; Requests to Goku, the A mask and the hook work for the next frame.
 fl_publish:
+	; Carry CPU companions from the first published flight frame, including
+	; ordinary ground. Human players and native scene ownership keep control.
+	JSR fl_passengers_sync
 	; charging (mod.charging): combat's state (combat_api_state bit 1) or a
 	; request in fl_charging, else the L+Y test stand-in
 	SEP #$20
@@ -1473,10 +1476,9 @@ fl_cache_age:
 	RTS
 
 ; ---------------------------------------------------------------------------
-; settle() (native-local-flight.js): companions trail an airborne Goku,
-; crossings adopt the far floor's height, the last verified landing is kept,
-; long gaps carry the party, and a Goku left inside a wall or outside the
-; map returns to safe ground.
+; settle() (native-local-flight.js): crossings adopt the far floor's height,
+; the last verified landing is kept, and a Goku left inside a wall or outside
+; the map returns to safe ground. Publish gathers the carried companions.
 fl_settle:
 	STZ.w !fl_passengers
 	LDA.w !fl_state
@@ -1528,9 +1530,6 @@ fl_settle:
 	LDA.w #$0000
 	ROL
 	PHA                          ; [elig] = phasing && eligible
-	BEQ .nofollow
-	JSR fl_follow
-.nofollow
 	; anchor / crossing belong to this map
 	LDA.l !fl_anchor
 	CMP $DC
@@ -1609,13 +1608,7 @@ fl_settle:
 	LDA $01,S
 	BNE .done                    ; still between whip pads
 .landed
-	; passengers over the Beast's deck (beastArena())
-	LDA $03,S
-	BEQ +
-	JSR fl_beast_arena
-	BCC +
-	JSR fl_passengers_set
-+	LDA.l !fl_crossing
+	LDA.l !fl_crossing
 	CMP.w #$FFFF
 	BEQ .anchor
 	LDA.l !fl_crossing+6         ; layer
@@ -1649,25 +1642,11 @@ fl_settle:
 	BNE .carry
 	JSR fl_crossing_from_anchor
 .carry
-	; the Beast's open sky and long gaps carry the CPU companions
+	; All local flight carries the party; publish gathers after recovery.
 	JSR fl_beast_arena
-	BCC .gaps
-	JSR fl_passengers_set
-	JSR fl_hero_fly
-	BCC .gaps
-	JSR fl_gather_here
-	BRA .done
-.gaps
-	JSR fl_hero_tile
-	BCS .recover_check
-	JSR fl_fetch
-	JSR fl_ferry_gap
-	BCS .carried
-	JSR fl_dungeon_air
 	BCC .recover_check
-.carried
-	JSR fl_passengers_set
-	JSR fl_gather_here
+	JSR fl_hero_fly
+	BCS .done                    ; valid Mode 7 sky has no field collision grid
 .recover_check
 	; outside the map, or embedded in a solid cell that is not a low obstacle
 	LDA $E002
@@ -1734,51 +1713,6 @@ fl_hero_tile:
 	SEC
 	RTS
 
-; follow(): CPU companions trail an airborne Goku inside the boxes the
-; native tether keeps on screen (girl 36x26, sprite 56x40).
-fl_follow:
-	LDX.w #$0200
-	LDA.w #36
-	LDY.w #26
-	JSR fl_follow_one
-	LDX.w #$0400
-	LDA.w #56
-	LDY.w #40
-	; fall through
-fl_follow_one:
-	STA.w !fl_t0                 ; rx
-	STY.w !fl_t1                 ; ry
-	LDA.l $7EE000,X
-	AND.w #$0001
-	BEQ .skip
-	LDA.l $7EE02C,X
-	AND.w #$0001
-	BNE .skip                    ; player-controlled
-	; nx = clamp(fx, x - rx, x + rx)
-	LDA $E002
-	SEC
-	SBC.w !fl_t0
-	STA.w !fl_t2                 ; lo
-	LDA $E002
-	CLC
-	ADC.w !fl_t0
-	STA.w !fl_t3                 ; hi
-	LDA.l $7EE002,X
-	JSR fl_clamp_signed
-	STA.l $7EE002,X
-	LDA $E004
-	SEC
-	SBC.w !fl_t1
-	STA.w !fl_t2
-	LDA $E004
-	CLC
-	ADC.w !fl_t1
-	STA.w !fl_t3
-	LDA.l $7EE004,X
-	JSR fl_clamp_signed
-	STA.l $7EE004,X
-.skip
-	RTS
 ; A = clamp(A, fl_t2, fl_t3), signed (Math.max/min; values are map pixels
 ; +- a few hundred, so differences never overflow)
 fl_clamp_signed:
@@ -2023,11 +1957,25 @@ fl_recover:
 .none
 	RTS
 
-; passengers (native-local-flight.js): while Goku flies (eligible) over the
-; Beast's sky, the ferry gap or dungeon air, the CPU companions he carries
-; are hidden (sprite-layer.js hides their body, attachment and shadow
-; cells). Set by settle where it decides the carry; !fl_passengers bit 0 =
-; $E200, bit 1 = $E400, for the sprite owner.
+; Local flight carries CPU companions. Keep their actor records active so
+; native status timers, healing, menus and scenes still work. Movement,
+; contacts, AI/animation and OBJ hooks use this mask until landing.
+fl_passengers_sync:
+	STZ.w !fl_passengers
+	LDA.w !fl_state
+	AND.w #!FLS_ON|!FLS_FLY|!FLS_CAN
+	CMP.w #!FLS_ON|!FLS_FLY|!FLS_CAN
+	BNE .done
+	LDA $D0
+	ORA $FF
+	AND.w #$00FF
+	BNE .done
+	JSR fl_passengers_set
+	JMP fl_gather_here
+.done
+	RTS
+
+; !fl_passengers bit 0 = $E200, bit 1 = $E400.
 fl_passengers_set:
 	SEP #$20
 	LDA $E200

@@ -640,7 +640,7 @@ fl_hook_d359:
 ; 00:D9AE / 00:DA34 (replaced SEP #$20 / LDA $E000,X): the leader tether.
 ; A step that would push a companion out of the middle of the screen
 ; cancels the leader's velocity on that axis; an airborne Goku returns at
-; the routine's RTS instead and drags the companions along (fl_follow).
+; the routine's RTS instead; the published flight frame gathers companions.
 fl_hook_d9ae:
 	SEP #$20
 	LDA $10
@@ -780,15 +780,16 @@ fl_walk_holes:
 	LDA $1F
 	AND.w #$00FF
 	BRA .ystep
-; Native actor OBJ entry (M8/X16, DB=$7E). Settle publishes the passengers
-; for this render. Check the current player assignment too: a second player
-; must never disappear because of the previous frame's passenger mask.
-fl_hook_passenger:
-	SEP #$20
+; C set for a CPU companion carried by the current local flight. M8/X16,
+; DB=$7E, D=0; preserves X/Y. Check live ownership, event/load state and map
+; as well as the published mask: none can wait for flight's next frame.
+fl_is_passenger:
+	LDA.w !fl_passengers
+	BEQ .no
 	CPX.w #$0200
 	BEQ .girl
 	CPX.w #$0400
-	BNE .native
+	BNE .no
 	LDA.w !fl_passengers
 	AND.b #$02
 	BRA .check
@@ -796,14 +797,108 @@ fl_hook_passenger:
 	LDA.w !fl_passengers
 	AND.b #$01
 .check
-	BEQ .native
+	BEQ .no
 	LDA $E02C,X
-	BNE .native
+	BNE .no
 	LDA.w !fl_state
-	AND.b #!FLS_FLY|!FLS_ON
-	CMP.b #!FLS_FLY|!FLS_ON
-	BNE .native
+	AND.b #!FLS_FLY|!FLS_ON|!FLS_CAN
+	CMP.b #!FLS_FLY|!FLS_ON|!FLS_CAN
+	BNE .no
+	LDA $D0
+	ORA $FF
+	ORA $52
+	BNE .no
+	LDA $EC
+	AND.b #$FE
+	BNE .no
+	LDA $ED
+	AND.b #$40
+	BNE .no
+	LDA.w !fl_lock
+	ORA.w !fl_lock+1
+	BNE .no
+	LDA $F1
+	BMI .no
+	LDA $E8
+	AND.b #$04
+	BNE .no
+	REP #$20
+	LDA.w !fl_lastmap
+	CMP $DC
+	SEP #$20
+	BNE .no
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
+; Native OBJ entry: no body, attachment or shadow for carried companions.
+fl_hook_passenger:
+	SEP #$20
+	JSR fl_is_passenger
+	BCC .native
 	JML $80E403                  ; native RTS before body and shadow
 .native
 	STX $14
 	JML $80E3D3
+
+; After the native status update (including poison, defeat and recovery),
+; pause only ground AI and animation. The native once-per-five-frame
+; actor timers before this point and per-frame upkeep continue normally.
+fl_hook_passenger_ai:
+	SEP #$20
+	JSR fl_is_passenger
+	BCC .native
+	JML $80F4E2
+.native
+	LDA $E060,X
+	JML $80F512
+
+fl_hook_passenger_move:
+	SEP #$20
+	REP #$10
+	STX $10
+	JSR fl_is_passenger
+	BCC .native
+	JML $80D5FA
+.native
+	JML $80D5F3
+
+; Drop this party member's native ground-contact pass while carried.
+; Publish an out-of-range distance to each enemy and remove stale touch
+; bits; enemy AI must not retain a ground target from before takeoff.
+macro fl_passenger_distances(offset, keep)
+	REP #$20
+	LDA.w #$8080
+	STA.w $E600+<offset>
+	STA.w $E800+<offset>
+	STA.w $EA00+<offset>
+	SEP #$20
+	for slot = 3..6
+		LDA.w $E04E+(!slot*$200)
+		AND.b #<keep>
+		STA.w $E04E+(!slot*$200)
+	endfor
+endmacro
+
+fl_hook_passenger_contacts:
+	SEP #$20
+	JSR fl_is_passenger
+	BCC .native
+	BIT $ED
+	BPL .done
+	CPX.w #$0200
+	BNE .sprite
+	%fl_passenger_distances($53, $ED)
+	BRA .phase
+.sprite
+	%fl_passenger_distances($56, $DB)
+.phase
+	ASL $51                     ; preserve the native party target-bit phase
+	LDY.w #$0C00
+.done
+	JML $81CDD4
+.native
+	LDA $E000,X
+	JML $81CDD2
