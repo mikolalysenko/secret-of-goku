@@ -4,6 +4,21 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES FX palette-upload headroom (2026-10-19)
+
+- Unroll the six fixed FX palette uploads and calculate their ROM offsets
+  at assembly time. Keep the same palettes and CGRAM writes. A reproduced
+  late native upload now finishes its complete NMI in 36.78 instead of
+  37.15 scanlines, removing that vblank overrun.
+- Strict build, core frames/lag/HDMA and FX gallery/beams/aura/debris checks
+  pass. All 13 gameplay cases and four 1,200-frame combat runs retain zero
+  palette, meter, OBJ and NMI errors. The long flying-ki run falls from
+  467 to 422 CPU misses; flying punches, teleport and charge remain at
+  95/136/166. Strict crowded-combat timing still fails.
+- Record completed-frame duration by native actor phase in the gameplay
+  harness. Keep the existing companion schedule after alternative phase
+  layouts failed to improve the full set consistently.
+
 ## SNES common weapon graphics cost (2026-10-19)
 
 - Predecode the two additional weapon sheets observed in crowded-combat

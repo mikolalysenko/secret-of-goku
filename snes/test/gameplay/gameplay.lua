@@ -16,6 +16,7 @@ function test()
   local done, frames, paletteErrors, staminaFrames = 0, 0, 0, 0
   local started, maxLogic = nil, 0
   local timing, active, writes = {}, {}, {}
+  local phaseTiming = {}
   local parts = {}
   local hot, inside = {}, false
   local misses, overflows = {}, 0
@@ -81,7 +82,14 @@ function test()
   emu.addMemoryCallback(function()
     if not measuring then return end
     done = done + 1
-    if started then maxLogic=math.max(maxLogic,(emu.getState()['masterClock']-started)/1364) end
+    if started then
+      local lines=(emu.getState()['masterClock']-started)/1364
+      maxLogic=math.max(maxLogic,lines)
+      local phase=tostring(H.r8(0x7E0056))
+      local v=phaseTiming[phase] or {sum=0,calls=0,max=0}
+      v.sum=v.sum+lines;v.calls=v.calls+1;v.max=math.max(v.max,lines)
+      phaseTiming[phase]=v
+    end
   end, emu.callbackType.exec, 0x00B077, 0x00B077)
   emu.addMemoryCallback(function(addr,value)
     if not measuring or value == 0 then return end
@@ -150,6 +158,8 @@ function test()
   H.result('videoFrames',frames); H.result('completed',done); H.result('lag',frames-done)
   H.result('maxLogic',maxLogic); H.result('paletteErrors',paletteErrors); H.result('staminaFrames',staminaFrames)
   H.result('staminaWriters',writes); H.result('profile',profile)
+  for _,v in pairs(phaseTiming) do v.mean=v.sum/math.max(1,v.calls);v.sum=nil end
+  H.result('phaseTiming',phaseTiming)
   H.result('nativeHot',hot)
   H.result('misses',misses); H.result('spriteOverflowFrames',overflows)
   H.result('missedVblanks',#misses); H.result('nmiOverruns',nmiOverruns); H.result('maxNmiLines',maxNmi)
