@@ -152,6 +152,17 @@ The long teleport peak falls from 365.16 to 295.84 scanlines, while misses
 change from 48 to 54 per 1,200 frames. This bounds the observed search
 spike more tightly but does not finish the zero-drop work.
 
+The subsequent teleport-only companion queue leaves room for this work
+without changing status/timer cadence. It includes the initial physical
+L+B frame and camera recovery; each CPU AI/animation job finishes within
+four fields, before its next native tick. Human-controlled companions
+bypass it, and carried companions still skip ground AI. See
+[engine.md](engine.md) for the queue and reset contract. Long teleport
+misses fall 54 → 23 per 1,200 frames (short: 8 → 2 per 240), but the
+changed workload's peak is 313.73 lines versus 295.84 before the queue.
+This improves frequency, not the strict worst-case bound; landing/search
+and native actor peaks still need work.
+
 - Pressing L+B (the chord's first frame) while Goku can act picks a target
   among actor slots 3-11 that are active, species < $80 and not the orb $55,
   with HP and not dying (`E191` bit 7), plus a scene's custom foe (Frieza as

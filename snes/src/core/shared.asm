@@ -27,7 +27,10 @@
 ; Volatile SRAM work areas (contents undefined at boot; owners clear them).
 !SRAM_WORK_CORE   = $317480   ; $0180 core / misc (through $3175FF)
 !SRAM_WORK_GOKU   = $317520   ; $0042 secondary water-flight palette, after core's $A0-byte block
+!SRAM_WORK_PARTY  = $317564   ; $0008 deferred companion work, after the water palette
 !SRAM_WORK_DEBUG  = $317600   ; $0200 debug scene select (through $3177FF)
+assert !SRAM_WORK_GOKU+$42 <= !SRAM_WORK_PARTY, "companion queue overlaps Goku's water palette"
+assert !SRAM_WORK_PARTY+8 <= !SRAM_WORK_DEBUG, "companion queue overlaps debug state"
 !SRAM_WORK_FX     = $317800   ; $0400 effects library slots (beams, sparks, orbs, auras)
 !SRAM_WORK_COMBAT = $317C00   ; $0400 combat tables (projectiles, launches, per-target timers)
 !SRAM_WORK_SCENE  = $326000   ; $2000 set-piece scenes (Frieza, orbit, endings, Vegeta, the Sandship's

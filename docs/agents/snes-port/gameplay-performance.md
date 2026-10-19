@@ -439,14 +439,14 @@ and `final-rest-long`. The production image matches `compact-uploads.sfc`.
 This checkpoint improves the worst teleport work but does not close the
 strict crowded timing target.
 
-The asynchronous scheduling trials are not in the playable ROM. Deferring companion
+The older unrestricted asynchronous scheduling trials are not in the playable ROM. Deferring companion
 AI improved the long walking/punching/ki/teleport cases from 39/24/47/73
 to 3/3/17/39 misses, but worsened flying ki from 36 to 50. Deferring normal
 enemies too requires moving their weapon-graphics update with animation;
 the corrected short trial worsened flying ki from 5 to 17. Both prototypes
 and their unit checks remain under `.local/snes-test/` (`companion-budget-prototype` and
-`actor-budget-prototype`); production retains fixed actor timing with
-the companion phase spread described above. Smaller scenery batches
+`actor-budget-prototype`); they are separate from the later teleport-only
+companion queue described below. Smaller scenery batches
 also stay out: the four-cell/four-line trial raises long charge misses
 from 138 to 170 (`destroy-batch-4`).
 
@@ -575,6 +575,26 @@ and `step8-long/`). The 16-cell shared-budget prototype lowers the peak
 but increases misses 66 → 67 and is not the selected build. Remaining
 peaks combine native companion AI/animation, movement and FX costs;
 crowded strict zero-drop timing remains open.
+
+The teleport-only companion queue keeps fixed status/timer ticks and
+finishes each deferred AI/animation job within four field updates. It
+handles the first physical L+B frame, camera recovery and draining after
+teleport; human-owned actors and ordinary actions keep their regular
+timing. This lowers long teleport misses 54 → 23 per 1,200 frames and the
+short count 8 → 2 per 240. The other long counts remain 1/3/20/3/63 for
+punch/ki/flying ki/flying punch/charge. The selected run has a 313.73-line
+teleport peak versus 295.84 before this queue: changed actor/input timing
+does not uniformly improve peaks. An earlier candidate omitted the first
+button frame and had 16 misses but a 361.31-line peak; it is not selected.
+
+All 13 short and six long cases retain zero palette, meter, OBJ,
+complete-NMI, graphics-DMA and duplicate-work errors. Eleven assembled
+party tests plus core, Goku rendering/menus/save/load, passenger/local
+flight and world/radar/map checks pass. Private measurements are in
+`.local/snes-test/party-budget-current/` (`verified.sfc`, `verified-short/`
+and `verified-long/`); the production image matches this candidate.
+The queue's map/magic/reset guards and deadline checks are documented in
+[engine.md](engine.md). Strict crowded zero-drop timing remains open.
 
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's

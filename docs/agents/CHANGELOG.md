@@ -4,6 +4,24 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES companion timing during teleport (2026-10-19)
+
+- Keep companion status/timer ticks fixed while deferring their CPU
+  AI/animation during teleport, including the initial L+B frame and
+  camera recovery. Run the oldest waiting member first, at most one per
+  field, with a four-field deadline before its next native tick. Drain
+  pending work before resuming the regular schedule. Human controls and
+  the live passenger gate remain immediate.
+- Keep queue state in guarded volatile SRAM; clear it on scene/map/load
+  boundaries. Eleven assembled party tests and core, Goku, passengers,
+  local flight and world/radar/map checks pass. All 13 short and six long
+  gameplay cases retain zero hardware/rendering errors.
+- Long teleport misses improve 54 → 23 per 1,200 frames; short misses
+  improve 8 → 2 per 240. The other long counts remain 1/3/20/3/63 for
+  punch/ki/flying ki/flying punch/charge. The changed teleport workload's
+  peak rises 295.84 → 313.73 lines, so this improves miss frequency but
+  does not resolve strict crowded zero-drop timing.
+
 ## SNES shared beam scenery budget (2026-10-19)
 
 - Share a 12-scanline budget between beam terrain and barrier scans,

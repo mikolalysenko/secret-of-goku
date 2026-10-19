@@ -862,8 +862,35 @@ fl_hook_passenger_ai:
 	BCC .native
 	JML $80F4E2
 .native
-	LDA $E060,X
-	JML $80F512
+	; Move regular CPU companion work away from Instant Transmission's
+	; landing search and camera recovery. Other actions keep their native
+	; decision cadence; a queued job still resumes normally.
+	LDA.l !core_party_queuing
+	BEQ .queue
+	; Drain an older job before returning to the regular schedule. Without
+	; this, ending a teleport could run one fresh companion and one queued
+	; companion in the same frame, recreating the original CPU burst.
+	LDA.l !core_party_pending
+	BNE .queue
+	LDA.w !fl_hook
+	AND.b #!FLH_CAMERA
+	BNE .queue
+	LDA.w !goku_act
+	CMP.b #!GOKU_K_TELEPORT
+	BEQ .queue
+	; Native input is read before this actor pass; the flight module sets
+	; the action afterward. Reserve time on the first L+B frame too, when
+	; the landing search is about to run but goku_act is still idle.
+	REP #$20
+	LDA.l !core_pad_bios
+	AND.w #!PAD_L|!PAD_B
+	CMP.w #!PAD_L|!PAD_B
+	SEP #$20
+	BEQ .queue
+	LDA.b #0
+	STA.l !core_party_queuing
+.queue
+	JML core_party_queue
 
 fl_hook_passenger_move:
 	SEP #$20

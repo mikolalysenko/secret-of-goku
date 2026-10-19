@@ -254,10 +254,10 @@ writes, RAM, registers and flags across all five phases, actor sizes,
 Goku replacement/refresh states, scrolling layers and both flight states.
 No transfer is omitted or deferred by this change.
 
-While Goku is active, the native party status/AI/animation pass updates the
-girl in phase 4, Goku in phase 3 and the sprite in phase 0. Each still runs
-once in every five completed field frames; movement, collision and drawing
-run for everyone every frame. This spreads the original phase-3 CPU burst
+While Goku is active, the native party status pass updates the girl in
+phase 4, Goku in phase 3 and the sprite in phase 0. Each still runs once
+in every five completed field frames; movement, collision and drawing run
+for everyone every frame. This spreads the original phase-3 CPU burst
 without dropping updates. The October 19 follow-up moves companions out
 of phases 1/2, which already carry expensive native enemy work. Before
 Goku's arrival and during native event
@@ -269,6 +269,25 @@ the actors stay active and their native timers advance 20 times. These calls
 explicitly set DB to `$7E`, just as the original party wrapper does; counting
 entry calls alone would miss reads from the wrong actor bank. The whip-pad
 crossing tests the real scripted handoff.
+
+During teleport and camera recovery, `core/party.asm` can defer the CPU
+companion's following AI/animation until a field starts that work before
+scanline 90. Status and timers have already run on their fixed tick. The
+oldest pending member runs first, at most one per field, with a four-field
+deadline that finishes before the member's next five-field tick. The
+physical L+B read covers the first search frame before flight publishes
+its action; pending work drains before the regular schedule resumes.
+Other actions retain their regular timing. Human-controlled companions
+bypass the queue, and resumed work rechecks the live passenger gate.
+
+The queue uses eight volatile SRAM bytes at `$31:7564`, after Goku's water
+palette. A magic word and map key reject older save-state noise; boot,
+title, mode changes, new games and successful loads reset it. Frame entry
+and dispatch revalidate the field context; dispatch also drops removed or
+human-owned actors. Enqueue catches a map change inside status handling. The assembled
+`party-budget.test.mjs` covers deadlines, fairness, initial input, draining,
+context changes and the SRAM boundary. The Mesen `party` test additionally
+counts status and AI calls during teleport with and without player two.
 
 The sound/aura follow-up replaces `C1:2710`'s highest-set-bit loop with a
 byte lookup in `core/native.asm`. It keeps the original A/X result, Y/DB/D,
