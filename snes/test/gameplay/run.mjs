@@ -67,8 +67,11 @@ const cases=[
   ['punch','animation-audit__native__rabite-field-a','right:12,b:180,none:48'],
   ['ki','animation-audit__native__rabite-field-a','right:4,y:180,none:56'],
   ['fly','animation-audit__native__rabite-field-a',Array(3).fill('a+right:8,none:32,a+left:8,none:32').join(',')],
-  ['fly-ki','animation-audit__native__rabite-field-b',Array(15).fill('a+right+y:8,a+left+y:8').join(',')],
-  ['fly-punch','animation-audit__native__rabite-field-b',Array(15).fill('a+right+b:8,a+left+b:8').join(',')],
+  // The imported hero is only 30 px from the east exit. Video-frame input
+  // reversals can drift when CPU misses differ; walk into the field first
+  // so a faster long run keeps measuring combat instead of a map transition.
+  ['fly-ki','animation-audit__native__rabite-field-b',Array(15).fill('a+right+y:8,a+left+y:8').join(','),'left:24'],
+  ['fly-punch','animation-audit__native__rabite-field-b',Array(15).fill('a+right+b:8,a+left+b:8').join(','),'left:24'],
   ['water-flight','danger-progress__waterfall','a+right:30,none:20,a+left+y:30,none:20,a+up:30,none:20,a+down:30,none:60'],
   ['teleport','animation-audit__native__rabite-field-b',Array(8).fill('l+b:2,none:28').join(',')],
   ['charge','animation-audit__native__rabite-field-a','right:4,l+y:100,none:136'],
@@ -84,7 +87,7 @@ for(const [name,bundle,script,setup=''] of cases){
   if(only.length&&!only.includes(name))continue;
   const copy=privateRom(rom,'gameplay-'+name);
   const pre=`PCM=${args.includes('--pcm')}\nPROFILE_NATIVE=${args.includes('--native-profile')}\nBUNDLE=${JSON.stringify(join(repo,'.local/snes-import',bundle))}\nSETUP=${JSON.stringify(setup)}\nSCRIPT=${JSON.stringify(Array(repeat).fill(script).join(','))}\nSPANS={${spans.join(',')}}\nFX_TILES=${symbols.get('fx_entry_tile')}\nAURA_CELLS={${[...auraCells].map(c=>`[${c}]=true`).join(',')}}\nUPLOAD=${JSON.stringify(join(repo,'dist/snes/gen/audio/upload.bin'))}\n`;
-  const test=pre+`GFX_DMA={${gfxDma.join(',')}}\n`+readFileSync(join(repo,'snes/test/audio/lib.lua'),'utf8')+'\n'+readFileSync(join(import.meta.dirname,'gameplay.lua'),'utf8');
+  const test=pre+`CHECK_AURA=${name.endsWith('-grass')}\nGFX_DMA={${gfxDma.join(',')}}\n`+readFileSync(join(repo,'snes/test/audio/lib.lua'),'utf8')+'\n'+readFileSync(join(import.meta.dirname,'gameplay.lua'),'utf8');
   const r=await runMesen({rom:copy,state:join(checkpointDir(),'waterfall.mss'),test,outDir:join(root,name),exactFrames:true});
   cleanupRom(copy);
   const v=r.results??{};

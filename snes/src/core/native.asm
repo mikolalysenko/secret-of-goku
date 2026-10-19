@@ -1,5 +1,71 @@
 ; Exact replacements for hot retail helpers. No actor scheduling changes.
 
+incsrc "core-math/data.asm"
+
+; C1:0358: classify the screen-space distance between actors X/Y, subtracting
+; their individual heights first. The lookup retains the retail unsigned
+; absolute differences, inclusive radius thresholds and wrapped square sum.
+; Keep the original stack frame/epilogue (A result, X/Y/DB/D/P contract).
+; Decimal and eight-bit-index callers retain every original instruction.
+; The multiplier registers are scratch, not part of this helper's result.
+core_native_distance:
+	PHD
+	PHP
+	REP #$20
+	LDA $01,S
+	BIT.w #$0018               ; decimal mode or eight-bit indexes
+	BEQ .fast
+	JML $C1035C                ; retail TSC / local allocation / calculation
+.fast
+	TSC
+	SEC
+	SBC.w #4
+	TCD
+	TCS
+	LDA.w $0020,X
+	SEC
+	SBC.w $0020,Y
+	BCS +
+	EOR.w #$FFFF
+	INC
++	BIT.w #$FF00
+	BNE .far
+	STA $01
+	LDA.w $0045,Y
+	AND.w #$00FF
+	EOR.w #$FFFF
+	SEC
+	ADC.w $0022,Y
+	STA $03
+	LDA.w $0045,X
+	AND.w #$00FF
+	EOR.w #$FFFF
+	SEC
+	ADC.w $0022,X
+	SEC
+	SBC $03
+	BCS +
+	EOR.w #$FFFF
+	INC
++	BIT.w #$FF00
+	BNE .far
+	XBA
+	ORA $01
+	PHX
+	TAX
+	BMI .high
+	LDA.l core_distance_low,X
+	BRA .found
+.high
+	LDA.l core_distance_high-$8000,X
+.found
+	PLX
+	AND.w #$00FF
+	JML $C103F9
+.far
+	LDA.w #8
+	JML $C103F9
+
 ; C1:E326 waits an entire vblank before redrawing HP numbers. During
 ; ordinary Goku field play, queue the identical redraw for a completed
 ; frame's NMI instead. Events, menus, loads and other interrupt handlers

@@ -43,7 +43,7 @@ function test()
   local maxPower,auraFrames,maxAuraSprites,auraBgWrites=0,0,0,0
   local x0,y0=H.r16(0x7EE002),H.r16(0x7EE004)
   local maxTravel=0
-  if SETUP~="" then emu.addMemoryCallback(function()
+  if CHECK_AURA then emu.addMemoryCallback(function()
     if not measuring then return end
     local act=H.r8(0x7ED814)
     local s=emu.getState()
@@ -118,7 +118,7 @@ function test()
     actions[tostring(act)]=(actions[tostring(act)] or 0)+1
     local form=tostring(H.r8(0x7ED811));forms[form]=(forms[form] or 0)+1
     maxPower=math.max(maxPower,H.r16(0x7ED82E))
-    if SETUP~="" then
+    if CHECK_AURA then
       local auraTiles={}
       for i=0,14 do
         local cell=H.r16(0x317840+i*2)

@@ -325,6 +325,25 @@ All 13 cases retain zero palette, meter, OBJ, NMI and graphics-DMA errors.
 These are improvements with remaining misses, not a zero-drop release.
 Measurements: `stamp-party-40` and `strip-copy/ground-long`.
 
+The exact native AI distance lookup reduces its measured helper from 322
+to 198 CPU cycles, with all 65,536 byte-distance pairs checked against
+retail machine code. The production ROM matches the validated private
+image byte for byte. Core party/frames/input/lag/HP/OAM/HDMA, Goku
+field/status/forms and flight passengers/water/teleport/whip/scene pass.
+All 13 gameplay hardware checks remain clean. Short charging falls from
+38 to 36 misses; long punches/ki/charge remain 2/8/93, walking changes
+11 to 8 and teleport 58 to 67. Strict crowded timing remains open.
+
+The aerial timing cases now walk left for 24 setup frames before measuring:
+the imported hero was only 30 pixels from the eastern exit. Faster updates
+changed the drift of video-frame input reversals enough to enter that exit,
+invalidating the long flying-ki run (17 misses but only 359 flight frames).
+That result is discarded. Fresh old/new comparisons at the inland starting
+point both measure 30 flying-ki and 5 flying-punch misses in 1,200 frames,
+with a single map throughout. Measurements are under `native-distance/`,
+including `inland-base`, `inland-fast`, `movement-long` and `production`.
+Historical aerial counts above use the older starting position.
+
 The asynchronous scheduling trials are not in the playable ROM. Deferring companion
 AI improved the long walking/punching/ki/teleport cases from 39/24/47/73
 to 3/3/17/39 misses, but worsened flying ki from 36 to 50. Deferring normal

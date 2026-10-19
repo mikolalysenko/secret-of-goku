@@ -20,7 +20,7 @@
 ; EA    audio                     audio tables
 ; EB    title / arrival / misc    misc tables
 ; EC    UI code (upper half)        ending tables (lower half)
-; ED    world-flight code (upper)     free (lower half)
+; ED    world-flight code (upper)     core AI distance table (lower half)
 ; EE    effects library code (upper)  free (lower half)
 ; EF    debug scene-select code (upper) free (lower half)
 ; F0-F7 story events and dialogue (whole banks)
@@ -58,6 +58,7 @@
 !CODE_QUARTER_MISC  = $ABC000
 
 !DATA_CORE    = $E00000
+!DATA_CORE_DISTANCE_HIGH = $ED0000 ; second half of the exact AI distance lookup
 !DATA_GOKU    = $E10000
 !DATA_COMBAT  = $E20000
 !DATA_FLIGHT  = $E30000

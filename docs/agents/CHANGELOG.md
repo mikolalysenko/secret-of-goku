@@ -4,6 +4,23 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES native AI distance lookup (2026-10-19)
+
+- Precompute the retail distance classes in two unused FastROM data halves.
+  Preserve height offsets, inclusive boundaries and the 16-bit square-sum
+  wrap; decimal and eight-bit-index callers keep the original routine.
+  Assembled comparisons cover all 65,536 byte-distance pairs, coordinate
+  wrapping, heights and flags. The measured helper falls from 322 to 198
+  CPU cycles.
+- Move aerial combat timing fixtures away from the nearby east exit and
+  keep aura instrumentation specific to aura cases. Faster runs could
+  otherwise drift into a map transition and produce misleading counts.
+- Core, Goku and flight regressions pass, with zero hardware errors in all
+  13 gameplay cases. Comparable 1,200-frame aerial repeats remain at 30
+  ki / 5 punch misses; ground punches/ki/charge remain at 2/8/93. Walking
+  improves from 11 to 8 and teleport changes from 58 to 67. Strict crowded
+  timing is still open; the CPU saving alone does not eliminate the peaks.
+
 ## SNES companion phase balancing (2026-10-19)
 
 - Move the girl to native phase 4 and the sprite to phase 0, away from

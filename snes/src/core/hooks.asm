@@ -51,6 +51,11 @@ endif
 %hijack_jsl($C0B0C3, $82BAD6, 4, core)
 
 ; Hot native actor and collision calls (verified instruction sites).
+if not(defined("CORE_NATIVE_DISTANCE_SLOW"))
+%orig4($C10358, $20C2080B)
+%hijack($C10358, core_native_distance, 4, core)
+endif
+
 if not(defined("CORE_NATIVE_SPRITES_SLOW"))
 ; Body/weapon anchor path only. Calls directly into E640 (shadows and
 ; smaller attachments) retain the original emitter without an entry probe.

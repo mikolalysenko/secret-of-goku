@@ -265,3 +265,16 @@ inputs and additional 8-bit/decimal flag combinations. No AI updates are
 removed. The HDMA-enable guard also skips its scanline read when the mask
 only retains/disables existing channels; newly enabled channels keep the
 same late-frame protection, covered by the core `hdmaen` test.
+
+`C1:0358` now classifies AI distances through a 64 KiB lookup split between
+`E0:0000-7FFF` and `ED:0000-7FFF`. `snes/gen/core-math.mjs` preserves the
+native inclusive radius thresholds and 16-bit square-sum overflow. The
+replacement in `core/native.asm` subtracts each actor's height, uses the
+native unsigned absolute differences, and retains the original stack
+epilogue. Decimal mode and eight-bit indexes use retail code;
+`-DCORE_NATIVE_DISTANCE_SLOW=1` disables the replacement. Multiplier I/O is
+scratch, rather than an output of this helper. The assembled
+`snes/test/core/distance.test.mjs` compares CPU registers, flags and RAM
+outside dead stack locals across all 65,536 byte-magnitude pairs, large
+coordinates, heights and flag combinations. A representative call falls
+from 322 to 198 CPU cycles.
