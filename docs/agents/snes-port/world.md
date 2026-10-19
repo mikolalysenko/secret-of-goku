@@ -75,7 +75,11 @@ columns 40-43 base / 36-39 Super Saiyan, row 3 rear view; charge column
 the turn rate, bobs it, and draws four 16×16 OBJ (empty quadrants skipped)
 in palette 5. The cell's 16 tiles go into a hidden double buffer in vblank
 (`world_world_nmi`, DMA channel 7 or 6, whichever the world's HDMA leaves
-free in `$2C`), then the buffers swap. The HDMA shadow window is turned off
+free in `$2C`), then the buffers swap. Four packed row transfers replace
+the sixteen tile transfers; docking miniatures use two packed rows. The
+palette follows the resident cell actually referenced by OAM, so changing
+form cannot colour the previous frame's art with the new palette.
+The HDMA shadow window is turned off
 (`$2D`, and `C0:88FB` keeps `TMW` clear) and a small pixel shadow is drawn
 on the ground line below Goku. On a frame the game did not finish (lag) or
 whose next world buffer was not ready (`$60` bit 7), `C0:890B` skips the sky
@@ -262,6 +266,14 @@ the barrier the break and the `TREE_BLAST` group; a partial SSJ wave on the
 Fortress DEFLECT and the `FORTRESS_SHIELD` group.
 
 ## Tests (`node snes/test/world/run.mjs [test …]`)
+
+The October 18 follow-up adds a video-frame `timing` check for cruising,
+ki, charge/release and transformation/reversion. The original world upload
+took 15.78 scanlines at its busiest; packed rows take 5.54. In the same
+four scenarios, the longest complete NMI fell from 31.76 to 21.54 lines,
+and the two mismatched-palette frames during transform/revert are gone.
+These cases have no OBJ overflow or NMI overruns. CPU misses remain in
+world cruising and are reported separately; this is not a zero-drop claim.
 
 Mesen2 headless (`MESEN` or `.local/tools/mesen`); outputs in
 `.local/snes-test/world/<test>/`. Native sessions start from the shared

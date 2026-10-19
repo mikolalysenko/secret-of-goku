@@ -1,7 +1,7 @@
 -- Fly (the renamed Drum, item $27) from the item ring (native-flight.js:
 -- Goku flies himself). The waterfall checkpoint is before the sword, so the
 -- test opens the rings (story flag CF00, field mode $56 = 2) and gives the
--- item. Y opens the rings, Up selects the item ring, B uses Fly: the drum
+-- item. X opens the rings, Up selects the item ring, B uses Fly: the drum
 -- animation and its sound (C1:DBD2-DC21) are skipped at C1:DBCD, the native
 -- takeoff request $0C00|map (C1:DC22) runs, C1:E833 skips the Flammie
 -- summon and world flight starts with Goku.
@@ -23,7 +23,7 @@ function test()
     emu.addMemoryCallback(function() request = request + 1 end, emu.callbackType.exec, bank + 0xDC22, bank + 0xDC22)
     emu.addMemoryCallback(function() event = emu.getState()['cpu.a'] end, emu.callbackType.exec, bank + 0xDC2C, bank + 0xDC2C)
   end
-  H.tap('y', 4, 40)
+  H.tap('x', 4, 40)
   W.check('ring_open', H.r8(0x7E00CC) == 0 and W.inField(), H.r8(0x7E00CC))
   H.tap('up', 4, 70)
   H.shot('item_ring')

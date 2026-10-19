@@ -4,6 +4,18 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES world sprite uploads and palettes (2026-10-18)
+
+- Match the world palette to the sprite cell actually on screen, fixing
+  the one-frame colour mismatch on both transformation and reversion.
+- Replace sixteen cell DMA transfers with four packed rows, and four
+  miniature transfers with two rows. Peak cell-upload time falls from
+  15.78 to 5.54 scanlines in the world timing cases.
+- World sprite, takeoff/locks, landing, ki, Fortress, scars, barrier,
+  docking, Fly item and timing tests pass. Timing checks cover the final
+  NMI return, palette matching, visible Goku sprites and OBJ overflow;
+  CPU misses are still reported and remain a separate optimization target.
+
 ## SNES takeoff restrictions (2026-10-18)
 
 - Route outdoor L+R through the same input decision as roof escapes, so

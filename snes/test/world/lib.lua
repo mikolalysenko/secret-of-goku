@@ -35,6 +35,9 @@ end
 function W.on(form)
   H.w8(W.PERSIST_ACTIVE, 1)
   H.w8(W.GOKU, form or 0)
+  -- Let the newly activated character enter the input pipeline with no
+  -- held buttons, as normal play does after the opening scene.
+  H.wait(3)
 end
 function W.import(name)
   local ok = H.importSnesJs(IMPORT .. name)

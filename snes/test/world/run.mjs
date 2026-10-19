@@ -39,12 +39,12 @@ const importRoot=join(mainCheckout(),'.local/snes-import')+'/';
 function prelude(rom){
   const sym={};
   for(const line of readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8').split('\n')){
-    const m=line.match(/^([0-9A-F]{2}):([0-9A-F]{4}) ((?:world|goku|flight)_\w+)$/i);
+    const m=line.match(/^([0-9A-F]{2}):([0-9A-F]{4}) ((?:world|goku|flight|core|combat)_\w+)$/i);
     if(m)sym[m[3]]=parseInt(m[1]+m[2],16);
   }
   return `SYM={${Object.entries(sym).map(([k,v])=>`${k}=0x${v.toString(16)}`).join(',')}}\nIMPORT=${JSON.stringify(importRoot)}\n`+readFileSync(join(here,'lib.lua'),'utf8')+'\n';
 }
-const tests=['sprite','takeoff','takeoff-locks','landing','ki','wave','fortress','scars','barrier','dock','item'].filter(t=>existsSync(join(here,`${t}.lua`))&&want(t));
+const tests=['sprite','takeoff','takeoff-locks','landing','ki','wave','fortress','scars','barrier','dock','item','timing'].filter(t=>existsSync(join(here,`${t}.lua`))&&want(t));
 const summary=[];
 for(const t of tests){
   const rom=privateRom(romSrc,`world-${t}`);

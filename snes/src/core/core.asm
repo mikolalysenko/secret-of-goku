@@ -518,6 +518,8 @@ endif
 	PLY
 	PLX
 	PLA
+
+core_world_nmi_return:
 	RTI
 
 
