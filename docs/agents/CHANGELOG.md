@@ -4,6 +4,20 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES flight preview validation and handoff (2026-10-18)
+
+- Update player controls and development notes for shared aerial combat,
+  radar/quest state, map-viewer return and terrain streaming. Separate the
+  current 5,770-frame zero-miss world run from older timing profiles and
+  the still-open crowded local-combat CPU misses.
+- Keep world preparation and combat before radar in the merge-order tool,
+  so running it cannot undo the current-frame visibility fix. Verify the
+  normalizer preserves the production dispatch and is idempotent.
+- All 13 gameplay scenarios meet their palette, meter, sprite and vblank
+  checks; crowded-field strict timing remains unsatisfied. Additional world
+  fixtures and UI radar pixel/bearing comparisons pass. Prepare a local
+  preview.2 IPS/archive from committed source; no release is published.
+
 ## SNES map-viewer return palettes (2026-10-18)
 
 - Invalidate world graphics and UI caches whenever the native world loader

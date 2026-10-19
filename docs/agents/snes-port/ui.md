@@ -13,7 +13,7 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 | --- | --- |
 | Telepathy window on the ground (King Kai / Luka, three lines, native font and window art) | Done: pixel-identical to `radioPixels()` |
 | Message policy: queue, `interrupt`, `dismiss`, SSJ charge remarks (saved attempts and xorshift roll), barrier and ceiling reactions, first-flight banter, power intro | Done: frame-identical to `createNativeRadio` + `createPowerIntro` |
-| Telepathy in world flight (bottom panel) and the Dragon Radar | Done: panel pixel-identical to the browser's; dial identical for the same sweep angle (64 steps) and blink phase; guide, distance and blip from `radarBearing` (the blip may round the other way within 0.05 px of a half pixel); 60 Hz kept |
+| Telepathy in world flight (bottom panel) and the Dragon Radar | Done: panel pixel-identical to the browser's; dial identical for the same sweep angle (64 steps) and blink phase; production quest targets and attack visibility verified. Current timing results are in [gameplay-performance.md](gameplay-performance.md#flight-world-map-and-radar-follow-up). |
 | Scouter option and readouts | Switch done (`scouter.asm`): Goku's Targeting ring item reads "Scouter: ON/OFF" and toggles the saved switch, a scan (teleport sound) tells King Kai's joke for the form once; the power-level readouts and Analyzer hits are not drawn yet (OBJ VRAM, see the core requests) |
 | Goku's STATUS page | Done (`status.asm`): BG2 as the browser shows `statusPixels()`, pixel-identical but for 2–3 cells per page whose fourth colour shows as its nearest; built band by band in about 55 frames with the menu at 60 Hz |
 | Dialogue window placement | Done (`place.asm`): the scene's windows move above the HUD when the first one would cover more faces where it is, as `window-placement.js`; moved window pixel-identical to the native one, HUD untouched |
@@ -43,7 +43,8 @@ The generator imports the browser engine and writes `dist/snes/gen/ui/`:
   `!UI_BARRIER_WITCH_CASTLE`, `!UI_BARRIER_DUNGEON_WALL_FIRE`).
 - **Extended data** (ExHiROM banks `$40-$7D`, `xdata`): the four DMA-only
   tile sets below (`!XDATA_UI_ATLAS`, `_WINDOW_TILES`, `_WATLAS`,
-  `_DIAL`, 7.3 KiB); the `.bin` copies stay in `dist/` for the tests.
+  `_DIAL`, 7.3 KiB), plus `!XDATA_UI_TEXTS` for pre-expanded fixed messages;
+  the `.bin` copies stay in `dist/` for the tests.
 - **`atlas.bin`.** The 79 glyphs `$80-$CE` of the cartridge font (PC
   `0x12D600`), each an 8×16 cell (two 2bpp tiles) drawn exactly as
   `radioPixels()` does: white glyph, black 3×3 outline, the window dither.
@@ -58,18 +59,22 @@ The generator imports the browser engine and writes `dist/snes/gen/ui/`:
   per-angle sweep sprites (`ui_sweep_oam`) and colours; sin and sec tables.
 - **`watlas.bin`, `dial.bin`**: the opaque world-band atlas and frame tiles;
   the dial's base cells and effect tiles.
-- **Messages are compressed** with a 16-entry dictionary of glyph runs
-  (codes `$E0-$EF`, never nested), checked by a round trip at build time.
+- **Fixed messages** are pre-expanded to 168-byte glyph-word rows at build
+  time. A single interruptible `MVN` copies them into text staging. The
+  compressed form uses a 16-entry dictionary of glyph runs (codes
+  `$E0-$EF`, never nested), checked by a round trip at build time;
+  parameterized messages retain this runtime decoder.
 
 `snes/gen/ui-status.mjs` writes the STATUS page's tables
 (`dist/snes/gen/ui-status/`) and two extended-data blobs; see below.
 
 ## Telepathy window on the ground (BG3)
 
-Text expansion can consume about 75 scanlines. During field play it starts
-only before line 96, leaving room for effects and the rest of the frame.
-Busy frames defer a new message's drawing. Window pixels, placement and
-message policy retain their existing tests.
+Parameterized text expansion can consume about 75 scanlines. Fixed messages
+now use the short prebuilt copy instead. During field play, new window work
+still starts only before line 96, leaving room for effects and the rest of
+the frame. Busy frames defer drawing. Window pixels, placement and message
+policy retain their existing tests.
 
 The browser draws a 240×64 surface over everything at (8, 8): the native
 window's twin. The cartridge builds the same thing on BG3, where the native
@@ -119,8 +124,9 @@ then the two glyph rows of each text line, then one upload of the 512-byte
 map. The staged content is keyed (message id + 1 and parameter, or
 `$8000 | radar key`) and mode-tagged (field window / world band) in SRAM,
 so a message shown again is not rebuilt, and a radar update where only the
-guide changed rebuilds line 1 alone. The worst step costs about 15
-scanlines (a full message expansion); the old single-frame build cost 60–80.
+guide changed rebuilds line 1 alone. Fixed messages now copy their glyph
+words from ROM; only parameterized text needs dictionary expansion. The
+shield warning no longer causes a missed world-flight frame.
 
 ## World flight: the bottom band and the Dragon Radar
 
@@ -135,6 +141,11 @@ targets invalidates an unfinished bearing calculation. The production
 stolen Balls, crisis, destruction and the wish against `radarTarget`, using
 real save flags and the staged text. The separate `ui radar` tests still
 compare bearings and rendered pixels with the browser.
+
+Closing either native map viewer runs `ui_world_reload`: it releases the
+world claims and invalidates atlas, dial and displaced-native-sprite caches.
+The next world frame rebuilds them, preventing map cursors or map colours
+from appearing behind the radar. `world map` tests both forms and viewers.
 
 The browser draws a 240×64 panel at line 152 (the telepathy box when a
 message shows, else the radar text) and a 48×48 dial at (8, 8).
@@ -173,7 +184,7 @@ message shows, else the radar text) and a 48×48 dial at (8, 8).
   16×16 cells, so lower slots draw in front as in the browser), the cursor
   advanced past them and the high-table bits written per byte (four whole
   bytes when the run starts on a byte boundary, which it does when the UI
-  is the first world-frame module). This replaces 16 `core_oam_add` calls
+  is the first world-frame OAM producer). This replaces 16 `core_oam_add` calls
   (about 25 scanlines).
 - **Natives in front of the dial.** Module sprites sit behind every native
   slot in world flight, but the browser's dial covers everything. The Y
@@ -210,19 +221,21 @@ message shows, else the radar text) and a 48×48 dial at (8, 8).
   `$E2 & 1`, `$D0`, `$EC & $7E`), no radio line, no charge
   (`ui_charge_tick`), no `ui_hide`, a target, and nothing the world module
   reports as busy (`ui_world_yield`, from its public state while
-  `!w_flags & !WF_ACTIVE`: `!w_dock`, `!w_shot`, `!w_charging` — its local
-  charge stand-in — and `!w_expl_age` / `!w_cut_age` ≠ `$FFFF`). The
+  `!w_flags & !WF_ACTIVE`: `!w_dock`, `!w_shot`, `!w_charging`, which mirrors
+  shared combat charge, and `!w_expl_age` / `!w_cut_age` ≠ `$FFFF`). The
   browser's `flight.docking`, `charging` and `worldKi` shot/explosion
-  checks; the cutaway is included since it replaces the view. Because
-  `ui_world_frame` runs before `world_world_frame`, it sees the world state
-  of the previous frame: the dial shows on the first frame of a shot and
-  comes back one frame after it ends. `!UIR_DOCKING|!UIR_SHOT` (radar state
+  checks; the cutaway is included since it replaces the view.
+  `world_prepare_frame` and `combat_world_frame` now process current input
+  before `ui_world_frame`. The dial yields on the first charge/attack frame;
+  those preparation calls allocate no sprites, so the dial keeps its OAM
+  priority. `!UIR_DOCKING|!UIR_SHOT` (radar state
   query) and `!UII_WORLD_YIELD` (`ui_set_inputs`) still hide it for other
   callers.
 
 ### World-flight frame budget
 
-Production build (FastROM since main `c81158d`) with the world, destroy,
+Historical baseline (`c81158d`), before the production quest-state fix,
+prebuilt text and predecoded terrain, with the world, destroy,
 combat, audio and debug modules merged, holding left then right for 120
 frames; lines at which `modules_world_frame` returns (NMI at 225),
 p50 / p90 / max:
@@ -233,7 +246,7 @@ p50 / p90 / max:
 | `frieza__core-free-flight` | 120 / 138 / 148 | 138 / 156 / 168 | 164 / 178 / 195 |
 | `emulator-probe__flight-baseline` | 124 / 141 / 146 | 143 / 160 / 161 | 168 / 179 / 195 |
 
-Every scene stays at 60 Hz; the worst frames leave 30 lines (SlowROM:
+Those short inputs stayed at 60 Hz; the worst frames left 30 lines (SlowROM:
 198 / 206 / 209 at most). The UI's own world frame (`ui_world_frame`,
 measured per frame) costs p50 21 / p90 29 / max 37 lines (SlowROM
 24 / 32 / 40; its SRAM staging accesses stay slow): dial run ~3, native scan ~5 plus ~1.3 per
@@ -242,6 +255,14 @@ half ~4–6, radar text steps ~5 when the guide changes, band and policy
 ~3. Core re-hides the dial's slots at the next `core_oam_begin`
 (`core_oam_hide_range`, one Y store per slot since `eee1c93`; before that
 it cost about 11 lines more and the radar-shown max was 206–219).
+
+Use the current production `world timing` test for the release decision.
+Its 5,770-frame stress run includes radar-visible turning, ki, charge/release
+and transform/revert, with zero CPU misses, palette mismatches, OBJ overflow
+or complete-NMI overruns. The maximum NMI is 26.55 scanlines. Story refresh
+and bearing math now run on separate frames. See the
+[current results and limits](gameplay-performance.md#flight-world-map-and-radar-follow-up),
+including the remaining crowded local-combat stalls.
 
 ## Dialogue window placement (`place.asm`)
 
@@ -472,8 +493,9 @@ Fortress gone, docking, shot; with the story module it reads
 `story_api_quest_status` and the story query table, where the Frieza and
 world modules fill their queries), `!PERSIST_UI`.
 
-Ordering: `ui_world_frame` should stay the first `modules_world_frame`
-call, so the dial's run takes the first module slots (in front of other
+Ordering: `ui_world_frame` follows world preparation and shared combat,
+but stays the first OAM producer in `modules_world_frame`, so the dial's
+run takes the first module slots (in front of other
 modules' sprites, as the browser's overlay is) and starts on a high-table
 byte boundary.
 
@@ -481,8 +503,8 @@ byte boundary.
 
 | Resource | Use |
 | --- | --- |
-| Code/data `$AC:8000-` | `!CODE_UI`: `$AC:8000-$DF01` used (about 24 KiB: code, 5 KiB compressed messages, radar tables, the STATUS page's 3.8 KiB of code and 1.2 KiB of tables); about 8.2 KiB left |
-| Extended data | six blobs, 9.3 KiB, placed by the build (today `$7D:0000-$7D:255F`): field glyph atlas, window tiles, world atlas, dial tiles, the STATUS page's window cells and tilemap |
+| Code/data `$AC:8000-` | `!CODE_UI`: code, compressed messages, radar tables and STATUS page data; current usage is reported by the strict build |
+| Extended data | seven blobs, about 25.3 KiB, placed by the build: field glyph atlas, window tiles, prebuilt messages, world atlas, dial tiles, the STATUS page's window cells and tilemap |
 | WRAM `$7E:7E40-$7E:7EFF` | `!RAM_UI`: state, current message, cooldowns, band/radar state, scratch, `!ui_magic` (`module.asm`), fast-forward (`+$A6`), window placement (`+$AA`), scouter (`+$AE`), STATUS page (`+$B0`–`+$B7`); in menus the world and radio scratch words serve the STATUS composition |
 | SRAM `$33:7C00-$33:7FFF` | staging: window/band rows (`+$000`), the radio's HDMA table, the moved window's colour records or moved natives (`+$200`), text words (`+$240`), radar trig cache (`+$2E8`), build state (`+$2F4`), radar key (`+$2FC`), bearing inputs (`+$2FE`, `+$308`), placement scroll table and the game's channel 0/1 tables (`+$312`, `+$322`), queue (`+$340`), band and sky HDMA colour blocks (`+$3C0`, `+$3DC`); while the STATUS page is built (menus) `+$000`–`+$335` hold its strings, CGRAM copy, band records, cell masks and upload buffer (the radio and radar rebuild theirs; the queue and the band blocks are kept); UI_TEST builds: test isolation (`+$33C`, `+$33E`) |
 | SRAM persistent | `!PERSIST_UI` = `!PERSIST_MISC+$80` (`$31:6380`, `$60` bytes) — **request** |
@@ -522,7 +544,7 @@ ignored and counted, since the browser references model the radio alone.
 | `place` | `preset__late` (Goku under the window: lower) and `potos.mss` (Luka's window covers nobody: native), event `$134` through the story API, each against a reference run with placement off: the moved window's 10,124 opaque pixels equal the native window's, the HUD (lines 199–223) and lines 7–50 are unchanged; every frame with a window up in the lower scene (1,952, through pages, Luka's menu, its choice box and the closing windows) is checked at the display level (a BG3VOFS HDMA write on line 7) unless its vblank ended late with no window channel running; switching placement off gives the game's channel setup back and the window returns; after the scene the session closes, the channels and `$2C` are the game's; potos frame-identical but for sprites (ambient creatures follow the RNG, which advances with idle CPU time) |
 | `scouter` | `barrier-audit__potos-probe` with Sylphid's powers: the ring opens on Goku's configuration ring, Targeting's title pointer is `ui_sc_title_off` (bank `$AC`), B switches it on (saved bit, the ring stays on the item, title now `ui_sc_title_on`), closing the ring scans once and King Kai says the joke for Goku's form and gi (`SCOUTER_GOLD` or `SCOUTER_GOKU_0/1`, saved); switching off and on again scans without repeating it |
 | `status` | `barrier-audit__potos-probe`, base form and Super Saiyan: Goku's STATUS page opened from the ring; BG2 decoded from VRAM and CGRAM equals `statusPixels()` of the same values (one row up, as the browser paints it) on every pixel but the conflict cells' (2 and 3 cells, 18 and 62 pixels as their nearest colour; shape always exact); the menu runs every frame while the page is built (53 and 56 frames); X leaves the page, the session ends and CGRAM 17–31 match a round trip with the page kept native (16 pulses) |
-| `radar` | `preset__flight` with two quest states, steering between samples: band panel pixels against `radioPixels()` of the browser's panel text, dial pixels against `dragon-radar.js` for the sampled sweep angle and blink phase, guide and blip against `radarBearing` (UI_TEST builds compute the far blip every frame); then the world module's state: a Y ki shot, an L+Y charge and the weak wave it releases hide the dial (but the first frame), which comes back after them |
+| `radar` | `preset__flight` with two quest states, steering between samples: band panel pixels against `radioPixels()` of the browser's panel text, dial pixels against `dragon-radar.js` for the sampled sweep angle and blink phase, guide and blip against `radarBearing` (UI_TEST builds compute the far blip every frame); then a Y ki shot, an L+Y charge and the weak wave it releases hide the dial, which comes back after them. Production `world controls` also checks first-frame yielding. |
 
 ## Core requests
 
@@ -535,8 +557,9 @@ ignored and counted, since the browser references model the radio alone.
 - **Done on main** (`eee1c93`): `core_oam_hide_range` writes only
   Y = `$E0` / X = `$FF`; the dial's direct run at `!core_oam_cursor`
   (advancing the cursor, respecting `!core_oam_limit` as `core_oam_add`
-  does) is approved; `ui_world_frame` / `ui_world_nmi` are first in the
-  world dispatch. The world module's busy states are read from its public
+  does) is approved; `ui_world_frame` is the first OAM producer and
+  `ui_world_nmi` runs before world's sprite DMA, after the ending's takeover
+  handler. The world module's busy states are read from its public
   RAM (`ui_world_yield`); its sprites in native slots 0..n-1 that touch the
   dial's box (8–55, 8–55) are moved behind the dial every other frame, as
   for any native.

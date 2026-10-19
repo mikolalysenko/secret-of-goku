@@ -9,19 +9,20 @@ and Super Saiyan transformation inside Secret of Mana's action RPG.
 This preview uses short native SNES combat sounds and compact effects.
 It includes the fixes for lingering transformation audio, cut-grass aura
 colours, flight palettes, the attack meter and deferred animation uploads.
-Crowded flight/combat can still slow down. This is an in-progress preview,
-not a claim of a completed, fully tested port or constant 60 fps.
+World takeoff, aerial charging, radar quest targets and returning from the
+globe/flat map are corrected. Predecoded terrain removes the measured
+world-flight stalls. Crowded local flight/combat can still slow down;
+this remains an in-progress preview.
 
 DOWNLOADS AND SOURCE
 
 Release: {{RELEASE_URL}}
 GitHub: https://github.com/mikolalysenko/secret-of-goku
-SNES source: https://github.com/mikolalysenko/secret-of-goku/tree/snes-port
+SNES source: https://github.com/mikolalysenko/secret-of-goku/tree/main/snes
 Browser edition: https://mikolalysenko.github.io/secret-of-goku/
 Source commit: {{COMMIT}}
 
-The browser and desktop editions are separate builds. The screenshots
-attached to this SNES release were captured from its actual cartridge.
+The browser and desktop editions are separate builds.
 
 APPLY THE PATCH
 
@@ -69,6 +70,11 @@ CONTROLS - ORIGINAL SNES BUTTON LABELS
   Start       Start / resume
   Select      Switch party member
 
+In world flight, A ascends and B descends/lands. L+A and L+B keep their
+Goku actions without changing altitude. Start opens the globe; R switches
+to the flat map, L returns to the globe, and B closes the viewer once it
+has finished loading. Native map loading takes several seconds.
+
 Goku's powers become available after his opening arrival. Use the game's
 normal save points and retain the emulator's battery-save file. Browser
 checkpoints and emulator save states are not interchangeable with this ROM.
@@ -76,16 +82,20 @@ Do not assume save states from an older build work after updating.
 
 KNOWN LIMITATIONS
 
-Dense scenes, especially repeated ki shots while flying with the party,
+Dense local scenes, especially repeated ki shots while flying with the party,
 still have CPU slowdowns. The reviewed gameplay scenarios have no observed
 palette mismatches, native weapon-meter leaks, sprite overflow or vblank
 overruns. Quiet punches, quiet ki and water flight passed 1,200-frame
-emulator runs without dropped gameplay frames. Those measurements do not
-guarantee every map, boss, scripted scene or physical device.
+emulator runs without dropped gameplay frames. World flight passed 5,770
+measured frames of radar-visible turns, ki, charge/release and form changes
+with zero missed frames or palette, sprite and vblank errors. Map loading
+is excluded. These measurements do not cover every map, boss, scripted
+scene or physical device.
 
-Less common status/equipment interactions and some story, boss and ending
-paths still need further review. Detailed status and test results:
-https://github.com/mikolalysenko/secret-of-goku/blob/snes-port/docs/agents/snes-port/gameplay-performance.md
+Scouter power readouts and Analyzer overlays are not drawn yet. Less common
+status/equipment interactions and some story, boss and ending paths still
+need further review. Detailed status and test results:
+https://github.com/mikolalysenko/secret-of-goku/blob/main/docs/agents/snes-port/gameplay-performance.md
 
 CREDITS
 

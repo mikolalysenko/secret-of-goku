@@ -14,7 +14,9 @@ const ORDER={
   // ui and destroy only write HDMA registers: first, so they check the
   // vblank line before Goku's cell DMA; fx programs channels 2/3 after all DMA.
   modules_field_nmi:['ui_field_nmi','destroy_field_nmi','goku_nmi','*','ending_nmi','fx_nmi'],
-  modules_world_frame:['ui_world_frame','destroy_world_frame','world_world_frame','*','fx_world_frame','ending_world_frame','audio_frame'],
+  // Prepare/reset world state and consume combat input before the radar's
+  // visibility decision. UI remains the first call that allocates OAM.
+  modules_world_frame:['world_prepare_frame','combat_world_frame','ui_world_frame','destroy_world_frame','world_world_frame','*','fx_world_frame','ending_world_frame','audio_frame'],
   modules_world_nmi:['ending_world_nmi','ui_world_nmi','world_world_nmi','*','fx_world_nmi'],
   modules_menu_frame:['goku_menu_frame','title_menu_frame','ui_menu_frame','*','audio_pause'],
   modules_ring_frame:['fx_ring_frame','ui_ring_frame','*','audio_pause'],

@@ -134,6 +134,78 @@ and `--combat-profile` add detailed
 execution probes. Generated summaries, screenshots and private ROM copies
 stay under `.local/snes-test/`, outside Git. No physical console was tested.
 
+## Flight, world map and radar follow-up
+
+The October 18 follow-up fixes the known takeoff and world-flight
+integration bugs, including the production radar and quest indicators:
+
+- Outdoor takeoff and roof escapes share boss, status, scene and camera
+  locks. A second input reader can no longer bypass them.
+- World charging uses the shared combat clock, form, action and native
+  sound state. Releasing L while holding Y fires one wave; L+A/L+B cannot
+  briefly change altitude. Scene locks cancel focus and its sound pulses.
+- The radar reads the actual story-query result instead of a restored loop
+  index. Fifteen production save-state cases match the browser's palace,
+  Dryad, Tree, Fortress, Beast and wish targets, Ball count and hints.
+  The radar yields on the first charge/attack frame.
+- World palettes follow the resident sprite cell. Packed uploads reduce
+  the cell DMA path from 15.78 to 5.54 scanlines. Closing Start's globe or
+  flat map invalidates graphics and UI caches. Both forms have correct
+  colours from the first visible Goku frame; effects and radar recover too.
+- Fixed radio text and the 512×512 terrain are expanded at build time.
+  Native world helpers use FastROM. Turning no longer decompresses terrain
+  during flight; crater and landing behavior is preserved. An independent
+  decoder comparison checks all 262,144 tiles using the copier's actual
+  machine code, including ROM and ring-buffer boundaries.
+
+The final production world stress run measures **5,770 video frames**:
+
+| Input | Video frames | Missed frames |
+| --- | ---: | ---: |
+| Cruise and turns, radar visible | 2,400 | 0 |
+| Repeated ki | 1,200 | 0 |
+| Charge and release | 1,100 | 0 |
+| Transform and revert | 1,070 | 0 |
+
+Every row also has zero palette mismatches, sprite overflow and complete-NMI
+overruns. Peak NMI duration is 26.55 scanlines, below the 37-line vblank
+window. Two other world fixtures pass the same four inputs. These checks
+verify that movement, radar, shots and form changes actually occur.
+
+All 14 world cases pass, including takeoff locks, landing, docking, the Fly
+item, cloud barrier, craters, radar and both native map viewers. The Fortress
+cutaway matches the browser reference at 99.2–99.7%. Local water flight,
+teleport, seven roof routes, scene locks, Vegeta and whip crossing also pass.
+The whip test now checks companions at landing, before their AI resumes.
+Core input/world/lag/HDMA checks, cartridge boot and native-audio checks pass.
+The optional static branch audit was skipped because no coverage trace is
+available in this checkout.
+
+**Crowded local combat remains a release gap.** The final 240-frame field
+checks still measure 24 misses during flight, 97 with flying ki, 36 with
+flying punches, 28 with teleports and 44 with charge/release. Walking,
+ground punches and ground ki measure 8, 10 and 21 respectively. Quiet
+punches/ki, water flight and grass focus remain at zero; grass transformation
+has one miss. All 13 cases have zero palette, meter, OBJ and vblank errors.
+Native collision, actor/status work and enemy-death graphics remain the
+costly paths. The zero-drop world results do not imply zero-drop local
+combat, and native map-viewer loading pauses are outside those timings.
+
+```sh
+node snes/build.mjs --quiet --strict
+node --test snes/test/world/terrain.test.mjs
+node snes/test/world/run.mjs
+node snes/test/world/run.mjs timing --repeat=5
+node snes/test/world/run.mjs timing --scene=frieza__core-free-flight
+node snes/test/world/run.mjs timing --scene=emulator-probe__flight-baseline
+node snes/test/gameplay/run.mjs
+```
+
+Implementation checkpoints: `9d892ef` (takeoff), `32ac470` (uploads and
+palettes), `95fdf9f` (shared aerial combat), `aed3799` (quest state),
+`a1d2620` (world loop and text), `18da80a` (terrain), `38a7a3d` (control
+locks and radar ordering), `1f880aa` (map-viewer return).
+
 ## Validation and remaining work from Claude's notes
 
 The terrain optimization matches the browser on 289,324 tile comparisons,
@@ -167,3 +239,8 @@ These documented gaps remain separate from the measured performance fixes:
 - Senzu targeting, some status/equipment interactions and less common
   rendering paths still need the reference comparisons listed in
   [combat.md](combat.md#remaining-work) and [goku.md](goku.md#remaining-work).
+- Scouter power-level readouts and Analyzer overlays are still absent;
+  the switch works. This is separate from the corrected Dragon Radar and
+  quest panel. See [ui.md](ui.md#core-requests).
+- Less common story, boss and ending routes still need broader playthrough
+  coverage. Physical-console and flash-cartridge testing remains open.

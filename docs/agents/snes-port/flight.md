@@ -14,11 +14,10 @@ whip-pad crossings, the ceiling escape, the opening-path exit catches, NPC
 pass-through and the Sandship's flight-side rules are in and validated; the
 terrain classifier, the teleport landing search, the exit catches and the
 roof colours equal the browser's on every tile, query, probe and palette
-tested.** Flying costs 35-45 scanlines per frame in towns and fields (they
-keep 60 Hz) and 55-70 in dungeons, which then drop to 30-36 Hz while Goku
-flies; idle frames (Goku out of play, events) cost 0.2-0.5 lines and on
-foot about 2.7 with the movement hooks (`flight_frame` itself 0.7; see
-[Cost](#cost)); what other streams still owe is under
+tested.** Current integrated measurements and remaining crowded-field
+slowdowns are in [gameplay-performance.md](gameplay-performance.md#flight-world-map-and-radar-follow-up).
+The older module profile is retained under [Cost](#cost); remaining
+integration work is under
 [Remaining](#remaining).
 
 ## Behaviour (as the browser)
@@ -461,6 +460,9 @@ earlier one.
 
 ## Cost
 
+Historical profile, before the native-audio, shared takeoff and world-map
+follow-ups. These numbers describe that build, not the current release
+candidate; see [current measurements](gameplay-performance.md#flight-world-map-and-radar-follow-up).
 Measured on the FastROM build with every module of main: scanlines of
 flight code per logic frame (the master clock between code-bank changes,
 `Mesen` Lua), and the logic rate while Goku flies:

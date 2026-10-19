@@ -7,19 +7,20 @@ Core services built on these facts: [snes-rom.md](../snes-rom.md#modules-and-cor
 Timing numbers come from `node snes/test/core/measure.mjs` (Mesen, 240
 frames per scene with walking input; re-run it after engine-heavy changes).
 
-Banks: the field loop and its NMI/IRQ execute in bank `$00`
+Banks: the field outer loop and its NMI/IRQ execute in bank `$00`
 (the HiROM mirror of `C0`), so Mesen exec callbacks and savestate PCs use
 `00:xxxx` for them. The port runs selected native movement, actor, collision
-and OBJ passes through the equivalent FastROM mirrors `$80/$81`; the outer
-loop and interrupt vectors retain bank `$00`. Other code runs in `C0`–`DF`
-through `JSL`.
+and OBJ passes through the equivalent FastROM mirrors `$80/$81`; the
+field outer loop and interrupt vectors retain bank `$00`. World flight now
+runs its loop and helpers through `$80/$81` too, while its NMI/IRQ vectors
+retain `$00`. Other code runs in `C0`–`DF` through `JSL`.
 
 ## Modes, loops and interrupts
 
 | Mode | Main loop (waits for vblank) | NMI (`$0100` JML) | IRQ (`$0104` JML) | Core hooks |
 | --- | --- | --- | --- | --- |
 | Field: towns, dungeons, dialogue, scripted events, Mode 7 boss arenas (Mana Beast 253, Fortress bosses 488/489) | Init `00:B03F` (stack `$01FF`, `NMITIMEN=$B1`); `00:B070 JSR $B08C` (frame logic), `B073` sets `$EC` bit 0, `B079` waits until NMI clears it; `$56` counts 0–4 | `00:C0A8` | `00:C1CF` at V=196/H=184 | frame `00:B073`, vblank `00:C158` |
-| World flight (Flammie, the opening's legend fly-over) | Init `C0:8038` (stack reset), loop `00:8064`–`8091`: logic, `8085` sets `$EC=$81`, `808D` waits | `00:88CF` | `00:8A4B` at V≈100–103 (horizon) | frame `00:8085`, vblank `00:8903` |
+| World flight (Flammie, the opening's legend fly-over) | Init `C0:8038` (stack reset); the port resumes at `80:804A` after its loader hook. Loop `80:8064`–`8091`: logic, `8085` sets `$EC=$81`, `808D` waits | `00:88CF` | `00:8A4B` at V≈100–103 (horizon) | loader `C0:8045`, frame `80:8085`, vblank `00:8903` |
 | Ring menus | `C0:6943`: polls `$4212` for vblank start, sets `$EC` bit 3, `JSL $D0D397`; pads through `C0:695E` | field (`00:C0A8`) | field | frame `C0:694F` (in vblank) |
 | Full-screen menus: game select, name entry, file list, status/equipment/action grid, save screen, controller config | `C0:1DEF`–`1DFD` polls `$4212` (no NMI work); vblank uploads `1DFF`–`1E05`; input and logic every 4th frame (`$A201`, `C0:2BD9`) | `C0:20A7` (BG scroll only) | none (`NMITIMEN=$81`) | frame `C0:1E08` (in vblank) |
 | Title, opening narration program, ending/credits | WRAM program at `7E:8000+` (decompressed from `C7:7C00` by `C1:4C30`), entered at `C1:4CF6 JML $7EAF0B` (power-on, soft reset, quit) or `C1:4D0B JML $7EAF28` (`C1:4CFA`, via jump table `C0:0075`; seen in ending/credit states) | `$40` (RTI) | `7E:A266`: the program's frame, `D=$4200`, `DB=$7F` | entry `C1:4CF6`/`4D0B` (`modules_title_boot`) |
@@ -232,8 +233,10 @@ sets `MEMSEL` because `C1:4D0F` clears it on every title entry):
 FastROM is now the default (`-DCORE_SLOWROM=1` opts out). The October 18
 gameplay pass also redirects verified hot native calls and hook continuations
 through `$80/$81`, with original-byte assertions at every patched call.
-These mirrors retain the low WRAM/IO mapping; the original `$00` outer loop,
-interrupts and map-transition return stay in place. Core frame, input, OAM,
+These mirrors retain the low WRAM/IO mapping; the original `$00` field outer
+loop and interrupts stay in place. World flight now resumes in `$80` after
+the native loader and map-viewer return, with FastROM helper calls and
+predecoded terrain rows. Core frame, input, OAM,
 VRAM, save, world, lag, HDMA, WRAM and extended-ROM tests pass. The timing
 measurements above describe the older experiment, before those call changes.
 
