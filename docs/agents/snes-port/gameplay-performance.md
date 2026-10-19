@@ -503,6 +503,18 @@ meter, OBJ, complete-NMI, graphics-DMA or duplicated beam-work errors.
 Goku menus/save/load, FX/aura, passengers/local flight and world/radar
 checks pass. Private measurements are in `.local/snes-test/post-hud/`.
 
+Carried companions subsequently retire their stale screen coordinates as
+well as their rendered bodies, so native AI cannot target their last ground
+position. This changes the aerial workload: long flying-ki/punch counts
+become 35/6 rather than 19/5, while the flying-ki peak falls to 270.39 lines.
+With that behavior corrected, the FX hash-first lookup and exact native
+pursuit-direction lookup improve ground ki 3 → 2, flying punches 6 → 3
+and charging 65 → 63 misses; punches/flying ki/teleport stay 2/35/52.
+All 13 short and six long cases retain zero rendering/hardware errors;
+core, Goku, FX, local flight and world/radar regressions pass. These are
+CPU reductions, not a zero-drop result. Private measurements are under
+`.local/snes-test/passenger-target/` (`fx-direction-*`).
+
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's
 virtual combat targets are wired, and FastROM is the default. The carried

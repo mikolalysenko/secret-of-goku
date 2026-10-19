@@ -4,6 +4,25 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES repeated AI and effect work (2026-10-19)
+
+- Replace native pursuit-direction classification with an exact byte
+  lookup, retaining height, wrapping, CPU state and unusual-input fallbacks.
+  A representative call falls from 367 to 291 CPU cycles; assembled checks
+  cover all 65,536 byte-magnitude pairs and additional boundary/flag cases.
+- Check the FX cache's matching hash entry before its residency bitset.
+  Every residency reset now invalidates those hints, including partial
+  region changes. A warm lookup falls 230 → 157 cycles and a foreground
+  stamp 740 → 667. Tests cover stale hints, eviction, pending uploads,
+  exhausted palettes and scene/region invalidation.
+- Re-evaluated after correcting carried-companion targets, the combined
+  changes improve long ground-ki/flying-punch/charge misses from 3/6/65
+  to 2/3/63 per 1,200 frames; punches/flying ki/teleport retain 2/35/52.
+  All 13 short cases and six long repeats have zero palette, meter, OBJ,
+  complete-NMI, graphics-DMA or duplicate beam-work errors. Core, Goku
+  menus/save/load, FX/aura, local passengers/flight and world/radar checks
+  pass. Strict crowded zero-drop timing remains open.
+
 ## SNES carried-companion target visibility (2026-10-19)
 
 - Retire carried companions' native screen coordinates along with their

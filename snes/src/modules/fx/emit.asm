@@ -781,22 +781,26 @@ fx_cache_get:
 	STA !d_tmp+4                 ; cell word
 	AND.w #$01FF
 	STA !d_tmp                   ; cell id
-	JSR fx_rbit                  ; X = byte, A = bit
-	AND.l !fx_rbits,X
-	AND.w #$00FF
-	BNE +
-	JMP .miss                    ; not resident: nothing to search
-+	LDA !d_tmp
+	; A matching hash entry is resident. Every residency reset also clears
+	; the hash, including conservative resets when just one region changes.
+	; Most effects reuse these cells every frame; avoid the bitset lookup.
 	AND.w #$000F
 	TAX
 	LDA.l !fx_hash,X
 	AND.w #$00FF
 	CMP.w #30
-	BCS .scan
+	BCS .resident
 	TAX
 	LDA.l !fx_ccell,X
 	CMP !d_tmp
 	BEQ .hit
+.resident
+	LDA !d_tmp
+	JSR fx_rbit                  ; X = byte, A = bit
+	AND.l !fx_rbits,X
+	AND.w #$00FF
+	BNE .scan
+	JMP .miss                    ; not resident: nothing to search
 .scan
 	LDA !d_tmp
 	LDX.w #$0000

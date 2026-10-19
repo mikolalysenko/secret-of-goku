@@ -471,6 +471,14 @@ with a wave on screen.
 
 ## Resources
 
+The cell cache checks a matching hash hint before its residency bitset.
+`fx_clear_rbits` invalidates every hint, even when a single region changes,
+so a retained cell id cannot expose art that needs re-uploading. A warm
+lookup takes 157 rather than 230 CPU cycles. `cache.test.mjs` exercises
+hash collisions, eviction, delayed uploads, palette exhaustion and region
+resets against the assembled code. Stamp/emitter and screenshot tests
+continue to check placement and visible colours.
+
 | Resource | Use |
 | --- | --- |
 | Code `$AE:8000-FFFF` | `!CODE_FX` (upper half only; `$EE` lower half holds ending art) |

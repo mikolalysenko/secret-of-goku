@@ -340,13 +340,21 @@ fx_release:
 	STA.l !fx_cpend
 	RTS
 
-; No cell is resident (scene change, regions lost). Preserves A and X.
+; No cell is resident (scene change, regions lost). Invalidate the fast
+; hash too: unchanged entries of other regions must still re-upload after
+; a conservative reset, even if their cell ids match. Preserves A and X.
 fx_clear_rbits:
 	PHA
 	PHX
 	LDA.w #$0000
 	LDX.w #!FX_RBITS_SIZE-2
 -	STA.l !fx_rbits,X
+	DEX
+	DEX
+	BPL -
+	LDA.w #$FFFF
+	LDX.w #14
+-	STA.l !fx_hash,X
 	DEX
 	DEX
 	BPL -

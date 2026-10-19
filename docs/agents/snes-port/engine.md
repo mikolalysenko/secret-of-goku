@@ -292,6 +292,17 @@ outside dead stack locals across all 65,536 byte-magnitude pairs, large
 coordinates, heights and flag combinations. A representative call falls
 from 322 to 198 CPU cycles.
 
+`C1:0404` uses another byte table for pursuit direction, split between
+`EE:0000-7FFF` and `EF:0000-7FFF`. Each entry contains the major axis,
+diagonal decision and minor-distance nibble. The routine retains the
+native height adjustment and its unusual coordinate folding above 255;
+the two folded magnitude-256 edges keep the retail tail. Eight-bit indexes
+and decimal mode keep the original routine. `direction.test.mjs` compares
+all byte-magnitude pairs plus heights, large coordinates and CPU flags;
+decimal callers are compared at the unchanged retail continuation before
+its original stack arithmetic. A representative call falls 367 → 291 CPU
+cycles. `-DCORE_NATIVE_DIRECTION_SLOW=1` restores the original entry.
+
 Native message graphics use exact replacements at `C0:14C6`, `C0:15B9`
 and `C0:162C`. The first copies disjoint WRAM blocks with interruptible
 word copies (64–896 bytes) or MVN (smaller copies). The second combines

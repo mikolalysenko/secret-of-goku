@@ -66,6 +66,122 @@ core_native_distance:
 	LDA.w #8
 	JML $C103F9
 
+; C1:0404: native actor pursuit direction and minor-axis distance. Keep
+; retail's unsigned differences, height adjustment and unusual >255 wrap.
+; The byte lookup combines major-axis/diagonal tests and the distance's
+; high nibble. The two 256-magnitude edges, decimal and X8 use retail.
+core_native_direction:
+	PHD
+	PHP
+	REP #$20
+	LDA $01,S
+	BIT.w #$0018
+	BEQ .fast
+	JML $C10408
+.fast
+	TSC
+	SEC
+	SBC.w #14
+	TCD
+	TCS
+	STZ $0B
+	LDA.w $0020,X
+	SEC
+	SBC.w $0020,Y
+	BCS +
+	EOR.w #$FFFF
+	INC
+	PHA
+	LDA.w #3
+	STA $0B
+	PLA
++	BIT.w #$FF00
+	BEQ +
+	ORA.w #$FF00
+	EOR.w #$FFFF
+	INC
+	PHA
+	LDA $0B
+	EOR.w #3
+	STA $0B
+	PLA
++	STA $01
+	LDA.w $0045,Y
+	AND.w #$00FF
+	EOR.w #$FFFF
+	SEC
+	ADC.w $0022,Y
+	STA $0D
+	LDA.w $0045,X
+	AND.w #$00FF
+	EOR.w #$FFFF
+	SEC
+	ADC.w $0022,X
+	SEC
+	SBC $0D
+	BCS +
+	EOR.w #$FFFF
+	INC
+	PHA
+	LDA $0B
+	ORA.w #12
+	STA $0B
+	PLA
++	BIT.w #$FF00
+	BEQ +
+	ORA.w #$FF00
+	EOR.w #$FFFF
+	INC
+	PHA
+	LDA $0B
+	EOR.w #12
+	STA $0B
+	PLA
++	STA $05
+	ORA $01
+	BIT.w #$FF00
+	BNE .retail
+	LDA $05
+	XBA
+	ORA $01
+	PHX
+	TAX
+	BMI .high
+	LDA.l core_direction_low,X
+	BRA .found
+.high
+	LDA.l core_direction_high-$8000,X
+.found
+	AND.w #$00FF
+	PHA
+	AND.w #3
+	ASL
+	TAX
+	LDA.l core_direction_masks,X
+	STA $03
+	LDA $0B
+	EOR.w #5
+	ASL
+	TAX
+	LDA.l core_direction_repeat,X
+	AND $03
+	STA $03
+	PLA
+	AND.w #$00F0
+	XBA
+	ORA $03
+	PLX
+	JML $C104C7
+.retail
+	LDA $05
+	JML $C1046B
+core_direction_masks:
+	dw $03F3, $0CFC, $03FF, $0CFF
+core_direction_repeat:
+	for dir = 0..16
+		dw !dir*$111
+	endfor
+
 ; Native window animation shifts rows through two cell-exchange calls per
 ; column. Batch the interior columns, retaining the final native iteration
 ; for exact counters, upload flags, accumulator, indexes and status flags.
