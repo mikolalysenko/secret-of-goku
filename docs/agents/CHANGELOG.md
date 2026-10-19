@@ -4,6 +4,23 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES exhausted teleport searches (2026-10-19)
+
+- Stop searching farther distances once all four initial connected
+  footprints are blocked. Reject known blocked directions before computing
+  offsets, and use signed word offsets directly. Keep target order and
+  reachable landing positions.
+- Eight assembled landing tests pass, including more than 370,000
+  obstruction, endpoint-reuse and full-search comparisons. An enclosed
+  target takes 3,335 instead of 8,275 CPU cycles.
+- The complete 27-scene browser terrain comparison, local-flight and
+  hole-provider tests, ten combat comparisons and all 14 available
+  world/radar/map cases pass.
+- Long teleport misses remain 15 per 1,200 frames; the longest field update
+  falls 279.35 → 269.70 scanlines. Other long counts and all 13 short counts
+  remain unchanged, with zero hardware/rendering errors. Crowded zero-drop
+  timing is still unfinished.
+
 ## SNES native AI dispatch (2026-10-19)
 
 - Branch directly between the native bytecode loop and its private

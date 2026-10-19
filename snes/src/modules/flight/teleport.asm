@@ -552,9 +552,23 @@ endif
 	CPY.w #4
 	BCC .dir
 	PLX
+if not(defined("FLIGHT_TP_EXHAUST_SLOW")) && not(defined("FLIGHT_TP_PREFIX_SLOW"))
+	; Every candidate shares its direction's first connected footprint.
+	; If all four prefixes failed, no later distance can become reachable.
+	; Airborne/pixel-dependent searches have prefix=$FFFF and stay native.
+.exhaust_check
+	LDA.l !fl_tp_prefix
+	CMP.w #$0101
+	BNE +
+	LDA.l !fl_tp_prefix+2
+	CMP.w #$0101
+	BEQ .exhausted
++
+endif
 	INX
 	CPX.w #7
 	BCC .dist
+.exhausted
 if !FL_TP_SPOT_MEMO
 	LDA.w #0
 	STA.l !fl_tp_spot_on
@@ -571,9 +585,10 @@ endif
 	RTS
 fl_tp_distances:
 	db 26, 22, 18, 32, 38, 46, 54
-; direction table: dx, dy (bytes) for 0:(1,0) 1:(-1,0) 2:(0,1) 3:(0,-1)
+; Signed word offsets avoid widening two bytes for every candidate.
+; Directions: 0:(1,0), 1:(-1,0), 2:(0,1), 3:(0,-1).
 fl_tp_dirs:
-	db 1, 0, $FF, 0, 0, 1, 0, $FF
+	dw 1, 0, $FFFF, 0, 0, 1, 0, $FFFF
 fl_abs:
 	BPL +
 	EOR.w #$FFFF
@@ -581,6 +596,17 @@ fl_abs:
 +	RTS
 
 ; One candidate: A = direction (0-3), distance fl_tp_dist. Carry = landing.
+macro fl_tp_direction()
+	LDA.w !fl_tp_dir
+	ASL
+	ASL
+	TAX
+	LDA.l fl_tp_dirs,X
+	STA.w !fl_tp_dx
+	LDA.l fl_tp_dirs+2,X
+	STA.w !fl_tp_dy
+endmacro
+
 fl_tp_candidate:
 	STA.w !fl_tp_dir
 if !FL_TP_SPOT_MEMO
@@ -588,23 +614,10 @@ if !FL_TP_SPOT_MEMO
 	BCC +
 	CLC
 	RTS
-+	LDA.w !fl_tp_dir
++
 endif
-	ASL
-	TAX
-	LDA.l fl_tp_dirs,X
-	AND.w #$00FF
-	BIT.w #$0080
-	BEQ +
-	ORA.w #$FF00
-+	STA.w !fl_tp_dx
-	LDA.l fl_tp_dirs+1,X
-	AND.w #$00FF
-	BIT.w #$0080
-	BEQ +
-	ORA.w #$FF00
-+	STA.w !fl_tp_dy
 if not(defined("FLIGHT_TP_PREFIX_SLOW"))
+	; Reject a known blocked direction before constructing its offsets.
 	LDA.l !fl_tp_prefix
 	BMI .endpoint
 	LDX.w !fl_tp_dir
@@ -619,6 +632,7 @@ if not(defined("FLIGHT_TP_PREFIX_SLOW"))
 	BEQ .blocked
 	BRA .endpoint
 .first
+	%fl_tp_direction()
 	LDA.w #6
 	JSR fl_tp_point
 	LDA.w #1
@@ -638,8 +652,11 @@ if not(defined("FLIGHT_TP_PREFIX_SLOW"))
 	LDA.b #2
 	STA.l !fl_tp_prefix,X
 	REP #$20
+	BRA .point
 .endpoint
 endif
+	%fl_tp_direction()
+.point
 	; the spot
 	LDA.w !fl_tp_dist
 	JSR fl_tp_point

@@ -8,8 +8,8 @@ combat is not yet guaranteed to run without missed video frames.
 
 ## Current checkpoint
 
-The latest 1,200-video-frame runs use the native AI dispatch build in
-`.local/snes-test/ai-dispatch/game.sfc`. All rendering and hardware
+The latest 1,200-video-frame runs use the teleport search build in
+`.local/snes-test/teleport-exhaust/offsets.sfc`. All rendering and hardware
 checks pass; flight, teleport and charging still miss frames.
 
 | Scenario | Missed frames | Longest field update (scanlines) |
@@ -18,12 +18,42 @@ checks pass; flight, teleport and charging still miss frames.
 | Ground ki | 0 | 237.85 |
 | Flying ki, corridor | 10 | 250.48 |
 | Flying punches | 1 | 280.41 |
-| Teleports | 15 | 279.35 |
+| Teleports | 15 | 269.70 |
 | Charge and release | 37 | 276.29 |
 
 The measurements below preserve the history of this review; their earlier
 counts are not the current release result. Passing a normal gameplay run
 does not imply zero-drop timing for every case.
+
+### Exhausted teleport searches
+
+A ground target whose first connected footprint fails in all four
+directions cannot have a landing at any later distance. Stop that search
+after four candidates instead of retrying all 28. Known blocked directions
+also return before constructing their offsets; signed word tables replace
+the repeated widening of direction bytes. Target order, reachable landing
+positions, airborne queries and hole-provider behavior are preserved.
+
+All eight assembled landing tests pass, including 512 enclosed-target
+cases, 73,380 individual obstructions, 283,200 endpoint-reuse queries and
+13,824 full searches against the independent model. The enclosed-target
+case falls from 8,275 to 3,335 CPU cycles. Long teleport misses remain 15
+per 1,200 video frames, while the longest update falls 279.35 → 269.70
+scanlines. All other long counts and all 13 short counts are unchanged;
+palette, meter, OBJ, graphics-DMA and complete-NMI checks remain clean.
+All 19,996 landing queries, 191,964 sweeps and 79,988 landing-service
+queries across 27 scenes still match the browser. Passenger, water,
+teleport, whip, ceiling, Vegeta and hole-provider checks pass, along with
+ten combat comparisons and all 14 available world/radar/map tests.
+Private results are under `.local/snes-test/teleport-exhaust/`; the
+production image matches the measured candidate byte for byte.
+
+The two-piece body and controller-ownership lookup experiments are excluded.
+Both passed their machine-code comparisons, but the body trial increased
+long charging misses 37 → 39, and the controller lookup increased long
+teleport misses 15 → 30 despite reducing individual helper cost. Their
+private patches and measurements remain in `body-pair/` and
+`controller-actor/` under `.local/snes-test/`.
 
 ### Native AI dispatch follow-up
 

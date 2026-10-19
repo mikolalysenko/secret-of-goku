@@ -28,14 +28,15 @@ function invoke(name,{a=0,x=0}={}){
   cpu.r[0]=0x7E;cpu.r[1]=entry>>>16;
   cpu.br.set([a,x,0xABCD,0x1FFD,entry&65535,0]);
   ram.writeUInt16LE(0x6FFF,0x1FFE);
-  let n=0,cycles=0;
+  let n=0,cycles=0,candidates=0;
   while(cpu.br[4]!==0x7000||cpu.r[1]!==entry>>>16){
     assert(++n<100000,`${name} did not return`);
+    if(((cpu.r[1]<<16)|cpu.br[4])===symbols.get('fl_tp_candidate'))candidates++;
     cpu.cyclesLeft=0;cpu.cycle();cycles+=cpu.cyclesLeft+1;
   }
   assert.equal(cpu.br[3],0x1FFF,'balanced stack');assert.equal(cpu.br[5],0,'D preserved');
   assert.equal(cpu.r[0],0x7E,'DB preserved');assert(!cpu.m&&!cpu.x,'register widths preserved');
-  return {pass:cpu.c,value:cpu.br[0],cycles};
+  return {pass:cpu.c,value:cpu.br[0],cycles,candidates};
 }
 function setup(){
   ram.fill(0);
@@ -162,6 +163,26 @@ function landing({x,y,ox,oy,terrain}){
   }
   return null;
 }
+test('an enclosed target stops after all four connected prefixes fail',t=>{
+  let worst=0;
+  const attempts=symbols.has('fl_tp_landing_exhaust_check')?4:28;
+  for(const layer of [0,1])for(const terrain of [0,1,2,3])for(let phase=0;phase<16;phase++)
+    for(const [dx,dy]of [[64,0],[-64,0],[0,64],[0,-64]]){
+      setup();descriptor(1,{flags:8},layer);
+      ram.fill(1,0x10000+layer*0x4000,0x10000+(layer+1)*0x4000);
+      const x=96+phase,y=96+(phase*7)%16;
+      ram.writeUInt16LE(x,0x21B70);ram.writeUInt16LE(y,0x21B72);
+      ram.writeUInt16LE((layer<<7)|terrain,0x21B74);
+      ram.writeUInt16LE(x+dx,0x21B58);ram.writeUInt16LE(y+dy,0x21B5A);
+      assert.equal(landing({x,y,ox:x+dx,oy:y+dy,terrain:(layer<<7)|terrain}),null);
+      const result=invoke('fl_tp_landing');
+      assert(!result.pass,'enclosed target became reachable');
+      assert.equal(result.candidates,attempts,'unexpected retries of unreachable directions');
+      assert.equal(ram.readUInt16LE(0x21A9E),0,'endpoint memo leaked outside the search');
+      worst=Math.max(worst,result.cycles);
+    }
+  t.diagnostic(`enclosed target: ${attempts} candidates, at most ${worst} CPU cycles`);
+});
 test('joined footprints retain every path cell, including longer gaps and stair endpoints',t=>{
   const dirs=[[1,0],[-1,0],[0,1],[0,-1]],distances=[18,22,26,32,38,46,54];
   const obstructions=[{flags:8},{flags:1},{flags:2},{beh:0x80},{code:0x21}];

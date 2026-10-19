@@ -161,6 +161,16 @@ accepted landing positions remain unchanged. `FLIGHT_TP_PREFIX_SLOW`
 disables this reuse. The independent model checks 1,123 failed-path
 cutoffs as well as the complete landing results.
 
+If all four first footprints are blocked, the search now ends after those
+four candidates; all later distances contain the same blocked prefixes.
+`FLIGHT_TP_EXHAUST_SLOW` disables this early exit for comparisons. A known
+blocked direction also returns before computing its offsets, and a signed
+word table avoids repeatedly widening direction bytes. The 512 comparisons
+of enclosed targets keep the same failure result while reducing the worst
+case from 8,275 to 3,335 CPU cycles. In the 1,200-frame gameplay repeat,
+teleport misses stay at 15 and the longest field update falls from 279.35
+to 269.70 scanlines; zero-drop crowded timing remains open.
+
 The search also reuses endpoint failures. A blocked cell covers an
 inclusive interval of candidate distances along its direction (28 pixels
 wide horizontally, 24 vertically). Keep one such interval per direction
