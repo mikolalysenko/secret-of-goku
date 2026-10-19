@@ -57,6 +57,7 @@ function test()
   for _, case in ipairs(cases) do
     H.load(H_OUT .. '/ready.mss'); H.wait(4)
     current = {frames=0, misses=0, overruns=0, nmiMax=0, cellMax=0, palette=0, visible=0, overflow=0, segments={}}
+    for _ = 1, REPEAT do
     for _, part in ipairs(case[2]) do
       local before = current.misses
       H.input = {}; for button in part[1]:gmatch('%S+') do H.input[button] = true end
@@ -66,6 +67,7 @@ function test()
       end
       current.segments[#current.segments+1] = {buttons=part[1],frames=part[2],misses=current.misses-before}
     end
+    end
     H.input = nil
     local result = current; current = nil
     H.result(case[1], result)
@@ -74,6 +76,7 @@ function test()
     W.check(case[1] .. '_palette', result.palette == 0, result.palette)
     W.check(case[1] .. '_nmi', result.overruns == 0, result.overruns)
     W.check(case[1] .. '_sprites', result.overflow == 0, result.overflow)
+    W.check(case[1] .. '_timing', result.misses == 0, result.misses)
   end
   W.finish()
 end

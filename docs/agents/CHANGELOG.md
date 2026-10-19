@@ -4,6 +4,20 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES terrain streaming without flight stalls (2026-10-18)
+
+- Pre-expand the 512×512 world terrain at build time and copy rows into the
+  native ring instead of decoding them while turning. Preserve terrain,
+  craters and landing behavior; use an interruptible CPU copy with no DMA
+  channel borrowed from the display.
+- Execute the copier against an independent decoder for every tile, all
+  eight ROM blocks and ring wrapping. Strict build, all world cases and
+  core world/HDMA checks pass.
+- The 5,770-frame world stress run has zero CPU misses, palette mismatches,
+  OBJ overflow or NMI overruns, including radar-visible turns, repeated ki,
+  waves and transform/revert. This does not resolve crowded field-combat
+  CPU misses or replace physical-console testing.
+
 ## SNES world-loop and dialogue cost (2026-10-18)
 
 - Run the native world loop, compass pass and world helper calls through

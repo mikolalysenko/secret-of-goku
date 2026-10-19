@@ -32,10 +32,10 @@ the Mana Tree's cloud barrier. Weaker waves bounce off the Fortress shield.
 | Aerial ki shots, late distant bursts | Done | `ki` |
 | Charged aerial Kamehameha (shared combat state), aim sparks, beam, edge sparks | Done | `controls`, `ki`, `fortress`, `scars` |
 | Fortress shield: base/partial waves deflect (rebound streak, arcs, 720-frame message cooldown) | Done | `ki` |
-| Fortress destruction: explosion, 186-frame cutaway (stand-in), deck landing with the crisis cue, story event `$8B` | Done; cutaway picture is a stand-in | `fortress` |
+| Fortress destruction: explosion, 186-frame planet cutaway, deck landing with the crisis cue, story event `$8B` | Connected to ending and Frieza modules | `fortress` |
 | Docking approach (ki boost, curve into the Fortress, no native dragon) | Done | `dock` |
 | Town craters (Mode 7 characters in the 7F ring and the tilemap, persistent, landing reads the terrain under them, wish restores) | Done | `scars` |
-| Mana Tree cloud barrier hit test; calls the destroy stream's break | Done (stand-in until destroy merges) | `barrier` |
+| Mana Tree cloud barrier hit test; calls destroy's barrier break | Connected | `barrier` |
 | Fly ring item art (Goku's hover pose in his colours) | Done | `item` |
 | Radio lines, sounds, barrier break, Frieza state | Bridged to UI / audio / destroy / frieza when present | scratch bridge build (see Integration) |
 
@@ -112,8 +112,8 @@ turns the ripple. All effects go into the module's own slots ahead of Goku
 
 The full wave on the Fortress sets the persistent `PWF_FORTRESS` flag
 (`C2:B112` stops drawing it), explodes, and after 24 frames starts the
-186-frame cutaway (stand-in: the world fades through `$E6`; `!w_cut_age`
-counts for the planet-view module). Then the Fortress's own docking ABI
+186-frame cutaway (`ending/cutaway.asm` renders the planet view from
+`!w_cut_age`). Then the Fortress's own docking ABI
 (`C2:B1CA`: `E8=1`, `F2|=$80`, S=`$1FF`, A=10, `JML $008260`) lands on its
 deck. The event-sound opcode hook (`C1:F109`) turns the deck's cue `$26`
 into the crisis cue (`01 1B 13 8F`, `fortress-collapse.js`), and the first
@@ -141,8 +141,11 @@ pixel. The cartridge cannot overlay, so the crater becomes part of the map:
   uses) in the world's own colours (k-means over the cells, nearest CGRAM
   colour of palettes 4-12). It emits the two cell layouts (18×12, 28×19).
 - On entering world flight the characters go to VRAM (one 512-byte chunk
-  per vblank). The native RLE decompressor fills a world row into the 7F
-  ring (`C0:98FD`); the module then writes the crater cells of that row.
+  per vblank). The generator pre-expands the fixed terrain into eight 32 KiB
+  ROM blocks. `world_copy_row` copies a 512-byte row into the native 7F ring
+  at `C0:98FD`, then the module writes the crater cells of that row. The
+  interruptible CPU block copy uses no DMA/HDMA channel. Every terrain tile,
+  all eight ROM blocks and ring wrap are checked by `terrain.test.mjs`.
   A new crater patches the ring rows near the camera (one row per frame)
   and rewrites the 128×128 Mode 7 tilemap cells in view (8 per vblank).
 - `C0:8190` (the landing check's tile read) returns the original terrain
@@ -300,10 +303,8 @@ it does not come from this module.
 
 ## Known differences from the browser
 
-- The 186-frame cutaway is a fade stand-in; the planet view belongs to the
-  orbit/ending streams (`!w_cut_age`).
-- The damaged deck's visuals and Frieza's collapse sequence belong to the
-  frieza stream; the module only sends the crisis cue and requests `$8B`.
+- The planet cutaway and damaged-deck collapse are implemented by the
+  ending/Frieza modules; world supplies their timeline and story handoff.
 - Craters are 8-px Mode 7 cells from 32 shared characters (cells under
   24/64 opaque keep the terrain), not a per-pixel scaled image.
 - The explosion draws a third of its 20 sparks per frame (each spark every
@@ -322,4 +323,5 @@ it does not come from this module.
   modules cheaper (each call is ~70 instructions).
 - Test builds with `-DGOKU_TRACE` write their trace at `$7E:7F00`, which is
   `!RAM_WORLD`; the world frame returns early in those builds.
-- `CORE_FASTROM` would give the effect loops ~25% more headroom.
+- FastROM is enabled; the native world loop, compass and helper calls now
+  also use its fast mirrors.

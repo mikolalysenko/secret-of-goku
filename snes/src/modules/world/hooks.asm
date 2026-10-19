@@ -320,7 +320,7 @@ world_event_sound_hook:
 ; row (pushed at C0:98FC) into the 7F ring, then draw the craters crossing
 ; it. Entry: M16 X8, D = 0, DB = the world loop's.
 world_scar_row_hook:
-	%call00($99F3)
+	JSR world_copy_row
 	PHP
 	PHB
 	REP #$30
