@@ -8,8 +8,8 @@ combat is not yet guaranteed to run without missed video frames.
 
 ## Current checkpoint
 
-The latest 1,200-video-frame runs use the default attribute-batch build in
-`.local/snes-test/attr-batch/final.sfc`. All rendering and hardware
+The latest 1,200-video-frame runs use the default teleport-reuse build in
+`.local/snes-test/tp-path-join/final.sfc`. All rendering and hardware
 checks pass; flight, teleport and charging still miss frames.
 
 | Scenario | Missed frames | Longest field update (scanlines) |
@@ -18,7 +18,7 @@ checks pass; flight, teleport and charging still miss frames.
 | Ground ki | 0 | 237.94 |
 | Flying ki, corridor | 13 | 252.18 |
 | Flying punches | 1 | 286.10 |
-| Teleports | 14 | 312.24 |
+| Teleports | 15 | 281.39 |
 | Charge and release | 44 | 274.93 |
 
 The measurements below preserve the history of this review; their earlier

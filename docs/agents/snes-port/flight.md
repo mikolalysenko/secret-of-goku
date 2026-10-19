@@ -161,6 +161,38 @@ accepted landing positions remain unchanged. `FLIGHT_TP_PREFIX_SLOW`
 disables this reuse. The independent model checks 1,123 failed-path
 cutoffs as well as the complete landing results.
 
+The search also reuses endpoint failures. A blocked cell covers an
+inclusive interval of candidate distances along its direction (28 pixels
+wide horizontally, 24 vertically). Keep one such interval per direction
+only until the search returns. A candidate inside it contains the same
+failed cell; path checks never populate this cache. Layer, target terrain
+and cell geometry stay fixed during the search. Airborne targets and
+pixel-dependent holes bypass it. Ten bytes at `$33:7A96–7A9F` hold the
+interval starts and enable word; `FLIGHT_TEST_HOLES` retains its hole
+rectangle there and compiles out interval reuse. `FLIGHT_TP_SPOT_MEMO_SLOW`
+also disables it, as do the older prefix/ground comparison switches.
+
+After the first six-pixel footprint and an endpoint both pass, their tile
+rectangles cover the entire connected path through distance 30 on either
+axis, or 34 horizontally. Those candidates need no third rectangle scan
+or second endpoint setup. Longer candidates retain the path walk.
+`FLIGHT_TP_PATH_JOIN_SLOW` disables this shortcut. The independent tests
+cover 73,380 individual obstructions, 283,200 candidate queries with reused
+intervals and 13,824 complete searches, including height bands, stairs,
+direction reversals, longer gaps and neighboring SRAM sentinels.
+
+The full 27-scene comparison still matches all 19,996 landing queries,
+191,964 sweeps and 79,988 canLand service calls. Custom targets and the
+hole-provider regression also pass.
+
+For the same captured 28-candidate search, combined CPU work falls from
+29,258 to 20,156 cycles; a nearby open candidate falls 4,169 → 2,591.
+The long integrated teleport peak falls from
+312.24 to 281.39 scanlines, while misses change from 14 to 15 per 1,200
+video frames (short: 2 to 3 per 240). This reduces the largest observed
+stall; it does not achieve zero-drop timing or reduce miss frequency in
+that input sequence.
+
 An independent model agrees on 13,824 complete target/origin/terrain
 searches, and the 27-scene browser comparison still has no differences.
 The long teleport peak falls from 365.16 to 295.84 scanlines, while misses

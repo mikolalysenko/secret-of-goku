@@ -456,6 +456,10 @@ fl_mul_sq:
 ; findLanding(target, origin) (native-teleport.js): target fl_tp_e_*,
 ; origin fl_tp_o_x/y. Carry set with fl_tp_l_x/y/terr/facing/air.
 fl_tp_landing:
+if !FL_TP_SPOT_MEMO
+	LDA.w #0
+	STA.l !fl_tp_spot_on
+endif
 if not(defined("FLIGHT_TP_PREFIX_SLOW"))
 	; All seven distances include the same first connected footprint at
 	; distance 6. Keep its verdict and the shortest failed path distance
@@ -476,6 +480,18 @@ if not(defined("FLIGHT_TP_PREFIX_SLOW"))
 	LDA.w #$FFFF
 	STA.l !fl_tp_prefix
 .prefix_ready
+if !FL_TP_SPOT_MEMO
+	LDA.l !fl_tp_prefix
+	BMI +
+	LDA.w #$8000
+	STA.l !fl_tp_spot_lo
+	STA.l !fl_tp_spot_lo+2
+	STA.l !fl_tp_spot_lo+4
+	STA.l !fl_tp_spot_lo+6
+	LDA.w #1
+	STA.l !fl_tp_spot_on
++
+endif
 endif
 	LDA.l !fl_tp_e_terr
 	AND.w #$0080
@@ -539,10 +555,18 @@ endif
 	INX
 	CPX.w #7
 	BCC .dist
+if !FL_TP_SPOT_MEMO
+	LDA.w #0
+	STA.l !fl_tp_spot_on
+endif
 	CLC
 	RTS
 .found
 	PLX
+if !FL_TP_SPOT_MEMO
+	LDA.w #0
+	STA.l !fl_tp_spot_on
+endif
 	SEC
 	RTS
 fl_tp_distances:
@@ -559,6 +583,13 @@ fl_abs:
 ; One candidate: A = direction (0-3), distance fl_tp_dist. Carry = landing.
 fl_tp_candidate:
 	STA.w !fl_tp_dir
+if !FL_TP_SPOT_MEMO
+	JSR fl_tp_spot_seen
+	BCC +
+	CLC
+	RTS
++	LDA.w !fl_tp_dir
+endif
 	ASL
 	TAX
 	LDA.l fl_tp_dirs,X
@@ -620,6 +651,27 @@ endif
 	; For ordinary ground targets those overlapping footprints form one
 	; tile rectangle. Test each cell once. Pixel-dependent holes and the
 	; airborne land-or-fly rule retain the individual sample queries.
+if not(defined("FLIGHT_TP_PATH_JOIN_SLOW"))
+if not(defined("FLIGHT_TP_PREFIX_SLOW"))
+	LDA.l !fl_tp_prefix
+	BMI .path
+	; The prefix at distance 6 and endpoint were both checked. At these
+	; distances their tile rectangles overlap or touch on either axis:
+	; horizontal pixel gap <= 12, vertical <= 16. They cover every cell
+	; of the connected path, so it has no unchecked interior rectangle.
+	LDA.w !fl_tp_dist
+	CMP.w #31
+	BCC .located
+	; The horizontal footprint is four pixels wider, so it also covers
+	; the 32px candidate (the vertical path may have an interior tile).
+	CMP.w #35
+	BCS .path
+	LDA.w !fl_tp_dir
+	CMP.w #2
+	BCC .located
+.path
+endif
+endif
 	LDA.l !fl_tp_e_air
 	BNE .samples
 	LDA.w !fl_mflags
@@ -660,6 +712,8 @@ endif
 	; the spot again; terrain from its floor height
 	LDA.w !fl_tp_dist
 	JSR fl_tp_point
+.located
+	; A joined path still has the endpoint query, so no second point setup.
 	LDA.w !fl_q_x
 	STA.l !fl_tp_l_x
 	LDA.w !fl_q_y
@@ -964,9 +1018,96 @@ endif
 	SEC
 	RTS
 .fail
+if !FL_TP_SPOT_MEMO
+	JSR fl_tp_spot_remember
+endif
 	PLA : PLA : PLA : PLA
 	CLC
 	RTS
+
+if !FL_TP_SPOT_MEMO
+; A failed endpoint cell overlaps a contiguous interval along its ray.
+; Every endpoint in that interval contains the same failing cell. Keep
+; one interval per direction for this search; context and terrain stay
+; fixed, and path/first-footprint checks never populate these intervals.
+fl_tp_spot_seen:
+	LDA.l !fl_tp_spot_on
+	BEQ .no
+	LDA.w !fl_tp_dir
+	ASL
+	TAX
+	LDA.w !fl_tp_dist
+	SEC
+	SBC.l !fl_tp_spot_lo,X
+	LDY.w !fl_tp_dir
+	CPY.w #2
+	BCS .vertical
+	CMP.w #28                  ; inclusive 16px tile, footprint +/-6
+	BRA .result
+.vertical
+	CMP.w #24                  ; footprint +/-4
+.result
+	BCC .yes
+.no
+	CLC
+	RTS
+.yes
+	SEC
+	RTS
+
+fl_tp_spot_remember:
+	LDA.l !fl_tp_spot_on
+	BEQ .out
+	LDA.w !fl_tp_stairs
+	BNE .out
+	LDA.w !fl_tp_dir
+	CMP.w #2
+	BCS .vertical
+	TXA
+	AND.w #$007F
+	ASL : ASL : ASL : ASL
+	SEC
+	SBC.w #6
+	STA.w !fl_t0
+	LDA.l !fl_tp_e_x
+	STA.w !fl_t1
+	LDA.w #27
+	BRA .axis
+.vertical
+	TXA
+	AND.w #$3F80
+	LSR : LSR : LSR
+	SEC
+	SBC.w #4
+	STA.w !fl_t0
+	LDA.l !fl_tp_e_y
+	STA.w !fl_t1
+	LDA.w #23
+.axis
+	STA.w !fl_t2
+	LDA.w !fl_tp_dir
+	BIT.w #1
+	BNE .negative
+	LDA.w !fl_t0
+	SEC
+	SBC.w !fl_t1
+	BRA .store
+.negative
+	LDA.w !fl_t1
+	SEC
+	SBC.w !fl_t0
+	SEC
+	SBC.w !fl_t2
+.store
+	PHA
+	LDA.w !fl_tp_dir
+	ASL
+	TAX
+	PLA
+	STA.l !fl_tp_spot_lo,X
+.out
+	RTS
+endif
 
 ; fl_q_x/y = target + direction * A (rounded: integers already)
 fl_tp_point:

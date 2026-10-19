@@ -4,6 +4,23 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES teleport terrain reuse (2026-10-19)
+
+- Reuse checked footprints when they already cover the connected path.
+  Remember the candidate-distance interval covered by each failed endpoint
+  cell, only within that landing search. Keep target/candidate order,
+  height restrictions and the original airborne/hole-provider paths.
+- More than 370,000 independent obstruction, interval and search checks
+  pass, along with all 19,996 landing queries across 27 scenes, local
+  flight, all 15 world/radar/map cases and the short/long gameplay hardware
+  checks. The hole-provider test retains its private rectangle; it cannot
+  use the new interval cache.
+- A captured 28-candidate search falls 29,258 → 20,156 CPU cycles. The long
+  teleport peak falls 312.24 → 281.39 scanlines, but miss counts change
+  14 → 15 per 1,200 frames (short: 2 → 3). Other long counts remain
+  0/0/13/1/44 for punch/ki/flying ki/flying punch/charge. Zero-drop timing
+  remains open.
+
 ## SNES native attribute batch (2026-10-19)
 
 - Clamp the first four native attributes in one pass, keeping the final

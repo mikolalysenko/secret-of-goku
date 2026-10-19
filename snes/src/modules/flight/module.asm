@@ -190,7 +190,17 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !fl_rc_queue   = !FL_SRAM+$200     ; 64 words: flood fill queue (tile index)
 !fl_anchor     = !FL_SRAM+$280     ; last verified landing: map, x, y, layer, terrain (5 words)
 !fl_crossing   = !FL_SRAM+$28A     ; crossing start: map, x, y, layer, terrain, whip (6 words)
-                                   ; $296-$29F: the FLIGHT_TEST floor hole (testmod.asm)
+; The hole-provider test owns these ten bytes in FLIGHT_TEST_HOLES builds.
+; Such builds mark every map with FLM_HOLES and cannot reuse endpoint cells.
+!fl_tp_spot_lo = !FL_SRAM+$296     ; four failed-endpoint distance intervals (teleport search only)
+!fl_tp_spot_on = !FL_SRAM+$29E     ; interval reuse active inside fl_tp_landing
+assert !fl_tp_spot_on+2 <= !FL_SRAM+$2A0, "teleport endpoint intervals overlap the test mailbox"
+!FL_TP_SPOT_MEMO = 0
+if not(defined("FLIGHT_TP_SPOT_MEMO_SLOW")) && not(defined("FLIGHT_TP_PREFIX_SLOW"))
+if not(defined("FLIGHT_TP_GROUND_SLOW")) && not(defined("FLIGHT_TEST_HOLES"))
+	!FL_TP_SPOT_MEMO = 1
+endif
+endif
 !fl_sram_test  = !FL_SRAM+$2A0     ; test mailbox ($90 bytes, FLIGHT_TEST builds)
 !fl_g_inner    = !FL_SRAM+$330     ; word: the hero grid lies far enough inside the map that every
                                    ; footprint it covers is in bounds

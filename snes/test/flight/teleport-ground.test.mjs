@@ -162,6 +162,77 @@ function landing({x,y,ox,oy,terrain}){
   }
   return null;
 }
+test('joined footprints retain every path cell, including longer gaps and stair endpoints',t=>{
+  const dirs=[[1,0],[-1,0],[0,1],[0,-1]],distances=[18,22,26,32,38,46,54];
+  const obstructions=[{flags:8},{flags:1},{flags:2},{beh:0x80},{code:0x21}];
+  let count=0,gaps=0;
+  for(let phase=0;phase<16;phase++)for(let direction=0;direction<4;direction++){
+    const x=96+phase,y=96+(phase*7)%16,[dx,dy]=dirs[direction];
+    const cellsAt=step=>{
+      const px=x+dx*step,py=y+dy*step,cells=[];
+      for(let ty=(py-4)>>4;ty<=(py+4)>>4;ty++)for(let tx=(px-6)>>4;tx<=(px+6)>>4;tx++)cells.push(ty*128+tx);
+      return cells;
+    };
+    for(const distance of distances){
+      const path=new Set(cellsAt(distance));
+      for(let step=6;step<distance;step+=4)for(const cell of cellsAt(step))path.add(cell);
+      const ends=new Set([...cellsAt(6),...cellsAt(distance)]);
+      if([...path].some(c=>!ends.has(c)))gaps++;
+      for(const cell of path)for(const fields of obstructions)for(const terrain of [0,1,2,0x80,0x81,0x82]){
+        setup();const layer=terrain>>7;
+        descriptor(1,fields,layer);ram[0x10000+layer*0x4000+cell]=1;
+        ram.writeUInt16LE(x,0x21B70);ram.writeUInt16LE(y,0x21B72);
+        ram.writeUInt16LE(terrain,0x21B74);ram.writeUInt16LE(layer,0xD944);
+        ram.writeUInt16LE(distance,0xD95A);
+        let expected=clearAt({x:x+dx*distance,y:y+dy*distance,layer,terrain:terrain&3});
+        for(let step=6;step<distance&&expected;step+=4)
+          expected=clearAt({x:x+dx*step,y:y+dy*step,layer,terrain:terrain&3,stairs:1});
+        const result=invoke('fl_tp_candidate',{a:direction});count++;
+        assert.equal(result.pass,expected,JSON.stringify({phase,direction,distance,cell,fields,terrain}));
+      }
+    }
+  }
+  assert(gaps>100,'longer paths must contain unchecked interior cells');
+  setup();ram.writeUInt16LE(96,0x21B70);ram.writeUInt16LE(96,0x21B72);ram.writeUInt16LE(26,0xD95A);
+  for(let off=0;off<8;off+=2)ram.writeUInt16LE(0x8000,0x21A96+off);
+  ram.writeUInt16LE(1,0x21A9E);
+  const result=invoke('fl_tp_candidate',{a:0});assert(result.pass);
+  t.diagnostic(`${count} individual path obstructions; open 26px candidate ${result.cycles} CPU cycles`);
+});
+test('failed endpoint intervals preserve candidate order, direction and height rules',t=>{
+  const dirs=[[1,0],[-1,0],[0,1],[0,-1]],distances=[26,22,18,32,38,46,54];
+  let count=0,remembered=0;
+  for(let phase=0;phase<16;phase++)for(let direction=0;direction<4;direction++){
+    const x=96+phase,y=96+(phase*7)%16,[dx,dy]=dirs[direction];
+    for(const first of distances){
+      const px=x+dx*first,py=y+dy*first;
+      for(let ty=(py-4)>>4;ty<=(py+4)>>4;ty++)for(let tx=(px-6)>>4;tx<=(px+6)>>4;tx++)
+        for(const fields of [{flags:8},{flags:1},{flags:2},{beh:0x80},{code:0x21}])for(const terrain of [0,1,2,0x80,0x81,0x82]){
+          setup();const layer=terrain>>7;
+          descriptor(1,fields,layer);ram[0x10000+layer*0x4000+ty*128+tx]=1;
+          ram.writeUInt16LE(x,0x21B70);ram.writeUInt16LE(y,0x21B72);
+          ram.writeUInt16LE(terrain,0x21B74);ram.writeUInt16LE(layer,0xD944);
+          for(let off=0;off<8;off+=2)ram.writeUInt16LE(0x8000,0x21A96+off);
+          ram.writeUInt16LE(1,0x21A9E);
+          ram.fill(0x53,0x21A8E,0x21A96);ram.fill(0xA7,0x21AA0,0x21AA8);
+          for(const distance of [first,...distances]){
+            ram.writeUInt16LE(distance,0xD95A);
+            let expected=clearAt({x:x+dx*distance,y:y+dy*distance,layer,terrain:terrain&3});
+            for(let step=6;step<distance&&expected;step+=4)
+              expected=clearAt({x:x+dx*step,y:y+dy*step,layer,terrain:terrain&3,stairs:1});
+            assert.equal(invoke('fl_tp_candidate',{a:direction}).pass,expected,
+              JSON.stringify({phase,direction,first,distance,tx,ty,fields,terrain}));
+            count++;
+          }
+          if(ram.readUInt16LE(0x21A96+direction*2)!==0x8000)remembered++;
+          assert(ram.subarray(0x21A8E,0x21A96).every(v=>v===0x53),'crossing state changed');
+          assert(ram.subarray(0x21AA0,0x21AA8).every(v=>v===0xA7),'test mailbox changed');
+        }
+    }
+  }
+  if(symbols.has('fl_tp_spot_seen'))assert(remembered>1000,'failed-cell intervals were not exercised');
+  t.diagnostic(`${count} candidate queries with reused intervals; ${remembered} recorded cells`);
+});
 test('landing searches preserve candidate order and connected paths around blocked targets',t=>{
   let random=0x73412,count=0,found=0,worst=0,cutoffs=0;
   const next=()=>{random^=random<<13;random^=random>>>17;random^=random<<5;return random>>>0;};
@@ -181,6 +252,7 @@ test('landing searches preserve candidate order and connected paths around block
       ram.writeUInt16LE(x,0x21B70);ram.writeUInt16LE(y,0x21B72);
       ram.writeUInt16LE(terrain,0x21B74);ram.writeUInt16LE(0,0x21B78);
       const result=invoke('fl_tp_landing');worst=Math.max(worst,result.cycles);count++;
+      if(symbols.has('fl_tp_spot_seen'))assert.equal(ram.readUInt16LE(0x21A9E),0,'interval reuse leaked outside its search');
       assert.equal(result.pass,expected!==null,JSON.stringify(input));
       if(expected){
         found++;assert.deepEqual([0,2,4,6,8].map(off=>ram.readUInt16LE(0x21BA6+off)),expected,JSON.stringify(input));
