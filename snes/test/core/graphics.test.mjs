@@ -82,15 +82,20 @@ function compare(input,fast=false,dmas=0){
   const mismatch=b.ram.findIndex((v,i)=>v!==a.ram[i]);
   assert.equal(mismatch,-1,`RAM $${mismatch.toString(16)}: ${a.ram[mismatch]} -> ${b.ram[mismatch]}, ${JSON.stringify(input)}`);
   if(fast)assert(after<before*.5,`cycles ${before} -> ${after}`);
+  return [before,after];
 }
-test('predecoded death graphics exactly match all retail colour variants',()=>{
+test('predecoded death graphics exactly match all retail colour variants',t=>{
   for(let slot=0;slot<6;slot++)for(const p of [0,0x21,0xC6,0xE7])for(const dp of [0,0x100])
     compare({slot,p,dp,db:[0,0x7E,0x80][slot%3]},true);
+  const [before,after]=compare({});
+  t.diagnostic(`1600-byte death copy: ${before} -> ${after} CPU cycles`);
 });
-test('predecoded weapon sheets match all actor slots and colour variants',()=>{
+test('predecoded weapon sheets match all actor slots and colour variants',t=>{
   for(const source of [0,0x2FE8])for(let slot=0;slot<6;slot++)
     for(const p of [0,0x21,0xC6,0xE7])for(const dp of [0,0x100])
       compare({bank:0xD4,source,count:64,dest:0,slot,p,dp,db:[0,0x7E,0x80][slot%3]},true);
+  const [before,after]=compare({bank:0xD4,source:0,count:64,dest:0});
+  t.diagnostic(`2048-byte weapon copy: ${before} -> ${after} CPU cycles`);
 });
 test('other source sheets, layouts and decimal mode retain the retail decoder',()=>{
   for(const input of [
@@ -111,7 +116,9 @@ test('early-field DMA matches retail bytes and CPU state for all sheets and slot
       compare({...sheet,slot,dmaLine,p},true,1);
 });
 test('late scanlines, other handlers, menus, loads and HDMA retain interruptible copies',()=>{
-  for(const dmaLine of [161,195,224,225,261])compare({dmaLine},true);
+  for(const sheet of [{},{bank:0xD4,source:0,count:64,dest:0},{bank:0xD4,source:0x2FE8,count:64,dest:0}])
+    for(let slot=0;slot<6;slot++)for(const dmaLine of [161,195,224,225,261])
+      for(const p of [0,4])compare({...sheet,slot,dmaLine,p},true);
   for(const gate of [
     {[0x100]:0x40},{[0x102]:0x88},{[0x104]:0x40},{[0x106]:0x88},
     {[0xD0]:1},{[0xFF]:1},{[0xEC]:2},{[0xED]:0x40},{[0x2C]:0x80},

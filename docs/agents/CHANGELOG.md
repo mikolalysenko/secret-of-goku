@@ -4,6 +4,24 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES interruptible graphics copies (2026-10-19)
+
+- Copy predecoded death and weapon sheets in unrolled words when their
+  guarded early-frame DMA is unavailable. Keep interrupts, channel state,
+  retail bytes, direct-page scratch and the complete CPU return contract.
+  All three colour variants must fit their source bank. The death copy
+  falls from 11,459 to 9,894 CPU cycles; the weapon copy from 14,627 to
+  12,614. `CORE_NATIVE_GRAPHICS_MVN` retains the previous copy for comparisons.
+- The worst long charging frame falls from 420.13 to 410.76 scanlines.
+  Missed-frame counts remain unchanged: 2/8/19/5/52/79 per 1,200 frames
+  for crowded punches/ki/corridor flying ki/flying punches/teleport/charge.
+  This reduces a loading spike but does not close strict crowded timing.
+- All 13 short cases and six long combat repeats retain zero palette,
+  meter, OBJ, complete-NMI and graphics-DMA errors. Expanded assembled
+  comparisons cover late transfers with IRQs enabled and masked, every
+  sheet and actor slot. Core, Goku menus/forms/save/load, passenger/local
+  flight and world takeoff/landing/controls/ki/radar/map checks pass.
+
 ## SNES teleport terrain and native upload cost (2026-10-19)
 
 - Combine ordinary ground teleport's landing and descriptor checks in one

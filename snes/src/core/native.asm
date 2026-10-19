@@ -771,7 +771,7 @@ core_native_body:
 ; therefore finishes before the native line-196 HUD IRQ and line-225 NMI.
 ; No interrupt is masked and no channel configuration survives the copy.
 ; Later scanlines, scene/load work, other vectors and HDMA channel 7 keep
-; the interruptible MVN path. M16/X16, any DB/D; preserves X/Y.
+; the interruptible CPU copy. M16/X16, any DB/D; preserves X/Y.
 core_native_dma_window:
 	LDA.l $7E0100
 	CMP.w #$A85C
@@ -806,10 +806,11 @@ core_native_dma_window:
 
 ; C1:C599: common death and weapon sheets. All three retail
 ; colour encodings were expanded at build time. Copy into the original
-; buffer with an early-field DMA or interruptible MVN, preserving the
+; buffer with an early-field DMA or interruptible word copy, preserving the
 ; decoder's registers, flags, direct-page outputs and DB.
 ; Unknown sources, sizes, destinations and decimal mode use retail code.
 macro core_native_tiles_path(name, next, bank, source, tiles, destination, data, mask)
+assert ((<data>&$FFFF)+(<tiles>*32*3)) <= $10000, "native graphics variants cross the source bank"
 <name>:
 	PHP
 	REP #$30
@@ -900,8 +901,25 @@ macro core_native_tiles_path(name, next, bank, source, tiles, destination, data,
 	PLA : STA.l $004370
 	BRA .copied
 .mvn
+if defined("CORE_NATIVE_GRAPHICS_MVN")
 	LDA.w #((<tiles>*32)-1)
 	MVN $7E,(<data>>>16)
+else
+	; The caller's DB is already saved. Read words from the expanded sheet
+	; and write directly to WRAM; the epilogue reconstructs X/Y/A/flags.
+	SEP #$20
+	LDA.b #(<data>>>16)
+	PHA : PLB
+	REP #$20
+	PHX : TYX : PLY              ; X = WRAM destination, Y = ROM source
+if <tiles> == 50
+	JSR core_native_graphics_words_1600
+elseif <tiles> == 64
+	JSR core_native_graphics_words_2048
+else
+	error "unsupported native graphics copy size"
+endif
+endif
 .copied
 	; Variant 0 leaves the last row's transparency mask in DP $00.
 	LDA $04
@@ -943,6 +961,23 @@ core_native_tiles_retail:
 	PHA
 	PLB
 	JML $81C59E
+
+if not(defined("CORE_NATIVE_GRAPHICS_MVN"))
+; Fixed, disjoint ROM -> WRAM copies. Descending offsets let the 1600-byte
+; death sheet share the tail of the 2048-byte weapon copy. Each pair costs
+; 12 CPU cycles instead of MVN's 14, and remains interruptible throughout.
+; M16/X16, DB = expanded sheet bank, Y = source, X = destination.
+core_native_graphics_words_2048:
+	for word = 0..1024
+		!offset = 2046-(!word*2)
+		if !offset == 1598
+core_native_graphics_words_1600:
+		endif
+		LDA.w !offset,Y
+		STA.l $7E0000+!offset,X
+	endfor
+	RTS
+endif
 
 ; C1:2710: highest set bit of X, or $00FF for zero. X returns bit+1
 ; (zero for empty), Y/DB/D/P are preserved, except NZ follows PLD as in
