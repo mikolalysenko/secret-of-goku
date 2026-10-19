@@ -858,6 +858,15 @@ fl_hook_passenger:
 ; actor timers before this point and per-frame upkeep continue normally.
 fl_hook_passenger_ai:
 	SEP #$20
+if not(defined("CORE_ENEMY_SYNC"))
+	CPX.w #$0800
+	BEQ .enemy
+	CPX.w #$0A00
+	BNE .passenger
+.enemy
+	JML core_enemy_queue
+.passenger
+endif
 	JSR fl_is_passenger
 	BCC .native
 	JML $80F4E2
@@ -916,6 +925,34 @@ endif
 	STA.l !core_party_queuing
 .queue
 	JML core_party_queue
+
+; C set when both ground AI slots are free during ordinary local flight.
+; Core separately checks the native scene/actor state. M8/X16, DB=$7E;
+; preserve X/Y/D/DB. A landing still lets already queued work complete.
+fl_enemy_ready_l:
+	LDA.w !fl_passengers
+	CMP.b #3
+	BNE .no
+	LDA.w !fl_state
+	AND.b #!FLS_FLY|!FLS_ON|!FLS_CAN
+	CMP.b #!FLS_FLY|!FLS_ON|!FLS_CAN
+	BNE .no
+	LDA.w !fl_lock
+	ORA.w !fl_lock+1
+	BNE .no
+	LDA.w $E22C
+	ORA.w $E42C
+	BNE .no
+	REP #$20
+	LDA.w !fl_lastmap
+	CMP $DC
+	SEP #$20
+	BNE .no
+	SEC
+	RTL
+.no
+	CLC
+	RTL
 
 fl_hook_passenger_move:
 	SEP #$20

@@ -46,6 +46,7 @@ core_load:
 	BNE .failed
 	JSR core_sidecar_restore
 	JSR core_party_reset
+	JSR core_enemy_reset
 if defined("CORE_TEST")
 	JSL core_test_load
 endif
@@ -61,6 +62,7 @@ core_new_game:
 	%core_enter()
 	JSR core_live_clear
 	JSR core_party_reset
+	JSR core_enemy_reset
 	SEP #$20
 	LDA.b #!SIDE_VERSION
 	STA.l !persist_version

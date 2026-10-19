@@ -111,6 +111,12 @@
 !core_party_age1 = !SRAM_WORK_PARTY+$05
 !core_party_magic = !SRAM_WORK_PARTY+$06 ; word: older states/battery noise are not work
 !CORE_PARTY_MAGIC = $5150
+!core_enemy_pending = !SRAM_WORK_ENEMY+$00 ; byte: slots $0800/$0A00
+!core_enemy_species0 = !SRAM_WORK_ENEMY+$01
+!core_enemy_species1 = !SRAM_WORK_ENEMY+$02
+!core_enemy_map = !SRAM_WORK_ENEMY+$04
+!core_enemy_magic = !SRAM_WORK_ENEMY+$06
+!CORE_ENEMY_MAGIC = $5145
 !core_native_xy = !RAM_CORE_EXT+$1BC ; word: native OBJ anchor; frame thread only
 
 !CORE_DMA_MAX      = 8
@@ -234,6 +240,7 @@ core_safe_clear:
 	BPL .loop
 	LDA.w #!CORE_SAFE_MAGIC
 	STA.l !core_safe_magic
+	JSR core_enemy_reset
 	JMP core_party_reset
 
 ; Title program entries (C1:4CF6 JML $7EAF0B, C1:4D0B JML $7EAF28). Every way
@@ -284,6 +291,7 @@ core_frame_begin:
 	BEQ .same
 	JSR core_oam_mode_changed
 	JSR core_party_reset
+	JSR core_enemy_reset
 .same
 	INC.w !core_tick&$FFFF
 	; The game's own register reset (C2:B620, $4202+X for X = 0..11) clears
@@ -369,6 +377,7 @@ if not(defined("CORE_PARTY_SYNC"))
 .sprites_start
 	JSR core_party_work
 endif
+	JSR core_enemy_work
 	PHK
 	PER .sprites-1
 	PEA $B294-1
@@ -809,6 +818,7 @@ core_flush_main:
 incsrc "input.asm"
 incsrc "native.asm"
 incsrc "party.asm"
+incsrc "enemy.asm"
 incsrc "oam.asm"
 incsrc "services.asm"
 incsrc "save.asm"
