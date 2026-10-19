@@ -206,6 +206,31 @@ palettes), `95fdf9f` (shared aerial combat), `aed3799` (quest state),
 `a1d2620` (world loop and text), `18da80a` (terrain), `38a7a3d` (control
 locks and radar ordering), `1f880aa` (map-viewer return).
 
+## Crowded-combat performance checkpoints — October 19
+
+The first checkpoint moves the fixed native death/status sheet at
+`D1:F100` into build-time conversion. The replacement for `C1:C599`
+copies identical 4bpp bytes with interruptible MVN and preserves the
+decoder's CPU and direct-page contract. Other inputs use the retail path.
+`snes/test/core/graphics.test.mjs` executes both machine-code implementations
+and compares all WRAM (except inactive stack bytes), registers and flags;
+all six actor slots and all three palette variants match. Decimal mode,
+other sheets, sizes and destinations exercise the fallback. The fast path
+uses less than half the original CPU cycles.
+
+Strict build, those comparisons, the existing native-helper test and core
+frames/party/OAM/lag/decode checks pass. All 13 gameplay cases still have
+zero palette/meter/OBJ/NMI errors. Ordinary flight improves from 24 to 20
+misses; walking from 8 to 7, flying punches from 36 to 35 and charging from
+44 to 43. Flying ki stays at 97, ground punches at 10, ground ki at 21,
+teleport at 28 and grass transformation at 1. The four zero-miss cases
+remain zero. Peak logic falls from 617 to 355 scanlines for flying punches,
+592 to 330 for teleport and 433 to 355 for flying ki.
+
+The all-scenes `--strict-timing` check therefore still fails. Recurring
+actor, collision and effect costs and other graphics sheets need further
+work. Generated measurements are under `.local/snes-test/combat-death-fast/`.
+
 ## Validation and remaining work from Claude's notes
 
 The terrain optimization matches the browser on 289,324 tile comparisons,

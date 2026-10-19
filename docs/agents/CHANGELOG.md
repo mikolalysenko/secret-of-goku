@@ -4,6 +4,21 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES enemy-death graphics cost (2026-10-19)
+
+- Predecode the native 50-tile death/status sheet in all three colour
+  encodings. An interruptible CPU copy replaces conversion during combat;
+  other sheets and unusual contexts retain the native decoder.
+- Machine-code differential checks match all WRAM outputs, registers,
+  flags and direct-page scratch, including fallback inputs. The selected
+  path uses less than half the retail CPU cycles. Strict build and core
+  frames/party/OAM/lag/decode checks pass.
+- All 13 gameplay cases retain zero palette, meter, OBJ and NMI errors.
+  Peak flying-punch logic falls from 617 to 355 scanlines and teleport from
+  592 to 330. Crowded strict timing still fails: flying ki remains at
+  97 misses per 240 video frames. This is a checkpoint toward the zero-drop
+  combat target, not a completed performance fix.
+
 ## SNES flight preview validation and handoff (2026-10-18)
 
 - Update player controls and development notes for shared aerial combat,

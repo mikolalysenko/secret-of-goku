@@ -42,6 +42,14 @@ endif
 %hijack_jsl($C0B0BF, $81BFE0, 4, core)
 
 ; Hot native actor and collision calls (verified instruction sites).
+; The fixed 50-tile death/status sheet is already expanded in ROM. Other
+; graphics and unusual calling contexts retain the original decoder.
+if not(defined("CORE_NATIVE_TILES_SLOW"))
+%orig4($C1C599, $488B20E2)
+%orig1($C1C59D, $AB)
+%hijack($C1C599, core_native_tiles, 5, core)
+endif
+
 %orig4($C12710, $30C2080B)
 %orig1($C12714, $8A)
 %patch($C12710, 5, core)
