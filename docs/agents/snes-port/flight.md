@@ -108,6 +108,14 @@ integration work is under
 
 ### Instant Transmission (L+B)
 
+For ordinary ground targets, the connected path's overlapping 4-pixel
+samples are evaluated as one tile rectangle. This visits each cell once
+while preserving the same bounds, terrain, stair and trigger restrictions.
+Airborne targets and maps with floor-hole providers retain per-position
+checks. The October 19 differential run matches all 19,996 landing queries
+across 27 scenes; the long crowded teleport case improves from 105 to 73
+missed frames out of 1,200, so strict timing is still open.
+
 - Pressing L+B (the chord's first frame) while Goku can act picks a target
   among actor slots 3-11 that are active, species < $80 and not the orb $55,
   with HP and not dying (`E191` bit 7), plus a scene's custom foe (Frieza as

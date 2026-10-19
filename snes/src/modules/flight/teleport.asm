@@ -560,6 +560,21 @@ fl_tp_candidate:
 	BCS +
 	RTS
 +	; connected: every 4 px from 6 to the spot, stairs allowed
+	; For ordinary ground targets those overlapping footprints form one
+	; tile rectangle. Test each cell once. Pixel-dependent holes and the
+	; airborne land-or-fly rule retain the individual sample queries.
+	LDA.l !fl_tp_e_air
+	BNE .samples
+	LDA.w !fl_mflags
+	AND.w #!FLM_HOLES
+	BNE .samples
+	LDA $DC
+	CMP.w !fl_map
+	BNE .samples
+	JSR fl_tp_ground_path
+	BCS .ok
+	RTS
+.samples
 	LDA.w #6
 .conn
 	CMP.w !fl_tp_dist
@@ -630,6 +645,112 @@ fl_tp_candidate:
 .fset
 	STA.l !fl_tp_l_facing
 	SEC
+	RTS
+
+; Connected ground footprints at distances 6,10,... < fl_tp_dist.
+; The steps overlap on one axis, so their tile sets equal the bounding
+; rectangle of the first and last footprint. Bounds are convex as well.
+; No hole provider or airborne target reaches this helper.
+fl_tp_ground_path:
+	LDA.w #6
+	JSR fl_tp_point
+	JSR fl_fp_bounds
+	BCS +
+	RTS
++	JSR fl_fp_rect
+	LDA.w !fl_t0 : PHA           ; first footprint: col0,col1,row0,row1
+	LDA.w !fl_t1 : PHA
+	LDA.w !fl_t2 : PHA
+	LDA.w !fl_t3 : PHA
+	LDA.w !fl_tp_dist
+	SEC
+	SBC.w #7
+	AND.w #$FFFC
+	CLC
+	ADC.w #6                    ; last 6+4k strictly below the distance
+	JSR fl_tp_point
+	JSR fl_fp_bounds
+	BCS .rect
+	PLA : PLA : PLA : PLA
+	CLC
+	RTS
+.rect
+	JSR fl_fp_rect
+	PLA                         ; max row1
+	CMP.w !fl_t3
+	BCC +
+	STA.w !fl_t3
++	PLA                         ; min row0
+	CMP.w !fl_t2
+	BCS +
+	STA.w !fl_t2
++	PLA                         ; max col1
+	CMP.w !fl_t1
+	BCC +
+	STA.w !fl_t1
++	PLA                         ; min col0
+	CMP.w !fl_t0
+	BCS +
+	STA.w !fl_t0
++	; Keep bounds on the stack: classification uses fl_t0..fl_t7.
+	LDA.w !fl_t1 : PHA           ; col1
+	LDA.w !fl_t3 : PHA           ; row1
+	LDA.w !fl_t0 : PHA           ; col0
+	LDA.w !fl_t2
+.row
+	PHA                         ; row,col0,row1,col1
+	XBA
+	LSR
+	LDY.w !fl_q_l
+	BEQ +
+	ORA.w #$4000
++	ORA $03,S
+	TAX
+.col
+	JSR fl_class
+	BIT.w #!FLC_LANDB
+	BEQ .fail
+	BIT.w #!FLC_H1|!FLC_H2
+	BEQ .extra
+	AND.w #!FLC_H1
+	BEQ .h2
+	LDA.w !fl_q_t
+	CMP.w #2
+	BEQ .fail
+	BRA .extra
+.h2
+	LDA.w !fl_q_t
+	CMP.w #1
+	BEQ .fail
+.extra
+	; Same stairs-allowed checks as fl_tp_clear, on the same cells.
+	JSR fl_fetch
+	LDA.w !fl_d_flags
+	AND.w #7
+	CMP.w #3
+	BCS .fail
+	LDA.w !fl_d_beh
+	AND.w #$0010
+	BNE .fail
+	TXA
+	AND.w #$007F
+	CMP $07,S
+	BEQ .rowdone
+	INX
+	BRA .col
+.rowdone
+	PLA
+	CMP $03,S
+	BEQ .done
+	INC
+	BRA .row
+.done
+	PLA : PLA : PLA
+	SEC
+	RTS
+.fail
+	PLA : PLA : PLA : PLA
+	CLC
 	RTS
 
 ; fl_q_x/y = target + direction * A (rounded: integers already)

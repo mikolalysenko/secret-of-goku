@@ -4,6 +4,18 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES connected teleport corridor checks (2026-10-19)
+
+- Check the union of overlapping ground footprints once when finding an
+  Instant Transmission landing. Preserve individual samples for airborne
+  targets, floor-hole providers and an unloaded map context.
+- All 19,996 landing queries across 27 scenes match the browser, alongside
+  71,232 exit probes, 191,964 sweeps and 79,988 canLand calls. Controller
+  teleport, water, passenger, whip and scene checks pass.
+- Crowded teleport misses fall from 25 to 11 over 240 frames and from 105
+  to 73 over 1,200. Palette, meter, OBJ and vblank errors remain zero;
+  the strict zero-drop target remains open.
+
 ## SNES native companion return-width fix (2026-10-19)
 
 - Re-establish the actor routine's accumulator/index widths before each
