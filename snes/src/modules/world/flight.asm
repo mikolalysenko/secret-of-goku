@@ -2,7 +2,7 @@
 ; and runs the aerial powers. modules_world_frame, after the world logic and
 ; OAM build. M16/X16, DB = $7E, D = 0.
 
-world_world_frame:
+world_prepare_frame:
 if defined("GOKU_TRACE")
 	RTL                              ; goku's test trace overwrites $7E:7F00
 endif
@@ -22,6 +22,17 @@ endif
 	JSR world_fx_upload
 	JSR world_shadow
 	JSR world_dock_track
+	RTL
+
+; Combat has now filtered input and advanced the shared charge/form state.
+world_world_frame:
+if defined("GOKU_TRACE")
+	RTL
+endif
+	JSR world_goku
+	BCS +
+	RTL
++
 	JSR world_ki
 	JSR world_scar_tick
 	JSR world_pose
@@ -58,6 +69,9 @@ world_enter:
 	LDA.w #!WF_ACTIVE
 	TSB.w !w_flags
 	JSR world_ki_reset
+if getfilestatus("combat/defines.asm") == 0
+	JSL combat_api_cancel           ; no field charge/action survives a flight entry
+endif
 	STZ.w !w_crater_up
 	STZ.w !w_scar_pend
 	LDA.w #$FFFF

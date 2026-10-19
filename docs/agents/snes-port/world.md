@@ -30,7 +30,7 @@ the Mana Tree's cloud barrier. Weaker waves bounce off the Fortress shield.
 | Goku replaces Flammie in Mode 7 (rear view, banking, bob, flight clip, charge pose with hanging legs, airBeam pose, both forms, palette 5, small shadow instead of the HDMA window) | Done | `sprite` |
 | A ascends, B descends/lands; Flammie's steering; X sends the game's Y | Done (native controls kept) | `ki` |
 | Aerial ki shots, late distant bursts | Done | `ki` |
-| Charged aerial Kamehameha (local charge stand-in until combat owns it), aim sparks, beam, edge sparks | Done | `ki`, `fortress`, `scars` |
+| Charged aerial Kamehameha (shared combat state), aim sparks, beam, edge sparks | Done | `controls`, `ki`, `fortress`, `scars` |
 | Fortress shield: base/partial waves deflect (rebound streak, arcs, 720-frame message cooldown) | Done | `ki` |
 | Fortress destruction: explosion, 186-frame cutaway (stand-in), deck landing with the crisis cue, story event `$8B` | Done; cutaway picture is a stand-in | `fortress` |
 | Docking approach (ki boost, curve into the Fortress, no native dragon) | Done | `dock` |
@@ -255,7 +255,7 @@ stand-in records the request in world RAM (what the world tests read).
 | destroy | `destroy/tables.asm` | `destroy_tree_barrier_break` when a full wave opens the cloud barrier (it owns `$E3` bit 6 and its persistence) |
 | frieza | story query table | `FRIEZA_CRISIS` and `FRIEZA_STOLEN` (answered 0 until frieza implements them) keep the barrier and pick the crisis tree-blast line |
 | story | merged | `QUEST_WISH_SCARS` hook, `FORTRESS_DESTROYED` query, event `$8B` request on the deck |
-| combat | `!w_combat_owns` + `world_fire_*` | combat owns the charge state; the local stand-in (L+Y charge, Y shot) stops when it is set |
+| combat | `!w_combat_owns` + `world_fire_*` | Connected: combat owns charge, action and sound; the local fallback is only for builds without combat |
 | flight | `world_takeoff`, `world_takeoff_allowed` | ceiling escape route choice |
 | title | merged | owns the starting inventory (the Drum, `$27` at `$7E:CC48`) |
 

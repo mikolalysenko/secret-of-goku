@@ -74,6 +74,7 @@ endif
 	BEQ +
 	LDA !cb_vblanks               ; back from world flight: no catch-up
 	STA !cb_vb_last
+	JSR cb_cancel_combat           ; aerial charge/airBeam cannot leak into the field
 +	JSR cb_stats_upkeep
 	LDA !cb_vblanks
 	SEC
@@ -371,6 +372,7 @@ combat_world_frame:
 	JSR cb_read_input_world
 	JSR cb_world_body
 	JSR cb_publish
+	JSR cb_bind_loops
 	JSR cb_emit_input
 	REP #$30
 	RTL
@@ -1466,6 +1468,10 @@ cb_world_body:
 	RTS
 .active
 	JSR cb_form_break
+if defined("WORLD_MAGIC")
+	JSR cb_world_input
+	BCS .advance                  ; a transition, docking, wave or scene owns input
+endif
 	LDA !cb_in
 	BIT.w #!IN_L
 	BEQ .focus
@@ -1486,6 +1492,9 @@ cb_world_body:
 	BNE .advance
 	JSR cb_focus
 .advance
+if defined("WORLD_MAGIC")
+	JSR cb_world_attacks
+endif
 	JSR cb_advance_action
 	SEP #$20
 	LDA !cb_act

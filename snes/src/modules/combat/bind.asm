@@ -123,6 +123,9 @@ if defined("AUDIO_IDS")
 +	LDA !cb_can
 	AND.w #$00FF
 	BNE +
+	LDA !cb_world
+	AND.w #$00FF
+	BNE +
 	RTS
 +
 if not(defined("AUDIO_PCM"))

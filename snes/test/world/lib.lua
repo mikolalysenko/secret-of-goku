@@ -34,10 +34,16 @@ function W.fresh()
 end
 function W.on(form)
   H.w8(W.PERSIST_ACTIVE, 1)
-  H.w8(W.GOKU, form or 0)
+  W.form(form or 0)
   -- Let the newly activated character enter the input pipeline with no
   -- held buttons, as normal play does after the opening scene.
   H.wait(3)
+end
+function W.form(form)
+  H.w8(W.GOKU, form)
+  -- Fixture equivalent of combat_api_set_form: both consumers agree.
+  H.w8(0x7ED811, form)
+  H.w8(0x7ED8A9, form)
 end
 function W.import(name)
   local ok = H.importSnesJs(IMPORT .. name)

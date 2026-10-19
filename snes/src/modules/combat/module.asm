@@ -395,6 +395,9 @@ org !CODE_COMBAT
 combat_code_start:
 incsrc "frame.asm"
 incsrc "action.asm"
+if defined("WORLD_MAGIC")
+	incsrc "world.asm"
+endif
 incsrc "attack.asm"
 incsrc "native.asm"
 incsrc "stats.asm"

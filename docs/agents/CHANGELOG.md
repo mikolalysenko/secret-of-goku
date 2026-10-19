@@ -4,6 +4,19 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES shared aerial combat and chord filtering (2026-10-18)
+
+- Use the main combat state for world-flight charging, transformation,
+  input locks and native charge sounds. Cancel actions at flight boundaries,
+  prevent charge from interrupting transformation, and suppress stray ki
+  when releasing L while keeping Y held.
+- Hide A/B from native altitude controls on the first read of an L chord,
+  fixing a brief descent/landing from L+B before the old mask took effect.
+- Strict build, all 12 world cases, UI radar comparisons and core input,
+  world, lag and HDMA checks pass. Solo punch/ki and water flight retain
+  zero CPU misses; crowded teleport still has CPU misses, with no palette,
+  meter, OBJ or vblank errors in the checked scenarios.
+
 ## SNES world sprite uploads and palettes (2026-10-18)
 
 - Match the world palette to the sprite cell actually on screen, fixing

@@ -69,7 +69,7 @@ function test()
   H.result('bank_x', xl .. ' ' .. xc .. ' ' .. xr)
   W.check('banking', xl == 110 and xr == 114 and xc == 112, xl .. ' ' .. xc .. ' ' .. xr)
   -- base form
-  H.w8(W.GOKU, 0)
+  W.form(0)
   H.wait(12)
   cell = check_cell('base')
   col = nil

@@ -33,7 +33,7 @@ ui (King Kai) and destroy (the map) through `bind.asm`.
 | Status recovery (focus breaks sleep / petrify / Frosty / Balloon / Engulf; poison and sleep break SSJ) | Ported, not yet compared | — |
 | Effects | Gameplay records done; drawing through fx (`bind.asm`): spawns (impact, ki, burst, status) from the logic, continuous draws (beam picture, aura, orb, lightning) from `combat_field_frame`; placeholder sprites only without the fx library (`!COMBAT_FX_PLACEHOLDER`) | fx's `gallery` / `beams` pass with combat; on-screen look not reviewed yet (see Remaining work) |
 | World flight: focus and transformation | Done (`combat_world_frame`) | — |
-| World flight: the aerial charge | The world module's stand-in (`!w_combat_owns` = 0) | world tests pass |
+| World flight: the aerial charge | Shared combat charge, action, input locks and native sound pulses (`!w_combat_owns` = 1) | world `controls`, `ki`, `fortress` |
 | Virtual targets (mana-mod.js `entities()` extras: frieza.js `entity()` / `hit()`), registered in `modules.asm`: punches, ki, beams and the burst include them; a hit calls the module's routine (no native queue, number, launch or damage hook) with the spark, cue, contact hold, ki first contact and beam pulses of an actor | Done | `frieza-punch`, `frieza-ki`, `frieza-ki-held`, `frieza-beam`, `frieza-wave`, `frieza-burst` against the browser's own frieza.js `hit()`: every call (damage, melee, HP taken) and its frame, Frieza's HP, sparks, shots |
 | Receive hooks at `C0:4053`: other modules see Goku's queued damage before Saiyan resilience (the fed Beast's cap, `beast-challenge.js`) | Done; frieza's `frieza_combat_receive` listed (the fed Beast's 110 / 140 cap, 75-frame grace) | `receive-cap`, `receive-none` (a test hook) |
 | `combat_api_beam`: the live beam's `beamGeometry()` for other modules | Done | `beam-api`, `wave-api` (every age equals the browser's); vegeta's clash cases read it |
@@ -169,10 +169,14 @@ apply the rules immediately.
   defines `!FLIGHT_OWNS_D651` / `!FLIGHT_OWNS_D890`, hooks them itself and
   calls `combat_recoil_vector` at D651 (before reading `$1E/$1F`) and
   `combat_recoil_commit` at D890 (any DB/M/X; all registers preserved; D = 0).
-- **World flight.** `combat_world_frame` runs focus, transformation and the
-  form in Mode 7. The aerial charge is still the world module's stand-in;
-  owning it means setting `!w_combat_owns` and calling `world_fire_ki` /
-  `world_fire_wave` with combat's charge (`world.md`).
+- **World flight.** `world_prepare_frame` establishes the flight session
+  before `combat_world_frame` runs focus, transformation, charge and input
+  locks. `combat/world.asm` owns the aerial charge and mirrors it to world
+  for rendering; world still owns trajectories and the shot lifetime.
+  A transform cannot be interrupted by charging, releasing L with Y held
+  fires one wave without stray ki, and entering/leaving flight cancels the
+  previous mode's action. Core hides altitude buttons on the first pad read
+  of an L+A/L+B chord, before native flight can consume them.
 - **Story.** `!STORY_HOOK_EQUIP_CONFISCATE = combat_equip_confiscate` (the
   Sandship guards: the Heavy Gi is unequipped, still owned) and
   `!STORY_QUERY_EQUIP_WEIGHTED = combat_q_weighted`; story's test builds keep
@@ -349,7 +353,6 @@ another 2-3. With `CORE_FASTROM` (MEMSEL set) the same frames end at
 - Compare Senzu targeting, status recovery (focus breaking statuses,
   poison / sleep ending SSJ), the native B pulse (talk, chests) and weapon
   tier / equip rejection against the browser.
-- The aerial charge in world flight (`!w_combat_owns`).
 - Senzu Bean / DUST BAG item icons (names only so far).
 - Review the effects on screen with fx: in the Rabite field (field frames
   lag to 2 vblanks) screenshots showed no Kamehameha strip or charge orb and
