@@ -4,6 +4,18 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES crowded ki timing (2026-10-19)
+
+- Reserve companion AI time around ground ki attacks, including the first
+  physical Y press. Keep status/timers on their native tick, human controls
+  immediate, and the existing four-update deadline for deferred CPU work.
+- Crowded ground ki now joins punching in required zero-drop gameplay
+  checks: both pass 240 and 1,200 video frames. Long flying ki/punch,
+  teleport and charge still miss 20/2/14/63 frames; all hardware checks pass.
+- Companion ownership/cadence, Goku menus/status/forms, local flight and ten
+  browser/cartridge combat comparisons pass. The broader trial that also
+  deferred punching and charging is excluded because it added a punch drop.
+
 ## SNES unused death-weapon copy (2026-10-19)
 
 - Omit the unused 2 KiB weapon-0 copy for ordinary dead F9 enemies with

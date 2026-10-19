@@ -1,6 +1,6 @@
 -- Status keeps the native five-frame cadence. CPU companion AI/animation
--- may move within that interval during teleport; human controls stay live.
-local function run(tag,on,player2,event,teleport)
+-- may move within that interval during teleport/ki; human controls stay live.
+local function run(tag,on,player2,event,action)
   check(tag..'_import',H.importSnesJs(IMPORT_DIR..'/graphics-audit__party'),'party fixture')
   H.w8(LIVE+1,on and 1 or 0)
   H.wait(10)
@@ -26,7 +26,7 @@ local function run(tag,on,player2,event,teleport)
     end
     frames=frames+1
     if event then H.w8(0x7E00D0,1) end
-    if teleport then H.w8(0x7ED742,0x14) end
+    if action then H.w8(0x7ED742,action) end
     maxPendingAge=math.max(maxPendingAge,H.r8(0x317568),H.r8(0x317569))
   end,emu.callbackType.exec,0x00B0C7,0x00B0C7)
   -- Exercise the scheduling gate without asking the event interpreter to
@@ -70,7 +70,7 @@ local function run(tag,on,player2,event,teleport)
     check(tag..'_ai'..i,aiCalls[i]>=19 and aiCalls[i]<=21,'AI/animation calls '..aiCalls[i])
   end
   check(tag..'_deadline',maxPendingAge<=4,'oldest queued job '..maxPendingAge)
-  check(tag..'_queued',teleport and pendingWrites>0 or not teleport and pendingWrites==0,'queue writes '..pendingWrites)
+  check(tag..'_queued',action and pendingWrites>0 or not action and pendingWrites==0,'queue writes '..pendingWrites)
   if player2 then check(tag..'_owner',H.r8(0x7EE22C)==2,'player assignment changed') end
 end
 function test()
@@ -78,7 +78,9 @@ function test()
   run('goku',true,false)
   run('player2',true,true)
   run('script',true,false,true)
-  run('teleport',true,false,false,true)
-  run('teleport_player2',true,true,false,true)
+  run('teleport',true,false,false,0x14)
+  run('teleport_player2',true,true,false,0x14)
+  run('ki',true,false,false,0x13)
+  run('ki_player2',true,true,false,0x13)
   finish()
 end

@@ -862,9 +862,9 @@ fl_hook_passenger_ai:
 	BCC .native
 	JML $80F4E2
 .native
-	; Move regular CPU companion work away from Instant Transmission's
-	; landing search and camera recovery. Other actions keep their native
-	; decision cadence; a queued job still resumes normally.
+	; Move regular CPU companion work away from ki attacks and Instant
+	; Transmission. Status/timers retain their native cadence; queued AI
+	; finishes within four updates, before the next native tick.
 	LDA.l !core_party_queuing
 	BEQ .queue
 	; Drain an older job before returning to the regular schedule. Without
@@ -878,6 +878,18 @@ fl_hook_passenger_ai:
 	LDA.w !goku_act
 	CMP.b #!GOKU_K_TELEPORT
 	BEQ .queue
+if not(defined("CORE_PARTY_KI_SYNC"))
+	CMP.b #!GOKU_K_BLAST
+	BEQ .queue
+	; Reserve the first shot before combat publishes its pose. L+Y is
+	; charging; it keeps the regular schedule unless older work remains.
+	REP #$20
+	LDA.l !core_pad_bios
+	AND.w #!PAD_Y|!PAD_L
+	CMP.w #!PAD_Y
+	SEP #$20
+	BEQ .queue
+endif
 	; Native input is read before this actor pass; the flight module sets
 	; the action afterward. Reserve time on the first L+B frame too, when
 	; the landing search is about to run but goku_act is still idle.

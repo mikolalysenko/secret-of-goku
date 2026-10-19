@@ -270,15 +270,17 @@ explicitly set DB to `$7E`, just as the original party wrapper does; counting
 entry calls alone would miss reads from the wrong actor bank. The whip-pad
 crossing tests the real scripted handoff.
 
-During teleport and camera recovery, `core/party.asm` can defer the CPU
+During ki attacks, teleport and camera recovery, `core/party.asm` can defer the CPU
 companion's following AI/animation until a field starts that work before
 scanline 90. Status and timers have already run on their fixed tick. The
 oldest pending member runs first, at most one per field, with a four-field
 deadline that finishes before the member's next five-field tick. The
 physical L+B read covers the first search frame before flight publishes
-its action; pending work drains before the regular schedule resumes.
-Other actions retain their regular timing. Human-controlled companions
+its action, and Y without L reserves the first ki shot before its pose is
+published. Pending work drains before the regular schedule resumes.
+Punching and L+Y charging retain their regular timing. Human-controlled companions
 bypass the queue, and resumed work rechecks the live passenger gate.
+`CORE_PARTY_KI_SYNC` retains synchronous ki companion work for comparisons.
 
 The queue uses eight volatile SRAM bytes at `$31:7564`, after Goku's water
 palette. A magic word and map key reject older save-state noise; boot,
@@ -287,7 +289,7 @@ and dispatch revalidate the field context; dispatch also drops removed or
 human-owned actors. Enqueue catches a map change inside status handling. The assembled
 `party-budget.test.mjs` covers deadlines, fairness, initial input, draining,
 context changes and the SRAM boundary. The Mesen `party` test additionally
-counts status and AI calls during teleport with and without player two.
+counts status and AI calls during teleport and ki with and without player two.
 
 The sound/aura follow-up replaces `C1:2710`'s highest-set-bit loop with a
 byte lookup in `core/native.asm`. It keeps the original A/X result, Y/DB/D,

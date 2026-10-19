@@ -685,6 +685,20 @@ passengers/local flight and world/radar/map checks pass. Measurements are
 under `.local/snes-test/death-weapon/`; the earlier read/poison investigation
 is under `death-reads/`.
 
+Extending the bounded companion queue specifically to ground ki attacks
+removes all three remaining misses in that fixture: 240 and 1,200 video
+frames now pass strict timing, and ki is a required zero-drop case in the
+runner. The long ki peak falls 268.16 → 240.05 lines. Punching stays at zero;
+long corridor flying ki/flying punch/teleport/charge remain 20/2/14/63.
+All short and long hardware checks pass. The broader punch/charge trial
+added one long punch miss and is excluded. The selected gate uses the
+active blast pose or physical Y without L; other actions and human
+companions keep their regular schedule. Twelve assembled queue checks,
+Mesen status/AI cadence with and without player two, ten combat comparisons,
+Goku menus/status/forms and passenger/water/teleport/whip checks pass.
+Artifacts are under `.local/snes-test/party-combat/` (`ki.sfc`, `ki-short/`,
+`ki-long/` and the `ki-*` logs). The crowded strict timing target remains open.
+
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's
 virtual combat targets are wired, and FastROM is the default. The carried
