@@ -74,6 +74,47 @@ goku_api_cell:
 	LDA.l goku_cell_index,X
 	RTL
 
+; Fetch a packed socket without a per-column search. The field's byte
+; pose fields and the scripted API's word fields share the same table.
+macro goku_socket_lookup(column, row, sheet, byte_fields)
+	LDA <row>
+	AND.w #3
+	ASL
+	STA !t_a
+	LDA <column>
+if <byte_fields>
+	AND.w #$00FF
+endif
+	CMP.w #32
+	BCS .none
+	ASL
+	ASL
+	ASL
+	ORA !t_a
+	TAX
+	LDA <sheet>
+if <byte_fields>
+	AND.w #$00FF
+endif
+	BEQ ?base
+	CMP.w #1
+	BNE .none
+	LDA.l goku_socket_xy+256,X
+	BRA ?coords
+?base:
+	LDA.l goku_socket_xy,X
+?coords:
+	CMP.w #$FFFF
+	BEQ .none
+	PHA
+	AND.w #$00FF
+	STA !t_a
+	PLA
+	XBA
+	AND.w #$00FF
+	STA !t_b
+endmacro
+
 ; goku_api_hand: hand socket of the displayed pose, in screen pixels.
 ; Out: C set and A16 = x, X16 = y when the current cell has an authored
 ; socket (charge, beam and blast poses); C clear otherwise. Exit M16 X16.
@@ -83,46 +124,19 @@ goku_api_hand:
 	PLB
 	PLB
 	REP #$30
+if not(defined("GOKU_SOCKET_SLOW"))
+	%goku_socket_lookup(!p_col, !p_rowout, !p_sheet, 1)
+else
+	LDA !p_col
+	AND.w #$00FF
+	STA !t_c
+	LDA !p_rowout
+	STA !t_d
 	LDA !p_sheet
 	AND.w #$00FF
-	CMP.w #2
-	BCS .none                ; lead-jab sheet: no sockets
-	CMP.w #1
-	BEQ .ssj
-	LDX.w #goku_sockets_goku&$FFFF
-	BRA .scan
-.ssj
-	LDX.w #goku_sockets_ssj&$FFFF
-.scan
-	; entries: column, then (x,y) for rows 0-3; $FF ends the table
-	LDA.l !DATA_GOKU,X
-	AND.w #$00FF
-	CMP.w #$00FF
-	BEQ .none
-	SEP #$20
-	CMP !p_col
-	REP #$20
-	BEQ .found
-	TXA
-	CLC
-	ADC.w #9
-	TAX
-	BRA .scan
-.found
-	LDA !p_rowout
-	AND.w #$0003
-	ASL
-	STA !t_a
-	TXA
-	SEC
-	ADC !t_a
-	TAX
-	LDA.l !DATA_GOKU,X
-	AND.w #$00FF
-	STA !t_a                 ; local x
-	LDA.l !DATA_GOKU+1,X
-	AND.w #$00FF
-	STA !t_b                 ; local y
+	JSR goku_socket_find
+	BCC .none
+endif
 	; cell origin: (anchor x - 16, feet - 31 - lift), feet = $E022 - $E045
 	LDA $E020
 	SEC
@@ -364,6 +378,10 @@ goku_api_socket:
 ; A16 = sheet, t_c = column, t_d = row -> C set, t_a/t_b = socket within
 ; the 32x32 cell. M16 X16, DB = $7E.
 goku_socket_find:
+if not(defined("GOKU_SOCKET_SLOW"))
+	STA !t_b
+	%goku_socket_lookup(!t_c, !t_d, !t_b, 0)
+else
 	CMP.w #2
 	BCS .none                ; lead-jab sheet: no sockets
 	CMP.w #1
@@ -400,6 +418,7 @@ goku_socket_find:
 	LDA.l !DATA_GOKU+1,X
 	AND.w #$00FF
 	STA !t_b
+endif
 	SEC
 	RTS
 .none

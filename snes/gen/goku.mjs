@@ -409,7 +409,24 @@ export async function generate({rom,repo,outDir,xdata}){
   a.label('goku_takeoff_lift');a.db(takeoffLift);
   a.label('goku_landing_lift');a.db(landingLift);
   a.def('GOKU_ACTION_COUNT',actions.length);
-  // Hand sockets: per form, per column with sockets, per row: x,y (local cell pixels).
+  // Hand sockets: packed x/y words indexed by form, column and row. Charge
+  // effects query these every frame; avoid walking the authored column list.
+  // Missing cells use $FFFF, outside the local 32x32 coordinate range.
+  a.label('goku_socket_xy');
+  for(const form of['goku','ssj']){
+    const sockets=new Array(32*4).fill(0xFFFF);
+    for(const[col,rows]of Object.entries(data.forms[form].sockets)){
+      if(!Number.isInteger(Number(col))||Number(col)<0||Number(col)>=32||rows.length!==4)
+        throw Error(`Goku socket table bounds: ${form}:${col}`);
+      rows.forEach(([x,y],row)=>{
+        if(!Number.isInteger(x)||!Number.isInteger(y)||x<0||x>=32||y<0||y>=32)
+          throw Error(`Goku socket coordinates: ${form}:${col}:${row}`);
+        sockets[Number(col)*4+row]=x|(y<<8);
+      });
+    }
+    a.dw(sockets);
+  }
+  // Retain the compact list for the comparison build.
   for(const form of['goku','ssj']){
     a.label(`goku_sockets_${form}`);
     for(const[col,rows]of Object.entries(data.forms[form].sockets)){a.db([Number(col),...rows.flat()]);}

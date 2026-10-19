@@ -4,6 +4,20 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES direct hand-socket lookup (2026-10-19)
+
+- Resolve Goku's charge/beam hand positions from a generated 512-byte
+  table instead of searching the authored columns. Keep both forms, row
+  masking, flight lift and missing-pose behavior. `GOKU_SOCKET_SLOW` keeps
+  the linear lookup available for comparisons.
+- Assembled API tests cover every byte column, all facings, wrapped/lifted
+  anchors and caller banks/widths. Field hand queries fall from 197–349 to
+  189 CPU cycles in base form. Goku field/status/forms/scripted checks pass.
+- All 13 short gameplay cases retain their previous counts and zero
+  palette, meter, OBJ, NMI and graphics-DMA errors. In 1,200-frame repeats,
+  charge/release improves from 83 to 82 misses; corridor flying ki and
+  teleport remain at 19 and 67. Crowded timing remains open.
+
 ## SNES foreground sprite commit (2026-10-19)
 
 - Use interruptible word copies and pack four sprite high-bit entries at

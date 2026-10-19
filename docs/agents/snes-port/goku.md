@@ -403,6 +403,22 @@ transition palettes follow the browser's `transform` clip).
   yet; the frieza stream asked for the first (its follower poses and the
   Tree vista).
 
+## Hand-socket lookup cost
+
+The generator packs both forms' authored hand positions into 512 bytes:
+32 columns × four rows × two forms, one x/y word per cell. `$FFFF` marks
+missing cells. Both APIs index this table directly; `GOKU_SOCKET_SLOW`
+selects the linear-list lookup for comparisons. No per-frame cache needs
+invalidating when the pose, form or flight lift changes.
+
+`snes/test/goku/socket.test.mjs` executes both APIs against the browser
+descriptors, including all missing byte columns, row masking, lifted and
+wrapped anchors, caller banks and register widths. Base-form field calls
+cost 189 CPU cycles, versus 197–349 for the previous list search. Field,
+status, form and scripted-pose emulator checks also pass. This is a small
+saving: the 1,200-frame charging case improves by one missed frame (83 →
+82); crowded timing is still open.
+
 ## Requests
 
 - **ending** (WRAM wipe): `pal_commit` (lib.asm, frame thread) sets up DMA
