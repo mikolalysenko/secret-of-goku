@@ -489,6 +489,7 @@ fx_poly_tables:
 ; fx_strip_data (fx.mjs): the first line's offset from the anchor's line,
 ; line/run counts, a solid-span flag and end-row/colour pairs.
 !fxs_rec  = !d_ks+$08         ; the record in fx_strip_data
+!fxs_fast = !d_ks+$0A         ; prebuilt colour HDMA record
 !fxs_n    = !d_ks+$0C         ; its lines
 !fxs_cls  = !d_ks+$0E         ; palette class * 32
 !fxs_o    = !d_r0+$00         ; window record of the beam's lines
@@ -618,6 +619,8 @@ fx_poly_rows:
 	PLA
 	ASL
 	TAX
+	LDA.l fx_strip_hdma_ptr,X
+	STA !fxs_fast
 	LDA.l fx_strip_ptr,X
 	STA !fxs_rec
 	TAX
@@ -696,6 +699,10 @@ fx_poly_rows:
 	CLC
 	ADC !fxp_y
 	STA !fxp_first
+if not(defined("FX_STRIP_ROWS_SLOW"))
+	JSR fx_poly_rows_copy
+	BCC .window
+endif
 	; Channel 3: the game's backdrop, each line's colour, the backdrop.
 	LDA.w #5
 	JSR fx_pw_open
@@ -729,6 +736,7 @@ fx_poly_rows:
 	LDA.w #4
 	JSR fx_pw_colour
 	JSR fx_pw_close
+.window
 	; Channel 2 (mode 1): the beam's span on lines with colour.
 	LDA !fxp_out
 	STA.l !fx_ptab2
@@ -799,6 +807,69 @@ fx_poly_rows:
 	PLA
 	XBA
 	AND.w #$00FF
+	RTS
+
+; Copy prebuilt opaque colour runs when all their rows are visible.
+; The general writer still supplies the live backdrop, termination and
+; neutral padding. MVN is interruptible and DB is restored before return.
+; C clear: channel 3 complete; C set: use the clipped/general path.
+fx_poly_rows_copy:
+	LDA !fxp_first
+	BMI .no
+	CLC
+	ADC !fxs_n
+	CMP.w #!FX_PLINES+1
+	BCS .no
+	LDX !fxs_rec
+	LDA.l fx_strip_data+3,X
+	AND.w #$00FF
+	BEQ .no
+	LDX !fxs_fast
+	LDA.l fx_strip_hdma_data,X
+	XBA
+	AND.w #$00FF
+	CMP !fxs_cls
+	BNE .no
+	LDA.l fx_strip_hdma_data,X
+	AND.w #$00FF
+	BEQ .no
+	STA !fxp_d
+	CLC
+	ADC !fxp_out
+	ADC.w #45                    ; worst-case neutral runs and window table
+	CMP !fxp_end
+	BCC .copy
+	BEQ .copy
+.no
+	SEC
+	RTS
+.copy
+	LDA.w #5
+	JSR fx_pw_open
+	LDA.w #4
+	JSR fx_pw_colour
+	LDA !fxp_first
+	JSR fx_pw_to
+	JSR fx_pw_flush
+	LDA !fxs_fast
+	CLC
+	ADC.w #(fx_strip_hdma_data&$FFFF)+2
+	TAX
+	LDY !fxp_out
+	LDA !fxp_d
+	DEC
+	PHB
+	MVN !FX_PBASE>>16,fx_strip_hdma_data>>16
+	PLB
+	STY !fxp_out
+	LDA !fxp_first
+	CLC
+	ADC !fxs_n
+	STA !fxp_line
+	LDA.w #4
+	JSR fx_pw_colour
+	JSR fx_pw_close
+	CLC
 	RTS
 
 ;---------------------------------------------------------------------------
@@ -1584,9 +1655,18 @@ fx_pw_flush:
 ; would instead underflow its line counter into a 127-line repeat and write
 ; whatever follows in memory (hardware and Mesen alike).
 fx_pw_close:
+	PHX
+	PHY
 	LDA.w #!FX_PLINES
 	JSR fx_pw_to
 	JSR fx_pw_flush
+	PLY
+	PLX
+	; A coloured/window run can end exactly at line 224, so fx_pw_to
+	; may have appended no neutral run. Padding must use the caller's
+	; neutral record, never the preceding visible record in that case.
+	STX !fxp_r0
+	STY !fxp_r1
 	LDA.w #127                   ; the padding entry (record unchanged)
 	STA !fxp_cnt
 	JSR fx_pw_flush

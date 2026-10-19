@@ -17,8 +17,9 @@ const context=vm.createContext({Uint8Array,Uint16Array,Math});
 vm.runInContext(readFileSync(resolve(root,'vendor/snes/cpu.js'),'utf8'),context);
 const DP=0x1000,BACKDROP=0x1234;
 
-function renderer(synthetic=false){
+function renderer(synthetic=false,slow=false){
   const rom=Buffer.from(source),ram=Buffer.alloc(0x20000),sram=Buffer.alloc(65536);
+  if(slow)rom.set([0x38,0x60],hiromToPc(at('fx_poly_rows_copy'))); // SEC / RTS: use general runs
   const ptr=hiromToPc(at('fx_strip_ptr')),data=hiromToPc(at('fx_strip_data'));
   if(synthetic){
     rom.writeUInt16LE(0,ptr);
@@ -34,30 +35,37 @@ function renderer(synthetic=false){
     const r=rindex(a);assert(r>=0,`unexpected hardware write ${a.toString(16)}`);ram[r]=v;
   }});
   const word=(off,v)=>ram.writeUInt16LE(v&65535,DP+off);
-  const table=(start,bytes)=>{
+  const table=(start,bytes,backdrop,buffer)=>{
     const out=[];let p=start;
     while(out.length<224){
       const n=sram[p++];assert(n>0&&n<128,'run must cover visible rows without repeat mode');
       const value=sram.readUInt16LE(p+(bytes===4?2:0));
       for(let j=0;j<n;j++)out.push(value);
-      p+=bytes;assert(p<=0x7A8E+185,'HDMA back-buffer overflow');
+      p+=bytes;assert(p<=0x7A8E+buffer+185,'HDMA back-buffer overflow');
     }
-    return out.slice(0,224);
+    assert.equal(out.length,224,'visible table ends at line 224');
+    assert.equal(sram[p],127,'neutral padding protects a late HDMA restart');
+    assert.equal(sram.readUInt16LE(p+1+(bytes===4?2:0)),bytes===4?backdrop:0xFF);
+    assert.equal(sram[p+1+bytes],0,'table terminates after neutral padding');
+    return out;
   };
-  return (index,x,y,len)=>{
+  return (index,x,y,len,{backdrop=BACKDROP,buffer=0,override}={})=>{
     ram.fill(0);sram.fill(0);cpu.reset();cpu.e=false;cpu.m=false;cpu.x=false;
     const entry=at('fx_poly_rows');cpu.r[0]=0x7E;cpu.r[1]=entry>>>16;
     cpu.br.set([index,0,0,0x1FFD,entry&65535,DP]);
-    ram.writeUInt16LE(0x6FFF,0x1FFE);ram.writeUInt16LE(BACKDROP,0x600);
+    ram.writeUInt16LE(0x6FFF,0x1FFE);ram.writeUInt16LE(backdrop,0x600);
+    sram.writeUInt16LE(buffer,0x7A36);
     sram.writeUInt16LE(0xFFFF,0x7A5A);
     word(0x18,0x80);word(0x1A,x);word(0x1C,y);word(0x1E,index&1?2:1);
     word(0x58,len);word(0x5A,7);word(0x5C,0);
-    const cls=index<28?0:index<56?32:index<84?96:32;
+    const cls=override??(index<28?0:index<56?32:index<84?96:32);
     word(0x36,cls);
+    let cycles=0;
     for(let n=0;cpu.br[4]!==0x7000||cpu.r[1]!==entry>>>16;n++){
-      assert(n<15000,'strip builder did not return');cpu.cyclesLeft=0;cpu.cycle();
+      assert(n<15000,'strip builder did not return');cpu.cyclesLeft=0;cpu.cycle();cycles+=cpu.cyclesLeft+1;
     }
     assert.equal(cpu.c,false);assert.equal(cpu.br[3],0x1FFF);
+    assert.equal(cpu.r[0],0x7E);assert.equal(cpu.br[5],DP);assert(!cpu.m&&!cpu.x);
     assert.equal(sram.readUInt16LE(0x788E),2,'polygon requested');
     const rec=data+rom.readUInt16LE(ptr+index*2),first=y+(rom[rec]<<24>>24),rows=[];
     for(let i=0;i<rom[rec+2];i++){
@@ -70,12 +78,13 @@ function renderer(synthetic=false){
     const colours=[],windows=[],palette=hiromToPc(at('fx_class_palettes'))+cls;
     for(let line=0;line<224;line++){
       const c=rows[line-first]??0;
-      colours.push(c?rom.readUInt16LE(palette+c*2):BACKDROP);
+      colours.push(c?rom.readUInt16LE(palette+c*2):backdrop);
       windows.push(c?span:0xFF);
     }
     const why=JSON.stringify({index,x,y,len,synthetic});
-    assert.deepEqual(table(sram.readUInt16LE(0x7A3C),4),colours,'colours '+why);
-    assert.deepEqual(table(sram.readUInt16LE(0x7A3A),2),windows,'windows '+why);
+    assert.deepEqual(table(sram.readUInt16LE(0x7A3C),4,backdrop,buffer),colours,'colours '+why);
+    assert.deepEqual(table(sram.readUInt16LE(0x7A3A),2,backdrop,buffer),windows,'windows '+why);
+    return cycles;
   };
 }
 
@@ -88,4 +97,18 @@ test('all beam-strip records produce exact clipped colour and window scanlines',
 test('transparent strip runs retain gaps at the top and bottom clipping edges',()=>{
   const draw=renderer(true);
   for(const y of [-10,-3,0,1,112,220,223,240])draw(0,40,y,160);
+});
+test('prebuilt colour runs reduce full-width beam construction work',t=>{
+  const draw=renderer(),general=renderer(false,true);
+  const after=draw(26,128,112,160),before=general(26,128,112,160);
+  assert(after<before*.8,`beam builder cycles ${before} -> ${after}`);
+  t.diagnostic(`seven-band strip: ${before} -> ${after} CPU cycles`);
+});
+test('both buffers use the live backdrop and alternate classes retain the general path',()=>{
+  const draw=renderer();
+  for(const buffer of [0,185])for(const backdrop of [0,0x7FFF,0x254A])
+    for(let index=0;index<88;index++)for(const y of [0,112,220,223]){
+      draw(index,128,y,256,{buffer,backdrop});
+      draw(index,128,y,256,{buffer,backdrop,override:64});
+    }
 });

@@ -304,6 +304,15 @@ Long flying-ki/charge misses change from 36/144 to 31/143; flying punches
 and teleport remain 1/73. Short flying-ki changes from 5 to 7. These are
 CPU savings and a rendering fix, with strict crowded timing still failing.
 
+Prebuilt colour HDMA further reduces a fully visible seven-band strip
+from 7,249 to 2,938 CPU cycles. All 88 records retain exact visible rows;
+both buffers also have explicitly neutral padding when a coloured run
+reaches line 224. Eleven assembled FX checks and gallery/beams/aura/debris
+pass. The 13 short gameplay counts remain unchanged with zero hardware
+errors; long charging improves from 143 to 138 misses in 1,200 frames
+(`strip-copy`). Remaining charge stalls are mainly actor work and scenery
+scans, so this does not close the strict timing gap.
+
 Private scheduling trials are not in the playable ROM. Deferring companion
 AI improved the long walking/punching/ki/teleport cases from 39/24/47/73
 to 3/3/17/39 misses, but worsened flying ki from 36 to 50. Deferring normal

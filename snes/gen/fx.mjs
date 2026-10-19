@@ -672,6 +672,24 @@ export async function generate({rom,repo,outDir,xdata}){
   t.label('fx_aura_asm_id');t.dw([auraSpriteBase]);
   t.label('fx_strip_ptr');t.dw(stripPtr);
   t.label('fx_strip_data');t.db(stripData);
+  // Fully visible opaque strips can copy their colour HDMA directly.
+  // Edge-clipped or transparent strips retain the general run writer.
+  const hdmaPtr=[],hdmaData=[],hdmaSeen=new Map();
+  stripPtr.forEach((off,index)=>{
+    const cls=index<laserStrip?BAND_SETS[Math.floor(index/28)][1]:1,body=[];
+    let row=0;
+    if(stripData[off+3])for(let i=0;i<stripData[off+2];i++){
+      const end=stripData[off+4+i*2],c=stripData[off+5+i*2];
+      const rgb=palettes[cls][c-1]-1;
+      body.push(end-row,0,0,rgb&255,rgb>>8);row=end;
+    }
+    if(body.length+46>185)throw Error('fx: strip HDMA exceeds its buffer');
+    const record=[body.length,cls*32,...body],key=record.join(',');
+    if(!hdmaSeen.has(key)){hdmaSeen.set(key,hdmaData.length);hdmaData.push(...record);}
+    hdmaPtr.push(hdmaSeen.get(key));
+  });
+  t.label('fx_strip_hdma_ptr');t.dw(hdmaPtr);
+  t.label('fx_strip_hdma_data');t.db(hdmaData);
   t.label('fx_det_ptr');t.dw(detPtr);
   t.label('fx_ember_path');t.db(emberPath);
   t.label('fx_det_data');t.db(detBytes);

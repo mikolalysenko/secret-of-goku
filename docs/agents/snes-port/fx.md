@@ -288,6 +288,11 @@ enemies next to him. Two measures:
   all 224 colour/window rows for every generated record at clipped and
   interior positions. The measured gameplay strip path fell from 49.53
   to 36.51 scanlines with this change.
+  Fully visible opaque rows now copy prebuilt colour records with
+  interruptible MVN, reducing the seven-band builder from 7,249 to 2,938
+  CPU cycles. `-DFX_STRIP_ROWS_SLOW=1` keeps the general run path for
+  comparisons. Both buffers retain the live backdrop and neutral HDMA
+  padding, including beams that occupy the last visible line.
 - **OBJ strip rows are budgeted** (`fx_row_room`): before a left/right run
   of strips FX counts the slivers of every sprite already in OAM or staged
   in front that overlaps the row's 16 lines and draws at most

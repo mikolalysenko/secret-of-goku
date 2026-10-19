@@ -4,6 +4,19 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES prebuilt beam colour tables (2026-10-19)
+
+- Copy opaque, fully visible horizontal beam colour runs from ROM with
+  interruptible MVN; retain the general path for clipped or transparent
+  strips. The seven-band builder falls from 7,249 to 2,938 CPU cycles.
+- Explicitly write neutral HDMA padding when a beam reaches the last
+  visible line; the previous writer could reuse its coloured/window run.
+- Eleven assembled FX checks cover all 88 records, both buffers, live
+  backdrop colours, clipping and padding. Gallery/beams/aura/debris pass.
+  All 13 gameplay cases retain zero palette, meter, OBJ, NMI and graphics-
+  DMA errors. Long charging improves from 143 to 138 misses per 1,200
+  frames; short counts are unchanged. Strict crowded timing remains open.
+
 ## SNES single-cell effects and missing rotated tiles (2026-10-19)
 
 - Emit the 300 one-cell ki/impact stamps from compact records, preserving
