@@ -677,7 +677,7 @@ if not(defined("CORE_OAM_ROTATION_SLOW")) && not(defined("CORE_OAM_COMMIT_SLOW")
 ; The PPU starts at the appended foreground group and wraps through hidden
 ; slots back to native slot zero. Reservation and next-frame cleanup keep
 ; their existing rounded capacity. No extra DMA bytes or OBJ slots.
-if not(defined("CORE_OAM_ROTATION_AIR"))
+if defined("CORE_OAM_ROTATION_GROUND")
 core_oam_commit_ground:
 endif
 core_oam_commit_field:
@@ -686,10 +686,8 @@ core_oam_commit_rotated:
 	LDA.b #0
 	STA.l !core_oam_first
 	REP #$20
-if not(defined("CORE_OAM_ROTATION_AIR"))
-	; Keep the existing airborne insertion while crowded aerial timing is
-	; open. Rotating every mode reduces its largest spike but worsens the
-	; sustained ki sequence; ground charging benefits without that change.
+if defined("CORE_OAM_ROTATION_GROUND")
+	; Comparison build: retain the previous airborne insertion path.
 	LDA.w !RAM_FLIGHT&$FFFF
 	BIT.w #1
 	BEQ +

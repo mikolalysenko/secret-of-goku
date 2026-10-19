@@ -410,7 +410,7 @@ eighth assembled text test compares full RAM and CPU state at each loop's
 continuation. Ten-column scrolls take 964 rather than 4,467 CPU cycles;
 twenty-column borders take 1,741 rather than 8,938.
 
-The ground foreground-sprite commit leaves native/rear entries in place and
+The field foreground-sprite commit leaves native/rear entries in place and
 appends the staged effects. After the same 544-byte DMA, `$2102/$2103` selects
 the appended group as the first OBJ; evaluation wraps through hidden slots
 back to native slot zero. This follows the [OAM priority register](https://www.problemkaputt.de/fullsnes.htm#snesmemoryoamaccessspriteattributes).
@@ -422,15 +422,18 @@ native `C0:E355` full OBJ clear used by rings/maps. No DMA bytes or channels
 are added. The uploader and remaining native NMI use FastROM; RTI restores
 the interrupted bank from the hardware stack.
 
-Local flight retains physical insertion. The unrestricted rotation trial
-reduced its maximum logic spike but increased sustained ki misses from 19
-to 33 per 1,200 frames; `-DCORE_OAM_ROTATION_AIR=1` retains that comparison.
+Local flight now uses the same rotation. With carried companions and the
+subsequent native optimizations, the current 1,200-frame flying-punch test
+improves from two misses to one; corridor flying ki stays at 20. The earlier
+unrestricted trial on an older baseline increased sustained ki misses, so
+this was remeasured before enabling it. `-DCORE_OAM_ROTATION_GROUND=1`
+restores physical insertion only in local flight for comparisons.
 `-DCORE_OAM_ROTATION_SLOW=1` restores the preceding ground word-copy/airborne
 MVP paths, and `-DCORE_OAM_COMMIT_SLOW=1` uses MVP everywhere.
 `snes/test/core/oam-commit.test.mjs` compares assembled execution against an
 independent slot model over every capacity and packed high-byte value,
 including empty input, padding and the last slot. Six foreground sprites
-plus 192 native bytes take 712 instead of 1,895 CPU cycles; sixteen take
-1,062 instead of 2,197. `oam-transition.test.mjs` checks ordered DMA/priority
+plus 192 native bytes take 701 instead of 1,895 CPU cycles; sixteen take
+1,051 instead of 2,197. `oam-transition.test.mjs` checks ordered DMA/priority
 writes and CPU state. The Mesen `oam-order` case checks opaque overlapping
 sprites, lag persistence, ring entry/exit and removal using rendered pixels.

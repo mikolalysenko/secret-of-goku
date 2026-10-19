@@ -4,6 +4,17 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES flight sprite priority (2026-10-19)
+
+- Use the existing hardware sprite-priority rotation during local flight,
+  saving the full-list insertion copy while preserving sprite ordering.
+- Flying punches improve from two missed frames to one in 1,200 video
+  frames; short flying ki improves six to five. Long corridor flying ki
+  remains at 20 misses. All 13 short gameplay cases retain clean palette,
+  meter, OBJ, NMI and graphics-DMA checks; crowded zero-drop timing is open.
+- Assembled OAM comparisons, native sprite-order checks, Goku menus/load,
+  passengers/local flight and world/radar/map regressions pass.
+
 ## SNES crowded ki timing (2026-10-19)
 
 - Reserve companion AI time around ground ki attacks, including the first

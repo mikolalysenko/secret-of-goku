@@ -699,6 +699,16 @@ Goku menus/status/forms and passenger/water/teleport/whip checks pass.
 Artifacts are under `.local/snes-test/party-combat/` (`ki.sfc`, `ki-short/`,
 `ki-long/` and the `ki-*` logs). The crowded strict timing target remains open.
 
+Hardware sprite-priority rotation now also applies during local flight.
+The current baseline's long flying-punch count improves 2 → 1, with its
+peak falling 292.05 → 289.55 scanlines. Long corridor flying ki remains
+20 misses; its peak changes 272.88 → 274.10 as input/actor timing changes.
+Short flying ki/punch improve 6/2 → 5/1; the other eleven short cases are
+unchanged, with zero hardware/rendering errors throughout. Assembled OAM,
+native sprite ordering, Goku menus/load, passengers/local flight and all
+eight world/radar/map cases pass. Measurements are under
+`.local/snes-test/oam-air-current/`. Strict crowded timing is still open.
+
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's
 virtual combat targets are wired, and FastROM is the default. The carried
