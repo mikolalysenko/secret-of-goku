@@ -17,6 +17,17 @@ function test()
   local started, maxLogic = nil, 0
   local timing, active, writes = {}, {}, {}
   local phaseTiming = {}
+  local fieldScans,fieldRepeated,destroyRepeatFrames,destroyPasses={},false,0,0
+  for part,entry in ipairs(DESTROY_SCANS or {}) do
+    emu.addMemoryCallback(function()
+      if not measuring then return end
+      local key=tostring(part)..':'..tostring(H.r16(DESTROY_ATTACK_ID))
+      if fieldScans[key] and not fieldRepeated then
+        destroyRepeatFrames=destroyRepeatFrames+1;fieldRepeated=true
+      end
+      fieldScans[key]=true;destroyPasses=destroyPasses+1
+    end,emu.callbackType.exec,entry,entry)
+  end
   local gfxDmaCopies,gfxDmaOverruns,maxGfxDmaLines=0,0,0
   for _,p in ipairs(GFX_DMA or {}) do
     local start,line
@@ -99,7 +110,10 @@ function test()
     if p[1]=='nmi_native' then emu.addMemoryCallback(spanDone,emu.callbackType.exec,p[3]|0x800000,p[3]|0x800000) end
   end
   emu.addMemoryCallback(function()
-    if measuring then started = emu.getState()['masterClock']; parts={} end
+    if measuring then
+      started = emu.getState()['masterClock']; parts={}
+      fieldScans={};fieldRepeated=false
+    end
   end, emu.callbackType.exec, 0x00B08C, 0x00B08C)
   emu.addMemoryCallback(function()
     if not measuring then return end
@@ -190,6 +204,7 @@ function test()
   H.result('staminaWriters',writes); H.result('profile',profile)
   for _,v in pairs(phaseTiming) do v.mean=v.sum/math.max(1,v.calls);v.sum=nil end
   H.result('phaseTiming',phaseTiming)
+  H.result('destroyPasses',destroyPasses);H.result('destroyRepeatFrames',destroyRepeatFrames)
   H.result('gfxDmaCopies',gfxDmaCopies);H.result('gfxDmaOverruns',gfxDmaOverruns);H.result('maxGfxDmaLines',maxGfxDmaLines)
   H.result('nativeHot',hot)
   H.result('misses',misses); H.result('spriteOverflowFrames',overflows)

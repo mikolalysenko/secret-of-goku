@@ -4,6 +4,25 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES beam continuation cadence (2026-10-19)
+
+- Replace the beam worker's frame-number comparison with a per-field
+  work latch. Combat runs before `core_frame` advances, while the deferred
+  worker runs after it; the old comparison allowed both to scan during
+  one field update. The latch is cleared after the field service and on
+  map/load initialization, and also covers debug-triggered hits.
+- The gameplay regression counts repeated scans of the same attack and
+  rejects six duplicated field updates in the preceding short charge run.
+  All 13 short cases and six long repeats now have none, with zero palette,
+  meter, OBJ, complete-NMI and graphics-DMA errors. Long charging improves
+  68 → 65 misses per 1,200 frames; its deferred worker peak falls from
+  42.08 to 5.69 scanlines. Other long counts remain 2/3/19/5/52. A late
+  weapon copy moves beyond the early DMA window, leaving a 410.02-line
+  peak; strict crowded timing remains open.
+- The full destruction/Sandship suite, core cadence/input/menus/save/lag/
+  HDMA checks, passengers/local flight and world/radar checks pass. Existing
+  documented browser timing differences in demolition remain.
+
 ## SNES guarded graphics transfer window (2026-10-19)
 
 - Permit the existing bounded ROM-to-WRAM DMA through sampled line 176,

@@ -287,7 +287,7 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 ; load, new game and map changes.
 !HP          = !PERSIST_DESTROY+$4C
 !hp_id       = !HP+$00   ; word: beam id with cells left to scan, 0 none
-!hp_frame    = !HP+$02   ; word: core frame of the last scan of it
+!hp_worked   = !HP+$02   ; word: hit work ran in this field update; cleared by the frame service
 !hp_x        = !HP+$04   ; words: its arguments (as !arg_x .. !arg_layer)
 !hp_y        = !HP+$06
 !hp_dir      = !HP+$08

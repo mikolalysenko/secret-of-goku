@@ -19,21 +19,25 @@ destroy_field_frame:
 	JSR dst_orb_tick
 	JSR dst_hit_continue
 	JSR ss_frame
+	LDA.w #0 : STA.l !hp_worked
 	RTL
 
 ; A beam's band or barrier box left for later (dst_step_next) that no
 ; destroy_hit call worked on this frame: continue them from the saved
 ; arguments. Dropped when the field stops being idle (an event, a menu: the
 ; beam ended).
+; Combat runs before core_frame increments; this continuation runs after.
+; A per-field latch avoids scanning twice across that boundary, including
+; lag frames and the core counter's wrap. Debug hits use the same latch.
 dst_hit_continue:
 	LDA.l !hp_id : BNE +
 	RTS
-+	LDA.l !hp_frame : CMP.w !FRAME : BNE +
++	LDA.l !hp_worked : BEQ +
 	RTS
 +	JSR dst_ground_ok : BCS +
 	LDA.w #0 : STA.l !hp_id : STA.l !hp_left
 	RTS
-+	LDA.w !FRAME : STA.l !hp_frame
++	LDA.w #1 : STA.l !hp_worked
 	JSR dst_vline : STA.l !cl_t0
 	LDA.l !hp_id : STA.w !arg_id
 	LDA.l !hp_x : STA.w !arg_x
@@ -71,7 +75,7 @@ destroy_hit:
 	BCC .done
 	LDA.w !arg_kind : CMP.w #1 : BEQ .done
 	JSR ss_hit                   ; the Sandship breakout wave
-	LDA.w !FRAME : STA.l !hp_frame
+	LDA.w #1 : STA.l !hp_worked
 	JSR dst_vline : STA.l !cl_t0 ; the growth steps' time span starts
 	JSR dst_scan_attack          ; plants, objects, braziers, wall candidates
 	JSR dst_barrier_hit          ; gates, locks, hit/floor switches
@@ -139,7 +143,7 @@ dst_sync_map:
 	DEX : DEX : BPL -
 	STA.l !FX_SEQ : STA.l !FX_KIND : STA.l !FX_X : STA.l !FX_Y
 	STA.l !ss_vis : STA.l !ss_work          ; the Sandship work restarts in its window
-	STA.l !hp_id : STA.l !hp_left
+	STA.l !hp_id : STA.l !hp_left : STA.l !hp_worked
 	LDA.w #$D5A1 : STA.w !m_init
 	LDA.w #$FFFF : STA.w !d_map
 .inited
@@ -161,6 +165,7 @@ dst_sync_map:
 	STA.l !bb_id                       ; no beam's searched extent carries over
 	STA.l !hp_id                       ; nor a beam's band left for later
 	STA.l !hp_left
+	STA.l !hp_worked
 	LDA.w #$FFFF : STA.w !d_last
 	JSR dst_run_fail_clear
 	JSR dst_classes_reset

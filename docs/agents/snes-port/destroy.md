@@ -188,6 +188,12 @@ scanlines; what is left (`!hp_left`: bit 0 band, bit 1 barrier) waits for
 the beam's next call or, if the beam stops calling, for
 `destroy_field_frame`'s continuation from the saved arguments
 (`dst_hit_continue`, `!HP` block), dropped when the field stops being idle.
+`!hp_worked` prevents the continuation from repeating an attack's scan in
+the same field update. It is cleared after `destroy_field_frame` and on
+map/load initialization. Comparing `core_frame` values was insufficient:
+combat records the counter before the core increments it, while this
+continuation runs afterwards. The gameplay suite watches both scan parts
+per attack across the whole native field loop, including lag frames.
 Each step goes through the same skim/visit code as a one-shot call, so the
 cells and their order are unchanged. Measured (FastROM): the largest single
 call of combat's full wave 84 scanlines (was 219), the Wind Palace wave 45
