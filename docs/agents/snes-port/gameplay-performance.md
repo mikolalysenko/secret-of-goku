@@ -490,6 +490,19 @@ flying ki/flying punches/teleport/charge. Measurements and instruction
 profiles are under `.local/snes-test/graphics-window/`. Strict crowded
 timing remains open; shortening this copy does not remove every stall.
 
+After eliminating duplicate beam scenery work within one field update,
+one weapon copy moves to line 199. A second bounded DMA window at sampled
+lines 198–206 handles it after the HUD line and before line-225 vblank.
+The guard never waits or changes interrupt masks. Boundary checks cover
+both windows and their gaps; gameplay checks require completion before
+the relevant deadline and a duration below 16 lines. The long charge
+peak falls from 410.02 to 369.60 scanlines, with its late DMA taking 13.31
+lines including setup/restoration. The six long counts remain
+2/3/19/5/52/65. All 13 short cases and six long repeats have zero palette,
+meter, OBJ, complete-NMI, graphics-DMA or duplicated beam-work errors.
+Goku menus/save/load, FX/aura, passengers/local flight and world/radar
+checks pass. Private measurements are in `.local/snes-test/post-hud/`.
+
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's
 virtual combat targets are wired, and FastROM is the default. The carried

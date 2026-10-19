@@ -765,10 +765,12 @@ core_native_body:
 .done
 	JML $80E6CE
 
-; A ROM -> WMDATA DMA may run only early in an ordinary native field
-; frame. The fixed transfer is <= 2048 bytes (12.1 scanlines); setup and
+; A ROM -> WMDATA DMA may run only in safe ordinary native field windows.
+; The fixed transfer is <= 2048 bytes (12.1 scanlines); setup and
 ; register restoration bring the bound below 16 lines. Sampling <=176
-; therefore finishes before the native line-196 HUD IRQ and line-225 NMI.
+; finishes before the native line-196 HUD IRQ; sampling 198..206 finishes
+; past that IRQ's line and before the line-225 NMI. Never wait for a
+; window: intervening and late scanlines keep the interruptible CPU copy.
 ; No interrupt is masked and no channel configuration survives the copy.
 ; Later scanlines, scene/load work, other vectors and HDMA channel 7 keep
 ; the interruptible CPU copy. M16/X16, any DB/D; preserves X/Y.
@@ -797,7 +799,12 @@ core_native_dma_window:
 	BNE .no
 	JSR core_vcount
 	CMP.w #177
+	BCC .yes
+	CMP.w #198
+	BCC .no
+	CMP.w #207
 	BCS .no
+.yes
 	SEC
 	RTS
 .no

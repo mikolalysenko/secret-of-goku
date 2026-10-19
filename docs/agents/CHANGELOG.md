@@ -4,6 +4,21 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES graphics transfer after the HUD line (2026-10-19)
+
+- Add a second bounded ROM-to-WRAM DMA window at sampled scanlines
+  198–206. The transfer finishes before line-225 vblank; the intervening
+  lines and all previous context guards retain the interruptible CPU copy.
+  There is no wait or change to interrupt masks.
+- The long charging peak falls from 410.02 to 369.60 scanlines. Its late
+  transfer takes 13.31 lines including setup/restoration. Six long crowded
+  runs retain 2/3/19/5/52/65 misses per 1,200 frames, so zero-drop crowded
+  gameplay remains unfinished.
+- Boundary/CPU-state comparisons, all 13 short gameplay cases, six long
+  repeats, Goku menus/save/load, FX/aura, local passengers/flight and
+  world/radar checks pass. Gameplay records zero palette, meter, OBJ,
+  complete-NMI, graphics-DMA and duplicated beam-work errors.
+
 ## SNES beam continuation cadence (2026-10-19)
 
 - Replace the beam worker's frame-number comparison with a per-field

@@ -28,7 +28,7 @@ function test()
       fieldScans[key]=true;destroyPasses=destroyPasses+1
     end,emu.callbackType.exec,entry,entry)
   end
-  local gfxDmaCopies,gfxDmaOverruns,maxGfxDmaLines=0,0,0
+  local gfxDmaCopies,gfxDmaOverruns,maxGfxDmaLines,gfxDmaPostHudCopies=0,0,0,0
   for _,p in ipairs(GFX_DMA or {}) do
     local start,line
     emu.addMemoryCallback(function()
@@ -40,7 +40,10 @@ function test()
       local s=emu.getState();local duration=(s.masterClock-start)/1364
       gfxDmaCopies=gfxDmaCopies+1;maxGfxDmaLines=math.max(maxGfxDmaLines,duration)
       local finish=s['ppu.scanline']
-      if line>178 or finish<line or finish>=196 or duration>=16 then gfxDmaOverruns=gfxDmaOverruns+1 end
+      local early=line<=178 and finish>=line and finish<196
+      local postHud=line>=198 and line<=208 and finish>=line and finish<225
+      if not (early or postHud) or duration>=16 then gfxDmaOverruns=gfxDmaOverruns+1 end
+      if postHud then gfxDmaPostHudCopies=gfxDmaPostHudCopies+1 end
       start=nil
     end,emu.callbackType.exec,p[2],p[2])
   end
@@ -206,6 +209,7 @@ function test()
   H.result('phaseTiming',phaseTiming)
   H.result('destroyPasses',destroyPasses);H.result('destroyRepeatFrames',destroyRepeatFrames)
   H.result('gfxDmaCopies',gfxDmaCopies);H.result('gfxDmaOverruns',gfxDmaOverruns);H.result('maxGfxDmaLines',maxGfxDmaLines)
+  H.result('gfxDmaPostHudCopies',gfxDmaPostHudCopies)
   H.result('nativeHot',hot)
   H.result('misses',misses); H.result('spriteOverflowFrames',overflows)
   H.result('missedVblanks',#misses); H.result('nmiOverruns',nmiOverruns); H.result('maxNmiLines',maxNmi)
