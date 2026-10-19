@@ -4,6 +4,17 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES native companion return-width fix (2026-10-19)
+
+- Re-establish the actor routine's accumulator/index widths before each
+  companion call. The native pair used before Goku arrives and during
+  events could otherwise enter its second call in M16, corrupting the
+  bank-switch stack and eventually the interrupt vectors.
+- Strict build, a machine-code regression covering both actors' M8/M16
+  returns, and core party/frame checks pass. The previously crashing map
+  129 flight fixture now completes 630 landing queries, 20,160 exit probes,
+  6,048 sweeps and 2,520 canLand calls with zero mismatches.
+
 ## SNES late-vblank queue exit (2026-10-19)
 
 - Leave queued VRAM work untouched when fewer than two lines remain before

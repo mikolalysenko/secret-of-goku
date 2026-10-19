@@ -378,6 +378,11 @@ core_party_pair:
 .done
 	RTL
 core_party_actor:
+	; F4CB may return M16 after processing a companion. The native
+	; pair calls it again without changing width; establish its entry widths
+	; before the bank-switch PHA, including the second member of that pair.
+	SEP #$20
+	REP #$10
 	PHB
 	LDA.b #$7E                  ; F4AB normally supplies the actor-data bank
 	PHA
