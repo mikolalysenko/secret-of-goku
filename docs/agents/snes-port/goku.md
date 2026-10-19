@@ -140,7 +140,11 @@ replacement), `modules_field_nmi` → `goku_nmi` (uploads), `modules_menu_frame`
   sits on the feet line (shadow height included) minus the extra lift; each
   16-line row takes priority and palette from the native part covering its
   centre line (so the lower body wades behind water/ledges like the boy's);
-  `GOKU_CTL_AIRBORNE` forces priority 3 and palette 1.
+  `GOKU_CTL_AIRBORNE` forces priority 3 and palette 1 before scanning the
+  native body rows; `GOKU_AIR_ATTR_SLOW=1` retains the former scan/remap.
+  `air-attributes.test.mjs` checks all 465 cells and miniatures, mixed
+  water/ledge rows, clipping and full OAM buffers. A representative body
+  emitter falls 1,059 → 798 CPU cycles.
 - **Palette** (`palette.asm`): tracks the boy's slot per entry and rebuilds
   Goku's palette only when the game wrote something, the displayed cell's
   palette id or the petrify bit changed. Replacement ending restores the

@@ -8,18 +8,18 @@ combat is not yet guaranteed to run without missed video frames.
 
 ## Current checkpoint
 
-The latest 1,200-video-frame runs use the default palette-scan build in
-`.local/snes-test/goku-palette-scan/final.sfc`. All rendering and hardware
+The latest 1,200-video-frame runs use the default airborne-attribute build in
+`.local/snes-test/goku-air-attr/final.sfc`. All rendering and hardware
 checks pass; flight, teleport and charging still miss frames.
 
 | Scenario | Missed frames | Longest field update (scanlines) |
 | --- | ---: | ---: |
-| Ground punches | 0 | 239.49 |
-| Ground ki | 0 | 239.21 |
-| Flying ki, corridor | 20 | 273.33 |
-| Flying punches | 1 | 288.84 |
-| Teleports | 14 | 312.61 |
-| Charge and release | 44 | 275.68 |
+| Ground punches | 0 | 239.68 |
+| Ground ki | 0 | 239.36 |
+| Flying ki, corridor | 19 | 271.32 |
+| Flying punches | 1 | 287.40 |
+| Teleports | 14 | 312.24 |
+| Charge and release | 44 | 275.61 |
 
 The measurements below preserve the history of this review; their earlier
 counts are not the current release result. Passing a normal gameplay run
@@ -773,6 +773,17 @@ pass. Short flying ki improves 5 → 3 misses; the six long counts remain
 0/0/20/1/14/44, with all hardware/rendering checks clean. Artifacts are
 under `.local/snes-test/ai-advance/`; `final.sfc` matches the measured
 `fixed.sfc` byte for byte. Strict crowded timing remains open.
+
+Flight's Goku body now uses its fixed palette 1/priority 3 before scanning
+the native water/ledge rows. The full emitter retains identical output in
+3,204 assembled cell/miniature/clipping comparisons; a representative body
+falls 1,059 → 798 CPU cycles. Seven presentation/menu/load cases, all native
+actions and pose APIs, scripted sockets, local flight and world/radar/map
+tests pass. Short flying ki improves 3 → 2 misses and long corridor flying
+ki improves 20 → 19 (peak 272.67 → 271.32 lines); other counts stay unchanged
+with zero hardware/rendering errors. Artifacts are under
+`.local/snes-test/goku-air-attr/`; `final.sfc` matches `game.sfc` byte for byte.
+Strict crowded timing remains open.
 
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's

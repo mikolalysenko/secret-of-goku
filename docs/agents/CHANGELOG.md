@@ -4,6 +4,19 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES airborne body attributes (2026-10-19)
+
+- Use flight's fixed OBJ palette 1 and priority 3 before scanning native
+  water/ledge body rows. A representative emitter falls 1,059 → 798 CPU
+  cycles; the tinted water palette still follows the emitted sprites.
+- All 3,204 assembled cell/miniature/clipping comparisons, seven Goku
+  presentation/menu/load cases, 12,748 native-action frames, 1,715 pose-API
+  frames and scripted sockets pass. Local flight and all world/radar/map
+  cases pass, with zero hardware/rendering errors in short/long gameplay.
+- Flying ki improves 3 → 2 misses in 240 frames and 20 → 19 in the
+  1,200-frame corridor run. Other long counts stay 0/0/1/14/44 for
+  punch/ki/flying punch/teleport/charge; strict crowded timing remains open.
+
 ## SNES native script pointer overhead (2026-10-19)
 
 - Simplify the native AI operand advance and tail-call its ten fixed-size

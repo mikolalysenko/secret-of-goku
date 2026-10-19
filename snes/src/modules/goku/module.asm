@@ -120,7 +120,7 @@ assert !GOKU_RAM_END <= !GOKU_RAM+$C0, "goku RAM overflow"
 
 ; goku_ctl bits (other modules set these)
 !GOKU_CTL_SUPPRESS  = $01   ; keep the native boy (e.g. ending's revived Randi)
-!GOKU_CTL_AIRBORNE  = $02   ; airborne: priority 3, no water colour math (palette 5 -> 1)
+!GOKU_CTL_AIRBORNE  = $02   ; airborne: priority 3, palette 1 (no water colour math)
 !GOKU_CTL_HIDE      = $04   ; hide Goku's body (and his shadow)
 !GOKU_CTL_LOCALFLY  = $08   ; local flight active (hover pose rules)
 !GOKU_CTL_HIDESHADOW = $10  ; hide only the shadow

@@ -311,6 +311,20 @@ goku_emit:
 ; inject(): per-line part). Airborne Goku uses priority 3 and drops the water
 ; palette. M16 X16; keeps e_* inputs.
 goku_part_attr:
+if not(defined("GOKU_AIR_ATTR_SLOW"))
+	PHA
+	LDA !goku_ctl
+	BIT.w #!GOKU_CTL_AIRBORNE
+	BEQ .native
+	PLA
+	; Flight owns palette 1 and priority 3, independent of the ground
+	; body's per-row water/ledge attributes. The tinted palette is mirrored
+	; to this slot by goku_palette_air before it is uploaded.
+	LDA.w #$0033
+	RTS
+.native
+	PLA
+endif
 	SEC
 	SBC $06                  ; line relative to the native anchor
 	STA !t_b
