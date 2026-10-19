@@ -272,7 +272,6 @@ core_frame_begin:
 +	PLA
 	CMP.w !core_mode&$FFFF
 	BEQ .same
-	STA.w !core_mode&$FFFF
 	JSR core_oam_mode_changed
 .same
 	INC.w !core_tick&$FFFF

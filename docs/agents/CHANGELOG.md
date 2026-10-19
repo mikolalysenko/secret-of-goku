@@ -4,6 +4,16 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES sprite cleanup across modes (2026-10-19)
+
+- Preserve the previous mode until the OAM handoff has hidden the slots
+  it relinquishes. The frame dispatcher had stored the new mode too early,
+  preventing the intended field/world cleanup from running.
+- An assembled handoff check covers field to world, world to field with
+  freshly drawn natives, and world to ring. Local passenger/water/teleport/
+  whip and world takeoff/locks/landing/controls/ki/radar/map/timing checks
+  pass. Core frame, input, ring/menu and sprite regressions also pass.
+
 ## SNES attack tile-class queries (2026-10-19)
 
 - Let the scenery and barrier attack scanners discard descriptor scratch
