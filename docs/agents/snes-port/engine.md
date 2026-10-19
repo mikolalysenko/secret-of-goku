@@ -310,3 +310,16 @@ loops. Odd border widths are handled by the retained last iteration. The
 eighth assembled text test compares full RAM and CPU state at each loop's
 continuation. Ten-column scrolls take 964 rather than 4,467 CPU cycles;
 twenty-column borders take 1,741 rather than 8,938.
+
+The field foreground-sprite commit uses descending word copies on the
+ground and packs four high-bit entries at once. Partial groups are masked
+after packing, and unused reserved slots keep their original tile bytes
+while their positions are hidden. Both copies remain interruptible.
+Local flight retains the previous commit sequence because the unrestricted
+trial changed input/actor alignment and regressed its long ki workload.
+`-DCORE_OAM_COMMIT_SLOW=1` selects the previous path everywhere.
+`snes/test/core/oam-commit.test.mjs` compares assembled execution against
+an independent slot model over every capacity and packed-high-byte value,
+including overlap, empty input, padding and the last available slot. Six
+front sprites plus 192 native bytes take 1,895 instead of 2,933 CPU cycles;
+sixteen take 2,197 instead of 4,731. No DMA channel or SRAM is added.

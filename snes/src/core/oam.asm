@@ -468,11 +468,64 @@ core_oam_hide:
 
 ; Field commit: insert staged front sprites, record the new end so the
 ; game's next C0:BCAB hides our slots.
-core_oam_commit_field:
+; Enter an unrolled descending word copy at its requested length. Each
+; word uses six ROM bytes, so cursor*3 selects the first instruction.
+; The synthetic RTS consumes only its computed target; the caller's
+; return stays underneath it. Copies remain interruptible, like MVP.
+if not(defined("CORE_OAM_COMMIT_SLOW"))
+core_oam_shift_low:
+	LDY.w !core_tmp1&$FFFF             ; destination displacement, 4G
+	LDA.w !core_oam_cursor&$FFFF
+	ASL
+	CLC : ADC.w !core_oam_cursor&$FFFF
+	EOR.w #$FFFF
+	CLC : ADC.w #core_oam_shift_low_end
+	PHA
+	RTS
+	for word = 0..256
+		!offset #= 510-(!word*2)
+		LDA.w $0800+!offset
+		STA.w $0800+!offset,Y
+	endfor
+core_oam_shift_low_end:
+	RTS
+
+core_oam_copy_front:
+	LDA.w !core_oam_front_n&$FFFF
+	ASL
+	CLC : ADC.w !core_oam_front_n&$FFFF
+	ASL : ASL                         ; twelve ROM bytes per staged sprite
+	EOR.w #$FFFF
+	CLC : ADC.w #core_oam_copy_front_end
+	PHA
+	RTS
+	for word = 0..32
+		!offset #= 62-(!word*2)
+		LDA.w (!core_oam_front&$FFFF)+!offset
+		STA.w $0800+!offset
+	endfor
+core_oam_copy_front_end:
+	RTS
+core_oam_partial_hi:
+	db $FF,$03,$0F,$3F
+endif
+
+macro core_oam_commit(name, fast)
+<name>:
 	LDA.w !core_oam_front_n&$FFFF
 	BNE .front
 	JMP .done
 .front
+if <fast> == 0 && not(defined("CORE_OAM_COMMIT_SLOW"))
+	; Preserve the measured airborne schedule while its CPU peaks remain
+	; open. The faster ground commit helps charge/release, but applying it
+	; to flight changed input/actor alignment and worsened the long ki run.
+	LDA.w !RAM_FLIGHT&$FFFF
+	BIT.w #1                         ; flight's published FLS_FLY bit
+	BNE +
+	JMP core_oam_commit_batch
++	LDA.w !core_oam_front_n&$FFFF
+endif
 	CLC : ADC.w #$0003 : AND.w #$FFFC
 	STA.w !core_tmp2&$FFFF            ; G = reserved slots (multiple of 4)
 	; Low table: [0, cursor) -> [4G, cursor + 4G)
@@ -481,6 +534,7 @@ core_oam_commit_field:
 	LDA.w !core_tmp2&$FFFF
 	ASL : ASL
 	STA.w !core_tmp1&$FFFF            ; 4G bytes
+if <fast> == 0
 	LDA.w !core_oam_cursor&$FFFF
 	CLC : ADC.w #$0800-1
 	TAX                               ; source end
@@ -491,6 +545,9 @@ core_oam_commit_field:
 	PHB
 	MVP $7E,$7E
 	PLB
+else
+	JSR core_oam_shift_low
+endif
 	; High table: bytes [0, H) -> [G/4, H + G/4), H = ceil(cursor / 16)
 	LDA.w !core_oam_cursor&$FFFF
 	CLC : ADC.w #$000F
@@ -511,6 +568,7 @@ core_oam_commit_field:
 	MVP $7E,$7E
 	PLB
 .lowDone
+if <fast> == 0
 	; Clear the high bytes of the reserved group.
 	LDA.w !core_tmp2&$FFFF
 	LSR : LSR
@@ -547,6 +605,45 @@ core_oam_commit_field:
 	TXA : LSR : LSR
 	CMP.w !core_tmp2&$FFFF
 	BCC .put
+else
+	JSR core_oam_copy_front
+	; Hide only the at-most-three padding slots; their tile bytes stay put.
+	LDA.w !core_oam_front_n&$FFFF
+	ASL : ASL : TAX
+	LDA.w !core_tmp2&$FFFF
+	ASL : ASL : TAY
+	JSR core_oam_hide_range
+	; Staged high words are 0..3. Pack four at a time, then mask the last
+	; partial group so unused staging entries can contain arbitrary bytes.
+	LDA.w !core_tmp2&$FFFF
+	LSR : LSR
+	STA.w !core_tmp0&$FFFF
+	LDX.w #0
+	LDY.w #0
+.packHi
+	LDA.w (!core_oam_front_hi&$FFFF)+6,X
+	ASL : ASL
+	ORA.w (!core_oam_front_hi&$FFFF)+4,X
+	ASL : ASL
+	ORA.w (!core_oam_front_hi&$FFFF)+2,X
+	ASL : ASL
+	ORA.w !core_oam_front_hi&$FFFF,X
+	SEP #$20
+	STA.w $0A00,Y
+	REP #$20
+	INY
+	TXA : CLC : ADC.w #8 : TAX
+	CPY.w !core_tmp0&$FFFF
+	BCC .packHi
+	LDA.w !core_oam_front_n&$FFFF
+	AND.w #3
+	TAX
+	SEP #$20
+	LDA.l core_oam_partial_hi,X
+	AND.w $09FF,Y
+	STA.w $09FF,Y
+	REP #$20
+endif
 	; Account for the shift.
 	LDA.w !core_tmp2&$FFFF
 	ASL : ASL
@@ -558,6 +655,12 @@ core_oam_commit_field:
 	STA.w $0120                       ; next frame's C0:BCAB hides up to here
 	STA.l !core_oam_field_hw
 	RTS
+endmacro
+
+%core_oam_commit(core_oam_commit_field, 0)
+if not(defined("CORE_OAM_COMMIT_SLOW"))
+%core_oam_commit(core_oam_commit_batch, 1)
+endif
 
 ; World commit: remember what to hide next frame.
 core_oam_commit_world:

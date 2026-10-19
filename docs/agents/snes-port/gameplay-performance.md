@@ -383,6 +383,24 @@ graphics-DMA errors. Measurements: `native-text/rows-short`, `rows-long`
 and `rows-peaks`. This improves message spikes but does not satisfy the
 strict crowded-combat timing target.
 
+The ground foreground-sprite commit subsequently uses word copies and
+grouped high-bit packing. Its slot-model comparisons cover every valid
+capacity and both runtime paths; core OAM/meta/frames/input/lag/HDMA and
+FX gallery/beams/aura/debris pass. Short gameplay counts stay unchanged
+with zero hardware errors. Long charging improves from 93 to 83 misses,
+while corridor flying ki stays at 19 and teleport at 67. Measurements:
+`oam-commit/ground-short`, `ground-long` and `ground-rest`.
+Long ground punches/ki and flying punches remain 2/8/5. The production
+ROM matches the validated private image, and the slow comparison build
+passes the same slot-model checks.
+
+The unrestricted sprite-copy trial is not the runtime policy: it improves
+charging to 82 misses but regresses corridor flying ki from 19 to 51.
+The tested implementation retains the previous airborne path. Restricting
+the copy to five or more foreground sprites also stays out because it
+does not improve the common charge workload. These private measurements
+are in `oam-commit/long` and `large-long`, respectively.
+
 The asynchronous scheduling trials are not in the playable ROM. Deferring companion
 AI improved the long walking/punching/ki/teleport cases from 39/24/47/73
 to 3/3/17/39 misses, but worsened flying ki from 36 to 50. Deferring normal

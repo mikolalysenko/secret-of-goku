@@ -4,6 +4,23 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES foreground sprite commit (2026-10-19)
+
+- Use interruptible word copies and pack four sprite high-bit entries at
+  once when inserting foreground effects during ground play. Preserve
+  sprite order, padding, capacity and native high-table bytes. Keep the
+  existing airborne path: the unrestricted trial worsened long flying ki.
+- An independent slot model checks every valid capacity, all packed high
+  bytes, partial groups and both runtime paths. With 192 native OAM bytes,
+  six foreground sprites cost 1,895 rather than 2,933 cycles; sixteen cost
+  2,197 rather than 4,731. Core OAM/meta/frame/input/lag/HDMA and effects
+  gallery/beam/aura/debris checks pass.
+- Long charging improves from 93 to 83 misses per 1,200 video frames;
+  corridor flying ki stays at 19 and teleport at 67. All 13 short gameplay
+  counts are unchanged; long ground punches/ki and flying punches stay
+  at 2/8/5, with zero hardware errors. Strict crowded timing
+  remains open. `CORE_OAM_COMMIT_SLOW` restores the previous path.
+
 ## SNES batched window animation (2026-10-19)
 
 - Move interior window columns in batches when opening, closing and
