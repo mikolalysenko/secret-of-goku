@@ -292,6 +292,18 @@ and large-sprite cases pass, as do gallery/beams/aura/debris. The 13 short
 gameplay measurements are unchanged and retain zero hardware errors
 (`fx-capacity/short`). This is not the cause of their remaining CPU misses.
 
+The compact single-cell emitter saves 195 CPU cycles per resident front
+stamp (935 to 740), with identical allocation and placement. Its regression
+also exposed and fixes a missing-flipped-tile bug in generic setup: X/Y
+restoration overwrote the sign flag before the unavailable-cell test.
+Every rotated stamp now explicitly rejects `$FFFF`. All nine assembled
+FX tests and gallery/beams/aura/debris pass. Production matches the tested
+private ROM byte for byte (`fx-stamp-fast3`). All 13 short cases and four
+long repeats keep zero palette, meter, OBJ, NMI and graphics-DMA errors.
+Long flying-ki/charge misses change from 36/144 to 31/143; flying punches
+and teleport remain 1/73. Short flying-ki changes from 5 to 7. These are
+CPU savings and a rendering fix, with strict crowded timing still failing.
+
 Private scheduling trials are not in the playable ROM. Deferring companion
 AI improved the long walking/punching/ki/teleport cases from 39/24/47/73
 to 3/3/17/39 misses, but worsened flying ki from 36 to 50. Deferring normal

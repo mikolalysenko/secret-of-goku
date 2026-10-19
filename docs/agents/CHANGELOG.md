@@ -4,6 +4,20 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES single-cell effects and missing rotated tiles (2026-10-19)
+
+- Emit the 300 one-cell ki/impact stamps from compact records, preserving
+  tile/palette allocation, clipping, front ordering and OAM capacity. A
+  resident front stamp falls from 935 to 740 CPU cycles.
+- Fix the generic assembly resolver's missing-tile check: restoring X/Y
+  replaced its sign flag, allowing unavailable flipped cells to become
+  drawable garbage. Compare the returned tile explicitly with `$FFFF`.
+- Nine assembled FX tests and gallery/beams/aura/debris pass. All 13 short
+  gameplay cases and four 1,200-frame repeats retain zero palette, meter,
+  OBJ, NMI and graphics-DMA errors. Long flying-ki misses improve from 36
+  to 31 and charge from 144 to 143; short flying-ki rises from 5 to 7.
+  Crowded combat still fails strict timing.
+
 ## SNES effect-emitter capacity fix (2026-10-19)
 
 - Fix the fast effect emitter's last-slot calculation. A zero part count

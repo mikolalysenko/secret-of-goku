@@ -8,7 +8,69 @@
 ; !d_x/!d_y, depth !d_ef.
 fx_stamp:
 	JSR fx_stamp_id
+if defined("FX_STAMP_SLOW")
 	JMP fx_emit
+else
+	JMP fx_stamp_cell
+endif
+
+; One-cell stamp A. Resolve the same cache entry before clipping, then use
+; the shared front/back placement code. Do not leave a generic assembly
+; advertised in d_lasta: this path has not filled d_tiles/d_ptr.
+fx_stamp_cell:
+	ASL
+	ASL
+	TAX
+	LDA.w #$FFFF
+	STA !d_lasta
+	LDA.l fx_stamp_cells,X
+	CMP.w #$FFFF
+	BEQ .done
+	STA !d_ax                    ; cell/class and OAM flips
+	LDA.l fx_stamp_cells+2,X
+	STA !d_ay                    ; biased X/Y offsets
+	LDA !d_ax
+	JSR fx_resolve
+	CMP.w #$FFFF
+	BEQ .done
+	STA !d_tile
+	LDA !d_ax
+	AND.w #$C000
+	ORA !d_tile
+	STA !d_tile
+	LDA !d_ay
+	AND.w #$00FF
+	CLC
+	ADC !d_x
+	SEC
+	SBC.w #128-15
+	CMP.w #256+15
+	BCS .done
+	SBC.w #14                    ; carry clear: screen X
+	STA !d_sx
+	LDA !d_ay
+	XBA
+	AND.w #$00FF
+	CLC
+	ADC !d_y
+	SEC
+	SBC.w #128-15
+	CMP.w #224+15
+	BCS .done
+	SBC.w #14
+	STA !d_sy
+	LDA.w #1
+	STA !d_n
+	LDX.w #0
+	PHX                          ; shared emitter pops its part cursor
+	LDA !d_ef
+	LSR
+	BCC .back
+	JMP fx_emit_slow_front
+.back
+	JMP fx_emit_slow_back
+.done
+	RTS
 
 ; Stamp group A, frame X, turn Y -> A = assembly id.
 fx_stamp_id:
@@ -87,7 +149,10 @@ fx_emit_setup:
 	PLX
 	PLY
 	STA !d_tiles,X
-	BMI .missing
+	; PLX/PLY above replaced the resolver's N flag. Missing cells must
+	; stay $FFFF in every flip variant, not turn into $3FFF/$7FFF.
+	CMP.w #$FFFF
+	BEQ .missing
 	ORA.w #$4000
 	STA !d_tiles+2,X             ; h-flip
 	EOR.w #$C000

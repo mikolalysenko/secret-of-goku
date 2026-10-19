@@ -253,6 +253,16 @@ path of one 16-bit add per part, and beam strips and wave edges are runs
 (`fx_emit_run`, a fixed spacing along the beam). On crowded lines the far
 end of a long beam drops out first, never a native sprite.
 
+The 300 one-cell stamps use compact four-byte records and share the
+general emitter's front/back placement code. This saves about 21% of a
+resident front stamp's CPU cycles (935 to 740), without changing palette
+allocation or clipping. `-DFX_STAMP_SLOW=1` selects generic assemblies for
+comparison. Generic setup explicitly checks the resolver's `$FFFF`
+sentinel after restoring registers, so missing flipped tiles remain
+unavailable. The assembled `stamps.test.mjs` checks every rotation and
+successive cache/palette requests; `emitter.test.mjs` covers full OAM and
+missing pieces, including the final free slot.
+
 **Sprites per line.** The PPU shows at most 34 8-pixel slivers per line and,
 when a line has more ("time over"), drops the slivers of the *first*
 sprites in OAM: the natives (Goku, enemies), since FX's sprites come after
