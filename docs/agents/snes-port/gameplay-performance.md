@@ -231,6 +231,19 @@ The all-scenes `--strict-timing` check therefore still fails. Recurring
 actor, collision and effect costs and other graphics sheets need further
 work. Generated measurements are under `.local/snes-test/combat-death-fast/`.
 
+The next checkpoint expands the same treatment to the observed weapon
+sheets `D4:0000` and `D4:2FE8` (64 tiles). Differential checks cover their
+three encodings, six slots, flags, direct pages and fallback cases. Core
+frames/party/OAM/lag/decode and Goku field/status/forms pass. All 13 gameplay
+cases keep zero rendering/hardware errors; grass transformation becomes
+zero-miss. Ground-punch/ki peaks fall from 384/383 to 364/372 scanlines;
+other short miss counts are unchanged. In 1,200-frame repeats, flying ki,
+flying punches and charging remain at 467/95/166 misses. Teleport increases
+from 118 to 136. These timings change enemy/companion trajectories and do
+not establish a net improvement in long crowded fights. The broader
+zero-drop target is still open. Results: `combat-graphics-fast` and
+`combat-graphics-long` under `.local/snes-test/`.
+
 ## Validation and remaining work from Claude's notes
 
 The terrain optimization matches the browser on 289,324 tile comparisons,

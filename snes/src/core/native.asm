@@ -2,26 +2,27 @@
 
 incsrc "core-graphics/data.asm"
 
-; C1:C599: the death/status sheet requested by C1:85F1. All three retail
+; C1:C599: common death and weapon sheets. All three retail
 ; colour encodings were expanded at build time. Copy into the original
 ; buffer with an interruptible MVN, preserving the decoder's registers,
 ; flags, direct-page outputs and DB. No DMA channel or math register used.
 ; Unknown sources, sizes, destinations and decimal mode use retail code.
-core_native_tiles:
+macro core_native_tiles_path(name, next, bank, source, tiles, destination, data, mask)
+<name>:
 	PHP
 	REP #$30
 	PHA
 	AND.w #$00FF
-	CMP.w #$00D1
+	CMP.w #<bank>
 	BNE .native
-	CPY.w #$F100
+	CPY.w #<source>
 	BNE .native
 	LDA $08
 	AND.w #$00FF
-	CMP.w #50
+	CMP.w #<tiles>
 	BNE .native
 	LDA $00
-	CMP.w #$0800
+	CMP.w #<destination>
 	BNE .native
 	CPX.w #$0C00                 ; the six native party/enemy slots
 	BCS .native
@@ -35,11 +36,7 @@ core_native_tiles:
 .native
 	PLA
 	PLP
-	SEP #$20
-	PHB
-	PHA
-	PLB
-	JML $81C59E
+	JML <next>
 .fast
 	PLA
 	PLP
@@ -70,8 +67,8 @@ core_native_tiles:
 	TAX
 	LDA.l .source,X
 	TAX
-	LDA.w #50*32-1
-	MVN $7E,(!XDATA_CORE_GFX_DEATH>>16)
+	LDA.w #((<tiles>*32)-1)
+	MVN $7E,(<data>>>16)
 	; Variant 0 leaves the last row's transparency mask in DP $00.
 	LDA $04
 	AND.w #$00FF
@@ -80,16 +77,16 @@ core_native_tiles:
 	BNE .finish
 .mask
 	SEP #$20
-	LDA.b #!CORE_GFX_DEATH_MASK
+	LDA.b #<mask>
 	STA $00
 	REP #$20
 .finish
 	PLA                          ; destination offset + decoded bytes
 	CLC
-	ADC.w #50*32
+	ADC.w #(<tiles>*32)
 	TAX
-	; Retail's last ADC advances Y from $F598 to $F5B0: C=V=0.
-	LDA.w #$F598
+	; Reproduce the last source-pointer ADC, including its C/V result.
+	LDA.w #(<source>+((<tiles>-1)*24))
 	CLC
 	ADC.w #24
 	TAY
@@ -99,8 +96,19 @@ core_native_tiles:
 	RTL
 .source
 	for slot = 0..6
-		dw ((!XDATA_CORE_GFX_DEATH&$FFFF)+((!slot%3)*1600))
+		dw ((<data>&$FFFF)+((!slot%3)*<tiles>*32))
 	endfor
+endmacro
+
+%core_native_tiles_path(core_native_tiles, core_native_weapon_0, $D1, $F100, 50, $0800, !XDATA_CORE_GFX_DEATH, !CORE_GFX_DEATH_MASK)
+%core_native_tiles_path(core_native_weapon_0, core_native_weapon_511, $D4, $0000, 64, $0000, !XDATA_CORE_GFX_WEAPON_0, !CORE_GFX_WEAPON_0_MASK)
+%core_native_tiles_path(core_native_weapon_511, core_native_tiles_retail, $D4, $2FE8, 64, $0000, !XDATA_CORE_GFX_WEAPON_511, !CORE_GFX_WEAPON_511_MASK)
+core_native_tiles_retail:
+	SEP #$20
+	PHB
+	PHA
+	PLB
+	JML $81C59E
 
 ; C1:2710: highest set bit of X, or $00FF for zero. X returns bit+1
 ; (zero for empty), Y/DB/D/P are preserved, except NZ follows PLD as in

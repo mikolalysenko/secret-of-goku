@@ -4,6 +4,22 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES common weapon graphics cost (2026-10-19)
+
+- Predecode the two additional weapon sheets observed in crowded-combat
+  traces (`D4:0000` and `D4:2FE8`). Use the same interruptible copier and
+  retail fallback as death particles, with exact machine-code comparisons
+  across six actor slots, three colour encodings and calling flags.
+- Strict build, core frames/party/OAM/lag/decode and Goku field/status/forms
+  checks pass. All 13 gameplay cases retain zero palette, meter, OBJ and
+  NMI errors. Grass transformation now has zero misses in the short case;
+  other short-case miss counts are unchanged. Ground-punch/ki peak logic
+  falls from 384/383 to 364/372 scanlines.
+- Long runs still fail strict timing. Flying ki/punches/charging remain at
+  467/95/166 misses per 1,200 frames; teleport increases from 118 to 136
+  as execution timing changes the fight. Do not treat cheaper graphics
+  conversion as proof of smoother whole-frame execution.
+
 ## SNES enemy-death graphics cost (2026-10-19)
 
 - Predecode the native 50-tile death/status sheet in all three colour

@@ -53,10 +53,17 @@ test('predecoded death graphics exactly match all retail colour variants',()=>{
   for(let slot=0;slot<6;slot++)for(const p of [0,0x21,0xC6,0xE7])for(const dp of [0,0x100])
     compare({slot,p,dp,db:[0,0x7E,0x80][slot%3]},true);
 });
+test('predecoded weapon sheets match all actor slots and colour variants',()=>{
+  for(const source of [0,0x2FE8])for(let slot=0;slot<6;slot++)
+    for(const p of [0,0x21,0xC6,0xE7])for(const dp of [0,0x100])
+      compare({bank:0xD4,source,count:64,dest:0,slot,p,dp,db:[0,0x7E,0x80][slot%3]},true);
+});
 test('other source sheets, layouts and decimal mode retain the retail decoder',()=>{
   for(const input of [
-    {bank:0xD4,source:0,count:64,dest:0},
+    {bank:0xD4,source:24,count:64,dest:0},
     {bank:0xD4,source:0xBA00,count:64},
+    {bank:0xD4,source:0x2FE8,count:64,dest:0,p:8},
+    {bank:0xD4,source:0x2FE8,count:63,dest:0},
     {bank:0xD0,source:0xDF00,count:64,dest:0},
     {bank:0x7E,source:0xC000,count:4},
     {source:0xF118},{count:1},{count:0},{dest:0},
