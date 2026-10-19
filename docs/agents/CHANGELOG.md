@@ -4,6 +4,23 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES attack tile-class queries (2026-10-19)
+
+- Let the scenery and barrier attack scanners discard descriptor scratch
+  they immediately replace. Keep the preserving class-cache entry for the
+  floor sampler and demolition planner, including its registers and scratch.
+  Cold cut-tile classification falls from 535 to 374 CPU cycles. Both paths
+  agree across tile IDs, layers, descriptor bytes, map policies and live
+  cache nibbles. `DESTROY_CLASS_SLOW` retains the preserving attack path.
+- Eighteen scenery, growing-beam, brazier, gate/switch and demolition cases
+  pass. The Fortress's existing eight-tile difference from browser timing
+  remains; its final grid is identical to the preceding cartridge build.
+- All 13 short gameplay cases and six long combat repeats retain their
+  missed-frame counts and zero palette, meter, OBJ, complete-NMI or
+  graphics-DMA errors. Local passengers/water/teleport/whip and world
+  takeoff/landing/controls/ki/radar/map checks pass. Strict crowded timing
+  remains open.
+
 ## SNES interruptible graphics copies (2026-10-19)
 
 - Copy predecoded death and weapon sheets in unrolled words when their

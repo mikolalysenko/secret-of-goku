@@ -755,7 +755,7 @@ dst_consider_cell:
 	ORA.w #$4000
 +	TAX
 	LDA.l $7F0000,X
-	JSR dst_cell_class : AND.w #1 : BNE .full
+	JSR dst_cell_class_fast : AND.w #1 : BNE .full
 .out
 	RTS
 .full

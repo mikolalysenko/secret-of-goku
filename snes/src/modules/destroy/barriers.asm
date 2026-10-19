@@ -349,7 +349,7 @@ dst_native_cell:
 	ORA.w #$4000
 +	TAX
 	LDA.l $7F0000,X
-	JSR dst_cell_class : AND.w #1 : BNE +
+	JSR dst_cell_class_fast : AND.w #1 : BNE +
 	RTS
 +	JSR dst_load_cell : BCC +
 	RTS

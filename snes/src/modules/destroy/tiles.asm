@@ -787,7 +787,8 @@ dst_class_deco:
 ; and stores an unknown class first, keeping the caller's !d_t0-!d_t6,
 ; !d_ctile, !d_cmeta and Y (the floor sampler's words live there).
 ; Clobbers X.
-dst_cell_class:
+macro dst_class_path(name, preserve)
+<name>:
 	AND.w #$00FF : PHA                       ; the tile
 	LSR
 	LDX.w !d_cl : BEQ +
@@ -802,6 +803,7 @@ dst_cell_class:
 	PLX
 	RTS
 .miss
+if <preserve>
 	PHY
 	LDA.w !d_t0 : PHA
 	LDA.w !d_t1 : PHA
@@ -810,18 +812,21 @@ dst_cell_class:
 	LDA.w !d_t4 : PHA
 	LDA.w !d_t6 : PHA
 	LDA.w !d_ctile : PHA
-	LDA.w !d_cmeta : PHA                     ; the tile is at $13,s
-	LDA $13,s
+	LDA.w !d_cmeta : PHA
+endif
+	; Eight scratch words and Y are saved only by the general entry.
+	!class_tile #= 1+(<preserve>*18)
+	LDA !class_tile,s
 	LDX.w !d_cl : BEQ +
 	ORA.w #$0100
 +	JSR dst_class_of
 	STA.l !DK_NEW
 	ASL : ASL : ASL : ASL : STA.l !DK_HI
-	LDA $13,s : LSR
+	LDA !class_tile,s : LSR
 	LDX.w !d_cl : BEQ +
 	ORA.w #$0080
 +	TAX
-	LDA $13,s : LSR
+	LDA !class_tile,s : LSR
 	SEP #$20
 	BCS .odd
 	LDA.l !DK,X : AND.b #$F0 : ORA.l !DK_NEW : STA.l !DK,X
@@ -830,6 +835,7 @@ dst_cell_class:
 	LDA.l !DK,X : AND.b #$0F : ORA.l !DK_HI : STA.l !DK,X
 .stored
 	REP #$20
+if <preserve>
 	PLA : STA.w !d_cmeta
 	PLA : STA.w !d_ctile
 	PLA : STA.w !d_t6
@@ -839,6 +845,20 @@ dst_cell_class:
 	PLA : STA.w !d_t1
 	PLA : STA.w !d_t0
 	PLY
+endif
 	PLX
 	LDA.l !DK_NEW : AND.w #$000F
 	RTS
+endmacro
+
+%dst_class_path(dst_cell_class, 1)
+
+; Attack scans immediately replace descriptor/scratch outputs and do not
+; keep Y live. The floor sampler still uses the preserving entry above.
+; Preserve d_t5 (the run end), cell coordinates/layer and the class cache.
+if defined("DESTROY_CLASS_SLOW")
+dst_cell_class_fast:
+	JMP dst_cell_class
+else
+%dst_class_path(dst_cell_class_fast, 0)
+endif
