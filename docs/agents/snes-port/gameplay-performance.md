@@ -526,6 +526,19 @@ The helper itself preserves every random draw and reduces a tested
 68-draw sequence from 14,569 to 4,487 CPU cycles. Measurements are under
 `.local/snes-test/ai-random/`. Crowded zero-drop timing remains open.
 
+Direct outdoor teleport descriptor checks and reuse of each direction's
+first connected footprint reduce the long teleport peak from 365.16 to
+295.84 scanlines. The flight module's peak falls 216.76 → 57.39 and target
+selection falls 199.16 → 40.70. The same run has 54 misses versus 48 before
+the change; later input and target workload differ. The five other long
+counts remain 1/3/20/3/66 for punches/ki/flying ki/flying punches/charge.
+All 13 short and six long cases retain zero hardware/rendering errors.
+An independent model matches 13,824 full landing searches; the 27-scene
+browser comparison and passenger/water/teleport/whip/custom-enemy tests
+pass. Private measurements are under `.local/snes-test/teleport-direct/`
+(`prefix-*`). These changes reduce teleport's worst CPU spike, but strict
+crowded zero-drop timing remains open.
+
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's
 virtual combat targets are wired, and FastROM is the default. The carried

@@ -135,6 +135,23 @@ endpoint falls from 1,587 to 1,014 CPU cycles on a cold cache and 1,131 to
 19,996 landings and 191,964 sweeps. `FLIGHT_TP_GROUND_SLOW` restores the
 previous ground implementation for comparisons.
 
+Ordinary outdoor teleport queries now read the two live descriptor words
+directly, taking 551 CPU cycles for a single-cell endpoint whether cold or
+warm. Cave, ferry and special-context queries retain the cached path.
+`FLIGHT_TP_DIRECT_SLOW` restores that path for comparisons. Each ground
+landing search also remembers whether the shared first footprint, six
+pixels from the target, is connected in each direction. A blocked first
+step rejects all seven distances in that direction. This scratch word
+(`fl_tp_prefix`, `$33:7B7C`) resets for every search; airborne targets and
+hole providers bypass it. Candidate order and accepted landing positions
+remain unchanged. `FLIGHT_TP_PREFIX_SLOW` disables this reuse.
+
+An independent model agrees on 13,824 complete target/origin/terrain
+searches, and the 27-scene browser comparison still has no differences.
+The long teleport peak falls from 365.16 to 295.84 scanlines, while misses
+change from 48 to 54 per 1,200 frames. This bounds the observed search
+spike more tightly but does not finish the zero-drop work.
+
 - Pressing L+B (the chord's first frame) while Goku can act picks a target
   among actor slots 3-11 that are active, species < $80 and not the orb $55,
   with HP and not dying (`E191` bit 7), plus a scene's custom foe (Frieza as

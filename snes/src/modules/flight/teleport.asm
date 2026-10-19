@@ -456,6 +456,26 @@ fl_mul_sq:
 ; findLanding(target, origin) (native-teleport.js): target fl_tp_e_*,
 ; origin fl_tp_o_x/y. Carry set with fl_tp_l_x/y/terr/facing/air.
 fl_tp_landing:
+if not(defined("FLIGHT_TP_PREFIX_SLOW"))
+	; All seven distances include the same first connected footprint at
+	; distance 6. A blocked first step rules out that direction for this
+	; search, regardless of the endpoint. Keep pixel-dependent providers
+	; and airborne targets on their original query path.
+	LDA.w #0
+	STA.l !fl_tp_prefix
+	LDA.l !fl_tp_e_air
+	BNE .prefix_off
+	LDA.w !fl_mflags
+	BIT.w #!FLM_HOLES
+	BNE .prefix_off
+	LDA $DC
+	CMP.w !fl_map
+	BEQ .prefix_ready
+.prefix_off
+	LDA.w #$8000
+	STA.l !fl_tp_prefix
+.prefix_ready
+endif
 	LDA.l !fl_tp_e_terr
 	AND.w #$0080
 	BEQ +
@@ -552,6 +572,41 @@ fl_tp_candidate:
 	BEQ +
 	ORA.w #$FF00
 +	STA.w !fl_tp_dy
+if not(defined("FLIGHT_TP_PREFIX_SLOW"))
+	LDA.l !fl_tp_prefix
+	BMI .endpoint
+	LDA.w !fl_tp_dir
+	ASL
+	TAX
+	LDA.l .prefix_bits,X
+	AND.l !fl_tp_prefix
+	BIT.w #$0F00
+	BNE .blocked
+	AND.w #$000F
+	BNE .endpoint
+	LDA.w #6
+	JSR fl_tp_point
+	LDA.w #1
+	JSR fl_tp_clear
+	BCS .connected
+	LDA.w !fl_tp_dir
+	ASL
+	TAX
+	LDA.l .prefix_bits,X
+	ORA.l !fl_tp_prefix
+	STA.l !fl_tp_prefix
+.blocked
+	CLC
+	RTS
+.connected
+	LDA.w !fl_tp_dir
+	TAX
+	LDA.l fl_bitmask,X
+	AND.w #$00FF
+	ORA.l !fl_tp_prefix
+	STA.l !fl_tp_prefix
+.endpoint
+endif
 	; the spot
 	LDA.w !fl_tp_dist
 	JSR fl_tp_point
@@ -646,13 +701,82 @@ fl_tp_candidate:
 	STA.l !fl_tp_l_facing
 	SEC
 	RTS
+if not(defined("FLIGHT_TP_PREFIX_SLOW"))
+.prefix_bits
+	dw $0101,$0202,$0404,$0808
+endif
 
 if not(defined("FLIGHT_TP_GROUND_SLOW"))
 ; Teleport's ground class combines landability with its descriptor rules.
-; X = idx, A = cached verdict; height 1/2 excludes terrain 2/1 as usual.
-; Only teleport populates these bits: ordinary flight keeps its existing
-; classifier cost. Tile changes, collisions and expiry use the same cache.
+; X = idx, A = verdict; height 1/2 excludes terrain 2/1 as usual.
+; Ordinary outdoor descriptors are read directly. Special contexts use
+; teleport-only cache bits; tile changes, collisions and expiry replace
+; those entries without adding work to ordinary flight's classifier.
 fl_tp_class:
+if not(defined("FLIGHT_TP_DIRECT_SLOW"))
+	; Ordinary outdoor tiles have no position-dependent ground rules.
+	; Reading their two live descriptor words is cheaper than even a warm
+	; cache lookup, and immediately observes tile/descriptor changes.
+	LDA.w !fl_mflags
+	AND.w #!FLM_CONTEXT|!FLM_FERRY
+	BNE .cached
+	LDA.w !fl_ts
+	CMP.w #10                   ; cave tile zero has a special rule
+	BEQ .cached
+	PHX
+	LDA.l $7F0000,X
+	AND.w #$00FF
+	ASL
+	ASL
+	CPX.w #$4000
+	BCC +
+	ORA.w #$0400
++	TAX
+	LDA.l $7FB800,X             ; flags | behaviour << 8
+	STA.w !fl_t2
+	AND.w #$100F                ; no solid, seam/door, or height >= 3
+	CMP.w #3
+	BCS .direct_no
+	LDA.l $7FB802,X             ; code | replacement << 8
+	TAY
+	AND.w #$00FF
+	BEQ .direct_floor
+	CMP.w #$00C1
+	BNE .direct_code
+	TYA
+	AND.w #$FF00
+	BNE .direct_no
+	BRA .direct_floor
+.direct_code
+	AND.w #$00F0
+	CMP.w #$0020
+	BEQ .direct_stairs
+	CMP.w #$0030
+	BNE .direct_no
+.direct_floor
+	LDA.w !fl_t2
+	BIT.w #$8000                ; triggers are only allowed along the path
+	BNE .direct_stairs
+	LDA.w #!FLC_TPV|!FLC_TPPATH|!FLC_TPSPOT
+	BRA .direct_height
+.direct_stairs
+	LDA.w #!FLC_TPV|!FLC_TPPATH
+.direct_height
+	STA.w !fl_t3
+	LDA.w !fl_t2
+	AND.w #7
+	ASL
+	ASL
+	ASL                         ; height 1/2 -> FLC_H1/H2
+	ORA.w !fl_t3
+	PLX
+	RTS
+.direct_no
+	LDA.w #!FLC_TPV
+	PLX
+	RTS
+.cached
+endif
 	JSR fl_cache_slot
 	BCC .calc
 	BIT.w #!FLC_TPV

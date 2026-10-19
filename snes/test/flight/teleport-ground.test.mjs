@@ -30,7 +30,7 @@ function invoke(name,{a=0,x=0}={}){
   ram.writeUInt16LE(0x6FFF,0x1FFE);
   let n=0,cycles=0;
   while(cpu.br[4]!==0x7000||cpu.r[1]!==entry>>>16){
-    assert(++n<10000,`${name} did not return`);
+    assert(++n<100000,`${name} did not return`);
     cpu.cyclesLeft=0;cpu.cycle();cycles+=cpu.cyclesLeft+1;
   }
   assert.equal(cpu.br[3],0x1FFF,'balanced stack');assert.equal(cpu.br[5],0,'D preserved');
@@ -48,9 +48,7 @@ function setup(){
 function descriptor(id,{flags=0,beh=0,code=0,rep=0}={},layer=0){
   ram.set([flags,beh,code,rep],0x1B800+layer*0x400+id*4);
 }
-function query({x=24,y=24,layer=0,terrain=0,stairs=0}={}){
-  ram.writeUInt16LE(x&65535,0xD940);ram.writeUInt16LE(y&65535,0xD942);
-  ram.writeUInt16LE(layer,0xD944);ram.writeUInt16LE(terrain,0x21B74);
+function clearAt({x,y,layer=0,terrain=0,stairs=0}){
   let expected=x>=8&&y>=8&&x<=248&&y<=248;
   if(expected)for(let ty=(y-4)>>4;ty<=(y+4)>>4;ty++)for(let tx=(x-6)>>4;tx<=(x+6)>>4;tx++){
     const id=ram[0x10000+layer*0x4000+ty*128+tx],p=0x1B800+layer*0x400+id*4;
@@ -58,6 +56,12 @@ function query({x=24,y=24,layer=0,terrain=0,stairs=0}={}){
     const floor=code===0||(code&0xF0)===0x20||(code&0xF0)===0x30||(code===0xC1&&rep===0);
     expected&&=!(flags&8)&&height<3&&(!height||(height^terrain)!==3)&&floor&&!(beh&(stairs?0x10:0x90))&&(stairs||(code&0xF0)!==0x20);
   }
+  return !!expected;
+}
+function query({x=24,y=24,layer=0,terrain=0,stairs=0}={}){
+  ram.writeUInt16LE(x&65535,0xD940);ram.writeUInt16LE(y&65535,0xD942);
+  ram.writeUInt16LE(layer,0xD944);ram.writeUInt16LE(terrain,0x21B74);
+  const expected=clearAt({x,y,layer,terrain,stairs});
   const before=Buffer.from(ram),result=invoke('fl_tp_clear',{a:stairs});
   assert.equal(result.pass,!!expected,JSON.stringify({x,y,layer,terrain,stairs}));
   assert.equal(ram.readUInt16LE(0xD940),x&65535,'query x preserved');
@@ -103,18 +107,86 @@ test('all footprint cells, map boundaries and height transitions constrain landi
   ram[0x10000+129]=1;ram[0x10000+130]=2;
   for(const terrain of [0,1,2,3])query({x:31,terrain});
 });
-test('warm teleport facts survive other classifiers and expire on tile changes or cache collisions',()=>{
-  setup();descriptor(1,{beh:0x10});descriptor(2,{code:0x21});descriptor(3,{flags:2});
-  for(const tile of [0,1,0,2,3,0]){
-    ram[0x10000+129]=tile;
-    for(const terrain of [0,1,2,3])for(const stairs of [0,1]){
-      query({terrain,stairs});invoke('fl_class',{x:129});query({terrain,stairs});
+test('teleport facts survive other classifiers and expire on tile changes or cache collisions',()=>{
+  // Special geometry keeps the shared location cache; ordinary outdoors
+  // reads live descriptors directly. Exercise both paths.
+  for(const context of [0,1]){
+    setup();descriptor(1,{beh:0x10});descriptor(2,{code:0x21});descriptor(3,{flags:2});
+    ram.writeUInt16LE(context,0xD910);
+    for(const tile of [0,1,0,2,3,0]){
+      ram[0x10000+129]=tile;
+      for(const terrain of [0,1,2,3])for(const stairs of [0,1]){
+        query({terrain,stairs});invoke('fl_class',{x:129});query({terrain,stairs});
+      }
+    }
+    // A location 64 columns away has the same cache slot but a different key.
+    ram[0x10000+193]=1;
+    for(let i=0;i<3;i++){
+      invoke('fl_class',{x:193});query();
+      invoke('fl_cache_clear');query();
     }
   }
-  // A location 64 columns away has the same cache slot but a different key.
-  ram[0x10000+193]=1;
-  for(let i=0;i<3;i++){
-    invoke('fl_class',{x:193});query();
-    invoke('fl_cache_clear');query();
+});
+test('special geometry retains cached checks and outdoor queries read live descriptors',()=>{
+  for(const [flags,tileset]of [[1,0],[2,0],[0,10]])for(const layer of [0,1]){
+    setup();ram.writeUInt16LE(flags,0xD910);ram.writeUInt16LE(tileset,0xD908);
+    ram[0x10000+layer*0x4000+129]=1;
+    for(const fields of [{},{flags:1},{flags:2},{flags:8},{beh:0x90},{code:0x21},{code:0xC1,rep:0},{code:0xC1,rep:7}]){
+      descriptor(1,fields,layer);invoke('fl_cache_clear');
+      for(const terrain of [0,1,2,3])for(const stairs of [0,1]){
+        query({layer,terrain,stairs});query({layer,terrain,stairs});
+      }
+    }
   }
+  setup();ram[0x10000+129]=1;
+  for(const fields of [{},{flags:8},{},{code:0x21},{beh:0x90},{flags:2}]){
+    descriptor(1,fields);
+    for(const stairs of [0,1])query({stairs});
+  }
+});
+
+function landing({x,y,ox,oy,terrain}){
+  const layer=terrain>>7,t=terrain&3,dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+  const preferred=Math.abs(ox-x)>=Math.abs(oy-y)?(ox<x?1:0):(oy<y?3:2);
+  const order=[preferred,...[0,1,2,3].filter(i=>i!==preferred)];
+  for(const distance of [26,22,18,32,38,46,54])for(const direction of order){
+    const [dx,dy]=dirs[direction],lx=x+dx*distance,ly=y+dy*distance;
+    if(!clearAt({x:lx,y:ly,layer,terrain:t}))continue;
+    let connected=true;
+    for(let step=6;step<distance&&connected;step+=4)
+      connected=clearAt({x:x+dx*step,y:y+dy*step,layer,terrain:t,stairs:1});
+    if(!connected)continue;
+    const tile=ram[0x10000+layer*0x4000+(ly>>4)*128+(lx>>4)];
+    const height=ram[0x1B800+layer*0x400+tile*4]&3;
+    return [lx,ly,height===1||height===2?(terrain&0xFC)|height:terrain,[2,1,3,0][direction],0];
+  }
+  return null;
+}
+test('landing searches preserve candidate order and connected paths around blocked targets',t=>{
+  let random=0x73412,count=0,found=0,worst=0;
+  const next=()=>{random^=random<<13;random^=random>>>17;random^=random<<5;return random>>>0;};
+  for(let scene=0;scene<24;scene++){
+    setup();
+    for(const layer of [0,1]){
+      [{},{flags:8},{flags:1},{flags:2},{code:0x21},{beh:0x80},{beh:0x10},{code:0xC1,rep:3}]
+        .forEach((fields,id)=>descriptor(id,fields,layer));
+      for(let ty=0;ty<16;ty++)for(let tx=0;tx<16;tx++)
+        ram[0x10000+layer*0x4000+ty*128+tx]=scene===0?0:scene===1?1:next()%12%8;
+    }
+    for(let n=0;n<96;n++)for(const terrain of [0,1,2,0x80,0x81,0x82]){
+      const x=next()%248+4,y=next()%248+4;
+      const ox=Math.max(0,x+[-60,60,0,0][n&3]),oy=Math.max(0,y+[0,0,-50,50][n&3]);
+      const input={x,y,ox,oy,terrain},expected=landing(input);
+      ram.writeUInt16LE(ox,0x21B58);ram.writeUInt16LE(oy,0x21B5A);
+      ram.writeUInt16LE(x,0x21B70);ram.writeUInt16LE(y,0x21B72);
+      ram.writeUInt16LE(terrain,0x21B74);ram.writeUInt16LE(0,0x21B78);
+      const result=invoke('fl_tp_landing');worst=Math.max(worst,result.cycles);count++;
+      assert.equal(result.pass,expected!==null,JSON.stringify(input));
+      if(expected){
+        found++;assert.deepEqual([0,2,4,6,8].map(off=>ram.readUInt16LE(0x21BA6+off)),expected,JSON.stringify(input));
+      }
+    }
+  }
+  assert(found>500&&found<count/2,`landing coverage ${found}/${count}`);
+  t.diagnostic(`${count} target/origin/terrain searches, ${found} landings, worst ${worst} CPU cycles`);
 });

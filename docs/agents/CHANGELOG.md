@@ -4,6 +4,24 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES teleport search spikes (2026-10-19)
+
+- Read ordinary outdoor tile descriptors directly for teleport landing;
+  cave, ferry and other special geometry retain the shared classifier.
+  A single-cell endpoint takes 551 CPU cycles cold or warm. Within each
+  search, check the common first connected footprint once per direction
+  and reject every farther candidate when that footprint is blocked.
+- An independent model matches 13,824 complete landing searches, including
+  4,024 successful landings. The full 27-scene browser comparison retains
+  zero differences across 19,996 landing queries and 191,964 sweeps;
+  passenger, water, teleport, whip and custom-enemy flight checks pass.
+- The long teleport peak falls 365.16 → 295.84 scanlines and the flight
+  module's peak falls 216.76 → 57.39. Misses change 48 → 54 per 1,200
+  frames as later workload changes, so this reduces a CPU spike without
+  solving crowded zero-drop timing. The other five long counts are
+  unchanged. All 13 short and six long cases retain zero palette, meter,
+  OBJ, complete-NMI, graphics-DMA and duplicate-work errors.
+
 ## SNES native AI random-choice overhead (2026-10-19)
 
 - Inline the native byte generator inside AI's random-nibble rejection
