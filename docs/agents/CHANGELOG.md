@@ -4,6 +4,17 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES radar and quest-state integration (2026-10-18)
+
+- Fix the production story-query adapter testing its loop index instead of
+  the query's answer. Restore the Tree pursuit target, ordinary Ball count
+  and palace hints; remove false eighth-Ball and crisis indicators.
+- Connect the dormant-story fallback to Dryad, show Mana Beast after the
+  Fortress is destroyed, and invalidate text/bearing caches on those changes.
+- Fifteen real-save-state radar cases match the browser's targets and text,
+  including a live Fortress-to-Beast label update. UI pixel/bearing and world
+  timing checks pass; screenshots of the corrected quest panels reviewed.
+
 ## SNES shared aerial combat and chord filtering (2026-10-18)
 
 - Use the main combat state for world-flight charging, transformation,

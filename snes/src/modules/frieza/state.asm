@@ -972,6 +972,12 @@ frieza_q_needs_tree:
 frieza_q_eligible:
 	JSR fz_eligible
 	BRA fz_q_carry
+; Radar's all-seeds fallback distinguishes a dormant story from a late
+; invitation that is currently ineligible (e.g. Fortress already gone).
+frieza_q_dormant:
+	JSR fz_stage
+	BEQ fz_q_one
+	BRA fz_q_zero
 frieza_q_trial:
 	JSR fz_stage
 	CMP.w #!FZST_TRIAL

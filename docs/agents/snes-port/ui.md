@@ -124,6 +124,18 @@ scanlines (a full message expansion); the old single-frame build cost 60–80.
 
 ## World flight: the bottom band and the Dragon Radar
 
+**Production quest-state follow-up (2026-10-18).** The story-query adapter
+now tests the returned value after restoring its loop index. Previously
+the index supplied the zero flag: Tree pursuit was always false, while
+stolen, eligible, crisis and destroyed-Fortress flags were always true.
+The dormant-stage fallback is connected to Frieza, and the final target's
+label and text cache distinguish Mana Fortress from Mana Beast. Changing
+targets invalidates an unfinished bearing calculation. The production
+`world radar` test checks all seven palace targets plus Dryad, Tree pursuit,
+stolen Balls, crisis, destruction and the wish against `radarTarget`, using
+real save flags and the staged text. The separate `ui radar` tests still
+compare bearings and rendered pixels with the browser.
+
 The browser draws a 240×64 panel at line 152 (the telepathy box when a
 message shows, else the radar text) and a 48×48 dial at (8, 8).
 
