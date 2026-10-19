@@ -4,6 +4,19 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES effect-emitter capacity fix (2026-10-19)
+
+- Fix the fast effect emitter's last-slot calculation. A zero part count
+  could wrap to `$FFFF` when exactly one OAM slot remained. Check the cursor
+  per emitted part, and let missing cache cells leave space for later
+  resident pieces.
+- The regression reproduces the old runaway loop. The fixed machine code
+  matches the general emitter for all 815 nonempty assemblies at OAM
+  capacity, plus missing-cell, clipping, front-reservation and large-sprite
+  cases. FX gallery/beams/aura/debris and all 13 gameplay hardware checks pass.
+- Existing short gameplay miss counts are unchanged; this fixes a separate
+  capacity-dependent stall/corruption risk, not the remaining crowded timing.
+
 ## SNES native body sprite construction (2026-10-19)
 
 - Add packed X/Y offsets for interior native body/weapon assemblies.

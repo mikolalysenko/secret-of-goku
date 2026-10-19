@@ -177,33 +177,31 @@ fx_emit_place:
 	CLC
 	ADC !d_k
 	STA !d_k
-	LDA !d_end                   ; parts that fit
-	SEC
-	SBC.w !core_oam_cursor&$FFFF
-	BCC .full
-	BEQ .full
-	LSR
-	LSR
-	CMP !d_np
-	BCC +
+	; d_end is the first cursor without room, rather than a byte count
+	; aligned to four. Check each emitted part: rounding its distance down
+	; could produce a zero counter at the last slot, then wrap to $FFFF.
+	; Missing cache cells leave the same slot available to the next part.
 	LDA !d_np
-+	STA !d_n
+	BEQ .full
+	STA !d_n
 	LDX !d_pofs
 	LDY.w !core_oam_cursor&$FFFF
 .fpart
-	LDA.l fx_asm_data,X          ; x+128 | (y+128) << 8
-	CLC
-	ADC !d_k
-	STA.w $0800,Y
+	CPY !d_end
+	BCS .stored
 	LDA.l fx_asm_data+2,X        ; cell*8 | flips
 	AND.w #$00FF
 	PHX
 	TAX
 	LDA !d_tiles,X
 	PLX
-	CMP.w #$FFFF                 ; missing (flipped words have bit 15 set)
-	BEQ .fmiss
+	CMP.w #$FFFF
+	BEQ .fnext                  ; unavailable cell consumes no OAM slot
 	STA.w $0802,Y
+	LDA.l fx_asm_data,X          ; x+128 | (y+128) << 8
+	CLC
+	ADC !d_k
+	STA.w $0800,Y
 	INY
 	INY
 	INY
@@ -214,14 +212,11 @@ fx_emit_place:
 	INX
 	DEC !d_n
 	BNE .fpart
+.stored
 	TYA
 	STA.w !core_oam_cursor&$FFFF
 .full
 	RTS
-.fmiss
-	LDA.w #$E0FF                 ; cell not resident: keep the slot hidden
-	STA.w $0800,Y
-	BRA .fnext
 
 ; fx_emit_run: the set-up assembly placed A times, first at !d_x/!d_y,
 ; then every !d_rstep px along the direction registers (beam strips: 16). The

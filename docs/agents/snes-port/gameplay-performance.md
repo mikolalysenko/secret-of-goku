@@ -282,6 +282,25 @@ This corrects the stale flying-ki comparison from the earlier DMA checkpoint;
 all 13 hardware checks remain clean. Results: `combat-body-anchor` and
 `body-anchor-baseline` under `.local/snes-test/`.
 
+The fast FX emitter also had a separate OAM-capacity bug: `d_end` is the
+first cursor without room, so dividing `d_end - cursor` by four could yield
+zero with one slot still available. The loop then underflowed to `$FFFF`.
+It now checks each emitted part against the limit and skips unavailable
+cells without consuming space. All 815 nonempty assemblies match the
+per-part path at capacity; missing-cell, screen-edge, front-reservation
+and large-sprite cases pass, as do gallery/beams/aura/debris. The 13 short
+gameplay measurements are unchanged and retain zero hardware errors
+(`fx-capacity/short`). This is not the cause of their remaining CPU misses.
+
+Private scheduling trials are not in the playable ROM. Deferring companion
+AI improved the long walking/punching/ki/teleport cases from 39/24/47/73
+to 3/3/17/39 misses, but worsened flying ki from 36 to 50. Deferring normal
+enemies too requires moving their weapon-graphics update with animation;
+the corrected short trial worsened flying ki from 5 to 17. Both prototypes
+and their unit checks remain under `.local/snes-test/` (`companion-budget-prototype` and
+`actor-budget-prototype`); production retains fixed native
+actor timing with the existing companion phase spread.
+
 The subsequent carried-companion checkpoint implements the requested SNES
 flight rule: CPU companions ride Goku, retain status/timer updates and
 resume ground AI, contacts, movement and rendering after landing. Human
