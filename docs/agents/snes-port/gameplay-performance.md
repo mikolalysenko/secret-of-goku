@@ -765,6 +765,15 @@ cases and all gameplay hardware checks pass. Artifacts are under
 `.local/snes-test/goku-palette-scan/`, and the default build matches the
 measured candidate byte for byte. Strict crowded timing remains open.
 
+The native AI operand advance and its ten wrappers now avoid redundant
+width, tag-test and return-stack work. All 86,656 assembled comparisons
+retain CPU context and live RAM; the forward/branch wrappers fall
+75 → 61 / 118 → 109 cycles. Ten combat and six local-flight regressions
+pass. Short flying ki improves 5 → 3 misses; the six long counts remain
+0/0/20/1/14/44, with all hardware/rendering checks clean. Artifacts are
+under `.local/snes-test/ai-advance/`; `final.sfc` matches the measured
+`fixed.sfc` byte for byte. Strict crowded timing remains open.
+
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's
 virtual combat targets are wired, and FastROM is the default. The carried

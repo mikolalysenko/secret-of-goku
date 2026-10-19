@@ -4,6 +4,17 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES native script pointer overhead (2026-10-19)
+
+- Simplify the native AI operand advance and tail-call its ten fixed-size
+  wrappers. Keep every script step, pointer wrap, register, flag and live
+  memory write. Forward/branch wrappers fall 75 → 61 / 118 → 109 cycles.
+- All 86,656 assembled comparisons, ten combat comparisons and six local
+  flight regressions pass. All short/long hardware checks remain clean.
+  Short flying ki improves 5 → 3 misses; long counts remain
+  0/0/20/1/14/44 for punch/ki/flying ki/flying punch/teleport/charge.
+  Strict crowded zero-drop timing remains open.
+
 ## SNES palette scan overhead (2026-10-19)
 
 - Unroll Goku's fifteen-color comparison while keeping the full native

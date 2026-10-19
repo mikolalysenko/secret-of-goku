@@ -270,7 +270,7 @@ explicitly set DB to `$7E`, just as the original party wrapper does; counting
 entry calls alone would miss reads from the wrong actor bank. The whip-pad
 crossing tests the real scripted handoff.
 
-During ki attacks, teleport and camera recovery, `core/party.asm` can defer the CPU
+During ki attacks, charging, beams, teleport and camera recovery, `core/party.asm` can defer the CPU
 companion's following AI/animation until a field starts that work before
 scanline 90. Status and timers have already run on their fixed tick. The
 oldest pending member runs first, at most one per field, with a four-field
@@ -278,9 +278,10 @@ deadline that finishes before the member's next five-field tick. The
 physical L+B read covers the first search frame before flight publishes
 its action, and Y without L reserves the first ki shot before its pose is
 published. Pending work drains before the regular schedule resumes.
-Punching and L+Y charging retain their regular timing. Human-controlled companions
+Punching retains its regular timing. Human-controlled companions
 bypass the queue, and resumed work rechecks the live passenger gate.
 `CORE_PARTY_KI_SYNC` retains synchronous ki companion work for comparisons.
+`CORE_PARTY_POWER_SYNC` retains synchronous charging/beam work.
 
 The queue uses eight volatile SRAM bytes at `$31:7564`, after Goku's water
 palette. A magic word and map key reject older save-state noise; boot,
@@ -299,6 +300,16 @@ inputs and additional 8-bit/decimal flag combinations. No AI updates are
 removed. The HDMA-enable guard also skips its scanline read when the mask
 only retains/disables existing channels; newly enabled channels keep the
 same late-frame protection, covered by the core `hdmaen` test.
+
+The native AI operand advance at `C1:01F7` uses the byte load's sign flag
+for its short/long operand tag and avoids a redundant accumulator-width
+change. Its ten fixed-size forward/branch wrappers tail-call the helper.
+`CORE_AI_ADVANCE_SLOW=1` restores retail; `ai-advance.test.mjs` compares
+all 65,536 script pointers plus 21,120 operand/CPU-context combinations,
+including index wrap, decimal mode and PLD's return flags. The relative
+branch helper retains its native X16 calling contract. Representative
+forward/branch calls fall 75 → 61 / 118 → 109 CPU cycles. Script decisions
+and update counts are unchanged.
 
 `C1:0358` now classifies AI distances through a 64 KiB lookup split between
 `E0:0000-7FFF` and `ED:0000-7FFF`. `snes/gen/core-math.mjs` preserves the

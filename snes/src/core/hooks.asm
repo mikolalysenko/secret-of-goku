@@ -51,6 +51,53 @@ endif
 %hijack_jsl($C0B0C3, $82BAD6, 4, core)
 
 ; Hot native actor and collision calls (verified instruction sites).
+if not(defined("CORE_AI_ADVANCE_SLOW"))
+; Keep the caller's flags, index width and wrapped increments. The byte
+; load already sets N from the operand tag; no BIT or preliminary REP.
+%orig4($C101F7, $20C2080B)
+%orig4($C1020D, $28FFFFA9)
+%patch($C101F7, $1C, core)
+pushpc
+org $C101F7
+	PHD
+	PHP
+	SEP #$20
+	LDA.l $D04F15,X
+	BMI +
+	INX
++	INX
+	REP #$20
+	TXA
+	STA.w $0144,Y
+	LDA.w #$FFFF
+	PLP
+	PLD                        ; native return N/Z describe the restored D
+	RTS
+	padbyte $EA
+	pad $C10213
+pullpc
+; These fixed-length wrappers have no work after the operand helper.
+; A tail jump retains its return state with one fewer stack round trip.
+macro core_ai_advance_tail(addr, target)
+	%orig4(<addr>, ($60<<24)|((<target>&$FFFF)<<8)|$20)
+	%patch(<addr>, 3, core)
+	pushpc
+	org <addr>
+	JMP.w <target>&$FFFF
+	pullpc
+endmacro
+%core_ai_advance_tail($C10217, $01F7)
+%core_ai_advance_tail($C10220, $01F7)
+%core_ai_advance_tail($C1022A, $01F7)
+%core_ai_advance_tail($C10235, $01F7)
+%core_ai_advance_tail($C10241, $01F7)
+%core_ai_advance_tail($C10289, $0245)
+%core_ai_advance_tail($C10292, $0245)
+%core_ai_advance_tail($C1029C, $0245)
+%core_ai_advance_tail($C102A7, $0245)
+%core_ai_advance_tail($C102B3, $0245)
+endif
+
 if not(defined("CORE_NATIVE_DISTANCE_SLOW"))
 %orig4($C10358, $20C2080B)
 %hijack($C10358, core_native_distance, 4, core)
