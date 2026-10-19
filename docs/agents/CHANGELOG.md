@@ -4,6 +4,20 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES window painting and buffer clearing (2026-10-19)
+
+- Simplify native window-pattern blending, clear the message buffer in
+  word batches, and mark cell upload requests before restoring the data
+  bank. Preserve tile bytes and all CPU outputs, including decimal-mode
+  behavior and the request-dependent accumulator and carry.
+- Seven assembled text checks pass. Representative helpers fall from
+  1,049 to 713 cycles (painting), 13,342 to 4,336 (clearing), and 202 to 169
+  (cell exchange). Core title/menu/frames/HP/input/lag/HDMA also pass.
+- All 13 short gameplay cases and six 1,200-frame combat repeats remain
+  hardware-clean. Missed-frame counts are unchanged; strict timing is
+  still open. These savings add CPU headroom without closing the remaining
+  message-scroll, actor and destruction spikes.
+
 ## SNES native message graphics (2026-10-19)
 
 - Copy message tiles with interruptible MVN, fuse monochrome glyph expansion

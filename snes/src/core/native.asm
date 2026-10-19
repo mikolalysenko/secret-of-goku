@@ -66,6 +66,30 @@ core_native_distance:
 	LDA.w #8
 	JML $C103F9
 
+; C0:107B clears the 1,334-byte message/window buffer. The caller has
+; already selected M8/X16 and DB=$7E. Clear descending words in 64-byte
+; chunks, with the same final X=0, A/Y/DB/D and flags. Preserve A in full.
+core_native_text_clear:
+	PHP
+	CLD
+	REP #$20
+	PHA
+	LDX.w #$0536
+.block
+	for row = 0..32
+		STZ.w $9BFE-(!row*2),X
+	endfor
+	TXA : SEC : SBC.w #64 : TAX
+	CPX.w #64
+	BCS .block
+	for row = 0..27
+		STZ.w $9BFE-(!row*2),X
+	endfor
+	PLA
+	PLP
+	LDX.w #0
+	JML $C01084
+
 ; C0:14C6 copies $A171 groups of sixteen bytes from Y to X, one byte per
 ; eight-instruction loop. Native messages use DB=$7E, X=$9400 and up to
 ; 56 groups from $9000-$93FF. Replace only that disjoint WRAM copy. MVN is
@@ -142,6 +166,67 @@ core_native_text_copy:
 	DEC.w $A171
 	BNE .groups
 	JML $C014DA
+
+; C0:1539 combines two halves of an outlined glyph with its window pattern.
+; (~even & pattern) | even == pattern | even for the even plane; retain
+; the original mask for the odd plane. Unroll the two eight-row halves.
+; Bounds keep the sources/destinations disjoint and pattern indexes from
+; wrapping; other inputs retain the original loop. The native return has
+; B = high(Y_entry+32), A = final odd byte, X = pattern+16, Y += 48, C/Z=1,
+; N/V=0. No scratch or DMA is needed.
+core_native_text_paint:
+	PHP
+	LDA $01,S
+	BIT.b #$18
+	BNE .native8
+	PHB
+	PLA
+	CMP.b #$7E
+	BNE .native8
+	REP #$20
+	CPY.w #$03D1
+	BCS .native
+	LDA.w $A182
+	CMP.w #$7F81
+	BCC .fast
+.native
+	SEP #$20
+.native8
+	PLP
+	LDA.b #8
+	STA.w $A175
+	JML $C0153E
+.fast
+	TAX
+	SEP #$20
+	PLP
+	for half = 0..2
+		for row = 0..8
+			!offset #= (!half*32)+(!row*2)
+			LDA.w $9400+!offset,Y
+			EOR.b #$FF
+			AND.l $D2D481+(!row*2),X
+			ORA.w $9401+!offset,Y
+			STA.w $9001+!offset,Y
+			LDA.w $9400+!offset,Y
+			ORA.l $D2D480+(!row*2),X
+			STA.w $9000+!offset,Y
+		endfor
+	endfor
+	REP #$20
+	TXA : CLC : ADC.w #16 : TAX
+	TYA : CLC : ADC.w #32
+	PHA
+	CLC : ADC.w #16 : TAY
+	PLA
+	SEP #$20
+	LDA.w $8FFF,Y
+	STZ.w $A175
+	CLV
+	SEC
+	SEP #$02
+	REP #$80
+	JML $C0159D
 
 ; C0:15B9 expands 32 monochrome 8x12 glyphs into 2bpp tiles, then adds
 ; their vertical outline. Fuse the two passes: the even plane is the OR of
@@ -253,6 +338,62 @@ core_native_text_outline:
 	XBA
 	LDA.b #0
 	JML $C01662
+
+; C0:1BC0 exchanges a window tile and requests its upload. Keep the native
+; address calculation (including decimal/overflow behavior), then mark the
+; same WRAM request bits before restoring DB. This avoids the second bank
+; switch and accumulator/stack shuffling in C0:0FFA for every window cell.
+; Return A/B/C depend on the native window flags; PLB supplies final N/Z.
+core_native_window_cell:
+	PHB
+	PHY
+	LDA.b #$7E
+	PHA
+	PLB
+	LDA.b #0
+	XBA
+	LDA.w $A156
+	DEC
+	REP #$20
+	ASL : ASL : ASL : ASL : ASL
+	ADC.w $A157
+	ASL
+	CLC
+	ADC.w #$9C00
+	TAY
+	LDA.w $0000,Y
+	PHA
+	TXA
+	EOR.w #$2000
+	STA.w $0000,Y
+	PLA
+	AND.w #$DFFF
+	TAX
+	SEP #$20
+	LDA.b #$44
+	TSB.w $1D12
+	LDA.w $1D05
+	CMP.b #7
+	BEQ .request
+	LDA.w $A187
+	BIT.b #1
+	BNE .request
+	LDA.w $A162
+	CMP.b #1
+	BEQ .defer
+.request
+	XBA
+	LDA.b #$44
+	TSB.w $1D04
+	BRA .restore
+.defer
+	XBA
+	LDA.b #$44
+	XBA
+.restore
+	PLY
+	PLB
+	JML $C01BF6
 
 ; C1:E326 waits an entire vblank before redrawing HP numbers. During
 ; ordinary Goku field play, queue the identical redraw for a completed

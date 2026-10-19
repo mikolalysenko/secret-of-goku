@@ -70,15 +70,24 @@ endif
 
 ; Native message graphics: copy the same WRAM bytes with interruptible MVN.
 if not(defined("CORE_NATIVE_TEXT_SLOW"))
+%orig4($C0107B, $9E0536A2)
+%orig2($C0107F, $9BFF)
+%hijack($C0107B, core_native_text_clear, 6, core)
 %orig4($C014C6, $B9EB10A9)
 %orig2($C014CA, $0000)
 %hijack($C014C6, core_native_text_copy, 6, core)
+%orig4($C01539, $758D08A9)
+%orig1($C0153D, $A1)
+%hijack($C01539, core_native_text_paint, 5, core)
 %orig4($C015B9, $A00000A2)
 %orig2($C015BD, $0000)
 %hijack($C015B9, core_native_text_glyphs, 6, core)
 %orig4($C0162C, $A00000A2)
 %orig2($C01630, $0000)
 %hijack($C0162C, core_native_text_outline, 6, core)
+%orig4($C01BC0, $7EA95A8B)
+%orig2($C01BC4, $AB48)
+%hijack($C01BC0, core_native_window_cell, 6, core)
 endif
 
 ; Common death and weapon sheets are already expanded in ROM. Other

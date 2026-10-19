@@ -21,16 +21,19 @@ function runner(rom){
     cpuRead:a=>at(a)>=0?ram[at(a)]:rom[hiromToPc(a,rom.length)],
     cpuWrite:(a,v)=>{assert(at(a)>=0,`unexpected write ${a.toString(16)}`);ram[at(a)]=v;},
   });
-  return ({src=0x9000,dst=0x9400,groups=56,db=0x7E,p=0x20,dp=0,entry=0x14C6,pattern=null}={})=>{
+  return ({src=0x9000,dst=0x9400,groups=56,db=0x7E,p=0x20,dp=0,entry=0x14C6,stop=0x7000,pattern=null,glyphPattern=null,style=0,memory=[]}={})=>{
     seed.copy(ram);cpu.reset();cpu.e=false;
     for(const [i,f]of flags.entries())cpu[f]=!!(p&(1<<i));
     cpu.r[0]=db;cpu.r[1]=0xC0;
     cpu.br.set([0xABCD,dst,src,0x1FFD,entry,dp]);
     ram[(db===0x7F?0x10000:0)+0xA171]=groups;
+    ram.writeUInt16LE(style,(db===0x7F?0x10000:0)+0xA182);
     if(pattern!==null)for(let i=0;i<384;i++)ram[(db===0x7F?0x10000:0)+0x9000+i]=(i*pattern+(i>>4)*19)&255;
+    if(glyphPattern!==null)for(let i=0;i<1024;i++)ram[(db===0x7F?0x10000:0)+0x9400+i]=(i*glyphPattern+(i>>4)*19)&255;
+    for(const [a,v] of memory)ram[a]=v;
     ram.writeUInt16LE(0x6FFF,0x1FFE);
     let n=0,cycles=0;
-    while(cpu.br[4]!==0x7000||cpu.r[1]!==0xC0){
+    while(cpu.br[4]!==stop||cpu.r[1]!==0xC0){
       assert(++n<50000,`text copy did not return ${JSON.stringify({src,dst,groups,db,p,dp})}`);
       cpu.cyclesLeft=0;cpu.cycle();cycles+=cpu.cyclesLeft+1;
     }
@@ -86,4 +89,44 @@ test('horizontal text outlines preserve carry between rows and glyphs',t=>{
   const [before,after]=compare({entry:0x162C});
   assert(after<before*.75,`outline cycles ${before} -> ${after}`);
   t.diagnostic(`32 native horizontal outlines: ${before} -> ${after} CPU cycles`);
+});
+test('window pattern painting preserves both glyph planes and fallback inputs',t=>{
+  const paint=input=>compare({entry:0x1539,src:0,...input});
+  for(let style=0;style<=0x7F80;style+=0x80)
+    for(const src of [0,0x10,0xF0,0x100,0x300,0x350])paint({src,style});
+  for(let glyphPattern=0;glyphPattern<256;glyphPattern++)paint({glyphPattern,style:0x300});
+  for(let p=0x20;p<256;p++)if((p&0x30)===0x20)
+    for(const dp of [0,0x1234,0x8000])paint({p,dp});
+  paint({db:0x7F});
+  for(const src of [0x3D0,0x3D1,0x400,0x450])paint({src});
+  for(const style of [0x7F81,0x8000,0xFFF0,0xFFF9])paint({style});
+  const [before,after]=paint({});
+  assert(after<before*.7,`paint cycles ${before} -> ${after}`);
+  t.diagnostic(`native two-half pattern paint: ${before} -> ${after} CPU cycles`);
+});
+test('window buffer clear preserves bytes outside the buffer and all CPU state',t=>{
+  const clear=input=>compare({entry:0x107B,stop:0x1084,...input});
+  for(let p=0x20;p<256;p++)if((p&0x30)===0x20)
+    for(const dp of [0,0x1234,0x8000])clear({p,dp});
+  clear({db:0x7F});
+  const [before,after]=clear({});
+  assert(after<before*.35,`clear cycles ${before} -> ${after}`);
+  t.diagnostic(`native 1,334-byte window clear: ${before} -> ${after} CPU cycles`);
+});
+test('window cell exchange preserves tile data, upload requests and return flags',t=>{
+  const cell=({row=4,col=3,mode=0,flags=0,state=0,...input}={})=>compare({
+    entry:0x1BC0,memory:[[0xA156,row],[0xA157,col&255],[0xA158,col>>8],
+      [0x1D05,mode],[0xA187,flags],[0xA162,state]],...input,
+  });
+  for(let row=0;row<256;row++)for(let col=0;col<32;col++)cell({row,col});
+  for(const mode of [0,6,7,8,255])for(const flags of [0,1,128,255])
+    for(const state of [0,1,2,255])cell({mode,flags,state});
+  for(let p=0x20;p<256;p++)if(p&0x20)
+    for(const dp of [0,0x1234,0x8000])cell({p,dp});
+  for(const db of [0,0x7F,0x80,0xFF])cell({db});
+  for(const dst of [0,0x120,0x8120,0xFFFF])
+    for(const col of [0xFF,0x100,0x7FFF,0xFF00,0xFFFF])cell({dst,col});
+  const [before,after]=cell();
+  assert(after<before*.85,`window cell cycles ${before} -> ${after}`);
+  t.diagnostic(`native window cell exchange: ${before} -> ${after} CPU cycles`);
 });

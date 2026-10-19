@@ -363,6 +363,15 @@ policy, so its counts cannot be compared with earlier fixed-input runs.
 Measurements: `native-text/outlined-short`, `long`, `circuit-base` and
 `circuit-fast`. Crowded strict timing remains open.
 
+Window pattern painting, buffer clearing and cell request updates are
+also faster, with seven assembled equivalence tests and core title/menu/
+frames/HP/input/lag/HDMA passing. All 13 short cases and six long combat
+repeats keep zero hardware errors. Counts remain unchanged: long punches,
+ki, corridor flying ki, flying punches, teleport and charge are
+2/8/42/5/67/93. Measurements: `native-text/window-short` and `window-long`.
+The remaining native message scroll still calls the cell helper twice
+per column, making it a separate large CPU spike.
+
 The asynchronous scheduling trials are not in the playable ROM. Deferring companion
 AI improved the long walking/punching/ki/teleport cases from 39/24/47/73
 to 3/3/17/39 misses, but worsened flying ki from 36 to 50. Deferring normal

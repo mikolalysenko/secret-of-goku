@@ -291,3 +291,12 @@ retail machine code across copy lengths/positions, glyph patterns, carry,
 direct-page offsets and fallback inputs. Representative cycle counts are
 22,965 → 6,442 (896-byte copy), 33,084 → 12,192 (32 glyphs and vertical
 outline), and 20,433 → 14,492 (horizontal outline).
+
+The same comparison switch also covers `C0:107B`'s 1,334-byte window clear,
+`C0:1539`'s two-half pattern painter and `C0:1BC0`'s cell exchange. The clear
+uses descending word batches; the painter simplifies the even-plane mask
+while retaining the odd plane; the cell writer marks upload bits before
+restoring DB to avoid a second bank switch. Seven assembled text tests
+include buffer boundaries, styles, all row bytes, request branches and
+decimal/width/flag cases. Their representative CPU costs are 13,342 → 4,336,
+1,049 → 713 and 202 → 169 cycles, respectively.
