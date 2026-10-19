@@ -118,6 +118,15 @@ exactly what the steps would (clock, pads, mask, power upkeep) and nothing
 else. `cb_facing` is then left alone: actions track it in their own steps
 and the resist reaction reads the native facing.
 
+**Native attribute clamp.** `C0:4BD7` batches the first four attribute
+clamps, then retains the final native iteration and the Heavy Gi hook at
+`C0:4BF2`. The native accumulator, flags, scratch counter, status penalty
+and narrow-index wrapping are preserved. `COMBAT_ATTR_BATCH_SLOW` keeps
+the scalar loop. The assembled `attr-clamp.test.mjs` compares 15,168
+contexts with that loop and its former hook wrapper; the current loop's
+representative 230 CPU cycles fall to 146. Native reward and stat rebuild
+timing stays synchronous.
+
 **Input.** Through `!core_pad_mask` / `!core_pad_inject` (applied from the
 game's next pad read). B is always combat's (a miss pulses native B for
 talking and chests); Y is ki while Goku is player 1's character; X/L/R are

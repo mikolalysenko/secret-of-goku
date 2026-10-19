@@ -1,5 +1,5 @@
-// Compare the assembled tail-jump hook with its former JSL/return-address
-// wrapper. Exercise the native clamp and the real Heavy Gi adjustment.
+// Compare the assembled batched clamp/tail hook with the original loop
+// and JSL/return-address wrapper, including the real Heavy Gi adjustment.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -15,7 +15,9 @@ const symbols=new Map([...readFileSync(path.replace(/\.sfc$/,'.sym'),'utf8')
 const context=vm.createContext({Uint8Array,Uint16Array,Math});
 vm.runInContext(readFileSync(resolve(root,'vendor/snes/cpu.js'),'utf8'),context);
 const flags=['c','z','i','d','x','m','v','n'];
-const legacy=Buffer.from(source),adjust=symbols.get('cb_agility_stats');
+const scalar=Buffer.from(source),adjust=symbols.get('cb_agility_stats');
+scalar.set([0xA9,0x05,0x85,0xA4],hiromToPc(0xC04BD7,scalar.length));
+const legacy=Buffer.from(scalar);
 assert.equal(adjust>>>16,0xA2);
 assert(symbols.get('combat_bind_end')<0xA2FF00);
 // Original cb_hook_attr_clamp, relocated within the same program bank.
@@ -36,18 +38,17 @@ function runner(rom){
     cpuRead:a=>at(a)>=0?ram[at(a)]:rom[hiromToPc(a,rom.length)],
     cpuWrite:(a,v)=>{const p=at(a);assert(p>=0,`unexpected write $${a.toString(16)}`);ram[p]=v;},
   });
-  return ({slot=3,values=[0,1,99,100,255],status=0,p=0x20,dp=0x300,db=0x7E,
-    fresh=0,active=1,gi=0x16,alive=1}={})=>{
+  return ({slot=3,actor=slot*512,values=[0,1,99,100,255],status=0,p=0x20,dp=0x300,db=0x7E,
+    fresh=0,active=1,gi=0x16,alive=1,acc=0xABCD}={})=>{
     ram.fill(0);cpu.reset();cpu.e=false;
     for(const [i,f]of flags.entries())cpu[f]=!!(p&(1<<i));
-    const actor=slot*512;
     ram.writeUInt16LE(actor,dp+0xBD);
     ram.set(values,0xE188+actor);ram[0xE190+actor]=status;
     ram[0xD857]=fresh;ram[0xD8CB]=active;ram[0xE1E1]=gi;ram[0xE000]=alive;
     // Preserve the byte beside the loop counter and the accumulator high byte.
     ram[dp+0xA5]=0xB7;ram.writeUInt16LE(0x6FFF,0x1FFE);
     cpu.r[0]=db;cpu.r[1]=0xC0;
-    cpu.br.set([0xABCD,actor,0xBEEF,0x1FFD,0x4BBE,dp]);
+    cpu.br.set([acc,actor,p&16?0xEF:0xBEEF,0x1FFD,0x4BBE,dp]);
     let n=0,cycles=0,adjustments=0;
     while(cpu.br[4]!==0x7000||cpu.r[1]!==0xC0){
       assert(++n<4000,'attribute clamp did not return');
@@ -58,7 +59,7 @@ function runner(rom){
     return {registers:[...cpu.r,...cpu.br],flags:flags.map(f=>cpu[f]),ram,cycles,adjustments};
   };
 }
-const before=runner(legacy),after=runner(source);
+const before=runner(legacy),loop=runner(scalar),after=runner(source);
 function compare(input){
   const a=before(input),b=after(input),why=JSON.stringify(input);
   assert.deepEqual(b.registers,a.registers,`registers ${why}`);
@@ -78,6 +79,11 @@ test('tail jumps retain every attribute byte, flag and native scratch output',t=
   const result=compare({});
   assert(result.after<result.before*.75,`${result.before} -> ${result.after} cycles`);
   t.diagnostic(`five-attribute clamp: ${result.before} -> ${result.after} CPU cycles`);
+  if(symbols.has('cb_attr_batch')){
+    const old=loop({}).cycles;
+    assert(result.after<old*.75,`${old} -> ${result.after} cycles`);
+    t.diagnostic(`tail-jump loop -> batched clamp: ${old} -> ${result.after} CPU cycles`);
+  }
 });
 
 test('a fresh Goku rebuild applies Heavy Gi once after clamping, including minimum agility',()=>{
@@ -90,4 +96,12 @@ test('a fresh Goku rebuild applies Heavy Gi once after clamping, including minim
       assert.equal(result.adjustments,fresh?1:0);
       assert.equal(result.ram[0xD857],0);
     }
+});
+
+test('batched attributes retain narrow-index wrapping and decimal/flag contexts',()=>{
+  for(let p=0;p<256;p++)if(p&0x20){
+    for(const actor of p&16?[0,1,0xFB,0xFC,0xFD,0xFE,0xFF]:[0,1,0x1E00])
+      for(const status of [0,8])for(const dp of [0,0x300,0x1234])
+        compare({actor,p,status,dp,acc:(p<<8)|0x67});
+  }
 });

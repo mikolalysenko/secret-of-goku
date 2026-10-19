@@ -4,6 +4,17 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES native attribute batch (2026-10-19)
+
+- Clamp the first four native attributes in one pass, keeping the final
+  native iteration and Heavy Gi hook. A representative rebuild falls
+  230 → 146 CPU cycles; flags, scratch, status effects and index wrapping
+  remain identical.
+- All 15,168 assembled comparisons, ten combat comparisons and six long
+  gameplay checks pass. Long miss counts stay 0/0/13/1/14/44 for
+  punch/ki/flying ki/flying punch/teleport/charge. Ground ki and flying
+  punch peaks fall by about 0.92 scanlines; crowded timing remains open.
+
 ## SNES crowded sprite palette scan (2026-10-19)
 
 - Fix the FX palette scan after native sprite 64: the loop's 16-bit cursor
