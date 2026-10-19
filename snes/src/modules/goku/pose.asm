@@ -849,8 +849,23 @@ pose_track:
 ; Clobbers Y. Needs M16/X16.
 goku_div16:
 	STX !div_d
+if not(defined("GOKU_DIV16_SLOW"))
+	; Most pose ages are still within their first clip or fit in one byte.
+	; Neither case needs all sixteen iterations of the general divider.
+	; Keep software math: NMI uses the shared hardware registers.
+	CMP !div_d
+	BCC .small
+endif
 	STZ !div_r
 	LDY.w #16
+if not(defined("GOKU_DIV16_SLOW"))
+	BIT.w #$FF00
+	BNE .bit
+	CPX.w #0                  ; preserve the old zero-divisor behavior too
+	BEQ .bit
+	XBA
+	LDY.w #8
+endif
 .bit
 	ASL
 	ROL !div_r
@@ -870,6 +885,14 @@ goku_div16:
 	BNE .bit
 	LDX !div_r
 	RTS
+if not(defined("GOKU_DIV16_SLOW"))
+.small
+	STA !div_r
+	LDA.w #0
+	LDY.w #0
+	LDX !div_r
+	RTS
+endif
 
 ; Set the result to a cell of the current form: A8 = column, row = p_row.
 ; Exit M16.

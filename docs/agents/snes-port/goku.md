@@ -130,6 +130,12 @@ replacement), `modules_field_nmi` → `goku_nmi` (uploads), `modules_menu_frame`
   distance bookkeeping (8.8 distance, steps of 6 and 16 px), clip tracking,
   native phases/fixed columns, the Super Saiyan knock-down fix-up and the
   shuffle/hover-leg variants.
+  The software divider returns directly below the divisor and uses eight
+  iterations for byte dividends; larger inputs retain sixteen iterations.
+  This avoids shared hardware math registers and preserves the original
+  registers, flags and scratch. `GOKU_DIV16_SLOW` restores the old loop.
+  `division.test.mjs` checks every nonzero byte pair, all word dividends
+  against representative divisors, boundary cases and CPU context.
 - **OAM** (`body.asm`): anchor and shake decay exactly as `C0:E5F5`; the cell
   sits on the feet line (shadow height included) minus the extra lift; each
   16-line row takes priority and palette from the native part covering its

@@ -539,6 +539,15 @@ pass. Private measurements are under `.local/snes-test/teleport-direct/`
 (`prefix-*`). These changes reduce teleport's worst CPU spike, but strict
 crowded zero-drop timing remains open.
 
+The pose divider's small-input paths reduce a first-clip call from 647
+to 35 CPU cycles and a 120/24 call from 677 to 388. The short flying-ki
+profile uses this helper 26 times; charging in that fixture does not use
+it. All 13 short and six long cases retain their preceding miss counts
+and zero hardware/rendering errors. Complete native-animation/API pose
+comparisons, Goku rendering/menus/save/load and local flight checks pass.
+Private measurements are under `.local/snes-test/goku-division/`; this
+removes avoidable pose cost rather than solving the larger native spikes.
+
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's
 virtual combat targets are wired, and FastROM is the default. The carried

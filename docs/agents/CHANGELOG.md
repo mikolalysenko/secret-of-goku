@@ -4,6 +4,24 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES Goku pose division (2026-10-19)
+
+- Return immediately when a pose dividend is smaller than its divisor,
+  and skip the leading eight zero bits for byte dividends. Keep software
+  arithmetic, the full word path and exact CPU/scratch results, including
+  decimal and zero-divisor behavior. Representative calls fall from
+  647 to 35 CPU cycles within the first clip and 677 to 388 for 120/24.
+- Assembled comparisons cover every nonzero byte pair, all word dividends
+  across representative divisors, boundaries and caller flags. Goku's
+  12,748 native-animation frames and 1,715 action-request frames still
+  match the browser. Scripted-sprite checks now follow actual PPU priority
+  rotation rather than assuming physical OAM slot zero is foreground.
+- Goku rendering, forms, status, menus/save/load, scripted poses, CPU
+  budget, passengers, water/teleport/whip flight and ceiling exits pass.
+  All 13 short and six long gameplay cases retain zero hardware/rendering
+  errors. Long crowded counts remain 1/3/20/3/54/66 per 1,200 frames;
+  this smaller pose cost does not yet eliminate those misses.
+
 ## SNES teleport search spikes (2026-10-19)
 
 - Read ordinary outdoor tile descriptors directly for teleport landing;
