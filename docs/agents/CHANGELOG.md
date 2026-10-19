@@ -4,6 +4,18 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES world-loop and dialogue cost (2026-10-18)
+
+- Run the native world loop, compass pass and world helper calls through
+  FastROM mirrors. Keep interrupt vectors and the native movement cadence.
+- Pre-expand fixed radio messages into glyph words in ROM; parameterized
+  messages retain their decoder. The shield warning no longer causes a
+  missed frame. Schedule radar story queries separately from bearing math.
+- With the radar visible, cruise misses drop from 68 to 13 per 480 frames;
+  straight flight, aerial ki, charge/release and transform/revert have zero
+  misses in those inputs. Turning still needs work. All world cases, core
+  input/world/lag/HDMA, UI pixels and the 9,209-frame radio-policy test pass.
+
 ## SNES radar and quest-state integration (2026-10-18)
 
 - Fix the production story-query adapter testing its loop index instead of

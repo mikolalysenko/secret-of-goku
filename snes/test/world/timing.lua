@@ -3,6 +3,7 @@
 function test()
   H.wait(5)
   W.import('preset__flight')
+  H.w8(0x316380, 1)              -- radar visible throughout ordinary cruise
   W.on(0)
   H.wait(90)
   H.save('ready')
@@ -55,13 +56,15 @@ function test()
   }
   for _, case in ipairs(cases) do
     H.load(H_OUT .. '/ready.mss'); H.wait(4)
-    current = {frames=0, misses=0, overruns=0, nmiMax=0, cellMax=0, palette=0, visible=0, overflow=0}
+    current = {frames=0, misses=0, overruns=0, nmiMax=0, cellMax=0, palette=0, visible=0, overflow=0, segments={}}
     for _, part in ipairs(case[2]) do
+      local before = current.misses
       H.input = {}; for button in part[1]:gmatch('%S+') do H.input[button] = true end
       for _ = 1, part[2] do
         H.wait(1)
         if H.r8(0x00213E) & 0xC0 ~= 0 then current.overflow = current.overflow + 1 end
       end
+      current.segments[#current.segments+1] = {buttons=part[1],frames=part[2],misses=current.misses-before}
     end
     H.input = nil
     local result = current; current = nil

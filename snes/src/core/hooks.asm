@@ -74,6 +74,10 @@ pullpc
 %hijack_jsl($C0951D, core_pad_bios, 4, core)
 
 ; World flight frame end (00:8085 SEP #$20 / LDA #$81).
+; The native compass/object pass has the same low WRAM/IO mappings in $81.
+%orig4($C08078, $01FDE422)
+%hijack_jsl($C08078, $81FDE4, 4, core)
+
 %orig4($C08085, $81A920E2)
 %hijack_jsl($C08085, core_world_frame, 4, core)
 

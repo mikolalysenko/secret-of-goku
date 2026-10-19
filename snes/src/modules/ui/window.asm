@@ -339,6 +339,23 @@ ui_jsr_x:
 !ui_bt_col  = !ui_tmp2              ; column
 !ui_bt_ret  = !ui_tmp5              ; message position while in a dictionary entry
 ui_build_text:
+	LDA.w !ui_cur&$FFFF
+	DEC
+	ASL
+	TAX
+	LDA.l ui_msg_prebuilt,X
+	CMP.w #$FFFF
+	BEQ .expand
+	CLC
+	ADC.w #!XDATA_UI_TEXTS&$FFFF
+	TAX
+	LDY.w #!ui_s_text&$FFFF
+	LDA.w #167
+	PHB
+	MVN (!ui_s_text>>16),(!XDATA_UI_TEXTS>>16)
+	PLB
+	RTS
+.expand
 	LDA.w #$0000                      ; space
 	LDX.w #166
 .fill

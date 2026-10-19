@@ -188,8 +188,10 @@ world_loop_hook:
 .native
 	PLP
 	SEP #$20
-	PEA $8068                       ; JSR $8B5E returns to 00:8069
-	JML $008B5E
+	; Keep the native world logic in its FastROM mirror. Low WRAM/IO and
+	; the ROM contents match bank $00; NMI/IRQ vectors remain unchanged.
+	PEA $8068                       ; JSR $8B5E returns to 80:8069
+	JML $808B5E
 .land
 	PLP
 	JML world_fortress_landing
@@ -206,13 +208,13 @@ world_flammie_hook:
 	LDA.l $7E0000|!w_oam_reserve
 	STA $7C
 	STZ $7D
-	JML $009DE9                     ; RTS returns to the world loop
+	JML $809DE9                     ; RTS returns to the world loop in FastROM
 .native
 	LDA $BF
 	BNE .dock
-	JML $009AD4
+	JML $809AD4
 .dock
-	JML $009ACB
+	JML $809ACB
 
 ; ---------------------------------------------------------------------------
 ; C2:B112 (JSL, 6 bytes, replaced LDA $E3 / BIT #$40 / BNE $B119): the Mana

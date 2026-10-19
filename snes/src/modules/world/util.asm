@@ -1,13 +1,13 @@
 ; Shared helpers for the world module.
 
-; Call a bank-00 routine that ends in RTS from module code: the RTS lands on
-; the RTL at 00:BC0A (end of C0:BC01), which returns here. Registers and P
+; Call a bank-00 routine through its FastROM mirror: the RTS lands on
+; the RTL at 80:BC0A (end of C0:BC01), which returns here. Registers and P
 ; pass through unchanged in both directions.
 macro call00(routine)
 	PHK
 	PEA ?ret-1
 	PEA $BC0A-1
-	JML $000000|<routine>
+	JML $800000|<routine>
 ?ret:
 endmacro
 assert read1($C0BC0A) == $6B, "call00 needs the RTL at C0:BC0A"

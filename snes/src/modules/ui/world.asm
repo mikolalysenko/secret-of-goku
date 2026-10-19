@@ -577,6 +577,11 @@ ui_radar_update:
 	LDA.w $0128 : STA.w !ui_rtx&$FFFF
 	LDA.w $012A : STA.w !ui_rty&$FFFF
 .bearing
+	; Story queries/target selection and a bearing half need separate
+	; frames. Keep the last valid blip on the refresh frame while turning.
+	LDA.w !ui_rtimer&$FFFF
+	CMP.w #15
+	BEQ .shown
 	LDA.w !ui_frame&$FFFF
 	LSR
 	BCS .geometry
