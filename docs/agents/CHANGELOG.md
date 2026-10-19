@@ -4,6 +4,21 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES scenery and barrier scan cost (2026-10-19)
+
+- Select the collision layer once per tile run and keep the run counter
+  and stride in stack-local direct page. Restore the caller's D/DB and
+  preserve candidate ordering, unknown-class stops and scan outputs.
+  `DESTROY_SKIM_SLOW` retains the previous loop for comparisons.
+- Assembled tests cover all packed class bytes, both layers, positive and
+  negative strides, cursor wrapping and caller contexts. A 64-cell scenery
+  scan falls from 4,384 to 3,817 CPU cycles; barrier scans from 5,088 to
+  4,521. Fifteen destruction, growing-beam, gate and switch cases pass.
+- Long charge/release improves from 82 to 80 misses per 1,200 video
+  frames; corridor flying ki and teleport stay at 19 and 67. All 13 short
+  cases retain their counts, with zero palette, meter, OBJ, NMI and
+  graphics-DMA errors. Strict crowded timing remains open.
+
 ## SNES direct hand-socket lookup (2026-10-19)
 
 - Resolve Goku's charge/beam hand positions from a generated 512-byte

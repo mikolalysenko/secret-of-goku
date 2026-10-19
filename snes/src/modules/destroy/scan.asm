@@ -544,10 +544,54 @@ dst_div16:
 ; clear when none. About 60 cycles a cell; clobbers Y.
 ; dst_skim_nt: the same for the barrier search: candidates that are not
 ; ordinary (hit codes and walk-on triggers; not braziers or scenery).
+; Keep the counter and stride in stack-local direct page, and select the
+; layer once per run. Neither needs stack-relative arithmetic per cell.
+; The original D/DB, Y's class index and all scan outputs are restored.
+macro dst_skim_run(name, layer, test)
+<name>:
+.loop
+	LDA.l $7F0000,X : AND.w #$00FF
+	LSR                                   ; carry = odd tile: high nibble
+	TAY
+	LDA.w !DKW+<layer>,Y
+	BCC +
+	LSR : LSR : LSR : LSR
++	<test>
+	TXA : CLC : ADC $04 : TAX               ; saved stride
+	DEC $06                               ; saved cells left
+	BNE .loop
+if <layer> != 0
+	TYA : ORA.w #<layer> : TAY
+endif
+	PLD
+	PLB
+	PLA : PLA
+	CLC
+	RTS
+.found
+if <layer> != 0
+	TYA : ORA.w #<layer> : TAY
+endif
+	PLD
+	PLB
+	PLA : PLA : DEC
+	SEC
+	RTS
+endmacro
+
 macro dst_skim_loop(name, test)
 <name>:
 	PHA                                   ; cells left
 	PHY                                   ; step
+if not(defined("DESTROY_SKIM_SLOW"))
+	PHB
+	PHD
+	PEA $3333 : PLB : PLB                 ; the class table's bank
+	TSC : TCD
+	TXA : BIT.w #$4000 : BNE <name>_high
+	%dst_skim_run(<name>_low, $00, "<test>")
+	%dst_skim_run(<name>_high, $80, "<test>")
+else
 	TXA : AND.w #$4000 : BEQ +
 	LDA.w #$0080                          ; class bytes of layer 1
 +	PHA
@@ -575,6 +619,7 @@ macro dst_skim_loop(name, test)
 	PLA : DEC
 	SEC
 	RTS
+endif
 endmacro
 %dst_skim_loop(dst_skim, "AND.w #!TK_CAND : BNE .found")
 %dst_skim_loop(dst_skim_nt, "AND.w #$000F : CMP.w #$000F : BEQ .found : AND.w #!TK_CAND|!TK_ORD : CMP.w #!TK_CAND : BEQ .found")

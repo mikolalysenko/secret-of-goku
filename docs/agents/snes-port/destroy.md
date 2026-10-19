@@ -481,6 +481,22 @@ comes from other modules, not from this one):
 (lag frames / frames.) The remaining lag falls in the band's growth frames
 of scenes whose own frame logic ends near line 120-160.
 
+### Scenery and barrier scan loop (2026-10-19)
+
+`dst_skim` and `dst_skim_nt` select the layer once per run and keep their
+counter/stride in stack-local direct page. They restore D and DB before
+returning, including when an unknown tile class requires the caller's full
+classification. Tile order, candidate tests and map writes are unchanged.
+`DESTROY_SKIM_SLOW` keeps the previous loop for comparisons.
+
+The assembled scanner tests cover every packed class byte, both layers,
+unknown cells, cursor wrapping, strides in both directions and caller
+contexts. A 64-cell scenery scan falls from 4,384 to 3,817 CPU cycles; the
+barrier scan falls from 5,088 to 4,521. Fifteen emulator cases covering
+plants, growing beams, BG2 objects, gates and switches match their existing
+references. The long gameplay charge case improves 82 → 80 misses per
+1,200 video frames; crowded timing remains open.
+
 ## Remaining work
 
 - Debris is published (effect record), not drawn: an effects module owns
