@@ -20,6 +20,16 @@ The older module profile is retained under [Cost](#cost); remaining
 integration work is under
 [Remaining](#remaining).
 
+Ground footprint queries use `fl_land_class` to read ordinary clear
+floor directly from its two live descriptor words. Caves, ferry corridors,
+protected dungeon geometry and blocked cells retain the shared classifier;
+air queries retain its low-obstacle cache. Height bands 1/2 still exclude
+each other, while 4–7 remain ordinary unbanded floor as in the browser.
+`FLIGHT_CLASS_DIRECT_SLOW` restores the cached ground entry. The assembled
+`class.test.mjs` checks every flag, movement-code and behaviour byte,
+cache replacement, special geometry and footprint edges. An ordinary
+single-cell landing takes 609 CPU cycles cold or warm, versus 1,109/653.
+
 ## Behaviour
 
 - **A + direction** flies at 6 px/frame (8 in Super Saiyan; diagonals

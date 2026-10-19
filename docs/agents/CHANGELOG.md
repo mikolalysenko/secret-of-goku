@@ -4,6 +4,23 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES ordinary-floor landing cost (2026-10-19)
+
+- Read ordinary clear floor directly for ground footprints. Caves, ferry
+  corridors, protected cells and blocked terrain retain the shared
+  classifier; air queries retain its low-obstacle cache. All height bands,
+  live tile keys and footprint-edge rules remain unchanged.
+- A single-cell landing falls from 1,109/653 CPU cycles cold/warm to 609
+  for both. Long teleport misses improve 23 → 14 per 1,200 frames; its
+  flight-module peak falls 127.31 → 101.22 lines. The other long counts
+  remain 1/3/20/3/63 for punch/ki/flying ki/flying punch/charge. Total
+  teleport peak remains about 314 lines, so strict crowded timing is open.
+- Nine assembled classification/landing tests, the full browser terrain
+  comparison, passengers/flight/ceiling/holes and world/radar/map checks
+  pass. All 13 short and six long cases retain zero palette, meter, OBJ,
+  complete-NMI, graphics-DMA and duplicate-work errors. The broader air
+  classifier prototype worsened sustained flying ki and is excluded.
+
 ## SNES companion timing during teleport (2026-10-19)
 
 - Keep companion status/timer ticks fixed while deferring their CPU

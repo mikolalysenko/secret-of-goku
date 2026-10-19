@@ -545,6 +545,66 @@ fl_cache_put:
 	PLX
 	RTS
 
+; Ground-only entry. Air queries retain the shared cache path below,
+; including its low-obstacle facts; avoid adding descriptor work there.
+fl_land_class:
+if not(defined("FLIGHT_CLASS_DIRECT_SLOW"))
+	; Clear outdoor floor has no position-dependent rule. Read its live
+	; descriptor directly, avoiding both a cache probe and a cache fill.
+	; Blocked tiles retain the shared cache, including low-obstacle facts.
+	LDA.w !fl_mflags
+	AND.w #!FLM_CONTEXT|!FLM_FERRY
+	BNE .cached
+	LDA.w !fl_ts
+	CMP.w #10
+	BEQ .cached
+	PHX
+	LDA.l $7F0000,X
+	AND.w #$00FF
+	ASL
+	ASL
+	CPX.w #$4000
+	BCC +
+	ORA.w #$0400
++	TAX
+	LDA.l $7FB800,X
+	AND.w #$000F
+	BIT.w #8
+	BNE .restore
+	CMP.w #3
+	BEQ .restore
+	STA.w !fl_t2
+	LDA.l $7FB802,X
+	TAY
+	AND.w #$00FF
+	BEQ .floor
+	CMP.w #$00C1
+	BNE .code
+	TYA
+	AND.w #$FF00
+	BNE .restore
+	BRA .floor
+.code
+	AND.w #$00F0
+	CMP.w #$0020
+	BEQ .floor
+	CMP.w #$0030
+	BNE .restore
+.floor
+	LDA.w !fl_t2
+	CMP.w #3
+	BCC +
+	LDA.w #0                    ; heights 4-7 admit either ground band
++	ASL
+	ASL
+	ASL
+	ORA.w #!FLC_CLV|!FLC_CLRAIR|!FLC_LANDB
+	PLX
+	RTS
+.restore
+	PLX
+.cached
+endif
 ; fl_class: X = idx -> A = cache value with the class bits known
 ; (FLC_CLRAIR, FLC_LANDB, FLC_H1/H2). Preserves X.
 fl_class:
@@ -3692,7 +3752,7 @@ fl_grid_fill:
 	STA.l !fl_g_aok
 	BRA .next
 .ground
-	JSR fl_class
+	JSR fl_land_class
 	BIT.w #!FLC_LANDB
 	BEQ .gfail
 	BIT.w #!FLC_H1|!FLC_H2
@@ -3780,11 +3840,9 @@ fl_fp_tiles:
 +	ORA $03,S
 	TAX                          ; first tile of the row
 .col
-	JSR fl_class
-	TAY
 	LDA $09,S
 	BEQ .ground
-	TYA
+	JSR fl_class
 	BIT.w #!FLC_CLRAIR
 	BNE .pass
 	BIT.w #!FLC_LOWV
@@ -3797,7 +3855,7 @@ fl_fp_tiles:
 	BCS .pass
 	BRA .fail
 .ground
-	TYA
+	JSR fl_land_class
 	BIT.w #!FLC_LANDB
 	BEQ .fail
 	BIT.w #!FLC_H1|!FLC_H2

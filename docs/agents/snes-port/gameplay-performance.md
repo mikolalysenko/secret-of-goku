@@ -596,6 +596,24 @@ and `verified-long/`); the production image matches this candidate.
 The queue's map/magic/reset guards and deadline checks are documented in
 [engine.md](engine.md). Strict crowded zero-drop timing remains open.
 
+Ground footprint queries now read ordinary clear floor directly, retaining
+the shared cache for blocked cells and special geometry. An ordinary
+single-cell landing falls from 1,109/653 CPU cycles cold/warm to 609 for
+both. The long teleport count improves 23 → 14 per 1,200 frames; its
+flight-module peak falls 127.31 → 101.22 scanlines, while total-frame peak
+is essentially unchanged at 313.73 → 314.21. Other long counts stay
+1/3/20/3/63, and all 13 short cases retain their preceding miss counts.
+All hardware/rendering checks remain clean. Nine assembled classification
+and landing tests, passengers/local flight/ceilings/holes and world/radar/map
+checks pass. The full browser comparison matches 289,324 classified tiles,
+19,996 landing searches, 79,988 ground footprints and 191,964 sweeps.
+Measurements are under
+`.local/snes-test/flight-class-direct/` (`ground.sfc`, `ground-short/`,
+`ground-long/` and `ground-rest-long/`). The broader classifier prototype
+also sped up air queries, but raised long flying-ki misses 20 → 31; it is
+excluded. Remaining native actor and landing-search bursts still prevent
+strict crowded zero-drop timing.
+
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's
 virtual combat targets are wired, and FastROM is the default. The carried
