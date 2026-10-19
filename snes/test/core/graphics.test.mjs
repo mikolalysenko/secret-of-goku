@@ -44,8 +44,8 @@ function runner(rom){
       dmas++;
     },
   });
-  return ({slot=0,p=0,dp=0,db=0x7E,bank=0xD1,source=0xF100,count=50,dest=0x0800,actor=slot*512,dmaLine,gate={}}={})=>{
-    for(let i=0;i<ram.length;i++)ram[i]=(i*71+(i>>8)*17)&255;
+  return ({slot=0,p=0,dp=0,db=0x7E,bank=0xD1,source=0xF100,count=50,dest=0x0800,actor=slot*512,dmaLine,gate={},species,status,weaponShown,keepRam=false}={})=>{
+    if(!keepRam)for(let i=0;i<ram.length;i++)ram[i]=(i*71+(i>>8)*17)&255;
     for(let i=0;i<io.length;i++)io[i]=(i*37+9)&255;
     line=dmaLine??0;vread=dmas=0;
     const channel=io.slice(0x4370,0x4378);
@@ -54,6 +54,9 @@ function runner(rom){
       [0x104]:0x5C,[0x105]:0xCF,[0x106]:0xC1,[0x107]:0,
       [0xD0]:0,[0xFF]:0,[0xEC]:0,[0xED]:0x80,[0x2C]:7,
     },gate);
+    if(species!==undefined)ram[0xE180+actor]=species;
+    if(status!==undefined){ram[0xE190+actor]=status&255;ram[0xE191+actor]=status>>>8;}
+    if(weaponShown!==undefined)ram[0xE084+actor]=weaponShown;
     cpu.reset();cpu.e=false;
     for(const [i,f]of flags.entries())cpu[f]=!!(p&(1<<i));
     cpu.r[0]=db;cpu.r[1]=0xC1;
@@ -129,4 +132,41 @@ test('late scanlines, other handlers, menus, loads and HDMA retain interruptible
     {[0x100]:0x40},{[0x102]:0x88},{[0x104]:0x40},{[0x106]:0x88},
     {[0xD0]:1},{[0xFF]:1},{[0xEC]:2},{[0xED]:0x40},{[0x2C]:0x80},
   ])compare({dmaLine:80,gate},true);
+});
+
+test('ordinary dead F9 enemies leave their unused weapon buffer alone with the same return contract',t=>{
+  const sheet={bank:0xD4,source:0,count:64,dest:0,species:0xF9,status:0x8000,weaponShown:0};
+  for(const slot of [3,4,5])for(const p of [0,4,0x21,0xC6,0xE7])
+    for(const dp of [0,0x100])for(const dmaLine of [0,80,177,198,206,224]){
+      const input={...sheet,slot,p,dp,dmaLine};
+      const a=old(input),b=next(input),why=JSON.stringify(input);
+      assert.deepEqual(b.registers,a.registers,`registers ${why}`);
+      assert.deepEqual(b.flags,a.flags,`flags ${why}`);
+      assert.equal(b.dmas,0,'unused weapon must not start DMA');
+      const base=0x2000+slot*0x1000;
+      for(let i=base;i<base+2048;i++)assert.equal(b.ram[i],(i*71+(i>>8)*17)&255,`buffer $${i.toString(16)}`);
+      a.ram.fill(0,base,base+2048);b.ram.fill(0,base,base+2048);
+      assert.deepEqual(b.ram,a.ram,`other RAM ${why}`);
+      assert(b.cycles<a.cycles*.1,`unused copy cost ${a.cycles} -> ${b.cycles}`);
+    }
+  const a=old({...sheet,slot:3}),b=next({...sheet,slot:3});
+  t.diagnostic(`unused death weapon: ${a.cycles} -> ${b.cycles} CPU cycles, no DMA`);
+});
+
+test('other actors, death styles, active weapons and decimal mode still receive their sheet',()=>{
+  const sheet={bank:0xD4,source:0,count:64,dest:0,species:0xF9,status:0x8000,weaponShown:0};
+  for(const slot of [0,1,2])compare({...sheet,slot,dmaLine:80},true,1);
+  for(const species of [0,1,0x80,0xE9,0xEA,0xF8,0xFA,0xFB,0xFF])
+    compare({...sheet,slot:3,species,dmaLine:80},true,1);
+  for(const status of [0,1,0x7FFF])compare({...sheet,slot:4,status,dmaLine:80},true,1);
+  for(const weaponShown of [1,2,255])compare({...sheet,slot:5,weaponShown,dmaLine:80},true,1);
+  compare({...sheet,slot:3,p:8,dmaLine:80});
+});
+
+test('reloading a reused death slot replaces every previously skipped weapon byte',()=>{
+  for(const slot of [3,4,5])for(const source of [0,0x2FE8]){
+    const sheet={bank:0xD4,source:0,count:64,dest:0,slot,species:0xF9,status:0x8000,weaponShown:0};
+    old(sheet);next(sheet);
+    compare({...sheet,source,species:0xEA,status:0,keepRam:true,dmaLine:80},true,1);
+  }
 });

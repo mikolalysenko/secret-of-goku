@@ -2,7 +2,7 @@
 // Integrated gameplay timing with real audio and an active Goku. --pcm
 // installs the optional extension for comparison with AUDIO_PCM builds.
 // Default: palette/meter/OBJ/vblank checks for every case, zero missed
-// frames for solo attacks and water flight.
+// frames for solo attacks, crowded ground punches and water flight.
 // --strict-timing requires zero misses in crowded party scenes too.
 // --repeat=N extends each deterministic input sequence.
 // --flight-corridor steers aerial ki repeats between two nearby points
@@ -83,7 +83,7 @@ const cases=[
   ['transform-grass','animation-audit__native__rabite-field-b','l:100,l+a:4,none:136','down:2,b:60,none:15,down:24,none:15'],
 ];
 for(const name of only)if(!cases.some(c=>c[0]===name))throw Error('unknown gameplay case: '+name);
-const zeroFrameCases=new Set(['solo-punch','solo-ki','water-flight','focus-grass']);
+const zeroFrameCases=new Set(['solo-punch','solo-ki','punch','water-flight','focus-grass']);
 const root=resolve(repo,process.env.GAMEPLAY_OUT??'.local/snes-test/gameplay');
 mkdirSync(root,{recursive:true});
 const summary=[];

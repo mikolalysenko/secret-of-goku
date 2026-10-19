@@ -4,6 +4,21 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES unused death-weapon copy (2026-10-19)
+
+- Omit the unused 2 KiB weapon-0 copy for ordinary dead F9 enemies with
+  no weapon attachment. Keep the native death animation, palette setup,
+  rewards, drops and cleanup. Other actors/death types retain their copy.
+- Crowded ground punching now passes strict zero-drop timing for 1,200
+  video frames and is a required zero-drop gameplay case. Long flying
+  punches improve 3 → 2 misses; short charging improves 32 → 31. Other
+  crowded drops remain: long ki/flying ki/teleport/charge are 3/20/14/63.
+- Decoder/slot-reuse checks, native death/treasure lifecycle checks, ten
+  combat comparisons, local flight and world/radar/map checks pass. All
+  13 short and six long gameplay runs retain zero hardware/rendering
+  errors. Corrupting the unused buffer produces matching frame hashes in
+  both ordinary and treasure-drop reference runs.
+
 ## SNES native weapon setup through FastROM (2026-10-19)
 
 - Run native weapon setup, sheet preparation and palette refresh through

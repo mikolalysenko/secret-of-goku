@@ -663,6 +663,28 @@ raised long charging 63 → 64 and are excluded. The selected ROM and logs
 are under `.local/snes-test/animation-fast/` (`weapon.sfc`, `weapon-short/`,
 `weapon-long/`); strict crowded timing remains open.
 
+The ordinary F9 death animation never reads its newly prepared weapon-0
+sheet. Leaving that 2 KiB buffer untouched, while retaining the decoder's
+return state and all native setup, removes the crowded punching miss:
+both 240 and 1,200 video frames now pass strict zero-drop timing. The
+gameplay runner requires zero misses for this punching fixture. Long
+flying punches improve 3 → 2; short charging improves 32 → 31. The long
+counts are now 0/3/20/2/14/63, with no palette, meter, OBJ, complete-NMI,
+graphics-DMA or duplicate-work errors. Punching/ki/flying-punch peaks are
+240.25/268.16/292.05 lines. Other crowded timing remains open.
+
+The skip is restricted to native enemy slots, species F9, dead status
+and no weapon attachment; other death styles and decimal mode keep their
+copy. Assembled checks preserve registers, flags and other RAM, and verify
+that later slot reuse replaces all skipped bytes. The Mesen core test
+poisons the unused buffer, observes real CPU/DMA reads, and checks native
+body uploads, +2 GP/+1 XP, removal and treasure initialization. Ordinary
+and forced-drop reference runs each retain 251 matching frame hashes
+after the buffer is poisoned. Ten browser/cartridge combat comparisons,
+passengers/local flight and world/radar/map checks pass. Measurements are
+under `.local/snes-test/death-weapon/`; the earlier read/poison investigation
+is under `death-reads/`.
+
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's
 virtual combat targets are wired, and FastROM is the default. The carried

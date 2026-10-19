@@ -350,6 +350,16 @@ selectors. Its 5,665 cases compare CPU state, all live RAM and multiplier
 writes; a representative setup drops from 171 slow ROM reads to 4.
 `CORE_NATIVE_WEAPON_SLOW` restores the three old call targets.
 
+The predecoded weapon-0 path omits its 2 KiB WRAM write for enemy slots
+`$0600/$0800/$0A00` when species is F9, dead status is set and the native
+weapon attachment is retired. The body sheet, palette setup, decoder
+return contract and native death logic remain unchanged. Treasure/spawn
+initialization reloads the weapon buffer before reuse. `graphics.test.mjs`
+checks guards, all three slots, return state and subsequent reloads;
+the core `death-weapon` test poisons the unused buffer and verifies real
+read traffic, native rewards, removal and treasure creation.
+`CORE_NATIVE_DEATH_WEAPON_SLOW` retains the original buffer write.
+
 `C0:5AA7` skips sixteen empty bit tests when a status-effect request's
 mask is zero. It preserves the original scratch `$B6/$CC/$D0`, A/C/V
 and saved-register epilogue. Nonempty masks retain the original loop.

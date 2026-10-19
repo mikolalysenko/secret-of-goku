@@ -1049,6 +1049,9 @@ core_native_dma_window:
 ; buffer with an early-field DMA or interruptible word copy, preserving the
 ; decoder's registers, flags, direct-page outputs and DB.
 ; Unknown sources, sizes, destinations and decimal mode use retail code.
+; Dead F9 enemies with no weapon attachment omit the unused weapon-0
+; buffer write. Their body animation is unchanged; treasure/spawn setup
+; reloads the weapon buffer before reusing the slot.
 macro core_native_tiles_path(name, next, bank, source, tiles, destination, data, mask)
 assert ((<data>&$FFFF)+(<tiles>*32*3)) <= $10000, "native graphics variants cross the source bank"
 <name>:
@@ -1104,6 +1107,29 @@ assert ((<data>&$FFFF)+(<tiles>*32*3)) <= $10000, "native graphics variants cros
 	CLC
 	ADC.w #$2000
 	TAY                          ; actual WRAM destination
+if <bank> == $D4 && <source> == $0000
+if not(defined("CORE_NATIVE_DEATH_WEAPON_SLOW"))
+	; The ordinary F9 death animation uses only its body sheet. Native
+	; weapon setup has already retired its attachment; preserve that setup
+	; and this decoder's return state without copying an unused 2 KiB sheet.
+	; Other death types, live actors and visible weapons retain the copy.
+	LDX $02
+	CPX.w #$0600
+	BCC .weapon_needed
+	LDA.l $7EE180,X
+	AND.w #$00FF
+	CMP.w #$00F9
+	BNE .weapon_needed
+	LDA.l $7EE190,X
+	BPL .weapon_needed
+	LDA.l $7EE084,X
+	AND.w #$00FF
+	BNE .weapon_needed
+.weapon_unused
+	BRL .copied
+.weapon_needed
+endif
+endif
 	LDA $04
 	AND.w #$00FF
 	ASL
