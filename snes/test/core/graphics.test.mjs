@@ -13,14 +13,46 @@ vm.runInContext(readFileSync(resolve(root,'vendor/snes/cpu.js'),'utf8'),context)
 const flags=['c','z','i','d','x','m','v','n'];
 function runner(rom){
   const ram=new Uint8Array(0x20000);
+  const io=new Uint8Array(65536);
+  let line=0,vread=0,dmas=0;
+  const ioAt=a=>((a>>>16)&0x7F)<0x40&&(a&65535)>=0x2100&&(a&65535)<0x4380?a&65535:-1;
   const ramAt=a=>(a>>>16)===0x7E?a&0xFFFF:(a>>>16)===0x7F?0x10000+(a&0xFFFF):
     ((a>>>16)&0x7F)<0x40&&(a&0xFFFF)<0x2000?a&0x1FFF:-1;
   const cpu=new context.Cpu({
-    cpuRead:a=>{const r=ramAt(a);return r>=0?ram[r]:rom[hiromToPc(a,rom.length)];},
-    cpuWrite:(a,v)=>{const r=ramAt(a);assert(r>=0,`unexpected write ${a.toString(16)}`);ram[r]=v;},
+    cpuRead:a=>{
+      const r=ramAt(a);if(r>=0)return ram[r];
+      const p=ioAt(a);
+      if(p>=0){
+        if(p===0x213F)vread=0;
+        if(p===0x213D)return vread++&1?line>>8:line&255;
+        return io[p];
+      }
+      return rom[hiromToPc(a,rom.length)];
+    },
+    cpuWrite:(a,v)=>{
+      const r=ramAt(a);if(r>=0){ram[r]=v;return;}
+      const p=ioAt(a);assert(p>=0,`unexpected write ${a.toString(16)}`);io[p]=v;
+      if(p!==0x420B)return;
+      assert.equal(v,0x80);assert.equal(io[0x4370],0);assert.equal(io[0x4371],0x80);
+      const count=io[0x4375]|io[0x4376]<<8,src=io[0x4372]|io[0x4373]<<8|io[0x4374]<<16;
+      const dest=io[0x2181]|io[0x2182]<<8|(io[0x2183]&1)<<16;
+      assert(count>0&&count<=2048);assert(dest+count<=ram.length);
+      for(let i=0;i<count;i++)ram[dest+i]=rom[hiromToPc(src+i,rom.length)];
+      io[0x4372]=(src+count)&255;io[0x4373]=((src+count)>>8)&255;
+      io[0x4375]=io[0x4376]=0;
+      dmas++;
+    },
   });
-  return ({slot=0,p=0,dp=0,db=0x7E,bank=0xD1,source=0xF100,count=50,dest=0x0800,actor=slot*512}={})=>{
+  return ({slot=0,p=0,dp=0,db=0x7E,bank=0xD1,source=0xF100,count=50,dest=0x0800,actor=slot*512,dmaLine,gate={}}={})=>{
     for(let i=0;i<ram.length;i++)ram[i]=(i*71+(i>>8)*17)&255;
+    for(let i=0;i<io.length;i++)io[i]=(i*37+9)&255;
+    line=dmaLine??0;vread=dmas=0;
+    const channel=io.slice(0x4370,0x4378);
+    if(dmaLine!==undefined)Object.assign(ram,{
+      [0x100]:0x5C,[0x101]:0xA8,[0x102]:0xC0,[0x103]:0,
+      [0x104]:0x5C,[0x105]:0xCF,[0x106]:0xC1,[0x107]:0,
+      [0xD0]:0,[0xFF]:0,[0xEC]:0,[0xED]:0x80,[0x2C]:7,
+    },gate);
     cpu.reset();cpu.e=false;
     for(const [i,f]of flags.entries())cpu[f]=!!(p&(1<<i));
     cpu.r[0]=db;cpu.r[1]=0xC1;
@@ -34,14 +66,16 @@ function runner(rom){
     }
     // Inactive stack bytes are not an output of either routine.
     ram.fill(0,0x1F00,0x2000);
-    return {registers:[...cpu.r,...cpu.br],flags:flags.map(f=>cpu[f]),ram:ram.slice(),cycles};
+    assert.deepEqual(io.slice(0x4370,0x4378),channel,'DMA channel registers were not restored');
+    return {registers:[...cpu.r,...cpu.br],flags:flags.map(f=>cpu[f]),ram:ram.slice(),cycles,dmas};
   };
 }
 const old=runner(readFileSync(resolve(root,'rom/secret-of-mana-us.sfc')));
 const next=runner(readFileSync(resolve(root,process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc')));
-function compare(input,fast=false){
+function compare(input,fast=false,dmas=0){
   const a=old(input),b=next(input),before=a.cycles,after=b.cycles;
-  delete a.cycles;delete b.cycles;
+  assert.equal(b.dmas,dmas,'unexpected DMA path');
+  delete a.cycles;delete b.cycles;delete a.dmas;delete b.dmas;
   assert.deepEqual(b.registers,a.registers,`registers ${JSON.stringify(input)}`);
   assert.deepEqual(b.flags,a.flags,`flags ${JSON.stringify(input)}`);
   // Avoid flooding test output with the entire 128 KiB on a mismatch.
@@ -70,4 +104,16 @@ test('other source sheets, layouts and decimal mode retain the retail decoder',(
     {actor:0xC00},{actor:0x601},{p:8},{p:0xE9,slot:5},
     {p:0x30,source:0x80},
   ])compare(input);
+});
+test('early-field DMA matches retail bytes and CPU state for all sheets and slots',()=>{
+  for(const sheet of [{},{bank:0xD4,source:0,count:64,dest:0},{bank:0xD4,source:0x2FE8,count:64,dest:0}])
+    for(let slot=0;slot<6;slot++)for(const dmaLine of [0,80,160])for(const p of [0,0x21,0xC6,0xE7])
+      compare({...sheet,slot,dmaLine,p},true,1);
+});
+test('late scanlines, other handlers, menus, loads and HDMA retain interruptible copies',()=>{
+  for(const dmaLine of [161,195,224,225,261])compare({dmaLine},true);
+  for(const gate of [
+    {[0x100]:0x40},{[0x102]:0x88},{[0x104]:0x40},{[0x106]:0x88},
+    {[0xD0]:1},{[0xFF]:1},{[0xEC]:2},{[0xED]:0x40},{[0x2C]:0x80},
+  ])compare({dmaLine:80,gate},true);
 });

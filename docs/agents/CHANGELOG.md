@@ -4,6 +4,24 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES guarded native graphics DMA (2026-10-19)
+
+- Copy predecoded death and common weapon sheets through WMDATA only
+  early in an ordinary field frame, with the native interrupt vectors and
+  DMA channel 7 free of HDMA. Restore the channel registers afterward.
+  Late scanlines, loads, scripts and other handlers retain interruptible
+  CPU copies. Interrupts remain enabled.
+- Machine-code comparisons cover all sheets, actor slots, colour variants,
+  flags and DMA/fallback gates, including complete WRAM and channel-register
+  preservation. Integrated transfers peak at 13.12 scanlines, below the
+  16-line bound, with zero transfers approaching the HUD IRQ or NMI.
+- Strict build, core HP/frames/party/OAM/input/lag/HDMA/decode, Goku field/
+  status/forms and flight passenger/water/teleport/whip checks pass. All
+  gameplay runs retain zero palette, meter, OBJ and vblank errors.
+- In 1,200-frame stress runs, flying ki/punches/teleport/charge improve from
+  35/3/129/166 misses to 23/1/105/151. Strict combat timing remains open;
+  the short grass-transform case again has one CPU miss.
+
 ## SNES nonblocking field HP redraws (2026-10-19)
 
 - Queue native HP-number refreshes during ordinary Goku field play instead

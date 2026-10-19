@@ -83,10 +83,49 @@ core_native_hp_nmi:
 
 incsrc "core-graphics/data.asm"
 
+; A ROM -> WMDATA DMA may run only early in an ordinary native field
+; frame. The fixed transfer is <= 2048 bytes (12.1 scanlines); setup and
+; register restoration bring the bound below 16 lines. Sampling <=160
+; therefore finishes before the native line-196 HUD IRQ and line-225 NMI.
+; No interrupt is masked and no channel configuration survives the copy.
+; Later scanlines, scene/load work, other vectors and HDMA channel 7 keep
+; the interruptible MVN path. M16/X16, any DB/D; preserves X/Y.
+core_native_dma_window:
+	LDA.l $7E0100
+	CMP.w #$A85C
+	BNE .no
+	LDA.l $7E0102
+	CMP.w #$00C0
+	BNE .no
+	LDA.l $7E0104
+	CMP.w #$CF5C
+	BNE .no
+	LDA.l $7E0106
+	CMP.w #$00C1
+	BNE .no
+	LDA.l $7E00D0
+	ORA.l $7E00FF
+	AND.w #$00FF
+	BNE .no
+	LDA.l $7E00EC
+	AND.w #$40FE                 ; ring/menu or native upload already pending
+	BNE .no
+	LDA.l $7E002C
+	AND.w #$0080
+	BNE .no
+	JSR core_vcount
+	CMP.w #161
+	BCS .no
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
 ; C1:C599: common death and weapon sheets. All three retail
 ; colour encodings were expanded at build time. Copy into the original
-; buffer with an interruptible MVN, preserving the decoder's registers,
-; flags, direct-page outputs and DB. No DMA channel or math register used.
+; buffer with an early-field DMA or interruptible MVN, preserving the
+; decoder's registers, flags, direct-page outputs and DB.
 ; Unknown sources, sizes, destinations and decimal mode use retail code.
 macro core_native_tiles_path(name, next, bank, source, tiles, destination, data, mask)
 <name>:
@@ -148,8 +187,40 @@ macro core_native_tiles_path(name, next, bank, source, tiles, destination, data,
 	TAX
 	LDA.l .source,X
 	TAX
+	JSR core_native_dma_window
+	BCC .mvn
+.dma_setup
+	; Save every channel-7 register MDMA changes, plus its mode/target.
+	; Use long I/O addresses: DB still belongs to the retail source sheet.
+	LDA.l $004370 : PHA
+	LDA.l $004372 : PHA
+	LDA.l $004374 : PHA
+	LDA.l $004376 : PHA
+	TYA
+	STA.l $002181
+	TXA
+	STA.l $004372
+	LDA.w #$8000                 ; incrementing ROM -> $2180 WMDATA
+	STA.l $004370
+	LDA.w #(<tiles>*32)
+	STA.l $004375
+	SEP #$20
+	LDA.b #$00
+	STA.l $002183
+	LDA.b #(<data>>>16)
+	STA.l $004374
+	LDA.b #$80
+	STA.l $00420B
+	REP #$20
+	PLA : STA.l $004376
+	PLA : STA.l $004374
+	PLA : STA.l $004372
+	PLA : STA.l $004370
+	BRA .copied
+.mvn
 	LDA.w #((<tiles>*32)-1)
 	MVN $7E,(<data>>>16)
+.copied
 	; Variant 0 leaves the last row's transparency mask in DP $00.
 	LDA $04
 	AND.w #$00FF

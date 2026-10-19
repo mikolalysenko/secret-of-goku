@@ -17,6 +17,21 @@ function test()
   local started, maxLogic = nil, 0
   local timing, active, writes = {}, {}, {}
   local phaseTiming = {}
+  local gfxDmaCopies,gfxDmaOverruns,maxGfxDmaLines=0,0,0
+  for _,p in ipairs(GFX_DMA or {}) do
+    local start,line
+    emu.addMemoryCallback(function()
+      if not measuring then return end
+      local s=emu.getState();start=s.masterClock;line=s['ppu.scanline']
+    end,emu.callbackType.exec,p[1],p[1])
+    emu.addMemoryCallback(function()
+      if not start then return end
+      local s=emu.getState();local duration=(s.masterClock-start)/1364
+      gfxDmaCopies=gfxDmaCopies+1;maxGfxDmaLines=math.max(maxGfxDmaLines,duration)
+      if line>162 or s['ppu.scanline']>=196 or duration>=16 then gfxDmaOverruns=gfxDmaOverruns+1 end
+      start=nil
+    end,emu.callbackType.exec,p[2],p[2])
+  end
   local parts = {}
   local hot, inside = {}, false
   local misses, overflows = {}, 0
@@ -160,6 +175,7 @@ function test()
   H.result('staminaWriters',writes); H.result('profile',profile)
   for _,v in pairs(phaseTiming) do v.mean=v.sum/math.max(1,v.calls);v.sum=nil end
   H.result('phaseTiming',phaseTiming)
+  H.result('gfxDmaCopies',gfxDmaCopies);H.result('gfxDmaOverruns',gfxDmaOverruns);H.result('maxGfxDmaLines',maxGfxDmaLines)
   H.result('nativeHot',hot)
   H.result('misses',misses); H.result('spriteOverflowFrames',overflows)
   H.result('missedVblanks',#misses); H.result('nmiOverruns',nmiOverruns); H.result('maxNmiLines',maxNmi)

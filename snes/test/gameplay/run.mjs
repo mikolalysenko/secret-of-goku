@@ -27,6 +27,8 @@ if(symbols.has('fx_aura_asm_id')){
   }
 }
 const modules=readFileSync(join(repo,'snes/src/modules.asm'),'utf8').split('modules_field_frame:')[1].split('RTL')[0].match(/JSL \w+/g).map(s=>s.slice(4));
+const gfxDma=['core_native_tiles','core_native_weapon_0','core_native_weapon_511']
+  .filter(n=>symbols.has(n+'_dma_setup')).map(n=>`{${symbols.get(n+'_dma_setup')},${symbols.get(n+'_copied')}}`);
 const spans=modules.map((n,i)=>`{${JSON.stringify(n)},${symbols.get(n)},${symbols.get('modules_field_frame')+4*(i+1)}}`);
 const nmiModules=readFileSync(join(repo,'snes/src/modules.asm'),'utf8').split('modules_field_nmi:')[1].split('RTL')[0].match(/JSL \w+/g).map(s=>s.slice(4));
 for(const [i,n] of nmiModules.entries())spans.push(`{${JSON.stringify('nmi_'+n)},${symbols.get(n)},${symbols.get('modules_field_nmi')+4*(i+1)}}`);
@@ -82,7 +84,7 @@ for(const [name,bundle,script,setup=''] of cases){
   if(only.length&&!only.includes(name))continue;
   const copy=privateRom(rom,'gameplay-'+name);
   const pre=`PCM=${args.includes('--pcm')}\nPROFILE_NATIVE=${args.includes('--native-profile')}\nBUNDLE=${JSON.stringify(join(repo,'.local/snes-import',bundle))}\nSETUP=${JSON.stringify(setup)}\nSCRIPT=${JSON.stringify(Array(repeat).fill(script).join(','))}\nSPANS={${spans.join(',')}}\nFX_TILES=${symbols.get('fx_entry_tile')}\nAURA_CELLS={${[...auraCells].map(c=>`[${c}]=true`).join(',')}}\nUPLOAD=${JSON.stringify(join(repo,'dist/snes/gen/audio/upload.bin'))}\n`;
-  const test=pre+readFileSync(join(repo,'snes/test/audio/lib.lua'),'utf8')+'\n'+readFileSync(join(import.meta.dirname,'gameplay.lua'),'utf8');
+  const test=pre+`GFX_DMA={${gfxDma.join(',')}}\n`+readFileSync(join(repo,'snes/test/audio/lib.lua'),'utf8')+'\n'+readFileSync(join(import.meta.dirname,'gameplay.lua'),'utf8');
   const r=await runMesen({rom:copy,state:join(checkpointDir(),'waterfall.mss'),test,outDir:join(root,name),exactFrames:true});
   cleanupRom(copy);
   const v=r.results??{};
@@ -91,7 +93,7 @@ for(const [name,bundle,script,setup=''] of cases){
   const powerPass=!name.endsWith('-grass')||(v.grassCuts>0&&v.maxPower>=96&&v.auraFrames>5&&v.maxAuraSprites>=6&&v.auraBgWrites===0&&(args.includes('--pcm')||(v.chargeTailVoices===0&&v.sounds?.['223']>0)));
   const transformPass=name!=='transform-grass'||(v.forms?.['1']>0&&(args.includes('--pcm')||v.sounds?.['224']>0));
   const gameplayPass=running&&powerPass&&transformPass&&(!action||v.actions?.[action]>0)&&(!name.includes('fly')&&!name.includes('flight')||v.flightFrames>0)&&(!['walk','fly','water-flight'].includes(name)||v.maxTravel>2);
-  const hardwarePass=r.code===0&&!v.error&&v.paletteErrors===0&&v.staminaFrames===0&&v.spriteOverflowFrames===0&&v.nmiOverruns===0;
+  const hardwarePass=r.code===0&&!v.error&&v.paletteErrors===0&&v.staminaFrames===0&&v.spriteOverflowFrames===0&&v.nmiOverruns===0&&v.gfxDmaOverruns===0;
   const timingPass=v.lag===0&&v.missedVblanks===0;
   const requireTiming=zeroFrameCases.has(name)||args.includes('--strict-timing');
   const pass=gameplayPass&&hardwarePass&&(!requireTiming||timingPass);
