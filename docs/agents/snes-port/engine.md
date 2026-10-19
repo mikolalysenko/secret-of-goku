@@ -278,3 +278,16 @@ scratch, rather than an output of this helper. The assembled
 outside dead stack locals across all 65,536 byte-magnitude pairs, large
 coordinates, heights and flag combinations. A representative call falls
 from 322 to 198 CPU cycles.
+
+Native message graphics use exact replacements at `C0:14C6`, `C0:15B9`
+and `C0:162C`. The first copies disjoint WRAM blocks with interruptible
+MVN. The second combines glyph expansion and vertical outlines; the third
+unrolls horizontal outlines, preserving the incoming carry and each row's
+carry into the next. Eight-bit-index, decimal and unusual-bank contexts
+retain retail code. No DMA channel or persistent scratch is added.
+`-DCORE_NATIVE_TEXT_SLOW=1` restores the original hooks for comparisons.
+`snes/test/core/text-copy.test.mjs` checks RAM, registers and flags against
+retail machine code across copy lengths/positions, glyph patterns, carry,
+direct-page offsets and fallback inputs. Representative cycle counts are
+22,965 → 6,442 (896-byte copy), 33,084 → 12,192 (32 glyphs and vertical
+outline), and 20,433 → 14,492 (horizontal outline).

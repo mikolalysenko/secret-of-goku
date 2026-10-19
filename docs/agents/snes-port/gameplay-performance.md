@@ -344,6 +344,25 @@ with a single map throughout. Measurements are under `native-distance/`,
 including `inland-base`, `inland-fast`, `movement-long` and `production`.
 Historical aerial counts above use the older starting position.
 
+Native message copies, glyph expansion and outline loops are now faster
+without changing their output. Four assembled equivalence tests pass, as
+do core title/menu/frames/party/HP/input/lag/HDMA and all 13 short gameplay
+checks. The production ROM matches the private tested image. Short
+flying-ki misses improve from 14 to 8 and flying-punch misses from 5 to 3;
+other short counts are unchanged. Long punches/ki/charge/teleport stay at
+2/8/93/67, and flying punches stay at 5. Palette, meter, OBJ, NMI and
+graphics-DMA errors remain zero.
+
+The fixed long ki script again drifted into an exit after these savings;
+its 32-miss result is invalid and discarded. `--flight-corridor` now offers
+a controller-only ki stress circuit, turning twelve pixels either side
+of the starting point. It verifies repeated turns, travel and a single
+map, with no coordinate writes during measurement. Fresh old/new runs
+both have 42 misses in 1,200 frames. This circuit is a different input
+policy, so its counts cannot be compared with earlier fixed-input runs.
+Measurements: `native-text/outlined-short`, `long`, `circuit-base` and
+`circuit-fast`. Crowded strict timing remains open.
+
 The asynchronous scheduling trials are not in the playable ROM. Deferring companion
 AI improved the long walking/punching/ki/teleport cases from 39/24/47/73
 to 3/3/17/39 misses, but worsened flying ki from 36 to 50. Deferring normal

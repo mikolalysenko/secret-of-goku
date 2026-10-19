@@ -4,6 +4,24 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES native message graphics (2026-10-19)
+
+- Copy message tiles with interruptible MVN, fuse monochrome glyph expansion
+  with its vertical outline, and unroll the horizontal outline. Preserve all
+  tile bytes, registers, flags and the native carry between outline rows;
+  unusual calling contexts retain the retail loops.
+- Assembled comparisons measure 22,965 → 6,442 CPU cycles for an 896-byte
+  copy, 33,084 → 12,192 for glyph expansion and 20,433 → 14,492 for the
+  horizontal outline. Core title/menu/frames/party/HP/input/lag/HDMA pass.
+- All 13 short gameplay cases remain hardware-clean. Flying ki improves
+  from 14 to 8 misses and flying punches from 5 to 3; other counts stay
+  unchanged. Long ground punches/ki/charge/teleport remain 2/8/93/67.
+- Add an optional controller-driven flight corridor for long ki stress
+  runs. Fixed video-frame reversals could drift into a map exit after CPU
+  savings; those invalid runs are discarded. Both old and new builds have
+  42 misses in the new 1,200-frame circuit. Strict crowded timing remains
+  open; these changes reduce text spikes without eliminating all misses.
+
 ## SNES native AI distance lookup (2026-10-19)
 
 - Precompute the retail distance classes in two unused FastROM data halves.

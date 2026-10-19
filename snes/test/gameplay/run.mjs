@@ -4,8 +4,10 @@
 // Default: palette/meter/OBJ/vblank checks for every case, zero missed
 // frames for solo attacks and water flight.
 // --strict-timing requires zero misses in crowded party scenes too.
-// --repeat=N extends each deterministic input sequence. Generated output
-// stays in .local/snes-test/gameplay (or GAMEPLAY_OUT).
+// --repeat=N extends each deterministic input sequence.
+// --flight-corridor steers aerial ki repeats between two nearby points
+// using real input, so missed reversal frames cannot drift into a map exit.
+// Generated output stays in .local/snes-test/gameplay (or GAMEPLAY_OUT).
 import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 import {runMesen} from '../mesen.mjs';
@@ -87,7 +89,8 @@ for(const [name,bundle,script,setup=''] of cases){
   if(only.length&&!only.includes(name))continue;
   const copy=privateRom(rom,'gameplay-'+name);
   const pre=`PCM=${args.includes('--pcm')}\nPROFILE_NATIVE=${args.includes('--native-profile')}\nBUNDLE=${JSON.stringify(join(repo,'.local/snes-import',bundle))}\nSETUP=${JSON.stringify(setup)}\nSCRIPT=${JSON.stringify(Array(repeat).fill(script).join(','))}\nSPANS={${spans.join(',')}}\nFX_TILES=${symbols.get('fx_entry_tile')}\nAURA_CELLS={${[...auraCells].map(c=>`[${c}]=true`).join(',')}}\nUPLOAD=${JSON.stringify(join(repo,'dist/snes/gen/audio/upload.bin'))}\n`;
-  const test=pre+`CHECK_AURA=${name.endsWith('-grass')}\nGFX_DMA={${gfxDma.join(',')}}\n`+readFileSync(join(repo,'snes/test/audio/lib.lua'),'utf8')+'\n'+readFileSync(join(import.meta.dirname,'gameplay.lua'),'utf8');
+  const corridor=args.includes('--flight-corridor')&&name==='fly-ki';
+  const test=pre+`FLIGHT_CORRIDOR=${corridor}\nCHECK_AURA=${name.endsWith('-grass')}\nGFX_DMA={${gfxDma.join(',')}}\n`+readFileSync(join(repo,'snes/test/audio/lib.lua'),'utf8')+'\n'+readFileSync(join(import.meta.dirname,'gameplay.lua'),'utf8');
   const r=await runMesen({rom:copy,state:join(checkpointDir(),'waterfall.mss'),test,outDir:join(root,name),exactFrames:true});
   cleanupRom(copy);
   const v=r.results??{};
@@ -95,7 +98,8 @@ for(const [name,bundle,script,setup=''] of cases){
   const action=name.includes('punch')?16:name.includes('ki')?19:name==='teleport'?20:name==='charge'?17:name==='focus-grass'?24:name==='transform-grass'?21:0;
   const powerPass=!name.endsWith('-grass')||(v.grassCuts>0&&v.maxPower>=96&&v.auraFrames>5&&v.maxAuraSprites>=6&&v.auraBgWrites===0&&(args.includes('--pcm')||(v.chargeTailVoices===0&&v.sounds?.['223']>0)));
   const transformPass=name!=='transform-grass'||(v.forms?.['1']>0&&(args.includes('--pcm')||v.sounds?.['224']>0));
-  const gameplayPass=running&&powerPass&&transformPass&&(!action||v.actions?.[action]>0)&&(!name.includes('fly')&&!name.includes('flight')||v.flightFrames>0)&&(!['walk','fly','water-flight'].includes(name)||v.maxTravel>2);
+  const corridorPass=!corridor||(v.flightCorridorTurns>=2&&v.maxTravel<128);
+  const gameplayPass=running&&powerPass&&transformPass&&corridorPass&&(!action||v.actions?.[action]>0)&&(!name.includes('fly')&&!name.includes('flight')||v.flightFrames>0)&&(!['walk','fly','water-flight'].includes(name)||v.maxTravel>2);
   const hardwarePass=r.code===0&&!v.error&&v.paletteErrors===0&&v.staminaFrames===0&&v.spriteOverflowFrames===0&&v.nmiOverruns===0&&v.gfxDmaOverruns===0;
   const timingPass=v.lag===0&&v.missedVblanks===0;
   const requireTiming=zeroFrameCases.has(name)||args.includes('--strict-timing');

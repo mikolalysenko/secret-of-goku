@@ -68,6 +68,19 @@ endif
 %orig1($C1E32A, $00)
 %hijack($C1E326, core_native_hp_request, 5, core)
 
+; Native message graphics: copy the same WRAM bytes with interruptible MVN.
+if not(defined("CORE_NATIVE_TEXT_SLOW"))
+%orig4($C014C6, $B9EB10A9)
+%orig2($C014CA, $0000)
+%hijack($C014C6, core_native_text_copy, 6, core)
+%orig4($C015B9, $A00000A2)
+%orig2($C015BD, $0000)
+%hijack($C015B9, core_native_text_glyphs, 6, core)
+%orig4($C0162C, $A00000A2)
+%orig2($C01630, $0000)
+%hijack($C0162C, core_native_text_outline, 6, core)
+endif
+
 ; Common death and weapon sheets are already expanded in ROM. Other
 ; graphics and unusual calling contexts retain the original decoder.
 if not(defined("CORE_NATIVE_TILES_SLOW"))

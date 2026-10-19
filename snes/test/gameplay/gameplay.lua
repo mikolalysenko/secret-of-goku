@@ -43,6 +43,7 @@ function test()
   local maxPower,auraFrames,maxAuraSprites,auraBgWrites=0,0,0,0
   local x0,y0=H.r16(0x7EE002),H.r16(0x7EE004)
   local maxTravel=0
+  local flightDirection,flightCorridorTurns=1,0
   if CHECK_AURA then emu.addMemoryCallback(function()
     if not measuring then return end
     local act=H.r8(0x7ED814)
@@ -153,6 +154,14 @@ function test()
   for buttons,n in SCRIPT:gmatch('([^,:]+):(%d+)') do
     H.input={}; for b in buttons:gmatch('[^+]+') do if b~='none' then H.input[b]=true end end
     for i=1,tonumber(n) do
+      if FLIGHT_CORRIDOR and (H.input.left or H.input.right) then
+        local x=H.r16(0x7EE002)
+        local nextDirection=flightDirection
+        if x>=x0+12 then nextDirection=-1 elseif x<=x0-12 then nextDirection=1 end
+        if nextDirection~=flightDirection then flightCorridorTurns=flightCorridorTurns+1 end
+        flightDirection=nextDirection
+        H.input.left=flightDirection<0;H.input.right=flightDirection>0
+      end
       H.wait(1); frames=frames+1
       if H.r8(0x00213E)&0xC0~=0 then overflows=overflows+1 end
       for v=0,7 do
@@ -183,6 +192,7 @@ function test()
   H.result('nmiFrames',nmiFrames); H.result('visibleFrames',visibleFrames)
   H.result('flightFrames',flightFrames); H.result('actions',actions)
   H.result('maps',maps); H.result('maxTravel',maxTravel)
+  H.result('flightCorridorTurns',flightCorridorTurns)
   H.result('forms',forms);H.result('sounds',sounds);H.result('maxPower',maxPower)
   H.result('grassCuts',grassCuts);H.result('auraFrames',auraFrames);H.result('maxAuraSprites',maxAuraSprites)
   H.result('auraBgWrites',auraBgWrites);H.result('chargeTailVoices',chargeTailVoices)

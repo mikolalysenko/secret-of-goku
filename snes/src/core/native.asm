@@ -66,6 +66,194 @@ core_native_distance:
 	LDA.w #8
 	JML $C103F9
 
+; C0:14C6 copies $A171 groups of sixteen bytes from Y to X, one byte per
+; eight-instruction loop. Native messages use DB=$7E, X=$9400 and up to
+; 56 groups from $9000-$93FF. Replace only that disjoint WRAM copy. MVN is
+; interruptible and touches no DMA/HDMA registers; other callers fall back.
+; M8/X16 in/out. A's high byte is the last byte read, low byte zero; C/V,
+; DB/D and the advanced X/Y match retail, including the final counter Z/N.
+core_native_text_copy:
+	PHP
+	LDA $01,S
+	BIT.b #$18                   ; decimal / eight-bit-index fallback
+	BNE .native8
+	PHB
+	PLA
+	CMP.b #$7E
+	BNE .native8
+	REP #$20
+	CPX.w #$9400
+	BNE .native
+	TYA
+	CMP.w #$9000
+	BCC .native
+	CMP.w #$9400
+	BCS .native
+	LDA.w $A171
+	AND.w #$00FF
+	BEQ .native                  ; zero means 256 groups in retail
+	CMP.w #57
+	BCS .native
+	ASL : ASL : ASL : ASL
+	PHA
+	TYA
+	CLC
+	ADC $01,S
+	CMP.w #$9401
+	BCS .reject                  ; the source must end before destination
+	PLA
+	DEC
+	PHA                          ; byte count minus one
+	TXA
+	PHA
+	TYX                          ; MVN uses X as source, Y as destination
+	PLY
+	PLA
+	MVN $7E,$7E
+	PHX
+	TYX
+	PLY
+	SEP #$20
+	STZ.w $A171
+	DEY
+	LDA.w $0000,Y
+	INY
+	XBA
+	PLP
+	LDA.b #0
+	JML $C014DA                  ; native RTS
+.reject
+	PLA
+.native
+	SEP #$20
+.native8
+	PLP
+.groups
+	LDA.b #$10
+.byte
+	XBA
+	LDA.w $0000,Y
+	STA.w $0000,X
+	INX
+	INY
+	XBA
+	DEC
+	BNE .byte
+	DEC.w $A171
+	BNE .groups
+	JML $C014DA
+
+; C0:15B9 expands 32 monochrome 8x12 glyphs into 2bpp tiles, then adds
+; their vertical outline. Fuse the two passes: the even plane is the OR of
+; the row and its vertical neighbours; the odd plane is the unchanged row.
+; The source and destination do not overlap. Every native tile byte remains.
+; As with the byte copy, restore C/V and return the last source byte in B.
+core_native_text_glyphs:
+	PHP
+	LDA $01,S
+	BIT.b #$18
+	BNE .native8
+	PHB
+	PLA
+	CMP.b #$7E
+	BEQ .fast
+.native8
+	PLP
+	LDX.w #0
+	LDY.w #0
+	JML $C015BF
+.fast
+	LDX.w #0
+	LDY.w #0
+	LDA.b #32
+	STA.w $A176
+.glyph
+	REP #$20
+	LDA.w #0
+	STA.w $9400,X
+	STA.w $9402,X
+	STA.w $941C,X
+	STA.w $941E,X
+	SEP #$20
+	LDA.w $9000,Y
+	STA.w $9402,X
+	LDA.w $900B,Y
+	STA.w $941C,X
+	for row = 0..12
+		LDA.w $9000+!row,Y
+		STA.w $9405+(!row*2),X
+		if !row > 0
+			ORA.w $8FFF+!row,Y
+		endif
+		if !row < 11
+			ORA.w $9001+!row,Y
+		endif
+		STA.w $9404+(!row*2),X
+	endfor
+	REP #$20
+	TXA : CLC : ADC.w #32 : TAX
+	TYA : CLC : ADC.w #12 : TAY
+	SEP #$20
+	DEC.w $A176
+	BEQ +
+	BRL .glyph
++	DEY
+	LDA.w $9000,Y
+	INY
+	XBA
+	PLP
+	LDA.b #0
+	JML $C0162B
+
+; C0:162C adds the horizontal outline. Retail ROL deliberately consumes
+; the preceding row's carry (and the caller's carry for the first row).
+; Preserve it through pointer arithmetic as well as at entry. B returns
+; the last outlined byte, rather than the last source byte.
+core_native_text_outline:
+	PHP
+	LDA $01,S
+	BIT.b #$18
+	BNE .native8
+	PHB
+	PLA
+	CMP.b #$7E
+	BEQ .fast
+.native8
+	PLP
+	LDX.w #0
+	LDY.w #0
+	JML $C01632
+.fast
+	PLP
+	LDX.w #0
+	LDY.w #0
+	LDA.b #32
+	STA.w $A176
+.glyph
+	for row = 0..12
+		LDA.w $9000+!row,Y
+		ROL
+		ORA.w $9404+(!row*2),X
+		STA.w $9404+(!row*2),X
+		LDA.w $9000+!row,Y
+		LSR
+		ORA.w $9404+(!row*2),X
+		STA.w $9404+(!row*2),X
+	endfor
+	PHP
+	REP #$20
+	TXA : CLC : ADC.w #32 : TAX
+	TYA : CLC : ADC.w #12 : TAY
+	SEP #$20
+	PLP
+	DEC.w $A176
+	BEQ +
+	BRL .glyph
++	LDA.w $93FA,X
+	XBA
+	LDA.b #0
+	JML $C01662
+
 ; C1:E326 waits an entire vblank before redrawing HP numbers. During
 ; ordinary Goku field play, queue the identical redraw for a completed
 ; frame's NMI instead. Events, menus, loads and other interrupt handlers
