@@ -171,9 +171,39 @@ world_nmi_sky_hook:
 	JML $00890B
 
 ; ---------------------------------------------------------------------------
+; C0:8045 (JSR $82C4 / SEP #$30): load world graphics after takeoff or
+; closing the native map viewer. This is a reload even without a mode change.
+world_load_hook:
+	; The native loader has reset the stack and force-blanked the display.
+	; Invalidate the session so its first frame reclaims/reloads all art,
+	; palettes and effects, including the cached UI sprites from the map.
+	PHP
+	PHB
+	PHD
+	REP #$30
+	PEA $7E7E
+	PLB
+	PLB
+	LDA.w #$0000
+	TCD
+	JSR world_ram_check
+	STZ.w !w_mode_prev
+	STZ.w !w_oam_reserve
+	STZ.w !w_oam_used
+	LDA.w #!WF_ACTIVE
+	TRB.w !w_flags
+if getfilestatus("ui/defines.asm") == 0
+	JSL ui_world_reload
+endif
+	PLD
+	PLB
+	PLP
+	%call00($82C4)
+	SEP #$30
+	JML $80804A
+
 ; 00:8064 (JML, replaced SEP #$20 / JSR $8B5E): top of the world loop, right
-; after the vblank wait. A Fortress landing queued by the destruction route
-; leaves through the Fortress's own docking ABI here.
+; after the vblank wait. A queued Fortress landing uses its native ABI.
 world_loop_hook:
 	PHP
 	REP #$20

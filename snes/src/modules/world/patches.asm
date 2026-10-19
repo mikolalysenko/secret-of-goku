@@ -29,6 +29,12 @@
 %orig1($C08068, $8B)
 %hijack($C08064, world_loop_hook, 5, world)
 
+; World loader, also used after closing Start's globe/flat map. The native
+; loader replaces palettes and graphics without a field callback in between.
+%orig4($C08045, $E282C420)
+%orig1($C08049, $30)
+%hijack($C08045, world_load_hook, 5, world)
+
 ; Flammie OAM builder: C0:9AD0 LDA $BF / BNE $9ACB.
 %orig4($C09AD0, $F7D0BFA5)
 %hijack($C09AD0, world_flammie_hook, 4, world)

@@ -4,6 +4,19 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES map-viewer return palettes (2026-10-18)
+
+- Invalidate world graphics and UI caches whenever the native world loader
+  runs, including after closing Start's globe or flat map. Previously the
+  unchanged mode id left Goku and effects using the viewer's colours and
+  could restore stale map sprites behind the radar.
+- A controller-driven round trip through both map views checks Goku's
+  colours from the first visible frame, sprite tiles, effect palettes,
+  radar restoration and firing ki afterward, in both forms.
+- Strict build, all 14 world cases, terrain byte comparisons, Fortress
+  cutaway, core world/HDMA/live checks and boot pass. The optional static
+  branch check was unavailable because this checkout has no coverage trace.
+
 ## SNES flight control and regression follow-up (2026-10-18)
 
 - Let radar rendering see the current frame's charge, attack and docking
