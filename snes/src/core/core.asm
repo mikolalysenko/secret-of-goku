@@ -100,7 +100,8 @@
 !core_vram_owner      = !CORE_SAFE+$040 ; 32 bytes: VRAM pool cell owners (core/vram.asm)
 !core_test            = !RAM_CORE_EXT+$100 ; 128 bytes: CORE_TEST mailbox (test builds only)
 !core_hdmaen          = !CORE_SAFE+$016 ; byte: HDMAEN written by the last field vblank
-; !RAM_CORE_EXT+$181-$1BF reserved for core.
+; !RAM_CORE_EXT+$181-$1BB reserved for core.
+!core_native_xy = !RAM_CORE_EXT+$1BC ; word: native OBJ anchor; frame thread only
 
 !CORE_DMA_MAX      = 8
 !CORE_DMA_BUDGET   = $0C00           ; bytes per frame accepted by core_queue_vram

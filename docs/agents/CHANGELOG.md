@@ -4,6 +4,20 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES native body sprite construction (2026-10-19)
+
+- Add packed X/Y offsets for interior native body/weapon assemblies.
+  Preserve hit shake, clipping, OAM high bits and partial writes through
+  the native fallback; direct shadow/attachment emitter calls are unchanged.
+- Machine-code comparisons cover every signed-byte offset pair, screen
+  edges, full OAM, mixed lists, all hit-shake values and decimal mode. A
+  six-piece body falls from 988 to 719 CPU cycles. Core frame/party/OAM/lag,
+  Goku field/status/forms and carried-companion checks pass.
+- All 13 gameplay cases retain zero palette, meter, OBJ and vblank errors.
+  The short charge case improves by one missed frame; long flight/beam
+  counts match a fresh build with the optimization disabled. The crowded
+  zero-drop goal remains open.
+
 ## SNES beam-strip table construction (2026-10-19)
 
 - Store horizontal beam colours as runs and build opaque window spans in

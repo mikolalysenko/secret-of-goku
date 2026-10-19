@@ -269,6 +269,19 @@ emitter prototype passed output comparisons but worsened long gameplay
 timings, so it was removed; its private measurements are retained only
 for future investigation.
 
+A narrower native body/weapon emitter now adds packed coordinate offsets
+for interior assemblies. Direct shadow/attachment calls remain unchanged;
+edge positions, decimal mode and unusual offsets use the native path.
+Exact machine-code comparisons cover all signed-byte pairs, partial OAM
+writes, high-X bits, shake and a full list. The six-piece example falls
+from 988 to 719 CPU cycles. Core frames/party/OAM/lag, Goku field/status/forms
+and passengers pass. Short charge misses change from 42 to 41; other short
+counts are unchanged. A fresh disabled-fast-path baseline and the new
+emitter both measure 36 flying-ki and 144 charge misses in 1,200 frames.
+This corrects the stale flying-ki comparison from the earlier DMA checkpoint;
+all 13 hardware checks remain clean. Results: `combat-body-anchor` and
+`body-anchor-baseline` under `.local/snes-test/`.
+
 The subsequent carried-companion checkpoint implements the requested SNES
 flight rule: CPU companions ride Goku, retain status/timer updates and
 resume ground AI, contacts, movement and rendering after landing. Human

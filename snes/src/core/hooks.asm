@@ -51,6 +51,13 @@ endif
 %hijack_jsl($C0B0C3, $82BAD6, 4, core)
 
 ; Hot native actor and collision calls (verified instruction sites).
+if not(defined("CORE_NATIVE_SPRITES_SLOW"))
+; Body/weapon anchor path only. Calls directly into E640 (shadows and
+; smaller attachments) retain the original emitter without an entry probe.
+%orig4($C0E60D, $20E20685)
+%hijack($C0E60D, core_native_body_anchor, 4, core)
+endif
+
 ; Field HP-number refreshes must not wait for vblank inside status/AI.
 %orig4($C1E326, $A98B20E2)
 %orig1($C1E32A, $00)

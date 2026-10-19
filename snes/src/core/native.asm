@@ -83,6 +83,117 @@ core_native_hp_nmi:
 
 incsrc "core-graphics/data.asm"
 
+; Native body/weapon anchor and pieces: add packed coordinates for interior
+; assemblies. Direct emitter calls (including small shadows) are unchanged.
+; Small lists, edge anchors, decimal mode and offsets outside -32..31 use
+; the original clipping/high-X path. All continuations use the field's
+; equivalent FastROM mirror. Private scratch is never touched by NMI.
+core_native_body_anchor:
+	STA $06
+	SEP #$20
+	LDA.w $E00D,X
+	BEQ .emit
+	SEC
+	SBC.b #$10
+	STA.w $E00D,X
+	BCS .shake
+	LDA.b #0
+	STA.w $E00D,X
+	BRA .emit
+.shake
+	LSR
+	BCC .y
+	PHA
+	LDA $F4
+	AND.b #1
+	ASL
+	EOR $04
+	STA $04
+	PLA
+.y
+	LSR
+	BCC .emit
+	LDA $F4
+	AND.b #1
+	ASL
+	EOR $06
+	STA $06
+.emit
+	TYX
+core_native_body:
+	SEP #$20
+	LDY $7C
+	CPY.w #$0200
+	BCC +
+	JML $80E6CE                 ; full list preserves A
++
+	LDA $02
+	CMP.b #3
+	BCC .native8               ; small bodies retain the native loop
+	PHP
+	PLA
+	AND.b #$08
+	BNE .native8
+	REP #$20
+	LDA $04
+	SEC
+	SBC.w #32
+	CMP.w #193
+	BCS .native
+	TAY
+	LDA $06
+	SEC
+	SBC.w #32
+	CMP.w #161
+	BCC .fast
+.native
+	SEP #$20
+.native8
+	JML $80E640
+.fast
+	XBA
+	AND.w #$FF00
+	STA.l !core_native_xy
+	TYA
+	ORA.l !core_native_xy
+	STA.l !core_native_xy
+	LDY $7C
+.loop
+	CPY.w #$0200
+	BCS .return
+	LDA.w $0000,X
+	EOR.w #$8080
+	SEC
+	SBC.w #$6060
+	BIT.w #$C0C0
+	BNE .native
+	CLC
+	ADC.l !core_native_xy
+	STA.w $0800,Y
+	LDA.w $0002,X
+	STA.w $0802,Y
+	TYA
+	CLC
+	ADC.w #4
+	TAY
+	STY $7C
+	SEP #$20
+	LDA $59
+	ASL : ASL
+	BCC +
+	INC $5A
+	LDA.b #1
++	STA $59
+	DEC $02
+	BEQ .done
+	INX : INX : INX : INX
+	REP #$20
+	BRA .loop
+.return
+	SEP #$20
+.done
+	JML $80E6CE
+
 ; A ROM -> WMDATA DMA may run only early in an ordinary native field
 ; frame. The fixed transfer is <= 2048 bytes (12.1 scanlines); setup and
 ; register restoration bring the bound below 16 lines. Sampling <=160
