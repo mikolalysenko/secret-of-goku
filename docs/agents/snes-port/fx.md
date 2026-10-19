@@ -290,9 +290,13 @@ enemies next to him. Two measures:
   to 36.51 scanlines with this change.
   Fully visible opaque rows now copy prebuilt colour records with
   interruptible MVN, reducing the seven-band builder from 7,249 to 2,938
-  CPU cycles. `-DFX_STRIP_ROWS_SLOW=1` keeps the general run path for
-  comparisons. Both buffers retain the live backdrop and neutral HDMA
-  padding, including beams that occupy the last visible line.
+  CPU cycles. Direct neutral runs and a rectangular window now reduce it
+  further to 1,727 cycles, with the same 224 visible rows. The tests cover
+  the 127-line run boundary and guard the other buffer against writes.
+  `-DFX_STRIP_ROWS_COPY=1` keeps the previous copy/general-writer path;
+  `-DFX_STRIP_ROWS_SLOW=1` keeps the fully general run path for comparisons.
+  Both buffers retain the live backdrop and neutral HDMA padding, including
+  beams that occupy the last visible line.
 - **OBJ strip rows are budgeted** (`fx_row_room`): before a left/right run
   of strips FX counts the slivers of every sprite already in OAM or staged
   in front that overlaps the row's 16 lines and draws at most

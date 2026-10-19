@@ -39,12 +39,14 @@ function renderer(synthetic=false,slow=false){
     const out=[];let p=start;
     while(out.length<224){
       const n=sram[p++];assert(n>0&&n<128,'run must cover visible rows without repeat mode');
+      if(bytes===4)assert.equal(sram.readUInt16LE(p),0,'colour runs address only CGRAM 0');
       const value=sram.readUInt16LE(p+(bytes===4?2:0));
       for(let j=0;j<n;j++)out.push(value);
       p+=bytes;assert(p<=0x7A8E+buffer+185,'HDMA back-buffer overflow');
     }
     assert.equal(out.length,224,'visible table ends at line 224');
     assert.equal(sram[p],127,'neutral padding protects a late HDMA restart');
+    if(bytes===4)assert.equal(sram.readUInt16LE(p+1),0,'padding addresses only CGRAM 0');
     assert.equal(sram.readUInt16LE(p+1+(bytes===4?2:0)),bytes===4?backdrop:0xFF);
     assert.equal(sram[p+1+bytes],0,'table terminates after neutral padding');
     return out;
@@ -54,6 +56,8 @@ function renderer(synthetic=false,slow=false){
     const entry=at('fx_poly_rows');cpu.r[0]=0x7E;cpu.r[1]=entry>>>16;
     cpu.br.set([index,0,0,0x1FFD,entry&65535,DP]);
     ram.writeUInt16LE(0x6FFF,0x1FFE);ram.writeUInt16LE(backdrop,0x600);
+    const other=0x7A8E+(buffer===0?185:0);
+    sram.fill(0xA5,other,other+185);sram[0x7C00]=0x5A;
     sram.writeUInt16LE(buffer,0x7A36);
     sram.writeUInt16LE(0xFFFF,0x7A5A);
     word(0x18,0x80);word(0x1A,x);word(0x1C,y);word(0x1E,index&1?2:1);
@@ -66,6 +70,8 @@ function renderer(synthetic=false,slow=false){
     }
     assert.equal(cpu.c,false);assert.equal(cpu.br[3],0x1FFF);
     assert.equal(cpu.r[0],0x7E);assert.equal(cpu.br[5],DP);assert(!cpu.m&&!cpu.x);
+    assert(sram.subarray(other,other+185).every(b=>b===0xA5),'shown buffer must stay untouched');
+    assert.equal(sram[0x7C00],0x5A,'table writes stay inside their buffers');
     assert.equal(sram.readUInt16LE(0x788E),2,'polygon requested');
     const rec=data+rom.readUInt16LE(ptr+index*2),first=y+(rom[rec]<<24>>24),rows=[];
     for(let i=0;i<rom[rec+2];i++){
@@ -91,7 +97,7 @@ function renderer(synthetic=false,slow=false){
 test('all beam-strip records produce exact clipped colour and window scanlines',()=>{
   const draw=renderer();
   for(let i=0;i<88;i++)for(const x of [-180,-1,0,128,255,300])
-    for(const y of [-40,-3,0,1,112,220,223,240])draw(i,x,y,160);
+    for(const y of [-40,-3,0,1,112,126,127,128,129,220,223,240])draw(i,x,y,160);
   for(const len of [1,16,127,256,640])for(const i of [0,1,26,27,84,85,86,87])draw(i,128,112,len);
 });
 test('transparent strip runs retain gaps at the top and bottom clipping edges',()=>{

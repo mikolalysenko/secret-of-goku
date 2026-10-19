@@ -4,6 +4,18 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES beam table writer (2026-10-19)
+
+- Write the neutral padding and rectangular window directly for fully
+  visible horizontal beams. Keep exact prebuilt colors, live backdrop,
+  buffer isolation and the general path for clipped/transparent strips.
+- The seven-band builder falls 2,938 → 1,727 CPU cycles. Long charging
+  improves 50 → 47 misses per 1,200 frames, with its peak falling
+  283.51 → 276.56 scanlines; the other short/long counts stay unchanged.
+- Exact per-scanline assembly checks, buffer sentinels, FX beam/aura pixel
+  checks and all short/long gameplay hardware checks pass. Crowded
+  zero-drop timing remains open.
+
 ## SNES beam scan scheduling (2026-10-19)
 
 - Run incremental beam scenery/barrier scans after FX, only when the

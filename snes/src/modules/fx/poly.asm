@@ -701,7 +701,13 @@ fx_poly_rows:
 	STA !fxp_first
 if not(defined("FX_STRIP_ROWS_SLOW"))
 	JSR fx_poly_rows_copy
+if not(defined("FX_STRIP_ROWS_COPY"))
+	BCS +
+	JMP .ready
++
+else
 	BCC .window
+endif
 endif
 	; Channel 3: the game's backdrop, each line's colour, the backdrop.
 	LDA.w #5
@@ -780,6 +786,7 @@ endif
 	LDX.w #$00FF
 	LDY.w #$0000
 	JSR fx_pw_close
+.ready
 	LDA !fxp_ovf
 	BEQ +
 	SEC
@@ -809,10 +816,11 @@ endif
 	AND.w #$00FF
 	RTS
 
-; Copy prebuilt opaque colour runs when all their rows are visible.
-; The general writer still supplies the live backdrop, termination and
-; neutral padding. MVN is interruptible and DB is restored before return.
-; C clear: channel 3 complete; C set: use the clipped/general path.
+; Build both tables directly when all opaque rows are visible, copying
+; the prebuilt colours with interruptible MVN. Live backdrop and neutral
+; padding remain in both buffers; DB is restored before return.
+; C clear: tables complete (colour only with FX_STRIP_ROWS_COPY); C set:
+; use the clipped/general path.
 fx_poly_rows_copy:
 	LDA !fxp_first
 	BMI .no
@@ -844,6 +852,98 @@ fx_poly_rows_copy:
 	SEC
 	RTS
 .copy
+if not(defined("FX_STRIP_ROWS_COPY"))
+	; Opaque, fully visible strips need only fixed neutral runs around
+	; their prebuilt colours and one rectangular window. No clipping or
+	; run merging is needed on this path.
+	LDX !fxp_out
+	LDA !fxp_first
+	JSR .backdrop
+	STX !fxp_out
+	LDA !fxs_fast
+	CLC
+	ADC.w #(fx_strip_hdma_data&$FFFF)+2
+	TAX
+	LDY !fxp_out
+	LDA !fxp_d
+	DEC
+	PHB
+	MVN !FX_PBASE>>16,fx_strip_hdma_data>>16
+	PLB
+	TYX
+	LDA.w #!FX_PLINES
+	SEC
+	SBC !fxp_first
+	SEC
+	SBC !fxs_n
+	STA !fxp_left
+	JSR .backdrop
+	LDA.w #127
+	JSR .colour_run
+	LDA.w #0
+	STA.l !FX_PBASE,X
+	INX
+	TXA
+	STA.l !fx_ptab2
+	LDY.w #$00FF
+	LDA !fxp_first
+	JSR .window
+	LDY !fxs_o
+	LDA !fxs_n
+	JSR .window
+	LDY.w #$00FF
+	LDA !fxp_left
+	JSR .window
+	LDA.w #127
+	JSR .window_run
+	LDA.w #0
+	STA.l !FX_PBASE,X
+	INX
+	STX !fxp_out
+	CLC
+	RTS
+.backdrop
+	BEQ .empty
+	CMP.w #128
+	BCC .colour_run
+	PHA
+	LDA.w #127
+	JSR .colour_run
+	PLA
+	SEC
+	SBC.w #127
+.colour_run
+	STA.l !FX_PBASE,X
+	LDA.w #0
+	STA.l !FX_PBASE+2,X
+	LDA.l $7E0600
+	STA.l !FX_PBASE+3,X
+	TXA
+	CLC
+	ADC.w #5
+	TAX
+.empty
+	RTS
+.window
+	BEQ .empty
+	CMP.w #128
+	BCC .window_run
+	PHA
+	LDA.w #127
+	JSR .window_run
+	PLA
+	SEC
+	SBC.w #127
+.window_run
+	STA.l !FX_PBASE,X
+	TYA
+	STA.l !FX_PBASE+1,X
+	TXA
+	CLC
+	ADC.w #3
+	TAX
+	RTS
+else
 	LDA.w #5
 	JSR fx_pw_open
 	LDA.w #4
@@ -871,6 +971,7 @@ fx_poly_rows_copy:
 	JSR fx_pw_close
 	CLC
 	RTS
+endif
 
 ;---------------------------------------------------------------------------
 ; Death Balls above 32 px (death-ball-art.js, 16 px art upscaled by nearest

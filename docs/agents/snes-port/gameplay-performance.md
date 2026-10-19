@@ -725,6 +725,17 @@ Goku presentation, local flight and world/radar/map tests pass. The ROM and
 logs are under `.local/snes-test/beam-late/` (`final.sfc`, `final-short/`,
 `final-long/`). Strict crowded timing remains open.
 
+Writing horizontal beam tables directly removes general run-writer work
+for fully visible opaque strips. The prebuilt colors, live backdrop and
+neutral padding remain identical; clipped/transparent records keep the
+general path. The seven-band builder falls 2,938 → 1,727 CPU cycles, and
+long charging improves 50 → 47 misses (peak 283.51 → 276.56 lines). The
+other five long and all thirteen short miss counts stay unchanged, with
+zero hardware/rendering errors. All assembled FX checks and Mesen beam/aura
+pixel comparisons pass, including both buffers and the 127-line boundary.
+Artifacts are under `.local/snes-test/strip-direct/`; the default final ROM
+matches the measured candidate byte for byte. Strict crowded timing is open.
+
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's
 virtual combat targets are wired, and FastROM is the default. The carried
