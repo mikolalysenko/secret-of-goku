@@ -838,6 +838,16 @@ fl_hook_passenger:
 	SEP #$20
 	JSR fl_is_passenger
 	BCC .native
+	; E40E normally refreshes screen coordinates. Skipping it otherwise
+	; leaves the last ground position visible to native AI target tests
+	; (C1:0526/054A), even though this actor is riding Goku. Retire those
+	; coordinates too; the first ordinary render restores them on landing
+	; or when a player/script takes ownership. World position stays live.
+	REP #$20
+	LDA.w #$8000
+	STA.w $E020,X
+	STA.w $E022,X
+	SEP #$20
 	JML $80E403                  ; native RTS before body and shadow
 .native
 	STX $14

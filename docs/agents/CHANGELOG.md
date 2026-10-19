@@ -4,6 +4,24 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES carried-companion target visibility (2026-10-19)
+
+- Retire carried companions' native screen coordinates along with their
+  body rendering. Skipping the renderer left their last ground coordinates
+  eligible for enemy AI targeting. World position, actor slots, status and
+  ownership remain live; ordinary rendering restores target coordinates
+  after landing, human reassignment or scripted ownership.
+- Assembled checks exercise both native target predicates, and the local
+  passenger test checks target-coordinate restoration alongside status,
+  movement, AI and drawing. Local flight, Goku menus/save/load and all
+  world/radar checks pass. All 13 short gameplay cases and both long aerial
+  attack runs retain zero palette, meter, OBJ, NMI and graphics-DMA errors.
+- This fixes target behavior, not the remaining timing issue. The long
+  flying-ki/punch cases have 35/6 misses per 1,200 frames versus 19/5 with
+  the stale targets; flying-ki peak logic falls 286.49 → 270.39 lines.
+  Separate cache, direction-lookup and companion-phase experiments remain
+  private because they did not improve the integrated timing cases.
+
 ## SNES graphics transfer after the HUD line (2026-10-19)
 
 - Add a second bounded ROM-to-WRAM DMA window at sampled scanlines

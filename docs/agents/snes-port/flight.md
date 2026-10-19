@@ -42,8 +42,11 @@ integration work is under
   landing. The cartridge carries CPU companions during all local flight:
   they share his position and terrain, pause ground AI, movement, contacts
   and rendering, then resume after landing. Their actor slots remain active
-  and native status/timer updates continue. Human-controlled companions,
-  menus, map loads and scripted ownership retain native handling. This
+  and native status/timer updates continue. The skipped native renderer
+  also retires their screen coordinates, preventing enemy AI from selecting
+  them at the stale ground position. The first ordinary render restores
+  those coordinates after landing or an ownership change. Human-controlled
+  companions, menus, map loads and scripted ownership retain native handling. This
   differs from the browser's trailing companions and reduces airborne CPU
   work. Crossings of 24 px or more also gather the party. A Goku embedded in a wall or outside the map
   returns to the last verified landing (else the nearest landable point of a

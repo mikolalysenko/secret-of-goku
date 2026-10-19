@@ -9,7 +9,7 @@ function test()
   local function snapshot(tag)
     local v={flight=F.status(),mask=H.r16(0x7ED96C),actors={}}
     for _,b in ipairs({0x7EE000,0x7EE200,0x7EE400}) do
-      v.actors[#v.actors+1]={active=H.r8(b),owner=H.r8(b+0x2C),hidden=H.r8(b+0xE),x=H.r16(b+2),y=H.r16(b+4),status=H.r16(b+0x190)}
+      v.actors[#v.actors+1]={active=H.r8(b),owner=H.r8(b+0x2C),hidden=H.r8(b+0xE),x=H.r16(b+2),y=H.r16(b+4),sx=H.r16(b+0x20),sy=H.r16(b+0x22),status=H.r16(b+0x190)}
     end
     H.log(tag,H.json(v))
   end
@@ -39,6 +39,7 @@ function test()
     for _,b in ipairs({0x7EE200,0x7EE400}) do
       if H.r16(b+2)~=H.r16(0x7EE002) or H.r16(b+4)~=H.r16(0x7EE004)
         or H.r8(b+0xB)~=H.r8(0x7EE00B) or H.r8(b)&1==0 then wrong=wrong+1 end
+      if H.r16(b+0x20)~=0x8000 or H.r16(b+0x22)~=0x8000 then wrong=wrong+1 end
     end
   end,emu.callbackType.exec,0x00B077,0x00B077)
   H.hold('a left',8) -- stay inside this map, away from its eastern exit
@@ -60,6 +61,7 @@ function test()
   F.check(not F.status().fly and H.r16(0x7ED96C)==0,'landing releases the party')
   phase='landed';H.wait(40)
   for _,x in ipairs({0x200,0x400}) do
+    F.check(H.r16(0x7EE020+x)~=0x8000 and H.r16(0x7EE022+x)~=0x8000,'landed '..x..' restores native target coordinates')
     for _,name in ipairs({'status','ai','move','contact','body'}) do
       F.check((counts['landed_'..name..'_'..x] or 0)>0,'landed '..x..' resumes '..name)
     end
@@ -70,6 +72,7 @@ function test()
   snapshot('player')
   F.check(H.r8(0x7EE22C)==2 and H.r16(0x7ED96C)==2,'human ownership releases only that companion')
   F.check((counts.player_body_512 or 0)>0 and (counts.player_move_512 or 0)>0,'human companion renders and moves immediately')
+  F.check(H.r16(0x7EE220)~=0x8000 and H.r16(0x7EE420)==0x8000,'human ownership restores only that companion target')
   F.check((counts.player_body_1024 or 0)==0 and (counts.player_ai_1024 or 0)==0,'other companion remains carried')
   H.input=nil
   for _,c in ipairs(callbacks) do emu.removeMemoryCallback(c[1],emu.callbackType.exec,c[2],c[2]) end
