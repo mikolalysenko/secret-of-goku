@@ -401,6 +401,23 @@ the copy to five or more foreground sprites also stays out because it
 does not improve the common charge workload. These private measurements
 are in `oam-commit/long` and `large-long`, respectively.
 
+The direct hand-socket table, faster scenery/barrier scans and large text
+word copies subsequently reduce helper costs while preserving their
+outputs. Assembled checks cover authored socket coordinates, all packed
+tile classes and full native text RAM/CPU state. Destruction/gate/switch
+and core/Goku menu checks pass, with clean save and status text.
+Long charge/release improves 83 → 80 misses per 1,200 frames; long ground
+punches/ki, corridor flying ki, flying punches and teleport stay at
+2/8/19/5/67. All 13 short cases and six long repeats remain free of the
+tested palette, meter, OBJ, NMI and graphics-DMA errors. Measurements are
+under `socket/inline-long`, `skim/long` and `text-words/long`.
+
+A two-piece native-body fast-path trial is also excluded: its helper
+falls from 367 to 313 CPU cycles, but the long flying-ki and charge cases
+worsen from 19/80 to 22/82 misses, despite teleport improving 67 → 64.
+The source retains the three-piece threshold; private results are under
+`small-body/`. Strict crowded timing remains open.
+
 The asynchronous scheduling trials are not in the playable ROM. Deferring companion
 AI improved the long walking/punching/ki/teleport cases from 39/24/47/73
 to 3/3/17/39 misses, but worsened flying ki from 36 to 50. Deferring normal

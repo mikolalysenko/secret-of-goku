@@ -203,8 +203,9 @@ core_native_text_clear:
 
 ; C0:14C6 copies $A171 groups of sixteen bytes from Y to X, one byte per
 ; eight-instruction loop. Native messages use DB=$7E, X=$9400 and up to
-; 56 groups from $9000-$93FF. Replace only that disjoint WRAM copy. MVN is
-; interruptible and touches no DMA/HDMA registers; other callers fall back.
+; 56 groups from $9000-$93FF. Replace only that disjoint WRAM copy. Large
+; copies use unrolled words; small copies keep MVN. Both are interruptible
+; and touch no DMA/HDMA registers; other callers fall back.
 ; M8/X16 in/out. A's high byte is the last byte read, low byte zero; C/V,
 ; DB/D and the advanced X/Y match retail, including the final counter Z/N.
 core_native_text_copy:
@@ -237,6 +238,13 @@ core_native_text_copy:
 	CMP.w #$9401
 	BCS .reject                  ; the source must end before destination
 	PLA
+if not(defined("CORE_NATIVE_TEXT_MVN"))
+	CMP.w #64
+	BCC .mvn
+	JSR core_native_text_words
+	BRA .copied
+.mvn
+endif
 	DEC
 	PHA                          ; byte count minus one
 	TXA
@@ -248,6 +256,7 @@ core_native_text_copy:
 	PHX
 	TYX
 	PLY
+.copied
 	SEP #$20
 	STZ.w $A171
 	DEY
@@ -277,6 +286,30 @@ core_native_text_copy:
 	DEC.w $A171
 	BNE .groups
 	JML $C014DA
+
+if not(defined("CORE_NATIVE_TEXT_MVN"))
+; A = bounded byte count, X = $9400, Y = disjoint WRAM source. Each pair
+; of instructions is six ROM bytes; enter the descending copy at the
+; requested length. Fixed destination stores are cheaper than two MVN
+; byte iterations. Only stack locals are live across an interrupt.
+core_native_text_words:
+	PHA
+	CLC : ADC.w #$9400 : TAX
+	LDA $01,S
+	ASL : CLC : ADC $01,S                  ; three code bytes per data byte
+	EOR.w #$FFFF
+	CLC : ADC.w #.end                      ; RTS target minus one
+	PHA : RTS
+	for word = 0..448
+		!offset #= (447-!word)*2
+		LDA.w !offset,Y
+		STA.w $9400+!offset
+	endfor
+.end
+	TYA : CLC : ADC $01,S : TAY
+	PLA
+	RTS
+endif
 
 ; C0:1539 combines two halves of an outlined glyph with its window pattern.
 ; (~even & pattern) | even == pattern | even for the even plane; retain

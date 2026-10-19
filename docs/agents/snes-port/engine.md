@@ -281,7 +281,8 @@ from 322 to 198 CPU cycles.
 
 Native message graphics use exact replacements at `C0:14C6`, `C0:15B9`
 and `C0:162C`. The first copies disjoint WRAM blocks with interruptible
-MVN. The second combines glyph expansion and vertical outlines; the third
+word copies (64–896 bytes) or MVN (smaller copies). The second combines
+glyph expansion and vertical outlines; the third
 unrolls horizontal outlines, preserving the incoming carry and each row's
 carry into the next. Eight-bit-index, decimal and unusual-bank contexts
 retain retail code. No DMA channel or persistent scratch is added.
@@ -289,8 +290,15 @@ retain retail code. No DMA channel or persistent scratch is added.
 `snes/test/core/text-copy.test.mjs` checks RAM, registers and flags against
 retail machine code across copy lengths/positions, glyph patterns, carry,
 direct-page offsets and fallback inputs. Representative cycle counts are
-22,965 → 6,442 (896-byte copy), 33,084 → 12,192 (32 glyphs and vertical
+22,965 → 5,144 (896-byte copy), 33,084 → 12,192 (32 glyphs and vertical
 outline), and 20,433 → 14,492 (horizontal outline).
+
+The large-copy helper enters a descending unrolled word sequence at the
+validated length, then restores the advanced X/Y and the native last-byte
+accumulator result. Only stack locals are live across interrupts. The
+earlier MVN path costs 6,442 cycles for 896 bytes and remains available
+with `CORE_NATIVE_TEXT_MVN`. Copy tests cover every byte alignment around
+the size cutoff; menu/save text and the integrated gameplay checks pass.
 
 The same comparison switch also covers `C0:107B`'s 1,334-byte window clear,
 `C0:1539`'s two-half pattern painter and `C0:1BC0`'s cell exchange. The clear

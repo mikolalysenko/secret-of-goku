@@ -4,6 +4,23 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES word copies for message graphics (2026-10-19)
+
+- Copy large, disjoint native text buffers with descending unrolled
+  words; retain MVN below 64 bytes and retail loops for other contexts.
+  Preserve bytes, registers, flags and source/destination bounds, with
+  only interruptible CPU instructions and stack locals.
+- The 896-byte helper falls from 6,442 to 5,144 CPU cycles. Eight text
+  equivalence checks include every byte alignment around the cutoff.
+  Core title/menu/frame/party/HP/input/OAM/lag/HDMA and Goku ring/menu/
+  file/load checks pass; save-confirmation and status text remain clean.
+  Local passenger/water/teleport/whip and world takeoff/locks/landing/
+  controls/ki/radar/map/timing regressions also pass.
+- All 13 short gameplay cases and six 1,200-frame combat repeats retain
+  their previous missed-frame counts and zero hardware errors. This adds
+  headroom but does not close strict crowded timing. `CORE_NATIVE_TEXT_MVN`
+  retains the earlier MVN path for comparisons.
+
 ## SNES scenery and barrier scan cost (2026-10-19)
 
 - Select the collision layer once per tile run and keep the run counter

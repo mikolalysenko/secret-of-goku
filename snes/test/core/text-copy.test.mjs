@@ -56,6 +56,9 @@ function compare(input){
 test('message block copies retain every byte and the retail CPU contract',t=>{
   for(let groups=1;groups<=56;groups++)
     for(let src=0x9000;src+groups*16<=0x9400;src+=16)compare({groups,src});
+  // Both copy sizes and every byte alignment around the word-path cutoff.
+  for(const groups of [1,3,4,5,8,16,56])for(let low=0;low<16;low++)
+    compare({groups,src:0x9000+low});
   for(let p=0x20;p<256;p++)if((p&0x30)===0x20)
     for(const dp of [0,0x1234,0x8000])compare({p,dp});
   const [before,after]=compare({});
