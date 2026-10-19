@@ -4,6 +4,16 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES late-vblank queue exit (2026-10-19)
+
+- Leave queued VRAM work untouched when fewer than two lines remain before
+  its transfer deadline. Avoid configuring a DMA channel just to defer the
+  transfer, preserving time for the NMI epilogue.
+- Strict build and core frames/HP/VRAM/HDMA/world/menu checks pass. A private
+  alternate actor-phase stress case that reproduced a transformation NMI
+  overrun improves from 37.29 to 36.27 scanlines, with zero overruns. Actor
+  scheduling is unchanged in the production cartridge.
+
 ## SNES guarded native graphics DMA (2026-10-19)
 
 - Copy predecoded death and common weapon sheets through WMDATA only

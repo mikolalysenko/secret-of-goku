@@ -736,6 +736,13 @@ core_flush_auto:
 	REP #$30
 	LDA.l !core_dma_count
 	BEQ .none
+	; A queue that cannot start a transfer should not spend the last NMI
+	; lines selecting/configuring a channel just to defer it afterward.
+	JSR core_vcount
+	CMP.w #225
+	BCC .none
+	CMP.w #!CORE_VBLANK_LAST-1
+	BCS .none
 	LDA.l $7E002C
 	AND.w #$00FF
 	STA.l !core_tmp0
