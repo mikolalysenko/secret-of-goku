@@ -264,7 +264,9 @@ enemies next to him. Two measures:
   16×16 cell or two stacked from 6 bands) is one colour across the cell,
   which `snes/gen/fx.mjs` asserts while it emits `fx_strip_ptr` /
   `fx_strip_data` (per union and half turn: the first coloured line's
-  offset from the palms, the line count, each line's colour index). Window
+  offset from the palms, line/run counts, a solid-span flag and colour
+  runs). The renderer submits each colour run once and builds an opaque
+  window span in one call; transparent records keep their gaps. Window
   1 per line spans the strips (palms to the last strip) and the backdrop
   per line takes the line's colour, with BG1/BG2 masked inside the window
   and no colour math there: exactly the OBJ strips' picture (the beams
@@ -272,6 +274,10 @@ enemies next to him. Two measures:
   head and the orb stay OBJ. It takes the frame's one polygon, so a
   second left/right beam, a wave, up/down beams, 16-heading beams and
   scenes where the game runs HDMA on channels 2/3 keep the OBJ strips.
+  `snes/test/fx/strips.test.mjs` executes the assembled builder and compares
+  all 224 colour/window rows for every generated record at clipped and
+  interior positions. The measured gameplay strip path fell from 49.53
+  to 36.51 scanlines with this change.
 - **OBJ strip rows are budgeted** (`fx_row_room`): before a left/right run
   of strips FX counts the slivers of every sprite already in OAM or staged
   in front that overlaps the row's 16 lines and draws at most

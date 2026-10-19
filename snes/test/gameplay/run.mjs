@@ -52,7 +52,7 @@ if(symbols.has('core_party_actor')){
 }else{
   for(const [name,start,end] of [['party1',0x80F4BD,0x80F4C0],['party2',0x80F4C3,0x80F4C6]])spans.push(`{${JSON.stringify('native_'+name)},${start},${end}}`);
 }
-for(const [module,prefix] of [['flight','fl_'],['fx','fx_'],['combat','cb_']])if(args.includes(`--${module}-profile`)){
+for(const [module,prefix] of [['flight','fl_'],['fx','fx_'],['combat','cb_'],['destroy','dst_']])if(args.includes(`--${module}-profile`)){
   const bytes=readFileSync(rom),labels=new Map([...symbols].filter(([n])=>n.startsWith(prefix)).map(([n,p])=>[p,n]));
   const base=symbols.get(`${module}_code_start`);
   for(let p=base;p<symbols.get(`${module}_code_end`)-2;p++){

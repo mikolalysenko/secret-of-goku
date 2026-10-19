@@ -167,8 +167,8 @@ export async function generate({rom,repo,outDir,xdata}){
   const bandIndex=[];                   // ((set*2+frame)*7 + n-1)*4 + turn -> assembly
   // Strip lines for the left/right polygon (poly.asm fx_poly_strip): per
   // band union and half turn (right, left) the offset of its first
-  // coloured line from the palms' line, the line count and each line's
-  // colour index in the set's class (0: none). The polygon draws one
+  // coloured line from the palms' line, line/run counts, a solid-span
+  // flag and (exclusive end row, colour) runs. The polygon draws one
   // colour per line, so every row of a union must be one colour across the
   // cell (asserted). A half turn maps the offset v to -v (pixel centres).
   const stripPtr=[],stripData=[],stripSeen=new Map();
@@ -176,7 +176,14 @@ export async function generate({rom,repo,outDir,xdata}){
     let a=0,b=rows.length-1;
     while(a<=b&&!rows[a])a++;
     while(b>=a&&!rows[b])b--;
-    const rec=a>b?[0,0]:[(first+a)&255,b-a+1,...rows.slice(a,b+1)];
+    const trimmed=rows.slice(a,b+1),runs=[];
+    for(let i=0;i<trimmed.length;){
+      const colour=trimmed[i];let end=i+1;
+      while(end<trimmed.length&&trimmed[end]===colour)end++;
+      runs.push(end,colour);i=end;
+    }
+    const rec=a>b?[0,0,0,0]:[(first+a)&255,trimmed.length,runs.length/2,
+      trimmed.every(c=>c!==0)?1:0,...runs];
     const key=rec.join(',');
     if(!stripSeen.has(key)){stripSeen.set(key,stripData.length);stripData.push(...rec);}
     return stripSeen.get(key);

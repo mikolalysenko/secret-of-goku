@@ -246,6 +246,29 @@ zero-drop target is still open. Results: `combat-graphics-fast` and
 
 ## Validation and remaining work from Claude's notes
 
+The latest October 19 checkpoints also avoid late-vblank queue setup,
+repair an accumulator-width bug in the native companion pair, collapse
+connected ground teleport samples into one tile rectangle, and construct
+horizontal beam HDMA by colour runs. All 19,996 landing queries across
+27 scenes match the browser; the beam builder matches all 224 scanlines
+for every generated strip record, including clipping.
+
+The current 240-frame gameplay run still measures misses: walking 7,
+punching 6, ground ki 19, flight 4, flying ki 5, flying punches 1, teleport
+11, charge 42 and grass transformation 1. Solo attacks, water flight and
+grass focus remain at zero. All 13 cases have zero palette, meter, OBJ,
+vblank and guarded-graphics-DMA errors. The long teleport/charge cases
+improve from 105/151 to 73/144 misses in 1,200 frames. Strict crowded
+timing remains open. Results: `combat-corridor-strips`,
+`teleport-corridor-long` and `strip-runs-long` under `.local/snes-test/`.
+
+Destruction profiling (`--destroy-profile`) finds scenery-scan growth
+steps as large as 43 lines and follow-up scans around 61 lines. Native
+actor work is still the main repeated cost in phases 1 and 2. A sprite
+emitter prototype passed output comparisons but worsened long gameplay
+timings, so it was removed; its private measurements are retained only
+for future investigation.
+
 The subsequent carried-companion checkpoint implements the requested SNES
 flight rule: CPU companions ride Goku, retain status/timer updates and
 resume ground AI, contacts, movement and rendering after landing. Human

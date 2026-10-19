@@ -4,6 +4,18 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES beam-strip table construction (2026-10-19)
+
+- Store horizontal beam colours as runs and build opaque window spans in
+  one call. Keep the same colours, shape, clipping and HDMA end padding;
+  transparent records retain their gaps.
+- The assembled builder matches every scanline for all 88 generated
+  records across screen edges and lengths, plus synthetic transparent
+  runs. FX gallery/beams and the 13 gameplay hardware checks pass.
+- The measured strip path falls from 49.53 to 36.51 scanlines. Charging
+  improves from 151 to 144 CPU misses in 1,200 frames; strict timing still
+  fails. Add optional destruction profiling to the gameplay runner.
+
 ## SNES connected teleport corridor checks (2026-10-19)
 
 - Check the union of overlapping ground footprints once when finding an
