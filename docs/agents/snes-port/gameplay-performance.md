@@ -633,6 +633,25 @@ worse counts. Its source patch and measurements remain private under
 `party-first-search/` and `teleport-cutoffs/`; production retains the
 queue from the earlier checkpoint.
 
+The native attribute clamp's combat hook now uses tail jumps instead of
+rewriting a JSL return on each of four loop-back branches. Its five-value
+loop falls from 368 to 230 CPU cycles, with 7,233 comparisons preserving
+CPU state, scratch, clamped attributes and the single Heavy Gi adjustment.
+Seven browser/cartridge combat comparisons pass, including defeat rewards
+and both Heavy Gi forms. All 13 short and six long gameplay cases retain
+zero hardware/rendering errors; long misses remain 1/3/20/3/14/63.
+Punching/ki/flying-punch peaks fall from 258.82/283.79/307.75 to
+257.32/282.36/306.25 lines. The selected ROM and measurements are under
+`.local/snes-test/stat-clamp/`; strict crowded timing remains open.
+
+A broader companion queue triggered by late native actor work is excluded.
+At scanline 150 it lowers the punching/ki peaks to 248.17/257.37 but leaves
+their missed-frame counts unchanged and raises long charging 63 → 64.
+Starting at 110 changes long flying ki/punch misses from 20/3 to 27/7,
+despite improving teleport 14 → 11. These experiments are private under
+`party-late/`; production retains the teleport-only queue. The native
+death transition and its graphics/reward work remain intact.
+
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's
 virtual combat targets are wired, and FastROM is the default. The carried

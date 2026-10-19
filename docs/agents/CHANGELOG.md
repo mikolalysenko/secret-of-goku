@@ -4,6 +4,21 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES native attribute-clamp overhead (2026-10-19)
+
+- Replace repeated JSL return-address rewriting in the native attribute
+  clamp with tail jumps. Heavy Gi still applies once, after the five
+  native attributes have been clamped. The measured loop falls from
+  368 to 230 CPU cycles with identical registers, flags and scratch.
+- 7,233 differential cases and seven browser/cartridge combat comparisons
+  pass, including rewards and both Heavy Gi forms. All 13 short and six
+  long gameplay cases retain zero hardware/rendering errors. Long miss
+  counts remain 1/3/20/3/14/63; this reduces some peaks by about 1.5 lines
+  but does not resolve crowded zero-drop timing.
+- A broader late-companion queue stays out: its earlier cutoff worsens
+  flying combat, while the later cutoff adds a charging miss despite
+  lowering punching and ki peaks. Measurements remain private.
+
 ## SNES failed teleport path reuse (2026-10-19)
 
 - Retain the shortest failed connected path per direction during one

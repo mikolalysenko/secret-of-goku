@@ -766,10 +766,12 @@ cb_hook_level_read:
 +	LDA.l $D04215,X
 	RTL
 
-; Replaced: BNE $4BDB / LDX $BD; the RTS at C0:4BF6 stays.
+; Replaced: BNE $4BDB / LDX $BD. Tail jumps preserve the native call's
+; return address instead of rewriting a JSL return four times per rebuild.
+; The RTS at C0:4BF6 stays; Goku's Heavy Gi adjustment runs once at the end.
 cb_hook_attr_clamp:
 	BEQ +
-	%cb_redirect($4BDB)
+	JML $C04BDB
 +	LDX $BD
 	BNE .out
 	PHP
@@ -795,7 +797,7 @@ cb_hook_attr_clamp:
 	PLA
 	PLP
 .out
-	RTL
+	JML $C04BF6
 
 ; C0:4576 (JML): PLP / PLB / PLD / RTL of the stats rebuild.
 cb_hook_rebuild_end:
