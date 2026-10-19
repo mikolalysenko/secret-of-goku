@@ -552,9 +552,11 @@ in WRAM or direct page (shorter addressing), a larger tile cache.
   `scene` checks those three cases. Shore searches also reuse their fetched
   descriptors and known dungeon result instead of repeating those checks
   along every ray.
-- The Vegeta trial counts as a boss only through its custom
-  target post (kind 3). The world module's own L+R takeoff does not check
-  the boss lock the browser's `requestFlight()` applies to both routes.
+- Resolved 2026-10-18: flight owns L+R for both outdoor takeoff and roof
+  escape. World's second chord reader no longer bypasses boss, status,
+  scene or recovery-camera locks. The public world takeoff API also asks
+  the shared boss check, including Vegeta's custom target post (kind 3).
+  `world takeoff-locks`, ordinary takeoff and all seven roof exits pass.
 - Instant Transmission: `mod.facing` comes from `E010` (the browser also
   turns it on the press frame's new direction, which combat's aim tracks);
   the action now advances by elapsed field vblanks, capped at four like

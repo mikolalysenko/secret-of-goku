@@ -38,6 +38,7 @@ endif
 !FLIGHT_API_CAN_LAND   = flight_api_can_land     ; JSL: A16 x, X16 y at Goku's layer/terrain -> C
 !FLIGHT_API_CAN_LAND_T = flight_api_can_land_t   ; JSL: the same, Y16 = terrain byte (bit 7 layer)
 !FLIGHT_API_CAMERA     = flight_api_camera       ; JSL: A16 x, X16 y camera target, posted per frame
+!FLIGHT_API_BOSS       = flight_api_boss_active  ; JSL: C set for a live native/custom boss
 
 ; ---------------------------------------------------------------------------
 ; WRAM (!RAM_FLIGHT = $7ED900, $80 bytes; absolute addressing with DB = $7E)

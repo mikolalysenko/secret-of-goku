@@ -97,7 +97,8 @@ world_takeoff_check:
 	REP #$20
 	; the map header must allow flight (byte 4 bit 7; table C8:7000)
 	LDA $DC
-	AND.w #$01FF
+	CMP.w #512
+	BCS .no
 	ASL
 	TAX
 	LDA.l $C87000,X
@@ -105,6 +106,10 @@ world_takeoff_check:
 	LDA.l $C80004,X
 	AND.w #$0080
 	BEQ .no
+if getfilestatus("flight/tables.asm") == 0
+	JSL flight_api_boss_active
+	BCS .no
+endif
 	CLC
 	RTS
 .no8

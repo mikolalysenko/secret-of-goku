@@ -13,7 +13,9 @@ endif
 	BCS +
 	RTL
 +	JSR wf_transition
+if getfilestatus("flight/tables.asm") != 0
 	JSR wf_takeoff_chord
+endif
 	JSR wf_finale
 	RTL
 
@@ -82,8 +84,8 @@ wf_release_mode:
 	REP #$20
 	RTS
 
-; L+R takes off where the map allows flight. Elsewhere the flight module's
-; ceiling escape owns the chord (it calls world_takeoff once outdoors).
+; Standalone world-module fallback. In the full build flight owns L+R for
+; both routes, including boss, status, scene and recovery-camera locks.
 wf_takeoff_chord:
 	LDA.w !core_pad&$FFFF
 	AND.w #!PAD_L|!PAD_R

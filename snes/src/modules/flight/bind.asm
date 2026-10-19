@@ -141,8 +141,8 @@ endif
 
 ; World (snes/src/modules/world, present when !WORLD_MAGIC is defined):
 ; takeoff into world flight from the field (native-flight.js request()).
-; The world module serves the L+R chord itself; the ceiling escape acts only
-; where world_takeoff_allowed says no, and asks world_takeoff from the
+; Flight owns the L+R chord and its shared boss/status/scene locks. The
+; ceiling escape acts where world_takeoff_allowed says no, and asks it from the
 ; room's exterior. Without the module the game's own world request
 ; $0C00|map (the Drum's path) is used with the same checks.
 ; C clear = requested.
@@ -194,16 +194,11 @@ else
 	SEC
 	RTS
 endif
-; L+R where world flight is allowed: with the world module nothing to do
-; (it requests the takeoff in its own frame); without it, the native
-; request. C clear = a takeoff was (or will be) requested.
+; L+R where world flight is allowed: request it here, after flight's common
+; input and boss checks. A second reader in world would bypass those locks.
+; C clear = a takeoff was requested.
 fl_bind_world_lr:
-if defined("WORLD_MAGIC")
-	CLC
-	RTS
-else
 	JMP fl_bind_world_takeoff
-endif
 
 ; Endings (snes/src/modules/ending): Goku cannot act once the finale has
 ; begun (mana-mod.js canAttack: !mod.ending.active, shenron-ending.js

@@ -49,10 +49,12 @@ fades, runs the Mode 7 loader and later lands through the landing record
 table (`C6:7780`). `C1:E833` is the shared handoff right after that
 bookkeeping; with Goku it skips the summon (`E8=4` phase) and requests the
 fade straight to world flight as `C0:A4E1-A4EC` / `C0:8B16` do once the
-dragon has arrived. The L+R edge in an idle field frame calls
-`world_takeoff` (browser: `requestFlight()` on the L+R chord), which checks
+dragon has arrived. Flight owns the L+R edge and applies the same boss,
+status, scene and recovery-camera locks to both outdoor takeoff and roof
+escape. It calls `world_takeoff` (browser: `requestFlight()`), which checks
 `world_takeoff_check` (Goku, no `!w_lock`, no pending event, idle field,
-the map header's world-flight bit at `C8:7000+4` bit 7) and queues the event
+the map header's world-flight bit at `C8:7000+4` bit 7, a valid map id and
+the shared native/custom boss gate) and queues the event
 through `core_event_request`. The Fly item's handler (`C1:DBCD`) jumps over
 the drum animation and sound to the same request at `C1:DC22`.
 
@@ -270,6 +272,7 @@ states (`preset__flight`).
 | --- | --- |
 | `sprite` | no Flammie OBJ; Goku's flight cell in slots 0-3 (VRAM tiles against `goku_cell_tiles`, palette 5 against `goku_palettes`), flight clip cycling, banking, both forms, the pixel shadow, no HDMA shadow window; OBJ region claimed |
 | `takeoff` | `!w_lock` refuses; L+R reaches world flight in < 140 frames without the `E8=4` summon phase, takeoff pose, event `$0C80`, return map |
+| `takeoff-locks` | outdoor L+R respects live/custom bosses, flight scene locks, sleep/death and the recovery camera; a dying boss permits departure |
 | `landing` | B lands without the BG3 fly-by; landing pose and its end; landing sound request |
 | `ki` | Y hidden from the game; ki shot, orb and distant burst; a full base charge; the wave aims at the Fortress and deflects (message, Fortress intact, controls locked while it flies); a partial SSJ wave deflects too; the 720-frame message cooldown |
 | `fortress` | full SSJ wave from 400 px: destroyed, explosion, cutaway, deck landing (map 255, offset corrected), crisis cue `01 1B`, event `$8B`, persistent flag |

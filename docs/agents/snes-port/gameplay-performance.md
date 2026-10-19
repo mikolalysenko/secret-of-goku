@@ -158,8 +158,9 @@ now resolved by this pass.
 
 These documented gaps remain separate from the measured performance fixes:
 
-- The world module's own L+R takeoff route lacks the boss check used by the
-  local ceiling-escape route. See [flight.md](flight.md#remaining).
+- Resolved in the flight/world follow-up: L+R uses one shared route for
+  outdoor takeoff and ceiling escape; boss, status, scene and camera locks
+  apply before either route. See [flight.md](flight.md#remaining).
 - Time Chamber floor tiles reject teleport landing in both the cartridge
   and browser. Allowing it needs a shared gameplay rule, not just an SNES
   timing change.

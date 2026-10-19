@@ -4,6 +4,15 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES takeoff restrictions (2026-10-18)
+
+- Route outdoor L+R through the same input decision as roof escapes, so
+  world's duplicate reader cannot bypass boss, status, scene or camera locks.
+- Reject invalid map ids and check native/custom bosses in the world takeoff
+  API. Scripted native departures retain their normal handoff.
+- Strict build, ordinary takeoff, six blocked-input cases, dying-boss
+  departure and all seven indoor roof escape routes pass in Mesen 2.
+
 ## 0.2.5 social teaser preparation (2026-10-18)
 
 - Capture six spoiler-free gameplay techniques with synchronized game audio
