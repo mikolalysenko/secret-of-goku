@@ -4,6 +4,22 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES nonblocking field HP redraws (2026-10-19)
+
+- Queue native HP-number refreshes during ordinary Goku field play instead
+  of waiting for a vblank inside the status update. Run the same redraw
+  after a completed frame's uploads only when twelve scanlines remain;
+  otherwise retain the request. Events, menus, loads and pre-Goku play
+  keep the synchronous path.
+- Verify the actual seven HUD tiles for each party member, repeated
+  requests, late-vblank retry, the retail fallback and preservation of DP
+  scratch and interrupt vectors. The measured redraw takes 6.10 scanlines.
+  Core frames/party/input/lag/HDMA and Goku field/status/forms pass.
+- All 13 gameplay cases and four 1,200-frame repeats retain zero palette,
+  meter, OBJ and NMI errors. Short ground punches improve from eight to six
+  misses and flying punches from three to two; long crowded timing still
+  fails. This removes one forced wait without claiming zero-drop combat.
+
 ## SNES carried companions during local flight (2026-10-19)
 
 - Carry CPU companions during all local flight, as requested. Keep their

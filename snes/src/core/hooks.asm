@@ -51,6 +51,11 @@ endif
 %hijack_jsl($C0B0C3, $82BAD6, 4, core)
 
 ; Hot native actor and collision calls (verified instruction sites).
+; Field HP-number refreshes must not wait for vblank inside status/AI.
+%orig4($C1E326, $A98B20E2)
+%orig1($C1E32A, $00)
+%hijack($C1E326, core_native_hp_request, 5, core)
+
 ; Common death and weapon sheets are already expanded in ROM. Other
 ; graphics and unusual calling contexts retain the original decoder.
 if not(defined("CORE_NATIVE_TILES_SLOW"))

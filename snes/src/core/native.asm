@@ -1,5 +1,86 @@
 ; Exact replacements for hot retail helpers. No actor scheduling changes.
 
+; C1:E326 waits an entire vblank before redrawing HP numbers. During
+; ordinary Goku field play, queue the identical redraw for a completed
+; frame's NMI instead. Events, menus, loads and other interrupt handlers
+; retain the synchronous retail path.
+core_native_hp_request:
+	PHP
+	SEP #$20
+	PHA
+	LDA.l !persist_goku_active
+	BEQ .native
+	LDA $D0
+	ORA $FF
+	BNE .native
+	LDA $EC
+	AND.b #$FE
+	BNE .native
+	LDA $ED
+	AND.b #$40
+	BNE .native
+	LDA.l !core_mode
+	CMP.b #!CORE_MODE_FIELD
+	BNE .native
+	REP #$20
+	LDA $0100
+	CMP.w #$A85C
+	BNE .native8
+	LDA $0102
+	CMP.w #$00C0
+	BNE .native8
+	SEP #$20
+	LDA.b #$01
+	STA.l !core_hp_pending
+	PLA
+	PLP
+	SEP #$20
+	REP #$10
+	JML $81E334                  ; native RTS
+.native8
+	SEP #$20
+.native
+	PLA
+	PLP
+	SEP #$20
+	PHB
+	LDA.b #$00
+	JML $81E32B                  ; original PHA / PLB / wait and redraw
+
+; M16/X16, DB=$80, D=0. Called only after a completed field frame, after
+; other NMI uploads. Reserve twelve scanlines for the full three-member
+; retail redraw and restore its DP scratch. It uses no DMA channel.
+core_native_hp_nmi:
+	LDA.l !core_hp_pending
+	AND.w #$00FF
+	CMP.w #$0001
+	BNE .done
+	JSR core_vcount
+	CMP.w #225
+	BCC .done
+	CMP.w #247
+	BCS .done
+	for offset = 0..5
+		!hp_offset #= !offset*2
+		LDA.b !hp_offset
+		PHA
+	endfor
+	LDA.w #$0000
+	STA.l !core_hp_pending
+	PHK
+	PER .restore-1
+	PEA $E338-1                 ; retail RTL following the RTS target
+	JML $81E339
+.restore
+	REP #$30
+	for offset = 0..5
+		PLA
+		!hp_offset #= 8-(!offset*2)
+		STA.b !hp_offset
+	endfor
+.done
+	RTS
+
 incsrc "core-graphics/data.asm"
 
 ; C1:C599: common death and weapon sheets. All three retail

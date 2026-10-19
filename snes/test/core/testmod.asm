@@ -21,6 +21,7 @@
 ; +$50 meta-sprite: 0 off, 1 behind (core_oam_meta), 2 front (_front);
 ; +$52/+$54 anchor x/y, +$56 base tile word, +$58 count, +$5A mirror,
 ; +$5C carry of the last call
+; cmd 8: call the native synchronous HP refresh entry (field defers it)
 !ct = (!core_test&$FFFF)
 
 core_test_frame:
@@ -94,7 +95,7 @@ core_test_frame:
 	LDX.w !ct+$22
 	LDY.w #core_test_pattern&$FFFF
 	JSL core_queue_vram
-	BRA .ack
+	BRL .ack
 .notVram
 	CMP.w #$0004
 	BNE .notSound
@@ -117,6 +118,17 @@ core_test_frame:
 	STY.w !ct+$20
 	BRA .ack
 .notClaim
+	CMP.w #$0008
+	BNE .notHp
+	PHK
+	PER .hpDone-1
+	PEA $E338-1
+	JML $81E326
+.hpDone
+	REP #$30
+	CLC
+	BRA .ack
+.notHp
 	CMP.w #$0007
 	BNE .unknown
 	LDA.w !ct+$44                    ; batch: count, from +$20 by +$22 bytes each

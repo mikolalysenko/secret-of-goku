@@ -51,6 +51,7 @@
 !CORE_SAFE_CLEAR = $002             ; cleared at power-on and title entry: +$002-$09F
 !CORE_SAFE_END   = $0A0
 !core_scene_owner = !CORE_SAFE+$01C ; word: owner of !SRAM_WORK_SCENE (core_scene_claim; 0 = free)
+!core_hp_pending = !CORE_SAFE+$01E ; byte: native HP-number redraw queued by field status work
 !core_world_done = !CORE_SAFE+$01A  ; byte: this world vblank ran the game's frame work ($EC bit 0 at
                                     ; 00:88FB; written by the world module's hook there, which owns the site)
 !core_safe_magic = !CORE_SAFE+$018  ; word 'CS' while the block is valid; any frame
@@ -444,6 +445,7 @@ endif
 	JSL modules_field_nmi
 	REP #$30
 	JSR core_flush_auto
+	JSR core_native_hp_nmi
 .done
 	PLB
 	PLP
