@@ -709,6 +709,22 @@ native sprite ordering, Goku menus/load, passengers/local flight and all
 eight world/radar/map cases pass. Measurements are under
 `.local/snes-test/oam-air-current/`. Strict crowded timing is still open.
 
+Beam scenery and barrier scans now run after FX, before scanline 160, only
+when no NMI has interrupted the current combat update. Immediate damage
+and point-blank hits keep their original timing. The pending beam retains
+its peak length/width through fading and its submitted collision layer;
+otherwise delaying the scan could miss the Earth Palace hit tile. The
+full destruction/barrier/Sandship suite passes, including that timeline.
+Charging/beam poses also use the bounded companion AI queue, with status
+cadence and human controls unchanged. Long charge misses improve 63 → 50
+per 1,200 video frames (peak 283.51 lines); the other long counts remain
+0/0/20/1/14 for punch/ki/flying ki/flying punch/teleport. Short charge misses
+improve 31 → 30. All hardware/rendering checks remain clean. Seventeen
+assembled scheduler/companion checks, native cadence, ten combat comparisons,
+Goku presentation, local flight and world/radar/map tests pass. The ROM and
+logs are under `.local/snes-test/beam-late/` (`final.sfc`, `final-short/`,
+`final-long/`). Strict crowded timing remains open.
+
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's
 virtual combat targets are wired, and FastROM is the default. The carried

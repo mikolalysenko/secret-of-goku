@@ -17,9 +17,23 @@ destroy_field_frame:
 	JSR dst_walls_work
 	JSR dst_barrier_tick
 	JSR dst_orb_tick
+if defined("DESTROY_BEAMS_SYNC")
 	JSR dst_hit_continue
+endif
 	JSR ss_frame
+if defined("DESTROY_BEAMS_SYNC")
 	LDA.w #0 : STA.l !hp_worked
+endif
+	RTL
+
+; Beam scenery scans use spare time after FX. Combat damage and the
+; initial point-blank strike still run immediately.
+destroy_late_frame:
+if not(defined("DESTROY_BEAMS_SYNC"))
+	REP #$30
+	JSR dst_hit_continue
+	LDA.w #0 : STA.l !hp_worked
+endif
 	RTL
 
 ; A beam's band or barrier box left for later (dst_step_next) that no
@@ -37,7 +51,19 @@ dst_hit_continue:
 +	JSR dst_ground_ok : BCS +
 	LDA.w #0 : STA.l !hp_id : STA.l !hp_left
 	RTS
-+	LDA.w #1 : STA.l !hp_worked
++
+if not(defined("DESTROY_BEAMS_SYNC"))
+	JSL modules_field_current
+	BCS +
+	RTS
++
+	JSR dst_vline
+	CMP.w #!DESTROY_HIT_LINE
+	BCC +
+	RTS
++
+endif
+	LDA.w #1 : STA.l !hp_worked
 	JSR dst_vline : STA.l !cl_t0
 	LDA.l !hp_id : STA.w !arg_id
 	LDA.l !hp_x : STA.w !arg_x
@@ -71,6 +97,18 @@ destroy_hit:
 	BCC .done
 	LDA.w !arg_kind : CMP.w #1 : BEQ .done
 	JSR ss_hit                   ; the Sandship breakout wave
+if not(defined("DESTROY_BEAMS_SYNC"))
+	LDA.w !arg_id : BEQ +
+	; The layer belongs to the submitted beam, even if Goku changes it
+	; before this request gets spare CPU time.
+	LDA.w !arg_layer : BPL ++
+	LDA.w $E00B : AND.w #$0080 : BEQ ++
+	LDA.w #1
+++	AND.w #1 : STA.w !arg_layer
+	JSR dst_hit_begin
+	BRA .done
++
+endif
 	LDA.w #1 : STA.l !hp_worked
 	JSR dst_vline : STA.l !cl_t0 ; the growth steps' time span starts
 	LDA.w !arg_id : BEQ .oneshot
@@ -90,9 +128,22 @@ destroy_hit:
 ; the beam ends before its next combat update. A replacement beam drops
 ; the old request and starts with terrain, just like a new map.
 dst_hit_begin:
+	; Fading narrows the visible wave before a delayed scan necessarily
+	; reaches its outer edge. Retain everything this beam already touched.
+if not(defined("DESTROY_BEAMS_SYNC"))
+	LDA.l !hp_id : CMP.w !arg_id : BNE +
+	LDA.l !hp_len : CMP.w !arg_len : BCC ++
+	STA.w !arg_len
+++	LDA.l !hp_half : CMP.w !arg_half : BCC +
+	STA.w !arg_half
++
+endif
 	LDA.l !hp_id : CMP.w !arg_id : BEQ +
 	LDA.w #0 : STA.l !hp_left : STA.l !hp_turn
 +	LDA.w #3 : JSR dst_hit_left
+if not(defined("DESTROY_BEAMS_SYNC"))
+	RTS
+endif
 	; fall through
 
 ; Both parts share cl_t0. The first eligible part always gets a step;

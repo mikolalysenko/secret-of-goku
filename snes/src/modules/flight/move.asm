@@ -862,7 +862,7 @@ fl_hook_passenger_ai:
 	BCC .native
 	JML $80F4E2
 .native
-	; Move regular CPU companion work away from ki attacks and Instant
+	; Move regular CPU companion work away from ki/charge attacks and Instant
 	; Transmission. Status/timers retain their native cadence; queued AI
 	; finishes within four updates, before the next native tick.
 	LDA.l !core_party_queuing
@@ -878,11 +878,24 @@ fl_hook_passenger_ai:
 	LDA.w !goku_act
 	CMP.b #!GOKU_K_TELEPORT
 	BEQ .queue
+if not(defined("CORE_PARTY_POWER_SYNC"))
+	CMP.b #!GOKU_K_CHARGE
+	BEQ .queue
+	CMP.b #!GOKU_K_BEAM
+	BEQ .queue
+	REP #$20
+	LDA.l !core_pad_bios
+	AND.w #!PAD_L|!PAD_Y
+	CMP.w #!PAD_L|!PAD_Y
+	SEP #$20
+	BEQ .queue
+	LDA.w !goku_act
+endif
 if not(defined("CORE_PARTY_KI_SYNC"))
 	CMP.b #!GOKU_K_BLAST
 	BEQ .queue
 	; Reserve the first shot before combat publishes its pose. L+Y is
-	; charging; it keeps the regular schedule unless older work remains.
+	; charging and is handled by the power-action gate above.
 	REP #$20
 	LDA.l !core_pad_bios
 	AND.w #!PAD_Y|!PAD_L

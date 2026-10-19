@@ -315,6 +315,7 @@ assert !hp_end <= !PERSIST_DESTROY+$80, "destroy persistent block overflow"
 ; neither can starve when the other's first step uses the whole budget.
 !DESTROY_STEP_CELLS = 8
 !DESTROY_HIT_SPAN   = 12
+!DESTROY_HIT_LINE   = 160  ; only start a beam scan before this end-of-frame line
 !SS_VIS_PAL    = $0001
 !SS_VIS_BREACH = $0002
 !SS_VIS_MAGIC  = $A500

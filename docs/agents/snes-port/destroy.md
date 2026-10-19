@@ -49,8 +49,8 @@ the C0:C7C3 redraw consumer). The Sandship adds a field vblank callback
 | `C3:0004` | 4 | `JMP $0160` (the sound driver entry) | `destroy_song_hook`: while wrecked, the ship's song (25h) becomes the boss battle alarm (`01 04 04 FF`), so the change lands with the room's own fade |
 
 Dispatch (`snes/src/modules.asm`): `modules_field_frame` →
-`destroy_field_frame` (after the other modules' logic, before `fx_frame`:
-its planner and the wreck's budgeted work use the time the frame has left),
+`destroy_field_frame` (planner/events/wreck before `fx_frame`) and
+`destroy_late_frame` (pending beam scans after FX),
 `modules_field_nmi` → `destroy_field_nmi` (first: switches the breach's
 HDMA on while vblank lasts), `modules_ring_frame` → `destroy_ring_frame`
 (lets go of the HDMA), `modules_title_boot` → `destroy_title_boot`,
@@ -188,28 +188,37 @@ goes first (`!hp_turn`), and starts the other only while time remains;
 one expensive part cannot force another expensive step or starve the
 other part. The budget is checked between steps, so a single step can
 exceed it. Punches still scan both parts immediately.
-What is left (`!hp_left`: bit 0 band, bit 1 barrier) waits for
-the beam's next call or, if the beam stops calling, for
-`destroy_field_frame`'s continuation from the saved arguments
-(`dst_hit_continue`, `!HP` block), dropped when the field stops being idle.
-`dst_hit_begin` saves the newest beam arguments before either part runs,
-including a part that gets no time this call. Replacement attacks discard
-the previous request; map/load initialization also resets the turn.
-`!hp_worked` prevents the continuation from repeating an attack's scan in
-the same field update. It is cleared after `destroy_field_frame` and on
-map/load initialization. Comparing `core_frame` values was insufficient:
-combat records the counter before the core increments it, while this
-continuation runs afterwards. The gameplay suite watches both scan parts
-per attack across the whole native field loop, including lag frames.
+Combat now submits a nonzero-ID beam without scanning the map. Its pending
+work (`!hp_left`: bit 0 band, bit 1 barrier) runs from `destroy_late_frame`
+after FX, only before scanline 160 and only if no NMI has interrupted this
+combat update. Comparing combat's all-NMI counter with its sampled value
+prevents a wrapped low scanline from granting more work to an already late
+frame. Punches, the initial point-blank strike, enemy damage and Sandship
+strike tracking remain immediate. `DESTROY_BEAMS_SYNC=1` retains the earlier
+synchronous scan path for comparison.
+
+`dst_hit_begin` keeps the maximum requested length and width for the pending
+beam. A fading wave must not discard unscanned outer cells; the Earth Palace
+timeline regression checks that its puzzle trigger still fires. Its saved
+collision layer also applies to barrier searches after Goku changes floors.
+Replacement attacks discard the previous request; events/menus cancel it,
+and map/load initialization resets the turn. `!hp_worked` prevents a second
+scan in the same field update and is cleared after the late service.
+Comparing `core_frame` values was insufficient: combat records the counter
+before the core increments it, while this continuation runs afterwards.
+The gameplay suite watches both scan parts per attack across the whole
+native field loop, including lag frames.
 Each step goes through the same skim/visit code as a one-shot call, so the
 cell order within a part is unchanged. The assembled
 `snes/test/destroy/hit-budget.test.mjs` checks shared-budget boundaries at
 all 262 counter positions, fair progress, saved arguments, completion,
-replacement, cancellation and the field latch. The full map-edit/barrier
+replacement, cancellation, the field latch, late/NMI-wrapped deadlines,
+fading extents and saved collision layers. The full map-edit/barrier
 and Sandship comparisons pass with the existing documented demolition
-timing differences. The integrated crowded charge run's peak falls
-364.08 → 311.00 scanlines and its long miss count 66 → 63 per 1,200
-frames; strict zero-drop timing remains open. Earlier independent budgets
+timing differences. Sharing the budget initially reduced crowded charging
+from 66 to 63 misses per 1,200 frames. Late scanning plus the charge/beam
+companion queue reduces that to 50, with a 283.51-scanline peak; strict
+zero-drop timing remains open. Earlier independent budgets
 reduced the full-wave scan from 219 to 84 lines, but still forced a
 barrier step after a costly terrain step.
 

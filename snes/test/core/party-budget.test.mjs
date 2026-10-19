@@ -99,12 +99,12 @@ test('deferred work rechecks the live carry gate before resuming ground AI',()=>
   ram[0xD96C]=0;sram[pending]=1;run('core_party_work');assert.deepEqual(calls,[0x200]);
 });
 
-test('ki blasts, teleport and camera recovery queue regular companion work',()=>{
+test('ki blasts, charging, beams, teleport and camera recovery queue companion work',()=>{
   for(const action of [0,0x10,0x11,0x12,0x13,0x14,0x15,0x18])for(const camera of [false,true]){
     const {ram,sram,calls,run}=machine();
     ram[0xD742]=action;ram[0xD932]=camera?4:0;sram[queuing]=1;
     run('fl_hook_passenger_ai');
-    const deferred=camera||action===0x14||action===0x13;
+    const deferred=camera||[0x11,0x12,0x13,0x14].includes(action);
     assert.equal(sram[pending],deferred?1:0);
     assert.deepEqual(calls,deferred?[]:[0x200]);
   }
@@ -142,12 +142,12 @@ test('the first physical teleport chord reserves time before flight sets its act
   }
 });
 
-test('physical ki input reserves time without delaying punch or charge-only work',()=>{
+test('physical ki and charge input reserves time without delaying ordinary punches',()=>{
   for(const pad of [0,0x20,0x8000,0x4000,0xC000,0x4020,0xC020]){
     const {sram,calls,run}=machine();
     sram[queuing]=1;sram.writeUInt16LE(pad,0x748A);
     run('fl_hook_passenger_ai');
-    const deferred=(pad&0x4020)===0x4000||(pad&0x8020)===0x8020;
+    const deferred=(pad&0x4000)!==0||(pad&0x8020)===0x8020;
     assert.equal(sram[pending],deferred?1:0);
     assert.deepEqual(calls,deferred?[]:[0x200]);
   }

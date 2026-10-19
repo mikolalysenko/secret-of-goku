@@ -1,5 +1,5 @@
 ; Companion status runs on its fixed native tick. Delay only the following
-; CPU AI/animation during ki/teleport until the frame can afford it. Each
+; CPU AI/animation during ki/charge/teleport until the frame can afford it. Each
 ; job finishes within four field updates, before its next five-frame tick.
 if not(defined("CORE_PARTY_BUDGET_LINE"))
 !CORE_PARTY_BUDGET_LINE = 90

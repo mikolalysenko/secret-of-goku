@@ -4,6 +4,22 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES beam scan scheduling (2026-10-19)
+
+- Run incremental beam scenery/barrier scans after FX, only when the
+  current field update has time. An intervening NMI cannot grant work
+  through a wrapped scanline. Enemy hits and point-blank strikes stay immediate.
+- Preserve the widest area touched by a fading wave and its collision layer
+  while scans wait. The Earth Palace timeline still activates its hit tile;
+  the full destruction, barrier and Sandship regressions pass.
+- Extend the bounded companion AI queue to charging and beam poses, keeping
+  native status ticks and the four-update completion deadline. Charging
+  misses fall 63 → 50 per 1,200 frames; punch/ki remain at zero, and flying
+  ki/punch/teleport remain 20/1/14. Strict crowded timing is still open.
+- Seventeen assembled scheduler/companion checks, native companion cadence,
+  ten combat comparisons, Goku presentation, local flight, world/radar/map
+  and short/long gameplay checks pass with clean hardware/rendering checks.
+
 ## SNES flight sprite priority (2026-10-19)
 
 - Use the existing hardware sprite-priority rotation during local flight,
