@@ -144,7 +144,10 @@ replacement), `modules_field_nmi` → `goku_nmi` (uploads), `modules_menu_frame`
 - **Palette** (`palette.asm`): tracks the boy's slot per entry and rebuilds
   Goku's palette only when the game wrote something, the displayed cell's
   palette id or the petrify bit changed. Replacement ending restores the
-  game's values.
+  game's values. The unchanged fifteen-color comparison is unrolled;
+  `GOKU_PALETTE_SCAN_SLOW=1` retains the old loop. The assembled reference
+  costs 549 CPU cycles versus 352, with all 608 full-state comparisons in
+  `palette-scan.test.mjs` matching colors, status, slots and CPU context.
 - **Native flash**: while `$2A` is set the field NMI uploads `7E:BE00`, which
   the flash (`C2:C820`, in the frame logic) rebuilds from `0600` whenever
   its level steps (every fifth frame in the arrival) with a brightness

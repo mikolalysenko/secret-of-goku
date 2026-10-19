@@ -4,6 +4,18 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES palette scan overhead (2026-10-19)
+
+- Unroll Goku's fifteen-color comparison while keeping the full native
+  color-change/status absorption path. The assembled reference falls
+  549 → 352 CPU cycles on an unchanged palette.
+- All 608 full-state comparisons pass across individual color changes,
+  forms, petrify and water-slot transitions. Field/status/forms, ring,
+  menus, file/load and all short/long gameplay hardware checks pass.
+- Long charging improves 47 → 44 misses per 1,200 video frames. Ground
+  punches and ki remain at zero; flying ki/punch and teleport remain
+  20/1/14. Strict crowded timing is still open.
+
 ## SNES beam table writer (2026-10-19)
 
 - Write the neutral padding and rectangular window directly for fully

@@ -135,6 +135,9 @@ goku_palette:
 	ADC.w #!PALBUF+2
 	TAX                      ; X -> slot entry 1
 	LDY.w #$0002
+if not(defined("GOKU_PALETTE_SCAN_SLOW"))
+	JMP goku_palette_scan
+else
 .fast
 	LDA $0000,X
 	CMP !pal_out,Y
@@ -146,6 +149,7 @@ goku_palette:
 	CPY.w #$0020
 	BCC .fast
 	RTS
+endif
 .absorb8
 	REP #$20
 .absorb
@@ -240,6 +244,29 @@ goku_palette:
 .done
 	REP #$30
 	RTS
+
+if not(defined("GOKU_PALETTE_SCAN_SLOW"))
+; Fixed fifteen-color comparison; keep the loop's return registers.
+goku_palette_scan:
+	for color = 0..15
+		LDA.w $0000+(!color*2),X
+		CMP.w !pal_out+2+(!color*2)
+		BNE .changed
+	endfor
+	BRA .same
+.changed
+	JMP goku_palette_absorb
+.same
+	PHA
+	TXA
+	CLC
+	ADC.w #30
+	TAX
+	PLA
+	LDY.w #$0020
+	CPY.w #$0020
+	RTS
+endif
 
 ; Build pal_out[1..15] for palette id pal_id_out and status pal_status.
 ; Keeps t_d.

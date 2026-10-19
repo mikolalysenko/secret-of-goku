@@ -1,10 +1,29 @@
-# Goku gameplay review — October 18, 2026
+# Goku gameplay review — October 19, 2026
 
 The cartridge already had Goku's movement, combat, local/world flight,
 teleport, story and boss modules. The main problems in this review were
 integration bugs and CPU/vblank cost. The default build now favors resident
 SNES audio and compact effects. It is substantially smoother, but crowded
 combat is not yet guaranteed to run without missed video frames.
+
+## Current checkpoint
+
+The latest 1,200-video-frame runs use the default palette-scan build in
+`.local/snes-test/goku-palette-scan/final.sfc`. All rendering and hardware
+checks pass; flight, teleport and charging still miss frames.
+
+| Scenario | Missed frames | Longest field update (scanlines) |
+| --- | ---: | ---: |
+| Ground punches | 0 | 239.49 |
+| Ground ki | 0 | 239.21 |
+| Flying ki, corridor | 20 | 273.33 |
+| Flying punches | 1 | 288.84 |
+| Teleports | 14 | 312.61 |
+| Charge and release | 44 | 275.68 |
+
+The measurements below preserve the history of this review; their earlier
+counts are not the current release result. Passing a normal gameplay run
+does not imply zero-drop timing for every case.
 
 ## Changes in this pass
 
@@ -735,6 +754,16 @@ zero hardware/rendering errors. All assembled FX checks and Mesen beam/aura
 pixel comparisons pass, including both buffers and the 127-line boundary.
 Artifacts are under `.local/snes-test/strip-direct/`; the default final ROM
 matches the measured candidate byte for byte. Strict crowded timing is open.
+
+Goku's unchanged-palette comparison now unrolls its fifteen colors. All
+608 assembled full-state comparisons pass, including individual native
+color writes, form/status changes and water-slot transitions. An unchanged
+call falls from 549 to 352 CPU cycles against the patched loop reference.
+The long charge run improves 47 → 44 misses (peak 276.56 → 275.68 lines);
+other short/long counts stay unchanged. Goku's seven presentation/menu/load
+cases and all gameplay hardware checks pass. Artifacts are under
+`.local/snes-test/goku-palette-scan/`, and the default build matches the
+measured candidate byte for byte. Strict crowded timing remains open.
 
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's
