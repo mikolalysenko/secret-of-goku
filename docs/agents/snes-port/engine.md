@@ -341,6 +341,15 @@ status, both mirrors, register/flag contracts and boundary fallbacks.
 A representative full helper falls 618 → 398 CPU cycles;
 `CORE_NATIVE_PALETTE_SLOW` restores the original copy.
 
+The native actor refresh calls at `C1:93C9/93DC` and `C0:EA38` use the
+FastROM mirrors of weapon setup, sheet preparation and palette refresh
+(`80:EA3D`, `80:E9F4`, `81:85E4`). Their WRAM/I/O/data mappings and native
+return contracts are unchanged. `weapon-fast.test.mjs` executes the actual
+JSL sites with both banks across six actors, 72 weapons and all byte palette
+selectors. Its 5,665 cases compare CPU state, all live RAM and multiplier
+writes; a representative setup drops from 171 slow ROM reads to 4.
+`CORE_NATIVE_WEAPON_SLOW` restores the three old call targets.
+
 `C0:5AA7` skips sixteen empty bit tests when a status-effect request's
 mask is zero. It preserves the original scratch `$B6/$CC/$D0`, A/C/V
 and saved-register epilogue. Nonempty masks retain the original loop.

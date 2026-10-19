@@ -4,6 +4,18 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES native weapon setup through FastROM (2026-10-19)
+
+- Run native weapon setup, sheet preparation and palette refresh through
+  their FastROM mirrors. 5,665 differential cases retain identical CPU,
+  WRAM and multiplier output; a representative setup reduces slow ROM
+  reads from 171 to 4.
+- Goku rendering/menus/load, passengers/local flight and all 13 short/six
+  long gameplay checks pass. Long misses remain 1/3/20/3/14/63, with small
+  reductions in defeat-frame peaks. The additional animation-directive
+  mirrors increased charging misses and are excluded. Zero-drop crowded
+  gameplay remains open.
+
 ## SNES native attribute-clamp overhead (2026-10-19)
 
 - Replace repeated JSL return-address rewriting in the native attribute

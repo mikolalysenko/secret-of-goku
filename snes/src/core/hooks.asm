@@ -155,6 +155,17 @@ pullpc
 %orig4($C0F9E5, $01D52A22)
 %hijack_jsl($C0F9E5, $81D52A, 4, core)
 
+if not(defined("CORE_NATIVE_WEAPON_SLOW"))
+; Weapon setup and palettes during native actor/graphics refresh.
+; These mirrors retain the same WRAM, I/O and ROM data mappings.
+%orig4($C193C9, $00EA3D22)
+%hijack_jsl($C193C9, $80EA3D, 4, core)
+%orig4($C193DC, $00E9F422)
+%hijack_jsl($C193DC, $80E9F4, 4, core)
+%orig4($C0EA38, $0185E422)
+%hijack_jsl($C0EA38, $8185E4, 4, core)
+endif
+
 if not(defined("CORE_OAM_ROTATION_SLOW")) && not(defined("CORE_OAM_COMMIT_SLOW"))
 ; The same OAM transfer through FastROM, then set the first sprite.
 %orig4($C0C11E, $8E0000A2)

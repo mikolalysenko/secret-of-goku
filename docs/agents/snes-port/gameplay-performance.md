@@ -652,6 +652,17 @@ despite improving teleport 14 → 11. These experiments are private under
 `party-late/`; production retains the teleport-only queue. The native
 death transition and its graphics/reward work remain intact.
 
+Three native weapon setup/palette calls subsequently use their FastROM
+mirrors. Their 5,665 differential cases retain CPU/WRAM/I/O output while
+a representative setup reduces slow ROM reads from 171 to 4. Goku
+rendering/menus/load and passengers/local flight pass, as do all 13 short
+and six long gameplay cases with zero hardware/rendering errors. Long
+misses remain 1/3/20/3/14/63; punching/ki/flying-punch peaks fall slightly
+to 256.84/281.81/305.78 lines. Two additional animation-directive mirrors
+raised long charging 63 → 64 and are excluded. The selected ROM and logs
+are under `.local/snes-test/animation-fast/` (`weapon.sfc`, `weapon-short/`,
+`weapon-long/`); strict crowded timing remains open.
+
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's
 virtual combat targets are wired, and FastROM is the default. The carried
