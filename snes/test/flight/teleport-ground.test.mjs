@@ -163,7 +163,7 @@ function landing({x,y,ox,oy,terrain}){
   return null;
 }
 test('landing searches preserve candidate order and connected paths around blocked targets',t=>{
-  let random=0x73412,count=0,found=0,worst=0;
+  let random=0x73412,count=0,found=0,worst=0,cutoffs=0;
   const next=()=>{random^=random<<13;random^=random>>>17;random^=random<<5;return random>>>0;};
   for(let scene=0;scene<24;scene++){
     setup();
@@ -185,8 +185,21 @@ test('landing searches preserve candidate order and connected paths around block
       if(expected){
         found++;assert.deepEqual([0,2,4,6,8].map(off=>ram.readUInt16LE(0x21BA6+off)),expected,JSON.stringify(input));
       }
+      if(symbols.has('fl_tp_candidate_blocked_path'))for(let direction=0;direction<4;direction++){
+        const cutoff=ram[0x21B7C+direction];
+        if(cutoff<18||cutoff>54)continue;
+        cutoffs++;
+        const [dx,dy]=[[1,0],[-1,0],[0,1],[0,-1]][direction];
+        for(const distance of [18,22,26,32,38,46,54].filter(d=>d>=cutoff)){
+          let connected=true;
+          for(let step=6;step<distance&&connected;step+=4)
+            connected=clearAt({x:x+dx*step,y:y+dy*step,layer:terrain>>7,terrain:terrain&3,stairs:1});
+          assert(!connected,`cutoff rejected a connected path: ${JSON.stringify({input,direction,cutoff,distance})}`);
+        }
+      }
     }
   }
   assert(found>500&&found<count/2,`landing coverage ${found}/${count}`);
-  t.diagnostic(`${count} target/origin/terrain searches, ${found} landings, worst ${worst} CPU cycles`);
+  if(symbols.has('fl_tp_candidate_blocked_path'))assert(cutoffs>100,'failed-path cutoffs were not exercised');
+  t.diagnostic(`${count} target/origin/terrain searches, ${found} landings, ${cutoffs} path cutoffs, worst ${worst} CPU cycles`);
 });

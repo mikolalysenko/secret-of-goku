@@ -151,10 +151,15 @@ warm. Cave, ferry and special-context queries retain the cached path.
 `FLIGHT_TP_DIRECT_SLOW` restores that path for comparisons. Each ground
 landing search also remembers whether the shared first footprint, six
 pixels from the target, is connected in each direction. A blocked first
-step rejects all seven distances in that direction. This scratch word
-(`fl_tp_prefix`, `$33:7B7C`) resets for every search; airborne targets and
-hole providers bypass it. Candidate order and accepted landing positions
-remain unchanged. `FLIGHT_TP_PREFIX_SLOW` disables this reuse.
+step rejects all seven distances in that direction. Four per-search bytes
+(`fl_tp_prefix`, `$33:7B7C–7B7F`) also retain the shortest failed connected
+path in each direction. Every longer candidate contains that same blocked
+rectangle and can be rejected before checking its endpoint; shorter
+candidates keep their original order. The bytes reset for every search;
+airborne targets and hole providers bypass them. Candidate order and
+accepted landing positions remain unchanged. `FLIGHT_TP_PREFIX_SLOW`
+disables this reuse. The independent model checks 1,123 failed-path
+cutoffs as well as the complete landing results.
 
 An independent model agrees on 13,824 complete target/origin/terrain
 searches, and the 27-scene browser comparison still has no differences.

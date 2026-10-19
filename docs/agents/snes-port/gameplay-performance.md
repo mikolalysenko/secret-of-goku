@@ -614,6 +614,25 @@ also sped up air queries, but raised long flying-ki misses 20 → 31; it is
 excluded. Remaining native actor and landing-search bursts still prevent
 strict crowded zero-drop timing.
 
+Teleport searches also retain a failed connected-path distance per
+direction. Farther candidates contain the same blocked rectangle; only
+shorter candidates still need testing. The independent model's 13,824
+searches include 1,123 verified cutoffs, and its worst search falls
+34,554 → 31,719 CPU cycles. The full 27-scene browser landing/footprint/
+sweep comparison and passengers/local flight/holes pass. All 13 short
+and six long cases retain zero hardware/rendering errors and the same
+miss counts (long: 1/3/20/3/14/63). The measured teleport peak improves
+314.21 → 313.20 lines. Measurements are in `.local/snes-test/teleport-cutoffs/`
+(`final.sfc`, `final-short/`, `final-long/`); strict crowded timing remains open.
+
+An additional first-press companion delay is excluded. It keeps AI out
+of teleport's first search frame and lowers that long peak to 285.90
+lines, but raises short misses 2 → 4 and long misses 14 → 15. The
+combined delay/cutoff prototype lowers the peak to 284.70 with the same
+worse counts. Its source patch and measurements remain private under
+`party-first-search/` and `teleport-cutoffs/`; production retains the
+queue from the earlier checkpoint.
+
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's
 virtual combat targets are wired, and FastROM is the default. The carried

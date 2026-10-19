@@ -458,11 +458,12 @@ fl_mul_sq:
 fl_tp_landing:
 if not(defined("FLIGHT_TP_PREFIX_SLOW"))
 	; All seven distances include the same first connected footprint at
-	; distance 6. A blocked first step rules out that direction for this
-	; search, regardless of the endpoint. Keep pixel-dependent providers
-	; and airborne targets on their original query path.
+	; distance 6. Keep its verdict and the shortest failed path distance
+	; per direction: every longer path contains that failed rectangle.
+	; Pixel-dependent providers and airborne targets keep their old path.
 	LDA.w #0
 	STA.l !fl_tp_prefix
+	STA.l !fl_tp_prefix+2
 	LDA.l !fl_tp_e_air
 	BNE .prefix_off
 	LDA.w !fl_mflags
@@ -472,7 +473,7 @@ if not(defined("FLIGHT_TP_PREFIX_SLOW"))
 	CMP.w !fl_map
 	BEQ .prefix_ready
 .prefix_off
-	LDA.w #$8000
+	LDA.w #$FFFF
 	STA.l !fl_tp_prefix
 .prefix_ready
 endif
@@ -575,36 +576,37 @@ fl_tp_candidate:
 if not(defined("FLIGHT_TP_PREFIX_SLOW"))
 	LDA.l !fl_tp_prefix
 	BMI .endpoint
-	LDA.w !fl_tp_dir
-	ASL
-	TAX
-	LDA.l .prefix_bits,X
-	AND.l !fl_tp_prefix
-	BIT.w #$0F00
-	BNE .blocked
-	AND.w #$000F
-	BNE .endpoint
+	LDX.w !fl_tp_dir
+	LDA.l !fl_tp_prefix,X
+	AND.w #$00FF
+	BEQ .first
+	CMP.w #2
+	BEQ .endpoint
+	BCC .blocked
+	CMP.w !fl_tp_dist
+	BCC .blocked
+	BEQ .blocked
+	BRA .endpoint
+.first
 	LDA.w #6
 	JSR fl_tp_point
 	LDA.w #1
 	JSR fl_tp_clear
 	BCS .connected
-	LDA.w !fl_tp_dir
-	ASL
-	TAX
-	LDA.l .prefix_bits,X
-	ORA.l !fl_tp_prefix
-	STA.l !fl_tp_prefix
+	LDX.w !fl_tp_dir
+	SEP #$20
+	LDA.b #1
+	STA.l !fl_tp_prefix,X
+	REP #$20
 .blocked
 	CLC
 	RTS
 .connected
-	LDA.w !fl_tp_dir
-	TAX
-	LDA.l fl_bitmask,X
-	AND.w #$00FF
-	ORA.l !fl_tp_prefix
-	STA.l !fl_tp_prefix
+	LDX.w !fl_tp_dir
+	SEP #$20
+	LDA.b #2
+	STA.l !fl_tp_prefix,X
+	REP #$20
 .endpoint
 endif
 	; the spot
@@ -628,6 +630,16 @@ endif
 	BNE .samples
 	JSR fl_tp_ground_path
 	BCS .ok
+if not(defined("FLIGHT_TP_PREFIX_SLOW"))
+.blocked_path
+	; The failed rectangle is contained by every farther candidate in
+	; this direction. Shorter candidates must still be tried in order.
+	LDX.w !fl_tp_dir
+	LDA.w !fl_tp_dist
+	SEP #$20
+	STA.l !fl_tp_prefix,X
+	REP #$20
+endif
 	RTS
 .samples
 	LDA.w #6
@@ -701,10 +713,6 @@ endif
 	STA.l !fl_tp_l_facing
 	SEC
 	RTS
-if not(defined("FLIGHT_TP_PREFIX_SLOW"))
-.prefix_bits
-	dw $0101,$0202,$0404,$0808
-endif
 
 if not(defined("FLIGHT_TP_GROUND_SLOW"))
 ; Teleport's ground class combines landability with its descriptor rules.

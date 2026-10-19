@@ -4,6 +4,21 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES failed teleport path reuse (2026-10-19)
+
+- Retain the shortest failed connected path per direction during one
+  landing search. Farther candidates contain that blocked rectangle;
+  shorter candidates keep their original order. Airborne targets and
+  floor-hole providers retain their original checks.
+- The independent model matches all 13,824 searches and verifies 1,123
+  failed-path cutoffs. Its worst search falls 34,554 → 31,719 CPU cycles.
+  The full 27-scene browser comparison, passengers/local flight/holes
+  and all 13 short/six long hardware checks pass.
+- Long miss counts remain 1/3/20/3/14/63; teleport's peak falls only
+  314.21 → 313.20 lines. An extra first-press companion delay lowered
+  the peak further but increased miss frequency, so it remains a private
+  experiment. Strict crowded zero-drop timing is still open.
+
 ## SNES ordinary-floor landing cost (2026-10-19)
 
 - Read ordinary clear floor directly for ground footprints. Caves, ferry
