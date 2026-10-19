@@ -4,6 +4,22 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES guarded graphics transfer window (2026-10-19)
+
+- Permit the existing bounded ROM-to-WRAM DMA through sampled line 176,
+  retaining its field/vector/menu/HDMA guards and interruptible fallback.
+  The transfer, setup and restoration still finish before the line-196
+  HUD interrupt. Boundary comparisons cover all sheets/slots with IRQs
+  enabled and masked; gameplay checks reject line wrap and late completion.
+- The long charge run's late weapon copy falls from 68.65 to 14.84 scanlines.
+  Its worst logic frame changes 385.70 → 382.31 lines. The six long crowded
+  cases retain 2/3/19/5/52/68 misses per 1,200 frames for punches/ki/flying
+  ki/flying punches/teleport/charge, so strict zero-drop timing remains open.
+- All 13 short cases and six long repeats retain zero palette, meter,
+  OBJ, complete-NMI and graphics-DMA errors. Goku field/status/forms/menus/
+  save/load, local passengers/water/teleport/whip, and world takeoff/locks/
+  landing/controls/ki/radar/map/timing checks pass.
+
 ## SNES ground effect priority (2026-10-19)
 
 - Append ground foreground effects and select their draw order with the

@@ -476,6 +476,20 @@ die. Profiling still finds expensive native actor, movement/collision and
 graphics work plus effect construction. More audio removal alone will not
 eliminate these stalls. Song/map transitions also retain native pauses.
 
+After the ground OBJ-priority optimization, the late weapon copy in the
+long charging run reaches the graphics guard at line 175. Extending its
+early DMA cutoff from 160 to 176 reduces that copy from 68.65 to 14.84
+scanlines, without waiting or changing interrupt masks. Every transfer
+still finishes before the line-196 HUD IRQ; the fixed 2 KiB maximum plus
+setup/restoration is bounded below 16 lines. Assembled boundary checks
+cover both IRQ states, all sheets/slots and fallback contexts. The 13
+short and six long gameplay cases retain zero hardware/rendering errors,
+and Goku menus/save/load, passengers/local flight and world/radar checks
+pass. Long crowded counts remain 2/3/19/5/52/68 for punches/ki/corridor
+flying ki/flying punches/teleport/charge. Measurements and instruction
+profiles are under `.local/snes-test/graphics-window/`. Strict crowded
+timing remains open; shortening this copy does not remove every stall.
+
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's
 virtual combat targets are wired, and FastROM is the default. The carried

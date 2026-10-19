@@ -37,6 +37,7 @@ function runner(rom){
       const count=io[0x4375]|io[0x4376]<<8,src=io[0x4372]|io[0x4373]<<8|io[0x4374]<<16;
       const dest=io[0x2181]|io[0x2182]<<8|(io[0x2183]&1)<<16;
       assert(count>0&&count<=2048);assert(dest+count<=ram.length);
+      assert(line<=176,'DMA started outside its guarded field window');
       for(let i=0;i<count;i++)ram[dest+i]=rom[hiromToPc(src+i,rom.length)];
       io[0x4372]=(src+count)&255;io[0x4373]=((src+count)>>8)&255;
       io[0x4375]=io[0x4376]=0;
@@ -112,12 +113,12 @@ test('other source sheets, layouts and decimal mode retain the retail decoder',(
 });
 test('early-field DMA matches retail bytes and CPU state for all sheets and slots',()=>{
   for(const sheet of [{},{bank:0xD4,source:0,count:64,dest:0},{bank:0xD4,source:0x2FE8,count:64,dest:0}])
-    for(let slot=0;slot<6;slot++)for(const dmaLine of [0,80,160])for(const p of [0,0x21,0xC6,0xE7])
+    for(let slot=0;slot<6;slot++)for(const dmaLine of [0,80,160,161,175,176])for(const p of [0,4,0x21,0xC6,0xE7])
       compare({...sheet,slot,dmaLine,p},true,1);
 });
 test('late scanlines, other handlers, menus, loads and HDMA retain interruptible copies',()=>{
   for(const sheet of [{},{bank:0xD4,source:0,count:64,dest:0},{bank:0xD4,source:0x2FE8,count:64,dest:0}])
-    for(let slot=0;slot<6;slot++)for(const dmaLine of [161,195,224,225,261])
+    for(let slot=0;slot<6;slot++)for(const dmaLine of [177,178,195,224,225,261])
       for(const p of [0,4])compare({...sheet,slot,dmaLine,p},true);
   for(const gate of [
     {[0x100]:0x40},{[0x102]:0x88},{[0x104]:0x40},{[0x106]:0x88},

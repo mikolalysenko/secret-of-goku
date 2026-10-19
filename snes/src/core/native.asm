@@ -767,7 +767,7 @@ core_native_body:
 
 ; A ROM -> WMDATA DMA may run only early in an ordinary native field
 ; frame. The fixed transfer is <= 2048 bytes (12.1 scanlines); setup and
-; register restoration bring the bound below 16 lines. Sampling <=160
+; register restoration bring the bound below 16 lines. Sampling <=176
 ; therefore finishes before the native line-196 HUD IRQ and line-225 NMI.
 ; No interrupt is masked and no channel configuration survives the copy.
 ; Later scanlines, scene/load work, other vectors and HDMA channel 7 keep
@@ -796,7 +796,7 @@ core_native_dma_window:
 	AND.w #$0080
 	BNE .no
 	JSR core_vcount
-	CMP.w #161
+	CMP.w #177
 	BCS .no
 	SEC
 	RTS

@@ -28,7 +28,8 @@ function test()
       if not start then return end
       local s=emu.getState();local duration=(s.masterClock-start)/1364
       gfxDmaCopies=gfxDmaCopies+1;maxGfxDmaLines=math.max(maxGfxDmaLines,duration)
-      if line>162 or s['ppu.scanline']>=196 or duration>=16 then gfxDmaOverruns=gfxDmaOverruns+1 end
+      local finish=s['ppu.scanline']
+      if line>178 or finish<line or finish>=196 or duration>=16 then gfxDmaOverruns=gfxDmaOverruns+1 end
       start=nil
     end,emu.callbackType.exec,p[2],p[2])
   end
