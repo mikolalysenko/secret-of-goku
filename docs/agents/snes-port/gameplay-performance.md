@@ -8,22 +8,55 @@ combat is not yet guaranteed to run without missed video frames.
 
 ## Current checkpoint
 
-The latest 1,200-video-frame runs use the default teleport-reuse build in
-`.local/snes-test/tp-path-join/final.sfc`. All rendering and hardware
+The latest 1,200-video-frame runs use the FX cache build in
+`.local/snes-test/fx-wide-hash/game.sfc`. All rendering and hardware
 checks pass; flight, teleport and charging still miss frames.
 
 | Scenario | Missed frames | Longest field update (scanlines) |
 | --- | ---: | ---: |
-| Ground punches | 0 | 239.04 |
+| Ground punches | 0 | 237.39 |
 | Ground ki | 0 | 237.94 |
 | Flying ki, corridor | 13 | 252.18 |
-| Flying punches | 1 | 286.10 |
+| Flying punches | 1 | 280.58 |
 | Teleports | 15 | 281.39 |
-| Charge and release | 44 | 274.93 |
+| Charge and release | 44 | 274.97 |
 
 The measurements below preserve the history of this review; their earlier
 counts are not the current release result. Passing a normal gameplay run
 does not imply zero-drop timing for every case.
+
+### FX residency lookup and reset follow-up
+
+The resident-cell hint table now has 128 buckets in previously unused
+work SRAM at `$31:756C–75EB`. Eight animation cells spaced 16 ids apart
+take 1,256 CPU cycles to resolve, versus 2,784 with the 16-bucket
+comparison build (`FX_CACHE_HASH_SMALL`). Each hint still checks the
+actual resident cell and pending-upload flags before drawing.
+
+Residency invalidation is idempotent: after clearing the bitset and hints,
+further region changes cost 33 cycles until a new hint is stored. This
+avoids clearing the same cache repeatedly during scene/region setup.
+The FX initialization version changes so older SRAM cannot reuse stale
+hints. Water palettes, companion queues, save data and debug state retain
+their allocations.
+
+The 21 assembled FX checks, gallery/beam/aura/debris checks, six local-flight
+checks, all 14 available world/radar/map checks and core
+boot/party/death/HP/save/WRAM checks pass. All 13 short and six long
+gameplay runs retain zero palette,
+meter, OBJ, graphics-DMA and complete-NMI errors. FX peaks fall by about
+5.55 scanlines in the punch/flying-ki/flying-punch runs. Overall flying
+punch peaks fall 286.10 → 280.58; missed-frame counts remain unchanged.
+Charge's peak moves 274.93 → 274.97, so this is a reduction in setup bursts,
+not a claim that crowded timing is fixed.
+
+A larger native-pose predecode trial was excluded. Its 2,192-pose CPU
+comparisons passed and aggregate tile decoding fell about 17%, but it used
+over 300 KiB of extra data for roughly 0.2 scanlines less actor work per
+frame, with no missed-frame reduction and a slightly worse charge peak. The
+private trial, CPU comparisons and profiles are in
+`.local/snes-test/pose-decode/`. Movement profiling points to native
+party/enemy contact distances (`C1:CE72–CF19`) as another significant cost.
 
 ## Changes in this pass
 

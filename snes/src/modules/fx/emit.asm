@@ -784,7 +784,7 @@ fx_cache_get:
 	; A matching hash entry is resident. Every residency reset also clears
 	; the hash, including conservative resets when just one region changes.
 	; Most effects reuse these cells every frame; avoid the bitset lookup.
-	AND.w #$000F
+	AND.w #!FX_HASH_SIZE-1
 	TAX
 	LDA.l !fx_hash,X
 	AND.w #$00FF
@@ -813,8 +813,10 @@ fx_cache_get:
 	JMP .miss
 .found
 	PHX                          ; remember the entry for this cell's bucket
+	LDA.w #1
+	STA.l !fx_hash_dirty
 	LDA !d_tmp
-	AND.w #$000F
+	AND.w #!FX_HASH_SIZE-1
 	TAX
 	PLA
 	SEP #$20

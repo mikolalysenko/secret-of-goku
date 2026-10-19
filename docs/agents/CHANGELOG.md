@@ -4,6 +4,22 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES effect cache setup (2026-10-19)
+
+- Expand resident-cell hints to 128 buckets in unused work SRAM and avoid
+  repeating cache invalidation during successive region changes. Retain
+  resident-cell validation, upload limits and palette ownership; invalidate
+  older SRAM through the FX initialization version.
+- Eight animation cells sharing a former bucket resolve in 1,256 instead
+  of 2,784 CPU cycles. Repeated resets cost 33 cycles. FX setup peaks fall
+  about 5.55 scanlines in punch/flying-ki/flying-punch runs; the flying
+  punch field peak falls 286.10 → 280.58 scanlines.
+- Assembled FX, pixel, local-flight, world/radar/map, core and short/long
+  gameplay checks pass. Long miss counts remain 0/0/13/1/15/44 for
+  punch/ki/flying ki/flying punch/teleport/charge. Crowded timing remains
+  unfinished. The larger native-pose predecode experiment was excluded
+  because it did not improve missed-frame counts.
+
 ## SNES teleport terrain reuse (2026-10-19)
 
 - Reuse checked footprints when they already cover the connected path.

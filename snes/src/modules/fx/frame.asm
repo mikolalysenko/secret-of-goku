@@ -346,18 +346,22 @@ fx_release:
 fx_clear_rbits:
 	PHA
 	PHX
+	LDA.l !fx_hash_dirty
+	BEQ .done                   ; repeated region changes already invalidated it
 	LDA.w #$0000
+	STA.l !fx_hash_dirty
 	LDX.w #!FX_RBITS_SIZE-2
 -	STA.l !fx_rbits,X
 	DEX
 	DEX
 	BPL -
 	LDA.w #$FFFF
-	LDX.w #14
+	LDX.w #!FX_HASH_SIZE-2
 -	STA.l !fx_hash,X
 	DEX
 	DEX
 	BPL -
+.done
 	PLX
 	PLA
 	RTS
