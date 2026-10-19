@@ -8,22 +8,44 @@ combat is not yet guaranteed to run without missed video frames.
 
 ## Current checkpoint
 
-The latest 1,200-video-frame runs use the native visibility build in
-`.local/snes-test/target-visible/game.sfc`. All rendering and hardware
+The latest 1,200-video-frame runs use the native AI dispatch build in
+`.local/snes-test/ai-dispatch/game.sfc`. All rendering and hardware
 checks pass; flight, teleport and charging still miss frames.
 
 | Scenario | Missed frames | Longest field update (scanlines) |
 | --- | ---: | ---: |
-| Ground punches | 0 | 237.39 |
-| Ground ki | 0 | 237.94 |
-| Flying ki, corridor | 13 | 251.60 |
-| Flying punches | 1 | 280.53 |
-| Teleports | 15 | 280.38 |
-| Charge and release | 41 | 276.95 |
+| Ground punches | 0 | 237.30 |
+| Ground ki | 0 | 237.85 |
+| Flying ki, corridor | 10 | 250.48 |
+| Flying punches | 1 | 280.41 |
+| Teleports | 15 | 279.35 |
+| Charge and release | 37 | 276.29 |
 
 The measurements below preserve the history of this review; their earlier
 counts are not the current release result. Passing a normal gameplay run
 does not imply zero-drop timing for every case.
+
+### Native AI dispatch follow-up
+
+The private command dispatcher and its sole native loop caller now branch
+directly between each other. The dispatcher still saves/restores P and D
+around every opcode; the redundant `REP` before `PLP` is removed. Script
+order, operands, random draws, the 256-command limit and actor cadence
+remain unchanged. An ordinary dispatch saves nine CPU cycles.
+
+All 18,185 assembled comparisons pass: all 256 actual opcode handlers,
+operand and target variants, incoming flags, stack page boundaries, and
+complete loops through termination or the native command limit. The fixture
+compares live parent stack, WRAM/SRAM, CPU context and I/O writes. Existing
+operand-advance, random-choice and visibility comparisons also pass.
+
+Long flying-ki misses improve 13 → 10 and charging improves 41 → 37 per
+1,200 video frames. Other long counts and all 13 short counts are unchanged;
+all palette, meter, OBJ, graphics-DMA and complete-NMI checks remain clean.
+Ten combat comparisons, six local-flight tests, all 14 available world/
+radar/map cases and core title/frame/party checks pass. Results are under
+`.local/snes-test/ai-dispatch/`; the production ROM matches the measured
+candidate byte for byte. Strict crowded timing is still open.
 
 ### Native target visibility follow-up
 

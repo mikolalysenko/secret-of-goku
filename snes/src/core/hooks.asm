@@ -98,6 +98,26 @@ endmacro
 %core_ai_advance_tail($C102B3, $0245)
 endif
 
+; The bytecode dispatcher has one caller, the loop at C1:257A. Branch
+; directly between them; its P/D saves still surround every command.
+; PLP selects the return width, so the preceding REP was redundant.
+if not(defined("CORE_NATIVE_DISPATCH_SLOW"))
+%orig4($C1257A, $C9251A20)
+%patch($C1257A, 3, core)
+pushpc
+org $C1257A
+	JMP $251A
+pullpc
+%orig4($C1252F, $2B2820C2)
+%patch($C1252F, 5, core)
+pushpc
+org $C1252F
+	PLP
+	PLD
+	JMP $257D
+pullpc
+endif
+
 if not(defined("CORE_NATIVE_DISTANCE_SLOW"))
 %orig4($C10358, $20C2080B)
 %hijack($C10358, core_native_distance, 4, core)

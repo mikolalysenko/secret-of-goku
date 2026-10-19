@@ -4,6 +4,20 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES native AI dispatch (2026-10-19)
+
+- Branch directly between the native bytecode loop and its private
+  dispatcher, retaining per-command P/D preservation and removing a
+  redundant width change. Save nine CPU cycles per ordinary dispatch
+  without changing script order, random draws, limits or actor cadence.
+- All 18,185 assembled opcode/loop comparisons and existing AI helper
+  checks pass. Ten combat comparisons, six local-flight tests, all 14
+  available world/radar/map cases and core title/frame/party tests pass.
+- Long flying ki improves 13 → 10 missed frames and charging improves
+  41 → 37 per 1,200 frames. Other long counts and all short counts remain
+  unchanged, with zero hardware/rendering errors. Crowded zero-drop timing
+  remains unfinished.
+
 ## SNES native target visibility (2026-10-19)
 
 - Inline the height subtraction in the two native target-visibility checks,
