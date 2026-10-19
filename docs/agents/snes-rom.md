@@ -133,7 +133,7 @@ savestate), `H.saveStable(name)`, `H.load(path)`, `H.importSnesJs(dir)`,
 | ROM `$40–$7D:0000–7FFF` | Extended data (xdata): DMA sources and bulk tables from `snes/gen` (second 4 MiB, slow banks) |
 | WRAM `7E:D700–DDFF` | Module state blocks (`snes/src/core/ram.asm`) |
 | WRAM `7E:6E40–6FFF` | Core per-frame staging (OAM, scratch, test mailbox) only: the game's BG tile decoder overwrites it during some map loads |
-| SRAM `$31:7480–751F` | Core state that must survive map loads (`!CORE_SAFE`: event request, sound queue, pad latches, VRAM claims, DMA queue, OAM high-water marks, HDMAEN shadow; long addressing, cleared at power-on and title entry, revalidated each frame) |
+| SRAM `$31:7480–751F` | Core state that must survive map loads (`!CORE_SAFE`: event request, sound queue, pad latches, VRAM claims, DMA queue, OAM high-water marks and priority, HDMAEN shadow; long addressing, cleared at power-on and title entry, revalidated each frame) |
 | WRAM `7E:7E40–7FFF` | UI block, then spare |
 | SRAM `$30:6000–7FFF` | Original saves, untouched |
 | SRAM `$31:6000–747F` | Persistent Goku state: live block (`$31:6000`) and one sidecar per native slot |
@@ -216,7 +216,7 @@ of each hook in `snes/src/modules.asm`.
 | Hook | When |
 | --- | --- |
 | `modules_field_frame` | Every completed field frame (towns, dungeons, dialogue, events, Mode 7 boss arenas) after the game logic and OAM build, before the NMI handshake (`00:B073`) |
-| `modules_field_nmi` | Field vblank after the game's uploads, still force-blanked (`00:C158`); only for frames the loop completed. Afterwards the core writes the game's HDMAEN shadow `$2C` to `$420C`. If the vblank work ran into the next frame's display (scanline 0–224), only channels already running stay on: a channel switched on after HDMA started would run from stale tables. Newly requested channels then start with the next vblank (`!core_hdmaen` holds the value written; core test `hdmaen`) |
+| `modules_field_nmi` | Field vblank after the game's uploads, still force-blanked (`00/80:C158`); only for frames the loop completed. Afterwards the core writes the game's HDMAEN shadow `$2C` to `$420C`. If the vblank work ran into the next frame's display (scanline 0–224), only channels already running stay on: a channel switched on after HDMA started would run from stale tables. Newly requested channels then start with the next vblank (`!core_hdmaen` holds the value written; core test `hdmaen`) |
 | `modules_world_frame` | World flight frame end (`00:8085`) |
 | `modules_world_nmi` | World vblank after the game's uploads and HDMA setup (`00:8903`); not force-blanked |
 | `modules_menu_frame` | Full-screen menus (game select, name entry, file list, status/equipment, save screen), once per frame in vblank after the menu's uploads (`C0:1E08`) |
@@ -229,7 +229,7 @@ of each hook in `snes/src/modules.asm`.
 | `!core_pad`, `!core_pad_new`, `!core_pad_rel` | Physical pad 1 held/pressed/released, updated once per dispatched frame of any mode (`$4218` layout, `!PAD_*`) |
 | `!core_pad_mask`, `!core_pad_inject` | Per-frame requests (cleared before each dispatch; OR your bits in): buttons hidden from / added to every game pad read (movement, rings, dialogue, menus, world steering). They apply from the game's next read (one frame later). A mask lasts at most two reads without a new request; injected buttons stay until one read consumes them, so a one-frame request reaches the menus' 4-frame poll. The title program is not filtered. `!core_pad_seen` = what the game got |
 | `core_oam_add` | Sprite from `!core_spr_x/y` (signed), `!core_spr_tile` (OAM bytes 2–3), `!core_spr_size` (0/1), behind the native sprites: field right after them, world flight in slots 88–127. Carry set = no room. Offscreen sprites are dropped. Call from frame callbacks |
-| `core_oam_add_front` | Field only: in front of all native sprites (max 16 per frame; the natives shift by a multiple of 4 slots) |
+| `core_oam_add_front` | Field only: in front of all native sprites (max 16 per frame; ground play uses PPU priority rotation, local flight retains physical insertion) |
 | `core_oam_hide`, `!core_oam_native` | Hide slot A; first slot after this frame's native sprites (inspect or edit natives below it) |
 | `core_queue_vram` | A = VRAM word address, X = bytes, Y = source address, `!core_scratch` byte = source bank. Uploaded in this mode's vblank on a DMA channel no HDMA uses; a transfer that would not end by line 258 waits for the next vblank. Carry set when the queue (8) or the per-frame budget (3 KiB) is full |
 | `core_vblank_lines` | A = scanlines left before line 258 (0 outside vblank), for modules' own vblank work |
@@ -435,7 +435,8 @@ reads before the first (DMA writes do not reach those callbacks).
 | `C0:B073` | Hijacked by `core_field_frame` (replaced `SEP #$20 / LDA #$01`) |
 | `$0100/$0104` | NMI/IRQ trampolines (`JML`). Field: `$00C0A8`/`$00C1CF`; world flight: `$0088CF`/`$008A4B`; menus: `$C020A7` (IRQ off); title program: RTI/`$7EA266`. Every mode: [engine.md](snes-port/engine.md) |
 | `00:C0A8` | Field NMI: forced blank, palette DMA from `7E:0600` (or `7E:BE00`; `$200` bytes, when `$EC & 5`), OAM DMA from `7E:0800` (`$220` bytes, when `$EC & 9`), VRAM queues (`C692`), sprite cells (`C1:950D`), then `C1E7` |
-| `00:C158` | Hijacked by `core_field_nmi` (replaced `SEP #$20 / LDA $2C / STA $420C`) |
+| `00:C11E` | Core runs the same OAM DMA through FastROM, restores the completed field's OBJ priority, then resumes native NMI at `80:C13E`. NMIs that skip OAM stay in bank `$00`; timing callbacks watch both mirrors |
+| `00/80:C158` | Hijacked by `core_field_nmi` (replaced `SEP #$20 / LDA $2C / STA $420C`) |
 
 ## Analysis tools
 

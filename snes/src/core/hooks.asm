@@ -132,6 +132,23 @@ pullpc
 %orig4($C0F9E5, $01D52A22)
 %hijack_jsl($C0F9E5, $81D52A, 4, core)
 
+if not(defined("CORE_OAM_ROTATION_SLOW")) && not(defined("CORE_OAM_COMMIT_SLOW"))
+; The same OAM transfer through FastROM, then set the first sprite.
+%orig4($C0C11E, $8E0000A2)
+%orig4($C0C122, $00A22102)
+%orig4($C0C126, $43728E08)
+%orig4($C0C12A, $8E0400A2)
+%orig4($C0C12E, $749C4370)
+%orig4($C0C132, $0220A243)
+%orig4($C0C136, $A943758E)
+%orig4($C0C13A, $420B8D80)
+%hijack($C0C11E, core_oam_upload, 32, core)
+; Ring/map OBJ rebuilds retire the previous field's priority state.
+%orig4($C0E355, $00A230C2)
+%orig1($C0E359, $00)
+%hijack($C0E355, core_oam_native_clear, 5, core)
+endif
+
 ; Native field-NMI tilemap/HUD and actor uploads through their FastROM
 ; mirrors. Transfers, register writes and the original return state stay
 ; identical; only instruction fetches and the RTS bank bridge change.

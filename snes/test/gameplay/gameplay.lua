@@ -58,7 +58,7 @@ function test()
         pc=sp and H.r16(sp+2) or 0, bank=sp and H.r8(sp+4) or 0}
     end
   end,emu.callbackType.exec,0x00C0A8,0x00C0A8)
-  emu.addMemoryCallback(function()
+  local function nmiDone()
     if not measuring or not nmiStart then return end
     local s=emu.getState()
     local lines=(s['masterClock']-nmiStart)/1364
@@ -68,7 +68,10 @@ function test()
       lateNmis[#lateNmis+1]={frame=H.frame,phase=H.r8(0x7E0056),parts=nmiParts,line=s['ppu.scanline'],duration=lines}
     end
     nmiStart=nil
-  end,emu.callbackType.exec,0x00C16F,0x00C16F) -- final RTI, including the joypad/clock hook
+  end
+  -- Either native mirror can finish NMI; include the joypad/clock hook.
+  emu.addMemoryCallback(nmiDone,emu.callbackType.exec,0x00C16F,0x00C16F)
+  emu.addMemoryCallback(nmiDone,emu.callbackType.exec,0x80C16F,0x80C16F)
   if PROFILE_NATIVE then
     emu.addMemoryCallback(function() inside=measuring end,emu.callbackType.exec,0x00B08C,0x00B08C)
     emu.addMemoryCallback(function() inside=false end,emu.callbackType.exec,0x00B077,0x00B077)
@@ -81,7 +84,7 @@ function test()
     emu.addMemoryCallback(function()
       if measuring then active[p[1]] = emu.getState()['masterClock'] end
     end, emu.callbackType.exec, p[2], p[2])
-    emu.addMemoryCallback(function()
+    local function spanDone()
       local t = active[p[1]]
       if t then
         local lines = (emu.getState()['masterClock'] - t) / 1364
@@ -90,7 +93,9 @@ function test()
         if p[1]:sub(1,4)=='nmi_' then nmiParts[p[1]]=lines end
         active[p[1]] = nil
       end
-    end, emu.callbackType.exec, p[3], p[3])
+    end
+    emu.addMemoryCallback(spanDone,emu.callbackType.exec,p[3],p[3])
+    if p[1]=='nmi_native' then emu.addMemoryCallback(spanDone,emu.callbackType.exec,p[3]|0x800000,p[3]|0x800000) end
   end
   emu.addMemoryCallback(function()
     if measuring then started = emu.getState()['masterClock']; parts={} end

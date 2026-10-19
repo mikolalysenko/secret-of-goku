@@ -7,10 +7,11 @@ Core services built on these facts: [snes-rom.md](../snes-rom.md#modules-and-cor
 Timing numbers come from `node snes/test/core/measure.mjs` (Mesen, 240
 frames per scene with walking input; re-run it after engine-heavy changes).
 
-Banks: the field outer loop and its NMI/IRQ execute in bank `$00`
-(the HiROM mirror of `C0`), so Mesen exec callbacks and savestate PCs use
-`00:xxxx` for them. The port runs selected native movement, actor, collision
-and OBJ passes, background scrolling and actor preparation through the
+Banks: the field outer loop and its NMI/IRQ entries execute in bank `$00`
+(the HiROM mirror of `C0`). After an OAM upload, the field NMI resumes at
+`80:C13E`; without that upload it stays in `$00`. Mesen end-of-NMI callbacks
+must watch both mirrors through `C16F`. The port runs selected native movement,
+actor, collision and OBJ passes, background scrolling and actor preparation through the
 equivalent FastROM mirrors `$80/$81/$82`; the
 field outer loop and interrupt vectors retain bank `$00`. World flight now
 runs its loop and helpers through `$80/$81` too, while its NMI/IRQ vectors
@@ -20,7 +21,7 @@ retain `$00`. Other code runs in `C0`–`DF` through `JSL`.
 
 | Mode | Main loop (waits for vblank) | NMI (`$0100` JML) | IRQ (`$0104` JML) | Core hooks |
 | --- | --- | --- | --- | --- |
-| Field: towns, dungeons, dialogue, scripted events, Mode 7 boss arenas (Mana Beast 253, Fortress bosses 488/489) | Init `00:B03F` (stack `$01FF`, `NMITIMEN=$B1`); `00:B070 JSR $B08C` (frame logic), `B073` sets `$EC` bit 0, `B079` waits until NMI clears it; `$56` counts 0–4 | `00:C0A8` | `00:C1CF` at V=196/H=184 | frame `00:B073`, vblank `00:C158` |
+| Field: towns, dungeons, dialogue, scripted events, Mode 7 boss arenas (Mana Beast 253, Fortress bosses 488/489) | Init `00:B03F` (stack `$01FF`, `NMITIMEN=$B1`); `00:B070 JSR $B08C` (frame logic), `B073` sets `$EC` bit 0, `B079` waits until NMI clears it; `$56` counts 0–4 | `00:C0A8` | `00:C1CF` at V=196/H=184 | frame `00:B073`, vblank `00/80:C158` |
 | World flight (Flammie, the opening's legend fly-over) | Init `C0:8038` (stack reset); the port resumes at `80:804A` after its loader hook. Loop `80:8064`–`8091`: logic, `8085` sets `$EC=$81`, `808D` waits | `00:88CF` | `00:8A4B` at V≈100–103 (horizon) | loader `C0:8045`, frame `80:8085`, vblank `00:8903` |
 | Ring menus | `C0:6943`: polls `$4212` for vblank start, sets `$EC` bit 3, `JSL $D0D397`; pads through `C0:695E` | field (`00:C0A8`) | field | frame `C0:694F` (in vblank) |
 | Full-screen menus: game select, name entry, file list, status/equipment/action grid, save screen, controller config | `C0:1DEF`–`1DFD` polls `$4212` (no NMI work); vblank uploads `1DFF`–`1E05`; input and logic every 4th frame (`$A201`, `C0:2BD9`) | `C0:20A7` (BG scroll only) | none (`NMITIMEN=$81`) | frame `C0:1E08` (in vblank) |
@@ -77,7 +78,8 @@ dialogue, menus, the name editor and world steering all see it.
 
 - Buffer `$7E:0800` (128 × X, Y, tile, attr) + `$7E:0A00` (2 bits per
   sprite: X bit 8, size); NMI DMAs `$220` bytes on channel 7. Lower slots
-  draw in front. Hidden slots: X=`$FF`, Y=`$E0`.
+  draw in front unless priority rotation selects another first slot.
+  Hidden slots: X=`$FF`, Y=`$E0`.
 - Field build each frame: `C0:BCCC` (from `B0A0`) resets the cursor `$7C`,
   `$59/$5A` (high-table bit/byte) and clears the high table; HUD portraits
   first (`C1:E61D`, tiles `$E8/$EA/$EC`); actors via `C0:E38E` (lists `$0540`
@@ -330,15 +332,27 @@ eighth assembled text test compares full RAM and CPU state at each loop's
 continuation. Ten-column scrolls take 964 rather than 4,467 CPU cycles;
 twenty-column borders take 1,741 rather than 8,938.
 
-The field foreground-sprite commit uses descending word copies on the
-ground and packs four high-bit entries at once. Partial groups are masked
-after packing, and unused reserved slots keep their original tile bytes
-while their positions are hidden. Both copies remain interruptible.
-Local flight retains the previous commit sequence because the unrestricted
-trial changed input/actor alignment and regressed its long ki workload.
-`-DCORE_OAM_COMMIT_SLOW=1` selects the previous path everywhere.
-`snes/test/core/oam-commit.test.mjs` compares assembled execution against
-an independent slot model over every capacity and packed-high-byte value,
-including overlap, empty input, padding and the last available slot. Six
-front sprites plus 192 native bytes take 1,895 instead of 2,933 CPU cycles;
-sixteen take 2,197 instead of 4,731. No DMA channel or SRAM is added.
+The ground foreground-sprite commit leaves native/rear entries in place and
+appends the staged effects. After the same 544-byte DMA, `$2102/$2103` selects
+the appended group as the first OBJ; evaluation wraps through hidden slots
+back to native slot zero. This follows the [OAM priority register](https://www.problemkaputt.de/fullsnes.htm#snesmemoryoamaccessspriteattributes).
+The rounded reservation, sprite capacity and `$0120` cleanup remain unchanged.
+Four size/X-high entries are packed at once, including native ends that share
+a high-table byte. SRAM `!CORE_SAFE+$017` holds the completed first-slot byte
+(`$80 | slot`, zero for ordinary priority), cleared by mode handoffs and the
+native `C0:E355` full OBJ clear used by rings/maps. No DMA bytes or channels
+are added. The uploader and remaining native NMI use FastROM; RTI restores
+the interrupted bank from the hardware stack.
+
+Local flight retains physical insertion. The unrestricted rotation trial
+reduced its maximum logic spike but increased sustained ki misses from 19
+to 33 per 1,200 frames; `-DCORE_OAM_ROTATION_AIR=1` retains that comparison.
+`-DCORE_OAM_ROTATION_SLOW=1` restores the preceding ground word-copy/airborne
+MVP paths, and `-DCORE_OAM_COMMIT_SLOW=1` uses MVP everywhere.
+`snes/test/core/oam-commit.test.mjs` compares assembled execution against an
+independent slot model over every capacity and packed high-byte value,
+including empty input, padding and the last slot. Six foreground sprites
+plus 192 native bytes take 712 instead of 1,895 CPU cycles; sixteen take
+1,062 instead of 2,197. `oam-transition.test.mjs` checks ordered DMA/priority
+writes and CPU state. The Mesen `oam-order` case checks opaque overlapping
+sprites, lag persistence, ring entry/exit and removal using rendered pixels.

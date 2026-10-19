@@ -100,6 +100,7 @@
 !core_vram_owner      = !CORE_SAFE+$040 ; 32 bytes: VRAM pool cell owners (core/vram.asm)
 !core_test            = !RAM_CORE_EXT+$100 ; 128 bytes: CORE_TEST mailbox (test builds only)
 !core_hdmaen          = !CORE_SAFE+$016 ; byte: HDMAEN written by the last field vblank
+!core_oam_first       = !CORE_SAFE+$017 ; byte: $80 | first field OBJ, or 0 for normal order
 ; !RAM_CORE_EXT+$181-$1BB reserved for core.
 !core_native_xy = !RAM_CORE_EXT+$1BC ; word: native OBJ anchor; frame thread only
 
@@ -572,7 +573,7 @@ endif
 
 ; Ring menus, C0:694F: the ring loop's wait-for-vblank returns here once per
 ; frame, after the field NMI uploaded OAM/CGRAM. Replaced: LDA #$08 / TSB
-; $EC (M8). Field sprites stay frozen in the OAM buffer while a ring is open.
+; $EC (M8). The ring owns the field OAM buffer after its native clear/rebuild.
 core_ring_frame:
 	%core_enter()
 	INC.w !core_frame_ring&$FFFF

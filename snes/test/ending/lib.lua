@@ -49,7 +49,7 @@ E.overrunAt = {}
 E.watchArmed = false
 function E.watchVblank(slack)
   slack = slack or 1
-  emu.addMemoryCallback(function()
+  local function checkEnd()
     if not E.watchArmed then return end
     local line = emu.getState()['ppu.scanline']
     if line < 200 and line > slack then
@@ -59,7 +59,9 @@ function E.watchVblank(slack)
         E.overrunAt[#E.overrunAt + 1] = string.format('p%d a%d l%d', H.r8(E.phase), H.r16(E.age), line)
       end
     end
-  end, emu.callbackType.exec, 0x00C164, 0x00C164)
+  end
+  emu.addMemoryCallback(checkEnd,emu.callbackType.exec,0x00C164,0x00C164)
+  emu.addMemoryCallback(checkEnd,emu.callbackType.exec,0x80C164,0x80C164)
 end
 -- Arm only while the scene is visible (not loading).
 function E.arm(on) E.watchArmed = on end

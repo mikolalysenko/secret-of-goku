@@ -4,6 +4,28 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES ground effect priority (2026-10-19)
+
+- Append ground foreground effects and select their draw order with the
+  PPU's OBJ priority register, avoiding a copy of the entire native sprite
+  list. Keep the same reservation, capacity, sprite attributes and DMA
+  payload. Six foreground pieces plus 192 native bytes fall from 1,895 to
+  712 CPU cycles. Native ring/map clears also retire the priority state.
+- Run OAM upload and the remaining native NMI through FastROM. Timing
+  probes watch both native mirrors, including incomplete frames. Ordered
+  hardware writes, CPU state and all valid sprite capacities pass the
+  assembled checks; rendered overlap, lag and ring handoff checks pass.
+- Long crowded ground ki improves 8 → 3 misses per 1,200 frames; charging
+  improves 79 → 68, with its worst logic frame falling 410.76 → 385.70
+  scanlines. Punches/corridor flying ki/flying punches/teleport retain
+  2/19/5/52 misses. Local flight retains the preceding physical insertion
+  after unrestricted rotation worsened its long ki workload.
+- All 13 short cases and six long repeats have zero palette, meter, OBJ,
+  complete-NMI or graphics-DMA errors. Core, Goku menus/forms/save/load,
+  effects/beam/aura/debris, local passengers/water/teleport/whip, world
+  takeoff/landing/controls/ki/radar/map and ending departure/load checks
+  pass. Strict zero-drop crowded timing remains open.
+
 ## SNES sprite cleanup across modes (2026-10-19)
 
 - Preserve the previous mode until the OAM handoff has hidden the slots

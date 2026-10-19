@@ -13,6 +13,7 @@ local function run(tag, on)
   local L, N = lines[tag], nmiEnd[tag]
   local id1 = emu.addMemoryCallback(function() L[#L + 1] = vline() end, emu.callbackType.exec, 0x00B077, 0x00B077)
   local id2 = emu.addMemoryCallback(function() N[#N + 1] = vline() end, emu.callbackType.exec, 0x00C15F, 0x00C15F)
+  local id3 = emu.addMemoryCallback(function() N[#N + 1] = vline() end, emu.callbackType.exec, 0x80C15F, 0x80C15F)
   local pads = {'up', 'right', 'down', 'left'}
   for i = 1, 160 do
     H.input = {[pads[(i // 40) % 4 + 1]] = true}
@@ -21,6 +22,7 @@ local function run(tag, on)
   H.input = nil
   emu.removeMemoryCallback(id1, emu.callbackType.exec, 0x00B077, 0x00B077)
   emu.removeMemoryCallback(id2, emu.callbackType.exec, 0x00C15F, 0x00C15F)
+  emu.removeMemoryCallback(id3, emu.callbackType.exec, 0x80C15F, 0x80C15F)
 end
 local function stats(t)
   local s = {}

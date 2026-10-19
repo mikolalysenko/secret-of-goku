@@ -11,8 +11,8 @@
 ; frame's end ($0120). Sizes are 16x16 / 32x32 (OBJSEL $63).
 ; World flight: slots 0-63 world objects (rebuilt over two frames), 64-83
 ; Flammie and effects; 84-127 are never written (OBJSEL $03: 8x8 / 16x16).
-; Menus use their own buffer ($7E:9C00) and rings keep the frozen field
-; sprites in slots 0-63 and draw icons from slot 64: no module sprites there.
+; Menus use their own buffer ($7E:9C00); rings clear the field buffer
+; before building their own sprites. Neither mode draws module sprites.
 ;
 ; API (parameters in !core_spr_x/y/tile/size, JSL, M16/X16, DB = $7E):
 ;   core_oam_add       - behind the native sprites (field: right after them;
@@ -20,15 +20,15 @@
 ;                        mode has no module sprites. Offscreen sprites are
 ;                        dropped (carry clear).
 ;   core_oam_add_front - field only: in front of every native sprite. Staged
-;                        (max 16); the commit shifts the native sprites up by
-;                        a multiple of 4 slots. Carry set when it cannot fit.
+;                        (max 16). Ground commit appends and rotates PPU
+;                        priority; flight inserts physically. Carry = full.
 ;   core_oam_hide      - A = slot: hide it (X=$FF, Y=$E0).
 ;   core_oam_meta, core_oam_meta_front - a meta-sprite: up to 16 pieces that
 ;                        share an anchor, a base tile word and a mirror (see
 ;                        below). _front stages pieces in front while the 16
 ;                        front slots last, then the rest behind.
 ; !core_oam_native = first slot after this frame's native sprites (before the
-; front shift) so modules can inspect or modify native entries [0, native).
+; front commit) so modules can inspect or modify native entries [0, native).
 ; Limits: 128 sprites, 32 sprites or 34 8-pixel slivers per scanline (a 16x16
 ; sprite is 2 slivers, a 32x32 is 4); excess sprites on a line drop out.
 
@@ -107,6 +107,12 @@ core_oam_mode_changed:
 	TAY
 	JSR core_oam_hide_range
 .store
+if not(defined("CORE_OAM_ROTATION_SLOW")) && not(defined("CORE_OAM_COMMIT_SLOW"))
+	SEP #$20
+	LDA.b #0
+	STA.l !core_oam_first
+	REP #$20
+endif
 	PLA
 	STA.w !core_mode&$FFFF
 	RTS
@@ -657,9 +663,188 @@ endif
 	RTS
 endmacro
 
+if defined("CORE_OAM_ROTATION_SLOW") || defined("CORE_OAM_COMMIT_SLOW")
 %core_oam_commit(core_oam_commit_field, 0)
+else
+%core_oam_commit(core_oam_commit_legacy, 0)
+endif
 if not(defined("CORE_OAM_COMMIT_SLOW"))
 %core_oam_commit(core_oam_commit_batch, 1)
+endif
+
+if not(defined("CORE_OAM_ROTATION_SLOW")) && not(defined("CORE_OAM_COMMIT_SLOW"))
+; Keep native and rear entries in place; their relative order is unchanged.
+; The PPU starts at the appended foreground group and wraps through hidden
+; slots back to native slot zero. Reservation and next-frame cleanup keep
+; their existing rounded capacity. No extra DMA bytes or OBJ slots.
+if not(defined("CORE_OAM_ROTATION_AIR"))
+core_oam_commit_ground:
+endif
+core_oam_commit_field:
+core_oam_commit_rotated:
+	SEP #$20
+	LDA.b #0
+	STA.l !core_oam_first
+	REP #$20
+if not(defined("CORE_OAM_ROTATION_AIR"))
+	; Keep the existing airborne insertion while crowded aerial timing is
+	; open. Rotating every mode reduces its largest spike but worsens the
+	; sustained ki sequence; ground charging benefits without that change.
+	LDA.w !RAM_FLIGHT&$FFFF
+	BIT.w #1
+	BEQ +
+	JMP core_oam_commit_legacy
++
+endif
+	LDA.w !core_oam_front_n&$FFFF
+	BEQ .done
+	LDY.w !core_oam_cursor&$FFFF
+	TYA : LSR : LSR
+	STA.w !core_tmp0&$FFFF
+	ORA.w #$0080
+	SEP #$20
+	STA.l !core_oam_first
+	REP #$20
+	JSR core_oam_append_front
+	JSR core_oam_append_hi
+	; Hide the same zero-to-three padding slots as the shifted layout.
+	LDA.w !core_oam_front_n&$FFFF
+	ASL : ASL
+	CLC : ADC.w !core_oam_cursor&$FFFF
+	TAX
+	LDA.w !core_oam_front_n&$FFFF
+	CLC : ADC.w #3 : AND.w #$FFFC : ASL : ASL
+	CLC : ADC.w !core_oam_cursor&$FFFF
+	STA.w !core_oam_cursor&$FFFF
+	TAY
+	JSR core_oam_hide_range
+	STZ.w !core_oam_front_n&$FFFF
+.done
+	LDA.w !core_oam_cursor&$FFFF
+	STA.w $0120
+	STA.l !core_oam_field_hw
+	RTS
+
+; Y = native/rear byte end. Copy at most 64 staged bytes, without moving
+; the native list. Like the old word copy, this remains interruptible.
+core_oam_append_front:
+	LDA.w !core_oam_front_n&$FFFF
+	ASL
+	CLC : ADC.w !core_oam_front_n&$FFFF
+	ASL : ASL
+	EOR.w #$FFFF
+	CLC : ADC.w #core_oam_append_front_end
+	PHA
+	RTS
+	for word = 0..32
+		!offset #= 62-(!word*2)
+		LDA.w (!core_oam_front&$FFFF)+!offset
+		STA.w $0800+!offset,Y
+	endfor
+core_oam_append_front_end:
+	RTS
+
+; Pack four high entries at a time, including an unaligned native end.
+; Only the reserved group changes; the first/last byte can share natives
+; or hidden slots. Unaligned groups always end before the final high byte.
+core_oam_append_hi:
+	LDA.w !core_oam_front_n&$FFFF
+	AND.w #3 : TAX
+	LDA.l core_oam_partial_hi,X
+	AND.w #$00FF
+	STA.w !core_tmp2&$FFFF
+	LDA.w !core_oam_front_n&$FFFF
+	CLC : ADC.w #3 : LSR : LSR
+	STA.w !core_tmp0&$FFFF
+	LDA.w !core_oam_cursor&$FFFF
+	LSR : LSR : LSR : LSR : TAY
+	LDA.w !core_oam_cursor&$FFFF
+	AND.w #$000C : LSR : TAX
+	JMP (core_oam_append_hi_paths,X)
+core_oam_append_hi_paths:
+	dw core_oam_append_hi_0,core_oam_append_hi_2,core_oam_append_hi_4,core_oam_append_hi_6
+
+macro core_oam_pack_append(name, shift, keep)
+<name>:
+	LDX.w #0
+.loop
+	LDA.w (!core_oam_front_hi&$FFFF)+6,X
+	ASL : ASL
+	ORA.w (!core_oam_front_hi&$FFFF)+4,X
+	ASL : ASL
+	ORA.w (!core_oam_front_hi&$FFFF)+2,X
+	ASL : ASL
+	ORA.w !core_oam_front_hi&$FFFF,X
+	DEC.w !core_tmp0&$FFFF
+	BNE +
+	AND.w !core_tmp2&$FFFF
++	AND.w #$00FF
+if <shift> == 0
+	SEP #$20
+	STA.w $0A00,Y
+	REP #$20
+else
+	for bit = 0..<shift>
+		ASL
+	endfor
+	STA.w !core_tmp1&$FFFF
+	LDA.w $0A00,Y
+	AND.w #<keep>
+	ORA.w !core_tmp1&$FFFF
+	STA.w $0A00,Y
+endif
+	INY
+	TXA : CLC : ADC.w #8 : TAX
+	LDA.w !core_tmp0&$FFFF
+	BNE .loop
+	RTS
+endmacro
+%core_oam_pack_append(core_oam_append_hi_0, 0, $FF00)
+%core_oam_pack_append(core_oam_append_hi_2, 2, $FC03)
+%core_oam_pack_append(core_oam_append_hi_4, 4, $F00F)
+%core_oam_pack_append(core_oam_append_hi_6, 6, $C03F)
+
+; C0:C11E, M8/X16, DB=0, D=0. Keep the native DMA and CPU return state.
+; OAMADD must be set after DMA: the transfer advances the PPU address.
+core_oam_upload:
+	LDX.w #0
+	STX.w $2102
+	LDX.w #$0800
+	STX.w $4372
+	LDX.w #$0400
+	STX.w $4370
+	STZ.w $4374
+	LDX.w #$0220
+	STX.w $4375
+	LDA.b #$80
+	STA.w $420B
+	LDA.l !core_oam_first
+	BEQ .done                  ; native setup already disabled rotation
+	PHP
+	ASL
+	STA.w $2102
+	LDA.b #0
+	ROR
+	STA.w $2103
+	PLP
+.done
+	LDA.b #$80
+; The remaining native NMI has the same low WRAM/IO mapping in bank $80.
+; RTI restores the interrupted bank from the hardware frame on the stack.
+core_oam_fast_tail:
+	JML $80C13E
+
+; The native full OBJ clear also runs on ring/map entry, without a module
+; frame in between. Retire the completed field's priority before those
+; native builders replace its sprites. The original REP/LDX are replayed;
+; E35A replaces A before use. All continuations share the bank-$80 mirror.
+core_oam_native_clear:
+	SEP #$20
+	LDA.b #0
+	STA.l !core_oam_first
+	REP #$30
+	LDX.w #0
+	JML $80E35A
 endif
 
 ; World commit: remember what to hide next frame.
