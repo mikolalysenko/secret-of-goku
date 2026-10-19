@@ -4,6 +4,23 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES batched window animation (2026-10-19)
+
+- Move interior window columns in batches when opening, closing and
+  scrolling native messages. Retain the final retail iteration for exact
+  tile exchanges, counters, upload requests and CPU return values. Bounds,
+  unusual banks, decimal mode and eight-bit indexes retain native loops.
+- Eight assembled text tests cover both directions, odd/even border widths,
+  fallbacks and full RAM/CPU comparisons. Ten-column scrolls fall from
+  4,467 to 964 cycles; twenty-column borders from 8,938 to 1,741. Core checks
+  and Goku ring/menu/save/load checks pass.
+- Long corridor flying-ki misses fall from 42 to 19 per 1,200 video frames.
+  Short flying ki improves 8 → 7, while short flying punches change 3 → 4;
+  long flying punches stay at 5. Ground punch/ki, charge and teleport
+  counts are unchanged. All 13 short cases and six long repeats retain
+  zero palette, meter, sprite, NMI and graphics-DMA errors. Crowded timing
+  remains open.
+
 ## SNES window painting and buffer clearing (2026-10-19)
 
 - Simplify native window-pattern blending, clear the message buffer in

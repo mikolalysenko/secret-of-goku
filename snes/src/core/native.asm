@@ -66,6 +66,117 @@ core_native_distance:
 	LDA.w #8
 	JML $C103F9
 
+; Native window animation shifts rows through two cell-exchange calls per
+; column. Batch the interior columns, retaining the final native iteration
+; for exact counters, upload flags, accumulator, indexes and status flags.
+; Conservative bounds exclude metadata, row wrapping and unusual callers.
+; No DMA or persistent scratch is introduced; every source word is cleared
+; before its copy is written to the adjacent row, as in the native loop.
+macro core_window_shift(step, fill, columns, continuation)
+	PHP
+	LDA $01,S
+	BIT.b #$18
+	BNE .native8
+	PHB
+	PLA
+	CMP.b #$7E
+	BNE .native8
+	LDA.w $A156
+	if <step> > 0
+		CMP.b #1
+		BCC .native8
+		CMP.b #20
+	else
+		CMP.b #2
+		BCC .native8
+		CMP.b #21
+	endif
+	BCS .native8
+	REP #$20
+	LDA.w $A157
+	CMP.w #32
+	BCS .native
+	LDA.w $A164
+	AND.w #$00FF
+	CMP.w #2
+	BCC .native
+	DEC
+	if <columns> == 2
+		ASL
+	endif
+	PHA
+	CLC
+	ADC.w $A157
+	CMP.w #33-<columns>
+	BCS .reject
+	PLA
+	BRA .fast
+.reject
+	PLA
+.native
+	SEP #$20
+.native8
+	PLP
+	JML <continuation>
+.fast
+	PHY
+	TAY                          ; prefix columns, leave the final iteration
+	LDA.w $A157
+	ASL
+	PHA
+	LDA.w $A156
+	AND.w #$00FF
+	DEC
+	ASL : ASL : ASL : ASL : ASL : ASL
+	CLC
+	ADC $01,S
+	TAX
+	PLA
+.column
+	LDA.w $9C00,X
+	ORA.w #$2000
+	PHA
+	LDA.w #<fill>
+	STA.w $9C00,X
+	PLA
+	STA.w $9C00+(<step>*64),X
+	INX : INX
+	DEY
+	BNE .column
+	LDA.w $A164
+	AND.w #$00FF
+	DEC
+	if <columns> == 2
+		ASL
+	endif
+	CLC
+	ADC.w $A157
+	SEP #$20
+	STA.w $A157
+	LDA.b #1
+	STA.w $A164
+	PLY
+	PLP
+	JML <continuation>
+endmacro
+
+core_native_window_down:
+	LDA.w $A165
+	STA.w $A156
+	%core_window_shift(1, $2000, 1, $C0075A)
+core_native_window_up:
+	LDA.w $A167
+	STA.w $A156
+	%core_window_shift(-1, $2000, 1, $C00785)
+core_native_window_border_up:
+	INC.w $A157
+	INC.w $A156
+	%core_window_shift(-1, $2118, 2, $C00C6E)
+core_native_window_border_down:
+	INC.w $A157
+	DEC.w $A156
+	%core_window_shift(1, $2118, 2, $C00CF4)
+
 ; C0:107B clears the 1,334-byte message/window buffer. The caller has
 ; already selected M8/X16 and DB=$7E. Clear descending words in 64-byte
 ; chunks, with the same final X=0, A/Y/DB/D and flags. Preserve A in full.

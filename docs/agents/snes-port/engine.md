@@ -300,3 +300,13 @@ restoring DB to avoid a second bank switch. Seven assembled text tests
 include buffer boundaries, styles, all row bytes, request branches and
 decimal/width/flag cases. Their representative CPU costs are 13,342 → 4,336,
 1,049 → 713 and 202 → 169 cycles, respectively.
+
+Window row shifts at `C0:0754`, `C0:077F`, `C0:0C68` and `C0:0CEE` batch
+the interior columns and execute the final retail iteration. Each source
+word is replaced with the same blank/border cell, and the adjacent row
+receives the old source with its native attribute bit. Bounds exclude
+metadata and wrapped rows/columns; fallback contexts keep the original
+loops. Odd border widths are handled by the retained last iteration. The
+eighth assembled text test compares full RAM and CPU state at each loop's
+continuation. Ten-column scrolls take 964 rather than 4,467 CPU cycles;
+twenty-column borders take 1,741 rather than 8,938.

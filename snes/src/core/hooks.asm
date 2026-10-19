@@ -70,6 +70,18 @@ endif
 
 ; Native message graphics: copy the same WRAM bytes with interruptible MVN.
 if not(defined("CORE_NATIVE_TEXT_SLOW"))
+%orig4($C00754, $8DA165AD)
+%orig2($C00758, $A156)
+%hijack($C00754, core_native_window_down, 6, core)
+%orig4($C0077F, $8DA167AD)
+%orig2($C00783, $A156)
+%hijack($C0077F, core_native_window_up, 6, core)
+%orig4($C00C68, $EEA157EE)
+%orig2($C00C6C, $A156)
+%hijack($C00C68, core_native_window_border_up, 6, core)
+%orig4($C00CEE, $CEA157EE)
+%orig2($C00CF2, $A156)
+%hijack($C00CEE, core_native_window_border_down, 6, core)
 %orig4($C0107B, $9E0536A2)
 %orig2($C0107F, $9BFF)
 %hijack($C0107B, core_native_text_clear, 6, core)

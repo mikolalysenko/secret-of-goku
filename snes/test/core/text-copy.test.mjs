@@ -1,5 +1,5 @@
-// Compare the assembled message-graphics copy with the retail byte loop,
-// including its accumulator high byte, flags, indexes and nonstandard paths.
+// Compare assembled message/window helpers with retail machine code,
+// including tile bytes, accumulator high byte, flags and nonstandard paths.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -129,4 +129,28 @@ test('window cell exchange preserves tile data, upload requests and return flags
   const [before,after]=cell();
   assert(after<before*.85,`window cell cycles ${before} -> ${after}`);
   t.diagnostic(`native window cell exchange: ${before} -> ${after} CPU cycles`);
+});
+test('batched window row shifts preserve both directions and odd border widths',t=>{
+  const paths=[[0x754,0x76E,1],[0x77F,0x799,1],[0xC68,0xCA4,2],[0xCEE,0xD2A,2]];
+  function shift(path,{row=4,col=1,count=10,width=20,mode=0,flags=0,state=0,...input}={}){
+    return compare({entry:path[0],stop:path[1],memory:[
+      [0xA156,row],[0xA157,col],[0xA158,0],[0xA165,row],[0xA167,row],
+      [0xA164,count],[0xA16C,width],[0x1D05,mode],[0xA187,flags],[0xA162,state],
+    ],...input});
+  }
+  for(const path of paths){
+    for(let row=2;row<19;row++)for(let count=1;count<=14;count++)
+      for(const col of [0,1,2])for(const width of [27,28])shift(path,{row,col,count,width});
+    for(const mode of [0,7,8])for(const flags of [0,1])for(const state of [0,1,2])shift(path,{mode,flags,state});
+    for(const p of [0x20,0x21,0x24,0x28,0x60,0xA0,0xE1])
+      for(const dp of [0,0x1234])shift(path,{p,dp});
+    for(const row of [0,1,19,20,24,255])shift(path,{row,count:2});
+    for(const col of [31,32,63,250])shift(path,{col,count:2});
+    // DB=$7F retains the retail path; initialize that bank's counters too.
+    shift(path,{db:0x7F,memory:[[0x1A165,4],[0x1A167,4],[0x1A156,4],
+      [0x1A157,1],[0x1A158,0],[0x1A164,2],[0x1A16C,4]]});
+    const [before,after]=shift(path);
+    assert(after<before*.3,`row shift ${path[0].toString(16)} cycles ${before} -> ${after}`);
+    t.diagnostic(`native row shift $${path[0].toString(16)}: ${before} -> ${after} CPU cycles`);
+  }
 });

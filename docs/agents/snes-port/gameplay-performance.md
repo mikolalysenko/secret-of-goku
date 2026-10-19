@@ -372,6 +372,17 @@ ki, corridor flying ki, flying punches, teleport and charge are
 The remaining native message scroll still calls the cell helper twice
 per column, making it a separate large CPU spike.
 
+Batched row animation subsequently removes most of those repeated cell
+calls. Eight assembled text checks, core title/menu/frames/HP/input/lag/
+HDMA and Goku ring/menu/file/load pass. The 1,200-frame flying-ki circuit
+improves from 42 to 19 misses. Short flying ki changes 8 → 7 and flying
+punches 3 → 4; the other short counts and long ground/teleport/charge
+counts stay unchanged, as do long flying punches (5). All 13 short cases
+and six long repeats retain zero palette, meter, OBJ, complete-NMI and
+graphics-DMA errors. Measurements: `native-text/rows-short`, `rows-long`
+and `rows-peaks`. This improves message spikes but does not satisfy the
+strict crowded-combat timing target.
+
 The asynchronous scheduling trials are not in the playable ROM. Deferring companion
 AI improved the long walking/punching/ki/teleport cases from 39/24/47/73
 to 3/3/17/39 misses, but worsened flying ki from 36 to 50. Deferring normal
