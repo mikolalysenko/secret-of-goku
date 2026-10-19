@@ -4,6 +4,21 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES companion phase balancing (2026-10-19)
+
+- Move the girl to native phase 4 and the sprite to phase 0, away from
+  expensive enemy updates. Keep their once-per-five-frame status/AI rate,
+  per-frame movement and contacts, and the original event-script schedule.
+- Core party/timer/input/HP/OAM/lag/HDMA, Goku field/status/forms and flight
+  passenger/water/teleport/whip/scene checks pass. All 13 gameplay hardware
+  checks remain clean; short walking, flight and grass transformation reach
+  zero misses.
+- In 1,200 frames, ground punches improve from 24 to 2 misses, ground ki
+  from 47 to 8 and charging from 138 to 93. Flying ki stays at 31; flying
+  punches change from 1 to 2 and teleport from 73 to 58. Crowded timing
+  remains open. Smaller destruction-batch and asynchronous actor trials
+  remain private because their longer runs regress.
+
 ## SNES prebuilt beam colour tables (2026-10-19)
 
 - Copy opaque, fully visible horizontal beam colour runs from ROM with

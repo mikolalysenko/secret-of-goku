@@ -242,10 +242,12 @@ VRAM, save, world, lag, HDMA, WRAM and extended-ROM tests pass. The timing
 measurements above describe the older experiment, before those call changes.
 
 While Goku is active, the native party status/AI/animation pass updates the
-girl in phase 1, Goku in phase 3 and the sprite in phase 2. Each still runs
+girl in phase 4, Goku in phase 3 and the sprite in phase 0. Each still runs
 once in every five completed field frames; movement, collision and drawing
 run for everyone every frame. This spreads the original phase-3 CPU burst
-without dropping updates. Before Goku's arrival and during native event
+without dropping updates. The October 19 follow-up moves companions out
+of phases 1/2, which already carry expensive native enemy work. Before
+Goku's arrival and during native event
 scripts, all three retain phase 3 so scripted party movements stay synchronized.
 `-DCORE_PARTY_SYNC=1` restores the old schedule for comparisons. The core
 `party` test counts 20 calls per actor across 100 field frames with Goku off,

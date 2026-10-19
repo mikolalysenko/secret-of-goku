@@ -1,5 +1,5 @@
 -- Native party status/AI/animation keeps its once-per-five-frame cadence.
--- Goku spreads the expensive CPU companions across phases 1 and 2; before
+-- Goku spreads the expensive CPU companions across phases 4 and 0; before
 -- his arrival all three retain phase 3. Human players keep the same rate.
 local function run(tag,on,player2,event)
   check(tag..'_import',H.importSnesJs(IMPORT_DIR..'/graphics-audit__party'),'party fixture')
@@ -49,7 +49,7 @@ local function run(tag,on,player2,event)
   for i=1,3 do
     local total,phases=0,0
     for _,n in pairs(calls[i]) do total=total+n; phases=phases+1 end
-    local expected=on and not event and ({3,1,2})[i] or 3
+    local expected=on and not event and ({3,4,0})[i] or 3
     check(tag..'_actor'..i,total==20 and phases==1 and calls[i][expected]==20,
       'calls '..total..', expected phase '..expected)
     check(tag..'_active'..i,H.r8(0x7EE000+(i-1)*512)&1==1,'actor disabled')

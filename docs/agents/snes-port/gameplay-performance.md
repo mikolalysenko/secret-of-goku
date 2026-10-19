@@ -313,14 +313,28 @@ errors; long charging improves from 143 to 138 misses in 1,200 frames
 (`strip-copy`). Remaining charge stalls are mainly actor work and scenery
 scans, so this does not close the strict timing gap.
 
-Private scheduling trials are not in the playable ROM. Deferring companion
+A subsequent fixed-phase change puts the girl in phase 4 and the sprite in
+phase 0, keeping Goku in phase 3. Status, AI and animation still run once
+every five frames; movement and contacts stay per-frame, and events keep
+the native phase-3 party. Fresh 1,200-frame comparisons improve ground
+punches from 24 to 2, ground ki from 47 to 8, and charging from 138 to 93
+misses. Flying ki stays at 31; flying punches change from 1 to 2, and
+teleport from 73 to 58. The short walk, ordinary-flight and grass-transform
+cases reach zero; short flying-punch/teleport counts rise from 1/11 to 2/13.
+All 13 cases retain zero palette, meter, OBJ, NMI and graphics-DMA errors.
+These are improvements with remaining misses, not a zero-drop release.
+Measurements: `stamp-party-40` and `strip-copy/ground-long`.
+
+The asynchronous scheduling trials are not in the playable ROM. Deferring companion
 AI improved the long walking/punching/ki/teleport cases from 39/24/47/73
 to 3/3/17/39 misses, but worsened flying ki from 36 to 50. Deferring normal
 enemies too requires moving their weapon-graphics update with animation;
 the corrected short trial worsened flying ki from 5 to 17. Both prototypes
 and their unit checks remain under `.local/snes-test/` (`companion-budget-prototype` and
-`actor-budget-prototype`); production retains fixed native
-actor timing with the existing companion phase spread.
+`actor-budget-prototype`); production retains fixed actor timing with
+the companion phase spread described above. Smaller scenery batches
+also stay out: the four-cell/four-line trial raises long charge misses
+from 138 to 170 (`destroy-batch-4`).
 
 The subsequent carried-companion checkpoint implements the requested SNES
 flight rule: CPU companions ride Goku, retain status/timer updates and

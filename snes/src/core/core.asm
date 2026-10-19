@@ -340,9 +340,9 @@ if not(defined("CORE_PARTY_SYNC"))
 	LDA.l !persist_goku_active
 	BEQ .sprites_start
 	LDA $56
-	CMP.b #1
+	CMP.b #4
 	BEQ .girl
-	CMP.b #2
+	CMP.b #0
 	BNE .sprites_start
 	LDX.w #$0400
 	BRA .party
@@ -361,8 +361,10 @@ endif
 
 if not(defined("CORE_PARTY_SYNC"))
 ; Retain the native once-per-five-frame party update rate, putting the
-; girl in phase 1 and the sprite in phase 2 while Goku is active. Movement,
+; girl in phase 4 and the sprite in phase 0 while Goku is active. Movement,
 ; collision and OBJ construction still run for the whole party every frame.
+; Phases 1/2 already carry heavy native enemy work; keep companions away
+; from those peaks and Goku's phase-3 update.
 ; CORE_PARTY_SYNC restores the original phase-3 burst for comparisons.
 core_party_pair:
 	SEP #$20
