@@ -4,6 +4,19 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES resident aura rendering (2026-10-19)
+
+- Draw the full six-sprite aura directly from its three mirrored cells,
+  retaining the same art, strobe, palette allocation and upload checks.
+  Miniatures, screen edges and limited OAM keep the general renderer.
+- All 2,674 assembled aura comparisons and 25 FX tests pass. Mesen checks
+  retain exact aura pixels and clean cut-grass palettes. Local flight,
+  ten combat comparisons and all 14 world/radar/map cases pass.
+- Long charging improves 37 → 26 missed frames per 1,200 frames; its peak
+  falls 276.29 → 272.63 scanlines. Short charging improves 22 → 17; other
+  scenarios retain their previous counts with no hardware/rendering errors.
+  Crowded zero-drop timing remains unfinished.
+
 ## SNES exhausted teleport searches (2026-10-19)
 
 - Stop searching farther distances once all four initial connected

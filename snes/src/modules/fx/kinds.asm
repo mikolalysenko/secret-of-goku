@@ -818,6 +818,26 @@ fx_k_aura_obj:
 	BNE +
 	RTS
 +	STZ !d_ef
+	LDA !d_cur+!C_X
+	STA !d_x
+	LDA !d_cur+!C_Y
+	STA !d_y
+	LDA !d_cur+!C_KIND
+	BIT.w #!FX_F_GOKU<<8
+	BEQ +
+	LDA.w $E020
+	CLC
+	ADC !d_x
+	STA !d_x
+	LDA.w $E022
+	SEC
+	SBC.w $E045
+	SEC
+	SBC.w #15
+	CLC
+	ADC !d_y
+	STA !d_y
++
 	LDA !d_cur+!C_STYLE
 	AND.w #$00FF
 	CMP.w #3
@@ -839,6 +859,10 @@ fx_k_aura_obj:
 	ADC !d_ks
 	CLC
 	ADC.w #!FX_ASM_AURA
+if not(defined("FX_AURA_SLOW"))
+	JSR fx_aura_rows
+	BCS .done
+endif
 	JSR fx_emit_setup
 	BCS .done
 	LDA.l !fx_cpend             ; warm all cells before displaying any
@@ -858,28 +882,94 @@ fx_k_aura_obj:
 	TAX
 	DEY
 	BNE .ready
-	LDA !d_cur+!C_X
-	STA !d_x
-	LDA !d_cur+!C_Y
-	STA !d_y
-	LDA !d_cur+!C_KIND
-	BIT.w #!FX_F_GOKU<<8
-	BEQ .emit
-	LDA.w $E020
-	CLC
-	ADC !d_x
-	STA !d_x
-	LDA.w $E022
-	SEC
-	SBC.w $E045
-	SEC
-	SBC.w #15
-	CLC
-	ADC !d_y
-	STA !d_y
-.emit
 	JMP fx_emit_place
 .done
+	RTS
+
+; Full resident flame, entirely on screen with room for its six sprites.
+; Resolve the same cells in the same order, keeping palette allocation,
+; eviction and upload behavior. Edges/miniatures retain the generic path.
+; A = assembly id; C clear: unchanged A, caller must use the generic path.
+fx_aura_rows:
+	PHA
+	LDA !d_size
+	BNE .generic
+	LDA !d_cur+!C_B
+	CMP.w #21
+	BCC .generic
+	LDA !d_x
+	SEC
+	SBC.w #16
+	CMP.w #240
+	BCS .generic
+	LDA !d_y
+	SEC
+	SBC.w #33
+	CMP.w #191
+	BCS .generic
+	LDA.w !core_oam_cursor&$FFFF
+	CLC
+	ADC.w #20
+	CMP !d_end
+	BCC .fast
+.generic
+	PLA
+	CLC
+	RTS
+.fast
+	PLA
+	SEC
+	SBC.w #!FX_ASM_AURA
+	ASL
+	ASL
+	ASL
+	STA !d_ks
+	TAX
+	LDA.l fx_aura_cells,X
+	CLC
+	ADC !d_y
+	XBA
+	STA !d_k
+	LDA !d_x
+	SEC
+	SBC.w #16
+	ORA !d_k
+	STA !d_k
+	LDA.w #$FFFF
+	STA !d_lasta                ; d_tiles is not a generic assembly
+	for row = 0..3
+		LDX !d_ks
+		LDA.l fx_aura_cells+2+(!row*2),X
+		JSR fx_resolve
+		STA !d_tiles+(!row*2)
+	endfor
+	LDA.l !fx_cpend              ; display only fully uploaded assemblies
+	BNE .done
+	LDA !d_tiles
+	ORA !d_tiles+2
+	ORA !d_tiles+4
+	CMP.w #$FFFF
+	BEQ .done
+	LDY.w !core_oam_cursor&$FFFF
+	for row = 0..3
+		LDA !d_tiles+(!row*2)
+		STA.w $0802+(!row*8),Y
+		ORA.w #$4000
+		STA.w $0806+(!row*8),Y
+		LDA !d_k
+		CLC
+		ADC.w #!row*$1000
+		STA.w $0800+(!row*8),Y
+		CLC
+		ADC.w #16
+		STA.w $0804+(!row*8),Y
+	endfor
+	TYA
+	CLC
+	ADC.w #24
+	STA.w !core_oam_cursor&$FFFF
+.done
+	SEC
 	RTS
 
 ; FX_LIGHTNING (charge-lightning.js arcs(), sprite-layer.js

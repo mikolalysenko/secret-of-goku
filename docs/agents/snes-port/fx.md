@@ -411,6 +411,16 @@ the aura independent of cut grass and native background transparency.
 Power still controls whether the aura is present; the compact art uses a
 fixed silhouette instead of eight geometric growth levels.
 
+The full flame has a direct three-row emitter for fully visible positions
+with six available OAM slots. It resolves the same cells in the same order
+and checks palette/upload readiness before writing any sprite. Miniatures,
+clipped positions and partial OAM use the general assembly renderer.
+`FX_AURA_SLOW` selects that general path for comparisons. The assembled
+tests compare 2,674 cases including subsequent effects; the full-flame
+example falls from 1,948 to 1,147 CPU cycles through the direct path.
+The generator validates the mirrored layout and stores its cell records
+beside the stamp records in the FX data bank.
+
 The `aura` regression checks all six size/tone combinations pixel for
 pixel, cuts grass with real punches, checks that the glow draws completely
 without writing BG palettes, and verifies animation needs no tile uploads

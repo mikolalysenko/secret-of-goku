@@ -8,8 +8,8 @@ combat is not yet guaranteed to run without missed video frames.
 
 ## Current checkpoint
 
-The latest 1,200-video-frame runs use the teleport search build in
-`.local/snes-test/teleport-exhaust/offsets.sfc`. All rendering and hardware
+The latest 1,200-video-frame runs use the resident aura build in
+`.local/snes-test/aura-rows/game.sfc`. All rendering and hardware
 checks pass; flight, teleport and charging still miss frames.
 
 | Scenario | Missed frames | Longest field update (scanlines) |
@@ -19,11 +19,36 @@ checks pass; flight, teleport and charging still miss frames.
 | Flying ki, corridor | 10 | 250.48 |
 | Flying punches | 1 | 280.41 |
 | Teleports | 15 | 269.70 |
-| Charge and release | 37 | 276.29 |
+| Charge and release | 26 | 272.63 |
 
 The measurements below preserve the history of this review; their earlier
 counts are not the current release result. Passing a normal gameplay run
 does not imply zero-drop timing for every case.
+
+### Resident aura emission
+
+The full flame now resolves its three resident cells and writes the six
+mirrored sprites directly when they fit on screen and in OAM. Miniatures,
+screen edges and limited OAM retain the generic renderer. Palette selection,
+cache eviction, pending-upload checks, strobe and animation remain the same;
+the optimization removes unused flip preparation and repeated part decoding.
+The generator validates the fixed layout. Stamp lookup records now share
+the FX data bank, leaving room in the code bank even with `FX_TEST` enabled.
+
+All 2,674 assembled aura comparisons retain OAM and cache/palette state,
+including missing cells, exhausted palettes, uploads, anchors, clipping,
+front reservations and subsequent effects. The full flame takes 1,147 CPU
+cycles versus 1,948 through the generic comparison path. All 25 assembled
+FX tests and the gallery/beam/aura/debris checks pass; all six aura variants
+retain 100% matching pixels and no BG palette writes over cut grass.
+
+Long charge misses improve 37 → 26 per 1,200 video frames, with the peak
+falling 276.29 → 272.63 scanlines. Short charging improves 22 → 17; all
+other short/long miss counts remain unchanged. Hardware and rendering
+checks remain clean, including focus/transformation after cutting grass.
+Six local-flight checks, ten combat comparisons and all 14 available
+world/radar/map cases pass. Private artifacts are under
+`.local/snes-test/aura-rows/`. Strict crowded timing is still open.
 
 ### Exhausted teleport searches
 
