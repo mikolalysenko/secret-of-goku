@@ -559,6 +559,23 @@ Measurements are under `.local/snes-test/native-palette/`; the reference
 instruction profile is `status-hot/cycles-span/`. The larger beam and
 native actor spikes still prevent strict crowded zero-drop timing.
 
+Beam terrain and barrier scans now share a 12-line growth budget with
+eight-cell steps. They alternate priority and retain the latest arguments
+before either runs, so the second part can wait without starving or
+losing work after the beam ends. Punches remain immediate. A step can
+still exceed the budget; it no longer forces an additional expensive
+step of the other part. The long charge peak falls 364.08 → 311.00 lines
+and misses 66 → 63. The other five long counts stay 1/3/20/3/54.
+All 13 short and six long cases retain zero palette, meter, OBJ,
+complete-NMI, graphics-DMA and duplicated-work errors. Assembled budget
+and class/skim checks, the complete destruction/Sandship suites,
+passengers/local flight and world/radar/map checks pass. Measurements are
+under `.local/snes-test/destroy-shared/` (`step8.sfc`, `short/`, `long/`
+and `step8-long/`). The 16-cell shared-budget prototype lowers the peak
+but increases misses 66 → 67 and is not the selected build. Remaining
+peaks combine native companion AI/animation, movement and FX costs;
+crowded strict zero-drop timing remains open.
+
 Several old handoff items were already finished before this review:
 floor-hole providers chain correctly, ceiling debris is drawn, Frieza's
 virtual combat targets are wired, and FastROM is the default. The carried

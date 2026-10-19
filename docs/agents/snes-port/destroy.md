@@ -180,14 +180,21 @@ use and warmed in spare frame time.
 scanning all of it in one call cost one frame several hundred scanlines
 (combat's integration measured ~600 SlowROM / 219 FastROM). A beam
 (`arg_id` ≠ 0) is now covered in growth steps of about
-`!DESTROY_STEP_CELLS` (16) new cells: the covered length widened to the
+`!DESTROY_STEP_CELLS` (8) new cells: the covered length widened to the
 requested width first (8 px at a time), then longer at that width. A call
-makes at least one step of the band scan and one of the native barrier
-search, and more while it is younger than `!DESTROY_HIT_SPAN` (16)
-scanlines; what is left (`!hp_left`: bit 0 band, bit 1 barrier) waits for
+makes at least one step, with terrain and barrier scans sharing
+`!DESTROY_HIT_SPAN` (12) scanlines. `dst_hit_work` alternates which part
+goes first (`!hp_turn`), and starts the other only while time remains;
+one expensive part cannot force another expensive step or starve the
+other part. The budget is checked between steps, so a single step can
+exceed it. Punches still scan both parts immediately.
+What is left (`!hp_left`: bit 0 band, bit 1 barrier) waits for
 the beam's next call or, if the beam stops calling, for
 `destroy_field_frame`'s continuation from the saved arguments
 (`dst_hit_continue`, `!HP` block), dropped when the field stops being idle.
+`dst_hit_begin` saves the newest beam arguments before either part runs,
+including a part that gets no time this call. Replacement attacks discard
+the previous request; map/load initialization also resets the turn.
 `!hp_worked` prevents the continuation from repeating an attack's scan in
 the same field update. It is cleared after `destroy_field_frame` and on
 map/load initialization. Comparing `core_frame` values was insufficient:
@@ -195,9 +202,16 @@ combat records the counter before the core increments it, while this
 continuation runs afterwards. The gameplay suite watches both scan parts
 per attack across the whole native field loop, including lag frames.
 Each step goes through the same skim/visit code as a one-shot call, so the
-cells and their order are unchanged. Measured (FastROM): the largest single
-call of combat's full wave 84 scanlines (was 219), the Wind Palace wave 45
-(was 100), calls over covered ground 4-5.
+cell order within a part is unchanged. The assembled
+`snes/test/destroy/hit-budget.test.mjs` checks shared-budget boundaries at
+all 262 counter positions, fair progress, saved arguments, completion,
+replacement, cancellation and the field latch. The full map-edit/barrier
+and Sandship comparisons pass with the existing documented demolition
+timing differences. The integrated crowded charge run's peak falls
+364.08 → 311.00 scanlines and its long miss count 66 → 63 per 1,200
+frames; strict zero-drop timing remains open. Earlier independent budgets
+reduced the full-wave scan from 219 to 84 lines, but still forced a
+barrier step after a costly terrain step.
 
 ## Sandship runtime
 

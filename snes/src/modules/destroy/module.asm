@@ -307,12 +307,14 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !cl_th       = !HP+$22   ; word: next step's half width
 !cl_t        = !HP+$24   ; word: scratch
 !cl_t0       = !HP+$26   ; word: scanline the call began on
-!hp_end      = !HP+$28
+!hp_turn     = !HP+$28   ; word: 0 terrain first, 1 barriers first next call
+!hp_end      = !HP+$2A
 assert !hp_end <= !PERSIST_DESTROY+$80, "destroy persistent block overflow"
-; New cells per growth step, and the scanlines a call may spend on steps
-; after its first (it always takes one of each kind).
-!DESTROY_STEP_CELLS = 16
-!DESTROY_HIT_SPAN   = 16
+; New cells per growth step, and the shared terrain/barrier scan budget.
+; A beam takes at least one step, alternating which part goes first so
+; neither can starve when the other's first step uses the whole budget.
+!DESTROY_STEP_CELLS = 8
+!DESTROY_HIT_SPAN   = 12
 !SS_VIS_PAL    = $0001
 !SS_VIS_BREACH = $0002
 !SS_VIS_MAGIC  = $A500

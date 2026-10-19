@@ -4,6 +4,23 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES shared beam scenery budget (2026-10-19)
+
+- Share a 12-scanline budget between beam terrain and barrier scans,
+  using eight-cell growth steps and alternating priority. Save the latest
+  beam arguments before either part runs; continue unfinished work after
+  the beam ends and cancel it on map/event changes. Punches retain their
+  immediate terrain and barrier checks.
+- Assembled tests cover budget boundaries and video-counter wrap, fair
+  progress, argument retention, replacement/cancellation and duplicate
+  work. Full destruction and Sandship comparisons pass, along with
+  passengers/local flight and world controls, radar, map and timing.
+- The crowded charging peak falls 364.08 → 311.00 scanlines; its long
+  miss count improves 66 → 63 per 1,200 frames. Other long counts stay
+  1/3/20/3/54 for punch/ki/flying ki/flying punch/teleport. All 13 short
+  and six long cases retain zero hardware/rendering errors. Crowded
+  strict zero-drop timing is still open.
+
 ## SNES native palette and empty status work (2026-10-19)
 
 - Copy the native actor palette's fifteen words directly to both WRAM
