@@ -25,6 +25,7 @@ const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..')
 const args=process.argv.slice(2);
 const only=args.filter(a=>!a.startsWith('--'));
 const repeat=Number(args.find(a=>a.startsWith('--repeat='))?.slice(9)??1);
+const scene=args.find(a=>a.startsWith('--scene='))?.slice(8)??'preset__flight';
 if(!Number.isInteger(repeat)||repeat<1||repeat>100)throw Error('--repeat must be an integer from 1 to 100');
 const want=t=>!only.length||only.includes(t);
 const outRoot=resolve(repo,'.local/snes-test/world');
@@ -46,7 +47,7 @@ function prelude(rom){
     const m=line.match(/^([0-9A-F]{2}):([0-9A-F]{4}) ((?:world|goku|flight|core|combat|ui)_\w+)$/i);
     if(m)sym[m[3]]=parseInt(m[1]+m[2],16);
   }
-  return `REPEAT=${repeat}\nSYM={${Object.entries(sym).map(([k,v])=>`${k}=0x${v.toString(16)}`).join(',')}}\nIMPORT=${JSON.stringify(importRoot)}\n`+readFileSync(join(here,'lib.lua'),'utf8')+'\n';
+  return `REPEAT=${repeat}\nTIMING_SCENE=${JSON.stringify(scene)}\nSYM={${Object.entries(sym).map(([k,v])=>`${k}=0x${v.toString(16)}`).join(',')}}\nIMPORT=${JSON.stringify(importRoot)}\n`+readFileSync(join(here,'lib.lua'),'utf8')+'\n';
 }
 const tests=['sprite','takeoff','takeoff-locks','landing','controls','ki','wave','fortress','scars','barrier','dock','item','radar','timing'].filter(t=>existsSync(join(here,`${t}.lua`))&&want(t));
 const summary=[];

@@ -5,9 +5,18 @@ local CB = 0x7ED800
 function test()
   H.wait(5)
   W.import('preset__flight')
+  H.w8(0x316380,1)             -- begin with the radar visible, not first-flight radio
   W.on(0)
   H.wait(90)
+  W.check('radar_initially_visible',H.r16(0x7E7EA8)==1,H.r16(0x7E7EA8))
   H.save('ready')
+  local radarBusy,radarLeaks=0,0
+  emu.addMemoryCallback(function()
+    if H.r16(W.a.shot)~=0 or H.r16(W.a.charging)~=0 then
+      radarBusy=radarBusy+1
+      if H.r16(0x7E7EA8)~=0 then radarLeaks=radarLeaks+1 end
+    end
+  end,emu.callbackType.exec,SYM.world_world_frame)
   local function reset()
     H.load(H_OUT .. '/ready.mss'); H.wait(4)
   end
@@ -40,11 +49,22 @@ function test()
   W.check('scene_blocks_new_charge', H.r8(CB+0x28) == 0 and H.r16(W.a.shot) == 0, H.r16(W.a.shot))
   emu.removeMemoryCallback(id, emu.callbackType.exec, SYM.combat_world_frame)
   reset()
+  H.hold('l',30)
+  W.check('focus_running',H.r8(CB+0x14)==0x18,H.r8(CB+0x14))
+  id=emu.addMemoryCallback(function() H.w16(CB+0x64,1) end,
+    emu.callbackType.exec,SYM.combat_world_frame)
+  H.wait(4)
+  W.check('scene_cancels_focus',H.r8(CB+0x14)==0 and H.r16(CB+0x2E)==0,H.r8(CB+0x14))
+  H.hold('l',8)
+  W.check('scene_blocks_new_focus',H.r8(CB+0x14)==0,H.r8(CB+0x14))
+  emu.removeMemoryCallback(id,emu.callbackType.exec,SYM.combat_world_frame)
+  reset()
   local altitude = H.r8(0x7E00F8)
   H.result('altitude_start', altitude)
   H.hold('l b', 20)
   W.check('teleport_chord_does_not_descend', H.r8(0x7E00F8) == altitude and W.inWorld(), H.r8(0x7E00F8))
   H.wait(3); H.hold('b', 20)
   W.check('b_still_descends', H.r8(0x7E00F8) < altitude, H.r8(0x7E00F8))
+  W.check('radar_yields_same_frame',radarBusy>50 and radarLeaks==0,radarLeaks .. '/' .. radarBusy)
   W.finish()
 end

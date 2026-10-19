@@ -4,6 +4,18 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES flight control and regression follow-up (2026-10-18)
+
+- Let radar rendering see the current frame's charge, attack and docking
+  state. Cancel focus and its sound pulses when scenes lock aerial controls.
+- Check that timing scenarios actually travel, show the radar, fire shots
+  and change form. The 5,770-frame stress run and two additional world
+  fixtures pass with zero missed frames or palette/OBJ/vblank errors.
+- Update the cutaway fixture to initialize the shared combat form, and
+  check whip companions at their actual landing before AI resumes. The
+  Fortress cutaway matches the reference at 99.2–99.7%; controls, native
+  audio, whip crossing and cartridge boot checks pass.
+
 ## SNES terrain streaming without flight stalls (2026-10-18)
 
 - Pre-expand the 512×512 world terrain at build time and copy rows into the

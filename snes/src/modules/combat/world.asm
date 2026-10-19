@@ -40,7 +40,11 @@ cb_world_input:
 	TSB !cb_mask
 	SEP #$20
 	LDA !cb_charging
-	BEQ +
+	BNE .cancel
+	LDA !cb_act
+	CMP.b #!GOKU_K_FOCUS
+	BNE +
+.cancel
 	REP #$20
 	JSR cb_cancel_combat
 +	REP #$20

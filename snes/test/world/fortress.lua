@@ -3,7 +3,7 @@
 -- states leave the SPC unable to take a music upload, so the crisis cue
 -- would hang the driver there). The Fortress is moved 400 px ahead. The
 -- hit removes it (C2:B112 stops drawing it), an explosion plays, then the
--- 186-frame planet cutaway (stand-in: the world fades out), then the
+-- 186-frame planet cutaway, then the
 -- Fortress's own docking ABI lands on its deck (map 255, landing record
 -- 10, X offset corrected) with the crisis cue $1B sent during the fade, and
 -- story event $8B (post-destruction scene) starts on the deck.
