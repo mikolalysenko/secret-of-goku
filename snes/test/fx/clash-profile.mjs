@@ -36,12 +36,15 @@ local samples, frames={},{}
 local start, phase, nstart, nphase, ended=nil,nil,nil,nil,false
 local function on() return H.r8(0x7EDBC0)==0x5A and H.r8(0x7EDBEF)~=0${final?' and H.r8(0x7EDBC4)==1':''} end
 local saved=false
-emu.addMemoryCallback(function()
+local function saveRelease()
   if not saved and on() and H.r8(0x326100)==3 then
     saved=true
     local file=io.open(H_OUT .. '/release.mss','wb');file:write(emu.createSavestate());file:close()
   end
-end,emu.callbackType.exec,0x00B079,0x00B079)
+end
+-- the field loop's wait (00:B079), also through its FastROM mirror
+emu.addMemoryCallback(saveRelease,emu.callbackType.exec,0x00B079,0x00B079)
+emu.addMemoryCallback(saveRelease,emu.callbackType.exec,0x80B079,0x80B079)
 emu.addMemoryCallback(function()
   if on() then start=emu.getState().masterClock;phase=H.r8(0x326100) else start=nil end
 end,emu.callbackType.exec,${f},${f})

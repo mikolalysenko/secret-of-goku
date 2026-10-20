@@ -68,22 +68,26 @@ local function scenery()
   return crater, pod
 end
 -- Savestate taken while the field loop waits for NMI (00:B079, original
--- code): no cartridge-added code on the stack, so it loads into later builds.
+-- code, or its FastROM mirror 80:B079): no cartridge-added code on the
+-- stack, so it loads into later builds.
 local function saveAtFieldLoop(name, frames)
   local done = false
-  local id = emu.addMemoryCallback(function()
+  local function save()
     if not done then
       done = true
       local f = assert(io.open(H_OUT .. '/' .. name .. '.mss', 'wb'))
       f:write(emu.createSavestate())
       f:close()
     end
-  end, emu.callbackType.exec, 0x00B079, 0x00B079)
+  end
+  local id = emu.addMemoryCallback(save, emu.callbackType.exec, 0x00B079, 0x00B079)
+  local fast = emu.addMemoryCallback(save, emu.callbackType.exec, 0x80B079, 0x80B079)
   for _ = 1, frames or 600 do
     if done then break end
     H.wait(1)
   end
   emu.removeMemoryCallback(id, emu.callbackType.exec, 0x00B079, 0x00B079)
+  emu.removeMemoryCallback(fast, emu.callbackType.exec, 0x80B079, 0x80B079)
   return done
 end
 local function vramSum(word, bytes)
