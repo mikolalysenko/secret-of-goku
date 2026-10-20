@@ -29,5 +29,11 @@ function test()
   H.result('d0', u8(0x7E00D0))
   H.result('gift', u8(0x7ECFC3))
   H.result('choice', command(16, 0, 0))
+  if HOLD then
+    local ptr, bank = H.r16(0x7E00D1), H.r8(0x7E00D3)
+    H.hold(HOLD, 240)
+    check('choice_stays', H.r16(0x7E00D1) == ptr and H.r8(0x7E00D3) == bank and command(16, 0, 0) == 1)
+  end
   H.shot('final')
+  finish()
 end
