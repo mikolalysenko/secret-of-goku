@@ -81,6 +81,9 @@ const GOKU_FORM=0x7E0000|def('goku_form');           // the goku module's form b
 const SCENE_OWNER=def('core_scene_owner'),SCENE_ORBIT=def('SCENE_ORBIT');
 const ORBIT_RAM=0x7E0000|(def('RAM_ORBIT')&0xFFFF),SCENE_RAM=def('SRAM_WORK_SCENE');
 const ADDR=`GOKU_FORM=${GOKU_FORM}\nSCENE_OWNER=${SCENE_OWNER}\nSCENE_ORBIT=${SCENE_ORBIT}\nORBIT_RAM=${ORBIT_RAM}\nSCENE_RAM=${SCENE_RAM}\n`;
+// Mesen runs share the machine with other agents' emulators: a generous
+// wall-clock limit (the emulation itself is deterministic).
+const TIMEOUT=Number(process.env.ORBIT_TIMEOUT_MS??2400000);
 const lua=(v)=>Array.isArray(v)?'{'+v.map(lua).join(',')+'}':typeof v==='object'?'{'+Object.entries(v).map(([k,x])=>`${k}=${lua(x)}`).join(',')+'}':typeof v==='string'?JSON.stringify(v):String(v);
 
 // Scripted pad for the fight case (core $4218 bits), frame 0 first.
@@ -211,7 +214,7 @@ const cases={
     ];
     const dir=join(out,'globe');
     const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nCAMS=${lua(cams)}\nSPIN=240\n`;
-    const r=await runMesen({rom,state,test:ADDR+pre+readFileSync(join(here,'globe.lua'),'utf8'),outDir:dir});
+    const r=await runMesen({rom,state,test:ADDR+pre+readFileSync(join(here,'globe.lua'),'utf8'),outDir:dir,timeoutMs:TIMEOUT});
     const res=r.results??{};
     const report={live:res.live,imported:res.imported,shots:{}};
     let ok=r.code===0&&res.live===true;
@@ -240,7 +243,7 @@ const cases={
     const marks=[20,59,61,135,209,211,285,360,435,510,585,660,735,809,811,860];
     const dir=join(out,'intro');
     const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nMARKS={${marks.join(',')}}\n`;
-    const r=await runMesen({rom,state,test:ADDR+pre+readFileSync(join(here,'intro.lua'),'utf8'),outDir:dir});
+    const r=await runMesen({rom,state,test:ADDR+pre+readFileSync(join(here,'intro.lua'),'utf8'),outDir:dir,timeoutMs:TIMEOUT});
     const res=r.results??{};
     let ok=r.code===0&&res.live===true&&Array.isArray(res.states);
     if(!ok){console.log('intro: FAIL (no run)',r.code,res.error??'');return false;}
@@ -278,7 +281,7 @@ const cases={
     const frames=Number(process.env.ORBIT_FIGHT_FRAMES??660),pads=fightPads(frames);
     const dir=join(out,'fight');
     const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nPADS=${lua(pads)}\nSHOTS={0,60,150,200,240,320,600}\nEXTRA=${Number(process.env.ORBIT_FIGHT_EXTRA??0)}\n`;
-    const r=await runMesen({rom,state,test:ADDR+pre+readFileSync(join(here,'fight.lua'),'utf8'),outDir:dir});
+    const r=await runMesen({rom,state,test:ADDR+pre+readFileSync(join(here,'fight.lua'),'utf8'),outDir:dir,timeoutMs:TIMEOUT});
     const res=r.results??{};
     let ok=r.code===0&&res.live===true&&Array.isArray(res.states);
     if(!ok){console.log('fight: FAIL (no run)',r.code,res.error??'',r.output?.slice(-2000));return false;}
@@ -325,7 +328,7 @@ const cases={
     const dir=join(out,'clash');
     const shots=[0,100,200,300,320,360,400,560,900,1300,1560,1700,1900,2500,2700,2880];
     const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nPADS=${lua(pads)}\nSHOTS={${shots.join(',')}}\nHP=6000\n`;
-    const r=await runMesen({rom,state,test:ADDR+pre+readFileSync(join(here,'clash.lua'),'utf8'),outDir:dir,timeoutMs:900000});
+    const r=await runMesen({rom,state,test:ADDR+pre+readFileSync(join(here,'clash.lua'),'utf8'),outDir:dir,timeoutMs:TIMEOUT});
     const res=r.results??{};
     let ok=r.code===0&&res.live===true&&Array.isArray(res.states);
     if(!ok){console.log('clash: FAIL (no run)',r.code,res.error??'',r.output?.slice(-2000));return false;}
@@ -397,7 +400,7 @@ function test()
   H.result('failures', fails)
 end
 `;
-    const r=await runMesen({rom:h.rom,state,test,outDir:dir});
+    const r=await runMesen({rom:h.rom,state,test,outDir:dir,timeoutMs:TIMEOUT});
     const res=r.results??{};
     const ok=r.code===0&&res.live===true&&Array.isArray(res.failures)&&res.failures.length===0;
     console.log(`handoff: ${ok?'pass':'FAIL'} owner ${res.owner_before} -> ${res.owner_live}, Frieza's block kept ${res.block_same}/2048 bytes`);
@@ -468,7 +471,7 @@ function test()
   H.result('failures', fails)
 end
 `;
-    const r=await runMesen({rom:h.rom,state,test,outDir:dir,timeoutMs:900000});
+    const r=await runMesen({rom:h.rom,state,test,outDir:dir,timeoutMs:TIMEOUT});
     const res=r.results??{};
     const fails=[...(res.failures??[])];
     if(r.code!==0||!res.fell)fails.push('no death ('+(res.error??r.code)+')');
