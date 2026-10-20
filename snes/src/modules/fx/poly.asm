@@ -65,9 +65,20 @@ assert !FX_PBASE == (!FX_SRAM&$FF0000), "fx polygon tables: bank of !FX_SRAM"
 fx_poly_beam:
 	LDA.w !core_mode&$FFFF
 	CMP.w #!CORE_MODE_FIELD
-	BNE .no
+	BNE .used
 	LDA.l !fx_poly_req           ; one polygon per frame
-	BNE .no
+	BEQ .free
+	CMP.w #5
+	BNE .used
+	LDA.l !fx_dual_cur
+	CMP.l !fx_dual_pair
+	BNE .used
+	CLC
+	RTS
+.used
+	SEC
+	RTS
+.free
 	LDA.l !fx_poly_on            ; channels 2/3 are the game's while it uses them
 	BNE +
 	LDA.w $002C
@@ -76,6 +87,15 @@ fx_poly_beam:
 +	LDA !d_cur+!C_KIND
 	BIT.w #!FX_F_HEADING<<8      ; 16 headings: OBJ only
 	BNE .no
+	CMP.w #$0081
+	BNE +
+	LDA !d_cur+!C_C
+	CMP.w #36
+	BNE +
+	JSR fx_poly_dual
+	BCS +
+	RTS
++
 	LDA !d_cur+!C_A
 	BEQ .gone
 	BMI .gone
@@ -991,10 +1011,16 @@ fx_poly_dball:
 	JSR fx_poly_avail
 	BCC +
 	RTS
-+	LDA !d_ks+2                  ; size
++	LDA !fxd_style
+	BEQ .violetSize
+	LDA !d_cur+!C_A
+	BRA .size
+.violetSize
+	LDA !d_ks+2                  ; size
 	ASL
 	TAX
 	LDA.l fx_dball_sizes,X
+.size
 	STA !fxp_len
 	LSR
 	STA !d_tmp
@@ -1006,14 +1032,23 @@ fx_poly_dball:
 	SEC
 	SBC !d_tmp
 	STA !fxp_y
-	LDA.w #$00E0                 ; key fields: the ball's tag, frame
+	LDA !fxd_style
+	ORA.w #$00E0                 ; key fields: the ball style tag, frame
 	STA !fxp_hw
 	LDA !d_ks
 	STA !fxp_t
 	STZ !fxp_rip
+	LDA !fxd_style
+	BEQ .violetFix
+	LDA.l fx_red_fix
+	STA.l !fx_pfix
+	LDA.l fx_red_fix+2
+	BRA .fix
+.violetFix
 	LDA.l fx_dball_fix           ; COLDATA for the rim (fx_nmi_poly kind 3)
 	STA.l !fx_pfix
 	LDA.l fx_dball_fix+2
+.fix
 	STA.l !fx_pfix+2
 	JSR fx_poly_key
 	BCS .build
@@ -1043,6 +1078,11 @@ fx_poly_dball:
 	STX !fxp_out
 	TXA
 	STA.l !fx_ptab3
+	LDA !fxd_style
+	BEQ +
+	JSR fx_red_tables
+	JMP .ready
++
 	LDA !d_ks+2                  ; this size's boundaries: 17 bytes per size
 	ASL
 	ASL
@@ -1140,7 +1180,9 @@ fx_poly_dball:
 	BEQ +
 	SEC
 	RTS
-+	LDA.w #$0004
++
+.ready
+	LDA.w #$0004
 	STA.l !fx_pdmap
 	LDA.w #$0003
 	STA.l !fx_poly_req
@@ -2498,6 +2540,14 @@ fx_rip3:
 ; Vblank (first in fx_nmi, DB = $80, only while there is time left): program
 ; the polygon of this frame, or put the registers back after the last one.
 fx_nmi_poly:
+	LDA.l !fx_poly_on
+	CMP.w #5
+	BNE +
+	LDA.l !fx_poly_req
+	CMP.w #5
+	BEQ +
+	JSR fx_dual_restore
++
 	LDA.l !fx_poly_req
 	BNE .on
 	LDA.l !fx_poly_on
@@ -2539,6 +2589,10 @@ fx_nmi_poly:
 	LDA.b #$03                   ; ... on the main screen
 	STA $212E
 	LDA.l !fx_poly_req
+	CMP.b #5
+	BNE +
+	JMP .dual
++
 	CMP.b #$04
 	BEQ .aura
 	CMP.b #$03
@@ -2616,6 +2670,31 @@ fx_nmi_poly:
 	STA $2131
 	LDA.b #$E0
 	STA $2132
+	JMP .enable
+.dual
+	LDA.b #$AA
+	STA $2123
+	LDA.b #$08                   ; BG3 and OBJ main pixels hidden in window 2
+	STA $2124
+	LDA.b #$88                   ; colour window and OBJ window = W2
+	STA $2125
+	STZ $212B
+	LDA.b #$17
+	STA $212E
+	STZ $212F                   ; subscreen copies remain unmasked
+	LDA.l $7E0021
+	AND.b #$14                   ; mirror main BG3/OBJ, preserve their priority
+	STA $212D
+	LDA.b #$92                   ; black clip W2, add subscreen inside W2
+	STA $2130
+	LDA.b #$20                   ; only the exposed backdrop receives math
+	STA $2131
+	LDA.l !fx_pfix
+	STA $2132
+	LDA.l !fx_pfix+1
+	STA $2132
+	LDA.l !fx_pfix+2
+	STA $2132
 .enable
 	LDA.l $7E002C
 	ORA.b #$0C
@@ -2651,6 +2730,11 @@ fx_nmi_poly:
 ; frame shows them again. Long addressing: also called from the ring menu
 ; frame.
 fx_poly_restore:
+	LDA.l !fx_poly_on
+	CMP.w #5
+	BNE +
+	JSR fx_dual_restore
++
 	SEP #$20
 	LDA.b #$00
 	STA.l $002123

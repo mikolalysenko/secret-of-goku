@@ -800,7 +800,7 @@ if defined("FX_IMPACT")
 	LDA !fz_t3
 	STA.l !fx_t
 	SEP #$20
-	LDA.b #1
+	LDA.b #!FX_DBALL_CINEMATIC
 	STA.l !fx_style
 	REP #$20
 	LDA.w #!FX_DEATHBALL|(!FX_F_SCREEN<<8)

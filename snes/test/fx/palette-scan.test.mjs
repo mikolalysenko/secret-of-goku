@@ -66,8 +66,8 @@ function compare({cursor=320,staged=0,mask=0xA5,tight=0,late=null}={}){
   used&=0xFC;
   const a=old(ram,tight),b=next(ram,tight),why=JSON.stringify({cursor,staged,mask,tight});
   assert(b.ram.equals(a.ram),'RAM '+why);assert(b.sram.equals(a.sram),'SRAM '+why);
-  assert.equal(b.sram.readUInt16LE(0x7820),used,why);
-  assert.equal(b.sram.readUInt16LE(0x7822),tight?0:(~used&0xFC),why);
+  // !fx_palfree: free palettes in the low byte; bit 8 (one acquired) clear
+  assert.equal(b.sram.readUInt16LE(0x7820),tight?0:(~used&0xFC),why);
   return [a.cycles,b.cycles];
 }
 test('all OAM cursor boundaries and staged groups retain palette ownership',()=>{

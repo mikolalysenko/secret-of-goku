@@ -135,8 +135,6 @@ fx_nmi_cells:
 +	SEP #$20
 	LDA.b #$80
 	STA $2115
-	LDA.b #fx_cells>>16
-	STA $4304,Y
 	REP #$20
 	LDA.w #$1801                 ; A->B, $2118/$2119
 	STA $4300,Y
@@ -144,27 +142,35 @@ fx_nmi_cells:
 .loop
 	LDA.l fx_entry_bit,X
 	AND.l !fx_cpend
-	BEQ .next
-	; Reserve the palette writes, math registers and core NMI return.
+	BNE +
+	JMP .next
++	; Reserve the palette writes, math registers and core NMI return.
 	; Starting a cell at 257-258 let an otherwise valid frame finish on
 	; visible line 0/1. Pending cells keep their previous resident age.
 	JSR fx_nmi_vline
 	CMP.w #254
-	BCS .done
-	CMP.w #225
-	BCC .done
+	BCC +
+	RTS
++	CMP.w #225
+	BCS +
+	RTS
++
 	LDA.l !fx_nmi_reg
 	TAY
 	LDA.l fx_entry_vram,X
 	STA $2116
-	LDA.l !fx_ccell,X            ; source = cells + cell*128
-	LSR
-	XBA
-	BCC +
-	ORA.w #$0080
-+	CLC
-	ADC.w #fx_cells&$FFFF
+	LDA.l !fx_ccell,X
+	PHX
+	ASL
+	ASL
+	TAX
+	LDA.l fx_cell_dma,X
 	STA $4302,Y
+	SEP #$20
+	LDA.l fx_cell_dma+2,X
+	STA $4304,Y
+	REP #$20
+	PLX
 	LDA.w #64
 	STA $4305,Y
 	SEP #$20
@@ -214,7 +220,7 @@ fx_nmi_vline:
 
 ; Write the OBJ palettes FX used this frame (32 bytes each) after the
 ; game's own CGRAM upload; the game's buffer at $7E:0600 is never touched.
-; The six classes are fixed: unroll their scan and source offsets so a
+; The classes are fixed: unroll their scan and source offsets so a
 ; late native sprite upload still leaves room for palettes and the RTI.
 macro fx_nmi_palette(class)
 	LDA.l !fx_nmipal+<class>
@@ -269,10 +275,10 @@ endif
 endmacro
 
 fx_nmi_palettes:
-	for class = 0..6
+	for class = 0..!FX_CLASS_COUNT
 		%fx_nmi_palette(!class)
 	endfor
-	LDX.w #6
+	LDX.w #!FX_CLASS_COUNT
 	RTS
 
 ; Flash (native-feedback.js burst): fixed-colour addition on BG1, BG2,
