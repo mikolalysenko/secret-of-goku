@@ -259,7 +259,7 @@ of the world's (the same within a cell, repeating per cell).
 | SRAM `$32:7000-7FFF` | scene work while Frieza's scenes run: `+$000` hole list and write list (`!FZHB`), `+$800` fight block (`!FZSB`: tag, warning, shots, hazards, afterimages, test mailbox, arena, victory), `+$C00` the hole bitmap. The orbit stream keeps to `$32:6000-6FFF` |
 | VRAM | core pool regions, owner `$06` (`!FZ_VRAM_OWNER`), claimed by the frames that use them and given back on the first busy frame that does not (`fz_vram_settle`): `!VRAM_SCENE_OBJ` (OBJ tiles `$0C0-$0FF`) while Frieza is drawn, `!VRAM_SCENE_BG` (BG tiles `$1C0-$1CF`) while holes show on maps 246 and 255, `!VRAM_FIELD_OBJ_A` while the Dragon Balls show; a region another scene holds is not drawn into. Plus the BG1 tilemap entries of visible holes |
 | CGRAM | one free OBJ palette (two with afterimages or the Balls), in vblank; BG palette 6 (map 246) or 2 (map 255) colours 1-7 in the game's buffer while holes show |
-| OAM | up to 8 front sprites for Frieza, 7 for the Balls; native slots rewritten during the Emperor's black frame |
+| OAM | up to 8 front sprites for Frieza (one `core_oam_meta_front` call a frame: the generated frame descriptors hold its 4-byte pieces; afterimages behind through `core_oam_meta`), 7 for the Balls; native slots rewritten during the Emperor's black frame |
 | Registers | in vblank, per frame and only when this frame's logic asked: the whiteout (CGWSEL/CGADSUB/COLDATA), the black frame (TM, CGADSUB, CGRAM 0), the collapse tint; the map's values come back the vblank after |
 | DMA | channel 7 in the field NMI |
 

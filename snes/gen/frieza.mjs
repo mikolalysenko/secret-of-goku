@@ -151,7 +151,9 @@ export async function generate({repo,outDir,rom:baseRom}){
   const bytes=list=>{const lines=[];for(let i=0;i<list.length;i+=16)lines.push('\tdb '+list.slice(i,i+16).map(v=>hex(v&0xFF)).join(','));return lines;};
 
   // Frame descriptors: dw art offset (in bank !FRIEZA_ART_BANK), db pieces,
-  // then pieces x (db dx, dy) signed, relative to the anchor.
+  // then core_oam_meta's pieces: db dx, dy (signed, relative to the anchor),
+  // tile (2 * index: piece i's 16x16 cell starts at tile 2i of its buffer,
+  // its bottom half one tile row below), flags 0 (small = 16x16 in the field).
   out.push(`!FRIEZA_ART_BANK = ${hex(ART_BANK)}`);
   out.push(`!FRIEZA_ART_SIZE = ${artBytes.length}`);
   out.push('frieza_frame_table:');
@@ -161,7 +163,7 @@ export async function generate({repo,outDir,rom:baseRom}){
     out.push(`frieza_frame_${fr.id}:`);
     out.push(`\tdw ${hex(fr.offset,4)}`);
     out.push(`\tdb ${fr.n}`);
-    out.push(...bytes(fr.pieces.flat()));
+    out.push(...bytes(fr.pieces.flatMap(([dx,dy],i)=>[dx,dy,2*i,0])));
   }
 
   // Palettes (BGR555, 16 entries, entry 0 transparent): normal, the boss
