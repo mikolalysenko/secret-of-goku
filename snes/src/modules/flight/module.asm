@@ -240,6 +240,7 @@ endif
 !fl_tp_prefix  = !fl_tp+$2C        ;   4 bytes: per-direction path cutoff (0 unknown, 1 blocked
                                    ;   at 6, 2 clear at 6, else shortest failed distance); $FFFF disables
 assert !fl_tp_prefix+4 <= !FL_SRAM+$380, "teleport prefix overlaps the hero grid"
+!FLIGHT_B_TP_E #= !fl_tp_e_x      ; (bind.asm's copy: x, y, terrain, species, airborne words)
 !fl_tp_l_x    = !FL_SRAM+$3A6     ;   word: landing found by fl_tp_landing
 !fl_tp_l_y     = !FL_SRAM+$3A8
 !fl_tp_l_terr  = !FL_SRAM+$3AA

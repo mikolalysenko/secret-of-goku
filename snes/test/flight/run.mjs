@@ -18,6 +18,9 @@
 //             (flight_api_camera), on the FLIGHT_TEST cartridge
 //   vegeta    Instant Transmission to the live Vegeta in the Time Chamber
 //             (only on builds with the vegeta module)
+//   frieza    Instant Transmission to Frieza in the battle preset through
+//             combat's virtual target 12 (landing equal to the browser's
+//             findLanding), none off map 246 (builds with frieza and combat)
 //   ... (see docs/agents/snes-port/flight.md)
 //   node snes/test/flight/run.mjs [test ...]
 // ROM: $SNES_ROM or dist/snes/secret-of-goku.sfc (the classify test builds
@@ -149,6 +152,55 @@ if(want('vegeta')){
     }else if(!failures.length)failures.push('no press recorded');
     const pass=r.code===0&&r.results?.pass===true&&!failures.length;ok&&=pass;
     results.push({test:'vegeta',ok:pass,ms:r.ms,failures,note,log:r.results?.log});
+  }
+}
+
+// Instant Transmission to Frieza through combat's virtual target 12
+// (combat_api_vtarget), on builds with the frieza and combat modules: the
+// battle preset with the browser's Frieza state (snes/test/frieza's
+// writes), compared with the browser's findLanding on the press's WRAM
+if(want('frieza')){
+  const sym=readFileSync(romSrc.replace(/\.sfc$/,'.sym'),'utf8');
+  const refState=join(mainCheckout(),'.local/snes-ref/battle/state.json');
+  if(!/^[0-9A-F]{2}:[0-9A-F]{4} frieza_virtual_target$/mi.test(sym)||!/^[0-9A-F]{2}:[0-9A-F]{4} combat_api_vtarget$/mi.test(sym)){
+    results.push({test:'frieza',ok:true,ms:0,failures:[],note:' skipped (no frieza or combat module in this build)'});
+  }else if(!existsSync(refState)){
+    results.push({test:'frieza',ok:true,ms:0,failures:[],note:' skipped (no .local/snes-ref/battle reference)'});
+  }else{
+    const {friezaWrites,luaWrites,defs}=await import(pathToFileURL(resolve(repo,'snes/test/frieza/state.mjs')).href);
+    const g=JSON.parse(readFileSync(refState,'utf8')).goku;
+    const extra=`FRIEZA_WRITES=${luaWrites(friezaWrites(g.frieza,g.challenge))}\nFRIEZA_MUSIC={0x${(0x7E0000|defs.fz_music).toString(16)},${defs.FZM_BATTLE}}\n`;
+    const rom=privateRom(romSrc,'flight-frieza');
+    const outDir=join(outRoot,'frieza');
+    const r=await runMesen({rom,test:extra+prelude()+readFileSync(join(here,'frieza.lua'),'utf8'),outDir,state:join(cps,'waterfall.mss')});
+    cleanupRom(rom);
+    const failures=[...(r.results?.failures??[r.results?.error??'no results'])];
+    let note='';
+    const p=r.results?.press;
+    if(p&&existsSync(join(outDir,'wram.bin'))){
+      // mana-mod.js startTeleport: a teleport starts when findLanding()
+      // finds a spot beside him; frieza.js entity(): custom 'frieza', his
+      // terrain (native-teleport.js lets it end in a hover)
+      const {createNativeLocalFlight}=await import(pathToFileURL(resolve(repo,'engine/native-local-flight.js')).href);
+      const {createNativeTeleport}=await import(pathToFileURL(resolve(repo,'engine/native-teleport.js')).href);
+      const wram=new Uint8Array(readFileSync(join(outDir,'wram.bin')));
+      const snes={ram:wram,cart:{data:new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')))},cpu:{r:new Uint8Array(8),br:new Uint16Array(8),cyclesLeft:0,cycle(){}},frames:1,ppu:{mode:wram[0x29]&7}};
+      const h=createNativeLocalFlight(snes,{active:()=>true,phase:true});
+      const t=createNativeTeleport(snes,{options:{enabled:true},write16(){}},h);
+      const js=t.findLanding({x:p.ex,y:p.ey,terrain:p.et,custom:'frieza'},{x:p.gx,y:p.gy});
+      t.dispose();h.dispose();
+      if(!js)failures.push(`the browser's findLanding finds no spot beside Frieza at ${p.ex},${p.ey} (the case needs one)`);
+      if(!p.ran)failures.push('L+B started no teleport');
+      if(p.ran&&p.tg!==12)failures.push(`target slot ${p.tg}, want 12 (Frieza)`);
+      if(p.es!==121)failures.push(`target species ${p.es}, want 121`);
+      if(p.ea!==1)failures.push(`target airborne ${p.ea}, want 1 (!CVT_AIRBORNE)`);
+      const fzTerrain=wram[defs.fzf_terrain&0xFFFF];
+      if(p.et!==fzTerrain)failures.push(`target terrain ${p.et.toString(16)}, want Frieza's ${fzTerrain.toString(16)}`);
+      if(js&&p.ran&&(p.lx!==js.x||p.ly!==js.y))failures.push(`landing ${p.lx},${p.ly}, the browser's ${js.x},${js.y}`);
+      note=` Frieza at ${p.ex},${p.ey} t ${p.et.toString(16)} from ${p.gx},${p.gy}: ${js?`browser lands at ${js.x},${js.y}${js.air?' (hover)':''}, cartridge at ${p.lx},${p.ly}`:'no landing spot'}; off map 246 (map ${r.results?.off?.map}) no Frieza target`;
+    }else if(!failures.length)failures.push('no press recorded');
+    const pass=r.code===0&&r.results?.pass===true&&!failures.length;ok&&=pass;
+    results.push({test:'frieza',ok:pass,ms:r.ms,failures,note,log:r.results?.log});
   }
 }
 

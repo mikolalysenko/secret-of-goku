@@ -24,6 +24,33 @@ if defined("CB")
 +
 endif
 	RTS
+; Combat's virtual targets (combat_api_vtarget): the one at browser entity
+; index X16 (Frieza: 12) as Instant Transmission's target, carry set with
+; fl_tp_e_* filled: x, y, the terrain byte from !cb_vq and airborne from its
+; !CVT_AIRBORNE flag (native-teleport.js lets a teleport to Frieza end in a
+; hover).
+fl_bind_vtarget:
+if defined("CB")
+	JSL combat_api_vtarget
+	BCC +
+	STA.l !FLIGHT_B_TP_E+6       ; species
+	TXA
+	STA.l !FLIGHT_B_TP_E         ; x
+	TYA
+	STA.l !FLIGHT_B_TP_E+2       ; y
+	LDA.l !cb_vq
+	AND.w #$00FF
+	STA.l !FLIGHT_B_TP_E+4       ; terrain byte
+	LDA.l !cb_vq
+	XBA
+	AND.w #!CVT_AIRBORNE
+	STA.l !FLIGHT_B_TP_E+8       ; airborne
+	SEC
+	RTS
++
+endif
+	CLC
+	RTS
 fl_bind_cancel:
 if defined("CB")
 	JSL combat_api_cancel
