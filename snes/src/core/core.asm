@@ -51,6 +51,7 @@
 !CORE_SAFE_CLEAR = $002             ; cleared at power-on and title entry: +$002-$09F
 !CORE_SAFE_END   = $0A0
 !core_scene_owner = !CORE_SAFE+$01C ; word: owner of !SRAM_WORK_SCENE (core_scene_claim; 0 = free)
+!core_hp_pending = !CORE_SAFE+$01E ; byte: native HP-number redraw queued by field status work
 !core_world_done = !CORE_SAFE+$01A  ; byte: this world vblank ran the game's frame work ($EC bit 0 at
                                     ; 00:88FB; written by the world module's hook there, which owns the site)
 !core_safe_magic = !CORE_SAFE+$018  ; word 'CS' while the block is valid; any frame
@@ -99,7 +100,24 @@
 !core_vram_owner      = !CORE_SAFE+$040 ; 32 bytes: VRAM pool cell owners (core/vram.asm)
 !core_test            = !RAM_CORE_EXT+$100 ; 128 bytes: CORE_TEST mailbox (test builds only)
 !core_hdmaen          = !CORE_SAFE+$016 ; byte: HDMAEN written by the last field vblank
-; !RAM_CORE_EXT+$181-$1BF reserved for core.
+!core_oam_first       = !CORE_SAFE+$017 ; byte: $80 | first field OBJ, or 0 for normal order
+; !RAM_CORE_EXT+$181-$1BB reserved for core.
+; This queue survives across field frames, so native map-tile decoding
+; must not be able to overwrite it. It follows Goku's water palette.
+!core_party_pending = !SRAM_WORK_PARTY+$00 ; byte: deferred CPU companion animation/AI
+!core_party_queuing = !SRAM_WORK_PARTY+$01 ; byte: only the regular companion tick
+!core_party_map = !SRAM_WORK_PARTY+$02 ; word: map owning deferred work
+!core_party_age0 = !SRAM_WORK_PARTY+$04 ; bytes: elapsed logic frames per pending member
+!core_party_age1 = !SRAM_WORK_PARTY+$05
+!core_party_magic = !SRAM_WORK_PARTY+$06 ; word: older states/battery noise are not work
+!CORE_PARTY_MAGIC = $5150
+!core_enemy_pending = !SRAM_WORK_ENEMY+$00 ; byte: slots $0800/$0A00
+!core_enemy_species0 = !SRAM_WORK_ENEMY+$01
+!core_enemy_species1 = !SRAM_WORK_ENEMY+$02
+!core_enemy_map = !SRAM_WORK_ENEMY+$04
+!core_enemy_magic = !SRAM_WORK_ENEMY+$06
+!CORE_ENEMY_MAGIC = $5145
+!core_native_xy = !RAM_CORE_EXT+$1BC ; word: native OBJ anchor; frame thread only
 
 !CORE_DMA_MAX      = 8
 !CORE_DMA_BUDGET   = $0C00           ; bytes per frame accepted by core_queue_vram
@@ -222,7 +240,8 @@ core_safe_clear:
 	BPL .loop
 	LDA.w #!CORE_SAFE_MAGIC
 	STA.l !core_safe_magic
-	RTS
+	JSR core_enemy_reset
+	JMP core_party_reset
 
 ; Title program entries (C1:4CF6 JML $7EAF0B, C1:4D0B JML $7EAF28). Every way
 ; back to the title (power-on, Start+Select+L+R, quit) passes here after
@@ -270,8 +289,9 @@ core_frame_begin:
 +	PLA
 	CMP.w !core_mode&$FFFF
 	BEQ .same
-	STA.w !core_mode&$FFFF
 	JSR core_oam_mode_changed
+	JSR core_party_reset
+	JSR core_enemy_reset
 .same
 	INC.w !core_tick&$FFFF
 	; The game's own register reset (C2:B620, $4202+X for X = 0..11) clears
@@ -306,6 +326,106 @@ core_frame_end:
 	JSR core_pad_latch
 	JSR core_sound_pump
 	RTS
+
+; ---------------------------------------------------------------------------
+; The $80 mirror has the same WRAM/IO mapping as $00 and fast ROM fetches.
+; Each native RTS goes through the cartridge's RTL at B294, returning to
+; this bank even if a module's continuation switches back to bank $00.
+core_field_scroll:
+	PHK
+	PER .scroll-1
+	PEA $B294-1
+	JML $80C59F
+.scroll
+	JML $81B033
+
+core_field_actors:
+	PHK
+	PER .prepare-1
+	PEA $B294-1
+	JML $80EB06
+.prepare
+	PHK
+	PER .actors-1
+	PEA $B294-1
+	JML $80B0D3
+.actors
+if not(defined("CORE_PARTY_SYNC"))
+	JSR core_party_begin
+	SEP #$20
+	REP #$10
+	LDA $D0
+	BNE .sprites_start          ; event scripts keep the native phase order
+	LDA.l !persist_goku_active
+	BEQ .sprites_start
+	LDA $56
+	CMP.b #4
+	BEQ .girl
+	CMP.b #0
+	BNE .sprites_start
+	LDX.w #$0400
+	BRA .party
+.girl
+	LDX.w #$0200
+.party
+	LDA.b #1
+	STA.l !core_party_queuing
+	JSR core_party_actor
+	SEP #$20
+	LDA.b #0
+	STA.l !core_party_queuing
+.sprites_start
+	JSR core_party_work
+endif
+	JSR core_enemy_work
+	PHK
+	PER .sprites-1
+	PEA $B294-1
+	JML $80E38E
+.sprites
+	RTL
+
+if not(defined("CORE_PARTY_SYNC"))
+; Retain the native once-per-five-frame party status rate, putting the
+; girl in phase 4 and the sprite in phase 0 while Goku is active. Movement,
+; collision and OBJ construction still run for the whole party every frame.
+; Phases 1/2 already carry heavy native enemy work; keep companions away
+; from those peaks and Goku's phase-3 update.
+; During teleport, party.asm may finish the following CPU AI/animation
+; within that five-frame interval to leave time for landing/camera work.
+; CORE_PARTY_SYNC restores the original phase-3 burst for comparisons.
+core_party_pair:
+	SEP #$20
+	REP #$10
+	LDA $D0
+	BNE .native
+	LDA.l !persist_goku_active
+	BNE .done
+.native
+	LDX.w #$0200
+	JSR core_party_actor
+	LDX.w #$0400
+	JSR core_party_actor
+.done
+	RTL
+core_party_actor:
+	; F4CB may return M16 after processing a companion. The native
+	; pair calls it again without changing width; establish its entry widths
+	; before the bank-switch PHA, including the second member of that pair.
+	SEP #$20
+	REP #$10
+	PHB
+	LDA.b #$7E                  ; F4AB normally supplies the actor-data bank
+	PHA
+	PLB
+	PHK
+	PER .done-1
+	PEA $B294-1
+	JML $80F4CB
+.done
+	PLB
+	RTS
+endif
 
 ; ---------------------------------------------------------------------------
 ; Field main loop, 00:B073 (bank 00 mirror of C0): after the frame's game
@@ -361,6 +481,7 @@ endif
 	JSL modules_field_nmi
 	REP #$30
 	JSR core_flush_auto
+	JSR core_native_hp_nmi
 .done
 	PLB
 	PLP
@@ -375,6 +496,12 @@ endif
 ; or scroll writes for a frame, ui.md): then only channels already running
 ; stay on, and the rest start with the next vblank.
 core_hdmaen_write:
+	; Disabling channels, or keeping the same mask, is safe even after
+	; frame start. Only newly enabled channels need the scanline guard.
+	LDA $2C
+	EOR.l !core_hdmaen
+	AND $2C
+	BEQ .same
 	REP #$20
 	JSR core_vcount
 	CMP.w #225
@@ -382,6 +509,9 @@ core_hdmaen_write:
 	LDA $2C
 	BCS .store
 	AND.l !core_hdmaen
+	BRA .store
+.same
+	LDA $2C
 .store
 	STA.l !core_hdmaen
 	STA.l $00420C
@@ -439,6 +569,8 @@ endif
 	PLY
 	PLX
 	PLA
+
+core_world_nmi_return:
 	RTI
 
 
@@ -469,7 +601,7 @@ endif
 
 ; Ring menus, C0:694F: the ring loop's wait-for-vblank returns here once per
 ; frame, after the field NMI uploaded OAM/CGRAM. Replaced: LDA #$08 / TSB
-; $EC (M8). Field sprites stay frozen in the OAM buffer while a ring is open.
+; $EC (M8). The ring owns the field OAM buffer after its native clear/rebuild.
 core_ring_frame:
 	%core_enter()
 	INC.w !core_frame_ring&$FFFF
@@ -640,6 +772,13 @@ core_flush_auto:
 	REP #$30
 	LDA.l !core_dma_count
 	BEQ .none
+	; A queue that cannot start a transfer should not spend the last NMI
+	; lines selecting/configuring a channel just to defer it afterward.
+	JSR core_vcount
+	CMP.w #225
+	BCC .none
+	CMP.w #!CORE_VBLANK_LAST-1
+	BCS .none
 	LDA.l $7E002C
 	AND.w #$00FF
 	STA.l !core_tmp0
@@ -677,6 +816,9 @@ core_flush_main:
 	RTS
 
 incsrc "input.asm"
+incsrc "native.asm"
+incsrc "party.asm"
+incsrc "enemy.asm"
 incsrc "oam.asm"
 incsrc "services.asm"
 incsrc "save.asm"

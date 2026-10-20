@@ -1,4 +1,4 @@
-# Audio module: Secret of Mana's sound driver, DBZ effects, voices and new music
+# Audio module: native SNES effects and music
 
 Spoilers follow the rest of `docs/agents/`. Module: `snes/src/modules/audio/`
 (65816 code bank `$AA`, tables `$EA`, BRR/sequence assets in `$FC-$FF`,
@@ -7,6 +7,51 @@ WRAM `!RAM_AUDIO`), generators `snes/gen/audio*.mjs`, tests `snes/test/audio/`.
 Everything below about the native driver was reverse-engineered from the US
 cartridge (`snes/gen/audio-spc700.mjs` disassembles it) and cross-checked
 against 277 ARAM/DSP snapshots of the browser mod (`.local/snes-import/`).
+
+## Shipping sound policy (October 18, 2026)
+
+The default cartridge uses effects already resident in the original SPC
+driver. It does not upload the stream extension or transfer BRR chunks
+during gameplay. Seven short, single-voice sequences occupy previously
+unused effect slots
+`$DC-$E2`: swing, hit, ki, charge, transformation, teleport and beam. They
+reuse the boot-resident instruments and finish in 90-470 ms. The native
+`$12` rumble loop is no longer used by transformations; it never stopped
+on its own. Contact has a stronger attack than an empty swing, and the
+old two-voice, roughly two-second `$50` impact has a short replacement.
+A priority selector sends at most one new effect per
+frame and drops stale requests when a script or song owns the sound queue.
+Charge beds pulse every 25 frames; continuous flight noise and sampled
+voice lines are omitted. Native music and its arrangements remain enabled.
+
+`snes/src/modules/audio/native.asm` implements this policy behind the same
+module API. `-DAUDIO_PCM=1` restores the historical streamer for diagnostics;
+the streaming design below describes that optional build. The audio runner
+tests `native` against the shipping ROM and explicitly builds the PCM option
+for the historical streaming tests. `node snes/test/audio/run.mjs native unit`
+checks audible resident effects, bounded charge pulses, music continuity,
+intact samples, one-voice ownership, automatic cue termination and the
+absence of BRR stream commands. The SPC tests additionally check silent
+tails, output headroom and unchanged retail effects/samples.
+
+`resident.asm` uses 115 of the 144 zero bytes at ARAM `$2F70-$2FFF`: seven
+pointer pairs followed by 87 sequence bytes. Slots `$E3-$FF` are reserved
+for sequence storage. The existing boot and song-reload transfers already
+include this region, so it needs no new upload, samples or SPC extension.
+The test importer installs this small region from the cartridge when
+restoring a retail checkpoint; live driver state is preserved.
+
+Resident effect command `02` also uses an asynchronous CPU-side handshake
+in the shipping build. The hook at `C3:0175` writes the four ports and
+returns; `audio_native_poll` releases the SPC's echo on the next field,
+world or menu callback, or before another command. A busy driver drops new
+effects without changing pending parameters. Songs, fades and stop commands
+first finish any pending effect and keep their native synchronous behavior.
+The native effect test measures less than two scanlines per dispatcher call
+(1.35 maximum in the October 18 run), checks audible cues and intact
+parameters, then loads and restores music. This avoids the old effect
+busy-wait; it does not eliminate the native song loader's transition pauses.
+The pending byte aliases the unused PCM channel state in a native build.
 
 ## 1. The native sound driver
 

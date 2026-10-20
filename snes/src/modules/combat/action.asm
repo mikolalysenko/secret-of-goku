@@ -353,6 +353,9 @@ cb_start_charge:
 	LDA !cb_can
 	AND.w #$00FF
 	BNE +
+	LDA !cb_world
+	AND.w #$00FF
+	BNE +
 	RTS
 +	SEP #$20
 	LDA.b #$01

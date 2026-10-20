@@ -41,6 +41,25 @@ core_pad_bios:
 	LDA.w #$0000
 	STA.l !core_pad_inject_live
 .seen
+	; Flight chords must hide altitude buttons on their very first read.
+	; A frame-latched mask alone arrives after native descent/landing has
+	; already consumed L+B (or ascent has consumed L+A).
+	LDA.l !core_pad_bios
+	BIT.w #!PAD_L
+	BEQ .record
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BEQ .record
+	LDA.l $7E0100
+	CMP.w #$CF5C                   ; native world-flight NMI, not a field/menu
+	BNE .record
+	LDA.l $7E0102
+	CMP.w #$0088
+	BNE .record
+	LDA.l $7E0042
+	AND.w #$FFFF^(!PAD_A|!PAD_B)
+	STA.l $7E0042
+.record
 	LDA.l $7E0042
 	STA.l !core_pad_seen
 	PLA

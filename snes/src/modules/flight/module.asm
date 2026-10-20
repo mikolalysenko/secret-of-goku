@@ -38,6 +38,7 @@ endif
 !FLIGHT_API_CAN_LAND   = flight_api_can_land     ; JSL: A16 x, X16 y at Goku's layer/terrain -> C
 !FLIGHT_API_CAN_LAND_T = flight_api_can_land_t   ; JSL: the same, Y16 = terrain byte (bit 7 layer)
 !FLIGHT_API_CAMERA     = flight_api_camera       ; JSL: A16 x, X16 y camera target, posted per frame
+!FLIGHT_API_BOSS       = flight_api_boss_active  ; JSL: C set for a live native/custom boss
 
 ; ---------------------------------------------------------------------------
 ; WRAM (!RAM_FLIGHT = $7ED900, $80 bytes; absolute addressing with DB = $7E)
@@ -98,7 +99,7 @@ assert !RAM_FLIGHT == $7E0000|!FLIGHT_RAM, "!FLIGHT_RAM must match !RAM_FLIGHT"
 !fl_lastmap    = !FLIGHT_RAM+$66   ; word: map of the last field frame
 !fl_lasttick   = !FLIGHT_RAM+$68   ; word: core tick of the last field frame
 !fl_magic      = !FLIGHT_RAM+$6A   ; word: !FL_MAGIC once the SRAM work area was initialised
-!fl_passengers = !FLIGHT_RAM+$6C   ; word: carried CPU companions to hide (bit 0 $E200, bit 1 $E400)
+!fl_passengers = !FLIGHT_RAM+$6C   ; word: carried CPU companions (bit 0 $E200, bit 1 $E400)
 !fl_speed      = !FLIGHT_RAM+$6E   ; word: configured speed for the next steps
 !fl_gap        = !FLIGHT_RAM+$70   ; word: whip-pad crossing active (map+1), 0 none
 !fl_quiet_why  = !FLIGHT_RAM+$72   ; word: why flight is quiet: 0 Goku out of play, $FFFF off the native field, else fl_quiet_addr index
@@ -189,7 +190,17 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !fl_rc_queue   = !FL_SRAM+$200     ; 64 words: flood fill queue (tile index)
 !fl_anchor     = !FL_SRAM+$280     ; last verified landing: map, x, y, layer, terrain (5 words)
 !fl_crossing   = !FL_SRAM+$28A     ; crossing start: map, x, y, layer, terrain, whip (6 words)
-                                   ; $296-$29F: the FLIGHT_TEST floor hole (testmod.asm)
+; The hole-provider test owns these ten bytes in FLIGHT_TEST_HOLES builds.
+; Such builds mark every map with FLM_HOLES and cannot reuse endpoint cells.
+!fl_tp_spot_lo = !FL_SRAM+$296     ; four failed-endpoint distance intervals (teleport search only)
+!fl_tp_spot_on = !FL_SRAM+$29E     ; interval reuse active inside fl_tp_landing
+assert !fl_tp_spot_on+2 <= !FL_SRAM+$2A0, "teleport endpoint intervals overlap the test mailbox"
+!FL_TP_SPOT_MEMO = 0
+if not(defined("FLIGHT_TP_SPOT_MEMO_SLOW")) && not(defined("FLIGHT_TP_PREFIX_SLOW"))
+if not(defined("FLIGHT_TP_GROUND_SLOW")) && not(defined("FLIGHT_TEST_HOLES"))
+	!FL_TP_SPOT_MEMO = 1
+endif
+endif
 !fl_sram_test  = !FL_SRAM+$2A0     ; test mailbox ($90 bytes, FLIGHT_TEST builds)
 !fl_g_inner    = !FL_SRAM+$330     ; word: the hero grid lies far enough inside the map that every
                                    ; footprint it covers is in bounds
@@ -225,6 +236,10 @@ assert !FLIGHT_RAM_END <= !FLIGHT_RAM+$80, "flight WRAM overflow"
 !fl_tp_e_terr  = !fl_tp+$24
 !fl_tp_e_species = !fl_tp+$26
 !fl_tp_e_air   = !fl_tp+$28
+!fl_tp_clock   = !fl_tp+$2A        ;   word: field video clock of the last action step
+!fl_tp_prefix  = !fl_tp+$2C        ;   4 bytes: per-direction path cutoff (0 unknown, 1 blocked
+                                   ;   at 6, 2 clear at 6, else shortest failed distance); $FFFF disables
+assert !fl_tp_prefix+4 <= !FL_SRAM+$380, "teleport prefix overlaps the hero grid"
 !fl_tp_l_x    = !FL_SRAM+$3A6     ;   word: landing found by fl_tp_landing
 !fl_tp_l_y     = !FL_SRAM+$3A8
 !fl_tp_l_terr  = !FL_SRAM+$3AA
@@ -299,6 +314,9 @@ assert !fl_wk_s2x == !fl_wk_s1x+6 && !fl_wk_s2t == !fl_wk_s1t+6, "flight: walk s
 !FLC_LANDB  = $0004   ; clear(t, terrain, false) for a terrain its height admits
 !FLC_H1     = $0008   ; height 1 (excludes terrain 2)
 !FLC_H2     = $0010   ; height 2 (excludes terrain 1)
+!FLC_TPSPOT = $0020   ; teleport ground endpoint (height checked separately)
+!FLC_TPPATH = $0040   ; teleport ground corridor, including stairs
+!FLC_TPV    = $0080   ; teleport bits above are known
 !FLC_LOWV   = $0100   ; FLC_LOW is known
 !FLC_LOW    = $0200   ; lowObstacle(t)
 !FLC_BLKV   = $0400   ; FLC_BLK is known

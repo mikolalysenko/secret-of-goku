@@ -766,10 +766,37 @@ cb_hook_level_read:
 +	LDA.l $D04215,X
 	RTL
 
-; Replaced: BNE $4BDB / LDX $BD; the RTS at C0:4BF6 stays.
+if not(defined("COMBAT_ATTR_BATCH_SLOW"))
+; The first four native attributes need no per-byte loop/hook round trip.
+; Keep INX (including narrow-index wrapping) and leave the final native
+; iteration to produce exactly its original A, carry, scratch and flags.
+; M8; neither decimal mode nor the accumulator's high byte is changed.
+cb_attr_batch:
+	for attribute = 0..4
+		LDA.w $E188,X
+		BEQ .minimum!attribute
+		CMP.b #100
+		BCC .next!attribute
+		LDA.b #99
+		BRA .store!attribute
+.minimum!attribute
+		LDA.b #1
+.store!attribute
+		STA.w $E188,X
+.next!attribute
+		INX
+	endfor
+	LDA.b #1
+	STA $A4
+	JML $C04BDB
+endif
+
+; Replaced: BNE $4BDB / LDX $BD. Tail jumps preserve the native call's
+; return address instead of rewriting a JSL return four times per rebuild.
+; The RTS at C0:4BF6 stays; Goku's Heavy Gi adjustment runs once at the end.
 cb_hook_attr_clamp:
 	BEQ +
-	%cb_redirect($4BDB)
+	JML $C04BDB
 +	LDX $BD
 	BNE .out
 	PHP
@@ -795,7 +822,7 @@ cb_hook_attr_clamp:
 	PLA
 	PLP
 .out
-	RTL
+	JML $C04BF6
 
 ; C0:4576 (JML): PLP / PLB / PLD / RTL of the stats rebuild.
 cb_hook_rebuild_end:

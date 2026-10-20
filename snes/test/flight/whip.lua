@@ -87,15 +87,16 @@ function test()
   H.load(H_OUT .. '/whip-start.mss')
   H.wait(1)
   local start = status()
-  local before = party()
-  local gap, seenEvent = false, 0
+  local gap, seenEvent, landed = false, 0, nil
   for f = 1, 240 do
     if f <= 10 then H.input = {right = true} else H.input = nil end
     H.wait(1)
     gap = gap or H.r8(0x7ED748) == 0x23
     seenEvent = math.max(seenEvent, H.r8(0x7E00D0))
+    if gap and H.r8(0x7E00D0)==0 and not landed then landed={hero=status(),party=party(),frame=f} end
   end
   H.input = nil
+  H.result('landing',landed)
   local s = status()
   H.log(string.format('walked onto the pad: start %d,%d end %s, gap pose %s, event seen %d, $D0 %d, CF01 %d CF03 %d',
     start.x, start.y, F.str(s), tostring(gap), seenEvent, H.r8(0x7E00D0), H.r8(0x7ECF01), H.r8(0x7ECF03)))
@@ -103,8 +104,14 @@ function test()
   F.check(seenEvent ~= 0 and H.r8(0x7E00D0) == 0, 'pad: the crossing event ran and ended')
   F.check(H.r8(0x7ECF01) == 0 and H.r8(0x7ECF03) == 0, 'pad: CF01/CF03 clear')
   F.check(s.x - start.x > 80 and s.y == start.y, 'pad: Goku crossed (' .. s.x - start.x .. ' px)')
+  -- Check the actual landing, before companion AI resumes. At frame 240
+  -- a companion can legitimately walk sideways to engage a nearby enemy.
+  F.check(landed~=nil,'pad: landing observed')
+  for _, p in ipairs(landed and landed.party or {}) do
+    F.check(p.x - start.x > 80 and p.y == start.y, string.format('pad: companion crossed (%d,%d from %d,%d)',p.x,p.y,start.x,start.y))
+  end
   for _, p in ipairs(party()) do
-    F.check(p.x - start.x > 80 and p.y == start.y, 'pad: companion crossed')
+    F.check(math.sqrt((p.x-s.x)^2+(p.y-s.y)^2)<64,'pad: companion remains with party after landing')
   end
   F.check(H.r8(0x7ED748) ~= 0x23, 'pad: the pose ended')
   H.result('failures', F.fail)

@@ -33,9 +33,13 @@ if(need.some(n=>!existsSync(join(cps,`${n}.mss`)))){
 const tests=[
   ['title',null],
   ['frames','waterfall'],
+  ['party','waterfall'],
+  ['death-weapon','waterfall'],
+  ['hp','waterfall'],
   ['input','waterfall'],
   ['menu','name-entry'],
   ['oam','waterfall'],
+  ['oam-order','waterfall'],
   ['vram','waterfall'],
   ['sound-event','waterfall'],
   ['world','waterfall'],
@@ -55,12 +59,12 @@ const xm=readFileSync(join(repo,'dist/snes/gen/xdata.asm'),'utf8').match(/^!XDAT
 // Labels the meta-sprite test times (the JSL into core_oam_meta and its return).
 const sym=readFileSync(testRom.replace(/\.sfc$/,'.sym'),'utf8');
 const label=n=>{const m=sym.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${n}$`,'m'));return m?parseInt(m[1]+m[2],16):-1;};
-const lib=`IMPORT_DIR=${JSON.stringify(importDir)}\nXPROBE=${xm?parseInt(xm[1],16):-1}\nMETA_CALL=${label('core_oam_meta')}\nMETA_RET=${label('core_test_frame_metaRet')}\n`+readFileSync(join(here,'lib.lua'),'utf8');
+const lib=`IMPORT_DIR=${JSON.stringify(importDir)}\nOAM_ROTATED=${label('core_oam_commit_rotated')>=0}\nXPROBE=${xm?parseInt(xm[1],16):-1}\nMETA_CALL=${label('core_oam_meta')}\nMETA_RET=${label('core_test_frame_metaRet')}\nHP_NMI=${label('core_native_hp_nmi')}\nHP_NMI_END=${label('core_native_hp_nmi_done')}\nDEATH_WEAPON_SKIP=${label('core_native_weapon_0_weapon_unused')}\nGRAPHICS_ENTRY=${label('core_native_tiles')}\n`+readFileSync(join(here,'lib.lua'),'utf8');
 const summary=[];
 for(const [name,cp] of tests){
   const rom=privateRom(testRom,`core-${name}`);
   const t0=Date.now();
-  const r=await runMesen({rom,test:lib+'\n'+readFileSync(join(here,`${name}.lua`),'utf8'),outDir:join(outRoot,name),state:cp?join(cps,`${cp}.mss`):null,timeoutMs:600000});
+  const r=await runMesen({rom,test:lib+'\n'+readFileSync(join(here,`${name}.lua`),'utf8'),outDir:join(outRoot,name),state:cp?join(cps,`${cp}.mss`):null,timeoutMs:600000,exactFrames:name==='oam-order'});
   cleanupRom(rom);
   const res=r.results??{};
   const fails=Object.entries(res).filter(([k,v])=>typeof v==='string'&&v.startsWith('FAIL'));

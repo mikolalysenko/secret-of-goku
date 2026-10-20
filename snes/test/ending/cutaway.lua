@@ -18,6 +18,9 @@ local function toCutaway()
   for a = 0x7E6F20, 0x7E6F3F do H.w8(a, 0) end      -- core's VRAM region owners
   H.w8(0x316001, 1)                                  -- Goku active
   H.w8(0x7ED740, 1)                                  -- Super Saiyan: the full wave
+  H.w8(0x7ED811, 1)                                  -- combat owns the shared form
+  H.w8(0x7ED8A9, 1)                                  -- published form (set-form ABI)
+  H.wait(3)                                          -- activate the controller pipeline
   if not H.waitFor(idle, 300) then return false end
   H.hold('l r', 4)
   if not H.waitFor(interactive, 900) then return false end

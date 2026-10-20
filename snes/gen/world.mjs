@@ -77,7 +77,7 @@ export const FX=[
 ];
 export const fxTile=s=>s<16?0x88+(s&3)*2+(s>>2)*32:s<24?0xC0+((s-16)&3)*2+((s-16)>>2)*32:0x60+(s-24)*2;
 
-export async function generate({rom,repo,outDir}){
+export async function generate({rom,repo,outDir,xdata}){
   const engine=name=>import(pathToFileURL(join(repo,'engine',name)).href);
 
   // Effects: decode the original spell cells (indices 6..10 of each frame's
@@ -220,8 +220,21 @@ export async function generate({rom,repo,outDir}){
   layouts.forEach((l,s)=>{const oy=s?13*8+8:0;for(let ty=0;ty<l.th;ty++)for(let tx=0;tx<l.tw;tx++){const i=l.cells[ty*l.tw+tx];if(i<0)continue;const k=assign[i];
     for(let p=0;p<64;p++){const idx=chars[k*64+p],col=worldColors.find(w=>w.index===idx).c,d=((oy+ty*8+(p>>3))*cv.width+tx*8+(p&7))*4;cv.data[d]=(col&31)*255/31;cv.data[d+1]=((col>>5)&31)*255/31;cv.data[d+2]=((col>>10)&31)*255/31;cv.data[d+3]=255;}}});
   writeFileSync(join(outDir,'preview-crater.png'),writePng(cv));
-  // RLE world rows: bank bit table (C6:7FC0) and row pointers (C6:8000)
-  // are read at run time to recover a crater tile's original terrain.
+  // Decode the fixed world terrain once, at build time. Eight 32 KiB
+  // blocks let flight copy a row into the native ring without executing
+  // the retail WRAM decompressor during scrolling. Craters are applied
+  // after the copy, and the original RLE remains available for comparison.
+  const terrain=new Uint8Array(512*512);
+  for(let row=0;row<512;row++){
+    const bank=6+((rom[0x67FC0+(row>>3)]>>(row&7))&1);
+    let at=(bank<<16)+(rom[0x68000+row*2]|rom[0x68001+row*2]<<8),col=0;
+    while(col<512){
+      const op=rom[at++],count=op<0xC0?1:op-0xBF,value=op<0xC0?op:rom[at++];
+      if(at>0x74284||col+count>512||value>=240)throw Error(`world: invalid terrain row ${row}`);
+      terrain.fill(value,row*512+col,row*512+col+count);col+=count;
+    }
+  }
+  for(let i=0;i<8;i++)xdata(`world_rows_${i}`,terrain.slice(i*0x8000,(i+1)*0x8000));
   writeFileSync(join(outDir,'data.asm'),a.text());
 
   const fv=blank(18*FX.length,18);

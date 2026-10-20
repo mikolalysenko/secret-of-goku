@@ -2,6 +2,23 @@
 ; bytes asserted. Each site's role: move.asm. None of the replaced ranges is
 ; a branch target of the original code (snes/test/flight/branchcheck.mjs).
 
+; Actor OBJ entry: carried CPU companions have no body, attachment or
+; shadow. Their native actor state remains live for landing and events.
+%orig4($C0E3CF, $148620E2)
+%hijack($C0E3CF, fl_hook_passenger, 4, flight)
+
+; Carried companions keep native status/timer work but pause ground AI,
+; animation, movement and contacts until landing. Actor slots stay active.
+%orig4($C0F50D, $60BD20E2)
+%orig1($C0F511, $E0)
+%hijack($C0F50D, fl_hook_passenger_ai, 5, flight)
+%orig4($C0D5ED, $10C220E2)
+%orig2($C0D5F1, $1086)
+%hijack($C0D5ED, fl_hook_passenger_move, 6, flight)
+%orig4($C1CDCD, $00BD20E2)
+%orig1($C1CDD1, $E0)
+%hijack($C1CDCD, fl_hook_passenger_contacts, 5, flight)
+
 ; Hero movement step: velocity after C0:D2E0 (SEP #$20 / LDA $1F)
 %orig4($C0D651, $1FA520E2)
 %hijack($C0D651, fl_hook_d651, 4, flight)

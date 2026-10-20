@@ -1,5 +1,12 @@
 # GOKU module: sprite, animation, palettes, portraits and forms
 
+October 18 gameplay review: water flight now mirrors Goku's correctly tinted
+palette into slot 1 when this frame's emitted body OAM uses it. The native
+descriptor still names palette 5; slot 1 originally contains unrelated map
+colours, so it must not become the tint source. A secondary tracker in
+`$31:7520–7561` preserves and restores slot 1 on landing. `status` checks every displayed body through
+four takeoff/flight/landing cycles, in addition to native status tints.
+
 Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md)).
 Source: `snes/src/modules/goku/`, generator `snes/gen/goku.mjs`, tests
 `snes/test/goku/`. Browser references: `engine/sprite-layer.js`,
@@ -21,17 +28,33 @@ port of `GokuAnimation.pose()` and is checked frame by frame against it
 
 | Resource | Use |
 | --- | --- |
-| Code `$A1:8000-$A1:A623` | `!CODE_GOKU` (about 9.5 KiB used) |
-| Data `$E1:0000-$E1:68B9` | `!DATA_GOKU`: palettes, cell/variant tables, clips, the 51 native actions, sockets, lift tables |
+| Code `$A1:8000-FFFF` | `!CODE_GOKU`; see the build map for current usage |
+| Data `$E1:0000-7FFF` | `!DATA_GOKU`: palettes, cell/variant tables, packed-cell pointers, clips, the 51 native actions, sockets, lift tables |
 | ROM `$F8-$FA` | 4,837 de-duplicated 8×8 4bpp tiles (151 KiB). `$FB` of the F8–FB reservation is still free |
+| Extended ROM | 465 packed full-size cells (512 bytes each) and miniatures (128 bytes each), 297,600 bytes total. Every cell stays inside its source bank; four-byte pointers in `goku_dma_tiles` / `goku_dma_mini` |
 | WRAM `$7E:D740-$7E:D7FF` | `!RAM_GOKU`, all $C0 bytes (fields below). Full-screen menus keep their state in the field's scratch `pal_work` (`$7E:D7D0-D7EF`); a menu session restarts whenever another mode ran in between (`!core_tick`). Unused palette entry 0 of `pal_native`/`pal_out` and the old `up_phase` byte hold the frame's actor-0 OAM slots for `goku_api_scripted` (`!rec_body0/1`, `!rec_shadow`, `!rec_stamp`) and its this-frame flag `!scr_shown` |
 | VRAM | OBJ tiles `C0-C7`/`D0-D7` of name table 1 (word `$7C00/$7D00`, the boy's own cells; claimed as core region `!VRAM_FIELD_HERO` with owner `$01`), HUD portrait `E8/E9/F8/F9` (word `$7E80/$7F80`), ring marker `0A/0B/1A/1B` of name table 1 (word `$70A0/$71A0`, the boy's marker, rewritten when a ring opens). Full-screen menus: OBJ name table 2 (base `$4000` + `$1000`) tiles `C0-C9/D0-D9` and `E0-E7/F0-F7` (word `$5C00-$5F7F`): the idle and blink cells and the GAME FILE face. No menu screen uses that area (surveyed: Status, Action Grid, Controller/Window Edit, Weapon Skill, game select, GAME FILE load/save, save confirmation) and the field reloads it on return |
 | CGRAM | The boy's OBJ palette through the game's buffer `$7E:0600`: palette 1, or palette 5 on water maps (the slot his body descriptor uses); during a native flash with a scene or scripted cell also its copy in `$7E:BE00` (colours 2-15). Menus: OBJ palette 1 directly (the boy's colours there, `C8:1F00`) |
 | OAM | The boy's body entries are replaced in place by up to four 16×16 OBJ (empty quadrants are skipped), or one for the miniature. `goku_api_scripted`: up to four 16×16 OBJ through `core_oam_add_front` (behind the natives through `core_oam_add` when the 16 front slots are taken), and `core_oam_hide` on actor 0's body and shadow slots of that frame. Menus: the PPU's OAM directly, after the menu's own upload: the boy's eight figure entries moved off screen, entries 120-123 Goku's figure, 124-127 the GAME FILE faces (only when the menu leaves 120-127 unused) |
-| DMA | In `modules_field_nmi`: channels 4-7 for one cell (16 tile DMAs, 512 B, 7.5 lines on FastROM) when it changed; with fewer than 6 lines left before line 258 it waits one frame (never when its palette or size changes), then goes anyway. The game's 5-frame party refresh no longer re-sends it (the hook skips the boy's tiles, and menus and rings leave the slot alone, checked in VRAM), except every eighth refresh as a safety net when the vblank has room. `goku_nmi` returns after two compares when nothing is pending (on by default since ending's frame-thread DMA set-ups wait out the lines before the NMI; `-DGOKU_NMI_SLOW=1` keeps the old prologue). Channel 7 for the HUD portrait (128 B). Ring set-up: channel 5 (128 B) right after the game's own marker uploads on that channel (measured: the whole set-up ends by scanline 249). Menus: channels 4-7 for the two cells (512 B each, one per frame, when 14+ lines remain) and 7 for the face (128 B), only when the menu runs no HDMA there (`$2C`) |
-| SRAM | None written. Test builds only (`-DGOKU_TRACE`): a 27-byte trace at `$7E:7F00` |
+| DMA | In `modules_field_nmi`: channel 7, four contiguous 128-byte rows for a full cell or two 64-byte rows for a miniature. Channels 4–6 are untouched. With fewer than 10 lines left before line 258, a same-palette/size pose waits for a suitable streaming phase. Waiting never forces an overrun; palette/size changes still upload together. The game's 5-frame party refresh skips the boy's tiles, except every eighth refresh requests a safety upload when room allows. `goku_nmi` has a two-compare idle exit (`-DGOKU_NMI_SLOW=1` retains the old prologue). Channel 7 for the HUD portrait (128 B). Ring set-up: channel 5 (128 B) after the native markers. Menus retain channels 4–7 for figures and 7 for faces, with their existing vblank/HDMA guards |
+| SRAM | `$31:7520–7561`: airborne palette backup, last output and validity. Test builds (`-DGOKU_TRACE`) also use a 27-byte WRAM trace at `$7E:7F00` |
 
-Measured cost (Potos walk, `snes/test/goku/budget.lua`, Goku on against
+October 18 upload revision: the packed rows reproduce every pixel of the
+deduplicated tables (`goku packed`: all 465 full cells and miniatures,
+every tile byte and source-bank bound). The full `goku_nmi` path with a cell
+measured about 5.5 scanlines, down from 8.9 before packing. The water-flight
+palette mirror also skips unchanged writes while still checking the native
+buffer, desired tint and flash buffer. `status`, `forms`, `scripted`,
+`actions` and `api` cover the resulting palettes and animation cells.
+
+The sound/aura follow-up computes pending-pose size/palette compatibility
+in the main thread (`GOKU_UP_COMPAT`, bit 4). A tight NMI can defer that
+pose before its bank/setup work, leaving time for FX palettes and the final
+interrupt return. Palette and size changes still upload together. Returning
+to the already resident cell cancels an older deferred request, preventing
+a stale pose from appearing later; `forms` includes that regression.
+
+Earlier measured cost (Potos walk, `snes/test/goku/budget.lua`, Goku on against
 off; "on" includes combat and every other module that runs while Goku is
 active): p90 frame-logic end +23 lines on the FastROM default (limit 24;
 main with ui, vegeta, ending, destroy and fx), +26 with `-DCORE_SLOWROM=1`
@@ -45,7 +68,9 @@ a frame with a new cell, and the logic grew by 29 lines, mostly
 `flight_frame` (8.9 lines a frame with Goku on, 2.7 off; `goku_frame` 3.8).
 Waiting for 9 free lines kept that NMI by 260 but moved uploads onto other
 frames, which cost fx's gallery a burst palette (see `upload.asm`), so the
-threshold stays at 6. Goku's own main-thread work was ~3,600 CPU cycles a
+threshold was then 6. The packed-row implementation now reserves 10 lines
+and removes the forced retry; current gallery and gameplay checks cover
+the resulting upload phases. Goku's own main-thread work was ~3,600 CPU cycles a
 frame on SlowROM (pose ~1,570, OAM ~990, palette ~730 with its no-change
 fast path); module code runs 25% faster on FastROM.
 Menus (`menu.lua`, `file.lua`): the hook starts at scanline ~229 and ends by
@@ -105,15 +130,28 @@ replacement), `modules_field_nmi` → `goku_nmi` (uploads), `modules_menu_frame`
   distance bookkeeping (8.8 distance, steps of 6 and 16 px), clip tracking,
   native phases/fixed columns, the Super Saiyan knock-down fix-up and the
   shuffle/hover-leg variants.
+  The software divider returns directly below the divisor and uses eight
+  iterations for byte dividends; larger inputs retain sixteen iterations.
+  This avoids shared hardware math registers and preserves the original
+  registers, flags and scratch. `GOKU_DIV16_SLOW` restores the old loop.
+  `division.test.mjs` checks every nonzero byte pair, all word dividends
+  against representative divisors, boundary cases and CPU context.
 - **OAM** (`body.asm`): anchor and shake decay exactly as `C0:E5F5`; the cell
   sits on the feet line (shadow height included) minus the extra lift; each
   16-line row takes priority and palette from the native part covering its
   centre line (so the lower body wades behind water/ledges like the boy's);
-  `GOKU_CTL_AIRBORNE` forces priority 3 and palette 1.
+  `GOKU_CTL_AIRBORNE` forces priority 3 and palette 1 before scanning the
+  native body rows; `GOKU_AIR_ATTR_SLOW=1` retains the former scan/remap.
+  `air-attributes.test.mjs` checks all 465 cells and miniatures, mixed
+  water/ledge rows, clipping and full OAM buffers. A representative body
+  emitter falls 1,059 → 798 CPU cycles.
 - **Palette** (`palette.asm`): tracks the boy's slot per entry and rebuilds
   Goku's palette only when the game wrote something, the displayed cell's
   palette id or the petrify bit changed. Replacement ending restores the
-  game's values.
+  game's values. The unchanged fifteen-color comparison is unrolled;
+  `GOKU_PALETTE_SCAN_SLOW=1` retains the old loop. The assembled reference
+  costs 549 CPU cycles versus 352, with all 608 full-state comparisons in
+  `palette-scan.test.mjs` matching colors, status, slots and CPU context.
 - **Native flash**: while `$2A` is set the field NMI uploads `7E:BE00`, which
   the flash (`C2:C820`, in the frame logic) rebuilds from `0600` whenever
   its level steps (every fifth frame in the arrival) with a brightness
@@ -377,6 +415,22 @@ transition palettes follow the browser's `transform` clip).
 - No module calls `goku_api_scripted`, `goku_api_socket` or `goku_api_hand`
   yet; the frieza stream asked for the first (its follower poses and the
   Tree vista).
+
+## Hand-socket lookup cost
+
+The generator packs both forms' authored hand positions into 512 bytes:
+32 columns × four rows × two forms, one x/y word per cell. `$FFFF` marks
+missing cells. Both APIs index this table directly; `GOKU_SOCKET_SLOW`
+selects the linear-list lookup for comparisons. No per-frame cache needs
+invalidating when the pose, form or flight lift changes.
+
+`snes/test/goku/socket.test.mjs` executes both APIs against the browser
+descriptors, including all missing byte columns, row masking, lifted and
+wrapped anchors, caller banks and register widths. Base-form field calls
+cost 189 CPU cycles, versus 197–349 for the previous list search. Field,
+status, form and scripted-pose emulator checks also pass. This is a small
+saving: the 1,200-frame charging case improves by one missed frame (83 →
+82); crowded timing is still open.
 
 ## Requests
 

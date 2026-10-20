@@ -9,6 +9,17 @@ pushpc
 org !CODE_COMBAT+$7000
 combat_bind_start:
 
+; teleport.pending also covers recovery camera moves with no teleport
+; action. Keep attacks/focus from starting until its streamed rows arrive.
+cb_bind_camera_pending:
+if defined("FLIGHT_API_CAMERA")
+	LDA.l $7E0000|!fl_hook
+	AND.w #!FLH_CAMERA
+else
+	LDA.w #$0000
+endif
+	RTS
+
 ; ---------------------------------------------------------------------------
 ; Audio (docs/agents/snes-port/audio.md): streamed DBZ cues, Kamehameha
 ; voice and loops. Without the module a few cues fall back to the game's
@@ -112,8 +123,33 @@ if defined("AUDIO_IDS")
 +	LDA !cb_can
 	AND.w #$00FF
 	BNE +
+	LDA !cb_world
+	AND.w #$00FF
+	BNE +
 	RTS
-+	; focus amount 0-256 (powerCharge / 96) and charge strength 0-256
++
+if not(defined("AUDIO_PCM"))
+	; Resident audio only needs an active charge pulse. Its level/rate is
+	; fixed by the short SPC sequence, so skip the PCM envelope arithmetic
+	; and the second aura-bed request. Keep the same action/charge gates.
+	LDA !cb_act
+	AND.w #$00FF
+	CMP.w #!GOKU_K_FOCUS
+	BEQ .nativePulse
+	CMP.w #!GOKU_K_TRANSFORM
+	BEQ .nativePulse
+	LDA !cb_charging
+	AND.w #$00FF
+	BNE .nativePulse
+	RTS
+.nativePulse
+	LDA.w #!AUDIO_LOOP_CHARGE
+	LDX.w #128
+	LDY.w #128
+	JSL audio_loop
+	RTS
+endif
+	; focus amount 0-256 (powerCharge / 96) and charge strength 0-256
 	LDA !cb_power
 	CMP.w #96
 	BCC +

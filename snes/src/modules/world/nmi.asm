@@ -69,8 +69,8 @@ world_nmi_palettes:
 .done
 	RTS
 
-; The wanted cell into the hidden buffer (16 tiles from the goku module's
-; tile banks, one 32-byte DMA each), then show it from the next frame.
+; The wanted cell into the hidden buffer, using four packed 128-byte rows
+; instead of sixteen separately decoded tiles, then draw it next frame.
 world_nmi_cell:
 	LDA.w !w_cell_want
 	CMP.w #!GOKU_NONE
@@ -95,18 +95,21 @@ world_nmi_cell:
 	BCS +
 	RTS
 +
-	LDA.w !w_cell_show
-	EOR.w #$0001
-	TAY                              ; target buffer
+	LDA.l world_buf_vram,X           ; X = target*2
+	STA.w !w_scratch+4
 	LDA.w !w_cell_want
 	ASL
 	ASL
-	ASL
-	ASL
-	ASL                              ; cell * 32 (16 tile words)
-	STA.w !w_scratch+12              ; offset of the cell's tile words
-	LDA.l world_buf_vram,X           ; X = target*2
-	STA.w !w_scratch+4
+	TAX                              ; cell * 4-byte packed pointer
+	LDA.l goku_dma_tiles,X
+	PHA
+	LDA.l goku_dma_tiles+2,X
+	LDX.w !w_scratch
+	STA $04,X                        ; source bank, size low (rewritten)
+	PLA
+	STA $02,X
+	LDA.w #$1801
+	STA $00,X
 	SEP #$20
 	LDA.b #$80
 	STA.l $002115
@@ -115,17 +118,12 @@ world_nmi_cell:
 .row
 	LDA.w !w_scratch+4
 	STA.l $002116
-	PHY
-	LDY.w #4
-.tile
-	LDX.w !w_scratch+12
-	LDA.l goku_cell_tiles,X
-	JSR world_dma_tile
-	INC.w !w_scratch+12
-	INC.w !w_scratch+12
-	DEY
-	BNE .tile
-	PLY
+	LDA.w #128
+	STA $05,X
+	SEP #$20
+	LDA.w !w_scratch+2
+	STA.l $00420B
+	REP #$20
 	LDA.w !w_scratch+4
 	CLC
 	ADC.w #$0100                     ; next tile row (16 tiles)
@@ -157,38 +155,42 @@ world_nmi_mini:
 	CMP.w !w_mini
 	BEQ .done
 	JSL core_vblank_lines
-	CMP.w #3
+	CMP.w #4
 	BCC .done
 	LDA.w !w_cell_want
 	ASL
 	ASL
-	ASL                              ; cell * 8 (4 tile words)
-	TAX
+	TAX                              ; cell * 4-byte packed miniature pointer
+	LDA.l goku_dma_mini,X
+	PHA
+	LDA.l goku_dma_mini+2,X
+	LDX.w !w_scratch
+	STA $04,X
+	PLA
+	STA $02,X
+	LDA.w #$1801
+	STA $00,X
 	SEP #$20
 	LDA.b #$80
 	STA.l $002115
 	REP #$20
 	LDA.w #$6000+(!WORLD_TILE_MINI*16)
 	STA.l $002116
-	PHX
-	LDA.l goku_cell_mini,X
-	JSR world_dma_tile
-	PLX
-	PHX
-	LDA.l goku_cell_mini+2,X
-	JSR world_dma_tile
+	JSR .row
 	LDA.w #$6000+((!WORLD_TILE_MINI+16)*16)
 	STA.l $002116
-	PLX
-	PHX
-	LDA.l goku_cell_mini+4,X
-	JSR world_dma_tile
-	PLX
-	LDA.l goku_cell_mini+6,X
-	JSR world_dma_tile
+	JSR .row
 	LDA.w !w_cell_want
 	STA.w !w_mini
 .done
+	RTS
+.row
+	LDA.w #64
+	STA $05,X
+	SEP #$20
+	LDA.w !w_scratch+2
+	STA.l $00420B
+	REP #$20
 	RTS
 
 ; DMA one goku tile (A16 = global tile index: bank $F8 + index/2048) to the

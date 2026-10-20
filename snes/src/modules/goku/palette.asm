@@ -34,8 +34,16 @@ endif
 	LDA.w #!VRAM_FIELD_HERO
 	LDX.w #!GOKU_OWNER
 	JSL core_vram_claim
+	; Release the secondary slot before tracking it as the primary one.
+	LDA $E093
+	AND.w #$000E
+	CMP.w #$000A
+	BEQ +
+	JSR goku_palette_air_restore
++
 	JSR goku_palette
 	JSR goku_palette_unflash
+	JSR goku_palette_air
 	SEP #$20
 	; HUD portrait in the current form
 	LDA !goku_form
@@ -50,6 +58,7 @@ endif
 	LDA !was_replacing
 	BEQ .end
 	; replacement just ended: give the game its palette and tiles back
+	JSR goku_palette_air_restore
 	JSR goku_palette_restore
 	LDA.w #!VRAM_FIELD_HERO
 	LDX.w #!GOKU_OWNER
@@ -126,6 +135,9 @@ goku_palette:
 	ADC.w #!PALBUF+2
 	TAX                      ; X -> slot entry 1
 	LDY.w #$0002
+if not(defined("GOKU_PALETTE_SCAN_SLOW"))
+	JMP goku_palette_scan
+else
 .fast
 	LDA $0000,X
 	CMP !pal_out,Y
@@ -137,6 +149,7 @@ goku_palette:
 	CPY.w #$0020
 	BCC .fast
 	RTS
+endif
 .absorb8
 	REP #$20
 .absorb
@@ -231,6 +244,29 @@ goku_palette:
 .done
 	REP #$30
 	RTS
+
+if not(defined("GOKU_PALETTE_SCAN_SLOW"))
+; Fixed fifteen-color comparison; keep the loop's return registers.
+goku_palette_scan:
+	for color = 0..15
+		LDA.w $0000+(!color*2),X
+		CMP.w !pal_out+2+(!color*2)
+		BNE .changed
+	endfor
+	BRA .same
+.changed
+	JMP goku_palette_absorb
+.same
+	PHA
+	TXA
+	CLC
+	ADC.w #30
+	TAX
+	PLA
+	LDY.w #$0020
+	CPY.w #$0020
+	RTS
+endif
 
 ; Build pal_out[1..15] for palette id pal_id_out and status pal_status.
 ; Keeps t_d.
@@ -427,6 +463,117 @@ goku_palette_build:
 
 goku_stone_ramp:
 	db 1,6,5,4,3,2
+
+; The native water descriptor remains palette 5 when airborne OAM uses
+; palette 1 (no water colour math). Mirror the correctly tinted colours
+; there; palette 1's map colours are not a valid source for Goku's tint.
+; Check this frame's actual body OAM, because flight publishes next-frame
+; control flags before goku_frame. Slot 1 is restored on landing.
+goku_palette_air:
+	SEP #$20
+	LDA !pal_slot
+	CMP.b #5
+	BEQ +
+	JMP .off
++
+	LDA !rec_stamp
+	CMP.w !core_frame&$FFFF
+	BEQ +
+	JMP .off
++
+	LDA !rec_body0
+	CMP !rec_body1
+	BCC +
+	JMP .off
++
+	REP #$20
+	AND.w #$007F
+	ASL : ASL
+	TAX
+	LDA $0803,X
+	AND.w #$000E
+	CMP.w #$0002
+	BEQ +
+	JMP .off
++
+	LDA.l !pal_air_valid
+	BNE +
+	JMP .changed
++
+	; Most flying frames keep both the native slot and our tint unchanged.
+	; Check them without rewriting fourteen SRAM colors every frame.
+	for color = 2..16
+		LDA.w $0720+(!color*2)
+		CMP.l !pal_air_out+(!color*2)
+		BEQ +
+		JMP .changed
++		CMP.w !pal_out+(!color*2)
+		BEQ +
+		JMP .changed
++
+	endfor
+	LDA $2A
+	AND.w #$00FF
+	BEQ .quickDone
+	LDX.w #$001E
+.flash
+	LDA $BFA0,X
+	STA $BF20,X
+	DEX : DEX
+	CPX.w #4
+	BCS .flash
+.quickDone
+	RTS
+.changed
+	LDX.w #$001E
+.copy
+	LDA $0720,X
+	LDY.w #$0000
+	CMP.l !pal_air_out,X
+	BEQ +
+	INY
++	LDA.l !pal_air_valid
+	BEQ .take
+	TYA
+	BEQ .keep
+.take
+	LDA $0720,X
+	STA.l !pal_air_native,X
+.keep
+	LDA !pal_out,X
+	STA $0720,X
+	STA.l !pal_air_out,X
+	LDA $2A
+	AND.w #$00FF
+	BEQ +
+	LDA $BFA0,X               ; primary slot in the flash buffer
+	STA $BF20,X
++	DEX : DEX
+	CPX.w #4
+	BCS .copy
+	LDA.w #$0001
+	STA.l !pal_air_valid
+	RTS
+.off
+	REP #$30
+goku_palette_air_restore:
+	REP #$30
+	LDA.l !pal_air_valid
+	BEQ .done
+	LDX.w #$001E
+.restore
+	LDA $0720,X
+	CMP.l !pal_air_out,X
+	BNE +
+	LDA.l !pal_air_native,X
+	STA $0720,X
++	DEX : DEX
+	CPX.w #4
+	BCS .restore
+	LDA.w #$0000
+	STA.l !pal_air_valid
+.done
+	RTS
 
 ; Native flash: while $2A is set the field NMI uploads 7E:BE00, which the
 ; flash (C2:C820, in the frame logic before this hook) rebuilds from 0600

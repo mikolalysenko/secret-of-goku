@@ -6,7 +6,7 @@ import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 
-export function destroyAbi(){
+export function destroyAbi(extra=[]){
   const sources=['snes/src/core/ram.asm','snes/src/core/shared.asm','snes/src/core/core.asm','snes/src/core/save.asm','snes/src/modules/destroy/module.asm'].map(p=>readFileSync(resolve(repo,p),'utf8')).join('\n');
   const defs=new Map();
   for(const line of sources.split('\n')){
@@ -28,7 +28,7 @@ export function destroyAbi(){
     'SSW','SS_STAGE','SS_HB','ssw_pal_mode','ssw_pal_up','ssw_pal_upat','ssw_pal_ups','ssw_pal_key','ssw_br_on','ssw_br_lines','ssw_br_t2','ssw_br_t3','ssw_br_sx','ssw_br_sy','ssw_dbgactor','ssw_dismiss','ssw_songs','ssw_lastsong','ssw_remark','ssw_rseq','ssw_loads','ssw_dbgdoor','ssw_dbgrec','ssw_list',
     'SSF_WRECK','SSF_WPLAN','SSF_CRASH','SSF_BOSS','SSF_DECKDONE','SSF_ARMED','SSF_ESCAPED','persist_goku_active','persist_version','persist_magic','SIDE_MAGIC','SRAM_LIVE','core_event_req'];
   const abi={};
-  for(const n of names){
+  for(const n of [...names,...extra]){
     let v=value(n);
     // WRAM variables are bank-$7E offsets.
     if(n.startsWith('arg_')||n.startsWith('d_')||n.startsWith('out_'))v|=0x7e0000;

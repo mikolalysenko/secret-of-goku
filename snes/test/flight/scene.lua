@@ -160,7 +160,101 @@ local function pan()
   F.check(wx ~= hx2 or wy ~= hy2, 'after the pan: the native camera follows Goku again')
   H.shot('pan')
 end
+local function recoveryCamera()
+  -- Recovery uses the same camera follower without a teleport action.
+  -- L+Y during the scroll must not start a charge or spend time on its FX.
+  F.import('animation-audit__native__rabite-field-b')
+  F.on()
+  H.wait(3)
+  F.clearActors()
+  H.w16(0x7EE002, math.max(40, H.r16(0x7EE002) - 192))
+  F.follow()
+  local pending, bad = 0, 0
+  for i=1,90 do
+    if not F.status().pend then break end
+    pending=pending+1
+    H.hold('l y',1)
+    if H.r8(0x7ED828)~=0 or H.r16(0x7ED82E)~=0 then bad=bad+1 end
+  end
+  H.wait(4)
+  F.check(pending>4, 'recovery camera scroll exercised')
+  F.check(bad==0, 'no charge/focus during recovery camera scroll: '..bad)
+  F.check(not F.status().pend, 'recovery camera completed')
+  H.hold('l y',6)
+  F.check(H.r8(0x7ED828)~=0, 'charging works after recovery camera arrives')
+  H.wait(6)
+end
+local function passengers()
+  F.import('graphics-audit__party')
+  F.on()
+  H.wait(8)
+  local mode='carried'
+  local shown={carried=0,landed=0,player=0}
+  -- Exercise the renderer contract with settle's published mask, after
+  -- movement and before OBJ construction. Actors remain active throughout.
+  local setup=emu.addMemoryCallback(function()
+    H.w16(0x7ED96C,mode=='landed' and 0 or 3)
+    H.w8(0x7ED900,H.r8(0x7ED900)|3)
+    H.w8(0x7EE22C,mode=='player' and 2 or 0)
+    H.w8(0x7EE42C,0)
+  end,emu.callbackType.exec,0x00B0C7,0x00B0C7)
+  local body=emu.addMemoryCallback(function()
+    local x=emu.getState()['cpu.x']
+    if x==0x200 or x==0x400 then shown[mode]=shown[mode]+1 end
+  end,emu.callbackType.exec,0x80E40E,0x80E40E)
+  H.wait(8)
+  F.check(shown.carried==0,'carried companions have no body/attachment/shadow pass')
+  F.check(H.r8(0x7EE200)&1==1 and H.r8(0x7EE400)&1==1,'carried actors remain active')
+  mode='landed'; H.wait(8)
+  F.check(shown.landed>=8,'companions render again after landing')
+  mode='player'; H.wait(8)
+  F.check(shown.player>=4,'a human-controlled companion stays visible')
+  emu.removeMemoryCallback(setup,emu.callbackType.exec,0x00B0C7,0x00B0C7)
+  emu.removeMemoryCallback(body,emu.callbackType.exec,0x80E40E,0x80E40E)
+  H.w8(0x7EE22C,0)
+  H.w16(0x7ED96C,0)
+  H.wait(2)
+end
+local function teleportClock()
+  F.import('animation-audit__native__rabite-field-b')
+  F.on()
+  H.wait(2)
+  F.clearActors()
+  F.restore()
+  H.wait(2)
+  local gx,gy=H.r16(0x7EE002),H.r16(0x7EE004)
+  postTarget(3,46,gx+40,gy,H.r8(0x7EE00B),0,200)
+  H.wait(2)
+  -- Start next to the 16-bit video-clock wrap; the subtraction must work
+  -- across zero as well as across the deliberately missed frames.
+  H.w16(0x7ED8C4,0xFFFD)
+  H.w16(0x7ED8C6,0xFFFD)
+  H.hold('l b',1)
+  H.input=nil
+  F.check(H.r16(F.TP)~=0,'video clock: teleport starts')
+  local before=H.r16(F.TP+2)
+  local done=H.r16(F.MAIL+6)
+  H.w16(F.MAIL,10)
+  F.check(H.waitFor(function() return H.r16(F.MAIL+6)~=done end,12),'video clock: injected lag completed')
+  -- The completion mailbox is written before the ordinary flight step.
+  -- At the next video boundary that step has advanced by all three NMIs.
+  local after=H.r16(F.TP+2)
+  F.check(after>=before+3,'video clock: teleport catches up after three missed frames ('..before..' -> '..after..')')
+  F.check(H.r16(0x7ED8C4)<10,'video clock: regression crossed the counter wrap')
+  local sounds=0
+  for i=1,32 do
+    H.wait(1)
+    if H.r16(F.TP+0x10)~=0 then sounds=sounds+1 end
+    if H.r16(F.TP)==0 then break end
+  end
+  F.check(H.r16(F.TP)==0,'video clock: teleport recovers after lag')
+  F.check(sounds>0,'video clock: arrival cue survives skipped ages')
+  postTarget(0,0,0,0,0,0,0)
+end
 function test()
+  passengers()
+  recoveryCamera()
+  teleportClock()
   teleports()
   pan()
   H.result('failures', F.fail)

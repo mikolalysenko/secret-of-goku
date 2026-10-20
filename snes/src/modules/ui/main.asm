@@ -161,6 +161,15 @@ endif
 	JSR ui_world_update
 	RTL
 
+; Native world graphics reload (including a return from Start's map).
+; Same calling convention as frame callbacks; discard the old dial's
+; displaced-native cache before the loader replaces its OAM and palettes.
+ui_world_reload:
+	JSR ui_ram_check
+	JSR ui_world_leave
+	STZ.w !ui_band_was&$FFFF
+	RTL
+
 ui_world_nmi:
 	%ui_ram_ok_long()
 	BNE +

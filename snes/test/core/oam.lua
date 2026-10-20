@@ -15,17 +15,18 @@ function test()
   check('back_after_natives', ib ~= nil and ib == nb, tostring(ib) .. ' native ' .. nb)
   check('back_carry_clear', ct(0x1C) & 1 == 0, ct(0x1C))
   H.shot('back')
-  -- In front of everything: slot 0, natives shift by 4.
+  -- In front of everything: either rotation or the comparison build's shift.
   setct(0x14, 140); setct(0x16, 90); setct(0x18, FRONT_TILE); setct(0x1A, 1); setct(0x12, 1)
   H.wait(3)
   local nf = H.r16(CORE + 0x38)
   local iff = findOam(140, 90, FRONT_TILE)
   local ib2 = findOam(100, 80, BACK_TILE)
-  check('front_sprite_slot0', iff == 0, tostring(iff))
+  check('front_sprite_first', iff == (OAM_ROTATED and nf+1 or 0), tostring(iff))
   check('front_large', iff ~= nil and oamEntry(iff).size == 1, iff and oamEntry(iff).size)
-  check('back_shifted_by_group', ib2 ~= nil and ib2 == nf + 4, tostring(ib2) .. ' native ' .. nf)
-  check('front_padding_hidden', oamEntry(1).y == 0xE0 and oamEntry(2).y == 0xE0 and oamEntry(3).y == 0xE0,
-    oamEntry(1).y .. ' ' .. oamEntry(2).y .. ' ' .. oamEntry(3).y)
+  check('back_keeps_order', ib2 ~= nil and ib2 == nf + (OAM_ROTATED and 0 or 4), tostring(ib2) .. ' native ' .. nf)
+  local first = OAM_ROTATED and nf+1 or 0
+  check('front_padding_hidden', oamEntry(first+1).y == 0xE0 and oamEntry(first+2).y == 0xE0 and oamEntry(first+3).y == 0xE0,
+    oamEntry(first+1).y .. ' ' .. oamEntry(first+2).y .. ' ' .. oamEntry(first+3).y)
   check('front_carry_clear', ct(0x1C) & 2 == 0, ct(0x1C))
   H.shot('front')
   -- Signed X: -8 sets the high X bit.

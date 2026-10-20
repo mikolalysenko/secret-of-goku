@@ -73,6 +73,28 @@ function test()
   G.check(G.pal_equal(G.cgram_pal(5), base), 'waterfall: Goku colours in palette 5')
   G.check(G.cgram_pal(1)[1] == 0x7FFF, 'waterfall: the map palette 1 untouched')
 
+  -- Airborne water sprites deliberately select palette 1, while their
+  -- native body descriptor still selects 5. Check the displayed OAM,
+  -- including takeoff and landing; flight's flags describe the next frame.
+  local seenAir, badAir = 0, 0
+  local probe = emu.addMemoryCallback(function()
+    for _, e in ipairs(oam_tiles()) do
+      if (e.attr & 1) ~= 0 and ((e.tile >= 0xC0 and e.tile <= 0xC7) or (e.tile >= 0xD0 and e.tile <= 0xD7)) then
+        local pal = (e.attr >> 1) & 7
+        if pal == 1 then seenAir = seenAir + 1 end
+        local want = G.rom_pal(H.r8(G.RAM + 0x48))
+        if not G.pal_equal(G.cgram_pal(pal), want, 2) then badAir = badAir + 1 end
+      end
+    end
+  end, emu.callbackType.exec, 0x00B07D, 0x00B07D)
+  for _, dir in ipairs({'right', 'left', 'up', 'down'}) do
+    H.hold('a ' .. dir, 24)
+    H.wait(16)
+  end
+  emu.removeMemoryCallback(probe, emu.callbackType.exec, 0x00B07D, 0x00B07D)
+  G.check(seenAir > 0, 'water flight exercised airborne palette 1')
+  G.check(badAir == 0, 'water takeoff/flight/landing palette mismatches: ' .. badAir)
+
   -- native flash ($2A: CGRAM from 7E:BE00, rebuilt with an offset every
   -- frame). On the field Goku follows it, as the browser's tint(); while a
   -- scene shows an explicit cell (the browser's scene renderers) he stays

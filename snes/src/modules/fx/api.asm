@@ -42,6 +42,7 @@ fx_ensure_init:
 	LDA.w #!FX_MAGIC
 	STA.l !fx_magic
 	LDA.w #$0001
+	STA.l !fx_hash_dirty         ; the separate hint block is undefined at boot
 	STA.l !fx_busy
 	PLX
 	PLA

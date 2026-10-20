@@ -254,7 +254,7 @@ assert !VT_LOG == $317E72, "snes/test/combat/lib.lua reads !VT_LOG at $31:7E72"
 ; the start of each field frame, a receive hook (modules.asm) and the beam
 ; API's answer at each frame end.
 !CBT          = !CW+$300
-!cbt_cmd      = !CBT+$00   ; word: 1 input hold, 2 input lock, 3 unlock (owner !cbt_owner); 0 when done
+!cbt_cmd      = !CBT+$00   ; word: 1 input hold, 2 input lock, 3 unlock (owner !cbt_owner), 4 target-box query (result in owner); 0 when done
 !cbt_owner    = !CBT+$02   ; word
 !cbt_rx_mode  = !CBT+$04   ; word: test receive hook: 0 keep, 1 cap at !cbt_rx_cap, 2 none
 !cbt_rx_cap   = !CBT+$06   ; word
@@ -395,6 +395,9 @@ org !CODE_COMBAT
 combat_code_start:
 incsrc "frame.asm"
 incsrc "action.asm"
+if defined("WORLD_MAGIC")
+	incsrc "world.asm"
+endif
 incsrc "attack.asm"
 incsrc "native.asm"
 incsrc "stats.asm"

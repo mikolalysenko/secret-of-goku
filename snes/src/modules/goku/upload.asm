@@ -1,8 +1,8 @@
 ; VRAM uploads: Goku's current cell into the boy's OBJ slot (bank-1 tiles
 ; C0-C7 / D0-D7), the HUD portrait (E8/E9/F8/F9) and, when replacement ends,
 ; the boy's own tiles. All transfers run inside the field NMI after the
-; game's uploads (modules_field_nmi), using DMA channels 4-7 like the game's
-; own party-tile routine C1:950D.
+; game's uploads (modules_field_nmi). Packed Goku cells and portraits use
+; channel 7; restoring the native boy still uses the game's channels 4-7.
 
 !VRAM_ROW0 = $7C00     ; C0-C3: cell rows 0-7
 !VRAM_ROW1 = $7D00     ; D0-D3: rows 8-15
@@ -29,13 +29,36 @@ goku_request_cell:
 	REP #$20
 	TXA
 	CMP !vram_cell
-	BEQ .done
+	BNE .request
+	; A deferred pose may already be obsolete when Goku returns to the
+	; resident cell. Cancel it instead of uploading that stale pose later.
+	LDA.w #!GOKU_NONE
+	STA !up_cell
+	BRA .done
 .request
 	SEP #$20
 	LDA !t_a
 	STA !up_small
 	REP #$20
 	STX !up_cell
+	; Decide compatibility outside vblank. The native CGRAM upload has
+	; already happened by goku_nmi, so size/palette changes remain mandatory.
+	SEP #$20
+	LDA !up_flags
+	AND.b #$FF-!GOKU_UP_COMPAT
+	STA !up_flags
+	LDA !up_small
+	CMP !vram_small
+	BNE .done
+	LDX !vram_cell
+	CPX.w #!GOKU_NONE
+	BEQ .done
+	LDA !cur_pal
+	CMP.l goku_cell_pal,X
+	BNE .done
+	LDA !up_flags
+	ORA.b #!GOKU_UP_COMPAT
+	STA !up_flags
 .done
 	REP #$30
 	RTS
@@ -57,11 +80,19 @@ goku_upload_hook:
 .count
 	STA.l $7E0000|!up_flags
 	PLP
+if defined("CORE_NATIVE_NMI_SLOW")
 	JML $019678              ; continue with the girl's tiles
+else
+	JML $819678              ; keep the native uploader in FastROM
+endif
 .native
 	PLP
 	LDA.l $7EE083
+if defined("CORE_NATIVE_NMI_SLOW")
 	JML $0195C0
+else
+	JML $8195C0
+endif
 
 ; C1:E6C4 hook (replaced LDA $7EE180): HUD portrait upload, boy part.
 ; Runs right after an NMI (or in forced blank), M8 X16, D = 0, $00 = VRAM
@@ -236,16 +267,12 @@ goku_dma_tile7:
 
 ; ---------------------------------------------------------------------------
 ; Field NMI work (modules_field_nmi): M16 X16, DB = $80, D = 0, in vblank.
-; A cell takes 16 tile DMAs on channels 4-7: 7.5 lines on FastROM (budget
-; walk), about 2 more with slow ROM. With fewer than 6 lines left before
-; line 258 it waits a frame, then goes anyway (an overrun beats a frozen
-; pose). It never waits when its palette or size differs from the cell in
-; VRAM: the frame's palette is already in CGRAM, and the two must match.
-; (Waiting whenever fewer than 9 lines were left moved uploads onto other
-; frames and with them the vblank the effects library finds: in fx's gallery
-; the second burst then had no palette yet at age 1. 6 is the threshold the
-; other modules' timings were measured with.)
-!GOKU_CELL_LINES = 6
+; Four packed-row DMAs plus this callback take about 5.5 scanlines. Leave
+; room for the remaining modules, FX palettes and the interrupt return.
+; A same-palette/size pose waits for a suitable streaming phase; waiting a
+; frame is never a reason to overrun. Palette and size changes still upload
+; together because the native CGRAM buffer already contains the new colours.
+!GOKU_CELL_LINES = 10
 goku_nmi:
 if not(defined("GOKU_NMI_SLOW"))
 	; most frames have nothing to send: leave before any set-up (0.17 lines
@@ -255,10 +282,22 @@ if not(defined("GOKU_NMI_SLOW"))
 	; prologue.)
 	LDA.l $7E0000|!up_cell
 	CMP.w #!GOKU_NONE
-	BNE .work
+	BNE .pending
 	LDA.l $7E0000|!up_flags
 	AND.w #!GOKU_UP_HUD|!GOKU_UP_NATIVE|!GOKU_UP_REFRESH
 	BNE .work
+	RTL
+.pending
+	; A compatible pose can wait without the bank/frame setup or another
+	; palette lookup. This matters when the native uploader leaves only
+	; five lines for all modules, FX palettes and the interrupt return.
+	LDA.l $7E0000|!up_flags
+	AND.w #!GOKU_UP_HUD|!GOKU_UP_NATIVE|!GOKU_UP_REFRESH|!GOKU_UP_COMPAT
+	CMP.w #!GOKU_UP_COMPAT
+	BNE .work
+	JSL core_vblank_lines
+	CMP.w #!GOKU_CELL_LINES
+	BCS .work
 	RTL
 endif
 .work
@@ -331,8 +370,6 @@ endif
 	CMP.l goku_cell_pal,X
 	BNE .send8               ; palette change: send now
 	LDA !up_flags
-	BIT.b #!GOKU_UP_WAITED
-	BNE .send8               ; waited a frame already: send anyway
 	ORA.b #!GOKU_UP_WAITED
 	STA !up_flags
 	REP #$20
@@ -370,26 +407,19 @@ endif
 	PLB
 	RTL
 
-; Upload cell up_cell (full or miniature) into the boy's slot. DB = $7E,
-; M16 X16. Four bursts of four 32-byte tiles on channels 4-7 (D = $4300).
+; Upload the same pixels as the deduplicated tile table, packed into rows
+; in extended ROM. One channel and four row transfers avoid sixteen tile
+; address decodes and leave channels 4-6 (including UI HDMA 5) alone.
+; DB = $7E, M16 X16. Every packed cell stays within its source bank.
 goku_upload_cell:
 	LDA !up_cell
 	ASL
 	ASL
-	ASL
-	ASL
-	ASL                      ; cell * 32 bytes
-	TAY
+	TAX                      ; cell * 4-byte pointer
 	LDA.w #$4300
 	TCD
 	LDA.w #$1801
-	STA $40
-	STA $50
-	STA $60
 	STA $70
-	STZ $45                  ; sizes $00xx: each tile writes the low byte
-	STZ $55
-	STZ $65
 	STZ $75
 	SEP #$20
 	LDA.b #$80
@@ -398,29 +428,41 @@ goku_upload_cell:
 	LDA !up_small
 	AND.w #$00FF
 	BNE .small
-	TYX
+	LDA.l goku_dma_tiles,X
+	STA $72
+	LDA.l goku_dma_tiles+2,X
+	STA $74                  ; source bank, initial size low byte 0
+	LDX.w #128
 	LDA.w #!VRAM_ROW0
-	JSR goku_burst4
+	JSR .row
 	LDA.w #!VRAM_ROW1
-	JSR goku_burst4
+	JSR .row
 	LDA.w #!VRAM_ROW2
-	JSR goku_burst4
+	JSR .row
 	LDA.w #!VRAM_ROW3
-	JSR goku_burst4
+	JSR .row
 	BRA .done
 .small
-	; miniature: 4 tiles (TL, TR, BL, BR) at cell*8 in goku_cell_mini
-	TYA
-	LSR
-	LSR                      ; cell * 8
-	TAX
+	LDA.l goku_dma_mini,X
+	STA $72
+	LDA.l goku_dma_mini+2,X
+	STA $74
+	LDX.w #64
 	LDA.w #!VRAM_ROW0
-	JSR goku_burst2_mini
+	JSR .row
 	LDA.w #!VRAM_ROW1
-	JSR goku_burst2_mini
+	JSR .row
 .done
 	LDA.w #$0000
 	TCD
+	RTS
+.row
+	STA.l $002116
+	STX $75
+	SEP #$20
+	LDA.b #$80
+	STA.l $00420B
+	REP #$20
 	RTS
 
 ; One burst: A16 = VRAM word address, X = offset of 4 tile words in

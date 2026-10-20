@@ -542,10 +542,19 @@ ui_radar_update:
 	REP #$30
 	STA.w !ui_rmask&$FFFF
 	STX.w !ui_rflags&$FFFF
+	LDA.w !ui_rtarget&$FFFF
+	PHA
 	JSR ui_radar_target
 	LDA.w #$0000
 	ROL
 	STA.w !ui_rvalid&$FFFF
+	PLA
+	CMP.w !ui_rtarget&$FFFF
+	BEQ +
+	STZ.w !ui_rphase&$FFFF            ; never use the previous target's half-built bearing
+	LDA.w #$FFFF
+	STA.w !ui_rlast_h&$FFFF
++
 	JSR ui_radar_key_base
 .keep
 	LDA.w !ui_rvalid&$FFFF
@@ -568,6 +577,11 @@ ui_radar_update:
 	LDA.w $0128 : STA.w !ui_rtx&$FFFF
 	LDA.w $012A : STA.w !ui_rty&$FFFF
 .bearing
+	; Story queries/target selection and a bearing half need separate
+	; frames. Keep the last valid blip on the refresh frame while turning.
+	LDA.w !ui_rtimer&$FFFF
+	CMP.w #15
+	BEQ .shown
 	LDA.w !ui_frame&$FFFF
 	LSR
 	BCS .geometry
@@ -1204,7 +1218,7 @@ ui_ratio128:
 	RTS
 
 ; Key of the radar text (changes when anything shown changes): $8000 |
-; guide << 12 | target << 8 | stolen/crisis bits 4/7 | held count. All but
+; guide << 12 | target << 8 | stolen/gone/crisis bits 4/5/7 | held count. All but
 ; the guide only change when the target is selected (ui_radar_key_base).
 ui_radar_key:
 	LDA.w !ui_rguide&$FFFF
@@ -1226,6 +1240,11 @@ ui_radar_key_base:
 	ASL : ASL : ASL : ASL             ; bits 4, 7
 	ORA $01,S
 	ORA.w #$8000
+	STA $01,S
+	LDA.w !ui_rflags&$FFFF
+	AND.w #!UIR_FORT_GONE
+	LSR                              ; bit 5, so the Fortress -> Beast label rebuilds
+	ORA $01,S
 	STA.l !ui_s_rkey
 	PLA
 	RTS
@@ -1304,6 +1323,17 @@ ui_radar_lines23:
 	JSR ui_put_rom
 	BRA .line3
 .special
+	CMP.w #10
+	BNE +
+	LDA.w !ui_rflags&$FFFF
+	AND.w #!UIR_FORT_GONE
+	BEQ .fortName
+	LDX.w #ui_rs_beast_name
+	JSR ui_put_rom
+	BRA .line3
+.fortName
+	LDA.w #10
++
 	SEC : SBC.w #7
 	ASL
 	TAX
@@ -1405,6 +1435,7 @@ endif
 	PHX
 	JSR ui_story_query
 	PLX
+	CMP.w #$0000                     ; PLX sets Z from the index, not the query's answer
 	BEQ +
 	LDA.l ui_rq_bits,X
 	AND.w #$00FF
@@ -1412,6 +1443,13 @@ endif
 +	INX
 	CPX.w #5
 	BCC .q
+if getfilestatus("frieza/data.asm") == 0
+	JSL frieza_q_dormant              ; the browser's all-seeds fallback also checks stage
+	BEQ +
+	LDA.w #!UIR_DORMANT
+	TSB.w !ui_tmp5&$FFFF
++
+endif
 	LDX.w !ui_tmp5&$FFFF
 	LDA.w !ui_tmp4&$FFFF
 	PLB

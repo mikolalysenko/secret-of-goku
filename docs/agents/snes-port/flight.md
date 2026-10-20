@@ -14,14 +14,23 @@ whip-pad crossings, the ceiling escape, the opening-path exit catches, NPC
 pass-through and the Sandship's flight-side rules are in and validated; the
 terrain classifier, the teleport landing search, the exit catches and the
 roof colours equal the browser's on every tile, query, probe and palette
-tested.** Flying costs 35-45 scanlines per frame in towns and fields (they
-keep 60 Hz) and 55-70 in dungeons, which then drop to 30-36 Hz while Goku
-flies; idle frames (Goku out of play, events) cost 0.2-0.5 lines and on
-foot about 2.7 with the movement hooks (`flight_frame` itself 0.7; see
-[Cost](#cost)); what other streams still owe is under
+tested.** Current integrated measurements and remaining crowded-field
+slowdowns are in [gameplay-performance.md](gameplay-performance.md#flight-world-map-and-radar-follow-up).
+The older module profile is retained under [Cost](#cost); remaining
+integration work is under
 [Remaining](#remaining).
 
-## Behaviour (as the browser)
+Ground footprint queries use `fl_land_class` to read ordinary clear
+floor directly from its two live descriptor words. Caves, ferry corridors,
+protected dungeon geometry and blocked cells retain the shared classifier;
+air queries retain its low-obstacle cache. Height bands 1/2 still exclude
+each other, while 4–7 remain ordinary unbanded floor as in the browser.
+`FLIGHT_CLASS_DIRECT_SLOW` restores the cached ground entry. The assembled
+`class.test.mjs` checks every flag, movement-code and behaviour byte,
+cache replacement, special geometry and footprint edges. An ordinary
+single-cell landing takes 609 CPU cycles cold or warm, versus 1,109/653.
+
+## Behaviour
 
 - **A + direction** flies at 6 px/frame (8 in Super Saiyan; diagonals
   `round(v·√½)`), never more than 14 px per axis per video frame, inside the
@@ -38,11 +47,18 @@ foot about 2.7 with the movement hooks (`flight_frame` itself 0.7; see
   Goku cannot land; walls, map edges, rock caps, layer changes and event
   cells stay native. A blocked sweep gives the native collision one pixel per
   axis per step.
-- Airborne Goku ignores stair guidance and currents (2x/3x movement codes),
-  the leader tether (companions are dragged to 36×26 / 56×40 boxes instead),
-  adopts the floor height under a complete landing, carries CPU companions
-  over long gaps (ferry, dungeon air, the Beast's sky) and gathers them after
-  a crossing of 24 px or more. A Goku embedded in a wall or outside the map
+- Airborne Goku ignores stair guidance and currents (2x/3x movement codes)
+  and the leader tether, and adopts the floor height under a complete
+  landing. The cartridge carries CPU companions during all local flight:
+  they share his position and terrain, pause ground AI, movement, contacts
+  and rendering, then resume after landing. Their actor slots remain active
+  and native status/timer updates continue. The skipped native renderer
+  also retires their screen coordinates, preventing enemy AI from selecting
+  them at the stale ground position. The first ordinary render restores
+  those coordinates after landing or an ownership change. Human-controlled
+  companions, menus, map loads and scripted ownership retain native handling. This
+  differs from the browser's trailing companions and reduces airborne CPU
+  work. Crossings of 24 px or more also gather the party. A Goku embedded in a wall or outside the map
   returns to the last verified landing (else the nearest landable point of a
   ±128 px grid, in the browser's order) and the camera follows.
 - On the four opening-path maps (128-131) an airborne Goku moving out
@@ -60,8 +76,7 @@ foot about 2.7 with the movement hooks (`flight_frame` itself 0.7; see
   every door since entering the room, takes it through the story's
   flight-door event 07A (flight answers its `SANDSHIP_DOOR` query); a Goku
   left standing where he cannot land for eight frames (a breached wall)
-  lifts into a hover. Carried CPU companions (the Beast's sky, the ferry
-  gap, dungeon air) are listed in `!fl_passengers` for hiding.
+  lifts into a hover. Carried CPU companions are listed in `!fl_passengers`.
 - The Mana Beast's Mode 7 arena allows flight only inside X 184-408,
   Y 292-432, and no step there scrolls the camera.
 - On foot the A button never reaches the game (it is the speed modifier, not
@@ -105,6 +120,105 @@ foot about 2.7 with the movement hooks (`flight_frame` itself 0.7; see
   holes), query `LOCAL_FLIGHT`.
 
 ### Instant Transmission (L+B)
+
+For ordinary ground targets, the connected path's overlapping 4-pixel
+samples are evaluated as one tile rectangle. This visits each cell once
+while preserving the same bounds, terrain, stair and trigger restrictions.
+Airborne targets and maps with floor-hole providers retain per-position
+checks. The October 19 differential run matches all 19,996 landing queries
+across 27 scenes; the long crowded teleport case improves from 105 to 73
+missed frames out of 1,200, so strict timing is still open.
+
+The follow-up ground query combines landability and teleport's descriptor
+restrictions in a single rectangle walk. Three spare tile-cache bits hold
+the endpoint/path verdicts and their validity; only teleport populates
+them. Height bands remain separate, tile changes and collisions replace
+the entry, and normal cache expiry still applies. Temporary enemy queries
+do not move or fill the hero's movement grid. Airborne targets and maps
+with hole providers retain their original pixel queries.
+
+The assembled descriptor tests cover all flag, movement-code and behaviour
+bytes, both layers, all terrain bands, footprint boundaries, cache
+replacement and interleaving with the flight classifier. A single-cell
+endpoint falls from 1,587 to 1,014 CPU cycles on a cold cache and 1,131 to
+576 when warm. The full 27-scene browser comparison still matches all
+19,996 landings and 191,964 sweeps. `FLIGHT_TP_GROUND_SLOW` restores the
+previous ground implementation for comparisons.
+
+Ordinary outdoor teleport queries now read the two live descriptor words
+directly, taking 551 CPU cycles for a single-cell endpoint whether cold or
+warm. Cave, ferry and special-context queries retain the cached path.
+`FLIGHT_TP_DIRECT_SLOW` restores that path for comparisons. Each ground
+landing search also remembers whether the shared first footprint, six
+pixels from the target, is connected in each direction. A blocked first
+step rejects all seven distances in that direction. Four per-search bytes
+(`fl_tp_prefix`, `$33:7B7C–7B7F`) also retain the shortest failed connected
+path in each direction. Every longer candidate contains that same blocked
+rectangle and can be rejected before checking its endpoint; shorter
+candidates keep their original order. The bytes reset for every search;
+airborne targets and hole providers bypass them. Candidate order and
+accepted landing positions remain unchanged. `FLIGHT_TP_PREFIX_SLOW`
+disables this reuse. The independent model checks 1,123 failed-path
+cutoffs as well as the complete landing results.
+
+If all four first footprints are blocked, the search now ends after those
+four candidates; all later distances contain the same blocked prefixes.
+`FLIGHT_TP_EXHAUST_SLOW` disables this early exit for comparisons. A known
+blocked direction also returns before computing its offsets, and a signed
+word table avoids repeatedly widening direction bytes. The 512 comparisons
+of enclosed targets keep the same failure result while reducing the worst
+case from 8,275 to 3,335 CPU cycles. In the 1,200-frame gameplay repeat,
+teleport misses stay at 15 and the longest field update falls from 279.35
+to 269.70 scanlines; zero-drop crowded timing remains open.
+
+The search also reuses endpoint failures. A blocked cell covers an
+inclusive interval of candidate distances along its direction (28 pixels
+wide horizontally, 24 vertically). Keep one such interval per direction
+only until the search returns. A candidate inside it contains the same
+failed cell; path checks never populate this cache. Layer, target terrain
+and cell geometry stay fixed during the search. Airborne targets and
+pixel-dependent holes bypass it. Ten bytes at `$33:7A96–7A9F` hold the
+interval starts and enable word; `FLIGHT_TEST_HOLES` retains its hole
+rectangle there and compiles out interval reuse. `FLIGHT_TP_SPOT_MEMO_SLOW`
+also disables it, as do the older prefix/ground comparison switches.
+
+After the first six-pixel footprint and an endpoint both pass, their tile
+rectangles cover the entire connected path through distance 30 on either
+axis, or 34 horizontally. Those candidates need no third rectangle scan
+or second endpoint setup. Longer candidates retain the path walk.
+`FLIGHT_TP_PATH_JOIN_SLOW` disables this shortcut. The independent tests
+cover 73,380 individual obstructions, 283,200 candidate queries with reused
+intervals and 13,824 complete searches, including height bands, stairs,
+direction reversals, longer gaps and neighboring SRAM sentinels.
+
+The full 27-scene comparison still matches all 19,996 landing queries,
+191,964 sweeps and 79,988 canLand service calls. Custom targets and the
+hole-provider regression also pass.
+
+For the same captured 28-candidate search, combined CPU work falls from
+29,258 to 20,156 cycles; a nearby open candidate falls 4,169 → 2,591.
+The long integrated teleport peak falls from
+312.24 to 281.39 scanlines, while misses change from 14 to 15 per 1,200
+video frames (short: 2 to 3 per 240). This reduces the largest observed
+stall; it does not achieve zero-drop timing or reduce miss frequency in
+that input sequence.
+
+An independent model agrees on 13,824 complete target/origin/terrain
+searches, and the 27-scene browser comparison still has no differences.
+The long teleport peak falls from 365.16 to 295.84 scanlines, while misses
+change from 48 to 54 per 1,200 frames. This bounds the observed search
+spike more tightly but does not finish the zero-drop work.
+
+The subsequent teleport-only companion queue leaves room for this work
+without changing status/timer cadence. It includes the initial physical
+L+B frame and camera recovery; each CPU AI/animation job finishes within
+four fields, before its next native tick. Human-controlled companions
+bypass it, and carried companions still skip ground AI. See
+[engine.md](engine.md) for the queue and reset contract. Long teleport
+misses fall 54 → 23 per 1,200 frames (short: 8 → 2 per 240), but the
+changed workload's peak is 313.73 lines versus 295.84 before the queue.
+This improves frequency, not the strict worst-case bound; landing/search
+and native actor peaks still need work.
 
 - Pressing L+B (the chord's first frame) while Goku can act picks a target
   among actor slots 3-11 that are active, species < $80 and not the orb $55,
@@ -153,9 +267,9 @@ cells never flood fill.
 **Speed** comes from caching, all exact:
 
 - A 64-entry tile cache in SRAM keyed by location *and tile id*: class bits
-  (clear in air / ground base / height), lowObstacle, blocked, air route and
-  whip corridor results. A changed tile gets a fresh entry; results that
-  depend on neighbours expire every 32 frames and on map loads.
+  (clear in air / ground base / height), teleport endpoint/path, lowObstacle,
+  blocked, air route and whip corridor results. A changed tile gets a fresh
+  entry; results that depend on neighbours expire every 32 frames and on map loads.
 - A 3×3 "hero grid" of tile verdicts around Goku, filled lazily and kept
   across movement steps; cells whose tile id changed lose their verdict.
   Footprints inside it are mask tests. When the grid moves one cell over
@@ -461,6 +575,9 @@ earlier one.
 
 ## Cost
 
+Historical profile, before the native-audio, shared takeoff and world-map
+follow-ups. These numbers describe that build, not the current release
+candidate; see [current measurements](gameplay-performance.md#flight-world-map-and-radar-follow-up).
 Measured on the FastROM build with every module of main: scanlines of
 flight code per logic frame (the master clock between code-bank changes,
 `Mesen` Lua), and the logic rate while Goku flies:
@@ -542,43 +659,36 @@ in WRAM or direct page (shorter addressing), a larger tile cache.
 
 ## Remaining
 
-- Sandship runtime (wreck, crash, flying out past the hull, floor holes,
-  gear): destroy's Sandship work on the coordinator's integration branch
-  plugs `sandship.takeoff()` into flight's L+R through `!SANDSHIP_TAKEOFF`
-  (JSL, carry set = handled) and its floor holes through a chained
-  `!FLIGHT_MISSING_FLOOR` (it calls the provider defined before it). The
-  frieza module, included after destroy, redefines `!FLIGHT_MISSING_FLOOR`
-  without chaining, which drops destroy's Sandship holes (and the
-  `FLIGHT_TEST_HOLES` provider, so `holes` fails on builds with frieza);
-  frieza should call the previous provider as destroy does. frieza's
-  provider also answers on map 255 (the Fortress collapse's fractures); the
-  browser keeps those out of `missingFloor` (`fortress-collapse.js` has no
-  `floorHole`), and so does flight's `!FLM_HOLES` gate: Goku walks and
-  lands over them as in the browser. The flight-door path itself is a
-  direct port; the hatch scenario takes the native door first in both
-  engines.
-- Passengers: hiding the companions listed in `!fl_passengers` needs the
-  sprite owner (goku's per-actor passes); `sprite-layer.js` also hides the
-  whip attachment during a crossing (goku draws no weapon cells for Goku
-  anyway).
-- Ceiling escape: fx draws the impact sparks (`FX_SPARKS`) and the quake;
-  the 20 roof chunks are requested as `FX_DEBRIS` style 1 (fx's "ceiling
-  dust", in the room's colours), which fx accepts but does not draw yet.
-  The Vegeta trial counts as a boss only through its custom
-  target post (kind 3). The world module's own L+R takeoff does not check
-  the boss lock the browser's `requestFlight()` applies to both routes.
+- Resolved before this review: floor-hole providers now chain, including
+  Sandship and the test provider; `holes` passes. Map 255 fractures stay out
+  of `!FLM_HOLES`, matching the browser. FX now draws ceiling debris; its
+  `debris` suite and flight's roof escapes pass.
+- Resolved 2026-10-18: the native actor OBJ entry skips carried CPU
+  companions' bodies, attachments and shadows. Actor state stays live;
+  landing shows them again, and a human-controlled companion is never hidden.
+  `scene` checks those three cases. Shore searches also reuse their fetched
+  descriptors and known dungeon result instead of repeating those checks
+  along every ray.
+- Resolved 2026-10-18: flight owns L+R for both outdoor takeoff and roof
+  escape. World's second chord reader no longer bypasses boss, status,
+  scene or recovery-camera locks. The public world takeoff API also asks
+  the shared boss check, including Vegeta's custom target post (kind 3).
+  `world takeoff-locks`, ordinary takeoff and all seven roof exits pass.
 - Instant Transmission: `mod.facing` comes from `E010` (the browser also
   turns it on the press frame's new direction, which combat's aim tracks);
-  the action advances once per logic frame (the browser: per video frame,
-  so a lagging scene stretches it). The vegeta module posts Vegeta, but in
+  the action now advances by elapsed field vblanks, capped at four like
+  combat, while the camera still holds age 4 until its rows arrive. `scene`
+  injects three real missed frames across the 16-bit clock wrap and checks
+  catch-up, recovery and the arrival cue. The vegeta module posts Vegeta, but in
   the Time Chamber no spot around the arena passes `findLanding` in either
   engine (its floor tiles are not floor flight accepts), so L+B does nothing
   there; if the trial is meant to allow it, the chamber needs tiles
-  `canLand` accepts (or a landing rule of its own in both engines). Frieza
-  can post kind 2 until combat's virtual-target API exists.
-- Combat should mirror the browser's `teleport.pending` branch while
-  `!fl_hook` bit 2 is set (no new attacks, the current action only advances);
-  during a teleport it already waits through `cb_ext_kind`.
+  `canLand` accepts (or a landing rule of its own in both engines). Frieza's
+  custom target and combat virtual-target API are already wired.
+- Resolved 2026-10-18: combat mirrors the browser's `teleport.pending`
+  branch while `!fl_hook` bit 2 is set: no new attacks/focus, the current
+  action only advances. `scene` exercises a recovery-camera scroll, holding
+  L+Y during it and checking that charging works once it finishes.
 
 ## Core requests
 

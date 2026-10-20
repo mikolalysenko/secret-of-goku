@@ -99,6 +99,20 @@ function test()
   H.w16(A.cell_req, 1 + 3)
   H.wait(3)
   G.check(H.r16(A.p_cell) == 3, 'cell override shown')
+  G.check(H.waitFor(function() return H.r16(A.vram_cell)==3 end,20),'override reached VRAM')
+  -- A pose deferred during a tight vblank can become obsolete before the
+  -- next upload. Returning to the resident pose must cancel that request.
+  local seeded,result=false,nil
+  local entry=emu.addMemoryCallback(function()
+    if not seeded then H.w16(A.up_cell,4);seeded=true end
+  end,emu.callbackType.exec,SYM.goku_request_cell,SYM.goku_request_cell)
+  local done=emu.addMemoryCallback(function()
+    if seeded and result==nil then result=H.r16(A.up_cell) end
+  end,emu.callbackType.exec,SYM.goku_request_cell_done,SYM.goku_request_cell_done)
+  G.check(H.waitFor(function() return result~=nil end,10) and result==0xFFFF,
+    'returning to resident pose cancels the stale upload: '..tostring(result))
+  emu.removeMemoryCallback(entry,emu.callbackType.exec,SYM.goku_request_cell,SYM.goku_request_cell)
+  emu.removeMemoryCallback(done,emu.callbackType.exec,SYM.goku_request_cell_done,SYM.goku_request_cell_done)
   H.w16(A.cell_req, 0)
   -- api: hand socket during a beam pose
   G.finish()

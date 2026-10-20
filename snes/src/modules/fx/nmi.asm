@@ -12,7 +12,21 @@ fx_nmi:
 	LDA.l !fx_magic
 	CMP.w #!FX_MAGIC
 	BNE .done
-	JSL core_vblank_lines
+	; Latch once; the old path read the same scanline twice and paid the
+	; generic service's width/flag prologue during the tightest vblanks.
+	JSR fx_nmi_vline
+	PHA
+	CMP.w #225
+	BCC .noTime
+	CMP.w #258
+	BCS .noTime
+	EOR.w #$FFFF
+	SEC
+	ADC.w #258
+	BRA .haveTime
+.noTime
+	LDA.w #0
+.haveTime
 	STA.l !fx_vbl
 	JSR fx_nmi_learn
 if defined("FX_TEST")
@@ -26,10 +40,10 @@ endif
 	; or the channels skip that frame. Its palettes are rewritten only while
 	; no HDMA channel runs (then a late $420C write is harmless); with HDMA
 	; running, fx_frame predicted this vblank and drew no sprites.
-	JSR fx_nmi_vline
+	PLA
 	CMP.w #225
 	BCC .late
-	CMP.w #257
+	CMP.w #256
 	BCS .late
 	JSR fx_nmi_poly              ; HDMA first, then the uploads
 	JSR fx_nmi_channel
@@ -131,8 +145,11 @@ fx_nmi_cells:
 	LDA.l fx_entry_bit,X
 	AND.l !fx_cpend
 	BEQ .next
-	JSR fx_nmi_vline             ; start a cell only before line 258
-	CMP.w #258
+	; Reserve the palette writes, math registers and core NMI return.
+	; Starting a cell at 257-258 let an otherwise valid frame finish on
+	; visible line 0/1. Pending cells keep their previous resident age.
+	JSR fx_nmi_vline
+	CMP.w #254
 	BCS .done
 	CMP.w #225
 	BCC .done
@@ -197,13 +214,13 @@ fx_nmi_vline:
 
 ; Write the OBJ palettes FX used this frame (32 bytes each) after the
 ; game's own CGRAM upload; the game's buffer at $7E:0600 is never touched.
-fx_nmi_palettes:
-	LDX.w #$0000
-.loop
-	LDA.l !fx_nmipal,X
+; The six classes are fixed: unroll their scan and source offsets so a
+; late native sprite upload still leaves room for palettes and the RTI.
+macro fx_nmi_palette(class)
+	LDA.l !fx_nmipal+<class>
 	AND.w #$00FF
 	CMP.w #$0008
-	BCS .next
+	BCS ?next
 	ASL
 	ASL
 	ASL
@@ -212,20 +229,12 @@ fx_nmi_palettes:
 	SEP #$20
 	STA $2121
 	REP #$20
-	CPX.w #!FX_CLASS_DYN
-	BEQ .dyn
+if <class> != !FX_CLASS_DYN
 	LDA.l !fx_nmi_reg
 	TAY
 	LDA.w #$2200                 ; A->B, one register: $2122
 	STA $4300,Y
-	TXA
-	ASL
-	ASL
-	ASL
-	ASL
-	ASL
-	CLC
-	ADC.w #fx_class_palettes&$FFFF
+	LDA.w #((fx_class_palettes+(<class>*32))&$FFFF)
 	STA $4302,Y
 	SEP #$20
 	LDA.b #fx_class_palettes>>16
@@ -237,8 +246,7 @@ fx_nmi_palettes:
 	LDA.l !fx_nmi_bit
 	STA $420B
 	REP #$20
-	BRA .next
-.dyn
+else
 	SEP #$20
 	LDA.b #$00
 	STA $2122
@@ -256,12 +264,16 @@ fx_nmi_palettes:
 	LDA.l !fx_dyn+5
 	STA $2122
 	REP #$20
-.next
-	INX
-	CPX.w #6
-	BCS +
-	JMP .loop
-+	RTS
+endif
+?next:
+endmacro
+
+fx_nmi_palettes:
+	for class = 0..6
+		%fx_nmi_palette(!class)
+	endfor
+	LDX.w #6
+	RTS
 
 ; Flash (native-feedback.js burst): fixed-colour addition on BG1, BG2,
 ; OBJ palettes 4-7 and the backdrop; R and G +amount, B +amount/2. The

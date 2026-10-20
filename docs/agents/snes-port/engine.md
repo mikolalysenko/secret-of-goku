@@ -7,16 +7,22 @@ Core services built on these facts: [snes-rom.md](../snes-rom.md#modules-and-cor
 Timing numbers come from `node snes/test/core/measure.mjs` (Mesen, 240
 frames per scene with walking input; re-run it after engine-heavy changes).
 
-Banks: the field loop, its NMI/IRQ and many subsystems execute in bank `$00`
-(the HiROM mirror of `C0`), so Mesen exec callbacks and savestate PCs use
-`00:xxxx` for them; other code runs in `C0`–`DF` through `JSL`.
+Banks: the field outer loop and its NMI/IRQ entries execute in bank `$00`
+(the HiROM mirror of `C0`). After an OAM upload, the field NMI resumes at
+`80:C13E`; without that upload it stays in `$00`. Mesen end-of-NMI callbacks
+must watch both mirrors through `C16F`. The port runs selected native movement,
+actor, collision and OBJ passes, background scrolling and actor preparation through the
+equivalent FastROM mirrors `$80/$81/$82`; the
+field outer loop and interrupt vectors retain bank `$00`. World flight now
+runs its loop and helpers through `$80/$81` too, while its NMI/IRQ vectors
+retain `$00`. Other code runs in `C0`–`DF` through `JSL`.
 
 ## Modes, loops and interrupts
 
 | Mode | Main loop (waits for vblank) | NMI (`$0100` JML) | IRQ (`$0104` JML) | Core hooks |
 | --- | --- | --- | --- | --- |
-| Field: towns, dungeons, dialogue, scripted events, Mode 7 boss arenas (Mana Beast 253, Fortress bosses 488/489) | Init `00:B03F` (stack `$01FF`, `NMITIMEN=$B1`); `00:B070 JSR $B08C` (frame logic), `B073` sets `$EC` bit 0, `B079` waits until NMI clears it; `$56` counts 0–4 | `00:C0A8` | `00:C1CF` at V=196/H=184 | frame `00:B073`, vblank `00:C158` |
-| World flight (Flammie, the opening's legend fly-over) | Init `C0:8038` (stack reset), loop `00:8064`–`8091`: logic, `8085` sets `$EC=$81`, `808D` waits | `00:88CF` | `00:8A4B` at V≈100–103 (horizon) | frame `00:8085`, vblank `00:8903` |
+| Field: towns, dungeons, dialogue, scripted events, Mode 7 boss arenas (Mana Beast 253, Fortress bosses 488/489) | Init `00:B03F` (stack `$01FF`, `NMITIMEN=$B1`); `00:B070 JSR $B08C` (frame logic), `B073` sets `$EC` bit 0, `B079` waits until NMI clears it; `$56` counts 0–4 | `00:C0A8` | `00:C1CF` at V=196/H=184 | frame `00:B073`, vblank `00/80:C158` |
+| World flight (Flammie, the opening's legend fly-over) | Init `C0:8038` (stack reset); the port resumes at `80:804A` after its loader hook. Loop `80:8064`–`8091`: logic, `8085` sets `$EC=$81`, `808D` waits | `00:88CF` | `00:8A4B` at V≈100–103 (horizon) | loader `C0:8045`, frame `80:8085`, vblank `00:8903` |
 | Ring menus | `C0:6943`: polls `$4212` for vblank start, sets `$EC` bit 3, `JSL $D0D397`; pads through `C0:695E` | field (`00:C0A8`) | field | frame `C0:694F` (in vblank) |
 | Full-screen menus: game select, name entry, file list, status/equipment/action grid, save screen, controller config | `C0:1DEF`–`1DFD` polls `$4212` (no NMI work); vblank uploads `1DFF`–`1E05`; input and logic every 4th frame (`$A201`, `C0:2BD9`) | `C0:20A7` (BG scroll only) | none (`NMITIMEN=$81`) | frame `C0:1E08` (in vblank) |
 | Title, opening narration program, ending/credits | WRAM program at `7E:8000+` (decompressed from `C7:7C00` by `C1:4C30`), entered at `C1:4CF6 JML $7EAF0B` (power-on, soft reset, quit) or `C1:4D0B JML $7EAF28` (`C1:4CFA`, via jump table `C0:0075`; seen in ending/credit states) | `$40` (RTI) | `7E:A266`: the program's frame, `D=$4200`, `DB=$7F` | entry `C1:4CF6`/`4D0B` (`modules_title_boot`) |
@@ -43,7 +49,8 @@ Banks: the field loop, its NMI/IRQ and many subsystems execute in bank `$00`
   `$2105=$09`, `$212C=$14` (BG3 + OBJ). The switch lands at x≈248 of line 195.
 - `$D0`: event interpreter (0 idle, 1 starting, `$81` printing, `$82` command
   wait, `$83` waiting for a button, `$85` timed wait). `$E4/$E5`: brightness
-  fade timers (1/1 settled). `$F4`: NMI frame counter. `$DC`: map id.
+  fade timers (1/1 settled). `$F4` advances only for completed field frames;
+  combat's `!cb_vblanks` counts every field NMI, including lag. `$DC`: map id.
 
 ## Input
 
@@ -71,7 +78,8 @@ dialogue, menus, the name editor and world steering all see it.
 
 - Buffer `$7E:0800` (128 × X, Y, tile, attr) + `$7E:0A00` (2 bits per
   sprite: X bit 8, size); NMI DMAs `$220` bytes on channel 7. Lower slots
-  draw in front. Hidden slots: X=`$FF`, Y=`$E0`.
+  draw in front unless priority rotation selects another first slot.
+  Hidden slots: X=`$FF`, Y=`$E0`.
 - Field build each frame: `C0:BCCC` (from `B0A0`) resets the cursor `$7C`,
   `$59/$5A` (high-table bit/byte) and clears the high table; HUD portraits
   first (`C1:E61D`, tiles `$E8/$EA/$EC`); actors via `C0:E38E` (lists `$0540`
@@ -225,7 +233,218 @@ sets `MEMSEL` because `C1:4D0F` clears it on every title entry):
   world-flight line samples differently), and animation phase shifts where
   the original lags.
 
-Not adopted: SlowROM stays the default because those splits are original
-behavior and the original code barely benefits. Keep `CORE_FASTROM` for when
-module CPU time runs short; real hardware then needs 120 ns ROM (any current
-reproduction board).
+FastROM is now the default (`-DCORE_SLOWROM=1` opts out). The October 18
+gameplay pass also redirects verified hot native calls and hook continuations
+through `$80/$81`, with original-byte assertions at every patched call.
+These mirrors retain the low WRAM/IO mapping; the original `$00` field outer
+loop and interrupts stay in place. World flight now resumes in `$80` after
+the native loader and map-viewer return, with FastROM helper calls and
+predecoded terrain rows. Core frame, input, OAM,
+VRAM, save, world, lag, HDMA, WRAM and extended-ROM tests pass. The timing
+measurements above describe the older experiment, before those call changes.
+
+The field NMI's native actor graphics uploader also uses bank `$81`,
+including Goku's skip/refresh continuations. Ground tilemap uploads use a
+byte-identical copy of `C0:C692-C7C2` in the core bank, avoiding an RTS bank
+bridge; the following HUD upload uses `$80`. Airborne tilemap/HUD uploads
+retain the original bank timing because the unrestricted trial worsened
+the sustained flying-ki scenario. `CORE_NATIVE_NMI_SLOW` restores all three
+original upload paths. The assembled comparison checks ordered hardware
+writes, RAM, registers and flags across all five phases, actor sizes,
+Goku replacement/refresh states, scrolling layers and both flight states.
+No transfer is omitted or deferred by this change.
+
+While Goku is active, the native party status pass updates the girl in
+phase 4, Goku in phase 3 and the sprite in phase 0. Each still runs once
+in every five completed field frames; movement, collision and drawing run
+for everyone every frame. This spreads the original phase-3 CPU burst
+without dropping updates. The October 19 follow-up moves companions out
+of phases 1/2, which already carry expensive native enemy work. Before
+Goku's arrival and during native event
+scripts, all three retain phase 3 so scripted party movements stay synchronized.
+`-DCORE_PARTY_SYNC=1` restores the old schedule for comparisons. The core
+`party` test counts 20 calls per actor across 100 field frames with Goku off,
+on, a second player assigned and an event owning the field, and checks that
+the actors stay active and their native timers advance 20 times. These calls
+explicitly set DB to `$7E`, just as the original party wrapper does; counting
+entry calls alone would miss reads from the wrong actor bank. The whip-pad
+crossing tests the real scripted handoff.
+
+During ki attacks, charging, beams, teleport and camera recovery, `core/party.asm` can defer the CPU
+companion's following AI/animation until a field starts that work before
+scanline 90. Status and timers have already run on their fixed tick. The
+oldest pending member runs first, at most one per field, with a four-field
+deadline that finishes before the member's next five-field tick. The
+physical L+B read covers the first search frame before flight publishes
+its action, and Y without L reserves the first ki shot before its pose is
+published. Pending work drains before the regular schedule resumes.
+Punching retains its regular timing. Human-controlled companions
+bypass the queue, and resumed work rechecks the live passenger gate.
+`CORE_PARTY_KI_SYNC` retains synchronous ki companion work for comparisons.
+`CORE_PARTY_POWER_SYNC` retains synchronous charging/beam work.
+
+The queue uses eight volatile SRAM bytes at `$31:7564`, after Goku's water
+palette. A magic word and map key reject older save-state noise; boot,
+title, mode changes, new games and successful loads reset it. Frame entry
+and dispatch revalidate the field context; dispatch also drops removed or
+human-owned actors. Enqueue catches a map change inside status handling. The assembled
+`party-budget.test.mjs` covers deadlines, fairness, initial input, draining,
+context changes and the SRAM boundary. The Mesen `party` test additionally
+counts status and AI calls during teleport and ki with and without player two.
+
+The sound/aura follow-up replaces `C1:2710`'s highest-set-bit loop with a
+byte lookup in `core/native.asm`. It keeps the original A/X result, Y/DB/D,
+stack and flags (including PLD's NZ result). `node --test
+snes/test/core/native.test.mjs` executes both implementations on all 65,536
+inputs and additional 8-bit/decimal flag combinations. No AI updates are
+removed. The HDMA-enable guard also skips its scanline read when the mask
+only retains/disables existing channels; newly enabled channels keep the
+same late-frame protection, covered by the core `hdmaen` test.
+
+The native AI operand advance at `C1:01F7` uses the byte load's sign flag
+for its short/long operand tag and avoids a redundant accumulator-width
+change. Its ten fixed-size forward/branch wrappers tail-call the helper.
+`CORE_AI_ADVANCE_SLOW=1` restores retail; `ai-advance.test.mjs` compares
+all 65,536 script pointers plus 21,120 operand/CPU-context combinations,
+including index wrap, decimal mode and PLD's return flags. The relative
+branch helper retains its native X16 calling contract. Representative
+forward/branch calls fall 75 → 61 / 118 → 109 CPU cycles. Script decisions
+and update counts are unchanged.
+
+`C1:0358` now classifies AI distances through a 64 KiB lookup split between
+`E0:0000-7FFF` and `ED:0000-7FFF`. `snes/gen/core-math.mjs` preserves the
+native inclusive radius thresholds and 16-bit square-sum overflow. The
+replacement in `core/native.asm` subtracts each actor's height, uses the
+native unsigned absolute differences, and retains the original stack
+epilogue. Decimal mode and eight-bit indexes use retail code;
+`-DCORE_NATIVE_DISTANCE_SLOW=1` disables the replacement. Multiplier I/O is
+scratch, rather than an output of this helper. The assembled
+`snes/test/core/distance.test.mjs` compares CPU registers, flags and RAM
+outside dead stack locals across all 65,536 byte-magnitude pairs, large
+coordinates, heights and flag combinations. A representative call falls
+from 322 to 198 CPU cycles.
+
+`C1:0404` uses another byte table for pursuit direction, split between
+`EE:0000-7FFF` and `EF:0000-7FFF`. Each entry contains the major axis,
+diagonal decision and minor-distance nibble. The routine retains the
+native height adjustment and its unusual coordinate folding above 255;
+the two folded magnitude-256 edges keep the retail tail. Eight-bit indexes
+and decimal mode keep the original routine. `direction.test.mjs` compares
+all byte-magnitude pairs plus heights, large coordinates and CPU flags;
+decimal callers are compared at the unchanged retail continuation before
+its original stack arithmetic. A representative call falls 367 → 291 CPU
+cycles. `-DCORE_NATIVE_DIRECTION_SLOW=1` restores the original entry.
+
+`C1:16F4` retains AI's random-nibble rejection sampler but inlines the
+native byte generator within the loop. The RNG index/state at `$03F0-03FF`
+and scratch `$03CC` receive exactly the same writes; no draws are skipped
+and the distribution is unchanged. The DB/index-width setup and register
+saves occur once rather than through three wrappers per rejection. Decimal
+and eight-bit-index callers keep retail. `ai-random.test.mjs` compares the
+assembled helpers' registers, flags and live RAM for every limit/index,
+131 seed states and CPU fallbacks. A 68-draw case falls 14,569 → 4,487 CPU
+cycles. This reduces overhead without imposing a new rejection limit.
+`-DCORE_NATIVE_AI_RANDOM_SLOW=1` restores the original entry.
+
+`C1:E05A` copies the native actor palette's fifteen words to `$0700,Y`
+and `$DF00,Y` using constant offsets. Its saved X/Y are restored by the
+original epilogue; narrow indexes, index wrap and unusual counts retain
+the original loop. `palette.test.mjs` checks every species and party
+status, both mirrors, register/flag contracts and boundary fallbacks.
+A representative full helper falls 618 → 398 CPU cycles;
+`CORE_NATIVE_PALETTE_SLOW` restores the original copy.
+
+The native actor refresh calls at `C1:93C9/93DC` and `C0:EA38` use the
+FastROM mirrors of weapon setup, sheet preparation and palette refresh
+(`80:EA3D`, `80:E9F4`, `81:85E4`). Their WRAM/I/O/data mappings and native
+return contracts are unchanged. `weapon-fast.test.mjs` executes the actual
+JSL sites with both banks across six actors, 72 weapons and all byte palette
+selectors. Its 5,665 cases compare CPU state, all live RAM and multiplier
+writes; a representative setup drops from 171 slow ROM reads to 4.
+`CORE_NATIVE_WEAPON_SLOW` restores the three old call targets.
+
+The predecoded weapon-0 path omits its 2 KiB WRAM write for enemy slots
+`$0600/$0800/$0A00` when species is F9, dead status is set and the native
+weapon attachment is retired. The body sheet, palette setup, decoder
+return contract and native death logic remain unchanged. Treasure/spawn
+initialization reloads the weapon buffer before reuse. `graphics.test.mjs`
+checks guards, all three slots, return state and subsequent reloads;
+the core `death-weapon` test poisons the unused buffer and verifies real
+read traffic, native rewards, removal and treasure creation.
+`CORE_NATIVE_DEATH_WEAPON_SLOW` retains the original buffer write.
+
+`C0:5AA7` skips sixteen empty bit tests when a status-effect request's
+mask is zero. It preserves the original scratch `$B6/$CC/$D0`, A/C/V
+and saved-register epilogue. Nonempty masks retain the original loop.
+`status-empty.test.mjs` compares every nonempty mask at that continuation
+and empty masks across CPU flags, direct pages and data banks. The empty
+scan falls 478 → 65 CPU cycles. `CORE_NATIVE_STATUS_EMPTY_SLOW` restores
+retail. Neither replacement changes palette colors or status effects.
+
+Native message graphics use exact replacements at `C0:14C6`, `C0:15B9`
+and `C0:162C`. The first copies disjoint WRAM blocks with interruptible
+word copies (64–896 bytes) or MVN (smaller copies). The second combines
+glyph expansion and vertical outlines; the third
+unrolls horizontal outlines, preserving the incoming carry and each row's
+carry into the next. Eight-bit-index, decimal and unusual-bank contexts
+retain retail code. No DMA channel or persistent scratch is added.
+`-DCORE_NATIVE_TEXT_SLOW=1` restores the original hooks for comparisons.
+`snes/test/core/text-copy.test.mjs` checks RAM, registers and flags against
+retail machine code across copy lengths/positions, glyph patterns, carry,
+direct-page offsets and fallback inputs. Representative cycle counts are
+22,965 → 5,144 (896-byte copy), 33,084 → 12,192 (32 glyphs and vertical
+outline), and 20,433 → 14,492 (horizontal outline).
+
+The large-copy helper enters a descending unrolled word sequence at the
+validated length, then restores the advanced X/Y and the native last-byte
+accumulator result. Only stack locals are live across interrupts. The
+earlier MVN path costs 6,442 cycles for 896 bytes and remains available
+with `CORE_NATIVE_TEXT_MVN`. Copy tests cover every byte alignment around
+the size cutoff; menu/save text and the integrated gameplay checks pass.
+
+The same comparison switch also covers `C0:107B`'s 1,334-byte window clear,
+`C0:1539`'s two-half pattern painter and `C0:1BC0`'s cell exchange. The clear
+uses descending word batches; the painter simplifies the even-plane mask
+while retaining the odd plane; the cell writer marks upload bits before
+restoring DB to avoid a second bank switch. Seven assembled text tests
+include buffer boundaries, styles, all row bytes, request branches and
+decimal/width/flag cases. Their representative CPU costs are 13,342 → 4,336,
+1,049 → 713 and 202 → 169 cycles, respectively.
+
+Window row shifts at `C0:0754`, `C0:077F`, `C0:0C68` and `C0:0CEE` batch
+the interior columns and execute the final retail iteration. Each source
+word is replaced with the same blank/border cell, and the adjacent row
+receives the old source with its native attribute bit. Bounds exclude
+metadata and wrapped rows/columns; fallback contexts keep the original
+loops. Odd border widths are handled by the retained last iteration. The
+eighth assembled text test compares full RAM and CPU state at each loop's
+continuation. Ten-column scrolls take 964 rather than 4,467 CPU cycles;
+twenty-column borders take 1,741 rather than 8,938.
+
+The field foreground-sprite commit leaves native/rear entries in place and
+appends the staged effects. After the same 544-byte DMA, `$2102/$2103` selects
+the appended group as the first OBJ; evaluation wraps through hidden slots
+back to native slot zero. This follows the [OAM priority register](https://www.problemkaputt.de/fullsnes.htm#snesmemoryoamaccessspriteattributes).
+The rounded reservation, sprite capacity and `$0120` cleanup remain unchanged.
+Four size/X-high entries are packed at once, including native ends that share
+a high-table byte. SRAM `!CORE_SAFE+$017` holds the completed first-slot byte
+(`$80 | slot`, zero for ordinary priority), cleared by mode handoffs and the
+native `C0:E355` full OBJ clear used by rings/maps. No DMA bytes or channels
+are added. The uploader and remaining native NMI use FastROM; RTI restores
+the interrupted bank from the hardware stack.
+
+Local flight now uses the same rotation. With carried companions and the
+subsequent native optimizations, the current 1,200-frame flying-punch test
+improves from two misses to one; corridor flying ki stays at 20. The earlier
+unrestricted trial on an older baseline increased sustained ki misses, so
+this was remeasured before enabling it. `-DCORE_OAM_ROTATION_GROUND=1`
+restores physical insertion only in local flight for comparisons.
+`-DCORE_OAM_ROTATION_SLOW=1` restores the preceding ground word-copy/airborne
+MVP paths, and `-DCORE_OAM_COMMIT_SLOW=1` uses MVP everywhere.
+`snes/test/core/oam-commit.test.mjs` compares assembled execution against an
+independent slot model over every capacity and packed high-byte value,
+including empty input, padding and the last slot. Six foreground sprites
+plus 192 native bytes take 701 instead of 1,895 CPU cycles; sixteen take
+1,051 instead of 2,197. `oam-transition.test.mjs` checks ordered DMA/priority
+writes and CPU state. The Mesen `oam-order` case checks opaque overlapping
+sprites, lag persistence, ring entry/exit and removal using rendered pixels.

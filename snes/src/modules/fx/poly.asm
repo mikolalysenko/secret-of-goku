@@ -487,11 +487,14 @@ fx_poly_tables:
 ; so next to the natives on Goku's lines they cannot all show (and the PPU
 ; drops the natives' slivers). The lines come from fx_strip_ptr /
 ; fx_strip_data (fx.mjs): the first line's offset from the anchor's line,
-; the count, each line's colour index in the palette class.
+; line/run counts, a solid-span flag and end-row/colour pairs.
 !fxs_rec  = !d_ks+$08         ; the record in fx_strip_data
+!fxs_fast = !d_ks+$0A         ; prebuilt colour HDMA record
 !fxs_n    = !d_ks+$0C         ; its lines
 !fxs_cls  = !d_ks+$0E         ; palette class * 32
 !fxs_o    = !d_r0+$00         ; window record of the beam's lines
+!fxs_runs = !fxp_left         ; number of colour runs
+!fxs_last = !fxp_q            ; exclusive end row of this run
 
 ; C clear when this frame's polygon is free.
 fx_poly_avail:
@@ -616,6 +619,8 @@ fx_poly_rows:
 	PLA
 	ASL
 	TAX
+	LDA.l fx_strip_hdma_ptr,X
+	STA !fxs_fast
 	LDA.l fx_strip_ptr,X
 	STA !fxs_rec
 	TAX
@@ -624,6 +629,9 @@ fx_poly_rows:
 	AND.w #$00FF
 	BEQ .none
 	STA !fxs_n
+	LDA.l fx_strip_data+2,X
+	AND.w #$00FF
+	STA !fxs_runs
 	LDA !d_cur+!C_X
 	STA !fxp_x
 	LDA !d_cur+!C_Y
@@ -691,6 +699,16 @@ fx_poly_rows:
 	CLC
 	ADC !fxp_y
 	STA !fxp_first
+if not(defined("FX_STRIP_ROWS_SLOW"))
+	JSR fx_poly_rows_copy
+if not(defined("FX_STRIP_ROWS_COPY"))
+	BCS +
+	JMP .ready
++
+else
+	BCC .window
+endif
+endif
 	; Channel 3: the game's backdrop, each line's colour, the backdrop.
 	LDA.w #5
 	JSR fx_pw_open
@@ -700,7 +718,7 @@ fx_poly_rows:
 	JSR fx_pw_to
 	STZ !fxp_d
 .crow
-	JSR .line
+	JSR .run
 	BEQ +
 	ASL
 	CLC
@@ -715,18 +733,16 @@ fx_poly_rows:
 	LDX.w #$0000
 ++	LDA !fxp_first
 	CLC
-	ADC !fxp_d
-	CMP.w #!FX_PLINES            ; off the screen (above: negative)
-	BCS +
-	LDA.w #1
-	JSR fx_pw
-+	INC !fxp_d
+	ADC !fxs_last
+	JSR fx_pw_to                ; clip the whole run to the visible rows
+	INC !fxp_d
 	LDA !fxp_d
-	CMP !fxs_n
+	CMP !fxs_runs
 	BCC .crow
 	LDA.w #4
 	JSR fx_pw_colour
 	JSR fx_pw_close
+.window
 	; Channel 2 (mode 1): the beam's span on lines with colour.
 	LDA !fxp_out
 	STA.l !fx_ptab2
@@ -736,9 +752,23 @@ fx_poly_rows:
 	LDY.w #$0000
 	LDA !fxp_first
 	JSR fx_pw_to
+	LDX !fxs_rec
+	LDA.l fx_strip_data+3,X
+	AND.w #$00FF
+	BEQ .window_runs
+	; Every row is opaque: window 1 is one rectangle, regardless of the
+	; colour bands. Build it with one writer call instead of one per row.
+	LDX !fxs_o
+	LDY.w #$0000
+	LDA !fxp_first
+	CLC
+	ADC !fxs_n
+	JSR fx_pw_to
+	BRA .window_done
+.window_runs
 	STZ !fxp_d
 .wrow
-	JSR .line
+	JSR .run
 	BEQ +
 	LDX !fxs_o
 	BRA ++
@@ -746,18 +776,17 @@ fx_poly_rows:
 ++	LDY.w #$0000
 	LDA !fxp_first
 	CLC
-	ADC !fxp_d
-	CMP.w #!FX_PLINES
-	BCS +
-	LDA.w #1
-	JSR fx_pw
-+	INC !fxp_d
+	ADC !fxs_last
+	JSR fx_pw_to
+	INC !fxp_d
 	LDA !fxp_d
-	CMP !fxs_n
+	CMP !fxs_runs
 	BCC .wrow
+.window_done
 	LDX.w #$00FF
 	LDY.w #$0000
 	JSR fx_pw_close
+.ready
 	LDA !fxp_ovf
 	BEQ +
 	SEC
@@ -772,14 +801,177 @@ fx_poly_rows:
 	STA.l !fx_pshown
 	CLC
 	RTS
-.line                            ; A = colour index of line !fxp_d (Z set: none)
-	LDA !fxs_rec
+.run                             ; run !fxp_d -> end row and colour (Z: none)
+	LDA !fxp_d
+	ASL
 	CLC
-	ADC !fxp_d
+	ADC !fxs_rec
 	TAX
-	LDA.l fx_strip_data+2,X
+	LDA.l fx_strip_data+4,X
+	PHA
+	AND.w #$00FF
+	STA !fxs_last
+	PLA
+	XBA
 	AND.w #$00FF
 	RTS
+
+; Build both tables directly when all opaque rows are visible, copying
+; the prebuilt colours with interruptible MVN. Live backdrop and neutral
+; padding remain in both buffers; DB is restored before return.
+; C clear: tables complete (colour only with FX_STRIP_ROWS_COPY); C set:
+; use the clipped/general path.
+fx_poly_rows_copy:
+	LDA !fxp_first
+	BMI .no
+	CLC
+	ADC !fxs_n
+	CMP.w #!FX_PLINES+1
+	BCS .no
+	LDX !fxs_rec
+	LDA.l fx_strip_data+3,X
+	AND.w #$00FF
+	BEQ .no
+	LDX !fxs_fast
+	LDA.l fx_strip_hdma_data,X
+	XBA
+	AND.w #$00FF
+	CMP !fxs_cls
+	BNE .no
+	LDA.l fx_strip_hdma_data,X
+	AND.w #$00FF
+	BEQ .no
+	STA !fxp_d
+	CLC
+	ADC !fxp_out
+	ADC.w #45                    ; worst-case neutral runs and window table
+	CMP !fxp_end
+	BCC .copy
+	BEQ .copy
+.no
+	SEC
+	RTS
+.copy
+if not(defined("FX_STRIP_ROWS_COPY"))
+	; Opaque, fully visible strips need only fixed neutral runs around
+	; their prebuilt colours and one rectangular window. No clipping or
+	; run merging is needed on this path.
+	LDX !fxp_out
+	LDA !fxp_first
+	JSR .backdrop
+	STX !fxp_out
+	LDA !fxs_fast
+	CLC
+	ADC.w #(fx_strip_hdma_data&$FFFF)+2
+	TAX
+	LDY !fxp_out
+	LDA !fxp_d
+	DEC
+	PHB
+	MVN !FX_PBASE>>16,fx_strip_hdma_data>>16
+	PLB
+	TYX
+	LDA.w #!FX_PLINES
+	SEC
+	SBC !fxp_first
+	SEC
+	SBC !fxs_n
+	STA !fxp_left
+	JSR .backdrop
+	LDA.w #127
+	JSR .colour_run
+	LDA.w #0
+	STA.l !FX_PBASE,X
+	INX
+	TXA
+	STA.l !fx_ptab2
+	LDY.w #$00FF
+	LDA !fxp_first
+	JSR .window
+	LDY !fxs_o
+	LDA !fxs_n
+	JSR .window
+	LDY.w #$00FF
+	LDA !fxp_left
+	JSR .window
+	LDA.w #127
+	JSR .window_run
+	LDA.w #0
+	STA.l !FX_PBASE,X
+	INX
+	STX !fxp_out
+	CLC
+	RTS
+.backdrop
+	BEQ .empty
+	CMP.w #128
+	BCC .colour_run
+	PHA
+	LDA.w #127
+	JSR .colour_run
+	PLA
+	SEC
+	SBC.w #127
+.colour_run
+	STA.l !FX_PBASE,X
+	LDA.w #0
+	STA.l !FX_PBASE+2,X
+	LDA.l $7E0600
+	STA.l !FX_PBASE+3,X
+	TXA
+	CLC
+	ADC.w #5
+	TAX
+.empty
+	RTS
+.window
+	BEQ .empty
+	CMP.w #128
+	BCC .window_run
+	PHA
+	LDA.w #127
+	JSR .window_run
+	PLA
+	SEC
+	SBC.w #127
+.window_run
+	STA.l !FX_PBASE,X
+	TYA
+	STA.l !FX_PBASE+1,X
+	TXA
+	CLC
+	ADC.w #3
+	TAX
+	RTS
+else
+	LDA.w #5
+	JSR fx_pw_open
+	LDA.w #4
+	JSR fx_pw_colour
+	LDA !fxp_first
+	JSR fx_pw_to
+	JSR fx_pw_flush
+	LDA !fxs_fast
+	CLC
+	ADC.w #(fx_strip_hdma_data&$FFFF)+2
+	TAX
+	LDY !fxp_out
+	LDA !fxp_d
+	DEC
+	PHB
+	MVN !FX_PBASE>>16,fx_strip_hdma_data>>16
+	PLB
+	STY !fxp_out
+	LDA !fxp_first
+	CLC
+	ADC !fxs_n
+	STA !fxp_line
+	LDA.w #4
+	JSR fx_pw_colour
+	JSR fx_pw_close
+	CLC
+	RTS
+endif
 
 ;---------------------------------------------------------------------------
 ; Death Balls above 32 px (death-ball-art.js, 16 px art upscaled by nearest
@@ -1564,9 +1756,18 @@ fx_pw_flush:
 ; would instead underflow its line counter into a 127-line repeat and write
 ; whatever follows in memory (hardware and Mesen alike).
 fx_pw_close:
+	PHX
+	PHY
 	LDA.w #!FX_PLINES
 	JSR fx_pw_to
 	JSR fx_pw_flush
+	PLY
+	PLX
+	; A coloured/window run can end exactly at line 224, so fx_pw_to
+	; may have appended no neutral run. Padding must use the caller's
+	; neutral record, never the preceding visible record in that case.
+	STX !fxp_r0
+	STY !fxp_r1
 	LDA.w #127                   ; the padding entry (record unchanged)
 	STA !fxp_cnt
 	JSR fx_pw_flush

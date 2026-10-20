@@ -1,0 +1,106 @@
+SECRET OF GOKU - SNES PREVIEW {{VERSION}}
+
+Secret of Mana. With Goku.
+
+This is the standalone SNES cartridge port of Secret of Goku. Play with
+Goku's punches, ki blasts, Kamehameha, local flight, Instant Transmission
+and Super Saiyan transformation inside Secret of Mana's action RPG.
+
+This preview uses short native SNES combat sounds and compact effects.
+It includes the fixes for lingering transformation audio, cut-grass aura
+colours, flight palettes, the attack meter and deferred animation uploads.
+World takeoff, aerial charging, radar quest targets and returning from the
+globe/flat map are corrected. Predecoded terrain removes the measured
+world-flight stalls. Crowded local flight/combat can still slow down;
+this remains an in-progress preview.
+
+DOWNLOADS AND SOURCE
+
+Release: {{RELEASE_URL}}
+GitHub: https://github.com/mikolalysenko/secret-of-goku
+SNES source: https://github.com/mikolalysenko/secret-of-goku/tree/main/snes
+Browser edition: https://mikolalysenko.github.io/secret-of-goku/
+Source commit: {{COMMIT}}
+
+The browser and desktop editions are separate builds.
+
+APPLY THE PATCH
+
+1. Start with an unmodified Secret of Mana (USA) ROM, original retail
+   revision, with no 512-byte copier header. Keep an untouched backup.
+2. Verify the base ROM against the size and hashes below. IPS itself does
+   not identify a wrong base ROM, so the hash check matters.
+3. Apply {{PATCH_NAME}} to that ROM with an IPS-compatible patcher such as
+   Rom Patcher JS: https://www.marcrobledo.com/RomPatcher.js/
+   Do not apply this patch on top of a previous Secret of Goku build.
+4. Save the result as Secret of Goku.sfc. The result must be 8,388,608 bytes
+   (8 MiB), with the output SHA-256 listed below. No separate expansion or
+   additional patches are needed.
+5. Open the resulting .sfc in a SNES emulator that supports ExHiROM and
+   32 KiB save RAM. This release was tested in Mesen 2. Physical-console
+   and flash-cartridge compatibility have not been certified.
+
+This archive contains a patch and documentation. No playable ROM is
+included in the archive.
+
+Required base ROM (without copier header):
+  Game:    Secret of Mana (USA), original retail revision
+  Bytes:   {{BASE_SIZE}}
+  CRC32:   {{BASE_CRC32}}
+  SHA-1:   {{BASE_SHA1}}
+  SHA-256: {{BASE_SHA256}}
+
+Output ROM SHA-256:
+  {{ROM_SHA256}}
+IPS SHA-256:
+  {{PATCH_SHA256}}
+
+CONTROLS - ORIGINAL SNES BUTTON LABELS
+
+  D-pad       Move
+  B           Punch / talk / confirm
+  Y           Ki blast
+  A + D-pad   Fly fast
+  X           Ring menu / back
+  Hold L      Focus / build power
+  L + Y       Charge Kamehameha; release to fire
+  L + B       Instant Transmission
+  L + A       Transform / revert
+  L + R       World flight where available
+  Start       Start / resume
+  Select      Switch party member
+
+In world flight, A ascends and B descends/lands. L+A and L+B keep their
+Goku actions without changing altitude. Start opens the globe; R switches
+to the flat map, L returns to the globe, and B closes the viewer once it
+has finished loading. Native map loading takes several seconds.
+
+Goku's powers become available after his opening arrival. Use the game's
+normal save points and retain the emulator's battery-save file. Browser
+checkpoints and emulator save states are not interchangeable with this ROM.
+Do not assume save states from an older build work after updating.
+
+KNOWN LIMITATIONS
+
+Dense local scenes, especially repeated ki shots while flying with the party,
+still have CPU slowdowns. The reviewed gameplay scenarios have no observed
+palette mismatches, native weapon-meter leaks, sprite overflow or vblank
+overruns. Quiet punches, quiet ki and water flight passed 1,200-frame
+emulator runs without dropped gameplay frames. World flight passed 5,770
+measured frames of radar-visible turns, ki, charge/release and form changes
+with zero missed frames or palette, sprite and vblank errors. Map loading
+is excluded. These measurements do not cover every map, boss, scripted
+scene or physical device.
+
+Scouter power readouts and Analyzer overlays are not drawn yet. Less common
+status/equipment interactions and some story, boss and ending paths still
+need further review. Detailed status and test results:
+https://github.com/mikolalysenko/secret-of-goku/blob/main/docs/agents/snes-port/gameplay-performance.md
+
+CREDITS
+
+Project by Mikola Lysenko (mikolalysenko), developed with AI assistance.
+An unofficial, noncommercial fan project, unaffiliated with the owners of
+Secret of Mana or Dragon Ball. Original games, characters, artwork and
+music retain their respective ownership. See CREDITS.md for asset sources
+and LICENSE.txt for the original project code license.

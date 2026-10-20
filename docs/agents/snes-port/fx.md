@@ -136,7 +136,7 @@ Continuous kinds (`fx_draw`, every frame the effect should show):
 | Kind | Id | Browser source | Arguments | Notes |
 | --- | --- | --- | --- | --- |
 | `FX_ORB` | `$10` | charge orb | `!fx_a` frame 0–4 (charge `min(4,strength·5)`; full charge alternates 3/4 every 4 frames) | Charge orb at the palm; *front* except facing up. Gold/pink with flags |
-| `FX_AURA` | `$11` | `ki-aura.js` | `!fx_style` tone 0 blue, 1 gold, 2 pink; `!fx_a` power 0–256 (0: none); `!fx_b` body height (≤ 20: 16, ≥ 36: 40, else 32); `!fx_c` phase seed; `!fx_t` clock (shown on even clocks only, phase `(clock/3 + seed) % 12`) | Flame aura behind every sprite (a polygon, see strategy). X/Y = centre of the body cell as the browser's `aura()`; with `FX_F_GOKU` Goku's cell centre + X/Y. One aura per frame: give a second one the other clock parity |
+| `FX_AURA` | `$11` | `ki-aura.js` | `!fx_style` tone 0 blue, 1 gold, 2 pink; `!fx_a` power 0–256 (0: none); `!fx_b` body height (≤ 20 miniature, otherwise full); `!fx_t` clock (shown on even clocks, two poses selected by bit 2) | Resident sprite flame behind the body, independent of BG palette/colour math. X/Y = body centre; with `FX_F_GOKU` Goku's cell centre + X/Y. `FX_AURA_POLY` retains the older geometric renderer and its seed/phase rules |
 | `FX_LIGHTNING` | `$12` | `charge-lightning.js` | `!fx_a` bolts (2 or 3; 0: 2); `!fx_t` clock | Super Saiyan charge bolts from X/Y (the charge point), regenerated every 3 frames, as Thunderbolt cells along the browser's bolt points; every bolt ends in the air (see strategy). *front* |
 | `FX_DEATHBALL` | `$13` | `death-ball-art.js` | `!fx_a` diameter (snapped to `deathBallSizes`, 16–224, as the browser), `!fx_t` frame (wraps at 12) | 16 and 32 px: the art as OBJ; 24 and 48–224 px: a polygon (see strategy), else the 32 px ball. The cinematic red planet killer (64 px art) is not FX's: its scene draws it |
 | `FX_DISC` | `$14` | `orbit-effects.js` `disc` | `!fx_t` age (tilt = (age>>3)&3) | Frieza's Death Disc, 20×6 in four tilts |
@@ -221,6 +221,16 @@ that effect's sprites and draws its previous age instead (cells still
 resident), while its age runs on, so the client's timing is kept. World
 flight will use the world regions.
 
+The gameplay build uses one impact spark and one moving ki orb, with a
+two-frame palm flash. `-DFX_DETAIL=1` restores the extra impact satellites
+and three-orb trail for comparisons. Projectile speed, reach and damage are
+unchanged. Offscreen shots are culled before palette/cache work. Cell DMA
+does not start at line 254 or later, reserving time for palettes, colour math,
+the joypad/clock hook and the NMI return; missing animation cells retain the
+prior resident age. The gallery waits up to one native five-phase upload
+cycle for its simultaneous cold-cache orb frames and transformation rings,
+then requires their full sprite counts.
+
 **Palettes**: effect colours are grouped into 15-colour classes, BLUE
 (Lucent Beam, ki, impacts), PINK (Frieza: pink beams, discs, Death
 Balls), GOLD (Super Saiyan sparks, arcs, ring and the Thunderbolt cells in
@@ -235,6 +245,16 @@ is never modified. A class with no free palette is not drawn that frame;
 Potos leaves two free palettes, so the usual pairs (BLUE + GOLD for a
 Super Saiyan beam, FIRE alone for explosions) fit.
 
+The occupied native OAM groups use an unrolled reverse scan, with the
+same conservative rounding to four sprites and separate staged-front
+scan. An 80-sprite scan costs 1,308 CPU cycles versus 1,829 for the corrected
+loop (`FX_PALSCAN_SLOW=1`). The old loop failed to clear accumulator B after
+its cursor reached `$100`: byte `TAX` then indexed past the palette-marker
+table and missed palettes used after sprite 64. Both paths now keep B zero.
+`palette-scan.test.mjs` compares every cursor boundary, palette subset,
+front group and tight-vblank case with a corrected loop and an independent
+palette-set model, including palettes first appearing after sprite 64.
+
 **OAM**: one 16×16 OBJ per cell (field OBJSEL `$63`). Most sprites go behind
 the natives through the core's module area; front sprites (impact sparks,
 the charge orb, ki heads) are staged in the core's front list (at most 12).
@@ -242,6 +262,16 @@ Assemblies are pre-flipped per cell; a fully visible assembly takes a fast
 path of one 16-bit add per part, and beam strips and wave edges are runs
 (`fx_emit_run`, a fixed spacing along the beam). On crowded lines the far
 end of a long beam drops out first, never a native sprite.
+
+The 300 one-cell stamps use compact four-byte records and share the
+general emitter's front/back placement code. This saves about 21% of a
+resident front stamp's CPU cycles (935 to 740), without changing palette
+allocation or clipping. `-DFX_STAMP_SLOW=1` selects generic assemblies for
+comparison. Generic setup explicitly checks the resolver's `$FFFF`
+sentinel after restoring registers, so missing flipped tiles remain
+unavailable. The assembled `stamps.test.mjs` checks every rotation and
+successive cache/palette requests; `emitter.test.mjs` covers full OAM and
+missing pieces, including the final free slot.
 
 **Sprites per line.** The PPU shows at most 34 8-pixel slivers per line and,
 when a line has more ("time over"), drops the slivers of the *first*
@@ -254,7 +284,9 @@ enemies next to him. Two measures:
   16×16 cell or two stacked from 6 bands) is one colour across the cell,
   which `snes/gen/fx.mjs` asserts while it emits `fx_strip_ptr` /
   `fx_strip_data` (per union and half turn: the first coloured line's
-  offset from the palms, the line count, each line's colour index). Window
+  offset from the palms, line/run counts, a solid-span flag and colour
+  runs). The renderer submits each colour run once and builds an opaque
+  window span in one call; transparent records keep their gaps. Window
   1 per line spans the strips (palms to the last strip) and the backdrop
   per line takes the line's colour, with BG1/BG2 masked inside the window
   and no colour math there: exactly the OBJ strips' picture (the beams
@@ -262,6 +294,19 @@ enemies next to him. Two measures:
   head and the orb stay OBJ. It takes the frame's one polygon, so a
   second left/right beam, a wave, up/down beams, 16-heading beams and
   scenes where the game runs HDMA on channels 2/3 keep the OBJ strips.
+  `snes/test/fx/strips.test.mjs` executes the assembled builder and compares
+  all 224 colour/window rows for every generated record at clipped and
+  interior positions. The measured gameplay strip path fell from 49.53
+  to 36.51 scanlines with this change.
+  Fully visible opaque rows now copy prebuilt colour records with
+  interruptible MVN, reducing the seven-band builder from 7,249 to 2,938
+  CPU cycles. Direct neutral runs and a rectangular window now reduce it
+  further to 1,727 cycles, with the same 224 visible rows. The tests cover
+  the 127-line run boundary and guard the other buffer against writes.
+  `-DFX_STRIP_ROWS_COPY=1` keeps the previous copy/general-writer path;
+  `-DFX_STRIP_ROWS_SLOW=1` keeps the fully general run path for comparisons.
+  Both buffers retain the live backdrop and neutral HDMA padding, including
+  beams that occupy the last visible line.
 - **OBJ strip rows are budgeted** (`fx_row_room`): before a left/right run
   of strips FX counts the slivers of every sprite already in OAM or staged
   in front that overlaps the row's 16 lines and draws at most
@@ -288,7 +333,7 @@ shows:
   edge cells and the orb are OBJ on top of it.
 - The game's backdrop colour returns on every line outside the beam (the
   HUD lines included), and CGRAM 0 is put back when the wave ends.
-- Tables are double-buffered in FX's SRAM (2 × 187 bytes): fx_frame builds
+- Tables are double-buffered in FX's SRAM (2 × 185 bytes): fx_frame builds
   the back buffer, fx_nmi programs it and swaps. An unchanged picture
   (same palms, visible length, width, taper, style, backdrop colour) is not
   rebuilt: a wave held still costs ~7 lines for the polygon. The build
@@ -355,7 +400,41 @@ art's pink patches become tints of their rows, and the sparks outside the
 circle are not drawn. While the game's own colour math is on (`$23` not
 zero) the ball keeps it outside and shows no rim.
 
-**Ki aura** (`fx_poly_aura`, HDMA kind 4): the flame is up to 80 lines
+**Ki aura (shipping build)** (`fx_k_aura_obj`): a 32×48 flame made of six
+16×16 sprites sharing three mirrored cells, or two cells for a 16×32
+miniature. Blue, gold and pink ramps use the existing palette allocator.
+The full flame's second pose rises one pixel; the miniature mirrors. Both
+reuse their cells. The visible half of the 30 Hz strobe does the cache work, and a new
+flame waits until every cell is resident before it appears. No backdrop,
+background palette, colour-math or HDMA registers are changed. This keeps
+the aura independent of cut grass and native background transparency.
+Power still controls whether the aura is present; the compact art uses a
+fixed silhouette instead of eight geometric growth levels.
+
+The full flame has a direct three-row emitter for fully visible positions
+with six available OAM slots. It resolves the same cells in the same order
+and checks palette/upload readiness before writing any sprite. Miniatures,
+clipped positions and partial OAM use the general assembly renderer.
+`FX_AURA_SLOW` selects that general path for comparisons. The assembled
+tests compare 2,674 cases including subsequent effects; the full-flame
+example falls from 1,948 to 1,147 CPU cycles through the direct path.
+The generator validates the mirrored layout and stores its cell records
+beside the stamp records in the FX data bank.
+
+The `aura` regression checks all six size/tone combinations pixel for
+pixel, cuts grass with real punches, checks that the glow draws completely
+without writing BG palettes, and verifies animation needs no tile uploads
+after warmup. Background palette 6 animates natively in the grass scene,
+so the test watches the FX writer instead of freezing that native palette.
+The integrated gameplay suite also performs L focus and L+A transformation
+after cutting grass, with the party and enemies still enabled.
+
+The default transformation burst keeps eight outer arcs and four inner
+sparks (12 sprites at its peak, previously 32), fading to four sparks.
+Its radius and lifetime are unchanged; gameplay damage is separate.
+`FX_DETAIL` selects the original denser assemblies.
+
+**Diagnostic polygon aura** (`-DFX_AURA_POLY=1`, `fx_poly_aura`, HDMA kind 4): the flame is up to 80 lines
 of 50 pixels whose cells would not fit the VRAM cache (10-19 cells a
 frame, about 2000 different ones), so it is a window polygon. `fx.mjs`
 renders every height, level and phase with `drawKiAura` itself and stores
@@ -416,11 +495,30 @@ with a wave on screen.
 
 ## Resources
 
+The cell cache checks a matching hash hint before its residency bitset.
+`fx_clear_rbits` invalidates every hint, even when a single region changes,
+so a retained cell id cannot expose art that needs re-uploading. A warm
+lookup takes 157 rather than 230 CPU cycles. `cache.test.mjs` exercises
+hash collisions, eviction, delayed uploads, palette exhaustion and region
+resets against the assembled code. Stamp/emitter and screenshot tests
+continue to check placement and visible colours.
+
+The table now uses 128 buckets in `$31:756C–75EB`, after the companion
+queue. `FX_CACHE_HASH_SMALL` restores 16 buckets for comparison. Eight
+resident animation cells spaced 16 ids apart resolve in 1,256 rather than
+2,784 cycles; individual warm hits remain 157 cycles. A dirty word at
+`!FX_SRAM+$242` makes repeated invalidation a 33-cycle no-op until a hint
+is written again. Initialization magic `$F0C7` forces cold/older SRAM to
+invalidate the separate hint block before drawing. All hints and the
+residency bitset are still cleared on the first reset, including when just
+one VRAM region changes.
+
 | Resource | Use |
 | --- | --- |
 | Code `$AE:8000-FFFF` | `!CODE_FX` (upper half only; `$EE` lower half holds ending art) |
 | ROM | `!DATA_FX` = `$FB` (57 of 64 KiB used): cell tiles, assemblies and palettes, generated by `snes/gen/fx.mjs` (`data.asm`, `cells.bin`). The tables read only with long indexed loads (detonation clusters, ember and dust paths, strip lines, laser steps, Death Ball and aura indexes: `tables.asm`) follow the code in `$AE:8000-FFFF` (26 of 32 KiB used). xdata (ExHiROM): the aura's lines, `fx_aura16`, `fx_aura32`, `fx_aura40` (51 KiB), and the bolts, `fx_bolts` (2 KiB) |
-| SRAM `$31:7800-7BFF` | `!SRAM_WORK_FX`: request block, 14 effect slots, 8 draw entries, VRAM cache, polygon tables (2 × 187 bytes) |
+| SRAM `$31:7800-7BFF` | `!SRAM_WORK_FX`: request block, 14 effect slots, 8 draw entries, VRAM cache, polygon tables (2 × 185 bytes) |
+| SRAM `$31:756C-75EB` | `!SRAM_WORK_FX_HASH`: 128 resident-cell hints; core work allocation, separate from persistent saves |
 | WRAM | None (a 148-byte direct-page frame on the stack inside `fx_frame`) |
 | VRAM | `!VRAM_FIELD_OBJ_A/B/C` while effects are active (owner `$0E`); released after 120 idle frames and at every map or mode change |
 | CGRAM | Free OBJ palettes per frame, written in vblank (never the game's buffer); CGRAM 0 per scanline (HDMA) while a wave is shown |
@@ -508,7 +606,7 @@ of 39 consecutive grabs were identical in a measurement).
 - Granted: the data bank (`!DATA_FX` = `$FB` in `core/layout.asm`, with the
   build's ROM ownership check) and FastROM by default (`-DCORE_SLOWROM=1`
   opts out). `snes/test/fx/run.mjs` still checks FX's cells in both ROMs.
-- **SRAM for the polygon**: 2 × 512 bytes (instead of 2 × 187 inside FX's
+- **SRAM for the polygon**: 2 × 512 bytes (instead of 2 × 185 inside FX's
   1 KiB) would give exact left/right horns and the ripple, and circles for
   the large Death Balls.
 - **Frame / NMI handshake race** (seen in a SlowROM build of the beams

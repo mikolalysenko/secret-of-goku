@@ -4,6 +4,1200 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES resident aura rendering (2026-10-19)
+
+- Draw the full six-sprite aura directly from its three mirrored cells,
+  retaining the same art, strobe, palette allocation and upload checks.
+  Miniatures, screen edges and limited OAM keep the general renderer.
+- All 2,674 assembled aura comparisons and 25 FX tests pass. Mesen checks
+  retain exact aura pixels and clean cut-grass palettes. Local flight,
+  ten combat comparisons and all 14 world/radar/map cases pass.
+- Long charging improves 37 → 26 missed frames per 1,200 frames; its peak
+  falls 276.29 → 272.63 scanlines. Short charging improves 22 → 17; other
+  scenarios retain their previous counts with no hardware/rendering errors.
+  Crowded zero-drop timing remains unfinished.
+
+## SNES exhausted teleport searches (2026-10-19)
+
+- Stop searching farther distances once all four initial connected
+  footprints are blocked. Reject known blocked directions before computing
+  offsets, and use signed word offsets directly. Keep target order and
+  reachable landing positions.
+- Eight assembled landing tests pass, including more than 370,000
+  obstruction, endpoint-reuse and full-search comparisons. An enclosed
+  target takes 3,335 instead of 8,275 CPU cycles.
+- The complete 27-scene browser terrain comparison, local-flight and
+  hole-provider tests, ten combat comparisons and all 14 available
+  world/radar/map cases pass.
+- Long teleport misses remain 15 per 1,200 frames; the longest field update
+  falls 279.35 → 269.70 scanlines. Other long counts and all 13 short counts
+  remain unchanged, with zero hardware/rendering errors. Crowded zero-drop
+  timing is still unfinished.
+
+## SNES native AI dispatch (2026-10-19)
+
+- Branch directly between the native bytecode loop and its private
+  dispatcher, retaining per-command P/D preservation and removing a
+  redundant width change. Save nine CPU cycles per ordinary dispatch
+  without changing script order, random draws, limits or actor cadence.
+- All 18,185 assembled opcode/loop comparisons and existing AI helper
+  checks pass. Ten combat comparisons, six local-flight tests, all 14
+  available world/radar/map cases and core title/frame/party tests pass.
+- Long flying ki improves 13 → 10 missed frames and charging improves
+  41 → 37 per 1,200 frames. Other long counts and all short counts remain
+  unchanged, with zero hardware/rendering errors. Crowded zero-drop timing
+  remains unfinished.
+
+## SNES native target visibility (2026-10-19)
+
+- Inline the height subtraction in the two native target-visibility checks,
+  retaining the original flags, decimal arithmetic, self exclusion, status
+  checks and target selection. Visible-target examples save 16 CPU cycles;
+  early rejections incur no additional work.
+- All 147,874 assembled comparisons and the short/long gameplay hardware
+  checks pass. Charging improves 30 → 22 misses per 240 frames and 44 → 41
+  per 1,200; other counts stay unchanged. The charge peak changes
+  274.97 → 276.95 scanlines. Strict crowded zero-drop timing remains open.
+- Ten combat comparisons, six local-flight checks, all 14 available world/
+  radar/map cases and native frame/party cadence checks pass. Rebuild the
+  production ROM to match the tested candidate byte for byte.
+- Exclude a body-cursor batching trial: it passed native sprite comparisons
+  but did not reduce long missed-frame counts.
+
+## SNES effect cache setup (2026-10-19)
+
+- Expand resident-cell hints to 128 buckets in unused work SRAM and avoid
+  repeating cache invalidation during successive region changes. Retain
+  resident-cell validation, upload limits and palette ownership; invalidate
+  older SRAM through the FX initialization version.
+- Eight animation cells sharing a former bucket resolve in 1,256 instead
+  of 2,784 CPU cycles. Repeated resets cost 33 cycles. FX setup peaks fall
+  about 5.55 scanlines in punch/flying-ki/flying-punch runs; the flying
+  punch field peak falls 286.10 → 280.58 scanlines.
+- Assembled FX, pixel, local-flight, world/radar/map, core and short/long
+  gameplay checks pass. Long miss counts remain 0/0/13/1/15/44 for
+  punch/ki/flying ki/flying punch/teleport/charge. Crowded timing remains
+  unfinished. The larger native-pose predecode experiment was excluded
+  because it did not improve missed-frame counts.
+
+## SNES teleport terrain reuse (2026-10-19)
+
+- Reuse checked footprints when they already cover the connected path.
+  Remember the candidate-distance interval covered by each failed endpoint
+  cell, only within that landing search. Keep target/candidate order,
+  height restrictions and the original airborne/hole-provider paths.
+- More than 370,000 independent obstruction, interval and search checks
+  pass, along with all 19,996 landing queries across 27 scenes, local
+  flight, all 15 world/radar/map cases and the short/long gameplay hardware
+  checks. The hole-provider test retains its private rectangle; it cannot
+  use the new interval cache.
+- A captured 28-candidate search falls 29,258 → 20,156 CPU cycles. The long
+  teleport peak falls 312.24 → 281.39 scanlines, but miss counts change
+  14 → 15 per 1,200 frames (short: 2 → 3). Other long counts remain
+  0/0/13/1/44 for punch/ki/flying ki/flying punch/charge. Zero-drop timing
+  remains open.
+
+## SNES native attribute batch (2026-10-19)
+
+- Clamp the first four native attributes in one pass, keeping the final
+  native iteration and Heavy Gi hook. A representative rebuild falls
+  230 → 146 CPU cycles; flags, scratch, status effects and index wrapping
+  remain identical.
+- All 15,168 assembled comparisons, ten combat comparisons and six long
+  gameplay checks pass. Long miss counts stay 0/0/13/1/14/44 for
+  punch/ki/flying ki/flying punch/teleport/charge. Ground ki and flying
+  punch peaks fall by about 0.92 scanlines; crowded timing remains open.
+
+## SNES crowded sprite palette scan (2026-10-19)
+
+- Fix the FX palette scan after native sprite 64: the loop's 16-bit cursor
+  left a high accumulator byte in byte-to-index transfers, writing beyond
+  its marker table and overlooking later palettes. Keep that byte zero.
+- Enter an unrolled scan at the occupied OAM group, preserving conservative
+  stale-slot and staged-front-sprite handling. An 80-sprite scan falls
+  1,829 → 1,308 CPU cycles against the corrected reference loop.
+- All cursor/palette/buffer comparisons, 18 assembled FX checks, gallery,
+  beam/aura pixel checks, debris, local flight and world/radar/map checks
+  pass. Short/long gameplay retains zero hardware/rendering errors.
+- Long flying ki improves 19 → 13 misses per 1,200 frames and its peak
+  falls 271.32 → 252.18 scanlines. Other counts remain unchanged; strict
+  crowded zero-drop timing is still open.
+
+## SNES airborne body attributes (2026-10-19)
+
+- Use flight's fixed OBJ palette 1 and priority 3 before scanning native
+  water/ledge body rows. A representative emitter falls 1,059 → 798 CPU
+  cycles; the tinted water palette still follows the emitted sprites.
+- All 3,204 assembled cell/miniature/clipping comparisons, seven Goku
+  presentation/menu/load cases, 12,748 native-action frames, 1,715 pose-API
+  frames and scripted sockets pass. Local flight and all world/radar/map
+  cases pass, with zero hardware/rendering errors in short/long gameplay.
+- Flying ki improves 3 → 2 misses in 240 frames and 20 → 19 in the
+  1,200-frame corridor run. Other long counts stay 0/0/1/14/44 for
+  punch/ki/flying punch/teleport/charge; strict crowded timing remains open.
+
+## SNES native script pointer overhead (2026-10-19)
+
+- Simplify the native AI operand advance and tail-call its ten fixed-size
+  wrappers. Keep every script step, pointer wrap, register, flag and live
+  memory write. Forward/branch wrappers fall 75 → 61 / 118 → 109 cycles.
+- All 86,656 assembled comparisons, ten combat comparisons and six local
+  flight regressions pass. All short/long hardware checks remain clean.
+  Short flying ki improves 5 → 3 misses; long counts remain
+  0/0/20/1/14/44 for punch/ki/flying ki/flying punch/teleport/charge.
+  Strict crowded zero-drop timing remains open.
+
+## SNES palette scan overhead (2026-10-19)
+
+- Unroll Goku's fifteen-color comparison while keeping the full native
+  color-change/status absorption path. The assembled reference falls
+  549 → 352 CPU cycles on an unchanged palette.
+- All 608 full-state comparisons pass across individual color changes,
+  forms, petrify and water-slot transitions. Field/status/forms, ring,
+  menus, file/load and all short/long gameplay hardware checks pass.
+- Long charging improves 47 → 44 misses per 1,200 video frames. Ground
+  punches and ki remain at zero; flying ki/punch and teleport remain
+  20/1/14. Strict crowded timing is still open.
+
+## SNES beam table writer (2026-10-19)
+
+- Write the neutral padding and rectangular window directly for fully
+  visible horizontal beams. Keep exact prebuilt colors, live backdrop,
+  buffer isolation and the general path for clipped/transparent strips.
+- The seven-band builder falls 2,938 → 1,727 CPU cycles. Long charging
+  improves 50 → 47 misses per 1,200 frames, with its peak falling
+  283.51 → 276.56 scanlines; the other short/long counts stay unchanged.
+- Exact per-scanline assembly checks, buffer sentinels, FX beam/aura pixel
+  checks and all short/long gameplay hardware checks pass. Crowded
+  zero-drop timing remains open.
+
+## SNES beam scan scheduling (2026-10-19)
+
+- Run incremental beam scenery/barrier scans after FX, only when the
+  current field update has time. An intervening NMI cannot grant work
+  through a wrapped scanline. Enemy hits and point-blank strikes stay immediate.
+- Preserve the widest area touched by a fading wave and its collision layer
+  while scans wait. The Earth Palace timeline still activates its hit tile;
+  the full destruction, barrier and Sandship regressions pass.
+- Extend the bounded companion AI queue to charging and beam poses, keeping
+  native status ticks and the four-update completion deadline. Charging
+  misses fall 63 → 50 per 1,200 frames; punch/ki remain at zero, and flying
+  ki/punch/teleport remain 20/1/14. Strict crowded timing is still open.
+- Seventeen assembled scheduler/companion checks, native companion cadence,
+  ten combat comparisons, Goku presentation, local flight, world/radar/map
+  and short/long gameplay checks pass with clean hardware/rendering checks.
+
+## SNES flight sprite priority (2026-10-19)
+
+- Use the existing hardware sprite-priority rotation during local flight,
+  saving the full-list insertion copy while preserving sprite ordering.
+- Flying punches improve from two missed frames to one in 1,200 video
+  frames; short flying ki improves six to five. Long corridor flying ki
+  remains at 20 misses. All 13 short gameplay cases retain clean palette,
+  meter, OBJ, NMI and graphics-DMA checks; crowded zero-drop timing is open.
+- Assembled OAM comparisons, native sprite-order checks, Goku menus/load,
+  passengers/local flight and world/radar/map regressions pass.
+
+## SNES crowded ki timing (2026-10-19)
+
+- Reserve companion AI time around ground ki attacks, including the first
+  physical Y press. Keep status/timers on their native tick, human controls
+  immediate, and the existing four-update deadline for deferred CPU work.
+- Crowded ground ki now joins punching in required zero-drop gameplay
+  checks: both pass 240 and 1,200 video frames. Long flying ki/punch,
+  teleport and charge still miss 20/2/14/63 frames; all hardware checks pass.
+- Companion ownership/cadence, Goku menus/status/forms, local flight and ten
+  browser/cartridge combat comparisons pass. The broader trial that also
+  deferred punching and charging is excluded because it added a punch drop.
+
+## SNES unused death-weapon copy (2026-10-19)
+
+- Omit the unused 2 KiB weapon-0 copy for ordinary dead F9 enemies with
+  no weapon attachment. Keep the native death animation, palette setup,
+  rewards, drops and cleanup. Other actors/death types retain their copy.
+- Crowded ground punching now passes strict zero-drop timing for 1,200
+  video frames and is a required zero-drop gameplay case. Long flying
+  punches improve 3 → 2 misses; short charging improves 32 → 31. Other
+  crowded drops remain: long ki/flying ki/teleport/charge are 3/20/14/63.
+- Decoder/slot-reuse checks, native death/treasure lifecycle checks, ten
+  combat comparisons, local flight and world/radar/map checks pass. All
+  13 short and six long gameplay runs retain zero hardware/rendering
+  errors. Corrupting the unused buffer produces matching frame hashes in
+  both ordinary and treasure-drop reference runs.
+
+## SNES native weapon setup through FastROM (2026-10-19)
+
+- Run native weapon setup, sheet preparation and palette refresh through
+  their FastROM mirrors. 5,665 differential cases retain identical CPU,
+  WRAM and multiplier output; a representative setup reduces slow ROM
+  reads from 171 to 4.
+- Goku rendering/menus/load, passengers/local flight and all 13 short/six
+  long gameplay checks pass. Long misses remain 1/3/20/3/14/63, with small
+  reductions in defeat-frame peaks. The additional animation-directive
+  mirrors increased charging misses and are excluded. Zero-drop crowded
+  gameplay remains open.
+
+## SNES native attribute-clamp overhead (2026-10-19)
+
+- Replace repeated JSL return-address rewriting in the native attribute
+  clamp with tail jumps. Heavy Gi still applies once, after the five
+  native attributes have been clamped. The measured loop falls from
+  368 to 230 CPU cycles with identical registers, flags and scratch.
+- 7,233 differential cases and seven browser/cartridge combat comparisons
+  pass, including rewards and both Heavy Gi forms. All 13 short and six
+  long gameplay cases retain zero hardware/rendering errors. Long miss
+  counts remain 1/3/20/3/14/63; this reduces some peaks by about 1.5 lines
+  but does not resolve crowded zero-drop timing.
+- A broader late-companion queue stays out: its earlier cutoff worsens
+  flying combat, while the later cutoff adds a charging miss despite
+  lowering punching and ki peaks. Measurements remain private.
+
+## SNES failed teleport path reuse (2026-10-19)
+
+- Retain the shortest failed connected path per direction during one
+  landing search. Farther candidates contain that blocked rectangle;
+  shorter candidates keep their original order. Airborne targets and
+  floor-hole providers retain their original checks.
+- The independent model matches all 13,824 searches and verifies 1,123
+  failed-path cutoffs. Its worst search falls 34,554 → 31,719 CPU cycles.
+  The full 27-scene browser comparison, passengers/local flight/holes
+  and all 13 short/six long hardware checks pass.
+- Long miss counts remain 1/3/20/3/14/63; teleport's peak falls only
+  314.21 → 313.20 lines. An extra first-press companion delay lowered
+  the peak further but increased miss frequency, so it remains a private
+  experiment. Strict crowded zero-drop timing is still open.
+
+## SNES ordinary-floor landing cost (2026-10-19)
+
+- Read ordinary clear floor directly for ground footprints. Caves, ferry
+  corridors, protected cells and blocked terrain retain the shared
+  classifier; air queries retain its low-obstacle cache. All height bands,
+  live tile keys and footprint-edge rules remain unchanged.
+- A single-cell landing falls from 1,109/653 CPU cycles cold/warm to 609
+  for both. Long teleport misses improve 23 → 14 per 1,200 frames; its
+  flight-module peak falls 127.31 → 101.22 lines. The other long counts
+  remain 1/3/20/3/63 for punch/ki/flying ki/flying punch/charge. Total
+  teleport peak remains about 314 lines, so strict crowded timing is open.
+- Nine assembled classification/landing tests, the full browser terrain
+  comparison, passengers/flight/ceiling/holes and world/radar/map checks
+  pass. All 13 short and six long cases retain zero palette, meter, OBJ,
+  complete-NMI, graphics-DMA and duplicate-work errors. The broader air
+  classifier prototype worsened sustained flying ki and is excluded.
+
+## SNES companion timing during teleport (2026-10-19)
+
+- Keep companion status/timer ticks fixed while deferring their CPU
+  AI/animation during teleport, including the initial L+B frame and
+  camera recovery. Run the oldest waiting member first, at most one per
+  field, with a four-field deadline before its next native tick. Drain
+  pending work before resuming the regular schedule. Human controls and
+  the live passenger gate remain immediate.
+- Keep queue state in guarded volatile SRAM; clear it on scene/map/load
+  boundaries. Eleven assembled party tests and core, Goku, passengers,
+  local flight and world/radar/map checks pass. All 13 short and six long
+  gameplay cases retain zero hardware/rendering errors.
+- Long teleport misses improve 54 → 23 per 1,200 frames; short misses
+  improve 8 → 2 per 240. The other long counts remain 1/3/20/3/63 for
+  punch/ki/flying ki/flying punch/charge. The changed teleport workload's
+  peak rises 295.84 → 313.73 lines, so this improves miss frequency but
+  does not resolve strict crowded zero-drop timing.
+
+## SNES shared beam scenery budget (2026-10-19)
+
+- Share a 12-scanline budget between beam terrain and barrier scans,
+  using eight-cell growth steps and alternating priority. Save the latest
+  beam arguments before either part runs; continue unfinished work after
+  the beam ends and cancel it on map/event changes. Punches retain their
+  immediate terrain and barrier checks.
+- Assembled tests cover budget boundaries and video-counter wrap, fair
+  progress, argument retention, replacement/cancellation and duplicate
+  work. Full destruction and Sandship comparisons pass, along with
+  passengers/local flight and world controls, radar, map and timing.
+- The crowded charging peak falls 364.08 → 311.00 scanlines; its long
+  miss count improves 66 → 63 per 1,200 frames. Other long counts stay
+  1/3/20/3/54 for punch/ki/flying ki/flying punch/teleport. All 13 short
+  and six long cases retain zero hardware/rendering errors. Crowded
+  strict zero-drop timing is still open.
+
+## SNES native palette and empty status work (2026-10-19)
+
+- Copy the native actor palette's fifteen words directly to both WRAM
+  mirrors, avoiding repeated index/counter updates. Preserve the original
+  loop for narrow indexes, index wrap and unusual counts. Skip the native
+  status-effect bit scan when its mask is empty, retaining its scratch,
+  flags and saved-register epilogue. Nonempty masks keep the retail loop.
+- Assembled checks compare all palette species/party-status combinations,
+  CPU contexts, boundaries and all 65,535 nonempty masks against retail.
+  Representative palette/empty-scan costs fall 618 → 398 and 478 → 65
+  CPU cycles. The crowded charge case's native status peak falls
+  67.67 → 64.41 scanlines; ground punch/ki peaks fall by about 3.2 lines.
+- All 13 short and six long gameplay cases retain zero palette, meter,
+  OBJ, complete-NMI, graphics-DMA and duplicate-work errors. Core, Goku
+  rendering/forms/menus/save/load, FX/aura, passengers/local flight and
+  world/radar/map checks pass. Long counts remain 1/3/20/3/54/66 per 1,200
+  frames, so the strict crowded zero-drop target remains open.
+
+## SNES Goku pose division (2026-10-19)
+
+- Return immediately when a pose dividend is smaller than its divisor,
+  and skip the leading eight zero bits for byte dividends. Keep software
+  arithmetic, the full word path and exact CPU/scratch results, including
+  decimal and zero-divisor behavior. Representative calls fall from
+  647 to 35 CPU cycles within the first clip and 677 to 388 for 120/24.
+- Assembled comparisons cover every nonzero byte pair, all word dividends
+  across representative divisors, boundaries and caller flags. Goku's
+  12,748 native-animation frames and 1,715 action-request frames still
+  match the browser. Scripted-sprite checks now follow actual PPU priority
+  rotation rather than assuming physical OAM slot zero is foreground.
+- Goku rendering, forms, status, menus/save/load, scripted poses, CPU
+  budget, passengers, water/teleport/whip flight and ceiling exits pass.
+  All 13 short and six long gameplay cases retain zero hardware/rendering
+  errors. Long crowded counts remain 1/3/20/3/54/66 per 1,200 frames;
+  this smaller pose cost does not yet eliminate those misses.
+
+## SNES teleport search spikes (2026-10-19)
+
+- Read ordinary outdoor tile descriptors directly for teleport landing;
+  cave, ferry and other special geometry retain the shared classifier.
+  A single-cell endpoint takes 551 CPU cycles cold or warm. Within each
+  search, check the common first connected footprint once per direction
+  and reject every farther candidate when that footprint is blocked.
+- An independent model matches 13,824 complete landing searches, including
+  4,024 successful landings. The full 27-scene browser comparison retains
+  zero differences across 19,996 landing queries and 191,964 sweeps;
+  passenger, water, teleport, whip and custom-enemy flight checks pass.
+- The long teleport peak falls 365.16 → 295.84 scanlines and the flight
+  module's peak falls 216.76 → 57.39. Misses change 48 → 54 per 1,200
+  frames as later workload changes, so this reduces a CPU spike without
+  solving crowded zero-drop timing. The other five long counts are
+  unchanged. All 13 short and six long cases retain zero palette, meter,
+  OBJ, complete-NMI, graphics-DMA and duplicate-work errors.
+
+## SNES native AI random-choice overhead (2026-10-19)
+
+- Inline the native byte generator inside AI's random-nibble rejection
+  loop instead of rebuilding three wrapper stack frames for each draw.
+  Keep every rejected draw, RNG state/scratch byte, result and CPU return
+  contract; decimal and eight-bit-index callers retain the original path.
+- Assembled differential checks cover all 16 limits, all 15 RNG indexes,
+  131 seed states and CPU-state fallbacks. One draw falls 284 → 185 CPU
+  cycles; the longest tested sequence (68 draws) falls 14,569 → 4,487.
+- Six long gameplay repeats total 157 → 141 misses: punches/ki/flying
+  ki/flying punches/teleport/charge become 1/3/20/3/48/66 per 1,200 frames,
+  versus 2/2/35/3/52/63. Timing changes alter subsequent input/workload;
+  ground ki and charge are slightly worse, so this is not a uniform gain
+  or the final zero-drop result. All 13 short and six long cases retain
+  zero palette, meter, OBJ, complete-NMI, graphics-DMA and duplicate-work
+  errors. Core, Goku menus/save/load, local passengers/flight and world
+  controls/radar/map checks pass.
+
+## SNES repeated AI and effect work (2026-10-19)
+
+- Replace native pursuit-direction classification with an exact byte
+  lookup, retaining height, wrapping, CPU state and unusual-input fallbacks.
+  A representative call falls from 367 to 291 CPU cycles; assembled checks
+  cover all 65,536 byte-magnitude pairs and additional boundary/flag cases.
+- Check the FX cache's matching hash entry before its residency bitset.
+  Every residency reset now invalidates those hints, including partial
+  region changes. A warm lookup falls 230 → 157 cycles and a foreground
+  stamp 740 → 667. Tests cover stale hints, eviction, pending uploads,
+  exhausted palettes and scene/region invalidation.
+- Re-evaluated after correcting carried-companion targets, the combined
+  changes improve long ground-ki/flying-punch/charge misses from 3/6/65
+  to 2/3/63 per 1,200 frames; punches/flying ki/teleport retain 2/35/52.
+  All 13 short cases and six long repeats have zero palette, meter, OBJ,
+  complete-NMI, graphics-DMA or duplicate beam-work errors. Core, Goku
+  menus/save/load, FX/aura, local passengers/flight and world/radar checks
+  pass. Strict crowded zero-drop timing remains open.
+
+## SNES carried-companion target visibility (2026-10-19)
+
+- Retire carried companions' native screen coordinates along with their
+  body rendering. Skipping the renderer left their last ground coordinates
+  eligible for enemy AI targeting. World position, actor slots, status and
+  ownership remain live; ordinary rendering restores target coordinates
+  after landing, human reassignment or scripted ownership.
+- Assembled checks exercise both native target predicates, and the local
+  passenger test checks target-coordinate restoration alongside status,
+  movement, AI and drawing. Local flight, Goku menus/save/load and all
+  world/radar checks pass. All 13 short gameplay cases and both long aerial
+  attack runs retain zero palette, meter, OBJ, NMI and graphics-DMA errors.
+- This fixes target behavior, not the remaining timing issue. The long
+  flying-ki/punch cases have 35/6 misses per 1,200 frames versus 19/5 with
+  the stale targets; flying-ki peak logic falls 286.49 → 270.39 lines.
+  Separate cache, direction-lookup and companion-phase experiments remain
+  private because they did not improve the integrated timing cases.
+
+## SNES graphics transfer after the HUD line (2026-10-19)
+
+- Add a second bounded ROM-to-WRAM DMA window at sampled scanlines
+  198–206. The transfer finishes before line-225 vblank; the intervening
+  lines and all previous context guards retain the interruptible CPU copy.
+  There is no wait or change to interrupt masks.
+- The long charging peak falls from 410.02 to 369.60 scanlines. Its late
+  transfer takes 13.31 lines including setup/restoration. Six long crowded
+  runs retain 2/3/19/5/52/65 misses per 1,200 frames, so zero-drop crowded
+  gameplay remains unfinished.
+- Boundary/CPU-state comparisons, all 13 short gameplay cases, six long
+  repeats, Goku menus/save/load, FX/aura, local passengers/flight and
+  world/radar checks pass. Gameplay records zero palette, meter, OBJ,
+  complete-NMI, graphics-DMA and duplicated beam-work errors.
+
+## SNES beam continuation cadence (2026-10-19)
+
+- Replace the beam worker's frame-number comparison with a per-field
+  work latch. Combat runs before `core_frame` advances, while the deferred
+  worker runs after it; the old comparison allowed both to scan during
+  one field update. The latch is cleared after the field service and on
+  map/load initialization, and also covers debug-triggered hits.
+- The gameplay regression counts repeated scans of the same attack and
+  rejects six duplicated field updates in the preceding short charge run.
+  All 13 short cases and six long repeats now have none, with zero palette,
+  meter, OBJ, complete-NMI and graphics-DMA errors. Long charging improves
+  68 → 65 misses per 1,200 frames; its deferred worker peak falls from
+  42.08 to 5.69 scanlines. Other long counts remain 2/3/19/5/52. A late
+  weapon copy moves beyond the early DMA window, leaving a 410.02-line
+  peak; strict crowded timing remains open.
+- The full destruction/Sandship suite, core cadence/input/menus/save/lag/
+  HDMA checks, passengers/local flight and world/radar checks pass. Existing
+  documented browser timing differences in demolition remain.
+
+## SNES guarded graphics transfer window (2026-10-19)
+
+- Permit the existing bounded ROM-to-WRAM DMA through sampled line 176,
+  retaining its field/vector/menu/HDMA guards and interruptible fallback.
+  The transfer, setup and restoration still finish before the line-196
+  HUD interrupt. Boundary comparisons cover all sheets/slots with IRQs
+  enabled and masked; gameplay checks reject line wrap and late completion.
+- The long charge run's late weapon copy falls from 68.65 to 14.84 scanlines.
+  Its worst logic frame changes 385.70 → 382.31 lines. The six long crowded
+  cases retain 2/3/19/5/52/68 misses per 1,200 frames for punches/ki/flying
+  ki/flying punches/teleport/charge, so strict zero-drop timing remains open.
+- All 13 short cases and six long repeats retain zero palette, meter,
+  OBJ, complete-NMI and graphics-DMA errors. Goku field/status/forms/menus/
+  save/load, local passengers/water/teleport/whip, and world takeoff/locks/
+  landing/controls/ki/radar/map/timing checks pass.
+
+## SNES ground effect priority (2026-10-19)
+
+- Append ground foreground effects and select their draw order with the
+  PPU's OBJ priority register, avoiding a copy of the entire native sprite
+  list. Keep the same reservation, capacity, sprite attributes and DMA
+  payload. Six foreground pieces plus 192 native bytes fall from 1,895 to
+  712 CPU cycles. Native ring/map clears also retire the priority state.
+- Run OAM upload and the remaining native NMI through FastROM. Timing
+  probes watch both native mirrors, including incomplete frames. Ordered
+  hardware writes, CPU state and all valid sprite capacities pass the
+  assembled checks; rendered overlap, lag and ring handoff checks pass.
+- Long crowded ground ki improves 8 → 3 misses per 1,200 frames; charging
+  improves 79 → 68, with its worst logic frame falling 410.76 → 385.70
+  scanlines. Punches/corridor flying ki/flying punches/teleport retain
+  2/19/5/52 misses. Local flight retains the preceding physical insertion
+  after unrestricted rotation worsened its long ki workload.
+- All 13 short cases and six long repeats have zero palette, meter, OBJ,
+  complete-NMI or graphics-DMA errors. Core, Goku menus/forms/save/load,
+  effects/beam/aura/debris, local passengers/water/teleport/whip, world
+  takeoff/landing/controls/ki/radar/map and ending departure/load checks
+  pass. Strict zero-drop crowded timing remains open.
+
+## SNES sprite cleanup across modes (2026-10-19)
+
+- Preserve the previous mode until the OAM handoff has hidden the slots
+  it relinquishes. The frame dispatcher had stored the new mode too early,
+  preventing the intended field/world cleanup from running.
+- An assembled handoff check covers field to world, world to field with
+  freshly drawn natives, and world to ring. Local passenger/water/teleport/
+  whip and world takeoff/locks/landing/controls/ki/radar/map/timing checks
+  pass. Core frame, input, ring/menu and sprite regressions also pass.
+
+## SNES attack tile-class queries (2026-10-19)
+
+- Let the scenery and barrier attack scanners discard descriptor scratch
+  they immediately replace. Keep the preserving class-cache entry for the
+  floor sampler and demolition planner, including its registers and scratch.
+  Cold cut-tile classification falls from 535 to 374 CPU cycles. Both paths
+  agree across tile IDs, layers, descriptor bytes, map policies and live
+  cache nibbles. `DESTROY_CLASS_SLOW` retains the preserving attack path.
+- Eighteen scenery, growing-beam, brazier, gate/switch and demolition cases
+  pass. The Fortress's existing eight-tile difference from browser timing
+  remains; its final grid is identical to the preceding cartridge build.
+- All 13 short gameplay cases and six long combat repeats retain their
+  missed-frame counts and zero palette, meter, OBJ, complete-NMI or
+  graphics-DMA errors. Local passengers/water/teleport/whip and world
+  takeoff/landing/controls/ki/radar/map checks pass. Strict crowded timing
+  remains open.
+
+## SNES interruptible graphics copies (2026-10-19)
+
+- Copy predecoded death and weapon sheets in unrolled words when their
+  guarded early-frame DMA is unavailable. Keep interrupts, channel state,
+  retail bytes, direct-page scratch and the complete CPU return contract.
+  All three colour variants must fit their source bank. The death copy
+  falls from 11,459 to 9,894 CPU cycles; the weapon copy from 14,627 to
+  12,614. `CORE_NATIVE_GRAPHICS_MVN` retains the previous copy for comparisons.
+- The worst long charging frame falls from 420.13 to 410.76 scanlines.
+  Missed-frame counts remain unchanged: 2/8/19/5/52/79 per 1,200 frames
+  for crowded punches/ki/corridor flying ki/flying punches/teleport/charge.
+  This reduces a loading spike but does not close strict crowded timing.
+- All 13 short cases and six long combat repeats retain zero palette,
+  meter, OBJ, complete-NMI and graphics-DMA errors. Expanded assembled
+  comparisons cover late transfers with IRQs enabled and masked, every
+  sheet and actor slot. Core, Goku menus/forms/save/load, passenger/local
+  flight and world takeoff/landing/controls/ki/radar/map checks pass.
+
+## SNES teleport terrain and native upload cost (2026-10-19)
+
+- Combine ordinary ground teleport's landing and descriptor checks in one
+  tile walk, with cached endpoint/path verdicts. Keep pixel queries for
+  airborne targets and floor-hole providers. Both implementations pass
+  the assembled descriptor/cache tests; the optimized code matches all
+  19,996 browser landing queries and 191,964 sweeps across 27 scenes.
+- Run native actor graphics uploads through FastROM and reduce ground
+  tilemap/HUD upload overhead. Preserve the original airborne map/HUD
+  timing after an unrestricted trial regressed sustained flying ki.
+  Ordered hardware writes, RAM and CPU state match the native paths.
+- Long crowded teleport improves 67 → 52 missed frames per 1,200 and
+  charging 80 → 79. Ground punches/ki, corridor flying ki and flying
+  punches remain 2/8/19/5. All 13 short cases and six long repeats have
+  zero palette, meter, OBJ, complete-NMI or graphics-DMA errors. The
+  teleport trial's 38.73-line native-upload spike falls to 36.84 lines.
+  Strict zero-drop crowded gameplay remains open.
+- Passenger/local-flight, world takeoff/landing/controls/ki/radar/map,
+  Goku poses/forms/menus/save/load and core frame/input/OAM/audio/HDMA
+  regressions pass. `FLIGHT_TP_GROUND_SLOW` and `CORE_NATIVE_NMI_SLOW`
+  retain the previous paths for comparisons.
+
+## SNES word copies for message graphics (2026-10-19)
+
+- Copy large, disjoint native text buffers with descending unrolled
+  words; retain MVN below 64 bytes and retail loops for other contexts.
+  Preserve bytes, registers, flags and source/destination bounds, with
+  only interruptible CPU instructions and stack locals.
+- The 896-byte helper falls from 6,442 to 5,144 CPU cycles. Eight text
+  equivalence checks include every byte alignment around the cutoff.
+  Core title/menu/frame/party/HP/input/OAM/lag/HDMA and Goku ring/menu/
+  file/load checks pass; save-confirmation and status text remain clean.
+  Local passenger/water/teleport/whip and world takeoff/locks/landing/
+  controls/ki/radar/map/timing regressions also pass.
+- All 13 short gameplay cases and six 1,200-frame combat repeats retain
+  their previous missed-frame counts and zero hardware errors. This adds
+  headroom but does not close strict crowded timing. `CORE_NATIVE_TEXT_MVN`
+  retains the earlier MVN path for comparisons.
+
+## SNES scenery and barrier scan cost (2026-10-19)
+
+- Select the collision layer once per tile run and keep the run counter
+  and stride in stack-local direct page. Restore the caller's D/DB and
+  preserve candidate ordering, unknown-class stops and scan outputs.
+  `DESTROY_SKIM_SLOW` retains the previous loop for comparisons.
+- Assembled tests cover all packed class bytes, both layers, positive and
+  negative strides, cursor wrapping and caller contexts. A 64-cell scenery
+  scan falls from 4,384 to 3,817 CPU cycles; barrier scans from 5,088 to
+  4,521. Fifteen destruction, growing-beam, gate and switch cases pass.
+- Long charge/release improves from 82 to 80 misses per 1,200 video
+  frames; corridor flying ki and teleport stay at 19 and 67. All 13 short
+  cases retain their counts, with zero palette, meter, OBJ, NMI and
+  graphics-DMA errors. Strict crowded timing remains open.
+
+## SNES direct hand-socket lookup (2026-10-19)
+
+- Resolve Goku's charge/beam hand positions from a generated 512-byte
+  table instead of searching the authored columns. Keep both forms, row
+  masking, flight lift and missing-pose behavior. `GOKU_SOCKET_SLOW` keeps
+  the linear lookup available for comparisons.
+- Assembled API tests cover every byte column, all facings, wrapped/lifted
+  anchors and caller banks/widths. Field hand queries fall from 197–349 to
+  189 CPU cycles in base form. Goku field/status/forms/scripted checks pass.
+- All 13 short gameplay cases retain their previous counts and zero
+  palette, meter, OBJ, NMI and graphics-DMA errors. In 1,200-frame repeats,
+  charge/release improves from 83 to 82 misses; corridor flying ki and
+  teleport remain at 19 and 67. Crowded timing remains open.
+
+## SNES foreground sprite commit (2026-10-19)
+
+- Use interruptible word copies and pack four sprite high-bit entries at
+  once when inserting foreground effects during ground play. Preserve
+  sprite order, padding, capacity and native high-table bytes. Keep the
+  existing airborne path: the unrestricted trial worsened long flying ki.
+- An independent slot model checks every valid capacity, all packed high
+  bytes, partial groups and both runtime paths. With 192 native OAM bytes,
+  six foreground sprites cost 1,895 rather than 2,933 cycles; sixteen cost
+  2,197 rather than 4,731. Core OAM/meta/frame/input/lag/HDMA and effects
+  gallery/beam/aura/debris checks pass.
+- Long charging improves from 93 to 83 misses per 1,200 video frames;
+  corridor flying ki stays at 19 and teleport at 67. All 13 short gameplay
+  counts are unchanged; long ground punches/ki and flying punches stay
+  at 2/8/5, with zero hardware errors. Strict crowded timing
+  remains open. `CORE_OAM_COMMIT_SLOW` restores the previous path.
+
+## SNES batched window animation (2026-10-19)
+
+- Move interior window columns in batches when opening, closing and
+  scrolling native messages. Retain the final retail iteration for exact
+  tile exchanges, counters, upload requests and CPU return values. Bounds,
+  unusual banks, decimal mode and eight-bit indexes retain native loops.
+- Eight assembled text tests cover both directions, odd/even border widths,
+  fallbacks and full RAM/CPU comparisons. Ten-column scrolls fall from
+  4,467 to 964 cycles; twenty-column borders from 8,938 to 1,741. Core checks
+  and Goku ring/menu/save/load checks pass.
+- Long corridor flying-ki misses fall from 42 to 19 per 1,200 video frames.
+  Short flying ki improves 8 → 7, while short flying punches change 3 → 4;
+  long flying punches stay at 5. Ground punch/ki, charge and teleport
+  counts are unchanged. All 13 short cases and six long repeats retain
+  zero palette, meter, sprite, NMI and graphics-DMA errors. Crowded timing
+  remains open.
+
+## SNES window painting and buffer clearing (2026-10-19)
+
+- Simplify native window-pattern blending, clear the message buffer in
+  word batches, and mark cell upload requests before restoring the data
+  bank. Preserve tile bytes and all CPU outputs, including decimal-mode
+  behavior and the request-dependent accumulator and carry.
+- Seven assembled text checks pass. Representative helpers fall from
+  1,049 to 713 cycles (painting), 13,342 to 4,336 (clearing), and 202 to 169
+  (cell exchange). Core title/menu/frames/HP/input/lag/HDMA also pass.
+- All 13 short gameplay cases and six 1,200-frame combat repeats remain
+  hardware-clean. Missed-frame counts are unchanged; strict timing is
+  still open. These savings add CPU headroom without closing the remaining
+  message-scroll, actor and destruction spikes.
+
+## SNES native message graphics (2026-10-19)
+
+- Copy message tiles with interruptible MVN, fuse monochrome glyph expansion
+  with its vertical outline, and unroll the horizontal outline. Preserve all
+  tile bytes, registers, flags and the native carry between outline rows;
+  unusual calling contexts retain the retail loops.
+- Assembled comparisons measure 22,965 → 6,442 CPU cycles for an 896-byte
+  copy, 33,084 → 12,192 for glyph expansion and 20,433 → 14,492 for the
+  horizontal outline. Core title/menu/frames/party/HP/input/lag/HDMA pass.
+- All 13 short gameplay cases remain hardware-clean. Flying ki improves
+  from 14 to 8 misses and flying punches from 5 to 3; other counts stay
+  unchanged. Long ground punches/ki/charge/teleport remain 2/8/93/67.
+- Add an optional controller-driven flight corridor for long ki stress
+  runs. Fixed video-frame reversals could drift into a map exit after CPU
+  savings; those invalid runs are discarded. Both old and new builds have
+  42 misses in the new 1,200-frame circuit. Strict crowded timing remains
+  open; these changes reduce text spikes without eliminating all misses.
+
+## SNES native AI distance lookup (2026-10-19)
+
+- Precompute the retail distance classes in two unused FastROM data halves.
+  Preserve height offsets, inclusive boundaries and the 16-bit square-sum
+  wrap; decimal and eight-bit-index callers keep the original routine.
+  Assembled comparisons cover all 65,536 byte-distance pairs, coordinate
+  wrapping, heights and flags. The measured helper falls from 322 to 198
+  CPU cycles.
+- Move aerial combat timing fixtures away from the nearby east exit and
+  keep aura instrumentation specific to aura cases. Faster runs could
+  otherwise drift into a map transition and produce misleading counts.
+- Core, Goku and flight regressions pass, with zero hardware errors in all
+  13 gameplay cases. Comparable 1,200-frame aerial repeats remain at 30
+  ki / 5 punch misses; ground punches/ki/charge remain at 2/8/93. Walking
+  improves from 11 to 8 and teleport changes from 58 to 67. Strict crowded
+  timing is still open; the CPU saving alone does not eliminate the peaks.
+
+## SNES companion phase balancing (2026-10-19)
+
+- Move the girl to native phase 4 and the sprite to phase 0, away from
+  expensive enemy updates. Keep their once-per-five-frame status/AI rate,
+  per-frame movement and contacts, and the original event-script schedule.
+- Core party/timer/input/HP/OAM/lag/HDMA, Goku field/status/forms and flight
+  passenger/water/teleport/whip/scene checks pass. All 13 gameplay hardware
+  checks remain clean; short walking, flight and grass transformation reach
+  zero misses.
+- In 1,200 frames, ground punches improve from 24 to 2 misses, ground ki
+  from 47 to 8 and charging from 138 to 93. Flying ki stays at 31; flying
+  punches change from 1 to 2 and teleport from 73 to 58. Crowded timing
+  remains open. Smaller destruction-batch and asynchronous actor trials
+  remain private because their longer runs regress.
+
+## SNES prebuilt beam colour tables (2026-10-19)
+
+- Copy opaque, fully visible horizontal beam colour runs from ROM with
+  interruptible MVN; retain the general path for clipped or transparent
+  strips. The seven-band builder falls from 7,249 to 2,938 CPU cycles.
+- Explicitly write neutral HDMA padding when a beam reaches the last
+  visible line; the previous writer could reuse its coloured/window run.
+- Eleven assembled FX checks cover all 88 records, both buffers, live
+  backdrop colours, clipping and padding. Gallery/beams/aura/debris pass.
+  All 13 gameplay cases retain zero palette, meter, OBJ, NMI and graphics-
+  DMA errors. Long charging improves from 143 to 138 misses per 1,200
+  frames; short counts are unchanged. Strict crowded timing remains open.
+
+## SNES single-cell effects and missing rotated tiles (2026-10-19)
+
+- Emit the 300 one-cell ki/impact stamps from compact records, preserving
+  tile/palette allocation, clipping, front ordering and OAM capacity. A
+  resident front stamp falls from 935 to 740 CPU cycles.
+- Fix the generic assembly resolver's missing-tile check: restoring X/Y
+  replaced its sign flag, allowing unavailable flipped cells to become
+  drawable garbage. Compare the returned tile explicitly with `$FFFF`.
+- Nine assembled FX tests and gallery/beams/aura/debris pass. All 13 short
+  gameplay cases and four 1,200-frame repeats retain zero palette, meter,
+  OBJ, NMI and graphics-DMA errors. Long flying-ki misses improve from 36
+  to 31 and charge from 144 to 143; short flying-ki rises from 5 to 7.
+  Crowded combat still fails strict timing.
+
+## SNES effect-emitter capacity fix (2026-10-19)
+
+- Fix the fast effect emitter's last-slot calculation. A zero part count
+  could wrap to `$FFFF` when exactly one OAM slot remained. Check the cursor
+  per emitted part, and let missing cache cells leave space for later
+  resident pieces.
+- The regression reproduces the old runaway loop. The fixed machine code
+  matches the general emitter for all 815 nonempty assemblies at OAM
+  capacity, plus missing-cell, clipping, front-reservation and large-sprite
+  cases. FX gallery/beams/aura/debris and all 13 gameplay hardware checks pass.
+- Existing short gameplay miss counts are unchanged; this fixes a separate
+  capacity-dependent stall/corruption risk, not the remaining crowded timing.
+
+## SNES native body sprite construction (2026-10-19)
+
+- Add packed X/Y offsets for interior native body/weapon assemblies.
+  Preserve hit shake, clipping, OAM high bits and partial writes through
+  the native fallback; direct shadow/attachment emitter calls are unchanged.
+- Machine-code comparisons cover every signed-byte offset pair, screen
+  edges, full OAM, mixed lists, all hit-shake values and decimal mode. A
+  six-piece body falls from 988 to 719 CPU cycles. Core frame/party/OAM/lag,
+  Goku field/status/forms and carried-companion checks pass.
+- All 13 gameplay cases retain zero palette, meter, OBJ and vblank errors.
+  The short charge case improves by one missed frame; long flight/beam
+  counts match a fresh build with the optimization disabled. The crowded
+  zero-drop goal remains open.
+
+## SNES beam-strip table construction (2026-10-19)
+
+- Store horizontal beam colours as runs and build opaque window spans in
+  one call. Keep the same colours, shape, clipping and HDMA end padding;
+  transparent records retain their gaps.
+- The assembled builder matches every scanline for all 88 generated
+  records across screen edges and lengths, plus synthetic transparent
+  runs. FX gallery/beams and the 13 gameplay hardware checks pass.
+- The measured strip path falls from 49.53 to 36.51 scanlines. Charging
+  improves from 151 to 144 CPU misses in 1,200 frames; strict timing still
+  fails. Add optional destruction profiling to the gameplay runner.
+
+## SNES connected teleport corridor checks (2026-10-19)
+
+- Check the union of overlapping ground footprints once when finding an
+  Instant Transmission landing. Preserve individual samples for airborne
+  targets, floor-hole providers and an unloaded map context.
+- All 19,996 landing queries across 27 scenes match the browser, alongside
+  71,232 exit probes, 191,964 sweeps and 79,988 canLand calls. Controller
+  teleport, water, passenger, whip and scene checks pass.
+- Crowded teleport misses fall from 25 to 11 over 240 frames and from 105
+  to 73 over 1,200. Palette, meter, OBJ and vblank errors remain zero;
+  the strict zero-drop target remains open.
+
+## SNES native companion return-width fix (2026-10-19)
+
+- Re-establish the actor routine's accumulator/index widths before each
+  companion call. The native pair used before Goku arrives and during
+  events could otherwise enter its second call in M16, corrupting the
+  bank-switch stack and eventually the interrupt vectors.
+- Strict build, a machine-code regression covering both actors' M8/M16
+  returns, and core party/frame checks pass. The previously crashing map
+  129 flight fixture now completes 630 landing queries, 20,160 exit probes,
+  6,048 sweeps and 2,520 canLand calls with zero mismatches.
+
+## SNES late-vblank queue exit (2026-10-19)
+
+- Leave queued VRAM work untouched when fewer than two lines remain before
+  its transfer deadline. Avoid configuring a DMA channel just to defer the
+  transfer, preserving time for the NMI epilogue.
+- Strict build and core frames/HP/VRAM/HDMA/world/menu checks pass. A private
+  alternate actor-phase stress case that reproduced a transformation NMI
+  overrun improves from 37.29 to 36.27 scanlines, with zero overruns. Actor
+  scheduling is unchanged in the production cartridge.
+
+## SNES guarded native graphics DMA (2026-10-19)
+
+- Copy predecoded death and common weapon sheets through WMDATA only
+  early in an ordinary field frame, with the native interrupt vectors and
+  DMA channel 7 free of HDMA. Restore the channel registers afterward.
+  Late scanlines, loads, scripts and other handlers retain interruptible
+  CPU copies. Interrupts remain enabled.
+- Machine-code comparisons cover all sheets, actor slots, colour variants,
+  flags and DMA/fallback gates, including complete WRAM and channel-register
+  preservation. Integrated transfers peak at 13.12 scanlines, below the
+  16-line bound, with zero transfers approaching the HUD IRQ or NMI.
+- Strict build, core HP/frames/party/OAM/input/lag/HDMA/decode, Goku field/
+  status/forms and flight passenger/water/teleport/whip checks pass. All
+  gameplay runs retain zero palette, meter, OBJ and vblank errors.
+- In 1,200-frame stress runs, flying ki/punches/teleport/charge improve from
+  35/3/129/166 misses to 23/1/105/151. Strict combat timing remains open;
+  the short grass-transform case again has one CPU miss.
+
+## SNES nonblocking field HP redraws (2026-10-19)
+
+- Queue native HP-number refreshes during ordinary Goku field play instead
+  of waiting for a vblank inside the status update. Run the same redraw
+  after a completed frame's uploads only when twelve scanlines remain;
+  otherwise retain the request. Events, menus, loads and pre-Goku play
+  keep the synchronous path.
+- Verify the actual seven HUD tiles for each party member, repeated
+  requests, late-vblank retry, the retail fallback and preservation of DP
+  scratch and interrupt vectors. The measured redraw takes 6.10 scanlines.
+  Core frames/party/input/lag/HDMA and Goku field/status/forms pass.
+- All 13 gameplay cases and four 1,200-frame repeats retain zero palette,
+  meter, OBJ and NMI errors. Short ground punches improve from eight to six
+  misses and flying punches from three to two; long crowded timing still
+  fails. This removes one forced wait without claiming zero-drop combat.
+
+## SNES carried companions during local flight (2026-10-19)
+
+- Carry CPU companions during all local flight, as requested. Keep their
+  actor slots and native status timers active while pausing ground AI,
+  movement, contacts and sprites. Landing resumes their normal updates;
+  live controller changes, events, menus, loads and scene locks override
+  a stale carry mask. Remove stale enemy contact distances on takeoff.
+- Strict build, carry-gate machine-code checks, flight passenger/water/
+  teleport/whip/scene, core frames/party/input/OAM/lag/HDMA and Goku field/
+  status/forms pass. All 13 gameplay cases retain zero palette, meter,
+  sprite-limit and vblank errors.
+- Over 1,200 frames, flying ki improves from 429 to 35 CPU misses and
+  flying punches from 53 to 3. Teleport has 129 and charging 166 misses;
+  crowded combat still fails strict timing. This is a validated flight
+  improvement, with the zero-drop performance goal still open.
+
+## SNES remaining field FastROM paths (2026-10-19)
+
+- Run the native background-scroll and actor-preparation passes, plus two
+  field helpers, through equivalent FastROM mirrors. Preserve the outer
+  field loop, interrupts and map-change path. Update test callback sites
+  for the combined actor-preparation hook.
+- Strict build, core frames/party/input/OAM/sound-event/lag/HDMA, flight
+  water/teleport/whip/scene and Goku field/status/forms checks pass. All 13
+  gameplay cases retain zero palette, meter, OBJ and NMI errors.
+- The long flying-punch run improves from 95 to 53 misses per 1,200
+  frames and charge from 166 to 160. Flying ki rises from 422 to 429 and
+  teleport from 136 to 148 as changed timing affects the fight. Grass
+  transformation has one CPU miss again. The zero-drop target remains open.
+
+## SNES FX palette-upload headroom (2026-10-19)
+
+- Unroll the six fixed FX palette uploads and calculate their ROM offsets
+  at assembly time. Keep the same palettes and CGRAM writes. A reproduced
+  late native upload now finishes its complete NMI in 36.78 instead of
+  37.15 scanlines, removing that vblank overrun.
+- Strict build, core frames/lag/HDMA and FX gallery/beams/aura/debris checks
+  pass. All 13 gameplay cases and four 1,200-frame combat runs retain zero
+  palette, meter, OBJ and NMI errors. The long flying-ki run falls from
+  467 to 422 CPU misses; flying punches, teleport and charge remain at
+  95/136/166. Strict crowded-combat timing still fails.
+- Record completed-frame duration by native actor phase in the gameplay
+  harness. Keep the existing companion schedule after alternative phase
+  layouts failed to improve the full set consistently.
+
+## SNES common weapon graphics cost (2026-10-19)
+
+- Predecode the two additional weapon sheets observed in crowded-combat
+  traces (`D4:0000` and `D4:2FE8`). Use the same interruptible copier and
+  retail fallback as death particles, with exact machine-code comparisons
+  across six actor slots, three colour encodings and calling flags.
+- Strict build, core frames/party/OAM/lag/decode and Goku field/status/forms
+  checks pass. All 13 gameplay cases retain zero palette, meter, OBJ and
+  NMI errors. Grass transformation now has zero misses in the short case;
+  other short-case miss counts are unchanged. Ground-punch/ki peak logic
+  falls from 384/383 to 364/372 scanlines.
+- Long runs still fail strict timing. Flying ki/punches/charging remain at
+  467/95/166 misses per 1,200 frames; teleport increases from 118 to 136
+  as execution timing changes the fight. Do not treat cheaper graphics
+  conversion as proof of smoother whole-frame execution.
+
+## SNES enemy-death graphics cost (2026-10-19)
+
+- Predecode the native 50-tile death/status sheet in all three colour
+  encodings. An interruptible CPU copy replaces conversion during combat;
+  other sheets and unusual contexts retain the native decoder.
+- Machine-code differential checks match all WRAM outputs, registers,
+  flags and direct-page scratch, including fallback inputs. The selected
+  path uses less than half the retail CPU cycles. Strict build and core
+  frames/party/OAM/lag/decode checks pass.
+- All 13 gameplay cases retain zero palette, meter, OBJ and NMI errors.
+  Peak flying-punch logic falls from 617 to 355 scanlines and teleport from
+  592 to 330. Crowded strict timing still fails: flying ki remains at
+  97 misses per 240 video frames. This is a checkpoint toward the zero-drop
+  combat target, not a completed performance fix.
+
+## SNES flight preview validation and handoff (2026-10-18)
+
+- Update player controls and development notes for shared aerial combat,
+  radar/quest state, map-viewer return and terrain streaming. Separate the
+  current 5,770-frame zero-miss world run from older timing profiles and
+  the still-open crowded local-combat CPU misses.
+- Keep world preparation and combat before radar in the merge-order tool,
+  so running it cannot undo the current-frame visibility fix. Verify the
+  normalizer preserves the production dispatch and is idempotent.
+- All 13 gameplay scenarios meet their palette, meter, sprite and vblank
+  checks; crowded-field strict timing remains unsatisfied. Additional world
+  fixtures and UI radar pixel/bearing comparisons pass. Prepare a local
+  preview.2 IPS/archive from committed source; no release is published.
+
+## SNES map-viewer return palettes (2026-10-18)
+
+- Invalidate world graphics and UI caches whenever the native world loader
+  runs, including after closing Start's globe or flat map. Previously the
+  unchanged mode id left Goku and effects using the viewer's colours and
+  could restore stale map sprites behind the radar.
+- A controller-driven round trip through both map views checks Goku's
+  colours from the first visible frame, sprite tiles, effect palettes,
+  radar restoration and firing ki afterward, in both forms.
+- Strict build, all 14 world cases, terrain byte comparisons, Fortress
+  cutaway, core world/HDMA/live checks and boot pass. The optional static
+  branch check was unavailable because this checkout has no coverage trace.
+
+## SNES flight control and regression follow-up (2026-10-18)
+
+- Let radar rendering see the current frame's charge, attack and docking
+  state. Cancel focus and its sound pulses when scenes lock aerial controls.
+- Check that timing scenarios actually travel, show the radar, fire shots
+  and change form. The 5,770-frame stress run and two additional world
+  fixtures pass with zero missed frames or palette/OBJ/vblank errors.
+- Update the cutaway fixture to initialize the shared combat form, and
+  check whip companions at their actual landing before AI resumes. The
+  Fortress cutaway matches the reference at 99.2–99.7%; controls, native
+  audio, whip crossing and cartridge boot checks pass.
+
+## SNES terrain streaming without flight stalls (2026-10-18)
+
+- Pre-expand the 512×512 world terrain at build time and copy rows into the
+  native ring instead of decoding them while turning. Preserve terrain,
+  craters and landing behavior; use an interruptible CPU copy with no DMA
+  channel borrowed from the display.
+- Execute the copier against an independent decoder for every tile, all
+  eight ROM blocks and ring wrapping. Strict build, all world cases and
+  core world/HDMA checks pass.
+- The 5,770-frame world stress run has zero CPU misses, palette mismatches,
+  OBJ overflow or NMI overruns, including radar-visible turns, repeated ki,
+  waves and transform/revert. This does not resolve crowded field-combat
+  CPU misses or replace physical-console testing.
+
+## SNES world-loop and dialogue cost (2026-10-18)
+
+- Run the native world loop, compass pass and world helper calls through
+  FastROM mirrors. Keep interrupt vectors and the native movement cadence.
+- Pre-expand fixed radio messages into glyph words in ROM; parameterized
+  messages retain their decoder. The shield warning no longer causes a
+  missed frame. Schedule radar story queries separately from bearing math.
+- With the radar visible, cruise misses drop from 68 to 13 per 480 frames;
+  straight flight, aerial ki, charge/release and transform/revert have zero
+  misses in those inputs. Turning still needs work. All world cases, core
+  input/world/lag/HDMA, UI pixels and the 9,209-frame radio-policy test pass.
+
+## SNES radar and quest-state integration (2026-10-18)
+
+- Fix the production story-query adapter testing its loop index instead of
+  the query's answer. Restore the Tree pursuit target, ordinary Ball count
+  and palace hints; remove false eighth-Ball and crisis indicators.
+- Connect the dormant-story fallback to Dryad, show Mana Beast after the
+  Fortress is destroyed, and invalidate text/bearing caches on those changes.
+- Fifteen real-save-state radar cases match the browser's targets and text,
+  including a live Fortress-to-Beast label update. UI pixel/bearing and world
+  timing checks pass; screenshots of the corrected quest panels reviewed.
+
+## SNES shared aerial combat and chord filtering (2026-10-18)
+
+- Use the main combat state for world-flight charging, transformation,
+  input locks and native charge sounds. Cancel actions at flight boundaries,
+  prevent charge from interrupting transformation, and suppress stray ki
+  when releasing L while keeping Y held.
+- Hide A/B from native altitude controls on the first read of an L chord,
+  fixing a brief descent/landing from L+B before the old mask took effect.
+- Strict build, all 12 world cases, UI radar comparisons and core input,
+  world, lag and HDMA checks pass. Solo punch/ki and water flight retain
+  zero CPU misses; crowded teleport still has CPU misses, with no palette,
+  meter, OBJ or vblank errors in the checked scenarios.
+
+## SNES world sprite uploads and palettes (2026-10-18)
+
+- Match the world palette to the sprite cell actually on screen, fixing
+  the one-frame colour mismatch on both transformation and reversion.
+- Replace sixteen cell DMA transfers with four packed rows, and four
+  miniature transfers with two rows. Peak cell-upload time falls from
+  15.78 to 5.54 scanlines in the world timing cases.
+- World sprite, takeoff/locks, landing, ki, Fortress, scars, barrier,
+  docking, Fly item and timing tests pass. Timing checks cover the final
+  NMI return, palette matching, visible Goku sprites and OBJ overflow;
+  CPU misses are still reported and remain a separate optimization target.
+
+## SNES takeoff restrictions (2026-10-18)
+
+- Route outdoor L+R through the same input decision as roof escapes, so
+  world's duplicate reader cannot bypass boss, status, scene or camera locks.
+- Reject invalid map ids and check native/custom bosses in the world takeoff
+  API. Scripted native departures retain their normal handoff.
+- Strict build, ordinary takeoff, six blocked-input cases, dying-boss
+  departure and all seven indoor roof escape routes pass in Mesen 2.
+
+## 0.2.5 social teaser preparation (2026-10-18)
+
+- Capture six spoiler-free gameplay techniques with synchronized game audio
+  and compose a 24.65-second square teaser with captions and a play link.
+- Prepare a Twitter draft linking the browser game and 0.2.5 downloads.
+  Keep the MP4, thumbnail, draft and raw capture output outside Git; nothing
+  is posted or uploaded by this workflow.
+- Validate the action and map checks, all 1,479 decoded video frames, stereo
+  AAC audio, safe audio peaks and the final framing. Reproduction notes are
+  in [public media](readme-media.md#025-social-teaser).
+
+## SNES port merged into main (2026-10-18)
+
+- Bring the standalone cartridge source, build tools, tests and IPS packager
+  onto `main`, retaining the current 0.2.5 browser and desktop code.
+- Preserve both branches' development notes and link the cartridge build
+  instructions from the shared release guide. The published preview stays
+  pinned to its original tag.
+- Validation: 380 browser unit tests, web build, strict SNES build, five
+  IPS/CPU-helper tests, boot, 12 audio unit tests, native audio and all 13
+  gameplay scenarios pass. The rebuilt ROM matches the preview byte for
+  byte (SHA-256 `dc595f44ba0683bd39f7210be8f08e03d451a0f68a57b7ccb46698cc605929be`).
+  Known crowded-scene CPU misses remain; the gameplay checks report no
+  palette errors, charge-meter leaks, sprite overflow or vblank overruns.
+
+## SNES preview release packaging (2026-10-18)
+
+- Add a patch-only SNES release builder with verified base-ROM hashes,
+  SNES controller instructions, preview limitations and checksums.
+- Verify standard IPS records, RLE, expansion, record boundaries and the
+  reserved EOF offset. Check both the standalone and archived IPS against
+  the exact strict-build ROM, and cross-check with RomPatcher.js.
+- Prepare native-resolution screenshots and a separate `snes-v` preview
+  release so the cartridge download is distinct from desktop packages.
+
+## SNES aura and gameplay budget follow-up (2026-10-18)
+
+- Mirror the full-size flame from three resident cells and limit the
+  transformation ring to eight arcs plus four inner sparks. Keep its
+  radius, duration, flash and damage; `FX_DETAIL` retains the denser ring.
+- Reduce ki collision queries to the existing moving contact segment,
+  reject distant actors earlier, and reuse the orb's computed position.
+  Replace a hot native AI bit scan with a lookup verified against the
+  original machine code for all 65,536 inputs. Actor cadence is unchanged.
+- Skip unused PCM envelope calculations in native-audio builds. Move
+  compatible-pose checks out of tight vblanks, cancel obsolete deferred
+  poses, and remove redundant scanline reads while retaining HDMA guards.
+- Controller-driven cut-grass focus/transform tests verify complete auras,
+  no FX writes to background palettes, audible cues and silent tails.
+  The 13-case gameplay run and 1,200-frame flight/attack stress runs have
+  no palette errors, meter leaks, OBJ overflow or NMI overruns. Quiet
+  attacks, water flight and cut-grass focus have zero CPU misses; crowded
+  scenes still drop frames. Results are mixed across short inputs; see
+  the [measured follow-up](snes-port/gameplay-performance.md#sound-and-aura-follow-up).
+
+## SNES aura isolation from background palettes (2026-10-18)
+
+- Use a compact sprite flame for charging and transformation. Its blue,
+  gold and pink palettes no longer change the backdrop or background
+  colour math, including on cut grass. Two poses share resident tiles;
+  incomplete uploads wait before the flame appears.
+- Validate both sizes and all tones against the generated pixels, real
+  grass cuts, background-palette ownership and animation without uploads.
+  Existing FX gallery and beam pixel checks pass. The older polygon
+  renderer remains available with `FX_AURA_POLY` for comparison.
+
+## SNES short resident combat sounds (2026-10-18)
+
+- Replace the indefinitely looping transformation rumble and long generic
+  impacts with seven short resident effects. Each uses one SPC voice, ends
+  on its own within half a second, and needs no gameplay sample transfer.
+  Punch contact has a stronger attack than a missed swing.
+- Preserve all retail effects, samples and music. Native emulator and SPC
+  tests cover transformations, reversion, impacts, voice release, silent
+  tails, repeated commands and song restoration.
+
+## SNES party update scheduling (2026-10-18)
+
+- Spread native companion status, AI and animation across the game's
+  existing five phases while Goku is active. Preserve every actor's update
+  frequency, per-frame movement/collision/drawing and player assignments.
+  The original schedule remains in use before Goku arrives and during native
+  event scripts, including scripted whip-pad crossings.
+- Reserve more vblank time around Goku's cell upload. A deferred pose no
+  longer forces an upload merely because it waited one frame.
+- The integrated walking, combat and flight cases improve, but still miss
+  some video frames in crowded scenes. Rapid ki fire during flight remains
+  the largest measured CPU bottleneck. Core cadence,
+  input, menus, sound/events, world, save and lag regressions pass.
+
+The final audit corrected the moved calls' actor-data bank and selected
+phases 1/2 for the companions. The cadence test now checks actual native
+timer progress as well as entry counts; it rejects the earlier experimental
+build. Final measurements are in the
+[gameplay performance review](snes-port/gameplay-performance.md).
+
+## SNES teleport responsiveness (2026-10-18)
+
+- Advance Instant Transmission with the field video clock, so CPU stalls
+  no longer lengthen its vanish and recovery animation. Keep the camera's
+  streaming hold and cap catch-up at four frames, as combat already does.
+- Test recovery and the arrival cue after three injected missed frames,
+  including the 16-bit clock wrap; existing offscreen teleport and scene
+  camera checks pass.
+
+## SNES flight and rendering performance (2026-10-18)
+
+- Reuse shoreline collision results while flying instead of repeatedly
+  decoding the same tiles. All 289,324 terrain comparisons, 19,996 teleport
+  queries and 191,964 movement sweeps still match the browser's rules.
+- Run selected native actor, collision and sprite routines through their
+  FastROM mirrors. Carried CPU companions no longer draw bodies, attachments
+  or shadows; their actors remain live, and human players remain visible.
+- Use a compact impact spark and a single moving ki orb. Preserve attack
+  range, speed and damage, and cull offscreen shots before allocating art.
+  Reserve the end of vblank for palette updates and the interrupt return;
+  defer radio text expansion when the frame has insufficient time.
+- Core, flight, effects and UI regressions pass. Integrated gameplay checks
+  find no palette errors, native charge-meter leaks, sprite overflow or
+  vblank overruns. Quiet attacks and water flight meet the frame budget;
+  crowded native-party scenes still need CPU scheduling work.
+
+## SNES nonblocking resident effects (2026-10-18)
+
+- Resident sound effects release the main CPU immediately and complete the
+  SPC port handshake on a later callback. Busy effects are dropped without
+  overwriting a pending command; music and control commands remain ordered.
+- Emulator checks cover audible effects, repeated hits, bounded CPU time,
+  charge pulses, sample integrity, song loading and native-song restoration.
+  Core sound/event, world and menu regressions pass.
+
+## SNES Goku sprite upload budget (2026-10-18)
+
+- Pack field animation cells into contiguous ROM rows: four DMA transfers
+  replace sixteen tile transfers, preserving every pixel and the miniature
+  form. The measured Goku NMI path drops from about 8.9 to 5.5 scanlines and
+  uses only DMA channel 7.
+- Avoid rewriting the airborne palette mirror when its native buffer and
+  desired colours are unchanged; keep flash handling and landing restore.
+- Validate all 465 packed cells and miniatures byte for byte, plus emulator
+  palette, form, animation, portrait and menu checks. Generated ROMs and
+  timing output remain private.
+
+## SNES preview download (2026-10-18)
+
+- Publish the standalone cartridge preview as a verified IPS and patch-only
+  ZIP, with instructions, base/output hashes and native SNES screenshots.
+- Link the separate `snes-port` source and `snes-v0.1.0-preview.1` release
+  from the project overview. The preview explicitly retains known
+  crowded-scene slowdowns; existing desktop downloads stay available.
+
+## 2026-10-18 — SNES gameplay follow-up
+
+- Fixed Goku's water-flight palette through takeoff and landing. The airborne
+  sprite now receives the same tinted colors as the native water palette,
+  and landing restores the map's palette. Validated with the Goku status,
+  forms and scripted tests, including rendered airborne colors.
+- Replaced streamed gameplay effects with resident SNES sounds by default.
+  Impacts, shots, punches and beams stay audible; charge uses sparse pulses,
+  and continuous flight/voice streams are omitted. Music stays native. The
+  old streamer is an explicit `AUDIO_PCM` diagnostic build. Native sound,
+  audio unit, optional stream, song, arrival and imported-state tests pass.
+- Cleared the native weapon-charge meter and sparkle while Goku attacks,
+  keeping his ki charging intact. Recovery-camera scrolling now blocks new
+  attacks/focus. Faster rectangular hit tests retain attack range and damage;
+  192 geometry cases, stale-meter checks and combat reference comparisons
+  pass, along with water, teleport, whip, ceiling, holes and scene flight tests.
+
 ## 2026-10-18 — Bazzite Steam box installation
 
 - Built and installed the Bazzite desktop app from `656bdb3`, added a direct Steam shortcut and Favorites entry, and assigned the Gamepad template.
@@ -96,6 +1290,7 @@ stay traceable even when they are committed together.
   - **Exactness:** the original SnesJs core equivalence passes (SPC RAM and audio every frame), and every saved state, scene and forced branch renders identically to 0.2.4 with every mod hook.
   - **Browser suite:** only the known failures; all 28 phone tests pass.
 
+
 ## 2026-10-17 — SNES cartridge: Goku's STATUS page, window placement, scouter switch (UI stream)
 
 - Goku's STATUS page shows the browser's raster on the cartridge: name, level, HP, form, the double-width power level, the weights lines, MANA and money, and ten stat rows with bounded two-tone meters. The page's text and window layer is composed cell by cell from the same drawing operations as `native-status.js`, which the generator checks against `statusPixels()` at build time. It is built top to bottom in about 55 frames while the menu keeps 60 Hz. Like the browser, which paints its raster from scanline 1, it sits one row above the raster's coordinates, and its window art comes from the browser's windows rather than the game's tiles. See [snes-port/ui.md](snes-port/ui.md#gokus-status-page-statusasm).
@@ -143,6 +1338,7 @@ stay traceable even when they are committed together.
   - **Unit tests:** 379 pass. They now include two wait programs run from work RAM: HVBJOY polls across both blanking edges and the auto-joypad read, and a `BIT` loop whose flag HDMA clears through WMDATA. Both fail on the earlier scheduler.
   - **Exactness:** the original SnesJs core equivalence passes (picture, work RAM, VRAM, CGRAM, OAM, SPC RAM, audio and CPU timing every frame). Every saved state, scene and forced branch renders identically to 0.2.3 with every mod hook. The fire and smoke drawers issue the same pixel writes in the same order.
   - **Browser suite:** only the known failures; all 28 phone tests pass. In real iOS Safari (Simulator), Status opened at cursor 5 closes with one tap of Menu.
+
 
 ## 2026-10-17 — SNES cartridge: 64 Mbit ExHiROM, unflashed Goku, fresh cartridges (integration)
 
@@ -218,6 +1414,7 @@ stay traceable even when they are committed together.
   - **Core equivalence:** the SnesJs core matches over 42 states.
   - **Browser equivalence:** composed and per-pixel rendering match with every mod hook across 41 saved states and 16 story and set-piece scenes. They also match in the overlay scenarios, 49 forced ending and defeat branches, every arrival phase (with edge clipping) and the tree and emperor scenes.
   - **Browser suite:** only the 21 known failures, plus a controls layout test that is also flaky on 0.2.1. All 28 phone tests pass.
+
 
 ## 2026-10-17 — SNES cartridge: finale cinematics (ending stream)
 

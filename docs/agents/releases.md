@@ -50,6 +50,44 @@ Optional macOS signing secrets: `MAC_CSC_LINK`, `MAC_CSC_KEY_PASSWORD`, `APPLE_I
 
 Update `package.json` and `package-lock.json` to the release version first. Dispatch from the intended commit. The default run only creates Actions artifacts. Enable `draft_release` to assemble archives, regenerate combined checksums, and create a **draft** GitHub release tagged `v<package version>`. Existing tags/releases are not overwritten; review the draft before publishing. The workflow never automatically publishes a public release.
 
+## Standalone SNES patch
+
+The [SNES preview release](https://github.com/mikolalysenko/secret-of-goku/releases/tag/snes-v0.1.0-preview.1)
+provides a verified IPS patch, a patch-only ZIP, ROM hashes, player
+instructions and native-resolution cartridge screenshots. It is separate
+from the browser and desktop packages. Crowded flight/combat still slows
+down; physical-console compatibility has not been certified.
+
+The cartridge source and packaging tools are included on `main` under
+[`snes/`](../../snes/). The published preview remains pinned to
+`snes-v0.1.0-preview.1`; its [packager](https://github.com/mikolalysenko/secret-of-goku/blob/snes-v0.1.0-preview.1/snes/release.mjs)
+and [performance notes](https://github.com/mikolalysenko/secret-of-goku/blob/snes-v0.1.0-preview.1/docs/agents/snes-port/gameplay-performance.md)
+describe that exact release. Cartridge releases use `snes-v<version>` tags,
+separate from the `v0.2.x` desktop packages. Build a patch-only package with:
+
+```sh
+node --test snes/test/ips.test.mjs
+node snes/release.mjs --version=0.1.0-preview.1
+```
+
+The packager performs a strict cartridge build, generates a standard IPS,
+and checks that both the raw patch and the patch extracted from the ZIP
+reproduce the 8 MiB output byte for byte. It includes base-ROM hashes,
+SNES controls, credits, output hashes and the preview's known limitations.
+`release/snes/<version>/` remains ignored. A dirty checkout is labeled as a
+local preview: commit the source and rerun before uploading. The packager
+does not tag, push or publish anything.
+
+For the initial preview, an independent application with RomPatcher.js
+`3183884086825c3a57c72026234debcef1e2240c` also reproduced the cartridge.
+Its Mesen screenshots are native 256×224 PNGs captured from this ROM, not
+the browser edition. Raw captures and submission drafts stay under
+`.local/romhacking/`; selected images can accompany the GitHub release.
+Publish the IPS, ZIP, checksums, README and selected PNGs, never the `.sfc`,
+`.sym`, fixture or savestate files. The release and Romhacking.net listing
+must identify this as a preview and disclose remaining crowded-scene
+slowdowns. Only the maintainer submits the Romhacking.net form.
+
 ## Code map
 
 | File | Responsibility |

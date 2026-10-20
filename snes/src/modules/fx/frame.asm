@@ -340,16 +340,28 @@ fx_release:
 	STA.l !fx_cpend
 	RTS
 
-; No cell is resident (scene change, regions lost). Preserves A and X.
+; No cell is resident (scene change, regions lost). Invalidate the fast
+; hash too: unchanged entries of other regions must still re-upload after
+; a conservative reset, even if their cell ids match. Preserves A and X.
 fx_clear_rbits:
 	PHA
 	PHX
+	LDA.l !fx_hash_dirty
+	BEQ .done                   ; repeated region changes already invalidated it
 	LDA.w #$0000
+	STA.l !fx_hash_dirty
 	LDX.w #!FX_RBITS_SIZE-2
 -	STA.l !fx_rbits,X
 	DEX
 	DEX
 	BPL -
+	LDA.w #$FFFF
+	LDX.w #!FX_HASH_SIZE-2
+-	STA.l !fx_hash,X
+	DEX
+	DEX
+	BPL -
+.done
 	PLX
 	PLA
 	RTS
@@ -409,6 +421,34 @@ fx_palscan:
 	BCC +
 	LDA.w #$0200
 +	STA !d_tmp                   ; end offset
+.scan_start
+if not(defined("FX_PALSCAN_SLOW"))
+	; Enter the straight-line scan at its rounded four-sprite group. The
+	; same up-to-three stale slots still count conservatively, and no read
+	; crosses the 128-entry OAM buffer. Reverse order has the same markers.
+	CLC
+	ADC.w #15
+	LSR : LSR : LSR
+	AND.w #$FFFE
+	TAX
+	LDA.w #0                    ; TAX in the byte scan must have B = 0
+	TAY
+	SEP #$20
+	JMP (.groups,X)
+.groups
+	for group = 0..33
+		dw .scan_end-(32*!group)
+	endfor
+.scan_body
+	for sprite = 0..128
+		LDA.w $0803+((127-!sprite)*4)
+		AND.b #$0E
+		TAX
+		STA !d_tiles,X
+	endfor
+.scan_end
+	assert .scan_end-.scan_body == 128*8, "palette scan jump stride changed"
+else
 	LDA.w #$0000                 ; B = 0: TAX copies the masked byte only
 	TAY
 	SEP #$20
@@ -435,9 +475,11 @@ fx_palscan:
 	TYA
 	ADC.w #16
 	TAY
+	LDA.w #0                     ; clear B after cursor $100 for the byte TAX
 	SEP #$20
 	CPY !d_tmp
 	BCC .loop                    ; (up to three stale slots past the end count too)
+endif
 .front
 	REP #$20
 	LDA.w !core_oam_front_n&$FFFF

@@ -34,15 +34,20 @@ local function check_drawn(tag, c, x, y, prio, pal)
   local n = 0
   for q = 0, 3 do if (mask >> q) & 1 == 1 then n = n + 1 end end
   G.check(#list == n, string.format('%s: only the scripted %d OBJ show the hero tiles (%d)', tag, n, #list))
+  -- Foreground entries can be appended and selected by hardware rotation.
+  -- Verify the actual priority order, including the non-rotated path.
+  local state = emu.getState()
+  local first = state['ppu.enableOamPriority'] and ((state['ppu.oamRamAddress'] >> 1) & 127) or 0
   local k = 0
   for q = 0, 3 do
     if (mask >> q) & 1 == 1 then
-      local o = G.oam_entry(k)
+      local slot = (first + k) & 127
+      local o = G.oam_entry(slot)
       local ex, ey = (x - 16 + (q & 1) * 16) & 0x1FF, (y - 31 + (q >> 1) * 16) & 0xFF
       local attr = 1 | (pal << 1) | (prio << 4)
       G.check(o.x == (ex & 0xFF) and (o.hi & 1) == (ex >> 8) and o.y == ey and o.tile == 0xC0 + (q & 1) * 2 + (q >> 1) * 4
         and o.attr == attr and (o.hi & 2) == 0,
-        string.format('%s: front slot %d quadrant %d at %d,%d tile %02X attr %02X hi %d (want %d,%d attr %02X)', tag, k, q, o.x, o.y, o.tile, o.attr, o.hi, ex & 0xFF, ey, attr))
+        string.format('%s: front slot %d quadrant %d at %d,%d tile %02X attr %02X hi %d (want %d,%d attr %02X)', tag, slot, q, o.x, o.y, o.tile, o.attr, o.hi, ex & 0xFF, ey, attr))
       k = k + 1
     end
   end

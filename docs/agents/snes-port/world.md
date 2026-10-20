@@ -28,15 +28,17 @@ the Mana Tree's cloud barrier. Weaker waves bounce off the Fortress shield.
 | Takeoff (L+R, Fly item, `world_takeoff`) through the native `$0C00\|map` path, no summon, Goku's takeoff pose meanwhile | Done | `takeoff`, `item` (104 frames to world flight; 432 natively) |
 | Landing (B over land): no BG3 fly-by, Goku's landing pose, ordinary loader; Fortress record 10 offset corrected | Done | `landing`, `fortress` |
 | Goku replaces Flammie in Mode 7 (rear view, banking, bob, flight clip, charge pose with hanging legs, airBeam pose, both forms, palette 5, small shadow instead of the HDMA window) | Done | `sprite` |
-| A ascends, B descends/lands; Flammie's steering; X sends the game's Y | Done (native controls kept) | `ki` |
+| A ascends, B descends/lands; steering; L chords suppress altitude input immediately | Done | `controls`, `ki` |
 | Aerial ki shots, late distant bursts | Done | `ki` |
-| Charged aerial Kamehameha (local charge stand-in until combat owns it), aim sparks, beam, edge sparks | Done | `ki`, `fortress`, `scars` |
+| Charged aerial Kamehameha (shared combat state), aim sparks, beam, edge sparks | Done | `controls`, `ki`, `fortress`, `scars` |
 | Fortress shield: base/partial waves deflect (rebound streak, arcs, 720-frame message cooldown) | Done | `ki` |
-| Fortress destruction: explosion, 186-frame cutaway (stand-in), deck landing with the crisis cue, story event `$8B` | Done; cutaway picture is a stand-in | `fortress` |
+| Fortress destruction: explosion, 186-frame planet cutaway, deck landing with the crisis cue, story event `$8B` | Connected to ending and Frieza modules | `fortress` |
 | Docking approach (ki boost, curve into the Fortress, no native dragon) | Done | `dock` |
 | Town craters (Mode 7 characters in the 7F ring and the tilemap, persistent, landing reads the terrain under them, wish restores) | Done | `scars` |
-| Mana Tree cloud barrier hit test; calls the destroy stream's break | Done (stand-in until destroy merges) | `barrier` |
+| Mana Tree cloud barrier hit test; calls destroy's barrier break | Connected | `barrier` |
 | Fly ring item art (Goku's hover pose in his colours) | Done | `item` |
+| Globe / flat-map navigation and return: reload graphics, palettes and radar | Done | `map`, both forms, first-visible-frame palette checks |
+| Dragon Radar targets, Ball count, quest hints and live Fortress/Beast label | Done | 15 production save-state cases in `radar`, browser pixel/bearing comparisons in `ui radar` |
 | Radio lines, sounds, barrier break, Frieza state | Bridged to UI / audio / destroy / frieza when present | scratch bridge build (see Integration) |
 
 ## How it works
@@ -49,10 +51,12 @@ fades, runs the Mode 7 loader and later lands through the landing record
 table (`C6:7780`). `C1:E833` is the shared handoff right after that
 bookkeeping; with Goku it skips the summon (`E8=4` phase) and requests the
 fade straight to world flight as `C0:A4E1-A4EC` / `C0:8B16` do once the
-dragon has arrived. The L+R edge in an idle field frame calls
-`world_takeoff` (browser: `requestFlight()` on the L+R chord), which checks
+dragon has arrived. Flight owns the L+R edge and applies the same boss,
+status, scene and recovery-camera locks to both outdoor takeoff and roof
+escape. It calls `world_takeoff` (browser: `requestFlight()`), which checks
 `world_takeoff_check` (Goku, no `!w_lock`, no pending event, idle field,
-the map header's world-flight bit at `C8:7000+4` bit 7) and queues the event
+the map header's world-flight bit at `C8:7000+4` bit 7, a valid map id and
+the shared native/custom boss gate) and queues the event
 through `core_event_request`. The Fly item's handler (`C1:DBCD`) jumps over
 the drum animation and sound to the same request at `C1:DC22`.
 
@@ -62,6 +66,13 @@ so the ordinary loader places the party. Fortress landing record 10 stages
 the party 64 tiles east for the fly-by; the hook takes that back.
 `field.asm` runs the browser's `flightTransition` on the goku module's pose
 API (`!goku_mode` `$26` takeoff, `$27` landing).
+
+Start opens the native map viewer; R changes the globe to the flat map,
+L changes it back, and B closes it once loading is complete. Closing either
+view runs the world loader again without entering the field. The
+`C0:8045` hook invalidates the world session and UI graphics caches before
+the loader, so the first resumed frames restore Goku/effect palettes,
+tiles and the radar instead of reusing the viewer's colours and sprites.
 
 ### Goku in Mode 7 (`flight.asm`, `sprite.asm`, `nmi.asm`)
 
@@ -73,7 +84,11 @@ columns 40-43 base / 36-39 Super Saiyan, row 3 rear view; charge column
 the turn rate, bobs it, and draws four 16×16 OBJ (empty quadrants skipped)
 in palette 5. The cell's 16 tiles go into a hidden double buffer in vblank
 (`world_world_nmi`, DMA channel 7 or 6, whichever the world's HDMA leaves
-free in `$2C`), then the buffers swap. The HDMA shadow window is turned off
+free in `$2C`), then the buffers swap. Four packed row transfers replace
+the sixteen tile transfers; docking miniatures use two packed rows. The
+palette follows the resident cell actually referenced by OAM, so changing
+form cannot colour the previous frame's art with the new palette.
+The HDMA shadow window is turned off
 (`$2D`, and `C0:88FB` keeps `TMW` clear) and a small pixel shadow is drawn
 on the ground line below Goku. On a frame the game did not finish (lag) or
 whose next world buffer was not ready (`$60` bit 7), `C0:890B` skips the sky
@@ -106,8 +121,8 @@ turns the ripple. All effects go into the module's own slots ahead of Goku
 
 The full wave on the Fortress sets the persistent `PWF_FORTRESS` flag
 (`C2:B112` stops drawing it), explodes, and after 24 frames starts the
-186-frame cutaway (stand-in: the world fades through `$E6`; `!w_cut_age`
-counts for the planet-view module). Then the Fortress's own docking ABI
+186-frame cutaway (`ending/cutaway.asm` renders the planet view from
+`!w_cut_age`). Then the Fortress's own docking ABI
 (`C2:B1CA`: `E8=1`, `F2|=$80`, S=`$1FF`, A=10, `JML $008260`) lands on its
 deck. The event-sound opcode hook (`C1:F109`) turns the deck's cue `$26`
 into the crisis cue (`01 1B 13 8F`, `fortress-collapse.js`), and the first
@@ -135,8 +150,11 @@ pixel. The cartridge cannot overlay, so the crater becomes part of the map:
   uses) in the world's own colours (k-means over the cells, nearest CGRAM
   colour of palettes 4-12). It emits the two cell layouts (18×12, 28×19).
 - On entering world flight the characters go to VRAM (one 512-byte chunk
-  per vblank). The native RLE decompressor fills a world row into the 7F
-  ring (`C0:98FD`); the module then writes the crater cells of that row.
+  per vblank). The generator pre-expands the fixed terrain into eight 32 KiB
+  ROM blocks. `world_copy_row` copies a 512-byte row into the native 7F ring
+  at `C0:98FD`, then the module writes the crater cells of that row. The
+  interruptible CPU block copy uses no DMA/HDMA channel. Every terrain tile,
+  all eight ROM blocks and ring wrap are checked by `terrain.test.mjs`.
   A new crater patches the ring rows near the camera (one row per frame)
   and rewrites the 128×128 Mode 7 tilemap cells in view (8 per vblank).
 - `C0:8190` (the landing check's tile read) returns the original terrain
@@ -249,7 +267,7 @@ stand-in records the request in world RAM (what the world tests read).
 | destroy | `destroy/tables.asm` | `destroy_tree_barrier_break` when a full wave opens the cloud barrier (it owns `$E3` bit 6 and its persistence) |
 | frieza | story query table | `FRIEZA_CRISIS` and `FRIEZA_STOLEN` (answered 0 until frieza implements them) keep the barrier and pick the crisis tree-blast line |
 | story | merged | `QUEST_WISH_SCARS` hook, `FORTRESS_DESTROYED` query, event `$8B` request on the deck |
-| combat | `!w_combat_owns` + `world_fire_*` | combat owns the charge state; the local stand-in (L+Y charge, Y shot) stops when it is set |
+| combat | `!w_combat_owns` + `world_fire_*` | Connected: combat owns charge, action and sound; the local fallback is only for builds without combat |
 | flight | `world_takeoff`, `world_takeoff_allowed` | ceiling escape route choice |
 | title | merged | owns the starting inventory (the Drum, `$27` at `$7E:CC48`) |
 
@@ -261,6 +279,20 @@ Fortress DEFLECT and the `FORTRESS_SHIELD` group.
 
 ## Tests (`node snes/test/world/run.mjs [test …]`)
 
+The October 18 follow-up adds a video-frame `timing` check for cruising,
+ki, charge/release and transformation/reversion. The original world upload
+took 15.78 scanlines at its busiest; packed rows take 5.54. In the same
+four scenarios, the longest complete NMI fell from 31.76 to 21.54 lines,
+and the two mismatched-palette frames during transform/revert are gone.
+Those upload measurements preceded the terrain and loop improvements.
+The final 5,770-video-frame production stress run has zero missed frames,
+palette mismatches, OBJ overflow or NMI overruns. Its longest complete NMI
+is 26.55 lines and its busiest cell upload remains 5.54 lines. The run keeps
+the radar visible during 2,400 frames of travel/turning and exercises ki,
+charge/release and both form changes. The same inputs pass in two additional
+world fixtures. Crowded local field combat still has CPU misses; see
+[gameplay performance](gameplay-performance.md#flight-world-map-and-radar-follow-up).
+
 Mesen2 headless (`MESEN` or `.local/tools/mesen`); outputs in
 `.local/snes-test/world/<test>/`. Native sessions start from the shared
 `waterfall.mss` checkpoint (L+R takeoff); `sprite` and `ki` import browser
@@ -270,25 +302,27 @@ states (`preset__flight`).
 | --- | --- |
 | `sprite` | no Flammie OBJ; Goku's flight cell in slots 0-3 (VRAM tiles against `goku_cell_tiles`, palette 5 against `goku_palettes`), flight clip cycling, banking, both forms, the pixel shadow, no HDMA shadow window; OBJ region claimed |
 | `takeoff` | `!w_lock` refuses; L+R reaches world flight in < 140 frames without the `E8=4` summon phase, takeoff pose, event `$0C80`, return map |
+| `takeoff-locks` | outdoor L+R respects live/custom bosses, flight scene locks, sleep/death and the recovery camera; a dying boss permits departure |
 | `landing` | B lands without the BG3 fly-by; landing pose and its end; landing sound request |
+| `controls` | shared charging/form/input state, wave release without stray ki, scene/focus locks, first-read L+B altitude protection, radar yields on the current attack frame |
 | `ki` | Y hidden from the game; ki shot, orb and distant burst; a full base charge; the wave aims at the Fortress and deflects (message, Fortress intact, controls locked while it flies); a partial SSJ wave deflects too; the 720-frame message cooldown |
 | `fortress` | full SSJ wave from 400 px: destroyed, explosion, cutaway, deck landing (map 255, offset corrected), crisis cue `01 1B`, event `$8B`, persistent flag |
 | `scars` | crater characters in VRAM; Pandora aimed and destroyed; record, town bit, message; ring and tilemap patched; persistent after landing and taking off again |
 | `barrier` | full wave on the cloud barrier: no crater, break request, tree-blast message; no target once `$E3` bit 6 is set |
 | `dock` | approach counter starts the timer, ki boost, curve with the full cell then the miniature, no native dragon, deck landing |
 | `item` | Fly from the item ring: Goku's icon tiles and palette 5, no drum animation, `$0C80` request, 104 frames to world flight |
+| `radar` | 15 real-save quest states against the browser's target, count and text; live Fortress-to-Beast label update |
+| `map` | globe and flat-map navigation; both forms' palettes from the first visible return frame, sprite tiles, effect colours, radar and ki afterward |
+| `timing` | real NMI frame counts, complete-NMI duration, palette and sprite checks; `--repeat=5` measures 5,770 frames, `--scene=` selects another world fixture |
 
-All pass on the branch merged with main (`ad901c3`), as do the boot, core,
-destroy, goku and story suites. The title suite's scene shot `impact-095`
-fails there with the same numbers on main alone (46.84% of the frame), so
-it does not come from this module.
+All 14 world cases, terrain machine-code comparisons, Fortress cutaway,
+core world/HDMA/live checks and boot pass after the map-return fix. Earlier
+module integration results are recorded in the changelog.
 
 ## Known differences from the browser
 
-- The 186-frame cutaway is a fade stand-in; the planet view belongs to the
-  orbit/ending streams (`!w_cut_age`).
-- The damaged deck's visuals and Frieza's collapse sequence belong to the
-  frieza stream; the module only sends the crisis cue and requests `$8B`.
+- The planet cutaway and damaged-deck collapse are implemented by the
+  ending/Frieza modules; world supplies their timeline and story handoff.
 - Craters are 8-px Mode 7 cells from 32 shared characters (cells under
   24/64 opaque keep the terrain), not a per-pixel scaled image.
 - The explosion draws a third of its 20 sparks per frame (each spark every
@@ -307,4 +341,5 @@ it does not come from this module.
   modules cheaper (each call is ~70 instructions).
 - Test builds with `-DGOKU_TRACE` write their trace at `$7E:7F00`, which is
   `!RAM_WORLD`; the world frame returns early in those builds.
-- `CORE_FASTROM` would give the effect loops ~25% more headroom.
+- FastROM is enabled; the native world loop, compass and helper calls now
+  also use its fast mirrors.

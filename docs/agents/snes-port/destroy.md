@@ -49,8 +49,8 @@ the C0:C7C3 redraw consumer). The Sandship adds a field vblank callback
 | `C3:0004` | 4 | `JMP $0160` (the sound driver entry) | `destroy_song_hook`: while wrecked, the ship's song (25h) becomes the boss battle alarm (`01 04 04 FF`), so the change lands with the room's own fade |
 
 Dispatch (`snes/src/modules.asm`): `modules_field_frame` →
-`destroy_field_frame` (after the other modules' logic, before `fx_frame`:
-its planner and the wreck's budgeted work use the time the frame has left),
+`destroy_field_frame` (planner/events/wreck before `fx_frame`) and
+`destroy_late_frame` (pending beam scans after FX),
 `modules_field_nmi` → `destroy_field_nmi` (first: switches the breach's
 HDMA on while vblank lasts), `modules_ring_frame` → `destroy_ring_frame`
 (lets go of the HDMA), `modules_title_boot` → `destroy_title_boot`,
@@ -180,18 +180,47 @@ use and warmed in spare frame time.
 scanning all of it in one call cost one frame several hundred scanlines
 (combat's integration measured ~600 SlowROM / 219 FastROM). A beam
 (`arg_id` ≠ 0) is now covered in growth steps of about
-`!DESTROY_STEP_CELLS` (16) new cells: the covered length widened to the
+`!DESTROY_STEP_CELLS` (8) new cells: the covered length widened to the
 requested width first (8 px at a time), then longer at that width. A call
-makes at least one step of the band scan and one of the native barrier
-search, and more while it is younger than `!DESTROY_HIT_SPAN` (16)
-scanlines; what is left (`!hp_left`: bit 0 band, bit 1 barrier) waits for
-the beam's next call or, if the beam stops calling, for
-`destroy_field_frame`'s continuation from the saved arguments
-(`dst_hit_continue`, `!HP` block), dropped when the field stops being idle.
+makes at least one step, with terrain and barrier scans sharing
+`!DESTROY_HIT_SPAN` (12) scanlines. `dst_hit_work` alternates which part
+goes first (`!hp_turn`), and starts the other only while time remains;
+one expensive part cannot force another expensive step or starve the
+other part. The budget is checked between steps, so a single step can
+exceed it. Punches still scan both parts immediately.
+Combat now submits a nonzero-ID beam without scanning the map. Its pending
+work (`!hp_left`: bit 0 band, bit 1 barrier) runs from `destroy_late_frame`
+after FX, only before scanline 160 and only if no NMI has interrupted this
+combat update. Comparing combat's all-NMI counter with its sampled value
+prevents a wrapped low scanline from granting more work to an already late
+frame. Punches, the initial point-blank strike, enemy damage and Sandship
+strike tracking remain immediate. `DESTROY_BEAMS_SYNC=1` retains the earlier
+synchronous scan path for comparison.
+
+`dst_hit_begin` keeps the maximum requested length and width for the pending
+beam. A fading wave must not discard unscanned outer cells; the Earth Palace
+timeline regression checks that its puzzle trigger still fires. Its saved
+collision layer also applies to barrier searches after Goku changes floors.
+Replacement attacks discard the previous request; events/menus cancel it,
+and map/load initialization resets the turn. `!hp_worked` prevents a second
+scan in the same field update and is cleared after the late service.
+Comparing `core_frame` values was insufficient: combat records the counter
+before the core increments it, while this continuation runs afterwards.
+The gameplay suite watches both scan parts per attack across the whole
+native field loop, including lag frames.
 Each step goes through the same skim/visit code as a one-shot call, so the
-cells and their order are unchanged. Measured (FastROM): the largest single
-call of combat's full wave 84 scanlines (was 219), the Wind Palace wave 45
-(was 100), calls over covered ground 4-5.
+cell order within a part is unchanged. The assembled
+`snes/test/destroy/hit-budget.test.mjs` checks shared-budget boundaries at
+all 262 counter positions, fair progress, saved arguments, completion,
+replacement, cancellation, the field latch, late/NMI-wrapped deadlines,
+fading extents and saved collision layers. The full map-edit/barrier
+and Sandship comparisons pass with the existing documented demolition
+timing differences. Sharing the budget initially reduced crowded charging
+from 66 to 63 misses per 1,200 frames. Late scanning plus the charge/beam
+companion queue reduces that to 50, with a 283.51-scanline peak; strict
+zero-drop timing remains open. Earlier independent budgets
+reduced the full-wave scan from 219 to 84 lines, but still forced a
+barrier step after a costly terrain step.
 
 ## Sandship runtime
 
@@ -480,6 +509,22 @@ comes from other modules, not from this one):
 
 (lag frames / frames.) The remaining lag falls in the band's growth frames
 of scenes whose own frame logic ends near line 120-160.
+
+### Scenery and barrier scan loop (2026-10-19)
+
+`dst_skim` and `dst_skim_nt` select the layer once per run and keep their
+counter/stride in stack-local direct page. They restore D and DB before
+returning, including when an unknown tile class requires the caller's full
+classification. Tile order, candidate tests and map writes are unchanged.
+`DESTROY_SKIM_SLOW` keeps the previous loop for comparisons.
+
+The assembled scanner tests cover every packed class byte, both layers,
+unknown cells, cursor wrapping, strides in both directions and caller
+contexts. A 64-cell scenery scan falls from 4,384 to 3,817 CPU cycles; the
+barrier scan falls from 5,088 to 4,521. Fifteen emulator cases covering
+plants, growing beams, BG2 objects, gates and switches match their existing
+references. The long gameplay charge case improves 82 → 80 misses per
+1,200 video frames; crowded timing remains open.
 
 ## Remaining work
 

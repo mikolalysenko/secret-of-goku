@@ -8,7 +8,69 @@
 ; !d_x/!d_y, depth !d_ef.
 fx_stamp:
 	JSR fx_stamp_id
+if defined("FX_STAMP_SLOW")
 	JMP fx_emit
+else
+	JMP fx_stamp_cell
+endif
+
+; One-cell stamp A. Resolve the same cache entry before clipping, then use
+; the shared front/back placement code. Do not leave a generic assembly
+; advertised in d_lasta: this path has not filled d_tiles/d_ptr.
+fx_stamp_cell:
+	ASL
+	ASL
+	TAX
+	LDA.w #$FFFF
+	STA !d_lasta
+	LDA.l fx_stamp_cells,X
+	CMP.w #$FFFF
+	BEQ .done
+	STA !d_ax                    ; cell/class and OAM flips
+	LDA.l fx_stamp_cells+2,X
+	STA !d_ay                    ; biased X/Y offsets
+	LDA !d_ax
+	JSR fx_resolve
+	CMP.w #$FFFF
+	BEQ .done
+	STA !d_tile
+	LDA !d_ax
+	AND.w #$C000
+	ORA !d_tile
+	STA !d_tile
+	LDA !d_ay
+	AND.w #$00FF
+	CLC
+	ADC !d_x
+	SEC
+	SBC.w #128-15
+	CMP.w #256+15
+	BCS .done
+	SBC.w #14                    ; carry clear: screen X
+	STA !d_sx
+	LDA !d_ay
+	XBA
+	AND.w #$00FF
+	CLC
+	ADC !d_y
+	SEC
+	SBC.w #128-15
+	CMP.w #224+15
+	BCS .done
+	SBC.w #14
+	STA !d_sy
+	LDA.w #1
+	STA !d_n
+	LDX.w #0
+	PHX                          ; shared emitter pops its part cursor
+	LDA !d_ef
+	LSR
+	BCC .back
+	JMP fx_emit_slow_front
+.back
+	JMP fx_emit_slow_back
+.done
+	RTS
 
 ; Stamp group A, frame X, turn Y -> A = assembly id.
 fx_stamp_id:
@@ -87,7 +149,10 @@ fx_emit_setup:
 	PLX
 	PLY
 	STA !d_tiles,X
-	BMI .missing
+	; PLX/PLY above replaced the resolver's N flag. Missing cells must
+	; stay $FFFF in every flip variant, not turn into $3FFF/$7FFF.
+	CMP.w #$FFFF
+	BEQ .missing
 	ORA.w #$4000
 	STA !d_tiles+2,X             ; h-flip
 	EOR.w #$C000
@@ -177,33 +242,31 @@ fx_emit_place:
 	CLC
 	ADC !d_k
 	STA !d_k
-	LDA !d_end                   ; parts that fit
-	SEC
-	SBC.w !core_oam_cursor&$FFFF
-	BCC .full
-	BEQ .full
-	LSR
-	LSR
-	CMP !d_np
-	BCC +
+	; d_end is the first cursor without room, rather than a byte count
+	; aligned to four. Check each emitted part: rounding its distance down
+	; could produce a zero counter at the last slot, then wrap to $FFFF.
+	; Missing cache cells leave the same slot available to the next part.
 	LDA !d_np
-+	STA !d_n
+	BEQ .full
+	STA !d_n
 	LDX !d_pofs
 	LDY.w !core_oam_cursor&$FFFF
 .fpart
-	LDA.l fx_asm_data,X          ; x+128 | (y+128) << 8
-	CLC
-	ADC !d_k
-	STA.w $0800,Y
+	CPY !d_end
+	BCS .stored
 	LDA.l fx_asm_data+2,X        ; cell*8 | flips
 	AND.w #$00FF
 	PHX
 	TAX
 	LDA !d_tiles,X
 	PLX
-	CMP.w #$FFFF                 ; missing (flipped words have bit 15 set)
-	BEQ .fmiss
+	CMP.w #$FFFF
+	BEQ .fnext                  ; unavailable cell consumes no OAM slot
 	STA.w $0802,Y
+	LDA.l fx_asm_data,X          ; x+128 | (y+128) << 8
+	CLC
+	ADC !d_k
+	STA.w $0800,Y
 	INY
 	INY
 	INY
@@ -214,14 +277,11 @@ fx_emit_place:
 	INX
 	DEC !d_n
 	BNE .fpart
+.stored
 	TYA
 	STA.w !core_oam_cursor&$FFFF
 .full
 	RTS
-.fmiss
-	LDA.w #$E0FF                 ; cell not resident: keep the slot hidden
-	STA.w $0800,Y
-	BRA .fnext
 
 ; fx_emit_run: the set-up assembly placed A times, first at !d_x/!d_y,
 ; then every !d_rstep px along the direction registers (beam strips: 16). The
@@ -721,22 +781,26 @@ fx_cache_get:
 	STA !d_tmp+4                 ; cell word
 	AND.w #$01FF
 	STA !d_tmp                   ; cell id
-	JSR fx_rbit                  ; X = byte, A = bit
-	AND.l !fx_rbits,X
-	AND.w #$00FF
-	BNE +
-	JMP .miss                    ; not resident: nothing to search
-+	LDA !d_tmp
-	AND.w #$000F
+	; A matching hash entry is resident. Every residency reset also clears
+	; the hash, including conservative resets when just one region changes.
+	; Most effects reuse these cells every frame; avoid the bitset lookup.
+	AND.w #!FX_HASH_SIZE-1
 	TAX
 	LDA.l !fx_hash,X
 	AND.w #$00FF
 	CMP.w #30
-	BCS .scan
+	BCS .resident
 	TAX
 	LDA.l !fx_ccell,X
 	CMP !d_tmp
 	BEQ .hit
+.resident
+	LDA !d_tmp
+	JSR fx_rbit                  ; X = byte, A = bit
+	AND.l !fx_rbits,X
+	AND.w #$00FF
+	BNE .scan
+	JMP .miss                    ; not resident: nothing to search
 .scan
 	LDA !d_tmp
 	LDX.w #$0000
@@ -749,8 +813,10 @@ fx_cache_get:
 	JMP .miss
 .found
 	PHX                          ; remember the entry for this cell's bucket
+	LDA.w #1
+	STA.l !fx_hash_dirty
 	LDA !d_tmp
-	AND.w #$000F
+	AND.w #!FX_HASH_SIZE-1
 	TAX
 	PLA
 	SEP #$20

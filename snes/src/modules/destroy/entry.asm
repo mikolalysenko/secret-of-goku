@@ -17,23 +17,53 @@ destroy_field_frame:
 	JSR dst_walls_work
 	JSR dst_barrier_tick
 	JSR dst_orb_tick
+if defined("DESTROY_BEAMS_SYNC")
 	JSR dst_hit_continue
+endif
 	JSR ss_frame
+if defined("DESTROY_BEAMS_SYNC")
+	LDA.w #0 : STA.l !hp_worked
+endif
+	RTL
+
+; Beam scenery scans use spare time after FX. Combat damage and the
+; initial point-blank strike still run immediately.
+destroy_late_frame:
+if not(defined("DESTROY_BEAMS_SYNC"))
+	REP #$30
+	JSR dst_hit_continue
+	LDA.w #0 : STA.l !hp_worked
+endif
 	RTL
 
 ; A beam's band or barrier box left for later (dst_step_next) that no
 ; destroy_hit call worked on this frame: continue them from the saved
 ; arguments. Dropped when the field stops being idle (an event, a menu: the
 ; beam ended).
+; Combat runs before core_frame increments; this continuation runs after.
+; A per-field latch avoids scanning twice across that boundary, including
+; lag frames and the core counter's wrap. Debug hits use the same latch.
 dst_hit_continue:
 	LDA.l !hp_id : BNE +
 	RTS
-+	LDA.l !hp_frame : CMP.w !FRAME : BNE +
++	LDA.l !hp_worked : BEQ +
 	RTS
 +	JSR dst_ground_ok : BCS +
 	LDA.w #0 : STA.l !hp_id : STA.l !hp_left
 	RTS
-+	LDA.w !FRAME : STA.l !hp_frame
++
+if not(defined("DESTROY_BEAMS_SYNC"))
+	JSL modules_field_current
+	BCS +
+	RTS
++
+	JSR dst_vline
+	CMP.w #!DESTROY_HIT_LINE
+	BCC +
+	RTS
++
+endif
+	LDA.w #1 : STA.l !hp_worked
 	JSR dst_vline : STA.l !cl_t0
 	LDA.l !hp_id : STA.w !arg_id
 	LDA.l !hp_x : STA.w !arg_x
@@ -46,11 +76,7 @@ dst_hit_continue:
 	LDA.l !hp_str : STA.w !arg_str
 	LDA.l !hp_layer : STA.w !arg_layer
 	STZ.w !d_flags
-	LDA.l !hp_left : AND.w #1 : BEQ +
-	JSR dst_scan_attack
-+	LDA.l !hp_left : AND.w #2 : BEQ +
-	JSR dst_barrier_hit
-+	RTS
+	JMP dst_hit_work
 
 ; ---------------------------------------------------------------------------
 ; destroy_hit (JSL): one attack against the map. Arguments in !arg_*.
@@ -71,8 +97,24 @@ destroy_hit:
 	BCC .done
 	LDA.w !arg_kind : CMP.w #1 : BEQ .done
 	JSR ss_hit                   ; the Sandship breakout wave
-	LDA.w !FRAME : STA.l !hp_frame
+if not(defined("DESTROY_BEAMS_SYNC"))
+	LDA.w !arg_id : BEQ +
+	; The layer belongs to the submitted beam, even if Goku changes it
+	; before this request gets spare CPU time.
+	LDA.w !arg_layer : BPL ++
+	LDA.w $E00B : AND.w #$0080 : BEQ ++
+	LDA.w #1
+++	AND.w #1 : STA.w !arg_layer
+	JSR dst_hit_begin
+	BRA .done
++
+endif
+	LDA.w #1 : STA.l !hp_worked
 	JSR dst_vline : STA.l !cl_t0 ; the growth steps' time span starts
+	LDA.w !arg_id : BEQ .oneshot
+	JSR dst_hit_begin
+	BRA .done
+.oneshot
 	JSR dst_scan_attack          ; plants, objects, braziers, wall candidates
 	JSR dst_barrier_hit          ; gates, locks, hit/floor switches
 .done
@@ -80,6 +122,53 @@ destroy_hit:
 	PLP
 	PLB
 	RTL
+
+; Save the newest beam extent before either part runs. A busy first scan
+; may leave the second untouched; its arguments must survive even when
+; the beam ends before its next combat update. A replacement beam drops
+; the old request and starts with terrain, just like a new map.
+dst_hit_begin:
+	; Fading narrows the visible wave before a delayed scan necessarily
+	; reaches its outer edge. Retain everything this beam already touched.
+if not(defined("DESTROY_BEAMS_SYNC"))
+	LDA.l !hp_id : CMP.w !arg_id : BNE +
+	LDA.l !hp_len : CMP.w !arg_len : BCC ++
+	STA.w !arg_len
+++	LDA.l !hp_half : CMP.w !arg_half : BCC +
+	STA.w !arg_half
++
+endif
+	LDA.l !hp_id : CMP.w !arg_id : BEQ +
+	LDA.w #0 : STA.l !hp_left : STA.l !hp_turn
++	LDA.w #3 : JSR dst_hit_left
+if not(defined("DESTROY_BEAMS_SYNC"))
+	RTS
+endif
+	; fall through
+
+; Both parts share cl_t0. The first eligible part always gets a step;
+; the second waits if that used the budget. Alternate priority across
+; calls, including background continuations, so a wide beam cannot keep
+; either its barriers or its scenery waiting indefinitely.
+dst_hit_work:
+	LDA.l !hp_turn : BNE .barrier_first
+	LDA.w #1 : STA.l !hp_turn
+	LDA.l !hp_left : AND.w #1 : BEQ .barrier
+	JSR dst_scan_attack
+	JSR dst_hit_time : BCS .done
+.barrier
+	LDA.l !hp_left : AND.w #2 : BEQ .done
+	JMP dst_barrier_hit
+.barrier_first
+	LDA.w #0 : STA.l !hp_turn
+	LDA.l !hp_left : AND.w #2 : BEQ .terrain
+	JSR dst_barrier_hit
+	JSR dst_hit_time : BCS .done
+.terrain
+	LDA.l !hp_left : AND.w #1 : BEQ .done
+	JMP dst_scan_attack
+.done
+	RTS
 
 ; ---------------------------------------------------------------------------
 ; destroy_orb_hit (JSL): an attack touched actor X (offset from $7E:E000,
@@ -139,7 +228,7 @@ dst_sync_map:
 	DEX : DEX : BPL -
 	STA.l !FX_SEQ : STA.l !FX_KIND : STA.l !FX_X : STA.l !FX_Y
 	STA.l !ss_vis : STA.l !ss_work          ; the Sandship work restarts in its window
-	STA.l !hp_id : STA.l !hp_left
+	STA.l !hp_id : STA.l !hp_left : STA.l !hp_worked : STA.l !hp_turn
 	LDA.w #$D5A1 : STA.w !m_init
 	LDA.w #$FFFF : STA.w !d_map
 .inited
@@ -161,6 +250,8 @@ dst_sync_map:
 	STA.l !bb_id                       ; no beam's searched extent carries over
 	STA.l !hp_id                       ; nor a beam's band left for later
 	STA.l !hp_left
+	STA.l !hp_worked
+	STA.l !hp_turn
 	LDA.w #$FFFF : STA.w !d_last
 	JSR dst_run_fail_clear
 	JSR dst_classes_reset

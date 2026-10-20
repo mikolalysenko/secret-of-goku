@@ -209,6 +209,53 @@ world_dist2:
 ; used by the world map) are uploaded at every world entry. Landing checks
 ; read the original terrain from the ROM row (world_land_tile_hook).
 
+; A16 = row (wrapped to 0..511). Same ring location as C0:99F3, DB kept,
+; M16/X16 and D=0 on return. The fixed terrain is pre-expanded in ROM.
+; MVN is interruptible, so this never borrows an active HDMA channel.
+world_copy_row:
+	REP #$30
+	AND.w #$01FF
+	PHA
+	LSR : LSR : LSR : LSR : LSR : LSR
+	ASL
+	TAX
+	PLA
+	JSR (.banks,X)
+	LDA.w #$0000
+	TCD
+	RTS
+.banks
+	dw world_copy_row_0, world_copy_row_1, world_copy_row_2, world_copy_row_3
+	dw world_copy_row_4, world_copy_row_5, world_copy_row_6, world_copy_row_7
+macro world_row_copy(src, num)
+world_copy_row_<num>:
+	PHA
+	XBA
+	ASL
+	AND.w #$FE00
+	TAY
+	PLA
+	AND.w #$003F
+	XBA
+	ASL
+	CLC
+	ADC.w #<src>&$FFFF
+	TAX
+	LDA.w #511
+	PHB
+	MVN $7F,(<src>>>16)
+	PLB
+	RTS
+endmacro
+%world_row_copy(!XDATA_WORLD_ROWS_0, 0)
+%world_row_copy(!XDATA_WORLD_ROWS_1, 1)
+%world_row_copy(!XDATA_WORLD_ROWS_2, 2)
+%world_row_copy(!XDATA_WORLD_ROWS_3, 3)
+%world_row_copy(!XDATA_WORLD_ROWS_4, 4)
+%world_row_copy(!XDATA_WORLD_ROWS_5, 5)
+%world_row_copy(!XDATA_WORLD_ROWS_6, 6)
+%world_row_copy(!XDATA_WORLD_ROWS_7, 7)
+
 ; Crater entry X16 (byte offset in !pw_scars) -> w_scar_x0/y0 (tile column
 ; and row of the top-left, 0-511), w_scar_w/h (tiles), w_scar_id = layout
 ; address (bank $AD). M16/X16, any DB (long reads).

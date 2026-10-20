@@ -4,6 +4,30 @@
 ; and a scene's camera target through the camera dispatcher this module
 ; hooks (frieza-intro.js installAltarCamera).
 
+; Shared takeoff restriction, including Frieza and Vegeta's custom targets.
+; Any DB/D/M/X; preserves A/X/Y/DB/D, returns C set while a boss is alive.
+flight_api_boss_active:
+	PHP
+	REP #$30
+	PHB
+	PHD
+	PHA
+	PHX
+	PHY
+	PEA $7E7E
+	PLB
+	PLB
+	LDA.w #$0000
+	TCD
+	JSR fl_ce_boss
+	PLY
+	PLX
+	PLA
+	PLD
+	PLB
+	BCS fl_api_yes
+	BRA fl_api_no
+
 ; !FLIGHT_API_CAN_LAND: JSL, M16/X16, any DB and D. A16 = x, X16 = y (map
 ; pixels, the centre of the 12x8 footprint), at Goku's layer and terrain
 ; (E00B). C = canLand: no floor hole (!FLIGHT_MISSING_FLOOR) under the

@@ -287,7 +287,7 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 ; load, new game and map changes.
 !HP          = !PERSIST_DESTROY+$4C
 !hp_id       = !HP+$00   ; word: beam id with cells left to scan, 0 none
-!hp_frame    = !HP+$02   ; word: core frame of the last scan of it
+!hp_worked   = !HP+$02   ; word: hit work ran in this field update; cleared by the frame service
 !hp_x        = !HP+$04   ; words: its arguments (as !arg_x .. !arg_layer)
 !hp_y        = !HP+$06
 !hp_dir      = !HP+$08
@@ -307,12 +307,15 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 !cl_th       = !HP+$22   ; word: next step's half width
 !cl_t        = !HP+$24   ; word: scratch
 !cl_t0       = !HP+$26   ; word: scanline the call began on
-!hp_end      = !HP+$28
+!hp_turn     = !HP+$28   ; word: 0 terrain first, 1 barriers first next call
+!hp_end      = !HP+$2A
 assert !hp_end <= !PERSIST_DESTROY+$80, "destroy persistent block overflow"
-; New cells per growth step, and the scanlines a call may spend on steps
-; after its first (it always takes one of each kind).
-!DESTROY_STEP_CELLS = 16
-!DESTROY_HIT_SPAN   = 16
+; New cells per growth step, and the shared terrain/barrier scan budget.
+; A beam takes at least one step, alternating which part goes first so
+; neither can starve when the other's first step uses the whole budget.
+!DESTROY_STEP_CELLS = 8
+!DESTROY_HIT_SPAN   = 12
+!DESTROY_HIT_LINE   = 160  ; only start a beam scan before this end-of-frame line
 !SS_VIS_PAL    = $0001
 !SS_VIS_BREACH = $0002
 !SS_VIS_MAGIC  = $A500

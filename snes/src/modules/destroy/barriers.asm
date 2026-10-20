@@ -190,9 +190,12 @@ dst_touches:
 !nt_out  = !NTO
 dst_native_target:
 	LDA.w #$FFFF : STA.w !bh_best : STA.w !bh_bhi
+	; A deferred beam stays on the collision layer where it was fired.
+	LDA.w !arg_layer : BPL +
 	LDA.w $E00B : AND.w #$0080 : BEQ +
 	LDA.w #1
-+	STA.w !d_cl
++	AND.w #1 : STA.w !d_cl
+.layer
 	; outer cells: centre along in [0, len+8]
 	LDA.w !bh_sign : BMI .neg
 	LDA.w !s_a : SEC : SBC.w #8 : JSR dst_ceil16 : STA.w !s_o
@@ -349,7 +352,7 @@ dst_native_cell:
 	ORA.w #$4000
 +	TAX
 	LDA.l $7F0000,X
-	JSR dst_cell_class : AND.w #1 : BNE +
+	JSR dst_cell_class_fast : AND.w #1 : BNE +
 	RTS
 +	JSR dst_load_cell : BCC +
 	RTS

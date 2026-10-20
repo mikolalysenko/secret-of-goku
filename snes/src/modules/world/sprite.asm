@@ -129,7 +129,14 @@ world_mod:
 ; into the world's two CGRAM buffers ($0600 and the flash copy $DE00, both
 ; uploaded by C0:8A79), and into CGRAM by world_world_nmi.
 world_palettes:
-	LDX.w !w_cell_want
+	; OAM uses the currently resident cell. The pending cell is uploaded to
+	; the hidden buffer in NMI and is not drawn until the following frame.
+	; Following cell_want here flashed the new form's colours on the old art.
+	LDA.w !w_cell_show
+	ASL
+	TAX
+	LDA.w !w_cell_buf0,X
+	TAX
 	CPX.w #!GOKU_NONE
 	BEQ .fx
 	LDA.l goku_cell_pal,X

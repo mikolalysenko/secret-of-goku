@@ -50,8 +50,12 @@
 ; end of the rebuild.
 %orig4($C04699, $D04215BF)           ; LDA $D04215,X
 %hijack_jsl($C04699, cb_hook_level_read, 4, combat)
+if not(defined("COMBAT_ATTR_BATCH_SLOW"))
+%orig4($C04BD7, $A48505A9)           ; LDA #5 / STA $A4
+%hijack($C04BD7, cb_attr_batch, 4, combat)
+endif
 %orig4($C04BF2, $BDA6E7D0)           ; BNE $4BDB / LDX $BD
-%hijack_jsl($C04BF2, cb_hook_attr_clamp, 4, combat)
+%hijack($C04BF2, cb_hook_attr_clamp, 4, combat)
 %orig4($C04576, $6B2BAB28)           ; PLP / PLB / PLD / RTL
 %hijack($C04576, cb_hook_rebuild_end, 4, combat)
 

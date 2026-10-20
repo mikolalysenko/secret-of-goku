@@ -31,7 +31,7 @@ cb_hook_logic:
 	PHK
 	PER .read-1
 	PEA $B294-1
-	JML $0093B9
+	JML $8093B9
 .read
 	; (C0:B69C starts with SEP #$30 and loads what it uses: only P, DB and
 	; D need to survive combat)
@@ -52,7 +52,7 @@ cb_hook_logic:
 	PHK
 	PER .moved-1
 	PEA $B294-1
-	JML $00B69C
+	JML $80B69C
 .moved
 	RTL
 
@@ -74,6 +74,7 @@ endif
 	BEQ +
 	LDA !cb_vblanks               ; back from world flight: no catch-up
 	STA !cb_vb_last
+	JSR cb_cancel_combat           ; aerial charge/airBeam cannot leak into the field
 +	JSR cb_stats_upkeep
 	LDA !cb_vblanks
 	SEC
@@ -298,6 +299,7 @@ combat_field_frame:
 	CMP.b #$A5
 	REP #$20
 	BNE .out                      ; the logic hook has not run yet
+	JSR cb_ready_meter
 	; never hide a button combat injects (X routed to native Y while Y is
 	; ki): the core applies a mask to two reads but an injection to one
 	LDA !cb_inj_all
@@ -370,6 +372,7 @@ combat_world_frame:
 	JSR cb_read_input_world
 	JSR cb_world_body
 	JSR cb_publish
+	JSR cb_bind_loops
 	JSR cb_emit_input
 	REP #$30
 	RTL
@@ -918,6 +921,12 @@ cb_goku_frame:
 +	LDA !cb_recovering
 	BEQ +
 	RTS
++	JSR cb_bind_camera_pending
+	BEQ +
+	STZ !cb_inject
+	LDA.w #$FFF0
+	TSB !cb_mask
+	JMP cb_advance_action          ; flight handles queued teleports itself
 +	; idle: no combat button (or A), nothing running, pending or held
 	LDA !cb_in
 	AND.w #!IN_B|!IN_Y|!IN_L|!IN_X|!IN_A
@@ -1459,6 +1468,10 @@ cb_world_body:
 	RTS
 .active
 	JSR cb_form_break
+if defined("WORLD_MAGIC")
+	JSR cb_world_input
+	BCS .advance                  ; a transition, docking, wave or scene owns input
+endif
 	LDA !cb_in
 	BIT.w #!IN_L
 	BEQ .focus
@@ -1479,6 +1492,9 @@ cb_world_body:
 	BNE .advance
 	JSR cb_focus
 .advance
+if defined("WORLD_MAGIC")
+	JSR cb_world_attacks
+endif
 	JSR cb_advance_action
 	SEP #$20
 	LDA !cb_act

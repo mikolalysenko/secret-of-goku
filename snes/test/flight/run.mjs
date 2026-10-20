@@ -5,6 +5,8 @@
 //   landing   Instant Transmission differential: findLanding() for a grid of
 //             targets/origins by the cartridge and engine/native-teleport.js
 //   water     Water Palace gap: fly over, hover on release, cross, return
+//   passengers CPU companions ride flight and resume on landing; human
+//             ownership releases the actor immediately, status timers run
 //   teleport  teleport.spec.mjs: riverbank landing, offscreen target with the
 //             camera follow, cues, walking and the ring afterwards
 //   whip      whip-flight.spec.mjs / ki-world.spec.mjs whip pads (Earth Palace)
@@ -91,7 +93,7 @@ const symAt=name=>{
   const m=readFileSync(romSrc.replace(/\.sfc$/,'.sym'),'utf8').match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${name}$`,'mi'));
   if(!m)throw Error('no symbol '+name);return `0x${m[1]}${m[2]}`;
 };
-for(const t of ['water','teleport','whip','ceiling']){
+for(const t of ['water','passengers','teleport','whip','ceiling']){
   if(!want(t)||!existsSync(join(here,`${t}.lua`)))continue;
   const rom=privateRom(romSrc,`flight-${t}`);
   const world=/^[0-9A-F]{2}:[0-9A-F]{4} world_takeoff$/mi.test(readFileSync(romSrc.replace(/\.sfc$/,'.sym'),'utf8'));

@@ -17,7 +17,8 @@ endif
 ;        5 = the ceiling escape's roof colours (fl_ce_colors),
 ;        6 = opening exits (fl_test_exits), 7 = sweeps (fl_test_sweeps),
 ;        8 = the canLand services (fl_test_api_land), 9 = a walk of the
-;        on-foot canLand/canFly at the hero (fl_test_walk)
+;        on-foot canLand/canFly at the hero (fl_test_walk),
+;        10 = delay this field step by three real vblanks (clock regression)
 ;   +$02 word layer (0/1), +$04 word row (tile y)
 ;   +$06 word completion counter (incremented when a request is done)
 ;   +$08 word map width in tiles (written back), +$0A height
@@ -27,6 +28,11 @@ endif
 ; The map context is reloaded first, so imported states need no warm-up.
 fl_test_poll:
 	LDA.l !fl_sram_test
+	CMP.w #10
+	BNE +
+	JSR fl_bind_test_lag
+	JMP .ack
++
 	CMP.w #$0001
 	BNE +
 	JMP .row

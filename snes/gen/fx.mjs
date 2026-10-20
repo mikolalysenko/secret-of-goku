@@ -110,6 +110,7 @@ export async function generate({rom,repo,outDir,xdata}){
   assign(['gold-spark','gold-arc','gold-charge-orb','gold-beam-body','gold-beam-head','lightning','lightning-impact'],2);
   for(const p of deathSmall)for(const c of p)if(c)classColors[1].add(c);
   for(const p of death32)for(const c of p)if(c)classColors[1].add(c);
+  for(const c of friezaKiPalette)classColors[1].add(c);
   assign(['fire-beam-body'],3);
   for(const p of combustion)for(const c of p)if(c)classColors[3].add(c);
   const palettes=classColors.map((set,k)=>{
@@ -158,6 +159,8 @@ export async function generate({rom,repo,outDir,xdata}){
     groups[g].forEach((px,f)=>addTurns([{pair:cellPair(px,classOf[g],`${g}#${f}`),ox:-8,oy:-8,fx:false,fy:false}]));
   }
 
+  const stampCount=asms.length;
+
   // Beam strip band unions (sprite-layer.js: bands at round((b-(n-1)/2)*3),
   // later bands drawn over earlier ones), per frame. Blue (Kamehameha) has
   // every band count 1-7; Frieza's pink and the Fireball strip (orbit
@@ -166,8 +169,8 @@ export async function generate({rom,repo,outDir,xdata}){
   const bandIndex=[];                   // ((set*2+frame)*7 + n-1)*4 + turn -> assembly
   // Strip lines for the left/right polygon (poly.asm fx_poly_strip): per
   // band union and half turn (right, left) the offset of its first
-  // coloured line from the palms' line, the line count and each line's
-  // colour index in the set's class (0: none). The polygon draws one
+  // coloured line from the palms' line, line/run counts, a solid-span
+  // flag and (exclusive end row, colour) runs. The polygon draws one
   // colour per line, so every row of a union must be one colour across the
   // cell (asserted). A half turn maps the offset v to -v (pixel centres).
   const stripPtr=[],stripData=[],stripSeen=new Map();
@@ -175,7 +178,14 @@ export async function generate({rom,repo,outDir,xdata}){
     let a=0,b=rows.length-1;
     while(a<=b&&!rows[a])a++;
     while(b>=a&&!rows[b])b--;
-    const rec=a>b?[0,0]:[(first+a)&255,b-a+1,...rows.slice(a,b+1)];
+    const trimmed=rows.slice(a,b+1),runs=[];
+    for(let i=0;i<trimmed.length;){
+      const colour=trimmed[i];let end=i+1;
+      while(end<trimmed.length&&trimmed[end]===colour)end++;
+      runs.push(end,colour);i=end;
+    }
+    const rec=a>b?[0,0,0,0]:[(first+a)&255,trimmed.length,runs.length/2,
+      trimmed.every(c=>c!==0)?1:0,...runs];
     const key=rec.join(',');
     if(!stripSeen.has(key)){stripSeen.set(key,stripData.length);stripData.push(...rec);}
     return stripSeen.get(key);
@@ -361,18 +371,22 @@ export async function generate({rom,repo,outDir,xdata}){
   // here neighbours alternate phase / phase+1 (sparks) and the gold-arc
   // frames (palette rotations of one cell) stay fixed, so a ring needs at
   // most six cells at once, within what one vblank can upload.
-  const ringParts=(R,gold,age)=>{
-    const count=age<8?16:8,rad=R+age*1.5,phase=age>>1,parts=[];
+  const ringParts=(R,gold,age,compact=false)=>{
+    const count=age<8?(compact?8:16):(compact?4:8),rad=R+age*1.5,phase=age>>1,parts=[];
     const outer=age<8?(gold?'gold-arc':'aura-arc'):(gold?'gold-spark':'impact-spark'),spark=gold?'gold-spark':'impact-spark';
     for(let i=0;i<count;i++){
       const a=i*Math.PI*2/count,dx=Math.cos(a),dy=Math.sin(a),turn=Math.round(i*4/count)%4;
       parts.push(...shifted(stampAsm(outer,(age<8?0:phase)+(i&1),turn),Math.round(dx*rad),Math.round(dy*rad)));
-      if(age<5)parts.push(...shifted(stampAsm(spark,phase+(i&1),0),Math.round(dx*rad*.45),Math.round(dy*rad*.45)));
+      if(age<5&&(!compact||i%2===0))parts.push(...shifted(stampAsm(spark,phase+(i&1),0),Math.round(dx*rad*.45),Math.round(dy*rad*.45)));
     }
     return parts;
   };
   const ringBase=asms.length;            // ((R16 ? 2 : 0) + gold) * 14 + age
   for(const R of[56,16])for(const gold of[false,true])for(let age=0;age<14;age++)asms.push(ringParts(R,gold,age));
+  // Native gameplay keeps the expanding ring, with eight arcs and four
+  // inner sparks instead of 32 overlapping sprites at the reveal's peak.
+  const compactRingBase=asms.length;
+  for(const R of[56,16])for(const gold of[false,true])for(let age=0;age<14;age++)asms.push(ringParts(R,gold,age,true));
   // Ceiling-escape impact ring (ceiling-escape.js): 8 sparks, spread 5+1.7*age.
   const sparksBase=asms.length;
   for(let age=0;age<12;age++){const parts=[];
@@ -407,6 +421,40 @@ export async function generate({rom,repo,outDir,xdata}){
   }
 
   // --- encode ------------------------------------------------------------------
+  // Compact gameplay aura: two mini cells or six full-size cells. A second
+  // pose mirrors the same resident tiles, so animation needs no new DMA.
+  // Ordinary OBJ transparency never changes the backdrop under cut grass.
+  const auraSpriteBase=asms.length,auraSprites=[];
+  const auraEffects={'charge-orb':groups['charge-orb'],'gold-arc':groups['gold-arc']};
+  for(const [tone,cls] of [['blue',0],['gold',2],['pink',1]])for(const mini of [true,false]){
+    const w=mini?16:32,h=mini?32:48,oy=(mini?8:16)-h,source=new Map();
+    drawKiAura(auraEffects,0,0,9,(x,y,c)=>source.set(`${x},${y}`,c),{tone,power:1,height:mini?16:32,clock:0});
+    const xy=[...source.keys()].map(k=>k.split(',').map(Number));
+    const x0=Math.min(...xy.map(p=>p[0])),x1=Math.max(...xy.map(p=>p[0]));
+    const y0=Math.min(...xy.map(p=>p[1])),y1=Math.max(...xy.map(p=>p[1]));
+    const px=new Uint16Array(w*h),parts=[];
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++)
+      px[y*w+x]=source.get(`${x0+Math.floor(x*(x1-x0+1)/w)},${y0+Math.floor(y*(y1-y0+1)/h)}`)??0;
+    // Mirror the full-size flame around Goku. Three resident cells supply
+    // both sides, halving cache resolution and upload work without making
+    // the aura narrower. Retain the outermost tongue on either side.
+    if(!mini)for(let y=0;y<h;y++)for(let x=0;x<w/2;x++){
+      const c=px[y*w+x]||px[y*w+w-1-x];px[y*w+x]=c;px[y*w+w-1-x]=c;
+    }
+    for(let y=0;y<h;y+=16)for(let x=0;x<(mini?w:w/2);x+=16){
+      const tile=new Uint16Array(256);
+      for(let j=0;j<16;j++)tile.set(px.subarray((y+j)*w+x,(y+j)*w+x+16),j*16);
+      const cell=addCell(tile,cls,`aura-${tone}-${mini?'mini':'full'}-${x}-${y}`);
+      if(cell>=0){
+        parts.push({cell,x:x-w/2,y:y+oy,h:false,v:false});
+        if(!mini)parts.push({cell,x:w/2-x-16,y:y+oy,h:true,v:false});
+      }
+    }
+    asms.push(parts,parts.map(p=>mini?({...p,x:-p.x-16,h:!p.h}):({...p,y:p.y-1})));
+    auraSprites.push({tone,w,h,x:-w/2,y:oy,px:[...px]});
+  }
+  writeFileSync(join(outDir,'aura-sprites.json'),JSON.stringify(auraSprites));
+
   if(cells.length>512)throw Error(`fx: ${cells.length} cells exceed 9-bit ids`);
   const bin=new Uint8Array(cells.length*CELL_BYTES);
   cells.forEach((cell,i)=>{
@@ -591,15 +639,38 @@ export async function generate({rom,repo,outDir,xdata}){
   STAMP_GROUPS.forEach((g,i)=>a.def(`FX_SG_${g.replace(/-/g,'_').toUpperCase()}`,i));
   a.def('FX_STAMP_GROUPS',STAMP_GROUPS.length);
   a.def('FX_ASM_BURST',burstBase);a.def('FX_ASM_EMBER',emberBase);
+  a.def('FX_ASM_AURA',auraSpriteBase);
   a.def('FX_ASM_DEATH16',deathBase);a.def('FX_ASM_DEATH32',death32Base);a.def('FX_ASM_DISC',discBase);
   a.def('FX_ASM_FINGER',fingerBase);a.def('FX_ASM_FRAGMENT',fragBase);a.def('FX_ASM_LASER',laserBase);
   a.def('FX_ASM_RING',ringBase);a.def('FX_ASM_SPARKS',sparksBase);a.def('FX_ASM_STATUS',statusBase);a.def('FX_ASM_RUBBLE',rubbleBase);a.def('FX_ASM_DUST',dustBase);
+  a.def('FX_ASM_RING_COMPACT',compactRingBase);
   a.label('fx_class_palettes');for(const p of palettes){const row=[0,...p.map(c=>c-1)];while(row.length<16)row.push(0);a.dw(row);}
   a.label('fx_cell_class');a.db(cells.map(c=>c.cls));
   a.label('fx_stamp_base');a.dw(stampBase);
   a.label('fx_stamp_frames');a.db(stampFrames);
   a.label('fx_asm_ptr');a.dw(asmPtr);
   a.label('fx_asm_data');a.db(asmBytes);
+  // The resident full-size aura always consists of three mirrored rows.
+  // Keep its cell words together so drawing it does not prepare unused
+  // vertical flips or decode six generic parts every frame.
+  a.label('fx_aura_cells');
+  for(const [index,parts] of asms.slice(auraSpriteBase,auraSpriteBase+12).entries()){
+    if((index&2)===0){a.dw([0,0,0,0]);continue;}
+    const top=-32-(index&1);
+    if(parts.length!==6||parts.some((p,k)=>p.x!==((k&1)?0:-16)||p.y!==top+16*(k>>1)||
+      p.h!==!!(k&1)||p.v||p.cell!==parts[k&~1].cell))throw Error('fx: unsupported resident aura layout');
+    a.dw([top&65535,...parts.filter((_,k)=>!(k&1)).map(p=>p.cell|((p.cls??cells[p.cell].cls)<<9))]);
+  }
+  // These tables are addressed with long loads and fit in the data bank;
+  // leave the nearly full code bank room for the renderers themselves.
+  a.label('fx_stamp_cells');
+  for(const parts of asms.slice(0,stampCount)){
+    if(parts.length>1)throw Error('fx: multi-part stamp needs the generic emitter');
+    const p=parts[0];
+    a.dw(p?[p.cell|((p.cls??cells[p.cell].cls)<<9)|(p.h?0x4000:0)|(p.v?0x8000:0),
+      b8(p.x)|(b8(p.y)<<8)]:[0xFFFF,0]);
+  }
+  a.label('fx_stamp_cells_end');
   a.label('fx_band_index');a.dw(bandIndex);
   a.def('FX_DET_FRAMES',detGroups.length);
   a.def('FX_STRIP_LASER',laserStrip);
@@ -609,8 +680,27 @@ export async function generate({rom,repo,outDir,xdata}){
   // kept for cells, assemblies and palettes).
   const t=new Asm();
   t.raw('; Generated by snes/gen/fx.mjs - do not edit.');
+  t.label('fx_aura_asm_id');t.dw([auraSpriteBase]);
   t.label('fx_strip_ptr');t.dw(stripPtr);
   t.label('fx_strip_data');t.db(stripData);
+  // Fully visible opaque strips can copy their colour HDMA directly.
+  // Edge-clipped or transparent strips retain the general run writer.
+  const hdmaPtr=[],hdmaData=[],hdmaSeen=new Map();
+  stripPtr.forEach((off,index)=>{
+    const cls=index<laserStrip?BAND_SETS[Math.floor(index/28)][1]:1,body=[];
+    let row=0;
+    if(stripData[off+3])for(let i=0;i<stripData[off+2];i++){
+      const end=stripData[off+4+i*2],c=stripData[off+5+i*2];
+      const rgb=palettes[cls][c-1]-1;
+      body.push(end-row,0,0,rgb&255,rgb>>8);row=end;
+    }
+    if(body.length+46>185)throw Error('fx: strip HDMA exceeds its buffer');
+    const record=[body.length,cls*32,...body],key=record.join(',');
+    if(!hdmaSeen.has(key)){hdmaSeen.set(key,hdmaData.length);hdmaData.push(...record);}
+    hdmaPtr.push(hdmaSeen.get(key));
+  });
+  t.label('fx_strip_hdma_ptr');t.dw(hdmaPtr);
+  t.label('fx_strip_hdma_data');t.db(hdmaData);
   t.label('fx_det_ptr');t.dw(detPtr);
   t.label('fx_ember_path');t.db(emberPath);
   t.label('fx_det_data');t.db(detBytes);

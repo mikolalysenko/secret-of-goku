@@ -38,14 +38,15 @@ function test()
   H.wait(3)
   n, miss = found(want(120, 90, true))
   check('mirrored_all_pieces', n == 5, 'missing ' .. miss)
-  -- In front of the natives (field): the commit puts them in the lowest slots.
+  -- In front of the natives through either hardware rotation or insertion.
   setct(0x5A, 0); setct(0x50, 2)
   H.wait(3)
   local w = want(120, 90, false)
   local slot = findOam(w[1].x, w[1].y, w[1].tile)
   n, miss = found(w)
   check('front_all_pieces', n == 5, 'missing ' .. miss)
-  check('front_in_front', slot ~= nil and slot < 8, tostring(slot))
+  local first = OAM_ROTATED and (H.r8(CORE_SAFE+0x17)&0x7F) or 0
+  check('front_in_front', slot ~= nil and slot == first, tostring(slot))
   -- Culling at the top edge: anchor y = -20 -> 16x16 pieces at dy 0 (y + 16 <= 0)
   -- vanish, those at dy 16 (y = -4) stay; the 32x32 at dy -8 (y = -28) stays.
   setct(0x50, 1); setct(0x54, -20 & 0xFFFF)

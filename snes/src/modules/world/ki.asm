@@ -22,6 +22,8 @@ world_ki:
 	BEQ +
 	DEC.w !w_warn_cd
 +	; the game's buttons in flight
+	LDA.w !w_combat_owns
+	BNE .tick                       ; combat has already filtered and consumed this frame's pad
 	LDA.w #!PAD_Y|!PAD_X
 	TSB.w !core_pad_mask&$FFFF
 	LDA.w #!PAD_L|!PAD_R
@@ -99,6 +101,11 @@ world_ki_busy:
 .busy
 	SEC
 	RTS
+
+; Shared combat input asks the same transition/shot/docking gate.
+world_controls_locked:
+	JSR world_ki_busy
+	RTL
 
 ; Local charge stand-in (world-ki.js tick, with mod.startCharge/fire).
 world_ki_input:

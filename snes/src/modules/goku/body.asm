@@ -19,10 +19,10 @@ goku_body_hook:
 	AND.w #$000F
 	STA $02
 	BEQ .done
-	JML $00E5EC
+	JML $80E5EC
 .done
 	SEP #$20
-	JML $00E5DF              ; RTS to the native caller
+	JML $80E5DF              ; RTS to the native caller
 
 ; C0:E553 hook (replaced LDA $E024,X / BPL $E565): attachments of actor X.
 ; M8 X16, DB = $7E. While Goku stands in, the boy's weapon cells (drawn
@@ -50,13 +50,13 @@ goku_attach_hook:
 .decayed
 	STA $E00D
 .body
-	JML $00E8C6              ; body only (C0:E8C6 -> E5CE)
+	JML $80E8C6              ; body only (C0:E8C6 -> E5CE)
 .native
 	LDA $E024,X
 	BPL .body_first
-	JML $00E558
+	JML $80E558
 .body_first
-	JML $00E565
+	JML $80E565
 
 ; C0:E760 hook (replaced SEP #$20 / LDY #$FFF8). Shadow of actor X.
 goku_shadow_hook:
@@ -65,13 +65,13 @@ goku_shadow_hook:
 	BNE .native
 	LDA !shadow_hidden
 	BEQ .record
-	JML $00E76C              ; RTS: no shadow this frame
+	JML $80E76C              ; RTS: no shadow this frame
 .record
 	JSR goku_rec_slot        ; where actor 0's shadow goes (if drawn)
 	STA !rec_shadow
 .native
 	LDY.w #$FFF8
-	JML $00E765
+	JML $80E765
 
 ; A8 = the OAM slot the next appended sprite takes ($7C / 4). M8 in/out.
 goku_rec_slot:
@@ -311,6 +311,20 @@ goku_emit:
 ; inject(): per-line part). Airborne Goku uses priority 3 and drops the water
 ; palette. M16 X16; keeps e_* inputs.
 goku_part_attr:
+if not(defined("GOKU_AIR_ATTR_SLOW"))
+	PHA
+	LDA !goku_ctl
+	BIT.w #!GOKU_CTL_AIRBORNE
+	BEQ .native
+	PLA
+	; Flight owns palette 1 and priority 3, independent of the ground
+	; body's per-row water/ledge attributes. The tinted palette is mirrored
+	; to this slot by goku_palette_air before it is uploaded.
+	LDA.w #$0033
+	RTS
+.native
+	PLA
+endif
 	SEC
 	SBC $06                  ; line relative to the native anchor
 	STA !t_b

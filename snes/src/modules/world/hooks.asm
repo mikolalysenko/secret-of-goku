@@ -171,9 +171,39 @@ world_nmi_sky_hook:
 	JML $00890B
 
 ; ---------------------------------------------------------------------------
+; C0:8045 (JSR $82C4 / SEP #$30): load world graphics after takeoff or
+; closing the native map viewer. This is a reload even without a mode change.
+world_load_hook:
+	; The native loader has reset the stack and force-blanked the display.
+	; Invalidate the session so its first frame reclaims/reloads all art,
+	; palettes and effects, including the cached UI sprites from the map.
+	PHP
+	PHB
+	PHD
+	REP #$30
+	PEA $7E7E
+	PLB
+	PLB
+	LDA.w #$0000
+	TCD
+	JSR world_ram_check
+	STZ.w !w_mode_prev
+	STZ.w !w_oam_reserve
+	STZ.w !w_oam_used
+	LDA.w #!WF_ACTIVE
+	TRB.w !w_flags
+if getfilestatus("ui/defines.asm") == 0
+	JSL ui_world_reload
+endif
+	PLD
+	PLB
+	PLP
+	%call00($82C4)
+	SEP #$30
+	JML $80804A
+
 ; 00:8064 (JML, replaced SEP #$20 / JSR $8B5E): top of the world loop, right
-; after the vblank wait. A Fortress landing queued by the destruction route
-; leaves through the Fortress's own docking ABI here.
+; after the vblank wait. A queued Fortress landing uses its native ABI.
 world_loop_hook:
 	PHP
 	REP #$20
@@ -188,8 +218,10 @@ world_loop_hook:
 .native
 	PLP
 	SEP #$20
-	PEA $8068                       ; JSR $8B5E returns to 00:8069
-	JML $008B5E
+	; Keep the native world logic in its FastROM mirror. Low WRAM/IO and
+	; the ROM contents match bank $00; NMI/IRQ vectors remain unchanged.
+	PEA $8068                       ; JSR $8B5E returns to 80:8069
+	JML $808B5E
 .land
 	PLP
 	JML world_fortress_landing
@@ -206,13 +238,13 @@ world_flammie_hook:
 	LDA.l $7E0000|!w_oam_reserve
 	STA $7C
 	STZ $7D
-	JML $009DE9                     ; RTS returns to the world loop
+	JML $809DE9                     ; RTS returns to the world loop in FastROM
 .native
 	LDA $BF
 	BNE .dock
-	JML $009AD4
+	JML $809AD4
 .dock
-	JML $009ACB
+	JML $809ACB
 
 ; ---------------------------------------------------------------------------
 ; C2:B112 (JSL, 6 bytes, replaced LDA $E3 / BIT #$40 / BNE $B119): the Mana
@@ -318,7 +350,7 @@ world_event_sound_hook:
 ; row (pushed at C0:98FC) into the 7F ring, then draw the craters crossing
 ; it. Entry: M16 X8, D = 0, DB = the world loop's.
 world_scar_row_hook:
-	%call00($99F3)
+	JSR world_copy_row
 	PHP
 	PHB
 	REP #$30

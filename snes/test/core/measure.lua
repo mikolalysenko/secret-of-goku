@@ -28,9 +28,10 @@ function test()
   -- Main-loop frame ends (before the original instruction runs).
   on(emu.callbackType.exec, 0x00B073, 0x00B073, function() add(samples.fieldEnd, line()); add(samples.oam, H.r16(0x7C) >> 2) end)
   on(emu.callbackType.exec, 0x008085, 0x008085, function() add(samples.worldEnd, line()) end)
-  -- NMI work: field reaches 00:C15F (after core) / world 00:8907.
+  -- NMI work: field reaches 00/80:C15F (after core) / world 00:8907.
   on(emu.callbackType.exec, 0x00C0A8, 0x00C0A8, function() add(samples.nmiStart, line()) end)
   on(emu.callbackType.exec, 0x00C15F, 0x00C15F, function() add(samples.fieldNmiEnd, line()) end)
+  on(emu.callbackType.exec, 0x80C15F, 0x80C15F, function() add(samples.fieldNmiEnd, line()) end)
   on(emu.callbackType.exec, 0x008907, 0x008907, function() add(samples.worldNmiEnd, line()) end)
   on(emu.callbackType.write, 0x00420B, 0x00420B, function(addr, value)
     mdmaen[value] = (mdmaen[value] or 0) + 1
