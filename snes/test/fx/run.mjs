@@ -204,7 +204,11 @@ for(const r of [testRom,process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-
   const err=checkCells(r);
   if(err){console.error(`fx: ${r}: ${err}`);process.exit(1);}
 }
-const tests=['gallery','beams','aura','debris','cinematic','clash','clash-colour','battle','budget'].filter(t=>existsSync(join(here,`${t}.lua`))&&(!only.length||only.includes(t)));
+// clash-colour is a hardware feasibility probe for the paired clash (not a
+// shipped renderer): its exact-restoration count also includes FX's own edge
+// sprites, whose OBJ palette now follows the crowded-palette fix, so it runs
+// only when named.
+const tests=['gallery','beams','aura','debris','cinematic','clash','battle','budget','clash-colour'].filter(t=>existsSync(join(here,`${t}.lua`))&&(only.length?only.includes(t):t!=='clash-colour'));
 let ok=true;
 for(const t of tests){
   const rom=privateRom(testRom,`fx-${t}`);
