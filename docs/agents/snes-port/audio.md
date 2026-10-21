@@ -8,6 +8,97 @@ Everything below about the native driver was reverse-engineered from the US
 cartridge (`snes/gen/audio-spc700.mjs` disassembles it) and cross-checked
 against 277 ARAM/DSP snapshots of the browser mod (`.local/snes-import/`).
 
+## Swing and ki follow-up (October 21, 2026)
+
+This follows committed punch work `91c53d9`. Only the `$E5/$E6` swings and
+`$DE` ki launch change. The stronger HIT/KICK tracks and overlap gain rule,
+retail `$38` contact, four resident BRRs, charge/aura, beam, teleport,
+flight, music, rare voices and loader remain unchanged. No combat/FX or
+core change, new cue id, stream, or 65816 instruction is needed.
+
+Punch and kick swings now use the resident aura texture instead of retail
+instrument 1. Punch swells for six native ticks and fades for sixteen,
+while falling five semitones. Kick swells for four and fades for thirty-two,
+starts lower, and falls seven semitones. Both use one voice and native F2
+release. Audible dry tails measure **195 / 320 ms**, with ownership
+**230 / 360 voice-ms** (previously 240 / 360). Their maximum normalized
+autocorrelation over 125–1,000 Hz periods falls from **1.000 / .651** to
+**.195 / .246**, consistent with replacing the periodic buzz with noise-like
+texture. This is a waveform measurement, not a listening-quality score.
+
+The SPC effect-start hook alternates E5 tuning between **.9765625 and
+1.03125**, close to the browser's rate spread. It toggles only the E9
+operand at `$3A47`; the generator derives/asserts that location from the
+packed sequence layout. Native sequence reloads can reset the alternation.
+It adds no timer or CPU command. Swings use full authored DSP gain; the
+existing contact attenuation rule is unchanged, including during swing
+tails. Swings and ki never enable DSP noise, so they cannot retune a
+contact crack or held BRR bed. The tests exercise contacts one and two
+frames after each swing, including the native noise-clock restoration.
+
+Ki retains instrument 9 and its upward sweep. A two-semitone lift, stronger
+initial level, shallow second swell and final taper replace the flat
+sustain/abrupt cutoff. The dry peak rises **2.80 dB**, from −18.44 to
+**−15.64 dBFS**; audible-window RMS rises .17 dB. The spectral centroid is
+**2,907 Hz**, versus 2,706 before and 2,974 for the PC reference. Ownership
+stays **700 voice-ms**, one voice. Repeated `$DE` commands reuse that voice:
+five-frame volleys with `$38` contacts use at most three effect voices,
+or four with a full-power beam. Native F2 returns them to music.
+
+All **18 Node/SPC overlap cases** pass with zero clipping and intact banks:
+1/2-frame contacts, 5/8-frame volleys, battle/full-power music, beams and
+held beds. The new raw Mesen takes also have zero clipped samples; the
+beam/volley peaks are **−2.44 / −2.51 dBFS** in battle/full-power music.
+Trace files confirm the requested event spacing. Separate actual-input
+takes include B-held melee and 37 Super Saiyan launches with contact.
+The cartridge uses a shaped native ki sound and reused swing texture;
+neither is a direct copy of the corresponding PC clip.
+
+Validation: strict builds; **37 audio Node/SPC tests**, five-song reference
+render, **all 11 audio Mesen cases**, all **13 gameplay**, **6 perf** and
+**37 combat** cases pass. Audio includes 64 canonical / 192 power-on song
+loads, rare voices and imports. Every gameplay miss count equals the
+immediately preceding cartridge on the same private restored checkpoints:
+charge 13, teleport 3, fly-ki 2, fly/fly-punch 1, all others 0 per 240 frames.
+This does not replace the maintainer's pending clean historical charge
+comparison. Shared checkpoint hashes remain unchanged; checkpoint publishing
+was never enabled.
+
+Command maximum remains **1.349 lines**. The settled idle callback is
+**.33480 / .33441 lines** in sword/battle, exactly equal before/after,
+including JSL (maximum .35337). Unsettled `modprof` means remain .41 lines.
+The 144-byte selector body plus RTL is byte-identical; all perf p90/lag
+results are unchanged. The reservation remains 2,304 bytes and uses 2,302;
+the shared sequence/table area uses 255/283. Storage alternatives and the
+52 new listening WAVs are listed in [audio-samples.md](audio-samples.md#swing-and-ki-follow-up).
+
+Strict default SHA-256:
+`5d72488f8b36f37c06f4659657be3c35550d3f51dfd2221be0bcab827d6ecb8f`.
+Define-0 rollback SHA-256:
+`56ed7992b1f2abf06561a1d5553d1ab151e5fc7fd8d8ff0941a9a63508115388`,
+byte-identical to the independent round-four ROM. The final default rebuild
+also matches the frozen ROM used for all captures and tests.
+
+| File | Follow-up change |
+| --- | --- |
+| `snes/gen/audio-resident7.mjs` | Three new sequences, shared layout calculation and asserted swing-tuning operand |
+| `snes/src/modules/audio/spc/beds.s` | Swing gain and command-time tuning alternation; 17 added SPC bytes |
+| `snes/test/audio/motion.mjs` **new** | Dry metrics, 18 overlap scenarios and sample/EDL alternatives |
+| `snes/test/audio/motion.test.mjs` **new** | Periodicity, loudness, tuning/noise isolation, headroom and voice-release checks |
+| `snes/test/audio/resident.test.mjs` | Validate retail preservation against the actual round-seven packing |
+| `snes/test/audio/run.mjs` | Include motion tests in the audio suite |
+| `snes/test/audio/capture7.mjs`, `capture7.lua` | Fifteen motion-only cartridge takes and dispatcher traces per version |
+| `snes/test/audio/pc7.mjs` | Seven browser swing/combo/fast-volley references |
+| `snes/test/audio/manifest7.mjs` | Three-way comparisons, current-cartridge tag and artifact inventory |
+| `snes/test/audio/profile7.mjs` | Explicit before/after paths and isolated report/output options |
+| `docs/agents/snes-port/audio.md`, `audio-samples.md` | Behavior, validation, storage and listening records |
+
+Private evidence: `.local/snes-test/audio/compare7/manifest.json`,
+`motion-analysis7.json`, `motion-validation7.json`, `motion-cpu7.json`;
+suite logs/checkpoints remain under `.local/snes-test/audio/motion7/` and
+the previously isolated `punch7/checkpoints/`. No requests for other modules
+or core. Perceptual approval remains with the maintainer's listening pass.
+
 ## Punch contact follow-up (October 21, 2026)
 
 Merged main `5f99811` before this work (merge `6758272`). The title runner

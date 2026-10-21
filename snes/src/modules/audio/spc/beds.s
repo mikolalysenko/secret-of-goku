@@ -100,7 +100,7 @@ bed_find_skip:
  MOV A,#0
  RET
 ; Native gain has a fixed 1/2 attenuation. Keep it for retail/music and E9's
-; distant impact; E7/E8 contacts and the sampled PC cues use full gain.
+; distant impact; sampled swings, E7/E8 contacts and PC cues use full gain.
 resident_gain:
  CMP X,#$10
  BCC gain_half
@@ -110,13 +110,16 @@ resident_gain:
  LSR A
  MOV Y,A
  MOV A,!$FF80+Y
- CMP A,#$E7
+ CMP A,#$E5
  BCC gain_old
+ CMP A,#$E7
+ BCC gain_full
  CMP A,#$E9
  BCC gain_contact
  BEQ gain_old
  CMP A,#$F1
  BCS gain_old
+gain_full:
  POP A
  BRA gain_done
 gain_old:
@@ -192,6 +195,12 @@ bed_release:
 ; The beam command is also its charge-release command. This saves a CPU
 ; stop dispatch on the busiest beam/contact frame, without a timer or poll.
 resident_effect:
+ CMP $B5,#$E5
+ BNE swing_ready
+ MOV A,!SWING_TUNE
+ EOR A,#$F2               ; $FA / $08: rates .9765625 / 1.03125
+ MOV !SWING_TUNE,A
+swing_ready:
  OR $C9,$AE                ; recalculate existing contacts before a new mix
  MOV A,$B5
  CMP A,#$EA

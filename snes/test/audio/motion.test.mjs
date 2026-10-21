@@ -1,0 +1,50 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {createApu} from './apu.mjs';
+import {isResident7} from './cartridge.mjs';
+import {motionComparison,motionMixes} from './motion.mjs';
+const rom=readFileSync(process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc'),skip=!isResident7(rom);
+test('swings lose periodic buzz; ki retains punch and all three keep their single-voice budget',{skip},()=>{
+ for(const r of motionComparison(rom)){
+  assert.equal(r.after.ended,true);assert.equal(r.after.voices,1);
+  assert.ok(r.after.voiceMs<=r.before.voiceMs,r.cue+' music voice ownership');
+  if(r.cue!=='blast'){
+   assert.ok(r.after.periodicity<.4&&r.after.periodicity<r.before.periodicity/2,r.cue+' periodicity');
+   assert.ok(r.after.timeToPeakMs>=20&&r.after.timeToPeakMs<90,r.cue+' quick swell');
+  }else{
+   assert.ok(r.after.peakDbFS>=r.before.peakDbFS+2,'stronger launch attack');
+   assert.ok(r.after.features.levelDb>=r.before.features.levelDb,'no softer launch');
+   assert.ok(Math.abs(r.after.features.centroid-r.pc[0].centroid)<Math.abs(r.before.features.centroid-r.pc[0].centroid));
+  }
+ }
+});
+test('punch swings alternate tuning and neither swing retunes the contact crack',{skip},()=>{
+ const pitches=[];
+ for(let pass=0;pass<2;pass++){
+  const h=createApu({rom});h.ms(60);
+  for(let i=0;i<4;i++){
+   h.nativeCmd(2,0xE5,15,0x88);h.ms(60);pitches.push(h.dspReg(0x72)|(h.dspReg(0x73)<<8));h.ms(500);
+  }
+ }
+ assert.ok(pitches[0]>pitches[1]&&pitches[2]>pitches[3]);assert.deepEqual(pitches.slice(0,4),pitches.slice(4));
+ for(const id of [0xE5,0xE6]){
+  const h=createApu({rom});h.ms(60);h.nativeCmd(2,id,15,0x88);h.ms(60);
+  const early=h.dspReg(0x72)|(h.dspReg(0x73)<<8);h.ms(100);
+  const late=h.dspReg(0x72)|(h.dspReg(0x73)<<8);
+  assert.ok(late<early*.95,'swing pitch falls during its tail');
+ }
+ // Explicitly compare shared FLG/NON activity with and without the swing.
+ // Observe the contact's whole tail at 1 ms resolution, at both delays.
+ for(const swing of [0xE5,0xE6])for(const gap of [1,2]){
+  const trace=withSwing=>{const h=createApu({rom});h.ms(60);if(withSwing)h.nativeCmd(2,swing,15,0x88);h.ms(gap*1000/60.0988);h.nativeCmd(2,0xE7,15,0x88);const clocks=[];for(let i=0;i<180;i++){h.ms(1);if(h.dspReg(0x3D)&h.ram[0xAE])clocks.push(h.dspReg(0x6C)&31);}return [...new Set(clocks)];};
+  assert.deepEqual(trace(true),trace(false));assert.deepEqual(trace(true),[31]);
+ }
+});
+test('1/2-frame contacts and 5-frame ki volleys preserve headroom, noise state and music ownership',{skip},()=>{
+ for(const r of motionMixes(rom)){
+  const label=JSON.stringify(r);assert.equal(r.clipped,0,label);assert.ok(r.peak<30000,label);
+  assert.ok(r.maxLaunchVoices<=1);assert.ok(r.maxSwingVoices<=2);assert.ok(r.maxVoices<=8);
+  assert.equal(r.noiseMismatch,0,label);assert.equal(r.musicMask,255);assert.equal(r.effectMask,0);assert.equal(r.noiseMask,0);assert.equal(r.bankIntact,true);
+ }
+});

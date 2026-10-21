@@ -22,6 +22,20 @@ export const CONTACTS7=[
   [0xD2,0xA8,0xDD,30,0xDE,0x0E,0xDD,28,0xD3,3,0,0xC2,0xF2],
   [0xD2,0xD8,0xEA,3,0xE4,4,0xD6,10,0xE8,0xD3,16,0,0x09,0xF2]]},
 ];
+// Motion follow-up. The aura BRR provides broadband swings without touching
+// the DSP's shared noise clock. E5's tuning byte alternates in resident_effect;
+// the native sequence reload may reset that alternation at a song change.
+// DE keeps its native bright carrier, with a stronger attack, a shallow
+// second swell and a tapered tail. All three still use exactly one voice.
+export const MOTION7=[
+ {id:0xE5,tracks:[[0xD2,0,0xEA,0x31,0xE4,4,0xE9,0xFA,0xD6,22,0xFB,0xD3,6,0xD0,0x93,0xD3,16,0,0xBD,0xF2]]},
+ {id:0xE6,tracks:[[0xD2,0,0xEA,0x31,0xE4,4,0xE9,0xC0,0xD6,36,0xF9,0xD3,4,0xE0,0x94,0xD3,32,0,0xBA,0xF2]]},
+ {id:0xDE,tracks:[[0xD2,0xD0,0xEA,9,0xE4,4,0xE7,2,0xD6,64,12,0xD3,16,0x90,0x54,0xD3,24,0xC0,0xBC,0xD3,32,0,0xBA,0xF2]]},
+];
+export function resident7Layout(rom,tracks){
+ const retained=RESIDENT.filter(r=>!tracks.has(r.id)).map(r=>[...CONTACTS7,...MOTION7].find(c=>c.id===r.id)??r);
+ retained.push({id:0xF0,tracks:[]});return residentLayout(rom,retained);
+}
 const root=resolve(import.meta.dirname,'../..');
 const hash=b=>createHash('sha256').update(b).digest('hex');
 const source=(name,rate)=>{const w=readWav(readFileSync(join(root,`assets/audio/dbz/${name}.wav`)));return resample(w.pcm,w.rate,rate);};
@@ -72,7 +86,10 @@ export function buildResident7(){
  ]);
  const pointers=[],sequences=[];
  for(const [id,seq] of tracks){const pair=new Uint8Array(4);word(pair,0,at);pointers.push({addr:0x2C00+id*4,bytes:pair});sequences.push({id,addr:at,bytes:seq});bank.set(seq,at-SAMPLE_BASE);at+=seq.length;}
- const code=assemble(readFileSync(join(root,'snes/src/modules/audio/spc/beds.s'),'utf8'),{name:'beds.s',symbols:{CODE_BASE:at}});
+ const layout=resident7Layout(readFileSync(join(root,'rom/secret-of-mana-us.sfc')),tracks);
+ const swing=layout.tracks.find(t=>t.id===0xE5);
+ assert.equal(swing.bytes[6],0xE9,'swing alternation must address only its tuning operand');
+ const code=assemble(readFileSync(join(root,'snes/src/modules/audio/spc/beds.s'),'utf8'),{name:'beds.s',symbols:{CODE_BASE:at,SWING_TUNE:swing.addr+7}});
  const patches=[];let end=at;
  for(const seg of code.segments)if(seg.addr>=SAMPLE_BASE&&seg.addr<FLOOR){assert.ok(seg.addr+seg.bytes.length<=FLOOR,`resident7 needs ${seg.addr+seg.bytes.length-SAMPLE_BASE} bytes`);bank.set(seg.bytes,seg.addr-SAMPLE_BASE);end=Math.max(end,seg.addr+seg.bytes.length);}else{
   if(seg.addr===0x19D0)assert.ok(seg.addr+seg.bytes.length<=0x1A00,'resident pitch exceeds unused DIR entries');
@@ -81,8 +98,7 @@ export function buildResident7(){
  return {samples,sampleBytes,sequences,pointers,tracks,reserve:RESERVE,floor:FLOOR,used:end-SAMPLE_BASE,codeBytes:end-at,segments:[{addr:SAMPLE_BASE,bytes:bank},...metadata,{addr:0x187C,bytes:new Uint8Array(4)},...patches],symbols:Object.fromEntries(code.symbols)};
 }
 export function resident7Asm(rom,c){
- const retained=RESIDENT.filter(r=>!c.tracks.has(r.id)).map(r=>CONTACTS7.find(c=>c.id===r.id)??r);retained.push({id:0xF0,tracks:[]});
- const layout=residentLayout(rom,retained),map=new Map();
+ const layout=resident7Layout(rom,c.tracks),map=new Map();
  for(const p of [...layout.patches,...c.pointers])for(let i=0;i<p.bytes.length;i++)map.set(p.addr+i,p.bytes[i]);
  const h=n=>'$'+n.toString(16).toUpperCase();
  return [...map].sort((a,b)=>a[0]-b[0]).flatMap(([a,v])=>{const pc=effectOffset(a),cpu=0xC00000+pc;return [`%orig1(${h(cpu)}, ${h(rom[pc])})`,`%patch(${h(cpu)}, 1, audio)`,`org ${h(cpu)}`,`db ${h(v)}`];}).join('\n')+'\n';

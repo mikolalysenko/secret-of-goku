@@ -52,6 +52,40 @@ local function field(form,music)
 end
 function test()
  bootToField();H.wait(40)
+ if ONLY=='motion' then
+  for _,cue in ipairs({{'swing',0xE5},{'swing-2',0xE5},{'kick-swing',0xE6},{'blast',0xDE}}) do
+   solo()
+   if cue[1]=='swing-2' then native(0xE5);H.wait(60) end
+   record('motion-solo-'..cue[1],'Motion follow-up: isolated '..cue[1]..'; music and echo muted; second swing follows one prior request',function() native(cue[2]);H.wait(150) end)
+  end
+  local function combo(gap)
+   for i=1,3 do native(i==3 and 0xE6 or 0xE5);H.wait(gap-1);native(i==3 and 0xE8 or 0xE7);H.wait(13-gap) end
+   H.wait(120)
+  end
+  solo();record('motion-solo-combo','Three-hit combo, contact one video frame after each swing; 14 frames between swings',function() combo(1) end)
+  for _,s in ipairs({{'battle',0x3C},{'full-power',0x3F}}) do
+   for _,gap in ipairs({1,2}) do
+    solo();song(s[2],0)
+    record('motion-'..s[1]..'-combo-'..gap..'f','Three-hit combo over '..s[1]..' music; contact '..gap..' video frames after each swing',function() combo(gap) end)
+   end
+   for _,beam in ipairs({false,true}) do
+    solo();song(s[2],0)
+    record('motion-'..s[1]..(beam and '-beam' or '')..'-volley-5f','Ki launches every five video frames, retained 38 contacts two frames later, over '..s[1]..' music'..(beam and ' and a full-power beam' or ''),function()
+     for burst=1,3 do
+      if beam then native(ROUND7 and 0xF0 or 0xEA) end
+      for i=1,12 do native(0xDE);H.wait(1);native(0x38);H.wait(2) end
+      H.wait(30)
+     end
+     H.wait(120)
+    end)
+   end
+  end
+  field(0,0x3C)
+  record('motion-input-melee','Real right approach and B-held melee, with current contact sounds and battle music',function() H.hold('right',12);H.hold('b',180);H.wait(108) end)
+  field(1,0x3F)
+  record('motion-input-ki','Real Super Saiyan Y volley into enemies over full-power music',function() H.hold('right',4);H.hold('y',180);H.wait(120) end)
+  H.result('files',files);H.result('commands',commands);H.result('captured',true);return
+ end
  if ONLY=='contacts' then
   for _,cue in ipairs({{'hit',0xE7},{'kick',0xE8}}) do
    solo();record('contact-solo-'..cue[1],'Punch follow-up: isolated contact, music and echo muted',function() native(cue[2]);H.wait(210) end)

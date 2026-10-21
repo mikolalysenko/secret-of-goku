@@ -5,6 +5,7 @@ import {readFileSync} from 'node:fs';
 import {createApu,loadRom,driverChunks,loadSong} from './apu.mjs';
 import {effectRam,trackBytes,residentLayout} from '../../gen/audio-resident-storage.mjs';
 import {NATIVE_IDS as DEFAULT_IDS,RESIDENT,effectVoices} from '../../gen/audio-resident.mjs';
+import {buildResident7,resident7Layout} from '../../gen/audio-resident7.mjs';
 import {isCustom,isResident7,sampleFloor,nativeEffectVoices,nativeIds} from './cartridge.mjs';
 import {songNoise} from './audit.mjs';
 import {measure} from './punch.mjs';
@@ -13,7 +14,8 @@ const rom=readFileSync(process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc');
 const custom=isCustom(rom),NATIVE_IDS=nativeIds(rom,DEFAULT_IDS);
 test('resident effects preserve retail sequences and samples',()=>{
   const original=loadRom(),old=driverChunks(original),now=driverChunks(rom);
-  const allowed=new Set(residentLayout(original,RESIDENT).patches.flatMap(p=>p.bytes.map((_,i)=>p.addr+i)));
+  const layout=isResident7(rom)?resident7Layout(original,buildResident7().tracks):residentLayout(original,RESIDENT);
+  const allowed=new Set(layout.patches.flatMap(p=>p.bytes.map((_,i)=>p.addr+i)));
   for(let c=0;c<old.length;c++){
     assert.equal(now[c].addr,old[c].addr);
     assert.equal(now[c].bytes.length,old[c].bytes.length);

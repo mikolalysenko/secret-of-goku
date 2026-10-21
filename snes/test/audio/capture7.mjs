@@ -1,6 +1,7 @@
 // Raw cartridge listening pairs, including canonical echo changes.
-// node snes/test/audio/capture7.mjs --rom=... --tag=r4|r7|punch7 [--songs]
+// node snes/test/audio/capture7.mjs --rom=... --tag=r4|r7|punch7|motion7 [--songs]
 // --only=contacts appends the punch follow-up without replacing earlier takes.
+// --only=motion appends swings/ki, including 1/2-frame contacts and 5-frame volleys.
 import {readFileSync,writeFileSync,mkdirSync,chmodSync,existsSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 import {createHash} from 'node:crypto';
@@ -13,7 +14,7 @@ import {RESERVE} from '../../gen/audio-resident7.mjs';
 const repo=resolve(import.meta.dirname,'../../..'),args=process.argv.slice(2);
 const opt=(k,d)=>args.find(a=>a.startsWith('--'+k+'='))?.slice(k.length+3)??d;
 const rom=resolve(opt('rom',process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc')),tag=opt('tag','r7');
-const only=opt('only','');if(only&&!['melee','contacts'].includes(only))throw Error('unknown capture filter');
+const only=opt('only','');if(only&&!['melee','contacts','motion'].includes(only))throw Error('unknown capture filter');
 const root=join(repo,'.local/snes-test/audio/compare7'),folder='capture-'+tag+(only?'-'+only:''),out=join(root,folder);
 mkdirSync(root,{recursive:true});
 const bytes=readFileSync(rom),sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8');
