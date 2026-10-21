@@ -34,10 +34,11 @@ export function findCore(name){
   }
   return null;
 }
+// SNES_RETRO_HOST lets worktrees keep their binary outside shared .local/tools.
 // Builds the host into .local/tools/emu/retro-host when missing or older
 // than its sources. Returns the binary path, or throws with make's output.
 export function buildHost(){
-  const bin=join(repo,'.local/tools/emu/retro-host');
+  const bin=resolve(process.env.SNES_RETRO_HOST??join(repo,'.local/tools/emu/retro-host'));
   const newest=Math.max(...['retro-host.c','libretro.h','Makefile'].map(f=>statSync(join(hostSrc,f)).mtimeMs));
   if(existsSync(bin)&&statSync(bin).mtimeMs>=newest)return bin;
   const r=spawnSync('make',['-C',hostSrc,`OUT=${bin}`],{encoding:'utf8'});

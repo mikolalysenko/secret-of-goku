@@ -13,13 +13,14 @@
 ;   audio_cancel  drop combat sounds: queued shots, charge/aura beds, chant
 ;   audio_stop    stop every stream at this frame's service
 ;   audio_song    A = song id (!AUDIO_SONG_* or native), X = p2 | p3<<8
-;                 (0: $10, $FF) — native song command through core_sound_queue
+;                 (0: $00, $FF) — native song command through core_sound_queue
 ;   audio_song_restore  back to the last native song (the scene's own music)
 ;   audio_fade    A = native fade byte (command 80; $80 = fade out)
 ; Frame callbacks (modules.asm): audio_frame (field, world), audio_pause
 ; (menus, rings).
 
 incsrc "audio/ids.asm"
+incsrc "audio/songload.asm"
 
 ; ---------------------------------------------------------------- WRAM
 !aw #= !RAM_AUDIO&$FFFF          ; absolute with DB = $7E
@@ -108,6 +109,11 @@ audio_upload:
 	incbin "audio/upload.bin"
 incsrc "audio/tables.asm"
 incsrc "audio/songs.asm"
+audio_songload_image:
+	incbin "audio/songload.bin"
+audio_songload_vectors_data:
+	dw !AUDIO_SONGLOAD_RECEIVE,$1263,$1263,!AUDIO_SONGLOAD_COPY
+	dw $1263,$1263,$1263,$1270
 audio_data_end:
 assert audio_data_end <= !DATA_AUDIO+$8000, "audio data bank overflow"
 pullpc
@@ -1750,6 +1756,8 @@ audio_test_poll:
 
 incsrc "native.asm"
 incsrc "rare.asm"
+
+incsrc "songload.asm"
 
 audio_code_end:
 assert audio_code_end <= !CODE_QUARTER_AUDIO, "audio code overflow (EA:C000-FFFF is a spare quarter, core/layout.asm)"

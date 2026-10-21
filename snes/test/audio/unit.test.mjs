@@ -105,6 +105,7 @@ test('DSP model: looping sample keeps playing and echo writes the ring',()=>{
  let nz=0;for(let i=0x8000;i<0x8800;i++)if(aram[i])nz++;assert.ok(nz>100,'echo ring written');
 });
 
+import {DRIVER_PATCHES} from '../../gen/audio.mjs';
 import {createApu,StreamPlayer,extensionSegments,driverChunks,loadRom} from './apu.mjs';
 import {buildStreamClip,CHUNK_BYTES} from '../../gen/audio-stream.mjs';
 import {buildBank,RARE_RATE,RARE_VOICES} from '../../gen/audio.mjs';
@@ -130,7 +131,7 @@ const zeroCrossHz=(l,a,b)=>{let zc=0;for(let i=a+1;i<b;i++)if(l[i-1]<0&&l[i]>=0)
 test('stream extension stays inside ARAM the driver never uses',()=>{
  const {segments}=extensionSegments();
  const allowed=[[0x1598,0x17FF],[0xFF89,0xFFFF],[0x1818,0x183F],[0x1898,0x18BF],[0x1930,0x197F],[0x00E3,0x00EF]];
- const patches=new Map([[0x020A,[0xF0]],[0x0279,[0x3F,0xAF,0x0C]],[0x0299,[0xDA,0xF6]],[0x02E1,[0xE4,0xAE,0xC4,0x02]],[0x02F4,[0x5F,0x79,0x02]],[0x0378,[0xE4,0xAE,0xC4,0x02]],[0x14C6,[0xDD,0x12]]]);
+ const patches=DRIVER_PATCHES;
  const driver=new Uint8Array(0x10000);for(const c of driverChunks(loadRom()))driver.set(c.bytes,c.addr);
  for(const s of segments){
   const end=s.addr+s.bytes.length-1;
