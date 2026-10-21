@@ -12,6 +12,7 @@ function test()
     for a=0x4DF1,(0xFA00-0x800*s.edl)-1 do samples[a]=aram(a) end
     local maxVoices,alive,release,heard=0,true,true,0
     for _,cue in ipairs(NATIVE_CUES) do
+      local cueMax=0
       cmd(1,cue[1])
       for f=1,180 do
         H.wait(1)
@@ -22,7 +23,9 @@ function test()
           if aram(0xAE)&(1<<v)==0 and dsp(v*16+8)>0 then heard=heard|(1<<v) end
         end
         maxVoices=math.max(maxVoices,owned)
+        cueMax=math.max(cueMax,owned)
       end
+      check(tag..'_voice_budget_'..cue[1],cueMax==cue[3],cueMax)
       for v=0,7 do
         if aram(0xAE)&(1<<v)~=0 and aram(0xFF80+v)==cue[2] then release=false end
       end
@@ -30,7 +33,7 @@ function test()
     local damage=nil
     for a,value in pairs(samples) do if aram(a)~=value then damage=a;break end end
     check(tag..'_tracks_alive',alive)
-    check(tag..'_one_effect_voice',maxVoices==1,maxVoices)
+    check(tag..'_two_effect_voices',maxVoices==2,maxVoices)
     check(tag..'_voices_returned',release)
     check(tag..'_music_audible',heard~=0,heard)
     check(tag..'_song_samples_intact',damage==nil,damage)

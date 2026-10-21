@@ -11,7 +11,7 @@ import {runMesen} from '../mesen.mjs';
 import {checkpointDir,privateRom,cleanupRom,mainCheckout} from '../checkpoints.mjs';
 import {createApu,loadRom,loadSong} from './apu.mjs';
 import {compareSongs} from './songs.mjs';
-import {NATIVE_IDS} from '../../gen/audio-resident.mjs';
+import {NATIVE_IDS,effectVoices} from '../../gen/audio-resident.mjs';
 
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const only=process.argv.slice(2).filter(a=>!a.startsWith('--'));
@@ -83,7 +83,7 @@ const label=n=>{const m=sym.match(new RegExp(`^([\\dA-F]{2}):([\\dA-F]{4}) ${n}$
 const consumers=[`DESTROY=${/ audio_destroy_cues$/m.test(sym)}`];
 const lib=[`UPLOAD=${JSON.stringify(join(gen,'upload.bin'))}`,...ids,...consumers,songsLua,
  `AUDIO_FRAME=${label('audio_frame')}\nAUDIO_DONE=${label('audio_frame_done')}\nAUDIO_PAUSE=${label('audio_pause')}\nAUDIO_CANCEL=${label('audio_cancel')}`,
- `NATIVE_CUES={${NATIVE_IDS.slice(1,28).map((v,i)=>`{${i+1},${v}}`).join(',')}}`,readFileSync(join(here,'lib.lua'),'utf8')].join('\n');
+ `NATIVE_CUES={${NATIVE_IDS.slice(1,28).map((v,i)=>`{${i+1},${v},${effectVoices(v)}}`).join(',')}}`,readFileSync(join(here,'lib.lua'),'utf8')].join('\n');
 const tests=mesenTests;
 const summary=[];
 let pcmRom=null;

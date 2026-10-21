@@ -40,7 +40,7 @@ function test()
     end
     check('native_cue_'..cue[1], #commands>first and commands[first+1].id==cue[2] and heard,
       'effect was not sent/audible')
-    check('one_voice_'..cue[1],maxVoices==1,maxVoices)
+    check('voice_budget_'..cue[1],maxVoices==cue[3],maxVoices)
     local playing=false
     for v=0,7 do if aram(0xAE)&(1<<v)~=0 and aram(0xFF80+v)==cue[2] then playing=true end end
     check('cue_ends_'..cue[1],not playing,'effect still owns a voice after 180 frames')
