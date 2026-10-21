@@ -116,7 +116,10 @@ end
 -- those lines: the vblank's work ran past line 261, so the frame's HDMA
 -- start was missed and its picture lost (any build; the ORBIT_TIMING
 -- build also records where our own vblank work ended).
-local bad = {cgram = 0, dma = 0, late = 0}
+-- And the scene's own HDMA channels (0-6) missing from a frame's enable
+-- while its globe picture shows (a vblank that skipped the modules once
+-- left channels 0-1, the band lines' colour math and BG1 scroll, off).
+local bad = {cgram = 0, dma = 0, late = 0, hdma = 0}
 local hdmaen = 0
 local function visible()
   local l = emu.getState()['ppu.scanline']
@@ -130,15 +133,37 @@ function W.install()
     emu.addMemoryCallback(function(a, v)
       hdmaen = v
       if v ~= 0 and visible() then bad.late = bad.late + 1 end
+      if v ~= 0 and v & 0x7F ~= 0x7F and H.r8(ORBIT_RAM) == 2 and H.r8(ORBIT_RAM + 0x3C) == 0 then bad.hdma = bad.hdma + 1 end
     end, emu.callbackType.write, base + 0x420C, base + 0x420C)
     emu.addMemoryCallback(function(a, v) if v ~= 0 and hdmaen ~= 0 and visible() then bad.dma = bad.dma + 1 end end,
       emu.callbackType.write, base + 0x420B, base + 0x420B)
   end
 end
 function W.writes()
-  local s = bad.cgram .. ',' .. bad.dma .. ',' .. bad.late
-  bad.cgram, bad.dma, bad.late = 0, 0, 0
+  local s = bad.cgram .. ',' .. bad.dma .. ',' .. bad.late .. ',' .. bad.hdma
+  bad.cgram, bad.dma, bad.late, bad.hdma = 0, 0, 0, 0
   return s
+end
+-- The band lines (the finale's rays above the globe: SB+$04E, the lines of
+-- the set the HDMA takes) at and after a repeated picture (the scene's
+-- frame counter unchanged): their pixels in the rim's colour (the sky plus
+-- the rim's colour math, (6, 17, 30)), which the bands never use; '-' on
+-- other frames.
+local bandLast, bandNext = -1, false
+function W.bandrim()
+  local fr = H.r16(ORBIT_RAM + 0x04)
+  local rep = fr == bandLast
+  bandLast = fr
+  local scan = rep or bandNext
+  bandNext = rep
+  if not scan or H.r8(ORBIT_RAM) ~= 2 or H.r8(ORBIT_RAM + 0x3C) ~= 0 then return '-' end
+  local lines = H.r16(SB + 0x04E)
+  if lines == 0 then return '0' end
+  if lines > 224 then lines = 224 end
+  local buf = emu.getScreenBuffer()
+  local n = 0
+  for i = 1, lines * 256 do if (buf[i] or 0) & 0xFFFFFF == 0x318CF7 then n = n + 1 end end
+  return tostring(n)
 end
 -- The scanlines at the frame's stages (ORBIT_TIMING builds: module.asm
 -- orbit_mark, 0-7), as left by the frame just shown.

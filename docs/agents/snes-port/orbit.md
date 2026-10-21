@@ -500,7 +500,15 @@ shows, so the frame never rewrites what the HDMA reads. HDMA channel 0
 needs it) and channel 1 (`$210D/$210E`: BG1's scroll 0/-1 over the band
 lines, then the globe's M7HOFS/M7VOFS, which share the registers) run for
 the whole scene, so the field's late `$420C` write never switches them on
-mid-frame. Below the band lines the rays keep their OBJ chains (`bw_ymin`:
+mid-frame. They also stay on through a vblank that skips the modules (an
+incomplete frame): the native NMI clears their `$2C` bits before its
+palette transfer (C0:C0DE: the game's own window channels, while `$010E`
+is set), and the orbit's palette hook (`orbit_cgram_upload`, which that
+transfer runs every vblank once the bits were on) sets them again; their
+registers and tables are still the orbit's there. Before, such a frame ran
+without them: the bands' windows took the rim's colour math (bright blue
+blocks over the rays' rows) and BG1's band the globe's scroll. Below the
+band lines the rays keep their OBJ chains (`bw_ymin`:
 cells wholly inside the layers' lines are skipped and the run is built for
 the ray's own length). Stars well inside a ray, and in the strip where the
 beam's cells straddle the layers' last line, get no sprite.
@@ -1035,6 +1043,9 @@ come from their sources. Results on the merged build:
 - `clash`: from 6,000 HP: gather, charge, launch, a lost struggle (recoil,
   420 damage), a won one under B taps, the 'won' clock with the native
   victory commands, the return: 2,889 frames identical, back at 1392.
+  Every frame's HDMA enable holds the scene's channels, and at and after
+  each repeated picture no band-line pixel has the rim's colour (the
+  watch's `W.writes` and `W.bandrim`).
 - `montage`: from the hand-off, the whole cinematic to `cosmicDuration`
   (2042) and the orbit's intro after it; 40 screenshots compared with the
   browser drawing into a 256x224 surface (`montage-ref.mjs`):
