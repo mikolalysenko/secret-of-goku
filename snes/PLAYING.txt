@@ -92,8 +92,9 @@ with zero missed frames or palette, sprite and vblank errors. Map loading
 is excluded. These measurements do not cover every map, boss, scripted
 scene or physical device.
 
-Scouter power readouts and Analyzer overlays are not drawn yet. Less common
-status/equipment interactions and some story, boss and ending paths still
+Scouter readings can briefly hide while crowded scenes or effects use the
+available sprite memory and frame time. Less common status/equipment
+interactions and some story, boss and ending paths still
 need further review. Detailed status and test results:
 https://github.com/mikolalysenko/secret-of-goku/blob/main/docs/agents/snes-port/gameplay-performance.md
 

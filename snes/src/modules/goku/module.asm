@@ -107,6 +107,7 @@ assert !RAM_GOKU == $7E0000|!GOKU_RAM, "!GOKU_RAM must match !RAM_GOKU"
 !pal_air_native  = !SRAM_WORK_GOKU
 !pal_air_out     = !SRAM_WORK_GOKU+$20
 !pal_air_valid   = !SRAM_WORK_GOKU+$40
+!scr_latch       = !SRAM_WORK_GOKU+$42 ; byte: !scr_shown at the last goku frame's end (for the vblank's goku_preupload)
 assert !GOKU_RAM_END <= !GOKU_RAM+$C0, "goku RAM overflow"
 ; goku_emit scratch (aliases pal_work: never live at the same time)
 !e_attr = !pal_work+$00

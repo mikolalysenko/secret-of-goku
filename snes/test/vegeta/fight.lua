@@ -37,6 +37,13 @@ local function towards(dx, dy)
   if math.abs(dx) >= math.abs(dy) then return dx < 0 and 'left' or 'right' end
   return dy < 0 and 'up' or 'down'
 end
+-- Goku's facing as mana-mod.js reads $E010
+local function facing()
+  local n = H.r8(0x7EE010)
+  if n & 0x7F == 0 then return 'up' end
+  if n & 0x7F == 1 then return 'down' end
+  return (n & 0x80) ~= 0 and 'left' or 'right'
+end
 function V.pilot()
   P.t = P.t + 1
   local gx, gy = V.hero()
@@ -46,9 +53,12 @@ function V.pilot()
   -- a clash: mash B
   if H.r8(0x7EDBEF) ~= 0 then P.beam = 'idle'; return (P.t % 6 < 2) and 'b' or '' end
   -- V_PILOT_SSJ: while he transforms, Goku powers up too (focus with L,
-  -- then L+A at full power)
+  -- then L+A at full power). The pilot counts game frames (!core_frame,
+  -- $7E:D700), not video frames: a song change or a lag frame stalls the
+  -- game loop, and a press it never reads is lost.
+  local gameFrame = H.r16(0x7ED700)
   if V_PILOT_SSJ and H.r8(0x7EDBC1) == 2 and H.r8(0x7ED811) == 0 then
-    P.focus = (P.focus or 0) + 1
+    if gameFrame ~= P.focusAt then P.focusAt = gameFrame; P.focus = (P.focus or 0) + 1 end
     if P.focus > 104 then P.focus = 0; return 'l a' end
     return 'l'
   end
@@ -61,9 +71,16 @@ function V.pilot()
     local ahead = -dx * bx - dy * by          -- Goku ahead of him on the lane
     if P.beam == 'idle' or P.beam == 'back' then
       if ahead < 72 and age < (H.r8(0x7EDBC4) == 1 and 40 or 70) then P.beam = 'back'; return towards(bx, by) end
-      P.beam = 'face'; return towards(-bx, -by)
+      P.beam = 'face'; P.faceAt = gameFrame; return towards(-bx, -by)
     end
-    if P.beam == 'face' then P.beam = 'charge' end
+    -- turn until he faces him (a press the trial's input lock or a lag
+    -- frame swallows is lost; the wave goes out the way he faces), at most
+    -- 30 game frames
+    if P.beam == 'face' then
+      local want = towards(-bx, -by)
+      if facing() ~= want and ((gameFrame - P.faceAt) & 0xFFFF) < 30 then return want end
+      P.beam = 'charge'
+    end
     if emu.read(0x4009, S) ~= 0 and P.beam == 'charge' then P.beam = 'fired'; return '' end
     if P.beam == 'charge' then return 'l y' end
     return ''

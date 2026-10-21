@@ -125,7 +125,11 @@ endif
 !ui_rphase    = !RAM_UI+$A4   ; word: bearing halves done since the radar showed (bit0 rotated, bit1 geometry)
 ; +$A6-$A9: fast-forward (ff.asm)
 ; +$AA-$AD: window placement (place.asm)
-; +$AE-$AF: scouter (scouter.asm)
+!ui_sc = !RAM_UI+$AE            ; scouter state (scouter.asm)
+!UISC_PENDING = $0001
+!UISC_ACTIVE = $0002
+!UISC_DRAW = $0004
+!UISC_RESIDENT = $0008
 ; +$B0-$B7: STATUS page (status.asm)
 
 !ui_name_buf  = !RAM_UI+$B8   ; 8 bytes: display name buffer ({n} codes)
@@ -238,6 +242,8 @@ incsrc "ff.asm"
 incsrc "ff-text.asm"
 incsrc "place.asm"
 incsrc "scouter.asm"
+incsrc "scouter-readouts.asm"
+incsrc "scouter-obj.asm"
 incsrc "status.asm"
 incsrc "idle.asm"
 if defined("UI_TEST")

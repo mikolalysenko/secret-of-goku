@@ -359,10 +359,11 @@ shows:
   and line counter ($43x8-$43xA) as if it had just counted down a
   127-line entry that ends at a zero byte (the first byte of every table
   buffer), which covers a wave's very first frame. In time, the frame's
-  HDMA start reloads all of this. The core now also keeps channels that
-  were off out of a late `$420C` write (`core_hdmaen_write`): a polygon
-  switched on in such a vblank starts one frame later; FX's padding and
-  priming stay as the second guard.
+  HDMA start reloads all of this. The core now keeps a late vblank's frame
+  without HDMA (`core_hdmaen_write`): the game's NMI begins with `STZ $420C`,
+  so no channel began that frame from its table; a polygon switched on in
+  such a vblank starts one frame later. FX's padding and priming stay as the
+  second guard.
 - FX's own sprites need their palettes rewritten every vblank (the game
   uploads all of CGRAM each frame), which a late vblank cannot afford
   while HDMA runs. `fx_frame` predicts those vblanks (learned per
@@ -593,6 +594,26 @@ changes (every second frame; a 7-band beam ~85), against ~70-80 for the
 same beam as OBJ strips. A frame over ~225 lines in total lags (the game
 then runs at 30 fps); heavy scenes (Mana Beast ~180 lines native) lag
 with a wave on screen.
+
+### UI scouter cache leases
+
+`overlay.asm` adds a lower-priority field client without a new VRAM claim.
+After `fx_frame`, `fx_overlay_begin` ensures initialization/field claims;
+`fx_overlay_cell(A=opaque key $8000..$FFFD, X=allow miss)` returns carry clear
+with A=OBJ tile, X=cache-entry byte offset and Y=0 resident / 1 new. Carry set
+means no cell. It shares the full-key-checked hash and cache, protects cells
+used this frame and native FX cells used within 120 ticks, and invalidates
+an evicted FX residency bit. Native FX reclaims completed UI leases before
+its ordinary LRU search; outstanding core DMA prevents a UI cell from being
+overwritten before its transfer retires.
+
+The UI uploads at most one 128-byte cell per frame through the core queue,
+only when `fx_cpend` is empty; its two row transfers and retirement belong to
+UI. `fx_overlay_spare` is generated from palette lengths and marks classes
+whose indices 14/15 are unused. Only a current `fx_tick` establishes shared
+palette ownership. UI may write just those two colours after FX
+NMI; the existing FX palette data is unchanged. See [UI's scouter section](ui.md#shared-fx-cells-uploads-and-hardware-limits)
+for rendering, timing, limitations and tests.
 
 ## Resources
 

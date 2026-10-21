@@ -41,8 +41,10 @@ function E.import(bundle)
 end
 
 -- Vblank overrun monitor: the field NMI re-enables the display at 00:C164;
--- if that happens after scanline 0 of the next frame, the top lines are
--- black. Counts frames that overran by more than `slack` lines while armed.
+-- if that happens in the next frame, the top lines are black and, worse,
+-- its HDMAEN write came after that frame's HDMA start, so the frame shows
+-- no HDMA (core_hdmaen_write). Counts frames that overran past line
+-- `slack` while armed (0: any end in the next frame but on line 0).
 E.overruns = 0
 E.overrunMax = 0
 E.overrunAt = {}

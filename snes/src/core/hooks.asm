@@ -269,9 +269,11 @@ if not(defined("CORE_NATIVE_NMI_SLOW"))
 %orig4($C0C148, $20C69220)
 %orig2($C0C14C, $C238)
 %hijack_jsl($C0C148, core_native_field_uploads, 6, core)
-%orig4($C0C14E, $01950D22)
-%hijack_jsl($C0C14E, $81950D, 4, core)
 endif
+; The game's actor cell streaming (C1:950D): modules_actor_hold may skip it
+; for a vblank (core_actor_cells).
+%orig4($C0C14E, $01950D22)
+%hijack_jsl($C0C14E, core_actor_cells, 4, core)
 
 ; Field NMI before HDMA enable (00:C158 SEP #$20 / LDA $2C / STA $420C).
 %orig4($00C158, $2CA520E2)

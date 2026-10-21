@@ -127,11 +127,10 @@ function test()
 
   -- native flash ($2A): the scripted cell keeps the browser's unflashed
   -- colours, as a scene cell; entry 1, every actor's shadow, stays flashed.
-  -- The flash rebuilds BE00 every fifth frame here and the scene overruns
-  -- some frames: when the NMI falls between a rebuild and goku_frame, that
-  -- one frame shows the flashed copy (scene cells alike), so 8 frames are
-  -- sampled: at most two such single frames.
   G.import('arrival-research__browser-ghost')
+  -- the bundle carries no cartridge module state: the title module's arrival
+  -- phase (!title_phase, !RAM_MISC+$06) is the ghost page here
+  H.w8(0x7EDD86, 4)
   request(nil); H.w8(MB + 13, 0)
   G.on()
   H.wait(12)
@@ -152,18 +151,18 @@ function test()
   end
   G.check(H.r8(0x7E002A) ~= 0, 'flash: native flash active')
   local un, runs, shadow, s = frames()
-  G.check(un == 0, 'flash: on the field Goku follows the flash: ' .. s)
+  G.check(un == 8, 'flash: field Goku stays unflashed: ' .. s)
   request(hover, 112, 172, 3)
   H.wait(6)
   un, runs, shadow, s = frames()
-  G.check(H.r8(MB + 8) == 1 and un >= 6 and runs == 0, 'flash: the scripted cell unflashed in palette ' .. slot .. ': ' .. s)
+  G.check(H.r8(MB + 8) == 1 and un == 8 and runs == 0, 'flash: the scripted cell unflashed in palette ' .. slot .. ': ' .. s)
   G.check(shadow, 'flash: the shadow colour keeps the native flash')
   H.log('flash', 'scripted', s)
   H.shot('flash')
   request(nil)
   H.wait(6)
   un, runs, shadow, s = frames()
-  G.check(H.r8(0x7E002A) ~= 0 and un == 0, 'flash: released, Goku follows the flash again: ' .. s)
+  G.check(H.r8(0x7E002A) ~= 0 and un == 8, 'flash: released field Goku stays unflashed: ' .. s)
 
   -- hand sockets for scenes that place a cell themselves
   local sockets = {}

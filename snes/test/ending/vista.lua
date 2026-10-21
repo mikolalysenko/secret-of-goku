@@ -4,7 +4,7 @@
 -- run.mjs compares them with shenron-ending.js's own composition.
 function test()
   E.import(BUNDLE or 'ending-fix__end-20')
-  E.watchVblank(1)
+  E.watchVblank(0)
   H.wait(20)
   local t0 = H.frame
   E.cue('summon', 0x8002)       -- with Dryad's eighth Ball

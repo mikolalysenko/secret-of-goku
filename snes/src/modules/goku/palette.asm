@@ -42,7 +42,6 @@ endif
 	JSR goku_palette_air_restore
 +
 	JSR goku_palette
-	JSR goku_palette_unflash
 	JSR goku_palette_air
 	SEP #$20
 	; HUD portrait in the current form
@@ -73,6 +72,8 @@ endif
 	STA !up_cell
 .end
 	SEP #$20
+	LDA !scr_shown           ; this frame's scripted pose, for the vblank
+	STA.l !scr_latch
 	STZ !scr_shown           ; a scripted cell lasts one frame
 	LDA !replacing
 	STA !was_replacing
@@ -512,17 +513,6 @@ goku_palette_air:
 		JMP .changed
 +
 	endfor
-	LDA $2A
-	AND.w #$00FF
-	BEQ .quickDone
-	LDX.w #$001E
-.flash
-	LDA $BFA0,X
-	STA $BF20,X
-	DEX : DEX
-	CPX.w #4
-	BCS .flash
-.quickDone
 	RTS
 .changed
 	LDX.w #$001E
@@ -543,12 +533,7 @@ goku_palette_air:
 	LDA !pal_out,X
 	STA $0720,X
 	STA.l !pal_air_out,X
-	LDA $2A
-	AND.w #$00FF
-	BEQ +
-	LDA $BFA0,X               ; primary slot in the flash buffer
-	STA $BF20,X
-+	DEX : DEX
+	DEX : DEX
 	CPX.w #4
 	BCS .copy
 	LDA.w #$0001
@@ -575,28 +560,35 @@ goku_palette_air_restore:
 .done
 	RTS
 
-; Native flash: while $2A is set the field NMI uploads 7E:BE00, which the
-; flash (C2:C820, in the frame logic before this hook) rebuilds from 0600
-; every frame with a brightness offset (OBJ palettes too while bit 6 is
-; set), Goku's slot included. On the field the browser's tint() follows that
-; flash too, but its scene renderers (arrival.drawScene, the Frieza scenes)
-; draw Goku unflashed: so while a scene shows an explicit cell
-; (!goku_cell_req, e.g. the arrival's hop, or a goku_api_scripted cell this
-; frame) his colours 2-15 go back into the BE00 copy of his slot. Entry 1 is
-; every actor's shadow (and only 50 of Goku's ~159,000 pixels): it keeps the
-; native flash. DB = $7E.
+; Native flash: C2:C820 rebuilds BE00 from 0600 at each flash step, including
+; Goku's OBJ slot. Repair it immediately before the field NMI uploads CGRAM,
+; even if that NMI interrupted the rebuild or a late dialogue frame. Never
+; use frame-thread scratch here. Entry 1 belongs to every actor's shadow;
+; only Goku's body colours 2-15 are restored. M16/X16, DB = 0, D = 0.
 !PALFLASH = $BE00
-goku_palette_unflash:
-	SEP #$20
+goku_preupload:
 	LDA $2A
+	AND.w #$00FF
 	BEQ .done
-	LDA !pal_valid
+	LDA.l $7E0000|!pal_valid
+	AND.w #$00FF
 	BEQ .done
-	LDA !goku_cell_req
-	ORA !goku_cell_req+1
-	ORA !scr_shown
-	BEQ .done
-	REP #$30
+	JSR goku_check_on
+	BCC .done
+	; Only where the browser draws Goku unflashed, its scene renderers: an
+	; explicit or scripted pose this frame, or the arrival's impact, ghost
+	; and dialogue pages. On the open field its tint() follows the native
+	; flash, as the boy's colours do.
+	LDA.l $7E0000|!goku_cell_req
+	BNE .scene
+	LDA.l !scr_latch
+	AND.w #$00FF
+	BNE .scene
+	JSL title_arrival_draws_goku
+	BCC .done
+.scene
+	PHB
+	PEA $7E7E : PLB : PLB
 	LDA !pal_slot
 	AND.w #$0007
 	ASL
@@ -606,21 +598,22 @@ goku_palette_unflash:
 	ASL
 	CLC
 	ADC.w #$0100
-	STA !t_d
-	LDY.w #$001E
-.loop
-	TYA
-	CLC
-	ADC !t_d
 	TAX
-	LDA !pal_out,Y
-	STA !PALFLASH,X
-	DEY
-	DEY
-	CPY.w #$0004
-	BCS .loop
+	JSR .copy
+	; Airborne water bodies use slot 1 as well as their native slot 5.
+	LDA.l !pal_air_valid
+	BEQ .restoreDB
+	LDX.w #$0120
+	JSR .copy
+.restoreDB
+	PLB
 .done
-	REP #$30
+	RTL
+.copy
+	for color = 2..16
+		LDA.w !pal_out+(!color*2)
+		STA.w !PALFLASH+(!color*2),X
+	endfor
 	RTS
 
 ; Give the tracked slot back: entries still holding our colours get the

@@ -20,7 +20,7 @@ local function overflowKeys()
 end
 function test()
   E.import(BUNDLE or 'preset__bad-ending')
-  E.watchVblank(1)
+  E.watchVblank(0)
   E.watchAudio()
   local t0 = H.frame
   E.cue('doomed', FLAGS)

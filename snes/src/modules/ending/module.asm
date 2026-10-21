@@ -992,6 +992,13 @@ scene_init:
 	STZ.w !s_pbleft
 	STZ.w !s_pbrange
 	STZ.w !s_pbcol
+	; base colours no scene has set read as black: pal_walk indexes the
+	; fade curves with these components, and the area held another
+	; module's bytes (red, green, blue: $600 bytes in a row)
+	LDX.w #$05FE
+-	STZ.w !s_compr,X
+	DEX : DEX
+	BPL -
 	SEP #$20
 	STZ.w !s_pbmask
 	STZ.w !s_pbnow

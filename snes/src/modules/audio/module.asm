@@ -1,5 +1,5 @@
-; Audio module: resident SNES effects and native music. -DAUDIO_PCM=1
-; enables the optional DBZ effect/voice streamer for diagnostic builds.
+; Audio module: resident SNES effects, native music, and three rare 6 kHz
+; voices. -DAUDIO_PCM=1 enables the full 12 kHz diagnostic streamer.
 ; docs/agents/snes-port/audio.md describes the driver, protocol and API.
 ;
 ; Public API (JSL from main-loop code; any M/X; DB and D preserved):
@@ -7,7 +7,7 @@
 ;   audio_loop    A = loop id (!AUDIO_LOOP_*), X = level 1-255, Y = rate
 ;                 ($80 = 1.0, $60-$A0 sensible); call every frame while the
 ;                 bed should sound; it fades out two frames after the last call
-;   audio_voice   A = 1 Kamehameha chant (once per charge: repeated calls
+;   audio_voice   shipping: no-op; diagnostic PCM: A = 1 chant (once per charge: repeated calls
 ;                 while charging are ignored), 2 release (the shout replaces
 ;                 the chant), 0 cut the chant
 ;   audio_cancel  drop combat sounds: queued shots, charge/aura beds, chant
@@ -51,7 +51,11 @@ incsrc "audio/ids.asm"
 !au_dsfx     #= !aw+$5D   ; destroy's !out_sfx (low byte) when last seen
 !au_bed      #= !aw+$5E   ; native charge bed was requested last frame
 !au_bed_wait #= !aw+$5F   ; frames before another native charge pulse
-!au_pending  #= !au_ch   ; native build only: command awaiting the SPC echo
+; Shipping uses only stream channel 0. These alias unused channel 1 fields.
+!au_pending  #= !aw+$5B   ; resident command awaiting SPC echo
+!au_rare     #= !aw+$5A   ; pending rare line (28-30), 0 none
+!au_rare_age #= !aw+$59   ; frames left to start it, then drop
+!au_wake     #= !aw+$58   ; service work outstanding (shipping only)
 !AU_CH = $20
 ; channel fields (X = channel offset 0 / $20)
 !c_kind  = $00   ; 0 idle, 1 shot, 2 loop
@@ -80,15 +84,21 @@ incsrc "audio/ids.asm"
 !CTL_VOL   = $02
 !CTL_PITCH = $04
 !CTL_STOP  = $08
-!AU_BUDGET = 5   ; chunks per channel per frame (12 kHz needs ~3.1)
+if defined("AUDIO_PCM")
+!AU_BUDGET = 5   ; 12 kHz diagnostic streams need ~3.1 chunks/frame
+!AU_FIRST = 6
+!AU_LINE_LIMIT = 218
+else
+!AU_BUDGET = 3   ; one 6 kHz voice needs ~1.56 chunks/frame
+!AU_FIRST = 2    ; start gently; top up only when the frame has spare time
+!AU_LINE_LIMIT = 176 ; leave room for the core's remaining frame work
+endif
 !AU_CMD_WAIT = 3000  ; first echo: ~10-13 ms (the driver polls the ports at
                      ; least every ~8 ms while it plays; APU harness)
 !AU_PROBE_WAIT = 400 ; ~1.5 ms: after a miss, until the driver answers again
                      ; (misses in a row back off 2, 4, … 128 frames)
 !AU_SONG_HOLD = 16   ; frames after a song change: the driver clears its
                      ; echo ring and does not poll the ports for ~15 frames
-!AU_FIRST  = 6
-!AU_LINE_LIMIT = 218 ; a frame's transfer ends before this scanline (vblank at 225)
 !AU_CHUNK_LINES = 20 ; one chunk: 13 groups at ~95 us (Mesen, arrival scene)
 !AU_CMD_LINES = 6    ; the command's own handshakes
 
@@ -174,6 +184,9 @@ audio_sfx:
 	INX
 	TXA
 	STA.l $7E0000+!au_reqn
+if not(defined("AUDIO_PCM"))
+	STA.l $7E0000+!au_wake
+endif
 .full
 	REP #$30
 	PLX
@@ -192,6 +205,9 @@ audio_loop:
 	SEP #$20
 	LDA $01,S                 ; Y low: rate
 	STA.l $7E0000+!au_rate,X
+if not(defined("AUDIO_PCM"))
+	STA.l $7E0000+!au_wake
+endif
 	LDA $03,S                 ; X low: level
 	STA.l $7E0000+!au_lvl,X
 	LDA.b #$00
@@ -204,6 +220,9 @@ audio_loop:
 	RTL
 
 audio_voice:
+if not(defined("AUDIO_PCM"))
+	RTL                       ; frequent Kamehameha chant and shout stay off
+endif
 	PHP
 	SEP #$20
 	PHA
@@ -225,6 +244,20 @@ audio_cancel:
 	STA.l $7E0000+!au_lvl+1   ; aura
 	LDA.b #$03
 	STA.l $7E0000+!au_voicereq
+if not(defined("AUDIO_PCM"))
+	STA.l $7E0000+!au_wake
+	; Cancel the current line now; a fresh effect queued after this API
+	; call must survive (e.g. the transformation that ends a focus).
+	LDA.b #$00
+	STA.l $7E0000+!au_rare
+	LDA.l $7E0000+!au_ch+!c_kind
+	BEQ +
+	LDA.b #$00
+	STA.l $7E0000+!au_ch+!c_kind
+	LDA.b #!CTL_STOP
+	STA.l $7E0000+!au_ch+!c_ctl
++
+endif
 	PLA
 	PLP
 	RTL
@@ -236,6 +269,9 @@ audio_stop:
 	LDA.l $7E0000+!au_flags
 	ORA.b #$01
 	STA.l $7E0000+!au_flags
+if not(defined("AUDIO_PCM"))
+	STA.l $7E0000+!au_wake
+endif
 	LDA.b #$00
 	STA.l $7E0000+!au_reqn
 	STA.l $7E0000+!au_voicereq
@@ -259,7 +295,7 @@ audio_song:
 	ORA.w #$0001              ; command 01, p1 = song
 	TXY
 	BNE +
-	LDY.w #$FF10              ; p2: previous song fades at speed 1; p3: full volume
+	LDY.w #$FF00              ; p2: previous song cut, as the browser switches cues; p3: full volume
 +	TYX
 	JSL core_sound_queue
 	PLB
@@ -269,8 +305,9 @@ audio_song:
 	RTL
 
 ; The scene's own music again: the last native song with its echo preset
-; and start volume; the current song fades out at speed 1 first. Nothing
-; happens when no native song was seen since power-on.
+; and start volume. The current song is cut (p2 high nibble 0, no fade
+; wait), as the browser stops its cue. Nothing happens when no native song
+; was seen since power-on.
 audio_song_restore:
 	PHP
 	REP #$30
@@ -283,7 +320,6 @@ audio_song_restore:
 	BEQ +
 	LDA.w !au_native+1        ; p3 << 8 | preset
 	AND.w #$FF0F
-	ORA.w #$0010
 	TAX
 	LDA.w !au_native
 	AND.w #$007F
@@ -318,7 +354,32 @@ audio_fade:
 ; Field and world frames: M16/X16, DB = $7E, D = 0.
 audio_frame:
 	PHP
+if not(defined("AUDIO_PCM"))
+	; Dispatcher enters M16/X16. Quiet frames need no loop-age service.
+	LDA.w !au_test
+	BNE .run
 	SEP #$20
+	LDA.w !au_wake
+	ORA.w !au_pending
+	BNE .run8
+	LDA.w $1E05
+	CMP.w !au_song
+	BNE .run8
+if defined("title_sfx")
+	LDA.w !title_sfx&$FFFF
+	BNE .run8
+endif
+if defined("out_sfx")
+	LDA.w !out_sfx&$FFFF
+	CMP.w !au_dsfx
+	BNE .run8
+endif
+	PLP
+	RTL
+.run
+endif
+	SEP #$20
+.run8
 	REP #$10
 	JSL audio_native_poll
 	JSR audio_track_native
@@ -330,6 +391,16 @@ if defined("out_sfx")
 	JSR audio_destroy_cues
 endif
 	JSR audio_service
+if not(defined("AUDIO_PCM"))
+	LDA.w !au_ch+!c_kind
+	ORA.w !au_ch+!c_ctl
+	ORA.w !au_rare
+	ORA.w !au_bed
+	ORA.w !au_testloop
+	ORA.w !au_backoff
+	STA.w !au_wake
+endif
+audio_frame_done:
 	PLP
 	RTL
 
@@ -414,6 +485,12 @@ if not(defined("AUDIO_PCM"))
 	STZ.w !au_lvl+1
 	STZ.w !au_lvl+2
 	STZ.w !au_lvl+3
+	STZ.w !au_rare
+	LDA.w !au_ch+!c_kind
+	BEQ +
+	LDX.w #$0000
+	JSR au_stop_channel
++	JSR audio_rare_service
 	PLP
 	RTL
 endif
@@ -1672,6 +1749,7 @@ audio_test_poll:
 +	RTS
 
 incsrc "native.asm"
+incsrc "rare.asm"
 
 audio_code_end:
 assert audio_code_end <= !CODE_QUARTER_AUDIO, "audio code overflow (EA:C000-FFFF is a spare quarter, core/layout.asm)"
@@ -1680,13 +1758,11 @@ pullpc
 ; ---------------------------------------------------------------- patches
 incsrc "resident.asm"
 ; Driver upload end (C3:0106 LDY #$0200 / STY $2142).
-; The shipping ROM keeps the original driver: no stream polling overhead
-; on the SPC either. Native music's echo patches below remain active.
-if defined("AUDIO_PCM")
+; The extension is resident from boot; shipping only feeds three rare lines.
 %orig4($C30106, $8C0200A0)
 %orig2($C3010A, $2142)
 %hijack($C30106, audio_boot_upload, 6, audio)
-else
+if not(defined("AUDIO_PCM"))
 ; Native resident effects need no data transfer. Finish their port echo
 ; on a later frame instead of busy-waiting in the gameplay thread.
 %orig4($C30175, $00A520E2)

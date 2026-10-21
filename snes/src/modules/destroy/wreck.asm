@@ -839,6 +839,7 @@ ss_nmi_breach:
 	LDA.b #$03 : STA $212E                        ; masked on the main screen
 	LDA.l $7E002C : ORA.b #$0C : STA.l $7E002C
 	STA $420C
+	STA.l !core_hdmaen                            ; on before the frame start (core_hdmaen_write)
 	REP #$20
 	LDA.l !ssw_br_lines : INC : STA.l !ssw_br_lines
 	RTL

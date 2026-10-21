@@ -157,7 +157,15 @@ second 4 MiB, which starts as a byte copy of the first, so every HiROM mirror
 (`$00:8000` code, vectors, hijacks, `$40–$7D` mirrors of `$C0–$FD`) returns
 the same bytes. Tracing boot, the title, save/load and eight imported scenes
 found no reads of `$40–$7D:0000–7FFF` by the original game, so those lower
-halves (62 × 32 KiB = 1984 KiB) are free for extended data.
+halves (62 × 32 KiB = 1984 KiB) are free for extended data. When they are
+full, the build continues in the upper halves of `$60–$7D` (`$60:8000–$7D:FFFF`,
+30 × 32 KiB more, 2944 KiB in all). Those halves also appear at
+`$20–$3D:8000–FFFF` and held only a copy of `$E0–$FD`'s upper halves, which
+the cartridge reaches through its fast `$A0–$BD` mirrors. The probe
+`snes/test/lua/xdata-probe.lua` (run as `SNES_LUA_PRELUDE` over the whole
+suite) logs any CPU read or fetch there; none occurred on the build that
+introduced them. The emulators test reads one of those bytes through both
+mirrors on every core.
 
 A generator registers a blob with the `xdata` function in its context:
 
@@ -167,8 +175,8 @@ export function generate({rom,outDir,xdata}){
 }
 ```
 
-The build places blobs first-fit (largest first, from bank `$7D` down)
-before assembling, and writes `dist/snes/gen/xdata.asm` with
+The build places blobs first-fit (largest first, from bank `$7D` down,
+lower halves before upper ones) before assembling, and writes `dist/snes/gen/xdata.asm` with
 `!XDATA_ENDING_FORTRESS_TILES` (a 24-bit address such as `$7D0000`) and
 `!XDATA_ENDING_FORTRESS_TILES_SIZE`. Read them with DMA (source bank = the
 address's bank byte) or long addressing. The second 4 MiB is reachable only

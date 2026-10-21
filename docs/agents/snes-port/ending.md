@@ -436,7 +436,12 @@ King Kai, space and death 0, departure 1 (was 3: its first frame, the
 space load under white). The flight's stage loads in 25 frames (27-30
 with SlowROM). With SlowROM on a busier map (Potos with its NPCs, ~150
 lines of game logic) the flight dropped one frame in eight. No vblank
-overruns while a picture shows.
+overruns while a picture shows: the tests count any field NMI whose work
+ends in the next frame (that frame then has no HDMA, which in the flight
+meant no Mode 7 floor; before the core kept it off, stale channels drew
+garbage over the whole picture). The full-screen scenes skip the game's
+actor cell streaming (`ending_actor_hold`, up to 12 lines in its busiest
+phase), which had run one flight vblank in five past line 261.
 
 ## API
 

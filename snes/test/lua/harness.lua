@@ -128,13 +128,27 @@ function H.load(path)
   onNextInstruction(function() emu.loadSavestate(data) end)
   H.residentEffects()
 end
--- Old checkpoints contain the retail effect table. Install only the unused
--- slots that the shipping ROM now fills at boot; never replace live tracks,
--- samples, driver code or the optional PCM extension.
+-- Old checkpoints contain the retail effect table. Restore the shipping
+-- effect block, including shared-track pointers. A retail checkpoint also
+-- needs the shipping extension: reproduce its boot upload, without touching
+-- music tracks, song samples or echo. Diagnostic PCM imports stay retail.
 function H.residentEffects()
-  if H.r16(0xC324A9) ~= 0x2F8C then return end
-  for i = 0, 0x8F do
-    emu.write(0x2F70+i, H.r8(0xC324A9+i), emu.memType.spcRam)
+  local first = H.r16(0xC324A9)
+  if first < 0x2F74 or first >= 0x4800 then return end
+  -- Include shared retail tracks and their redirected pointers. This is
+  -- exactly the boot effect block; song/sample/extension bytes are elsewhere.
+  for i = 0, 0x1BFF do
+    emu.write(0x2C00+i, H.r8(0xC32139+i), emu.memType.spcRam)
+  end
+  if H.r8(0xC30106) ~= 0x5C or emu.read(0x020A, emu.memType.spcRam) ~= 0xF0 then return end
+  local boot = H.r16(0xC30107) | (H.r8(0xC30109) << 16)
+  assert(H.r8(boot+7) == 0xBF, 'audio boot upload layout changed')
+  local p = (H.r16(boot+8) | (H.r8(boot+10) << 16)) - 2
+  while true do
+    local addr, len = H.r16(p), H.r16(p+2)
+    if len == 0 then break end
+    for i = 0, len-1 do emu.write(addr+i, H.r8(p+4+i), emu.memType.spcRam) end
+    p = p + 4 + len
   end
 end
 function H.state() return emu.getState() end
@@ -197,7 +211,6 @@ function H.importSnesJs(dir, frames)
     if phase ~= 1 then return end
     phase = 2
     blit(dir .. '/aram.bin', emu.memType.spcRam)
-    H.residentEffects()
     blit(dir .. '/dsp.bin', emu.memType.spcDspRegisters)
     local sp = regs.spc
     local st = {}
@@ -222,6 +235,7 @@ function H.importSnesJs(dir, frames)
   end
   emu.removeMemoryCallback(idA, emu.callbackType.exec, 0x000000, 0xFFFFFF)
   emu.removeMemoryCallback(idB, emu.callbackType.exec, 0x0000, 0xFFFF, emu.cpuType.spc, emu.memType.spcMemory)
+  if phase == 2 then H.residentEffects() end
   return phase == 2
 end
 function H.finish(code)

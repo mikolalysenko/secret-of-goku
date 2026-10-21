@@ -179,6 +179,9 @@ equals the browser's `craterColors` tint (largest offset of BG palettes 1-5
 over palette set 26). Without the flash the same offset is derived from three
 reference colours in 0600 and applied to 0600 when it changes.
 
+Goku's module restores his body colours in the field pre-upload callback,
+including ghost/dialogue lag frames; see [goku.md](goku.md).
+
 ### Speed
 
 The impact's every fifth frame runs the game's party refresh and the flash
@@ -293,19 +296,11 @@ story's. Core hooks used: `modules_title_boot` (WRAM program patches),
   hardware's per-line sprite limits.
 - The scene is layered behind every native sprite; the browser inserts it
   at the hero's OAM index.
-- Goku's colours follow the native flash during the hop and the ghost and
-  dialogue pages (his palette is the goku module's); the browser draws him
-  unflashed. See requests.
 - A subtractive native flash on map 128 would darken the crater with the
   map; the browser's tint only adds.
 
 ## Requests
 
-- **goku module**: while `$2A≠0` the game rebuilds `7E:BE00` from `7E:0600`
-  at every flash step, Goku's palette included; the browser draws Goku unflashed in
-  every flash scene. Restoring Goku's palette into BE00 on flash frames (as
-  this module does for the pod) would fix the arrival's hop, ghost and
-  dialogue and every other flash scene at once.
 - **core**:
   - `core_spr_cull` accepts y down to -64; 16×16 sprites with y in
     [-64, -16) wrap onto the bottom of the screen. This module culls at -15

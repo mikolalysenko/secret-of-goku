@@ -107,6 +107,21 @@ test('DSP model: looping sample keeps playing and echo writes the ring',()=>{
 
 import {createApu,StreamPlayer,extensionSegments,driverChunks,loadRom} from './apu.mjs';
 import {buildStreamClip,CHUNK_BYTES} from '../../gen/audio-stream.mjs';
+import {buildBank,RARE_RATE,RARE_VOICES} from '../../gen/audio.mjs';
+import {resolve} from 'node:path';
+
+test('shipping stream bank contains only the three rare 6 kHz lines',async()=>{
+ const b=await buildBank(resolve(import.meta.dirname,'../../..'),{rare:true});
+ assert.equal(RARE_RATE,6000);
+ assert.equal(b.clips.length,3);
+ assert.deepEqual(b.shots.filter(s=>s.vol).map(s=>s.name),[...RARE_VOICES]);
+ assert.ok(b.loops.every(l=>l.vol===0));
+ for(const s of b.shots.filter(s=>s.vol)){
+  assert.equal(s.pitch,0x300);assert.equal(s.voice,true);
+  assert.ok(b.clips[s.clips[0]].snr>20);
+ }
+ assert.ok(b.shots.filter(s=>!RARE_VOICES.has(s.name)).every(s=>s.pitch===0&&s.prio===0));
+});
 
 const tone=(hz,sec,rate=12000,amp=0.5)=>{const n=Math.round(rate*sec),p=new Float32Array(n);for(let i=0;i<n;i++)p[i]=amp*Math.sin(2*Math.PI*hz*i/rate)*Math.min(1,i/60,(n-i)/60);return p;};
 const rmsWindows=(l,win=320)=>{const r=[];for(let i=0;i+win<=l.length;i+=win){let e=0;for(let j=i;j<i+win;j++)e+=l[j]*l[j];r.push(Math.sqrt(e/win));}return r;};

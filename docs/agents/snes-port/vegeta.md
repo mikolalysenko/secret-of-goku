@@ -270,7 +270,7 @@ short path, the two combat-window hooks and the NMI check).
 The draw's floor is Vegeta's five OBJ blocks through `core_oam_add_front`
 (~10 lines; the core API costs ~230 cycles a sprite) and each fx request
 (~2 lines per `fx_draw`: the charge's orb and four sparks ~11 lines, the
-aura ~4 lines though fx draws no aura yet). Optimised so far: hardware
+aura ~4 lines before fx drew it). Optimised so far: hardware
 multiply/divide in `math.asm` (`vg_mul8/16`, `vg_div32`, `vg_udiv16`),
 the footprint test as two word reads of the grid, pickSpot testing only
 spots that could be chosen, per-step constants out of the pixel loop,
@@ -291,9 +291,9 @@ door).
 | Return to Jehk's room (`4E5` draw, `025` rest) | done for the full party end to end (`return-draw`, `return-rest`); the other party masks go through the same queries (`TRIAL_PARTY` from `$E200/$E400` at start), whose route choice story's sweep checks |
 | Clash (logic, mash, ball) | done: every tick equals `vegeta-clash.js` (`clash-win`, `clash-lose`, and from a real Kamehameha in `combat-clash`) |
 | Goku's attacks on Vegeta | done through the slot-3 window and combat's damage hook (`combat`, `combat-clash`); a combat custom-target API would replace the window (Requests) |
-| Instant Transmission to Vegeta | written for flight's `!fl_tp_custom` (flight is not merged here: untested) |
-| Effects | bound to fx (beams, orbs, sparks, bursts, embers, aura, detonation, quake/flash); pictures of the charge, both waves, the volley, the rush and the clash checked (`waves`, `combat-clash`); fx draws no aura yet |
-| Telepathy | bound to ui's `!UI_MSG_JOCH_TRIAL_0..9`; ui is not merged here (the lines are logged only); works in a scratch merge with the ui branch |
+| Instant Transmission to Vegeta | posted through flight's `!fl_tp_custom`; no spot around the arena passes `findLanding` in either engine, so L+B does nothing in the chamber, as in the browser (flight.md, Remaining) |
+| Effects | bound to fx (beams, orbs, sparks, bursts, embers, aura, detonation, quake/flash); pictures of the charge, both waves, the volley, the rush and the clash checked (`waves`, `combat-clash`); his aura is fx's polygon `FX_AURA` |
+| Telepathy | bound to ui's `!UI_MSG_JOCH_TRIAL_0..9`, shown in ui's telepathy window |
 
 ## API
 

@@ -3,7 +3,7 @@
 -- moogle and snowman keep the native sprite and palette, sleep and death
 -- use the prone cells, pygmy draws the 16x16 miniature, barrel keeps its
 -- native overlay, the waterfall substitutes palette 5 instead of 1, and a
--- native flash reaches Goku on the field but not in scene cells.
+-- native flash leaves Goku unflashed in both field and scene cells.
 local A = G.addr
 local function set(t) local s = {} for _, v in ipairs(t) do s[v] = true end return s end
 local function case(name, frames)
@@ -24,6 +24,18 @@ local function oam_tiles()
   return t
 end
 function test()
+  local costs, started, bucket = {}, nil, nil
+  emu.addMemoryCallback(function()
+    bucket = H.r8(0x7E002A) == 0 and 'idle' or 'flash'
+    started = emu.getState().masterClock
+  end, emu.callbackType.exec, SYM.goku_preupload, SYM.goku_preupload)
+  emu.addMemoryCallback(function()
+    if not started then return end
+    local cost = (emu.getState().masterClock - started + 36 + 48) / 1364 -- RTL + dispatch JSL
+    local v = costs[bucket] or {calls = 0, sum = 0, max = 0}
+    v.calls = v.calls + 1; v.sum = v.sum + cost; v.max = math.max(v.max, cost)
+    costs[bucket] = v; started = nil
+  end, emu.callbackType.exec, SYM.goku_preupload_done, SYM.goku_preupload_done)
   local base = G.rom_pal(0)
   local s = case('graphics-audit__status__normal')
   G.check(s.repl == 1 and G.pal_equal(G.cgram_pal(1), base), 'normal: base palette')
@@ -95,21 +107,38 @@ function test()
   G.check(seenAir > 0, 'water flight exercised airborne palette 1')
   G.check(badAir == 0, 'water takeoff/flight/landing palette mismatches: ' .. badAir)
 
-  -- native flash ($2A: CGRAM from 7E:BE00, rebuilt with an offset every
-  -- frame). On the field Goku follows it, as the browser's tint(); while a
-  -- scene shows an explicit cell (the browser's scene renderers) he stays
-  -- unflashed; entry 1, every actor's shadow, keeps the flash either way.
+  -- Real arrival flash: sample every displayed frame, including native
+  -- lag frames. Goku stays unflashed while BG colours and shared shadows
+  -- retain the game's flash. Scene pose requests must not affect this.
+  -- The browser bundle has no cartridge module state: the title module's
+  -- arrival phase (!title_phase, !RAM_MISC+$06) is the ghost page here.
   s = case('arrival-research__browser-ghost')
+  H.w8(0x7EDD86, 4)
   local slot = H.r8(A.pal_slot)
   local goku = G.rom_pal(H.r8(G.RAM + 0x48))
-  local cg = G.cgram_pal(slot)
   G.check(H.r8(0x7E002A) ~= 0 and s.repl == 1, 'flash: native flash active with Goku')
-  G.check(not G.pal_equal(cg, goku, 2), 'flash: on the field Goku follows the flash: ' .. G.pal_str(cg))
-  H.w16(A.cell_req, H.r16(G.addr.p_cell) + 1)
-  H.wait(6)
-  cg = G.cgram_pal(slot)
-  G.check(G.pal_equal(cg, goku, 2), 'flash: with a scene cell Goku colours 2-15 unflashed in palette ' .. slot .. ': ' .. G.pal_str(cg))
-  G.check(cg[1] ~= 0x10A6, 'flash: the shadow colour keeps the native flash')
-  H.w16(A.cell_req, 0)
+  local flashFrames, sceneFlashes, errors = 0, 0, 0
+  for _, scene in ipairs({false, true, false}) do
+    H.w16(A.cell_req, scene and H.r16(A.p_cell) + 1 or 0)
+    for _ = 1, 24 do
+      H.wait(1)
+      if H.r8(0x7E002A) ~= 0 then
+        flashFrames = flashFrames + 1
+        local cg = G.cgram_pal(slot)
+        if not G.pal_equal(cg, goku, 2) then errors = errors + 1 end
+        local bg = H.cgram(0x22) | (H.cgram(0x23) << 8)
+        if bg ~= H.r16(0x7E0622) and cg[1] ~= 0x10A6 then sceneFlashes = sceneFlashes + 1 end
+      end
+    end
+  end
+  G.check(flashFrames == 72 and errors == 0, 'flash: every CGRAM body palette unflashed (' .. errors .. '/' .. flashFrames .. ')')
+  G.check(sceneFlashes > 0, 'flash: the background and shared shadows still flash')
+  H.result('flash', {frames = flashFrames, errors = errors, sceneFlashes = sceneFlashes})
+  -- Disabling Goku restores the native flash on the same slot.
+  G.off(); H.wait(12)
+  G.check(not G.pal_equal(G.cgram_pal(slot), goku, 2), 'flash: inactive Goku leaves native colours')
+  H.result('preuploadCost', costs)
+  G.check(costs.idle.max <= 0.3, 'flash repair idle cost at most 0.3 scanlines')
+  G.check(costs.flash.max <= 2, 'flash repair costs at most 2 scanlines')
   G.finish()
 end

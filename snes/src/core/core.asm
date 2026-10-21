@@ -460,6 +460,10 @@ endif
 core_field_nmi:
 	PHP
 	PHB
+	; The native NMI began with STZ $420C (C0:C0BF): no channel is on now
+	; unless a module switches one on directly in this vblank (and records it).
+	SEP #$20
+	LDA.b #$00 : STA.l !core_hdmaen
 	REP #$30
 	PEA $8080 : PLB : PLB          ; I/O visible through bank $80
 	LDA.l !core_dma_ready
@@ -490,24 +494,25 @@ endif
 	RTL
 
 ; The replaced C0:C15A LDA $2C / STA $420C (M8 in and out; A = the value
-; written; D and DB the native NMI's). When the vblank work ran into the next
-; frame (scanline 0-224), that frame's HDMA has already started, and a
-; channel switched on now would run from stale table pointers (garbage CGRAM
-; or scroll writes for a frame, ui.md): then only channels already running
-; stay on, and the rest start with the next vblank.
+; written; D and DB the native NMI's). !core_hdmaen holds the channels on in
+; $420C right now: none after the native NMI's STZ $420C (core_field_nmi
+; clears it), plus any a module switched on directly in this vblank. When
+; the vblank work ran into the next frame (scanline 0-224), that frame's HDMA
+; start has passed: only channels on at that moment began from their tables.
+; Any other, even one that ran last frame, would continue from last frame's
+; pointers (garbage CGRAM, matrix or scroll writes; ui.md, destroy.md), so
+; only those stay on and the rest start again with the next vblank.
 core_hdmaen_write:
-	; Disabling channels, or keeping the same mask, is safe even after
-	; frame start. Only newly enabled channels need the scanline guard.
+	; Disabling channels is safe even after frame start; channels that were
+	; off at the frame start need the guard: HVBJOY bit 7 is the vblank
+	; (lines 225-261), so the next frame's HDMA start is still ahead.
 	LDA $2C
 	EOR.l !core_hdmaen
 	AND $2C
 	BEQ .same
-	REP #$20
-	JSR core_vcount
-	CMP.w #225
-	SEP #$20
+	LDA.l $004212
+	BMI .same
 	LDA $2C
-	BCS .store
 	AND.l !core_hdmaen
 	BRA .store
 .same
@@ -516,6 +521,29 @@ core_hdmaen_write:
 	STA.l !core_hdmaen
 	STA.l $00420C
 	RTS
+
+; C0:C14E, the field NMI's JSL $01950D: the game streams its actors' cells
+; into OBJ VRAM (a 5-phase round robin, up to 12 lines in a busy phase). A
+; module whose picture hides every native actor (a full-screen set piece)
+; skips it through modules_actor_hold (carry set); the round robin resumes
+; where it stopped. A and the flags as at the call.
+core_actor_cells:
+	PHP
+	REP #$20
+	PHA
+	JSL modules_actor_hold
+	BCS .skip
+	PLA
+	PLP
+if defined("CORE_NATIVE_NMI_SLOW")
+	JML $01950D
+else
+	JML $81950D                    ; its FastROM mirror; the RTL returns to C0:C152
+endif
+.skip
+	PLA
+	PLP
+	RTL
 
 ; ---------------------------------------------------------------------------
 ; World flight (Mode 7 overworld), 00:8085: after the world frame's logic,

@@ -1,3 +1,4 @@
+import {scouterData} from './ui-scouter.mjs';
 // UI module data: telepathy messages, the BG3 glyph atlas, radar strings and
 // scouter/status tables, generated from the browser engine's own sources so
 // the cartridge and the browser mod share one source of truth.
@@ -600,6 +601,7 @@ export async function generate({rom,repo,outDir,xdata}){
     need(order.every(k=>glyphs[k]),'glyphs 0-9 and comma');
     rd.push('ui_sc_font:     ; 3x5 glyphs (bits 7-5): 0-9, comma');
     for(const k of order)rd.push(`\tdb ${glyphs[k].map(b=>hex(b)).join(',')}  ; ${k}`);
+    scouterData({glyphs,outDir,xdata,def,rd});
   }
   writeFileSync(join(outDir,'radar.asm'),rd.join('\n')+'\n');
   writeFileSync(join(outDir,'defines.asm'),def.join('\n')+'\n');

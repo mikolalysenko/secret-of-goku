@@ -72,6 +72,12 @@ world_nmi_palettes:
 ; The wanted cell into the hidden buffer, using four packed 128-byte rows
 ; instead of sixteen separately decoded tiles, then draw it next frame.
 world_nmi_cell:
+if getfilestatus("frieza/flyby.asm") == 0
+	JSL frieza_world_body             ; checker supplies Goku; preserve vblank for its cells
+	BCC +
+	RTS
++
+endif
 	LDA.w !w_cell_want
 	CMP.w #!GOKU_NONE
 	BNE +

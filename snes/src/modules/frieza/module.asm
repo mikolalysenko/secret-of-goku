@@ -243,6 +243,7 @@ assert !FZX_END <= !FZ+$C0, "frieza WRAM overflow (beast)"
 !fzt_ruins     = !FZHB+$691   ; byte: the vista shows the Tree's ruins
 !fzt_shake     = !FZHB+$692   ; byte: the impact's shake (signed)
 !fzt_bright    = !FZHB+$693   ; byte: brightness forced with !FZV_BRIGHT
+!fzt_hdma      = !FZHB+$694   ; 7 bytes: Tree vista's BG3 cutoff (channel 6 -> TM)
 ; !FZHB+$700: the large-burst table (effects.asm)
 !fzv_on        = !FZSB+$14A   ; byte: the victory beat runs
 !fzv_age       = !FZSB+$14C   ; word: frames since the fatal hit
@@ -436,6 +437,7 @@ endif
 !FZI_GOKU      = $04       ; quiet with Goku present (his arrival wakes the module)
 !FZI_PERM      = $08       ; quiet frames keep the permanent form
 !FZI_HINT      = $10       ; quiet frames look for Dryad's hint
+!FZI_WORLD_IDLE = $20      ; no world flyby/intro/notice; fz_wake invalidates this cache
 !FZI_SRAM      = $80       ; the scene SRAM ($32:7000-7FFF) holds Frieza's state: an
                            ; ending scene uses all of $32:6000-7FFF, so the module
                            ; neither reads nor writes there until it reset it
@@ -547,6 +549,7 @@ pushpc
 org !DATA_FRIEZA
 frieza_data_start:
 incsrc "frieza/data.asm"
+incsrc "frieza/flyby.asm"
 frieza_data_end:
 assert frieza_data_end <= !DATA_FRIEZA+$8000, "frieza data bank overflow"
 pullpc
@@ -604,6 +607,7 @@ incsrc "collapse.asm"
 incsrc "vista.asm"
 incsrc "follower.asm"
 incsrc "world.asm"
+incsrc "flyby.asm"
 frieza_code_end:
 assert frieza_code_end <= !CODE_FRIEZA+$7000, "frieza code bank overflow"
 pullpc

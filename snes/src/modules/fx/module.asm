@@ -246,6 +246,7 @@ pushpc
 org !CODE_FX
 fx_code_start:
 incsrc "api.asm"
+incsrc "overlay.asm"
 incsrc "frame.asm"
 incsrc "emit.asm"
 incsrc "kinds.asm"

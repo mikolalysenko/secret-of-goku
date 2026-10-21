@@ -10,6 +10,7 @@ import {readFileSync,existsSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {runMesen} from '../mesen.mjs';
+import {privateRom,cleanupRom} from '../checkpoints.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const rom=process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-goku.sfc');
 const original=resolve(repo,'rom/secret-of-mana-us.sfc');
@@ -17,6 +18,14 @@ const lua=readFileSync(resolve(here,'budget.lua'),'utf8');
 const scenes=(process.env.PERF_SCENES??'preset__sword,preset__sandship,preset__battle,preset__beast,preset__fortress,preset__flight').split(',');
 // Lines after the NMI wrap to the next frame: normalise so later = larger.
 const norm=l=>l<0?l:(l<200?l+262:l);
+// Original-ROM states contain only 8 KiB SRAM. The expanded cartridge's
+// remaining SRAM must not come from Mesen's filename-based battery save
+// (especially when other worktrees run a ROM with the same basename).
+async function isolated(src,tag,options){
+  const copy=privateRom(src,`perf-${tag}`);
+  try{return await runMesen({...options,rom:copy});}
+  finally{cleanupRom(copy);}
+}
 let ok=true;
 console.log('scene'.padEnd(26)+'orig p90/lag   build p90/lag');
 for(const scene of scenes){
@@ -25,10 +34,10 @@ for(const scene of scenes){
   // One identical full Mesen state (APU/DSP phase included) for both carts.
   const stateDir=resolve(repo,'.local/snes-test/perf/states',scene),state=resolve(stateDir,'scene.mss');
   if(!existsSync(state)){
-    const r=await runMesen({rom:original,test:`BUNDLE_PATH=${JSON.stringify(bundle)}\nMAKE_STATE=true\n`+lua,outDir:stateDir});
+    const r=await isolated(original,`state-${scene}`,{test:`BUNDLE_PATH=${JSON.stringify(bundle)}\nMAKE_STATE=true\n`+lua,outDir:stateDir});
     if(!r.results?.saved){console.log(scene.padEnd(26)+'could not create state');ok=false;continue;}
   }
-  const one=async(cart,tag)=>(await runMesen({rom:cart,state,test:`BUNDLE_PATH=${JSON.stringify(bundle)}\n`+lua,outDir:resolve(repo,'.local/snes-test/perf',tag,scene)})).results??{};
+  const one=async(cart,tag)=>(await isolated(cart,`${tag}-${scene}`,{state,test:`BUNDLE_PATH=${JSON.stringify(bundle)}\n`+lua,outDir:resolve(repo,'.local/snes-test/perf',tag,scene)})).results??{};
   const a=await one(original,'original'),b=await one(rom,'build');
   if(a.error||b.error){console.log(scene.padEnd(26)+'error',a.error??b.error);ok=false;continue;}
   const lagA=a.frames-a.reached,lagB=b.frames-b.reached;

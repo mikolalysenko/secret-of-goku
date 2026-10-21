@@ -44,6 +44,12 @@ retain `$00`. Other code runs in `C0`–`DF` through `JSL`.
 - `$2C`: HDMA enable shadow. The field NMI writes it to `$420C` at `00:C15C`
   (dialogue windows: 3 = channels 0/1, set up in `C1E7` as a CGADD/CGDATA
   gradient); world flight writes `($2C & $C0) | $3F` (overhead map: `$2C & $C0`).
+  The field NMI begins with `STZ $420C` (`C0:C0BF`), so when its work runs
+  past line 261 no channel began the next frame from its table; switched on
+  then, each would continue from last frame's pointers (garbage CGRAM, matrix,
+  mode or scroll writes for the whole frame). `core_hdmaen_write` keeps such a
+  frame's HDMA off (only channels a module switched on directly before the
+  frame start, recorded in `!core_hdmaen`, stay on).
 - `$29`/`$21`: per-frame BG mode / main screen written by the field NMI when
   `$29 & 4` (Mode 7 arenas). The field IRQ switches lines 196+ to the HUD:
   `$2105=$09`, `$212C=$14` (BG3 + OBJ). The switch lands at x≈248 of line 195.
@@ -116,7 +122,9 @@ World flight: slots 88–127 (40), always free. Rings and menus: none.
 - Field CGRAM: the NMI uploads all 256 colors from `$7E:0600` (or
   `$7E:BE00` while `$2A` is nonzero) on channel 7. OBJ palettes are colors
   128–255; the hero uses OBJ palette 1 (5 at the waterfall, for color math).
-- Actor cells stream in NMI (`JSL $01950D` → `C1:950D`): a 5-phase round
+- Actor cells stream in NMI (`JSL $01950D` → `C1:950D`, through
+  `core_actor_cells`, which skips it when `modules_actor_hold` returns carry:
+  the ending's full-screen scenes, where it cost up to 12 lines): a 5-phase round
   robin on `$56`, four channels (4–7, MDMAEN `$F0`) per batch, into fixed OBJ
   VRAM per actor slot (immediates `C1:95C6`–`C1:AFDF` cover `$6400`–`$7FC0`).
   The hero: `$7C00`/`$7D00` (tiles `$1C0`–`$1C7`/`$1D0`–`$1D7`), sources at

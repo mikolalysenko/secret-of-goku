@@ -8,38 +8,97 @@ Everything below about the native driver was reverse-engineered from the US
 cartridge (`snes/gen/audio-spc700.mjs` disassembles it) and cross-checked
 against 277 ARAM/DSP snapshots of the browser mod (`.local/snes-import/`).
 
-## Shipping sound policy (October 18, 2026)
+## Shipping sound policy (October 20, 2026)
 
-The default cartridge uses effects already resident in the original SPC
-driver. It does not upload the stream extension or transfer BRR chunks
-during gameplay. Seven short, single-voice sequences occupy previously
-unused effect slots
-`$DC-$E2`: swing, hit, ki, charge, transformation, teleport and beam. They
-reuse the boot-resident instruments and finish in 90-470 ms. The native
+The default cartridge uses resident effects and streams only three rare
+lines: Frieza's laugh, Vegeta's Final Flash and Vegeta's Kakarot. The unchanged
+stream extension uploads once at boot. Seventeen single-voice sequences occupy
+effect slots `$DC-$EC`, alongside the retail `$00` laser. They reuse the
+boot-resident instruments and finish within 2.6 seconds. Their durations
+now follow the browser clips, including the transformation and burst tails. The native
 `$12` rumble loop is no longer used by transformations; it never stopped
 on its own. Contact has a stronger attack than an empty swing, and the
 old two-voice, roughly two-second `$50` impact has a short replacement.
 A priority selector sends at most one new effect per
 frame and drops stale requests when a script or song owns the sound queue.
-Charge beds pulse every 25 frames; continuous flight noise and sampled
-voice lines are omitted. Native music and its arrangements remain enabled.
+Charge beds pulse every 25 frames. Continuous flight noise is represented
+by the takeoff/landing effects. The Kamehameha chant and shout remain off.
+Native music and its arrangements remain enabled. Round two changes only
+sequence bytes and cue lookup data: **zero changed 65816 instructions**,
+no added upload; every effect still takes one voice. Punch swings and contacts share
+boot instrument 1, with longer kick envelopes; ki shots use instrument 9.
+Teleports use DSP noise, and Goku's beam uses the current song's echo.
 
 `snes/src/modules/audio/native.asm` implements this policy behind the same
-module API. `-DAUDIO_PCM=1` restores the historical streamer for diagnostics;
-the streaming design below describes that optional build. The audio runner
-tests `native` against the shipping ROM and explicitly builds the PCM option
-for the historical streaming tests. `node snes/test/audio/run.mjs native unit`
+module API; `rare.asm` admits the rare lines. `-DAUDIO_PCM=1` restores the
+historical all-cue streamer for diagnostics. The audio runner tests `native`,
+`rare`, `rare-control` and `rare-boot` against the shipping ROM and explicitly
+builds the PCM option for the historical streaming tests.
+`node snes/test/audio/run.mjs native unit`
 checks audible resident effects, bounded charge pulses, music continuity,
 intact samples, one-voice ownership, automatic cue termination and the
 absence of BRR stream commands. The SPC tests additionally check silent
 tails, output headroom and unchanged retail effects/samples.
 
-`resident.asm` uses 115 of the 144 zero bytes at ARAM `$2F70-$2FFF`: seven
-pointer pairs followed by 87 sequence bytes. Slots `$E3-$FF` are reserved
-for sequence storage. The existing boot and song-reload transfers already
-include this region, so it needs no new upload, samples or SPC extension.
-The test importer installs this small region from the cartridge when
-restoring a retail checkpoint; live driver state is preserved.
+`resident.asm` uses **267 of 283 bytes** of sequence/table capacity: the original 144
+zero bytes at `$2F70-$2FFF`, plus 139 bytes reclaimed by sharing identical
+retail tracks. Every retail effect id and both of its tracks are preserved.
+The existing boot and song-reload transfers already include these bytes,
+so this adds no upload or 65816 instructions. The test importer restores the
+whole effect block after a retail checkpoint, along with the boot extension.
+
+### Resident storage proof
+
+`snes/gen/audio-resident-storage.mjs` verifies each source span against its
+identical destination, redirects all incoming effect-table pointers, and
+rejects external fall-through or address-dependent jumps. The resident test
+compares the complete sequencer byte stream of **both tracks of all 220
+retail slots** before and after, and checks every other boot byte. No music,
+sample or streaming-extension storage is reclaimed.
+
+| Reclaimed ARAM (inclusive) | Bytes | Identical retained bytes | Retail table entries redirected |
+| --- | ---: | --- | --- |
+| `$379A-$37A9` | 16 | `$378A-$3799` | `$46` voice 1 |
+| `$39E6-$39F8` | 19 | `$39D3-$39E5` | `$59` voices 0/1 |
+| `$3A16-$3A28` | 19 | `$39D3-$39E5` | `$60` voices 0/1 |
+| `$3A40-$3A56` | 23 | `$3A29-$3A3F` | `$69` voices 0/1 |
+| `$3A89-$3ABA` | 50 | `$3A57-$3A88` | `$6B` voices 0/1 |
+| `$3CC9-$3CD4` | 12 | `$3CBD-$3CC8` | `$8C` voice 1 |
+
+The 17 pointer pairs occupy `$2F70-$2FB3` (68 bytes). The 199 sequence
+bytes are allocated as follows; remaining holes total 16 bytes.
+
+| Effect / name | ARAM (inclusive) | Bytes |
+| --- | --- | ---: |
+| $DC clink | $3A4C-$3A56 | 11 |
+| $DD impact | $3AA3-$3AAD | 11 |
+| $DE ki-blast | $3AAE-$3AB8 | 11 |
+| $DF charged | $2FB4-$2FBE | 11 |
+| $E0 transform | $3CC9-$3CD4 | 12 |
+| $E1 burst | $379A-$37A7 | 14 |
+| $E2 disc | $2FBF-$2FC9 | 11 |
+| $E3 air-release | $39E6-$39F3 | 14 |
+| $E4 beam | $2FCA-$2FD4 | 11 |
+| $E5 punch-swing | $2FF6-$2FFD | 8 |
+| $E6 kick-swing | $2FD5-$2FDF | 11 |
+| $E7 punch-contact | $3A16-$3A23 | 14 |
+| $E8 kick-contact | $3A89-$3A96 | 14 |
+| $E9 distant-impact | $2FE0-$2FEA | 11 |
+| $EA beam-echo | $3A40-$3A4B | 12 |
+| $EB teleport-noise | $3A97-$3AA2 | 12 |
+| $EC air-rush | $2FEB-$2FF5 | 11 |
+
+Spare bytes: `$2FFE-$2FFF`, `$37A8-$37A9`, `$39F4-$39F8`,
+`$3A24-$3A28`, and `$3AB9-$3ABA` (these retain their original bytes).
+
+The ten pointer words are at `$2D1A`, `$2D64/$2D66`, `$2D80/$2D82`,
+`$2DA4/$2DA6`, `$2DAC/$2DAE`, and `$2E32`. ROM offset for any affected ARAM
+byte is `$032139 + ARAM - $2C00` (CPU bank `$C3`). Each changed byte has an
+original-byte assertion and a registered patch. The generated layout is in
+`.local/snes-test/audio/audit/static.json` after `node snes/test/audio/audit.mjs`.
+Finite play traces and literal scans cannot prove that computed native
+sound ids are unused, so **no retail id is retired**. Sharing identical
+tracks avoids that risk and preserves even unobserved effects.
 
 Resident effect command `02` also uses an asynchronous CPU-side handshake
 in the shipping build. The hook at `C3:0175` writes the four ports and
@@ -51,7 +110,173 @@ The native effect test measures less than two scanlines per dispatcher call
 (1.35 maximum in the October 18 run), checks audible cues and intact
 parameters, then loads and restores music. This avoids the old effect
 busy-wait; it does not eliminate the native song loader's transition pauses.
-The pending byte aliases the unused PCM channel state in a native build.
+The pending byte is `$7E:DD5B`, in unused stream channel 1. That channel's
+`$58-$5A` also hold the wake flag, request lifetime and pending rare cue.
+
+### Measured resident cue palette
+
+`node snes/test/audio/effects.mjs --search` auditions retail effects and
+single-voice sweeps, finer note lengths, volume envelopes, DSP noise,
+noise-to-tone transitions, vibrato/tremolo, pitch modulation, song echo and
+two-track combinations. The final search measures **2,519 auditions / 2,457
+eligible candidates**, including the shipping sequences. Two-track rankings
+are limited to contacts, ki and beams. Every shipping choice still uses
+**one voice**. Hit/kick/blast layering scores below the best one-voice
+candidate; the boss beams gain less than one point while stealing two
+voices for 1.4 seconds. Those small gains were rejected. The audit includes
+integrated voice-milliseconds in `effects/layering.json`.
+
+References are all browser WAV variants, resampled at each cue's authored
+rate, multiplied by its gain and the .55 effects master. Features and weights
+are unchanged: audible -40 dB duration, 32 normalized RMS envelope bins,
+Hann-windowed 1024-point FFT power centroid, eight octave-band energies
+(62.5 Hz–8 kHz), and RMS level. Score = 100 / (1 + .9 duration + .8 spectrum +
+.4 centroid + .8 envelope + .3 level); duration/centroid errors are
+absolute log2 ratios, band/level errors are capped at 24 dB and divided by
+12, envelope error is RMS distance. Scores average variants. These are
+acoustic rankings, not a claim of perceptual identity.
+
+The table compares round one's ROM with the shipping palette. Scores are
+**dry**, directly comparable with round one. Beam's parenthesized result
+uses native echo preset 4 (EDL 4, EVOL 64, EFB 30, FIR 0); its echo depends
+on the current song in play. The large boss beams retain their longer dry
+sequence. Burst/transform/landing and the charge beds retain their measured
+choices where the new levers did not clearly improve the family.
+
+| Cue | Old effect / score | New effect / score | Voices | Audible seconds |
+| --- | --- | --- | ---: | ---: |
+| swing | $DC / 51.9 | $E5 / 55.8 | 1 | 0.23 |
+| kickSwing | $BF / 47.9 | $E6 / 62.2 | 1 | 0.34 |
+| hit | $DD / 43.0 | $E7 / 58.3 | 1 | 0.33 |
+| kick | $A3 / 43.4 | $E8 / 57.9 | 1 | 0.67 |
+| blast | $DE / 50.4 | $DE / 65.0 | 1 | 0.69 |
+| impact | $DD / 65.4 | $DD / 65.4 | 1 | 0.46 |
+| distantImpact | $0E / 43.6 | $E9 / 60.9 | 1 | 0.46 |
+| beam | $E4 / 55.0 | $EA / 57.7 (69.4 echo) | 1 | 0.92 (1.10 echo) |
+| charged | $DF / 55.2 | $DF / 55.2 | 1 | 0.23 |
+| transform | $E0 / 61.4 | $E0 / 61.4 | 1 | 2.53 |
+| revert | $E3 / 50.1 | $E3 / 50.1 | 1 | 0.45 |
+| powerBurst | $E1 / 47.7 | $E1 / 47.7 | 1 | 1.77 |
+| deflect | $DC / 56.9 | $DC / 56.9 | 1 | 0.23 |
+| balloonPop | $DC / 59.9 | $DC / 59.9 | 1 | 0.23 |
+| iceBreak | $DC / 46.5 | $DC / 46.5 | 1 | 0.23 |
+| teleport | $DE / 56.6 | $EB / 64.2 | 1 | 0.88 |
+| teleportIn | $DE / 59.3 | $EB / 63.6 | 1 | 0.88 |
+| flight | $DD / 47.8 | $EC / 54.2 | 1 | 0.46 |
+| landing | $E3 / 50.0 | $E3 / 50.0 | 1 | 0.45 |
+| friezaOrb | $E1 / 49.0 | $E1 / 49.0 | 1 | 1.77 |
+| friezaDisc | $E2 / 47.4 | $E2 / 47.4 | 1 | 0.46 |
+| friezaLaser | $00 / 47.2 | $00 / 47.2 | 1 | 0.43 |
+| friezaBeam | $E4 / 65.0 | $E4 / 65.0 | 1 | 1.38 |
+| friezaImpact | $DD / 52.3 | $DD / 52.3 | 1 | 0.46 |
+| fortressBreak | $E1 / 56.2 | $E1 / 56.2 | 1 | 1.77 |
+| friezaRush | $DD / 46.7 | $EC / 62.5 | 1 | 0.46 |
+| vegetaBeam | $E4 / 66.0 | $E4 / 66.0 | 1 | 1.38 |
+
+| Held cue | Old effect / score | New effect / score | Voices | Measurement |
+| --- | --- | --- | ---: | --- |
+| charge | `$DD` / 62.7 | `$DD` / 62.7 | 1 | 2 s, pulses every 25 frames |
+| aura | `$DF` / 52.1 | `$DF` / 52.1 | 1 | 2 s, pulses every 25 frames |
+| friezaCharge | `$DD` / 60.1 | `$DD` / 60.1 | 1 | 2 s, pulses every 25 frames |
+| air | boundary effects only | boundary effects only | 0 continuous | flight/landing above |
+
+The longest voice ownership remains 2.55 s (transform); common swing,
+contact, ki and teleport ownership is 0.24 / 0.36 / 0.70 / 0.94 s,
+respectively. Effects automatically release their voice; the selectors,
+priorities, asynchronous `02 ee 0F 88`, one-new-command-per-frame limit and
+25-frame bed cadence are unchanged. All three rare clips and their
+extension code, tables and chunk allocations are unchanged.
+
+To reproduce comparisons against a locally retained round-one cartridge:
+
+```sh
+node snes/test/audio/effects.mjs --wav --before=.local/snes-test/audio/baseline/before.sfc
+```
+
+Listening pairs are `.local/snes-test/audio/compare/<cue>-browser.wav` and
+`<cue>-snes.wav` at 32 kHz. All 27 one-shots and the three held beds have
+pairs; extra swing/hit variants have numbered browser files. Beam has a
+separate `beam-snes-dry.wav`. The air pair deliberately contains a silent
+SNES side because its continuous layer remains disabled. `manifest.json`
+records the rendering context; no recordings are committed.
+
+### Noise, music and call-site audit
+
+`node snes/test/audio/audit.mjs --trace` scans decoded event commands,
+conservative native command literals and dispatcher call sites, then traces
+every `02 ee` dispatch in a 7,200-frame input session, all 21 imported debug
+presets, and 1,200 frames of the power-on title (22 presets total). The
+storage audit observed **1,130 effect commands**, including retail `$60`,
+which remains intact through shared tracks. Static results: 74 event effect
+commands, 20 native long dispatcher calls and 1,020 conservative literals.
+The latter include data and computed native ids prevent an exhaustive
+unused-id proof; none are retired. Outputs remain under
+`.local/snes-test/audio/audit/`.
+
+A control-flow walk of all **64 retail and 64 shipping song slots** finds
+no `DD` or `DE` commands. The driver keeps the music clock at `$C5`, effect
+clock at `$C6`, and selects the latter while effect noise is active
+(`$B1.4`). `F2` sequence termination calls `$081D`, clears the effect NON
+bit, and restores `$C5` when the last noise voice ends. The resident test
+sets a distinct music clock and verifies restoration after both natural
+termination and same-id replacement. The retail global-stop command clears
+NON/ownership but leaves the last FLG clock; this is harmless with no song
+noise, and the next music `DD`/`DE` selects its own clock again. Simultaneous
+retail noise effects still share the hardware clock, as they always did.
+No driver or extension patch was added.
+
+`audio music` plays every cue beside each of the five arrangements. All
+tracks remain alive, each cue takes at most one voice and returns it, song
+and effect samples remain byte-identical, and the extension and song echo
+parameters remain intact. `audio songs` retains the complete historical
+PCM song-load/restore coverage as well.
+
+### Rare lines and admission budget
+
+The shipping bank contains exactly these three clips, resampled from the
+browser assets to **6 kHz**, pitch `$0300`. It uses 26,784 ROM bytes in `$FC`.
+All other shot/loop stream records have zero volume and priority. Channel 0
+uses one music voice; channel 1 stays idle. The existing extension footprint
+and sample/echo allocations are unchanged (section 7). No PPU writes or DMA
+are involved in streaming.
+
+| Id / cue | Duration | BRR chunks | Codec SNR | CPU lines per transfer frame, mean / max |
+| --- | ---: | ---: | ---: | ---: |
+| 28 `friezaLaugh` | 4.440 s | 417 | 27.6 dB | 46.06 / 124.99 |
+| 29 `vegetaFinalFlash` | 2.690 s | 253 | 21.4 dB | 43.57 / 102.07 |
+| 30 `vegetaKakarot` | 0.782 s | 74 | 26.8 dB | 45.77 / 90.82 |
+| 31/32 Kamehameha chant/shout | disabled | 0 | — | 0 streaming |
+
+SNR is against the resampled source, not the original 16 kHz bandwidth.
+CPU measurements include the complete `audio_frame` call on frames sending
+`8A`, including its bounded echo wait; one scanline is 1,364 master clocks.
+The quiet checkpoint plays 267/162/48 audible frames, respectively. Latest
+service completion is line 172. These are rare but substantial CPU costs;
+they are not part of the resident effect dispatcher.
+
+Admission checks the existing native handshake before touching ports. A
+request made while Goku charges or a Vegeta clash is active is dropped
+immediately, including a previously deferred request. Otherwise it may wait
+up to eight service frames for a free port and at least 26 lines of budget.
+Longer retries kept the full service awake and cost a frame in the busy
+trial even when no BRR ever played. Channel 0 starts with at most two chunks,
+then sends at most three; 6 kHz consumes about 1.56 chunks per video frame.
+The shipping transfer-budget cutoff is **line 176**, leaving room for the core's remaining
+OAM/sound/event work before vblank at 225. The diagnostic deadline remains
+218. The final control handshake completes by line 177 in the measured
+fights (175 for the laugh). A new charge/clash cuts an active line; menus, cancellation and song
+changes also release it. Pending STOPs retry without overwriting a native
+effect's ports. Underruns play silence, never stale BRR data.
+
+Browser trigger audit: `frieza.js` laughs after firing on attack cycles 2
+and 8 (180-tick recovery, 140 enraged), at trial/reveal/taunt events, at the
+tree arrival offset 8, and in Death Ball arrival/impact scenes. Final Flash
+fires at gold beam age 1, before its 82-tick windup in `joch-trial.js`.
+`vegeta-clash.js` requests Kakarot when focus becomes struggle; that struggle
+lasts at least 240 ticks. The current SNES clash requests therefore get
+dropped by the busy rule. All three lines are audible in the quiet fixture;
+playing Kakarot during the actual clash is deliberately sacrificed to frame
+rate, as permitted by the shipping policy.
 
 ## 1. The native sound driver
 
@@ -82,22 +307,21 @@ Tables after the chunk list: `C3:0020` points at the song table `C3:3D39`
 | `$0000-$00EF` | driver direct page (`$E3-$EF` and the gaps `$85,$86,$89,$8A,$8C-$8E,$91,$92,$95,$96,$98-$9A,$9D,$9E,$A1,$A2,$A4-$A6,$A8-$AB` are never referenced) |
 | `$0100-$01FF` | per-track arrays `$0100-$017F`; stack from `$01FF` (≤ 8 bytes deep in all snapshots) |
 | `$0200-$1597` | driver |
-| `$1598-$17FF` | free |
-| `$1800/$1880/$1900` | tuning / ADSR / DIR for instruments 0-63: 0-11 effects (boot), `$20-$3F` the current song (written by every song load), **12-31 unused** |
+| `$1598-$17FC` | shipping stream extension code; `$17FD-$17FF` unused |
+| `$1800/$1880/$1900` | tuning / ADSR / DIR for instruments 0-63: 0-11 effects, `$20-$3F` song; extension uses `$1818-$183C`, `$1898-$18B8`, `$1930-$1977` |
 | `$1A00-$2BFF` | current song sequence (header + 8 tracks); longer songs run into the effect area and the loader restores it afterwards (`C3:067E`) |
-| `$2C00-$47FF` | effect table and sequences (full) |
+| `$2C00-$47FF` | retail effects plus 267 bytes of resident table/sequences in the spans documented above; 16 spare bytes in fragmented holes |
 | `$4800-$4DF0` | effect samples |
 | `$4DF1-ESA` | song samples, allocated by the CPU-side cache (below) |
 | `ESA-$F9FF` | echo buffer, `ESA = $FA00 - EDL × $800` |
-| `$FA00-$FBFF` | **free** |
+| `$FA00-$FBF7` | extension BRR chunk slots; `$FBF8-$FBFF` unused |
 | `$FC00-$FF88` | per-track state (`$FC00+X` … `$FF00+2Y` loop stacks, `$FF80-$FF87` effect id per voice, `$FF88` special instrument) |
-| `$FF89-$FFFF` | **free** (IPL ROM is mapped out after boot) |
+| `$FF89-$FFFA` | extension code; `$FFFB-$FFFF` unused (IPL ROM is mapped out) |
 
 Free sample space is essentially zero in large songs: e.g. song `$2C` with
 echo preset `$F` (EDL 6) leaves 52 bytes, Danger (`$04`, EDL 4) 287 bytes,
 song `$0C` (EDL 2) 315 bytes. A resident bank of new samples is therefore
-impossible without degrading native music; only the small regions marked
-free above are guaranteed.
+impossible without degrading native music; only the small remaining holes shown above are guaranteed.
 
 ### CPU-side API
 
@@ -204,10 +428,12 @@ running silently and resumes at its next note.
 
 ## 3. Design
 
-### Effects and voices: streaming
+### Streaming protocol (shared with diagnostic PCM)
 
-Holding the DBZ material in ARAM is impossible (section 1), so every DBZ
-effect, loop and voice streams from ROM. `snes/src/modules/audio/spc/stream.s`
+Holding the DBZ material in ARAM is impossible (section 1). Shipping uses
+this protocol only for the three rare lines above. The historical
+`AUDIO_PCM` diagnostic build streams every DBZ effect, loop and voice from
+ROM. `snes/src/modules/audio/spc/stream.s`
 extends the driver (uploaded after it at boot):
 
 - **Voices**: up to two stream channels claim voices like native effects
@@ -243,8 +469,9 @@ extends the driver (uploaded after it at boot):
   every voice off and cleared `$AE`. A loop that its caller keeps
   requesting comes back by itself (Mesen: 2 frames after the new song's
   tracks start).
-- **Never making a frame late**: the service runs last in the field and
-  world frames, and a transfer ends before scanline 218 (vblank at 225):
+- **Bounded frame budget**: the service runs last in the field and
+  world module tables, and chunk admission stops at scanline 176 in shipping
+  (218 in diagnostic PCM; vblank at 225):
   it starts only with 6 scanlines left, the echo wait lasts at most until
   the limit (~15 tries per line), each chunk is sent only while 20 lines are
   left, and if the frame runs out the CPU sends an end record (byte 0 = 0;
@@ -255,20 +482,22 @@ extends the driver (uploaded after it at boot):
   from the extension and as the plain counter from an unextended driver (an
   imported browser state); then the module switches streams off (`au_flags`
   bit 6) instead of feeding a driver that never plays them. The first
-  service after boot, title or an import sends both STOPs at once (when the
+  diagnostic PCM service after boot, title or an import sends both STOPs at once (when the
   song hold-off allows), so this is known before the first cue.
 - **Driver patches** (ARAM only, asserted against the ROM image): `$020A`
   DP clear limit, `$0279` main-loop poll, `$0299` port 3, `$02E1`/`$0378`
   effect-pass masks, `$02F4` tick hook, `$14C6` command `$8A`.
 
-Rates and budget: clips are 12 kHz BRR (the browser's material is low-passed
+Diagnostic rates and budget: clips are 12 kHz BRR (the browser's material is low-passed
 at 5.6 kHz). One channel consumes ~3.1 chunks per 60 Hz frame. Measured in
 Mesen (arrival scene): a 3-byte group costs ~95 µs (1.5 scanlines; the
 SPC700's receive loop is 59 cycles, the CPU's about as long), so a chunk is
 ~20 lines and one playing stream ~60 lines a frame, plus the wait for the
 driver to notice the command (median well under a line, up to ~8 ms when it
 is inside a tick). Seven slots give ~32 ms of buffer per channel; frames
-that run out of time send less and the ring absorbs it.
+that run out of time send less and the ring absorbs it. Shipping uses 6 kHz
+and about 75 ms of ring capacity; measured CPU costs are in the shipping
+table above.
 
 ### Music
 
@@ -326,17 +555,19 @@ correlation 0.94-0.97, octave bands 62 Hz-8 kHz within 2 dB, all tracks
 alive to the end.
 
 **Load time**: like every native song change, the loader runs on the main
-thread: the previous song fades (`p2` high nibble = speed), then the
-sequence and any instruments not already cached go up, then the driver
-clears its echo ring and starts. Measured in Mesen with `p2 = $10`, in the
-order arrival (after the waterfall's song `$1C`), battle, orbit, Vegeta,
-full power: the tracks start 89 / 85 / 59 / 96 / 57 frames after the
-command, of which the game loop stands still for 76 / 71 / 44 / 81 / 42
-frames (fade wait and upload; the rest is the driver's echo clear while the
-game runs). Cues that share instruments (battle → orbit, Vegeta → full
-power) load faster. `p2` high nibble 0 skips the fade wait (the old song is
-cut). The browser switches cues instantly; the cartridge cannot, so story
-and combat code should change songs at scene or phase boundaries.
+thread: the previous song fades (`p2` high nibble = speed; 0 cuts it and
+skips the fade wait), then the sequence and any instruments not already
+cached go up, then the driver clears its echo ring and starts. The browser
+stops one cue and starts the next at once, so the module's song calls cut
+the old song (`p2` high nibble 0). Measured in Mesen in the order arrival
+(after the waterfall's song `$1C`), battle, orbit, Vegeta, full power: the
+tracks start 61 / 56 / 29 / 66 / 27 frames after the command, of which the
+game loop stands still for 47 / 42 / 14 / 50 / 12 frames (the upload; the
+rest is the driver's echo clear while the game runs). Fading at speed 1
+(`p2 = $10`) adds about 30 frames of fade wait to each (76 / 72 / 44 / 81 /
+41). Cues that share instruments (battle → orbit, Vegeta → full power) load
+faster. The cartridge cannot switch instantly, so story and combat code
+should change songs at scene or phase boundaries.
 
 ## 4. API for other modules
 
@@ -350,13 +581,13 @@ before the core's native sound pump), so the cost of a call is a few cycles.
 
 | Routine | Input | Effect |
 | --- | --- | --- |
-| `audio_sfx` | A = `!AUDIO_SFX_*` | One-shot DBZ effect at the end of this frame. Up to 4 per frame. `hit` and `impact` sound at most once every 2 frames; `hit`, `swing` and `blast` step through the browser's clip and pitch variants (1, 1.035, 0.975); `revert` cuts a `transform` / `powerBurst` still sounding. |
-| `audio_loop` | A = `!AUDIO_LOOP_*`, X = level 1-255 (255 = the cue's full gain), Y = rate (`$80` = 1.0, `$60`-`$A0` sensible) | Sustained bed. **Call every frame** while it should sound; it stops two frames after the last call. Level/rate changes are applied the frame they change (browser: charge `.48+.52·strength` gain, `.94+.12·strength` rate). |
-| `audio_voice` | A = 1 chant, 2 release, 0 cut | Kamehameha voice: 1 starts the 3.7 s Japanese charge chant once per charge — calling it every charging frame is fine, it latches until 2 or 0; 2 replaces it with the release shout (call when the beam fires); 0 cuts the chant without a shout (cancelled charge). |
-| `audio_cancel` | — | Browser `cancelCombat`: drops queued shots, the `charge`/`aura` beds and the chant. |
+| `audio_sfx` | A = `!AUDIO_SFX_*` | Queues up to four requests; one priority-selected resident effect per frame. Only ids 28-30 can stream, subject to the admission rule above. Diagnostic PCM also supports clip/pitch variants and overlapping effects. |
+| `audio_loop` | A = `!AUDIO_LOOP_*`, X = level 1-255, Y = rate (`$80` = 1.0) | **Call every frame** while held. Shipping emits bounded 25-frame native pulses; requests expire after two unrefreshed frames and the last pulse finishes. AIR adds no continuous voice. Exact level/rate modulation is diagnostic PCM only. |
+| `audio_voice` | A = 1 chant, 2 release, 0 cut | Shipping no-op. Diagnostic PCM starts the Japanese chant once per charge, replaces it with the release shout, or cuts it. |
+| `audio_cancel` | — | Drops queued combat sounds, held beds and any rare stream. Resident effects finish their bounded tails. |
 | `audio_stop` | — | Stops every stream at this frame's service. |
-| `audio_song` | A = `!AUDIO_SONG_*` (or a native song id), X = p2 \| p3<<8 (0: `$10`, `$FF`) | Native song command `01` through `core_sound_queue` (sent at the end of the frame). The default fades the old song at speed 1 and starts the new one at full volume. For a native song pass its canonical `p2`/`p3` (they pick its echo preset). |
-| `audio_song_restore` | — | Back to the scene's own music: the last native song the module saw playing, with its echo preset and `p3` (the old song fades at speed 1). Does nothing if no native song played since power-on. |
+| `audio_song` | A = `!AUDIO_SONG_*` (or a native song id), X = p2 \| p3<<8 (0: `$00`, `$FF`) | Native song command `01` through `core_sound_queue` (sent at the end of the frame). The default cuts the old song, as the browser switches cues, and starts the new one at full volume. For a native song pass its canonical `p2`/`p3` (they pick its echo preset). |
+| `audio_song_restore` | — | Back to the scene's own music: the last native song the module saw playing, with its echo preset and `p3` (the old song is cut, as the browser stops its cue). Does nothing if no native song played since power-on. |
 | `audio_fade` | A = fade byte | Native command `80`: `$80` fades the music out (boss deaths), `$1A` ducks to `$AA` in 16 ticks, `$1F` back to full in 16 ticks, `$0F` at once. |
 
 One-shots (`!AUDIO_SFX_*`, browser cue name in parentheses where it differs):
@@ -367,7 +598,7 @@ One-shots (`!AUDIO_SFX_*`, browser cue name in parentheses where it differs):
 `FRIEZA_DISC` 21, `FRIEZA_LASER` 22, `FRIEZA_BEAM` 23, `FRIEZA_IMPACT` 24,
 `FORTRESS_BREAK` 25, `FRIEZA_RUSH` 26, `VEGETA_BEAM` 27, `FRIEZA_LAUGH` 28,
 `VEGETA_FINAL_FLASH` 29, `VEGETA_KAKAROT` 30, `KAME_CHARGE` 31,
-`KAME_RELEASE` 32 (the last two are what `audio_voice` plays).
+`KAME_RELEASE` 32 (the last two remain disabled in shipping).
 Loops (`!AUDIO_LOOP_*`): `CHARGE` 0, `AURA` 1, `AIR` 2, `FRIEZA_CHARGE` 3.
 
 Gains, clips and rates come from `engine/ki-sound.js` (`cues`) at build
@@ -378,7 +609,7 @@ level, rate)` calls → `audio_loop` while `on`; `speech` (chant while
 The native-hit handoff (`native-combat-sound.js`: skip C0:4157 for Goku's
 hits) belongs to combat, which then calls `audio_sfx` with `HIT`.
 
-**Channels and priority.** Two stream channels play at once, beside the
+**Diagnostic PCM channels and priority.** Two stream channels play at once, beside the
 native music and effects. Channel 0 takes voice-class cues (chant, shout,
 Frieza's laugh, Vegeta's callouts); everything else takes channel 1, or
 channel 0 when 1 holds something more important. Priorities (higher wins):
@@ -391,7 +622,7 @@ any one-shot and restart when a channel is free again; `charge` > `aura` >
 `FRIEZA_CHARGE` > `air`. A stream voice is taken from the music like a
 native effect (highest voice no effect holds) and returned when it ends.
 
-**Costs.** Each active channel streams 12 kHz BRR: about 3 chunks (39
+**Diagnostic PCM costs.** Each active channel streams 12 kHz BRR: about 3 chunks (39
 groups, ~4 ms of CPU busy-wait, ~60 scanlines) per frame while it plays,
 never past scanline 218, nothing when idle (an idle frame returns before
 touching the ports). Menus and rings stop all streams. For 16 frames after any song change no
@@ -415,8 +646,8 @@ browser's choice changes:
 
 Module code calls `audio_song` with the id (X = 0) on the frame the cue
 changes and `audio_song_restore` when it ends. Event scripts use opcode `40`
-(it forwards four bytes to the sound driver): `40 01 3B 10 FF` starts the
-arrival, and `40 01 <song> <p2> <p3>` with the map's own values restores
+(it forwards four bytes to the sound driver): `40 01 3B 00 FF` starts the
+arrival with the old song cut, and `40 01 <song> <p2> <p3>` with the map's own values restores
 native music. A map change restores it anyway (the map's song command
 loads its song). The game's own boss-death fade (`80 80`) fades the new songs
 like any other; the browser fades its cue into the white-out the same way.
@@ -446,16 +677,27 @@ an import it only takes the count. The stream test checks it.
 
 ## 5. Status
 
-Done: driver research (this page); SPC700 assembler/disassembler, BRR codec,
+Done: measured resident palette and three rare 6 kHz lines; driver research
+(this page); SPC700 assembler/disassembler, BRR codec,
 S-DSP model with echo, APU harness running the real driver; the stream
 extension; the 65816 module and the API above; the 12 kHz DBZ/voice bank;
 the five songs; the arrival's pod cues.
-`node snes/test/audio/run.mjs [unit|render|stream|songs|arrival|imported]`:
+`node snes/test/audio/run.mjs` runs all of the following:
 
 - **unit** (Node): assembler round trip, BRR, DSP model, the extension's
   ARAM footprint, a gapless stream, native effects beside two streams, a
   withdrawn command (taken or not, with and without the extension) leaving
-  the driver answering.
+  the driver answering; shipping bank whitelist; resident preservation,
+  termination, one-voice allocation, noise-clock restoration and headroom (14 Node tests).
+- **native**: all 27 cues, bounded beds, no BRR, asynchronous command
+  integrity and dispatcher timing, music before/after song changes.
+- **music** (shipping Mesen): all 27 resident cues beside all five new songs;
+  tracks alive, one stolen voice per cue, voices returned, sample/extension
+  integrity, noise restoration and unchanged echo parameters.
+- **rare / rare-control / rare-boot**: all three clips audible and ending,
+  pitch `$0300`, Kamehameha silent, intact music/effect samples and extension,
+  native effects beside a line, deadline/CPU measurements; busy requests
+  dropped, cancellation, menu/ring callback, song changes; actual boot upload.
 - **render** (Node, ~15 s): each song through the real driver in the APU
   harness against the browser renderer: level within 1 dB, per-bar loudness
   correlation > 0.9, octave bands within 3 dB, every track alive, sequence
@@ -486,10 +728,75 @@ the five songs; the arrival's pod cues.
 the impact is made late by the modules: 0 of 140 with both pod sounds
 streaming.
 
+### Round-two validation (base `1d19d44`)
+
+Strict shipping build passes. All audio cases pass (14 Node tests, full
+song rendering, and nine Mesen cases including the added shipping `music`
+case). Combat **36/36**, Frieza **17/17**, Vegeta **11/11**, and all six perf
+scenes pass. The songs tests verify live tracks and intact samples; rare
+voice, admission, cancellation and boot tests all pass unchanged.
+
+| Gameplay case | Before misses | After misses |
+| --- | ---: | ---: |
+| solo-punch | 0/240 | 0/240 |
+| solo-ki | 0/240 | 0/240 |
+| walk | 0/240 | 0/240 |
+| punch | 0/240 | 0/240 |
+| ki | 0/240 | 0/240 |
+| fly | 1/240 | 1/240 |
+| fly-ki | 3/240 | 3/240 |
+| fly-punch | 2/240 | 2/240 |
+| water-flight | 0/240 | 0/240 |
+| teleport | 3/240 | 3/240 |
+| charge | 22/240 | 22/240 |
+| focus-grass | 0/240 | 0/240 |
+| transform-grass | 0/240 | 0/240 |
+
+Every gameplay case also has exactly identical `audio_frame` **mean,
+maximum and call count**. `modprof` on shared sword/battle states is
+**0.40 → 0.40 lines mean, 1.83 → 1.83 max**, including song-settle frames;
+the dispatch maximum is **1.346 lines**, unchanged. The perf scenes finish
+at p90 lines 61 / 111 / 52 / 172 / 93 / 112, with lag counts
+4 / 4 / 4 / 34 / 4 / 4. No new gameplay misses or 65816 CPU work.
+
+`node snes/test/audio/audit.mjs --before=<round-one.sfc>` verifies the entire
+ROM differs only in the effect block, the 34-byte cue-id lookup, checksums
+and their ExHiROM mirrors. Instruction bytes, music, samples, rare voices,
+extension and other modules are identical. Private results and comparison
+WAVs remain in this worktree's `.local/snes-test/audio/`.
+
+Round-one shipping validation on October 20: strict builds (shipping, diagnostic PCM,
+Vegeta/Frieza test flags); all audio, gameplay, Frieza, Vegeta, combat and
+perf cases pass. Gameplay before → after misses per 240 frames: charge
+22 → 22; teleport 3 → 3; flight/fly-ki/fly-punch 1/3/2 → 1/3/2;
+punch, ki, walking, water flight, focus and transform remain zero.
+
+`modprof` audio mean falls from 1.86 to **0.40 lines** in sword/battle
+(including 16 song-settle frames; steady idle is about 0.32). Dispatcher
+maximum is unchanged at **1.346 lines** in `native`. The six perf scenes'
+build p90 finish lines before → after are 63→61, 113→111, 54→52, 173→172,
+95→93, 114→112; their lag counts remain 4, 4, 4, 34, 4, 4.
+
+`snes/test/audio/profile.mjs ROM output.lua` writes a `SNES_LUA_PRELUDE` for
+the existing fight suites. `--mute-rare` clears pending rare streams at their
+service entry, preserving the resident selector and busy-drop instruction
+paths for a controlled comparison; `--read .../audio-profile.csv` summarizes
+CPU and NMI misses. Frieza battle is unchanged at **12/602** versus the
+pre-change ROM; the laugh streams in 139 frames, mean 38.93 / max 74.05
+lines. Vegeta voice-on / voice-muted misses match: **343/2407** clash-win,
+**1083/3953** combat-final, **32/1054** budget. `--compare on.csv muted.csv`
+fails if the same-ROM voice-on run adds misses. Final Flash actually streams
+in the budget case (176 transfer frames, mean 41.47 / max 102.76 lines);
+charge/clash requests are dropped. The pre-change build's corresponding Vegeta
+counts were 343/2406, 1082/3785, 29/1050: scene/input timing changes across
+builds, so the same-ROM comparison isolates the voice cost. The existing
+Vegeta budget test's `B077` end callback reports every frame as late; these
+counts instead read `$EC` at the native field NMI, as gameplay does.
+
 Not verified: real hardware (timing margins are from the harness and
-Mesen); the CPU cost of streams inside the perf scenes (those import
-states never request DBZ sounds); the vibrato (square LFO for the browser's
-sine) by ear.
+Mesen), and perceptual listening review of the new palette. The WAV pairs
+are ready for the maintainer; acoustic scores alone do not establish a
+perceptual match.
 
 ## 6. Imported test states and the APU
 
@@ -502,12 +809,14 @@ which every native sound call waited forever. Main `e2f2fe2` applies the
 APU state at a sound-CPU instruction boundary; with it all goku, title and
 story tests pass on this branch.
 
-An imported state still runs the browser's own driver, without the stream
-extension. The module notices at its first transfer (section 3, extension
-handshake) and switches streams off, so imported scenes cost no streaming
-time; `snes/test/audio/imported.lua` covers this. Tests that need DBZ
-sounds in an imported state call `injectExtension()`
-(`snes/test/audio/lib.lua`) right after the import, as `arrival.lua` does.
+`H.residentEffects()` recognizes the shipping resident table and installs
+the complete `$2C00-$47FF` effect block and the extension from the cartridge's boot upload
+blob. For browser imports it runs **after** the SPC/DSP register restore;
+patching during that restore stalled the Fortress flyby's next native song
+fade. `H.load()` applies the same augmentation to retail Mesen checkpoints.
+It never rewrites song samples or echo. Diagnostic PCM imports deliberately
+remain retail: `audio/imported.lua` checks graceful disable on an unextended
+driver, while `arrival.lua` explicitly calls `injectExtension()`.
 The S-DSP's internal echo write position is not part of a bundle either; if
 a test ever sees direct page or stack bytes change right after an import,
 empty the echo ring first (FLG |= `$20`, EDL = 0, one frame).
@@ -520,6 +829,9 @@ original-byte assertions):
 | Address | Size | What |
 | --- | --- | --- |
 | `C3:0106` | 6 | boot upload end → `audio_boot_upload` (uploads the extension after the driver) |
+| `C3:0175` | 4 | shipping effect command → asynchronous `audio_native_command` |
+| `C3:24A9` and six spans above | 283 capacity | resident effect pointers/sequences; byte-identical retail tracks shared |
+| ten table words listed above | 20 | redirect retail pointers to identical retained tracks |
 | `C3:0618`, `C3:0651`, `C3:0663`, `C3:066A` | 4 each | echo preset reads → `audio_echo0-3` (songs `$3B-$3F` read `audio_echo_table`) |
 | `C3:3DEA`, `C3:3DED`, `C3:3DF0`, `C3:3DF3`, `C3:3DF6` | 3 each | song pointers `$3B-$3F` → `audio_song_3b-3f` (bank `$EA`) |
 | `C3:4682`, `C3:46A2`, `C3:46C2`, `C3:46E2`, `C3:4702` | 32 each | instrument lists of songs `$3B-$3F` |
@@ -532,12 +844,13 @@ gaps listed in section 1; driver patches at `$020A`, `$0279`, `$0299`,
 
 **Other resources**: WRAM `$7E:DD00-DD7F` (`!RAM_AUDIO`; no SRAM, no DMA or
 HDMA); code bank `$AA`; tables, extension image and sequences in `$EA`
-(`audio_data_end` asserted inside the bank); DBZ clips in `$FC-$FF`
-(231 KiB). Frame hooks: `audio_frame` last in the field frame and in the
+(`audio_data_end` asserted inside the bank); rare clips use 26,784 bytes of
+`$FC` (diagnostic PCM uses 231 KiB in `$FC-$FF`). Frame hooks: `audio_frame` last in the field frame and in the
 world frame, `audio_pause` in the menu and ring frames. Native commands go
 through `core_sound_queue`. Reads (and clears) the title module's
 `!title_sfx` (`$7E:DD87`) and reads the destroy module's `!out_sfx`
 (`$7E:D9BE`) when those modules are built in, so `modules.asm` includes
-audio after them.
+audio after them. Shipping voice admission also reads combat's
+`!cb_charging` and Vegeta's `!vg_clash_on`; it never writes their state.
 
 **Core requests**: none.
