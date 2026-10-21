@@ -541,7 +541,8 @@ fl_step_eligible:
 ; an airborne step whose swept footprint is clear, starting from or ending
 ; at a point where Goku cannot land (canFloat), skips the native collision
 ; test (C1:B93E) and continues at D7F3, where the native code applies the
-; move, the destination's floor data and the camera.
+; move, the destination's floor data and the camera. A blocked step from a
+; point over a low obstacle never reaches the native test (.blocked).
 fl_hook_d778:
 	SEP #$20
 	LDA $10
@@ -579,7 +580,7 @@ fl_hook_d778:
 	AND.w #$0003
 	STA.w !fl_q_t
 	JSR fl_sweep
-	BCC .native
+	BCC .blocked
 	LDA.w !fl_sw_x
 	STA.w !fl_q_x
 	LDA.w !fl_sw_y
@@ -604,6 +605,44 @@ fl_hook_d778:
 	SEP #$20
 	LDA $11
 	JML $80D77C
+.blocked
+	; Over a low obstacle (canFloat here) Goku already overlaps cells the
+	; native test treats as solid, and it checks only his leading edge: a
+	; blocked step could carry him into scenery he can neither fly over nor
+	; land on (a tree base beside the Potos flower beds), where every later
+	; step is blocked as well. The native test sees only an axis whose step
+	; keeps him airworthy (x first); with none, the step stops as the native
+	; test stops it at a wall. On the ground, or already inside a wall, the
+	; native test decides the whole step.
+	LDA.w !fl_sw_x
+	STA.w !fl_q_x
+	LDA.w !fl_sw_y
+	STA.w !fl_q_y
+	JSR fl_can_float
+	BCC .native
+	LDA.w !fl_sw_dx
+	BEQ .stop
+	LDA.w !fl_sw_dy
+	BEQ .stop
+	STZ.w !fl_sw_dy              ; x alone
+	JSR fl_sweep
+	BCC +
+	SEP #$20
+	STZ $1F
+	BRA .native
++	LDA $1F
+	JSR fl_unpack
+	STA.w !fl_sw_dy
+	STZ.w !fl_sw_dx              ; y alone
+	JSR fl_sweep
+	BCC .stop
+	SEP #$20
+	STZ $1E
+	BRA .native
+.stop
+	SEP #$20
+	SEC
+	JML $80D7B0                  ; D74F's RTS with carry set: blocked
 
 ; ---------------------------------------------------------------------------
 ; 00:D359 (replaced LDA $E048,X / STA $00 / AND #$F0): stairs (2x) and
