@@ -542,15 +542,9 @@ fz_spr_draw:
 	INX
 	INX
 	STX !fz_t1                        ; piece list (core_oam_meta's 4-byte pieces)
-	LDA !fz_spr_fl
-	AND.w #!FZD_GHOST
-	BEQ +
-	JSR fz_spr_palette2
-	LDA !fz_spr_pal2
-	BRA ++
-+	JSR fz_spr_palette
+	JSR fz_spr_palette
 	LDA !fz_spr_pal
-++	; attribute word: palette, priority 3, h-flip
+	; attribute word: palette, priority 3, h-flip
 	AND.w #$0007
 	XBA
 	ASL

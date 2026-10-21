@@ -2099,6 +2099,9 @@ fz_after_push:
 	SEP #$20
 	LDA.b #0
 	STA.l !FZ_AFTER+!af_age,X
+	LDA !fz_m5                        ; dash / 3: consecutive afterimages alternate
+	AND.b #$01
+	STA.l !FZ_AFTER+!af_par,X
 	REP #$20
 	LDA !fzf_x
 	STA.l !FZ_AFTER+!af_x,X

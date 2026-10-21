@@ -183,6 +183,7 @@ assert (!core_scratch>>16)&$FF == $7E, "fz_m0-m7 address core's scratch with DB 
 !FZ_AFTER      = !FZSB+$100
 !FZ_AFTER_N    = 8
 !af_age        = $00       ; byte ($FF none)
+!af_par        = $01       ; byte: spawn parity (dash / 3, bit 0)
 !af_x          = $02
 !af_y          = $04
 !fzs_test      = !FZSB+$130   ; FRIEZA_TEST mailbox: cmd, arg, result, count (words)
@@ -405,7 +406,6 @@ endif
 ; draw flags (!fz_spr_fl)
 !FZD_FLIP      = $0001     ; mirror (OAM h-flip)
 !FZD_BACK      = $0002     ; behind native sprites (default: in front)
-!FZD_GHOST     = $0004     ; afterimage palette (drawn every other frame)
 
 ; The OBJ colours of a field frame's picture, for the game's palette transfer
 ; (frieza_cgram_upload, sprite.asm): one word, published at the end of every
