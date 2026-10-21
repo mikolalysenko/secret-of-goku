@@ -42,7 +42,7 @@ function renderer(synthetic=false,slow=false){
       if(bytes===4)assert.equal(sram.readUInt16LE(p),0,'colour runs address only CGRAM 0');
       const value=sram.readUInt16LE(p+(bytes===4?2:0));
       for(let j=0;j<n;j++)out.push(value);
-      p+=bytes;assert(p<=0x7A8E+buffer+185,'HDMA back-buffer overflow');
+      p+=bytes;assert(p<=0x7A86+buffer+189,'HDMA back-buffer overflow');
     }
     assert.equal(out.length,224,'visible table ends at line 224');
     assert.equal(sram[p],127,'neutral padding protects a late HDMA restart');
@@ -56,10 +56,10 @@ function renderer(synthetic=false,slow=false){
     const entry=at('fx_poly_rows');cpu.r[0]=0x7E;cpu.r[1]=entry>>>16;
     cpu.br.set([index,0,0,0x1FFD,entry&65535,DP]);
     ram.writeUInt16LE(0x6FFF,0x1FFE);ram.writeUInt16LE(backdrop,0x600);
-    const other=0x7A8E+(buffer===0?185:0);
-    sram.fill(0xA5,other,other+185);sram[0x7C00]=0x5A;
+    const other=0x7A86+(buffer===0?189:0);
+    sram.fill(0xA5,other,other+189);sram[0x7C00]=0x5A;
     sram.writeUInt16LE(buffer,0x7A36);
-    sram.writeUInt16LE(0xFFFF,0x7A5A);
+    sram.writeUInt16LE(0xFFFF,0x7A4C);
     word(0x18,0x80);word(0x1A,x);word(0x1C,y);word(0x1E,index&1?2:1);
     word(0x58,len);word(0x5A,7);word(0x5C,0);
     const cls=override??(index<28?0:index<56?32:index<84?96:32);
@@ -70,7 +70,7 @@ function renderer(synthetic=false,slow=false){
     }
     assert.equal(cpu.c,false);assert.equal(cpu.br[3],0x1FFF);
     assert.equal(cpu.r[0],0x7E);assert.equal(cpu.br[5],DP);assert(!cpu.m&&!cpu.x);
-    assert(sram.subarray(other,other+185).every(b=>b===0xA5),'shown buffer must stay untouched');
+    assert(sram.subarray(other,other+189).every(b=>b===0xA5),'shown buffer must stay untouched');
     assert.equal(sram[0x7C00],0x5A,'table writes stay inside their buffers');
     assert.equal(sram.readUInt16LE(0x788E),2,'polygon requested');
     const rec=data+rom.readUInt16LE(ptr+index*2),first=y+(rom[rec]<<24>>24),rows=[];
@@ -112,7 +112,7 @@ test('prebuilt colour runs reduce full-width beam construction work',t=>{
 });
 test('both buffers use the live backdrop and alternate classes retain the general path',()=>{
   const draw=renderer();
-  for(const buffer of [0,185])for(const backdrop of [0,0x7FFF,0x254A])
+  for(const buffer of [0,189])for(const backdrop of [0,0x7FFF,0x254A])
     for(let index=0;index<88;index++)for(const y of [0,112,220,223]){
       draw(index,128,y,256,{buffer,backdrop});
       draw(index,128,y,256,{buffer,backdrop,override:64});

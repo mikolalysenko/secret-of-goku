@@ -1078,11 +1078,12 @@ fx_k_lightning:
 +	RTS
 
 ; ---------------------------------------------------------------------------
-; FX_DEATHBALL (death-ball-art.js draw(), not cinematic): !fx_t frame
-; (wrapped to 12), !fx_a diameter snapped to deathBallSizes (nearest, ties
-; to the smaller, as the browser). 16 and 32 px are OBJ art; the other sizes
+; FX_DEATHBALL (death-ball-art.js): !fx_style 0 battle / 1 cinematic, !fx_t frame
+; (wrapped to 12). Battle diameters snap to deathBallSizes (nearest, ties
+; to the smaller); cinematic diameters round to even pixels. 16 and 32 px are OBJ art; the other sizes
 ; are a polygon (poly.asm fx_poly_dball) while it is free, else the 32 px
 ; ball.
+!fxd_style = !d_ks+$0E        ; 0 violet 16 px art, 1 red 64 px cinematic art
 fx_k_deathball:
 	LDA.w #$0000
 	JSR fx_depth
@@ -1092,6 +1093,30 @@ fx_k_deathball:
 	SBC.w #12
 	BRA -
 +	STA !d_ks                    ; frame
+	LDA !d_cur+!C_STYLE
+	AND.w #$0001
+	STA !fxd_style
+	BEQ .violet
+	LDA !d_cur+!C_A              ; cinematic: clamp and round to even pixels
+	CMP.w #224
+	BCC +
+	LDA.w #224
++	INC
+	AND.w #$FFFE
+	CMP.w #16
+	BCS +
+	LDA.w #16
++	STA !d_cur+!C_A
+	CMP.w #16
+	BEQ .obj16
+	CMP.w #32
+	BEQ .obj32
+	SEC
+	SBC.w #16
+	LSR
+	STA !d_ks+2
+	BRA .polygon
+.violet
 	LDA !d_cur+!C_A              ; the first size >= the diameter ...
 	STA !d_tmp
 	LDX.w #$0000
@@ -1126,6 +1151,7 @@ fx_k_deathball:
 	BEQ .obj16
 	CMP.w #2
 	BEQ .obj32
+.polygon
 	JSR fx_poly_dball
 	PHP
 	LDA.w #$FFFF                 ; the builder used !d_tiles
@@ -1134,11 +1160,20 @@ fx_k_deathball:
 	BCS .obj32
 	RTS
 .obj32
-	LDA.w #!FX_ASM_DEATH32
-	BRA +
+	LDA !fxd_style
+	BEQ +
+	LDA.w #!FX_ASM_RED32
+	BRA .emit
++	LDA.w #!FX_ASM_DEATH32
+	BRA .emit
 .obj16
-	LDA.w #!FX_ASM_DEATH16
-+	CLC
+	LDA !fxd_style
+	BEQ +
+	LDA.w #!FX_ASM_RED16
+	BRA .emit
++	LDA.w #!FX_ASM_DEATH16
+.emit
+	CLC
 	ADC !d_ks
 	JMP fx_emit_here
 

@@ -43,17 +43,17 @@ function renderer(bytes){
     // A Goku anchor at (80,75), with 12 px of lift and a 15 px body offset.
     ram.writeUInt16LE(80,0xE020);ram.writeUInt16LE(102,0xE022);ram.writeUInt16LE(12,0xE045);
     ram.writeUInt16LE(cursor,0x6E90);ram.writeUInt16LE(limit,0x6E92);ram.writeUInt16LE(front,0x6E94);
-    sram.fill(255,FX+0x40,FX+0x60);sram.fill(255,FX+0x24,FX+0x2A);
+    sram.fill(255,FX+0x40,FX+0x60);sram.fill(255,FX+0x22,FX+0x29);
     sram.fill(255,HASH,HASH+HASH_SIZE);
     sram.writeUInt16LE(17,FX+0x84);sram.writeUInt16LE(budget,FX+0x82);
-    sram.writeUInt16LE(palettes,FX+0x22);sram.writeUInt16LE(fail,FX+0x228);
+    sram.writeUInt16LE(palettes,FX+0x20);sram.writeUInt16LE(fail,FX+0x228);
     sram.writeUInt16LE(pending,FX+0x80);
     const id=auraBase+(tone<3?tone:0)*4+(height<21?0:2)+((clock>>2)&1);
     const record=data+rom.readUInt16LE(ptr+id*2),cells=rom[record+1];
     for(let c=0;c<cells;c++)if(resident&(1<<c)){
       const cell=rom.readUInt16LE(record+6+c*2)&511,i=(slot+c)%15;
       sram.writeUInt16LE(cell,FX+0x40+i*2);
-      sram[FX+0x262+(cell>>3)]|=1<<(cell&7);
+      sram[FX+0x254+(cell>>3)]|=1<<(cell&7);
       sram[HASH+(cell&(HASH_SIZE-1))]=i*2;
       sram.writeUInt16LE(1,FX+0x242);
     }

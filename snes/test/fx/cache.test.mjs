@@ -15,7 +15,7 @@ const at=n=>{assert(symbols.has(n),n);return symbols.get(n);};
 const context=vm.createContext({Uint8Array,Uint16Array,Math});
 vm.runInContext(readFileSync(resolve(root,'vendor/snes/cpu.js'),'utf8'),context);
 const DP=0x1000,FX=0x7800;
-const CELL=0x40,USED=0x60,PENDING=0x80,BUDGET=0x82,FRAME=0x84,FAIL=0x228,DIRTY=0x242,BITS=0x262;
+const CELL=0x40,USED=0x60,PENDING=0x80,BUDGET=0x82,FRAME=0x84,FAIL=0x228,DIRTY=0x242,BITS=0x254;
 const HASH=at('fx_hash_address')&65535,HASH_SIZE=at('fx_hash_size');
 const tile=i=>rom.readUInt16LE(hiromToPc(at('fx_entry_tile'))+i*2);
 
@@ -34,9 +34,9 @@ function cache(){
   const word=(off,v)=>sram.writeUInt16LE(v,FX+off);
   const read=off=>sram.readUInt16LE(FX+off);
   sram.fill(255,FX+CELL,FX+USED);
-  sram.fill(255,FX+0x24,FX+0x2A);
+  sram.fill(255,FX+0x22,FX+0x29);
   sram.fill(255,HASH,HASH+HASH_SIZE);
-  word(FRAME,17);word(0x22,0xFC);
+  word(FRAME,17);word(0x20,0xFC);
   function resident(slot,cell,age=0){
     word(CELL+slot*2,cell);word(USED+slot*2,age);
     sram[FX+BITS+(cell>>3)]|=1<<(cell&7);
@@ -91,9 +91,9 @@ test('pending uploads and exhausted palettes never draw a cached cell',()=>{
   for(let slot=0;slot<15;slot++){
     const c=cache();c.resident(slot,slot);c.word(FAIL,1<<slot);
     assert(c.get(slot).carry);assert.equal(c.read(USED+slot*2),0);
-    c.word(FAIL,0);c.word(0x22,0);
+    c.word(FAIL,0);c.word(0x20,0);
     assert(c.get(slot).carry);
-    c.word(0x22,8);assert.equal(c.get(slot).a,0x3600|tile(slot));
+    c.word(0x20,8);assert.equal(c.get(slot).a,0x3600|tile(slot));
   }
 });
 

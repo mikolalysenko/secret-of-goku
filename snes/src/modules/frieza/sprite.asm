@@ -330,7 +330,7 @@ fz_spr_draw:
 	INX
 	INX
 	INX
-	STX !fz_t1                        ; piece list
+	STX !fz_t1                        ; piece list (core_oam_meta's 4-byte pieces)
 	LDA !fz_spr_fl
 	AND.w #!FZD_GHOST
 	BEQ +
@@ -350,7 +350,7 @@ fz_spr_draw:
 	BEQ +
 	LDA.w #$4000
 	TSB !fz_t2
-+	; tile of cell 0 in the displayed buffer
++	; tile of cell 0 in the displayed buffer (piece i adds 2i)
 	LDA !fz_spr_buf
 	AND.w #$0001
 	BEQ +
@@ -358,59 +358,40 @@ fz_spr_draw:
 	BRA ++
 +	LDA.w #!FZ_TILE_BUF0
 ++	ORA !fz_t2
-	STA !fz_t2                        ; tile | attr of piece 0
-.piece
-	LDX !fz_t1
-	; dx (signed)
-	LDA.l !DATA_FRIEZA,X
-	AND.w #$00FF
-	CMP.w #$0080
-	BCC +
-	ORA.w #$FF00
-+	STA !fz_t3
+	STA.l !core_spr_tile
+	LDA !fz_spr_x
+	STA.l !core_spr_x
+	LDA !fz_spr_y
+	STA.l !core_spr_y
+	LDA.w #(!DATA_FRIEZA&$FFFF)
+	CLC
+	ADC !fz_t1
+	STA.l !core_meta_ptr
+	SEP #$20
+	LDA.b #!DATA_FRIEZA>>16
+	STA.l !core_meta_ptr+2
+	; every piece counts for the VRAM claim (fz_vram_settle)
+	LDA !fz_spr_cnt
+	CLC
+	ADC !fz_t0
+	STA !fz_spr_cnt
+	REP #$20
+	; mirrored: each piece at -dx - 16 (core_oam_meta's X bit 0)
 	LDA !fz_spr_fl
 	AND.w #!FZD_FLIP
 	BEQ +
-	LDA !fz_t3                        ; mirrored: -dx - 16
-	EOR.w #$FFFF
-	SEC
-	SBC.w #15
-	STA !fz_t3
-+	LDA !fz_t3
-	CLC
-	ADC !fz_spr_x
-	STA.l !core_spr_x
-	LDA.l !DATA_FRIEZA+1,X
-	AND.w #$00FF
-	CMP.w #$0080
-	BCC +
-	ORA.w #$FF00
-+	CLC
-	ADC !fz_spr_y
-	STA.l !core_spr_y
-	LDA !fz_t2
-	STA.l !core_spr_tile
-	LDA.w #$0000
-	STA.l !core_spr_size
+	LDA.w #$0001
++	TAX
 	LDA !fz_spr_fl
 	AND.w #!FZD_BACK
 	BNE .back
-	JSL core_oam_add_front
-	BCC .added
+	LDA !fz_t0
+	JSL core_oam_meta_front           ; in front while the front slots last
+	RTS
 .back
-	JSL core_oam_add
-.added
-	SEP #$20
-	INC !fz_spr_cnt
-	REP #$20
-	INC !fz_t1
-	INC !fz_t1
-	INC !fz_t2                        ; next cell: tile + 2
-	INC !fz_t2
-	DEC !fz_t0
-	BEQ +
-	JMP .piece
-+	RTS
+	LDA !fz_t0
+	JSL core_oam_meta
+	RTS
 
 ; ---------------------------------------------------------------------------
 ; Vblank (frieza_field_nmi): DB = $80, M16/X16, D unknown (not used).

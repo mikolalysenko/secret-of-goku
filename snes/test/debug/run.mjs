@@ -45,6 +45,11 @@ const GAPS=[
   {preset:'trial',key:/^(flags|party0\.pos|party[12]\.active)$/,owner:'vegeta',why:'the Time Chamber trial starts with event 3DB and keeps the borrowed party (joch-trial.js)'},
   {preset:'thanatos',key:/^party[12]\.pos$/,owner:'frieza',why:'stages Primm and Popoi in the Thanatos scene'},
   {preset:'good-ending',key:/^(map|party0\.pos)$/,owner:'frieza',why:'FRIEZA_DEFEATED / BEAST_* answers make 42F choose the good ending'},
+  // Not a module gap: the browser captures in the one frame between map 418's
+  // load and its opening event; UNTIL map+CAN_ACT already holds on the door
+  // frame (Goku still at the altar), and waiting for the load ends ~1,400
+  // frames later, after that event (other story flags).
+  {preset:'hexas',key:/^party0\.pos$/,owner:'debug (capture timing)',why:'capture lands on the door frame, before the load moves Goku to 248,442'},
 ];
 const gapOf=(kind,d)=>GAPS.find(g=>(g.preset==='*'||g.preset===kind)&&g.key.test(d.k));
 

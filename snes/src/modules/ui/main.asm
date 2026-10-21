@@ -20,6 +20,7 @@ ui_unstage:
 	STA.l !ui_s_bmode
 	STA.l !ui_s_bstep
 	STA.l !ui_s_trig
+	STA.l !ui_ff_upload
 	RTS
 
 ; !RAM_UI must have been set up by this cartridge: a savestate made by
@@ -32,7 +33,7 @@ ui_ram_check:
 	CMP.w #!UI_MAGIC
 	BNE .reset
 	LDA.w !ui_state&$FFFF
-	AND.w #(!UIS_DRAWN|!UIS_ATLAS|!UIS_HDMA|!UIS_INIT|!UIS_IDLE|!UIS_PLACE)^$FFFF
+	AND.w #(!UIS_DRAWN|!UIS_ATLAS|!UIS_HDMA|!UIS_INIT|!UIS_IDLE|!UIS_PLACE|!UIS_TEXT)^$FFFF
 	BNE .reset
 	LDA.w !ui_qn&$FFFF
 	CMP.w #!UI_QMAX+1
@@ -77,7 +78,7 @@ ui_load:
 	RTL
 
 ui_reset_session:
-	LDA.w #!UIS_IDLE
+	LDA.w #!UIS_IDLE|!UIS_TEXT
 	TRB.w !ui_state&$FFFF
 	STZ.w !ui_cur&$FFFF
 	STZ.w !ui_qn&$FFFF

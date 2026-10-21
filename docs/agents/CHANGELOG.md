@@ -4,6 +4,37 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: finished branches, hardware safety, test harness (2026-10-20)
+
+- Merged the finished side branches over Codex's optimization pass:
+  - Instant Transmission to Frieza through combat's virtual target 12 (flight);
+  - Frieza's sprite through one `core_oam_meta_front` call (frieza);
+  - instant text for R fast-forward (Codex: eight glyphs per upload,
+    choices still stop, also during Frieza's input lock);
+  - the red cinematic Death Ball from the browser's art and Vegeta's paired
+    clash waves with independent colours (Codex).
+  The FX merge moves the long-read tables from FX's code bank to its data
+  bank (freed when the cells moved to xdata). 388 cells need a 50-byte
+  residency bitmap, which now closes the gap the fast hash left, giving
+  189-byte polygon buffers.
+- Real hardware: the mid-frame ROM->WMDATA copies of predecoded native
+  sheets now need every HDMA channel off (revision-1 S-CPUs can hang when
+  HDMA runs during a general DMA); otherwise they keep the CPU copy. The
+  ending's frame-thread palette DMA still needs the same treatment.
+- Test harness: the field and world loops now also run through their
+  FastROM mirrors, so stable saves and the perf probe watch 80:B079,
+  80:B077 and 80:8089 too. The title suite's power-on run and the perf
+  suite's preset__flight had stopped measuring. Frieza's flyby check
+  samples the last age before the impact. The world idle budget is
+  0.26 lines. hexas's door-frame capture is a listed timing gap, and the
+  clash-colour hardware probe runs only when named.
+- Mesen2's `AllowIoOsAccess` had been reset to false (Oct 19), so every
+  Mesen test ran to its timeout. Re-enabled as snes-rom.md describes.
+- Validation: all 19 suites pass on the merged build, and 138 machine-code
+  tests pass. Scene select: 21 full, trial and hexas native with listed
+  gaps. Gameplay misses equal main's (charge 22, teleport 3, flying ki 3,
+  flying punches 2, flight 1 per 240 frames; zero rendering errors).
+
 ## SNES resident aura rendering (2026-10-19)
 
 - Draw the full six-sprite aura directly from its three mirrored cells,

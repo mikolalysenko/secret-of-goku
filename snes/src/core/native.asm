@@ -1025,8 +1025,11 @@ core_native_body:
 ; past that IRQ's line and before the line-225 NMI. Never wait for a
 ; window: intervening and late scanlines keep the interruptible CPU copy.
 ; No interrupt is masked and no channel configuration survives the copy.
-; Later scanlines, scene/load work, other vectors and HDMA channel 7 keep
-; the interruptible CPU copy. M16/X16, any DB/D; preserves X/Y.
+; Later scanlines, scene/load work, other vectors and any running HDMA keep
+; the interruptible CPU copy: on revision-1 S-CPUs an HDMA transfer during
+; a general-purpose DMA can hang the console, so the DMA needs every
+; channel off (the HDMAEN the last field vblank wrote, and the game's
+; shadow). M16/X16, any DB/D; preserves X/Y.
 core_native_dma_window:
 	LDA.l $7E0100
 	CMP.w #$A85C
@@ -1047,8 +1050,9 @@ core_native_dma_window:
 	LDA.l $7E00EC
 	AND.w #$40FE                 ; ring/menu or native upload already pending
 	BNE .no
-	LDA.l $7E002C
-	AND.w #$0080
+	LDA.l !core_hdmaen
+	ORA.l $7E002C
+	AND.w #$00FF
 	BNE .no
 	JSR core_vcount
 	CMP.w #177

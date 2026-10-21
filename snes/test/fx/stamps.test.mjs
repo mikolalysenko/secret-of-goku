@@ -38,10 +38,10 @@ function renderer(name){
     word(0x90,0xFFFF);word(0x40,0xFFFF);word(0x42,0xFFFF);
     ram.writeUInt16LE(cursor,0x6E90);ram.writeUInt16LE(512,0x6E92);ram.writeUInt16LE(front,0x6E94);
     sram.writeUInt16LE(frontUsed,0x7896);sram.writeUInt16LE(17,0x7884);
-    sram.fill(255,0x7840,0x7860);sram.fill(255,0x7824,0x782A);sram.fill(255,0x7A42,0x7A52);
-    sram.writeUInt16LE(palettes,0x7822);sram.writeUInt16LE(budget,0x7882);
+    sram.fill(255,0x7840,0x7860);sram.fill(255,0x7822,0x7829);
+    sram.writeUInt16LE(palettes,0x7820);sram.writeUInt16LE(budget,0x7882);
     if(resident){
-      sram.writeUInt16LE(cell,0x7840);sram[0x7A62+(cell>>3)]=1<<(cell&7);sram[0x7A42+(cell&15)]=0;
+      sram.writeUInt16LE(cell,0x7840);sram[0x7A54+(cell>>3)]=1<<(cell&7);
     }
     let cycles=0;
     for(const stamp of sequence){

@@ -411,12 +411,15 @@ module that owns a foe outside the actor table writes it every field frame
 field frame is read in the next one): `+0` kind (2 Frieza = slot 12, 3
 Vegeta = slot 3), `+1` species (121 / 46), `+2` x, `+4` y (Frieza: `y + 12`
 as `frieza.js` `entity()`), `+6` terrain byte, `+7` airborne (Frieza). The
-vegeta module posts Vegeta (`vb_flight_target`); Frieza can post himself
-the same way until combat's virtual-target API exists, which Instant
-Transmission will then list too. As in the browser
+vegeta module posts Vegeta (`vb_flight_target`). Without a kind-2 post,
+slot 12 is combat's virtual target at browser entity index 12
+(`combat_api_vtarget`, frieza's `frieza_virtual_target`: his `entity()`
+point, the terrain byte from `!cb_vq` and airborne from its
+`!CVT_AIRBORNE` flag), so Instant Transmission reaches Frieza in his arena
+with no post. As in the browser
 (`mana-mod.js startTeleport`), a target is picked only when `findLanding`
 finds a spot beside it, and the arrival lands only if the same live target
-is still posted.
+is still there.
 
 Story hooks/queries defined in `module.asm`: `!STORY_HOOK_FLIGHT_LAND`,
 `!STORY_HOOK_QUEST_WISH_CEILING`, `!STORY_QUERY_LOCAL_FLIGHT` (`story.asm`),
@@ -520,6 +523,13 @@ earlier one.
   are false over the chamber's floor tiles where the fight stands), so L+B
   does nothing there; a landing would have been checked against Vegeta's
   position at the arrival.
+- `frieza` (builds with the frieza and combat modules): the battle preset
+  with the browser's Frieza state written as frieza's own tests do; L+B
+  picks slot 12 through combat's virtual target (species 121, Frieza's
+  terrain byte, airborne), and the landing equals the browser's
+  `findLanding` (custom `'frieza'`) on the WRAM dumped at the press (Frieza
+  at 220,376 from Goku at 280,426: both land at 246,376). The same press in
+  Potos (map 131) picks no slot 12.
 - `water`: the browser spec's Water Palace gap on the same fixture and warp:
   rises over the gap, hovers in place for 45 frames after release, crosses
   and lands on the far platform, flies back and lands.
@@ -683,8 +693,9 @@ in WRAM or direct page (shorter addressing), a larger tile cache.
   the Time Chamber no spot around the arena passes `findLanding` in either
   engine (its floor tiles are not floor flight accepts), so L+B does nothing
   there; if the trial is meant to allow it, the chamber needs tiles
-  `canLand` accepts (or a landing rule of its own in both engines). Frieza's
-  custom target and combat virtual-target API are already wired.
+  `canLand` accepts (or a landing rule of its own in both engines). Frieza
+  is combat's virtual target 12 (see the custom target above); virtual
+  targets at other indices (13-15) are not listed yet.
 - Resolved 2026-10-18: combat mirrors the browser's `teleport.pending`
   branch while `!fl_hook` bit 2 is set: no new attacks/focus, the current
   action only advances. `scene` exercises a recovery-camera scroll, holding

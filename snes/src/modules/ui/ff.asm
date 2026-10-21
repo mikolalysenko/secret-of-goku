@@ -5,8 +5,8 @@
 ; prose with a B pulse on two of every eight frames, as the browser's input
 ; filter does; a window that holds a choice (story_api_window_has_choice,
 ; the event-stream scan) is never confirmed. The browser also runs these
-; frames up to 12x faster; the cartridge cannot, so the adaptation is the
-; auto-confirm alone. Frieza's input lock / orbit intro only hides R.
+; frames up to 12x faster; ff-text.asm instead uploads/reveals prepared
+; lines in batches. Frieza's input lock / orbit intro also checks choices.
 ; Story's reference copy (-DSTORY_FAST_FORWARD) replaces this one, so two
 ; modules never inject B.
 ;
@@ -33,8 +33,8 @@ else
 	BRA .off
 .held
 if defined("UI_HAVE_STORY")
-	; Frieza's input lock / orbit intro: active without a choice check
-	; (the browser pulses B there whenever the interpreter shows prose)
+	; Frieza's input lock / orbit intro: still leave every choice to the
+	; player, including choices encountered during a locked scene.
 	LDA.w #!STORY_Q_FRIEZA_INPUT_LOCKED
 	JSR ui_story_query
 	BEQ .scene
@@ -46,7 +46,7 @@ if defined("UI_HAVE_STORY")
 	BNE .off8m
 .locked
 	REP #$20
-	BRA .pulse
+	BRA .prose
 .off8m
 	REP #$20
 	BRA .mask

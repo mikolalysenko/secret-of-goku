@@ -11,16 +11,21 @@ const root=resolve(import.meta.dirname,'../../..');
 const context=vm.createContext({Uint8Array,Uint16Array,Math});
 vm.runInContext(readFileSync(resolve(root,'vendor/snes/cpu.js'),'utf8'),context);
 const flags=['c','z','i','d','x','m','v','n'];
+const HDMAEN=0x317496; // !core_hdmaen: the HDMAEN the last field vblank wrote
 function runner(rom){
   const ram=new Uint8Array(0x20000);
   const io=new Uint8Array(65536);
   let line=0,vread=0,dmas=0;
   const ioAt=a=>((a>>>16)&0x7F)<0x40&&(a&65535)>=0x2100&&(a&65535)<0x4380?a&65535:-1;
+  // Battery RAM ($20-$3F:6000-7FFF, HiROM order): the core's HDMAEN copy.
+  const sram=new Uint8Array(0x8000);
+  const sramAt=a=>{const b=(a>>>16)&0x7F,o=a&0xFFFF;return b>=0x20&&b<0x40&&o>=0x6000&&o<0x8000?((b&0x1F)*0x2000+o-0x6000)&0x7FFF:-1;};
   const ramAt=a=>(a>>>16)===0x7E?a&0xFFFF:(a>>>16)===0x7F?0x10000+(a&0xFFFF):
     ((a>>>16)&0x7F)<0x40&&(a&0xFFFF)<0x2000?a&0x1FFF:-1;
   const cpu=new context.Cpu({
     cpuRead:a=>{
       const r=ramAt(a);if(r>=0)return ram[r];
+      const s=sramAt(a);if(s>=0)return sram[s];
       const p=ioAt(a);
       if(p>=0){
         if(p===0x213F)vread=0;
@@ -31,6 +36,7 @@ function runner(rom){
     },
     cpuWrite:(a,v)=>{
       const r=ramAt(a);if(r>=0){ram[r]=v;return;}
+      const s=sramAt(a);if(s>=0){sram[s]=v;return;}
       const p=ioAt(a);assert(p>=0,`unexpected write ${a.toString(16)}`);io[p]=v;
       if(p!==0x420B)return;
       assert.equal(v,0x80);assert.equal(io[0x4370],0);assert.equal(io[0x4371],0x80);
@@ -44,15 +50,17 @@ function runner(rom){
       dmas++;
     },
   });
-  return ({slot=0,p=0,dp=0,db=0x7E,bank=0xD1,source=0xF100,count=50,dest=0x0800,actor=slot*512,dmaLine,gate={},species,status,weaponShown,keepRam=false}={})=>{
+  return ({slot=0,p=0,dp=0,db=0x7E,bank=0xD1,source=0xF100,count=50,dest=0x0800,actor=slot*512,dmaLine,gate={},hdmaen=0,species,status,weaponShown,keepRam=false}={})=>{
     if(!keepRam)for(let i=0;i<ram.length;i++)ram[i]=(i*71+(i>>8)*17)&255;
+    for(let i=0;i<sram.length;i++)sram[i]=(i*53+11)&255;
+    sram[sramAt(HDMAEN)]=hdmaen;
     for(let i=0;i<io.length;i++)io[i]=(i*37+9)&255;
     line=dmaLine??0;vread=dmas=0;
     const channel=io.slice(0x4370,0x4378);
     if(dmaLine!==undefined)Object.assign(ram,{
       [0x100]:0x5C,[0x101]:0xA8,[0x102]:0xC0,[0x103]:0,
       [0x104]:0x5C,[0x105]:0xCF,[0x106]:0xC1,[0x107]:0,
-      [0xD0]:0,[0xFF]:0,[0xEC]:0,[0xED]:0x80,[0x2C]:7,
+      [0xD0]:0,[0xFF]:0,[0xEC]:0,[0xED]:0x80,[0x2C]:0,
     },gate);
     if(species!==undefined)ram[0xE180+actor]=species;
     if(status!==undefined){ram[0xE190+actor]=status&255;ram[0xE191+actor]=status>>>8;}
@@ -130,8 +138,21 @@ test('late scanlines, other handlers, menus, loads and HDMA retain interruptible
       for(const p of [0,4])compare({...sheet,slot,dmaLine,p},true);
   for(const gate of [
     {[0x100]:0x40},{[0x102]:0x88},{[0x104]:0x40},{[0x106]:0x88},
-    {[0xD0]:1},{[0xFF]:1},{[0xEC]:2},{[0xED]:0x40},{[0x2C]:0x80},
+    {[0xD0]:1},{[0xFF]:1},{[0xEC]:2},{[0xED]:0x40},
   ])compare({dmaLine:80,gate},true);
+});
+
+// Revision-1 S-CPUs can hang when HDMA runs during a general-purpose DMA:
+// any channel running this frame, or requested in the game's shadow, keeps
+// the CPU copy.
+test('any running or requested HDMA channel retains the interruptible copy',()=>{
+  for(const sheet of [{},{bank:0xD4,source:0,count:64,dest:0}])
+    for(const dmaLine of [80,176,198,206])for(let ch=0;ch<8;ch++){
+      compare({...sheet,dmaLine,gate:{[0x2C]:1<<ch}},true);
+      compare({...sheet,dmaLine,hdmaen:1<<ch},true);
+    }
+  compare({dmaLine:80,gate:{[0x2C]:0x0C},hdmaen:0x23},true);
+  compare({dmaLine:80,gate:{[0x2D]:0xFF}},true,1); // the byte after the shadow is not HDMA
 });
 
 test('ordinary dead F9 enemies leave their unused weapon buffer alone with the same return contract',t=>{

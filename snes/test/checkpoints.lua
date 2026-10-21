@@ -3,7 +3,8 @@
 -- written only while a main loop of original code waits for vblank, so no
 -- cartridge-added code is on the stack and it loads into later builds:
 --   name-entry  menu loop (C0:1DEF-1DFD), empty name editor of a NEW GAME
---   waterfall   field loop (00:B079), first moment the hero is controllable
+--   waterfall   field loop (00:B079, or 80:B079 since the loop runs in the
+--               FastROM mirror), first moment the hero is controllable
 --   potos       field loop, Potos (map 131) reached through the native door
 --               event from the waterfall when CP_POTOS_DOOR is set
 -- CP_STOP (optional) names the last checkpoint to make.
@@ -20,20 +21,24 @@ local function writeState(name)
   f:write(emu.createSavestate())
   f:close()
 end
--- Save at the next execution of an address in [lo, hi].
+-- Save at the next execution of an address in [lo, hi]. Code in banks
+-- $00-$3F also runs from its FastROM mirror ($80-$BF): watch both.
 local function saveAt(name, lo, hi, frames)
   local done = false
-  local id = emu.addMemoryCallback(function()
+  local function save()
     if not done then
       done = true
       writeState(name)
     end
-  end, emu.callbackType.exec, lo, hi)
+  end
+  local id = emu.addMemoryCallback(save, emu.callbackType.exec, lo, hi)
+  local mirror = lo < 0x400000 and emu.addMemoryCallback(save, emu.callbackType.exec, lo + 0x800000, hi + 0x800000)
   for _ = 1, (frames or 120) do
     if done then break end
     coroutine.yield()
   end
   emu.removeMemoryCallback(id, emu.callbackType.exec, lo, hi)
+  if mirror then emu.removeMemoryCallback(mirror, emu.callbackType.exec, lo + 0x800000, hi + 0x800000) end
   if done then
     local i = info()
     i.name = name
