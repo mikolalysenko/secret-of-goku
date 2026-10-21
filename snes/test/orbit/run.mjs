@@ -44,6 +44,7 @@ import {runMesen} from '../mesen.mjs';
 import {readPng} from '../../tools/gfx.mjs';
 import {renderSpace,compareShots} from './reference.mjs';
 import {runFightReference} from './fight-ref.mjs';
+import {WASH} from '../../gen/orbit.mjs';
 
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const out=resolve(repo,'.local/snes-test/orbit');
@@ -100,7 +101,11 @@ function watchPrelude(rom){
   for(const line of readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8').split('\n')){
     const m=/^([0-9A-Fa-f]{2}):([0-9A-Fa-f]{4}) (\S+)/.exec(line);if(m)sym.set(m[3],parseInt(m[1]+m[2],16));}
   const a=n=>{if(!sym.has(n))throw Error('no symbol '+n);return sym.get(n);};
+  // (the victory's whiteout colours: extended data orbit_wash, laid out
+  // as orbit.mjs WASH)
+  const ow=Object.entries(WASH).map(([k,v])=>`OW_${k.toUpperCase()}=${v}\n`).join('');
   return `GLOBE_PAL=${a('orbit_globe_pal')+2*2*96}\nOBJ01=${a('orbit_obj_pals_01')}\nOBJ01B=${a('orbit_obj_pals_01b')}\nOBJ67=${a('orbit_obj_pals_67')}\nTEXT_PAL=${a('orbit_text_pal')}\n`
+    +`FRED=${a('orbit_pal_frieza_red')}\nFWHITE=${a('orbit_pal_frieza_white')}\nWASH=${a('orbit_wash')}\n${ow}`
     +readFileSync(join(here,'watch.lua'),'utf8')+'\n';
 }
 // The frames whose colours differ from the scene's (watch.lua W.cgram):

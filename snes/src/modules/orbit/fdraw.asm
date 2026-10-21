@@ -238,7 +238,11 @@ fc_goku_at:
 	STA.w !d_x
 	LDA.w !f_hy : SEC : SBC.w #8 : STA.w !d_y
 	LDA.w #!OV_GOKU|(1<<9)|!OA_PRI
-	STA.w !d_ta
+	LDX.w !fn_phase
+	CPX.w #!FN_WIN
+	BNE +
+	LDA.w #!OV_GOKU|(!OFX_PAL_PINK<<9)|!OA_PRI ; (his colours there: wash.asm)
++	STA.w !d_ta
 	STZ.w !d_big
 	JMP ofx_put
 

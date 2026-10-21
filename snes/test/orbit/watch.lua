@@ -1,11 +1,16 @@
 -- Per-frame watches for the orbit's picture (prepended to the fight and
 -- clash tests by run.mjs). Prelude globals: SCENE_RAM, ORBIT_RAM and the
 -- ROM addresses of the colours the scene sends (GLOBE_PAL: light level 3;
--- OBJ01, OBJ01B, OBJ67, TEXT_PAL).
+-- OBJ01, OBJ01B, OBJ67, TEXT_PAL; the victory's FRED, FWHITE and WASH,
+-- extended data orbit_wash, with its layout OW_*).
 --   W.cgram()   the colours the orbit owns as CGRAM holds them for the
 --               frame just shown (endFrame comes before the next vblank)
 --               against what the scene sends: 'ok', or the ranges that
---               differ ('sky', 'globe', 'obj01', 'obj45', 'obj67', 'text')
+--               differ ('sky', 'globe', 'obj01', 'obj45', 'obj67', 'text').
+--               In the victory the scene sends what its frame decided
+--               (wash.asm: the whiteout's level, Frieza's palette): the
+--               state the last call saw (the frame that vblank showed)
+--               or, after a lag frame, the one there now.
 --   W.globe()   the globe's published state: centre column, M7HOFS,
 --               radius, a block building, the indirect set published and
 --               taken, the rebuild flag, our vblank's and frame's last
@@ -24,23 +29,45 @@ local function differ(first, n, a)
   for i = 0, n - 1 do if cg(first + i) & 0x7FFF ~= rom(a, i) & 0x7FFF then return true end end
   return false
 end
-function W.cgram()
-  -- (only while the globe picture shows: the orbit live, no montage shot)
-  if H.r8(ORBIT_RAM) ~= 2 or H.r8(ORBIT_RAM + 0x3C) ~= 0 then return 'off' end
+-- the colours the frame decided: the victory's (wash.asm wv_*: SB+$CF8-
+-- $CFF) and the image of palettes 4-5 (SB+$17A0)
+local function wash()
+  local img = {}
+  for i = 0, 31 do img[i] = H.r8(SB + 0x17A0 + i * 2) | (H.r8(SB + 0x17A0 + i * 2 + 1) << 8) end
+  return {white = H.r16(SB + 0xCF8), base = (WASH & 0xFF0000) | H.r16(SB + 0xCFA),
+    sky = H.r16(SB + 0xCFC), p6 = H.r16(SB + 0xCFE), img = img}
+end
+local function check(v)
   local bad = {}
-  if cg(0) & 0x7FFF ~= 0x0800 then bad[#bad + 1] = 'sky' end
-  if differ(32, 81, GLOBE_PAL) then bad[#bad + 1] = 'globe' end
+  if cg(0) & 0x7FFF ~= v.sky & 0x7FFF then bad[#bad + 1] = 'sky' end
+  if differ(32, 81, v.white == 0 and GLOBE_PAL or v.base) then bad[#bad + 1] = 'globe' end
   if differ(128, 32, OBJ01) and differ(128, 32, OBJ01B) then bad[#bad + 1] = 'obj01' end
-  -- palettes 4-5: the scene's image of them (SRAM), but for the band
-  -- colours (palette 4 entries 2-3, palette 5 entries 1-3)
+  -- palettes 4-5: the scene's image of them (SRAM), or level w's, but for
+  -- the band colours (palette 4 entries 2-3, palette 5 entries 1-3 but in
+  -- the win's)
   for i = 0, 31 do
-    if i ~= 2 and i ~= 3 and i ~= 17 and i ~= 18 and i ~= 19 then
-      local want = H.r8(SB + 0x17A0 + i * 2) | (H.r8(SB + 0x17A0 + i * 2 + 1) << 8)
+    if i ~= 2 and i ~= 3 and (v.white ~= 0 or (i ~= 17 and i ~= 18 and i ~= 19)) then
+      local want = v.img[i]
+      if v.white ~= 0 then want = rom(v.base + (i < 16 and OW_BLUE0 or OW_SSJ - 32), i) end
       if cg(192 + i) & 0x7FFF ~= want & 0x7FFF then bad[#bad + 1] = 'obj45'; break end
     end
   end
-  if differ(224, 32, OBJ67) then bad[#bad + 1] = 'obj67' end
+  if v.white ~= 0 then
+    if differ(224, 16, v.base + v.p6) or differ(240, 16, v.base + OW_GOLD) then bad[#bad + 1] = 'obj67' end
+  elseif v.p6 ~= OW_FRIEZA then
+    if differ(224, 16, v.p6 == OW_RED and FRED or FWHITE) or differ(240, 16, OBJ67 + 32) then bad[#bad + 1] = 'obj67' end
+  elseif differ(224, 32, OBJ67) then bad[#bad + 1] = 'obj67' end
   if H.r16(SB + 0xDB2) ~= 0 and differ(4, 8, TEXT_PAL) then bad[#bad + 1] = 'text' end
+  return bad
+end
+local shownWash = nil
+function W.cgram()
+  -- (only while the globe picture shows: the orbit live, no montage shot)
+  if H.r8(ORBIT_RAM) ~= 2 or H.r8(ORBIT_RAM + 0x3C) ~= 0 then shownWash = nil; return 'off' end
+  local now = wash()
+  local bad = check(shownWash or now)
+  if #bad > 0 and shownWash then bad = check(now) end
+  shownWash = now
   if #bad == 0 then return 'ok' end
   return table.concat(bad, '+')
 end

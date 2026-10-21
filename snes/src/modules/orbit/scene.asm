@@ -1370,7 +1370,10 @@ orbit_nmi_obj_palettes:
 	LDA.b #$80
 	STA.w $420B
 	REP #$20
-	LDA.w #!OBJ_PALS45
+	LDA.w !wv_white
+	BEQ +
+	JMP wash_obj_palettes          ; (the victory's whiteout: wash.asm)
++	LDA.w #!OBJ_PALS45
 	STA.w $4372
 	LDA.w #64
 	STA.w $4375
@@ -1382,7 +1385,11 @@ orbit_nmi_obj_palettes:
 	LDA.b #$80
 	STA.w $420B
 	REP #$20
-	LDA.w #orbit_obj_pals_67
+	LDA.w !wv_p6
+	CMP.w #!OWASH_FRIEZA
+	BEQ +
+	JMP wash_frieza_palettes       ; (his death flash: wash.asm)
++	LDA.w #orbit_obj_pals_67
 	STA.w $4372
 	LDA.w #64
 	STA.w $4375
@@ -1398,8 +1405,10 @@ orbit_nmi_obj_palettes:
 ; This frame's band colours into OBJ palettes 4-5 as the vblank sends them
 ; (the drawing picked their frames): Goku's (blue) in entries 2-3 of
 ; palette 4; Frieza's (pink) in entries 1-3 of palette 5: beam (1 white,
-; 2 A, 3 B) or laser (1 A, 2 B, 3 white). M16/X16, DB = $32.
+; 2 A, 3 B) or laser (1 A, 2 B, 3 white); in the win Goku's colours in
+; palette 5 instead, and the victory's colours (wash.asm). M16/X16, DB = $32.
 orbit_pals_frame:
+	JSR wash_frame
 	LDA.w !v_band
 	AND.w #$0001
 	ASL : ASL
@@ -1408,7 +1417,11 @@ orbit_pals_frame:
 	STA.w !OBJ_PALS45+4
 	LDA.l orbit_fx_band_blue+2,X
 	STA.w !OBJ_PALS45+6
-	LDA.w !v_pband
+	LDA.w !fn_phase
+	CMP.w #!FN_WIN
+	BNE +
+	JMP wash_goku_palette
++	LDA.w !v_pband
 	AND.w #$0001
 	ASL : ASL
 	TAX
@@ -1679,20 +1692,27 @@ orbit_cgram_live:
 	JSL core_cgram_native
 	SEP #$20
 	STZ.w $2121
-	LDA.b #!ORBIT_SKY : STA.w $2122
-	LDA.b #!ORBIT_SKY>>8 : STA.w $2122
+	LDA.w !wv_sky : STA.w $2122    ; (the sky; washed in the victory's
+	LDA.w !wv_sky+1 : STA.w $2122  ; whiteout: wash.asm)
 	LDA.b #!ORBIT_GLOBE_CGRAM
 	STA.w $2121
 	REP #$20
 	LDA.w #$2200                   ; DMA mode 0 to $2122
 	STA.w $4370
-	LDA.w #orbit_globe_pal+(2*2*96) ; light level 3
-	STA.w $4372
 	LDA.w #2*!ORBIT_GLOBE_COLORS
 	STA.w $4375
+	LDA.w !wv_white
+	BNE +
+	LDA.w #orbit_globe_pal+(2*2*96) ; light level 3
+	STA.w $4372
 	SEP #$20
 	LDA.b #orbit_globe_pal>>16
-	STA.w $4374
+	BRA ++
++	LDA.w !wv_base                 ; (washed)
+	STA.w $4372
+	SEP #$20
+	LDA.b #(!XDATA_ORBIT_WASH)>>16
+++	STA.w $4374
 	LDA.b #$80
 	STA.w $420B
 	JSR orbit_nmi_obj_palettes
