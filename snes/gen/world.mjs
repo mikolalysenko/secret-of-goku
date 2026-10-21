@@ -18,6 +18,7 @@ import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {encodeTile,writePng,blank} from '../tools/gfx.mjs';
+import {generateWorldAura} from './world-aura.mjs';
 
 const W5=c=>[c&31,(c>>5)&31,(c>>10)&31];
 const rgb=(r,g,b)=>r|(g<<5)|(b<<10);
@@ -157,6 +158,7 @@ export async function generate({rom,repo,outDir,xdata}){
     }
   }
   a.label('world_beam_f');a.db(beamF);
+  generateWorldAura({a,effect,manifest,xdata});
 
   // Craters (engine/world-scars.js): the Potos hole (native-crater.js) scaled
   // to 144 x 96 (224 x 149 for the full SSJ wave) on the 8-px Mode 7 grid.

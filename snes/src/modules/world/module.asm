@@ -103,7 +103,8 @@ assert !RAM_WORLD == ($7E0000|!WORLD_RAM), "!WORLD_RAM must match !RAM_WORLD"
 !w_scar_h       = !WORLD_RAM+$D6 ; word
 !w_scar_id      = !WORLD_RAM+$D8 ; word
 !w_scar_col     = !WORLD_RAM+$DA ; word: next column of the tilemap refresh row
-!w_pal_dirty    = !WORLD_RAM+$DC ; word: OBJ palettes 5/6 to rewrite in CGRAM this vblank
+!w_pal_dirty    = !WORLD_RAM+$DC ; bits 0/1: palettes 5/6; bit 2: aura, bit 3: gold;
+                                ; high byte: aura frame + 1 (consumed this vblank)
 !w_ref_x0       = !WORLD_RAM+$DE ; word: crater being refreshed: first column
 !w_ref_w        = !WORLD_RAM+$E0 ; word: and width (tiles)
 !w_cursor       = !WORLD_RAM+$E2 ; word: OAM byte cursor while drawing
@@ -195,6 +196,7 @@ incsrc "util.asm"
 incsrc "field.asm"
 incsrc "flight.asm"
 incsrc "sprite.asm"
+incsrc "aura.asm"
 incsrc "nmi.asm"
 incsrc "aim.asm"
 incsrc "ki.asm"

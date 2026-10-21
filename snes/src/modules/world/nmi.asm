@@ -45,6 +45,13 @@ world_world_nmi:
 world_nmi_palettes:
 	LDA.w !w_pal_dirty
 	BEQ .done
+	BIT.w #$0004
+	BEQ +
+	JSR world_nmi_aura
++	LDA.w !w_pal_dirty
+	AND.w #$0003
+	STA.w !w_pal_dirty
+	BEQ .clear
 	JSL core_vblank_lines
 	CMP.w #2
 	BCC .done
@@ -65,6 +72,7 @@ world_nmi_palettes:
 	LDA.w !w_scratch+2
 	STA.l $00420B
 	REP #$20
+.clear
 	STZ.w !w_pal_dirty
 .done
 	RTS

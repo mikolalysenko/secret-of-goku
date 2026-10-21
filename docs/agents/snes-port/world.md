@@ -30,6 +30,7 @@ the Mana Tree's cloud barrier. Weaker waves bounce off the Fortress shield.
 | Goku replaces Flammie in Mode 7 (rear view, banking, bob, flight clip, charge pose with hanging legs, airBeam pose, both forms, palette 5, small shadow instead of the HDMA window) | Done | `sprite` |
 | A ascends, B descends/lands; steering; L chords suppress altitude input immediately | Done | `controls`, `ki` |
 | Aerial ki shots, late distant bursts | Done | `ki` |
+| Ki aura during focus, charge, transform and revert; browser power, ignition, colour and flicker | Done | `aura`: every sampled raster equals the browser sprite layer |
 | Charged aerial Kamehameha (shared combat state), aim sparks, beam, edge sparks | Done | `controls`, `ki`, `fortress`, `scars` |
 | Fortress shield: base/partial waves deflect (rebound streak, arcs, 720-frame message cooldown) | Done | `ki` |
 | Fortress destruction: explosion, 186-frame planet cutaway, deck landing with the crisis cue, story event `$8B` | Connected to ending and Frieza modules | `fortress` |
@@ -128,6 +129,59 @@ whole-world NMI peaks at 34.89 of 37 vblank lines. The full world (15), UI
 (12, including radar/panel), Frieza (29) and FX (6) cases pass after this
 change. The perf flight fixture still reports 0/304 completed frames, also
 reproduced on the pre-task ROM; the five field perf scenes pass.
+
+### World ki aura (`aura.asm`, `snes/gen/world-aura.mjs`)
+
+World draws the flame behind Goku, using combat's published action,
+charge, focus power and clock. The gate is the browser's
+`(focus || charging || powering) && (canAttack || flight)`; world flight
+does not require field `canAttack`. Docking returns before the aura, as
+the browser does. Existing combat locks cancel focus/charge normally.
+Focus uses `.25 + .45 * powerCharge / 96`; base/SSJ charge uses
+`.15 + .4 * charge / 90` / `.4 + .6 * charge / 45`. Transform turns gold
+at `ceil(duration * 14 / 40)`; revert stays gold before age 8 and fades
+by `1 - age / duration`. Both 32/72-frame transforms and 10/20-frame
+reversions are covered. Odd combat clocks intentionally draw nothing.
+
+The generator calls `drawKiAura` at height 32 for all eight power levels
+and twelve phases. Deduplicating 8×8 cells preserves every pixel, including
+the asymmetric tongues, in at most 31 tiles. Up to 36 small OBJ compose
+the 48×64 bounding rectangle at Goku's banked/bobbing body centre; no
+rescaling, mirroring, HDMA or colour math is needed. Blue's shorter native
+ramp merges two highlights; gold retains all four semantic shades.
+
+The 32 tile slots are the previously unused `$060–06B`, `$070–07B`,
+`$06E–06F`, `$07E–07F`, `$0CE–0CF` and `$0DE–0DF` in world A. The
+docking miniature, charge sparks, aerial ki, beam and shadow keep their
+slots. B/C remain available to UI and Frieza. Palette 7 is uploaded only
+with a visible flame; the input-locked flyby owns it during its scene.
+Every visible aura reloads its tiles and colours, so a map return or
+flyby cannot leave a stale cache. The ordinary effect upload excludes its
+unused `$CE/$DE` padding: the core flushes that queue after world NMI.
+
+The existing dirty-palette word carries the frame id and gold flag to
+NMI; no new RAM allocation or core hook is needed. Six DMA transfers
+upload 1,024 tile bytes and one uploads 32 palette bytes, using the world's
+free channel, only with at least 12 vblank lines left. If that budget is
+unavailable, a short OAM transfer hides the flame instead of showing old
+tiles; even this fallback requires two remaining lines. No sampled frame
+needs the fallback. There is no active-display DMA or PPU-memory write.
+
+The `aura` case compares decoded OAM/VRAM/CGRAM against the actual
+`ManaSpriteLayer.prepare()` and `drawKiAura`, on every frame, including
+cold residency, both forms, banking, charge, both transformation lengths,
+both reversion lengths and release. The first run has **504/504**
+browser-visible frames, zero pixel differences, misses, unsafe DMA or
+OAM overflow (at most 12 objects / 16 slivers on a line). Screenshots and
+browser/OBJ raster pairs stay in `.local/snes-test/world/aura/`.
+
+Matched pre-change/updated idle runs measure the combined world frame
+callbacks at **9.250 → 9.243 lines**, and world NMI at **2.173 → 2.173**.
+The resident effect-atlas early-out pays for the new idle gate. Visible
+flames cost at most 14.94 frame lines and 9.11 upload lines (10.27 when
+Goku's palette also changes). The longest whole NMI is 35.67/37 lines
+during cold loading; ordinary focus peaks at 31.54. Strict build,
+`world aura`, `controls` and `timing` pass at this checkpoint.
 
 ### Aerial ki and the aerial Kamehameha (`ki.asm`, `aim.asm`, `fxdraw.asm`)
 

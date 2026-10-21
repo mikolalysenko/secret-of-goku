@@ -241,7 +241,7 @@ endif
 	JSR world_draw_cell
 .shadow
 	LDA.w !w_shadow_t
-	BEQ .finish
+	BEQ .aura
 	LDA.w #120
 	STA.w !w_scratch
 	LDA.w !w_shadow_y
@@ -250,6 +250,14 @@ endif
 	STA.w !w_scratch+2
 	LDA.w #!FX_SHADOW
 	JSR world_put_fx
+.aura
+	; Combat publishes the same action as the browser. Aura is behind the
+	; body and other effects (last in OAM), including during world flight.
+	LDA.w !goku_act
+	AND.w #$00FF
+	ORA.w !w_charging
+	BEQ .finish
+	JSR world_aura_draw
 .finish
 	; hide what we drew last frame beyond this frame's entries
 	STX.w !w_scratch+4
