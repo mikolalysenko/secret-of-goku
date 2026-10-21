@@ -4,6 +4,43 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: Frieza's colours on lag frames, a steady dash trail, clean dialogue windows (2026-10-21)
+
+- Frieza glitch fixes (d6b8780, 6615d68, 2dfd436, 7b85cf5; merged in
+  0a0256d):
+  - Frieza's borrowed OBJ colours now go up inside the game's own palette
+    transfer (`frieza_cgram_upload`, after the orbit's handler). On a lag
+    vblank only the BG half and his backdrop go up, so his sprites never
+    show for a frame in another sprite's colours.
+    - Thanatos showed him blue and red on a lag frame with a window open.
+      With a lag vblank forced every 16 frames, the court, the fight, the
+      Tree vista, the rising Balls and the deck's Death Ball now show 0
+      faults; with the fix's lag path disabled they show 5 to 55.
+  - The dash afterimages no longer blink at 30 Hz. Every other afterimage
+    (at most three) is drawn every frame in a dimmer violet, which matches
+    the browser's dithered trail averaged over the floor. They are placed
+    straight into OAM (about 2 lines each, was 15.5).
+    - The battle preset's lag frames fell from 12 to 4, none during dashes.
+  - Frieza's scene tests use exact frames, and a new `transients` case
+    fails on one-frame transients and on wrong colours on his sprites.
+  - Scenes without Frieza pay 0.04 lines per vblank for one gated read.
+- Native dialogue windows open cleanly over held scenes (a563cf1, 7cdb1b8;
+  merged in 2bb0d16).
+  - Core's `core_actor_cells` skipped the native actor streamer for scenes
+    that hold it, and with it the streamer's prologue: DMA channels 4-7
+    set up for VRAM words, and VMAIN $80.
+  - The dialogue upload later in the NMI relies on VMAIN $80, so a window
+    opening over an ending scene uploaded its tiles shifted by a byte:
+    stray glyphs, blue dots and a blinking bar for about 8 frames.
+  - Held vblanks now run the prologue. A `dialogue` ending case checks every
+    BG3 upload byte for byte in 13 scenes.
+- A one-frame glitch hunt over the scene-select presets is now a tool
+  (`snes/test/debug/hunt.mjs`, `--browser` for the browser's frames;
+  3a3972e).
+- Validation on 2bb0d16: all 20 suites pass under the read probe. Gameplay
+  misses per 240 frames are unchanged: charge 17, teleport 3, flight 2,
+  flying ki 2, flying punches 1, the rest 0.
+
 ## SNES integration: the aura in world flight, a whole explosion flash (2026-10-21)
 
 - Codex world aura (27318fc, 73e001b; merged in 1d5c800): focus, charge,
