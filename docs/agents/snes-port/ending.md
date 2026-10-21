@@ -26,7 +26,7 @@ Browser sources ported: `engine/shenron-ending.js`, `wish-flight.js`,
 | fatal (14) | boss-rush death, planet explosion, GAME OVER | done | `fatal`: 7 stills 83.9-100%, Start returns to the title |
 | Fortress cutaway (world flight) | planet-view `isShot`: globe, `beam()`, ring, dust, fade | done (34 target orientations, day/night) | `cutaway`: 59 stills; sampled age-140 views 89.4-99.9% |
 
-All eight tests pass (`node snes/test/ending/run.mjs`), together with the
+All nine tests pass (`node snes/test/ending/run.mjs`), together with the
 story tests that exercise the hooks and the scene select's good-ending,
 bad-ending and explosion presets (`node snes/test/debug/run.mjs`).
 
@@ -141,6 +141,49 @@ the native fade darkens it meanwhile. A load under the scatter ends the
 flight (the script's next door is the reunion's cliff or Potos), and the
 reunion's load gives the field the screen back. The overlay follows the
 boy to the new map (`$DC`).
+
+### Native dialogue uploads
+
+The opening animation does **not** use W34SEL, TMW, WH0/WH1, or colour
+math to mask unfinished tiles. Traces of the browser's native PPU and the
+cartridge keep both BG3 windows disabled. Native HDMA channels **0/1**
+write CGADD/CGDATA for the dialogue/HUD palettes (`C0:C1E7`); they do not
+write window edges. The opening draws tile `$120` (seven transparent rows
+and one black row) across two vertically mirrored tilemap rows, then
+replaces it with the window border.
+
+Full-screen scenes skip the native actor streamer with `core_actor_hold`.
+That also skips its `C1:952D` write of **VMAIN `$80`**, after the HUD updater
+(`C0:C238`) left VMAIN at `$00`. The following native dialogue DMA assumes
+increment-after-high. Increment-after-low shifted every high graphics
+plane and tilemap attribute one word right: the leftmost `$2120` became
+glyph `$0020`, tile `$120` picked up blue dots, and the rightmost stale
+attribute produced the alternating bar.
+
+Core's `core_actor_cells` now runs the streamer's prologue
+(`C1:950D-C1:952D`) on a skipped frame: DMA channels 4-7 set for VRAM word
+writes and VMAIN `$80`, exactly as the streamer leaves them before its
+phase work. That covers every module that holds the streamer (the endings
+and the orbit's cinematics). No window registers, colour math or HDMA
+allocations change; the disc and ring keep both windows and channels
+2/3/4/6. The prologue costs a few dozen cycles on held vblanks only.
+
+The `dialogue` regression opens event `$134` over 13 scenarios: ordinary
+field, doomed globe, explosion disc/ring, escape, vista, flight, King Kai,
+native fatal view, fatal globe/disc/ring, and the departure globe. Every
+BG3 graphics/map DMA is checked byte-for-byte against its WRAM source,
+with the native palette HDMA and safe transfer timing checked too. With
+only the fix reverted in a private ROM, the ordinary/native-fatal
+controls pass and every full-screen case detects the corrupt transfers.
+The 240-frame power-on hunts have no thin-line-opening transients:
+bad-ending retains only frames 12–14 and explosion 211–213, the same
+three border-expansion frames present in the browser (12–14 and 205–207).
+
+Strict build, all nine ending cases, debug's bad-ending/good-ending/
+explosion/space presets (all FULL), and all six perf scenes pass. Scene
+lag remains space/fatal 0, vista 1, flight 2; no visible vblank overruns.
+Idle `modprof` remains 0.46–0.47 lines for `ending_frame` and 0.13 for
+`ending_nmi`; the existing frame cost is above the 0.3-line guide.
 
 ## Scenes
 
@@ -596,7 +639,7 @@ WRAM block `!RAM_ORBIT+$80..$B5`:
 
 | Resource | Use |
 | --- | --- |
-| Code | `$A9:8000-FEA2` (349 bytes free); second area `$AA:C000-D9B6` (9,801 bytes of the quarter free) |
+| Code | `$A9:8000-FEB8` (327 bytes free); second area `$AA:C000-D9B6` (9,801 bytes of the quarter free) |
 | Fast data | `E9:0000` (32,678 bytes: crack events, fade sets, spark OAM, window lookups, flight tables), `EC:0000` (6,581 bytes: flight scale templates and widths); `ED`/`EE`/`EF` belong to core |
 | Extended data | ending: 68 blobs / 648,708 bytes (633.50 KiB), including the 188,387-byte orientation atlas. Whole build: 2,176.2 of 2,944 KiB, 767.8 KiB free |
 | WRAM | `!RAM_ORBIT+$80..$B5` |
@@ -662,7 +705,7 @@ WRAM block `!RAM_ORBIT+$80..$B5`:
 
 ## Tests
 
-`node snes/test/ending/run.mjs [kai|space|fatal|depart|vista|flight|loads|cutaway]`
+`node snes/test/ending/run.mjs [kai|space|fatal|depart|vista|flight|loads|dialogue|cutaway]`
 (Mesen at `.local/tools/mesen`, outputs under `.local/snes-test/ending/`).
 Each scene is cued through the module's request byte from an imported
 browser-mod field state; references are composed with the browser
@@ -683,6 +726,7 @@ overruns) are measured on a separate untouched run.
 | `vista` | `ending-fix__end-20` (map 180) | 12 stills 95.3-95.8%, done flags, Shenron's rise without lag, lag 1 |
 | `flight` | `ending-fix__end-20` (map 180) | 14 stills 94.6-99.0%, load ≤ 30 frames, muted/airborne/sound/done, lag ≤ 2, every integer size ready on time, both buffers used, rise OBJ limits, no overruns |
 | `loads` | `emulator-probe__potos-state` | doors through core's event mailbox: 2F under the doomed globe (reloaded, clock on, 99.9%), cue 176 after the flight holds black, door 3FF: the cliff 99.1% of a native load of it, Dyluck present |
+| `dialogue` | `emulator-probe__potos-state` | native opening/reveal in 13 scenarios; every BG3 DMA byte matches WRAM, VMAIN/HDMA correct, safe PPU timing, zero vblank overruns |
 | `cutaway` | the world tests' waterfall checkpoint | actual shots at six sampled targets in both lights plus the default sequence (59 stills); saved-target selection, 192 KiB budget, all 34 VRAM images byte-exact, forced-blank load <215 lines, hardware-safe PPU/DMA, footprint ends by line 254 and trails at most 1, VTIME 196 after deck landing |
 
 Sounds are checked on the calls into the audio module (`audio_sfx`,

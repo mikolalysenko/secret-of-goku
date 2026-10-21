@@ -34,7 +34,7 @@ function coreDefine(name){
 }
 const lib0=`EVENT_MAILBOX=0x${coreDefine('core_event_req').toString(16)}\n`;
 const lib=lib0+`AUDIO_SFX=${symAddr('audio_sfx')}\nAUDIO_FADE=${symAddr('audio_fade')}\nNMI_OUT=${symAddr('ending_world_nmi_out')}\nNMI_IN=${symAddr('ending_world_nmi')}\nNMI_RESTORE=${symAddr('ending_world_nmi_restore')}\nNMI_DMA=${symAddr('cut_footprint_ran')}\n`+
-  `FIELD_IN=${symAddr('ending_frame')}\nFIELD_OUT=${symAddr('ending_frame_out')}\nSCALE_OUT=${symAddr('flight_scale_frame_out')}\n`+
+  `FIELD_IN=${symAddr('ending_frame')}\nFIELD_OUT=${symAddr('ending_frame_out')}\nSCALE_OUT=${symAddr('flight_scale_frame_out')}\nDIALOGUE_IN=${symAddr('ending_dialogue_upload')}\n`+
   `SHARDS_IN=${symAddr('shards_preupload')}\nSHARDS_OUT=${symAddr('ending_preupload_copies')}\n`+
   `FRAME_IN=${symAddr('ending_world_frame')}\nFRAME_OUT=${symAddr('ending_world_frame_out')}\nLOAD_IN=${symAddr('cut_load')}\nGLOBE_COUNT=${globeTargets().length}\nGLOBE_TILES=308\n`+
   `DMA_TRIGGERS={${['ending_preupload_trigger','nmi_lowcopy_trigger','cut_oam_trigger','flight_scale_nmi_trigger','shards_copy_cell_top','shards_copy_cell_bottom'].map(symAddr).join(',')}}\n`+readFileSync(resolve(here,'lib.lua'),'utf8');
@@ -341,6 +341,18 @@ async function cutawayCheck(r,out){
   }
 }
 
+function dialogueCheck(r){
+  expect(r.dialogue_cases?.length===13,'every dialogue family exercised');
+  for(const c of r.dialogue_cases??[]){
+    expect(c.loaded&&c.ready,`${c.name}: scene loaded and native prose reached its button wait`);
+    expect(c.tiles>0&&c.maps>=10,`${c.name}: opening graphics and tilemaps uploaded (${c.tiles}/${c.maps})`);
+    expect(c.bad_mode===0&&c.bad_bytes===0,`${c.name}: native BG3 uploads intact (${c.bad_mode} wrong modes, ${c.bad_bytes} wrong bytes, ${c.first_bad??''})`);
+    expect(c.unsafe===0,`${c.name}: every native BG3 transfer in vblank/forced blank`);
+    expect((c.hdma&3)===3,`${c.name}: native dialogue palette HDMA 0/1 retained`);
+    expect(c.overruns===0,`${c.name}: no visible vblank overruns (${c.overruns})`);
+  }
+}
+
 const tests=[
   {name:'kai',check:kaiCheck},
   {name:'space',check:spaceCheck},
@@ -349,6 +361,7 @@ const tests=[
   {name:'vista',check:vistaCheck},
   {name:'flight',check:flightCheck},
   {name:'loads',check:loadsCheck},
+  {name:'dialogue',check:dialogueCheck},
   {name:'cutaway',check:cutawayCheck,checkpoint:'waterfall.mss'},
 ];
 let ok=true;
