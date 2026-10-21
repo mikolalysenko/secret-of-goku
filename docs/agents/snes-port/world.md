@@ -124,7 +124,10 @@ math are restored afterward; B/C are released at age 550. See
 [frieza.md](frieza.md#world-flight-picture-flybyasm-_frieza-flybymjs) for
 picture checks and the remaining surface/crowding approximations. Both
 forms complete 549 flyby frames with zero lag/overflow/deferred uploads;
-whole-world NMI peaks at 34.89 of 37 vblank lines.
+whole-world NMI peaks at 34.89 of 37 vblank lines. The full world (15), UI
+(12, including radar/panel), Frieza (29) and FX (6) cases pass after this
+change. The perf flight fixture still reports 0/304 completed frames, also
+reproduced on the pre-task ROM; the five field perf scenes pass.
 
 ### Aerial ki and the aerial Kamehameha (`ki.asm`, `aim.asm`, `fxdraw.asm`)
 

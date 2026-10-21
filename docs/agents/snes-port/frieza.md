@@ -236,7 +236,7 @@ peaks at **34.89 of 37 vblank lines**. Frieza logic averages 2.96 lines
 (max 6.75), OAM drawing 8.31 (max 39.80, including interrupt time), and its
 NMI 6.16 (max 20.43). Idle world logic is 0.139 lines (max 0.24), using the
 `FZI_WORLD_IDLE` WRAM cache cleared by every `fz_wake`; the idle draw and
-NMI entries are about 0.15 and 0.12 lines each. The field paths and the
+NMI entries are about 0.15 and 0.12 lines each. Field rendering and the
 field Death Ball renderer are unchanged.
 
 Base-form per-still agreement below uses a 24/255 per-channel RGB tolerance
@@ -270,6 +270,16 @@ silhouette agreement is 98.0–99.4% across both forms.
 | 438 | 99.94 | 99.28 | — | 99.17 |
 | 476 | 99.40 | 94.75 | — | 94.35 |
 | 510 | 99.99 | 100.00 | — | 100.00 |
+
+Validation on 2026-10-20: strict production build; **Frieza 29/29** (including
+fresh browser references for all eleven optional scene cases), **world
+15/15**, **UI 12/12** (including radar/world panel), and **FX 6/6**, all pass.
+`modprof` also ran on the sword and battle perf states. The perf suite passes
+its five field scenes; `preset__flight` reports zero completed frames out
+of 304, identically on the private pre-task ROM. That existing fixture/probe
+failure is still open; the world suite's timing case and the direct flyby
+lag/vblank probes pass. Logs and JSON are private under
+`.local/snes-test/flyby-*-suite.log` and the individual module directories.
 
 ## Hardware approach
 
@@ -390,13 +400,18 @@ the earlier position in the overlay order changes nothing).
 
 Dispatch: `modules_field_frame` -> `frieza_field_frame`,
 `modules_field_nmi` -> `frieza_field_nmi`, `modules_world_frame` ->
-`frieza_world_frame`, `modules_load` ->
+`frieza_world_frame`, `modules_world_nmi` -> `frieza_world_nmi`,
+`world_draw` -> `frieza_world_draw`, `world_nmi_cell` ->
+`frieza_world_body`, `modules_load` ->
 `frieza_load`, `modules_new_game` -> `frieza_new_game`,
 `modules_title_boot` -> `frieza_title_boot`, `!DEBUG_PRESET_HOOK_ANY` ->
 `frieza_debug_preset` (unanswered kinds continue to `combat_debug_hook`).
 
 | Entry | Contract |
 | --- | --- |
+| `frieza_world_draw` | JSL from world drawing, M16/X16, DB=$7E, D=0. Appends OAM at `w_cursor` / the core run. C set only when the checker supplies the complete picture, including Goku; preserves D. |
+| `frieza_world_body` | JSL from world cell upload, M16/X16, any DB/D. C set while the checker supplies Goku and his ordinary VRAM upload should wait. |
+| `frieza_world_nmi` | World vblank dispatch, M16/X16, DB=$80, D=0. Budgeted palette/art DMA and final window/HDMA setup; preserves DB/D. |
 | `frieza_virtual_target` | JSL, any DB. C set while Frieza can be struck: A16 = species (121) with the fight's terrain byte in the high byte, X16 = x, Y16 = y (map, his feet + 12, as frieza.js `entity()`) |
 | `frieza_combat_receive` | Combat's receive hook (`modules_combat_receive`): A16 = Goku's queued damage -> A16 = damage to apply (the fed Beast's cap) |
 | `frieza_virtual_hit` | JSL, any DB. A16 = Goku's damage, X16 = 1 punch / 0 ki, beam, burst. Applies 15% (65% stunned), recoil, grace, thresholds; A16 = HP taken |
@@ -524,6 +539,9 @@ floor on request.
 
 ## Requests
 
+- **Perf harness / integrator**: investigate `perf/preset__flight`'s missing
+  completion samples (0/304 on both this cartridge and the pre-task ROM).
+  This work changes no core files; the direct world/flyby timing checks pass.
 - **fx**: the cinematic red Death Ball is supplied (`FX_DBALL_CINEMATIC`).
   The cheaper polygon aura request remains (about 100 lines a frame during
   the surge in the earlier measurement).
