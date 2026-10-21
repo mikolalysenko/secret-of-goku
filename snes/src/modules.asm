@@ -194,6 +194,14 @@ modules_cgram_upload:
 	JSL frieza_cgram_upload    ; Frieza's borrowed OBJ palettes and backdrop (after the orbit, which takes his scene at the second surge)
 +	JML fx_cgram_upload        ; preserve scene handlers, then the displayed OBJ colours
 
+modules_world_cgram_upload:
+	LDA.l $7E0000|!fzy_cgshow   ; no call while the flyby owns no displayed colours
+	BEQ .native
+	JML frieza_world_cgram_upload
+.native
+	CLC
+	RTL
+
 modules_combat_receive:
 if defined("COMBAT_TEST")
 	JSL combat_test_receive    ; snes/test/combat (receive cases)

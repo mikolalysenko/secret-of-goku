@@ -249,6 +249,23 @@ normal palette is restored when the checker ends, and both world palettes
 552). Field sprite scratch holds only world-local pointers/flags; field
 initialization invalidates it.
 
+`frieza_world_cgram_upload` runs in core's world palette hook before the
+native transfer. `fzy_cgshow` (`fz_spr_res1`, world-only WRAM alias) latches
+the displayed OBJ/backdrop ownership after a completed flyby NMI. If
+either `$EC` bit 0 or `core_dma_ready` is missing, only the native BG half
+is uploaded; the flyby's OBJ colours stay in CGRAM. Near impact, colour
+zero stays too. Completed frames retain the existing native/world/Frieza
+upload order, and restoration clears the latch. No extra DMA is added to
+a completed frame, and no frame-thread palette copy is used.
+
+`flyby-lag` forces eleven incomplete NMIs in each form, covering the
+small orb, growing/thrown sphere, distant backdrop, checker and departure.
+It alternates both native palette buffers and exercises the ready-before-
+`$EC` gap. The original cartridge loses OBJ colours in all eleven transfers
+and the distant backdrop once; the fixed cartridge loses neither, and
+every native BG byte still matches its selected source. All transfers
+remain in vblank, without overflow or unforced lag.
+
 The `flyby` case captures raw PPU frames at arrival, growth, full size,
 throw, impact, every checker frame and departure. A private
 `FRIEZA_FLYBY_HIDE` build captures the identical native flight underneath;
@@ -673,11 +690,6 @@ dialogue window does).
   the surge in the earlier measurement). The Death Orb cell-swap gaps and
   palette-latch race are fixed; the field flame now uses resident OBJ art
   in the shipping build, as described in [fx.md](fx.md).
-- **core / world**: the world NMI sends its palette on lag vblanks too
-  (`C0:8A79` while `$E3` bit 6), and `frieza_world_nmi` writes the flyby's
-  palettes 5-7 only for completed world frames: the field's lag-palette
-  pattern. The flyby measures no lag frames; a world counterpart of
-  `modules_cgram_upload` would close it.
 - **flight**: none left; `bind.asm` binds `!FLIGHT_API_CAN_LAND`,
   `_CAN_LAND_T` and `!FLIGHT_API_CAMERA` when flight is built in.
 - **ending / orbit (scene SRAM)**: Frieza releases `!SRAM_WORK_SCENE` on the

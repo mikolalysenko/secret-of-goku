@@ -435,6 +435,15 @@ module integration results are recorded in the changelog.
 
 ## Core requests
 
+Core now offers `modules_world_cgram_upload` at the native palette transfer
+(`C0:8A89`), with `core_world_cgram_native` for byte ranges from the selected
+world buffer. Frieza's flyby uses it to keep its displayed OBJ colours and
+distant-ball backdrop through lag vblanks. Normal world transfers retain
+their original enable gates, buffer selection and full-palette path; the
+world module needs no callback or frame-thread copy. See
+[the core contract](../snes-rom.md#modules-and-core-api) and
+[Frieza's flyby](frieza.md) for the forced-lag regression coverage.
+
 - `core_oam_add` culls 16×16 sprites to y ≥ -64; OAM Y is 8 bits, so a
   sprite between -64 and -16 wraps to the bottom of the screen
   (`world_fx_back` pre-culls to [-16, 224)).

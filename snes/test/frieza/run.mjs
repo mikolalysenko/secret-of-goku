@@ -744,7 +744,7 @@ end
 // Ball and Frieza heads for the Tree (tree pursuit); in the overhead view
 // the module asks the native camera for the rear view ($F8 = $90, $CC bit
 // 4), then Kai's warning goes out (the crisis notified).
-function flybyTest(source=romSrc,form=0){
+function flybyTest(source=romSrc,form=0,lag=false){
   const g=reference('fortress');
   const writes=friezaWrites({...g.frieza,stage:'theft',deckBall:true,flyby:null,crisis:null,eighth:false,tree:null,scene:null,boss:null},g.challenge);
   const ram=storyRequestBlock(source);
@@ -753,6 +753,7 @@ function flybyTest(source=romSrc,form=0){
   const addr=n=>{const m=sym.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${n}$`,'mi'));return m?parseInt(m[1]+m[2],16):0;};
   const sites={logic:jslSite(source,'modules_world_frame','frieza_world_frame'),draw:jslSite(source,'world_draw','frieza_world_draw'),nmi:jslSite(source,'modules_world_nmi','frieza_world_nmi')};
   return `
+${lag?readFileSync(join(here,'flyby-lag.lua'),'utf8'):''}
 function test()
   local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__fortress'))})
   F.check(ok, 'import')
@@ -763,6 +764,7 @@ function test()
   H.w16(${ram+8}, 0x00D8)
   H.w16(${ram+10}, 0)
   H.w8(${ram+6}, 1)
+  ${lag?`local lagDone=F.flybyLagStart({age=${v(defs.fzp_flyby)},magic=0x7EDB30,ready=${coreDefine('core_dma_ready')},nmiReturn=${addr('core_world_nmi_return')}})`:''}
   local function flags() return H.r16(${v(defs.fzp_flags)}) end
   local function crisis() return H.r8(${v(defs.fzp_crisis)}) end
   local ev = {}
@@ -872,6 +874,7 @@ function test()
   H.result('pictures',captured)
   for _, c in pairs(stats.cost) do c.avg=c.sum/math.max(1,c.n);c.sum=nil end
   H.result('timing',stats)
+  ${lag?'lagDone()':''}
   H.result('uploadsDeferred',H.r16(0x327480))
   H.result('lastAge',H.r16(${v(defs.fzp_flyby)}))
   if ${source===romSrc} then
@@ -971,14 +974,14 @@ function paletteGate(rom){
 function costTest(rom,frames=600){
   const fJ=jslSite(rom,'modules_field_frame','frieza_field_frame'),nJ=jslSite(rom,'modules_field_nmi','frieza_field_nmi');
   const pg=paletteGate(rom);
-  const cb=(at,body)=>`emu.addMemoryCallback(function() ${body} end, emu.callbackType.exec, ${at}, ${at}, emu.cpuType.snes, emu.memType.snesMemory)`;
+  const cb=(at,body)=>`emu.addMemoryCallback(function() ${body} end, emu.callbackType.exec, ${at}, ${at})`;
   return `
 function test()
   local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'emulator-probe__potos-state'))})
   F.check(ok, 'import')
   H.w8(0x316001, 1)
   H.wait(30)
-  local fs, ns, ps, f0, n0, p0 = {}, {}, {}, nil, nil, nil
+  local fs, ns, ps, bs, f0, n0, p0, b0 = {}, {}, {}, {}, nil, nil, nil, nil
   local function clock() return emu.getState()['masterClock'] end
   ${cb(fJ,'f0 = clock()')}
   ${cb(fJ+4,'if f0 then fs[#fs + 1] = clock() - f0 f0 = nil end')}
@@ -986,6 +989,10 @@ function test()
   ${cb(nJ+4,'if n0 then ns[#ns + 1] = clock() - n0 n0 = nil end')}
   ${cb(pg.gate,'p0 = clock()')}
   ${cb(pg.end,'if p0 then ps[#ps + 1] = clock() - p0 p0 = nil end')}
+  ${cb(0x00C15F,'b0 = clock()')}
+  ${cb(0x80C15F,'b0 = clock()')}
+  ${cb(0x00C164,'if b0 then bs[#bs + 1] = clock() - b0 b0 = nil end')}
+  ${cb(0x80C164,'if b0 then bs[#bs + 1] = clock() - b0 b0 = nil end')}
   H.wait(${frames})
   local function stats(t)
     local sum, mx = 0, 0
@@ -995,6 +1002,7 @@ function test()
   H.result('frame', stats(fs))
   H.result('nmi', stats(ns))
   H.result('palette', stats(ps))
+  H.result('brightness', stats(bs))
   H.result('quiet', (H.r8(${0x7E0000|defs.fz_wasidle}) & ${defs.FZI_IDLE}) ~= 0)
   F.done()
 end
@@ -1007,7 +1015,7 @@ function worldCostTest(rom,frames=300){
   const g=reference('flight');
   const writes=friezaWrites(g.frieza,g.challenge);
   const wJ=jslSite(rom,'modules_world_frame','frieza_world_frame');
-  const cb=(at,body)=>`emu.addMemoryCallback(function() ${body} end, emu.callbackType.exec, ${at}, ${at}, emu.cpuType.snes, emu.memType.snesMemory)`;
+  const cb=(at,body)=>`emu.addMemoryCallback(function() ${body} end, emu.callbackType.exec, ${at}, ${at})`;
   return `
 function test()
   local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__flight'))})
@@ -1015,14 +1023,25 @@ function test()
   H.w8(0x316001, 1)
   F.apply(${luaWrites(writes)})
   H.wait(30)
-  local ws, w0 = {}, nil
+  H.w8(0x7E00E3,H.r8(0x7E00E3)|0x40) -- exercise the native enabled palette path
+  H.w8(0x7E00F5,H.r8(0x7E00F5)&0xFE)
+  local ws, ps, w0, p0 = {}, {}, nil, nil
   local function clock() return emu.getState()['masterClock'] end
   ${cb(wJ,'w0 = clock()')}
   ${cb(wJ+4,'if w0 then ws[#ws + 1] = clock() - w0 w0 = nil end')}
+  ${cb(0x008A89,'p0 = clock()')}
+  ${cb(0x808A89,'p0 = clock()')}
+  ${cb(0x008A8D,'if p0 then ps[#ps + 1] = clock() - p0 p0 = nil end')}
+  ${cb(0x008A9C,'if p0 then ps[#ps + 1] = clock() - p0 p0 = nil end')}
+  ${cb(0x808A8D,'if p0 then ps[#ps + 1] = clock() - p0 p0 = nil end')}
+  ${cb(0x808A9C,'if p0 then ps[#ps + 1] = clock() - p0 p0 = nil end')}
   H.wait(${frames})
   local sum, mx = 0, 0
   for _, v in ipairs(ws) do sum = sum + v; if v > mx then mx = v end end
   H.result('world', {n = #ws, avg = (#ws > 0) and (sum / #ws / 1364) or 0, max = mx / 1364})
+  sum=0;mx=0
+  for _, v in ipairs(ps) do sum=sum+v;mx=math.max(mx,v) end
+  H.result('palette', {n=#ps,avg=sum/math.max(1,#ps)/1364,max=mx/1364})
   F.done()
 end
 `;
@@ -1155,9 +1174,10 @@ if(want('cost')){
   // the palette transfer: Frieza's gate in the chain, one read while he is away
   if(!(pl.n>=500))failures.push(`the palette transfer's gate ran in ${pl.n} vblanks`);
   if(!(pl.avg<=0.06))failures.push(`quiet palette gate ${pl.avg?.toFixed(3)} lines (budget 0.06)`);
+  if(!(res.brightness?.n>=500&&res.brightness?.avg<=0.3))failures.push('final brightness hook exceeds idle budget or did not run');
   const ok=r.code===0&&res.pass===true&&failures.length===0;
   results.push({name:'cost',ok,failures});
-  console.log(`frieza cost: ${ok?'pass':'FAIL'} (${r.ms} ms) frame ${fr.avg?.toFixed(3)} lines (max ${fr.max?.toFixed(2)}), vblank ${nm.avg?.toFixed(3)} lines, palette gate ${pl.avg?.toFixed(3)} lines, ${fr.n} frames`);
+  console.log(`frieza cost: ${ok?'pass':'FAIL'} (${r.ms} ms) frame ${fr.avg?.toFixed(3)} lines (max ${fr.max?.toFixed(2)}), vblank ${nm.avg?.toFixed(3)} lines, palette gate ${pl.avg?.toFixed(3)} lines, brightness ${res.brightness?.avg?.toFixed(3)} lines, ${fr.n} frames`);
   if(!ok)for(const f of failures)console.log('    !',f);
   // world flight: the idle check
   const rw=privateRom(romSrc,'frieza-cost-world');
@@ -1170,9 +1190,10 @@ if(want('cost')){
   // moves the mean by a few thousandths of a line between builds.
   if(!(wf.avg<=0.26))wfail.push(`idle world frame ${wf.avg?.toFixed(3)} lines on average (budget 0.26)`);
   if(!(wf.max<=0.5))wfail.push(`idle world frame peaks at ${wf.max?.toFixed(2)} lines (budget 0.5)`);
+  if(!(wres.palette?.n>=20&&wres.palette?.avg<=0.3))wfail.push('world palette hook exceeds idle budget or did not run');
   const wok=w.code===0&&wres.pass===true&&wfail.length===0;
   results.push({name:'cost-world',ok:wok,failures:wfail});
-  console.log(`frieza cost-world: ${wok?'pass':'FAIL'} (${w.ms} ms) world frame ${wf.avg?.toFixed(3)} lines (max ${wf.max?.toFixed(2)}), ${wf.n} frames`);
+  console.log(`frieza cost-world: ${wok?'pass':'FAIL'} (${w.ms} ms) world frame ${wf.avg?.toFixed(3)} lines (max ${wf.max?.toFixed(2)}), palette hook ${wres.palette?.avg?.toFixed(3)} lines, ${wf.n} frames`);
   if(!wok)for(const f of wfail)console.log('    !',f);
 }
 if(want('vram')){
@@ -1238,6 +1259,21 @@ if(want('flyby')||want('flyby-ssj')){
   console.log(name+' picture timing:',JSON.stringify(res.timing),'deferred:',res.uploadsDeferred);
   console.log(`frieza ${name}: ${ok?'pass':'FAIL'} (${r.ms} ms) armed @${res.armed}, started @${res.started}, impact crisis $${(res.impactCrisis??0).toString(16)}, 1F04 ended @${res.end1F04}, done @${res.done} (tree ${res.doneTree}), rear @${res.rear}, notified @${res.notified}`);
   if(!ok)for(const f of failures)console.log('    !',f);
+  }
+}
+if(want('flyby-lag')){
+  for(const form of [0,1]){
+    const name=form?'flyby-lag-ssj':'flyby-lag';
+    const rom=privateRom(romSrc,name),out=join(outRoot,name);
+    const r=await runMesen({rom,test:lib+'\n'+flybyTest(romSrc,form,true),outDir:out,state:join(cps,'waterfall.mss'),exactFrames:true});
+    cleanupRom(rom);
+    const res=r.results??{},failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
+    for(const metric of ['overruns','overflow','dmaOutsideVblank'])if(res.timing?.[metric]!==0)failures.push(`${metric}: ${res.timing?.[metric]}`);
+    if(res.timing?.lag!==res.lagPalette?.forced)failures.push('unexpected unforced world lag');
+    const ok=r.code===0&&res.pass===true&&failures.length===0;
+    results.push({name,ok,failures});
+    console.log(`frieza ${name}: ${ok?'pass':'FAIL'} (${r.ms} ms) ${JSON.stringify(res.lagPalette)}`);
+    if(!ok)for(const f of failures)console.log('    !',f);
   }
 }
 if(want('tree')){
