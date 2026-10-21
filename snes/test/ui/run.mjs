@@ -26,6 +26,7 @@ import {fileURLToPath,pathToFileURL} from 'node:url';
 import {runMesen} from '../mesen.mjs';
 import {mainCheckout,privateRom,cleanupRom} from '../checkpoints.mjs';
 import {compareRadio} from './compare.mjs';
+import {compareReadouts} from './readouts.mjs';
 import {runModel,loadCatalog} from './model.mjs';
 
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
@@ -351,6 +352,59 @@ const cases={
       }
     }else notes.push(`potos: skipped, no ${potos}`);
     report('place',!fails.length,[...fails,...notes]);
+  },
+
+  async scouterPower(){
+    const {powerLevel}=await import('../../../engine/scouter.js');
+    const inputs=[];
+    for(const index of [1,3])for(const factor of [1,4,10,40])for(const hp of [0,1,2,7,8,9,10,16,17,24,25,31,33,34,99,100,101,249,250,999,1000,3333,9999,10000,65535])inputs.push([hp,index,factor]);
+    const r=await mesenCase('scouter-power',{bundle:'barrier-audit__potos-probe',prelude:{CASES:inputs},test:'scouter-power'});
+    const fails=resultFails(r.results);
+    if(r.code!==0||!r.results||r.results.error)fails.push(`mesen: ${r.results?.error??r.output.slice(-400)}`);
+    const tables=JSON.parse(readFileSync(join(repo,'dist/snes/gen/ui/scouter.json')));
+    inputs.forEach(([maxHp,index,factor],i)=>{
+      const want=powerLevel({challenge:{status:{fed:factor===4||factor===40}},frieza:{trial:factor===10||factor===40},read16:()=>253},{index,maxHp});
+      const got=tables.formats[r.results?.formats?.[i]/10]?.n;
+      if(got!==want)fails.push(`actor ${index}, HP ${maxHp}, factor ${factor}: ${got} vs ${want}`);
+    });
+    report('scouterPower',!fails.length,[...fails.slice(0,12),`${inputs.length} native power calculations checked against powerLevel()`]);
+  },
+
+  async readoutBudget(){
+    const symbols=Object.fromEntries(readFileSync(testRom.replace(/\.sfc$/,'.sym'),'utf8').split('\n')
+      .map(l=>l.match(/^([0-9A-F]{2}):([0-9A-F]{4}) (\S+)/)).filter(Boolean).map(m=>[m[3],parseInt(m[1]+m[2],16)]));
+    const SYM=Object.fromEntries(["ui_sc_draw_frame","destroy_late_frame","ui_sc_draw_frame_prepared"].map(k=>[k,symbols[k]]));
+    const r=await mesenCase('readout-budget',{bundle:'animation-audit__native__rabite-field-b',prelude:{SYM},test:'readout-budget'});
+    const fails=resultFails(r.results);if(r.code!==0||!r.results||r.results.error)fails.push(`mesen: ${r.results?.error??r.output.slice(-400)}`);
+    const q=r.results?.budget??{};
+    for(const mode of ['idle','charge']){
+      const on=q[mode+'_on'],off=q[mode+'_off'];
+      if(!on||!off){fails.push(`${mode}: missing measurements`);continue;}
+      if(on.lag>off.lag+Math.ceil(off.frames*.03))fails.push(`${mode}: exceeds perf's 3% lag allowance`);
+      if(on.overruns)fails.push(`${mode}: readout work crossed vblank`);
+      if(on.maxSprites>32||on.maxSlivers>34)fails.push(`${mode}: OBJ overflow`);
+    }
+    if(!(q.idle_on?.maxActors>=5&&q.idle_on?.visible>=60))fails.push('crowd readouts did not achieve useful coverage');
+    report('readoutBudget',!fails.length,[...fails,JSON.stringify(q)]);
+  },
+
+  async readouts(){
+    const SYM=Object.fromEntries(readFileSync(testRom.replace(/\.sfc$/,'.sym'),'utf8').split('\n')
+      .map(l=>l.match(/^([0-9A-F]{2}):([0-9A-F]{4}) (\S+)/)).filter(Boolean).map(m=>[m[3],parseInt(m[1]+m[2],16)]));
+    const r=await mesenCase('readouts',{bundle:'barrier-audit__potos-probe',prelude:{SYM:{ui_sc_draw_frame:SYM.ui_sc_draw_frame,core_field_nmi_done:SYM.core_field_nmi_done,ui_t_analyzer_return:SYM.ui_t_analyzer_return,destroy_late_frame:SYM.destroy_late_frame},MSG:id('KAI_WARNING_0')},test:'readouts'});
+    const fails=resultFails(r.results);
+    if(r.code!==0||!r.results||r.results.error)fails.push(`mesen: ${r.results?.error??r.output.slice(-400)}`);
+    const tables=JSON.parse(readFileSync(join(repo,'dist/snes/gen/ui/scouter.json'))),notes=[];for(const [name,q] of Object.entries(r.results?.snapshots??{})){q.shownValue=tables.formats[q.shown/10]?.n;const c=compareReadouts(r.outDir,name,q,{shown:name.startsWith('charge_')});notes.push(`${name}: ${JSON.stringify(c)}`);if(c.mismatches>c.overlaps)fails.push(`${name}: ${c.mismatches-c.overlaps} unexplained pixels differ`);if(c.maxSprites>32||c.maxSlivers>34)fails.push(`${name}: OBJ overflow`);}
+    const shots=r.results?.snapshots??{},charges=['charge_early','charge_late','charge_full'].map(n=>shots[n]);
+    if(charges.some(q=>!q||!(q.sc&4)||(q.numbers&1)===0))fails.push('missing visible charge readings');
+    else {
+      if(!(charges[0].shownValue<charges[1].shownValue&&charges[1].shownValue<charges[2].shownValue))fails.push('charge readings did not advance');
+      for(const q of charges){const key=(q.superSaiyan?182:0)+(q.weighted?91:0);const first=tables.charge.slice(key,key+91).indexOf(q.shown/10);if(first<0||q.charge-first>8)fails.push(`charge ${q.charge}: displayed reading is over 8 ticks old`);}
+    }
+    if(!shots.radio?.radio)fails.push('radio mask was not exercised');
+    const blink=['blink_0','blink_4','blink_8','blink_14'].map(n=>shots[n]).filter(Boolean);
+    if(!blink.some(q=>(q.actors[0].age&7)<4)||!blink.some(q=>(q.actors[0].age&7)>=4))fails.push('both blink phases were not captured');
+    report('readouts',!fails.length,[...fails,...notes,JSON.stringify(r.results?.cpu)]);
   },
 
   async scouter(){

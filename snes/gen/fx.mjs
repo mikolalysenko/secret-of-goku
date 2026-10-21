@@ -707,6 +707,7 @@ export async function generate({rom,repo,outDir,xdata}){
   a.def('FX_ASM_RING',ringBase);a.def('FX_ASM_SPARKS',sparksBase);a.def('FX_ASM_STATUS',statusBase);a.def('FX_ASM_RUBBLE',rubbleBase);a.def('FX_ASM_DUST',dustBase);
   a.def('FX_ASM_RING_COMPACT',compactRingBase);
   a.label('fx_class_palettes');for(const p of palettes){const row=[0,...p.map(c=>c-1)];while(row.length<16)row.push(0);a.dw(row);}
+  a.label('fx_overlay_spare');a.db(palettes.map(p=>p.length<=13?1:0)); // indices 14/15 unused: low-priority UI may share
   a.label('fx_cell_class');a.db(cells.map(c=>c.cls));
   a.label('fx_stamp_base');a.dw(stampBase);
   a.label('fx_stamp_frames');a.db(stampFrames);
