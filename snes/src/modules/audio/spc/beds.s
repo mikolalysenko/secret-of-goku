@@ -227,6 +227,15 @@ effect_ready:
  JMP !release_contact
 effect_normal:
  JMP !release_swings
+; p2's low nibble is only a reuse boolean in the native allocator. Both
+; $0F and $0D reuse DE; bit 1 carries the form without another effect id,
+; command, timer callback or voice during a mid-volley form change.
+blast_form:
+ MOV A,$B6
+ EOR A,#$0F
+ AND A,#2
+ MOV !BLAST_FORM,A
+ RET
 ; A contact replaces its preceding whoosh before allocation/gain counting.
 ; These unused instrument $34-$3D tuning / $34-$3F ADSR entries survive
 ; every song load (songs only install $20-$2F). No BRR or echo space changes.
@@ -264,8 +273,20 @@ release_swing_next:
 ; E9 operands hold independent three-step counters; no timer/host work.
  org $0180
 vary_effect:
- CMP $B5,#$E5
- BNE vary_hit
+ MOV A,$B5
+ CMP A,#$E5
+ BEQ vary_swing
+ CMP A,#$E7
+ BEQ vary_hit
+ CMP A,#$DE
+ BNE vary_return
+ CALL !blast_form
+ MOV X,#<BLAST_TUNE
+ BRA vary_pitch
+vary_hit:
+ MOV X,#<HIT_TUNE
+ BRA vary_pitch
+vary_swing:
  MOV A,!SWING_SWELL
  EOR A,#5                 ; 6 / 3 ticks: soft or quick swell
  MOV !SWING_SWELL,A
@@ -273,16 +294,6 @@ vary_effect:
  EOR A,#$0C               ; -5 / -9 semitones: two motion textures
  MOV !SWING_SWEEP,A
  MOV X,#<SWING_TUNE
- BRA vary_pitch
-vary_hit:
- CMP $B5,#$E7
- BNE vary_blast
- MOV X,#<HIT_TUNE
- BRA vary_pitch
-vary_blast:
- CMP $B5,#$DE
- BNE vary_return
- MOV X,#<BLAST_TUNE
 vary_pitch:
  MOV A,!TUNE_PAGE+X
  BEQ vary_high

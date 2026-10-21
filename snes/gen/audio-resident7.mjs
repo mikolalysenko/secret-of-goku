@@ -27,15 +27,19 @@ export const CONTACTS7=[
 // the DSP's shared noise clock. E5 alternates swell/sweep and independently
 // rotates three tunings; E7's pop and DE rotate the same three tunings.
 // Their E9 operands are also their counters, reset by native sequence loads.
-// DE keeps its native bright carrier, with a stronger attack, a shallow
-// second swell and a tapered tail. All three still use exactly one voice.
+// DE switches from a 4-tick falling zap to the beam's broadband texture on
+// the same voice. Instrument $1F aliases that BRR at unity tuning: E9 then
+// gives the same 1 / 1.035 / .977 cycle in both stages. Its E7 operand is
+// set at command time: p2=$0F normal, $0D SSJ (+2 semitones, 1.12246x).
 export const MOTION7=[
  {id:0xE5,page:0x3A,tracks:[[0xD2,0,0xEA,0x31,0xE4,4,0xE9,0xFA,0xD6,22,0xF7,0xD3,3,0xD0,0x93,0xD3,16,0,0xBD,0xF2]]},
  {id:0xE6,tracks:[[0xD2,0,0xEA,0x31,0xE4,4,0xE9,0xC0,0xD6,36,0xF9,0xD3,4,0xE0,0x94,0xD3,32,0,0xBA,0xF2]]},
- {id:0xDE,page:0x3A,tracks:[[0xD2,0xD0,0xEA,9,0xE4,4,0xE9,0xFA,0xE7,2,0xD6,64,12,0xD3,16,0x90,0x54,0xD3,24,0xC0,0xBC,0xD3,32,0,0xBA,0xF2]]},
+ {id:0xDE,page:0x3A,tracks:[[0xD2,0xFF,0xEA,9,0xE4,4,0xE9,0xFA,0xE7,0,0xD6,4,0xE8,0x76,0xEA,0x1F,0xE4,6,0xD6,18,0xE8,0xD3,24,0,0x17,0xF2]]},
 ];
+// Unchanged teleport track, moved to shared holes to pay for blast_form.
+const teleportOut={id:0xEB,tracks:[[0xD2,0xB8,0xEA,0x33,0xE4,4,0x91,0xF2]]};
 export function resident7Layout(rom,tracks){
- const retained=RESIDENT.filter(r=>!tracks.has(r.id)).map(r=>[...CONTACTS7,...MOTION7].find(c=>c.id===r.id)??r);
+ const retained=RESIDENT.filter(r=>!tracks.has(r.id)).map(r=>[...CONTACTS7,...MOTION7,teleportOut].find(c=>c.id===r.id)??r);
  retained.push({id:0xF0,tracks:[]},CONTACTS7.find(r=>r.id===0xF1));return residentLayout(rom,retained);
 }
 const root=resolve(import.meta.dirname,'../..');
@@ -75,11 +79,19 @@ export function buildResident7(){
  const metadata=[{addr:0x1860,bytes:new Uint8Array(28)},{addr:0x18E0,bytes:new Uint8Array(32)},{addr:0x19C0,bytes:new Uint8Array(16)}];
  const bank=new Uint8Array(RESERVE);
  for(const [i,s] of samples.entries()){bank.set(s.bytes,s.addr-SAMPLE_BASE);word(metadata[0].bytes,i*2,s.tune);word(metadata[1].bytes,i*2,s.adsr);word(metadata[2].bytes,i*4,s.addr);word(metadata[2].bytes,i*4+2,s.addr+Math.max(0,s.loop));}
+ // Instrument $1F uses the free tails of the stream extension's metadata
+ // regions. It points to the existing beam BRR; no extra sample or EDL.
+ const alias=[{addr:0x183E,bytes:Uint8Array.of(0,0)},{addr:0x18BE,bytes:new Uint8Array(2)},{addr:0x197C,bytes:new Uint8Array(4)}];
+ word(alias[1].bytes,0,samples[2].adsr);
+ word(alias[2].bytes,0,samples[2].addr);word(alias[2].bytes,2,samples[2].addr+samples[2].loop);
+ const extension=assemble(readFileSync(join(root,'snes/src/modules/audio/spc/stream.s'),'utf8'));
+ for(const a of alias)for(const s of extension.segments)assert.ok(a.addr+a.bytes.length<=s.addr||s.addr+s.bytes.length<=a.addr,'blast alias overlaps rare-line extension');
+ metadata.push(...alias);
  const ins=(i,vol,octave=samples[i].octave)=>[...(vol===undefined?[]:[0xD2,vol]),0xEA,0x30+i,0xE4,octave];
  const beam=full=>[0xE2,...ins(2,0xE8),...(full?[0xE9,0xE5]:[]),0xD3,12,0xFF,0x89,0xD3,12,0,0xBE,0xF2];
  const tracks=new Map([
   [0xEA,beam(false)],[0xF0,beam(true)],
-  [0xEB,[...ins(3,0xB8),0x91,0xF2]],[0xEF,[...ins(3,0x72),0x91,0xF2]],
+  [0xEF,[...ins(3,0x72),0x91,0xF2]],
   [0xED,[...ins(0),0x87,0xF0,0,0xB4,0xF1]],
   [0xEE,[...ins(1),0x87,0xF0,0,0xB4,0xF1]],
   [0xEC,[...ins(1,0),0xE9,0xC0,0xD3,6,0xA0,0x8F,0xD3,12,0,0xBE,0xF2]], // low sampled shuffle; no shared DSP-noise clock
@@ -95,7 +107,8 @@ export function buildResident7(){
  const hit=layout.tracks.find(t=>t.id===0xE7&&t.voice===1),blast=layout.tracks.find(t=>t.id===0xDE);
  for(const t of [swing,hit,blast]){assert.equal(t.addr>>8,0x3A,'variation operands share one page');assert.equal(t.bytes[6],0xE9);}
  assert.equal(swing.bytes[8],0xD6);assert.equal(swing.bytes[11],0xD3);
- const code=assemble(readFileSync(join(root,'snes/src/modules/audio/spc/beds.s'),'utf8'),{name:'beds.s',symbols:{CODE_BASE:at,TUNE_PAGE:0x3A00,SWING_TUNE:swing.addr+7,HIT_TUNE:hit.addr+7,BLAST_TUNE:blast.addr+7,SWING_SWEEP:swing.addr+10,SWING_SWELL:swing.addr+12}});
+ assert.equal(blast.bytes[8],0xE7);
+ const code=assemble(readFileSync(join(root,'snes/src/modules/audio/spc/beds.s'),'utf8'),{name:'beds.s',symbols:{CODE_BASE:at,TUNE_PAGE:0x3A00,SWING_TUNE:swing.addr+7,HIT_TUNE:hit.addr+7,BLAST_TUNE:blast.addr+7,BLAST_FORM:blast.addr+9,SWING_SWEEP:swing.addr+10,SWING_SWELL:swing.addr+12}});
  const patches=[];let end=at;
  for(const seg of code.segments)if(seg.addr>=SAMPLE_BASE&&seg.addr<FLOOR){assert.ok(seg.addr+seg.bytes.length<=FLOOR,`resident7 needs ${seg.addr+seg.bytes.length-SAMPLE_BASE} bytes`);bank.set(seg.bytes,seg.addr-SAMPLE_BASE);end=Math.max(end,seg.addr+seg.bytes.length);}else{
   if([0x1868,0x18E8].includes(seg.addr)){

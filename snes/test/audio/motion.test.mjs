@@ -37,6 +37,7 @@ test('1/2-frame contacts and 5-frame ki volleys preserve headroom, noise state a
  for(const r of motionMixes(rom)){
   const label=JSON.stringify(r);assert.equal(r.clipped,0,label);assert.ok(r.peak<30000,label);
   assert.ok(r.maxLaunchVoices<=1);assert.ok(r.maxSwingVoices<=2);assert.ok(r.maxVoices<=8);
+  if(r.mode==='volley')assert.ok(r.maxVoices<=(r.beam?4:3),'launch plus retail contacts must leave music voices');
   assert.equal(r.noiseMismatch,0,label);assert.equal(r.musicMask,255);assert.equal(r.effectMask,0);assert.equal(r.noiseMask,0);assert.equal(r.bankIntact,true);
  }
 });

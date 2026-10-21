@@ -77,6 +77,26 @@ export async function playAudio(h,{rom,state}){
       `voices ${ids.join('/')}, returned ${stopped[0xAE]===0}, peak ${sound.peak}, clipped ${sound.clipped}`);
     res.plays.push({id,sound});
   }
+  if(immutable.some(s=>s.addr===0x183E)){
+    // Normal/SSJ use DE with different nonzero reuse nibbles. Check the
+    // actual cold-boot alias, form operand and voice budget on each core.
+    await h.audio(true);
+    let maxVoices=0,maxLaunch=0;
+    for(const [i,p2] of [15,13,15,13,13,15].entries()){
+      await send([2,0xDE,p2,0x88]);await h.wait(1);
+      await send([2,0x38,15,0x88]);await h.wait(1);
+      const ram=await read(`ki-form-${i}`),track=ram.readUInt16LE(0x2F78);
+      const ids=Array.from({length:8},(_,v)=>v).filter(v=>ram[0xAE]&(1<<v)).map(v=>ram[0xFF80+v]);
+      maxVoices=Math.max(maxVoices,ids.length);maxLaunch=Math.max(maxLaunch,ids.filter(v=>v===0xDE).length);
+      check(`audio_ki_form_${i}`,ram[track+9]===(p2===13?2:0)&&ids.filter(v=>v===0xDE).length===1&&ids.length<=3,
+        `form ${ram[track+9]}, owners ${ids.join('/')}`);
+      await h.wait(1);
+    }
+    await h.wait(40);const sound=await h.audio(),ram=await read('ki-ended');
+    check('audio_ki_voice_return',ram[0xAE]===0&&sound.nonzero>100&&sound.clipped===0,
+      `peak ${sound.peak}, clipped ${sound.clipped}, returned ${ram[0xAE]===0}`);
+    res.ki={maxVoices,maxLaunch,sound};
+  }
   const after=await read('after');
   check('audio_bank_preserved',intact(after)&&after[0xAE]===0,'helper/bank intact; all effect voices returned');
   writeFileSync(join(h.out,'audio.json'),JSON.stringify(res,null,1));
