@@ -34,7 +34,7 @@ port of `GokuAnimation.pose()` and is checked frame by frame against it
 | Extended ROM | 465 packed full-size cells (512 bytes each) and miniatures (128 bytes each), 297,600 bytes total. Every cell stays inside its source bank; four-byte pointers in `goku_dma_tiles` / `goku_dma_mini` |
 | WRAM `$7E:D740-$7E:D7FF` | `!RAM_GOKU`, all $C0 bytes (fields below). Full-screen menus keep their state in the field's scratch `pal_work` (`$7E:D7D0-D7EF`); a menu session restarts whenever another mode ran in between (`!core_tick`). Unused palette entry 0 of `pal_native`/`pal_out` and the old `up_phase` byte hold the frame's actor-0 OAM slots for `goku_api_scripted` (`!rec_body0/1`, `!rec_shadow`, `!rec_stamp`) and its this-frame flag `!scr_shown` |
 | VRAM | OBJ tiles `C0-C7`/`D0-D7` of name table 1 (word `$7C00/$7D00`, the boy's own cells; claimed as core region `!VRAM_FIELD_HERO` with owner `$01`), HUD portrait `E8/E9/F8/F9` (word `$7E80/$7F80`), ring marker `0A/0B/1A/1B` of name table 1 (word `$70A0/$71A0`, the boy's marker, rewritten when a ring opens). Full-screen menus: OBJ name table 2 (base `$4000` + `$1000`) tiles `C0-C9/D0-D9` and `E0-E7/F0-F7` (word `$5C00-$5F7F`): the idle and blink cells and the GAME FILE face. No menu screen uses that area (surveyed: Status, Action Grid, Controller/Window Edit, Weapon Skill, game select, GAME FILE load/save, save confirmation) and the field reloads it on return |
-| CGRAM | The boy's OBJ palette through the game's buffer `$7E:0600`: palette 1, or palette 5 on water maps (the slot his body descriptor uses); during a native flash with a scene or scripted cell also its copy in `$7E:BE00` (colours 2-15). Menus: OBJ palette 1 directly (the boy's colours there, `C8:1F00`) |
+| CGRAM | The boy's OBJ palette through the game's buffer `$7E:0600`: palette 1, or palette 5 on water maps (the slot his body descriptor uses); during every native flash also its copy in `$7E:BE00` (colours 2-15). Menus: OBJ palette 1 directly (the boy's colours there, `C8:1F00`) |
 | OAM | The boy's body entries are replaced in place by up to four 16×16 OBJ (empty quadrants are skipped), or one for the miniature. `goku_api_scripted`: up to four 16×16 OBJ through `core_oam_add_front` (behind the natives through `core_oam_add` when the 16 front slots are taken), and `core_oam_hide` on actor 0's body and shadow slots of that frame. Menus: the PPU's OAM directly, after the menu's own upload: the boy's eight figure entries moved off screen, entries 120-123 Goku's figure, 124-127 the GAME FILE faces (only when the menu leaves 120-127 unused) |
 | DMA | In `modules_field_nmi`: channel 7, four contiguous 128-byte rows for a full cell or two 64-byte rows for a miniature. Channels 4–6 are untouched. With fewer than 10 lines left before line 258, a same-palette/size pose waits for a suitable streaming phase. Waiting never forces an overrun; palette/size changes still upload together. The game's 5-frame party refresh skips the boy's tiles, except every eighth refresh requests a safety upload when room allows. `goku_nmi` has a two-compare idle exit (`-DGOKU_NMI_SLOW=1` retains the old prologue). Channel 7 for the HUD portrait (128 B). Ring set-up: channel 5 (128 B) after the native markers. Menus retain channels 4–7 for figures and 7 for faces, with their existing vblank/HDMA guards |
 | SRAM | `$31:7520–7561`: airborne palette backup, last output and validity. Test builds (`-DGOKU_TRACE`) also use a 27-byte WRAM trace at `$7E:7F00` |
@@ -92,7 +92,8 @@ All with `%orig` byte assertions (`module.asm`):
 | `C1:E6C4` | 4 | `LDA $7EE180` | HUD portrait upload: the boy's face becomes Goku's (form-specific) |
 
 Dispatch: `modules_field_frame` → `goku_frame` (palette, HUD form, end of
-replacement), `modules_field_nmi` → `goku_nmi` (uploads), `modules_menu_frame`
+replacement), `modules_field_nmi` → `goku_nmi` (uploads), `modules_field_preupload`
+→ `goku_preupload` (flash palette repair), `modules_menu_frame`
 → `goku_menu_frame` (figure and GAME FILE faces).
 
 ## Data (`snes/gen/goku.mjs`)
@@ -152,26 +153,17 @@ replacement), `modules_field_nmi` → `goku_nmi` (uploads), `modules_menu_frame`
   `GOKU_PALETTE_SCAN_SLOW=1` retains the old loop. The assembled reference
   costs 549 CPU cycles versus 352, with all 608 full-state comparisons in
   `palette-scan.test.mjs` matching colors, status, slots and CPU context.
-- **Native flash**: while `$2A` is set the field NMI uploads `7E:BE00`, which
-  the flash (`C2:C820`, in the frame logic) rebuilds from `0600` whenever
-  its level steps (every fifth frame in the arrival) with a brightness
-  offset (OBJ palettes too while bit 6 is set), Goku's slot included. On the field that matches the browser, whose `tint()`
-  follows the CGRAM flash; its scene renderers (`arrival.drawScene`, the
-  Frieza scenes) draw Goku unflashed. So while a scene shows an explicit
-  cell (`!goku_cell_req`, e.g. the arrival's hop, or a `goku_api_scripted`
-  cell) `goku_palette_unflash` puts his colours 2-15 back into the BE00
-  copy of his slot. Entry 1, every
-  actor's shadow, keeps the flash (Goku's cells use it for only 50 of
-  ~159,000 pixels). Title's arrival comparison against the browser, main ->
-  this change: impact-060 3.07% -> 0.27%, the settled impact-120/130 0.81%
-  -> 0.16%, dialogue-030 0.59% -> 0.22%, ghost-005 0.68% -> 0.66%; no frame
-  worse (single runs; the impact frames vary a little between runs).
-  Unflashing in every flash frame instead made ghost and dialogue worse.
-  When the game overruns a rebuild frame (the ghost scene does, with either
-  ROM speed), the NMI uploads BE00 before `goku_frame` has run and that one
-  frame shows Goku flashed (or, mid-loop, partly flashed); module NMI work
-  is skipped on such frames. A hook right after the rebuild (`C2:C8D2`)
-  would close the gap, for title's unflashed colours too.
+- **Native flash**: `goku_preupload` runs in `modules_field_preupload`,
+  immediately before the field NMI sends CGRAM. While `$2A` is set and
+  Goku is active, it restores colours 2-15 from `pal_out` into `7E:BE00`,
+  including the airborne water copy when used. These are 28 CPU-written
+  bytes per slot, with no DMA or frame-thread scratch. This covers native
+  lag frames and NMIs interrupting the flash rebuild as well as completed
+  frames; the former scene-pose-only frame callback missed both. The shared
+  shadow colour (entry 1) and the rest of the scene retain the native flash.
+  Status tints still come from `goku_palette`. No new native hijack is needed.
+  Measured including dispatch/return: idle at most 0.12 scanlines; arrival
+  flash at most 1.57. The ordinary frame no longer copies flash colours.
 - **Uploads** (`upload.asm`): see Resources. When replacement ends (snowman,
   moogle, `GOKU_CTL_SUPPRESS`, flag cleared) the boy's own tiles are
   re-uploaded from the game's `$0C00` table that very vblank.
@@ -360,10 +352,10 @@ transition palettes follow the browser's `transform` clip).
   figures at the same position with the same sheet/cell, and the figures
   and the GAME FILE face align pixel for pixel (best shift 0,0); side by
   side in `.local/snes-test/goku/menu-compare.png`.
-- `status` also checks a native flash (`arrival-research__browser-ghost`,
-  `$2A` set): on the field Goku's colours follow the flash; with a scene
-  cell requested they are unflashed in his palette slot; the shadow colour
-  stays flashed.
+- `status` samples 72 consecutive arrival ghost flash frames, with and
+  without an explicit scene pose: CGRAM body colours equal Goku's palette
+  on every frame, while BG colours and shared shadows still flash. Disabling
+  Goku restores native colours. It also measures the pre-upload cost.
 - `scripted` (test build, `-DGOKU_TRACE`: a caller in `goku_frame` fed by
   `7E:7F40`): the browser's follower hover pose from behind at (112,172) is
   drawn as four front 16×16 OBJ at (x − 16, y − 31) with priority 3 in
@@ -373,10 +365,9 @@ transition palettes follow the browser's `transform` clip).
   left edge with priority 1; a Super Saiyan cell with its colours; release
   brings the field Goku and his shadow back; with Goku inactive the call
   returns C clear; during a native flash (the arrival ghost bundle, palette
-  slot 5, 8 frames sampled each) the field Goku follows the flash, the
-  scripted cell has Goku's unflashed colours 2-15 (at most two single
-  overrun frames flashed, as above), the shadow colour stays flashed and
-  after release Goku follows the flash again. `goku_api_socket` for seven poses equals
+  slot 5, 8 frames sampled each), the field, scripted and released
+  poses all keep Goku's colours 2-15 on every frame; the shared shadow
+  colour stays flashed. `goku_api_socket` for seven poses equals
   `engine/goku-animation-data.js` (`run.mjs`), and the scripted cell
   matches the browser's `introHero` follower render (`jsref.mjs` with a
   stand-in for `frieza.js`'s draw): best shift 0,0, and 16 of the 1,024
@@ -398,6 +389,12 @@ transition palettes follow the browser's `transform` clip).
   30/42 poses match; the rest are the first walk, whose first two moving
   frames the reference still counts as idle (its cycle trails by one step),
   while every later walk, push and idle sample agrees.
+
+October 20 flash validation: strict build; full `goku`, `title`, `story`
+and `gameplay` suites pass. Arrival captures now disable Mesen frame skipping;
+the title timing probe watches both ROM mirrors and recognizes ExHiROM.
+All 140 impact frames finish without added lag. Gameplay retains its existing
+crowded-scene timing exceptions; palette, sprite and vblank checks pass.
 
 ## Remaining work
 

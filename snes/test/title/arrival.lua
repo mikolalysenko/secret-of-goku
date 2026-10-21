@@ -118,8 +118,8 @@ local function arrival()
   H.tap('down', 2, 6)
   H.tap('b', 3, 3)
   local before, late, lateNative, frames3, lateRows, fastOn = nil, 0, 0, 0, {}, 0
-  local id1 = emu.addMemoryCallback(function() before = emu.getState()['ppu.scanline'] end, emu.callbackType.exec, 0x00B073, 0x00B073)
-  local id2 = emu.addMemoryCallback(function()
+  local function beginFrame() before = emu.getState()['ppu.scanline'] end
+  local function endFrame()
     local st = emu.getState()
     local after = st['ppu.scanline']
     if H.wram(0xDD86) == 3 and before then
@@ -132,7 +132,14 @@ local function arrival()
         if #lateRows < 10 then lateRows[#lateRows + 1] = string.format('age %d: %d-%d', r16(0xDD88), before, after) end
       end
     end
-  end, emu.callbackType.exec, 0x00B077, 0x00B077)
+  end
+  local callbacks = {}
+  for _, bank in ipairs({0x000000, 0x800000}) do
+    for _, hook in ipairs({{0xB073, beginFrame}, {0xB077, endFrame}}) do
+      local addr = bank + hook[1]
+      callbacks[#callbacks + 1] = {emu.addMemoryCallback(hook[2], emu.callbackType.exec, addr, addr), addr}
+    end
+  end
   local phases, last, shot, pages = {}, -1, {}, {}
   for _, s in ipairs(SHOTS) do shot[s[1] .. ':' .. s[2]] = s[3] end
   local done = false
@@ -162,8 +169,7 @@ local function arrival()
     end
     if ph == 6 and idle() and H.wram(0xCF00) == 1 then done = true break end
   end
-  emu.removeMemoryCallback(id1, emu.callbackType.exec, 0x00B073, 0x00B073)
-  emu.removeMemoryCallback(id2, emu.callbackType.exec, 0x00B077, 0x00B077)
+  for _, hook in ipairs(callbacks) do emu.removeMemoryCallback(hook[1], emu.callbackType.exec, hook[2], hook[2]) end
   H.input = nil
   H.result('control', done)
   H.result('phases', phases)

@@ -243,6 +243,7 @@ assert !FZX_END <= !FZ+$C0, "frieza WRAM overflow (beast)"
 !fzt_ruins     = !FZHB+$691   ; byte: the vista shows the Tree's ruins
 !fzt_shake     = !FZHB+$692   ; byte: the impact's shake (signed)
 !fzt_bright    = !FZHB+$693   ; byte: brightness forced with !FZV_BRIGHT
+!fzt_hdma      = !FZHB+$694   ; 7 bytes: Tree vista's BG3 cutoff (channel 6 -> TM)
 ; !FZHB+$700: the large-burst table (effects.asm)
 !fzv_on        = !FZSB+$14A   ; byte: the victory beat runs
 !fzv_age       = !FZSB+$14C   ; word: frames since the fatal hit

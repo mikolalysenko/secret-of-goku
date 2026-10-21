@@ -7,7 +7,7 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 transformation, hits, launches, power stats, status recovery) and its native
 adapters `native-interaction.js`, `native-combat-sound.js`,
 `native-hit-recovery.js`, `native-feedback.js`, `native-equipment.js`,
-`native-senzu.js`; gameplay spec in [combat](../combat.md).
+`native-senzu.js`, `native-item-icons.js`; gameplay spec in [combat](../combat.md).
 
 Combat decides; other modules show. It owns timing, hit boxes, damage,
 launches, the form and Goku's stats, publishes the pose state through the
@@ -28,7 +28,7 @@ ui (King Kai) and destroy (the map) through `bind.asm`.
 | Saiyan resilience: incoming damage /20 cap 12 (ordinary), /4 cap 80 (boss), SSJ /50 cap 5, /8 cap 40; recovery 24/8 frames | Done | `boss-hit`, `boss-hit-ssj`, `chip-hit`, `chip-hit-ssj` (HP loss equal) |
 | Deflection (every third clean contact, two of three in SSJ, 24 frames apart) through the retail dodge path | Done | `deflect` (≥ 1), `deflect-ssj` (≥ 2) |
 | Level 99, skills 8:99, 999 HP (missing HP kept), strength 255 / attack byte 255, DEF +160/80 (+320/160 SSJ) | Done | every scenario's stat sequence; debug presets `sword`, `late`, `flight` now FULL |
-| Heavy Gi (−10% strength, −20% agility, never stacking on rebuilds), DUST BAG names, weapon tiers | Done (gi), names patched | `heavy-gi`, `heavy-gi-ssj` (armor ring off/on) |
+| Heavy Gi (−10% strength, −20% agility, never stacking on rebuilds), DUST BAG names, weapon tiers | Done (gi), names and icons patched | `heavy-gi`, `heavy-gi-ssj` (armor ring off/on) |
 | Senzu Bean (name, targets through the item ring) | Ported, not yet compared | — |
 | Status recovery (focus breaks sleep / petrify / Frosty / Balloon / Engulf; poison and sleep break SSJ) | Ported, not yet compared | — |
 | Effects | Gameplay records done; drawing through fx (`bind.asm`): spawns (impact, ki, burst, status) from the logic, continuous draws (beam picture, aura, orb, lightning) from `combat_field_frame`; placeholder sprites only without the fx library (`!COMBAT_FX_PLACEHOLDER`) | fx's `gallery` / `beams` pass with combat; on-screen look not reviewed yet (see Remaining work) |
@@ -78,6 +78,34 @@ unless noted.
 | `D0:DB2A` | 4 | `cb_hook_item_target` | Senzu Bean targets (`native-senzu.js`) |
 | `C0:D651`, `C0:D890` | 6, 5 | `combat_hook_move_vector/_commit` (`bind.asm`) | Saiyan recoil (`softenRecoil`); skipped when a flight module owns the site (below) |
 | `CA:A120` (14), `CA:9F00` (8), `CA:9B4B` (102) | `%patch` | — | Item names: Senzu Bean, Heavy Gi, DUST BAG for the nine swords |
+
+## Item icons
+
+`combat.mjs` calls `combat-icons.mjs`, which reads `senzuPixel` and
+`dustPixel` directly from the browser adapters. It writes the native
+interleaved 3bpp cells and five-colour palette slices, so the existing ring
+and item-list loaders handle every inventory position without runtime code.
+The Senzu source is checked against `nativeItemIcon` in all three palette
+positions before patching. Graphics `$A2` and palette `$8A` become the bean;
+weapon graphics `$54-$58` become bags. The nine sword records are redirected
+to their exclusive palette 4: palette 0 is also used by unequipped armour
+and must remain native. Every patched byte has an original-byte assertion.
+
+The bean matches all five browser colours exactly. The native format packs
+three icons into each 15-colour OBJ palette; the bag's six colours are reduced
+to five, merging its two highlights in 11 of 256 pixels (at most four RGB555
+levels). Its outline and transparency are exact. Native equipped-party
+markers retain their usual OAM ordering over icons.
+
+`combat icons` imports the same party state into Mesen and the browser
+renderer. It compares the bean in all twelve inventory positions before and
+after ring rotation, and the bag on a companion's weapon ring (with the
+sword's equipped marker removed on both sides for the raster comparison).
+It also decodes every item record: all nine sword tiers have the new art,
+and the other 153 item rasters are unchanged. Comparisons stay under
+`.local/snes-test/combat/icons/`. Added per-frame CPU cost: zero.
+Strict build, all combat cases (including `icons`), Goku `ring` / `menu`,
+and the full UI suite pass.
 
 ## Runtime
 
@@ -374,7 +402,6 @@ another 2-3. With `CORE_FASTROM` (MEMSEL set) the same frames end at
 - Compare Senzu targeting, status recovery (focus breaking statuses,
   poison / sleep ending SSJ), the native B pulse (talk, chests) and weapon
   tier / equip rejection against the browser.
-- Senzu Bean / DUST BAG item icons (names only so far).
 - Review the effects on screen with fx: in the Rabite field (field frames
   lag to 2 vblanks) screenshots showed no Kamehameha strip or charge orb and
   a misplaced full-wave polygon although `fx_beam` / `fx_draw` receive the

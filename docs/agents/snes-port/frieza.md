@@ -37,7 +37,7 @@ those scripts call, Frieza's picture and the fights. The orbit stream
 | The Emperor's execution: ray, black frame with his silhouette, sparks | Done (the ray is fx's Death Beam) |
 | The Fortress's collapse on its destroyed deck (map 255): fractures, scars, red alarm | Done (alarm as a red add only; fractures on landable floor with flight's canLand) |
 | Altar camera pan (reveal, steal) and the court camera | Done through flight's scripted camera (`!FLIGHT_API_CAMERA`; checked on a trial merge with flight) |
-| The Tree (event 5F8): establishing view, arrival, the 32 px ball, throw, impact (shake, white, five large bursts, ruins), departure, return to black, wake on the ash field; Goku on the cliff | Plays end to end on the cartridge (case `tree`); the HUD stays visible over the cliff (Known differences) |
+| The Tree (event 5F8): establishing view, arrival, the 32 px ball, throw, impact (shake, white, five large bursts, ruins), departure, return to black, wake on the ash field; Goku on the cliff | Plays end to end on the cartridge (case `tree`); the cliff covers the HUD during the vista, and the HUD returns with the field |
 | Goku as the scripted follower (`introHero`): the temple exit (431), the deck's scenes (195: core-*, depart, eighth) | Done through goku's `goku_api_scripted` (poses generated from `frieza-staging.js`) |
 | Flyby in world flight (1F04, `frieza.js` tick()'s world branches) | Story logic done (`frieza_world_frame`, case `flyby`): the flyby's clock from 1F04's `$8C`, its cues, the Death Ball's crisis at the impact, the announcement, the eighth Ball and the Tree pursuit at its end; the rear-view request and Kai's warning once 1F04 ends; the outdoor intro dropped in flight. The picture (Frieza, the cinematic Death Ball, the bursts, the white checker) is not drawn yet (Known differences) |
 
@@ -248,6 +248,32 @@ of the world's (the same within a cell, repeating per cell).
 - **Camera** = `engine/view-camera.js`: the tile-stream origin `$A8/$AA`
   plus BG1's fine scroll (`$B0/$B2` with the quake bits `$5E/$5F`).
 
+### The Tree's HUD cutoff
+
+`vista.asm` keeps the line-196 HUD IRQ disabled while the vista shows and
+uses HDMA channel 6 to clear only BG3 from TM before its HUD rows 25-27.
+The native window channels 0/1, effects channels 2-4 and UI palette channel
+5 retain their registers and enable bits. Channel 6 is free in this field
+scene; the UI's world use is confined to world mode.
+
+The seven-byte direct table at `$32:7694` is prepared and armed in vblank.
+It writes the native `$21` main-screen mask at frame start, then the same
+mask without BG3 in HBlank 199, before visible line 200 (the native BG
+scroll starts at source line 1). Dialogue rows through 24 remain available.
+The first vblank without the vista disables only channel 6 and restores TM
+from `$21`, alongside the native tilemaps and line-196 IRQ. No HUD tilemap
+bytes are edited and no general DMA is added.
+
+`tree` renders every captured frame and compares the three HUD rows with
+`mana-tree-vista.js`: all 67,584 pixels in 11 pictures agree in RGB555. Its
+execution probes check the actual cutoff writes, channel availability,
+unchanged native/UI HDMA state and HUD map bytes, and restoration at both
+vista exits. Setup peaks at 0.506 scanlines including JSR/RTS; the HDMA
+performs three one-byte writes per displayed frame. There is no added idle
+path. The full Tree sequence reaches every scene at the same frame as the
+pre-change baseline, with no added lag. Strict build, Frieza, UI and the
+six-scene performance suite pass.
+
 ## Resources
 
 | Resource | Use |
@@ -263,6 +289,7 @@ of the world's (the same within a cell, repeating per cell).
 | OAM | up to 8 front sprites for Frieza (one `core_oam_meta_front` call a frame: the generated frame descriptors hold its 4-byte pieces; afterimages behind through `core_oam_meta`), 7 for the Balls; native slots rewritten during the Emperor's black frame |
 | Registers | in vblank, per frame and only when this frame's logic asked: the whiteout (CGWSEL/CGADSUB/COLDATA), the black frame (TM, CGADSUB, CGRAM 0), the collapse tint; the map's values come back the vblank after |
 | DMA | channel 7 in the field NMI |
+| HDMA | channel 6 -> TM during the Tree vista only; direct table at `$32:7694-769A` |
 
 Original code patched:
 
@@ -368,7 +395,7 @@ floor on request.
 | `cost` | Potos with Goku present: the module settles on the quiet path; field frame at most 0.36 lines on average and 2.5 at peak, vblank at most 0.13 (from the dispatcher's JSL to the next instruction, master clocks) |
 | `vram` | preset `frieza`: not drawn while another owner holds `!VRAM_SCENE_OBJ` or the scene SRAM (`!SCENE_VEGETA` planted), drawn and both claimed once free (owners 6 and `!SCENE_FRIEZA`), the VRAM given back when the scene ends |
 | `door` | door 3FC from the `intro` preset: tile y 18 beside the living Emperor, 30 (native) after his death |
-| `tree` | preset `tree`: event 5F8 end to end with B tapped every 12 frames: every Tree scene on maps 236 and 198 in order, the Tree complete after the native tail; shots at chosen ages, Frieza's sprite boxes and a trace of the vista's state |
+| `tree` | preset `tree`: event 5F8 end to end with B tapped every 12 frames: every Tree scene on maps 236 and 198 in order, the Tree complete after the native tail; shots at chosen ages, Frieza's sprite boxes and a trace of the vista's state; browser cliff pixel comparisons, BG3 cutoff, preserved HDMA/HUD data, restoration and vblank cost |
 | `effects` | scenes no preset reaches, set up by `scenarios.mjs` on a preset in the browser (`capture.mjs`: restore the snapshot with an edited `goku.frieza`, run, screenshot into `.local/snes-ref-frieza/`) and replayed on the cartridge: Popoi's end 95-99%, the steal without the altar 99.5%, the empower orbs 97-99.9%, the eruption 93-99%, the collapse 87-90% after its first alarm; the Death Ball, Fanha's beam and the auras show where fx's kinds differ |
 | `music` | Frieza's battle theme becomes the current song (`$1E05 = $3C`); reports the load's stall |
 
@@ -412,11 +439,6 @@ floor on request.
   around Frieza every frame; fx's polygon aura costs about 100 lines on its
   frames, so with the fight's own ~45 the surge lags about 80 frames by age
   270 (the logic follows the game's clock; the `surge` case reports it).
-- **The Tree vista and the HUD**: the field keeps BG3's priority, so the
-  HUD rows (BG3 map rows 25-27) stay over the cliff where the browser
-  paints them away; the line-196 switch to the HUD is off while the vista
-  shows (VTIME beyond the frame).
-
 - **The flyby's picture**: during 1F04 the browser draws Frieza hovering
   over the flight, the cinematic Death Ball growing past the screen's
   edges (16-280 px) and hurled into the continent, seven large bursts and
