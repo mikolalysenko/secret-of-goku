@@ -4,6 +4,55 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: no damage digits on auras and ki shots; the scouter becomes the Analyzer; a heavier finishing kick (2026-10-21)
+
+- FX cache (b18ea0f, 431c1b3, e30816b; merged in 3531a7e): the
+  maintainer saw the charge aura turn into black-and-white 9s and 6s
+  (also after Super Saiyan), and ki shots turn into numbers when a kill's
+  damage number popped up mid-barrage.
+  - The FX cell cache shares VRAM with the cells the game streams its own
+    actor effects into. A killed enemy becomes a damage-number object
+    (species $F9) in its slot. In slot 5 its digits stream into region A,
+    over cells FX still drew from.
+  - FX now yields those cells while the game uses them.
+  - Measured with `native-cells`, before and after:
+
+    | Scene | Wrong sprites before | After |
+    | --- | ---: | ---: |
+    | Aura, Rabite fight | 312 of 428 drawn frames | 0 |
+    | Fight scenes | 620 and 542 | 0 |
+    | Barrage kill | 98 shot sprites | 0 |
+    | Barrage kill, Super Saiyan | 231 | 0 |
+    | Super Saiyan kill-charge (lightning, sparks) | 242 | 0 |
+
+  - New regression scenes: barrage kills, Super Saiyan and post-revert
+    charges with hits. Every drawn aura must also have all of its rows.
+- UI (bfba662; merged in 3531a7e). At the maintainer's request ("can we cut
+  the scouter from the rom hack if it is using too many resources? just make
+  the analyzer spell work like a scouter"), the cartridge has no scouter:
+  - Removed: the ring switch (Targeting is native again), the scan, its
+    sound and jokes, the continuous readings and Goku's charge number.
+    Old saves' switch bit is ignored.
+  - The Analyzer shows the scouter-style reading on its target for 240
+    frames.
+  - Its hook moved to the spell landing at C0:3F9B. The old store at
+    C0:3FAD is only made for crystal orbs, so a real cast had never shown
+    a reading on the cartridge. A new real-cast test checks it against the
+    browser's drawing.
+  - Sylphid's line in event 583 explains the readings instead of handing
+    over the scouter (cartridge only).
+  - Savings: 59.8 KiB of extended data (2,736.9 → 2,677.1 KiB) and
+    1.5 KB of UI code.
+- Browser (3603391): `engine/scouter.js` now detects Analyzer at the spell
+  landing too. It had the same dead detection, and could fire on actors at
+  level 23. The browser keeps its scouter switch.
+- Codex audio (14958c8; merged in c08f2e6): the finishing kick gets a deep
+  thump (77 → 64 Hz over 175 ms) under its crack. Super Saiyan selects
+  `$F1`, with a 200 ms body. Zero clipping in 48 stress mixes.
+- Validation on c08f2e6 under both probes: all 20 suites pass. Gameplay
+  misses unchanged (charge 13, teleport 3, flying ki 2, flight 1, flying
+  punches 1, the rest 0). `npm test`: 382 pass.
+
 ## SNES integration: no original weapon-charge sounds for Goku (2026-10-21)
 
 - Codex audio (feb7df6; merged in 939c867). The maintainer still heard the
