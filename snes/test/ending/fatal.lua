@@ -6,6 +6,7 @@
 function test()
   E.import(BUNDLE or 'preset__bad-ending')
   E.watchVblank(0)
+  local shards = E.watchShards()
   E.watchAudio()
   E.cue('fatal', 0x8001)
   E.waitAge(200 + E.SHOT_LAG, 400)
@@ -33,6 +34,7 @@ function test()
   E.arm(false)
   E.audioArmed = false
   E.audioResult()
+  shards()
   -- Start returns to the title: the module WRAM is cleared at title entry
   H.hold('start', 4)
   H.wait(90)

@@ -21,6 +21,7 @@ end
 function test()
   E.import(BUNDLE or 'preset__bad-ending')
   E.watchVblank(0)
+  local shards = E.watchShards()
   E.watchAudio()
   local t0 = H.frame
   E.cue('doomed', FLAGS)
@@ -66,10 +67,21 @@ function test()
   H.result('overrun_at', table.concat(E.overrunAt, ' '))
   E.audioArmed = false
   E.audioResult()
+  shards()
   -- A doomed globe without the crisis shows the day side (fresh start).
   E.arm(false)
   E.cue('doomed', 0x8001)
   E.waitLoaded('doomed', 120)
   H.wait(12)
   shot('doomed-day')
+  -- Direct cues must also prepare the cache (without playing the drift).
+  t0 = H.frame
+  E.cue('escape')
+  H.result('direct_escape_loaded', E.waitLoaded('escape', 80))
+  H.result('direct_escape_load_frames', H.frame - t0)
+  E.arm(true)
+  E.still('escape-direct-10', 10)
+  E.arm(false)
+  H.result('overruns', E.overruns)
+  shards()
 end

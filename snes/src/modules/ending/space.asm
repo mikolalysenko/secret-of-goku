@@ -66,6 +66,14 @@
 !sp_chrok   = !s_var+$46   ; word  fragment tiles/attributes are in their OAM slots
 !sp_dots    = !s_var+$48   ; word  ring dot mask byte (code bank)
 !sp_bit     = !s_var+$4A   ; byte  mask bit
+!sh_clock  = !SW+$150      ; requested drift frame (0 before the blast)
+!sh_job    = !SW+$152      ; bytes of the precomputed upload schedule completed
+!sh_late   = !SW+$154      ; diagnostic: a frame missed its upload deadline
+!sh_left   = !SW+$156      ; vblank scratch: cells left this time
+!sh_end    = !SW+$158      ; frame descriptor offset
+!sh_src    = !SW+$15A      ; frame source pointer
+!sh_bank   = !SW+$15C      ; frame source bank
+!sh_size   = !SW+$15E      ; frame OAM size
 !sp_eage    = !s_var+$50   ; word  explosion age (explodingPlanet's clock)
 
 ; ---------------------------------------------------------------------------
@@ -122,6 +130,9 @@ space_want:
 
 ; Take the screen and load the space stage with BG1 = A (!SPB_*).
 space_load:
+	STZ.w !sh_clock
+	STZ.w !sh_job
+	STZ.w !sh_late
 	PHA
 	SEP #$20
 	LDA.b #!FAM_SPACE
@@ -219,6 +230,7 @@ space_script_night:
 	%ld(ending_space_night_map, !LD_VRAM, !SP_MAP1, $0800)
 	%ld(ending_space_card_tiles, !LD_VRAM, !SP_TILES+(!ENDING_SPACE_CARD_BASE*16), !ENDING_SPACE_CARD_TILES_SIZE)
 	%ld(ending_space_extra_tiles, !LD_VRAM, !SP_TILES+(!ENDING_SPACE_CURTAIN_BASE*16), !ENDING_SPACE_EXTRA_TILES_SIZE)
+	%ld(ending_shard_jobs, !LD_SHARDS, $0000, 1)
 	%ld_end()
 space_script_day:
 	%ld(ending_space_obj, !LD_VRAM, $0000, !ENDING_SPACE_OBJ_BYTES)
@@ -228,6 +240,7 @@ space_script_day:
 	%ld(ending_space_day_map, !LD_VRAM, !SP_MAP1, $0800)
 	%ld(ending_space_card_tiles, !LD_VRAM, !SP_TILES+(!ENDING_SPACE_CARD_BASE*16), !ENDING_SPACE_CARD_TILES_SIZE)
 	%ld(ending_space_extra_tiles, !LD_VRAM, !SP_TILES+(!ENDING_SPACE_CURTAIN_BASE*16), !ENDING_SPACE_EXTRA_TILES_SIZE)
+	%ld(ending_shard_jobs, !LD_SHARDS, $0000, 1)
 	%ld_end()
 space_script_escape:
 	%ld(ending_space_obj, !LD_VRAM, $0000, !ENDING_SPACE_OBJ_BYTES)
@@ -236,6 +249,11 @@ space_script_escape:
 	%ld(ending_space_card_tiles, !LD_VRAM, !SP_TILES+(!ENDING_SPACE_CARD_BASE*16), !ENDING_SPACE_CARD_TILES_SIZE)
 	%ld(ending_space_extra_tiles, !LD_VRAM, !SP_TILES+(!ENDING_SPACE_CURTAIN_BASE*16), !ENDING_SPACE_EXTRA_TILES_SIZE)
 	%ld(ending_space_curtain_map, !LD_VRAM, !SP_MAP1, $0800)
+	%ld(ending_shard_jobs, !LD_SHARDS, $0000, 1)
+	%ld_end()
+
+space_script_shards:
+	%ld(ending_shard_jobs, !LD_SHARDS, $0000, 1)
 	%ld_end()
 
 ; BG1 map <- the teleport lines (the globe is gone or never shown).
@@ -295,6 +313,19 @@ space_phase_init:
 .noSeams
 	RTS
 .escape
+	; A direct escape cue may skip the explosion's streaming entirely.
+	; Full scene loads already include this operation. Normal story
+	; escapes have the cache ready and add no load.
+	LDA.w !s_loading
+	AND.w #$00FF
+	BNE .cacheReady
+	LDA.l ending_shard_need+(77*2)
+	CMP.w !sh_job
+	BCC .cacheReady
+	BEQ .cacheReady
+	LDA.w #space_script_shards
+	JSR set_script
+.cacheReady
 	LDA.w !sp_strip
 	BNE .ready                ; uploaded during the explosion's drift
 	JMP space_queue_goku
@@ -1014,82 +1045,15 @@ space_glow:
 	STA.w !sp_tmp
 	RTS
 
-; Fragments (t < 115) in a fixed OAM block (slots 24-71, below the sparks
-; and Goku): per frame the generator's (x, y) pairs and high-table bytes
-; (ending_space_frag_oam: pieces at rest corner + |round(dx*d)| radially,
-; d = t*speed + .003 t^2 as fragmentPose; hidden ones at y = 224).
+; Rotating Voronoi shards: the second code area queues the generated OAM
+; image; ending_preupload uploads its cells before the native OAM transfer.
 !SP_FRAG_SLOT = 24
 space_pieces:
-	; free slots before the block stay hidden
-	LDY.w !s_oamslot
-.hide
-	CPY.w #!SP_FRAG_SLOT*4
-	BCS .hidden
-	LDA.w #$E000              ; x 0, y 224
-	STA.w !N_OAM,Y
-	INY : INY : INY : INY
-	BRA .hide
-.hidden
-	LDA.w !sp_t
-	CMP.w #115
-	BCC .on
-	STY.w !s_oamslot
+	JSL shards_frame
 	RTS
-.on
-	; row = t * 108
-	SEP #$20
-	STA.w $4202
-	LDA.b #108
-	STA.w $4203
-	NOP : NOP : NOP : NOP
-	REP #$20
-	; tiles and attributes: the game's hide loop writes only X and Y, so
-	; they stay in place except in slots its own sprites took this frame
-	LDA.w !sp_chrok
-	BEQ .allChr
-	LDA.l !core_oam_native
-	CMP.w #!SP_FRAG_SLOT+1
-	BCC .chrDone
-	CMP.w #!SP_FRAG_SLOT+48
-	BCC .someChr
-.allChr
-	LDA.w #!SP_FRAG_SLOT+48
-.someChr
-	ASL : ASL
-	STA.w !sp_n               ; end (OAM byte offset)
-	LDX.w #$0000
-	LDY.w #!SP_FRAG_SLOT*4
-.chr
-	LDA.l ending_frag_chr,X
-	STA.w !N_OAM+2,Y
-	INX : INX
-	INY : INY : INY : INY
-	CPY.w !sp_n
-	BCC .chr
-	LDA.w #$0001
-	STA.w !sp_chrok
-.chrDone
-	LDA.w $4216
-	TAX
-	LDY.w #!SP_FRAG_SLOT*4
-.sprite
-	LDA.l ending_space_frag_oam,X
-	STA.w !N_OAM,Y
-	INX : INX
-	INY : INY : INY : INY
-	CPY.w #(!SP_FRAG_SLOT+48)*4
-	BCC .sprite
-	STY.w !s_oamslot
-	; the block's 12 high-table bytes
-	LDY.w #$0000
-.hi
-	LDA.l ending_space_frag_oam,X
-	STA.w !N_OAMHI+(!SP_FRAG_SLOT/4),Y
-	INX : INX
-	INY : INY
-	CPY.w #12
-	BCC .hi
-	RTS
+shards_wq:
+	JSR wq_push
+	RTL
 
 ; ---------------------------------------------------------------------------
 ; Flash disc (t < 8) and shock ring (t < 90) as colour-math windows. Four

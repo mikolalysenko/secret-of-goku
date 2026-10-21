@@ -171,6 +171,7 @@ flight_load:
 	STA.w !fl_key
 	STZ.w !fl_stq
 	JSR flight_dragon_image
+	JSR flight_stars_init
 	LDA.w #flight_script
 	JMP set_script
 
@@ -1518,7 +1519,26 @@ flight_stars:
 	STA.w !s_oamslot
 	RTS
 
-; x bytes of all stars for the drift fl_q12; their tiles and attributes.
+; The cached stars keep their tiles and attributes for the whole flight.
+; Initialize them once; horizontal drift changes only X. This saves the
+; flash at age 300 from rebuilding 86 unchanged tile/attribute pairs.
+flight_stars_init:
+	LDY.w #$0000
+	LDX.w #$0000
+	SEP #$20
+.star
+	LDA.l ending_flight_stars+2,X
+	STA.w !FL_STARS+2,Y
+	LDA.b #!FL_ATTR_STAR>>8
+	STA.w !FL_STARS+3,Y
+	INY : INY : INY : INY
+	INX : INX : INX
+	CPX.w #86*3
+	BCC .star
+	REP #$20
+	RTS
+
+; x bytes of all stars for the drift fl_q12.
 flight_stars_x:
 	LDY.w #$0000
 	LDX.w #$0000
@@ -1528,10 +1548,6 @@ flight_stars_x:
 	SEC
 	SBC.w !fl_q12
 	STA.w !FL_STARS,Y
-	LDA.l ending_flight_stars+2,X
-	STA.w !FL_STARS+2,Y
-	LDA.b #!FL_ATTR_STAR>>8
-	STA.w !FL_STARS+3,Y
 	INY : INY : INY : INY
 	INX : INX : INX
 	CPX.w #86*3

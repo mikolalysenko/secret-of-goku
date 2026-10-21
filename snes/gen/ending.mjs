@@ -32,7 +32,7 @@ const VERSION=7;
 export const DATA_BANKS=[0xE9,0xEC,0xEE,0xEF];
 // Blobs the CPU reads in its loops (long,X or block moves into palettes):
 // these stay in fast ROM. All others are DMA/HDMA sources: extended data.
-const FAST_BLOBS=new Set(['fade_words','space_frag_oam','space_crack_events','space_spark_oam','space_win_ta',
+const FAST_BLOBS=new Set(['fade_words','space_crack_events','space_spark_oam','space_win_ta',
   'flight_pose','flight_t12','flight_turn','flight_stars','flight_ring','flight_dragon_oam','flight_sizes']);
 
 const hex=(n,w=2)=>n.toString(16).toUpperCase().padStart(w,'0');
@@ -160,6 +160,7 @@ function encodeIndexTiles(index,w,h,{tileBase=0,palette=7,priority=0}={}){
 }
 async function spaceAssets(o,{rom,repo}){
   const sp=await import('./ending-space.mjs');
+  const {voronoiFracture,shardAssets}=await import('./ending-shards.mjs');
   const {radioPixels}=await engine(repo,'native-radio.js');
   const {createNativeEffects}=await engine(repo,'native-effects.js');
   const effects=createNativeEffects(rom,JSON.parse(readFileSync(join(repo,'engine/native-effects.json'),'utf8')));
@@ -180,7 +181,7 @@ async function spaceAssets(o,{rom,repo}){
   // (index 15 = crack colour), so those tiles stay unique and are moved to
   // the end of the globe's tiles in order of first reveal.
   const night=sp.planetSurface(rom,{night:true});
-  const fr=sp.brickFracture(night,{candidates:60,maxTiles:496});
+  const fr=voronoiFracture(night);
   const crackPx=new Set();for(const p of fr.pieces)for(const i of p.edge)crackPx.add(i);
   const ageOf=i=>{const d=Math.hypot(i%256-sp.VIEW.x,(i/256|0)-sp.VIEW.y);return Math.floor(d/1.9)+1;};
   const tileOfPx=i=>((i/256|0)>>3)*32+((i%256)>>3);
@@ -323,93 +324,7 @@ async function spaceAssets(o,{rom,repo}){
   for(let l=0;l<=32;l++)for(const c of plain){const d=v=>Math.round(v*(1-l/32));fadePal.push(mk(d(ch(c,0)),d(ch(c,1)),d(ch(c,2))));}
   o.table('ending_frag_fadepal','dw',fadePal);
   o.stats.fragPalettes={glowStates:glowStates.length,bytes:(glowStates.length+33)*128};
-  // OBJ tiles (base $0000): 32x32 blocks, 16x16 cells, and the spark strip
-  // (tile rows 30-31, columns 0-7 = four 16x16 cells; the escape puts
-  // Goku's 32x32 there).
-  const used=new Uint8Array(16*32),vram=new Uint8Array(512*32);
-  const alloc=size=>{const n=size/8;for(let r=0;r+n<=32;r+=n)for(let c=0;c+n<=16;c+=n){let free=true;for(let y=0;y<n&&free;y++)for(let x=0;x<n;x++)if(used[(r+y)*16+c+x]){free=false;break;}if(!free)continue;for(let y=0;y<n;y++)for(let x=0;x<n;x++)used[(r+y)*16+c+x]=1;return r*16+c;}throw Error('OBJ VRAM full');};
-  const putTile=(tile,px)=>vram.set(gfx.encodeTile(px,8,0,0,4),tile*32);
-  const SPARK_TILE=30*16;
-  for(let y=30;y<32;y++)for(let x=0;x<8;x++)used[y*16+x]=1;
-  fr.pieces.forEach((p,j)=>{
-    const pal=fit.palettes[fit.assign[j]]??[0];
-    p.index=new Map();for(const i of p.pixels)p.index.set(i,p.edge.has(i)?15:1+nearestIn(pal.slice(0,13),night[i]-1));
-  });
-  const bySize=fr.pieces.map((p,j)=>j).sort((a,b)=>fr.pieces[b].sprites[0].size-fr.pieces[a].sprites[0].size);
-  for(const j of bySize){
-    const p=fr.pieces[j];
-    for(const s of p.sprites){
-      s.tile=alloc(s.size);const n=s.size/8;
-      for(let ty=0;ty<n;ty++)for(let tx=0;tx<n;tx++){
-        const px=new Uint8Array(64);
-        for(let y=0;y<8;y++)for(let x=0;x<8;x++){
-          const gx=p.left+s.x+tx*8+x,gy=p.top+s.y+ty*8+y;if(gx>=256||gy>=224)continue;
-          const face=p.index.get(gy*256+gx);
-          px[y*8+x]=face??(p.index.has((gy-3)*256+gx-2)?14:0);
-        }
-        putTile(s.tile+ty*16+tx,px);
-      }
-    }
-  }
-  const sparkTile=[0,1,2,3].map(f=>SPARK_TILE+f*2);
-  const gold=effects['gold-spark'],sparkPal=quantizeSurfaces(gold.map(cell=>cell));
-  gold.forEach((cell,f)=>{const ix=sparkPal.index[f];for(let ty=0;ty<2;ty++)for(let tx=0;tx<2;tx++){const px=new Uint8Array(64);for(let y=0;y<8;y++)for(let x=0;x<8;x++)px[y*8+x]=ix[(ty*8+y)*16+tx*8+x];putTile(sparkTile[f]+ty*16+tx,px);}});
-  o.table('ending_spark_pal','dw',sparkPal.palette);
-  o.def('ENDING_SPARK_TILE',SPARK_TILE);
-  let top=0;for(let t=0;t<512;t++)if(used[t])top=t+1;
-  const objRows=Math.ceil(top/16);
-  o.blob('space_obj',vram.slice(0,objRows*16*32));
-  o.def('ENDING_SPACE_OBJ_BYTES',objRows*16*32);
-  // Fragment sprites in piece order (8 bytes): x0.w y0.w (rest corner),
-  // chr.w (tile | palette << 9 | priority 2), piece, flags (bit 0 32x32,
-  // bit 1 x moves left, bit 2 y moves up). Offsets per drift frame t < 115:
-  // |round(dx*d)|, |round(dy*d)| for every piece (ending_frag_offsets).
-  o.def('ENDING_FRAG_PIECES',fr.pieces.length);
-  const sprites=[];
-  fr.pieces.forEach((p,j)=>{
-    const pal=4+Math.max(0,fit.assign[j]);
-    for(const s of p.sprites)sprites.push({x:p.left+s.x,y:p.top+s.y,chr:s.tile|(pal<<9)|0x2000,j,flags:(s.size===32?1:0)|(p.dx<0?2:0)|(p.dy<0?4:0)});
-  });
-  o.def('ENDING_FRAG_SPRITES',sprites.length);
-  if(sprites.length>48)throw Error('fragment OAM block holds 48 sprites');
-  // OAM block (slots 24-71, fixed): chr words; per drift frame t < 115 the
-  // 48 (x low, y) pairs and the block's 12 high-table bytes (x bit 8,
-  // size). Hidden sprites (off screen, or inside the flash disc while
-  // t < 8) sit at y = 224.
-  o.table('ending_frag_chr','dw',sprites.map(s=>s.chr));
-  const fragOam=[];
-  const cullSets=sp.sparkBudget(fr.pieces).cull;
-  for(let t=0;t<sp.FRAG_FRAMES;t++){
-    const hi=new Array(12).fill(0);let k=0;
-    for(const p of fr.pieces){const o2=sp.pieceOffsetExact(p,t);
-      for(const s of p.sprites){
-        const x=p.left+s.x+o2.x,y=p.top+s.y+o2.y,size=s.size;
-        const hidden=x<=-size||x>=256||y<=-size||y>=224||(t<8&&cullSets[t].has(k));
-        fragOam.push(hidden?0:x&255,hidden?224:y&255);
-        hi[k>>2]|=((size===32?2:0)|(!hidden&&x<0?1:0))<<((k&3)*2);
-        k++;
-      }}
-    for(;k<48;k++)fragOam.push(0,224);
-    fragOam.push(...hi);
-  }
-  o.blob('space_frag_oam',Uint8Array.from(fragOam));
-  // Sparks: per drift frame t < 70, 18 x (x + 64, y) top-left corners;
-  // keep masks from the scanline budget.
-  // Sparks in OAM slots 0-17: per drift frame t < 70, 18 (x low, y) pairs
-  // (y = 224: left out by the scanline budget, or off screen) and the 5
-  // high-table bytes of slots 0-19 (x bit 8; sparks are 16x16).
-  const budget=sp.sparkBudget(fr.pieces);
-  const sparkOam=[];
-  for(let t=0;t<70;t++){
-    const hi=new Array(5).fill(0);
-    for(let i=0;i<sp.SPARKS;i++){
-      const s=sp.sparkPos(i,t),shown=(budget.keep[t]>>i&1)&&s.x>-16&&s.x<256&&s.y>-16&&s.y<224;
-      sparkOam.push(shown?s.x&255:0,shown?s.y&255:224);
-      if(shown&&s.x<0)hi[i>>2]|=1<<((i&3)*2);
-    }
-    sparkOam.push(...hi);
-  }
-  o.blob('space_spark_oam',Uint8Array.from(sparkOam));
+  shardAssets(o,{fr,fit,effects});
   // Flash disc (t < 8, radius min(86, 18 + 10t)): k(d) = floor(sqrt(r^2 -
   // d^2)) per line offset d = 0..r. Shock ring (t = 8..89, radius 8 + 3t,
   // y-radius .42 r): the arc's inner x at d, R sqrt(1 - ((d + .5)/ry)^2),
@@ -457,8 +372,7 @@ async function spaceAssets(o,{rom,repo}){
     ...ta(v=>v<=168?87+v:255),     // TA2: inner right edge
     ...ta(v=>v<=167?87+v:254),     // TA3: outer right edge (254 with TA2 = 255: empty)
   ]));
-  o.stats.space={stars:S,night:ng0.tileCount,day:dg.tileCount,card:cd.tileCount,twinkleTiles:twTiles.length,bgTiles:twBase+twTiles.length,pieces:fr.pieces.length,sprites:sprites.length,objTiles:top,load:fr.load,winData:winData.length,
-    sparksDropped:budget.keep.reduce((a,m)=>a+sp.SPARKS-m.toString(2).split('').filter(c=>c==='1').length,0)};
+  o.stats.space={stars:S,night:ng0.tileCount,day:dg.tileCount,card:cd.tileCount,twinkleTiles:twTiles.length,bgTiles:twBase+twTiles.length,pieces:fr.pieces.length,sprites:o.stats.shards.maxSprites,objTiles:512,winData:winData.length};
   // What the Fortress cutaway shares with the space stage.
   const globeMask=new Uint8Array(256*224),day=sp.planetSurface(rom,{night:false});
   for(let i=0;i<globeMask.length;i++)globeMask[i]=day[i]?1:0;
@@ -509,7 +423,7 @@ function pack(o){
 function inputsHash(repo,rom){
   const h=createHash('sha256');
   h.update(String(VERSION));
-  for(const f of ['snes/gen/ending.mjs','snes/gen/ending-art.mjs','snes/gen/ending-space.mjs','engine/planet-view.js','engine/planet-fragments.js','engine/native-effects.js','engine/native-effects.json','engine/ending-departure.js','snes/gen/ending-vista.mjs','snes/gen/ending-flight.mjs','snes/gen/ending-cutaway.mjs','snes/gen/ending-globes.mjs','engine/wish-flight.js','engine/orbit-pixels.js','engine/world-texture.js','engine/mana-tree-vista.js','engine/cinematic-map.js','tools/rom/map-codec.mjs','assets/sprites/shenron.png','assets/sprites/dragon-balls.png','snes/tools/gfx.mjs','assets/sprites/kai-planet.png','assets/sprites/kai-npcs.png','engine/kai-planet.js','engine/native-radio.js'])
+  for(const f of ['snes/gen/ending.mjs','snes/gen/ending-art.mjs','snes/gen/ending-space.mjs','snes/gen/ending-shards.mjs','engine/planet-view.js','engine/planet-fragments.js','engine/native-effects.js','engine/native-effects.json','engine/ending-departure.js','snes/gen/ending-vista.mjs','snes/gen/ending-flight.mjs','snes/gen/ending-cutaway.mjs','snes/gen/ending-globes.mjs','engine/wish-flight.js','engine/orbit-pixels.js','engine/world-texture.js','engine/mana-tree-vista.js','engine/cinematic-map.js','tools/rom/map-codec.mjs','assets/sprites/shenron.png','assets/sprites/dragon-balls.png','snes/tools/gfx.mjs','assets/sprites/kai-planet.png','assets/sprites/kai-npcs.png','engine/kai-planet.js','engine/native-radio.js'])
     h.update(readFileSync(join(repo,f)));
   h.update(rom);
   return h.digest('hex');
@@ -528,11 +442,10 @@ export async function generate({rom,repo,outDir,xdata}){
     registerXdata(outDir,JSON.parse(readFileSync(manifest,'utf8')),xdata);
     return;
   }
-  const o=new Out();o.stats={};
+  const o=new Out();o.stats={};o.cut=new Out();
   fadeTables(o);
   await kaiAssets(o,{rom,repo});
   const space=await spaceAssets(o,{rom,repo});
-  o.cut=new Out();
   const {globeAssets}=await import('./ending-globes.mjs');
   space.globePals=globeAssets(o,{rom,xblob:(n,d)=>o.blob(n,d)});
   const {cutawayAssets}=await import('./ending-cutaway.mjs');
@@ -542,6 +455,7 @@ export async function generate({rom,repo,outDir,xdata}){
   await vistaAssets(o,{rom,repo,engine});
   const {flightAssets}=await import('./ending-flight.mjs');
   await flightAssets(o,{rom,repo,engine});
+  if(o.stats.flightDragon.xdata+o.stats.shards.xdata>160*1024)throw Error('ending fidelity additions exceed 160 KiB');
   const fast=o.blobs.filter(b=>FAST_BLOBS.has(b.name)),ext=o.blobs.filter(b=>!FAST_BLOBS.has(b.name));
   const bins=pack({blobs:fast});
   mkdirSync(outDir,{recursive:true});

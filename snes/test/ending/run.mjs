@@ -35,8 +35,9 @@ function coreDefine(name){
 const lib0=`EVENT_MAILBOX=0x${coreDefine('core_event_req').toString(16)}\n`;
 const lib=lib0+`AUDIO_SFX=${symAddr('audio_sfx')}\nAUDIO_FADE=${symAddr('audio_fade')}\nNMI_OUT=${symAddr('ending_world_nmi_out')}\nNMI_IN=${symAddr('ending_world_nmi')}\nNMI_RESTORE=${symAddr('ending_world_nmi_restore')}\nNMI_DMA=${symAddr('cut_footprint_ran')}\n`+
   `FIELD_IN=${symAddr('ending_frame')}\nFIELD_OUT=${symAddr('ending_frame_out')}\nSCALE_OUT=${symAddr('flight_scale_frame_out')}\n`+
+  `SHARDS_IN=${symAddr('shards_preupload')}\nSHARDS_OUT=${symAddr('ending_preupload_copies')}\n`+
   `FRAME_IN=${symAddr('ending_world_frame')}\nFRAME_OUT=${symAddr('ending_world_frame_out')}\nLOAD_IN=${symAddr('cut_load')}\nGLOBE_COUNT=${globeTargets().length}\nGLOBE_TILES=308\n`+
-  `DMA_TRIGGERS={${['ending_preupload_trigger','nmi_lowcopy_trigger','cut_oam_trigger','flight_scale_nmi_trigger'].map(symAddr).join(',')}}\n`+readFileSync(resolve(here,'lib.lua'),'utf8');
+  `DMA_TRIGGERS={${['ending_preupload_trigger','nmi_lowcopy_trigger','cut_oam_trigger','flight_scale_nmi_trigger','shards_copy_cell_top','shards_copy_cell_bottom'].map(symAddr).join(',')}}\n`+readFileSync(resolve(here,'lib.lua'),'utf8');
 // 'sfx<id>@<age>' / 'fade<byte>@<age>' calls recorded by E.watchAudio.
 const audioCalls=r=>(r.audio??'').split(' ').filter(Boolean);
 const heard=(r,call)=>audioCalls(r).includes(call);
@@ -73,17 +74,18 @@ async function spaceCheck(r,out){
   expect(r.doomed_load_frames<=12,`doomed load took ${r.doomed_load_frames} frames`);
   expect(!r.explode_reloaded,'explosion continues on the live globe');
   expect(!r.escape_reloaded,'escape continues without a reload');
+  expect(r.direct_escape_loaded&&r.direct_escape_load_frames<=20,`direct escape prepares its cache (${r.direct_escape_load_frames} frames)`);
   expect(r.explode_done===1,'explosion timeline done flag');
   expect(r.explode_lag<=2,`explosion lag ${r.explode_lag} frames`);
   expect(r.escape_lag<=1,`escape lag ${r.escape_lag} frames`);
   expect(r.overruns===0,`vblank overran ${r.overruns} times (to line ${r.overrun_max})`);
-  // The globe and seams are tile-exact; drifting fragments are the SNES
-  // brick fracture (39 sprite pieces, no rotation) against the browser's 64
-  // rotating Voronoi shards, so those stills share position, colour and
-  // timing rather than shapes.
+  expect(r.shard_late===0,`shard uploads missed ${r.shard_late} deadlines`);
+  expect(r.shard_sprites_max<=32&&r.shard_slivers_max<=34,`space OBJ limits (${r.shard_sprites_max} sprites, ${r.shard_slivers_max} slivers)`);
+  // Browser Voronoi seams and masks, with quantized rotation and explicit
+  // sprite budgeting. Drift stills must clearly beat the old 65-80% bricks.
   const shots=[['doomed','doomed',.97],['doomed-day','doomed',.97,{night:false}],
-    ...[9,20,32,41].map(a=>[`explode-${a}`,'explode',.88]),...[52,60,70,90,120].map(a=>[`explode-${a}`,'explode',.6]),['explode-150','explode',.95],
-    ['escape-4','escape',.85],['escape-10','escape',.85],['escape-24','escape',.95]];
+    ...[9,20,32,41].map(a=>[`explode-${a}`,'explode',.98]),...[52,60,70,90,120].map(a=>[`explode-${a}`,'explode',.82]),['explode-150','explode',.95],
+    ['escape-4','escape',.9],['escape-10','escape',.95],['escape-24','escape',.95],['escape-direct-10','escape',.95]];
   for(const [name,phase,min,opts={}] of shots){
     if(r[name]===undefined){problems.push(`no still ${name}`);continue;}
     const best=await bestPlanetMatch(join(out,`${name}.png`),{rom:baseRom,phase,...opts},r[name]);
@@ -109,9 +111,11 @@ async function fatalCheck(r,out){
   expect((r.status_905&0x20)!==0,'GAME OVER reached (complete status)');
   expect(r.done===1,'fatal timeline done flag');
   expect(r.lag_frames<=3,`lag ${r.lag_frames} frames`);
+  expect(r.shard_late===0,`fatal shard uploads missed ${r.shard_late} deadlines`);
+  expect(r.shard_sprites_max<=32&&r.shard_slivers_max<=34,`fatal OBJ limits (${r.shard_sprites_max} sprites, ${r.shard_slivers_max} slivers)`);
   expect(r.overruns===0,`vblank overran ${r.overruns} times (${r.overrun_at})`);
   expect(r.after_phase===0,`Start leaves for the title (phase ${r.after_phase})`);
-  for(const [name,min] of [['fatal-500',.95],['fatal-560',.9],['fatal-600',.85],['fatal-650',.6],['fatal-700',.6],['fatal-810',.8],['fatal-905',.95]]){
+  for(const [name,min] of [['fatal-500',.95],['fatal-560',.9],['fatal-600',.85],['fatal-650',.8],['fatal-700',.9],['fatal-810',.8],['fatal-905',.95]]){
     if(r[name]===undefined){problems.push(`no still ${name}`);continue;}
     const best=await bestPlanetMatch(join(out,`${name}.png`),{rom:baseRom,phase:'fatal',fatal:true},r[name]);
     writeFileSync(join(out,`${name}-ref.png`),writeRef(null,best.ref));
@@ -370,6 +374,7 @@ for(const t of tests){
     // every frame-thread DMA of the scene started with its own size intact
     expect(!r.results.dma_hdma,`a DMA started on a visible line with HDMA enabled (${r.results.dma_hdma} times, ${r.results.dma_hdma_at})`);
     expect(!r.results.dma_bad,`frame-thread DMA started with channel 7's size at 0 (${r.results.dma_bad} times, ${r.results.dma_bad_at})`);
+    expect(!r.results.dma_ppu,`a PPU DMA started outside vblank/forced blank (${r.results.dma_ppu} times)`);
   }
   const pass=!problems.length;
   writeFileSync(join(out,'comparison.json'),JSON.stringify({pass,problems,...r.results},null,1));

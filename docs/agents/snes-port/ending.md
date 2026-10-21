@@ -2,7 +2,7 @@
 
 Spoilers. Part of the [SNES port](plan.md); build and harness in
 [snes-rom.md](../snes-rom.md). Sources: `snes/src/modules/ending/`,
-generators `snes/gen/ending.mjs` (+ `ending-art.mjs`, `ending-space.mjs`,
+generators `snes/gen/ending.mjs` (+ `ending-art.mjs`, `ending-space.mjs`, `ending-shards.mjs`,
 `ending-vista.mjs`, `ending-flight.mjs`, `ending-cutaway.mjs`,
 `ending-globes.mjs`), tests in `snes/test/ending/`.
 
@@ -16,14 +16,14 @@ Browser sources ported: `engine/shenron-ending.js`, `wish-flight.js`,
 | Phase (id) | Browser | Cartridge | Test (`run.mjs`) |
 | --- | --- | --- | --- |
 | transition (1) | 48-frame fade to black (every pixel, dialogue too) | done: a ceiling on the game's brightness | no dedicated test |
-| summon (2), dragon (3), wish (4) | `treeVista`, Shenron, Balls, sparks, fallout | done | `vista`: 12 stills 95.5-96.0% (below the open dialogue box) |
+| summon (2), dragon (3), wish (4) | `treeVista`, Shenron, Balls, sparks, fallout | done | `vista`: 12 stills 95.3-95.8% (below the open dialogue box) |
 | scatter (5) | wish picture fading out, then `createWishFlight` | done (Mode 7 floor) | `flight`: 14 stills 94.6-99.0% |
 | reunion (6) | native cliff scene | done: black until the script's door 3FF reloads the cliff, Dyluck via the object-list hook | `loads`: the cliff 99.1% of a native load, Dyluck present |
 | village (7) | Goku beside the native Randi | done | `depart`: village 99.1% |
 | depart (8) | power-up, launch, whiteout, distant globe, fade | done | `depart`: 15 stills 99.1-100% |
 | kai (9), complete (10) | King Kai's planet, end cards | done | `kai`: 93.1% |
-| doomed (11), explode (12), escape (13) | planet-view globe, explosion, teleport | done | `space`: 15 stills, 65-100% (fragments differ in shape, see below); `loads`: the globe after door 2F 99.9% |
-| fatal (14) | boss-rush death, planet explosion, GAME OVER | done | `fatal`: 7 stills 65-100%, Start returns to the title |
+| doomed (11), explode (12), escape (13) | planet-view globe, explosion, teleport | done | `space`: 16 stills, 83.1-99.9% (64 Voronoi shards, quantized rotation); `loads`: the globe after door 2F 99.9% |
+| fatal (14) | boss-rush death, planet explosion, GAME OVER | done | `fatal`: 7 stills 83.9-100%, Start returns to the title |
 | Fortress cutaway (world flight) | planet-view `isShot`: globe, `beam()`, ring, dust, fade | done (34 target orientations, day/night) | `cutaway`: 59 stills; sampled age-140 views 89.4-99.9% |
 
 All eight tests pass (`node snes/test/ending/run.mjs`), together with the
@@ -43,7 +43,8 @@ Fortress cutaway runs in world flight instead (`ending_world_frame` after
 
 Code: the main bank `$A9` (FastROM) and a second code area in the spare
 upper quarter of audio's code half (`$AA:C000`, `!CODE_QUARTER_AUDIO` as
-`!CODE_ENDING_X`: the cutaway and the music sync), reached with `JSL`
+`!CODE_ENDING_X`: cutaway, music sync, vblank handlers, flight scale and
+shard cache), reached with `JSL`
 both ways. Art only DMA or HDMA reads lives in extended data
 (ExHiROM banks `$40-$7D`, `ending_<blob>` labels from `!XDATA_ENDING_*`);
 blobs the CPU reads in its loops stay in fast ROM (`E9:0000`, `EC:0000`).
@@ -105,6 +106,10 @@ HDMA runs during a general DMA, and the flight's floor is HDMA-driven.
   the queue in the vblank, before the game's OAM transfer, only after a
   completed frame.
 - Its unused front slots get Y = 224 by CPU stores.
+- The space scenes stream up to three complete shard cells before their
+  queued OAM image. The generator never overwrites a cell still used by
+  the previous picture; a missed deadline hides the fragment group and
+  fails the tests.
 - Its stars persist in OAM slots 42-127: the module area ends at slot 42,
   so the game's next OAM pass leaves them. They are copied by a
   low-priority vblank job (`nmi_lowcopy`, after the transfers, only with
@@ -241,8 +246,11 @@ On an untouched timeline, lag remains **2 frames** (ages 41 and 302),
 all requested widths are ready on time, and vblank ends by **line 259**
 with zero wraps, including line 0. The initial fade precedes size uploads;
 the straight-north camera avoids general multiplication until the turn.
-Measured ending frame cost is **37.99 lines mean** (baseline 38.26).
-Strict build and all eight ending cases pass at this checkpoint.
+Star tile/attribute pairs are initialized once, so horizontal drift only
+writes X; this keeps the age-300 flash within its frame budget after the
+shard dispatcher was added. Measured ending frame cost is **37.52 lines
+mean** (baseline 38.26). The stage loads in 25 black frames. Strict build
+and all eight ending cases pass.
 
 ### Reunion (6)
 
@@ -290,9 +298,78 @@ game's input.
 seams revealed per age through a ring mirror of crack tiles, the starfield
 on BG2 (twinkles as map words), the flash disc and shock ring as HDMA
 window tables (channels 2, 3, 4, 6, indirect, constant tables over per-line
-bytes) with colour math, 39 brick fragments as precomputed OAM per drift
-frame (palettes per heat and fade level), sparks from a scanline budget,
+bytes) with colour math, 64 Voronoi shards as precomputed rotated cells
+and OAM per drift frame (palettes per heat and fade level), sparks from a scanline budget,
 then the teleport lines (a TM band) and Goku's escape pose.
+
+`ending-shards.mjs` calls the browser's `fracturePlanet` and `fragmentPose`
+for the masks, radial motion and spin. Rotations are rounded to 45 degrees;
+each orientation samples the squash near the middle of its age interval.
+The same masks also supply the globe's revealed seams (273 crack tiles,
+2,303 events). Face colours retain the four existing fragment palettes,
+with colours 14/15 reserved for depth/seam and the existing heat/fade curves.
+
+The 350-cell atlas uses 124 cache slots in OBJ VRAM; four slots remain
+reserved for sparks/Goku. Each 16x16 cell is two 64-byte row transfers.
+An offline schedule of 145 replacements uploads at most three cells per
+vblank before the native palette/OAM transfer, with a 26-line remaining
+time guard. The generated 442-byte OAM image follows through the existing
+WRAM queue. Runtime lives in `space-shards.asm`, reached from `space.asm`
+and `upload.asm`; `lib.asm` also exposes its cache preparation as a load
+script operation. Direct escape cues and native scene reloads prepare the
+requested cache under black. The direct escape test takes eight frames;
+the normal explosion-to-escape transition adds no load.
+
+The generator keeps the densest cells within 104 fragment sprites and
+34 slivers per line, then fits sparks in the remaining line budget. This
+omits 5.4% of candidate fragment pixels across the sampled frames. Actual
+OAM in space/fatal stays at **17 sprites / 34 slivers per line**. Rotation,
+squash and the retained cell set freeze at drift age 77: the browser's
+escape restarts debris at that age, even after the explosion has reached
+115. Keeping that cache supports the rewind without a visible reload;
+radial motion, heat and fade continue through the remaining ages.
+
+#### Rotating-shard validation (2026-10-21)
+
+Agreement against `planet-view.js` itself, using the same full-screen
+comparison as the original bricks:
+
+| Still | Bricks | Rotating shards |
+| --- | ---: | ---: |
+| explode-20 | 97.6% | 99.8% |
+| explode-32 | 93.7% | 99.4% |
+| explode-41 | 91.6% | 99.5% |
+| explode-52 | 89.1% | 90.3% |
+| explode-60 | 70.2% | 84.9% |
+| explode-70 | 65.1% | 83.1% |
+| explode-90 | 65.8% | 85.2% |
+| explode-120 | 80.3% | 92.5% |
+| escape-4 | 87.7% | 95.1% |
+| fatal-650 | 64.2% | 83.9% |
+| fatal-700 | 83.0% | 93.6% |
+
+The shard art uses 45,312 bytes (including the 16 KiB initial OBJ sheet),
+and its OAM images use 50,830: **96,142 bytes (93.89 KiB)** of xdata,
+below 120 KiB. Together with flight scaling, these features use **144,270
+bytes (140.89 KiB)**, below 160 KiB. Replacing the old OBJ sheet makes the
+net xdata increase **127,886 bytes (124.89 KiB)**. Both limits are build
+assertions. Frame descriptors, upload jobs and deadlines occupy 2,310
+bytes in the ending's existing second code quarter.
+
+Space and fatal have **zero lag, upload misses, PPU/HDMA violations or
+vblank wraps**; their vblanks end by line 258. Ending frame callbacks
+average 57.33 lines for the space test (including its held stills/direct
+escape) and 35.52 for fatal, maxima 127.03/104.11. Shard preupload costs
+at most **6.53 lines**, including DMA; its scene-test means are 1.78/1.15.
+`modprof.mjs` sword/battle measures idle frame 0.46 lines and NMI 0.13;
+the existing idle frame cost remains above the 0.3-line guide.
+
+Strict build, all eight ending cases, all six perf scenes and debug's
+bad-ending/explosion presets pass. Debug classifies both presets FULL.
+Perf original/build lag counts remain sword 4/4, Sandship 12/4, battle
+4/4, Beast 34/34, Fortress 5/4 and flight 4/4; p90 finish lines are
+45/62, 103/113, 34/54, 173/173, 90/95 and 123/112. No core or other
+module code changed.
 
 ### Finale death (14)
 
@@ -437,7 +514,7 @@ Original/build lag counts: sword 4/4, Sandship 12/4, battle 4/4, Beast
 | Scene | VRAM | CGRAM | OBJ sprites | HDMA channels |
 | --- | --- | --- | --- | --- |
 | King Kai | BG1 map `$3800`, card `$3C00`, tiles `$0000`; OBJ base `$4000`, cells `$5000` | BG 1-7, OBJ 0-2 | 3 actors (12) + lines | 5 |
-| Space (doomed, explode, escape, death) | OBJ `$0000-$1FFF`, BG tiles `$2000`, maps `$5000`/`$5400` | backdrop, BG 1-7, OBJ 0-1, 4-7 | ≤ 66 (fragments, sparks) | 5; 2, 3, 4, 6 for the disc and ring |
+| Space (doomed, explode, escape, death) | OBJ `$0000-$1FFF`, BG tiles `$2000`, maps `$5000`/`$5400` | backdrop, BG 1-7, OBJ 0-1, 4-7 | ≤ 122 (104 shard cells + 18 sparks), ≤ 17/34 sprites/slivers per line | 5; 2, 3, 4, 6 for the disc and ring |
 | Vista | OBJ `$0000-$0BFF`, BG1 map `$1800`, tiles `$2000`, BG2 map `$5000` | backdrop, BG 1-7, OBJ 0-4 | ≤ 71 | 5 |
 | Flight | Mode 7 `$0000-$3FFF`, OBJ table 1 `$6000-$6DFF` | backdrop, 64-127, 128-255 | ≤ 128 | 2, 3 (matrix), 4 (mode), 5 (TM), 6 (gradient) |
 | Overlay (village, departure to 144) | `FIELD_OBJ_A` (`$7220`/`$7320`) | OBJ 6-7 (all 256 in the cloud) | 6 front | — |
@@ -457,11 +534,10 @@ during the scatter's burst at 300-340), overlay 11-17 (the cloud ~45).
 FastROM (core's default since main `c81158d`) runs the module's code and
 data about a third faster.
 
-Lag with FastROM (the ending tests on the finale's map 180 and the
-imported states): vista 5 frames over the whole sequence (was 9 with
-SlowROM: the load frame, the wish's flash), flight 6 over 450 (was 10),
-King Kai, space and death 0, departure 1 (was 3: its first frame, the
-space load under white). The flight's stage loads in 25 frames (27-30
+Lag with FastROM (2026-10-21, the ending tests on the finale's map 180 and
+the imported states): vista 1 frame over the whole sequence, flight 2
+over 450, King Kai, space, death and departure 0. Older SlowROM builds
+had vista 9, flight 10 and departure 3. The flight's stage loads in 25 frames (27-30
 with SlowROM). With SlowROM on a busier map (Potos with its NPCs, ~150
 lines of game logic) the flight dropped one frame in eight. No vblank
 overruns while a picture shows: the tests count any field NMI whose work
@@ -520,11 +596,11 @@ WRAM block `!RAM_ORBIT+$80..$B5`:
 
 | Resource | Use |
 | --- | --- |
-| Code | `$A9:8000-FF74` (139 bytes free, unchanged); second area `$AA:C000-CA11` (13.48 KiB of the quarter free) |
-| Fast data | `E9:0000` (31.3 KiB: fade sets, fragment and spark OAM, window lookups, the flight's tables), `EC:0000` (10.7 KiB: crack events); `ED`/`EE`/`EF` belong to core |
-| Extended data | ending: 46 blobs / 520,822 bytes (508.6 KiB), including the 188,387-byte orientation atlas. Whole build: 1,286,445 of 2,031,616 bytes, 727.7 KiB free |
+| Code | `$A9:8000-FEA2` (349 bytes free); second area `$AA:C000-D9B6` (9,801 bytes of the quarter free) |
+| Fast data | `E9:0000` (32,678 bytes: crack events, fade sets, spark OAM, window lookups, flight tables), `EC:0000` (6,581 bytes: flight scale templates and widths); `ED`/`EE`/`EF` belong to core |
+| Extended data | ending: 68 blobs / 648,708 bytes (633.50 KiB), including the 188,387-byte orientation atlas. Whole build: 2,176.2 of 2,944 KiB, 767.8 KiB free |
 | WRAM | `!RAM_ORBIT+$80..$B5` |
-| SRAM | `!SRAM_WORK_SCENE` (`$32:6000-7FFF`) while a scene runs: state, palette components and outputs, curves, queue, HDMA tables, the flight's matrix tables, row and star buffers |
+| SRAM | `!SRAM_WORK_SCENE` (`$32:6000-7FFF`) while a scene runs: state, palette components and outputs, curves, queue, HDMA tables, the flight's matrix tables, row and star buffers; phase-local `$150-$165` for scale/cache state |
 | VRAM | per scene above; core region `FIELD_OBJ_A` (owner `$09`) for the overlay |
 | HDMA | channels 2-6 in full-screen scenes (5 the TM cut, 2/3/4/6 windows or the flight's matrix, mode and gradient); fx keeps 2/3 only while its polygons run; none in the cutaway (world flight's 0-5 off) |
 | DMA | channel 7 (vblank transfers, palette commit, OAM copies) |
@@ -546,9 +622,10 @@ WRAM block `!RAM_ORBIT+$80..$B5`:
   scene up to that much earlier, on the empty sky). Sprites crossing the
   left edge pop in whole; on the scatter's crowded lines the hardware's 34
   slivers per line can drop pieces of sparks.
-- Explosion: 39 brick fragments without rotation against the browser's 64
-  rotating Voronoi shards (stills 65-80% during the drift, position and
-  colour agree).
+- Explosion: the browser's 64 Voronoi masks with 45-degree rotations and
+  squash sampled per orientation. Hardware sprite limits omit the sparsest
+  cells; rotation/squash stop at drift age 77 to preserve the escape's cache
+  rewind. The drift stills now score 83.1-92.5% after the flash.
 - Departure cloud: a colour can trail the white mix by a few frames (round
   robin).
 - Fades are exact per channel, but palette-based: they apply to the
@@ -600,10 +677,10 @@ overruns) are measured on a separate untouched run.
 | Test | State | Checks |
 | --- | --- | --- |
 | `kai` | `preset__bad-ending` | both outcomes, end cards 93.1%, Bubbles on the lawn, done/complete bits, lag ≤ 2 |
-| `space` | `preset__bad-ending` | doomed (night/day), explosion, escape against planet-view; lag ≤ 2, no overruns |
-| `fatal` | `preset__bad-ending` | collapse light, fade, black, globe, explosion, GAME OVER; Start to the title |
-| `depart` | `emulator-probe__potos-state` (Potos) | village 99.1%, 15 departure stills 99.1-100%, Randi native, status/sound/done, lag 1, release |
-| `vista` | `ending-fix__end-20` (map 180) | 12 stills 95.5-96.0%, done flags, Shenron's rise without lag, lag ≤ 12 |
+| `space` | `preset__bad-ending` | 16 stills against planet-view, direct escape cache preparation, normal escape without reload, no cache misses or OBJ limit violations; zero lag/overruns |
+| `fatal` | `preset__bad-ending` | collapse light, fade, black, globe, rotating explosion, GAME OVER; zero lag/overruns/cache misses, OBJ limits, Start to the title |
+| `depart` | `emulator-probe__potos-state` (Potos) | village 99.1%, 15 departure stills 99.1-100%, Randi native, status/sound/done, lag 0, release |
+| `vista` | `ending-fix__end-20` (map 180) | 12 stills 95.3-95.8%, done flags, Shenron's rise without lag, lag 1 |
 | `flight` | `ending-fix__end-20` (map 180) | 14 stills 94.6-99.0%, load ≤ 30 frames, muted/airborne/sound/done, lag ≤ 2, every integer size ready on time, both buffers used, rise OBJ limits, no overruns |
 | `loads` | `emulator-probe__potos-state` | doors through core's event mailbox: 2F under the doomed globe (reloaded, clock on, 99.9%), cue 176 after the flight holds black, door 3FF: the cliff 99.1% of a native load of it, Dyluck present |
 | `cutaway` | the world tests' waterfall checkpoint | actual shots at six sampled targets in both lights plus the default sequence (59 stills); saved-target selection, 192 KiB budget, all 34 VRAM images byte-exact, forced-blank load <215 lines, hardware-safe PPU/DMA, footprint ends by line 254 and trails at most 1, VTIME 196 after deck landing |

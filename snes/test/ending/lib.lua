@@ -85,6 +85,11 @@ function E.watchDma()
     emu.addMemoryCallback(function()
       E.dmaTriggers = E.dmaTriggers + 1
       local st = emu.getState()
+      local target = H.r8(0x4371)
+      if st['ppu.scanline'] < 225 and not st['ppu.forcedBlank'] and (target == 0x18 or target == 0x19 or target == 0x22 or target == 0x04) then
+        E.dmaPpu = (E.dmaPpu or 0) + 1
+        H.result('dma_ppu', E.dmaPpu)
+      end
       if st['ppu.scanline'] < 225 and st['dmaController.hdmaChannels'] ~= 0 then
         E.dmaHdma = E.dmaHdma + 1
         H.result('dma_hdma', E.dmaHdma)
@@ -140,4 +145,63 @@ function E.still(name, n, hold)
   H.w16(E.age, n)
   H.shot(name)
   H.result(name, n)
+end
+
+-- Actual OAM limits and cache deadlines throughout space/fatal timelines.
+-- OBJSEL=$60: small sprites are 16x16, large sprites 32x32.
+function E.watchShards()
+  local spritesMax, sliversMax, late = 0, 0, 0
+  local started, sum, n, worst = nil, 0, 0, 0
+  local upload, uploadSum, uploadN, uploadMax = nil, 0, 0, 0
+  emu.addEventCallback(function()
+    if not E.watchArmed then return end
+    late = math.max(late, E.sram16(0x154))
+    local count, tiles = {}, {}
+    for i = 0, 127 do
+      local hi = (H.oam(512 + (i >> 2)) >> ((i & 3)*2)) & 3
+      local size = (hi & 2) ~= 0 and 32 or 16
+      local x, y = H.oam(i*4) + ((hi & 1) << 8), H.oam(i*4+1)
+      if x >= 256 then x = x - 512 end
+      if x > -size and x < 256 then
+        local slivers = math.min(size/8, math.ceil((256-x)/8))
+        for dy = 0, size-1 do
+          local line = (y + dy) & 255
+          if line < 224 then
+            count[line] = (count[line] or 0) + 1
+            tiles[line] = (tiles[line] or 0) + slivers
+            spritesMax = math.max(spritesMax, count[line])
+            sliversMax = math.max(sliversMax, tiles[line])
+          end
+        end
+      end
+    end
+  end, emu.eventType.endFrame)
+  emu.addMemoryCallback(function()
+    if E.watchArmed then started = emu.getState().masterClock end
+  end, emu.callbackType.exec, FIELD_IN, FIELD_IN)
+  emu.addMemoryCallback(function()
+    if not started then return end
+    local cost = (emu.getState().masterClock - started) / 1364
+    sum = sum + cost; n = n + 1; worst = math.max(worst, cost); started = nil
+  end, emu.callbackType.exec, FIELD_OUT, FIELD_OUT)
+  if SHARDS_IN and SHARDS_OUT then
+    emu.addMemoryCallback(function()
+      if E.watchArmed then upload = emu.getState().masterClock end
+    end, emu.callbackType.exec, SHARDS_IN, SHARDS_IN)
+    emu.addMemoryCallback(function()
+      if not upload then return end
+      local cost = (emu.getState().masterClock - upload) / 1364
+      uploadSum = uploadSum + cost; uploadN = uploadN + 1
+      uploadMax = math.max(uploadMax, cost); upload = nil
+    end, emu.callbackType.exec, SHARDS_OUT, SHARDS_OUT)
+  end
+  return function()
+    H.result('shard_late', late)
+    H.result('shard_sprites_max', spritesMax)
+    H.result('shard_slivers_max', sliversMax)
+    H.result('frame_lines_mean', n > 0 and sum/n or 0)
+    H.result('frame_lines_max', worst)
+    H.result('shard_upload_lines_mean', uploadN > 0 and uploadSum/uploadN or 0)
+    H.result('shard_upload_lines_max', uploadMax)
+  end
 end

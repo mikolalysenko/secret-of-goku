@@ -275,6 +275,7 @@ hi_bits_ram = !SW+$DF0             ; 16 bytes (oam_put's high-table patterns)
 !LD_GOKU   = $07        ; Goku tiles: src = the DMA table queue_goku built (bank $32), dest = its length
 !LD_M7TILES = $08       ; the flight's Mode 7 characters from the world data (size = tiles)
 !LD_M7ROWS  = $09       ; the flight's Mode 7 map window from the world RLE (size = rows)
+!LD_SHARDS = $0A       ; prepare the rotating-cell cache under black
 !LD_END    = $FF
 
 macro ld(src, mode, dest, size)
@@ -1340,6 +1341,7 @@ incsrc "sound.asm"
 incsrc "cutaway.asm"
 incsrc "upload.asm"
 incsrc "flight-scale.asm"
+incsrc "space-shards.asm"
 ending_x_end:
 assert ending_x_end <= !CODE_ENDING_X+$4000, "ending second code area overflow"
 pullpc
