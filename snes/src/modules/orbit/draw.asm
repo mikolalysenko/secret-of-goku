@@ -545,6 +545,7 @@ fd_death_frame:
 fd_death_frame32:
 	JSR fd_death_frame
 	STA.w !v_d32
+	INC.w !d_ball32                ; (drawn this frame: the outer planet leaves its slot)
 	RTS
 fd_death_frame16:
 	JSR fd_death_frame

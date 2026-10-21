@@ -6,7 +6,10 @@
 ; beams there take two chains at most) and in the clash in the Death Disc
 ; cells $1A0-$1A6 (home C: no discs fly in the clash); the outer planet in
 ; the 32 px Death Ball's slot $004 (home A) while no such ball shows, else
-; in beam slot 4 while Frieza's beam leaves it free, else not drawn.
+; in beam slot 4 while Frieza's beam leaves it free, else not drawn. Each
+; notes its rows for the stars' row limits, and one that yields to a beam
+; (its rows a beam crosses have no room on the sprite lines) is not drawn
+; (scline.asm).
 ; DB = $32, M16/X16.
 
 !SC_HOME_A_VRAM = $6000+($004*16)  ; the outer planet: 4 rows of 128 bytes
@@ -28,6 +31,10 @@ sc_draw:
 	JSR sc_wants
 	; impacts: fd_burst (nine sub-bursts) at the shattered body's place,
 	; its copy kept, at priority 0
+	LDA.w !sc_imp
+	ORA.w !sc_imp+4
+	ORA.w !sc_imp+8
+	BEQ .bodies                    ; (none)
 	LDX.w #(!OSC_N-1)*2
 .imp
 	TXA : ASL : TAY
@@ -71,7 +78,11 @@ sc_draw:
 .nextImp
 	DEX : DEX
 	BPL .imp
-	; the bodies
+.bodies
+	; the bodies (their rows on the sprite lines noted afresh)
+	STZ.w !sb_dsig
+	STZ.w !sb_dsig+2
+	STZ.w !sb_dsig+4
 	LDA.w !sc_dead
 	LSR
 	BCS +
@@ -96,6 +107,8 @@ sc_draw_moon:
 	LDA.l !sc_have+4
 	CMP.w #$FFFF
 	BEQ .no
+	JSR sc_note32
+	BCS .no
 	LDA.w #$1A0|(!OFX_PAL_FIRE<<9)
 	JMP sc_put_cells
 .fight
@@ -103,6 +116,8 @@ sc_draw_moon:
 	AND.w #$F000
 	CMP.w #!SC_KEY
 	BNE .no
+	JSR sc_note32
+	BCS .no
 	LDA.w #$084|(!OFX_PAL_FIRE<<9)
 	JMP sc_put_big
 .no
@@ -113,12 +128,13 @@ sc_draw_moon:
 sc_draw_outer:
 	LDX.w #2
 	JSR sc_corner
-	LDA.w !v_d32
-	CMP.w #$FFFF
+	LDA.w !d_ball32
 	BNE .slot
 	LDA.l !sc_have
 	CMP.w #$FFFF
 	BEQ .no
+	JSR sc_note32
+	BCS .no
 	LDA.w #$004|(!OFX_PAL_FIRE<<9)
 	JMP sc_put_big
 .slot
@@ -126,21 +142,93 @@ sc_draw_outer:
 	AND.w #$F000
 	CMP.w #!SC_KEY
 	BNE .no
+	JSR sc_note32
+	BCS .no
 	LDA.w #$080|(!OFX_PAL_FIRE<<9)
 	JMP sc_put_big
 .no
 	RTS
 
-; The planetoid: home B (the free fx cells, four 16x16).
+; The planetoid: home B (the free fx cells, four 16x16; one, its centre at
+; (8, 8), for radius 7 or less: orbit-scenery.mjs).
 sc_draw_planetoid:
-	LDX.w #4
-	JSR sc_corner
 	LDA.l !sc_have+2
 	CMP.w #$FFFF
-	BEQ +
+	BEQ .no
+	CMP.w #!OSC_PLANETOID+!OSC_PLANETOID_ONE
+	BCS .four
+	LDA.l !sc_pos+4
+	SEC : SBC.w #8
+	STA.w !d_x
+	LDA.l !sc_pos+10
+	SEC : SBC.w #8
+	STA.w !d_y
+	LDX.w #4
+	JSR sc_note16
+	BCS .no
+	STZ.w !d_big
+	LDA.w #$028|(!OFX_PAL_FIRE<<9)
+	STA.w !d_ta
+	JMP ofx_put
+.four
+	LDX.w #4
+	JSR sc_corner
+	JSR sc_note32
+	BCS .no
 	LDA.w #$028|(!OFX_PAL_FIRE<<9)
 	JMP sc_put_cells
-+	RTS
+.no
+	RTS
+
+; Body X16 (* 2) about to be drawn with its top left at d_x, d_y (32
+; pixels square, 16 with sc_note16): its rows noted for the star limits,
+; then carry set when it yields to a beam (not drawn). Here the common
+; cases (on the screen at the rows the limits count, with nothing there to
+; yield to, or still blocked after its least hold); the rest in scline.asm
+; sl_note. Keeps X.
+sc_note16:
+	LDA.w #16
+	BRA +
+sc_note32:
+	LDA.w #32
++	STA.w !sl_half
+	LDA.w !d_x
+	CMP.w #256
+	BPL .far
+	CLC : ADC.w !sl_half
+	BMI .far
+	BEQ .far
+	LDA.w !sl_half
+	XBA : ASL                      ; (its top line and size as last noted)
+	CLC : ADC.w !d_y
+	CMP.w !sb_cy,X
+	BNE .far
+	LDA.w !sb_lsig,X
+	BEQ .far
+	STA.w !sb_dsig,X
+	LDA.w !sb_blk                  ; (nothing to yield to, nor held back)
+	ORA.w !sb_stale
+	ORA.w !sb_held
+	AND.l sc_bodybits,X
+	BNE .busy
+	CLC
+	RTS
+.busy
+	LDA.w !sb_blk                  ; (blocked again, its hold blocked and as
+	AND.l sc_bodybits,X            ; long as its least: nothing changes)
+	BEQ .far
+	LDA.w !sb_room,X
+	BNE .far
+	LDA.w !sb_hold,X
+	AND.w #$40FF
+	CMP.w #$4000|!SL_HOLD
+	BCC .far
+	SEC
+	RTS
+.far
+	LDA.w !sl_half
+	JSL sl_note_far
+	RTS
 
 ; d_x, d_y = body X16's (* 2) top left: its centre - 16.
 sc_corner:
@@ -258,8 +346,7 @@ sc_wants:
 	AND.w #$0007
 	XBA
 	ORA.w !cam_r
-	LDX.w !v_d32
-	CPX.w #$FFFF
+	LDX.w !d_ball32
 	BEQ +
 	ORA.w #$0800
 +	LDX.w !fn_phase
@@ -274,12 +361,11 @@ sc_wants:
 	STA.l !sc_want
 	STA.l !sc_want+2
 	STA.l !sc_want+4
-	; home A: the outer planet while alive and no 32 px Death Ball wanted
+	; home A: the outer planet while alive and no 32 px Death Ball drawn
 	LDA.w !sc_dead
 	AND.w #$0002
 	BNE +
-	LDA.w !v_d32
-	CMP.w #$FFFF
+	LDA.w !d_ball32
 	BNE +
 	LDX.w #2
 	LDA.w #!OSC_OUTER
@@ -354,8 +440,7 @@ sc_queue:
 	LDA.w !sc_dead
 	AND.w #$0002
 	BNE .out
-	LDA.w !v_d32
-	CMP.w #$FFFF
+	LDA.w !d_ball32
 	BEQ .out
 	LDA.w !bw_key+2
 	CMP.w #$FFFF

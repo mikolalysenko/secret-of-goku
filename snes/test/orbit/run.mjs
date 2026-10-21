@@ -125,7 +125,27 @@ const badColours=watch=>(watch??[]).map((w,i)=>[i,w.split('|')[0]]).filter(([,c]
 // the visible lines: [frame, CGRAM writes, DMA starts]; the frames whose
 // HDMA enable left out one of the scene's channels, and the frames at and
 // after a repeated picture whose band lines show the rim's colour (the
-// rays' layers drawn with the rim's colour math): [frame, pixels].
+// rays' layers drawn with the rim's colour math): [frame, pixels]. And the distant bodies
+// (W.bodies): per body its hides (drawn, then yielding to a beam) and
+// shows, the frames held back, and the frames whose bodies cost the other
+// sprites slivers or lost their own: [frame, slivers].
+const bodyFindings=watch=>{
+  const hides=[0,0,0],shows=[0,0,0],held=[0,0,0],others=[],own=[],last=[null,null,null];
+  (watch??[]).forEach((w,i)=>{
+    const f=w.split('|').find(x=>/^[-dh]{3},\d+,\d+$/.test(x));if(!f)return;
+    const[st,o,b]=f.split(',');
+    if(Number(o)>0)others.push([i,Number(o)]);
+    if(Number(b)>0)own.push([i,Number(b)]);
+    for(let k=0;k<3;k++){
+      const s=st[k];if(s==='h')held[k]++;
+      if(last[k]==='d'&&s==='h')hides[k]++;
+      if(last[k]==='h'&&s==='d')shows[k]++;
+      if(s!=='-')last[k]=s;
+    }
+  });
+  return {hides,shows,held,others,own};
+};
+const bodyText=b=>`the bodies held back ${b.held.join('/')} frames (hides ${b.hides.join('/')}, shows ${b.shows.join('/')}: moon/outer planet/planetoid), costing the others ${b.others.reduce((n,[,s])=>n+s,0)} slivers in ${b.others.length} frames and losing ${b.own.reduce((n,[,s])=>n+s,0)} of their own`;
 const watchFindings=watch=>{
   const late=[],dropped=[],writes=[],hdma=[],bandrim=[];
   (watch??[]).forEach((w,i)=>{
@@ -357,15 +377,18 @@ async function fightCase(rom,name,frames,pads,shotList,maxLag=3){
       if(d.length)mismatches.push(`age ${c.boss.age}: ${d.slice(0,4).join('; ')}`);
     }
     // every frame: the colours the orbit owns as the scene sends them
-    const colours=badColours(res.watch),{late,dropped,writes}=watchFindings(res.watch);
-    const report={compared,mismatchFrames:mismatches.length,first:mismatches.slice(0,12),lagged:res.lagged,hpTrail:trail,colours,late,dropped,writes,watch:res.watch,
+    const colours=badColours(res.watch),{late,dropped,writes}=watchFindings(res.watch),bodies=bodyFindings(res.watch);
+    const report={compared,mismatchFrames:mismatches.length,first:mismatches.slice(0,12),lagged:res.lagged,hpTrail:trail,colours,late,dropped,writes,bodies,watch:res.watch,
       end:{cart:cart.at(-1),browser:ref[cart.at(-1).boss.age-1]?refState(ref[cart.at(-1).boss.age-1]):null}};
     writeFileSync(join(dir,'report.json'),JSON.stringify(report,null,1));
     // The fight steps once per field vblank (catching up after a slow game
     // frame, as the browser's clock does); a few pictures may still repeat
     // when the game's own frame runs long (its damage reaction).
-    ok=ok&&compared>=frames-80&&mismatches.length===0&&res.lagged<=maxLag&&colours.length===0&&late.length===0&&writes.length===0;
+    // (and a distant body drawn whole or not at all: it never loses
+    // slivers on the sprite lines)
+    ok=ok&&compared>=frames-80&&mismatches.length===0&&res.lagged<=maxLag&&colours.length===0&&late.length===0&&writes.length===0&&bodies.own.length===0;
     console.log(`${name}: ${ok?'pass':'FAIL'} compared ${compared} frames, ${mismatches.length} differ, ${res.lagged} lagged, HP trail ${trail}, ${colours.length} frames with other colours, ${late.length} late vblanks, ${writes.length} frames writing CGRAM or DMA on visible lines, ${dropped.length} frames dropping sprites`);
+    console.log(`  ${bodyText(bodies)}`);
     for(const[f,c]of colours.slice(0,8))console.log(`  frame ${f}: ${c} not the scene's`);
     for(const[f,cw,dw]of writes.slice(0,8))console.log(`  frame ${f}: ${cw} CGRAM writes, ${dw} DMA starts on visible lines`);
     for(const m of mismatches.slice(0,8))console.log('  '+m);
@@ -513,15 +536,16 @@ const cases={
     const want=ref.filter(b=>b.native).map(b=>b.native.map(v=>v.toString(16)).join(' '));
     const returned=cart.find(c=>c.returned),refReturn=ref.find(b=>b.returned);
     // every frame the globe picture shows: the colours the orbit owns
-    const colours=badColours(res.watch),{late,dropped,writes,hdma,bandrim}=watchFindings(res.watch);
+    const colours=badColours(res.watch),{late,dropped,writes,hdma,bandrim}=watchFindings(res.watch),bodies=bodyFindings(res.watch);
     const report={compared,mismatchFrames:mismatches.length,first:mismatches.slice(0,16),lagged:res.lagged,nativeWant:want,
-      returnedAt:returned?.wage,refReturnedAt:refReturn?refReturn.boss.age:null,colours,late,dropped,writes,hdma,bandrim,watch:res.watch,end:cart.at(-1)};
+      returnedAt:returned?.wage,refReturnedAt:refReturn?refReturn.boss.age:null,colours,late,dropped,writes,hdma,bandrim,bodies,watch:res.watch,end:cart.at(-1)};
     writeFileSync(join(dir,'report.json'),JSON.stringify(report,null,1));
     // (and at and after every repeated picture the rays' band layers drawn
     // as on any other frame: the scene's HDMA channels on, no band pixel in
     // the rim's colour)
-    ok=ok&&compared>=frames-200&&mismatches.length===0&&!!returned&&returned.wage===refReturn?.boss.age&&colours.length===0&&late.length===0&&writes.length===0&&hdma.length===0&&bandrim.length===0;
+    ok=ok&&compared>=frames-200&&mismatches.length===0&&!!returned&&returned.wage===refReturn?.boss.age&&colours.length===0&&late.length===0&&writes.length===0&&hdma.length===0&&bandrim.length===0&&bodies.own.length===0;
     console.log(`clash: ${ok?'pass':'FAIL'} compared ${compared} frames, ${mismatches.length} differ, ${res.lagged} lagged, back at ${returned?.wage} / ${refReturn?.boss.age}, ${colours.length} frames with other colours, ${late.length} late vblanks, ${writes.length} frames writing CGRAM or DMA on visible lines, ${hdma.length} frames without the scene's HDMA channels, ${bandrim.length} band pictures miscoloured after a repeat, ${dropped.length} frames dropping sprites`);
+    console.log(`  ${bodyText(bodies)}`);
     for(const[f,n]of bandrim.slice(0,8))console.log(`  frame ${f}: ${n} band-line pixels in the rim's colour`);
     for(const m of mismatches.slice(0,10))console.log('  '+m);
     // the repeated pictures by the finale's phase and age (the frame's own

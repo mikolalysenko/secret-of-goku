@@ -65,6 +65,9 @@ sc_init:
 	DEX : DEX
 	BPL -
 	STZ.w !sc_pend
+	STZ.w !sc_dk
+	STZ.w !sc_dk+2
+	STZ.w !sc_dk+4
 	LDA.w #$FFFF
 	STA.w !sc_wkey                 ; (the wanted pictures afresh)
 	STA.l !sc_nwant
@@ -139,7 +142,10 @@ macro sc_unit(k)
 	LDX.w !sc_dtx
 	LDA.w !sc_n+(<k>*8) : CLC : ADC.l sc_steps+(<k>*108),X : STA.w !sc_n+(<k>*8)
 	LDA.w !sc_n+(<k>*8)+2 : ADC.l sc_steps+(<k>*108)+2,X : STA.w !sc_n+(<k>*8)+2
-	LDX.w !sc_dcy
+	LDA.w !sc_pend                 ; (its pending steps: those it has not taken)
+	SEC : SBC.w !sc_dk+(<k>*2)
+	ASL : ASL
+	TAX
 	BEQ ?xp
 	LDA.w !sc_n+(<k>*8) : CLC : ADC.l sc_pend_tab+(<k>*64),X : STA.w !sc_n+(<k>*8)
 	LDA.w !sc_n+(<k>*8)+2 : ADC.l sc_pend_tab+(<k>*64)+2,X : STA.w !sc_n+(<k>*8)+2
@@ -194,14 +200,18 @@ sc_update:
 	RTS                            ; (nothing moved)
 +	CMP.w #2
 	BNE .whole
-	; a step's travel alone (travelX + 2): pending while no place moves
+	; a step's travel alone (travelX + 2): pending while no place moves;
+	; a body whose place would move takes its steps alone
 	LDA.w !cam_tdx : STA.w !sc_ax
 	INC.w !sc_pend
 	LDA.w !sc_pend
-	CMP.w !sc_room
+	CMP.w #16
+	BCC +
+	JMP sc_flush                   ; (the table's 15 steps at most: every body whole)
++	CMP.w !sc_next
 	BCC +
 	BEQ +
-	JMP sc_flush                   ; (a place moves: the steps whole)
+	JMP sc_moves                   ; (a place moves)
 +	RTS
 .cam
 	STZ.w !sc_expo                 ; (the camera moved: where each body shows, unknown)
@@ -256,14 +266,14 @@ sc_update:
 	LDA.w !sc_t+2
 	ASL : ASL
 	STA.w !sc_dtx
-	LDA.w !sc_pend                 ; (the pending travel's steps too)
-	ASL : ASL
-	STA.w !sc_dcy
-	%sc_unit(0)
+	%sc_unit(0)                    ; (each with the pending steps it has not taken)
 	%sc_unit(1)
 	%sc_unit(2)
 	STZ.w !sc_pend
-	STZ.w !sc_room                 ; (counted at the next step of travel's flush)
+	STZ.w !sc_dk
+	STZ.w !sc_dk+2
+	STZ.w !sc_dk+4
+	JSR sc_rooms
 	LDA.w !sc_dr
 	BEQ +
 	JMP sc_radii
@@ -373,18 +383,58 @@ sc_pend_tab:
 sc_room_tab:
 	db !OSC_ROOM
 
-; The pending steps of travelX + 2 into the remainders (-4264 d each: their
-; places a pixel at a time), then the room before the next place moves.
+; Every body's pending steps of travelX + 2 into its remainder (-4264 d
+; each: its place a pixel at a time), none pending after.
 sc_flush:
+	LDX.w #(!OSC_N-1)*2
+-	LDA.w !sc_pend
+	SEC : SBC.w !sc_dk,X
+	BEQ +
+	JSR sc_flush_one
++	DEX : DEX
+	BPL -
+	STZ.w !sc_pend
+	STZ.w !sc_dk
+	STZ.w !sc_dk+2
+	STZ.w !sc_dk+4
+	JMP sc_nexts
+; The bodies whose places move with the pending steps take them (their
+; places a pixel at a time), the others keep them pending.
+sc_moves:
+	LDX.w #(!OSC_N-1)*2
+-	LDA.w !sc_pend
+	SEC : SBC.w !sc_dk,X
+	CMP.w !sc_rk,X
+	BCC +
+	BEQ +
+	JSR sc_flush_one
++	DEX : DEX
+	BPL -
+; sc_next = the pending count at which the first place moves.
+sc_nexts:
+	LDA.w #$7FFF
+	STA.w !sc_next
+	LDX.w #(!OSC_N-1)*2
+-	LDA.w !sc_dk,X
+	CLC : ADC.w !sc_rk,X
+	CMP.w !sc_next
+	BCS +
+	STA.w !sc_next
++	DEX : DEX
+	BPL -
+	RTS
+; Body X16's (* 2) pending steps into its remainder, its place a pixel at
+; a time, then its room. Keeps X.
+sc_flush_one:
+	STX.w !sc_kb
 	LDA.w !sc_pend
-	BEQ sc_rooms
+	SEC : SBC.w !sc_dk,X
 	ASL : ASL
 	STA.w !sc_t                    ; (4 bytes a count)
+	LDA.w !sc_pend
+	STA.w !sc_dk,X
 	STZ.w !sc_dn
 	STZ.w !sc_dn+2
-	LDX.w #(!OSC_N-1)*2
-.body
-	STX.w !sc_kb
 	TXA
 	ASL : ASL
 	TAY                            ; its remainders
@@ -396,25 +446,26 @@ sc_flush:
 	LDA.w !sc_n+2,Y : ADC.l sc_pend_tab+2,X : STA.w !sc_n+2,Y
 	BMI .move
 	CMP.w #(!OSC_D)>>16
-	BCC .next
+	BCC .room
 	BNE .move
 	LDA.w !sc_n,Y
 	CMP.w #(!OSC_D)&$FFFF
-	BCC .next
+	BCC .room
 .move
 	JSR sc_move_x                  ; (sc_dn 0: the pixels along)
-.next
+.room
 	LDX.w !sc_kb
-	DEX : DEX
-	BPL .body
-	STZ.w !sc_pend
-; sc_room = the steps of travelX + 2 every place takes before it moves
-; (orbit-scenery.mjs: by remainder / 2048, at most the true count).
+	JMP sc_room_one
+; Every body's room: the steps of travelX + 2 its place takes before it
+; moves (orbit-scenery.mjs: by remainder / 2048, at most the true count).
 sc_rooms:
-	LDA.w #15
-	STA.w !sc_room
 	LDX.w #(!OSC_N-1)*2
-.r
+-	JSR sc_room_one
+	DEX : DEX
+	BPL -
+	JMP sc_nexts
+; Body X16's (* 2) room. Keeps X.
+sc_room_one:
 	TXA
 	ASL : ASL
 	TAY
@@ -426,11 +477,7 @@ sc_rooms:
 	LDA.l sc_room_tab,X
 	AND.w #$00FF
 	PLX
-	CMP.w !sc_room
-	BCS +
-	STA.w !sc_room
-+	DEX : DEX
-	BPL .r
+	STA.w !sc_rk,X
 	RTS
 .base	dw 0, 52, 104
 

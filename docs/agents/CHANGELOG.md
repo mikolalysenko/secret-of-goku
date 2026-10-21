@@ -4,6 +4,38 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the distant bodies yield to the sprite lines (2026-10-21)
+
+- The distant bodies now count in the stars' row limits: on the rows a
+  beam crosses with the beams' slivers, on their other rows with a
+  margin of 10 slivers a line for Goku, Frieza, the shots and the bursts
+  (a few fewer stars near a planet).
+- A body yields, and is not drawn, while its rows a beam crosses have no
+  room for it, or until both star lists were rebuilt with it counted
+  there. It stays hidden 16 frames at least, then until the beams are
+  gone or its rows had room for 16 frames running (64 after a frame with
+  none): one hide for a beam's pass, no flicker. In the clash the
+  planetoid hides as each launch begins and comes back when the rays are
+  gone. A body is drawn whole or not at all.
+- The bodies' sprites cost the others 2 slivers in the `clash` (Stage A:
+  1,062) and 16 in the `fight` (392), all inside bursts. The `scenery`
+  run keeps about its 715 (721): bursts, ki and Frieza beside a body,
+  which no body hides for. The bursts stay before the bodies in OAM.
+- The planetoid of radius 7 is one 16x16 cell (2 slivers a line).
+- Fixed: after the first 32 px Death Ball the outer planet never went
+  back to its own home (`v_d32` was never cleared), so it vanished
+  whenever Frieza's beam took beam slot 4.
+- Cheaper scenery work: each body takes its pending travel steps alone,
+  its rows come from a cache while its top line and size stay, and an
+  empty impact loop is skipped.
+- Repeated pictures on the default build: `fight` 11 (main 2), `clash`
+  60 (main 34; 52 before this change).
+- Tests: `fight`, `scenery` and `clash` report each body's frames held
+  back, its hides and shows, and the slivers the bodies cost the others
+  (`W.bodies`). A body that loses a sliver of its own fails the case.
+- Code: `scline.asm` in the third area (3.9 KiB of 16 used); the main
+  area at 30.7 of 31 KiB.
+
 ## Orbit: the rays' band layers through repeated pictures (2026-10-21)
 
 - A repeated picture in the clash (a game frame that missed its vblank)

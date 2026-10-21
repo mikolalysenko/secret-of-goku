@@ -25,8 +25,9 @@
 ; cells. A star takes 2 on each of its 16 lines. While beams show, the
 ; rows (8 lines) under their cells limit the stars of lists 1-2 that may
 ; cover them (stars_limits: (34 - !SC_SPARE - the beams' slivers a line)
-; / 2, both lists together); a build leaves out a star past a limit, and a
-; change of the limits rebuilds the lists (s_kgen).
+; / 2, both lists together), and so do the distant bodies' rows (their
+; slivers and a margin: scline.asm); a build leaves out a star past a
+; limit, and a change of the limits rebuilds the lists (s_kgen).
 
 stars_frame:
 	REP #$30
@@ -466,6 +467,8 @@ stars_build_step:
 	TYA
 	SEC : SBC.l stars_list_at-2,X
 	STA.w !s_lists-2,X
+	LDA.w !sk_have,X               ; (finished: the generation it was built with)
+	STA.w !sk_done,X
 	STZ.w !s_bd
 	RTS
 
@@ -634,12 +637,13 @@ stars_limits:
 .next
 	DEX : DEX
 	BPL .group
+	JSL sl_bodies_far              ; (the distant bodies' rows: scline.asm)
 	LDA.w !s_left
 	AND.w #$00FF
 	BNE +
 	RTS
 +	JSR stars_limits_free
-	; slivers into the rows, then limits: (34 - spare - slivers) / 2
+	; the beams' slivers into the rows (then the bodies' and the limits)
 	LDY.w #$0000
 .sum
 	SEP #$20
@@ -668,20 +672,7 @@ stars_limits:
 	INY : INY : INY : INY
 	CPY.w #8
 	BCC .sum
-	LDX.w #27
-	SEP #$20
--	LDA.w !sc_k,X
-	CMP.b #!SC_FREE
-	BEQ +
-	EOR.b #$FF
-	SEC : ADC.b #34-!SC_SPARE      ; 34 - spare - slivers
-	BPL ++
-	LDA.b #0
-++	LSR
-	STA.w !sc_k,X
-+	DEX
-	BPL -
-	REP #$20
+	JSL sl_count_far               ; (the distant bodies' rows, then the limits: scline.asm)
 	INC.w !s_kgen                  ; (every list rebuilt with them, first)
 	LDA.w #$0001
 	STA.w !sc_hot
@@ -717,6 +708,7 @@ stars_limits_reset:
 	STA.w !sc_sig+2
 	STA.w !sc_sig+4
 	STA.w !sc_sig+6
+	JSL sl_reset_far
 	RTS
 
 ; Carry set when group X's beam differs from the one its limits were made

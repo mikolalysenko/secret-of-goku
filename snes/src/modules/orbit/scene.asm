@@ -858,6 +858,7 @@ orbit_oam_frame:
 	STA.w !au_want+2
 	STA.w !vb_want
 	STA.w !vb_want+2
+	STZ.w !d_ball32                ; (nor a 32 px Death Ball)
 	LDA.w !od_on
 	BEQ +
 	JSR death_draw
@@ -1515,6 +1516,8 @@ orbit_nmi_cells:
 	STA.w !n_len
 	JSR orbit_nmi_rows
 .d32
+	LDA.w !d_ball32                ; (a ball the last frame drew)
+	BEQ .d16
 	LDA.w !v_d32
 	CMP.w !v_d32_h
 	BEQ .d16

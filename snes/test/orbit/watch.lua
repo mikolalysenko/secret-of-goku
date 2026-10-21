@@ -16,6 +16,8 @@
 --               taken, the rebuild flag, our vblank's and frame's last
 --               lines
 --   W.oam()     the PPU's per-line limits on the OAM just shown
+--   W.bodies()  the distant bodies: drawn, held back or off the screen;
+--               the slivers their sprites cost the others and lose
 --   W.marks()   the scanlines at the frame's stages
 --   W.install() (once, before the frames) and W.writes(): while the orbit
 --               is live, the frame's CPU writes to CGRAM ($2121/$2122)
@@ -107,6 +109,77 @@ function W.oam()
     if c > 32 or t > 34 then over = over + 1 end
   end
   return ms .. ',' .. mt .. ',' .. over
+end
+-- The distant bodies (scdraw.asm, scline.asm): per body (the moon, the
+-- outer planet, the planetoid) '-' off the screen or without its picture,
+-- 'd' drawn, 'h' yielding to a beam (the scene's state for its next
+-- picture: sb_dsig SB+$088, sb_hold SB+$A0A, module.asm); then, on the OAM
+-- the frame just shown used, the slivers the bodies' sprites (OBJ palette
+-- 0, their cells) cost the other sprites on the lines over the PPU's
+-- limits (the others' loss with them against without them), and those the
+-- bodies lose themselves: 'states,others,own'.
+local BODY_CELLS = {[0x004] = true, [0x080] = true, [0x084] = true, [0x028] = true, [0x02A] = true,
+  [0x02C] = true, [0x02E] = true, [0x1A0] = true, [0x1A2] = true, [0x1A4] = true, [0x1A6] = true}
+-- the PPU on one line: the first 32 sprites in range in OAM order, their
+-- slivers fetched last sprite first, 34 at most; the others' and the
+-- bodies' lost slivers (skip: without the bodies)
+local function lineLoss(S, line, skip)
+  local list, others, own = {}, 0, 0
+  for _, s in ipairs(S) do
+    if not (skip and s.body) and ((line - s.y) & 255) < s.size then
+      if #list < 32 then list[#list + 1] = s
+      elseif s.body then own = own + s.tiles else others = others + s.tiles end
+    end
+  end
+  local fetched = 0
+  for k = #list, 1, -1 do
+    local s = list[k]
+    fetched = fetched + s.tiles
+    local lost = fetched - 34
+    if lost > s.tiles then lost = s.tiles end
+    if lost > 0 then if s.body then own = own + lost else others = others + lost end end
+  end
+  return others, own
+end
+function W.bodies()
+  local st = {}
+  for k = 0, 2 do
+    if H.r16(SB + 0x088 + k * 2) == 0 then st[#st + 1] = '-'
+    elseif H.r16(SB + 0xA0A + k * 2) & 0x8000 ~= 0 then st[#st + 1] = 'h'
+    else st[#st + 1] = 'd' end
+  end
+  local S, any, count, slivers = {}, false, {}, {}
+  for i = 0, 127 do
+    local x = emu.read(i * 4, emu.memType.snesSpriteRam)
+    local y = emu.read(i * 4 + 1, emu.memType.snesSpriteRam)
+    local t = emu.read(i * 4 + 2, emu.memType.snesSpriteRam) | (emu.read(i * 4 + 3, emu.memType.snesSpriteRam) << 8)
+    local hi = emu.read(512 + (i >> 2), emu.memType.snesSpriteRam) >> ((i & 3) * 2)
+    if hi & 1 ~= 0 then x = x - 256 end
+    local size = (hi & 2 ~= 0) and 32 or 16
+    local tiles = 0
+    for c = 0, size // 8 - 1 do local tx = x + c * 8; if tx > -8 and tx < 256 then tiles = tiles + 1 end end
+    if tiles > 0 then
+      local body = (t >> 9) & 7 == 0 and BODY_CELLS[t & 0x1FF] == true
+      if body then any = true end
+      S[#S + 1] = {y = y, size = size, tiles = tiles, body = body}
+      for dy = 0, size - 1 do
+        local line = (y + dy) & 255
+        if line < 224 then count[line] = (count[line] or 0) + 1; slivers[line] = (slivers[line] or 0) + tiles end
+      end
+    end
+  end
+  local others, own = 0, 0
+  if any then
+    for line = 0, 223 do
+      if (count[line] or 0) > 32 or (slivers[line] or 0) > 34 then
+        local o1, b1 = lineLoss(S, line, false)
+        local o0 = lineLoss(S, line, true)
+        if o1 > o0 then others = others + o1 - o0 end
+        own = own + b1
+      end
+    end
+  end
+  return table.concat(st) .. ',' .. others .. ',' .. own
 end
 -- Writes on the visible lines (0-224) while the orbit is live, through the
 -- banks the core ($00, $80) and the orbit ($32) write I/O from: CGRAM

@@ -132,12 +132,23 @@ endmacro
 !g_ybase    = !SB+$014            ; texel row at the disc centre
 !g_top      = !SB+$016            ; first globe line on screen
 !g_bot      = !SB+$018            ; last globe line on screen
+!sb_cnt     = !SB+$01A            ; the distant bodies counted on the rows a beam crosses (bits 0-2: scline.asm)
+!sb_blk     = !SB+$01C            ;   those blocked there (no room: not drawn)
 !g_cx       = !SB+$01E            ; centre column the window block holds
+!sb_mv      = !SB+$020            ; the distant bodies whose rows changed since the limits were made (scline.asm)
 !sc_ax      = !SB+$022            ;   the frame's travelX (cam_tdx) it has applied
 !g_hofs     = !SB+$024            ; M7HOFS for the NMI
 !g_m7x      = !SB+$026            ; M7X for the NMI
 !sc_ay      = !SB+$028            ;   and travelY (cam_tdy)
+!sb_lsig    = !SB+$02A            ; 3 words: each body's rows and slivers the limits count (scline.asm; 0: none)
 !g_tmp      = !SB+$030            ; 16 bytes scratch ($30-$3F)
+!sl_t       = !g_tmp+0            ; (scline.asm's scratch)
+!sl_b       = !g_tmp+2
+!sl_half    = !g_tmp+4
+!sl_n       = !g_tmp+6
+!sl_s       = !g_tmp+8
+!sl_was     = !g_tmp+10
+!sl_g       = !g_tmp+14
 !g_text     = !SB+$040            ; byte: lines 0..g_text-1 are Mode 1 (BG3 panel)
 !g_textset  = !SB+$041            ; byte: g_text the BGMODE table holds ($FF none)
 !g_shown_it = !SB+$042            ; the indirect table set the last vblank gave the HDMA
@@ -171,6 +182,8 @@ endmacro
 !sy_have    = !SB+$0C0
 !sz_have    = !SB+$0C8
 !sk_have    = !SB+$080            ; 4 words: culling generation of each list
+!sb_dsig    = !SB+$088            ; 3 words: each body's rows and slivers as last noted (scline.asm sl_note; 0: not drawn)
+!sb_klim    = !SB+$09A            ; 3 words: the fewest stars each counted body's rows allow (scline.asm)
 ; ($0D0-$0FF: globe.asm; $100-$7E3 window blocks; $800-$85F indirect HDMA
 ; tables, see globe.asm.)
 ; Globe (globe.asm).
@@ -287,9 +300,17 @@ assert !ma_pairok+2 <= !MA_T1A, "the aerial cut's working state runs into its ta
 !hb_mode    = !SB+$860            ; BGMODE ($2105) table of indirect set 0, 16 bytes (hb_mode1: set 1's)
 !SB_STARS   = !SB+$870            ; star lists: 3 count words, then the entries
 !s_lists    = !SB_STARS           ; bytes in list d at s_lists + d*2 - 2
+!sb_stale   = !SB_STARS+6         ; the distant bodies counted on a beam's rows still waiting for the star lists (scline.asm)
 !s_list1    = !SB_STARS+$008      ; depth 1 (44 x 4)
 !s_list2    = !SB_STARS+$0C0      ; depth 2 (53 x 4)
 !s_list3    = !SB_STARS+$1A0      ; depth 3 (3 x 4, bright)
+; (in the lists' spare room: the distant bodies' waits and holds, scline.asm)
+!sb_kg      = !s_list1+(4*!ORBIT_STARS_D1) ; 3 words: the limits' generation each body's wait for the star lists began at
+!sk_done    = !s_list2+(4*(!ORBIT_STARS_D2-!ORBIT_STARS_D1))-2 ; lists 1-3 at +2, +4, +6: the generation each one's last finished build had
+!sb_hold    = !sk_done+8          ; 3 words: a body that yields: $8000 | the beam groups << 8 | frames of room (0: drawn)
+assert !sb_kg+6 <= !s_list2, "the bodies' waits run into star list 2"
+assert !sb_stale+2 <= !s_list1, "the bodies' wait bits run into star list 1"
+assert !sb_hold+6 <= !s_list3, "the bodies' holds run into star list 3"
 ; The stars' limits under the beams (stars.asm stars_limits): per 8-line
 ; row the stars of lists 1-2 that may cover it, and per list the stars
 ; its last build kept on each row.
@@ -305,6 +326,10 @@ assert !sc_cnt2 == !sc_cnt+28, "the stars' row counts are one array per list"
 assert !sc_hot+2 <= !SB+$A80, "the stars' limits run into the fight's state"
 !SC_FREE    = 254                 ; no limit on the row
 !SC_SPARE   = 2                   ; slivers a line keeps for the sprites besides beams and stars
+!SL_MARGIN  = 10                  ; on a distant body's rows no beam crosses: slivers a line the stars leave free (scline.asm)
+!SL_HOLD    = 16                  ; frames a body that yields to a beam stays hidden at least
+!SL_ROOM    = 16                  ; frames of room before it shows again while the beams are on
+!SL_ROOM_B  = 64                  ;   (when some frame of its hold had no room)
 !SB_END     = !SB+$A80            ; the fight's state follows
 assert !SB_END <= $8000, "orbit scene block overflow"
 
@@ -387,7 +412,7 @@ assert !SB_END <= $8000, "orbit scene block overflow"
 !FS_AFTER   = !FB+$1E0             ; afterimages: 4 x 6 (x, y, age; >= 16 free)
 !sc_expo    = !FB+$1F8             ; the distant bodies (strike.asm): bits 0-2 shown (on the screen, off the globe), 8-10 known
 !sc_pend    = !FB+$1FA             ;   steps of travelX + 2 not yet in their remainders (scenery.asm)
-!sc_room    = !FB+$1FC             ;   steps every place takes before it moves
+!sc_room    = !FB+$1FC             ;   (spare)
 !sc_wkey    = !FB+$1FE             ;   the wanted pictures' key (scdraw.asm sc_wants: radius, bodies, Death Ball, phase)
 ; Maths scratch (math.asm).
 !m_t0       = !FB+$200
@@ -535,6 +560,7 @@ assert !wv_p6+2 <= !SB+$D00, "the victory's colours run into the drawing block"
 !d_hit      = !DB+$18              ; hit entry being drawn
 !d_sx       = !DB+$1A              ; burst scratch (fd_burst: the mirrored frame's offset)
 !d_pri      = !DB+$1C              ; fd_burst_at's priority bits (fd_burst: over the globe)
+!d_ball32   = !DB+$1E              ; nonzero: a 32 px Death Ball drawn this frame
 ; Wanted (frame side) and uploaded (NMI side) dynamic cells; $FFFF = none.
 !v_frieza   = !DB+$20              ; bank FA offset of Frieza's 32x32 frame
 !v_frieza_h = !DB+$22
@@ -703,6 +729,13 @@ assert !FN_END <= !SB+$15A0, "orbit finale block overflow"
 !BD_TAB_A  = !SB+$E10              ; $6E10-$6FB7
 !BD_TAB_B  = !SB+$15A0             ; $75A0-$7747
 !BD_SCROLL = !SB+$1750             ; HDMA tables: +0 $210D/$210E (11 bytes), +12 $2131 (5 bytes)
+!sb_cy     = !SB+$1748             ; 3 words: each body's top line and size its last noted rows had (scline.asm sl_note; $FFFF none)
+assert (!BD_TAB_B)+(106*4) <= !sb_cy, "the bodies' rows cache runs into band table B (106 band lines)"
+!sc_dk     = !SB+$1762             ; 3 words: the pending travel steps each distant body has taken (scenery.asm)
+!sc_rk     = !SB+$1768             ; 3 words: the steps each takes from there before its place moves
+!sc_next   = !SB+$176E             ; the pending count at which the first place moves (min dk + rk)
+assert !BD_SCROLL+17 <= !sc_dk, "the bodies' pending steps run into the band scroll tables"
+assert !sc_next+2 <= !bq_n, "the bodies' pending steps run into the picture queue"
 !bd_on     = !SB+$FB8              ; 2 words: group drawn by its layer this frame
 !bd_mr     = !SB+$FBC              ; 2 words: the radius its map holds (0: none)
 !bd_key    = !SB+$FC0              ; 4 words: the column each table holds (table * 4 + group * 2)
@@ -729,6 +762,10 @@ assert !FN_END <= !SB+$15A0, "orbit finale block overflow"
 !BD_MAP1   = $5400                 ;   BG1 map (Frieza's band; the field's BG1 map area)
 !BD_MAP2   = $5C00                 ;   BG2 map (Goku's)
 !bw_ymin   = !SB+$DB4              ; 2 words: beam cells above this line are the layers'
+!sb_room   = !SB+$DB8              ; 3 words: frames of room running for each body that yields (scline.asm)
+!sb_held   = !SB+$DBE              ;   the bodies that hold back (bits 0-2)
+assert !bw_ymin+4 <= !sb_room, "the bodies' room counts run into the beams' layer lines"
+assert !sb_held+2 <= !bc_sig, "the bodies' held bits run into the beam runs' signatures"
 
 
 ; OBJ VRAM the scene owns while it shows (name base $6000, 16/32 sizes).
@@ -848,12 +885,13 @@ assert orbit_code2_end <= !CODE_ORBIT2+$4000, "orbit second code area overflow"
 pullpc
 
 ; The third code area: title's spare quarter (core/layout.asm notes it):
-; the distant bodies' strikes.
+; the distant bodies' strikes and their share of the sprite lines.
 !CODE_ORBIT3 = !CODE_QUARTER_MISC
 pushpc
 org !CODE_ORBIT3
 orbit_code3_start:
 incsrc "strike.asm"
+incsrc "scline.asm"
 orbit_code3_end:
 assert orbit_code3_end <= !CODE_ORBIT3+$4000, "orbit third code area overflow"
 pullpc
