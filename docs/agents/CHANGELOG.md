@@ -36,6 +36,24 @@ stay traceable even when they are committed together.
   tables 36, Death Balls 22, beam pictures 21, frame records 9), to 2,494.7
   of 2,944 KiB in all with the ending's shards.
 
+## SNES integration: the pullback, faster song loads, Shenron's scaling, the ring menu in the wreck (2026-10-21)
+
+- Orbit (the agent's entries above):
+  - the pullback, with its cut now 5 black frames instead of 16;
+  - the intro's HUD map restored after the montage's town shots.
+- Codex song loading: the new songs hold the game loop 31 / 30 / 8 / 30 /
+  11 frames (were 47 / 42 / 14 / 50 / 12), the Frieza fight's battle theme
+  44 (was 53), and every native song is as fast or faster.
+- Codex ending:
+  - Shenron shrinks as he rises (flight stills 95-97%);
+  - the planet explodes into the browser's 64 rotating shards (stills
+    83-92.5%, were 65-80%).
+- The ring menu opened in the wrecked Sandship keeps its colours (`ship-ring`).
+- Extended data: 2494.7 of 2944 KiB.
+- Validation on 82a2bd8: all 20 suites pass under the read probe. Gameplay
+  misses per 240 frames are unchanged: charge 19, teleport 3, flight 2,
+  flying ki 2, flying punches 1, the rest 0.
+
 ## SNES Sandship: a red flash for the wreck's fires (2026-10-21)
 
 - At the maintainer's request the cartridge draws no fires in the wrecked
