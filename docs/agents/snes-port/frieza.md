@@ -98,6 +98,27 @@ discs, three orbs, an eruption every third attack (65-frame warning, radius
 - **Damage to Goku** goes through the native queue (`$E1F1`), so the native
   numbers, knock-back and death play; combat is told the encounter is
   dangerous (no scaling, no deflection).
+- **Afterimages** (`draw.asm` `fz_draw_afterimages`): the browser draws
+  every live one (frame 5, facing Goku) with a third of its pixels in the
+  ghost violet. The cartridge draws every other one (spawn parity
+  `!af_par`, at most three at a time) every frame, solid, in that dither's
+  mean over the arena floor (`$30E8`, generated). They used to show all
+  together on alternate frames, so the whole trail blinked at 30 Hz, and
+  their slivers (six on one line beside Frieza's) overran the PPU's 34 a
+  line, which drops the first sprites' slivers: Frieza's own arm.
+  Alternating halves every frame keeps the same stills but a 30 Hz flicker
+  per afterimage (52,000 transient pixels in the battle preset against
+  8,800); all of them every frame showed OBJ time-over on 9 of 67 dash
+  frames. Colour math on OBJ palettes 4-7 was not used: it would change
+  the map's CGADSUB/subscreen for every sprite in those palettes (Frieza's
+  preferred ones, FX's fallbacks), the HUD and the flash/whiteout. They
+  are drawn while frame 5 is resident and no upload targets its buffer,
+  so they outlive the dash and expire one by one as in the browser. A
+  fully visible one goes straight into the core's back area with one add
+  of generated biased offsets per piece (`frieza_ghost_pack`, the fx_emit
+  technique): about 2 lines each instead of 15.5 through `fz_spr_draw`
+  and `core_oam_meta`, which made every dash lag (12 lag frames in the
+  battle preset's 900, 9 during dashes; now 4, none during dashes).
 
 ### Broken floor
 
@@ -302,10 +323,51 @@ lag/vblank probes pass. Logs and JSON are private under
   two frames. Residency is dropped on any map change, mode change or dark
   frame (loads may rewrite OBJ VRAM).
 - **Palette**: the browser's fixed 15-colour Frieza palette, plus the
-  boss-death red and white variants and the afterimage ghost colour. Each
-  frame the module picks an OBJ palette no native sprite uses (7, 4, 6, 5,
-  then 3, 2, 0) and writes it to CGRAM in vblank after the game's upload.
-  None of Frieza's maps applies colour math to sprites.
+  boss-death red and white variants, the afterimages' colour and the
+  Emperor's silhouette rows. Each frame the module picks an OBJ palette no
+  native sprite uses (7, 4, 6, 5, then 3, 2, 0); a second one for the
+  afterimages or the Balls. None of Frieza's maps applies colour math to
+  sprites. FX picks its palettes later in the frame from those no sprite in
+  OAM uses, Frieza's staged and back sprites included, so the two never
+  share one that is on screen (a palette Frieza chose but placed no sprite
+  in may go to FX, whose transfer then comes last).
+- **Colours on screen** (`sprite.asm` `frieza_cgram_upload`, in
+  `modules_cgram_upload` before FX's handler): the module used to write its
+  palettes in its vblank callback, which runs only for completed frames.
+  The game sends its whole palette buffer on every vblank while a dialogue
+  window is open (`$1D04` bit 5), lag ones included, so on a lag frame the
+  borrowed palette showed the game's colours (the trial's Thanatos preset,
+  picture 47: Frieza blue and red for a frame). Now the end of every busy
+  field frame publishes what its sprites and backdrop need in one word
+  (`fz_spr_publish`: Frieza's palette and row, the second palette and its
+  colours, colour 0 black for the Emperor's hit or the Tree vista's sky),
+  stamped with `!core_frame`. The handler runs inside the game's palette
+  transfer (`C0:C0F0`, every vblank that sends the palette): when the
+  vblank uploads a completed frame's OAM (`$EC & 9` with bit 0 and core's
+  ready word) it takes that frame's set (consumed; a stale stamp means
+  none), sends the game's buffer and Frieza's 32-byte ranges by DMA over
+  it, and returns carry set (FX then puts its displayed palettes over).
+  On a lag vblank the old OAM stays on screen, so the OBJ colours that
+  went up with it stay too (FX's rule): only the BG half goes up, then
+  Frieza's backdrop, while the set belongs to the frame on screen. Another
+  OAM upload (a ring menu's) shows nothing of Frieza's. Battery noise or an
+  older build's savestate in the words never matches the stamps. The
+  chain (`modules.asm`) calls the handler only while `!fz_cgany` is set
+  (from a nonzero publication until a completed frame's vblank finds
+  nothing to show). Cost: in the court Frieza's vblank work and the whole
+  palette transfer take 6.4 lines a vblank (8.4 before, when the palette
+  was a CPU loop in his callback), in the battle 8.4 on average (9.8);
+  scenes without Frieza pay that one read, 0.04 lines on each vblank that
+  sends the palette (a call there cost 0.15 and two more lag frames in
+  the gameplay suite's `charge`). Every scene that borrows a palette goes
+  through it: with a lag
+  vblank forced every 16 frames (test build), the Tree sequence (148 forced,
+  1,913 vista frames), the Balls' rise (`steal`), the deck's Death Ball
+  (`core-charge`) and the court and fight showed no frame with Frieza out
+  of his colours or a wrong sky. The same build without the handler's lag
+  path lost them on the forced lag frames: the court 21 of 21, the Balls
+  5 of 5, the deck 10 of 10, the fight 12 of 21 (FX's own rule kept the
+  OBJ colours in the others), the Tree 55 frames and 2 skies.
 - **Depth**: in front of the native sprites (`core_oam_add_front`), as the
   browser draws its Frieza layer at OAM index 0; behind them when the front
   slots are taken. Priority 3 (under BG3 dialogue).
@@ -391,11 +453,12 @@ six-scene performance suite pass.
 | WRAM `$7E:DB00-DBBF` | `!RAM_FRIEZA`: scene `+$00-$57`, battle `+$58-$89`, Lich/Beast `+$8A-$AB`, scratch and death/victory `+$AC-$BF` |
 | SRAM `$31:6180-61FF` | `!PERSIST_FRIEZA`: `+$00` version, `+$01` stage, `+$02` tree, `+$03` flags (word), `+$05` stolenMask, `+$06` crisis, `+$07` Beast challenge, `+$08` flyby age; `+$40-$7F` reserved for the orbit stream |
 | SRAM `$32:7000-7FFF` | scene work while Frieza's scenes run: `+$000` hole list and write list (`!FZHB`), `+$800` fight block (`!FZSB`: tag, warning, shots, hazards, afterimages, test mailbox, arena, victory), `+$C00` the hole bitmap. The orbit stream keeps to `$32:6000-6FFF` |
+| SRAM `$31:75F6-75FF` | `!SRAM_WORK_FRIEZA_CG` (core/shared.asm, volatile): the colours a field frame published (`!fz_cgnext`) and its `!core_frame`, the set on screen (`!fz_cgshow`) and its frame, and `!fz_cgany` (either set: the chain calls the handler); cleared at title entry |
 | VRAM | core pool regions, owner `$06` (`!FZ_VRAM_OWNER`), claimed by the frames that use them and given back on the first busy frame that does not (`fz_vram_settle`): `!VRAM_SCENE_OBJ` (OBJ tiles `$0C0-$0FF`) while Frieza is drawn, `!VRAM_SCENE_BG` (BG tiles `$1C0-$1CF`) while holes show on maps 246 and 255, `!VRAM_FIELD_OBJ_A` while the Dragon Balls show; a region another scene holds is not drawn into. Plus the BG1 tilemap entries of visible holes |
-| CGRAM | one free OBJ palette (two with afterimages or the Balls), in vblank; BG palette 6 (map 246) or 2 (map 255) colours 1-7 in the game's buffer while holes show |
-| OAM | up to 8 front sprites for Frieza (one `core_oam_meta_front` call a frame: the generated frame descriptors hold its 4-byte pieces; afterimages behind through `core_oam_meta`), 7 for the Balls; native slots rewritten during the Emperor's black frame |
-| Registers | in vblank, per frame and only when this frame's logic asked: the whiteout (CGWSEL/CGADSUB/COLDATA), the black frame (TM, CGADSUB, CGRAM 0), the collapse tint; the map's values come back the vblank after |
-| DMA | channel 7 in the field NMI |
+| CGRAM | one free OBJ palette (two with afterimages or the Balls) and colour 0 for the Tree vista's sky or the Emperor's black frame, inside the game's palette transfer (`frieza_cgram_upload`); BG palette 6 (map 246) or 2 (map 255) colours 1-7 in the game's buffer while holes show |
+| OAM | up to 8 front sprites for Frieza (one `core_oam_meta_front` call a frame: the generated frame descriptors hold its 4-byte pieces), up to 3 afterimages behind (straight into the core's back area, `core_oam_meta` at the screen edges), 7 for the Balls; native slots rewritten during the Emperor's black frame |
+| Registers | in vblank, per frame and only when this frame's logic asked: the whiteout (CGWSEL/CGADSUB/COLDATA), the black frame (TM, CGADSUB), the collapse tint; the map's values come back the vblank after |
+| DMA | channel 7 in the field NMI: the palette transfer (the game's buffer and Frieza's 32-byte ranges), then frame, Ball and hole uploads after the game's |
 | HDMA | channel 6 -> TM during the Tree vista only; direct table at `$32:7694-769A` |
 
 Original code patched:
@@ -428,7 +491,9 @@ cases of `native-story.js` storyRead (no story overlay touches map 246, so
 the earlier position in the overlay order changes nothing).
 
 Dispatch: `modules_field_frame` -> `frieza_field_frame`,
-`modules_field_nmi` -> `frieza_field_nmi`, `modules_world_frame` ->
+`modules_field_nmi` -> `frieza_field_nmi`, `modules_cgram_upload` ->
+`frieza_cgram_upload` (after the scene handlers, before FX's, while `!fz_cgany` is set),
+`modules_world_frame` ->
 `frieza_world_frame`, `modules_world_nmi` -> `frieza_world_nmi`,
 `world_draw` -> `frieza_world_draw`, `world_nmi_cell` ->
 `frieza_world_body`, `modules_load` ->
@@ -441,6 +506,7 @@ Dispatch: `modules_field_frame` -> `frieza_field_frame`,
 | `frieza_world_draw` | JSL from world drawing, M16/X16, DB=$7E, D=0. Appends OAM at `w_cursor` / the core run. C set only when the checker supplies the complete picture, including Goku; preserves D. |
 | `frieza_world_body` | JSL from world cell upload, M16/X16, any DB/D. C set while the checker supplies Goku and his ordinary VRAM upload should wait. |
 | `frieza_world_nmi` | World vblank dispatch, M16/X16, DB=$80, D=0. Budgeted palette/art DMA and final window/HDMA setup; preserves DB/D. |
+| `frieza_cgram_upload` | `modules_cgram_upload` handler (the field NMI's palette transfer; the chain calls it while `!fz_cgany` is set), JSL, M16/X16, DB = 0, D = 0. C set when it sent the palette: the game's buffer and Frieza's ranges for a completed frame's OAM, the BG half and his backdrop on a lag vblank while his colours are on screen; C clear otherwise. A, X, Y not kept |
 | `frieza_virtual_target` | JSL, any DB. C set while Frieza can be struck: A16 = species (121) with the fight's terrain byte in the high byte, X16 = x, Y16 = y (map, his feet + 12, as frieza.js `entity()`) |
 | `frieza_combat_receive` | Combat's receive hook (`modules_combat_receive`): A16 = Goku's queued damage -> A16 = damage to apply (the fed Beast's cap) |
 | `frieza_virtual_hit` | JSL, any DB. A16 = Goku's damage, X16 = 1 punch / 0 ki, beam, burst. Applies 15% (65% stunned), recoil, grace, thresholds; A16 = HP taken |
@@ -486,16 +552,24 @@ a browser preset, writes the mod's Frieza state from its snapshot
 module's defines), runs, and compares screenshots with the browser frames
 (best of a +/-2-frame window, `snes/test/debug/compare.mjs`). The scene
 cases mark the preset's music cue as playing so the song load does not
-shift them against the references (the `music` case checks the cue).
-`surge`, `fracture` and `victory` use a `-DFRIEZA_TEST` build whose mailbox
-(`!fzs_test`) strikes Frieza through `frieza_virtual_hit` and breaks the
-floor on request.
+shift them against the references (the `music` case checks the cue), and
+run with exact frames (`runMesen({exactFrames})`: without it Mesen skips
+rendering by wall clock, and about 80% of consecutive screenshots were
+identical, several frames stale). `surge`, `fracture` and `victory` use a
+`-DFRIEZA_TEST` build whose mailbox (`!fzs_test`) strikes Frieza through
+`frieza_virtual_hit` and breaks the floor on request; its persistent
+mailbox (`!fzp_test`, polled at the top of every field frame) also answers
+floor queries (`floor`) and forces lag vblanks (`transients`:
+`fz_test_lag`, +12 = `$5A00 | mask`: a frame whose `!core_frame & mask` is
+0 spins past a whole vblank with the palette requested, as an open
+dialogue window does).
 
 | Case | Checked |
 | --- | --- |
-| `court` | preset `frieza`: the trial court; Frieza's OBJ at the court anchor; 98% of pixels equal the browser at frames 60/240/600 (the rest is the reference's resampling) |
-| `thanatos` | preset `thanatos`: trial-entry with the full party; the native event moves on to `trial-taunt` through the hooks; 98-99.8% |
-| `battle` | preset `battle`: Frieza at his first node, 100% at frame 60, 98-99% later; Goku's HP 844 at 240 and 729 at 600 as in the browser |
+| `court` | preset `frieza`: the trial court; Frieza's OBJ at the court anchor; 99.4%, 100% and 100% of pixels equal the browser at frames 60/240/600 (98% before exact frames) |
+| `thanatos` | preset `thanatos`: trial-entry with the full party; the native event moves on to `trial-taunt` through the hooks; 100% at 60 and 240 (98-99.8% before exact frames) |
+| `battle` | preset `battle`: Frieza at his first node, 100% at frame 60, 96.3% at 240 (the afterimages: solid against the browser's dither; 96.0% before this change with exact frames) and 100% at 600 (96.4% before: the dashes lagged); Goku's HP 844 at 240 and 729 at 600 as in the browser |
+| `transients` | every frame of the presets `frieza`, `thanatos` and `battle` (900 each, exact frames) with each picture's OAM, OBJ colours and screen registers, then the test build forcing a lag vblank every 16 frames in the court and the fight (360 each): no Frieza sprite in colours that are not his (`frieza_palettes`' rows, the Balls'), no unexplained one-frame transient on his sprites (a pixel that differs from both neighbours by more than 48 summed RGB while they differ by 24 or less, under sprites unchanged in OAM, or a sprite that blinks); quake, flash and window changes, background, other sprites and his own motion are counted apart (`transients.mjs`). The cartridges before this change fail it: Thanatos's picture 47 (lag, window open) and the battle's blinking afterimages (33 pictures) |
 | `surge` | a 4,095 punch takes 614; hits stop at 64,000; the surge starts, muscular at 270, ends at 380 in phase two, the floor broken |
 | `fracture` | seven fractures give the same 39 cells as `fractureFortress()`; the hole tiles are in VRAM and every listed BG1 row is written |
 | `victory` | the fatal hit starts the beat, white 31 at 400, event C7 runs (stage defeated, ledger 127) |
@@ -504,7 +578,7 @@ floor on request.
 | `floor` | test build with flight and destroy (skipped without them): the chained `!FLIGHT_MISSING_FLOOR` through the test mailbox (`FZPB+$20`): the Sandship's breach centre is a hole (destroy's answer through Frieza's), 120 px off is floor; a broken deck cell after seven fractures is a hole at the deck's layer (Frieza's), floor at the other layer, an unbroken cell is floor |
 | `flyby` | preset `fortress` with the deck's Death Ball thrown (stage theft): event D8 arms the flyby and runs 1F04; the flyby starts with `$8C` in world flight, the impact (age 404) makes the Death Ball's crisis (`$13`), its end after 1F04 sets the eighth Ball and the Tree pursuit, the overhead view gets the rear-view request (`$F8` = `$90`), then Kai's warning (the crisis notified; the radio shows the aftermath); paired browser picture comparisons in both forms, all eight checker ages, lag, OAM overflow and vblank-upload checks |
 | `cost-world` | preset `flight` (nothing of Frieza's in flight): `frieza_world_frame` at most 0.25 lines on average, 0.5 at peak |
-| `cost` | Potos with Goku present: the module settles on the quiet path; field frame at most 0.36 lines on average and 2.5 at peak, vblank at most 0.13 (from the dispatcher's JSL to the next instruction, master clocks) |
+| `cost` | Potos with Goku present: the module settles on the quiet path; field frame at most 0.36 lines on average and 2.5 at peak, vblank at most 0.13, the palette transfer's gate at most 0.06 (from the dispatcher's JSL to the next instruction, master clocks) |
 | `vram` | preset `frieza`: not drawn while another owner holds `!VRAM_SCENE_OBJ` or the scene SRAM (`!SCENE_VEGETA` planted), drawn and both claimed once free (owners 6 and `!SCENE_FRIEZA`), the VRAM given back when the scene ends |
 | `door` | door 3FC from the `intro` preset: tile y 18 beside the living Emperor, 30 (native) after his death |
 | `tree` | preset `tree`: event 5F8 end to end with B tapped every 12 frames: every Tree scene on maps 236 and 198 in order, the Tree complete after the native tail; shots at chosen ages, Frieza's sprite boxes and a trace of the vista's state; browser cliff pixel comparisons, BG3 cutoff, preserved HDMA/HUD data, restoration and vblank cost |
@@ -514,11 +588,14 @@ floor on request.
 ## Known differences
 
 - **Frame cost**: Frieza's sprite takes about 9 scanlines per frame (up to
-  eight `core_oam_add_front` calls), the fight about 45 in all. The fight's
-  logic still ends by line ~190 in the battle preset. Quiet (nothing of
-  Frieza's running): 0.32 lines per field frame on average, 2 at most (Dryad's
-  hint, looked at every 64 frames, up to 63 frames after the browser's), and
-  0.11 lines per vblank (case `cost`).
+  eight `core_oam_add_front` calls), the fight about 45 in all, each
+  afterimage about 2. The fight's logic still ends by line ~190 in the
+  battle preset. Quiet (nothing of Frieza's running): 0.32 lines per field
+  frame on average, 2 at most (Dryad's hint, looked at every 64 frames, up
+  to 63 frames after the browser's), 0.11 lines per vblank and 0.04 in the
+  palette transfer (case `cost`).
+- **Afterimages**: solid, every other one (the browser dithers each one at a
+  third of its pixels and draws all of them); see the ground fight.
 - **Large bursts**: fx's 14 effect slots and the sprite limits show part of
   the browser's nine-burst clusters.
 - **The revive needs no snapshot**: the browser copies Primm's and Popoi's
@@ -568,7 +645,24 @@ floor on request.
   This work changes no core files; the direct world/flyby timing checks pass.
 - **fx**: the cinematic red Death Ball is supplied (`FX_DBALL_CINEMATIC`).
   The cheaper polygon aura request remains (about 100 lines a frame during
-  the surge in the earlier measurement).
+  the surge in the earlier measurement). The Death Orb's warning above
+  Frieza's hand vanishes for one frame when it grows from 16 to 32 px (its
+  new cells are uploaded first; `battle` preset, pictures 132 and 157 with
+  exact frames). `fx_cgram_upload` takes `!core_dma_ready` alone as a
+  completed frame; between core's frame hook and the loop's `TSB $EC`
+  (`00:B077`) a vblank uploads no OAM, so the palettes latched there belong
+  to the next OAM (`frieza_cgram_upload` also tests `$EC & 9`).
+- **core / world**: the world NMI sends its palette on lag vblanks too
+  (`C0:8A79` while `$E3` bit 6), and `frieza_world_nmi` writes the flyby's
+  palettes 5-7 only for completed world frames: the field's lag-palette
+  pattern. The flyby measures no lag frames; a world counterpart of
+  `modules_cgram_upload` would close it.
+- **Tree vista brightness**: `fz_tree_nmi` forces INIDISP for tree-return's
+  dim to black and tree-wake's fade-in, but the field NMI writes `$E6` to
+  `$2100` right after the module callbacks (`C0:C15F`), so those fades never
+  show (the `tree` case's k18/k19 pictures are at full brightness). A
+  brightness ceiling on `$E6` in frame code (as `death.asm`) or a core hook
+  after `C15F` would restore them.
 - **flight**: none left; `bind.asm` binds `!FLIGHT_API_CAN_LAND`,
   `_CAN_LAND_T` and `!FLIGHT_API_CAMERA` when flight is built in.
 - **ending / orbit (scene SRAM)**: Frieza releases `!SRAM_WORK_SCENE` on the
