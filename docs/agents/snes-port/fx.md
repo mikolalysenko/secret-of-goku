@@ -508,8 +508,18 @@ This also keeps the orb visible when the warning becomes a projectile.
 `deathball` forces zero/partial cell budgets and deferred NMIs for both
 styles. `palette-latch` forces the ready-before-`TSB $EC` gap with a changed
 pending palette allocation and checks the displayed map and colours. The
-palette uploader scans unused classes in byte mode to cover the extra
-handshake check's CPU cost. Frieza's `transients` case additionally records
+palette uploader scans unused classes in byte mode and copies the seven
+latched palette bytes with overlapping words. Its only caller is the field
+hook, so palette DMA uses channel 7 directly without saving frame scratch.
+The native OAM palette scan collects its six byte marks without an indexed
+word loop. The cache's fifteen fixed candidates preserve first-free,
+current-frame protection, wraparound ages and later-slot tie breaking;
+the full replacement probe falls from 1,267 to 1,097 CPU cycles. Assembly
+setup uses its six fixed cell offsets without saving both index registers
+per lookup. All generated assemblies are checked with resident and missing
+cells, including every flip variant. These reductions keep the handshake
+and Tree brightness fixes within the gameplay frame budget.
+Frieza's `transients` case additionally records
 Death Ball requests at their client and checks every uploaded OAM after
 the two cold-cache frames, including the warning-to-projectile handoff.
 

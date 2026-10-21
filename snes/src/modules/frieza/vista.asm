@@ -738,8 +738,13 @@ fz_tree_nmi:
 ; from rising and could interfere with the next native door/menu fade.
 frieza_field_brightness:
 	LDA.l $7E0000|!fz_wasidle
-	AND.b #!FZI_BRIGHT
-	BEQ .normal
+	BMI .ceiling
+.normal
+	LDA $E6
+.native
+	STA $2100
+	JML $00C164
+.ceiling
 	LDA $E6
 	BMI .native
 	PHA
@@ -748,15 +753,10 @@ frieza_field_brightness:
 	BCS .uncapped
 	STA $2100
 	PLA
-	JML $80C164
+	JML $00C164
 .uncapped
 	PLA
 	BRA .native
-.normal
-	LDA $E6
-.native
-	STA $2100
-	JML $80C164
 
 ; Vblank only, M16/X16, DB = $80. The Tree field uses the native window
 ; channels 0/1 and UI's palette channel 5; channel 6 is free here (the

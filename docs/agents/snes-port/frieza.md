@@ -479,10 +479,12 @@ The `tree` case observes INIDISP after the final write and checks both
 browser ramps (48-frame return, 40-frame wake), intermediate levels,
 unchanged `$E6`, native blanking and restoration. Both ramps expose all
 15 levels below full brightness, with no wrong frames. The hook has a
-short WRAM-only idle path; smaller FX palette-map copies and fixed channel-7
-palette uploads reduce the accompanying NMI cost. The checkpoint's gameplay
-counts are unchanged except `transform-grass` (one miss, baseline zero);
-the remaining integration timing checks must resolve that regression.
+short WRAM-only idle path (0.105 scanlines including the native write),
+using the sign bit for `FZI_BRIGHT`; `FZI_SRAM` moves to bit 6. Smaller FX
+palette-map copies and fixed channel-7 uploads reduce NMI cost. Fixed
+offsets in FX's cache search and six-cell assembly setup also remove the
+extra transformation miss seen at the initial checkpoint: `transform-grass`
+is back to zero, and charge remains at its baseline 17.
 
 ## Resources
 
@@ -619,11 +621,12 @@ dialogue window does).
 | `beast` | preset `beast` (map 253, the fed Beast started, Super Saiyan) through combat's receive list: 600 frames untouched as in the browser (the eruption's 210 lands whole at frame 261, Goku's HP 789 at 600 as the reference), then damage queued at the native consumer: 600 takes 110 (140 in base form, the permanent form lifted), nothing during the grace, 50 and the eruption's pending 300 land whole. Skipped while the build has no `modules_combat_receive` |
 | `floor` | test build with flight and destroy (skipped without them): the chained `!FLIGHT_MISSING_FLOOR` through the test mailbox (`FZPB+$20`): the Sandship's breach centre is a hole (destroy's answer through Frieza's), 120 px off is floor; a broken deck cell after seven fractures is a hole at the deck's layer (Frieza's), floor at the other layer, an unbroken cell is floor |
 | `flyby` | preset `fortress` with the deck's Death Ball thrown (stage theft): event D8 arms the flyby and runs 1F04; the flyby starts with `$8C` in world flight, the impact (age 404) makes the Death Ball's crisis (`$13`), its end after 1F04 sets the eighth Ball and the Tree pursuit, the overhead view gets the rear-view request (`$F8` = `$90`), then Kai's warning (the crisis notified; the radio shows the aftermath); paired browser picture comparisons in both forms, all eight checker ages, lag, OAM overflow and vblank-upload checks |
-| `cost-world` | preset `flight` (nothing of Frieza's in flight): `frieza_world_frame` at most 0.25 lines on average, 0.5 at peak |
-| `cost` | Potos with Goku present: the module settles on the quiet path; field frame at most 0.36 lines on average and 2.5 at peak, vblank at most 0.13, the palette transfer's gate at most 0.06 (from the dispatcher's JSL to the next instruction, master clocks) |
+| `flyby-lag` | eleven incomplete world NMIs per form, both native palette sources and both core-ready states: displayed OBJ/backdrop colours preserved, native BG bytes current, restoration, no added unforced lag or unsafe DMA |
+| `cost-world` | preset `flight` (nothing of Frieza's in flight), native palette transfer enabled: `frieza_world_frame` at most 0.26 lines on average, 0.5 at peak; world palette hook at most 0.3 lines |
+| `cost` | Potos with Goku present: the module settles on the quiet path; field frame at most 0.36 lines on average and 2.5 at peak, vblank at most 0.13, the palette transfer's gate at most 0.06, final brightness hook at most 0.3 (master clocks, both native mirrors) |
 | `vram` | preset `frieza`: not drawn while another owner holds `!VRAM_SCENE_OBJ` or the scene SRAM (`!SCENE_VEGETA` planted), drawn and both claimed once free (owners 6 and `!SCENE_FRIEZA`), the VRAM given back when the scene ends |
 | `door` | door 3FC from the `intro` preset: tile y 18 beside the living Emperor, 30 (native) after his death |
-| `tree` | preset `tree`: event 5F8 end to end with B tapped every 12 frames: every Tree scene on maps 236 and 198 in order, the Tree complete after the native tail; shots at chosen ages, Frieza's sprite boxes and a trace of the vista's state; browser cliff pixel comparisons, BG3 cutoff, preserved HDMA/HUD data, restoration and vblank cost |
+| `tree` | preset `tree`: event 5F8 end to end with B tapped every 12 frames: every Tree scene on maps 236 and 198 in order, the Tree complete after the native tail; shots at chosen ages, Frieza's sprite boxes and a trace of the vista's state; browser cliff pixel comparisons, BG3 cutoff, preserved HDMA/HUD data, visible return/wake ramps after the final INIDISP write, native brightness restoration and vblank cost |
 | `effects` | scenes no preset reaches, set up by `scenarios.mjs` on a preset in the browser (`capture.mjs`: restore the snapshot with an edited `goku.frieza`, run, screenshot into `.local/snes-ref-frieza/`) and replayed on the cartridge: Popoi's end 95-99%, the steal without the altar 99.5%, the empower orbs 97-99.9%, the eruption 93-99%, the collapse 87-90% after its first alarm; the Death Ball, Fanha's beam and the auras show where fx's kinds differ |
 | `music` | Frieza's battle theme becomes the current song (`$1E05 = $3C`); reports the load's stall |
 
@@ -682,9 +685,6 @@ dialogue window does).
 
 ## Requests
 
-- **Perf harness / integrator**: investigate `perf/preset__flight`'s missing
-  completion samples (0/304 on both this cartridge and the pre-task ROM).
-  This work changes no core files; the direct world/flyby timing checks pass.
 - **fx**: the cinematic red Death Ball is supplied (`FX_DBALL_CINEMATIC`).
   The cheaper polygon aura request remains (about 100 lines a frame during
   the surge in the earlier measurement). The Death Orb cell-swap gaps and

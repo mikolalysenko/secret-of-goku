@@ -462,8 +462,8 @@ endif
 !FZI_PERM      = $08       ; quiet frames keep the permanent form
 !FZI_HINT      = $10       ; quiet frames look for Dryad's hint
 !FZI_WORLD_IDLE = $20      ; no world flyby/intro/notice; fz_wake invalidates this cache
-!FZI_BRIGHT    = $40       ; displayed Tree brightness ceiling in !fzt_showbright
-!FZI_SRAM      = $80       ; the scene SRAM ($32:7000-7FFF) holds Frieza's state: an
+!FZI_BRIGHT    = $80       ; sign bit: displayed Tree brightness ceiling in !fzt_showbright
+!FZI_SRAM      = $40       ; the scene SRAM ($32:7000-7FFF) holds Frieza's state: an
                            ; ending scene uses all of $32:6000-7FFF, so the module
                            ; neither reads nor writes there until it reset it
 ; !fz_vista bits 4-5 (rebuilt every frame): the Ball set drawn this frame
