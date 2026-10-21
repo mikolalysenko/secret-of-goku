@@ -552,20 +552,16 @@ export async function generate({rom,repo,outDir,xdata}){
         return out.map((s,k)=>({...s,k})).sort((a,b)=>a.o-b.o||a.k-b.k);};
       // Only the head of each order is kept: the runtime takes the first
       // landable, spread-out spots, a few out of the first hundreds.
-      const keep=256,monsterSpots=(counts[map]??0)?order(16).slice(0,keep):[],siteSpots=order(24).slice(0,keep);
-      orders.push({map,W,H,count:counts[map]??0,monsterSpots,siteSpots});
+      const keep=256,monsterSpots=(counts[map]??0)?order(16).slice(0,keep):[];
+      orders.push({map,W,H,count:counts[map]??0,monsterSpots});
     }
-    // Fire sites per room (prepareSites): spread(floorSpots(map, 24, 40),
-    // big rooms 10 else 7, 52).
-    const sitesSrc=grab(swText,/spread\(floorSpots\(map,24,40\),((?:map===\d+\|\|)*map===\d+)\?(\d+):(\d+),52\)/,'fire sites');
-    const bigRooms=[...sitesSrc[1].matchAll(/map===(\d+)/g)].map(m=>Number(m[1])),siteBig=Number(sitesSrc[2]),siteSmall=Number(sitesSrc[3]);
-    // Directory: map.w, count.w, monster spots ptr.w + n.w, site spots ptr.w + n.w, fire sites.w
+    // Directory: map.w, count.w, monster spots ptr.w + n.w, then three words
+    // the fire sites used (the cartridge draws no fires: blast.asm).
     emit('ss_ship_dir:');
-    for(const o of orders)emit(`\tdw ${o.map},${o.count},ss_spots_m_${o.map},${o.monsterSpots.length},ss_spots_s_${o.map},${o.siteSpots.length},${bigRooms.includes(o.map)?siteBig:siteSmall}`);
+    for(const o of orders)emit(`\tdw ${o.map},${o.count},ss_spots_m_${o.map},${o.monsterSpots.length},0,0,0`);
     emit('\tdw $FFFF');
     for(const o of orders){
       emit(`ss_spots_m_${o.map}:`);for(let k=0;k<o.monsterSpots.length;k+=16)emit('\tdb '+o.monsterSpots.slice(k,k+16).flatMap(s=>[hex2(s.i),hex2(s.j)]).join(','));
-      emit(`ss_spots_s_${o.map}:`);for(let k=0;k<o.siteSpots.length;k+=16)emit('\tdb '+o.siteSpots.slice(k,k+16).flatMap(s=>[hex2(s.i),hex2(s.j)]).join(','));
     }
     emit(`; sandship: ${sw.shipMaps.length} ship maps, monsters ${monsters.join('/')} (counts ${JSON.stringify(counts)}), fled ${fled.join('/')}`);
 
@@ -590,12 +586,14 @@ export async function generate({rom,repo,outDir,xdata}){
       assert(v<0x8000,'white table overflow');
       const g=c>>5&31,want=Math.round(g+(31-g)*f);assert(Math.abs((v>>5&31)-want)<=1,'white table green');
     }
-    // Firelight and the red alarm (getColor, BG1/BG2 pixels): red + dr,
-    // green + dg, blue + db, dr 2..7, dg -2..0, db -4..-2 (integer parts of
-    // the browser's per-frame offsets). Lo tables by dr, hi tables by (dg, db).
+    // Firelight, the red alarm and a blast's red flash (getColor, BG1/BG2
+    // pixels): red + dr, green + dg, blue + db (integer parts of the per-frame
+    // offsets). The alarm reaches dr 2..8, dg -2..0, db -4..-2; the flash
+    // (blast.asm: the alarm's pulse at 2.5 times its strength) dr ..14, dg
+    // -4.., db -7... Lo tables by dr, hi tables by (dg + 4) * 6 + (db + 7).
     const tintLo=[],tintHi=[];
-    for(let dr=2;dr<=7;dr++)for(let lo=0;lo<256;lo++){const r=lo&31,gl=lo>>5;tintLo.push(Math.min(31,r+dr)|gl<<5);}
-    for(let dg=-2;dg<=0;dg++)for(let db=-4;db<=-2;db++)for(let hi=0;hi<128;hi++){const b=hi>>2,gh=hi&3;tintHi.push(Math.max(0,b+db)<<10|clamp(8*gh+dg,0,24)<<5);}
+    for(let dr=2;dr<=14;dr++)for(let lo=0;lo<256;lo++){const r=lo&31,gl=lo>>5;tintLo.push(Math.min(31,r+dr)|gl<<5);}
+    for(let dg=-4;dg<=0;dg++)for(let db=-7;db<=-2;db++)for(let hi=0;hi<128;hi++){const b=hi>>2,gh=hi&3;tintHi.push(Math.max(0,b+db)<<10|clamp(8*gh+dg,0,24)<<5);}
     // The alarm pulse and the firelight flicker, from the browser's formulas:
     // alarm = phase<24 ? sin(phase*pi/24)*4 : 0 over a 120-frame cycle, flicker
     // = hash(age>>2, block)*2 (one block for the whole screen: the centre one).
@@ -606,6 +604,10 @@ export async function generate({rom,repo,outDir,xdata}){
     for(let ph=0;ph<120;ph++){const a=ph<24?Math.sin(ph*Math.PI/24)*4:0;alarmA.push(Math.round(a*256));alarmB.push(Math.round(a*0.4*256));alarmC.push(Math.round(a*0.5*256));}
     const flickA=[],flickB=[];
     for(let k=0;k<256;k++){const f=hash(k,block)*2;flickA.push(Math.min(511,Math.round(f*256)));flickB.push(Math.round(f*0.5*256));}
+    // A blast's red flash (blast.asm, the cartridge's stand-in for its fires
+    // and bursts): the alarm's 24-frame pulse at 2.5 times the strength.
+    const flashA=[],flashB=[],flashC=[];
+    for(let ph=0;ph<24;ph++){const a=Math.sin(ph*Math.PI/24)*10;flashA.push(Math.round(a*256));flashB.push(Math.round(a*0.4*256));flashC.push(Math.round(a*0.5*256));}
     // Breach outline (breachDepth >= 0) per scanline, for 4 x 4 quantised
     // phases of its jagged edge (sin(5a + bx), sin(11a + by)): left and right
     // offsets from the centre for dy = -SS_BREACH_H..SS_BREACH_H, biased by
@@ -620,7 +622,7 @@ export async function generate({rom,repo,outDir,xdata}){
     const reach=(b,a)=>b.radius*(1+.18*Math.sin(a*5+b.x)+.1*Math.sin(a*11+b.y)+.06*Math.sin(a*23));
     const depth=(b,dx,dy)=>{const yy=dy*1.25;return reach(b,Math.atan2(yy,dx))-Math.hypot(dx,yy);};
     const BH=Math.ceil(radius*1.34/1.25)+1;
-    const outlines=[],rims=[];
+    const outlines=[];
     for(let py=0;py<4;py++)for(let px=0;px<4;px++){
       const b={radius,x:(px+.5)*Math.PI/2,y:(py+.5)*Math.PI/2};
       const lines=[];
@@ -630,8 +632,6 @@ export async function generate({rom,repo,outDir,xdata}){
         lines.push(l===null?null:[l,r]);
       }
       outlines.push(lines);
-      // The five rim fires (prepareSites): angle i*2pi/5 + .4, 4 px up.
-      for(let i=0;i<5;i++){const a=i*Math.PI*2/5+.4,rr=reach(b,a);rims.push(Math.round(Math.cos(a)*rr)&255,Math.round(Math.sin(a)*rr/1.25-4)&255);}
     }
     grab(swText,/list\.push\(\{x:b\.x\+Math\.cos\(a\)\*rr,y:b\.y\+Math\.sin\(a\)\*rr\/1\.25-4,seed:40\+i\*5,rim:true\}\);/,'rim sites');
     let bias=0,rmax=-1e9;
@@ -653,18 +653,6 @@ export async function generate({rom,repo,outDir,xdata}){
       const wy=k*0.546875,u=0,s=Math.sin(u*.16+Math.sin(wy*.09)*2.4)+Math.sin(u*.05-wy*.07)*.6;
       sand.push(s>1?rgb(31,25,17):s>.2?rgb(29,21,13):s>-.8?rgb(26,18,11):rgb(21,13,8));
     }
-    // Fires (draw()): a blast's five Exploder bursts (golden-angle spiral, at
-    // the spread they reach after six frames), the crash's blasts around Goku
-    // every 10 frames, the embers' rise ((t+seed*5)%24*.6).
-    grab(swText,/const a=i\*2\.39996,spread=i\?8\+Math\.min\(age,12\)\*1\.3:0;/,'blast spiral');
-    const burstOff=[];for(let i=0;i<5;i++){const a=i*2.39996,sp=i?8+6*1.3:0;burstOff.push(Math.round(Math.cos(a)*sp)&255,Math.round(Math.sin(a)*sp*.6)&255);}
-    grab(ssText,/const a=c\.age\*2\.4,d=24\+\(c\.age\*13\)%70;/,'crash blasts');
-    const crashOff=[];for(let age=0;age<=1200;age+=10){const a=age*2.4,d=24+(age*13)%70;crashOff.push(Math.round(Math.cos(a)*d)&255,Math.round(Math.sin(a)*d*.7)&255);}
-    grab(swText,/-\(t\+s\.seed\*5\)%24\*\.6/,'ember rise');
-    const emberRise=Array.from({length:24},(_,k)=>Math.round(k*.6));
-    bytes('ss_burst_off',burstOff);
-    bytes('ss_crash_off',crashOff);
-    bytes('ss_ember_rise',emberRise);
     emit(`!SS_WHITE_LEVELS = ${WL}`);
     emit(`!SS_BREACH_H = ${BH}`);
     emit(`!SS_BREACH_LINES = ${2*BH+1}`);
@@ -674,10 +662,10 @@ export async function generate({rom,repo,outDir,xdata}){
     words('ss_tint_hi',tintHi);
     words('ss_alarm_a',alarmA);words('ss_alarm_b',alarmB);words('ss_alarm_c',alarmC);
     words('ss_flick_a',flickA);words('ss_flick_b',flickB);
+    words('ss_flash_a',flashA);words('ss_flash_b',flashB);words('ss_flash_c',flashC);
     bytes('ss_breach_spans',spans);
     bytes('ss_breach_trim',trim);
     bytes('ss_breach_bias',[bias]);
-    bytes('ss_breach_rims',rims);
     // Extended data: the white-out tables (13 levels of the low-byte then the
     // high-byte tables), and the desert under the hull for the breach's HDMA
     // (channel 3, indirect: CGADD 0 twice, then the colour) at every white

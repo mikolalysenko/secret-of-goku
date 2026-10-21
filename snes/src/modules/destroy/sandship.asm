@@ -125,11 +125,11 @@ ss_reset_work:
 	STA.l !ssw_br_on : STA.l !ssw_br_lines
 	STA.l !ssw_ck_ok : STA.l !ssw_br_cpb : STA.l !ssw_br_ppb : STA.l !ssw_br_tpb
 	STA.l !ssw_sq_fill : STA.l !ssw_sq_ok : STA.l !ssw_white_lvl
-	STA.l !ssw_fire_vn : STA.l !ssw_fire_done : STA.l !ssw_br_vok : STA.l !ssw_fire_on
+	STA.l !ssw_br_vok
 	LDA.w #$FFFF : STA.l !ssw_sq_lvl : STA.l !ssw_pal_kin
 	LDA.w #$FFFF : STA.l !ssw_pal_room
-	STA.l !ssw_site_n : STA.l !ssw_site_map : STA.l !ssw_blast_a : STA.l !ssw_blast_b
-	LDA.w #0 : STA.l !ssw_blast_end
+	STA.l !ssw_blast_q
+	LDA.w #24 : STA.l !ssw_red                    ; no flash
 	LDA.w #$FFFF : STA.l !ssw_dbgdoor
 	RTS
 

@@ -17,7 +17,7 @@ melts dungeon partitions and shatters palace braziers. Nothing is painted
 over the screen: every change is native map data, so collision, redraw and
 the scroll loader all agree. The module also runs the Sandship arc (the
 KAMEHAMEHA breakout, the wreck, the rescues and the crash; below), which
-does draw: palettes, an HDMA breach and fires through the effects library.
+does draw: palettes (the alarm and the blasts' red flashes) and an HDMA breach.
 
 ## Resources
 
@@ -29,10 +29,10 @@ does draw: palettes, an HDMA breach and fires through the effects library.
 | WRAM `$7E:D980-$7E:D9FF` | `!RAM_DESTROY`: state words `+$00-$0F`, API arguments `+$10-$23`, beam scan memory, map context, outputs `+$36-$3F`, call-local scratch `+$40-$7F` |
 | SRAM `$31:6100-$31:6173` | `!PERSIST_DESTROY` (`$74` of `$80` bytes): broken doors, Mana Tree cloud barrier, the Sandship state (`+$10-$4B`), all saved with the GAME FILE by the core sidecar; a beam's unfinished hit work (`+$4C-$73`, cleared at load, new game and map changes) |
 | SRAM `$33:7000-$33:77FF` | `!SRAM_WORK_DESTROY`: edit queue, settled runs, smashed-object list, tile classes, breach records, planner job and suspended plan, scratch, barrier/orb state, debug mailbox, planner scratch, effect record (layout in `module.asm`) |
-| SRAM `$32:7600-$32:7FFF` | `!SSW`, the Sandship's volatile work: the tail of the set-piece scene area (`!SRAM_WORK_SCENE`, core request below), used only inside the arc's window (no scene runs on the ship) and claimed with a magic word: object-list copy, staged colours, the breach's HDMA tables and data, fire sites, clock |
+| SRAM `$32:7600-$32:7FFF` | `!SSW`, the Sandship's volatile work: the tail of the set-piece scene area (`!SRAM_WORK_SCENE`, core request below), used only inside the arc's window (no scene runs on the ship) and claimed with a magic word: object-list copy, staged colours, the breach's HDMA tables and data, the blasts' flash, clock |
 | CGRAM | The wreck's staged colours go up inside the game's own CGRAM upload (`C0:C0F0`); CGRAM 0 per scanline under the breach (HDMA, switched on in vblank by `ss_nmi_breach`, which records it in `!core_hdmaen`: those channels began the frame from their tables even if the rest of the vblank runs late), put back when the breach lets go |
 | HDMA | Channels 2 and 3 (indirect) while the breach is on screen, taken only while `$2C` bits 2/3 are clear and given back on fades, the ring menu or another owner |
-| VRAM, OAM | None: redraws go through the native row request; the fires are drawn by the effects library |
+| VRAM, OAM | None: redraws go through the native row request |
 
 The demolition and barrier work runs on the main thread (field frame and
 the C0:C7C3 redraw consumer). The Sandship adds a field vblank callback
@@ -226,7 +226,7 @@ barrier step after a costly terrain step.
 
 `sandship.asm` (the arc: `engine/sandship.js` `createSandship`, and the
 object, door and song parts of `sandship-wreck.js`), `wreck.asm` (the
-wreck's look), `fire.asm` (its fires). State: `!SS` in the persistent block
+wreck's look), `blast.asm` (its blasts). State: `!SS` in the persistent block
 (saved with the GAME FILE, as the browser's snapshot), `!SSW` volatile
 (above). The arc's window: stages (`CF28`) 1-13, a white-out, the wreck or
 its ending, stowed gear, or Goku on a ship map (98, 99, 270, 271, 318, 319,
@@ -286,7 +286,8 @@ cartridge changes colours and uses the PPU):
 - Alarm tint: BG palettes 1-7 (colours 16-127) red up, green and blue down
   by the browser's 120-frame alarm pulse and its firelight flicker (one
   value for the screen, the centre block); text and HUD colours (0-15) and
-  sprites keep theirs.
+  sprites keep theirs. A blast's red flash uses the same transform at 2.5
+  times the alarm's strength (red up to +14, green down to -4, blue to -7).
 - Breach: HDMA channel 2 (indirect, mode 1) sets window 1 per row of the
   outline (16 quantised phases of its jagged edge, from the generator), so
   BG1/BG2 are masked there; channel 3 (indirect, mode 3) writes CGRAM 0 per
@@ -294,27 +295,26 @@ cartridge changes colours and uses the PPU):
   rows' window positions are remade only when the breach's screen x changes
   (vertical scrolling only moves the pointer); the sand of each white level
   is copied from extended data (128 bytes a frame) when the level changes.
-  Sprites (fires, monsters, Goku) and BG3 stay in front. CGRAM 0 gets the
+  Sprites (monsters, Goku) and BG3 stay in front. CGRAM 0 gets the
   game's colour back when the channels are given up.
-- Fires: per room load, 7 sites (10 in the hold, the decks and the
-  corridor) spread over the floor and five on the breach's rim; each an
-  Exploder flame swelling every 7 frames and a Fireball ember rising,
-  drawn through fx (`fx_draw`, `FX_CELL`). Every 150 frames one site
-  explodes (`FX_EXPLODE` burst, quake, the Fortress-break sound); the
-  crash's blasts have three bursts.
+- Blasts (`blast.asm`): every 150 frames (at 75), and every 10 frames of
+  the crash while Goku is aboard, the Fortress-break sound, a quake (the
+  crash's growing as the browser's) and a red flash: the alarm's 24-frame
+  pulse at 2.5 times its strength, started over in the tint (`!ssw_red`).
+  No fires: the browser burns 7-10 per room (five more on the breach's rim)
+  and makes each blast five Exploder bursts. On the cartridge the maintainer
+  chose the red flash instead (each flame cost fx about 9 scanlines, each
+  burning burst 18-33, in rooms whose own logic already runs late).
 
-**Frame time.** fx's work for a draw runs after this module (in `fx_frame`)
-and is large: about 9 scanlines per Exploder flame, 5 per Fireball ember,
-9 more once anything is drawn, 18-33 per burning burst. So the wreck's work
-is split into a fixed part every frame (the arc's tick, the clock, the
-transform choice and the breach's tables: about 10 scanlines; 8-12 more
-when the breach's screen x changes) and a budgeted part: one palette chunk
-(more during the white-out, when Goku is held), then fire draws, each only
-when it and fx's estimated work for this frame's draws and blasts end
+**Frame time.** The wreck's work is a fixed part every frame (the arc's
+tick, the clock, the transform choice and the breach's tables: about 10
+scanlines; 8-12 more when the breach's screen x changes) and a budgeted
+part: palette chunks (32 colours, about 14 lines each) while they still end
 before scanline 214 (`ss_room`; a frame that began in vblank works to that
-line of the next frame). A starving palette pass gets one chunk after 8
-frames if it still ends before line 221. A busy frame shows fewer fires
-(they take turns from a rotating start) and a slower tint.
+line of the next frame), so a flash or an alarm step reaches every colour
+within a frame or two. A starving pass gets one chunk after 8 frames if it
+still ends before line 221. Over 1,600 frames of the `ship-look` scenario
+with the look on, 1,441 complete their logic (1,411 with the fires).
 
 **Deviations from the browser.**
 
@@ -325,11 +325,8 @@ frames if it still ends before line 221. A busy frame shows fewer fires
 - The breach: one sand colour per scanline (the browser's varies along the
   row too), the outline's 16 edge phases, no soot or scorch drawn into the
   floor.
-- Fires: as many as the frame has time for (typically 2-5 flames, fewer on
-  busy frames); a blast is one burst in the wreck (five in the browser) and
-  three during the crash; no smoke; bursts sit at the spiral's 6-frame
-  spread; Exploder cells are not mirrored; the exploding site follows a
-  fixed pseudo-random order.
+- No fires, embers, smoke or Exploder bursts: a blast is its sound, its
+  quake and a red flash (above).
 - `findBreach` tests one tile per step with `shipHull`'s `walk()` rule (the
   browser asks flight's 12×8 `canLand`, for which flight exports no entry).
 - Remaining lag in the wreck comes from frames whose own logic already
@@ -470,7 +467,7 @@ event the reference selects; walking checks prove collision.
 | `ship-leave` | an unplanned door off the ship blows it up: Uh oh, the crash, the Mech Rider | pass |
 | `dunes-exit` | leaving the dunes any other way than 2A8 sets stage 14 and repeats the hint | pass |
 | `ship-plan` | Sergo's plan arms the wave, Goku hints at L+Y, the wave wrecks the ship as the planned breakout (reaction 78) | pass |
-| `ship-look` | the white-out whitens all of CGRAM through the escape door and fades into the wreck: BG palettes 1-7 tinted, text/HUD colours (as uploaded in vblank) and sprites untouched, the breach on HDMA channels 2/3, fires without fx garbage, channels and CGRAM 0 given back after leaving; screenshots | pass |
+| `ship-look` | the white-out whitens all of CGRAM through the escape door and fades into the wreck: BG palettes 1-7 tinted, text/HUD colours (as uploaded in vblank) and sprites untouched, the breach on HDMA channels 2/3, no fx garbage, a blast's red flash (BG reds up at its peak against a frame without alarm or flash), channels and CGRAM 0 given back after leaving; screenshots | pass |
 | `ship-hole` | the breach as a floor hole (debug command 8): a 17×15 grid of footprints matches the drawn outline's rows exactly and the browser's `breachDepth()` away from the jagged edge; none in another room or with the ship whole | pass |
 | `ship-takeoff` | the roof takeoff binding (debug command 9): taken, Uh oh, the crash, the Mech Rider; refused at the fight | pass |
 
@@ -530,8 +527,8 @@ references. The long gameplay charge case improves 82 → 80 misses per
 
 - Debris is published (effect record), not drawn: an effects module owns
   sprites and palettes.
-- The Sandship's deviations (its section): fewer fires and smaller blasts
-  than the browser, one sand colour per row, no soot.
+- The Sandship's deviations (its section): no fires (a blast is a red
+  flash, its sound and a quake), one sand colour per row, no soot.
 - Flying out past the hull (`shipHull()`, `outside()`) is flight's; it
   reports through `!SANDSHIP_TAKEOFF`. The browser's hover catch when a
   hole opens under a standing Goku (mana-mod `beforeFrame`) is flight's
@@ -560,12 +557,9 @@ references. The long gameplay charge case improves 82 → 80 misses per
   the player is aboard (no set-piece scene runs on the ship maps), claimed
   with a magic word; please keep that range out of the scene modules'
   layouts or give the Sandship its own `$A00` bytes.
-- Effects: a draw's frame cost (about 9 scanlines per Exploder cell, 5 per
-  Fireball cell, 9 once anything is drawn) limits the wreck to a few fires
-  a frame; a persistent looping cell (drawn by fx from one request) or a
-  cheaper path for static cells would let more burn. fx emitted `$FFFF`
-  OAM words for missing cells (the fires avoid the case) and its OBJ
-  palettes were lost on lag vblanks with a window open (the CGRAM hook
+- Effects: the wreck no longer draws through fx (its fires became a red
+  flash per blast, `blast.asm`). fx's OBJ palettes are lost on lag vblanks
+  with a window open while the Sandship's look is on (the CGRAM hook
   uploads only the BG half then).
 
 - Radio / feedback: read `!out_react` / `!out_rmap` for `defeatedBarrier`
