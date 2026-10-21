@@ -4,6 +4,24 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: Frieza's death flash and the victory's whiteout (2026-10-21)
+
+- After the fatal hit Frieza flashes red and white as `bossDeathColor`
+  draws him (his dark shades kept; phases of 8 frames, of 4 from 180),
+  and the native whiteout (`bossVictoryWhite` through `flash(white,
+  true)`) climbs over the whole picture, holds while the fanfare starts
+  and clears: the vblank sends colours washed by the generator from the
+  browser's own functions (31 levels: the globe, the sky, the wave, Goku,
+  Frieza, the gold and stars), so the globe's rim keeps its glow and the
+  HUD its colours. Goku uses OBJ palette 5 through the win (palette 1 is
+  also the HUD portrait's).
+- The fanfare's song-load stall (26 frames at the win's age 387) now holds
+  a white screen, as in the browser.
+- The fight and clash cases check the victory's colours each frame
+  against what the scene decided (the shown frame's state, or after a lag
+  the next one's).
+- Extended data grows by 11.7 KiB (2,729.8 of 2,944 KiB).
+
 ## SNES integration: the Death Orb, Tree vista fades, flyby palettes, the browser's own frame drops (2026-10-21)
 
 - Codex Frieza-scene follow-ups (c54280b, d390962, 6463090, 0ee3953,

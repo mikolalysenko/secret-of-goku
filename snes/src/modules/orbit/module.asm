@@ -428,9 +428,16 @@ assert !FIGHT_END <= !SB+$D00, "orbit fight block overflow"
 ; (the ki auras' pictures wanted this frame, aura.asm: Goku's, Frieza's)
 !au_want    = !SB+$CF2             ; 2 words ($FFFF: none)
 !au_tmp     = !SB+$CF6
+; (the victory's colours for the vblank, wash.asm: the whiteout's level w,
+; its colours in extended data, the backdrop, palette 6's place in a level)
+!wv_white   = !SB+$CF8
+!wv_base    = !SB+$CFA
+!wv_sky     = !SB+$CFC
+!wv_p6      = !SB+$CFE
 assert !FIGHT_END+6 <= !hb_mode1, "the second BGMODE table runs into the fight's state"
 assert !sc_in+24 <= !au_want, "the stars' beam inputs run into the auras' state"
-assert !au_tmp+2 <= !SB+$D00, "the auras' state runs into the drawing block"
+assert !au_tmp+2 <= !wv_white, "the auras' state runs into the victory's colours"
+assert !wv_p6+2 <= !SB+$D00, "the victory's colours run into the drawing block"
 
 ; ---------------------------------------------------------------------------
 ; Drawing and dynamic VRAM (draw.asm, scene.asm).
@@ -692,6 +699,7 @@ orbit_rimsq:     incbin "orbit/rimsq.bin"
 orbit_rimw:      incbin "orbit/rimw.bin"
 orbit_globe_pal: incbin "orbit/globe_pal.bin"
 incsrc "orbit-sprites/palettes.asm"
+incsrc "orbit/victory.asm"
 orbit_star_tiles:
 	; 32 tiles (OBJ rows $16x and $17x): dots of shades 0-3 at even columns
 	; 0-6, twinkle crosses at 8-14 (centre at 1,1); odd columns and the second
@@ -730,6 +738,7 @@ incsrc "fight.asm"
 incsrc "draw.asm"
 incsrc "beam.asm"
 incsrc "aura.asm"
+incsrc "wash.asm"
 incsrc "text.asm"
 incsrc "finale.asm"
 incsrc "fdraw.asm"

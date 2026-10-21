@@ -207,11 +207,12 @@ export async function generate({rom,repo,outDir,xdata}){
   // (orbit-sprites.mjs lays palettes 0-1 and 6-7 out in CGRAM order beside
   // its own Goku and Frieza palettes: one DMA each)
   const words16=p=>{const r=p.map(c=>c?c-1:0);while(r.length<16)r.push(0);return r;};
-  writeFileSync(join(outDir,'palettes.json'),JSON.stringify({fire:words16(pal.FIRE),gold:words16(pal.GOLD),blue:words16(pal.BLUE)}));
   // Beam band colours (beam-body rows 6 and 7 of frames 0 and 1): blue as
   // drawn, pink through pinkColor (Frieza's beams and lasers).
   const body=groups['beam-body'];
   const band=(f,row)=>body[f][row*16];
+  writeFileSync(join(outDir,'palettes.json'),JSON.stringify({fire:words16(pal.FIRE),gold:words16(pal.GOLD),blue:words16(pal.BLUE),
+    bandBlue:[band(0,6),band(0,7),band(1,6),band(1,7)].map(c=>c-1)}));
   data.push('orbit_fx_band_blue:','\tdw '+[band(0,6),band(0,7),band(1,6),band(1,7)].map(c=>hex4(c-1)).join(','));
   data.push('orbit_fx_band_pink:','\tdw '+[band(0,6),band(0,7),band(1,6),band(1,7)].map(c=>hex4(pink(c)-1)).join(','));
   // Bursts, mirrored ahead (draw.asm fd_parts): per mirror m (bit 0: x,

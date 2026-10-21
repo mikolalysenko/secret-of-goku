@@ -35,7 +35,7 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 | Debris / asteroid field, Luna's remark | Planned |
 | Beam struggle: gather, charge, launch, struggle (taps, surges, pressure), recoil (420 damage), win | **Done** (`finale.asm`): every phase, the pressure and the camera identical to `frieza-finale.js` on every frame of the `clash` test (2,889 frames) |
 | Struggle picture: the rays above the globe on BG1/BG2 band layers, below it as OBJ chains; Goku, Frieza, charges, sparks | **Done** (`bands.asm`, `fdraw.asm`) |
-| Victory clock: impact, beam fade, the native victory commands (death, bursts, fade, fanfare, acquire chime) in `boss-victory.js` order, the pouch, the return at 1,392 | **Done** (logic, sound, pouch); Frieza's red/white flash, the boss bursts, the whiteout and the particle oval are next |
+| Victory clock: impact, beam fade, the native victory commands (death, bursts, fade, fanfare, acquire chime) in `boss-victory.js` order, the pouch, the return at 1,392 | **Done** (logic, sound, pouch; `wash.asm`, below: Frieza's red/white death flash and the native whiteout, colour for colour); the boss bursts, the beam's detonation and the particle oval are next |
 | Descent (globe zoom 56-230), return to the deck, landing (84 frames), the native victory event | **Done** (`globe.asm` `globe_descent`, `scene.asm` `orbit_return`): the descent's globe from generated tables; the deck reloaded through its door with Goku's landing spot (`returnToFortress`'s search), the landing pose, the landing clock, `frieza_orbit_landed` and the frieza module's C7; test `return`. The browser's pale wash into the deck is a fade through black here, for now (below) |
 | Orbital death (revert, fall), hand-off to the ending's explosion | **Done** (`death.asm`): the fight or clash freezes, Frieza watches, Goku falls as `bossRushDeathPose`; the orbit stops two frames before black for the ending; test `death` |
 
@@ -393,10 +393,38 @@ after 8 frames it may end by line 200).
 attacks dropped), `02 94 0F 80` death, `02 15 0F 00` bursts, `80 80` fade,
 `01 18 44 8F` fanfare (C3:0198 skips a song already selected, so a cached
 fanfare is restarted through `$1E05 = $FF`), `02 D8 00 88` acquire chime.
-The fanfare's song upload holds the game loop for about 29 frames (inside
-the whiteout; the 'won' clock waits with it). The pouch flies from Frieza's
-point back to Goku from 927 to 1032; Goku's descent poses from 1152; the
-return at 1392.
+The fanfare's song upload holds the game loop for 26-29 frames (inside the
+full whiteout, so the held picture is white; the 'won' clock waits with
+it). The pouch flies from Frieza's point back to Goku from 927 to 1032;
+Goku's descent poses from 1152; the return at 1392.
+
+**Victory colours** (`wash.asm`). With `t` the win's clock past the impact
+(age - 12): Frieza's death flash (`bossDeathColor`) while he shows (`t` <
+326), his dark shades kept and the rest red for two phases and white for
+two, phases of 8 frames, of 4 from 180; and the whiteout
+(`bossVictoryWhite` through `flash(white, true)`: every channel + `w`,
+clamped), `w` climbing from 0 at `t` = 143 to 31 at 306, held to 631 and
+gone by 791. Colour math cannot do it: one fixed colour serves the whole
+screen, and the rim needs its own add on top of the washed sky (the HUD
+must stay unwashed, too). So the vblank sends colours the generator
+washed (`orbit.mjs` `victoryColours`, from the browser's own functions):
+per level 1-31, 386 bytes in extended data (the globe's 81, OBJ palette 4
+for each band frame, Goku's, Frieza's own, red and white, the gold and
+stars), the backdrop and Goku's band layer per level in bank `$E7`, and
+Frieza's red and white palettes. The frame decides the level and Frieza's
+palette with its OBJ palettes (`orbit_pals_frame`, `wv_*` at `$6CF8-$6CFF`)
+for the vblank that shows its sprites; the rim's colour math adds to the
+washed backdrop as before. The browser's HUD (the game's, over the
+picture) keeps its colours, and OBJ palette 1 is also its portrait's, so
+through the win Goku is drawn with palette 5, which holds his Super Saiyan
+colours there (no pink ray is left). The vblank sends the same bytes as
+before, in two more DMAs. Against the browser's own picture (the clash
+pads): the backdrop's colour equal at every level checked, the hold white
+(99.4-100% of the picture's pixels), Goku, the wave and the stars washed
+alike; the remaining differences are the globe's flat light and one-tone
+rim (by design, above), the beam's detonation, the boss bursts and the
+particle oval (not drawn yet). Not done: the browser's pale (non-native)
+flashes at the launch's contact, at a surge's start and into the return.
 
 ### The cosmic montage on hardware
 
@@ -742,7 +770,7 @@ are untouched).
 | `$6100-$67E3` | two globe window blocks (868 bytes each); in the cosmic montage a shot's state and HDMA tables, in its pullback the Death Ball buffers' state |
 | `$6800-$686F` | two indirect HDMA table sets (M7A, M7D, windows), the first set's BGMODE table |
 | `$6870-$6A7F` | star lists, the stars' row limits and counts, the depths' turn |
-| `$6A80-$6CFF` | fight state and arrays, the second set's BGMODE table (`$6CC6`), the beams the star limits were made for, the auras wanted |
+| `$6A80-$6CFF` | fight state and arrays, the second set's BGMODE table (`$6CC6`), the beams the star limits were made for, the auras wanted, the victory's colours for the vblank (`$6CF8`) |
 | `$6D00-$6DFF` | drawing scratch, streamed-cell bookkeeping, beam groups and run builds |
 | `$6E00-$6FFF` | scratch, band window table A, band state |
 | `$7000-$71FF` | generated beam picture buffer |
@@ -755,17 +783,17 @@ are untouched).
 
 | Resource | Use |
 | --- | --- |
-| Code `$A7:8000-F128` | `!CODE_ORBIT`: 28.3 KiB of 31 KiB (the pullback in `pull.asm`); bindings at `$A7:FC00-FCD7` |
+| Code `$A7:8000-F338` | `!CODE_ORBIT`: 28.8 KiB of 31 KiB (the pullback in `pull.asm`); bindings at `$A7:FC00-FCD7` |
 | Code `$A1:C000-F1E5` | the second code area (`!CODE_QUARTER_GOKU`, noted in `core/layout.asm`): the cosmic montage and its tables, sprite lists, the pullback's preload (12.5 KiB of 16) |
-| Data `$E7:0000-7A77` | stars, asin rows, chord scales, rim tables, palettes, star tiles, heading/step tables, burst parts (mirrored ahead, four ways) and offsets, the auras' levels, text maps, finale and fall tables, the descent's indexes, the window blobs' addresses (30.6 KiB of 32 KiB) |
+| Data `$E7:0000-7BF7` | stars, asin rows, chord scales, rim tables, palettes (and the victory's: Frieza's death colours, the whiteout's backdrop and band colours), star tiles, heading/step tables, burst parts (mirrored ahead, four ways) and offsets, the auras' levels, text maps, finale and fall tables, the descent's indexes, the window blobs' addresses (31.0 KiB of 32 KiB) |
 | ROM `$F6:0000-7FFF` | Mode 7 globe VRAM image (32 KiB) |
 | ROM `$F7:0000-F14E` | fight line tables (41 KiB), resident effect cells, Death Ball frames, text tiles, band tiles (60 KiB of 64) |
 | ROM `$FA:8000-` | Goku's orbit poses, descent and fall cells, aerial-melee cells; Frieza's tiny and full frames (27 KiB) |
-| Extended data | 666 KiB in 30 blobs: band maps (2 x 21 KiB), band end ramps (31 + 6 + 26 KiB, origin cut 0.4 KiB), beam pictures (classes 0-4: 24, 24 + 12, 24, 9, 24 KiB), aura pictures (24 + 30 KiB), the descent's and the pullback's line tables (117 KiB in 4 blobs) and window rows (237 KiB in 8; the pullback's index 1.4 KiB), the pullback's frame records (7.5 KiB) and Death Balls (22 KiB), the landing candidates (4 KiB); the montage's 110 KiB in 24 blobs: per town its tiles and maps (13.2 / 14.4 / 8.4 / 6.7 KiB), people records (3.5 KiB x 3), laser rows (1.7 / 2.5 / 1.3 / 2.1 KiB) and OBJ cells, the people's poses (11.3 KiB), the embers, the aerial cuts' cloud tiles (5.8 KiB) and frame records (11.1 KiB), the tables (17.6 KiB: palettes, tints and flashes, the ruin, fires, ring, fragments, bursts' places, the cloud and gradient maps) |
+| Extended data | 678 KiB in 31 blobs: band maps (2 x 21 KiB), band end ramps (31 + 6 + 26 KiB, origin cut 0.4 KiB), beam pictures (classes 0-4: 24, 24 + 12, 24, 9, 24 KiB), aura pictures (24 + 30 KiB), the whiteout's colours (11.7 KiB), the descent's and the pullback's line tables (117 KiB in 4 blobs) and window rows (237 KiB in 8; the pullback's index 1.4 KiB), the pullback's frame records (7.5 KiB) and Death Balls (22 KiB), the landing candidates (4 KiB); the montage's 110 KiB in 24 blobs: per town its tiles and maps (13.2 / 14.4 / 8.4 / 6.7 KiB), people records (3.5 KiB x 3), laser rows (1.7 / 2.5 / 1.3 / 2.1 KiB) and OBJ cells, the people's poses (11.3 KiB), the embers, the aerial cuts' cloud tiles (5.8 KiB) and frame records (11.1 KiB), the tables (17.6 KiB: palettes, tints and flashes, the ruin, fires, ring, fragments, bursts' places, the cloud and gradient maps) |
 | WRAM `!RAM_ORBIT+$00-$5D` | state, command, flags, load step, frame counter, test options, timing lines, command argument, `orbit_api_enter` inputs, landing clock, waiting entry, the return's step, landing spot and search, the cinematic's clock, shot, picture, cut step and saved brightness, timing marks (test builds), the Mode 7 chunks in VRAM and the preload's next, the pullback's deferred uploads and its Death Ball's end |
 | SRAM | `!SRAM_WORK_SCENE` (above) |
 | VRAM | words `$0000-$3FFF` (Mode 7 map and characters) while the scene shows. OBJ (name base `$6000`, 16/32): `$000` Frieza 32x32 (streamed), `$004` Death Ball 32 (streamed), `$040/$044/$048/$04C/$080/$084` beam pictures 32x32 (`$048` and `$084` also the auras', while their groups have fewer than three chains), `$088` Goku 16x16 (streamed), `$08A` Death Ball 16 (streamed), resident 16x16 effect cells in `$008-$03F`, `$08C-$0FF`, `$100-$13F`, `$180-$1BF`, star cells `$160-$17F`. Untouched: `$144-$15F` and `$1C0-$1DF` (the game streams the boy's cells and the damage digits there), `$1E0-$1FF` (HUD portraits). BG3: tiles `$180-$1FF` (text panels), map rows 1-8. During the finale: BG1/BG2 tiles at `$5000` (45), BG1 map `$5400`, BG2 map `$5C00` (rows 0-13). During a town shot: BG1/BG2 tiles from `$0000`, maps `$2000`/`$2800` (64x32) and their ruined copies `$5000`/`$3800`, BG3 maps `$3000` (caption) and `$3400` (laser), BG3 tiles `$17E-$17F` and the text tiles; OBJ (8/16) embers `$000-$01B`, people `$020-$07F` (the rabite `$040-$05F`), the bursts' resident cells, fragments `$160-$16F` and the ring's dot `$170` over the stars' cells (the pullback's load restores them). During an aerial cut: BG1/BG2 the clouds' tiles from `$0000` and one map at `$2000` (64x32), BG3 the gradient's map `$3000`; OBJ (16/32) `$000-$03F` reloaded from the resident set, Frieza's slots at `$000` and `$060` (6 x 6 tiles), Goku's at `$048` and `$04C`. During the pullback: the Mode 7 image again, Frieza's and the 32 px Death Ball's cells, the beam's slots 3-5, `$008`/`$00C` and `$180` hold the Death Ball's two buffers while it shows (the resident rows restored after it) |
-| CGRAM | 0 (sky), 4-11 (text panels), 17-18 (Frieza's band layer), 32-112 (globe), 113-114 (Goku's band layer); OBJ palettes 0 fire, 1 Goku (Super Saiyan), 4 blue (entries 2-3: beam band), 5 pink (1-3: beam band or laser), 6 Frieza, 7 gold with the star shades in 1-4; sent within the game's own palette transfer, after its buffer (also on the lag vblanks that skip the modules). Palettes 2-3 (HUD companions, damage digits) untouched. During a town shot, in the game's own transfer: the backdrop and BG palettes 1-7 (the town's, or tinted), 4-11 the caption, 12-15 the laser; OBJ 0 fire, 1-3 people (or the rabite), 4 fragments, 5 the ring and embers; the game's 1-3 and 224-255. During an aerial cut: 0-27 (the gradient on BG3's palettes 0-6), 32-47 (the clouds), OBJ 0 fire, 1 Goku, 4 blue, 6 Frieza, 7 gold, at its flash level |
+| CGRAM | 0 (sky), 4-11 (text panels), 17-18 (Frieza's band layer), 32-112 (globe), 113-114 (Goku's band layer); OBJ palettes 0 fire, 1 Goku (Super Saiyan), 4 blue (entries 2-3: beam band), 5 pink (1-3: beam band or laser), 6 Frieza, 7 gold with the star shades in 1-4 (in the win 5 holds Goku's colours, and the whiteout sends washed ones: `wash.asm`); sent within the game's own palette transfer, after its buffer (also on the lag vblanks that skip the modules). Palettes 2-3 (HUD companions, damage digits) untouched. During a town shot, in the game's own transfer: the backdrop and BG palettes 1-7 (the town's, or tinted), 4-11 the caption, 12-15 the laser; OBJ 0 fire, 1-3 people (or the rabite), 4 fragments, 5 the ring and embers; the game's 1-3 and 224-255. During an aerial cut: 0-27 (the gradient on BG3's palettes 0-6), 32-47 (the clouds), OBJ 0 fire, 1 Goku, 4 blue, 6 Frieza, 7 gold, at its flash level |
 | OAM | native sprites on lines 190-223 (the HUD) kept, the rest hidden; ours after them (in the montage: all hidden, ours from the first slot); the core's module area is closed at our end (`core_oam_cursor = core_oam_limit`) |
 | HDMA | channels 0 (`$2131`), 1 (`$210D/E`), 2 (BGMODE), 3 (M7A, indirect from F7 or, in the descent and the pullback, extended data), 4 (M7D, likewise), 5 (BG3VOFS; TM in the pullback), 6 (windows, indirect from SRAM or the generated extended data) via `$2C` bits: all but 7 while the scene shows. During a town shot only 2 (TM) and 6 (the laser's windows, indirect from extended data); during an aerial cut 2 (TM), 3 and 4 (BG1's and BG2's scroll per line) |
 | DMA | channel 7 in vblank (above); the Mode 7 image (64 chunks of 512 bytes, eight a vblank, those already in VRAM skipped), star, effect, text and band tiles once, with the picture held black (the pullback's cut: the chunks the second aerial cut did not send, the stars and `$100-$13F`; the rest in its vblanks); a town shot's tiles, maps and cells in three steps at its cut (force blank), its people's poses (480 bytes) and the ruin's map entries by vblank room |
@@ -811,7 +839,9 @@ come from their sources. Results on the merged build:
 - `fight` and `clash` also watch every frame (`watch.lua`): the colours the
   orbit owns in CGRAM against what the scene sends (the sky, the globe's
   81, OBJ palettes 0-1 and 6-7, 4-5 but for the band entries, the text
-  panel's), our vblank ending in the next frame, and, through write
+  panel's; in the victory the ones its frame decided, the whiteout's level
+  and Frieza's palette, for the frame shown or, after a lag, the next),
+  our vblank ending in the next frame, and, through write
   callbacks, CGRAM writes and general DMA starts under HDMA on the visible
   lines while the orbit is live; any of these fails the case. They also
   report the frames whose OAM passes the PPU's line limits (32 sprites, 34

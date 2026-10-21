@@ -527,20 +527,26 @@ bands_nmi:
 
 ; Colours 1-2 of BG palette 7 (Goku's, CGRAM 113-114) and of BG palette 1
 ; (Frieza's, CGRAM 17-18): the band frame's outer and inner (with the
-; game's palette transfer: scene.asm orbit_cgram_live). M16/X16.
+; game's palette transfer: scene.asm orbit_cgram_live); Goku's washed at
+; the victory's whiteout level (wash.asm; level 0 his own). M16/X16.
 bands_cgram:
 	REP #$20
-	LDA.w !v_band
-	AND.w #$0001
-	ASL : ASL
+	LDA.w !wv_white
+	ASL : ASL : ASL                ; level * 8
 	TAX
+	LDA.w !v_band
+	LSR
+	TXA
+	BCC +
+	ORA.w #$0004                   ; + frame * 4
++	TAX
 	SEP #$20
 	LDA.b #113
 	STA.w $2121
-	LDA.l orbit_fx_band_blue,X : STA.w $2122
-	LDA.l orbit_fx_band_blue+1,X : STA.w $2122
-	LDA.l orbit_fx_band_blue+2,X : STA.w $2122
-	LDA.l orbit_fx_band_blue+3,X : STA.w $2122
+	LDA.l orbit_wash_band,X : STA.w $2122
+	LDA.l orbit_wash_band+1,X : STA.w $2122
+	LDA.l orbit_wash_band+2,X : STA.w $2122
+	LDA.l orbit_wash_band+3,X : STA.w $2122
 	REP #$20
 	LDA.w !v_pband
 	AND.w #$0001
