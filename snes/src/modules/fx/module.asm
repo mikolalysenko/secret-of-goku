@@ -71,6 +71,8 @@ assert !FX_SRAM == !SRAM_WORK_FX, "fx request block must sit at !SRAM_WORK_FX"
 !fx_dual_cur  = !fx_s+$0C      ; draw-list offset while fx_run_draws runs
 !fx_dual_pair = !fx_s+$0E      ; second draw consumed by the paired polygon
 !fx_e         = !FX_SRAM+$B0   ; 16 bytes scratch for the cache
+!fx_native_at = !fx_e+$C      ; word: !fx_frame of the last !fx_native ($FFFF none)
+!fx_native    = !fx_e+$E       ; word: entries the game streams or shows (fx_native_mask)
 ; Spawned effects: 14 slots of 16 bytes
 !FX_SLOTS     = 14
 !fx_slots     = !FX_SRAM+$C0
@@ -119,6 +121,7 @@ else
 endif
 fx_hash_address = !fx_hash
 fx_hash_size = !FX_HASH_SIZE
+fx_native_address = !fx_native
 ; (the fast hash moved to !SRAM_WORK_FX_HASH: what followed closes its gap)
 !fx_pkey      = !FX_SRAM+$244  ; 6 words: parameters of the last built polygon (+8 = $FFFF: none)
 !fx_pshown    = !FX_SRAM+$250  ; word: that polygon is in the buffer on screen
@@ -248,6 +251,7 @@ org !CODE_FX
 fx_code_start:
 incsrc "api.asm"
 incsrc "overlay.asm"
+incsrc "native.asm"
 incsrc "frame.asm"
 incsrc "emit.asm"
 incsrc "kinds.asm"

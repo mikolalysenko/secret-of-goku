@@ -389,7 +389,9 @@ FX's existing 15-cell cache and its claims on `FIELD_OBJ_A/B/C`.
 
 `fx_overlay_begin` / `fx_overlay_cell` lease unused cache entries after
 `fx_frame`. Opaque keys `$8000..$FFFD` distinguish UI cells from native FX
-ids. Completed UI leases yield before FX's normal LRU search; recent FX
+ids. Entries the game's actor effects stream or show are never leased, and
+a lease on one is dropped when the game claims it
+([fx.md, Native effect cells](fx.md#native-effect-cells)). Completed UI leases yield before FX's normal LRU search; recent FX
 cells remain protected for 120 cache ticks. Outstanding UI DMA pins its
 cell until it completes. At most one UI cell (two 64-byte rows) enters
 `core_queue_vram` per frame, only when FX has no cell upload pending and the

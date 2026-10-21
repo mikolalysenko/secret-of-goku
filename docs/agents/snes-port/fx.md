@@ -213,7 +213,9 @@ game expands it into WRAM itself, so the build does the same expansion once.
 free in the field (`!VRAM_FIELD_OBJ_A/B/C`: 15 cells), claimed with
 `core_vram_claim` (owner `$0E`) when an effect first needs them and released
 after 120 idle frames or at a map or mode change (so a scene module such as
-the arrival can claim them while FX idles). Each frame FX looks up the
+the arrival can claim them while FX idles). Those regions are the game's
+actor effect pieces, so each frame FX first yields the entries the game
+streams or shows (see [Native effect cells](#native-effect-cells)). Each frame FX looks up the
 cells it will draw, keeps cells drawn recently, and uploads missing ones in
 its vblank callback (two 64-byte halves per cell). A generated four-byte source pointer per cell avoids bank selection and address multiplication during vblank. The upload budget is
 learned per streaming phase of the game (`$56`: in Potos one phase in five
@@ -518,7 +520,8 @@ hook, so palette DMA uses channel 7 directly without saving frame scratch.
 The native OAM palette scan collects its six byte marks without an indexed
 word loop. The cache's fifteen fixed candidates preserve first-free,
 current-frame protection, wraparound ages and later-slot tie breaking;
-the full replacement probe falls from 1,267 to 1,097 CPU cycles. Assembly
+the full replacement probe falls from 1,267 to 1,097 CPU cycles (1,112 with
+the native-claim guard on free candidates). Assembly
 setup uses its six fixed cell offsets without saving both index registers
 per lookup. All generated assemblies are checked with resident and missing
 cells, including every flip variant. These reductions keep the handshake
@@ -756,6 +759,106 @@ palette ownership. UI may write just those two colours after FX
 NMI; the existing FX palette data is unchanged. See [UI's scouter section](ui.md#shared-fx-cells-uploads-and-hardware-limits)
 for rendering, timing, limitations and tests.
 
+### Native effect cells
+
+**The bug.** Goku's charge aura sometimes showed black-and-white digits.
+The cache's three regions are not free. The game's actor streamer
+(`C1:950D`, in its vblank, one of five phases per vblank) writes each
+combat slot's *effect pieces* there: 32×16 cells for weapon swings,
+thrown weapons and the damage-number objects (species `$F9`). A static map
+of every `LDA #vram / STA $2116` in the streamer puts every cache entry
+inside one:
+
+| Region | Entries | Game's use |
+| --- | --- | --- |
+| `FIELD_OBJ_A` `$7220/$7320` | 0-6 | slot 5 (`$7E:EA00`) pieces 1-4 (`$7200+$40·(k-1)`): piece 1 covers entry 0, then two entries per piece |
+| `FIELD_OBJ_B` `$7840/$7940` | 7-10 | slot 1 (`$7E:E200`) pieces 4 (`$7840`) and 5 (`$7880`) |
+| `FIELD_OBJ_C` `$7A80/$7B80` | 11-14 | slot 2 (`$7E:E400`) pieces 4 (`$7A80`) and 5 (`$7AC0`) |
+
+Piece k streams while the slot's cell count (`+$84`, byte) is at least
+2k-1. The fifth piece also streams once per request (`+$8D` low byte, set
+with the weapon effect `+$61` at `C2:BF36/BF7C`, cleared by the streamer
+before it streams) and stays on screen while that effect runs. A
+damage-number object in slot 5 streamed its digit glyphs (`7E:7A40`, white
+with a dark outline) and blank cells (`7E:CB00`) into region A every fifth
+vblank. FX's residency bits and hints still called its cells resident, so
+it never uploaded them again. The aura allocates first, so it usually
+sat in region A and showed the digits or blank rows until those cells were
+evicted. In a Rabite-field fight (field-b, 1,440 frames of punches, ki,
+charges and focus) the aura showed wrong pixels in **312 of 428** drawn
+frames (Super Saiyan: 262/285). The scouter's readout was not the cause.
+Its leases never produced a wrong aura frame in ten scouter runs, and
+the counts were the same with the scouter off. Region C's fifth piece is a
+party member's thrown weapon (Popoi's boomerang at tiles `$1AC/$1AE`):
+FX could also overwrite it while it was shown.
+
+**The fix** (`native.asm`). The streamer runs one phase per vblank,
+`$56` (`C1:9530`). The field loop advances it only after a completed
+frame's vblank (`C0:B07D`), so every vblank of a frame's logic streams that
+phase, lag vblanks included. Slot 5's pieces stream in phase 2
+(`C1:A58B`, or `C1:9574`, then `A7B6`), slots 1 and 2's in phase 4
+(`C1:99CB`). Until that stream, a claimed entry still holds FX's own cell.
+- Every FX frame (`fx_begin`, before any lookup) forgets the cells the
+  coming vblank will stream over: residency bit, pending and failed upload
+  (a UI lease loses its key). It checks slot 5's count in phases 1-2
+  (phase 2, or a lag vblank of the next frame) and slots 1-2's counts,
+  requests and effect flags in phase 4. `fx_overlay_begin` repeats this
+  for UI leases when FX idled.
+- `fx_cache_get` takes a free entry only if the game neither streams nor
+  shows it. Each candidate tests its own slot's count, plus request and
+  effect for a fifth piece. UI leases skip every claimed entry
+  (`fx_native_mask`, computed once per frame, `!fx_native`), and the
+  readout cancels a deferred upload into one.
+- An entry whose claim ends is free and re-uploads. An aura whose cells
+  were taken waits until its new cells are resident, as on a cold start.
+
+Cost: a few cycles per FX frame in phases 0 and 3, one byte in phases
+1-2, six bytes in phase 4 (as a subroutine: 19, 30, 30, 19 and 52 CPU
+cycles). One or three bytes per free candidate on a miss; 181 cycles for a
+UI lease's mask. Gameplay CPU misses per 240 frames are unchanged (charge
+13, teleport 3, fly-ki 2, fly 1, fly-punch 1). A first version that
+computed the whole mask every frame (61 cycles idle) raised charge to 16.
+No native code, VRAM region or core service changed.
+
+After the fix, the same fights show **0** wrong aura frames (424/424 and
+285/285 drawn correctly). Native sprites on cache tiles are never
+overwritten by FX or UI while the game owns them (100 tile-frames before,
+in the Super Saiyan fight).
+
+**Remaining limits.**
+- The game shows a newly started weapon effect's sprite from its first
+  frame but streams the piece only in the slot's phase, up to four vblanks
+  later. Until then the sprite shows whatever its tiles held, which may be
+  an FX cell drawn there before the claim. This is the original game's own
+  stale-tile window (the Super Saiyan fight: once, 2 frames). Closing it
+  would need FX to stream the game's source cells itself.
+- A claim made by a frame that misses its vblank can be streamed before FX
+  sees it, and slots 1 and 2 are not checked one phase ahead. In both
+  cases the wrong pixels last only until the next completed frame (none
+  measured).
+- Unrelated and older: an effect that draws a cell in the frame it
+  allocates it shows that entry's previous contents for one frame when a
+  late vblank leaves no time for the upload (`fxLate`: 8, 167 and 2 sprite
+  frames in the three `native-cells` scenes; 5, 144 and 2 before the
+  fix: re-uploads after a claim add a few). The aura never draws a cell
+  before it is resident.
+
+**Tests.** `native-cells` (run by `run.mjs` after `focus-scenes`, production
+ROM, real input, exact frames) checks the VRAM behind every displayed
+sprite at the end of every field NMI. FX sprites must show the ROM cell
+the cache said was resident. UI leases must show their own upload. Native
+sprites on cache tiles must not show FX or UI writes made while the game
+owned them. The test also requires the region A conflict to occur.
+Before the fix: `fight` 620 wrong aura sprites and 174 stale cells,
+`fight-ssj` 542, 191 and 100 native. After: none. The game's claims come
+from its own fields, not FX's state. Late uploads and the
+game's pre-stream window are reported. `native.test.mjs` runs the
+assembled code. It checks the model against the original streamer's
+code in the ROM, the mask for every count, request and effect
+combination, the dropped cells and uploads, a held claim, and both
+allocators. Bad frames are screenshot under
+`.local/snes-test/fx/native-cells/`.
+
 ## Resources
 
 The cell cache checks a matching hash hint before its residency bitset.
@@ -779,11 +882,11 @@ one VRAM region changes.
 | Resource | Use |
 | --- | --- |
 | Code `$AE:8000-FFFF` | `!CODE_FX` (upper half only; `$EE` lower half holds ending art) |
-| ROM | `!DATA_FX` = `$FB` (44 of 64 KiB used): assemblies, palettes, the per-cell DMA source pointers, paired-wave geometry and the tables read only with long loads or MVN (detonation clusters, ember and dust paths, strip lines, laser steps, Death Ball, red-ball and aura indexes: `tables.asm`), generated by `snes/gen/fx.mjs`. All 388 cell tiles (48.5 KiB, `cells.bin`) are DMA-only xdata, split at cell 256 into `fx_cells_lo/hi`. Code `$AE:8000-FFFF` (17.6 of 32 KiB used). xdata (ExHiROM): the aura's lines, `fx_aura16`, `fx_aura32`, `fx_aura40` (51 KiB), the bolts, `fx_bolts` (2 KiB), and `fx_red_geometry` (7.7 KiB) |
+| ROM | `!DATA_FX` = `$FB` (44 of 64 KiB used): assemblies, palettes, the per-cell DMA source pointers, paired-wave geometry and the tables read only with long loads or MVN (detonation clusters, ember and dust paths, strip lines, laser steps, Death Ball, red-ball and aura indexes: `tables.asm`), generated by `snes/gen/fx.mjs`. All 388 cell tiles (48.5 KiB, `cells.bin`) are DMA-only xdata, split at cell 256 into `fx_cells_lo/hi`. Code `$AE:8000-FFFF` (20.1 of 32 KiB used). xdata (ExHiROM): the aura's lines, `fx_aura16`, `fx_aura32`, `fx_aura40` (51 KiB), the bolts, `fx_bolts` (2 KiB), and `fx_red_geometry` (7.7 KiB) |
 | SRAM `$31:7800-7BFF` | `!SRAM_WORK_FX`: request block, 14 effect slots, 8 draw entries, VRAM cache, residency bits (50 bytes), polygon tables (2 × 189 bytes) |
 | SRAM `$31:756C-75EB` | `!SRAM_WORK_FX_HASH`: 128 resident-cell hints; core work allocation, separate from persistent saves |
 | WRAM | None (a 148-byte direct-page frame on the stack inside `fx_frame`) |
-| VRAM | `!VRAM_FIELD_OBJ_A/B/C` while effects are active (owner `$0E`); released after 120 idle frames and at every map or mode change |
+| VRAM | `!VRAM_FIELD_OBJ_A/B/C` while effects are active (owner `$0E`); released after 120 idle frames and at every map or mode change. They are the game's actor effect pieces: entries the game streams or shows are yielded ([Native effect cells](#native-effect-cells)); UI leases read the claim mask `!fx_native` (`$31:78BE`, once per frame) |
 | CGRAM | Free OBJ palettes per frame, written in vblank (never the game's buffer); CGRAM 0 per scanline (HDMA) while a wave is shown |
 | HDMA | Channels 2/3 and `$2C` bits 2/3 while a wave is shown |
 | PPU | W12SEL, W34SEL, WOBJSEL, TMW, TSW, TS, CGWSEL, CGADSUB, COLDATA, WH0-WH3 while a wave or flash is shown; put back to the field's values (CGWSEL 2, CGADSUB from `$23`, black) afterwards |
@@ -912,3 +1015,12 @@ of 39 consecutive grabs were identical in a measurement).
   added if needed).
 - **OAM**: a bulk reservation (`core_oam_reserve`: n slots, module fills
   them) would cut the call overhead per effect sprite further.
+- **Field OBJ regions are the game's effect pieces** (see
+  [Native effect cells](#native-effect-cells)): `core/vram.asm` and
+  [engine.md](engine.md#vram-cgram-and-sprite-streaming) call
+  `FIELD_OBJ_A/B/C` free. They are slot 5's pieces 1-4 and slots 1 and 2's
+  pieces 4-5, written whenever those slots carry effects. FX yields them
+  itself. The ending overlay and Frieza's Dragon Balls also claim
+  `FIELD_OBJ_A`, so they share the hazard wherever slot 5 can hold an effect.
+  A core service returning the claim mask (as `fx_native_mask` computes it)
+  would serve every claimant.
