@@ -122,15 +122,21 @@ over `COMBAT_SLIDE_FRAMES` (6) on the same ease, without lift
 (`combat_slide_*` tables, `cb_kb_frames`). At every contact `cb_strike`
 puts the impact frame in the spark's effect record (`er_aux`,
 `!CB_IMP_*`: the starburst size + 1 by blow, the kick's shockwave at its
-first contact, a native target's slot to draw white) and writes the native
-timed shake (`$E00D` = hold << 4 | axis). One FX_HIT spawn per contact
-carries it all. After the contacts it calls `fx_kick` (facing | blow << 8);
+first contact, on a cross's first contact `!CB_IMP_NEXT` (its spark readies
+the kick's cells after the hold), a native target's slot to draw white)
+and writes the native timed shake (`$E00D` = hold << 4 | axis). One FX_HIT
+spawn per contact carries it all. After the contacts it calls `fx_kick`
+(facing | blow << 8);
 the kick also `fx_quake` (3 / 5) and `fx_flash` (3). A ki shot's impact
 carries the smallest starburst. `cb_fx_prep` (from `cb_effects_draw` while
 the punch's age is below 2) asks `fx_warm` for the coming contact's cells
 until fx reports them resident, then not again for that blow and form until
 fx's cache has lost a cell (`!fx_evict` against `!cb_warm`): their uploads
-land in the wind-up's quiet vblanks instead of the contact's busy one. The
+land in the wind-up's quiet vblanks instead of the contact's busy one. A
+Super Saiyan kick's one-frame wind-up cannot bring its six cells in (the
+first kick of a scene showed only the shockwave's last three frames), so a
+cross's spark brings them in after its hold (fx `FX_IMP_NEXT`): the first
+kick after a connected cross shows the whole shockwave, base form too. The
 goku module draws the lunge ([goku](goku.md)). The cues are unchanged: HIT
 for the jab and cross, KICK for the kick.
 

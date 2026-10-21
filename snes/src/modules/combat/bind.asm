@@ -425,6 +425,7 @@ endif
 if defined("FX_HIT")
 	assert !CB_IMP_SHOCK == !FX_IMP_SHOCK, "combat: fx impact frame bits moved"
 	assert !CB_IMP_SLOT*15 == !FX_IMP_ACTOR, "combat: fx impact frame bits moved"
+	assert !CB_IMP_NEXT == !FX_IMP_NEXT, "combat: fx impact frame bits moved"
 endif
 cb_fx_spawn_impact:
 if defined("FX_IMPACT")

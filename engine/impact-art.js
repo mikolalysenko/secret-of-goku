@@ -107,17 +107,18 @@ const placed=(px,x,y,h,v)=>({px,ox:Math.round(x)-8,oy:Math.round(y)-8,h,v});
 
 // The shockwave at ring radius R: eight arc pieces (axes and diagonals) and
 // eight speed lines between them (22.5 degrees + k * 45), all flips of the
-// five cells drawn for the first quadrant's directions.
+// five cells drawn for the first quadrant's directions. Parts sharing a cell
+// come together, so the cartridge resolves each cell once per picture (the
+// speed lines touch no other part: their order shows nothing).
 function shockParts(cells,R){
   const parts=[],{arcAxisX,arcAxisY,arcDiag,line22,line67}=cells;
   const dirs=[[1,0,arcAxisX,false,false],[-1,0,arcAxisX,true,false],[0,1,arcAxisY,false,false],[0,-1,arcAxisY,false,true],
     [1,1,arcDiag,false,false],[-1,1,arcDiag,true,false],[1,-1,arcDiag,false,true],[-1,-1,arcDiag,true,true]];
   for(const [dx,dy,px,h,v] of dirs){const s=dx&&dy?Math.SQRT1_2:1;parts.push(placed(px,dx*s*R,dy*s*R,h,v));}
   const r=R+LINE_GAP+LINE_LENGTH/2;
-  for(const [ax,ay] of [[1,1],[-1,1],[1,-1],[-1,-1]]){
-    for(const [px,a] of [[line22,Math.PI/8],[line67,3*Math.PI/8]])
+  for(const [px,a] of [[line22,Math.PI/8],[line67,3*Math.PI/8]])
+    for(const [ax,ay] of [[1,1],[-1,1],[1,-1],[-1,-1]])
       parts.push(placed(px,ax*Math.cos(a)*r,ay*Math.sin(a)*r,ax<0,ay<0));
-  }
   return parts;
 }
 

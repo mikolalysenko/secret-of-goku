@@ -285,9 +285,11 @@ assert !CBT == $317F00, "snes/test/combat/lib.lua reads the test block at $31:7F
 !ERK_STATUS = 6
 ; An impact's impact frame (er_aux, fx FX_HIT C): starburst size + 1 in
 ; bits 0-2 (1 ki, 2 jab, 3 cross, 4 kick), the kick's shockwave, the struck
-; actor's slot (3-11) drawn white in bits 4-7.
+; actor's slot (3-11) drawn white in bits 4-7, and on a cross's first
+; contact the kick's cells readied after the hold.
 !CB_IMP_SHOCK = $0008
 !CB_IMP_SLOT  = $0010   ; actor slot multiplier
+!CB_IMP_NEXT  = $0100
 !ERF_SUPER  = $01
 !ERF_MEGA   = $02
 !ERF_HAND   = $04

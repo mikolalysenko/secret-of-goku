@@ -43,6 +43,7 @@
 !FX_IMP_STAR  = $0007       ; starburst size + 1 (1 ki, 2 jab, 3 cross, 4 kick), 2 frames in front
 !FX_IMP_SHOCK = $0008       ; the finishing kick's shockwave, 6 frames behind the natives
 !FX_IMP_ACTOR = $00F0       ; actor slot << 4 (3-11) drawn white for 2 frames, 0 none
+!FX_IMP_NEXT  = $0100       ; a cross's: after the hold, the kick's cells come in (fx_warm_list)
 ; Continuous kinds (fx_draw)
 !FX_ORB       = $10         ; charge orb
 !FX_AURA      = $11         ; ki aura (style 0 blue,1 gold,2 pink)

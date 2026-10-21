@@ -839,7 +839,7 @@ cb_strike:
 	RTS
 +	STA !cb_td
 	STZ !cb_tf
-	STZ !cb_t1                    ; no shockwave yet
+	STZ !cb_t1                    ; first contact not marked yet (shockwave / next)
 .spark
 	LDA !cb_td
 	BNE +
@@ -868,14 +868,19 @@ cb_strike:
 	INC
 	INC
 	STA !cb_ta
+	LDX.w #!CB_IMP_SHOCK          ; the kick's first contact: its shockwave
 	CMP.w #4
+	BEQ +
+	LDX.w #!CB_IMP_NEXT           ; a cross's: the kick's cells come in
+	CMP.w #3
+	BNE ++
++	LDA !cb_t1
 	BNE +
-	LDA !cb_t1
-	BNE +
-	INC !cb_t1                    ; the kick's first contact: its shockwave
-	LDA.w #!CB_IMP_SHOCK
+	INC !cb_t1
+	TXA
 	TSB !cb_ta
-+	LDA !cb_tf
++
+++	LDA !cb_tf
 	CMP.w #!VT_BIT0
 	BCS +                         ; virtual targets draw themselves
 	ADC.w #3                      ; (C clear) actor slot 3-11, drawn white

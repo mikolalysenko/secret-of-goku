@@ -78,18 +78,93 @@ fx_k_hit:
 	ADC !d_ks+10
 	JSR fx_emit_here
 .spark
+	LDA !d_cur+!C_A
+	AND.w #!FX_IMP_NEXT
+	BNE +
 	JMP fx_k_impact
++	JSR fx_k_impact
+	; FX_IMP_NEXT (a cross's contact): once the hold is over, the kick's
+	; cells (fx_warm_list: its starburst, this spark's first picture and the
+	; shockwave's five) come in with what is left of the frame's uploads
+	; after the spark drew, two at most a frame: a Super Saiyan's one-frame
+	; wind-up cannot bring the shockwave in, and a cross's spark is the
+	; time a kick may follow. The record's last cell in, nothing more is
+	; done. The spark's own missed-upload mark stays as it drew.
+	LDA !d_cur+!C_C               ; hold left
+	AND.w #$FF00
+	BNE .done
+	LDA.l !fx_cbudget
+	BEQ .done
+	LDA !d_cur+!C_KIND            ; record ((gold * 3 + 2) * 4 + facing) * 16
+	AND.w #!FX_F_GOLD<<8
+	BEQ +
+	LDA.w #3*4*16
++	CLC
+	ADC.w #2*4*16
+	STA !d_ks+12
+	LDA !d_cur+!C_DIR
+	AND.w #$0003
+	ASL
+	ASL
+	ASL
+	ASL
+	ADC !d_ks+12
+	TAX
+	LDA.l fx_warm_list+!FX_WARM_KICK_LAST,X
+	AND.w #$01FF
+	STA !d_ks+12                  ; its last cell: resident?
+	PHX
+	AND.w #!FX_HASH_SIZE-1
+	TAX
+	LDA.l !fx_hash,X
+	AND.w #$00FF
+	CMP.w #30
+	BCS +
+	TAX
+	LDA.l !fx_ccell,X
+	CMP !d_ks+12
+	BNE +
+	PLX
+.done
+	RTS
++	PLX
+	LDA.l !fx_bmiss
+	PHA
+	LDA.l !fx_cbudget
+	SEC
+	SBC.w #2
+	BPL +
+	LDA.w #$0000
++	STA !d_ks+14                  ; two new cells at most
+.cell
+	LDA.l !fx_cbudget
+	CMP !d_ks+14
+	BEQ .end
+	BCC .end
+	LDA.l fx_warm_list,X
+	BMI .end
+	PHX
+	JSR fx_resolve
+	PLX
+	INX
+	INX
+	BRA .cell
+.end
+	PLA
+	STA.l !fx_bmiss
+	RTS
 
 ; ---------------------------------------------------------------------------
 ; fx_warm: A = blow (0 jab, 1 cross, 2 kick) | gold << 8, X = facing (0-3).
 ; Readies the cells of a coming contact (fx_warm_list: the impact spark's
 ; first picture, the starburst and, for the kick, the shockwave), so their
-; uploads land before the contact's busy vblank. All resident, they count
-; as used in this fx frame, the regions stay held and A = !fx_evict
-; (nothing else happens: fx_frame stays idle). Otherwise an FX_PREP draw
-; brings the missing ones in and A = $FFFF. A caller may skip the call while !fx_evict still equals the A
-; of its last warm call. Combat calls it in a punch's wind-up. JSL,
-; M16/X16, DB = $7E; X/Y clobbered.
+; uploads land before the contact's busy vblank. All resident (by hint, or
+; by the entries when a hint names another cell), they count as used in
+; this fx frame, the regions stay held and A = !fx_evict (nothing else
+; happens: fx_frame stays idle). Otherwise an FX_PREP draw brings the
+; missing ones in and A = $FFFF. A caller may skip the call while
+; !fx_evict still equals the A of its last warm call. Combat calls it in a
+; punch's wind-up. JSL, M16/X16, DB = $7E; X/Y clobbered.
 fx_warm:
 	PHA                           ; $03,S: blow | gold << 8
 	TXA
@@ -98,8 +173,9 @@ fx_warm:
 	LDA $03,S
 	AND.w #$00FF
 	CMP.w #3
-	BCS .none
-	LDA $03,S                     ; record ((gold * 3 + blow) * 4 + facing) * 16
+	BCC +
+	JMP .none
++	LDA $03,S                     ; record ((gold * 3 + blow) * 4 + facing) * 16
 	AND.w #$0100
 	BEQ +
 	LDA.w #3
@@ -130,11 +206,21 @@ fx_warm:
 	LDA.l !fx_hash,X
 	AND.w #$00FF
 	CMP.w #30
-	BCS .cold
+	BCS .search
 	TAX
 	LDA.l !fx_ccell,X
 	CMP.l !fx_s+8
-	BNE .cold
+	BEQ .used
+.search                           ; its bucket names another cell (a spark's
+	LDX.w #28                     ; and a shockwave's share some): the entries
+-	LDA.l !fx_ccell,X
+	CMP.l !fx_s+8
+	BEQ .used
+	DEX
+	DEX
+	BPL -
+	BRA .cold
+.used
 	LDA.l !fx_frame               ; used now: the last to be evicted
 	STA.l !fx_cused,X
 	PLX

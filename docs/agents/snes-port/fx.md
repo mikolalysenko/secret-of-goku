@@ -135,7 +135,7 @@ Timed kinds (`fx_spawn`; FX owns the age and ends them):
 | `FX_STATUS` | `$07` | `statusBurst` | `!fx_style` 0 plain, 1 fire, 2 ice, 3 balloon | Recovery burst: impact + eight fragments / embers |
 | `FX_DEBRIS` | `$08` | `rubble`, ceiling dust | `!fx_rgb` 3 colours (dark, mid, light), `!fx_style` 0 rubble / 1 ceiling dust, `!fx_a` rubble chunks (0 = 4, at most 8), `!fx_b` life (0 = 32 rubble, 46 dust) | Rubble: chunks of size 2/3 on the browser's ballistic arcs (seeded by position and frame); ceiling dust: the 20 chunks of `ceiling-escape.js` on their exact paths (the two stone specks under each chunk are not drawn; the gap pattern uses two of its eight turns so the chunks fit the VRAM cache). All debris shares one DYN palette (the latest colours). Behind the natives |
 | `FX_SPARKS` | `$09` | ceiling-escape impact ring | `!fx_a` count (0 = 8) | Ring of impact sparks spreading out (12 frames) |
-| `FX_HIT` | `$0A` | `strike()`'s impact, star, flash and shock | as `FX_IMPACT`, and `!fx_c` the impact frame: bits 0-2 starburst size + 1 (1 ki, 2 jab, 3 cross, 4 kick), `FX_IMP_SHOCK` the kick's shockwave, bits 4-7 the actor slot (3-11) drawn white | The impact spark with the blow's impact frame (see Impact frames). *front*; the shockwave behind |
+| `FX_HIT` | `$0A` | `strike()`'s impact, star, flash and shock | as `FX_IMPACT`, and `!fx_c` the impact frame: bits 0-2 starburst size + 1 (1 ki, 2 jab, 3 cross, 4 kick), `FX_IMP_SHOCK` the kick's shockwave, bits 4-7 the actor slot (3-11) drawn white, `FX_IMP_NEXT` (a cross's) the kick's cells readied after the hold | The impact spark with the blow's impact frame (see Impact frames). *front*; the shockwave behind |
 
 Continuous kinds (`fx_draw`, every frame the effect should show):
 
@@ -614,11 +614,29 @@ found by a search of the 15 cache entries when their hint misses.
   arrived and the late upload lengthened a heavy frame's vblank.
   `fx_warm` checks the blow's `fx_warm_list` record (starburst, the
   spark's first picture at the facing's turn, the kick's shockwave cells)
-  through the hints; when one is missing it requests `FX_PREP`, which
+  through the hints, and through the 15 entries when a hint names another
+  cell (the blue spark's cells share buckets with three shockwave cells: a
+  resident kick record used to look cold, and every base-form kick's
+  wind-up paid an `FX_PREP` frame); when one is missing it requests
+  `FX_PREP`, which
   resolves the record (at most two new cells a frame) and gives back the
   palettes their classes took. `!fx_evict` counts evictions and residency
   resets, so a caller that found a record resident asks again only after
   the cache has lost a cell (combat keeps the count per blow and form).
+  A Super Saiyan kick has a one-frame wind-up and a 0-3 cell upload budget
+  in that scene's vblanks, too little for its starburst and five
+  shockwave cells: a cross's `FX_HIT` carries `FX_IMP_NEXT`, and once its
+  hold is over the spark resolves the kick's record (gold from its own
+  kind, its facing) after drawing itself, two new cells a frame at most,
+  so its own picture is served first and a missed upload never rolls it
+  back (`!fx_bmiss` kept). With the record's last cell resident
+  (`FX_WARM_KICK_LAST`, the same slot in every kick record) it only checks
+  that cell's hash. No per-frame call from combat: the cost falls in the
+  spark's own frames, about 2-4 lines while cells come in.
+- **Shockwave parts.** `impact-art.js` orders the speed lines by cell
+  (four 22.5° lines, then four 67.5°), so `fx_resolve`'s last-cell memo
+  resolves each of the five cells once per picture (11 lookups before);
+  the lines touch no other part, so the pixels are unchanged.
 - **Held regions.** The first warm-up claims fx's VRAM regions before
   anything is drawn. Until something is (`FX_SEEN`), an idle frame with only
   the regions held marks `!fx_busy` = `$8000`, which `fx_frame` serves by

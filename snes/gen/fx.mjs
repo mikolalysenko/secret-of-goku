@@ -516,6 +516,14 @@ export async function generate({rom,repo,outDir,xdata}){
     if(words.length>7)throw Error('fx: a contact needs more than seven cells');
     warmList.push(...words,...Array(8-words.length).fill(0xFFFF));
   }
+  // Every kick record ends with the same slot (FX_IMP_NEXT looks there
+  // first: that cell in, the rest came before it).
+  const kickLast=new Set();
+  for(let tone=0;tone<2;tone++)for(let facing=0;facing<4;facing++){
+    const r=warmList.slice(((tone*3+2)*4+facing)*8,((tone*3+2)*4+facing)*8+8);
+    kickLast.add(r.indexOf(0xFFFF)<0?7:r.indexOf(0xFFFF)-1);
+  }
+  if(kickLast.size!==1)throw Error('fx: kick warm records differ in length');
 
   if(cells.length>512)throw Error(`fx: ${cells.length} cells exceed 9-bit ids`);
   const bin=new Uint8Array(cells.length*CELL_BYTES);
@@ -751,6 +759,7 @@ export async function generate({rom,repo,outDir,xdata}){
   a.def('FX_ASM_RING_COMPACT',compactRingBase);
   a.def('FX_ASM_STAR',starBase);a.def('FX_ASM_SHOCK',shockBase);a.def('FX_SHOCK_FRAMES',IMPACT_SHOCK_LIFE);a.def('FX_SHOCK_DELAY',IMPACT_SHOCK_DELAY);
   a.label('fx_kick_steps');a.db(kickSteps);
+  a.def('FX_WARM_KICK_LAST',[...kickLast][0]*2);
   a.label('fx_warm_list');a.dw(warmList);
   a.label('fx_class_palettes');for(const p of palettes){const row=[0,...p.map(c=>c-1)];while(row.length<16)row.push(0);a.dw(row);}
   a.label('fx_overlay_spare');a.db(palettes.map(p=>p.length<=13?1:0)); // indices 14/15 unused: low-priority UI may share
