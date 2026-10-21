@@ -90,7 +90,7 @@ fx_spawn:
 	LDA $05,S
 	AND.w #$00FF
 	BEQ .refuse
-	CMP.w #!FX_SPARKS+1
+	CMP.w #!FX_HIT+1
 	BCS .refuse                  ; continuous kinds are drawn with fx_draw
 	LDX.w #$0000
 .find
@@ -170,8 +170,11 @@ fx_spawn_init:
 	STA.l !fx_s
 	LDA.l !fx_slots+!S_KIND,X
 	AND.w #$00FF
+	CMP.w #!FX_HIT
+	BEQ .impact
 	CMP.w #!FX_IMPACT
 	BNE .notImpact
+.impact
 	LDA.l !fx_slots+!S_A,X       ; a = life (0 = 10), b = hold
 	BEQ +
 	STA.l !fx_s
@@ -179,7 +182,21 @@ fx_spawn_init:
 	LDA.l !fx_slots+!S_B,X
 	STA.l !fx_slots+!S_HOLD,X
 	REP #$20
-	JMP .life
+	LDA.l !fx_slots+!S_KIND,X
+	AND.w #$00FF
+	CMP.w #!FX_HIT
+	BNE +
+	LDA.l !fx_c                  ; FX_HIT: a becomes the impact frame (FX_IMP_*)
+	STA.l !fx_slots+!S_A,X
+	AND.w #!FX_IMP_ACTOR
+	BEQ +
+	SEP #$20
+	LDA.l !fx_wdue               ; its actor is white in this fx frame and the next
+	AND.b #!FX_SEEN
+	ORA.b #2
+	STA.l !fx_wdue
+	REP #$20
++	JMP .life
 .notImpact
 	CMP.w #!FX_EXPLODE
 	BNE .notExplode0
@@ -296,7 +313,7 @@ fx_spawn_init:
 
 ; Life in frames per timed kind (index = kind).
 fx_life_default:
-	dw 1, 10, 22, 14, 42, 26, 132, 14, 32, 12
+	dw 1, 10, 22, 14, 42, 26, 132, 14, 32, 12, 10
 
 ; Handle in A -> X = slot offset, C clear when it names a live effect.
 fx_handle_slot:
@@ -538,14 +555,17 @@ fx_draw_full:
 	SEC
 	RTL
 
-; fx_flash: A = frames (1-7; the transformation uses 7).
+; fx_flash: A = frames (1-7; the transformation uses 7, the finishing kick
+; 3). A flash already running longer keeps going.
 fx_flash:
 	JSR fx_ensure_init
 	CMP.w #8
 	BCC +
 	LDA.w #7
-+	STA.l !fx_flash
-	RTL
++	CMP.l !fx_flash
+	BCC +
+	STA.l !fx_flash
++	RTL
 
 ; fx_quake: A = frames. The native BG quake byte $49 gets $E0 for that many
 ; frames unless an event already uses it; a native write takes it back.
@@ -573,9 +593,9 @@ fx_quake:
 	PLA
 	BEQ +
 	STA.l !fx_quake
-	LDA.w #$0000
-	STA.l !fx_quakeprev
 	SEP #$20
+	LDA.b #$00
+	STA.l !fx_quakeprev           ; a byte: the camera kick follows it
 	LDA.b #$E0
 	STA.w $0049
 	REP #$20
@@ -584,7 +604,8 @@ fx_quake:
 	PLA
 	RTL
 
-; fx_kill_all: every spawned effect, the flash and the quake end.
+; fx_kill_all: every spawned effect, the flash, the quake and the camera
+; kick end.
 fx_kill_all:
 	JSR fx_ensure_init
 	JSR fx_clear_slots
@@ -592,7 +613,17 @@ fx_kill_all:
 	STA.l !fx_flash
 	STA.l !fx_ndraw
 	JSR fx_quake_stop
+	JSR fx_kick_stop
 	RTL
+
+; End a camera kick: the next field NMI writes the plain scroll values.
+fx_kick_stop:
+	LDA.w #$0000
+	STA.l !fx_kickd
+	SEP #$20
+	STA.l !fx_kick
+	REP #$20
+	RTS
 
 ; Clear all spawned effects. Preserves nothing.
 fx_clear_slots:

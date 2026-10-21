@@ -13,6 +13,7 @@ if defined("FX_TEST")
 endif
 	LDA.l !fx_nmiwork            ; idle frames cost one read here
 	BEQ .done
+	BMI .kickOnly                ; $8000: a camera kick alone
 	LDA.l !fx_magic
 	CMP.w #!FX_MAGIC
 	BNE .done
@@ -44,6 +45,10 @@ endif
 	BCC .late
 	CMP.w #256
 	BCS .late
+	LDA.l !fx_kickd              ; the camera kick's scroll
+	BEQ +
+	JSR fx_nmi_kick
++
 	JSR fx_nmi_poly              ; HDMA first, then the uploads
 	JSR fx_nmi_channel
 	BCS +
@@ -63,6 +68,20 @@ if defined("FX_TEST")
 	STA.l !fx_vbl_end
 endif
 .done
+	RTL
+
+; Only the camera kick's scroll this vblank (no uploads, HDMA or colour
+; math): written while the vblank lasts.
+.kickOnly
+	LDA.l !fx_magic
+	CMP.w #!FX_MAGIC
+	BNE .done
+	JSR fx_nmi_vline
+	CMP.w #225
+	BCC +
+	JSR fx_nmi_kick
++	LDA.w #$0000
+	STA.l !fx_cfail
 	RTL
 
 ; Learn the vblank time FX gets in this streaming phase: drop to a lower

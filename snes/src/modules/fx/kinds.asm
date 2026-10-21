@@ -6,8 +6,9 @@
 fx_kind_table:
 	dw fx_k_none, fx_k_impact, fx_k_ki, fx_k_burst, fx_k_explode, fx_k_ember
 	dw fx_k_detonate, fx_k_status, fx_k_debris, fx_k_sparks
-	dw fx_k_none, fx_k_none, fx_k_none, fx_k_none, fx_k_none, fx_k_none
+	dw fx_k_hit, fx_k_none, fx_k_none, fx_k_none, fx_k_none, fx_k_none
 	dw fx_k_orb, fx_k_aura, fx_k_lightning, fx_k_deathball, fx_k_disc, fx_k_finger, fx_k_cell
+	dw fx_k_prep
 fx_beam_table:
 	dw fx_b_kame, fx_b_wave, fx_b_wave, fx_b_wave, fx_b_strip, fx_b_laser, fx_b_strip
 
@@ -1755,6 +1756,7 @@ endif
 !fxw_pass = !fx_e+$6            ; 0: the sparks, 1: the Thunderbolt / arc cells
 !fxw_gold = !fx_e+$8            ; 0 blue, 2 gold (table offset)
 !fxw_n    = !fx_e+$A            ; placements in the run
+assert !fxw_n+2 <= !fx_evict, "wave scratch runs into the impact state"
 fx_wave_edges:
 	LDA !d_cur+!C_DIR
 	JSR fx_set_dir

@@ -13,6 +13,8 @@
 !fx_c      = !FX_SRAM+$06   ; word: kind argument C
 !fx_t      = !FX_SRAM+$08   ; word: client clock / age for continuous draws and beams
 !fx_rgb    = !FX_SRAM+$0A   ; 3 words: caller colours (BGR555) for FX_DEBRIS: dark, mid, light
+; Read-only state
+!fx_evict  = !FX_SRAM+$BC   ; byte: counts FX cache evictions and residency resets (fx_warm)
 
 ; Flags (high byte of A)
 !FX_F_SCREEN  = $01         ; X/Y are screen pixels (default: map pixels)
@@ -34,6 +36,13 @@
 !FX_STATUS    = $07         ; status recovery burst (style 0 plain,1 fire,2 ice,3 balloon)
 !FX_DEBRIS    = $08         ; rubble chunks in caller colours
 !FX_SPARKS    = $09         ; ring of impact sparks
+!FX_HIT       = $0A         ; impact spark of a connected blow with its impact frame (C = FX_IMP_*)
+; FX_HIT C (engine/impact-art.js, mana-mod.js strike()), timed in frames
+; since the spawn, through the contact hold; A = life (0 = 10), B = hold
+; as FX_IMPACT. The camera kick is fx_kick.
+!FX_IMP_STAR  = $0007       ; starburst size + 1 (1 ki, 2 jab, 3 cross, 4 kick), 2 frames in front
+!FX_IMP_SHOCK = $0008       ; the finishing kick's shockwave, 6 frames behind the natives
+!FX_IMP_ACTOR = $00F0       ; actor slot << 4 (3-11) drawn white for 2 frames, 0 none
 ; Continuous kinds (fx_draw)
 !FX_ORB       = $10         ; charge orb
 !FX_AURA      = $11         ; ki aura (style 0 blue,1 gold,2 pink)
@@ -42,6 +51,7 @@
 !FX_DISC      = $14         ; Frieza's Death Disc
 !FX_FINGER    = $15         ; finger-laser charge glint
 !FX_CELL      = $16         ; any native spell cell
+!FX_PREP      = $17         ; nothing drawn: a coming contact's cells come in (fx_warm)
 !FX_DBALL_BATTLE = 0
 !FX_DBALL_CINEMATIC = 1     ; red planet killer, browser cinematic 64 px art
 ; FX_CELL groups (!fx_a)

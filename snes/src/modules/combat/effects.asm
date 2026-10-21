@@ -180,8 +180,12 @@ cb_effects_age:
 	RTS
 
 ; Impact spark: cb_t4/cb_t5 position (map), cb_t6 hold, cb_t7 life, cb_t8
-; facing, cb_t9 super. Preserves cb_t0-cb_t3, cb_td-cb_tf, ag_*.
+; facing, cb_t9 super; cb_effect_hit also takes cb_ta, the impact frame of
+; a connected blow (!CB_IMP_*: starburst, shockwave, struck actor drawn
+; white). Preserves cb_t0-cb_t3, cb_td-cb_tf, ag_*.
 cb_effect_impact:
+	STZ !cb_ta
+cb_effect_hit:
 	JSR cb_effect_alloc
 	BCC +
 	RTS
@@ -205,6 +209,8 @@ cb_effect_impact:
 	STA.l !ER+!er_x,X
 	LDA !cb_t5
 	STA.l !ER+!er_y,X
+	LDA !cb_ta
+	STA.l !ER+!er_aux,X
 	JMP cb_fx_spawn_impact
 
 ; The transformation ring (life 14) at cb_t4/cb_t5.
@@ -234,7 +240,12 @@ cb_effects_draw:
 	JSR cb_goku_active
 	BNE +
 	RTS
-+	JSR cb_fx_continuous          ; focus gets cache/OAM priority over a retiring beam
++	LDA !cb_act_age
+	CMP.w #2
+	BCS +
+	JSR cb_fx_prep                ; a punch's wind-up readies its contact's cells
++
+	JSR cb_fx_continuous          ; focus gets cache/OAM priority over a retiring beam
 	LDA.l !bd_on
 	BEQ +
 	JSR cb_fx_beam_draw

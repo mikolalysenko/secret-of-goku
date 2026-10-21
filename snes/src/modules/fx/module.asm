@@ -45,7 +45,8 @@ assert !FX_SRAM == !SRAM_WORK_FX, "fx request block must sit at !SRAM_WORK_FX"
 !fx_flashamt  = !FX_SRAM+$34   ; word: flash amount for the next vblank (0 none)
 !fx_mathon    = !FX_SRAM+$36   ; word: colour math currently overridden by FX
 !fx_quake     = !FX_SRAM+$38   ; word: quake frames left
-!fx_quakeprev = !FX_SRAM+$3A   ; word: $49 before the pulse
+!fx_quakeprev = !FX_SRAM+$3A   ; byte: $49 before the pulse
+!fx_kick      = !FX_SRAM+$3B   ; byte: camera kick, 1 + its next step in fx_kick_steps | facing << 5 (0 none)
 !fx_bmiss     = !FX_SRAM+$3C   ; word: a cell missed this frame's upload budget (fx_cache_get)
 !fx_pbig      = !FX_SRAM+$3E   ; word: polygon tables in both buffers: bit 0 this frame's request,
                                ;   bit 1 on screen, bit 2 the ones the key describes
@@ -70,7 +71,12 @@ assert !FX_SRAM == !SRAM_WORK_FX, "fx request block must sit at !SRAM_WORK_FX"
 !fx_s         = !FX_SRAM+$A0   ; 16 bytes scratch for the API entry points
 !fx_dual_cur  = !fx_s+$0C      ; draw-list offset while fx_run_draws runs
 !fx_dual_pair = !fx_s+$0E      ; second draw consumed by the paired polygon
-!fx_e         = !FX_SRAM+$B0   ; 16 bytes scratch for the cache
+!fx_e         = !FX_SRAM+$B0   ; 12 bytes scratch for the cache
+                               ; $BC: !fx_evict (defs.asm)
+!fx_wdue      = !FX_SRAM+$BD   ; byte: bits 0-1 fx frames in which an FX_HIT may still draw its actor
+                               ;   white; FX_SEEN: something was drawn since the regions were claimed
+!FX_SEEN      = $80
+!fx_kickd     = !FX_SRAM+$BE   ; word: the camera kick in the coming vblank, offset << 1 | axis (0 none)
 ; Spawned effects: 14 slots of 16 bytes
 !FX_SLOTS     = 14
 !fx_slots     = !FX_SRAM+$C0
@@ -226,7 +232,9 @@ fx_tables:
 incsrc "fx/tables.asm"
 fx_data_end:
 assert fx_data_end <= !FX_DATA+$10000, "fx data overflows its bank"
-assert !FX_CELL_COUNT <= !FX_RBITS_SIZE*8, "fx residency bitmap too small for the cells"
+; Cells past the residency bitmap (the impact frames, appended last) are
+; found by a search of the 15 cache entries instead of their bit.
+assert !FX_CELL_COUNT <= 512, "fx cell ids are nine bits"
 pullpc
 
 if defined("FX_TEST")
@@ -251,6 +259,7 @@ incsrc "overlay.asm"
 incsrc "frame.asm"
 incsrc "emit.asm"
 incsrc "kinds.asm"
+incsrc "impact.asm"
 incsrc "poly.asm"
 incsrc "red.asm"
 incsrc "clash.asm"

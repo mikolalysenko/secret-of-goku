@@ -25,6 +25,15 @@ export function beamProfile(ssj,charge){
 // Launch arc of updateKnockbacks(): t = age/12 (age 1..12).
 export function launchEase(age){const t=Math.min(1,age/12);return 1-(1-t)**2;}
 
+// ManaMod's tuning statics (hit stop, push-back), read from the browser's
+// own engine/mana-mod.js: the class is defined, never constructed.
+export function manaModStatics(repo){
+  const ctx={window:{}};
+  vm.runInNewContext(readFileSync(resolve(repo,'engine/mana-mod.js'),'utf8'),ctx);
+  const {HIT_STOP,SLIDE,SLIDE_FRAMES}=ctx.window.ManaMod;
+  return {HIT_STOP:HIT_STOP.map(r=>[...r]),SLIDE:[...SLIDE],SLIDE_FRAMES};
+}
+
 async function animationData(repo){
   const ctx={window:{}};
   vm.runInNewContext(readFileSync(resolve(repo,'engine/goku-animation-data.js'),'utf8'),ctx);
@@ -138,6 +147,21 @@ export async function generate({rom,repo,outDir}){
     const lift=[0],ease=[0];
     for(let a=1;a<=12;a++){const t=Math.min(1,a/12);lift.push(Math.round(Math.sin(t*Math.PI)*20));ease.push(Math.min(65535,Math.round(launchEase(a)*65536)));}
     lines.push('combat_launch_lift:',`\tdb ${db(lift)}`,'combat_launch_ease16: ; ease in 0.16 (radial launches)',`\tdw ${dw(ease)}`);
+  }
+  // --- connected punches: graded hit stop and the push-back of a jab or
+  // cross that does not kill (strike() / hit() / updateKnockbacks())
+  {
+    const {HIT_STOP,SLIDE,SLIDE_FRAMES}=manaModStatics(repo);
+    if(HIT_STOP.flat().some(v=>v<1||v>14))throw Error('combat gen: hit stop out of range');
+    lines.push('combat_hit_stop: ; jab, cross, kick; base form, then Super Saiyan',`\tdb ${db(HIT_STOP.flat())}`);
+    const ease=a=>{const t=Math.min(1,a/SLIDE_FRAMES);return 1-(1-t)**2;};
+    for(const d of SLIDE){
+      if(d===56||d===88||d>127)throw Error('combat gen: push-back distance clashes with a launch');
+      const pos=[0],neg=[0];
+      for(let a=1;a<=SLIDE_FRAMES;a++){pos.push(Math.round(d*ease(a)));neg.push(Math.round(-d*ease(a)));}
+      lines.push(`combat_slide_${d===SLIDE[0]?'base':'ssj'}p:`,`\tdw ${dw(pos)}`,`combat_slide_${d===SLIDE[0]?'base':'ssj'}n:`,`\tdw ${dw(neg)}`);
+    }
+    defs.push(`!COMBAT_SLIDE_BASE = ${SLIDE[0]}`,`!COMBAT_SLIDE_SSJ = ${SLIDE[1]}`,`!COMBAT_SLIDE_FRAMES = ${SLIDE_FRAMES}`);
   }
   // --- hand sockets (mana-mod.js handOrigin): dx = sx-16, dy = sy-31 per
   // form, technique (0 beam, 1 ki hand 0, 2 ki hand 1, 3 charge) and facing.

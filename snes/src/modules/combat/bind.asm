@@ -420,7 +420,12 @@ cb_fx_req_clear:
 	RTS
 endif
 
-; Impact spark for record X (fx_dir/fx_hold/fx_life/fx_flags/position).
+; Impact spark for record X (fx_dir/fx_hold/fx_life/fx_flags/position); a
+; connected blow's impact frame (er_aux) makes it an FX_HIT.
+if defined("FX_HIT")
+	assert !CB_IMP_SHOCK == !FX_IMP_SHOCK, "combat: fx impact frame bits moved"
+	assert !CB_IMP_SLOT*15 == !FX_IMP_ACTOR, "combat: fx impact frame bits moved"
+endif
 cb_fx_spawn_impact:
 if defined("FX_IMPACT")
 	JSR cb_fx_req_clear
@@ -435,11 +440,21 @@ if defined("FX_IMPACT")
 	LDA.l !ER+!er_hold,X
 	AND.w #$00FF
 	STA.l !fx_b
+	LDY.w #!FX_IMPACT
+if defined("FX_HIT")
+	LDA.l !ER+!er_aux,X
+	STA.l !fx_c
+	BEQ +
+	LDY.w #!FX_HIT
++
+endif
+	PHY                           ; kind
 	LDA.l !ER+!er_flags,X
 	AND.w #!ERF_SUPER
 	BEQ +
 	LDA.w #!FX_F_GOLD<<8
-+	ORA.w #!FX_IMPACT
++	ORA $01,S
+	PLY
 	PHA
 	LDA.l !ER+!er_y,X
 	TAY
@@ -717,6 +732,67 @@ endif
 cb_bind_fx_flash:
 if defined("FX_IMPACT")
 	JSL fx_flash
+endif
+	RTS
+; Camera kick: A = facing | blow << 8 (fx_kick).
+cb_bind_fx_kick:
+if defined("FX_HIT")
+	JSL fx_kick
+endif
+	RTS
+; A punch's first two frames (cb_effects_draw calls while the action's age
+; is below 2) have fx ready the cells of its coming contact (fx_warm), so
+; their uploads land before the contact's busy vblank. A blow whose cells
+; were found resident is not asked again until fx's cache has lost a cell
+; since (!fx_evict).
+cb_fx_prep:
+if defined("FX_PREP")
+	SEP #$20
+	LDA !cb_act
+	CMP.b #!GOKU_K_PUNCH
+	BNE .out8
+	LDA !cb_act_fl
+	BIT.b #!AF_HIT
+	BNE .out8
+	LDA !cb_can
+	BEQ .out8
+	REP #$20
+	LDA !cb_act_arg
+	AND.w #$0003
+	STA !cb_t1                    ; blow
+	LDA !cb_act_super
+	AND.w #$00FF
+	BEQ +
+	LDA.w #3
++	CLC
+	ADC !cb_t1
+	TAX                           ; its warm record
+	LDA.l !fx_evict
+	EOR.l !cb_warm,X
+	AND.w #$00FF
+	BEQ .out                      ; still resident
+	PHX
+	LDA !cb_act_super
+	AND.w #$00FF
+	BEQ +
+	LDA.w #$0100
++	ORA !cb_t1                    ; blow | gold << 8
+	PHA
+	LDA !cb_act_face
+	AND.w #$0003
+	TAX
+	PLA
+	JSL fx_warm
+	PLX
+	CMP.w #$FFFF
+	BEQ .out                      ; coming in: asked again next time
+	SEP #$20
+	STA.l !cb_warm,X
+	REP #$20
+.out
+	RTS
+.out8
+	REP #$20
 endif
 	RTS
 cb_bind_fx_quake:
