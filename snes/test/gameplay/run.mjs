@@ -14,6 +14,7 @@
 import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
 import {GAMEPLAY_CASES} from './cases.mjs';
 import {NATIVE_BEDS} from '../../gen/audio-resident.mjs';
+import {isResident7} from '../audio/cartridge.mjs';
 import {resolve,join} from 'node:path';
 import {runMesen} from '../mesen.mjs';
 import {checkpointDir,privateRom,cleanupRom} from '../checkpoints.mjs';
@@ -87,7 +88,7 @@ for(const [name,bundle,script,setup=''] of cases){
   const v=r.results??{};
   const running=v.completed>=v.videoFrames/4&&v.nmiFrames>=v.videoFrames-1&&v.visibleFrames>0&&Object.keys(v.maps??{}).length===1;
   const action=name.includes('punch')?16:name.includes('ki')?19:name==='teleport'?20:name==='charge'?17:name==='focus-grass'?24:name==='transform-grass'?21:0;
-  const powerPass=!name.endsWith('-grass')||(v.grassCuts>0&&v.maxPower>=96&&v.auraFrames>5&&v.maxAuraSprites>=6&&v.auraBgWrites===0&&(args.includes('--pcm')||(v.chargeTailVoices===0&&v.sounds?.[NATIVE_BEDS.charge]>0)));
+  const powerPass=!name.endsWith('-grass')||(v.grassCuts>0&&v.maxPower>=96&&v.auraFrames>5&&v.maxAuraSprites>=6&&v.auraBgWrites===0&&(args.includes('--pcm')||(v.chargeTailVoices===0&&v.sounds?.[isResident7(romBytes)?0xED:NATIVE_BEDS.charge]>0)));
   const transformPass=name!=='transform-grass'||(v.forms?.['1']>0&&(args.includes('--pcm')||v.sounds?.['224']>0));
   const corridorPass=!corridor||(v.flightCorridorTurns>=2&&v.maxTravel<128);
   const gameplayPass=running&&powerPass&&transformPass&&corridorPass&&v.destroyRepeatFrames===0&&(!action||v.actions?.[action]>0)&&(!name.includes('fly')&&!name.includes('flight')||v.flightFrames>0)&&(!['walk','fly','water-flight'].includes(name)||v.maxTravel>2);

@@ -487,3 +487,11 @@ another 2-3. With `CORE_FASTROM` (MEMSEL set) the same frames end at
 - **flight / ui (integration)**: in the Rabite field `flight_frame` costs
   6 / 11 / 20 lines (p50 / p90 / max) and `ui_field_frame` 2 / 11 / 20; the
   scene completes 117 field frames in 155 against 126 on main.
+
+### Round-seven audio binding
+
+The default `cb_bind_loops` calls audio's lookup-table binding for browser
+charge/focus level and pitch, including the aura above its threshold. Audio
+owns quantization, sustained voices, expiry and CPU throttling. The old fixed
+level pulse binding remains byte-identical with `AUDIO_CUSTOM_SAMPLES=0`.
+No attack/contact timing or punch/ki cue changes are made here.

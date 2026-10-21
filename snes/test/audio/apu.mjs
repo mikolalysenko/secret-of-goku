@@ -8,7 +8,7 @@ import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {SDsp} from './sdsp.mjs';
 import {assemble} from '../../gen/audio-spc700.mjs';
-import {isCustom,customSegments} from './cartridge.mjs';
+import {isCustom,customSegments,sampleFloor} from './cartridge.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 
 export function loadRom(){return new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')));}
@@ -116,7 +116,7 @@ export function romEcho(rom,preset){const a=0x30708+preset*4;return {edl:rom[a]&
 // increasing addresses from $4DF1, its DIR / tuning / ADSR at entry $20+k,
 // the sequence at $1A00; then run the SPC side of command 01 (echo
 // parameters, an empty transfer) so the driver starts the song.
-export function loadSong(h,rom,{blob,instruments,echo={edl:4,evol:0x40,efb:0x1e,fir:0},song=0x3b,p2=0x0f,p3=0xff,sampleBase=isCustom(rom)?0x55F1:0x4DF1}){
+export function loadSong(h,rom,{blob,instruments,echo={edl:4,evol:0x40,efb:0x1e,fir:0},song=0x3b,p2=0x0f,p3=0xff,sampleBase=sampleFloor(rom)}){
  // The CPU loader disables echo writes before uploading/compacting samples.
  // RAM installation here is instantaneous, but the following handshake is
  // not: an old larger echo ring could otherwise erase the new sample tail.

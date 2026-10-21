@@ -128,6 +128,12 @@ if defined("AUDIO_IDS")
 	BNE +
 	RTS
 +
+if defined("AUDIO_CUSTOM_SAMPLES")
+if !AUDIO_CUSTOM_SAMPLES
+	JSL audio_combat_loops
+	RTS
+endif
+endif
 if not(defined("AUDIO_PCM"))
 	; Resident audio only needs an active charge pulse. Its level/rate is
 	; fixed by the short SPC sequence, so skip the PCM envelope arithmetic

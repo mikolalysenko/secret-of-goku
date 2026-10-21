@@ -285,10 +285,14 @@ story's. Core hooks used: `modules_title_boot` (WRAM program patches),
     Potos and door 12 back beside the sword.
 - **Checkpoint after the arrival**: the e2e run saves
   `after-arrival.mss` (field loop `00:B079`, Goku controllable beside the
-  open pod) into the shared checkpoint directory
-  (`<main checkout>/.local/snes-checkpoints/`, with `after-arrival.png` and
-  `after-arrival.json`). Regenerate with `node snes/test/title/run.mjs
-  arrival`.
+  open pod) in its output. Only with `SNES_UPDATE_CHECKPOINTS=1` does it
+  replace the shared one (`<main checkout>/.local/snes-checkpoints/`, with
+  `after-arrival.png` and `after-arrival.json`), which the ui suite boots
+  from. A savestate carries its build's sound driver and module RAM, so
+  publish it only from a main build:
+  `SNES_UPDATE_CHECKPOINTS=1 node snes/test/title/run.mjs arrival`.
+  (Before October 21 every run published it, so a branch's title run could
+  replace it with that branch's build.)
 
 ## Known differences from the browser
 

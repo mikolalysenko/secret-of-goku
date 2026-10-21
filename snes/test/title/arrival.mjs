@@ -9,8 +9,11 @@
 //         title, name entry, opening), the walk to the Mana Sword, the pull,
 //         the arrival, the original tail until control returns, the scenery
 //         and a ring menu round trip. Saves the stable checkpoint
-//         after-arrival.mss (field loop, 00:B079) into the shared checkpoint
-//         directory (<main checkout>/.local/snes-checkpoints/).
+//         after-arrival.mss (field loop, 00:B079) in its output; with
+//         SNES_UPDATE_CHECKPOINTS=1 it also replaces the shared one
+//         (<main checkout>/.local/snes-checkpoints/), which other suites
+//         boot from: publish only from a main build, since a state carries
+//         its build's sound driver and module RAM.
 //  doors  from after-arrival.mss in a CORE_TEST build: the door to Potos
 //         and back (door 12 lands beside the sword): scenery released and
 //         restored with the same tiles.
@@ -164,7 +167,7 @@ export async function runArrival({rom,out}){
   check(e.ring_open===true&&same(e.scenery_after_ring,[20,9])&&e.crater_vram_after_ring===e.crater_vram,`ring menu round trip keeps the scenery (${JSON.stringify(e.scenery_after_ring)}, tiles ${e.crater_vram_after_ring===e.crater_vram?'same':'changed'})`);
   const saved=join(dir,'e2e','after-arrival.mss');
   check(e.saved===true&&existsSync(saved),'stable checkpoint after the arrival (00:B079)');
-  if(existsSync(saved)){
+  if(existsSync(saved)&&process.env.SNES_UPDATE_CHECKPOINTS==='1'){
     const shared=checkpointDir();mkdirSync(shared,{recursive:true});
     copyFileSync(saved,join(shared,'after-arrival.mss'));
     if(existsSync(join(dir,'e2e','control.png')))copyFileSync(join(dir,'e2e','control.png'),join(shared,'after-arrival.png'));

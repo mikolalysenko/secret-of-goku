@@ -44,7 +44,21 @@ if defined("AUDIO_SFX_FLIGHT")
 	TAX
 	LDA.l world_sfx_audio,X
 	BEQ +
+if defined("AUDIO_CUSTOM_SAMPLES")
+if !AUDIO_CUSTOM_SAMPLES
+	CMP.w #!AUDIO_SFX_FLIGHT
+	BNE .ordinary
+	JSL audio_world_takeoff
+	BRA .sent
+.ordinary
+endif
+endif
 	JSL audio_sfx
+if defined("AUDIO_CUSTOM_SAMPLES")
+if !AUDIO_CUSTOM_SAMPLES
+.sent
+endif
+endif
 +	REP #$30
 	PLX
 	PLA
