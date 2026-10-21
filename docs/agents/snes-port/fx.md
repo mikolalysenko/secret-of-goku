@@ -407,8 +407,12 @@ on the subscreen**: their own colours replace the fixed colour there, so
 the fighters, collision ball and HUD retain their priority. The normal
 field subscreen shadow (`$22`) and window registers are restored when the
 pair ends, including a transition to a single polygon or the ring menu.
-`clash-colour.lua` demonstrates why the mirror matters: clipping alone
-blackens 879 native sprite pixels; the subscreen restores all 879 exactly.
+`clash-colour.lua` is an optional hardware feasibility probe, excluded
+from the default suite. Its older exact-restoration expectation includes
+FX edge sprites as well as native pixels. With the current palette rules,
+both the pre-scene-fix cartridge (`c8295de`) and the fixed cartridge report
+879 of 1,098 pixels restored, zero remaining black pixels, and fail that
+one assertion identically. The shipping `clash` renderer's tests pass.
 
 The pair uses one middle-ramp colour per wave and eight-line outline
 steps. It gives the second wave its full breadth and correct purple/gold

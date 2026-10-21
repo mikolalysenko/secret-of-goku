@@ -278,9 +278,11 @@ background, no lag/OBJ overflow, vblank DMA and no deferred art uploads.
 
 Measured on Mesen (both forms, 549 visible-clock frames each): **zero lag,
 OBJ overflow, deferred uploads or active-display DMA**. Complete world NMI
-peaks at **34.89 of 37 vblank lines**. Frieza logic averages 2.96 lines
-(max 6.75), OAM drawing 8.31 (max 39.80, including interrupt time), and its
-NMI 6.16 (max 20.43). Idle world logic is 0.139 lines (max 0.24), using the
+peaks at **35.00 of 37 vblank lines** with the lag-palette hook. Frieza logic
+averages 2.96 lines (max 6.74), OAM drawing 8.31 (max 39.82, including
+interrupt time), and its NMI 6.23 (max 20.49). The idle world palette hook
+costs 0.279 lines when the native transfer is enabled. Idle world logic is
+0.154 lines (max 0.24), using the
 `FZI_WORLD_IDLE` WRAM cache cleared by every `fz_wake`; the idle draw and
 NMI entries are about 0.15 and 0.12 lines each. Field rendering and the
 field Death Ball renderer are unchanged.
@@ -629,6 +631,39 @@ dialogue window does).
 | `tree` | preset `tree`: event 5F8 end to end with B tapped every 12 frames: every Tree scene on maps 236 and 198 in order, the Tree complete after the native tail; shots at chosen ages, Frieza's sprite boxes and a trace of the vista's state; browser cliff pixel comparisons, BG3 cutoff, preserved HDMA/HUD data, visible return/wake ramps after the final INIDISP write, native brightness restoration and vblank cost |
 | `effects` | scenes no preset reaches, set up by `scenarios.mjs` on a preset in the browser (`capture.mjs`: restore the snapshot with an edited `goku.frieza`, run, screenshot into `.local/snes-ref-frieza/`) and replayed on the cartridge: Popoi's end 95-99%, the steal without the altar 99.5%, the empower orbs 97-99.9%, the eruption 93-99%, the collapse 87-90% after its first alarm; the Death Ball, Fanha's beam and the auras show where fx's kinds differ |
 | `music` | Frieza's battle theme becomes the current song (`$1E05 = $3C`); reports the load's stall |
+
+### Remaining scene regression checks (2026-10-21)
+
+Compared with the pre-task cartridge at `c8295de`:
+
+| Regression | Before | Fixed |
+| --- | --- | --- |
+| Battle Death Orb coverage | Gaps at pictures 132, 157 and 172 | Zero missing requested orbs in all five transient captures |
+| FX ready-before-native-completion palette gap | Five injected vblanks change the displayed map/colours (10 failed observations) | Displayed map and colours retained; completed frames and release still work |
+| Tree return/wake brightness | 281 wrong final INIDISP observations, no intermediate fades | Zero wrong observations; both ramps show all 15 levels below full brightness, `$E6` untouched |
+| World flyby lag palettes, each form | 11/11 OBJ transfers wrong, one distant backdrop lost | Zero wrong OBJ/BG/backdrop transfers, both native buffers covered |
+
+`node snes/test/debug/hunt.mjs frieza thanatos battle flight --frames=480 --browser`
+reports these flagged-frame counts. This heuristic also counts intentional
+animation, flicker and quakes; the module's transient checks distinguish
+Frieza/FX faults from those changes.
+
+| Preset | Cartridge before → after | Browser before → after |
+| --- | --- | --- |
+| frieza | 0 → 0 | 3 → 3 |
+| thanatos | 0 → 0 | 3 → 3 |
+| battle | 103 → 100 | 146 → 146 |
+| flight | 478 → 478 | 478 → 478 |
+
+All 13 gameplay cases retain their baseline miss counts: charge 17,
+teleport 3, flight 2/2/1, and all others zero, including transformation.
+The six perf presets pass, including 300/304 completion samples for flight;
+the earlier missing-flight-samples report does not reproduce. All 36
+Frieza results, 15 world cases, 11 flight cases, 37 combat cases,
+9 shipping FX cases, 18 focus scenes and 29 assembled FX checks pass.
+Flight additionally matches 289,324 terrain tiles and 19,996 teleport
+queries against the browser. The optional `clash-colour` diagnostic has
+the identical baseline failure described in [fx.md](fx.md).
 
 ## Known differences
 
