@@ -4,6 +4,21 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: no original weapon-charge sounds for Goku (2026-10-21)
+
+- Codex audio (feb7df6; merged in 939c867). The maintainer still heard the
+  original charging sound while holding the punch button. Round seven
+  filtered only the `$27` tick. Two more native cues reached Goku:
+  - `$28` when the weapon meter reaches a level or full charge, from
+    `C0:B3CB → BB27 → BB11`. It played seven times in real-input traces;
+  - `$26` stamina ready, from `C0:EC02 → BB11`.
+- One filter at `BB11` now drops all three for Goku, in any party order.
+  Companions and a native Randi keep them. A 34-phase trace (party orders,
+  Goku on either controller, after menus, loads and map changes, flight,
+  Super Saiyan) goes from 10 leaks to 0.
+- Validation on 939c867: audio, combat, emulators, gameplay, goku and perf
+  pass. Gameplay misses unchanged.
+
 ## SNES integration: louder punches, whoosh swings and variety; flight never wedges Goku in a tree (2026-10-21)
 
 - Codex audio follow-ups to round seven (91c53d9, 9474d39, 747e71f,
