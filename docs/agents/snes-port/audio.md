@@ -12,8 +12,8 @@ against 277 ARAM/DSP snapshots of the browser mod (`.local/snes-import/`).
 
 The default cartridge uses resident effects and streams only three rare
 lines: Frieza's laugh, Vegeta's Final Flash and Vegeta's Kakarot. The unchanged
-stream extension uploads once at boot. Nine single-voice sequences occupy previously unused effect slots
-`$DC-$E4`, alongside four measured retail effects. They reuse the
+stream extension uploads once at boot. Seventeen single-voice sequences occupy
+effect slots `$DC-$EC`, alongside the retail `$00` laser. They reuse the
 boot-resident instruments and finish within 2.6 seconds. Their durations
 now follow the browser clips, including the transformation and burst tails. The native
 `$12` rumble loop is no longer used by transformations; it never stopped
@@ -23,7 +23,11 @@ A priority selector sends at most one new effect per
 frame and drops stale requests when a script or song owns the sound queue.
 Charge beds pulse every 25 frames. Continuous flight noise is represented
 by the takeoff/landing effects. The Kamehameha chant and shout remain off.
-Native music and its arrangements remain enabled.
+Native music and its arrangements remain enabled. Round two changes only
+sequence bytes and cue lookup data: **zero changed 65816 instructions**,
+no added upload; every effect still takes one voice. Punch swings and contacts share
+boot instrument 1, with longer kick envelopes; ki shots use instrument 9.
+Teleports use DSP noise, and Goku's beam uses the current song's echo.
 
 `snes/src/modules/audio/native.asm` implements this policy behind the same
 module API; `rare.asm` admits the rare lines. `-DAUDIO_PCM=1` restores the
@@ -36,12 +40,65 @@ intact samples, one-voice ownership, automatic cue termination and the
 absence of BRR stream commands. The SPC tests additionally check silent
 tails, output headroom and unchanged retail effects/samples.
 
-`resident.asm` uses 142 of the 144 zero bytes at ARAM `$2F70-$2FFF`: nine
-pointer pairs followed by 106 sequence bytes. Slots `$E5-$FF` are reserved
-for sequence storage. The existing boot and song-reload transfers already
-include this region, so it needs no new upload, samples or SPC extension.
-The test importer installs this small region and the boot extension from
-the cartridge after restoring a retail checkpoint's SPC state (section 6).
+`resident.asm` uses **267 of 283 bytes** of sequence/table capacity: the original 144
+zero bytes at `$2F70-$2FFF`, plus 139 bytes reclaimed by sharing identical
+retail tracks. Every retail effect id and both of its tracks are preserved.
+The existing boot and song-reload transfers already include these bytes,
+so this adds no upload or 65816 instructions. The test importer restores the
+whole effect block after a retail checkpoint, along with the boot extension.
+
+### Resident storage proof
+
+`snes/gen/audio-resident-storage.mjs` verifies each source span against its
+identical destination, redirects all incoming effect-table pointers, and
+rejects external fall-through or address-dependent jumps. The resident test
+compares the complete sequencer byte stream of **both tracks of all 220
+retail slots** before and after, and checks every other boot byte. No music,
+sample or streaming-extension storage is reclaimed.
+
+| Reclaimed ARAM (inclusive) | Bytes | Identical retained bytes | Retail table entries redirected |
+| --- | ---: | --- | --- |
+| `$379A-$37A9` | 16 | `$378A-$3799` | `$46` voice 1 |
+| `$39E6-$39F8` | 19 | `$39D3-$39E5` | `$59` voices 0/1 |
+| `$3A16-$3A28` | 19 | `$39D3-$39E5` | `$60` voices 0/1 |
+| `$3A40-$3A56` | 23 | `$3A29-$3A3F` | `$69` voices 0/1 |
+| `$3A89-$3ABA` | 50 | `$3A57-$3A88` | `$6B` voices 0/1 |
+| `$3CC9-$3CD4` | 12 | `$3CBD-$3CC8` | `$8C` voice 1 |
+
+The 17 pointer pairs occupy `$2F70-$2FB3` (68 bytes). The 199 sequence
+bytes are allocated as follows; remaining holes total 16 bytes.
+
+| Effect / name | ARAM (inclusive) | Bytes |
+| --- | --- | ---: |
+| $DC clink | $3A4C-$3A56 | 11 |
+| $DD impact | $3AA3-$3AAD | 11 |
+| $DE ki-blast | $3AAE-$3AB8 | 11 |
+| $DF charged | $2FB4-$2FBE | 11 |
+| $E0 transform | $3CC9-$3CD4 | 12 |
+| $E1 burst | $379A-$37A7 | 14 |
+| $E2 disc | $2FBF-$2FC9 | 11 |
+| $E3 air-release | $39E6-$39F3 | 14 |
+| $E4 beam | $2FCA-$2FD4 | 11 |
+| $E5 punch-swing | $2FF6-$2FFD | 8 |
+| $E6 kick-swing | $2FD5-$2FDF | 11 |
+| $E7 punch-contact | $3A16-$3A23 | 14 |
+| $E8 kick-contact | $3A89-$3A96 | 14 |
+| $E9 distant-impact | $2FE0-$2FEA | 11 |
+| $EA beam-echo | $3A40-$3A4B | 12 |
+| $EB teleport-noise | $3A97-$3AA2 | 12 |
+| $EC air-rush | $2FEB-$2FF5 | 11 |
+
+Spare bytes: `$2FFE-$2FFF`, `$37A8-$37A9`, `$39F4-$39F8`,
+`$3A24-$3A28`, and `$3AB9-$3ABA` (these retain their original bytes).
+
+The ten pointer words are at `$2D1A`, `$2D64/$2D66`, `$2D80/$2D82`,
+`$2DA4/$2DA6`, `$2DAC/$2DAE`, and `$2E32`. ROM offset for any affected ARAM
+byte is `$032139 + ARAM - $2C00` (CPU bank `$C3`). Each changed byte has an
+original-byte assertion and a registered patch. The generated layout is in
+`.local/snes-test/audio/audit/static.json` after `node snes/test/audio/audit.mjs`.
+Finite play traces and literal scans cannot prove that computed native
+sound ids are unused, so **no retail id is retired**. Sharing identical
+tracks avoids that risk and preserves even unobserved effects.
 
 Resident effect command `02` also uses an asynchronous CPU-side handshake
 in the shipping build. The hook at `C3:0175` writes the four ports and
@@ -58,86 +115,121 @@ The pending byte is `$7E:DD5B`, in unused stream channel 1. That channel's
 
 ### Measured resident cue palette
 
-`node snes/test/audio/effects.mjs --search` auditions every nonempty retail
-slot, then 1,008 loop-free candidate sweeps/decays through the real SPC700
-driver and S-DSP model. Eligibility requires one voice, boot instruments,
-self-termination, no sequence loops/jumps or global tempo/master changes.
-The chosen nine sequences and mapping live in `snes/gen/audio-resident.mjs`;
-`node snes/test/audio/effects.mjs --wav` measures the built cartridge and
-writes its recordings and feature vectors under `.local/snes-test/audio/`.
+`node snes/test/audio/effects.mjs --search` auditions retail effects and
+single-voice sweeps, finer note lengths, volume envelopes, DSP noise,
+noise-to-tone transitions, vibrato/tremolo, pitch modulation, song echo and
+two-track combinations. The final search measures **2,519 auditions / 2,457
+eligible candidates**, including the shipping sequences. Two-track rankings
+are limited to contacts, ki and beams. Every shipping choice still uses
+**one voice**. Hit/kick/blast layering scores below the best one-voice
+candidate; the boss beams gain less than one point while stealing two
+voices for 1.4 seconds. Those small gains were rejected. The audit includes
+integrated voice-milliseconds in `effects/layering.json`.
 
 References are all browser WAV variants, resampled at each cue's authored
-rate, multiplied by its gain and the .55 effects master. Features: audible
--40 dB duration, 32 normalized RMS envelope bins, Hann-windowed 1024-point
-FFT power centroid, eight octave-band energies (62.5 Hz–8 kHz), and RMS
-level. Score = 100 / (1 + .9 duration + .8 spectrum + .4 centroid +
-.8 envelope + .3 level); duration/centroid errors are absolute log2 ratios,
-band/level errors are capped at 24 dB and divided by 12, envelope error is
-RMS distance. Scores average variants. This is an acoustic ranking, not a
-claim of perceptual identity; the resident samples cannot reproduce speech
-or the layered source recordings.
+rate, multiplied by its gain and the .55 effects master. Features and weights
+are unchanged: audible -40 dB duration, 32 normalized RMS envelope bins,
+Hann-windowed 1024-point FFT power centroid, eight octave-band energies
+(62.5 Hz–8 kHz), and RMS level. Score = 100 / (1 + .9 duration + .8 spectrum +
+.4 centroid + .8 envelope + .3 level); duration/centroid errors are
+absolute log2 ratios, band/level errors are capped at 24 dB and divided by
+12, envelope error is RMS distance. Scores average variants. These are
+acoustic rankings, not a claim of perceptual identity.
 
-The table compares the selected sound with the best other sound in the
-shipping palette. A higher-scoring alternative was deliberately rejected
-for distant impact (quieter), laser (different from disc), or a category's
-shared timbre. All cues retain the existing priority selector, centred
-`02 ee 0F 88`, one new command per frame and asynchronous dispatch. This
-command has no volume field or exact cap >1: reuse clamps each effect to
-one voice, protecting music. Sequence volumes preserve a louder contact
-than swing and a quieter charged cue; retail effects and shared sequences
-cannot preserve every Web Audio gain/cap/variant relationship. Charge and
-Frieza-charge use bounded rumble pulses, aura the quieter short sweep; air is represented
-by takeoff/landing, with no continuous stream. Kamehameha remains off.
+The table compares round one's ROM with the shipping palette. Scores are
+**dry**, directly comparable with round one. Beam's parenthesized result
+uses native echo preset 4 (EDL 4, EVOL 64, EFB 30, FIR 0); its echo depends
+on the current song in play. The large boss beams retain their longer dry
+sequence. Burst/transform/landing and the charge beds retain their measured
+choices where the new levers did not clearly improve the family.
 
-| Cue | Effect | Score | Alternative (score) |
-| --- | --- | ---: | --- |
-| swing | $DC clink | 51.9 | $0E retail (47.5) |
-| kickSwing | $BF retail | 47.9 | $0E retail (46.7) |
-| hit | $DD impact | 43.0 | $0E retail (41.2) |
-| kick | $A3 retail | 43.4 | $DD impact (42.0) |
-| blast | $DE ki-warp | 50.4 | $E2 disc (44.9) |
-| impact | $DD impact | 65.4 | $E3 air-release (44.5) |
-| distantImpact | $0E retail | 43.6 | $DD impact (56.6) |
-| beam | $E4 beam | 55.0 | $DE ki-warp (40.3) |
-| charged | $DF charged | 55.2 | $E2 disc (44.3) |
-| transform | $E0 transform | 61.4 | $E4 beam (40.7) |
-| revert | $E3 air-release | 50.1 | $DD impact (43.3) |
-| powerBurst | $E1 burst | 47.7 | $E4 beam (40.1) |
-| deflect | $DC clink | 56.9 | $0E retail (43.4) |
-| balloonPop | $DC clink | 59.9 | $DF charged (49.9) |
-| iceBreak | $DC clink | 46.5 | $DF charged (40.9) |
-| teleport | $DE ki-warp | 56.6 | $E2 disc (41.4) |
-| teleportIn | $DE ki-warp | 59.3 | $E2 disc (42.9) |
-| flight | $DD impact | 47.8 | $A3 retail (39.3) |
-| landing | $E3 air-release | 50.0 | $0E retail (41.8) |
-| friezaOrb | $E1 burst | 49.0 | $E4 beam (32.1) |
-| friezaDisc | $E2 disc | 47.4 | $BF retail (36.3) |
-| friezaLaser | $00 retail | 47.2 | $E2 disc (57.8) |
-| friezaBeam | $E4 beam | 65.0 | $E1 burst (40.5) |
-| friezaImpact | $DD impact | 52.3 | $A3 retail (45.0) |
-| fortressBreak | $E1 burst | 56.2 | $E4 beam (35.1) |
-| friezaRush | $DD impact | 46.7 | $E2 disc (45.3) |
-| vegetaBeam | $E4 beam | 66.0 | $E1 burst (39.7) |
-| charge (25-frame pulses) | $DD impact/rumble | 62.7 | $DE ki-warp (60.8) |
-| aura (25-frame pulses) | $DF charged | 52.1 | $E2 disc (54.3) |
-| friezaCharge (25-frame pulses) | $DD impact/rumble | 60.1 | $DE ki-warp (61.9) |
-| air | flight/landing boundary effects above | — | continuous layer suppressed for CPU/music budget |
+| Cue | Old effect / score | New effect / score | Voices | Audible seconds |
+| --- | --- | --- | ---: | ---: |
+| swing | $DC / 51.9 | $E5 / 55.8 | 1 | 0.23 |
+| kickSwing | $BF / 47.9 | $E6 / 62.2 | 1 | 0.34 |
+| hit | $DD / 43.0 | $E7 / 58.3 | 1 | 0.33 |
+| kick | $A3 / 43.4 | $E8 / 57.9 | 1 | 0.67 |
+| blast | $DE / 50.4 | $DE / 65.0 | 1 | 0.69 |
+| impact | $DD / 65.4 | $DD / 65.4 | 1 | 0.46 |
+| distantImpact | $0E / 43.6 | $E9 / 60.9 | 1 | 0.46 |
+| beam | $E4 / 55.0 | $EA / 57.7 (69.4 echo) | 1 | 0.92 (1.10 echo) |
+| charged | $DF / 55.2 | $DF / 55.2 | 1 | 0.23 |
+| transform | $E0 / 61.4 | $E0 / 61.4 | 1 | 2.53 |
+| revert | $E3 / 50.1 | $E3 / 50.1 | 1 | 0.45 |
+| powerBurst | $E1 / 47.7 | $E1 / 47.7 | 1 | 1.77 |
+| deflect | $DC / 56.9 | $DC / 56.9 | 1 | 0.23 |
+| balloonPop | $DC / 59.9 | $DC / 59.9 | 1 | 0.23 |
+| iceBreak | $DC / 46.5 | $DC / 46.5 | 1 | 0.23 |
+| teleport | $DE / 56.6 | $EB / 64.2 | 1 | 0.88 |
+| teleportIn | $DE / 59.3 | $EB / 63.6 | 1 | 0.88 |
+| flight | $DD / 47.8 | $EC / 54.2 | 1 | 0.46 |
+| landing | $E3 / 50.0 | $E3 / 50.0 | 1 | 0.45 |
+| friezaOrb | $E1 / 49.0 | $E1 / 49.0 | 1 | 1.77 |
+| friezaDisc | $E2 / 47.4 | $E2 / 47.4 | 1 | 0.46 |
+| friezaLaser | $00 / 47.2 | $00 / 47.2 | 1 | 0.43 |
+| friezaBeam | $E4 / 65.0 | $E4 / 65.0 | 1 | 1.38 |
+| friezaImpact | $DD / 52.3 | $DD / 52.3 | 1 | 0.46 |
+| fortressBreak | $E1 / 56.2 | $E1 / 56.2 | 1 | 1.77 |
+| friezaRush | $DD / 46.7 | $EC / 62.5 | 1 | 0.46 |
+| vegetaBeam | $E4 / 66.0 | $E4 / 66.0 | 1 | 1.38 |
 
-Bed scores compare two-second windows of the actual driver replaying the
-effect every 25 frames with the browser's seamless WAV at full requested
-gain. Charge improves from 35.7 to 62.7 and Frieza-charge from 36.7 to 60.1.
-Aura retains the quieter `$DF` instead of the slightly higher-ranked disc;
-Frieza-charge shares charge's sample and lower volume instead of `$DE`.
-Internal selector row 33 keeps charge's priority at 4 without changing
-public cue ids or issuing another command. The resident region remains
-142/144 bytes. AIR's continuous layer is the explicit fidelity compromise;
-it has no standalone output to score.
+| Held cue | Old effect / score | New effect / score | Voices | Measurement |
+| --- | --- | --- | ---: | --- |
+| charge | `$DD` / 62.7 | `$DD` / 62.7 | 1 | 2 s, pulses every 25 frames |
+| aura | `$DF` / 52.1 | `$DF` / 52.1 | 1 | 2 s, pulses every 25 frames |
+| friezaCharge | `$DD` / 60.1 | `$DD` / 60.1 | 1 | 2 s, pulses every 25 frames |
+| air | boundary effects only | boundary effects only | 0 continuous | flight/landing above |
 
-Resident milestone validation: strict build; audio native/unit (12 Node tests
-and all 27 audible Mesen cues) pass. Dispatcher maximum remains 1.35
-scanlines. All 13 gameplay cases pass with identical miss counts: charge
-22/240, teleport 3, fly/fly-ki/fly-punch 1/3/2, all others 0. The selector's
-65816 instruction path is unchanged; only ROM lookup data changed.
+The longest voice ownership remains 2.55 s (transform); common swing,
+contact, ki and teleport ownership is 0.24 / 0.36 / 0.70 / 0.94 s,
+respectively. Effects automatically release their voice; the selectors,
+priorities, asynchronous `02 ee 0F 88`, one-new-command-per-frame limit and
+25-frame bed cadence are unchanged. All three rare clips and their
+extension code, tables and chunk allocations are unchanged.
+
+To reproduce comparisons against a locally retained round-one cartridge:
+
+```sh
+node snes/test/audio/effects.mjs --wav --before=.local/snes-test/audio/baseline/before.sfc
+```
+
+Listening pairs are `.local/snes-test/audio/compare/<cue>-browser.wav` and
+`<cue>-snes.wav` at 32 kHz. All 27 one-shots and the three held beds have
+pairs; extra swing/hit variants have numbered browser files. Beam has a
+separate `beam-snes-dry.wav`. The air pair deliberately contains a silent
+SNES side because its continuous layer remains disabled. `manifest.json`
+records the rendering context; no recordings are committed.
+
+### Noise, music and call-site audit
+
+`node snes/test/audio/audit.mjs --trace` scans decoded event commands,
+conservative native command literals and dispatcher call sites, then traces
+every `02 ee` dispatch in a 7,200-frame input session, all 21 imported debug
+presets, and 1,200 frames of the power-on title (22 presets total). The
+storage audit observed **1,130 effect commands**, including retail `$60`,
+which remains intact through shared tracks. Static results: 74 event effect
+commands, 20 native long dispatcher calls and 1,020 conservative literals.
+The latter include data and computed native ids prevent an exhaustive
+unused-id proof; none are retired. Outputs remain under
+`.local/snes-test/audio/audit/`.
+
+A control-flow walk of all **64 retail and 64 shipping song slots** finds
+no `DD` or `DE` commands. The driver keeps the music clock at `$C5`, effect
+clock at `$C6`, and selects the latter while effect noise is active
+(`$B1.4`). `F2` sequence termination calls `$081D`, clears the effect NON
+bit, and restores `$C5` when the last noise voice ends. The resident test
+sets a distinct music clock and verifies restoration after both natural
+termination and same-id replacement. The retail global-stop command clears
+NON/ownership but leaves the last FLG clock; this is harmless with no song
+noise, and the next music `DD`/`DE` selects its own clock again. Simultaneous
+retail noise effects still share the hardware clock, as they always did.
+No driver or extension patch was added.
+
+`audio music` plays every cue beside each of the five arrangements. All
+tracks remain alive, each cue takes at most one voice and returns it, song
+and effect samples remain byte-identical, and the extension and song echo
+parameters remain intact. `audio songs` retains the complete historical
+PCM song-load/restore coverage as well.
 
 ### Rare lines and admission budget
 
@@ -215,22 +307,21 @@ Tables after the chunk list: `C3:0020` points at the song table `C3:3D39`
 | `$0000-$00EF` | driver direct page (`$E3-$EF` and the gaps `$85,$86,$89,$8A,$8C-$8E,$91,$92,$95,$96,$98-$9A,$9D,$9E,$A1,$A2,$A4-$A6,$A8-$AB` are never referenced) |
 | `$0100-$01FF` | per-track arrays `$0100-$017F`; stack from `$01FF` (≤ 8 bytes deep in all snapshots) |
 | `$0200-$1597` | driver |
-| `$1598-$17FF` | free |
-| `$1800/$1880/$1900` | tuning / ADSR / DIR for instruments 0-63: 0-11 effects (boot), `$20-$3F` the current song (written by every song load), **12-31 unused** |
+| `$1598-$17FC` | shipping stream extension code; `$17FD-$17FF` unused |
+| `$1800/$1880/$1900` | tuning / ADSR / DIR for instruments 0-63: 0-11 effects, `$20-$3F` song; extension uses `$1818-$183C`, `$1898-$18B8`, `$1930-$1977` |
 | `$1A00-$2BFF` | current song sequence (header + 8 tracks); longer songs run into the effect area and the loader restores it afterwards (`C3:067E`) |
-| `$2C00-$47FF` | effect table and sequences (full) |
+| `$2C00-$47FF` | retail effects plus 267 bytes of resident table/sequences in the spans documented above; 16 spare bytes in fragmented holes |
 | `$4800-$4DF0` | effect samples |
 | `$4DF1-ESA` | song samples, allocated by the CPU-side cache (below) |
 | `ESA-$F9FF` | echo buffer, `ESA = $FA00 - EDL × $800` |
-| `$FA00-$FBFF` | **free** |
+| `$FA00-$FBF7` | extension BRR chunk slots; `$FBF8-$FBFF` unused |
 | `$FC00-$FF88` | per-track state (`$FC00+X` … `$FF00+2Y` loop stacks, `$FF80-$FF87` effect id per voice, `$FF88` special instrument) |
-| `$FF89-$FFFF` | **free** (IPL ROM is mapped out after boot) |
+| `$FF89-$FFFA` | extension code; `$FFFB-$FFFF` unused (IPL ROM is mapped out) |
 
 Free sample space is essentially zero in large songs: e.g. song `$2C` with
 echo preset `$F` (EDL 6) leaves 52 bytes, Danger (`$04`, EDL 4) 287 bytes,
 song `$0C` (EDL 2) 315 bytes. A resident bank of new samples is therefore
-impossible without degrading native music; only the small regions marked
-free above are guaranteed.
+impossible without degrading native music; only the small remaining holes shown above are guaranteed.
 
 ### CPU-side API
 
@@ -597,9 +688,12 @@ the five songs; the arrival's pod cues.
   ARAM footprint, a gapless stream, native effects beside two streams, a
   withdrawn command (taken or not, with and without the extension) leaving
   the driver answering; shipping bank whitelist; resident preservation,
-  termination, one-voice allocation and headroom (13 Node tests).
+  termination, one-voice allocation, noise-clock restoration and headroom (14 Node tests).
 - **native**: all 27 cues, bounded beds, no BRR, asynchronous command
   integrity and dispatcher timing, music before/after song changes.
+- **music** (shipping Mesen): all 27 resident cues beside all five new songs;
+  tracks alive, one stolen voice per cue, voices returned, sample/extension
+  integrity, noise restoration and unchanged echo parameters.
 - **rare / rare-control / rare-boot**: all three clips audible and ending,
   pitch `$0300`, Kamehameha silent, intact music/effect samples and extension,
   native effects beside a line, deadline/CPU measurements; busy requests
@@ -634,7 +728,44 @@ the five songs; the arrival's pod cues.
 the impact is made late by the modules: 0 of 140 with both pod sounds
 streaming.
 
-Shipping validation on October 20: strict builds (shipping, diagnostic PCM,
+### Round-two validation (base `1d19d44`)
+
+Strict shipping build passes. All audio cases pass (14 Node tests, full
+song rendering, and nine Mesen cases including the added shipping `music`
+case). Combat **36/36**, Frieza **17/17**, Vegeta **11/11**, and all six perf
+scenes pass. The songs tests verify live tracks and intact samples; rare
+voice, admission, cancellation and boot tests all pass unchanged.
+
+| Gameplay case | Before misses | After misses |
+| --- | ---: | ---: |
+| solo-punch | 0/240 | 0/240 |
+| solo-ki | 0/240 | 0/240 |
+| walk | 0/240 | 0/240 |
+| punch | 0/240 | 0/240 |
+| ki | 0/240 | 0/240 |
+| fly | 1/240 | 1/240 |
+| fly-ki | 3/240 | 3/240 |
+| fly-punch | 2/240 | 2/240 |
+| water-flight | 0/240 | 0/240 |
+| teleport | 3/240 | 3/240 |
+| charge | 22/240 | 22/240 |
+| focus-grass | 0/240 | 0/240 |
+| transform-grass | 0/240 | 0/240 |
+
+Every gameplay case also has exactly identical `audio_frame` **mean,
+maximum and call count**. `modprof` on shared sword/battle states is
+**0.40 → 0.40 lines mean, 1.83 → 1.83 max**, including song-settle frames;
+the dispatch maximum is **1.346 lines**, unchanged. The perf scenes finish
+at p90 lines 61 / 111 / 52 / 172 / 93 / 112, with lag counts
+4 / 4 / 4 / 34 / 4 / 4. No new gameplay misses or 65816 CPU work.
+
+`node snes/test/audio/audit.mjs --before=<round-one.sfc>` verifies the entire
+ROM differs only in the effect block, the 34-byte cue-id lookup, checksums
+and their ExHiROM mirrors. Instruction bytes, music, samples, rare voices,
+extension and other modules are identical. Private results and comparison
+WAVs remain in this worktree's `.local/snes-test/audio/`.
+
+Round-one shipping validation on October 20: strict builds (shipping, diagnostic PCM,
 Vegeta/Frieza test flags); all audio, gameplay, Frieza, Vegeta, combat and
 perf cases pass. Gameplay before → after misses per 240 frames: charge
 22 → 22; teleport 3 → 3; flight/fly-ki/fly-punch 1/3/2 → 1/3/2;
@@ -663,7 +794,9 @@ Vegeta budget test's `B077` end callback reports every frame as late; these
 counts instead read `$EC` at the native field NMI, as gameplay does.
 
 Not verified: real hardware (timing margins are from the harness and
-Mesen); the vibrato (square LFO for the browser's sine) by ear.
+Mesen), and perceptual listening review of the new palette. The WAV pairs
+are ready for the maintainer; acoustic scores alone do not establish a
+perceptual match.
 
 ## 6. Imported test states and the APU
 
@@ -677,7 +810,7 @@ APU state at a sound-CPU instruction boundary; with it all goku, title and
 story tests pass on this branch.
 
 `H.residentEffects()` recognizes the shipping resident table and installs
-both its 144-byte region and the extension from the cartridge's boot upload
+the complete `$2C00-$47FF` effect block and the extension from the cartridge's boot upload
 blob. For browser imports it runs **after** the SPC/DSP register restore;
 patching during that restore stalled the Fortress flyby's next native song
 fade. `H.load()` applies the same augmentation to retail Mesen checkpoints.
@@ -697,7 +830,8 @@ original-byte assertions):
 | --- | --- | --- |
 | `C3:0106` | 6 | boot upload end → `audio_boot_upload` (uploads the extension after the driver) |
 | `C3:0175` | 4 | shipping effect command → asynchronous `audio_native_command` |
-| `C3:24A9` | 144 | unused ARAM `$2F70-$2FFF` effect slots/sequences, 142 bytes used |
+| `C3:24A9` and six spans above | 283 capacity | resident effect pointers/sequences; byte-identical retail tracks shared |
+| ten table words listed above | 20 | redirect retail pointers to identical retained tracks |
 | `C3:0618`, `C3:0651`, `C3:0663`, `C3:066A` | 4 each | echo preset reads → `audio_echo0-3` (songs `$3B-$3F` read `audio_echo_table`) |
 | `C3:3DEA`, `C3:3DED`, `C3:3DF0`, `C3:3DF3`, `C3:3DF6` | 3 each | song pointers `$3B-$3F` → `audio_song_3b-3f` (bank `$EA`) |
 | `C3:4682`, `C3:46A2`, `C3:46C2`, `C3:46E2`, `C3:4702` | 32 each | instrument lists of songs `$3B-$3F` |

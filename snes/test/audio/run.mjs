@@ -49,10 +49,10 @@ if(!only.length||only.includes('render')){
 }
 // [name, checkpoint (null: power-on)]; arrival and imported import the
 // browser state before the sword pull (skipped when the bundle is missing).
-const shipping=n=>['native','rare','rare-control','rare-boot'].includes(n);
-const fromCheckpoint=n=>['stream','songs','native','rare','rare-control'].includes(n);
+const shipping=n=>['native','music','rare','rare-control','rare-boot'].includes(n);
+const fromCheckpoint=n=>['stream','songs','native','music','rare','rare-control'].includes(n);
 const arrivalBundle=join(mainCheckout(),'.local/snes-import/arrival-research__probe__before-pull');
-const mesenTests=[['native','waterfall'],['rare','waterfall'],['rare-control','waterfall'],['rare-boot',null],['stream','waterfall'],['songs','waterfall'],['arrival',null],['imported',null]]
+const mesenTests=[['native','waterfall'],['music','waterfall'],['rare','waterfall'],['rare-control','waterfall'],['rare-boot',null],['stream','waterfall'],['songs','waterfall'],['arrival',null],['imported',null]]
  .filter(([n])=>!only.length||only.includes(n)).filter(([n])=>n==='rare-boot'||fromCheckpoint(n)||existsSync(arrivalBundle));
 if(!mesenTests.length)process.exit(ok?0:1);
 
