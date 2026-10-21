@@ -389,9 +389,12 @@ all data ports immediately after an echo.
 The native FE mode-4/7 vectors are restored before the CPU loader returns;
 the ring belongs to streaming again when playback resumes. No extra resident
 ARAM, WRAM, DMA or per-frame instructions are introduced. `$DD76-$DD77` is
-existing song-only scratch. Diagnostic imports without the extension use
-the conservative retail word bootstrap before switching to mode 4; their
-native and new-song loads are tested as well.
+existing song-only scratch. Diagnostic imports without the extension first
+use mode 7 to copy seven existing driver instruction bytes into the word
+receiver, moving its acknowledgement after both reads. Those copies are
+idempotent and their source instructions are unchanged in either driver.
+The repaired word bootstrap then installs mode 4 without a clock-ratio
+assumption. Native and new-song loads through this fallback are tested.
 
 For native songs, the loader sums the sequence and missing sample bytes.
 Below 4096 bytes it skips the temporary-program upload and keeps native
@@ -783,7 +786,7 @@ the five songs; the arrival's pod cues.
   the driver answering; shipping bank whitelist; resident preservation,
   termination, one-voice allocation, noise-clock restoration and headroom;
   independent-clock song transfers and overlapping/consecutive cache copies
-  (18 Node tests).
+  (19 Node tests).
 - **loads** (shipping Mesen): all 59 retail songs and five new songs, native
   event echo/volume parameters with the old cue cut for comparable timing;
   complete sequence and instrument BRR bytes, DIR/tuning/ADSR, restored
@@ -837,6 +840,38 @@ binary under its own `.local/snes-test/`, avoiding writes into shared tools.
 `snes/test/title` (arrival e2e, with the extension) checks that no frame of
 the impact is made late by the modules: 0 of 140 with both pod sounds
 streaming.
+
+### Song-loading validation (base `ed7088b`)
+
+Strict shipping and diagnostic builds pass. All audio cases pass: 19 Node
+tests, browser music rendering and ten Mesen cases, including all 59 retail
+songs and the five arrangements. All three emulator variants pass both the
+normal boot/play/save/load suite and the additional song/ARAM checks:
+Snes9x, bsnes and bsnes-accurate. Transfer tests vary producer delays and
+overwrite ports immediately after acknowledgement; copy tests cover
+unaligned, overlapping and consecutive moves.
+
+Frieza **18/18**, Vegeta **11/11** and story **76/76** pass. The final
+diagnostic-import bootstrap repair is additionally checked on both retail
+and extended drivers, repeated twice, with data ports poisoned immediately
+after each acknowledgement; its native/new-song import case passes too.
+All 64 shipping load/stall measurements are identical after that import-only
+repair.
+
+All 13 gameplay cases have identical `audio_frame` mean, maximum and call
+count before/after, with no new missed vblanks. Existing misses per 240
+frames remain fly 1, fly-ki 2, fly-punch 1, teleport 3 and charge 18; all
+other cases are zero. All six perf scenes pass: p90 finish lines
+62 / 113 / 54 / 173 / 95 / 112, lag counts 4 / 4 / 4 / 34 / 4 / 4.
+
+`modprof` on identical sword/battle states and fresh battery saves reports
+**0.40 → 0.40 lines mean** in both scenes; maxima **1.80 → 1.80** and
+**1.83 → 1.83**. These include the existing song-settle frames; the quiet
+frame instructions are unchanged. Use isolated ROM filenames/fresh saves
+for this comparison: the retail states only contain 8 KiB SRAM, so a
+previously played cartridge's expanded battery sidecar can change which
+modules are active. Real hardware has not been physically tested. No core
+change is required.
 
 ### Round-two validation (base `1d19d44`)
 

@@ -45,6 +45,30 @@ test('native bootstrap modes acknowledge all bytes, across pages and counter wra
  }
 });
 
+test('retail imports bootstrap safely with ARAM copies, including repeated repairs',()=>{
+ for(const extension of [false,true]){
+  const h=createApu({extension});h.ms(60);
+  for(let repeat=0;repeat<2;repeat++){
+   begin(h,7,0x1288);
+   const words=[0x123B,1,0x1253,0x123C,4,0x1274,0x1240,2];
+   words.forEach((v,i)=>{
+    h.cpuWrite(2,v);h.cpuWrite(3,v>>8);h.cpuWrite(0,i+1);
+    h.waitFor(()=>h.cpuRead(0)===i+1);
+    h.cpuWrite(2,0xCD);h.cpuWrite(3,0xCD);
+   });
+   end(h);
+   assert.deepEqual(Array.from(h.ram.slice(0x1237,0x1242)),[0xE4,0xF6,0xD7,0x2C,0xFC,0xE4,0xF7,0xD7,0x2C,0xD8,0xF4]);
+   const bytes=Uint8Array.from({length:1548},(_,i)=>i*73&255);begin(h,2,0x50FD);
+   for(let i=0;i<bytes.length;i+=2){
+    h.cpuWrite(2,bytes[i]);h.cpuWrite(3,bytes[i+1]);const token=i/2%255+1;
+    h.cpuWrite(0,token);h.waitFor(()=>h.cpuRead(0)===token);
+    h.cpuWrite(2,0xCD);h.cpuWrite(3,0xCD);
+   }
+   end(h);assert.deepEqual(h.ram.slice(0x50FD,0x50FD+bytes.length),bytes);
+  }
+ }
+});
+
 test('a transfer may end after any unrolled packet, without writing a following byte',()=>{
  for(const n of [3,6,9,12,15,249,252,255,258]){
   const h=setup();h.ram.fill(0xCD,0x5000,0x5200);begin(h,4,0x5001);

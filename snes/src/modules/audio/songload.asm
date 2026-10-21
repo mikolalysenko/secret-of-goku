@@ -12,14 +12,15 @@ audio_songload_install:
 .fast
 	; The previous song has been keyed off and echo writes disabled. Borrow
 	; the BRR ring until this synchronous load finishes. The boot-patched
-	; mode 3 has complete-packet acknowledgements. Unextended diagnostic
-	; imports keep the conservative retail mode-2 bootstrap.
+	; mode 3 has complete-packet acknowledgements. First repair mode 2 on
+	; unextended diagnostic imports using the retail mode-7 copy protocol.
 	LDA.l $7E0000+!au_flags
 	BIT.b #$40
 	BEQ .triples
+	JSR audio_songload_bootstrap
 	LDA.b #$02 : STA.w $2141
 	LDX.w #$FA00 : STX.w $2142
-	XBA
+	LDA.b #$00
 	JSR audio_songload_ack
 	LDA.b #$80 : STA $10
 	LDX.w #$0000
@@ -56,6 +57,33 @@ audio_songload_install:
 	LDA.b #$00 : XBA
 	JML $C30215
 
+; Retail mode 2 echoes after only its first read. Mode 7 latches both word
+; bytes before every echo, so bootstrap without relying on relative clocks:
+; copy INC Y ($1288), MOV A,$F7 / MOV [$2C]+Y,A ($1253), then MOV $F4,X
+; ($1274) into $123B-$1241. Sources are unchanged native instructions; the
+; repair is idempotent and also safe if a patched driver was disabled.
+audio_songload_bootstrap:
+	LDA.b #$07 : STA.w $2141
+	LDX.w #$1288 : STX.w $2142
+	XBA
+	JSR audio_songload_ack
+	LDA.b #$01 : STA $10
+	LDX.w #$0000
+.word
+	REP #$20
+	LDA.l audio_songload_bootstrap_words,X
+	STA.w $2142
+	SEP #$20
+	LDA $10
+	JSR audio_songload_ack
+	INC $10
+	INX : INX
+	CPX.w #$0010
+	BNE .word
+	RTS
+audio_songload_bootstrap_words:
+	dw $123B,$0001,$1253,$123C,$0004,$1274,$1240,$0002
+
 ; Installing the temporary receiver costs more than it saves for small,
 ; mostly cached native cues. Count sequence + missing sample bytes before
 ; choosing it; small loads use the native path (with faster FE mode 2).
@@ -65,7 +93,7 @@ audio_songload_choose:
 	PHA
 	LDA.w #$0000 : STA.l !au_load_fast
 	; An unextended imported driver has retail early acknowledgements.
-	; Its conservative bootstrap is followed exclusively by our mode 4.
+	; Its repaired word bootstrap is followed exclusively by our mode 4.
 	LDA.l $7E0000+!au_flags
 	BIT.w #$0040
 	BEQ .song
