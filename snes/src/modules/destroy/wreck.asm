@@ -837,11 +837,19 @@ ss_nmi_breach:
 	SEP #$20
 	LDA.b #$22 : STA $2123                        ; window 1 on BG1 and BG2
 	LDA.b #$03 : STA $212E                        ; masked on the main screen
+	; the set-up takes about a line: switch on only while the vblank lasts
+	; (HVBJOY bit 7), else the channels would start after the next frame's
+	; HDMA start from stale pointers; then ours pause for this frame
+	LDA.l $004212 : BPL .tooLate
 	LDA.l $7E002C : ORA.b #$0C : STA.l $7E002C
 	STA $420C
 	STA.l !core_hdmaen                            ; on before the frame start (core_hdmaen_write)
 	REP #$20
 	LDA.l !ssw_br_lines : INC : STA.l !ssw_br_lines
+	RTL
+.tooLate
+	LDA.l $7E002C : AND.b #$F3 : STA.l $7E002C
+	REP #$20
 	RTL
 .taken
 	; another party reprogrammed a channel: stop ours, leave theirs
