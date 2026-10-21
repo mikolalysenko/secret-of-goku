@@ -696,10 +696,11 @@ fz_tree_nmi:
 	LDA.b #!FRIEZA_VISTA_SKY>>8
 	STA $2122
 	REP #$20
-	; no switch to the HUD at line 196: the cliff runs to the bottom, the
-	; HUD (BG3, below the planes without its priority) stays hidden
+	; Keep the field's priority at line 196. BG3 still sits above the cliff:
+	; channel 6 hides only its HUD rows, leaving dialogue through row 24.
 	LDA.w #$01FF
 	STA $4209
+	JSR fz_tree_hud_on
 	BRA .bright
 .notShown
 	LDA.l $7E0000|!fz_vista
@@ -713,6 +714,7 @@ fz_tree_nmi:
 	REP #$20
 	LDA.w #$00C4                      ; the field's HUD line (C0:BC6C)
 	STA $4209
+	JSR fz_tree_hud_off
 .bright
 	LDA.l $7E0000|!fz_vista
 	AND.w #!FZV_BRIGHT
@@ -726,6 +728,52 @@ fz_tree_nmi:
 +	REP #$20
 .out
 	RTS
+
+; Vblank only, M16/X16, DB = $80. The Tree field uses the native window
+; channels 0/1 and UI's palette channel 5; channel 6 is free here (the
+; world's channel 6 is only armed in world mode). No general DMA, and no
+; writes to the native BG3 map: the HUD returns intact on the first frame
+; without the vista. HDMA keeps BG3 for dialogue rows 0-24, clears it for
+; rows 25-27, and leaves every other main-screen layer enabled as before.
+fz_tree_hud_on:
+	SEP #$20
+	LDA.b #127
+	STA.l !fzt_hdma
+	LDA.b #72                         ; HBlank 199: before BG3 row 25 on line 200
+	STA.l !fzt_hdma+2
+	LDA.b #25                         ; through the last visible line (224)
+	STA.l !fzt_hdma+4
+	LDA.b #0
+	STA.l !fzt_hdma+6
+	LDA $21                           ; native main-screen shadow
+	STA $212C
+	STA.l !fzt_hdma+1
+	STA.l !fzt_hdma+3
+	AND.b #$FB
+	STA.l !fzt_hdma+5
+	REP #$20
+	LDA.w #$2C00                      ; direct, mode 0 -> TM
+	STA $4360
+	LDA.w #!fzt_hdma&$FFFF
+	STA $4362
+	SEP #$20
+	LDA.b #!fzt_hdma>>16
+	STA $4364
+	LDA.b #$40
+	TSB $2C
+	REP #$20
+.done
+	RTS
+fz_tree_hud_off:
+	SEP #$20
+	LDA.b #$40
+	TRB $2C
+	LDA $21
+	STA $212C
+	REP #$20
+.done
+	RTS
+
 ; C set when a checked word of the planes in VRAM differs from the data
 ; (frieza_vista_check: first, middle and last of each plane). DB = $80.
 fz_vista_verify:

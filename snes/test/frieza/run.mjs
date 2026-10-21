@@ -564,16 +564,20 @@ end
 // vista's state and the brightness every 8 frames.
 const treeShots={[defs.FZS_TREE_ARRIVAL]:[2,48,96,110],[defs.FZS_TREE_CHARGE]:[20,60,120],[defs.FZS_TREE_SHOT]:[8,24,38],
   [defs.FZS_TREE_IMPACT]:[2,10,19,30,47,80],[defs.FZS_TREE_LEAVE]:[30,90,119],[defs.FZS_TREE_RETURN]:[10,30,47],[defs.FZS_TREE_WAKE]:[1,20,39]};
-function treeTest(maxFrames=20000){
+function treeTest(rom,maxFrames=20000){
   const g=reference('tree');
   const writes=friezaWrites(g.frieza,g.challenge);
   const v=n=>'0x'+(n<0x10000?(0x7E0000|n):n).toString(16);
+  const symbols=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8');
+  const sym=[...symbols.matchAll(/^([0-9A-F]{2}):([0-9A-F]{4}) (fz_tree_hud_\w+)$/gmi)].map(m=>`${m[3]}=0x${m[1]}${m[2]}`).join(',');
   return `
+${readFileSync(join(here,'tree-hud.lua'),'utf8')}
 function test()
   local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__tree'))})
   F.check(ok, 'import')
   H.w8(0x316001, 1)
   F.apply(${luaWrites(writes)})
+  local hudDone = F.treeHudStart({${sym}})
   local want = {}
   ${Object.entries(treeShots).map(([k,ages])=>`want[${k}] = {${ages.map(a=>`[${a}]=true`).join(',')}}`).join('\n  ')}
   local seen, trace, shots, maps, boxes = {}, {}, {}, {}, {}
@@ -617,6 +621,7 @@ function test()
   H.result('maps', mapList)
   H.result('tree', H.r8(${v(defs.fzp_tree)}))
   F.check(H.r8(${v(defs.fzp_tree)}) == ${defs.FZTR_COMPLETE}, 'the Tree is complete')
+  hudDone()
   F.done()
 end
 `;
@@ -1025,15 +1030,20 @@ if(want('flyby')){
 if(want('tree')){
   const rom=privateRom(romSrc,'frieza-tree');
   const out=join(outRoot,'tree');
-  const r=await runMesen({rom,test:lib+'\n'+treeTest(),outDir:out,state:join(cps,'waterfall.mss'),timeoutMs:1500000});
+  const r=await runMesen({rom,test:lib+'\n'+treeTest(romSrc),outDir:out,state:join(cps,'waterfall.mss'),timeoutMs:1500000,exactFrames:true});
   cleanupRom(rom);
   const res=r.results??{};
   const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
   if(res.trace)writeFileSync(join(out,'trace.txt'),'frame map scene age D0 up vista bright tree\n'+res.trace.join('\n')+'\n');
   if(res.boxes)writeFileSync(join(out,'boxes.txt'),res.boxes.join('\n')+'\n');
-  const ok=r.code===0&&res.pass===true;
+  const {compareTreeCliff}=await import('./tree-compare.mjs');
+  const cliff=compareTreeCliff(out);
+  failures.push(...cliff.failures);
+  const ok=r.code===0&&res.pass===true&&failures.length===0;
   results.push({name:'tree',ok,failures});
   console.log(`frieza tree: ${ok?'pass':'FAIL'} (${r.ms} ms) maps ${(res.maps??[]).join(',')} scenes ${(res.seen??[]).join(' ')} tree ${res.tree}`);
+  if(res.hud)console.log('    HUD:',JSON.stringify(res.hud));
+  console.log(`    cliff: ${cliff.pixels} pixels in ${cliff.shots} pictures compared with the browser`);
   if(!ok)for(const f of failures)console.log('    !',f);
 }
 // Scene effects against the browser (run capture.mjs first).
