@@ -100,7 +100,7 @@ export function browserFeatures(name,options={}){
  return cues[name].clips.map((_,variant)=>features(browserPcm(name,{...options,variant})));
 }
 export function rank(name,candidates,refs=browserFeatures(name)){
- const maxVoices=['hit','kick','blast','beam','friezaBeam','vegetaBeam'].includes(name)?2:1;
+ const maxVoices=['hit','kick','impact','blast','beam','friezaBeam','vegetaBeam'].includes(name)?2:1;
  return candidates.filter(c=>c.ended&&c.voices<=maxVoices&&c.features.duration>.02).map(c=>({...c,
   score:mean(refs.map(r=>distance(c.features,r).score))})).sort((a,b)=>b.score-a.score);
 }
@@ -235,7 +235,8 @@ export function report({writeAudio=false,before}={}){
   if(previous)delete previous.pcm;
   // Only the beam requests echo. Dry scores remain directly comparable to
   // round one; a separate score/recording uses native preset 4's echo ring.
-  const hasEcho=(RESIDENT.find(r=>r.id===chosen.id)?.sequence??[]).includes(0xE2);
+  const resident=RESIDENT.find(r=>r.id===chosen.id);
+  const hasEcho=(resident?.tracks?.flat()??resident?.sequence??[]).includes(0xE2);
   const wet=hasEcho?rank(name,[{id:chosen.id,...renderEffect(rom,chosen.id,{echo:true})}])[0]:null;
   if(wet)delete wet.pcm;
   if(writeAudio){

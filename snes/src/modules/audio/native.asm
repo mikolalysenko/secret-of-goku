@@ -1,7 +1,7 @@
 ; Resident SPC effects for gameplay. One priority-selected command per
 ; frame. rare.asm separately services only the three permitted voice clips.
 ; The native driver already holds these samples. resident.asm adds short
-; single-voice sequences in unused effect slots DC-E4, all self-ending.
+; sequences in unused effect slots DC-EC, all self-ending (one/two voices).
 ; No chant or continuous air stream. -DAUDIO_PCM=1 is diagnostic only.
 
 ; Complete an outstanding effect handshake without waiting. Main thread
