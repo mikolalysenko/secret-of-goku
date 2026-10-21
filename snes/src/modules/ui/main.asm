@@ -121,7 +121,7 @@ if not(defined("UI_CHARGE_IDLE_SLOW"))
 	AND.w #!UIS_IDLE
 	BEQ .full
 	; Fortress completion also updates persistent first-flight advice.
-	; All other pending radio/window/scouter work already clears UIS_IDLE.
+	; All other pending radio/window/Analyzer work already clears UIS_IDLE.
 	LDA.w !ui_in&$FFFF
 	AND.w #!UII_FORTRESS_GONE
 	BNE .full
@@ -143,7 +143,6 @@ endif
 if defined("UI_TEST")
 	JSR ui_test_poll
 endif
-	JSR ui_sc_frame
 	JSR ui_radio_tick
 	JSR ui_window_update
 	JSR ui_place_frame

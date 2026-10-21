@@ -5,8 +5,8 @@
 ; (ui_api_enter, Super Saiyan ui_charge_tick; world, ring and menu frames
 ; and loads clear it too). !UIS_PLACE tells the NMI about placement work.
 ; A base charge/beam can retain this proof: it cannot create a warning.
-; Keep the request/visibility bookkeeping, but skip empty queue, window,
-; scouter and placement passes. Events, R, SSJ and every other API wake up
+; Keep the request/visibility bookkeeping, but skip empty queue, window
+; and placement passes. Events, R, SSJ and every other API wake up
 ; the full path before this routine can run.
 ui_idle_charge:
 	LDA.w !ui_charge_in&$FFFF
@@ -46,9 +46,6 @@ ui_field_idle:
 	ORA.w !ui_claims&$FFFF            ; world flight's leftovers
 	ORA.w !ui_band&$FFFF
 	ORA.w !ui_ff_state&$FFFF          ; fast-forward
-	BNE .busy
-	LDA.w !ui_sc&$FFFF                ; a scan waits for Goku
-	AND.w #!UISC_PENDING
 	BNE .busy
 	LDA.w !ui_state&$FFFF
 	AND.w #!UIS_DRAWN|!UIS_ATLAS|!UIS_HDMA

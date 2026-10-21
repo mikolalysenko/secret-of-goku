@@ -1,5 +1,7 @@
 // Browser-scouter projection vs the PPU's actual OBJ tiles and palettes.
-// The same imported frame supplies actors and all powerLevel() inputs.
+// The same imported frame supplies actors and all powerLevel() inputs. The
+// cartridge's readings come from Analyzer only (the scouter was cut), and
+// Goku's is his power at rest: a charge does not move it.
 import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {powerLevel,formatPower} from '../../../engine/scouter.js';
@@ -12,7 +14,7 @@ const signed=n=>n&32768?n-65536:n;
 export function reference(q,{shown=false}={}) {
   const pixels=new Uint16Array(256*224),layers=[];
   if(!(q.sc&4))return {pixels,layers};
-  const mod={options:{superSaiyan:q.superSaiyan},charging:q.charging,charge:q.charge,equipment:{powerScale:q.weighted?.9:1},read16:()=>q.map??0,challenge:{status:{fed:q.fed}},frieza:{trial:q.trial}};
+  const mod={options:{superSaiyan:q.superSaiyan},charging:false,charge:0,equipment:{powerScale:q.weighted?.9:1},read16:()=>q.map??0,challenge:{status:{fed:q.fed}},frieza:{trial:q.trial}};
   const put=(x,y,c)=>{if(x>=0&&x<256&&y>=0&&y<224&&(!q.radio||y>=72))pixels[y*256+x]=c+1;};
   for(const e of q.actors){const x=signed(e.screenX),y=signed(e.screenY),age=e.age&32767;
     if(!e.active||!e.hp||e.species===85||(e.index>=3&&e.species>=128)||x<=-16||x>=272||y<=-16||y>=240||e.age===65535||age<24&&age%8<4)continue;

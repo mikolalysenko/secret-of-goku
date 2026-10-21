@@ -231,4 +231,8 @@ if(!only.length||only.includes('focus-scenes')){
   const r=spawnSync(process.execPath,[join(here,'focus-scenes.mjs')],{cwd:repo,stdio:'inherit'});
   if(r.status!==0)ok=false;
 }
+if(!only.length||only.includes('native-cells')){
+  const r=spawnSync(process.execPath,[join(here,'native-cells.mjs')],{cwd:repo,stdio:'inherit'});
+  if(r.status!==0)ok=false;
+}
 process.exit(ok?0:1);

@@ -185,7 +185,24 @@ endif
 	STA.l !fx_tick
 	LDA.w #$0000
 	STA.l !fx_ndraw
-+	; Anything to show?
++	; The game's stream may take cached cells (native.asm): slot 5's in
+	; phase 2 (or a lag vblank of the next frame), slots 1-2's in phase 4.
+	LDA.l !fx_phase
+	CMP.w #4
+	BEQ .native12
+	DEC
+	CMP.w #2
+	BCS .native
+	SEP #$20
+	LDA.w $EA84
+	REP #$20
+	BEQ .native
+	JSR fx_native_drop5
+	BRA .native
+.native12
+	JSR fx_native_drop12
+.native
+	; Anything to show?
 	LDA.l !fx_ndraw
 	ORA.l !fx_nlive
 	BNE .active

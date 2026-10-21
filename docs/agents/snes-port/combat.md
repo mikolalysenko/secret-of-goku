@@ -121,8 +121,8 @@ No input, gameplay clock, charge, damage, form or lock rules changed.
 Modal dialogue/events, rings/menu transitions, native hurt/status locks,
 foreign combat/input ownership and recovery-camera movement retain their
 browser suppression. L+Y/B/R/X chords take precedence over plain focus.
-A transient battle-message window (`$2C`) or the scouter being on is not
-itself a combat lock. The Sandship tint is a palette owner, not a focus
+A transient battle-message window (`$2C`) or an Analyzer reading on screen
+is not itself a combat lock. The Sandship tint is a palette owner, not a focus
 lock; FX now overlays its colours after that handler. The ending owns
 combat input and does not permit ordinary focus during its scenes.
 The browser's odd-clock strobe is intentional, not a missed request.

@@ -29,6 +29,7 @@ fx_ensure_init:
 	LDA.w #$FFFF
 	STA.l !fx_dball_last
 	STA.l !fx_dball_last+32
+	STA.l !fx_native_at
 	STA.l !fx_map
 	STA.l !fx_mode
 	STA.l !fx_clspal : STA.l !fx_clspal+2 : STA.l !fx_clspal+4

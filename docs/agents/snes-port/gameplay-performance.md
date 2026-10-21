@@ -563,8 +563,8 @@ artifact directory.
 
 ### Quiet radio during base charging
 
-An idle radio has no messages, cooldowns, pending scouter scan or window
-work. Base charging and beams cannot start an SSJ warning, so retain that
+An idle radio has no messages, cooldowns or window work (the cut scouter's
+pending scan is gone). Base charging and beams cannot start an SSJ warning, so retain that
 idle proof and perform only request, visibility and placement-age updates.
 Preserve foreign-state validation and the full path for fortress completion,
 events, R, SSJ, messages and cancellation before dispatch. World flight
@@ -1560,8 +1560,10 @@ These documented gaps remain separate from the measured performance fixes:
 - Senzu targeting, some status/equipment interactions and less common
   rendering paths still need the reference comparisons listed in
   [combat.md](combat.md#remaining-work) and [goku.md](goku.md#remaining-work).
-- Scouter power-level readouts and Analyzer overlays are still absent;
-  the switch works. This is separate from the corrected Dragon Radar and
-  quest panel. See [ui.md](ui.md#core-requests).
+- The cartridge has no scouter: it was cut for resources on the
+  maintainer's request. Primm's Analyzer shows its target's power-level
+  reading instead; busy frames can defer it. This is separate from the
+  corrected Dragon Radar and quest panel. See
+  [ui.md](ui.md#analyzer-readouts-scouterasm-scouter-readoutsasm-scouter-objasm).
 - Less common story, boss and ending routes still need broader playthrough
   coverage. Physical-console and flash-cartridge testing remains open.

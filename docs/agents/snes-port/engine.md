@@ -147,13 +147,27 @@ checks and the remaining crowded-frame misses. No DMA/HDMA rule changes.
   `$76/$A4/$78/$A6`; `C0:C238` HUD numbers; `C0:C2DB`–`C337` misc buffers.
 
 **Free OBJ VRAM** (never displayed or written in 299 field / 19 world-flight
-sampled states; field regions belong to rarely active actor slots, so verify
-in crowded scenes): field `$7220`/`$7320` (tiles `$122`–`$12F`/`$132`–`$13F`,
+sampled states): field `$7220`/`$7320` (tiles `$122`–`$12F`/`$132`–`$13F`,
 7 16×16 cells), `$7840`/`$7940` (4 cells), `$7A80`/`$7B80` (4 cells), plus
 the hero's cells for a module that replaces the hero's streaming. World
 flight: tiles `$060`–`$0FF` (`$6600`, 160 tiles), `$110`–`$17F` (`$7100`, 112),
 `$190`–`$1FF` (`$7900`, 112). Menus: not surveyed. No VRAM is free by
 construction in the field; claim regions with `core_vram_claim`.
+
+The three field regions are only free while the game streams nothing
+there. A static map of every `LDA #vram / STA $2116` in `C1:950D` shows
+each region inside a combat slot's **effect pieces** (32×16 cells for
+weapon swings, thrown weapons and damage-number objects):
+- `$7220`: slot 5 (`$7E:EA00`) pieces 1-4 at `$7200+$40·(k-1)`.
+- `$7840`: slot 1 (`$7E:E200`) pieces 4 and 5 at `$7840`/`$7880`.
+- `$7A80`: slot 2 (`$7E:E400`) pieces 4 and 5 at `$7A80`/`$7AC0`.
+
+Piece k streams while the slot's cell count (`+$84`) is at least 2k-1. The
+fifth piece also streams once per request (`+$8D` low byte, cleared by
+the streamer; set at `C2:BF7C` with the weapon effect flag `+$61`). The
+only OBJ VRAM the streamer never writes is `$6000`–`$63FF` (HUD, ring and
+shadow cells) and `$7E80`/`$7F80` (4 cells). FX yields the claimed entries
+every frame: [fx.md, Native effect cells](fx.md#native-effect-cells).
 
 ## DMA and vblank time
 
