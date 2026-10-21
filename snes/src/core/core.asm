@@ -537,15 +537,15 @@ core_hdmaen_write:
 ;   without it a window opened over a full-screen scene went up shifted by
 ;   a byte (stray glyphs and dots). The channels are left alone there: the
 ;   held scenes run their own HDMA on 4-6.
-; - A streamed frame keeps the HDMA channels among 4-7 ($2C bits 4-7: the
-;   scouter window's palette, the orbit fight's Mode 7 matrix, BG3 scroll
-;   and windows) as they were before the streamer. Their modules re-arm
-;   them in the module NMI, but that is skipped when the game's frame is
-;   not complete (a lag frame, a ring menu over the field), and HDMA then
-;   started from the streamer's VRAM settings: it wrote junk to VMDATA on
-;   the first lines and dropped the effect for the frame. The registers
-;   are kept on the stack around the call (no RAM: this NMI may interrupt
-;   map decoding into 7E:2000-77FF).
+; - The HDMA channels among 4-7 ($2C bits 4-7: the scouter window's
+;   palette, the orbit fight's Mode 7 matrix, BG3 scroll and windows) are
+;   re-armed by their modules in the module NMI, after the streamer. That
+;   is skipped when the game's frame is not complete (a lag frame, a ring
+;   menu over the field), and HDMA then started from the streamer's VRAM
+;   settings: junk VMDATA writes on the first lines and the effect lost for
+;   the frame. In those vblanks only, the channels are kept on the stack
+;   around the call (no RAM: this NMI may interrupt map decoding into
+;   7E:2000-77FF).
 core_actor_cells:
 	REP #$30
 	LDA.l !core_actor_hold
@@ -556,15 +556,24 @@ core_actor_cells:
 	STA.l $002115
 	RTL
 .stream
-	LDA.l $7E002C
-	AND.w #$00F0
-	BNE .keep
+	; The module NMI re-arms its channels after the streamer whenever it
+	; runs this vblank: the same test as core_field_nmi (the frame's ready
+	; word and $EC bit 0, both still standing here).
+	LDA.l !core_dma_ready
+	BEQ .lag
+	LDA.l $7E00EC
+	LSR
+	BCC .lag
+.native
 if defined("CORE_NATIVE_NMI_SLOW")
 	JML $01950D
 else
 	JML $81950D                    ; its FastROM mirror; the RTL returns to C0:C152
 endif
-.keep
+.lag
+	LDA.l $7E002C
+	AND.w #$00F0
+	BEQ .native
 	LDX.w #$0070                   ; channels 7..4 running HDMA: DMAP/BBAD, A1T, A1B, DASB
 	LDY.w #$0080                   ; HDMAEN bit of channel X
 .save
