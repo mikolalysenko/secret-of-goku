@@ -453,3 +453,12 @@ world module needs no callback or frame-thread copy. See
   `!RAM_WORLD`; the world frame returns early in those builds.
 - FastROM is enabled; the native world loop, compass and helper calls now
   also use its fast mirrors.
+
+### Round-seven takeoff audio
+
+`bridge.asm` sends Goku's takeoff shuffle through audio's immediate resident
+queue helper in the default build. The transition previously entered a pause
+callback before the ordinary selector, which discarded its takeoff request.
+The core sound queue and asynchronous dispatcher still own the actual port
+command; no new per-frame work is added. Define-0 rollback keeps the original
+bridge bytes. See [audio.md](audio.md#round-seven-shipping-policy-october-21-2026).

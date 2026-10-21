@@ -1,0 +1,61 @@
+// Combine cartridge/browser recordings, verify hashes and measure echo pairs.
+import assert from 'node:assert/strict';
+import {readFileSync,writeFileSync,existsSync,readdirSync} from 'node:fs';
+import {resolve,join} from 'node:path';
+import {createHash} from 'node:crypto';
+const root=resolve('.local/snes-test/audio/compare7');
+const read=n=>JSON.parse(readFileSync(join(root,n),'utf8'));
+const parts=['r4','r7','pc'].map(t=>read('manifest-'+t+'.json'));
+const files=parts.flatMap(p=>p.files),hash=b=>createHash('sha256').update(b).digest('hex');
+assert.equal(new Set(files.map(f=>f.file)).size,files.length,'duplicate listening file');
+for(const f of files){assert.equal(hash(readFileSync(join(root,f.file))),f.sha256,f.file+' hash changed');assert.equal(f.clipped,0,f.file+' clips');}
+function stereoTail(file){
+ const b=readFileSync(join(root,file));assert.equal(b.toString('ascii',36,40),'data');
+ const rate=b.readUInt32LE(24),channels=b.readUInt16LE(22),count=(b.length-44)/(2*channels);
+ let e=0,n=0;for(let i=Math.round(8.05*rate);i<Math.min(count,Math.round(12*rate));i++)for(let c=0;c<channels;c++){const v=b.readInt16LE(44+2*(i*channels+c))/32768;e+=v*v;n++;}
+ return 10*Math.log10(Math.max(1e-20,e/Math.max(1,n)));
+}
+const echoPairs=[];
+for(const f of parts[0].files.filter(f=>f.file.startsWith('echo-'))){
+ const other=f.file.replace('-r4','-r7'),b=parts[1].files.find(g=>g.file===other);
+ const id=parseInt(f.file.slice(5,7),16),s=read('analysis7.json').echo.find(e=>e.id===id);
+ echoPairs.push({id,round4:f.file,round7:other,edl4:s.before,edl6:s.round6,edl7:s.after,delayChangeMs:s.delayMs,
+  wholeFileRmsChangeDb:b.rmsDbFS-f.rmsDbFS,tailRms4DbFS:stereoTail(f.file),tailRms7DbFS:stereoTail(other)});
+}
+const comparisons=parts[0].files.filter(f=>!f.file.startsWith('echo-')).map(f=>{
+ const key=f.file.replace('-r4.wav',''),r7=key+'-r7.wav';assert.ok(files.some(f=>f.file===r7));
+ const pcKey=key.replace('solo-','').replace('context-','').replace('revert-landing','revert').replace('transform-revert','focus-transform').replace(/^flight$/,'flight');
+ const candidates=[`pc-${pcKey}.wav`,...(key==='solo-revert-landing'?['pc-landing.wav']:[]),...(key==='context-flight'||key==='context-world-flight'?['pc-flight-context.wav']:[]),...(key==='context-teleport'?['pc-teleport-context.wav']:[])];
+ return {sound:key,round4:f.file,round7:r7,pc:[...new Set(candidates)].filter(n=>files.some(f=>f.file===n))};
+});
+const trace7=read('trace-r7/results.json'),ids=phase=>trace7.commands.filter(c=>c.phase===phase).map(c=>c.id);
+assert.ok(!ids('hold-B').includes(0x27));assert.ok(ids('native-hold-B').includes(0x27));assert.ok(ids('world-takeoff').includes(0xEC));
+const profiles={};
+for(const [tag,p] of [['r4','../baseline7/profile/loads/results.json'],['r6','../baseline7/profile-r6/loads/results.json'],['r7','../final7/audio/loads/results.json']])if(existsSync(join(root,p))){
+ const r=read(p),rows=r.song_load_profile;assert.equal(rows.length,64);
+ const total=k=>rows.reduce((n,s)=>n+(s[k]??0),0);
+ profiles[tag]={songs:64,totalStallFrames:Array.from({length:64},(_,id)=>r[`load_${id.toString(16).toUpperCase().padStart(2,'0')}_stall_frames`]).reduce((a,b)=>a+b,0),
+  totalLoadFrames:Array.from({length:64},(_,id)=>r[`load_${id.toString(16).toUpperCase().padStart(2,'0')}_load_frames`]).reduce((a,b)=>a+b,0),
+  sequenceFrames:total('sequence'),cachePlanFrames:total('cache_plan'),compactFrames:total('compact'),instrumentFrames:total('instruments'),tableFrames:total('tables'),echoSetupFrames:total('echo_setup'),
+  uploadedBrrBytes:rows.reduce((n,s)=>n+s.uploads.reduce((a,b)=>a+b,0),0),compactedBrrBytes:rows.reduce((n,s)=>n+s.moves.reduce((a,b)=>a+b.bytes,0),0)};
+}
+function workingFiles(path=''){
+ return readdirSync(join(root,path),{withFileTypes:true}).flatMap(e=>{
+  const file=path?path+'/'+e.name:e.name;
+  if(e.isDirectory())return workingFiles(file);
+  if(file==='manifest.json'||files.some(f=>f.file===file))return [];
+  const ext=file.split('.').at(-1),description=({pcm:'Unprocessed source DAC recording, stereo signed 16-bit 32 kHz.',mss:'Private Mesen checkpoint used to reproduce the recording.',png:'Private checkpoint screenshot.',lua:'Generated Mesen fixture/trace script.',json:'Machine-readable trace, per-renderer manifest, or analysis.'})[ext]??'Capture/analysis working file.';
+  return [{file,description,sha256:hash(readFileSync(join(root,file)))}];
+ });
+}
+const manifest={title:'Secret of Goku — audio round seven',roms:parts.slice(0,2).map(({tag,sha256,rom})=>({tag,sha256,rom})),
+ listeningOrder:['context-charge-beam','context-focus','context-flight','context-teleport','context-ki-volley','context-melee-hold','context-transform-revert','context-world-flight'],
+ renderers:parts.map(({tag,renderer,note,fixtures})=>({tag:tag??'PC',renderer,note,fixtures})),
+ notes:['No output gain normalization or clipping. Compare each r4/r7 pair at the same player volume.','The PC references isolate browser sound clips and loops; they do not include browser music.','Teleport uses a bandwidth-prioritized 96 ms attack; aura/beam use longer loops than the round-six beam. No additional candidate was selected for a separate alternate cartridge.','Continuous air is omitted in the cartridge; the PC flight-context reference includes it.','Charge CPU misses: 13/240 in round seven, 15/240 in the independent local round-four baseline. The supplied 12/240 baseline was not reproduced; the absolute 12-miss target remains open.'],
+ comparisons,echoPairs,songLoadProfiles:profiles,files,workingFiles:workingFiles(),
+ auxiliary:[{file:'analysis7.json',description:'BRR/loop/rate/storage options and dry SPC effect measurements; normalized beam-attack correlation compares a 32 ms 6 kHz source template at the best offset in the first 100 ms.'},
+ ...['r4','r6','r7'].map(tag=>({file:`trace-${tag}/results.json`,description:`Effect commands from real controller inputs, ${tag}.`})),
+ ...['r4','r7'].map(tag=>({file:`capture-${tag}/results.json`,description:`Cartridge capture provenance and all commands for ${tag}.`})),
+ ...['r4','r7'].map(tag=>({file:`capture-${tag}-melee/results.json`,description:`B-hold weapon-buzz comparison, ${tag}.`}))]};
+writeFileSync(join(root,'manifest.json'),JSON.stringify(manifest,null,2));
+console.log(`${files.length} verified WAV files, ${comparisons.length} cue/context pairs, ${echoPairs.length} echo pairs`);console.log(JSON.stringify(profiles,null,2));

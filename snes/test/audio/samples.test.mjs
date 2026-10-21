@@ -10,7 +10,8 @@ import {songInventory,songInstrumentSelectors,hash} from './sample-audit.mjs';
 import {mixContext,proposedEcho} from './samples.mjs';
 import {measure} from './punch.mjs';
 
-const rom=readFileSync(process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc');
+import {roundFourApuRom} from './cartridge.mjs';
+const rom=roundFourApuRom(readFileSync(process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc'));
 const bank=buildCustomBank(),w=(a,p)=>a[p]|a[p+1]<<8;
 
 test('custom bank is bounded and preserves all retail and unrelated resident tracks',()=>{
