@@ -44,7 +44,9 @@ async function shotWindow(h,name){
 // free WRAM for a few frames; it copies the 32-byte xdata probe (a bank in
 // $40-$7D, which only an ExHiROM mapping reaches) and single bytes from the
 // header, ROM mirrors and save RAM banks to WRAM, counts its runs and jumps
-// on to the game's NMI handler. Registers are preserved (PHP/REP/PHA/PHX).
+// on to the game's NMI handler. Registers are preserved (PHP/REP/PHA/PHX/
+// PHB); DB = $7E (the routine runs in bank $7E) so its stores fit in the
+// 128 bytes before probeOut.
 export function probeReads(xprobe){
   return [
     {addr:0x00FFD5,what:'map mode via $00 (second 4 MiB)'},
@@ -64,12 +66,13 @@ export function probeReads(xprobe){
 }
 const long=a=>[a&255,(a>>8)&255,(a>>16)&255];
 export function probeCode(xprobe,target){
-  const out=A.probeOut;
-  const b=[0x08,0xC2,0x30,0x48,0xDA,0xE2,0x20,0xA2,0x1F,0x00,   // PHP REP#30 PHA PHX SEP#20 LDX #$1F
-    0xBF,...long(xprobe),0x9F,...long(out),0xCA,0x10,0xF5];       // copy 32 bytes (LDA l,X / STA l,X / DEX / BPL)
-  probeReads(xprobe).forEach((r,i)=>b.push(0xAF,...long(r.addr),0x8F,...long(out+0x20+i)));
-  b.push(0xAF,...long(out+0x3F),0x1A,0x8F,...long(out+0x3F));     // run counter
-  b.push(0xC2,0x30,0xFA,0x68,0x28,0x5C,...long(target));         // REP#30 PLX PLA PLP JML target
+  const out=A.probeOut,abs=a=>[a&255,(a>>8)&255];
+  const b=[0x08,0xC2,0x30,0x48,0xDA,0x8B,0x4B,0xAB,0xE2,0x20,   // PHP REP#30 PHA PHX PHB PHK PLB SEP#20
+    0xA2,0x1F,0x00,                                               // LDX #$1F
+    0xBF,...long(xprobe),0x9D,...abs(out),0xCA,0x10,0xF6];        // copy 32 bytes (LDA l,X / STA a,X / DEX / BPL)
+  probeReads(xprobe).forEach((r,i)=>b.push(0xAF,...long(r.addr),0x8D,...abs(out+0x20+i)));
+  b.push(0xEE,...abs(out+0x3F));                                  // run counter (INC a)
+  b.push(0xC2,0x30,0xAB,0xFA,0x68,0x28,0x5C,...long(target));    // REP#30 PLB PLX PLA PLP JML target
   if(b.length>out-A.probeCode)throw Error(`probe code is ${b.length} bytes`);
   return b;
 }

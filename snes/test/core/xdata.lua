@@ -1,6 +1,8 @@
 -- ExHiROM: the generator probe in $40-$7D reads back through the CPU bus;
--- banks 00-3F:8000-FFFF and the upper halves of 40-7D mirror C0-FF; both
--- header copies say ExHiROM; save RAM still answers at $30-$33 and $B0-$B3.
+-- banks 00-3F:8000-FFFF and the upper halves of 40-5F mirror C0-DF (those
+-- of 60-7D take extended data once the lower halves are full, snes-rom.md);
+-- both header copies say ExHiROM; save RAM still answers at $30-$33 and
+-- $B0-$B3.
 local function hex(v) return string.format('%02X', v) end
 function test()
   H.wait(2)
@@ -17,7 +19,7 @@ function test()
       if H.r8(b * 0x10000 + a) ~= H.r8((0xC0 + b) * 0x10000 + a) then bad = string.format('%02X:%04X', b, a) end
     end
   end
-  for _, b in ipairs({ 0x40, 0x5F, 0x7D }) do
+  for _, b in ipairs({ 0x40, 0x50, 0x5F }) do
     for _, a in ipairs({ 0x8000, 0xC000, 0xFFFF }) do
       if H.r8(b * 0x10000 + a) ~= H.r8((b + 0x80) * 0x10000 + a) then bad = string.format('%02X:%04X', b, a) end
     end
