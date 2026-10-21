@@ -10,8 +10,8 @@ function test()
     if v == 0x8A then streams = streams + 1 end
   end, emu.callbackType.write, 0x002140, 0x002140)
   emu.addMemoryCallback(function()
-    if H.r8(0x7E1E00) == 2 then
-      commands[#commands+1] = {frame=H.frame, id=H.r8(0x7E1E01)}
+    if (H.r8(0x7E1E00) == 2 or H.r8(0x7E1E00)==0x81) then
+      commands[#commands+1] = {frame=H.frame, id=H.r8(0x7E1E01),cmd=H.r8(0x7E1E00),level=H.r8(0x7E1E02),rate=H.r8(0x7E1E03)}
       effectStart = emu.getState()['masterClock']
     end
   end, emu.callbackType.exec, 0xC30004, 0xC30004)
@@ -49,25 +49,57 @@ function test()
   cmd(5,AUDIO_LOOP_CHARGE)
   H.wait(180)
   local pulses=#commands-first
-  check('charge_pulses_bounded',pulses>=6 and pulses<=8,pulses)
-  check('charge_uses_rumble',commands[first+1] and commands[first+1].id==0xDD)
+  check('charge_requests_bounded',ROUND7 and pulses==1 or not ROUND7 and pulses>=6 and pulses<=8,pulses)
+  check('charge_uses_rumble',commands[first+1] and commands[first+1].id==(ROUND7 and 0xED or 0xDD))
   cmd(6)
   H.wait(4)
   local stopped=#commands
   H.wait(60)
   check('charge_stops',#commands==stopped,#commands-stopped)
   cmd(5,AUDIO_LOOP_AURA);H.wait(60)
-  check('aura_keeps_quieter_sweep',commands[stopped+1] and commands[stopped+1].id==0xDF)
+  check('aura_keeps_quieter_sweep',commands[stopped+1] and commands[stopped+1].id==(ROUND7 and 0xEE or 0xDF))
   cmd(6);H.wait(60);stopped=#commands
   cmd(5,AUDIO_LOOP_AIR)
   H.wait(120)
   check('air_does_not_stream_or_spam',#commands==stopped,#commands-stopped)
   cmd(6)
+  if ROUND7 then
+    H.wait(20)
+    local first=#commands
+    -- Public loop-request ABI, with changing levels/rates and no test-loop
+    -- refresh. Expiry must fade/release both voices after the final request.
+    for f=1,120 do
+      H.w8(AU+10,math.min(255,55+f));H.w8(AU+11,math.min(255,30+f))
+      H.w8(AU+14,96+math.floor(f/4));H.w8(AU+15,104+math.floor(f/6))
+      H.w16(AU+18,0)
+      if H.r8(AU+0x58)==0 then H.w8(AU+0x58,1) end
+      H.wait(1)
+    end
+    H.wait(30)
+    local last,counts,updates,spaced,changed={},{},0,true,true
+    for i=first+1,#commands do local c=commands[i]
+      if c.cmd==0x81 and c.level>0 then
+        updates=updates+1
+        counts[c.id]=(counts[c.id] or 0)+1
+        local p=last[c.id]
+        if p then spaced=spaced and c.frame-p.frame>=8;changed=changed and (c.level~=p.level or c.rate~=p.rate) end
+        last[c.id]=c
+      end
+    end
+    local beds=0
+    for v=0,7 do local id=aram(0xFF80+v);if aram(0xAE)&(1<<v)~=0 and (id==0xED or id==0xEE) then beds=beds+1 end end
+    check('bed_updates_quantized',updates>=4 and updates<=16 and spaced and changed,updates)
+    check('bed_updates_fair',counts[0xED]>=3 and counts[0xEE]>=3,'one bed starved')
+    check('bed_expiry_releases_music_voices',beds==0,beds)
+    first=#commands;cmd(5,AUDIO_LOOP_FRIEZA_CHARGE);H.wait(40)
+    check('frieza_charge_uses_resident_bed',commands[first+1] and commands[first+1].id==0xED)
+    cmd(6);H.wait(30)
+  end
   -- Resident effects also remain asynchronous when requested by native
   -- callers; songs retain their complete synchronous load/restore contract.
   for i=1,30 do cmd(8,i%2==0 and 0x50 or 3); H.wait(1) end
   H.wait(4)
-  check('effect_cpu_bounded',maxEffectLines<2,maxEffectLines)
+  check('effect_cpu_bounded',maxEffectLines<=(ROUND7 and 1.35 or 2),maxEffectLines)
   check('pending_effect_finished',H.r8(AU+0x5B)==0,H.r8(AU+0x5B))
   check('no_brr_commands',streams==0,streams)
   -- A native song upload uses incrementing handshake counters (including

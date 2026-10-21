@@ -1,6 +1,142 @@
 # Resident custom samples: cartridge option and storage audit
 
-## Round-six cartridge option
+## Round-seven default bank
+
+Round seven ships by default; `-DAUDIO_CUSTOM_SAMPLES=0` restores round four
+byte for byte on `565c6a8`. The implementation is `snes/gen/audio-resident7.mjs`,
+`audio/spc/beds.s`, and `audio/beds.asm`. Historical round-six synthesis stays
+in `audio-custom.mjs` for the earlier auditions; its take/gain environment
+settings do not select the round-seven bank.
+
+| Instrument | Source / decoded rate | Stored sound | BRR bytes |
+| --- | --- | --- | --- |
+| `$30` | `charge.wav`, 4 kHz | 160 ms loop plus 16-sample silent entry | 369 |
+| `$31` | `aura.wav`, 6 kHz | 128 ms loop plus 16-sample entry | 441 |
+| `$32` | `beam.wav`, 6 kHz | 32 ms own attack (source starts at 60 ms), 128 ms loop | 540 |
+| `$33` | `teleport.wav`, 10 kHz | First 96 ms, attack intact, final 6.4 ms tapered | 540 |
+
+Total: **1,890 BRR bytes + 136 sequence bytes + 276 SPC code bytes = 2,302**
+in a 2,304-byte reservation. Two bytes remain; there is no room for alt1
+punches, so round-four punch/kick stay. Metadata and command hooks add 49
+bytes outside the reservation (including four mutable level/rate bytes),
+using unused tuning/ADSR/DIR entries and asserted original driver opcodes.
+The boot uploader carries these once; no frame streams the bank. New code
+and tables stay in audio's allocated ROM quarters, with no core changes.
+
+The loop splice overlaps source windows with equal-power weighting, removes
+DC, and flattens a circular RMS envelope before BRR encoding. Prediction
+resets at the loop entry; tests verify byte-exact decoded repetition with
+the previous loop's decoder history. Charge/aura 20 ms RMS variation is
+about **9% / 10%**, versus 31% for the first aura candidate. This removes
+large periodic volume troughs; it is not a substitute for the maintainer's
+listening judgment about repeated texture. The source is softly limited
+before encoding, rather than applying gain to recordings. Native DSP output
+is never normalized. BRR SNR is approximately 20–22 dB after source shaping.
+
+Charge uses the browser's `.48 + .52*strength`, `.94 + .12*strength` model.
+Focus uses `.22 + .85*focus`, `.72 + .30*focus`; the aura joins above .4 at
+level focus and rate `.8 + .2*focus`. Transformation holds charge .85 and
+aura 1. Two sustained native voices replace the old repeating attacks.
+Charge and aura scale by 140/256 and 76/256 respectively, matching the
+browser cue-gain ratio `.55:.30`; common master level is calibrated to the
+resident mix rather than copied from Web Audio's compressor input.
+
+Teleport favors bandwidth over the long source sustain: at 10 kHz the
+windowed-sinc source loses about **0.55 dB** mean-square energy to the
+anti-alias filter, compared with **2.17 dB at 8 kHz** and **3.66 dB at 6 kHz**.
+The 540-byte budget could hold 120 or 160 ms at those lower rates. Keeping
+the crisp initial rise at 10 kHz was chosen; most of the original 830 ms
+clip's sustain is deliberately omitted. The out/in volume ratio is
+114/184=.6196 (browser .46/.74=.6216). These are short one-shots, not loops.
+
+Beam keeps the clip's real attack, then a steady loop and native swell /
+release. The SSJ tuning ratio is .859375, with no per-frame pitch work.
+Identical dry-driver measurements give round-four / round-seven beam RMS
+**−16.37 / −16.19 dBFS**, peaks **−6.39 / −4.97 dBFS**; the 3.5-second raw
+Mesen solo pair is also slightly louder in round seven. All retained hit,
+kick, impact and blast tracks remain byte-identical. Flight reuses the aura
+texture at a lower rate with a swell; landing/revert reuse a low beam tail.
+This avoids the shared noise clock and another sample allocation. Continuous
+air was omitted to preserve music voices and CPU.
+
+### Storage and music trade-off
+
+The reservation is 256 bytes larger than round six. Canonical EDL changes
+(relative to round four) are:
+
+| Song ids | EDL change |
+| --- | --- |
+| `$00,$01` | 3 → 2 |
+| `$02,$11,$3D` | 6 → 5 |
+| `$03,$0E,$10` | 11 → 10 |
+| `$04,$39,$3C` | 4 → 3 |
+| `$05,$0C,$14` | 2 → 1 |
+| `$0B` | 8 → 7 |
+| `$2C` | 6 → 4 |
+| `$3B` | 5 → 4 |
+
+Only `$10` and `$2C` lose an additional step versus round six: 176→160 ms
+and 80→64 ms respectively. Other affected songs retain round six's cap.
+EVOL, feedback and FIR are unchanged. Every song command, including
+noncanonical presets, caps EDL against the actual unique sample bytes.
+
+Options measured by `snes/test/audio/audit7.mjs`:
+
+- **2,048 bytes:** 16 canonical songs lose one step. The new bank exceeds it
+  by 254 bytes; keeping these loops/code would leave only 286 bytes for
+  teleport (about 50 ms at 10 kHz), or require shorter, more repetitive beds.
+- **2,304 bytes, selected:** 17 songs change as above. The smallest sample /
+  echo margins are 31 bytes (`$04`) and 59 bytes (`$0C`).
+- **2,362 bytes:** the largest reservation compatible with at least one EDL
+  step in every song. It would also reduce `$04` another step, for only
+  another 58 bytes; poor benefit for the music change.
+- **3,072 bytes:** 18 canonical songs change and `$0C` cannot retain even
+  EDL=1. **4,096 bytes:** 21 songs change and `$05/$0C/$14` cannot retain
+  EDL=1. These do not meet the retained loader/echo layout.
+- **Per-song extension:** another 1,024 bytes fits 53/64 songs at the chosen
+  caps; `$00,$01,$02,$04,$05,$0C,$0E,$25,$39,$3B,$3C` need a compact fallback.
+  That would require extra bank transfers / pointer swaps at song load and
+  different effects by location. It was not chosen for this round.
+- **Lower rates:** charge at 4 kHz loses 1.02 dB source energy, beam at
+  6 kHz .62 dB; these save bytes with relatively little source loss. Aura
+  loses 4.78 dB at 6 kHz, versus 8.01 dB at 4 kHz, so it retains 6 kHz.
+  `analysis7.json` contains the full rate/byte matrix and per-song margins.
+
+No retail sample, effect, rare line, or song-loader feature is removed.
+The modest permanent increase avoids loading extra sample banks during play.
+
+### Listening package and reproducibility
+
+Private output: **`.local/snes-test/audio/compare7/manifest.json`**. The
+round-four and round-seven Mesen packages each have 12 solo cues/beds, seven
+input-driven contexts (including the requested five and world flight), and
+17 echo pairs. The raw stereo DAC capture has no gain normalization; the
+manifest records peaks, RMS, hashes, descriptions and command-trace paths.
+No clipping occurred in the initial cartridge pairs. Browser references use
+the original WAVs, master .55 and compressor threshold −10 / knee 12 /
+ratio 6 / attack .003 / release .16, plus the browser loop target/fade model.
+They isolate audio without browser music. The explicit SSJ reference rate
+.86 follows the maintainer's table; current browser sampled `voice()` itself
+falls back to rate 1 for beam, while its synthesized fallback uses .86.
+
+```sh
+node snes/test/audio/capture-build.mjs
+node snes/test/audio/capture7.mjs --rom=path/to/r4.sfc --tag=r4 --songs
+node snes/test/audio/capture7.mjs --rom=path/to/r7.sfc --tag=r7 --songs
+node snes/test/audio/pc7.mjs
+SNES_ROM=path/to/r7.sfc node snes/test/audio/audit7.mjs
+```
+
+The capture host honors Mesen's `AllowIoOsAccess` setting. It records the
+pinned Mesen core from cartridge power-on; solo loop requests use the module
+ABI, contexts use ordinary imported gameplay fixtures and real inputs.
+No output, fixture, recording or ROM is committed. Final suite results and
+hashes are recorded in [audio.md](audio.md#round-seven-shipping-policy-october-21-2026).
+
+## Round-six cartridge option (historical)
+
+The following instructions describe the old opt-in implementation. Use the
+round-seven default and define-0 rollback above for the current source.
 
 `node snes/build.mjs --strict -DAUDIO_CUSTOM_SAMPLES=1` builds the resident
 proposal into the cartridge; omitting the define (or setting it to 0) keeps

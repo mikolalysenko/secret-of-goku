@@ -54,7 +54,87 @@ slide. A dry retail feature comparison places `$DD` nearest `$D0` (then
 proof of a named enemy's sound. Repeating the entire `$DD` attack every 25
 completed frames explains the pulsing heard during power-up.
 
-## Shipping sound policy (October 21, 2026)
+## Round-seven shipping policy (October 21, 2026)
+
+The default is now round seven. `-DAUDIO_CUSTOM_SAMPLES=0` is the exact
+round-four rollback on `565c6a8`; `-DAUDIO_PCM=1` remains diagnostic only.
+No frequent sound streams. Punch/kick `$E7/$E8`, ki launch `$DE`, and ki
+contact `$38` retain their round-four tracks and samples. The round-six
+custom impact is removed. The three rare lines and fast song loader remain.
+
+| Action | Round-seven cartridge |
+| --- | --- |
+| B held | Native `$27` ticks suppressed for active Goku; normal melee cues remain |
+| L+Y charge | Sustained `$ED`, `charge.wav` loop; quantized browser strength/level/rate |
+| L focus | `$ED` hum, then `$EE` sampled aura above .4 focus; no 25-frame pulses |
+| Transform / burst / revert | `$E0` sampled aura, `$E1` sampled beam burst, `$E3` low sampled release |
+| Full-charge ready | Quieter, short sampled `$DF`; one cue, not a repeating bed |
+| Kamehameha | `$EA`: own source attack after 60 ms leading silence, then sustained body and release |
+| Super Saiyan beam | `$F0`: same sample/envelope, tuning 165/192 = .859375 |
+| Instant Transmission | `$EB` out, `$EF` in; PC sample at 10 kHz, gains 184:114 (browser .74:.46) |
+| Local/world flight | `$EC` lower sampled shuffle; `$E3` landing; continuous AIR deliberately omitted |
+
+`native.asm` still selects shots by priority. `beds.asm` uses the existing
+loop selector and four bytes of accepted-parameter state in unused stream
+channel 1 (`$DD40-$DD43`). Combat supplies two levels/two rates through
+precomputed browser-envelope tables; its binding change is six lines.
+Charging refreshes ownership without rereading tables during the update
+cooldown. A quiet frame still returns early; a held, unchanged bed needs no
+port command. Levels quantize to 16/255 and rates to 4/128. Changed values use round-robin selection so rising charge cannot starve aura, and
+share a **12-frame minimum command interval** (thus no faster than the
+requested eight-frame limit). Expired requests and cancellation bypass that
+throttle. A short native volume fade smooths starts, updates and stops.
+
+Command `$81 id level rate` is an asynchronous four-port command, with the
+same pending-echo protocol as `$02`. Accepted commands alone update the CPU
+cache. `spc/beds.s` allocates one native effect voice per bed, keeps its note
+running, and updates native volume fade / pitch state without keying it on
+again. Expiry installs a fading release sequence ending in native `$F2`,
+which returns the voice to music. A beam command also releases both beds
+inside the SPC, saving separate CPU stop commands on the busy release
+frame. A failed/dropped beam dispatch leaves the ordinary expiry path intact.
+Songs clear the accepted cache; menus/cancel/stop release held beds. Public
+loop 3 (Frieza charge) shares the charge voice at lower priority. AIR is a
+no-op and has no music-voice cost.
+
+The new sounds use **BRR, not DSP noise**, including the shuffle. A punch's
+noise-clock change cannot retune either bed; a bed cannot retune a punch.
+Tests run punches with both beds active and check pitch, noise cleanup and
+music-voice return. Existing punch/impact noise-clock sharing is unchanged.
+
+The Goku-only buzz filter hijacks five original bytes at `C0:B3ED`. It
+filters actor X=0 only while Goku is active and unsuppressed; other actors
+replay the displaced native sound-queue writes. `world/bridge.asm` submits
+the takeoff command through the existing core queue immediately: its old
+request was discarded by the transition's pause callback before a field
+selector could consume it. This adds no idle callback work or core changes.
+
+The bank occupies `$4DF1-$56F0` (2,304 bytes, 2,302 used), with native song
+samples beginning at `$56F1`. All retail samples/effects remain. See
+[audio-samples.md](audio-samples.md#round-seven-default-bank) for rates,
+loop construction, echo caps, alternatives and listening measurements.
+
+Validation at the runtime checkpoint: strict default and rollback builds,
+32 Node/SPC tests, Mesen `native` including changed-only spaced updates,
+expiry/voice return and Frieza alias, and all 13 `gameplay` cases pass their
+functional/hardware assertions. Dispatcher maximum is **1.3446 scanlines**
+(start/update/stop); no BRR stream commands occur for common sounds.
+Gameplay CPU misses are charge **13**, teleport **3**, fly-ki **2**, fly **1**,
+fly-punch **1**, all others **0** per 240 frames. The independently rebuilt
+round-four charge case gives **15** in this environment, rather than the
+maintainer's supplied **12**. Round seven improves that local pair but does
+**not establish the requested absolute 12-miss ceiling**; retain this as an
+integration timing issue. Core and FX code have not been changed to hide it.
+
+Strict build hashes:
+
+- Round seven: `fdd6808fcd612b776b7b3c21ed70c3b7215f24d5bc07294513afc6b0edd5bcc2`.
+- Define-0 rollback: `56ed7992b1f2abf06561a1d5553d1ab151e5fc7fd8d8ff0941a9a63508115388`,
+  byte-identical to the independent round-four build.
+
+## Earlier shipping policies (rounds four–six; historical)
+
+The following records describe the previous cartridges, not the new default.
 
 Round six adds an opt-in `-DAUDIO_CUSTOM_SAMPLES=1` cartridge. The default
 stays byte-identical to `12b101c` (`61a0c112481616314e7dae0cdd97ffab9e49c57079c6ed64da9cebc1cda327ea`).
