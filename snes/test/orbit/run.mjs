@@ -398,6 +398,7 @@ const cases={
     for(const[f,c]of colours.slice(0,8))console.log(`  frame ${f}: ${c} not the scene's`);
     for(const[f,cw,dw]of writes.slice(0,8))console.log(`  frame ${f}: ${cw} CGRAM writes, ${dw} DMA starts on visible lines`);
     for(const m of mismatches.slice(0,8))console.log('  '+m);
+    if(res.lagAt?.length)console.log(`  lagged at ${res.lagAt.join(' ')}`);
     return ok;
   },
   async clash(rom){
@@ -455,6 +456,18 @@ const cases={
     ok=ok&&compared>=frames-200&&mismatches.length===0&&!!returned&&returned.wage===refReturn?.boss.age&&colours.length===0&&late.length===0&&writes.length===0;
     console.log(`clash: ${ok?'pass':'FAIL'} compared ${compared} frames, ${mismatches.length} differ, ${res.lagged} lagged, back at ${returned?.wage} / ${refReturn?.boss.age}, ${colours.length} frames with other colours, ${late.length} late vblanks, ${writes.length} frames writing CGRAM or DMA on visible lines, ${dropped.length} frames dropping sprites`);
     for(const m of mismatches.slice(0,10))console.log('  '+m);
+    // the repeated pictures by the finale's phase and age (the frame's own
+    // state; a run of frames at one age is one stall)
+    if(res.lagAt?.length){
+      const by=new Map();
+      for(const f of res.lagAt){
+        const c=cart[f],p=c?.phase||'fight',runs=by.get(p)??[],last=runs.at(-1);
+        if(last&&last.age===c?.age&&last.to===f-1){last.to=f;last.n++;}else runs.push({from:f,to:f,n:1,age:c?.age});
+        by.set(p,runs);
+      }
+      const text=r=>r.n>1?`${r.from}-${r.to} at age ${r.age}`:`${r.from} at age ${r.age}`;
+      console.log(`  lagged by phase: ${[...by].map(([p,rs])=>`${p} ${rs.reduce((n,r)=>n+r.n,0)} (${rs.map(text).join(', ')})`).join('; ')}`);
+    }
     for(const[f,c]of colours.slice(0,8))console.log(`  frame ${f}: ${c} not the scene's`);
     for(const[f,cw,dw]of writes.slice(0,8))console.log(`  frame ${f}: ${cw} CGRAM writes, ${dw} DMA starts on visible lines`);
     return ok;

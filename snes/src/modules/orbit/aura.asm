@@ -2,9 +2,11 @@
 ; frieza-finale-view.js draw them): Goku's gold while he charges the wave
 ; (power min(1, charge / 45)) or focuses (.25 + .45 powerCharge / 96),
 ; Frieza's pink (power 1, seed 5) while he warns of a beam; in the finale
-; Frieza's while he gathers and charges and in Frieza's surges, Goku's
-; while he charges. Shown on the even frames of the clock (the browser's
-; temporal transparency), behind the fighter.
+; Frieza's while he gathers and charges, Goku's while he charges (not
+; Frieza's through his struggle surges: the rays hold the slots, and a
+; slot traded between a ray and an aura cost the struggle frames). Shown
+; on the even frames of the clock (the browser's temporal transparency),
+; behind the fighter.
 ;
 ; The generator makes a picture per level (1-8; Frieza's 8 only) and phase
 ; ((floor(age / 3) + seed) mod 12): a 32x32 cell whose (12, 22) is the
@@ -12,20 +14,26 @@
 ; fighter is not firing (Goku: slot 2, OBJ $048; Frieza: slot 5, $084),
 ; free while that group has fewer than three chains, through the beam
 ; pictures' vblank queue (beam_queue), keyed $8000 | its index (gold:
-; (level - 1) * 12 + phase, pink: 96 + phase). A beam that needs the slot
-; takes it back; the aura then waits. DB = $32, M16/X16.
+; (level - 1) * 12 + phase, pink: 96 + phase), on frames that queue no
+; beam picture (an aura's picture never delays a beam's or adds to its
+; vblank). A beam that needs the slot takes it back; the aura then
+; waits. DB = $32, M16/X16.
 
 !AURA_GOKU_SLOT   = 4              ; slot 2, times 2 (OBJ $048)
 !AURA_FRIEZA_SLOT = 10             ; slot 5, times 2 (OBJ $084)
 !AURA_PINK        = 96             ; the first pink picture
 
 ; Frame side, after the beams' wants (fight_draw): this frame's pictures,
-; au_want = Goku's, au_want+2 = Frieza's ($FFFF: none).
+; au_want = Goku's, au_want+2 = Frieza's ($FFFF: none). (-DORBIT_NO_AURA
+; builds want none: the timing A/B in orbit.md.)
 aura_wants:
 	REP #$30
 	LDA.w #$FFFF
 	STA.w !au_want
 	STA.w !au_want+2
+if defined("ORBIT_NO_AURA")
+	RTS
+endif
 	; Goku: the wave's charge, else the focus stance (no wave out)
 	LDA.w !f_charge
 	BEQ .focus
@@ -75,21 +83,20 @@ aura_wants:
 	RTS
 
 ; The finale's (frieza-finale-view.js, its clock fn_age): Frieza's while
-; he gathers and charges and through his surges, Goku's (power 1) while he
-; charges.
+; he gathers and charges, Goku's (power 1) while he charges.
 aura_wants_finale:
 	REP #$30
 	LDA.w #$FFFF
 	STA.w !au_want
 	STA.w !au_want+2
+if defined("ORBIT_NO_AURA")
+	RTS
+endif
 	LDA.w !fn_phase
 	CMP.w #!FN_GATHER
 	BEQ .frieza
 	CMP.w #!FN_CHARGE
-	BEQ .charge
-	JSR finale_surge               ; (the struggle's surges; 0 otherwise)
-	BEQ .done
-	BRA .frieza
+	BNE .done
 .charge
 	LDA.w !f_charge
 	BEQ .frieza
@@ -211,9 +218,11 @@ aura_put:
 	JMP ofx_put
 
 ; After the beams' queue (beam_queue): each wanted aura picture its slot
-; lacks, while the queue has room.
+; lacks, when no beam picture is queued this frame.
 aura_queue:
 	REP #$30
+	LDA.w !bq_n
+	BNE .out
 	LDX.w #$0000
 	JSR .one
 	LDX.w #$0002

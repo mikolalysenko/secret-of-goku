@@ -11,8 +11,19 @@ stay traceable even when they are committed together.
   the browser draws them; in the finale Frieza's while he gathers and
   charges and Goku's while he charges. Each picture is the browser's own
   `drawKiAura` flame (gold levels 1-8, pink at full power, 12 phases), sent
-  into a free beam slot through the beam pictures' vblank queue. Frieza's
-  aura through his struggle surges waits for a free slot.
+  into a free beam slot through the beam pictures' vblank queue on frames
+  that queue no beam picture. Frieza's aura through his struggle surges is
+  left out: the rays hold the slots, and trading one between a ray and the
+  aura lagged the struggle.
+- A beam no longer draws a chain from a slot holding an aura's picture
+  (it showed the flame for a frame and rebuilt the beam's OAM run).
+- No frame lags for the auras (A/B with `-DORBIT_NO_AURA`): `fight` 2
+  repeated pictures with and without, `clash` 35 with and without (38-39
+  before the trim); they cost 4 lines a frame in the gather and 8 in the
+  charge, whose frames end early. 26 of the clash's 35 are one stall: the
+  fanfare's song load at the win's age 387, inside the browser's full
+  whiteout. The `fight` and `clash` cases now list the frames that repeat
+  their picture (the clash by phase and age).
 - Extended data for the orbit grows by 54 KiB (2,718.2 of 2,944 KiB in
   all).
 
