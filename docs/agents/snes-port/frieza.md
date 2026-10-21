@@ -39,7 +39,7 @@ those scripts call, Frieza's picture and the fights. The orbit stream
 | Altar camera pan (reveal, steal) and the court camera | Done through flight's scripted camera (`!FLIGHT_API_CAMERA`; checked on a trial merge with flight) |
 | The Tree (event 5F8): establishing view, arrival, the 32 px ball, throw, impact (shake, white, five large bursts, ruins), departure, return to black, wake on the ash field; Goku on the cliff | Plays end to end on the cartridge (case `tree`); the HUD stays visible over the cliff (Known differences) |
 | Goku as the scripted follower (`introHero`): the temple exit (431), the deck's scenes (195: core-*, depart, eighth) | Done through goku's `goku_api_scripted` (poses generated from `frieza-staging.js`) |
-| Flyby in world flight (1F04, `frieza.js` tick()'s world branches) | Story logic done (`frieza_world_frame`, case `flyby`): the flyby's clock from 1F04's `$8C`, its cues, the Death Ball's crisis at the impact, the announcement, the eighth Ball and the Tree pursuit at its end; the rear-view request and Kai's warning once 1F04 ends; the outdoor intro dropped in flight. The picture (Frieza, the cinematic Death Ball, the bursts, the white checker) is not drawn yet (Known differences) |
+| Flyby in world flight (1F04, `frieza.js` tick()/drawFlyby) | Done: the existing clock, cues, crisis, announcement, eighth Ball, Tree pursuit and Kai warning now have Frieza, the growing/thrown cinematic ball, seven staggered large bursts and the eight-frame checker. `flyby` checks both forms against browser-composed stills; the large ball's surface and crowded explosions are approximations (Known differences). |
 
 ## Scenes and timings (from the JavaScript)
 
@@ -177,6 +177,100 @@ of the world's (the same within a cell, repeating per cell).
   leaves free); the alarm is a fixed-colour add of red 2 + alarm to BG1 and
   BG2 in vblank.
 
+## World-flight picture (`flyby.asm`, `_frieza-flyby.mjs`)
+
+The generator evaluates `friezaFlybyPose`, `deathBallFlybyPose`,
+`createDeathBallArt` and the native Exploder cells on the same clock as
+`drawFlyby()`. Immutable per-age OAM, upload and HDMA records live in xdata;
+only their address tables and palettes occupy Frieza's data bank. The
+world callback prepares them before UI/world drawing. `world_draw` inserts
+Frieza's picture after `world_fx_back` and before Goku, using world slots
+through 54 and then the core's 88–127 run. It does not call the field FX
+polygon renderer or use channels 2/3.
+
+Sizes through 32 px are exact red OBJ art. Larger balls mask BG1/BG2 on
+both screens with HDMA 6 (WH0/WH1); HDMA 7 writes COLDATA, never CGRAM.
+World's native channels 0–5 remain intact. While the ball fills the sky,
+each row averages its browser colours (the two-write COLDATA transfer
+shares green/blue). From age 380 it uses one averaged backdrop colour per
+frame, written in vblank, and leaves the native fog's fixed colours alone.
+This avoids tinting the surrounding terrain during the distant impact.
+OBJ is unaffected by the window; an exact red OBJ patch over Goku's
+rectangle puts the thrown ball in front at age 360. Frieza stays in front.
+
+The seven large bursts retain their browser centres, ten-frame stagger,
+nine sub-bursts, four-frame offsets, rotations and native animation cells.
+Fully occluded pieces are removed; when a line would exceed 30 burst
+slivers, the least visible pieces are omitted. Forty canonical reflected
+Exploder cells fit the borrowed B/C atlas. The checker, ages 404–411,
+temporarily selects 8/32 OBJ and covers the screen with 56 cells: 32
+slivers per line. Frieza, Goku and the first explosions are composited into
+those cells, preserving the checker over the actors without overflow.
+Normal Goku uploads resume just before the checker ends. Static art is
+preloaded and changed checker tile rows alone are transferred in vblank.
+
+The flyby claims scene SRAM (asset tags at `!SRAM_WORK_SCENE+$1400`,
+deferred-upload counter at `+$1480`) and world OBJ B/C with owner 6 after
+invalidating UI residency. 1F04's existing `$8C` guard hides both radar and
+world panel throughout. Palette 7 is Frieza; palette 6 replaces the idle
+world effects; checker Goku temporarily uses a dedicated palette 5.
+World A's idle effect cells hold the checker. At age 550 B/C and scene SRAM are released,
+world effect residency is invalidated and the normal windows, 8/16 OBJ,
+backdrop and world fog (`CGWSEL=2`, `CGADSUB=$21`) are restored. Goku's
+normal palette is restored when the checker ends. Field sprite scratch
+holds only world-local pointers/flags; field initialization invalidates it.
+
+The `flyby` case captures raw PPU frames at arrival, growth, full size,
+throw, impact, every checker frame and departure. A private
+`FRIEZA_FLYBY_HIDE` build captures the identical native flight underneath;
+`flyby-reference.mjs` composes the browser functions over it, respecting
+Goku's actual OAM mask and the cartridge's global brightness. Stills,
+reference/difference PNGs and per-still agreement JSON stay under
+`.local/snes-test/frieza/flyby{,-ssj}/reference/`. The case asserts sprite
+and checker agreement, sphere silhouette, explosion retention, unchanged
+background, no lag/OBJ overflow, vblank DMA and no deferred art uploads.
+
+Measured on Mesen (both forms, 549 visible-clock frames each): **zero lag,
+OBJ overflow, deferred uploads or active-display DMA**. Complete world NMI
+peaks at **34.89 of 37 vblank lines**. Frieza logic averages 2.96 lines
+(max 6.75), OAM drawing 8.31 (max 39.80, including interrupt time), and its
+NMI 6.16 (max 20.43). Idle world logic is 0.139 lines (max 0.24), using the
+`FZI_WORLD_IDLE` WRAM cache cleared by every `fz_wake`; the idle draw and
+NMI entries are about 0.15 and 0.12 lines each. The field paths and the
+field Death Ball renderer are unchanged.
+
+Base-form per-still agreement below uses a 24/255 per-channel RGB tolerance
+after native brightness. “Art” counts only browser-overlay pixels, so the
+simplified large-ball surface is visible in the figures rather than hidden
+by the background. Frieza and the small ball are 100%; all eight checkers,
+including their Frieza and burst pixels, are 100%. Super Saiyan has the
+same overlay scores (minor background differences at the body's animation
+transition); the thrown sphere's pixels over Goku are 100%. Large-ball
+silhouette agreement is 98.0–99.4% across both forms.
+
+| Age | Whole frame RGB % | Art RGB % | Ball silhouette IoU % | Burst RGB % |
+| --- | --- | --- | --- | --- |
+| 36 | 100.00 | 100.00 | — | — |
+| 80 | 100.00 | 100.00 | — | — |
+| 180 | 98.82 | 43.13 | 98.53 | — |
+| 330 | 87.33 | 10.90 | 99.40 | — |
+| 360 | 87.33 | 8.67 | 99.34 | — |
+| 376 | 77.94 | 10.09 | 98.07 | — |
+| 398 | 93.01 | 28.27 | 99.15 | — |
+| 403 | 98.80 | 49.56 | 99.25 | — |
+| 404 | 99.99 | 100.00 | — | 100.00 |
+| 405 | 99.99 | 100.00 | — | 100.00 |
+| 406 | 99.99 | 100.00 | — | 100.00 |
+| 407 | 99.99 | 100.00 | — | 100.00 |
+| 408 | 99.99 | 100.00 | — | 100.00 |
+| 409 | 99.99 | 100.00 | — | 100.00 |
+| 410 | 100.00 | 100.00 | — | 100.00 |
+| 411 | 100.00 | 100.00 | — | 100.00 |
+| 412 | 99.99 | 100.00 | — | 100.00 |
+| 438 | 99.94 | 99.28 | — | 99.17 |
+| 476 | 99.40 | 94.75 | — | 94.35 |
+| 510 | 99.99 | 100.00 | — | 100.00 |
+
 ## Hardware approach
 
 - **Frieza** is up to eight 16x16 OBJ per frame. `snes/gen/frieza.mjs`
@@ -254,6 +348,7 @@ of the world's (the same within a cell, repeating per cell).
 | --- | --- |
 | Code `$A6:8000-EFFF` | `!CODE_FRIEZA`; `$A6:F000-FFFF` bindings (`bind.asm`, assembled after every module) |
 | Data `$E6:0000-7FFF` | frame descriptors, palettes, pose and trigonometry tables, hole tiles, timings (generated) |
+| Extended data | 225,027 bytes of flyby art, immutable frame records and HDMA tables; allocated through `xdata` |
 | ROM `$F0:0000-7FFF` | Frieza's OBJ tiles (15.5 KiB of 32) |
 | WRAM `$7E:DB00-DBBF` | `!RAM_FRIEZA`: scene `+$00-$57`, battle `+$58-$89`, Lich/Beast `+$8A-$AB`, scratch and death/victory `+$AC-$BF` |
 | SRAM `$31:6180-61FF` | `!PERSIST_FRIEZA`: `+$00` version, `+$01` stage, `+$02` tree, `+$03` flags (word), `+$05` stolenMask, `+$06` crisis, `+$07` Beast challenge, `+$08` flyby age; `+$40-$7F` reserved for the orbit stream |
@@ -363,7 +458,7 @@ floor on request.
 | `death` | Goku at 1 HP takes the first orb: no warp, black from 360, Start goes to the title; with the ending module, the hand-off (`fzd_on` 2, `ES_DEFEATED`, key 1) instead |
 | `beast` | preset `beast` (map 253, the fed Beast started, Super Saiyan) through combat's receive list: 600 frames untouched as in the browser (the eruption's 210 lands whole at frame 261, Goku's HP 789 at 600 as the reference), then damage queued at the native consumer: 600 takes 110 (140 in base form, the permanent form lifted), nothing during the grace, 50 and the eruption's pending 300 land whole. Skipped while the build has no `modules_combat_receive` |
 | `floor` | test build with flight and destroy (skipped without them): the chained `!FLIGHT_MISSING_FLOOR` through the test mailbox (`FZPB+$20`): the Sandship's breach centre is a hole (destroy's answer through Frieza's), 120 px off is floor; a broken deck cell after seven fractures is a hole at the deck's layer (Frieza's), floor at the other layer, an unbroken cell is floor |
-| `flyby` | preset `fortress` with the deck's Death Ball thrown (stage theft): event D8 arms the flyby and runs 1F04; the flyby starts with `$8C` in world flight, the impact (age 404) makes the Death Ball's crisis (`$13`), its end after 1F04 sets the eighth Ball and the Tree pursuit, the overhead view gets the rear-view request (`$F8` = `$90`), then Kai's warning (the crisis notified; the radio shows the aftermath) |
+| `flyby` | preset `fortress` with the deck's Death Ball thrown (stage theft): event D8 arms the flyby and runs 1F04; the flyby starts with `$8C` in world flight, the impact (age 404) makes the Death Ball's crisis (`$13`), its end after 1F04 sets the eighth Ball and the Tree pursuit, the overhead view gets the rear-view request (`$F8` = `$90`), then Kai's warning (the crisis notified; the radio shows the aftermath); paired browser picture comparisons in both forms, all eight checker ages, lag, OAM overflow and vblank-upload checks |
 | `cost-world` | preset `flight` (nothing of Frieza's in flight): `frieza_world_frame` at most 0.25 lines on average, 0.5 at peak |
 | `cost` | Potos with Goku present: the module settles on the quiet path; field frame at most 0.36 lines on average and 2.5 at peak, vblank at most 0.13 (from the dispatcher's JSL to the next instruction, master clocks) |
 | `vram` | preset `frieza`: not drawn while another owner holds `!VRAM_SCENE_OBJ` or the scene SRAM (`!SCENE_VEGETA` planted), drawn and both claimed once free (owners 6 and `!SCENE_FRIEZA`), the VRAM given back when the scene ends |
@@ -417,12 +512,15 @@ floor on request.
   paints them away; the line-196 switch to the HUD is off while the vista
   shows (VTIME beyond the frame).
 
-- **The flyby's picture**: during 1F04 the browser draws Frieza hovering
-  over the flight, the cinematic Death Ball growing past the screen's
-  edges (16-280 px) and hurled into the continent, seven large bursts and
-  an 8-frame white checker; the cartridge runs the flyby's logic, cues
-  and radio lines but draws none of it yet (world flight has the Mode 7
-  view, OBJ sizes 8/16 and the world's HDMA on channels 0-5).
+- **The flyby's picture**: timing, Frieza and the eight-frame checker now
+  follow the browser. The pose asks for a maximum diameter of 280, but
+  `createDeathBallArt({cinematic:true})` clamps the visible browser art to
+  224; the cartridge follows that visible cap. Above 32 px the ball has
+  averaged red scanline bands, then a solid red surface near impact,
+  instead of the browser's rolling texture and corona. The thrown portion
+  over Goku retains exact texture. Crowded burst pieces are culled to fit
+  the SNES OBJ limits. All art also receives the native global display
+  brightness; software browser overlays can bypass that dimming.
 
 ## Requests
 

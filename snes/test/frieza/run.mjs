@@ -16,11 +16,12 @@ import {runMesen} from '../mesen.mjs';
 import {checkpointDir,privateRom,cleanupRom,mainCheckout} from '../checkpoints.mjs';
 import {comparePictures,snesPixels} from '../debug/compare.mjs';
 import {friezaWrites,luaWrites,defs} from './state.mjs';
+import {compareFlyby} from './flyby-reference.mjs';
 
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const only=process.argv.slice(2).filter(a=>!a.startsWith('--'));
 const want=t=>!only.length||only.includes(t);
-const outRoot=resolve(repo,'.local/snes-test/frieza');
+const outRoot=resolve(repo,process.env.FRIEZA_TEST_OUT??'.local/snes-test/frieza');
 mkdirSync(outRoot,{recursive:true});
 const romSrc=resolve(process.env.SNES_ROM??join(repo,'dist/snes/secret-of-goku.sfc'));
 if(!existsSync(romSrc)){
@@ -668,17 +669,21 @@ end
 // Ball and Frieza heads for the Tree (tree pursuit); in the overhead view
 // the module asks the native camera for the rear view ($F8 = $90, $CC bit
 // 4), then Kai's warning goes out (the crisis notified).
-function flybyTest(){
+function flybyTest(source=romSrc,form=0){
   const g=reference('fortress');
   const writes=friezaWrites({...g.frieza,stage:'theft',deckBall:true,flyby:null,crisis:null,eighth:false,tree:null,scene:null,boss:null},g.challenge);
-  const ram=storyRequestBlock(romSrc);
+  const ram=storyRequestBlock(source);
   const v=n=>'0x'+(n<0x10000?(0x7E0000|n):n).toString(16);
+  const sym=readFileSync(source.replace(/\.sfc$/,'.sym'),'utf8');
+  const addr=n=>{const m=sym.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${n}$`,'mi'));return m?parseInt(m[1]+m[2],16):0;};
+  const sites={logic:jslSite(source,'modules_world_frame','frieza_world_frame'),draw:jslSite(source,'world_draw','frieza_world_draw'),nmi:jslSite(source,'modules_world_nmi','frieza_world_nmi')};
   return `
 function test()
   local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__fortress'))})
   F.check(ok, 'import')
   H.w8(0x316001, 1)
   F.apply(${luaWrites(writes)})
+  H.w8(0x7ED740, ${form}); H.w8(0x7ED811, ${form}); H.w8(0x7ED8A9, ${form})
   H.wait(4)
   H.w16(${ram+8}, 0x00D8)
   H.w16(${ram+10}, 0)
@@ -686,9 +691,86 @@ function test()
   local function flags() return H.r16(${v(defs.fzp_flags)}) end
   local function crisis() return H.r8(${v(defs.fzp_crisis)}) end
   local ev = {}
+  local ages = {[36]=true,[80]=true,[180]=true,[330]=true,[360]=true,[376]=true,[398]=true,[403]=true,[404]=true,[405]=true,[406]=true,[407]=true,[408]=true,[409]=true,[410]=true,[411]=true,[412]=true,[438]=true,[476]=true,[510]=true}
+  local captured, stats = {}, {frames=0,lag=0,nmiMax=0,overruns=0,overflow=0,dmaOutsideVblank=0,cost={}}
+  for name, at in pairs({${Object.entries(sites).map(([k,v])=>`${k}=${v}`).join(',')}}) do
+    local start=nil
+    stats.cost[name]={sum=0,max=0,n=0}
+    emu.addMemoryCallback(function()
+      local a=H.r16(${v(defs.fzp_flyby)})
+      if a>0 and a<550 then start=emu.getState().masterClock end
+    end,emu.callbackType.exec,at)
+    emu.addMemoryCallback(function()
+      if start then local cost=(emu.getState().masterClock-start)/1364;local c=stats.cost[name];c.n=c.n+1;c.sum=c.sum+cost;c.max=math.max(c.max,cost);start=nil end
+    end,emu.callbackType.exec,at+4)
+  end
+  emu.addMemoryCallback(function()
+    local a=H.r16(${v(defs.fzp_flyby)})
+    if a>0 and a<550 then local st=emu.getState();if st['ppu.scanline']<225 and not st['ppu.forcedBlank'] then stats.dmaOutsideVblank=stats.dmaOutsideVblank+1 end end
+  end,emu.callbackType.write,0x00420B)
+  local displayed, nmiStart = nil, nil
+  emu.addMemoryCallback(function()
+    displayed={brightness=H.r8(0x7E00E6)&15,age=H.r16(${v(defs.fzp_flyby)}),form=H.r16(0x7E7F22),clip=H.r16(0x7E7F32),anim=H.r16(0x7E7F20),bank=H.r16(0x7E7F2A)}
+    if displayed and ages[displayed.age] then
+      local mask={}
+      for i=1,256*224 do mask[i]=0 end
+      for e=0,127 do
+        local x,y,t,a=H.oam(e*4),H.oam(e*4+1),H.oam(e*4+2),H.oam(e*4+3)
+        if (a>>1)&7==5 and t>=0x80 and t<0xC0 and y<224 then
+          for py=0,15 do for px=0,15 do
+            local sx,sy=px,py
+            if a&0x40~=0 then sx=15-sx end
+            if a&0x80~=0 then sy=15-sy end
+            local at=(0x6000+(t+(sx>>3)+(sy>>3)*16)*16)*2+(sy&7)*2
+            local bit=7-(sx&7)
+            local c=((H.vram(at)>>bit)&1)|(((H.vram(at+1)>>bit)&1)<<1)|(((H.vram(at+16)>>bit)&1)<<2)|(((H.vram(at+17)>>bit)&1)<<3)
+            if c~=0 and x+px<256 and y+py<224 then mask[(y+py)*256+x+px+1]=1 end
+          end end
+        end
+      end
+      local f=io.open(H_OUT..'/age-'..displayed.age..'.mask','wb')
+      for y=0,223 do local row={} for x=0,255 do row[#row+1]=string.char(mask[y*256+x+1]) end f:write(table.concat(row)) end
+      f:close()
+    end
+    local a=H.r16(${v(defs.fzp_flyby)})
+    if (flags() & ${defs.FZFL_FLYBY_GO}) ~= 0 and a>0 and a<550 then
+      stats.frames=stats.frames+1
+      if H.r8(0x7E00EC)&1==0 then stats.lag=stats.lag+1 end
+      nmiStart=emu.getState().masterClock
+    end
+  end, emu.callbackType.exec, 0x0088CF)
+  emu.addMemoryCallback(function()
+    if nmiStart then
+      local st=emu.getState(); local cost=(st.masterClock-nmiStart)/1364
+      stats.nmiMax=math.max(stats.nmiMax,cost)
+      if cost>=37 or st['ppu.scanline']<225 then stats.overruns=stats.overruns+1 end
+      nmiStart=nil
+    end
+  end, emu.callbackType.exec, ${addr('core_world_nmi_return')})
+  emu.addMemoryCallback(function()
+    local age=H.r16(${v(defs.fzp_flyby)})
+    if age==403 then ev.beforeImpact=crisis() end
+    if age==404 then ev.impactCrisis=crisis() end
+  end, emu.callbackType.exec, ${addr('frieza_world_frame')+0})
+  local function pictures()
+    if displayed and ages[displayed.age] and not captured[tostring(displayed.age)] then
+      local name='age-'..displayed.age
+      local buffer=emu.getScreenBuffer()
+      local f=io.open(H_OUT..'/'..name..'.rgb','wb')
+      for y=7,230 do local row={} for x=0,255 do local c=buffer[y*256+x+1] or 0;row[#row+1]=string.char((c>>16)&255,(c>>8)&255,c&255) end f:write(table.concat(row)) end
+      f:close()
+      displayed.name=name
+      captured[tostring(displayed.age)]=displayed
+    end
+    if displayed and displayed.age>0 and displayed.age<550 then
+      if H.r8(0x00213E)&0xC0~=0 then stats.overflow=stats.overflow+1 end
+    end
+  end
   local function mark(k, v) if ev[k] == nil then ev[k] = v end end
   for i = 1, 2400 do
-    if i % 24 == 0 then H.hold('b', 2) else H.wait(1) end
+    if i % 24 == 0 then H.input={b=true} else H.input=nil end
+    H.wait(1)
+    pictures()
     local fl, age, c8 = flags(), H.r16(${v(defs.fzp_flyby)}), H.r8(0x7E008C)
     if (fl & ${defs.FZFL_FLYBY}) ~= 0 then mark('armed', i) end
     if (fl & ${defs.FZFL_FLYBY_GO}) ~= 0 then mark('started', i) end
@@ -705,6 +787,16 @@ function test()
     if (crisis() & ${defs.FZC_NOTIFIED}) ~= 0 then mark('notified', i) H.shot('notified') break end
   end
   for k, v in pairs(ev) do H.result(k, v) end
+  H.input=nil
+  H.result('pictures',captured)
+  for _, c in pairs(stats.cost) do c.avg=c.sum/math.max(1,c.n);c.sum=nil end
+  H.result('timing',stats)
+  H.result('uploadsDeferred',H.r16(0x327480))
+  H.result('lastAge',H.r16(${v(defs.fzp_flyby)}))
+  if ${source===romSrc} then
+    F.check(H.r16(0x7EDB30)==0, 'flyby renderer released after departure')
+    F.check(H.r16(${coreDefine('core_scene_owner')})~=${coreDefine('SCENE_FRIEZA')}, 'scene SRAM released after departure')
+  end
   H.result('crisis', crisis())
   F.check(ev.armed ~= nil, 'D8 armed the flyby')
   F.check(ev.started ~= nil, 'the flyby started with 1F04')
@@ -1008,16 +1100,42 @@ if(want('door')){
     if(!ok)for(const f of failures)console.log('    !',f);
   }
 }
-if(want('flyby')){
-  const rom=privateRom(romSrc,'frieza-flyby');
-  const r=await runMesen({rom,test:lib+'\n'+flybyTest(),outDir:join(outRoot,'flyby'),state:join(cps,'waterfall.mss')});
+if(want('flyby')||want('flyby-ssj')){
+  const baseline=join(repo,'.local/snes-test/roms/frieza-flyby-background.sfc');
+  const b=spawnSync(process.execPath,[join(repo,'snes/build.mjs'),'--quiet','--strict',`--out=${baseline}`,'-DFRIEZA_FLYBY_HIDE=1'],{cwd:repo,stdio:'pipe'});
+  for(const form of (only.includes('flyby-ssj')?[1]:[0,1])){
+  const name=form?'flyby-ssj':'flyby';
+  const rom=privateRom(romSrc,'frieza-flyby'),out=join(outRoot,name);
+  const r=await runMesen({rom,test:lib+'\n'+flybyTest(romSrc,form),outDir:out,state:join(cps,'waterfall.mss'),exactFrames:true});
   cleanupRom(rom);
   const res=r.results??{};
   const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
+  if(b.status!==0)failures.push('flyby background build failed: '+b.stderr);
+  else{
+    const rb=privateRom(baseline,'frieza-flyby-reference'),baseDir=join(outRoot,name+'-background');
+    const reference=await runMesen({rom:rb,test:lib+'\n'+flybyTest(baseline,form),outDir:baseDir,state:join(cps,'waterfall.mss'),exactFrames:true});
+    cleanupRom(rb);
+    if(!reference.results?.pass)failures.push('paired world capture failed: '+JSON.stringify(reference.results));
+    else if(res.pictures){
+      const agreement=compareFlyby({repo,actualDir:out,baseDir,pictures:res.pictures,outDir:join(out,'reference')});
+      if(agreement.length!==20)failures.push('missing flyby stills: '+agreement.length);
+      for(const q of agreement){
+        console.log(name+' picture',JSON.stringify(q));
+        for(const [metric,min] of [['frieza',99.9],['checker',99.9],['bursts',93],['silhouette',97],['background',99]])if(q[metric]!==null&&q[metric]<min)failures.push(`age ${q.age}: ${metric} ${q[metric]} < ${min}`);
+        if(q.age===80&&q.ball<99.9)failures.push('small ball differs from browser art');
+        if(q.age>=404&&q.age<=411&&q.body<99)failures.push(`age ${q.age}: checker Goku differs (${q.body})`);
+        if(q.age===376&&q.body<95)failures.push('thrown ball failed to cover Goku: '+q.body);
+      }
+    }
+  }
+  for(const metric of ['lag','overruns','overflow','dmaOutsideVblank'])if(res.timing?.[metric]!==0)failures.push(`${metric}: ${res.timing?.[metric]}`);
+  if(res.uploadsDeferred!==0)failures.push('deferred art uploads: '+res.uploadsDeferred);
   const ok=r.code===0&&res.pass===true&&failures.length===0;
-  results.push({name:'flyby',ok,failures});
-  console.log(`frieza flyby: ${ok?'pass':'FAIL'} (${r.ms} ms) armed @${res.armed}, started @${res.started}, impact crisis $${(res.impactCrisis??0).toString(16)}, 1F04 ended @${res.end1F04}, done @${res.done} (tree ${res.doneTree}), rear @${res.rear}, notified @${res.notified}`);
+  results.push({name,ok,failures});
+  console.log(name+' picture timing:',JSON.stringify(res.timing),'deferred:',res.uploadsDeferred);
+  console.log(`frieza ${name}: ${ok?'pass':'FAIL'} (${r.ms} ms) armed @${res.armed}, started @${res.started}, impact crisis $${(res.impactCrisis??0).toString(16)}, 1F04 ended @${res.end1F04}, done @${res.done} (tree ${res.doneTree}), rear @${res.rear}, notified @${res.notified}`);
   if(!ok)for(const f of failures)console.log('    !',f);
+  }
 }
 if(want('tree')){
   const rom=privateRom(romSrc,'frieza-tree');

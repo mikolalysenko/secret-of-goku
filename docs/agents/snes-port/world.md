@@ -96,6 +96,36 @@ setup and Mode 7 would cover the sky for that frame; the same hook restores
 Mode 1 and the cached sky scroll then (as `C0:89EE-89FD`), except on the
 overhead map.
 
+### Frieza's flyby over 1F04
+
+`world_draw` calls `frieza_world_draw` after `world_fx_back` and before
+Goku. Normal flyby pieces share world slots 0–54 and the core's 88–127 run;
+world still owns Goku's body and shadow. Frieza claims world OBJ B/C while
+the existing `$8C` guard hides UI, and uses palettes 7 and 6. Mode 7 uses
+CGRAM entries from the lower OBJ palettes too: palette 4 must **not** be
+borrowed here, as it recolours the terrain.
+
+Frieza borrows HDMA 6 for a screen-space sphere window and 7 for COLDATA
+while the ball fills the sky. Channels 0–5, including native fog channel 5,
+remain unchanged. Once the throw descends into the terrain, channel 7 is
+released and a vblank backdrop colour preserves the native fog. Both main
+and sub BG1/BG2 are masked inside the circle; OBJ retains its ordinary
+priority. An OBJ patch puts the thrown sphere over Goku. The field FX
+polygon channels 2/3 are never called. Palette memory, VRAM and OAM are
+written only in vblank; there is no active-display general DMA.
+
+For ages 404–411, Frieza returns carry set and supplies the complete OAM
+picture, including Goku, in an 8/32 layout. Fifty-six checker cells use
+exactly 32 slivers per line. World A's idle effect cells hold static
+checker/Frieza art. `world_nmi_cell` suppresses Goku's ordinary cell upload
+until age 409 (411 in Super Saiyan), then preloads the normal body before the 8/16 layout returns.
+The effect atlas, normal Goku palette, backdrop and native world colour
+math are restored afterward; B/C are released at age 550. See
+[frieza.md](frieza.md#world-flight-picture-flybyasm-_frieza-flybymjs) for
+picture checks and the remaining surface/crowding approximations. Both
+forms complete 549 flyby frames with zero lag/overflow/deferred uploads;
+whole-world NMI peaks at 34.89 of 37 vblank lines.
+
 ### Aerial ki and the aerial Kamehameha (`ki.asm`, `aim.asm`, `fxdraw.asm`)
 
 Ports `world-ki.js` `tick()` and `draw()`. Targets are the cloud barrier
@@ -175,12 +205,14 @@ player 2's ring loads its item colours into palettes 4-7.
 
 ## Mode 7 constraints and how they are met
 
-- **No per-pixel overlay.** Effects are OBJ (16×16 with OBJSEL `$03`), and
+- **No per-pixel overlay.** Ordinary effects are OBJ (16×16 with OBJSEL `$03`), and
   craters are Mode 7 characters written into the map (256 characters total;
   the 32 the world never uses carry the crater).
 - **The world's HDMA owns channels 0-5 and 7 and the Mode 7 matrix.** The
   module multiplies with the CPU's 8×8 unit (`$4202`), never Mode 7's, and
-  its vblank DMA uses channel 7 or 6, whichever `$2C` leaves free.
+  its vblank DMA uses channel 7 or 6, whichever `$2C` leaves free. Goku
+  disables the native shadow on 7; the guarded Frieza flyby borrows 6/7
+  as described above, and temporarily uses 8/32 OBJ for its checker.
 - **The world NMI is not force-blanked.** Every vblank upload checks
   `core_vblank_lines` first; crater characters and tilemap cells are spread
   over vblanks.

@@ -15,6 +15,7 @@ import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {readPng,encodeTile,writePng,blank} from '../tools/gfx.mjs';
+import {generateFlyby} from './_frieza-flyby.mjs';
 
 export const ART_BANK=0xF0;          // lower half $F0:0000-7FFF
 const ART_LIMIT=0x8000;
@@ -88,7 +89,7 @@ function cover(idx,w,h){
   return boxes;
 }
 
-export async function generate({repo,outDir,rom:baseRom}){
+export async function generate({repo,outDir,rom:baseRom,xdata}){
   const eng=f=>import(pathToFileURL(join(repo,'engine',f)).href);
   const sprite=await eng('frieza-sprite.js');
   const staging=await eng('frieza-staging.js');
@@ -104,6 +105,7 @@ export async function generate({repo,outDir,rom:baseRom}){
   const indexOf=v=>{if(!v)return 0;const i=palValues.indexOf(v);if(i<0)throw Error('frieza gen: colour outside the palette');return i+1;};
 
   const atlases=['frieza','frieza-full-power'].map(name=>sprite.prepareFriezaSprite(loadAtlas(join(repo,'assets/sprites',name+'.png'))));
+  await generateFlyby({repo,outDir,rom:baseRom,xdata,atlas:atlases[0],palette:palette.map(c=>rgb555(...c))});
 
   // ---------------------------------------------------------------------
   // Frames: atlas (0 normal, 1 full power) x size (0 = 48 px, 1 = tiny 24 px)

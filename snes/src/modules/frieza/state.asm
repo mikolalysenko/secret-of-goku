@@ -163,7 +163,7 @@ fz_wake:
 	PHP
 	SEP #$20
 	PHA
-	LDA.b #!FZI_IDLE
+	LDA.b #!FZI_IDLE|!FZI_WORLD_IDLE
 	TRB !fz_wasidle
 	PLA
 	PLP
@@ -1256,7 +1256,7 @@ fz_derive_legacy:
 fz_reset_transient:
 	JSR fz_bind_safe                  ; the danger bit goes with !fz_tflags
 	SEP #$20
-	LDA.b #!FZI_SRAM|!FZI_BALLS|!FZI_IDLE
+	LDA.b #!FZI_SRAM|!FZI_BALLS|!FZI_IDLE|!FZI_WORLD_IDLE
 	TRB !fz_wasidle
 	REP #$20
 	LDA.w #!VRAM_FIELD_OBJ_A
