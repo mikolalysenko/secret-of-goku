@@ -4,6 +4,35 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: the distant bodies in the orbit fight, a rebuilt ki shot (2026-10-21)
+
+- The orbit branch (Stage A, items 1-3, C1, C2; merged in ecbb0bf) puts
+  the browser's distant bodies into the space fight: the planetoid, the
+  moon and the outer planet. The entries below give the details.
+  - The fight now lags 9 frames (main had 2) and the clash 41 (main 34),
+    on the default build.
+  - Beams lose 0 slivers to stale stars in the clash (main 5) and 184 in
+    the fight (main 692).
+  - Extended data: 2,706.2 of 2,944 KiB.
+- Codex audio (5f43ea0; merged in 3381199), from the maintainer's note
+  that ki shots sounded "weird and flat" next to the new sounds:
+  - `$DE` is now a 250 ms zap layered over the Kamehameha's BRR texture,
+    2.4 dB louder, still one voice.
+  - It keeps the three-pitch rotation. Super Saiyan raises both stages
+    two semitones.
+  - The ki impact `$38` stays.
+  - Volleys use at most 3 effect voices (4 with a beam). The reservation
+    is full: 2,304 of 2,304 bytes.
+- Debug tests (preset.lua): the scene select opens on the last launched
+  preset kept in battery RAM. The runner assumed cursor 0, so two loaded
+  full runs (sandship, fortress) launched a neighbour preset that ended on
+  map 246. It now steers from the cursor it finds.
+- The hit-feel branch (merged in d5965cd, then backed out of snes-int) is
+  waiting on two fixes: the Vegeta clash scripts and a 2-frame lag in the
+  orbit montage.
+- Validation on 3381199 under both probes: all 20 suites pass. Gameplay
+  misses unchanged. `npm test`: 382 pass.
+
 ## Orbit: the stars on a beam's new rows hidden at once (2026-10-21)
 
 - When a beam group turns on, gets heavier or moves onto new rows, the

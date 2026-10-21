@@ -182,7 +182,11 @@ preset's recipe and payloads in readable form.
 
 `node snes/test/debug/run.mjs [preset …] [--jobs=8] [--battery=sram.bin]`
 (also in `run-all`) starts every preset from power-on in Mesen, through the
-code, the cursor and B as a player would, waits for the recipe to end, and
+code, the cursor and B as a player would. `preset.lua` steers from the
+cursor the menu opens on: the last launched preset in battery RAM, which a
+fresh battery can also hold when its `$A5` mark matches. Before October 21
+it assumed cursor 0, and two loaded full runs launched the wrong preset,
+ending on map 246. The run then waits for the recipe to end, and
 compares the end state with `.local/snes-ref/<preset>/` (`state.json`,
 `frame-00000.png`, `frame-00240.png`): map, flags (`CFF8-CFFF` event scratch
 reported apart), party (active, level, HP, position ±16), inventory, names,

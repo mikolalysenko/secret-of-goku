@@ -19,10 +19,19 @@ function test()
   if not H.waitFor(function() return H.r8(W + 0x1D) == 1 end, 60) then error('scene select did not open') end
   H.wait(10)
   H.shot('menu')
-  local col = PRESET >= 11 and 1 or 0
-  if col == 1 then H.tap('right', 4, 8) end
-  for _ = 1, PRESET % 11 do H.tap('down', 4, 8) end
-  H.result('cursor', H.r8(W + 0x18))
+  -- The menu opens on the last launched preset (!dbg_last in battery RAM,
+  -- whatever a fresh battery holds when its $A5 mark happens to match), so
+  -- steer from where the cursor actually is: columns of 11, Right switches
+  -- column, Down wraps inside it.
+  local function cursor() return H.r8(W + 0x18) end
+  H.result('cursor_start', cursor())
+  if (cursor() >= 11) ~= (PRESET >= 11) then H.tap('right', 4, 8) end
+  for _ = 1, 11 do
+    if cursor() == PRESET then break end
+    H.tap('down', 4, 8)
+  end
+  if cursor() ~= PRESET then error(string.format('scene select cursor %d, wanted %d', cursor(), PRESET)) end
+  H.result('cursor', cursor())
   H.shot('menu-cursor')
   H.tap('b', 4, 4)
   -- The launch waits for the release and fades out, then arms the autopilot
