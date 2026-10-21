@@ -717,7 +717,7 @@ The two scouter scenes (switch on: readings of everyone on screen) are now
 so each gets an Analyzer reading on every actor through the game's spell
 landing (`snes/test/lua/analyzer.lua`) before L is held, and must show
 readings in at least 60% of the frames that have any (`rabite-analyzer`
-85/85 with readings on 112 of its 168 reading frames since the UI's lite
+85/85 with readings on 111 of its 168 reading frames since the UI's lite
 pass, 9 before it; `waterfall-analyzer` 89/89 with 176/179). A reading may
 share an FX class's spare tail (`ui_sc_palette`), so the aura's palette
 check skips those two colours for such a class.

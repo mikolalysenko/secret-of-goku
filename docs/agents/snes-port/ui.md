@@ -462,10 +462,20 @@ corners.
 near line 180, so the full pass rarely ran: in the crowded focus scene (five
 Rabites and the party with readings, L held while walking) readings showed
 in 9 of 168 frames. A frame too late for the full pass, or one that already
-missed its vblank, now sets `UISC_LITE`, and the lite pass runs last in
-`modules_field_frame` (`ui_sc_lite_frame`, after `audio_frame`: it requests
-no sound), so it sees the time every other module left. It repeats the last
-full pass's costly decisions instead of skipping them: its OBJ histogram (saved before its own pieces, with four
+missed its vblank, now runs a lite pass after every other module,
+`audio_frame` included (the readouts request no sound). An on-time frame
+gets it only when the readouts' turn comes before line 204, so a number can
+still fit. `ui_sc_draw_frame` points
+`modules_field_frame`'s own return, just above its own on the stack, at
+`ui_sc_lite_tail`. The tail runs the pass and returns to the core. It does
+so only when `modules_field_frame` is the caller (checked by return
+address). There is no call site in `modules.asm`: frames without a late
+reading run no extra instruction. An earlier version called the pass at the
+end of `modules_field_frame` behind an 8-cycle flag test. Merged with the
+hit feel and the orbit, even that cost the gameplay `charge` case 13 → 16
+CPU misses and the orbit `montage` 0 → 2 lagged frames, all frames already
+at the edge. The lite pass repeats the last full pass's costly decisions
+instead of skipping them: its OBJ histogram (saved before its own pieces, with four
 sprites of headroom per eight-line bin for what moved since) and its
 palette. It skips aging, power and the OAM scan. It needs a full pass within
 the last 60 field frames that chose a palette on the same map and with the
@@ -493,37 +503,38 @@ only in FX's flash, which brightens the native sprites there too. The fx
 `focus-scenes` palette check skips a spare tail's two colours, which a
 reading may share.
 
-Results, against the build before the lite pass:
+Results, against the build before the lite pass. Lag is before → after for
+the focus scenes, and without → with readings for the readout budget's
+runs:
 
 | Scene | Frames with readings | All readings | Lag |
 | --- | --- | --- | --- |
-| Crowded focus scene (169 frames) | 9 → 113 | 0 → 63 | 11 → 11 |
-| fx `focus-scenes` `rabite-analyzer` | 9 → 112 of 168 | | 11 → 11 |
-| `readoutBudget`, ordinary field (200) | 132 → 190 | 58 → 87 | 2 → 2 |
-| `readoutBudget`, charging (200) | 2 → 90 | 0 → 7 | 14 → 18 |
-| Real cast (`analyzerCast`) | 158 → 195 of 249 (the blink-in hides 12) | | |
+| Crowded focus scene (169 frames) | 9 → 112 | 0 → 62 | 11 → 11 |
+| fx `focus-scenes` `rabite-analyzer` | 9 → 111 of 168 | | 11 → 11 |
+| `readoutBudget`, ordinary field (200) | 132 → 189 | 58 → 90 | 0 → 2 |
+| `readoutBudget`, charging (200) | 2 → 88 | 0 → 6 | 13 → 16 |
+| Real cast (`analyzerCast`) | 158 → 194 of 249 (the blink-in hides 12) | | |
 
 Charging, the frame is rarely early enough for either pass. Lag there moves
 by a few frames either way, because the native RNG depends on idle CPU time.
-The charging fixture without readings lagged 16 frames instead of 14, from
-the end-of-frame call alone; with readings it lagged 18, within the readout
-budget's allowance (the perf suite's 3%, 6 frames). The full pass stayed
-in its place after `fx_frame`: moved last for every frame, it cost the
-gameplay `charge` case one more CPU miss (14 per 240; the time-dependent
-`destroy_late_frame` beam continuation would then run before it). Gameplay CPU misses
-and the fx scenes' lag are unchanged. Full coverage of every reading in every
-frame is not reached. In a crowded frame each reading costs about 6 lines
-(its number 3.5, its reticle 2, the checks 0.4), and a quarter of these
-frames leave fewer than 10 lines.
+With readings the charging fixture lagged 16 frames against 13 without, within
+the readout budget's allowance (the perf suite's 3%, 6 frames). None of its
+missed frames ran the lite pass on time: each was either late before the
+readouts or missed its vblank before the tail. The full pass stayed in its
+place after `fx_frame`. Moved last for every frame, it cost the gameplay
+`charge` case one more CPU miss (14 per 240): the time-dependent
+`destroy_late_frame` beam continuation would then run before it. Gameplay
+CPU misses, the orbit `montage` and the fx scenes' lag are unchanged. Full
+coverage of every reading in every frame is not reached. In a crowded frame
+each reading costs about 6 lines (its number 3.5, its reticle 2, the checks
+0.4), and a quarter of these frames leave fewer than 10 lines.
 
 Overlapping readouts also obey OBJ ordering, so a later sprite's outline can
 obscure another reading's green pixel (the browser merges those pixels). The
 pixel test permits only that proven green/outline overlap, with all other
 pixels required to match.
 
-The one core change is a call last in `modules_field_frame`
-(`ui_sc_lite_frame`; `snes/tools/order-dispatch.mjs` lists it after
-`audio_frame`). No VRAM-region definition changed.
+No core file or VRAM-region definition changed.
 
 ## Goku's STATUS page (`status.asm`)
 
@@ -847,11 +858,11 @@ cache cells. In the paired fixture, with readings landed on all five actors:
 | --- | --- | --- | --- | --- |
 | Ordinary field | 37.91 / 75.69 | 132 / 58 | 0 → 2 | 14 / 28 |
 | Charging with FX | 2.03 / 50.02 | 2 / 0 | 14 → 14 | 14 / 28 |
-| Ordinary field, lite pass | 53.17 / 83.89 | 190 / 87 | 0 → 2 | 14 / 28 |
-| Charging, lite pass | 21.08 / 56.29 | 90 / 7 | 16 → 18 | 16 / 32 |
+| Ordinary field, lite pass | 50.77 / 77.49 | 189 / 90 | 0 → 2 | 14 / 28 |
+| Charging, lite pass | 19.01 / 62.37 | 88 / 6 | 13 → 16 | 16 / 32 |
 
 With the lite pass, the readout CPU is the full pass (to `destroy_late_frame`)
-plus the lite pass (from `ui_sc_lite_frame` to the frame's end). It is spare
+plus the lite pass (from `ui_sc_lite_tail` to the frame's end). It is spare
 time only: each piece starts only if the frame can still end before its
 vblank.
 
@@ -878,10 +889,10 @@ vblank.
   before Goku's cell DMA) is applied by `snes/tools/order-dispatch.mjs` on
   the integration merge.
 - **FastROM** (done on main): the UI code runs in bank `$AC` at 3.58 MHz.
-- **Analyzer readouts**: implemented through FX cache leases and the
-  existing front-OAM contract. The one core change is a call last in
-  `modules_field_frame` (`ui_sc_lite_frame`, after `audio_frame`) for
-  the lite pass. Full coverage under heavy FX would need more
+- **Analyzer readouts**: implemented without core changes, through FX
+  cache leases and the existing front-OAM contract. The lite pass runs on
+  `modules_field_frame`'s own return (`ui_sc_lite_tail`), only in frames
+  that need it. Full coverage under heavy FX would need more
   simultaneously resident OBJ cells and additional CPU headroom. The lite
   pass yields rather than claiming that coverage. No unverified free VRAM
   region is assumed.

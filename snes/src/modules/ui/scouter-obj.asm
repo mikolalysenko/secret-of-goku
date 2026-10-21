@@ -36,6 +36,11 @@ macro sc_far(target)
 	PLD
 endmacro
 
+; The lite pass is armed only before this line (on time): the modules after
+; the full pass, the lite pass's checks and one number with the core's frame
+; end need the rest (ui_sc_lite_time). Later frames run no extra instruction.
+!UI_SC_LITE_ARM = 204
+
 ui_sc_draw_frame:
 	LDA.w !ui_sc&$FFFF
 	BIT.w #!UISC_ACTIVE
@@ -45,7 +50,7 @@ ui_sc_draw_frame:
 	LDA.w $00DC : CMP.w !sc_map&$FFFF : BEQ +
 	JSR ui_sc_leave
 	JSR ui_sc_start
-+	LDA.w #!UISC_DRAW|!UISC_LITE
++	LDA.w #!UISC_DRAW
 	TRB.w !ui_sc&$FFFF
 	STZ.w !sc_numbers&$FFFF
 	STZ.w !sc_corners&$FFFF
@@ -53,13 +58,37 @@ ui_sc_draw_frame:
 	BNE .yield
 	LDA.w $00EC : AND.w #$40FE : BNE .yield
 	JSL modules_field_current
-	BCC .late                       ; a missed vblank: only the lite pass, in its slack
+	BCC .late                       ; a missed vblank: the lite pass, until the next
 	JSR ui_sc_vline
 	CMP.w #160
 	BCC +
+	CMP.w #!UI_SC_LITE_ARM          ; too late for the full pass; the lite pass
+	BCC .late                       ; only while a number could still fit after
+	JMP .yield                      ; the modules that follow
 .late
-	LDA.w #!UISC_LITE               ; too late for the full pass: the lite
-	TSB.w !ui_sc&$FFFF              ; pass, after every other module
+	; Too late for the full pass: the lite pass runs after every other
+	; module, on modules_field_frame's own return (just above ours on the
+	; stack), which goes through ui_sc_lite_tail. Frames without a late
+	; reading run no extra instruction. Only for modules_field_frame's call.
+	LDA $02,S                        ; our caller's bank
+	XBA : AND.w #$00FF
+	CMP.w #modules_field_frame>>16
+	BNE .yield
+	LDA $01,S
+	CMP.w #modules_field_frame&$FFFF
+	BCC .yield
+	CMP.w #modules_field_current&$FFFF
+	BCS .yield
+	LDA $04,S
+	STA.l !sc_ret
+	LDA $05,S
+	STA.l !sc_ret+1
+	LDA.w #(ui_sc_lite_tail-1)&$FFFF
+	STA $04,S
+	SEP #$20
+	LDA.b #ui_sc_lite_tail>>16
+	STA $06,S
+	REP #$20
 	RTL
 .yield
 	LDA.w #!UISC_DRAW
@@ -199,7 +228,7 @@ ui_sc_draw_frame:
 ; ---------------------------------------------------------------------------
 ; Lite pass: a field frame too late for the full pass (it starts at line
 ; 160 or later), or one past a missed vblank, still shows the readings. It
-; runs last (ui_sc_lite_frame), so it sees the time every module left.
+; runs last (ui_sc_lite_tail), so it sees the time every module left.
 ; In a crowded field the frame's own work ends near line 180 and the full
 ; pass would not fit. The lite pass repeats the last full pass's costly
 ; decisions instead: its histogram of every other OBJ (!sc_lhist, with
@@ -222,15 +251,17 @@ ui_sc_draw_frame:
 !UI_SC_LITE_RETICLE = 224-6-6
 !UI_SC_LITE_LEASE = 224-6-18      ; a lease: the cache's frame setup, search and upload
 
-; Last in modules_field_frame (after audio_frame: the readouts request no
-; sound), for a frame ui_sc_draw_frame found too late for the full pass.
-ui_sc_lite_frame:
-	LDA.w !ui_sc&$FFFF
-	BIT.w #!UISC_LITE
-	BNE +
-	RTL
-+	AND.w #!UISC_ACTIVE
-	BNE ui_sc_lite
+; modules_field_frame returns here, after audio_frame (the readouts request
+; no sound), in a frame ui_sc_draw_frame found too late for the full pass:
+; the lite pass, then the core's own return. M16/X16, DB = $7E, D = 0.
+ui_sc_lite_tail:
+	JSL ui_sc_lite
+	SEP #$20
+	LDA.l !sc_ret+2
+	PHA
+	REP #$20
+	LDA.l !sc_ret
+	PHA
 	RTL
 
 ui_sc_lite:

@@ -2305,9 +2305,9 @@ gain lookup/multiply, with unchanged output values for music/retail ids.
 **Other resources**: WRAM `$7E:DD00-DD7F` (`!RAM_AUDIO`; no SRAM, no DMA or
 HDMA); code bank `$AA`; tables, extension image and sequences in `$EA`
 (`audio_data_end` asserted inside the bank); rare clips use 26,784 bytes of
-`$FC` (diagnostic PCM uses 231 KiB in `$FC-$FF`). Frame hooks: `audio_frame` last in the field frame (only the optional
-Analyzer readout pass, which requests no sound, follows it) and in the
-world frame, `audio_pause` in the menu and ring frames. Native commands go
+`$FC` (diagnostic PCM uses 231 KiB in `$FC-$FF`). Frame hooks: `audio_frame` last in the field frame (in a frame with a late
+Analyzer reading the readouts' lite pass, which requests no sound, follows
+it on the field frame's return) and in the world frame, `audio_pause` in the menu and ring frames. Native commands go
 through `core_sound_queue`. Reads (and clears) the title module's
 `!title_sfx` (`$7E:DD87`) and reads the destroy module's `!out_sfx`
 (`$7E:D9BE`) when those modules are built in, so `modules.asm` includes

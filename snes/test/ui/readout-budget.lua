@@ -41,7 +41,7 @@ function test()
   end)
   hook(SYM.ui_sc_draw_frame_prepared,function() worked=true end)
   -- The full pass ends before destroy_late_frame. A frame too late for it
-  -- runs the lite pass last (ui_sc_lite_frame, to the frame's end): work
+  -- runs the lite pass last (ui_sc_lite_tail, to the frame's end): work
   -- when it starts on time (in a frame that already missed its vblank it
   -- has until the next one).
   hook(SYM.destroy_late_frame,function()
@@ -49,7 +49,7 @@ function test()
     fullCost=(emu.getState().masterClock-start)/1364
     if worked and before==current and H.r16(0x7ED8C4)~=before then overruns=overruns+1 end
   end)
-  hook(SYM.ui_sc_lite_frame,function() liteStart=emu.getState().masterClock end)
+  hook(SYM.ui_sc_lite_tail,function() liteStart=emu.getState().masterClock end)
   hook(SYM.ui_sc_lite_go,function() if H.r16(0x7ED8C4)==before then liteWorked=true end end)
   hook(0x00B077,function()
     if not active then return end

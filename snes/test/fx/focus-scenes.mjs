@@ -74,7 +74,7 @@ for(const [name,bundle,form=0,walk=0,analyzer=0,setup=''] of scenes){
   const pass=(locked?expected===0&&rows.every(r=>!r.request):expected>=20&&misses<=1&&maxRun<=1&&lateMisses===0)
     &&wrongPalette===0&&result.results.unsafe===0&&result.results.auraOverflowFrames===0
     // Readouts show in most frames even in the crowded Rabite field (the UI's
-    // lite pass; 9 of 168 frames before it, 112 after).
+    // lite pass; 9 of 168 frames before it, 111 after).
     &&(!analyzer||result.results.readingFrames>0&&result.results.readoutFrames>=.6*result.results.readingFrames)
     &&(name!=='water-flight'||result.results.flightFrames>0);
   const row={name,pass,expected,drawn,requested,misses,maxRun,lateMisses,wrongPalette,...Object.fromEntries(['heldFrames','lag','unsafe','overflows','maxSprites','maxSlivers','auraOverflowFrames','fxMean','fxMax','flightFrames','readingFrames','readoutFrames'].map(k=>[k,result.results[k]]))};

@@ -377,7 +377,7 @@ const cases={
   async readoutBudget(){
     const symbols=Object.fromEntries(readFileSync(testRom.replace(/\.sfc$/,'.sym'),'utf8').split('\n')
       .map(l=>l.match(/^([0-9A-F]{2}):([0-9A-F]{4}) (\S+)/)).filter(Boolean).map(m=>[m[3],parseInt(m[1]+m[2],16)]));
-    const SYM=Object.fromEntries(["ui_sc_draw_frame","destroy_late_frame","ui_sc_draw_frame_prepared","ui_sc_lite_frame","ui_sc_lite_go","ui_sc_analyzer_hit"].map(k=>[k,symbols[k]]));
+    const SYM=Object.fromEntries(["ui_sc_draw_frame","destroy_late_frame","ui_sc_draw_frame_prepared","ui_sc_lite_tail","ui_sc_lite_go","ui_sc_analyzer_hit"].map(k=>[k,symbols[k]]));
     const r=await mesenCase('readout-budget',{bundle:'animation-audit__native__rabite-field-b',prelude:{SYM},test:'readout-budget',extra:[analyzerLua]});
     const fails=resultFails(r.results);if(r.code!==0||!r.results||r.results.error)fails.push(`mesen: ${r.results?.error??r.output.slice(-400)}`);
     const q=r.results?.budget??{};

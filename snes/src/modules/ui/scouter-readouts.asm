@@ -20,6 +20,7 @@
 !sc_lstamp = !SRAM_WORK_UI+$3E0   ; word: !ui_frame of the last full pass that chose a palette, $FFFF none
 !sc_lvis = !SRAM_WORK_UI+$3E2     ; word: the radio clipping (!ui_vis) it saw
 !sc_lmask = !SRAM_WORK_UI+$3E4    ; word: the OBJ palettes its scan saw (bits 0-7)
+!sc_ret = !SRAM_WORK_UI+$3E6      ; 3 bytes: modules_field_frame's return while the lite pass waits for it
 
 ui_sc_start:
 	LDA.w !ui_sc&$FFFF

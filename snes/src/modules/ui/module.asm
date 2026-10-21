@@ -130,7 +130,6 @@ endif
 !UISC_ACTIVE = $0002
 !UISC_DRAW = $0004
 !UISC_RESIDENT = $0008
-!UISC_LITE = $0010              ; too late for the full pass: the lite pass runs last
 ; +$B0-$B7: STATUS page (status.asm)
 
 !ui_name_buf  = !RAM_UI+$B8   ; 8 bytes: display name buffer ({n} codes)
