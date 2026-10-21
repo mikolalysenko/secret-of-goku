@@ -4,6 +4,30 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: crunchier hits, a sustained Kamehameha, the focus aura in every field scene (2026-10-21)
+
+- Codex audio, round four (fb526f1, c1674a7; merged in 159a489):
+  - punches and kicks start at full volume with a short noise crack over
+    a fast-dropping bass thump on two voices: about 6 dB louder, over in
+    140 ms (were single-voice tones of 320-660 ms);
+  - ki and beam contacts use the original game's explosion;
+  - the Kamehameha is a swelling noise roar with the song's echo and a
+    falling low tone, 5.8 dB louder and 1.17 s long; partial and full
+    waves still share it;
+  - only sequence bytes and one cue lookup byte change, no 65816 code.
+- Codex aura (4df3cf6, d01873e; merged in 12b101c): holding L now draws the
+  focus aura in 1,248 of 1,255 eligible field frames (was 1,119). The
+  scouter field went from 51/85 to 84/84 and the wide cave as a Super Saiyan
+  from 1/88 to 87/88. The 7 frames still missed are first tile uploads.
+  - The aura is first in the effect queue and its cells stay cached.
+  - Its palettes upload early in vblank and survive lag frames
+    (`fx_cgram_upload`, after the destroy, ending and orbit palette
+    handlers).
+  - World-map flight (Mode 7) still has no aura; it is in progress.
+- Validation on 12b101c: all 20 suites pass under the read probe. Gameplay
+  misses per 240 frames: charge 17 (was 19), teleport 3, flight 2, flying
+  ki 2, flying punches 1, the rest 0.
+
 ## Orbit: the cosmic montage's pullback (2026-10-21)
 
 - The second surge's cinematic now ends with the browser's pullback
