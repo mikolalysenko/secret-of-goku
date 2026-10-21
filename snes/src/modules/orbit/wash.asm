@@ -155,6 +155,10 @@ wash_obj_palettes:
 	LDA.w #!OWASH_GOLD
 	CLC : ADC.w !wv_base
 	LDX.w #240
+	JSR wash_dma32
+	LDA.w #!OWASH_FIRE             ; palette 0: the fire and the distant bodies
+	CLC : ADC.w !wv_base
+	LDX.w #128
 	JMP wash_dma32
 
 ; Frieza's death flash before the whiteout (w = 0, A16 = wv_p6: red or

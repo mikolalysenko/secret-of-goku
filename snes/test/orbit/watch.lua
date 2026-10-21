@@ -41,7 +41,11 @@ local function check(v)
   local bad = {}
   if cg(0) & 0x7FFF ~= v.sky & 0x7FFF then bad[#bad + 1] = 'sky' end
   if differ(32, 81, v.white == 0 and GLOBE_PAL or v.base) then bad[#bad + 1] = 'globe' end
-  if differ(128, 32, OBJ01) and differ(128, 32, OBJ01B) then bad[#bad + 1] = 'obj01' end
+  -- palettes 0-1 (the fire and the distant bodies, Goku's; palette 0
+  -- washed in the whiteout)
+  if v.white ~= 0 then
+    if differ(128, 16, v.base + OW_FIRE) or (differ(144, 16, OBJ01 + 32) and differ(144, 16, OBJ01B + 32)) then bad[#bad + 1] = 'obj01' end
+  elseif differ(128, 32, OBJ01) and differ(128, 32, OBJ01B) then bad[#bad + 1] = 'obj01' end
   -- palettes 4-5: the scene's image of them (SRAM), or level w's, but for
   -- the band colours (palette 4 entries 2-3, palette 5 entries 1-3 but in
   -- the win's)

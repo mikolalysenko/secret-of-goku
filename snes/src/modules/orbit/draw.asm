@@ -237,152 +237,200 @@ fd_hits:
 	dw !OFX_SPARK_1|(!OFX_PAL_BLUE<<9)|!OA_PRI
 	dw !OFX_SPARK_2|(!OFX_PAL_BLUE<<9)|!OA_PRI
 
-; fx.burst at (!d_t2, !d_t3), age A16, Y16 = sub-bursts (3 small, 9 large).
-; Sub-burst i: age - 4i, Exploder frame t / 6 for t < 42, heading (i*6)&15
-; at radius 8 + min(24, t) (i > 0), turn i&3 and mirror i&1. Quarter turns
-; 1 and 3 reuse turns 0 and 2 (the cells are not stored rotated).
+; fx.burst at (!d_t2, !d_t3), age A16, Y16 = sub-bursts (3 small, 9 large):
+; the age's OAM entries (orbit-fx.mjs, extended data orbit_burst: the
+; Exploder frames, 32x32 where four parts fill the square, at their
+; sub-bursts' offsets, mirrors and order), at priority d_pri (fd_burst:
+; over the globe; scenery's impacts enter at fd_burst_at with 0).
+assert !OFX_BURST_S_PRI == !OA_PRI, "the small bursts' priority (orbit-fx.mjs)"
 fd_burst:
-	STA.w !d_t4                    ; age
-	DEY
-.sub
-	STY.w !d_t5                    ; i
-	TYA
-	ASL : ASL
-	EOR.w #$FFFF : INC
-	CLC : ADC.w !d_t4              ; t = age - 4i
-	BPL +
-	JMP .next
-+
-	CMP.w #42
-	BCC +
-	JMP .next
-+
-	STA.w !d_t6
-	; anchor offset
-	LDA.w !d_t2 : STA.w !d_t0
-	LDA.w !d_t3 : STA.w !d_t1
-	LDA.w !d_t5
-	BEQ .anchored
-	DEC                            ; ((i - 1) * 42 + t) * 2
-	SEP #$20
-	STA.w $4202
-	LDA.b #42
-	STA.w $4203
-	REP #$20
-	NOP : NOP : NOP
-	LDA.w $4216
-	CLC : ADC.w !d_t6
-	ASL
-	TAX
-	LDA.l orbit_fx_burst_off,X
-	AND.w #$00FF
-	CMP.w #$0080
-	BCC + : ORA.w #$FF00
-+	CLC : ADC.w !d_t0
-	STA.w !d_t0
-	LDA.l orbit_fx_burst_off+1,X
-	AND.w #$00FF
-	CMP.w #$0080
-	BCC + : ORA.w #$FF00
-+	CLC : ADC.w !d_t1
-	STA.w !d_t1
-.anchored
-	; mirror m: x mirrored by flip (i odd) xor turn 2; y by turn 2
-	LDA.w !d_t5
-	AND.w #$0003
-	CMP.w #$0002
-	BCC +
-	LDA.w #$0003                   ; turns 2, 3: both mirrored...
-	BRA ++
-+	LDA.w #$0000
-++	STA.w !d_sx
-	LDA.w !d_t5
-	AND.w #$0001                   ; ...and the flip toggles x
-	EOR.w !d_sx
-	; frame t / 6 of mirror m: orbit_fx_burst_m[m * 7 + t / 6]
-	ASL
-	STA.w !d_sx                    ; m * 2
-	ASL : ASL : ASL
-	SEC : SBC.w !d_sx              ; m * 14
-	STA.w !d_sx
-	LDX.w !d_t6
-	LDA.l orbit_fx_burst_tf,X
-	AND.w #$00FF
-	CLC : ADC.w !d_sx
-	TAX
-	LDA.l orbit_fx_burst_m,X
-	TAX
-	JSR fd_parts
-.next
-	LDY.w !d_t5
-	DEY
-	BMI +
-	JMP .sub
-+
+	PHA
+	LDA.w #!OA_PRI
+	STA.w !d_pri
+	PLA
+fd_burst_at:
+	CPY.w #9
+	BEQ .large
+	CMP.w #!OFX_BURST_S_AGES
+	BCC .entries
 	RTS
-
-; Draw a burst frame's parts as mirrored (X16: its entry in the bank of
-; orbit_fx_burst_mparts, orbit-fx.mjs) around (!d_t0, !d_t1): 16x16
-; entries straight into OAM at o_slot as ofx_put would write them, the
-; ones entirely off the screen skipped.
-fd_parts:
-	LDA.l orbit_fx_burst_mparts&$FF0000,X
-	AND.w #$00FF
+.large
+	CMP.w #!OFX_BURST_L_AGES
+	BCC +
+	RTS
++	CLC : ADC.w #!OFX_BURST_S_AGES  ; (the large burst's ages follow)
+.entries
+	ASL : ASL : ASL : ASL          ; (16 bytes an age)
+	TAX
+	LDA.l !XDATA_ORBIT_BURST+2,X
 	BNE +
 	RTS
-+	STA.w !m_t7                    ; parts left
-	INX
++	STA.w !m_t7                    ; entries
+	; wholly on the screen (every top left at x 0-255, y -31-223) with room
+	; for all: the packed entries and the high-table bytes as they are
+	LDA.l !XDATA_ORBIT_BURST+8,X
+	CLC : ADC.w !d_t2
+	BMI .slow
+	STA.w !m_t5                    ; the base's x
+	LDA.l !XDATA_ORBIT_BURST+10,X
+	CLC : ADC.w !d_t2
+	CMP.w #256
+	BCS .slow
+	LDA.l !XDATA_ORBIT_BURST+12,X
+	CLC : ADC.w !d_t3
+	STA.w !m_t6                    ; its y
+	CLC : ADC.w #31
+	BMI .slow
+	LDA.l !XDATA_ORBIT_BURST+14,X
+	CLC : ADC.w !d_t3
+	CMP.w #224
+	BPL .slow
+	LDA.w !m_t7
+	ASL : ASL
+	CLC : ADC.w !o_slot
+	CMP.w #$0201
+	BCC .fast
+.slow
+	LDA.l !XDATA_ORBIT_BURST,X
+	TAX                            ; the first's offset
 	LDY.w !o_slot
-.part
+	JMP .e
+.fast
+	LDA.w !m_t6
+	XBA
+	AND.w #$FF00
+	ORA.w !m_t5
+	STA.w !m_t5                    ; base: x | y << 8
+	; the high-table bytes for the first slot's place (0-3): the first one
+	; ORed (earlier entries share it), the rest stored
+	LDA.w !o_slot
+	AND.w #$000C
+	CLC : ADC.l !XDATA_ORBIT_BURST+6,X
+	STA.w !d_t4                    ; its bytes' offset
+	LDA.w !o_slot
+	LSR : LSR
+	AND.w #$0003
+	CLC : ADC.w !m_t7
+	CLC : ADC.w #3
+	LSR : LSR
+	STA.w !d_t5                    ; bytes
+	LDA.l !XDATA_ORBIT_BURST+4,X
+	STA.w !d_t6                    ; the packed entries' offset
+	LDA.w !o_slot
+	LSR : LSR : LSR : LSR
+	TAY
+	LDX.w !d_t4
+	SEP #$20
+	LDA.l !XDATA_ORBIT_BURST,X
+	ORA.w $0A00,Y
+	STA.w $0A00,Y
+-	DEC.w !d_t5
+	BEQ +
+	INX
+	INY
+	LDA.l !XDATA_ORBIT_BURST,X
+	STA.w $0A00,Y
+	BRA -
++	REP #$20
+	; the entries (their priority in them: orbit-fx.mjs), two at a time
+	LDX.w !d_t6
+	LDY.w !o_slot
+	LDA.w !m_t7
+	LSR
+	STA.w !m_t7                    ; pairs
+	BCC .f
+	LDA.l !XDATA_ORBIT_BURST,X     ; (an odd one first)
+	CLC : ADC.w !m_t5
+	STA.w $0800,Y
+	LDA.l !XDATA_ORBIT_BURST+2,X
+	STA.w $0802,Y
+	INX : INX : INX : INX
+	INY : INY : INY : INY
+	LDA.w !m_t7
+	BEQ .fdone
+.f
+	LDA.l !XDATA_ORBIT_BURST,X
+	CLC : ADC.w !m_t5
+	STA.w $0800,Y
+	LDA.l !XDATA_ORBIT_BURST+2,X
+	STA.w $0802,Y
+	LDA.l !XDATA_ORBIT_BURST+4,X
+	CLC : ADC.w !m_t5
+	STA.w $0804,Y
+	LDA.l !XDATA_ORBIT_BURST+6,X
+	STA.w $0806,Y
+	TXA
+	CLC : ADC.w #8
+	TAX
+	TYA
+	CLC : ADC.w #8
+	TAY
+	DEC.w !m_t7
+	BNE .f
+.fdone
+	STY.w !o_slot
+	RTS
+.e
 	CPY.w #$0200
 	BCS .done
-	; x on the screen: -15 <= x <= 255
-	LDA.l (orbit_fx_burst_mparts&$FF0000)+0,X
-	CLC : ADC.w !d_t0
+	; x on the screen: -31 <= x <= 255 (a 16x16 left of -15 is set but
+	; unseen), y: -31 <= y <= 223
+	LDA.l !XDATA_ORBIT_BURST+0,X
+	CLC : ADC.w !d_t2
 	STA.w !m_t5
-	CLC : ADC.w #15
-	CMP.w #271
+	CLC : ADC.w #31
+	CMP.w #256+31
 	BCS .skip
-	; y: -15 <= y <= 223
-	LDA.l (orbit_fx_burst_mparts&$FF0000)+2,X
-	CLC : ADC.w !d_t1
+	LDA.l !XDATA_ORBIT_BURST+2,X
+	CLC : ADC.w !d_t3
 	STA.w !m_t6
-	CLC : ADC.w #15
-	CMP.w #239
+	CLC : ADC.w #31
+	CMP.w #224+31
 	BCS .skip
 	SEP #$20
 	LDA.w !m_t5 : STA.w $0800,Y
 	LDA.w !m_t6 : STA.w $0801,Y
 	REP #$20
-	LDA.l (orbit_fx_burst_mparts&$FF0000)+4,X
-	ORA.w #(!OFX_PAL_FIRE<<9)|!OA_PRI
+	LDA.l !XDATA_ORBIT_BURST+4,X
+	ORA.w !d_pri
 	STA.w $0802,Y
-	LDA.w !m_t5
+	; high table: 32x32 (2), left of the screen (x's bit 8: 1)
+	LDA.l !XDATA_ORBIT_BURST+6,X
+	BIT.w !m_t5
 	BPL +
-	JSR fd_parts_x9                ; (left of the screen: x's bit 8)
+	ORA.w #1
++	CMP.w #$0000
+	BEQ +
+	JSR fd_hibits
 +	INY : INY : INY : INY
 .skip
 	TXA
-	CLC : ADC.w #6
+	CLC : ADC.w #8
 	TAX
 	DEC.w !m_t7
-	BNE .part
+	BNE .e
 .done
 	STY.w !o_slot
+.none
 	RTS
 
-; The high table's x bit of the 16x16 entry at Y16 (OAM offset). Keeps X, Y.
-fd_parts_x9:
+; OR the high-table bits A16 (1 x's bit 8, 2 large) into the OAM entry at
+; Y16 (its offset). Keeps X, Y.
+fd_hibits:
 	PHX
+	STA.w !m_t4
 	TYA
 	LSR : LSR
 	AND.w #$0003
-	TAX
-	LDA.l .bits,X
+	ASL : ASL
+	ORA.w !m_t4
+	TAX                            ; pair * 4 + bits
+	LDA.l ofx_hibits,X
+	AND.w #$00FF
 	STA.w !m_t4
 	TYA
 	LSR : LSR : LSR : LSR
-	TAX
+	TAX                            ; its high-table byte
 	SEP #$20
 	LDA.w $0A00,X
 	ORA.w !m_t4
@@ -390,8 +438,6 @@ fd_parts_x9:
 	REP #$20
 	PLX
 	RTS
-.bits
-	db $01,$04,$10,$40,$00
 
 ; Frieza's warning: the growing Death Ball over him, the pink charge of a
 ; beam, the finger glint of a laser, a disc over his head.

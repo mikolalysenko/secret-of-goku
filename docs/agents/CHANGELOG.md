@@ -4,6 +4,47 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the distant bodies, stage A (2026-10-21)
+
+- The moon, the outer planet and the distant planetoid hang behind the
+  globe through the space fight and the clash, where the browser's
+  `projectOrbitBackground` puts them: their places match the browser's on
+  every frame (an exact integer form of its rounding, kept up by table
+  steps), their pictures are its own `orbitBodyColor` at every radius
+  shown.
+- Ki, the wave, ricochets and Frieza's beams, lasers and orbs shatter a
+  body they pass where it shows, as `strikeOrbitScenery` decides: the
+  large impact burst for 170 frames, the fortress-break cue, a shake, and
+  Luna's remark when Goku breaks the moon. The shattered bodies' debris
+  (rocks, grit, their ring, the rocks' hits on Goku) is stage B.
+- Homes: free OBJ cells, the 32 px Death Ball's slot while no ball shows,
+  Frieza's beam slots 4-5 in the fight (his aura moved to slot 3) and the
+  Death Disc cells in the clash. Exploder bursts now draw from generated
+  per-age OAM lists, frames 1-4 as one 32x32 cell each.
+- Tests: the `fight` case compares the bodies on every frame (its wave
+  now shatters the moon); a new `scenery` case shatters all three with ki
+  (196 frames identical).
+- Cost, measured against main 565c6a8: the `fight` repeats 12 pictures (2
+  before; its bound is now 12, with the reason), the `clash` 62 (38). The
+  stars' line limits do not count the bodies yet: where a body shares a
+  beam's rows the PPU drops the beams' slivers, not the body's (`clash`
+  197 frames over the line limits, 34 before; the bodies cost the others
+  2,452 slivers there). Next: the bodies yield to the line budget, and
+  less work in the clash.
+- The `clash` case fails on 4 late vblanks in the recoil: core's native
+  actor streamer runs to line 255 every fifth vblank there, and the
+  module hooks end past line 261. Main 565c6a8 has the same five, and
+  its own `clash` case fails on one of them (frame 561); a request to
+  core is in `orbit.md`. The hardware probe stays clean over the
+  frieza, debug and orbit suites.
+- Off the default run: the `fight` case at `ORBIT_FIGHT_EXTRA` 2 and 7
+  (of 0-7) fails, Goku's HP trailing a hit by more than 8 ages inside
+  the beam-zoom run of repeated pictures.
+- Code: a third orbit code area at `$AB:C000` (the strikes, 3.2 KiB); the
+  main area at 30.5 of 31 KiB, the second at 15.3 of 16; `$E7` data down
+  1.3 KiB (the burst tables moved out). Extended data grows by 29 KiB
+  (2,766 of 2,944 KiB).
+
 ## SNES integration: a real-hardware probe, HDMA channels 4-7 across the actor streamer (2026-10-21)
 
 - The full suite now also runs under a real-hardware probe (an

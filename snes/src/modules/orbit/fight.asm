@@ -55,6 +55,7 @@ fight_start:
 -	LDA.w #$00FF : STA.w !FS_AFTER+4,X
 	TXA : SEC : SBC.w #$0006 : TAX
 	BPL -
+	JSL sc_init_far                ; the distant bodies (scenery.asm)
 	RTS
 
 ; One fight frame in the browser's order (mana-mod.js beforeFrame):
@@ -432,6 +433,7 @@ fight_steer:
 	LDA.w #3840
 +	PHA
 	SEC : SBC.w !cam_lat
+	CLC : ADC.w !cam_tdy
 	STA.w !cam_tdy                 ; travelY += latitude change
 	PLA
 	STA.w !cam_lat
@@ -1033,7 +1035,7 @@ fight_tick_orbit:
 .camDone
 	LDX.w !f_moving
 	BEQ + : DEC.w !f_moving
-+	; (debris: orbit-debris.js tickOrbitDebris, see debris.asm when added)
++	JSL sc_tick_far                ; (orbit-debris.js tickOrbitDebris: scenery.asm)
 	LDA.w !f_intro
 	BEQ +
 	DEC.w !f_intro
@@ -1043,7 +1045,10 @@ fight_tick_orbit:
 	RTS
 +	JSR fight_tick_shots
 	JSR fight_tick_wave
-	JMP fight_tick_ricochets
+	JSR fight_tick_ricochets
+	JSL sc_tick_boss_far           ; (Frieza's shots against the bodies)
+	JSL sc_tick_end_far            ; (the impacts age)
+	RTS
 
 ; A16 = round(signed A / 5) (Math.round: halves up).
 fight_round_div5:
@@ -1103,8 +1108,17 @@ fight_tick_shots:
 	STA.w !FS_SHOTS+6,X
 	BRA .next
 .miss
-	; (scenery strikes: orbit-debris.js, with the bodies)
-	LDA.w !FS_SHOTS+6,X
+	; strikeOrbitScenery (the step, 3 wide): a struck body ends the shot
+	PHX
+	LDA.w #0
+	LDY.w #3
+	JSL sc_strike_seg_far
+	PLX
+	BCC +
+	LDA.w #99
+	STA.w !FS_SHOTS+6,X
+	BRA .next
++	LDA.w !FS_SHOTS+6,X
 	CMP.w #30
 	BNE .next
 	PHX
@@ -1198,7 +1212,18 @@ fight_tick_wave:
 	LDA.w #!AUDIO_SFX_FRIEZA_IMPACT
 	JSL audio_sfx
 .boss
-	; counter Frieza's orbs and discs inside width + 10
+	; strikeOrbitScenery: the wave 350 long at its width (a beam: every
+	; body it strikes)
+	LDA.w !f_tmp+6
+	BEQ +
+	LDA.w !fb_x : STA.w !sw_ax
+	LDA.w !fb_y : STA.w !sw_ay
+	LDA.w !fb_head : STA.w !sc_h
+	LDA.w #350 : STA.w !sc_d1
+	LDA.w #$8000                   ; Goku's, a beam
+	LDY.w !f_tmp+6
+	JSL sc_strike_ray_far
++	; counter Frieza's orbs and discs inside width + 10
 	LDA.w !f_tmp+6
 	CLC : ADC.w #10
 	STA.w !f_tmp+8
@@ -1349,17 +1374,42 @@ fight_mod6:
 	LDA.w $4216
 	RTS
 
-; Ricochets travel 12 px per frame for 45 frames (visible for 28).
+; Ricochets travel 12 px per frame for 45 frames (visible for 28); the
+; lane's latest 12 px (from (age - 1) 12 on) strike the scenery (2 wide):
+; a struck body ends the ricochet.
 fight_tick_ricochets:
 	LDX.w #(!RIC_N-1)*8
--	LDA.w !FS_RIC+6,X
+.ric
+	LDA.w !FS_RIC+6,X
 	AND.w #$00FF
 	CMP.w #45
-	BCS +
+	BCS .next
 	INC.w !FS_RIC+6,X
-	; (scenery strikes along the lane: with the bodies)
-+	TXA : SEC : SBC.w #$0008 : TAX
-	BPL -
+	LDA.w !sc_dead                 ; (no body left: nothing to strike)
+	AND.w #$0007
+	CMP.w #$0007
+	BEQ .next
+	LDA.w !FS_RIC+0,X : STA.w !sw_ax
+	LDA.w !FS_RIC+2,X : STA.w !sw_ay
+	LDA.w !FS_RIC+4,X : STA.w !sc_h
+	PHX
+	LDA.w !FS_RIC+6,X              ; its age (1-45)
+	AND.w #$00FF
+	TAY
+	LDA.w !FS_RIC+7,X              ; owner (0 Goku, 1 Frieza, 2 countered)
+	AND.w #$00FF
+	TYX
+	LDY.w #2
+	JSL sc_strike_lane_far
+	PLX
+	BCC .next
+	SEP #$20
+	LDA.b #45
+	STA.w !FS_RIC+6,X
+	REP #$20
+.next
+	TXA : SEC : SBC.w #$0008 : TAX
+	BPL .ric
 	RTS
 
 ; ---------------------------------------------------------------------------

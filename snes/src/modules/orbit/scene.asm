@@ -229,6 +229,12 @@ orbit_scene_init:
 	REP #$20
 	LDA.w #$FFFF
 	STA.l !orbit_li
+	LDX.w #10                      ; no distant body's picture wanted or held (scdraw.asm:
+-	STA.l !sc_want,X               ; the vblank sends none before the fight's start)
+	DEX : DEX
+	BPL -
+	LDA.w #$0000
+	STA.l !sc_nwant
 	STZ.w !f_on
 	LDX.w #(!FN_END)-(!FN)-2       ; no struggle, no death
 -	STZ.w !FN,X
@@ -473,6 +479,7 @@ orbit_live_frame:
 	STA.w !f_steps
 +	STZ.w !cam_tdx
 	STZ.w !cam_tdy
+	JSL sc_frame_start_far
 -	JSR fight_frame
 	REP #$30
 	DEC.w !f_steps
@@ -482,7 +489,8 @@ orbit_live_frame:
 	BEQ +
 	JSR finale_camera              ; the clash's own camera (clashCamera)
 	JSR fc_rays                    ; its rays, for the band layers
-+	%orbit_mark(2)
++	JSL sc_update_far              ; (the distant bodies: the last step's steering, the clash's camera)
+	%orbit_mark(2)
 	JSR bands_frame
 	%orbit_mark(3)
 	JSR text_frame
@@ -855,7 +863,8 @@ orbit_oam_frame:
 	JSR pull_draw                  ; (the second surge's pullback)
 	BRA ++
 +	JSR fight_draw
-++	%orbit_mark(7)
+++	JSR sc_draw_live               ; the distant bodies, behind the rest (scdraw.asm)
+	%orbit_mark(7)
 	JSR stars_oam
 	REP #$30
 	JSR orbit_pals_frame
@@ -1510,6 +1519,11 @@ orbit_nmi_cells:
 	BCS .d16
 	LDA.w !v_d32
 	STA.w !v_d32_h
+	PHA
+	LDA.w #$FFFF                   ; (the outer planet's picture there is gone)
+	STA.l !sc_have
+	STA.l !sc_nwant
+	PLA
 	XBA : ASL                      ; * 512
 	CLC : ADC.w #orbit_fx_death
 	STA.w !n_src
@@ -1576,10 +1590,12 @@ orbit_nmi_cells:
 	BEQ +
 	JSR orbit_nmi_queue
 	JSR bands_nmi_map
+	JSR sc_nmi                     ; (the distant bodies' pictures: scdraw.asm)
 	SEP #$20
 	RTS
 +	JSR bands_nmi_map
 	JSR orbit_nmi_queue
+	JSR sc_nmi                     ; (the distant bodies' pictures: scdraw.asm)
 	SEP #$20
 	RTS
 
@@ -1648,6 +1664,7 @@ orbit_nmi_room:
 orbit_nmi_room_far:
 	JSR orbit_nmi_room
 	RTL
+
 orbit_picture_init_far:
 	JSR orbit_picture_init
 	RTL

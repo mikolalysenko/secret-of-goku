@@ -56,6 +56,20 @@ local function state()
   end
   table.sort(hits)
   p[#p + 1] = table.concat(hits, ' ')
+  -- the distant bodies (scenery.asm): shattered bits (bit 15 Luna spoke),
+  -- the remark's age + 91; per body x:y:r; per impact age + 1:copy x:copy y
+  local sc = {string.format('%d,%d', H.r16(FB + 0x78), H.r16(FB + 0x7E))}
+  for k = 0, 2 do
+    sc[#sc + 1] = string.format('%d:%d:%d', s16(ORBIT_RAM + 0x5E + k * 2), s16(ORBIT_RAM + 0x64 + k * 2), H.r16(ORBIT_RAM + 0x6A + k * 2))
+  end
+  for k = 0, 2 do
+    local e = FB + 0x234 + k * 4
+    local cx, cy = H.r8(e + 2), H.r8(e + 3)
+    if cx >= 0x80 then cx = cx - 0x100 end
+    if cy >= 0x80 then cy = cy - 0x100 end
+    sc[#sc + 1] = string.format('%d:%d:%d', H.r16(e), cx, cy)
+  end
+  p[#p + 1] = table.concat(sc, ' ')
   return table.concat(p, '|')
 end
 function test()
