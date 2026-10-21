@@ -1,4 +1,4 @@
-SECRET OF GOKU - SNES PREVIEW {{VERSION}}
+SECRET OF GOKU - SNES {{VERSION}}
 
 Secret of Mana. With Goku.
 
@@ -6,7 +6,7 @@ This is the standalone SNES cartridge port of Secret of Goku. Play with
 Goku's punches, ki blasts, Kamehameha, local flight, Instant Transmission
 and Super Saiyan transformation inside Secret of Mana's action RPG.
 
-This preview brings much more of the browser edition to the cartridge.
+Version {{VERSION}} brings much more of the browser edition to the cartridge.
 Its later story chapters, set pieces and boss battles now run natively.
 Punches and kicks land with a graded hit stop, impact flashes and a
 camera kick. The sounds were rebuilt around compact samples of the PC
@@ -16,7 +16,7 @@ game's weapon-charge sounds no longer play for Goku. To make room for the
 samples, 17 songs use a slightly shorter echo. Ki shots and the charging
 aura no longer turn into damage numbers, and flight no longer gets stuck
 among flowers and trees. Crowded scenes and the largest battles can still
-slow down; this remains an in-progress preview.
+slow down.
 
 DOWNLOADS AND SOURCE
 
