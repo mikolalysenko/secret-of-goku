@@ -4,6 +4,44 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: round-seven sounds (2026-10-21)
+
+- Codex audio, round seven (3bfac5c, dcc6430, bcd055f, 70cea99; merged in
+  4eb8ad1), made from the maintainer's notes on round six, is now the
+  default:
+  - Holding B no longer plays the original game's weapon-charge buzz.
+    That was retail effect $27 from the weapon meter at C0:B3ED; it is now
+    filtered for Goku only.
+  - Charging (L+Y) and the L power-up no longer restart a rumble every 25
+    frames. They hold sustained sounds instead: a hum looped from the PC's
+    charge clip, rising with the charge as the browser's level and rate
+    do, and the aura roar from 40% focus. They send at most one command
+    every 12 frames, and only when the level changes. The sound CPU fades
+    them out and gives the voices back to the music.
+  - The Kamehameha starts with the PC clip's own attack, then a looped
+    body. The Super Saiyan wave plays at 0.86.
+  - Instant Transmission plays the first 96 ms of the PC clip at 10 kHz,
+    going out and coming in at the PC's relative volumes.
+  - Flight and landing use a lower sampled whoosh. The world-map takeoff
+    sound is no longer dropped by the map change.
+  - Unchanged: punches, kicks, the ki blast launch and the ki impact.
+    Round six's sampled impact is gone.
+  - The sample bank is 2,304 bytes (2,048 in round six), so 17 songs keep a
+    shorter echo: the 16 of round six, plus $10 (176 → 160 ms). $2C now
+    goes from 96 to 64 ms.
+  - `-DAUDIO_CUSTOM_SAMPLES=0` builds round four byte for byte.
+- Test infrastructure (5f99811): the title arrival run replaces the shared
+  after-arrival checkpoint only with `SNES_UPDATE_CHECKPOINTS=1`. Before,
+  a branch's run replaced it with that branch's build, sound driver
+  included, and other worktrees' ui runs then booted from it.
+- The orbit suite's standalone runner builds `-DORBIT_TIMING`, whose
+  instrumentation costs frames. Main's clash there lags 38 frames with one
+  late vblank. On the shipping ROM, which run-all uses, it lags 31 with
+  none.
+- Validation on 4eb8ad1 under both probes: all 20 suites pass. Gameplay
+  misses per 240 frames: charge 13 (12 before), teleport 3, flying ki 2,
+  flight 1, flying punches 1, the rest 0.
+
 ## SNES integration: a real-hardware probe, HDMA channels 4-7 across the actor streamer (2026-10-21)
 
 - The full suite now also runs under a real-hardware probe (an
