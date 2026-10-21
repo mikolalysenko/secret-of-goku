@@ -152,6 +152,64 @@ if not(defined("CORE_NATIVE_SPRITES_SLOW"))
 %hijack($C0E60D, core_native_body_anchor, 4, core)
 endif
 
+if not(defined("CORE_NATIVE_EMITTER_RELOAD_SLOW"))
+; E6C1 already selected M8. Every accepted/rejected piece leaves Y equal
+; to $7C (including the high-X table detour). Keep it across iterations.
+%orig3($C0E6CB, $FF7282)
+%patch($C0E6CB, 3, core)
+pushpc
+org $C0E6CB
+	BRL $FF76                 ; E644 - E6CE (asar's numeric relative operand)
+pullpc
+if not(defined("CORE_NATIVE_SPRITES_SLOW"))
+; The replaced shake body is unreachable after the E60D anchor hijack.
+; A rejected piece did not advance the OAM cursor, so the next piece can
+; also omit the capacity test. Keep the last rejected piece's A/P intact.
+%orig4($C0E611, $F0E00DBD)
+%patch($C0E611, 16, core)
+pushpc
+org $C0E611
+core_emitter_rejected:
+	SEP #$20
+	DEC $02
+	BNE .next
+	JMP $E6CE
+.next
+	INX : INX : INX : INX
+	JMP $E649
+pullpc
+macro core_emitter_reject_branch(address, bytes)
+%orig2(<address>, <bytes>)
+%patch(<address>, 2, core)
+pushpc
+org <address>
+	BCS core_emitter_rejected
+pullpc
+endmacro
+%core_emitter_reject_branch($C0E660, $5FB0)
+%core_emitter_reject_branch($C0E684, $3BB0)
+; Negative clipping uses carry clear instead.
+%orig2($C0E666, $5990)
+%patch($C0E666, 2, core)
+pushpc
+org $C0E666
+	BCC core_emitter_rejected
+pullpc
+%orig2($C0E689, $3690)
+%patch($C0E689, 2, core)
+pushpc
+org $C0E689
+	BCC core_emitter_rejected
+pullpc
+endif
+endif
+
+if not(defined("CORE_NATIVE_CONTACT_EMPTY_SLOW"))
+%orig2($C1D14A, $20C2)
+%orig3($C1D14C, $E0C2BD)
+%hijack($C1D14A, core_native_contact_empty, 5, core)
+endif
+
 ; Field HP-number refreshes must not wait for vblank inside status/AI.
 %orig4($C1E326, $A98B20E2)
 %orig1($C1E32A, $00)
