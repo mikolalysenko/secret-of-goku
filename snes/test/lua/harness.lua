@@ -153,7 +153,7 @@ function H.residentEffects()
     if len == 0 then break end
     -- An already-running extension has mutable stream state. Only reload
     -- custom immutable assets on that path, never reset a live ring's state.
-    if retail or addr == 0x4DF1 or addr == 0x1860 or addr == 0x18E0 or addr == 0x19C0 or addr == 0x0BED or addr == 0x0E10 or addr == 0x0C48 or addr == 0x14B4 or addr == 0xFFFB then
+    if retail or addr == 0x4DF1 or addr == 0x1860 or addr == 0x18E0 or addr == 0x19C0 or addr == 0x19D0 or addr == 0x0BED or addr == 0x0E10 or addr == 0x0C48 or addr == 0x14B4 or addr == 0xFFFB then
       for i = 0, len-1 do emu.write(addr+i, H.r8(p+4+i), emu.memType.spcRam) end
     end
     p = p + 4 + len
