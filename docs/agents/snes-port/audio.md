@@ -464,17 +464,19 @@ correlation 0.94-0.97, octave bands 62 Hz-8 kHz within 2 dB, all tracks
 alive to the end.
 
 **Load time**: like every native song change, the loader runs on the main
-thread: the previous song fades (`p2` high nibble = speed), then the
-sequence and any instruments not already cached go up, then the driver
-clears its echo ring and starts. Measured in Mesen with `p2 = $10`, in the
-order arrival (after the waterfall's song `$1C`), battle, orbit, Vegeta,
-full power: the tracks start 89 / 85 / 59 / 96 / 57 frames after the
-command, of which the game loop stands still for 76 / 71 / 44 / 81 / 42
-frames (fade wait and upload; the rest is the driver's echo clear while the
-game runs). Cues that share instruments (battle → orbit, Vegeta → full
-power) load faster. `p2` high nibble 0 skips the fade wait (the old song is
-cut). The browser switches cues instantly; the cartridge cannot, so story
-and combat code should change songs at scene or phase boundaries.
+thread: the previous song fades (`p2` high nibble = speed; 0 cuts it and
+skips the fade wait), then the sequence and any instruments not already
+cached go up, then the driver clears its echo ring and starts. The browser
+stops one cue and starts the next at once, so the module's song calls cut
+the old song (`p2` high nibble 0). Measured in Mesen in the order arrival
+(after the waterfall's song `$1C`), battle, orbit, Vegeta, full power: the
+tracks start 61 / 56 / 29 / 66 / 27 frames after the command, of which the
+game loop stands still for 47 / 42 / 14 / 50 / 12 frames (the upload; the
+rest is the driver's echo clear while the game runs). Fading at speed 1
+(`p2 = $10`) adds about 30 frames of fade wait to each (76 / 72 / 44 / 81 /
+41). Cues that share instruments (battle → orbit, Vegeta → full power) load
+faster. The cartridge cannot switch instantly, so story and combat code
+should change songs at scene or phase boundaries.
 
 ## 4. API for other modules
 
@@ -493,8 +495,8 @@ before the core's native sound pump), so the cost of a call is a few cycles.
 | `audio_voice` | A = 1 chant, 2 release, 0 cut | Shipping no-op. Diagnostic PCM starts the Japanese chant once per charge, replaces it with the release shout, or cuts it. |
 | `audio_cancel` | — | Drops queued combat sounds, held beds and any rare stream. Resident effects finish their bounded tails. |
 | `audio_stop` | — | Stops every stream at this frame's service. |
-| `audio_song` | A = `!AUDIO_SONG_*` (or a native song id), X = p2 \| p3<<8 (0: `$10`, `$FF`) | Native song command `01` through `core_sound_queue` (sent at the end of the frame). The default fades the old song at speed 1 and starts the new one at full volume. For a native song pass its canonical `p2`/`p3` (they pick its echo preset). |
-| `audio_song_restore` | — | Back to the scene's own music: the last native song the module saw playing, with its echo preset and `p3` (the old song fades at speed 1). Does nothing if no native song played since power-on. |
+| `audio_song` | A = `!AUDIO_SONG_*` (or a native song id), X = p2 \| p3<<8 (0: `$00`, `$FF`) | Native song command `01` through `core_sound_queue` (sent at the end of the frame). The default cuts the old song, as the browser switches cues, and starts the new one at full volume. For a native song pass its canonical `p2`/`p3` (they pick its echo preset). |
+| `audio_song_restore` | — | Back to the scene's own music: the last native song the module saw playing, with its echo preset and `p3` (the old song is cut, as the browser stops its cue). Does nothing if no native song played since power-on. |
 | `audio_fade` | A = fade byte | Native command `80`: `$80` fades the music out (boss deaths), `$1A` ducks to `$AA` in 16 ticks, `$1F` back to full in 16 ticks, `$0F` at once. |
 
 One-shots (`!AUDIO_SFX_*`, browser cue name in parentheses where it differs):
@@ -553,8 +555,8 @@ browser's choice changes:
 
 Module code calls `audio_song` with the id (X = 0) on the frame the cue
 changes and `audio_song_restore` when it ends. Event scripts use opcode `40`
-(it forwards four bytes to the sound driver): `40 01 3B 10 FF` starts the
-arrival, and `40 01 <song> <p2> <p3>` with the map's own values restores
+(it forwards four bytes to the sound driver): `40 01 3B 00 FF` starts the
+arrival with the old song cut, and `40 01 <song> <p2> <p3>` with the map's own values restores
 native music. A map change restores it anyway (the map's song command
 loads its song). The game's own boss-death fade (`80 80`) fades the new songs
 like any other; the browser fades its cue into the white-out the same way.

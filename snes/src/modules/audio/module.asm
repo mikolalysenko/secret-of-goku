@@ -295,7 +295,7 @@ audio_song:
 	ORA.w #$0001              ; command 01, p1 = song
 	TXY
 	BNE +
-	LDY.w #$FF10              ; p2: previous song fades at speed 1; p3: full volume
+	LDY.w #$FF00              ; p2: previous song cut, as the browser switches cues; p3: full volume
 +	TYX
 	JSL core_sound_queue
 	PLB
@@ -305,8 +305,9 @@ audio_song:
 	RTL
 
 ; The scene's own music again: the last native song with its echo preset
-; and start volume; the current song fades out at speed 1 first. Nothing
-; happens when no native song was seen since power-on.
+; and start volume. The current song is cut (p2 high nibble 0, no fade
+; wait), as the browser stops its cue. Nothing happens when no native song
+; was seen since power-on.
 audio_song_restore:
 	PHP
 	REP #$30
@@ -319,7 +320,6 @@ audio_song_restore:
 	BEQ +
 	LDA.w !au_native+1        ; p3 << 8 | preset
 	AND.w #$FF0F
-	ORA.w #$0010
 	TAX
 	LDA.w !au_native
 	AND.w #$007F
