@@ -217,8 +217,10 @@ world effects; checker Goku temporarily uses a dedicated palette 5.
 World A's idle effect cells hold the checker. At age 550 B/C and scene SRAM are released,
 world effect residency is invalidated and the normal windows, 8/16 OBJ,
 backdrop and world fog (`CGWSEL=2`, `CGADSUB=$21`) are restored. Goku's
-normal palette is restored when the checker ends. Field sprite scratch
-holds only world-local pointers/flags; field initialization invalidates it.
+normal palette is restored when the checker ends, and both world palettes
+5/6 are restored when the flyby releases the effect atlas (checked at age
+552). Field sprite scratch holds only world-local pointers/flags; field
+initialization invalidates it.
 
 The `flyby` case captures raw PPU frames at arrival, growth, full size,
 throw, impact, every checker frame and departure. A private
@@ -273,7 +275,7 @@ silhouette agreement is 98.0–99.4% across both forms.
 
 Validation on 2026-10-20: strict production build; **Frieza 29/29** (including
 fresh browser references for all eleven optional scene cases), **world
-15/15**, **UI 12/12** (including radar/world panel), and **FX 6/6**, all pass.
+14/14**, **UI 12/12** (including radar/world panel), and **FX 6/6**, all pass.
 `modprof` also ran on the sword and battle perf states. The perf suite passes
 its five field scenes; `preset__flight` reports zero completed frames out
 of 304, identically on the private pre-task ROM. That existing fixture/probe

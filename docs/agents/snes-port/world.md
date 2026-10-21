@@ -119,8 +119,8 @@ picture, including Goku, in an 8/32 layout. Fifty-six checker cells use
 exactly 32 slivers per line. World A's idle effect cells hold static
 checker/Frieza art. `world_nmi_cell` suppresses Goku's ordinary cell upload
 until age 409 (411 in Super Saiyan), then preloads the normal body before the 8/16 layout returns.
-The effect atlas, normal Goku palette, backdrop and native world colour
-math are restored afterward; B/C are released at age 550. See
+The effect atlas, normal Goku/effect palettes, backdrop and native world
+colour math are restored afterward; B/C are released at age 550. See
 [frieza.md](frieza.md#world-flight-picture-flybyasm-_frieza-flybymjs) for
 picture checks and the remaining surface/crowding approximations. Both
 forms complete 549 flyby frames with zero lag/overflow/deferred uploads;

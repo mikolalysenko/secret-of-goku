@@ -72,6 +72,8 @@ endif
 	SEP #$20
 	STZ !fzy_ready
 	REP #$20
+	LDA.w #1
+	STA.w !w_pal_dirty                ; world restores palettes 5/6 before this frame's NMI cleanup
 	LDA.w #!VRAM_WORLD_OBJ_C
 	LDX.w #!FZ_VRAM_OWNER
 	JSL core_vram_release

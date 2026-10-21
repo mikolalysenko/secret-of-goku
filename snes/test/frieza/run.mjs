@@ -772,6 +772,11 @@ function test()
     H.wait(1)
     pictures()
     local fl, age, c8 = flags(), H.r16(${v(defs.fzp_flyby)}), H.r8(0x7E008C)
+    if age==552 then
+      local same=true
+      for at=416,479 do if H.cgram(at)~=H.r8(0x7E0600+at) then same=false end end
+      ev.paletteRestored=same
+    end
     if (fl & ${defs.FZFL_FLYBY}) ~= 0 then mark('armed', i) end
     if (fl & ${defs.FZFL_FLYBY_GO}) ~= 0 then mark('started', i) end
     if ev.started and age == 404 then mark('impactCrisis', crisis()) end
@@ -795,6 +800,7 @@ function test()
   H.result('lastAge',H.r16(${v(defs.fzp_flyby)}))
   if ${source===romSrc} then
     F.check(H.r16(0x7EDB30)==0, 'flyby renderer released after departure')
+    F.check(ev.paletteRestored, 'world palettes 5/6 restored after the flyby')
     F.check(H.r16(${coreDefine('core_scene_owner')})~=${coreDefine('SCENE_FRIEZA')}, 'scene SRAM released after departure')
   end
   H.result('crisis', crisis())
