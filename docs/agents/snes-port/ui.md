@@ -367,9 +367,11 @@ scouter! Hee hee, that's handy!"
   the landing (target `$0600`, caster `$0200`, spell `$17`) and never
   reached it, so a cast never gave a reading on the cartridge (with the
   scouter switched on, its continuous scan hid the gap); `analyzerCast`
-  below fails on the build with that hook. The browser's `scouter.js`
-  detects Analyzer the same way (a bus write of `$17` to `+$181`) and was
-  not changed here.
+  below fails on the build with that hook. The browser's `scouter.js` had
+  the same gap (a bus write of `$17` to `+$181`, which also fired for a
+  level-23 actor); it now watches the landing too (`C0:3F94`, where X is
+  the target and Y the caster), with a real cast in
+  `tests/scouter.test.mjs`.
 
 ### Readings and browser correspondence
 
