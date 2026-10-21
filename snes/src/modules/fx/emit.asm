@@ -799,7 +799,11 @@ macro fx_cache_candidate(slot)
 		CMP.b #((<slot>-11)/2)*2+7
 	endif
 	BCS ?claimed
-	if <slot> == 9 || <slot> == 10
+	if <slot> < 3
+		LDA.w $EA80              ; a damage number before its count rises
+		CMP.b #$F9
+		BEQ ?claimed
+	elseif <slot> == 9 || <slot> == 10
 		LDA.w $E28D
 		ORA.w $E261
 		BNE ?claimed
@@ -947,6 +951,25 @@ fx_cache_get:
 	STA.l !fx_rbits,X
 	REP #$20
 	PLX
+	; Pixels FX did not upload (the game's stream, a UI lease or an upload
+	; that slipped): the cell is not drawn until its upload lands, so a
+	; late vblank shows nothing there rather than the game's digits.
+	LDA.l fx_entry_bit,X
+	AND.l !fx_cfail
+	BNE .foreign
+	LDA.l !fx_ccell,X
+	CMP.w #$0200
+	BCC .own
+	INC
+	BNE .foreign                 ; a UI lease
+	LDA.l !fx_cused,X
+	INC
+	BNE .own                     ; free since FX's own use
+.foreign
+	LDA.l fx_entry_bit,X
+	ORA.l !fx_cfail
+	STA.l !fx_cfail
+.own
 	LDA !d_tmp
 	STA.l !fx_ccell,X
 	LDA.l fx_entry_bit,X

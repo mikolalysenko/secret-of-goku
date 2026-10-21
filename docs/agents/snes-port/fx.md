@@ -832,13 +832,34 @@ phase, lag vblanks included. Slot 5's pieces stream in phase 2
   readout cancels a deferred upload into one.
 - An entry whose claim ends is free and re-uploads. An aura whose cells
   were taken waits until its new cells are resident, as on a cold start.
+- An entry keeps the game's pixels after its claim ends (an expired
+  number, a party weapon piece). An entry a readout lease leaves keeps the
+  lease's pixels too. FX used to draw a new cell in the frame it took such
+  an entry. When a late vblank then slipped the upload, a ki shot showed
+  the number for a frame or two: once in `fight`, and 36 sprite frames over
+  the game's pixels in `fight-ssj`. Now `fx_native_forget` marks every entry
+  it streams over, also in a region FX does not hold, and so do the
+  readout's lease releases (`!fx_cused = $FFFF` on the free entry: its last
+  use no longer matters). `fx_cache_get` may take a marked entry, a UI
+  lease or an entry whose earlier upload slipped. It then queues the upload
+  but does not draw the cell until the upload lands (`!fx_cfail`): the
+  sprite is missing for that frame instead of showing digits. Evicting
+  FX's own cell still draws at once.
+- A killed enemy becomes a damage-number object at once (species `$F9`,
+  `+$180`). Its count rises five to ten frames later. In slot 5 the
+  object's three cells (entries 0-2) are claimed from its first frame
+  (`fx_begin`, `fx_native_slot5`, the first three allocator candidates). FX
+  has left them before any vblank, a lag vblank included, streams the
+  digits.
 
-Cost: a few cycles per FX frame in phases 0 and 3, one byte in phases
-1-2, six bytes in phase 4 (as a subroutine: 19, 30, 30, 19 and 52 CPU
-cycles). One or three bytes per free candidate on a miss; 181 cycles for a
-UI lease's mask. Gameplay CPU misses per 240 frames are unchanged (charge
-13, teleport 3, fly-ki 2, fly 1, fly-punch 1). A first version that
-computed the whole mask every frame (61 cycles idle) raised charge to 16.
+Cost: a few cycles per FX frame in phases 0 and 3, two bytes in phases
+1-2 (count, then species), six bytes in phase 4 (as a subroutine: 19, 38,
+38, 19 and 52 CPU cycles). One to three bytes per free candidate on a miss,
+about 30 cycles more when a cell is taken; 195 cycles for a UI lease's
+mask. Gameplay CPU misses per 240 frames are unchanged (charge 13, teleport
+3, fly-ki 2, fly 1, fly-punch 1). Two versions were too slow: one computed
+the whole mask every frame (61 cycles idle), and another also checked slots
+1-2 a phase ahead (52 cycles in phase 3). Each raised charge to 16.
 No native code, VRAM region or core service changed.
 
 After the fix, the same fights show **0** wrong aura frames (424/424 and
@@ -853,16 +874,18 @@ in the Super Saiyan fight).
   an FX cell drawn there before the claim. This is the original game's own
   stale-tile window (the Super Saiyan fight: once, 2 frames). Closing it
   would need FX to stream the game's source cells itself.
-- A claim made by a frame that misses its vblank can be streamed before FX
-  sees it, and slots 1 and 2 are not checked one phase ahead. In both
-  cases the wrong pixels last only until the next completed frame (none
-  measured).
-- Unrelated and older: an effect that draws a cell in the frame it
-  allocates it shows that entry's previous contents for one frame when a
-  late vblank leaves no time for the upload (`fxLate`: 8, 167 and 2 sprite
-  frames in the three `native-cells` scenes; 5, 144 and 2 before the
-  fix: re-uploads after a claim add a few). The aura never draws a cell
-  before it is resident.
+- A party weapon piece requested by a frame that misses its vblank can
+  be streamed before FX sees the request, and slots 1 and 2 are not checked
+  one phase ahead (the CPU cost above). Either way, a weapon piece's
+  pixels can show on an FX sprite until the next completed frame (none
+  measured). A damage number no longer can, since its object claims its
+  cells from the kill.
+- Older and unrelated to the game: an effect that draws a cell in the frame
+  it allocates it shows the entry's previous FX cell for one frame when a
+  late vblank leaves no time for the upload (`fxLate`: 7, 99 and 2 sprite
+  frames in `fight`, `fight-ssj` and `charge`). It is never the game's or a
+  lease's pixels (`fxForeign` 0 in every scene). The aura never draws a
+  cell before it is resident.
 
 **Tests.** `native-cells` (run by `run.mjs` after `focus-scenes`, production
 ROM, real input, exact frames) checks the VRAM behind every displayed
@@ -889,7 +912,11 @@ transforms next to the third Rabite and charges twice; the second wave kills
 it. Before the fix, 242 lightning and spark sprites showed its digits. The
 scenes count these events (`numbers`, `slot5Numbers`, `formChanges`,
 `gokuHits`, `fxClaimed`: FX sprites shown while the game claims region A) and
-require them. In `ssj-kill-charge`, a crowded first charge (flame,
+require them. Every scene also requires `fxForeign` = 0: no FX sprite drawn
+over the game's or a readout lease's pixels while its upload is late. Before
+the late-upload fix there was 1 in `fight` (a ki shot) and 36 in
+`fight-ssj`. `barrage-kill` fires a second barrage because a Rabite
+respawning in slot 5 can cut the first number short. In `ssj-kill-charge`, a crowded first charge (flame,
 lightning, gold sparks and the party) passed the PPU's 34 slivers on one
 line once: one flame line was dropped for one frame. That limit is reported
 there, not asserted.

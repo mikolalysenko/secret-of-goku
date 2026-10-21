@@ -404,7 +404,10 @@ Menu/world transitions, native transition/blanking state and set-piece hide
 requests suppress the overlay. The radio masks every pixel above line 72,
 including partially clipped glyphs and corners. Field records alias the
 world-only UI scratch; full menus, world flight and map changes clear them.
-The ring retires cell leases while retaining readout records.
+The ring retires cell leases while retaining readout records. A released
+entry still holds the readout's digits, so it is marked for FX
+(`!fx_cused = $FFFF`). FX then draws a cell there only once its own upload
+has landed ([fx.md, Native effect cells](fx.md#native-effect-cells)).
 
 ### Shared FX cells, uploads and hardware limits
 

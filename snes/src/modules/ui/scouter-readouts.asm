@@ -69,6 +69,8 @@ ui_sc_leave:
 
 ; Ring menus preserve readout ages but retire all tile leases. Invalidate
 ; resident UI keys too: native menu/map uploads may replace their VRAM.
+; A freed entry keeps the readout's pixels (!fx_cused = $FFFF: FX draws a
+; cell there only once its own upload landed, fx/native.asm).
 ui_sc_suspend:
 	LDA.w !ui_sc&$FFFF
 	AND.w #!UISC_RESIDENT|!UISC_DRAW
@@ -83,6 +85,7 @@ ui_sc_suspend:
 	BCS +
 	LDA.w #$FFFF
 	STA.l !fx_ccell,X
+	STA.l !fx_cused,X
 +	INX : INX
 	CPX.w #30
 	BCC -
@@ -567,6 +570,7 @@ ui_sc_cancel_uploads:
 	BCS +
 	LDA.w #$FFFF
 	STA.l !fx_ccell,X
+	STA.l !fx_cused,X                 ; not FX's pixels (ui_sc_suspend)
 +	INX : INX
 	CPX.w #30
 	BCC -

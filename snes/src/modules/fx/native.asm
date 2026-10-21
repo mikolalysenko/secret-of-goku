@@ -11,7 +11,10 @@
 ; the streamer, set with the weapon effect +$61 at C2:BF36/BF7C) and is
 ; shown while that effect runs. Damage numbers are actors too: in slot 5
 ; their digits replaced cells FX still believed resident, so the aura,
-; which allocates first, showed white digits with black outlines.
+; which allocates first, showed white digits with black outlines. A killed
+; enemy becomes one (species $F9, +$180) at once; its count rises to 3
+; five to ten frames later, so slot 5's first three entries are claimed
+; from the kill on.
 ;
 ; The streamer runs one phase per vblank, $56 (C1:9530), which the field
 ; loop advances only after a completed frame's vblank (C0:B07D): every
@@ -23,7 +26,12 @@
 ; - Every FX frame (fx_begin, inlined) and for UI leases (fx_native_drop):
 ;   entries the coming vblank streams forget their cell (residency bit,
 ;   pending and failed upload; a UI lease its key). Slot 5's in phases 1-2
-;   (phase 2, or a lag vblank of the next frame), slots 1-2's in phase 4.
+;   (phase 2, or a lag vblank of the next frame), slots 1-2's in phase 4
+;   (also in phase 3 cost 3 more CPU misses per 240 charge frames).
+; - Those entries then hold the game's pixels: !fx_cused = $FFFF marks
+;   them (also while FX does not hold the region), and fx_cache_get draws
+;   a cell taken there, or over a UI lease, only once its upload landed.
+;   A late vblank that slips the upload then shows nothing, not digits.
 ; - FX's allocator checks the free entry it takes (fx_cache_candidate);
 ;   UI leases skip every claimed entry (fx_native_mask, once per frame).
 ; All: M16/X16, DB = $7E, any D (no direct page); X/Y lost unless noted.
@@ -37,10 +45,16 @@ fx_native_drop:
 	BCS .none
 	SEP #$20
 	LDA.w $EA84
+	BNE .five
+	LDA.w $EA80
+	CMP.b #$F9
+	BEQ .five
 	REP #$20
-	BNE fx_native_drop5
 .none
 	RTS
+.five
+	REP #$20
+	BRA fx_native_drop5
 
 ; Slot 5's pieces (phases 1-2).
 fx_native_drop5:
@@ -66,7 +80,9 @@ fx_native_drop12:
 +	REP #$20
 	JSR fx_native_slots12
 	; fall through
-; A = entries whose cell is forgotten. Free and unheld entries are kept.
+; A = entries the game streams over: each holds the game's pixels from now
+; on (!fx_cused = $FFFF) and forgets its cell. Free and unheld entries
+; stay free and unheld.
 fx_native_forget:
 	BEQ .done
 	LDX.w #0                     ; entry * 2
@@ -74,6 +90,8 @@ fx_native_forget:
 	LSR
 	BCC .next
 	PHA                          ; the entries still to visit
+	LDA.w #$FFFF
+	STA.l !fx_cused,X
 	LDA.l !fx_ccell,X
 	CMP.w #$FFFE
 	BCS .kept                    ; free, or a region FX does not hold
@@ -137,7 +155,8 @@ fx_native_mask:
 	PLY
 	RTS
 
-; A = entries of slot 5's pieces (cell count $EA84).
+; A = entries of slot 5's pieces (cell count $EA84; a damage-number object
+; claims its three cells before its count rises).
 fx_native_slot5:
 	LDA.w $EA84
 	AND.w #$00FF
@@ -146,7 +165,14 @@ fx_native_slot5:
 	LDA.w #7
 +	ASL
 	TAX
+	LDA.w $EA80
+	AND.w #$00FF
+	CMP.w #$00F9
+	BEQ +
 	LDA.l fx_native_a,X
+	RTS
++	LDA.l fx_native_a,X
+	ORA.w #$0007
 	RTS
 
 ; A = entries of slots 1 and 2's fourth and fifth pieces.

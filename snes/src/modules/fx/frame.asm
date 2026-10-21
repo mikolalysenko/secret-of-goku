@@ -186,7 +186,8 @@ endif
 	LDA.w #$0000
 	STA.l !fx_ndraw
 +	; The game's stream may take cached cells (native.asm): slot 5's in
-	; phase 2 (or a lag vblank of the next frame), slots 1-2's in phase 4.
+	; phase 2 (or a lag vblank of the next frame; a damage number before its
+	; count rises), slots 1-2's in phase 4.
 	LDA.l !fx_phase
 	CMP.w #4
 	BEQ .native12
@@ -195,8 +196,14 @@ endif
 	BCS .native
 	SEP #$20
 	LDA.w $EA84
+	BNE .native5
+	LDA.w $EA80
+	CMP.b #$F9
+	BEQ .native5
 	REP #$20
-	BEQ .native
+	BRA .native
+.native5
+	REP #$20
 	JSR fx_native_drop5
 	BRA .native
 .native12
