@@ -4,6 +4,39 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the fight's colours, beam pictures, bursts and first panel frames (2026-10-21)
+
+- The globe and the beams no longer take the field's colours on alternate
+  frames while Goku is hit (the `space` preset's 30 Hz garbage): the
+  game's palette transfer also runs on the lag vblanks that skip the
+  modules, and there it sent the game's palette alone. The orbit's colours
+  now go out within that transfer, after the game's buffer
+  (`orbit_cgram_live`).
+- Every beam class's pictures but the finger laser's come made from
+  extended data (classes 0, 2 and 4 radii 2-32, class 3 2-12): Goku's wave
+  no longer starts as a thin line for some ten frames while the run-time
+  builder caught up with its widening.
+- The hit bursts draw twice as fast (their parts mirrored ahead in ROM,
+  written straight into OAM): about 10 lines a frame back in the frames of
+  a beam's hits.
+- A text panel's first frame: the HUD's bar no longer vanishes for a frame
+  (each indirect HDMA set has its own BGMODE table; the one table was
+  rewritten under the HDMA, which kept the HUD lines in Mode 7), and the
+  panel is no longer black or a line off (its palette goes out with its
+  rows, and the band waits for the rows).
+- The `fight` and `clash` tests watch every frame: the colours the orbit
+  owns, late vblanks, CGRAM writes and general DMA under HDMA on the
+  visible lines (each fails the case), and the frames whose sprites pass
+  the PPU's line limits (reported). `ORBIT_SHOTS` / `ORBIT_DUMP` screenshot
+  and dump chosen frames; `fight-view.mjs` draws the browser's own picture
+  of each fight frame for comparison.
+- Open: with a beam across the stars some lines pass 34 slivers and the
+  PPU drops slivers of the beam's cells and the bursts (45 frames in
+  `fight`, 89 in `clash`); the finger laser's hits pass the
+  limit without stars.
+- Extended data for the orbit grows by 60 KiB (beam pictures), to 2,554.7
+  of 2,944 KiB in all.
+
 ## Orbit: the cosmic montage's pullback (2026-10-21)
 
 - The second surge's cinematic now ends with the browser's pullback

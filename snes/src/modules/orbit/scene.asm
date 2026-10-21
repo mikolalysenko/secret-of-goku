@@ -317,7 +317,13 @@ orbit_picture_init:
 	LDA.b #$00
 	STA.l !orbit_load
 	REP #$30
-	RTS
+	LDA.w #$FFFF                   ; (both sets' BGMODE tables valid from the start)
+	STA.w !hb_have
+	STA.w !hb_have+2
+	LDX.w #$0000
+	JSR globe_mode_write
+	LDX.w #!IT_SIZE
+	JMP globe_mode_write
 
 ; Keep the game from writing BG VRAM while the picture is ours: BG row and
 ; column streaming (C0:C692) and animated tiles (C0:C306/C339).
@@ -1250,37 +1256,16 @@ orbit_nmi_live:
 	LDA.w !g_hofs+1 : STA.w $210D
 	LDA.w !g_vofs : STA.w $210E
 	LDA.w !g_vofs+1 : STA.w $210E
-	; Colours (the game's vblank sent its whole palette before us): the
-	; backdrop = sky; the globe (light level 3); our OBJ palettes; the text
-	; panel's, while one shows (the band layers': bands_nmi).
-	STZ.w $2121
-	LDA.b #!ORBIT_SKY : STA.w $2122
-	LDA.b #!ORBIT_SKY>>8 : STA.w $2122
-	LDA.b #!ORBIT_GLOBE_CGRAM
-	STA.w $2121
-	REP #$20
-	LDA.w #$2200                   ; DMA mode 0 to $2122
-	STA.w $4370
-	LDA.w #orbit_globe_pal+(2*2*96) ; light level 3
-	STA.w $4372
-	LDA.w #2*!ORBIT_GLOBE_COLORS
-	STA.w $4375
-	SEP #$20
-	LDA.b #orbit_globe_pal>>16
-	STA.w $4374
-	LDA.b #$80
-	STA.w $420B
-	JSR orbit_nmi_obj_palettes
-	LDA.w !t_have
-	BEQ +
-	JSR text_palettes
-+
+	; (the colours went with the game's palette transfer: orbit_cgram_live)
 	; HDMA: channel 2 BGMODE, 3 M7A, 4 M7Y, 6 windows (tables in bank $32).
 	REP #$20
 	LDA.w #$0500                   ; mode 0, $2105
 	STA.w $4320
-	LDA.w #!hb_mode
-	STA.w $4322
+	LDA.w #!hb_mode                ; (the BGMODE table of the set it takes)
+	LDX.w !g_cur_it
+	BEQ +
+	LDA.w #!hb_mode1
++	STA.w $4322
 	LDA.w #$1B42                   ; indirect, mode 2, $211B (M7A)
 	STA.w $4330
 	LDA.w !g_cur_it
@@ -1640,20 +1625,29 @@ orbit_picture_init_far:
 	RTL
 
 ; modules_cgram_upload (core/cgram.asm, at the game's own palette transfer;
-; JSL, M16/X16, DB = 0): while a montage picture is up, its colours (carry
-; set: sent); else the game's own transfer.
+; JSL, M16/X16, DB = 0): while the scene shows, its colours in that same
+; transfer (carry set: sent): a montage picture's, or the game's palette
+; with the globe picture's colours over it. The transfer also runs on lag
+; vblanks that skip the modules' vblank work (the game's damage flash, an
+; open ring menu): the scene's colours hold there too. Else the game's own.
 orbit_cgram_upload:
 	PHP
 	SEP #$20
 	LDA.l !orbit_state
 	CMP.b #!OS_LIVE
 	BNE .no
-	LDA.l !orbit_mpic
-	BEQ .no
 	REP #$30
 	PHB
 	PEA.w $3232 : PLB : PLB
+	SEP #$20
+	LDA.l !orbit_mpic
+	REP #$20
+	BEQ .globe
 	JSL montage_cgram
+	BRA .sent
+.globe
+	JSR orbit_cgram_live
+.sent
 	PLB
 	PLP
 	SEC
@@ -1662,6 +1656,52 @@ orbit_cgram_upload:
 	PLP
 	CLC
 	RTL
+
+; The globe picture's colours (DB = $32, M16/X16): the game's palette, then
+; over it the backdrop (the sky), the globe (light level 3), OBJ palettes
+; 0-1 and 4-7, the text panel's while one shows or is due, the band
+; layers' while the set the vblank takes shows them.
+orbit_cgram_live:
+	LDA.w #$0000
+	LDY.w #512
+	JSL core_cgram_native
+	SEP #$20
+	STZ.w $2121
+	LDA.b #!ORBIT_SKY : STA.w $2122
+	LDA.b #!ORBIT_SKY>>8 : STA.w $2122
+	LDA.b #!ORBIT_GLOBE_CGRAM
+	STA.w $2121
+	REP #$20
+	LDA.w #$2200                   ; DMA mode 0 to $2122
+	STA.w $4370
+	LDA.w #orbit_globe_pal+(2*2*96) ; light level 3
+	STA.w $4372
+	LDA.w #2*!ORBIT_GLOBE_COLORS
+	STA.w $4375
+	SEP #$20
+	LDA.b #orbit_globe_pal>>16
+	STA.w $4374
+	LDA.b #$80
+	STA.w $420B
+	JSR orbit_nmi_obj_palettes
+	REP #$20
+	LDA.w !t_have
+	ORA.w !t_want
+	SEP #$20
+	BEQ +
+	JSR text_palettes
++	REP #$20
+	LDX.w #$0000                   ; (the set the vblank takes: its band lines)
+	LDA.w !g_cur_it
+	BEQ +
+	LDX.w #$0002
++	LDA.w !g_itend,X
+	BEQ +
+	LDA.w !g_itband,X
+	BEQ +
+	JSR bands_cgram
++	REP #$30
+	RTS
 
 ; n_rows DMAs of n_len bytes from n_bank:n_src to n_vram, n_vram + $100,
 ; ... (OBJ rows are 16 tiles apart). M16/X16.

@@ -283,7 +283,7 @@ assert !ma_pairok+2 <= !MA_T1A, "the aerial cut's working state runs into its ta
 !it_m7d   = $10
 !it_win   = $20
 
-!hb_mode    = !SB+$860            ; BGMODE ($2105) table, 16 bytes (static per text band)
+!hb_mode    = !SB+$860            ; BGMODE ($2105) table of indirect set 0, 16 bytes (hb_mode1: set 1's)
 !SB_STARS   = !SB+$870            ; star lists: 3 count words, then the entries
 !s_lists    = !SB_STARS           ; bytes in list d at s_lists + d*2 - 2
 !s_list1    = !SB_STARS+$008      ; depth 1 (44 x 4)
@@ -403,6 +403,12 @@ assert !SB_END <= $8000, "orbit scene block overflow"
 !f_menus    = !FB+$244             ; ring + menu frames seen (a change: no catch-up)
 !ORBIT_COMBAT_OWNER = $0100        ; owner bit for combat's input lock and danger
 assert !FIGHT_END <= !SB+$D00, "orbit fight block overflow"
+; (after the fight's block: the BGMODE table of the second indirect set,
+; and what each set's table holds: g_text | $100 in the pullback)
+!hb_mode1   = !SB+$CC6             ; 16 bytes (hb_mode: the first set's)
+!hb_have    = !SB+$CD6             ; 2 words ($FFFF: nothing yet)
+assert !FIGHT_END+6 <= !hb_mode1, "the second BGMODE table runs into the fight's state"
+assert !hb_have+4 <= !SB+$D00, "the BGMODE tables' state runs into the drawing block"
 
 ; ---------------------------------------------------------------------------
 ; Drawing and dynamic VRAM (draw.asm, scene.asm).
@@ -420,7 +426,7 @@ assert !FIGHT_END <= !SB+$D00, "orbit fight block overflow"
 !d_t6       = !DB+$14
 !d_t7       = !DB+$16
 !d_hit      = !DB+$18              ; hit entry being drawn
-!d_sx       = !DB+$1A              ; burst mirror flags (bit 0: x mirrored, bit 1: y)
+!d_sx       = !DB+$1A              ; burst scratch (fd_burst: the mirrored frame's offset)
 ; Wanted (frame side) and uploaded (NMI side) dynamic cells; $FFFF = none.
 !v_frieza   = !DB+$20              ; bank FA offset of Frieza's 32x32 frame
 !v_frieza_h = !DB+$22

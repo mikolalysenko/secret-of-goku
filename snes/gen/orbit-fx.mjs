@@ -59,7 +59,10 @@ export const ORBIT_FX_PAL={FIRE:0,BLUE:4,PINK:5,FRIEZA:6,GOLD:7};
 const SLOTS=[0x08C,0x08E,0x0A8,0x0AA,0x0AC,0x0AE,
   ...[0x0C0,0x0E0,0x100,0x120,0x180,0x1A0].flatMap(r=>[0,2,4,6,8,10,12,14].map(c=>r+c)),
   0x008,0x00A,0x00C,0x00E,0x028,0x02A,0x02C,0x02E];
-const BEAM_C2_R1=28;                 // class 2's pictures in ROM: radii 2-28
+// Beam pictures made here per heading class (beam.asm beam_rom): radii
+// 2 to these (class 1: the struggle's rays; the others: Goku's wave, at most
+// 8 + 24 = 32, and Frieza's beams, at most 12, in the classes they use).
+const BEAM_ROM_R1=[32,48,32,12,32];
 const REGIONS=[{name:'vram_a',first:0x080,count:128},{name:'vram_b',first:0x100,count:64},{name:'vram_c',first:0x180,count:64},{name:'vram_d',first:0x000,count:64}];
 
 export async function generate({rom,repo,outDir,xdata}){
@@ -204,14 +207,23 @@ export async function generate({rom,repo,outDir,xdata}){
   const band=(f,row)=>body[f][row*16];
   data.push('orbit_fx_band_blue:','\tdw '+[band(0,6),band(0,7),band(1,6),band(1,7)].map(c=>hex4(c-1)).join(','));
   data.push('orbit_fx_band_pink:','\tdw '+[band(0,6),band(0,7),band(1,6),band(1,7)].map(c=>hex4(pink(c)-1)).join(','));
-  // Bursts.
-  const ptr=[],parts=[];
-  for(const frame of combustionFrames.burst){
+  // Bursts, mirrored ahead (draw.asm fd_parts): per mirror m (bit 0: x,
+  // bit 1: y) and frame f, at orbit_fx_burst_m[m * 7 + f], a count, then
+  // per part its 16x16 cell's top left from the anchor (words: x or -x -
+  // 15 when mirrored, y likewise) and the tile word with its flips.
+  // orbit_fx_burst_tf: the frame of age t (0-41), t / 6, times 2.
+  const ptr=[],parts=[],word=v=>[v&255,(v>>8)&255];
+  for(let m=0;m<4;m++)for(const frame of combustionFrames.burst){
     ptr.push(parts.length);parts.push(frame.length);
-    for(const p of frame){const t=tileOf(`comb_${p.cell}`);parts.push(t&255,t>>8,p.x&255,p.y&255,(p.flipX?1:0)|(p.flipY?2:0));}
+    for(const p of frame){
+      const t=tileOf(`comb_${p.cell}`),fx=!!p.flipX!==!!(m&1),fy=!!p.flipY!==!!(m&2),px=p.x|0,py=p.y|0;
+      parts.push(...word(m&1?-px-15:px),...word(m&2?-py-15:py),...word(t|(fx?0x4000:0)|(fy?0x8000:0)));
+    }
   }
-  data.push('orbit_fx_burst_ptr:','\tdw '+ptr.map(v=>'orbit_fx_burst_parts+'+v).join(','));
-  data.push('orbit_fx_burst_parts:');
+  if(combustionFrames.burst.length!==7)throw Error('orbit-fx: burst frames '+combustionFrames.burst.length+' (fd_burst draws 7)');
+  data.push('orbit_fx_burst_m:','\tdw '+ptr.map(v=>'orbit_fx_burst_mparts+'+v).join(','));
+  data.push('orbit_fx_burst_tf:','\tdb '+Array.from({length:42},(_,t)=>hex2(Math.floor(t/6)*2)).join(','));
+  data.push('orbit_fx_burst_mparts:');
   for(let i=0;i<parts.length;i+=16)data.push('\tdb '+parts.slice(i,i+16).map(hex2).join(','));
   // fx.burst offsets: sub-burst i (1-8) at age t (0-41): heading (i*6)&15,
   // radius 8 + min(24, t): ((v * radius) >> 8) per axis.
@@ -239,10 +251,10 @@ export async function generate({rom,repo,outDir,xdata}){
   // -ox vy + oy vx, outer for floor(V / 256) in [-R, R] (colour 2), inner
   // in [((R + 2) >> 1) - R, ((3R + 3) >> 1) - R - 1] (colour 3); radii 2-48
   // (even), chains 0-2, 512 bytes each (4 rows of 4 tiles), in two blobs:
-  // chains 0-1 by radius, then chain 2 by radius. Class 2's too (headings
-  // 2, 6, 10, 14) for radii 2-28, by radius then chain: the second surge's
-  // pullback's beam (heading 14) changes radius every frame or two while
-  // it swells and fades, and the fight's diagonal beams take them as well.
+  // chains 0-1 by radius, then chain 2 by radius. The other classes' too
+  // (BEAM_ROM_R1), by radius then chain, one blob each: a beam's radius
+  // changes every frame while it swells or fades (Goku's wave, the
+  // pullback's beam), faster than the run-time builder makes pictures.
   {
     const pic=(c,R,j)=>{
       const iLo=((R+2)>>1)-R,iHi=((3*R+3)>>1)-R-1,idx=new Uint8Array(32*32);
@@ -253,13 +265,15 @@ export async function generate({rom,repo,outDir,xdata}){
       const bytes=[];for(let ty=0;ty<4;ty++)for(let tx=0;tx<4;tx++)bytes.push(...encodeTile(idx,32,tx*8,ty*8));
       return bytes;
     };
-    const pics=[[],[]],c2=[];
-    for(let R=2;R<=48;R+=2)for(let j=0;j<3;j++)pics[j<2?0:1].push(...pic(classes[1],R,j));
-    for(let R=2;R<=BEAM_C2_R1;R+=2)for(let j=0;j<3;j++)c2.push(...pic(classes[2],R,j));
+    const pics=[[],[]];
+    for(let R=2;R<=BEAM_ROM_R1[1];R+=2)for(let j=0;j<3;j++)pics[j<2?0:1].push(...pic(classes[1],R,j));
     xdata('orbit_beam_c1a',Uint8Array.from(pics[0]));
     xdata('orbit_beam_c1b',Uint8Array.from(pics[1]));
-    xdata('orbit_beam_c2',Uint8Array.from(c2));
-    L.push(`!OFX_BEAM_C2_R1 = ${BEAM_C2_R1}`);
+    for(const k of[0,2,3,4]){
+      const b=[];for(let R=2;R<=BEAM_ROM_R1[k];R+=2)for(let j=0;j<3;j++)b.push(...pic(classes[k],R,j));
+      xdata(`orbit_beam_c${k}`,Uint8Array.from(b));
+    }
+    BEAM_ROM_R1.forEach((r,k)=>L.push(`!OFX_BEAM_C${k}_R1 = ${r}`));
   }
   data.push('; beam classes: vx, vy, qi, rr, A0x, A0y, Px, Py, Sx, Sy, V0, Vstep, across, half (words)','orbit_fx_beam_class:');
   for(const c of classes)data.push('\tdw '+[c.vx,c.vy,c.qi,c.rr,c.A[0],c.A[1],c.P[0],c.P[1],c.S[0],c.S[1],c.V0,c.Vs,c.across,c.half].map(hex4).join(','));

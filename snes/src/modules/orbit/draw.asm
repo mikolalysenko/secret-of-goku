@@ -282,7 +282,7 @@ fd_burst:
 +	CLC : ADC.w !d_t1
 	STA.w !d_t1
 .anchored
-	; mirror flags: x mirrored by flip (i odd) xor turn 2; y by turn 2
+	; mirror m: x mirrored by flip (i odd) xor turn 2; y by turn 2
 	LDA.w !d_t5
 	AND.w #$0003
 	CMP.w #$0002
@@ -294,19 +294,18 @@ fd_burst:
 	LDA.w !d_t5
 	AND.w #$0001                   ; ...and the flip toggles x
 	EOR.w !d_sx
-	STA.w !d_sx
-	; frame t / 6
-	LDA.w !d_t6
-	STA.w $4204
-	SEP #$20
-	LDA.b #6
-	STA.w $4206
-	REP #$20
-	NOP : NOP : NOP : NOP : NOP : NOP : NOP : NOP
-	LDA.w $4214
+	; frame t / 6 of mirror m: orbit_fx_burst_m[m * 7 + t / 6]
 	ASL
+	STA.w !d_sx                    ; m * 2
+	ASL : ASL : ASL
+	SEC : SBC.w !d_sx              ; m * 14
+	STA.w !d_sx
+	LDX.w !d_t6
+	LDA.l orbit_fx_burst_tf,X
+	AND.w #$00FF
+	CLC : ADC.w !d_sx
 	TAX
-	LDA.l orbit_fx_burst_ptr,X
+	LDA.l orbit_fx_burst_m,X
 	TAX
 	JSR fd_parts
 .next
@@ -317,80 +316,77 @@ fd_burst:
 +
 	RTS
 
-; Draw the burst parts at X16 (bank of orbit_fx_burst_parts) around
-; (!d_t0, !d_t1) with the mirror flags in !d_sx.
+; Draw a burst frame's parts as mirrored (X16: its entry in the bank of
+; orbit_fx_burst_mparts, orbit-fx.mjs) around (!d_t0, !d_t1): 16x16
+; entries straight into OAM at o_slot as ofx_put would write them, the
+; ones entirely off the screen skipped.
 fd_parts:
-	LDA.l orbit_fx_burst_parts&$FF0000,X
+	LDA.l orbit_fx_burst_mparts&$FF0000,X
 	AND.w #$00FF
-	STA.w !m_t7                    ; parts left (ofx_put clobbers d_t6/d_t7)
-	INX
-.part
-	LDA.w !m_t7
 	BNE +
 	RTS
-+	DEC.w !m_t7
-	PHX
-	LDA.l orbit_fx_burst_parts&$FF0000,X     ; tile
++	STA.w !m_t7                    ; parts left
+	INX
+	LDY.w !o_slot
+.part
+	CPY.w #$0200
+	BCS .done
+	; x on the screen: -15 <= x <= 255
+	LDA.l (orbit_fx_burst_mparts&$FF0000)+0,X
+	CLC : ADC.w !d_t0
+	STA.w !m_t5
+	CLC : ADC.w #15
+	CMP.w #271
+	BCS .skip
+	; y: -15 <= y <= 223
+	LDA.l (orbit_fx_burst_mparts&$FF0000)+2,X
+	CLC : ADC.w !d_t1
+	STA.w !m_t6
+	CLC : ADC.w #15
+	CMP.w #239
+	BCS .skip
+	SEP #$20
+	LDA.w !m_t5 : STA.w $0800,Y
+	LDA.w !m_t6 : STA.w $0801,Y
+	REP #$20
+	LDA.l (orbit_fx_burst_mparts&$FF0000)+4,X
 	ORA.w #(!OFX_PAL_FIRE<<9)|!OA_PRI
-	STA.w !d_ta
-	LDA.l (orbit_fx_burst_parts&$FF0000)+4,X ; flags
-	AND.w #$0003
-	STA.w !m_t6
-	; x
-	LDA.l (orbit_fx_burst_parts&$FF0000)+2,X
-	AND.w #$00FF
-	CMP.w #$0080
-	BCC + : ORA.w #$FF00
-+	STA.w !m_t5
-	LDA.w !d_sx
-	AND.w #$0001
-	BEQ .xPlain
-	LDA.w !d_t0                    ; mirrored: x - p.x - 15, h-flip toggled
-	SEC : SBC.w !m_t5
-	SEC : SBC.w #15
-	STA.w !d_x
-	LDA.w !m_t6
-	EOR.w #$0001
-	STA.w !m_t6
-	BRA .y
-.xPlain
-	LDA.w !d_t0
-	CLC : ADC.w !m_t5
-	STA.w !d_x
-.y
-	PLX
+	STA.w $0802,Y
+	LDA.w !m_t5
+	BPL +
+	JSR fd_parts_x9                ; (left of the screen: x's bit 8)
++	INY : INY : INY : INY
+.skip
+	TXA
+	CLC : ADC.w #6
+	TAX
+	DEC.w !m_t7
+	BNE .part
+.done
+	STY.w !o_slot
+	RTS
+
+; The high table's x bit of the 16x16 entry at Y16 (OAM offset). Keeps X, Y.
+fd_parts_x9:
 	PHX
-	LDA.l (orbit_fx_burst_parts&$FF0000)+3,X
-	AND.w #$00FF
-	CMP.w #$0080
-	BCC + : ORA.w #$FF00
-+	STA.w !m_t5
-	LDA.w !d_sx
-	AND.w #$0002
-	BEQ .yPlain
-	LDA.w !d_t1
-	SEC : SBC.w !m_t5
-	SEC : SBC.w #15
-	STA.w !d_y
-	LDA.w !m_t6
-	EOR.w #$0002
-	STA.w !m_t6
-	BRA .put
-.yPlain
-	LDA.w !d_t1
-	CLC : ADC.w !m_t5
-	STA.w !d_y
-.put
-	LDA.w !m_t6                    ; bit 0 -> h-flip ($4000), bit 1 -> v-flip ($8000)
-	XBA
-	ASL : ASL : ASL : ASL : ASL : ASL
-	ORA.w !d_ta
-	STA.w !d_ta
-	STZ.w !d_big
-	JSR ofx_put
+	TYA
+	LSR : LSR
+	AND.w #$0003
+	TAX
+	LDA.l .bits,X
+	STA.w !m_t4
+	TYA
+	LSR : LSR : LSR : LSR
+	TAX
+	SEP #$20
+	LDA.w $0A00,X
+	ORA.w !m_t4
+	STA.w $0A00,X
+	REP #$20
 	PLX
-	INX : INX : INX : INX : INX
-	JMP .part
+	RTS
+.bits
+	db $01,$04,$10,$40,$00
 
 ; Frieza's warning: the growing Death Ball over him, the pink charge of a
 ; beam, the finger glint of a laser, a disc over his head.
