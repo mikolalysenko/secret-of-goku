@@ -448,6 +448,25 @@ path. The full Tree sequence reaches every scene at the same frame as the
 pre-change baseline, with no added lag. Strict build, Frieza, UI and the
 six-scene performance suite pass.
 
+### The Tree's brightness fades
+
+`fz_tree_nmi` latches the completed picture's brightness ceiling in
+`fzt_showbright` (`$32:769B`); WRAM `FZI_BRIGHT` marks it valid. The
+module-owned hook at `C0:C15F` applies that ceiling at the field NMI's final
+INIDISP write. Native forced blank and darker native fades win. `$E6`
+stays unchanged, so the wake ramp can rise and later door/menu fades keep
+their own state. Lag vblanks retain the displayed ceiling. The next
+completed frame without a ceiling, or release of scene SRAM, clears it.
+
+The `tree` case observes INIDISP after the final write and checks both
+browser ramps (48-frame return, 40-frame wake), intermediate levels,
+unchanged `$E6`, native blanking and restoration. Both ramps expose all
+15 levels below full brightness, with no wrong frames. The hook has a
+short WRAM-only idle path; smaller FX palette-map copies and fixed channel-7
+palette uploads reduce the accompanying NMI cost. The checkpoint's gameplay
+counts are unchanged except `transform-grass` (one miss, baseline zero);
+the remaining integration timing checks must resolve that regression.
+
 ## Resources
 
 | Resource | Use |
@@ -659,12 +678,6 @@ dialogue window does).
   palettes 5-7 only for completed world frames: the field's lag-palette
   pattern. The flyby measures no lag frames; a world counterpart of
   `modules_cgram_upload` would close it.
-- **Tree vista brightness**: `fz_tree_nmi` forces INIDISP for tree-return's
-  dim to black and tree-wake's fade-in, but the field NMI writes `$E6` to
-  `$2100` right after the module callbacks (`C0:C15F`), so those fades never
-  show (the `tree` case's k18/k19 pictures are at full brightness). A
-  brightness ceiling on `$E6` in frame code (as `death.asm`) or a core hook
-  after `C15F` would restore them.
 - **flight**: none left; `bind.asm` binds `!FLIGHT_API_CAN_LAND`,
   `_CAN_LAND_T` and `!FLIGHT_API_CAMERA` when flight is built in.
 - **ending / orbit (scene SRAM)**: Frieza releases `!SRAM_WORK_SCENE` on the

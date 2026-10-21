@@ -231,20 +231,18 @@ macro fx_nmi_palette(class)
 	STA $2121
 	REP #$20
 if <class> != !FX_CLASS_DYN
-	LDA.l !fx_nmi_reg
-	TAY
 	LDA.w #$2200                 ; A->B, one register: $2122
-	STA $4300,Y
+	STA $4370
 	LDA.w #((fx_class_palettes+(<class>*32))&$FFFF)
-	STA $4302,Y
+	STA $4372
 	SEP #$20
 	LDA.b #fx_class_palettes>>16
-	STA $4304,Y
+	STA $4374
 	REP #$20
 	LDA.w #32
-	STA $4305,Y
+	STA $4375
 	SEP #$20
-	LDA.l !fx_nmi_bit
+	LDA.b #$80
 	STA $420B
 else
 	SEP #$20
@@ -290,10 +288,12 @@ fx_cgram_upload:
 	; Match Frieza's rule: core publishes ready just before the native
 	; TSB $EC. A vblank in that gap keeps the old OAM and palette map.
 	LDA $EC
-	AND.w #$0009
-	BEQ .lag
 	LSR
-	BCC .noOam
+	BCS .completed
+	AND.w #$0004
+	BEQ .lag
+	BRA .noOam
+.completed
 	LDA.l !core_dma_ready
 	BEQ .noOam
 	LDA.l !fx_palfree
@@ -306,10 +306,9 @@ fx_cgram_upload:
 	STA.l !fx_nmipal+2
 	LDA.l !fx_clspal+4
 	STA.l !fx_nmipal+4
-	SEP #$20
-	LDA.l !fx_clspal+6
-	STA.l !fx_nmipal+6
-	REP #$20
+	; Overlap class 5 to copy the seventh byte without two width switches.
+	LDA.l !fx_clspal+5
+	STA.l !fx_nmipal+5
 	BRA .send
 .noOam
 	; A native-only OAM upload (e.g. ring icons) no longer uses our map.
@@ -338,16 +337,11 @@ fx_cgram_upload:
 	LDA.w #0
 	LDY.w #512
 	JSL core_cgram_native
-+	; The old late-NMI uploader uses fx_s. Save those two words because
-	; this early hook also runs while the interrupted frame owns fx_s.
++
 .sent
-	LDA.l !fx_nmi_reg : PHA
-	LDA.l !fx_nmi_bit : PHA
-	LDA.w #$0070 : STA.l !fx_nmi_reg
-	LDA.w #$0080 : STA.l !fx_nmi_bit
+	; Palettes run only in the field's early hook, always on channel 7.
+	; No shared frame scratch or channel selection is needed here.
 	JSR fx_nmi_palettes
-	PLA : STA.l !fx_nmi_bit
-	PLA : STA.l !fx_nmi_reg
 	SEC
 	RTL
 

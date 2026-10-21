@@ -1327,7 +1327,7 @@ fz_scene_sram:
 	RTS
 .elsewhere
 	SEP #$20
-	LDA.b #!FZI_SRAM
+	LDA.b #!FZI_SRAM|!FZI_BRIGHT
 	TRB !fz_wasidle
 	REP #$20
 	CLC
@@ -1338,7 +1338,7 @@ fz_scene_free:
 	LDA.w #!SCENE_FRIEZA
 	JSL core_scene_release
 	SEP #$20
-	LDA.b #!FZI_SRAM
+	LDA.b #!FZI_SRAM|!FZI_BRIGHT
 	TRB !fz_wasidle
 	REP #$20
 	RTS

@@ -51,6 +51,9 @@ fz_vram_settle:
 	LDA !fz_vista
 	AND.w #$003F                      ; the vista's requests, the Balls
 	BNE .nmi
+	LDA !fz_wasidle
+	AND.w #!FZI_BRIGHT                ; retire a finished fade's displayed ceiling
+	BNE .nmi
 	LDA !fz_spr_pend
 	INC                               ; $FFFF: no frame to upload
 	BNE .nmi

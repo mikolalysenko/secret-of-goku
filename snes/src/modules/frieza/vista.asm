@@ -24,7 +24,7 @@
 ; this frame's request)
 !FZV_ON     = $01                     ; show the vista
 !FZV_PREV   = $02                     ; it showed last frame (restore when not now)
-!FZV_BRIGHT = $04                     ; override the brightness (!fzt_bright)
+!FZV_BRIGHT = $04                     ; brightness ceiling (!fzt_bright)
 !FZV_UP     = $08                     ; upload the tilemaps if they are not up
 
 ; Busy field frame: the Tree scenes' picture.
@@ -238,7 +238,7 @@ fz_tree_addshake:
 	PLA
 	RTS
 
-; A16 = brightness 0-15 for the vblank to force.
+; A16 = brightness ceiling 0-15 for the next completed vblank.
 fz_tree_bright:
 	SEP #$20
 	STA.l !fzt_bright
@@ -593,6 +593,11 @@ fz_x9_keep:
 
 ; Vblank (DB = $80): uploads, then the vista's registers or their return.
 fz_tree_nmi:
+	SEP #$20
+	LDA.l $7E0000|!fz_wasidle
+	AND.b #~!FZI_BRIGHT
+	STA.l $7E0000|!fz_wasidle
+	REP #$20
 	LDA.l $7E0000|!fz_vista
 	AND.w #!FZV_UP
 	BEQ .show
@@ -653,10 +658,8 @@ fz_tree_nmi:
 	CMP.w #4
 	BCS +
 	SEP #$20
-	LDA.b #$80
-	STA $2100
-	REP #$20
-	RTS
+	LDA.b #0
+	JMP .latchBright
 +	; scroll = -shake (10 bits)
 	LDA.l !fzt_shake
 	AND.w #$00FF
@@ -717,14 +720,43 @@ fz_tree_nmi:
 	AND.w #!FZV_BRIGHT
 	BEQ .out
 	SEP #$20
-	LDA.l $7E0000|$E6                 ; the game's INIDISP: keep a forced blank
-	BMI +
 	LDA.l !fzt_bright
 	AND.b #$0F
-	STA $2100
-+	REP #$20
+.latchBright
+	STA.l !fzt_showbright
+	LDA.l $7E0000|!fz_wasidle
+	ORA.b #!FZI_BRIGHT
+	STA.l $7E0000|!fz_wasidle
+	REP #$20
 .out
 	RTS
+
+; C0:C15F, the final field NMI brightness write after module callbacks.
+; M8/X16, DB = 0 or $80, D = 0. Native forced blank and darker fades win.
+; Only the NMI-latched ceiling is read, so lag NMIs keep the displayed
+; picture's fade. Never alter $E6: clamping it would prevent the fade-in
+; from rising and could interfere with the next native door/menu fade.
+frieza_field_brightness:
+	LDA.l $7E0000|!fz_wasidle
+	AND.b #!FZI_BRIGHT
+	BEQ .normal
+	LDA $E6
+	BMI .native
+	PHA
+	LDA.l !fzt_showbright
+	CMP $01,S
+	BCS .uncapped
+	STA $2100
+	PLA
+	JML $80C164
+.uncapped
+	PLA
+	BRA .native
+.normal
+	LDA $E6
+.native
+	STA $2100
+	JML $80C164
 
 ; Vblank only, M16/X16, DB = $80. The Tree field uses the native window
 ; channels 0/1 and UI's palette channel 5; channel 6 is free here (the

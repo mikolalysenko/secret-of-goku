@@ -637,15 +637,17 @@ function treeTest(rom,maxFrames=20000){
   const writes=friezaWrites(g.frieza,g.challenge);
   const v=n=>'0x'+(n<0x10000?(0x7E0000|n):n).toString(16);
   const symbols=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8');
-  const sym=[...symbols.matchAll(/^([0-9A-F]{2}):([0-9A-F]{4}) (fz_tree_hud_\w+)$/gmi)].map(m=>`${m[3]}=0x${m[1]}${m[2]}`).join(',');
+  const sym=[...symbols.matchAll(/^([0-9A-F]{2}):([0-9A-F]{4}) (fz_tree_hud_\w+|frieza_field_nmi)$/gmi)].map(m=>`${m[3]}=0x${m[1]}${m[2]}`).join(',');
   return `
 ${readFileSync(join(here,'tree-hud.lua'),'utf8')}
+${readFileSync(join(here,'tree-fade.lua'),'utf8')}
 function test()
   local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__tree'))})
   F.check(ok, 'import')
   H.w8(0x316001, 1)
   F.apply(${luaWrites(writes)})
   local hudDone = F.treeHudStart({${sym}})
+  local fadeDone = F.treeFadeStart({${sym}}, {scene=${v(defs.fz_scene)},age=${v(defs.fz_sage)},returnScene=${defs.FZS_TREE_RETURN},wakeScene=${defs.FZS_TREE_WAKE}})
   local want = {}
   ${Object.entries(treeShots).map(([k,ages])=>`want[${k}] = {${ages.map(a=>`[${a}]=true`).join(',')}}`).join('\n  ')}
   local seen, trace, shots, maps, boxes = {}, {}, {}, {}, {}
@@ -690,6 +692,7 @@ function test()
   H.result('tree', H.r8(${v(defs.fzp_tree)}))
   F.check(H.r8(${v(defs.fzp_tree)}) == ${defs.FZTR_COMPLETE}, 'the Tree is complete')
   hudDone()
+  fadeDone()
   F.done()
 end
 `;
