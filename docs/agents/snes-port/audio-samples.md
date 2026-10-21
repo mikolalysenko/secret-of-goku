@@ -1,5 +1,53 @@
 # Resident custom samples: cartridge option and storage audit
 
+## Combo gain correction (`fix7`)
+
+The current cartridge tag is **`fix7`**. It replaces an active punch/kick
+swing with its contact through native F2 cleanup, preserving full contact
+gain in ordinary combos. Other effect overlaps retain the headroom rule.
+All samples, contact/swing/ki sequences, envelopes and EDL caps are unchanged.
+The 2,304-byte reservation uses **2,301 bytes**; the new helper occupies
+previously unused tuning/ADSR entries, increasing the existing metadata
+uploads by 44 bytes. No sample or music trade-off is required.
+
+The listening manifest now inventories **207 WAVs**, including **29 new
+cartridge takes ending in `-fix7.wav`**. Existing round-four, `punch7`,
+`motion7` and PC recordings remain available. The new tag is paired against
+`motion7` for the swing/combo/volley contexts and against round four for
+contact contexts. No take is normalized; every `fix7` take has zero clipped
+samples, with the highest peak **−1.98 dBFS**. Solo combo, battle combo and
+actual-input melee now peak at **−2.74, −1.98 and −3.00 dBFS**, respectively:
+**3.72, 3.47 and 2.00 dB louder than round four**.
+
+The new file stems are the fifteen existing `motion-*` names listed in the
+next section, plus these fourteen contact takes:
+
+- `contact-solo-hit`, `contact-solo-kick`;
+- `contact-battle-hit`, `contact-battle-kick`, `contact-full-power-hit`, `contact-full-power-kick`;
+- `contact-battle-rapid`, `contact-battle-beam`, `contact-battle-beds`;
+- `contact-full-power-rapid`, `contact-full-power-beam`, `contact-full-power-beds`;
+- `contact-input-battle`, `contact-input-full-power`.
+
+All names end in **`-fix7.wav`**. The captures include one/two-frame
+swing-to-contact spacing, real B-held melee, rapid alternating contacts,
+beam layers and maximum beds in both music mixes. Existing PC references
+retain the browser gains, master gain and compressor. Capture command
+traces are `capture-fix7-motion/results.json` and
+`capture-fix7-contacts/results.json`. `fix-validation7.json` includes the
+full loudness table, clipping counts, hashes and suite results.
+
+The charge timing target is **still open at 13/240**, despite reduced bed
+CPU overhead. [audio.md](audio.md#combo-contact-gain-and-charge-timing-follow-up-october-21-2026)
+contains the before/after miss frames and the baseline reproduction issue.
+The listening package does not present that partial optimization as a
+completed frame-budget fix.
+
+```sh
+node snes/test/audio/capture7.mjs --rom=path/to/cart.sfc --tag=fix7 --only=motion
+node snes/test/audio/capture7.mjs --rom=path/to/cart.sfc --tag=fix7 --only=contacts
+node snes/test/audio/manifest7.mjs
+```
+
 ## Swing and ki follow-up
 
 The current cartridge tag is **`motion7`**, following `punch7` (`91c53d9`).

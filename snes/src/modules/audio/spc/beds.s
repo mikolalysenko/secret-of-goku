@@ -225,5 +225,34 @@ release_done:
  POP A
  MOV $B5,A
 effect_ready:
+ JMP !release_swings
+; A contact replaces its preceding whoosh before allocation/gain counting.
+; These unused instrument $34-$3D tuning / $34-$3F ADSR entries survive
+; every song load (songs only install $20-$2F). No BRR or echo space changes.
+ org $18E8
+release_swings:
+ MOV A,$B5
+ CMP A,#$E7
+ BCC effect_return
+ CMP A,#$E9
+ BCS effect_return
+ PUSH A
+ MOV $B5,#$E5
+ CALL !release_swing_loop
+ POP A
+ MOV $B5,A
+effect_return:
  MOV $2C,$B5
+ RET
+ org $1868
+release_swing_loop:
+ CALL !bed_find
+ BEQ release_swing_next
+ ; Native F2, after its sequencer-stack unwind: release effect ownership,
+ ; noise/pitch-mod/echo state, then let the allocator return/reuse the voice.
+ CALL !$09BE
+release_swing_next:
+ INC $B5
+ CMP $B5,#$E7
+ BNE release_swing_loop
  RET
