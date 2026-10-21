@@ -59,6 +59,12 @@ The generator imports the browser engine and writes `dist/snes/gen/ui/`:
   per-angle sweep sprites (`ui_sweep_oam`) and colours; sin and sec tables.
 - **`watlas.bin`, `dial.bin`**: the opaque world-band atlas and frame tiles;
   the dial's base cells and effect tiles.
+- **Scouter cells** (`ui-scouter.mjs`, called by `ui.mjs`): three outlined
+  characters per 16×16 cell, deduplicated from the browser’s formatted power
+  levels, plus the reticle corner. Seven top-clipping variants implement the
+  radio mask. Glyphs and colours are extracted from `scouter.js`; the build
+  decodes every generated cell and checks all pixels against that font.
+  Number layouts and DMA-only cells live in xdata.
 - **Fixed messages** are pre-expanded to 168-byte glyph-word rows at build
   time. A single interruptible `MVN` copies them into text staging. The
   compressed form uses a 16-entry dictionary of glyph runs (codes
