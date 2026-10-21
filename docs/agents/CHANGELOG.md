@@ -4,6 +4,34 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the cosmic montage's pullback (2026-10-21)
+
+- The second surge's cinematic now ends with the browser's pullback
+  (1802-2042) instead of the globe at the fight's camera:
+  - the globe pulls back from (0, 282, 240) to the fight's opening camera,
+    drawn like the victory's descent from generated tables (its radii
+    share the descent's line tables, its window rows the descent's blobs),
+    down to line 223: HDMA sets Mode 7 and TM again after the field IRQ's
+    HUD split;
+  - the stars without a camera, on the surge's clock;
+  - Goku's beam from the strike site, the Death Ball it drives back
+    (64 and 48 px in two buffers of four cells, filled a cell at a time
+    ahead of each new picture), the two fighters rising to their opening
+    places, the `beam` cue.
+- The globe's rim is clipped at `r + 3` as the browser's `planet()` clips
+  it, which makes the descent's rim exact too (radius 117 and up).
+- Class-2 beam pictures (the diagonal headings, radii 2-28) come made from
+  extended data, like class 1's.
+- The scene's first vblank puts BG3's map and tiles back to the field's;
+  after the montage the intro's HUD showed the shots' BG3 map.
+- The `montage` test adds 13 pullback screenshots against `planet-view.js`
+  itself: the globe's shape 99.65-100%, the sprites 75-94% of its pixels
+  (the beam's band ends in whole cells and has no taper).
+- Not yet: the cut still loads for 16 black frames.
+- Extended data for the orbit grows by 208 KiB (window rows 120, line
+  tables 36, Death Balls 22, beam pictures 21, frame records 9), to 2,494.7
+  of 2,944 KiB in all with the ending's shards.
+
 ## SNES Sandship: a red flash for the wreck's fires (2026-10-21)
 
 - At the maintainer's request the cartridge draws no fires in the wrecked

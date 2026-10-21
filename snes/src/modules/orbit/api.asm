@@ -139,8 +139,9 @@ orbit_debug_space:
 	LDY.w #!OE_FIGHT
 	BRA orbit_debug_enter
 orbit_debug_orbit:
-	; (the cosmic montage and pullback are not ported yet: the orbit starts
-	; with its intro, where the browser's 'orbit' capture shows the surge)
+	; (the orbit starts with its intro, where the browser's 'orbit' capture
+	; is the second surge's start: its cinematic plays from the frieza
+	; module's hand-off, !OE_SURGE)
 	LDY.w #!OE_INTRO
 orbit_debug_enter:
 	CMP.w #!DEBUG_HOOK_FRIEZA_PHASES

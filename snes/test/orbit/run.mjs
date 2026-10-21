@@ -452,13 +452,17 @@ end
     // town shot is compared with the browser's own
     // frieza-collateral-view.js (montage-ref.mjs): the frames of a hit's
     // explosions differ by its bursts' quarter turns (drawn as half turns)
-    // and the 2-pixel edge the shake uncovers. The clock steps once a frame
-    // (no lag frame). ORBIT_MONTAGE_DUMP=1 also dumps VRAM, CGRAM, OAM, the
-    // DMA registers and the shot's working block per screenshot.
+    // and the 2-pixel edge the shake uncovers. The pullback's pictures are
+    // compared with planet-view.js's own: the globe's shape (disc, rim and
+    // sky against reference.mjs, to line 223) and its sprites (the pixels
+    // where the browser's picture is not its plain globe and sky). The
+    // clock steps once a frame (no lag frame). ORBIT_MONTAGE_DUMP=1 also
+    // dumps VRAM, CGRAM, OAM, the DMA registers and the shot's working
+    // block per screenshot.
     const h=await friezaHandoff();
     const {cosmicDuration,cosmicBeat,cosmicShots,aerialCuts,pullbackStart,collateralStart}=await import(resolve(repo,'engine/frieza-cinematic.js'));
     const {montageRef,matchShare}=await import('./montage-ref.mjs');
-    const ages=(process.env.ORBIT_MONTAGE_AGES??'102,172,224,230,235,272,362,382,422,472,553,572,602,642,770,775,902,1064,1112,1272,1360,1365,1467,1482,1622,1742,1792').split(',').map(Number);
+    const ages=(process.env.ORBIT_MONTAGE_AGES??'102,172,224,230,235,272,362,382,422,472,553,572,602,642,770,775,902,1064,1112,1272,1360,1365,1467,1482,1622,1742,1792,1822,1842,1852,1862,1874,1882,1897,1922,1952,1972,1992,2012,2039').split(',').map(Number);
     const dir=join(out,'montage');
     const test=`${h.prelude}
 AGES={${ages.map(a=>a+2).join(',')}}
@@ -478,7 +482,7 @@ function test()
       seen[a] = true
       local name = string.format('m%04d', a - 2)
       H.shot(name)
-      shots[#shots + 1] = string.format('%s %d', name, #trace)
+      shots[#shots + 1] = string.format('%s %d %d %d', name, #trace, H.r16(0x326006), H.r16(0x326008))
       if DUMP then
         H.dumpfile(name .. '.vram', emu.memType.snesVideoRam, 0, 0x10000)
         H.dumpfile(name .. '.cgram', emu.memType.snesCgRam, 0, 0x200)
@@ -492,6 +496,7 @@ function test()
   H.result('ended', H.r16(ORBIT_RAM + 0x34) == 0)
   -- the orbit's intro from here
   H.wait(30)
+  H.shot('intro030')
   H.result('state_after', H.r8(ORBIT_RAM))
   H.result('owner_after', H.r16(SCENE_OWNER))
   H.result('trace', trace)
@@ -524,9 +529,36 @@ end
     if(res.state_after!==2||res.owner_after!==2)fails.push(`after it: orbit state ${res.state_after}, scene owner ${res.owner_after} (want the live orbit)`);
     // the pictures: the clock two frames before each screenshot
     const ref=await montageRef(),lines=[];
+    // the pullback (planet-view.js cosmicBattle's camera, t = age -
+    // pullbackStart): the share of the browser's sprite pixels shown in
+    // their colour (the beam's band ends in whole cells and has no taper
+    // here), the globe's disc, rim and sky where no sprite is (the globe
+    // is flat-lit here: its shape is compared, star pixels aside)
+    const pullback=(name,age,target)=>{
+      const t=age-pullbackStart,u=Math.max(0,Math.min(1,t/200)),e=u*u*(3-2*u);
+      const cam={x:Math.round(95*e),y:Math.round(282-128*e),r:Math.round(240-136*e),lon:target.x,lat:target.y,age};
+      const pic=ref.pullback(age,target),plain=renderSpace(cam,{rawSky:true}),shot=readPng(join(dir,name+'.png'));
+      writeFileSync(join(dir,`ref${name.slice(1)}.png`),pic.png);
+      let sprite=0,same=0,shape=0,off=0;
+      for(let y=0;y<224;y++)for(let x=0;x<256;x++){
+        const i=y*256+x,j=(y*shot.width+x)*4,r=shot.data[j]>>3,g=shot.data[j+1]>>3,b=shot.data[j+2]>>3,c=pic.px[i];
+        if(c!==plain.px[i]){sprite++;if(r===(c&31)&&g===(c>>5&31)&&b===(c>>10&31))same++;continue;}
+        const k=plain.cls[i],cls=(r===6&&g===17&&b===30)?2:(r===0&&g===0&&b===2)?0:(r<=11&&g<=13&&b<=20&&b-r>=5)?-1:1;
+        if(cls<0)continue;
+        shape++;if(cls!==k)off++;
+      }
+      // (the beam's band: whole cells to its end, no taper at its start,
+      // its pixels a step across on its mirrored heading, a chain a frame
+      // or two behind a new radius; the fighters: Goku's 15 colours)
+      const sShare=sprite?same/sprite:1,mis=off/shape,f=[],need=t>=35&&t<190?0.7:0.9;
+      if(mis>0.005)f.push(`${name}: the globe's shape differs at ${(100*mis).toFixed(2)}% of its pixels`);
+      if(sShare<need)f.push(`${name}: ${(100*sShare).toFixed(1)}% of the sprites' pixels as the browser`);
+      return {line:`${name}: pullback t ${t}: shape ${(100*(1-mis)).toFixed(2)}%, sprites ${(100*sShare).toFixed(1)}% of ${sprite} pixels`,fails:f};
+    };
     for(const v of res.shots??[]){
-      const[name,k]=v.split(' '),shown=trace[Number(k)-3]?.[0],want=Number(name.slice(1));
+      const[name,k,lon,lat]=v.split(' '),shown=trace[Number(k)-3]?.[0],want=Number(name.slice(1));
       if(shown!==want){fails.push(`${name}: shows age ${shown}`);continue;}
+      if(shown>=pullbackStart){const p=pullback(name,shown,{x:Number(lon),y:Number(lat)});lines.push(p.line);fails.push(...p.fails);continue;}
       const beat=cosmicBeat(shown),aerial=beat?.shot.kind==='aerial',pic=aerial?ref.aerial(shown):ref.town(shown);
       if(!pic){lines.push(`${name}: ${beat?.shot.kind??'none'} (not compared)`);continue;}
       writeFileSync(join(dir,`ref${name.slice(1)}.png`),pic.png);
