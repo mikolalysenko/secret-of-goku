@@ -20,6 +20,7 @@ import {runMesen} from '../mesen.mjs';
 import {checkpointDir,privateRom,cleanupRom,mainCheckout} from '../checkpoints.mjs';
 import {radarTarget} from '../../../engine/dragon-radar.js';
 import {encodeText} from '../../../engine/event-codec.js';
+import {compareAura} from './aura.mjs';
 
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const args=process.argv.slice(2);
@@ -44,20 +45,21 @@ const importRoot=join(mainCheckout(),'.local/snes-import')+'/';
 function prelude(rom){
   const sym={};
   for(const line of readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8').split('\n')){
-    const m=line.match(/^([0-9A-F]{2}):([0-9A-F]{4}) ((?:world|goku|flight|core|combat|ui)_\w+)$/i);
+    const m=line.match(/^([0-9A-F]{2}):([0-9A-F]{4}) ((?:world|goku|flight|core|combat|ui|debug|fx)_\w+)$/i);
     if(m)sym[m[3]]=parseInt(m[1]+m[2],16);
   }
   return `REPEAT=${repeat}\nTIMING_SCENE=${JSON.stringify(scene)}\nSYM={${Object.entries(sym).map(([k,v])=>`${k}=0x${v.toString(16)}`).join(',')}}\nIMPORT=${JSON.stringify(importRoot)}\n`+readFileSync(join(here,'lib.lua'),'utf8')+'\n';
 }
-const tests=['sprite','takeoff','takeoff-locks','landing','controls','ki','wave','fortress','scars','barrier','dock','item','radar','map','timing'].filter(t=>existsSync(join(here,`${t}.lua`))&&want(t));
+const tests=['sprite','takeoff','takeoff-locks','landing','controls','ki','wave','fortress','scars','barrier','dock','item','radar','map','timing','aura'].filter(t=>existsSync(join(here,`${t}.lua`))&&want(t));
 const summary=[];
 for(const t of tests){
   const rom=privateRom(romSrc,`world-${t}`);
   const t0=Date.now();
-  const r=await runMesen({rom,test:prelude(romSrc)+readFileSync(join(here,`${t}.lua`),'utf8'),outDir:join(outRoot,t),state:join(cps,'waterfall.mss')});
+  const r=await runMesen({rom,test:prelude(romSrc)+readFileSync(join(here,`${t}.lua`),'utf8'),outDir:join(outRoot,t),state:join(cps,'waterfall.mss'),exactFrames:t==='aura'});
   cleanupRom(rom);
   const res=r.results??{};
   const fails=Object.entries(res).filter(([,v])=>typeof v==='string'&&v.startsWith('FAIL'));
+  if(t==='aura')for(const error of compareAura({repo,outDir:join(outRoot,t),results:res}))fails.push(['browser',error]);
   if(t==='radar'){
     const base=readFileSync(join(repo,'rom/secret-of-mana-us.sfc'));
     for(const s of res.samples??[]){

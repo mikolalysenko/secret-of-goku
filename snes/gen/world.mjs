@@ -18,6 +18,7 @@ import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {encodeTile,writePng,blank} from '../tools/gfx.mjs';
+import {generateWorldAura} from './world-aura.mjs';
 
 const W5=c=>[c&31,(c>>5)&31,(c>>10)&31];
 const rgb=(r,g,b)=>r|(g<<5)|(b<<10);
@@ -115,6 +116,7 @@ export async function generate({rom,repo,outDir,xdata}){
   if(fxPal.length>16)throw Error('world: effects palette overflow');
   while(fxPal.length<16)fxPal.push(0);
   // fx.bin: tile rows 6-15 of name table 0 (tiles $060-$0FF), 512 B per row.
+  if(FX.length>23)throw Error('world: effect slot 23 and row 6/7 spare cells belong to the aura');
   const fxTiles=new Uint8Array(10*16*32);
   fxPx.forEach((px,s)=>{
     const idx=indexCell(px,fxPal),t=fxTile(s)-0x60;
@@ -157,6 +159,7 @@ export async function generate({rom,repo,outDir,xdata}){
     }
   }
   a.label('world_beam_f');a.db(beamF);
+  generateWorldAura({a,effect,manifest,xdata});
 
   // Craters (engine/world-scars.js): the Potos hole (native-crater.js) scaled
   // to 144 x 96 (224 x 149 for the full SSJ wave) on the 8-px Mode 7 grid.

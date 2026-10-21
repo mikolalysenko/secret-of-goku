@@ -19,7 +19,13 @@ endif
 	INC.w !w_frame
 	LDA.w !core_pad&$FFFF
 	STA.w !w_input
+	; The resident atlas needs no call/VRAM-claim check on ordinary frames.
+	; This pays for the aura's idle gate without increasing cruise cost.
+	LDA.w !w_fx_state
+	CMP.w #8
+	BCS +
 	JSR world_fx_upload
++
 	JSR world_shadow
 	JSR world_dock_track
 	RTL
@@ -119,8 +125,10 @@ world_fx_chunks:
 	dw $6000+($098*16), ($98-$60)*32, 256, 0
 	dw $6000+($0A8*16), ($A8-$60)*32, 256, 0
 	dw $6000+($0B8*16), ($B8-$60)*32, 256, 0
-	dw $6000+($0C0*16), ($C0-$60)*32, 512, 0
-	dw $6000+($0D0*16), ($D0-$60)*32, 512, 0
+	; Last two tiles are aura storage (unused effect slot 23). The core
+	; queue flushes after world NMI, so never overwrite them with padding.
+	dw $6000+($0C0*16), ($C0-$60)*32, 448, 0
+	dw $6000+($0D0*16), ($D0-$60)*32, 448, 0
 	dw $6000+($0E0*16), ($E0-$60)*32, 512, 0
 	dw $6000+($0F0*16), ($F0-$60)*32, 512, 0
 assert world_fx_tiles_end-world_fx_tiles == ($100-$60)*32, "fx.bin layout"
