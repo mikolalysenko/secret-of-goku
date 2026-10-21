@@ -36,12 +36,39 @@ intact samples, one-voice ownership, automatic cue termination and the
 absence of BRR stream commands. The SPC tests additionally check silent
 tails, output headroom and unchanged retail effects/samples.
 
-`resident.asm` uses 142 of the 144 zero bytes at ARAM `$2F70-$2FFF`: nine
-pointer pairs followed by 106 sequence bytes. Slots `$E5-$FF` are reserved
-for sequence storage. The existing boot and song-reload transfers already
-include this region, so it needs no new upload, samples or SPC extension.
-The test importer installs this small region and the boot extension from
-the cartridge after restoring a retail checkpoint's SPC state (section 6).
+`resident.asm` has 283 bytes of sequence/table capacity: the original 144
+zero bytes at `$2F70-$2FFF`, plus 139 bytes reclaimed by sharing identical
+retail tracks. Every retail effect id and both of its tracks are preserved.
+The existing boot and song-reload transfers already include these bytes,
+so this adds no upload or 65816 instructions. The test importer restores the
+whole effect block after a retail checkpoint, along with the boot extension.
+
+### Resident storage proof
+
+`snes/gen/audio-resident-storage.mjs` verifies each source span against its
+identical destination, redirects all incoming effect-table pointers, and
+rejects external fall-through or address-dependent jumps. The resident test
+compares the complete sequencer byte stream of **both tracks of all 220
+retail slots** before and after, and checks every other boot byte. No music,
+sample or streaming-extension storage is reclaimed.
+
+| Reclaimed ARAM (inclusive) | Bytes | Identical retained bytes | Retail table entries redirected |
+| --- | ---: | --- | --- |
+| `$379A-$37A9` | 16 | `$378A-$3799` | `$46` voice 1 |
+| `$39E6-$39F8` | 19 | `$39D3-$39E5` | `$59` voices 0/1 |
+| `$3A16-$3A28` | 19 | `$39D3-$39E5` | `$60` voices 0/1 |
+| `$3A40-$3A56` | 23 | `$3A29-$3A3F` | `$69` voices 0/1 |
+| `$3A89-$3ABA` | 50 | `$3A57-$3A88` | `$6B` voices 0/1 |
+| `$3CC9-$3CD4` | 12 | `$3CBD-$3CC8` | `$8C` voice 1 |
+
+The ten pointer words are at `$2D1A`, `$2D64/$2D66`, `$2D80/$2D82`,
+`$2DA4/$2DA6`, `$2DAC/$2DAE`, and `$2E32`. ROM offset for any affected ARAM
+byte is `$032139 + ARAM - $2C00` (CPU bank `$C3`). Each changed byte has an
+original-byte assertion and a registered patch. The generated layout is in
+`.local/snes-test/audio/audit/static.json` after `node snes/test/audio/audit.mjs`.
+Finite play traces and literal scans cannot prove that computed native
+sound ids are unused, so **no retail id is retired**. Sharing identical
+tracks avoids that risk and preserves even unobserved effects.
 
 Resident effect command `02` also uses an asynchronous CPU-side handshake
 in the shipping build. The hook at `C3:0175` writes the four ports and
@@ -675,7 +702,7 @@ APU state at a sound-CPU instruction boundary; with it all goku, title and
 story tests pass on this branch.
 
 `H.residentEffects()` recognizes the shipping resident table and installs
-both its 144-byte region and the extension from the cartridge's boot upload
+the complete `$2C00-$47FF` effect block and the extension from the cartridge's boot upload
 blob. For browser imports it runs **after** the SPC/DSP register restore;
 patching during that restore stalled the Fortress flyby's next native song
 fade. `H.load()` applies the same augmentation to retail Mesen checkpoints.
@@ -695,7 +722,8 @@ original-byte assertions):
 | --- | --- | --- |
 | `C3:0106` | 6 | boot upload end → `audio_boot_upload` (uploads the extension after the driver) |
 | `C3:0175` | 4 | shipping effect command → asynchronous `audio_native_command` |
-| `C3:24A9` | 144 | unused ARAM `$2F70-$2FFF` effect slots/sequences, 142 bytes used |
+| `C3:24A9` and six spans above | 283 capacity | resident effect pointers/sequences; byte-identical retail tracks shared |
+| ten table words listed above | 20 | redirect retail pointers to identical retained tracks |
 | `C3:0618`, `C3:0651`, `C3:0663`, `C3:066A` | 4 each | echo preset reads → `audio_echo0-3` (songs `$3B-$3F` read `audio_echo_table`) |
 | `C3:3DEA`, `C3:3DED`, `C3:3DF0`, `C3:3DF3`, `C3:3DF6` | 3 each | song pointers `$3B-$3F` → `audio_song_3b-3f` (bank `$EA`) |
 | `C3:4682`, `C3:46A2`, `C3:46C2`, `C3:46E2`, `C3:4702` | 32 each | instrument lists of songs `$3B-$3F` |

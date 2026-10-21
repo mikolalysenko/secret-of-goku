@@ -1,3 +1,4 @@
+import {storageAsm} from './audio-resident-storage.mjs';
 // Measured resident palette. Selection/audition: snes/test/audio/effects.mjs.
 // Nine one-track effects, 142 bytes including pointers, all boot samples.
 export const RESIDENT = [
@@ -22,13 +23,7 @@ export const NATIVE_PRIORITY=[0,1,1,5,5,3,5,2,7,4,8,8,8,5,5,5,
 // short CHARGED one-shot and quieter aura keep $DF. Public ids stay 1-32.
 export const NATIVE_CHARGE_CUE=33;
 export const NATIVE_BEDS={charge:0xDD,aura:0xDF,friezaCharge:0xDD};
-export function residentAsm(){
- const h=n=>'$'+n.toString(16).toUpperCase().padStart(2,'0');
- const size=RESIDENT.reduce((n,r)=>n+4+r.sequence.length,0);
- if(size>144)throw Error(`resident palette uses ${size}/144 bytes`);
- return [...RESIDENT.map(r=>`dw resident_${r.id.toString(16)}-!resident_rom+!resident_aram,0`),
-  ...RESIDENT.flatMap(r=>[`resident_${r.id.toString(16)}: ; ${r.name}`,`db ${r.sequence.map(h).join(',')}`])].join('\n')+'\n';
-}
+export function residentAsm(rom){return storageAsm(rom,RESIDENT);}
 export function nativeMapAsm(){
  return `!AUDIO_NATIVE_CHARGE = ${NATIVE_CHARGE_CUE}\naudio_native_ids:\ndb ${[...NATIVE_IDS,NATIVE_BEDS.charge].join(',')}\naudio_native_priority:\ndb ${[...NATIVE_PRIORITY,4].join(',')}\n`;
 }

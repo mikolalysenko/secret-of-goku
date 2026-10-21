@@ -134,9 +134,11 @@ end
 -- music tracks, song samples or echo. Diagnostic PCM imports stay retail.
 function H.residentEffects()
   local first = H.r16(0xC324A9)
-  if first < 0x2F74 or first >= 0x3000 then return end
-  for i = 0, 0x8F do
-    emu.write(0x2F70+i, H.r8(0xC324A9+i), emu.memType.spcRam)
+  if first < 0x2F74 or first >= 0x4800 then return end
+  -- Include shared retail tracks and their redirected pointers. This is
+  -- exactly the boot effect block; song/sample/extension bytes are elsewhere.
+  for i = 0, 0x1BFF do
+    emu.write(0x2C00+i, H.r8(0xC32139+i), emu.memType.spcRam)
   end
   if H.r8(0xC30106) ~= 0x5C or emu.read(0x020A, emu.memType.spcRam) ~= 0xF0 then return end
   local boot = H.r16(0xC30107) | (H.r8(0xC30109) << 16)

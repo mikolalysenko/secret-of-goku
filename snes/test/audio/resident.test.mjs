@@ -3,19 +3,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createApu,loadRom,driverChunks} from './apu.mjs';
+import {effectRam,trackBytes,residentLayout} from '../../gen/audio-resident-storage.mjs';
 import {NATIVE_IDS,RESIDENT} from '../../gen/audio-resident.mjs';
 
 const rom=readFileSync(process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc');
 test('resident effects preserve retail sequences and samples',()=>{
-  const old=driverChunks(loadRom()),now=driverChunks(rom);
+  const original=loadRom(),old=driverChunks(original),now=driverChunks(rom);
+  const allowed=new Set(residentLayout(original,RESIDENT).patches.flatMap(p=>p.bytes.map((_,i)=>p.addr+i)));
   for(let c=0;c<old.length;c++){
     assert.equal(now[c].addr,old[c].addr);
     assert.equal(now[c].bytes.length,old[c].bytes.length);
     for(let i=0;i<old[c].bytes.length;i++){
       const a=old[c].addr+i;
-      if(a<0x2F70||a>=0x3000)assert.equal(now[c].bytes[i],old[c].bytes[i],`ARAM $${a.toString(16)}`);
-      else assert.equal(old[c].bytes[i],0,'only unused table bytes replaced');
+      if(!allowed.has(a))assert.equal(now[c].bytes[i],old[c].bytes[i],`ARAM $${a.toString(16)}`);
     }
+  }
+  const before=effectRam(original),after=effectRam(rom);
+  for(let id=0;id<0xDC;id++)for(let v=0;v<2;v++){
+    const a=0x2C00+id*4+v*2,p=before[a]|before[a+1]<<8,q=after[a]|after[a+1]<<8;
+    assert.deepEqual(trackBytes(after,q),trackBytes(before,p),`retail $${id.toString(16)} voice ${v}`);
   }
 });
 test('every mapped effect is audible, single-voice and self-terminating',()=>{
@@ -42,5 +48,5 @@ test('every mapped effect is audible, single-voice and self-terminating',()=>{
   assert.ok(peaks.get(NATIVE_IDS[3])>peaks.get(NATIVE_IDS[1]),'contact is stronger than an empty swing');
   assert.equal(new Set(NATIVE_IDS.slice(20,23)).size,3,'orb, disc and laser have distinct timbres');
   assert.notEqual(NATIVE_IDS[25],NATIVE_IDS[8],'Fortress break is a burst');
-  assert.ok(RESIDENT.reduce((n,r)=>n+4+r.sequence.length,0)<=144);
+  const layout=residentLayout(loadRom(),RESIDENT);assert.ok(layout.used<=layout.capacity);
 });

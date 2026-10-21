@@ -169,7 +169,7 @@ export async function buildSongs(repo,rom){
 }
 
 export async function generate({rom,repo,outDir}){
- writeFileSync(resolve(outDir,'resident.asm'),residentAsm());
+ writeFileSync(resolve(outDir,'resident.asm'),residentAsm(rom));
  writeFileSync(resolve(outDir,'native-map.asm'),nativeMapAsm());
  const ext=buildExtension(repo,rom);
  writeFileSync(resolve(outDir,'upload.bin'),ext.upload);
