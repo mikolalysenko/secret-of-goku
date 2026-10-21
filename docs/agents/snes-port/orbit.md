@@ -26,7 +26,7 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 | Entry API for the frieza module, debug presets `orbit` and `space` | **Done** (`api.asm`): `orbit_api_enter` (intro or straight into the fight), `!DEBUG_PRESET_HOOK_ORBIT/_SPACE` |
 | Hand-off from the frieza module (second surge), scene work area | **Done** (`bind.asm`, `scene.asm`): `!FRIEZA_ORBIT_SURGE` enters the orbit at `collateralStart` (72) with Frieza's HP and clocks; the orbit takes `!SRAM_WORK_SCENE` from Frieza's claim (owner `!SCENE_ORBIT`) and gives it back at the end; test `handoff` |
 | Second surge on the deck (ages 1-71): the Death Ball growing above Frieza from 25, Goku's giant beam from 58 | **Done** (`bind.asm` `orbit_surge_deck`, through fx: `FX_DEATHBALL` at the browser's snapped sizes, `FX_BEAM_WAVE`); the frieza module draws Frieza, his aura and lightning and breaks the floor at 24 and 48 |
-| Auras (Goku's charge and focus, Frieza's pink warning) | **Done** (`aura.asm`, below): the browser's own flames at every level and phase, on its even frames; in the finale Frieza's while he gathers and charges, Goku's while he charges. Not yet through Frieza's surges in the struggle (the rays hold every beam slot) |
+| Auras (Goku's charge and focus, Frieza's pink warning) | **Done** (`aura.asm`, below): the browser's own flames at every level and phase, on its even frames; in the finale Frieza's while he gathers and charges, Goku's while he charges; no frame lags for them. Not through Frieza's surges in the struggle (the rays hold the slots) |
 | 60 Hz | **Done**: the fight steps once per field vblank (catching up after a slow game frame); the picture's incremental work runs in the frame's spare time |
 | Distant bodies (moon, planets), their shattering and the asteroid field, Luna's remark | Next (the `fight` test aims clear of them) |
 | Cosmic montage: the four town shots (72-1802) | **Done** (`montage.asm`, `orbit-montage.mjs`, below): the towns from the game's own map data, people, rabite, warning ring, laser, ruin, bursts, fragments, fires, red tint, captions, cues; test `montage` matches the browser's picture pixel for pixel outside the explosions (97-99% during them) |
@@ -299,13 +299,26 @@ whose (12, 22) is the fighter's place, with tables of the browser's level
 for each charge and focus power. A picture goes into the third slot of
 the beam group the fighter is not firing (Goku's `$048`, Frieza's `$084`),
 free while that group has fewer than three chains, through the beam
-pictures' vblank queue, keyed `$8000 | index`; a beam that needs the slot
-takes it back first. The wants are made afresh each frame, cleared before
+pictures' vblank queue, keyed `$8000 | index`, on frames that queue no
+beam picture; a beam that needs the slot takes it back first, and a beam
+never draws a chain from a slot that holds an aura's picture
+(`beam_usable`: such a chain waits for its own picture, as for any
+missing one; it used to show the flame for a frame and cost the beam's
+OAM run a rebuild). The wants are made afresh each frame, cleared before
 the drawing and set only by the fight's and the finale's (a want left
 from the fight once fought the pullback's beams for the slot, and the
 vblanks it cost cut the globe's tables short). OAM puts each behind its
-fighter, as the browser's paint order. The struggle's rays hold all six
-slots, so Frieza's surge aura waits for another place.
+fighter, as the browser's paint order.
+
+Frieza's aura through his struggle surges is left out: the rays hold all
+six slots, and the frames a group dropped below three chains traded a
+slot between a ray and the aura, a picture each way per frame, and lagged
+four frames of the clash. Cost (the `clash` pads, A/B against a
+`-DORBIT_NO_AURA` build, by the stage scanlines): 4 lines a frame in the
+gather and 8 in the charge, the pictures' vblank DMAs included (those
+frames end by line ~190), nothing measurable in the launch, struggle,
+recoil and win, and the same 35 repeated pictures as without them; the
+`fight` repeats its 2.
 
 ### Text panels
 
@@ -697,6 +710,18 @@ therefore:
 Measured (Mesen, the `clash` pads, 2,900 frames): core's HDMA enable by line
 260 on the frames with digits, 258 otherwise.
 
+Repeated pictures (the frame missed its vblank; the fight's clock catches
+up, as the browser's does): `fight` 2 of 660 (frames 248 and 524, the
+game's own hit reaction). `clash` 35 of 2,890: 26 at the win's age 387,
+where the fanfare's command makes the game load its song and stops its
+loop for 26 frames (the browser's whiteout is full then: once the
+cartridge's is, that stall shows a white screen); 1 at the launch's start
+(age 6: the band layers and the rays' OAM runs start, 34 + 49 lines), 5
+in the struggle and 1 in the recoil (a ray's OAM run rebuilt, 59-85
+lines of drawing on frames that start late), and 1 each at the win's and
+the descent's first frame (not the scene's work: those frames end by
+lines 164 and 122). Before the auras' trim the clash had 38-39.
+
 ### Scene work area
 
 `!SRAM_WORK_SCENE` (`$32:6000-7FFF`) is the orbit's through core's claim
@@ -790,7 +815,9 @@ come from their sources. Results on the merged build:
   callbacks, CGRAM writes and general DMA starts under HDMA on the visible
   lines while the orbit is live; any of these fails the case. They also
   report the frames whose OAM passes the PPU's line limits (32 sprites, 34
-  slivers; `W.oam`), and log the stage scanlines (`W.marks`, the
+  slivers; `W.oam`), list the frames that repeat their picture (the
+  scene's frame counter unchanged; the `clash` by phase and age, a run at
+  one age being one stall), and log the stage scanlines (`W.marks`, the
   `ORBIT_TIMING` build). `ORBIT_SHOTS=a-b,...` screenshots those frames
   exactly and `ORBIT_DUMP=1` dumps their OAM; `fight-view.mjs` draws the
   browser's own picture of each frame of the fight (`planet-view.js`

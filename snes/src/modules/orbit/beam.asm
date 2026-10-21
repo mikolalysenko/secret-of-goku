@@ -1062,8 +1062,7 @@ beam_hi_store:
 ; waits; chain 0 shows a wider core meanwhile. Keeps X and Y.
 beam_usable:
 	LDA.w !bs_have,Y
-	CMP.w #$FFFF
-	BEQ .no
+	BMI .no                        ; (none, or an aura's picture: aura.asm)
 	EOR.w !bw_key,X
 	AND.w #$01C0|!BK_LASER
 	BNE .no

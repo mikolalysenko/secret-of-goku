@@ -76,6 +76,7 @@ function test()
   local watch = {}
   if W then W.install() end
   local lagged = 0
+  local lagAt = {}
   local lastFrame = H.r16((ORBIT_RAM + 0x04))
   for f = 0, #PADS - 1 do
     H.input = input(PADS[f + 1])
@@ -84,11 +85,12 @@ function test()
     if W then watch[#watch + 1] = W.cgram() .. '|' .. W.globe() .. '|' .. W.oam() .. '|' .. W.marks() .. '|' .. W.writes() end
     if shots[f] then H.shot(string.format('fight%04d', f)); if DUMP then H.dumpfile(string.format('fight%04d.oam', f), emu.memType.snesSpriteRam, 0, 0x220) end end
     local fr = H.r16((ORBIT_RAM + 0x04))
-    if fr == lastFrame then lagged = lagged + 1 end
+    if fr == lastFrame then lagged = lagged + 1; lagAt[#lagAt + 1] = f end
     lastFrame = fr
   end
   H.input = nil
   H.result('states', log)
   H.result('watch', watch)
   H.result('lagged', lagged)
+  H.result('lagAt', lagAt)
 end
