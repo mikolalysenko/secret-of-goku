@@ -8,6 +8,7 @@
 
 fc_draw:
 	JSR fc_beam_wants
+	JSR aura_wants_finale
 	LDA.w !fn_phase
 	ASL
 	TAX
@@ -39,7 +40,9 @@ fc_gather:
 	LDA.w #4
 ++	JSR fc_pink_charge
 +	LDA.w #4
-	JMP fc_frieza
+	JSR fc_frieza
+	LDA.w !fn_age                  ; (his aura behind him)
+	JMP aura_draw_frieza
 
 ; Charge: the pink charge full, Goku's own charge in his hands.
 fc_charge:
@@ -51,10 +54,14 @@ fc_charge:
 	LDA.w !f_charge
 	BEQ +
 	JSR fc_hand_charge
+	LDA.w !fn_age                  ; (his aura behind him and the charge)
+	JSR aura_draw_goku
 +	LDA.w #4
 	JSR fc_pink_charge
 	LDA.w #2
-	JMP fc_frieza
+	JSR fc_frieza
+	LDA.w !fn_age
+	JMP aura_draw_frieza
 
 ; Launch: both rays race to the meeting point (the bands come with the
 ; beams); a flash at contact.
@@ -108,7 +115,9 @@ fc_struggle:
 	JSR fc_purple
 	JSR fc_blue
 	LDA.w #2
-	JMP fc_frieza
+	JSR fc_frieza
+	LDA.w !fn_age                  ; (a surge's aura behind him)
+	JMP aura_draw_frieza
 .gold
 	dw !OFX_GSPARK_0|(!OFX_PAL_GOLD<<9)|!OA_PRI
 	dw !OFX_GSPARK_1|(!OFX_PAL_GOLD<<9)|!OA_PRI

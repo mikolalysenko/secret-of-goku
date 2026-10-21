@@ -34,6 +34,7 @@
 //               cells (top left, top right, bottom left, bottom right; 512
 //               bytes each, 4 rows of 4 tiles)
 //   extended data orbit_beam_c1a / _c1b / _c2: beam band pictures (below)
+//   extended data orbit_aura_a / _b: the ki auras' pictures (below)
 //   band.bin    the finale's beam-band BG tiles (4bpp, 45): clear, solid
 //               outer (colour 1), solid inner (2), then the clear/outer
 //               edges x + 2y = c for c = 1-21 and the outer/inner ones;
@@ -69,7 +70,7 @@ export async function generate({rom,repo,outDir,xdata}){
   const eng=f=>import(pathToFileURL(join(repo,'engine',f)).href);
   const {createNativeEffects,decodeEffectFrame}=await eng('native-effects.js');
   const {combustionCells,combustionFrames}=await eng('native-combustion-data.js');
-  const {friezaKiPalette}=await eng('ki-aura.js');
+  const {friezaKiPalette,drawKiAura}=await eng('ki-aura.js');
   const {createDeathBallArt}=await eng('death-ball-art.js');
   const {orbitVectors}=await eng('orbit-pixels.js');
   const manifest=JSON.parse(readFileSync(join(repo,'engine/native-effects.json'),'utf8'));
@@ -134,8 +135,14 @@ export async function generate({rom,repo,outDir,xdata}){
   const violet=colorsOf([...death[32],...death[16]]);
   pal.PINK=[0,rgb([31,31,31]),0,0,...friezaKiPalette,...violet.filter(c=>!friezaKiPalette.includes(c))];
   for(const c of colorsOf(cells.filter(c=>c.cls==='PINK').map(c=>c.px)))if(!pal.PINK.includes(c))throw Error('orbit-fx: pink cell colour outside the ki ramp');
-  // GOLD: 1-4 the star shades (star_tiles.bin uses indices 1-4), then gold.
+  // GOLD: 1-4 the star shades (star_tiles.bin uses indices 1-4), then gold
+  // (the cells', then the gold aura's ramp: ki-aura.js, levels 1-8).
   pal.GOLD=[0,...[0,1,2,3].map(s=>1+starColor(s)),...colorsOf(cells.filter(c=>c.cls==='GOLD').map(c=>c.px))];
+  {
+    const ramp=new Set();
+    for(let level=1;level<=8;level++)for(let phase=0;phase<12;phase++)drawKiAura(groups,0,0,phase*3,(x,y,c)=>ramp.add(c),{height:16,tone:'gold',power:level/8,clock:0});
+    for(const c of[...ramp].sort((a,b)=>luma(a)-luma(b)))if(!pal.GOLD.includes(c))pal.GOLD.push(c);
+  }
   for(const[k,p]of Object.entries(pal))if(p.length>16)throw Error(`orbit-fx: palette ${k} needs ${p.length-1} colours`);
   const indexOf=(cls,c)=>{if(!c)return 0;const i=pal[cls].indexOf(c,cls==='BLUE'||cls==='PINK'?4:1);if(i<0)throw Error(`orbit-fx: colour ${c-1} not in ${cls}`);return i;};
 
@@ -274,6 +281,35 @@ export async function generate({rom,repo,outDir,xdata}){
       xdata(`orbit_beam_c${k}`,Uint8Array.from(b));
     }
     BEAM_ROM_R1.forEach((r,k)=>L.push(`!OFX_BEAM_C${k}_R1 = ${r}`));
+  }
+  // Ki auras (ki-aura.js drawKiAura at height 16, as frieza-orbit-view.js
+  // and the finale's view draw them): Goku's gold at levels 1-8 and
+  // Frieza's pink at level 8 (power 1), phases 0-11, each a 32x32 cell
+  // whose (12, 22) is the aura's anchor (the character's rounded place),
+  // 512 bytes (4 rows of 4 tiles) as the beam pictures, for the beam
+  // slots (aura.asm): orbit_aura_a gold levels 1-4, orbit_aura_b gold
+  // levels 5-8 then pink, each level's 12 phases in order. The level of
+  // the wave's charge (0-45) and of the focus power (0-96), as the
+  // browser's clamp(ceil(power * 8), 1, 8).
+  {
+    const picture=(tone,level,phase)=>{
+      const idx=new Uint8Array(32*32);
+      drawKiAura(groups,0,0,phase*3,(x,y,c)=>{
+        const px=12+x,py=22+y;
+        if(px<0||py<0||px>=32||py>=32)throw Error('orbit-fx: an aura pixel outside its cell');
+        idx[py*32+px]=indexOf(tone==='pink'?'PINK':'GOLD',c);
+      },{height:16,tone,power:level/8,clock:0});
+      const bytes=[];for(let ty=0;ty<4;ty++)for(let tx=0;tx<4;tx++)bytes.push(...encodeTile(idx,32,tx*8,ty*8));
+      return bytes;
+    };
+    const a=[],b=[];
+    for(let level=1;level<=8;level++)for(let phase=0;phase<12;phase++)(level<=4?a:b).push(...picture('gold',level,phase));
+    for(let phase=0;phase<12;phase++)b.push(...picture('pink',8,phase));
+    xdata('orbit_aura_a',Uint8Array.from(a));
+    xdata('orbit_aura_b',Uint8Array.from(b));
+    const level=power=>Math.max(1,Math.min(8,Math.ceil(power*8)));
+    data.push('orbit_fx_aura_charge:','\tdb '+Array.from({length:46},(_,c)=>level(Math.min(1,c/45))).join(','));
+    data.push('orbit_fx_aura_focus:','\tdb '+Array.from({length:97},(_,p)=>level(.25+.45*p/96)).join(','));
   }
   data.push('; beam classes: vx, vy, qi, rr, A0x, A0y, Px, Py, Sx, Sy, V0, Vstep, across, half (words)','orbit_fx_beam_class:');
   for(const c of classes)data.push('\tdw '+[c.vx,c.vy,c.qi,c.rr,c.A[0],c.A[1],c.P[0],c.P[1],c.S[0],c.S[1],c.V0,c.Vs,c.across,c.half].map(hex4).join(','));

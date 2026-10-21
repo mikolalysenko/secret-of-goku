@@ -425,8 +425,12 @@ assert !FIGHT_END <= !SB+$D00, "orbit fight block overflow"
 ; (the beams the stars' limits were made for, per group class | on,
 ; chains, x, y, signs, the band layers' line)
 !sc_in      = !SB+$CDA             ; 2 x 12 bytes
+; (the ki auras' pictures wanted this frame, aura.asm: Goku's, Frieza's)
+!au_want    = !SB+$CF2             ; 2 words ($FFFF: none)
+!au_tmp     = !SB+$CF6
 assert !FIGHT_END+6 <= !hb_mode1, "the second BGMODE table runs into the fight's state"
-assert !sc_in+24 <= !SB+$D00, "the stars' beam inputs run into the drawing block"
+assert !sc_in+24 <= !au_want, "the stars' beam inputs run into the auras' state"
+assert !au_tmp+2 <= !SB+$D00, "the auras' state runs into the drawing block"
 
 ; ---------------------------------------------------------------------------
 ; Drawing and dynamic VRAM (draw.asm, scene.asm).
@@ -725,6 +729,7 @@ incsrc "math.asm"
 incsrc "fight.asm"
 incsrc "draw.asm"
 incsrc "beam.asm"
+incsrc "aura.asm"
 incsrc "text.asm"
 incsrc "finale.asm"
 incsrc "fdraw.asm"
