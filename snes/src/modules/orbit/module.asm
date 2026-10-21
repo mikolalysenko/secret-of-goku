@@ -13,6 +13,7 @@ incsrc "orbit/defines.asm"
 incsrc "orbit-sprites/sprites.asm"
 incsrc "orbit-fx/defines.asm"
 incsrc "orbit-montage/defines.asm"
+incsrc "orbit-scenery/scenery.asm"
 incsrc "debug/defines.asm"
 incsrc "audio/ids.asm"
 
@@ -126,17 +127,28 @@ endmacro
 !cam_tdy    = !SB+$00C            ; travelY change this frame (signed)
 !cam_age    = !SB+$00E            ; sky clock (twinkles)
 ; Derived.
-!g_r        = !SB+$010            ; (spare)
+!sc_ly      = !SB+$010            ; the bodies' projection (scenery.asm): the camera's y it has applied
 !g_x0       = !SB+$012            ; Mode 7 texel column at the disc centre
 !g_ybase    = !SB+$014            ; texel row at the disc centre
 !g_top      = !SB+$016            ; first globe line on screen
 !g_bot      = !SB+$018            ; last globe line on screen
+!sb_cnt     = !SB+$01A            ; the distant bodies counted on the rows a beam crosses (bits 0-2: scline.asm)
+!sb_blk     = !SB+$01C            ;   those blocked there (no room: not drawn)
 !g_cx       = !SB+$01E            ; centre column the window block holds
-!g_cy       = !SB+$022            ; (spare)
+!sb_mv      = !SB+$020            ; the distant bodies whose rows changed since the limits were made (scline.asm)
+!sc_ax      = !SB+$022            ;   the frame's travelX (cam_tdx) it has applied
 !g_hofs     = !SB+$024            ; M7HOFS for the NMI
 !g_m7x      = !SB+$026            ; M7X for the NMI
-!g_ytab     = !SB+$028            ; (spare)
+!sc_ay      = !SB+$028            ;   and travelY (cam_tdy)
+!sb_lsig    = !SB+$02A            ; 3 words: each body's rows and slivers the limits count (scline.asm; 0: none)
 !g_tmp      = !SB+$030            ; 16 bytes scratch ($30-$3F)
+!sl_t       = !g_tmp+0            ; (scline.asm's scratch)
+!sl_b       = !g_tmp+2
+!sl_half    = !g_tmp+4
+!sl_n       = !g_tmp+6
+!sl_s       = !g_tmp+8
+!sl_was     = !g_tmp+10
+!sl_g       = !g_tmp+14
 !g_text     = !SB+$040            ; byte: lines 0..g_text-1 are Mode 1 (BG3 panel)
 !g_textset  = !SB+$041            ; byte: g_text the BGMODE table holds ($FF none)
 !g_shown_it = !SB+$042            ; the indirect table set the last vblank gave the HDMA
@@ -170,6 +182,8 @@ endmacro
 !sy_have    = !SB+$0C0
 !sz_have    = !SB+$0C8
 !sk_have    = !SB+$080            ; 4 words: culling generation of each list
+!sb_dsig    = !SB+$088            ; 3 words: each body's rows and slivers as last noted (scline.asm sl_note; 0: not drawn)
+!sb_psig    = !SB+$09A            ; 2 x 3 bytes: each beam group's slivers, top and bottom row at the last limits (scline.asm sl_hot)
 ; ($0D0-$0FF: globe.asm; $100-$7E3 window blocks; $800-$85F indirect HDMA
 ; tables, see globe.asm.)
 ; Globe (globe.asm).
@@ -193,6 +207,7 @@ endmacro
 !g_bld_cx = !SB+$0F0              ; its centre column
 !g_bld_a  = !SB+$0F2              ; next row (0..R)
 !g_bld_n  = !SB+$0F4              ; rows per frame
+!sc_pgen  = !SB+$0F6              ; the distant bodies' places and the camera they show on: bumped at each change (scenery.asm; strike.asm's misses)
 !ORBIT_DEADLINE = 196             ; spare-time work stops at this scanline
 
 ; Window blocks (4 bytes per row, rows -R..R, R <= 108) and the empty record.
@@ -286,9 +301,17 @@ assert !ma_pairok+2 <= !MA_T1A, "the aerial cut's working state runs into its ta
 !hb_mode    = !SB+$860            ; BGMODE ($2105) table of indirect set 0, 16 bytes (hb_mode1: set 1's)
 !SB_STARS   = !SB+$870            ; star lists: 3 count words, then the entries
 !s_lists    = !SB_STARS           ; bytes in list d at s_lists + d*2 - 2
+!sb_stale   = !SB_STARS+6         ; the distant bodies counted on a beam's rows still waiting for the star lists (scline.asm)
 !s_list1    = !SB_STARS+$008      ; depth 1 (44 x 4)
 !s_list2    = !SB_STARS+$0C0      ; depth 2 (53 x 4)
 !s_list3    = !SB_STARS+$1A0      ; depth 3 (3 x 4, bright)
+; (in the lists' spare room: the distant bodies' waits and holds, scline.asm)
+!sb_kg      = !s_list1+(4*!ORBIT_STARS_D1) ; 3 words: the limits' generation each body's wait for the star lists began at
+!sk_done    = !s_list2+(4*(!ORBIT_STARS_D2-!ORBIT_STARS_D1))-2 ; lists 1-3 at +2, +4, +6: the generation each one's last finished build had
+!sb_hold    = !sk_done+8          ; 3 words: a body that yields: $8000 | the beam groups << 8 | frames of room (0: drawn)
+assert !sb_kg+6 <= !s_list2, "the bodies' waits run into star list 2"
+assert !sb_stale+2 <= !s_list1, "the bodies' wait bits run into star list 1"
+assert !sb_hold+6 <= !s_list3, "the bodies' holds run into star list 3"
 ; The stars' limits under the beams (stars.asm stars_limits): per 8-line
 ; row the stars of lists 1-2 that may cover it, and per list the stars
 ; its last build kept on each row.
@@ -304,6 +327,10 @@ assert !sc_cnt2 == !sc_cnt+28, "the stars' row counts are one array per list"
 assert !sc_hot+2 <= !SB+$A80, "the stars' limits run into the fight's state"
 !SC_FREE    = 254                 ; no limit on the row
 !SC_SPARE   = 2                   ; slivers a line keeps for the sprites besides beams and stars
+!SL_MARGIN  = 10                  ; on a distant body's rows no beam crosses: slivers a line the stars leave free (scline.asm)
+!SL_HOLD    = 16                  ; frames a body that yields to a beam stays hidden at least
+!SL_ROOM    = 16                  ; frames of room before it shows again while the beams are on
+!SL_ROOM_B  = 64                  ;   (when some frame of its hold had no room)
 !SB_END     = !SB+$A80            ; the fight's state follows
 assert !SB_END <= $8000, "orbit scene block overflow"
 
@@ -363,7 +390,7 @@ assert !SB_END <= $8000, "orbit scene block overflow"
 !f_hits     = !FB+$64              ; Goku hit count (browser playerHits)
 !f_shake    = !FB+$66              ; feedback pulse request (frames)
 !f_tmp      = !FB+$68              ; 16 bytes scratch
-!f_spare78  = !FB+$78              ; (spare)
+!sc_dead    = !FB+$78              ; the distant bodies (scenery.asm): bits 0-2 shattered, bit 15 Luna has spoken
 !f_firing   = !FB+$7A              ; a laser is out (frieza.js firing)
 !f_evading  = !FB+$7C              ; Frieza side-steps this frame
 ; Arrays.
@@ -384,6 +411,10 @@ assert !SB_END <= $8000, "orbit scene block overflow"
 !FS_HITS    = !FB+$1B0             ; hit bursts: 8 x 6 (x, y, age; >= 54 free)
 !HIT_N      = 8
 !FS_AFTER   = !FB+$1E0             ; afterimages: 4 x 6 (x, y, age; >= 16 free)
+!sc_expo    = !FB+$1F8             ; the distant bodies (strike.asm): bits 0-2 shown (on the screen, off the globe), 8-10 known
+!sc_pend    = !FB+$1FA             ;   steps of travelX + 2 not yet in their remainders (scenery.asm)
+!sb_cgen    = !FB+$1FC             ; the stars' last cull (scline.asm sl_culled): its limits' generation
+!sc_wkey    = !FB+$1FE             ;   the wanted pictures' key (scdraw.asm sc_wants: radius, bodies, Death Ball, phase)
 ; Maths scratch (math.asm).
 !m_t0       = !FB+$200
 !m_t1       = !FB+$202
@@ -412,6 +443,8 @@ assert !SB_END <= $8000, "orbit scene block overflow"
 !fb_damage9 = !FB+$230             ; the wave's damage under the training gi
 !f_gi       = !FB+$232             ; the hero's armor this frame ($E1E1)
 ; (kept by fight_start: the step clock)
+!sc_aside   = !FB+$7E              ; Luna's remark: 0 none, else its age + 91
+!sc_imp     = !FB+$234             ; 3 x 4 bytes: an impact's age + 1 (0: none), its copy's x and y offsets (signed bytes)
 !FIGHT_END  = !FB+$240
 !f_vbl      = !FB+$240             ; combat's field vblank count at the last step
 !f_steps    = !FB+$242             ; fight steps this frame
@@ -428,6 +461,80 @@ assert !FIGHT_END <= !SB+$D00, "orbit fight block overflow"
 ; (the ki auras' pictures wanted this frame, aura.asm: Goku's, Frieza's)
 !au_want    = !SB+$CF2             ; 2 words ($FFFF: none)
 !au_tmp     = !SB+$CF6
+; (the distant bodies' projection, scenery.asm: N_x, N_y per body, 32 bits
+; each, then the camera's radius and x it has applied)
+!sc_n       = !SB+$7E4             ; 3 x 8 bytes (after the second window block)
+!sc_lr      = !SB+$7FC
+!sc_lx      = !SB+$7FE
+assert !gb_winb+868 <= !sc_n, "the bodies' projection runs into the window block"
+; (WRAM: their places and the pictures their homes want and hold, read by
+; the vblank)
+!sc_pos     = !RAM_ORBIT+$5E       ; x[3], y[3], r[3] (words)
+!sc_want    = !RAM_ORBIT+$70       ; 3 words: home A (the outer planet at $004), B (the planetoid), C (the moon in the clash)
+!sc_have    = !RAM_ORBIT+$76
+!sc_nwant   = !RAM_ORBIT+$7C       ; nonzero: a home may lack its wanted picture (the vblank looks)
+; Frame-side scratch. The projection's: the drawing's (idle while the
+; fight steps and before the drawing).
+!sc_kb = !d_t0
+!sc_k4 = !d_t1
+!sc_dn = !d_t2                     ; 32 bits
+!sc_t  = !d_t4                     ; 8 bytes
+; The strikes' (in the fight's tick, only outside the clash): the finale's
+; drawing, mix and logic scratch, all idle until the clash begins; its
+; clocks and starting places (FN+$04-$17, written by finale_begin) hold
+; the last miss of Goku's ray and of Frieza's (sk_miss, after the finale's
+; block).
+!sc_own   = !fn_d+0                ; owner (0 Goku, 1 Frieza, 2 countered), bit 15 a beam
+!sc_w     = !fn_d+2                ; the line's width
+!sc_ray   = !fn_d+4                ; nonzero: a ray (else a step)
+!sc_h     = !fn_d+6                ; the ray's heading and length
+!sc_ex2   = !fn_d+8                ; (the exact ray test's scratch)
+!sc_d1    = !fn_d+10
+!sc_vx    = !fn_d+12               ; its 8.8 vector
+!sc_vy    = !fn_d+14
+!sc_ey2   = !fn_d+16
+!sc_rr    = !fn_d+18               ; 256 R
+!sc_best  = !fn_d+20               ; nearest struck so far (squared distance), its body
+!sc_bestk = !fn_d+22
+!sc_hits  = !fn_d+24
+!sc_kk    = !fn_d+26               ; the body tested (* 2)
+!sc_r     = !fn_d+28               ; its radius + the width
+!sc_ex    = !fn_d+30               ; its centre from the line's start
+!sc_ey    = !fn_m+0
+!sc_dx    = !fn_m+2                ; the step
+!sc_dy    = !fn_m+4
+!sc_dot   = !fn_m+6
+!sc_dd    = !fn_m+8
+!sc_tt    = !fn_m+10
+!sc_sq    = !fn_m+12               ; 4 bytes
+!sc_p     = !fn_q+0                ; 32-bit products
+!sc_mu    = !fn_q+4                ; their operands
+!sc_q     = !d_t0                  ; 32 bits (the projection's scratch is idle here)
+!sc_bx0   = !d_t2                  ; the line's box: x from, width
+!sc_bxs   = !d_t3
+!sc_by0   = !d_t4                  ;   y from, height
+!sc_bys   = !d_t5
+!sc_m2    = !d_t6                  ;   twice its margin + 1
+; (the fast ray test's: the ray's |vx|, |vy|, their signs, the heading's
+; class h & 3; the centre's |ex|, |ey|; a product's sign. The fight's math
+; scratch, free across a strike)
+!sc_avx   = !m_t0
+!sc_avy   = !m_t1
+!sc_svx   = !m_t2
+!sc_svy   = !m_t3
+!sc_vcls  = !m_t4
+!sc_aex   = !m_t5
+!sc_aey   = !m_t6
+!sc_sg    = !m_t7
+; The projection's update (sc_update, never during a strike): the changes
+; since the last.
+!sc_dtx   = !fn_m+0
+!sc_dty   = !fn_m+2
+!sc_dr    = !fn_m+4
+!sc_dcx   = !fn_m+6
+!sc_dcy   = !fn_m+8
+!sc_sx    = !fn_q+0                ; the travel's shared products (32 bits)
+!sc_sy    = !fn_q+4
 ; (the victory's colours for the vblank, wash.asm: the whiteout's level w,
 ; its colours in extended data, the backdrop, palette 6's place in a level)
 !wv_white   = !SB+$CF8
@@ -456,6 +563,8 @@ assert !wv_p6+2 <= !SB+$D00, "the victory's colours run into the drawing block"
 !d_t7       = !DB+$16
 !d_hit      = !DB+$18              ; hit entry being drawn
 !d_sx       = !DB+$1A              ; burst scratch (fd_burst: the mirrored frame's offset)
+!d_pri      = !DB+$1C              ; fd_burst_at's priority bits (fd_burst: over the globe)
+!d_ball32   = !DB+$1E              ; nonzero: a 32 px Death Ball drawn this frame
 ; Wanted (frame side) and uploaded (NMI side) dynamic cells; $FFFF = none.
 !v_frieza   = !DB+$20              ; bank FA offset of Frieza's 32x32 frame
 !v_frieza_h = !DB+$22
@@ -556,6 +665,7 @@ assert !pb_shown+2 <= !SB+$1800, "orbit scene work past $32:77FF (the frieza mod
 !bp_tile  = !SB+$DE0               ;   5 words: chain tile words
 !bp_x     = !SB+$DEA               ;   5 words: chain cell x
 !bp_y     = !SB+$DF4               ;   5 words: chain cell y
+!sb_cull  = !SB+$DFE               ; the rows the stars' last cull hid: top, bottom << 8 (scline.asm)
 !BC_SIG   = !SB+$1200              ; 2 x 8 words: the cached runs' signatures
 !BC_BYTES = !SB+$1220              ; 2 words: OAM bytes in each cached run (0: none)
 !BC_BND   = !SB+$1224              ; 2 x 12 words: run bytes after each cell index
@@ -618,12 +728,21 @@ assert !pb_shown+2 <= !SB+$1800, "orbit scene work past $32:77FF (the frieza mod
 !od_cam   = !FN+$96                ;   the camera at the fatal hit (x, y, r, longitude, latitude)
 !FN_END   = !FN+$A0
 assert !FN_END <= !SB+$15A0, "orbit finale block overflow"
+!sk_miss  = !FN+$04                ; the strikes' last misses (strike.asm): Goku's ray, Frieza's (5 words each: start x, y, length | heading << 12, width | shattered << 8 | owner << 12, sc_pgen)
+assert !sk_miss+20 <= !fn_cy0, "the strikes' misses run past the clash's starting places"
 
 ; The band layers (bands.asm): two window tables (lines 0-105, 4 bytes a
 ; line: W1 left/right, W2 left/right), the BG1 scroll split, state.
 !BD_TAB_A  = !SB+$E10              ; $6E10-$6FB7
 !BD_TAB_B  = !SB+$15A0             ; $75A0-$7747
 !BD_SCROLL = !SB+$1750             ; HDMA tables: +0 $210D/$210E (11 bytes), +12 $2131 (5 bytes)
+!sb_cy     = !SB+$1748             ; 3 words: each body's top line and size its last noted rows had (scline.asm sl_note; $FFFF none)
+assert (!BD_TAB_B)+(106*4) <= !sb_cy, "the bodies' rows cache runs into band table B (106 band lines)"
+!sc_dk     = !SB+$1762             ; 3 words: the pending travel steps each distant body has taken (scenery.asm)
+!sc_rk     = !SB+$1768             ; 3 words: the steps each takes from there before its place moves
+!sc_next   = !SB+$176E             ; the pending count at which the first place moves (min dk + rk)
+assert !BD_SCROLL+17 <= !sc_dk, "the bodies' pending steps run into the band scroll tables"
+assert !sc_next+2 <= !bq_n, "the bodies' pending steps run into the picture queue"
 !bd_on     = !SB+$FB8              ; 2 words: group drawn by its layer this frame
 !bd_mr     = !SB+$FBC              ; 2 words: the radius its map holds (0: none)
 !bd_key    = !SB+$FC0              ; 4 words: the column each table holds (table * 4 + group * 2)
@@ -650,6 +769,10 @@ assert !FN_END <= !SB+$15A0, "orbit finale block overflow"
 !BD_MAP1   = $5400                 ;   BG1 map (Frieza's band; the field's BG1 map area)
 !BD_MAP2   = $5C00                 ;   BG2 map (Goku's)
 !bw_ymin   = !SB+$DB4              ; 2 words: beam cells above this line are the layers'
+!sb_room   = !SB+$DB8              ; 3 words: frames of room running for each body that yields (scline.asm)
+!sb_held   = !SB+$DBE              ;   the bodies that hold back (bits 0-2)
+assert !bw_ymin+4 <= !sb_room, "the bodies' room counts run into the beams' layer lines"
+assert !sb_held+2 <= !bc_sig, "the bodies' held bits run into the beam runs' signatures"
 
 
 ; OBJ VRAM the scene owns while it shows (name base $6000, 16/32 sizes).
@@ -741,6 +864,7 @@ incsrc "fight.asm"
 incsrc "draw.asm"
 incsrc "beam.asm"
 incsrc "aura.asm"
+incsrc "scdraw.asm"
 incsrc "wash.asm"
 incsrc "bursts.asm"
 incsrc "text.asm"
@@ -762,6 +886,19 @@ org !CODE_ORBIT2
 orbit_code2_start:
 incsrc "montage.asm"
 incsrc "orbit-montage/montage.asm"
+incsrc "scenery.asm"
 orbit_code2_end:
 assert orbit_code2_end <= !CODE_ORBIT2+$4000, "orbit second code area overflow"
+pullpc
+
+; The third code area: title's spare quarter (core/layout.asm notes it):
+; the distant bodies' strikes and their share of the sprite lines.
+!CODE_ORBIT3 = !CODE_QUARTER_MISC
+pushpc
+org !CODE_ORBIT3
+orbit_code3_start:
+incsrc "strike.asm"
+incsrc "scline.asm"
+orbit_code3_end:
+assert orbit_code3_end <= !CODE_ORBIT3+$4000, "orbit third code area overflow"
 pullpc

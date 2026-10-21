@@ -15,9 +15,14 @@
 //   fight  the space fight frame by frame against the browser's own
 //          frieza.js orbital battle (fight-ref.mjs) under a scripted pad:
 //          movement, ki, the charged wave, Instant Transmission and the
-//          exchange, Frieza's patrol, warnings and shots, damage both ways
+//          exchange, Frieza's patrol, warnings and shots, damage both ways,
+//          the distant bodies (the wave shatters the moon)
 //          (ORBIT_FIGHT_EXTRA=n: start n frames later, another phase of the
 //          game's own frame cycle)
+//   scenery the fight under pads that shatter the distant bodies with ki
+//          (the planetoid, the moon, the outer planet), compared the same
+//          way: their places, the strikes, the impacts and their copies,
+//          Luna's remark, the ricochets that follow
 //   clash  the beam struggle from 6,000 HP and the victory, frame by frame
 //          against the same reference: gather, charge, launch, a lost
 //          struggle (recoil, 420 damage), a won one under steady B taps,
@@ -112,23 +117,44 @@ function watchPrelude(rom){
 // [frame, ranges] pairs.
 const badColours=watch=>(watch??[]).map((w,i)=>[i,w.split('|')[0]]).filter(([,c])=>c!=='ok'&&c!=='off');
 // The watch's other findings while the globe picture shows: our vblank work
-// ending in the next frame (core then keeps that frame's HDMA off), the
-// frames with lines whose sprites the PPU drops (over 32 sprites or 34
-// slivers): [frame, sprites, slivers, lines], and the frames whose CPU
-// wrote CGRAM or started a general DMA under HDMA on the visible lines:
-// [frame, CGRAM writes, DMA starts]; the frames whose HDMA enable left out
-// one of the scene's channels, and the frames at and after a repeated
-// picture whose band lines show the rim's colour (the rays' layers drawn
-// with the rim's colour math): [frame, pixels].
+// ending in the next frame (the ORBIT_TIMING build's own record) or the
+// field's HDMA enable written on a visible line (any build): that frame's
+// HDMA start was missed; the frames with lines whose sprites the PPU drops
+// (over 32 sprites or 34 slivers): [frame, sprites, slivers, lines], and
+// the frames whose CPU wrote CGRAM or started a general DMA under HDMA on
+// the visible lines: [frame, CGRAM writes, DMA starts]; the frames whose
+// HDMA enable left out one of the scene's channels, and the frames at and
+// after a repeated picture whose band lines show the rim's colour (the
+// rays' layers drawn with the rim's colour math): [frame, pixels]. And the distant bodies
+// (W.bodies): per body its hides (drawn, then yielding to a beam) and
+// shows, the frames held back, and the frames whose bodies cost the other
+// sprites slivers or lost their own: [frame, slivers].
+const bodyFindings=watch=>{
+  const hides=[0,0,0],shows=[0,0,0],held=[0,0,0],others=[],own=[],last=[null,null,null];
+  (watch??[]).forEach((w,i)=>{
+    const f=w.split('|').find(x=>/^[-dh]{3},\d+,\d+$/.test(x));if(!f)return;
+    const[st,o,b]=f.split(',');
+    if(Number(o)>0)others.push([i,Number(o)]);
+    if(Number(b)>0)own.push([i,Number(b)]);
+    for(let k=0;k<3;k++){
+      const s=st[k];if(s==='h')held[k]++;
+      if(last[k]==='d'&&s==='h')hides[k]++;
+      if(last[k]==='h'&&s==='d')shows[k]++;
+      if(s!=='-')last[k]=s;
+    }
+  });
+  return {hides,shows,held,others,own};
+};
+const bodyText=b=>`the bodies held back ${b.held.join('/')} frames (hides ${b.hides.join('/')}, shows ${b.shows.join('/')}: moon/outer planet/planetoid), costing the others ${b.others.reduce((n,[,s])=>n+s,0)} slivers in ${b.others.length} frames and losing ${b.own.reduce((n,[,s])=>n+s,0)} of their own`;
 const watchFindings=watch=>{
   const late=[],dropped=[],writes=[],hdma=[],bandrim=[];
   (watch??[]).forEach((w,i)=>{
     const[c,g,o,,v,b]=w.split('|');
-    const[cw,dw,hw]=(v??'0,0,0').split(',').map(Number);if(cw||dw)writes.push([i,cw,dw]);
+    const[cw,dw,lw,hw]=(v??'0,0,0,0').split(',').map(Number);if(cw||dw)writes.push([i,cw,dw]);
     if(hw>0)hdma.push(i);
     if(Number(b)>0)bandrim.push([i,Number(b)]);
     if(c==='off')return;
-    const vline=Number(g.split(',')[7]);if(vline>0&&vline<225)late.push(i);
+    const vline=Number(g.split(',')[7]);if((vline>0&&vline<225)||lw>0)late.push(i);
     const[sp,sl,over]=o.split(',').map(Number);if(over>0)dropped.push([i,sp,sl,over]);
   });
   return {late,dropped,writes,hdma,bandrim};
@@ -149,8 +175,8 @@ export function fightPads(n){
   const pads=[];
   for(let f=0;f<n;f++){
     let p=0;
-    // (aims stay clear of the distant moon and planets: their scenery
-    // strikes are not ported yet)
+    // (the wave, fired down, shatters the moon behind Goku: the start of
+    // its lane is within the moon's reach)
     if(f>=40&&f<70)p=P.LEFT;                       // steer
     else if(f>=70&&f<90)p=P.UP|P.RIGHT|P.A;        // sprint
     else if(f>=90&&f<92)p=P.RIGHT;                 // face right
@@ -167,24 +193,59 @@ export function fightPads(n){
   }
   return pads;
 }
+// Scripted pad for the scenery case: ki blasts shatter the distant bodies
+// (the planetoid at 58, the moon at 76, the outer planet at 170: steered
+// under each, then up); their ricochets, impacts and Luna's remark follow.
+// (Their debris, not ported yet, first strikes Goku at 199.)
+export function sceneryPads(n){
+  const pads=[];
+  for(let f=0;f<n;f++){
+    let p=0;
+    if(f>=40&&f<52)p=P.RIGHT;                      // under the moon and planetoid
+    else if(f>=52&&f<56)p=P.UP;                    // face up
+    else if(f>=56&&f<100)p=f%8<4?P.Y:0;            // ki: the planetoid, the moon
+    else if(f>=100&&f<146)p=P.LEFT;                // under the outer planet
+    else if(f>=146&&f<150)p=P.UP;
+    else if(f>=150&&f<220)p=f%8<4?P.Y:0;           // ki: the outer planet
+    pads.push(p);
+  }
+  return pads;
+}
 const KINDS=['','beam','laser','disc','orb'];
 // SNES log line (fight.lua state()) -> the reference's fields.
+// The distant bodies (fight.lua's ninth field): shattered, Luna's remark,
+// the living bodies' places, the impacts where they draw (their copy kept).
+function parseScenery(t){
+  if(!t)return null;
+  const e=t.split(' '),[dead,aside]=e[0].split(',').map(Number);
+  const bodies=e.slice(1,4).map(q=>q.split(':').map(Number)),imps=e.slice(4,7).map(q=>q.split(':').map(Number));
+  return {destroyed:[0,1,2].filter(i=>dead>>i&1).join(','),moonRemark:!!(dead&0x8000),aside:aside?aside-91:null,
+    bodies:bodies.map(([x,y,r],i)=>dead>>i&1?null:`${i}:${x}:${y}:${r}`).filter(Boolean),
+    impacts:imps.map(([a,cx,cy],i)=>a?`${i}:${a-1}:${bodies[i][0]+cx*320}:${bodies[i][1]+cy*288}`:null).filter(Boolean).sort()};
+}
+function refScenery(s){
+  if(!s)return null;
+  return {destroyed:[...s.destroyed].sort().join(','),moonRemark:s.moonRemark,aside:s.aside,
+    bodies:s.bodies.map((b,i)=>s.destroyed.includes(i)?null:`${i}:${b.x}:${b.y}:${b.r}`).filter(Boolean),
+    impacts:s.impacts.map(p=>`${p.target}:${p.age}:${p.x}:${p.y}`).sort()};
+}
 function parseState(line){
-  const [h,b,w,c,v,shots,kis,hits]=line.split('|');
+  const [h,b,w,c,v,shots,kis,hits,sc]=line.split('|');
   const n=t=>t.split(',').map(Number);
   const [hx,hy,heading,charge,teleport,punch]=n(h),[bx,by,hp,clock,cycle,node,dash,stun,age]=n(b),[wk,wa,ghp]=n(w),[cx,cy,cr,lon,lat]=n(c),[von,vage,pad]=n(v);
   const list=t=>t?t.split(' ').map(e=>e.split(':').map(Number)):[];
   return {hero:{x:hx,y:hy},heading,charge,teleport,punch,boss:{x:bx,y:by,hp,clock,cycle,node,dash,stun,age},
     warning:wk?{kind:KINDS[wk],age:wa}:null,gokuHp:ghp,camera:{x:cx,y:cy,r:cr,lon,lat},beam:von?{age:vage}:null,
     pad,shots:list(shots).map(([k,x,y,a])=>`${KINDS[k]}:${x}:${y}:${a}`).sort(),
-    kis:list(kis).map(([x,y,a])=>`${x}:${y}:${a}`).sort(),hits:list(hits).map(([x,y,a])=>`${x}:${y}:${a}`).sort()};
+    kis:list(kis).map(([x,y,a])=>`${x}:${y}:${a}`).sort(),hits:list(hits).map(([x,y,a])=>`${x}:${y}:${a}`).sort(),
+    scenery:parseScenery(sc)};
 }
 function refState(r){
   return {hero:r.hero,heading:r.heading,charge:r.charge,teleport:r.teleport,punch:r.punch,
     boss:{x:r.boss.x,y:r.boss.y,hp:r.boss.hp,clock:r.boss.clock,cycle:r.boss.cycle,node:r.boss.node,dash:r.boss.dash,stun:r.boss.stun,age:r.boss.age},
     warning:r.warning?{kind:r.warning.kind,age:r.warning.age}:null,gokuHp:r.gokuHp,camera:r.camera,beam:r.beam?{age:r.beam.age}:null,
     shots:r.shots.map(p=>`${p.kind}:${p.x}:${p.y}:${p.age}`).sort(),kis:r.kis.map(p=>`${p.x}:${p.y}:${p.age}`).sort(),
-    hits:r.hits.map(p=>`${p.x}:${p.y}:${p.age}`).sort()};
+    hits:r.hits.map(p=>`${p.x}:${p.y}:${p.age}`).sort(),scenery:refScenery(r.scenery)};
 }
 function diff(a,b,path='',out=[]){
   if(typeof a!=='object'||a===null||typeof b!=='object'||b===null){if(JSON.stringify(a)!==JSON.stringify(b))out.push(`${path}: cart ${JSON.stringify(a)} browser ${JSON.stringify(b)}`);return out;}
@@ -278,6 +339,62 @@ end
   return {rom,prelude};
 }
 
+// The fight's frame-by-frame comparison (cases fight, scenery): the
+// cartridge's state every frame against the browser's own battle under the
+// same pads.
+async function fightCase(rom,name,frames,pads,shotList,maxLag=3){
+    const dir=join(out,name);
+    const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nPADS=${lua(pads)}\nSHOTS={${[...shotList,...extraShots()].join(',')}}\nDUMP=${process.env.ORBIT_DUMP?'true':'false'}\nEXTRA=${Number(process.env.ORBIT_FIGHT_EXTRA??0)}\n`;
+    const r=await runMesen({rom,state,test:ADDR+pre+watchPrelude(rom)+readFileSync(join(here,'fight.lua'),'utf8'),outDir:dir,timeoutMs:TIMEOUT,exactFrames:!!process.env.ORBIT_SHOTS});
+    const res=r.results??{};
+    let ok=r.code===0&&res.live===true&&Array.isArray(res.states);
+    if(!ok){console.log(`${name}: FAIL (no run)`,r.code,res.error??'',r.output?.slice(-2000));return false;}
+    // The reference is fed exactly the pad word the cartridge's fight read
+    // at each of its frames (logged with the state), so lag frames do not
+    // shift the input; lag is checked on its own below. Goku's HP passes
+    // through the game's damage queue, which the native code applies 1-5
+    // frames later than the browser's stub does, depending on where the
+    // fight's frames fall in the game's own cycle (ORBIT_FIGHT_EXTRA=n
+    // starts the fight n frames later: n = 0-7 cover every phase): it may
+    // trail by 8 frames, as in the clash case.
+    const cart=res.states.map(parseState);
+    // (a frame that ran two steps, after a lagging game frame, gave both
+    // the same pad: an age without its own log takes the next one's)
+    const padAt=new Map();for(const c of cart)padAt.set(c.boss.age,c.pad);
+    for(let a=Math.max(...padAt.keys());a>0;a--)if(!padAt.has(a)&&padAt.has(a+1))padAt.set(a,padAt.get(a+1));
+    const wram=readFileSync(join(bundleDir('preset__space'),'wram.bin'));
+    const ref=await runFightReference({frames:frames+4,pad:f=>padAt.get(f+1)??0,wram});
+    const mismatches=[];let compared=0,trail=0;const seen=new Set();
+    for(const c of cart){
+      if(seen.has(c.boss.age))continue;seen.add(c.boss.age);  // a lag frame logs the same state twice
+      const b=ref[c.boss.age-1];if(!b)continue;compared++;
+      const want=refState(b);delete c.pad;
+      if(c.gokuHp!==want.gokuHp){
+        const k=[1,2,3,4,5,6,7,8].find(k=>ref[c.boss.age-1-k]?.gokuHp===c.gokuHp);
+        if(k){trail=Math.max(trail,k);want.gokuHp=c.gokuHp;}
+      }
+      const d=diff(c,want);
+      if(d.length)mismatches.push(`age ${c.boss.age}: ${d.slice(0,4).join('; ')}`);
+    }
+    // every frame: the colours the orbit owns as the scene sends them
+    const colours=badColours(res.watch),{late,dropped,writes}=watchFindings(res.watch),bodies=bodyFindings(res.watch);
+    const report={compared,mismatchFrames:mismatches.length,first:mismatches.slice(0,12),lagged:res.lagged,hpTrail:trail,colours,late,dropped,writes,bodies,watch:res.watch,
+      end:{cart:cart.at(-1),browser:ref[cart.at(-1).boss.age-1]?refState(ref[cart.at(-1).boss.age-1]):null}};
+    writeFileSync(join(dir,'report.json'),JSON.stringify(report,null,1));
+    // The fight steps once per field vblank (catching up after a slow game
+    // frame, as the browser's clock does); a few pictures may still repeat
+    // when the game's own frame runs long (its damage reaction).
+    // (and a distant body drawn whole or not at all: it never loses
+    // slivers on the sprite lines)
+    ok=ok&&compared>=frames-80&&mismatches.length===0&&res.lagged<=maxLag&&colours.length===0&&late.length===0&&writes.length===0&&bodies.own.length===0;
+    console.log(`${name}: ${ok?'pass':'FAIL'} compared ${compared} frames, ${mismatches.length} differ, ${res.lagged} lagged, HP trail ${trail}, ${colours.length} frames with other colours, ${late.length} late vblanks, ${writes.length} frames writing CGRAM or DMA on visible lines, ${dropped.length} frames dropping sprites`);
+    console.log(`  ${bodyText(bodies)}`);
+    for(const[f,c]of colours.slice(0,8))console.log(`  frame ${f}: ${c} not the scene's`);
+    for(const[f,cw,dw]of writes.slice(0,8))console.log(`  frame ${f}: ${cw} CGRAM writes, ${dw} DMA starts on visible lines`);
+    for(const m of mismatches.slice(0,8))console.log('  '+m);
+    if(res.lagAt?.length)console.log(`  lagged at ${res.lagAt.join(' ')}`);
+    return ok;
+}
 const cases={
   async globe(rom){
     // The browser's cameras: idle fight (space preset), moving, beam,
@@ -361,55 +478,15 @@ const cases={
     return ok;
   },
   async fight(rom){
-    const frames=Number(process.env.ORBIT_FIGHT_FRAMES??660),pads=fightPads(frames);
-    const dir=join(out,'fight');
-    const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nPADS=${lua(pads)}\nSHOTS={${[0,60,150,200,240,320,600,...extraShots()].join(',')}}\nDUMP=${process.env.ORBIT_DUMP?'true':'false'}\nEXTRA=${Number(process.env.ORBIT_FIGHT_EXTRA??0)}\n`;
-    const r=await runMesen({rom,state,test:ADDR+pre+watchPrelude(rom)+readFileSync(join(here,'fight.lua'),'utf8'),outDir:dir,timeoutMs:TIMEOUT,exactFrames:!!process.env.ORBIT_SHOTS});
-    const res=r.results??{};
-    let ok=r.code===0&&res.live===true&&Array.isArray(res.states);
-    if(!ok){console.log('fight: FAIL (no run)',r.code,res.error??'',r.output?.slice(-2000));return false;}
-    // The reference is fed exactly the pad word the cartridge's fight read
-    // at each of its frames (logged with the state), so lag frames do not
-    // shift the input; lag is checked on its own below. Goku's HP passes
-    // through the game's damage queue, which the native code applies 1-5
-    // frames later than the browser's stub does, depending on where the
-    // fight's frames fall in the game's own cycle (ORBIT_FIGHT_EXTRA=n
-    // starts the fight n frames later: n = 0-7 cover every phase): it may
-    // trail by 8 frames, as in the clash case.
-    const cart=res.states.map(parseState);
-    // (a frame that ran two steps, after a lagging game frame, gave both
-    // the same pad: an age without its own log takes the next one's)
-    const padAt=new Map();for(const c of cart)padAt.set(c.boss.age,c.pad);
-    for(let a=Math.max(...padAt.keys());a>0;a--)if(!padAt.has(a)&&padAt.has(a+1))padAt.set(a,padAt.get(a+1));
-    const wram=readFileSync(join(bundleDir('preset__space'),'wram.bin'));
-    const ref=await runFightReference({frames:frames+4,pad:f=>padAt.get(f+1)??0,wram});
-    const mismatches=[];let compared=0,trail=0;const seen=new Set();
-    for(const c of cart){
-      if(seen.has(c.boss.age))continue;seen.add(c.boss.age);  // a lag frame logs the same state twice
-      const b=ref[c.boss.age-1];if(!b)continue;compared++;
-      const want=refState(b);delete c.pad;
-      if(c.gokuHp!==want.gokuHp){
-        const k=[1,2,3,4,5,6,7,8].find(k=>ref[c.boss.age-1-k]?.gokuHp===c.gokuHp);
-        if(k){trail=Math.max(trail,k);want.gokuHp=c.gokuHp;}
-      }
-      const d=diff(c,want);
-      if(d.length)mismatches.push(`age ${c.boss.age}: ${d.slice(0,4).join('; ')}`);
-    }
-    // every frame: the colours the orbit owns as the scene sends them
-    const colours=badColours(res.watch),{late,dropped,writes}=watchFindings(res.watch);
-    const report={compared,mismatchFrames:mismatches.length,first:mismatches.slice(0,12),lagged:res.lagged,hpTrail:trail,colours,late,dropped,writes,watch:res.watch,
-      end:{cart:cart.at(-1),browser:ref[cart.at(-1).boss.age-1]?refState(ref[cart.at(-1).boss.age-1]):null}};
-    writeFileSync(join(dir,'report.json'),JSON.stringify(report,null,1));
-    // The fight steps once per field vblank (catching up after a slow game
-    // frame, as the browser's clock does); a few pictures may still repeat
-    // when the game's own frame runs long (its damage reaction).
-    ok=ok&&compared>=frames-80&&mismatches.length===0&&res.lagged<=3&&colours.length===0&&late.length===0&&writes.length===0;
-    console.log(`fight: ${ok?'pass':'FAIL'} compared ${compared} frames, ${mismatches.length} differ, ${res.lagged} lagged, HP trail ${trail}, ${colours.length} frames with other colours, ${late.length} late vblanks, ${writes.length} frames writing CGRAM or DMA on visible lines, ${dropped.length} frames dropping sprites`);
-    for(const[f,c]of colours.slice(0,8))console.log(`  frame ${f}: ${c} not the scene's`);
-    for(const[f,cw,dw]of writes.slice(0,8))console.log(`  frame ${f}: ${cw} CGRAM writes, ${dw} DMA starts on visible lines`);
-    for(const m of mismatches.slice(0,8))console.log('  '+m);
-    if(res.lagAt?.length)console.log(`  lagged at ${res.lagAt.join(' ')}`);
-    return ok;
+    const frames=Number(process.env.ORBIT_FIGHT_FRAMES??660);
+    // lag 12 measured: the base's 2 (248, 524) plus the distant bodies' cascade 235-255 under the beam's zoom
+    return fightCase(rom,'fight',frames,fightPads(frames),[0,60,150,200,240,320,600],12);
+  },
+  async scenery(rom){
+    // (to 196: the shattered bodies' debris, not ported yet, first strikes
+    // Goku at 199)
+    const frames=Number(process.env.ORBIT_SCENERY_FRAMES??196);
+    return fightCase(rom,'scenery',frames,sceneryPads(frames),[0,58,76,150,172,190]);
   },
   async clash(rom){
     const frames=Number(process.env.ORBIT_CLASH_FRAMES??3000),pads=clashPads(frames);
@@ -459,15 +536,16 @@ const cases={
     const want=ref.filter(b=>b.native).map(b=>b.native.map(v=>v.toString(16)).join(' '));
     const returned=cart.find(c=>c.returned),refReturn=ref.find(b=>b.returned);
     // every frame the globe picture shows: the colours the orbit owns
-    const colours=badColours(res.watch),{late,dropped,writes,hdma,bandrim}=watchFindings(res.watch);
+    const colours=badColours(res.watch),{late,dropped,writes,hdma,bandrim}=watchFindings(res.watch),bodies=bodyFindings(res.watch);
     const report={compared,mismatchFrames:mismatches.length,first:mismatches.slice(0,16),lagged:res.lagged,nativeWant:want,
-      returnedAt:returned?.wage,refReturnedAt:refReturn?refReturn.boss.age:null,colours,late,dropped,writes,hdma,bandrim,watch:res.watch,end:cart.at(-1)};
+      returnedAt:returned?.wage,refReturnedAt:refReturn?refReturn.boss.age:null,colours,late,dropped,writes,hdma,bandrim,bodies,watch:res.watch,end:cart.at(-1)};
     writeFileSync(join(dir,'report.json'),JSON.stringify(report,null,1));
     // (and at and after every repeated picture the rays' band layers drawn
     // as on any other frame: the scene's HDMA channels on, no band pixel in
     // the rim's colour)
-    ok=ok&&compared>=frames-200&&mismatches.length===0&&!!returned&&returned.wage===refReturn?.boss.age&&colours.length===0&&late.length===0&&writes.length===0&&hdma.length===0&&bandrim.length===0;
+    ok=ok&&compared>=frames-200&&mismatches.length===0&&!!returned&&returned.wage===refReturn?.boss.age&&colours.length===0&&late.length===0&&writes.length===0&&hdma.length===0&&bandrim.length===0&&bodies.own.length===0;
     console.log(`clash: ${ok?'pass':'FAIL'} compared ${compared} frames, ${mismatches.length} differ, ${res.lagged} lagged, back at ${returned?.wage} / ${refReturn?.boss.age}, ${colours.length} frames with other colours, ${late.length} late vblanks, ${writes.length} frames writing CGRAM or DMA on visible lines, ${hdma.length} frames without the scene's HDMA channels, ${bandrim.length} band pictures miscoloured after a repeat, ${dropped.length} frames dropping sprites`);
+    console.log(`  ${bodyText(bodies)}`);
     for(const[f,n]of bandrim.slice(0,8))console.log(`  frame ${f}: ${n} band-line pixels in the rim's colour`);
     for(const m of mismatches.slice(0,10))console.log('  '+m);
     // the repeated pictures by the finale's phase and age (the frame's own
@@ -890,7 +968,7 @@ const rom=buildRom();
 mkdirSync(out,{recursive:true});
 const names=process.argv.slice(2).filter(a=>!a.startsWith('-'));
 let failed=0;
-const defaults=['globe','intro','fight','clash','handoff','montage','death','return'];
+const defaults=['globe','intro','fight','scenery','clash','handoff','montage','death','return'];
 for(const name of names.length?names:defaults){
   if(!cases[name]){console.log(`unknown case ${name}`);failed++;continue;}
   if(!await cases[name](rom))failed++;

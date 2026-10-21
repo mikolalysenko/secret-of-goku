@@ -50,12 +50,23 @@ import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {encodeTile,writePng,blank} from '../tools/gfx.mjs';
 import {starColor} from './orbit.mjs';
+import {bodyColours} from './orbit-scenery.mjs';
 
 const luma=c=>{c--;return(c&31)*3+(c>>5&31)*6+(c>>10&31);};
 const rgb=([r,g,b])=>1+r+(g<<5)+(b<<10);
 const hex4=v=>'$'+(v&0xffff).toString(16).padStart(4,'0');
 const hex2=v=>'$'+(v&0xff).toString(16).padStart(2,'0');
 
+// A burst frame whose four parts fill a 32x32 square: its top left (the
+// frame is one composite cell, orbit-fx's combc_<frame>_<quarter>: quarter
+// x / 16 + y / 8 of the square, the part's flips drawn in), else null.
+// (orbit-montage.mjs draws the same quarters as 16x16 cells.)
+export function burstSquare(frame){
+  const x0=Math.min(...frame.map(p=>p.x|0)),y0=Math.min(...frame.map(p=>p.y|0));
+  const ok=frame.length===4&&frame.every(p=>((p.x|0)===x0||(p.x|0)===x0+16)&&((p.y|0)===y0||(p.y|0)===y0+16))&&
+    new Set(frame.map(p=>(p.x|0)*1000+(p.y|0))).size===4;
+  return ok?{x:x0,y:y0}:null;
+}
 // OBJ palettes the scene owns while it shows (1 = Goku, 2-3 = HUD).
 export const ORBIT_FX_PAL={FIRE:0,BLUE:4,PINK:5,FRIEZA:6,GOLD:7};
 // Resident small-cell slots (16x16: tiles t, t+1, t+16, t+17).
@@ -83,10 +94,33 @@ export async function generate({rom,repo,outDir,xdata}){
 
   // --- cells (16x16, pixels 0 or 1+BGR555) ----------------------------------
   const cells=[];
-  const add=(name,cls,px)=>{cells.push({name,cls,px});};
-  // Exploder burst cells (native-combustion.js), the ones burst frames 0-6 use.
-  const burstCells=[...new Set(combustionFrames.burst.flat().map(p=>p.cell))].sort((a,b)=>a-b);
-  for(const c of burstCells)add(`comb_${c}`,'FIRE',decode(combustionCells[c]));
+  const add=(name,cls,px,tile)=>{cells.push({name,cls,px,tile});};
+  // Exploder burst cells (native-combustion.js), the ones burst frames 0-6
+  // use. A frame of four parts filling a 32x32 square (frames 1-4) is one
+  // 32x32 cell, its parts' flips drawn in: four quarters at T, T+2, T+32,
+  // T+34 for T = $0C0, $0C4, $0C8, $0CC (rows $0C and $0E); the other
+  // frames' parts stay 16x16 cells. (draw.asm fd_burst: one entry a
+  // composite instead of four.)
+  const COMPOSITE_T=[0x0C0,0x0C4,0x0C8,0x0CC];
+  const flipCell=(px,fx,fy)=>{const o=new Uint16Array(256);for(let y=0;y<16;y++)for(let x=0;x<16;x++)o[y*16+x]=px[(fy?15-y:y)*16+(fx?15-x:x)];return o;};
+  const composite=[];          // per burst frame: {tile, x, y} of its 32x32 cell, or null
+  const burstCells=new Set();
+  combustionFrames.burst.forEach((frame,f)=>{
+    const sq=burstSquare(frame),x0=sq?.x,y0=sq?.y;
+    if(sq&&composite.filter(Boolean).length>=COMPOSITE_T.length)throw Error('orbit-fx: more square burst frames than composite cells');
+    if(sq){
+      const T=COMPOSITE_T[composite.filter(Boolean).length];
+      for(const p of frame){
+        const qx=(p.x|0)-x0,qy=(p.y|0)-y0;
+        add(`combc_${f}_${qx/16+qy/8}`,'FIRE',flipCell(decode(combustionCells[p.cell]),!!p.flipX,!!p.flipY),T+qx/8+qy*2);
+      }
+      composite[f]={tile:T,x:x0,y:y0};
+    }else{
+      composite[f]=null;
+      for(const p of frame)burstCells.add(p.cell);
+    }
+  });
+  for(const c of[...burstCells].sort((a,b)=>a-b))add(`comb_${c}`,'FIRE',decode(combustionCells[c]));
   // Blue: ki shots and ricochets (charge-orb), sparks, Goku's hand charge
   // (charge(): the charge-orb cell sampled 2:1 into 8x8, centred).
   const small=(src,f=c=>c)=>{const px=new Uint16Array(256);for(let py=0;py<8;py++)for(let qx=0;qx<8;qx++){const c=src[py*32+qx*2];if(c)px[(py+4)*16+qx+4]=f(c);}return px;};
@@ -118,7 +152,13 @@ export async function generate({rom,repo,outDir,xdata}){
     disc(8,8,3,rgb([15,8,2]));disc(8,7,2,rgb([29,20,7]));for(let x=7;x<=9;x++)px[4*16+x]=rgb([31,29,15]);
     add('pouch','GOLD',px);
   }
-  if(cells.length>SLOTS.length)throw Error(`orbit-fx: ${cells.length} cells for ${SLOTS.length} slots`);
+  {
+    const fixed=new Set(cells.filter(c=>c.tile!==undefined).map(c=>c.tile));
+    for(const t of fixed)if(!SLOTS.includes(t))throw Error('orbit-fx: a composite cell outside the slots');
+    const free=SLOTS.filter(t=>!fixed.has(t));
+    let k=0;
+    for(const c of cells)if(c.tile===undefined){if(k>=free.length)throw Error(`orbit-fx: ${cells.length} cells for ${SLOTS.length} slots`);c.tile=free[k++];}
+  }
 
   // Death Balls (death-ball-art.js, violet): 32 px and 16 px, 12 frames.
   const deathArt=createDeathBallArt(rom),death={32:[],16:[]};
@@ -131,6 +171,12 @@ export async function generate({rom,repo,outDir,xdata}){
   const colorsOf=(list)=>[...new Set(list.flatMap(p=>[...p]))].filter(Boolean).sort((a,b)=>luma(a)-luma(b));
   const pal={};
   pal.FIRE=[0,...colorsOf(cells.filter(c=>c.cls==='FIRE').map(c=>c.px))];
+  // (then the distant bodies' ten colours: orbit-scenery.mjs)
+  {
+    const bodies=await bodyColours(repo);
+    if(pal.FIRE.length!==bodies.first)throw Error(`orbit-fx: ${pal.FIRE.length-1} fire colours, the bodies' expect ${bodies.first-1}`);
+    pal.FIRE.push(...bodies.colours);
+  }
   // BLUE: 1 spare, 2-3 the beam band (outer, inner; animated), then the cells.
   pal.BLUE=[0,0,0,0,...colorsOf(cells.filter(c=>c.cls==='BLUE').map(c=>c.px))];
   // PINK: 1 white (laser core), 2-3 Frieza's beam band, the ki ramp, violet.
@@ -156,8 +202,8 @@ export async function generate({rom,repo,outDir,xdata}){
   // --- VRAM images -------------------------------------------------------------
   const images=REGIONS.map(r=>({...r,bytes:new Uint8Array(r.count*32)}));
   const putTile=(tile,bytes)=>{const r=images.find(r=>tile>=r.first&&tile<r.first+r.count);if(!r)throw Error('orbit-fx: tile outside the regions');r.bytes.set(bytes,(tile-r.first)*32);};
-  cells.forEach((cell,i)=>{
-    const idx=Uint8Array.from(cell.px,c=>indexOf(cell.cls,c));cell.tile=SLOTS[i];
+  cells.forEach(cell=>{
+    const idx=Uint8Array.from(cell.px,c=>indexOf(cell.cls,c));
     putTile(cell.tile,encodeTile(idx,16,0,0));putTile(cell.tile+1,encodeTile(idx,16,8,0));
     putTile(cell.tile+16,encodeTile(idx,16,0,8));putTile(cell.tile+17,encodeTile(idx,16,8,8));
   });
@@ -222,30 +268,86 @@ export async function generate({rom,repo,outDir,xdata}){
     bandBlue:[band(0,6),band(0,7),band(1,6),band(1,7)].map(c=>c-1)}));
   data.push('orbit_fx_band_blue:','\tdw '+[band(0,6),band(0,7),band(1,6),band(1,7)].map(c=>hex4(c-1)).join(','));
   data.push('orbit_fx_band_pink:','\tdw '+[band(0,6),band(0,7),band(1,6),band(1,7)].map(c=>hex4(pink(c)-1)).join(','));
-  // Bursts, mirrored ahead (draw.asm fd_parts): per mirror m (bit 0: x,
-  // bit 1: y) and frame f, at orbit_fx_burst_m[m * 7 + f], a count, then
-  // per part its 16x16 cell's top left from the anchor (words: x or -x -
-  // 15 when mirrored, y likewise) and the tile word with its flips.
-  // orbit_fx_burst_tf: the frame of age t (0-41), t / 6, times 2.
-  const ptr=[],parts=[],word=v=>[v&255,(v>>8)&255];
-  for(let m=0;m<4;m++)for(const frame of combustionFrames.burst){
-    ptr.push(parts.length);parts.push(frame.length);
-    for(const p of frame){
-      const t=tileOf(`comb_${p.cell}`),fx=!!p.flipX!==!!(m&1),fy=!!p.flipY!==!!(m&2),px=p.x|0,py=p.y|0;
-      parts.push(...word(m&1?-px-15:px),...word(m&2?-py-15:py),...word(t|(fx?0x4000:0)|(fy?0x8000:0)));
+  // Bursts (orbit-effects.js burst: sub-burst i of 3 or 9 at age - 4i, the
+  // Exploder frame t / 6 for t < 42, at radius 8 + min(24, t) (i > 0) on
+  // heading (i * 6) & 15, turn i & 3 and mirror i & 1; quarter turns 1 and
+  // 3 drawn as 0 and 2, the cells not being stored turned): per age the
+  // OAM entries in drawing order, the last sub-burst first (in front).
+  // Extended data orbit_burst: per age of the small burst (50) then the
+  // large (74) its first entry's offset and count (words), then the
+  // entries: x, y from the burst's point, the tile word (flips, palette
+  // FIRE), 2 when 32x32 else 0 (words). draw.asm fd_burst.
+  {
+    const frameEntries=(f,m)=>{
+      const c=composite[f],mx=!!(m&1),my=!!(m&2);
+      if(c)return[{x:mx?-c.x-31:c.x,y:my?-c.y-31:c.y,tile:c.tile|(mx?0x4000:0)|(my?0x8000:0),big:2}];
+      return combustionFrames.burst[f].map(p=>{const px=p.x|0,py=p.y|0,fx=!!p.flipX!==mx,fy=!!p.flipY!==my;
+        return{x:mx?-px-15:px,y:my?-py-15:py,tile:tileOf(`comb_${p.cell}`)|(fx?0x4000:0)|(fy?0x8000:0),big:0};});
+    };
+    if(combustionFrames.burst.length!==7)throw Error('orbit-fx: burst frames '+combustionFrames.burst.length+' (fd_burst draws 7)');
+    const word=v=>[v&255,(v>>8)&255];
+    const kinds=[{count:3,ages:50},{count:9,ages:74}],index=[],entries=[];
+    let most=0;
+    for(const{count,ages}of kinds)for(let age=0;age<ages;age++){
+      const list=[];
+      for(let i=count-1;i>=0;i--){
+        const t=age-i*4;if(t<0||t>=42)continue;
+        const[vx,vy]=orbitVectors[(i*6)&15],r=8+Math.min(24,t),ox=i?(vx*r)>>8:0,oy=i?(vy*r)>>8:0;
+        const turn=i&3,both=turn>=2,m=((i&1)^(both?1:0))|(both?2:0);
+        for(const e of frameEntries(Math.floor(t/6),m))list.push({...e,x:e.x+ox,y:e.y+oy});
+      }
+      index.push(entries.length,list.length);entries.push(...list);most=Math.max(most,list.length);
+      // (self-check: the entries, back to front, draw exactly the parts'
+      // pixels in the parts' own order)
+      const cellAt=new Map(cells.map(c=>[c.tile,c])),drawn=new Map(),want=new Map();
+      for(const e of[...list].reverse()){
+        const n=e.big?32:16,fx=!!(e.tile&0x4000),fy=!!(e.tile&0x8000),T=e.tile&0x1FF;
+        for(let py=0;py<n;py++)for(let px=0;px<n;px++){
+          const sx=fx?n-1-px:px,sy=fy?n-1-py:py,cell=cellAt.get(T+(sx>=16?2:0)+(sy>=16?32:0));
+          const c=cell.px[(sy&15)*16+(sx&15)];if(c)drawn.set((e.x+px)*1000+(e.y+py),c);
+        }
+      }
+      for(let i=0;i<count;i++){
+        const t=age-i*4;if(t<0||t>=42)continue;
+        const[vx,vy]=orbitVectors[(i*6)&15],r=8+Math.min(24,t),ox=i?(vx*r)>>8:0,oy=i?(vy*r)>>8:0;
+        const both=(i&3)>=2,mx=!!((i&1)^(both?1:0)),my=both;
+        for(const p of combustionFrames.burst[Math.floor(t/6)]){
+          const px0=p.x|0,py0=p.y|0,x=(mx?-px0-15:px0)+ox,y=(my?-py0-15:py0)+oy,fx=!!p.flipX!==mx,fy=!!p.flipY!==my;
+          const src=decode(combustionCells[p.cell]);
+          for(let py=0;py<16;py++)for(let px=0;px<16;px++){const c=src[(fy?15-py:py)*16+(fx?15-px:px)];if(c)want.set((x+px)*1000+(y+py),c);}
+        }
+      }
+      if(drawn.size!==want.size||[...want].some(([k,c])=>drawn.get(k)!==c))throw Error(`orbit-fx: the burst entries of age ${age} (${count}) draw other pixels`);
     }
+    // Per age a 16-byte header: its entries' offset and count, the same
+    // entries packed for a burst wholly on the screen (fd_burst's fast
+    // path: x - min x | (y - min y) << 8, the tile word: 4 bytes), its
+    // high-table bytes (4 for each first slot's place in its byte, 0-3:
+    // the large ones' size bits), its top lefts' min x, max x, min y,
+    // max y. Then the entries (8 bytes), the packed ones, the bytes.
+    const out=[],nAges=index.length/2,headBytes=nAges*16;
+    const slowBase=headBytes,fastBase=slowBase+entries.length*8,hbBase=fastBase+entries.length*4;
+    const fast=[],hb=[];
+    for(let k=0;k<nAges;k++){
+      const start=index[2*k],n=index[2*k+1],list=entries.slice(start,start+n);
+      const xs=list.map(e=>e.x),ys=list.map(e=>e.y);
+      const mnx=n?Math.min(...xs):0,mxx=n?Math.max(...xs):0,mny=n?Math.min(...ys):0,mxy=n?Math.max(...ys):0;
+      if(mxx-mnx>255||mxy-mny>255)throw Error('orbit-fx: a burst wider than its packed places');
+      out.push(...word(slowBase+start*8),...word(n),...word(fastBase+start*4),...word(hbBase+k*16),...word(mnx),...word(mxx),...word(mny),...word(mxy));
+      // (the small bursts over the globe, priority 2; the large behind it)
+      for(const e of list)fast.push(...word((e.x-mnx)|((e.y-mny)<<8)),...word(e.tile|(k<kinds[0].ages?0x2000:0)));
+      for(let f=0;f<4;f++){
+        const b=[0,0,0,0];
+        list.forEach((e,i)=>{if(e.big){const at=f+i;if((at>>2)>3)throw Error('orbit-fx: a burst past four high-table bytes');b[at>>2]|=2<<(2*(at&3));}});
+        hb.push(...b);
+      }
+    }
+    for(const e of entries)out.push(...word(e.x),...word(e.y),...word(e.tile),...word(e.big));
+    out.push(...fast,...hb);
+    if(out.length!==hbBase+nAges*16)throw Error('orbit-fx: the burst blob\'s layout');
+    xdata('orbit_burst',Uint8Array.from(out));
+    L.push(`!OFX_BURST_S_AGES = ${kinds[0].ages}`,`!OFX_BURST_L_AGES = ${kinds[1].ages}`,`!OFX_BURST_MOST = ${most}`,'!OFX_BURST_S_PRI = $2000');
   }
-  if(combustionFrames.burst.length!==7)throw Error('orbit-fx: burst frames '+combustionFrames.burst.length+' (fd_burst draws 7)');
-  data.push('orbit_fx_burst_m:','\tdw '+ptr.map(v=>'orbit_fx_burst_mparts+'+v).join(','));
-  data.push('orbit_fx_burst_tf:','\tdb '+Array.from({length:42},(_,t)=>hex2(Math.floor(t/6)*2)).join(','));
-  data.push('orbit_fx_burst_mparts:');
-  for(let i=0;i<parts.length;i+=16)data.push('\tdb '+parts.slice(i,i+16).map(hex2).join(','));
-  // fx.burst offsets: sub-burst i (1-8) at age t (0-41): heading (i*6)&15,
-  // radius 8 + min(24, t): ((v * radius) >> 8) per axis.
-  const off=[];
-  for(let i=1;i<9;i++)for(let t=0;t<42;t++){const[vx,vy]=orbitVectors[(i*6)&15],r=8+Math.min(24,t);off.push((vx*r)>>8&255,(vy*r)>>8&255);}
-  data.push('orbit_fx_burst_off:');
-  for(let i=0;i<off.length;i+=16)data.push('\tdb '+off.slice(i,i+16).map(hex2).join(','));
   // Beam bands (orbit-effects.js beam): 32x32 cells generated at run time
   // along the beam. Five heading classes (|vx|, |vy| of orbitVectors 0-4);
   // headings 5-15 mirror them. Per class: vx, vy, vx div vy, vx mod vy

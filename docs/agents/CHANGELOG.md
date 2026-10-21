@@ -4,6 +4,78 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the stars on a beam's new rows hidden at once (2026-10-21)
+
+- When a beam group turns on, gets heavier or moves onto new rows, the
+  remake of the stars' row limits hides the stars of every list on those
+  rows (y = $E0), in the same frame, before the OAM is written. The
+  lists' rebuilds bring stars back within the new limits; in a launch
+  those take up to 20 frames, 1-2 stars a frame, which is when the rays
+  lost slivers to stale stars.
+- A cull is skipped when its rows were culled already and no list's
+  build has begun since.
+- A group still on keeps the rows it holds in the limits while its own
+  lie within them: looser limits need no rebuild, and the edge of a ray
+  going back and forth over a row no longer remakes the limits and culls
+  each time. Its rows go when it turns off.
+- The margin a distant body keeps for the bursts (10 slivers a line) now
+  holds on the beam rows it is counted on too.
+- A body no longer waits for the lists when the limits on its rows only
+  grow stricter (the cull clears those rows).
+- The limits come from a table, and a body no beam group's rows touch
+  skips the room test.
+- Per-frame probe, default build: the beams lose no slivers to stale
+  stars in the `clash` (160 before, main 5) and 184 in the `fight` (686,
+  main 692). The bodies cost the others 6 slivers in the `clash`, 22 in
+  the `fight` (bursts beside a body, no beam there), 721 in `scenery`.
+- Repeated pictures: `fight` 9 (11 before, main 2), `clash` 41 (55; main
+  34: launch 7, struggle 1, recoil 1, win 32). In the first exchange the
+  moon and the outer planet come back 80 frames into the struggle: the
+  launch's first rows stay in the limits while the rays are on.
+
+## Orbit: the strike tests skip a repeated miss (2026-10-21)
+
+- A ray's test against the distant bodies (Goku's wave, Frieza's beam or
+  laser) is skipped while it repeats its kind's last miss: the same ray
+  and shattered bodies, and no place or camera moved since (`sc_pgen`).
+- A ray still growing (Frieza's beam) is boxed only to its head, so the
+  bodies ahead of it are not tested.
+- In the `fight` test 35 of its 103 ray strikes skip their test. Its
+  repeated pictures stay at 11: around the wave the projection's camera
+  steps and the limits' remakes are the heavier work.
+
+## Orbit: the distant bodies yield to the sprite lines (2026-10-21)
+
+- The distant bodies now count in the stars' row limits: on the rows a
+  beam crosses with the beams' slivers, on their other rows with a
+  margin of 10 slivers a line for Goku, Frieza, the shots and the bursts
+  (a few fewer stars near a planet).
+- A body yields, and is not drawn, while its rows a beam crosses have no
+  room for it, or until both star lists were rebuilt with it counted
+  there. It stays hidden 16 frames at least, then until the beams are
+  gone or its rows had room for 16 frames running (64 after a frame with
+  none): one hide for a beam's pass, no flicker. In the clash the
+  planetoid hides as each launch begins and comes back when the rays are
+  gone. A body is drawn whole or not at all.
+- The bodies' sprites cost the others 2 slivers in the `clash` (Stage A:
+  1,062) and 16 in the `fight` (392), all inside bursts. The `scenery`
+  run keeps about its 715 (721): bursts, ki and Frieza beside a body,
+  which no body hides for. The bursts stay before the bodies in OAM.
+- The planetoid of radius 7 is one 16x16 cell (2 slivers a line).
+- Fixed: after the first 32 px Death Ball the outer planet never went
+  back to its own home (`v_d32` was never cleared), so it vanished
+  whenever Frieza's beam took beam slot 4.
+- Cheaper scenery work: each body takes its pending travel steps alone,
+  its rows come from a cache while its top line and size stay, and an
+  empty impact loop is skipped.
+- Repeated pictures on the default build: `fight` 11 (main 2), `clash`
+  60 (main 34; 52 before this change).
+- Tests: `fight`, `scenery` and `clash` report each body's frames held
+  back, its hides and shows, and the slivers the bodies cost the others
+  (`W.bodies`). A body that loses a sliver of its own fails the case.
+- Code: `scline.asm` in the third area (3.9 KiB of 16 used); the main
+  area at 30.7 of 31 KiB.
+
 ## SNES integration: no damage digits on auras and ki shots; the scouter becomes the Analyzer; a heavier finishing kick (2026-10-21)
 
 - FX cache (b18ea0f, 431c1b3, e30816b; merged in 3531a7e): the
@@ -142,6 +214,67 @@ stay traceable even when they are committed together.
 - The `clash` case checks every frame's HDMA enable for the scene's
   channels, and scans the band lines at and after each repeated picture
   for the rim's colour (any found fails the case).
+
+## Orbit: no actor streaming under the orbit's picture (2026-10-21)
+
+- While the orbit's picture is up (the fight, the clash, the fall; as
+  before while it loads and through the second surge's cinematic) its
+  frame stamps `!core_actor_hold`, so the vblank skips the game's actor
+  cell streaming (C1:950D). Nothing native is drawn there but the HUD.
+  In the clash's recoil the streamer had run to line 255 every fifth
+  vblank, and the orbit's vblank then ended past line 261 (the `clash`
+  case's late vblanks on the `ORBIT_TIMING` build). The stopping frame
+  does not hold it.
+- The orbit tests now catch a late vblank on any build: the field's HDMA
+  enable written on a visible line. Lag, late vblanks and dropped sprites
+  are measured on the default build; the hand-off cases keep their own
+  timing ROM for the montage's line checks.
+- Default builds (fight / clash): `fight` 11 lagged, 0 late; `clash` 46
+  lagged (launch 6, struggle 10, recoil 1, win 29), 0 late. Before:
+  `fight` 9 lagged, 2 late vblanks and Goku's HP trailing a hit by more
+  than 8 ages (FAIL); `clash` 48 lagged. Main 565c6a8: `fight` 2,
+  `clash` 31.
+
+## Orbit: the distant bodies, stage A (2026-10-21)
+
+- The moon, the outer planet and the distant planetoid hang behind the
+  globe through the space fight and the clash, where the browser's
+  `projectOrbitBackground` puts them: their places match the browser's on
+  every frame (an exact integer form of its rounding, kept up by table
+  steps), their pictures are its own `orbitBodyColor` at every radius
+  shown.
+- Ki, the wave, ricochets and Frieza's beams, lasers and orbs shatter a
+  body they pass where it shows, as `strikeOrbitScenery` decides: the
+  large impact burst for 170 frames, the fortress-break cue, a shake, and
+  Luna's remark when Goku breaks the moon. The shattered bodies' debris
+  (rocks, grit, their ring, the rocks' hits on Goku) is stage B.
+- Homes: free OBJ cells, the 32 px Death Ball's slot while no ball shows,
+  Frieza's beam slots 4-5 in the fight (his aura moved to slot 3) and the
+  Death Disc cells in the clash. Exploder bursts now draw from generated
+  per-age OAM lists, frames 1-4 as one 32x32 cell each.
+- Tests: the `fight` case compares the bodies on every frame (its wave
+  now shatters the moon); a new `scenery` case shatters all three with ki
+  (196 frames identical).
+- Cost, measured against main 565c6a8: the `fight` repeats 12 pictures (2
+  before; its bound is now 12, with the reason), the `clash` 62 (38). The
+  stars' line limits do not count the bodies yet: where a body shares a
+  beam's rows the PPU drops the beams' slivers, not the body's (`clash`
+  197 frames over the line limits, 34 before; the bodies cost the others
+  2,452 slivers there). Next: the bodies yield to the line budget, and
+  less work in the clash.
+- The `clash` case fails on 4 late vblanks in the recoil: core's native
+  actor streamer runs to line 255 every fifth vblank there, and the
+  module hooks end past line 261. Main 565c6a8 has the same five, and
+  its own `clash` case fails on one of them (frame 561); a request to
+  core is in `orbit.md`. The hardware probe stays clean over the
+  frieza, debug and orbit suites.
+- Off the default run: the `fight` case at `ORBIT_FIGHT_EXTRA` 2 and 7
+  (of 0-7) fails, Goku's HP trailing a hit by more than 8 ages inside
+  the beam-zoom run of repeated pictures.
+- Code: a third orbit code area at `$AB:C000` (the strikes, 3.2 KiB); the
+  main area at 30.5 of 31 KiB, the second at 15.3 of 16; `$E7` data down
+  1.3 KiB (the burst tables moved out). Extended data grows by 29 KiB
+  (2,766 of 2,944 KiB).
 
 ## SNES integration: round-seven sounds (2026-10-21)
 

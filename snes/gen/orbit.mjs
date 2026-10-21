@@ -175,9 +175,10 @@ export function lineTables(r){
 //   (the light level orbit_cgram_live sends), OBJ palette 4 with band frame
 //   0's and frame 1's colours in entries 2-3, Goku's Super Saiyan colours
 //   (palette 5 in the win: palette 1 is also the HUD portrait's), Frieza's
-//   own, red and white palettes (6), the gold and stars (7). The rim keeps
-//   its own colour math on top of the washed backdrop.
-export const WASH={globe:0,blue0:162,blue1:194,ssj:226,frieza:258,red:290,white:322,gold:354,size:386};
+//   own, red and white palettes (6), the gold and stars (7), palette 0 (the
+//   fire and the distant bodies). The rim keeps its own colour math on top
+//   of the washed backdrop.
+export const WASH={globe:0,blue0:162,blue1:194,ssj:226,frieza:258,red:290,white:322,gold:354,fire:386,size:418};
 const SKY=2<<10;                      // planet-view sky(): rgb(0, 0, 2) (!ORBIT_SKY)
 async function victoryColours({repo,outDir,genDir,xdata,globe}){
   const {bossDeathColor}=await import(pathToFileURL(join(repo,'engine/boss-victory.js')).href);
@@ -189,7 +190,7 @@ async function victoryColours({repo,outDir,genDir,xdata,globe}){
   const death=age=>pad16(friezaPalette).map((c,i)=>i?bossDeathColor(c+1,age)-1:0);
   const red=death(0),white=death(16);
   const blue=f=>{const p=[...fx.blue];p[2]=fx.bandBlue[f*2];p[3]=fx.bandBlue[f*2+1];return p;};
-  const flat=[globe,blue(0),blue(1),pad16(ssjPal),pad16(friezaPalette),red,white,fx.gold].flat();
+  const flat=[globe,blue(0),blue(1),pad16(ssjPal),pad16(friezaPalette),red,white,fx.gold,fx.fire].flat();
   if(flat.length*2!==WASH.size||globe.length*2!==WASH.blue0)throw Error('orbit: the wash layout moved');
   const add=(c,w)=>Math.min(31,(c&31)+w)|Math.min(31,(c>>5&31)+w)<<5|Math.min(31,(c>>10&31)+w)<<10;
   const levels=Array.from({length:32},(_,w)=>w);

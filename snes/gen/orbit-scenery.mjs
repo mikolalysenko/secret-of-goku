@@ -1,0 +1,172 @@
+// Orbit scenery: the distant bodies of the space fight (engine/orbit-debris.js
+// orbitTargets, orbitBodyColor; drawn by frieza-orbit-view.js behind the
+// globe at orbit-camera.js projectOrbitBackground with their depths).
+//
+// Single source of truth: the browser's own functions. Every picture is the
+// view's own sampling of a body at a projected radius rr (the base radius
+// r scaled by the camera): orbitBodyColor(index, round(dx r / rr),
+// round(dy r / rr)) for dx, dy in [-rr, rr].
+//
+// Colours: OBJ palette 0 after the fire (orbit-fx.mjs appends them): the
+// moon's four shades, then the outer planet's and the planetoid's lighter
+// three; the darkest shade of all three is the moon's (the palette has room
+// for ten colours: see docs/agents/snes-port/orbit.md).
+//
+// Outputs (dist/snes/gen/orbit-scenery/):
+//   scenery.asm  defines: per body its place, radius, depth and the
+//                projection's integer coefficients (scenery.asm), the
+//                pictures' indices and radius ranges
+//   extended data orbit_body_r: per body (256 bytes each) its projected
+//                radius for every camera radius 0-255
+//   extended data orbit_lane: a ricochet lane's start per heading and
+//                age (46 x 4 bytes a heading: x, y offsets from its origin)
+//   extended data orbit_bodies: 512-byte pictures, a 32x32 cell with the
+//                body's centre at (16, 16) (a radius-16 moon loses its two
+//                darkest tips, right and bottom), either in beam-picture
+//                layout (4 rows of 4 tiles: the moon in beam slot 5, the
+//                outer planet in the Death Ball's slot $004 or slot 4) or
+//                as four 16x16 cells side by side (two rows of 8 tiles: the
+//                planetoid in OBJ $028-$02F, the moon in the clash in the
+//                Death Disc cells $1A0-$1A7): moon (beam layout) 11-16,
+//                moon (cells) 11-16, outer planet 9-15, planetoid 7-13; a
+//                planetoid of radius 7 or less fits one 16x16 cell, its
+//                centre at (8, 8) in the first (the drawing then takes one
+//                entry, 2 slivers on 16 lines: scdraw.asm)
+//   preview.png  every picture (not shipped)
+import {writeFileSync} from 'node:fs';
+import {join} from 'node:path';
+import {pathToFileURL} from 'node:url';
+import {encodeTile,writePng,blank} from '../tools/gfx.mjs';
+
+// The projection (orbit-camera.js projectOrbitBackground, wrapOrbitBackground)
+// in integers: with D = 832 * 128,
+//   N_x = D x + (x - 128)(r - 104) d 128 + (cx - 95) d 13312 - travelX 2132 d + D / 2
+// (and y with 112, 154, travelY 1066 d) gives the browser's Math.round as
+// floor(N / D); the wrap keeps N modulo 320 D (288 D for y).
+export const SCENERY_D=832*128;
+// The pictures (index of the first, the radius range) in orbit_bodies.
+export const BODY_PICTURES=[
+  {name:'MOON_BEAM',body:0,r0:11,r1:16,layout:'beam'},
+  {name:'MOON_CELLS',body:0,r0:11,r1:16,layout:'cells'},
+  {name:'OUTER',body:1,r0:9,r1:15,layout:'beam'},
+  {name:'PLANETOID',body:2,r0:7,r1:13,layout:'cells',one:7},
+];
+const FIRE_COLOURS=5;                 // OBJ palette 0 entries 1-5 (orbit-fx.mjs)
+
+// The ten colours appended to OBJ palette 0 (entries 6-15, '1 + colour' as
+// the browser keeps them) and each body's shade -> palette index.
+export async function bodyColours(repo){
+  const {orbitTargets}=await import(pathToFileURL(join(repo,'engine/orbit-debris.js')).href);
+  const shade=(t,s)=>{const[r,g,b]=t.color.map(c=>Math.floor(c*s/4));return 1+r+(g<<5)+(b<<10);};
+  const [moon,outer,planetoid]=orbitTargets;
+  const colours=[1,2,3,4].map(s=>shade(moon,s));
+  for(const t of[outer,planetoid])for(const s of[2,3,4])colours.push(shade(t,s));
+  const index=orbitTargets.map((t,k)=>{const m=new Map();for(const s of[1,2,3,4])m.set(shade(t,s),s===1?1+FIRE_COLOURS:FIRE_COLOURS+3*k+s);return m;});
+  return {colours,index,first:1+FIRE_COLOURS};
+}
+
+export async function generate({repo,outDir,xdata}){
+  const {orbitTargets,orbitBodyColor}=await import(pathToFileURL(join(repo,'engine/orbit-debris.js')).href);
+  const {index}=await bodyColours(repo);
+  // the darkest shade of the outer planet and the planetoid comes out as
+  // the moon's: index 1 + FIRE_COLOURS for all three (the map above)
+  // (the centre at (c, c): 16, or 8 for one 16x16 cell)
+  const picture=(k,rr,c0=16)=>{
+    const t=orbitTargets[k],idx=new Uint8Array(32*32);
+    if(c0===8&&2*rr+1>15)throw Error(`orbit-scenery: radius ${rr} does not fit one cell`);
+    for(let dy=-rr;dy<=rr;dy++)for(let dx=-rr;dx<=rr;dx++){
+      const c=orbitBodyColor(k,Math.round(dx*t.r/rr),Math.round(dy*t.r/rr));if(!c)continue;
+      const x=c0+dx,y=c0+dy;if(x<0||y<0||x>31||y>31)continue;
+      const i=index[k].get(c);if(i===undefined)throw Error(`orbit-scenery: colour ${c-1} of body ${k} not in the palette`);
+      idx[y*32+x]=i;
+    }
+    return idx;
+  };
+  const bytes=[],L=['; Generated by snes/gen/orbit-scenery.mjs - do not edit.'],previews=[];
+  for(const p of BODY_PICTURES){
+    L.push(`!OSC_${p.name} = ${bytes.length/512}`,`!OSC_${p.name}_R0 = ${p.r0}`,`!OSC_${p.name}_R1 = ${p.r1}`);
+    if(p.one)L.push(`!OSC_${p.name}_ONE = ${p.one-p.r0+1}`);
+    for(let rr=p.r0;rr<=p.r1;rr++){
+      const idx=picture(p.body,rr,p.one&&rr<=p.one?8:16);previews.push(idx);
+      if(p.layout==='beam'){for(let ty=0;ty<4;ty++)for(let tx=0;tx<4;tx++)bytes.push(...encodeTile(idx,32,tx*8,ty*8));}
+      else{
+        // four 16x16 cells (quadrants top left, top right, bottom left,
+        // bottom right) side by side: row 1 their top tiles, row 2 the rest
+        for(const row of[0,1])for(const[qx,qy]of[[0,0],[16,0],[0,16],[16,16]])for(const tx of[0,1])bytes.push(...encodeTile(idx,32,qx+tx*8,qy+row*8));
+      }
+    }
+  }
+  xdata('orbit_bodies',Uint8Array.from(bytes));
+  // each body's projected radius per camera radius 0-255 (the browser's own
+  // projectOrbitBackground: max(1, round(r scale)), floating point as it is)
+  const {projectOrbitBackground}=await import(pathToFileURL(join(repo,'engine/orbit-camera.js')).href);
+  const radii=[];
+  for(const t of orbitTargets)for(let r=0;r<256;r++)radii.push(projectOrbitBackground({x:95,y:154,r,travelX:0,travelY:0},t,t.depth).r);
+  xdata('orbit_body_r',Uint8Array.from(radii));
+  // a ricochet's lane (frieza-orbit.js: from p + v d to p + v (d + 12),
+  // d = (age - 1) 12, v = orbitVectors[heading] / 256): per heading and
+  // d / 12 = 0-45, the offset round(v d) (x, y words)
+  const {orbitVectors}=await import(pathToFileURL(join(repo,'engine/orbit-pixels.js')).href);
+  const lane=[];
+  for(const[vx,vy]of orbitVectors)for(let k=0;k<=45;k++)for(const v of[vx,vy]){const o=Math.round(v*k*12/256);lane.push(o&255,(o>>8)&255);}
+  xdata('orbit_lane',Uint8Array.from(lane));
+  const D=SCENERY_D;
+  orbitTargets.forEach((t,k)=>{
+    const n=`!OSC_B${k}`;
+    L.push(`; ${t.name}`,`${n}_X = ${t.x}`,`${n}_Y = ${t.y}`,`${n}_R = ${t.r}`,`${n}_DEPTH = ${t.depth}`,
+      `${n}_AX = ${(t.x-128)*t.depth}`,`${n}_AY = ${(t.y-112)*t.depth}`,
+      `${n}_BC = ${t.depth*104}`,`${n}_TX = ${2132*t.depth}`,`${n}_TY = ${1066*t.depth}`,
+      `${n}_NX0 = ${t.x*D+D/2}`,`${n}_NY0 = ${t.y*D+D/2}`);
+  });
+  L.push(`!OSC_N = ${orbitTargets.length}`,`!OSC_D = ${D}`,`!OSC_MX = ${320*D}`,`!OSC_MY = ${288*D}`);
+  // the per-step travel's fast path (travelX + 2: N_x - 4264 d)
+  orbitTargets.forEach((t,k)=>L.push(`!OSC_B${k}_T2 = ${-4264*t.depth}`,`!OSC_B${k}_AXR = ${(t.x-128)*128}`,`!OSC_B${k}_AYR = ${(t.y-112)*128}`));
+  // (the zoom's and the camera's coefficients are kept / 128: AX, AY, BC;
+  // the travel's whole: their products fit in 24 bits)
+  for(const t of orbitTargets){if(Math.abs((t.x-128)*t.depth)>32767||Math.abs((t.y-112)*t.depth)>32767||2132*t.depth>32767)throw Error('orbit-scenery: a coefficient past 16 bits');}
+  // a change of one in the camera's radius, x or y, whole (32 bits): the
+  // update's usual steps, without products
+  // the update's usual step whole (scenery.asm sc_update): travelX 0 or +2,
+  // travelY 0, the camera's radius, x and y by -1, 0 or +1: per body x's
+  // change for (travelX / 2) 9 + (dr + 1) 3 + (dcx + 1), then y's for
+  // (dr + 1) 3 + (dcy + 1) (32 bits each, 27 a body)
+  const steps=[];
+  orbitTargets.forEach(t=>{
+    for(let tr=0;tr<2;tr++)for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++)steps.push(-4264*t.depth*tr+(t.x-128)*128*t.depth*dr+13312*t.depth*dc);
+    for(let dr=-1;dr<=1;dr++)for(let dc=-1;dc<=1;dc++)steps.push((t.y-112)*128*t.depth*dr+13312*t.depth*dc);
+  });
+  L.push(`!OSC_STEPS = ${steps.map(v=>'$'+(v>>>0).toString(16).padStart(8,'0')).join(', ')}`);
+  // the travel's pending steps (scenery.asm sc_flush): per body p steps of
+  // travelX + 2 whole, -4264 d p for p = 0-15; and how many a remainder
+  // takes before its place moves: per body and remainder / 2048 (0-51),
+  // floor(2048 i / (4264 d)), at most the true count for any remainder in it
+  const pend=[],room=[];
+  orbitTargets.forEach(t=>{for(let p=0;p<16;p++)pend.push(-4264*t.depth*p);});
+  orbitTargets.forEach(t=>{for(let i=0;i<52;i++)room.push(Math.min(15,Math.floor(2048*i/(4264*t.depth))));});
+  if(Math.ceil(D/2048)>52)throw Error('orbit-scenery: the remainder past the room table');
+  L.push(`!OSC_PEND = ${pend.map(v=>'$'+(v>>>0).toString(16).padStart(8,'0')).join(', ')}`);
+  L.push(`!OSC_ROOM = ${room.join(', ')}`);
+  const w32=(n,v)=>[`${n}_LO = $${((v>>>0)&0xffff).toString(16).padStart(4,'0')}`,`${n}_HI = $${(((v>>>0)>>>16)&0xffff).toString(16).padStart(4,'0')}`];
+  orbitTargets.forEach((t,k)=>L.push(...w32(`!OSC_B${k}_AXRD`,(t.x-128)*128*t.depth),...w32(`!OSC_B${k}_AYRD`,(t.y-112)*128*t.depth),...w32(`!OSC_B${k}_C`,13312*t.depth)));
+  // the strikes' rays (frieza-orbit.js: from p to p + v L / 256): per
+  // heading the far end of a 360 px ray, rounded (the box every ray's
+  // length lies in), and 65536 - |v|^2 (the exact test's |v|^2)
+  L.push(`!OSC_RAY_END = ${orbitVectors.flatMap(([vx,vy])=>[Math.round(vx*360/256),Math.round(vy*360/256)]).join(', ')}`);
+  L.push(`!OSC_RAY_DV = ${orbitVectors.map(([vx,vy])=>65536-vx*vx-vy*vy).join(', ')}`);
+  if(orbitVectors.some(([vx,vy])=>65536-vx*vx-vy*vy<0||65536-vx*vx-vy*vy>255))throw Error('orbit-scenery: |v|^2 out of the exact test\'s range');
+  // the fast ray test's reach across the line (strike.asm sc_ray_fast): per
+  // heading class h & 3 (0 the axes, unused; 1 and 3 |v|^2 = 65437; 2
+  // 65522) and R = 0-63, floor(R |v|), the largest |e x v| within R
+  const far=[];
+  for(let c=0;c<4;c++){
+    const [vx,vy]=orbitVectors[c],vv=vx*vx+vy*vy;
+    for(let R=0;R<64;R++){let k=Math.floor(Math.sqrt(R*R*vv));while((k+1)*(k+1)<=R*R*vv)k++;while(k*k>R*R*vv)k--;far.push(k);}
+  }
+  L.push(`!OSC_RAY_FAR = ${far.join(', ')}`);
+  for(let h=0;h<16;h++){const[vx,vy]=orbitVectors[h],[cx,cy]=orbitVectors[h&3];if(vx*vx+vy*vy!==cx*cx+cy*cy)throw Error('orbit-scenery: the heading classes\' |v|^2 differ');}
+  writeFileSync(join(outDir,'scenery.asm'),L.join('\n')+'\n');
+  // preview: every picture in a row (palette as grey levels)
+  const img=blank(previews.length*34,32);
+  previews.forEach((idx,i)=>{for(let y=0;y<32;y++)for(let x=0;x<32;x++){const v=idx[y*32+x];if(!v)continue;const o=(y*img.width+i*34+x)*4;img.data[o]=img.data[o+1]=img.data[o+2]=v*16;img.data[o+3]=255;}});
+  writeFileSync(join(outDir,'preview.png'),writePng(img));
+}
