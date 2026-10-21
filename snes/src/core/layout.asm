@@ -52,7 +52,7 @@
 ; one by defining !CODE_<MODULE>2 = the quarter and noting it here.
 ;   $A1:C000-FFFF  goku's half (goku code asserts <= $A1C000)   orbit's second code area
 ;   $AA:C000-FFFF  audio's half (audio code asserts <= $AAC000) ending's second code area
-;   $AB:C000-FFFF  title's half (title code asserts <= $ABC000) free
+;   $AB:C000-FFFF  title's half (title code asserts <= $ABC000) orbit's third code area
 !CODE_QUARTER_GOKU  = $A1C000
 !CODE_QUARTER_AUDIO = $AAC000
 !CODE_QUARTER_MISC  = $ABC000
