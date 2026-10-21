@@ -1,9 +1,10 @@
 // Cartridge effect-command diagnosis for the maintainer's round-seven notes.
 // Uses real inputs and the same retail checkpoints/imports as gameplay/world.
-import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
+import {readFileSync,writeFileSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 import {runMesen} from '../mesen.mjs';
 import {checkpointDir,privateRom,cleanupRom} from '../checkpoints.mjs';
+import {isResident7} from './cartridge.mjs';
 const root=resolve(import.meta.dirname,'../../..');
 const rom=resolve(process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc');
 const tag=process.argv[2]??'r7',out=join(root,'.local/snes-test/audio/compare7/trace-'+tag);
@@ -11,7 +12,7 @@ const trace=`
 local commands,states,weapon={}, {}, {}
 emu.addMemoryCallback(function()
  local s=emu.getState();weapon[#weapon+1]={frame=H.frame,actor=s['cpu.x'],effect=s['cpu.a']&127}
-end,emu.callbackType.exec,0x00BB27,0x00BB27)
+end,emu.callbackType.exec,0x80BB27,0x80BB27)
 local phase='setup'
 local writer=''
 emu.addMemoryCallback(function(a,v)
@@ -32,6 +33,7 @@ local function field(form)
 end
 function test()
  field();mark('hold-B');H.hold('b',180);mark('release-B');H.wait(90)
+ field();H.w8(0x316001,0);H.wait(5);mark('native-hold-B');H.hold('b',180);H.wait(90)
  field();mark('partial-charge');H.hold('l y',35);mark('partial-release');H.wait(100)
  field(1);mark('full-charge');H.hold('l y',180);mark('full-release');H.wait(140)
  field();mark('focus');H.hold('l',240);mark('transform');H.hold('l a',4);H.wait(180);mark('revert');H.hold('l a',4);H.wait(180)
@@ -50,5 +52,10 @@ try{
  const r=await runMesen({rom:copy,state:join(checkpointDir(),'waterfall.mss'),test:pre+readFileSync(join(root,'snes/test/world/lib.lua'),'utf8')+trace,outDir:out});
  if(r.code!==0||!r.results?.commands||r.results.error)throw Error(JSON.stringify(r.results??r.output));
  const byPhase={};for(const c of r.results.commands){const ids=byPhase[c.phase]??={};const k=c.cmd.toString(16)+':'+c.id.toString(16);ids[k]=(ids[k]??0)+1;}
+ if(isResident7(readFileSync(rom))){
+  if(byPhase['hold-B']?.['2:27'])throw Error('native weapon charge leaked into Goku');
+  if(!byPhase['native-hold-B']?.['2:27'])throw Error('native hero weapon charge was suppressed');
+  if(!byPhase['world-takeoff']?.['2:ec'])throw Error('world takeoff was discarded');
+ }
  writeFileSync(join(out,'summary.json'),JSON.stringify(byPhase,null,2));console.log(tag,byPhase);
 }finally{cleanupRom(copy);}

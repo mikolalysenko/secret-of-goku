@@ -132,6 +132,68 @@ Strict build hashes:
 - Define-0 rollback: `56ed7992b1f2abf06561a1d5553d1ab151e5fc7fd8d8ff0941a9a63508115388`,
   byte-identical to the independent round-four build.
 
+### Round-seven measurements and file map
+
+`modprof.mjs` reports 0.41 mean / 1.88 maximum lines for audio in the sword
+and battle perf states, including their initial song/driver settling. The
+same call boundaries after 60 settling frames (`profile7.mjs`) measure
+**0.335 lines** for round seven versus **0.330** for round four, including
+the dispatch JSL. The gameplay callback's quiet body is about 0.284 lines.
+The 1.3446-line command maximum includes native dispatch and bookkeeping.
+
+The same 64-song `load-profile.lua` pass gives the following aggregate NTSC
+frame times. A load is ready when the SPC starts its song; the CPU stall
+ends earlier. No fast-loader algorithm was removed or replaced.
+
+| Build | CPU stall | Song ready | BRR bytes uploaded | BRR bytes compacted |
+| --- | ---: | ---: | ---: | ---: |
+| Round four | 1216.79 | 2222.53 | 706149 | 252315 |
+| Round six | 1264.29 | 2225.72 | 754227 | 260199 |
+| Round seven | 1274.38 | 2220.56 | 752616 | 274320 |
+
+The smaller cache increases compaction. Versus round six, the total CPU
+stall grows 0.8%, while total song-ready time falls 0.23%; averages hide
+individual cache effects. The largest round-six→seven increase is song
+`$23`: +13.37 stalled / +13.01 ready frames. Versus round four, `$3F` is the
+largest ready-time increase, +16.01 frames. Detailed stages and all captures
+are in `.local/snes-test/audio/compare7/manifest.json` and its analysis file.
+
+Files changed for this round (paths relative to the repository):
+
+| File | Change |
+| --- | --- |
+| `snes/gen/audio-resident7.mjs` | Source cuts, loop conditioning, BRR bank, sequences and patched resident layout |
+| `snes/gen/audio.mjs` | New bank upload, shared default define, envelope lookup tables and driver-byte assertions |
+| `snes/gen/audio-resident.mjs` | Teleport-in mapping; restore `$38` impact |
+| `snes/gen/audio-custom.mjs` | Reservation-size argument for the shared EDL calculation; historical synthesis retained |
+| `snes/src/modules/audio/beds.asm` | Envelope binding, fair/throttled selector, weapon-buzz filter and world transition helper |
+| `snes/src/modules/audio/spc/beds.s` | Sustained notes, gain/pitch updates, fade release and combined beam/bed handoff |
+| `snes/src/modules/audio/module.asm` | Default/rollback selection, wake/expiry/pause/song state and native weapon hook |
+| `snes/src/modules/audio/native.asm` | Asynchronous `$81`, accepted-state cache, bed scheduling and SSJ beam selection |
+| `snes/src/modules/audio/resident.asm` | New bank floor; retained 16-entry native metadata fix |
+| `snes/src/modules/combat/bind.asm` | Six-line default binding to audio's envelope tables |
+| `snes/src/modules/world/bridge.asm` | Preserve takeoff audio across the loader handoff |
+| `snes/test/audio/beds.test.mjs` | Loop/bank, sustained-note, pitch, release, noise isolation and beam handoff tests |
+| `snes/test/audio/native.lua` | Real dispatcher budget, changed-only spaced/fair updates and expiry tests |
+| `snes/test/audio/cartridge.mjs` | Read bank layout/voice mapping from each cartridge; isolate historical auditions |
+| `snes/test/audio/apu.mjs` | Cartridge-specific song sample floor |
+| `snes/test/audio/run.mjs` | New tests and cartridge-specific expectations |
+| `snes/test/audio/lib.lua` | Include new immutable SPC hooks in bank checks |
+| `snes/test/audio/loads.lua` | Check the actual reservation through all song loads |
+| `snes/test/audio/resident.test.mjs` | Sampled-wave voice/bandwidth expectations and actual bank floor |
+| `snes/test/audio/custom-cartridge.test.mjs` | Keep historical round-six assertions separate from round seven |
+| `snes/test/audio/samples.test.mjs` | Run old sample auditions on the reconstructed round-four APU image |
+| `snes/test/audio/trace7.mjs` | Real input diagnosis plus Goku/native-hero buzz and world-takeoff checks |
+| `snes/test/audio/capture7.mjs`, `capture7.lua` | Cartridge solo/context/echo recordings with command provenance |
+| `snes/test/audio/pc7.mjs` | Browser source/gain/compressor/loop references |
+| `snes/test/audio/audit7.mjs` | Rate, loop, attack, ARAM and echo-option measurements |
+| `snes/test/audio/profile7.mjs` | Settled idle comparison at the standard profiler boundaries |
+| `snes/test/audio/manifest7.mjs` | Verify every WAV/hash, combine comparisons, echo and load profiles, inventory working files |
+| `snes/test/gameplay/run.mjs`, `gameplay.lua` | Recognize sustained bed ids and verify released voices |
+| `snes/test/lua/harness.lua` | Restore the cartridge-specific floor/bank/hooks in imported fixtures |
+| `docs/agents/snes-port/audio.md`, `audio-samples.md` | Diagnosis, mechanism, budget, hashes, measurements and listening instructions |
+| `docs/agents/snes-port/combat.md`, `world.md` | Explain the two small cross-module bindings |
+
 ## Earlier shipping policies (rounds four–six; historical)
 
 The following records describe the previous cartridges, not the new default.

@@ -51,6 +51,10 @@ clip's sustain is deliberately omitted. The out/in volume ratio is
 
 Beam keeps the clip's real attack, then a steady loop and native swell /
 release. The SSJ tuning ratio is .859375, with no per-frame pitch work.
+For the 32 ms source attack, normalized correlation at the best alignment
+in the first 100 ms is **.984** in round seven, **.371** in round six and
+**.247** in round four (6 kHz band-limited source template). This measures
+the retained attack, not whole-clip identity.
 Identical dry-driver measurements give round-four / round-seven beam RMS
 **−16.37 / −16.19 dBFS**, peaks **−6.39 / −4.97 dBFS**; the 3.5-second raw
 Mesen solo pair is also slightly louder in round seven. All retained hit,
@@ -77,6 +81,12 @@ The reservation is 256 bytes larger than round six. Canonical EDL changes
 
 Only `$10` and `$2C` lose an additional step versus round six: 176→160 ms
 and 80→64 ms respectively. Other affected songs retain round six's cap.
+The raw 12-second stereo echo pairs measure `$10` at −0.04 dB RMS and
+`$2C` at −0.65 dB versus round four; their 8.05–12 s tails change by
++1.97 / −4.65 dB. The inherited `$02` cap is more audible (−4.29 dB for
+the whole take), so the package retains every affected pair, not only the
+two additional caps. Phrase/tail RMS is content-dependent; these are not
+gain adjustments.
 EVOL, feedback and FIR are unchanged. Every song command, including
 noncanonical presets, caps EDL against the actual unique sample bytes.
 
@@ -93,7 +103,12 @@ Options measured by `snes/test/audio/audit7.mjs`:
 - **3,072 bytes:** 18 canonical songs change and `$0C` cannot retain even
   EDL=1. **4,096 bytes:** 21 songs change and `$05/$0C/$14` cannot retain
   EDL=1. These do not meet the retained loader/echo layout.
-- **Per-song extension:** another 1,024 bytes fits 53/64 songs at the chosen
+- **Per-song extension:** a 2,048-byte compact bank plus a 2,304-byte bank
+  could retain round six's echo caps in 62/64 songs; `$10/$2C` would need
+  the 254-byte reduction in their fallback, plus a different code/sample
+  layout and bank/pointer transfers on song changes. That compromises the
+  prioritized sounds in those locations. Another 1,024 bytes fits 53/64
+  songs at the chosen
   caps; `$00,$01,$02,$04,$05,$0C,$0E,$25,$39,$3B,$3C` need a compact fallback.
   That would require extra bank transfers / pointer swaps at song load and
   different effects by location. It was not chosen for this round.
@@ -108,11 +123,12 @@ The modest permanent increase avoids loading extra sample banks during play.
 ### Listening package and reproducibility
 
 Private output: **`.local/snes-test/audio/compare7/manifest.json`**. The
-round-four and round-seven Mesen packages each have 12 solo cues/beds, seven
-input-driven contexts (including the requested five and world flight), and
+round-four and round-seven Mesen packages each have 12 solo cues/beds, eight
+input-driven contexts (including the requested five, B-held melee and world flight), and
 17 echo pairs. The raw stereo DAC capture has no gain normalization; the
 manifest records peaks, RMS, hashes, descriptions and command-trace paths.
-No clipping occurred in the initial cartridge pairs. Browser references use
+All **94 WAV files** (37 per cartridge and 20 PC references) have verified
+hashes and no clipped samples. Browser references use
 the original WAVs, master .55 and compressor threshold −10 / knee 12 /
 ratio 6 / attack .003 / release .16, plus the browser loop target/fade model.
 They isolate audio without browser music. The explicit SSJ reference rate
@@ -123,8 +139,11 @@ falls back to rate 1 for beam, while its synthesized fallback uses .86.
 node snes/test/audio/capture-build.mjs
 node snes/test/audio/capture7.mjs --rom=path/to/r4.sfc --tag=r4 --songs
 node snes/test/audio/capture7.mjs --rom=path/to/r7.sfc --tag=r7 --songs
+node snes/test/audio/capture7.mjs --rom=path/to/r4.sfc --tag=r4 --only=melee
+node snes/test/audio/capture7.mjs --rom=path/to/r7.sfc --tag=r7 --only=melee
 node snes/test/audio/pc7.mjs
 SNES_ROM=path/to/r7.sfc node snes/test/audio/audit7.mjs
+node snes/test/audio/manifest7.mjs
 ```
 
 The capture host honors Mesen's `AllowIoOsAccess` setting. It records the
