@@ -22,7 +22,7 @@ test('custom bank is bounded and preserves all retail and unrelated resident tra
   const p=0x2C00+4*id+2*v;
   assert.deepEqual(trackBytes(h.ram,w(h.ram,p)),trackBytes(old,w(old,p)),`effect $${id.toString(16)}/${v}`);
  }
- const allowed=a=>a>=SAMPLE_BASE&&a<SAMPLE_BASE+layout.used||a>=0x1860&&a<0x1868||
+ const allowed=a=>a>=SAMPLE_BASE&&a<SAMPLE_BASE+RESERVE||a>=0x1860&&a<0x1868||
   a>=0x18E0&&a<0x18E8||a>=0x19C0&&a<0x19D0||
   [...changed].some(id=>a>=0x2C00+4*id&&a<0x2C04+4*id);
  for(let a=0;a<65536;a++)if(!allowed(a))assert.equal(h.ram[a],boot[a],`unexpected ARAM change $${a.toString(16)}`);

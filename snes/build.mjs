@@ -21,7 +21,10 @@ const args=process.argv.slice(2);
 const opt=(name,fallback)=>{const a=args.find(x=>x.startsWith(`--${name}=`));return a?a.slice(name.length+3):fallback;};
 const out=resolve(repo,opt('out','dist/snes/secret-of-goku.sfc'));
 const genDir=resolve(repo,'dist/snes/gen');
-const defines=args.filter(a=>a.startsWith('-D'));
+// Carry feature options into suites that build their own diagnostic ROMs.
+const inheritedDefines=(process.env.SNES_BUILD_DEFINES??'').split(/\s+/).filter(Boolean);
+if(inheritedDefines.some(d=>!/^\-D[A-Za-z_]\w*(?:=\w+)?$/.test(d)))throw Error('invalid SNES_BUILD_DEFINES');
+const defines=[...inheritedDefines,...args.filter(a=>a.startsWith('-D'))];
 const quiet=args.includes('--quiet');
 const log=(...m)=>{if(!quiet)console.log(...m);};
 

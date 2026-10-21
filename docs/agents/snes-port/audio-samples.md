@@ -9,28 +9,40 @@ are `61a0c112481616314e7dae0cdd97ffab9e49c57079c6ed64da9cebc1cda327ea`.
 The historical round-five measurements below remain the audition reference.
 
 Synthesis and sequence choices now live in `snes/gen/audio-custom.mjs`.
-Provisional takes are `hit:alt1,kick:alt1,impact:custom,beam:custom`;
-`AUDIO_CUSTOM_TAKES` overrides any cue. `AUDIO_CUSTOM_LEVELS` supplies dB
-relative to round five for each cue (initial implementation defaults to 0;
-cartridge loudness calibration follows). Example:
+Provisional takes are exactly `hit:alt1,kick:alt1,impact:custom,beam:custom`.
+The calibrated defaults are hit **−0.2 dB**, kick **+0.2 dB**, impact
+**+5 dB**, beam **+3 dB**, relative to the round-five takes. Override any
+cue in either setting; omitted cues retain their defaults. Switching a take
+is a one-line environment change and rebuild:
 
 ```sh
 AUDIO_CUSTOM_TAKES=hit:alt1,kick:alt1,impact:custom,beam:custom \
-AUDIO_CUSTOM_LEVELS=hit:0,kick:0,impact:0,beam:0 \
+AUDIO_CUSTOM_LEVELS=hit:-0.2,kick:0.2,impact:5,beam:3 \
 node snes/build.mjs --strict -DAUDIO_CUSTOM_SAMPLES=1
 ```
 
-The existing IPL extension uploader carries a 2 KiB reserved bank, 32
-metadata bytes, and five bytes of SPC hook/trampoline patches. The bank
-contains 1,800 BRR bytes, the selected sequences, padding and a small gain
-routine. A PCALL at `$0BCA` selects the native effect gain by id, preserving
-music's separate entry at `$0BCC` and the exact `$90` gain for retail ids.
-Levels are quantized to `round($90 * 10^(dB/20))`, limited to −24…+4.9 dB.
-No sample re-encoding or post-render normalization is used for levels.
+Set all four levels to `0` to build the unmatched audition. Takes are
+`custom`, `alt1` or `alt2`; unknown/duplicate cues and nonfinite levels fail
+generation. Levels accept −24…+11.9 dB, quantized to
+`round(64 * 10^(dB/20))`; that range is a representation limit, **not** a
+promise of headroom. Recheck mixes after changing a take or level.
+
+The existing IPL extension uploader carries **2,084 added payload bytes**:
+a 2 KiB bank, 32 metadata bytes, and a four-byte SPC hook (plus five segment
+headers). The bank contains 1,800 BRR bytes, 85 selected sequence bytes,
+57 bytes of gain code/table and padding. The hook at `$0BED` calls `$5580`
+after native gain/pan; music and retail ids retain the exact original
+register result. The four selected ids use a Q6 multiply and clamp to the
+signed DSP volume range. Default centered playback never reaches that
+clamp in the cartridge captures. There is no sample re-encoding or
+post-render normalization for levels and no added 65816 frame work.
 
 The floor operand at `C3:0134` becomes `$5000`, yielding `$55F1`. Native
 compaction and the temporary accelerated receiver continue to use the cache
-addresses initialized there. The EDL hook preserves the FE token in B,
+addresses initialized there: warm reset `C3:0070` restores `$1E48` from
+`$1EF8`; compaction `C3:03AA/03BF` reads the source/destination arrays;
+`songload.asm` consumes those same addresses. `audio_song_restore` queues
+a normal song load through the same cap and cache path. The EDL hook preserves the FE token in B,
 caps every caller's preset, and leaves EVOL/EFB/FIR intact; arrangements
 also have capped values in `audio_echo_table`. Only the mod impact lookup
 becomes `$ED`; retail `$38` and both tracks of all retail effects survive.
@@ -52,13 +64,121 @@ boot assets. Real cartridges require no such migration. Rare lines retain
 their ring at `$FA00-$FBF7`, also temporarily used by the fast song loader;
 the custom bank does not overlap either use.
 
-First implementation checkpoint: strict builds, 28 Node tests, Mesen
-`loads` (all 64 shipping slots with samples/DIR/tuning/ADSR and the resident
-bank checked after every load), `native` and `rare-boot` pass. Full suites,
-cartridge recordings and timing/level measurements follow in the validation
-checkpoint.
+### Cartridge listening package and level limits
 
-Spoilers. Round five, based on `c1674a7`; companion to [audio.md](audio.md). The shipping build is unchanged. This investigation and its recordings live in the audio test tools, not in the cartridge generator.
+The final opt-in ROM SHA-256 is
+`c59ec00cf3a4e1b23464888eb9c359b10601c6301630788a88bae185f6dda0a2`.
+[compare6](../../../.local/snes-test/audio/compare6/) contains **102 WAVs**:
+round four, unmatched provisional takes, matched provisional takes (20 each,
+including six songs), and each of the three all-cue take selections at zero
+level (14 each). `manifest-*.json` records ROM hashes, every 400 ms/3 s
+loudness window, peaks and clipped-sample counts; `summary.json` collates the
+comparisons. All 102 recordings have **zero clipped samples**. The matched
+cartridge also records zero visits to the DSP-volume saturation branch.
+
+These are **Mesen cartridge recordings from power-on**, using the native CPU
+song/effect dispatcher. They do not use `installCustom`, imported APU state,
+or an APU-only renderer. `capture-build.mjs` pins official Mesen2 revision
+`b9fa69ddc6d0a331fb103fdb5eef6904305703c2`, adding a read-only tap at the final
+32 kHz stereo DSP output and Lua start/stop recording calls.
+`capture-host.py` runs that core headlessly and checks the user's existing
+`AllowIoOsAccess` setting. Normal regression suites use the unmodified
+maintainer Mesen binary. The recording tools currently target macOS arm64
+and require clang/make, SDL2 and FFmpeg.
+
+```sh
+node snes/test/audio/capture-build.mjs
+node snes/test/audio/capture.mjs --rom=dist/snes/secret-of-goku.sfc --tag=matched --songs
+# Build separately with AUDIO_CUSTOM_LEVELS=hit:0,kick:0,impact:0,beam:0,
+# then capture with --tag=unmatched. Capture the define-off cart with --tag=r4.
+# For each all-cue take selection, use zero levels and --tag=take-custom,
+# --tag=take-alt1 or --tag=take-alt2; --songs is unnecessary for those runs.
+```
+
+Each cue is recorded alone, beside the same battle phrase and beside the
+same full-power phrase. Dense mixes repeat contacts and nine impacts over
+each of four waves. Six song pairs contain eight seconds of music followed
+by a four-second tail. WAVs are raw stereo DAC output with no normalization.
+Loudness uses FFmpeg's EBU R128 K-weighted stereo meter. The table gives the
+**3 s short-term / maximum 400 ms momentary difference in LU** from round
+four; negative is quieter. Short contacts are diluted by background music
+in the 3 s measure, so the momentary value is included too.
+
+| Cue | Take, zero level | Battle Δ LU (3 s / 400 ms) | Full power Δ LU (3 s / 400 ms) |
+| --- | --- | ---: | ---: |
+| hit | custom | -0.5 / -1.9 | -0.4 / -1.1 |
+| hit | alt1 | +0.0 / +0.0 | +0.1 / +0.3 |
+| hit | alt2 | -0.3 / -1.2 | -0.5 / -1.5 |
+| kick | custom | -1.5 / -4.3 | -1.9 / -4.7 |
+| kick | alt1 | -0.1 / -0.3 | -0.2 / -0.4 |
+| kick | alt2 | -1.5 / -4.1 | -1.8 / -4.3 |
+| impact | custom | -1.9 / -5.6 | -2.2 / -5.6 |
+| impact | alt1 | -1.2 / -2.9 | -1.3 / -2.8 |
+| impact | alt2 | -1.8 / -5.2 | -2.2 / -5.7 |
+| beam | custom | -3.8 / -4.3 | -3.6 / -3.7 |
+| beam | alt1 | -3.0 / -2.5 | -3.2 / -3.4 |
+| beam | alt2 | -3.9 / -4.0 | -3.9 / -4.2 |
+
+The chosen levels are a **headroom-limited match**, not an exact loudness
+match. Hit/kick are within 0.0 LU short-term and 0.3 LU momentary. Impact
+remains 1.1/1.3 LU short-term and 2.7/2.8 LU momentary below round four in
+battle/full power; its much shorter body needs more peak amplitude to
+match energy. Beam remains 1.2/1.0 LU short-term and 1.4/0.8 LU momentary
+below round four. A +8.8 dB impact/+4 dB beam trial closed the short-term
+gap but clipped the dense mixes; +7.5/+3.5 still clipped. The selected
++5/+3 retains the existing all-five-arrangement stress limit (<30,000)
+with worst peak −0.91 dBFS. This limit, and listening approval, should be
+retained when selecting different takes.
+
+| Dense cartridge mix | Round four peak | Unmatched peak | Matched peak | Unmatched → matched 3 s Δ LU vs r4 |
+| --- | ---: | ---: | ---: | ---: |
+| battle | -2.56 dBFS | -5.04 dBFS | -1.80 dBFS | -4.0 → -1.6 |
+| full-power | -2.93 dBFS | -4.80 dBFS | -1.48 dBFS | -3.7 → -1.3 |
+
+Listen to [battle matched](../../../.local/snes-test/audio/compare6/mix-battle-matched.wav)
+/ [unmatched](../../../.local/snes-test/audio/compare6/mix-battle-unmatched.wav),
+and [full power matched](../../../.local/snes-test/audio/compare6/mix-full-power-matched.wav)
+/ [unmatched](../../../.local/snes-test/audio/compare6/mix-full-power-unmatched.wav).
+Individual cues are `<cue>-matched.wav` / `<cue>-unmatched.wav`; the
+`take-<name>` suffixes provide every alternate from a built cartridge.
+
+| Song | EDL before → after | First 8 s RMS change | Tail before → after | Cartridge WAVs |
+| --- | --- | ---: | ---: | --- |
+| $02 | 6 → 5 | -4.49 dB | 1710 → 1440 ms | [before](../../../.local/snes-test/audio/compare6/song-02-r4.wav) / [after](../../../.local/snes-test/audio/compare6/song-02-matched.wav) |
+| $0B | 8 → 7 | -2.37 dB | 645 → 565 ms | [before](../../../.local/snes-test/audio/compare6/song-0B-r4.wav) / [after](../../../.local/snes-test/audio/compare6/song-0B-matched.wav) |
+| $2C | 6 → 5 | -1.70 dB | 1920 → 1465 ms | [before](../../../.local/snes-test/audio/compare6/song-2C-r4.wav) / [after](../../../.local/snes-test/audio/compare6/song-2C-matched.wav) |
+| $04 | 4 → 3 | -0.10 dB | 200 → 150 ms | [before](../../../.local/snes-test/audio/compare6/song-04-r4.wav) / [after](../../../.local/snes-test/audio/compare6/song-04-matched.wav) |
+| $0C | 2 → 1 | +0.17 dB | 100 → 50 ms | [before](../../../.local/snes-test/audio/compare6/song-0C-r4.wav) / [after](../../../.local/snes-test/audio/compare6/song-0C-matched.wav) |
+| $3C | 4 → 3 | +0.25 dB | 195 → 150 ms | [before](../../../.local/snes-test/audio/compare6/song-3C-r4.wav) / [after](../../../.local/snes-test/audio/compare6/song-3C-matched.wav) |
+
+Tail endpoint uses the last 5 ms RMS window above −40 dB relative to the
+200 ms before key-off. Echo coloration is audible, especially $02/$0B/$2C;
+these are intentional consequences of the reservation, not volume changes.
+
+### Round-six validation
+
+Strict builds, 28 Node tests and all 11 Mesen audio cases pass on both
+builds, plus the five-song browser-reference render. `loads-boot` runs all
+64 slots consecutively from cartridge power-on; the opt-in build repeats
+with noncanonical presets 11 and 14 (192 loads total, 243 compaction moves).
+Every load checks every required BRR byte, DIR, tuning, ADSR, cache floor,
+sequence, echo and temporary-vector restoration. The resident bank and
+metadata are checked after each load and after playback; write callbacks
+record **zero post-boot writes** to the reservation/metadata. Native $32
+sequence spill/restore, all three rare voices and `audio_song_restore` pass.
+EVOL, EFB and all FIR taps match the default build for every canonical song;
+only the 16 colliding canonical songs lower EDL by one. All 64×16 cap
+calculations are also checked statically.
+
+The longer consecutive run exposed a test-only assertion issue: retail
+one-shot instrument 31's unused DIR loop offset can wrap 16 bits high in
+the cache. The check now uses the loader's 16-bit result. Profiling also
+handles Mesen's exposed 32-bit master-clock wrap, avoiding negative timings
+when a long run crosses that boundary.
+
+## Historical round-five investigation
+
+Spoilers. Round five was based on `c1674a7`; companion to [audio.md](audio.md). The following storage investigation and RAM-only auditions describe that checkpoint. Round six above implements its recommendation behind an off-by-default define.
 
 ## Reproduce the measurements
 
@@ -328,9 +448,9 @@ The [round-four](../../../.local/snes-test/audio/compare5/beam-contacts-r4.wav) 
 
 ## Cartridge implementation boundary
 
-This job deliberately ships **no `AUDIO_CUSTOM_SAMPLES` define**. No 1–2.5 KiB allocation was proven free of audible native changes while retaining the existing features. The 2 KiB option changes native echo; lower-rate retail replacements change effects. The prototype is reproducible in the APU harness without changing the default cartridge.
+At the round-five checkpoint there was **no `AUDIO_CUSTOM_SAMPLES` define**. No 1–2.5 KiB allocation was proven free of audible native changes while retaining the existing features. The 2 KiB option changes native echo; lower-rate retail replacements change effects. The prototype is reproducible in the APU harness without changing the default cartridge.
 
-If the maintainer chooses the 2 KiB option, implementation belongs entirely to audio:
+The round-five implementation boundary was the following; round six implements it entirely in audio:
 
 1. Upload the sample bank, sequences and 32 metadata bytes once at boot through the audio extension uploader. The current prototype needs **1,919 extra payload bytes**, plus transfer headers; this is not per-frame streaming. Put the generated assets in audio-owned ROM/xdata.
 2. Reserve the cache floor. Retail `C3:012E` reads the original effect chunk length and `C3:0133` adds `$4800`, storing the result in `$1EF8/$1E48`. Changing the operand at `C3:0134` to `$5000` produces `$55F1` without adding hot-path instructions. Do not merely increase the original chunk length: its ROM bytes are followed by unrelated tables.
@@ -343,6 +463,6 @@ The allocation tests exposed a harness issue: `loadSong` installed RAM before it
 
 `node snes/build.mjs --strict` passes. Rebuilding after the tools/docs changes produces the **exact same ROM SHA-256** listed above. `audio` passes **26 Node tests**, the five-song browser-reference render, and all **10 Mesen cases**. The five new Node tests cover the 2 KiB bounds, retail/unrelated sequence preservation, all 69 shifted sample sets with every BRR/DIR/tuning/ADSR byte checked, all cue alternates, dense playback in `$04/$0C/$2C` and the five arrangements, deterministic loop history, and concurrent rare streaming. `samples.mjs --options` also checks endings, voice limits, headroom and sample/extension integrity while writing the listening package.
 
-**Shipping CPU cost: zero added instructions, uploads or per-frame work.** No gameplay/perf run was required because no shipping code or data changed. The proposed resident playback would use native note scheduling, with no stream service; its one-time boot upload and loader/echo integration have not been implemented or timed. Physical-hardware and perceptual listening approval remain open. The original round-two trace remains unavailable; the fresh trace is documented separately above. No core or other-module change is requested.
+**Round-five shipping CPU cost: zero added instructions, uploads or per-frame work.** No gameplay/perf run was required because no shipping code or data changed. The proposed resident playback would use native note scheduling, with no stream service; its one-time boot upload and loader/echo integration have not been implemented or timed. Physical-hardware and perceptual listening approval remain open. The original round-two trace remains unavailable; the fresh trace is documented separately above. No core or other-module change is requested.
 
 Measurement checkpoint: `3554418`. The follow-up prototype commit contains the remaining tools, harness checks and this recommendation.

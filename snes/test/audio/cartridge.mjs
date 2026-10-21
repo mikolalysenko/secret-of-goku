@@ -10,5 +10,5 @@ export function uploadSegments(rom){
   out.push({addr,bytes:rom.subarray(p+4,p+4+n)});p+=4+n;}
  return out;
 }
-export function customSegments(rom){return isCustom(rom)?uploadSegments(rom).filter(s=>s.addr===0x4DF1||[0x1860,0x18E0,0x19C0,0x0BCA,0xFFFB].includes(s.addr)):[];}
+export function customSegments(rom){return isCustom(rom)?uploadSegments(rom).filter(s=>s.addr===0x4DF1||[0x1860,0x18E0,0x19C0,0x0BED,0xFFFB].includes(s.addr)):[];}
 export function nativeIds(rom,ids){return ids.map((v,i)=>isCustom(rom)&&i===6?0xED:v);}

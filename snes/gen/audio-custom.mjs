@@ -88,7 +88,7 @@ export function customTracks(cue,variant='custom'){
 
 export const DEFAULT_TAKES={hit:'alt1',kick:'alt1',impact:'custom',beam:'custom'};
 // dB relative to round five. Calibration is measured in cartridge renders.
-export const DEFAULT_LEVELS={hit:0,kick:0,impact:0,beam:0};
+export const DEFAULT_LEVELS={hit:-0.2,kick:0.2,impact:5,beam:3};
 export function customSettings(env=process.env){
  const parse=(text,defaults,convert)=>{
   const result={...defaults},seen=new Set();
@@ -100,7 +100,7 @@ export function customSettings(env=process.env){
   return result;
  };
  const takes=parse(env.AUDIO_CUSTOM_TAKES,DEFAULT_TAKES,v=>{assert.ok(['custom','alt1','alt2'].includes(v),`unknown take ${v}`);return v;});
- const levels=parse(env.AUDIO_CUSTOM_LEVELS,DEFAULT_LEVELS,v=>{const n=Number(v);assert.ok(v.trim()!==''&&Number.isFinite(n)&&n>=-24&&n<=4.9,`level ${v} outside -24..4.9 dB`);return n;});
+ const levels=parse(env.AUDIO_CUSTOM_LEVELS,DEFAULT_LEVELS,v=>{const n=Number(v);assert.ok(v.trim()!==''&&Number.isFinite(n)&&n>=-24&&n<=11.9,`level ${v} outside -24..11.9 dB`);return n;});
  return {takes,levels};
 }
 
@@ -136,7 +136,7 @@ export function buildCustom({settings=customSettings(),bank=buildCustomBank()}={
   pointers.push({addr:0x2C00+4*id,bytes:pair});
  }
  assert.ok(at<=0x5580,'custom sequences overlap level routine');
- const gains=Object.fromEntries(Object.entries(settings.levels).map(([cue,db])=>[cue,Math.round(0x90*10**(db/20))]));
+ const gains=Object.fromEntries(Object.entries(settings.levels).map(([cue,db])=>[cue,Math.round(0x40*10**(db/20))]));
  const code=assemble(readFileSync(join(root,'snes/src/modules/audio/spc/custom.s'),'utf8'),{
   name:'custom.s',symbols:Object.fromEntries(Object.entries(gains).map(([cue,n])=>[cue.toUpperCase()+'_LEVEL',n]))});
  const patches=[];
@@ -146,7 +146,7 @@ export function buildCustom({settings=customSettings(),bank=buildCustomBank()}={
  }
  return {settings,gains,bank,sequences,pointers,sequenceBytes:at-bank.sampleEnd,
   segments:[{addr:SAMPLE_BASE,bytes},...metadata,...patches],
-  levelAddress:code.symbols.get('custom_levels'),codeBytes:code.segments.reduce((n,s)=>n+s.bytes.length,0)};
+  levelAddress:code.symbols.get('custom_levels'),saturateAddress:code.symbols.get('custom_saturate'),codeBytes:code.segments.reduce((n,s)=>n+s.bytes.length,0)};
 }
 
 // Overlay before emitting registered patches, never write the same ROM byte

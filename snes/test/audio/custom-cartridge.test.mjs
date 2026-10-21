@@ -17,7 +17,7 @@ test('custom reservation and all selectable takes fit without touching the loade
   for(const s of c.segments)assert.ok(s.addr+s.bytes.length<=0xFA00||s.addr===0xFFFB);
  }
  assert.throws(()=>customSettings({AUDIO_CUSTOM_TAKES:'hit:typo'}));
- assert.throws(()=>customSettings({AUDIO_CUSTOM_LEVELS:'beam:5'}));
+ assert.throws(()=>customSettings({AUDIO_CUSTOM_LEVELS:'beam:12'}));
  assert.throws(()=>customSettings({AUDIO_CUSTOM_LEVELS:'beam:NaN'}));
 });
 

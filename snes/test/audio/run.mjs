@@ -50,11 +50,11 @@ if(!only.length||only.includes('render')){
 }
 // [name, checkpoint (null: power-on)]; arrival and imported import the
 // browser state before the sword pull (skipped when the bundle is missing).
-const shipping=n=>['native','music','rare','rare-control','rare-boot','loads'].includes(n);
+const shipping=n=>['native','music','rare','rare-control','rare-boot','loads','loads-boot'].includes(n);
 const fromCheckpoint=n=>['stream','songs','native','music','rare','rare-control','loads'].includes(n);
 const arrivalBundle=join(mainCheckout(),'.local/snes-import/arrival-research__probe__before-pull');
-const mesenTests=[['loads','waterfall'],['native','waterfall'],['music','waterfall'],['rare','waterfall'],['rare-control','waterfall'],['rare-boot',null],['stream','waterfall'],['songs','waterfall'],['arrival',null],['imported',null]]
- .filter(([n])=>!only.length||only.includes(n)).filter(([n])=>n==='rare-boot'||fromCheckpoint(n)||existsSync(arrivalBundle));
+const mesenTests=[['loads','waterfall'],['loads-boot',null],['native','waterfall'],['music','waterfall'],['rare','waterfall'],['rare-control','waterfall'],['rare-boot',null],['stream','waterfall'],['songs','waterfall'],['arrival',null],['imported',null]]
+ .filter(([n])=>!only.length||only.includes(n)).filter(([n])=>n==='rare-boot'||n==='loads-boot'||fromCheckpoint(n)||existsSync(arrivalBundle));
 if(!mesenTests.length)process.exit(ok?0:1);
 
 // Voices sounding in the first 4 s of each song (frames 15-225 after the
@@ -99,14 +99,15 @@ for(const [name,cp] of tests){
  // native exercises the shipping cartridge, including its real driver.
  if(!shipping(name)&&!pcmRom){
    pcmRom=resolve(repo,'.local/snes-test/roms/audio-pcm.sfc');
-   const b=spawnSync(process.execPath,[join(repo,'snes/build.mjs'),'--quiet','--strict','-DAUDIO_PCM=1',`--out=${pcmRom}`],{cwd:repo,stdio:'inherit'});
+   const b=spawnSync(process.execPath,[join(repo,'snes/build.mjs'),'--quiet','--strict','-DAUDIO_PCM=1',`--out=${pcmRom}`],{cwd:repo,stdio:'inherit',env:{...process.env,SNES_BUILD_DEFINES:''}});
    if(b.status!==0)throw Error('audio PCM diagnostic build failed');
  }
  const copy=privateRom(shipping(name)?rom:pcmRom,`audio-${name}`);
  const t0=Date.now();
  const pre=fromCheckpoint(name)?'':`IMPORT=${JSON.stringify(arrivalBundle)}\n`;
  const testLib=shipping(name)?lib:lib.replace(`CUSTOM=${custom}`, 'CUSTOM=false').replace(JSON.stringify(upload),JSON.stringify(join(gen,'upload.bin'))).replace(songsLua,pcmSongsLua);
- const r=await runMesen({rom:copy,test:pre+testLib+'\n'+readFileSync(join(here,`${name}.lua`),'utf8'),outDir:join(outRoot,name),state:cp?join(cps,`${cp}.mss`):null,timeoutMs:600000});
+ const body=name==='loads-boot'?`CP_STOP='waterfall'\nLOAD_NONCANONICAL=${custom}\n`+readFileSync(join(here,'../checkpoints.lua'),'utf8')+'\nlocal boot=test\n'+readFileSync(join(here,'loads.lua'),'utf8')+'\nlocal loads=test\nfunction test() boot();loads() end\n':readFileSync(join(here,`${name}.lua`),'utf8');
+ const r=await runMesen({rom:copy,test:pre+testLib+'\n'+body,outDir:join(outRoot,name),state:cp?join(cps,`${cp}.mss`):null,timeoutMs:600000});
  cleanupRom(copy);
  const res=r.results??{};
  const fails=Object.entries(res).filter(([k,v])=>typeof v==='string'&&v.startsWith('FAIL'));

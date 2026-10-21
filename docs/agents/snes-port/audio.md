@@ -17,6 +17,13 @@ and caps each song's EDL against its actual required samples. See
 [audio-samples.md](audio-samples.md#round-six-cartridge-option) for settings,
 the native metadata-overwrite repair and validation. Listening selection is
 still provisional; enabling the option is a separate maintainer decision.
+The provisional takes are hit/kick `alt1`, impact/beam `custom`. Generator
+settings `AUDIO_CUSTOM_TAKES` and `AUDIO_CUSTOM_LEVELS` select each cue and
+its gain without editing assembly. Defaults are −0.2/+0.2/+5/+3 dB for
+hit/kick/impact/beam; the impact/beam match is limited by mix headroom.
+The [cartridge listening package](audio-samples.md#cartridge-listening-package-and-level-limits)
+contains matched/unmatched mixes, all alternate takes and the six priority
+echo pairs, recorded from Mesen cartridge power-on.
 
 Round-five resident custom-sample exploration: [sample budgets, auditions and
 proposal](audio-samples.md). The prototype is test-only; the default cartridge
@@ -1083,7 +1090,11 @@ the complete `$2C00-$47FF` effect block and the extension from the cartridge's b
 blob. For browser imports it runs **after** the SPC/DSP register restore;
 patching during that restore stalled the Fortress flyby's next native song
 fade. `H.load()` applies the same augmentation to retail Mesen checkpoints.
-It never rewrites song samples or echo. Diagnostic PCM imports deliberately
+For the default build it never rewrites song samples or echo. Opt-in custom
+imports additionally repack the current song above `$55F1`, relocate live
+DSP BRR cursors and cap echo before installing the resident bank. This is
+snapshot migration only; boot-started `loads-boot` and cartridge captures
+exercise the actual uploader/cache without imported samples. Diagnostic PCM imports deliberately
 remain retail: `audio/imported.lua` checks graceful disable on an unextended
 driver, while `arrival.lua` explicitly calls `injectExtension()`.
 The S-DSP's internal echo write position is not part of a bundle either; if
@@ -1098,6 +1109,8 @@ original-byte assertions):
 | Address | Size | What |
 | --- | --- | --- |
 | `C3:0106` | 6 | boot upload end → `audio_boot_upload` (uploads the extension after the driver) |
+| `C3:0134` (custom only) | 2 | cache-floor addition `$4800` → `$5000`, resulting floor `$55F1` |
+| `C3:054A/056C/058E` (custom only) | 2 each | send only the 16 song metadata entries, preserving resident instruments `$30-$33` |
 | `C3:020F`, `C3:0264`, `C3:0487`, `C3:0592` | 6 / 5 / 4 / 4 | temporary song loader install, sequence/sample sender, native-vector restore |
 | `C3:0400` | 4 | sample upload selects native FE mode 3 or temporary mode 4 |
 | `C3:0175` | 4 | shipping effect command → asynchronous `audio_native_command` |
@@ -1114,6 +1127,11 @@ gaps listed in section 1; driver patches at `$020A`, `$0279`, `$0299`,
 `$02E1`, `$02F4`, `$0378`, `$1214`, `$1237`, `$14C6`. The synchronous song loader
 temporarily uses the stream ring and FE vectors `$1420/$1426`, restoring
 those vectors before playback.
+The custom option additionally owns `$4DF1-$55F0`, tuning `$1860-$1867`,
+ADSR `$18E0-$18E7`, DIR `$19C0-$19CF` and the four-byte SPC hook at `$0BED`.
+Its gain code/table starts at `$5580` inside the reservation. It adds no
+65816 frame callback or streaming traffic; SPC volume updates perform the
+gain lookup/multiply, with unchanged output values for music/retail ids.
 
 **Other resources**: WRAM `$7E:DD00-DD7F` (`!RAM_AUDIO`; no SRAM, no DMA or
 HDMA); code bank `$AA`; tables, extension image and sequences in `$EA`
