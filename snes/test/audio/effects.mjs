@@ -8,7 +8,7 @@ import {readWav,resample} from '../../gen/audio-brr.mjs';
 import {octaveBands} from './songs.mjs';
 import {cues} from '../../../engine/ki-sound.js';
 import {SHOTS} from '../../gen/audio.mjs';
-import {NATIVE_IDS,RESIDENT} from '../../gen/audio-resident.mjs';
+import {NATIVE_IDS,NATIVE_BEDS,RESIDENT} from '../../gen/audio-resident.mjs';
 
 const root=resolve(import.meta.dirname,'../../..'),out=resolve(root,'.local/snes-test/audio/effects');
 const rate=32000,db=x=>20*Math.log10(Math.max(x,1e-9));
@@ -72,16 +72,25 @@ function safeSequence(ram,ptr){
  }
  return false;
 }
-export function browserFeatures(name){
+export function browserFeatures(name,{seconds}={}){
  const c=cues[name];return c.clips.map(clip=>{
   const a=readWav(readFileSync(resolve(root,`assets/audio/dbz/${clip}.wav`)));
-  return features(resample(a.pcm,a.rate*(c.rate??1),rate).map(v=>v*c.gain*.55));
+  let pcm=resample(a.pcm,a.rate*(c.rate??1),rate).map(v=>v*c.gain*.55);
+  if(seconds)pcm=Float32Array.from({length:Math.round(seconds*rate)},(_,i)=>pcm[i%pcm.length]);
+  return features(pcm);
  });
 }
-export function rank(name,candidates){
- const refs=browserFeatures(name);
+export function rank(name,candidates,refs=browserFeatures(name)){
  return candidates.filter(c=>c.ended&&c.voices===1&&c.features.duration>.02).map(c=>({...c,
   score:mean(refs.map(r=>distance(c.features,r).score))})).sort((a,b)=>b.score-a.score);
+}
+// Held beds are bounded pulses, not SPC loops. Compare equal two-second
+// windows against the browser's seamless source at full requested level.
+export function renderBed(rom,id){
+ const h=createApu({rom,extension:false});h.ms(60);h.take();
+ for(let n=0;n<5;n++){h.nativeCmd(2,id,15,0x88);h.ms(25000/60.0988);}
+ const {l,r}=h.take();
+ return features(Float32Array.from(l.slice(0,rate*2),(v,i)=>(v+r[i])/65536));
 }
 export async function search(){
  mkdirSync(out,{recursive:true});const rom=loadRom(),ram=new Uint8Array(65536);
@@ -128,6 +137,13 @@ export function report({writeAudio=false}={}){
  const table=['| Cue | Effect | Score | Alternative (score) |','| --- | --- | ---: | --- |',...rows.map(r=>`| ${r.cue} | ${label(r.chosen)} | ${r.chosen.score.toFixed(1)} | ${label(r.runner)} (${r.runner.score.toFixed(1)}) |`)];
  writeFileSync(resolve(out,'cue-table.md'),table.join('\n')+'\n');
  console.log(table.join('\n'));
+ const beds=palette.map(c=>({...c,features:renderBed(rom,c.id)}));
+ const bedRows=Object.keys(NATIVE_BEDS).map(cue=>{
+  const ranking=rank(cue,beds,browserFeatures(cue,{seconds:2}));
+  return {cue,chosen:ranking.find(c=>c.id===NATIVE_BEDS[cue]),runner:ranking.find(c=>c.id!==NATIVE_BEDS[cue])};
+ });
+ writeFileSync(resolve(out,'bed-report.json'),JSON.stringify(bedRows,null,1));
+ for(const r of bedRows)console.log(`| ${r.cue} (25-frame pulses) | ${label(r.chosen)} | ${r.chosen.score.toFixed(1)} | ${label(r.runner)} (${r.runner.score.toFixed(1)}) |`);
  return rows;
 }
 if(process.argv[1]===import.meta.filename){

@@ -1,8 +1,8 @@
 ; Resident SPC effects for gameplay. One priority-selected command per
-; frame, with no BRR transfer, chant stream or continuous air stream.
+; frame. rare.asm separately services only the three permitted voice clips.
 ; The native driver already holds these samples. resident.asm adds short
 ; single-voice sequences in unused effect slots DC-E4, all self-ending.
-; -DAUDIO_PCM=1 retains the old streamer for comparison and audio research.
+; No chant or continuous air stream. -DAUDIO_PCM=1 is diagnostic only.
 
 ; Complete an outstanding effect handshake without waiting. Main thread
 ; only: field/world frames, menus, and before another native command. No
@@ -83,8 +83,15 @@ audio_native_service:
 	STZ.w !au_lvl+1
 	STZ.w !au_lvl+2
 	STZ.w !au_lvl+3
+	STZ.w !au_rare
+	LDA.w !au_ch+!c_kind
+	BEQ .run
+	LDX.w #$0000
+	JSR au_stop_channel
 .run
-	LDA.b #$80
+	LDA.w !au_flags
+	AND.b #$FE
+	ORA.b #$80
 	STA.w !au_flags
 	STZ.w !au_tmp              ; chosen cue
 	STZ.w !au_tmp+1            ; priority
@@ -99,6 +106,14 @@ audio_native_service:
 	BRA .shots
 .bed
 	STZ.w !au_reqn
+	; No bed to age on a voice-only frame. Avoid four channel-age walks
+	; while a rare line is waiting for a safe transfer window.
+	LDA.w !au_bed
+	ORA.w !au_lvl
+	ORA.w !au_lvl+1
+	ORA.w !au_lvl+2
+	ORA.w !au_lvl+3
+	BEQ .quiet
 	; Charge/focus beds become sparse native pulses. AIR is represented by
 	; its takeoff and landing cues; restarting a wind sample every frame
 	; would steal music voices and spend CPU on needless handshakes.
@@ -128,15 +143,21 @@ audio_native_service:
 	STA.w !au_bed
 	LDA.b #24
 	STA.w !au_bed_wait
+	LDA.w !au_lvl
+	ORA.w !au_lvl+3
+	BEQ +
+	LDA.b #!AUDIO_NATIVE_CHARGE
+	BRA ++
++	; Aura keeps the quieter, shorter sweep. Charge's longer rumble
+	; measures closer to the browser bed at this unchanged pulse rate.
 	LDA.b #!AUDIO_SFX_CHARGED
-	JSR .choose
+++	JSR .effect
 	BRA .voice
 .quiet
 	STZ.w !au_bed
 	STZ.w !au_bed_wait
 .voice
-	; Voice requests accompany the existing charge/release effects. Keep
-	; their API but do not transfer PCM during controllable gameplay.
+	; Keep the charge/release voice API silent; rare lines use audio_sfx.
 	STZ.w !au_voicereq
 	LDA.w !au_backoff         ; native song loader is still clearing echo
 	BEQ +
@@ -162,9 +183,31 @@ audio_native_service:
 	JSL core_sound_queue
 	SEP #$20
 .done
-	RTS
+	JMP audio_rare_service
 .choose
-	CMP.b #33
+	CMP.b #!AUDIO_SFX_FRIEZA_LAUGH
+	BCC .effect
+	CMP.b #!AUDIO_SFX_VEGETA_KAKAROT+1
+	BCS .return
+	PHA                       ; do not keep servicing an unsafe request
+if defined("vg_clash_on")
+	LDA.w !vg_clash_on&$FFFF
+	BNE .drop_voice
+endif
+if defined("cb_charging")
+	LDA.w !cb_charging&$FFFF
+	BNE .drop_voice
+endif
+	PLA
+	STA.w !au_rare
+	LDA.b #8                  ; allow a short delay, not sustained retry work
+	STA.w !au_rare_age
+	RTS
+.drop_voice
+	PLA
+	RTS
+.effect
+	CMP.b #!AUDIO_NATIVE_CHARGE+1
 	BCS .return
 	REP #$20
 	AND.w #$00FF

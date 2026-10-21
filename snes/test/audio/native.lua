@@ -22,7 +22,7 @@ function test()
     end
   end, emu.callbackType.exec, 0xC30197, 0xC30197)
   emu.addMemoryCallback(function()
-    if H.r8(AU+0x20)~=0 then clobbers=clobbers+1 end
+    if H.r8(AU+0x5B)~=0 then clobbers=clobbers+1 end
   end, emu.callbackType.write, 0x002141, 0x002143)
   for _, cue in ipairs(NATIVE_CUES) do
     local first, heard, maxVoices = #commands, false, 0
@@ -50,11 +50,15 @@ function test()
   H.wait(180)
   local pulses=#commands-first
   check('charge_pulses_bounded',pulses>=6 and pulses<=8,pulses)
+  check('charge_uses_rumble',commands[first+1] and commands[first+1].id==0xDD)
   cmd(6)
   H.wait(4)
   local stopped=#commands
   H.wait(60)
   check('charge_stops',#commands==stopped,#commands-stopped)
+  cmd(5,AUDIO_LOOP_AURA);H.wait(60)
+  check('aura_keeps_quieter_sweep',commands[stopped+1] and commands[stopped+1].id==0xDF)
+  cmd(6);H.wait(60);stopped=#commands
   cmd(5,AUDIO_LOOP_AIR)
   H.wait(120)
   check('air_does_not_stream_or_spam',#commands==stopped,#commands-stopped)
@@ -64,7 +68,7 @@ function test()
   for i=1,30 do cmd(8,i%2==0 and 0x50 or 3); H.wait(1) end
   H.wait(4)
   check('effect_cpu_bounded',maxEffectLines<2,maxEffectLines)
-  check('pending_effect_finished',H.r8(AU+0x20)==0,H.r8(AU+0x20))
+  check('pending_effect_finished',H.r8(AU+0x5B)==0,H.r8(AU+0x5B))
   check('no_brr_commands',streams==0,streams)
   -- A native song upload uses incrementing handshake counters (including
   -- 8A); those are not the optional PCM stream command we counted above.

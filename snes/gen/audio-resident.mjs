@@ -18,6 +18,10 @@ export const NATIVE_IDS=[0,0xDC,0xBF,0xDD,0xA3,0xDE,0xDD,0x0E,
  0xE1,0xE2,0x00,0xE4,0xDD,0xE1,0xDD,0xE4,0,0,0,0,0];
 export const NATIVE_PRIORITY=[0,1,1,5,5,3,5,2,7,4,8,8,8,5,5,5,
  6,6,2,2,3,3,3,7,5,7,3,7,0,0,0,0,0];
+// Internal selector row: held charge uses the longer rumble, while the
+// short CHARGED one-shot and quieter aura keep $DF. Public ids stay 1-32.
+export const NATIVE_CHARGE_CUE=33;
+export const NATIVE_BEDS={charge:0xDD,aura:0xDF,friezaCharge:0xDD};
 export function residentAsm(){
  const h=n=>'$'+n.toString(16).toUpperCase().padStart(2,'0');
  const size=RESIDENT.reduce((n,r)=>n+4+r.sequence.length,0);
@@ -26,5 +30,5 @@ export function residentAsm(){
   ...RESIDENT.flatMap(r=>[`resident_${r.id.toString(16)}: ; ${r.name}`,`db ${r.sequence.map(h).join(',')}`])].join('\n')+'\n';
 }
 export function nativeMapAsm(){
- return `audio_native_ids:\ndb ${NATIVE_IDS.join(',')}\naudio_native_priority:\ndb ${NATIVE_PRIORITY.join(',')}\n`;
+ return `!AUDIO_NATIVE_CHARGE = ${NATIVE_CHARGE_CUE}\naudio_native_ids:\ndb ${[...NATIVE_IDS,NATIVE_BEDS.charge].join(',')}\naudio_native_priority:\ndb ${[...NATIVE_PRIORITY,4].join(',')}\n`;
 }
