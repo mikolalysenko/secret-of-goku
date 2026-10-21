@@ -2,10 +2,10 @@
 -- (00:B077 field / 00:8089 world, the instruction after the frame's work;
 -- the loops may also run through their FastROM mirrors 80:B077 / 80:8089).
 -- Scanlines wrap at 262; logic starts after the NMI handler (~line 240).
--- `reached` < frames means lag (logic finished fewer times than frames ran).
+-- The ready bit at field/world NMI counts missed video frames. `reached`
+-- separately counts completed updates and can differ at window boundaries.
 local BUNDLE = BUNDLE_PATH
 local lines = {}
-local lastFrame = -1
 local function onWait()
   local st = emu.getState()
   lines[#lines + 1] = st['ppu.scanline']
@@ -34,20 +34,38 @@ function test()
     return
   end
   H.wait(2)
+  -- Count the ready bit at NMI entry, exactly as gameplay.lua does. The
+  -- generic harness overwrites results.frames with total run time, including
+  -- setup; keep this measurement window under its own name.
+  local missedVblanks,nmiFrames=0,0
+  local nmiIds={}
+  for _,pc in ipairs({0x00C0A8,0x80C0A8,0x0088CF,0x8088CF}) do
+    nmiIds[#nmiIds+1]={pc,emu.addMemoryCallback(function()
+      nmiFrames=nmiFrames+1
+      if H.r8(0x7E00EC)&1==0 then missedVblanks=missedVblanks+1 end
+    end,emu.callbackType.exec,pc,pc)}
+  end
   local id1 = emu.addMemoryCallback(onWait, emu.callbackType.exec, 0x00B077, 0x00B077)
   local id2 = emu.addMemoryCallback(onWait, emu.callbackType.exec, 0x008089, 0x008089)
   local id3 = emu.addMemoryCallback(onWait, emu.callbackType.exec, 0x80B077, 0x80B077)
   local id4 = emu.addMemoryCallback(onWait, emu.callbackType.exec, 0x808089, 0x808089)
   local start = H.frame
-  for i = 1, 300 do
-    if i % 60 < 30 then H.hold('left', 1) else H.hold('right', 1) end
+  -- The browser baseline consumes this same script from gameplay/cases.mjs.
+  for buttons,n in PERF_SCRIPT:gmatch('([^,:]+):(%d+)') do
+    H.input={}
+    for b in buttons:gmatch('[^+]+') do if b~='none' then H.input[b]=true end end
+    H.wait(tonumber(n))
   end
+  H.input=nil
   emu.removeMemoryCallback(id1, emu.callbackType.exec, 0x00B077, 0x00B077)
   emu.removeMemoryCallback(id2, emu.callbackType.exec, 0x008089, 0x008089)
   emu.removeMemoryCallback(id3, emu.callbackType.exec, 0x80B077, 0x80B077)
   emu.removeMemoryCallback(id4, emu.callbackType.exec, 0x808089, 0x808089)
   table.sort(lines)
-  H.result('frames', H.frame - start)
+  for _,entry in ipairs(nmiIds) do emu.removeMemoryCallback(entry[2],emu.callbackType.exec,entry[1],entry[1]) end
+  H.result('videoFrames', H.frame - start)
+  H.result('missedVblanks',missedVblanks)
+  H.result('nmiFrames',nmiFrames)
   H.result('reached', #lines)
   H.result('median', lines[math.floor(#lines / 2) + 1] or -1)
   H.result('p90', lines[math.floor(#lines * 0.9) + 1] or -1)
