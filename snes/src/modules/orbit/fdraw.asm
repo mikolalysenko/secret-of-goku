@@ -152,6 +152,7 @@ fc_recoil:
 ; The victory: the wave runs through Frieza and fades; he flashes and
 ; vanishes; the pouch comes back; Goku descends.
 fc_win:
+	JSR vb_draw                    ; (the boss bursts, over everything)
 	LDA.w !fn_age
 	CMP.w #!FNT_V_DESCENT
 	BCC .near

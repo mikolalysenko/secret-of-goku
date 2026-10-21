@@ -513,6 +513,9 @@ assert !DRAW_END <= $8000, "orbit draw block overflow"
 !BQ_E      = !SB+$1774             ;   4 x (slot * 2, source, bank, key) (to $1793)
 !bc_wait   = !SB+$1794             ; 2 words: frames each group's rebuild has waited (beam_defer)
 !n_cost    = !SB+$1798             ; orbit_nmi_room: the upload's lines
+!vb_want   = !SB+$179A             ; 2 words: the boss bursts' pictures wanted in slots 3 and 4 ($FFFF none; bursts.asm)
+!vb_t      = !SB+$179E             ;   their clock (deathAge)
+assert !vb_t+2 <= !SB+$17A0, "the bursts' state runs into OBJ palettes 4-5"
 !OBJ_PALS45 = !SB+$17A0           ; OBJ palettes 4-5 (blue, pink) with this frame's band colours, as sent (to $77DF)
 !n_static  = !SB+$17E0             ; nonzero: the vblank wrote the scene's fixed registers
 !n_turn    = !SB+$17E2             ; nonzero: the beam pictures' turn before the band map (vblank)
@@ -739,6 +742,7 @@ incsrc "draw.asm"
 incsrc "beam.asm"
 incsrc "aura.asm"
 incsrc "wash.asm"
+incsrc "bursts.asm"
 incsrc "text.asm"
 incsrc "finale.asm"
 incsrc "fdraw.asm"

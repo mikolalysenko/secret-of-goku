@@ -35,6 +35,8 @@
 //               bytes each, 4 rows of 4 tiles)
 //   extended data orbit_beam_c1a / _c1b / _c2: beam band pictures (below)
 //   extended data orbit_aura_a / _b: the ki auras' pictures (below)
+//   extended data orbit_bursts / orbit_vburst: the boss's victory bursts
+//               (below)
 //   band.bin    the finale's beam-band BG tiles (4bpp, 45): clear, solid
 //               outer (colour 1), solid inner (2), then the clear/outer
 //               edges x + 2y = c for c = 1-21 and the outer/inner ones;
@@ -143,6 +145,11 @@ export async function generate({rom,repo,outDir,xdata}){
     for(let level=1;level<=8;level++)for(let phase=0;phase<12;phase++)drawKiAura(groups,0,0,phase*3,(x,y,c)=>ramp.add(c),{height:16,tone:'gold',power:level/8,clock:0});
     for(const c of[...ramp].sort((a,b)=>luma(a)-luma(b)))if(!pal.GOLD.includes(c))pal.GOLD.push(c);
   }
+  // (and the boss bursts' gold and white: boss-victory.js reads them from
+  // the ROM at $2FD2C and $2FD2E)
+  const romWord=a=>rom[a]|rom[a+1]<<8;
+  const burstGold=1+romWord(0x2fd28+4),burstWhite=1+romWord(0x2fd28+6);
+  for(const c of[burstGold,burstWhite])if(!pal.GOLD.includes(c))pal.GOLD.push(c);
   for(const[k,p]of Object.entries(pal))if(p.length>16)throw Error(`orbit-fx: palette ${k} needs ${p.length-1} colours`);
   const indexOf=(cls,c)=>{if(!c)return 0;const i=pal[cls].indexOf(c,cls==='BLUE'||cls==='PINK'?4:1);if(i<0)throw Error(`orbit-fx: colour ${c-1} not in ${cls}`);return i;};
 
@@ -311,6 +318,32 @@ export async function generate({rom,repo,outDir,xdata}){
     const level=power=>Math.max(1,Math.min(8,Math.ceil(power*8)));
     data.push('orbit_fx_aura_charge:','\tdb '+Array.from({length:46},(_,c)=>level(Math.min(1,c/45))).join(','));
     data.push('orbit_fx_aura_focus:','\tdb '+Array.from({length:97},(_,p)=>level(.25+.45*p/96)).join(','));
+  }
+  // The boss's bursts (boss-victory.js drawBossVictory, in the win: twelve
+  // of 27 frames, t = deathAge - bursts[i]): a gold disc() of radius
+  // max(2, min(15, t + 3, 28 - t)) under a white one of max(1, r - 2),
+  // both xx^2 + yy^2 <= r^2. One 32x32 cell per radius 2-15 with the
+  // centre at (15, 15), 512 bytes in beam-picture layout (extended data
+  // orbit_bursts), and per burst its start, its offset from Frieza's point
+  // (orbitVectors[(i * 7) & 15] * (12 + (i % 4) * 5) >> 8) and its beam
+  // slot (bursts.asm: even ones slot 3, odd ones slot 4).
+  {
+    const {bossVictoryTiming}=await eng('boss-victory.js');
+    const bursts=bossVictoryTiming.bursts.slice(0,-1);
+    const gold=indexOf('GOLD',burstGold),white=indexOf('GOLD',burstWhite);
+    const disc=(idx,r,c)=>{for(let yy=-r;yy<=r;yy++)for(let xx=-r;xx<=r;xx++)if(xx*xx+yy*yy<=r*r)idx[(15+yy)*32+15+xx]=c;};
+    const out=[];
+    for(let r=2;r<=15;r++){
+      const idx=new Uint8Array(32*32);disc(idx,r,gold);disc(idx,Math.max(1,r-2),white);
+      for(let ty=0;ty<4;ty++)for(let tx=0;tx<4;tx++)out.push(...encodeTile(idx,32,tx*8,ty*8));
+    }
+    xdata('orbit_bursts',Uint8Array.from(out));
+    // (extended data orbit_vburst: start (deathAge), offset from Frieza
+    // (x, y), beam slot * 2, words)
+    const table=[];
+    bursts.forEach((t0,i)=>{const[vx,vy]=orbitVectors[(i*7)&15],d=12+i%4*5;for(const v of[t0,(vx*d)>>8,(vy*d)>>8,i&1?8:6])table.push(v&255,(v>>8)&255);});
+    xdata('orbit_vburst',Uint8Array.from(table));
+    L.push(`!OFX_VBURSTS = ${bursts.length}`,`!OFX_VBURST_FIRST = ${bursts[0]}`,`!OFX_VBURST_END = ${bursts.at(-1)+27}`);
   }
   data.push('; beam classes: vx, vy, qi, rr, A0x, A0y, Px, Py, Sx, Sy, V0, Vstep, across, half (words)','orbit_fx_beam_class:');
   for(const c of classes)data.push('\tdw '+[c.vx,c.vy,c.qi,c.rr,c.A[0],c.A[1],c.P[0],c.P[1],c.S[0],c.S[1],c.V0,c.Vs,c.across,c.half].map(hex4).join(','));
