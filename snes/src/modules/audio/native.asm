@@ -203,15 +203,27 @@ endif
 	AND.w #$00FF
 if !AUDIO_CUSTOM_SAMPLES
 	CMP.w #$00EA
-	BNE +
+	BNE .kick_form
 	STZ.w !au_lvl             ; beam replaces stale charge/aura requests
 	LDA.w !cb_form
 	AND.w #$00FF
-	BEQ ++
+	BEQ .beam_normal
 	LDA.w #$00F0
-	BRA +
-++	LDA.w #$00EA
-+
+	BRA .id_ready
+.beam_normal
+	LDA.w #$00EA
+	BRA .id_ready
+.kick_form
+	CMP.w #$00E8
+	BNE .id_ready
+	LDA.w !cb_form
+	AND.w #$00FF
+	BEQ .kick_normal
+	LDA.w #$00F1             ; same KICK API; SSJ finisher is audio-owned
+	BRA .id_ready
+.kick_normal
+	LDA.w #$00E8
+.id_ready
 endif
 	XBA
 	ORA.w #$0002

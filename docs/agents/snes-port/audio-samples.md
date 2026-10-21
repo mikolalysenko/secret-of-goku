@@ -1,5 +1,66 @@
 # Resident custom samples: cartridge option and storage audit
 
+## Kick finisher follow-up (`finisher7`, base `feb7df6`)
+
+The latest listening tag is **`finisher7`**. Normal KICK `$E8` has a deep
+175 ms falling thump; SSJ KICK `$F1` has a stronger 200 ms body. Both add
+HIT's sharp clock-31 crack. Audio selects the variant from `cb_form` when
+the existing KICK cue arrives; combat's API is unchanged. Measured audible
+body pitches stay about **77–63/65 Hz**. The two kick voices return within
+250 ms, retaining swing replacement and the existing overlap gain rule.
+HIT/swings/ki variation, the four BRRs, beds, beam, teleport, flight, music
+and echo caps are unchanged.
+
+No sample space was taken from round seven's priorities. The reservation
+uses **2,302/2,304 bytes** (1,890 BRR + 134 sequences + 278 code). Sharing
+the crack saves 13 old kick bytes; the SSJ body and pointer pair cost
+14+4, for **264/283 bytes** used in the existing shared sequence/table
+holes. The command-time helper grows 54→62 bytes at `$0180-$01BD`, still
+below the 64-byte stack allowance. Its relocated swell toggle frees the
+reservation space needed for F1 gain and swing cleanup. No new streaming,
+65816 frame work or sound command is introduced.
+
+Shipping SHA-256:
+`042403d9e7f6a13b30e437bd7a5ec69a22b125d611d337422ba7e85918a8184a`.
+Rollback (`-DAUDIO_CUSTOM_SAMPLES=0`) remains byte-identical to round four:
+`56ed7992b1f2abf06561a1d5553d1ab151e5fc7fd8d8ff0941a9a63508115388`.
+
+The package adds **12 raw stereo 32 kHz WAVs**, six pairs. For each stem
+below, suffix `-pre-finisher7.wav` is the shipping `feb7df6` cartridge;
+`-finisher7.wav` is the new cartridge:
+
+| Stem | Contents |
+| --- | --- |
+| `finisher-solo-normal` | Normal KICK alone |
+| `finisher-solo-ssj` | SSJ KICK alone |
+| `finisher-normal-combo` | Jab/cross/kick over battle music |
+| `finisher-ssj-combo` | SSJ jab/cross/kick over full-power music |
+| `finisher-normal-beam-stress` | Normal combos over beams, then 2/3/5/8-frame rapid contacts |
+| `finisher-ssj-beam-stress` | SSJ version of that stress mix |
+
+All six new files have **zero clipped samples**, with at least **0.97 dB**
+measured peak headroom. The PC kick reference is the existing verified
+**`pc-kick.wav`** (gain .70, rate 1, master .55 and browser compressor).
+`pc-motion-combo-1f.wav` supplies the matched one-frame contact sequence;
+there is no separate PC SSJ kick. The stress comparisons link individual
+PC kick/beam references rather than claiming a matched PC stress mix.
+
+The current manifest is
+[compare7/manifest.json](../../../.local/snes-test/audio/compare7/manifest.json).
+Its `finisher-*` comparisons lead the listening order. `finisher-analysis7.json`
+has dry metrics and 48 headroom cases; `finisher-validation7.json` records
+suite results, hashes, CPU cost and raw before/after peaks. Every capture's
+command trace proves E8/F1 selection through the actual audio selector.
+See [audio.md](audio.md#normal-and-super-saiyan-kick-finishers-base-feb7df6)
+for the file map and validation details. The separate combat animation
+branch has not been merged into these recordings.
+
+```sh
+node snes/test/audio/capture7.mjs --rom=path/to/feb7df6.sfc --tag=pre-finisher7 --only=finisher
+node snes/test/audio/capture7.mjs --rom=dist/snes/secret-of-goku.sfc --tag=finisher7 --only=finisher
+node snes/test/audio/manifest7.mjs
+```
+
 ## Native weapon-charge filter follow-up
 
 The `ba03815` follow-up moves the 65816 actor filter to `C0:BB11`, covering

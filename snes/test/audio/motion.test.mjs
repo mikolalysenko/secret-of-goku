@@ -41,7 +41,7 @@ test('1/2-frame contacts and 5-frame ki volleys preserve headroom, noise state a
  }
 });
 test('a contact returns either swing voice before counting overlap gain',{skip},()=>{
- for(const hit of [0xE7,0xE8])for(const gap of [1,2]){
+ for(const hit of [0xE7,0xE8,0xF1])for(const gap of [1,2]){
   const take=swing=>{
    const h=createApu({rom});h.ms(60);
    if(swing)h.nativeCmd(2,swing,15,0x88);

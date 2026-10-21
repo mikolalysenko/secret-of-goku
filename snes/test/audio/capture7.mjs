@@ -3,6 +3,7 @@
 // --only=contacts appends the punch follow-up without replacing earlier takes.
 // --only=motion appends swings/ki, including 1/2-frame contacts and 5-frame volleys.
 // --only=variation appends six moves, eight whiffs and a five-frame ki volley.
+// --only=finisher appends normal/SSJ kicks, combos and beam overlap stress.
 import {readFileSync,writeFileSync,mkdirSync,chmodSync,existsSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 import {createHash} from 'node:crypto';
@@ -15,7 +16,7 @@ import {RESERVE} from '../../gen/audio-resident7.mjs';
 const repo=resolve(import.meta.dirname,'../../..'),args=process.argv.slice(2);
 const opt=(k,d)=>args.find(a=>a.startsWith('--'+k+'='))?.slice(k.length+3)??d;
 const rom=resolve(opt('rom',process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc')),tag=opt('tag','r7');
-const only=opt('only','');if(only&&!['melee','contacts','motion','variation'].includes(only))throw Error('unknown capture filter');
+const only=opt('only','');if(only&&!['melee','contacts','motion','variation','finisher'].includes(only))throw Error('unknown capture filter');
 const root=join(repo,'.local/snes-test/audio/compare7'),folder='capture-'+tag+(only?'-'+only:''),out=join(root,folder);
 mkdirSync(root,{recursive:true});
 const bytes=readFileSync(rom),sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8');
@@ -45,6 +46,7 @@ for(const f of run.results.files){
 }
 writeFileSync(manifest,JSON.stringify({tag,rom,sha256:createHash('sha256').update(bytes).digest('hex'),
  renderer:'Pinned Mesen core b9fa69ddc6d0a331fb103fdb5eef6904305703c2, raw 32 kHz stereo DAC; no output gain or normalization.',
- fixtures:'Solo requests exercise the cartridge selector/dispatcher after power-on. Contexts use the normal browser-import fixture and real controller inputs; world flight starts at waterfall.',
- commandTrace:'capture-'+tag+'/results.json',files},null,2));
+ fixtures:only==='finisher'?'Cold-boot waterfall checkpoint; public cue mailbox and audio-owned form selection for solo, combo and stress requests, with the cartridge song loader.':
+  'Solo requests exercise the cartridge selector/dispatcher after power-on. Contexts use the normal browser-import fixture and real controller inputs; world flight starts at waterfall.',
+ commandTrace:folder+'/results.json',files},null,2));
 console.log(`${tag}: ${files.length} WAVs, ${files.reduce((n,f)=>n+f.clipped,0)} clipped samples; ${affected.length} affected canonical songs`);

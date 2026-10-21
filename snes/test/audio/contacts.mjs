@@ -15,7 +15,7 @@ export function contactComparison(rom,before=roundFourApuRom(rom)){
    bodyGainDb:10*Math.log10(now.low80Energy/old.low80Energy),crunchGainDb:10*Math.log10(now.high30Energy/old.high30Energy)};
  });
 }
-export function contactMix(rom,{song,gap,mode,phase=0}){
+export function contactMix(rom,{song,gap,mode,phase=0,kick=0xE8}){
  const s=JSON.parse(readFileSync('dist/snes/gen/audio/songs.json')).find(s=>s.id===song);
  if(!s)throw Error('unknown contact test song');
  const h=createApu({rom});h.ms(60);
@@ -26,7 +26,7 @@ export function contactMix(rom,{song,gap,mode,phase=0}){
  for(let cycle=0;cycle<4;cycle++){
   if(mode==='beam'){h.nativeCmd(2,isResident7(rom)?0xF0:0xEA,15,0x88);h.ms(frame);}
   for(let i=0;i<16;i++){
-   h.nativeCmd(2,CONTACT_IDS[i&1],15,0x88);h.ms(gap*frame);
+   h.nativeCmd(2,i&1?kick:0xE7,15,0x88);h.ms(gap*frame);
   }
   // Pause between bursts to vary musical and DSP-noise phase.
   h.ms((17+cycle*3)*frame);
@@ -35,12 +35,12 @@ export function contactMix(rom,{song,gap,mode,phase=0}){
  h.ms(1800);
  let peak=0,clipped=0,sum=0;const {l,r}=h.take();
  for(const a of [l,r])for(const v of a){peak=Math.max(peak,Math.abs(v));sum+=v*v;if(Math.abs(v)>=32767)clipped++;}
- return {song,gap,mode,phase,seconds:l.length/32000,peak,peakDbFS:20*Math.log10(peak/32768),rmsDbFS:10*Math.log10(sum/(2*l.length*32768**2)),clipped,
+ return {song,gap,mode,phase,kick,seconds:l.length/32000,peak,peakDbFS:20*Math.log10(peak/32768),rmsDbFS:10*Math.log10(sum/(2*l.length*32768**2)),clipped,
   musicMask:h.ram[0xAD],effectMask:h.ram[0xAE],noiseMask:h.dspReg(0x3D),bankIntact:!isResident7(rom)||Buffer.from(h.ram.slice(0x4DF1,0x56F1)).equals(Buffer.from(bank))};
 }
 export function contactMixes(rom){
  const rows=[];
- for(const song of [0x3C,0x3F])for(const gap of [2,3,5,8])for(const mode of ['rapid','beam','beds'])rows.push(contactMix(rom,{song,gap,mode,phase:(gap-2)*137}));
+ for(const kick of isResident7(rom)?[0xE8,0xF1]:[0xE8])for(const song of [0x3C,0x3F])for(const gap of [2,3,5,8])for(const mode of ['rapid','beam','beds'])rows.push(contactMix(rom,{song,gap,mode,kick,phase:(gap-2)*137}));
  return rows;
 }
 if(process.argv[1]===import.meta.filename){

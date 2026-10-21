@@ -50,7 +50,7 @@ test('variation storage is immutable and leaves the native stack room across eve
   return write.call(this,a,v);
  };
  h.ms(60);
- for(let id=0;id<=0xF0;id++){h.nativeCmd(2,id,15,0x88);h.ms(80);}
+ for(let id=0;id<=0xF1;id++){h.nativeCmd(2,id,15,0x88);h.ms(80);}
  assert.ok(stackLow>=0x1E0,'retain at least 32 unused stack bytes below the observed low-water mark');
  assert.deepEqual(Buffer.from(h.ram.slice(helper.addr,helper.addr+helper.bytes.length)),Buffer.from(helper.bytes));
 });

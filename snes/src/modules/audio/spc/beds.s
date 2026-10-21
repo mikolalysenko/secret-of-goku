@@ -100,7 +100,7 @@ bed_find_skip:
  MOV A,#0
  RET
 ; Native gain has a fixed 1/2 attenuation. Keep it for retail/music and E9's
-; distant impact; sampled swings, E7/E8 contacts and PC cues use full gain.
+; distant impact; sampled swings, E7/E8/F1 contacts and PC cues use full gain.
 resident_gain:
  CMP X,#$10
  BCC gain_half
@@ -118,6 +118,7 @@ resident_gain:
  BCC gain_contact
  BEQ gain_old
  CMP A,#$F1
+ BEQ gain_contact
  BCS gain_old
 gain_full:
  POP A
@@ -195,12 +196,6 @@ bed_release:
 ; The beam command is also its charge-release command. This saves a CPU
 ; stop dispatch on the busiest beam/contact frame, without a timer or poll.
 resident_effect:
- CMP $B5,#$E5
- BNE swing_ready
- MOV A,!SWING_SWELL
- EOR A,#5                 ; 6 / 3 ticks: soft or quick swell
- MOV !SWING_SWELL,A
-swing_ready:
  CALL !vary_effect
  OR $C9,$AE                ; recalculate existing contacts before a new mix
  MOV A,$B5
@@ -226,6 +221,11 @@ release_done:
  POP A
  MOV $B5,A
 effect_ready:
+ MOV A,$B5
+ CMP A,#$F1
+ BNE effect_normal
+ JMP !release_contact
+effect_normal:
  JMP !release_swings
 ; A contact replaces its preceding whoosh before allocation/gain counting.
 ; These unused instrument $34-$3D tuning / $34-$3F ADSR entries survive
@@ -237,6 +237,7 @@ release_swings:
  BCC effect_return
  CMP A,#$E9
  BCS effect_return
+release_contact:
  PUSH A
  MOV $B5,#$E5
  CALL !release_swing_loop
@@ -265,6 +266,9 @@ release_swing_next:
 vary_effect:
  CMP $B5,#$E5
  BNE vary_hit
+ MOV A,!SWING_SWELL
+ EOR A,#5                 ; 6 / 3 ticks: soft or quick swell
+ MOV !SWING_SWELL,A
  MOV A,!SWING_SWEEP
  EOR A,#$0C               ; -5 / -9 semitones: two motion textures
  MOV !SWING_SWEEP,A

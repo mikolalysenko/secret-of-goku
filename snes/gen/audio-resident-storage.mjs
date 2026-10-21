@@ -55,7 +55,9 @@ export function residentLayout(rom,resident){
   tracks.sort((a,b)=>b.bytes.length-a.bytes.length||a.id-b.id||a.voice-b.voice);
   const placed=[];
   for(const t of tracks){
-    const shared=placed.find(s=>s.page===t.page&&s.bytes.length>=t.bytes.length&&t.bytes.every((v,i)=>v===s.bytes[s.bytes.length-t.bytes.length+i]));
+    // An unconstrained track may share a pinned track (e.g. the contact
+    // crack), but a pinned track must never inherit an unpinned address.
+    const shared=placed.find(s=>(t.page===undefined||s.page===t.page)&&s.bytes.length>=t.bytes.length&&t.bytes.every((v,i)=>v===s.bytes[s.bytes.length-t.bytes.length+i]));
     if(shared)t.shared=shared;else placed.push(t);
   }
   // Exact packing matters in the 12/16/19-byte holes: greedy placement can

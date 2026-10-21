@@ -44,7 +44,7 @@ export function motionMix(rom,{song=0x3C,mode='combo',gap=1,beam=false,beds=fals
   if(beam){h.nativeCmd(2,isResident7(rom)?0xF0:0xEA,15,0x88);step(frame);}
   if(mode==='combo')for(let repeat=0;repeat<3;repeat++)for(let i=0;i<3;i++){
    h.nativeCmd(2,i===2?0xE6:0xE5,15,0x88);step(gap*frame);
-   h.nativeCmd(2,i===2?0xE8:0xE7,15,0x88);step((14-gap)*frame);
+   h.nativeCmd(2,i===2?(song===0x3F&&isResident7(rom)?0xF1:0xE8):0xE7,15,0x88);step((14-gap)*frame);
   }
   else for(let i=0;i<24;i++){
    h.nativeCmd(2,0xDE,15,0x88);step(2*frame);

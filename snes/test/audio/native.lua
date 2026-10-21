@@ -64,6 +64,28 @@ function test()
   check('air_does_not_stream_or_spam',#commands==stopped,#commands-stopped)
   cmd(6)
   if ROUND7 then
+    -- Combat keeps the same KICK cue. Audio selects F1 only for SSJ and
+    -- must release either preceding swing before counting contact gain.
+    local form=H.r8(0x7ED811)
+    for _,f in ipairs({0,1,0}) do
+      H.w8(0x7ED811,f)
+      cmd(1,AUDIO_SFX_KICK_SWING);H.wait(1)
+      local first=#commands
+      cmd(1,AUDIO_SFX_KICK);H.wait(5)
+      local id=f==1 and 0xF1 or 0xE8
+      local owned,swing,audible=0,0,false
+      for v=0,7 do if aram(0xAE)&(1<<v)~=0 then
+        local cue=aram(0xFF80+v)
+        if cue==id then owned=owned+1;audible=audible or dsp(v*16+8)>0 end
+        if cue==0xE5 or cue==0xE6 then swing=swing+1 end
+      end end
+      check('kick_form_'..f,commands[first+1] and commands[first+1].id==id and owned>=1 and audible and swing==0,id)
+      H.wait(30)
+      local kicks=0
+      for v=0,7 do if aram(0xAE)&(1<<v)~=0 and (aram(0xFF80+v)==0xE8 or aram(0xFF80+v)==0xF1) then kicks=kicks+1 end end
+      check('kick_return_'..f,kicks==0,kicks) -- native ambient cues may still play
+    end
+    H.w8(0x7ED811,form)
     H.wait(20)
     local first=#commands
     -- Public loop-request ABI, with changing levels/rates and no test-loop
