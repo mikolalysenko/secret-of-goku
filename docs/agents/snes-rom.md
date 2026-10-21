@@ -251,7 +251,7 @@ of each hook in `snes/src/modules.asm`.
 | `core_event_request` | A = native event id (`C1:E76D`: script events, `$0800\|door`, `$0C00\|map` takeoff); started at the end of an idle field frame. `!core_event_req` pending, `!core_event_last` started |
 | `!SRAM_LIVE`, `!PERSIST_*` | Live persistent block (`core/shared.asm`): written to the slot's sidecar after each native save; restored on load when the sidecar matches that slot's record (primary or backup); zeroed for NEW GAME (`!persist_version` = 1) and for saves without a valid sidecar (version 0). Every clear writes the `'GK'` magic (`!persist_magic`, `+$3E`); power-on clears a block without it (a new cartridge's battery RAM is noise), so modules that read it on the title see zeros, not noise |
 | `!core_frame`, `!core_frame_world`, `!core_frame_menu`, `!core_frame_ring`, `!core_tick`, `!core_mode` | Frame counters per mode, any-mode tick, mode of the last dispatch (`!CORE_MODE_*`) |
-| `!core_actor_hold` | Word (`$31:75F4`): a module whose picture hides every native actor (a full-screen set piece) writes `!core_frame` here in its field frame code; that frame's vblank skips the game's actor cell streaming (`C1:950D`, up to 12 lines in its busiest phase; `core_actor_cells`). The round robin resumes where it stopped; a stale value matches no later frame. A held vblank still runs the streamer's prologue (channels 4-7 set for VRAM word DMA, VMAIN `$80`), which the native dialogue upload at `C0:C1F0` relies on |
+| `!core_actor_hold` | Word (`$31:75F4`): a module whose picture hides every native actor (a full-screen set piece) writes `!core_frame` here in its field frame code; that frame's vblank skips the game's actor cell streaming (`C1:950D`, up to 12 lines in its busiest phase; `core_actor_cells`). The round robin resumes where it stopped; a stale value matches no later frame. A held vblank still sets the streamer's VMAIN `$80`, which the native dialogue upload at `C0:C1F0` relies on; channels 4-7 are left alone. A streamed vblank whose module NMI will be skipped (incomplete frame, ring menu) keeps the HDMA-enabled channels among 4-7 ($2C) on the stack around the streamer, so their HDMA does not start from its VRAM settings |
 
 Real-hardware rule: no general-purpose DMA from frame code while any HDMA
 channel is enabled; revision-1 S-CPUs can hang when HDMA runs during a
@@ -259,6 +259,24 @@ general DMA. Copy in vblank (module NMI work or the upload hooks above), under
 forced blank, or with the CPU. Core's predecoded-sheet copies check
 `!core_hdmaen` and the `$2C` shadow. The ending tests fail on any watched
 DMA that starts on a visible line with HDMA enabled.
+
+`snes/test/lua/hw-probe.lua` checks these rules over any suite, run as
+`SNES_LUA_PRELUDE` with `HW_PROBE_LOG` naming the log file. It logs, once
+per kind and writing instruction:
+- CPU writes to VRAM (`$2118/9`) or OAM (`$2104`) on lines 0-224 with forced
+  blank off;
+- general DMA started on those lines while HDMA is enabled;
+- general DMA into VRAM, OAM or CGRAM on those lines.
+
+Mesen also reports HDMA writes as writes, at whatever instruction the CPU
+was on. So a `vram` line at an unrelated PC is HDMA writing VMDATA: a
+channel left with DMA settings. CGRAM is left out, because the game's HDMA
+writes it on every line.
+
+On the October 21 builds the probe reports two things:
+- the original game's own VRAM DMA at `C0:25F6` during boot (byte-identical
+  to the retail ROM);
+- core's `hdmaen` test, which overruns its vblanks on purpose.
 
 Limits: 128 sprites, 32 per line, 34 eight-pixel slivers per line. Modules
 can count on at least 64 OAM slots in the field and 40 in world flight. The
