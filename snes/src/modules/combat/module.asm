@@ -196,10 +196,14 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
 !ER_SIZE  = 16
 !KB       = !CW+$100       ; 9 launches x 16 bytes (enemy slots 3-11)
 !SM       = !CW+$190       ; 9 sound marks x 8 bytes
-!cb_warm  = !CW+$1D8       ; 6 bytes: fx's !fx_evict when the contact cells of blow + 3 * Super Saiyan
-                           ; were last found resident (cb_fx_prep)
-                           ; $1DE-$1EF free (the beam pulses moved to !BP below)
+!cb_warm  = !CW+$1D8       ; 6 bytes: fx's !fx_evict + 1 when the contact cells of blow + 3 * Super
+                           ; Saiyan were last found resident (cb_fx_prep)
+                           ; $1DE-$1E1 lent to fx (its block has no byte to spare): !fx_evict,
+                           ;   !fx_wdue, !fx_kickd (fx/defs.asm, fx/module.asm); fx clears them
+                           ;   at its own init, and cb_ensure_init's clear leaves them at rest
+                           ; $1E2-$1EF free (the beam pulses moved to !BP below)
 !PADH     = !CW+$1F0       ; pad 1 at each of the last 4 field vblanks (NMI tail)
+assert !cb_warm+6 <= !CW+$1DE && !CW+$1E2 <= !PADH, "combat: fx's lent bytes overlap"
 ; destroy_hit arguments (attack against the map; bind.asm), long addressing
 !da_len   = !CW+$1F8       ; word: reach in pixels
 !da_half  = !CW+$1FA       ; word: half width

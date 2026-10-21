@@ -1,5 +1,6 @@
--- Snapshots are taken at the end of the field NMI: OAM and VRAM belong to
--- the same completed field frame. Actor inputs are sampled at UI drawing.
+-- Analyzer readouts (the cartridge has no scouter). Snapshots are taken at
+-- the end of the field NMI: OAM and VRAM belong to the same completed field
+-- frame. Actor inputs are sampled at UI drawing.
 local capture, inputs, snapshots, needFull = nil, nil, {}, 0
 local cpuStart, cpu={},{}
 local function clockNow() return emu.getState().masterClock end
@@ -40,8 +41,8 @@ local function take(name,full)
 end
 function test()
   enter(BUNDLE)
-  H.w8(0x7ECFAB,2)
-  H.w8(0x316380,0x78) -- on, all three one-time jokes already heard
+  H.w8(0x7ECFAB,2)               -- Sylphid's powers: Analyzer exists
+  H.w8(0x316380,0x78)            -- an old save: retired switch on, jokes heard
   setui(0,ui(0)&~0x10)
   local f=emu.addMemoryCallback(snapshotInputs,emu.callbackType.exec,0x00B077,0x00B077)
   local n=emu.addMemoryCallback(nmiDone,emu.callbackType.exec,SYM.core_field_nmi_done,SYM.core_field_nmi_done)
@@ -50,30 +51,41 @@ function test()
     timers[#timers+1]={emu.addMemoryCallback(function() beginCost(t[1]) end,emu.callbackType.exec,t[2],t[2]),t[2]}
     timers[#timers+1]={emu.addMemoryCallback(function() endCost(t[1]) end,emu.callbackType.exec,t[3],t[3]),t[3]}
   end
+  -- Each Analyzer runs the game's spell landing (snes/test/lua/analyzer.lua,
+  -- Goku's slot as the caster); the hook hands C0:3FA0 the routine's state
+  -- back (A = 0, M8 X16, D = $0300, DB = $7E, X caster, Y target).
+  local function analyze(target) Analyzer.land(target); Analyzer.wait() end
   local hits=0
-  local hit=emu.addMemoryCallback(function()
-    if H.r8(0x7EE181)==0x17 and ui(0x38)==18 then
-      local st=emu.getState();hits=hits+1
-      check('native_hit_'..hits,(ui(0x58)&0x8000)~=0 and st['cpu.y']==0 and st['cpu.dbr']==0x7E and st['cpu.d']==0)
-      st['cpu.pc']=SYM.ui_t_analyzer_return&0xFFFF;st['cpu.k']=SYM.ui_t_analyzer_return>>16
-      emu.setState(st)
-    end
-  end,emu.callbackType.exec,0xC03FB2,0xC03FB2)
+  local back=emu.addMemoryCallback(function()
+    local st=emu.getState();hits=hits+1
+    check('native_hit_'..hits,(ui(0x58+(st['cpu.y']>>8))&0x8000)~=0 and st['cpu.dbr']==0x7E and st['cpu.d']==0x0300
+      and (st['cpu.ps']&0x30)==0x20 and (st['cpu.a']&0xFF)==0 and st['cpu.x']==0,
+      string.format('a=%04X x=%04X y=%04X d=%04X db=%02X p=%02X',st['cpu.a'],st['cpu.x'],st['cpu.y'],st['cpu.d'],st['cpu.dbr'],st['cpu.ps']))
+  end,emu.callbackType.exec,0xC03FA0,0xC03FA0)
   H.wait(70)
-  take('scan',7)
-  -- A solo charge isolates the changing reading from the crowded-field
-  -- cache/CPU pressure covered separately by readoutBudget.
+  -- No switch and no scan: an old save's bit shows nothing.
+  check('no_reading_without_analyzer',(ui(0xAE)&2)==0 and ui(0x50)==0,ui(0xAE))
+  check('no_scan_message',ui(0x04)==0,ui(0x04))
+  take('none')
+  -- Analyzer on Goku and both companions.
+  for _,t in ipairs({0x0000,0x0200,0x0400}) do analyze(t) end
+  H.wait(30)                     -- past the 24-frame blink-in
+  take('analyzer',7)
+  -- Goku charging alone: his reading stays his power at rest.
   local party={H.r8(0x7EE200),H.r8(0x7EE400)}
   H.w8(0x7EE200,party[1]&~1);H.w8(0x7EE400,party[2]&~1)
-  H.wait(3)
+  analyze(0)
+  H.wait(30)
   H.input={l=true,y=true}
   H.wait(14);take('charge_early',1)
   H.wait(18);take('charge_late',1)
   H.wait(65);take('charge_full',1)
   H.input=nil
   H.w8(0x7EE200,party[1]);H.w8(0x7EE400,party[2])
-  H.wait(90)
+  H.wait(60)
   -- Radio's exact y<72 pixel mask, including partial glyphs/corners.
+  analyze(0);analyze(0x0200);analyze(0x0400)
+  H.wait(30)
   command(2,MSG,0)
   H.waitFor(function() return ui(0x22)~=0 end,180)
   H.wait(20);take('radio')
@@ -84,25 +96,22 @@ function test()
   H.wait(4);take('setpiece')
   check('setpiece_hidden',(ui(0xAE)&4)==0)
   command(12,0x4000,0);H.wait(20)
-  -- Off removes continuous readings; an Analyzer hit still has its lifetime.
-  H.w8(0x316380,0x38)
-  H.wait(5);take('off')
-  command(18,0,0)
+  -- A fresh hit blinks in; a recast restarts it; it expires after 240.
+  analyze(0)
   take('blink_0')
   H.wait(2);take('blink_4')
   H.wait(2);take('blink_8')
   H.wait(4);take('blink_14')
-  H.wait(12);take('analyzer')
+  H.wait(12);take('analyzer_one')
   check('analyzer_source',(ui(0x58)&0x8000)~=0 and ui(0x58)~=0xFFFF)
-  command(18,0,0)
-  H.waitFor(function() return ui(0x38)==0 end,30)
+  analyze(0)
   check('repeat_restarts',(ui(0x58)&0x7FFF)<4)
   local untilFrame=ui(0x36)+241
   while ui(0x36)<untilFrame do H.wait(1) end
   take('expired')
   check('analyzer_expired',(ui(0xAE)&2)==0)
-  emu.removeMemoryCallback(hit,emu.callbackType.exec,0xC03FB2,0xC03FB2)
-  check('native_hits',hits==2)
+  emu.removeMemoryCallback(back,emu.callbackType.exec,0xC03FA0,0xC03FA0)
+  check('native_hits',hits>=9 and hits==Analyzer.landed and not Analyzer.error,hits..' '..Analyzer.landed..' '..tostring(Analyzer.error))
   H.result('snapshots',snapshots)
   for _,c in pairs(cpu) do c.mean=c.sum/c.n end
   H.result('cpu',cpu)

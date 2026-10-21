@@ -52,7 +52,7 @@ ui (King Kai) and destroy (the map) through `bind.asm`.
 | Data `$E2:0000-$E2:0BCC` | `!DATA_COMBAT` (`snes/gen/combat.mjs`): damage, beam damage/width by charge, beam half width 8.8 by charge and wave age (`combat_api_beam`), wave envelope by age, strength and focus tables, launch arcs, lift, radial ease, hand sockets, item names, placeholder cells |
 | Core `$A0:F10E-$A0:F123` | The extension lists in `modules.asm` (`modules_combat_targets`, `_damage`, `_receive`), core's bank |
 | WRAM `$7E:D800-$7E:D8FF` | `!RAM_COMBAT` (map in `module.asm`); public fields below |
-| SRAM `$31:7C00-$31:7FFF` | `!SRAM_WORK_COMBAT`: 16 effect records (an impact's `er_aux` holds its impact frame), 9 launch records, 9 sound marks, fx's eviction count per blow and form when the blow's contact cells were last resident (`!cb_warm`, 6 bytes at `$31:7DD8`), the pad of the last four field vblanks (`!PADH`), destroy_hit arguments, the beam picture, 16 beam pulse timers (per target bit), the virtual target cache and the log of the last 8 virtual hits (`!VT`, `$31:7E34`), `combat_api_beam`'s record (`!cb_beam`), the hold owners (`!cb_inhold`); test builds `$31:7F00-7F23` (`!CBT`) |
+| SRAM `$31:7C00-$31:7FFF` | `!SRAM_WORK_COMBAT`: 16 effect records (an impact's `er_aux` holds its impact frame), 9 launch records, 9 sound marks, fx's eviction count per blow and form when the blow's contact cells were last resident (`!cb_warm`, 6 bytes at `$31:7DD8`), four bytes lent to fx for its impact state (`$31:7DDE-7DE1`: `!fx_evict`, `!fx_wdue`, `!fx_kickd`; fx's own block has none to spare), the pad of the last four field vblanks (`!PADH`), destroy_hit arguments, the beam picture, 16 beam pulse timers (per target bit), the virtual target cache and the log of the last 8 virtual hits (`!VT`, `$31:7E34`), `combat_api_beam`'s record (`!cb_beam`), the hold owners (`!cb_inhold`); test builds `$31:7F00-7F23` (`!CBT`) |
 | SRAM `$31:6200` | `!PERSIST_COMBAT` byte 0: `PCF_REVEALED` (the first transformation reveal was seen). Shared: `!persist_ssj_lock` (permanent form), `!persist_goku_active` (read). NEW GAME resets the form (combat's and `!goku_form`) to base; a load sets both from `!persist_ssj_lock`, whatever the title-time init saw |
 | OAM / VRAM | Placeholder effects only (`!COMBAT_FX_PLACEHOLDER`: 1 unless the real fx library is in the build, detected by its `!fx_busy`): OBJ region `!VRAM_FIELD_OBJ_B` (owner `$02`, tiles `$184+`) |
 | Other modules' RAM written | `!goku_form`, `!goku_act`, `!goku_act_facing/_age/_arg/_dur`, `!goku_mode/_facing/_age` (reactions); destroy's `!arg_*`; fx's request block; core `!core_pad_mask/_inject` |
@@ -161,8 +161,8 @@ No input, gameplay clock, charge, damage, form or lock rules changed.
 Modal dialogue/events, rings/menu transitions, native hurt/status locks,
 foreign combat/input ownership and recovery-camera movement retain their
 browser suppression. L+Y/B/R/X chords take precedence over plain focus.
-A transient battle-message window (`$2C`) or the scouter being on is not
-itself a combat lock. The Sandship tint is a palette owner, not a focus
+A transient battle-message window (`$2C`) or an Analyzer reading on screen
+is not itself a combat lock. The Sandship tint is a palette owner, not a focus
 lock; FX now overlays its colours after that handler. The ending owns
 combat input and does not permit ordinary focus during its scenes.
 The browser's odd-clock strobe is intentional, not a missed request.
@@ -527,3 +527,11 @@ another 2-3. With `CORE_FASTROM` (MEMSEL set) the same frames end at
 - **flight / ui (integration)**: in the Rabite field `flight_frame` costs
   6 / 11 / 20 lines (p50 / p90 / max) and `ui_field_frame` 2 / 11 / 20; the
   scene completes 117 field frames in 155 against 126 on main.
+
+### Round-seven audio binding
+
+The default `cb_bind_loops` calls audio's lookup-table binding for browser
+charge/focus level and pitch, including the aura above its threshold. Audio
+owns quantization, sustained voices, expiry and CPU throttling. The old fixed
+level pulse binding remains byte-identical with `AUDIO_CUSTOM_SAMPLES=0`.
+No attack/contact timing or punch/ki cue changes are made here.

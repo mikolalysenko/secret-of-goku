@@ -7,13 +7,14 @@ import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {loadCore,WAIT_LOOPS} from '../../tools/snesjs-export.mjs';
-import {browserCartData} from '../../gen/story-env.mjs';
+import {browserCartData,useCartridgeDialogue} from '../../gen/story-env.mjs';
 
 const atWait=s=>s.cpuCyclesLeft===0&&!s.dmaBusy&&!(s.hdmaTimer>0)&&!s.cpu.waiting&&(s.cpu.r[1]&0x3f)===0&&WAIT_LOOPS.includes(s.cpu.br[4]);
 
 export async function runBrowserStory({repo,rom,statePath,writes=[],ledger=[0,0],request,frames,mash=0,settle=4}){
   const engine=name=>import(pathToFileURL(join(repo,'engine',name)).href);
   const {restore,hash}=await engine('state.js');
+  await useCartridgeDialogue(repo);
   const {createNativeStory}=await engine('native-story.js');
   const {createDragonQuest}=await engine('dragon-quest.js');
   const s=loadCore(browserCartData(repo,rom));

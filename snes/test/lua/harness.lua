@@ -135,8 +135,8 @@ end
 function H.residentEffects()
   local first = H.r16(0xC324A9)
   if first < 0x2F74 or first >= 0x4800 then return end
-  local custom = H.r16(0xC30134) == 0x5000
-  if custom and H.r16(0x7E1EF8) ~= 0x55F1 then H.customAudioCache() end
+  local custom = H.r16(0xC30134) > 0x4800
+  if custom and H.r16(0x7E1EF8) ~= H.r16(0xC30134)+0x5F1 then H.customAudioCache() end
   -- Include shared retail tracks and their redirected pointers. This is
   -- exactly the boot effect block; song/sample/extension bytes are elsewhere.
   for i = 0, 0x1BFF do
@@ -153,7 +153,7 @@ function H.residentEffects()
     if len == 0 then break end
     -- An already-running extension has mutable stream state. Only reload
     -- custom immutable assets on that path, never reset a live ring's state.
-    if retail or addr == 0x4DF1 or addr == 0x1860 or addr == 0x18E0 or addr == 0x19C0 or addr == 0x0BED or addr == 0xFFFB then
+    if retail or addr == 0x4DF1 or addr == 0x0180 or addr == 0x1860 or addr == 0x18E0 or addr == 0x19C0 or addr == 0x19D0 or addr == 0x0BED or addr == 0x0E10 or addr == 0x0C48 or addr == 0x14B4 or addr == 0xFFFB then
       for i = 0, len-1 do emu.write(addr+i, H.r8(p+4+i), emu.memType.spcRam) end
     end
     p = p + 4 + len
@@ -168,7 +168,7 @@ function H.customAudioCache()
   local function r16(a) return emu.read(a,R) | (emu.read(a+1,R)<<8) end
   local function w16(a,v) emu.write(a,v&255,R);emu.write(a+1,(v>>8)&255,R) end
   local function r24(a) return H.r16(a)|(H.r8(a+2)<<16) end
-  local song,at,seen,moves,count=H.r8(0x7E1E05),0x55F1,{},{},0
+  local song,at,seen,moves,count=H.r8(0x7E1E05),H.r16(0xC30134)+0x5F1,{},{},0
   for i=0,15 do H.w16(0x7E1E28+2*i,0);H.w16(0x7E1E6A+2*i,0) end
   H.w16(0x7E1EF8,at);H.w16(0x7E1E48,at)
   if song>=64 then return end

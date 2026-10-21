@@ -1,5 +1,5 @@
 local rows,measuring,request,start,current={},false,false,nil,nil
-local lag,unsafe,overflows,fxSum,fxN,fxMax,flightFrames,scouterFrames=0,0,0,0,0,0,0,0
+local lag,unsafe,overflows,fxSum,fxN,fxMax,flightFrames,readingFrames=0,0,0,0,0,0,0,0
 local readoutFrames=0
 local maxSprites,maxSlivers=0,0
 local crowded=nil
@@ -97,22 +97,21 @@ emu.addMemoryCallback(function()
   rows[#rows+1]=current;current=nil
   if H.r8(0x00213E)&0xC0~=0 then overflows=overflows+1 end
   if H.r8(0x7ED900)&1~=0 then flightFrames=flightFrames+1 end
-  if H.r16(0x7E7EEE)&2~=0 then scouterFrames=scouterFrames+1 end
+  if H.r16(0x7E7EEE)&2~=0 then readingFrames=readingFrames+1 end
   if H.r16(0x7E7E90)~=0 then readoutFrames=readoutFrames+1 end
 end,emu.callbackType.exec,0x00B07D,0x00B07D)
 function test()
   H.wait(5);assert(H.importSnesJs(BUNDLE),'import failed')
   H.w8(0x316001,1);H.wait(45)
   H.w8(0x7ED811,FORM);H.w8(0x7ED740,FORM)
-  if SCOUTER==1 then
-    H.w8(0x7ECFAB,2);H.w8(0x316380,0x78)
-    H.w16(0x7E7E40,H.r16(0x7E7E40)&~0x10) -- wake as the real ring switch does
-    H.wait(40)
-  end
+  if ANALYZER==1 then H.w8(0x7ECFAB,2) end -- Sylphid's powers: Analyzer exists
   if WRECK then H.w16(0x316110,1);H.wait(60) end
   for buttons,n in SETUP:gmatch('([^,:]+):(%d+)') do
     H.input={};for b in buttons:gmatch('[^+]+') do if b~='none' then H.input[b]=true end end;H.wait(tonumber(n))
   end
+  -- Analyzer on everyone (the game's spell landing, lua/analyzer.lua): the
+  -- readings outlast the blink-in and the 180 measured frames.
+  if ANALYZER==1 then assert(Analyzer.crowd(),'Analyzer did not land');H.wait(24) end
   measuring=true
   for i=1,180 do
     H.input={l=true}
@@ -123,7 +122,7 @@ function test()
   measuring=false;H.input=nil
   H.result('rows',rows);H.result('heldFrames',180);H.result('lag',lag);H.result('unsafe',unsafe)
   H.result('overflows',overflows);H.result('flightFrames',flightFrames)
-  H.result('scouterFrames',scouterFrames)
+  H.result('readingFrames',readingFrames)
   H.result('readoutFrames',readoutFrames)
   H.result('maxSprites',maxSprites);H.result('maxSlivers',maxSlivers)
   H.result('crowded',crowded)

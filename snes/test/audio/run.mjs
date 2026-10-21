@@ -12,7 +12,8 @@ import {checkpointDir,privateRom,cleanupRom,mainCheckout} from '../checkpoints.m
 import {createApu,loadRom,loadSong} from './apu.mjs';
 import {compareSongs} from './songs.mjs';
 import {NATIVE_IDS,effectVoices} from '../../gen/audio-resident.mjs';
-import {isCustom,nativeIds,uploadSegments} from './cartridge.mjs';
+import {isCustom,isResident7,sampleFloor,nativeEffectVoices,nativeIds,uploadSegments} from './cartridge.mjs';
+import {traceWeaponCharge} from './weapon-charge.mjs';
 
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const only=process.argv.slice(2).filter(a=>!a.startsWith('--'));
@@ -23,10 +24,18 @@ mkdirSync(outRoot,{recursive:true});
 let ok=true;
 
 if(!only.length||only.includes('unit')){
- const u=spawnSync(process.execPath,['--test',...['unit','resident','songload','samples','custom-cartridge'].map(n=>join(here,n+'.test.mjs'))],{cwd:repo,encoding:'utf8'});
+ const u=spawnSync(process.execPath,['--test',...['unit','resident','songload','samples','custom-cartridge','beds','contacts','motion','variation','finisher','ipl','weapon-charge'].map(n=>join(here,n+'.test.mjs'))],{cwd:repo,encoding:'utf8'});
  const summary=(u.stdout||'').split('\n').filter(l=>/^ℹ (pass|fail)|^✖/.test(l)).join(' ');
  console.log(`audio unit        ${u.status===0?'pass':'FAIL'} ${summary}`);
  if(u.status!==0){ok=false;console.log((u.stdout||'').slice(-3000));}
+}
+
+if((!only.length||only.includes('weapon-charge'))&&isResident7(readFileSync(rom))){
+ const t0=Date.now();
+ try{
+  const r=await traceWeaponCharge(rom,join(outRoot,'weapon-charge'));
+  console.log(`audio weapon-charge pass (${((Date.now()-t0)/1000).toFixed(1)} s) ${r.phases} phases, ${r.commands} commands`);
+ }catch(e){ok=false;console.log('audio weapon-charge FAIL '+e.message);}
 }
 
 // Songs $3B-$3F through the cartridge driver in the APU harness versus the
@@ -77,7 +86,7 @@ if(!existsSync(join(cps,'waterfall.mss'))){
 }
 const baseSongs=JSON.parse(readFileSync(join(gen,'songs.json'),'utf8')),songs=structuredClone(baseSongs);
 const cart=readFileSync(rom),custom=isCustom(cart);
-if(custom)for(const s of songs)s.echo.edl=Math.min(s.echo.edl,Math.floor((0xFA00-1-0x55F1-s.sampleBytes)/0x800));
+if(custom)for(const s of songs)s.echo.edl=Math.min(s.echo.edl,Math.floor((0xFA00-1-sampleFloor(cart)-s.sampleBytes)/0x800));
 const native=loadRom(),songFile=s=>join(gen,`song_${s.id.toString(16)}.bin`);
 const songLua=list=>'SONGS={'+list.map(s=>`{id=${s.id},edl=${s.echo.edl},evol=${s.echo.evol},efb=${s.echo.efb},voices=${expectedVoices(native,s,readFileSync(songFile(s)))},file=${JSON.stringify(songFile(s))}}`).join(',')+'}';
 const songsLua=songLua(songs),pcmSongsLua=custom?songLua(baseSongs):songsLua;
@@ -88,9 +97,9 @@ const consumers=[`DESTROY=${/ audio_destroy_cues$/m.test(sym)}`];
 const upload=join(outRoot,'upload.bin'),segments=uploadSegments(cart),bytes=[];
 for(const s of segments)bytes.push(s.addr&255,s.addr>>8,s.bytes.length&255,s.bytes.length>>8,...s.bytes);
 writeFileSync(upload,Buffer.from([...bytes,0,0,0,0]));
-const lib=[`CUSTOM=${custom}\nUPLOAD=${JSON.stringify(upload)}`,...ids,...consumers,songsLua,
+const lib=[`CUSTOM=${custom}\nROUND7=${isResident7(cart)}\nFLOOR=${sampleFloor(cart)}\nUPLOAD=${JSON.stringify(upload)}`,...ids,...consumers,songsLua,
  `AUDIO_FRAME=${label('audio_frame')}\nAUDIO_DONE=${label('audio_frame_done')}\nAUDIO_PAUSE=${label('audio_pause')}\nAUDIO_CANCEL=${label('audio_cancel')}`,
- `NATIVE_CUES={${nativeIds(cart,NATIVE_IDS).slice(1,28).map((v,i)=>`{${i+1},${v},${effectVoices(v)}}`).join(',')}}`,readFileSync(join(here,'lib.lua'),'utf8')].join('\n');
+ `NATIVE_CUES={${nativeIds(cart,NATIVE_IDS).slice(1,28).map((v,i)=>`{${i+1},${v},${nativeEffectVoices(cart,v)}}`).join(',')}}`,readFileSync(join(here,'lib.lua'),'utf8')].join('\n');
 const tests=mesenTests;
 const summary=[];
 let pcmRom=null;

@@ -970,7 +970,37 @@ macro fx_cache_candidate(slot)
 	LDA.l !fx_ccell+(<slot>*2)
 	CMP.w #$FFFE
 	BEQ ?next
-	BCS ?take
+	BCC ?used
+	; Free, unless the game streams or shows it (native.asm): the slot's
+	; cell count reaches this entry's piece, or its fifth piece is
+	; requested or its weapon effect runs.
+	SEP #$20
+	if <slot> < 7
+		LDA.w $EA84
+		CMP.b #(<slot>+1)/2*2+1
+	elseif <slot> < 11
+		LDA.w $E284
+		CMP.b #((<slot>-7)/2)*2+7
+	else
+		LDA.w $E484
+		CMP.b #((<slot>-11)/2)*2+7
+	endif
+	BCS ?claimed
+	if <slot> == 9 || <slot> == 10
+		LDA.w $E28D
+		ORA.w $E261
+		BNE ?claimed
+	elseif <slot> == 13 || <slot> == 14
+		LDA.w $E48D
+		ORA.w $E461
+		BNE ?claimed
+	endif
+	REP #$20
+	BRA ?take
+?claimed:
+	REP #$20
+	BRA ?next
+?used:
 	BIT.w #$8000                  ; UI lease: outstanding DMA still owns it
 	BEQ ?age
 	LDA.l !core_dma_count
@@ -1073,8 +1103,7 @@ fx_cache_get:
 	STA.l !fx_bmiss              ; an earlier picture instead
 	SEC
 	RTS
-+
-	; One pass: the first free entry wins, else the least recently drawn
++	; One pass: the first free entry wins, else the least recently drawn
 	; usable entry that was not drawn this frame.
 	LDA.l !fx_frame
 	STA !d_tmp+6

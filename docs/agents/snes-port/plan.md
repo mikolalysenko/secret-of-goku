@@ -14,7 +14,7 @@ folder and tests under `snes/test/<name>/`.
 | story | Compiled events/dialogue in F0–F7, party variants, event hooks, quest/crisis/ending state (`native-story`, `story-*`, `scene-dialogue`, `retail-dialogue`, …) | 1 |
 | title | Title, BOY prefill, pod arrival, crater, name slots, opening patches (`title-layer`, `arrival*`, `saiyan-pod`, `native-crater`, `native-names`) | 1 |
 | destroy | Plants/rocks, gates and locks, orbs, switches, demolition, braziers (`native-plants`, `native-barriers`, `native-orbs`, `dungeon-*`) | 1 |
-| combat | Punch combos, ki, Kamehameha, SSJ transform + blast, damage queue, launches, defense, recovery, Heavy Gi, Senzu, status, scouter, effects library (`mana-mod`, `charge-lightning`, `ki-aura`, `native-effects`, `native-hit-recovery`, …) | 2 |
+| combat | Punch combos, ki, Kamehameha, SSJ transform + blast, damage queue, launches, defense, recovery, Heavy Gi, Senzu, status, scouter (cut from the cartridge: Analyzer readouts in ui), effects library (`mana-mod`, `charge-lightning`, `ki-aura`, `native-effects`, `native-hit-recovery`, …) | 2 |
 | flight | Local flight, gap/whip crossings, Instant Transmission, takeoff, ceiling escape (`native-local-flight`, `native-gap-flight`, `native-whip-routes`, `native-teleport`, `ceiling-*`) | 2 |
 | world | Mode 7: takeoff/landing handoff, aerial ki, Fortress beam, craters, Dragon Radar, Pure Land cloud (`native-flight`, `world-ki`, `world-scars`, `dragon-radar`) | 2 |
 | radio | King Kai/Luka telepathy box, remark rotations, power-intro banter, window placement, R fast-forward (`native-radio`, `power-intro`, `window-placement`, `scene-fast-forward`) | 2 |

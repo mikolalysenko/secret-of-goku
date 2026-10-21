@@ -71,12 +71,19 @@ assert !FX_SRAM == !SRAM_WORK_FX, "fx request block must sit at !SRAM_WORK_FX"
 !fx_s         = !FX_SRAM+$A0   ; 16 bytes scratch for the API entry points
 !fx_dual_cur  = !fx_s+$0C      ; draw-list offset while fx_run_draws runs
 !fx_dual_pair = !fx_s+$0E      ; second draw consumed by the paired polygon
-!fx_e         = !FX_SRAM+$B0   ; 12 bytes scratch for the cache
-                               ; $BC: !fx_evict (defs.asm)
-!fx_wdue      = !FX_SRAM+$BD   ; byte: bits 0-1 fx frames in which an FX_HIT may still draw its actor
+!fx_e         = !FX_SRAM+$B0   ; 16 bytes scratch for the cache
+!fx_native_at = !fx_e+$C      ; word: !fx_frame of the last !fx_native ($FFFF none)
+!fx_native    = !fx_e+$E       ; word: entries the game streams or shows (fx_native_mask)
+; The impact state lives in four bytes combat lends from its work block
+; ($31:7DDE-7DE1, combat/module.asm): this block has no byte to spare.
+; fx_ensure_init clears them with the rest.
+;   !fx_evict ($31:7DDE, defs.asm): byte, FX cache evictions (fx_warm)
+!fx_wdue      = $317DDF        ; byte: bits 0-1 fx frames in which an FX_HIT may still draw its actor
                                ;   white; FX_SEEN: something was drawn since the regions were claimed
 !FX_SEEN      = $80
-!fx_kickd     = !FX_SRAM+$BE   ; word: the camera kick in the coming vblank, offset << 1 | axis (0 none)
+!fx_kickd     = $317DE0        ; word: the camera kick in the coming vblank, offset << 1 | axis (0 none)
+assert !fx_evict == !SRAM_WORK_COMBAT+$1DE, "fx: the impact state moved in combat's block"
+assert !fx_wdue == !fx_evict+1 && !fx_kickd == !fx_evict+2, "fx: the impact state is four bytes"
 ; Spawned effects: 14 slots of 16 bytes
 !FX_SLOTS     = 14
 !fx_slots     = !FX_SRAM+$C0
@@ -125,6 +132,7 @@ else
 endif
 fx_hash_address = !fx_hash
 fx_hash_size = !FX_HASH_SIZE
+fx_native_address = !fx_native
 ; (the fast hash moved to !SRAM_WORK_FX_HASH: what followed closes its gap)
 !fx_pkey      = !FX_SRAM+$244  ; 6 words: parameters of the last built polygon (+8 = $FFFF: none)
 !fx_pshown    = !FX_SRAM+$250  ; word: that polygon is in the buffer on screen
@@ -256,6 +264,7 @@ org !CODE_FX
 fx_code_start:
 incsrc "api.asm"
 incsrc "overlay.asm"
+incsrc "native.asm"
 incsrc "frame.asm"
 incsrc "emit.asm"
 incsrc "kinds.asm"

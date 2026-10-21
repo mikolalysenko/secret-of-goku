@@ -9,7 +9,8 @@
 ; 9 set inputs (A set, X clear), 10 quest collected (A palace, X = stub
 ; quest status held | collected<<8), 11 hide (A bits), 12 unhide (A bits),
 ; 13 destroy reaction (A id, X map), 14 multiply, 15 story event, 16 window
-; choice, 17 weighted gi, 18 native Analyzer store, 19 generic power, 20 retire UI DMA, 21 palette ownership.
+; choice, 17 weighted gi, 18 unused (Analyzer: the game's spell landing,
+; snes/test/lua/analyzer.lua), 19 generic power, 20 retire UI DMA, 21 palette ownership.
 ; Isolation: while !ui_s_tiso is nonzero the radio's public calls from other
 ; modules (a Frieza hint, a story hook...) are ignored and counted at
 ; !ui_s_tiso+2, so a scripted session sees only its own lines (lib.lua
@@ -38,7 +39,7 @@ ui_test_poll:
 ui_test_cmds:
 	dw ui_t_none, ui_t_say, ui_t_interrupt, ui_t_barrier, ui_t_ceiling, ui_t_dismiss
 	dw ui_t_super, ui_t_flight, ui_t_restore, ui_t_inputs, ui_t_quest, ui_t_hide, ui_t_unhide
-	dw ui_t_react, ui_t_mul, ui_t_event, ui_t_choice, ui_t_weighted, ui_t_analyzer, ui_t_power, ui_t_retire, ui_t_palette
+	dw ui_t_react, ui_t_mul, ui_t_event, ui_t_choice, ui_t_weighted, ui_t_none, ui_t_power, ui_t_retire, ui_t_palette
 
 ; From ui_api_enter (stack: gate return, D, DB, P, the caller's JSL return):
 ; carry set when the test isolates the radio and the caller is not this
@@ -155,17 +156,6 @@ if defined("STORY_Q_EQUIP_WEIGHTED")
 else
 	CLC
 endif
-	RTS
-
-; Execute the real patched native store. The Lua test resumes this client
-; at C0:3FB2, before the unrelated native crystal-orb event dispatch.
-ui_t_analyzer:
-	TAY
-	LDA.w #$0017
-	SEP #$20
-	JML $C03FAD
-ui_t_analyzer_return:
-	CLC
 	RTS
 
 ; A=max HP, X argument = actor index | multiplier<<8. Keep native stats.

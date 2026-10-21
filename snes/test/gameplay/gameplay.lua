@@ -204,7 +204,7 @@ function test()
   local chargeTailVoices=0
   for v=0,7 do
     local id=aram(0xFF80+v)
-    if aram(0xAE)&(1<<v)~=0 and (id==0xDD or id==0xDF or id==0xE0) then chargeTailVoices=chargeTailVoices+1 end
+    if aram(0xAE)&(1<<v)~=0 and (id==0xDD or id==0xDF or id==0xE0 or id==0xED or id==0xEE) then chargeTailVoices=chargeTailVoices+1 end
   end
   local profile={}
   for k,v in pairs(timing) do profile[k]={mean=v.sum/math.max(1,v.n), max=v.max, calls=v.n} end

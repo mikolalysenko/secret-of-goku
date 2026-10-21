@@ -1,4 +1,4 @@
-# UI module: telepathy, radar, scouter, status page, window placement, fast-forward
+# UI module: telepathy, radar, Analyzer readouts, status page, window placement, fast-forward
 
 Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 [engine notes](engine.md)). Source: `snes/src/modules/ui/`, generator
@@ -14,7 +14,7 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 | Telepathy window on the ground (King Kai / Luka, three lines, native font and window art) | Done: pixel-identical to `radioPixels()` |
 | Message policy: queue, `interrupt`, `dismiss`, SSJ charge remarks (saved attempts and xorshift roll), barrier and ceiling reactions, first-flight banter, power intro | Done: frame-identical to `createNativeRadio` + `createPowerIntro` |
 | Telepathy in world flight (bottom panel) and the Dragon Radar | Done: panel pixel-identical to the browser's; dial identical for the same sweep angle (64 steps) and blink phase; production quest targets and attack visibility verified. Current timing results are in [gameplay-performance.md](gameplay-performance.md#flight-world-map-and-radar-follow-up). |
-| Scouter option and readouts | Implemented: saved ring switch and jokes, outlined power numbers and reticles, charge updates, Analyzer lifetime/blink and radio clipping. Shares FX cells at lower priority; CPU, cache and OBJ limits can defer pieces or the entire overlay in busy fields (see Scouter). |
+| Analyzer readouts (the scouter was cut) | Done: a real Analyzer cast gives its target the browser's outlined power number and reticle, 24-frame blink-in, 240-frame lifetime and radio clipping; no ring switch, scan, jokes or charge updates on the cartridge. Shares FX cells at lower priority; CPU, cache and OBJ limits can defer pieces or the entire overlay in busy fields (see Analyzer readouts). |
 | Goku's STATUS page | Done (`status.asm`): BG2 as the browser shows `statusPixels()`, pixel-identical but for 2–3 cells per page whose fourth colour shows as its nearest; built band by band in about 55 frames with the menu at 60 Hz |
 | Dialogue window placement | Done (`place.asm`): the scene's windows move above the HUD when the first one would cover more faces where it is, as `window-placement.js`; moved window pixel-identical to the native one, HUD untouched |
 | R fast-forward | Done (`ff.asm`, `ff-text.asm`): R hides R, batches eight prepared glyphs per upload and auto-confirms prose; choices stop. The browser's 12× emulation speed becomes faster text without skipping event commands. |
@@ -27,10 +27,11 @@ The generator imports the browser engine and writes `dist/snes/gen/ui/`:
   (`kaiWarnings`, `firstFlightMessages`, `treeBlastMessages`,
   `ceilingRemarks`, `barrierReactions`/`dungeonQuips`, `powerIntroMessages`,
   the Death Ball and crisis lines, `fortressDeflectionMessages`) and every
-  inline `radio.say()` / `radio.interrupt()` / scouter `joke()` literal in
-  `engine/*.js`, parsed from the source (string and template literals,
-  arrays, `a ? b : c`, identifiers). Each keeps its call site's `kind` and
-  `frames`. 99 messages today. Template parts become run-time parameters:
+  inline `radio.say()` / `radio.interrupt()` literal in `engine/*.js`,
+  parsed from the source (string and template literals, arrays,
+  `a ? b : c`, identifiers); `scouter.js` and its scan jokes are skipped
+  (no scouter on the cartridge). Each keeps its call site's `kind` and
+  `frames`. 95 messages today. Template parts become run-time parameters:
   `${count()}` (number) and `${dragonBallPalaces[index]}` /
   `${fresh[0][1]}` (palace / town name tables). The build fails if a line
   would need re-wrapping, exceeds 28 columns or three lines, or uses a glyph
@@ -59,9 +60,10 @@ The generator imports the browser engine and writes `dist/snes/gen/ui/`:
   per-angle sweep sprites (`ui_sweep_oam`) and colours; sin and sec tables.
 - **`watlas.bin`, `dial.bin`**: the opaque world-band atlas and frame tiles;
   the dial's base cells and effect tiles.
-- **Scouter cells** (`ui-scouter.mjs`, called by `ui.mjs`): three outlined
+- **Readout cells** (`ui-scouter.mjs`, called by `ui.mjs`): three outlined
   characters per 16×16 cell, deduplicated from the browser’s formatted power
-  levels, plus the reticle corner. Seven top-clipping variants implement the
+  levels (the generic table plus Goku's four resting readings), plus the
+  reticle corner. Seven top-clipping variants implement the
   radio mask. Glyphs and colours are extracted from `scouter.js`; the build
   decodes every generated cell and checks all pixels against that font.
   Number layouts and DMA-only cells live in xdata.
@@ -325,53 +327,78 @@ than stale writes. The UI sets its bits whatever the line; in the test
 scene all 1,952 window frames show the window moved, the closing ones
 included (none of their vblanks ran late).
 
-## Scouter (`scouter.asm`, `scouter-readouts.asm`, `scouter-obj.asm`)
+## Analyzer readouts (`scouter.asm`, `scouter-readouts.asm`, `scouter-obj.asm`)
 
-Owned once Sylphid's powers are granted (`$CFAB` >= 2), and enabled through
-Goku's configuration ring. The saved switch is `!ui_p_flags` bit 6.
+**The cartridge has no scouter.** On the maintainer's request ("can we cut
+the scouter from the rom hack if it is using too many resources? just make
+the analyzer spell work like a scouter", 2026-10-21) the scouter was cut
+from the cartridge; the browser keeps it (`engine/scouter.js`). Removed:
+the Targeting ring item as a `Scouter: OFF/ON` switch (the `C0:1926` title
+pointer and `C0:73F4` option hijacks; Goku's configuration ring keeps the
+native Targeting item and option), the scan with its teleport sound and
+King Kai's four one-time jokes, continuous readings of everyone on screen,
+Goku's rising number while charging, and the virtual Frieza reading. The
+saved switch and joke bits (`!ui_p_flags` bits 3–6) are left unused and
+untouched, so old saves keep their byte and show nothing.
 
-- `C0:1926`, four bytes: redirects the Targeting string pointer only for
-  Goku's configuration ring (character 0, ring 2, resolved item 1), using
-  the generated `Scouter: OFF/ON` strings.
-- `C0:73F4`, five bytes: toggles the switch, requests the native title
-  redraw and returns to `C0:7275`, keeping the ring open.
-- `C0:3FAD`, five bytes: preserves the native incoming-spell store to
-  `$E181,Y` and `REP #$20`, then records spell `$17`. Repeated writes restart
-  the target's Analyzer timer, even if the byte already contains `$17`.
-  All three hijacks have original-byte assertions.
+What remains is the browser's Analyzer behaviour, available once Sylphid's
+powers are granted (`$CFAB` >= 2) and Goku is active: when a party
+member's Analyzer lands on an actor, that actor shows the browser's
+readout (power number above a reticle) for 240 frames, blinking in for the
+first 24; a recast restarts it. Sylphid's grant says so (cartridge-only
+text for event 583, `snes/gen/story-env.mjs` `CARTRIDGE_DIALOGUE`):
+"SYLPHID: Star warrior, you cannot cast my Analyzer. But when a friend
+casts it, you will see its target's power, plain as day. GOKU: Like a
+scouter! Hee hee, that's handy!"
 
-An enabled scan waits for Goku to be able to act, plays the teleport sound,
-restarts the blink, and selects the saved one-time joke: Super Saiyan,
-otherwise the visible Frieza virtual target, otherwise Goku with/without
-training weights. `frieza_virtual_target` now supplies the Frieza joke and
-readout position; no Frieza module changes were needed.
+- `C0:3F9B`, five bytes (`LDA #$00` / `STA $E1F8,X`, `%orig`-checked):
+  inside the game's spell landing `C0:3F94`, which the spell scripts reach
+  through the `C0:3806` entry when a cast lands on its target, the moment
+  the native Analyzer window opens. After `C0:395E` X is the caster and Y
+  the target (DB `$7E`, D `$0300`, M8 X16). The hook reads the caster's
+  spell (`+$170`); for Analyzer (`$17`) it starts the target's record
+  (`ui_sc_analyzer_hit`, registers and flags preserved), then replays the
+  two replaced instructions and returns to `C0:3FA0`. Every landing passes
+  here, so a recast restarts the timer.
+- The earlier hook sat on `C0:3FAD`, the `+$181` store a few instructions
+  later. The game only performs that store for event objects (`$E1FB`
+  bit 4: crystal orbs, whose readings are excluded); for every other actor
+  `+$181` is the level (`C0:44C2` levels up). A real cast on a Rabite ran
+  the landing (target `$0600`, caster `$0200`, spell `$17`) and never
+  reached it, so a cast never gave a reading on the cartridge (with the
+  scouter switched on, its continuous scan hid the gap); `analyzerCast`
+  below fails on the build with that hook. The browser's `scouter.js` had
+  the same gap (a bus write of `$17` to `+$181`, which also fired for a
+  level-23 actor); it now watches the landing too (`C0:3F94`, where X is
+  the target and Y the caster), with a real cast in
+  `tests/scouter.test.mjs`.
 
 ### Readings and browser correspondence
 
 Living, active actors qualify within `-16 < x < 272`, `-16 < y < 240`:
-party members, native enemies with species below 128, and virtual Frieza.
+party members and native enemies with species below 128 (the Frieza
+fights' virtual targets are not actors; Analyzer cannot land on them).
 Species `$55` is excluded. Numbers use the browser's project 3x5 font,
 comma formatting, one-pixel `$0421` outline, `$23E4` green, horizontal
 centering and `screenY - 40` origin. Four four-pixel L corners span
 `screenX +/- 12`, `screenY - 28` through `screenY + 2`.
 
-A record blinks off when `age < 24 && age % 8 < 4`. Analyzer records expire
-past age 240; the enabled continuous scouter then recreates the record.
-Per the cartridge task, Analyzer also works with the switch **off**. This
-intentionally differs from the current browser `available()` guard, which
-requires the switch on even for Analyzer. The native store itself is tested,
-including its register preservation and a repeated cast.
+A record blinks off when `age < 24 && age % 8 < 4` and expires past age
+240 (ages count field frames, deferred ones included). A record whose
+actor leaves the screen or dies is dropped. The browser's `available()`
+guard requires its scouter switch even for Analyzer; the cartridge has no
+switch, so Analyzer always shows its reading.
 
-Goku's generated lookup covers every charge tick, both forms and the
-training gi's 0.9 scale. Frieza uses 60/120 million according to his muscular
-flag. Other actors use max HP times 3/4 (party/enemy), the fed Beast's map-253
-factor and Frieza's trial factor, rounded to two significant figures. The
-65816 arithmetic is checked against browser `powerLevel()` at 200 boundary
-inputs. Unchanged inputs reuse their number layout; at most one changed
-native HP reading is calculated per frame. A changing Goku number retains
-its previous complete layout until the next layout's cells are resident.
-The solo-charge pixel test permits at most eight input ticks of streaming
-latency and verifies increasing readings through full charge.
+Goku's reading is his power at rest (`ui_sc_goku`: base form and Super
+Saiyan, with and without the training gi's 0.9 scale; 90,000 / 81,000 /
+150,000,000 / 135,000,000), as the browser's `powerLevel()` returns when
+he is not charging: a charge never moves it. Other actors use max HP times
+3/4 (party/enemy), the fed Beast's map-253 factor and Frieza's trial
+factor, rounded to two significant figures. The 65816 arithmetic is
+checked against browser `powerLevel()` at 200 boundary inputs. Unchanged
+inputs reuse their number layout; at most one changed native HP reading is
+calculated per frame. A changing Goku number (form or gi) retains its
+previous complete layout until the next layout's cells are resident.
 
 Menu/world transitions, native transition/blanking state and set-piece hide
 requests suppress the overlay. The radio masks every pixel above line 72,
@@ -389,7 +416,9 @@ FX's existing 15-cell cache and its claims on `FIELD_OBJ_A/B/C`.
 
 `fx_overlay_begin` / `fx_overlay_cell` lease unused cache entries after
 `fx_frame`. Opaque keys `$8000..$FFFD` distinguish UI cells from native FX
-ids. Completed UI leases yield before FX's normal LRU search; recent FX
+ids. Entries the game's actor effects stream or show are never leased, and
+a lease on one is dropped when the game claims it
+([fx.md, Native effect cells](fx.md#native-effect-cells)). Completed UI leases yield before FX's normal LRU search; recent FX
 cells remain protected for 120 cache ticks. Outstanding UI DMA pins its
 cell until it completes. At most one UI cell (two 64-byte rows) enters
 `core_queue_vram` per frame, only when FX has no cell upload pending and the
@@ -400,11 +429,13 @@ publishing the first frame of a new map, preserving unrelated entries,
 their order and their byte budget. Map retirement runs before the time
 guard, including a frame that has already missed its deadline.
 
-The generator deduplicates 503 three-character runs. Seven top-clipping
-variants and eight corner variants give 3,529 cells. Their lower eight rows
-are all blank: only the upper 64 bytes are stored (220.6 KiB), and lower
-rows upload from the cartridge's verified `UI_ZERO_ROWS`. The 1,066 number
-layouts add 10.4 KiB in xdata. Only the needed 16x16 cells occupy
+The generator deduplicates 376 three-character runs. Seven top-clipping
+variants and eight corner variants give 2,640 cells. Their lower eight rows
+are all blank: only the upper 64 bytes are stored (165.0 KiB), and lower
+rows upload from the cartridge's verified `UI_ZERO_ROWS`. The 704 number
+layouts (700 generic, Goku's four) add 6.9 KiB in xdata. Before the scouter
+cut, Goku's per-tick charge readings made 1,066 layouts (10.4 KiB), 503 runs
+and 3,529 cells (220.6 KiB). Only the needed 16x16 cells occupy
 VRAM. Each glyph pixel uses index 15 (green) or 14 (outline): after FX draws,
 UI chooses a free OBJ palette, or shares the spare tail of an FX palette
 whose generated metadata proves those two indices unused. Sharing also
@@ -423,7 +454,11 @@ and starts no further number/reticle after line 192. A missed-frame check
 prevents a wrapped beam counter from being mistaken for spare time.
 Numbers get priority over corners. This is an intentional hardware limit:
 heavy charge FX in the crowded Rabite fixture can suppress all readouts;
-ordinary crowded frames may show only some actors/pieces. Overlapping
+ordinary crowded frames may show only some actors/pieces, and a frame that
+finishes late shows no reading (after a real cast, with the native Analyzer
+window up, the reading showed on 158 of the 249 frames until it expired; the
+blink-in hides 12, the rest were frames whose readout pass started after
+line 160). Overlapping
 readouts also obey OBJ ordering, so a later sprite's outline can obscure
 another reading's green pixel (the browser merges those pixels). The pixel
 test permits only that proven green/outline overlap, with all other pixels
@@ -538,7 +573,7 @@ existing R input filter. No additional lag comes from batching.
 ## Idle frames (`idle.asm`)
 
 After each full field frame `ui_field_idle` sets `!UIS_IDLE` when nothing
-is shown, queued, cooling down, pending (scouter scan), moved (placement),
+is shown, queued, cooling down, pending, moved (placement),
 left over from world flight or fast-forwarded. The next field frames then
 only count (`!ui_frame`) while no event runs (`$D0` = 0) and R is up; a
 public API call (`ui_api_enter`), Super Saiyan `ui_charge_tick`, world, ring and menu
@@ -559,7 +594,7 @@ every hover frame) returns before the API entry once its lines were said.
 
 Base-form charging and beams retain an existing idle proof. They consume
 the charge request, refresh visibility and age an unclaimed placement
-session, without traversing empty radio, scouter and window work. Foreign
+session, without traversing empty radio, readout and window work. Foreign
 RAM validation still runs; fortress completion, SSJ requests, events, R,
 messages and cancellation before dispatch retain the full path. World
 flight always uses its full callback. `UI_CHARGE_IDLE_SLOW` restores the
@@ -635,28 +670,30 @@ byte boundary.
 | Resource | Use |
 | --- | --- |
 | Code/data `$AC:8000-` | `!CODE_UI`: code, compressed messages, radar tables and STATUS page data; current usage is reported by the strict build |
-| Extended data | 22 blobs, about 256.3 KiB, placed by the build: field glyph atlas, window tiles, prebuilt messages, world atlas, dial tiles, the STATUS page's window cells and tilemap, and scouter cells/layouts |
-| WRAM `$7E:7E40-$7E:7EFF` | `!RAM_UI`: state, current message, cooldowns, band/radar state, scratch, `!ui_magic` (`module.asm`), fast-forward (`+$A6`), window placement (`+$AA`), scouter (`+$AE`), STATUS page (`+$B0`–`+$B7`); in menus the world and radio scratch words serve the STATUS composition |
+| Extended data | 19 blobs, about 196.4 KiB (22 and 256.3 KiB before the scouter cut), placed by the build: field glyph atlas, window tiles, prebuilt messages, world atlas, dial tiles, the STATUS page's window cells and tilemap, and readout cells/layouts |
+| WRAM `$7E:7E40-$7E:7EFF` | `!RAM_UI`: state, current message, cooldowns, band/radar state, scratch, `!ui_magic` (`module.asm`), fast-forward (`+$A6`), window placement (`+$AA`), Analyzer readouts (`+$AE`), STATUS page (`+$B0`–`+$B7`); in menus the world and radio scratch words serve the STATUS composition |
 | SRAM `$33:7C00-$33:7FFF` | staging: window/band rows (`+$000`), the radio's HDMA table, the moved window's colour records or moved natives (`+$200`), text words (`+$240`), radar trig cache (`+$2E8`), pending text DMA (`+$2F2`), build state (`+$2F4`), radar key (`+$2FC`), bearing inputs (`+$2FE`, `+$308`), placement scroll table and the game's channel 0/1 tables (`+$312`, `+$322`), queue (`+$340`), band and sky HDMA colour blocks (`+$3C0`, `+$3DC`); while the STATUS page is built (menus) `+$000`–`+$335` hold its strings, CGRAM copy, band records, cell masks and upload buffer (the radio and radar rebuild theirs; the queue and the band blocks are kept); UI_TEST builds: test isolation (`+$33C`, `+$33E`) |
 | SRAM persistent | `!PERSIST_UI` = `!PERSIST_MISC+$80` (`$31:6380`, `$60` bytes) — **request** |
 | VRAM (field) | BG3 tiles `$110-$113`, `$122-$1BF` and rows 1–8 / 17–24 while the window shows |
-| VRAM (scouter) | lower-priority leases in FX's 15 FIELD_OBJ_A/B/C cells; no new region |
+| VRAM (readouts) | lower-priority leases in FX's 15 FIELD_OBJ_A/B/C cells; no new region |
 | VRAM (STATUS page) | BG2 tilemap `$5800-$5B7F`, tiles `$040-$053` (window cells) and `$054` up (composed cells, two per cell: up to about `$330`, VRAM `$6200-$7980`) |
 | VRAM (world flight) | core OBJ region B (`$7100-$78FF`: band map rows 19–26 and the world atlas, read as BG3) and region C (`$7900-$7FFF`: dial tiles), claimed while shown |
-| CGRAM | scouter: indices 14/15 of a free OBJ palette or a proven spare FX palette tail; field: colours 9–11, 13–15 on lines 0–205 while the window shows (HDMA); world: 9–15 on lines 145–223 while the band shows (HDMA), OBJ palette 3 colours 1–6 for the dial; STATUS page: 16–31 (BG2 palettes 4–7) |
+| CGRAM | readouts: indices 14/15 of a free OBJ palette or a proven spare FX palette tail; field: colours 9–11, 13–15 on lines 0–205 while the window shows (HDMA); world: 9–15 on lines 145–223 while the band shows (HDMA), OBJ palette 3 colours 1–6 for the dial; STATUS page: 16–31 (BG2 palettes 4–7) |
 | HDMA | channel 5 in the field (`$2C` bit 5) for the radio; channels 0/1 (the game's window HDMA, reprogrammed, `$2C` bits 0–1) while a native window is moved; channel 6 in world flight (`$2C` bit 6) |
 | IRQ | world flight: `C0:8A4B` hijacked (6 bytes, `%orig4`-checked); V=152 / V=216 at H=160 while the band shows |
-| Patched code | `C0:8A4B` (world IRQ, 6 bytes), `C0:73F4` (ring option dispatch, 5 bytes), `C0:1926` (string reference pointer, 4 bytes), `C0:015F` (pending text DMA guard, 6 bytes), `C0:1175` (glyph reveal, 6 bytes), `C0:3FAD` (Analyzer store, 5 bytes), all `%orig`-checked |
-| OAM (scouter) | 1–4 small sprites per number and four corners; shares 16 front slots, then rear slots; conservative sliver admission |
+| Patched code | `C0:8A4B` (world IRQ, 6 bytes), `C0:015F` (pending text DMA guard, 6 bytes), `C0:1175` (glyph reveal, 6 bytes), `C0:3F9B` (spell landing: Analyzer, 5 bytes), all `%orig`-checked. The scouter cut dropped `C0:73F4` (ring option dispatch) and `C0:1926` (Targeting title pointer) |
+| OAM (readouts) | 1–4 small sprites per number and four corners (a Rabite's reading: five); shares 16 front slots, then rear slots; conservative sliver admission; none unless an Analyzer reading shows |
 | OAM (world flight) | 12–14 module slots for the dial (first module slots) plus a slot per native moved behind it (at most 8); none in menus (Goku's menu figures keep entries 120–127) |
 
-Scouter field state aliases world scratch at `+$4E..$52`, `+$58..$80`,
-`+$86`, `+$88..$A4`; the 13 age words include virtual Frieza. Eleven HP
-signatures use world-only SRAM `+$2FC..$311`. The draw call uses 88 stack
+Readout field state aliases world scratch at `+$4E..$52`, `+$58..$7C`,
+`+$80`, `+$86`, `+$88..$A4`; the age and format arrays keep 13 words, of
+which the 12 actor slots are used (the scouter's virtual Frieza record is
+gone). Eleven HP signatures use world-only SRAM `+$2FC..$311`. The draw call uses 88 stack
 bytes. Radio, placement, persistent storage and core allocations are unchanged.
 
 Persistent layout (`!PERSIST_UI`): `+$00` flags (first flight, power intro
-flight/super, scouter jokes, scouter switch), `+$01` warning rotation, `+$02` charge
+flight/super; bits 3–6 held the cut scouter's jokes and switch and are left
+as saved), `+$01` warning rotation, `+$02` charge
 attempts, `+$04` xorshift32 state, `+$08` barrier rotation, `+$09` ceiling
 remarks used, `+$0A` ceiling exits, `+$0C` exits at the last remark, `+$10`
 barrier keys (64 bits), `+$20` maps with a ceiling exit (512 bits).
@@ -681,10 +718,12 @@ ignored and counted, since the browser references model the radio alone.
 | `ff` | from `potos.mss` (a NEW GAME, Goku made active), Luka's menu (`$134`): with R held the spear gift's prose is confirmed (`$CFC3` = 1) and the interpreter waits on the menu's choice (`story_api_window_has_choice`); without input the prose waits (`$D0` = `$83`); an additional 240 R-held frames leave the choice pointer unchanged |
 | `text` | First page of `$134`: native, R, L+R, R pressed/released mid-line, and a three-vblank deferred upload; all 16,384 window pixels (including palette indices) and all 63 mapped glyphs equal the native result. Counts glyphs/frame, CPU and lag against an R-held run with the two new hijacks restored to original bytes. The deferred run holds its source and tilemap until DMA completes. |
 | `place` | `preset__late` (Goku under the window: lower) and `potos.mss` (Luka's window covers nobody: native), event `$134` through the story API, each against a reference run with placement off: the moved window's 10,124 opaque pixels equal the native window's, the HUD (lines 199–223) and lines 7–50 are unchanged; every frame with a window up in the lower scene (1,952, through pages, Luka's menu, its choice box and the closing windows) is checked at the display level (a BG3VOFS HDMA write on line 7) unless its vblank ended late with no window channel running; switching placement off gives the game's channel setup back and the window returns; after the scene the session closes, the channels and `$2C` are the game's; potos frame-identical but for sprites (ambient creatures follow the RNG, which advances with idle CPU time) |
-| `scouter` | `barrier-audit__potos-probe` with Sylphid's powers: the ring opens on Goku's configuration ring, Targeting's title pointer is `ui_sc_title_off` (bank `$AC`), B switches it on (saved bit, the ring stays on the item, title now `ui_sc_title_on`), closing the ring scans once and King Kai says the joke for Goku's form and gi (`SCOUTER_GOLD` or `SCOUTER_GOKU_0/1`, saved); switching off and on again scans without repeating it |
+| `targeting` | `barrier-audit__potos-probe` with Sylphid's powers and an old save's switch bit (`!ui_p_flags` bit 6) on: Goku's configuration ring shows the game's own Targeting title (`CA:A174`), confirming it runs the native option (`C0:73F9`) and the ring resumes at `C0:7275`; the saved flags stay as they were and no message or reading follows |
 | `scouterPower` | 200 native 65816 max-HP/modifier calculations against browser `powerLevel()`, including rounding carries and the maximum native HP; a late new-map frame retires deferred UI DMA while preserving two interleaved foreign transfers and their budget; shared colours require a current FX palette owner |
-| `readouts` | actual PPU OAM/VRAM/CGRAM decoded against browser font/layout and the same imported actor inputs: three-actor scan, solo charging Goku, radio clipping, native Analyzer hook/recast, both blink phases, off/expiry and set-piece hiding; charge freshness and OBJ limits |
-| `readoutBudget` | paired 200-frame five-actor Rabite runs, off/on and charging, including useful coverage and every completed OAM list's sprite/sliver limits; no vblank crossing during actual readout work; paired lag uses the existing perf suite's 3% allowance because native RNG depends on idle CPU time |
+| `readouts` | actual PPU OAM/VRAM/CGRAM decoded against browser font/layout and the same imported actor inputs: an old save's switch bit shows nothing; Analyzer on Goku and both companions; Goku charging keeps his resting reading (81,000 in the gi); radio clipping; set-piece hiding; both blink phases, a recast restarting the blink, expiry after 240 frames. Each landing comes from the game's spell landing (`snes/test/lua/analyzer.lua`), and the hook must hand `C0:3FA0` its state back (A = 0, M8 X16, D `$0300`, DB `$7E`, caster and target) |
+| `readoutBudget` | paired 200-frame five-actor Rabite runs, without and with an Analyzer reading on every actor, idle and charging, including useful coverage and every completed OAM list's sprite/sliver limits; no vblank crossing during actual readout work; paired lag uses the existing perf suite's 3% allowance because native RNG depends on idle CPU time |
+| `analyzerCharge` | Analyzer on the Rabite crowd, then four rounds of charge, release and focus with real input: every displayed FX, UI and native sprite shows its owner's pixels (`snes/test/lua/cells-check.lua`, shared with fx `native-cells`); readings and the aura together on some frames |
+| `analyzerCast` | a real cast: in a Rabite field Primm learns Sylphid's spells as event 583 grants them, the player switches to her (Select), opens her magic ring (X, up to ring 1), picks Sylphid and Analyzer (B, left twice, B) and confirms the cursor's Rabite (B). The game's landing must start that target's reading, whose snapshot decodes as the browser draws it, and which expires 240 frames later. On the build with the old `C0:3FAD` hook the landing runs but no reading starts (3 failures); with the `C0:3F9B` hook it passes (reading "80", shown on 158 of 249 frames) |
 | `status` | `barrier-audit__potos-probe`, base form and Super Saiyan: Goku's STATUS page opened from the ring; BG2 decoded from VRAM and CGRAM equals `statusPixels()` of the same values (one row up, as the browser paints it) on every pixel but the conflict cells' (2 and 3 cells, 18 and 62 pixels as their nearest colour; shape always exact); the menu runs every frame while the page is built (53 and 56 frames); X leaves the page, the session ends and CGRAM 17–31 match a round trip with the page kept native (16 pulses) |
 | `radar` | `preset__flight` with two quest states, steering between samples: band panel pixels against `radioPixels()` of the browser's panel text, dial pixels against `dragon-radar.js` for the sampled sweep angle and blink phase, guide and blip against `radarBearing` (UI_TEST builds compute the far blip every frame); then a Y ki shot, an L+Y charge and the weak wave it releases hide the dial, which comes back after them. Production `world controls` also checks first-frame yielding. |
 
@@ -721,6 +760,37 @@ increased lag counts, and a repeat run reproduces their results exactly.
 The perf harness now counts FastROM frame callbacks (`c9e45d2`) and uses
 private ROM filenames to isolate expanded battery SRAM (`a1ace15`).
 
+Scouter cut validation (2026-10-21): strict production build; UI
+**17/17** (`targeting`, `analyzerCharge` and `analyzerCast` replace `scouter`),
+FX (all cases, `focus-scenes` 18/18 with the two Analyzer scenes,
+`native-cells` 3/3), gameplay **13/13** with unchanged CPU misses (charge 13,
+teleport 3, fly-ki 2, fly 1, fly-punch 1, the rest 0 per 240 frames),
+combat **37/37**, Goku **12/12**, debug (21 full, 2 native with their known
+owners), story **76/76** and performance **6/6** (sword 63/0, Sandship
+112/0, battle 54/0, beast 174/30, fortress 96/0, flight 112/0) pass, as do
+the 40 assembled FX/UI/combat node tests.
+
+Savings: UI code −1,512 bytes; UI extended data 256.3 → 196.4 KiB (22 → 19
+blobs; the build's 2,736.9 → 2,677.1 KiB): readout cells 3,529 → 2,640
+(220.6 → 165.0 KiB), number layouts 1,066 → 704 (10.4 → 6.9 KiB), runs
+503 → 376; 99 → 95 radio messages; 426 → 424 patched sites. The idle cost
+is unchanged: `modprof` measures the UI field callback at 0.33 lines mean,
+the late readout pass at 0.12 and their NMIs at 0.12/0.13 in sword and
+battle, before and after (the scan only ran with the switch on). What
+changes is when readings show: the scouter could keep every on-screen
+actor's reading up for as long as it was on (38.6 lines/frame mean in the
+five-actor fixture); now only an Analyzer target has one, for 240 frames.
+One reading costs **33.4 lines mean / 47.4 max** per frame of the late pass
+in the cast scene (a drawn frame spends 18.6 on the OAM admission scan,
+9.9 preparing records, 7.2 on the number and 5.5 on the reticle: room for
+later work), uses five OBJ (one number cell, four corners) and two of FX's
+cache cells. In the paired fixture, with readings landed on all five actors:
+
+| Mode | Readout CPU mean / max (lines) | Frames with numbers / all five | Lag, off → on | Max sprites / slivers |
+| --- | --- | --- | --- | --- |
+| Ordinary field | 37.91 / 75.69 | 132 / 58 | 0 → 2 | 14 / 28 |
+| Charging with FX | 2.03 / 50.02 | 2 / 0 | 14 → 14 | 14 / 28 |
+
 ## Core requests
 
 - **Persistent range**: `!PERSIST_UI` (`$60` bytes) inside `!PERSIST_MISC`
@@ -744,7 +814,7 @@ private ROM filenames to isolate expanded battery SRAM (`a1ace15`).
   before Goku's cell DMA) is applied by `snes/tools/order-dispatch.mjs` on
   the integration merge.
 - **FastROM** (done on main): the UI code runs in bank `$AC` at 3.58 MHz.
-- **Scouter readouts**: implemented without core changes through FX cache
+- **Analyzer readouts**: implemented without core changes through FX cache
   leases and the existing front-OAM contract. Full coverage under heavy FX
   would need more simultaneously resident OBJ cells and additional CPU
   headroom; current behavior explicitly yields rather than claiming that

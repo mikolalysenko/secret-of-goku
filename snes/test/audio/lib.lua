@@ -76,7 +76,7 @@ function customDamage()
   while i+3<=#data do
     local a=data:byte(i)|(data:byte(i+1)<<8);local n=data:byte(i+2)|(data:byte(i+3)<<8)
     if n==0 then break end
-    if a==0x4DF1 or a==0x1860 or a==0x18E0 or a==0x19C0 or a==0x0BED or a==0xFFFB then
+    if a==0x4DF1 or a==0x0180 or a==0x1860 or a==0x18E0 or a==0x19C0 or a==0x19D0 or a==0x0BED or a==0x0E10 or a==0x0C48 or a==0x14B4 or a==0xFFFB then
       for j=0,n-1 do if aram(a+j)~=data:byte(i+4+j) then return string.format('%04X',a+j) end end
     end
     i=i+4+n

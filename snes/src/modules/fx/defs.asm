@@ -14,7 +14,7 @@
 !fx_t      = !FX_SRAM+$08   ; word: client clock / age for continuous draws and beams
 !fx_rgb    = !FX_SRAM+$0A   ; 3 words: caller colours (BGR555) for FX_DEBRIS: dark, mid, light
 ; Read-only state
-!fx_evict  = !FX_SRAM+$BC   ; byte: counts FX cache evictions and residency resets (fx_warm)
+!fx_evict  = $317DDE        ; byte: counts FX cache evictions and residency resets (fx_warm); lent by combat
 
 ; Flags (high byte of A)
 !FX_F_SCREEN  = $01         ; X/Y are screen pixels (default: map pixels)

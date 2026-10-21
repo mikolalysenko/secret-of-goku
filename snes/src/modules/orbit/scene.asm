@@ -1675,6 +1675,21 @@ orbit_cgram_upload:
 	BRA .sent
 .globe
 	JSR orbit_cgram_live
+	; HDMA channels 0-1 (the band lines' colour math and BG1 scroll, then
+	; the rim's): the native NMI clears their $2C bits before this transfer
+	; (C0:C0DE, the game's window channels, while $010E is set), and on a
+	; vblank that skips the modules (an incomplete frame) nothing set them
+	; again: that frame ran without them, the bands' windows taking the
+	; rim's colour math (bright blue blocks over the rays). Their registers
+	; and tables are still ours there (the module vblank set them up, and
+	; the game sends nothing on them), so they stay on.
+	LDA.w !n_static
+	AND.w #$00FF
+	BEQ .sent
+	SEP #$20
+	LDA.b #$03
+	TSB.w !N_HDMA
+	REP #$20
 .sent
 	PLB
 	PLP

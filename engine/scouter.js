@@ -3,8 +3,11 @@
 // derived from native progress, so saves and checkpoints already carry it.
 // Owning it does not switch it on. Goku's Targeting ring item becomes a
 // Scouter on/off switch after Sylphid. Analyzer (spell 17h, Primm's Sylphid magic)
-// shows its target's power level beside the native readout: the native hit
-// context stores the incoming spell in the target's +181h byte (C0:D453).
+// shows its target's power level beside the native readout. A cast reaches its
+// target in the game's spell landing, C0:3F94 (X = target, Y = caster, whose
+// +170h holds the spell), as the native Analyzer window opens. The target's
+// +181h is its level: only event objects such as crystal orbs take the spell
+// there, so it neither sees a real cast nor stays quiet for a level-23 actor.
 // A PPU overlay like the radar; no cartridge bytes or event scripts change.
 import {encodeText} from './event-codec.js';
 export const analyzerSpell=0x17;
@@ -38,7 +41,7 @@ export function powerLevel(mod,entity){
 }
 
 export function createScouter(snes,mod){
- const p=snes.ppu,previous=p.getColor,write=snes.write,r=snes.ram,cpu=snes.cpu,cycle=cpu.cycle;
+ const p=snes.ppu,previous=p.getColor,r=snes.ram,cpu=snes.cpu,cycle=cpu.cycle;
  let readouts=new Map(),scans=0,jokes=new Set(),frame=-1,overlay=null,radioShown=false,enabled=false,pending=false,cart,read;
  const names=[false,true].map(on=>Uint8Array.from([...encodeText(`Scouter: ${on?'ON':'OFF'}`),0]));
  const owned=()=>r[0xcf00+sylphidFlag]>=2;
@@ -54,9 +57,14 @@ export function createScouter(snes,mod){
    // $1812 requests the native title redraw; the selection remains put.
    setEnabled(!enabled);r[0x1812]=1;r[0x1813]=0;this.br[4]=0x7275;
   }
+  // Analyzer lands: the caster's spell, the target's record.
+  if(this.cyclesLeft===0&&(this.r[1]&63)===0&&this.br[4]===0x3f94){
+   const target=this.br[1]&0x1fff,caster=this.br[2]&0x1fff;
+   if(r[0xe170+caster]===analyzerSpell&&target<0x1800&&available())readouts.set(0xe000+target,{age:0,source:'analyzer'});
+  }
   return cycle.call(this);
  };
- cpu.registerBreakpoints?.(cpu.cycle,cycle,[[0,0x73f4]]);
+ cpu.registerBreakpoints?.(cpu.cycle,cycle,[[0,0x73f4],[0,0x3f94]]);
  function itemRead(bank,address){
   const pc=(bank&63)*65536+address;
   // The selected title is a zero-terminated native string. Only redirect
@@ -66,14 +74,6 @@ export function createScouter(snes,mod){
  }
  const actors=()=>mod.entities().filter(e=>e.active&&(e.hp>0)&&(e.index<3||e.species<128||e.custom==='frieza')&&e.species!==0x55&&
   e.screenX>-16&&e.screenX<272&&e.screenY>-16&&e.screenY<240);
- // Analyzer hits: the cartridge writes the spell into the target's +181h.
- snes.write=function(address,value,dma=false){
-  const result=write.call(this,address,value,dma),low=address&0xffff,bank=address>>>16&255;
-  if(value===analyzerSpell&&bank===0x7e&&low>=0xe000&&low<0xf800&&(low-0xe000)%0x200===0x181&&available())
-   readouts.set(low-0x181,{age:0,source:'analyzer'});
-  return result;
- };
- snes.registerBusWriteHook?.(snes.write,write,m=>{for(let at=0xe181;at<0xf800;at+=0x200)m.offsets(at,at+1);});
  function joke(key,text){if(jokes.has(key))return;jokes.add(key);mod.radio?.say(text,{frames:260,kind:'scouter'});}
  function scan(){
   scans++;mod.playSound?.('teleport');
@@ -137,6 +137,6 @@ export function createScouter(snes,mod){
   get status(){return{owned:owned(),enabled:enabled&&owned(),scans,readouts:[...readouts].map(([key,v])=>({key,...v})),jokes:[...jokes]};},
   snapshot(){return{version:2,enabled,jokes:[...jokes],scans};},
   restore(saved){clear();enabled=saved?.enabled===true;pending=enabled;jokes=new Set(saved?.jokes??[]);scans=saved?.scans??0;},
-  dispose(){p.getColor=previous;snes.write=write;cpu.cycle=cycle;if(cart)cart.read=read;},
+  dispose(){p.getColor=previous;cpu.cycle=cycle;if(cart)cart.read=read;},
  };
 }

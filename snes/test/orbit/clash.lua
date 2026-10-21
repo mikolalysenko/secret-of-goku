@@ -52,7 +52,7 @@ function test()
     H.input = input(PADS[f + 1])
     H.wait(1)
     log[#log + 1] = state()
-    if W then watch[#watch + 1] = W.cgram() .. '|' .. W.globe() .. '|' .. W.oam() .. '|' .. W.marks() .. '|' .. W.writes() end
+    if W then watch[#watch + 1] = W.cgram() .. '|' .. W.globe() .. '|' .. W.oam() .. '|' .. W.marks() .. '|' .. W.writes() .. '|' .. W.bandrim() end
     if shots[f] then H.shot(string.format('clash%04d', f)); if DUMP then H.dumpfile(string.format('clash%04d.oam', f), emu.memType.snesSpriteRam, 0, 0x220) end end
     local fr = H.r16((ORBIT_RAM + 0x04))
     if fr == lastFrame and H.r8(ORBIT_RAM) == 2 then lagged = lagged + 1; lagAt[#lagAt + 1] = f end   -- (while the scene runs)

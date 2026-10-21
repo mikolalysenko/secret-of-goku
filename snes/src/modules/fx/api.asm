@@ -20,6 +20,8 @@ fx_ensure_init:
 	DEX
 	DEX
 	BPL -
+	STA.l !fx_evict              ; (and !fx_wdue) the impact state combat lends
+	STA.l !fx_kickd
 	LDA.w #$FFFE                 ; cache entries unusable until a region is claimed
 	LDX.w #$001E
 -	STA.l !fx_ccell,X
@@ -29,6 +31,7 @@ fx_ensure_init:
 	LDA.w #$FFFF
 	STA.l !fx_dball_last
 	STA.l !fx_dball_last+32
+	STA.l !fx_native_at
 	STA.l !fx_map
 	STA.l !fx_mode
 	STA.l !fx_clspal : STA.l !fx_clspal+2 : STA.l !fx_clspal+4

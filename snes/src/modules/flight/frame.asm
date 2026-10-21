@@ -1678,6 +1678,10 @@ fl_settle:
 	BNE .ret
 	JSR fl_low
 	BCC .recover
+	; over a low obstacle (solid to the native test) he is embedded too once
+	; his footprint cannot fly there: no step could take him anywhere
+	JSR fl_hero_fly
+	BCC .recover
 .ret
 	JMP .done
 .recover

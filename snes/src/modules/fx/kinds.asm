@@ -1756,7 +1756,7 @@ endif
 !fxw_pass = !fx_e+$6            ; 0: the sparks, 1: the Thunderbolt / arc cells
 !fxw_gold = !fx_e+$8            ; 0 blue, 2 gold (table offset)
 !fxw_n    = !fx_e+$A            ; placements in the run
-assert !fxw_n+2 <= !fx_evict, "wave scratch runs into the impact state"
+assert !fxw_n+2 <= !fx_native_at, "wave scratch runs into the native-cell state"
 fx_wave_edges:
 	LDA !d_cur+!C_DIR
 	JSR fx_set_dir

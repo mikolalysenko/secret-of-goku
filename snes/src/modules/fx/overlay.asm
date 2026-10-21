@@ -17,7 +17,14 @@ fx_overlay_begin:
 	CMP.w #7
 	BEQ +
 	JSR fx_claim
-+	RTL
++	LDA.w $0056                  ; FX may have idled this frame (native.asm)
+	AND.w #$0007
+	CMP.w #5
+	BCC +
+	LDA.w #0
++	JSR fx_native_drop
+	JSR fx_native_mask           ; A = entries the game streams or shows
+	RTL
 
 ; A = opaque key ($8000..$FFFD), X = allow a miss (0/1).
 ; C clear: A = OBJ tile, X = entry*2, Y = 0 resident / 1 newly leased.
@@ -51,13 +58,16 @@ fx_overlay_cell:
 	BNE +
 	JMP .fail
 +
+	JSR fx_native_mask           ; FX's pending uploads and the game's cells
+	ORA.l !fx_cpend
+	STA.l !fx_e+4
 	LDY.w #$FFFF
 	LDA.w #0
 	STA.l !fx_e+2
 	LDX.w #0
 .search
 	LDA.l fx_entry_bit,X
-	AND.l !fx_cpend
+	AND.l !fx_e+4
 	BNE .next
 	LDA.l !fx_ccell,X
 	CMP.w #$FFFE

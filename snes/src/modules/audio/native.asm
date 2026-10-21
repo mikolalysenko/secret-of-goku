@@ -1,7 +1,7 @@
 ; Resident SPC effects for gameplay. One priority-selected command per
 ; frame. rare.asm separately services only the three permitted voice clips.
-; The native driver already holds these samples. resident.asm adds short
-; sequences in unused effect slots DC-EC, all self-ending (one/two voices).
+; The native driver holds the samples; round seven additionally uploads a
+; fixed PC-derived bank. Shots self-end; ED/EE sustain until a release.
 ; No chant or continuous air stream. -DAUDIO_PCM=1 is diagnostic only.
 
 ; Complete an outstanding effect handshake without waiting. Main thread
@@ -31,6 +31,7 @@ endif
 ; are resident. The SPC echoes 02 after latching all four ports, then waits
 ; for port 0 to change before playing it. Drop a new effect if still busy;
 ; never overwrite the pending parameters or accumulate stale impacts.
+if !AUDIO_CUSTOM_SAMPLES == 0
 audio_native_command:
 	SEP #$20
 	JSL audio_native_poll
@@ -68,12 +69,26 @@ audio_native_command:
 	LDA $00                    ; displaced LDA $00; native STZ $00 follows
 	JML $C30179
 
+endif
+
 incsrc "audio/native-map.asm"
 
 ; M8/X16, DB=$7E. Requests expire in this frame; a busy sound queue never
 ; accumulates a delayed burst of punches after the player stopped attacking.
 audio_native_service:
 	INC.w !au_frame
+if !AUDIO_CUSTOM_SAMPLES
+	LDA.w !au_reqn
+	ORA.w !au_backoff
+	BNE .full
+	LDA.w !au_flags
+	CMP.b #$80
+	BNE .full
+	JSR audio_beds_age
+	JSR audio_beds_service
+	JMP audio_rare_service
+.full
+endif
 	LDA.w !au_flags
 	AND.b #$01
 	BEQ .run
@@ -111,9 +126,17 @@ audio_native_service:
 	LDA.w !au_bed
 	ORA.w !au_lvl
 	ORA.w !au_lvl+1
+if !AUDIO_CUSTOM_SAMPLES == 0
 	ORA.w !au_lvl+2
+endif
 	ORA.w !au_lvl+3
 	BEQ .quiet
+if !AUDIO_CUSTOM_SAMPLES
+	JSR audio_beds_age
+	BRA .voice
+.quiet
+	STZ.w !au_bed
+else
 	; Charge/focus beds become sparse native pulses. AIR is represented by
 	; its takeoff and landing cues; restarting a wind sample every frame
 	; would steal music voices and spend CPU on needless handshakes.
@@ -156,6 +179,7 @@ audio_native_service:
 .quiet
 	STZ.w !au_bed
 	STZ.w !au_bed_wait
+endif
 .voice
 	; Keep the charge/release voice API silent; rare lines use audio_sfx.
 	STZ.w !au_voicereq
@@ -177,12 +201,39 @@ audio_native_service:
 	TAX
 	LDA.l audio_native_ids,X
 	AND.w #$00FF
+if !AUDIO_CUSTOM_SAMPLES
+	CMP.w #$00EA
+	BNE .kick_form
+	STZ.w !au_lvl             ; beam replaces stale charge/aura requests
+	LDA.w !cb_form
+	AND.w #$00FF
+	BEQ .beam_normal
+	LDA.w #$00F0
+	BRA .id_ready
+.beam_normal
+	LDA.w #$00EA
+	BRA .id_ready
+.kick_form
+	CMP.w #$00E8
+	BNE .id_ready
+	LDA.w !cb_form
+	AND.w #$00FF
+	BEQ .kick_normal
+	LDA.w #$00F1             ; same KICK API; SSJ finisher is audio-owned
+	BRA .id_ready
+.kick_normal
+	LDA.w #$00E8
+.id_ready
+endif
 	XBA
 	ORA.w #$0002
 	LDX.w #$880F               ; reuse this cue's voice, centred
 	JSL core_sound_queue
 	SEP #$20
 .done
+if !AUDIO_CUSTOM_SAMPLES
+	JSR audio_beds_service
+endif
 	JMP audio_rare_service
 .choose
 	CMP.b #!AUDIO_SFX_FRIEZA_LAUGH
@@ -222,3 +273,74 @@ endif
 	STA.w !au_tmp
 .return
 	RTS
+
+if !AUDIO_CUSTOM_SAMPLES
+; Same native saved-register prologue as the legacy dispatcher. Inline its
+; poll to make room for $81 bookkeeping within the original command budget.
+audio_native_command:
+audio_resident_command:
+	SEP #$20
+	LDA.l $7E0000|!au_pending
+	BEQ .polled
+	CMP.l $002140
+	BNE .polled
+	LDA.b #0
+	STA.l $002140
+	STA.l $7E0000|!au_pending
+.polled
+	LDA $00
+	CMP.b #$81
+	BEQ .async
+	CMP.b #2
+	BNE .native
+.async
+	LDA.l $7E0000|!au_pending
+	ORA.l $002140
+	BNE .drop
+	LDA $03
+	STA.l $002143
+	LDA $02
+	STA.l $002142
+	LDA $01
+	STA.l $002141
+	LDA $00
+	STA.l $7E0000|!au_pending
+	STA.l $002140
+	CMP.b #$81
+	BEQ .bed
+	LDA $01
+	CMP.b #$EA
+	BEQ .release
+	CMP.b #$F0
+	BNE .drop
+.release
+	LDA.b #0
+	STA.l $7E0000|!au_bed_level
+	STA.l $7E0000|!au_bed_level+1
+	BRA .drop
+.bed
+	LDX.w #0
+	LDA $01
+	CMP.b #$ED
+	BEQ +
+	INX
++	LDA $02
+	STA.l $7E0000|!au_bed_level,X
+	LDA $03
+	STA.l $7E0000|!au_bed_rate,X
+.drop
+	STZ $00
+	JML $C3018D
+.native
+	LDA.l $7E0000|!au_pending
+	BEQ .ready
+.wait
+	CMP.l $002140
+	BNE .wait
+	LDA.b #0
+	STA.l $002140
+	STA.l $7E0000|!au_pending
+.ready
+	LDA $00
+	JML $C30179
+endif

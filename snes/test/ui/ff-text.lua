@@ -31,7 +31,7 @@ emu.addMemoryCallback(function()
 end, emu.callbackType.exec, SYM.core_flush_auto, SYM.core_flush_auto)
 emu.addMemoryCallback(function()
   H.w16(0x7ED72A, 0) -- after fast-forward, before the input requests latch
-end, emu.callbackType.exec, SYM.ui_sc_frame, SYM.ui_sc_frame)
+end, emu.callbackType.exec, SYM.ui_radio_tick, SYM.ui_radio_tick)
 emu.addMemoryCallback(function()
   glyphs[H.frame] = (glyphs[H.frame] or 0) + 1
   first = first or H.frame; last = H.frame

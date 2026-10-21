@@ -75,6 +75,9 @@ Goku actions without changing altitude. Start opens the globe; R switches
 to the flat map, L returns to the globe, and B closes the viewer once it
 has finished loading. Native map loading takes several seconds.
 
+Primm's Analyzer spell also shows its target's power level above it for a
+few seconds. The cartridge has no scouter (the browser edition keeps one).
+
 Goku's powers become available after his opening arrival. Use the game's
 normal save points and retain the emulator's battery-save file. Browser
 checkpoints and emulator save states are not interchangeable with this ROM.
@@ -92,8 +95,8 @@ with zero missed frames or palette, sprite and vblank errors. Map loading
 is excluded. These measurements do not cover every map, boss, scripted
 scene or physical device.
 
-Scouter readings can briefly hide while crowded scenes or effects use the
-available sprite memory and frame time. Less common status/equipment
+Analyzer power readings can briefly hide while crowded scenes or effects
+use the available sprite memory and frame time. Less common status/equipment
 interactions and some story, boss and ending paths still
 need further review. Detailed status and test results:
 https://github.com/mikolalysenko/secret-of-goku/blob/main/docs/agents/snes-port/gameplay-performance.md

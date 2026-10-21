@@ -106,12 +106,12 @@ export function customSettings(env=process.env){
 
 // EDL is capped against the unique required instrument set, independent of
 // caller preset. The native cache must have a spare byte (it compares >=).
-export function customEdlCaps(rom,songs){
+export function customEdlCaps(rom,songs,reserve=RESERVE){
  const word=a=>rom[a]|rom[a+1]<<8,ptr=a=>(rom[a]|rom[a+1]<<8|rom[a+2]<<16)&0x3FFFFF;
  return Array.from({length:64},(_,id)=>{
   const ids=songs.find(s=>s.id===id)?.ids??Array.from({length:16},(_,k)=>word(0x33F22+32*id+2*k)).filter(Boolean);
   const bytes=[...new Set(ids)].reduce((n,i)=>n+word(ptr(0x33DF9+3*(i-1))),0);
-  const end=SAMPLE_BASE+RESERVE+bytes,edl=Math.min(15,Math.floor((0xFA00-1-end)/0x800));
+  const end=SAMPLE_BASE+reserve+bytes,edl=Math.min(15,Math.floor((0xFA00-1-end)/0x800));
   assert.ok(edl>=1,`song ${id} cannot fit the resident reservation`);
   return {id,bytes,end,maxEdl:edl};
  });

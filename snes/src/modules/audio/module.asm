@@ -22,7 +22,11 @@
 incsrc "audio/ids.asm"
 incsrc "audio/songload.asm"
 if not(defined("AUDIO_CUSTOM_SAMPLES"))
+if defined("AUDIO_PCM")
 !AUDIO_CUSTOM_SAMPLES = 0
+else
+!AUDIO_CUSTOM_SAMPLES = 1
+endif
 endif
 if !AUDIO_CUSTOM_SAMPLES
 assert not(defined("AUDIO_PCM")), "AUDIO_CUSTOM_SAMPLES and AUDIO_PCM are separate audition builds"
@@ -56,9 +60,12 @@ endif
 !au_song     #= !aw+$3F   ; song id seen last frame ($1E05)
 !au_misses   #= !aw+$5C   ; commands withdrawn in a row (saturates at $FF)
 !au_dsfx     #= !aw+$5D   ; destroy's !out_sfx (low byte) when last seen
-!au_bed      #= !aw+$5E   ; native charge bed was requested last frame
-!au_bed_wait #= !aw+$5F   ; frames before another native charge pulse
+!au_bed      #= !aw+$5E   ; requested or accepted resident bed levels
+!au_bed_wait #= !aw+$5F   ; frames before another resident parameter update
 ; Shipping uses only stream channel 0. These alias unused channel 1 fields.
+!au_bed_level #= !aw+$40
+!au_bed_rate  #= !aw+$42
+!au_bed_index #= !aw+$44
 !au_pending  #= !aw+$5B   ; resident command awaiting SPC echo
 !au_rare     #= !aw+$5A   ; pending rare line (28-30), 0 none
 !au_rare_age #= !aw+$59   ; frames left to start it, then drop
@@ -221,16 +228,39 @@ audio_loop:
 	PHY
 	AND.w #$0003
 	TAX
+if !AUDIO_CUSTOM_SAMPLES
+	CMP.w #2
+	BEQ .out                  ; continuous AIR deliberately omitted
+	CMP.w #3
+	BNE +
+	LDX.w #0                  ; Frieza shares the lower-priority charge bed
+	LDA.l $7E0000+!au_age
+	AND.w #$00FF
+	BNE +
+	LDA.l $7E0000+!au_lvl
+	AND.w #$00FF
+	BNE .out
++
+endif
 	SEP #$20
 	LDA $01,S                 ; Y low: rate
 	STA.l $7E0000+!au_rate,X
 if not(defined("AUDIO_PCM"))
+if !AUDIO_CUSTOM_SAMPLES
+	LDA.l $7E0000+!au_wake
+	BNE +
+	LDA.b #1
 	STA.l $7E0000+!au_wake
++
+else
+	STA.l $7E0000+!au_wake
+endif
 endif
 	LDA $03,S                 ; X low: level
 	STA.l $7E0000+!au_lvl,X
 	LDA.b #$00
 	STA.l $7E0000+!au_age,X
+.out
 	REP #$30
 	PLY
 	PLX
@@ -376,11 +406,37 @@ audio_frame:
 if not(defined("AUDIO_PCM"))
 	; Dispatcher enters M16/X16. Quiet frames need no loop-age service.
 	LDA.w !au_test
+if !AUDIO_CUSTOM_SAMPLES
+	BNE .test_run
+else
 	BNE .run
+endif
 	SEP #$20
 	LDA.w !au_wake
 	ORA.w !au_pending
+if !AUDIO_CUSTOM_SAMPLES
+	BEQ .quiet
+	CMP.b #$80
+	BEQ .steady
+	; A held bed's pending $81 acknowledgement needs only a poll, not a
+	; complete song/cue/rare-service pass. Other requests retain the full path.
+	CMP.b #$81
 	BNE .run8
+	LDA.w !au_wake
+	CMP.b #$80
+	BNE .run8
+	LDA.l $002140
+	CMP.b #$81
+	BNE .steady
+	LDA.b #0
+	STA.l $002140
+	STZ.w !au_pending
+	BRA .steady
+endif
+	BNE .run8
+if !AUDIO_CUSTOM_SAMPLES
+.quiet
+endif
 	LDA.w $1E05
 	CMP.w !au_song
 	BNE .run8
@@ -395,6 +451,47 @@ if defined("out_sfx")
 endif
 	PLP
 	RTL
+if !AUDIO_CUSTOM_SAMPLES
+.test_run
+	BRL .run
+.steady
+	LDA.w $1E05
+	CMP.w !au_song
+	BNE .run8
+if defined("title_sfx")
+	LDA.w !title_sfx&$FFFF
+	BNE .run8
+endif
+if defined("out_sfx")
+	LDA.w !out_sfx&$FFFF
+	CMP.w !au_dsfx
+	BNE .run8
+endif
+	LDA.w !au_bed_wait
+	BEQ .update
+	REP #$20
+	LDA.w !au_age
+	BNE .run
+	LDA.w #$0101
+	STA.w !au_age
+	SEP #$20
+	DEC.w !au_bed_wait
+	INC.w !au_frame
+	PLP
+	RTL
+.update
+	; All cue/song/cancel gates already passed. A live hold needs only the
+	; two-bed selector, without repeating native/rare/test bookkeeping.
+	REP #$20
+	LDA.w !au_age
+	BNE .run
+	SEP #$20
+	INC.w !au_frame
+	JSR audio_beds_age
+	JSR audio_beds_service
+	PLP
+	RTL
+endif
 .run
 endif
 	SEP #$20
@@ -414,9 +511,18 @@ if not(defined("AUDIO_PCM"))
 	LDA.w !au_ch+!c_kind
 	ORA.w !au_ch+!c_ctl
 	ORA.w !au_rare
+if !AUDIO_CUSTOM_SAMPLES == 0
 	ORA.w !au_bed
+endif
 	ORA.w !au_testloop
 	ORA.w !au_backoff
+if !AUDIO_CUSTOM_SAMPLES
+	BNE +
+	LDA.w !au_bed
+	BEQ +
+	LDA.b #$80                  ; only held beds; shot/cancel APIs invalidate
++
+endif
 	STA.w !au_wake
 endif
 audio_frame_done:
@@ -473,6 +579,10 @@ audio_track_native:
 	CMP.w !au_song
 	BEQ +
 	STA.w !au_song
+if !AUDIO_CUSTOM_SAMPLES
+	STZ.w !au_bed_level
+	STZ.w !au_bed_level+1
+endif
 	LDA.b #!AU_SONG_HOLD
 	STA.w !au_backoff
 	LDA.w !au_flags
@@ -498,8 +608,10 @@ audio_pause:
 if not(defined("AUDIO_PCM"))
 	STZ.w !au_reqn
 	STZ.w !au_voicereq
+if !AUDIO_CUSTOM_SAMPLES == 0
 	STZ.w !au_bed
 	STZ.w !au_bed_wait
+endif
 	STZ.w !au_lvl
 	STZ.w !au_lvl+1
 	STZ.w !au_lvl+2
@@ -509,7 +621,11 @@ if not(defined("AUDIO_PCM"))
 	BEQ +
 	LDX.w #$0000
 	JSR au_stop_channel
-+	JSR audio_rare_service
++
+if !AUDIO_CUSTOM_SAMPLES
+	JSR audio_beds_service
+endif
+	JSR audio_rare_service
 	PLP
 	RTL
 endif
@@ -1796,6 +1912,9 @@ audio_test_poll:
 	JSL audio_song_restore
 +	RTS
 
+if !AUDIO_CUSTOM_SAMPLES
+incsrc "beds.asm"
+endif
 incsrc "native.asm"
 incsrc "rare.asm"
 
@@ -1807,6 +1926,11 @@ pullpc
 
 ; ---------------------------------------------------------------- patches
 incsrc "resident.asm"
+if !AUDIO_CUSTOM_SAMPLES
+%orig2($C0BB11, $9585)
+%orig4($C0BB13, $7EE020BF)
+%hijack_jsl($C0BB11, audio_weapon_charge, 6, audio)
+endif
 ; Driver upload end (C3:0106 LDY #$0200 / STY $2142).
 ; The extension is resident from boot; shipping only feeds three rare lines.
 %orig4($C30106, $8C0200A0)

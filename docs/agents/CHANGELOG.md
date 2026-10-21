@@ -4,6 +4,134 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: no original weapon-charge sounds for Goku (2026-10-21)
+
+- Codex audio (feb7df6; merged in 939c867). The maintainer still heard the
+  original charging sound while holding the punch button. Round seven
+  filtered only the `$27` tick. Two more native cues reached Goku:
+  - `$28` when the weapon meter reaches a level or full charge, from
+    `C0:B3CB → BB27 → BB11`. It played seven times in real-input traces;
+  - `$26` stamina ready, from `C0:EC02 → BB11`.
+- One filter at `BB11` now drops all three for Goku, in any party order.
+  Companions and a native Randi keep them. A 34-phase trace (party orders,
+  Goku on either controller, after menus, loads and map changes, flight,
+  Super Saiyan) goes from 10 leaks to 0.
+- Validation on 939c867: audio, combat, emulators, gameplay, goku and perf
+  pass. Gameplay misses unchanged.
+
+## SNES integration: louder punches, whoosh swings and variety; flight never wedges Goku in a tree (2026-10-21)
+
+- Codex audio follow-ups to round seven (91c53d9, 9474d39, 747e71f,
+  d52ee8c, 2413865, ba03815; merged in 793a240, 7c4fab7, 921aa26), from the
+  maintainer's notes:
+  - Punch and kick contacts are louder: +4.1 and +3.4 dB at peak, with
+    more crunch and a deeper pop.
+    - A contact releases its own swing's voice, so it plays at full gain
+      in a real combo too. Combo peaks are −2.0 dBFS, against −5.5 for
+      round four.
+    - Three or four other effect voices still halve a contact and five
+      quarter it, so rapid hits over a beam never clip.
+  - Swings are a noisy whoosh instead of the buzzy tone: the aura texture,
+    with a swell and a downward sweep.
+    - The punch swing cycles through six envelope and pitch combinations.
+    - Hits and ki launches rotate through three pitches (1, 1.035, .975),
+      as the browser rotates its clips and rates. The kick stays fixed, as
+      in the browser.
+  - The ki launch keeps its rising sweep, with a 2.8 dB stronger attack, a
+    second swell and a smooth fade.
+  - Updates to the held charge and aura sounds are cheaper: 5.70 → 3.75
+    lines on a frame that sends one.
+  - A 54-byte SPC helper sits at `$0180-$01B5`, below the 64 bytes kept for
+    the stack. The lowest stack write seen is `$01F7`.
+  - The emulators suite now compares the name screen at the background's
+    scroll phase.
+    - The name editor polls input every 4 frames, so a boot that differs by
+      a frame between emulators moved the capture by a whole poll. It
+      failed 34% on bsnes, and on deb0cb7 for Mesen against every core.
+    - Every core now also gets checks of the boot upload, audible music and
+      every swing, hit and ki variation.
+- Flight (dd824d7, 7df13c2; merged in deb0cb7), in both the browser and the
+  cartridge:
+  - The bug: the game's own collision test checks only Goku's leading
+    edge. A blocked flight step over a low obstacle could push him into a
+    tree base beside the Potos flower beds, where he could neither fly nor
+    land and every direction stayed blocked.
+  - The same wedge existed at the waterfall (map 128) and on the Haunted
+    Forest vines (31 of 899 sweep flights).
+  - Now such a step moves only along an axis that keeps him airworthy, and
+    stops otherwise. A Goku over a solid low obstacle he can no longer fly
+    over counts as embedded and returns to his last landing.
+  - A sweep of every low-obstacle cell from 8 directions now wedges 0
+    flights.
+  - A leaner bank-shore walker keeps water-flight at 0 misses now that its
+    route is really flown; on main Goku sat wedged at the waterfall.
+    `bank-walk.test.mjs` checks it against the old walker on 264,960 tiles.
+- Measuring: the gameplay runner hands the harness the current tree's
+  `gen/audio/upload.bin`, so measure a ROM only in its own tree. Round four's
+  charge case measures 15 in two agents' clean trees. The 12 quoted earlier
+  was probably taken against a stale checkpoint, so round seven's 13 is not
+  a regression.
+- Validation:
+  - deb0cb7 under both probes: every suite passes except emulators (the
+    capture timing above).
+  - 921aa26: emulators, audio, gameplay and perf pass.
+  - Gameplay misses per 240 frames: charge 13, teleport 3, flying ki 2,
+    flight 1, flying punches 1, the rest 0.
+  - `npm test`: 380 pass.
+
+## Orbit: the rays' band layers through repeated pictures (2026-10-21)
+
+- A repeated picture in the clash (a game frame that missed its vblank)
+  could show bright blue blocks over the rays' rows: the native NMI clears
+  HDMA channels 0-1 in `$2C` (the game's window channels, C0:C0DE) before
+  its palette transfer, and a vblank that skips the modules never set them
+  again, so that frame ran without the band lines' colour-math switch and
+  BG1's scroll split (the bands' windows took the rim's colour math).
+- The orbit's palette hook, which that transfer runs on every vblank, now
+  sets the two channels again; their registers and tables are still the
+  orbit's there.
+- The `clash` case checks every frame's HDMA enable for the scene's
+  channels, and scans the band lines at and after each repeated picture
+  for the rim's colour (any found fails the case).
+
+## SNES integration: round-seven sounds (2026-10-21)
+
+- Codex audio, round seven (3bfac5c, dcc6430, bcd055f, 70cea99; merged in
+  4eb8ad1), made from the maintainer's notes on round six, is now the
+  default:
+  - Holding B no longer plays the original game's weapon-charge buzz.
+    That was retail effect $27 from the weapon meter at C0:B3ED; it is now
+    filtered for Goku only.
+  - Charging (L+Y) and the L power-up no longer restart a rumble every 25
+    frames. They hold sustained sounds instead: a hum looped from the PC's
+    charge clip, rising with the charge as the browser's level and rate
+    do, and the aura roar from 40% focus. They send at most one command
+    every 12 frames, and only when the level changes. The sound CPU fades
+    them out and gives the voices back to the music.
+  - The Kamehameha starts with the PC clip's own attack, then a looped
+    body. The Super Saiyan wave plays at 0.86.
+  - Instant Transmission plays the first 96 ms of the PC clip at 10 kHz,
+    going out and coming in at the PC's relative volumes.
+  - Flight and landing use a lower sampled whoosh. The world-map takeoff
+    sound is no longer dropped by the map change.
+  - Unchanged: punches, kicks, the ki blast launch and the ki impact.
+    Round six's sampled impact is gone.
+  - The sample bank is 2,304 bytes (2,048 in round six), so 17 songs keep a
+    shorter echo: the 16 of round six, plus $10 (176 → 160 ms). $2C now
+    goes from 96 to 64 ms.
+  - `-DAUDIO_CUSTOM_SAMPLES=0` builds round four byte for byte.
+- Test infrastructure (5f99811): the title arrival run replaces the shared
+  after-arrival checkpoint only with `SNES_UPDATE_CHECKPOINTS=1`. Before,
+  a branch's run replaced it with that branch's build, sound driver
+  included, and other worktrees' ui runs then booted from it.
+- The orbit suite's standalone runner builds `-DORBIT_TIMING`, whose
+  instrumentation costs frames. Main's clash there lags 38 frames with one
+  late vblank. On the shipping ROM, which run-all uses, it lags 31 with
+  none.
+- Validation on 4eb8ad1 under both probes: all 20 suites pass. Gameplay
+  misses per 240 frames: charge 13 (12 before), teleport 3, flying ki 2,
+  flight 1, flying punches 1, the rest 0.
+
 ## SNES integration: a real-hardware probe, HDMA channels 4-7 across the actor streamer (2026-10-21)
 
 - The full suite now also runs under a real-hardware probe (an

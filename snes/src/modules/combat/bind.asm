@@ -128,6 +128,12 @@ if defined("AUDIO_IDS")
 	BNE +
 	RTS
 +
+if defined("AUDIO_CUSTOM_SAMPLES")
+if !AUDIO_CUSTOM_SAMPLES
+	JSL audio_combat_loops
+	RTS
+endif
+endif
 if not(defined("AUDIO_PCM"))
 	; Resident audio only needs an active charge pulse. Its level/rate is
 	; fixed by the short SPC sequence, so skip the PCM envelope arithmetic
@@ -745,7 +751,9 @@ endif
 ; is below 2) have fx ready the cells of its coming contact (fx_warm), so
 ; their uploads land before the contact's busy vblank. A blow whose cells
 ; were found resident is not asked again until fx's cache has lost a cell
-; since (!fx_evict).
+; since (!fx_evict): its record keeps that count + 1, so a record and a
+; count both cleared (cb_ensure_init clears the bytes fx keeps here too)
+; never pass for resident.
 cb_fx_prep:
 if defined("FX_PREP")
 	SEP #$20
@@ -769,6 +777,7 @@ if defined("FX_PREP")
 	ADC !cb_t1
 	TAX                           ; its warm record
 	LDA.l !fx_evict
+	INC
 	EOR.l !cb_warm,X
 	AND.w #$00FF
 	BEQ .out                      ; still resident
@@ -787,6 +796,7 @@ if defined("FX_PREP")
 	PLX
 	CMP.w #$FFFF
 	BEQ .out                      ; coming in: asked again next time
+	INC
 	SEP #$20
 	STA.l !cb_warm,X
 	REP #$20

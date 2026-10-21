@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {buildCustom,buildCustomBank,customSettings,customEdlCaps,CUSTOM_IDS} from '../../gen/audio-custom.mjs';
 import {buildSongs} from '../../gen/audio.mjs';
 import {loadRom,driverChunks,romSong} from './apu.mjs';
-import {isCustom,uploadSegments} from './cartridge.mjs';
+import {isCustom,isResident7,uploadSegments} from './cartridge.mjs';
 const root=new URL('../../../',import.meta.url).pathname;
 const rom=readFileSync(process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc');
 
@@ -34,6 +34,7 @@ test('every song/preset cap is safe and only changes EDL when its required sampl
  for(let id=0;id<64;id++)assert.ok(0x1A00+romSong(retail,id).blob.length+3<0x4800);
  if(!isCustom(rom))return;
  assert.equal(rom.readUInt16LE(0x3054A),32);assert.equal(rom.readUInt16LE(0x3056C),64);assert.equal(rom.readUInt16LE(0x3058E),32);
+ if(isResident7(rom))return; // round-seven pointers/controls are checked in beds.test.mjs
  const segments=uploadSegments(rom),aram=new Uint8Array(65536);
  for(const s of driverChunks(rom))aram.set(s.bytes,s.addr);
  for(const s of segments)aram.set(s.bytes,s.addr);

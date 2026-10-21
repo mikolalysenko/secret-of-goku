@@ -5,15 +5,14 @@
 !sc_numbers = !RAM_UI+$50         ; actors whose complete number was emitted
 !sc_corners = !RAM_UI+$52         ; actors whose reticles were emitted
 !sc_lastfx = !RAM_UI+$80          ; detect an FX idle frame for cache aging
-!sc_age = !RAM_UI+$58             ; 13 words: $FFFF absent, bit15 Analyzer
-!sc_key0 = !RAM_UI+$72            ; Goku charge/form/gi signature
+!sc_age = !RAM_UI+$58             ; 12 words (13 reserved): $FFFF absent, $8000|age an Analyzer reading
+!sc_key0 = !RAM_UI+$72            ; Goku form/gi signature
 !sc_keyf = !RAM_UI+$74
 !sc_map = !RAM_UI+$76
 !sc_pal = !RAM_UI+$78             ; OBJ palette/priority attr bits, 0 hidden
 !sc_mod = !RAM_UI+$7A             ; generic power multiplier
 !sc_pending = !RAM_UI+$7C         ; FX entries with outstanding core DMA
-!sc_on = !RAM_UI+$7E
-!sc_fmt = !RAM_UI+$88             ; 13 words: offset in generated formats
+!sc_fmt = !RAM_UI+$88             ; 12 words (13 reserved): offset in generated formats
 !sc_shown = !RAM_UI+$A2           ; Goku number committed for display
 !sc_stage = !RAM_UI+$A4           ; Goku number awaiting residency
 !sc_keys = !SRAM_WORK_UI+$2FC     ; 11 max-HP signatures (world radar cache)
@@ -93,19 +92,32 @@ ui_sc_suspend:
 .done
 	RTS
 
-; Native incoming spell store, C0:3FAD (M8, X16; Y=target offset).
-; Detect the write itself, including two Analyzer casts to the same target.
+; The game's spell landing, C0:3F94 (reached through C0:3806 by the spell
+; scripts when a cast spell lands on its target, the moment the native
+; Analyzer window opens). After C0:395E: M8 X16, DB = $7E, D = $0300,
+; X = caster, Y = target. C0:3F9B replaces LDA #$00 / STA $E1F8,X; A is 0
+; again for STA $E1F8,Y at C0:3FA0.
+; Every landing passes here, so a recast restarts the target's timer.
+; (The game's own +$181 store at C0:3FAD is only for event objects such as
+; crystal orbs, $E1FB bit 4: an enemy's +$181 is its level.)
 ui_sc_analyzer_hook:
-	STA.w $E181,Y
-	REP #$20
-	PHP : PHA : PHX : PHY : PHB : PHD
+	LDA.w $E170,X                     ; the caster's spell
+	CMP.b #$17
+	BNE .native
+	PHP
+	REP #$30
+	PHA : PHX : PHY : PHB : PHD
 	PEA $7E7E : PLB : PLB
 	PEA $0000 : PLD
 	JSR ui_sc_analyzer_hit
-	PLD : PLB : PLY : PLX : PLA : PLP
-	JML $C03FB2
+	PLD : PLB : PLY : PLX : PLA
+	PLP
+.native
+	LDA.b #$00
+	STA.w $E1F8,X
+	JML $C03FA0
 
-; Shared hit handler also exercised by the UI test client (A=spell,Y=slot).
+; A = spell, Y = target offset (M16 X16, DB = $7E, D = 0).
 ui_sc_analyzer_hit:
 	AND.w #$00FF
 	CMP.w #$0017
@@ -123,15 +135,13 @@ ui_sc_analyzer_hit:
 	TRB.w !ui_state&$FFFF
 .done
 	RTS
-%orig3($C03FAD, $E18199)
-%orig2($C03FB0, $20C2)
-%hijack($C03FAD, ui_sc_analyzer_hook, 5, ui)
+%orig2($C03F9B, $00A9)
+%orig3($C03F9D, $E1F89D)
+%hijack($C03F9B, ui_sc_analyzer_hook, 5, ui)
 
-; C set if actor X (native offset, $1800 = Frieza) is living/on screen.
+; C set if actor X (native offset) is living/on screen.
 ; Returns Y=record byte offset and signed screen coordinates in tmp0/1.
 ui_sc_actor:
-	CPX.w #$1800
-	BEQ .frieza
 	LDA.w $E000,X
 	LSR
 	BCC .no
@@ -148,18 +158,6 @@ ui_sc_actor:
 +	LDA.w $E020,X
 	STA.w !ui_tmp0&$FFFF
 	LDA.w $E022,X
-	BRA .position
-.frieza
-	PHX
-	JSL frieza_virtual_target
-	BCC .noPop
-	TXA
-	SEC : SBC.w $E002 : CLC : ADC.w $E020
-	STA.w !ui_tmp0&$FFFF
-	TYA
-	SEC : SBC.w $E004 : CLC : ADC.w $E022
-	PLX
-.position
 	STA.w !ui_tmp1&$FFFF
 	CLC : ADC.w #15
 	CMP.w #255
@@ -171,15 +169,14 @@ ui_sc_actor:
 	TXA : XBA : AND.w #$001E : TAY
 	SEC
 	RTS
-.noPop
-	PLX
 .no
 	CLC
 	RTS
 
 ; Called by the late renderer after FX, once a frame has spare CPU time.
-; Off/empty callers take only the active-bit fast path. Analyzer wakes it
-; directly at the native store; deferred frames are included in age deltas.
+; Idle callers take only the active-bit fast path. The spell landing hook
+; wakes it (ui_sc_analyzer_hit); deferred frames are included in age deltas.
+; Only Analyzer readings exist (the cartridge has no scouter switch).
 ui_sc_prepare:
 	LDA.w !ui_sc&$FFFF
 	BIT.w #!UISC_ACTIVE
@@ -190,32 +187,19 @@ ui_sc_prepare:
 	JSR ui_sc_owned
 	BCS +
 	JMP ui_sc_leave
-+	LDA.l !ui_p_flags
-	AND.w #!UIF_SCOUTER
-	STA.w !sc_on&$FFFF
-	LDA.w !ui_frame&$FFFF
++	LDA.w !ui_frame&$FFFF
 	SEC : SBC.w !sc_last&$FFFF
 	STA.w !ui_tmp0&$FFFF
 	LDA.w !ui_frame&$FFFF
 	STA.w !sc_last&$FFFF
 	; Account for deferred frames without changing the 24/240-frame timers.
-	LDX.w #24
+	LDX.w #22
 .age
 	LDA.w !sc_age&$FFFF,X
 	CMP.w #$FFFF
 	BEQ .nextAge
 	BIT.w #$8000
-	BNE .temporary
-	LDY.w !sc_on&$FFFF
-	BEQ .expire
-	CMP.w #24
-	BCS .nextAge
-	CLC : ADC.w !ui_tmp0&$FFFF
-	CMP.w #24
-	BCC .storeAge
-	LDA.w #24
-	BRA .storeAge
-.temporary
+	BEQ .expire                       ; (an older build's continuous record)
 	CLC : ADC.w !ui_tmp0&$FFFF
 	CMP.w #$8000+!UI_SC_LIFETIME+1
 	BCC .storeAge
@@ -278,13 +262,7 @@ ui_sc_prepare:
 	BCC .absent
 	LDA.w !sc_age&$FFFF,Y
 	CMP.w #$FFFF
-	BNE .reading
-	LDA.w !sc_on&$FFFF
 	BEQ .next
-	LDA.w #0
-	STA.w !sc_age&$FFFF,Y
-	LDA.w #$FFFF
-	STA.w !sc_fmt&$FFFF,Y
 .reading
 	INC.w !ui_tmp5&$FFFF
 	JSR ui_sc_power
@@ -296,29 +274,23 @@ ui_sc_prepare:
 .next
 	PLX
 	TXA : CLC : ADC.w #$0200 : TAX
-	CPX.w #$1A00
+	CPX.w #$1800
 	BCC .loop
 	LDA.w !ui_tmp5&$FFFF
 	BNE +
-	; With the switch off and no temporary targets, return to the idle path.
-	LDA.w !sc_on&$FFFF
-	BNE .done
+	; No reading left: return to the idle path.
 	JMP ui_sc_leave
 +	LDA.w #!UISC_DRAW
 	TSB.w !ui_sc&$FFFF
 .done
 	RTS
 
-; Recompute only when max HP / modifiers or charge / form / weights change.
-; The generated charge table is powerLevel() for all 91 input ticks.
+; Recompute only when max HP / modifiers or form / weights change. Goku's
+; reading is his power at rest (ui_sc_goku): no charge ticks.
 ui_sc_power:
 	CPX.w #$0000
 	BNE +
 	JMP .goku
-+
-	CPX.w #$1800
-	BNE +
-	JMP .frieza
 +	LDA.w $E184,X
 	PHX
 	TYX
@@ -424,28 +396,17 @@ ui_sc_power:
 	STA.w !sc_fmt&$FFFF,Y
 	RTS
 .goku
-	LDA.w !RAM_COMBAT+$26&$FFFF       ; cb_charge
-	CMP.w #91
-	BCC +
-	LDA.w #90
-+	STA.w !ui_tmp0&$FFFF
-	LDA.w !RAM_COMBAT+$28&$FFFF       ; cb_charging
-	AND.w #$00FF
-	BNE +
-	STZ.w !ui_tmp0&$FFFF
-+	LDA.w !goku_form
+	STZ.w !ui_tmp0&$FFFF              ; form * 2 + training gi
+	LDA.w !goku_form
 	AND.w #$00FF
 	BEQ +
-	LDA.w !ui_tmp0&$FFFF
-	CLC : ADC.w #182
+	LDA.w #2
 	STA.w !ui_tmp0&$FFFF
 +	LDA.w $E1E1
 	AND.w #$00FF
 	CMP.w #!UI_SC_GI
 	BNE +
-	LDA.w !ui_tmp0&$FFFF
-	CLC : ADC.w #91
-	STA.w !ui_tmp0&$FFFF
+	INC.w !ui_tmp0&$FFFF
 +	LDA.w !ui_tmp0&$FFFF
 	CMP.w !sc_key0&$FFFF
 	BNE +
@@ -455,16 +416,9 @@ ui_sc_power:
 +	LDA.w !ui_tmp0&$FFFF
 	STA.w !sc_key0&$FFFF
 	ASL : TAX
-	LDA.l ui_sc_charge,X
+	LDA.l ui_sc_goku,X
 	STA.w !sc_fmt&$FFFF
 .done
-	RTS
-.frieza
-	LDA.w !RAM_FRIEZA+$6F&$FFFF
-	AND.w #2
-	TAX
-	LDA.l ui_sc_frieza,X
-	STA.w (!sc_fmt&$FFFF)+24
 	RTS
 ui_sc_thresholds:
 	dd 100,1000,10000,100000,1000000,10000000,100000000

@@ -7,8 +7,11 @@
 // Each core plays snes/test/emulators/scenario.mjs from power-on with noise
 // in battery RAM and WRAM: ExHiROM detection (core log, CPU-bus probe of the
 // extended banks and save RAM), title pictures against Mesen's at the same
-// frames (best of a +-6 frame window), the name editor, the opening up to map
-// 128, a native save, a power cycle with battery RAM kept, and a load.
+// frames (best of a +-6 frame window), the name editor at Mesen's measured
+// background-scroll phase (+-2 frames), the opening up to map
+// 128, a native save, a power cycle with battery RAM kept, and a load. A
+// separate session checks the cold-boot SPC image, music and cue variation
+// from each core's own name-screen state, with real audio callback levels.
 // Mesen plays the same steps once per ROM (mesen-ref.lua, cached), rendering
 // every frame. --presets instead starts scene-select presets (presets.mjs;
 // all 22 without a list) on every core and compares their end state and
@@ -29,6 +32,7 @@ import {playScenario,playBatteryLoad,probeCode,probeReads,exhiromByte,TITLE_FRAM
 import {load15,bestMatch,agreement,diffSheet} from './compare.mjs';
 import {presetSetup,playPreset,mesenPreset,stateDiffs,maxFramesOf,PRESET_SHOTS,PRESET_POWER_ON} from './presets.mjs';
 import {FILLS,presetRun,sigDiffs,bisect} from './poweron.mjs';
+import {playAudio} from './audio.mjs';
 
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const args=process.argv.slice(2);
@@ -149,10 +153,14 @@ function pictureCheck(p){
 async function scenarioMain(avail,romFile,rom,xprobe){
   // The scenario, then a second process started with the battery RAM the
   // first one left (sram.bin; for bsnes its own .srm), as a player's next day.
-  const [ref,...runs]=await Promise.all([mesenReference(rom,romFile,xprobe),
+  const reference=mesenReference(rom,romFile,xprobe);
+  const [ref,...runs]=await Promise.all([reference,
     ...avail.map(async v=>{
       const out=join(outRoot,v.name);
-      const run=await session(v,romFile,out,h=>playScenario(h,{rom,xprobe}));
+      const run=await session(v,romFile,out,h=>playScenario(h,{rom,xprobe,
+        nameScroll:async()=>(await reference).results?.name_scroll??null}));
+      if(existsSync(join(out,'audio-name.state')))
+        run.audio=await session(v,romFile,join(out,'audio'),h=>playAudio(h,{rom,state:join(out,'audio-name.state')}));
       if(existsSync(join(out,'sram.bin'))){
         const again=await session(v,romFile,join(out,'battery'),h=>playBatteryLoad(h,{savedHero:run.res?.values?.loaded_hero}),
           {sram:join(out,'sram.bin'),wramInit:'noise:7'});
@@ -176,6 +184,8 @@ async function scenarioMain(avail,romFile,rom,xprobe){
   for(const run of runs){
     const v=run.variant,det=detection(run.results);
     const checks=[...(run.res?.checks??[])];
+    if(run.audio)checks.push(...(run.audio.res?.checks??[]),...(run.audio.error?[{name:'audio_error',pass:false,detail:run.audio.error}]:[]));
+    else checks.push({name:'audio_boot_state',pass:false,detail:'no name-screen SPC state'});
     if(run.error)checks.push({name:'scenario_error',pass:false,detail:run.error});
     if(run.battery)checks.push(...(run.battery.res?.checks??[]),...(run.battery.error?[{name:'battery_error',pass:false,detail:run.battery.error}]:[]));
     else checks.push({name:'battery_image',pass:false,detail:'no sram.bin after the scenario'});
@@ -195,7 +205,7 @@ async function scenarioMain(avail,romFile,rom,xprobe){
     if(bad.length)failed=true;
     summary.variants.push({variant:v.name,core:run.results?.core,options:v.options,seconds:run.seconds,frames:run.results?.frames,
       pixelFormat:run.results?.pixel_format,memory:run.results?.memory,state:run.results?.state,detection:det,
-      events:ev,values:run.res?.values,pictures:pics,checks,error:run.error});
+      events:ev,values:run.res?.values,audio:run.audio?.res,pictures:pics,checks,error:run.error});
     console.log(`\nemulators ${v.name.padEnd(15)} ${bad.length?'FAIL':'pass'}  (${run.results?.core?.library_name??'?'} ${run.results?.core?.library_version??''}, ${run.seconds.toFixed(1)} s, ${run.results?.frames??'?'} frames)`);
     for(const c of checks)console.log(`  ${c.info?'info':c.pass?'ok  ':'FAIL'} ${c.name.padEnd(30)} ${c.detail??''}`);
   }
