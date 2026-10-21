@@ -177,6 +177,7 @@ async function clashText(c){
 async function friezaHandoff(){
   const rom=process.env.SNES_HANDOFF_ROM??buildRom('orbit-frieza-test',['-DFRIEZA_TEST=1']);
   const {friezaWrites,luaWrites,defs:fz}=await import('../frieza/state.mjs');
+  const {collateralStart:COLLATERAL_START}=await import(resolve(repo,'engine/frieza-cinematic.js'));
   const wram=n=>{if(!(n in fz))throw Error('frieza define '+n);return fz[n]<0x10000?0x7E0000|fz[n]:fz[n];};
   const refRoot=existsSync(resolve(repo,'.local/snes-ref/battle'))?resolve(repo,'.local/snes-ref'):'/Users/mikolalysenko/Projects/secret-of-goku/.local/snes-ref';
   const g=JSON.parse(readFileSync(join(refRoot,'battle','state.json'),'utf8')).goku;
@@ -198,9 +199,20 @@ function enterOrbit()
   H.w16(${wram('fzs_test')}, 2)
   H.waitFor(function() return H.r16(${wram('fzs_test')}) == 0 end, 30)
   H.result('after_hit', string.format('hp %d tier %d surge %d flags %02x enter %d state %d oflags %d', H.r16(${wram('fzf_hp_lo')}), H.r8(${wram('fzf_tier')}), H.r8(${wram('fzs_surge')}), H.r8(${wram('fzf_flags')}), H.r8(ORBIT_RAM + 0x26), H.r8(ORBIT_RAM), H.r8(ORBIT_RAM + 2)))
-  local live = H.waitFor(function() return H.r8(ORBIT_RAM) == 2 end, 240)
+  -- the surge on the deck (the Death Ball from 25, Goku's beam from 58),
+  -- then the orbit at collateralStart with Frieza's HP
+  local enterAge, hpAtEnter, surgeShots = nil, nil, {[45]=true, [66]=true}
+  local live = H.waitFor(function()
+    local sage = H.r16(${wram('fzs_sage')})
+    if surgeShots[sage] then H.shot(string.format('surge%03d', sage)) surgeShots[sage] = nil end
+    if not enterAge and (H.r8(ORBIT_RAM + 0x26) ~= 0 or H.r8(ORBIT_RAM) ~= 0) then enterAge = sage hpAtEnter = H.r16(${wram('fzf_hp_lo')}) end
+    return H.r8(ORBIT_RAM) == 2
+  end, 240)
   H.result('live', live)
+  H.result('enter_age', enterAge)
   check(live, 'the orbit went live')
+  check(enterAge == ${COLLATERAL_START}, 'the orbit entered at surge age ' .. tostring(enterAge) .. ' (want ${COLLATERAL_START})')
+  check(H.r16(SCENE_RAM + 0xA80 + 0x34) == hpAtEnter, 'the orbit fight starts at the HP Frieza had (' .. H.r16(SCENE_RAM + 0xA80 + 0x34) .. ', ' .. tostring(hpAtEnter) .. ')')
   H.result('owner_live', H.r16(SCENE_OWNER))
   check(H.r16(SCENE_OWNER) == SCENE_ORBIT, 'scene work owner ' .. H.r16(SCENE_OWNER) .. ' while live')
   check((H.r8(${wram('fzf_flags')}) & ${fz.FZFF_SPACE}) ~= 0, 'frieza: the fight is in space')

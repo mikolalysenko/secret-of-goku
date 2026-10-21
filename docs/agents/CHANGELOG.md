@@ -4,7 +4,7 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
-## SNES orbit: the victory's descent and the return to the deck (2026-10-20)
+## SNES orbit: the second surge on the deck, the descent and the return (2026-10-20)
 
 - The descent (`clashCamera`, 1152-1392): the globe grows from the clash's
   wide view to (-15, 281, 230) from tables the generator makes in extended
@@ -21,9 +21,17 @@ stay traceable even when they are committed together.
   `victoryTiming.landed`, then `frieza_orbit_landed` and the frieza
   module's victory event C7. The browser's 24-frame pale tint is a fade
   through black here.
+- The second surge plays on the deck to `collateralStart` (72): the Death
+  Ball grows above Frieza (fx `FX_DEATHBALL` at the browser's snapped
+  sizes) and Goku's giant beam rises (`FX_BEAM_WAVE`), while the frieza
+  module draws Frieza and breaks the floor at 24 and 48; then the orbit
+  and its intro start (the montage and pullback are next). Fixed: the
+  hand-off read Frieza's HP, clock, pattern and stun from bank $00 (ROM)
+  instead of his WRAM, so the space fight started from stray values.
 - Tests: `globe` adds two descent cameras; new case `return` runs from the
   frieza hand-off through the clash, the descent and the landing to C7;
-  the clash case counts lag frames only while the scene runs.
+  `handoff` checks the hand-over at 72 with Frieza's HP; the clash case
+  counts lag frames only while the scene runs.
 - Validation (merged with main 5f21b35): orbit 7/7, frieza 17/17, story,
   ending 8/8 pass; scene select 21 full and 2 native (trial, hexas: the
   listed gaps).

@@ -76,27 +76,37 @@ if defined("FZFF_SPACE")
 ; !FRIEZA_ORBIT_SURGE (frieza module, every frame of the second surge; JSL,
 ; DB = $7E, M16/X16): A16 = surge age, X16/Y16 = the strike target (the
 ; Fortress's screen position), Frieza's ground state in the frieza
-; module's block. The surge's own cinematic (cosmic montage, aerial melee,
-; pullback) is not ported yet: the orbit and its intro start on the first
-; frame, as frieza.js enterOrbit does after it. C set: the fight is in
-; space.
+; module's block. Up to collateralStart the surge plays on the deck (the
+; frieza module draws Frieza, his aura and lightning and breaks the floor
+; at 24 and 48; orbit_surge_deck the rest); the cosmic montage, aerial
+; melee and pullback after it are not ported yet: at collateralStart the
+; orbit and its intro start, as frieza.js enterOrbit does after them. C
+; set: the fight is in space.
 orbit_frieza_surge:
 	PHB
 	PHP
 	REP #$30
+	CMP.w #!ORBIT_SURGE_DECK
+	BCS .space
+	JSR orbit_surge_deck
+	PLP
+	PLB
+	CLC
+	RTL
+.space
 	PHY
 	PHX
 	PEA.w $3232 : PLB : PLB
 	JSL orbit_api_defaults
 	PLA : STA.l !orbit_in_tx
 	PLA : STA.l !orbit_in_ty
-	LDA.l !fzf_hp_lo : STA.l !orbit_in_hp
-	LDA.l !fzf_age : STA.l !orbit_in_age
-	LDA.l !fzf_cycle : AND.w #$00FF : STA.l !orbit_in_cycle
+	LDA.l $7E0000|!fzf_hp_lo : STA.l !orbit_in_hp
+	LDA.l $7E0000|!fzf_age : STA.l !orbit_in_age
+	LDA.l $7E0000|!fzf_cycle : AND.w #$00FF : STA.l !orbit_in_cycle
 	LDA.l !fzs_limpact : STA.l !orbit_in_limp
 	LDA.l !fzs_lmelee : STA.l !orbit_in_lmel
 	LDA.l !fzs_mhits : AND.w #$00FF : STA.l !orbit_in_mhits
-	LDA.l !fzf_stun : AND.w #$00FF : STA.l !orbit_in_stun
+	LDA.l $7E0000|!fzf_stun : AND.w #$00FF : STA.l !orbit_in_stun
 	LDA.w #$0000 : STA.l !orbit_in_dodge
 	LDA.w #!OE_INTRO
 	JSL orbit_api_enter
@@ -105,6 +115,69 @@ orbit_frieza_surge:
 	SEC
 	RTL
 !FRIEZA_ORBIT_SURGE = orbit_frieza_surge
+
+; frieza.js draw() for the 'frieza-cosmic' surge on the deck, after the
+; frieza module's Frieza: from 25 the Death Ball grows above him (kiArt
+; 'death' at (b.x, b.y - 50), the generated diameters), from 58 Goku's
+; giant beam rises from (hero.x, hero.y - 14): (age - 57) * 12 long, 18
+; wide, taper 20. A16 = surge age (1 to collateralStart - 1); DB = $7E,
+; D = 0 (fx's), M16/X16.
+orbit_surge_deck:
+if defined("FX_DRAWS")
+	CMP.w #25
+	BCS +
+	RTS
++	PHA
+	SEC : SBC.w #25
+	TAX
+	LDA.l orbit_surge_dball,X
+	AND.w #$00FF
+	STA.l !fx_a
+	LDA $01,S
+	LSR : LSR : LSR                ; (fx wraps the frame at 12)
+	STA.l !fx_t
+	SEP #$20
+	LDA.b #!FX_DBALL_BATTLE
+	STA.l !fx_style
+	REP #$20
+	LDA.l $7E0000|!fzf_x
+	TAX
+	LDA.l $7E0000|!fzf_y
+	SEC : SBC.w #50
+	TAY
+	LDA.w #!FX_DEATHBALL
+	JSL fx_draw
+	REP #$30
+	PLA
+	CMP.w #58
+	BCC .done
+	STA.l !fx_t
+	SEC : SBC.w #57
+	ASL : ASL
+	PHA
+	ASL
+	CLC : ADC $01,S                ; (age - 57) * 12
+	STA.l !fx_a
+	PLA
+	LDA.w #18
+	STA.l !fx_b
+	LDA.w #20
+	STA.l !fx_c
+	SEP #$20
+	LDA.b #3                       ; up
+	STA.l !fx_dir
+	REP #$20
+	LDA.l $7EE002
+	TAX
+	LDA.l $7EE004
+	SEC : SBC.w #14
+	TAY
+	LDA.w #!FX_BEAM_WAVE
+	JSL fx_beam
+	REP #$30
+.done
+endif
+	RTS
 
 ; !FRIEZA_ORBIT_RETURN (the victory event C7 while the fight is still in
 ; space: frieza.js F.victory -> returnToFortress). JSL, any DB.

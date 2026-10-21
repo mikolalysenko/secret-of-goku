@@ -286,6 +286,20 @@ export async function generate({repo,outDir,xdata}){
     lines.push(`; the descent's window rows per frame from FNT_V_DESCENT (${wbytes} bytes in ${wblobs.length} blobs, ${seen.size} distinct of ${ages.length}): rows, bank, first line, the blob's empty record (words)`,'orbit_fn_dwin:');
     for(const e of windex)lines.push(`\tdw (${xw(e.b)}+${e.off})&$FFFF,(${xw(e.b)})>>16,${e.top},(${xw(e.b)})&$FFFF`);
   }
+  // frieza.js draw(), the 'frieza-cosmic' surge on the deck: from age 25 the
+  // Death Ball grows above Frieza (kiArt 'death', radius min(29, (age - 24)
+  // * .65), drawn r * 2.8 wide: battle sizes snap to death-ball-art.js
+  // deathBallSizes, ties to the smaller as its reduce leaves them), from 58
+  // Goku's giant beam rises; at collateralStart the cosmic montage begins.
+  {
+    const {collateralStart}=await eng('frieza-cinematic.js');
+    const {deathBallSizes}=await eng('death-ball-art.js');
+    if(collateralStart!==72)throw Error('orbit-finale: collateralStart '+collateralStart);
+    const snap=size=>deathBallSizes.reduce((best,n)=>Math.abs(n-size)<Math.abs(best-size)?n:best,16);
+    const sizes=[];for(let age=25;age<collateralStart;age++)sizes.push(snap(Math.min(29,(age-24)*.65)*2.8));
+    def('ORBIT_SURGE_DECK',collateralStart);
+    lines.push(`; the surge's Death Ball above Frieza: diameter per age 25-${collateralStart-1} (bytes)`,'orbit_surge_dball:','\tdb '+sizes.join(','));
+  }
   // frieza.js returnToFortress: the landing candidates around Goku, 8-pixel
   // steps within 128 each way, in the order the browser picks among them
   // (distance, then its push order, dy outer and dx inner: the sort is

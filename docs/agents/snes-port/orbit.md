@@ -23,11 +23,12 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 | Beam bands: Goku's wave, Frieza's beam and finger laser (`beam.asm`) | **Done**: the band's pictures are generated at run time per heading class and radius (class 1 from the generator, through a vblank queue); cached OAM runs |
 | Orbit intro (855 frames: Luka, Frieza, Goku), text panels | **Done** (`text.asm`, `orbit-text.mjs`): the browser's own `radioPixels` windows as BG3 tiles in a Mode 1 band |
 | Entry API for the frieza module, debug presets `orbit` and `space` | **Done** (`api.asm`): `orbit_api_enter` (intro or straight into the fight), `!DEBUG_PRESET_HOOK_ORBIT/_SPACE` |
-| Hand-off from the frieza module (second surge), scene work area | **Done** (`bind.asm`, `scene.asm`): `!FRIEZA_ORBIT_SURGE` enters the orbit; the orbit takes `!SRAM_WORK_SCENE` from Frieza's claim (owner `!SCENE_ORBIT`) and gives it back at the end; test `handoff` |
+| Hand-off from the frieza module (second surge), scene work area | **Done** (`bind.asm`, `scene.asm`): `!FRIEZA_ORBIT_SURGE` enters the orbit at `collateralStart` (72) with Frieza's HP and clocks; the orbit takes `!SRAM_WORK_SCENE` from Frieza's claim (owner `!SCENE_ORBIT`) and gives it back at the end; test `handoff` |
+| Second surge on the deck (ages 1-71): the Death Ball growing above Frieza from 25, Goku's giant beam from 58 | **Done** (`bind.asm` `orbit_surge_deck`, through fx: `FX_DEATHBALL` at the browser's snapped sizes, `FX_BEAM_WAVE`); the frieza module draws Frieza, his aura and lightning and breaks the floor at 24 and 48 |
 | Auras (Goku's charge and focus, Frieza's pink warning) | Next |
 | 60 Hz | **Done**: the fight steps once per field vblank (catching up after a slow game frame); the picture's incremental work runs in the frame's spare time |
 | Distant bodies (moon, planets), their shattering and the asteroid field, Luna's remark | Next (the `fight` test aims clear of them) |
-| Collateral shots, aerial melee, pullback, orbit intro dialogue | Planned (design below) |
+| Cosmic montage (collateral shots, aerial melee, 72-1802) and pullback (1802-2042) | Next (design below): the orbit and its intro start at 72 meanwhile |
 | Debris / asteroid field, Luna's remark | Planned |
 | Beam struggle: gather, charge, launch, struggle (taps, surges, pressure), recoil (420 damage), win | **Done** (`finale.asm`): every phase, the pressure and the camera identical to `frieza-finale.js` on every frame of the `clash` test (2,890 frames) |
 | Struggle picture: the rays above the globe on BG1/BG2 band layers, below it as OBJ chains; Goku, Frieza, charges, sparks | **Done** (`bands.asm`, `fdraw.asm`) |
@@ -519,9 +520,12 @@ come from their sources. Results on the merged build:
   420 damage), a won one under B taps, the 'won' clock with the native
   victory commands, the return: 2,890 frames identical, back at 1392.
 - `handoff`: the frieza module's phase-two fight (its `FRIEZA_TEST`
-  mailbox) takes a hit across 32,000: the second surge hands over, the
-  orbit goes live with the area's owner 1 -> 2, Frieza's fight is in space,
-  and his 2 KiB at `$32:7800-7FFF` stay unchanged for 300 frames.
+  mailbox) takes a hit across 32,000: the second surge plays on the deck
+  (screenshots at ages 45 and 66: the Death Ball above Frieza, Goku's
+  giant beam) and hands over at age 72 (`collateralStart`); the orbit's
+  fight starts at Frieza's HP and goes live with the area's owner 1 -> 2,
+  Frieza's fight is in space, and his 2 KiB at `$32:7800-7FFF` stay
+  unchanged for 300 frames.
 - `death`: from the hand-off, the intro cut short and Goku at 1 HP:
   Frieza's first hit ends him; 12 of Goku's positions over the fall equal
   `bossRushDeathPose`'s, the orbit stops at 358, the ending's fatal
@@ -544,7 +548,7 @@ come from their sources. Results on the merged build:
 | `orbit_api_enter` (JSL, A16 = mode) | take the picture (`!orbit_flags` bit 0 at once) and start the orbit in its next field frame once the scene work area is its: `!OE_INTRO` 1 with the 855-frame intro, `!OE_FIGHT` 2 straight into the fight (`!OE_SURGE` 0, the second surge's cinematic first, is not ported yet and starts the intro). Inputs in WRAM `!RAM_ORBIT+$10-$23`: `!orbit_in_hp`, `_tx`, `_ty` (the strike target), `_age`, `_cycle`, `_limp`, `_lmel`, `_mhits`, `_dodge`, `_stun` (Frieza's ground state). Writes nothing to the scene work area. Ignored while the orbit runs or waits to start |
 | `orbit_api_status` (JSL) | A16 = `!orbit_flags` |
 | `!DEBUG_PRESET_HOOK_ORBIT` / `_SPACE` | at the `FRIEZA_PHASES` hook: the API with the intro or straight into the fight; carry set until the scene is live |
-| `!FRIEZA_ORBIT_SURGE` / `_RETURN` / `_LOCKED` (`bind.asm`) | the frieza module's hand-off: the surge enters the orbit with Frieza's ground state; the victory event while in space returns; the controls are locked while the orbit owns the picture or its landing runs |
+| `!FRIEZA_ORBIT_SURGE` / `_RETURN` / `_LOCKED` (`bind.asm`) | the frieza module's hand-off: every surge frame (A = age) the orbit draws the surge's beat on the deck (C clear) until `collateralStart`, then enters with Frieza's ground state (C set); the victory event while in space returns; the controls are locked while the orbit owns the picture or its landing runs |
 | `!orbit_state` (`!RAM_ORBIT+$00`) | 0 off, 1 loading, 2 live, 3 stopping |
 | `!orbit_land` (`!RAM_ORBIT+$24`) | the landing clock: nonzero from the return to `frieza_orbit_landed` (1 + frames the field could act since the return) |
 | `!orbit_rstep` (`!RAM_ORBIT+$27`) | the return's step: 0 none, 1 door wanted, 2 requested, 3 fading out, 4 the field loads the deck, 5 landing |
