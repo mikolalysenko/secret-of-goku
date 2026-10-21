@@ -880,12 +880,15 @@ destroy_cgram_upload:
 	PHY
 	PHP
 	REP #$30
-	; A vblank whose frame did not complete (a lag frame; with a window open
-	; the game uploads every vblank) runs no module vblank callbacks: while
-	; the Sandship's look is on, the OBJ palettes they wrote (the effects
-	; library's) stay in CGRAM and only the BG colours go up.
+	; A vblank whose field frame did not complete (a lag frame; with a window
+	; open the game uploads every vblank) runs no module vblank callbacks:
+	; while the Sandship's look is on, the OBJ palettes they wrote (the
+	; effects library's) stay in CGRAM and only the BG colours go up. A ring
+	; menu pauses the field loop without lagging: in its frames (core mode
+	; RING, or a menu's) the game's OBJ colours, the ring's icons, go up too.
 	LDY.w #512
 	LDA.l !core_dma_ready : BNE +
+	LDA.l !core_mode : CMP.w #!CORE_MODE_FIELD : BNE +
 	LDY.w #256
 +	LDA.l !ss_vis : AND.w #$FF00|!SS_VIS_PAL : CMP.w #!SS_VIS_MAGIC|!SS_VIS_PAL : BNE .native0
 	LDA.l !ssw_pal_room : CMP.l $7E00DC : BNE .native0  ; made for another room

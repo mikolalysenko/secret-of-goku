@@ -468,6 +468,7 @@ event the reference selects; walking checks prove collision.
 | `dunes-exit` | leaving the dunes any other way than 2A8 sets stage 14 and repeats the hint | pass |
 | `ship-plan` | Sergo's plan arms the wave, Goku hints at L+Y, the wave wrecks the ship as the planned breakout (reaction 78) | pass |
 | `ship-look` | the white-out whitens all of CGRAM through the escape door and fades into the wreck: BG palettes 1-7 tinted, text/HUD colours (as uploaded in vblank) and sprites untouched, the breach on HDMA channels 2/3, no fx garbage, a blast's red flash (BG reds up at its peak against a frame without alarm or flash), channels and CGRAM 0 given back after leaving; screenshots | pass |
+| `ship-ring` | the ring menu opened in the wreck: every OBJ colour (CGRAM 128-255) equals the game's buffer, so the ring's icons keep their colours, while BG palettes 1-7 keep the tint; after closing, the tint is intact; screenshots | pass |
 | `ship-hole` | the breach as a floor hole (debug command 8): a 17×15 grid of footprints matches the drawn outline's rows exactly and the browser's `breachDepth()` away from the jagged edge; none in another room or with the ship whole | pass |
 | `ship-takeoff` | the roof takeoff binding (debug command 9): taken, Uh oh, the crash, the Mech Rider; refused at the fight | pass |
 

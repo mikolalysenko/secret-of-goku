@@ -533,6 +533,56 @@ scenarios.push(
     }},
 );
 
+// The ring menu in the wreck: the field loop pauses, so the Sandship's
+// palette handler sees no completed field frame. The ring's sprite colours
+// (OBJ palettes the game puts in its buffer) must still reach CGRAM, and
+// the room keeps its tint.
+scenarios.push(
+  {name:'ship-ring',bundle:'sandship-wreck__qs-captured',
+    note:'the ring menu opened in the wreck shows the game\'s own OBJ colours (all of CGRAM 128-255 equal to its buffer) while BG palettes 1-7 keep the tint; closed, the room carries on',
+    body:lookLua+`
+  S.reset()
+  assert(H.importSnesJs(SCN.bundlePath), 'import failed')
+  H.wait(12)
+  local slots = {H.r8(0x7EE1E0), 0x16, H.r8(0x7EE1E2), H.r8(0x7EE1E3)}
+  for i, v in ipairs(slots) do H.w8(ABI.ss_gear + i - 1, v) end
+  H.w16(ABI.ss_gbits, 1)
+  H.w16(0x7EE002, 136); H.w16(0x7EE004, 210); H.wait(40)
+  D.hit({x = 136, y = 210, dir = 3, length = 96, halfWidth = 19, taper = 0, code = 2, str = 256, id = 21})
+  for f = 1, 400 do
+    H.wait(1)
+    if H.r16(ABI.ss_cut) == 0 and f > 100 then break end
+  end
+  S.untilControl(6000)
+  H.wait(40)
+  H.shot('ring-0-field')
+  H.hold('x', 3)
+  local mode, waited = 0, 0
+  for f = 1, 120 do
+    H.wait(1); waited = f
+    mode = H.r16(0x7ED720)                     -- !core_mode: 4 in ring frames
+    if mode == 4 and f > 40 then break end
+  end
+  H.wait(20)
+  local objDiff, bgDiff = 0, 0
+  for i = 128, 255 do if S.cg(i) ~= S.buf(i) then objDiff = objDiff + 1 end end
+  for i = 16, 127 do if S.cg(i) ~= S.buf(i) then bgDiff = bgDiff + 1 end end
+  H.result('ring', {mode = mode, waited = waited, objDiff = objDiff, bgDiff = bgDiff})
+  H.shot('ring-1-open')
+  H.hold('x', 3)
+  H.wait(60)
+  H.result('after', {mode = H.r16(0x7ED720), vis = H.r16(ABI.ss_vis), tintBad = S.tintShape()})
+  H.shot('ring-2-closed')
+`,
+    check(res,problems){
+      const r=res.ring??{};
+      if(r.mode!==4)problems.push(`the ring never opened (core mode ${r.mode})`);
+      if(r.objDiff)problems.push(`${r.objDiff} OBJ colours differ from the game's buffer with the ring open`);
+      if(!(r.bgDiff>=90))problems.push(`the room lost its tint with the ring open (${r.bgDiff} BG colours tinted)`);
+      if(res.after?.tintBad)problems.push(`${res.after.tintBad} BG colours not warmer than the game's after closing the ring`);
+    }},
+);
+
 // Flight's bindings (flight/bind.asm), through the debug mailbox: the wreck's
 // floor hole (FLIGHT_MISSING_FLOOR: floorHole() under supported()'s nine
 // footprint points) and the roof takeoff (SANDSHIP_TAKEOFF).
