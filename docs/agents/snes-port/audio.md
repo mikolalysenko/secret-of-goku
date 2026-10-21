@@ -89,6 +89,26 @@ extra gameplay update; the later beam then loses one more frame, leaving
 the complete total at 13. The shifted beam misses mostly occur in FX before
 audio runs.
 
+A separate **non-shipping diagnostic** replaced only the private ROM's
+`audio_frame`, `audio_combat_loops`, `audio_sfx`, `audio_loop`, `audio_voice`
+and `audio_cancel` entry points with RTL. It still misses **the same 13
+frames at the same offsets**. With those audio costs removed, the hold
+misses at 41 and 64 interrupt core OAM work at `A0:CF75` and `A0:D134`;
+the field completes about .985 and 1.878 lines after NMI returns. This
+rules out simply removing more work from those audio callbacks as the
+remaining fix on this fixture. It does not establish a result on the
+maintainer's different round-four baseline. The private diagnostic is
+`fix7/no-host-audio-diagnostic.sfc`, with evidence in
+`fix7/trace-no-host/timing.json`; it is not the release or a listening take.
+
+**Request for the core/FX owner:** inspect the near-deadline OAM work on
+those two hold frames and the beam's earlier FX misses. Another roughly
+1–2 lines on a critical frame may recover the total, but must be measured
+through the complete input sequence because saved hold frames change the
+beam's workload. No core/FX change is included here. Commit `747e71f`
+contains the validated contact fix and audio cost reductions, with the
+12-frame target explicitly left open.
+
 **Baseline limitation:** the maintainer's clean round-four result is 12,
 but the independent `56ed7992` ROM and the byte-identical rollback both use
 this worktree's unchanged shared waterfall checkpoint; the local trace is
