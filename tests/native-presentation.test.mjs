@@ -247,7 +247,9 @@ test('combat poses preserve exact source pixels and a fixed integer pivot in eve
     mod.frame++;mod.action={kind,age,combo,super:superSaiyan,facing,impact:superSaiyan?1:2,duration:32};layer.prepare();
     const p=layer.plan.sprite,a=atlases[p.sheet];
     assert.ok(Number.isInteger(p.x)&&Number.isInteger(p.y));
-    anchor??=[p.x,p.y];assert.deepEqual([p.x,p.y],anchor,'actions never translate the sprite');
+    // Only a strike's lunge (the plan's lunge, along the facing) moves the drawn body.
+    const [lx,ly]=p.lunge??[0,0];if(kind!=='punch')assert.deepEqual([lx,ly],[0,0]);
+    anchor??=[p.x-lx,p.y-ly];assert.deepEqual([p.x-lx,p.y-ly],anchor,'actions never translate the sprite beyond the lunge');
     let opaque=0;
     for(let y=0;y<p.height;y++)for(let x=0;x<p.width;x++){
      const c=p.hidden?0:a.pixels[(32+p.row*32+Math.floor(y*32/p.height))*a.width+p.column*32+Math.floor(x*32/p.width)];

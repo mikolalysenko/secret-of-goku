@@ -1,6 +1,7 @@
 import {snapshot,restore,hash,checkpointStore} from './state.js';
 import {createBatteryStore} from './battery.js';
 import {createNativeEffects} from './native-effects.js';
+import {impactParts,drawImpact} from './impact-art.js';
 import {drawKiAura} from './ki-aura.js';
 import {createTitleLayer} from './title-layer.js';
 import {createArrival} from './arrival.js';
@@ -236,7 +237,7 @@ async function loadROM(source,{potos=false}={}){
   const bytes=await validateRom(source);
   battery.flush();
   originalRom=bytes.slice();
-  await Promise.all([mod.ready,mod.frieza.ready,mod.trial.ready,mod.kiArt.ready,mod.kaiArt.ready,mod.planetView.ready]);mod.spriteLayer.effects=createNativeEffects(bytes,await effectsManifest);mod.worldScars.load(bytes);mod.planetView.load(bytes);running=false;clearInput();mod.configure({enabled:false});
+  await Promise.all([mod.ready,mod.frieza.ready,mod.trial.ready,mod.kiArt.ready,mod.kaiArt.ready,mod.planetView.ready]);mod.spriteLayer.effects=createNativeEffects(bytes,await effectsManifest);mod.spriteLayer.impactArt={impactParts,drawImpact};mod.worldScars.load(bytes);mod.planetView.load(bytes);running=false;clearInput();mod.configure({enabled:false});
   const patched=window.gokuDialoguePatch(potos?window.potosPatch(bytes):window.originalGamePatch(bytes));
   if(!snes.loadRom(patched,true))throw Error('The SNES core rejected this ROM.');
   snes.reset(true);battery.attach(snes.cart,hash(bytes));mod.reset();arrival.load(bytes,{potos});flightDialogue?.dispose();flightDialogue=installFlightDialogue(snes.cart,()=>mod.options.enabled&&mod.gokuActive);mod.gapFlight.load();mod.senzu.load();mod.equipment.load();mod.scouter.load();mod.trial.load();mod.story.load();mod.names.load(bytes);nameSeeded=false;originalBoot=!potos;loaded=true;render();return patched;

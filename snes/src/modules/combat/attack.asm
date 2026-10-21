@@ -295,8 +295,10 @@ cb_sound_mark:
 
 ; ---------------------------------------------------------------------------
 ; Launch record for actor X: 12-frame eased arc of 56 px (88 in Super
-; Saiyan) along cb_hit_dir, or radially (cb_hit_dx/dy). Replaces a running
-; launch of the same actor. Preserves X.
+; Saiyan) along cb_hit_dir, or radially (cb_hit_dx/dy). A jab or cross
+; (cb_hit_launch 2) that does not kill pushes the target back instead:
+; COMBAT_SLIDE_BASE / _SSJ px over COMBAT_SLIDE_FRAMES, no lift (mana-mod.js
+; hit()). Replaces a running launch of the same actor. Preserves X.
 cb_launch_start:
 	PHX
 	TXY                           ; Y = actor offset
@@ -305,13 +307,49 @@ cb_launch_start:
 	SBC.w #!ACT_FIRST
 	LSR : LSR : LSR : LSR : LSR   ; slot * 16
 	TAX
+	LDA !cb_hit_launch
+	AND.w #$00FF
+	CMP.w #$0002
+	BNE .launch
+	LDA !cb_hit_after
+	BEQ .launch
+	LDA.w #!COMBAT_SLIDE_BASE
+	PHX
+	LDX.w #!COMBAT_SLIDE_SSJ
+	BRA .distance
+.launch
 	LDA.w #56
 	PHX
 	LDX.w #88
+.distance
 	JSR cb_by_form
 	PLX
 	SEP #$20
 	STA.l !KB+!kb_dist,X
+	CMP.b #88                     ; its rows and length (cb_update_launches)
+	BEQ .tab88
+	CMP.b #56
+	BEQ .tab56
+	CMP.b #!COMBAT_SLIDE_BASE
+	BEQ .tabSlide
+	LDA.b #!COMBAT_TAB_SLIDE_SSJ
+	BRA .slideLen
+.tabSlide
+	LDA.b #!COMBAT_TAB_SLIDE
+.slideLen
+	STA.l !KB+!kb_tab,X
+	LDA.b #!COMBAT_SLIDE_FRAMES
+	BRA .len
+.tab88
+	LDA.b #!COMBAT_TAB_88
+	BRA .launchLen
+.tab56
+	LDA.b #!COMBAT_TAB_56
+.launchLen
+	STA.l !KB+!kb_tab,X
+	LDA.b #12
+.len
+	STA.l !KB+!kb_len,X
 	LDA.b #$01
 	STA.l !KB+!kb_on,X
 	LDA $E180,Y
@@ -383,14 +421,12 @@ cb_update_launches:
 +	LDA $E000,Y
 	AND.w #$0001
 	BEQ .drop
+	SEP #$20
 	LDA $E180,Y
-	AND.w #$00FF
-	STA !cb_t0
-	LDA.l !KB+!kb_sp,X
-	AND.w #$00FF
-	CMP !cb_t0
+	CMP.l !KB+!kb_sp,X
+	REP #$20
 	BEQ .same
-	LDA !cb_t0
+	AND.w #$00FF
 	CMP.w #$00F9
 	BNE .drop
 	LDA $E191,Y
@@ -404,21 +440,25 @@ cb_update_launches:
 	DEC
 	STA.l !KB+!kb_hold,X
 	REP #$20
+	LDA.l !KB+!kb_x,X             ; the hit stop pins it where the blow found
+	STA $E002,Y                   ; it, against its own recoil
+	LDA.l !KB+!kb_y,X
+	STA $E004,Y
 	JMP .next
 .drop
 	JSR cb_launch_end
 	JMP .next
 .move
-	SEP #$20
+	LDA.l !KB+!kb_len,X           ; its length: 12 frames, or a push-back's
+	AND.w #$00FF                  ; (kept through cb_launch_offsets; the
+	STA !cb_t0                    ; record ends on reaching it, so the age
+	SEP #$20                      ; never runs past its rows)
 	LDA.l !KB+!kb_age,X
 	INC
 	STA.l !KB+!kb_age,X
 	REP #$20
 	AND.w #$00FF
-	CMP.w #13
-	BCC +
-	LDA.w #12
-+	ASL
+	ASL
 	STA !cb_t1                    ; age*2 (table index)
 	STX !cb_t2
 	STY !cb_t3
@@ -435,6 +475,9 @@ cb_update_launches:
 	ADC !cb_t5
 	JSR cb_clamp_map
 	STA $E004,Y
+	LDA !cb_t0
+	CMP.w #12
+	BCC .slid                     ; a push-back slides along the ground
 	LDA !cb_t1
 	LSR
 	TAX
@@ -442,10 +485,11 @@ cb_update_launches:
 	SEP #$20
 	STA $E045,Y
 	REP #$20
+.slid
 	LDX !cb_t2
-	LDA.l !KB+!kb_age,X
-	AND.w #$00FF
-	CMP.w #12
+	LDA !cb_t1                    ; its age, its length reached: it ends
+	LSR
+	CMP !cb_t0
 	BCC .next
 	JSR cb_launch_end
 .next
@@ -491,29 +535,27 @@ cb_clamp_map:
 
 ; Offsets of launch record X at table index cb_t1 (= age*2): axis launches
 ; use the exact tables, radial ones dx/dy * ease. Out: cb_t4 / cb_t5.
+assert combat_launch_88p == combat_launch_axis+!COMBAT_TAB_88, "combat: launch rows moved"
+assert combat_slide_basep == combat_launch_axis+!COMBAT_TAB_SLIDE, "combat: launch rows moved"
+assert combat_slide_ssjp == combat_launch_axis+!COMBAT_TAB_SLIDE_SSJ, "combat: launch rows moved"
+assert combat_launch_56n == combat_launch_axis+26, "combat: launch rows moved"
 cb_launch_offsets:
 	STZ !cb_t4
 	STZ !cb_t5
 	LDA.l !KB+!kb_dir,X
 	AND.w #$00FF
 	CMP.w #$0080
-	BCS .radial
-	STA !cb_t6                    ; facing
-	LDA.l !KB+!kb_dist,X
+	BCC +
+	JMP .radial
++	STA !cb_t6                    ; facing
+	LDA.l !KB+!kb_tab,X           ; its rows (kind * 52) + age * 2
 	AND.w #$00FF
-	CMP.w #88
-	BEQ .far
-	LDX !cb_t1
-	LDA.l combat_launch_56p,X
+	CLC
+	ADC !cb_t1
+	TAX
+	LDA.l combat_launch_axis,X
 	STA !cb_t7
-	LDA.l combat_launch_56n,X
-	STA !cb_t8
-	BRA .axis
-.far
-	LDX !cb_t1
-	LDA.l combat_launch_88p,X
-	STA !cb_t7
-	LDA.l combat_launch_88n,X
+	LDA.l combat_launch_axis+26,X
 	STA !cb_t8
 .axis
 	LDA !cb_t6
@@ -680,9 +722,16 @@ cb_strike:
 	JSR cb_targets
 	LDA !ag_dir
 	STA !cb_hit_dir
+	; the kick launches; a jab or cross launches only a killing blow and
+	; otherwise pushes the target back, in reach of the next one
 	SEP #$20
+	LDA !cb_act_arg
+	AND.b #$03
+	CMP.b #$02
 	LDA.b #$01
-	STA !cb_hit_launch
+	BCS +
+	INC
++	STA !cb_hit_launch
 	REP #$20
 	LDA !ag_list
 	STA !cb_td                    ; remaining targets
@@ -716,7 +765,8 @@ cb_strike:
 	INC !cb_tf
 	BRA .each
 .done
-	; contact hold: 3 frames, 5 for the finishing kick
+	; contact hold: the graded hit stop (jab, cross, kick; one less as a
+	; Super Saiyan): pose, targets and spark freeze
 	SEP #$20
 	STZ !cb_act_pause
 	REP #$20
@@ -724,12 +774,16 @@ cb_strike:
 	BEQ .noContact
 	LDA !cb_act_arg
 	AND.w #$0003
-	CMP.w #$0002
+	STA !cb_t0
+	LDA !cb_act_super
+	AND.w #$00FF
 	BEQ +
 	LDA.w #3
-	BRA ++
-+	LDA.w #5
-++	SEP #$20
++	CLC
+	ADC !cb_t0
+	TAX
+	LDA.l combat_hit_stop,X
+	SEP #$20
 	STA !cb_act_pause
 	INC
 	STA !cb_t0
@@ -761,18 +815,24 @@ cb_strike:
 	SEP #$20
 	STZ !cb_tap
 	REP #$20
-+	; sparks at every contact, quake and the impact cue
++	; at every contact the spark with its impact frame: the starburst sized
+	; by the blow, on a native actor the white flash and the native shake
+	; through the hit stop, the kick's shockwave at its first contact; then
+	; the camera kick, the kick's quake and brightening, and the impact cue
 	LDA !cb_te
 	BNE +
 	RTS
 +	STA !cb_td
 	STZ !cb_tf
+	STZ !cb_t1                    ; first contact not marked yet (shockwave / next)
 .spark
 	LDA !cb_td
-	BEQ .feedback
-	LSR !cb_td
-	BCC .nextSpark
-	LDA !cb_tf
+	BNE +
+	JMP .feedback
++	LSR !cb_td
+	BCS +
+	JMP .nextSpark
++	LDA !cb_tf
 	JSR cb_target_xy              ; the actor's or the virtual target's spot
 	LDA !cb_t5
 	SEC
@@ -788,28 +848,77 @@ cb_strike:
 	LDA !cb_act_super
 	AND.w #$00FF
 	STA !cb_t9
-	JSR cb_effect_impact
+	LDA !cb_act_arg               ; starburst 1-3 (jab, cross, kick), + 1
+	AND.w #$0003
+	INC
+	INC
+	STA !cb_ta
+	LDX.w #!CB_IMP_SHOCK          ; the kick's first contact: its shockwave
+	CMP.w #4
+	BEQ +
+	LDX.w #!CB_IMP_NEXT           ; a cross's: the kick's cells come in
+	CMP.w #3
+	BNE ++
++	LDA !cb_t1
+	BNE +
+	INC !cb_t1
+	TXA
+	TSB !cb_ta
++
+++	LDA !cb_tf
+	CMP.w #!VT_BIT0
+	BCS +                         ; virtual targets draw themselves
+	ADC.w #3                      ; (C clear) actor slot 3-11, drawn white
+	ASL
+	ASL
+	ASL
+	ASL
+	TSB !cb_ta
++	JSR cb_effect_hit
+	LDA !cb_tf
+	CMP.w #!VT_BIT0
+	BCS .nextSpark
+	JSR cb_slot_offset
+	TAX
+	LDA !cb_act_pause             ; native shake ($E00D): frames << 4 | axis
+	AND.w #$000F
+	ASL
+	ASL
+	ASL
+	ASL
+	STA !cb_t0
+	LDA !ag_dir
+	DEC
+	CMP.w #$0002                  ; facings 1 / 2: across x, else y
+	LDA.w #$0001
+	BCC +
+	INC
++	ORA !cb_t0
+	SEP #$20
+	STA $E00D,X
+	REP #$20
 .nextSpark
 	INC !cb_tf
-	BRA .spark
+	JMP .spark
 .feedback
-	LDA.w #3
-	LDX.w #5
-	JSR cb_by_super
-	STA !cb_t0
+	LDA !cb_act_arg               ; facing | blow << 8
+	AND.w #$0003
+	XBA
+	ORA !ag_dir
+	JSR cb_bind_fx_kick
 	LDA !cb_act_arg
 	AND.w #$0003
 	CMP.w #$0002
 	BNE .hit
-	LDA !cb_t0
-	CLC
-	ADC.w #3
+	LDA.w #3
+	LDX.w #5
+	JSR cb_by_super
 	JSR cb_quake
+	LDA.w #3
+	JSR cb_bind_fx_flash
 	LDA.w #!AUDIO_SFX_KICK_ID
 	JMP cb_sfx
 .hit
-	LDA !cb_t0
-	JSR cb_quake
 	LDA.w #!AUDIO_SFX_HIT_ID
 	JMP cb_sfx
 
@@ -1286,7 +1395,15 @@ cb_proj_hit:
 	STA !cb_t8
 	LDA !cb_bslot
 	STA !cb_t9
-	JMP cb_effect_impact
+	; a ki shot also pops with the smallest starburst
+	STZ !cb_ta
+	LDX !cb_tf
+	LDA.l !ER+!er_kind,X
+	AND.w #$00FF
+	CMP.w #!ERK_KI
+	BNE +
+	INC !cb_ta
++	JMP cb_effect_hit
 
 ; One ki frame (record cb_tf).
 cb_ki_frame:

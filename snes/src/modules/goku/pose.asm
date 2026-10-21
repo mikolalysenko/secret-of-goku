@@ -1222,6 +1222,8 @@ pk_punch:
 	; base: columns 10/14/18 (combo 0-2), phase age <2,<4,<7
 	; SSJ:  lead jab on the jab sheet (combo 0), 10/14; phase age <1,<2,<4
 	SEP #$20
+	LDA.b #!GOKU_PF_LUNGE         ; goku_render_boy draws the strike's lunge
+	TSB !p_flags
 	LDA !goku_act_facing
 	JSR pose_row_of
 	STA !p_rowout

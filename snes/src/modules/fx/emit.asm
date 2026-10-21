@@ -180,12 +180,12 @@ fx_emit:
 	BCC fx_emit_place
 	RTS
 
-; Place the set-up assembly at !d_x/!d_y. A fully visible assembly drawn
-; behind the natives in the field takes the fast path: one 16-bit add gives
-; (y << 8) | x exactly when every part is inside the screen.
+; Place the set-up assembly at !d_x/!d_y. A fully visible assembly in the
+; field takes a fast path: one 16-bit add gives (y << 8) | x exactly when
+; every part is inside the screen (behind the natives here, in front in
+; fx_emit_front).
 fx_emit_place:
-	LDA !d_ef
-	ORA !d_size
+	LDA !d_size
 	BNE .slow
 	LDY.w #$0002
 	LDA [!d_ptr],Y               ; min x | min y << 8
@@ -226,9 +226,14 @@ fx_emit_place:
 	CLC
 	ADC !d_y
 	CMP.w #224
-	BCC .fast
+	BCC .inside
 .slow
 	JMP fx_emit_slow
+.inside
+	LDA !d_ef
+	LSR
+	BCC .fast
+	JMP fx_emit_front
 .fast
 	LDA !d_y                     ; K = ((y - 128) << 8) + (x - 128)
 	SEC
@@ -282,6 +287,188 @@ fx_emit_place:
 	STA.w !core_oam_cursor&$FFFF
 .full
 	RTS
+
+; In front of the natives, the set-up assembly entirely on screen (field
+; size): its parts are staged in the core's front list in one pass when the
+; room rules of the per-part path (FX's FX_FRONT_MAX, the core's 16 staged
+; sprites, the four-slot groups taken from the natives) hold for all of
+; them; otherwise the per-part path places what fits. High bits 0: on
+; screen, small.
+fx_emit_front:
+	LDA.l !fx_front
+	CLC
+	ADC !d_np
+	CMP.w #!FX_FRONT_MAX+1
+	BCS .slow
+	LDA.w !core_oam_front_n&$FFFF
+	ADC !d_np                    ; (C clear)
+	CMP.w #17
+	BCS .slow
+	ADC.w #3                     ; (C clear)
+	AND.w #$FFFC
+	ASL
+	ASL
+	CLC
+	ADC.w !core_oam_cursor&$FFFF
+	CMP.w !core_oam_limit&$FFFF
+	BEQ +
+	BCC +
+.slow
+	JMP fx_emit_slow
++	LDA !d_y                     ; K = ((y - 128) << 8) + (x - 128)
+	SEC
+	SBC.w #128
+	XBA
+	AND.w #$FF00
+	STA !d_k
+	LDA !d_x
+	SEC
+	SBC.w #128
+	CLC
+	ADC !d_k
+	STA !d_k
+	LDA !d_np
+	BEQ .out
+	STA !d_n
+	LDA.w !core_oam_front_n&$FFFF
+	ASL
+	ASL
+	TAY
+	LDX !d_pofs
+.part
+	LDA.l fx_asm_data+2,X        ; cell*8 | flips
+	AND.w #$00FF
+	PHX
+	TAX
+	LDA !d_tiles,X
+	PLX
+	CMP.w #$FFFF
+	BEQ .next                    ; an unavailable cell takes no slot
+	STA.w (!core_oam_front&$FFFF)+2,Y
+	LDA.l fx_asm_data,X          ; x+128 | (y+128) << 8
+	CLC
+	ADC !d_k
+	STA.w !core_oam_front&$FFFF,Y
+	INY
+	INY
+	INY
+	INY
+.next
+	INX
+	INX
+	INX
+	DEC !d_n
+	BNE .part
+	TYA                          ; the staged count and FX's front count
+	LSR
+	LSR
+	SEC
+	SBC.w !core_oam_front_n&$FFFF
+	BEQ .out
+	STA !d_n
+	CLC
+	ADC.l !fx_front
+	STA.l !fx_front
+	LDA.w !core_oam_front_n&$FFFF
+	ASL
+	TAX
+	LDA.w #$0000
+-	STA.w !core_oam_front_hi&$FFFF,X
+	INX
+	INX
+	INC.w !core_oam_front_n&$FFFF
+	DEC !d_n
+	BNE -
+	JMP fx_oam_limit             ; the natives' room after the front groups
+.out
+	RTS
+
+; In front of the natives, assembly A of one cell mirrored into the four
+; quadrants around the anchor (impact-art.js mirrored(): plain at (0, 0),
+; h at (-16, 0), v at (0, -16), hv at (-16, -16); snes/gen/fx.mjs checks
+; the starbursts): four staged front sprites from the cell's set-up OAM
+; words. Off the screen's edge or without the room for all four, the
+; generic path places what fits.
+fx_emit_quad:
+	CMP !d_lasta
+	BEQ +
+	JSR fx_emit_setup
+	BCC +
+	RTS
++	LDA !d_tiles
+	CMP.w #$FFFF
+	BNE +
+	RTS                          ; the cell cannot be shown this frame
++	LDA !d_x
+	SEC
+	SBC.w #16
+	CMP.w #256-32+1
+	BCS .generic
+	LDA !d_y
+	SEC
+	SBC.w #16
+	CMP.w #224-32+1
+	BCS .generic
+	LDA.l !fx_front
+	CMP.w #!FX_FRONT_MAX-3
+	BCS .generic
+	LDA.w !core_oam_front_n&$FFFF
+	CMP.w #16-3
+	BCS .generic
+	ADC.w #4+3                   ; (C clear) the core's room after them
+	AND.w #$FFFC
+	ASL
+	ASL
+	CLC
+	ADC.w !core_oam_cursor&$FFFF
+	CMP.w !core_oam_limit&$FFFF
+	BEQ +
+	BCC +
+.generic
+	JMP fx_emit_place
++	LDA.w !core_oam_front_n&$FFFF
+	ASL
+	ASL
+	TAX
+	LDA !d_tiles+6
+	STA.w (!core_oam_front&$FFFF)+2,X
+	LDA !d_tiles+4
+	STA.w (!core_oam_front&$FFFF)+6,X
+	LDA !d_tiles+2
+	STA.w (!core_oam_front&$FFFF)+10,X
+	LDA !d_tiles
+	STA.w (!core_oam_front&$FFFF)+14,X
+	LDA !d_y                     ; x | y << 8 (both inside one byte here)
+	XBA
+	ORA !d_x
+	SEC
+	SBC.w #$1010
+	STA.w !core_oam_front&$FFFF,X
+	CLC
+	ADC.w #$0010
+	STA.w (!core_oam_front&$FFFF)+4,X
+	CLC
+	ADC.w #$1000-$0010
+	STA.w (!core_oam_front&$FFFF)+8,X
+	CLC
+	ADC.w #$0010
+	STA.w (!core_oam_front&$FFFF)+12,X
+	TXA
+	LSR
+	TAX
+	STZ.w !core_oam_front_hi&$FFFF,X
+	STZ.w (!core_oam_front_hi&$FFFF)+2,X
+	STZ.w (!core_oam_front_hi&$FFFF)+4,X
+	STZ.w (!core_oam_front_hi&$FFFF)+6,X
+	LDA.w !core_oam_front_n&$FFFF
+	CLC
+	ADC.w #4
+	STA.w !core_oam_front_n&$FFFF
+	LDA.l !fx_front
+	CLC
+	ADC.w #4
+	STA.l !fx_front
+	JMP fx_oam_limit             ; the natives' room after the front groups
 
 ; fx_emit_run: the set-up assembly placed A times, first at !d_x/!d_y,
 ; then every !d_rstep px along the direction registers (beam strips: 16). The
@@ -799,7 +986,11 @@ macro fx_cache_candidate(slot)
 		CMP.b #((<slot>-11)/2)*2+7
 	endif
 	BCS ?claimed
-	if <slot> == 9 || <slot> == 10
+	if <slot> < 3
+		LDA.w $EA80              ; a damage number before its count rises
+		CMP.b #$F9
+		BEQ ?claimed
+	elseif <slot> == 9 || <slot> == 10
 		LDA.w $E28D
 		ORA.w $E261
 		BNE ?claimed
@@ -856,6 +1047,9 @@ fx_cache_get:
 	AND.l !fx_rbits,X
 	AND.w #$00FF
 	BNE .scan
+	LDA !d_tmp                   ; past the bitmap (its "bit" is polygon data):
+	CMP.w #!FX_RBITS_SIZE*8      ; search the entries
+	BCS .scan
 	JMP .miss                    ; not resident: nothing to search
 .scan
 	LDA !d_tmp
@@ -932,7 +1126,16 @@ fx_cache_get:
 .take
 	PHX
 	LDA.l !fx_ccell,X            ; the evicted cell is no longer resident
-	CMP.w #$01FF+1
+	CMP.w #512
+	BCS +
+	PHA
+	SEP #$20
+	LDA.l !fx_evict              ; (fx_warm's callers look again)
+	INC
+	STA.l !fx_evict
+	REP #$20
+	PLA
++	CMP.w #!FX_RBITS_SIZE*8
 	BCS +
 	JSR fx_rbit
 	EOR.w #$FFFF
@@ -941,12 +1144,33 @@ fx_cache_get:
 	STA.l !fx_rbits,X
 	REP #$20
 +	LDA !d_tmp
+	CMP.w #!FX_RBITS_SIZE*8
+	BCS +
 	JSR fx_rbit
 	ORA.l !fx_rbits,X
 	SEP #$20
 	STA.l !fx_rbits,X
 	REP #$20
-	PLX
++	PLX
+	; Pixels FX did not upload (the game's stream, a UI lease or an upload
+	; that slipped): the cell is not drawn until its upload lands, so a
+	; late vblank shows nothing there rather than the game's digits.
+	LDA.l fx_entry_bit,X
+	AND.l !fx_cfail
+	BNE .foreign
+	LDA.l !fx_ccell,X
+	CMP.w #$0200
+	BCC .own
+	INC
+	BNE .foreign                 ; a UI lease
+	LDA.l !fx_cused,X
+	INC
+	BNE .own                     ; free since FX's own use
+.foreign
+	LDA.l fx_entry_bit,X
+	ORA.l !fx_cfail
+	STA.l !fx_cfail
+.own
 	LDA !d_tmp
 	STA.l !fx_ccell,X
 	LDA.l fx_entry_bit,X

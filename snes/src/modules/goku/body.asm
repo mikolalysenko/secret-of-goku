@@ -128,7 +128,12 @@ goku_render_boy:
 	JSR goku_pose            ; p_cell, p_flags, p_lift
 	JSR goku_anchor          ; $04/$06 exactly as C0:E5F5 (incl. shake decay)
 	SEP #$20
-	LDA !goku_ctl
+	BIT !p_flags             ; a punch pose (GOKU_PF_LUNGE, V): the strike's
+	BVC +                    ; lunge moves the drawn body only
+	REP #$20
+	JSR goku_lunge
+	SEP #$20
++	LDA !goku_ctl
 	AND.b #!GOKU_CTL_HIDE|!GOKU_CTL_HIDESHADOW
 	STA !shadow_hidden
 	LDA !p_flags
@@ -210,6 +215,88 @@ goku_anchor:
 .done
 	REP #$30
 	RTS
+
+; A strike's lunge (goku-animation.js punchLunge): the contact cell, held
+; through the hit stop, is drawn 2 / 3 / 4 pixels (jab, cross, kick) along
+; the facing, half that rounded up in the follow through; the wind-up and
+; the recovery stay in place. Only the anchor $04/$06 moves: the native
+; position and the shadow never do. For a punch pose (GOKU_PF_LUNGE). M16 X16.
+goku_lunge:
+	LDA !goku_act_age        ; phase as pk_punch: base <2 / <4 / <7,
+	LDX.w #0                 ; Super Saiyan <1 / <2 / <4
+	BIT !goku_act_arg-1      ; N = bit 7 of goku_act_arg
+	BMI .super
+	CMP.w #2
+	BCC .phase
+	INX
+	CMP.w #4
+	BCC .phase
+	INX
+	CMP.w #7
+	BCC .phase
+	INX
+	BRA .phase
+.super
+	CMP.w #1
+	BCC .phase
+	INX
+	CMP.w #2
+	BCC .phase
+	INX
+	CMP.w #4
+	BCC .phase
+	INX
+.phase
+	LDA !goku_act_arg
+	AND.w #$0003
+	CPX.w #1
+	BEQ .contact
+	CPX.w #2
+	BNE .out
+	TAX
+	LDA.l goku_lunge_follow,X
+	BRA .move
+.contact
+	TAX
+	LDA.l goku_lunge_reach,X
+.move
+	AND.w #$00FF
+	STA !t_b
+	LDA !goku_act_facing
+	AND.w #$0003
+	BEQ .down
+	CMP.w #1
+	BEQ .right
+	CMP.w #2
+	BEQ .left
+	LDA $06                  ; up
+	SEC
+	SBC !t_b
+	STA $06
+.out
+	RTS
+.down
+	LDA $06
+	CLC
+	ADC !t_b
+	STA $06
+	RTS
+.right
+	LDA $04
+	CLC
+	ADC !t_b
+	STA $04
+	RTS
+.left
+	LDA $04
+	SEC
+	SBC !t_b
+	STA $04
+	RTS
+goku_lunge_reach:
+	db 2, 3, 4, 2
+goku_lunge_follow:
+	db 1, 2, 2, 1
 
 ; Write Goku's OAM entries. M16 X16 on exit.
 ; Full cell: 16x16 quadrants q0..q3 at (X-16,top),(X,top),(X-16,top+16),(X,top+16)
