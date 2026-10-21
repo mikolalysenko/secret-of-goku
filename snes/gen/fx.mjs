@@ -474,6 +474,57 @@ export async function generate({rom,repo,outDir,xdata}){
   }
   writeFileSync(join(outDir,'aura-sprites.json'),JSON.stringify(auraSprites));
 
+  // Impact frames (engine/impact-art.js, also drawn by the browser): the
+  // starburst of a connected blow by size (ki, jab, cross, kick) and the
+  // kick's shockwave (one picture per frame, five shared cells), in the
+  // impact spark's own class (blue; gold for Super Saiyan blows) with its
+  // white core and a tint, so they share the spark's OBJ palette. Assembly
+  // FX_ASM_STAR + gold*4 + size and FX_ASM_SHOCK + gold*FX_SHOCK_FRAMES +
+  // frame (from FX_SHOCK_DELAY frames after the contact); appended last, so
+  // the ids of every older cell stay put.
+  const {impactArt,IMPACT_COLORS,IMPACT_SHOCK_LIFE,IMPACT_SHOCK_DELAY}=await eng('impact-art.js');
+  const impact=impactArt(),GOLD=CLASS.indexOf('GOLD');
+  const toneCell=(px,colors)=>Uint16Array.from(px,t=>t?1+colors[t-1]:0);
+  const impactAsm=(parts,cls,colors,key)=>parts.map(p=>({cell:addCell(toneCell(p.px,colors),cls,key),x:p.ox,y:p.oy,h:p.h,v:p.v}));
+  const starBase=asms.length;
+  for(const [tone,cls] of [['blue',0],['gold',GOLD]])for(let size=0;size<4;size++)
+    asms.push(impactAsm(impact.stars[size],cls,IMPACT_COLORS[tone],`star-${tone}-${size}`));
+  // Sizes 1-3 are one cell in the four quadrants: fx_emit_quad places them.
+  for(let k=0;k<8;k++){
+    if(k%4===0)continue;
+    const parts=asms[starBase+k],want=[[0,0,false,false],[-16,0,true,false],[0,-16,false,true],[-16,-16,true,true]];
+    if(parts.length!==4||parts.some((p,i)=>p.cell!==parts[0].cell||p.x!==want[i][0]||p.y!==want[i][1]||p.h!==want[i][2]||p.v!==want[i][3]))throw Error('fx: a starburst is not one mirrored cell (fx_emit_quad)');
+  }
+  const shockBase=asms.length;
+  for(const [tone,cls] of [['blue',0],['gold',GOLD]])for(let f=0;f<IMPACT_SHOCK_LIFE;f++)
+    asms.push(impactAsm(impact.shock[f],cls,IMPACT_COLORS[tone],`shock-${tone}`));
+  // Camera kick steps (native-feedback.js KICK_PROFILES): eight per blow,
+  // the steps then zeros (a zero ends the kick).
+  const {KICK_PROFILES}=await eng('native-feedback.js');
+  const kickSteps=KICK_PROFILES.flatMap(p=>{if(p.length>7||p.some(v=>v<1||v>7))throw Error('fx: kick profile does not fit');return [...p,0,0,0,0,0,0,0,0].slice(0,8);});
+  // Cells a punch's contact needs (fx_warm, FX_PREP), per tone, blow (jab,
+  // cross, kick) and facing: the starburst, the impact spark's first picture
+  // at its turn (fx_k_impact: frame 0, fx_dir_turn) and, for the kick, the
+  // shockwave's cells, in the order they come in. Cell words (cell | class
+  // << 9), $FFFF ends.
+  const cellWords=parts=>[...new Set(parts.map(p=>p.cell|((p.cls??cells[p.cell].cls)<<9)))];
+  const warmList=[];
+  for(const [tone,group] of [[0,'impact-spark'],[1,'gold-spark']])for(let blow=0;blow<3;blow++)for(let facing=0;facing<4;facing++){
+    const turn=[1,0,2,3][facing];
+    const words=[...cellWords(asms[starBase+tone*4+blow+1]),...cellWords(asms[stampAsm(group,0,turn)])];
+    if(blow===2)words.push(...cellWords(asms[shockBase+tone*IMPACT_SHOCK_LIFE]).filter(w=>!words.includes(w)));
+    if(words.length>7)throw Error('fx: a contact needs more than seven cells');
+    warmList.push(...words,...Array(8-words.length).fill(0xFFFF));
+  }
+  // Every kick record ends with the same slot (FX_IMP_NEXT looks there
+  // first: that cell in, the rest came before it).
+  const kickLast=new Set();
+  for(let tone=0;tone<2;tone++)for(let facing=0;facing<4;facing++){
+    const r=warmList.slice(((tone*3+2)*4+facing)*8,((tone*3+2)*4+facing)*8+8);
+    kickLast.add(r.indexOf(0xFFFF)<0?7:r.indexOf(0xFFFF)-1);
+  }
+  if(kickLast.size!==1)throw Error('fx: kick warm records differ in length');
+
   if(cells.length>512)throw Error(`fx: ${cells.length} cells exceed 9-bit ids`);
   const bin=new Uint8Array(cells.length*CELL_BYTES);
   cells.forEach((cell,i)=>{
@@ -706,6 +757,10 @@ export async function generate({rom,repo,outDir,xdata}){
   a.def('FX_ASM_FINGER',fingerBase);a.def('FX_ASM_FRAGMENT',fragBase);a.def('FX_ASM_LASER',laserBase);
   a.def('FX_ASM_RING',ringBase);a.def('FX_ASM_SPARKS',sparksBase);a.def('FX_ASM_STATUS',statusBase);a.def('FX_ASM_RUBBLE',rubbleBase);a.def('FX_ASM_DUST',dustBase);
   a.def('FX_ASM_RING_COMPACT',compactRingBase);
+  a.def('FX_ASM_STAR',starBase);a.def('FX_ASM_SHOCK',shockBase);a.def('FX_SHOCK_FRAMES',IMPACT_SHOCK_LIFE);a.def('FX_SHOCK_DELAY',IMPACT_SHOCK_DELAY);
+  a.label('fx_kick_steps');a.db(kickSteps);
+  a.def('FX_WARM_KICK_LAST',[...kickLast][0]*2);
+  a.label('fx_warm_list');a.dw(warmList);
   a.label('fx_class_palettes');for(const p of palettes){const row=[0,...p.map(c=>c-1)];while(row.length<16)row.push(0);a.dw(row);}
   a.label('fx_overlay_spare');a.db(palettes.map(p=>p.length<=13?1:0)); // indices 14/15 unused: low-priority UI may share
   a.label('fx_cell_class');a.db(cells.map(c=>c.cls));

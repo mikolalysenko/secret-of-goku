@@ -45,7 +45,8 @@ assert !FX_SRAM == !SRAM_WORK_FX, "fx request block must sit at !SRAM_WORK_FX"
 !fx_flashamt  = !FX_SRAM+$34   ; word: flash amount for the next vblank (0 none)
 !fx_mathon    = !FX_SRAM+$36   ; word: colour math currently overridden by FX
 !fx_quake     = !FX_SRAM+$38   ; word: quake frames left
-!fx_quakeprev = !FX_SRAM+$3A   ; word: $49 before the pulse
+!fx_quakeprev = !FX_SRAM+$3A   ; byte: $49 before the pulse
+!fx_kick      = !FX_SRAM+$3B   ; byte: camera kick, 1 + its next step in fx_kick_steps | facing << 5 (0 none)
 !fx_bmiss     = !FX_SRAM+$3C   ; word: a cell missed this frame's upload budget (fx_cache_get)
 !fx_pbig      = !FX_SRAM+$3E   ; word: polygon tables in both buffers: bit 0 this frame's request,
                                ;   bit 1 on screen, bit 2 the ones the key describes
@@ -73,6 +74,17 @@ assert !FX_SRAM == !SRAM_WORK_FX, "fx request block must sit at !SRAM_WORK_FX"
 !fx_e         = !FX_SRAM+$B0   ; 16 bytes scratch for the cache
 !fx_native_at = !fx_e+$C      ; word: !fx_frame of the last !fx_native ($FFFF none)
 !fx_native    = !fx_e+$E       ; word: entries the game streams or shows (fx_native_mask)
+; The impact state lives in four bytes combat lends from its work block
+; ($31:7DDE-7DE1, combat/module.asm): this block has no byte to spare.
+; fx_ensure_init clears them with the rest.
+;   !fx_evict ($31:7DDE, defs.asm): byte, FX cache evictions (fx_warm)
+!fx_wdue      = $317DDF        ; byte: bits 0-1 fx frames in which an FX_HIT may still draw its actor
+                               ;   white; FX_UNSEEN: nothing drawn since the regions were claimed. Read
+                               ;   as a word with !fx_kickd's low byte: zero, the usual frame
+!FX_UNSEEN    = $80
+!fx_kickd     = $317DE0        ; word: the camera kick in the coming vblank, offset << 1 | axis (0 none)
+assert !fx_evict == !SRAM_WORK_COMBAT+$1DE, "fx: the impact state moved in combat's block"
+assert !fx_wdue == !fx_evict+1 && !fx_kickd == !fx_evict+2, "fx: the impact state is four bytes"
 ; Spawned effects: 14 slots of 16 bytes
 !FX_SLOTS     = 14
 !fx_slots     = !FX_SRAM+$C0
@@ -229,7 +241,9 @@ fx_tables:
 incsrc "fx/tables.asm"
 fx_data_end:
 assert fx_data_end <= !FX_DATA+$10000, "fx data overflows its bank"
-assert !FX_CELL_COUNT <= !FX_RBITS_SIZE*8, "fx residency bitmap too small for the cells"
+; Cells past the residency bitmap (the impact frames, appended last) are
+; found by a search of the 15 cache entries instead of their bit.
+assert !FX_CELL_COUNT <= 512, "fx cell ids are nine bits"
 pullpc
 
 if defined("FX_TEST")
@@ -255,6 +269,7 @@ incsrc "native.asm"
 incsrc "frame.asm"
 incsrc "emit.asm"
 incsrc "kinds.asm"
+incsrc "impact.asm"
 incsrc "poly.asm"
 incsrc "red.asm"
 incsrc "clash.asm"

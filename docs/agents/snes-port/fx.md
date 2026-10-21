@@ -110,6 +110,8 @@ field a kind uses.
 | `fx_beam` | A = style \| flags<<8, X/Y = palms, `!fx_dir`, `!fx_a` length, `!fx_b` width, `!fx_c` taper, `!fx_t` beam age | One frame of a beam. C set if dropped (shares the 8 draw entries) |
 | `fx_flash` | A = frames (7 for the transformation) | Gold-white screen flash, as `native-feedback.js` `burst()` |
 | `fx_quake` | A = frames | Native BG quake pulse (`$49 = $E0`), ignored in Mode 7 and when an event owns `$49` |
+| `fx_kick` | A = facing \| blow << 8 (0 jab, 1 cross, 2 kick) | Camera kick: BG1/BG2 move along the blow by `native-feedback.js` `KICK_PROFILES` (2 / 3 / 4 px, springing back over 4 / 5 / 6 frames) from the coming vblank; text, HUD and sprites stay; ignored in Mode 7 |
+| `fx_warm` | A = blow \| gold << 8, X = facing | Readies a coming punch contact's cells (Impact frames below). A = `!fx_evict` when all were resident, $FFFF when an `FX_PREP` draw brings them in |
 | `fx_kill` | A = handle | Ends a spawned effect (stale handles are ignored) |
 | `fx_kill_all` | – | Ends every spawned effect and the flash/quake (ring opened, map change, combat cancelled). FX also does this itself on a map or mode change |
 | `fx_move` | A = handle, X/Y = new position | Moves a spawned effect (same coordinate space as spawned) |
@@ -133,6 +135,7 @@ Timed kinds (`fx_spawn`; FX owns the age and ends them):
 | `FX_STATUS` | `$07` | `statusBurst` | `!fx_style` 0 plain, 1 fire, 2 ice, 3 balloon | Recovery burst: impact + eight fragments / embers |
 | `FX_DEBRIS` | `$08` | `rubble`, ceiling dust | `!fx_rgb` 3 colours (dark, mid, light), `!fx_style` 0 rubble / 1 ceiling dust, `!fx_a` rubble chunks (0 = 4, at most 8), `!fx_b` life (0 = 32 rubble, 46 dust) | Rubble: chunks of size 2/3 on the browser's ballistic arcs (seeded by position and frame); ceiling dust: the 20 chunks of `ceiling-escape.js` on their exact paths (the two stone specks under each chunk are not drawn; the gap pattern uses two of its eight turns so the chunks fit the VRAM cache). All debris shares one DYN palette (the latest colours). Behind the natives |
 | `FX_SPARKS` | `$09` | ceiling-escape impact ring | `!fx_a` count (0 = 8) | Ring of impact sparks spreading out (12 frames) |
+| `FX_HIT` | `$0A` | `strike()`'s impact, star, flash and shock | as `FX_IMPACT`, and `!fx_c` the impact frame: bits 0-2 starburst size + 1 (1 ki, 2 jab, 3 cross, 4 kick), `FX_IMP_SHOCK` the kick's shockwave, bits 4-7 the actor slot (3-11) drawn white, `FX_IMP_NEXT` (a cross's) the kick's cells readied after the hold | The impact spark with the blow's impact frame (see Impact frames). *front*; the shockwave behind |
 
 Continuous kinds (`fx_draw`, every frame the effect should show):
 
@@ -145,6 +148,7 @@ Continuous kinds (`fx_draw`, every frame the effect should show):
 | `FX_DISC` | `$14` | `orbit-effects.js` `disc` | `!fx_t` age (tilt = (age>>3)&3) | Frieza's Death Disc, 20×6 in four tilts |
 | `FX_FINGER` | `$15` | `fingerCharge` | `!fx_t` age | Pink finger-laser charge glint |
 | `FX_CELL` | `$16` | `stamp()` | `!fx_a` group (below), `!fx_b` frame, `!fx_dir` turn | Any native spell cell, quarter turns, gold/pink variants |
+| `FX_PREP` | `$17` | – | `!fx_a` blow, `!fx_dir` facing, `FX_F_GOLD` | Requested by `fx_warm` only: nothing drawn, a coming contact's cells come in (at most two new ones a frame) |
 
 `FX_CELL` groups: 0 charge-orb, 1 beam-body, 2 beam-head, 3 impact-spark,
 4 lightning, 5 lightning-impact, 6 gold-spark, 7 gold-arc, 8 aura-arc,
@@ -560,6 +564,129 @@ so the test watches the FX writer instead of freezing that native palette.
 The integrated gameplay suite also performs L focus and L+A transformation
 after cutting grass, with the party and enemies still enabled.
 
+### Impact frames
+
+**Impact frames (2026-10-21).** `mana-mod.js` `strike()` adds to every
+connected blow a white starburst sized by the blow, the struck actor drawn
+white and, for the finishing kick, a shockwave with speed lines; a ki shot's
+contact gets the smallest starburst. The pictures are `engine/impact-art.js`,
+which the browser draws and `snes/gen/fx.mjs` packs: 18 cells appended after
+the native ones (ids 388-405; a star cell per size and five shockwave cells,
+per tone), assemblies `FX_ASM_STAR` + gold·4 + size and `FX_ASM_SHOCK` +
+gold·6 + frame, in the impact spark's own classes (white core and a blue,
+or for a Super Saiyan pale gold, rim), so they never need another OBJ
+palette. Cells past the residency bitmap (50 bytes, ids below 400) are
+found by a search of the 15 cache entries when their hint misses.
+
+- **One spawn per contact.** Combat spawns `FX_HIT` (the impact spark,
+  life and hold as `FX_IMPACT`) with the impact frame in `!fx_c`, kept in
+  the slot's A; its B (the hold, once the spawn has set the slot's hold)
+  becomes its first fx frame. `fx_k_hit` times it in fx frames since the
+  spawn through the contact hold (`!fx_frame` - B): the starburst for
+  frames 0-1, then the
+  spark (`fx_k_impact`); the shockwave for frames 1-6 behind the natives
+  (`IMPACT_SHOCK_DELAY`: the contact's own frame carries only the burst).
+- **The starburst's four sprites** (sizes 1-3: one cell mirrored into the
+  quadrants, which the generator asserts) are staged in front by
+  `fx_emit_quad` in one pass: the four OAM words the cell's set-up already
+  made, positions from one add, room checked once (FX's 12, the core's 16
+  staged front sprites and the four-slot groups), else the generic path.
+  Any other fully visible front assembly takes `fx_emit_front`, the front
+  twin of the back fast path, instead of the per-part path.
+- **White actor.** For the spawn frame and the next (`!fx_wdue` bits 0-1;
+  `fx_whiten_pass` serves the FX_HIT slots whose `!fx_frame` - B is 0 or 1)
+  `fx_frame_body` takes `fx_palscan_counts`, the scan with `INC` for
+  `STA` (a byte per palette counts its sprites), and `fx_whiten_pass`
+  serves the slots' actors before any draw. When the scan finds no more
+  sprites in the actor's palette than its descriptor has parts, the palette
+  is the actor's alone: `FX_CLASS_WHITE` takes that row for the frame and
+  no OAM entry changes. Otherwise its entries (found from its first part's
+  tile and attribute) move to the white class's own palette, if one is
+  free. Never a shared row: other actors of the species stay coloured.
+- **Camera kick.** `fx_kick` keeps the kick's next step (`!fx_kick`: 1 +
+  index into `fx_kick_steps` | facing << 5) and makes `!fx_kickd` nonzero
+  (1: offset 0) until the next `fx_finish`, which, from that word alone,
+  turns the step into the coming vblank's offset (`!fx_kickd` = offset << 1
+  | axis; 0 when the kick ends), which
+  `fx_nmi_kick` adds to BG1/BG2 scroll as the field NMI's `C0:C170` just
+  wrote it from the game's shadows (quake bits included; BG2's vertical
+  scroll stays 8-bit, as the game writes it). A kick alone sets
+  `!fx_nmiwork` = `$8000`: the vblank then writes only the scroll (after a
+  scanline check), not the uploads, HDMA and colour-math path; with other
+  work it runs inside that path's time window. No kick is written in a
+  late vblank.
+- **Warm-up.** A cold contact used to upload its cells in the contact's
+  vblank, which the game's own damage work fills: they slipped two or
+  three frames, the starburst's two frames were gone before its cell
+  arrived and the late upload lengthened a heavy frame's vblank.
+  `fx_warm` checks the blow's `fx_warm_list` record (starburst, the
+  spark's first picture at the facing's turn, the kick's shockwave cells)
+  through the hints, and through the 15 entries when a hint names another
+  cell (the blue spark's cells share buckets with three shockwave cells: a
+  resident kick record used to look cold, and every base-form kick's
+  wind-up paid an `FX_PREP` frame); when one is missing it requests
+  `FX_PREP`, which
+  resolves the record (at most two new cells a frame) and gives back the
+  palettes their classes took. `!fx_evict` counts evictions and residency
+  resets, so a caller that found a record resident asks again only after
+  the cache has lost a cell (combat keeps the count per blow and form).
+  A Super Saiyan kick has a one-frame wind-up and a 0-3 cell upload budget
+  in that scene's vblanks, too little for its starburst and five
+  shockwave cells: a cross's `FX_HIT` carries `FX_IMP_NEXT`, and once its
+  hold is over the spark resolves the kick's record (gold from its own
+  kind, its facing) after drawing itself, two new cells a frame at most,
+  so its own picture is served first and a missed upload never rolls it
+  back (`!fx_bmiss` kept). With the record's last cell resident
+  (`FX_WARM_KICK_LAST`, the same slot in every kick record) it only checks
+  that cell's hash. No per-frame call from combat: the cost falls in the
+  spark's own frames, about 2-4 lines while cells come in.
+- **Shockwave parts.** `impact-art.js` orders the speed lines by cell
+  (four 22.5° lines, then four 67.5°), so `fx_resolve`'s last-cell memo
+  resolves each of the five cells once per picture (11 lookups before);
+  the lines touch no other part, so the pixels are unchanged.
+- **Held regions.** The first warm-up claims fx's VRAM regions before
+  anything is drawn. Until something is (`FX_UNSEEN` in `!fx_wdue`, set at
+  init and at every release, cleared by `fx_note_seen`), an idle frame with only
+  the regions held marks `!fx_busy` = `$8000`, which `fx_frame` serves by
+  counting the idle frames (the release after 120 or a map or mode change
+  takes the full path) in about 0.3 lines instead of 2.6. Once anything has
+  been drawn, idle frames take the full path as before, so a scene whose
+  effects stop keeps the timing it had (destroy's late planner uses the
+  time left).
+- **Compensating costs.** `fx_frame` checks the magic and the destroy
+  record before calling, the upload budget comes from a 64-byte table
+  (`fx_budget`), `fx_region_mark` clears a region's pending uploads with
+  one mask and its entries with a counted loop (a first claim 7.2 -> 5.2
+  lines), and `fx_frame_body` reads `!fx_wdue` once for the scan and the
+  white pass. Merging the aura fix (its native-cell checks) left a Super
+  Saiyan charge's ki contact one line short in a frame that had none to
+  spare (`charge` 16 misses against 13), so the impact state's common
+  frame got cheaper still: `fx_frame_body` tests `!fx_wdue` and the kick's
+  low byte as one word (zero: the plain scan; hence `FX_UNSEEN` rather than
+  a seen bit), `fx_finish` tests only `!fx_kickd`, slot loads no longer copy
+  the life and hold, and a cell's residency check reads the bitmap before
+  the past-the-bitmap guard. With combat's and goku's trims, `charge` is 13
+  again and every gameplay case matches the merged base. A full frame with
+  nothing to draw (the orbit's cosmic montage calls `fx_kill_all` every
+  frame, which requests one) costs what it did before the impact frames:
+  `.idle` tests the regions first (none held: straight to `fx_finish`) and
+  `fx_kill_all` stops a camera kick only while `!fx_kickd` runs, so the
+  montage's tightest frame (its pullback, ending at line 225 before the hit
+  feel) lags no more. (Setting the draws' direct-page scratch only once
+  something draws would save 6 more, but a cheaper idle frame lets destroy's
+  late planner start its plant scan 55 frames earlier in `charge`, which
+  then misses one more frame: left as it was.)
+
+Measured with `snes/test/gameplay` (per-frame logic, `punch`, the first
+contact in the scene): the strike frame 233.1 lines against 232.3, the
+heaviest frame of the hit stop 237.7 against 233.7, the first wind-up
++23 lines (the claim and two cold cells, 40 lines to spare). Every case's
+missed frames are the frames it missed before at 565c6a8 (`charge`'s 15
+on the same frames), `snes/test/perf` p90 and lag unchanged, `modprof`
+`fx_frame` 0.13 lines a frame in the sword preset as before. Mesen
+captures (`.local/snes-test/combat-feel/`) show the contact two to three
+frames earlier than before on a first contact.
+
 ### Ki aura visibility audit
 
 Baseline `173cbe8`; counts are drawn / browser-eligible completed frames.
@@ -832,13 +959,34 @@ phase, lag vblanks included. Slot 5's pieces stream in phase 2
   readout cancels a deferred upload into one.
 - An entry whose claim ends is free and re-uploads. An aura whose cells
   were taken waits until its new cells are resident, as on a cold start.
+- An entry keeps the game's pixels after its claim ends (an expired
+  number, a party weapon piece). An entry a readout lease leaves keeps the
+  lease's pixels too. FX used to draw a new cell in the frame it took such
+  an entry. When a late vblank then slipped the upload, a ki shot showed
+  the number for a frame or two: once in `fight`, and 36 sprite frames over
+  the game's pixels in `fight-ssj`. Now `fx_native_forget` marks every entry
+  it streams over, also in a region FX does not hold, and so do the
+  readout's lease releases (`!fx_cused = $FFFF` on the free entry: its last
+  use no longer matters). `fx_cache_get` may take a marked entry, a UI
+  lease or an entry whose earlier upload slipped. It then queues the upload
+  but does not draw the cell until the upload lands (`!fx_cfail`): the
+  sprite is missing for that frame instead of showing digits. Evicting
+  FX's own cell still draws at once.
+- A killed enemy becomes a damage-number object at once (species `$F9`,
+  `+$180`). Its count rises five to ten frames later. In slot 5 the
+  object's three cells (entries 0-2) are claimed from its first frame
+  (`fx_begin`, `fx_native_slot5`, the first three allocator candidates). FX
+  has left them before any vblank, a lag vblank included, streams the
+  digits.
 
-Cost: a few cycles per FX frame in phases 0 and 3, one byte in phases
-1-2, six bytes in phase 4 (as a subroutine: 19, 30, 30, 19 and 52 CPU
-cycles). One or three bytes per free candidate on a miss; 181 cycles for a
-UI lease's mask. Gameplay CPU misses per 240 frames are unchanged (charge
-13, teleport 3, fly-ki 2, fly 1, fly-punch 1). A first version that
-computed the whole mask every frame (61 cycles idle) raised charge to 16.
+Cost: a few cycles per FX frame in phases 0 and 3, two bytes in phases
+1-2 (count, then species), six bytes in phase 4 (as a subroutine: 19, 38,
+38, 19 and 52 CPU cycles). One to three bytes per free candidate on a miss,
+about 30 cycles more when a cell is taken; 195 cycles for a UI lease's
+mask. Gameplay CPU misses per 240 frames are unchanged (charge 13, teleport
+3, fly-ki 2, fly 1, fly-punch 1). Two versions were too slow: one computed
+the whole mask every frame (61 cycles idle), and another also checked slots
+1-2 a phase ahead (52 cycles in phase 3). Each raised charge to 16.
 No native code, VRAM region or core service changed.
 
 After the fix, the same fights show **0** wrong aura frames (424/424 and
@@ -853,16 +1001,18 @@ in the Super Saiyan fight).
   an FX cell drawn there before the claim. This is the original game's own
   stale-tile window (the Super Saiyan fight: once, 2 frames). Closing it
   would need FX to stream the game's source cells itself.
-- A claim made by a frame that misses its vblank can be streamed before FX
-  sees it, and slots 1 and 2 are not checked one phase ahead. In both
-  cases the wrong pixels last only until the next completed frame (none
-  measured).
-- Unrelated and older: an effect that draws a cell in the frame it
-  allocates it shows that entry's previous contents for one frame when a
-  late vblank leaves no time for the upload (`fxLate`: 8, 167 and 2 sprite
-  frames in the three `native-cells` scenes; 5, 144 and 2 before the
-  fix: re-uploads after a claim add a few). The aura never draws a cell
-  before it is resident.
+- A party weapon piece requested by a frame that misses its vblank can
+  be streamed before FX sees the request, and slots 1 and 2 are not checked
+  one phase ahead (the CPU cost above). Either way, a weapon piece's
+  pixels can show on an FX sprite until the next completed frame (none
+  measured). A damage number no longer can, since its object claims its
+  cells from the kill.
+- Older and unrelated to the game: an effect that draws a cell in the frame
+  it allocates it shows the entry's previous FX cell for one frame when a
+  late vblank leaves no time for the upload (`fxLate`: 7, 99 and 2 sprite
+  frames in `fight`, `fight-ssj` and `charge`). It is never the game's or a
+  lease's pixels (`fxForeign` 0 in every scene). The aura never draws a
+  cell before it is resident.
 
 **Tests.** `native-cells` (run by `run.mjs` after `focus-scenes`, production
 ROM, real input, exact frames) checks the VRAM behind every displayed
@@ -889,7 +1039,11 @@ transforms next to the third Rabite and charges twice; the second wave kills
 it. Before the fix, 242 lightning and spark sprites showed its digits. The
 scenes count these events (`numbers`, `slot5Numbers`, `formChanges`,
 `gokuHits`, `fxClaimed`: FX sprites shown while the game claims region A) and
-require them. In `ssj-kill-charge`, a crowded first charge (flame,
+require them. Every scene also requires `fxForeign` = 0: no FX sprite drawn
+over the game's or a readout lease's pixels while its upload is late. Before
+the late-upload fix there was 1 in `fight` (a ki shot) and 36 in
+`fight-ssj`. `barrage-kill` fires a second barrage because a Rabite
+respawning in slot 5 can cut the first number short. In `ssj-kill-charge`, a crowded first charge (flame,
 lightning, gold sparks and the party) passed the PPU's 34 slivers on one
 line once: one flame line was dropped for one frame. That limit is reported
 there, not asserted.
@@ -927,8 +1081,9 @@ one VRAM region changes.
 | Resource | Use |
 | --- | --- |
 | Code `$AE:8000-FFFF` | `!CODE_FX` (upper half only; `$EE` lower half holds ending art) |
-| ROM | `!DATA_FX` = `$FB` (44 of 64 KiB used): assemblies, palettes, the per-cell DMA source pointers, paired-wave geometry and the tables read only with long loads or MVN (detonation clusters, ember and dust paths, strip lines, laser steps, Death Ball, red-ball and aura indexes: `tables.asm`), generated by `snes/gen/fx.mjs`. All 388 cell tiles (48.5 KiB, `cells.bin`) are DMA-only xdata, split at cell 256 into `fx_cells_lo/hi`. Code `$AE:8000-FFFF` (20.1 of 32 KiB used). xdata (ExHiROM): the aura's lines, `fx_aura16`, `fx_aura32`, `fx_aura40` (51 KiB), the bolts, `fx_bolts` (2 KiB), and `fx_red_geometry` (7.7 KiB) |
-| SRAM `$31:7800-7BFF` | `!SRAM_WORK_FX`: request block, 14 effect slots, 8 draw entries, VRAM cache, residency bits (50 bytes), polygon tables (2 × 189 bytes) |
+| ROM | `!DATA_FX` = `$FB` (44 of 64 KiB used): assemblies, palettes, the per-cell DMA source pointers, paired-wave geometry and the tables read only with long loads or MVN (detonation clusters, ember and dust paths, strip lines, laser steps, Death Ball, red-ball and aura indexes: `tables.asm`), generated by `snes/gen/fx.mjs`. All 406 cell tiles (50.75 KiB, `cells.bin`; the last 18 are `impact-art.js`'s) are DMA-only xdata, split at cell 256 into `fx_cells_lo/hi`. Code `$AE:8000-FFFF` (23.3 of 32 KiB used). xdata (ExHiROM): the aura's lines, `fx_aura16`, `fx_aura32`, `fx_aura40` (51 KiB), the bolts, `fx_bolts` (2 KiB), and `fx_red_geometry` (7.7 KiB) |
+| SRAM `$31:7800-7BFF` | `!SRAM_WORK_FX`: request block, 14 effect slots, 8 draw entries, VRAM cache, residency bits (50 bytes), polygon tables (2 × 189 bytes); `$3B`: `!fx_kick` (no byte is free) |
+| SRAM `$31:7DDE-7DE1` | Lent by combat (its work block's layout comment): the impact state, `!fx_evict` (`defs.asm`), `!fx_wdue`, `!fx_kickd`; cleared by `fx_ensure_init` |
 | SRAM `$31:756C-75EB` | `!SRAM_WORK_FX_HASH`: 128 resident-cell hints; core work allocation, separate from persistent saves |
 | WRAM | None (a 148-byte direct-page frame on the stack inside `fx_frame`) |
 | VRAM | `!VRAM_FIELD_OBJ_A/B/C` while effects are active (owner `$0E`); released after 120 idle frames and at every map or mode change. They are the game's actor effect pieces: entries the game streams or shows are yielded ([Native effect cells](#native-effect-cells)); UI leases read the claim mask `!fx_native` (`$31:78BE`, once per frame) |
@@ -951,6 +1106,7 @@ one VRAM region changes.
 | `FX_BEAM_KAME`, `FX_BEAM_FRIEZA`, `FX_BEAM_FIRE` | Done: OBJ strips (four facings); the first left/right beam of a frame as a polygon | `snes/test/fx/beams.lua` (polygon against OBJ strips, pixel-exact, right and left) |
 | `FX_BEAM_WAVE`, `FINAL`, `GALICK` | Done (polygon + OBJ edges), four facings; paired horizontal clash windows | beams: core/bands/rims; clash: independent colours, table/cache/restore; clash-colour: native pixels |
 | `fx_flash`, `fx_quake` | Done | gallery |
+| `FX_HIT`, `fx_kick`, `fx_warm` / `FX_PREP` | Done | Mesen captures of combos (base and Super Saiyan), a ki contact and a killing jab against the browser's; `snes/test/gameplay` and `perf` unchanged; `cache.test.mjs`, `palette-scan.test.mjs` |
 | `FX_DEBRIS`, brazier burst | Done (OBJ); destroy's effect records are drawn by FX itself (below) | `snes/test/fx/debris.lua` |
 | `FX_BEAM_LASER` | Done: 16 headings (OBJ windows; headings 0 / 8 as a polygon when free) | beams: every heading against the browser's pixels |
 | `FX_AURA` | Done (polygon; two colours, tongue gaps filled where a line crosses three or more tongues) | beams: four heights/levels/phases against drawKiAura's silhouette, strobe |

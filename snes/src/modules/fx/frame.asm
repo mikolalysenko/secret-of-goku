@@ -11,8 +11,23 @@ endif
 	; Idle fast path: no request since the last frame and nothing held
 	; (every API call sets !fx_busy; fx_finish recomputes it). Garbage SRAM
 	; at power-on reads nonzero here or initialises on the first request.
+	; $8000: only the VRAM regions are held (fx_finish); a new map or mode,
+	; or their release after 120 such frames, takes the full path.
 	LDA.l !fx_busy
+	BEQ .idle
+	BPL .full
+	LDA.w $00DC
+	CMP.l !fx_map
 	BNE .full
+	LDA.w !core_mode&$FFFF
+	CMP.l !fx_mode
+	BNE .full
+	LDA.l !fx_idle
+	INC
+	CMP.w #120
+	BCS .full
+	STA.l !fx_idle
+.idle
 if defined("FX_TEST")
 	LDA.l !fx_frame              ; tests count fx frames
 	INC
@@ -20,8 +35,11 @@ if defined("FX_TEST")
 endif
 	RTL
 .full
+	LDA.l !fx_magic              ; (power-on: garbage busy initialises here)
+	CMP.w #!FX_MAGIC
+	BEQ +
 	JSR fx_ensure_init
-	PHD
++	PHD
 	TSC
 	SEC
 	SBC.w #!FXF_SIZE
@@ -51,9 +69,14 @@ fx_frame_body:
 	LDA.w #$FFFF
 	STA !d_lastc
 	STA !d_lasta
+	LDA.l !FX_DREC_SEQ           ; a new destroy record (fx_destroy_poll)
+	CMP.l !fx_dseq
+	BEQ +
 	JSR fx_destroy_poll
-	JSR fx_begin
-	BCS .idle
++	JSR fx_begin
+	BCC +
+	JMP .idle
++
 if not(defined("FX_AURA_POLY"))
 	; A lone aura emits nothing on the browser's odd-clock strobe. Keep
 	; its cells warm without scanning native palettes or reserving OAM.
@@ -77,8 +100,12 @@ if defined("FX_TEST")
 	JSR fx_test_vline
 	STA.l !FXT_BOX+$B0          ; after fx_begin
 endif
+	LDA.l !fx_wdue               ; no FX_HIT white frames, drawn before and
+	BNE .wdue                    ; no camera kick (the word's high byte): the
+.plain                           ; plain palette scan
 	JSR fx_palscan
 	JSR fx_oam_limit
+.scanned
 if defined("FX_TEST")
 	LDA.w !core_oam_cursor&$FFFF
 	STA.l !FXT_BOX+$AA          ; cursor before FX drew
@@ -107,8 +134,71 @@ if defined("FX_TEST")
 	ADC.l !fx_front
 	STA.l !fx_sprites
 endif
-.idle
 	JMP fx_finish
+.wdue
+	AND.w #$00FF
+	BEQ .plain                   ; only a camera kick
+	BIT.w #!FX_UNSEEN
+	BEQ +
+	JSR fx_note_seen
++	LDA.l !fx_wdue
+	AND.w #$0003
+	BEQ .plain
+	JSR fx_palscan_counts
+	JSR fx_oam_limit
+	JSR fx_whiten_pass           ; struck actors first take the white palette
+	BRA .scanned
+.idle
+	LDA.l !fx_regions            ; nothing held: as ever
+	BNE +
+	JMP fx_finish
++	JSR fx_finish                ; (nothing drawn: no spawned effect alive)
+	LDA.l !fx_wdue               ; drawn since the claim: idle frames as ever
+	AND.w #!FX_UNSEEN
+	BEQ +
+	LDA.l !fx_nmiwork
+	ORA.l !fx_kickd
+	ORA.l !fx_flash
+	ORA.l !fx_quake
+	ORA.l !fx_cfail
+	BNE +
+	LDA.l !fx_regions            ; only the regions held: fx_frame's idle path
+	BEQ +
+	LDA.w #$8000
+	STA.l !fx_busy
++	RTS
+
+; Something other than a coming contact's cells (FX_PREP) is drawn: from
+; now on until the regions are given back, an idle frame takes the full
+; path as before. Only while nothing was, held regions cost the idle fast
+; path alone.
+fx_note_seen:
+	LDA.l !fx_nlive
+	BNE .seen
+	LDA.l !fx_ndraw
+	CMP.w #16
+	BNE .seen
+	LDA.l !fx_draws+!D_KIND
+	AND.w #$00FF
+	CMP.w #!FX_PREP
+	BNE .seen
+	RTS
+.seen
+	SEP #$20
+	LDA.l !fx_wdue
+	AND.b #!FX_UNSEEN^$FF
+	STA.l !fx_wdue
+	REP #$20
+	RTS
+
+; The regions given back (fx_release): nothing drawn since their claim.
+fx_unseen:
+	SEP #$20
+	LDA.l !fx_wdue
+	ORA.b #!FX_UNSEEN
+	STA.l !fx_wdue
+	REP #$20
+	RTS
 
 ; World-flight frame: world rendering is not wired yet, so only the
 ; bookkeeping runs (the draw list is dropped).
@@ -153,16 +243,12 @@ endif
 +	STA.l !fx_phase
 	ASL
 	TAX
-	LDA.l !fx_vblp,X
-	SEC
-	SBC.w #3
-	BPL +
-	LDA.w #$0000
-+	LSR
-	CMP.w #8
-	BCC +
-	LDA.w #8
-+	STA.l !fx_cbudget
+	LDA.l !fx_vblp,X             ; (at most 34: fx_nmi_learn)
+	AND.w #$003F
+	TAX
+	LDA.l fx_budget,X
+	AND.w #$00FF
+	STA.l !fx_cbudget
 	LDA.l !fx_frame
 	INC
 	STA.l !fx_frame
@@ -186,7 +272,8 @@ endif
 	LDA.w #$0000
 	STA.l !fx_ndraw
 +	; The game's stream may take cached cells (native.asm): slot 5's in
-	; phase 2 (or a lag vblank of the next frame), slots 1-2's in phase 4.
+	; phase 2 (or a lag vblank of the next frame; a damage number before its
+	; count rises), slots 1-2's in phase 4.
 	LDA.l !fx_phase
 	CMP.w #4
 	BEQ .native12
@@ -195,8 +282,14 @@ endif
 	BCS .native
 	SEP #$20
 	LDA.w $EA84
+	BNE .native5
+	LDA.w $EA80
+	CMP.b #$F9
+	BEQ .native5
 	REP #$20
-	BEQ .native
+	BRA .native
+.native5
+	REP #$20
 	JSR fx_native_drop5
 	BRA .native
 .native12
@@ -235,6 +328,12 @@ endif
 	CLC
 	RTS
 
+; Cells per vblank by its learned lines left: (lines - 3) / 2, 0-8.
+fx_budget:
+	for v = 0..64
+		db min(8, max(0, (!v-3)>>1))
+	endfor
+
 ; Map or mode change: drop spawned effects, forget cached cells (the
 ; regions' VRAM may have been reloaded) and give the regions back, so a
 ; module that claims them on arrival (title) is not refused while FX idles.
@@ -247,7 +346,8 @@ fx_reset_scene:
 	LDA.w #$0000
 	STA.l !fx_cpend
 	STA.l !fx_cfail
-	STA.l !fx_quake
+	JSR fx_quake_stop            ; a pulse left at $E0 would shake the new scene for good
+	JSR fx_kick_stop
 	LDA.w #$FFFF                 ; a new scene builds its polygon afresh
 	STA.l !fx_pkey+8
 	JSR fx_release               ; claims are made again only when something is drawn
@@ -363,7 +463,7 @@ fx_release:
 	LDA.w #$0000
 	STA.l !fx_regions
 	STA.l !fx_cpend
-	RTS
+	JMP fx_unseen
 
 ; No cell is resident (scene change, regions lost). Invalidate the fast
 ; hash too: unchanged entries of other regions must still re-upload after
@@ -373,6 +473,11 @@ fx_clear_rbits:
 	PHX
 	LDA.l !fx_hash_dirty
 	BEQ .done                   ; repeated region changes already invalidated it
+	SEP #$20
+	LDA.l !fx_evict             ; (fx_warm's callers look again)
+	INC
+	STA.l !fx_evict
+	REP #$20
 	LDA.w #$0000
 	STA.l !fx_hash_dirty
 	LDX.w #!FX_RBITS_SIZE-2
@@ -396,42 +501,51 @@ fx_clear_rbits:
 fx_region_mark:
 	JSR fx_clear_rbits           ; conservative: re-found cells re-upload
 	PHX
-	STA.l !fx_e
-	LDA.l fx_region_last,X
+	PHA
+	TXA
+	ASL
+	TAX
+	LDA.l fx_region_pend,X       ; its entries upload nothing more
+	AND.l !fx_cpend
+	STA.l !fx_cpend
+	LDA $03,S
+	TAX
+	LDA.l fx_region_n,X
 	AND.w #$00FF
-	STA.l !fx_e+2                ; last entry * 2
+	TAY                          ; its entries
 	LDA.l fx_region_first,X
 	AND.w #$00FF
 	TAX
--	LDA.l !fx_e
-	STA.l !fx_ccell,X
-	LDA.l fx_entry_bit,X
-	EOR.w #$FFFF
-	AND.l !fx_cpend
-	STA.l !fx_cpend
-	TXA
-	CMP.l !fx_e+2
+	PLA
+-	STA.l !fx_ccell,X
 	INX
 	INX
-	BCC -
+	DEY
+	BNE -
 	PLX
 	RTS
+
+fx_region_pend:                  ; !fx_cpend without the region's entries
+	dw $FF80, $F87F, $87FF
+fx_region_n:                     ; its cache entries
+	db 7, 4, 4
 
 fx_region_id:
 	db !VRAM_FIELD_OBJ_A, !VRAM_FIELD_OBJ_B, !VRAM_FIELD_OBJ_C
 fx_region_bit:
 	db $01, $02, $04
-fx_region_first:                 ; first / last cache entry * 2
+fx_region_first:                 ; first cache entry * 2
 	db 0*2, 7*2, 11*2
-fx_region_last:
-	db 6*2, 10*2, 14*2
 
 ; Which OBJ palettes are already used by the sprites in OAM (natives and
 ; the modules that drew before FX, including staged front sprites), and
 ; which FX may take: 2-7, never 0/1. Everything below the cursor counts
 ; (hidden natives and a few stale slots only make the choice more
 ; conservative). Marks go to !d_tiles (free until the first assembly):
-; byte 2p becomes < $80 when palette p is seen.
+; byte 2p becomes < $80 when palette p is seen. While an FX_HIT may draw
+; its actor white (!fx_wdue), fx_frame_body takes fx_palscan_counts, which
+; counts instead: byte 2p holds the sprites using palette p, minus one ($FF
+; none), for fx_whiten_actor.
 fx_palscan:
 	LDA.w #$FFFF
 	STA !d_tiles+2
@@ -504,7 +618,7 @@ endif
 .front
 	REP #$20
 	LDA.w !core_oam_front_n&$FFFF
-	BEQ .done
+	BEQ fx_palscan_tally
 	ASL
 	ASL
 	STA !d_tmp
@@ -523,7 +637,7 @@ endif
 	CPY !d_tmp
 	BCC .floop
 	REP #$20
-.done
+fx_palscan_tally:
 	STZ !d_tmp+2                 ; used: bit5..0 = palettes 7..2
 	; Marks are bytes: $FF unused, 0..14 seen. Six fixed rows need
 	; neither a word mask/comparison nor an indexed loop.
@@ -589,6 +703,101 @@ endif
 	BRA .visibleFrontLoop
 .available
 	RTS
+
+; fx_palscan with counts (an FX_HIT may draw its actor white this frame):
+; the same scan, each sprite incrementing its palette's byte. Palette 0
+; counts too, for an actor drawn in it.
+fx_palscan_counts:
+	LDA.w #$FFFF
+	STA !d_tiles
+	STA !d_tiles+2
+	STA !d_tiles+4
+	STA !d_tiles+6
+	STA !d_tiles+8
+	STA !d_tiles+10
+	STA !d_tiles+12
+	STA !d_tiles+14
+	LDA.w !core_oam_cursor&$FFFF
+	CMP.w #$0201
+	BCC +
+	LDA.w #$0200
++	STA !d_tmp                   ; end offset
+if not(defined("FX_PALSCAN_SLOW"))
+	LSR : LSR : LSR
+	AND.w #$FFFE
+	TAX
+	LDA !d_tmp
+	AND.w #$FFF0
+	TAY
+	LDA.w #0                    ; TAX in the byte scan must have B = 0
+	SEP #$20
+	JMP (.groups,X)
+.groups
+	for group = 0..33
+		dw .scan_end-(32*!group)
+	endfor
+.scan_body
+	for sprite = 0..128
+		LDA.w $0803+((127-!sprite)*4)
+		AND.b #$0E
+		TAX
+		INC !d_tiles,X
+	endfor
+.scan_end
+	assert .scan_end-.scan_body == 128*8, "palette count jump stride changed"
+.tail
+	CPY !d_tmp
+	BCS .front
+	LDA.w $0803,Y
+	AND.b #$0E
+	TAX
+	INC !d_tiles,X
+	INY : INY : INY : INY
+	BRA .tail
+else
+	LDA.w #$0000                 ; B = 0: TAX copies the masked byte only
+	TAY
+	SEP #$20
+	CPY !d_tmp
+	BCS .front
+.loop
+	LDA.w $0803,Y
+	AND.b #$0E
+	TAX
+	INC !d_tiles,X
+	REP #$21                     ; M16, C clear
+	TYA
+	ADC.w #4
+	TAY
+	LDA.w #0                     ; clear B after cursor $100 for the byte TAX
+	SEP #$20
+	CPY !d_tmp
+	BCC .loop
+endif
+.front
+	REP #$20
+	LDA.w !core_oam_front_n&$FFFF
+	BNE +
+	JMP fx_palscan_tally
++	ASL
+	ASL
+	STA !d_tmp
+	LDA.w #$0000
+	TAY
+	SEP #$20
+.floop
+	LDA.w (!core_oam_front&$FFFF)+3,Y
+	AND.b #$0E
+	TAX
+	INC !d_tiles,X
+	INY
+	INY
+	INY
+	INY
+	CPY !d_tmp
+	BCC .floop
+	REP #$20
+	JMP fx_palscan_tally
 
 ; OAM attribute byte -> bit of its palette (bits 1-3).
 fx_attr_palbit:
@@ -698,7 +907,7 @@ fx_run_slots:
 	STA.l !fx_hiwater            ; all slots free again
 +	RTS
 
-; Slot X -> current effect (screen coordinates).
+; Slot X -> current effect (screen coordinates); C = life | hold left << 8.
 fx_load_slot:
 	LDA.l !fx_slots+!S_KIND,X
 	STA !d_cur+!C_KIND
@@ -776,7 +985,7 @@ fx_draw_current:
 	AND.w #$00FF
 	BIT.w #$0080
 	BNE .beam
-	CMP.w #!FX_CELL+1
+	CMP.w #!FX_PREP+1
 	BCS .none
 	ASL
 	TAX
@@ -833,16 +1042,27 @@ fx_finish:
 	ORA.l !fx_mathon
 	ORA.l !fx_poly_req
 	ORA.l !fx_poly_on
-	STA.l !fx_nmiwork
-	ORA.l !fx_regions            ; anything held keeps the full path running
-	ORA.l !fx_flash
+	STA.l !fx_nmiwork            ; (a camera kick needs no busy bit: its
+	ORA.l !fx_regions            ; contact's FX_HIT outlives it) anything held
+	ORA.l !fx_flash              ; keeps the full path running
 	ORA.l !fx_quake
 	ORA.l !fx_cfail
 	ORA.l !fx_nlive
 	STA.l !fx_busy
+	LDA.l !fx_kickd              ; a camera kick runs (fx_kick starts it nonzero)
+	BNE .kick
+.done
 	LDA.w #$0000
 	STA.l !fx_ndraw
 	RTS
+.kick
+	JSR fx_kick_advance          ; its offset for the coming vblank; 0: over
+	BEQ .done
+	LDA.l !fx_nmiwork            ; a camera kick alone: only its scroll
+	BNE .done
+	LDA.w #$8000
+	STA.l !fx_nmiwork
+	BRA .done
 
 ; native-feedback.js: [0,1,2,4,6,9,13,17][flash]
 fx_flash_amounts:

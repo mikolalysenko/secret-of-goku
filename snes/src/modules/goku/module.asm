@@ -129,6 +129,7 @@ assert !GOKU_RAM_END <= !GOKU_RAM+$C0, "goku RAM overflow"
 ; p_flags
 !GOKU_PF_HIDDEN = $01
 !GOKU_PF_SMALL  = $02
+!GOKU_PF_LUNGE  = $40   ; a punch pose (pk_punch): goku_lunge moves the drawn body (BIT: V)
 
 ; up_flags
 !GOKU_UP_HUD     = $01  ; re-upload the HUD portrait

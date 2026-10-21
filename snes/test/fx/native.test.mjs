@@ -26,15 +26,17 @@ const C1=a=>0x010000+(a&0xFFFF);
 // The model: piece k of a slot streams while its cell count (+$84) is at
 // least 2k-1; the fifth also on a request (+$8D) or while its weapon effect
 // runs (+$61). Slot 5 pieces 1-4 cover entries 0 / 1-2 / 3-4 / 5-6, slots 1
-// and 2 pieces 4-5 cover entries 7-8 / 9-10 and 11-12 / 13-14.
-const slot5=({c5=0})=>(c5>=1?0x0001:0)|(c5>=3?0x0006:0)|(c5>=5?0x0018:0)|(c5>=7?0x0060:0);
+// and 2 pieces 4-5 cover entries 7-8 / 9-10 and 11-12 / 13-14. A killed
+// enemy in slot 5 is a damage-number object (species $F9, +$180) before its
+// count rises to 3: its three cells are claimed from the start.
+const slot5=({c5=0,s5=0})=>(c5>=1?0x0001:0)|(c5>=3||s5===0xF9?0x0006|0x0001:0)|(c5>=5?0x0018:0)|(c5>=7?0x0060:0);
 const slots12=({c1=0,c2=0,r1=0,r2=0,e1=0,e2=0})=>(c1>=7?0x0180:0)|(c1>=9||r1||e1?0x0600:0)|(c2>=7?0x1800:0)|(c2>=9||r2||e2?0x6000:0);
 const model=f=>slot5(f)|slots12(f);
 // The streamer runs phase $56: slot 5's pieces in phase 2, slots 1 and 2's
 // in phase 4. A frame drops slot 5's in phases 1-2 (its own vblank, or a
 // lag vblank of the next frame) and slots 1-2's in phase 4.
 const dropped=(f,phase)=>[1,2].includes(phase)?slot5(f):phase===4?slots12(f):0;
-const FIELDS={c5:0xEA84,c1:0xE284,c2:0xE484,r1:0xE28D,r2:0xE48D,e1:0xE261,e2:0xE461};
+const FIELDS={c5:0xEA84,s5:0xEA80,c1:0xE284,c2:0xE484,r1:0xE28D,r2:0xE48D,e1:0xE261,e2:0xE461};
 
 function machine(){
   const ram=Buffer.alloc(0x20000),sram=Buffer.alloc(65536);
@@ -141,10 +143,10 @@ test('the ROM streams the entries and phases the model claims',()=>{
 
 test('the claim mask follows counts, requests and running effects',t=>{
   let cycles=0,n=0;
-  const values={c5:[0,1,2,3,4,5,6,7,8,9,255],c1:[0,6,7,8,9,255],c2:[0,6,7,8,9,255],r:[0,1],e:[0,1]};
-  for(const c5 of values.c5)for(const c1 of values.c1)for(const c2 of values.c2)
+  const values={c5:[0,1,2,3,4,5,6,7,8,9,255],s5:[0,0xF9,0xEA],c1:[0,6,7,8,9,255],c2:[0,6,7,8,9,255],r:[0,1],e:[0,1]};
+  for(const c5 of values.c5)for(const s5 of values.s5)for(const c1 of values.c1)for(const c2 of values.c2)
     for(const r1 of values.r)for(const r2 of values.r)for(const e1 of values.e)for(const e2 of values.e){
-      const f={c5,c1,c2,r1,r2,e1,e2},m=machine();m.native(f);
+      const f={c5,s5,c1,c2,r1,r2,e1,e2},m=machine();m.native(f);
       const r=m.call('fx_native_mask');
       assert.equal(r.a,model(f),JSON.stringify(f));
       assert.equal(m.sram.readUInt16LE(NATIVE),model(f));
@@ -161,7 +163,7 @@ test('the claim mask follows counts, requests and running effects',t=>{
 
 test('every frame drops the cells of the phases it streams, and only those',t=>{
   const costs=[];
-  const cases=[{c5:1},{c5:3},{c5:7},{c1:7},{e1:1},{c2:9},{r2:1},{c5:5,e2:1},{c1:9,c2:8,c5:2}];
+  const cases=[{c5:1},{c5:3},{c5:7},{s5:0xF9},{c5:1,s5:0xF9},{c1:7},{e1:1},{c2:9},{r2:1},{c5:5,e2:1},{c1:9,c2:8,c5:2}];
   for(let phase=0;phase<5;phase++){
     for(const f of cases){
       const m=machine();
@@ -183,6 +185,8 @@ test('every frame drops the cells of the phases it streams, and only those',t=>{
       const kept=~gone|0x0040;          // the unheld entry keeps its bits
       assert.equal(m.read(PENDING),0x7FFF&kept);
       assert.equal(m.read(FAIL),0x5555&kept);
+      for(let i=0;i<15;i++)              // the game's pixels from now on
+        assert.equal(m.read(USED+i*2),(gone>>i)&1?0xFFFF:1,`entry ${i} marked, phase ${phase}, ${JSON.stringify(f)}`);
     }
     const idle=machine();idle.native({});costs.push(idle.call('fx_native_drop',phase).cycles);
   }
@@ -190,7 +194,7 @@ test('every frame drops the cells of the phases it streams, and only those',t=>{
 });
 
 test('neither FX nor UI leases allocate a claimed entry',()=>{
-  for(const [f,first] of [[{c5:1},1],[{c5:3},3],[{c5:7},7],[{c5:7,c1:7},9],[{c5:7,c1:9},11],[{c5:7,c1:9,c2:7},13],[{e1:1},0],[{c5:7,e1:1},7]]){
+  for(const [f,first] of [[{c5:1},1],[{c5:3},3],[{s5:0xF9},3],[{c5:7},7],[{c5:7,c1:7},9],[{c5:7,c1:9},11],[{c5:7,c1:9,c2:7},13],[{e1:1},0],[{c5:7,e1:1},7]]){
     const m=machine();
     m.native(f);m.word(BUDGET,1);
     const got=m.call('fx_cache_get',300);
@@ -205,4 +209,28 @@ test('neither FX nor UI leases allocate a claimed entry',()=>{
   full.word(BUDGET,1);
   assert(full.call('fx_cache_get',300).carry,'every entry is the game\'s: nothing may be allocated');
   assert(full.call('fx_overlay_cell',0x8001,1,true).carry);
+});
+
+test('a cell taken over pixels FX did not upload is drawn only once uploaded',()=>{
+  // fx_cache_get returns carry set (not drawn this frame) with the upload
+  // queued and the entry's failed-upload bit set; fx_nmi clears it once
+  // the upload lands. Own pixels (an FX cell evicted, a free entry since
+  // FX's own use) draw at once, as before.
+  const cases=[
+    ['the game streamed over it',m=>{m.native({c5:3});m.call('fx_native_drop',2);m.native({});},true],
+    ['a UI lease is evicted',m=>{for(let i=0;i<15;i++)m.word(CELL+i*2,i===0?0x8123:100+i);for(let i=0;i<15;i++)m.word(USED+i*2,i===0?3:16);},true],
+    ['its earlier upload slipped',m=>{m.word(FAIL,1);},true],
+    ['free since FX used it',m=>{m.word(USED,5);},false],
+    ['an FX cell is evicted',m=>{for(let i=0;i<15;i++)m.resident(i,100+i,i===0?3:16);},false],
+  ];
+  for(const [what,setup,foreign] of cases){
+    const m=machine();
+    setup(m);
+    m.word(BUDGET,1);
+    const got=m.call('fx_cache_get',300);
+    assert.equal(m.read(CELL),300,what);
+    assert.equal(m.read(PENDING)&1,1,`${what}: the upload is queued`);
+    assert.equal(got.carry,foreign,`${what}: ${foreign?'not drawn':'drawn'} this frame`);
+    assert.equal(m.read(FAIL)&1,foreign?1:0,what);
+  }
 });
