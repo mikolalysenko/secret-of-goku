@@ -880,18 +880,20 @@ therefore:
   then a distant body's picture for its home (5), then a text panel (6).
 
 Measured (Mesen, the `clash` pads, 2,900 frames): core's HDMA enable by line
-260 on the frames with digits, 258 otherwise, but for five frames of the
-recoil (ages 15-35, every fifth). In the recoil core's native actor
-streamer (`core_actor_cells`, the game's C1:950D) sends actor cells in
-every vblank (8 DMAs to OBJ `$1C0-$1F0`, lines 241-250) and, on every
-fifth, the hero's next cells from WRAM too (4 more to OBJ `$144-$158`,
-to line 254-255); the modules then start at 256-257, and the orbit's
-register work alone (the room checks refuse every upload) ends at line 0
-or 1 of the next frame, past the frame's HDMA start: those five frames
-lose the globe's HDMA. Main 565c6a8 does the same five times; the
-`clash` case's per-frame watch sees four of them since the distant
-bodies and fails on them (main's own case sees one, at frame 561, and
-fails too). A request to core below.
+260 on the frames with digits, 258 otherwise. While the orbit's picture
+is up (the fight, the clash, the fall, as already while it loads and in
+the second surge's cinematic) its frame stamps `!core_frame` into
+`!core_actor_hold`, so the vblank skips the game's actor cell streaming
+(`core_actor_cells`, C1:950D): nothing native is drawn there but the
+HUD, whose portrait and gauges look the same in the tests' screenshots
+either way, and the round robin resumes where it stopped. Before, in the
+clash's recoil (ages 15-35, every fifth vblank) it sent 12 DMAs of actor
+cells from line 241 to 255, the modules started at 256-257, and the
+orbit's register work alone (the room checks refused every upload) ended
+at line 0 or 1 of the next frame, past that frame's HDMA start (on the
+`ORBIT_TIMING` build; on the default build two vblanks of the `fight`
+ran late). The stopping frame does not hold it: its vblank gives the
+field its picture back.
 
 Repeated pictures (the frame missed its vblank; the fight's clock catches
 up, as the browser's does): `fight` 12 of 660 since the distant bodies
@@ -1013,9 +1015,14 @@ come from their sources. Results on the merged build:
   81, OBJ palettes 0-1 and 6-7, 4-5 but for the band entries, the text
   panel's; in the victory the ones its frame decided, the whiteout's level
   and Frieza's palette, for the frame shown or, after a lag, the next),
-  our vblank ending in the next frame, and, through write
-  callbacks, CGRAM writes and general DMA starts under HDMA on the visible
-  lines while the orbit is live; any of these fails the case. They also
+  the vblank's work ending in the next frame (the field's HDMA enable
+  written on a visible line, in any build; the `ORBIT_TIMING` build also
+  records where our own work ended), and, through write callbacks, CGRAM
+  writes and general DMA starts under HDMA on the visible lines while the
+  orbit is live; any of these fails the case. Lag frames, late vblanks
+  and dropped sprites are measured on the default build (`SNES_ROM`): the
+  `ORBIT_TIMING` build's marks cost real lines; the hand-off cases build
+  their own timing ROM for the montage's line checks. They also
   report the frames whose OAM passes the PPU's line limits (32 sprites, 34
   slivers; `W.oam`), list the frames that repeat their picture (the
   scene's frame counter unchanged; the `clash` by phase and age, a run at
@@ -1122,13 +1129,6 @@ come from their sources. Results on the merged build:
   digits) the modules have about ten lines before a late write loses the
   frame's HDMA. A vblank-time budget for modules (or an earlier enable when
   no module DMA runs past line 0) would make that margin explicit.
-- **core (actor streamer)**: while `!orbit_flags` bit 0 is set the
-  native sprites are hidden, but `core_actor_cells` still streams the
-  actors' cells: in the clash's recoil (after its 420 damage) 12 DMAs on
-  lines 241-255 every fifth vblank push the module hooks past line 261,
-  and five frames lose their HDMA (the `clash` case's late vblanks, on
-  main too). Skipping the streamer while a scene owns the picture, or
-  deferring it past a scanline, would close it.
 - **audio**: the fanfare's song upload (`01 18 44 8F`, a restart of song
   `$18`) holds the field loop about 29 frames; it falls inside the
   whiteout, so only the clock notices.

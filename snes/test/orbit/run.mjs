@@ -117,18 +117,19 @@ function watchPrelude(rom){
 // [frame, ranges] pairs.
 const badColours=watch=>(watch??[]).map((w,i)=>[i,w.split('|')[0]]).filter(([,c])=>c!=='ok'&&c!=='off');
 // The watch's other findings while the globe picture shows: our vblank work
-// ending in the next frame (core then keeps that frame's HDMA off), the
-// frames with lines whose sprites the PPU drops (over 32 sprites or 34
-// slivers): [frame, sprites, slivers, lines], and the frames whose CPU
-// wrote CGRAM or started a general DMA under HDMA on the visible lines:
-// [frame, CGRAM writes, DMA starts].
+// ending in the next frame (the ORBIT_TIMING build's own record) or the
+// field's HDMA enable written on a visible line (any build): that frame's
+// HDMA start was missed; the frames with lines whose sprites the PPU drops
+// (over 32 sprites or 34 slivers): [frame, sprites, slivers, lines], and
+// the frames whose CPU wrote CGRAM or started a general DMA under HDMA on
+// the visible lines: [frame, CGRAM writes, DMA starts].
 const watchFindings=watch=>{
   const late=[],dropped=[],writes=[];
   (watch??[]).forEach((w,i)=>{
     const[c,g,o,,v]=w.split('|');
-    const[cw,dw]=(v??'0,0').split(',').map(Number);if(cw||dw)writes.push([i,cw,dw]);
+    const[cw,dw,lw]=(v??'0,0,0').split(',').map(Number);if(cw||dw)writes.push([i,cw,dw]);
     if(c==='off')return;
-    const vline=Number(g.split(',')[7]);if(vline>0&&vline<225)late.push(i);
+    const vline=Number(g.split(',')[7]);if((vline>0&&vline<225)||lw>0)late.push(i);
     const[sp,sl,over]=o.split(',').map(Number);if(over>0)dropped.push([i,sp,sl,over]);
   });
   return {late,dropped,writes};

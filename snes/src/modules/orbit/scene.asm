@@ -60,17 +60,21 @@ orbit_field_frame:
 	JSL montage_frame
 	REP #$30
 .common
-	; while the scene loads (the picture black) or the second surge's
-	; cinematic shows, no native actor is drawn: this frame's vblank skips
-	; the game's actor cell streaming (core_actor_cells)
+	; while the scene loads (the picture black), the second surge's
+	; cinematic shows or the orbit's picture is up (the fight, the clash,
+	; the fall), no native actor is drawn: this frame's vblank skips the
+	; game's actor cell streaming (core_actor_cells; in the clash's recoil
+	; it ran to line 255 and pushed the module vblanks past line 261). Not
+	; in the stopping frame, whose vblank gives the field its picture back.
 	SEP #$20
 	LDA.l !orbit_state
 	CMP.b #!OS_LOADING
-	REP #$20
 	BEQ +
-	LDA.l !orbit_mt
-	BEQ ++
-+	LDA.l !core_frame
+	CMP.b #!OS_LIVE
+	REP #$20
+	BNE ++
++	REP #$20
+	LDA.l !core_frame
 	STA.l !core_actor_hold
 ++	JSR orbit_suppress_native
 	JSR orbit_oam_frame

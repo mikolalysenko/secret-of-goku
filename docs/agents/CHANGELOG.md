@@ -4,6 +4,26 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: no actor streaming under the orbit's picture (2026-10-21)
+
+- While the orbit's picture is up (the fight, the clash, the fall; as
+  before while it loads and through the second surge's cinematic) its
+  frame stamps `!core_actor_hold`, so the vblank skips the game's actor
+  cell streaming (C1:950D). Nothing native is drawn there but the HUD.
+  In the clash's recoil the streamer had run to line 255 every fifth
+  vblank, and the orbit's vblank then ended past line 261 (the `clash`
+  case's late vblanks on the `ORBIT_TIMING` build). The stopping frame
+  does not hold it.
+- The orbit tests now catch a late vblank on any build: the field's HDMA
+  enable written on a visible line. Lag, late vblanks and dropped sprites
+  are measured on the default build; the hand-off cases keep their own
+  timing ROM for the montage's line checks.
+- Default builds (fight / clash): `fight` 11 lagged, 0 late; `clash` 46
+  lagged (launch 6, struggle 10, recoil 1, win 29), 0 late. Before:
+  `fight` 9 lagged, 2 late vblanks and Goku's HP trailing a hit by more
+  than 8 ages (FAIL); `clash` 48 lagged. Main 565c6a8: `fight` 2,
+  `clash` 31.
+
 ## Orbit: the distant bodies, stage A (2026-10-21)
 
 - The moon, the outer planet and the distant planetoid hang behind the

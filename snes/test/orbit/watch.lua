@@ -112,8 +112,11 @@ end
 -- banks the core ($00, $80) and the orbit ($32) write I/O from: CGRAM
 -- address and data, and $420B with HDMA on (the last $420C value): a
 -- general DMA can meet an HDMA transfer there, which hangs revision-1
--- S-CPUs.
-local bad = {cgram = 0, dma = 0}
+-- S-CPUs. And the field vblank's HDMA enable ($420C, nonzero) landing on
+-- those lines: the vblank's work ran past line 261, so the frame's HDMA
+-- start was missed and its picture lost (any build; the ORBIT_TIMING
+-- build also records where our own vblank work ended).
+local bad = {cgram = 0, dma = 0, late = 0}
 local hdmaen = 0
 local function visible()
   local l = emu.getState()['ppu.scanline']
@@ -124,14 +127,17 @@ function W.install()
     local base = b * 0x10000
     emu.addMemoryCallback(function() if visible() then bad.cgram = bad.cgram + 1 end end,
       emu.callbackType.write, base + 0x2121, base + 0x2122)
-    emu.addMemoryCallback(function(a, v) hdmaen = v end, emu.callbackType.write, base + 0x420C, base + 0x420C)
+    emu.addMemoryCallback(function(a, v)
+      hdmaen = v
+      if v ~= 0 and visible() then bad.late = bad.late + 1 end
+    end, emu.callbackType.write, base + 0x420C, base + 0x420C)
     emu.addMemoryCallback(function(a, v) if v ~= 0 and hdmaen ~= 0 and visible() then bad.dma = bad.dma + 1 end end,
       emu.callbackType.write, base + 0x420B, base + 0x420B)
   end
 end
 function W.writes()
-  local s = bad.cgram .. ',' .. bad.dma
-  bad.cgram, bad.dma = 0, 0
+  local s = bad.cgram .. ',' .. bad.dma .. ',' .. bad.late
+  bad.cgram, bad.dma, bad.late = 0, 0, 0
   return s
 end
 -- The scanlines at the frame's stages (ORBIT_TIMING builds: module.asm
