@@ -49,7 +49,8 @@ idle-loop batching advances the corresponding clocks. The tool verifies
 these access timings. However, every source snapshot has MEMSEL **off**;
 the cartridge restores it each frame. Therefore both the actual browser
 (`native`, SlowROM) and a normalized run (`fast`, MEMSEL enabled before each
-frame) are measured. The latter retains the browser's native code banks;
+frame) are measured. MEMSEL-off is saved machine state, not an emulator
+clock error. The latter retains the browser's native code banks;
 it does not copy the port's FastROM call-site rewrites or other optimizations.
 The core is instruction-granular and models every NTSC line as 1,364 clocks
 (it omits the odd frame's four-clock short line); it is not a cycle-exact
@@ -58,7 +59,7 @@ replacement for Mesen. No arbitrary scalar timing adjustment is applied.
 Fresh integrated cartridge: `d80e1bfc3de26a41a1d15d9ef54e0457032e5ad81ac8b1bb7febb303c29200e3`.
 Counts are misses / 240 video frames; the denominator is omitted below.
 
-| Gameplay | Browser actual | Browser FastROM | Cartridge before |
+| Gameplay | Browser actual | Browser FastROM | Cartridge |
 | --- | ---: | ---: | ---: |
 | solo-punch | 0 | 0 | 0 |
 | solo-ki | 0 | 0 | 0 |
@@ -74,7 +75,7 @@ Counts are misses / 240 video frames; the denominator is omitted below.
 | focus-grass | 1 | 1 | 0 |
 | transform-grass | 1 | 1 | 0 |
 
-| 1,200-frame gameplay | Browser actual | Browser FastROM | Cartridge before |
+| 1,200-frame gameplay | Browser actual | Browser FastROM | Cartridge |
 | --- | ---: | ---: | ---: |
 | punch | 11 | 7 | 0 |
 | ki | 9 | 8 | 0 |
@@ -113,10 +114,61 @@ complete all 13 short, six long and six perf scenes at both speeds. Paired
 Mesen charge reproduces 16 misses and all six paired perf cases complete.
 Charge's cartridge native actor span is **80.56 mean / 144.30 peak** lines;
 movement **38.77 / 55.54**; FX **11.34 / 40.05**. The normalized charge gap
-is the remaining optimization target. `modprof` idle FX is **0.13 frame /
+remains open. `modprof` idle FX is **0.13 frame /
 0.12 NMI** lines; its combined contribution including the early palette
 probe remains about 0.3 lines. No core or shipping module changes in this
 measurement checkpoint.
+
+### Outcome and final validation
+
+Every cartridge case already meets or beats the **actual browser's** CPU
+miss count, including charging (25 → 16 short, 35 → 22 long). No production
+change is retained in this pass. The separate MEMSEL-on diagnostic still
+has **5 short / 7 long** excess charge misses; this pass does **not** close
+that stricter gap or establish zero-lag crowded gameplay.
+
+An experimental FX shortcut validated the full flame's three resident cache
+hints together and assigned their shared palette once. The existing aura
+suite passed all **2,674 assembled comparisons**; a resident flame fell
+from **1,160 to 968 CPU cycles**. However, charge stayed at **16/240 and
+22/1,200 misses**, so the experiment was discarded. Its patch, ROM and
+measurements remain private under `perf4/aura-*`. No audio behavior,
+rendering, DMA guard, core code or module source changed in the final tree.
+
+Of the 16 short charge misses, the interrupted PC was in FX nine times,
+native/core code five times, destroy once and audio once. This is where the
+deadline was crossed, not attribution of the entire overrun to that
+routine: the preceding native actor/movement spans dominate many of these
+updates. A follow-up pursuing the stricter target should profile that core
+work with its owner; this task did not authorize core edits. Further module
+optimizations remain possible, but none tested here reduced the miss count.
+
+Final checks:
+
+- Strict rebuild produces exactly the baseline SHA-256 above: shipping
+  instructions, data, end states and CPU cost are unchanged.
+- Gameplay: all **13 short and six long** cases pass behavior and hardware
+  checks. Their nonzero timing counts remain as tabulated; the existing
+  optional crowded-scene zero-miss checks are not made to pass or relaxed.
+- Perf: **six scenes pass**, with the original/cartridge counts and p90
+  lines above. Both cartridge runners and the browser now consume the
+  same `PERF_SCRIPT`, rather than maintaining two copies of its loop.
+- Emulators: **Snes9x, bsnes and bsnes-accurate pass**, including power-on,
+  ExHiROM/SRAM, play, save/load and battery reload. bsnes's five compared
+  pictures equal Mesen at the accepted frame offsets; bsnes-accurate's
+  name picture is 99.80% exact, with its other pictures 100% exact.
+- Debug: **21 FULL, two NATIVE, zero PARTIAL/FAILED** out of 23 runs,
+  plus controls and both hook-contract cases pass. The accepted differences
+  are trial's Vegeta flags/companions and Hexas capture timing, already
+  enumerated by the runner; no new allowances were added.
+- All four changed JavaScript tools pass `node --check`. The restored aura
+  implementation also passes its five Node tests / 2,674 comparisons.
+
+`modprof` sword/battle frame callbacks total **9.49 / 10.69** mean lines;
+their NMI callbacks total **1.29 / 1.30**. These are unchanged baseline
+measurements, not a claimed CPU saving. No new runtime code needs a rollback
+define. No other module change is requested; the stricter charge target is
+the remaining performance issue.
 
 Reproduce (set `MESEN` as in `snes-rom.md`):
 
@@ -128,7 +180,7 @@ node snes/test/gameplay/browser-baseline.mjs punch ki fly-ki fly-punch teleport 
 
 Private results for this pass are under `.local/snes-test/perf4/`:
 `browser-{short,long,perf}`, `baseline-{short,long}`, `paired-perf`,
-`paired-charge`, `profile`, and the build/perf/modprof logs. No recordings,
+`paired-charge`, `profile`, and the build/perf/modprof/debug/emulator logs. No recordings,
 ROMs, snapshots or generated measurements are committed.
 
 ## Native actor follow-up — October 21, 2026

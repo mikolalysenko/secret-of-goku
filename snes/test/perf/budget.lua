@@ -2,7 +2,8 @@
 -- (00:B077 field / 00:8089 world, the instruction after the frame's work;
 -- the loops may also run through their FastROM mirrors 80:B077 / 80:8089).
 -- Scanlines wrap at 262; logic starts after the NMI handler (~line 240).
--- `reached` < frames means lag (logic finished fewer times than frames ran).
+-- The ready bit at field/world NMI counts missed video frames. `reached`
+-- separately counts completed updates and can differ at window boundaries.
 local BUNDLE = BUNDLE_PATH
 local lines = {}
 local function onWait()
@@ -49,9 +50,13 @@ function test()
   local id3 = emu.addMemoryCallback(onWait, emu.callbackType.exec, 0x80B077, 0x80B077)
   local id4 = emu.addMemoryCallback(onWait, emu.callbackType.exec, 0x808089, 0x808089)
   local start = H.frame
-  for i = 1, 300 do
-    if i % 60 < 30 then H.hold('left', 1) else H.hold('right', 1) end
+  -- The browser baseline consumes this same script from gameplay/cases.mjs.
+  for buttons,n in PERF_SCRIPT:gmatch('([^,:]+):(%d+)') do
+    H.input={}
+    for b in buttons:gmatch('[^+]+') do if b~='none' then H.input[b]=true end end
+    H.wait(tonumber(n))
   end
+  H.input=nil
   emu.removeMemoryCallback(id1, emu.callbackType.exec, 0x00B077, 0x00B077)
   emu.removeMemoryCallback(id2, emu.callbackType.exec, 0x008089, 0x008089)
   emu.removeMemoryCallback(id3, emu.callbackType.exec, 0x80B077, 0x80B077)
