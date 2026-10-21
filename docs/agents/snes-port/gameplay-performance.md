@@ -36,6 +36,44 @@ transformation over cut grass) remain at zero. Complete NMI peaks at about
 **35.57** lines across the selected runs. No audio or core source changes,
 and no relaxation of the all-HDMA-off requirement for mid-frame DMA.
 
+### Remaining critical path and core handoff
+
+The final charge profile still spends **80.98 mean / 144.80 peak** lines
+in native actor construction and **39.25 / 56.18** in movement/contact.
+FX averages **11.28**, peaks at **39.43** on release, and native work on
+missed charging/release updates commonly exceeds 100 actor lines plus
+30–50 movement lines. The native instruction sample records **2,778**
+visits to the descriptor emitter at `$80:E640` and **2,043** contact checks
+at `$81:CE72–CF19` in 240 video frames. These are concrete core follow-up
+targets for removing repeated work while retaining exact actor behavior;
+the earlier excluded body-predecode/two-piece trials still apply.
+
+Final long teleport averages **74.08** actor and **37.25** movement lines.
+The remaining 15 misses include two landing-search bursts (fixture frames
+445/449: flight **114.15 / 87.34** lines); most other misses combine native
+actors, movement and occasional row streaming. Cached landing results
+across teleports would need to observe moving targets, live map edits and
+hole providers, so no such reuse was introduced. Flying ki averages
+**49.32** actor, **30.67** movement, **18.22** flight, **17.88** combat and
+**16.82** FX lines; its miss frames still combine native AI/contact bursts
+with attacks. The vblank work list does not overrun in these cases.
+Spans can include interrupts and nested work; do not sum them as independent
+CPU totals. Profiles: `final-native-charge`, `final-teleport-profile` and
+`fly-ki-profile` under `.local/snes-test/perf2/`.
+
+Core may also compile out the unused enemy queue/drain when
+`CORE_ENEMY_DEFER` is absent. Its source and all DMA/HDMA guards remain
+untouched here. Final `modprof` frame/NMI means are FX **0.20 / 0.11**, UI
+**0.33 / 0.12–0.13**, flight **0.30**, and combat's frame callback **0.87**
+(including dispatch). UI's extra idle charge check adds about 0.04 lines
+outside charging. All six final perf scenes retain their baseline lag
+counts. The strict default build is byte-identical to the measured
+`charge-query.sfc` (SHA-256
+`93d4a09b0e3f578bcde6447266510acf8f39e707e556880414053ae66f67e401`).
+Building with `COMBAT_CHARGE_DRAW_SLOW`, `UI_CHARGE_IDLE_SLOW`,
+`FLIGHT_CHARGE_STATE_SLOW` and `CORE_ENEMY_DEFER` together restores **33**
+long charge misses, matching the fresh baseline (`restored-long`).
+
 ### Read only the charging state flight needs
 
 The charge profile shows `fl_bind_charging` spending **0.82** lines on a
