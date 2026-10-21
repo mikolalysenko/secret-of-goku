@@ -16,6 +16,40 @@ teleport **15**, corridor flying ki **15**, flying punches **2**, and
 ground punches/ki **0/0**. Use these matched-build baselines below, rather
 than attributing differences from the old 26/15/10 results to this pass.
 
+### Restore native enemy decision phases
+
+The `ab393b9` experiment defers the second/third enemy's AI and animation
+by two field updates while both CPU companions are carried. Status/timers
+and per-frame movement continue, but decisions observe the world later.
+That trade-off does not help the priority flying-combat cases: with the
+quiet-radio checkpoint, native scheduling improves short flying ki
+**3 → 2**, flying punches **2 → 1**, and long corridor flying ki **15 → 13**,
+flying punches **2 → 1**. Charge and teleport counts stay **13/18** and
+**3/15** (short/long). Short ordinary flight regresses **1 → 2**; the long
+unsteered flight comparison leaves the map and is invalid, so do not use
+its count. The earlier integrated-baseline comparison independently gives
+the same flying-combat improvement.
+
+Make the flight gateway opt-in with `CORE_ENEMY_DEFER`; the existing
+`CORE_ENEMY_SYNC` override still disables it. No core source changes.
+All eight assembled scheduler tests pass, including immediate production
+decisions and the complete opt-in queue's guards/cadence. All **11 flight
+cases** pass: 289,324 classified tiles, 19,996 landing queries, 191,964
+sweeps and 79,988 footprint queries agree with the browser, plus live
+passengers, water, teleport, whip, ceilings, scenes, bosses and holes.
+All **13 short / six long** gameplay and **six perf scenes** pass with no
+hardware/rendering errors. Long flying-ki peak falls **291.55 → 250.64**
+lines; flying-punch peak rises **261.01 → 280.67** despite fewer misses.
+Teleport peak falls **299.78 → 269.93**, with its 15 misses unresolved.
+Artifacts: `native-enemy-*`, `enemy-sync-*`, `quiet-radio-sync-long` and
+`quiet-radio-fly-long` under `.local/snes-test/perf2/`.
+
+The redundant FX request-clear trial is excluded: it reduced charge
+submission pairs **824 → 738 CPU cycles** and beam submissions **419 → 364**,
+and passed 10,882 assembled comparisons, but left long charge at 18 misses.
+The private patch, ROM, unit log and run are `fx-request*` in the same
+artifact directory.
+
 ### Quiet radio during base charging
 
 An idle radio has no messages, cooldowns, pending scouter scan or window

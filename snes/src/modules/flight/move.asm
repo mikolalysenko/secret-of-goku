@@ -858,7 +858,9 @@ fl_hook_passenger:
 ; actor timers before this point and per-frame upkeep continue normally.
 fl_hook_passenger_ai:
 	SEP #$20
-if not(defined("CORE_ENEMY_SYNC"))
+; Deferring enemy decisions did not improve flying combat. Keep native
+; phases by default; the old two-update delay is an opt-in comparison.
+if defined("CORE_ENEMY_DEFER") && not(defined("CORE_ENEMY_SYNC"))
 	CPX.w #$0800
 	BEQ .enemy
 	CPX.w #$0A00

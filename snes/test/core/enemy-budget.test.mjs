@@ -2,21 +2,29 @@
 // AI/animation is an observed return stub; status is deliberately not called.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
+import {readFileSync,mkdirSync} from 'node:fs';
+import {execFileSync} from 'node:child_process';
 import vm from 'node:vm';
 import {resolve} from 'node:path';
 import {hiromToPc} from '../../tools/w65816.mjs';
 
 const root=resolve(import.meta.dirname,'../../..');
 const path=resolve(root,process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc');
-const source=readFileSync(path);
-const symbols=new Map([...readFileSync(path.replace(/\.sfc$/,'.sym'),'utf8')
-  .matchAll(/^([\dA-F]{2}):([\dA-F]{4}) (\S+)$/gm)].map(m=>[m[3],parseInt(m[1]+m[2],16)]));
+const deferred=resolve(root,process.env.ENEMY_DEFER_ROM??'.local/snes-test/enemy-budget/deferred.sfc');
+if(!process.env.ENEMY_DEFER_ROM){
+  mkdirSync(resolve(root,'.local/snes-test/enemy-budget'),{recursive:true});
+  execFileSync(process.execPath,['snes/build.mjs','--strict','--quiet',
+    `--out=${deferred}`,'-DCORE_ENEMY_DEFER=1'],{cwd:root,stdio:'pipe'});
+}
+const images=[path,deferred].map(path=>({source:readFileSync(path),
+  symbols:new Map([...readFileSync(path.replace(/\.sfc$/,'.sym'),'utf8')
+    .matchAll(/^([\dA-F]{2}):([\dA-F]{4}) (\S+)$/gm)].map(m=>[m[3],parseInt(m[1]+m[2],16)]))}));
 const context=vm.createContext({Uint8Array,Uint16Array,Math});
 vm.runInContext(readFileSync(resolve(root,'vendor/snes/cpu.js'),'utf8'),context);
 const pending=0x75EC,map=0x75F0,magic=0x75F2;
 
-function machine(){
+function machine(defer=true){
+  const {source,symbols}=images[Number(defer)];
   const rom=Buffer.from(source),ram=Buffer.alloc(0x20000),sram=Buffer.alloc(0x10000),calls=[];
   rom.set([0xC2,0x20,0x60],hiromToPc(0x80F512));
   const at=a=>(a>>>16)===0x7E?a&65535:(a>>>16)===0x7F?0x10000+(a&65535):
@@ -45,6 +53,20 @@ function machine(){
   }
   return {ram,sram,calls,run};
 }
+
+test('production keeps enemy decisions on their native phases during flight',()=>{
+  const {ram,sram,calls,run}=machine(false),expected=[];
+  for(let frame=0;frame<500;frame++){
+    const phase=frame%5;ram[0xD96C]=Math.floor(frame/7)%2?0:3;
+    if(phase===1||phase===2){
+      const actor=phase===1?0x800:0xA00;
+      expected.push({actor,phase});run('fl_hook_passenger_ai',{actor,phase});
+      assert.deepEqual(calls,expected,'native AI must finish in the submitting update');
+    }
+    run('core_enemy_work',{phase});
+    assert.equal(sram[pending],0);assert.deepEqual(calls,expected);
+  }
+});
 
 test('airborne enemy AI moves from phases 1/2 to 3/4 exactly once',()=>{
   const {sram,calls,run}=machine();
