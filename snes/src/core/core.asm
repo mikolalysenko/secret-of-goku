@@ -528,34 +528,82 @@ core_hdmaen_write:
 ; writes !core_frame to !core_actor_hold in its frame code, and that frame's
 ; vblank skips the streaming; the round robin resumes where it stopped. A
 ; stale value matches no later frame (one in 65,536 at worst). C1:950D sets
-; its own widths and A, and C0:C152 onwards relies on neither. A skipped
-; frame still runs the streamer's prologue (C1:950D-C1:952D, before its
-; phase work): DMA channels 4-7 set up for VRAM word writes and VMAIN $80.
-; The native dialogue upload later in this NMI (C0:C1F0) assumes VMAIN
-; $80, and the HUD updater (C0:C238) leaves it at $00: without the
-; prologue its tiles and map went up shifted by a byte (stray glyphs and
-; dots while a window opened over a full-screen scene).
+; its own widths and A, and C0:C152 onwards relies on neither.
+;
+; The streamer's prologue sets DMA channels 4-7 up for its VRAM DMA ($1801)
+; and VMAIN $80. Two consequences:
+; - A held frame still sets VMAIN $80. The native dialogue upload later in
+;   this NMI (C0:C1F0) assumes it, and the HUD updater (C0:C238) leaves $00:
+;   without it a window opened over a full-screen scene went up shifted by
+;   a byte (stray glyphs and dots). The channels are left alone there: the
+;   held scenes run their own HDMA on 4-6.
+; - A streamed frame keeps the HDMA channels among 4-7 ($2C bits 4-7: the
+;   scouter window's palette, the orbit fight's Mode 7 matrix, BG3 scroll
+;   and windows) as they were before the streamer. Their modules re-arm
+;   them in the module NMI, but that is skipped when the game's frame is
+;   not complete (a lag frame, a ring menu over the field), and HDMA then
+;   started from the streamer's VRAM settings: it wrote junk to VMDATA on
+;   the first lines and dropped the effect for the frame. The registers
+;   are kept on the stack around the call (no RAM: this NMI may interrupt
+;   map decoding into 7E:2000-77FF).
 core_actor_cells:
-	REP #$20
+	REP #$30
 	LDA.l !core_actor_hold
 	CMP.l !core_frame
-	BEQ .skip
+	BNE .stream
+	SEP #$20                       ; held: the streamer's VMAIN only
+	LDA.b #$80
+	STA.l $002115
+	RTL
+.stream
+	LDA.l $7E002C
+	AND.w #$00F0
+	BNE .keep
 if defined("CORE_NATIVE_NMI_SLOW")
 	JML $01950D
 else
 	JML $81950D                    ; its FastROM mirror; the RTL returns to C0:C152
 endif
-.skip
-	SEP #$10
-	PHD
-	LDA.w #$4300 : TCD
-	LDX.b #$00
-	STX.b $46 : STX.b $56 : STX.b $66 : STX.b $76
-	LDA.w #$1801
-	STA.b $40 : STA.b $50 : STA.b $60 : STA.b $70
-	LDX.b #$80
-	STX.w $2115                    ; DB as at the native call (its STX $2115)
-	PLD
+.keep
+	LDX.w #$0070                   ; channels 7..4 running HDMA: DMAP/BBAD, A1T, A1B, DASB
+	LDY.w #$0080                   ; HDMAEN bit of channel X
+.save
+	TYA
+	AND.l $7E002C
+	AND.w #$00FF
+	BEQ +
+	LDA.l $004300,X : PHA
+	LDA.l $004302,X : PHA
+	LDA.l $004304,X : PHA
+	LDA.l $004306,X : PHA
++	TXA : SEC : SBC.w #$0010 : TAX
+	TYA : LSR : TAY
+	CPX.w #$0040
+	BCS .save
+if defined("CORE_NATIVE_NMI_SLOW")
+	JSL $01950D
+else
+	JSL $81950D
+endif
+	REP #$30
+	LDX.w #$0040                   ; the same channels come back off the stack, 4..7
+	LDY.w #$0010
+.restore
+	TYA
+	AND.l $7E002C
+	AND.w #$00FF
+	BEQ .next
+	PLA                            ; DASH/DASB: the indirect bank
+	SEP #$20 : XBA : STA.l $004307,X : REP #$20
+	PLA                            ; A1B (DASL ignored)
+	SEP #$20 : STA.l $004304,X : REP #$20
+	PLA : STA.l $004302,X
+	PLA : STA.l $004300,X
+.next
+	TXA : CLC : ADC.w #$0010 : TAX
+	TYA : ASL : TAY
+	CPX.w #$0080
+	BCC .restore
 	RTL
 
 ; ---------------------------------------------------------------------------
