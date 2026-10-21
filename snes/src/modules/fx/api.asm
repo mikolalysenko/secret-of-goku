@@ -620,8 +620,10 @@ fx_kill_all:
 	STA.l !fx_flash
 	STA.l !fx_ndraw
 	JSR fx_quake_stop
+	LDA.l !fx_kickd              ; (no camera kick: !fx_kick is 0 too)
+	BEQ +
 	JSR fx_kick_stop
-	RTL
++	RTL
 
 ; End a camera kick: the next field NMI writes the plain scroll values.
 fx_kick_stop:

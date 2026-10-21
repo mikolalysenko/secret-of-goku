@@ -666,7 +666,16 @@ found by a search of the 15 cache entries when their hint misses.
   a seen bit), `fx_finish` tests only `!fx_kickd`, slot loads no longer copy
   the life and hold, and a cell's residency check reads the bitmap before
   the past-the-bitmap guard. With combat's and goku's trims, `charge` is 13
-  again and every gameplay case matches the merged base.
+  again and every gameplay case matches the merged base. A full frame with
+  nothing to draw (the orbit's cosmic montage calls `fx_kill_all` every
+  frame, which requests one) costs what it did before the impact frames:
+  `.idle` tests the regions first (none held: straight to `fx_finish`) and
+  `fx_kill_all` stops a camera kick only while `!fx_kickd` runs, so the
+  montage's tightest frame (its pullback, ending at line 225 before the hit
+  feel) lags no more. (Setting the draws' direct-page scratch only once
+  something draws would save 6 more, but a cheaper idle frame lets destroy's
+  late planner start its plant scan 55 frames earlier in `charge`, which
+  then misses one more frame: left as it was.)
 
 Measured with `snes/test/gameplay` (per-frame logic, `punch`, the first
 contact in the scene): the strike frame 233.1 lines against 232.3, the

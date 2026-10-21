@@ -149,7 +149,10 @@ endif
 	JSR fx_whiten_pass           ; struck actors first take the white palette
 	BRA .scanned
 .idle
-	JSR fx_finish                ; (nothing drawn: no spawned effect alive)
+	LDA.l !fx_regions            ; nothing held: as ever
+	BNE +
+	JMP fx_finish
++	JSR fx_finish                ; (nothing drawn: no spawned effect alive)
 	LDA.l !fx_wdue               ; drawn since the claim: idle frames as ever
 	AND.w #!FX_UNSEEN
 	BEQ +
