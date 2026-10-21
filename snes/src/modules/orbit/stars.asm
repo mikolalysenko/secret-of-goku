@@ -598,7 +598,11 @@ stars_limit_rule:
 ; heading class (32x32 cells: class 0 the cells of a chain, its chains one
 ; above another; class 1 two cells of every chain; classes 2-4 one of
 ; every chain). Only when a group's inputs change (sc_in); where its rows
-; or slivers change, the limits are made again and the lists rebuilt.
+; grow or its slivers rise (or it turns on or off), the limits are made
+; again and the lists rebuilt: a group still on keeps the rows it holds
+; while its own lie within them (looser limits need no rebuild, and the
+; edge of a ray going back and forth over a row no longer remakes them;
+; the rows go when the group turns off).
 stars_limits:
 	LDA.w !g_pull                  ; (none in the pullback: its frames have no time
 	BEQ +                          ; for the rebuilds)
@@ -617,14 +621,20 @@ stars_limits:
 	ASL
 	TAY                            ; sig offset (group * 4)
 	SEP #$20
-	LDA.w !s_tmp+0
-	CMP.w !sc_sig,Y
-	BNE .changed
+	LDA.w !s_tmp+0                 ; (still on, no heavier, within its rows:
+	BEQ +                          ; the limits it holds stay, as looser ones
+	LDA.w !sc_sig,Y                ; need no stars rebuilt)
+	BEQ .changed
+	CMP.w !s_tmp+0
+	BCC .changed
 	LDA.w !s_tmp+2
 	CMP.w !sc_sig+1,Y
-	BNE .changed
-	LDA.w !s_tmp+4
-	CMP.w !sc_sig+2,Y
+	BCC .changed
+	LDA.w !sc_sig+2,Y
+	CMP.w !s_tmp+4
+	BCS .same
+	BRA .changed
++	CMP.w !sc_sig,Y                ; (off: changed if it was on)
 	BEQ .same
 .changed
 	LDA.w !s_tmp+0 : STA.w !sc_sig,Y

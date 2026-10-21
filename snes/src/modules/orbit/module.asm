@@ -183,7 +183,7 @@ endmacro
 !sz_have    = !SB+$0C8
 !sk_have    = !SB+$080            ; 4 words: culling generation of each list
 !sb_dsig    = !SB+$088            ; 3 words: each body's rows and slivers as last noted (scline.asm sl_note; 0: not drawn)
-!sb_klim    = !SB+$09A            ; 3 words: the fewest stars each counted body's rows allow (scline.asm)
+!sb_psig    = !SB+$09A            ; 2 x 3 bytes: each beam group's slivers, top and bottom row at the last limits (scline.asm sl_hot)
 ; ($0D0-$0FF: globe.asm; $100-$7E3 window blocks; $800-$85F indirect HDMA
 ; tables, see globe.asm.)
 ; Globe (globe.asm).
@@ -413,7 +413,7 @@ assert !SB_END <= $8000, "orbit scene block overflow"
 !FS_AFTER   = !FB+$1E0             ; afterimages: 4 x 6 (x, y, age; >= 16 free)
 !sc_expo    = !FB+$1F8             ; the distant bodies (strike.asm): bits 0-2 shown (on the screen, off the globe), 8-10 known
 !sc_pend    = !FB+$1FA             ;   steps of travelX + 2 not yet in their remainders (scenery.asm)
-!sc_room    = !FB+$1FC             ;   (spare)
+!sb_cgen    = !FB+$1FC             ; the stars' last cull (scline.asm sl_culled): its limits' generation
 !sc_wkey    = !FB+$1FE             ;   the wanted pictures' key (scdraw.asm sc_wants: radius, bodies, Death Ball, phase)
 ; Maths scratch (math.asm).
 !m_t0       = !FB+$200
@@ -665,6 +665,7 @@ assert !pb_shown+2 <= !SB+$1800, "orbit scene work past $32:77FF (the frieza mod
 !bp_tile  = !SB+$DE0               ;   5 words: chain tile words
 !bp_x     = !SB+$DEA               ;   5 words: chain cell x
 !bp_y     = !SB+$DF4               ;   5 words: chain cell y
+!sb_cull  = !SB+$DFE               ; the rows the stars' last cull hid: top, bottom << 8 (scline.asm)
 !BC_SIG   = !SB+$1200              ; 2 x 8 words: the cached runs' signatures
 !BC_BYTES = !SB+$1220              ; 2 words: OAM bytes in each cached run (0: none)
 !BC_BND   = !SB+$1224              ; 2 x 12 words: run bytes after each cell index

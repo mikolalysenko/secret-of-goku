@@ -4,6 +4,35 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the stars on a beam's new rows hidden at once (2026-10-21)
+
+- When a beam group turns on, gets heavier or moves onto new rows, the
+  remake of the stars' row limits hides the stars of every list on those
+  rows (y = $E0), in the same frame, before the OAM is written. The
+  lists' rebuilds bring stars back within the new limits; in a launch
+  those take up to 20 frames, 1-2 stars a frame, which is when the rays
+  lost slivers to stale stars.
+- A cull is skipped when its rows were culled already and no list's
+  build has begun since.
+- A group still on keeps the rows it holds in the limits while its own
+  lie within them: looser limits need no rebuild, and the edge of a ray
+  going back and forth over a row no longer remakes the limits and culls
+  each time. Its rows go when it turns off.
+- The margin a distant body keeps for the bursts (10 slivers a line) now
+  holds on the beam rows it is counted on too.
+- A body no longer waits for the lists when the limits on its rows only
+  grow stricter (the cull clears those rows).
+- The limits come from a table, and a body no beam group's rows touch
+  skips the room test.
+- Per-frame probe, default build: the beams lose no slivers to stale
+  stars in the `clash` (160 before, main 5) and 184 in the `fight` (686,
+  main 692). The bodies cost the others 6 slivers in the `clash`, 22 in
+  the `fight` (bursts beside a body, no beam there), 721 in `scenery`.
+- Repeated pictures: `fight` 9 (11 before, main 2), `clash` 41 (55; main
+  34: launch 7, struggle 1, recoil 1, win 32). In the first exchange the
+  moon and the outer planet come back 80 frames into the struggle: the
+  launch's first rows stay in the limits while the rays are on.
+
 ## Orbit: the strike tests skip a repeated miss (2026-10-21)
 
 - A ray's test against the distant bodies (Goku's wave, Frieza's beam or
