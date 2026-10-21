@@ -800,6 +800,16 @@ ending_frame:
 .run
 	INC.w !s_frame
 	STZ.w !s_wqn                  ; this frame's vblank copies (wq_push)
+	; A full-screen scene hides every native actor: this frame's vblank
+	; skips the game's actor cell streaming (core_actor_cells; up to 12
+	; lines in its busiest phase, which ran one wish-flight vblank in five
+	; past line 261).
+	LDA.w !s_fullscreen
+	AND.w #$00FF
+	BEQ +
+	LDA.l !core_frame
+	STA.l !core_actor_hold
++
 	; A native map load since the scene took the screen: the loader has
 	; already set every PPU register for the new map (the overlay follows
 	; the boy; a full-screen phase loads its stage again).

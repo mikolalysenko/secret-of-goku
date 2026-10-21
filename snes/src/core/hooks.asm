@@ -270,8 +270,8 @@ if not(defined("CORE_NATIVE_NMI_SLOW"))
 %orig2($C0C14C, $C238)
 %hijack_jsl($C0C148, core_native_field_uploads, 6, core)
 endif
-; The game's actor cell streaming (C1:950D): modules_actor_hold may skip it
-; for a vblank (core_actor_cells).
+; The game's actor cell streaming (C1:950D): a frame a module marks in
+; !core_actor_hold skips it (core_actor_cells).
 %orig4($C0C14E, $01950D22)
 %hijack_jsl($C0C14E, core_actor_cells, 4, core)
 

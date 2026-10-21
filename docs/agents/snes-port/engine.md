@@ -123,8 +123,9 @@ World flight: slots 88–127 (40), always free. Rings and menus: none.
   `$7E:BE00` while `$2A` is nonzero) on channel 7. OBJ palettes are colors
   128–255; the hero uses OBJ palette 1 (5 at the waterfall, for color math).
 - Actor cells stream in NMI (`JSL $01950D` → `C1:950D`, through
-  `core_actor_cells`, which skips it when `modules_actor_hold` returns carry:
-  the ending's full-screen scenes, where it cost up to 12 lines): a 5-phase round
+  `core_actor_cells`, which skips it in a vblank whose frame a module marked by
+  writing `!core_frame` to `!core_actor_hold`: the ending's full-screen
+  scenes, where it cost up to 12 lines): a 5-phase round
   robin on `$56`, four channels (4–7, MDMAEN `$F0`) per batch, into fixed OBJ
   VRAM per actor slot (immediates `C1:95C6`–`C1:AFDF` cover `$6400`–`$7FC0`).
   The hero: `$7C00`/`$7D00` (tiles `$1C0`–`$1C7`/`$1D0`–`$1D7`), sources at
