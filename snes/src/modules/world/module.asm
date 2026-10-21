@@ -9,7 +9,7 @@
 ;   WRAM   $7E:7F00-7FFF (!RAM_WORLD)
 ;   SRAM   !PERSIST_WORLD ($31:6280, $40 bytes)
 ;   VRAM   world OBJ region A (tiles $060-$0FF, core_vram_claim owner $0D)
-;   CGRAM  OBJ palettes 5 (Goku; Flammie's) and 6 (effects) in world flight
+;   CGRAM  OBJ palettes 5 (Goku), 6 (attack effects), 7 (visible ki aura)
 ;   OAM    world slots 0-63 (Flammie's builder range), in front of the compass
 ;          and Fortress
 ;   DMA    channel 7 or 6 (whichever HDMA leaves free) in the world NMI callback

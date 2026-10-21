@@ -170,18 +170,27 @@ needs the fallback. There is no active-display DMA or PPU-memory write.
 The `aura` case compares decoded OAM/VRAM/CGRAM against the actual
 `ManaSpriteLayer.prepare()` and `drawKiAura`, on every frame, including
 cold residency, both forms, banking, charge, both transformation lengths,
-both reversion lengths and release. The first run has **504/504**
+both reversion lengths, release and forward travel/steering while focusing
+or holding a full SSJ charge. Across 1,877 video frames it has **744/744**
 browser-visible frames, zero pixel differences, misses, unsafe DMA or
-OAM overflow (at most 12 objects / 16 slivers on a line). Screenshots and
+OAM overflow (at most 15 objects / 18 slivers on a line). Screenshots and
 browser/OBJ raster pairs stay in `.local/snes-test/world/aura/`.
 
 Matched pre-change/updated idle runs measure the combined world frame
 callbacks at **9.250 → 9.243 lines**, and world NMI at **2.173 → 2.173**.
 The resident effect-atlas early-out pays for the new idle gate. Visible
-flames cost at most 14.94 frame lines and 9.11 upload lines (10.27 when
+flames cost at most 14.94 frame lines and 9.14 upload lines (10.27 when
 Goku's palette also changes). The longest whole NMI is 35.67/37 lines
-during cold loading; ordinary focus peaks at 31.54. Strict build,
-`world aura`, `controls` and `timing` pass at this checkpoint.
+during cold loading; ordinary focus peaks at 31.54.
+
+Validation (2026-10-21): strict build; full world (15 cases), flight
+(11 cases, 289,324 terrain tiles and 19,996 teleport queries), Frieza
+(18 available cases, including both flyby forms), FX (7 cases plus the
+18-scene field-focus audit), combat (37 cases), and all six perf scenes
+pass. The additional travel variants also pass. The saved pre-change ROM
+and this build both finish perf flight at **112 lines p90 / 4 lag frames**;
+the idle world callback comparison above uses the same imported flight
+preset and input. No core or other module changes are required.
 
 ### Aerial ki and the aerial Kamehameha (`ki.asm`, `aim.asm`, `fxdraw.asm`)
 
@@ -200,7 +209,7 @@ Effects are OBJ built from the cartridge's own spell cells
 impact sparks, lightning, aura arcs, beam edges and core. The wave is drawn
 as rows of 16×16 OBJ along the browser's giant-beam profile (`world_beam_f`
 table) with the edge ripple; a grown beam reuses its OAM entries and only
-turns the ripple. All effects go into the module's own slots ahead of Goku
+turns the ripple. These attack effects go into the module's own slots ahead of Goku
 (the browser's effect layer draws over Goku and over native sprites,
 `layer.behindBody` false); only the overflow uses `core_oam_add`.
 
@@ -262,7 +271,8 @@ player 2's ring loads its item colours into palettes 4-7.
 
 ## Mode 7 constraints and how they are met
 
-- **No per-pixel overlay.** Ordinary effects are OBJ (16×16 with OBJSEL `$03`), and
+- **No per-pixel overlay.** Ordinary effects are OBJ (16×16; aura cells 8×8,
+  with OBJSEL `$03`), and
   craters are Mode 7 characters written into the map (256 characters total;
   the 32 the world never uses carry the crater).
 - **The world's HDMA owns channels 0-5 and 7 and the Mode 7 matrix.** The
@@ -290,13 +300,14 @@ player 2's ring loads its item colours into palettes 4-7.
 
 | Resource | Use |
 | --- | --- |
-| Code/data `$AD:8000-$AD:C7C0` | `!CODE_WORLD` (upper half of `$AD`): about 18 KiB used, incl. effect tiles (5 KiB) and crater characters (2 KiB) |
+| Code/data `$AD:8000-$AD:D139` | `!CODE_WORLD` (upper half of `$AD`): about 20.3 KiB used, incl. effect tiles (5 KiB) and crater characters (2 KiB) |
+| Aura xdata | 96 KiB of deduplicated frame tiles (three 32 KiB blobs), 13.5 KiB of sparse OAM records |
 | WRAM `$7E:7F00-$7E:7FFF` | `!RAM_WORLD`, all `$100` bytes (map in `module.asm`); magic word at `+$FE` (cleared by `world_title_boot`, checked every frame) |
 | SRAM `!PERSIST_WORLD` (`!SRAM_LIVE+$280`, `$40`) | `+$00` flags (`PWF_FORTRESS` 1, `PWF_FINALE` 2), `+$01` crater count, `+$02` destroyed towns (bit = `world_town_maps` index), `+$04` 14 crater records × 4 |
-| VRAM | OBJ region A (`!VRAM_WORLD_OBJ_A`, tiles `$060-$0FF` of name table 0, word `$6600-$6FFF`), claimed with owner `$0D` on entering world flight: Goku's double-buffered cell (`$080`, `$084`), the miniature (`$06C`), effect tiles (the rest). Mode 7 characters `$E0-$FF` (high bytes of words `$3800-$3FFF`) and tilemap low bytes near the camera |
-| CGRAM | OBJ palette 5 (Goku) and 6 (effects), written into both world CGRAM buffers (`$7E:0600`, the flash copy `$7E:DE00`) and in vblank |
-| OAM | Slots 0-59 in world flight (effects up to slot 54, then Goku and the shadow); overflow through `core_oam_add` (slots 88-127) |
-| DMA | Vblank only: channel 7 or 6 (Goku's cell 512 B, miniature 128 B, crater characters 512 B per vblank on entry) |
+| VRAM | OBJ region A (`!VRAM_WORLD_OBJ_A`, tiles `$060-$0FF` of name table 0, word `$6600-$6FFF`), claimed with owner `$0D`: Goku's double-buffered cell (`$080`, `$084`), miniature (`$06C`), attack effects and the aura's 32 spare tiles listed above. Mode 7 characters `$E0-$FF` (high bytes of words `$3800-$3FFF`) and tilemap low bytes near the camera |
+| CGRAM | OBJ palettes 5 (Goku) and 6 (effects), in both world buffers (`$7E:0600`, `$7E:DE00`) and vblank; palette 7 (aura), only in vblank |
+| OAM | Slots 0-59: attack effects, Goku and shadow, then up to 36 small aura sprites. Attack-effect overflow uses `core_oam_add` (88-127) |
+| DMA | Vblank only, channel 7 or 6: Goku 512 B, miniature 128 B, crater characters 512 B on entry, visible aura 1,024 B + palette 32 B |
 | Ring | `D0:CA6E`/`C0:7063` hooks: the Fly icon's 128 bytes in the ring's own buffer `$7E:1900` |
 
 ## Original code patched (`patches.asm`)
@@ -403,6 +414,7 @@ states (`preset__flight`).
 | `radar` | 15 real-save quest states against the browser's target, count and text; live Fortress-to-Beast label update |
 | `map` | globe and flat-map navigation; both forms' palettes from the first visible return frame, sprite tiles, effect colours, radar and ki afterward |
 | `timing` | real NMI frame counts, complete-NMI duration, palette and sprite checks; `--repeat=5` measures 5,770 frames, `--scene=` selects another world fixture |
+| `aura` | real L / L+Y from the flight preset, cold uploads, both forms, travel/steering, transform/revert; every frame compared with the browser sprite layer, raster pairs, CPU/NMI timing, DMA safety, complete OAM scanline budgets |
 
 All 14 world cases, terrain machine-code comparisons, Fortress cutaway,
 core world/HDMA/live checks and boot pass after the map-return fix. Earlier

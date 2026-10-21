@@ -126,6 +126,8 @@ function test()
     {'charge-base',0,{{'l y',125},{'',100}}},
     {'focus-ssj',1,{{'l',165},{'',12}}},
     {'charge-ssj',1,{{'l y',95}}}, -- keep charging: release destroys the Fortress here
+    {'focus-travel',0,{{'l up',120},{'l left up',60},{'l right up',60}}},
+    {'charge-travel',1,{{'l y up',120},{'l y left up',60},{'l y right up',60}}},
     {'transform-first',0,{{'l a',185},{'',12},{'l a',4},{'',25}}},
     {'transform-repeat',0,{{'l a',140},{'',12},{'l a',4},{'',25}}},
     {'revert-api',0,{{'',24}}}, -- configure()/API uses 20; the L+A chord uses 10

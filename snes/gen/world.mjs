@@ -116,6 +116,7 @@ export async function generate({rom,repo,outDir,xdata}){
   if(fxPal.length>16)throw Error('world: effects palette overflow');
   while(fxPal.length<16)fxPal.push(0);
   // fx.bin: tile rows 6-15 of name table 0 (tiles $060-$0FF), 512 B per row.
+  if(FX.length>23)throw Error('world: effect slot 23 and row 6/7 spare cells belong to the aura');
   const fxTiles=new Uint8Array(10*16*32);
   fxPx.forEach((px,s)=>{
     const idx=indexCell(px,fxPal),t=fxTile(s)-0x60;
