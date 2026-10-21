@@ -11,11 +11,15 @@
 ; P = M16/X16, DB = $80.
 ; ===========================================================================
 ending_nmi:
-	PHB
+	SEP #$20
+	LDA.l !ending_live           ; idle: one read
+	BNE +
+	REP #$30
+	RTL
++	PHB
 	PEA $3232 : PLB : PLB
 	SEP #$20
 	LDA.l !ending_live
-	BEQ .out
 	AND.b #$02
 	BEQ .noRestore
 	JSR nmi_restore

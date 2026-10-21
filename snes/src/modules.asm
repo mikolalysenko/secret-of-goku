@@ -190,12 +190,6 @@ modules_cgram_upload:
 	JSL orbit_cgram_upload     ; the orbit's montage pictures (their colours in the game's transfer)
 +	RTL
 
-; Field NMI, before the game's actor cell streaming (core_actor_cells; M16,
-; DB = 0, D = 0, A free): carry set skips it for this vblank.
-modules_actor_hold:
-	JSL ending_actor_hold      ; a full-screen finale scene hides every native actor
-	RTL
-
 modules_combat_receive:
 if defined("COMBAT_TEST")
 	JSL combat_test_receive    ; snes/test/combat (receive cases)

@@ -100,6 +100,9 @@
 !core_vram_owner      = !CORE_SAFE+$040 ; 32 bytes: VRAM pool cell owners (core/vram.asm)
 !core_test            = !RAM_CORE_EXT+$100 ; 128 bytes: CORE_TEST mailbox (test builds only)
 !core_hdmaen          = !CORE_SAFE+$016 ; byte: HDMAEN written by the last field vblank
+!core_actor_hold      = !SRAM_WORK_ACTOR_HOLD ; word: a module whose picture hides every native
+                                    ; actor writes !core_frame here in its frame code: that
+                                    ; frame's vblank skips the game's actor cells (core_actor_cells)
 !core_oam_first       = !CORE_SAFE+$017 ; byte: $80 | first field OBJ, or 0 for normal order
 ; !RAM_CORE_EXT+$181-$1BB reserved for core.
 ; This queue survives across field frames, so native map-tile decoding
@@ -240,6 +243,8 @@ core_safe_clear:
 	BPL .loop
 	LDA.w #!CORE_SAFE_MAGIC
 	STA.l !core_safe_magic
+	LDA.w #$FFFF                   ; no frame holds the actor cells
+	STA.l !core_actor_hold
 	JSR core_enemy_reset
 	JMP core_party_reset
 
@@ -503,46 +508,38 @@ endif
 ; pointers (garbage CGRAM, matrix or scroll writes; ui.md, destroy.md), so
 ; only those stay on and the rest start again with the next vblank.
 core_hdmaen_write:
-	; Disabling channels is safe even after frame start; channels that were
-	; off at the frame start need the guard: HVBJOY bit 7 is the vblank
-	; (lines 225-261), so the next frame's HDMA start is still ahead.
-	LDA $2C
-	EOR.l !core_hdmaen
-	AND $2C
-	BEQ .same
+	; HVBJOY bit 7 is the vblank (lines 225-261): the next frame's HDMA
+	; start is still ahead, so every channel of $2C starts from its table.
 	LDA.l $004212
-	BMI .same
-	LDA $2C
-	AND.l !core_hdmaen
-	BRA .store
-.same
+	BPL .late
 	LDA $2C
 .store
 	STA.l !core_hdmaen
 	STA.l $00420C
 	RTS
+.late
+	LDA $2C
+	AND.l !core_hdmaen
+	BRA .store
 
 ; C0:C14E, the field NMI's JSL $01950D: the game streams its actors' cells
 ; into OBJ VRAM (a 5-phase round robin, up to 12 lines in a busy phase). A
 ; module whose picture hides every native actor (a full-screen set piece)
-; skips it through modules_actor_hold (carry set); the round robin resumes
-; where it stopped. A and the flags as at the call.
+; writes !core_frame to !core_actor_hold in its frame code, and that frame's
+; vblank skips the streaming; the round robin resumes where it stopped. A
+; stale value matches no later frame (one in 65,536 at worst). C1:950D sets
+; its own widths and A, and C0:C152 onwards relies on neither.
 core_actor_cells:
-	PHP
 	REP #$20
-	PHA
-	JSL modules_actor_hold
-	BCS .skip
-	PLA
-	PLP
+	LDA.l !core_actor_hold
+	CMP.l !core_frame
+	BEQ .skip
 if defined("CORE_NATIVE_NMI_SLOW")
 	JML $01950D
 else
 	JML $81950D                    ; its FastROM mirror; the RTL returns to C0:C152
 endif
 .skip
-	PLA
-	PLP
 	RTL
 
 ; ---------------------------------------------------------------------------

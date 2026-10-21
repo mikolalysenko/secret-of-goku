@@ -68,23 +68,6 @@ ending_preupload:
 ; ranges taken from s_palout (or the code-bank direct palette, group 2) and
 ; the edge colours over the direct range, in ascending order (s_cgord):
 ; carry set. Outside the finale's scenes carry clear: the game's transfer.
-; Field vblank, before the game's actor cell streaming (modules_actor_hold;
-; M16, DB = 0, D = 0): carry set while a full-screen scene hides every
-; native actor. Their cells would only spend the vblank: up to 12 lines in
-; the round robin's busiest phase, which ran the wish flight's vblank past
-; line 261 one frame in five (no HDMA start: the floor's matrix lost).
-ending_actor_hold:
-	JSR ending_owns_scene
-	BCC .no
-	LDA.l !SRAM_WORK_SCENE+!s_fullscreen-!SW
-	AND.w #$00FF
-	BEQ .no
-	SEC
-	RTL
-.no
-	CLC
-	RTL
-
 ending_cgram_upload:
 	JSR ending_owns_scene
 	BCS .ours
