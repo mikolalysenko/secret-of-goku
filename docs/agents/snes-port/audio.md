@@ -10,6 +10,14 @@ against 277 ARAM/DSP snapshots of the browser mod (`.local/snes-import/`).
 
 ## Shipping sound policy (October 21, 2026)
 
+Round six adds an opt-in `-DAUDIO_CUSTOM_SAMPLES=1` cartridge. The default
+stays byte-identical to `12b101c` (`61a0c112481616314e7dae0cdd97ffab9e49c57079c6ed64da9cebc1cda327ea`).
+It boots four BRRs and their sequences/metadata once, reserves `$4DF1-$55F0`,
+and caps each song's EDL against its actual required samples. See
+[audio-samples.md](audio-samples.md#round-six-cartridge-option) for settings,
+the native metadata-overwrite repair and validation. Listening selection is
+still provisional; enabling the option is a separate maintainer decision.
+
 Round-five resident custom-sample exploration: [sample budgets, auditions and
 proposal](audio-samples.md). The prototype is test-only; the default cartridge
 remains byte-identical to round four. It measures all 64 retail slots plus the

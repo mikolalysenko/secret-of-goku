@@ -12,17 +12,18 @@ import {checkpointDir,privateRom,cleanupRom,mainCheckout} from '../checkpoints.m
 import {createApu,loadRom,loadSong} from './apu.mjs';
 import {compareSongs} from './songs.mjs';
 import {NATIVE_IDS,effectVoices} from '../../gen/audio-resident.mjs';
+import {isCustom,nativeIds,uploadSegments} from './cartridge.mjs';
 
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const only=process.argv.slice(2).filter(a=>!a.startsWith('--'));
 const rom=process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-goku.sfc');
 const gen=resolve(repo,'dist/snes/gen/audio');
-const outRoot=resolve(repo,'.local/snes-test/audio');
+const outRoot=resolve(repo,process.env.AUDIO_TEST_OUT??'.local/snes-test/audio');
 mkdirSync(outRoot,{recursive:true});
 let ok=true;
 
 if(!only.length||only.includes('unit')){
- const u=spawnSync(process.execPath,['--test',join(here,'unit.test.mjs'),join(here,'resident.test.mjs'),join(here,'songload.test.mjs'),join(here,'samples.test.mjs')],{cwd:repo,encoding:'utf8'});
+ const u=spawnSync(process.execPath,['--test',...['unit','resident','songload','samples','custom-cartridge'].map(n=>join(here,n+'.test.mjs'))],{cwd:repo,encoding:'utf8'});
  const summary=(u.stdout||'').split('\n').filter(l=>/^ℹ (pass|fail)|^✖/.test(l)).join(' ');
  console.log(`audio unit        ${u.status===0?'pass':'FAIL'} ${summary}`);
  if(u.status!==0){ok=false;console.log((u.stdout||'').slice(-3000));}
@@ -74,16 +75,22 @@ if(!existsSync(join(cps,'waterfall.mss'))){
  const r=spawnSync(process.execPath,[join(repo,'snes/test/checkpoints.mjs')],{cwd:repo,stdio:'inherit'});
  if(r.status!==0){console.error('audio: checkpoints failed');process.exit(1);}
 }
-const songs=JSON.parse(readFileSync(join(gen,'songs.json'),'utf8'));
+const baseSongs=JSON.parse(readFileSync(join(gen,'songs.json'),'utf8')),songs=structuredClone(baseSongs);
+const cart=readFileSync(rom),custom=isCustom(cart);
+if(custom)for(const s of songs)s.echo.edl=Math.min(s.echo.edl,Math.floor((0xFA00-1-0x55F1-s.sampleBytes)/0x800));
 const native=loadRom(),songFile=s=>join(gen,`song_${s.id.toString(16)}.bin`);
-const songsLua='SONGS={'+songs.map(s=>`{id=${s.id},edl=${s.echo.edl},evol=${s.echo.evol},efb=${s.echo.efb},voices=${expectedVoices(native,s,readFileSync(songFile(s)))},file=${JSON.stringify(songFile(s))}}`).join(',')+'}';
+const songLua=list=>'SONGS={'+list.map(s=>`{id=${s.id},edl=${s.echo.edl},evol=${s.echo.evol},efb=${s.echo.efb},voices=${expectedVoices(native,s,readFileSync(songFile(s)))},file=${JSON.stringify(songFile(s))}}`).join(',')+'}';
+const songsLua=songLua(songs),pcmSongsLua=custom?songLua(baseSongs):songsLua;
 // modules whose sound flags the audio module consumes (built in?)
 const sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8');
 const label=n=>{const m=sym.match(new RegExp(`^([\\dA-F]{2}):([\\dA-F]{4}) ${n}$`,'mi'));return m?parseInt(m[1]+m[2],16):0;};
 const consumers=[`DESTROY=${/ audio_destroy_cues$/m.test(sym)}`];
-const lib=[`UPLOAD=${JSON.stringify(join(gen,'upload.bin'))}`,...ids,...consumers,songsLua,
+const upload=join(outRoot,'upload.bin'),segments=uploadSegments(cart),bytes=[];
+for(const s of segments)bytes.push(s.addr&255,s.addr>>8,s.bytes.length&255,s.bytes.length>>8,...s.bytes);
+writeFileSync(upload,Buffer.from([...bytes,0,0,0,0]));
+const lib=[`CUSTOM=${custom}\nUPLOAD=${JSON.stringify(upload)}`,...ids,...consumers,songsLua,
  `AUDIO_FRAME=${label('audio_frame')}\nAUDIO_DONE=${label('audio_frame_done')}\nAUDIO_PAUSE=${label('audio_pause')}\nAUDIO_CANCEL=${label('audio_cancel')}`,
- `NATIVE_CUES={${NATIVE_IDS.slice(1,28).map((v,i)=>`{${i+1},${v},${effectVoices(v)}}`).join(',')}}`,readFileSync(join(here,'lib.lua'),'utf8')].join('\n');
+ `NATIVE_CUES={${nativeIds(cart,NATIVE_IDS).slice(1,28).map((v,i)=>`{${i+1},${v},${effectVoices(v)}}`).join(',')}}`,readFileSync(join(here,'lib.lua'),'utf8')].join('\n');
 const tests=mesenTests;
 const summary=[];
 let pcmRom=null;
@@ -98,7 +105,8 @@ for(const [name,cp] of tests){
  const copy=privateRom(shipping(name)?rom:pcmRom,`audio-${name}`);
  const t0=Date.now();
  const pre=fromCheckpoint(name)?'':`IMPORT=${JSON.stringify(arrivalBundle)}\n`;
- const r=await runMesen({rom:copy,test:pre+lib+'\n'+readFileSync(join(here,`${name}.lua`),'utf8'),outDir:join(outRoot,name),state:cp?join(cps,`${cp}.mss`):null,timeoutMs:600000});
+ const testLib=shipping(name)?lib:lib.replace(`CUSTOM=${custom}`, 'CUSTOM=false').replace(JSON.stringify(upload),JSON.stringify(join(gen,'upload.bin'))).replace(songsLua,pcmSongsLua);
+ const r=await runMesen({rom:copy,test:pre+testLib+'\n'+readFileSync(join(here,`${name}.lua`),'utf8'),outDir:join(outRoot,name),state:cp?join(cps,`${cp}.mss`):null,timeoutMs:600000});
  cleanupRom(copy);
  const res=r.results??{};
  const fails=Object.entries(res).filter(([k,v])=>typeof v==='string'&&v.startsWith('FAIL'));

@@ -1,5 +1,63 @@
 # Resident custom samples: storage investigation and prototype
 
+## Round-six cartridge option
+
+`node snes/build.mjs --strict -DAUDIO_CUSTOM_SAMPLES=1` builds the resident
+proposal into the cartridge; omitting the define (or setting it to 0) keeps
+the default byte-identical to an independent build of `12b101c`. Both hashes
+are `61a0c112481616314e7dae0cdd97ffab9e49c57079c6ed64da9cebc1cda327ea`.
+The historical round-five measurements below remain the audition reference.
+
+Synthesis and sequence choices now live in `snes/gen/audio-custom.mjs`.
+Provisional takes are `hit:alt1,kick:alt1,impact:custom,beam:custom`;
+`AUDIO_CUSTOM_TAKES` overrides any cue. `AUDIO_CUSTOM_LEVELS` supplies dB
+relative to round five for each cue (initial implementation defaults to 0;
+cartridge loudness calibration follows). Example:
+
+```sh
+AUDIO_CUSTOM_TAKES=hit:alt1,kick:alt1,impact:custom,beam:custom \
+AUDIO_CUSTOM_LEVELS=hit:0,kick:0,impact:0,beam:0 \
+node snes/build.mjs --strict -DAUDIO_CUSTOM_SAMPLES=1
+```
+
+The existing IPL extension uploader carries a 2 KiB reserved bank, 32
+metadata bytes, and five bytes of SPC hook/trampoline patches. The bank
+contains 1,800 BRR bytes, the selected sequences, padding and a small gain
+routine. A PCALL at `$0BCA` selects the native effect gain by id, preserving
+music's separate entry at `$0BCC` and the exact `$90` gain for retail ids.
+Levels are quantized to `round($90 * 10^(dB/20))`, limited to −24…+4.9 dB.
+No sample re-encoding or post-render normalization is used for levels.
+
+The floor operand at `C3:0134` becomes `$5000`, yielding `$55F1`. Native
+compaction and the temporary accelerated receiver continue to use the cache
+addresses initialized there. The EDL hook preserves the FE token in B,
+caps every caller's preset, and leaves EVOL/EFB/FIR intact; arrangements
+also have capped values in `audio_echo_table`. Only the mod impact lookup
+becomes `$ED`; retail `$38` and both tracks of all retail effects survive.
+The new pointers are in the ROM effect block, so `C3:067E` restores them
+after a long song. All native sequences, including transfer padding, end
+below `$4800`; neither their payload nor the restore can reach the bank.
+
+**Additional real-loader finding:** despite its 16-entry song lists, retail
+sends 32 tuning/ADSR entries and 32 DIR entries. The unused half is stale
+WRAM and overwrites `$30-$33`. Opt-in operand patches at `C3:054A/056C/058E`
+halve those transfer lengths to 32/64/32 bytes. This both preserves the
+boot metadata and saves 128 bytes per song load. The RAM-only prototype
+could not expose this behavior.
+
+Old diagnostic snapshots are migrated in `H.residentEffects`: repack the
+current song's required samples above the new floor, relocate live DSP BRR
+cursors and DIR metadata, and cap its echo before installing the custom
+boot assets. Real cartridges require no such migration. Rare lines retain
+their ring at `$FA00-$FBF7`, also temporarily used by the fast song loader;
+the custom bank does not overlap either use.
+
+First implementation checkpoint: strict builds, 28 Node tests, Mesen
+`loads` (all 64 shipping slots with samples/DIR/tuning/ADSR and the resident
+bank checked after every load), `native` and `rare-boot` pass. Full suites,
+cartridge recordings and timing/level measurements follow in the validation
+checkpoint.
+
 Spoilers. Round five, based on `c1674a7`; companion to [audio.md](audio.md). The shipping build is unchanged. This investigation and its recordings live in the audio test tools, not in the cartridge generator.
 
 ## Reproduce the measurements

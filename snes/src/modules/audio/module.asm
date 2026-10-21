@@ -21,6 +21,12 @@
 
 incsrc "audio/ids.asm"
 incsrc "audio/songload.asm"
+if not(defined("AUDIO_CUSTOM_SAMPLES"))
+!AUDIO_CUSTOM_SAMPLES = 0
+endif
+if !AUDIO_CUSTOM_SAMPLES
+assert not(defined("AUDIO_PCM")), "AUDIO_CUSTOM_SAMPLES and AUDIO_PCM are separate audition builds"
+endif
 
 ; ---------------------------------------------------------------- WRAM
 !aw #= !RAM_AUDIO&$FFFF          ; absolute with DB = $7E
@@ -106,7 +112,11 @@ endif
 pushpc
 org !DATA_AUDIO
 audio_upload:
+if !AUDIO_CUSTOM_SAMPLES
+	incbin "audio/upload-custom.bin"
+else
 	incbin "audio/upload.bin"
+endif
 incsrc "audio/tables.asm"
 incsrc "audio/songs.asm"
 audio_songload_image:
@@ -114,6 +124,9 @@ audio_songload_image:
 audio_songload_vectors_data:
 	dw !AUDIO_SONGLOAD_RECEIVE,$1263,$1263,!AUDIO_SONGLOAD_COPY
 	dw $1263,$1263,$1263,$1270
+if !AUDIO_CUSTOM_SAMPLES
+incsrc "audio/custom.asm"
+endif
 audio_data_end:
 assert audio_data_end <= !DATA_AUDIO+$8000, "audio data bank overflow"
 pullpc
@@ -1611,6 +1624,34 @@ au_send_chunk:
 ; (index = p2 low nibble). Songs $3B-$3F take theirs from audio_echo_table
 ; instead; the four table reads are replaced (A8 X16, D = $1E00, $05 = song).
 audio_echo0:
+if !AUDIO_CUSTOM_SAMPLES
+	; Preserve B, the FE handshake counter, and the caller's preset index.
+	PHX
+	LDA $05
+	CMP.b #$3B
+	BCC .retail
+	CMP.b #$40
+	BCS .retail
+	JSR audio_echo_x
+	LDA.l audio_echo_table,X
+	BRA .cap
+.retail
+	LDA.l $C30708,X
+.cap
+	PHA
+	LDA.b #$00 : PHA
+	LDA $05 : PHA
+	PLX
+	PLA
+	CPX.w #$0040
+	BCS .done
+	CMP.l audio_custom_edl_caps,X
+	BCC .done
+	LDA.l audio_custom_edl_caps,X
+.done
+	PLX
+	RTL
+else
 	LDA $05
 	CMP.b #$3B
 	BCC +
@@ -1623,6 +1664,7 @@ audio_echo0:
 	LDA.l audio_echo_table+0,X
 	PLX
 	RTL
+endif
 audio_echo1:
 	LDA $05
 	CMP.b #$3B

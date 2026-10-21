@@ -8,6 +8,7 @@ import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {SDsp} from './sdsp.mjs';
 import {assemble} from '../../gen/audio-spc700.mjs';
+import {isCustom,customSegments} from './cartridge.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 
 export function loadRom(){return new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')));}
@@ -31,6 +32,7 @@ export function createApu({rom=loadRom(),extension=true}={}){
  for(const c of driverChunks(rom))apu.ram.set(c.bytes,c.addr);
  let ext=null;
  if(extension){ext=extensionSegments();for(const s of ext.segments)apu.ram.set(s.bytes,s.addr);}
+ for(const s of customSegments(rom))apu.ram.set(s.bytes,s.addr);
  apu.dspRomReadable=false;apu.spc.br[0]=0x0200;apu.spc.cyclesLeft=0;
  const h={apu,dsp:apu.dsp,ram:apu.ram,ext,cycles:0,
   cpuWrite(p,v){apu.spcReadPorts[p]=v&0xff;},
@@ -114,11 +116,15 @@ export function romEcho(rom,preset){const a=0x30708+preset*4;return {edl:rom[a]&
 // increasing addresses from $4DF1, its DIR / tuning / ADSR at entry $20+k,
 // the sequence at $1A00; then run the SPC side of command 01 (echo
 // parameters, an empty transfer) so the driver starts the song.
-export function loadSong(h,rom,{blob,instruments,echo={edl:4,evol:0x40,efb:0x1e,fir:0},song=0x3b,p2=0x0f,p3=0xff,sampleBase=0x4DF1}){
+export function loadSong(h,rom,{blob,instruments,echo={edl:4,evol:0x40,efb:0x1e,fir:0},song=0x3b,p2=0x0f,p3=0xff,sampleBase=isCustom(rom)?0x55F1:0x4DF1}){
  // The CPU loader disables echo writes before uploading/compacting samples.
  // RAM installation here is instantaneous, but the following handshake is
  // not: an old larger echo ring could otherwise erase the new sample tail.
  h.dsp.write(0x6C,h.dspReg(0x6C)|0x20);
+ if(isCustom(rom)){
+  const bytes=[...new Set(instruments)].reduce((n,id)=>n+(typeof id==='number'?romInstrument(rom,id):id).brr.length,0);
+  echo={...echo,edl:Math.min(echo.edl,Math.floor((0xFA00-1-sampleBase-bytes)/0x800))};
+ }
  let at=sampleBase;
  instruments.forEach((id,k)=>{
   const ins=typeof id==='number'?romInstrument(rom,id):id;

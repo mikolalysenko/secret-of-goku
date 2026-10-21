@@ -60,10 +60,13 @@ function test()
     check(tag..'_instruments',bad==nil,bad)
     check(tag..'_vectors',ar16(0x1420)==0x1263 and ar16(0x1426)==0x1270,'temporary vectors retained')
     check(tag..'_effect_samples',effectSampleDamage()==nil,effectSampleDamage())
+    check(tag..'_custom_bank',customDamage()==nil,customDamage())
+    if CUSTOM then check(tag..'_cache_floor',H.r16(0x7E1EF8)==0x55F1 and H.r16(0x7E1E48)==0x55F1) end
     local peak=0
     -- $1A begins with more than a second of authored rests.
     for f=1,(id==0x1A and 180 or 60) do H.wait(1);for v=0,7 do peak=math.max(peak,dsp(v*16+8)) end end
     check(tag..'_audible',peak>0,peak)
+    check(tag..'_custom_after_playback',customDamage()==nil,customDamage())
   end
   finish()
 end

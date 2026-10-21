@@ -135,21 +135,76 @@ end
 function H.residentEffects()
   local first = H.r16(0xC324A9)
   if first < 0x2F74 or first >= 0x4800 then return end
+  local custom = H.r16(0xC30134) == 0x5000
+  if custom and H.r16(0x7E1EF8) ~= 0x55F1 then H.customAudioCache() end
   -- Include shared retail tracks and their redirected pointers. This is
   -- exactly the boot effect block; song/sample/extension bytes are elsewhere.
   for i = 0, 0x1BFF do
     emu.write(0x2C00+i, H.r8(0xC32139+i), emu.memType.spcRam)
   end
-  if H.r8(0xC30106) ~= 0x5C or emu.read(0x020A, emu.memType.spcRam) ~= 0xF0 then return end
+  if H.r8(0xC30106) ~= 0x5C then return end
+  local retail = emu.read(0x020A, emu.memType.spcRam) == 0xF0
+  if not retail and not custom then return end
   local boot = H.r16(0xC30107) | (H.r8(0xC30109) << 16)
   assert(H.r8(boot+7) == 0xBF, 'audio boot upload layout changed')
   local p = (H.r16(boot+8) | (H.r8(boot+10) << 16)) - 2
   while true do
     local addr, len = H.r16(p), H.r16(p+2)
     if len == 0 then break end
-    for i = 0, len-1 do emu.write(addr+i, H.r8(p+4+i), emu.memType.spcRam) end
+    -- An already-running extension has mutable stream state. Only reload
+    -- custom immutable assets on that path, never reset a live ring's state.
+    if retail or addr == 0x4DF1 or addr == 0x1860 or addr == 0x18E0 or addr == 0x19C0 or addr == 0x0BCA or addr == 0xFFFB then
+      for i = 0, len-1 do emu.write(addr+i, H.r8(p+4+i), emu.memType.spcRam) end
+    end
     p = p + 4 + len
   end
+end
+-- Diagnostic snapshot migration only. A cartridge boots with this floor;
+-- browser/older checkpoints do not. Repack its current song's required set,
+-- relocate live DSP BRR cursors, and adopt the same computed EDL cap before
+-- installing the boot bank. No CPU instruction or gameplay frame is skipped.
+function H.customAudioCache()
+  local R = emu.memType.spcRam
+  local function r16(a) return emu.read(a,R) | (emu.read(a+1,R)<<8) end
+  local function w16(a,v) emu.write(a,v&255,R);emu.write(a+1,(v>>8)&255,R) end
+  local function r24(a) return H.r16(a)|(H.r8(a+2)<<16) end
+  local song,at,seen,moves,count=H.r8(0x7E1E05),0x55F1,{},{},0
+  for i=0,15 do H.w16(0x7E1E28+2*i,0);H.w16(0x7E1E6A+2*i,0) end
+  H.w16(0x7E1EF8,at);H.w16(0x7E1E48,at)
+  if song>=64 then return end
+  for k=0,15 do
+    local id=H.r16(0xC33F22+32*song+2*k)
+    if id~=0 then
+      local src=r24(0xC33DF9+3*(id-1));local n=H.r16(src)
+      local old=r16(0x1980+4*k);local dst=seen[id]
+      if not dst then
+        dst=at;seen[id]=dst
+        for j=0,n-1 do emu.write(dst+j,H.r8(src+2+j),R) end
+        H.w16(0x7E1E28+2*count,id);H.w16(0x7E1E48+2*count,dst);H.w16(0x7E1E6A+2*count,n)
+        at=at+n;count=count+1;H.w16(0x7E1E48+2*count,at)
+      end
+      moves[#moves+1]={old=old,finish=old+n,dst=dst}
+      w16(0x1980+4*k,dst);w16(0x1982+4*k,dst+H.r16(0xC33E5C+2*(id-1)))
+      w16(0x1840+2*k,H.r16(0xC33E9E+2*(id-1)));w16(0x18C0+2*k,H.r16(0xC33EE0+2*(id-1)))
+    end
+  end
+  local state=emu.getState();local change={}
+  local function move(key)
+    local a=state[key]
+    if a then for _,m in ipairs(moves) do if a>=m.old and a<m.finish then change[key]=m.dst+a-m.old;break end end end
+  end
+  for v=0,7 do move('spc.dsp.voices['..v..'].brrAddress') end
+  move('spc.dsp.brrNextAddress')
+  local edl=math.min(emu.read(0x7D,emu.memType.spcDspRegisters)&15,math.floor((0xFA00-1-at)/0x800))
+  assert(edl>=0,'imported audio exceeds reserved cache')
+  local length=math.max(1,edl)*0x800;local esa=0xFA00-length
+  emu.write(0x7D,edl,emu.memType.spcDspRegisters);emu.write(0x6D,esa>>8,emu.memType.spcDspRegisters)
+  H.w8(0x7E1EF0,edl);H.w16(0x7E1EF1,esa);emu.write(0xDF,edl,R)
+  change['spc.dsp.echoLength']=edl*0x800
+  change['spc.dsp.echoOffset']=state['spc.dsp.echoOffset']%length
+  change['spc.dsp.echoPointer']=esa+(state['spc.dsp.echoPointer']-(state['spc.dsp.echoRingBufferAddress']<<8))%length
+  change['spc.dsp.echoRingBufferAddress']=esa>>8
+  emu.setState(change)
 end
 function H.state() return emu.getState() end
 -- Import a bundle written by snes/tools/snesjs-export.mjs (a browser-mod
