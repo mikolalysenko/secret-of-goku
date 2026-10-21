@@ -41,6 +41,7 @@ modules_field_frame:
 	JSL goku_frame
 	JSL destroy_field_frame          ; last: its planner uses the frame time left
 	JSL fx_frame               ; after every module that draws effects: shows this frame's requests
+	JSL ui_sc_draw_frame       ; readouts lease only cells left unused by FX
 	JSL destroy_late_frame
 	JSL ending_frame          ; after the modules that draw sprites: a full-screen scene takes the whole OAM
 	JSL audio_frame                 ; last: sends what other modules requested this frame
@@ -63,7 +64,8 @@ modules_field_nmi:
 	JSL frieza_field_nmi
 	JSL vegeta_nmi
 	JSL ending_nmi
-	JSL fx_nmi                 ; keep last: programs HDMA channels 2/3 after all vblank DMA
+	JSL fx_nmi                 ; programs HDMA channels 2/3 after all vblank DMA
+	JSL ui_sc_field_nmi       ; four CPU colour bytes, after FX palettes; no DMA
 	RTL
 ; World flight frame, after the world logic (DB = $7E).
 modules_world_frame:

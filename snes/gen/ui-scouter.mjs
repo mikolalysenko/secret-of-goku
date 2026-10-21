@@ -18,7 +18,7 @@ export function scouterData({glyphs,outDir,xdata,def,rd}) {
   }
   const frieza=[false,true].map(muscular=>add(powerLevel({frieza:{status:{boss:{muscular}}}},{custom:'frieza'})));
   const cells=[];
-  function tile(img,tx,ty){const b=Buffer.alloc(32);for(let y=0;y<8;y++)for(let x=0;x<8;x++){const c=img[(ty*8+y)*16+tx*8+x];for(let p=0;p<4;p++)b[(p>>1)*16+y*2+(p&1)]|=((c>>p)&1)<<(7-x);}return b;}
+  function tile(img,tx,ty){const b=Buffer.alloc(32);for(let y=0;y<8;y++)for(let x=0;x<8;x++){const pixel=img[(ty*8+y)*16+tx*8+x],c=pixel?pixel+13:0;for(let p=0;p<4;p++)b[(p>>1)*16+y*2+(p&1)]|=((c>>p)&1)<<(7-x);}return b;}
   const cell=img=>Buffer.concat([tile(img,0,0),tile(img,1,0),tile(img,0,1),tile(img,1,1)]);
   // Seven top-clipping variants keep the radio's y<72 mask pixel-exact.
   for(const s of runs){const img=new Uint8Array(256),green=[];
@@ -35,7 +35,11 @@ export function scouterData({glyphs,outDir,xdata,def,rd}) {
     for(let y=0;y<4;y++)if(v?y>=4-cut:y<cut)img.fill(0,y*16,(y+1)*16);
     cells.push(cell(img));
   }
-  const blobs=[];for(let at=0;at<cells.length;at+=256){const name=`ui_sc_cells_${blobs.length}`;const data=Buffer.concat(cells.slice(at,at+256));xdata(name,data);blobs.push({name,at,count:data.length/128});}
+  // Every glyph/corner fits the upper eight rows. Store only those two
+  // tiles; the lower row streams from UI_ZERO_ROWS in the original ROM.
+  // Keep full cells below for the decoder/reference artifact.
+  if(cells.some(c=>c.subarray(64).some(v=>v!==0)))throw Error('scouter cell needs a nonblank lower row');
+  const blobs=[];for(let at=0;at<cells.length;at+=256){const name=`ui_sc_cells_${blobs.length}`;const data=Buffer.concat(cells.slice(at,at+256).map(c=>c.subarray(0,64)));xdata(name,data);blobs.push({name,at,count:data.length/64});}
   rd.push('ui_sc_banks:');for(const {name} of blobs)rd.push(`\tdl !XDATA_${name.toUpperCase()}`);
   def.push(`!UI_SC_CORNER = ${corner}`,`!UI_SC_CELL_COUNT = ${cells.length}`,`!UI_SC_GI = ${TRAINING_GI}`);
   rd.push('ui_sc_charge:');for(let i=0;i<charge.length;i+=12)rd.push('\tdw '+charge.slice(i,i+12).map(x=>x*10).join(','));
@@ -48,7 +52,8 @@ export function scouterData({glyphs,outDir,xdata,def,rd}) {
   // with no truncation at cell edges (the third glyph ends at x=11).
   for(let k=0;k<runs.length;k++)for(let cut=0;cut<7;cut++)for(let y=0;y<16;y++)for(let x=0;x<16;x++){
     const b=cells[k*7+cut],off=((y>>3)*2+(x>>3))*32+(y&7)*2,bit=7-(x&7);
-    const got=(b[off]>>bit&1)|(b[off+1]>>bit&1)<<1;
+    const raw=(b[off]>>bit&1)|(b[off+1]>>bit&1)<<1|(b[off+16]>>bit&1)<<2|(b[off+17]>>bit&1)<<3;
+    const got=raw?raw-13:0;
     const green=(px,py)=>py>=1&&py<=5&&px>=1&&px<=11&&((glyphs[runs[k][Math.floor((px-1)/4)]]?.[py-1]??0)&(128>>((px-1)%4)))!==0;
     let want=0;if(y>=cut){for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)if(green(x+dx,y+dy))want=1;if(green(x,y))want=2;}
     if(got!==want)throw Error(`scouter font mismatch: ${runs[k]} cut ${cut} at ${x},${y}`);

@@ -16,8 +16,6 @@ if getfilestatus("audio/ids.asm") == 0
 	incsrc "audio/ids.asm"
 endif
 
-!ui_sc      = !RAM_UI+$AE     ; word: !UISC_* bits
-!UISC_PENDING = $0001         ; a scan waits for Goku to be able to act
 !UISC_SCANS   = $FF00         ; scans so far (high byte, wraps; tests)
 
 !UIF_SCOUTER = $40            ; !ui_p_flags: switched on
@@ -137,21 +135,24 @@ ui_sc_frame:
 	BEQ .off
 	LDA.w !ui_sc&$FFFF
 	AND.w #!UISC_PENDING
-	BEQ .done
+	BEQ .start
 	JSR ui_can_attack
 	BCC .done
 	LDA.w #!UISC_PENDING
 	TRB.w !ui_sc&$FFFF
-	JMP ui_sc_scan
+	JSR ui_sc_scan
+.start
+	JMP ui_sc_start
 .off
 .done
 	RTS
 
 ; scan(): the teleport sound, one scan counted, and King Kai's joke for
 ; Goku's form (once each, saved): gold when Super Saiyan, else the OVER
-; 9000 line for the weighted gi or without it. (The Frieza joke needs his
-; actor from the Frieza module; see ui.md.)
+; 9000 line for the weighted gi or without it; Frieza takes precedence in
+; base form while his virtual actor is present.
 ui_sc_scan:
+	JSR ui_sc_leave                   ; a new scan restarts the blink
 	LDA.w !ui_sc&$FFFF
 	CLC
 	ADC.w #$0100
@@ -172,7 +173,12 @@ endif
 	LDY.w #!UI_MSG_SCOUTER_GOLD
 	BRA .joke
 .base
-	LDY.w #!UI_MSG_SCOUTER_GOKU_1     ; "It says NINETY THOUSAND"
+	JSL frieza_virtual_target
+	BCC +
+	LDA.w #!UIF_JOKE_FRIEZA
+	LDY.w #!UI_MSG_SCOUTER_FRIEZA
+	BRA .joke
++	LDY.w #!UI_MSG_SCOUTER_GOKU_1     ; "It says NINETY THOUSAND"
 if defined("STORY_Q_EQUIP_WEIGHTED")
 	LDA.w #!STORY_Q_EQUIP_WEIGHTED
 	JSR ui_story_query
@@ -203,6 +209,7 @@ endif
 ; New game / load: the switch is saved (!UIF_SCOUTER); switched on, it
 ; scans again once Goku can act (scouter.js restore: pending = enabled).
 ui_sc_load:
+	JSR ui_sc_leave
 	STZ.w !ui_sc&$FFFF
 	LDA.l !ui_p_flags
 	AND.w #!UIF_SCOUTER

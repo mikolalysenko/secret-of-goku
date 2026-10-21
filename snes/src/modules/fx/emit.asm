@@ -869,7 +869,12 @@ fx_cache_get:
 	CMP.w #$FFFE
 	BEQ .nextFree                ; region not ours
 	BCS .take                    ; $FFFF: free
-	LDA.l !fx_frame
+	BIT.w #$8000                ; UI lease: never overwrite an outstanding DMA
+	BEQ +
+	LDA.l !core_dma_count
+	BNE .nextFree
+	BRA .take                    ; completed UI leases yield before native FX
++	LDA.l !fx_frame
 	SEC
 	SBC.l !fx_cused,X
 	BEQ .nextFree                ; drawn this frame

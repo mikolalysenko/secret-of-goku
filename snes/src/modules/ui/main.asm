@@ -151,6 +151,7 @@ ui_field_nmi:
 ; is not drawn in Mode 7 (the world panel is a separate renderer).
 ui_world_frame:
 	JSR ui_ram_check
+	JSR ui_sc_leave
 	LDA.w #!UIS_IDLE                  ; (the field comes back through a full frame)
 	TRB.w !ui_state&$FFFF
 	INC.w !ui_frame&$FFFF
@@ -180,6 +181,11 @@ ui_world_nmi:
 ; Ring menus: the field loop is paused; the window hides (never over a ring).
 ui_ring_frame:
 	JSR ui_ram_check
+	LDA.w !ui_sc&$FFFF
+	BIT.w #!UISC_ACTIVE
+	BEQ +
+	JSR ui_sc_suspend
++
 	LDA.w #!UIS_IDLE
 	TRB.w !ui_state&$FFFF
 	JSR ui_status_leave
@@ -190,6 +196,7 @@ ui_ring_frame:
 ; uploads).
 ui_menu_frame:
 	JSR ui_ram_check
+	JSR ui_sc_leave
 	LDA.w #!UIS_IDLE
 	TRB.w !ui_state&$FFFF
 	JSR ui_status_frame
