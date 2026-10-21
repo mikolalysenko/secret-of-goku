@@ -11,6 +11,10 @@
 //             camera follow, cues, walking and the ring afterwards
 //   whip      whip-flight.spec.mjs / ki-world.spec.mjs whip pads (Earth Palace)
 //   ceiling   indoor-flight.spec.mjs roof exits from seven rooms
+//   flowers   Potos: flying over a flower bed into the tree beside it never
+//             leaves Goku over ground he can neither fly over nor land on
+//             (the browser's canFly/canLand per frame); he moves and lands;
+//             an embedded Goku returns to his last landing
 //   holes     the floor-hole contract (FLIGHT_TEST_HOLES provider): walking
 //             stops, flight crosses, hovering over a hole
 //   scene     scene services: custom Instant Transmission targets (vegeta's
@@ -105,6 +109,33 @@ for(const t of ['water','passengers','teleport','whip','ceiling']){
   cleanupRom(rom);
   const pass=r.code===0&&r.results?.pass===true;ok&&=pass;
   results.push({test:t,ok:pass,ms:r.ms,failures:r.results?.failures??[r.results?.error??'no results'],note:'',log:r.results?.log});
+}
+
+// Potos flower bed beside a tree (flowers.lua): every airborne frame of the
+// cartridge's path is checked with the browser's canFly/canLand on the WRAM
+// dumped after the flight
+if(want('flowers')){
+  const rom=privateRom(romSrc,'flight-flowers');
+  const outDir=join(outRoot,'flowers');
+  const r=await runMesen({rom,test:prelude()+readFileSync(join(here,'flowers.lua'),'utf8'),outDir,state:join(cps,'waterfall.mss')});
+  cleanupRom(rom);
+  const failures=[...(r.results?.failures??[r.results?.error??'no results'])];
+  let note='';
+  const path=r.results?.path;
+  if(path?.length&&existsSync(join(outDir,'wram.bin'))){
+    const {createNativeLocalFlight}=await import(pathToFileURL(resolve(repo,'engine/native-local-flight.js')).href);
+    const wram=new Uint8Array(readFileSync(join(outDir,'wram.bin')));
+    const snes={ram:wram,cart:{data:new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')))},cpu:{r:new Uint8Array(8),br:new Uint16Array(8),cyclesLeft:0,cycle(){}},frames:1,ppu:{mode:wram[0x29]&7}};
+    const h=createNativeLocalFlight(snes,{active:()=>true,phase:true});
+    const air=path.filter(f=>(f.fly||f.lift)&&f.map===131);
+    const bad=air.filter(f=>!h.canFly(f.x,f.y,f.t>>7&1)&&!h.canLand(f.x,f.y,f.t>>7&1,f.t&3));
+    h.dispose();
+    for(const k of new Set(path.map(f=>f.case)))if(!air.some(f=>f.case===k))failures.push(`case ${k}: Goku never flew`);
+    if(bad.length)failures.push(`${bad.length} airborne frames over ground Goku can neither fly over nor land on (canFly/canLand), first at ${bad[0].x},${bad[0].y} (case ${bad[0].case})`);
+    note=` ${air.length} airborne frames, all over airworthy or landable ground`;
+  }else if(!failures.length)failures.push('no path recorded');
+  const pass=r.code===0&&r.results?.pass===true&&!failures.length;ok&&=pass;
+  results.push({test:'flowers',ok:pass,ms:r.ms,failures,note:pass?note:'',log:r.results?.log});
 }
 
 // FLIGHT_TEST cartridge: posts a scene module would make (testmod.asm)

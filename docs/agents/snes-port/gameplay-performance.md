@@ -6,6 +6,33 @@ integration bugs and CPU/vblank cost. The default build now favors resident
 SNES audio and compact effects. It is substantially smoother, but crowded
 combat is not yet guaranteed to run without missed video frames.
 
+## water-flight no longer wedges — October 21, 2026
+
+Until the flower-bed flight fix
+([flight.md](flight.md#blocked-steps-over-low-obstacles-the-potos-flower-bed)),
+the `water-flight` case never flew its route, in either engine.
+- **What it measured.** Its first A+right carried Goku over the pool's edge
+  into a shaped bank cell at the waterfall (map 128, tile 40,27, code
+  `$15`). He stayed wedged there for the remaining 210 frames: at 639,442
+  on the cartridge, 638,442 in the browser. A+left+Y, A+up and A+down did
+  nothing, so the case's 0/240 measured a wedged Goku.
+- **The route it flies now.** Goku stops at 633,442, then flies left with
+  ki, up, and 170 px down over the waterfall. The cartridge ends at
+  607,612 after 269 px of travel; the browser baseline ends at 609,612
+  after 271 px.
+
+The cartridge now misses **1/240** frames: frame 156. There a new row of
+water-bank tiles enters the hero grid while Goku flies down at 6 px a
+frame. `fl_grid_fill` takes about 100 lines, about 36 of them in shore
+walks, and logic ends at line 252.9 (the previous maximum was 220.6). None
+of that frame's cost is in the new code. The per-direction shore-distance
+memo listed in flight.md would remove it.
+- Mean logic per frame falls from 133-144 to 126-132 lines, because Goku
+  no longer hovers inside a wall.
+- The browser baseline counts 0/240 before and after.
+- The other twelve cases are unchanged: charge 13, teleport 3, fly-ki 2,
+  fly 1, fly-punch 1, all others 0.
+
 ## Browser CPU baseline — October 21, 2026
 
 `browser-baseline.mjs` runs the actual browser player in isolated headless

@@ -46,7 +46,10 @@ single-cell landing takes 609 CPU cycles cold or warm, versus 1,109/653.
   steps whose swept 12×8 footprint is airworthy and which start or end where
   Goku cannot land; walls, map edges, rock caps, layer changes and event
   cells stay native. A blocked sweep gives the native collision one pixel per
-  axis per step.
+  axis per step. From a point over a low obstacle, the native test sees
+  only an axis whose one-pixel step keeps the footprint airworthy (x
+  first). Without one, the step stops as it would at a wall (see
+  [Blocked steps over low obstacles](#blocked-steps-over-low-obstacles-the-potos-flower-bed)).
 - Airborne Goku ignores stair guidance and currents (2x/3x movement codes)
   and the leader tether, and adopts the floor height under a complete
   landing. The cartridge carries CPU companions during all local flight:
@@ -58,9 +61,12 @@ single-cell landing takes 609 CPU cycles cold or warm, versus 1,109/653.
   those coordinates after landing or an ownership change. Human-controlled
   companions, menus, map loads and scripted ownership retain native handling. This
   differs from the browser's trailing companions and reduces airborne CPU
-  work. Crossings of 24 px or more also gather the party. A Goku embedded in a wall or outside the map
-  returns to the last verified landing (else the nearest landable point of a
-  ±128 px grid, in the browser's order) and the camera follows.
+  work. Crossings of 24 px or more also gather the party. A Goku embedded in
+  a wall or outside the map returns to the last verified landing (else the
+  nearest landable point of a ±128 px grid, in the browser's order) and the
+  camera follows. He also counts as embedded when his centre is over a
+  low obstacle that is solid to the native test (code 0, height 3) and his
+  footprint is not airworthy.
 - On the four opening-path maps (128-131) an airborne Goku moving out
   through a passage (within its tile on the passage axis and two tiles
   either side of it) takes the passage's door like walking through it:
@@ -105,6 +111,86 @@ passing (`snes/test/flight/charge-state.test.mjs`). All **17** flight assembly
 tests and nine live flight cases pass. All 13 short/six long gameplay
 cases pass: long charge improves **18 → 16** misses, short charge stays
 **13**, and other counts stay unchanged.
+
+### Blocked steps over low obstacles (the Potos flower bed)
+
+Reported on the cartridge: "flew over the flowers in potos and got stuck in
+a tree". The pink bed east of the inn in Potos (map 131, tiles 35-37 ×
+24-27) is a low obstacle: village flowers, BG1 placeholder 187/188 with
+BG2 flower art. A tree's base borders it at tile 38,26 (metatile 108, code
+`$17`, height 2), which flight can neither cross nor land on. These inputs
+reach that base:
+- A+right along row 26 (from 520,426), in both engines;
+- A+down-right across the bed, then right: from 552,378 on the cartridge,
+  or from 552,376 in the browser, which decides flight a frame earlier;
+- A+up-right from below the bed (556,468), in both engines.
+
+The sweep stops Goku at x = 601, and the blocked step went to the native
+test one pixel per axis. Over the bed his footprint already overlapped
+flowers, which the native test treats as solid, and it checks only his
+leading edge. That edge was in the tree base's passable top, so the native
+test moved him in, to x 602-605 at y 420-425. There the footprint was
+neither airworthy nor landable. Every later sweep failed, and every native
+step was blocked by the flowers behind him or by the tree. He hovered in
+place with no direction moving him. Pressing right from 603,420 could also
+carry his centre onto the base, at 608,420.
+
+The embedded check did not catch it. It looked only at the tile under his
+centre for a code-0, height-3 wall that is not a low obstacle. A flower
+(a low obstacle) or the base (code `$17`) never matched. The browser had
+the same bug, with the same inputs, positions and frozen directions, so
+the fix is the same in both engines (`native-local-flight.js` at `D778`
+and `settle()`, `move.asm` `.blocked`, `frame.asm` `fl_settle`):
+- **Blocked steps.** From a point over a low obstacle (canFloat), the
+  native test no longer sees the whole blocked step. It sees only an axis
+  whose one-pixel step keeps the footprint airworthy, x first. With neither
+  axis airworthy, the step stops as the native test stops it at a wall
+  (`D74F`'s `RTS` with carry set). Steps from landable ground, or from
+  inside a wall, still go to the native test whole.
+- **Recovery.** Goku also counts as embedded when his centre is over a
+  low obstacle that is solid to the native test (code 0, height 3) and his
+  footprint is not airworthy. He returns to his last verified landing. With
+  the first rule this is a safety net: only a displacement outside flight
+  can still leave him there.
+
+Now he stops at the tree's edge (x = 601, over the flowers), where up, down
+and left move him, and flying off the bed lands him.
+
+A Mesen sweep covered every low-obstacle cell of Potos (layer 0). Each cell
+was approached from the 8 directions at 40 and 24 px: 604 flights of 30
+frames of A+direction, then 20 frames released, then each direction for
+16 frames from the same state. The browser ran the same flights.
+- **Before the fix.** 5 flights ended stuck, in both engines, all at that
+  base: 604,424 and 605,423. 9 (browser) and 10 (cartridge) flights entered
+  a point neither airworthy nor landable from over the flowers, all beside
+  that tree.
+- **After the fix.** No flight ends stuck or enters such a point in either
+  engine. 11 (browser) and 12 (cartridge) flights end elsewhere than before.
+  All are at that tree except one pair, which ends 1 px away at the flower
+  row by tile 30,36. There the native test now gets only the x step, and
+  its slide turns that into a 1 px step up.
+- **Agreement.** The cartridge's and the browser's end states agree as
+  before: 452 and then 453 of 604 identical. The rest is the one-frame
+  decision offset.
+
+The same bug reached other low obstacles beside shaped cells:
+- **Waterfall (map 128), the first field.** Flying right over the pool's
+  edge wedged Goku in a shaped bank cell (tile 40,27, code `$15`) at
+  639,442. The gameplay suite's `water-flight` case did exactly that in
+  both engines and measured a wedged Goku. With the fix it flies its route
+  ([gameplay-performance.md](gameplay-performance.md#water-flight-no-longer-wedges--october-21-2026)).
+- **Haunted Forest (map 28), vines.** The same sweep (899 flights, warp to
+  tile 14,22) left Goku stuck in 31 flights on the original cartridge, at
+  about 15 points beside the vines. With the fix none are stuck, and 48
+  flights end elsewhere, mostly where he used to wedge.
+
+About 60 flights in both engines, before and after the fix, still pass
+through points partly over a tree base, after a native step from landable
+ground. Examples are the tree row south of the inn (y = 700) and the
+forest edge east of the bed (around 620,380). Released there, Goku keeps
+hovering, because he cannot land. His centre is on ground the native test
+accepts, though, so he can step away natively and land; the sweep's walk
+check found none stuck.
 
 ### Whip pads (native-gap-flight.js)
 
@@ -371,7 +457,7 @@ calls combat's Saiyan recoil (`combat_recoil_vector`) first, through
 
 | Resource | Use |
 | --- | --- |
-| Code `$A3:8000-…` | `!CODE_FLIGHT` (18.7 KiB used, to `$A3:CAA1`; bindings to other modules at `$A3:F000-F0DD`) |
+| Code `$A3:8000-…` | `!CODE_FLIGHT` (20.1 KiB used, to `$A3:D075`; bindings to other modules at `$A3:F000-F0DD`) |
 | Data `$E3:0000-…` | `!DATA_FLIGHT` (9.3 KiB, to `$E3:254F`: bitsets, map flags/extents, exits, routes, recovery order) |
 | WRAM `$7E:D900-D97F` | `!RAM_FLIGHT`, all $80 bytes (map in `module.asm`) |
 | SRAM `$33:7800-7BFF` | `!SRAM_WORK_FLIGHT`: tile cache, flood fill, anchor/crossing, hero grid, sweep/hero memos, Instant Transmission, camera follow, ceiling escape (`$7BF0`), Goku request ownership (`$7B3E`), test mailbox (initialised on the first field frame after title entry: `!fl_magic`); the roof-colour search borrows the tile cache once per escape |
@@ -488,7 +574,7 @@ earlier one.
 
 ## Tests
 
-`node snes/test/flight/run.mjs [classify|landing|water|teleport|whip|ceiling|scene|vegeta|holes]`
+`node snes/test/flight/run.mjs [classify|landing|water|teleport|whip|ceiling|flowers|scene|vegeta|holes]`
 (also via `run-all.mjs`):
 
 - `classify`: for 26 imported scenes (towns, woodland, Gaia's Navel caves,
@@ -572,6 +658,22 @@ earlier one.
   provider is a hole rectangle at `$33:7A96`): walking stops before the
   hole, flight crosses it, Goku released over it keeps hovering, lands
   when it closes and walks on.
+- `flowers`: the Potos flower bed beside a tree, on the production
+  cartridge
+  ([Blocked steps over low obstacles](#blocked-steps-over-low-obstacles-the-potos-flower-bed)).
+  It uses two door-warp approaches: A+right along row 26 from tile 32,26,
+  and A+down-right across the bed from 34,23, then right.
+  - Every airborne frame must be airworthy or landable, by the browser's
+    `canFly`/`canLand` on the WRAM dumped after the flight.
+  - From where Goku ends, some direction moves him, and flying left off
+    the bed he lands.
+  - Placed at 604,424 (centre over the flowers, footprint in the tree
+    base), he returns to his last landing.
+
+  Before the fix both approaches left him at 604,424 with every direction
+  frozen. The browser's `flight-regressions.spec.mjs` replays the same
+  approaches; on the original browser code the first one wedges him the
+  same way.
 - `ceiling`: `indoor-flight.spec.mjs` from seven rooms entered through
   their real doors (Water Palace 137/139, Potos houses 257/259, Gaia's
   Navel 293, Matango inn 282, Gold City house 125): L+R starts the escape,
