@@ -4,6 +4,41 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: a real-hardware probe, HDMA channels 4-7 across the actor streamer (2026-10-21)
+
+- The full suite now also runs under a real-hardware probe (an
+  `SNES_LUA_PRELUDE` beside the extended-data probe). It logs three
+  things emulators forgive:
+  - CPU writes to VRAM or OAM on lines 0-224 with forced blank off;
+  - general DMA started on those lines while HDMA is enabled (the
+    revision-1 S-CPU hang);
+  - general DMA into PPU memory on those lines.
+- Its first run found one real bug: core's HDMA channels 4-7 (3e71919,
+  7887104).
+  - The native actor streamer (C1:950D) programs DMA channels 4-7 for VRAM
+    in every streamed vblank. Modules that run HDMA there re-arm their
+    channels in the module NMI (the scouter window on 5; the orbit fight's
+    Mode 7 matrix, BG3 scroll and windows on 4-6).
+  - The module NMI is skipped when the game's frame is incomplete (a lag
+    frame, a ring menu opened over the field). HDMA then started from the
+    streamer's settings: junk VMDATA writes on lines 0-6 and the effect lost
+    for the frame.
+  - In exactly those vblanks `core_actor_cells` now keeps the HDMA-enabled
+    channels among 4-7 on the stack around the streamer (DMAP/BBAD, A1T,
+    A1B, DASB). Other vblanks are unchanged.
+  - Held frames now set only VMAIN $80. 7cdb1b8 had also rewritten channels
+    4-7 there, where the endings run their own HDMA.
+- What the probe still reports:
+  - the original game's own VRAM DMA at boot (C0:25F6, byte-identical to
+    the retail ROM, line ~153 with the screen on);
+  - the core `hdmaen` test, which overruns its vblanks on purpose.
+- A sandship debug preset once ended on the wrong map in a loaded full run.
+  It passes alone, in a full debug run, and in 24 repeats from Mesen's
+  random power-on RAM.
+- Validation on 7887104 under both probes: all 20 suites pass, debug on
+  its rerun. Gameplay misses per 240 frames are unchanged: charge 12,
+  teleport 3, flying ki 2, flight 1, flying punches 1, the rest 0.
+
 ## Orbit: the boss bursts (2026-10-21)
 
 - The victory's twelve gold bursts with white hearts flare around Frieza
