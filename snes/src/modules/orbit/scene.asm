@@ -841,7 +841,10 @@ orbit_oam_frame:
 	BEQ +
 	JSL montage_oam                ; (a montage picture: its sprites)
 	JMP .close
-+	LDA.w !od_on
++	LDA.w #$FFFF                   ; (no aura unless the fight's drawing
+	STA.w !au_want                 ; wants one this frame)
+	STA.w !au_want+2
+	LDA.w !od_on
 	BEQ +
 	JSR death_draw
 	BRA ++

@@ -4,6 +4,18 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: ki auras (2026-10-21)
+
+- Goku's gold aura while he charges the wave or focuses, Frieza's pink one
+  while he warns of a beam, on the even frames of the battle's clock as
+  the browser draws them; in the finale Frieza's while he gathers and
+  charges and Goku's while he charges. Each picture is the browser's own
+  `drawKiAura` flame (gold levels 1-8, pink at full power, 12 phases), sent
+  into a free beam slot through the beam pictures' vblank queue. Frieza's
+  aura through his struggle surges waits for a free slot.
+- Extended data for the orbit grows by 54 KiB (2,718.2 of 2,944 KiB in
+  all).
+
 ## Orbit: the stars and the laser under the PPU's line limit (2026-10-21)
 
 - While beams show, the stars under their cells are limited per row of 8

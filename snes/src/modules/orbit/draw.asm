@@ -183,6 +183,7 @@ fight_draw:
 	BEQ +
 	JMP fc_draw                    ; the finale's own picture (fdraw.asm)
 +	JSR fd_beam_wants
+	JSR aura_wants
 	JSR fd_hits
 	JSR fd_warning
 	JSR fd_boss_shots
@@ -190,7 +191,11 @@ fight_draw:
 	JSR fd_wave
 	JSR fd_charge
 	JSR fd_frieza
+	LDA.w !f_age                   ; (Frieza's aura behind him, in front of Goku)
+	JSR aura_draw_frieza
 	JSR fd_goku
+	LDA.w !f_age
+	JSR aura_draw_goku
 	JMP fd_ricochets
 
 ; o.hits: fx.burst (three Exploder bursts four frames apart) and, for three
