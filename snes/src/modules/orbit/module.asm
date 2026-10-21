@@ -669,7 +669,17 @@ assert !pb_shown+2 <= !SB+$1800, "orbit scene work past $32:77FF (the frieza mod
 !BC_BYTES = !SB+$1220              ; 2 words: OAM bytes in each cached run (0: none)
 !BC_BND   = !SB+$1224              ; 2 x 12 words: run bytes after each cell index
 !BC_HI    = !SB+$1260              ; 2 x 16 bytes: the high-table bytes
+!BC_PREP  = !SB+$1280              ; 2 x 64 bytes: each group's chains as last prepared (beamrun.asm): kept, chains * 2, the step, 5 tile words, 5 x and 5 y less the origin
+!bk_reused = !BC_PREP+40           ; (-DBEAM_PREP_CHECK: the run took the kept chains,
+!bk_force  = !BC_PREP+42           ;   the next build prepares afresh, the first run's sums,
+!bk_sum    = !BC_PREP+44           ;   the runs compared and those that differ, scratch;
+!bk_xor    = !BC_PREP+46           ;   group 0's block has 26 bytes spare after its 38)
+!bk_checks = !BC_PREP+48
+!bk_diff   = !BC_PREP+50
+!bk_s      = !BC_PREP+52
+!bk_x      = !BC_PREP+54
 !BC_OAM   = !SB+$1300              ; 2 x 256 bytes: the entries (60 at most)
+assert !BC_PREP+128 <= !BC_OAM, "the beam runs' kept chains run into their entries"
 !t_want = !SB+$DB0                 ; text panel wanted (0: none, !OTXT_*)
 !t_have = !SB+$DB2                 ; text panel in BG3 now
 
@@ -898,6 +908,7 @@ org !CODE_ORBIT3
 orbit_code3_start:
 incsrc "strike.asm"
 incsrc "scline.asm"
+incsrc "beamrun.asm"
 orbit_code3_end:
 assert orbit_code3_end <= !CODE_ORBIT3+$4000, "orbit third code area overflow"
 pullpc

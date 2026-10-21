@@ -287,7 +287,16 @@ positions do not depend on the radius, so each group keeps its full-length
 run of OAM entries (cell index by cell index) and a frame copies the prefix
 for the beam's length (Frieza's beam grows 30 px a frame); the run is
 rebuilt only when origin, heading, chain count, palette or the slots holding
-pictures change. Colours: OBJ palette 4 entries 2-3 (blue: Goku), palette 5
+pictures change. A rebuild with the same key, chains, flips, palette and
+slots (only the origin, the length or the band layers' line moved: in the
+clash Frieza's ray moves 2 px every step of the struggle) takes its chains
+as last prepared (`beamrun.asm`, the third code area: their tile words and
+cell 0's place less the origin) instead of preparing each afresh: 2.5
+lines instead of 10.2 for the chains, 336 of the `clash` test's 426
+builds, a build 13.0 lines on average instead of 17.5. The check build
+(`-DBEAM_PREP_CHECK`) builds every such run again from chains prepared
+afresh and compares the two (their bytes, lengths per cell index, entries
+and high-table bytes): all 310 equal in the `clash`. Colours: OBJ palette 4 entries 2-3 (blue: Goku), palette 5
 entries 1-3 (pink: Frieza's beam, or the laser's two sides and white core),
 rewritten every vblank with the band's colour frame (`(age >> 2) & 1`).
 Differences: no flare over the first 24 px (the origin's charge orb covers
@@ -492,7 +501,7 @@ entries (Mesen, the tests' pads, the default build):
 
 | Run | The bodies cost the others (Stage A) | Held back (hides) |
 | --- | --- | --- |
-| `fight` | 34 slivers on 34 lines of 10 frames, bursts beside a body (11 of those lines with a beam on them; 18-34 slivers as the frames' timing varies) (392) | the outer planet 27 frames (1), the planetoid 72 (2) |
+| `fight` | 31 slivers on 31 lines of 10 frames, bursts beside a body (11 of those lines with a beam on them; 18-34 slivers as the frames' timing varies) (392) | the outer planet 27 frames (1), the planetoid 70 (2) |
 | `clash` | 6 gold slivers on 3 lines of one frame (1,062) | the planetoid 1,282 (2), the moon 188 (3), the outer planet 236 (3) |
 | `scenery` | 721 slivers on 234 lines of 30 frames, where two bodies shatter side by side: bursts 596, ki 97, Frieza 28 (715) | none |
 
@@ -992,9 +1001,9 @@ are untouched).
 
 | Resource | Use |
 | --- | --- |
-| Code `$A7:8000-FAE5` | `!CODE_ORBIT`: 30.7 KiB of 31 KiB (the pullback in `pull.asm`, the distant bodies' drawing in `scdraw.asm`; the `ORBIT_TIMING` build's marks end it at `$FB3D`); bindings at `$A7:FC00-FD6E` |
+| Code `$A7:8000-FAF8` | `!CODE_ORBIT`: 30.7 KiB of 31 KiB (the pullback in `pull.asm`, the distant bodies' drawing in `scdraw.asm`; the `ORBIT_TIMING` build's marks end it at `$FB50`); bindings at `$A7:FC00-FD6E` |
 | Code `$A1:C000-FD99` | the second code area (`!CODE_QUARTER_GOKU`, noted in `core/layout.asm`): the cosmic montage and its tables, sprite lists, the pullback's preload, the distant bodies' projection (`scenery.asm`) (15.4 KiB of 16) |
-| Code `$AB:C000-D4B7` | the third code area (`!CODE_QUARTER_MISC`, noted in `core/layout.asm`): the distant bodies' strikes (`strike.asm`) and their share of the sprite lines, the stars' cull (`scline.asm`) (5.2 KiB of 16) |
+| Code `$AB:C000-D5A2` | the third code area (`!CODE_QUARTER_MISC`, noted in `core/layout.asm`): the distant bodies' strikes (`strike.asm`) and their share of the sprite lines, the stars' cull (`scline.asm`), the beam runs' kept chains (`beamrun.asm`) (5.4 KiB of 16) |
 | Data `$E7:0000-76E1` | stars, asin rows, chord scales, rim tables, palettes (and the victory's: Frieza's death colours, the whiteout's backdrop and band colours), star tiles, heading/step tables, the auras' levels, text maps, finale and fall tables, the descent's indexes, the window blobs' addresses (29.7 KiB of 32 KiB) |
 | ROM `$F6:0000-7FFF` | Mode 7 globe VRAM image (32 KiB) |
 | ROM `$F7:0000-F14E` | fight line tables (41 KiB), resident effect cells, Death Ball frames, text tiles, band tiles (60 KiB of 64) |

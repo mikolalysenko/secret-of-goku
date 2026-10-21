@@ -4,6 +4,27 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: a beam run built again keeps its chains (2026-10-21)
+
+- A beam group's cached OAM run is rebuilt whenever its origin moves. In
+  the clash Frieza's ray moves 2 px every step of the launch and the
+  struggle, and each rebuild prepared every chain afresh (its slot's
+  picture, its tile word, cell 0's place: about 1.7 lines a chain) before
+  placing the cells.
+- A rebuild whose key, chains, flips, palette and slots with a picture
+  are the cached run's now takes its chains as last prepared
+  (`beamrun.asm`, kept in `BC_PREP` at `$32:7280`): their tile words and
+  cell 0's place less the origin, and the step.
+- `clash` test: 336 of its 426 builds take them, 2.5 lines instead of
+  10.2; a build costs 13.0 lines on average instead of 17.5.
+- The check build (`-DBEAM_PREP_CHECK`) builds every such run a second
+  time from chains prepared afresh and compares the two runs (bytes,
+  lengths per cell index, entries, high-table bytes): all 310 equal in the
+  `clash`; the `fight` takes none (its rebuilds add slots or chains).
+- Repeated pictures unchanged: `fight` 9, `clash` 41 (the launches 8, the
+  struggle none; the launches' frames turn on the limits and the culls,
+  which this leaves alone).
+
 ## Orbit: the strike tests cost less (2026-10-21)
 
 - A ray's vector, the sizes of its components and its box (a 360 px
