@@ -207,6 +207,7 @@ endmacro
 !g_bld_cx = !SB+$0F0              ; its centre column
 !g_bld_a  = !SB+$0F2              ; next row (0..R)
 !g_bld_n  = !SB+$0F4              ; rows per frame
+!sc_pgen  = !SB+$0F6              ; the distant bodies' places and the camera they show on: bumped at each change (scenery.asm; strike.asm's misses)
 !ORBIT_DEADLINE = 196             ; spare-time work stops at this scanline
 
 ; Window blocks (4 bytes per row, rows -R..R, R <= 108) and the empty record.
@@ -479,7 +480,10 @@ assert !gb_winb+868 <= !sc_n, "the bodies' projection runs into the window block
 !sc_dn = !d_t2                     ; 32 bits
 !sc_t  = !d_t4                     ; 8 bytes
 ; The strikes' (in the fight's tick, only outside the clash): the finale's
-; drawing, mix and logic scratch, all idle until the clash begins.
+; drawing, mix and logic scratch, all idle until the clash begins; its
+; clocks and starting places (FN+$04-$17, written by finale_begin) hold
+; the last miss of Goku's ray and of Frieza's (sk_miss, after the finale's
+; block).
 !sc_own   = !fn_d+0                ; owner (0 Goku, 1 Frieza, 2 countered), bit 15 a beam
 !sc_w     = !fn_d+2                ; the line's width
 !sc_ray   = !fn_d+4                ; nonzero: a ray (else a step)
@@ -723,6 +727,8 @@ assert !pb_shown+2 <= !SB+$1800, "orbit scene work past $32:77FF (the frieza mod
 !od_cam   = !FN+$96                ;   the camera at the fatal hit (x, y, r, longitude, latitude)
 !FN_END   = !FN+$A0
 assert !FN_END <= !SB+$15A0, "orbit finale block overflow"
+!sk_miss  = !FN+$04                ; the strikes' last misses (strike.asm): Goku's ray, Frieza's (5 words each: start x, y, length | heading << 12, width | shattered << 8 | owner << 12, sc_pgen)
+assert !sk_miss+20 <= !fn_cy0, "the strikes' misses run past the clash's starting places"
 
 ; The band layers (bands.asm): two window tables (lines 0-105, 4 bytes a
 ; line: W1 left/right, W2 left/right), the BG1 scroll split, state.

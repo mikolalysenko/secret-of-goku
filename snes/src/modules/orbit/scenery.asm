@@ -215,6 +215,7 @@ sc_update:
 +	RTS
 .cam
 	STZ.w !sc_expo                 ; (the camera moved: where each body shows, unknown)
+	INC.w !sc_pgen                 ; (the strikes' misses with it: strike.asm)
 .whole
 	LDA.w !cam_tdx : TAX : SEC : SBC.w !sc_ax : STA.w !sc_dtx : STX.w !sc_ax
 	LDA.w !cam_tdy : TAX : SEC : SBC.w !sc_ay : STA.w !sc_dty : STX.w !sc_ay
@@ -597,8 +598,10 @@ sc_step_down:
 	LDA.w !sc_n+2,Y
 	RTS
 
-; Body sc_kb moved a pixel: where it shows is unknown (strike.asm).
+; Body sc_kb moved a pixel: where it shows is unknown (strike.asm), and
+; so is every ray's last miss.
 sc_unknown:
+	INC.w !sc_pgen
 	LDX.w !sc_kb
 	LDA.l .known,X
 	TRB.w !sc_expo
@@ -631,6 +634,7 @@ sc_copy:
 
 ; The radii for the camera's radius (the browser's own: orbit_body_r).
 sc_radii:
+	INC.w !sc_pgen
 	LDX.w #(!OSC_N-1)*2
 -	TXA
 	XBA : LSR                      ; body * 256

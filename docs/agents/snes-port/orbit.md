@@ -394,7 +394,14 @@ On the cartridge:
   `floor(R |v|)` table for the diagonal headings), then where the body
   shows (cached per body in `sc_expo` until the camera moves). Frieza's
   shots are tested after the ricochets, on his last step's ages and
-  places, as `tickOrbit` does.
+  places, as `tickOrbit` does. A ray's test (Goku's wave, Frieza's beam
+  or laser) is skipped while it repeats its kind's last miss: the same
+  start, heading, length and width, the same shattered bodies, and no
+  place or camera moved since (`sc_pgen`, bumped by the projection at
+  every pixel a place moves, every radius and every camera move; the
+  misses in `sk_miss`, the clash's clocks there idle in the fight); and a
+  ray still growing (Frieza's beam, 30 a step to 360) boxes only the
+  length it has, so a body ahead of its head is not tested.
 - **Pictures** (`orbit-scenery.mjs`, extended data `orbit_bodies`, 13
   KiB): each body at every radius the fight and the clash show (moon
   11-16, outer planet 9-15, planetoid 7-13), 32x32 with the centre at (16,
@@ -954,7 +961,7 @@ are untouched).
 
 | Range | Use |
 | --- | --- |
-| `$6000-$60FF` | camera, globe and star state (with the distant bodies' applied camera y and travel, their counted, blocked and moved bits, the rows the limits count and as last noted, the fewest stars their rows allow), the shown HDMA set and its band lines |
+| `$6000-$60FF` | camera, globe and star state (with the distant bodies' applied camera y and travel, their counted, blocked and moved bits, the rows the limits count and as last noted, the fewest stars their rows allow; the places' generation, `$60F6`), the shown HDMA set and its band lines |
 | `$6100-$67E3` | two globe window blocks (868 bytes each); in the cosmic montage a shot's state and HDMA tables, in its pullback the Death Ball buffers' state |
 | `$67E4-$67FF` | the distant bodies' projection: `N_x`, `N_y` per body (32 bits each), the camera's radius and x it has applied |
 | `$6800-$686F` | two indirect HDMA table sets (M7A, M7D, windows), the first set's BGMODE table |
@@ -964,7 +971,7 @@ are untouched).
 | `$6E00-$6FFF` | scratch, band window table A, band state |
 | `$7000-$71FF` | generated beam picture buffer |
 | `$7200-$74FF` | cached beam OAM runs |
-| `$7500-$757F` | finale state |
+| `$7500-$757F` | finale state (in the fight, idle: `$7504-$7517` hold the strike tests' last misses) |
 | `$75A0-$77FF` | band window table B, the bodies' rows cache, scroll and colour-math HDMA tables, the bodies' pending travel steps, picture queue, rebuild waits, OBJ palettes 4-5, vblank flags, the descent's and the pullback's globe state (the published rows' banks, each indirect set's banks, its frame, the stars' culling bank, the pullback's flag and last Mode 7 line), the pullback's Death Ball wanted and shown |
 | `$7800-$7FFF` | (the frieza module's fight block and the deck's hole bitmap: untouched) |
 
@@ -973,8 +980,8 @@ are untouched).
 | Resource | Use |
 | --- | --- |
 | Code `$A7:8000-FAD7` | `!CODE_ORBIT`: 30.7 KiB of 31 KiB (the pullback in `pull.asm`, the distant bodies' drawing in `scdraw.asm`; the `ORBIT_TIMING` build's marks end it at `$FB2F`); bindings at `$A7:FC00-FD6E` |
-| Code `$A1:C000-FD16` | the second code area (`!CODE_QUARTER_GOKU`, noted in `core/layout.asm`): the cosmic montage and its tables, sprite lists, the pullback's preload, the distant bodies' projection (`scenery.asm`) (15.3 KiB of 16) |
-| Code `$AB:C000-CFB2` | the third code area (`!CODE_QUARTER_MISC`, noted in `core/layout.asm`): the distant bodies' strikes (`strike.asm`) and their share of the sprite lines (`scline.asm`) (3.9 KiB of 16) |
+| Code `$A1:C000-FD99` | the second code area (`!CODE_QUARTER_GOKU`, noted in `core/layout.asm`): the cosmic montage and its tables, sprite lists, the pullback's preload, the distant bodies' projection (`scenery.asm`) (15.4 KiB of 16) |
+| Code `$AB:C000-D0C2` | the third code area (`!CODE_QUARTER_MISC`, noted in `core/layout.asm`): the distant bodies' strikes (`strike.asm`) and their share of the sprite lines (`scline.asm`) (4.2 KiB of 16) |
 | Data `$E7:0000-76E1` | stars, asin rows, chord scales, rim tables, palettes (and the victory's: Frieza's death colours, the whiteout's backdrop and band colours), star tiles, heading/step tables, the auras' levels, text maps, finale and fall tables, the descent's indexes, the window blobs' addresses (29.7 KiB of 32 KiB) |
 | ROM `$F6:0000-7FFF` | Mode 7 globe VRAM image (32 KiB) |
 | ROM `$F7:0000-F14E` | fight line tables (41 KiB), resident effect cells, Death Ball frames, text tiles, band tiles (60 KiB of 64) |

@@ -172,13 +172,30 @@ sc_strike_seg:
 	STA.w !sc_own
 	STY.w !sc_w
 	STZ.w !sc_ray
-	BRA sc_strike
+	JMP sc_strike
 sc_strike_ray:
 	STA.w !sc_own
 	STY.w !sc_w
 	LDA.w #1
 	STA.w !sc_ray
-	LDA.w !sc_h
+	; (its kind's last miss again: nothing to strike)
+	LDA.w !sc_dead
+	AND.w #$0007
+	CMP.w #$0007
+	BNE +
+	CLC                            ; (no body left)
+	RTS
++	JSL sc_update_far              ; (the places on this step's camera)
+	JSR sc_miss_key
+	JSR sc_miss_at
+	LDA.w !sk_miss+0,X : CMP.w !sl_t+0 : BNE +
+	LDA.w !sk_miss+2,X : CMP.w !sl_t+2 : BNE +
+	LDA.w !sk_miss+4,X : CMP.w !sl_t+4 : BNE +
+	LDA.w !sk_miss+6,X : CMP.w !sl_t+6 : BNE +
+	LDA.w !sk_miss+8,X : CMP.w !sl_t+8 : BNE +
+	CLC
+	RTS
++	LDA.w !sc_h
 	JSR sx_vec
 	STX.w !sc_vx
 	STY.w !sc_vy
@@ -196,11 +213,14 @@ sc_strike_ray:
 	ASL : ASL
 	TAX
 	LDA.l sc_ray_end,X
+	JSR sc_head
 	CLC : ADC.w !sw_ax
 	STA.w !sw_bx
 	LDA.l sc_ray_end+2,X
+	JSR sc_head
 	CLC : ADC.w !sw_ay
 	STA.w !sw_by
+	BRA sc_strike_go
 sc_strike:
 	LDA.w !sc_dead
 	AND.w #$0007
@@ -209,6 +229,7 @@ sc_strike:
 	CLC                            ; (no body left)
 	RTS
 +	JSL sc_update_far                  ; (the places on this step's camera)
+sc_strike_go:
 	LDA.w #$FFFF
 	STA.w !sc_best                 ; nearest so far ($FFFF none)
 	STZ.w !sc_hits
@@ -261,7 +282,16 @@ sc_strike:
 	BPL .body
 	LDA.w !sc_hits
 	BNE +
-	CLC
+	LDA.w !sc_ray                  ; (a ray's miss: its kind's last)
+	BEQ ++
+	JSR sc_miss_key
+	JSR sc_miss_at
+	LDA.w !sl_t+0 : STA.w !sk_miss+0,X
+	LDA.w !sl_t+2 : STA.w !sk_miss+2,X
+	LDA.w !sl_t+4 : STA.w !sk_miss+4,X
+	LDA.w !sl_t+6 : STA.w !sk_miss+6,X
+	LDA.w !sl_t+8 : STA.w !sk_miss+8,X
+++	CLC
 	RTS
 +	LDA.w !sc_own
 	BMI +
@@ -269,6 +299,61 @@ sc_strike:
 	JSR sc_shatter
 +	SEC
 	RTS
+
+; A16 = a 360 px ray's end offset on an axis, cut to the ray's length
+; (sc_d1) when shorter: the box then reaches its head only (|v L| <=
+; min(|end|, L)). Keeps X.
+sc_head:
+	PHA
+	LDA.w !sc_d1
+	CMP.w #360
+	BCS .whole
+	PLA
+	BPL +
+	EOR.w #$FFFF : INC
+	CMP.w !sc_d1
+	BCC ++
+	LDA.w !sc_d1
+++	EOR.w #$FFFF : INC
+	RTS
++	CMP.w !sc_d1
+	BCC +
+	LDA.w !sc_d1
++	RTS
+.whole
+	PLA
+	RTS
+
+; A ray's test as a key (g_tmp's sl_t .. +9: the line's start, length |
+; heading << 12, width | shattered << 8 | owner << 12, the places'
+; generation), and X = its kind's last miss (sk_miss: Goku's, Frieza's).
+sc_miss_key:
+	LDA.w !sw_ax : STA.w !sl_t+0
+	LDA.w !sw_ay : STA.w !sl_t+2
+	LDA.w !sc_h
+	XBA : ASL : ASL : ASL : ASL    ; (heading << 12)
+	AND.w #$F000
+	ORA.w !sc_d1
+	STA.w !sl_t+4
+	LDA.w !sc_dead
+	AND.w #$0007
+	XBA
+	ORA.w !sc_w
+	STA.w !sl_t+6
+	LDA.w !sc_own
+	AND.w #$0003
+	XBA : ASL : ASL : ASL : ASL
+	ORA.w !sl_t+6
+	STA.w !sl_t+6
+	LDA.w !sc_pgen : STA.w !sl_t+8
+	RTS
+sc_miss_at:
+	LDX.w #0
+	LDA.w !sc_own
+	LSR
+	BCC +
+	LDX.w #10
++	RTS
 
 ; Body sc_kk (in the line's box) against the line: within its radius plus
 ; the width, where it shows (on the screen, off the globe: known until it

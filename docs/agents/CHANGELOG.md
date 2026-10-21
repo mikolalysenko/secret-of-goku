@@ -4,6 +4,17 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the strike tests skip a repeated miss (2026-10-21)
+
+- A ray's test against the distant bodies (Goku's wave, Frieza's beam or
+  laser) is skipped while it repeats its kind's last miss: the same ray
+  and shattered bodies, and no place or camera moved since (`sc_pgen`).
+- A ray still growing (Frieza's beam) is boxed only to its head, so the
+  bodies ahead of it are not tested.
+- In the `fight` test 35 of its 103 ray strikes skip their test. Its
+  repeated pictures stay at 11: around the wave the projection's camera
+  steps and the limits' remakes are the heavier work.
+
 ## Orbit: the distant bodies yield to the sprite lines (2026-10-21)
 
 - The distant bodies now count in the stars' row limits: on the rows a
