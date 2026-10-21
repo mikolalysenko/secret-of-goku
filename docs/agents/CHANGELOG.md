@@ -4,6 +4,66 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: louder punches, whoosh swings and variety; flight never wedges Goku in a tree (2026-10-21)
+
+- Codex audio follow-ups to round seven (91c53d9, 9474d39, 747e71f,
+  d52ee8c, 2413865, ba03815; merged in 793a240, 7c4fab7, 921aa26), from the
+  maintainer's notes:
+  - Punch and kick contacts are louder: +4.1 and +3.4 dB at peak, with
+    more crunch and a deeper pop.
+    - A contact releases its own swing's voice, so it plays at full gain
+      in a real combo too. Combo peaks are −2.0 dBFS, against −5.5 for
+      round four.
+    - Three or four other effect voices still halve a contact and five
+      quarter it, so rapid hits over a beam never clip.
+  - Swings are a noisy whoosh instead of the buzzy tone: the aura texture,
+    with a swell and a downward sweep.
+    - The punch swing cycles through six envelope and pitch combinations.
+    - Hits and ki launches rotate through three pitches (1, 1.035, .975),
+      as the browser rotates its clips and rates. The kick stays fixed, as
+      in the browser.
+  - The ki launch keeps its rising sweep, with a 2.8 dB stronger attack, a
+    second swell and a smooth fade.
+  - Updates to the held charge and aura sounds are cheaper: 5.70 → 3.75
+    lines on a frame that sends one.
+  - A 54-byte SPC helper sits at `$0180-$01B5`, below the 64 bytes kept for
+    the stack. The lowest stack write seen is `$01F7`.
+  - The emulators suite now compares the name screen at the background's
+    scroll phase.
+    - The name editor polls input every 4 frames, so a boot that differs by
+      a frame between emulators moved the capture by a whole poll. It
+      failed 34% on bsnes, and on deb0cb7 for Mesen against every core.
+    - Every core now also gets checks of the boot upload, audible music and
+      every swing, hit and ki variation.
+- Flight (dd824d7, 7df13c2; merged in deb0cb7), in both the browser and the
+  cartridge:
+  - The bug: the game's own collision test checks only Goku's leading
+    edge. A blocked flight step over a low obstacle could push him into a
+    tree base beside the Potos flower beds, where he could neither fly nor
+    land and every direction stayed blocked.
+  - The same wedge existed at the waterfall (map 128) and on the Haunted
+    Forest vines (31 of 899 sweep flights).
+  - Now such a step moves only along an axis that keeps him airworthy, and
+    stops otherwise. A Goku over a solid low obstacle he can no longer fly
+    over counts as embedded and returns to his last landing.
+  - A sweep of every low-obstacle cell from 8 directions now wedges 0
+    flights.
+  - A leaner bank-shore walker keeps water-flight at 0 misses now that its
+    route is really flown; on main Goku sat wedged at the waterfall.
+    `bank-walk.test.mjs` checks it against the old walker on 264,960 tiles.
+- Measuring: the gameplay runner hands the harness the current tree's
+  `gen/audio/upload.bin`, so measure a ROM only in its own tree. Round four's
+  charge case measures 15 in two agents' clean trees. The 12 quoted earlier
+  was probably taken against a stale checkpoint, so round seven's 13 is not
+  a regression.
+- Validation:
+  - deb0cb7 under both probes: every suite passes except emulators (the
+    capture timing above).
+  - 921aa26: emulators, audio, gameplay and perf pass.
+  - Gameplay misses per 240 frames: charge 13, teleport 3, flying ki 2,
+    flight 1, flying punches 1, the rest 0.
+  - `npm test`: 380 pass.
+
 ## Orbit: the rays' band layers through repeated pictures (2026-10-21)
 
 - A repeated picture in the clash (a game frame that missed its vblank)
