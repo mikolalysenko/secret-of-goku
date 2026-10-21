@@ -16,21 +16,23 @@ test('punches and quick ki stay planted on the native pixel grid through recover
     for(const superSaiyan of[false,true])for(const direction of[4,5,6,7])for(const button of[0,17]){
       mana.restore(base);const m=mana.mod;m.options.superSaiyan=superSaiyan;
       mana.run(2,[direction]);mana.run(4);
-      const origin=[m.status.x,m.status.y],pivots=new Set();let drift=0,integer=true,frames=0;
+      const origin=[m.status.x,m.status.y],pivots=new Set();let drift=0,integer=true,frames=0,lunge=0;
       mana.run(1,[button,direction]);
       while(m.action&&frames++<24){
-        const p=m.spriteLayer.plan.sprite;
-        drift=Math.max(drift,Math.hypot(m.status.x-origin[0],m.status.y-origin[1]));
-        pivots.add(`${p.x},${p.y}`);integer&&=Number.isInteger(p.x)&&Number.isInteger(p.y);
+        // A strike's lunge moves the drawn body only (goku-animation.js punchLunge).
+        const p=m.spriteLayer.plan.sprite,[lx,ly]=p.lunge??[0,0];
+        drift=Math.max(drift,Math.hypot(m.status.x-origin[0],m.status.y-origin[1]));lunge=Math.max(lunge,Math.abs(lx)+Math.abs(ly));
+        pivots.add(`${p.x-lx},${p.y-ly}`);integer&&=Number.isInteger(p.x)&&Number.isInteger(p.y);
         mana.run(1,[direction]);
       }
-      trials.push({superSaiyan,direction,button,drift,pivots:pivots.size,integer,frames});
+      trials.push({superSaiyan,direction,button,drift,pivots:pivots.size,integer,frames,lunge});
     }
     return trials;
   });
   for(const t of trials){
     expect(t.drift,JSON.stringify(t)).toBe(0);expect(t.pivots).toBe(1);expect(t.integer).toBe(true);
     expect(t.frames).toBeGreaterThan(0);expect(t.frames).toBeLessThan(24);
+    expect(t.lunge,JSON.stringify(t)).toBe(t.button===0?2:0);
   }
 });
 
@@ -44,8 +46,8 @@ test('held Super Saiyan attacks show both hands and the kick without stepping in
       mana.restore(base);const m=mana.mod;m.options.superSaiyan=true;mana.run(2,[direction]);mana.run(4);
       const start=[m.status.x,m.status.y],poses=new Set(),pivots=new Set();let drift=0;
       for(let i=0;i<35;i++){
-        mana.run(1,[0,direction]);const p=m.spriteLayer.plan.sprite;
-        poses.add(`${p.sheet}:${p.column}`);pivots.add(`${p.x},${p.y}`);
+        mana.run(1,[0,direction]);const p=m.spriteLayer.plan.sprite,[lx,ly]=p.lunge??[0,0];
+        poses.add(`${p.sheet}:${p.column}`);pivots.add(`${p.x-lx},${p.y-ly}`);
         drift=Math.max(drift,Math.hypot(m.status.x-start[0],m.status.y-start[1]));
       }
       out.push({direction,poses:[...poses],pivots:pivots.size,drift});

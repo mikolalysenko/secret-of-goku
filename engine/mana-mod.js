@@ -2,6 +2,12 @@
  * WRAM fields and composes replacement artwork at the engine's player position.
  * See README.md for experimentally checked addresses and current limitations. */
 class ManaMod {
+  // Hit stop after a connected jab / cross / kick, base form and Super Saiyan.
+  static HIT_STOP=[[5,6,10],[4,5,9]];
+  // Push-back of a jab or cross that does not kill: pixels (base, Super
+  // Saiyan) over SLIDE_FRAMES, eased like the launch arc but without lift.
+  static SLIDE=[10,14];
+  static SLIDE_FRAMES=6;
   constructor(snes,{gokuUrl='../../assets/sprites/goku.png',ssjUrl='../../assets/sprites/ssj.png',onLog=()=>{}}={}) {
     this.snes=snes;this.log=onLog;
     this.options={enabled:false,power:true,superSaiyan:false};
@@ -455,7 +461,9 @@ class ManaMod {
     this.combatSound?.mark(enemy);
     if(launch&&enemy.species<84){
       this.knockbacks=this.knockbacks.filter(hit=>hit.base!==enemy.base);
-      this.knockbacks.push({base:enemy.base,species:enemy.species,x:enemy.x,y:enemy.y,dx,dy,age:0,duration:12,distance:this.options.superSaiyan?88:56});
+      const slide=launch==='punch'&&enemy.hp>damage,ssj=this.options.superSaiyan?1:0;
+      this.knockbacks.push({base:enemy.base,species:enemy.species,x:enemy.x,y:enemy.y,dx,dy,age:0,
+        duration:slide?ManaMod.SLIDE_FRAMES:12,distance:slide?ManaMod.SLIDE[ssj]:ssj?88:56,...(slide?{slide:true}:{})});
     }
     return {index:enemy.index,species:enemy.species,before:enemy.hp,after:Math.max(0,enemy.hp-damage)};
   }
@@ -484,11 +492,14 @@ class ManaMod {
   strike(action){
     const [dx,dy]=[[0,1],[1,0],[-1,0],[0,-1]][action.facing],origin={x:this.read16(0xe002),y:this.read16(0xe004)};
     const targets=this.targets(origin,dx,dy,action.combo===2?54:44,24,10),damage=Math.round(this.damageScale()*(action.combo===2?1.5:1));
-    const hits=targets.map(enemy=>this.hit(enemy,damage,dx,dy,true));
+    // The kick always launches; a jab or cross launches only a killing blow
+    // and otherwise pushes the target back, keeping it in reach of the next.
+    const hits=targets.map(enemy=>this.hit(enemy,damage,dx,dy,action.combo===2?true:'punch'));
     const contacts=targets.filter((enemy,i)=>enemy.species!==0x55&&hits[i]?.after<hits[i]?.before);
-    // Jab and cross freeze three frames on contact; the finishing kick holds
-    // five so its launch reads as the heaviest blow of the string.
-    action.hitPause=contacts.length?(action.combo===2?5:3):0;
+    // Graded hit stop: the connected pose, the struck targets and the spark
+    // freeze 5 / 6 / 10 frames for jab / cross / kick (one less as a Super
+    // Saiyan, whose strikes are twice as fast).
+    action.hitPause=contacts.length?ManaMod.HIT_STOP[action.super?1:0][action.combo]:0;
     for(const hit of this.knockbacks)if(contacts.some(enemy=>enemy.base===hit.base))hit.hold=action.hitPause+1;
     // The native pulse handles talking/chests. The interaction adapter stops
     // its weapon fallback; punching plants uses the same native redraw queue
@@ -496,9 +507,28 @@ class ManaMod {
     if(!hits.length)this.nativeTapFrames=2;
     this.plants?.beam({...origin,dx,dy,length:28,halfWidth:9,policy:'objects'});
     if(this.barriers?.punch({...origin,dx,dy}))this.nativeTapFrames=0;
-    for(const enemy of contacts)this.effects.push({kind:'impact',x:enemy.x,y:enemy.y-12,dx,dy,life:10,max:10,hold:action.hitPause,super:action.super});
+    for(const enemy of contacts){
+      this.effects.push({kind:'impact',x:enemy.x,y:enemy.y-12,dx,dy,life:10,max:10,hold:action.hitPause,super:action.super});
+      // A two-frame white "impact frame" sized by the blow, and the struck
+      // actor drawn white for those frames, jittering along the hit through
+      // the hit stop (the native renderer's timed shake, $E00D).
+      this.effects.push({kind:'star',x:enemy.x,y:enemy.y-12,size:action.combo+1,life:2,max:2,super:action.super});
+      if(!enemy.custom){
+        this.effects.push({kind:'flash',base:enemy.base,life:2,max:2});
+        this.write8(enemy.base+0x0d,(action.hitPause<<4)|(dx?1:2));
+      }
+    }
+    // The finishing kick's shockwave and speed lines leave its first contact
+    // a frame after the burst (impact-art.js: frames 1-6 of its life of 7).
+    if(action.combo===2&&contacts.length)this.effects.push({kind:'shock',x:contacts[0].x,y:contacts[0].y-12,life:7,max:7,super:action.super});
     this.effects.push({...origin,kind:'punch',dx,dy,life:7,max:7,super:action.super,hit:!!hits.length});
-    if(contacts.length){this.feedback?.pulse((action.super?5:3)+(action.combo===2?3:0));this.playSound?.(action.combo===2?'kick':'hit');this.log(`Punch ${damage}: ${JSON.stringify(hits)}`);}
+    if(contacts.length){
+      // The camera kicks along the blow and springs back; the kick also
+      // shakes the ground and briefly brightens the screen (three fading steps).
+      this.feedback?.kick?.(action.facing,action.combo);
+      if(action.combo===2){this.feedback?.pulse(action.super?5:3);this.feedback?.flash?.(3);}
+      this.playSound?.(action.combo===2?'kick':'hit');this.log(`Punch ${damage}: ${JSON.stringify(hits)}`);
+    }
     return hits;
   }
   handOrigin(facing=this.facing,technique='beam',hand=0){
@@ -568,7 +598,8 @@ class ManaMod {
         this.hit(enemy,effect.damage,effect.dx,effect.dy,true);
         this.playSound?.('impact');
         this.effects.push({kind:'impact',x:enemy.x,y:enemy.y-12,dx:effect.dx,dy:effect.dy,life:12,max:12,super:effect.super});
-        if(effect.kind==='ki'){effect.life=0;break;}
+        // A ki shot pops with the smallest impact frame.
+        if(effect.kind==='ki'){this.effects.push({kind:'star',x:enemy.x,y:enemy.y-12,size:0,life:2,max:2,super:effect.super});effect.life=0;break;}
       }
     }
   }
@@ -578,11 +609,14 @@ class ManaMod {
       // The native kill routine changes the actor into death-effect F9 before
       // its explosion finishes. Carry that same effect along the launch arc.
       if(!(this.read8(hit.base)&1)||(species!==hit.species&&!(species===0xf9&&dead)))return false;
-      if(hit.hold>0){hit.hold--;return true;}
+      // The hit stop pins the struck target where the blow found it, against
+      // its own recoil, until the push-back or launch begins.
+      if(hit.hold>0){hit.hold--;this.write16(hit.base+2,hit.x);this.write16(hit.base+4,hit.y);return true;}
       hit.age++;const t=Math.min(1,hit.age/hit.duration),distance=hit.distance*(1-(1-t)**2);
       this.write16(hit.base+2,Math.round(Math.max(8,Math.min(1016,hit.x+hit.dx*distance))));
       this.write16(hit.base+4,Math.round(Math.max(8,Math.min(1016,hit.y+hit.dy*distance))));
-      this.write8(hit.base+0x45,Math.round(Math.sin(t*Math.PI)*20));
+      // A push-back slides along the ground; only a launch lifts the target.
+      if(!hit.slide)this.write8(hit.base+0x45,Math.round(Math.sin(t*Math.PI)*20));
       return hit.age<hit.duration;
     });
   }

@@ -3,6 +3,10 @@
  * airborne height remains the game's responsibility. */
 class GokuAnimation {
   constructor(mod){this.mod=mod;this.reset();}
+  // A strike commits the body: the contact cell (held through the hit stop)
+  // is drawn this many pixels along the facing, half that in the follow
+  // through. Drawing only; the native position and shadow never move.
+  static punchLunge(combo,phase){const reach=[2,3,4][combo]??2;return phase===1?reach:phase===2?(reach+1)>>1:0;}
   reset(){this.state={frame:-1,map:-1,x:0,y:0,distance:0,kind:'idle',age:0,native:0,stationary:0,blocked:0,facing:-1,falling:false};}
   snapshot(){return {...this.state};}
   restore(saved){if(saved)this.state={...saved};}
@@ -105,7 +109,8 @@ class GokuAnimation {
       const columns=action.super?[0,10,14][action.combo]:[10,14,18][action.combo];
       const phase=action.super?(action.age<1?0:action.age<2?1:action.age<4?2:3):(action.age<2?0:action.age<4?1:action.age<7?2:3);
       result={sheet:action.super&&action.combo===0?'ssjJab':sheet,row:[0,2,1,3][action.facing],column:columns+phase,
-        phase:action.age<action.impact?'anticipation':action.age===action.impact?'contact':phase<3?'followThrough':'recover'};
+        phase:action.age<action.impact?'anticipation':action.age===action.impact?'contact':phase<3?'followThrough':'recover',
+        lunge:GokuAnimation.punchLunge(action.combo,phase)};
     }else if(kind==='charge')result=this.track(sheet,'charge',action.age,poseRow);
     else if(kind==='beam')result={sheet,row:[0,2,1,3][action.facing],column:(action.super?18:22)+(action.age<2?1:action.age<action.duration-4?2:3)};
     else if(kind==='blast'){
