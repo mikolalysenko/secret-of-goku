@@ -6,7 +6,7 @@ import {RESIDENT} from '../../gen/audio-resident.mjs';
 export const sampleFloor=rom=>(rom[0x30134]|rom[0x30135]<<8)+0x5F1;
 export const isCustom=rom=>sampleFloor(rom)>0x4DF1;
 export const isResident7=rom=>sampleFloor(rom)===0x56F1;
-export const nativeEffectVoices=(rom,id)=>[0x38,0xE7,0xE8,...(isResident7(rom)?[]:[0xEA,0xED])].includes(id)?2:1;
+export const nativeEffectVoices=(rom,id)=>[0x38,0xE7,0xE8,...(isResident7(rom)?[0xF1]:[0xEA,0xED])].includes(id)?2:1;
 export function uploadSegments(rom){
  if(rom[0x30106]!==0x5C)return [];
  const ptr=a=>(rom[a]|rom[a+1]<<8|rom[a+2]<<16)&0x3FFFFF;

@@ -4,12 +4,13 @@ import {readFileSync} from 'node:fs';
 import {isResident7} from './cartridge.mjs';
 import {contactComparison,contactMixes} from './contacts.mjs';
 const rom=readFileSync(process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc');
-test('HIT/KICK add audible pop and crunch without a longer music-voice steal',{skip:!isResident7(rom)},()=>{
+test('contacts retain loud pop/crunch; only the finishing kick has a longer voice budget',{skip:!isResident7(rom)},()=>{
  for(const r of contactComparison(rom)){
   assert.ok(r.peakGainDb>=2.5,`${r.cue} peak gain ${r.peakGainDb} dB`);
   assert.ok(r.bodyGainDb>=3&&r.crunchGainDb>=1.5,`${r.cue} body/crunch gains ${r.bodyGainDb}/${r.crunchGainDb} dB`);
   assert.ok(r.after.peakDbFS<-2.5&&r.after.timeToPeakMs<12);
-  assert.ok(r.after.durationMs<=r.before.durationMs&&r.after.voiceMs<=r.before.voiceMs);
+  if(r.id===0xE7)assert.ok(r.after.durationMs<=r.before.durationMs&&r.after.voiceMs<=r.before.voiceMs);
+  else assert.ok(r.after.durationMs<=205&&r.after.voiceMs<=320,'bounded finisher tail');
   assert.equal(r.after.voices,2);assert.equal(r.after.ended,true);
  }
 });

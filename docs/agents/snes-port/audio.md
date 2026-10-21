@@ -8,6 +8,144 @@ Everything below about the native driver was reverse-engineered from the US
 cartridge (`snes/gen/audio-spc700.mjs` disassembles it) and cross-checked
 against 277 ARAM/DSP snapshots of the browser mod (`.local/snes-import/`).
 
+## Normal and Super Saiyan kick finishers (base `feb7df6`)
+
+KICK retains public cue **4**. Audio maps it to **`$E8` normally and `$F1`
+when `cb_form` is nonzero**, just as it chooses the SSJ beam. Combat needs
+no change. The other branch's forthcoming hit stop, shockwave and animation
+work is not included in this cartridge or its recordings.
+
+Both kicks use boot instrument 3 for a deep falling bass thump, plus the
+same sharp clock-31 crack as HIT. The normal thump lasts **175 ms**, SSJ
+**200 ms**, versus the old kick's 140 ms and HIT's 100 ms. The measured
+pitch while the body has nonzero gain falls **76.66→63.48 Hz** normally
+and **76.78→64.58 Hz** for SSJ. SSJ has 24% more first-80-ms bass energy
+than the normal kick. Energy after 80 ms doubles relative to the old kick
+(SSJ: 3.37×); this makes a sustained low thump instead of another short pop.
+These are dry SPC measurements, not a subjective listening score.
+
+HIT's sound and three-pitch cycle, the six-combination swing cycle and the
+ki-launch cycle are unchanged. Kicks retain one authored pitch per form,
+as the browser does. `$E8` and `$F1` both release E5/E6 before allocation,
+then use the existing contact overlap gain rule. They still own at most
+two voices. Total ownership rises **240→310 voice-ms** per kick; both
+voices have returned by 250 ms. Only kicks get this larger budget.
+All three cracks now use clock 31, so a kick cannot darken an overlapping
+punch. The BRR beds and swings cannot be retuned by DSP noise.
+
+### Storage and CPU
+
+No BRR, sample reservation, EDL cap, song loader, rare voice or core changes.
+
+- The 2,304-byte reservation now uses **2,302 bytes**: 1,890 BRR, 134
+  sequence, 278 SPC code. Two bytes remain free (previously zero).
+- Existing shared sequence/table holes use **264/283 bytes**, up from
+  259. Sharing HIT's 11-byte crack removes the old 13-byte kick crack;
+  the new SSJ body costs 14 bytes and its pointer pair 4: **net +5 bytes**.
+  The packer lets an unconstrained track share a page-pinned track, while
+  retaining the page constraints on mutable variation operands.
+- Moving the swing swell toggle beside its existing sweep toggle grows
+  the helper **54→62 bytes** (`$0180-$01BD`), below the reserved
+  `$01C0-$01FF` stack. Removing its duplicate cue comparison makes room
+  for F1 gain and swing-release handling in the reservation. Boot uploads
+  eight more payload bytes, with the same transfer headers.
+- The 65816 selector grows **23 bytes**. It checks form only for an
+  already-selected KICK; there is no new idle/frame callback, timer,
+  streaming, extra dispatch or combat call. The dispatcher remains
+  **1.349 lines maximum**. Before/after `modprof` is **0.41 lines mean**
+  including startup in both sword and battle; sword max stays 1.88,
+  battle max 1.88→1.85.
+
+### Listening and validation
+
+Compare7 adds six `pre-finisher7` / `finisher7` pairs: normal/SSJ kick
+alone, normal battle combo, SSJ full-power combo, and both forms' combined
+beam/rapid-contact stress. The before ROM is exactly `feb7df6`. Recordings
+use the cartridge's public cue mailbox, including form selection, and
+log every dispatched command. Contacts follow swings by one frame.
+`pc-kick.wav` and the browser's one-frame combo reference are reused with
+their verified gains/compressor; the browser has no distinct SSJ kick.
+
+| Raw Mesen take | Before peak dBFS | Finisher peak dBFS |
+| --- | ---: | ---: |
+| Normal kick alone | -3.05 | -2.92 |
+| SSJ kick alone | -3.05 | -2.50 |
+| Normal combo / battle | -1.84 | -1.84 |
+| SSJ combo / full-power | -2.40 | -1.94 |
+| Normal beam / rapid contacts | -1.87 | -1.18 |
+| SSJ beam / rapid contacts | -0.91 | -0.97 |
+
+Every new take has **zero clipped samples**. The normal combo's overall
+peak is a preceding punch; it does not measure the kick's bass tail.
+The 48 SPC stress cases cover both kick variants in both music mixes,
+2/3/5/8-frame contacts, beams and maximum beds: zero clipping, worst peak
+**-0.974 dBFS**, intact banks and every effect voice returned. The 18 motion
+stress cases also pass, with F1 used for full-power combos.
+
+The strict shipping build and every requested suite pass: **audio 45
+unit/SPC tests, five song renders and all 12 cartridge cases** (including
+34 native-charge phases, 64 consecutive song loads, cold boot, rare voices
+and imports); **gameplay 13/13**, **perf 6/6**, **combat 37/37**, and
+**emulators 3/3**. snes9x/bsnes/bsnes-accurate all reach the name event at
+1118 and finish at 7789 frames; name pictures match Mesen at
+100% / 100% / 99.8%. Both kicks play without clipping and release their
+voices on all three cores. The stack and independent variation tests pass.
+
+Shipping gameplay misses per 240 frames, compared with the validated
+`feb7df6` results in `audio/charge-filter/gameplay/summary.json`:
+
+| Case | Before | After |
+| --- | ---: | ---: |
+| solo-punch | 0 | 0 |
+| solo-ki | 0 | 0 |
+| walk | 0 | 0 |
+| punch | 0 | 0 |
+| ki | 0 | 0 |
+| fly | 1 | 1 |
+| fly-ki | 2 | 2 |
+| fly-punch | 1 | 1 |
+| water-flight | 0 | 0 |
+| teleport | 3 | 3 |
+| charge | 13 | 13 |
+| focus-grass | 0 | 0 |
+| transform-grass | 0 | 0 |
+
+Perf build p90/lag remains sword **63/0**, sandship **113/0**, battle
+**54/0**, beast **174/30** (native 30 Hz), fortress **96/0**, flight
+**112/0**. No new frame misses. The accepted charge-13 limit remains;
+there is no new request for combat or core.
+
+Shipping SHA-256:
+`042403d9e7f6a13b30e437bd7a5ec69a22b125d611d337422ba7e85918a8184a`.
+`-DAUDIO_CUSTOM_SAMPLES=0` still builds round four byte-identically:
+`56ed7992b1f2abf06561a1d5553d1ab151e5fc7fd8d8ff0941a9a63508115388`.
+The shipping build is restored after the PCM and rollback checks.
+
+Validation results and hashes are recorded in
+`.local/snes-test/audio/compare7/finisher-validation7.json`. The listening
+index is `.local/snes-test/audio/compare7/manifest.json`; dry metrics and
+the storage/mix audit are in `finisher-analysis7.json` alongside it.
+
+| File | Change |
+| --- | --- |
+| `snes/gen/audio-resident7.mjs` | E8/F1 thumps and shared crack; extended effect table |
+| `snes/gen/audio-resident-storage.mjs` | Allow unpinned tracks to share pinned bytes safely |
+| `snes/src/modules/audio/native.asm` | Select F1 for SSJ KICK requests |
+| `snes/src/modules/audio/spc/beds.s` | F1 gain/swing cleanup; move swell toggle to the helper |
+| `snes/test/audio/finisher.test.mjs` | New bass pitch/duration, headroom, return and overlapping-noise regressions |
+| `snes/test/audio/contacts.mjs` | Test both kick forms in all 48 mixes |
+| `snes/test/audio/contacts.test.mjs` | Bound the intentionally longer kick budget |
+| `snes/test/audio/motion.mjs` | SSJ finisher in full-power combo stresses |
+| `snes/test/audio/motion.test.mjs` | Check F1 swing release and full contact gain |
+| `snes/test/audio/variation.test.mjs` | Include F1 in stack/helper integrity checks |
+| `snes/test/audio/native.lua` | Cartridge KICK form selection and release/revert regression |
+| `snes/test/audio/cartridge.mjs` | F1 two-voice budget |
+| `snes/test/audio/run.mjs` | Run the new finisher regressions |
+| `snes/test/audio/capture7.lua`, `capture7.mjs` | Six public-cue cartridge recordings per version |
+| `snes/test/audio/manifest7.mjs` | Index new comparisons and existing PC references |
+| `snes/test/emulators/audio.mjs` | Cold-boot E8/F1 playback, swing replacement, headroom and voice return on each core |
+| `docs/agents/snes-port/audio.md`, `audio-samples.md` | Sound, storage, test and listening record |
+
 ## Native weapon-charge filter follow-up (base `ba03815`)
 
 The old filter covered **only `$27`**. It missed **`$28` (charge level and

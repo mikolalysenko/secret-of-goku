@@ -63,6 +63,20 @@ export async function playAudio(h,{rom,state}){
     res.plays.push({id,play:i,tuple,sound});
     check(`audio_cue_${id.toString(16)}_${i}`,pass,`tuple ${tuple.join('/')}, peak ${sound.peak}, clipped ${sound.clipped}`);
   }
+  // Both finisher ids must work from the core's cold boot, release the
+  // preceding whoosh and return their two voices (including the new F1).
+  const finishers=boot.readUInt16LE(0x2FC4)===boot.readUInt16LE(0x2F9C)?[0xE8,0xF1]:[0xE8];
+  for(const id of finishers){
+    await h.audio(true);await send([2,0xE6,15,0x88]);await h.wait(1);
+    await send([2,id,15,0x88]);await h.wait(3);
+    const playing=await read(`kick-${id.toString(16)}`);
+    const ids=Array.from({length:8},(_,v)=>v).filter(v=>playing[0xAE]&(1<<v)).map(v=>playing[0xFF80+v]);
+    await h.wait(35);const sound=await h.audio();
+    const stopped=await read(`kick-${id.toString(16)}-ended`);
+    check(`audio_kick_${id.toString(16)}`,ids.length>=1&&ids.every(v=>v===id)&&stopped[0xAE]===0&&sound.nonzero>100&&sound.clipped===0,
+      `voices ${ids.join('/')}, returned ${stopped[0xAE]===0}, peak ${sound.peak}, clipped ${sound.clipped}`);
+    res.plays.push({id,sound});
+  }
   const after=await read('after');
   check('audio_bank_preserved',intact(after)&&after[0xAE]===0,'helper/bank intact; all effect voices returned');
   writeFileSync(join(h.out,'audio.json'),JSON.stringify(res,null,1));

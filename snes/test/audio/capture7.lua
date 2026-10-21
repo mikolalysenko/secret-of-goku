@@ -52,6 +52,33 @@ local function field(form,music)
 end
 function test()
  bootToField();H.wait(40)
+ if ONLY=='finisher' then
+  -- Use the public cue mailbox, including form selection on the CPU side.
+  -- The scene is deterministic; command tracing proves which native cue
+  -- was dispatched. No SPC sequence/sample edits or normalized output.
+  local function cue(id) cmd(1,id);H.wait(1) end
+  local function form(f) H.w8(0x7ED811,f) end
+  local function combo()
+   for i=1,3 do cue(i==3 and 2 or 1);cue(i==3 and 4 or 3);H.wait(12) end
+  end
+  for _,s in ipairs({{'normal',0,0x3C},{'ssj',1,0x3F}}) do
+   solo();form(s[2])
+   record('finisher-solo-'..s[1],'Public KICK cue alone; form '..s[2]..'; no music or echo',function() cue(4);H.wait(150) end)
+   solo();song(s[3],0);form(s[2])
+   record('finisher-'..s[1]..'-combo','Full punch/punch/kick combo; contact one frame after its swing; '..(s[2]==1 and 'Super Saiyan over full-power' or 'normal over battle')..' music',function() combo();H.wait(120) end)
+   solo();song(s[3],0);form(s[2])
+   record('finisher-'..s[1]..'-beam-stress','Finisher mix headroom: four combos over beams, then rapid alternating contacts at 2/3/5/8-frame gaps; '..s[1]..' form/music',function()
+    for i=1,4 do cue(8);combo();H.wait(18) end
+    for _,gap in ipairs({2,3,5,8}) do
+     cue(8)
+     for i=1,18 do cue(i%2==0 and 4 or 3);H.wait(gap-1) end
+     H.wait(30)
+    end
+    H.wait(120)
+   end)
+  end
+  H.result('files',files);H.result('commands',commands);H.result('captured',true);return
+ end
  if ONLY=='variation' then
   solo();song(0x3C,0)
   record('variation-battle-combos','Two full combos over battle music: punch/punch/kick twice, 14 frames between moves, contact one frame after each swing',function()

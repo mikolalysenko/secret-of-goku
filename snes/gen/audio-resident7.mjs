@@ -11,16 +11,17 @@ import {residentLayout,effectOffset} from './audio-resident-storage.mjs';
 export const SAMPLE_BASE=0x4DF1,RESERVE=0x900,FLOOR=SAMPLE_BASE+RESERVE;
 export const BED_IDS=[0xED,0xEE];
 export const IDS=NATIVE_IDS.map((v,i)=>i===17?0xEF:v);
-// Contact follow-up: short bright crunch plus a fast falling low pop.
-// E7/E8 use full gain alone and lower gain during effect overlaps, keeping
-// mix headroom. No new sample, voice, cue id or 65816 instruction.
+// Contacts share a short 32 kHz crack, so overlapping attacks cannot retune
+// one another's noise. Finishing kicks use a roughly 77 -> 64 Hz bass fall instead
+// of HIT's quick two-octave pop. F1 is the slightly longer/louder SSJ kick.
+const crack=[0xD2,0xB8,0xDD,31,0xDE,0x0E,0xD3,3,0,0xC2,0xF2];
+const thump=(volume,ticks)=>[0xD2,volume,0xEA,3,0xE4,3,0xD6,ticks,0xFC,0xD3,ticks,0,0x35,0xF2];
 export const CONTACTS7=[
  {id:0xE7,page:0x3A,tracks:[
-  [0xD2,0xB8,0xDD,31,0xDE,0x0E,0xD3,3,0,0xC2,0xF2],
+  crack,
   [0xD2,0xD8,0xEA,3,0xE4,4,0xE9,0xFA,0xD6,8,0xE8,0xD3,12,0,0x0A,0xF2]]},
- {id:0xE8,tracks:[
-  [0xD2,0xA8,0xDD,30,0xDE,0x0E,0xDD,28,0xD3,3,0,0xC2,0xF2],
-  [0xD2,0xD8,0xEA,3,0xE4,4,0xD6,10,0xE8,0xD3,16,0,0x09,0xF2]]},
+ {id:0xE8,tracks:[crack,thump(0xC0,20)]},
+ {id:0xF1,tracks:[crack,thump(0xD0,22)]},
 ];
 // Motion follow-up. The aura BRR provides broadband swings without touching
 // the DSP's shared noise clock. E5 alternates swell/sweep and independently
@@ -35,7 +36,7 @@ export const MOTION7=[
 ];
 export function resident7Layout(rom,tracks){
  const retained=RESIDENT.filter(r=>!tracks.has(r.id)).map(r=>[...CONTACTS7,...MOTION7].find(c=>c.id===r.id)??r);
- retained.push({id:0xF0,tracks:[]});return residentLayout(rom,retained);
+ retained.push({id:0xF0,tracks:[]},CONTACTS7.find(r=>r.id===0xF1));return residentLayout(rom,retained);
 }
 const root=resolve(import.meta.dirname,'../..');
 const hash=b=>createHash('sha256').update(b).digest('hex');
