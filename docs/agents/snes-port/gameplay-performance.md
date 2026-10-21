@@ -6,6 +6,131 @@ integration bugs and CPU/vblank cost. The default build now favors resident
 SNES audio and compact effects. It is substantially smoother, but crowded
 combat is not yet guaranteed to run without missed video frames.
 
+## Browser CPU baseline — October 21, 2026
+
+`browser-baseline.mjs` runs the actual browser player in isolated headless
+Chromium, with its ROM patches and JavaScript gameplay hooks. It shares the
+13 input scripts with `gameplay/run.mjs` through `cases.mjs`. `--perf` uses
+the six native perf scenes and their 300-frame alternating-left/right input.
+`--repeat=5 --flight-corridor` uses the same controller-only corridor policy
+as the long cartridge suite. Outputs stay under `.local/snes-test/`.
+
+**Signal:** immediately before executing field NMI `$00:C0A8`, count a miss
+when WRAM `$00EC & 1` is zero, exactly as `gameplay.lua` does. The world
+counter uses `$00:88CF` and the same ready bit (the native handler tests it
+at `$88FB`). Both mirrors are recognized. Instrumentation wraps/registers
+CPU instruction breakpoints; it changes no emulated cycle count. Each row
+requires one observed NMI per measured video frame. Visits to `$B077` /
+`$8089` separately count completed updates. Browser wall time, presentation
+skips and JavaScript execution time are not CPU misses.
+
+**State and input:** resolve each bundle's `regs.json.source`, restore that
+full browser snapshot in the unmodified vendored core, and repeat its exact
+exporter advance (`steps`). Verify WRAM, VRAM, CGRAM, OAM, SRAM, ARAM and DSP
+bytes against the bundle and verify CPU PC/bank and scanline/dot. Restore
+that advanced emulator state into the browser with the source's JavaScript
+state. The animation fixtures have powers disabled and the waterfall has
+its arrival unset: gameplay explicitly enables base Goku/powers and marks
+arrival complete, matching the cartridge's enabled gameplay fixture.
+Finish the partial import frame, settle for 45 frames, then apply the same
+setup and measured inputs through `mana.run(1, buttons)`. Perf's paired
+bundle replay settles for 32 frames and retains source browser mod state.
+`--cartridge=...` runs the same bundle/settle/setup/input recipe in Mesen;
+`--cartridge-only` permits later comparisons without rerunning Chromium.
+The ordinary perf suite separately retains its shared original-ROM Mesen
+savestate. Its APU/CPU phase is not interchangeable with the browser replay;
+the Beast's one-frame difference below is not a cartridge regression.
+
+**Timing:** the browser is not overclocked. `vendor/snes/snes.js` charges
+memory accesses individually: ROM in fast banks is 6 master clocks with
+MEMSEL, slow ROM/WRAM 8, ordinary I/O 6 and controller I/O 12. Internal CPU
+cycles cost 6; the CPU pauses for refresh, general DMA and HDMA. Host-side
+idle-loop batching advances the corresponding clocks. The tool verifies
+these access timings. However, every source snapshot has MEMSEL **off**;
+the cartridge restores it each frame. Therefore both the actual browser
+(`native`, SlowROM) and a normalized run (`fast`, MEMSEL enabled before each
+frame) are measured. The latter retains the browser's native code banks;
+it does not copy the port's FastROM call-site rewrites or other optimizations.
+The core is instruction-granular and models every NTSC line as 1,364 clocks
+(it omits the odd frame's four-clock short line); it is not a cycle-exact
+replacement for Mesen. No arbitrary scalar timing adjustment is applied.
+
+Fresh integrated cartridge: `d80e1bfc3de26a41a1d15d9ef54e0457032e5ad81ac8b1bb7febb303c29200e3`.
+Counts are misses / 240 video frames; the denominator is omitted below.
+
+| Gameplay | Browser actual | Browser FastROM | Cartridge before |
+| --- | ---: | ---: | ---: |
+| solo-punch | 0 | 0 | 0 |
+| solo-ki | 0 | 0 | 0 |
+| walk | 32 | 14 | 0 |
+| punch | 6 | 4 | 0 |
+| ki | 4 | 5 | 0 |
+| fly | 24 | 13 | 1 |
+| fly-ki | 24 | 18 | 2 |
+| fly-punch | 25 | 19 | 1 |
+| water-flight | 0 | 0 | 0 |
+| teleport | 43 | 28 | 3 |
+| charge | 25 | 11 | 16 |
+| focus-grass | 1 | 1 | 0 |
+| transform-grass | 1 | 1 | 0 |
+
+| 1,200-frame gameplay | Browser actual | Browser FastROM | Cartridge before |
+| --- | ---: | ---: | ---: |
+| punch | 11 | 7 | 0 |
+| ki | 9 | 8 | 0 |
+| fly-ki, corridor | 58 | 58 | 13 |
+| fly-punch | 72 | 28 | 1 |
+| teleport | 136 | 94 | 18 |
+| charge | 35 | 15 | 22 |
+
+| 300-frame perf scene | Browser actual | Browser FastROM | Paired cartridge | Perf suite cartridge |
+| --- | ---: | ---: | ---: | ---: |
+| sword | 0 | 0 | 0 | 0 |
+| Sandship | 8 | 2 | 0 | 0 |
+| battle | 0 | 0 | 0 | 0 |
+| Beast | 31 | 31 | 30 | 30 |
+| Fortress | 1 | 0 | 0 | 0 |
+| world flight | 0 | 0 | 0 | 0 |
+
+Only charging exceeds the normalized browser counts: **5 short / 7 long**.
+Other cases already match or beat both browser measurements; they do not
+need case-specific optimization. These are replay comparisons, not a claim
+of identical actor trajectories after the first different missed input.
+Browser actions, forms, travel, maps, flight and corridor turns are recorded
+so an inactive power or exit cannot masquerade as a performance gain.
+
+The perf runner now counts NMI-ready misses too. Its previous `frames`
+result was overwritten by `H.finish` with total harness time, adding four
+setup frames to every printed lag count. `videoFrames` now names the
+measurement window, and missing NMI observations fail the check. The
+six-scene baseline passes with original/cartridge misses **0/0, 8/0, 0/0,
+30/30, 1/0, 0/0**. Cartridge p90 finish lines are **62, 113, 54, 174, 96,
+112**. This corrects the counter, not the cartridge's runtime behavior.
+
+Baseline validation: strict build; all 13 short and six long gameplay cases
+pass behavior/hardware checks; all six perf cases pass; browser replays
+complete all 13 short, six long and six perf scenes at both speeds. Paired
+Mesen charge reproduces 16 misses and all six paired perf cases complete.
+Charge's cartridge native actor span is **80.56 mean / 144.30 peak** lines;
+movement **38.77 / 55.54**; FX **11.34 / 40.05**. The normalized charge gap
+is the remaining optimization target. `modprof` idle FX is **0.13 frame /
+0.12 NMI** lines; its combined contribution including the early palette
+probe remains about 0.3 lines. No core or shipping module changes in this
+measurement checkpoint.
+
+Reproduce (set `MESEN` as in `snes-rom.md`):
+
+```sh
+node snes/test/gameplay/browser-baseline.mjs --cartridge=dist/snes/secret-of-goku.sfc
+node snes/test/gameplay/browser-baseline.mjs --perf --cartridge=dist/snes/secret-of-goku.sfc --out=.local/snes-test/browser-perf
+node snes/test/gameplay/browser-baseline.mjs punch ki fly-ki fly-punch teleport charge --repeat=5 --flight-corridor --out=.local/snes-test/browser-long
+```
+
+Private results for this pass are under `.local/snes-test/perf4/`:
+`browser-{short,long,perf}`, `baseline-{short,long}`, `paired-perf`,
+`paired-charge`, `profile`, and the build/perf/modprof logs. No recordings,
+ROMs, snapshots or generated measurements are committed.
+
 ## Native actor follow-up — October 21, 2026
 
 The core-authorized follow-up starts at `a949896`. Fresh matched runs give

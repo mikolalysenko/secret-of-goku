@@ -5,7 +5,6 @@
 -- `reached` < frames means lag (logic finished fewer times than frames ran).
 local BUNDLE = BUNDLE_PATH
 local lines = {}
-local lastFrame = -1
 local function onWait()
   local st = emu.getState()
   lines[#lines + 1] = st['ppu.scanline']
@@ -34,6 +33,17 @@ function test()
     return
   end
   H.wait(2)
+  -- Count the ready bit at NMI entry, exactly as gameplay.lua does. The
+  -- generic harness overwrites results.frames with total run time, including
+  -- setup; keep this measurement window under its own name.
+  local missedVblanks,nmiFrames=0,0
+  local nmiIds={}
+  for _,pc in ipairs({0x00C0A8,0x80C0A8,0x0088CF,0x8088CF}) do
+    nmiIds[#nmiIds+1]={pc,emu.addMemoryCallback(function()
+      nmiFrames=nmiFrames+1
+      if H.r8(0x7E00EC)&1==0 then missedVblanks=missedVblanks+1 end
+    end,emu.callbackType.exec,pc,pc)}
+  end
   local id1 = emu.addMemoryCallback(onWait, emu.callbackType.exec, 0x00B077, 0x00B077)
   local id2 = emu.addMemoryCallback(onWait, emu.callbackType.exec, 0x008089, 0x008089)
   local id3 = emu.addMemoryCallback(onWait, emu.callbackType.exec, 0x80B077, 0x80B077)
@@ -47,7 +57,10 @@ function test()
   emu.removeMemoryCallback(id3, emu.callbackType.exec, 0x80B077, 0x80B077)
   emu.removeMemoryCallback(id4, emu.callbackType.exec, 0x808089, 0x808089)
   table.sort(lines)
-  H.result('frames', H.frame - start)
+  for _,entry in ipairs(nmiIds) do emu.removeMemoryCallback(entry[2],emu.callbackType.exec,entry[1],entry[1]) end
+  H.result('videoFrames', H.frame - start)
+  H.result('missedVblanks',missedVblanks)
+  H.result('nmiFrames',nmiFrames)
   H.result('reached', #lines)
   H.result('median', lines[math.floor(#lines / 2) + 1] or -1)
   H.result('p90', lines[math.floor(#lines * 0.9) + 1] or -1)
