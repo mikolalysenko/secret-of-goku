@@ -29,8 +29,19 @@ stay traceable even when they are committed together.
   (the beam's band ends in whole cells and has no taper).
 - Not yet: the cut still loads for 16 black frames.
 - Extended data for the orbit grows by 208 KiB (window rows 120, line
-  tables 36, Death Balls 22, beam pictures 21, frame records 9), to 2,369.8
-  of 2,944 KiB in all.
+  tables 36, Death Balls 22, beam pictures 21, frame records 9), to 2,494.7
+  of 2,944 KiB in all with the ending's shards.
+
+## SNES Sandship: a red flash for the wreck's fires (2026-10-21)
+
+- At the maintainer's request the cartridge draws no fires in the wrecked
+  Sandship. Each blast (every 150 frames, and every 10 frames of the crash
+  while Goku is aboard) is now its sound, its quake and a red flash: the
+  alarm's 24-frame pulse at 2.5 times its strength in the wreck's palette
+  tint.
+- The browser's alarm and firelight flicker are unchanged. With the look
+  on, 1,441 of 1,600 frames complete their logic, against 1,411 with the
+  fires.
 
 ## Orbit: the cosmic montage, town shots and aerial cuts (2026-10-20)
 

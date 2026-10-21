@@ -439,6 +439,12 @@ function S.sprites()
   end
   return out
 end
+-- the red of BG palettes 1-7 in CGRAM, summed (the tint, the alarm, a blast's flash)
+function S.redSum()
+  local sum = 0
+  for i = 16, 127 do sum = sum + (S.cg(i) & 31) end
+  return sum
+end
 -- tinted colour check: red never lower, blue never higher than the buffer's
 function S.tintShape()
   local bad = 0
@@ -451,7 +457,7 @@ end
 `;
 scenarios.push(
   {name:'ship-look',bundle:'sandship-wreck__qs-captured',
-    note:'the breakout white-out whitens all of CGRAM (rides through the escape door), fades into the wreck: BG palettes 1-7 tinted (red up, blue down), text/HUD and sprite colours untouched; the breach shows through HDMA channels 2/3',
+    note:'the breakout white-out whitens all of CGRAM (rides through the escape door), fades into the wreck: BG palettes 1-7 tinted (red up, blue down), text/HUD and sprite colours untouched; the breach shows through HDMA channels 2/3; no fires, and a blast flashes the rooms red',
     body:lookLua+`
   S.reset()
   assert(H.importSnesJs(SCN.bundlePath), 'import failed')
@@ -482,17 +488,22 @@ scenarios.push(
   H.result('breach', {sx = H.r16(ABI.ssw_br_sx), sy = H.r16(ABI.ssw_br_sy), lines = H.r16(ABI.ssw_br_lines), map = H.r16(ABI.ss_bmap), x = H.r16(ABI.ss_bx), y = H.r16(ABI.ss_by)})
   H.result('cg0', S.cg(0))
   H.shot('look-4-wreck')
-  local garbage, fires = 0, 0
-  for k = 1, 3 do
+  -- a blast every 150 frames: its red flash (the alarm's pulse started over)
+  local garbage, flash, peak, calm = 0, 0, nil, nil
+  for k = 1, 4 do
     for f = 1, 40 do
       H.wait(1)
       local sp = S.sprites()
       garbage = garbage + sp.garbage
+      local red, ph = H.r16(ABI.ssw_red), H.r16(ABI.ssw_ck_120)
+      if red < 24 then flash = flash + 1 end
+      if red == 14 and not peak then peak = S.redSum(); H.shot('look-flash') end
+      if red >= 24 and ph >= 30 and not calm then calm = S.redSum() end
     end
     H.shot('look-' .. (4 + k) .. '-wreck')
   end
   H.result('garbage', garbage)
-  H.result('sites', H.r16(ABI.SSW + 0x980))
+  H.result('flash', {frames = flash, peak = peak, calm = calm})
   -- leaving the breach's room gives the channels back
   S.enter(318, 28, 46, 0)
   H.wait(10)
@@ -511,7 +522,9 @@ scenarios.push(
       // (the effects library writes its own OBJ palettes: at most two)
       if(!(w.objEqual>=96))problems.push(`sprite colours changed (${w.objEqual}/128 equal)`);
       if(res.garbage)problems.push(`${res.garbage} garbage sprite frames (fx missing cells)`);
-      if(!(res.sites>0&&res.sites<16))problems.push(`fire sites ${res.sites}`);
+      const fl=res.flash??{};
+      if(!(fl.frames>0))problems.push('no blast flash in 160 frames');
+      else if(!(fl.peak>fl.calm))problems.push(`the flash is not redder: peak ${fl.peak}, calm ${fl.calm}`);
       if(res.tintBad)problems.push(`${res.tintBad} BG colours not warmer than the game's`);
       if(res.own!==1||(res.hdma&0x0C)!==0x0C)problems.push(`breach HDMA: own ${res.own} $2C ${res.hdma}`);
       if(!(res.breach?.lines>0))problems.push('breach never programmed');

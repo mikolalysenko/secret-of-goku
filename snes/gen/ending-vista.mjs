@@ -157,6 +157,7 @@ export async function vistaAssets(o,{rom,repo,engine}){
   o.table('ending_vista_spark_pal','dw',sparkQ.palette);
   o.def('ENDING_VISTA_SPARKS',gold.length);
   o.vistaBallPalette=ballQ.palette;
+  o.vistaDragonPalettes=dragonPal;
   o.vistaDragonCells=cells.map((c,i)=>({cx:c.cx,cy:c.cy,pal:fit.assign[i]}));
   // The seven Balls around (128, 184) (x 28, y 12), at scroll 0: cell top-left.
   const ring=[];for(let i=0;i<7;i++){const a=i*Math.PI*2/7-Math.PI/2;ring.push(Math.round(128+Math.cos(a)*28)-8,Math.round(184+Math.sin(a)*12)-8);}

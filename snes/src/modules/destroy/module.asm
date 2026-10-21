@@ -411,31 +411,10 @@ assert !hp_end <= !PERSIST_DESTROY+$80, "destroy persistent block overflow"
 !ssw_pal_cols = !SSW+$2BE ; word: statistics: colours transformed
 !ssw_pal_wait = !SSW+$2C0 ; word: frames a pending pass had no time
 !SS_PAL_STARVE = 8        ; a palette chunk anyway after this many frames without time
-; the fires (fire.asm)
-!ssw_site_p  = !SSW+$2C2 ; 15 x 4 bytes: per-site animation constants
-!ssw_site_n  = !SSW+$980 ; word: fire sites of this load ($FFFF none yet)
-!ssw_site_load = !SSW+$982 ; word: the load (!ssw_loads) they belong to
-!ssw_site_map = !SSW+$984 ; word: and its map
-!ssw_site_rr = !SSW+$986 ; word: first site drawn this frame (rotates)
-!ssw_blast_a = !SSW+$988 ; 4 words: a blast's age ($FFFF idle), x, y, bursts
-!ssw_blast_b = !SSW+$990 ; 4 words: a second one
-!ssw_blast_n = !SSW+$998 ; word: bursts of the latest blast (fx's work while they burn)
-!ssw_fire_t7 = !ssw_ck_q7  ; wreck age / 7 (the clock)
-!ssw_fire_r7 = !ssw_ck_r7  ; wreck age % 7
-!ssw_fire_e3 = !ssw_ck_e3  ; (wreck age / 5) % 3
-!ssw_fire_m24 = !ssw_ck_m24 ; wreck age % 24
-!ssw_fire_on = !SSW+$99A ; word: the fires are drawn this frame
-; +$99C-$99D free
-!ssw_fire_cx = !SSW+$99E ; word: fx's camera
-!ssw_fire_cy = !SSW+$9A0
-!ssw_fire_k  = !SSW+$9A2 ; word: site being drawn
-!ssw_fire_cnt = !SSW+$9A4 ; word: sites looked at in this pass
-!ssw_blast_end = !SSW+$2FE ; word: frames until the last blast's bursts are gone
-!ssw_site_nr = !SSW+$250 ; word: sites before the rim's (the rotating ones)
-!ssw_fire_pass = !SSW+$252 ; word: 0 flames, 1 embers
-!ssw_site_x  = !SSW+$9A6 ; 15 words
-!ssw_site_y  = !SSW+$9C4 ; 15 words (ends at $9E2)
-assert !ssw_site_y+30 <= !SSW+$A00, "Sandship work overflow"
+; the blasts (blast.asm)
+!ssw_red     = !SSW+$980 ; word: frames since the last blast's red flash (24 and up: none)
+!ssw_blast_q = !SSW+$982 ; word: the 150-frame period of the last blast ($FFFF none)
+assert !ssw_blast_q+2 <= !SSW+$A00, "Sandship work overflow"
 !SS_STAGE    = !SSW+$300 ; 512 bytes: transformed CGRAM
 ; The breach's HDMA (both channels indirect, tables and data in this bank)
 !SS_HB       = !SSW+$500
@@ -473,11 +452,6 @@ assert !ssw_site_y+30 <= !SSW+$A00, "Sandship work overflow"
 !ssw_sq_fill = !SSW+$8C8 ; word: bytes of it copied
 !ssw_sq_ok   = !SSW+$8CA ; word: a full set of sand is there
 !ssw_white_lvl = !SSW+$8CC ; word: this frame's white level (0 none)
-; the fires on screen this frame (fire.asm)
-!ssw_fire_vn = !SSW+$8CE ; word: count
-!ssw_fire_done = !SSW+$8D0 ; word: fx draws made
-!ssw_fire_vis = !SSW+$8D2 ; 15 words: their site indices, in drawing order
-!ssw_fx_debt = !SSW+$8F2 ; word: scanlines of fx work this frame's draws (and blasts) add
 !ssw_pal_kin = !SSW+$8F4 ; word: the tint's inputs the current key was made from
 !ssw_br_vok  = !SSW+$8F6 ; word: !ssw_br_var/top/cnt hold the outline of the breach at
 !ssw_br_vx   = !SSW+$8F8 ; words: ... this centre
@@ -588,7 +562,7 @@ incsrc "demolish.asm"
 incsrc "barriers.asm"
 incsrc "sandship.asm"
 incsrc "wreck.asm"
-incsrc "fire.asm"
+incsrc "blast.asm"
 incsrc "debug.asm"
 destroy_code_end:
 assert destroy_code_end <= !CODE_DESTROY+$8000, "destroy code bank overflow"

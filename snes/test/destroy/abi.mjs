@@ -25,7 +25,7 @@ export function destroyAbi(extra=[]){
     'd_qn','d_qlive','d_cn','d_flags','out_react','out_rmap','out_rows','out_demo','out_sfx',
     'dbg_cmd','dbg_arg','dbg_res','dbg_n','dbg_ev','dbg_evn','dbg_script','bp_state','bp_event','orb_base','P_DOORS','P_TREE','DQ','DC','FX_SEQ','FX_KIND','FX_X','FX_Y',
     'SS','ss_flags','ss_breaks','ss_door','ss_wage','ss_cut','ss_cage','ss_cafter','ss_cbits','ss_flash','ss_bmap','ss_bx','ss_by','ss_gear','ss_gbits','ss_vis','ss_work','ss_own','ss_end',
-    'SSW','SS_STAGE','SS_HB','ssw_pal_mode','ssw_pal_up','ssw_pal_upat','ssw_pal_ups','ssw_pal_key','ssw_br_on','ssw_br_lines','ssw_br_t2','ssw_br_t3','ssw_br_sx','ssw_br_sy','ssw_dbgactor','ssw_dismiss','ssw_songs','ssw_lastsong','ssw_remark','ssw_rseq','ssw_loads','ssw_dbgdoor','ssw_dbgrec','ssw_list',
+    'SSW','SS_STAGE','SS_HB','ssw_pal_mode','ssw_pal_up','ssw_pal_upat','ssw_pal_ups','ssw_pal_key','ssw_br_on','ssw_br_lines','ssw_br_t2','ssw_br_t3','ssw_br_sx','ssw_br_sy','ssw_dbgactor','ssw_dismiss','ssw_songs','ssw_lastsong','ssw_remark','ssw_rseq','ssw_loads','ssw_dbgdoor','ssw_dbgrec','ssw_list','ssw_red','ssw_ck_120',
     'SSF_WRECK','SSF_WPLAN','SSF_CRASH','SSF_BOSS','SSF_DECKDONE','SSF_ARMED','SSF_ESCAPED','persist_goku_active','persist_version','persist_magic','SIDE_MAGIC','SRAM_LIVE','core_event_req'];
   const abi={};
   for(const n of [...names,...extra]){

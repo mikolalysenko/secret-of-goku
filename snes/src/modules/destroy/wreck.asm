@@ -19,7 +19,7 @@
 ; The breach: inside its outline window 1 masks BG1 and BG2 (one span per
 ; scanline, HDMA channel 2) and the backdrop shows the desert under the hull
 ; (CGRAM 0 per scanline, HDMA channel 3: sand() down a column, scrolled
-; 1.5 px per frame). Sprites (fires, monsters, Goku) and BG3 stay in front.
+; 1.5 px per frame). Sprites (monsters, Goku) and BG3 stay in front.
 ; Both channels run indirect, so a frame's tables are a few entries: the
 ; window positions of the outline's rows are remade only when its screen x
 ; changes (vertical scrolling just moves the pointer), and the sand of each
@@ -30,40 +30,33 @@
 ; with vblank time left.
 ;
 ; Frame time: the parts that must run every frame are small (the clock, the
-; transform choice, the tables); the palette passes (one chunk a frame for
-; the tint, more for the white-out) and then the fires take what the frame
-; has left before !SS_FRAME_END, counting fx's work for each draw.
+; transform choice, the tables); the palette passes take what the frame has
+; left before !SS_FRAME_END, a chunk at a time.
 ;
 ; Deviations: one sand colour per scanline (the browser's sand varies along
-; the line too) and no soot or fire rim drawn into the floor (the rim's five
-; fires and the room's fires are sprites).
+; the line too); no fires, soot or scorch (blast.asm: a blast is its sound,
+; its quake and a red flash).
 
 !SS_DB2 #= ((!SSW>>16)&$FF)|(((!SSW>>16)&$FF)<<8)  ; PEA operand: DB = the work bank
 ; the white-out tables (extended data): 13 low-byte tables, then 13 high
 !SS_WHITE_LO #= !XDATA_DESTROY_WHITE
 !SS_WHITE_HI #= !XDATA_DESTROY_WHITE+((!SS_WHITE_LEVELS+1)*512)
 !SS_SAND_QUADS #= !XDATA_DESTROY_SAND_QUADS
-; Frame time. The field frame ends with fx_frame drawing what was asked of
-; it, so the work here, plus fx's estimated work for this module's draws,
-; must end before !SS_FRAME_END (the NMI comes at line 225). Estimates in
-; scanlines, measured in the hold (FastROM).
-!SS_FRAME_END = 214       ; last line our work and its fx work may reach
-!SS_FX_BASE  = 9          ; fx_frame's own cost once it draws anything
-!SS_FX_FLAME = 15         ; fx's work for an Exploder flame (ours is timed live)
-!SS_FX_EMBER = 7          ; ... for a Fireball ember
+; Frame time. The work here must end before !SS_FRAME_END, leaving the rest
+; of the field frame (fx_frame and the modules after this one) time before
+; the NMI at line 225. Estimates in scanlines, measured in the hold (FastROM).
+!SS_FRAME_END = 214       ; last line our work may reach
 !SS_PAL_CHUNK = 14        ; one palette chunk (32 colours)
 !SS_STARVE_END = 221      ; a starving palette pass may end this late
 
 ; ---------------------------------------------------------------------------
 ; Field side (ss_frame, inside the arc's window). M16/X16, DB = $7E.
 ss_visuals:
-	LDA.w #0 : STA.l !ssw_fx_debt
 	JSR ss_clock
+	JSR ss_blasts                                 ; before the transform choice: a flash starts now
 	JSR ss_pal_choose
 	JSR ss_breach_build
-	JSR ss_fires_prep
 	JSR ss_pal_run
-	JSR ss_fires
 	LDA.w #!SS_VIS_MAGIC : STA.l !ssw_vtmp
 	LDA.l !ssw_pal_up : BEQ +
 	LDA.l !ssw_vtmp : ORA.w #!SS_VIS_PAL : STA.l !ssw_vtmp
@@ -146,7 +139,7 @@ ss_pal_choose:
 	LDA.w #!SS_WHITE_LEVELS
 +	STA.l !ssw_vtmp+2                            ; level
 	STA.l !ssw_white_lvl
-	ORA.w #$0200 : STA.l !ssw_vtmp+4              ; key: mode 2
+	ORA.w #$2000 : STA.l !ssw_vtmp+4              ; key: mode 2 (bits 12-15)
 	LDA.l !ssw_vtmp+2 : XBA : ASL                 ; level * 512
 	CLC : ADC.w #(!SS_WHITE_LO)&$FFFF : STA.l !ssw_pal_tl
 	LDA.l !ssw_vtmp+2 : XBA                       ; level * 256
@@ -163,11 +156,11 @@ ss_pal_choose:
 	JMP .none
 +	LDA.w $00DC : JSR ss_ship_map : BCS +
 	JMP .none
-+	; the tint's inputs: the alarm's phase (it is off from 24 on) and the
-	; flicker's step; the same as last frame, the same key
-	LDA.l !ssw_ck_120 : CMP.w #24 : BCC +
-	LDA.w #24
-+	XBA : STA.l !ssw_vtmp+2
++	; the tint's inputs: the pulse (a blast's flash, or the alarm's phase,
+	; off from 24 on) and the flicker's step; the same as last frame, the
+	; same key
+	JSR ss_tint_phase
+	XBA : STA.l !ssw_vtmp+2
 	LDA.l !ss_wage : LSR : LSR : AND.w #$00FF : ORA.l !ssw_vtmp+2
 	CMP.l !ssw_pal_kin : BNE .compute
 	LDA.l !ssw_pal_mode : CMP.w #1 : BNE .compute
@@ -177,39 +170,48 @@ ss_pal_choose:
 	JMP .set
 .compute
 	STA.l !ssw_pal_kin
-	; phase = age % 120 (alarm, the clock), k = (age >> 2) & 255 (flicker)
+	; the pulse: a blast's flash (2.5 times the alarm) or the alarm at
+	; age % 120 (the clock); k = (age >> 2) & 255 (flicker)
 	LDA.l !ss_wage : LSR : LSR : AND.w #$00FF : ASL : STA.l !ssw_vtmp+2
+	LDA.l !ssw_red : CMP.w #24 : BCS .alarm
+	ASL : TAX                                     ; flash age * 2
+	LDA.l ss_flash_a,X : STA.l !ssw_vtmp+6
+	LDA.l ss_flash_b,X : STA.l !ssw_vtmp+8
+	LDA.l ss_flash_c,X : STA.l !ssw_vtmp+10
+	BRA .pulse
+.alarm
 	LDA.l !ssw_ck_120 : ASL : TAX                 ; phase * 2
 	LDA.l ss_alarm_a,X : STA.l !ssw_vtmp+6        ; alarm * 256
 	LDA.l ss_alarm_b,X : STA.l !ssw_vtmp+8        ; alarm * .4 * 256
 	LDA.l ss_alarm_c,X : STA.l !ssw_vtmp+10       ; alarm * .5 * 256
+.pulse
 	LDA.l !ssw_vtmp+2 : TAX                       ; k * 2
-	; red: 2 + floor(alarm + flicker)
+	; red: 2 + floor(pulse + flicker), dr - 2 = 0..12
 	LDA.l ss_flick_a,X : CLC : ADC.l !ssw_vtmp+6
 	XBA : AND.w #$00FF
-	CMP.w #6 : BCC +
-	LDA.w #5
+	CMP.w #13 : BCC +
+	LDA.w #12
 +	STA.l !ssw_vtmp+12                            ; dr - 2
-	; green: floor(flicker * .5 - alarm * .4), -2..0
+	; green: floor(flicker * .5 - pulse * .4), -4..0
 	LDA.l ss_flick_b,X : SEC : SBC.l !ssw_vtmp+8
 	EOR.w #$8000 : XBA : AND.w #$00FF             ; floor(/256) + 128
-	SEC : SBC.w #$80-2                             ; dg + 2
+	SEC : SBC.w #$80-4                             ; dg + 4
 	BPL +
 	LDA.w #0
-+	CMP.w #3 : BCC +
-	LDA.w #2
++	CMP.w #5 : BCC +
+	LDA.w #4
 +	STA.l !ssw_vtmp+14
-	; blue: -2 - ceil(alarm * .5), -4..-2 -> db + 4 = 2 - ceil
+	; blue: -2 - ceil(pulse * .5), -7..-2 -> db + 7 = 5 - ceil
 	LDA.l !ssw_vtmp+10 : CLC : ADC.w #255 : XBA : AND.w #$00FF
-	CMP.w #3 : BCC +
-	LDA.w #2
+	CMP.w #6 : BCC +
+	LDA.w #5
 +	STA.l !ssw_vtmp+10
-	LDA.w #2 : SEC : SBC.l !ssw_vtmp+10 : STA.l !ssw_vtmp+10
-	; hi table (dg + 2) * 3 + (db + 4)
-	LDA.l !ssw_vtmp+14 : ASL : CLC : ADC.l !ssw_vtmp+14
+	LDA.w #5 : SEC : SBC.l !ssw_vtmp+10 : STA.l !ssw_vtmp+10
+	; hi table (dg + 4) * 6 + (db + 7)
+	LDA.l !ssw_vtmp+14 : ASL : CLC : ADC.l !ssw_vtmp+14 : ASL
 	CLC : ADC.l !ssw_vtmp+10 : STA.l !ssw_vtmp+14
-	ASL : ASL : ASL : ASL : ORA.l !ssw_vtmp+12 : ORA.w #$0100
-	STA.l !ssw_vtmp+4                             ; key: mode 1
+	ASL : ASL : ASL : ASL : ORA.l !ssw_vtmp+12 : ORA.w #$1000
+	STA.l !ssw_vtmp+4                             ; key: mode 1 (bits 12-15)
 	LDA.l !ssw_vtmp+12 : XBA : ASL                ; (dr - 2) * 512
 	CLC : ADC.w #ss_tint_lo&$FFFF : STA.l !ssw_pal_tl
 	LDA.l !ssw_vtmp+14 : XBA                      ; index * 256
@@ -234,7 +236,7 @@ ss_pal_choose:
 +	LDA.w #$0600
 ++	STA.l !ssw_pal_src
 	; a new mode: nothing is uploaded until its colours are made
-	LDA.l !ssw_vtmp+4 : XBA : AND.w #$00FF : CMP.l !ssw_pal_mode : BEQ .same
+	LDA.l !ssw_vtmp+4 : XBA : LSR : LSR : LSR : LSR : AND.w #$000F : CMP.l !ssw_pal_mode : BEQ .same
 	STA.l !ssw_pal_mode
 	LDA.l !ssw_vtmp+6 : STA.l !ssw_pal_first
 	LDA.l !ssw_vtmp+8 : STA.l !ssw_pal_end
@@ -314,9 +316,8 @@ ss_pal_run:
 +	STA.l !ssw_pal_cur
 	LDA.l !ssw_pal_left : SEC : SBC $06 : STA.l !ssw_pal_left
 	BEQ .out
-	; the alarm tint makes one chunk a frame (it changes every few frames,
-	; and the fires share the time); the white-out takes what there is
-	LDA.l !ssw_pal_mode : CMP.w #2 : BNE .out
+	; another chunk while the frame has time (a blast's flash or the alarm
+	; reaches every colour within a frame or two)
 	LDA.w #!SS_PAL_CHUNK : JSR ss_room : BCC .chunk
 .out
 	LDA.l !ssw_pal_done : STA.l !ssw_pal_up
@@ -325,16 +326,25 @@ ss_pal_run:
 	PLD
 	RTS
 
-; A = scanlines of work about to start: carry set when it would not end,
-; with the fx work this frame's draws already added (!ssw_fx_debt), before
-; !SS_FRAME_END of this frame (or of the next one when the frame began in
-; vblank, the previous one having run long). ss_room_by: the same with the
-; last line in X. Latched counters only.
+; The tint's pulse for its key: a blast's red flash (!ssw_red under 24,
+; blast.asm: 32 + its age), else the 120-frame alarm's phase (24 when off).
+ss_tint_phase:
+	LDA.l !ssw_red : CMP.w #24 : BCS +
+	ADC.w #32                                     ; (carry clear)
+	RTS
++	LDA.l !ssw_ck_120 : CMP.w #24 : BCC +
+	LDA.w #24
++	RTS
+
+; A = scanlines of work about to start: carry set when it would not end
+; before !SS_FRAME_END of this frame (or of the next one when the frame
+; began in vblank, the previous one having run long). ss_room_by: the same
+; with the last line in X. Latched counters only.
 ss_room:
 	LDX.w #!SS_FRAME_END
 ss_room_by:
 	STX.w !d_t4
-	CLC : ADC.l !ssw_fx_debt : STA.l !ssw_vtmp+14
+	STA.l !ssw_vtmp+14
 	JSR dst_vline
 	PHA
 	LDA.w !d_vstart : CMP.w #225 : BCC .visible
@@ -873,7 +883,7 @@ destroy_cgram_upload:
 	; A vblank whose frame did not complete (a lag frame; with a window open
 	; the game uploads every vblank) runs no module vblank callbacks: while
 	; the Sandship's look is on, the OBJ palettes they wrote (the effects
-	; library's, for the fires) stay in CGRAM and only the BG colours go up.
+	; library's) stay in CGRAM and only the BG colours go up.
 	LDY.w #512
 	LDA.l !core_dma_ready : BNE +
 	LDY.w #256
