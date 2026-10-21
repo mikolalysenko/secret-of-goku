@@ -522,8 +522,13 @@ bands_nmi:
 	STA.w $212E
 	LDA.b #$C3                     ; BG1 shown in W1, BG2 in W2
 	STA.w $2123
-	; colours 1-2 of BG palette 7 (Goku's, CGRAM 113-114) and of BG
-	; palette 1 (Frieza's, CGRAM 17-18): the band frame's outer and inner
+	REP #$20
+	RTS
+
+; Colours 1-2 of BG palette 7 (Goku's, CGRAM 113-114) and of BG palette 1
+; (Frieza's, CGRAM 17-18): the band frame's outer and inner (with the
+; game's palette transfer: scene.asm orbit_cgram_live). M16/X16.
+bands_cgram:
 	REP #$20
 	LDA.w !v_band
 	AND.w #$0001

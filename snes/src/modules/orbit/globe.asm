@@ -222,9 +222,8 @@ globe_descent:
 	STA.w !g_ichg
 	RTS
 
-; BGMODE ($2105) per line: Mode 1 for the text band (BG3 panel), Mode 7
-; down to line 195, Mode 1 for the HUD rows from line 196 (the pullback:
-; Mode 7 again there, after the field IRQ's HUD split, to line 223).
+; The text band changed (A8 = g_text): the globe's last line; the next
+; indirect set gets its BGMODE table (globe_mode_write).
 globe_mode_table:
 	SEP #$20
 	STA.w !g_textset
@@ -234,8 +233,35 @@ globe_mode_table:
 	BEQ +
 	LDA.w #224                     ; (the pullback has no HUD)
 +	STA.w !g_mend
-	LDY.w #!hb_mode
+	RTS
+
+; BGMODE ($2105) per line for indirect set X16 (0 / !IT_SIZE): Mode 1 for
+; the text band (BG3 panel), Mode 7 down to line 195, Mode 1 for the HUD
+; rows from line 196 (the pullback: Mode 7 again there, after the field
+; IRQ's HUD split, to line 223). Each set has its own table (hb_mode,
+; hb_mode1), written while the HDMA reads the other (a table rewritten
+; under the HDMA would split the screen where its old entries left off for
+; a frame), and only when it holds another band (hb_have).
+globe_mode_write:
+	REP #$30
 	LDA.w !g_text
+	AND.w #$00FF
+	LDY.w !g_pull
+	BEQ +
+	ORA.w #$0100
++	LDY.w #$0000
+	CPX.w #$0000
+	BEQ +
+	LDY.w #$0002
++	CMP.w !hb_have,Y
+	BNE +
+	RTS                            ; (it holds this one)
++	STA.w !hb_have,Y
+	LDY.w #!hb_mode
+	CPX.w #$0000
+	BEQ +
+	LDY.w #!hb_mode1
++	LDA.w !g_text
 	AND.w #$00FF
 	STA.w !g_tmp
 	BEQ .noText
@@ -458,6 +484,9 @@ globe_itables:
 	LDA.w !g_cur_it
 	EOR.w #!IT_SIZE
 	STA.w !g_it
+	LDX.w !g_it                    ; its BGMODE table
+	JSR globe_mode_write
+	REP #$30
 	; empty record
 	LDA.w #$00FF
 	STA.w !gb_empty

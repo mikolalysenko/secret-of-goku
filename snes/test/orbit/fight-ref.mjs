@@ -36,8 +36,9 @@ function installGlobals(){
 
 // start: {hp, age, cycle, node, clock, target:{x,y}, hero:{x,y}, ...boss fields}
 // wram: the import bundle's wram.bin (bank 7E first), so the equipment and
-// Goku's HP are the cartridge test's.
-export async function runFightReference({rom=readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')),frames=600,pad=()=>0,start={},trace=null,wram=null}={}){
+// Goku's HP are the cartridge test's. onFrame({f, frieza, mod, snes}) after
+// each frame's step (fight-view.mjs draws the browser's picture there).
+export async function runFightReference({rom=readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')),frames=600,pad=()=>0,start={},trace=null,wram=null,onFrame=null}={}){
   installGlobals();
   const {createFrieza}=await import(resolve(repo,'engine/frieza.js'));
   const {newOrbit}=await import(resolve(repo,'engine/frieza-orbit.js'));
@@ -94,6 +95,7 @@ export async function runFightReference({rom=readFileSync(resolve(repo,'rom/secr
     // here; the cartridge test reads its own HP the same way).
     const queued=mod.read16(0xe1f1);if(queued){w16(0xe182,Math.max(0,mod.read16(0xe182)-queued));w16(0xe1f1,0);}
     const s=frieza.snapshot(),b=s.boss,o=b.space;
+    if(onFrame)await onFrame({f,frieza,mod,snes});
     if(!o){out.push({f,stage:s.stage,boss:{age:b.age,hp:b.hp},returned:true,native,requests:[...requests],sounds:[...sounds],gokuHp:mod.read16(0xe182)});if(trace)trace(out.at(-1));continue;}
     const c=o.clash,cam=c?clashCamera(o):o.camera;
     out.push({f,stage:s.stage,clash:c?{phase:c.phase,age:c.age,pressure:c.pressure,shown:c.shown,taps:c.taps}:null,

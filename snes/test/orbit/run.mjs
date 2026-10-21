@@ -93,6 +93,44 @@ const ADDR=`GOKU_FORM=${GOKU_FORM}\nSCENE_OWNER=${SCENE_OWNER}\nSCENE_ORBIT=${SC
 // Mesen runs share the machine with other agents' emulators: a generous
 // wall-clock limit (the emulation itself is deterministic).
 const TIMEOUT=Number(process.env.ORBIT_TIMEOUT_MS??2400000);
+// watch.lua (the per-frame watches) with the test ROM's addresses of the
+// colours the scene sends.
+function watchPrelude(rom){
+  const sym=new Map();
+  for(const line of readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8').split('\n')){
+    const m=/^([0-9A-Fa-f]{2}):([0-9A-Fa-f]{4}) (\S+)/.exec(line);if(m)sym.set(m[3],parseInt(m[1]+m[2],16));}
+  const a=n=>{if(!sym.has(n))throw Error('no symbol '+n);return sym.get(n);};
+  return `GLOBE_PAL=${a('orbit_globe_pal')+2*2*96}\nOBJ01=${a('orbit_obj_pals_01')}\nOBJ01B=${a('orbit_obj_pals_01b')}\nOBJ67=${a('orbit_obj_pals_67')}\nTEXT_PAL=${a('orbit_text_pal')}\n`
+    +readFileSync(join(here,'watch.lua'),'utf8')+'\n';
+}
+// The frames whose colours differ from the scene's (watch.lua W.cgram):
+// [frame, ranges] pairs.
+const badColours=watch=>(watch??[]).map((w,i)=>[i,w.split('|')[0]]).filter(([,c])=>c!=='ok'&&c!=='off');
+// The watch's other findings while the globe picture shows: our vblank work
+// ending in the next frame (core then keeps that frame's HDMA off), the
+// frames with lines whose sprites the PPU drops (over 32 sprites or 34
+// slivers): [frame, sprites, slivers, lines], and the frames whose CPU
+// wrote CGRAM or started a general DMA under HDMA on the visible lines:
+// [frame, CGRAM writes, DMA starts].
+const watchFindings=watch=>{
+  const late=[],dropped=[],writes=[];
+  (watch??[]).forEach((w,i)=>{
+    const[c,g,o,,v]=w.split('|');
+    const[cw,dw]=(v??'0,0').split(',').map(Number);if(cw||dw)writes.push([i,cw,dw]);
+    if(c==='off')return;
+    const vline=Number(g.split(',')[7]);if(vline>0&&vline<225)late.push(i);
+    const[sp,sl,over]=o.split(',').map(Number);if(over>0)dropped.push([i,sp,sl,over]);
+  });
+  return {late,dropped,writes};
+};
+
+// ORBIT_SHOTS=a-b[,c-d...]: the fight and clash cases also screenshot every
+// frame in those ranges, at exact frames (to watch pictures in sequence).
+const extraShots=()=>{
+  const out=[];for(const part of (process.env.ORBIT_SHOTS??'').split(',').filter(Boolean)){
+    const[a,b]=part.split('-').map(Number);for(let f=a;f<=(b??a);f++)out.push(f);}
+  return out;
+};
 const lua=(v)=>Array.isArray(v)?'{'+v.map(lua).join(',')+'}':typeof v==='object'?'{'+Object.entries(v).map(([k,x])=>`${k}=${lua(x)}`).join(',')+'}':typeof v==='string'?JSON.stringify(v):String(v);
 
 // Scripted pad for the fight case (core $4218 bits), frame 0 first.
@@ -315,8 +353,8 @@ const cases={
   async fight(rom){
     const frames=Number(process.env.ORBIT_FIGHT_FRAMES??660),pads=fightPads(frames);
     const dir=join(out,'fight');
-    const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nPADS=${lua(pads)}\nSHOTS={0,60,150,200,240,320,600}\nEXTRA=${Number(process.env.ORBIT_FIGHT_EXTRA??0)}\n`;
-    const r=await runMesen({rom,state,test:ADDR+pre+readFileSync(join(here,'fight.lua'),'utf8'),outDir:dir,timeoutMs:TIMEOUT});
+    const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nPADS=${lua(pads)}\nSHOTS={${[0,60,150,200,240,320,600,...extraShots()].join(',')}}\nDUMP=${process.env.ORBIT_DUMP?'true':'false'}\nEXTRA=${Number(process.env.ORBIT_FIGHT_EXTRA??0)}\n`;
+    const r=await runMesen({rom,state,test:ADDR+pre+watchPrelude(rom)+readFileSync(join(here,'fight.lua'),'utf8'),outDir:dir,timeoutMs:TIMEOUT,exactFrames:!!process.env.ORBIT_SHOTS});
     const res=r.results??{};
     let ok=r.code===0&&res.live===true&&Array.isArray(res.states);
     if(!ok){console.log('fight: FAIL (no run)',r.code,res.error??'',r.output?.slice(-2000));return false;}
@@ -347,23 +385,27 @@ const cases={
       const d=diff(c,want);
       if(d.length)mismatches.push(`age ${c.boss.age}: ${d.slice(0,4).join('; ')}`);
     }
-    const report={compared,mismatchFrames:mismatches.length,first:mismatches.slice(0,12),lagged:res.lagged,hpTrail:trail,
+    // every frame: the colours the orbit owns as the scene sends them
+    const colours=badColours(res.watch),{late,dropped,writes}=watchFindings(res.watch);
+    const report={compared,mismatchFrames:mismatches.length,first:mismatches.slice(0,12),lagged:res.lagged,hpTrail:trail,colours,late,dropped,writes,watch:res.watch,
       end:{cart:cart.at(-1),browser:ref[cart.at(-1).boss.age-1]?refState(ref[cart.at(-1).boss.age-1]):null}};
     writeFileSync(join(dir,'report.json'),JSON.stringify(report,null,1));
     // The fight steps once per field vblank (catching up after a slow game
     // frame, as the browser's clock does); a few pictures may still repeat
     // when the game's own frame runs long (its damage reaction).
-    ok=ok&&compared>=frames-80&&mismatches.length===0&&res.lagged<=3;
-    console.log(`fight: ${ok?'pass':'FAIL'} compared ${compared} frames, ${mismatches.length} differ, ${res.lagged} lagged, HP trail ${trail}`);
+    ok=ok&&compared>=frames-80&&mismatches.length===0&&res.lagged<=3&&colours.length===0&&late.length===0&&writes.length===0;
+    console.log(`fight: ${ok?'pass':'FAIL'} compared ${compared} frames, ${mismatches.length} differ, ${res.lagged} lagged, HP trail ${trail}, ${colours.length} frames with other colours, ${late.length} late vblanks, ${writes.length} frames writing CGRAM or DMA on visible lines, ${dropped.length} frames dropping sprites`);
+    for(const[f,c]of colours.slice(0,8))console.log(`  frame ${f}: ${c} not the scene's`);
+    for(const[f,cw,dw]of writes.slice(0,8))console.log(`  frame ${f}: ${cw} CGRAM writes, ${dw} DMA starts on visible lines`);
     for(const m of mismatches.slice(0,8))console.log('  '+m);
     return ok;
   },
   async clash(rom){
     const frames=Number(process.env.ORBIT_CLASH_FRAMES??3000),pads=clashPads(frames);
     const dir=join(out,'clash');
-    const shots=[0,100,200,300,320,360,400,560,900,1300,1560,1700,1900,2500,2700,2880];
-    const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nPADS=${lua(pads)}\nSHOTS={${shots.join(',')}}\nHP=6000\n`;
-    const r=await runMesen({rom,state,test:ADDR+pre+readFileSync(join(here,'clash.lua'),'utf8'),outDir:dir,timeoutMs:TIMEOUT});
+    const shots=[0,100,200,300,320,360,400,560,900,1300,1560,1700,1900,2500,2700,2880,...extraShots()];
+    const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nPADS=${lua(pads)}\nSHOTS={${shots.join(',')}}\nDUMP=${process.env.ORBIT_DUMP?'true':'false'}\nHP=6000\n`;
+    const r=await runMesen({rom,state,test:ADDR+pre+watchPrelude(rom)+readFileSync(join(here,'clash.lua'),'utf8'),outDir:dir,timeoutMs:TIMEOUT,exactFrames:!!process.env.ORBIT_SHOTS});
     const res=r.results??{};
     let ok=r.code===0&&res.live===true&&Array.isArray(res.states);
     if(!ok){console.log('clash: FAIL (no run)',r.code,res.error??'',r.output?.slice(-2000));return false;}
@@ -405,12 +447,16 @@ const cases={
     // the native victory commands, in order (each is sent once by both)
     const want=ref.filter(b=>b.native).map(b=>b.native.map(v=>v.toString(16)).join(' '));
     const returned=cart.find(c=>c.returned),refReturn=ref.find(b=>b.returned);
+    // every frame the globe picture shows: the colours the orbit owns
+    const colours=badColours(res.watch),{late,dropped,writes}=watchFindings(res.watch);
     const report={compared,mismatchFrames:mismatches.length,first:mismatches.slice(0,16),lagged:res.lagged,nativeWant:want,
-      returnedAt:returned?.wage,refReturnedAt:refReturn?refReturn.boss.age:null,end:cart.at(-1)};
+      returnedAt:returned?.wage,refReturnedAt:refReturn?refReturn.boss.age:null,colours,late,dropped,writes,watch:res.watch,end:cart.at(-1)};
     writeFileSync(join(dir,'report.json'),JSON.stringify(report,null,1));
-    ok=ok&&compared>=frames-200&&mismatches.length===0&&!!returned&&returned.wage===refReturn?.boss.age;
-    console.log(`clash: ${ok?'pass':'FAIL'} compared ${compared} frames, ${mismatches.length} differ, ${res.lagged} lagged, back at ${returned?.wage} / ${refReturn?.boss.age}`);
+    ok=ok&&compared>=frames-200&&mismatches.length===0&&!!returned&&returned.wage===refReturn?.boss.age&&colours.length===0&&late.length===0&&writes.length===0;
+    console.log(`clash: ${ok?'pass':'FAIL'} compared ${compared} frames, ${mismatches.length} differ, ${res.lagged} lagged, back at ${returned?.wage} / ${refReturn?.boss.age}, ${colours.length} frames with other colours, ${late.length} late vblanks, ${writes.length} frames writing CGRAM or DMA on visible lines, ${dropped.length} frames dropping sprites`);
     for(const m of mismatches.slice(0,10))console.log('  '+m);
+    for(const[f,c]of colours.slice(0,8))console.log(`  frame ${f}: ${c} not the scene's`);
+    for(const[f,cw,dw]of writes.slice(0,8))console.log(`  frame ${f}: ${cw} CGRAM writes, ${dw} DMA starts on visible lines`);
     return ok;
   },
   async handoff(){

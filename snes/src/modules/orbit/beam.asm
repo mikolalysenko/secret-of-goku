@@ -13,9 +13,11 @@
 ; nearest one already made.
 ;
 ; Groups: 0 = Goku's wave (slots 0-2, OBJ $040/$044/$048), 1 = Frieza's
-; beam or laser (slots 3-5, OBJ $04C/$080/$084). Class 1's pictures (radii
-; 2-48) and class 2's (2-28) come made from extended data through the
-; vblank's queue (beam_rom). DB = $32, M16/X16.
+; beam or laser (slots 3-5, OBJ $04C/$080/$084). Band pictures of every
+; class up to the radii the beams use (orbit-fx.mjs: class 1 to 48, 0, 2
+; and 4 to 32, 3 to 12) come made from extended data through the vblank's
+; queue (beam_rom); the run-time builder makes the rest (the laser's).
+; DB = $32, M16/X16.
 
 
 ; (defines: module.asm)
@@ -289,18 +291,25 @@ beam_queue:
 	BCC .chain
 	RTS
 
-; Key A16: a band picture the generator made (orbit-fx.mjs: class 1,
-; radius 2-48, or class 2, radius 2-!OFX_BEAM_C2_R1; even, chain 0-2)?
-; Carry set with bg_tmp+8 = its source offset, +10 its bank, +12 the key.
-; Otherwise carry clear.
+; Key A16: a band picture the generator made (orbit-fx.mjs: the class's
+; radius 2-!OFX_BEAM_Cn_R1, even, chain 0-2; not the laser)? Carry set with
+; bg_tmp+8 = its source offset, +10 its bank, +12 the key. Otherwise carry
+; clear. Keeps X and Y.
 beam_rom:
+	PHX
+	JSR beam_rom_find
+	PLX
+	RTS
+beam_rom_find:
 	STA.w !bg_tmp+12
-	AND.w #$01C0|!BK_LASER         ; class 1 or 2, not the laser
-	CMP.w #$0080
-	BNE +
-	JMP .class2
-+	CMP.w #$0040
+	AND.w #!BK_LASER
 	BNE .no
+	LDA.w !bg_tmp+12
+	AND.w #$01C0
+	CMP.w #$0040
+	BEQ .class1
+	JMP .others
+.class1
 	LDA.w !bg_tmp+12
 	AND.w #$003F
 	CMP.w #2
@@ -341,15 +350,18 @@ beam_rom:
 .no
 	CLC
 	RTS
-.class2
-	; ((R / 2 - 1) * 3 + chain) * 512
+.others
+	; classes 0, 2-4: their blob, ((R / 2 - 1) * 3 + chain) * 512
+	LSR : LSR : LSR : LSR : LSR    ; class * 2
+	TAX
 	LDA.w !bg_tmp+12
 	AND.w #$003F
 	CMP.w #2
 	BCC .no
-	CMP.w #!OFX_BEAM_C2_R1+1
+	CMP.l .r1,X
+	BEQ +
 	BCS .no
-	LSR
++	LSR
 	BCS .no                        ; (odd radius)
 	DEC
 	STA.w !bg_tmp+4
@@ -363,10 +375,16 @@ beam_rom:
 	BCS .no
 	CLC : ADC.w !bg_tmp+4
 	XBA : ASL
-	CLC : ADC.w #(!XDATA_ORBIT_BEAM_C2)&$FFFF
+	CLC : ADC.l .lo,X
 	STA.w !bg_tmp+8
-	LDA.w #(!XDATA_ORBIT_BEAM_C2)>>16
+	LDA.l .hi,X
 	BRA .ready
+.r1
+	dw !OFX_BEAM_C0_R1, !OFX_BEAM_C1_R1, !OFX_BEAM_C2_R1, !OFX_BEAM_C3_R1, !OFX_BEAM_C4_R1
+.lo
+	dw (!XDATA_ORBIT_BEAM_C0)&$FFFF, 0, (!XDATA_ORBIT_BEAM_C2)&$FFFF, (!XDATA_ORBIT_BEAM_C3)&$FFFF, (!XDATA_ORBIT_BEAM_C4)&$FFFF
+.hi
+	dw (!XDATA_ORBIT_BEAM_C0)>>16, 0, (!XDATA_ORBIT_BEAM_C2)>>16, (!XDATA_ORBIT_BEAM_C3)>>16, (!XDATA_ORBIT_BEAM_C4)>>16
 
 ; Start the picture of key A16 for slot bg_tmp+2 / 2.
 beam_start:

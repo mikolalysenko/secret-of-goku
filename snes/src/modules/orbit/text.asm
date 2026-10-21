@@ -37,9 +37,14 @@ text_frame:
 	CLC : ADC.w #!OTXT_INTRO1
 	STA.w !t_want
 .set
+	; the band (Mode 1 lines) once a message's rows are in BG3: the vblank
+	; that sends them also picks the panel's BG3 scroll, and the band
+	; switches with the window rows in the next indirect set
 	SEP #$20
 	LDA.b #$00
 	LDX.w !t_want
+	BEQ +
+	LDX.w !t_have
 	BEQ +
 	LDA.b #!ORBIT_TEXT_LINES
 +	STA.w !g_text
