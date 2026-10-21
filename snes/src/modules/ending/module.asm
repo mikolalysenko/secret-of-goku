@@ -23,7 +23,7 @@
 !ending_done    = !RAM_ORBIT+$86   ; word  bit n set once phase n's timeline has finished
 !ending_status  = !RAM_ORBIT+$88   ; byte  !ES_* live status for other modules
 !ending_sfx     = !RAM_ORBIT+$89   ; byte  last sound cue (!ESFX_*), also sent to audio_sfx
-!ending_target_x = !RAM_ORBIT+$8C  ; word  globe target (planet-view target), 0 = default
+!ending_target_x = !RAM_ORBIT+$8C  ; word  cutaway's rounded shot target (0 is valid)
 !ending_target_y = !RAM_ORBIT+$8E  ; word
 !ending_map0    = !RAM_ORBIT+$90   ; word  native map when the scene took the screen
 !ending_live    = !RAM_ORBIT+$92   ; byte  bit0: vblank work active, bit1: restore field registers once
@@ -48,6 +48,7 @@
 !ending_cut_bank  = !RAM_ORBIT+$B0 ; byte  DMA source bank
 !ending_cut_level = !RAM_ORBIT+$B1 ; byte  fade level in CGRAM ($FF none)
 !ending_cut_budget = !RAM_ORBIT+$B2 ; word DMA bytes left in this vblank
+!ending_cut_globe = !RAM_ORBIT+$B4 ; word orientation latched from the shot's target
 
 ; Phases (match the browser's state.phase).
 !EP_TRANSITION = $01   ; good: whole-screen fade to black over 48 frames, then black

@@ -1,7 +1,7 @@
 // The Fortress cutaway in world flight (planet-view.js prepare() with a shot:
 // world-ki.js cutaway, 186 frames): the globe, the beam with its shock ring
-// and dust, and the fade over 164-186. The globe is the space stage's (BG1,
-// day or night: planet-view drawPlanet with Frieza's crisis); everything else
+// and dust, and the fade over 164-186. ending-globes supplies BG1 and its
+// shared day/night palettes (planet-view with Frieza's crisis); everything else
 // is built here per age with planet-view's own formulas (sky, beam):
 //   BG2 (chars at $7000): the stars, plus "footprint" cells redrawn per age
 //     (every cell the beam, the ring or a twinkling star ever touches; high

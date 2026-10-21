@@ -14,6 +14,7 @@ import {spawnSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
 const gfx=await import(new URL('../../tools/gfx.mjs',import.meta.url).href);
 import {kaiReference,compare,writeRef,bestPlanetMatch,gokuAtlas,nativeEffects,vistaReference,flightReference,cutawayReference} from './reference.mjs';
+import {globeTargets,globeAtlas,GLOBE_BUDGET} from '../../gen/ending-globes.mjs';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const rom=process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-goku.sfc');
 const baseRom=new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')));
@@ -33,6 +34,7 @@ function coreDefine(name){
 }
 const lib0=`EVENT_MAILBOX=0x${coreDefine('core_event_req').toString(16)}\n`;
 const lib=lib0+`AUDIO_SFX=${symAddr('audio_sfx')}\nAUDIO_FADE=${symAddr('audio_fade')}\nNMI_OUT=${symAddr('ending_world_nmi_out')}\nNMI_IN=${symAddr('ending_world_nmi')}\nNMI_RESTORE=${symAddr('ending_world_nmi_restore')}\nNMI_DMA=${symAddr('cut_footprint_ran')}\n`+
+  `FRAME_IN=${symAddr('ending_world_frame')}\nFRAME_OUT=${symAddr('ending_world_frame_out')}\nLOAD_IN=${symAddr('cut_load')}\nGLOBE_COUNT=${globeTargets().length}\nGLOBE_TILES=308\n`+
   `DMA_TRIGGERS={${['pal_commit_trigger','flight_sprites_trigger','flight_dragon_trigger','flight_stars_trigger','cut_oam_trigger'].map(symAddr).join(',')}}\n`+readFileSync(resolve(here,'lib.lua'),'utf8');
 // 'sfx<id>@<age>' / 'fade<byte>@<age>' calls recorded by E.watchAudio.
 const audioCalls=r=>(r.audio??'').split(' ').filter(Boolean);
@@ -262,8 +264,8 @@ async function loadsCheck(r,out){
 }
 
 // The Fortress cutaway in world flight (planet-view with a world-ki shot)
-// from a native session: stills against planet-view itself at the default
-// target, the vblank work inside vblank, the footprint keeping up, and the
+// from a native session: stills against planet-view at multiple targets
+// in both crisis states, the vblank work inside vblank, the footprint keeping up, and the
 // field's IRQ back after the deck landing.
 async function cutawayCheck(r,out){
   expect(r.reached&&r.still_reached,'the full wave reached the cutaway');
@@ -274,14 +276,60 @@ async function cutawayCheck(r,out){
   expect(r.dma_end_max>0&&r.dma_end_max<=261,`footprint uploads ended by line ${r.dma_end_max}`);
   expect(r.nmi_end_max>0&&r.nmi_end_max<=270,`vblank work ended by line ${r.nmi_end_max}`);
   expect(r.footprint_trail<=3,`the footprint trailed the age by ${r.footprint_trail}`);
+  expect(r.cpu_frame_idle_mean<=.3,`idle world callback ${r.cpu_frame_idle_mean} lines`);
+  expect(r.cpu_frame_start_mean<=5,`first world callback ${r.cpu_frame_start_mean} lines`);
+  expect(r.cpu_frame_live_mean<=5.5,`live world callback ${r.cpu_frame_live_mean} lines`);
   expect(r.landed,'deck landing after the cutaway');
   expect(r.restores===1&&r.field_vtime<225,`the field's HUD IRQ line is back (VTIME ${r.field_vtime}, ${r.restores} restore)`);
+  expect(r.load_lines_max<250,`black-frame load ${r.load_lines_max} lines (must finish before the next native NMI)`);
+  expect(r.unsafe_ppu_dma===0,`unsafe PPU/DMA writes: ${r.unsafe_ppu_dma}`);
+  const atlas=globeAtlas(baseRom),targets=globeTargets();
+  const stats=JSON.parse(readFileSync(resolve(repo,'dist/snes/gen/ending/stats.json'))).stats.globes;
+  expect(stats.bytes<=GLOBE_BUDGET,`orientation xdata ${stats.bytes} bytes exceeds ${GLOBE_BUDGET}`);
+  r.globe_bytes=stats.bytes;r.globe_orientations=targets.length;
+  for(const [i,view] of atlas.views.entries()){
+    const expected=Buffer.alloc((atlas.cells.length+1)*32),map=Buffer.alloc(2048);
+    view.map.forEach(({tile,flags},j)=>{
+      expected.set(atlas.tiles.subarray(tile*32,(tile+1)*32),(j+1)*32);
+      map.writeUInt16LE((j+1)|flags,atlas.cells[j]*2);
+    });
+    expect(readFileSync(join(out,`atlas-${i}-tiles.bin`)).equals(expected),`orientation ${i}: all dictionary tiles in VRAM`);
+    expect(readFileSync(join(out,`atlas-${i}-map.bin`)).equals(map),`orientation ${i}: map, palette and flip bits in VRAM`);
+  }
+  // Independent nearest search checks the assembly selector, including the
+  // extra default view, zero, wraparound and planet-view's 8-unit rounding.
+  const nearest=(x,y)=>{x=(Math.round(x/8)*8)&4095;y=(Math.round(y/8)*8)&4095;
+    const d=(a,b)=>Math.min((a-b)&4095,(b-a)&4095);
+    const scores=targets.map(t=>d(x,t.x)+d(y,t.y)),best=Math.min(...scores);
+    return new Set(scores.flatMap((s,i)=>s===best?[i]:[]));
+  };
+  expect(r.default_globe===targets.length-1,'the default target keeps its own orientation');
+  const globeMask=Uint8Array.from({length:256*224},(_,i)=>((i%256-87)**2+(Math.floor(i/256)-140)**2)<=72**2*1.07?1:0);
   for(const a of [2,6,12,30,60,85,95,110,140,170,180]){
     const name=`cut-${a}`;if(r[name]===undefined){problems.push(`no still ${name}`);continue;}
     const ref=await cutawayReference({rom:baseRom,age:a});
     writeFileSync(join(out,`${name}-ref.png`),writeRef(null,ref));
     const m=compare(join(out,`${name}.png`),ref);r[`${name}_match`]=m;
-    expect(m>=.9,`${name} matches planet-view at ${(m*100).toFixed(1)}%`);
+    expect(m>=.98,`${name} matches planet-view at ${(m*100).toFixed(1)}%`);
+  }
+  for(const [key,reached] of Object.entries(r).filter(([k])=>k.startsWith('at-')&&k.endsWith('-reached'))){
+    const prefix=key.slice(0,-8),night=prefix.endsWith('-night');
+    expect(reached,`${prefix} reached the cutaway`);if(!reached)continue;
+    expect(r[`${prefix}-night`]===Number(night),`${prefix} latched the crisis palette`);
+    const [x,y]=r[`${prefix}-target`].split(',').map(Number);
+    expect(nearest(x,y).has(r[`${prefix}-globe`]),`${prefix} selected the nearest saved shot target`);
+    for(const a of [2,60,140,180]){
+      const name=`${prefix}-${a}`,ref=await cutawayReference({rom:baseRom,age:a,target:{x,y},night});
+      expect(r[`${name}-shown`]>=a,`${name} footprint caught up`);
+      writeFileSync(join(out,`${name}-ref.png`),writeRef(null,ref));
+      const m=compare(join(out,`${name}.png`),ref);r[`${name}_match`]=m;
+      if(a===140){
+        const globe=compare(join(out,`${name}.png`),ref,{mask:globeMask});
+        r[`${prefix}_globe_agreement`]=globe;
+        expect(globe>=.66,`${prefix}: globe-only agreement ${(globe*100).toFixed(1)}%`);
+      }
+      expect(m>=.89,`${name} matches planet-view at ${(m*100).toFixed(1)}%`);
+    }
   }
 }
 
@@ -308,7 +356,7 @@ for(const t of tests){
     state=join(checkpointDir(),t.checkpoint);
     if(!existsSync(state))spawnSync(process.execPath,[resolve(repo,'snes/test/checkpoints.mjs')],{cwd:repo,stdio:'inherit'});
   }
-  const r=await runMesen({rom:copy,test:lib+readFileSync(resolve(here,`${t.name}.lua`),'utf8'),outDir:out,state});
+  const r=await runMesen({rom:copy,test:lib+readFileSync(resolve(here,`${t.name}.lua`),'utf8'),outDir:out,state,exactFrames:t.name==='cutaway'});
   cleanupRom(copy);
   if(r.code!==0||!r.results||r.results.error)problems.push(`mesen: ${r.results?.error??r.code}`);
   else{
@@ -317,6 +365,7 @@ for(const t of tests){
     expect(!r.results.dma_bad,`frame-thread DMA started with channel 7's size at 0 (${r.results.dma_bad} times, ${r.results.dma_bad_at})`);
   }
   const pass=!problems.length;
+  writeFileSync(join(out,'comparison.json'),JSON.stringify({pass,problems,...r.results},null,1));
   if(!pass)ok=false;
   const scores=Object.entries(r.results??{}).filter(([k])=>k.endsWith('_match')).map(([k,v])=>`${k.replace('_match','')} ${(v*100).toFixed(1)}%`).join(', ');
   console.log(`ending/${t.name}: ${pass?'pass':'FAIL'} (${r.ms} ms)${scores?' '+scores:''}`);
