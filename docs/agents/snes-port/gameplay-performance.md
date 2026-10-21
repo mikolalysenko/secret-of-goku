@@ -1,4 +1,4 @@
-# Goku gameplay review — October 20, 2026
+# Goku gameplay review — October 21, 2026
 
 The cartridge already had Goku's movement, combat, local/world flight,
 teleport, story and boss modules. The main problems in this review were
@@ -6,7 +6,224 @@ integration bugs and CPU/vblank cost. The default build now favors resident
 SNES audio and compact effects. It is substantially smoother, but crowded
 combat is not yet guaranteed to run without missed video frames.
 
-## Current checkpoint
+## Native actor follow-up — October 21, 2026
+
+The core-authorized follow-up starts at `a949896`. Fresh matched runs give
+short charge **17**, teleport **3**, ordinary flight **2**, flying ki **2**,
+flying punches **1**, and zero in the other eight cases. Long charge is
+**25**, teleport **18**, corridor flying ki **13**, flying punches **1**,
+and ground punches/ki **0/0**. These are this tree's baseline, not the older
+October 20 counts below.
+
+Gameplay's new `--routine-profile` measures CPU cycles and master clocks
+for the generic emitter, body path, actor callers, contact-distance prefix
+and overlap helper. It groups completed spans by field update and records
+which updates miss NMI. Counts at `$80:E640` now distinguish invocations
+from visits made by its internal loop. `--record-native` also samples CPU
+state plus low/actor WRAM for assembled replay; all recordings remain in
+the selected `GAMEPLAY_OUT`, under this worktree's `.local/snes-test/`.
+Master-clock and CPU spans include interrupts and nested calls; do not add
+parent and child spans together.
+
+The initial short charge profile measures native actor construction at
+**81.09 mean / 158.91 peak** scanlines and movement/contact at
+**39.30 / 56.62**. The generic emitter has **1,222 calls**, costing
+**7.54 lines per completed field update**; the contact-distance prefix has
+**2,007 calls**, costing **7.75 lines per update**. The full contact calls
+cost **13.80 lines per update**. The browser's `engine/sprite-layer.js`
+composes Goku/effects in JavaScript around the original engine's sprites;
+it does not add equivalent 65816 descriptor or contact calls for those
+effects. The cartridge has to fit that presentation into the native frame.
+
+Baseline artifacts: `.local/snes-test/perf3/baseline-{short,long}/`,
+`profile-short/` and `profile-original/`. Raw records and cartridges are
+private and are not committed.
+
+### Selected native changes
+
+`core/hooks.asm` keeps the generic emitter's Y cursor between pieces: all
+accepted and rejected paths already leave it equal to `$7C`. Rejected
+pieces also retain the capacity proof, since they allocated no OAM slot.
+Their short continuation lives in the old shake body made unreachable by
+the existing `$C0:E60D` anchor hijack. It is installed only while that
+hijack is enabled. `core/native.asm` enters the generic body fallback after
+its already-completed capacity check. Every partial Y write, clipped piece,
+high-table XOR, descriptor advance and return flag remains unchanged.
+`CORE_NATIVE_EMITTER_RELOAD_SLOW` restores all three original paths; with
+`CORE_NATIVE_SPRITES_SLOW`, the rejected-piece continuation is also omitted.
+
+The contact-distance prefix `$81:CE72–CF19` remains intact: even distant
+pairs must update their actor distance/direction fields. In the following
+overlap helper `$81:D14A`, two empty attack boxes perform no overlap tests.
+Skip the two cancelling XORs of `$06` and their width changes, retaining
+the complete A/P result. Nonempty boxes rejoin the original instructions
+with identical CPU and RAM state. `CORE_NATIVE_CONTACT_EMPTY_SLOW` restores
+the original helper. No scheduling, audio, DMA/HDMA or persistent cache
+changes are involved.
+
+The generic six-piece emitter falls **967 → 932 CPU cycles** and an empty
+contact pair **58 → 37**. The assembled `actor-hot.test.mjs` runs 24,000
+randomized emitter/overlap inputs and replays the recorded short/long
+charge and long teleport inputs. Its 2,769 recorded comparisons preserve
+registers, flags and all live WRAM, including the complete OAM image, high
+table and actor RAM. Only dead callee stack and the existing private body
+anchor word are excluded. Nonempty overlap paths compare at their unchanged
+native continuations. The existing exhaustive `sprites.test.mjs` also
+passes (all signed-offset pairs, clipping, widths, decimal arithmetic,
+shake, full OAM and zero-count wrap).
+
+On the identical 634 recorded generic calls, summed cycles fall
+**169,906 → 164,160**; 743 body calls fall **252,942 → 243,093**;
+531 overlap calls fall **29,408 → 20,142**. The 861 unchanged distance
+prefixes remain **150,633** cycles. These paired-input totals isolate the
+code savings from the subsequent differences in actor/input timing.
+
+All 13 short and six long gameplay cases pass their gameplay, palette,
+meter, OBJ, complete-NMI, graphics-DMA and duplicate scenery-work checks.
+Zero-drop timing remains open. The short/long charge peak increases despite
+fewer misses; the input/actor schedule changes when a frame stops lagging.
+
+| 240-video-frame case | Misses before / after | Peak field lines before / after |
+| --- | ---: | ---: |
+| solo-punch | 0 / 0 | 127.13 / 126.99 |
+| solo-ki | 0 / 0 | 131.84 / 131.74 |
+| walk | 0 / 0 | 233.35 / 232.11 |
+| punch | 0 / 0 | 235.26 / 235.86 |
+| ki | 0 / 0 | 232.58 / 231.44 |
+| fly | 2 / 1 | 250.59 / 249.74 |
+| fly-ki | 2 / 2 | 252.24 / 251.59 |
+| fly-punch | 1 / 1 | 281.34 / 281.05 |
+| water-flight | 0 / 0 | 221.77 / 221.68 |
+| teleport | 3 / 3 | 255.61 / 254.50 |
+| charge | 17 / 16 | 268.82 / 271.18 |
+| focus-grass | 0 / 0 | 184.77 / 185.75 |
+| transform-grass | 0 / 0 | 224.98 / 205.51 |
+
+| 1,200-video-frame case | Misses before / after | Peak field lines before / after |
+| --- | ---: | ---: |
+| punch | 0 / 0 | 235.26 / 235.86 |
+| ki | 0 / 0 | 238.04 / 237.46 |
+| fly-ki (corridor) | 13 / 13 | 252.17 / 251.61 |
+| fly-punch | 1 / 1 | 281.34 / 281.05 |
+| teleport | 18 / 18 | 322.32 / 321.57 |
+| charge | 25 / 22 | 268.82 / 271.18 |
+
+Selected artifacts: `.local/snes-test/perf3/final-{short,long}/` and
+`actor-third.log`. The strict cartridge is SHA-256
+`fc8c4399d2cf92693014fbd15f95f5ddb7d7ff1b53db9ec7d2cf90142cb7546e`.
+
+### Routine timings and remaining misses
+
+CPU cycles per invocation, **mean / peak**. These live spans include nested
+work and interrupts, and the input schedule changes with missed frames;
+the paired assembled totals above isolate the optimization itself. Empty
+overlap checks save 21 cycles; the nonempty continuations pay 7–8 extra
+cycles for the bank handoff. The measured gameplay/perf cases add no misses.
+
+| Routine / entry | Short charge before | Short charge after |
+| --- | ---: | ---: |
+| Actor pass `$80:E38E` | 9585.46 / 10736 | 9485.40 / 10715 |
+| Actor `$80:E3CF` | 1491.58 / 3846 | 1474.90 / 3846 |
+| Actor setup `$80:E40E` | 1192.14 / 3481 | 1175.80 / 3481 |
+| Body caller `$80:E5CE` | 913.04 / 3255 | 898.32 / 3255 |
+| `core_native_body` | 343.06 / 1636 | 326.16 / 1579 |
+| Generic emitter `$80:E640` / checked entry `$E649` | 290.47 / 1303 | 269.71 / 1242 |
+| Distance prefix `$81:CE72–CF19` | 175.62 / 190 | 175.59 / 190 |
+| Full contact `$81:CE62` | 314.48 / 627 | 300.34 / 635 |
+| Overlap `$81:D14A` | 63.75 / 321 | 42.28 / 329 |
+
+| Routine | Long charge before | Long charge after | Long teleport before | Long teleport after |
+| --- | ---: | ---: | ---: | ---: |
+| Actor pass | 8039.97 / 10736 | 7976.26 / 10715 | 9369.94 / 11412 | 9356.47 / 11860 |
+| Actor | 1555.39 / 3846 | 1542.72 / 3846 | 1455.58 / 4623 | 1453.35 / 5006 |
+| Actor setup | 1251.20 / 3481 | 1238.41 / 3481 | 1138.53 / 4097 | 1136.02 / 4480 |
+| Body caller | 1012.08 / 3255 | 1002.55 / 3255 | 857.25 / 3974 | 848.39 / 4357 |
+| Body | 328.14 / 1636 | 315.87 / 1579 | 363.73 / 1108 | 351.51 / 736 |
+| Generic emitter | 255.55 / 1303 | 235.02 / 1242 | 317.36 / 1269 | 303.06 / 1255 |
+| Distance prefix | 179.18 / 190 | 179.11 / 190 | 170.83 / 192 | 170.13 / 192 |
+| Full contact | 300.03 / 627 | 291.13 / 635 | 343.12 / 798 | 332.95 / 808 |
+| Overlap | 66.49 / 321 | 46.25 / 329 | 70.89 / 313 | 56.85 / 324 |
+
+For updates that actually miss NMI, the following are scanlines **mean /
+peak**, grouped by the field update that was still running (not merely the
+previous video frame). These are nested spans, not additive CPU totals.
+
+| Missed-update span | Short charge before → after | Long charge before → after | Long teleport before → after |
+| --- | ---: | ---: | ---: |
+| Actor pass | 46.80 / 49.96 → 46.19 / 51.27 | 45.19 / 49.96 → 45.01 / 51.27 | 43.62 / 54.14 → 44.34 / 53.61 |
+| Body caller | 25.87 / 30.06 → 25.36 / 31.93 | 25.46 / 30.06 → 25.19 / 31.93 | 23.23 / 27.56 → 23.77 / 32.13 |
+| Generic emitter | 7.51 / 8.53 → 7.63 / 12.60 | 6.82 / 8.53 → 6.98 / 12.60 | 7.02 / 12.11 → 6.56 / 11.39 |
+| Distance prefix | 7.85 / 8.05 → 7.85 / 8.03 | 7.41 / 8.05 → 7.48 / 8.03 | 7.19 / 7.75 → 7.18 / 7.66 |
+| Full contact | 13.68 / 15.77 → 13.08 / 15.56 | 13.02 / 15.77 → 12.60 / 15.56 | 14.17 / 20.60 → 13.82 / 20.96 |
+
+Short charge's larger native construction span (`native_b0ca`, including
+the work before `$E38E`) changes **81.09 / 158.91 → 80.56 / 144.30** lines.
+The remaining CPU work includes actor preparation/AI, movement, module effects
+and teleport landing searches; eliminating the emitter alone would not
+cover every long-frame peak. The excluded predecode/two-piece experiments
+were not repeated. More aggressive early-outs must retain distance metadata
+and partial OAM writes; caching needs exact invalidation of live descriptors,
+coordinates, wrap dimensions and box sizes. No further core/API request is
+required by this patch.
+
+Profiles: `baseline-profile-{short,long}/` and `final-profile-{short,long}/`
+under `.local/snes-test/perf3/`. `nativeRoutines` contains calls, CPU cycles,
+master clocks and caller addresses; `nativeRoutineFrames` and
+`nativeRoutineMisses` identify the work in missed updates.
+
+### Validation and reproduction
+
+All required suites pass on the selected source: **combat 37**, **Goku 12**,
+**Frieza 18**, **Vegeta 11**, **story 76**, and FX's seven gallery/effect
+cases plus all 18 focus-scene checks. Debug's 22 presets plus the save
+round-trip give **21 FULL / 2 NATIVE / 0 PARTIAL / 0 FAILED**; controls and
+hook-order checks pass too. The two NATIVE classifications retain the
+existing Vegeta/debug-capture differences. The default emulator scenario
+passes on **snes9x, bsnes and bsnes-accurate**, including Mesen picture,
+end-position, save/load and ROM/SRAM mapping comparisons. The host binary
+was built under this worktree's test directory with `SNES_RETRO_HOST`.
+
+All six perf scenes pass. Final p90 field-finish line / missed-frame counts
+are sword **62/4**, Sandship **112/4**, battle **54/4**, Beast **173/34**,
+Fortress **95/4**, world flight **112/4**; none adds lag against the suite's
+shared original-ROM state. Complete NMI peaks at **36.64 lines** across
+the gameplay runs, with zero overruns. `modprof` on its two default scenes
+reports total module frame means **9.49 → 9.51** (sword) and
+**10.33 → 10.33** (battle), with NMI **1.29 / 1.30** unchanged. No new idle
+callback or per-frame cache maintenance was added.
+
+Additional core `frames`, `party`, `oam`, `lag` and `hdmaen` checks pass.
+With `CORE_NATIVE_SPRITES_SLOW`, the exhaustive native-offset comparison
+and randomized emitter/contact checks pass; the original shake body stays
+available. Building with both new rollback defines restores every recorded
+routine's original cycle count and restores long charge/teleport to
+**25/18** misses. The default strict rebuild is byte-identical to the
+measured selected cartridge.
+
+One existing instrumentation limitation remains: Vegeta's `budget` case
+passes its behavioral replay but records `-1` at its final timing probe,
+so its printed “lag” total is not a usable CPU measurement. The integrated
+gameplay/perf suites and the routine profiles above supply the timing
+evidence for this change. No Vegeta code or test was changed.
+
+The new assembled replay can be repeated without committing private inputs:
+
+```sh
+GAMEPLAY_OUT=.local/snes-test/native-inputs SNES_ROM=path/to/baseline.sfc \
+  node snes/test/gameplay/run.mjs charge teleport --repeat=5 --record-native
+NATIVE_BASELINE_ROM=path/to/baseline.sfc \
+NATIVE_INPUTS=.local/snes-test/native-inputs/charge/native-inputs.json:.local/snes-test/native-inputs/teleport/native-inputs.json \
+  node --test snes/test/core/actor-hot.test.mjs snes/test/core/sprites.test.mjs
+```
+
+Without `NATIVE_BASELINE_ROM`, the comparison uses the verified retail ROM.
+Without `NATIVE_INPUTS`, only the recorded-input test is explicitly skipped;
+the randomized checks still run. `NATIVE_EXPECT_SLOW=emitter,overlap` checks
+equal benchmark costs when both rollback defines are enabled. Logs for
+every suite, rollback build, replay and strict build are under
+`.local/snes-test/perf3/`; nothing from that directory is committed.
+
+## October 20 checkpoint
 
 The new pass starts at integrated main `5f21b35`. Fresh 240-frame runs
 reproduce charge **22**, teleport **3**, flying ki **3**, flying punches

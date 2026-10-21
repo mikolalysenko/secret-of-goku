@@ -109,6 +109,18 @@ native sprites — at least 64 in every measured scene (worst native count 63),
 typically 90+; up to 16 of them can be placed in front of all natives.
 World flight: slots 88–127 (40), always free. Rings and menus: none.
 
+The October 21 native emitter follow-up removes repeated cursor reloads and
+capacity checks from `$80:E640`, retaining all partial OAM writes and return
+flags. The rejected-piece continuation borrows `$C0:E611–E620` only while
+the existing `$C0:E60D` shake/anchor hijack is enabled. The body fallback
+also reuses its completed capacity check. `CORE_NATIVE_EMITTER_RELOAD_SLOW`
+restores these paths. `$81:D14A` skips two cancelling direction inversions
+when both attack boxes are empty; `CORE_NATIVE_CONTACT_EMPTY_SLOW` restores
+that helper. The distance metadata at `$81:CE72–CF19` remains unchanged.
+See [gameplay performance](gameplay-performance.md#native-actor-follow-up--october-21-2026)
+for assembled real/random input comparisons, per-routine cycles, rollback
+checks and the remaining crowded-frame misses. No DMA/HDMA rule changes.
+
 ## VRAM, CGRAM and sprite streaming
 
 | Mode | BG mode | BG maps (word addr) | BG tiles | OBJ base / size |

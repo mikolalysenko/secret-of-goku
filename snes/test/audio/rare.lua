@@ -44,6 +44,7 @@ function test()
     end
     check('voice_'..cue,heard and pitched and transfers>played,frames)
     check('voice_ends_'..cue,H.r8(AU+0x20)==0 and aram(0xE3)==0,H.r8(AU+0x20))
+    check('custom_bank_after_'..cue,customDamage()==nil,customDamage())
     H.result('audible_frames_'..cue,frames)
   end
   local damage=nil

@@ -57,7 +57,7 @@ export function installCandidate(h,tracks){
  }
  h.ram.set(ptr,0x2F70);
 }
-export function renderEffect(rom,id,{sequence,tracks,echo=false,limit=4000}={}){
+export function renderEffect(rom,id,{sequence,tracks,echo=false,limit=4000,setup=null}={}){
  const h=createApu({rom,extension:false});h.ms(60);h.take();
  if(echo){
   // Silent song, native echo preset 4: evaluate E2 using a real echo ring.
@@ -67,6 +67,7 @@ export function renderEffect(rom,id,{sequence,tracks,echo=false,limit=4000}={}){
   h.ms(300);h.take();
  }
  if(sequence||tracks){installCandidate(h,tracks??[sequence]);id=0xDC;}
+ if(setup)setup(h);
  h.nativeCmd(2,id,15,0x88);
  let voices=0,voiceMs=0,seen=false,ended=false,ms=0;
  for(;ms<limit;ms+=10){

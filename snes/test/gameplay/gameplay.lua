@@ -13,6 +13,7 @@ function test()
   local grassCuts=0
   for i=0,0x3FFF do if grid[i]~=0 and H.r8(0x7F0000+i)==0 then grassCuts=grassCuts+1 end end
   local measuring = false
+  local finishNative = profileNative and profileNative(function() return measuring end)
   local done, frames, paletteErrors, staminaFrames = 0, 0, 0, 0
   local started, maxLogic = nil, 0
   local timing, active, writes = {}, {}, {}
@@ -195,6 +196,7 @@ function test()
     end
   end
   H.input=nil; measuring=false
+  if finishNative then finishNative() end
   -- The resident transformation now follows the browser's 2.54 s tail.
   -- Keep the 240-frame CPU window above, then allow that one-shot to end
   -- before checking for a stuck charge/transform voice.

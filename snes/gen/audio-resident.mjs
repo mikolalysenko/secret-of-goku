@@ -38,7 +38,7 @@ export const RESIDENT = [
 export const NATIVE_IDS=[0,0xE5,0xE6,0xE7,0xE8,0xDE,0x38,0xE9,
  0xEA,0xDF,0xE0,0xE3,0xE1,0xDC,0xDC,0xDC,0xEB,0xEB,0xEC,0xE3,
  0xE1,0xE2,0x00,0xE4,0xDD,0xE1,0xEC,0xE4,0,0,0,0,0];
-export const effectVoices=id=>[0x38,0xE7,0xE8,0xEA].includes(id)?2:1;
+export const effectVoices=id=>[0x38,0xE7,0xE8,0xEA,0xED].includes(id)?2:1;
 export const NATIVE_PRIORITY=[0,1,1,5,5,3,5,2,7,4,8,8,8,5,5,5,
  6,6,2,2,3,3,3,7,5,7,3,7,0,0,0,0,0];
 // Internal selector row: held charge uses the longer rumble, while the
@@ -47,5 +47,6 @@ export const NATIVE_CHARGE_CUE=33;
 export const NATIVE_BEDS={charge:0xDD,aura:0xDF,friezaCharge:0xDD};
 export function residentAsm(rom){return storageAsm(rom,RESIDENT);}
 export function nativeMapAsm(){
- return `!AUDIO_NATIVE_CHARGE = ${NATIVE_CHARGE_CUE}\naudio_native_ids:\ndb ${[...NATIVE_IDS,NATIVE_BEDS.charge].join(',')}\naudio_native_priority:\ndb ${[...NATIVE_PRIORITY,4].join(',')}\n`;
+ const custom=NATIVE_IDS.map((v,i)=>i===6?0xED:v);
+ return `!AUDIO_NATIVE_CHARGE = ${NATIVE_CHARGE_CUE}\naudio_native_ids:\nif !AUDIO_CUSTOM_SAMPLES\ndb ${[...custom,NATIVE_BEDS.charge].join(',')}\nelse\ndb ${[...NATIVE_IDS,NATIVE_BEDS.charge].join(',')}\nendif\naudio_native_priority:\ndb ${[...NATIVE_PRIORITY,4].join(',')}\n`;
 }

@@ -52,5 +52,6 @@ function test()
   check('song_alive',aram(0xAD)~=0,aram(0xAD))
   check('extension_intact',extensionDamage()==nil,extensionDamage())
   check('effect_samples_intact',effectSampleDamage()==nil,effectSampleDamage())
+  check('custom_bank_intact',customDamage()==nil,customDamage())
   finish()
 end
