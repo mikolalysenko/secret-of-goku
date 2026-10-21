@@ -12,6 +12,7 @@
 incsrc "orbit/defines.asm"
 incsrc "orbit-sprites/sprites.asm"
 incsrc "orbit-fx/defines.asm"
+incsrc "orbit-montage/defines.asm"
 incsrc "debug/defines.asm"
 incsrc "audio/ids.asm"
 
@@ -48,6 +49,18 @@ incsrc "audio/ids.asm"
 !orbit_li       = !RAM_ORBIT+$2E  ; word: the search's next candidate (x2)
 !orbit_lhx      = !RAM_ORBIT+$30  ; word: Goku's place on the deck it searches around
 !orbit_lhy      = !RAM_ORBIT+$32  ; word
+; The second surge's cinematic (montage.asm: the cosmic montage, the pullback).
+!orbit_mt       = !RAM_ORBIT+$34  ; word: nonzero while it runs (before the orbit's intro)
+!orbit_mage     = !RAM_ORBIT+$36  ; word: its clock (frieza.js b.surge.age, from collateralStart)
+!orbit_mshot    = !RAM_ORBIT+$38  ; word: the shot (0-5 cosmicShots, !MT_SHOTS on: the pullback; $FFFF before)
+!orbit_msage    = !RAM_ORBIT+$3A  ; word: the shot's age
+!orbit_mpic     = !RAM_ORBIT+$3C  ; byte: its picture (0: the globe's, or black; !MT_PIC_TOWN, !MT_PIC_AERIAL)
+!orbit_mcut     = !RAM_ORBIT+$3D  ; byte: a cut's load step (0: the picture shows)
+!orbit_me6      = !RAM_ORBIT+$3E  ; byte: the field's brightness ($E6), kept over the cinematic's force blank
+!MT_TOWN        = 0               ; cosmicShots kinds (orbit_mt_shots)
+!MT_AERIAL      = 1
+!MT_PIC_TOWN    = 1               ; !orbit_mpic: a town shot
+!MT_PIC_AERIAL  = 2               ;   an aerial cut
 !orbit_marks    = !RAM_ORBIT+$40  ; 8 words (ORBIT_TIMING builds): scanlines at the frame's stages
 
 ; ORBIT_TIMING builds: the scanline at stage n of the frame (orbit_marks).
@@ -179,6 +192,44 @@ endmacro
 !gb_wina  = !SB+$100              ; 868 bytes
 !gb_winb  = !SB+$480              ; 868 bytes (ends $7E4 < $800)
 !GB_WIN_MAX = 217
+; The cosmic montage (montage.asm): a shot's working state over the window
+; blocks (the pullback rebuilds them).
+!MW = !SB+$100
+!mw_town  = !MW+$00               ; the town (0-3)
+!mw_tent  = !MW+$02               ; its entry in orbit_mt_towns
+!mw_dt    = !MW+$04               ; age - hit (signed)
+!mw_pan   = !MW+$06               ; min(12, age / 24)
+!mw_shake = !MW+$08               ; -2 / +2 over the hit's first 12 frames
+!mw_hitx  = !MW+$0A               ; the hit on the screen (blast - pan)
+!mw_hity  = !MW+$0C
+!mw_red   = !MW+$0E               ; the tint (0, 5, 2)
+!mw_ruin  = !MW+$10               ; the ruin: 1 due, 3 under way (vblank), 2 shown
+!mw_np    = !MW+$12               ; people
+!mw_pdue  = !MW+$14               ; 3 words: a person's pose due in the slot not shown ($FFFF none)
+!mw_pa    = !MW+$1A               ; 3 words: the pose each person's slot A holds ($FFFF none)
+!mw_px    = !MW+$20               ; 3 words: the person's picture top left
+!mw_py    = !MW+$26               ; 3 words
+!mw_pcell = !MW+$2C               ; 3 words: y | cell << 8 | flip << 15
+!mw_laser = !MW+$32               ; nonzero: the laser's windows this frame
+!mw_wset  = !MW+$34               ; the window table written (0 / 1)
+!mw_wshow = !MW+$36               ; the one the HDMA reads
+!mw_rows  = !MW+$3A               ; the laser's rows left to enter
+!mw_ptr   = !MW+$3E               ; 4 bytes: a long read pointer (address, bank)
+!mw_dmap  = !MW+$42               ; DMA: DMAP and B-bus register
+!mw_dbank = !MW+$44               ;   source bank
+!mw_vmain = !MW+$46               ;   VMAIN
+!mw_tmtab = !MW+$48               ; 8 bytes: the HDMA TM table
+!mw_tmp   = !MW+$50               ; 16 bytes scratch
+!mw_ostart = !MW+$60              ; the OAM offset a run of 16x16 sprites starts at
+!mw_lbank = !MW+$62               ; the laser's rows: bank (HDMA indirect)
+!mw_loff  = !MW+$64               ;   the windows-off row's address
+!mw_rleft = !MW+$66               ; the ruin's blocks left to write
+!mw_rnext = !MW+$68               ;   the next one's record (offset in the tables)
+!mw_pb    = !MW+$6A               ; 3 words: the pose each person's slot B holds
+!mw_pf    = !MW+$70               ; 3 words: the slot shown (0: A, 1: B)
+!MW_WIN0  = !SB+$180              ; the laser's window tables (HDMA indirect, mode 4), 32 bytes each
+!MW_WIN1  = !SB+$1A0
+assert !mw_pf+6 <= !MW_WIN0, "the montage's working state runs into its window tables"
 ; Indirect HDMA tables: per set M7A, M7D, windows (16 bytes each).
 !IT_BASE  = !SB+$800
 !IT_SIZE  = $30
@@ -607,4 +658,16 @@ incsrc "death.asm"
 incsrc "api.asm"
 orbit_code_end:
 assert orbit_code_end <= !CODE_ORBIT+$7C00, "orbit code bank overflow (bind.asm sits at $FC00)"
+pullpc
+
+; The second code area: goku's spare quarter (core/layout.asm, free; orbit.md
+; asks core to note it there): the second surge's cinematic and its tables.
+!CODE_ORBIT2 = !CODE_QUARTER_GOKU
+pushpc
+org !CODE_ORBIT2
+orbit_code2_start:
+incsrc "montage.asm"
+incsrc "orbit-montage/montage.asm"
+orbit_code2_end:
+assert orbit_code2_end <= !CODE_ORBIT2+$4000, "orbit second code area overflow"
 pullpc

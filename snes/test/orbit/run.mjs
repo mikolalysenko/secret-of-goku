@@ -177,7 +177,7 @@ async function clashText(c){
 async function friezaHandoff(){
   const rom=process.env.SNES_HANDOFF_ROM??buildRom('orbit-frieza-test',['-DFRIEZA_TEST=1']);
   const {friezaWrites,luaWrites,defs:fz}=await import('../frieza/state.mjs');
-  const {collateralStart:COLLATERAL_START}=await import(resolve(repo,'engine/frieza-cinematic.js'));
+  const {collateralStart:COLLATERAL_START,pullbackStart:PULLBACK_START}=await import(resolve(repo,'engine/frieza-cinematic.js'));
   const wram=n=>{if(!(n in fz))throw Error('frieza define '+n);return fz[n]<0x10000?0x7E0000|fz[n]:fz[n];};
   const refRoot=existsSync(resolve(repo,'.local/snes-ref/battle'))?resolve(repo,'.local/snes-ref'):'/Users/mikolalysenko/Projects/secret-of-goku/.local/snes-ref';
   const g=JSON.parse(readFileSync(join(refRoot,'battle','state.json'),'utf8')).goku;
@@ -218,6 +218,14 @@ function enterOrbit()
   check((H.r8(${wram('fzf_flags')}) & ${fz.FZFF_SPACE}) ~= 0, 'frieza: the fight is in space')
   return live
 end
+-- The second surge's cinematic cut short: its clock moved to the pullback
+-- (which loads the globe), then on to its end and the orbit's intro.
+function skipCinematic()
+  H.w16(ORBIT_RAM + 0x36, ${PULLBACK_START - 1})
+  local done = H.waitFor(function() return H.r16(ORBIT_RAM + 0x34) == 0 end, 400)
+  check(done, 'the cinematic ended')
+  return done
+end
 `;
   return {rom,prelude};
 }
@@ -241,7 +249,7 @@ const cases={
     ];
     const dir=join(out,'globe');
     const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nCAMS=${lua(cams)}\nSPIN=240\n`;
-    const r=await runMesen({rom,state,test:ADDR+pre+readFileSync(join(here,'globe.lua'),'utf8'),outDir:dir,timeoutMs:TIMEOUT});
+    const r=await runMesen({rom,state,test:ADDR+pre+readFileSync(join(here,'globe.lua'),'utf8'),outDir:dir,timeoutMs:TIMEOUT,exactFrames:true});
     const res=r.results??{};
     const report={live:res.live,imported:res.imported,shots:{}};
     let ok=r.code===0&&res.live===true;
@@ -270,7 +278,7 @@ const cases={
     const marks=[20,59,61,135,209,211,285,360,435,510,585,660,735,809,811,860];
     const dir=join(out,'intro');
     const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nMARKS={${marks.join(',')}}\n`;
-    const r=await runMesen({rom,state,test:ADDR+pre+readFileSync(join(here,'intro.lua'),'utf8'),outDir:dir,timeoutMs:TIMEOUT});
+    const r=await runMesen({rom,state,test:ADDR+pre+readFileSync(join(here,'intro.lua'),'utf8'),outDir:dir,timeoutMs:TIMEOUT,exactFrames:true});
     const res=r.results??{};
     let ok=r.code===0&&res.live===true&&Array.isArray(res.states);
     if(!ok){console.log('intro: FAIL (no run)',r.code,res.error??'');return false;}
@@ -436,8 +444,101 @@ end
     if(!res.failures)console.log(r.output?.slice(-1500));
     return ok;
   },
+  async montage(){
+    // From the hand-off: the second surge's cosmic montage after its deck
+    // beat (surge ages from collateralStart) to its end at cosmicDuration,
+    // then the orbit's intro. A screenshot shows the picture of the clock
+    // two frames before it; at the given ages (those pictures' ages) each
+    // town shot is compared with the browser's own
+    // frieza-collateral-view.js (montage-ref.mjs): the frames of a hit's
+    // explosions differ by its bursts' quarter turns (drawn as half turns)
+    // and the 2-pixel edge the shake uncovers. The clock steps once a frame
+    // (no lag frame). ORBIT_MONTAGE_DUMP=1 also dumps VRAM, CGRAM, OAM, the
+    // DMA registers and the shot's working block per screenshot.
+    const h=await friezaHandoff();
+    const {cosmicDuration,cosmicBeat,cosmicShots,pullbackStart,collateralStart}=await import(resolve(repo,'engine/frieza-cinematic.js'));
+    const {montageRef,matchShare}=await import('./montage-ref.mjs');
+    const ages=(process.env.ORBIT_MONTAGE_AGES??'102,172,224,230,235,272,362,642,770,775,902,1064,1112,1272,1360,1365,1467').split(',').map(Number);
+    const dir=join(out,'montage');
+    const test=`${h.prelude}
+AGES={${ages.map(a=>a+2).join(',')}}
+DUMP=${process.env.ORBIT_MONTAGE_DUMP?'true':'false'}
+local MAGE = ORBIT_RAM + 0x36
+function test()
+  if not enterOrbit() then H.result('failures', fails) return end
+  local want = {}
+  for _, a in ipairs(AGES) do want[a] = true end
+  local seen, trace, shots = {}, {}, {}
+  for f = 1, 2400 do
+    H.wait(1)
+    local a = H.r16(MAGE)
+    if H.r16(ORBIT_RAM + 0x34) == 0 then break end
+    trace[#trace + 1] = string.format('%d %d %d', a, H.r16(ORBIT_RAM + 0x0C), H.r16(ORBIT_RAM + 0x0A))
+    if want[a] and not seen[a] then
+      seen[a] = true
+      local name = string.format('m%04d', a - 2)
+      H.shot(name)
+      shots[#shots + 1] = string.format('%s %d', name, #trace)
+      if DUMP then
+        H.dumpfile(name .. '.vram', emu.memType.snesVideoRam, 0, 0x10000)
+        H.dumpfile(name .. '.cgram', emu.memType.snesCgRam, 0, 0x200)
+        H.dumpfile(name .. '.oam', emu.memType.snesSpriteRam, 0, 0x220)
+        H.dumpfile(name .. '.dma', emu.memType.snesMemory, 0x4300, 0x80)
+        H.dumpfile(name .. '.mw', emu.memType.snesMemory, 0x326100, 0xC0)
+      end
+    end
+  end
+  H.result('end_age', H.r16(MAGE))
+  H.result('ended', H.r16(ORBIT_RAM + 0x34) == 0)
+  -- the orbit's intro from here
+  H.wait(30)
+  H.result('state_after', H.r8(ORBIT_RAM))
+  H.result('owner_after', H.r16(SCENE_OWNER))
+  H.result('trace', trace)
+  H.result('shots', shots)
+  H.result('failures', fails)
+end
+`;
+    const r=await runMesen({rom:h.rom,state,test,outDir:dir,timeoutMs:TIMEOUT,exactFrames:true});
+    const res=r.results??{};
+    const fails=[...(res.failures??[])];
+    if(r.code!==0)fails.push('no run ('+(res.error??r.code)+')');
+    const trace=(res.trace??[]).map(v=>v.split(' ').map(Number));
+    // the clock: one step a frame (the first frames load the first shot);
+    // at a cut (the picture black while the next one loads) it may catch up
+    const cuts=[];let at=collateralStart;for(const c of cosmicShots){cuts.push(at);at+=c.duration;}cuts.push(pullbackStart);
+    let lagged=0,atCuts=0,maxLine=0;
+    for(let i=8;i<trace.length;i++){
+      if(trace[i][0]-trace[i-1][0]!==1){if(cuts.some(c=>trace[i-1][0]>=c&&trace[i-1][0]<c+4))atCuts++;else lagged++;}
+      maxLine=Math.max(maxLine,trace[i][1]);
+    }
+    if(lagged)fails.push(`${lagged} frames without one clock step`);
+    if(atCuts>4)fails.push(`${atCuts} frames without one clock step at cuts`);
+    if(!res.ended)fails.push(`the cinematic did not end (age ${res.end_age})`);
+    if(res.state_after!==2||res.owner_after!==2)fails.push(`after it: orbit state ${res.state_after}, scene owner ${res.owner_after} (want the live orbit)`);
+    // the pictures: the clock two frames before each screenshot
+    const ref=await montageRef(),lines=[];
+    for(const v of res.shots??[]){
+      const[name,k]=v.split(' '),shown=trace[Number(k)-3]?.[0],want=Number(name.slice(1));
+      if(shown!==want){fails.push(`${name}: shows age ${shown}`);continue;}
+      const beat=cosmicBeat(shown),town=ref.town(shown);
+      if(!town){lines.push(`${name}: ${beat?.shot.kind??'none'} (not compared)`);continue;}
+      writeFileSync(join(dir,`ref${name.slice(1)}.png`),town.png);
+      const share=matchShare(readPng(join(dir,name+'.png')),town),dt=beat.age-beat.shot.hit;
+      lines.push(`${name}: ${beat.shot.name} t ${beat.age}: ${(100*share).toFixed(1)}% of pixels as the browser`);
+      const need=dt>=0&&dt<70?0.95:0.995;
+      if(share<need)fails.push(`${name}: ${(100*share).toFixed(1)}% < ${100*need}%`);
+    }
+    if((res.shots??[]).length!==ages.length)fails.push(`${(res.shots??[]).length} of ${ages.length} screenshots`);
+    const ok=fails.length===0;
+    console.log(`montage: ${ok?'pass':'FAIL'} ended at surge age ${res.end_age} (cosmicDuration ${cosmicDuration}), ${lagged} lagged (${atCuts} at cuts), frames end by line ${maxLine}`);
+    for(const l of lines)console.log('  '+l);
+    for(const m of fails.slice(0,8))console.log('  '+m);
+    return ok;
+  },
   async death(){
-    // From the hand-off: the intro cut short, Goku at 1 HP; Frieza's first
+    // From the hand-off (the cosmic montage cut short to its pullback): the
+    // intro cut short, Goku at 1 HP; Frieza's first
     // hit ends him. The frieza module starts the ending's fatal sequence;
     // the orbit freezes, Goku falls (positions against the browser's own
     // bossRushDeathPose), and the orbit gives the picture and the scene
@@ -464,7 +565,7 @@ local function gokuOam()
   return nil, nil
 end
 function test()
-  if not enterOrbit() then H.result('failures', fails) return end
+  if not enterOrbit() or not skipCinematic() then H.result('failures', fails) return end
   H.w16(SCENE_RAM + 0xA80 + 0x02, 1)       -- the intro's last frame
   H.wait(2)
   H.w16(0x7EE182, 1)                       -- Goku at 1 HP
@@ -525,7 +626,8 @@ end
     return ok;
   },
   async return(){
-    // From the hand-off: no intro, Frieza at 6,000 HP (the clash at once),
+    // From the hand-off (the cosmic montage cut short to its pullback): no
+    // intro, Frieza at 6,000 HP (the clash at once),
     // B every 6 frames (the first struggle is won). Then the 'won' clock,
     // the descent and frieza.js returnToFortress at victoryTiming.return:
     // the deck's door with the entry tile at Goku's landing spot (the
@@ -550,7 +652,7 @@ local INLOCK, OWNER_BIT = ${wramOf('cb_inlock')}, ${defMore('ORBIT_COMBAT_OWNER'
 local FZF, LANDED, SPACE = ${fzw('fzf_flags')}, ${fz.FZFF_LANDED}, ${fz.FZFF_SPACE}
 local RETURN, LANDED_AGE = ${vt.return}, ${vt.landed}
 function test()
-  if not enterOrbit() then H.result('failures', fails) return end
+  if not enterOrbit() or not skipCinematic() then H.result('failures', fails) return end
   H.w16(FB + 0x02, 0)                      -- no intro
   H.w16(FB + 0x34, 6000)                   -- Frieza at 6,000: the clash at once
   local won = nil
@@ -646,7 +748,7 @@ const rom=buildRom();
 mkdirSync(out,{recursive:true});
 const names=process.argv.slice(2).filter(a=>!a.startsWith('-'));
 let failed=0;
-const defaults=['globe','intro','fight','clash','handoff','death','return'];
+const defaults=['globe','intro','fight','clash','handoff','montage','death','return'];
 for(const name of names.length?names:defaults){
   if(!cases[name]){console.log(`unknown case ${name}`);failed++;continue;}
   if(!await cases[name](rom))failed++;

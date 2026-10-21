@@ -4,6 +4,27 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the cosmic montage's town shots (2026-10-20)
+
+- The second surge's hand-off now plays the cosmic montage before the
+  orbit's intro, on the browser's clock (72-2042). The four town shots
+  are complete:
+  - Potos, Pandora, Northtown and south of Potos are built from the game's
+    own map data, checked pixel for pixel against `cinematicMap`;
+  - people, the rabite, the warning ring, the laser (BG3 with per-line
+    windows from extended data), the hit and its ruin (a second map copy,
+    switched in at the hit), bursts, roof fragments, fires and embers, the
+    red tint, the radio captions and the cues are all drawn.
+- The `montage` test compares 17 screenshots with the browser's own
+  collateral view. Outside the explosions they are identical; during them
+  97.9-99.7% of pixels match (quarter-turned bursts, the shake's edge). No
+  frame repeats through the town shots.
+- The aerial cuts are black for now, and the pullback shows the globe at
+  the fight's camera.
+- The code runs in a second code area at `$A1:C000` (goku's spare
+  quarter). The montage's data is 88 KiB of extended data, which now
+  holds 1,688.6 of 1,984 KiB.
+
 ## SNES integration: orbit on main, vblank palette hooks, faster charging (2026-10-20)
 
 - The orbit stream (Frieza's space finale, the entries below) is merged:

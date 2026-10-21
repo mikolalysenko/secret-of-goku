@@ -182,6 +182,8 @@ modules_cgram_upload:
 	JSL destroy_cgram_upload   ; the Sandship's staged tint, its lag-vblank rule
 	BCS +
 	JSL ending_cgram_upload    ; the finale scenes' colour ranges
+	BCS +
+	JSL orbit_cgram_upload     ; the orbit's montage pictures (their colours in the game's transfer)
 +	RTL
 
 modules_combat_receive:
