@@ -98,3 +98,10 @@ test('focus, transformation, draw-list exhaustion and initialization keep their 
     for(const charge of [0,44,45,89,90,255])compare({p,clock,charge});
   t.diagnostic(`${comparisons} assembled comparisons`);
 });
+
+test('focus replaces the last optional draw when all eight entries are occupied',()=>{
+  const r=after({count:8,sequence:['cb_fx_aura'],action:24,power:1});
+  assert.equal(r.sram.readUInt16LE(0x781C),128);
+  assert.equal(r.sram.readUInt16LE(0x79A0),0x8011);
+  assert(r.sram.readUInt16LE(0x79A8)>0,'first focus step has visible power');
+});

@@ -13,9 +13,6 @@ endif
 	; at power-on reads nonzero here or initialises on the first request.
 	LDA.l !fx_busy
 	BNE .full
-	LDA.l !FX_DREC_SEQ           ; a new effect record from destroy
-	CMP.l !fx_dseq
-	BNE .full
 if defined("FX_TEST")
 	LDA.l !fx_frame              ; tests count fx frames
 	INC
@@ -71,15 +68,15 @@ if defined("FX_TEST")
 	JSR fx_test_vline
 	STA.l !FXT_BOX+$B2          ; after the palette scan
 endif
-	JSR fx_run_slots
-if defined("FX_TEST")
-	JSR fx_test_vline
-	STA.l !FXT_BOX+$B4          ; after the spawned effects
-endif
 	JSR fx_run_draws
 if defined("FX_TEST")
 	JSR fx_test_vline
-	STA.l !FXT_BOX+$B6          ; after the draw list
+	STA.l !FXT_BOX+$B4          ; after the continuous draws
+endif
+	JSR fx_run_slots
+if defined("FX_TEST")
+	JSR fx_test_vline
+	STA.l !FXT_BOX+$B6          ; after the spawned effects
 endif
 if defined("FX_TEST")
 	LDA.w !core_oam_cursor&$FFFF ; sprites FX added this frame
@@ -147,22 +144,6 @@ endif
 	BCC +
 	LDA.w #8
 +	STA.l !fx_cbudget
-	; No time in that vblank (learned per phase) while HDMA runs (a wave or
-	; a dialogue box): FX could not rewrite its palettes there without
-	; pushing the field NMI's $420C write past the frame start, so its
-	; sprites skip this frame instead of showing the game's colours.
-	LDA.w #$0000
-	STA.l !fx_tight
-	LDA.l !fx_vblp,X
-	CMP.w #2
-	BCS +
-	LDA.w $002C
-	AND.w #$000F
-	ORA.l !fx_poly_on
-	BEQ +
-	LDA.w #$0001
-	STA.l !fx_tight
-+
 	LDA.l !fx_frame
 	INC
 	STA.l !fx_frame
@@ -428,16 +409,15 @@ fx_palscan:
 +	STA !d_tmp                   ; end offset
 .scan_start
 if not(defined("FX_PALSCAN_SLOW"))
-	; Enter the straight-line scan at its rounded four-sprite group. The
-	; same up-to-three stale slots still count conservatively, and no read
-	; crosses the 128-entry OAM buffer. Reverse order has the same markers.
-	CLC
-	ADC.w #15
+	; Whole groups only; the exact tail follows. Rounded-up groups counted
+	; last frame's hidden aura as a native owner of its own palette.
 	LSR : LSR : LSR
 	AND.w #$FFFE
 	TAX
-	LDA.w #0                    ; TAX in the byte scan must have B = 0
+	LDA !d_tmp
+	AND.w #$FFF0
 	TAY
+	LDA.w #0                    ; TAX in the byte scan must have B = 0
 	SEP #$20
 	JMP (.groups,X)
 .groups
@@ -453,6 +433,15 @@ if not(defined("FX_PALSCAN_SLOW"))
 	endfor
 .scan_end
 	assert .scan_end-.scan_body == 128*8, "palette scan jump stride changed"
+.tail
+	CPY !d_tmp
+	BCS .front
+	LDA.w $0803,Y
+	AND.b #$0E
+	TAX
+	STA !d_tiles,X
+	INY : INY : INY : INY
+	BRA .tail
 else
 	LDA.w #$0000                 ; B = 0: TAX copies the masked byte only
 	TAY
@@ -464,26 +453,14 @@ else
 	AND.b #$0E
 	TAX
 	STA !d_tiles,X
-	LDA.w $0807,Y
-	AND.b #$0E
-	TAX
-	STA !d_tiles,X
-	LDA.w $080B,Y
-	AND.b #$0E
-	TAX
-	STA !d_tiles,X
-	LDA.w $080F,Y
-	AND.b #$0E
-	TAX
-	STA !d_tiles,X
 	REP #$21                     ; M16, C clear
 	TYA
-	ADC.w #16
+	ADC.w #4
 	TAY
 	LDA.w #0                     ; clear B after cursor $100 for the byte TAX
 	SEP #$20
 	CPY !d_tmp
-	BCC .loop                    ; (up to three stale slots past the end count too)
+	BCC .loop
 endif
 .front
 	REP #$20
@@ -527,11 +504,53 @@ endif
 	EOR.w #$00FF
 	AND.w #$00FC
 	STA.l !fx_palfree
-	LDA.l !fx_tight              ; a vblank without time: no palettes, no sprites
-	BEQ +
-	LDA.w #$0000
+	BNE .available
+	; The fast conservative scan includes hidden/stale sprites inside the
+	; native cursor. Retry without hidden Y slots before declaring it full.
+	LDA.w #$00FC
 	STA.l !fx_palfree
-+	RTS
+	LDA.w !core_oam_cursor&$FFFF
+	CMP.w #512
+	BCC +
+	LDA.w #512
++	STA !d_tmp
+	LDY.w #0
+.visible
+	CPY !d_tmp
+	BCS .visibleFront
+	LDA.w $0801,Y
+	AND.w #$00FF
+	CMP.w #$00E0
+	BEQ .visibleNext
+	LDA.w $0803,Y
+	AND.w #$000E
+	TAX
+	LDA.l fx_palbit,X
+	EOR.w #$FFFF
+	AND.l !fx_palfree
+	STA.l !fx_palfree
+.visibleNext
+	INY : INY : INY : INY
+	BRA .visible
+.visibleFront
+	LDA.w !core_oam_front_n&$FFFF
+	ASL : ASL
+	STA !d_tmp
+	LDY.w #0
+.visibleFrontLoop
+	CPY !d_tmp
+	BCS .available
+	LDA.w (!core_oam_front&$FFFF)+3,Y
+	AND.w #$000E
+	TAX
+	LDA.l fx_palbit,X
+	EOR.w #$FFFF
+	AND.l !fx_palfree
+	STA.l !fx_palfree
+	INY : INY : INY : INY
+	BRA .visibleFrontLoop
+.available
+	RTS
 
 ; OAM attribute byte -> bit of its palette (bits 1-3).
 fx_attr_palbit:
@@ -769,19 +788,9 @@ fx_finish:
 	STA.w $0049
 	REP #$20
 .pal
-	LDA.l !fx_clspal
-	STA.l !fx_nmipal
-	LDA.l !fx_clspal+2
-	STA.l !fx_nmipal+2
-	LDA.l !fx_clspal+4
-	STA.l !fx_nmipal+4
-	SEP #$20
-	LDA.l !fx_clspal+6
-	STA.l !fx_nmipal+6
-	REP #$20
-	LDA.l !fx_palfree            ; bit 8: a class acquired a palette this frame
-	AND.w #$0100                ; no seven-class reduction on the busy path
-	ORA.l !fx_cpend
+	; The palette hook latches clspal only when this frame completes.
+	; nmipal continues to describe the displayed OAM during a lag vblank.
+	LDA.l !fx_cpend             ; palettes already went through the early hook
 	ORA.l !fx_flashamt
 	ORA.l !fx_mathon
 	ORA.l !fx_poly_req

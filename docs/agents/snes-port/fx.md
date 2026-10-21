@@ -42,7 +42,10 @@ ages them itself, and a spawn made after `fx_frame` shows from the next
 frame.
 
 `!FX_DRAWS` (8) is the number of draw-list entries per frame, shared by
-`fx_draw` and `fx_beam` (the ninth request in a frame returns C set). It is
+`fx_draw` and `fx_beam` (the ninth ordinary request returns C set). An aura
+request takes the first entry, moving its former occupant to the new entry;
+when full, it replaces the last optional draw. Continuous draws run before
+timed particles so the aura gets first use of cells and OAM. The limit is
 defined by the library itself (`modules/fx/module.asm`), not by
 `defs.asm`, so a module included after FX in `modules.asm` can test
 `if defined("FX_DRAWS")` to know that the real library is in the build
@@ -238,24 +241,36 @@ Lucid Barrier's gold ramp), FIRE (Exploder / Fireball), DYN (caller
 colours), WHITE (an override) and RED (the cinematic Death Ball). Each frame FX scans the OBJ palettes used
 by the sprites already in OAM (natives and the modules that drew before
 it) and maps the classes it draws to free OBJ palettes, preferring 3 and 2
-(never in OBJ colour math), then 7, 6, 5, 4; the vblank callback writes
-those 32-byte palettes after the game's own CGRAM upload (the game
-uploads all of CGRAM every completed frame), so its buffer at `$7E:0600`
+(never in OBJ colour math), then 7, 6, 5, 4. `fx_cgram_upload` runs at the
+tail of `modules_cgram_upload`, before native actor streaming, with HDMA
+disabled. It sends those 32-byte palettes after the native palette or the
+Sandship/ending/other scene handler's replacement. The buffer at `$7E:0600`
 is never modified. A class with no free palette is not drawn that frame.
 Allocation sets the palette-work bit directly (bit 8 of `!fx_palfree`),
 so finishing a frame need not reduce all seven class bytes to find work.
 Potos leaves two free palettes, so the usual pairs (BLUE + GOLD for a
 Super Saiyan beam, FIRE alone for explosions) fit.
 
-The occupied native OAM groups use an unrolled reverse scan, with the
-same conservative rounding to four sprites and separate staged-front
-scan. An 80-sprite scan costs 1,308 CPU cycles versus 1,829 for the corrected
+The occupied native OAM groups use an unrolled reverse scan, an exact
+one-to-three-sprite tail and a separate staged-front scan. Rounding up used
+to count last frame's hidden aura as an owner of its own palette; the wide
+cave then displayed only 1 of 88 eligible frames. If the conservative scan
+finds no free palette, a second scan ignores native hidden-Y (`$E0`) slots.
+An 80-sprite scan costs 1,305 CPU cycles versus 3,197 for the exact scalar
 loop (`FX_PALSCAN_SLOW=1`). The old loop failed to clear accumulator B after
 its cursor reached `$100`: byte `TAX` then indexed past the palette-marker
 table and missed palettes used after sprite 64. Both paths now keep B zero.
 `palette-scan.test.mjs` compares every cursor boundary, palette subset,
-front group and tight-vblank case with a corrected loop and an independent
+front group, hidden slot and obsolete tight-vblank flag with an independent
 palette-set model, including palettes first appearing after sprite 64.
+
+The palette hook latches `fx_clspal` into `fx_nmipal` only for a completed
+frame (`core_dma_ready`). On window/lag vblanks the previous OAM remains
+displayed: native BG colours are refreshed and OBJ colours are retained.
+If a scene handler replaced CGRAM, FX reapplies the displayed palette map.
+UI's scouter shares unused colours from this frame's `fx_clspal`, not the
+previous uploaded map. Its outstanding DMA leases still cannot be evicted;
+completed UI cells yield to FX and recently used FX cells stay protected.
 
 **OAM**: one 16×16 OBJ per cell (field OBJSEL `$63`). Most sprites go behind
 the natives through the core's module area; front sprites (impact sparks,
@@ -364,12 +379,9 @@ shows:
   so no channel began that frame from its table; a polygon switched on in
   such a vblank starts one frame later. FX's padding and priming stay as the
   second guard.
-- FX's own sprites need their palettes rewritten every vblank (the game
-  uploads all of CGRAM each frame), which a late vblank cannot afford
-  while HDMA runs. `fx_frame` predicts those vblanks (learned per
-  streaming phase) and draws no sprites for that frame: during a wave or
-  a dialogue box in Potos the edge cells and orb skip one frame in five.
-  Without HDMA, palettes are rewritten even in a late vblank (harmless).
+- FX palettes now go through the early native palette hook. The old
+  late-vblank prediction no longer blanks sprites; only unfinished cell
+  uploads wait for another vblank. No palette DMA occurs on visible lines.
 - Deviations from the browser: the up/down two-colour bands; the ripple
   (bands +2 px every third 8 px, moving every 2 frames) is implemented but
   off, since it would force a rebuild every other frame; the horn steps
@@ -483,8 +495,9 @@ zero) the ball keeps it outside and shows no rim.
 16×16 sprites sharing three mirrored cells, or two cells for a 16×32
 miniature. Blue, gold and pink ramps use the existing palette allocator.
 The full flame's second pose rises one pixel; the miniature mirrors. Both
-reuse their cells. The visible half of the 30 Hz strobe does the cache work, and a new
-flame waits until every cell is resident before it appears. No backdrop,
+reuse their cells. Both halves of the browser's 30 Hz strobe warm/protect
+the cells; a new flame waits until its own cells are resident. Unrelated
+pending orb, fire or scouter uploads no longer hide it. No backdrop,
 background palette, colour-math or HDMA registers are changed. This keeps
 the aura independent of cut grass and native background transparency.
 Power still controls whether the aura is present; the compact art uses a
@@ -496,7 +509,7 @@ and checks palette/upload readiness before writing any sprite. Miniatures,
 clipped positions and partial OAM use the general assembly renderer.
 `FX_AURA_SLOW` selects that general path for comparisons. The assembled
 tests compare 2,674 cases including subsequent effects; the full-flame
-example falls from 1,948 to 1,147 CPU cycles through the direct path.
+example falls from 2,042 to 1,241 CPU cycles through the direct path.
 The generator validates the mirrored layout and stores its cell records
 beside the stamp records in the FX data bank.
 
@@ -507,6 +520,63 @@ after warmup. Background palette 6 animates natively in the grass scene,
 so the test watches the FX writer instead of freezing that native palette.
 The integrated gameplay suite also performs L focus and L+A transformation
 after cutting grass, with the party and enemies still enabled.
+
+### Ki aura visibility audit
+
+Baseline `173cbe8`; counts are drawn / browser-eligible completed frames.
+
+| Scene (180 video frames holding L) | Before | After |
+| --- | ---: | ---: |
+| `potos` | 88/89 | 88/89 |
+| `south-potos-walk` | 88/89 | 88/89 |
+| `rabite-ssj` | 86/89 | 88/89 |
+| `rabite-scouter` | 51/85 | 83/84 |
+| `waterfall` | 88/89 | 88/89 |
+| `waterfall-scouter` | 88/89 | 88/89 |
+| `water-flight` | 88/89 | 88/89 |
+| `cave-room` | 88/89 | 89/89 |
+| `cave-wide-ssj` | 1/88 | 87/88 |
+| `cave-stairs` | 88/89 | 89/89 |
+| `boss-111-dialogue` | 0/0 | 0/0 |
+| `boss-60-dialogue` | 0/0 | 0/0 |
+| `boss-488` | 23/24 | 24/24 |
+| `buffy` | 88/89 | 89/89 |
+| `slime` | 78/79 | 83/83 |
+| `late-town` | 88/89 | 89/89 |
+| `sandship-wreck` | 88/89 | 89/89 |
+| `potos-ring` | 0/0 | 0/0 |
+
+Expected counts can differ when native lag changes which 60 Hz action
+clocks reach a completed field frame. Dialogue and ring controls correctly
+draw zero. No sampled aura frame has a wrong palette, unsafe FX DMA or PPU
+overflow. Strict build, the assembled aura/palette/request comparisons,
+the full FX suite and all 13 gameplay cases pass at this checkpoint.
+Gameplay CPU misses are unchanged, except charging improves from 19 to
+17 per 240 video frames; hardware errors remain zero.
+
+`focus-scenes` holds real L input for 180 video frames in 18 imported scene
+variants, including walking, base/SSJ, water/local flight, scouter readouts,
+the Sandship tint, and dialogue/ring negative controls. Its oracle calls
+the browser's `canAttack` getter and `drawKiAura` with the recorded action
+and clock. It counts completed field frames where the browser draws pixels
+and requires all six aura sprites with the right CGRAM colours, allowing
+at most one cold-cache miss. Intentional odd-clock blanks are excluded.
+`--record` on `snes/test/fx/focus-scenes.mjs` records a failing baseline;
+`FOCUS_OUT` selects a private output directory and `FOCUS_SCENES` filters
+cases. Traces and screenshots stay under `.local/snes-test/`.
+
+`aura-lag` exercises eight native window/lag NMIs with unchanged OAM and
+checks retained aura colours, then normal release. Assembled tests cover
+full eight-slot queues, pending unrelated uploads and odd-frame preloads.
+The field anchor now subtracts Goku's extra pose lift as well as native
+lift. Priority 3 keeps the flame above BG1/BG2 and below BG3, behind Goku's
+body; the six-cell silhouette extends outside his body. There is no CPU
+budget yield in the shipping OBJ path. True OAM/palette/scanline exhaustion
+remains a hardware limit; the scene audit records PPU overflow flags.
+
+To pay for the early palette hook's idle check, destruction wakes FX when
+publishing a record, before initialization snapshots the sequence, instead
+of FX polling that sequence on every idle frame. No core files changed.
 
 The default transformation burst keeps eight outer arcs and four inner
 sparks (12 sprites at its peak, previously 32), fading to four sparks.

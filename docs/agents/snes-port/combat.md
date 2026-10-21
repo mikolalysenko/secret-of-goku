@@ -109,6 +109,28 @@ and the full UI suite pass.
 
 ## Runtime
 
+**Focus aura visibility (2026-10-21).** L alone starts focus without a
+power threshold: browser power is `.25 + .45 * powerCharge / 96`, so the
+first focus step already requests a glow. Base and Super Saiyan, standing,
+walking and local flight all use the same request gate. SSJ changes the
+palette, not eligibility. Charging and transform/revert also request it.
+Combat now submits these continuous effects before a retiring beam; FX
+gives the aura first use of its eight draw slots, cache and available OAM.
+No input, gameplay clock, charge, damage, form or lock rules changed.
+
+Modal dialogue/events, rings/menu transitions, native hurt/status locks,
+foreign combat/input ownership and recovery-camera movement retain their
+browser suppression. L+Y/B/R/X chords take precedence over plain focus.
+A transient battle-message window (`$2C`) or the scouter being on is not
+itself a combat lock. The Sandship tint is a palette owner, not a focus
+lock; FX now overlays its colours after that handler. The ending owns
+combat input and does not permit ordinary focus during its scenes.
+The browser's odd-clock strobe is intentional, not a missed request.
+
+The [FX focus regression](fx.md#ki-aura-visibility-audit) records scene-by-scene
+coverage and the presentation fixes. `charge-draw.test.mjs` checks that a
+positive-power focus request survives a full eight-entry draw list.
+
 **Charge presentation lookup (2026-10-20).** The aura power and orb frame
 are generated together from the existing, floored 0–256 strength. This
 removes the orb's four hardware multiplies and both consumers' repeated

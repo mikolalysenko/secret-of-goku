@@ -188,7 +188,7 @@ modules_cgram_upload:
 	JSL ending_cgram_upload    ; the finale scenes' colour ranges
 	BCS +
 	JSL orbit_cgram_upload     ; the orbit's montage pictures (their colours in the game's transfer)
-+	RTL
++	JML fx_cgram_upload        ; preserve scene handlers, then the displayed OBJ colours
 
 modules_combat_receive:
 if defined("COMBAT_TEST")

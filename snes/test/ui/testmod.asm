@@ -244,8 +244,8 @@ ui_t_palette:
 -	LDA.l fx_overlay_spare,X : AND.w #$00FF : BNE +
 	INX : BRA -
 +	PHX
-	LDA.l !fx_nmipal,X : PHA
-	LDA.w #2 : STA.l !fx_nmipal,X
+	LDA.l !fx_clspal,X : PHA
+	LDA.w #2 : STA.l !fx_clspal,X
 	STZ.w !ui_tmp5&$FFFF
 	LDA.w !core_tick&$FFFF : DEC : STA.l !fx_tick
 	LDA.w #$00FF : STA.w !ui_tmp0&$FFFF
@@ -258,7 +258,7 @@ ui_t_palette:
 .bad
 	INC.w !ui_tmp5&$FFFF
 .done
-	PLA : PLY : TYX : STA.l !fx_nmipal,X
+	PLA : PLY : TYX : STA.l !fx_clspal,X
 	PLA : STA.l !fx_tick
 	STZ.w !sc_pal&$FFFF
 	LDA.w !ui_tmp5&$FFFF : LSR
