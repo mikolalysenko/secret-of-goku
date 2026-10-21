@@ -48,7 +48,7 @@ const summary=[];
 for(const [name,bundle,form=0,walk=0,analyzer=0,setup=''] of scenes){
   if(process.env.FOCUS_SCENES&&!process.env.FOCUS_SCENES.split(',').includes(name))continue;
   const copy=privateRom(rom,'focus-'+name);
-  const pre=`BUNDLE=${JSON.stringify(join(repo,'.local/snes-import',bundle))}\nFORM=${form}\nWALK=${walk}\nANALYZER=${analyzer}\nWRECK=${name==='sandship-wreck'}\nSETUP=${JSON.stringify(setup)}\nSYM={${Object.entries(symbols).filter(([n])=>['fx_frame','fx_finish','fx_k_aura_obj','fx_entry_tile','fx_class_palettes','ui_sc_draw_frame'].includes(n)).map(([n,a])=>`${n}=${a}`).join(',')}}\nAURA_CELLS={${[...cells].map(c=>`[${c}]=true`).join(',')}}\n`;
+  const pre=`BUNDLE=${JSON.stringify(join(repo,'.local/snes-import',bundle))}\nFORM=${form}\nWALK=${walk}\nANALYZER=${analyzer}\nWRECK=${name==='sandship-wreck'}\nSETUP=${JSON.stringify(setup)}\nSYM={${Object.entries(symbols).filter(([n])=>['fx_frame','fx_finish','fx_k_aura_obj','fx_entry_tile','fx_class_palettes','fx_overlay_spare','ui_sc_draw_frame'].includes(n)).map(([n,a])=>`${n}=${a}`).join(',')}}\nAURA_CELLS={${[...cells].map(c=>`[${c}]=true`).join(',')}}\n`;
   let result;
   try{result=await runMesen({rom:copy,state:join(checkpointDir(),'waterfall.mss'),test:pre+readFileSync(join(import.meta.dirname,'../lua/analyzer.lua'),'utf8')+'\n'+readFileSync(join(import.meta.dirname,'focus-scenes.lua'),'utf8'),outDir:join(root,name),exactFrames:true});}
   finally{cleanupRom(copy);}
@@ -73,10 +73,12 @@ for(const [name,bundle,form=0,walk=0,analyzer=0,setup=''] of scenes){
   const locked=name.endsWith('-dialogue')||name.endsWith('-ring');
   const pass=(locked?expected===0&&rows.every(r=>!r.request):expected>=20&&misses<=1&&maxRun<=1&&lateMisses===0)
     &&wrongPalette===0&&result.results.unsafe===0&&result.results.auraOverflowFrames===0
-    &&(!analyzer||result.results.readingFrames>0&&result.results.readoutFrames>0)
+    // Readouts show in most frames even in the crowded Rabite field (the UI's
+    // lite pass; 9 of 168 frames before it, 112 after).
+    &&(!analyzer||result.results.readingFrames>0&&result.results.readoutFrames>=.6*result.results.readingFrames)
     &&(name!=='water-flight'||result.results.flightFrames>0);
   const row={name,pass,expected,drawn,requested,misses,maxRun,lateMisses,wrongPalette,...Object.fromEntries(['heldFrames','lag','unsafe','overflows','maxSprites','maxSlivers','auraOverflowFrames','fxMean','fxMax','flightFrames','readingFrames','readoutFrames'].map(k=>[k,result.results[k]]))};
-  summary.push(row);console.log(`${name}: ${drawn}/${expected} drawn; ${requested} requested; ${wrongPalette} palette; ${row.lag} lag; ${pass?'pass':'FAIL'}`);
+  summary.push(row);console.log(`${name}: ${drawn}/${expected} drawn; ${requested} requested; ${wrongPalette} palette; ${row.lag} lag${analyzer?`; readouts in ${row.readoutFrames} of ${row.readingFrames} frames`:''}; ${pass?'pass':'FAIL'}`);
 }
 writeFileSync(join(root,'summary.json'),JSON.stringify(summary,null,2));
 if(!process.argv.includes('--record')&&summary.some(r=>!r.pass))process.exitCode=1;

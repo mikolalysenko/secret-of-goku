@@ -2,15 +2,16 @@
 // Normalises snes/src/modules.asm after merges: removes duplicate JSL lines
 // inside each core dispatch block and orders them by the documented
 // constraints (gameplay before Goku's pose/palette work, drawing after its
-// clients, HDMA programmers after all vblank DMA, audio last because it sends
-// what others requested). Modules not listed keep their relative order and
-// run before the "late" group.
+// clients, HDMA programmers after all vblank DMA, audio after the modules
+// that request sounds; in the field the readouts' lite pass, which requests
+// none, runs last to use the time all others left). Modules not listed keep
+// their relative order and run before the "late" group.
 //   node snes/tools/order-dispatch.mjs [path]
 import {readFileSync,writeFileSync} from 'node:fs';
 const path=process.argv[2]??'snes/src/modules.asm';
 // Per block: [early..., '*', late...]; '*' marks where unlisted calls go.
 const ORDER={
-  modules_field_frame:['title_field_frame','story_field_frame','debug_field_frame','combat_frame','combat_field_frame','flight_frame','flight_field_frame','ui_field_frame','world_field_frame','*','goku_frame','destroy_field_frame','fx_frame','ending_frame','audio_frame'],
+  modules_field_frame:['title_field_frame','story_field_frame','debug_field_frame','combat_frame','combat_field_frame','flight_frame','flight_field_frame','ui_field_frame','world_field_frame','*','goku_frame','destroy_field_frame','fx_frame','ui_sc_draw_frame','destroy_late_frame','ending_frame','audio_frame','ui_sc_lite_frame'],
   // ui and destroy only write HDMA registers: first, so they check the
   // vblank line before Goku's cell DMA; fx programs channels 2/3 after all DMA.
   modules_field_nmi:['ui_field_nmi','destroy_field_nmi','goku_nmi','*','ending_nmi','fx_nmi'],

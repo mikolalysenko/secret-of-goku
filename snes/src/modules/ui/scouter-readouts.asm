@@ -16,6 +16,10 @@
 !sc_shown = !RAM_UI+$A2           ; Goku number committed for display
 !sc_stage = !RAM_UI+$A4           ; Goku number awaiting residency
 !sc_keys = !SRAM_WORK_UI+$2FC     ; 11 max-HP signatures (world radar cache)
+!sc_lhist = !SRAM_WORK_UI+$3C0    ; 32 bytes: the last full pass's histogram (lite pass; the world band's colours)
+!sc_lstamp = !SRAM_WORK_UI+$3E0   ; word: !ui_frame of the last full pass that chose a palette, $FFFF none
+!sc_lvis = !SRAM_WORK_UI+$3E2     ; word: the radio clipping (!ui_vis) it saw
+!sc_lmask = !SRAM_WORK_UI+$3E4    ; word: the OBJ palettes its scan saw (bits 0-7)
 
 ui_sc_start:
 	LDA.w !ui_sc&$FFFF
@@ -42,6 +46,8 @@ ui_sc_start:
 	STA.w !sc_last&$FFFF
 	LDA.w $00DC
 	STA.w !sc_map&$FFFF
+	LDA.w #$FFFF
+	STA.l !sc_lstamp
 .done
 	RTS
 
@@ -50,6 +56,8 @@ ui_sc_leave:
 	LDA.w !ui_sc&$FFFF
 	AND.w #!UISC_ACTIVE|!UISC_DRAW
 	BEQ .done
+	LDA.w #$FFFF                      ; nothing for the lite pass to repeat (field
+	STA.l !sc_lstamp                  ; only: world code owns this SRAM next)
 	JSR ui_sc_suspend
 	STZ.w !ui_front_n&$FFFF
 	LDA.w #!UISC_ACTIVE|!UISC_DRAW
@@ -76,6 +84,8 @@ ui_sc_suspend:
 	AND.w #!UISC_RESIDENT|!UISC_DRAW
 	ORA.w !sc_pending&$FFFF
 	BEQ .done
+	LDA.w #$FFFF                      ; the leases go: no lite pass
+	STA.l !sc_lstamp
 	JSR ui_sc_cancel_uploads
 	LDX.w #0
 -	LDA.l !fx_ccell,X
@@ -213,19 +223,10 @@ ui_sc_prepare:
 .nextAge
 	DEX : DEX
 	BPL .age
-	; visibleState: field, no menu/transition/forced blank or set piece.
 	LDA.w !ui_block&$FFFF
 	BNE .hidden
-	LDA.w $00E4
-	CMP.w #$0101
-	BNE .hidden
-	LDA.w $0100
-	CMP.w #$A85C
-	BNE .hidden
-	LDA.w !RAM_FRIEZA+$08&$FFFF       ; cinematic scene (public fz_scene)
-	AND.w #$00FF
-	BNE .hidden
-	BRA .visible
+	JSR ui_sc_shown
+	BCS .visible
 .hidden
 	RTS
 .visible
@@ -286,6 +287,24 @@ ui_sc_prepare:
 +	LDA.w #!UISC_DRAW
 	TSB.w !ui_sc&$FFFF
 .done
+	RTS
+
+; C set in visibleState: the field, no menu, transition, forced blank or
+; set piece (also the lite pass's test; !ui_block is the caller's).
+ui_sc_shown:
+	LDA.w $00E4
+	CMP.w #$0101
+	BNE .no
+	LDA.w $0100
+	CMP.w #$A85C
+	BNE .no
+	LDA.w !RAM_FRIEZA+$08&$FFFF       ; cinematic scene (public fz_scene)
+	AND.w #$00FF
+	BNE .no
+	SEC
+	RTS
+.no
+	CLC
 	RTS
 
 ; Recompute only when max HP / modifiers or form / weights change. Goku's
@@ -434,16 +453,21 @@ ui_sc_scale_base:
 
 ; Allocate AFTER FX: first a free palette, otherwise the two unused tail
 ; colours of an FX palette whose generated metadata proves them spare.
+; Free palettes in FX's preference reversed (4, 5, 6, 7, then 2 and 3): FX
+; maps its classes afresh each frame without seeing the readouts, so the
+; palette they keep is the one FX takes last. OBJ colour math reaches 4-7
+; only in FX's flash, which brightens the native sprites there too.
 ui_sc_palette:
-	STZ.w !sc_pal&$FFFF
 	LDA.w !ui_tmp0&$FFFF
 	EOR.w #$00FC
 	AND.w #$00FC
 	STA.w !ui_tmp0&$FFFF
-.choose
+; !ui_tmp0 = the free palettes (bits 2-7; the lite pass passes FX's).
+ui_sc_palette_free:
+	STZ.w !sc_pal&$FFFF
 	LDX.w #0
 .try
-	LDA.l fx_pal_pref_bit,X
+	LDA.l ui_sc_pal_bit,X
 	AND.w !ui_tmp0&$FFFF
 	BNE .free
 	INX : INX
@@ -470,11 +494,15 @@ ui_sc_palette:
 	BCC .share
 	RTS
 .free
-	LDA.l fx_pal_pref_num,X
+	LDA.l ui_sc_pal_num,X
 .got
 	ASL : XBA : ORA.w #$3000
 	STA.w !sc_pal&$FFFF
 	RTS
+ui_sc_pal_bit:
+	dw $10, $20, $40, $80, $04, $08
+ui_sc_pal_num:
+	dw 4, 5, 6, 7, 2, 3
 
 ; Tiny vblank palette update, no DMA; UI owns these two entries only while
 ; this completed frame uses the selected free/shared OBJ palette.

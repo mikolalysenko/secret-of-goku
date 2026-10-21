@@ -46,7 +46,8 @@ modules_field_frame:
 	JSL ui_sc_draw_frame       ; readouts lease only cells left unused by FX
 	JSL destroy_late_frame
 	JSL ending_frame          ; after the modules that draw sprites: a full-screen scene takes the whole OAM
-	JSL audio_frame                 ; last: sends what other modules requested this frame
+	JSL audio_frame                 ; sends what the modules above requested this frame
+	JSL ui_sc_lite_frame       ; last, no sound: readouts of a frame too late for their full pass
 	RTL
 ; C clear after an NMI interrupted this combat update. A low scanline
 ; after wrapping is not spare time for optional end-of-frame work.
