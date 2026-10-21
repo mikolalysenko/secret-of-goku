@@ -224,10 +224,16 @@ pitch; impact alternates are longer retail explosions; beam alternates are
 warmer/brighter noise clocks. Alternates are RAM-only auditions, not extra
 shipping sequences. The broader retail audit is `retail.json`; raw exploratory
 renders remain under `auditions/`. None of these generated files is committed.
+The additional `beam-contacts-before.wav` / `beam-contacts-after.wav` pair
+plays nine impact pulses six video frames apart over the roar, matching a
+full wave hitting a surviving target. Both noise voices share the DSP's one
+noise clock, so impacts also retune the roar while they play, as with retail
+noise effects. This interaction is included in the headroom check below.
 
-A rapid-contact/mixed-wave render beside every arrangement has zero clipped
-samples. Stereo output peaks for songs `$3B-$3F` are **-3.17 / -2.66 / -2.91 /
--3.42 / -3.43 dBFS**, leaving at least 2.66 dB of measured headroom. Music
+A rapid-contact/six-frame-impact wave render beside every arrangement has
+zero clipped samples. Stereo output peaks for songs `$3B-$3F` are
+**-3.60 / -2.08 / -2.91 / -3.51 / -3.36 dBFS**, leaving at least 2.08 dB of
+measured headroom. Music
 tracks stay alive, all effect voices return, and sample bytes remain intact.
 These checks measure output and ownership; final listening approval belongs
 to the maintainer, and real hardware has not been physically tested.
@@ -916,6 +922,64 @@ for this comparison: the retail states only contain 8 KiB SRAM, so a
 previously played cartridge's expanded battery sidecar can change which
 modules are active. Real hardware has not been physically tested. No core
 change is required.
+
+### Round-four validation (base `d60fd07`)
+
+Strict shipping build passes. `audio` passes all **21 Node tests**, five-song
+reference renders and **10 Mesen cases** (`loads`, `native`, `music`, `rare`,
+`rare-control`, `rare-boot`, `stream`, `songs`, `arrival`, `imported`). The
+historical streaming cases use the explicitly built strict PCM diagnostic
+cartridge. The final six-frame-impact stress check also passes separately
+through the real driver/DSP; it checks output headroom, live music tracks,
+sample integrity and returned voices. All **37 combat**, **18 Frieza** and
+**11 Vegeta** cases pass, as do all six perf scenes. The older `effects.mjs`
+diagnostic report still runs with the new two-track cues.
+
+All 13 gameplay cases pass with exactly the same misses as the baseline:
+
+| Gameplay case | Before misses | After misses |
+| --- | ---: | ---: |
+| solo-punch | 0/240 | 0/240 |
+| solo-ki | 0/240 | 0/240 |
+| walk | 0/240 | 0/240 |
+| punch | 0/240 | 0/240 |
+| ki | 0/240 | 0/240 |
+| fly | 2/240 | 2/240 |
+| fly-ki | 2/240 | 2/240 |
+| fly-punch | 1/240 | 1/240 |
+| water-flight | 0/240 | 0/240 |
+| teleport | 3/240 | 3/240 |
+| charge | 19/240 | 19/240 |
+| focus-grass | 0/240 | 0/240 |
+| transform-grass | 0/240 | 0/240 |
+
+Palette, stamina, sprite-overflow, vblank-overrun and graphics-DMA-overrun
+checks pass in every case. `audio_frame` call counts and maxima match the
+baseline in all 13 cases; means match in 12. The punch mean changes from
+**0.7592986 to 0.7660740 lines/frame (+0.0067754)**, with its maximum still
+2.9912023. This small observed timing difference is reported rather than
+claiming identical busy-frame CPU time. No gameplay miss was added.
+
+`modprof` on identical sword/battle states with private ROM filenames and
+fresh battery saves reports **0.40 → 0.40 lines mean, 1.83 → 1.83 max** in
+both scenes, including existing song-settle frames. Native effect dispatch
+still peaks at **1.346041 lines**. Perf p90 build finish lines are
+**63 / 113 / 54 / 173 / 95 / 112**, with lag counts **4 / 4 / 4 / 34 / 4 / 4**
+(sword, Sandship, battle, Beast, Fortress, flight); all pass the suite's
+retail comparison.
+
+`audio/audit.mjs --before=<baseline4/secret-of-goku.sfc>` reports **200 changed
+ROM bytes**, confined to resident effect data, the cue-id lookup, checksums
+and ExHiROM mirrors; **zero changed 65816 instructions**. Music, samples,
+rare clips, extension, song-loader code and all other modules are byte-identical.
+The new footprint is 282/283 resident bytes, up 15, with no added transfer
+bytes or RAM allocation. The implementation checkpoint is `fb526f1`;
+private logs and the listening manifest remain under this worktree's
+`.local/snes-test/audio/`.
+
+No core or other-module change is requested. Partial and full waves share
+the new cue. Maintainer listening review and physical hardware testing
+remain outstanding; both are separate from the passing emulator checks.
 
 ### Round-two validation (base `1d19d44`)
 

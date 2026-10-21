@@ -80,8 +80,11 @@ test('repeated impacts and a wave beside every arrangement retain output headroo
     // different musical phases. Requests never exceed one per video frame.
     for(let cycle=0;cycle<4;cycle++){
       for(const cue of [1,3,2,4,5,6,3,4]){h.nativeCmd(2,NATIVE_IDS[cue],15,0x88);h.ms(90);}
-      h.nativeCmd(2,NATIVE_IDS[8],15,0x88);h.ms(500);
-      h.nativeCmd(2,NATIVE_IDS[6],15,0x88);h.ms(900);
+      h.nativeCmd(2,NATIVE_IDS[8],15,0x88);
+      // The full wave damages a surviving target every six video frames.
+      // Its roar and impact share the hardware's single noise clock.
+      for(let pulse=0;pulse<9;pulse++){h.ms(6000/60.0988);h.nativeCmd(2,NATIVE_IDS[6],15,0x88);}
+      h.ms(500);
     }
     h.ms(1600);
     assert.equal(h.ram[0xAD],0xFF,'music tracks alive');

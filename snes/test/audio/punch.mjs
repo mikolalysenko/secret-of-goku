@@ -4,7 +4,7 @@
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {renderEffect} from './effects.mjs';
-import {wav,loadRom} from './apu.mjs';
+import {wav,loadRom,createApu,loadSong} from './apu.mjs';
 import {effectRam,trackBytes} from '../../gen/audio-resident-storage.mjs';
 import {RESIDENT} from '../../gen/audio-resident.mjs';
 
@@ -52,6 +52,15 @@ function mapFromRom(path){
  const at=parseInt(m[1]+m[2],16)&0x3FFFFF;
  return {rom,ids:Array.from(rom.subarray(at,at+34))};
 }
+function waveContacts({rom,ids}){
+ const h=createApu({rom,extension:false});h.ms(60);
+ const blob=Buffer.alloc(21);blob.writeUInt16LE(0x1A14,0);
+ for(let i=2;i<20;i+=2)blob.writeUInt16LE(0x1A14,i);blob[20]=0xF2;
+ loadSong(h,rom,{blob,instruments:[],echo:{edl:4,evol:64,efb:30,fir:0}});h.ms(300);h.take();
+ h.nativeCmd(2,ids[8],15,0x88);
+ for(let pulse=0;pulse<9;pulse++){h.ms(6000/60.0988);h.nativeCmd(2,ids[6],15,0x88);}
+ h.ms(900);const {l,r}=h.take();return Float32Array.from(l,(v,i)=>(v+r[i])/65536);
+}
 export function report(before){
  mkdirSync(compareDir,{recursive:true});
  const after=mapFromRom(process.env.SNES_ROM??resolve(root,'dist/snes/secret-of-goku.sfc')),old=mapFromRom(before);
@@ -90,10 +99,16 @@ export function report(before){
    return {file,note:option.note,...metrics};
   });
  }
+ const contextFiles=[];
+ for(const [version,source] of [['before',old],['after',after]]){
+  const file=`beam-contacts-${version}.wav`;
+  writePcm(resolve(compareDir,file),waveContacts(source));
+  contextFiles.push({file,note:'Full-wave roar with nine impact pulses six video frames apart, native echo preset 4. Demonstrates overlapping effects and the shared DSP noise clock; no music.'});
+ }
  const manifest={rate:RATE,renderer:'Original SPC700 driver and sample-accurate S-DSP; centred 02 ee 0F 88, no gain normalization',
   echo:'beam pairs use silent song and native preset 4: EDL 4 / EVOL 64 / EFB 30 / FIR 0; hits dry',
   metrics:'Peak is sample peak; time to peak starts at -60 dB relative amplitude onset. Duration uses 5 ms RMS windows to -40 dB relative RMS; crest uses this audible span. Band energy is Hann-corrected FS² ms over the first 80/30 ms from onset. Voices count ownership, including silent tails.',
-  cues:rows};
+  cues:rows,contextFiles};
  writeFileSync(resolve(compareDir,'manifest.json'),JSON.stringify(manifest,null,2)+'\n');
  console.table(rows.flatMap(r=>Object.entries(r.versions).map(([version,m])=>({cue:r.cue,version,peakMs:m.timeToPeakMs.toFixed(2),peakDb:m.peakDbFS.toFixed(2),crestDb:m.crestDb.toFixed(2),low80:m.low80Energy.toFixed(5),high30:m.high30Energy.toFixed(5),durationMs:m.durationMs,voices:m.voices}))));
  return manifest;
