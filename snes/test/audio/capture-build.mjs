@@ -1,7 +1,7 @@
 // Build a pinned Mesen core with a read-only stereo DAC tap. This does not
 // change the emulation, resample, normalize, or inject any audio assets.
 // macOS arm64: clang, make, SDL2 (sdl2-config). No .NET UI build is required.
-import {mkdirSync,existsSync,readFileSync,writeFileSync,chmodSync} from 'node:fs';
+import {mkdirSync,existsSync,writeFileSync,chmodSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 import {spawnSync} from 'node:child_process';
 const repo=resolve(import.meta.dirname,'../../..'),out=join(repo,'.local/snes-test/audio'),source=join(out,'mesen-source');

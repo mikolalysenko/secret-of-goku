@@ -1,4 +1,4 @@
-# Resident custom samples: storage investigation and prototype
+# Resident custom samples: cartridge option and storage audit
 
 ## Round-six cartridge option
 
@@ -175,6 +175,127 @@ one-shot instrument 31's unused DIR loop offset can wrap 16 bits high in
 the cache. The check now uses the loader's 16-bit result. Profiling also
 handles Mesen's exposed 32-bit master-clock wrap, avoiding negative timings
 when a long run crosses that boundary.
+
+All requested opt-in integration suites pass: **gameplay, perf, combat,
+Vegeta, Frieza, orbit, ending, story and title**. Tests that build their own
+diagnostic variants inherited the custom define. No suite was skipped.
+The perf comparison (original vs opt-in, p90 finish line / lag frames) is:
+
+| Scene | Original | Custom |
+| --- | ---: | ---: |
+| sword | 45 / 4 | 63 / 4 |
+| sandship | 103 / 12 | 113 / 4 |
+| battle | 34 / 4 | 54 / 4 |
+| beast | 173 / 34 | 173 / 34 |
+| fortress | 90 / 5 | 95 / 4 |
+| flight | 123 / 4 | 112 / 4 |
+
+Gameplay's existing crowded-party timing warnings are unchanged in a
+separate default-cartridge comparison: fly 2, fly-ki 2, fly-punch 1,
+teleport 3 and charge 17 missed frames per 240. Both builds have zero
+palette, stamina, sprite-overflow and vblank-overrun errors. The legacy
+Vegeta budget callback still labels all frames late, as already documented
+in `audio.md`; it is not used as evidence of lag. The independent perf and
+gameplay checks supply that comparison.
+
+Validation logs and stage timings are private under
+`.local/snes-test/audio/validation6/`; all captures are under `compare6/`.
+The final strict rebuild with the define omitted and with an explicit `0`
+reproduces the independent `12b101c` ROM exactly. The explicit `1` rebuild
+reproduces the opt-in hash above. No generated ROM, audio, state, picture or
+audit output is committed.
+
+Open decisions: maintainer take/echo listening approval and the remaining
+headroom-limited loudness difference. Real hardware has not been tested.
+No core change or other runtime-module change is needed. The existing
+Vegeta timing callback and crowded-party CPU misses remain outside this
+audio change.
+
+### CPU and song-load cost
+
+The extra boot upload takes **1,401,946 master clocks = 65.28 ms (3.92
+NTSC frames)**. Total measured audio boot, including initial song startup,
+is 9,980,896 → 11,380,578 master clocks. It happens once at boot.
+
+There are **zero added 65816 instructions per gameplay frame**. The same
+`modprof` sword/battle walks report audio at **0.41 mean / 1.83 max lines**
+on both builds; that existing mean includes active work and is above the
+0.3-line idle guideline. Maximum native effect dispatch is **1.346 lines**
+on both. Level changes do add SPC work on volume updates; they are not
+per-frame transfers or main-CPU streaming. A read-only cartridge probe at
+`$0BED`/`$0BF1` subtracts the original
+seven-cycle span: the new path adds 21 SPC cycles per music-volume update
+and 98 per selected effect-volume update. Across 300 video frames each,
+that is **0.127%** of sound-CPU time with battle music alone and **0.763%**
+with repeated beams/impacts. These are measured contexts, not a worst-case
+bound for arbitrary level/take settings.
+
+`song_load_profile` compares the same 64-song consecutive canonical order
+from the waterfall checkpoint. The metadata repair saves 128 transferred
+bytes on every load, but the raised floor changes cache retention for
+songs whose echo was already safe. Results depend on the previous song:
+
+| Measurement, NTSC frames | Default mean | Custom mean | Mean change | Per-song change range |
+| --- | ---: | ---: | ---: | ---: |
+| CPU synchronous stall | 19.004 | 19.757 | +0.753 | −7.223…+14.764 |
+| Request to SPC playback | 34.730 | 34.807 | +0.077 | −13.984…+16.016 |
+
+The largest playback increases are $3E→$3F **26.641 → 42.657 frames**,
+$27→$28 **11.666 → 26.663**, and $03→$04 **48.666 → 59.653**. These are
+load-time cache/echo tradeoffs, not added frame-service cost. Across the
+pass, uploaded sample bytes rise 706,149 → 754,227 and compaction moves
+75 → 78; metadata time falls about 0.429 → 0.236 frame/load. Detailed
+per-song stages and moved/uploaded byte counts remain in
+`default-suite6/loads/results.json`, `custom-suite6/loads/results.json`
+and `validation6/metrics.json` under `.local/snes-test/audio/`.
+
+For suites that build diagnostic cartridges, propagate the option with
+`SNES_BUILD_DEFINES=-DAUDIO_CUSTOM_SAMPLES=1`; use `SNES_ROM` for the selected
+cartridge. The audio runner explicitly clears that inherited option only
+for its historical PCM diagnostic build. Example timing invocation:
+
+```sh
+SNES_LUA_PRELUDE=snes/test/audio/load-profile.lua \
+SNES_ROM=dist/snes/secret-of-goku.sfc \
+node snes/test/audio/run.mjs loads loads-boot rare-boot
+node snes/tools/modprof.mjs --rom=dist/snes/secret-of-goku.sfc
+```
+
+### Round-six file map
+
+Paths below are relative to the repository; all runtime changes are owned
+by audio. No `snes/src/core` file or changelog was edited.
+
+| File | Change |
+| --- | --- |
+| `snes/gen/audio-custom.mjs` | Shared deterministic BRRs, takes, level settings, reservation, metadata and per-song caps. |
+| `snes/gen/audio.mjs` | Generate the optional upload image, cap table, conditional arrangement EDL and settings report. |
+| `snes/gen/audio-resident.mjs` | Conditional mod impact lookup to $ED; preserve retail $38. |
+| `snes/src/modules/audio/module.asm` | Off-by-default define, optional upload/table selection and EDL clamp for every caller. |
+| `snes/src/modules/audio/resident.asm` | Optional effect pointers, cache-floor operand and metadata transfer limits. |
+| `snes/src/modules/audio/spc/custom.s` | Per-cue Q6 volume routine within the reservation. |
+| `snes/build.mjs` | Validated inherited build defines for diagnostic suite builds. |
+| `snes/test/audio/cartridge.mjs` | Read variant and immutable upload segments from the tested ROM. |
+| `snes/test/audio/apu.mjs` | Test the cartridge's actual assets, floor and caps. |
+| `snes/test/audio/custom-samples.mjs` | Import shared synthesis; preserve historical zero-level RAM auditions. |
+| `snes/test/audio/custom-cartridge.test.mjs` | All 81 take combinations, settings, all 64×16 caps and long-sequence bounds. |
+| `snes/test/audio/resident.test.mjs` | ROM-aware cue ids, custom voice/timbre expectations and arrangement headroom. |
+| `snes/test/audio/samples.test.mjs` | Permit the prototype helper's level-table reset inside the reservation. |
+| `snes/test/audio/lib.lua` | Compare all immutable custom bytes with the tested ROM upload. |
+| `snes/test/audio/loads.lua` | Consecutive loads, noncanonical echo, integrity/write checks and wrapped clock/loop arithmetic. |
+| `snes/test/audio/load-profile.lua` | Handle exposed master-clock wrap in stage timings. |
+| `snes/test/audio/native.lua` | Check the bank after native song restore. |
+| `snes/test/audio/rare.lua` | Check the bank after each rare voice. |
+| `snes/test/audio/rare-control.lua` | Check the bank through voice cancellation and song loading. |
+| `snes/test/audio/rare-boot.lua` | Boot bank checks and upload/startup timing. |
+| `snes/test/audio/run.mjs` | Separate output roots, ROM-aware data and the real power-on load pass. |
+| `snes/test/audio/capture-build.mjs` | Build the pinned Mesen core with a raw DAC tap. |
+| `snes/test/audio/capture-host.py` | Headless core host respecting the existing Lua I/O setting. |
+| `snes/test/audio/capture.lua` | Boot and dispatch the cartridge cue/mix/song recording schedule. |
+| `snes/test/audio/capture.mjs` | Write unprocessed WAVs, loudness/peak windows and ROM-hash manifests. |
+| `snes/test/lua/harness.lua` | Migrate old diagnostic snapshots to the reserved cache and relocate active BRR cursors. |
+| `docs/agents/snes-port/audio.md` | Shipping policy, memory/patch map and import behavior. |
+| `docs/agents/snes-port/audio-samples.md` | Settings, storage proof, cartridge listening/level measurements and validation. |
 
 ## Historical round-five investigation
 

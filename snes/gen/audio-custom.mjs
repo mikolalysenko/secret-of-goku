@@ -94,7 +94,7 @@ export function customSettings(env=process.env){
   const result={...defaults},seen=new Set();
   for(const pair of text?text.split(','):[]){
    const [cue,value,...extra]=pair.split(':');
-   assert.ok(cue in defaults&&value!==undefined&&!extra.length&&!seen.has(cue),`bad audio setting ${pair}`);
+   assert.ok(Object.hasOwn(defaults,cue)&&value!==undefined&&!extra.length&&!seen.has(cue),`bad audio setting ${pair}`);
    result[cue]=convert(value);seen.add(cue);
   }
   return result;

@@ -19,6 +19,7 @@ test('custom reservation and all selectable takes fit without touching the loade
  assert.throws(()=>customSettings({AUDIO_CUSTOM_TAKES:'hit:typo'}));
  assert.throws(()=>customSettings({AUDIO_CUSTOM_LEVELS:'beam:12'}));
  assert.throws(()=>customSettings({AUDIO_CUSTOM_LEVELS:'beam:NaN'}));
+ assert.throws(()=>customSettings({AUDIO_CUSTOM_LEVELS:'constructor:0'}));
 });
 
 test('every song/preset cap is safe and only changes EDL when its required samples collide',async()=>{
