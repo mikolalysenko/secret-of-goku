@@ -79,7 +79,7 @@ test('emitter retains clipped/visible pieces, OAM exhaustion and randomized nati
   assert(slow.has('emitter')?cycles[1]===cycles[0]:cycles[1]<cycles[0]);
   t.diagnostic(`six-piece generic emitter: ${cycles.join(' -> ')} CPU cycles`);
 });
-test('empty contact boxes and both nonempty continuations retain RAM, registers and every P bit',t=>{
+test('empty contact boxes and both nonempty continuations retain RAM, registers and native P states',t=>{
   for(let i=0;i<12000;i++){
     const d=[0,0x100,0x1201][i%3],x=[0,0x200,0x400][i%3],y=0x600+(i%9)*0x200;
     compare({kind:'overlap',d,x,y,ps:rand()&~16,a:rand()&65535,setup(ram){
