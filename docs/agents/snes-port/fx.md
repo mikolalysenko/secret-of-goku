@@ -876,6 +876,23 @@ all of its parts on the screen, and the displayed OAM against the PPU's
 per-line limits from the rotated first sprite (`auraPartial`,
 `auraDropped`). `fight-top` sweeps the flame across line 0 (FX's frame
 sees Goku at screen lines -12 to 72), `transform` repeats L+A.
+The maintainer's reports on the round-seven build (without this fix) are
+scenes too. A killed enemy becomes a damage-number object at once (species
+`$F9`); its count rises to 3 five to ten frames later. When the enemy sits in
+slot 5, its digits stream into region A. `barrage-kill` holds Y: it kills
+two Rabites, walks to the third (slot 5) and kills it with a leftward
+barrage while more shots fly. On 17b4631, 98 shot sprites (Super Saiyan:
+231) showed its digits; after the fix, none. `ssj-charge` (L+A, then L+Y)
+and `revert-charge` (transform, revert, charge in base form) run with
+Rabites striking Goku and the transformation's kills. `ssj-kill-charge`
+transforms next to the third Rabite and charges twice; the second wave kills
+it. Before the fix, 242 lightning and spark sprites showed its digits. The
+scenes count these events (`numbers`, `slot5Numbers`, `formChanges`,
+`gokuHits`, `fxClaimed`: FX sprites shown while the game claims region A) and
+require them. In `ssj-kill-charge`, a crowded first charge (flame,
+lightning, gold sparks and the party) passed the PPU's 34 slivers on one
+line once: one flame line was dropped for one frame. That limit is reported
+there, not asserted.
 Before the fix: `fight` 620 wrong aura sprites (all in the top row) and
 174 stale cells, `fight-ssj` 542, 191 and 100 native, `fight-top` 144.
 After: none, and no partial or cut flame in any scene. The game's claims come

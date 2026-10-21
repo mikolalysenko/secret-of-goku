@@ -15,7 +15,14 @@
 -- Likewise the game shows a new effect's sprite from its first frame but
 -- streams the piece only in the slot's round-robin phase, up to four
 -- frames later; tiles FX wrote before the game claimed them show until
--- then: nativeLate, reported only.
+-- then: nativeLate, reported only. fxForeign counts the late FX sprites
+-- whose tiles the game or a UI lease wrote last (its digits, say).
+-- The scene's events, per completed frame: killed enemies turning into
+-- damage-number objects (species $F9; numbers, slot5Numbers: those that
+-- stream into the cache's region A), Super Saiyan form changes
+-- (formChanges, combat's $7E:D811) and enemy hits or deflections on Goku
+-- (gokuHits, combat's $7E:D86A / D85A); fxShown / fxClaimed: FX sprites
+-- displayed, and those displayed while the game claims region A.
 -- The aura must also be whole: every part of the frame's flame assembly
 -- that lies on the screen is written (auraPartial counts the frames that
 -- miss one, a cut-off top row included), and once displayed none of its
@@ -40,9 +47,10 @@ local auraAsm, auraId, auraDrawn = {}, nil, false
 local cellRow = {}                      -- aura cell -> its row in its flame (0 top)
 local stats = {frames=0,checked=0,auraFrames=0,auraBad=0,auraBadRows={0,0,0},auraDrawn=0,auraPartial=0,auraDropped=0,fxBad=0,fxLate=0,uiBad=0,
   uiFrames=0,bothFrames=0,nativeBad=0,nativeLate=0,freeRefs=0,nativeWrites=0,nativeWritesHeld=0,
-  regionAWrites=0,lag=0,shots=0}
+  regionAWrites=0,lag=0,shots=0,fxForeign=0,fxShown=0,fxClaimed=0,numbers=0,slot5Numbers=0,formChanges=0,gokuHits=0}
 local details = {}
 local shotNext = nil
+local species, lastForm, lastHits = {}, nil, nil
 Cells.stats = stats
 local function hook(addr, fn) emu.addMemoryCallback(fn, emu.callbackType.exec, addr, addr) end
 local function regionTile(t)
@@ -193,7 +201,19 @@ hook(0x00B077, function()
   for e = 0, 14 do
     if (mask >> e) & 1 ~= 0 then busyFrom[e] = busyFrom[e] or H.frame else busyFrom[e] = nil end
   end
-  pending = {owner=owner, native=H.r16(0x7ED738), aura=auraTiles, cpend=H.r16(CPEND), cfail=H.r16(CFAIL), built=H.frame}
+  pending = {owner=owner, native=H.r16(0x7ED738), aura=auraTiles, cpend=H.r16(CPEND), cfail=H.r16(CFAIL), built=H.frame, claimA=mask & 0x007F ~= 0}
+  for i = 3, 11 do
+    local sp = H.r8(0x7EE180 + i * 0x200)
+    if sp == 0xF9 and species[i] and species[i] ~= 0xF9 then
+      stats.numbers = stats.numbers + 1
+      if i == 5 then stats.slot5Numbers = stats.slot5Numbers + 1 end
+    end
+    species[i] = sp
+  end
+  local form, hits = H.r8(0x7ED811), H.r16(0x7ED86A) + H.r16(0x7ED85A)
+  if lastForm and form ~= lastForm then stats.formChanges = stats.formChanges + 1 end
+  if lastHits and hits ~= lastHits then stats.gokuHits = stats.gokuHits + 1 end
+  lastForm, lastHits = form, hits
 end)
 hook(0x00C0A8, function()
   if not Cells.measuring then return end
@@ -241,6 +261,8 @@ hook(SYM.core_field_nmi_done, function()
           elseif c < 0x200 then
             local isAura = displayed.aura[t] and true or false
             if isAura then aura = true end
+            stats.fxShown = stats.fxShown + 1
+            if displayed.claimA then stats.fxClaimed = stats.fxClaimed + 1 end
             if not vramMatches(e, cellBytes(c)) then
               local late = (displayed.cpend >> e) & 1 ~= 0
               local d = {slot=i, entry=e, cell=c, aura=isAura, writer=lastWriter[t], now=H.r16(CCELL + e * 2), late=late, line=emu.getState()['ppu.scanline']}
@@ -249,7 +271,9 @@ hook(SYM.core_field_nmi_done, function()
                 local row = cellRow[c]
                 if row then d.row = row; stats.auraBadRows[row + 1] = (stats.auraBadRows[row + 1] or 0) + 1 end
                 note('aura', d)
-              elseif late then stats.fxLate = stats.fxLate + 1
+              elseif late then
+                stats.fxLate = stats.fxLate + 1
+                if lastWriter[t] == 'native' or lastWriter[t] == 'ui' then stats.fxForeign = stats.fxForeign + 1 end
               else stats.fxBad = stats.fxBad + 1; note('fx', d) end
             end
           else
