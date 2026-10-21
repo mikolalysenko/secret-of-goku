@@ -5,6 +5,9 @@
 // frames for solo attacks, crowded ground punches/ki and water flight.
 // --strict-timing requires zero misses in crowded party scenes too.
 // --repeat=N extends each deterministic input sequence.
+// --routine-profile measures native emitter/caller/contact CPU cycles and
+// master clocks, grouped by field update (including updates that miss NMI).
+// --record-native also saves private CPU/WRAM inputs for actor-hot.test.mjs.
 // --flight-corridor steers aerial ki repeats between two nearby points
 // using real input, so missed reversal frames cannot drift into a map exit.
 // Generated output stays in .local/snes-test/gameplay (or GAMEPLAY_OUT).
@@ -93,7 +96,8 @@ for(const [name,bundle,script,setup=''] of cases){
   const copy=privateRom(rom,'gameplay-'+name);
   const pre=`PCM=${args.includes('--pcm')}\nPROFILE_NATIVE=${args.includes('--native-profile')}\nBUNDLE=${JSON.stringify(join(repo,'.local/snes-import',bundle))}\nSETUP=${JSON.stringify(setup)}\nSCRIPT=${JSON.stringify(Array(repeat).fill(script).join(','))}\nSPANS={${spans.join(',')}}\nFX_TILES=${symbols.get('fx_entry_tile')}\nAURA_CELLS={${[...auraCells].map(c=>`[${c}]=true`).join(',')}}\nUPLOAD=${JSON.stringify(join(repo,'dist/snes/gen/audio/upload.bin'))}\n`;
   const corridor=args.includes('--flight-corridor')&&name==='fly-ki';
-  const test=pre+`FLIGHT_CORRIDOR=${corridor}\nCHECK_AURA=${name.endsWith('-grass')}\nGFX_DMA={${gfxDma.join(',')}}\nDESTROY_SCANS={${destroyScans.join(',')}}\nDESTROY_ATTACK_ID=${destroyAbi().arg_id}\n`+readFileSync(join(repo,'snes/test/audio/lib.lua'),'utf8')+'\n'+readFileSync(join(import.meta.dirname,'gameplay.lua'),'utf8');
+  const nativeProfile=args.includes('--routine-profile')||args.includes('--record-native');
+  const test=pre+`FLIGHT_CORRIDOR=${corridor}\nCHECK_AURA=${name.endsWith('-grass')}\nGFX_DMA={${gfxDma.join(',')}}\nDESTROY_SCANS={${destroyScans.join(',')}}\nDESTROY_ATTACK_ID=${destroyAbi().arg_id}\nRECORD_NATIVE=${args.includes('--record-native')}\nNATIVE_BODY=${symbols.get('core_native_body')}\n`+readFileSync(join(repo,'snes/test/audio/lib.lua'),'utf8')+'\n'+(nativeProfile?readFileSync(join(import.meta.dirname,'native-routines.lua'),'utf8')+'\n':'')+readFileSync(join(import.meta.dirname,'gameplay.lua'),'utf8');
   const r=await runMesen({rom:copy,state:join(checkpointDir(),'waterfall.mss'),test,outDir:join(root,name),exactFrames:true});
   cleanupRom(copy);
   const v=r.results??{};

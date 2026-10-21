@@ -6,6 +6,39 @@ integration bugs and CPU/vblank cost. The default build now favors resident
 SNES audio and compact effects. It is substantially smoother, but crowded
 combat is not yet guaranteed to run without missed video frames.
 
+## Native actor follow-up — October 21, 2026
+
+The core-authorized follow-up starts at `a949896`. Fresh matched runs give
+short charge **17**, teleport **3**, ordinary flight **2**, flying ki **2**,
+flying punches **1**, and zero in the other eight cases. Long charge is
+**25**, teleport **18**, corridor flying ki **13**, flying punches **1**,
+and ground punches/ki **0/0**. These are this tree's baseline, not the older
+October 20 counts below.
+
+Gameplay's new `--routine-profile` measures CPU cycles and master clocks
+for the generic emitter, body path, actor callers, contact-distance prefix
+and overlap helper. It groups completed spans by field update and records
+which updates miss NMI. Counts at `$80:E640` now distinguish invocations
+from visits made by its internal loop. `--record-native` also samples CPU
+state plus low/actor WRAM for assembled replay; all recordings remain in
+the selected `GAMEPLAY_OUT`, under this worktree's `.local/snes-test/`.
+Master-clock and CPU spans include interrupts and nested calls; do not add
+parent and child spans together.
+
+The initial short charge profile measures native actor construction at
+**81.09 mean / 158.91 peak** scanlines and movement/contact at
+**39.30 / 56.62**. The generic emitter has **1,222 calls**, costing
+**7.54 lines per completed field update**; the contact-distance prefix has
+**2,007 calls**, costing **7.75 lines per update**. The full contact calls
+cost **13.80 lines per update**. The browser's `engine/sprite-layer.js`
+composes Goku/effects in JavaScript around the original engine's sprites;
+it does not add equivalent 65816 descriptor or contact calls for those
+effects. The cartridge has to fit that presentation into the native frame.
+
+Baseline artifacts: `.local/snes-test/perf3/baseline-{short,long}/`,
+`profile-short/` and `profile-original/`. Raw records and cartridges are
+private and are not committed.
+
 ## Current checkpoint
 
 The new pass starts at integrated main `5f21b35`. Fresh 240-frame runs
