@@ -4,6 +4,20 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: no stars' cull in the clash (2026-10-21)
+
+- The stars on the rows a beam newly holds are no longer hidden at once
+  in the clash. There the depths leave out the stars well inside the
+  rays, and with a group's limits only growing the lists keep up: the
+  `clash` test's rays lose no slivers without the cull either.
+- The two culls cost each launch's first two frames 12 lines each (the
+  limits' remake and the cull: 41 and 54 lines of stars there, main 19
+  and 28).
+- The `fight` keeps its cull: without it the beams lose 530 slivers
+  instead of 234.
+- Repeated pictures: `clash` 39 (41 before, main 34: the launches 5, the
+  struggle 1, the recoil 1, the win 32); `fight` 9.
+
 ## Orbit: a beam run built again keeps its chains (2026-10-21)
 
 - A beam group's cached OAM run is rebuilt whenever its origin moves. In

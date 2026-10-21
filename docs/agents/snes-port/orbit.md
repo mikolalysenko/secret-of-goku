@@ -27,7 +27,7 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 | Hand-off from the frieza module (second surge), scene work area | **Done** (`bind.asm`, `scene.asm`): `!FRIEZA_ORBIT_SURGE` enters the orbit at `collateralStart` (72) with Frieza's HP and clocks; the orbit takes `!SRAM_WORK_SCENE` from Frieza's claim (owner `!SCENE_ORBIT`) and gives it back at the end; test `handoff` |
 | Second surge on the deck (ages 1-71): the Death Ball growing above Frieza from 25, Goku's giant beam from 58 | **Done** (`bind.asm` `orbit_surge_deck`, through fx: `FX_DEATHBALL` at the browser's snapped sizes, `FX_BEAM_WAVE`); the frieza module draws Frieza, his aura and lightning and breaks the floor at 24 and 48 |
 | Auras (Goku's charge and focus, Frieza's pink warning) | **Done** (`aura.asm`, below): the browser's own flames at every level and phase, on its even frames; in the finale Frieza's while he gathers and charges, Goku's while he charges; no frame lags for them. Not through Frieza's surges in the struggle (the rays hold the slots) |
-| 60 Hz | **Done**: the fight steps once per field vblank (catching up after a slow game frame); the picture's incremental work runs in the frame's spare time. The distant bodies cost 7-26 lines a fight frame: 9 repeated pictures in the `fight` test (2 on main), 41 in the `clash` (34; below) |
+| 60 Hz | **Done**: the fight steps once per field vblank (catching up after a slow game frame); the picture's incremental work runs in the frame's spare time. The distant bodies cost 7-26 lines a fight frame: 9 repeated pictures in the `fight` test (2 on main), 39 in the `clash` (34; below) |
 | Distant bodies (moon, outer planet, planetoid): their places, the strikes that shatter them, the impact bursts, Luna's remark | **Done** (stage A: `scenery.asm`, `strike.asm`, `scdraw.asm`, `orbit-scenery.mjs`; below): places, strikes, impacts and the remark identical to the browser's on every frame of the `fight` test (the wave shatters the moon) and the `scenery` test (ki shatters all three) |
 | Cosmic montage: the four town shots (72-1802) | **Done** (`montage.asm`, `orbit-montage.mjs`, below): the towns from the game's own map data, people, rabite, warning ring, laser, ruin, bursts, fragments, fires, red tint, captions, cues; test `montage` matches the browser's picture pixel for pixel outside the explosions (97-99% during them) |
 | Cosmic montage: the two aerial cuts (aerial melee) | **Done** but the auras of the 30 frames before each explosion (below): the clouds, the gradient, both fighters, the sparks, the explosions, the flashes, the cues; test `montage` matches the browser at 99.8-100% outside the explosions |
@@ -240,7 +240,12 @@ the stars of every depth on those rows are hidden at once (`sl_cull`: y
 = $E0 in the lists), in the frame the limits are made, and come back
 with the depths' rebuilds within the new limits (a launch's rebuilds
 take up to 20 frames, 1-2 stars a frame); a cull is skipped when its
-rows were culled already and no depth's build has begun since. Frieza's finger laser crosses the screen in 7 cells: with its
+rows were culled already and no depth's build has begun since. The clash
+culls nothing: its depths leave out the stars well inside its rays, and
+with a group's limits only growing its rays lose no slivers without the
+cull (none either way in the `clash` test), while its two culls cost each
+launch's first two frames 12 lines each. In the `fight` the cull spares
+the beams some 300 slivers (530 without it). Frieza's finger laser crosses the screen in 7 cells: with its
 hit's bursts, Frieza and Goku its lines pass 34 without any star, so the
 laser's cells whose middle lies within 16 pixels of the freshest hit
 (younger than 24 frames) are hidden, the bursts covering the laser there
@@ -474,7 +479,7 @@ zoom) about 16, about 26 while Frieza's beam flies; the drawing about 9.
 The base's fight frames already end at lines 178-210, so the beam's zoom
 at frames 235-255 now repeats a run of pictures: the `fight` test
 repeats 9 on the default build (main's 2 at 248 and 524). The `clash`
-repeats 41 (main 42da923: 34): the launch 7 (1), the struggle 1 (0),
+repeats 39 (main 42da923: 34): the launch 5 (1), the struggle 1 (0),
 the recoil 1 (1), the win 32 (32).
 
 Sprite lines (`scline.asm`, the third code area): a body is 4 slivers on
@@ -502,7 +507,7 @@ entries (Mesen, the tests' pads, the default build):
 | Run | The bodies cost the others (Stage A) | Held back (hides) |
 | --- | --- | --- |
 | `fight` | 31 slivers on 31 lines of 10 frames, bursts beside a body (11 of those lines with a beam on them; 18-34 slivers as the frames' timing varies) (392) | the outer planet 27 frames (1), the planetoid 70 (2) |
-| `clash` | 6 gold slivers on 3 lines of one frame (1,062) | the planetoid 1,282 (2), the moon 188 (3), the outer planet 236 (3) |
+| `clash` | 6 gold slivers on 3 lines of one frame (1,062) | the planetoid 1,282 (2), the moon 186 (3), the outer planet 234 (3) |
 | `scenery` | 721 slivers on 234 lines of 30 frames, where two bodies shatter side by side: bursts 596, ki 97, Frieza 28 (715) | none |
 
 In the clash the planetoid hides as each launch begins and comes back

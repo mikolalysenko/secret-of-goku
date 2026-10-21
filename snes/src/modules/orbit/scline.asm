@@ -247,7 +247,8 @@ sl_stale:
 ; known). A body counted there anew or moved begins a new wait for the
 ; star lists (sb_kg: the generation these limits get); and the stars on
 ; the rows a beam newly holds are hidden at once (sl_cull), unless they
-; were hidden already and no list's build has begun since (sl_culled).
+; were hidden already and no list's build has begun since (sl_culled), or
+; in the clash (its rays lose no slivers without it).
 sl_count:
 	LDA.w !sb_cnt
 	STA.w !sl_was
@@ -373,6 +374,8 @@ sl_count:
 	; their builds catch up: a growing ray's rows)
 	JSR sl_hot
 	BCC +
+	LDA.w !fn_phase                ; (none in the clash: the lists leave out
+	BNE +                          ; the stars well inside its rays and keep up)
 	JSR sl_culled
 	BCS +
 	JSR sl_cull
