@@ -16,7 +16,7 @@ export function uploadSegments(rom){
   out.push({addr,bytes:rom.subarray(p+4,p+4+n)});p+=4+n;}
  return out;
 }
-export function customSegments(rom){return isCustom(rom)?uploadSegments(rom).filter(s=>s.addr===0x4DF1||[0x1860,0x18E0,0x19C0,0x19D0,0x0BED,0x0E10,0x0C48,0x14B4,0xFFFB].includes(s.addr)):[];}
+export function customSegments(rom){return isCustom(rom)?uploadSegments(rom).filter(s=>s.addr===0x4DF1||[0x0180,0x1860,0x18E0,0x19C0,0x19D0,0x0BED,0x0E10,0x0C48,0x14B4,0xFFFB].includes(s.addr)):[];}
 export function nativeIds(rom,ids){return ids.map((v,i)=>isResident7(rom)?(i===17?0xEF:v):(isCustom(rom)&&i===6?0xED:v));}
 
 // Historical RAM auditions start from the round-four APU image, never from

@@ -50,26 +50,28 @@ export function residentLayout(rom,resident){
   const patches=sharedPatches(rom),last=Math.max(...resident.map(r=>r.id));
   const tableEnd=0x2C00+(last+1)*4;
   const spans=[{start:tableEnd,end:0x3000},...SHARED_TRACKS].map(s=>({...s,next:s.start}));
-  const tracks=resident.flatMap(r=>(r.tracks??[r.sequence]).map((bytes,voice)=>({id:r.id,voice,bytes})));
+  const tracks=resident.flatMap(r=>(r.tracks??[r.sequence]).map((bytes,voice)=>({id:r.id,voice,bytes,page:r.page})));
   // Largest first avoids wasting small holes; identical suffixes share a pointer.
   tracks.sort((a,b)=>b.bytes.length-a.bytes.length||a.id-b.id||a.voice-b.voice);
   const placed=[];
   for(const t of tracks){
-    const shared=placed.find(s=>s.bytes.length>=t.bytes.length&&t.bytes.every((v,i)=>v===s.bytes[s.bytes.length-t.bytes.length+i]));
+    const shared=placed.find(s=>s.page===t.page&&s.bytes.length>=t.bytes.length&&t.bytes.every((v,i)=>v===s.bytes[s.bytes.length-t.bytes.length+i]));
     if(shared)t.shared=shared;else placed.push(t);
   }
   // Exact packing matters in the 12/16/19-byte holes: greedy placement can
   // strand enough bytes for a whole track. This runs at build time only.
-  const failed=new Set();
+  const failed=new Set(),constrained=tracks.some(t=>t.page!==undefined);
   function place(i){
     if(i===placed.length)return true;
-    const key=i+':'+spans.map(s=>s.end-s.next).sort((a,b)=>a-b).join(',');
+    const rooms=spans.map(s=>s.end-s.next);
+    const key=i+':'+(constrained?rooms:rooms.sort((a,b)=>a-b)).join(',');
     if(failed.has(key))return false;
     const t=placed[i],tried=new Set();
     for(const s of [...spans].sort((a,b)=>(a.end-a.next)-(b.end-b.next))){
-      const room=s.end-s.next;
-      if(room<t.bytes.length||tried.has(room))continue;
-      tried.add(room);t.addr=s.next;s.next+=t.bytes.length;
+      if(t.page!==undefined&&(s.next>>8)!==t.page)continue;
+      const room=s.end-s.next,shape=constrained?(s.next>>8)+':'+room:room;
+      if(room<t.bytes.length||tried.has(shape))continue;
+      tried.add(shape);t.addr=s.next;s.next+=t.bytes.length;
       if(place(i+1))return true;
       s.next-=t.bytes.length;
     }

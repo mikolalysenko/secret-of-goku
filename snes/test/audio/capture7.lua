@@ -52,6 +52,24 @@ local function field(form,music)
 end
 function test()
  bootToField();H.wait(40)
+ if ONLY=='variation' then
+  solo();song(0x3C,0)
+  record('variation-battle-combos','Two full combos over battle music: punch/punch/kick twice, 14 frames between moves, contact one frame after each swing',function()
+   for i=1,6 do native(i%3==0 and 0xE6 or 0xE5);native(i%3==0 and 0xE8 or 0xE7);H.wait(12) end
+   H.wait(120)
+  end)
+  solo()
+  record('variation-solo-whiffs','Eight isolated punch swings, 22 video frames apart; no music or echo; exposes the six envelope/pitch combinations',function()
+   for i=1,8 do native(0xE5);H.wait(21) end
+   H.wait(90)
+  end)
+  solo();song(0x3C,0)
+  record('variation-battle-volley','Eighteen ki launches every five video frames, retained 38 contacts two frames later, over battle music',function()
+   for i=1,18 do native(0xDE);H.wait(1);native(0x38);H.wait(2) end
+   H.wait(120)
+  end)
+  H.result('files',files);H.result('commands',commands);H.result('captured',true);return
+ end
  if ONLY=='motion' then
   for _,cue in ipairs({{'swing',0xE5},{'swing-2',0xE5},{'kick-swing',0xE6},{'blast',0xDE}}) do
    solo()
