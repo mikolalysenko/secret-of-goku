@@ -110,7 +110,10 @@ function test()
   -- Real arrival flash: sample every displayed frame, including native
   -- lag frames. Goku stays unflashed while BG colours and shared shadows
   -- retain the game's flash. Scene pose requests must not affect this.
+  -- The browser bundle has no cartridge module state: the title module's
+  -- arrival phase (!title_phase, !RAM_MISC+$06) is the ghost page here.
   s = case('arrival-research__browser-ghost')
+  H.w8(0x7EDD86, 4)
   local slot = H.r8(A.pal_slot)
   local goku = G.rom_pal(H.r8(G.RAM + 0x48))
   G.check(H.r8(0x7E002A) ~= 0 and s.repl == 1, 'flash: native flash active with Goku')

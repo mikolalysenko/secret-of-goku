@@ -1572,3 +1572,26 @@ title_hop_dx:
 	dw 0,0,16,0,0,0,16,0
 title_hop_dy:
 	dw 0,0,0,0,16,0,16,0
+
+; Carry set while the arrival's own renderer would draw Goku (impact, ghost
+; and dialogue pages: arrival.js drawScene), where the browser keeps him
+; unflashed through the native flash (goku_preupload). Any DB, M16/X16; A kept.
+title_arrival_draws_goku:
+	PHA
+	PHP
+	SEP #$20
+	LDA.l !title_phase
+	CMP.b #!TITLE_PH_IMPACT
+	BCC .no
+	CMP.b #!TITLE_PH_COMPLETE
+	BCS .no
+	PLP
+	PLA
+	SEC
+	RTL
+.no
+	PLP
+	PLA
+	CLC
+	RTL
+

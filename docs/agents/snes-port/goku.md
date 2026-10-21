@@ -154,8 +154,10 @@ replacement), `modules_field_nmi` → `goku_nmi` (uploads), `modules_field_preup
   costs 549 CPU cycles versus 352, with all 608 full-state comparisons in
   `palette-scan.test.mjs` matching colors, status, slots and CPU context.
 - **Native flash**: `goku_preupload` runs in `modules_field_preupload`,
-  immediately before the field NMI sends CGRAM. While `$2A` is set and
-  Goku is active, it restores colours 2-15 from `pal_out` into `7E:BE00`,
+  immediately before the field NMI sends CGRAM. While `$2A` is set, Goku is
+  active and the browser would draw him with a scene renderer (an explicit
+  cell or a scripted pose this frame, or the arrival's impact, ghost and
+  dialogue pages: `title_arrival_draws_goku`), it restores colours 2-15 from `pal_out` into `7E:BE00`,
   including the airborne water copy when used. These are 28 CPU-written
   bytes per slot, with no DMA or frame-thread scratch. This covers native
   lag frames and NMIs interrupting the flash rebuild as well as completed
@@ -163,7 +165,9 @@ replacement), `modules_field_nmi` → `goku_nmi` (uploads), `modules_field_preup
   shadow colour (entry 1) and the rest of the scene retain the native flash.
   Status tints still come from `goku_palette`. No new native hijack is needed.
   Measured including dispatch/return: idle at most 0.12 scanlines; arrival
-  flash at most 1.57. The ordinary frame no longer copies flash colours.
+  flash at most 1.57. The ordinary frame no longer copies flash colours. On
+  the open field he follows the native flash, as the browser's `tint()`
+  makes him follow the boy's palette.
 - **Uploads** (`upload.asm`): see Resources. When replacement ends (snowman,
   moogle, `GOKU_CTL_SUPPRESS`, flag cleared) the boy's own tiles are
   re-uploaded from the game's `$0C00` table that very vblank.

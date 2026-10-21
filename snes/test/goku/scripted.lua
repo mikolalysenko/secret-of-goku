@@ -128,6 +128,9 @@ function test()
   -- native flash ($2A): the scripted cell keeps the browser's unflashed
   -- colours, as a scene cell; entry 1, every actor's shadow, stays flashed.
   G.import('arrival-research__browser-ghost')
+  -- the bundle carries no cartridge module state: the title module's arrival
+  -- phase (!title_phase, !RAM_MISC+$06) is the ghost page here
+  H.w8(0x7EDD86, 4)
   request(nil); H.w8(MB + 13, 0)
   G.on()
   H.wait(12)

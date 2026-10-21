@@ -72,6 +72,8 @@ endif
 	STA !up_cell
 .end
 	SEP #$20
+	LDA !scr_shown           ; this frame's scripted pose, for the vblank
+	STA.l !scr_latch
 	STZ !scr_shown           ; a scripted cell lasts one frame
 	LDA !replacing
 	STA !was_replacing
@@ -573,6 +575,18 @@ goku_preupload:
 	BEQ .done
 	JSR goku_check_on
 	BCC .done
+	; Only where the browser draws Goku unflashed, its scene renderers: an
+	; explicit or scripted pose this frame, or the arrival's impact, ghost
+	; and dialogue pages. On the open field its tint() follows the native
+	; flash, as the boy's colours do.
+	LDA.l $7E0000|!goku_cell_req
+	BNE .scene
+	LDA.l !scr_latch
+	AND.w #$00FF
+	BNE .scene
+	JSL title_arrival_draws_goku
+	BCC .done
+.scene
 	PHB
 	PEA $7E7E : PLB : PLB
 	LDA !pal_slot
