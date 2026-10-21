@@ -14,7 +14,7 @@
  * stdout, so a test can make decisions between frames. results.json in DIR
  * collects the values, screenshots and core log.
  *
- * No audio is output and nothing is timed: every retro_run() is one frame,
+ * Audio levels can be measured (no playback); nothing is timed: every retro_run() is one frame,
  * so a run is deterministic for a deterministic core and script. Anything
  * the core prints to stdout goes to DIR/core-stdout.log.
  *
@@ -44,6 +44,7 @@
  *   {"op":"reset"}                               console Reset button
  *   {"op":"reload"}                              power cycle, battery RAM kept
  *   {"op":"savestate","name":"k"}  {"op":"loadstate","file":"path"}
+ *   {"op":"audio","reset":false}                  sample counts, peak, mean square; optionally clear
  *   {"op":"result","name":"k","value":<json>}    {"op":"log","text":".."}
  *   {"op":"info"}  {"op":"quit"}
  * Memory names: wram (128 KiB; 0x7E0000-0x7FFFFF also accepted), sram, vram.
@@ -426,6 +427,9 @@ static struct {
   uint16_t buttons;
   unsigned long long frame; /* retro_run calls since start */
   unsigned long long polls;
+  unsigned long long audio_frames, audio_nonzero, audio_clipped;
+  unsigned audio_peak;
+  double audio_energy;
 
   option_t *opts;
   int nopts;
@@ -636,8 +640,19 @@ static void video_cb(const void *data, unsigned w, unsigned h, size_t pitch) {
   G.fh = h;
   if (!dupe) G.frames_drawn++;
 }
-static void audio_sample_cb(int16_t l, int16_t r) { (void)l; (void)r; }
-static size_t audio_batch_cb(const int16_t *d, size_t frames) { (void)d; return frames; }
+static void audio_sample_cb(int16_t l, int16_t r) {
+  if (G.calibrating) return;
+  unsigned peak = (unsigned)(abs(l) > abs(r) ? abs(l) : abs(r));
+  G.audio_frames++;
+  if (l || r) G.audio_nonzero++;
+  if (peak >= 32767) G.audio_clipped++;
+  if (peak > G.audio_peak) G.audio_peak = peak;
+  G.audio_energy += (double)l * l + (double)r * r;
+}
+static size_t audio_batch_cb(const int16_t *d, size_t frames) {
+  for (size_t i = 0; i < frames; i++) audio_sample_cb(d[i * 2], d[i * 2 + 1]);
+  return frames;
+}
 static void input_poll_cb(void) { G.polls++; }
 static int16_t input_state_cb(unsigned port, unsigned device, unsigned index, unsigned id) {
   (void)index;
@@ -1293,6 +1308,15 @@ static int run_step(const jval *step, sb_t *reply) {
   } else if (!strcmp(op, "reload")) {
     state_apply();
     if (reload_game(reply)) return 1;
+  } else if (!strcmp(op, "audio")) {
+    sb_printf(reply, ",\"frames\":%llu,\"nonzero\":%llu,\"clipped\":%llu,\"peak\":%u,\"mean_square\":%.6f",
+              G.audio_frames, G.audio_nonzero, G.audio_clipped, G.audio_peak,
+              G.audio_frames ? G.audio_energy / (2 * G.audio_frames) : 0);
+    if (jnum(step, "reset", 0)) {
+      G.audio_frames = G.audio_nonzero = G.audio_clipped = 0;
+      G.audio_peak = 0;
+      G.audio_energy = 0;
+    }
   } else if (!strcmp(op, "savestate")) {
     if (!name) return fail(reply, "savestate needs a name");
     state_apply();

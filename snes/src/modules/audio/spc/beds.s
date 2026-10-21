@@ -197,10 +197,11 @@ bed_release:
 resident_effect:
  CMP $B5,#$E5
  BNE swing_ready
- MOV A,!SWING_TUNE
- EOR A,#$F2               ; $FA / $08: rates .9765625 / 1.03125
- MOV !SWING_TUNE,A
+ MOV A,!SWING_SWELL
+ EOR A,#5                 ; 6 / 3 ticks: soft or quick swell
+ MOV !SWING_SWELL,A
 swing_ready:
+ CALL !vary_effect
  OR $C9,$AE                ; recalculate existing contacts before a new mix
  MOV A,$B5
  CMP A,#$EA
@@ -255,4 +256,41 @@ release_swing_next:
  INC $B5
  CMP $B5,#$E7
  BNE release_swing_loop
+ RET
+
+; Per-track arrays stop at $017F. Keep $01C0-$01FF for the CPU stack;
+; startup/song entry reset SP to $FF and the driver has no interrupts.
+; E9 operands hold independent three-step counters; no timer/host work.
+ org $0180
+vary_effect:
+ CMP $B5,#$E5
+ BNE vary_hit
+ MOV A,!SWING_SWEEP
+ EOR A,#$0C               ; -5 / -9 semitones: two motion textures
+ MOV !SWING_SWEEP,A
+ MOV X,#<SWING_TUNE
+ BRA vary_pitch
+vary_hit:
+ CMP $B5,#$E7
+ BNE vary_blast
+ MOV X,#<HIT_TUNE
+ BRA vary_pitch
+vary_blast:
+ CMP $B5,#$DE
+ BNE vary_return
+ MOV X,#<BLAST_TUNE
+vary_pitch:
+ MOV A,!TUNE_PAGE+X
+ BEQ vary_high
+ BPL vary_low
+ MOV A,#0                 ; 1.0 after the initial / previous low rate
+ BRA vary_store
+vary_high:
+ MOV A,#9                 ; 1 + 9/256 = 1.03515625
+ BRA vary_store
+vary_low:
+ MOV A,#$FA               ; 1 - 6/256 = .9765625
+vary_store:
+ MOV !TUNE_PAGE+X,A
+vary_return:
  RET

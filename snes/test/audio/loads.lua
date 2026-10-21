@@ -19,8 +19,11 @@ local function ar16(a) return aram(a)|(aram(a+1)<<8) end
 function test()
   H.wait(40)
   local bankWrites={}
+  local stackLow=0x200
+  emu.addMemoryCallback(function(a) stackLow=math.min(stackLow,a) end,
+    emu.callbackType.write,0x01C0,0x01FF,emu.cpuType.spc,emu.memType.spcRam)
   if CUSTOM then
-    for _,range in ipairs({{0x4DF1,FLOOR-1},{0x1860,0x1867},{0x18E0,0x18E7},{0x19C0,ROUND7 and 0x19FF or 0x19CF}}) do
+    for _,range in ipairs({{0x4DF1,FLOOR-1},{0x0180,0x01BF},{0x1860,0x187B},{0x18E0,0x18FF},{0x19C0,ROUND7 and 0x19FF or 0x19CF}}) do
       emu.addMemoryCallback(function(a,v)
         if #bankWrites<20 then bankWrites[#bankWrites+1]={a=a,v=v,pc=emu.getState()['spc.pc']} end
       end,emu.callbackType.write,range[1],range[2],emu.cpuType.spc,emu.memType.spcRam)
@@ -94,5 +97,6 @@ function test()
   end
   check('no_postboot_bank_writes',#bankWrites==0,#bankWrites)
   H.result('bank_writes',bankWrites)
+  H.result('spc_stack_low_address',stackLow)
   finish()
 end

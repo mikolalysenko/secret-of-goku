@@ -19,15 +19,7 @@ test('swings lose periodic buzz; ki retains punch and all three keep their singl
   }
  }
 });
-test('punch swings alternate tuning and neither swing retunes the contact crack',{skip},()=>{
- const pitches=[];
- for(let pass=0;pass<2;pass++){
-  const h=createApu({rom});h.ms(60);
-  for(let i=0;i<4;i++){
-   h.nativeCmd(2,0xE5,15,0x88);h.ms(60);pitches.push(h.dspReg(0x72)|(h.dspReg(0x73)<<8));h.ms(500);
-  }
- }
- assert.ok(pitches[0]>pitches[1]&&pitches[2]>pitches[3]);assert.deepEqual(pitches.slice(0,4),pitches.slice(4));
+test('both swings fall in pitch and neither retunes the contact crack',{skip},()=>{
  for(const id of [0xE5,0xE6]){
   const h=createApu({rom});h.ms(60);h.nativeCmd(2,id,15,0x88);h.ms(60);
   const early=h.dspReg(0x72)|(h.dspReg(0x73)<<8);h.ms(100);

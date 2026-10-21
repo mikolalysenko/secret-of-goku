@@ -15,22 +15,23 @@ export const IDS=NATIVE_IDS.map((v,i)=>i===17?0xEF:v);
 // E7/E8 use full gain alone and lower gain during effect overlaps, keeping
 // mix headroom. No new sample, voice, cue id or 65816 instruction.
 export const CONTACTS7=[
- {id:0xE7,tracks:[
+ {id:0xE7,page:0x3A,tracks:[
   [0xD2,0xB8,0xDD,31,0xDE,0x0E,0xD3,3,0,0xC2,0xF2],
-  [0xD2,0xD8,0xEA,3,0xE4,4,0xD6,8,0xE8,0xD3,12,0,0x0A,0xF2]]},
+  [0xD2,0xD8,0xEA,3,0xE4,4,0xE9,0xFA,0xD6,8,0xE8,0xD3,12,0,0x0A,0xF2]]},
  {id:0xE8,tracks:[
   [0xD2,0xA8,0xDD,30,0xDE,0x0E,0xDD,28,0xD3,3,0,0xC2,0xF2],
   [0xD2,0xD8,0xEA,3,0xE4,4,0xD6,10,0xE8,0xD3,16,0,0x09,0xF2]]},
 ];
 // Motion follow-up. The aura BRR provides broadband swings without touching
-// the DSP's shared noise clock. E5's tuning byte alternates in resident_effect;
-// the native sequence reload may reset that alternation at a song change.
+// the DSP's shared noise clock. E5 alternates swell/sweep and independently
+// rotates three tunings; E7's pop and DE rotate the same three tunings.
+// Their E9 operands are also their counters, reset by native sequence loads.
 // DE keeps its native bright carrier, with a stronger attack, a shallow
 // second swell and a tapered tail. All three still use exactly one voice.
 export const MOTION7=[
- {id:0xE5,tracks:[[0xD2,0,0xEA,0x31,0xE4,4,0xE9,0xFA,0xD6,22,0xFB,0xD3,6,0xD0,0x93,0xD3,16,0,0xBD,0xF2]]},
+ {id:0xE5,page:0x3A,tracks:[[0xD2,0,0xEA,0x31,0xE4,4,0xE9,0xFA,0xD6,22,0xF7,0xD3,3,0xD0,0x93,0xD3,16,0,0xBD,0xF2]]},
  {id:0xE6,tracks:[[0xD2,0,0xEA,0x31,0xE4,4,0xE9,0xC0,0xD6,36,0xF9,0xD3,4,0xE0,0x94,0xD3,32,0,0xBA,0xF2]]},
- {id:0xDE,tracks:[[0xD2,0xD0,0xEA,9,0xE4,4,0xE7,2,0xD6,64,12,0xD3,16,0x90,0x54,0xD3,24,0xC0,0xBC,0xD3,32,0,0xBA,0xF2]]},
+ {id:0xDE,page:0x3A,tracks:[[0xD2,0xD0,0xEA,9,0xE4,4,0xE9,0xFA,0xE7,2,0xD6,64,12,0xD3,16,0x90,0x54,0xD3,24,0xC0,0xBC,0xD3,32,0,0xBA,0xF2]]},
 ];
 export function resident7Layout(rom,tracks){
  const retained=RESIDENT.filter(r=>!tracks.has(r.id)).map(r=>[...CONTACTS7,...MOTION7].find(c=>c.id===r.id)??r);
@@ -90,8 +91,10 @@ export function buildResident7(){
  for(const [id,seq] of tracks){const pair=new Uint8Array(4);word(pair,0,at);pointers.push({addr:0x2C00+id*4,bytes:pair});sequences.push({id,addr:at,bytes:seq});bank.set(seq,at-SAMPLE_BASE);at+=seq.length;}
  const layout=resident7Layout(readFileSync(join(root,'rom/secret-of-mana-us.sfc')),tracks);
  const swing=layout.tracks.find(t=>t.id===0xE5);
- assert.equal(swing.bytes[6],0xE9,'swing alternation must address only its tuning operand');
- const code=assemble(readFileSync(join(root,'snes/src/modules/audio/spc/beds.s'),'utf8'),{name:'beds.s',symbols:{CODE_BASE:at,SWING_TUNE:swing.addr+7}});
+ const hit=layout.tracks.find(t=>t.id===0xE7&&t.voice===1),blast=layout.tracks.find(t=>t.id===0xDE);
+ for(const t of [swing,hit,blast]){assert.equal(t.addr>>8,0x3A,'variation operands share one page');assert.equal(t.bytes[6],0xE9);}
+ assert.equal(swing.bytes[8],0xD6);assert.equal(swing.bytes[11],0xD3);
+ const code=assemble(readFileSync(join(root,'snes/src/modules/audio/spc/beds.s'),'utf8'),{name:'beds.s',symbols:{CODE_BASE:at,TUNE_PAGE:0x3A00,SWING_TUNE:swing.addr+7,HIT_TUNE:hit.addr+7,BLAST_TUNE:blast.addr+7,SWING_SWEEP:swing.addr+10,SWING_SWELL:swing.addr+12}});
  const patches=[];let end=at;
  for(const seg of code.segments)if(seg.addr>=SAMPLE_BASE&&seg.addr<FLOOR){assert.ok(seg.addr+seg.bytes.length<=FLOOR,`resident7 needs ${seg.addr+seg.bytes.length-SAMPLE_BASE} bytes`);bank.set(seg.bytes,seg.addr-SAMPLE_BASE);end=Math.max(end,seg.addr+seg.bytes.length);}else{
   if([0x1868,0x18E8].includes(seg.addr)){
@@ -100,6 +103,7 @@ export function buildResident7(){
    region.bytes.set(seg.bytes,8);continue;
   }
   if(seg.addr===0x19D0)assert.ok(seg.addr+seg.bytes.length<=0x1A00,'resident pitch exceeds unused DIR entries');
+  if(seg.addr===0x0180)assert.ok(seg.addr+seg.bytes.length<=0x01C0,'variation helper must leave at least 64 stack bytes');
   patches.push(seg);
  }
  return {samples,sampleBytes,sequences,pointers,tracks,reserve:RESERVE,floor:FLOOR,used:end-SAMPLE_BASE,codeBytes:end-at,segments:[{addr:SAMPLE_BASE,bytes:bank},...metadata,{addr:0x187C,bytes:new Uint8Array(4)},...patches],symbols:Object.fromEntries(code.symbols)};

@@ -1,5 +1,67 @@
 # Resident custom samples: cartridge option and storage audit
 
+## Cross-emulator boot follow-up
+
+The `2413865` bsnes investigation found a name-screen capture-phase mismatch:
+the extra IPL block shifts the native menu input poll, while background
+scrolling advances independently. The suite now compares the measured
+scroll phase and checks cold-boot SPC integrity and audible variation on
+snes9x, bsnes and bsnes-accurate. See
+[audio.md](audio.md#cross-emulator-boot-investigation-2413865-follow-up).
+
+The cartridge, samples, reservation, echo caps and sounds are byte-identical
+to `variety7` (`bebfa7ac…cdc54d8f`). Its existing compare7 recordings and
+manifest remain current; there is no new sound take. Diagnostic PCM stays
+under `.local/snes-test/audio/bootfix7/`, outside the listening package.
+
+## Swing/HIT/ki variation (`variety7`)
+
+The current tag is **`variety7`**. Punch swings alternate a six-tick swell
+with a five-semitone fall and a three-tick swell with a nine-semitone fall.
+That two-envelope cycle combines with three pitches (1 / 1.03515625 /
+.9765625), giving six combinations before repeating. HIT's pop and the ki
+launch each rotate those pitches independently. Kick swing and kick retain
+their single authored versions. The shared DSP noise clock and full-gain
+contact replacement are unchanged.
+
+No sample was added, shortened or re-encoded; no EDL cap changes. The
+three free reservation bytes left by `fix7` hold one SPC CALL, filling the
+2,304-byte bank. The 54-byte helper uses previously unoccupied
+`$0180-$01B5`, below the 64-byte stack allowance. Two tuning commands use
+four bytes of existing shared sequence space (259/283 used). Boot upload
+grows by 58 bytes including its segment header. The runtime tests guard the
+new region across effects, all song loads, rare voices and imports. See
+[audio.md](audio.md#swing-hit-and-ki-variation-variety7-october-21-2026)
+for the stack evidence and CPU measurements.
+
+The manifest now contains **216 WAVs**, adding these **nine** files:
+
+| Context | Before | New | Browser reference |
+| --- | --- | --- | --- |
+| Two battle combos, six moves | `variation-battle-combos-fix7.wav` | `variation-battle-combos-variety7.wav` | `pc-variation-battle-combos.wav` |
+| Eight isolated whiffs | `variation-solo-whiffs-fix7.wav` | `variation-solo-whiffs-variety7.wav` | `pc-variation-solo-whiffs.wav` |
+| Ki volley with contacts | `variation-battle-volley-fix7.wav` | `variation-battle-volley-variety7.wav` | `pc-variation-battle-volley.wav` |
+
+Every new file has zero clipped samples and is unnormalized. New cartridge
+peaks are **−1.84 / −15.82 / −8.55 dBFS**, respectively. The PC files
+alternate swing clips, rotate hit clips, and keep independent three-rate
+counters for swing, hit and blast; kick swing/kick stay at rate 1. Browser
+gain, master and compression are applied; PC comparisons omit music.
+
+`capture-{fix7,variety7}-variation/results.json` records actual cartridge
+dispatch timing. `variation-validation7.json` records the storage, stack,
+loudness, hashes and validation; `variation-cpu7.json` records unchanged
+idle cost. All audio/gameplay/perf/combat checks pass, with every gameplay
+miss count unchanged. **Charge at 13 is accepted by the maintainer**;
+earlier notes below about an unresolved 12-frame target are historical.
+
+```sh
+node snes/test/audio/capture7.mjs --rom=path/to/before.sfc --tag=fix7 --only=variation
+node snes/test/audio/capture7.mjs --rom=path/to/current.sfc --tag=variety7 --only=variation
+node snes/test/audio/pc7.mjs --only=variation
+node snes/test/audio/manifest7.mjs
+```
+
 ## Combo gain correction (`fix7`)
 
 The current cartridge tag is **`fix7`**. It replaces an active punch/kick

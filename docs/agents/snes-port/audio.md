@@ -8,6 +8,221 @@ Everything below about the native driver was reverse-engineered from the US
 cartridge (`snes/gen/audio-spc700.mjs` disassembles it) and cross-checked
 against 277 ARAM/DSP snapshots of the browser mod (`.local/snes-import/`).
 
+## Cross-emulator boot investigation (`2413865` follow-up)
+
+The reported bsnes failure was a **capture-phase regression, not a failed
+SPC upload**. The shipping ROM is unchanged, byte for byte. The 54-byte
+helper at `$0180-$01B5` remains in place and all variation remains enabled.
+
+The emulators suite's `name` event is the end of its screenshot window,
+not the moment the cartridge finishes booting or enters the editor. Both
+builds report `editor=1080`. The extra IPL transfer changes the timing of
+the game-select menu enough to shift its native four-frame input poll
+(`$A201`, `C0:1E08-$1E19`). In a frame-by-frame bsnes trace, the same Start
+press selects NEW GAME at 1057 instead of 1060. BOY is prefilled at 1082
+instead of 1085; the runner's two-frame polling reports 1082 versus 1086.
+Meanwhile the scrolling background advances independently in NMI
+(`$A20B`, `C0:20BD`). Taking pictures relative to prefill therefore compares
+different scroll positions. At frame **1116**, the unmodified `2413865`
+bsnes picture already agrees **100%** with Mesen. Its old screenshot window
+ended at 1114 and missed that picture.
+
+Controlled private-ROM experiments isolate the extra upload: adding the
+same block to `d52ee8c`, without installing any hook that calls it, reproduces
+`prefilled=1082/name=1114` with music still active. Disabling the variation
+CALL alone does not restore the old timing. This rules out the helper's
+instruction execution as the cause of this particular failure.
+
+### Boot and sound evidence
+
+- The helper is sent through the **IPL**, after the six native chunks and
+  existing extension segments, before the jump to `$0200`. Its 54 bytes
+  make the final kick `$39` (previously `$33`). The IPL uses SP `$EF` and
+  does not call into the helper. Native startup then resets SP to `$FF`.
+- A new IPL test starts the actual IPL ROM with zero, `$FF` and seeded-noise
+  ARAM. It transfers the ROM's own six chunks and every extension segment,
+  with immediate and delayed port writes. Every transferred byte is checked
+  before native startup, then the helper and audible swing are checked
+  after startup. No savestate or direct ARAM installation is used there.
+- The libretro regression checks locate ARAM in each core's own cold-boot
+  name-screen state using the cartridge's complete native effect-sample
+  signature. Every immutable extension/sample/helper byte matches the ROM.
+  Music has active mask `$7F` and nonzero output on all three cores.
+- A separate session resumes that **core's own** name state, stops music,
+  and queues six interleaved plays each of E5/E7/DE through the existing
+  main-thread sound queue. It verifies the six swing tuples, independent
+  pitch cycles, actual nonzero audio, zero clipped samples, intact code/bank
+  and return of effect voices. It never injects an SPC driver or bank.
+
+### Fix and validation
+
+Mesen now records the background-scroll value at its name screenshot.
+The other cores wait, with a 16-frame failure bound, for that value and take
+the existing **±2-frame** window using frame history. Neither picture
+thresholds nor window tolerance were relaxed. The report preserves the raw
+`prefilled` event and separately records `name_center`, so the real input
+phase difference remains visible. No cartridge delay or emulator-specific
+runtime workaround was added.
+
+| Shipping cartridge | Old `name` / picture agreement | Corrected `name` / agreement | Scenario frames |
+| --- | --- | --- | ---: |
+| snes9x | 1118 / 100% | 1118 / 100% | 7789 |
+| bsnes | 1114 / 34.06% | 1118 / 100% | 7789 |
+| bsnes-accurate | 1114 / 34.03% | 1118 / 99.80% | 7789 |
+
+The passing `d52ee8c` baseline also passes the revised bsnes scenario and
+boot-audio checks. Validation passes: **41 audio unit/SPC tests**, the
+five-song reference render, **all 11 audio Mesen cases**, all three emulator
+variants (including **66** boot/music/effect integrity checks), **13 gameplay**
+and **6 perf** cases. The default strict build still hashes to
+`bebfa7acdbf25a47b25f7d8f6c67bf7bea86e5c1accbcd10ec2ffe71cdc54d8f`.
+There is **zero cartridge CPU-cost change**. Gameplay's 240-frame misses
+remain solo-punch 0, solo-ki 0, walk 0, punch 0, ki 0, fly 1, fly-ki 2,
+fly-punch 1, water-flight 0, teleport 3, charge 13, focus-grass 0 and
+transform-grass 0; charge 13 remains the accepted baseline.
+
+| File | Change |
+| --- | --- |
+| `snes/test/audio/ipl.test.mjs` (new), `run.mjs` | Real IPL boot regression and suite registration |
+| `snes/test/emulators/audio.mjs` (new) | Cold-boot ARAM integrity, music output and isolated variation checks |
+| `snes/test/emulators/scenario.mjs` | Match the measured scroll phase; retain raw timing; save the core's boot state |
+| `snes/test/emulators/mesen-ref.lua` | Record reference scroll and prefill timing |
+| `snes/test/emulators/run.mjs` | Share the reference phase and run/report each core's audio checks |
+| `snes/test/emulators/retro.mjs`, `snes/tools/retro-host/retro-host.c` | Read/reset audio callback sample counts, peak and energy |
+| `docs/agents/snes-port/audio.md`, `audio-samples.md` | Root cause, evidence and unchanged listening package |
+
+Private diagnostics, PCM, frame traces, original/revised reports and test
+logs are under `.local/snes-test/audio/bootfix7/`. The latest full emulator
+report is `.local/snes-test/emulators/summary.json`; its per-core `audio/`
+directories contain the boot snapshots and detailed cue measurements.
+The host binary for this worktree is built there via `SNES_RETRO_HOST`,
+leaving shared `.local/tools` unchanged. No core change is needed.
+
+## Swing, HIT and ki variation (`variety7`, October 21, 2026)
+
+The current cartridge replaces the two-step swing tuning toggle with the
+browser's six-combination pattern. `$E5` alternates a six-tick swell / five
+semitone fall with a three-tick swell / nine semitone fall. Its pitch cycles
+through **1, 1.03515625, .9765625**, the native E9 command's nearest 1/256
+steps to the browser's 1 / 1.035 / .975. The order is A1, B-high, A-low, B1,
+A-high, B-low, then repeat. Consecutive swings differ in both envelope and
+pitch. The existing aura BRR supplies both textures.
+
+`$E7` independently rotates the pop body's pitch through the same three
+values; its noise crack stays at clock 31, avoiding a shared-noise retune.
+`$DE` has its own three-pitch cycle. The E9 operands themselves are the
+counters, so no per-frame callback or new 65816 command is needed. Native
+effect-table reloads restart these cycles. `$E6`, `$E8`, contact gain and
+swing replacement, `$38`, the beds and all other cues retain their authored
+behavior. There are no changes to 65816 runtime source or core.
+
+### Storage and cost
+
+The overlap fix left three bytes free, rather than the earlier two. Those
+three bytes now hold `CALL vary_effect`: the existing **2,304-byte
+reservation is exactly full**, including 280 code bytes. All 1,890 BRR
+bytes and the 134 bank sequence bytes are unchanged. Two E9 commands add
+four bytes in the existing shared effect-sequence holes: **259/283 bytes
+used**, 24 free. The packer keeps the three mutable tuning operands on page
+`$3A`, letting one compact indexed routine update each cue independently.
+
+The new helper occupies **54 bytes at `$0180-$01B5`**, between the native
+track arrays and stack. Native track indices are even, `$00-$1E`, so the
+arrays end at `$017F`. Startup and song entry set SP to `$FF`; the SPC driver
+disables interrupts. The generator bounds the helper below `$01C0`, leaving
+at least 64 bytes for the stack. Tests reject writes into `$0180-$01BF`,
+exercise every retail/custom effect, and compare the immutable helper after
+playback, rare voices and imports. The 64 canonical and 192 power-on
+song-load checks saw **no writes** there; their lowest stack write was
+`$01F8`. The isolated effect audit reached `$01F7`. No sample or echo space
+is borrowed, and the rare-line streamer and fast song loader are unchanged.
+Boot upload grows by 54 payload bytes plus one four-byte segment header.
+
+The effect-start hook adds **56–58 SPC cycles for swing, 54–56 for HIT,
+59–61 for ki**, and 40 for unvaried cues. The largest increase is about
+**.060 ms** at 1.024 MHz, only when an effect starts. There is no extra timer
+work; HIT and ki also parse one additional native E9 command at note start.
+The 65816 command maximum remains **1.349 scanlines**. Settled idle sample
+costs are exactly equal: **.33480 / .33441 lines**
+in sword/battle, including JSL (maximum .35337).
+
+### Listening and validation
+
+The new raw cartridge recordings, tagged `variety7`, compare against the
+immediately preceding `fix7` cartridge and PC references with independent
+browser clip/rate counters. PC references use the browser gains, master
+.55 and compressor, without music. No output is normalized.
+
+| Capture peak, dBFS | Before (`fix7`) | `variety7` |
+| --- | ---: | ---: |
+| Two full combos over battle music | −1.98 | **−1.84** |
+| Eight isolated whiffed swings | −15.91 | **−15.82** |
+| Eighteen-launch volley with contacts | −8.94 | **−8.55** |
+
+All nine new WAVs have **zero clipped samples**. Command traces confirm
+six moves 14 frames apart with one-frame contacts, eight swings 22 frames
+apart, and five-frame ki launches with contacts two frames later. The 24
+contact and 18 motion stress scenarios pass, including both music mixes,
+rapid contacts, beams and held beds. Full contact gain after either swing
+and native voice return remain covered.
+
+Strict builds, **40 Node/SPC audio tests**, five-song reference render,
+**all 11 audio Mesen cases**, **13 gameplay**, **6 perf** and **37 combat**
+cases pass. Every gameplay miss count is unchanged:
+
+| Gameplay case / 240 frames | Before | After |
+| --- | ---: | ---: |
+| solo-punch | 0 | 0 |
+| solo-ki | 0 | 0 |
+| walk | 0 | 0 |
+| punch | 0 | 0 |
+| ki | 0 | 0 |
+| fly | 1 | 1 |
+| fly-ki | 2 | 2 |
+| fly-punch | 1 | 1 |
+| water-flight | 0 | 0 |
+| teleport | 3 | 3 |
+| charge | 13 | 13 |
+| focus-grass | 0 | 0 |
+| transform-grass | 0 | 0 |
+
+The maintainer has **accepted charge at 13 and deferred further charge
+work**. Their clean per-tree baselines are round four 12 / round seven 13.
+The older cross-tree result of 15 below is not a valid replacement baseline;
+generated SPC uploads must match the cartridge being compared. The earlier
+request for additional core/FX timing work is superseded for this task.
+No shared checkpoint was updated.
+
+Default SHA-256: `bebfa7acdbf25a47b25f7d8f6c67bf7bea86e5c1accbcd10ec2ffe71cdc54d8f`.
+Define-0 rollback remains byte-identical to round four:
+`56ed7992b1f2abf06561a1d5553d1ab151e5fc7fd8d8ff0941a9a63508115388`.
+The final strict rebuild matches the tested/captured cartridge.
+
+| File | Follow-up change |
+| --- | --- |
+| `snes/src/modules/audio/spc/beds.s` | Six swing combinations and independent HIT/ki tuning at effect start |
+| `snes/gen/audio-resident7.mjs` | E9 operands, initial envelope state, helper and operand bounds |
+| `snes/gen/audio-resident-storage.mjs` | Optional page constraints, with page-aware packing/memoization |
+| `snes/test/audio/variation.test.mjs` **new** | Independent cycles, actual DSP pitch/gain/noise, six combinations, helper/stack safety |
+| `snes/test/audio/motion.test.mjs` | Replace the obsolete two-pitch assertion; retain sweep/noise/overlap checks |
+| `snes/test/audio/run.mjs` | Include variation tests |
+| `snes/test/audio/cartridge.mjs`, `lib.lua` | Load and verify the new immutable SPC segment |
+| `snes/test/audio/loads.lua` | Guard helper/metadata writes and record the stack low-water mark |
+| `snes/test/lua/harness.lua` | One additional immutable segment when migrating old audio fixtures |
+| `snes/test/audio/capture7.mjs`, `capture7.lua` | Three deterministic variation contexts |
+| `snes/test/audio/pc7.mjs` | Matching browser rotations; append-only variation render option |
+| `snes/test/audio/manifest7.mjs` | Current `variety7` tag, before/after/PC pairs and provenance |
+| `docs/agents/snes-port/audio.md`, `audio-samples.md` | Storage, measurements, accepted charge baseline and listening inventory |
+
+Listening manifest: **`.local/snes-test/audio/compare7/manifest.json`**.
+It inventories 216 WAVs, including the nine new files listed in
+[audio-samples.md](audio-samples.md#swinghitki-variation-variety7).
+`variation-validation7.json` contains hashes, case results, measurements and
+trace paths; `variation-cpu7.json` contains the before/after idle profile.
+Full logs and the private SPC cycle audit stay under
+`.local/snes-test/audio/variation7/`. No new core request or open issue for
+this follow-up.
+
 ## Combo contact gain and charge timing follow-up (October 21, 2026)
 
 The current listening tag is **`fix7`**. Contacts now replace their own swing
@@ -911,7 +1126,7 @@ Tables after the chunk list: `C3:0020` points at the song table `C3:3D39`
 | Range | Use |
 | --- | --- |
 | `$0000-$00EF` | driver direct page (`$E3-$EF` and the gaps `$85,$86,$89,$8A,$8C-$8E,$91,$92,$95,$96,$98-$9A,$9D,$9E,$A1,$A2,$A4-$A6,$A8-$AB` are never referenced) |
-| `$0100-$01FF` | per-track arrays `$0100-$017F`; stack from `$01FF` (≤ 8 bytes deep in all snapshots) |
+| `$0100-$01FF` | per-track arrays `$0100-$017F`; `variety7` effect-start helper `$0180-$01B5`; stack from `$01FF`, with `$01C0-$01FF` reserved |
 | `$0200-$1597` | driver |
 | `$1598-$17FC` | shipping stream extension code; `$17FD-$17FF` unused |
 | `$1800/$1880/$1900` | tuning / ADSR / DIR for instruments 0-63: 0-11 effects, `$20-$3F` song; extension uses `$1818-$183C`, `$1898-$18B8`, `$1930-$1977` |
