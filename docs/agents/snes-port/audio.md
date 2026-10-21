@@ -11,7 +11,7 @@ against 277 ARAM/DSP snapshots of the browser mod (`.local/snes-import/`).
 ## Shipping sound policy (October 20, 2026)
 
 The default cartridge uses resident effects and streams only three rare
-lines: Frieza's laugh, Vegeta's Final Flash and Vegeta's Kakarot. The unchanged
+lines: Frieza's laugh, Vegeta's Final Flash and Vegeta's Kakarot. The
 stream extension uploads once at boot. Seventeen single-voice sequences occupy
 effect slots `$DC-$EC`, alongside the retail `$00` laser. They reuse the
 boot-resident instruments and finish within 2.6 seconds. Their durations
@@ -340,7 +340,7 @@ Callers write a 4-byte command to `$7E:1E00` (`[cmd, p1, p2, p3]`) and
 | `F0`-`F2` | Stop music and/or effects (bit 0 keeps effects, bit 1 keeps music). |
 | `F3`/`F4` | Stereo / mono. `F5 m` mutes the voices in mask m. `F6`/`F7` pause/resume music. `F8`/`F9` fast tempo on, `FA` off. `FC p` swaps effect stereo when p ≠ 0. |
 | `FB` | Make every playing track take its next `FB` (CPU-controlled jump). |
-| `FE` | Generic transfer (`$11EA`): port 1 low bits = mode (1: 3 bytes/handshake, 2: 2, 3: 1, 7: ARAM block copy, 0: end), ports 2-3 = address. |
+| `FE` | Generic transfer (`$11EA`): port 1 low bits = mode (1: 1 byte/handshake, 2: 2, 3: 3, 7: ARAM block copy, 0: end), ports 2-3 = address. Mode 4 is temporarily used by the accelerated song loader below. |
 | `FF FF FE FD FC` | Debug: ports report envelopes. |
 
 Port protocol: the SPC latches ports 0-3 into `$B4-$B7`, echoes the command
@@ -364,6 +364,42 @@ $85,$87,$88,$8A-$8F,$FD` are no-ops). The CPU only ever reads ports 0
 
 The SPC side (`$0CF1`) KOFFs everything, re-inits echo (clearing the ring),
 reads the header at `$1A00` and starts the eight tracks.
+
+### Accelerated transfers (October 21)
+
+`songload.asm` keeps that loader's cache, echo configuration, fades and
+instrument metadata. At `C3:020F`, after KOFF and echo-write disable, it
+uploads `spc/songload.s` into the **temporarily idle** `$FA00-$FBF7` stream
+ring with FE mode 2. The program uses only native transfer scratch
+`$2C-$2F/$34-$35`. Mode 4 receives sequences/samples in triples, with
+self-modified absolute stores and a 255-byte window. Mode 7 copies complete
+pages in an unrolled loop, retaining forward-copy behavior for overlapping
+compaction moves. The CPU preloads the next packet while the SPC stores the
+previous one. Source bank crossings and counter wrap are handled explicitly.
+
+Both routines hold all data ports until their acknowledgement. The resident
+mode-2 bootstrap patch at `$1237-$1241` similarly moves its acknowledgement
+after **both** reads. Tests run with zero delay and long, asymmetric delays
+between port writes and poison all data ports immediately after an echo.
+The native FE mode-4/7 vectors are restored before the CPU loader returns;
+the ring belongs to streaming again when playback resumes. No extra resident
+ARAM, WRAM, DMA or per-frame instructions are introduced. Retail-driver
+imports can also install the temporary program using their existing FE path.
+
+Instrument lists put shared instruments before the next cue's disposable
+tail: arrival → battle, battle → orbit, and Vegeta → full power. The compiler
+reassigns the sequence's `EA` indices together with each list; samples,
+pitches, notes, envelopes and echo presets are unchanged. In particular,
+battle's strike is last, so orbit's larger echo ring does not evict its
+shared pick/stab samples.
+
+The optional `SNES_LUA_PRELUDE=snes/test/audio/load-profile.lua` records
+`song_load_profile` in any suite's results: fade, echo setup, sequence,
+cache planning, compaction, instrument upload, tables, return and driver
+start, plus every moved/uploaded byte count. Mode 7 acknowledges its length
+before copying; its last move completes while the CPU waits at `C3:0423`.
+The profiler accounts for that wait as compaction, rather than instrument
+upload.
 
 ### Sequence format
 
@@ -569,6 +605,13 @@ rest is the driver's echo clear while the game runs). Fading at speed 1
 faster. The cartridge cannot switch instantly, so story and combat code
 should change songs at scene or phase boundaries.
 
+First acceleration checkpoint (same waterfall → arrival → battle → orbit →
+Vegeta → full-power sequence): stalls **34 / 33 / 9 / 32 / 11** frames,
+track starts **48 / 44 / 26 / 48 / 27**. The original numbers above are
+retained for comparison. The driver's echo clear/start is unchanged at this
+checkpoint. Strict build, 17 Node tests, browser music rendering, `songs`,
+`native`, and the exhaustive `loads` case validate the transfer/cache change.
+
 ## 4. API for other modules
 
 Include the generated ids with `incsrc "audio/ids.asm"` (guarded, safe to
@@ -688,7 +731,15 @@ the five songs; the arrival's pod cues.
   ARAM footprint, a gapless stream, native effects beside two streams, a
   withdrawn command (taken or not, with and without the extension) leaving
   the driver answering; shipping bank whitelist; resident preservation,
-  termination, one-voice allocation, noise-clock restoration and headroom (14 Node tests).
+  termination, one-voice allocation, noise-clock restoration and headroom;
+  independent-clock song transfers and overlapping/consecutive cache copies
+  (17 Node tests).
+- **loads** (shipping Mesen): all 59 retail songs and five new songs, native
+  event echo/volume parameters with the old cue cut for comparable timing;
+  complete sequence and instrument BRR bytes, DIR/tuning/ADSR, restored
+  transfer vectors, effect samples and audible output. Reports fractional
+  load/stall frames per song. `$1A` has an authored silent opening and is
+  observed for three seconds.
 - **native**: all 27 cues, bounded beds, no BRR, asynchronous command
   integrity and dispatcher timing, music before/after song changes.
 - **music** (shipping Mesen): all 27 resident cues beside all five new songs;
@@ -829,6 +880,8 @@ original-byte assertions):
 | Address | Size | What |
 | --- | --- | --- |
 | `C3:0106` | 6 | boot upload end → `audio_boot_upload` (uploads the extension after the driver) |
+| `C3:020F`, `C3:0264`, `C3:0487`, `C3:0592` | 6 / 5 / 4 / 4 | temporary song loader install, sequence/sample sender, native-vector restore |
+| `C3:0403` | 1 | sample upload selects temporary FE mode 4 |
 | `C3:0175` | 4 | shipping effect command → asynchronous `audio_native_command` |
 | `C3:24A9` and six spans above | 283 capacity | resident effect pointers/sequences; byte-identical retail tracks shared |
 | ten table words listed above | 20 | redirect retail pointers to identical retained tracks |
@@ -840,7 +893,9 @@ original-byte assertions):
 build): code `$1598-$17FC`, `$FF89-$FFFA`, `$1898-$18B8`; tables
 `$1818-$183C`, `$1930-$1977`; chunk slots `$FA00-$FBF7`; DP `$E3-$EF` and the
 gaps listed in section 1; driver patches at `$020A`, `$0279`, `$0299`,
-`$02E1`, `$02F4`, `$0378`, `$14C6`.
+`$02E1`, `$02F4`, `$0378`, `$1237`, `$14C6`. The synchronous song loader
+temporarily uses the stream ring and FE vectors `$1420/$1426`, restoring
+those vectors before playback.
 
 **Other resources**: WRAM `$7E:DD00-DD7F` (`!RAM_AUDIO`; no SRAM, no DMA or
 HDMA); code bank `$AA`; tables, extension image and sequences in `$EA`

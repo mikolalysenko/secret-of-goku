@@ -20,6 +20,7 @@
 ; (menus, rings).
 
 incsrc "audio/ids.asm"
+incsrc "audio/songload.asm"
 
 ; ---------------------------------------------------------------- WRAM
 !aw #= !RAM_AUDIO&$FFFF          ; absolute with DB = $7E
@@ -1750,6 +1751,8 @@ audio_test_poll:
 
 incsrc "native.asm"
 incsrc "rare.asm"
+
+incsrc "songload.asm"
 
 audio_code_end:
 assert audio_code_end <= !CODE_QUARTER_AUDIO, "audio code overflow (EA:C000-FFFF is a spare quarter, core/layout.asm)"

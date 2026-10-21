@@ -610,3 +610,13 @@ data_b_end:
  NOP
  org $14C6              ; port command $8A
  dw ext_cmd
+
+; Mode 2 is also the bootstrap for the temporary song loader. Acknowledge
+; only after both data ports have been read, even with independent clocks.
+ org $1237
+ MOV A,$F6
+ MOV [$2C]+Y,A
+ INC Y
+ MOV A,$F7
+ MOV [$2C]+Y,A
+ MOV $F4,X
