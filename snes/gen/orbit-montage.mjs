@@ -341,6 +341,15 @@ async function aerialData({L,T,S,def,xdata,rom,repo,genDir,report,burstList}){
   // the tiles from BG tile 0, BG3's solid tile (colour 1) after them
   const tileBytes=new Uint8Array(tiles.length*32);tiles.forEach((px,i)=>tileBytes.set(encodeTile(px,8,0,0,4),i*32));
   xdata('orbit_mta_tiles',tileBytes);
+  // The Mode 7 image's 512-byte chunks (VRAM words c * $100) a cut leaves
+  // alone: past its tiles, beside its map ($2000-$27FF) and BG3's ($3000-
+  // $33FF). The second cut sends them ahead for the pullback's load
+  // (montage.asm mt_preload).
+  {
+    const used=[[0,tileBytes.length/2],[0x2000,0x2800],[0x3000,0x3400]],free=[];
+    for(let c=0;c<64;c++){const a=c*0x100,b=a+0x100;if(!used.some(([u0,u1])=>a<u1&&b>u0))free.push(c);}
+    L.push('orbit_mt_m7pre:','\tdw '+free.join(','));def('MT_M7PRE_N',free.length);
+  }
   // (in VRAM order: screen 0's rows 0-9, then screen 1's)
   T.label('MAPA');for(const sc of[0,1])for(let r=0;r<10;r++)T.dw(...map.slice(r*64+sc*32,r*64+sc*32+32));
   // BG3's map: the gradient's bands (row r in palette min(6, r / 4)) of the

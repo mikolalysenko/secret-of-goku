@@ -1326,6 +1326,7 @@ mt_load:
 	JMP mt_load2
 +	JMP mt_load3
 .tiles
+	JSL orbit_m7_none_far          ; (the town's tiles and maps over the globe's image)
 	LDA.w !mw_town
 	ASL : ASL : ASL
 	TAX
@@ -2644,6 +2645,7 @@ mt_aload:
 	JMP .maps
 +	JMP .cells
 .tiles
+	JSL orbit_m7_none_far          ; (the clouds over the globe's image)
 	LDA.w #(!XDATA_ORBIT_MTA_TILES)>>16
 	STA.w !mw_dbank
 	LDA.w #$0000
@@ -2791,11 +2793,38 @@ mt_aerial_nmi:
 	ORA.b #$1C
 	STA.w !N_HDMA
 	REP #$20
-	; the fighters' due cells
+	; the fighters' due cells, then the pullback's chunks ahead
 	LDX.w #!MA_GOKU
 	JSR mt_fighter_send
 	LDX.w #!MA_FRIEZA
-	JMP mt_fighter_send
+	JSR mt_fighter_send
+	JMP mt_preload
+
+; The second aerial cut's spare vblank room (the last shot before the
+; pullback): the Mode 7 image's 512-byte chunks the cut leaves alone
+; (orbit_mt_m7pre: past its cloud tiles, beside its two maps), so that the
+; pullback's load (scene.asm) sends only the rest.
+mt_preload:
+	LDA.w !ma_cut
+	BNE .chunk
+	RTS
+.chunk
+	LDA.l !orbit_m7next
+	CMP.w #!MT_M7PRE_N*2
+	BCC +
+	RTS
++	LDA.w #4+!MT_NMI_SLACK         ; (512 bytes: 3.2 lines)
+	JSL orbit_nmi_room_far
+	BCC +
+	RTS
++	LDA.l !orbit_m7next
+	TAX
+	LDA.l orbit_mt_m7pre,X
+	JSL orbit_m7_send_far
+	LDA.l !orbit_m7next
+	INC : INC
+	STA.l !orbit_m7next
+	BRA .chunk
 
 ; An aerial cut's colours at its flash level (orbit-montage.mjs: CGRAM
 ; 0-27, 32-47, 128-159, 192-207, 224-255 in a row, per level).

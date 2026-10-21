@@ -62,6 +62,14 @@ incsrc "audio/ids.asm"
 !MT_PIC_TOWN    = 1               ; !orbit_mpic: a town shot
 !MT_PIC_AERIAL  = 2               ;   an aerial cut
 !orbit_marks    = !RAM_ORBIT+$40  ; 8 words (ORBIT_TIMING builds): scanlines at the frame's stages
+; The scene's loads (scene.asm orbit_nmi_load): the Mode 7 image's 512-byte
+; chunks already in VRAM (the second aerial cut sends some ahead for the
+; pullback: montage.asm mt_preload); the uploads the pullback's load
+; leaves to its vblanks (pull.asm).
+!orbit_m7have   = !RAM_ORBIT+$50  ; 8 bytes: a bit per chunk (64) of the Mode 7 image in VRAM
+!orbit_m7next   = !RAM_ORBIT+$58  ; word: the preload's next chunk (x2, in orbit_mt_m7pre)
+!orbit_pdef     = !RAM_ORBIT+$5A  ; word: the pullback's next deferred upload (x8, in pull_defer; $FFFF none)
+!orbit_pball    = !RAM_ORBIT+$5C  ; word: nonzero once the pullback's Death Ball is gone
 
 ; ORBIT_TIMING builds: the scanline at stage n of the frame (orbit_marks).
 macro orbit_mark(n)
@@ -237,8 +245,7 @@ assert !mw_pf+6 <= !MW_WIN0, "the montage's working state runs into its window t
 !pb_have  = !PB+$00               ; 2 words: the picture each buffer holds whole ($FFFF none)
 !pb_fill  = !PB+$04               ; the picture the back buffer takes ($FFFF none)
 !pb_cells = !PB+$06               ;   its cells sent (0-4)
-!pb_used  = !PB+$08               ; nonzero: the buffers took cells others own
-!pb_rest  = !PB+$0A               ; their OBJ rows still to restore (8 .. 0)
+!pb_used  = !PB+$08               ; nonzero: the ball has shown
 ; An aerial cut (montage.asm): its frame's record, the fighters' cell slots
 ; and the clouds' scroll tables (HDMA), after the town shot's block.
 !MA = !SB+$200

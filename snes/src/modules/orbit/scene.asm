@@ -213,7 +213,11 @@ orbit_fight_off:
 ; Fresh scene state (the camera fields are the caller's).
 orbit_scene_init:
 	REP #$30
+	JSR orbit_m7_none              ; (VRAM: nothing of the globe's yet)
+	LDA.w #$FFFF                   ; no deferred upload (pull.asm)
+	STA.l !orbit_pdef
 	LDA.w #$0000                   ; no return, no landing spot, no cinematic
+	STA.l !orbit_pball
 	STA.l !orbit_land
 	STA.l !orbit_lfound
 	STA.l !orbit_mt
@@ -892,7 +896,8 @@ endif
 
 ; Loading: the picture stays black (TM = 0, our HDMA off) while the Mode 7
 ; image goes up in 4 KiB steps (~25 lines each, still inside the force-blank
-; the field NMI keeps until C0:C15F), then the star cells.
+; the field NMI keeps until C0:C15F; the chunks already in VRAM skipped),
+; then the star cells and the rest.
 orbit_nmi_load:
 	SEP #$20
 	STZ.w $212C
@@ -901,31 +906,43 @@ orbit_nmi_load:
 	AND.b #~!ORBIT_HDMA
 	STA.w !N_HDMA
 	LDA.l !orbit_load
-	CMP.b #$08
-	BCS .stars
-	; Step n: VRAM words n*$800.., ROM $F6:n*$1000.
-	REP #$20
+	CMP.b #64
+	BCC .m7
+	JMP .stars
+.m7
+	; Steps 0-63 are the Mode 7 image's 512-byte chunks (VRAM words c *
+	; $100, ROM $F6:c * $200): the ones not in VRAM already, eight a vblank
+	REP #$30
+	LDY.w #8
+.chunk
+	LDA.l !orbit_load
 	AND.w #$00FF
-	XBA                            ; n * $100
-	ASL : ASL : ASL                ; n * $800 (VRAM word address)
-	STA.w $2116
-	ASL                            ; n * $1000 (source offset)
-	CLC : ADC.w #orbit_globe_vram
-	STA.w $4372
-	LDA.w #$1801                   ; DMA mode 1 to $2118/$2119
-	STA.w $4370
-	LDA.w #$1000
-	STA.w $4375
+	CMP.w #64
+	BCS .m7end
+	PHA
+	JSR orbit_m7_have
+	PLA
+	BCS +
+	JSR orbit_m7_send
+	DEY
++	SEP #$20
+	LDA.l !orbit_load
+	INC
+	STA.l !orbit_load
+	REP #$20
+	CPY.w #$0000
+	BNE .chunk
+.m7end
 	SEP #$20
-	LDA.b #orbit_globe_vram>>16
-	STA.w $4374
-	LDA.b #$80
-	STA.w $2115
-	LDA.b #$80
-	STA.w $420B
-	JMP .next
+	CPY.w #8
+	BEQ +
+	RTS
++	LDA.l !orbit_load              ; (nothing sent: the star cells in this vblank)
+	CMP.b #64
+	BCS .stars
+	RTS
 .stars
-	CMP.b #$08
+	CMP.b #64
 	BNE .effects
 	REP #$20
 	LDA.w #!ORBIT_STAR_VRAM
@@ -943,26 +960,47 @@ orbit_nmi_load:
 	STA.w $2115
 	LDA.b #$80
 	STA.w $420B
-	JMP .next
+	; the cinematic's pullback: OBJ tiles $100-$13F (the beam's orb) too,
+	; the rest after its load (pull.asm pull_defer)
+	REP #$20
+	LDA.l $320000|!g_pull
+	SEP #$20
+	BEQ +
+	REP #$20
+	LDA.w #$7000
+	STA.w $2116
+	LDA.w #orbit_fx_vram_b
+	STA.w $4372
+	LDA.w #$0800
+	STA.w $4375
+	SEP #$20
+	LDA.b #orbit_fx_vram_b>>16
+	STA.w $4374
+	LDA.b #$80
+	STA.w $420B
+	LDA.b #71
+	STA.l !orbit_load
+	RTS
++	JMP .next
 .effects
-	; Steps 9-11: the fight's resident effect cells (OBJ tiles $080-$0FF,
-	; $100-$13F, $180-$1BF); step 12: the text panel's BG3 tiles; step 13:
-	; OBJ tiles $000-$03F (the cells beside the dynamic ones); step 14: the
+	; Steps 65-67: the fight's resident effect cells (OBJ tiles $080-$0FF,
+	; $100-$13F, $180-$1BF); step 68: the text panel's BG3 tiles; step 69:
+	; OBJ tiles $000-$03F (the cells beside the dynamic ones); step 70: the
 	; finale's band layer tiles.
-	CMP.b #$0C
+	CMP.b #68
 	BNE +
 	JMP .text
 +
-	CMP.b #$0D
+	CMP.b #69
 	BNE +
 	JMP .fxd
-+	CMP.b #$0E
++	CMP.b #70
 	BNE +
 	JMP .bands
 +	BCS .finish
 	REP #$20
 	AND.w #$00FF
-	SEC : SBC.w #$0009
+	SEC : SBC.w #65
 	ASL : ASL
 	TAX
 	LDA.l .fxSteps,X
@@ -1066,6 +1104,84 @@ orbit_nmi_load:
 	dw $6800, orbit_fx_vram_a
 	dw $7000, orbit_fx_vram_b
 	dw $7800, orbit_fx_vram_c
+
+; A16 = a chunk c (0-63) of the Mode 7 image -> carry set when it is in
+; VRAM (!orbit_m7have). Keeps Y. M16/X16.
+orbit_m7_have:
+	JSR orbit_m7_bit
+	SEP #$20
+	AND.l !orbit_m7have,X
+	REP #$20
+	BEQ +
+	SEC
+	RTS
++	CLC
+	RTS
+
+; A16 = a chunk c: its 512 bytes to VRAM words c * $100 (DMA channel 7,
+; in force blank or vblank), and its bit set. Keeps Y. M16/X16.
+orbit_m7_send:
+	PHA
+	XBA                            ; c * $100
+	STA.w $2116
+	ASL                            ; c * $200
+	CLC : ADC.w #orbit_globe_vram
+	STA.w $4372
+	LDA.w #$1801
+	STA.w $4370
+	LDA.w #$0200
+	STA.w $4375
+	SEP #$20
+	LDA.b #orbit_globe_vram>>16
+	STA.w $4374
+	LDA.b #$80
+	STA.w $2115
+	STA.w $420B
+	REP #$20
+	PLA
+	JSR orbit_m7_bit
+	SEP #$20
+	ORA.l !orbit_m7have,X
+	STA.l !orbit_m7have,X
+	REP #$20
+	RTS
+orbit_m7_send_far:
+	JSR orbit_m7_send
+	RTL
+
+; A16 = a chunk c -> X16 = its byte in !orbit_m7have (c >> 3), A16 = its
+; bit. Keeps Y.
+orbit_m7_bit:
+	PHA
+	LSR : LSR : LSR
+	TAX
+	PLA
+	AND.w #$0007
+	PHX
+	TAX
+	LDA.l .bits,X
+	AND.w #$00FF
+	PLX
+	RTS
+.bits
+	db $01,$02,$04,$08,$10,$20,$40,$80
+
+; No Mode 7 chunk in VRAM (a scene's start, a shot's load over them).
+; Any M/X.
+orbit_m7_none:
+	PHP
+	REP #$20
+	LDA.w #$0000
+	STA.l !orbit_m7have
+	STA.l !orbit_m7have+2
+	STA.l !orbit_m7have+4
+	STA.l !orbit_m7have+6
+	STA.l !orbit_m7next
+	PLP
+	RTS
+orbit_m7_none_far:
+	JSR orbit_m7_none
+	RTL
 
 ; Live picture: Mode 7 globe registers, windows, colour math, palettes and
 ; the HDMA channels for the next frame.

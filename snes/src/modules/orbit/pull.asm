@@ -12,14 +12,18 @@
 ; (stars_frame). montage.asm runs the clock, the cut (the scene's load)
 ; and the cue. DB = $32, M16/X16.
 ;
+; The cut's load (scene.asm) sends the Mode 7 image's chunks the second
+; aerial cut did not send ahead, the star cells and the beam's orb; the
+; rest of the scene's images (the text and band tiles, the fight's
+; resident cells) follow in the pullback's vblanks (pull_defer).
+;
 ; The Death Ball (64 and 48 px) is two buffers of four 32x32 cells: the
 ; sprites show one while the vblanks fill the other with the next picture
 ; the records hold (2 KiB do not fit one vblank: a cell at a time), then
-; they swap. The
-; buffers borrow cells others own while the ball shows (Frieza's and the
-; 32 px Death Ball's, the beam's slots 3-5, the finale's gold sparks and
-; Frieza's pink charges and discs, unused until the fight); afterwards the
-; vblanks restore the resident ones from the scene's own images.
+; they swap. The buffers borrow cells others own while the ball shows
+; (Frieza's and the 32 px Death Ball's, the beam's slots 3-5, the finale's
+; gold sparks and Frieza's pink charges and discs, unused until the
+; fight); their images come back with the deferred uploads after it.
 
 !PB_PICS = !XDATA_ORBIT_DEATH_BIG ; the Death Ball pictures: per picture its slot ($FF: never on the screen), then the slots
 !PR = !XDATA_ORBIT_PULL            ; the frame records (words):
@@ -27,6 +31,10 @@
 ; fighters, 8 the 'beam' cue); +8 the beam's origin x, y, band radius,
 ; reach, heading; +18 the Death Ball's top left, size | frame << 8; +24
 ; Goku's 16x16 cell's top left; +28 Frieza's 32x32 cell's top left
+
+!PD_AFTER  = $01                   ; pull_defer flags (below)
+!PD_FRIEZA = $02
+!PD_GOKU   = $04
 
 ; The Death Ball buffers' cells (OBJ tiles): top left, top right, bottom
 ; left, bottom right.
@@ -48,8 +56,10 @@ pull_start:
 	STA.w !v_dbig
 	STZ.w !pb_cells
 	STZ.w !pb_used
-	STZ.w !pb_rest
 	STZ.w !pb_shown
+	LDA.w #$0000                   ; the deferred uploads from the first
+	STA.l !orbit_pdef
+	STA.l !orbit_pball
 	PLP
 	RTL
 
@@ -83,6 +93,8 @@ pull_frame:
 ; (as orbit_picture_init leaves it for the intro).
 pull_end:
 	STZ.w !g_pull
+	LDA.w #$0001                   ; (the deferred uploads go on to the end)
+	STA.l !orbit_pball
 	LDA.w #$FFFF
 	STA.w !g_dk
 	STA.w !v_dbig
@@ -173,12 +185,12 @@ pull_draw:
 	LDA.l !PR+6,X
 	AND.w #$0002
 	BNE +
-	; the ball is gone: the cells it borrowed go back to their owners
+	; the ball is gone: the deferred uploads give back the cells it took
+	LDA.w #$0001
+	STA.l !orbit_pball
 	LDA.w !pb_used
 	BEQ .orb
 	STZ.w !pb_used
-	LDA.w #8
-	STA.w !pb_rest
 	LDA.w #$FFFF
 	STA.w !pb_fill
 	STA.w !pb_have
@@ -384,19 +396,21 @@ pull_next:
 	TXA
 	RTS
 
-; Vblank (orbit_nmi_cells, before the other cells): the Death Ball's next
-; picture into the buffer not shown, a cell (512 bytes) at a time while
-; the vblank has room; once the ball is gone, the resident OBJ rows its
-; buffers took (tile rows 0-3 from the scene's image vram_d, then rows
-; $180-$1BF from vram_c), a row (512 bytes) at a time. M16/X16.
+; Vblank (orbit_nmi_cells, before the other cells): in the pullback the
+; Death Ball's next picture into the buffer not shown, a cell (512 bytes)
+; at a time while the vblank has room; then the deferred uploads (also
+; after the pullback, until done). M16/X16.
 pull_nmi_ball:
 	LDA.w !g_pull
-	BNE +
-	RTS
-+	LDA.w !pb_fill
+	BEQ +
+	JSR pull_nmi_fill
++	JMP pull_nmi_defer
+
+pull_nmi_fill:
+	LDA.w !pb_fill
 	CMP.w #$FFFF
 	BNE .cell
-	JMP .restore
+	RTS
 .cell
 	LDA.w !pb_cells
 	CMP.w #4
@@ -444,54 +458,100 @@ pull_nmi_ball:
 	STA.w !pb_have,X
 	LDA.w #$FFFF
 	STA.w !pb_fill
-.out
 	RTS
-.restore
-	LDA.w !pb_rest
-	BEQ .out
-	LDA.w #5
+
+; The deferred uploads in order, an entry (at most 512 bytes) at a time
+; while the vblank has room; those that take the Death Ball's cells wait
+; until it is gone.
+pull_nmi_defer:
+	LDA.l !orbit_pdef
+	CMP.w #$FFFF
+	BNE +
+	RTS
++	TAX
+	LDA.l pull_defer+4,X
+	AND.w #!PD_AFTER<<8
+	BEQ +
+	LDA.l !orbit_pball
+	BNE +
+	RTS                            ; (the ball still shows)
++	LDA.w #5                       ; (512 bytes in one DMA: 3.2 lines)
 	JSR orbit_nmi_room
-	BCS .out
-	LDA.w #8
-	SEC : SBC.w !pb_rest           ; row 0-7
-	CMP.w #4
-	BCS .rowC
-	; tile row k of $000-$03F (Frieza's and the 32 px Death Ball's cells
-	; come back empty: their keys forget them)
-	XBA                            ; k * $100 (VRAM words)
-	PHA
-	ASL                            ; k * 512 (bytes)
-	CLC : ADC.w #orbit_fx_vram_d
-	STA.w !n_src
-	PLA
-	CLC : ADC.w #$6000
+	BCC +
+	RTS
++	LDA.l !orbit_pdef
+	TAX
+	LDA.l pull_defer+0,X
 	STA.w !n_vram
-	LDA.w #orbit_fx_vram_d>>16
+	LDA.l pull_defer+2,X
+	STA.w !n_src
+	LDA.l pull_defer+4,X
+	AND.w #$00FF
 	STA.w !n_bank
+	LDA.l pull_defer+6,X
+	STA.w !n_len
+	LDA.w #1
+	STA.w !n_rows
+	JSR orbit_nmi_rows
+	; the cells the upload overwrote forget what they held
+	LDA.l !orbit_pdef
+	TAX
+	LDA.l pull_defer+4,X
+	PHA
+	AND.w #!PD_FRIEZA<<8
+	BEQ +
 	LDA.w #$FFFF
 	STA.w !v_frieza_h
 	STA.w !v_d32_h
-	BRA .row
-.rowC
-	SEC : SBC.w #4
-	XBA
-	PHA
-	ASL
-	CLC : ADC.w #orbit_fx_vram_c
-	STA.w !n_src
-	PLA
-	CLC : ADC.w #$6000+($180*16)
-	STA.w !n_vram
-	LDA.w #orbit_fx_vram_c>>16
-	STA.w !n_bank
-.row
-	LDA.w #1
-	STA.w !n_rows
-	LDA.w #512
-	STA.w !n_len
-	JSR orbit_nmi_rows
-	DEC.w !pb_rest
-	BRA .restore
++	PLA
+	AND.w #!PD_GOKU<<8
+	BEQ +
+	LDA.w #$FFFF
+	STA.w !v_goku_h
+	STA.w !v_d16_h
+	STA.w !bs_have+8
+	STA.w !bs_have+10
++	LDA.l !orbit_pdef
+	CLC : ADC.w #8
+	CMP.w #pull_defer_end-pull_defer
+	BCC +
+	LDA.w #$FFFF
++	STA.l !orbit_pdef
+	JMP pull_nmi_defer
+
+; The uploads the pullback's load leaves to its vblanks: VRAM word address,
+; source, its bank | flags << 8 (!PD_AFTER: they take the Death Ball's
+; cells, after it; !PD_FRIEZA: Frieza's and the 32 px Death Ball's cells
+; come back empty; !PD_GOKU: Goku's, the 16 px Death Ball's and the beam's
+; slots 4-5 likewise), bytes. The text panel's and the band layers' tiles,
+; the upper half of OBJ $080-$0FF at once; then that half's lower part
+; (the Death Ball's $080, $084 among them), $180-$1BF and $000-$03F.
+!PD_TEXT  = $4000+(!OTXT_TILE0*8)
+assert !OTXT_TILES*16 > 1024 && !OTXT_TILES*16 <= 1536, "pull_defer: the text tiles in three pieces"
+pull_defer:
+	dw !PD_TEXT, orbit_text_tiles, orbit_text_tiles>>16, 512
+	dw !PD_TEXT+256, orbit_text_tiles+512, orbit_text_tiles>>16, 512
+	dw !PD_TEXT+512, orbit_text_tiles+1024, orbit_text_tiles>>16, !OTXT_TILES*16-1024
+	dw !BD_TILES, orbit_band_tiles, orbit_band_tiles>>16, 512
+	dw !BD_TILES+256, orbit_band_tiles+512, orbit_band_tiles>>16, 512
+	dw !BD_TILES+512, orbit_band_tiles+1024, orbit_band_tiles>>16, 45*32-1024
+	dw $6C00, orbit_fx_vram_a+2048, orbit_fx_vram_a>>16, 512
+	dw $6D00, orbit_fx_vram_a+2560, orbit_fx_vram_a>>16, 512
+	dw $6E00, orbit_fx_vram_a+3072, orbit_fx_vram_a>>16, 512
+	dw $6F00, orbit_fx_vram_a+3584, orbit_fx_vram_a>>16, 512
+	dw $6800, orbit_fx_vram_a, (orbit_fx_vram_a>>16)|((!PD_AFTER|!PD_GOKU)<<8), 512
+	dw $6900, orbit_fx_vram_a+512, (orbit_fx_vram_a>>16)|((!PD_AFTER|!PD_GOKU)<<8), 512
+	dw $6A00, orbit_fx_vram_a+1024, (orbit_fx_vram_a>>16)|((!PD_AFTER|!PD_GOKU)<<8), 512
+	dw $6B00, orbit_fx_vram_a+1536, (orbit_fx_vram_a>>16)|((!PD_AFTER|!PD_GOKU)<<8), 512
+	dw $7800, orbit_fx_vram_c, (orbit_fx_vram_c>>16)|(!PD_AFTER<<8), 512
+	dw $7900, orbit_fx_vram_c+512, (orbit_fx_vram_c>>16)|(!PD_AFTER<<8), 512
+	dw $7A00, orbit_fx_vram_c+1024, (orbit_fx_vram_c>>16)|(!PD_AFTER<<8), 512
+	dw $7B00, orbit_fx_vram_c+1536, (orbit_fx_vram_c>>16)|(!PD_AFTER<<8), 512
+	dw $6000, orbit_fx_vram_d, (orbit_fx_vram_d>>16)|((!PD_AFTER|!PD_FRIEZA)<<8), 512
+	dw $6100, orbit_fx_vram_d+512, (orbit_fx_vram_d>>16)|((!PD_AFTER|!PD_FRIEZA)<<8), 512
+	dw $6200, orbit_fx_vram_d+1024, (orbit_fx_vram_d>>16)|((!PD_AFTER|!PD_FRIEZA)<<8), 512
+	dw $6300, orbit_fx_vram_d+1536, (orbit_fx_vram_d>>16)|((!PD_AFTER|!PD_FRIEZA)<<8), 512
+pull_defer_end:
 
 ; Channel 5 in the pullback: TM = BG1 + OBJ, again at line 196 (the field
 ; IRQ's HUD split leaves BG3 + OBJ there).
