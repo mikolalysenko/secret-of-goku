@@ -16,6 +16,43 @@ teleport **15**, corridor flying ki **15**, flying punches **2**, and
 ground punches/ki **0/0**. Use these matched-build baselines below, rather
 than attributing differences from the old 26/15/10 results to this pass.
 
+The current selected image has these missed-video-frame counts. All 13
+short and six long cases pass their gameplay, palette, meter, OBJ,
+graphics-DMA, complete-NMI and duplicate scenery-work checks; timing remains
+open for the nonzero rows.
+
+| Scenario | Baseline / current, 240 frames | Baseline / current, 1,200 frames | Current long peak, lines |
+| --- | ---: | ---: | ---: |
+| Charge and release | 22 / **13** | 33 / **16** | 266.24 |
+| Teleports | 3 / **3** | 15 / **15** | 269.93 |
+| Flying ki, long run in corridor | 3 / **2** | 15 / **13** | 250.64 |
+| Flying punches | 2 / **1** | 2 / **1** | 280.67 |
+| Ordinary flight | 1 / **2** | — | — |
+| Ground punches | 0 / **0** | 0 / **0** | 237.52 |
+| Ground ki | 0 / **0** | 0 / **0** | 238.07 |
+
+The other six short cases (solo attacks, walk, water flight, focus and
+transformation over cut grass) remain at zero. Complete NMI peaks at about
+**35.57** lines across the selected runs. No audio or core source changes,
+and no relaxation of the all-HDMA-off requirement for mid-frame DMA.
+
+### Read only the charging state flight needs
+
+The charge profile shows `fl_bind_charging` spending **0.82** lines on a
+full combat-state query during every charging frame. It uses just one bit.
+Read the same live charging byte, without constructing four unrelated
+flags or returning charge/action values that flight discards. The binding
+retains its register/flag result; combat's call-local scratch is not an
+output. `FLIGHT_CHARGE_STATE_SLOW` restores the full query.
+
+The query falls **158 → 22 CPU cycles**. All **12,288** assembled comparisons,
+**17 flight assembly tests**, nine live flight cases and **13 short / six
+long** gameplay cases pass. Long charge improves **18 → 16** misses; other
+counts and the **266.24-line** charge peak stay unchanged. Artifacts:
+`charge-flight-profile`, `charge-query-short`, `charge-query-final-long`,
+`charge-query-unit.log`, `charge-query-flight*` and `charge-query-modprof.log`
+under `.local/snes-test/perf2/`.
+
 ### Restore native enemy decision phases
 
 The `ab393b9` experiment defers the second/third enemy's AI and animation

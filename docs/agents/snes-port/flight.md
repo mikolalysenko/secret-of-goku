@@ -95,6 +95,17 @@ All eight assembled scheduler tests pass (native production cadence plus
 the opt-in queue), the full **11-case** flight suite and **13 short / six
 long** gameplay cases pass. See [gameplay-performance.md](gameplay-performance.md).
 
+`fl_bind_charging` reads combat's live `cb_charging` byte instead of
+assembling its unrelated can-attack, form, full-charge and beam flags and
+discarding its charge/action outputs. The binding keeps A, flags, X/Y,
+DB/D and live RAM identical; only combat's call-local scratch may differ.
+`FLIGHT_CHARGE_STATE_SLOW` restores the complete `combat_api_state` call.
+The query falls **158 → 22 CPU cycles**, with **12,288** assembled comparisons
+passing (`snes/test/flight/charge-state.test.mjs`). All **17** flight assembly
+tests and nine live flight cases pass. All 13 short/six long gameplay
+cases pass: long charge improves **18 → 16** misses, short charge stays
+**13**, and other counts stay unchanged.
+
 ### Whip pads (native-gap-flight.js)
 
 - While Goku flies, a whip pad (floor event 6D8) under any party member is
