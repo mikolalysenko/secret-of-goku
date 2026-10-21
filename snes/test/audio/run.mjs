@@ -11,6 +11,7 @@ import {runMesen} from '../mesen.mjs';
 import {checkpointDir,privateRom,cleanupRom,mainCheckout} from '../checkpoints.mjs';
 import {createApu,loadRom,loadSong} from './apu.mjs';
 import {compareSongs} from './songs.mjs';
+import {NATIVE_IDS} from '../../gen/audio-resident.mjs';
 
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 const only=process.argv.slice(2).filter(a=>!a.startsWith('--'));
@@ -48,10 +49,11 @@ if(!only.length||only.includes('render')){
 }
 // [name, checkpoint (null: power-on)]; arrival and imported import the
 // browser state before the sword pull (skipped when the bundle is missing).
-const fromCheckpoint=n=>n==='stream'||n==='songs'||n==='native';
+const shipping=n=>['native','rare','rare-control','rare-boot'].includes(n);
+const fromCheckpoint=n=>['stream','songs','native','rare','rare-control'].includes(n);
 const arrivalBundle=join(mainCheckout(),'.local/snes-import/arrival-research__probe__before-pull');
-const mesenTests=[['native','waterfall'],['stream','waterfall'],['songs','waterfall'],['arrival',null],['imported',null]]
- .filter(([n])=>!only.length||only.includes(n)).filter(([n])=>fromCheckpoint(n)||existsSync(arrivalBundle));
+const mesenTests=[['native','waterfall'],['rare','waterfall'],['rare-control','waterfall'],['rare-boot',null],['stream','waterfall'],['songs','waterfall'],['arrival',null],['imported',null]]
+ .filter(([n])=>!only.length||only.includes(n)).filter(([n])=>n==='rare-boot'||fromCheckpoint(n)||existsSync(arrivalBundle));
 if(!mesenTests.length)process.exit(ok?0:1);
 
 // Voices sounding in the first 4 s of each song (frames 15-225 after the
@@ -77,20 +79,23 @@ const native=loadRom(),songFile=s=>join(gen,`song_${s.id.toString(16)}.bin`);
 const songsLua='SONGS={'+songs.map(s=>`{id=${s.id},edl=${s.echo.edl},evol=${s.echo.evol},efb=${s.echo.efb},voices=${expectedVoices(native,s,readFileSync(songFile(s)))},file=${JSON.stringify(songFile(s))}}`).join(',')+'}';
 // modules whose sound flags the audio module consumes (built in?)
 const sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8');
+const label=n=>{const m=sym.match(new RegExp(`^([\\dA-F]{2}):([\\dA-F]{4}) ${n}$`,'mi'));return m?parseInt(m[1]+m[2],16):0;};
 const consumers=[`DESTROY=${/ audio_destroy_cues$/m.test(sym)}`];
-const lib=[`UPLOAD=${JSON.stringify(join(gen,'upload.bin'))}`,...ids,...consumers,songsLua,readFileSync(join(here,'lib.lua'),'utf8')].join('\n');
+const lib=[`UPLOAD=${JSON.stringify(join(gen,'upload.bin'))}`,...ids,...consumers,songsLua,
+ `AUDIO_FRAME=${label('audio_frame')}\nAUDIO_DONE=${label('audio_frame_done')}\nAUDIO_PAUSE=${label('audio_pause')}\nAUDIO_CANCEL=${label('audio_cancel')}`,
+ `NATIVE_CUES={${NATIVE_IDS.slice(1,28).map((v,i)=>`{${i+1},${v}}`).join(',')}}`,readFileSync(join(here,'lib.lua'),'utf8')].join('\n');
 const tests=mesenTests;
 const summary=[];
 let pcmRom=null;
 for(const [name,cp] of tests){
  // The historical streaming tests still exercise the optional PCM build;
  // native exercises the shipping cartridge, including its real driver.
- if(name!=='native'&&!pcmRom){
+ if(!shipping(name)&&!pcmRom){
    pcmRom=resolve(repo,'.local/snes-test/roms/audio-pcm.sfc');
    const b=spawnSync(process.execPath,[join(repo,'snes/build.mjs'),'--quiet','--strict','-DAUDIO_PCM=1',`--out=${pcmRom}`],{cwd:repo,stdio:'inherit'});
    if(b.status!==0)throw Error('audio PCM diagnostic build failed');
  }
- const copy=privateRom(name==='native'?rom:pcmRom,`audio-${name}`);
+ const copy=privateRom(shipping(name)?rom:pcmRom,`audio-${name}`);
  const t0=Date.now();
  const pre=fromCheckpoint(name)?'':`IMPORT=${JSON.stringify(arrivalBundle)}\n`;
  const r=await runMesen({rom:copy,test:pre+lib+'\n'+readFileSync(join(here,`${name}.lua`),'utf8'),outDir:join(outRoot,name),state:cp?join(cps,`${cp}.mss`):null,timeoutMs:600000});
