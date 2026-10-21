@@ -6,7 +6,8 @@
 ; hold the displayed frame and the next one: a frame not yet resident is
 ; uploaded into the back buffer in vblank (two DMAs) and shown from the
 ; next frame on, so the picture never mixes two frames. The palette goes
-; to a free OBJ palette in vblank, after the game's own CGRAM upload.
+; to a free OBJ palette inside the game's own CGRAM transfer
+; (frieza_cgram_upload), on every vblank that sends the palette.
 
 ; Forget what the buffers hold (map or mode change, fades, loads).
 ; Scene-scoped VRAM in core's pool: Frieza's OBJ buffers (!VRAM_SCENE_OBJ)
@@ -41,7 +42,9 @@ fz_vram_settle:
 	LDA.b #0
 	STA.l !fzh_tiles
 	REP #$20
-+	; the vblank's early-out (!FZV_NMI): does this frame leave it any work?
++	JSR fz_spr_publish
+	; the vblank's early-out (!FZV_NMI): does this frame leave it any work?
+	; (the colours go up in the game's palette transfer, not there)
 	LDA !fz_tflags
 	AND.w #!FZT_WHITE|!FZT_WPREV|!FZT_HOLES
 	BNE .nmi
@@ -51,12 +54,6 @@ fz_vram_settle:
 	LDA !fz_spr_pend
 	INC                               ; $FFFF: no frame to upload
 	BNE .nmi
-	LDA !fz_spr_pal
-	AND.w #$00F8                      ; a palette 0-7 to write
-	BEQ .nmi
-	LDA !fz_spr_pal2
-	AND.w #$00F8
-	BEQ .nmi
 	RTS
 .nmi
 	SEP #$20
@@ -64,6 +61,220 @@ fz_vram_settle:
 	TSB !fz_vista
 	REP #$20
 	RTS
+
+; End of every busy field frame, after all drawing: the colours this frame's
+; sprites and backdrop need, for the palette transfer (!FZCG_*, one word
+; store, so a vblank never sees half of it; frieza_cgram_upload takes it
+; with the frame's OAM).
+fz_spr_publish:
+	STZ !fz_t0
+	LDA !fz_spr_pal
+	AND.w #$00FF
+	CMP.w #$0008
+	BCS .second
+	ORA.w #!FZCG_MAIN
+	STA !fz_t0
+	LDA !fz_spr_var
+	AND.w #$0007
+	ASL
+	ASL
+	ASL
+	ASL
+	TSB !fz_t0
+.second
+	LDA !fz_spr_pal2
+	AND.w #$00FF
+	CMP.w #$0008
+	BCS .backdrop
+	ORA.w #!FZCG_SECOND>>8
+	XBA
+	TSB !fz_t0
+	; the Balls requested this frame, else the afterimages
+	LDA !fz_vista
+	AND.w #!FZV_BALLS                 ; (set << 4)
+	XBA                               ; set << 12
+	TSB !fz_t0
+.backdrop
+	LDA !fz_vista
+	AND.w #$0001                      ; !FZV_ON (vista.asm): the Tree vista shows
+	BEQ +
+	LDA.w #!FZCG_SKY
+	TSB !fz_t0
+	BRA .store
++	LDA !fz_tflags
+	AND.w #!FZT_WHITE
+	BEQ .store
+	LDA.l !fzv_mode
+	AND.w #$00FF
+	CMP.w #1                          ; the Emperor's black frame
+	BNE .store
+	LDA.w #!FZCG_BLACK
+	TSB !fz_t0
+.store
+	LDA.l !core_frame
+	STA.l !fz_cgframe
+	LDA !fz_t0
+	STA.l !fz_cgnext
+	BEQ +
+	STA.l !fz_cgany                   ; the chain calls the handler from now on
++	RTS
+
+; ---------------------------------------------------------------------------
+; modules_cgram_upload (core/cgram.asm), before fx_cgram_upload: the field
+; NMI's palette transfer (C0:C0F0), on every vblank that sends the palette:
+; every completed frame, and every vblank while a dialogue window is open
+; ($1D04 bit 5), lag ones included. Module vblank callbacks run only for
+; completed frames, so a borrowed OBJ palette written there showed the
+; game's colours for a lag frame. JSL, M16/X16, DB = 0, D = 0; A, X, Y not
+; kept; carry set when the palette went up here (FX then puts its own
+; displayed palettes over it), clear for the next handler or the game.
+;
+; The colours follow the OAM on screen after this vblank (C0:C118 uploads
+; OAM when $EC & 9). A completed frame's ($EC bit 0, set at C0:B077 after
+; core's frame hook; core's ready word) shows what that frame published
+; (stamped with its !core_frame; consumed here): the game's buffer, then
+; Frieza's ranges over it. Another upload (bit 3 alone: a ring menu's
+; icons) shows nothing of Frieza's. No upload (a lag vblank) keeps the OAM
+; and so the OBJ colours that went up with it, as FX does: only the game's
+; BG half goes up, then Frieza's backdrop; this while the set belongs to
+; the frame on screen (an earlier handler may have held the transfers
+; since), else nothing of Frieza's.
+frieza_cgram_upload:
+	LDA.l !fz_cgnext
+	ORA.l !fz_cgshow
+	BNE .work
+	STA.l !fz_cgany                   ; (fz_spr_publish writes it after the set)
+	CLC
+	RTL
+.work
+	LDA $EC                           ; D = 0: the NMI request bits
+	AND.w #$0009
+	BEQ .lag
+	LSR
+	BCC .none                         ; not a completed frame's OAM
+	LDA.l !core_dma_ready
+	BEQ .none                         ; (not through core's frame hook)
+	LDA.l !fz_cgframe
+	CMP.l !core_frame
+	BNE .none                         ; this frame published nothing
+	LDA.l !fz_cgnext
+	BRA .take
+.none
+	LDA.w #$0000
+.take
+	STA.l !fz_cgshow
+	TAX
+	LDA.l !core_frame
+	STA.l !fz_cgshowf
+	LDA.w #$0000
+	STA.l !fz_cgnext                  ; consumed
+	TXA
+	BNE .send
+	STA.l !fz_cgany                   ; nothing pending or on screen (the frame
+	CLC                               ; thread waits for this vblank: no race)
+	RTL
+.lag
+	; the OAM on screen stays, and so do the OBJ colours that went up with
+	; it (Frieza's, FX's: fx_cgram_upload's rule): only the BG half and the
+	; backdrop, while the set belongs to the frame on screen (core's frame
+	; counter is that frame, or one more once the lagging frame reached the
+	; module dispatch)
+	LDA.l !core_frame
+	SEC
+	SBC.l !fz_cgshowf
+	CMP.w #2
+	BCS .stale
+	LDA.l !fz_cgshow
+	BNE +
+	CLC
+	RTL
++	PHA
+	LDA.w #$0000
+	LDY.w #256
+	JSL core_cgram_native             ; BG colours 0-127
+	JMP .backdrop
+.stale
+	LDA.w #$0000
+	STA.l !fz_cgshow
+	CLC
+	RTL
+.send
+	PHA                               ; the set ($01,S)
+	LDA.w #$0000
+	LDY.w #512
+	JSL core_cgram_native             ; the game's whole buffer
+	LDA $01,S
+	BIT.w #!FZCG_MAIN
+	BEQ .second
+	; Frieza: the row of frieza_palettes over OBJ palette n (32 bytes)
+	AND.w #$0070
+	ASL                               ; row * 32
+	CLC
+	ADC.w #frieza_palettes&$FFFF
+	TAX
+	LDA $01,S
+	JSR fz_cg_obj
+.second
+	LDA $01,S
+	BIT.w #!FZCG_SECOND
+	BEQ .backdrop
+	AND.w #!FZCG_SRC
+	BEQ .ghost
+	XBA                               ; source << 4 (1 the seven, 2 the eighth)
+	ASL                               ; source * 32
+	CLC
+	ADC.w #(frieza_balls_palette-32)&$FFFF
+	TAX
+	BRA +
+.ghost
+	LDX.w #(frieza_palettes+96)&$FFFF ; row 3 (asar's math runs left to right)
++	LDA $01,S
+	XBA
+	JSR fz_cg_obj
+.backdrop
+	LDA $01,S
+	AND.w #!FZCG_BLACK|!FZCG_SKY
+	BEQ .done
+	CMP.w #!FZCG_SKY
+	LDA.w #$0000                      ; black
+	BCC +
+	LDA.w #!FRIEZA_VISTA_SKY
++	SEP #$20
+	STZ $2121
+	STA $2122
+	XBA
+	STA $2122
+	REP #$20
+.done
+	PLA
+	SEC
+	RTL
+
+; OBJ palette (A16 bits 0-2) <- 32 bytes at X16 in Frieza's data bank, one
+; DMA on channel 7 (the palette transfer's). DB = 0, M16/X16.
+fz_cg_obj:
+	AND.w #$0007
+	ASL
+	ASL
+	ASL
+	ASL
+	ORA.w #$0080                      ; CGRAM word 128 + 16n
+	SEP #$20
+	STA $2121
+	REP #$20
+	STX $4372
+	LDA.w #$2200                      ; A->B, one register: CGDATA
+	STA $4370
+	LDA.w #32
+	STA $4375
+	SEP #$20
+	LDA.b #frieza_palettes>>16
+	STA $4374
+	LDA.b #$80
+	STA $420B
+	REP #$20
+	RTS
+assert frieza_balls_palette>>16 == frieza_palettes>>16, "fz_cg_obj: the Balls' palettes in Frieza's palette bank"
 
 fz_spr_invalidate:
 	LDA.w #$FFFF
@@ -331,15 +542,9 @@ fz_spr_draw:
 	INX
 	INX
 	STX !fz_t1                        ; piece list (core_oam_meta's 4-byte pieces)
-	LDA !fz_spr_fl
-	AND.w #!FZD_GHOST
-	BEQ +
-	JSR fz_spr_palette2
-	LDA !fz_spr_pal2
-	BRA ++
-+	JSR fz_spr_palette
+	JSR fz_spr_palette
 	LDA !fz_spr_pal
-++	; attribute word: palette, priority 3, h-flip
+	; attribute word: palette, priority 3, h-flip
 	AND.w #$0007
 	XBA
 	ASL
@@ -395,90 +600,8 @@ fz_spr_draw:
 
 ; ---------------------------------------------------------------------------
 ; Vblank (frieza_field_nmi): DB = $80, M16/X16, D unknown (not used).
-; Palette of this frame's sprites, then the pending frame upload.
+; The pending frame upload (the colours went up in the palette transfer).
 fz_spr_nmi:
-	LDA.l $7E0000|!fz_spr_pal
-	AND.w #$00FF
-	CMP.w #$0008
-	BCS .upload
-	ASL
-	ASL
-	ASL
-	ASL
-	ORA.w #$0081                      ; CGRAM 128 + 16 * palette + 1
-	SEP #$20
-	STA $2121
-	REP #$20
-	LDA.l $7E0000|!fz_spr_var
-	AND.w #$0007
-	XBA
-	LSR
-	LSR
-	LSR                               ; variant * 32
-	TAX
-	LDY.w #15
-.color
-	LDA.l frieza_palettes+2,X
-	SEP #$20
-	STA $2122
-	XBA
-	STA $2122
-	REP #$20
-	INX
-	INX
-	DEY
-	BNE .color
-.upload
-	; the afterimage palette (ghost colour)
-	LDA.l $7E0000|!fz_spr_pal2
-	AND.w #$00FF
-	CMP.w #$0008
-	BCS .frame
-	ASL
-	ASL
-	ASL
-	ASL
-	ORA.w #$0081
-	SEP #$20
-	STA $2121
-	REP #$20
-	LDA.l !fzb_palsrc
-	AND.w #$00FF
-	BEQ .ghostpal
-	DEC
-	XBA
-	LSR
-	LSR
-	LSR                               ; (source - 1) * 32
-	TAX
-	LDY.w #15
-.balls
-	LDA.l frieza_balls_palette+2,X
-	SEP #$20
-	STA $2122
-	XBA
-	STA $2122
-	REP #$20
-	INX
-	INX
-	DEY
-	BNE .balls
-	BRA .frame
-.ghostpal
-	LDX.w #3*32
-	LDY.w #15
-.ghost
-	LDA.l frieza_palettes+2,X
-	SEP #$20
-	STA $2122
-	XBA
-	STA $2122
-	REP #$20
-	INX
-	INX
-	DEY
-	BNE .ghost
-.frame
 	LDA.l $7E0000|!fz_spr_pend
 	CMP.w #$FFFF
 	BNE +

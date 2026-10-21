@@ -280,25 +280,89 @@ fz_draw_hazards:
 	BPL .loop
 	RTS
 
-; Dash afterimages (frame 5, ghost colour): only while the dash pose is the
-; resident frame, drawn behind every other frame (the browser dithers them).
+; Dash afterimages (frieza.js draw(): frame 5 behind Frieza while each
+; lives, 16 frames). The browser dithers each one (a third of its pixels in
+; the ghost violet); here every other one (spawn parity, !af_par: at most
+; three at a time, so their slivers leave Frieza's own on his lines; all six
+; overran 34 slivers a line and the PPU then drops the first sprites',
+; Frieza's) is drawn every frame, solid, in that dither's mean over the
+; arena floor (generator: the ghost row of frieza_palettes). They need frame
+; 5 resident and not about to be replaced (a pending upload into that
+; buffer lands in this vblank), so they outlive the dash as in the browser.
+; Each fully visible one is placed straight into the core's back area (as
+; fx_emit does: one add of the generated, biased piece offsets per piece,
+; frieza_ghost_pack; the native build cleared the high bits of those
+; slots); one at a screen edge goes through core_oam_meta, which culls per
+; piece.
 fz_draw_afterimages:
-	LDA !fz_spr_cnt
+	LDA !fz_spr_cnt                   ; Frieza drawn: his VRAM claim holds
 	AND.w #$00FF
-	BEQ .out
-	LDA !fzf_dash
-	AND.w #$00FF
-	BEQ .out
-	LDA.l !core_frame
+	BNE .drawn
+.none
+	RTS
+.drawn
+	; the buffer holding frame 5, if no upload targets it this vblank
+	LDA !fz_spr_buf
 	AND.w #$0001
-	BNE .out
+	STA !fz_t0                        ; displayed buffer
+	LDA.w #5
+	ORA !fz_atlas
+	CMP !fz_spr_res0
+	BNE +
+	LDX.w #0
+	BRA .found
++	CMP !fz_spr_res1
+	BNE .none
+	LDX.w #1
+.found
+	CPX !fz_t0
+	BEQ +                             ; the displayed one stays
+	LDA !fz_spr_pend
+	CMP.w #$FFFF
+	BNE .none                         ; the back buffer is being refilled
++	LDA.w #!FZ_TILE_BUF0|$3000        ; base word: piece 0's tile, priority 3,
+	CPX.w #0                          ; the ghost palette (with the first one
+	BEQ +                             ; drawn) and facing Goku (mirrored)
+	LDA.w #!FZ_TILE_BUF1|$3000
++	STA !fz_t3
+	LDA !fz_t7
+	BEQ +
+	LDA.w #$4000
+	TSB !fz_t3
++	; tables of this atlas and mirror ((atlas * 2 + mirror): 16 bytes of
+	; offsets, 8 of bounds)
+	LDA !fz_atlas
+	LSR
+	LSR
+	LSR
+	ORA !fz_t7
+	ASL
+	ASL
+	ASL
+	STA !fz_t4                        ; bounds
+	ASL
+	STA !fz_t6                        ; offsets
+	; the descriptor: piece count (and the pieces, for edge cases)
+	LDA.w #5
+	ORA !fz_atlas
+	ASL
+	TAX
+	LDA.l frieza_frame_table,X
+	TAX
+	LDA.l !DATA_FRIEZA+2,X
+	AND.w #$00FF
+	STA !fz_t5                        ; pieces
+	INX
+	INX
+	INX
+	STX !fz_t2                        ; piece list (bank !DATA_FRIEZA)
 	LDX.w #(!FZ_AFTER_N-1)*6
 .loop
 	STX !fz_sx_i
-	LDA.l !FZ_AFTER+!af_age,X
-	AND.w #$00FF
+	LDA.l !FZ_AFTER+!af_age,X         ; alive ($FF none) and of the drawn
+	AND.w #$01FF                      ; half (!af_par, bit 8 here)
 	CMP.w #$00FF
-	BEQ .next
+	BCS .next
 	LDA.l !FZ_AFTER+!af_x,X
 	SEC
 	SBC !fz_cam_x
@@ -309,20 +373,129 @@ fz_draw_afterimages:
 	SEC
 	SBC !fz_cam_y
 	STA !fz_spr_y
-	LDA.w #5
-	ORA !fz_atlas
-	STA !fz_spr_id
-	LDA !fz_t7
-	ORA.w #!FZD_BACK|!FZD_GHOST
-	STA !fz_spr_fl
-	JSR fz_spr_draw
+	LDA !fz_spr_pal2                  ; the second palette, once one is drawn
+	AND.w #$00FF
+	CMP.w #$00FF
+	BNE +
+	JSR fz_spr_palette2
+	LDA !fz_spr_pal2
+	AND.w #$0007
+	XBA
+	ASL
+	TSB !fz_t3
++	JSR fz_ghost_put
 .next
 	LDA !fz_sx_i
 	SEC
 	SBC.w #6
 	TAX
 	BPL .loop
-.out
+	RTS
+
+; One afterimage at (!fz_spr_x, !fz_spr_y): !fz_t3 base word, !fz_t4 / t6
+; bounds / offsets of the tables, !fz_t5 pieces, !fz_t2 the piece list.
+fz_ghost_put:
+	; every piece inside x 0-255, y 0-223 (no high bits, no wrap)?
+	LDX !fz_t4
+	LDA !fz_spr_x
+	CLC
+	ADC.l frieza_ghost_box,X
+	BMI .edge0
+	LDA !fz_spr_x
+	CLC
+	ADC.l frieza_ghost_box+2,X
+	CMP.w #241
+	BCS .edge0
+	LDA !fz_spr_y
+	CLC
+	ADC.l frieza_ghost_box+4,X
+	BMI .edge0
+	LDA !fz_spr_y
+	CLC
+	ADC.l frieza_ghost_box+6,X
+	CMP.w #209
+	BCC .room
+.edge0
+	JMP .edge
+.room
+	; room behind the natives for all its pieces (core_oam_meta's rule: the
+	; staged front sprites keep their rounded reservation)
+	LDA.w !core_oam_front_n&$FFFF
+	CLC
+	ADC.w #3
+	AND.w #$FFFC
+	ASL
+	ASL
+	CLC
+	ADC.w !core_oam_cursor&$FFFF
+	STA !fz_t1
+	LDA !fz_t5
+	ASL
+	ASL
+	CLC
+	ADC !fz_t1
+	CMP.w !core_oam_limit&$FFFF
+	BEQ +
+	BCS .edge0                        ; (what fits, piece by piece)
++	; K = (y - 128) << 8 | (x - 128): each offset + K is OAM bytes 0-1
+	LDA !fz_spr_y
+	SEC
+	SBC.w #128
+	XBA
+	AND.w #$FF00
+	STA !fz_t0
+	LDA !fz_spr_x
+	SEC
+	SBC.w #128
+	CLC
+	ADC !fz_t0
+	STA !fz_t0
+	LDA !fz_t3
+	STA !fz_t1                        ; tile word of piece 0 (+2 a piece)
+	LDA !fz_t5
+	STA !fz_m0                        ; pieces left
+	LDX !fz_t6
+	LDY.w !core_oam_cursor&$FFFF
+-	LDA.l frieza_ghost_pack,X
+	CLC
+	ADC !fz_t0
+	STA.w $0800,Y
+	LDA !fz_t1
+	STA.w $0802,Y
+	INC
+	INC
+	STA !fz_t1
+	INX
+	INX
+	INY
+	INY
+	INY
+	INY
+	DEC !fz_m0
+	BNE -
+	TYA
+	STA.w !core_oam_cursor&$FFFF
+	RTS
+.edge
+	LDA !fz_t3
+	STA.l !core_spr_tile
+	LDA !fz_spr_x
+	STA.l !core_spr_x
+	LDA !fz_spr_y
+	STA.l !core_spr_y
+	LDA.w #(!DATA_FRIEZA&$FFFF)
+	CLC
+	ADC !fz_t2
+	STA.l !core_meta_ptr
+	SEP #$20
+	LDA.b #!DATA_FRIEZA>>16
+	STA.l !core_meta_ptr+2
+	REP #$20
+	LDA !fz_t7
+	AND.w #$0001
+	TAX                               ; mirror
+	LDA !fz_t5
+	JSL core_oam_meta
 	RTS
 
 ; The surge's lightning and aura; the riposte's coil and sparks.

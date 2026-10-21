@@ -188,6 +188,10 @@ modules_cgram_upload:
 	JSL ending_cgram_upload    ; the finale scenes' colour ranges
 	BCS +
 	JSL orbit_cgram_upload     ; the orbit's montage pictures (their colours in the game's transfer)
+	BCS +
+	LDA.l !fz_cgany            ; (carry stays clear) one read while Frieza has no colours
+	BEQ +
+	JSL frieza_cgram_upload    ; Frieza's borrowed OBJ palettes and backdrop (after the orbit, which takes his scene at the second surge)
 +	JML fx_cgram_upload        ; preserve scene handlers, then the displayed OBJ colours
 
 modules_combat_receive:

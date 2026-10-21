@@ -6,6 +6,7 @@
 frieza_field_frame:
 if defined("FRIEZA_TEST")
 	JSR fz_test_floor
+	JSR fz_test_lag
 endif
 	; quiet fast path (about a third of a scanline): nothing of Frieza's
 	; runs until a hook, a map change, a query's guard or Goku's arrival
@@ -255,9 +256,15 @@ frieza_field_nmi:
 +	RTL
 
 ; modules_title_boot: the scene SRAM block is battery backed (and random at
-; power-on): forget every Frieza scene's state there.
+; power-on): forget every Frieza scene's state there, and the colours the
+; field's palette transfer would send.
 frieza_title_boot:
 	LDA.w #$0000
+	STA.l !fz_cgnext
+	STA.l !fz_cgframe
+	STA.l !fz_cgshow
+	STA.l !fz_cgshowf
+	STA.l !fz_cgany
 	LDX.w #$01FE
 -	STA.l !FZSB,X
 	DEX

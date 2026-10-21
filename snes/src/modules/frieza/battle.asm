@@ -2099,6 +2099,9 @@ fz_after_push:
 	SEP #$20
 	LDA.b #0
 	STA.l !FZ_AFTER+!af_age,X
+	LDA !fz_m5                        ; dash / 3: consecutive afterimages alternate
+	AND.b #$01
+	STA.l !FZ_AFTER+!af_par,X
 	REP #$20
 	LDA !fzf_x
 	STA.l !FZ_AFTER+!af_x,X
@@ -2191,6 +2194,37 @@ endif
 	STA.l !fzp_test+10
 	LDA.w #0
 	STA.l !fzp_test
+.out
+	RTS
+
+; Test builds: forced lag (snes/test/frieza, case transients). While +12
+; holds $5A00 | mask, every field frame whose !core_frame & mask is 0 spins
+; here past a whole vblank, with the palette requested ($EC bit 2, as an
+; open dialogue window does): that vblank's NMI finds the frame unfinished,
+; sends the game's palette and keeps the old OAM on screen. +14 counts the
+; forced lag vblanks.
+fz_test_lag:
+	LDA.l !fzp_test+12
+	AND.w #$FF00
+	CMP.w #$5A00
+	BNE .out
+	LDA.l !fzp_test+12
+	AND.w #$00FF
+	AND.l !core_frame
+	BNE .out
+	SEP #$20
+	LDA.b #$04
+	TSB $EC
+-	LDA.l $004212                     ; (in a vblank already: past its end first)
+	BMI -
+-	LDA.l $004212                     ; the next vblank: its NMI runs meanwhile
+	BPL -
+-	LDA.l $004212
+	BMI -
+	REP #$20
+	LDA.l !fzp_test+14
+	INC
+	STA.l !fzp_test+14
 .out
 	RTS
 endif

@@ -168,15 +168,40 @@ export async function generate({repo,outDir,rom:baseRom,xdata}){
     out.push(...bytes(fr.pieces.flatMap(([dx,dy],i)=>[dx,dy,2*i,0])));
   }
 
+  // The dash afterimages (frame 5 of either atlas, draw.asm): per atlas and
+  // mirror, 8 words of biased piece offsets ((dy + 128) << 8 | dx + 128,
+  // mirrored dx = -dx - 16 as core_oam_meta), so a fully visible
+  // afterimage takes one add per piece: K = (y - 128) << 8 | x - 128, OAM
+  // bytes 0-1 = offset + K; then its bounds (the pieces' extreme top-left
+  // offsets: min x, max x, min y, max y) for that test.
+  const pack=[],box=[];
+  for(const id of[5,0x15])for(const mirror of[0,1]){
+    const fr=frames.find(f=>f.id===id);
+    if(!fr||fr.n>8)throw Error(`frieza gen: afterimage frame ${id}`);
+    const at=fr.pieces.map(([dx,dy])=>[mirror?-dx-16:dx,dy]);
+    for(let i=0;i<8;i++)pack.push(i<fr.n?((at[i][1]+128)<<8)|(at[i][0]+128):0);
+    box.push(Math.min(...at.map(p=>p[0])),Math.max(...at.map(p=>p[0])),Math.min(...at.map(p=>p[1])),Math.max(...at.map(p=>p[1])));
+    if(at.some(([x,y])=>x<-128||x>127||y<-128||y>127))throw Error('frieza gen: afterimage offsets out of range');
+  }
+  out.push('frieza_ghost_pack:',...words(pack),'frieza_ghost_box:',...words(box));
+
   // Palettes (BGR555, 16 entries, entry 0 transparent): normal, the boss
   // death flashes of boss-victory.js bossDeathColor() (red phases 0-1,
-  // white phases 2-3), and the afterimage ghost colour of drawFriezaSprite.
+  // white phases 2-3), and the afterimages' colour.
   const {bossDeathColor}=await eng('boss-victory.js');
   const pal=values=>[0,...values.map(v=>v&0x8000?0x7FFF:(v-1)&0x7FFF)];
   const normal=pal(palValues);
   const red=pal(palValues.map(v=>bossDeathColor(v,0)));
   const white=pal(palValues.map(v=>bossDeathColor(v,16)));
-  const ghost=pal(palValues.map(()=>1+10+(7<<5)+(18<<10)));
+  // drawFriezaSprite's ghost lights a third of each afterimage's pixels in
+  // its violet (10, 7, 18), and the browser's overlapping afterimages leave
+  // about 45% of the trail violet over the arena's dark floor (its mean
+  // under the trail in the battle preset's dashes: RGB 45, 55, 50). The
+  // cartridge draws every other afterimage solid (draw.asm), in that mean.
+  const ghostViolet=[10,7,18],floor=[45,55,50].map(c=>c/8);
+  const ghostColour=rgb555(...ghostViolet.map((c,i)=>Math.round(c*0.45+floor[i]*0.55)));
+  if(ghostColour!==0x30E8)throw Error('frieza gen: afterimage colour '+ghostColour.toString(16));
+  const ghost=pal(palValues.map(()=>1+ghostColour));
   // the Emperor's hit silhouette (frieza-intro.js): white, pink at 13-14
   const silhouette=[0,...Array(15).fill(0x7FFF)],silhouettePink=[0,...Array(15).fill(rgb555(31,8,23))];
   out.push('frieza_palettes:');
