@@ -2,6 +2,28 @@
 
 incsrc "core-math/data.asm"
 
+; C1:D14A: a pair with neither attack box runs no overlap tests. Retail
+; XORs the direction word twice on this path; omit both inversions and
+; the intervening width changes. The distance/actor metadata written by
+; CE72-CF19 is still required and is never skipped. Preserve full A/P,
+; including the native final LDA/EOR's N/Z and untouched carry/overflow.
+core_native_contact_empty:
+	REP #$20
+	LDA.w $E0C2,X
+	BNE .first
+	LDA.w $E0C2,Y
+	BNE .second
+	LDA $06
+	JML $81D284
+.first
+	JML $81D154
+.second
+	LDA $06
+	EOR.w #$8080
+	STA $06
+	LDA.w $E0C2,Y
+	JML $81D206
+
 ; Native target visibility. Inline the height subtraction only after the
 ; active/self/horizontal tests pass. CMP replaces the height helper's N/Z,
 ; while PHP/PLP retains its C/V and width contract. Rejected actors do not
@@ -953,11 +975,11 @@ core_native_body:
 +
 	LDA $02
 	CMP.b #3
-	BCC .native8               ; small bodies retain the native loop
+	BCC .native_ready          ; small bodies retain the native loop
 	PHP
 	PLA
 	AND.b #$08
-	BNE .native8
+	BNE .native_ready
 	REP #$20
 	LDA $04
 	SEC
@@ -972,8 +994,16 @@ core_native_body:
 	BCC .fast
 .native
 	SEP #$20
-.native8
+if not(defined("CORE_NATIVE_EMITTER_RELOAD_SLOW"))
+	; The capacity check above (or at .loop) already passed. Y can hold
+	; the temporary interior X anchor here, so reload it exactly once.
+	LDY $7C
+.native_ready
+	JML $80E649
+else
+.native_ready
 	JML $80E640
+endif
 .fast
 	XBA
 	AND.w #$FF00

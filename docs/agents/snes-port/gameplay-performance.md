@@ -39,6 +39,79 @@ Baseline artifacts: `.local/snes-test/perf3/baseline-{short,long}/`,
 `profile-short/` and `profile-original/`. Raw records and cartridges are
 private and are not committed.
 
+### Selected native changes
+
+`core/hooks.asm` keeps the generic emitter's Y cursor between pieces: all
+accepted and rejected paths already leave it equal to `$7C`. Rejected
+pieces also retain the capacity proof, since they allocated no OAM slot.
+Their short continuation lives in the old shake body made unreachable by
+the existing `$C0:E60D` anchor hijack. It is installed only while that
+hijack is enabled. `core/native.asm` enters the generic body fallback after
+its already-completed capacity check. Every partial Y write, clipped piece,
+high-table XOR, descriptor advance and return flag remains unchanged.
+`CORE_NATIVE_EMITTER_RELOAD_SLOW` restores all three original paths; with
+`CORE_NATIVE_SPRITES_SLOW`, the rejected-piece continuation is also omitted.
+
+The contact-distance prefix `$81:CE72–CF19` remains intact: even distant
+pairs must update their actor distance/direction fields. In the following
+overlap helper `$81:D14A`, two empty attack boxes perform no overlap tests.
+Skip the two cancelling XORs of `$06` and their width changes, retaining
+the complete A/P result. Nonempty boxes rejoin the original instructions
+with identical CPU and RAM state. `CORE_NATIVE_CONTACT_EMPTY_SLOW` restores
+the original helper. No scheduling, audio, DMA/HDMA or persistent cache
+changes are involved.
+
+The generic six-piece emitter falls **967 → 932 CPU cycles** and an empty
+contact pair **58 → 37**. The assembled `actor-hot.test.mjs` runs 24,000
+randomized emitter/overlap inputs and replays the recorded short/long
+charge and long teleport inputs. Its 2,769 recorded comparisons preserve
+registers, flags and all live WRAM, including the complete OAM image, high
+table and actor RAM. Only dead callee stack and the existing private body
+anchor word are excluded. Nonempty overlap paths compare at their unchanged
+native continuations. The existing exhaustive `sprites.test.mjs` also
+passes (all signed-offset pairs, clipping, widths, decimal arithmetic,
+shake, full OAM and zero-count wrap).
+
+On the identical 634 recorded generic calls, summed cycles fall
+**169,906 → 164,160**; 743 body calls fall **252,942 → 243,093**;
+531 overlap calls fall **29,408 → 20,142**. The 861 unchanged distance
+prefixes remain **150,633** cycles. These paired-input totals isolate the
+code savings from the subsequent differences in actor/input timing.
+
+All 13 short and six long gameplay cases pass their gameplay, palette,
+meter, OBJ, complete-NMI, graphics-DMA and duplicate scenery-work checks.
+Zero-drop timing remains open. The short/long charge peak increases despite
+fewer misses; the input/actor schedule changes when a frame stops lagging.
+
+| 240-video-frame case | Misses before / after | Peak field lines before / after |
+| --- | ---: | ---: |
+| solo-punch | 0 / 0 | 127.13 / 126.99 |
+| solo-ki | 0 / 0 | 131.84 / 131.74 |
+| walk | 0 / 0 | 233.35 / 232.11 |
+| punch | 0 / 0 | 235.26 / 235.86 |
+| ki | 0 / 0 | 232.58 / 231.44 |
+| fly | 2 / 1 | 250.59 / 249.74 |
+| fly-ki | 2 / 2 | 252.24 / 251.59 |
+| fly-punch | 1 / 1 | 281.34 / 281.05 |
+| water-flight | 0 / 0 | 221.77 / 221.68 |
+| teleport | 3 / 3 | 255.61 / 254.50 |
+| charge | 17 / 16 | 268.82 / 271.18 |
+| focus-grass | 0 / 0 | 184.77 / 185.75 |
+| transform-grass | 0 / 0 | 224.98 / 205.51 |
+
+| 1,200-video-frame case | Misses before / after | Peak field lines before / after |
+| --- | ---: | ---: |
+| punch | 0 / 0 | 235.26 / 235.86 |
+| ki | 0 / 0 | 238.04 / 237.46 |
+| fly-ki (corridor) | 13 / 13 | 252.17 / 251.61 |
+| fly-punch | 1 / 1 | 281.34 / 281.05 |
+| teleport | 18 / 18 | 322.32 / 321.57 |
+| charge | 25 / 22 | 268.82 / 271.18 |
+
+Selected artifacts: `.local/snes-test/perf3/final-{short,long}/` and
+`actor-third.log`. The strict cartridge is SHA-256
+`fc8c4399d2cf92693014fbd15f95f5ddb7d7ff1b53db9ec7d2cf90142cb7546e`.
+
 ## Current checkpoint
 
 The new pass starts at integrated main `5f21b35`. Fresh 240-frame runs
