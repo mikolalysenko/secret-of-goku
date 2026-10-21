@@ -1,8 +1,9 @@
--- ExHiROM: the generator probe in $40-$7D reads back through the CPU bus;
--- banks 00-3F:8000-FFFF and the upper halves of 40-5F mirror C0-DF (those
--- of 60-7D take extended data once the lower halves are full, snes-rom.md);
--- both header copies say ExHiROM; save RAM still answers at $30-$33 and
--- $B0-$B3.
+-- ExHiROM: the generator probe in $40-$7D reads back through the CPU bus.
+-- Banks 00-3F:8000-FFFF read the second 4 MiB's upper halves: those of
+-- 40-5F (and 7E-7F) stay copies of C0-DF (FE-FF), so 00-1F and 3E-3F
+-- mirror C0+b; those of 60-7D take extended data once the lower halves are
+-- full (snes-rom.md), so 20-3D must equal 60-7D there, not E0-FD. Both
+-- header copies say ExHiROM; save RAM still answers at $30-$33 and $B0-$B3.
 local function hex(v) return string.format('%02X', v) end
 function test()
   H.wait(2)
@@ -14,9 +15,14 @@ function test()
   check('probe_tail', H.r8(XPROBE + 30) == 0x5A and H.r8(XPROBE + 31) == 0xA5, hex(H.r8(XPROBE + 30)) .. hex(H.r8(XPROBE + 31)))
   check('prg_size', emu.getMemorySize(emu.memType.snesPrgRom) == 0x800000, emu.getMemorySize(emu.memType.snesPrgRom))
   local bad = nil
-  for _, b in ipairs({ 0x00, 0x01, 0x02, 0x10, 0x20, 0x2B, 0x3F }) do
+  for _, b in ipairs({ 0x00, 0x01, 0x02, 0x10, 0x1F, 0x3E, 0x3F }) do
     for _, a in ipairs({ 0x8000, 0xB070, 0xC0A8, 0xFFC0, 0xFFFC }) do
       if H.r8(b * 0x10000 + a) ~= H.r8((0xC0 + b) * 0x10000 + a) then bad = string.format('%02X:%04X', b, a) end
+    end
+  end
+  for _, b in ipairs({ 0x20, 0x2B, 0x3D }) do
+    for _, a in ipairs({ 0x8000, 0xB070, 0xC0A8, 0xFFFF }) do
+      if H.r8(b * 0x10000 + a) ~= H.r8((0x40 + b) * 0x10000 + a) then bad = string.format('%02X:%04X', b, a) end
     end
   end
   for _, b in ipairs({ 0x40, 0x50, 0x5F }) do
