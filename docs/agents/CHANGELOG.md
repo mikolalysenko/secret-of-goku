@@ -4,12 +4,17 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
-## SNES release: the second preview, 0.1.0-preview.2 (2026-10-21)
+## SNES release: 0.2.0 (2026-10-21)
 
-- Published as a GitHub pre-release:
-  https://github.com/mikolalysenko/secret-of-goku/releases/tag/snes-v0.1.0-preview.2
-  - The annotated tag `snes-v0.1.0-preview.2` points at fc7aabd. Only the
-    tag was pushed, so `origin/main` (Pages) did not move.
+- Published as a GitHub release, not a pre-release:
+  https://github.com/mikolalysenko/secret-of-goku/releases/tag/snes-v0.2.0
+  - The maintainer asked to "make this version 0.2.0 not a preview". The
+    same build had gone out minutes earlier as `snes-v0.1.0-preview.2`.
+    That release and its tag were deleted.
+  - The annotated tag `snes-v0.2.0` points at 2db4d86. Only the tag was
+    pushed, so `origin/main` (Pages) did not move.
+  - It was published with `--latest=false`, so the desktop `v0.2.5` keeps
+    GitHub's Latest badge.
   - Assets: the IPS, the patch-only ZIP (IPS, README, CREDITS, LICENSE,
     SHA256SUMS), README-SNES.txt, SHA256SUMS, and seven native 256×224
     Mesen captures from the release ROM (title, flight, power-up, Super
@@ -18,18 +23,22 @@ stay traceable even when they are committed together.
     (8,388,608 bytes); IPS SHA-256
     `49d123817429486fa75adfb6a2759731e7f10bf6b5b411206c14651c4ea1068c`
     (37,831 records).
+- The release README, the project README's link and releases.md no longer
+  call it a preview. They still disclose the slowdowns and the uncertified
+  physical-console status.
 - Verification:
   - `snes/release.mjs` on a clean checkout; the IPS tests pass.
   - The vendored RomPatcher.js (v20250430) reproduced the ROM byte for
     byte, both from the local package and from the IPS downloaded back
     from the release.
-  - The release commit's source passed the full suite under both probes
-    (161a15a; fc7aabd only adds the README link and releases.md).
+  - The source passed the full suite under both probes (161a15a; the later
+    commits change only documentation).
 - Contents: everything above since preview 1 except the Analyzer lite pass
   and the orbit's later (b) commits, which follow in the next merge.
-- The romhacking.net update text is in `.local/romhacking/preview2/romhacking-update.txt`,
-  for the maintainer to submit. It notes the broken `secret-of-qgoku`
-  screenshot URL in the first draft.
+- The romhacking.net update text is in
+  `.local/romhacking/v0.2.0/romhacking-update.txt`, for the maintainer to
+  submit. It notes the broken `secret-of-qgoku` screenshot URL in the first
+  draft.
 
 ## SNES integration: hits that land, in both editions (2026-10-21)
 
