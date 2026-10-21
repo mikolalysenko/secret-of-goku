@@ -4,6 +4,38 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES orbit: the second surge on the deck, the descent and the return (2026-10-20)
+
+- The descent (`clashCamera`, 1152-1392): the globe grows from the clash's
+  wide view to (-15, 281, 230) from tables the generator makes in extended
+  data (per radius 56-230 the M7A/M7D rows, per frame the window rows:
+  198 KiB), published as they are with their banks carried by each
+  indirect HDMA set; the stars cull against the same rows. Against the
+  browser's `planet()` at two descent cameras: edges 0.02% and 0.15% off.
+- The return (`returnToFortress` at 1392): the deck reloads through its own
+  door with the entry tile at Goku's landing spot (the browser's nearest
+  landable point, searched during the descent), the fade-out quickened, the
+  scene stopped and the scene work area, pad and combat given back before
+  the load; Goku stands on the exact spot, the world module's landing pose
+  plays as the deck fades in, the landing clock runs to
+  `victoryTiming.landed`, then `frieza_orbit_landed` and the frieza
+  module's victory event C7. The browser's 24-frame pale tint is a fade
+  through black here.
+- The second surge plays on the deck to `collateralStart` (72): the Death
+  Ball grows above Frieza (fx `FX_DEATHBALL` at the browser's snapped
+  sizes) and Goku's giant beam rises (`FX_BEAM_WAVE`), while the frieza
+  module draws Frieza and breaks the floor at 24 and 48; then the orbit
+  and its intro start (the montage and pullback are next). Fixed: the
+  hand-off read Frieza's HP, clock, pattern and stun from bank $00 (ROM)
+  instead of his WRAM, so the space fight started from stray values.
+- Tests: `globe` adds two descent cameras; new case `return` runs from the
+  frieza hand-off through the clash, the descent and the landing to C7;
+  `handoff` checks the hand-over at 72 with Frieza's HP; the clash case
+  counts lag frames only while the scene runs.
+- Validation (merged with main 5f21b35): orbit 7/7, frieza 17/17, story,
+  ending 8/8 pass; scene select 21 full and 2 native (trial, hexas: the
+  listed gaps).
+
 ## SNES integration: finished branches, hardware safety, test harness (2026-10-20)
 
 - Merged the finished side branches over Codex's optimization pass:

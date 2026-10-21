@@ -20,6 +20,7 @@ incsrc "modules/destroy/module.asm"
 incsrc "modules/ending/module.asm"
 incsrc "modules/frieza/module.asm"
 incsrc "modules/combat/module.asm"
+incsrc "modules/orbit/module.asm"           ; after combat (reads its public !cb_vblanks)
 incsrc "modules/vegeta/module.asm"
 incsrc "modules/audio/module.asm"           ; after the modules whose sound flags it reads
 
@@ -37,6 +38,7 @@ modules_field_frame:
 	JSL world_field_frame
 	JSL flight_pose_frame      ; after world: the ceiling escape's pose wins over its takeoff pose
 	JSL frieza_field_frame
+	JSL orbit_field_frame
 	JSL vegeta_field_frame
 	JSL goku_frame
 	JSL destroy_field_frame          ; last: its planner uses the frame time left
@@ -61,6 +63,7 @@ modules_field_nmi:
 	JSL destroy_field_nmi            ; first: switches the breach's HDMA on while vblank lasts
 	JSL goku_nmi
 	JSL frieza_field_nmi
+	JSL orbit_field_nmi
 	JSL vegeta_nmi
 	JSL ending_nmi
 	JSL fx_nmi                 ; keep last: programs HDMA channels 2/3 after all vblank DMA
@@ -193,6 +196,9 @@ pullpc
 ; every module so their defines are visible.
 incsrc "modules/flight/bind.asm"
 
+; Orbit bindings to optional modules (after every module's defines; before
+; frieza's, which test its !FRIEZA_ORBIT_* entries).
+incsrc "modules/orbit/bind.asm"
 ; Frieza bindings to optional modules (after every module's defines).
 incsrc "modules/frieza/bind.asm"
 ; Combat bindings to optional modules: after every module include (its
