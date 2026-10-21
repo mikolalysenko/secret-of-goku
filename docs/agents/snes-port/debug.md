@@ -223,6 +223,39 @@ Goku state the debug module sets match the browser's. Pictures match at
 frame 0 for late, intro, tree, sandship (100%), fortress, slime, buffy and
 sword (95-99%); the others differ by module-owned visuals and timing.
 
+### Glitch hunt
+
+`node snes/test/debug/hunt.mjs [preset …] [--frames=480] [--jobs=5] [--browser]`
+(not in `run-all`) starts each preset from power-on as above. It then
+screenshots every frame after the capture point, using exact frames, and
+flags **one-frame transients**: pixels that differ from both neighbouring
+pictures by more than 48 (summed 8-bit RGB) while the neighbours agree
+within 24. That catches torn frames, wrong palettes on one vblank, blinking
+sprites and one-frame layer garbage. It also catches deliberate effects:
+quakes, hit flashes, the original game's 30 Hz flicker and window
+animations.
+
+`--browser` records the same number of frames from the browser mod
+(`?start=<preset>`, one screenshot per `mana.run(1)`, no state export) and
+lists both counts side by side. Read a flag as a cartridge bug when the
+browser has nothing similar. The timelines are not frame-locked: fights
+diverge, and song loads hold the cartridge's game loop, so compare
+behaviour rather than frame numbers.
+
+Only flagged frames and their neighbours are kept, in
+`.local/snes-test/debug-hunt/<preset>/` (`browser/<preset>/` at 3x scale).
+`report.json` holds the counts, frames, pixel counts at cartridge scale and
+bounding boxes.
+
+On October 21, 480 frames per preset found the following:
+- the explosion flash's torn last frame;
+- the orbit's beam-clash palette swap and one-frame HUD loss;
+- the endings' dialogue-window garbage;
+- the Frieza fight's blinking dash trail.
+
+The Sandship, Buffy, flight and slime flicker and the fights' quakes are the
+original game's or the browser's own.
+
 ## Resources and patches
 
 | Kind | Use |
