@@ -3,7 +3,8 @@
 Spoilers. Part of the [SNES port](plan.md); build and harness in
 [snes-rom.md](../snes-rom.md). Sources: `snes/src/modules/ending/`,
 generators `snes/gen/ending.mjs` (+ `ending-art.mjs`, `ending-space.mjs`,
-`ending-vista.mjs`, `ending-flight.mjs`), tests in `snes/test/ending/`.
+`ending-vista.mjs`, `ending-flight.mjs`, `ending-cutaway.mjs`,
+`ending-globes.mjs`), tests in `snes/test/ending/`.
 
 Browser sources ported: `engine/shenron-ending.js`, `wish-flight.js`,
 `ending-departure.js`, `kai-planet.js`, `planet-view.js`,
@@ -23,7 +24,7 @@ Browser sources ported: `engine/shenron-ending.js`, `wish-flight.js`,
 | kai (9), complete (10) | King Kai's planet, end cards | done | `kai`: 93.1% |
 | doomed (11), explode (12), escape (13) | planet-view globe, explosion, teleport | done | `space`: 15 stills, 65-100% (fragments differ in shape, see below); `loads`: the globe after door 2F 99.9% |
 | fatal (14) | boss-rush death, planet explosion, GAME OVER | done | `fatal`: 7 stills 65-100%, Start returns to the title |
-| Fortress cutaway (world flight) | planet-view `isShot`: globe, `beam()`, ring, dust, fade | done (the default target's globe) | `cutaway`: 11 stills 99.7-100% |
+| Fortress cutaway (world flight) | planet-view `isShot`: globe, `beam()`, ring, dust, fade | done (34 target orientations, day/night) | `cutaway`: 59 stills; sampled age-140 views 89.4-99.9% |
 
 All eight tests pass (`node snes/test/ending/run.mjs`), together with the
 story tests that exercise the hooks and the scene select's good-ending,
@@ -272,8 +273,9 @@ after the cutaway until the deck landing). planet-view.js `prepare()` with
 the shot, rebuilt per age by `ending-cutaway.mjs` with the browser's own
 `sky()`/`beam()` formulas:
 
-- BG1: the space stage's globe (night during Frieza's crisis,
-  `STORY_Q_FRIEZA_CRISIS`), at planet-view's default target.
+- BG1: one of 34 globe orientations, selected once from the saved shot
+  `!w_shot_tx/ty`, not the Fortress's later `$0128/$012A`. Day/night share
+  tiles and maps; `STORY_Q_FRIEZA_CRISIS` selects the palette.
 - BG2: the stars; every cell the beam, the shock ring or a twinkling
   star touches (102) is a high-priority footprint slot redrawn per age
   (the band, the ring and the stars outside the globe composited), in an
@@ -295,6 +297,102 @@ budget. VRAM avoids what world flight still writes (Mode 7 characters
 world module pauses its crater refresh meanwhile (the landing reloads it
 all).
 
+#### Reachable targets and the 192 KiB orientation budget
+
+The native Fortress has no fixed world-space route. `C2:B0D7-B109`
+places it relative to the camera `$FA/$FC` using the wander seed `$0126`;
+`C2:B133-B169` walks both coordinates by +/-6, wrapping at 4096.
+Camera placement and the seed vary. `ending-globes.mjs` verifies those
+original instruction bytes, so a route from one checkpoint is not treated
+as a bound on reachable targets.
+
+The atlas covers the torus with an **8x4 grid** (512 x 1024 world units),
+plus `(1848,3528)` for the rounded native flight preset and `(2432,3024)`
+for the established default composition: **34 orientations**. The selector
+rounds the saved target to eight units, wraps at 4096, picks the nearest
+grid point, then compares the two extra views by wrapped Manhattan
+distance. Zero is a valid coordinate. Away from the extra views, maximum
+longitude/latitude error is 22.5 degrees; coastlines between views differ.
+
+The previous `codex-ending` implementation (`fe13cd1`, `a67e54e`) used
+129 views and **1,338,944 bytes**. Lossless DEFLATE of its separate view
+blobs still measured 895,871 bytes, including the shared prefix. A regular
+8x4 grid alone fits but loses agreement at the native flight preset; the
+extra preset view recovers that composition without dropping other views.
+
+The new generator fits paired day/night RGB555 colours to six 15-colour
+palettes and flip-deduplicates **all** tiles across the views. Pixels remain
+full resolution. Storage is **188,387 bytes (183.97 KiB)**, 8,221 bytes
+below the 192 KiB limit, with a build-time budget assertion:
+
+| Orientation data | Bytes |
+| --- | ---: |
+| 5,060 shared 4bpp tiles, including transparent tile 0 | 161,920 |
+| Padding to five bank-aligned 32 KiB xdata blobs | 1,920 |
+| Shared 2 KiB map, 20x19 attribute bytes per view, consecutive tile-run descriptors | 24,547 |
+| **Total (six blobs)** | **188,387** |
+
+The existing two 22-level fade-palette blobs remain 22 KiB total,
+independent of orientation count. Fast tables (187 bytes: row addresses,
+view offsets, extra targets and source banks) stay in `$AA:C000`.
+The load uses DMA to scatter consecutive dictionary runs into the same
+307 BG1 tile slots, then uploads a 20x19 rectangle of palette/flip bytes
+with 19 DMAs to `$2119`, all under forced blank. Compared with individual
+CPU map writes, the rows cost 2,482 more ROM bytes and save 47 scanlines
+on the load. There is no decompressor or temporary WRAM/SRAM buffer. At most
+121 runs are needed; blank tile 0 plus 307 cells occupy `$3000-$433F`,
+clear of the map at `$4C00`.
+
+Loading remains one black frame: 190.76 lines for the default view,
+**201.30 lines maximum** across all 34, before the next native NMI.
+The cutaway runs 187 frames including loading, footprint DMA ends by line
+254, NMI work by 255, and the footprint trails by at most one age. A new
+hardware monitor also caught an existing footprint-budget issue when
+stills jump across many ages: the uploader now refreshes its available
+vblank time for each replayed age, including after empty ages. All watched
+PPU writes and DMA pass the vblank/forced-blank and HDMA checks.
+
+#### Still comparisons (2026-10-20)
+
+References call `planet-view.js` itself with the **recorded shot target**.
+Each sampled position runs an actual full-wave shot in day and night
+(crisis) states, at ages 2, 60, 140 and 180. Tests move the live Fortress
+after firing and before cutaway start, verify nearest selection independently,
+and exercise the 4095-to-zero rounding seam. All 34 loaded maps and tile
+images are also compared byte for byte with the uncompressed generator
+atlas, exercising every dictionary bank and palette/flip attribute.
+
+Below, each cell is **129-view result -> budgeted result**, at age 140.
+Agreement allows at most 24/255 error in each RGB channel. Parentheses
+measure only the globe disc/rim, so the fixed sky cannot hide its error.
+
+| Target | Day: full screen (globe only) | Night: full screen (globe only) |
+| --- | --- | --- |
+| 0,0 and 4095,4095 | 99.2 -> 99.1% (98.8 -> 98.4%) | 99.4 -> 99.9% (99.6 -> 99.6%) |
+| 1848,3527 (native flight preset) | 95.6 -> 99.1% (86.9 -> 98.4%) | 96.6 -> 99.9% (90.2 -> 99.5%) |
+| 400,800 | 91.3 -> 91.3% (72.8 -> 72.8%) | 92.5 -> 93.0% (76.9 -> 76.9%) |
+| 1400,2000 | 92.9 -> 92.7% (78.2 -> 77.3%) | 94.5 -> 94.4% (83.4 -> 81.5%) |
+| 3100,1200 | 89.3 -> 89.4% (66.3 -> 66.4%) | 91.2 -> 91.6% (72.5 -> 72.5%) |
+
+The original default-target 11-age sequence is 99.0-99.7% (129 views:
+99.1-99.7%). Changes there come from fitting palettes across the smaller
+atlas. Small stray edge pixels in late stills also existed before this
+orientation change.
+
+World callback cost, entry to exit label in scanlines: idle **0.21** mean,
+live **4.87** mean / 5.02 max, start/selection **4.34** once. NMI idle
+0.20, live 7.03 mean / 22.17 max. `modprof.mjs` on sword/battle measures
+the unchanged field callbacks at 0.46 lines and NMI at 0.24/0.23; that
+existing field idle cost remains above the 0.3-line guide.
+
+Validation: strict build, all eight ending cases, all 14 available world
+cases and all six perf scenes pass. Perf's world probe now watches both
+`00:8089` (original) and `80:8089` (port); previously it reported 304 lag
+frames on the unmodified integration build because it missed FastROM.
+Original/build lag counts: sword 4/4, Sandship 12/4, battle 4/4, Beast
+34/34, Fortress 5/4, flight 4/4; p90 finish lines 45/63, 103/113, 34/54,
+173/173, 90/95, 123/114. No core or world module code changed.
+
 ## Budgets
 
 | Scene | VRAM | CGRAM | OBJ sprites | HDMA channels |
@@ -305,7 +403,7 @@ all).
 | Flight | Mode 7 `$0000-$3FFF`, OBJ table 1 `$5000-$57FF` | backdrop, 64-127, 128-255 | ≤ 128 | 2, 3 (matrix), 4 (mode), 5 (TM), 6 (gradient) |
 | Overlay (village, departure to 144) | `FIELD_OBJ_A` (`$7220`/`$7320`) | OBJ 6-7 (all 256 in the cloud) | 6 front | — |
 | Departure from 144 | the space stage, day globe only | as space | 1 | 5 |
-| Fortress cutaway (world flight) | BG1 tiles `$34D0-$4810`, map `$4C00`; BG2 map `$6000`, tiles `$7000-$7B30`; OBJ tiles 64-93 (`$6400`) | all 256 (per fade level) | ≤ 64 | none (the world's off) |
+| Fortress cutaway (world flight) | BG1 tiles `$3000-$433F`, map `$4C00`; BG2 map `$6000`, tiles `$7000-$7B30`; OBJ tiles 64-93 (`$6400`) | all 256 (per fade level) | ≤ 64 | none (the world's off) |
 
 The departure's load frame (144, the space stage under white) skips the
 spark and fragment palettes the distant globe never shows, keeps the
@@ -351,7 +449,7 @@ explosion's wait runs, the hook advances the prose as the browser's held
 R does (B on a button wait without a choice, through `!core_pad_inject`)
 until the bad ending's A3 cue starts the explosion.
 
-WRAM block `!RAM_ORBIT+$80..$B3`:
+WRAM block `!RAM_ORBIT+$80..$B5`:
 
 | Address | Field |
 | --- | --- |
@@ -362,7 +460,7 @@ WRAM block `!RAM_ORBIT+$80..$B3`:
 | +$86 | `!ending_done` (word): bit n set when phase n's timeline finished (event scripts can wait on it) |
 | +$88 | `!ending_status` (byte): `ES_ACTIVE` 1, `ES_NATIVEBOY` 2, `ES_MUTED` 4, `ES_AIRBORNE` 8, `ES_CHARGING` $10, `ES_COMPLETE` $20, `ES_DEFEATED` $40, `ES_LOADING` $80 |
 | +$89 | `!ending_sfx` (byte): last sound cue: 1 power burst, 2 charged, 3 flight, 4 teleport, 5 teleport in, 6 revert, 7 Frieza orb, 8 Fortress break (each also played with `audio_sfx`) |
-| +$8C/$8E | `!ending_target_x/y`: globe target (0 = planet-view's default) |
+| +$8C/$8E | `!ending_target_x/y`: cutaway's rounded saved shot target (0 is valid) |
 | +$90 | `!ending_map0`: the map the scene took the screen on |
 | +$92 | `!ending_live` |
 | +$94 | `!ending_reason`: `endingResult` 0 good, 1 fortress, 2 balls, 3 frieza, 4 beast |
@@ -372,15 +470,16 @@ WRAM block `!RAM_ORBIT+$80..$B3`:
 | +$A0 | `!ending_pulse`: the explosion preset's prose pulse |
 | +$A2 | `!ending_mute`: frames the native music has been silenced (0 = not) |
 | +$A3-$B3 | the cutaway: on, load, age, shown age, night, end, runs, run pointer, DMA bank, fade level, DMA budget |
+| +$B4-$B5 | `!ending_cut_globe`: latched orientation (0-31 grid, 32 native flight preset, 33 default) |
 
 ## Resources
 
 | Resource | Use |
 | --- | --- |
-| Code | `$A9:8000-FF65` (154 bytes free); second area `$AA:C000-C7EB` (14 KiB of the quarter free) |
-| Fast data | `E9:0000` (31.3 KiB: fade sets, fragment and spark OAM, window lookups, the flight's tables), `EC:0000` (10.7 KiB: crack events); `EE:0000`, `EF:0000` free |
-| Extended data | 41 blobs, 325 KiB in `$40-$7D`: King Kai 40 KiB, space 70 KiB, vista and flight OBJ/maps, the cutaway 208 KiB (OAM images 101, footprint runs 83, palettes 22) |
-| WRAM | `!RAM_ORBIT+$80..$B3` |
+| Code | `$A9:8000-FF74` (139 bytes free, unchanged); second area `$AA:C000-CA11` (13.48 KiB of the quarter free) |
+| Fast data | `E9:0000` (31.3 KiB: fade sets, fragment and spark OAM, window lookups, the flight's tables), `EC:0000` (10.7 KiB: crack events); `ED`/`EE`/`EF` belong to core |
+| Extended data | ending: 46 blobs / 520,822 bytes (508.6 KiB), including the 188,387-byte orientation atlas. Whole build: 1,286,445 of 2,031,616 bytes, 727.7 KiB free |
+| WRAM | `!RAM_ORBIT+$80..$B5` |
 | SRAM | `!SRAM_WORK_SCENE` (`$32:6000-7FFF`) while a scene runs: state, palette components and outputs, curves, queue, HDMA tables, the flight's matrix tables, row and star buffers |
 | VRAM | per scene above; core region `FIELD_OBJ_A` (owner `$09`) for the overlay |
 | HDMA | channels 2-6 in full-screen scenes (5 the TM cut, 2/3/4/6 windows or the flight's matrix, mode and gradient); fx keeps 2/3 only while its polygons run; none in the cutaway (world flight's 0-5 off) |
@@ -411,11 +510,11 @@ WRAM block `!RAM_ORBIT+$80..$B3`:
   robin).
 - Fades are exact per channel, but palette-based: they apply to the
   scene's colours, never to BG3's dialogue (as the browser's `dim`).
-- Fortress cutaway: the globe is always planet-view's default target's
-  (the browser turns it so that the Fortress, wherever it was hit, sits
-  under the strike point); the beam, ring, dust and fade are the same.
-  Globes per target would cost ~16 KiB of extended data each (a grid of
-  8 x 4 per day and night: ~1 MiB). The first frame is black (the load),
+- Fortress cutaway: 34 nearest orientations (8x4 grid plus the native flight
+  and default views), while the browser rounds every target to eight units.
+  Coastlines and details between orientations differ; see the measurements
+  above. Day/night share palette indices. Beam, ring, dust and fade are the
+  same. The first frame is black (the load),
   and on the first frames, where all 64 dust particles start on the same
   lines, the hardware's 32 sprites per line can drop some.
 
@@ -425,15 +524,12 @@ WRAM block `!RAM_ORBIT+$80..$B3`:
   key) on the death frame, as `battle-retry.js` (its `fz_death_tick`);
   the ending module keeps only the event gate at `C1:E77E`. Its
   `STORY_Q_FRIEZA_CRISIS` answer (from the core's impact until the wish)
-  puts the doomed globe and the cutaway's globe on their night side;
-  until it merges, the bad-ending presets show the day globe where the
-  browser's references show the night one.
+  puts the doomed globe and the cutaway's globe on their night side.
+  The cutaway test exercises the live crisis query in both states.
 - **world**: `world_nmi_scars` returns while `!w_cut_age` runs (the
   cutaway's VRAM); nothing else changed there.
-- **core** / **layout**: the ending uses `!CODE_QUARTER_AUDIO`
-  (`$AA:C000`) as its second code area (note it in `core/layout.asm`).
-  The comments there still name the `$EC-$EF` lower halves as ending art;
-  they now hold fast tables (`EC`) and nothing (`ED`, `EE`, `EF`).
+- **core** / **layout**: the ending stays in its existing `$A9` bank and
+  `!CODE_QUARTER_AUDIO` (`$AA:C000`). No allocation changes requested.
 - **core**: `core_spr_cull` accepts y down to -64, but an 8-bit OBJ Y below
   -16 (16x16) or -32 (32x32) shows at the bottom of the screen; the overlay
   culls itself to [-32, 224). A "map loaded" notification would replace
@@ -467,7 +563,7 @@ overruns) are measured on a separate untouched run.
 | `vista` | `ending-fix__end-20` (map 180) | 12 stills 95.5-96.0%, done flags, Shenron's rise without lag, lag ≤ 12 |
 | `flight` | `ending-fix__end-20` (map 180) | 11 stills 90.6-99.0%, load ≤ 30 frames, muted/airborne/sound/done, lag ≤ 20, no overruns |
 | `loads` | `emulator-probe__potos-state` | doors through core's event mailbox: 2F under the doomed globe (reloaded, clock on, 99.9%), cue 176 after the flight holds black, door 3FF: the cliff 99.1% of a native load of it, Dyluck present |
-| `cutaway` | the world tests' waterfall checkpoint | Super Saiyan takeoff, the Fortress 400 px ahead at the default target, the full wave: 11 stills 99.7-100% against planet-view itself (age held), footprint DMA ends by line 254, the age trails by at most 1, the field's IRQ line (VTIME 196) back after the deck landing |
+| `cutaway` | the world tests' waterfall checkpoint | actual shots at six sampled targets in both lights plus the default sequence (59 stills); saved-target selection, 192 KiB budget, all 34 VRAM images byte-exact, forced-blank load <215 lines, hardware-safe PPU/DMA, footprint ends by line 254 and trails at most 1, VTIME 196 after deck landing |
 
 Sounds are checked on the calls into the audio module (`audio_sfx`,
 `audio_fade` watched in Mesen): silence at the scatter's and the death's

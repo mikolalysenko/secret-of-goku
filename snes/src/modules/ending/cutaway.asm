@@ -3,7 +3,7 @@
 ; planet-view.js prepare() with a shot (world-ki.js cutaway, 186 frames):
 ; the world module counts !w_cut_age 0-185 after its Fortress explosion and
 ; keeps flying the world underneath; while it runs, the picture is ours:
-; Mode 1 with the space stage's globe on BG1 (night during Frieza's crisis,
+; Mode 1 with an oriented globe on BG1 (night during Frieza's crisis,
 ; planet-view drawPlanet), the stars, the beam and its shock ring on BG2
 ; (footprint cells redrawn per age), the dust as OBJ, the fade (164-186) in
 ; the palettes. Everything per age comes from ending-cutaway.mjs. The world
@@ -13,8 +13,8 @@
 ; VRAM (words), clear of what world flight still writes meanwhile (Mode 7
 ; characters $2200-$2FFF animated by the native NMI, its sky map rows in
 ; $5000-$5FFF, the world module's OBJ region $6600-$6FFF): BG1 characters
-; from $3000 (the globe's tiles are numbered from the star count S, so they
-; occupy $34D0-$4810), BG1 map $4C00, BG2 map $6000, BG2 characters $7000
+; from $3000 (blank, then one slot per globe cell; below $4C00),
+; BG1 map $4C00, BG2 map $6000, BG2 characters $7000
 ; (stars, then the footprint slots), OBJ tiles 64-93 at $6400 (OBJ base
 ; $6000 as the world's). The native Mode 7 row and column uploads are
 ; dropped meanwhile ($2E/$2F) and the world module pauses its crater
@@ -26,6 +26,7 @@
 !CUT_BG2_MAP = $6000
 !CUT_BG2_CHR = $7000
 !CUT_OBJ_CHR = $6400
+assert !ENDING_CUT_GLOBE_COLS == 8 && !ENDING_CUT_GLOBE_ROWS == 4, "cutaway selector grid changed"
 
 ; World frame (modules_world_frame, after the world module): M16/X16, DB = $7E.
 ; The cutaway runs while the world module's block is live (its magic word),
@@ -71,6 +72,7 @@ ending_world_frame:
 	BEQ +
 	LDA.b #$01
 +	STA.l !ending_cut_night
+	JSR cut_select_globe
 	BRA .out                       ; no OAM yet: the world's HDMA may hold channel 7
 .on
 	LDA.l !ending_cut_load
@@ -83,6 +85,72 @@ ending_world_frame:
 .out
 	PLP
 	RTL
+
+; Once per cutaway. world-ki latches the target when firing, before the
+; Fortress moves again. planet-view rounds it to eight units first. An
+; 8x4 nearest grid wraps at 4096, plus the two retained reference targets
+; when their wrapped Manhattan distance is smaller. Zero is valid.
+cut_select_globe:
+	REP #$30
+	LDA.l $7E0000|!w_shot_tx
+	CLC : ADC.w #4
+	AND.w #$0FF8
+	STA.l !ending_target_x
+	CLC : ADC.w #256
+	AND.w #$0E00
+	XBA : LSR
+	STA.l !ending_cut_globe
+	LDA.l $7E0000|!w_shot_ty
+	CLC : ADC.w #4
+	AND.w #$0FF8
+	STA.l !ending_target_y
+	CLC : ADC.w #512
+	AND.w #$0C00
+	XBA : ASL
+	ORA.l !ending_cut_globe
+	STA.l !ending_cut_globe
+	; Distance to the nearest regular grid point.
+	LDA.l !ending_target_x
+	AND.w #$01FF
+	CMP.w #256
+	BCC +
+	EOR.w #$01FF : INC
++	STA.l !ending_tmp
+	LDA.l !ending_target_y
+	AND.w #$03FF
+	CMP.w #512
+	BCC +
+	EOR.w #$03FF : INC
++	CLC : ADC.l !ending_tmp
+	STA.l !ending_tmp
+	; Preserve the native flight preset and the established default picture.
+	LDX.w #$0000
+.extra
+	LDA.l !ending_target_x
+	SEC : SBC.l ending_cut_globe_extra_targets,X
+	JSR cut_wrap_distance
+	STA.l !ending_tmp2
+	LDA.l !ending_target_y
+	SEC : SBC.l ending_cut_globe_extra_targets+2,X
+	JSR cut_wrap_distance
+	CLC : ADC.l !ending_tmp2
+	CMP.l !ending_tmp
+	BCS +
+	STA.l !ending_tmp
+	TXA : LSR : LSR
+	CLC : ADC.w #(!ENDING_CUT_GLOBE_COLS*!ENDING_CUT_GLOBE_ROWS)
+	STA.l !ending_cut_globe
++	INX : INX : INX : INX
+	CPX.w #(!ENDING_CUT_GLOBE_EXTRAS*4)
+	BNE .extra
+	SEP #$20
+	RTS
+cut_wrap_distance:
+	AND.w #$0FFF
+	CMP.w #$0800
+	BCC +
+	EOR.w #$0FFF : INC
++	RTS
 
 ; This age's OAM image (dust) into the game's OAM buffer ($7E:0800, 544
 ; bytes; the world NMI uploads it): DMA channel 7 to WMDATA.
@@ -197,27 +265,7 @@ cut_load:
 	STA.w $2100
 	LDA.b #$00
 	STA.l !ending_cut_load
-	LDA.l !ending_cut_night
-	REP #$30
-	BEQ .day
-	LDA.w #(!CUT_BG1_CHR+(!ENDING_STAR_TILES*16))
-	LDX.w #ending_space_night_tiles
-	LDY.w #!ENDING_SPACE_NIGHT_TILES_SIZE
-	JSR cut_vram_bank_night_tiles
-	LDA.w #!CUT_BG1_MAP
-	LDX.w #ending_space_night_map
-	LDY.w #$0800
-	JSR cut_vram_bank_night_map
-	BRA .stars
-.day
-	LDA.w #(!CUT_BG1_CHR+(!ENDING_STAR_TILES*16))
-	LDX.w #ending_space_day_tiles
-	LDY.w #!ENDING_SPACE_DAY_TILES_SIZE
-	JSR cut_vram_bank_day_tiles
-	LDA.w #!CUT_BG1_MAP
-	LDX.w #ending_space_day_map
-	LDY.w #$0800
-	JSR cut_vram_bank_day_map
+	JSR cut_globe
 .stars
 	SEP #$20
 	LDA.b #ending_space_star_tiles>>16 : STA.l !ending_cut_bank
@@ -254,29 +302,90 @@ cut_load:
 	JSR cut_regs
 	REP #$30
 	RTS
-cut_vram_bank_night_tiles:
-	PHA
+; Scatter consecutive runs from the shared dictionary, then set the map's
+; palette/flip rows. All writes are under cut_load's forced blank, HDMA off.
+; A run is a word dictionary tile number followed by a byte tile count;
+; it never crosses a bank. The maps all use fixed sequential BG1 slots.
+; No temporary tile/map buffer and no decoder in the live frame path.
+cut_globe:
+	LDA.b #ending_cut_globe_tiles0>>16
+	STA.l !ending_cut_bank
+	REP #$30
+	LDA.w #!CUT_BG1_CHR
+	LDX.w #$0000
+	LDY.w #32                      ; transparent tile 0
+	JSR cut_vram
 	SEP #$20
-	LDA.b #ending_space_night_tiles>>16
-	BRA cut_vram_banked
-cut_vram_bank_night_map:
-	PHA
-	SEP #$20
-	LDA.b #ending_space_night_map>>16
-	BRA cut_vram_banked
-cut_vram_bank_day_tiles:
-	PHA
-	SEP #$20
-	LDA.b #ending_space_day_tiles>>16
-	BRA cut_vram_banked
-cut_vram_bank_day_map:
-	PHA
-	SEP #$20
-	LDA.b #ending_space_day_map>>16
-cut_vram_banked:
+	LDA.b #ending_cut_globe_refs>>16
 	STA.l !ending_cut_bank
 	REP #$20
-	PLA
+	LDA.w #!CUT_BG1_MAP
+	LDX.w #ending_cut_globe_refs    ; shared map: sequential tile IDs, no attributes
+	LDY.w #$0800
+	JSR cut_vram
+	PHB
+	PEA $AAAA : PLB : PLB          ; fast tables in this code quarter; I/O visible
+	LDA.l !ending_cut_globe
+	ASL : ASL : TAX                ; four-byte descriptor: first run, run end
+	LDA.w ending_cut_globe_offsets+2,X
+	STA.l !ending_tmp2
+	LDA.w ending_cut_globe_offsets,X
+	SEC : SBC.w #(!ENDING_CUT_GLOBE_WIDTH*!ENDING_CUT_GLOBE_HEIGHT)
+	STA.l !ending_tmp              ; attributes immediately precede the runs
+	LDA.w ending_cut_globe_offsets,X
+	TAX
+	LDA.w #(!CUT_BG1_CHR+16)
+	STA.w $2116                    ; all runs append to consecutive VRAM slots
+.run
+	LDA.l ending_cut_globe_refs,X
+	ASL : ASL : ASL : ASL : ASL
+	AND.w #$7FFF
+	STA.w $4372
+	LDA.l ending_cut_globe_refs+1,X
+	AND.w #$001C                   ; dictionary tile bits 10-12 = bank index
+	LSR : LSR : TAY
+	SEP #$20
+	LDA.w ending_cut_globe_banks,Y
+	STA.w $4374
+	REP #$20
+	LDA.l ending_cut_globe_refs+2,X
+	AND.w #$00FF
+	ASL : ASL : ASL : ASL : ASL
+	STA.w $4375
+	SEP #$20
+	LDA.b #$80
+	STA.w $420B
+	REP #$20
+	INX : INX : INX
+	TXA : CMP.l !ending_tmp2
+	BNE .run
+	LDA.l !ending_tmp
+	CLC : ADC.w #ending_cut_globe_refs
+	STA.w $4372
+	SEP #$20
+	LDA.b #ending_cut_globe_refs>>16
+	STA.w $4374
+	STZ.w $4370                    ; A -> B, one register (map high bytes only)
+	LDA.b #$19
+	STA.w $4371
+	REP #$20
+	LDX.w #$0000
+.map
+	LDA.w ending_cut_globe_map_rows,X
+	STA.w $2116
+	LDA.w #!ENDING_CUT_GLOBE_WIDTH
+	STA.w $4375
+	SEP #$20
+	LDA.b #$80
+	STA.w $420B                    ; $2119 increments the VRAM word address
+	REP #$20
+	INX : INX
+	CPX.w #(!ENDING_CUT_GLOBE_HEIGHT*2)
+	BNE .map
+	PLB
+	SEP #$20
+	RTS
+
 ; VRAM word address A, source X (low 16) in bank !ending_cut_bank, Y bytes:
 ; DMA channel 7 into $2118/$2119. M16/X16, DB = $32.
 cut_vram:
@@ -381,14 +490,6 @@ cut_level:
 ; run for its setup); an age cut short continues at the next vblank.
 cut_footprint:
 	REP #$30
-	JSL core_vblank_lines
-	REP #$30
-	ASL : ASL : ASL : ASL : ASL    ; lines * 32
-	STA.l !ending_tmp2
-	ASL : ASL                      ; * 128
-	CLC
-	ADC.l !ending_tmp2             ; * 160
-	STA.l !ending_cut_budget
 	SEP #$20
 	LDA.b #$80 : STA.w $2115
 	LDA.b #$01 : STA.w $4370       ; A -> B, two registers
@@ -420,6 +521,16 @@ cut_footprint:
 	LDA.l ending_cut_delta_rows+1,X
 	STA.l !ending_cut_ptr+1
 .resume
+	; Refresh for each age, including after empty ages. A still/test age jump
+	; may replay many ages in one NMI; their bookkeeping also costs time.
+	JSL core_vblank_lines
+	REP #$30
+	ASL : ASL : ASL : ASL : ASL    ; lines * 32
+	STA.l !ending_tmp2
+	ASL : ASL                      ; * 128
+	CLC
+	ADC.l !ending_tmp2             ; * 160
+	STA.l !ending_cut_budget
 	PHB
 	SEP #$20
 	LDA.l !ending_cut_ptr+2

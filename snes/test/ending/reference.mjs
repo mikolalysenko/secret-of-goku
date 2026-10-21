@@ -145,11 +145,12 @@ export async function flightReference({rom,age}){
 
 // Fraction of pixels whose channels all differ by at most `tol` (8-bit),
 // within the optional rectangle {x0,y0,x1,y1}.
-export function compare(pngPath,ref,{tol=24,rect=null}={}){
+export function compare(pngPath,ref,{tol=24,rect=null,mask=null}={}){
   const img=gfx.readPng(pngPath);
   if(img.width!==256||img.height!==224)throw Error(`unexpected screenshot size ${img.width}x${img.height}`);
   const r=rect??{x0:0,y0:0,x1:256,y1:224};let same=0,total=0;
   for(let y=r.y0;y<r.y1;y++)for(let x=r.x0;x<r.x1;x++){
+    if(mask&&!mask[y*256+x])continue;
     const i=(y*256+x)*4;total++;
     if(Math.abs(img.data[i]-ref[i])<=tol&&Math.abs(img.data[i+1]-ref[i+1])<=tol&&Math.abs(img.data[i+2]-ref[i+2])<=tol)same++;
   }

@@ -66,11 +66,13 @@ end
 -- Arm only while the scene is visible (not loading).
 function E.arm(on) E.watchArmed = on end
 
--- Frame-thread DMA triggers (run.mjs passes DMA_TRIGGERS, the addresses
+-- The module's DMA triggers (run.mjs passes DMA_TRIGGERS, the addresses
 -- of their STA $420B): channel 7's size must never be 0 there (a vblank
 -- NMI that reprogrammed the channel in the middle of the set-up would make
--- it copy 64 KiB over WRAM). Armed once per run, from the first import.
-E.dmaTriggers, E.dmaBad = 0, 0
+-- it copy 64 KiB over WRAM), and none may start on a visible line while an
+-- HDMA channel is enabled (revision-1 S-CPUs can hang when HDMA runs
+-- during a general DMA). Armed once per run, from the first import.
+E.dmaTriggers, E.dmaBad, E.dmaHdma = 0, 0, 0
 local dmaArmed = false
 function E.watchDma()
   if dmaArmed or not DMA_TRIGGERS then return end
@@ -78,7 +80,13 @@ function E.watchDma()
   for _, a in ipairs(DMA_TRIGGERS) do
     emu.addMemoryCallback(function()
       E.dmaTriggers = E.dmaTriggers + 1
-      if emu.getState()['dmaController.channel[7].transferSize'] == 0 then
+      local st = emu.getState()
+      if st['ppu.scanline'] < 225 and st['dmaController.hdmaChannels'] ~= 0 then
+        E.dmaHdma = E.dmaHdma + 1
+        H.result('dma_hdma', E.dmaHdma)
+        H.result('dma_hdma_at', string.format('%06X line %d HDMAEN %02X', a, st['ppu.scanline'], st['dmaController.hdmaChannels']))
+      end
+      if st['dmaController.channel[7].transferSize'] == 0 then
         E.dmaBad = E.dmaBad + 1
         H.result('dma_bad', E.dmaBad)
         H.result('dma_bad_at', string.format('%06X line %d', a, emu.getState()['ppu.scanline']))

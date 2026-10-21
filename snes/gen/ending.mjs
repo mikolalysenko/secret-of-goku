@@ -509,7 +509,7 @@ function pack(o){
 function inputsHash(repo,rom){
   const h=createHash('sha256');
   h.update(String(VERSION));
-  for(const f of ['snes/gen/ending.mjs','snes/gen/ending-art.mjs','snes/gen/ending-space.mjs','engine/planet-view.js','engine/planet-fragments.js','engine/native-effects.js','engine/native-effects.json','engine/ending-departure.js','snes/gen/ending-vista.mjs','snes/gen/ending-flight.mjs','snes/gen/ending-cutaway.mjs','engine/wish-flight.js','engine/orbit-pixels.js','engine/world-texture.js','engine/mana-tree-vista.js','engine/cinematic-map.js','tools/rom/map-codec.mjs','assets/sprites/shenron.png','assets/sprites/dragon-balls.png','snes/tools/gfx.mjs','assets/sprites/kai-planet.png','assets/sprites/kai-npcs.png','engine/kai-planet.js','engine/native-radio.js'])
+  for(const f of ['snes/gen/ending.mjs','snes/gen/ending-art.mjs','snes/gen/ending-space.mjs','engine/planet-view.js','engine/planet-fragments.js','engine/native-effects.js','engine/native-effects.json','engine/ending-departure.js','snes/gen/ending-vista.mjs','snes/gen/ending-flight.mjs','snes/gen/ending-cutaway.mjs','snes/gen/ending-globes.mjs','engine/wish-flight.js','engine/orbit-pixels.js','engine/world-texture.js','engine/mana-tree-vista.js','engine/cinematic-map.js','tools/rom/map-codec.mjs','assets/sprites/shenron.png','assets/sprites/dragon-balls.png','snes/tools/gfx.mjs','assets/sprites/kai-planet.png','assets/sprites/kai-npcs.png','engine/kai-planet.js','engine/native-radio.js'])
     h.update(readFileSync(join(repo,f)));
   h.update(rom);
   return h.digest('hex');
@@ -533,6 +533,8 @@ export async function generate({rom,repo,outDir,xdata}){
   await kaiAssets(o,{rom,repo});
   const space=await spaceAssets(o,{rom,repo});
   o.cut=new Out();
+  const {globeAssets}=await import('./ending-globes.mjs');
+  space.globePals=globeAssets(o,{rom,xblob:(n,d)=>o.blob(n,d)});
   const {cutawayAssets}=await import('./ending-cutaway.mjs');
   cutawayAssets(o,{gfx,u16bytes,xblob:(n,d)=>o.blob(n,d),space});
   await departAssets(o,{rom,repo});
