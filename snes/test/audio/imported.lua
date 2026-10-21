@@ -25,5 +25,26 @@ function test()
   H.wait(20)
   local k = emu.getState()['cpu.k']
   check('native_effect_answers', H.r8(0x7E1E00) == 0 and k ~= 0xC3, string.format('command byte %02X, CPU in bank %02X', H.r8(0x7E1E00), k))
+  -- The temporary loader must also bootstrap itself on an unextended
+  -- imported driver, including a small native cue and a complete new score.
+  for _,id in ipairs({7,0x3B}) do
+    cmd(3,id);H.wait(180)
+    local tag=string.format('imported_song_%02X',id)
+    check(tag..'_playing',H.r8(0x7E1E05)==id and aram(0xAD)~=0,aram(0xAD))
+    local ptr=0xC33D39+3*id
+    local src=H.r16(ptr)|(H.r8(ptr+2)<<16)
+    local bad=nil
+    for j=0,H.r16(src)-1 do if aram(0x1A00+j)~=H.r8(src+2+j) then bad=j;break end end
+    check(tag..'_sequence',bad==nil,bad)
+    for slot=0,15 do
+      local ins=H.r16(0xC33F22+32*id+2*slot)
+      if ins~=0 then
+        ptr=0xC33DF9+3*(ins-1);src=H.r16(ptr)|(H.r8(ptr+2)<<16)
+        local dst=aram(0x1980+4*slot)|(aram(0x1981+4*slot)<<8)
+        for j=0,H.r16(src)-1 do if aram(dst+j)~=H.r8(src+2+j) then bad=string.format('sample %d +%d',ins,j);break end end
+      end
+    end
+    check(tag..'_samples',bad==nil,bad)
+  end
   finish()
 end

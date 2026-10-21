@@ -91,8 +91,13 @@ export async function buildBank(repo,{rare=false}={}){
 
 // SPC700 extension: segments, with the original driver bytes at every patch
 // site asserted against the cartridge's own driver image.
-export const DRIVER_PATCHES=new Map([[0x020A,[0xF0]],[0x0279,[0x3F,0xAF,0x0C]],[0x0299,[0xDA,0xF6]],[0x02E1,[0xE4,0xAE,0xC4,0x02]],
- [0x02F4,[0x5F,0x79,0x02]],[0x0378,[0xE4,0xAE,0xC4,0x02]],[0x14C6,[0xDD,0x12]],[0x1237,[0xE4,0xF6,0xD7,0x2C,0xD8,0xF4,0xFC,0xE4,0xF7,0xD7,0x2C]]]);
+export const DRIVER_PATCHES=new Map([
+ [0x020A,[0xF0]],[0x0279,[0x3F,0xAF,0x0C]],[0x0299,[0xDA,0xF6]],
+ [0x02E1,[0xE4,0xAE,0xC4,0x02]],[0x02F4,[0x5F,0x79,0x02]],
+ [0x0378,[0xE4,0xAE,0xC4,0x02]],[0x14C6,[0xDD,0x12]],
+ [0x1214,[0xE4,0xF5,0xD7,0x2C,0xD8,0xF4,0xFC,0xE4,0xF6,0xD7,0x2C,0xFC,0xE4,0xF7,0xD7,0x2C]],
+ [0x1237,[0xE4,0xF6,0xD7,0x2C,0xD8,0xF4,0xFC,0xE4,0xF7,0xD7,0x2C,0x3A,0x2C,0x3A,0x2C,0xDC,0x3E,0xF4,0xF0,0xFC,0xF8,0xF4,0xD0,0xE8,0x2F,0x99]],
+]);
 export function buildExtension(repo,rom){
  const src=readFileSync(resolve(repo,'snes/src/modules/audio/spc/stream.s'),'utf8');
  const {segments,symbols}=assemble(src,{name:'stream.s'});
@@ -180,10 +185,10 @@ export async function generate({rom,repo,outDir}){
  writeFileSync(resolve(outDir,'resident.asm'),residentAsm(rom));
  writeFileSync(resolve(outDir,'native-map.asm'),nativeMapAsm());
  const loader=assemble(readFileSync(resolve(repo,'snes/src/modules/audio/spc/songload.s'),'utf8'),{name:'songload.s'});
- const image=loader.segments[0];
- if(loader.segments.length!==1||image.addr!==0xFA00||image.bytes.length>0x1F8)throw Error('audio: temporary loader exceeds the stream ring');
- writeFileSync(resolve(outDir,'songload.bin'),Buffer.concat([Buffer.from(image.bytes),Buffer.alloc(image.bytes.length&1)]));
- writeFileSync(resolve(outDir,'songload.asm'),`!AUDIO_SONGLOAD_SIZE = ${image.bytes.length+(image.bytes.length&1)}\n!AUDIO_SONGLOAD_RECEIVE = $${loader.symbols.get('song_receive').toString(16)}\n!AUDIO_SONGLOAD_COPY = $${loader.symbols.get('song_copy').toString(16)}\n`);
+ const image=loader.segments[0],size=Math.ceil(image.bytes.length/6)*6;
+ if(loader.segments.length!==1||image.addr!==0xFA00||size>0x1F8)throw Error('audio: temporary loader exceeds the stream ring');
+ writeFileSync(resolve(outDir,'songload.bin'),Buffer.concat([Buffer.from(image.bytes),Buffer.alloc(size-image.bytes.length)]));
+ writeFileSync(resolve(outDir,'songload.asm'),`!AUDIO_SONGLOAD_SIZE = ${size}\n!AUDIO_SONGLOAD_RECEIVE = $${loader.symbols.get('song_receive').toString(16)}\n!AUDIO_SONGLOAD_COPY = $${loader.symbols.get('song_copy').toString(16)}\n`);
  const ext=buildExtension(repo,rom);
  writeFileSync(resolve(outDir,'upload.bin'),ext.upload);
  const songs=await buildSongs(repo,rom);

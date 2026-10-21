@@ -33,14 +33,27 @@ test('song transfer holds every byte until acknowledgement, with independent clo
  }
 });
 
-test('FE mode 2 bootstrap acknowledges only after both bytes are latched',()=>{
- const h=setup();begin(h,2,0x5000);
- for(let i=0;i<20;i+=2){
-  h.cpuWrite(2,i);h.cpuWrite(3,i+1);h.cpuWrite(0,i/2+1);
-  h.waitFor(()=>h.cpuRead(0)===i/2+1);
-  h.cpuWrite(2,0xCD);h.cpuWrite(3,0xCD);
+test('native bootstrap modes acknowledge all bytes, across pages and counter wrap',()=>{
+ for(const mode of [2,3]){
+  const h=setup(),bytes=Uint8Array.from({length:1548},(_,i)=>i*73&255);begin(h,mode,0x50FD);
+  for(let i=0;i<bytes.length;i+=mode){
+   for(let j=0;j<mode;j++)h.cpuWrite(4-mode+j,bytes[i+j]);
+   const c=i/mode%255+1;h.cpuWrite(0,c);h.waitFor(()=>h.cpuRead(0)===c);
+   for(let p=1;p<=3;p++)h.cpuWrite(p,0xCD);
+  }
+  end(h);assert.deepEqual(h.ram.slice(0x50FD,0x50FD+bytes.length),bytes);
  }
- end(h);assert.deepEqual(Array.from(h.ram.slice(0x5000,0x5014)),Array.from({length:20},(_,i)=>i));
+});
+
+test('a transfer may end after any unrolled packet, without writing a following byte',()=>{
+ for(const n of [3,6,9,12,15,249,252,255,258]){
+  const h=setup();h.ram.fill(0xCD,0x5000,0x5200);begin(h,4,0x5001);
+  for(let i=0;i<n;i+=3){
+   for(let p=1;p<=3;p++)h.cpuWrite(p,0x5A);
+   h.cpuWrite(0,i/3+1);h.waitFor(()=>h.cpuRead(0)===i/3+1);
+  }
+  end(h);assert.equal(h.ram[0x5000],0xCD);assert.equal(h.ram[0x5001+n],0xCD);
+ }
 });
 
 test('fast compaction preserves unaligned overlapping moves and consecutive copies',()=>{
