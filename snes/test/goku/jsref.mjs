@@ -35,7 +35,7 @@ function atlas(name){
 // introHero: {x,y,column,row} (or a function of the frame) drawn as frieza.js
 // does for its scene follower: actor 0's own sprites hidden (not the HUD
 // portrait), the current form's cell blitted with its anchor at (x, y).
-export async function renderJsRef({state,outDir,superSaiyan=false,steps,goku=true,sramState=null,introHero=null}){
+export async function renderJsRef({state,outDir,superSaiyan=false,steps,goku=true,sramState=null,introHero=null,setup=null}){
   mkdirSync(outDir,{recursive:true});
   const rom=new Uint8Array(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')));
   const s=loadCore(rom);
@@ -69,6 +69,7 @@ export async function renderJsRef({state,outDir,superSaiyan=false,steps,goku=tru
   layer.atlas={goku:atlas('goku'),ssj:atlas('ssj')};
   layer.atlas.ssjJab=w.ManaSpriteLayer.leadPunchAtlas(layer.atlas);
   mod.spriteLayer=layer;
+  const inspect=setup?.(s,mod); // optional native adapters and per-shot evidence
   const rgba=new Uint8Array(512*480*4),log=[];
   let shot=0;
   const capture=tag=>{
@@ -78,7 +79,7 @@ export async function renderJsRef({state,outDir,superSaiyan=false,steps,goku=tru
     const name=`js-${String(++shot).padStart(3,'0')}${tag?'_'+tag:''}`;
     writeFileSync(join(outDir,name+'.png'),writePng(img));
     const sp=layer.plan?.sprite;
-    log.push({name,frame:mod.frame,sprite:sp?{x:sp.x,y:sp.y,row:sp.row,column:sp.column,sheet:sp.sheet,kind:sp.kind}:null,sx:read16(0xe020),sy:read16(0xe022),anim:read8(0xe011)});
+    log.push({name,frame:mod.frame,sprite:sp?{x:sp.x,y:sp.y,row:sp.row,column:sp.column,sheet:sp.sheet,kind:sp.kind}:null,sx:read16(0xe020),sy:read16(0xe022),anim:read8(0xe011),extra:inspect?.()});
   };
   for(const st of steps){
     for(let i=0;i<(st.frames??1);i++){

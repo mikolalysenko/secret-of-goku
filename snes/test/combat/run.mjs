@@ -144,6 +144,10 @@ end
 // Cases checked on the cartridge alone (the browser behaviour they follow
 // is pinned by the browser's own tests).
 const CASES={
+  async icons(){
+    const {runIcons}=await import('./icons.mjs');
+    return runIcons({romSrc,outRoot,importRoot,cps,state:sourceOf('graphics-audit__party'),lib});
+  },
   async geometry(){
     const rom=privateRom(buildTestRom(),'combat-geometry');
     const test=`IMPORT_ROOT=${JSON.stringify(importRoot)}\n${lib}\n${readFileSync(join(here,'geometry.lua'),'utf8')}`;
