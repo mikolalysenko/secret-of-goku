@@ -4,6 +4,22 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the strike tests cost less (2026-10-21)
+
+- A ray's vector, the sizes of its components and its box (a 360 px
+  ray's end, each axis cut to the ray's length) come from one table per
+  heading (`orbit-scenery.mjs` `!OSC_RAY_SETUP`); its last miss is kept as
+  the raw words it is compared with.
+- The bodies are tested unrolled, and a body already known to be hidden
+  (behind the globe or off the screen, known until it or the camera
+  moves) is left out.
+- `fight` test, orbit frames 240-275 (Frieza's beam beside Goku's wave):
+  a ray's full test costs 4.9 lines instead of 6.6 (its setup and box 1.3
+  instead of 2.2, the bodies 2.4 instead of 3.3); 1.9 lines a frame less.
+  The repeated pictures stay at 9: there the projection's update for each
+  step (2.9 lines a call, a camera radius step 9) and the limits' remake
+  as Frieza's beam turns on weigh more.
+
 ## Orbit: the stars on a beam's new rows hidden at once (2026-10-21)
 
 - When a beam group turns on, gets heavier or moves onto new rows, the

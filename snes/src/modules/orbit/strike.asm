@@ -168,6 +168,25 @@ sc_strike_lane:
 .none
 	CLC
 	RTS
+; Body <k> against the line, when in its box and not left out (sc_sk).
+macro sc_strike_body(k, bit)
+	LDA.w !sc_sk
+	AND.w #<bit>
+	BNE ?out
+	LDA.l !sc_pos+(<k>*2)
+	SEC : SBC.w !sc_bx0
+	CMP.w !sc_bxs
+	BCS ?out
+	LDA.l !sc_pos+6+(<k>*2)
+	SEC : SBC.w !sc_by0
+	CMP.w !sc_bys
+	BCS ?out
+	LDX.w #<k>*2
+	STX.w !sc_kk
+	JSR sc_strike_one
+?out:
+endmacro
+
 sc_strike_seg:
 	STA.w !sc_own
 	STY.w !sc_w
@@ -186,41 +205,70 @@ sc_strike_ray:
 	CLC                            ; (no body left)
 	RTS
 +	JSL sc_update_far              ; (the places on this step's camera)
-	JSR sc_miss_key
 	JSR sc_miss_at
-	LDA.w !sk_miss+0,X : CMP.w !sl_t+0 : BNE +
-	LDA.w !sk_miss+2,X : CMP.w !sl_t+2 : BNE +
-	LDA.w !sk_miss+4,X : CMP.w !sl_t+4 : BNE +
-	LDA.w !sk_miss+6,X : CMP.w !sl_t+6 : BNE +
-	LDA.w !sk_miss+8,X : CMP.w !sl_t+8 : BNE +
+	LDA.w !sc_pgen : CMP.w !sk_miss+0,X : BNE .test
+	LDA.w !sw_ax : CMP.w !sk_miss+2,X : BNE .test
+	LDA.w !sw_ay : CMP.w !sk_miss+4,X : BNE .test
+	LDA.w !sc_d1 : CMP.w !sk_miss+6,X : BNE .test
+	LDA.w !sc_h : CMP.w !sk_miss+8,X : BNE .test
+	LDA.w !sc_w : CMP.w !sk_miss+10,X : BNE .test
+	LDA.w !sc_dead
+	AND.w #$0007
+	CMP.w !sk_miss+12,X
+	BNE .test
 	CLC
 	RTS
-+	LDA.w !sc_h
-	JSR sx_vec
-	STX.w !sc_vx
-	STY.w !sc_vy
-	; (the fast test's: |vx|, |vy|, their signs, the heading's class)
-	STX.w !sc_svx
-	TXA : JSR sx_abs : STA.w !sc_avx
-	STY.w !sc_svy
-	TYA : JSR sx_abs : STA.w !sc_avy
-	LDA.w !sc_h
-	AND.w #$0003
-	STA.w !sc_vcls
-	; (the box: to the far end of a 360 px ray, every length's within it)
+.test
+	; its heading's vector and |vx|, |vy| (the fast test's), and the box:
+	; to the far end of a 360 px ray, each axis cut to the ray's length (a
+	; shorter ray's head: |v L| <= min(|end|, L)), widened by m = the width
+	; + 16 (the fight's largest radius) on each side
 	LDA.w !sc_h
 	AND.w #$000F
 	ASL : ASL
-	TAX
-	LDA.l sc_ray_end,X
-	JSR sc_head
-	CLC : ADC.w !sw_ax
-	STA.w !sw_bx
-	LDA.l sc_ray_end+2,X
-	JSR sc_head
-	CLC : ADC.w !sw_ay
-	STA.w !sw_by
-	BRA sc_strike_go
+	STA.w !sc_tt
+	ASL
+	CLC : ADC.w !sc_tt
+	TAX                            ; (12 bytes a heading)
+	LDA.l sc_ray_setup+0,X : STA.w !sc_vx
+	LDA.l sc_ray_setup+2,X : STA.w !sc_vy
+	LDA.l sc_ray_setup+4,X : STA.w !sc_avx
+	LDA.l sc_ray_setup+6,X : STA.w !sc_avy
+	LDA.w !sc_w
+	CLC : ADC.w #16
+	STA.w !sc_tt                   ; m
+	ASL : INC
+	STA.w !sc_m2                   ; 2 m + 1
+	LDA.l sc_ray_setup+8,X         ; x: |its end|, at most the length
+	CMP.w !sc_d1
+	BCC +
+	LDA.w !sc_d1
++	STA.w !sc_dx
+	CLC : ADC.w !sc_m2
+	STA.w !sc_bxs
+	LDA.w !sw_ax
+	SEC : SBC.w !sc_tt
+	BIT.w !sc_vx
+	BPL +
+	SEC : SBC.w !sc_dx             ; (leftward: from its end)
++	STA.w !sc_bx0
+	LDA.l sc_ray_setup+10,X        ; y likewise
+	CMP.w !sc_d1
+	BCC +
+	LDA.w !sc_d1
++	STA.w !sc_dy
+	CLC : ADC.w !sc_m2
+	STA.w !sc_bys
+	LDA.w !sw_ay
+	SEC : SBC.w !sc_tt
+	BIT.w !sc_vy
+	BPL +
+	SEC : SBC.w !sc_dy             ; (upward: from its end)
++	STA.w !sc_by0
+	LDA.w !sc_h
+	AND.w #$0003
+	STA.w !sc_vcls
+	BRA sc_strike_run
 sc_strike:
 	LDA.w !sc_dead
 	AND.w #$0007
@@ -229,10 +277,6 @@ sc_strike:
 	CLC                            ; (no body left)
 	RTS
 +	JSL sc_update_far                  ; (the places on this step's camera)
-sc_strike_go:
-	LDA.w #$FFFF
-	STA.w !sc_best                 ; nearest so far ($FFFF none)
-	STZ.w !sc_hits
 	; the box: from min - m, |a - b| + 2 m + 1 wide (m = the width + 16)
 	LDA.w !sc_w
 	CLC : ADC.w #16
@@ -261,36 +305,38 @@ sc_strike_go:
 	JSR sx_abs
 	CLC : ADC.w !sc_m2
 	STA.w !sc_bys
-	LDX.w #(!OSC_N-1)*2
-.body
-	LDA.l sc_bodybits,X
-	AND.w !sc_dead
-	BNE .next
-	LDA.l !sc_pos+0,X
-	SEC : SBC.w !sc_bx0
-	CMP.w !sc_bxs
-	BCS .next
-	LDA.l !sc_pos+6,X
-	SEC : SBC.w !sc_by0
-	CMP.w !sc_bys
-	BCS .next
-	STX.w !sc_kk
-	JSR sc_strike_one
-	LDX.w !sc_kk
-.next
-	DEX : DEX
-	BPL .body
+sc_strike_run:
+	LDA.w #$FFFF
+	STA.w !sc_best                 ; nearest so far ($FFFF none)
+	STZ.w !sc_hits
+	; the bodies in the box (the planetoid, the outer planet, the moon:
+	; the first of equals kept), but those shattered or known to be hidden
+	; (where each shows is known until it or the camera moves: scenery.asm)
+	LDA.w !sc_expo
+	XBA                            ; (known: bits 0-2)
+	STA.w !sc_sk
+	XBA
+	EOR.w #$FFFF                   ; (not shown: bits 0-2)
+	AND.w !sc_sk
+	ORA.w !sc_dead
+	STA.w !sc_sk
+	%sc_strike_body(2, $0004)
+	%sc_strike_body(1, $0002)
+	%sc_strike_body(0, $0001)
 	LDA.w !sc_hits
 	BNE +
 	LDA.w !sc_ray                  ; (a ray's miss: its kind's last)
 	BEQ ++
-	JSR sc_miss_key
 	JSR sc_miss_at
-	LDA.w !sl_t+0 : STA.w !sk_miss+0,X
-	LDA.w !sl_t+2 : STA.w !sk_miss+2,X
-	LDA.w !sl_t+4 : STA.w !sk_miss+4,X
-	LDA.w !sl_t+6 : STA.w !sk_miss+6,X
-	LDA.w !sl_t+8 : STA.w !sk_miss+8,X
+	LDA.w !sc_pgen : STA.w !sk_miss+0,X
+	LDA.w !sw_ax : STA.w !sk_miss+2,X
+	LDA.w !sw_ay : STA.w !sk_miss+4,X
+	LDA.w !sc_d1 : STA.w !sk_miss+6,X
+	LDA.w !sc_h : STA.w !sk_miss+8,X
+	LDA.w !sc_w : STA.w !sk_miss+10,X
+	LDA.w !sc_dead
+	AND.w #$0007
+	STA.w !sk_miss+12,X
 ++	CLC
 	RTS
 +	LDA.w !sc_own
@@ -300,59 +346,14 @@ sc_strike_go:
 +	SEC
 	RTS
 
-; A16 = a 360 px ray's end offset on an axis, cut to the ray's length
-; (sc_d1) when shorter: the box then reaches its head only (|v L| <=
-; min(|end|, L)). Keeps X.
-sc_head:
-	PHA
-	LDA.w !sc_d1
-	CMP.w #360
-	BCS .whole
-	PLA
-	BPL +
-	EOR.w #$FFFF : INC
-	CMP.w !sc_d1
-	BCC ++
-	LDA.w !sc_d1
-++	EOR.w #$FFFF : INC
-	RTS
-+	CMP.w !sc_d1
-	BCC +
-	LDA.w !sc_d1
-+	RTS
-.whole
-	PLA
-	RTS
-
-; A ray's test as a key (g_tmp's sl_t .. +9: the line's start, length |
-; heading << 12, width | shattered << 8 | owner << 12, the places'
-; generation), and X = its kind's last miss (sk_miss: Goku's, Frieza's).
-sc_miss_key:
-	LDA.w !sw_ax : STA.w !sl_t+0
-	LDA.w !sw_ay : STA.w !sl_t+2
-	LDA.w !sc_h
-	XBA : ASL : ASL : ASL : ASL    ; (heading << 12)
-	AND.w #$F000
-	ORA.w !sc_d1
-	STA.w !sl_t+4
-	LDA.w !sc_dead
-	AND.w #$0007
-	XBA
-	ORA.w !sc_w
-	STA.w !sl_t+6
-	LDA.w !sc_own
-	AND.w #$0003
-	XBA : ASL : ASL : ASL : ASL
-	ORA.w !sl_t+6
-	STA.w !sl_t+6
-	LDA.w !sc_pgen : STA.w !sl_t+8
-	RTS
+; X = a ray's kind's last miss (sk_miss: Goku's, Frieza's; the places'
+; generation, the line's start, length, heading, width, the shattered).
 sc_miss_at:
 	LDX.w #0
 	LDA.w !sc_own
 	LSR
 	BCC +
-	LDX.w #10
+	LDX.w #14
 +	RTS
 
 ; Body sc_kk (in the line's box) against the line: within its radius plus
@@ -414,8 +415,8 @@ sc_strike_one:
 	RTS
 sc_bodybits:
 	dw $0001, $0002, $0004
-sc_ray_end:
-	dw !OSC_RAY_END
+sc_ray_setup:
+	dw !OSC_RAY_SETUP
 sc_ray_dv:
 	dw !OSC_RAY_DV
 sc_ray_far:
@@ -722,7 +723,7 @@ sc_ray_fast:
 	LDA.w !sc_avy : STA.w $4203    ; |ex| |vy|
 	REP #$20
 	LDA.w !sc_ex
-	EOR.w !sc_svy
+	EOR.w !sc_vy
 	STA.w !sc_sg                   ; (its sign)
 	LDA.w $4216
 	STA.w !sc_q
@@ -731,7 +732,7 @@ sc_ray_fast:
 	LDA.w !sc_avx : STA.w $4203    ; |ey| |vx|
 	REP #$20
 	LDA.w !sc_ey
-	EOR.w !sc_svx
+	EOR.w !sc_vx
 	EOR.w !sc_sg
 	BMI .sum                       ; (the terms' signs differ: |cross| is the sum)
 	LDA.w !sc_q
@@ -764,7 +765,7 @@ sc_ray_fast:
 	REP #$20
 	STZ.w !sc_dd
 	LDA.w !sc_ex
-	EOR.w !sc_svx
+	EOR.w !sc_vx
 	STA.w !sc_sg
 	LDA.w $4216
 	BIT.w !sc_sg
@@ -778,7 +779,7 @@ sc_ray_fast:
 	LDA.w !sc_avy : STA.w $4203    ; |ey| |vy|
 	REP #$20
 	LDA.w !sc_ey
-	EOR.w !sc_svy
+	EOR.w !sc_vy
 	BMI .minus
 	LDA.w !sc_dot : CLC : ADC.w $4216 : STA.w !sc_dot
 	LDA.w !sc_dd : ADC.w #0 : STA.w !sc_dd
