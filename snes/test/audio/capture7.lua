@@ -52,6 +52,34 @@ local function field(form,music)
 end
 function test()
  bootToField();H.wait(40)
+ if ONLY=='contacts' then
+  for _,cue in ipairs({{'hit',0xE7},{'kick',0xE8}}) do
+   solo();record('contact-solo-'..cue[1],'Punch follow-up: isolated contact, music and echo muted',function() native(cue[2]);H.wait(210) end)
+  end
+  for _,s in ipairs({{'battle',0x3C},{'full-power',0x3F}}) do
+   for _,cue in ipairs({{'hit',0xE7},{'kick',0xE8}}) do
+    solo();song(s[2],0)
+    record('contact-'..s[1]..'-'..cue[1],'Single contact over '..s[1]..' music at the same authored phrase; no gain normalization',function() native(cue[2]);H.wait(210) end)
+   end
+   for _,mode in ipairs({'rapid','beam','beds'}) do
+    solo();song(s[2],0)
+    record('contact-'..s[1]..'-'..mode,'Contact headroom: '..s[1]..' music; alternating HIT/KICK every 2, 3, 5 and 8 frames'..(mode=='beam' and ', layered over full-power beams' or mode=='beds' and ', with maximum charge/aura requests' or ''),function()
+     if mode=='beds' then loopRequest=function() return 1,1,1.06,1 end end
+     for _,gap in ipairs({2,3,5,8}) do
+      for cycle=1,2 do
+       if mode=='beam' then native(ROUND7 and 0xF0 or 0xEA) end
+       for i=1,12 do native(i%2==1 and 0xE7 or 0xE8);H.wait(gap-1) end
+       H.wait(17+cycle*3)
+      end
+     end
+     loopRequest=nil;H.wait(120)
+    end)
+   end
+   field(s[1]=='full-power' and 1 or 0,s[2])
+   record('contact-input-'..s[1],'Real approach and B-held melee over '..s[1]..' music, including swings and native field sounds',function() H.hold('right',12);H.hold('b',180);H.wait(108) end)
+  end
+  H.result('files',files);H.result('commands',commands);H.result('captured',true);return
+ end
  if ONLY=='melee' then
   field(0,0x3C)
   record('context-melee-hold','Battle music; real B hold for 180 frames, including the removed native weapon buzz and retained punch/kick cues',function() H.hold('b',180);H.wait(120) end)

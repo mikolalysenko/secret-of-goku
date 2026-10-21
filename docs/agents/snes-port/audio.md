@@ -8,6 +8,85 @@ Everything below about the native driver was reverse-engineered from the US
 cartridge (`snes/gen/audio-spc700.mjs` disassembles it) and cross-checked
 against 277 ARAM/DSP snapshots of the browser mod (`.local/snes-import/`).
 
+## Punch contact follow-up (October 21, 2026)
+
+Merged main `5f99811` before this work (merge `6758272`). The title runner
+now keeps its arrival checkpoint in its own output unless explicitly told
+to publish it. **Never set `SNES_UPDATE_CHECKPOINTS=1` in this worktree.**
+The maintainer identified contamination of the shared after-arrival state
+by earlier title runs. The earlier round-four/round-seven charge timing
+comparison below is therefore superseded; the maintainer will compare clean
+builds. This follow-up uses private copies of the restored checkpoints under
+`.local/snes-test/audio/punch7/checkpoints/`, with source hashes recorded.
+
+HIT `$E7` and KICK `$E8` now have louder native crunch/pop tracks. HIT starts
+with three ticks of 32 kHz noise, followed by a three-tick fade, over a
+two-octave falling instrument-3 pop. Its body falls over eight ticks and
+fades over twelve. KICK uses a 16 kHz attack, an 8 kHz fading crunch, and a
+slightly longer ten-tick pitch fall / sixteen-tick body. It is already the
+heavier contact; the combat/FX branch can keep its existing HIT/KICK calls.
+No new finisher id or combat/FX edits are required by this change.
+
+| Dry cartridge SPC measurement | Round four | New | Gain |
+| --- | ---: | ---: | ---: |
+| HIT peak | −7.14 dBFS | −3.02 dBFS | +4.12 dB |
+| KICK peak | −6.32 dBFS | −2.93 dBFS | +3.39 dB |
+| HIT bass / crunch energy | reference | — | +3.29 / +10.70 dB |
+| KICK bass / crunch energy | reference | — | +4.55 / +3.92 dB |
+
+Bass/crunch use the existing 0–200 Hz / first-80 ms and >4 kHz /
+first-30 ms measurements. Peaks arrive within 7 ms of onset. Audible tails
+are 100 / 140 ms, and voice ownership is 200 / 240 voice-ms, versus round
+four's 210 / 240. These measurements describe the native design, not a
+claim that it reproduces the PC recordings. The listening references include
+all three browser hit clips and kick at gains .64 / .70, master .55 and the
+browser compressor; hit playback rates rotate 1 / 1.035 / .975.
+
+Full gain applies to isolated contacts. The SPC gain hook counts occupied
+effect voices: three or four halve contact gain, five or more quarter it.
+Music, beam, charge/aura and other cues keep their authored gain. New effect
+allocation marks existing effect gains for recalculation before the next
+mix, so an incoming beam cannot retain an old full-volume contact attack.
+This prevents the summed crunch voices from clipping in rapid overlaps.
+The work uses the existing gain updates; there is no new timer callback,
+65816 frame work, stream, voice, or contact command. Native F2 still returns
+both voices and clears their noise state. Sampled beds remain independent
+of the shared DSP noise clock.
+
+All 24 battle/full-power stress cases pass: alternating contacts every
+2/3/5/8 frames, alone, over full-power beams, and over maximum beds. The raw
+Mesen cartridge takes have **zero clipped samples**, with worst mix peaks
+**−1.37 dBFS** (battle/beam) and **−1.73 dBFS** (full-power/beam). The original
+round-four stress captures are retained without processing, including their
+clipped samples. No recording is normalized.
+
+The four round-seven samples and all EDL caps are unchanged. The resident
+bank uses 2,285/2,304 bytes; the unchanged 48-byte pitch helper moves into
+unused DIR entries `$34-$3F` at `$19D0-$19FF`. The 16-entry native song
+transfer limit protects that region. No retail instrument occupies those
+entries. See [audio-samples.md](audio-samples.md#punch-contact-follow-up) for
+the byte trade-off and the listening package.
+
+Strict default build: `98d0929accc6a06d8484e3d079b6369b68a5f01753ac319779ebb58b578965da`.
+Define-0 rollback: `56ed7992b1f2abf06561a1d5553d1ab151e5fc7fd8d8ff0941a9a63508115388`,
+byte-identical to the independently rebuilt round-four cartridge.
+Validation: **34 Node/SPC tests; all audio cases; gameplay, perf and combat**
+pass. Audio includes 64 consecutive canonical song loads, 192 power-on loads
+with noncanonical presets, rare voices, streaming diagnostics and imports.
+The extra pitch-code region is covered by the immutable-bank checks. Native
+dispatcher maximum is **1.349 scanlines**, within 1.35. The 65816 sources are
+unchanged, and all six perf scenes retain the preceding pass's results.
+Shared checkpoint hashes were checked again after validation and are unchanged.
+Charge baseline reconciliation remains with the maintainer as requested.
+
+Runtime files: `audio-resident7.mjs` defines the contacts and packs the bank;
+`audio/spc/beds.s` applies overlap gain and relocates the pitch helper.
+`audio/cartridge.mjs`, `audio/lib.lua`, `audio/loads.lua` and
+`test/lua/harness.lua` install/check the extra immutable region.
+`audio/contacts.mjs`, `contacts.test.mjs`, `resident.test.mjs` and `run.mjs`
+measure the stronger contacts, stress overlaps, and check voice release.
+Capture/PC/manifest changes are described in the sample document.
+
 ## Round-seven cartridge diagnosis (565c6a8)
 
 `node snes/test/audio/trace7.mjs r4` (and `r6` with `SNES_ROM` pointing at
@@ -58,8 +137,9 @@ completed frames explains the pulsing heard during power-up.
 
 The default is now round seven. `-DAUDIO_CUSTOM_SAMPLES=0` is the exact
 round-four rollback on `565c6a8`; `-DAUDIO_PCM=1` remains diagnostic only.
-No frequent sound streams. Punch/kick `$E7/$E8`, ki launch `$DE`, and ki
-contact `$38` retain their round-four tracks and samples. The round-six
+No frequent sound streams. The initial round-seven punch/kick `$E7/$E8`
+were retained from round four; the follow-up above strengthens them. Ki
+launch `$DE` and ki contact `$38` retain their round-four tracks and samples. The round-six
 custom impact is removed. The three rare lines and fast song loader remain.
 
 | Action | Round-seven cartridge |
@@ -109,7 +189,7 @@ the takeoff command through the existing core queue immediately: its old
 request was discarded by the transition's pause callback before a field
 selector could consume it. This adds no idle callback work or core changes.
 
-The bank occupies `$4DF1-$56F0` (2,304 bytes, 2,302 used), with native song
+The initial bank occupies `$4DF1-$56F0` (2,304 bytes, 2,302 used), with native song
 samples beginning at `$56F1`. All retail samples/effects remain. See
 [audio-samples.md](audio-samples.md#round-seven-default-bank) for rates,
 loop construction, echo caps, alternatives and listening measurements.
@@ -133,13 +213,12 @@ native-hero control, plus `$EC` world takeoff and `$EB/$EF` teleport out/in.
 The original-cartridge/r6 traces and 94-WAV listening manifest are retained
 under `.local/snes-test/audio/compare7/`.
 
-Gameplay CPU misses are charge **13**, teleport **3**, fly-ki **2**, fly **1**,
+Historical gameplay CPU misses are charge **13**, teleport **3**, fly-ki **2**, fly **1**,
 fly-punch **1**, all others **0** per 240 frames. The independently rebuilt
 round-four charge case gives **15** in this environment, rather than the
-maintainer's supplied **12**. Round seven improves that local pair but does
-**not meet the requested absolute 12-miss ceiling**; retain this as an
-integration timing issue. Core and FX are unchanged; integration should first
-reconcile the round-four baseline before assigning further timing work.
+maintainer's supplied **12**. The maintainer subsequently identified shared
+checkpoint contamination and will repeat the comparison on clean states;
+do not treat this pair as a valid regression baseline. Core and FX are unchanged.
 
 Strict build hashes:
 

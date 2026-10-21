@@ -1,6 +1,86 @@
 # Resident custom samples: cartridge option and storage audit
 
+## Punch contact follow-up
+
+The current default strengthens HIT/KICK with native two-voice tracks.
+`snes/gen/audio-resident7.mjs` exports `CONTACTS7`; the rollback palette in
+`audio-resident.mjs` stays unchanged. The design uses the PC's short broadband
+hit transients and low kick body as references, with louder noise crunch and
+a faster falling native pop. It does not claim sample identity with those
+clips. KICK has the longer body; no additional finisher API is introduced.
+
+Keeping the prioritized samples leaves no useful contact-sample budget.
+Round six's alt1 body alone takes **576 BRR bytes**, versus 19 bytes free
+after this change. Fitting that body would consume the whole 540-byte
+teleport sample and still require another cut. The native design preserves
+all four round-seven BRRs byte for byte, the 2,304-byte reservation and every
+EDL cap. No new echo pairs are needed for the follow-up.
+
+The reservation now holds **1,890 BRR + 134 sequence + 261 SPC code bytes =
+2,285**, leaving 19 bytes. Removing a redundant octave command saves two
+sequence bytes. The existing 48-byte variable-pitch helper moves to unused
+DIR entries `$34-$3F` (`$19D0-$19FF`), so the new contact gain logic fits
+without shortening a sample. Code, metadata and hooks outside the bank now
+use 97 bytes, including four mutable bed parameters. The boot upload gains
+one 48-byte segment plus its four-byte header. The native 16-entry metadata
+transfers and all 64-song/192-load integrity checks protect that code.
+
+The full-gain contact tracks peak at **−3.02 / −2.93 dBFS** in the fixed dry
+SPC audit, **4.12 / 3.39 dB** above round four. Early bass energy rises
+3.29 / 4.55 dB, and crunch energy 10.70 / 3.92 dB. The 100 / 140 ms audible
+tails end within the old voice budget. Contact-only overlap attenuation
+halves gain with 3–4 effect voices and quarters it with 5–8; music and the
+round-seven samples keep their existing levels. This is a voice-count rule
+in the existing SPC gain pass, not amplitude compression or 65816 polling.
+
+The raw Mesen measurements include the emulator's actual DSP phase, so
+sample peaks differ slightly from the fixed Node/SPC audit:
+
+| Cartridge recording | Round four peak | New peak |
+| --- | ---: | ---: |
+| Solo HIT | −7.04 dBFS | −2.75 dBFS |
+| Solo KICK | −6.58 dBFS | −3.02 dBFS |
+| Battle music + HIT | −6.70 dBFS | −2.56 dBFS |
+| Battle music + KICK | −5.59 dBFS | −2.68 dBFS |
+| Full-power music + HIT | −7.07 dBFS | −3.31 dBFS |
+| Full-power music + KICK | −6.65 dBFS | −2.88 dBFS |
+| Rapid contacts + battle/beam | clipped (27 samples) | −1.37 dBFS, no clipping |
+| Rapid contacts + full-power/beam | clipped (16 samples) | −1.73 dBFS, no clipping |
+
+The comparison preserves the original cartridge's overloads without
+normalization. All **14 new cartridge recordings** and **24 Node/SPC stress
+cases** have zero clipped samples. Stress intervals are 2/3/5/8 video frames,
+with both songs, full-power beams and maximum charge/aura beds. The fixture
+also records an approach followed by actual B-held melee in each music mix.
+
+`compare7/manifest.json` now contains **126 WAVs**: the original round-seven
+package, fourteen round-four/new contact pairs, and four additional browser
+references (`hit-1`, `hit-2`, `hit-3`, `kick`). HIT reference gain is .64,
+KICK .70; hit rates rotate 1 / 1.035 / .975, then master .55 and the browser
+compressor. The current cartridge tag is **`punch7`**; `r7` keeps the initial
+round-seven recordings. Every WAV has a description, hash and peak/RMS/
+clipping measurements. `contact-analysis7.json` contains the dry metrics and
+24 stress results. No ROM, fixture or recording is committed.
+
+Files: `capture7.mjs` / `capture7.lua` add the contact-only recording pass;
+`pc7.mjs` adds the four PC references; `manifest7.mjs` combines the current
+cartridge with the archived takes and explicitly labels baseline clipping.
+`contacts.mjs` / `contacts.test.mjs` provide the repeatable loudness and
+overlap checks. Runtime/import changes and validation are in
+[audio.md](audio.md#punch-contact-follow-up-october-21-2026).
+
+```sh
+node snes/test/audio/capture7.mjs --rom=path/to/r4.sfc --tag=r4 --only=contacts
+node snes/test/audio/capture7.mjs --rom=path/to/current.sfc --tag=punch7 --only=contacts
+node snes/test/audio/pc7.mjs
+SNES_ROM=path/to/current.sfc node snes/test/audio/contacts.mjs --before=path/to/r4.sfc
+node snes/test/audio/manifest7.mjs
+```
+
 ## Round-seven default bank
+
+This section records the initial round-seven allocation. The follow-up above
+retains its samples and echo caps, with revised contact tracks/code packing.
 
 Round seven ships by default; `-DAUDIO_CUSTOM_SAMPLES=0` restores round four
 byte for byte on `565c6a8`. The implementation is `snes/gen/audio-resident7.mjs`,

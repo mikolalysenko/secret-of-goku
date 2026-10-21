@@ -99,8 +99,8 @@ bed_find_skip:
  BPL bed_find_next
  MOV A,#0
  RET
-; Native gain has a fixed 1/2 attenuation. Keep it for all retail effects,
-; music and punches; the sampled PC cues use the full computed gain.
+; Native gain has a fixed 1/2 attenuation. Keep it for retail/music and E9's
+; distant impact; E7/E8 contacts and the sampled PC cues use full gain.
 resident_gain:
  CMP X,#$10
  BCC gain_half
@@ -110,8 +110,11 @@ resident_gain:
  LSR A
  MOV Y,A
  MOV A,!$FF80+Y
- CMP A,#$EA
+ CMP A,#$E7
  BCC gain_old
+ CMP A,#$E9
+ BCC gain_contact
+ BEQ gain_old
  CMP A,#$F1
  BCS gain_old
  POP A
@@ -124,7 +127,31 @@ gain_done:
  MOV Y,A
  MOV A,$35
  RET
+; Contacts alone use full authored gain. Three/four effect voices halve
+; them; five or more quarter them. Music is not counted in AE or attenuated.
+; Only contact gain recalculations do this; there is no new timer callback.
+gain_contact:
+ MOV Y,#0
+ MOV A,$AE
+gain_count:
+ LSR A
+ BCC gain_next
+ INC Y
+gain_next:
+ CMP A,#0
+ BNE gain_count
+ POP A
+ CMP Y,#5
+ BCC gain_three
+ LSR A
+gain_three:
+ CMP Y,#3
+ BCS gain_half
+ BRA gain_done
+resident_bank_tail:
 ; A/Y = native pitch, X = track. Only the two beds have a variable rate.
+; Unused DIR entries $34-$3F: native songs only load entries $20-$2F.
+ org $19D0
 resident_pitch:
  CMP X,#$10
  BCC pitch_done
@@ -159,11 +186,13 @@ pitch_done:
  MOV X,$35
  MOV $F2,X
  RET
+ org resident_bank_tail
 bed_release:
  db $D3,6,0,$BF,$F2
 ; The beam command is also its charge-release command. This saves a CPU
 ; stop dispatch on the busiest beam/contact frame, without a timer or poll.
 resident_effect:
+ OR $C9,$AE                ; recalculate existing contacts before a new mix
  MOV A,$B5
  CMP A,#$EA
  BEQ release_beds

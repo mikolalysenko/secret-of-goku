@@ -61,9 +61,9 @@ test('contacts have immediate crunch and bass, and the wave sustains its roar',(
   for(const id of [NATIVE_IDS[3],NATIVE_IDS[4]]){
     const m=measure(rom,id);
     assert.ok(m.timeToPeakMs<12,`late contact peak: ${m.timeToPeakMs}`);
-    assert.ok(m.peakDbFS>-10&&m.peakDbFS<-3,`contact headroom: ${m.peakDbFS}`);
+    assert.ok(m.peakDbFS>-10&&m.peakDbFS<(isResident7(rom)?-2.5:-3),`contact headroom: ${m.peakDbFS}`);
     assert.ok(m.low80Energy>.3&&m.high30Energy>.035,'bass body and broadband attack');
-    assert.ok(m.durationMs>=120&&m.durationMs<=250,'short contact tail');
+    assert.ok(m.durationMs>=(isResident7(rom)?90:120)&&m.durationMs<=250,'short contact tail');
     assert.ok(m.voiceMs<=(custom?350:250),'second voice only steals music for a short transient');
   }
   const beam=measure(rom,NATIVE_IDS[8],{echo:true});
