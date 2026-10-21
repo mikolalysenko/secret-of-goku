@@ -114,17 +114,32 @@ samples beginning at `$56F1`. All retail samples/effects remain. See
 [audio-samples.md](audio-samples.md#round-seven-default-bank) for rates,
 loop construction, echo caps, alternatives and listening measurements.
 
-Validation at the runtime checkpoint: strict default and rollback builds,
-32 Node/SPC tests, Mesen `native` including changed-only spaced updates,
-expiry/voice return and Frieza alias, and all 13 `gameplay` cases pass their
-functional/hardware assertions. Dispatcher maximum is **1.3446 scanlines**
-(start/update/stop); no BRR stream commands occur for common sounds.
+Final validation on `fdd6808f...`: strict default and define-0 rollback
+builds; **all `audio` cases** (32 Node/SPC tests, render, loads, loads-boot,
+native, music, rare, rare-control, rare-boot, stream, songs, arrival and
+imported); and **gameplay, perf, combat, goku, vegeta, frieza, orbit, ending,
+world, story and title** all exit successfully. Logs and the runner's
+summary are under `.local/snes-test/audio/final7/`. The import pass and
+64 consecutive canonical song loads preserve the sample bank; the power-on
+pass covers 192 loads including two noncanonical presets for every song,
+with zero post-boot writes to immutable bank data. Rare-line controls and
+imports pass. No core changes were needed.
+
+Mesen `native` verifies changed-only spaced/fair updates, expiry and voice
+return, Frieza's alias, and a dispatcher maximum of **1.3446 scanlines**.
+No BRR stream commands occur for common sounds. Actual-input command traces
+confirm no `$27` while active Goku holds B and seven `$27` commands for the
+native-hero control, plus `$EC` world takeoff and `$EB/$EF` teleport out/in.
+The original-cartridge/r6 traces and 94-WAV listening manifest are retained
+under `.local/snes-test/audio/compare7/`.
+
 Gameplay CPU misses are charge **13**, teleport **3**, fly-ki **2**, fly **1**,
 fly-punch **1**, all others **0** per 240 frames. The independently rebuilt
 round-four charge case gives **15** in this environment, rather than the
 maintainer's supplied **12**. Round seven improves that local pair but does
-**not establish the requested absolute 12-miss ceiling**; retain this as an
-integration timing issue. Core and FX code have not been changed to hide it.
+**not meet the requested absolute 12-miss ceiling**; retain this as an
+integration timing issue. Core and FX are unchanged; integration should first
+reconcile the round-four baseline before assigning further timing work.
 
 Strict build hashes:
 
