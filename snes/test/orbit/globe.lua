@@ -1,8 +1,10 @@
 -- Orbit globe + starfield test scene. Prelude globals (snes/test/orbit/run.mjs):
 --   BUNDLE  import bundle directory (a map 246 state)
---   CAMS    list of cameras {x, y, r, lon, lat, age, name}
+--   CAMS    list of cameras {x, y, r, lon, lat, age, name; desc: a clash
+--           age of the victory's descent, drawn from its generated tables}
 --   SPIN    frames to run with the longitude advancing (0 = none)
 local SB = SCENE_RAM
+local DESC = SB + 0x17E4                  -- g_desc
 local function cam(c)
   H.w16(SB + 0x00, c.x & 0xFFFF)
   H.w16(SB + 0x02, c.y & 0xFFFF)
@@ -10,6 +12,15 @@ local function cam(c)
   H.w16(SB + 0x06, c.lon)
   H.w16(SB + 0x08, c.lat)
   H.w16(SB + 0x0E, c.age or 0)
+  if c.desc then
+    H.w16(SB + 0x1502, c.desc)            -- fn_age: the descent frame
+    H.w16(SB + 0x17F4, 0xFFFF)            -- g_dk: none published yet
+    H.w16(DESC, 1)
+  elseif H.r16(DESC) ~= 0 then
+    H.w16(DESC, 0)                        -- back to the fight's blocks,
+    H.w16(SB + 0xEC, 0)                   -- the first built at once
+    H.w16(SB + 0xD0, 0xFFFF)
+  end
 end
 local function line(addr) return H.r16(addr) end
 function test()

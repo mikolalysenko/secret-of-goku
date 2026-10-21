@@ -15,12 +15,23 @@
 ; depend on the centre line or the latitude. Only the window block (screen
 ; columns of the disc and rim edges) is computed, when the centre column or
 ; the radius changes; a new centre line or latitude costs nothing but a few
-; HDMA table entries and registers. DB = $32, M16/X16 unless noted.
+; HDMA table entries and registers. The victory's descent (radii 56-230,
+; a new centre and radius every frame) reads all of it from tables the
+; generator made in extended data (globe_descent). DB = $32, M16/X16
+; unless noted.
 
 ; Per frame: stepped target, registers for the NMI, tables if needed.
 globe_frame:
 	REP #$30
-	; target.x = round(lon / 8) * 8; X0 = floor((target.x - 670.5) / 4)
+	LDA.w !g_desc
+	BEQ +
+	; the descent: while the vblank has not taken the last set (a frame
+	; that ran long), it and its registers stay
+	LDA.w !g_cur_it
+	CMP.w !g_shown_it
+	BEQ +
+	RTS
++	; target.x = round(lon / 8) * 8; X0 = floor((target.x - 670.5) / 4)
 	LDA.w !cam_lon
 	CLC : ADC.w #$0004
 	AND.w #$0FF8
@@ -60,7 +71,11 @@ globe_frame:
 	LDA.w #$0001
 	STA.w !g_ichg                  ; the window rows start below the band
 +	REP #$30
-	; Window block for the radius and the centre column: started here and
+	LDA.w !g_desc
+	BEQ +
+	JSR globe_descent
+	BRA .shapeOk
++	; Window block for the radius and the centre column: started here and
 	; built in the frame's spare time (orbit_background) into the back
 	; block; the scene's first block is built at once.
 	LDA.w !g_bld
@@ -106,6 +121,71 @@ globe_clamp_r:
 	BCC +
 	LDA.w #!ORBIT_FIGHT_R1
 +	RTS
+
+; The descent (finale_camera from victoryTiming.descent): the frame's
+; window rows (orbit_fn_dwin, per frame: lines max(0, cy - R) on, made for
+; this camera) and the radius's M7A / M7D rows (orbit_fn_desc) are
+; published as they are in extended data, with virtual bases for row -R as
+; globe_itables and the stars' culling count rows; nothing is built. The
+; banks go with each indirect set to the vblank.
+globe_descent:
+	STZ.w !g_bld                   ; (a fight block still building is dropped)
+	LDA.w !fn_age
+	SEC : SBC.w #!FNT_V_DESCENT
+	BCS +
+	LDA.w #$0000
++	CMP.w #!FNT_V_RETURN-!FNT_V_DESCENT+1
+	BCC +
+	LDA.w #!FNT_V_RETURN-!FNT_V_DESCENT
++	ASL : ASL : ASL
+	CMP.w !g_dk
+	BNE +
+	RTS                            ; the published tables show this frame
++	STA.w !g_dk
+	; the radius: R, first stored row (jlo), M7A, M7D, bank
+	LDA.w !cam_r
+	CMP.w #!FND_DESC_R0
+	BCS +
+	LDA.w #!FND_DESC_R0
++	CMP.w #!FND_DESC_R1+1
+	BCC +
+	LDA.w #!FND_DESC_R1
++	SEC : SBC.w #!FND_DESC_R0
+	STA.w !g_tmp
+	ASL : ASL
+	CLC : ADC.w !g_tmp
+	ASL                            ; * 10
+	TAX
+	LDA.l orbit_fn_desc+0,X : STA.w !g_lR
+	LDA.l orbit_fn_desc+2,X
+	CLC : ADC.w !g_lR
+	ASL
+	STA.w !g_tmp                   ; (jlo + R) * 2: row -R before the first stored row
+	LDA.l orbit_fn_desc+4,X : SEC : SBC.w !g_tmp : STA.w !g_la
+	LDA.l orbit_fn_desc+6,X : SEC : SBC.w !g_tmp : STA.w !g_ld
+	LDA.l orbit_fn_desc+8,X : STA.w !g_lbank
+	; the window rows from their first line; row -R's place before it
+	LDX.w !g_dk
+	LDA.w !cam_y
+	SEC : SBC.w !g_lR
+	STA.w !g_tmp                   ; line of row -R
+	LDA.l orbit_fn_dwin+4,X
+	SEC : SBC.w !g_tmp
+	ASL : ASL
+	STA.w !g_tmp
+	LDA.l orbit_fn_dwin+0,X : SEC : SBC.w !g_tmp : STA.w !g_lw
+	LDA.l orbit_fn_dwin+2,X : STA.w !g_wbank
+	LDA.l orbit_fn_dwin+6,X : STA.w !g_wempty
+	LDA.w !cam_x : STA.w !g_cx
+	LDA.w !cam_r : STA.w !g_lr
+	; M7HOFS = X0 - cx for the published rows
+	LDA.w !g_x0
+	SEC : SBC.w !g_cx
+	AND.w #$1FFF
+	STA.w !g_hofs
+	LDA.w #$0001
+	STA.w !g_ichg
+	RTS
 
 ; BGMODE ($2105) per line: Mode 1 for the text band (BG3 panel), Mode 7
 ; down to line 195, Mode 1 for the HUD rows from line 196.
@@ -297,8 +377,20 @@ globe_build_step:
 	LDA.l !FL+4,X : STA.w !g_ld
 	LDA.w !g_bR : STA.w !g_lR
 	LDA.w !g_bw : STA.w !g_lw
+	JSR globe_fight_banks
 	LDA.w #$0001
 	STA.w !g_ichg
+	RTS
+
+; The fight's published blocks: M7A / M7D rows in bank F7, windows in the
+; scene block with its empty record.
+globe_fight_banks:
+	LDA.w #!FL>>16
+	STA.w !g_lbank
+	LDA.w #$0032
+	STA.w !g_wbank
+	LDA.w #!gb_empty
+	STA.w !g_wempty
 	RTS
 
 ; Indirect HDMA tables for the published blocks and centre line cam_y:
@@ -365,7 +457,7 @@ globe_itables:
 	STA.w !it_m7a,Y
 	STA.w !it_m7d,Y
 	REP #$20
-	LDA.w #!gb_empty
+	LDA.w !g_wempty
 	STA.w !it_win+1,Y
 	JMP .publish
 .some
@@ -428,7 +520,7 @@ globe_itables:
 	STA.w !it_m7a,Y
 	STA.w !it_m7d,Y
 	REP #$20
-	LDA.w #!gb_empty
+	LDA.w !g_wempty
 	STA.w !it_win+1,Y
 .publish
 	; the band table this set points at and its lines (bands.asm
@@ -439,6 +531,10 @@ globe_itables:
 	LDX.w #$0002
 +	STZ.w !g_itband,X
 	STZ.w !g_itend,X
+	LDA.w !g_lbank                 ; the banks its records are in
+	STA.w !g_itbank,X
+	LDA.w !g_wbank
+	STA.w !g_itwbank,X
 	LDA.w !bd_end
 	BEQ +
 	LDA.w !bd_tab
@@ -452,12 +548,16 @@ globe_itables:
 	RTS
 ; The finale's band lines (bands.asm): the windows from the band table,
 ; a record a line; g_tmp+14 = the lead lines left after them. (The tables
-; stay within their 16 bytes: band lines end where the globe starts.)
+; stay within their 16 bytes: band lines end where the globe starts. The
+; band table is in the scene block: none over the descent's rows.)
 .bandLead
 	LDA.w !bd_end
 	BEQ .noBand
 	LDA.w !bd_tab
 	BEQ .noBand
+	LDA.w !g_wbank
+	CMP.w #$0032
+	BNE .noBand
 	LDA.w !bd_end
 	SEP #$20
 	STA.w !it_m7a,Y
@@ -489,7 +589,7 @@ globe_itables:
 	STA.w !it_m7a,Y
 	STA.w !it_m7d,Y
 	REP #$20
-	LDA.w #!gb_empty
+	LDA.w !g_wempty
 	STA.w !it_win+1,Y
 	LDA.w !g_la
 	STA.w !it_m7a+1,Y

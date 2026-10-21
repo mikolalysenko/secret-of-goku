@@ -51,7 +51,7 @@ function test()
     log[#log + 1] = state()
     if shots[f] then H.shot(string.format('clash%04d', f)) end
     local fr = H.r16((ORBIT_RAM + 0x04))
-    if fr == lastFrame then lagged = lagged + 1 end
+    if fr == lastFrame and H.r8(ORBIT_RAM) == 2 then lagged = lagged + 1 end   -- (while the scene runs)
     lastFrame = fr
   end
   H.input = nil

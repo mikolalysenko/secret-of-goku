@@ -17,7 +17,7 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 
 | Part | State |
 | --- | --- |
-| Mode 7 globe (rotation, zoom 56-104, centre, latitude, rim) and starfield (100 stars, three parallax depths, twinkles) | **Done**, test scene `globe` matches the browser's formulas (below) |
+| Mode 7 globe (rotation, zoom 56-104 in the fight and 56-230 in the victory's descent, centre, latitude, rim) and starfield (100 stars, three parallax depths, twinkles) | **Done**, test scene `globe` matches the browser's formulas at seven cameras, two of them the descent's (below) |
 | Space fight logic: Goku's steering, ki, charged wave, punch, Instant Transmission and the four-beat exchange; Frieza's patrol, side-steps, warnings, beams, lasers, discs, Death Balls, ricochets; damage both ways; camera | **Done** (`fight.asm`, `math.asm`): identical to the browser's own `frieza.js` tick on every frame of the `fight` test (658 frames, scripted pad) |
 | Space fight drawing: Goku, Frieza, ki, Death Balls (16/32), discs, finger glints, hand charges, Exploder bursts, impact sparks, ricochets | **Done** (`draw.asm`, resident and streamed OBJ cells) |
 | Beam bands: Goku's wave, Frieza's beam and finger laser (`beam.asm`) | **Done**: the band's pictures are generated at run time per heading class and radius (class 1 from the generator, through a vblank queue); cached OAM runs |
@@ -32,7 +32,7 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 | Beam struggle: gather, charge, launch, struggle (taps, surges, pressure), recoil (420 damage), win | **Done** (`finale.asm`): every phase, the pressure and the camera identical to `frieza-finale.js` on every frame of the `clash` test (2,890 frames) |
 | Struggle picture: the rays above the globe on BG1/BG2 band layers, below it as OBJ chains; Goku, Frieza, charges, sparks | **Done** (`bands.asm`, `fdraw.asm`) |
 | Victory clock: impact, beam fade, the native victory commands (death, bursts, fade, fanfare, acquire chime) in `boss-victory.js` order, the pouch, the return at 1,392 | **Done** (logic, sound, pouch); Frieza's red/white flash, the boss bursts, the whiteout and the particle oval are next |
-| Descent (globe zoom 56-230), return to the deck, landing (84 frames), the native victory event | Next (`orbit_return` is a stub; `frieza_orbit_landed` / C7 are bound) |
+| Descent (globe zoom 56-230), return to the deck, landing (84 frames), the native victory event | **Done** (`globe.asm` `globe_descent`, `scene.asm` `orbit_return`): the descent's globe from generated tables; the deck reloaded through its door with Goku's landing spot (`returnToFortress`'s search), the landing pose, the landing clock, `frieza_orbit_landed` and the frieza module's C7; test `return`. The browser's pale wash into the deck is a fade through black here, for now (below) |
 | Orbital death (revert, fall), hand-off to the ending's explosion | **Done** (`death.asm`): the fight or clash freezes, Frieza watches, Goku falls as `bossRushDeathPose`; the orbit stops two frames before black for the ending; test `death` |
 
 ## The sequence (browser timings)
@@ -323,6 +323,66 @@ the whiteout; the 'won' clock waits with it). The pouch flies from Frieza's
 point back to Goku from 927 to 1032; Goku's descent poses from 1152; the
 return at 1392.
 
+### Descent and return
+
+**The descent's globe** (`clashCamera`'s 'win' branch, 1152-1392): the
+globe grows from the clash's wide view (114, 164, 56) to (-15, 281, 230),
+past the fight's line tables, with a new centre and radius every frame,
+far too often for the window builder (about a line per row). The camera
+depends on the clock alone, so `orbit-finale.mjs` makes all of it, in
+extended data: per radius 56-230, the M7A and M7D rows the descent can
+show (`lineTables`, the fight's rule; 81 KiB in three blobs, a radius
+never split), and per frame (201 distinct of 241) the window rows of lines
+`max(0, cy - R)` to `min(223, cy + R)` (the disc and rim edges, clamped to
+the screen; the centre column goes negative near the end; 117 KiB in four
+blobs, each with an empty record for the lines above the globe). Two index
+tables in the data bank give per radius R, the first stored row, the
+blocks and their bank, and per frame the rows, their bank and first line
+and the blob's empty record. `globe_descent` publishes them as they are,
+with virtual bases for row -R (so `globe_itables` and the stars' culling
+count rows as for the fight's blocks); the indirect HDMA sets carry their
+banks to the vblank (`$4337/$4347/$4367` per set; the fight's are F7 and
+the scene block), and the stars read the culling rows from their bank. A
+frame whose set the vblank has not taken keeps the last one with its
+registers. Measured against the browser's `planet()` at ages 1250 and 1392
+(`globe` test): edges 0.02% and 0.15% off, mean colour 2.0% and 2.2%.
+
+**The return** (`returnToFortress` at 1392, or the victory event while the
+fight is still in space): the orbit's picture replaced the deck's VRAM, so
+the field reloads map 246 through its own door (`$82F`) as the debug
+module's teleport does: once the event pump has started the door, its
+entry tile (`$DE`, `$DF`) is moved to Goku's landing spot and the fade-out
+quickened to a step a frame (`$E4/$E5`); the descent's last frame fades out
+under it, the scene stops at the last step (the vblank gives the picture
+and the scene work area back; the pad and combat go back), the field loads
+the deck (no frame of ours runs during the load), and on the first frame
+after it Goku stands on the exact spot and the world module's landing pose
+plays as the deck fades in. The landing spot is `returnToFortress`'s: the
+nearest point to Goku, in 8-pixel steps within 128 each way (the browser's
+order, its stable sort included: a generated list in extended data), where
+he can land (flight's `canLand` at the fight's recorded terrain), searched
+during the descent in the frame's spare time (one candidate a frame at
+least; usually the first, where he stands). The landing clock (`frieza.js`
+`b.age` after the return: frames the field can act, no victory command
+queued and no transition under way) runs to `victoryTiming.landed` (84),
+then `frieza_orbit_landed`: the frieza module requests the victory event
+C7 once Goku can act. Measured in the `return` test: the scene stops 17
+frames after the return, the deck shows from 31, the landing pose plays for
+32 frames, landed at +131, C7 at +132.
+
+Differences: the browser has no reload. It washes the descent's last 24
+frames toward a pale white ((28, 30, 31), `flash(ease(...))` from 1368)
+and shows the deck at once under the same tint, fading over 24 frames
+(`planet-view.js` `returnScene`); here the descent fades to black over 15
+frames (not yet washed), the deck loads in about 14 and fades in from black
+over 16, so the landing clock (which counts only frames the field can act,
+as the browser's) reaches `landed` about 47 frames later than the
+browser's. The pale wash and tint are next, with the victory's whiteout
+(both need every colour, Goku's OBJ palette included, so the palettes
+rather than colour math). Without a landable spot
+the browser keeps Goku hovering (`localFlight`); here he lands where he is
+(a flight API to start hovering is missing).
+
 ### Orbital death
 
 When Goku's HP reaches 0 while the fight or the clash runs, the frieza
@@ -396,30 +456,33 @@ are untouched).
 | `$7000-$71FF` | generated beam picture buffer |
 | `$7200-$74FF` | cached beam OAM runs |
 | `$7500-$757F` | finale state |
-| `$75A0-$77E3` | band window table B, scroll and colour-math HDMA tables, picture queue, rebuild waits, OBJ palettes 4-5, vblank flags |
+| `$75A0-$77F7` | band window table B, scroll and colour-math HDMA tables, picture queue, rebuild waits, OBJ palettes 4-5, vblank flags, the descent's globe state (the published rows' banks, each indirect set's banks, its frame, the stars' culling bank) |
 | `$7800-$7FFF` | (the frieza module's fight block and the deck's hole bitmap: untouched) |
 
 ## Resources
 
 | Resource | Use |
 | --- | --- |
-| Code `$A7:8000-DD4A` | `!CODE_ORBIT`: 23.9 KiB of 31 KiB; bindings at `$A7:FC00-FCBA` |
-| Data `$E7:0000-615F` | stars, asin rows, chord scales, rim tables, palettes, star tiles, heading/step tables, burst parts and offsets, text maps, finale and fall tables (24.4 KiB of 32 KiB) |
+| Code `$A7:8000-E14B` | `!CODE_ORBIT`: 24.3 KiB of 31 KiB; bindings at `$A7:FC00-FCD7` |
+| Data `$E7:0000-6FBD` | stars, asin rows, chord scales, rim tables, palettes, star tiles, heading/step tables, burst parts and offsets, text maps, finale and fall tables, the descent's indexes (27.9 KiB of 32 KiB) |
 | ROM `$F6:0000-7FFF` | Mode 7 globe VRAM image (32 KiB) |
 | ROM `$F7:0000-F14E` | fight line tables (41 KiB), resident effect cells, Death Ball frames, text tiles, band tiles (60 KiB of 64) |
 | ROM `$FA:8000-` | Goku's orbit poses, descent and fall cells, aerial-melee cells; Frieza's tiny and full frames (27 KiB) |
-| Extended data | 142 KiB in 8 blobs: band maps (2 x 21 KiB), band end ramps (31 + 6 + 26 KiB, origin cut 0.4 KiB), class-1 beam pictures (24 + 12 KiB) |
-| WRAM `!RAM_ORBIT+$00-$4F` | state, command, flags, load step, frame counter, test options, timing lines, command argument, `orbit_api_enter` inputs, landing clock, waiting entry, timing marks (test builds) |
+| Extended data | 344 KiB in 16 blobs: band maps (2 x 21 KiB), band end ramps (31 + 6 + 26 KiB, origin cut 0.4 KiB), class-1 beam pictures (24 + 12 KiB), the descent's line tables (32 + 32 + 17 KiB) and window rows (32 + 32 + 32 + 21 KiB), the landing candidates (4 KiB) |
+| WRAM `!RAM_ORBIT+$00-$4F` | state, command, flags, load step, frame counter, test options, timing lines, command argument, `orbit_api_enter` inputs, landing clock, waiting entry, the return's step, landing spot and search, timing marks (test builds) |
 | SRAM | `!SRAM_WORK_SCENE` (above) |
 | VRAM | words `$0000-$3FFF` (Mode 7 map and characters) while the scene shows. OBJ (name base `$6000`, 16/32): `$000` Frieza 32x32 (streamed), `$004` Death Ball 32 (streamed), `$040/$044/$048/$04C/$080/$084` beam pictures 32x32, `$088` Goku 16x16 (streamed), `$08A` Death Ball 16 (streamed), resident 16x16 effect cells in `$008-$03F`, `$08C-$0FF`, `$100-$13F`, `$180-$1BF`, star cells `$160-$17F`. Untouched: `$144-$15F` and `$1C0-$1DF` (the game streams the boy's cells and the damage digits there), `$1E0-$1FF` (HUD portraits). BG3: tiles `$180-$1FF` (text panels), map rows 1-8. During the finale: BG1/BG2 tiles at `$5000` (45), BG1 map `$5400`, BG2 map `$5C00` (rows 0-13) |
 | CGRAM | 0 (sky), 4-11 (text panels), 17-18 (Frieza's band layer), 32-112 (globe), 113-114 (Goku's band layer); OBJ palettes 0 fire, 1 Goku (Super Saiyan), 4 blue (entries 2-3: beam band), 5 pink (1-3: beam band or laser), 6 Frieza, 7 gold with the star shades in 1-4; rewritten each vblank after the game's palette upload. Palettes 2-3 (HUD companions, damage digits) untouched |
 | OAM | native sprites on lines 190-223 (the HUD) kept, the rest hidden; ours after them; the core's module area is closed at our end (`core_oam_cursor = core_oam_limit`) |
-| HDMA | channels 0 (`$2131`), 1 (`$210D/E`), 2 (BGMODE), 3 (M7A, indirect from F7), 4 (M7D, indirect from F7), 5 (BG3VOFS), 6 (windows, indirect from SRAM) via `$2C` bits: all but 7 while the scene shows |
+| HDMA | channels 0 (`$2131`), 1 (`$210D/E`), 2 (BGMODE), 3 (M7A, indirect from F7 or, in the descent, extended data), 4 (M7D, likewise), 5 (BG3VOFS), 6 (windows, indirect from SRAM or the descent's extended data) via `$2C` bits: all but 7 while the scene shows |
 | DMA | channel 7 in vblank (above); the Mode 7 image, star, effect, text and band tiles once (14 load steps with the picture held black) |
 
 While the scene owns the picture the module drops the game's BG row/column
 streaming (`$2E/$2F`) and animated-tile requests (`$90/$9A` bit 7), as the
-ending module does, so nothing else writes BG VRAM.
+ending module does, so nothing else writes BG VRAM. The return gives the
+deck back through the field's own door event (`core_event_request`), so the
+game and every module that keeps VRAM re-upload after the map load, as
+after any door.
 
 Timing (Mesen, FastROM, merged build): the globe test's frame hook ends by
 line ~100 in steady state with no lag frame in its 240-frame spin. In the
@@ -435,10 +498,12 @@ in `snes/test/run-all.mjs`). Addresses of core's and other modules' fields
 come from their sources. Results on the merged build:
 
 - `globe`: imports `preset__space`, shows the test scene with five browser
-  cameras and compares each screenshot with `reference.mjs` (the browser's
-  `planet()` and `sky()` on the cartridge's world map): disc and rim edges
-  match (mismatch 0-0.01%), mean colour difference 1.0-2.7%; a 240-frame
-  longitude spin completes every frame.
+  cameras and two of the victory's descent (ages 1250 and 1392, from the
+  generated tables) and compares each screenshot with `reference.mjs` (the
+  browser's `planet()` and `sky()` on the cartridge's world map): disc and
+  rim edges match (mismatch 0-0.01%; 0.02% and 0.15% in the descent), mean
+  colour difference 1.0-2.7%; a 240-frame longitude spin completes every
+  frame.
 - `intro`: the intro through the public API: the message schedule against
   `orbitIntroText` and each panel against the browser's `radioPixels`
   (pass); the scene work area is the orbit's while it runs and free after
@@ -461,6 +526,13 @@ come from their sources. Results on the merged build:
   Frieza's first hit ends him; 12 of Goku's positions over the fall equal
   `bossRushDeathPose`'s, the orbit stops at 358, the ending's fatal
   sequence runs on (age 413 at the end) and the scene work area is free.
+- `return`: from the hand-off, no intro and Frieza at 6,000 HP, B every 6
+  frames (the first struggle is won): the 'won' clock to the return at
+  1392 (screenshots of the descent), the deck's door, the scene stopped
+  before the load with the area and the pad given back, the deck (map 246)
+  reloaded with Goku where he stood, the landing pose (32 frames), the
+  landing clock seen at 84 the frame before it lands, `frieza_orbit_landed`
+  (landed, out of space) and the victory event C7 requested the next frame.
 
 ## API
 
@@ -474,7 +546,9 @@ come from their sources. Results on the merged build:
 | `!DEBUG_PRESET_HOOK_ORBIT` / `_SPACE` | at the `FRIEZA_PHASES` hook: the API with the intro or straight into the fight; carry set until the scene is live |
 | `!FRIEZA_ORBIT_SURGE` / `_RETURN` / `_LOCKED` (`bind.asm`) | the frieza module's hand-off: the surge enters the orbit with Frieza's ground state; the victory event while in space returns; the controls are locked while the orbit owns the picture or its landing runs |
 | `!orbit_state` (`!RAM_ORBIT+$00`) | 0 off, 1 loading, 2 live, 3 stopping |
-| `!orbit_flags` (`!RAM_ORBIT+$02`) | bit 0 the orbit owns the picture, bit 1 live |
+| `!orbit_land` (`!RAM_ORBIT+$24`) | the landing clock: nonzero from the return to `frieza_orbit_landed` (1 + frames the field could act since the return) |
+| `!orbit_rstep` (`!RAM_ORBIT+$27`) | the return's step: 0 none, 1 door wanted, 2 requested, 3 fading out, 4 the field loads the deck, 5 landing |
+| `!orbit_flags` (`!RAM_ORBIT+$02`) | bit 0 the orbit owns the picture, or its return to the deck runs (to `frieza_orbit_landed`: the frieza module's ground fight sleeps, also when the orbit was entered without its surge, as the debug presets do), bit 1 live |
 | `!orbit_test` (`!RAM_ORBIT+$09`) | test scene options: bit 0 spin (longitude +2 per frame) |
 | scene block `$32:6000` | `cam_x, cam_y, cam_r, cam_lon, cam_lat, cam_tdx, cam_tdy, cam_age` (words) |
 
@@ -490,7 +564,21 @@ come from their sources. Results on the merged build:
   re-claim after `!SCENE_ORBIT` could keep them. (2) The orbit plays the boss-victory
   beat from its own clock and does not call `frieza_victory_start/_tick`
   (`frieza.md` says it does); it calls `frieza_orbit_won` at the fatal hit
-  and `frieza_orbit_landed` at the landing.
+  and `frieza_orbit_landed` at the landing. (3) `returnToFortress` drops
+  `b.space` before its landing search, so `floorHole` sees the deck's
+  holes; `frieza_floor_hole` (flight's `canLand` provider) answers only
+  while the fight is on the deck (`fz_arena_owned` needs `FZFF_SPACE`
+  clear), and the orbit's search runs in space, so it does not avoid holes
+  yet. Please answer for map 246 while `FZFF_SPACE` is set too (the arena
+  is still his), or give the orbit a hole test.
+- **world**: an API to start the landing pose (`mana-mod.js`
+  `flightTransition = {kind: 'landing', age: 0}`), e.g.
+  `!WORLD_API_LANDING`; the orbit's binding calls it when defined and
+  meanwhile writes `!w_trans_kind` / `!w_trans_age` itself (`bind.asm`
+  `orbit_bind_landing`, under `defined("TRANS_LANDING")`).
+- **flight**: an API to keep Goku hovering (`localFlight = true`,
+  `localLift = 12`) for a return with no landable spot within 128 pixels;
+  until then he lands where he is.
 - **core**: the field's HDMA enable comes after every module's vblank work;
   on frames where the game's own vblank runs to line ~251 (its damage
   digits) the modules have about ten lines before a late write loses the

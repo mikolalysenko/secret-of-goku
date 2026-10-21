@@ -39,8 +39,15 @@ incsrc "audio/ids.asm"
 !orbit_in_mhits = !RAM_ORBIT+$1E  ; b.meleeHits
 !orbit_in_dodge = !RAM_ORBIT+$20  ; b.dodgeCooldown
 !orbit_in_stun  = !RAM_ORBIT+$22  ; b.stun
-!orbit_land     = !RAM_ORBIT+$24  ; word: frames since the return to the deck (0: none)
-!orbit_enter    = !RAM_ORBIT+$26  ; byte: orbit_api_enter's mode + 1, waiting for the orbit's own frame (0: none); +$27 stays 0 (read as a word)
+!orbit_land     = !RAM_ORBIT+$24  ; word: the landing clock, 1 + frames since the return to the deck (0: none)
+!orbit_enter    = !RAM_ORBIT+$26  ; byte: orbit_api_enter's mode + 1, waiting for the orbit's own frame (0: none)
+!orbit_rstep    = !RAM_ORBIT+$27  ; byte: the return to the deck (scene.asm, !RS_*; 0: none) (+$26 is read with it as a word)
+!orbit_lx       = !RAM_ORBIT+$28  ; word: the landing spot (map pixels; returnToFortress's nearest landable floor)
+!orbit_ly       = !RAM_ORBIT+$2A  ; word
+!orbit_lfound   = !RAM_ORBIT+$2C  ; word: the search's state: 0 searching, 1 found, 2 none (Goku keeps hovering)
+!orbit_li       = !RAM_ORBIT+$2E  ; word: the search's next candidate (x2)
+!orbit_lhx      = !RAM_ORBIT+$30  ; word: Goku's place on the deck it searches around
+!orbit_lhy      = !RAM_ORBIT+$32  ; word
 !orbit_marks    = !RAM_ORBIT+$40  ; 8 words (ORBIT_TIMING builds): scanlines at the frame's stages
 
 ; ORBIT_TIMING builds: the scanline at stage n of the frame (orbit_marks).
@@ -62,6 +69,15 @@ endmacro
 !OS_LOADING = $01                 ; art uploads; picture held black
 !OS_LIVE    = $02
 !OS_STOP    = $03                 ; restore the field on the next vblank
+
+; The return to the deck (frieza.js returnToFortress; scene.asm orbit_return).
+!RS_DOOR    = $01                 ; the deck's door is wanted (core_event_request while busy)
+!RS_ASKED   = $02                 ; requested: the event pump starts it at the end of an idle frame
+!RS_FADE    = $03                 ; it started: the field's fade-out over the picture, still the orbit's
+!RS_LOAD    = $04                 ; the picture given back: the field reloads the deck
+!RS_LAND    = $05                 ; on the deck: the landing clock (orbit_land) to victoryTiming.landed
+!ORBIT_DECK_DOOR = $002F          ; the door into map 246 (C8:30BC: tile 17, 26)
+!ORBIT_DECK_MAP  = 246
 
 !OC_NONE      = $00
 !OC_TEST_GLOBE = $01              ; tests: show the globe with the camera in the scene block
@@ -121,7 +137,7 @@ endmacro
 !s_bout     = !SB+$072            ;   next list entry
 !s_ctop     = !SB+$074            ;   culling: line of the first rim row
 !s_cn       = !SB+$076            ;   rows (0: none)
-!s_cblk     = !SB+$078            ;   window block (bank $32)
+!s_cblk     = !SB+$078            ;   window block (bank !s_cbank)
 !s_tw       = !SB+$07A            ; twinkle bits of the bright stars
 !s_twhave   = !SB+$07C            ; twinkle bits of the built depth-3 list
 !s_bd       = !SB+$07E            ; depth being built (d*2)
@@ -368,10 +384,19 @@ assert !DRAW_END <= $8000, "orbit draw block overflow"
 !OBJ_PALS45 = !SB+$17A0           ; OBJ palettes 4-5 (blue, pink) with this frame's band colours, as sent (to $77DF)
 !n_static  = !SB+$17E0             ; nonzero: the vblank wrote the scene's fixed registers
 !n_turn    = !SB+$17E2             ; nonzero: the beam pictures' turn before the band map (vblank)
+; The descent's globe (globe.asm globe_descent): tables in extended data.
+!g_desc    = !SB+$17E4             ; nonzero: the descent's camera (finale_camera), its generated tables
+!g_lbank   = !SB+$17E6             ; bank of the published M7A / M7D rows (F7: the fight's)
+!g_wbank   = !SB+$17E8             ; bank of the published window rows ($32: the fight's blocks)
+!g_wempty  = !SB+$17EA             ; an empty window record in that bank
+!g_itbank  = !SB+$17EC             ; 2 words: the M7A / M7D bank each indirect set reads
+!g_itwbank = !SB+$17F0             ; 2 words: the window bank each set reads
+!g_dk      = !SB+$17F4             ; the descent frame the published tables show (x8; $FFFF none)
+!s_cbank   = !SB+$17F6             ; stars: the culling rows' bank
 ; $32:7800-7FFF stays the frieza module's (his fight block !FZSB and the
 ; deck's hole bitmap): frieza_orbit_won clears his shots there, and his
 ; arena could outlive the orbit.
-assert !n_turn+2 <= !SB+$1800, "orbit scene work past $32:77FF (the frieza module's block)"
+assert !s_cbank+2 <= !SB+$1800, "orbit scene work past $32:77FF (the frieza module's block)"
 !ORBIT_NMI_END = 257               ; the scene's vblank uploads end by this scanline
 !ORBIT_NMI_LATE = 244              ; a vblank of ours starting this late keeps the fixed registers
 !BEAM_LATE = 180                   ; a build that can wait ends by this scanline

@@ -180,6 +180,9 @@ finale_camera:
 	CMP.w #!FNT_V_DESCENT
 	BCC .wide
 	; the descent: from wide to (-15, 281, 230), eased over 240 frames
+	; (the globe draws it from its own tables: globe_descent)
+	LDX.w #$0001
+	STX.w !g_desc
 	SEC : SBC.w #!FNT_V_DESCENT
 	CMP.w #!FNT_V_RETURN-!FNT_V_DESCENT
 	BCC +

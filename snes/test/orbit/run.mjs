@@ -6,7 +6,8 @@
 // failure. Addresses of core's and other modules' fields come from their
 // sources (readDefines). Default: every case. Cases:
 //   globe  the Mode 7 globe and starfield at the browser's cameras, compared
-//          with reference.mjs (the browser's planet()/sky() formulas)
+//          with reference.mjs (the browser's planet()/sky() formulas), two
+//          of them the victory's descent (its generated tables)
 //   intro  the orbit intro through the public API (orbit_api_enter): the
 //          message schedule against frieza-cinematic.js orbitIntroText and
 //          each panel's pixels against the browser's radioPixels; the scene
@@ -31,6 +32,10 @@
 //          to the orbit, which takes the scene work area from Frieza's
 //          claim; Frieza's fight sleeps in space; his block ($32:7800-
 //          7FFF: fight block, hole bitmap) is untouched while the orbit runs
+//   return from the hand-off, the clash won at once, the descent and the
+//          return to the deck: the door reload with Goku's landing spot,
+//          the scene and the pad given back, the landing pose and clock,
+//          frieza_orbit_landed and the victory event C7
 import {readFileSync,existsSync,mkdirSync,writeFileSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -77,6 +82,10 @@ function readDefines(files){
   return val;
 }
 const def=readDefines(['snes/src/core/shared.asm','snes/src/core/core.asm','snes/src/core/ram.asm','snes/src/modules/goku/module.asm']);
+// (the return case: the story, world, combat and orbit fields it watches)
+const defMore=readDefines(['snes/src/core/shared.asm','snes/src/core/core.asm','snes/src/core/ram.asm','snes/src/modules/goku/module.asm',
+  'snes/src/modules/story/module.asm','snes/src/modules/world/module.asm','snes/src/modules/combat/module.asm','snes/src/modules/orbit/module.asm']);
+const wramOf=n=>{const v=defMore(n);return v<0x10000?0x7E0000|v:v;};
 const GOKU_FORM=0x7E0000|def('goku_form');           // the goku module's form byte (Super Saiyan: 1)
 const SCENE_OWNER=def('core_scene_owner'),SCENE_ORBIT=def('SCENE_ORBIT');
 const ORBIT_RAM=0x7E0000|(def('RAM_ORBIT')&0xFFFF),SCENE_RAM=def('SRAM_WORK_SCENE');
@@ -205,12 +214,18 @@ const cases={
   async globe(rom){
     // The browser's cameras: idle fight (space preset), moving, beam,
     // clash-wide, and an off-centre hero.
+    // The victory's descent (clashCamera's 'win' branch at a clash age):
+    // the globe from the generated tables in extended data (desc = the age).
+    const {clashCamera}=await import(resolve(repo,'engine/frieza-finale.js'));
+    const descent=age=>{const c=clashCamera({clash:{phase:'win',age,from:{camera:{x:114,y:164,r:56}}},camera:{x:114,y:164,r:56}});return {x:c.x,y:c.y,r:c.r,desc:age};};
     const cams=[
       {name:'idle',x:95,y:154,r:104,lon:1848,lat:3527,age:0},
       {name:'moving',x:99,y:150,r:84,lon:2300,lat:3300,age:5},
       {name:'beam',x:90,y:158,r:68,lon:600,lat:1200,age:100},
       {name:'wide',x:114,y:164,r:56,lon:3900,lat:2000,age:200},
       {name:'right',x:118,y:146,r:92,lon:100,lat:300,age:7},
+      {name:'descent',...descent(1250),lon:1848,lat:3527,age:0},
+      {name:'landfall',...descent(1392),lon:760,lat:3400,age:0},
     ];
     const dir=join(out,'globe');
     const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nCAMS=${lua(cams)}\nSPIN=240\n`;
@@ -497,13 +512,129 @@ end
     for(const m of fails.slice(0,8))console.log('  '+m);
     return ok;
   },
+  async return(){
+    // From the hand-off: no intro, Frieza at 6,000 HP (the clash at once),
+    // B every 6 frames (the first struggle is won). Then the 'won' clock,
+    // the descent and frieza.js returnToFortress at victoryTiming.return:
+    // the deck's door with the entry tile at Goku's landing spot (the
+    // browser's nearest landable floor: here where he stood), the scene
+    // stopped and given back before the load, Goku's pad and combat back,
+    // the world module's landing pose as the deck fades in, the landing
+    // clock to victoryTiming.landed (frieza_orbit_landed: landed, out of
+    // space) and the frieza module's victory event C7.
+    const h=await friezaHandoff();
+    const {victoryTiming:vt}=await import(resolve(repo,'engine/frieza-finale.js'));
+    const {defs:fz}=await import('../frieza/state.mjs');
+    const fzw=n=>{if(!(n in fz))throw Error('frieza define '+n);return fz[n]<0x10000?0x7E0000|fz[n]:fz[n];};
+    const dir=join(out,'return');
+    const test=`${h.prelude}
+local SB = SCENE_RAM
+local FB = SB + 0xA80
+local FN = SB + 0x1500
+local EV_LAST = ${wramOf('core_event_last')}
+local QV, QE = ${wramOf('story_q_valid')}, ${wramOf('story_q_event')}
+local GMODE, TRANS = ${wramOf('goku_mode')}, ${wramOf('w_trans_kind')}
+local INLOCK, OWNER_BIT = ${wramOf('cb_inlock')}, ${defMore('ORBIT_COMBAT_OWNER')}
+local FZF, LANDED, SPACE = ${fzw('fzf_flags')}, ${fz.FZFF_LANDED}, ${fz.FZFF_SPACE}
+local RETURN, LANDED_AGE = ${vt.return}, ${vt.landed}
+function test()
+  if not enterOrbit() then H.result('failures', fails) return end
+  H.w16(FB + 0x02, 0)                      -- no intro
+  H.w16(FB + 0x34, 6000)                   -- Frieza at 6,000: the clash at once
+  local won = nil
+  for f = 1, 2400 do
+    if H.r16(FN) ~= 6 and f % 6 == 0 then H.input = {b = true} else H.input = nil end
+    H.wait(1)
+    if H.r16(FN) == 6 then won = f break end
+  end
+  H.input = nil
+  check(won, 'the clash was won')
+  H.result('won', won)
+  if not won then H.result('failures', fails) return end
+  local shots = {[1160]=true, [1280]=true, [1391]=true}
+  local ret = nil
+  for f = 1, 3000 do
+    H.wait(1)
+    local age = H.r16(FN + 2)
+    if shots[age] and H.r8(ORBIT_RAM) == 2 then H.shot(string.format('descent%04d', age)) shots[age] = nil end
+    if H.r16(FN + 0x20) ~= 0 then ret = age break end
+  end
+  H.result('return_age', ret)
+  H.result('return_bage', H.r16(FN + 0x1E))
+  check(ret == RETURN, 'the return at victoryTiming.return (' .. tostring(ret) .. ')')
+  local hx, hy = H.r16(0x7EE002), H.r16(0x7EE004)
+  H.result('hero_at_return', hx .. ',' .. hy)
+  local log = {}
+  local door, stopAt, ownerAfter, lockAfter, loadAt, poseAt, poseDone, landedAt, c7At = false
+  local mapAfter, spot, flagsAfter
+  for f = 1, 900 do
+    H.wait(1)
+    local rs, st = H.r8(ORBIT_RAM + 0x27), H.r8(ORBIT_RAM)
+    if H.r16(EV_LAST) == 0x082F then door = true end
+    if not stopAt and st == 0 then stopAt = f ownerAfter = H.r16(SCENE_OWNER) lockAfter = H.r16(INLOCK) end
+    if not loadAt and rs == 5 then
+      loadAt = f mapAfter = H.r16(0x7E00DC)
+      spot = H.r16(0x7EE002) .. ',' .. H.r16(0x7EE004)
+      check(H.r16(TRANS) == 2, 'the landing pose requested (world transition ' .. H.r16(TRANS) .. ')')
+    end
+    if loadAt and not poseAt and H.r8(GMODE) == 0x27 then poseAt = f end
+    if poseAt and not poseDone and H.r8(GMODE) ~= 0x27 then poseDone = f end
+    if not landedAt and (H.r8(FZF) & LANDED) ~= 0 then landedAt = f flagsAfter = H.r8(FZF) end
+    if landedAt and not c7At and (H.r16(EV_LAST) == 0xC7 or (H.r8(QV) ~= 0 and H.r16(QE) == 0xC7)) then c7At = f end
+    if f == 6 or f == 40 or (loadAt and f == loadAt + 2) or (loadAt and f == loadAt + 24) or (landedAt and f == landedAt) then H.shot(string.format('return%04d', f)) end
+    log[#log + 1] = string.format('%d rs %d st %d land %d e6 %02x ff %02x d0 %02x dc %d x %d y %d gm %02x tr %d song %02x ev %04x', f, rs, st,
+      H.r16(ORBIT_RAM + 0x24), H.r8(0x7E00E6), H.r8(0x7E00FF), H.r8(0x7E00D0), H.r16(0x7E00DC), H.r16(0x7EE002), H.r16(0x7EE004),
+      H.r8(GMODE), H.r16(TRANS), H.r8(0x7E1E05), H.r16(EV_LAST))
+    if c7At and f >= c7At + 20 then break end
+  end
+  H.result('lines', log)
+  H.result('door', door)
+  H.result('stop_at', stopAt)
+  H.result('owner_after', ownerAfter)
+  H.result('lock_after', lockAfter)
+  H.result('load_at', loadAt)
+  H.result('map_after', mapAfter)
+  H.result('spot', spot)
+  H.result('pose_at', poseAt)
+  H.result('pose_done', poseDone)
+  H.result('landed_at', landedAt)
+  H.result('flags_after', flagsAfter)
+  H.result('c7_at', c7At)
+  check(door, 'the deck door ($82F) ran')
+  check(stopAt and stopAt < (loadAt or 0), 'the scene stopped before the load')
+  check(ownerAfter ~= SCENE_ORBIT, 'the scene work area given back (owner ' .. tostring(ownerAfter) .. ')')
+  check(lockAfter and (lockAfter & OWNER_BIT) == 0, 'the pad and combat given back')
+  check(mapAfter == 246, 'the deck reloaded (map ' .. tostring(mapAfter) .. ')')
+  check(spot == hx .. ',' .. hy, 'Goku lands where he stood (' .. tostring(spot) .. ', want ' .. hx .. ',' .. hy .. ')')
+  check(poseAt and poseDone and poseDone - poseAt >= 24, 'the landing pose played (' .. tostring(poseAt) .. '-' .. tostring(poseDone) .. ')')
+  check(landedAt and flagsAfter and (flagsAfter & SPACE) == 0, 'frieza_orbit_landed: landed, out of space')
+  check(c7At, 'the victory event C7 requested after the landing')
+  H.result('failures', fails)
+end
+`;
+    const r=await runMesen({rom:h.rom,state,test,outDir:dir,timeoutMs:TIMEOUT});
+    const res=r.results??{};
+    const fails=[...(res.failures??[])];
+    if(r.code!==0||!res.won)fails.push('no run ('+(res.error??r.code)+')');
+    // the landing clock (1 at the return, + a frame the field can act; the
+    // cartridge's reload adds its fade and load in between): seen at most
+    // victoryTiming.landed - .return, the frame before it lands
+    const lines=(res.lines??[]).map(l=>{const m=/rs (\d+) st (\d+) land (\d+)/.exec(l);return m?{rs:+m[1],land:+m[3]}:null;}).filter(Boolean);
+    const peak=Math.max(0,...lines.map(l=>l.land));
+    if(peak!==vt.landed-vt.return)fails.push(`the landing clock peaked at ${peak} (want ${vt.landed-vt.return})`);
+    writeFileSync(join(dir,'report.json'),JSON.stringify(res,null,1));
+    const ok=fails.length===0;
+    console.log(`return: ${ok?'pass':'FAIL'} won at ${res.won}, back at ${res.return_age}, stopped +${res.stop_at}, loaded +${res.load_at} (map ${res.map_after}, Goku ${res.spot}), pose +${res.pose_at}-${res.pose_done}, landed +${res.landed_at}, C7 +${res.c7_at}`);
+    for(const m of fails.slice(0,10))console.log('  '+m);
+    return ok;
+  },
 };
 
 const rom=buildRom();
 mkdirSync(out,{recursive:true});
 const names=process.argv.slice(2).filter(a=>!a.startsWith('-'));
 let failed=0;
-const defaults=['globe','intro','fight','clash','handoff','death'];
+const defaults=['globe','intro','fight','clash','handoff','death','return'];
 for(const name of names.length?names:defaults){
   if(!cases[name]){console.log(`unknown case ${name}`);failed++;continue;}
   if(!await cases[name](rom))failed++;

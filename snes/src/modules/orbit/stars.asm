@@ -260,6 +260,8 @@ stars_build_start:
 	STA.w !s_cn
 	LDA.w !g_lw
 	STA.w !s_cblk
+	LDA.w !g_wbank                 ; (the scene block, or the descent's rows)
+	STA.w !s_cbank
 +	RTS
 
 ; Up to s_left stars of the list being rebuilt.
@@ -325,17 +327,23 @@ stars_build_step:
 	STY.w !s_tmp+14
 	TAY
 	SEP #$20
+	PHB                            ; (the rows' bank for the two reads)
+	LDA.w !s_cbank
+	PHA
 	LDA.w !s_tmp+6
+	PLB
 	CMP.w $0002,Y                  ; x < W2L: outside
 	BCC .keep
 	CMP.w $0003,Y                  ; x > W2R: outside
 	BEQ .hide
 	BCS .keep
 .hide
+	PLB
 	REP #$20
 	LDY.w !s_tmp+14
 	BRA .next
 .keep
+	PLB
 	REP #$20
 	LDY.w !s_tmp+14
 .emit

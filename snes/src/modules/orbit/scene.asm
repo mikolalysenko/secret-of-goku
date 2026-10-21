@@ -4,11 +4,11 @@
 
 ; ---------------------------------------------------------------------------
 ; modules_field_frame: after the game's logic and OAM build, before the NMI
-; handshake. M16/X16, DB = $7E, D = 0. Idle (no scene, command or waiting
-; entry): three loads.
+; handshake. M16/X16, DB = $7E, D = 0. Idle (no scene, command, waiting
+; entry or return to the deck): three loads.
 orbit_field_frame:
 	LDA.l !orbit_state             ; (the state and the command byte)
-	ORA.l !orbit_enter             ; (the waiting entry and a spare byte)
+	ORA.l !orbit_enter             ; (the waiting entry and the return's step)
 	BNE +
 	RTL
 +	PHB
@@ -30,6 +30,12 @@ orbit_field_frame:
 	PEA.w $3232 : PLB : PLB
 	REP #$30
 	JSR orbit_enter_try
+	SEP #$20
++	LDA.l !orbit_rstep
+	BEQ +
+	PEA.w $3232 : PLB : PLB
+	REP #$30
+	JSR orbit_return_frame
 	SEP #$20
 +	LDA.l !orbit_state
 	BEQ .out
@@ -204,6 +210,25 @@ orbit_scene_init:
 	STZ.w !bd_sline
 	STZ.w !g_ichg
 	STZ.w !g_bld
+	STZ.w !g_desc                  ; the fight's tables, not the descent's
+	LDA.w #$FFFF
+	STA.w !g_dk
+	JSR globe_fight_banks
+	LDA.w !g_lbank
+	STA.w !g_itbank
+	STA.w !g_itbank+2
+	LDA.w !g_wbank
+	STA.w !g_itwbank
+	STA.w !g_itwbank+2
+	STA.w !s_cbank
+	LDA.w #$0000                   ; no return, no landing spot yet
+	STA.l !orbit_land
+	STA.l !orbit_lfound
+	SEP #$20
+	STA.l !orbit_rstep
+	REP #$20
+	LDA.w #$FFFF
+	STA.l !orbit_li
 	STZ.w !f_on
 	LDX.w #(!FN_END)-(!FN)-2       ; no struggle, no death
 -	STZ.w !FN,X
@@ -301,6 +326,11 @@ orbit_background:
 	BCS .done
 	LDA.w #100                     ; stars: as many as the deadline allows
 	JSR stars_background
+	REP #$30
+	; the descent: the landing spot for the return, in what is left
+	LDA.w !g_desc
+	BEQ .done
+	JSR orbit_land_search
 .done
 	REP #$30
 	RTS
@@ -415,9 +445,280 @@ orbit_live_frame:
 	STZ.w !cam_tdy
 	RTS
 
-; frieza.js returnToFortress (finale.asm, at victoryTiming.return): the
-; picture goes back to the native deck. (Next: the deck's reload.)
+; ---------------------------------------------------------------------------
+; frieza.js returnToFortress (finale.asm at victoryTiming.return; the
+; victory event while the fight is still in space: bind.asm): back to the
+; deck. The orbit's picture replaced the deck's VRAM, so the field reloads
+; map 246 through its door with the entry tile moved to Goku's landing spot
+; (returnToFortress's nearest landable floor, searched during the descent:
+; orbit_land_search), as the debug module's teleport does; the field's
+; fade-out runs over the descent's last frame (a step a frame), then the
+; scene stops; after the load Goku stands on the exact spot, the world
+; module's landing pose plays as the deck fades in, and the landing clock
+; (frieza.js b.age: frames the field can act) runs to victoryTiming.landed:
+; frieza_orbit_landed, whose victory event (C7) takes the story on.
+; M16/X16, DB = $32.
 orbit_return:
+	SEP #$20
+	LDA.l !orbit_rstep
+	BNE +
+	LDA.b #!RS_DOOR
+	STA.l !orbit_rstep
+	REP #$20
+	LDA.w #$0001
+	STA.l !orbit_land
++	REP #$30
+	RTS
+
+; The return's steps, every field frame from the next one on (M16/X16,
+; DB = $32; the scene block is not the orbit's from RS_LOAD on).
+orbit_return_frame:
+	; the landing clock: frames the field can act with no victory command
+	; queued (frieza.js 'won' tick: canAttack, victoryAudio.pending), and
+	; no transition under way (the door's quickened fade leaves the fade
+	; timers settled)
+	LDA.l !orbit_land
+	BEQ +
+	LDA.w $00FF
+	AND.w #$00FF
+	BNE +
+	JSR finale_can_attack
+	BCC +
+	LDA.l !core_snd_head
+	CMP.l !core_snd_tail
+	BNE +
+	LDA.l !orbit_land
+	INC
+	BEQ +                          ; (saturates)
+	STA.l !orbit_land
++	LDA.l !orbit_rstep
+	AND.w #$00FF
+	CMP.w #!RS_LAND+1
+	BCC +
+	JMP orbit_ret_end              ; (no such step)
++	DEC
+	ASL
+	TAX
+	JMP (.steps,X)
+.steps
+	dw orbit_ret_door, orbit_ret_asked, orbit_ret_fade, orbit_ret_load, orbit_ret_land
+
+; RS_DOOR: the landing spot (the search normally ended during the descent),
+; then the deck's door through core's event request (busy: next frame).
+orbit_ret_door:
+	JSR orbit_ret_dark
+	BCC +
+	RTS                            ; (another transition took the picture)
++	LDA.l !orbit_lfound
+	BNE +
+	JSR orbit_land_search
+	LDA.l !orbit_lfound
+	BNE +
+	RTS
++	LDA.w #$0800|!ORBIT_DECK_DOOR
+	JSL core_event_request
+	REP #$30
+	BCS +
+	SEP #$20
+	LDA.b #!RS_ASKED
+	STA.l !orbit_rstep
+	REP #$20
++	RTS
+
+; RS_ASKED: once the pump started the door (C1:E7DF read its record into
+; $DC/$DE/$DF), the entry tile at the landing spot (x / 16; y / 16 * 2 with
+; the door's layer bit) and the fade-out a step a frame (the door's: 4).
+orbit_ret_asked:
+	JSR orbit_ret_dark
+	BCC +
+	RTS
++	LDA.l !core_event_req
+	BEQ +
+	RTS                            ; waiting for an idle frame
++	LDA.l !core_event_last
+	CMP.w #$0800|!ORBIT_DECK_DOOR
+	BEQ +
+	SEP #$20                       ; (cancelled: ask again)
+	LDA.b #!RS_DOOR
+	STA.l !orbit_rstep
+	REP #$20
+	RTS
++	LDA.l !orbit_lx
+	LSR : LSR : LSR : LSR
+	SEP #$20
+	STA.w $00DE
+	REP #$20
+	LDA.l !orbit_ly
+	LSR : LSR : LSR
+	AND.w #$00FE
+	SEP #$20
+	PHA
+	LDA.w $00DF
+	AND.b #$01
+	ORA $01,S
+	STA.w $00DF
+	PLA
+	LDA.b #$01
+	STA.w $00E4
+	STA.w $00E5
+	LDA.b #!RS_FADE
+	STA.l !orbit_rstep
+	REP #$20
+	RTS
+
+; RS_FADE: the field's fade-out, until orbit_ret_dark stops the scene.
+orbit_ret_fade:
+	JSR orbit_ret_dark
+	RTS
+
+; Carry set once the field's picture is dark (brightness 1 or less, or
+; blanked: the field loads next, and no frame of ours runs during it):
+; the scene stops (the next vblank of ours gives the picture back and the
+; scene work area), Goku's pad and combat go back, RS_LOAD. M16.
+orbit_ret_dark:
+	SEP #$20
+	LDA.w $00FF
+	BEQ .lit                       ; (no transition: a dim frame is not one)
+	LDA.w $00E6
+	BMI .dark
+	AND.b #$0F
+	CMP.b #$02
+	BCC .dark
+.lit
+	REP #$20
+	CLC
+	RTS
+.dark
+	LDA.b #!RS_LOAD
+	STA.l !orbit_rstep
+	LDA.l !orbit_state
+	CMP.b #!OS_LIVE
+	BNE +
+	LDA.b #!OS_STOP
+	STA.l !orbit_state
+	REP #$30
+	JSR orbit_fight_off
++	REP #$30
+	SEC
+	RTS
+
+; RS_LOAD: the first frame after the field's load (its transition request
+; $FF clear again and the screen no longer blanked: the fade-in): the
+; stop's bookkeeping if no vblank of ours ran since it; on the deck, Goku
+; on the exact spot and the landing pose; elsewhere (another transition)
+; the return ends there.
+orbit_ret_load:
+	SEP #$20
+	LDA.w $00FF
+	BNE .wait
+	LDA.w $00E6
+	BPL +
+.wait
+	REP #$20
+	RTS                            ; the load is still to come
++	SEP #$20
+	LDA.l !orbit_state
+	BEQ +
+	LDA.b #!OS_OFF                 ; (no vblank of ours since the stop: the
+	STA.l !orbit_state             ; field's loader set its registers)
+	LDA.b #!OF_ACTIVE
+	STA.l !orbit_flags
+	REP #$30
+	LDA.w #!SCENE_ORBIT
+	JSL core_scene_release
++	REP #$30
+	LDA.w $00DC
+	AND.w #$01FF
+	CMP.w #!ORBIT_DECK_MAP
+	BEQ +
+	JMP orbit_ret_end              ; (not the deck: no landing)
++	LDA.l !orbit_lx
+	STA.l $7EE002
+	LDA.l !orbit_ly
+	STA.l $7EE004
+	JSR orbit_bind_landing
+	SEP #$20
+	LDA.b #!RS_LAND
+	STA.l !orbit_rstep
+	REP #$30
+	RTS
+
+; RS_LAND: victoryTiming.landed (84 frames of the clock after the return):
+; frieza_orbit_landed (its victory event C7), the return ends.
+orbit_ret_land:
+	LDA.l !orbit_land
+	CMP.w #1+!FNT_V_LANDED-!FNT_V_RETURN
+	BCS +
+	RTS
++	JSR orbit_ret_end
+	JMP orbit_bind_landed
+
+; The return ends: no step, no landing clock, bit 0 given up.
+orbit_ret_end:
+	LDA.w #$0000
+	STA.l !orbit_land
+	SEP #$20
+	STA.l !orbit_rstep
+	LDA.l !orbit_flags
+	AND.b #~!OF_ACTIVE
+	STA.l !orbit_flags
+	REP #$30
+	RTS
+
+; returnToFortress's landing spot: the nearest point to Goku's place on
+; the deck, in 8-pixel steps within 128 each way (ordered by distance, ties
+; as the browser's stable sort leaves them: orbit-finale.mjs, extended
+; data), where he can land (canLand at the fight's terrain: bind.asm).
+; One candidate a call, more until the frame's deadline; orbit_lfound 1
+; with the spot in orbit_lx / ly, or 2: none (the browser keeps Goku
+; hovering; here he comes down where he is: orbit_lx / ly = his place).
+; M16/X16.
+orbit_land_search:
+	LDA.l !orbit_lfound
+	BEQ +
+	RTS
++	LDA.l !orbit_li
+	CMP.w #$FFFF
+	BNE .one
+	LDA.l $7EE002
+	STA.l !orbit_lhx
+	LDA.l $7EE004
+	STA.l !orbit_lhy
+	LDA.w #$0000
+	STA.l !orbit_li
+	BRA .one
+.next
+	JSR orbit_late
+	BCS .out
+.one
+	LDA.l !orbit_li
+	CMP.w #!FND_LAND_N*4
+	BCS .none
+	TAX
+	CLC : ADC.w #$0004
+	STA.l !orbit_li
+	LDA.l !XDATA_ORBIT_LAND,X
+	CLC : ADC.l !orbit_lhx
+	STA.l !orbit_lx
+	LDA.l !XDATA_ORBIT_LAND+2,X
+	CLC : ADC.l !orbit_lhy
+	STA.l !orbit_ly
+	TAX
+	LDA.l !orbit_lx
+	JSR orbit_bind_can_land
+	REP #$30
+	BCC .next
+	LDA.w #$0001
+	STA.l !orbit_lfound
+	RTS
+.none
+	LDA.l !orbit_lhx               ; (none: he comes down where he is)
+	STA.l !orbit_lx
+	LDA.l !orbit_lhy
+	STA.l !orbit_ly
+	LDA.w #$0002
+	STA.l !orbit_lfound
+.out
 	RTS
 
 ; ---------------------------------------------------------------------------
@@ -501,8 +802,10 @@ orbit_field_nmi:
 	SEP #$20
 	LDA.b #!OS_OFF
 	STA.l !orbit_state
-	LDA.b #$00
-	STA.l !orbit_flags
+	LDA.l !orbit_rstep             ; (a return keeps bit 0 to the landing)
+	BEQ +
+	LDA.b #!OF_ACTIVE
++	STA.l !orbit_flags
 	REP #$30
 	LDA.w #!SCENE_ORBIT            ; the scene work area is free again
 	JSL core_scene_release
@@ -786,6 +1089,13 @@ orbit_nmi_live:
 	STA.w !bd_shown
 	LDA.w !g_itend,X
 	STA.w !bd_sline
+	SEP #$20
+	LDA.w !g_itwbank,X             ; the set's window records: the scene block or the descent's
+	STA.w $4367
+	LDA.w !g_itbank,X              ; its M7A / M7D rows: bank F7 or the descent's
+	STA.w $4337
+	STA.w $4347
+	REP #$20
 	; channel 5: BG3VOFS -1 over a text panel's lines (BG rows show one
 	; line earlier than sprites and the browser's overlay), 0 for the HUD
 	LDA.w #$1202                   ; mode 2, $2112 (twice)
@@ -798,15 +1108,11 @@ orbit_nmi_live:
 	SEP #$20
 	LDA.b #orbit_vofs_plain>>16
 	STA.w $4354
-	LDA.b #$32
+	LDA.b #$32                     ; the tables in the scene block
 	STA.w $4324
 	STA.w $4334
 	STA.w $4344
 	STA.w $4364
-	STA.w $4367                    ; window records in the scene block
-	LDA.b #!FL>>16
-	STA.w $4337                    ; M7A / M7D rows in ROM
-	STA.w $4347
 	LDA.w !N_HDMA
 	ORA.b #!ORBIT_HDMA
 	STA.w !N_HDMA

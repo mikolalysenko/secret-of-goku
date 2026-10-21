@@ -33,6 +33,45 @@ else
 	RTS
 endif
 
+; returnToFortress's landing test (scene.asm orbit_land_search): A16 = x,
+; X16 = y. C set where Goku can land: flight's canLand at the terrain the
+; fight recorded (frieza.js b.terrain: the frieza module's), else at his
+; own; without the flight module, everywhere. (frieza.js also asks
+; floorHole: the frieza module answers it while the fight is on the deck
+; only; orbit.md, Requests.)
+orbit_bind_can_land:
+if defined("FLIGHT_API_CAN_LAND_T")
+if defined("fzf_terrain")
+	PHA
+	LDA.l $7E0000|!fzf_terrain
+	TAY
+	PLA
+	JSL !FLIGHT_API_CAN_LAND_T
+else
+	JSL !FLIGHT_API_CAN_LAND
+endif
+	REP #$30
+	RTS
+else
+	SEC
+	RTS
+endif
+
+; mana-mod.js flightTransition {kind: 'landing'} (returnToFortress): the
+; world module's landing pose, which plays while the deck fades in. Its
+; transition word stands in for an API (orbit.md, Requests).
+orbit_bind_landing:
+if defined("WORLD_API_LANDING")
+	JSL !WORLD_API_LANDING
+	REP #$30
+elseif defined("TRANS_LANDING")
+	LDA.w #!TRANS_LANDING
+	STA.l $7E0000|!w_trans_kind
+	LDA.w #$0000
+	STA.l $7E0000|!w_trans_age
+endif
+	RTS
+
 if defined("FZFF_SPACE")
 ; !FRIEZA_ORBIT_SURGE (frieza module, every frame of the second surge; JSL,
 ; DB = $7E, M16/X16): A16 = surge age, X16/Y16 = the strike target (the
