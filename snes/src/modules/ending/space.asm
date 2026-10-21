@@ -75,6 +75,7 @@
 !sh_bank   = !SW+$15C      ; frame source bank
 !sh_size   = !SW+$15E      ; frame OAM size
 !sp_eage    = !s_var+$50   ; word  explosion age (explodingPlanet's clock)
+!sp_stale   = !s_var+$52   ; word  window buffers still holding the previous shape (bit 0: s_big, bit 1: +$400)
 
 ; ---------------------------------------------------------------------------
 ; Phase start (DOOMED, EXPLODE, ESCAPE). A live space picture is kept when
@@ -284,6 +285,7 @@ space_phase_init:
 	STA.w !sp_heat
 	STZ.w !sp_winbuf
 	STZ.w !sp_shape
+	STZ.w !sp_stale
 	STZ.w !sp_chrok
 	STZ.w !s_glowr
 	STZ.w !s_glowg
@@ -1090,10 +1092,8 @@ space_windows:
 	CMP.w !sp_shape
 	BEQ .same
 	STA.w !sp_shape
-	LDA.w #!s_big
-	JSR space_win_clear
-	LDA.w #!s_big+$400
-	JSR space_win_clear
+	LDA.w #$0003              ; both buffers hold the old shape
+	STA.w !sp_stale
 .same
 	; build into the buffer the vblank is not using
 	LDA.w !sp_winbuf
@@ -1103,6 +1103,20 @@ space_windows:
 	CLC
 	ADC.w #!s_big
 	STA.w !sp_buf
+	; Empty this buffer if it still holds the old shape. Only the build
+	; buffer: HDMA reads the other one during this frame, and clearing it
+	; here tore the flash's last frame (the disc ended part way down).
+	LDA.w !sp_winbuf
+	XBA                       ; 0 / 4
+	LSR : LSR
+	INC                       ; bit 1 / 2
+	BIT.w !sp_stale
+	BEQ .fresh
+	EOR.w !sp_stale
+	STA.w !sp_stale
+	LDA.w !sp_buf
+	JSR space_win_clear
+.fresh
 	; this frame's data -> DBUF
 	LDA.w !sp_t
 	ASL : ASL
