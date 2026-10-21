@@ -469,17 +469,11 @@ behind the hooks (Frieza, Sandship wreck, endings) is outside this module.
   neutralise the pointer after the import in tests: if `$1D03` is F0–F7,
   `$A170` is 0 and the byte at the pointer is `$50` or more, write
   `$1D01-$1D02 = 0`.
-- **frieza:** door `3FC` entry override while the Emperor is present
-  (`storyRead` returns 36 at `C8:3FF2`; door bytes are read at `C1:E7E8`/`E7F2`)
-  needs its own patch site.
-- **destroy:** Watts's shortcut map piece (`C8:5A8E` → `0F` when
-  `gaia-shortcut` is broken; map 73's object list is at `C8:A398`) is map
-  piece data, read outside the object list hooks above; it needs its own
-  patch in the piece loader. The Sandship runtime (`sandship.js` wreck,
-  flight doors, crash, gear) has no owner in `plan.md`; its routing and
-  dialogue are already here.
-- **radio:** `window-placement.js` (BG3 window moved below the HUD).
-- **debug:** `quick-boot.js`, `scene-launcher.js`.
+- Since resolved by their owners: door `3FC`'s entry beside the Emperor
+  (frieza, `frieza_door_record`), Watts's shortcut map piece (destroy,
+  `destroy_piece_flag` at `C0:CC2D`), the Sandship runtime (destroy,
+  "Sandship runtime"), `window-placement.js` (ui, `place.asm`) and
+  `quick-boot.js` / `scene-launcher.js` (debug).
 - **Fly label:** the browser shows "Flammie Drum" until Goku arrives; the
   cartridge patch shows "Fly" from the start.
 - **Water Palace mid-walk states:** the browser's fixed walk allocation is
