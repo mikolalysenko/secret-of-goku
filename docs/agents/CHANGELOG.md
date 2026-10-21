@@ -4,6 +4,60 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: a body's hold made in its note (2026-10-21)
+
+- A distant body blocked on a beam's rows, or waiting there for the star
+  lists, had its hold made through a far call (`sl_note`, then
+  `sl_yield`) every frame it yielded, about 1.3 lines a body; only a
+  blocked body's aged hold had a shortcut.
+- `scdraw.asm` `sc_note` now makes that hold itself with `sl_yield`'s
+  formula, and its shortcut for a blocked body is exact: it applies
+  while the hold already yields to both groups (the old one could miss
+  a group that came on during the block).
+- In the clash's launches, where all three bodies yield with young
+  holds, the drawing is 2-3 lines shorter a frame for some 20 frames;
+  elsewhere the same.
+- The check build (`-DHELD_CHECK`, counters at `$32:7256`) has
+  `sl_note` make every such hold as well and compares the two: 1,446
+  yields in the `clash`, 45 in the `fight`, all equal.
+- Repeated pictures: `clash` 38 (39 before, main 34: the launches 4,
+  the recoil 1, the win 33); `fight` 9.
+
+## Orbit: no stars' cull in the clash (2026-10-21)
+
+- The stars on the rows a beam newly holds are no longer hidden at once
+  in the clash. There the depths leave out the stars well inside the
+  rays, and with a group's limits only growing the lists keep up: the
+  `clash` test's rays lose no slivers without the cull either.
+- The two culls cost each launch's first two frames 12 lines each (the
+  limits' remake and the cull: 41 and 54 lines of stars there, main 19
+  and 28).
+- The `fight` keeps its cull: without it the beams lose 530 slivers
+  instead of 234.
+- Repeated pictures: `clash` 39 (41 before, main 34: the launches 5, the
+  struggle 1, the recoil 1, the win 32); `fight` 9.
+
+## Orbit: a beam run built again keeps its chains (2026-10-21)
+
+- A beam group's cached OAM run is rebuilt whenever its origin moves. In
+  the clash Frieza's ray moves 2 px every step of the launch and the
+  struggle, and each rebuild prepared every chain afresh (its slot's
+  picture, its tile word, cell 0's place: about 1.7 lines a chain) before
+  placing the cells.
+- A rebuild whose key, chains, flips, palette and slots with a picture
+  are the cached run's now takes its chains as last prepared
+  (`beamrun.asm`, kept in `BC_PREP` at `$32:7280`): their tile words and
+  cell 0's place less the origin, and the step.
+- `clash` test: 336 of its 426 builds take them, 2.5 lines instead of
+  10.2; a build costs 13.0 lines on average instead of 17.5.
+- The check build (`-DBEAM_PREP_CHECK`) builds every such run a second
+  time from chains prepared afresh and compares the two runs (bytes,
+  lengths per cell index, entries, high-table bytes): all 310 equal in the
+  `clash`; the `fight` takes none (its rebuilds add slots or chains).
+- Repeated pictures unchanged: `fight` 9, `clash` 41 (the launches 8, the
+  struggle none; the launches' frames turn on the limits and the culls,
+  which this leaves alone).
+
 ## SNES release: 0.2.0 (2026-10-21)
 
 - Published as a GitHub release, not a pre-release:

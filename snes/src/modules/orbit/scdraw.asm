@@ -183,9 +183,10 @@ sc_draw_planetoid:
 ; Body X16 (* 2) about to be drawn with its top left at d_x, d_y (32
 ; pixels square, 16 with sc_note16): its rows noted for the star limits,
 ; then carry set when it yields to a beam (not drawn). Here the common
-; cases (on the screen at the rows the limits count, with nothing there to
-; yield to, or still blocked after its least hold); the rest in scline.asm
-; sl_note. Keeps X.
+; cases (on the screen at the rows the limits count: nothing there to
+; yield to, or blocked or waiting for the star lists, its hold made as
+; scline.asm sl_yield makes it); the rest (moved, off the screen, held
+; with room) in scline.asm sl_note. Keeps X.
 sc_note16:
 	LDA.w #16
 	BRA +
@@ -213,22 +214,90 @@ sc_note32:
 	BNE .busy
 	CLC
 	RTS
-.busy
-	LDA.w !sb_blk                  ; (blocked again, its hold blocked and as
-	AND.l sc_bodybits,X            ; long as its least: nothing changes)
-	BEQ .far
-	LDA.w !sb_room,X
-	BNE .far
-	LDA.w !sb_hold,X
-	AND.w #$40FF
-	CMP.w #$4000|!SL_HOLD
-	BCC .far
-	SEC
-	RTS
 .far
 	LDA.w !sl_half
 	JSL sl_note_far
 	RTS
+.busy
+	; (blocked, or counted on a beam's rows and still waiting for the star
+	; lists: it yields, its hold made as scline.asm sl_yield makes it; held
+	; with room: sl_yield counts it)
+	LDA.w !sb_blk
+	AND.l sc_bodybits,X
+	BEQ +
+	LDA.w !sb_room,X               ; (blocked again, its hold blocked, as long
+	BNE ++                         ; as its least and yielding to both beam
+	LDA.w !sb_hold,X               ; groups: nothing changes)
+	CMP.w #$C300|!SL_HOLD
+	BNE ++
+if defined("HELD_CHECK")
+	JMP sc_note_check              ; (A: the hold, as it stays)
+else
+	SEC
+	RTS
+endif
+++	LDA.w #$C000                   ; (held, no room)
+	BRA .yield
++	LDA.w !sb_stale
+	AND.l sc_bodybits,X
+	BEQ .far
+	LDA.w #$8000                   ; (held)
+.yield
+	ORA.w !sb_hold,X               ; (with those it yielded to before)
+	STA.w !sl_g
+	LDA.w !sc_sig                  ; (and the beam groups on now: sl_on)
+	AND.w #$00FF
+	BEQ +
+	LDA.w #$0100
++	ORA.w !sl_g
+	STA.w !sl_g
+	LDA.w !sc_sig+4
+	AND.w #$00FF
+	BEQ +
+	LDA.w #$0200
++	ORA.w !sl_g
+	AND.w #$C3FF
+	PHA                            ; (a frame more held, to !SL_HOLD: sl_age)
+	AND.w #$00FF
+	CMP.w #!SL_HOLD
+	PLA
+	BCS +
+	INC
++
+if defined("HELD_CHECK")
+	JMP sc_note_check
+else
+	STA.w !sb_hold,X
+	STZ.w !sb_room,X
+	LDA.l sc_bodybits,X
+	TSB.w !sb_held
+	SEC
+	RTS
+endif
+
+if defined("HELD_CHECK")
+; The check build (-DHELD_CHECK): the hold sc_note would make (A16) kept,
+; sl_note called instead, and the two compared: it yields, its hold, no
+; room, held (hc_checks the yields checked, hc_diff those that differ).
+sc_note_check:
+	STA.w !hc_hold
+	LDA.w !sl_half
+	JSL sl_note_far
+	PHP
+	INC.w !hc_checks
+	PLP
+	BCC .diff
+	LDA.w !sb_hold,X : CMP.w !hc_hold : BNE .diff
+	LDA.w !sb_room,X : BNE .diff
+	LDA.l sc_bodybits,X : AND.w !sb_held : BEQ .diff
+	SEC
+	RTS
+.diff
+	PHP
+	INC.w !hc_diff
+	PLP
+	RTS
+endif
 
 ; d_x, d_y = body X16's (* 2) top left: its centre - 16.
 sc_corner:
