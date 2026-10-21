@@ -1,4 +1,4 @@
-# Goku gameplay review — October 19, 2026
+# Goku gameplay review — October 20, 2026
 
 The cartridge already had Goku's movement, combat, local/world flight,
 teleport, story and boss modules. The main problems in this review were
@@ -7,6 +7,52 @@ SNES audio and compact effects. It is substantially smoother, but crowded
 combat is not yet guaranteed to run without missed video frames.
 
 ## Current checkpoint
+
+The new pass starts at integrated main `5f21b35`. Fresh 240-frame runs
+reproduce charge **22**, teleport **3**, flying ki **3**, flying punches
+**2**, ordinary flight **1**, and zero for the other eight cases. Fresh
+1,200-frame runs differ from the earlier October 19 image: charge **33**,
+teleport **15**, corridor flying ki **15**, flying punches **2**, and
+ground punches/ki **0/0**. Use these matched-build baselines below, rather
+than attributing differences from the old 26/15/10 results to this pass.
+
+### Charge presentation lookup
+
+Generate the charge aura power and orb frame from the existing quantized
+strength. Full-charge strobing and every FX request remain unchanged;
+`COMBAT_CHARGE_DRAW_SLOW` restores the arithmetic path. Partial charge's
+combined submissions fall **1,127 → 824 CPU cycles**. All **9,981** assembled
+comparisons, **36 combat scenarios**, **13 short** and **six long** gameplay
+cases pass with zero palette, meter, OBJ, complete-NMI, graphics-DMA or
+duplicate scenery-work errors. Short charge misses improve **22 → 21**;
+long charge **33 → 31**. Other counts are unchanged. The long charge peak
+changes **276.58 → 277.90** scanlines as actor/input timing changes;
+crowded zero-drop timing remains open.
+
+Baseline profiling (`modprof.mjs`, all six perf scenes, and gameplay's
+module/FX/combat spans) precedes the change. During short charge/release,
+native actor construction averages **81.02** lines (peak **162.88**) and
+movement/contact work **39.18** (peak **56.60**). FX averages **11.02**
+(peak **39.32**); charging frames usually add 15–24 FX lines, release
+frames about 30–39. Combat logic averages **9.25** (peak **49.67**, including
+interruptions). Goku's frame callback averages **3.25**, radio/UI **2.53**,
+and Goku's NMI upload peaks at **6.10**. Complete NMI peaks at **34.00**
+lines with no overruns. This fixture uses base-form charging: SSJ lightning
+and warning decisions do not cause its misses. Native actors/contact and
+the combined charge/release workload are the critical path.
+
+The initial orb-only lookup trial measured 30 long charge misses, but
+removed less per-frame work than the combined lookup. It is retained only
+as a private comparison, not as evidence of zero-drop timing. Artifacts:
+`.local/snes-test/perf2/` (`baseline-*`, `charge-profile`, `orb-long`,
+`charge-table-short`, `charge-table-final-long`, and the unit/combat logs).
+
+Long commands use `punch ki fly-ki fly-punch teleport charge --repeat=5
+--flight-corridor`; the runner has no special `--long` preset. Perf's six
+shared scenes pass on the fresh baseline. Idle `modprof` FX remains about
+0.2 frame / 0.1 NMI lines; combat's frame callback is 0.87 including dispatch.
+
+## Previous checkpoint (October 19)
 
 The latest 1,200-video-frame runs use the resident aura build in
 `.local/snes-test/aura-rows/game.sfc`. All rendering and hardware

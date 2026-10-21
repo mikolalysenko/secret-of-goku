@@ -600,10 +600,16 @@ if defined("FX_AURA")
 	BEQ .full
 	CMP.w #!GOKU_K_REVERT
 	BEQ .full
+if defined("COMBAT_CHARGE_DRAW_SLOW")
 	JSR cb_bind_strength
 	LSR
 	CLC
 	ADC.w #64
+else
+	JSR cb_charge_draw_values
+	AND.w #$00FF
+	CLV                          ; the former strength/2 + 64 cannot overflow
+endif
 	BRA .power
 .full
 	LDA.w #256
@@ -627,9 +633,18 @@ cb_fx_orb:
 if defined("FX_ORB")
 	JSR cb_fx_req_clear
 	; frame min(4, strength*5); full charge alternates 3/4 every 4 frames
+if defined("COMBAT_CHARGE_DRAW_SLOW")
 	JSR cb_bind_strength
 	CMP.w #256
 	BCC .partial
+else
+	JSR cb_charge_draw_values
+	XBA
+	AND.w #$00FF
+	CLV                          ; the former multiply/full-charge add clears V
+	CMP.w #$0080
+	BCC .set
+endif
 	LDA !cb_frame
 	LSR : LSR
 	AND.w #$0001
@@ -637,6 +652,7 @@ if defined("FX_ORB")
 	ADC.w #3
 	BRA .set
 .partial
+if defined("COMBAT_CHARGE_DRAW_SLOW")
 	STA !cb_mq
 	LDA.w #5
 	JSR cb_mul16
@@ -646,6 +662,7 @@ if defined("FX_ORB")
 	CMP.w #5
 	BCC .set
 	LDA.w #4
+endif
 .set
 	STA.l !fx_a
 	LDX.w #$0000
@@ -657,6 +674,23 @@ if defined("FX_ORB")
 +	ORA.w #!FX_ORB|(!FX_F_GOKU<<8)
 	JSL fx_draw
 endif
+	RTS
+
+; Presentation only: the generated table preserves the old strength
+; rounding and charge-byte clamp. No multiply or duplicate quantization.
+; A = aura power | orb frame << 8 (orb bit 7: full-charge strobe).
+cb_charge_draw_values:
+	LDA !cb_charge
+	AND.w #$00FF
+	ASL
+	TAX
+	LDA !cb_form
+	AND.w #$00FF
+	BEQ .base
+	LDA.l combat_charge_draw_ssj,X
+	RTS
+.base
+	LDA.l combat_charge_draw_base,X
 	RTS
 
 cb_fx_lightning:

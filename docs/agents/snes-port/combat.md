@@ -81,6 +81,18 @@ unless noted.
 
 ## Runtime
 
+**Charge presentation lookup (2026-10-20).** The aura power and orb frame
+are generated together from the existing, floored 0–256 strength. This
+removes the orb's four hardware multiplies and both consumers' repeated
+quantization; the full-charge 3/4 strobe still uses the live clock. The
+tables cover every low charge byte, including the original clamped tail,
+and occupy 1 KiB in combat's data bank. `COMBAT_CHARGE_DRAW_SLOW` restores
+the arithmetic path. No gameplay clock, charge, damage or FX request order
+changes. `charge-draw.test.mjs` compares both assembled paths through the
+real FX API in 9,981 cases, preserving requests, live RAM/SRAM and CPU
+results (only dead multiply scratch differs). Partial charge's aura + orb
+submission falls from 1,127 to 824 CPU cycles. All 36 combat scenarios pass.
+
 **Gameplay follow-up (2026-10-18).** Goku now clears the native sword's
 stamina percentage, charge latch and charged sparkle before the HUD uploads,
 including native writes made after combat's logic. His ki charge remains
