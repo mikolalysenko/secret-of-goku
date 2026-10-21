@@ -190,30 +190,45 @@ audio_beds_service:
 	SEP #$20
 	RTS
 
-; Native weapon-charge tick at C0:B3ED. Filter the actor at its source,
-; leaving the original game's companions and native hero unchanged. The
-; displaced LDA #$A7 / JSR $BB27 and $BB11 are replayed for those actors.
+; Native actor sound queue at C0:BB11 (also called through 00/80 mirrors).
+; $A6 = stamina ready (EC02), $A7 = charge tick (B3ED), $A8 = level/full
+; charge (B3CB). Filter before actor identity is lost in the shared $95
+; mailbox. Goku is always actor 0, independent of leader/controller, hurt,
+; menu or combat.canAttack. SUPPRESS explicitly restores the native boy
+; for the ending; he and both companions retain all three sounds.
+; M8/X16, any DB. Replay STA $95 / LDA $7EE020,X for every allowed cue.
 audio_weapon_charge:
+	PHP
 	CPX.w #0
 	BNE .native
+	CMP.b #$A6
+	BCC .native
+	CMP.b #$A9
+	BCS .native
+	PHA
 	LDA.l !persist_goku_active
-	BEQ .native
+	BEQ .restore
 	LDA.l $7E0000|!goku_ctl
 	AND.b #!GOKU_CTL_SUPPRESS
-	BNE .native
+	BNE .restore
+	PLA
+	PLP
+	; Skip the remaining pan/queue writes, returning to this mirror's RTS.
+	; Preserve the caller's A/B, X/Y, flags, DB and direct page.
+	PHP
+	REP #$20
+	PHA
+	LDA.w #$BB26-1
+	STA $04,S
+	PLA
+	PLP
 	RTL
+.restore
+	PLA
 .native
-	LDA.l $7EE02C,X
-	BEQ .out
-	LDA.b #$A7
+	PLP
 	STA $95
 	LDA.l $7EE020,X
-	AND.b #$F0
-	STA.w $0118
-	LSR : LSR : LSR : LSR
-	ORA.w $0118
-	STA.w $0119
-.out
 	RTL
 
 ; World takeoff hands off to a loader before the next field selector. Queue

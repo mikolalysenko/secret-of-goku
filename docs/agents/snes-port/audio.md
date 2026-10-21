@@ -8,6 +8,133 @@ Everything below about the native driver was reverse-engineered from the US
 cartridge (`snes/gen/audio-spc700.mjs` disassembles it) and cross-checked
 against 277 ARAM/DSP snapshots of the browser mod (`.local/snes-import/`).
 
+## Native weapon-charge filter follow-up (base `ba03815`)
+
+The old filter covered **only `$27`**. It missed **`$28` (charge level and
+full charge)** and **`$26` (stamina ready)**. The new filter intercepts all
+three at the shared actor queue, `C0:BB11`, before the actor identity is
+lost in `$95`. It replaces the five-byte `C0:B3ED` patch with a six-byte
+`C0:BB11` patch. No core or combat code changes are needed.
+
+### Exact native paths and reproduction
+
+| Effect | Request | Path to the dispatcher |
+| --- | --- | --- |
+| `$27`, rising weapon-charge tick | `C0:B3ED LDA #$A7`, `B3EF JSR $BB27` | `$BB27` tests that the actor has a controller, then `$BB11` queues `$95` and pan `$0119` |
+| `$28`, level reached **and** final/full level | `C0:B3CB LDA #$A8`, `B3CD JSR $BB27` | Same actor queue; there is no separate full-charge effect id |
+| `$26`, stamina reaches ready/100% | `C0:EB63 JSR $EBB6`, then `EC02 LDA #$A6`, `EC04 JMP $BB11` | Bypasses `$BB27`; `EBFC` already tested the actor's controller |
+
+The shared consumer is `C0:B565-$B586`: once every four native frames it
+strips bit 7 from `$95`, writes `02 id 00 pan` to `$1E00-$1E03`, and calls
+`C3:0004 → C3:0160`. The meter starts through `C0:B7C1`, `B7E8`, or `B80F`
+for controllers 1, 2, or 3. `B330` resolves the party bit to actor offsets
+`$0000/$0200/$0400`. **Goku remains actor 0 when another character leads.**
+The traced field requests use the `$80` FastROM mirror; the filter and
+tests also cover `$00` and `$C0`.
+
+With Primm leading on controller 1 and Goku assigned controller 2, holding
+Goku's B for 740 video frames dispatches **seven `$28` cues** on `ba03815`:
+`80:B7E8 → 80:B330 → 80:B3CB → 80:BB27 → 80:BB11`. Combat's `canAttack`
+is false for controller 2, so its normal meter cleanup does not run. The
+old `$27` filter still blocks the intervening ticks. This reproduces an
+uncovered charge sound without injecting a sound or advancing the meter.
+
+Three additional edge regressions seed native meter/stamina bytes just
+before their original update (as a late write or loaded state can do):
+level `$002C`, final level `$072C`, and a last stamina tick with latch
+`$F0`. Original code emits `$28`, `$28`, `$26` respectively on the old
+build; all three are blocked on the new one. These are explicitly seeded
+edge cases, separate from the real-input two-controller reproduction.
+
+No alternate `$27` request site was found in the US code audit or the
+traces. Ordinary single-player B-held field play still reproduces the
+old trace7 result: native `$27` is requested but never dispatched. The
+maintainer's precise listening state was not supplied, so the evidence
+identifies the omitted native charge family, rather than claiming that
+their single-player report was a second `$27` caller.
+
+The filter checks actor 0 plus Goku's persistent identity, without relying
+on `canAttack`, leader, controller, form, hurt, menus or map state. It
+preserves the existing `GOKU_CTL_SUPPRESS` exception: that flag deliberately
+restores Randi for the ending. Companion charging, inactive/native Randi,
+and every unrelated queued effect retain their original registers, flags,
+pan and mailbox writes. It does not clear another actor's pending cue.
+
+### Regression and validation
+
+`node snes/test/audio/run.mjs weapon-charge` traces empty/enemy fields,
+combos, hit recovery, walking, Potos, a dungeon, Super Saiyan, both
+companion leaders, a second controller, menus, map transitions, savestate
+load, a real GAME FILE save/reset/load, local/world flight, Vegeta and
+Frieza, and the three seeded edges. It records every final effect/bed
+command, native source PC, caller PC, actor/controller, and the queue
+writer. Module commands are labelled as module-owned instead of mistaking
+the dispatcher's queue cursor for an actor. The test requires every native
+weapon command to have an attributed source, verifies actual controller-2
+input, and checks that attacks resume after map and native save loads.
+
+The local Mesen2 `SetInput` has an argument-position bug for nonzero ports.
+The test probes `GetInput` and selects the working calling convention;
+it also asserts the native second pad receives B. See the upstream
+[SetInput implementation](https://github.com/SourMesen/Mesen2/blob/master/Core/Debugger/LuaApi.cpp#L803).
+The controller option is passed only to this process; shared settings and
+checkpoints are not changed.
+
+- Strict shipping build passes. Shipping SHA-256:
+  `002cdaa009dbdd0ccee930720104fdfb2cc7dd4ad8bcee196ff05e2d55f9c418`.
+- `audio`: 43 unit/SPC tests, all 11 existing Mesen cases, song render
+  comparison and the new weapon-charge regression pass. Its final 34-phase
+  trace drops from 863 to 853 commands: all ten Goku weapon cues disappear
+  (seven real-input `$28`, two seeded `$28`, one seeded `$26`). Both
+  companions and the two native-boy controls retain `$27/$28`.
+- `gameplay`: all 13 pass. Before → after misses per 240 frames:
+
+| Case | `ba03815` | Fixed |
+| --- | ---: | ---: |
+| solo-punch | 0 | 0 |
+| solo-ki | 0 | 0 |
+| walk | 0 | 0 |
+| punch | 0 | 0 |
+| ki | 0 | 0 |
+| fly | 1 | 1 |
+| fly-ki | 2 | 2 |
+| fly-punch | 1 | 1 |
+| water-flight | 0 | 0 |
+| teleport | 3 | 3 |
+| charge | 13 | 13 |
+| focus-grass | 0 | 0 |
+| transform-grass | 0 | 0 |
+
+- `perf`: all six pass; p90/lag is sword 63/0, sandship 113/0, battle
+  54/0, beast 174/30 (native 30 Hz), fortress 96/0, flight 112/0.
+- `combat`: all 37 pass.
+- No added per-frame selector work. The trace's actor-queue span
+  (`BB11` entry to `BB26`, before its RTS) stays below 0.49 lines; the
+  existing dispatcher remains 1.349 lines maximum. The CPU unit test
+  bounds a muted queue call at
+  90 cycles including its return and checks all cue bytes, flags and
+  original code mirrors.
+- `-DAUDIO_CUSTOM_SAMPLES=0` remains byte-identical to round four:
+  `56ed7992b1f2abf06561a1d5553d1ab151e5fc7fd8d8ff0941a9a63508115388`.
+  The shipping build is restored after the PCM/rollback diagnostics.
+
+Artifacts live in `.local/snes-test/audio/charge-filter/`: `before-final/`
+and `after-final/weapon-charge/` contain the command traces and summaries;
+`audio/`, `gameplay/` and the suite logs hold validation output. The prior
+`ba03815` gameplay measurements are retained under `audio/bootfix7/`.
+Samples, SPC upload blocks, reservation, EDL caps and mix are unchanged
+byte for byte; compare7's existing listening manifest remains current.
+
+| File | Change |
+| --- | --- |
+| `snes/src/modules/audio/beds.asm` | Actor-aware filter for native `$26/$27/$28`, preserving the native return contract |
+| `snes/src/modules/audio/module.asm` | Move the hijack from `$B3ED` to the shared `$BB11` queue |
+| `snes/test/audio/weapon-charge.test.mjs` | Assembled CPU parity and suppression tests across cues, actors, controllers, flags and mirrors |
+| `snes/test/audio/weapon-charge.lua` | Broad cartridge input/source/queue/dispatch trace and edge regressions |
+| `snes/test/audio/weapon-charge.mjs` | Run, attribute and validate the trace; `--diagnose` retains old-build failures |
+| `snes/test/audio/run.mjs` | Include both regressions in the full audio suite |
+| `docs/agents/snes-port/audio.md`, `audio-samples.md` | Findings, validation and unchanged sample/mix inventory |
+
 ## Cross-emulator boot investigation (`2413865` follow-up)
 
 The reported bsnes failure was a **capture-phase regression, not a failed
@@ -651,9 +778,10 @@ noise-clock change cannot retune either bed; a bed cannot retune a punch.
 Tests run punches with both beds active and check pitch, noise cleanup and
 music-voice return. Existing punch/impact noise-clock sharing is unchanged.
 
-The Goku-only buzz filter hijacks five original bytes at `C0:B3ED`. It
-filters actor X=0 only while Goku is active and unsuppressed; other actors
-replay the displaced native sound-queue writes. `world/bridge.asm` submits
+The original round-seven buzz filter hijacked five bytes at `C0:B3ED`. It
+filtered actor X=0 only while Goku was active and unsuppressed; other actors
+replayed the displaced native sound-queue writes. The follow-up above
+replaces it with the shared-queue filter. `world/bridge.asm` submits
 the takeoff command through the existing core queue immediately: its old
 request was discarded by the transition's pause callback before a field
 selector could consume it. This adds no idle callback work or core changes.

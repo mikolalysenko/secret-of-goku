@@ -1927,9 +1927,9 @@ pullpc
 ; ---------------------------------------------------------------- patches
 incsrc "resident.asm"
 if !AUDIO_CUSTOM_SAMPLES
-%orig2($C0B3ED, $A7A9)
-%orig3($C0B3EF, $BB2720)
-%hijack_jsl($C0B3ED, audio_weapon_charge, 5, audio)
+%orig2($C0BB11, $9585)
+%orig4($C0BB13, $7EE020BF)
+%hijack_jsl($C0BB11, audio_weapon_charge, 6, audio)
 endif
 ; Driver upload end (C3:0106 LDY #$0200 / STY $2142).
 ; The extension is resident from boot; shipping only feeds three rare lines.

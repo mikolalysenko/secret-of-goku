@@ -1,5 +1,20 @@
 # Resident custom samples: cartridge option and storage audit
 
+## Native weapon-charge filter follow-up
+
+The `ba03815` follow-up moves the 65816 actor filter to `C0:BB11`, covering
+the native stamina-ready `$26`, charging tick `$27`, and level/full-charge
+`$28` while preserving companions' sounds. The samples, six retail SPC
+upload blocks, extension, reservation, EDL caps and authored mix are
+byte-identical to `variety7`. There is no new sound take or compare7 entry.
+See [audio.md](audio.md#native-weapon-charge-filter-follow-up-base-ba03815)
+for the exact callers, input trace, regressions and CPU results.
+
+Shipping SHA-256:
+`002cdaa009dbdd0ccee930720104fdfb2cc7dd4ad8bcee196ff05e2d55f9c418`.
+Rollback (`-DAUDIO_CUSTOM_SAMPLES=0`) remains round four:
+`56ed7992b1f2abf06561a1d5553d1ab151e5fc7fd8d8ff0941a9a63508115388`.
+
 ## Cross-emulator boot follow-up
 
 The `2413865` bsnes investigation found a name-screen capture-phase mismatch:
