@@ -58,6 +58,8 @@ export function probeReads(xprobe){
     {addr:0x337FFF,what:'last save RAM byte via $33'},
     {addr:0xB37FFF,what:'last save RAM byte via $B3'},
     {addr:0x00FFFC,what:'reset vector low byte via $00'},
+    {addr:0x7DFFF0,what:'upper half of $7D (extended data, second 4 MiB)'},
+    {addr:0x3DFFF0,what:'the same byte via $3D'},
   ];
 }
 const long=a=>[a&255,(a>>8)&255,(a>>16)&255];
