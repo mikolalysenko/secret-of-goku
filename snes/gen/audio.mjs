@@ -7,6 +7,7 @@ import {resolve} from 'node:path';
 import {assemble} from './audio-spc700.mjs';
 import {readWav,resample} from './audio-brr.mjs';
 import {buildStreamClip,CHUNK_BYTES,CHUNK_SAMPLES} from './audio-stream.mjs';
+import {residentAsm,nativeMapAsm} from './audio-resident.mjs';
 
 export const STREAM_RATE=12000;
 export const STREAM_PITCH=Math.round(STREAM_RATE*4096/32000); // $0600
@@ -163,6 +164,8 @@ export async function buildSongs(repo,rom){
 }
 
 export async function generate({rom,repo,outDir}){
+ writeFileSync(resolve(outDir,'resident.asm'),residentAsm());
+ writeFileSync(resolve(outDir,'native-map.asm'),nativeMapAsm());
  const ext=buildExtension(repo,rom);
  writeFileSync(resolve(outDir,'upload.bin'),ext.upload);
  const songs=await buildSongs(repo,rom);

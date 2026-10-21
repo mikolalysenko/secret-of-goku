@@ -1,7 +1,7 @@
 ; Resident SPC effects for gameplay. One priority-selected command per
 ; frame, with no BRR transfer, chant stream or continuous air stream.
 ; The native driver already holds these samples. resident.asm adds short
-; single-voice sequences in unused effect slots DC-E2, all self-ending.
+; single-voice sequences in unused effect slots DC-E4, all self-ending.
 ; -DAUDIO_PCM=1 retains the old streamer for comparison and audio research.
 
 ; Complete an outstanding effect handshake without waiting. Main thread
@@ -68,14 +68,7 @@ audio_native_command:
 	LDA $00                    ; displaced LDA $00; native STZ $00 follows
 	JML $C30179
 
-audio_native_ids:
-	db $00,$DC,$DC,$DD,$DD,$DE,$DD,$DD
-	db $E2,$DF,$E0,$E1,$E0,$DD,$DD,$DD
-	db $E1,$E1,$DC,$DD,$DE,$DE,$DE,$E2
-	db $DD,$E2,$DC,$E2,$00,$00,$00,$DF,$E2
-audio_native_priority:
-	db 0,1,1,5,5,3,5,2,7,4,8,8,8,5,5,5
-	db 6,6,2,2,3,3,3,7,5,7,3,7,0,0,0,4,7
+incsrc "audio/native-map.asm"
 
 ; M8/X16, DB=$7E. Requests expire in this frame; a busy sound queue never
 ; accumulates a delayed burst of punches after the player stopped attacking.

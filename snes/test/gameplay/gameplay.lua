@@ -195,6 +195,10 @@ function test()
     end
   end
   H.input=nil; measuring=false
+  -- The resident transformation now follows the browser's 2.54 s tail.
+  -- Keep the 240-frame CPU window above, then allow that one-shot to end
+  -- before checking for a stuck charge/transform voice.
+  if CHECK_AURA then H.wait(24) end
   local chargeTailVoices=0
   for v=0,7 do
     local id=aram(0xFF80+v)

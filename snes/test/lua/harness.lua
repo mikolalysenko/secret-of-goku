@@ -132,7 +132,8 @@ end
 -- slots that the shipping ROM now fills at boot; never replace live tracks,
 -- samples, driver code or the optional PCM extension.
 function H.residentEffects()
-  if H.r16(0xC324A9) ~= 0x2F8C then return end
+  local first = H.r16(0xC324A9)
+  if first < 0x2F74 or first >= 0x3000 then return end
   for i = 0, 0x8F do
     emu.write(0x2F70+i, H.r8(0xC324A9+i), emu.memType.spcRam)
   end

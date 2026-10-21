@@ -8,14 +8,14 @@ Everything below about the native driver was reverse-engineered from the US
 cartridge (`snes/gen/audio-spc700.mjs` disassembles it) and cross-checked
 against 277 ARAM/DSP snapshots of the browser mod (`.local/snes-import/`).
 
-## Shipping sound policy (October 18, 2026)
+## Shipping sound policy (October 20, 2026)
 
 The default cartridge uses effects already resident in the original SPC
 driver. It does not upload the stream extension or transfer BRR chunks
-during gameplay. Seven short, single-voice sequences occupy previously
-unused effect slots
-`$DC-$E2`: swing, hit, ki, charge, transformation, teleport and beam. They
-reuse the boot-resident instruments and finish in 90-470 ms. The native
+during gameplay. Nine single-voice sequences occupy previously unused effect slots
+`$DC-$E4`, alongside four measured retail effects. They reuse the
+boot-resident instruments and finish within 2.6 seconds. Their durations
+now follow the browser clips, including the transformation and burst tails. The native
 `$12` rumble loop is no longer used by transformations; it never stopped
 on its own. Contact has a stronger attack than an empty swing, and the
 old two-voice, roughly two-second `$50` impact has a short replacement.
@@ -34,8 +34,8 @@ intact samples, one-voice ownership, automatic cue termination and the
 absence of BRR stream commands. The SPC tests additionally check silent
 tails, output headroom and unchanged retail effects/samples.
 
-`resident.asm` uses 115 of the 144 zero bytes at ARAM `$2F70-$2FFF`: seven
-pointer pairs followed by 87 sequence bytes. Slots `$E3-$FF` are reserved
+`resident.asm` uses 142 of the 144 zero bytes at ARAM `$2F70-$2FFF`: nine
+pointer pairs followed by 106 sequence bytes. Slots `$E5-$FF` are reserved
 for sequence storage. The existing boot and song-reload transfers already
 include this region, so it needs no new upload, samples or SPC extension.
 The test importer installs this small region from the cartridge when
@@ -52,6 +52,75 @@ The native effect test measures less than two scanlines per dispatcher call
 parameters, then loads and restores music. This avoids the old effect
 busy-wait; it does not eliminate the native song loader's transition pauses.
 The pending byte aliases the unused PCM channel state in a native build.
+
+### Measured resident cue palette
+
+`node snes/test/audio/effects.mjs --search` auditions every nonempty retail
+slot, then 1,008 loop-free candidate sweeps/decays through the real SPC700
+driver and S-DSP model. Eligibility requires one voice, boot instruments,
+self-termination, no sequence loops/jumps or global tempo/master changes.
+The chosen nine sequences and mapping live in `snes/gen/audio-resident.mjs`;
+`node snes/test/audio/effects.mjs --wav` measures the built cartridge and
+writes its recordings and feature vectors under `.local/snes-test/audio/`.
+
+References are all browser WAV variants, resampled at each cue's authored
+rate, multiplied by its gain and the .55 effects master. Features: audible
+-40 dB duration, 32 normalized RMS envelope bins, Hann-windowed 1024-point
+FFT power centroid, eight octave-band energies (62.5 Hz–8 kHz), and RMS
+level. Score = 100 / (1 + .9 duration + .8 spectrum + .4 centroid +
+.8 envelope + .3 level); duration/centroid errors are absolute log2 ratios,
+band/level errors are capped at 24 dB and divided by 12, envelope error is
+RMS distance. Scores average variants. This is an acoustic ranking, not a
+claim of perceptual identity; the resident samples cannot reproduce speech
+or the layered source recordings.
+
+The table compares the selected sound with the best other sound in the
+shipping palette. A higher-scoring alternative was deliberately rejected
+for distant impact (quieter), laser (different from disc), or a category's
+shared timbre. All cues retain the existing priority selector, centred
+`02 ee 0F 88`, one new command per frame and asynchronous dispatch. This
+command has no volume field or exact cap >1: reuse clamps each effect to
+one voice, protecting music. Sequence volumes preserve a louder contact
+than swing and a quieter charged cue; retail effects and shared sequences
+cannot preserve every Web Audio gain/cap/variant relationship. Charge,
+aura and Frieza-charge remain bounded charged pulses; air is represented
+by takeoff/landing, with no continuous stream. Kamehameha remains off.
+
+| Cue | Effect | Score | Alternative (score) |
+| --- | --- | ---: | --- |
+| swing | $DC clink | 51.9 | $0E retail (47.5) |
+| kickSwing | $BF retail | 47.9 | $0E retail (46.7) |
+| hit | $DD impact | 43.0 | $0E retail (41.2) |
+| kick | $A3 retail | 43.4 | $DD impact (42.0) |
+| blast | $DE ki-warp | 50.4 | $E2 disc (44.9) |
+| impact | $DD impact | 65.4 | $E3 air-release (44.5) |
+| distantImpact | $0E retail | 43.6 | $DD impact (56.6) |
+| beam | $E4 beam | 55.0 | $DE ki-warp (40.3) |
+| charged | $DF charged | 55.2 | $E2 disc (44.3) |
+| transform | $E0 transform | 61.4 | $E4 beam (40.7) |
+| revert | $E3 air-release | 50.1 | $DD impact (43.3) |
+| powerBurst | $E1 burst | 47.7 | $E4 beam (40.1) |
+| deflect | $DC clink | 56.9 | $0E retail (43.4) |
+| balloonPop | $DC clink | 59.9 | $DF charged (49.9) |
+| iceBreak | $DC clink | 46.5 | $DF charged (40.9) |
+| teleport | $DE ki-warp | 56.6 | $E2 disc (41.4) |
+| teleportIn | $DE ki-warp | 59.3 | $E2 disc (42.9) |
+| flight | $DD impact | 47.8 | $A3 retail (39.3) |
+| landing | $E3 air-release | 50.0 | $0E retail (41.8) |
+| friezaOrb | $E1 burst | 49.0 | $E4 beam (32.1) |
+| friezaDisc | $E2 disc | 47.4 | $BF retail (36.3) |
+| friezaLaser | $00 retail | 47.2 | $E2 disc (57.8) |
+| friezaBeam | $E4 beam | 65.0 | $E1 burst (40.5) |
+| friezaImpact | $DD impact | 52.3 | $A3 retail (45.0) |
+| fortressBreak | $E1 burst | 56.2 | $E4 beam (35.1) |
+| friezaRush | $DD impact | 46.7 | $E2 disc (45.3) |
+| vegetaBeam | $E4 beam | 66.0 | $E1 burst (39.7) |
+
+Resident milestone validation: strict build; audio native/unit (12 Node tests
+and all 27 audible Mesen cues) pass. Dispatcher maximum remains 1.35
+scanlines. All 13 gameplay cases pass with identical miss counts: charge
+22/240, teleport 3, fly/fly-ki/fly-punch 1/3/2, all others 0. The selector's
+65816 instruction path is unchanged; only ROM lookup data changed.
 
 ## 1. The native sound driver
 
