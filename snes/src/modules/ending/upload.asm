@@ -1,5 +1,29 @@
-; The finale's two field-vblank handlers (core/cgram.asm), in the second code
-; area: they run at the game's own palette transfer, where no HDMA runs.
+; The finale's field-vblank upload handlers, in the second code area.
+; The native dialogue hook and core/cgram.asm callbacks run with HDMA off.
+
+; C0:C1F0, the field NMI's native dialogue upload. C0:C238 leaves VMAIN
+; incrementing after the low byte; the actor streamer normally restores
+; $80 at C1:952D. Full-screen scenes hold that streamer, so restore the
+; mode here before the native BG3 tile/map DMA (including lag vblanks).
+; The native call's A, flags, DB and return address are kept. No window
+; registers or HDMA channels are borrowed from the disc / shock ring.
+ending_dialogue_upload:
+	PHP
+	PHA                         ; native call site: M8, A = $04
+	LDA.l !ending_live
+	AND.b #$01
+	BEQ .native
+	LDA.l $320000+!s_fullscreen
+	BEQ .native
+	LDA.b #$80
+	STA.w $2115
+.native
+	PLA
+	PLP
+	JML $C00006                 ; native uploader; RTL to C0:C1F4
+
+%orig4($C0C1F0, $C0000622)
+%hijack_jsl($C0C1F0, ending_dialogue_upload, 4, ending)
 
 ; The finale's scene RAM is ours while an ending phase runs (the scene work
 ; area is shared by every set piece; the ending does not take core's scene
