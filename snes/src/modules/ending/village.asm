@@ -47,15 +47,8 @@
 ; ---------------------------------------------------------------------------
 ; Take the overlay: the native picture stays, our sprites go in front.
 begin_overlay:
-	; the game's palette buffer, given back when the scene lets go
-	SEP #$20
-	LDA.w !s_palsaved
-	BNE .saved
-	LDA.b #$01
-	STA.w !s_palsaved
-	LDA.b #$00
-	JSR pal_native
-.saved
+	; (the game's palette buffer is never written: the upload handler sends
+	; our ranges in its place, ending_cgram_upload)
 	SEP #$20
 	LDA.b #!FAM_OVERLAY
 	STA.w !s_family
@@ -134,16 +127,11 @@ overlay_reset:
 	RTS
 
 ; A native map load under the overlay: the scene goes on (Goku stays with
-; the boy, as in the browser); the saved palette belongs to the old map and
-; the cells are sent again.
+; the boy, as in the browser) and the cells are sent again.
 overlay_map_change:
 	REP #$30
 	LDA.w !N_MAP
 	STA.l !ending_map0
-	SEP #$20
-	LDA.b #$00
-	STA.w !s_palsaved
-	REP #$20
 	JMP overlay_reset
 
 ; Give the OBJ VRAM region back (release paths, the departure's space).

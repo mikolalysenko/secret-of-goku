@@ -155,7 +155,18 @@
 !s_bg3cut   = !SW+$7C   ; byte  BG3 (dialogue/HUD) hidden from line 170 down (HDMA ch5 on TM)
 !s_tmcut    = !SW+$7D   ; byte  TM value from line 170 down
 !s_var      = !SW+$80   ; $5E bytes per-scene variables (SW+$80..$DD)
-!s_palsave  = !SW+$100  ; 512 bytes: the game's palette buffer 7E:0600 while a scene owns it
+!s_cgord    = !SW+$100  ; 4 bytes: declared ranges in ascending start colour (pal_commit)
+!s_cgcnt    = !SW+$104  ; byte  ranges the upload handler sends (0: none; pal_commit)
+!s_cgnmi    = !SW+$106  ; 8 bytes: upload handler scratch (NMI): position, k, range start, count
+!s_cgtmp    = !SW+$110  ; 14 bytes: pal_commit scratch (count, starts, best)
+!s_wq       = !SW+$120  ; 4 x 8 bytes: WRAM copies queued for the field vblank (wq_push):
+                        ;   +0 destination ($7E), +2 source, +4 source bank, +5 DMAP, +6 bytes
+!s_wqn      = !SW+$140  ; word  bytes of s_wq in use (published last)
+!s_wqarg    = !SW+$142  ; word  wq_push: source bank | DMAP << 8
+!s_cgnew    = !SW+$144  ; 4 bytes: pal_commit's order before it is published
+!s_lw       = !SW+$148  ; 8 bytes: a low-priority WRAM copy for the vblank (nmi_lowcopy):
+                        ;   +0 destination ($7E), +2 source, +4 bank, +6 bytes (0: none)
+                        ; !SW+$150-$2FF free
 !s_palout   = !SW+$300  ; 256 colours after fades (committed into 7E:0600 every frame)
 !s_compr    = !SW+$500  ; 256 words: red*2 of each base colour
 !s_compg    = !SW+$700  ; 256 words: green*2
@@ -211,7 +222,7 @@ hi_bits_ram = !SW+$DF0             ; 16 bytes (oam_put's high-table patterns)
 !l_curve    = !s_x+$20          ; 32 words: fade curve scratch
 !l_cy       = !s_x+$60          ; word
 !s_cutptr   = !s_x+$64          ; word  TM table (s_hdmabuf half) for the next vblank
-!s_palsaved = !s_x+$68          ; byte  s_palsave holds the game's palette buffer
+                                ; !s_x+$68: free (was the palette-buffer save flag)
 !s_ovclaim  = !s_x+$69          ; byte  the overlay holds core's OBJ VRAM region FIELD_OBJ_A
 !s_ldvis    = !s_x+$6A          ; byte  loading under a visible picture: vblank budget, the clock runs
 !s_goku_dma = !s_x+$70          ; 80 bytes: queue_goku's 16 tile DMAs (address, bank, VRAM)
@@ -787,6 +798,7 @@ ending_frame:
 	JML ending_music_sync
 .run
 	INC.w !s_frame
+	STZ.w !s_wqn                  ; this frame's vblank copies (wq_push)
 	; A native map load since the scene took the screen: the loader has
 	; already set every PPU register for the new map (the overlay follows
 	; the boy; a full-screen phase loads its stage again).
@@ -948,6 +960,7 @@ scene_init:
 	STA.w !s_regson
 	STA.w !s_fullscreen
 	STA.w !s_palcount
+	STA.w !s_cgcnt
 	STA.w !s_mode7
 	STA.w !s_hdma
 	STA.w !s_paldirty
@@ -956,11 +969,12 @@ scene_init:
 	STA.w !s_win
 	STA.w !s_band_top
 	STA.w !s_band_bot
-	STA.w !s_palsaved
 	STA.w !s_ovclaim
 	STA.w !s_ldvis
 	REP #$30
 	STZ.w !s_vwcount
+	STZ.w !s_wqn
+	STZ.w !s_lw+6
 	LDA.w #!s_hdmabuf
 	STA.w !s_cutptr
 	STZ.w !s_dqhead
@@ -1071,13 +1085,6 @@ release_screen:
 	STA.l !ending_live
 	LDA.b #$00
 	STA.w !s_regson
-	LDA.w !s_palsaved
-	BEQ .noPal
-	LDA.b #$00
-	STA.w !s_palsaved
-	LDA.b #$01
-	JSR pal_native            ; the game's palette back
-.noPal
 	JSR release_common
 .idle
 	SEP #$20
@@ -1091,7 +1098,6 @@ release_quiet:
 	SEP #$20
 	LDA.b #$00
 	STA.w !s_regson
-	STA.w !s_palsaved         ; the map load rebuilt the game's palette
 	STA.l !ending_live
 	JSR release_common
 	SEP #$20
@@ -1107,6 +1113,7 @@ release_common:
 	STA.w !s_loading
 	STA.w !s_ldvis
 	STA.w !s_palcount
+	STA.w !s_cgcnt
 	STA.w !s_fullscreen
 	LDA.b #!FAM_NONE
 	STA.w !s_family
@@ -1139,13 +1146,6 @@ release_common:
 begin_fullscreen:
 	SEP #$20
 	PHA
-	LDA.w !s_palsaved
-	BNE .saved
-	LDA.b #$01
-	STA.w !s_palsaved
-	LDA.b #$00
-	JSR pal_native            ; keep the game's palette buffer
-.saved
 	SEP #$20
 	PLA
 	STA.w !s_family
@@ -1320,6 +1320,7 @@ pushpc
 org !CODE_ENDING_X
 incsrc "sound.asm"
 incsrc "cutaway.asm"
+incsrc "upload.asm"
 ending_x_end:
 assert ending_x_end <= !CODE_ENDING_X+$4000, "ending second code area overflow"
 pullpc

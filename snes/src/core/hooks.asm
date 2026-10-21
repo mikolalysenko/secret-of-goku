@@ -11,6 +11,11 @@
 %orig4($C14D0B, $7EAF285C)
 %hijack($C14D0B, core_title_boot_alt, 4, core)
 
+; The field NMI's palette upload (C0:C0F0 LDA #$00 / STA $2121, through C117):
+; module upload handlers first (core/cgram.asm), else the game's transfer.
+%orig4($C0C0F0, $218D00A9)
+%hijack($C0C0F0, core_cgram_upload, 4, core)
+
 ; Field loop frame end (00:B073 SEP #$20 / LDA #$01).
 %orig4($C0B073, $01A920E2)
 %hijack_jsl($C0B073, core_field_frame, 4, core)

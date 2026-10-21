@@ -823,6 +823,7 @@ incsrc "oam.asm"
 incsrc "services.asm"
 incsrc "save.asm"
 incsrc "vram.asm"
+incsrc "cgram.asm"
 if defined("CORE_TEST")
 	incsrc "../../test/core/testmod.asm"
 endif

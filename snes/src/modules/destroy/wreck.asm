@@ -785,7 +785,7 @@ ss_breach_backdrop:
 ; Vblank side: destroy_field_nmi (JSL, first in modules_field_nmi), after
 ; the game's own uploads and HDMA setup, still force-blanked. DB = $80,
 ; M16/X16. The colours themselves go up in the game's own CGRAM upload
-; (destroy_palette_dma below), so this costs no transfer time.
+; (destroy_cgram_upload below), so this costs no transfer time.
 destroy_field_nmi:
 	REP #$30
 	LDA.l !ss_vis : AND.w #$FF00 : CMP.w #!SS_VIS_MAGIC : BNE .off
@@ -847,13 +847,17 @@ ss_nmi_breach:
 	JSR ss_nmi_release
 	RTL
 
-; C0:C0F0-C117, the field NMI's CGRAM upload (all 512 bytes from $7E:0600,
-; or $BE00 while $2A is set, DMA channel 7; M8/X16, DB = 0, D = 0): the
-; Sandship's staged colours replace their range of it, the rest comes from
-; the game's buffer as before. Same bytes, same time. Returns to C0:C118
-; with the original's registers: A = $0080 (the NMI keeps B = 0 from
-; C0:C0AF), X = $0200, Y kept.
-destroy_palette_dma:
+; CGRAM upload handler (modules_cgram_upload: the field NMI's palette
+; upload, C0:C0F0-C117, 512 bytes from $7E:0600 or $BE00 while $2A is set,
+; DMA channel 7; M16/X16, DB = 0, D = 0). While the Sandship's look is on,
+; its staged colours replace their range of the upload and the rest comes
+; from the game's buffer as before: same bytes, same time, carry set.
+; Otherwise carry clear: the game's own transfer.
+destroy_cgram_upload:
+	LDA.l !ss_vis : AND.w #$FF00 : CMP.w #!SS_VIS_MAGIC : BEQ .look
+	CLC
+	RTL
+.look
 	PHY
 	PHP
 	REP #$30
@@ -861,9 +865,7 @@ destroy_palette_dma:
 	; the game uploads every vblank) runs no module vblank callbacks: while
 	; the Sandship's look is on, the OBJ palettes they wrote (the effects
 	; library's, for the fires) stay in CGRAM and only the BG colours go up.
-	; Everywhere else the upload is the original's 512 bytes.
 	LDY.w #512
-	LDA.l !ss_vis : AND.w #$FF00 : CMP.w #!SS_VIS_MAGIC : BNE +   ; (the Sandship's look only)
 	LDA.l !core_dma_ready : BNE +
 	LDY.w #256
 +	LDA.l !ss_vis : AND.w #$FF00|!SS_VIS_PAL : CMP.w #!SS_VIS_MAGIC|!SS_VIS_PAL : BNE .native0
@@ -906,11 +908,10 @@ destroy_palette_dma:
 	LDA.w #0
 	JSR ss_cg_native
 .back
-	LDA.w #$0080
-	LDX.w #$0200
 	PLP
 	PLY
-	JML $00C118
+	SEC
+	RTL
 ; A = CGRAM byte offset, Y = bytes: from the game's buffer (as C0:C0F0).
 ss_cg_native:
 	PHA

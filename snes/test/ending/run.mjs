@@ -33,7 +33,7 @@ function coreDefine(name){
 }
 const lib0=`EVENT_MAILBOX=0x${coreDefine('core_event_req').toString(16)}\n`;
 const lib=lib0+`AUDIO_SFX=${symAddr('audio_sfx')}\nAUDIO_FADE=${symAddr('audio_fade')}\nNMI_OUT=${symAddr('ending_world_nmi_out')}\nNMI_IN=${symAddr('ending_world_nmi')}\nNMI_RESTORE=${symAddr('ending_world_nmi_restore')}\nNMI_DMA=${symAddr('cut_footprint_ran')}\n`+
-  `DMA_TRIGGERS={${['pal_commit_trigger','flight_sprites_trigger','flight_dragon_trigger','flight_stars_trigger','cut_oam_trigger'].map(symAddr).join(',')}}\n`+readFileSync(resolve(here,'lib.lua'),'utf8');
+  `DMA_TRIGGERS={${['ending_preupload_trigger','nmi_lowcopy_trigger','cut_oam_trigger'].map(symAddr).join(',')}}\n`+readFileSync(resolve(here,'lib.lua'),'utf8');
 // 'sfx<id>@<age>' / 'fade<byte>@<age>' calls recorded by E.watchAudio.
 const audioCalls=r=>(r.audio??'').split(' ').filter(Boolean);
 const heard=(r,call)=>audioCalls(r).includes(call);
@@ -308,7 +308,9 @@ for(const t of tests){
     state=join(checkpointDir(),t.checkpoint);
     if(!existsSync(state))spawnSync(process.execPath,[resolve(repo,'snes/test/checkpoints.mjs')],{cwd:repo,stdio:'inherit'});
   }
-  const r=await runMesen({rom:copy,test:lib+readFileSync(resolve(here,`${t.name}.lua`),'utf8'),outDir:out,state});
+  // Every frame rendered: unthrottled Mesen otherwise drops frames by wall
+  // clock, and a still can catch an older frame (a load's) on a busy host.
+  const r=await runMesen({rom:copy,test:lib+readFileSync(resolve(here,`${t.name}.lua`),'utf8'),outDir:out,state,exactFrames:true});
   cleanupRom(copy);
   if(r.code!==0||!r.results||r.results.error)problems.push(`mesen: ${r.results?.error??r.code}`);
   else{

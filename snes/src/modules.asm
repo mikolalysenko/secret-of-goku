@@ -165,6 +165,22 @@ modules_combat_damage:
 ; before combat's Saiyan resilience: A16 = $E1F1 (nonzero, not a heal),
 ; JSL each, DB = $7E, D = 0, M16/X16; each returns A16 = the damage to
 ; apply (0 = none).
+; CGRAM upload handlers (core/cgram.asm), in the field NMI at the game's
+; palette upload: JSL each until one returns carry set (it sent the palette);
+; M16/X16, DB = 0, D = 0. Clear carry for the game's own transfer.
+; Field vblank before the game's palette and OAM transfers (core/cgram.asm):
+; copies into the game's WRAM buffers that frame code queued, where no HDMA
+; runs. M16/X16, DB = 0, D = 0.
+modules_field_preupload:
+	JSL ending_preupload       ; the wish flight's stars, Shenron, hidden slots
+	RTL
+
+modules_cgram_upload:
+	JSL destroy_cgram_upload   ; the Sandship's staged tint, its lag-vblank rule
+	BCS +
+	JSL ending_cgram_upload    ; the finale scenes' colour ranges
++	RTL
+
 modules_combat_receive:
 if defined("COMBAT_TEST")
 	JSL combat_test_receive    ; snes/test/combat (receive cases)

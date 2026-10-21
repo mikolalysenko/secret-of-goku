@@ -622,11 +622,8 @@ pullpc
 %orig1($C1E7F7, $DF)
 %hijack_jsl($C1E7DF, destroy_door_record, 25, destroy)
 
-; C0:C0F0 (LDA #$00 / STA $2121, the start of the field NMI's 512-byte CGRAM
-; upload, C0:C0F0-C117): the Sandship's staged colours replace their range
-; of the upload (destroy_palette_dma returns to C0:C118).
-%orig4($C0C0F0, $218D00A9)
-%hijack($C0C0F0, destroy_palette_dma, 4, destroy)
+; The field NMI's palette upload (C0:C0F0-C117) is core's hook
+; (core/cgram.asm): destroy_cgram_upload is one of its handlers.
 
 ; C3:0004 (JMP $0160), the sound driver entry: the wrecked ship's room song
 ; becomes the boss battle alarm.

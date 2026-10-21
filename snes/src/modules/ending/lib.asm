@@ -35,6 +35,7 @@ ending_nmi:
 .noRegs
 	JSR nmi_words
 	JSR nmi_transfers
+	JSR nmi_lowcopy
 .out
 	REP #$30
 	PLB
@@ -313,6 +314,41 @@ nmi_words:
 !XFER_DMA_COST   = 208
 !XFER_FETCH_COST = 176
 !XFER_GOKU_COST  = $0200+(16*64)              ; 512 bytes in 16 tile DMAs
+
+; A low-priority copy into WRAM (s_lw: the flight's stars into the game's
+; OAM image), after the transfers and only when this vblank's budget still
+; has room for it; otherwise it waits. No frame-thread DMA, which could meet
+; HDMA. M16/X16, DB = $32.
+nmi_lowcopy:
+	REP #$30
+	LDA.w !s_lw+6
+	BEQ .done
+	LDA.w !s_budget
+	BMI .done
+	LDA.w !s_lw+6
+	CLC
+	ADC.w #!XFER_DMA_COST
+	CMP.w !s_budget
+	BCS .done
+	LDA.w !s_lw+0
+	STA.w $2181
+	LDA.w #$8000                   ; A->B, one register: WMDATA
+	STA.w $4370
+	LDA.w !s_lw+2
+	STA.w $4372
+	LDA.w !s_lw+6
+	STA.w $4375
+	SEP #$20
+	STZ.w $2183
+	LDA.w !s_lw+4
+	STA.w $4374
+	LDA.b #$80
+.trigger
+	STA.w $420B
+	REP #$20
+	STZ.w !s_lw+6
+.done
+	RTS
 
 ; Transfer engine. The dynamic queue (cell swaps) runs before the load
 ; script. While a scene is loading the picture is black and the field NMI
@@ -1184,132 +1220,112 @@ cell_tile:
 ; ---------------------------------------------------------------------------
 ; Palettes. s_palbase holds the scene's colours; palette_build applies the
 ; white/black mix (dim, brighten, departure white/black) and writes
-; s_palout, which the vblank hook copies into the declared ranges.
+; s_palout, which the field NMI's own palette transfer sends for the
+; declared ranges (ending_cgram_upload).
 
-; Commit our CGRAM ranges: the field NMI uploads the game's palette buffer
-; 7E:0600-07FF to CGRAM on every completed frame, so s_palout's ranges go
-; into that buffer (DMA through WMDATA) after the game's own palette work
-; (its animations rewrite some entries every few frames). The buffer's
-; original contents are saved when a scene takes the screen (s_palsave)
-; and restored when it lets go on the same map.
+; Order the declared CGRAM ranges for the upload handler: s_cgord holds the
+; range indices in ascending start colour, s_cgcnt their count. The colours
+; go up in the field NMI's palette transfer itself (ending_cgram_upload, a
+; core upload handler, core/cgram.asm): s_palout's ranges, the direct range
+; and the edge colours over it replace their part of the game's buffer on
+; every upload the game makes, lag vblanks with a window open included, so
+; the game's buffer is never written and nothing is copied by a frame-thread
+; DMA (one could meet HDMA, which hangs revision-1 S-CPUs).
 pal_commit:
 	PHP
 	REP #$30
-	; the buffer the field NMI will upload: 7E:0600, or 7E:BE00 while $2A
-	; is set (C0:C0F5)
-	LDA.w #$0600
-	STA.w !l_pcbase
-	LDA.w $002A
+	LDA.w !s_palcount
 	AND.w #$00FF
-	BEQ .base
-	LDA.w #$BE00
-	STA.w !l_pcbase
-.base
+	CMP.w #$0005
+	BCC +
+	LDA.w #$0004
++	STA.w !s_cgtmp               ; n (at most four ranges)
 	LDX.w #$0000
-.range
-	CPX.w #$0008
-	BCS .done
+.starts                          ; s_cgtmp+2+2i: start colour of range i
 	TXA
 	LSR
-	TAY
-	SEP #$20
-	CMP.w !s_palcount
-	REP #$20
-	BCS .done
+	CMP.w !s_cgtmp
+	BCS .order
 	LDA.w !s_palrange,X
 	AND.w #$00FF
-	ASL
-	STA.w !l_m0               ; first * 2
-	CLC
-	ADC.w !l_pcbase
-	JSL ending_dma_guard      ; not across the vblank NMI (it reprograms channel 7)
-	STA.w $2181               ; WRAM address: the buffer + first * 2
-	SEP #$20
-	STZ.w $2183
-	LDA.w !s_palgrp,Y
-	CMP.b #$02
-	BEQ .direct
-	LDA.b #$32
-	STA.w $4374
-	REP #$20
-	LDA.w !l_m0
-	CLC
-	ADC.w #!s_palout
-	BRA .src
-.direct
-	LDA.b #!CODE_BANK         ; a generator palette in the code bank
-	STA.w $4374
-	REP #$20
-	LDA.w !s_dirsrc
-.src
-	STA.w $4372
-	LDA.w !s_palrange+1,X
-	AND.w #$00FF
-	BNE .count
-	LDA.w #$0100
-.count
-	ASL
-	STA.w $4375
-	LDA.w #$8000              ; A -> B, one register: $2180 WMDATA
-	STA.w $4370
-	SEP #$20
-	LDA.b #$80
-.trigger
-	STA.w $420B
-	REP #$20
+	STA.w !s_cgtmp+2,X
 	INX : INX
-	BRA .range
-.done
-	; per-frame colours over a direct range (the fragments' seam and depth)
-	LDA.w !s_edgeon
-	BEQ .out
-	LDA.w !l_pcbase
-	CLC
-	ADC.w #$0180+28           ; OBJ palette 4, colour 14
-	TAY
-	LDX.w #$0000
-.edge
-	PHX
-	LDA.w !s_edge,X
-	TYX
-	STA.l $7E0000,X
-	PLX
-	PHX
-	LDA.w !s_edge+2,X
-	TYX
-	STA.l $7E0002,X
-	PLX
+	BRA .starts
+.order
+	LDY.w #$0000                 ; next position in s_cgnew
+.pick
 	TYA
-	CLC
-	ADC.w #$0020
-	TAY
-	INX : INX : INX : INX
-	CPX.w #16
-	BCC .edge
-.out
+	CMP.w !s_cgtmp
+	BCS .publish
+	LDA.w #$FFFF
+	STA.w !s_cgtmp+10            ; lowest start left
+	LDX.w #$0000
+.scan
+	TXA
+	LSR
+	CMP.w !s_cgtmp
+	BCS .take
+	LDA.w !s_cgtmp+2,X
+	CMP.w !s_cgtmp+10
+	BCS .next
+	STA.w !s_cgtmp+10
+	STX.w !s_cgtmp+12
+.next
+	INX : INX
+	BRA .scan
+.take
+	LDX.w !s_cgtmp+12
+	LDA.w #$FFFF
+	STA.w !s_cgtmp+2,X           ; taken
+	TXA
+	LSR
+	SEP #$20
+	STA.w !s_cgnew,Y
+	REP #$20
+	INY
+	BRA .pick
+.publish
+	; the order only changes with the ranges (scene starts): two words
+	LDA.w !s_cgnew
+	STA.w !s_cgord
+	LDA.w !s_cgnew+2
+	STA.w !s_cgord+2
+	LDA.w !s_cgtmp
+	STA.w !s_cgcnt
 	PLP
 	RTS
 
-; Save (A = 0) or restore (A != 0) the game's palette buffer 7E:0600-07FF
-; against s_palsave.
-pal_native:
-	PHP
-	REP #$30
-	PHB
-	TAY
-	BNE .restore
-	LDX.w #$0600
-	LDY.w #!s_palsave
-	BRA .move
-.restore
-	LDX.w #!s_palsave
-	LDY.w #$0600
-.move
-	LDA.w #$01FF
-	MVN $32,$32
-	PLB
-	PLP
+; Queue a copy into WRAM for the field vblank (ending_preupload, before the
+; game's palette and OAM transfers): A16 = bytes (> 0), X16 = destination
+; in bank $7E, Y16 = source address, !s_wqarg = source bank | DMAP << 8
+; ($00 incrementing source, $08 fixed). A frame-thread DMA could meet HDMA
+; on the visible lines (revision-1 S-CPUs can hang); the vblank has none.
+; Frame code, M16/X16, DB = $32. X is not kept.
+wq_push:
+	PHA
+	PHX
+	LDA.w !s_wqn
+	CMP.w #4*8
+	BCC .room
+	PLX                          ; (three users: never full)
+	PLA
 	RTS
+.room
+	TAX
+	PLA
+	STA.w !s_wq+0,X              ; destination
+	TYA
+	STA.w !s_wq+2,X              ; source
+	LDA.w !s_wqarg
+	STA.w !s_wq+4,X              ; bank, DMAP
+	PLA
+	STA.w !s_wq+6,X              ; bytes
+	TXA
+	CLC
+	ADC.w #8
+	STA.w !s_wqn                 ; published last
+	RTS
+
 
 ; Copy A colours from the code-bank table at X to base colours from colour
 ; Y: their component arrays, which palette_build reads.

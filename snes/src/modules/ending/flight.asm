@@ -68,6 +68,7 @@
 !fl_up      = !s_var+$42   ; word  0 / 255: flight_mag rounds down / up
 !fl_smallv  = !s_var+$44   ; word  small Ball size in row 3 (0-2), $FFFF none
 !fl_key     = !s_var+$46   ; word  what the last small-table set was built for
+!fl_stq     = !s_var+$48   ; word  frames to the stars' next copy (0: copy now)
 
 ; ---------------------------------------------------------------------------
 ; The scatter starts with the vista: no flight stage yet.
@@ -158,6 +159,7 @@ flight_load:
 	STA.w !fl_q12
 	STA.w !fl_q18
 	STA.w !fl_key
+	STZ.w !fl_stq
 	JSR flight_dragon_image
 	LDA.w #flight_script
 	JMP set_script
@@ -1028,31 +1030,18 @@ flight_sprites:
 	LDA.l flight_size_mask,X
 	STA.w !N_OAMHI,Y
 	REP #$20
-	; hide what the front group left unused: Y = 224 (a fixed-source DMA
-	; of $E0 through WMDATA)
-	LDA.w #!FL_FRONT*4
-	SEC
-	SBC.w !s_oamslot
-	BEQ .stars
-	JSL ending_dma_guard          ; not across the vblank NMI
-	STA.w $4375
-	LDA.w !s_oamslot
-	CLC
-	ADC.w #!N_OAM
-	STA.w $2181
+	; hide what the front group left unused: Y = 224 (the Y byte is enough;
+	; CPU stores, as a frame-thread DMA could meet the floor's HDMA)
+	LDX.w !s_oamslot
 	SEP #$20
-	STZ.w $2183
-	REP #$20
-	LDA.w #$8008                  ; fixed source, A -> B: WMDATA
-	STA.w $4370
-	LDA.w #flight_hidden
-	STA.w $4372
-	SEP #$20
-	LDA.b #flight_hidden>>16
-	STA.w $4374
-	LDA.b #$80
-.trigger
-	STA.w $420B
+	LDA.b #$E0
+.hide
+	CPX.w #!FL_FRONT*4
+	BCS .hidden
+	STA.l $7E0000+!N_OAM+1,X
+	INX : INX : INX : INX
+	BRA .hide
+.hidden
 	REP #$20
 .stars
 	JMP flight_stars
@@ -1446,31 +1435,23 @@ flight_dragon:
 	LDA.w !fl_tmp2
 	CMP.w #5
 	BCC .row
-	JSL ending_dma_guard          ; not across the vblank NMI
-	LDA.w #!N_OAM+(7*4)
-	STA.w $2181
-	SEP #$20
-	STZ.w $2183
-	REP #$20
-	LDA.w #$8000
-	STA.w $4370
-	LDA.w #!FL_DRAGON
-	STA.w $4372
+	; Shenron's cells into the OAM buffer in the field vblank (wq_push)
+	LDA.w #$0032
+	STA.w !s_wqarg
+	LDX.w #!N_OAM+(7*4)
+	LDY.w #!FL_DRAGON
 	LDA.w #!ENDING_FLIGHT_DRAGON_CELLS*4
-	STA.w $4375
-	SEP #$20
-	LDA.b #$32
-	STA.w $4374
-	LDA.b #$80
-.trigger
-	STA.w $420B
-	REP #$20
+	JSR wq_push
 	LDA.w #(7+!ENDING_FLIGHT_DRAGON_CELLS)*4
 	STA.w !s_oamslot
 	RTS
 
-; Stars: their entries follow the drift (x - age/12, y + age/18 mod 160)
-; when it moves, then all 86 go into OAM slots 42-127 in one DMA.
+; Stars: their entries follow the drift (x - age/12, y + age/18 mod 160).
+; They stay in the game's OAM image in slots 42-127: the module area ends at
+; slot 42 (s_oamslot), so the game's next OAM pass hides nothing after it.
+; The 86 entries are copied in there when they move, and every 64 frames,
+; by the vblank's low-priority copy (s_lw, nmi_lowcopy: cells and rows go
+; first): no frame-thread DMA, which could meet the floor's HDMA.
 flight_stars:
 	LDA.l !ending_age
 	LDY.w #12
@@ -1479,6 +1460,7 @@ flight_stars:
 	BEQ .xSame
 	STA.w !fl_q12
 	JSR flight_stars_x
+	STZ.w !fl_stq
 .xSame
 	LDA.l !ending_age
 	LDY.w #18
@@ -1487,27 +1469,25 @@ flight_stars:
 	BEQ .ySame
 	STA.w !fl_q18
 	JSR flight_stars_y
+	STZ.w !fl_stq
 .ySame
-	JSL ending_dma_guard          ; not across the vblank NMI
+	LDA.w !fl_stq
+	BEQ .copy
+	DEC.w !fl_stq
+	BRA .slot
+.copy
+	LDA.w #64
+	STA.w !fl_stq
 	LDA.w #!N_OAM+(!FL_FRONT*4)
-	STA.w $2181
-	SEP #$20
-	STZ.w $2183
-	REP #$20
-	LDA.w #$8000              ; A -> B, one register: WMDATA
-	STA.w $4370
+	STA.w !s_lw+0
 	LDA.w #!FL_STARS
-	STA.w $4372
+	STA.w !s_lw+2
+	LDA.w #$0032
+	STA.w !s_lw+4
 	LDA.w #86*4
-	STA.w $4375
-	SEP #$20
-	LDA.b #$32
-	STA.w $4374
-	LDA.b #$80
-.trigger
-	STA.w $420B
-	REP #$20
-	LDA.w #$0200
+	STA.w !s_lw+6                 ; published last
+.slot
+	LDA.w #!FL_FRONT*4
 	STA.w !s_oamslot
 	RTS
 
