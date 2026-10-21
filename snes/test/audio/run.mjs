@@ -22,7 +22,7 @@ mkdirSync(outRoot,{recursive:true});
 let ok=true;
 
 if(!only.length||only.includes('unit')){
- const u=spawnSync(process.execPath,['--test',join(here,'unit.test.mjs'),join(here,'resident.test.mjs')],{cwd:repo,encoding:'utf8'});
+ const u=spawnSync(process.execPath,['--test',join(here,'unit.test.mjs'),join(here,'resident.test.mjs'),join(here,'songload.test.mjs')],{cwd:repo,encoding:'utf8'});
  const summary=(u.stdout||'').split('\n').filter(l=>/^ℹ (pass|fail)|^✖/.test(l)).join(' ');
  console.log(`audio unit        ${u.status===0?'pass':'FAIL'} ${summary}`);
  if(u.status!==0){ok=false;console.log((u.stdout||'').slice(-3000));}
@@ -49,10 +49,10 @@ if(!only.length||only.includes('render')){
 }
 // [name, checkpoint (null: power-on)]; arrival and imported import the
 // browser state before the sword pull (skipped when the bundle is missing).
-const shipping=n=>['native','music','rare','rare-control','rare-boot'].includes(n);
-const fromCheckpoint=n=>['stream','songs','native','music','rare','rare-control'].includes(n);
+const shipping=n=>['native','music','rare','rare-control','rare-boot','loads'].includes(n);
+const fromCheckpoint=n=>['stream','songs','native','music','rare','rare-control','loads'].includes(n);
 const arrivalBundle=join(mainCheckout(),'.local/snes-import/arrival-research__probe__before-pull');
-const mesenTests=[['native','waterfall'],['music','waterfall'],['rare','waterfall'],['rare-control','waterfall'],['rare-boot',null],['stream','waterfall'],['songs','waterfall'],['arrival',null],['imported',null]]
+const mesenTests=[['loads','waterfall'],['native','waterfall'],['music','waterfall'],['rare','waterfall'],['rare-control','waterfall'],['rare-boot',null],['stream','waterfall'],['songs','waterfall'],['arrival',null],['imported',null]]
  .filter(([n])=>!only.length||only.includes(n)).filter(([n])=>n==='rare-boot'||fromCheckpoint(n)||existsSync(arrivalBundle));
 if(!mesenTests.length)process.exit(ok?0:1);
 

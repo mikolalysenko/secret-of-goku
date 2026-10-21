@@ -11,7 +11,7 @@ against 277 ARAM/DSP snapshots of the browser mod (`.local/snes-import/`).
 ## Shipping sound policy (October 20, 2026)
 
 The default cartridge uses resident effects and streams only three rare
-lines: Frieza's laugh, Vegeta's Final Flash and Vegeta's Kakarot. The unchanged
+lines: Frieza's laugh, Vegeta's Final Flash and Vegeta's Kakarot. The
 stream extension uploads once at boot. Seventeen single-voice sequences occupy
 effect slots `$DC-$EC`, alongside the retail `$00` laser. They reuse the
 boot-resident instruments and finish within 2.6 seconds. Their durations
@@ -340,7 +340,7 @@ Callers write a 4-byte command to `$7E:1E00` (`[cmd, p1, p2, p3]`) and
 | `F0`-`F2` | Stop music and/or effects (bit 0 keeps effects, bit 1 keeps music). |
 | `F3`/`F4` | Stereo / mono. `F5 m` mutes the voices in mask m. `F6`/`F7` pause/resume music. `F8`/`F9` fast tempo on, `FA` off. `FC p` swaps effect stereo when p ≠ 0. |
 | `FB` | Make every playing track take its next `FB` (CPU-controlled jump). |
-| `FE` | Generic transfer (`$11EA`): port 1 low bits = mode (1: 3 bytes/handshake, 2: 2, 3: 1, 7: ARAM block copy, 0: end), ports 2-3 = address. |
+| `FE` | Generic transfer (`$11EA`): port 1 low bits = mode (1: 1 byte/handshake, 2: 2, 3: 3, 7: ARAM block copy, 0: end), ports 2-3 = address. Mode 4 is temporarily used by the accelerated song loader below. |
 | `FF FF FE FD FC` | Debug: ports report envelopes. |
 
 Port protocol: the SPC latches ports 0-3 into `$B4-$B7`, echoes the command
@@ -364,6 +364,63 @@ $85,$87,$88,$8A-$8F,$FD` are no-ops). The CPU only ever reads ports 0
 
 The SPC side (`$0CF1`) KOFFs everything, re-inits echo (clearing the ring),
 reads the header at `$1A00` and starts the eight tracks.
+
+### Accelerated transfers (October 21)
+
+`songload.asm` keeps that loader's cache, echo configuration, fades and
+instrument metadata. At `C3:020F`, after KOFF and echo-write disable, it
+uploads `spc/songload.s` into the **temporarily idle** `$FA00-$FBF7` stream
+ring with FE mode 3 (438 bytes). The program uses only
+native transfer scratch `$2C-$2F/$34-$35`. Mode 4 receives sequences/samples
+in groups of four triples, with self-modified absolute stores and a
+252-byte window. Mode 7 copies complete pages four bytes at a time through
+self-modified absolute addresses, updating their high bytes once per page,
+retaining forward-copy behavior for overlapping compaction moves. The
+FastROM CPU sender also unrolls four triples and preloads the next packet
+while the SPC stores the previous one. Source bank crossings, counter wrap
+and ending a transfer after any triple are handled explicitly.
+
+The CPU holds all data ports until acknowledgement; the SPC acknowledges
+only after **all** packet bytes have been read. The resident native-mode
+patches at `$1214-$1223` (triples) and `$1237-$1250` (words) follow the same
+rule. The word receiver advances its pointer once per 256 bytes. Tests run
+with zero delay and long, asymmetric delays between port writes and poison
+all data ports immediately after an echo.
+The native FE mode-4/7 vectors are restored before the CPU loader returns;
+the ring belongs to streaming again when playback resumes. No extra resident
+ARAM, WRAM, DMA or per-frame instructions are introduced. `$DD76-$DD77` is
+existing song-only scratch. Diagnostic imports without the extension first
+use mode 7 to copy seven existing driver instruction bytes into the word
+receiver, moving its acknowledgement after both reads. Those copies are
+idempotent and their source instructions are unchanged in either driver.
+The repaired word bootstrap then installs mode 4 without a clock-ratio
+assumption. Native and new-song loads through this fallback are tested.
+
+For native songs, the loader sums the sequence and missing sample bytes.
+Below 4096 bytes it skips the temporary-program upload and keeps native
+FE modes 2/3, using pipelined CPU senders. This avoids an installation cost
+on short or mostly cached cues. The five arrangements always use mode 4.
+
+Instrument lists put shared instruments before the next cue's disposable
+tail: arrival → battle, battle → orbit, and Vegeta → full power. The compiler
+reassigns the sequence's `EA` indices together with each list; samples,
+pitches, notes, envelopes and echo presets are unchanged. In particular,
+battle's strike is last, so orbit's larger echo ring does not evict its
+shared pick/stab samples.
+
+The optional `SNES_LUA_PRELUDE=snes/test/audio/load-profile.lua` records
+`song_load_profile` in any suite's results: fade, echo setup, sequence,
+cache planning, compaction, instrument upload, tables, return and driver
+start, plus every moved/uploaded byte count. Mode 7 acknowledges its length
+before copying; its last move completes while the CPU waits at `C3:0423`.
+The profiler accounts for that wait as compaction, rather than instrument
+upload.
+
+`node snes/test/audio/songload-bench.mjs` measures the SPC ceiling with an
+always-ready producer and verifies every byte. The original receiver takes
+21.34 cycles/byte (798 bytes/video frame); the final unrolled receiver takes
+16.70 (1020 bytes/frame). Compaction falls from 29.03 to 14.38 cycles/byte.
+These exclude CPU sender overhead; the Mesen timings below include it.
 
 ### Sequence format
 
@@ -559,15 +616,54 @@ thread: the previous song fades (`p2` high nibble = speed; 0 cuts it and
 skips the fade wait), then the sequence and any instruments not already
 cached go up, then the driver clears its echo ring and starts. The browser
 stops one cue and starts the next at once, so the module's song calls cut
-the old song (`p2` high nibble 0). Measured in Mesen in the order arrival
-(after the waterfall's song `$1C`), battle, orbit, Vegeta, full power: the
-tracks start 61 / 56 / 29 / 66 / 27 frames after the command, of which the
-game loop stands still for 47 / 42 / 14 / 50 / 12 frames (the upload; the
-rest is the driver's echo clear while the game runs). Fading at speed 1
-(`p2 = $10`) adds about 30 frames of fade wait to each (76 / 72 / 44 / 81 /
-41). Cues that share instruments (battle → orbit, Vegeta → full power) load
-faster. The cartridge cannot switch instantly, so story and combat code
-should change songs at scene or phase boundaries.
+the old song (`p2` high nibble 0). Mesen `songs` comparison against `ed7088b`,
+in the order waterfall `$1C` → arrival → battle → orbit → Vegeta → full power:
+
+| Song | Game-loop stall before → after (frames) | Tracks start before → after (frames) |
+| --- | ---: | ---: |
+| `$3B` arrival | 47 → 31 | 61 → 45 |
+| `$3C` battle | 42 → 30 | 56 → 41 |
+| `$3D` orbit | 14 → 8 | 29 → 27 |
+| `$3E` Vegeta | 50 → 30 | 66 → 46 |
+| `$3F` full power | 12 → 11 | 27 → 27 |
+
+The following profile is the same final `songs` run. Times include fractions
+of a video frame. Sequence includes installing the temporary program;
+tables includes native metadata and any effect-sequence restoration.
+Fade dispatch, cache planning and final return together take <0.16 frame.
+
+| Song | Echo setup | Sequence | Compaction | Missing instruments | Tables | Driver start after CPU returns |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `$3B` | 0.50 | 2.73 | 13.78 | 13.76 | 0.44 | 13.30 |
+| `$3C` | 0.50 | 4.82 | 8.69 | 15.84 | 0.44 | 10.26 |
+| `$3D` | 0.50 | 5.29 | 0 | 2.06 | 0.44 | 18.19 |
+| `$3E` | 0.49 | 3.50 | 19.02 | 6.28 | 0.45 | 15.76 |
+| `$3F` | 0.50 | 3.82 | 0 | 5.83 | 0.46 | 15.95 |
+
+Frieza's actual `music` case improves **53 → 44** stalled frames. Its
+sequence takes 5.87 → 4.80 frames, compaction 6.85 → 3.45 and uploads
+39.27 → 34.35; echo setup remains 0.50. The post-return driver start takes
+10.13 → 13.51 frames, depending on DSP/echo phase. The echo clear/start
+algorithm is unchanged and runs while the game resumes. The profile
+therefore supports faster copying/transfers and cache order, rather than
+changing the audible echo settings or adding a fixed wait.
+
+`loads` walks all 59 retail songs in id order with their canonical event
+echo/volume parameters, cutting the old cue for comparable timing. Every
+native stall is unchanged or shorter within 0.01 frame. Examples (fractional
+frames, from entry to CPU return / track start):
+
+| Native song | Stall before → after | Load before → after |
+| --- | ---: | ---: |
+| `$04` | 43.01 → 37.51 | 61.66 → 47.67 |
+| `$0C` | 46.57 → 40.60 | 56.65 → 46.67 |
+| `$1C` | 22.21 → 19.85 | 29.64 → 27.66 |
+| `$2C` | 37.96 → 31.09 | 63.65 → 48.65 |
+
+Cache state changes these numbers; the native sweep reaches the five new
+songs with a different cache from `songs`. Cues sharing instruments load
+faster. The cartridge still cannot switch instantly: change songs at scene
+or phase boundaries. Native fades requested explicitly in `p2` are retained.
 
 ## 4. API for other modules
 
@@ -688,7 +784,15 @@ the five songs; the arrival's pod cues.
   ARAM footprint, a gapless stream, native effects beside two streams, a
   withdrawn command (taken or not, with and without the extension) leaving
   the driver answering; shipping bank whitelist; resident preservation,
-  termination, one-voice allocation, noise-clock restoration and headroom (14 Node tests).
+  termination, one-voice allocation, noise-clock restoration and headroom;
+  independent-clock song transfers and overlapping/consecutive cache copies
+  (19 Node tests).
+- **loads** (shipping Mesen): all 59 retail songs and five new songs, native
+  event echo/volume parameters with the old cue cut for comparable timing;
+  complete sequence and instrument BRR bytes, DIR/tuning/ADSR, restored
+  transfer vectors, effect samples and audible output. Reports fractional
+  load/stall frames per song. `$1A` has an authored silent opening and is
+  observed for three seconds.
 - **native**: all 27 cues, bounded beds, no BRR, asynchronous command
   integrity and dispatcher timing, music before/after song changes.
 - **music** (shipping Mesen): all 27 resident cues beside all five new songs;
@@ -722,11 +826,52 @@ the five songs; the arrival's pod cues.
   `IMPACT` with the impact, `!title_sfx` never left set.
 - **imported** (Mesen, the same state without the extension): streams are
   switched off after the first sync, a requested hit never reaches a voice,
-  and the game's own effect still answers.
+  the game's own effect still answers, and native/new song transfers keep
+  their full sequence and samples intact through the fallback bootstrap.
+
+Additional cross-core check: run `node snes/test/emulators/run.mjs`, then
+`node snes/test/audio/cores.mjs`. It uses each core's waterfall battery save,
+loads all five new cues and restores native music in Snes9x, bsnes and
+bsnes-accurate, verifies complete sequence/BRR bytes, DIR/tuning/ADSR, live
+tracks and restored FE vectors directly in serialized ARAM. Private states
+are deleted after verification. A worktree can set `SNES_RETRO_HOST` to a
+binary under its own `.local/snes-test/`, avoiding writes into shared tools.
 
 `snes/test/title` (arrival e2e, with the extension) checks that no frame of
 the impact is made late by the modules: 0 of 140 with both pod sounds
 streaming.
+
+### Song-loading validation (base `ed7088b`)
+
+Strict shipping and diagnostic builds pass. All audio cases pass: 19 Node
+tests, browser music rendering and ten Mesen cases, including all 59 retail
+songs and the five arrangements. All three emulator variants pass both the
+normal boot/play/save/load suite and the additional song/ARAM checks:
+Snes9x, bsnes and bsnes-accurate. Transfer tests vary producer delays and
+overwrite ports immediately after acknowledgement; copy tests cover
+unaligned, overlapping and consecutive moves.
+
+Frieza **18/18**, Vegeta **11/11** and story **76/76** pass. The final
+diagnostic-import bootstrap repair is additionally checked on both retail
+and extended drivers, repeated twice, with data ports poisoned immediately
+after each acknowledgement; its native/new-song import case passes too.
+All 64 shipping load/stall measurements are identical after that import-only
+repair.
+
+All 13 gameplay cases have identical `audio_frame` mean, maximum and call
+count before/after, with no new missed vblanks. Existing misses per 240
+frames remain fly 1, fly-ki 2, fly-punch 1, teleport 3 and charge 18; all
+other cases are zero. All six perf scenes pass: p90 finish lines
+62 / 113 / 54 / 173 / 95 / 112, lag counts 4 / 4 / 4 / 34 / 4 / 4.
+
+`modprof` on identical sword/battle states and fresh battery saves reports
+**0.40 → 0.40 lines mean** in both scenes; maxima **1.80 → 1.80** and
+**1.83 → 1.83**. These include the existing song-settle frames; the quiet
+frame instructions are unchanged. Use isolated ROM filenames/fresh saves
+for this comparison: the retail states only contain 8 KiB SRAM, so a
+previously played cartridge's expanded battery sidecar can change which
+modules are active. Real hardware has not been physically tested. No core
+change is required.
 
 ### Round-two validation (base `1d19d44`)
 
@@ -829,6 +974,8 @@ original-byte assertions):
 | Address | Size | What |
 | --- | --- | --- |
 | `C3:0106` | 6 | boot upload end → `audio_boot_upload` (uploads the extension after the driver) |
+| `C3:020F`, `C3:0264`, `C3:0487`, `C3:0592` | 6 / 5 / 4 / 4 | temporary song loader install, sequence/sample sender, native-vector restore |
+| `C3:0400` | 4 | sample upload selects native FE mode 3 or temporary mode 4 |
 | `C3:0175` | 4 | shipping effect command → asynchronous `audio_native_command` |
 | `C3:24A9` and six spans above | 283 capacity | resident effect pointers/sequences; byte-identical retail tracks shared |
 | ten table words listed above | 20 | redirect retail pointers to identical retained tracks |
@@ -840,7 +987,9 @@ original-byte assertions):
 build): code `$1598-$17FC`, `$FF89-$FFFA`, `$1898-$18B8`; tables
 `$1818-$183C`, `$1930-$1977`; chunk slots `$FA00-$FBF7`; DP `$E3-$EF` and the
 gaps listed in section 1; driver patches at `$020A`, `$0279`, `$0299`,
-`$02E1`, `$02F4`, `$0378`, `$14C6`.
+`$02E1`, `$02F4`, `$0378`, `$1214`, `$1237`, `$14C6`. The synchronous song loader
+temporarily uses the stream ring and FE vectors `$1420/$1426`, restoring
+those vectors before playback.
 
 **Other resources**: WRAM `$7E:DD00-DD7F` (`!RAM_AUDIO`; no SRAM, no DMA or
 HDMA); code bank `$AA`; tables, extension image and sequences in `$EA`

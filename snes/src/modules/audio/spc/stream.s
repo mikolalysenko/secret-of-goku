@@ -610,3 +610,35 @@ data_b_end:
  NOP
  org $14C6              ; port command $8A
  dw ext_cmd
+
+; Mode 2 installs vectors and serves small native sequence/table loads.
+; Acknowledge after both reads; advance the pointer once per 256-byte window.
+ org $1237
+song_word:
+ MOV A,$F6
+ MOV [$2C]+Y,A
+ INC Y
+ MOV A,$F7
+ MOV [$2C]+Y,A
+ MOV $F4,X
+ INC Y
+ BNE song_word_wait
+ INC $2D
+song_word_wait:
+ CMP X,$F4
+ BEQ song_word_wait
+ MOV X,$F4
+ BNE song_word
+ BRA $11EA
+
+; Small loads still use native triples, with the same complete-packet rule.
+ org $1214
+ MOV A,$F5
+ MOV [$2C]+Y,A
+ INC Y
+ MOV A,$F6
+ MOV [$2C]+Y,A
+ INC Y
+ MOV A,$F7
+ MOV [$2C]+Y,A
+ MOV $F4,X
