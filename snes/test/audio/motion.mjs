@@ -30,10 +30,10 @@ export function motionComparison(rom,before=roundFourApuRom(rom)){
   return {cue,id,before:measure(before),after:measure(rom),pc:browserFeatures(cue)};
  });
 }
-export function motionMix(rom,{song=0x3C,mode='combo',gap=1,beam=false,beds=false}){
+export function motionMix(rom,{song=0x3C,mode='combo',gap=1,beam=false,beds=false,blastP2=song===0x3F?0x0D:0x0F,phase=0}){
  const s=JSON.parse(readFileSync('dist/snes/gen/audio/songs.json')).find(s=>s.id===song),h=createApu({rom});h.ms(60);
  if(song){loadSong(h,rom,{blob:readFileSync(`dist/snes/gen/audio/song_${song.toString(16)}.bin`),instruments:s.instruments.map(i=>i.id),echo:s.echo,song,p2:0x10,p3:255});h.waitFor(()=>h.ram[0xAD]===255,4e7);}
- h.ms(300);h.take();
+ h.ms(300+phase*frame);h.take();
  const immutable=customSegments(rom).map(s=>({addr:s.addr,bytes:h.ram.slice(s.addr,s.addr+s.bytes.length)}));
  let maxVoices=0,maxLaunchVoices=0,maxSwingVoices=0,noiseMismatch=0;
  const step=ms=>{for(let t=0;t<ms;t+=1){h.ms(Math.min(1,ms-t));const ids=[];for(let v=0;v<8;v++)if(h.ram[0xAE]&(1<<v))ids.push(h.ram[0xFF80+v]);maxVoices=Math.max(maxVoices,ids.length);maxLaunchVoices=Math.max(maxLaunchVoices,ids.filter(id=>id===0xDE).length);maxSwingVoices=Math.max(maxSwingVoices,ids.filter(id=>id===0xE5||id===0xE6).length);
@@ -47,7 +47,7 @@ export function motionMix(rom,{song=0x3C,mode='combo',gap=1,beam=false,beds=fals
    h.nativeCmd(2,i===2?(song===0x3F&&isResident7(rom)?0xF1:0xE8):0xE7,15,0x88);step((14-gap)*frame);
   }
   else for(let i=0;i<24;i++){
-   h.nativeCmd(2,0xDE,15,0x88);step(2*frame);
+   h.nativeCmd(2,0xDE,blastP2==='alternate'?(i%2?0x0D:0x0F):blastP2,0x88);step(2*frame);
    h.nativeCmd(2,0x38,15,0x88);step((gap-2)*frame);
   }
   step((17+cycle*3)*frame);
@@ -55,7 +55,7 @@ export function motionMix(rom,{song=0x3C,mode='combo',gap=1,beam=false,beds=fals
  if(beds&&isResident7(rom))for(const id of [0xED,0xEE]){h.nativeCmd(0x81,id,0,128);step(frame);}
  step(1800);
  let peak=0,clipped=0,sum=0;const {l,r}=h.take();for(const a of [l,r])for(const v of a){peak=Math.max(peak,Math.abs(v));sum+=v*v;if(Math.abs(v)>=32767)clipped++;}
- return {song,mode,gap,beam,beds,maxVoices,maxLaunchVoices,maxSwingVoices,noiseMismatch,peak,peakDbFS:20*Math.log10(peak/32768),clipped,rmsDbFS:10*Math.log10(sum/(2*l.length*32768**2)),musicMask:h.ram[0xAD],effectMask:h.ram[0xAE],noiseMask:h.dspReg(0x3D),bankIntact:immutable.every(s=>Buffer.from(s.bytes).equals(Buffer.from(h.ram.slice(s.addr,s.addr+s.bytes.length))))};
+ return {song,mode,gap,beam,beds,blastP2,phase,maxVoices,maxLaunchVoices,maxSwingVoices,noiseMismatch,peak,peakDbFS:20*Math.log10(peak/32768),clipped,rmsDbFS:10*Math.log10(sum/(2*l.length*32768**2)),musicMask:h.ram[0xAD],effectMask:h.ram[0xAE],noiseMask:h.dspReg(0x3D),bankIntact:immutable.every(s=>Buffer.from(s.bytes).equals(Buffer.from(h.ram.slice(s.addr,s.addr+s.bytes.length))))};
 }
 export function motionMixes(rom){
  const rows=[];

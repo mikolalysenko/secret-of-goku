@@ -5,9 +5,9 @@ import {resolve,join} from 'node:path';
 import {createHash} from 'node:crypto';
 const root=resolve('.local/snes-test/audio/compare7');
 const read=n=>JSON.parse(readFileSync(join(root,n),'utf8'));
-const parts=['r4','r7','pc',...['punch7','motion7','fix7','variety7','pre-finisher7','finisher7'].filter(t=>existsSync(join(root,'manifest-'+t+'.json')))].map(t=>read('manifest-'+t+'.json'));
+const parts=['r4','r7','pc',...['punch7','motion7','fix7','variety7','pre-finisher7','finisher7','pre-ki7','ki7'].filter(t=>existsSync(join(root,'manifest-'+t+'.json')))].map(t=>read('manifest-'+t+'.json'));
 const followup=parts.find(p=>p.tag==='punch7');
-const motion=parts.find(p=>p.tag==='motion7'),fix=parts.find(p=>p.tag==='fix7'),variety=parts.find(p=>p.tag==='variety7'),finisher=parts.find(p=>p.tag==='finisher7'),current=finisher??variety??fix??motion??followup??parts[1];
+const motion=parts.find(p=>p.tag==='motion7'),fix=parts.find(p=>p.tag==='fix7'),variety=parts.find(p=>p.tag==='variety7'),finisher=parts.find(p=>p.tag==='finisher7'),ki=parts.find(p=>p.tag==='ki7'),current=ki??finisher??variety??fix??motion??followup??parts[1];
 const files=parts.flatMap(p=>p.files),hash=b=>createHash('sha256').update(b).digest('hex');
 assert.equal(new Set(files.map(f=>f.file)).size,files.length,'duplicate listening file');
 for(const f of files){
@@ -58,6 +58,13 @@ if(finisher)for(const sound of finisherKeys){
  comparisons.push({sound,before,after,beforeVariant:'pre-finisher7',variant:'finisher7',pc});
 }
 const trace7=read('trace-r7/results.json'),ids=phase=>trace7.commands.filter(c=>c.phase===phase).map(c=>c.id);
+const kiKeys=['ki-solo-normal','ki-solo-ssj','ki-normal-volley','ki-ssj-volley','ki-normal-beam-volley','ki-ssj-beam-volley'];
+if(ki)for(const sound of kiKeys){
+ const before=sound+'-pre-ki7.wav',after=sound+'-ki7.wav';
+ const pc=['pc-ki7-'+(sound.includes('solo')?'solo':sound.includes('beam')?(sound.includes('ssj')?'ssj-beam-volley':'beam-volley'):'volley')+'.wav'];
+ for(const file of [before,after,...pc])assert.ok(files.some(f=>f.file===file),file+' comparison missing');
+ comparisons.push({sound,before,after,beforeVariant:'pre-ki7',variant:'ki7',pc});
+}
 assert.ok(!ids('hold-B').includes(0x27));assert.ok(ids('native-hold-B').includes(0x27));assert.ok(ids('world-takeoff').includes(0xEC));
 const profiles={};
 for(const [tag,p] of [['r4','../baseline7/profile/loads/results.json'],['r6','../baseline7/profile-r6/loads/results.json'],['r7','../final7/audio/loads/results.json']])if(existsSync(join(root,p))){
@@ -77,8 +84,8 @@ function workingFiles(path=''){
   return [{file,description,sha256:hash(readFileSync(join(root,file)))}];
  });
 }
-const manifest={title:'Secret of Goku — audio round seven'+(finisher?' with normal and SSJ kick finishers':variety?' with swing/contact/ki variation':fix?' with combo gain and charge timing fixes':motion?' with punch contact, swing and ki follow-ups':followup?' with punch contact follow-up':''),currentCartridge:current.tag,roms:parts.filter(p=>p.rom).map(({tag,sha256,rom})=>({tag,sha256,rom})),
- listeningOrder:[...(finisher?finisherKeys:[]),...(variety?variationKeys:[]),...(motion?['motion-solo-swing','motion-solo-swing-2','motion-solo-kick-swing','motion-solo-blast','motion-solo-combo','motion-battle-combo-1f','motion-battle-combo-2f','motion-battle-volley-5f','motion-full-power-beam-volley-5f','motion-input-melee','motion-input-ki']:[]),...(followup?['contact-solo-hit','contact-solo-kick','contact-battle-hit','contact-battle-kick','contact-battle-rapid','contact-battle-beam','contact-full-power-rapid','contact-full-power-beam']:[]),'context-charge-beam','context-focus','context-flight','context-teleport','context-ki-volley','context-melee-hold','context-transform-revert','context-world-flight'],
+const manifest={title:'Secret of Goku — audio round seven'+(ki?' with textured normal and SSJ ki shots':finisher?' with normal and SSJ kick finishers':variety?' with swing/contact/ki variation':fix?' with combo gain and charge timing fixes':motion?' with punch contact, swing and ki follow-ups':followup?' with punch contact follow-up':''),currentCartridge:current.tag,roms:parts.filter(p=>p.rom).map(({tag,sha256,rom})=>({tag,sha256,rom})),
+ listeningOrder:[...(ki?kiKeys:[]),...(finisher?finisherKeys:[]),...(variety?variationKeys:[]),...(motion?['motion-solo-swing','motion-solo-swing-2','motion-solo-kick-swing','motion-solo-blast','motion-solo-combo','motion-battle-combo-1f','motion-battle-combo-2f','motion-battle-volley-5f','motion-full-power-beam-volley-5f','motion-input-melee','motion-input-ki']:[]),...(followup?['contact-solo-hit','contact-solo-kick','contact-battle-hit','contact-battle-kick','contact-battle-rapid','contact-battle-beam','contact-full-power-rapid','contact-full-power-beam']:[]),'context-charge-beam','context-focus','context-flight','context-teleport','context-ki-volley','context-melee-hold','context-transform-revert','context-world-flight'],
  renderers:parts.map(({tag,renderer,note,fixtures})=>({tag:tag??'PC',renderer,note,fixtures})),
  notes:['No output gain normalization. Compare versions at the same player volume. New-cartridge and PC files have zero clipped samples; unmodified round-four stress recordings retain and report any original clipping.','The PC references isolate browser sound clips and loops; they do not include browser music.','Teleport uses a bandwidth-prioritized 96 ms attack; aura/beam use longer loops than the round-six beam.','Continuous air is omitted in the cartridge; the PC flight-context reference includes it.','Historical charge-baseline results were affected by shared checkpoint provenance. The fix7 report distinguishes the maintainer’s clean round-four baseline (12) from the locally reproduced historical ROM result; final before/after shipping runs use the same current shared checkpoints, read-only.',...(followup?['r7 preserves the initial round-seven takes; punch7 preserves the louder contact follow-up, and contact-* pairs compare round four with that follow-up.','HIT/KICK are louder native noise/pop sequences, with SPC gain reduction during effect overlaps. No sample reservation or EDL-cap change.']:[]),...(motion?['motion7 preserves the swing/ki follow-up. With fix7 present, motion-* comparisons show round four, motion7 before the fix, and fix7 after it; punch7 remains available.','Swings reuse the aura BRR with a short swell and falling pitch; E5 alternates two tunings. Ki keeps instrument 9 with a stronger attack and shaped decay. Contact tracks, all four BRRs, bed/beam/teleport/flight cues and echo caps are unchanged.','motion-* combo/volley takes use deterministic native effect commands through the real cartridge dispatcher. The two motion-input-* takes separately exercise actual gameplay. PC motion contexts use the same event spacing without music.']:[]),...(fix?['fix7 releases E5/E6 through native F2 cleanup before allocating a contact. Its own swing no longer reduces HIT/KICK gain; the overlap rule remains for other occupied effect voices.','Charge timing uses a cheaper held-bed path and direct native dispatch after queue/mailbox admission. BRRs, levels, pitches, envelopes, update throttle and stop/expiry behavior are unchanged. No reservation or echo change.',variety?'The earlier fix7 charge target is deferred: the maintainer accepts 13 for the variation follow-up.':'The local full gameplay charge case remains 13 misses; the requested target of 12 is unresolved. The timing report includes both original and shifted miss frames, without equating recovered hold frames with an overall improvement.']:[])],
  clippedSamples:{current:current.files.reduce((n,f)=>n+f.clipped,0),round4ContactStress:files.filter(f=>f.variant==='r4'&&f.file.startsWith('contact-')).reduce((n,f)=>n+f.clipped,0),round4MotionStress:files.filter(f=>f.variant==='r4'&&f.file.startsWith('motion-')).reduce((n,f)=>n+f.clipped,0)},
@@ -100,6 +107,15 @@ if(finisher){
  manifest.auxiliary.push({file:'finisher-analysis7.json',description:'Dry thump/contact measurements, shared storage accounting and 48 battle/full-power rapid/beam/bed stress cases.'},
   {file:'finisher-validation7.json',description:'Shipping and rollback hashes, suite results, unchanged gameplay misses, CPU profile and raw cartridge peak/clipping comparisons.'},
   ...['pre-finisher7','finisher7'].map(tag=>({file:`capture-${tag}-finisher/results.json`,description:`Public KICK form selection, combo and beam/rapid contact capture commands: ${tag}.`})));
+}
+if(ki){
+ manifest.notes.push('ki7 replaces the long instrument-9 launch with a four-tick falling zap followed by the existing beam BRR on the same voice, decaying over about 250 ms. A unity-tuned metadata alias keeps the three-rate rotation in both stages. Retail contact 38 is unchanged.',
+  'Public BLAST remains DE. Audio selects p2=0F normally or 0D in SSJ; both reuse the same native effect voice. The SPC sets a two-semitone SSJ transpose only at effect start. No new streaming, sample bytes, per-frame callback, command or echo change.',
+  'pre-ki7 is shipping 14958c8, including the finisher kick. Ki solos contain three launches 45 frames apart; volleys contain three bursts of eighteen launches five frames apart, contacts two frames later. All captures use the public audio cue/form selector and cartridge music, without output normalization.',
+  'PC ki7 references use actual blast.wav/impact.wav at .38/.48, master .55 and the browser compressor, rotating launch rates 1/1.035/.975, voice caps 5/3 and 12 ms replacement fades. The sampled browser blast has no separate SSJ rate; its synth fallback uses 1.12. Music is omitted from PC references.');
+ manifest.auxiliary.push({file:'ki-analysis7.json',description:'Dry launch/impact metrics, identical sample/contact preservation, byte accounting and fast volley/beam/form-transition stresses.'},
+  {file:'ki-validation7.json',description:'Build/rollback hashes, suite results, gameplay misses, CPU cost and before/after raw cartridge peaks.'},
+  ...['pre-ki7','ki7'].map(tag=>({file:`capture-${tag}-ki/results.json`,description:`Public BLAST form selection and every solo, volley and beam/contact command: ${tag}.`})));
 }
 writeFileSync(join(root,'manifest.json'),JSON.stringify(manifest,null,2));
 console.log(`${files.length} verified WAV files, ${comparisons.length} cue/context pairs, ${echoPairs.length} echo pairs`);console.log(JSON.stringify(profiles,null,2));

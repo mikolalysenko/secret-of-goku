@@ -1,8 +1,82 @@
 # Resident custom samples: cartridge option and storage audit
 
+## Textured ki shots (`ki7`, base `14958c8`)
+
+The latest listening tag is **`ki7`**. `$DE` is a ~38 ms falling zap followed
+by the beam's sampled texture on the same voice, fading out over **250 ms**
+instead of the old 670 ms tonal sweep. The dry peak is **2.38 dB higher**;
+the body is less periodic. Both stages retain the three-pitch cycle.
+SSJ raises both stages two semitones (1.12246×), selected by audio from
+the same public BLAST cue. `$38` contact stays unchanged; no alternate
+contact is proposed. Punches, kicks and every other sound retain their
+authored sequences and samples.
+
+There are **no new BRRs or echo changes**. Instrument `$1F` aliases the
+existing beam's start/loop pointers with unity tuning, preserving the
+relative E9 pitch rotation in the sampled body. Its eight metadata bytes
+occupy unused tails after the streaming extension: tuning `$183E-$183F`,
+ADSR `$18BE-$18BF`, DIR `$197C-$197F`. Build and runtime tests check these
+bounds and preservation. The rare voices keep all their code and buffers.
+
+The reservation now uses **2304/2304 bytes**: 1890 BRR, 126 sequences,
+288 code. Moving the unchanged eight-byte teleport-out sequence into
+existing shared holes, plus the two previously free bytes, pays for the
+ten-byte command-time SSJ helper. Shared storage is **272/283 bytes**.
+The variation helper is **64 bytes** at `$0180-$01BF`, leaving the same
+64-byte stack reservation. No new effect id, voice, command, streaming
+or 65816 idle work is needed: `02 DE 0F 88` is normal and `02 DE 0D 88`
+is SSJ; both nonzero reuse nibbles keep ownership under DE.
+
+The package adds **16 WAVs**: six cartridge pairs and four PC references.
+For these stems, `-pre-ki7.wav` is shipping `14958c8` (including finishing
+kicks), and `-ki7.wav` is the new cartridge:
+
+| Stem | Contents |
+| --- | --- |
+| `ki-solo-normal` | Three normal launches, 45 frames apart, exposing the pitch cycle |
+| `ki-solo-ssj` | The same cycle in SSJ form |
+| `ki-normal-volley` | Three 18-shot bursts over battle music, launches every five frames, contacts two frames later |
+| `ki-ssj-volley` | SSJ bursts over full-power music |
+| `ki-normal-beam-volley` | Normal volley/contact bursts layered over beams |
+| `ki-ssj-beam-volley` | SSJ version with full-power beams |
+
+New cartridge peaks are −13.08 / −13.09 dBFS alone, −6.53 / −7.21 in
+the normal/SSJ music volleys, and −1.78 / −2.01 with beams. **Zero clipped
+samples** in every take. The 36 SPC stress cases also remain unclipped
+(minimum 1.48 dB peak headroom), with at most **three effect voices** for
+launch+contacts, **four with a beam**, including rapid form changes.
+
+The PC files are **`pc-ki7-solo.wav`**, **`pc-ki7-volley.wav`**,
+**`pc-ki7-beam-volley.wav`**, **`pc-ki7-ssj-beam-volley.wav`**. They use
+`blast.wav` at .38 and `impact.wav` at .48 through master .55 and the
+browser compressor, rotating 1/1.035/.975, with caps 5/3 and 12 ms
+replacement fades. No music is included. The browser's sampled blast
+uses the same rates in both forms; 1.12 applies only to its synth
+fallback. The SSJ beam reference retains the specified .86 rate.
+
+Strict build, all audio/gameplay/perf/combat/emulator cases pass. Gameplay
+misses do not rise; charge remains the accepted 13/240. See
+[audio.md](audio.md#textured-ki-launch-and-ssj-variant-ki7-base-14958c8)
+for all per-case counts, CPU costs and the file map. The current index is
+[compare7/manifest.json](../../../.local/snes-test/audio/compare7/manifest.json),
+with **`ki-analysis7.json`** and **`ki-validation7.json`** alongside it.
+
+Shipping SHA-256:
+`5c5b86ced42530d0b355f75408a3ae035f4a8ae3ceb5cab401ce10a58e9f2df3`.
+Rollback (`-DAUDIO_CUSTOM_SAMPLES=0`) remains byte-identical to round four:
+`56ed7992b1f2abf06561a1d5553d1ab151e5fc7fd8d8ff0941a9a63508115388`.
+
+```sh
+node snes/test/audio/capture7.mjs --rom=path/to/14958c8.sfc --tag=pre-ki7 --only=ki
+node snes/test/audio/capture7.mjs --rom=dist/snes/secret-of-goku.sfc --tag=ki7 --only=ki
+node snes/test/audio/pc7.mjs --only=ki
+node snes/test/audio/ki.mjs --before=path/to/14958c8.sfc
+node snes/test/audio/manifest7.mjs
+```
+
 ## Kick finisher follow-up (`finisher7`, base `feb7df6`)
 
-The latest listening tag is **`finisher7`**. Normal KICK `$E8` has a deep
+The finisher listening tag is **`finisher7`**. Normal KICK `$E8` has a deep
 175 ms falling thump; SSJ KICK `$F1` has a stronger 200 ms body. Both add
 HIT's sharp clock-31 crack. Audio selects the variant from `cb_form` when
 the existing KICK cue arrives; combat's API is unchanged. Measured audible

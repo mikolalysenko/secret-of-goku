@@ -8,6 +8,158 @@ Everything below about the native driver was reverse-engineered from the US
 cartridge (`snes/gen/audio-spc700.mjs` disassembles it) and cross-checked
 against 277 ARAM/DSP snapshots of the browser mod (`.local/snes-import/`).
 
+## Textured ki launch and SSJ variant (`ki7`, base `14958c8`)
+
+`$DE` now starts with a four-tick (~38 ms) falling instrument-9 zap, then
+hands the **same voice** to the existing beam BRR with a falling pitch and
+24-tick fade. The audible shot is **250 ms**, down from 670 ms; ownership
+falls **700→280 voice-ms**. The sampled body is audible even in five-frame
+volleys, before the next retrigger. There is no DSP noise-clock write.
+
+The normal dry peak rises **−15.64→−13.26 dBFS**; SSJ is −13.25 dBFS.
+Audible-span RMS rises −29.13→−27.06 dBFS. Body periodicity falls
+**0.349→0.096** (SSJ 0.087), and the normal spectral centroid is 2.95 kHz
+versus the PC clip's 2.97 kHz. These are reproducible signal measurements,
+not a listening-quality score. The PC reference retains its full 0.656 s;
+the cartridge deliberately uses the requested shorter 200–300 ms shape.
+
+Both stages rotate **1 / 1.03515625 / .9765625**. Instrument `$1F` is a
+unity-tuned alias of the beam sample, so E9 applies the same relative
+pitch change to the zap and the sampled body. Reusing instrument `$32`
+directly would instead make its `$C0` tuning turn E9 +9 into +4.69%.
+The SSJ variant transposes both stages by two semitones (**1.12246×**),
+close to the browser synth fallback's 1.12. The actual sampled browser
+`voice()` does not apply an extra SSJ blast rate; the PC references retain
+that behavior.
+
+Audio checks `cb_form` only when dispatching an already-selected BLAST.
+The native command is `02 DE 0F 88` normally, `02 DE 0D 88` for SSJ.
+The native allocator at `$0FCE` treats the low nibble of p2 as a nonzero
+reuse flag; both encodings reuse `$DE`. At effect start, `blast_form`
+copies the form into the sequence's E7 operand. This avoids a second
+effect id/owner during form transitions. Combat's public cue is unchanged.
+
+**Contact `$38` is retained.** Both retail tracks and all retail BRRs are
+byte-identical. Its 275 ms burst remains about 3 dB above the new launch
+in audible-span RMS, with substantially more low-body and early-crunch
+energy. The volley comparisons include it; no contact replacement or
+alternate is proposed. Punches, kicks, swing variation, beds, beam,
+teleport, flight, music and rare voices retain their authored sounds.
+
+### Bytes and CPU
+
+No added BRR data, reservation growth, EDL change, streaming or loader change.
+
+| Storage | Before | After | Source of space |
+| --- | ---: | ---: | --- |
+| Custom reservation | 2302/2304 | **2304/2304** | Move unchanged 8-byte teleport-out track into shared holes; use it plus the 2 spare bytes for the 10-byte form helper |
+| Reservation contents | 1890 BRR + 134 sequences + 278 code | **1890 + 126 + 288** | All four BRRs byte-identical |
+| Shared table/sequence holes | 264/283 | **272/283** | Teleport-out at `$39F1-$39F8`; new launch remains 26 bytes |
+| Command-time variation helper | 62 bytes | **64 bytes** | Reorder cue dispatch to fit the new helper call at `$0180-$01BF`; preserve `$01C0-$01FF` for stack |
+| Instrument `$1F` alias | unused | **8 bytes** | Tuning `$183E-$183F`, ADSR `$18BE-$18BF`, DIR `$197C-$197F`, after the stream extension's occupied ranges |
+
+The generator asserts that alias metadata does not intersect any stream
+extension segment. Cold-boot checks, 64 song loads and rare-line tests
+also check these bytes. No retail instrument or effect is removed.
+The fixed-size reservation upload is unchanged in length; the extra
+metadata/helper payload and three segment headers add 22 boot-upload bytes.
+
+65816 code grows **21 bytes**, only on the selected-command path. There
+is no added idle callback, per-frame work, timer or command. Dispatcher
+maximum remains **1.34897 lines**. `modprof` stays **0.41 lines mean**
+including startup in sword/battle, with maxima **1.88 / 1.85**, identical
+to the finisher build. Charge's accepted 13/240 baseline is unchanged.
+
+### Recordings and validation
+
+Compare7 adds six `pre-ki7` / `ki7` pairs: three isolated launches in each
+form, normal battle and SSJ full-power volleys, and both volleys with
+beams. Each volley has three bursts of 18 launches, five frames apart,
+with `$38` contacts two frames after each launch. Public audio cues and
+the form selector drive every capture; the command traces retain p2.
+
+| Raw Mesen take | Before peak dBFS | New peak dBFS |
+| --- | ---: | ---: |
+| Normal launch cycle alone | −15.60 | **−13.08** |
+| SSJ launch cycle alone | −15.60 | **−13.09** |
+| Battle volley + contacts | −8.23 | **−6.53** |
+| Full-power SSJ volley + contacts | −8.25 | **−7.21** |
+| Battle beam + volley + contacts | −1.24 | **−1.78** |
+| Full-power SSJ beam + volley + contacts | −2.53 | **−2.01** |
+
+All six new captures have **zero clipped samples**, as do all **36** SPC
+stress mixes covering both music tracks, both forms and alternating forms,
+three music phases, and beams. Stress peak headroom is at least **1.48 dB**.
+Launch ownership never exceeds one voice; launch plus contacts never
+exceeds **three**, or **four with a beam**. All voices return to music.
+
+Four new PC references render the browser clips through gain/master/
+compressor, with the three-rate rotation, blast/impact caps 5/3 and the
+browser's 12 ms replacement fades. PC references omit music. The manifest
+documents the SSJ sampled/fallback distinction and each file's provenance.
+
+Validation: strict build; **audio 49 unit/SPC checks, five song renders and
+all 12 cartridge cases**; **gameplay 13/13**, **perf 6/6**, **combat 37/37**,
+**emulators 3/3**. The initial new Mesen form assertion sampled ENVX at a
+single frame that could land in the native note handoff; it now observes
+the whole five-frame interval. Commands and form operands were correct;
+the corrected regression passes. The final full audio run includes the
+alias in all bank-integrity checks.
+
+Gameplay misses per 240 shipping-ROM frames:
+
+| Case | Before | After |
+| --- | ---: | ---: |
+| solo-punch | 0 | 0 |
+| solo-ki | 0 | 0 |
+| walk | 0 | 0 |
+| punch | 0 | 0 |
+| ki | 0 | 0 |
+| fly | 1 | 1 |
+| fly-ki | 2 | 2 |
+| fly-punch | 1 | 1 |
+| water-flight | 0 | 0 |
+| teleport | 3 | 3 |
+| charge | 13 | 13 |
+| focus-grass | 0 | 0 |
+| transform-grass | 0 | 0 |
+
+Perf p90/lag remains sword 63/0, sandship 113/0, battle 54/0, beast 174/30
+(native 30 Hz), fortress 96/0, flight 112/0. snes9x/bsnes/bsnes-accurate
+all reach name at 1118 and finish at 7789; name picture agreement is
+100% / 100% / 99.8%. The new cold-boot probes play both launch forms,
+check their shared owner and metadata, and hear unclipped output on each
+core. The shared checkpoints remain unchanged. No request for core or
+combat changes is open.
+
+Shipping SHA-256:
+`5c5b86ced42530d0b355f75408a3ae035f4a8ae3ceb5cab401ce10a58e9f2df3`.
+Rollback remains byte-identical to round four:
+`56ed7992b1f2abf06561a1d5553d1ab151e5fc7fd8d8ff0941a9a63508115388`.
+The shipping build is restored after diagnostics.
+
+Listening index: `.local/snes-test/audio/compare7/manifest.json`.
+`ki-analysis7.json` contains dry metrics, storage and 36 stress cases;
+`ki-validation7.json` records suite results, hashes, CPU and capture peaks.
+
+| File | Change |
+| --- | --- |
+| `snes/gen/audio-resident7.mjs` | Two-stage DE, beam alias, teleport relocation and overlap/bounds assertions |
+| `snes/src/modules/audio/native.asm` | Select SSJ through DE's existing reuse nibble |
+| `snes/src/modules/audio/spc/beds.s` | Command-time form operand and compact variation dispatch |
+| `snes/test/audio/ki.test.mjs` | New timbre, pitch, fast-retrigger, voice-budget and metadata regressions |
+| `snes/test/audio/ki.mjs` | New reproducible before/after dry and stress audit |
+| `snes/test/audio/effects.mjs` | Allow actual p2 variants in dry SPC rendering |
+| `snes/test/audio/motion.mjs`, `motion.test.mjs` | SSJ/form-transition/music-phase stresses and three/four-voice limit |
+| `snes/test/audio/cartridge.mjs`, `lib.lua` | Include alias metadata in runtime integrity checks |
+| `snes/test/audio/native.lua` | Public BLAST form selection, reuse and return regression |
+| `snes/test/audio/run.mjs` | Include ki regressions in all audio cases |
+| `snes/test/emulators/audio.mjs` | Cold-boot form/ownership/audio checks on all three cores |
+| `snes/test/audio/capture7.lua`, `capture7.mjs` | Six cartridge takes per version |
+| `snes/test/audio/pc7.mjs` | Four matching PC references with rotation, caps and fades |
+| `snes/test/audio/manifest7.mjs` | Index the new pairs, provenance and audit files |
+| `docs/agents/snes-port/audio.md`, `audio-samples.md` | Sound, storage, validation and listening record |
+
 ## Normal and Super Saiyan kick finishers (base `feb7df6`)
 
 KICK retains public cue **4**. Audio maps it to **`$E8` normally and `$F1`

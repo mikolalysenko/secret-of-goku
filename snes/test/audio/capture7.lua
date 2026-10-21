@@ -1,5 +1,5 @@
 -- Round-seven listening package: real cartridge dispatcher and raw DAC tap.
--- Only solo auditions drive loop-request RAM directly; contexts use input.
+-- Input contexts use controllers; follow-up pairs use the cue mailbox.
 local bootToField=test
 local started,wanted,recording=false,nil,nil
 local commands,files={},{}
@@ -52,6 +52,28 @@ local function field(form,music)
 end
 function test()
  bootToField();H.wait(40)
+ if ONLY=='ki' then
+  local function cue(id) cmd(1,id);H.wait(1) end
+  for _,s in ipairs({{'normal',0,0x3C},{'ssj',1,0x3F}}) do
+   solo();H.w8(0x7ED811,s[2])
+   record('ki-solo-'..s[1],'Three isolated public BLAST requests at 45-frame intervals; '..s[1]..' form; three-rate cycle, no music/echo',function()
+    for i=1,3 do cue(5);H.wait(44) end
+    H.wait(60)
+   end)
+   for _,beam in ipairs({false,true}) do
+    solo();song(s[3],0);H.w8(0x7ED811,s[2])
+    record('ki-'..s[1]..(beam and '-beam' or '')..'-volley','Three bursts of eighteen public BLAST cues every five frames; retained 38 contacts two frames later; '..s[1]..' form over '..(s[2]==1 and 'full-power' or 'battle')..' music'..(beam and ', with a beam each burst' or ''),function()
+     for burst=1,3 do
+      if beam then cue(8) end
+      for i=1,18 do cue(5);H.wait(1);cue(6);H.wait(2) end
+      H.wait(30)
+     end
+     H.wait(120)
+    end)
+   end
+  end
+  H.result('files',files);H.result('commands',commands);H.result('captured',true);return
+ end
  if ONLY=='finisher' then
   -- Use the public cue mailbox, including form selection on the CPU side.
   -- The scene is deterministic; command tracing proves which native cue

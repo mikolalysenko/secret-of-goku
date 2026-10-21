@@ -24,7 +24,7 @@ mkdirSync(outRoot,{recursive:true});
 let ok=true;
 
 if(!only.length||only.includes('unit')){
- const u=spawnSync(process.execPath,['--test',...['unit','resident','songload','samples','custom-cartridge','beds','contacts','motion','variation','finisher','ipl','weapon-charge'].map(n=>join(here,n+'.test.mjs'))],{cwd:repo,encoding:'utf8'});
+ const u=spawnSync(process.execPath,['--test',...['unit','resident','songload','samples','custom-cartridge','beds','contacts','motion','variation','finisher','ki','ipl','weapon-charge'].map(n=>join(here,n+'.test.mjs'))],{cwd:repo,encoding:'utf8'});
  const summary=(u.stdout||'').split('\n').filter(l=>/^ℹ (pass|fail)|^✖/.test(l)).join(' ');
  console.log(`audio unit        ${u.status===0?'pass':'FAIL'} ${summary}`);
  if(u.status!==0){ok=false;console.log((u.stdout||'').slice(-3000));}
