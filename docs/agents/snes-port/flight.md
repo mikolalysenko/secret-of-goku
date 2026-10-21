@@ -419,6 +419,18 @@ cells never flood fill.
   hero.
 - Axis-aligned air-route walks use a lean walker on maps without protected
   cells (and away from the Water Palace pockets).
+- The bank rule's shore walks (`betweenShores` over bank and lily cells)
+  use a lean walker too (`fl_bank_shores`). It applies on maps without a
+  dungeon context or the ferry corridor, outside tileset 10, where
+  `blocked()`, `ferryGap()` and the cave filler never apply.
+  - Each step reads the tile and its two descriptor words once and tests
+    the bank and lily bitsets in place. The walk is clipped to the map
+    once, not checked at every step.
+  - At the waterfall, a takeoff beside the cliff classifies two bank cells
+    (six walks of up to five cells). That falls from about 95 to 24 lines.
+  - On random layouts, a bank cell's whole `lowObstacle` falls from 2,919
+    to 2,080 CPU cycles on average.
+  - `FLIGHT_BANK_WALK_SLOW` keeps the shared walker for comparisons.
 
 **Data** (`snes/gen/flight.mjs` → `dist/snes/gen/flight/tables.asm`):
 metatile bitsets per tileset and rule, evaluated from the engine's own
@@ -457,7 +469,7 @@ calls combat's Saiyan recoil (`combat_recoil_vector`) first, through
 
 | Resource | Use |
 | --- | --- |
-| Code `$A3:8000-…` | `!CODE_FLIGHT` (20.1 KiB used, to `$A3:D075`; bindings to other modules at `$A3:F000-F0DD`) |
+| Code `$A3:8000-…` | `!CODE_FLIGHT` (20.5 KiB used, to `$A3:D1ED`; bindings to other modules at `$A3:F000-F0DD`) |
 | Data `$E3:0000-…` | `!DATA_FLIGHT` (9.3 KiB, to `$E3:254F`: bitsets, map flags/extents, exits, routes, recovery order) |
 | WRAM `$7E:D900-D97F` | `!RAM_FLIGHT`, all $80 bytes (map in `module.asm`) |
 | SRAM `$33:7800-7BFF` | `!SRAM_WORK_FLIGHT`: tile cache, flood fill, anchor/crossing, hero grid, sweep/hero memos, Instant Transmission, camera follow, ceiling escape (`$7BF0`), Goku request ownership (`$7B3E`), test mailbox (initialised on the first field frame after title entry: `!fl_magic`); the roof-colour search borrows the tile cache once per escape |
@@ -674,6 +686,14 @@ earlier one.
   frozen. The browser's `flight-regressions.spec.mjs` replays the same
   approaches; on the original browser code the first one wedges him the
   same way.
+- `bank-walk.test.mjs` (assembled, `node --test`): `fl_lowobs` with the
+  lean bank walker against a `-DFLIGHT_BANK_WALK_SLOW=1` reference build.
+  - Input: random layouts of bank, lily, shore and other cells, both
+    layers, every cell including the map's edges.
+  - Maps: one for each tileset whose bank rule takes the lean path (19
+    maps), plus four that keep the shared walker in both builds.
+  - Result: 264,960 cells equal. Removing the right-edge clip, or ignoring
+    the lily set, makes it fail.
 - `ceiling`: `indoor-flight.spec.mjs` from seven rooms entered through
   their real doors (Water Palace 137/139, Potos houses 257/259, Gaia's
   Navel 293, Matango inn 282, Gold City house 125): L+R starts the escape,
@@ -788,7 +808,8 @@ with the lazily moving hero grid and its shifted verdicts, the walk mode
 the maps that can have holes, an unrolled tile-cache clear (7 lines → 1).
 
 Next steps: per-direction distance-to-shore memos for the bank, gap and
-air-route walks (each new tile repeats its neighbours' walks), one
+air-route walks (each new tile repeats its neighbours' walks; the bank
+walks' steps are cheaper now, but adjacent cells still repeat them), one
 hero-tile fetch per settle instead of four, D778's endpoint canLand handed
 to the next frame's hero memo (keyed by a grid epoch), the hottest fields
 in WRAM or direct page (shorter addressing), a larger tile cache.
