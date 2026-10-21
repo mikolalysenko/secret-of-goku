@@ -4,6 +4,47 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: opt-in custom samples, leaner native emitter, the orbit's line limits (2026-10-21)
+
+- Codex audio, round six (269399b, 9b58201, 727a6dc; merged in c85f153):
+  round five's resident samples are built into the cartridge behind
+  `-DAUDIO_CUSTOM_SAMPLES=1`. With the define off the ROM is byte-identical,
+  so the shipping build still plays round four's sounds.
+  - With the define on:
+    - The four samples, their cue sequences and instrument metadata are
+      uploaded once at boot (+65 ms).
+    - The native sample cache starts at `$55F1`, and a generated per-song
+      EDL cap shortens the echo by one step in the 16 songs that need the
+      room.
+    - Takes and levels are a generator setting (`AUDIO_CUSTOM_TAKES`). The
+      provisional choice is hit and kick with the noise crack, the sampled
+      impact +5 dB and the sampled beam +3 dB.
+  - Costs:
+    - No added 65816 instructions per frame.
+    - Song loads stay the same on average, but the smaller cache makes some
+      changes slower: Vegeta to full power 26.6 → 42.7 frames, into Danger
+      48.7 → 59.7.
+  - Impact and beam stay about 1 LU quieter than round four at the loudest
+    level that doesn't clip in dense mixes.
+  - The maintainer's listening decision is open (takes, echo and load
+    costs).
+- Codex performance (bdc038a, c03aaf5, 25186c4; merged in e643d2d): the
+  native actor emitter skips redundant reloads and repeated OAM checks, and
+  empty contact checks take a shortcut.
+  - The six-piece emitter benchmark fell 967 → 932 cycles, and empty
+    contact 58 → 37.
+  - 24,000 randomized and 2,769 recorded comparisons with the original
+    routines match.
+  - Rollback defines: `CORE_NATIVE_EMITTER_RELOAD_SLOW`,
+    `CORE_NATIVE_CONTACT_EMPTY_SLOW`.
+  - Charge misses fall 17 → 16 per 240 frames (25 → 22 per 1,200), and
+    ordinary flight 2 → 1. The rest of the crowded-scene cost is native
+    actor and movement work.
+- Orbit line limits (5f208b7, entry below).
+- Validation on e643d2d: all 20 suites pass under the read probe. Gameplay
+  misses per 240 frames: charge 16, teleport 3, flying ki 2, flight 1,
+  flying punches 1, the rest 0. Extended data: 2664.2 of 2944 KiB.
+
 ## Orbit: the stars and the laser under the PPU's line limit (2026-10-21)
 
 - While beams show, the stars under their cells are limited per row of 8
