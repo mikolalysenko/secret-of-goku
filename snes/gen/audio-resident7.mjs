@@ -68,7 +68,9 @@ export function buildResident7(){
  });
  const sampleBytes=at-SAMPLE_BASE;
  const word=(b,p,v)=>{b[p]=v&255;b[p+1]=v>>8;};
- const metadata=[{addr:0x1860,bytes:new Uint8Array(8)},{addr:0x18E0,bytes:new Uint8Array(8)},{addr:0x19C0,bytes:new Uint8Array(16)}];
+ // The unused tuning/ADSR entries also hold command-time swing release.
+ // Stop before the mutable bed parameters at $187C; songs use $20-$2F.
+ const metadata=[{addr:0x1860,bytes:new Uint8Array(28)},{addr:0x18E0,bytes:new Uint8Array(32)},{addr:0x19C0,bytes:new Uint8Array(16)}];
  const bank=new Uint8Array(RESERVE);
  for(const [i,s] of samples.entries()){bank.set(s.bytes,s.addr-SAMPLE_BASE);word(metadata[0].bytes,i*2,s.tune);word(metadata[1].bytes,i*2,s.adsr);word(metadata[2].bytes,i*4,s.addr);word(metadata[2].bytes,i*4+2,s.addr+Math.max(0,s.loop));}
  const ins=(i,vol,octave=samples[i].octave)=>[...(vol===undefined?[]:[0xD2,vol]),0xEA,0x30+i,0xE4,octave];
@@ -92,6 +94,11 @@ export function buildResident7(){
  const code=assemble(readFileSync(join(root,'snes/src/modules/audio/spc/beds.s'),'utf8'),{name:'beds.s',symbols:{CODE_BASE:at,SWING_TUNE:swing.addr+7}});
  const patches=[];let end=at;
  for(const seg of code.segments)if(seg.addr>=SAMPLE_BASE&&seg.addr<FLOOR){assert.ok(seg.addr+seg.bytes.length<=FLOOR,`resident7 needs ${seg.addr+seg.bytes.length-SAMPLE_BASE} bytes`);bank.set(seg.bytes,seg.addr-SAMPLE_BASE);end=Math.max(end,seg.addr+seg.bytes.length);}else{
+  if([0x1868,0x18E8].includes(seg.addr)){
+   const region=metadata.find(m=>m.addr===seg.addr-8);
+   assert.ok(8+seg.bytes.length<=region.bytes.length,'swing release exceeds unused instrument metadata');
+   region.bytes.set(seg.bytes,8);continue;
+  }
   if(seg.addr===0x19D0)assert.ok(seg.addr+seg.bytes.length<=0x1A00,'resident pitch exceeds unused DIR entries');
   patches.push(seg);
  }

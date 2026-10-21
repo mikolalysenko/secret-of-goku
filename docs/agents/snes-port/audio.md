@@ -8,6 +8,149 @@ Everything below about the native driver was reverse-engineered from the US
 cartridge (`snes/gen/audio-spc700.mjs` disassembles it) and cross-checked
 against 277 ARAM/DSP snapshots of the browser mod (`.local/snes-import/`).
 
+## Combo contact gain and charge timing follow-up (October 21, 2026)
+
+The current listening tag is **`fix7`**. Contacts now replace their own swing
+before allocation, so a normal combo gets full contact gain. The charge
+work reduces CPU cost, but **the requested 12-miss charge target is still
+unresolved: the complete local case remains 13/240**. The gameplay harness
+and shared checkpoints were not changed to obtain these results.
+
+### Contact gain in real play
+
+At `$E7/$E8` start, the SPC hook finds `$E5` and `$E6` and runs the native
+F2 cleanup at `$09BE` (past its sequencer-stack unwind). This returns swing
+ownership, clears its noise/pitch-modulation/echo flags, and lets the native
+allocator reuse the voice. Swings normally occupy one voice each; neither
+is counted against the following contact. Other occupied effect voices
+still participate in the existing headroom rule. Music keeps its own gain.
+There is no new CPU command, timer callback or stream.
+
+| Raw Mesen recording, peak dBFS | Round four | Before (`motion7`) | After (`fix7`) | Gain vs round four |
+| --- | ---: | ---: | ---: | ---: |
+| Solo three-hit combo | −6.46 | −8.49 | **−2.74** | +3.72 |
+| Battle combo, 1-frame contact | −5.45 | −6.90 | **−1.98** | +3.47 |
+| Battle combo, 2-frame contact | −4.99 | −7.56 | **−2.85** | +2.14 |
+| Full-power combo, 1-frame contact | −6.43 | −7.68 | **−2.23** | +4.20 |
+| Full-power combo, 2-frame contact | −5.59 | −7.82 | **−2.54** | +3.04 |
+| Actual B-held melee with battle music | −5.00 | −8.14 | **−3.00** | +2.00 |
+
+All **29 new raw recordings** have zero clipped samples. The 24 contact and
+18 motion stress scenarios also pass, including rapid contacts, beam
+layers, held beds and both battle/full-power music. The new regression test
+checks that either swing, one or two frames before either contact, leaves
+exactly the two contact voices and the same peak DSP volume as an isolated
+contact. It also checks cleanup after the tail.
+
+The sample/code reservation stays 2,304 bytes, with 2,301 used (three free).
+The first 2,024 bytes—four BRRs and their sequences—are byte-identical.
+The release helper uses unused tuning entries at `$1868` and ADSR entries
+at `$18E8`, packed into the existing metadata uploads. Those uploads grow
+by 44 bytes; music only loads slots `$20-$2F`. No sample is cut and no EDL
+cap changes. All 64 canonical and 192 power-on song-load integrity checks
+cover the enlarged immutable metadata regions.
+
+### Charge CPU work and the remaining frame
+
+`audio_combat_loops` checks the common charging path first with byte loads;
+focus/transformation already cancel charging in combat. The held-bed
+selector can acknowledge its pending `$81` inline and service a due update
+without repeating song, test-mailbox and rare-line bookkeeping. When the
+sound queue, native mailbox and APU ports are all idle, a bed calls the
+same asynchronous native dispatcher directly. This removes the SRAM queue
+round trip while preserving queued song/effect priority.
+
+BRRs, envelope lookup tables, level/pitch steps, twelve-frame throttle and
+expiry remain unchanged. The before/after charge traces send the same seven
+`$ED` level/rate pairs. Stops have no added deferral. No scanline admission
+change is shipped: bounded-defer candidates did not improve the full case.
+
+The native command maximum remains **1.349 lines**. A representative held
+update costs about **5.70 → 3.75 lines** for the audio callback plus core
+sound tail; the following acknowledgement callback costs **2.139 → .669**.
+Settled idle is unchanged at **.33480 / .33441 lines** in sword/battle
+(including JSL; maximum .35337). These are CPU savings, not a claim that the
+complete charge scenario gained a frame.
+
+Zero-based miss offsets in the 240-frame input window:
+
+| Shipping-ROM run | Miss offsets |
+| --- | --- |
+| Local round four, `56ed7992` | 41, 44, 48, 54, 56, 62, 64, 66, 108, 110, 112, 117, 119, 127, 157 |
+| Round seven / pre-fix branch | 41, 44, 48, 54, 56, 62, 65, 107, 110, 115, 117, 125, 155 |
+| `fix7` | 41, 44, 48, 54, 56, 64, 106, 113, 115, 120, 122, 125, 155 |
+
+In the pre-fix trace, offset 60 sends `$81 ED C0 80` near line 218;
+offset 61 acknowledges it with the full selector and misses NMI at offset
+62. Offset 64 sends nothing but crosses NMI at 65 while restoring the core
+frame context (`A0:820D`). The cheaper paths recover these original misses,
+but an earlier native/FX update now misses at 64. The hold completes one
+extra gameplay update; the later beam then loses one more frame, leaving
+the complete total at 13. The shifted beam misses mostly occur in FX before
+audio runs.
+
+**Baseline limitation:** the maintainer's clean round-four result is 12,
+but the independent `56ed7992` ROM and the byte-identical rollback both use
+this worktree's unchanged shared waterfall checkpoint; the local trace is
+15. Its SHA-256 is
+`2db4bb47dc983d1fafbaf3eeb2cd6320a7298af75e6441947e4a2a2be14ddd4e`.
+The original round-seven ROM still gives the maintainer's 13. Thus these
+local traces do not identify the maintainer's specific 12→13 regression.
+A request for the matching checkpoint/Mesen reproduction remains open.
+A separate read-only diagnostic copied the restored after-arrival state to
+a private fixture; it gave 17 for round four and 13 for `fix7`, so it was
+not adopted as the gameplay baseline. No shared state was published.
+
+### Validation and files
+
+Strict default build, **38 Node/SPC audio tests**, five-song reference
+render, **all 11 audio Mesen cases**, **13 gameplay**, **6 perf** and
+**37 combat** cases pass. This includes bank loads, rare voices, streaming
+diagnostics and imports. The ordinary gameplay suite treats charge misses
+as an open timing issue; its pass does **not** satisfy the requested
+12-miss target.
+
+| Gameplay case (240 frames each) | Before | After |
+| --- | ---: | ---: |
+| solo-punch | 0 | 0 |
+| solo-ki | 0 | 0 |
+| walk | 0 | 0 |
+| punch | 0 | 0 |
+| ki | 0 | 0 |
+| fly | 1 | 1 |
+| fly-ki | 2 | 2 |
+| fly-punch | 1 | 1 |
+| water-flight | 0 | 0 |
+| teleport | 3 | 3 |
+| charge | 13 | 13 |
+| focus-grass | 0 | 0 |
+| transform-grass | 0 | 0 |
+
+Perf p90/lag remains sword 63/0, sandship 113/0, battle 54/0, beast 174/30,
+fortress 96/0 and flight 112/0. Shared checkpoint hashes are unchanged.
+The strict rebuild matches the ROM used for recordings and validation.
+
+- Default SHA-256: `906a4f516bd0347dba04eb4ed4160ace362a3b7a9cbdb3bbd71f46a80b337d6b`.
+- Define-0 rollback: `56ed7992b1f2abf06561a1d5553d1ab151e5fc7fd8d8ff0941a9a63508115388`, byte-identical to round four.
+
+| File | Change |
+| --- | --- |
+| `snes/src/modules/audio/spc/beds.s` | Release swing voices before HIT/KICK allocation |
+| `snes/gen/audio-resident7.mjs` | Pack that helper into unused metadata entries, with bounds assertions |
+| `snes/src/modules/audio/beds.asm` | Cheaper charge gates and direct bed dispatch after idle admission |
+| `snes/src/modules/audio/module.asm` | Cheap held-bed acknowledgement and due-update paths |
+| `snes/test/audio/motion.test.mjs` | Full-gain contact/voice-return regression at 1/2-frame spacing |
+| `snes/test/audio/timing7.mjs` **new** | Read-only shipping gameplay trace with miss offsets, audio sends and module/NMI timing |
+| `snes/test/audio/manifest7.mjs` | `fix7` comparisons and provenance alongside all historical versions |
+| `docs/agents/snes-port/audio.md`, `audio-samples.md` | Results, remaining timing issue and listening inventory |
+
+Listening manifest: **`.local/snes-test/audio/compare7/manifest.json`**.
+`fix-validation7.json` records the figures, all case counts, hashes and trace
+paths; `fix-cpu7.json` records the idle comparison. Reproduce a trace with
+`node snes/test/audio/timing7.mjs --rom=path/to/cart.sfc --out=path/to/private-output`.
+All full-suite logs and diagnostic trials stay under
+`.local/snes-test/audio/fix7/`. No core or other-module code was edited.
+
 ## Swing and ki follow-up (October 21, 2026)
 
 This follows committed punch work `91c53d9`. Only the `$E5/$E6` swings and

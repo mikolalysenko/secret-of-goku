@@ -4,25 +4,30 @@
 ; as PCM, in generated lookup tables; no per-frame multiplies or new calls
 ; to the audio_loop prologue. Other modules keep using the public loop API.
 audio_combat_loops:
-	LDA.w !cb_act
-	AND.w #$00FF
-	CMP.w #!GOKU_K_TRANSFORM
-	BEQ .transform
-	CMP.w #!GOKU_K_FOCUS
-	BEQ .focus
+	; Focus/transformation cancel charging first. Byte gates keep the usual
+	; held-charge ownership refresh cheap without changing its envelope.
+	SEP #$20
 	LDA.w !cb_charging
-	AND.w #$00FF
-	BEQ .out
+	BEQ .action
 	; The dispatcher cannot use a new quantized value during its cooldown.
 	; Refresh ownership only; read the envelope table when an update is due.
 	LDA.w !au_bed_wait
-	AND.w #$00FF
 	BEQ .charge
 	LDA.w !au_lvl
 	BEQ .charge
+	REP #$20
 	STZ.w !au_age
 	RTL
+.action
+	LDA.w !cb_act
+	CMP.b #!GOKU_K_TRANSFORM
+	BEQ .transform
+	CMP.b #!GOKU_K_FOCUS
+	BEQ .focus
+	REP #$20
+	RTL
 .charge
+	REP #$20
 	LDA.w !cb_charge
 	ASL : ASL
 	TAX
@@ -39,6 +44,7 @@ audio_combat_loops:
 	LDA.l audio_super_levels+2,X
 	BRA .rates
 .focus
+	REP #$20
 	LDA.w !cb_power
 	CMP.w #96
 	BCC +
@@ -50,6 +56,7 @@ audio_combat_loops:
 	LDA.l audio_focus_levels+2,X
 	BRA .rates
 .transform
+	REP #$20
 	LDA.w #$FFD9
 	STA.w !au_lvl
 	LDA.w #$8080
@@ -118,6 +125,7 @@ audio_beds_service:
 .stop
 	LDA.w !au_backoff
 	ORA.w !au_pending
+	ORA.w $1E00
 	ORA.l $002140
 	BNE .out
 	REP #$20
@@ -164,14 +172,21 @@ audio_beds_service:
 	TXA
 	EOR.b #1
 	STA.w !au_bed_index
+	LDA.w !au_tmp+3
+	STA.w $1E03
+	LDA.w !au_tmp+2
+	STA.w $1E02
 	TXA
 	CLC
 	ADC.b #$ED
 	XBA
 	LDA.b #$81
 	REP #$20
-	LDX.w !au_tmp+2
-	JSL core_sound_queue
+	STA.w $1E00
+	; The queue and native mailbox were both checked idle above. Dispatch
+	; the bed now, avoiding a round trip through the core's SRAM ring. Shots
+	; and songs still take precedence; this is the same bounded async driver.
+	JSL $C30004
 	SEP #$20
 	RTS
 

@@ -48,3 +48,25 @@ test('1/2-frame contacts and 5-frame ki volleys preserve headroom, noise state a
   assert.equal(r.noiseMismatch,0,label);assert.equal(r.musicMask,255);assert.equal(r.effectMask,0);assert.equal(r.noiseMask,0);assert.equal(r.bankIntact,true);
  }
 });
+test('a contact returns either swing voice before counting overlap gain',{skip},()=>{
+ for(const hit of [0xE7,0xE8])for(const gap of [1,2]){
+  const take=swing=>{
+   const h=createApu({rom});h.ms(60);
+   if(swing)h.nativeCmd(2,swing,15,0x88);
+   h.ms(gap*1000/60.0988);h.nativeCmd(2,hit,15,0x88);
+   let peakVolume=0;
+   for(let t=0;t<50;t++){
+    h.ms(1);const owned=[];
+    for(let v=0;v<8;v++)if(h.ram[0xAE]&(1<<v)){
+     owned.push(h.ram[0xFF80+v]);peakVolume=Math.max(peakVolume,h.dspReg(v*16));
+    }
+    assert.equal(owned.filter(id=>id===0xE5||id===0xE6).length,0,'swing still steals/counts a voice');
+    assert.deepEqual(owned,[hit,hit]);
+   }
+   h.ms(500);assert.equal(h.ram[0xAE],0);assert.equal(h.dspReg(0x3D),0);
+   return peakVolume;
+  };
+  const alone=take(null);
+  for(const swing of [0xE5,0xE6])assert.equal(take(swing),alone,'contact gain was reduced by its own swing');
+ }
+});
