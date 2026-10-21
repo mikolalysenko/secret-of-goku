@@ -89,22 +89,33 @@ browser's `dim`/`brighten`/`light` per channel with 33-level curves (a
 pure dark or pure white set is one 192-byte block move from ROM,
 `fade_words`), round-robin over the declared ranges with as many colours
 per frame as the frame has time for (latched V counter: 3 per line before
-line 200, 16-192), and `pal_commit` writes the outputs into the buffer
-the field NMI uploads (`7E:0600`, or `7E:BE00` while `$2A` is set). The
-game's buffer is saved when a scene takes the screen and restored when it
-lets go on the same map.
+line 200, 16-192). The outputs go up in the field NMI's own palette
+transfer: `ending_cgram_upload` (`upload.asm`) is an upload handler of
+core's hook at `C0:C0F0` (`core/cgram.asm`). It sends the game's buffer
+(`7E:0600`, or `7E:BE00` while `$2A` is set) with the declared ranges taken
+from `s_palout` (or the direct palette) and the edge colours over them, in
+the order `pal_commit` prepares each frame (`s_cgord`). The game's buffer
+is never written, so nothing is saved or restored, and the scene's colours
+also survive lag vblanks with a window open.
 
-Frame-thread DMA: the palette commit (`pal_commit`, the scene's colours
-into the game's palette buffer, which the field NMI uploads to CGRAM in
-its force-blanked vblank) and the OAM-buffer copies (the flight's stars,
-dragon and hidden slots, the cutaway's dust) use channel 7 through
-WMDATA from the frame thread. The vblank NMI (the game's uploads, every
-module's vblank work) reprograms channel 7 and leaves its size at 0, so a
-set-up it splits would copy 64 KiB over WRAM. `ending_dma_guard` (called
-right before each set-up) waits out lines 216-225: the NMI fires at 225
-and has come and gone before the set-up starts. The ending tests check
-channel 7's size at every one of these triggers (about 16,000 per suite
-run; also with goku's fast idle NMI, now the default).
+No DMA from the frame thread over HDMA: revision-1 S-CPUs can hang when
+HDMA runs during a general DMA, and the flight's floor is HDMA-driven.
+- The flight's Shenron entries go into the game's OAM image through
+  `wq_push`. `ending_preupload` (core's `modules_field_preupload`) runs
+  the queue in the vblank, before the game's OAM transfer, only after a
+  completed frame.
+- Its unused front slots get Y = 224 by CPU stores.
+- Its stars persist in OAM slots 42-127: the module area ends at slot 42,
+  so the game's next OAM pass leaves them. They are copied by a
+  low-priority vblank job (`nmi_lowcopy`, after the transfers, only with
+  budget left) when they drift, and every 64 frames.
+- The cutaway's dust image (`cut_oam`, world flight) still copies from the
+  frame thread, but its vblank turns the world's HDMA off first.
+
+The tests check every watched trigger: channel 7's size is never 0 (a
+vblank that split a set-up would copy 64 KiB over WRAM), and none starts
+on a visible line with an HDMA channel enabled. `ending_dma_guard` still
+keeps the cutaway's set-up clear of the vblank NMI.
 
 Uploads: a load script (ROM entries) and a dynamic queue (cell swaps)
 through a transfer engine in `ending_nmi` that counts its own time per DMA

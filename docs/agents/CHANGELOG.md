@@ -4,6 +4,48 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: orbit on main, vblank palette hooks, faster charging (2026-10-20)
+
+- The orbit stream (Frieza's space finale, the entries below) is merged:
+  the second surge on the deck, the space fight, the beam struggle, the
+  victory, the descent and return to the deck, and the orbital death. The
+  montage, pullback, distant bodies/debris, auras and victory flashes are
+  still to come there.
+- Core owns the field NMI's palette transfer (`C0:C0F0`, core/cgram.asm):
+  - `modules_field_preupload` runs queued copies into the game's WRAM
+    buffers before its OAM transfer;
+  - `modules_cgram_upload` handlers can send the palette with their own
+    ranges (`core_cgram_native` for the game's part).
+
+  The Sandship's staged tint is now one such handler. The ending uses
+  them in place of its frame-thread DMAs, which ran over HDMA (a
+  revision-1 S-CPU hazard):
+  - its scene colours go up in the game's transfer, and the game's buffer
+    is no longer written, saved or restored;
+  - the wish flight's Shenron entries use the pre-upload queue;
+  - its stars persist in the OAM image and are copied by a low-priority
+    vblank job when they drift.
+
+  Flight lag drops from 6 to 3 frames. The ending tests render every
+  frame and fail on any watched DMA that starts on a visible line with
+  HDMA enabled.
+- Codex performance pass: charge presentation tables, an idle radio during
+  base charging, flight reading only the charge state it needs. Charging
+  misses fall 22 -> 13 per 240 frames and 33 -> 16 per 1,200. The enemy
+  AI deferral from ab393b9 is now opt-in (it did not help flying combat).
+- Codex: the Fortress cutaway turns the globe with 34 orientations in
+  184 KiB of xdata (stills 89-99.9% against planet-view), replacing the
+  1.3 MB set that no longer fit.
+- Extended data: 1,600.6 of 1,984 KiB used.
+- Validation on the merged build: all 20 suites pass (orbit 7/7, including
+  the return through C7). 143 machine-code tests pass. Gameplay misses per
+  240 frames: charge 14, teleport 3, flight 2, flying ki 2, flying punches
+  1, all ground cases 0, with zero rendering errors.
+- bsnes: power-on scenario pass; every scene-select preset ends in the same
+  state and frame count as Mesen with identical pictures. The exception is
+  good-ending's first frame, 99% within one colour level: a fade's
+  brightness rounding, the same on main's ROM.
+
 ## SNES orbit: the second surge on the deck, the descent and the return (2026-10-20)
 
 - The descent (`clashCamera`, 1152-1392): the globe grows from the clash's

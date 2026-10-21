@@ -223,6 +223,8 @@ of each hook in `snes/src/modules.asm`.
 | `modules_ring_frame` | Ring menus, once per frame in vblank (`C0:694F`); the field loop is paused |
 | `modules_title_boot` | Each entry to the title/intro WRAM program (power-on, soft reset, quit; `!core_title_entry` 0, or 1 for the alternate entry used by the ending), after module WRAM was cleared; patch the program at `7E:8000+` here |
 | `modules_save` / `modules_load` / `modules_new_game` | Before a GAME FILE is written; after one loaded (and core restored or cleared `!SRAM_LIVE`); after NEW GAME cleared `!SRAM_LIVE` |
+| `modules_field_preupload` | Field vblank at the game's palette transfer (`C0:C0F0`, `core/cgram.asm`), before its palette and OAM transfers, on every vblank that sends the palette (lag vblanks with a window open too; check `!core_dma_ready` for a completed frame): copies frame code queued into the game's WRAM buffers (its OAM image). No HDMA runs here. M16/X16, DB = 0, D = 0 |
+| `modules_cgram_upload` | Right after: handlers in order until one returns carry set, having sent the palette itself (the game's buffer through `core_cgram_native`, A16 = CGRAM byte offset, Y16 = bytes, plus its own ranges); carry clear for the game's transfer. Module colours sent here survive lag vblanks and need no frame-thread copy. M16/X16, DB = 0, D = 0 |
 
 | Service | Contract |
 | --- | --- |
@@ -240,6 +242,13 @@ of each hook in `snes/src/modules.asm`.
 | `core_event_request` | A = native event id (`C1:E76D`: script events, `$0800\|door`, `$0C00\|map` takeoff); started at the end of an idle field frame. `!core_event_req` pending, `!core_event_last` started |
 | `!SRAM_LIVE`, `!PERSIST_*` | Live persistent block (`core/shared.asm`): written to the slot's sidecar after each native save; restored on load when the sidecar matches that slot's record (primary or backup); zeroed for NEW GAME (`!persist_version` = 1) and for saves without a valid sidecar (version 0). Every clear writes the `'GK'` magic (`!persist_magic`, `+$3E`); power-on clears a block without it (a new cartridge's battery RAM is noise), so modules that read it on the title see zeros, not noise |
 | `!core_frame`, `!core_frame_world`, `!core_frame_menu`, `!core_frame_ring`, `!core_tick`, `!core_mode` | Frame counters per mode, any-mode tick, mode of the last dispatch (`!CORE_MODE_*`) |
+
+Real-hardware rule: no general-purpose DMA from frame code while any HDMA
+channel is enabled; revision-1 S-CPUs can hang when HDMA runs during a
+general DMA. Copy in vblank (module NMI work, the two hooks above), under
+forced blank, or with the CPU. Core's predecoded-sheet copies check
+`!core_hdmaen` and the `$2C` shadow. The ending tests fail on any watched
+DMA that starts on a visible line with HDMA enabled.
 
 Limits: 128 sprites, 32 per line, 34 eight-pixel slivers per line. Modules
 can count on at least 64 OAM slots in the field and 40 in world flight. The

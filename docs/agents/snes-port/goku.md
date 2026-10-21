@@ -434,19 +434,12 @@ saving: the 1,200-frame charging case improves by one missed frame (83 →
 
 ## Requests
 
-- **ending** (WRAM wipe): `pal_commit` (lib.asm, frame thread) sets up DMA
-  channel 7 to WMDATA and then writes `$420B`. When the field NMI lands
-  between `STA $4375` and the trigger (a lag frame: only the game's own
-  vblank work runs, and with a window open that includes its 512-byte
-  CGRAM upload on channel 7), the NMI's transfer ends with a zero size, so
-  the commit then copies 64 KiB through WMDATA and overwrites WRAM from
-  the palette buffer on, core and ending state included (seen in the
-  wish-flight test's second run: `$7E:D700` and `$7E:DC82` written from
-  `A9:92C7`, DAS7 = 0 at the trigger). Any change in NMI length can move
-  the NMI into that window: goku's two-compare idle exit (100 cycles
-  shorter) did, and so did 240 extra cycles. A copy that an NMI cannot
-  break (MVN), the transfer in the vblank, or a channel the game's NMI
-  never uses would close it; `goku_nmi` keeps its old prologue until then.
+- **ending** (WRAM wipe, resolved 2026-10-20): the ending's palette commit
+  and the flight's OAM copies no longer run as frame-thread DMAs. They go
+  through core's hook at the game's own palette transfer
+  (`core/cgram.asm`) and the ending's vblank jobs, so an NMI can no longer
+  split their set-up. `goku_nmi`'s shorter idle exit is safe from this
+  race now.
 - **combat** (input): while Goku is inactive (before the arrival, the
   native boy) X becomes native Y through `!core_pad_mask`, but combat masks
   X only after its own frame has seen the press. The game's pad read of
