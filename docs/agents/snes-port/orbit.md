@@ -479,8 +479,8 @@ zoom) about 16, about 26 while Frieza's beam flies; the drawing about 9.
 The base's fight frames already end at lines 178-210, so the beam's zoom
 at frames 235-255 now repeats a run of pictures: the `fight` test
 repeats 9 on the default build (main's 2 at 248 and 524). The `clash`
-repeats 39 (main 42da923: 34): the launch 5 (1), the struggle 1 (0),
-the recoil 1 (1), the win 32 (32).
+repeats 38 (main 42da923: 34): the launch 4 (1), the struggle 0 (0),
+the recoil 1 (1), the win 33 (32).
 
 Sprite lines (`scline.asm`, the third code area): a body is 4 slivers on
 each of its lines (the small planetoid 2), and the stars' row limits
@@ -499,8 +499,18 @@ there); it is drawn whole or not at all. Once
 it yields it stays hidden 16 frames at least, then until the beams on
 when it yielded are gone, or until its rows have had room for 16 frames
 running (64 when some frame of the hold had none): one hide for a
-beam's pass, no flicker. The bursts stay before the bodies in OAM, as
-the browser layers them, and no body hides for a burst, a shot or
+beam's pass, no flicker. The note (`scdraw.asm` `sc_note`) takes the
+common cases itself: a body at the rows the limits count with nothing
+to yield to; one blocked again whose hold is blocked, as long as its
+least and yielding to both groups (nothing changes); and one blocked or
+waiting for the lists, whose hold it makes as `scline.asm` `sl_yield`
+does. A body that moved or left the screen, or holds with room, goes
+through `sl_note`. In the clash's launches, where all three yield with
+young holds, the drawing is 2-3 lines shorter a frame for some 20
+frames. The check build (`-DHELD_CHECK`) has `sl_note` make every such
+hold as well and compares the two (the yield, the hold, the room, the
+held bit): 1,446 in the `clash`, 45 in the `fight`, all equal. The
+bursts stay before the bodies in OAM, as the browser layers them, and no body hides for a burst, a shot or
 Frieza. Measured on every frame's OAM with and without the bodies'
 entries (Mesen, the tests' pads, the default build):
 
@@ -1006,9 +1016,9 @@ are untouched).
 
 | Resource | Use |
 | --- | --- |
-| Code `$A7:8000-FAF8` | `!CODE_ORBIT`: 30.7 KiB of 31 KiB (the pullback in `pull.asm`, the distant bodies' drawing in `scdraw.asm`; the `ORBIT_TIMING` build's marks end it at `$FB50`); bindings at `$A7:FC00-FD6E` |
+| Code `$A7:8000-FB48` | `!CODE_ORBIT`: 30.8 KiB of 31 KiB (the pullback in `pull.asm`, the distant bodies' drawing in `scdraw.asm`; the `ORBIT_TIMING` build's marks end it at `$FBA0`); bindings at `$A7:FC00-FD6E` |
 | Code `$A1:C000-FD99` | the second code area (`!CODE_QUARTER_GOKU`, noted in `core/layout.asm`): the cosmic montage and its tables, sprite lists, the pullback's preload, the distant bodies' projection (`scenery.asm`) (15.4 KiB of 16) |
-| Code `$AB:C000-D5A2` | the third code area (`!CODE_QUARTER_MISC`, noted in `core/layout.asm`): the distant bodies' strikes (`strike.asm`) and their share of the sprite lines, the stars' cull (`scline.asm`), the beam runs' kept chains (`beamrun.asm`) (5.4 KiB of 16) |
+| Code `$AB:C000-D5A7` | the third code area (`!CODE_QUARTER_MISC`, noted in `core/layout.asm`): the distant bodies' strikes (`strike.asm`) and their share of the sprite lines, the stars' cull (`scline.asm`), the beam runs' kept chains (`beamrun.asm`) (5.4 KiB of 16) |
 | Data `$E7:0000-76E1` | stars, asin rows, chord scales, rim tables, palettes (and the victory's: Frieza's death colours, the whiteout's backdrop and band colours), star tiles, heading/step tables, the auras' levels, text maps, finale and fall tables, the descent's indexes, the window blobs' addresses (29.7 KiB of 32 KiB) |
 | ROM `$F6:0000-7FFF` | Mode 7 globe VRAM image (32 KiB) |
 | ROM `$F7:0000-F14E` | fight line tables (41 KiB), resident effect cells, Death Ball frames, text tiles, band tiles (60 KiB of 64) |

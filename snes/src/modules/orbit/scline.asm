@@ -35,7 +35,7 @@ sl_reset_far:
 ; pixels square (16 or 32): its rows on the sprite lines for the next
 ; frame's limits (sb_dsig: top | bottom << 5 | slivers / 2 << 10 | $8000;
 ; 0 off the screen), then carry set when it yields (not drawn). Keeps X.
-; (scdraw.asm sc_note takes the common case itself.)
+; (scdraw.asm sc_note takes the common cases itself.)
 sl_note:
 	STA.w !sl_half
 	LDA.w !d_x
@@ -683,6 +683,10 @@ sl_reset:
 	STA.w !sb_cy,X
 	DEX : DEX
 	BPL -
+if defined("HELD_CHECK")
+	STZ.w !hc_checks
+	STZ.w !hc_diff
+endif
 	STZ.w !sb_psig                 ; (no beam group's rows yet, none culled)
 	STZ.w !sb_psig+2
 	STZ.w !sb_psig+4

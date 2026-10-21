@@ -4,6 +4,25 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: a body's hold made in its note (2026-10-21)
+
+- A distant body blocked on a beam's rows, or waiting there for the star
+  lists, had its hold made through a far call (`sl_note`, then
+  `sl_yield`) every frame it yielded, about 1.3 lines a body; only a
+  blocked body's aged hold had a shortcut.
+- `scdraw.asm` `sc_note` now makes that hold itself with `sl_yield`'s
+  formula, and its shortcut for a blocked body is exact: it applies
+  while the hold already yields to both groups (the old one could miss
+  a group that came on during the block).
+- In the clash's launches, where all three bodies yield with young
+  holds, the drawing is 2-3 lines shorter a frame for some 20 frames;
+  elsewhere the same.
+- The check build (`-DHELD_CHECK`, counters at `$32:7256`) has
+  `sl_note` make every such hold as well and compares the two: 1,446
+  yields in the `clash`, 45 in the `fight`, all equal.
+- Repeated pictures: `clash` 38 (39 before, main 34: the launches 4,
+  the recoil 1, the win 33); `fight` 9.
+
 ## Orbit: no stars' cull in the clash (2026-10-21)
 
 - The stars on the rows a beam newly holds are no longer hidden at once

@@ -669,6 +669,10 @@ assert !pb_shown+2 <= !SB+$1800, "orbit scene work past $32:77FF (the frieza mod
 !BC_BYTES = !SB+$1220              ; 2 words: OAM bytes in each cached run (0: none)
 !BC_BND   = !SB+$1224              ; 2 x 12 words: run bytes after each cell index
 !BC_HI    = !SB+$1260              ; 2 x 16 bytes: the high-table bytes
+!hc_checks = !SB+$1256             ; (-DHELD_CHECK, scdraw.asm: the yields sc_note makes checked against
+!hc_diff   = !SB+$1258             ;   sl_note's, those that differ, the hold predicted)
+!hc_hold   = !SB+$125A
+assert !hc_checks >= !BC_BND+48 && !hc_hold+2 <= !BC_HI, "the yields' check overlaps the beam runs' bounds or high bytes"
 !BC_PREP  = !SB+$1280              ; 2 x 64 bytes: each group's chains as last prepared (beamrun.asm): kept, chains * 2, the step, 5 tile words, 5 x and 5 y less the origin
 !bk_reused = !BC_PREP+40           ; (-DBEAM_PREP_CHECK: the run took the kept chains,
 !bk_force  = !BC_PREP+42           ;   the next build prepares afresh, the first run's sums,
