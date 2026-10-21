@@ -4,6 +4,38 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: the aura in world flight, a whole explosion flash (2026-10-21)
+
+- Codex world aura (27318fc, 73e001b; merged in 1d5c800): focus, charge,
+  transformation and revert draw the ki aura around Goku in world-map
+  (Mode 7) flight, with the browser's shape, power ramp, gold/blue
+  colours, ignition and flicker. All 744 eligible frames in 1,877 match
+  the browser's sprite layer exactly. There are no missed frames and no
+  OAM overflow.
+  - The frames are generated from the browser's `drawKiAura`: 96 KiB of
+    deduplicated tiles and 13.5 KiB of OAM records in extended data.
+  - Visible aura work peaks at 14.94 lines; world idle cost is unchanged.
+- The planet explosion's flash ends cleanly (a949896). When the flash disc
+  became the shock ring, the code emptied both window buffers in the frame
+  code, including the one HDMA was reading. The flash's last frame lost
+  its lower half and showed a stray line. Only the buffer being built is
+  emptied now.
+  - Found by a new hunt for one-frame glitches: it starts every
+    scene-select preset from power-on, takes a screenshot every frame, and
+    compares against the browser's frames for the same scene.
+  - The same hunt found the orbit's beam-clash palette flicker and a
+    one-frame HUD loss (the orbit branch has fixes) and the endings'
+    dialogue-window garbage (fixed in the next batch).
+- core xdata compares banks $20-$3D with $60-$7D. Their upper halves hold
+  extended data now that the aura's blobs reach $6B:C0A8 (2b745d9).
+- Extended data: 2604.2 of 2944 KiB.
+- Validation on 1d5c800 under the read probe: all 20 suites pass except
+  core xdata, which passes on 2b745d9. Gameplay misses per 240 frames are
+  unchanged: charge 17, teleport 3, flight 2, flying ki 2, flying punches
+  1, the rest 0. bsnes matches Mesen on 21 of 22 presets. The good
+  ending's first frame differs only by fade rounding (one brightness
+  level).
+
 ## SNES integration: crunchier hits, a sustained Kamehameha, the focus aura in every field scene (2026-10-21)
 
 - Codex audio, round four (fb526f1, c1674a7; merged in 159a489):
