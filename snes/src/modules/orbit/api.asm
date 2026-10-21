@@ -111,7 +111,7 @@ orbit_enter_try:
 	BNE .fight
 	JSL montage_start
 	SEP #$20
-	LDA.b #$08
+	LDA.b #64                      ; (from the star cells: scene.asm orbit_nmi_load)
 	STA.l !orbit_load
 	REP #$20
 .fight

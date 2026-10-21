@@ -477,7 +477,7 @@ function test()
     H.wait(1)
     local a = H.r16(MAGE)
     if H.r16(ORBIT_RAM + 0x34) == 0 then break end
-    trace[#trace + 1] = string.format('%d %d %d %d %d %d %d', a, H.r16(ORBIT_RAM + 0x0C), H.r16(ORBIT_RAM + 0x0A), H.r16(ORBIT_RAM + 0x42), H.r16(ORBIT_RAM + 0x44), H.r16(ORBIT_RAM + 0x46), H.r16(ORBIT_RAM + 0x48))
+    trace[#trace + 1] = string.format('%d %d %d %d %d %d %d %d', a, H.r16(ORBIT_RAM + 0x0C), H.r16(ORBIT_RAM + 0x0A), H.r16(ORBIT_RAM + 0x42), H.r16(ORBIT_RAM + 0x44), H.r16(ORBIT_RAM + 0x46), H.r16(ORBIT_RAM + 0x48), H.r8(ORBIT_RAM))
     if want[a] and not seen[a] then
       seen[a] = true
       local name = string.format('m%04d', a - 2)
@@ -494,9 +494,13 @@ function test()
   end
   H.result('end_age', H.r16(MAGE))
   H.result('ended', H.r16(ORBIT_RAM + 0x34) == 0)
-  -- the orbit's intro from here
+  -- the orbit's intro from here (its first panel: the text tiles came
+  -- after the pullback's load)
   H.wait(30)
   H.shot('intro030')
+  H.wait(60)
+  H.shot('intro090')
+  H.result('intro_at', H.r16(SCENE_RAM + 0xA80 + 0x02))
   H.result('state_after', H.r8(ORBIT_RAM))
   H.result('owner_after', H.r16(SCENE_OWNER))
   H.result('trace', trace)
@@ -512,7 +516,8 @@ end
     // the clock: one step a frame (the first frames load the first shot);
     // at a cut (the picture black while the next one loads) it may catch up
     const cuts=[];let at=collateralStart;for(const c of cosmicShots){cuts.push(at);at+=c.duration;}cuts.push(pullbackStart);
-    // (a cut loads in three vblanks, the pullback's globe in sixteen)
+    // (a cut loads in three vblanks, the pullback's globe in five or so: the
+    // second aerial cut sent most of its image ahead)
     const atCut=a=>cuts.some(c=>a>=c&&a<c+(c===pullbackStart?16:4));
     let lagged=0,atCuts=0,maxLine=0,late=0,lateAtCuts=0,maxVblank=0;
     for(let i=8;i<trace.length;i++){
@@ -522,11 +527,32 @@ end
       if(atCut(trace[i-1][0])){if(trace[i][2]<225)lateAtCuts++;}
       else if(trace[i][2]<225)late++;else maxVblank=Math.max(maxVblank,trace[i][2]);
     }
+    // the frames the pullback's load holds the picture black (the orbit
+    // still loading; the browser cuts straight to the globe)
+    const pullLoad=trace.filter(v=>v[0]>=pullbackStart&&v[7]!==2).length;
+    if(pullLoad>6)fails.push(`the pullback's load held the picture black ${pullLoad} frames`);
     if(lagged)fails.push(`${lagged} frames without one clock step`);
     if(atCuts>4)fails.push(`${atCuts} frames without one clock step at cuts`);
     if(late)fails.push(`${late} vblanks ending in the next frame`);
     if(!res.ended)fails.push(`the cinematic did not end (age ${res.end_age})`);
     if(res.state_after!==2||res.owner_after!==2)fails.push(`after it: orbit state ${res.state_after}, scene owner ${res.owner_after} (want the live orbit)`);
+    // the intro's first panel after it, against the browser's radioPixels
+    {
+      const {radioPixels}=await import(resolve(repo,'engine/native-radio.js'));
+      const {orbitIntroText,orbitIntroFrames}=await import(resolve(repo,'engine/frieza-cinematic.js'));
+      const age=orbitIntroFrames-res.intro_at,text=orbitIntroText(res.intro_at);
+      if(!text||(age-60)%150<4||(age-60)%150>146)fails.push(`intro090: intro age ${age} is not well inside a line`);
+      else{
+        const shot=readPng(join(dir,'intro090.png')),px=radioPixels(readFileSync(resolve(repo,'rom/secret-of-mana-us.sfc')),text);
+        let bad=0;
+        for(let y=0;y<64;y++)for(let x=0;x<240;x++){
+          const v=px[y*240+x];if(!v)continue;
+          const c=v-1,want=[c&31,(c>>5)&31,(c>>10)&31].map(k=>(k<<3)|(k>>2)),at=((y+8)*shot.width+x+8)*4;
+          if(want.some((k,i)=>Math.abs(shot.data[at+i]-k)>8))bad++;
+        }
+        if(bad)fails.push(`intro090: ${bad} panel pixels differ from radioPixels`);
+      }
+    }
     // the pictures: the clock two frames before each screenshot
     const ref=await montageRef(),lines=[];
     // the pullback (planet-view.js cosmicBattle's camera, t = age -
@@ -574,7 +600,7 @@ end
     }
     if((res.shots??[]).length!==ages.length)fails.push(`${(res.shots??[]).length} of ${ages.length} screenshots`);
     const ok=fails.length===0;
-    console.log(`montage: ${ok?'pass':'FAIL'} ended at surge age ${res.end_age} (cosmicDuration ${cosmicDuration}), ${lagged} lagged (${atCuts} at cuts), frames end by line ${maxLine}, vblanks by ${maxVblank} (${late} late, ${lateAtCuts} in loads)`);
+    console.log(`montage: ${ok?'pass':'FAIL'} ended at surge age ${res.end_age} (cosmicDuration ${cosmicDuration}), ${lagged} lagged (${atCuts} at cuts), frames end by line ${maxLine}, vblanks by ${maxVblank} (${late} late, ${lateAtCuts} in loads), the pullback's load ${pullLoad} frames`);
     for(const l of lines)console.log('  '+l);
     for(const m of fails.slice(0,8))console.log('  '+m);
     return ok;

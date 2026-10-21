@@ -27,7 +27,11 @@ stay traceable even when they are committed together.
 - The `montage` test adds 13 pullback screenshots against `planet-view.js`
   itself: the globe's shape 99.65-100%, the sprites 75-94% of its pixels
   (the beam's band ends in whole cells and has no taper).
-- Not yet: the cut still loads for 16 black frames.
+- The pullback's cut holds the picture black for 5 frames (was 16): the
+  second aerial cut sends 40 of the globe image's 64 chunks ahead in its
+  spare vblank room, the scene's load skips chunks already in VRAM, and
+  the other images (text, band and resident cells) follow in the
+  pullback's vblanks.
 - Extended data for the orbit grows by 208 KiB (window rows 120, line
   tables 36, Death Balls 22, beam pictures 21, frame records 9), to 2,494.7
   of 2,944 KiB in all with the ending's shards.
