@@ -7,8 +7,12 @@
 // stand-in reading the PNGs; the aerial cut's sprite layer is built as the
 // browser builds it (sprite-layer.js for the Super Saiyan sheet,
 // native-effects.js for the sparks, bursts and auras, frieza-sprite.js's
-// prepared full-power sheet), and its flash is planet-view.js's.
-//   const ref=await montageRef(); ref.town(surgeAge) / ref.aerial(surgeAge) -> {px, png}
+// prepared full-power sheet), and its flash is planet-view.js's. The
+// pullback is planet-view.js itself: its picture (cosmicBattle over sky())
+// read back through the getColor it puts on the PPU, as the emulator's
+// compositor asks it, for a stand-in PPU and game state.
+//   const ref=await montageRef(); ref.town(surgeAge) / ref.aerial(surgeAge)
+//   / ref.pullback(surgeAge, target) -> {px, png}
 import {readFileSync} from 'node:fs';
 import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -48,6 +52,16 @@ export async function montageRef(){
   const {frieza}=await friezaFull(repo);
   const mod={spriteLayer:{atlas:{ssj:atlas(repo,'ssj')},effects},frieza:{portraitAtlas:frieza}};
   const aerial=createAerialMeleeView({cart:{data:rom}},mod,{put,rgb,flash});
+  // the pullback: planet-view.js with its sprite layer, Frieza's sheet and
+  // the ki art, the cinematic as the frieza module's state
+  const {createPlanetView}=await import(resolve(repo,'engine/planet-view.js'));
+  const {createKiArt}=await import(resolve(repo,'engine/ki-art.js'));
+  const {pullbackStart,cosmicDuration}=await import(resolve(repo,'engine/frieza-cinematic.js'));
+  const ppu={getColor:()=>[0,0,0]},pv={ppu,cart:{data:rom}};
+  const pmod={options:{enabled:true},gokuActive:true,frame:0,read8:()=>0,spriteLayer:mod.spriteLayer,frieza:{portraitAtlas:frieza,cinematic:null}};
+  pmod.kiArt=createKiArt(pv);
+  const planet=createPlanetView(pv,pmod);
+  planet.load(rom);await planet.ready;await pmod.kiArt.ready;
   const picture=()=>{
     const px=Uint16Array.from(surface,v=>v?v-1:0);
     const img=blank(256,224);
@@ -65,6 +79,15 @@ export async function montageRef(){
     aerial(age){
       surface=new Uint16Array(256*224);
       if(!aerial({age}))return null;
+      return picture();
+    },
+    // the pullback at surge age `age`, the strike target {x, y} (null
+    // outside it)
+    pullback(age,target){
+      if(age<pullbackStart||age>=cosmicDuration)return null;
+      pmod.frame++;pmod.frieza.cinematic={kind:'frieza-cosmic',age,target};
+      surface=new Uint16Array(256*224);
+      for(let y=0;y<224;y++)for(let x=0;x<256;x++)surface[y*256+x]=ppu.getColor(0,x,y)[0]+1;
       return picture();
     },
   };

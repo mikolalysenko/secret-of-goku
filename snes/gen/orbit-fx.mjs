@@ -26,6 +26,14 @@
 //               stay zero until they are streamed)
 //   death.bin   Death Ball frames: 12 x 32x32 (512 bytes, 4 rows of 4
 //               tiles), then 12 x 16x16 (128 bytes, 2 rows of 2 tiles)
+//   extended data orbit_death_big: the second surge's pullback's Death
+//               Balls (planet-view.js cosmicBattle: 64 and 48 px, the
+//               pictures it shows): 32 index bytes (per picture, frame or
+//               12 + frame at 48 px, its slot or $FF), then per slot a 64x64
+//               picture (the 48 px ball in the top left) of four 32x32
+//               cells (top left, top right, bottom left, bottom right; 512
+//               bytes each, 4 rows of 4 tiles)
+//   extended data orbit_beam_c1a / _c1b / _c2: beam band pictures (below)
 //   band.bin    the finale's beam-band BG tiles (4bpp, 45): clear, solid
 //               outer (colour 1), solid inner (2), then the clear/outer
 //               edges x + 2y = c for c = 1-21 and the outer/inner ones;
@@ -51,6 +59,7 @@ export const ORBIT_FX_PAL={FIRE:0,BLUE:4,PINK:5,FRIEZA:6,GOLD:7};
 const SLOTS=[0x08C,0x08E,0x0A8,0x0AA,0x0AC,0x0AE,
   ...[0x0C0,0x0E0,0x100,0x120,0x180,0x1A0].flatMap(r=>[0,2,4,6,8,10,12,14].map(c=>r+c)),
   0x008,0x00A,0x00C,0x00E,0x028,0x02A,0x02C,0x02E];
+const BEAM_C2_R1=28;                 // class 2's pictures in ROM: radii 2-28
 const REGIONS=[{name:'vram_a',first:0x080,count:128},{name:'vram_b',first:0x100,count:64},{name:'vram_c',first:0x180,count:64},{name:'vram_d',first:0x000,count:64}];
 
 export async function generate({rom,repo,outDir,xdata}){
@@ -142,6 +151,25 @@ export async function generate({rom,repo,outDir,xdata}){
     for(let ty=0;ty<size;ty+=8)for(let tx=0;tx<size;tx+=8)deathBytes.push(...encodeTile(idx,size,tx,ty));
   }
   writeFileSync(join(outDir,'death.bin'),Uint8Array.from(deathBytes));
+  // The pullback's Death Balls (cosmicBattle draws kiArt 'death' at
+  // round(29 r / 104 / 16) * 16 px: the battle art at 64 and 48 here, 32
+  // from death.bin; orbit-finale.mjs pullbackFrames): the pictures it
+  // shows on the screen, each as four 32x32 cells sent a cell at a time
+  // (pull.asm).
+  {
+    const {pullbackFrames,pullBallPicture}=await import('./orbit-finale.mjs');
+    const shown=[...new Set((await pullbackFrames(repo)).filter(f=>f.ball?.on&&f.ball.size!==32).map(f=>pullBallPicture(f.ball)))].sort((a,b)=>a-b);
+    const index=new Array(32).fill(255),bytes=[];
+    shown.forEach((pic,slot)=>{
+      const size=pic<12?64:48,px=new Uint16Array(64*64);
+      deathArt(pic%12,size>>1,size>>1,size,(x,y,c)=>{if(x>=0&&y>=0&&x<64&&y<64)px[y*64+x]=c;});
+      const idx=Uint8Array.from(px,c=>indexOf('PINK',c));
+      for(const[cx,cy]of[[0,0],[1,0],[0,1],[1,1]])
+        for(let ty=0;ty<4;ty++)for(let tx=0;tx<4;tx++)bytes.push(...encodeTile(idx,64,cx*32+tx*8,cy*32+ty*8));
+      index[pic]=slot;
+    });
+    xdata('orbit_death_big',Uint8Array.from([...index,...bytes]));
+  }
   // Beam-band tiles (orbit-effects.js beam: outer quarters in colour 1, the
   // inner half in colour 2; edges of slope -1/2, the 26.6-degree heading
   // of the beam struggle).
@@ -211,20 +239,27 @@ export async function generate({rom,repo,outDir,xdata}){
   // -ox vy + oy vx, outer for floor(V / 256) in [-R, R] (colour 2), inner
   // in [((R + 2) >> 1) - R, ((3R + 3) >> 1) - R - 1] (colour 3); radii 2-48
   // (even), chains 0-2, 512 bytes each (4 rows of 4 tiles), in two blobs:
-  // chains 0-1 by radius, then chain 2 by radius.
+  // chains 0-1 by radius, then chain 2 by radius. Class 2's too (headings
+  // 2, 6, 10, 14) for radii 2-28, by radius then chain: the second surge's
+  // pullback's beam (heading 14) changes radius every frame or two while
+  // it swells and fades, and the fight's diagonal beams take them as well.
   {
-    const c=classes[1],pics=[[],[]];
-    for(let R=2;R<=48;R+=2)for(let j=0;j<3;j++){
+    const pic=(c,R,j)=>{
       const iLo=((R+2)>>1)-R,iHi=((3*R+3)>>1)-R-1,idx=new Uint8Array(32*32);
       for(let py=0;py<32;py++)for(let px=0;px<32;px++){
         const ox=c.A[0]+j*c.S[0]+px,oy=c.A[1]+j*c.S[1]+py,v=Math.floor((-ox*c.vy+oy*c.vx)/256);
         if(v>=-R&&v<=R)idx[py*32+px]=v>=iLo&&v<=iHi?3:2;
       }
       const bytes=[];for(let ty=0;ty<4;ty++)for(let tx=0;tx<4;tx++)bytes.push(...encodeTile(idx,32,tx*8,ty*8));
-      pics[j<2?0:1].push(...bytes);
-    }
+      return bytes;
+    };
+    const pics=[[],[]],c2=[];
+    for(let R=2;R<=48;R+=2)for(let j=0;j<3;j++)pics[j<2?0:1].push(...pic(classes[1],R,j));
+    for(let R=2;R<=BEAM_C2_R1;R+=2)for(let j=0;j<3;j++)c2.push(...pic(classes[2],R,j));
     xdata('orbit_beam_c1a',Uint8Array.from(pics[0]));
     xdata('orbit_beam_c1b',Uint8Array.from(pics[1]));
+    xdata('orbit_beam_c2',Uint8Array.from(c2));
+    L.push(`!OFX_BEAM_C2_R1 = ${BEAM_C2_R1}`);
   }
   data.push('; beam classes: vx, vy, qi, rr, A0x, A0y, Px, Py, Sx, Sy, V0, Vstep, across, half (words)','orbit_fx_beam_class:');
   for(const c of classes)data.push('\tdw '+[c.vx,c.vy,c.qi,c.rr,c.A[0],c.A[1],c.P[0],c.P[1],c.S[0],c.S[1],c.V0,c.Vs,c.across,c.half].map(hex4).join(','));

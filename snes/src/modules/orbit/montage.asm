@@ -194,8 +194,10 @@ mt_cut:
 	JMP mt_aerial_cut              ; (an aerial cut)
 .pullback
 	; the globe's picture: the scene's whole load (its first step on),
-	; still in force blank; it shows when the load ends (scene.asm)
+	; still in force blank; it shows when the load ends (scene.asm); its
+	; camera, globe and sprites from the frame record (pull.asm)
 	JSL orbit_picture_init_far
+	JSL pull_start
 	REP #$30
 	SEP #$20
 	LDA.b #$00
@@ -236,15 +238,17 @@ mt_cut:
 	RTS
 
 ; The beat's sounds (frieza.js tick, 'frieza-cosmic'): the laser 12 frames
-; before a town's hit, the Fortress break at it.
+; before a town's hit, the Fortress break at it; in the pullback the beam
+; (its frame record's flag).
 mt_sounds:
 	JSR mt_shot_entry
 	CMP.w #!MT_AERIAL
 	BNE +
 	JMP mt_aerial_cues
 +	CMP.w #!MT_TOWN
-	BNE .out
-	LDA.l orbit_mt_shots+2,X
+	BEQ +
+	JMP mt_pull_cues
++	LDA.l orbit_mt_shots+2,X
 	JSR mt_town_entry
 	LDA.l orbit_mt_towns+4,X       ; hit
 	SEC : SBC.w #12
@@ -258,6 +262,28 @@ mt_sounds:
 	CMP.l !orbit_msage
 	BNE .out
 	LDA.w #!AUDIO_SFX_FORTRESS_BREAK
+	JSL audio_sfx
+	REP #$30
+.out
+	RTS
+
+; The pullback's cue: frieza.js plays 'beam' at pullbackStart + 60 (flag 8
+; of the frame's record, orbit-finale.mjs orbit_pull).
+mt_pull_cues:
+	LDA.l !orbit_mshot
+	CMP.w #!MT_SHOTS
+	BCC .out
+	CMP.w #$FFFF
+	BEQ .out                       ; (before the first shot)
+	LDA.l !orbit_msage
+	CMP.w #!FND_PULL_FRAMES
+	BCS .out
+	ASL : ASL : ASL : ASL : ASL
+	TAX
+	LDA.l !XDATA_ORBIT_PULL+6,X
+	AND.w #$0008
+	BEQ .out
+	LDA.w #!AUDIO_SFX_BEAM
 	JSL audio_sfx
 	REP #$30
 .out

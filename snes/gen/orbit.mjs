@@ -150,8 +150,12 @@ export function lineTables(r){
     if(d<-32768||d>32767)throw Error('M7D out of range');
     m7d.push(d&0xffff);
   }
+  // (planet() paints only the rows and columns within r + 3 of the centre:
+  // from radius 117 on that clips the rim's outer edge)
   for(let a=0;a<=R;a++){
-    const w=a*a<=rr?Math.floor(Math.sqrt(rr-a*a)):255,w2=a*a<=r2?Math.floor(Math.sqrt(r2-a*a)):255;
+    const w=a*a<=rr?Math.floor(Math.sqrt(rr-a*a)):255;
+    let w2=a*a<=r2?Math.floor(Math.sqrt(r2-a*a)):255;
+    if(a>r+3)w2=255;else if(w2!==255)w2=Math.min(w2,r+3);
     ww.push(w|(w2<<8));
   }
   return {R,m7a,m7d,ww};

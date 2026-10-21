@@ -16,17 +16,18 @@
 ; columns of the disc and rim edges) is computed, when the centre column or
 ; the radius changes; a new centre line or latitude costs nothing but a few
 ; HDMA table entries and registers. The victory's descent (radii 56-230,
-; a new centre and radius every frame) reads all of it from tables the
-; generator made in extended data (globe_descent). DB = $32, M16/X16
-; unless noted.
+; a new centre and radius every frame) and the second surge's pullback
+; (104-240, to line 223) read all of it from tables the generator made in
+; extended data (globe_descent). DB = $32, M16/X16 unless noted.
 
 ; Per frame: stepped target, registers for the NMI, tables if needed.
 globe_frame:
 	REP #$30
 	LDA.w !g_desc
+	ORA.w !g_pull
 	BEQ +
-	; the descent: while the vblank has not taken the last set (a frame
-	; that ran long), it and its registers stay
+	; the descent, the pullback: while the vblank has not taken the last
+	; set (a frame that ran long), it and its registers stay
 	LDA.w !g_cur_it
 	CMP.w !g_shown_it
 	BEQ +
@@ -72,6 +73,7 @@ globe_frame:
 	STA.w !g_ichg                  ; the window rows start below the band
 +	REP #$30
 	LDA.w !g_desc
+	ORA.w !g_pull
 	BEQ +
 	JSR globe_descent
 	BRA .shapeOk
@@ -122,14 +124,42 @@ globe_clamp_r:
 	LDA.w #!ORBIT_FIGHT_R1
 +	RTS
 
-; The descent (finale_camera from victoryTiming.descent): the frame's
-; window rows (orbit_fn_dwin, per frame: lines max(0, cy - R) on, made for
-; this camera) and the radius's M7A / M7D rows (orbit_fn_desc) are
-; published as they are in extended data, with virtual bases for row -R as
-; globe_itables and the stars' culling count rows; nothing is built. The
-; banks go with each indirect set to the vblank.
+; The descent (finale_camera from victoryTiming.descent) and the pullback
+; (pull.asm, g_pull: its frame t is the shot's age): the frame's window
+; rows (lines max(0, cy - R) on, made for this camera: the descent's
+; indexed by orbit_fn_dwin, the pullback's by orbit_pwin) and the radius's
+; M7A / M7D rows (orbit_fn_desc) are published as they are in extended
+; data, with virtual bases for row -R as globe_itables and the stars'
+; culling count rows; nothing is built. The banks go with each indirect
+; set to the vblank.
 globe_descent:
 	STZ.w !g_bld                   ; (a fight block still building is dropped)
+	LDA.w !g_pull
+	BEQ .descent
+	LDA.l !orbit_msage
+	CMP.w #!FND_PULL_FRAMES
+	BCC +
+	LDA.w #!FND_PULL_FRAMES-1
++	ORA.w #$8000
+	CMP.w !g_dk
+	BNE +
+	RTS                            ; the published tables show this frame
++	STA.w !g_dk
+	AND.w #$7FFF
+	STA.w !g_tmp
+	ASL
+	CLC : ADC.w !g_tmp
+	ASL                            ; t * 6
+	TAX
+	LDA.l !XDATA_ORBIT_PWIN+4,X : STA.w !g_tmp+12   ; first line
+	LDA.l !XDATA_ORBIT_PWIN+2,X : STA.w !g_tmp+8    ; the rows' offset
+	LDA.l !XDATA_ORBIT_PWIN+0,X
+	TAX                            ; blob * 4
+	LDA.l orbit_fn_wblobs+0,X : STA.w !g_tmp+14     ; its empty record
+	CLC : ADC.w !g_tmp+8 : STA.w !g_tmp+8           ; the rows
+	LDA.l orbit_fn_wblobs+2,X : STA.w !g_tmp+10     ; bank
+	BRA .radius
+.descent
 	LDA.w !fn_age
 	SEC : SBC.w #!FNT_V_DESCENT
 	BCS +
@@ -142,6 +172,12 @@ globe_descent:
 	BNE +
 	RTS                            ; the published tables show this frame
 +	STA.w !g_dk
+	TAX
+	LDA.l orbit_fn_dwin+0,X : STA.w !g_tmp+8        ; the rows
+	LDA.l orbit_fn_dwin+2,X : STA.w !g_tmp+10       ; bank
+	LDA.l orbit_fn_dwin+4,X : STA.w !g_tmp+12       ; first line
+	LDA.l orbit_fn_dwin+6,X : STA.w !g_tmp+14       ; the blob's empty record
+.radius
 	; the radius: R, first stored row (jlo), M7A, M7D, bank
 	LDA.w !cam_r
 	CMP.w #!FND_DESC_R0
@@ -165,17 +201,16 @@ globe_descent:
 	LDA.l orbit_fn_desc+6,X : SEC : SBC.w !g_tmp : STA.w !g_ld
 	LDA.l orbit_fn_desc+8,X : STA.w !g_lbank
 	; the window rows from their first line; row -R's place before it
-	LDX.w !g_dk
 	LDA.w !cam_y
 	SEC : SBC.w !g_lR
 	STA.w !g_tmp                   ; line of row -R
-	LDA.l orbit_fn_dwin+4,X
+	LDA.w !g_tmp+12
 	SEC : SBC.w !g_tmp
 	ASL : ASL
 	STA.w !g_tmp
-	LDA.l orbit_fn_dwin+0,X : SEC : SBC.w !g_tmp : STA.w !g_lw
-	LDA.l orbit_fn_dwin+2,X : STA.w !g_wbank
-	LDA.l orbit_fn_dwin+6,X : STA.w !g_wempty
+	LDA.w !g_tmp+8 : SEC : SBC.w !g_tmp : STA.w !g_lw
+	LDA.w !g_tmp+10 : STA.w !g_wbank
+	LDA.w !g_tmp+14 : STA.w !g_wempty
 	LDA.w !cam_x : STA.w !g_cx
 	LDA.w !cam_r : STA.w !g_lr
 	; M7HOFS = X0 - cx for the published rows
@@ -188,11 +223,17 @@ globe_descent:
 	RTS
 
 ; BGMODE ($2105) per line: Mode 1 for the text band (BG3 panel), Mode 7
-; down to line 195, Mode 1 for the HUD rows from line 196.
+; down to line 195, Mode 1 for the HUD rows from line 196 (the pullback:
+; Mode 7 again there, after the field IRQ's HUD split, to line 223).
 globe_mode_table:
 	SEP #$20
 	STA.w !g_textset
 	REP #$30
+	LDA.w #196                     ; the globe's lines end at the HUD
+	LDX.w !g_pull
+	BEQ +
+	LDA.w #224                     ; (the pullback has no HUD)
++	STA.w !g_mend
 	LDY.w #!hb_mode
 	LDA.w !g_text
 	AND.w #$00FF
@@ -229,7 +270,10 @@ globe_mode_table:
 	LDA.b #$01                     ; line 196: Mode 1 (the HUD rows)
 	STA.w $0002,Y
 	LDA.b #$09
-	STA.w $0003,Y
+	LDX.w !g_pull
+	BEQ +
+	LDA.b #$07                     ; (the pullback: Mode 7 again)
++	STA.w $0003,Y
 	LDA.b #$00
 	STA.w $0004,Y
 	REP #$30
@@ -394,7 +438,8 @@ globe_fight_banks:
 	RTS
 
 ; Indirect HDMA tables for the published blocks and centre line cam_y:
-; lines [top, bot] = rows cy-R..cy+R clipped to 0..195.
+; lines [top, bot] = rows cy-R..cy+R clipped to 0..g_mend - 1 (195; 223
+; in the pullback).
 globe_itables:
 	REP #$30
 	; a set published but not yet taken by a vblank (a frame that ran
@@ -431,12 +476,13 @@ globe_itables:
 	LDA.w !cam_y
 	CLC : ADC.w !g_lR
 	BMI .none
-	CMP.w #196
+	CMP.w !g_mend
 	BCC +
-	LDA.w #195
+	LDA.w !g_mend
+	DEC
 +	STA.w !g_bot
 	LDA.w !g_top
-	CMP.w #196
+	CMP.w !g_mend
 	BCS .none
 	CMP.w !g_bot
 	BEQ .some

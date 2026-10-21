@@ -17,10 +17,29 @@
 ; twinkle change: one depth at a time, in the frame's spare time. A star
 ; under the globe's rim chord on its line (the published window block, so
 ; exactly the pixels the browser's planet paints over it) is left out;
-; every frame copies the lists into OAM.
+; every frame copies the lists into OAM. The second surge's pullback draws
+; sky() with no camera (offsets and zoom 0) and the surge's own clock.
 
 stars_frame:
 	REP #$30
+	LDA.w !g_pull
+	BEQ .live
+	; the pullback: the clock pullbackStart + t (mod 240), no camera
+	LDA.l !orbit_msage
+	CLC : ADC.w #!FND_PULL_SKY
+-	CMP.w #240
+	BCC +
+	SEC : SBC.w #240
+	BRA -
++	STA.w !st_age240
+	LDX.w #$0006
+-	STZ.w !sx_want,X
+	STZ.w !sy_want,X
+	STZ.w !sz_want,X
+	DEX : DEX
+	BNE -
+	JMP .twinkles
+.live
 	; sky clock modulo 240
 	LDA.w !st_age240
 	INC
@@ -94,7 +113,9 @@ stars_frame:
 	CPX.w #$0008
 	BCS +
 	JMP .depth
-+	; bright-star twinkles (depth 3): one bit per star, set while NOT twinkling
++
+.twinkles
+	; bright-star twinkles (depth 3): one bit per star, set while NOT twinkling
 	STZ.w !s_tmp+2
 	LDX.w #4*!ORBIT_STARS_D2
 .tw

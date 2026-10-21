@@ -251,6 +251,9 @@ orbit_picture_init:
 	STZ.w !g_ichg
 	STZ.w !g_bld
 	STZ.w !g_desc                  ; the fight's tables, not the descent's
+	STZ.w !g_pull                  ; (the pullback sets it after this)
+	LDA.w #196
+	STA.w !g_mend
 	LDA.w #$FFFF
 	STA.w !g_dk
 	JSR globe_fight_banks
@@ -278,6 +281,7 @@ orbit_picture_init:
 	STA.w !v_d32_h
 	STA.w !v_d16
 	STA.w !v_d16_h
+	STA.w !v_dbig
 	; starfield: fresh accumulators, everything stale
 	LDA.w #$0000
 	STA.w !cam_tdx
@@ -415,10 +419,13 @@ orbit_live_frame:
 	LDA.l !orbit_mshot
 	CMP.w #!MT_SHOTS
 	BCC +
-	JMP .noFight                   ; the pullback: the globe (for now its fight camera)
+	JMP pull_frame                 ; the pullback (pull.asm)
 +	RTS
 .fight
-	JSR death_check
+	LDA.w !g_pull
+	BEQ +
+	JSR pull_end                   ; (the pullback ended: the intro from here)
++	JSR death_check
 	BCC +
 	JMP death_live                 ; Goku fell in space
 +	LDA.w !f_on
@@ -819,6 +826,10 @@ orbit_oam_frame:
 	BEQ +
 	JSR death_draw
 	BRA ++
++	LDA.w !g_pull
+	BEQ +
+	JSR pull_draw                  ; (the second surge's pullback)
+	BRA ++
 +	JSR fight_draw
 ++	%orbit_mark(7)
 	JSR stars_oam
@@ -1104,6 +1115,16 @@ orbit_nmi_live:
 	LDA.b #$40|!ORBIT_RIM_G : STA.w $2132
 	LDA.b #$80|!ORBIT_RIM_B : STA.w $2132
 	STZ.w $212D
+	; BG3 (the HUD, the text panels): the field's map and tiles as C1:FD65
+	; sets them (the cosmic montage's shots had BG3 elsewhere)
+	LDA.l $7E00E8
+	LSR
+	LDA.b #$58
+	BCC +
+	LDA.b #$5C
++	STA.w $2109
+	LDA.b #$04
+	STA.w $210C
 .dynamic
 	LDA.w !g_m7x : STA.w $211F
 	LDA.w !g_m7x+1 : STA.w $211F
@@ -1178,14 +1199,19 @@ orbit_nmi_live:
 	STA.w $4347
 	REP #$20
 	; channel 5: BG3VOFS -1 over a text panel's lines (BG rows show one
-	; line earlier than sprites and the browser's overlay), 0 for the HUD
+	; line earlier than sprites and the browser's overlay), 0 for the HUD;
+	; in the pullback TM, the globe's again after the field IRQ's HUD split
 	LDA.w #$1202                   ; mode 2, $2112 (twice)
-	STA.w $4350
-	LDA.w #orbit_vofs_plain
-	LDX.w !t_have
+	LDX.w #orbit_vofs_plain
+	LDY.w !t_have
 	BEQ +
-	LDA.w #orbit_vofs_panel
-+	STA.w $4352
+	LDX.w #orbit_vofs_panel
++	LDY.w !g_pull
+	BEQ +
+	LDA.w #$2C00                   ; mode 0, $212C
+	LDX.w #orbit_tm_pull
++	STA.w $4350
+	STX.w $4352
 	SEP #$20
 	LDA.b #orbit_vofs_plain>>16
 	STA.w $4354
@@ -1308,6 +1334,7 @@ orbit_obj_pals_init:
 ; Ball frames), each sent once, while the vblank lasts. A8, DB = $32.
 orbit_nmi_cells:
 	REP #$30
+	JSR pull_nmi_ball              ; (the pullback's Death Ball)
 	; Frieza: 4 rows of 128 bytes from bank FA to tiles $000
 	LDA.w !v_frieza
 	CMP.w !v_frieza_h

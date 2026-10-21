@@ -52,9 +52,10 @@ export function skyStars(camera,age=0){
   return out;
 }
 
-export function renderSpace(camera,{flatLight=0}={}){
+// (rawSky: sky() with no camera, as the cinematic's pullback draws it)
+export function renderSpace(camera,{flatLight=0,rawSky=false}={}){
   const px=new Uint16Array(256*224).fill(SKY);
-  for(const s of skyStars(camera,camera.age??0)){
+  for(const s of skyStars(rawSky?null:camera,camera.age??0)){
     const put=(x,y)=>{if(x>=0&&x<256&&y>=0&&y<224)px[y*256+x]=s.color;};
     put(s.x,s.y);if(s.twinkle){put(s.x-1,s.y);put(s.x+1,s.y);put(s.x,s.y-1);put(s.x,s.y+1);}
   }

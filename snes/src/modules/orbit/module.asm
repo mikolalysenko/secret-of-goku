@@ -230,6 +230,15 @@ endmacro
 !MW_WIN0  = !SB+$180              ; the laser's window tables (HDMA indirect, mode 4), 32 bytes each
 !MW_WIN1  = !SB+$1A0
 assert !mw_pf+6 <= !MW_WIN0, "the montage's working state runs into its window tables"
+; The pullback's Death Ball (pull.asm), over the same blocks (its globe's
+; rows are in extended data; the fight's first block after it is built at
+; its end): two buffers of four 32x32 cells.
+!PB = !SB+$100
+!pb_have  = !PB+$00               ; 2 words: the picture each buffer holds whole ($FFFF none)
+!pb_fill  = !PB+$04               ; the picture the back buffer takes ($FFFF none)
+!pb_cells = !PB+$06               ;   its cells sent (0-4)
+!pb_used  = !PB+$08               ; nonzero: the buffers took cells others own
+!pb_rest  = !PB+$0A               ; their OBJ rows still to restore (8 .. 0)
 ; An aerial cut (montage.asm): its frame's record, the fighters' cell slots
 ; and the clouds' scroll tables (HDMA), after the town shot's block.
 !MA = !SB+$200
@@ -472,12 +481,17 @@ assert !DRAW_END <= $8000, "orbit draw block overflow"
 !g_wempty  = !SB+$17EA             ; an empty window record in that bank
 !g_itbank  = !SB+$17EC             ; 2 words: the M7A / M7D bank each indirect set reads
 !g_itwbank = !SB+$17F0             ; 2 words: the window bank each set reads
-!g_dk      = !SB+$17F4             ; the descent frame the published tables show (x8; $FFFF none)
+!g_dk      = !SB+$17F4             ; the frame the published tables show (descent x8, pullback $8000 | t; $FFFF none)
 !s_cbank   = !SB+$17F6             ; stars: the culling rows' bank
+; The second surge's pullback (pull.asm).
+!g_pull    = !SB+$17F8             ; nonzero: the pullback's camera and tables, its globe to line 223
+!g_mend    = !SB+$17FA             ; the line after the globe's Mode 7 lines (196; 224 in the pullback)
+!v_dbig    = !SB+$17FC             ; its Death Ball picture wanted (0-11 at 64 px, 12-23 at 48; $FFFF none)
+!pb_shown  = !SB+$17FE             ;   the buffer its sprites show (0 / 2)
 ; $32:7800-7FFF stays the frieza module's (his fight block !FZSB and the
 ; deck's hole bitmap): frieza_orbit_won clears his shots there, and his
 ; arena could outlive the orbit.
-assert !s_cbank+2 <= !SB+$1800, "orbit scene work past $32:77FF (the frieza module's block)"
+assert !pb_shown+2 <= !SB+$1800, "orbit scene work past $32:77FF (the frieza module's block)"
 !ORBIT_NMI_END = 257               ; the scene's vblank uploads end by this scanline
 !ORBIT_NMI_LATE = 244              ; a vblank of ours starting this late keeps the fixed registers
 !BEAM_LATE = 180                   ; a build that can wait ends by this scanline
@@ -686,6 +700,7 @@ incsrc "fdraw.asm"
 incsrc "bands.asm"
 incsrc "death.asm"
 incsrc "api.asm"
+incsrc "pull.asm"
 orbit_code_end:
 assert orbit_code_end <= !CODE_ORBIT+$7C00, "orbit code bank overflow (bind.asm sits at $FC00)"
 pullpc
