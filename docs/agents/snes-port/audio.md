@@ -8,6 +8,52 @@ Everything below about the native driver was reverse-engineered from the US
 cartridge (`snes/gen/audio-spc700.mjs` disassembles it) and cross-checked
 against 277 ARAM/DSP snapshots of the browser mod (`.local/snes-import/`).
 
+## Round-seven cartridge diagnosis (565c6a8)
+
+`node snes/test/audio/trace7.mjs r4` (and `r6` with `SNES_ROM` pointing at
+that build) records actual dispatcher commands from gameplay inputs, including
+partial/full charge, focus/transform/revert, local/world flight, teleports and
+a ki volley. Private results: `.local/snes-test/audio/compare7/trace-{r4,r6}/`.
+The independent strict builds are round four
+`56ed7992b1f2abf06561a1d5553d1ab151e5fc7fd8d8ff0941a9a63508115388`
+and round six `9ae9615714200892eca035d3fe0bfe4782d1c76abe2b4102a5e109d3793a2ecd`.
+These hashes include the intervening main-branch changes since the historical
+round-six package below.
+
+| Input | Round four | Round six |
+| --- | --- | --- |
+| B held for 3 seconds | `$E5/$E6` swings, `$E7` contact, **ten `$27` weapon-charge ticks** | same ids |
+| L+Y partial charge / release | `$DD` pulses / `$EA`, contacts `$38` | same, contacts `$ED` |
+| Full SSJ charge / release | `$DD` pulses and one `$DF` ready cue / `$EA`, nine `$38` contacts | same, nine `$ED` contacts |
+| L focus for 4 seconds | ten `$DD` pulses | same |
+| Transform / revert | `$E0`, two `$DD` pulses, `$E1` burst / `$E3` | same |
+| Local takeoff, flight, landing | `$EC` at flight edges; `$E3` on landing; no continuous air | same |
+| World takeoff / flight / landing | no dispatched takeoff in this handoff, no air / `$E3` | same |
+| Instant Transmission out / in | `$EB` twice | same |
+| Ki volley and contact | fourteen `$DE` launches, `$38` contact | `$DE`, custom `$ED` contact |
+
+The crowded field also dispatches native companion/enemy effects; the raw
+trace retains them, with frame and caller, rather than attributing them to
+Goku. B is melee on this port; L+Y charges the beam.
+
+**The original-cart buzz is real native weapon charging, `$27`.** At
+`C0:B3ED` the weapon meter requests `$A7` through `$BB27`; `$BB11` writes
+`$95`, and `$B565-$B586` dispatches its low seven bits as effect `$27`.
+It repeats while B is held despite combat clearing the visible meter later.
+It is separate from the audio selector's `$DD` pulses. Both retail `$27`
+tracks use instrument 2 at octave 8 with pitch slides; one adds pitch
+modulation. This is not the mod's charge-bed sequence.
+
+**The repetitive “slime explode” during L focus is `$DD`, not `$DF`.** The
+resident shortcut in `combat/bind.asm` submits only charge at fixed level
+128; it never requests the aura bed. `$DF` is heard once when a wave reaches
+full charge. Neither mod sequence is copied from a single retail effect:
+`$DD` is an instrument-3 rising rumble; `$DF` uses instrument 9 with a falling
+slide. A dry retail feature comparison places `$DD` nearest `$D0` (then
+`$46`), and `$DF` near `$4B/$30`; those are resemblance measurements, not
+proof of a named enemy's sound. Repeating the entire `$DD` attack every 25
+completed frames explains the pulsing heard during power-up.
+
 ## Shipping sound policy (October 21, 2026)
 
 Round six adds an opt-in `-DAUDIO_CUSTOM_SAMPLES=1` cartridge. The default
