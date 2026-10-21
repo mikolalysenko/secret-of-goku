@@ -5,10 +5,17 @@ import {resolve,join} from 'node:path';
 import {createHash} from 'node:crypto';
 const root=resolve('.local/snes-test/audio/compare7');
 const read=n=>JSON.parse(readFileSync(join(root,n),'utf8'));
-const parts=['r4','r7','pc'].map(t=>read('manifest-'+t+'.json'));
+const parts=['r4','r7','pc',...['punch7','motion7'].filter(t=>existsSync(join(root,'manifest-'+t+'.json')))].map(t=>read('manifest-'+t+'.json'));
+const followup=parts.find(p=>p.tag==='punch7');
+const motion=parts.find(p=>p.tag==='motion7'),current=motion??followup??parts[1];
 const files=parts.flatMap(p=>p.files),hash=b=>createHash('sha256').update(b).digest('hex');
 assert.equal(new Set(files.map(f=>f.file)).size,files.length,'duplicate listening file');
-for(const f of files){assert.equal(hash(readFileSync(join(root,f.file))),f.sha256,f.file+' hash changed');assert.equal(f.clipped,0,f.file+' clips');}
+for(const f of files){
+ assert.equal(hash(readFileSync(join(root,f.file))),f.sha256,f.file+' hash changed');
+ // Keep the original cartridge's overloads in the unprocessed comparison.
+ // The new cartridge and browser references must have zero clipped samples.
+ if(!(f.variant==='r4'&&/^(contact|motion)-/.test(f.file)))assert.equal(f.clipped,0,f.file+' clips');
+}
 function stereoTail(file){
  const b=readFileSync(join(root,file));assert.equal(b.toString('ascii',36,40),'data');
  const rate=b.readUInt32LE(24),channels=b.readUInt16LE(22),count=(b.length-44)/(2*channels);
@@ -23,10 +30,19 @@ for(const f of parts[0].files.filter(f=>f.file.startsWith('echo-'))){
   wholeFileRmsChangeDb:b.rmsDbFS-f.rmsDbFS,tailRms4DbFS:stereoTail(f.file),tailRms7DbFS:stereoTail(other)});
 }
 const comparisons=parts[0].files.filter(f=>!f.file.startsWith('echo-')).map(f=>{
- const key=f.file.replace('-r4.wav',''),r7=key+'-r7.wav';assert.ok(files.some(f=>f.file===r7));
+ const motionKey=f.file.replace('-r4.wav','');
+ if(motionKey.startsWith('motion-')){
+  const before=motionKey+'-punch7.wav',after=motionKey+'-motion7.wav';
+  assert.ok(files.some(f=>f.file===before));assert.ok(files.some(f=>f.file===after));
+  const pc=motionKey.includes('combo')?[`pc-motion-combo-${motionKey.includes('2f')?'2':'1'}f.wav`]:motionKey.includes('volley')||motionKey.endsWith('input-ki')?[`pc-motion-${motionKey.includes('beam')?'beam-':''}volley-5f.wav`]:motionKey.endsWith('input-melee')?['pc-motion-combo-1f.wav']:['pc-'+motionKey.replace('motion-solo-','')+'.wav'];
+  for(const name of pc)assert.ok(files.some(f=>f.file===name),name+' reference missing');
+  return {sound:motionKey,round4:f.file,before,after,beforeVariant:'punch7',variant:'motion7',pc};
+ }
+ const key=f.file.replace('-r4.wav',''),variant=key.startsWith('contact-')?'punch7':'r7',r7=key+'-'+variant+'.wav';assert.ok(files.some(f=>f.file===r7));
  const pcKey=key.replace('solo-','').replace('context-','').replace('revert-landing','revert').replace('transform-revert','focus-transform').replace(/^flight$/,'flight');
  const candidates=[`pc-${pcKey}.wav`,...(key==='solo-revert-landing'?['pc-landing.wav']:[]),...(key==='context-flight'||key==='context-world-flight'?['pc-flight-context.wav']:[]),...(key==='context-teleport'?['pc-teleport-context.wav']:[])];
- return {sound:key,round4:f.file,round7:r7,pc:[...new Set(candidates)].filter(n=>files.some(f=>f.file===n))};
+ if(key.startsWith('contact-'))candidates.push(...(key.endsWith('-kick')?['pc-kick.wav']:key.endsWith('-hit')?['pc-hit-1.wav','pc-hit-2.wav','pc-hit-3.wav']:['pc-hit-1.wav','pc-hit-2.wav','pc-hit-3.wav','pc-kick.wav']));
+ return {sound:key,round4:f.file,round7:r7,variant,pc:[...new Set(candidates)].filter(n=>files.some(f=>f.file===n))};
 });
 const trace7=read('trace-r7/results.json'),ids=phase=>trace7.commands.filter(c=>c.phase===phase).map(c=>c.id);
 assert.ok(!ids('hold-B').includes(0x27));assert.ok(ids('native-hold-B').includes(0x27));assert.ok(ids('world-takeoff').includes(0xEC));
@@ -48,14 +64,17 @@ function workingFiles(path=''){
   return [{file,description,sha256:hash(readFileSync(join(root,file)))}];
  });
 }
-const manifest={title:'Secret of Goku — audio round seven',roms:parts.slice(0,2).map(({tag,sha256,rom})=>({tag,sha256,rom})),
- listeningOrder:['context-charge-beam','context-focus','context-flight','context-teleport','context-ki-volley','context-melee-hold','context-transform-revert','context-world-flight'],
+const manifest={title:'Secret of Goku — audio round seven'+(motion?' with punch contact, swing and ki follow-ups':followup?' with punch contact follow-up':''),currentCartridge:current.tag,roms:parts.filter(p=>p.rom).map(({tag,sha256,rom})=>({tag,sha256,rom})),
+ listeningOrder:[...(motion?['motion-solo-swing','motion-solo-swing-2','motion-solo-kick-swing','motion-solo-blast','motion-solo-combo','motion-battle-combo-1f','motion-battle-combo-2f','motion-battle-volley-5f','motion-full-power-beam-volley-5f','motion-input-melee','motion-input-ki']:[]),...(followup?['contact-solo-hit','contact-solo-kick','contact-battle-hit','contact-battle-kick','contact-battle-rapid','contact-battle-beam','contact-full-power-rapid','contact-full-power-beam']:[]),'context-charge-beam','context-focus','context-flight','context-teleport','context-ki-volley','context-melee-hold','context-transform-revert','context-world-flight'],
  renderers:parts.map(({tag,renderer,note,fixtures})=>({tag:tag??'PC',renderer,note,fixtures})),
- notes:['No output gain normalization or clipping. Compare each r4/r7 pair at the same player volume.','The PC references isolate browser sound clips and loops; they do not include browser music.','Teleport uses a bandwidth-prioritized 96 ms attack; aura/beam use longer loops than the round-six beam. No additional candidate was selected for a separate alternate cartridge.','Continuous air is omitted in the cartridge; the PC flight-context reference includes it.','Charge CPU misses: 13/240 in round seven, 15/240 in the independent local round-four baseline. The supplied 12/240 baseline was not reproduced; the absolute 12-miss target remains open.'],
+ notes:['No output gain normalization. Compare versions at the same player volume. New-cartridge and PC files have zero clipped samples; unmodified round-four stress recordings retain and report any original clipping.','The PC references isolate browser sound clips and loops; they do not include browser music.','Teleport uses a bandwidth-prioritized 96 ms attack; aura/beam use longer loops than the round-six beam.','Continuous air is omitted in the cartridge; the PC flight-context reference includes it.','The earlier charge-baseline comparison is superseded after the maintainer reported shared checkpoint contamination. Main 5f99811 isolates title output; follow-up validation uses private copies of restored checkpoints. The maintainer will measure clean CPU baselines.',...(followup?['r7 preserves the initial round-seven takes; punch7 preserves the louder contact follow-up, and contact-* pairs compare round four with that follow-up.','HIT/KICK are louder native noise/pop sequences, with SPC gain reduction during effect overlaps. No sample reservation or EDL-cap change.']:[]),...(motion?['motion7 is the current cartridge. Each motion-* comparison has round four, the immediately preceding punch7 cartridge (91c53d9), and the new cartridge.','Swings reuse the aura BRR with a short swell and falling pitch; E5 alternates two tunings. Ki keeps instrument 9 with a stronger attack and shaped decay. Contact tracks, all four BRRs, bed/beam/teleport/flight cues and echo caps are unchanged.','motion-* combo/volley takes use deterministic native effect commands through the real cartridge dispatcher. The two motion-input-* takes separately exercise actual gameplay. PC motion contexts use the same event spacing without music.']:[])],
+ clippedSamples:{current:current.files.reduce((n,f)=>n+f.clipped,0),round4ContactStress:files.filter(f=>f.variant==='r4'&&f.file.startsWith('contact-')).reduce((n,f)=>n+f.clipped,0),round4MotionStress:files.filter(f=>f.variant==='r4'&&f.file.startsWith('motion-')).reduce((n,f)=>n+f.clipped,0)},
  comparisons,echoPairs,songLoadProfiles:profiles,files,workingFiles:workingFiles(),
  auxiliary:[{file:'analysis7.json',description:'BRR/loop/rate/storage options and dry SPC effect measurements; normalized beam-attack correlation compares a 32 ms 6 kHz source template at the best offset in the first 100 ms.'},
  ...['r4','r6','r7'].map(tag=>({file:`trace-${tag}/results.json`,description:`Effect commands from real controller inputs, ${tag}.`})),
  ...['r4','r7'].map(tag=>({file:`capture-${tag}/results.json`,description:`Cartridge capture provenance and all commands for ${tag}.`})),
- ...['r4','r7'].map(tag=>({file:`capture-${tag}-melee/results.json`,description:`B-hold weapon-buzz comparison, ${tag}.`}))]};
+ ...['r4','r7'].map(tag=>({file:`capture-${tag}-melee/results.json`,description:`B-hold weapon-buzz comparison, ${tag}.`})),
+ ...(followup?[{file:'contact-analysis7.json',description:'Dry contact peak/body/crunch comparison and 24 rapid/beam/bed overlap stress cases on the cartridge SPC image.'},{file:'contact-validation7.json',description:'Follow-up build hashes, suite results, CPU budget, and unchanged shared-checkpoint hashes.'},...['r4','punch7'].map(tag=>({file:`capture-${tag}-contacts/results.json`,description:`Punch follow-up solo, music-mix and real-input capture commands, ${tag}.`}))]:[]),
+ ...(motion?[{file:'motion-analysis7.json',description:'Swing periodicity/envelopes, ki loudness/bandwidth, 18 combo/volley overlap cases and sample-byte/echo trade-offs.'},{file:'motion-validation7.json',description:'Build/rollback hashes, suites, identical before/after gameplay misses and unchanged checkpoint/sample/track checks.'},{file:'motion-cpu7.json',description:'Settled idle CPU comparison at modprof boundaries, 300 frames on each cartridge in sword/battle perf states.'},...['r4','punch7','motion7'].map(tag=>({file:`capture-${tag}-motion/results.json`,description:`Three-way swing/ki capture commands, ${tag}.`}))]:[])]};
 writeFileSync(join(root,'manifest.json'),JSON.stringify(manifest,null,2));
 console.log(`${files.length} verified WAV files, ${comparisons.length} cue/context pairs, ${echoPairs.length} echo pairs`);console.log(JSON.stringify(profiles,null,2));
