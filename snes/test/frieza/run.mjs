@@ -6,6 +6,9 @@
 //             sprite at the court anchor, compared with the browser frames
 //   thanatos  preset 'thanatos': trial-entry with the full party
 //   battle    preset 'battle': the ground fight's start position
+//   transients every frame of those three presets (and forced lag frames in
+//             a test build): no one-frame transients on Frieza's sprites, his
+//             colours on every one of them (transients.mjs)
 //   node snes/test/frieza/run.mjs [case ...]
 // ROM: $SNES_ROM or dist/snes/secret-of-goku.sfc. Outputs: .local/snes-test/frieza/
 import {spawnSync} from 'node:child_process';
@@ -91,6 +94,54 @@ function test()
   H.result('scene', F.ram(0x${defs.fz_scene.toString(16)}|0x7E0000))
   H.result('age', F.ram16(0x${defs.fz_sage.toString(16)}|0x7E0000))
   H.result('stage', F.ram(0x${(defs.fzp_stage).toString(16)}))
+  F.done()
+end
+`;
+}
+
+// Every frame of a preset (exact frames) with the PPU state each picture was
+// drawn with (transients.mjs): OAM, the OBJ half of CGRAM, the screen
+// registers. lagMask: test builds force a lag vblank with the palette
+// requested on every frame whose core frame & mask is 0 (fz_test_lag).
+function transientsTest(preset,frames,{lagMask=0}={}){
+  const g=reference(preset);
+  const writes=friezaWrites(g.frieza,g.challenge);
+  const v=n=>'0x'+(n<0x10000?(0x7E0000|n):n).toString(16);
+  return `
+function test()
+  local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__'+preset))})
+  F.check(ok, 'import')
+  H.w8(0x316001, 1)
+  F.apply(${luaWrites(writes)})
+  ${holdMusic(preset)}
+  ${lagMask?`H.w16(${v(defs.fzp_test)}+12, ${0x5A00|lagMask}) H.w16(${v(defs.fzp_test)}+14, 0)`:''}
+  local meta = {}
+  for frame = 1, ${frames} do
+    H.wait(1)
+    H.shot(string.format('t%05d', frame))
+    local st = emu.getState()
+    local sig = string.format('%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d',
+      st['ppu.layers[0].hscroll'], st['ppu.layers[0].vscroll'], st['ppu.layers[1].hscroll'], st['ppu.layers[1].vscroll'],
+      st['ppu.layers[2].hscroll'], st['ppu.layers[2].vscroll'], st['ppu.screenBrightness'], st['ppu.forcedBlank'] and 1 or 0,
+      st['ppu.fixedColor'], st['ppu.colorMathEnabled'], st['ppu.mainScreenLayers'], st['ppu.subScreenLayers'],
+      st['ppu.window[0].left'], st['ppu.window[0].right'], st['ppu.window[1].left'], st['ppu.window[1].right'],
+      st['ppu.colorMathSubtractMode'] and 1 or 0, H.r8(0x7E002C))
+    local o = {}
+    for e = 0, 127 do
+      local y = H.oam(e * 4 + 1)
+      if y ~= 0xE0 then
+        local a = H.oam(e * 4 + 3)
+        local hi = (H.oam(512 + (e >> 2)) >> ((e & 3) * 2)) & 3
+        o[#o + 1] = string.format('%03x%02x%03x%02x%d', H.oam(e * 4) | ((hi & 1) << 8), y, H.oam(e * 4 + 2) | ((a & 1) << 8), a, hi >> 1)
+      end
+    end
+    local cg = {}
+    for i = 256, 511 do cg[#cg + 1] = string.format('%02x', H.cgram(i)) end
+    meta[#meta + 1] = {f = frame, f4 = H.r8(0x7E00F4), w = H.r8(0x7E1D04), sig = sig, oam = table.concat(o, ','),
+      cg = table.concat(cg), sc = H.r8(${v(defs.fz_scene)}), dash = H.r8(${v(defs.fzf_dash)})}
+  end
+  H.result('meta', meta)
+  ${lagMask?`H.result('forced', H.r16(${v(defs.fzp_test)}+14)) H.w16(${v(defs.fzp_test)}+12, 0)`:''}
   F.done()
 end
 `;
@@ -886,8 +937,21 @@ function jslSite(rom,dispatch,target){
   for(let a=addr(dispatch),i=0;i<256;i++,a++)if(at(a)===0x22&&((at(a+1)|at(a+2)<<8|at(a+3)<<16)&0x3fffff)===t)return a;
   throw Error(`frieza cost: no JSL ${target} in ${dispatch}`);
 }
+// The palette transfer's chain: from Frieza's gate (the read of !fz_cgany
+// after orbit's handler) to the JML to FX's handler, his call included.
+function paletteGate(rom){
+  const sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8'),bytes=readFileSync(rom);
+  const addr=n=>{const m=sym.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${n}$`,'mi'));if(!m)throw Error(`frieza cost: no ${n}`);return parseInt(m[1]+m[2],16);};
+  const at=a=>bytes[((a>>16)&0x3f)<<16|(a&0xffff)];
+  const gate=jslSite(rom,'modules_cgram_upload','orbit_cgram_upload')+6;   // JSL, BCS
+  if(at(gate)!==0xAF)throw Error('frieza cost: no long load after orbit_cgram_upload');
+  const fx=addr('fx_cgram_upload')&0x3fffff;
+  for(let a=gate,i=0;i<32;i++,a++)if(at(a)===0x5C&&((at(a+1)|at(a+2)<<8|at(a+3)<<16)&0x3fffff)===fx)return {gate,end:a};
+  throw Error('frieza cost: no JML fx_cgram_upload after the gate');
+}
 function costTest(rom,frames=600){
   const fJ=jslSite(rom,'modules_field_frame','frieza_field_frame'),nJ=jslSite(rom,'modules_field_nmi','frieza_field_nmi');
+  const pg=paletteGate(rom);
   const cb=(at,body)=>`emu.addMemoryCallback(function() ${body} end, emu.callbackType.exec, ${at}, ${at}, emu.cpuType.snes, emu.memType.snesMemory)`;
   return `
 function test()
@@ -895,12 +959,14 @@ function test()
   F.check(ok, 'import')
   H.w8(0x316001, 1)
   H.wait(30)
-  local fs, ns, f0, n0 = {}, {}, nil, nil
+  local fs, ns, ps, f0, n0, p0 = {}, {}, {}, nil, nil, nil
   local function clock() return emu.getState()['masterClock'] end
   ${cb(fJ,'f0 = clock()')}
   ${cb(fJ+4,'if f0 then fs[#fs + 1] = clock() - f0 f0 = nil end')}
   ${cb(nJ,'n0 = clock()')}
   ${cb(nJ+4,'if n0 then ns[#ns + 1] = clock() - n0 n0 = nil end')}
+  ${cb(pg.gate,'p0 = clock()')}
+  ${cb(pg.end,'if p0 then ps[#ps + 1] = clock() - p0 p0 = nil end')}
   H.wait(${frames})
   local function stats(t)
     local sum, mx = 0, 0
@@ -909,6 +975,7 @@ function test()
   end
   H.result('frame', stats(fs))
   H.result('nmi', stats(ns))
+  H.result('palette', stats(ps))
   H.result('quiet', (H.r8(${0x7E0000|defs.fz_wasidle}) & ${defs.FZI_IDLE}) ~= 0)
   F.done()
 end
@@ -1061,14 +1128,17 @@ if(want('cost')){
   cleanupRom(rom);
   const res=r.results??{};
   const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
-  const fr=res.frame??{},nm=res.nmi??{};
+  const fr=res.frame??{},nm=res.nmi??{},pl=res.palette??{};
   if(!res.quiet)failures.push('the module did not settle on the quiet path');
   if(!(fr.avg<=0.36))failures.push(`quiet field frame ${fr.avg?.toFixed(3)} lines on average (budget 0.36)`);
   if(!(fr.max<=2.5))failures.push(`quiet field frame peaks at ${fr.max?.toFixed(2)} lines (budget 2.5)`);
   if(!(nm.avg<=0.13))failures.push(`quiet vblank ${nm.avg?.toFixed(3)} lines (budget 0.13)`);
+  // the palette transfer: Frieza's gate in the chain, one read while he is away
+  if(!(pl.n>=500))failures.push(`the palette transfer's gate ran in ${pl.n} vblanks`);
+  if(!(pl.avg<=0.06))failures.push(`quiet palette gate ${pl.avg?.toFixed(3)} lines (budget 0.06)`);
   const ok=r.code===0&&res.pass===true&&failures.length===0;
   results.push({name:'cost',ok,failures});
-  console.log(`frieza cost: ${ok?'pass':'FAIL'} (${r.ms} ms) frame ${fr.avg?.toFixed(3)} lines (max ${fr.max?.toFixed(2)}), vblank ${nm.avg?.toFixed(3)} lines, ${fr.n} frames`);
+  console.log(`frieza cost: ${ok?'pass':'FAIL'} (${r.ms} ms) frame ${fr.avg?.toFixed(3)} lines (max ${fr.max?.toFixed(2)}), vblank ${nm.avg?.toFixed(3)} lines, palette gate ${pl.avg?.toFixed(3)} lines, ${fr.n} frames`);
   if(!ok)for(const f of failures)console.log('    !',f);
   // world flight: the idle check
   const rw=privateRom(romSrc,'frieza-cost-world');
@@ -1203,11 +1273,53 @@ if(want('effects')&&existsSync(scenarioRoot)){
     if(!ok)for(const f of failures)console.log('    !',f);
   }
 }
+// One-frame transients (transients.mjs): every frame of the three Frieza
+// presets at exact frames on this cartridge, then the test build forcing a
+// lag vblank with the palette requested (the old OAM stays on screen) every
+// 16 frames in the court and the fight, so a lost palette cannot hide
+// behind where the scene's own lag frames fall. Fails on any Frieza sprite
+// shown in colours that are not his, and on unexplained one-frame
+// transients on his sprites; the other categories are reported.
+if(want('transients')){
+  const {analyseTransients,friezaRows}=await import('./transients.mjs');
+  const runs=[
+    ...['frieza','thanatos','battle'].map(preset=>({preset,frames:900,rom:romSrc,name:preset})),
+    ...['frieza','battle'].map(preset=>({preset,frames:360,lagMask:15,name:preset+'-lag'})),
+  ];
+  let built=false;
+  for(const run of runs){
+    if(run.lagMask&&!built){buildTestRom();built=true;}
+    const source=run.rom??testRom;
+    const rom=privateRom(source,`frieza-transients-${run.name}`);
+    const out=join(outRoot,'transients',run.name);
+    const r=await runMesen({rom,test:lib+'\n'+transientsTest(run.preset,run.frames,{lagMask:run.lagMask}),outDir:out,state:join(cps,'waterfall.mss'),exactFrames:true,timeoutMs:1200000});
+    cleanupRom(rom);
+    const res=r.results??{};
+    const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
+    const notes=[];
+    if(res.meta){
+      writeFileSync(join(out,'meta.json'),JSON.stringify(res.meta));
+      const a=analyseTransients({repo,dir:out,meta:res.meta,rows:friezaRows(source)});
+      writeFileSync(join(out,'transients.json'),JSON.stringify({totals:a.totals,faults:a.faults,frames:a.frames},null,1));
+      failures.push(...a.failures);
+      const t=a.totals,lags=res.meta.filter((m,i)=>i&&m.f4===res.meta[i-1].f4).length;
+      notes.push(`${res.meta.length} frames, ${lags} lag${run.lagMask?` (${res.forced} forced)`:''}; ${t.frames} pictures with one-frame transients (${t.pixels} px: screen ${t.screen}, background ${t.bg}, other sprites ${t.other}, Frieza moving ${t.motion}, Frieza unexplained ${t.frieza}); palette faults ${a.faults.length}`);
+      if(run.lagMask&&!(res.forced>=run.frames/16-2))failures.push(`only ${res.forced} forced lag vblanks`);
+    }else failures.push('no recording');
+    const ok=r.code===0&&res.pass===true&&failures.length===0;
+    results.push({name:'transients:'+run.name,ok,failures,notes});
+    console.log(`frieza transients ${run.name}: ${ok?'pass':'FAIL'} (${r.ms} ms)`);
+    for(const n of notes)console.log('   ',n);
+    if(!ok)for(const f of failures)console.log('    !',f);
+  }
+}
 for(const [name,c] of Object.entries(cases)){
   if(!want(name))continue;
   const rom=privateRom(romSrc,`frieza-${name}`);
   const out=join(outRoot,name);
-  const r=await runMesen({rom,test:lib+'\n'+(c.trace?'TRACE=true\n':'')+sceneTest(c.preset,c.frames),outDir:out,state:join(cps,'waterfall.mss')});
+  // exact frames: Mesen otherwise skips rendering (by wall clock) and a
+  // screenshot can be several frames stale
+  const r=await runMesen({rom,test:lib+'\n'+(c.trace?'TRACE=true\n':'')+sceneTest(c.preset,c.frames),outDir:out,state:join(cps,'waterfall.mss'),exactFrames:true});
   cleanupRom(rom);
   const res=r.results??{};
   const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];

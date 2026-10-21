@@ -6,6 +6,7 @@
 frieza_field_frame:
 if defined("FRIEZA_TEST")
 	JSR fz_test_floor
+	JSR fz_test_lag
 endif
 	; quiet fast path (about a third of a scanline): nothing of Frieza's
 	; runs until a hook, a map change, a query's guard or Goku's arrival
