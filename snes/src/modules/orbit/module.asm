@@ -230,6 +230,36 @@ endmacro
 !MW_WIN0  = !SB+$180              ; the laser's window tables (HDMA indirect, mode 4), 32 bytes each
 !MW_WIN1  = !SB+$1A0
 assert !mw_pf+6 <= !MW_WIN0, "the montage's working state runs into its window tables"
+; An aerial cut (montage.asm): its frame's record, the fighters' cell slots
+; and the clouds' scroll tables (HDMA), after the town shot's block.
+!MA = !SB+$200
+!ma_cut   = !MA+$00               ; the cut (0, 1)
+!ma_first = !MA+$02               ; its first record (index in orbit_mta_rec)
+!ma_imp   = !MA+$04               ; its explosion's age
+!ma_int   = !MA+$06               ; its intensity (1: four more bursts)
+!ma_flash = !MA+$08               ; the flash level the palette shows (0-5)
+!ma_tset  = !MA+$0A               ; the scroll tables written (0 / 1)
+!ma_tshow = !MA+$0C               ; the ones the HDMA reads
+!ma_cur   = !MA+$0E               ; table building: the next line
+!ma_lay   = !MA+$1A               ;   the layer's copies: left (6 words)
+!ma_top   = !MA+$32               ;   top (6 words)
+!ma_ord   = !MA+$4A               ;   in top order (6 words)
+!ma_r     = !MA+$56               ; the frame's record (20 bytes, orbit-montage.mjs)
+!MA_FS    = !MA+$6A               ; the fighters' slots: Goku, Frieza (12 bytes each:
+                                  ; cell A, cell B, shown, due, rows sent, -)
+!ma_tmp   = !MA+$82               ; 16 bytes scratch
+!ma_rec   = !MA+$92               ; this frame's record (offset in the records)
+!ma_s     = !MA+$96               ; table building: the layer's scroll mod 416
+!ma_tall  = !MA+$98               ;   its copies' lines
+!ma_row   = !MA+$9A               ;   its strip's map row - 1
+!ma_h     = !MA+$9C               ;   an entry's HOFS, VOFS
+!ma_v     = !MA+$9E
+!ma_pairok = !MA+$A0              ;   nonzero: the 2x layer (its copies 5 and 0)
+!MA_T1A   = !SB+$2B0              ; BG1 scroll tables (HDMA mode 3), 80 bytes each
+!MA_T1B   = !SB+$300
+!MA_T2A   = !SB+$350              ; BG2's
+!MA_T2B   = !SB+$3A0
+assert !ma_pairok+2 <= !MA_T1A, "the aerial cut's working state runs into its tables"
 ; Indirect HDMA tables: per set M7A, M7D, windows (16 bytes each).
 !IT_BASE  = !SB+$800
 !IT_SIZE  = $30

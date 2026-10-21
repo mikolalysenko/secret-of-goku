@@ -29,7 +29,7 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 | 60 Hz | **Done**: the fight steps once per field vblank (catching up after a slow game frame); the picture's incremental work runs in the frame's spare time |
 | Distant bodies (moon, planets), their shattering and the asteroid field, Luna's remark | Next (the `fight` test aims clear of them) |
 | Cosmic montage: the four town shots (72-1802) | **Done** (`montage.asm`, `orbit-montage.mjs`, below): the towns from the game's own map data, people, rabite, warning ring, laser, ruin, bursts, fragments, fires, red tint, captions, cues; test `montage` matches the browser's picture pixel for pixel outside the explosions (97-99% during them) |
-| Cosmic montage: the two aerial cuts (aerial melee) | Next: black meanwhile, on the browser's clock |
+| Cosmic montage: the two aerial cuts (aerial melee) | **Done** but the auras of the 30 frames before each explosion (below): the clouds, the gradient, both fighters, the sparks, the explosions, the flashes, the cues; test `montage` matches the browser at 99.8-100% outside the explosions |
 | Pullback (1802-2042) | Next: the globe at the fight's camera meanwhile; then the orbit's intro at 2042 as in the browser |
 | Debris / asteroid field, Luna's remark | Planned |
 | Beam struggle: gather, charge, launch, struggle (taps, surges, pressure), recoil (420 damage), win | **Done** (`finale.asm`): every phase, the pressure and the camera identical to `frieza-finale.js` on every frame of the `clash` test (2,890 frames) |
@@ -340,7 +340,11 @@ steps (its tiles; both BG maps, twice; BG3, the OBJ cells and the people's
 first poses), then shows it. At `cosmicDuration` (2042) the orbit's intro
 and fight start with Frieza's clock moved on by the cinematic (`b.age`
 +1970), as `frieza.js enterOrbit` does; the code and its tables live in the
-second code area (`$A1:C000`), the data in extended data (88 KiB).
+second code area (`$A1:C000`), the data in extended data (110 KiB). While
+the cinematic shows (and while the scene loads) the orbit's field frame
+stamps `!core_actor_hold` with the frame, so that frame's vblank skips the
+game's actor cell streaming (`core_actor_cells`, up to 12 lines): no
+native actor is drawn.
 
 **Town shots** (`frieza-collateral-view.js`): `orbit-montage.mjs` reads the
 town's map as `cinematic-map.js` does (pieces, metatiles, the tileset and
@@ -388,17 +392,54 @@ slot gets the pose wanted now or the one person i will want i + 1 frames
 on (one upload a vblank), and a late upload keeps the last pose a frame.
 Cues: `friezaLaser` 12 frames before the hit, `fortressBreak` at it.
 
-Timing (Mesen, the `montage` test): the frame hook ends by line ~211 and no
-picture repeats through the town shots; the montage's vblank uploads end by
-line 251 (`orbit_nmi_room` with six lines' slack: the field's HDMA enable
-must still come before line 262). The game's own vblank keeps writing
+Timing (Mesen, the `montage` test): the frame hook ends by line ~217 and no
+picture repeats through the whole cinematic (the pullback's cut catches up
+two steps); the montage's vblank uploads end by line 252 (`orbit_nmi_room`
+with six lines' slack: the field's HDMA enable must still come before line
+262). The game's own vblank keeps writing
 during the montage at VRAM `$5B4D` (a HUD row) and OBJ `$144-$15F`,
 `$1C0-$1FF`; the montage keeps out of them.
 
-Differences from the browser: the bursts' quarter turns; the 2-pixel edge
-the shake uncovers shows the map's next column (the browser shows the sky
-behind it). The aerial cuts are black for now and the pullback shows the
-globe at the fight's camera.
+**Aerial cuts** (`aerial-melee.js`): Mode 1 with BG3's priority bit, the
+gradient's seven bands on BG3 (the laser's solid tile in seven palettes,
+below everything). The two cloud layers of world-flight strip tiles
+(`nativeCloud`) are BG1 (2x) and BG2 (1x) on one shared map: the 2x strip
+in rows 0-3, the 1x strip in rows 4-5, the rest empty. A layer's six copies
+never share a line, so per line HDMA channels 3 and 4 (mode 3: HOFS and VOFS)
+give each line its copy's place: the frame builds both tables (the browser's
+`left = ((i 97 - scroll) mod 416) - 160`, `top = ((i 47 + rise) mod 256) -
+32`; the tops rise with i, so their order is a rotation) into the set the
+vblank does not show. The one exception is the 2x layer's copies 5 and 0,
+which share 11 lines (copy 0's top 21 below copy 5's). Their composite sits
+in map rows 6-7 or 8-9: copy 5 is 69 pixels right of copy 0, or, for scrolls
+1-69 mod 416, copy 0 is 347 right of copy 5, with only the 69 columns of it
+the screen can show. When copy 0 is right of 203 it shows alone, since copy
+5 is then off the screen. Every cloud pixel matches the browser's.
+
+Each frame of a cut has a generated 20-byte record: its flags, flash level,
+the fighters' cells and places, two sparks, the cues and the clouds'
+travel. Frieza (48x48: a 32x32 and five 16x16, OBJ palette 6) and Goku
+(32x32, palette 1) each have two cell slots, filled the way the people's
+are. A cell shows from the slot holding it and a late upload keeps the last
+pose a frame; the other slot gets the cell wanted now or the next one
+within four frames. Frieza's 1,152 bytes go up in two vblanks, so a slot
+holds no cell while it fills. The sparks are the orbit's resident
+`impact-spark` and `gold-spark` cells. The explosions are `fx.burst`
+(large): nine sub-bursts four frames apart at the browser's places, plus
+the second cut's four more. They are drawn front first while the frame has
+time (to line 200), since the PPU drops a line's back sprites past 34 tiles
+anyway. The pale flashes (`planet-view.js` `flash`: 0.16 on a hit, 0.8 to
+0.2 over the explosion's first four frames) are generated palette sets,
+one per level, in the game's palette transfer.
+
+Differences from the browser:
+- The bursts' quarter turns.
+- In a town shot, the 2-pixel edge the shake uncovers shows the map's next
+  column, where the browser shows the sky behind it.
+- Goku's colours in the aerial cuts: the goku module's 15 Super Saiyan
+  colours of the sheet's 22.
+- The auras of the 30 frames before each explosion are not drawn yet.
+- The pullback shows the globe at the fight's camera.
 
 ### Descent and return
 
@@ -541,20 +582,20 @@ are untouched).
 | Resource | Use |
 | --- | --- |
 | Code `$A7:8000-E234` | `!CODE_ORBIT`: 24.6 KiB of 31 KiB; bindings at `$A7:FC00-FCD7` |
-| Code `$A1:C000-E43E` | the second code area (`!CODE_QUARTER_GOKU`, free in `core/layout.asm`): the cosmic montage and its tables, sprite lists (9.1 KiB of 16) |
+| Code `$A1:C000-F1A0` | the second code area (`!CODE_QUARTER_GOKU`, noted in `core/layout.asm`): the cosmic montage and its tables, sprite lists (12.4 KiB of 16) |
 | Data `$E7:0000-6FBD` | stars, asin rows, chord scales, rim tables, palettes, star tiles, heading/step tables, burst parts and offsets, text maps, finale and fall tables, the descent's indexes (27.9 KiB of 32 KiB) |
 | ROM `$F6:0000-7FFF` | Mode 7 globe VRAM image (32 KiB) |
 | ROM `$F7:0000-F14E` | fight line tables (41 KiB), resident effect cells, Death Ball frames, text tiles, band tiles (60 KiB of 64) |
 | ROM `$FA:8000-` | Goku's orbit poses, descent and fall cells, aerial-melee cells; Frieza's tiny and full frames (27 KiB) |
-| Extended data | 344 KiB in 16 blobs: band maps (2 x 21 KiB), band end ramps (31 + 6 + 26 KiB, origin cut 0.4 KiB), class-1 beam pictures (24 + 12 KiB), the descent's line tables (32 + 32 + 17 KiB) and window rows (32 + 32 + 32 + 21 KiB), the landing candidates (4 KiB); the montage's 88 KiB in 22 blobs: per town its tiles and maps (13.2 / 14.4 / 8.4 / 6.7 KiB), people records (3.5 KiB x 3), laser rows (1.7 / 2.5 / 1.3 / 2.1 KiB) and OBJ cells, the people's poses (11.3 KiB), the embers, the tables (12.2 KiB: palettes and tints, the ruin, fires, ring, fragments, bursts' places) |
+| Extended data | 344 KiB in 16 blobs: band maps (2 x 21 KiB), band end ramps (31 + 6 + 26 KiB, origin cut 0.4 KiB), class-1 beam pictures (24 + 12 KiB), the descent's line tables (32 + 32 + 17 KiB) and window rows (32 + 32 + 32 + 21 KiB), the landing candidates (4 KiB); the montage's 110 KiB in 24 blobs: per town its tiles and maps (13.2 / 14.4 / 8.4 / 6.7 KiB), people records (3.5 KiB x 3), laser rows (1.7 / 2.5 / 1.3 / 2.1 KiB) and OBJ cells, the people's poses (11.3 KiB), the embers, the aerial cuts' cloud tiles (5.8 KiB) and frame records (11.1 KiB), the tables (17.6 KiB: palettes, tints and flashes, the ruin, fires, ring, fragments, bursts' places, the cloud and gradient maps) |
 | WRAM `!RAM_ORBIT+$00-$4F` | state, command, flags, load step, frame counter, test options, timing lines, command argument, `orbit_api_enter` inputs, landing clock, waiting entry, the return's step, landing spot and search, the cinematic's clock, shot, picture, cut step and saved brightness, timing marks (test builds) |
 | SRAM | `!SRAM_WORK_SCENE` (above) |
-| VRAM | words `$0000-$3FFF` (Mode 7 map and characters) while the scene shows. OBJ (name base `$6000`, 16/32): `$000` Frieza 32x32 (streamed), `$004` Death Ball 32 (streamed), `$040/$044/$048/$04C/$080/$084` beam pictures 32x32, `$088` Goku 16x16 (streamed), `$08A` Death Ball 16 (streamed), resident 16x16 effect cells in `$008-$03F`, `$08C-$0FF`, `$100-$13F`, `$180-$1BF`, star cells `$160-$17F`. Untouched: `$144-$15F` and `$1C0-$1DF` (the game streams the boy's cells and the damage digits there), `$1E0-$1FF` (HUD portraits). BG3: tiles `$180-$1FF` (text panels), map rows 1-8. During the finale: BG1/BG2 tiles at `$5000` (45), BG1 map `$5400`, BG2 map `$5C00` (rows 0-13). During a town shot: BG1/BG2 tiles from `$0000`, maps `$2000`/`$2800` (64x32) and their ruined copies `$5000`/`$3800`, BG3 maps `$3000` (caption) and `$3400` (laser), BG3 tiles `$17E-$17F` and the text tiles; OBJ (8/16) embers `$000-$01B`, people `$020-$07F` (the rabite `$040-$05F`), the bursts' resident cells, fragments `$160-$16F` and the ring's dot `$170` over the stars' cells (the pullback's load restores them) |
-| CGRAM | 0 (sky), 4-11 (text panels), 17-18 (Frieza's band layer), 32-112 (globe), 113-114 (Goku's band layer); OBJ palettes 0 fire, 1 Goku (Super Saiyan), 4 blue (entries 2-3: beam band), 5 pink (1-3: beam band or laser), 6 Frieza, 7 gold with the star shades in 1-4; rewritten each vblank after the game's palette upload. Palettes 2-3 (HUD companions, damage digits) untouched. During a town shot, in the game's own transfer: the backdrop and BG palettes 1-7 (the town's, or tinted), 4-11 the caption, 12-15 the laser; OBJ 0 fire, 1-3 people (or the rabite), 4 fragments, 5 the ring and embers; the game's 1-3 and 224-255 |
+| VRAM | words `$0000-$3FFF` (Mode 7 map and characters) while the scene shows. OBJ (name base `$6000`, 16/32): `$000` Frieza 32x32 (streamed), `$004` Death Ball 32 (streamed), `$040/$044/$048/$04C/$080/$084` beam pictures 32x32, `$088` Goku 16x16 (streamed), `$08A` Death Ball 16 (streamed), resident 16x16 effect cells in `$008-$03F`, `$08C-$0FF`, `$100-$13F`, `$180-$1BF`, star cells `$160-$17F`. Untouched: `$144-$15F` and `$1C0-$1DF` (the game streams the boy's cells and the damage digits there), `$1E0-$1FF` (HUD portraits). BG3: tiles `$180-$1FF` (text panels), map rows 1-8. During the finale: BG1/BG2 tiles at `$5000` (45), BG1 map `$5400`, BG2 map `$5C00` (rows 0-13). During a town shot: BG1/BG2 tiles from `$0000`, maps `$2000`/`$2800` (64x32) and their ruined copies `$5000`/`$3800`, BG3 maps `$3000` (caption) and `$3400` (laser), BG3 tiles `$17E-$17F` and the text tiles; OBJ (8/16) embers `$000-$01B`, people `$020-$07F` (the rabite `$040-$05F`), the bursts' resident cells, fragments `$160-$16F` and the ring's dot `$170` over the stars' cells (the pullback's load restores them). During an aerial cut: BG1/BG2 the clouds' tiles from `$0000` and one map at `$2000` (64x32), BG3 the gradient's map `$3000`; OBJ (16/32) `$000-$03F` reloaded from the resident set, Frieza's slots at `$000` and `$060` (6 x 6 tiles), Goku's at `$048` and `$04C` |
+| CGRAM | 0 (sky), 4-11 (text panels), 17-18 (Frieza's band layer), 32-112 (globe), 113-114 (Goku's band layer); OBJ palettes 0 fire, 1 Goku (Super Saiyan), 4 blue (entries 2-3: beam band), 5 pink (1-3: beam band or laser), 6 Frieza, 7 gold with the star shades in 1-4; rewritten each vblank after the game's palette upload. Palettes 2-3 (HUD companions, damage digits) untouched. During a town shot, in the game's own transfer: the backdrop and BG palettes 1-7 (the town's, or tinted), 4-11 the caption, 12-15 the laser; OBJ 0 fire, 1-3 people (or the rabite), 4 fragments, 5 the ring and embers; the game's 1-3 and 224-255. During an aerial cut: 0-27 (the gradient on BG3's palettes 0-6), 32-47 (the clouds), OBJ 0 fire, 1 Goku, 4 blue, 6 Frieza, 7 gold, at its flash level |
 | OAM | native sprites on lines 190-223 (the HUD) kept, the rest hidden; ours after them (in the montage: all hidden, ours from the first slot); the core's module area is closed at our end (`core_oam_cursor = core_oam_limit`) |
-| HDMA | channels 0 (`$2131`), 1 (`$210D/E`), 2 (BGMODE), 3 (M7A, indirect from F7 or, in the descent, extended data), 4 (M7D, likewise), 5 (BG3VOFS), 6 (windows, indirect from SRAM or the descent's extended data) via `$2C` bits: all but 7 while the scene shows. During a town shot only 2 (TM) and 6 (the laser's windows, indirect from extended data) |
+| HDMA | channels 0 (`$2131`), 1 (`$210D/E`), 2 (BGMODE), 3 (M7A, indirect from F7 or, in the descent, extended data), 4 (M7D, likewise), 5 (BG3VOFS), 6 (windows, indirect from SRAM or the descent's extended data) via `$2C` bits: all but 7 while the scene shows. During a town shot only 2 (TM) and 6 (the laser's windows, indirect from extended data); during an aerial cut 2 (TM), 3 and 4 (BG1's and BG2's scroll per line) |
 | DMA | channel 7 in vblank (above); the Mode 7 image, star, effect, text and band tiles once (14 load steps with the picture held black); a town shot's tiles, maps and cells in three steps at its cut (force blank), its people's poses (480 bytes) and the ruin's map entries by vblank room |
-| SRAM (montage) | a shot's working state and the laser's two HDMA tables over the globe's window blocks (`$32:6100-61BF`; the pullback rebuilds them) |
+| SRAM (montage) | a shot's working state and the laser's two HDMA tables (`$32:6100-61BF`), an aerial cut's state and its four scroll tables (`$32:6200-63EF`), over the globe's window blocks (the pullback rebuilds them) |
 
 While the scene owns the picture the module drops the game's BG row/column
 streaming (`$2E/$2F`) and animated-tile requests (`$90/$9A` bit 7), as the
@@ -598,14 +639,19 @@ come from their sources. Results on the merged build:
   420 damage), a won one under B taps, the 'won' clock with the native
   victory commands, the return: 2,890 frames identical, back at 1392.
 - `montage`: from the hand-off, the whole cinematic to `cosmicDuration`
-  (2042) and the orbit's intro after it; 17 screenshots of the four towns
-  (calm, tint, warning ring and laser, the hit, the explosions, the
-  caption, the aftermath) against the browser's own
-  `frieza-collateral-view.js` drawing into a 256x224 surface
-  (`montage-ref.mjs`, the sprite art read from the PNGs): 100% of the
-  pixels outside the explosions, 97.9-99.7% during them (the bursts'
-  quarter turns, the shake's 2-pixel edge). The clock steps once a frame
-  except at the pullback's cut (2 catch-up steps there).
+  (2042) and the orbit's intro after it; 27 screenshots compared with the
+  browser drawing into a 256x224 surface (`montage-ref.mjs`):
+  - 17 of the four towns (calm, tint, warning ring and laser, the hit, the
+    explosions, the caption, the aftermath) against its own
+    `frieza-collateral-view.js`, the sprite art read from the PNGs: 100% of
+    the pixels outside the explosions, 97.9-98.9% during them (the bursts'
+    quarter turns, the shake's 2-pixel edge);
+  - 10 of the two aerial cuts against its own `aerial-melee.js`, the
+    sprite layer built as the browser's: 99.8-100% outside the explosions
+    (Goku's colours), 95.4-100% during them (the bursts).
+
+  The clock steps once a frame except at the pullback's cut (2 catch-up
+  steps there), and no vblank outside the cuts' loads ends past line 252.
 - `handoff`: the frieza module's phase-two fight (its `FRIEZA_TEST`
   mailbox) takes a hit across 32,000: the second surge plays on the deck
   (screenshots at ages 45 and 66: the Death Ball above Frieza, Goku's
@@ -617,7 +663,7 @@ come from their sources. Results on the merged build:
   as `death` and `return` both do), the intro cut short and Goku at 1 HP:
   Frieza's first hit ends him; 13 of Goku's positions over the fall equal
   `bossRushDeathPose`'s, the orbit stops at 358, the ending's fatal
-  sequence runs on (age 415 at the end) and the scene work area is free.
+  sequence runs on (age 414 at the end) and the scene work area is free.
 - `return`: from the hand-off, no intro and Frieza at 6,000 HP, B every 6
   frames (the first struggle is won): the 'won' clock to the return at
   1392 (screenshots of the descent), the deck's door, the scene stopped
@@ -663,9 +709,6 @@ come from their sources. Results on the merged build:
   clear), and the orbit's search runs in space, so it does not avoid holes
   yet. Please answer for map 246 while `FZFF_SPACE` is set too (the arena
   is still his), or give the orbit a hole test.
-- **core**: the orbit uses `!CODE_QUARTER_GOKU` (`$A1:C000-FFFF`, free in
-  `core/layout.asm`) as its second code area (`!CODE_ORBIT2`, asserted to
-  its 16 KiB); please note it there.
 - **world**: an API to start the landing pose (`mana-mod.js`
   `flightTransition = {kind: 'landing', age: 0}`), e.g.
   `!WORLD_API_LANDING`; the orbit's binding calls it when defined and

@@ -141,7 +141,7 @@ export function renderTown(t,palettes,ruinOn){
   return out;
 }
 
-export async function generate({rom,repo,outDir,xdata}){
+export async function generate({rom,repo,outDir,genDir,xdata}){
   const eng=f=>import(pathToFileURL(join(repo,'engine',f)).href);
   const {collateralShots,civilianPose}=await eng('frieza-cinematic.js');
   const {cinematicMap}=await eng('cinematic-map.js');
@@ -199,7 +199,8 @@ export async function generate({rom,repo,outDir,xdata}){
     return `orbit_mt_l_${name}`;}};
   townData({L,T,S,def,xdata,report,towns,repo,civilianPose,shots:collateralShots});
   await emberCells({L,T,S,def,xdata,rom,repo});
-  await burstLists({L,S,repo});
+  const burstList=await burstLists({L,S,repo});
+  await aerialData({L,T,S,def,xdata,rom,repo,genDir,report,burstList});
   L.push(...S.lines);
   // cosmicShots: kind (0 town, 1 aerial), its index, duration (words); the
   // pullback and the end (frieza-cinematic.js pullbackStart, cosmicDuration)
@@ -294,6 +295,147 @@ async function burstLists({L,S,repo}){
   for(let i=0;i<9;i++){const m=((i%4)>=2?3:0)^(i&1),row=[];for(let age=0;age<42;age++)row.push(list(Math.floor(age/6),m));
     for(let a=0;a<42;a+=14)L.push('\tdw '+row.slice(a,a+14).join(','));}
   L.push('orbit_mt_burst_row:','\tdw '+Array.from({length:9},(_,i)=>i*84).join(','));
+  return list;
+}
+
+// The aerial cuts (aerial-melee.js): the world-flight cloud strip
+// (nativeCloud) at 1x and 2x as BG tiles and one shared 64x32 map (rows 0-3
+// the 2x strip, 4-5 the 1x strip, 6-7 and 8-9 the 2x layer's copies 5 and
+// 0 where they share lines, the rest empty: per line HDMA scroll places one
+// copy, or that pair, per BG); the gradient on BG3; the palettes in CGRAM order with
+// their pale flashes (planet-view.js flash: toward (28, 30, 31)); per
+// frame of each cut a draw record (the fighters, the sparks, the flash,
+// the cues, the clouds' travel); fx.burst's places and lists (large: nine
+// sub-bursts four frames apart).
+async function aerialData({L,T,S,def,xdata,rom,repo,genDir,report,burstList}){
+  const {nativeCloud,aerialMeleePose}=await import(pathToFileURL(join(repo,'engine/aerial-melee.js')).href);
+  const {aerialCuts}=await import(pathToFileURL(join(repo,'engine/frieza-cinematic.js')).href);
+  const {orbitVectors}=await import(pathToFileURL(join(repo,'engine/orbit-pixels.js')).href);
+  const {friezaFull,AERIAL_GOKU}=await import(pathToFileURL(join(repo,'snes/gen/orbit-sprites.mjs')).href);
+  const strip=nativeCloud(rom);
+  const flip=(px,h,v)=>{const o=new Uint8Array(64);for(let y=0;y<8;y++)for(let x=0;x<8;x++)o[y*8+x]=px[(v?7-y:y)*8+(h?7-x:x)];return o;};
+  const key=px=>Buffer.from(px).toString('base64');
+  const tiles=[new Uint8Array(64)],index=new Map([[key(tiles[0]),0]]);
+  const place=px=>{
+    if(px.every(v=>!v))return 0;
+    for(const[h,v]of[[0,0],[1,0],[0,1],[1,1]]){const t=index.get(key(h||v?flip(px,h,v):px));if(t!==undefined)return t|(h<<14)|(v<<15);}
+    const t=tiles.length;tiles.push(px);index.set(key(px),t);return t;
+  };
+  const entry=t=>t?(t&1023)|(2<<10)|(t&0xC000):0;     // BG palette 2, priority 0
+  // map rows 0-9 of both screens (column c of row r at r * 64 + c here)
+  const map=new Uint16Array(64*10);
+  const strip2=(x,y)=>x>=0&&x<240&&y>=0&&y<32?strip[(y>>1)*120+(x>>1)]:0;
+  const image=(row,rows,cols,at)=>{for(let ty=0;ty<rows;ty++)for(let tx=0;tx<cols;tx++){const px=new Uint8Array(64);
+    for(let y=0;y<8;y++)for(let x=0;x<8;x++)px[y*8+x]=at(tx*8+x,ty*8+y);
+    map[(row+ty)*64+tx]=entry(place(px));}};
+  image(0,4,30,(x,y)=>strip2(x,y));                                 // 2x
+  image(4,2,15,(x,y)=>strip[y*120+x]);                              // 1x
+  // The 2x layer's copies 5 and 0 share 11 lines (copy 0's top 21 below
+  // copy 5's, copy 5 in front): their pixels there with copy 0 at x 0 and
+  // copy 5 at 69 (their places but for s = scroll mod 416 in 1-69), or copy
+  // 5 at 0 and copy 0's first 69 columns at 347 (s in 1-69: copy 0 shows
+  // no more of itself, at 187 or right of it)
+  image(6,2,39,(x,y)=>y<11?strip2(x-69,21+y)||strip2(x,y):0);
+  image(8,2,52,(x,y)=>y<11?strip2(x,21+y)||(x>=347?strip2(x-347,y):0):0);
+  if(tiles.length>512)throw Error('orbit-montage: cloud tiles '+tiles.length);
+  // the tiles from BG tile 0, BG3's solid tile (colour 1) after them
+  const tileBytes=new Uint8Array(tiles.length*32);tiles.forEach((px,i)=>tileBytes.set(encodeTile(px,8,0,0,4),i*32));
+  xdata('orbit_mta_tiles',tileBytes);
+  // (in VRAM order: screen 0's rows 0-9, then screen 1's)
+  T.label('MAPA');for(const sc of[0,1])for(let r=0;r<10;r++)T.dw(...map.slice(r*64+sc*32,r*64+sc*32+32));
+  // BG3's map: the gradient's bands (row r in palette min(6, r / 4)) of the
+  // laser's solid tile ($17F, colour 1), priority 0 (below everything)
+  T.label('AGRAD');for(let r=0;r<32;r++)T.dw(...Array(32).fill(0x17F|(Math.min(6,r>>2)<<10)));
+  // CGRAM in the order the vblank sends it: 0-27 (the backdrop and BG3
+  // palettes 0-6: the gradient's bands in colour 1), 32-47 (the clouds,
+  // BG palette 2), 128-159 (OBJ fire, Goku), 192-207 (OBJ blue), 224-255
+  // (OBJ Frieza, gold); then the same pale at the flash levels 1-5
+  const rgb=(r,g,b)=>r|(g<<5)|(b<<10);
+  const grad=[];for(let p=0;p<7;p++)grad.push(p?0:rgb(3,5,12),rgb(3+p,5+p,12+p),0,0);
+  const cloud=[0];for(let c=1;c<16;c++)cloud.push(rgb(Math.min(31,12+c),Math.min(31,16+c),Math.min(31,22+(c>>1))));
+  const fx=JSON.parse(readFileSync(join(genDir,'orbit-fx/palettes.json'),'utf8'));
+  const gokuPal=JSON.parse(readFileSync(join(genDir,'goku/manifest.json'),'utf8')).palettes[1];
+  const {friezaPalette}=await friezaFull(repo);
+  const pad16=a=>{const r=a.slice(0,16);while(r.length<16)r.push(0);return r;};
+  const base=[...grad,...cloud,...pad16(fx.fire),...pad16(gokuPal),...pad16(fx.blue),...pad16(friezaPalette),...pad16(fx.gold)];
+  if(base.length!==124)throw Error('orbit-montage: aerial palette '+base.length);
+  // the flash levels: 1 the hits' 0.16, 2-5 the explosion's (1 - blast / 4) .8
+  const alphas=[0,.16,...[0,1,2,3].map(b=>(1-b/4)*.8)];
+  const pale=(c,a)=>{const mix=(n,t)=>Math.round(n+(t-n)*a);return mix(c&31,28)|(mix(c>>5&31,30)<<5)|(mix(c>>10&31,31)<<10);};
+  T.label('APAL');for(const a of alphas)T.dw(...base.map(c=>a?pale(c,a):c));
+  def('MTA_PAL_BYTES',base.length*2);
+  // Records: per frame of a cut (20 bytes): flags (bit 0 Goku, 1 Frieza, 2
+  // teleport cue, 3 impact cue, 4 power burst, 5 Fortress break), the flash
+  // level, Goku's cell, Frieza's (frame 4/5/6 x flipped), Goku's top left,
+  // Frieza's top left (words), two sparks (kind: 1-6 impact-spark frames,
+  // 7-10 gold-spark; 0 none; the first in front) and their top lefts
+  // (bytes), the clouds' travel (word).
+  const gokuCell=(column,row)=>{const i=AERIAL_GOKU.findIndex(([c,r])=>c===column&&r===row);if(i<0)throw Error(`orbit-montage: no Goku cell ${column},${row}`);return i;};
+  const flashLevel=a=>{const i=alphas.indexOf(a);if(i<0)throw Error('orbit-montage: flash '+a);return i;};
+  const word=v=>[v&255,(v>>8)&255];
+  const rec=[],first=[];
+  aerialCuts.forEach((shot,k)=>{
+    first.push(rec.length/20);
+    for(let age=0;age<shot.duration;age++){
+      const p=aerialMeleePose(shot,age),blast=age-shot.impact;
+      let goku=null,frieza=null,sparks=[],flash=0;
+      if(age<30){goku={cell:gokuCell(34,2),x:68,y:128};frieza={frame:4,flip:true,x:190,y:102};}
+      else if(p.active){
+        const side=p.index&1?-1:1,attack=p.phase>=4&&p.phase<=8,kick=p.index%3===2;
+        // (drawn in this order: the last in front)
+        if(p.phase<3)sparks=[{kind:1+p.phase%6,x:p.x-18*side,y:p.y},{kind:7+p.phase%4,x:p.x+18*side,y:p.y}];
+        else{
+          goku={cell:gokuCell(attack?(kick?16:12):34,side>0?2:1),x:p.x-18*side,y:p.y};
+          frieza={frame:attack?(p.index&1?5:6):4,flip:side>0,x:p.x+18*side,y:p.y+19};
+          if(attack){sparks=[{kind:1+(p.phase-4)%6,x:p.x,y:p.y}];if(p.phase===5)flash=.16;}
+        }
+      }else if(blast<0){
+        const t=age-(shot.impact-30),gap=Math.max(10,60-t*2);
+        goku={cell:gokuCell(12,2),x:128-gap,y:112};frieza={frame:5,flip:true,x:128+gap,y:131};
+      }else{
+        if(blast<4)flash=(1-blast/4)*.8;
+        if(blast>42){goku={cell:gokuCell(36+((age>>2)&3),3),x:112,y:112-(blast-42)*5};frieza={frame:5,flip:true,x:150,y:136-(blast-42)*5};}
+      }
+      const flags=(goku?1:0)|(frieza?2:0)|(p.teleport?4:0)|(p.hit?8:0)|(p.explode?16:0)|(age===shot.impact+18?32:0);
+      const travel=Math.min(age,60)*2+Math.max(0,Math.min(age-60,60))*4+Math.max(0,age-120)*(shot.intensity?9:6);
+      const s=[...sparks].reverse();       // front first
+      for(const sp of s)if(sp.x-8<0||sp.x-8>255||sp.y-8<0||sp.y-8>255)throw Error('orbit-montage: spark place');
+      rec.push(flags,flashLevel(flash),goku?goku.cell:0,frieza?(frieza.frame-4)*2+(frieza.flip?1:0):0,
+        ...word(goku?goku.x-16:0),...word(goku?goku.y-16:0),...word(frieza?frieza.x-24:0),...word(frieza?frieza.y-44:0),
+        s[0]?.kind??0,s[1]?.kind??0,s[0]?s[0].x-8:0,s[0]?s[0].y-8:0,s[1]?s[1].x-8:0,s[1]?s[1].y-8:0,...word(travel));
+    }
+    report.push(`aerial ${k}: ${shot.duration} frames, impact ${shot.impact}`);
+  });
+  xdata('orbit_mta_rec',Uint8Array.from(rec));
+  report.push(`aerial records: ${rec.length} bytes`);
+  def('MTA_REC',20);
+  report.push(`aerial clouds: ${tiles.length} tiles`);
+  // fx.burst (large): sub-burst i at age - 4 i (0-41), its place
+  // ((v * radius) >> 8, v = orbitVectors[(i * 6) & 15], radius 8 + min(24,
+  // t), none for i = 0) + 128 (bytes) and its list (frame t / 6; turn i & 3,
+  // flip i & 1)
+  const places=[];
+  for(let i=0;i<9;i++)for(let t=0;t<42;t++){const[vx,vy]=orbitVectors[(i*6)&15],radius=i?8+Math.min(24,t):0;places.push(((vx*radius)>>8)+128,((vy*radius)>>8)+128);}
+  T.label('ABURST_OFF');T.db(...places);
+  L.push('orbit_mt_aburst_l:');
+  for(let i=0;i<9;i++){const m=((i&3)>=2?3:0)^(i&1),row=[];for(let t=0;t<42;t++)row.push(burstList(Math.floor(t/6),m));
+    for(let a=0;a<42;a+=14)L.push('\tdw '+row.slice(a,a+14).join(','));}
+  // per cut: its first record, duration, impact, intensity
+  L.push('orbit_mt_aerial_at:');
+  aerialCuts.forEach((shot,k)=>L.push(`\tdw ${first[k]},${shot.duration},${shot.impact},${shot.intensity}`));
+  // the cells (bank !OSP_BANK): Goku's ten, Frieza's frames 4-6 as drawn and flipped
+  L.push('orbit_mt_goku_cell:','\tdw '+AERIAL_GOKU.map(([c,r])=>`!OSP_GOKU_FULL_${c}_${r}`).join(','));
+  L.push('orbit_mt_frieza_cell:','\tdw '+[4,5,6].flatMap(f=>[`!OSP_FRIEZA_FULL_${f}`,`!OSP_FRIEZA_FULL_${f}_FLIP`]).join(','));
+  // the fighters' sprites from a cell slot's first tile: Frieza 48x48 as a
+  // 32x32 and five 16x16 (OBJ palette 6), Goku a 32x32 (palette 1); the
+  // second cut's four more bursts (places)
+  S.add('fzb',[{dx:0,dy:0,ta:hex4((6<<9)|0x3000)}]);
+  S.add('fzs',[[32,0,0x004],[32,16,0x024],[0,32,0x040],[16,32,0x042],[32,32,0x044]].map(([dx,dy,t])=>({dx,dy,ta:hex4(t|(6<<9)|0x3000)})));
+  S.add('gk',[{dx:0,dy:0,ta:hex4((1<<9)|0x3000)}]);
+  S.add('one',[{dx:0,dy:0,ta:'0'}]);                // (a spark: its tile from the caller)
+  L.push('orbit_mt_aextra:','\tdw '+[0,1,2,3].flatMap(i=>[128+(i&1?1:-1)*(28+i*10),112+(i<2?-1:1)*22]).join(','));
+  // the sparks: impact-spark frames 0-5 (blue), gold-spark 0-3 (gold)
+  L.push('orbit_mt_stamp:','\tdw 0,'+[0,1,2,3,4,5].map(f=>`!OFX_SPARK_${f}|(!OFX_PAL_BLUE<<9)|$3000`).concat([0,1,2,3].map(f=>`!OFX_GSPARK_${f}|(!OFX_PAL_GOLD<<9)|$3000`)).join(','));
 }
 
 // The town shots' moving parts (frieza-collateral-view.js draw), as tables

@@ -50,7 +50,7 @@
 ; quarter, so a module whose code half is full can be given one of these;
 ; the half's owner asserts that its own code ends before the quarter. Assign
 ; one by defining !CODE_<MODULE>2 = the quarter and noting it here.
-;   $A1:C000-FFFF  goku's half (goku code asserts <= $A1C000)   free
+;   $A1:C000-FFFF  goku's half (goku code asserts <= $A1C000)   orbit's second code area
 ;   $AA:C000-FFFF  audio's half (audio code asserts <= $AAC000) ending's second code area
 ;   $AB:C000-FFFF  title's half (title code asserts <= $ABC000) free
 !CODE_QUARTER_GOKU  = $A1C000

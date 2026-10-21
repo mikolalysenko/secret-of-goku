@@ -60,7 +60,19 @@ orbit_field_frame:
 	JSL montage_frame
 	REP #$30
 .common
-	JSR orbit_suppress_native
+	; while the scene loads (the picture black) or the second surge's
+	; cinematic shows, no native actor is drawn: this frame's vblank skips
+	; the game's actor cell streaming (core_actor_cells)
+	SEP #$20
+	LDA.l !orbit_state
+	CMP.b #!OS_LOADING
+	REP #$20
+	BEQ +
+	LDA.l !orbit_mt
+	BEQ ++
++	LDA.l !core_frame
+	STA.l !core_actor_hold
+++	JSR orbit_suppress_native
 	JSR orbit_oam_frame
 	%orbit_mark(6)
 	SEP #$20

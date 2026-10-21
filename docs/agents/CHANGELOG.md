@@ -4,26 +4,39 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
-## Orbit: the cosmic montage's town shots (2026-10-20)
+## Orbit: the cosmic montage, town shots and aerial cuts (2026-10-20)
 
 - The second surge's hand-off now plays the cosmic montage before the
-  orbit's intro, on the browser's clock (72-2042). The four town shots
-  are complete:
+  orbit's intro, on the browser's clock (72-2042).
+- The four town shots are complete:
   - Potos, Pandora, Northtown and south of Potos are built from the game's
     own map data, checked pixel for pixel against `cinematicMap`;
   - people, the rabite, the warning ring, the laser (BG3 with per-line
     windows from extended data), the hit and its ruin (a second map copy,
     switched in at the hit), bursts, roof fragments, fires and embers, the
     red tint, the radio captions and the cues are all drawn.
-- The `montage` test compares 17 screenshots with the browser's own
-  collateral view. Outside the explosions they are identical; during them
-  97.9-99.7% of pixels match (quarter-turned bursts, the shake's edge). No
-  frame repeats through the town shots.
-- The aerial cuts are black for now, and the pullback shows the globe at
-  the fight's camera.
-- The code runs in a second code area at `$A1:C000` (goku's spare
-  quarter). The montage's data is 88 KiB of extended data, which now
-  holds 1,688.6 of 1,984 KiB.
+- The two aerial cuts are drawn:
+  - the clouds: both layers of world-flight strips, one copy per line
+    through HDMA scroll, with a composite for the 2x layer's two copies
+    that share lines;
+  - the gradient, Frieza (48x48) and Goku in double-buffered cell slots,
+    the sparks, the large explosions, the pale flashes and the cues.
+
+  The auras of the 30 frames before each explosion are not drawn yet.
+- The `montage` test compares 27 screenshots with the browser's own
+  collateral and aerial views:
+  - town shots outside the explosions are identical, aerial cuts outside
+    them match 99.8-100% (Goku's quantised colours);
+  - during the explosions 95.4-100% of pixels match (quarter-turned
+    bursts, the shake's edge);
+  - no frame repeats and no vblank outside a cut's load ends past line
+    252.
+- The pullback still shows the globe at the fight's camera.
+- While the cinematic shows or the scene loads, the orbit stamps
+  `!core_actor_hold`, so the game's actor cell streaming waits.
+- The code runs in a second code area at `$A1:C000` (goku's spare quarter,
+  now noted in `core/layout.asm`). The montage's data is 110 KiB of
+  extended data, which now holds 2,161.7 of 2,944 KiB.
 
 ## SNES integration: orbit on main, vblank palette hooks, faster charging (2026-10-20)
 

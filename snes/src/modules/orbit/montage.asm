@@ -4,9 +4,9 @@
 ; collateralStart to cosmicDuration, before the orbit's intro. Code and its
 ; generated tables in the orbit's second code area ($A1:C000); the clock in
 ; WRAM (!orbit_mt...), a shot's working state over the globe's window
-; blocks (!MW: the pullback rebuilds them), its colours sent in the game's
-; own palette transfer (orbit_cgram_upload). DB = $32, M16/X16 unless
-; noted.
+; blocks (!MW, !MA: the pullback rebuilds them), its colours sent in the
+; game's own palette transfer (orbit_cgram_upload). The aerial cuts below
+; (mt_aerial_*). DB = $32, M16/X16 unless noted.
 ;
 ; A cut (a new shot) holds the picture in force blank through the field's
 ; brightness shadow ($E6 bit 7: the game writes INIDISP from it after the
@@ -36,6 +36,25 @@
 !MT_EMBER_T    = $000              ; 16x16 cells $000, $002 ... $00A
 !MT_ATTR       = $3000             ; OBJ priority 3
 !MT_NMI_SLACK  = 6                 ; the montage's uploads end 6 lines before !ORBIT_NMI_END
+
+; ORBIT_TIMING builds: the scanline at montage stage n (!orbit_marks).
+macro mt_mark(n)
+if defined("ORBIT_TIMING")
+	PHP
+	SEP #$20
+	LDA.l $002137
+	LDA.l $00213D
+	XBA
+	LDA.l $00213D
+	AND.b #$01
+	XBA
+	REP #$20
+	STA.l !orbit_marks+(<n>*2)
+	SEP #$20
+	LDA.l $00213F
+	PLP
+endif
+endmacro
 
 ; ---------------------------------------------------------------------------
 ; The surge's cinematic starts (orbit_enter_try, !OE_SURGE), before the
@@ -68,6 +87,7 @@ montage_start:
 montage_frame:
 	PHP
 	REP #$30
+	%mt_mark(1)
 	; one step per field vblank since the last frame (at most 4; one after
 	; a menu): the browser's surge clock runs at the video rate
 	LDA.l $7E0000|!cb_vblanks
@@ -91,13 +111,16 @@ montage_frame:
 	REP #$30
 	DEC.w !f_steps
 	BNE -
-	SEP #$20
 	LDA.l !orbit_mpic
-	CMP.b #!MT_PIC_TOWN
-	REP #$20
+	AND.w #$00FF
+	CMP.w #!MT_PIC_TOWN
 	BNE +
 	JSR mt_town_frame
-+	PLP
+	BRA ++
++	CMP.w #!MT_PIC_AERIAL
+	BNE ++
+	JSR mt_aerial_frame
+++	PLP
 	RTL
 
 ; One step of the surge's clock: the shot holding the new age (cosmicBeat),
@@ -168,16 +191,7 @@ mt_cut:
 	BEQ .town
 	CMP.w #$FFFF
 	BEQ .pullback
-	; (the aerial cuts: next; meanwhile black)
-	SEP #$20
-	LDA.b #$00
-	STA.l !orbit_mpic
-	STA.l !orbit_mcut
-	LDA.w $00E6
-	ORA.b #$80
-	STA.w $00E6
-	REP #$20
-	RTS
+	JMP mt_aerial_cut              ; (an aerial cut)
 .pullback
 	; the globe's picture: the scene's whole load (its first step on),
 	; still in force blank; it shows when the load ends (scene.asm)
@@ -225,7 +239,10 @@ mt_cut:
 ; before a town's hit, the Fortress break at it.
 mt_sounds:
 	JSR mt_shot_entry
-	CMP.w #!MT_TOWN
+	CMP.w #!MT_AERIAL
+	BNE +
+	JMP mt_aerial_cues
++	CMP.w #!MT_TOWN
 	BNE .out
 	LDA.l orbit_mt_shots+2,X
 	JSR mt_town_entry
@@ -571,13 +588,16 @@ mt_laser:
 montage_oam:
 	PHP
 	REP #$30
-	SEP #$20
 	LDA.l !orbit_mpic
-	CMP.b #!MT_PIC_TOWN
-	REP #$20
+	AND.w #$00FF
+	CMP.w #!MT_PIC_TOWN
 	BNE +
 	JSR mt_town_oam
-+	PLP
+	BRA ++
++	CMP.w #!MT_PIC_AERIAL
+	BNE ++
+	JSR mt_aerial_oam
+++	PLP
 	RTL
 
 ; The generated sprite lists (orbit-montage.mjs, in this bank): a count
@@ -590,8 +610,11 @@ montage_oam:
 ; (those wholly off the screen skipped, x bit 8 for those partly left of
 ; it). The 16x16 ones get their size bits from mt_large, once for a run of
 ; them.
-!MTL = (orbit_mt_lists&$FF0000)
+!MTL #= !CODE_ORBIT2&$FF0000      ; (the lists' bank: this code area's)
 
+mt_list32:
+	LDA.w #31
+	BRA mt_list
 mt_list16:
 	LDA.w #15
 	BRA mt_list
@@ -1208,8 +1231,15 @@ montage_nmi:
 	LDA.l !orbit_mcut
 	REP #$20
 	BEQ .shown
-	JSR mt_load
 	SEP #$20
+	LDA.l !orbit_mpic
+	CMP.b #!MT_PIC_AERIAL
+	REP #$20
+	BNE +
+	JSR mt_aload
+	BRA ++
++	JSR mt_load
+++	SEP #$20
 	LDA.l !orbit_mcut
 	REP #$20
 	BEQ .shown                     ; (the last step: shown from this vblank)
@@ -1220,7 +1250,15 @@ montage_nmi:
 	PLP
 	RTL
 .shown
-	JSR mt_town_nmi
+	SEP #$20
+	LDA.l !orbit_mpic
+	CMP.b #!MT_PIC_AERIAL
+	REP #$20
+	BNE +
+	JSR mt_aerial_nmi
+	PLP
+	RTL
++	JSR mt_town_nmi
 	PLP
 	RTL
 
@@ -1748,6 +1786,1035 @@ mt_ruin:
 	RTS
 
 ; ---------------------------------------------------------------------------
+; Aerial cuts (aerial-melee.js). The clouds: BG1 the 2x layer, BG2 the 1x
+; layer, both on one map (rows 0-3 the 2x strip, 4-5 the 1x strip, 6-9
+; the 2x layer's copies 5 and 0 on the lines they share, the rest empty); a
+; layer's copies never share a line otherwise, so the HDMA gives every line
+; its copy's scroll. BG3 the gradient (Mode 1 with BG3's priority, its
+; tiles below everything). OBJ 16x16 / 32x32: Frieza 48x48 (a 32x32 and
+; five 16x16; slots $000 / $060 of 6 x 6 tiles), Goku 32x32 (slots $048 /
+; $04C), the sparks and bursts (the orbit's resident cells, $000-$03F
+; reloaded). Per frame the generated record (orbit-montage.mjs): the
+; fighters, the sparks, the flash, the cues, the clouds' travel. DB = $32,
+; M16/X16.
+
+!MA_GOKU     = 0                   ; fighter blocks in !MA_FS
+!MA_FRIEZA   = 12
+!MA_GOKU_A   = $048                ; OBJ tiles of their slots
+!MA_GOKU_B   = $04C
+!MA_FRIEZA_A = $000
+!MA_FRIEZA_B = $060
+!MA_TM       = $17                 ; BG1, BG2, BG3, OBJ
+!MA_BURST_END = 200                ; the explosion's sprites only before this scanline
+
+; The cut starts (mt_cut; X16 = its entry in orbit_mt_shots): its picture
+; loads behind force blank.
+mt_aerial_cut:
+	LDA.l orbit_mt_shots+2,X       ; the cut
+	STA.w !ma_cut
+	ASL : ASL : ASL
+	TAX
+	LDA.l orbit_mt_aerial_at,X
+	STA.w !ma_first
+	LDA.l orbit_mt_aerial_at+4,X
+	STA.w !ma_imp
+	LDA.l orbit_mt_aerial_at+6,X
+	STA.w !ma_int
+	STZ.w !ma_flash
+	STZ.w !ma_tset
+	STZ.w !ma_tshow
+	LDX.w #!MA_FRIEZA              ; the fighters' slots empty, A shown
+-	LDA.w #$FFFF
+	STA.w !MA_FS+0,X
+	STA.w !MA_FS+2,X
+	STA.w !MA_FS+6,X
+	STZ.w !MA_FS+4,X
+	STZ.w !MA_FS+8,X
+	TXA
+	SEC : SBC.w #12
+	TAX
+	BPL -
+	SEP #$20
+	LDA.w $00E6
+	ORA.b #$80
+	STA.w $00E6
+	LDA.b #$01
+	STA.l !orbit_mcut
+	LDA.b #!MT_PIC_AERIAL
+	STA.l !orbit_mpic
+	REP #$20
+	RTS
+
+; A16 = a record's index -> A16 = its offset in the records (index * 20).
+mt_rec_offset:
+	ASL : ASL
+	STA.w !ma_tmp+14
+	ASL : ASL
+	CLC : ADC.w !ma_tmp+14
+	RTS
+
+; The cut's cues for the clock's new age (frieza.js tick: teleport, impact,
+; the power burst at the explosion, the Fortress break 18 frames after).
+mt_aerial_cues:
+	LDA.w !ma_first
+	CLC : ADC.l !orbit_msage
+	JSR mt_rec_offset
+	TAX
+	LDA.l !XDATA_ORBIT_MTA_REC,X
+	AND.w #$003C
+	BNE +
+	RTS
++	STA.w !ma_tmp+12
+	BIT.w #$0004
+	BEQ +
+	LDA.w #!AUDIO_SFX_TELEPORT
+	JSL audio_sfx
+	REP #$30
++	LDA.w !ma_tmp+12
+	BIT.w #$0008
+	BEQ +
+	LDA.w #!AUDIO_SFX_FRIEZA_IMPACT
+	JSL audio_sfx
+	REP #$30
++	LDA.w !ma_tmp+12
+	BIT.w #$0010
+	BEQ +
+	LDA.w #!AUDIO_SFX_POWER_BURST
+	JSL audio_sfx
+	REP #$30
++	LDA.w !ma_tmp+12
+	BIT.w #$0020
+	BEQ +
+	LDA.w #!AUDIO_SFX_FORTRESS_BREAK
+	JSL audio_sfx
+	REP #$30
++	RTS
+
+; A cut's frame: its record, the flash, the fighters' cells, the clouds.
+mt_aerial_frame:
+	LDA.w !ma_first
+	CLC : ADC.l !orbit_msage
+	JSR mt_rec_offset
+	STA.w !ma_rec
+	TAX
+	LDY.w #$0000
+-	LDA.l !XDATA_ORBIT_MTA_REC,X
+	STA.w !ma_r,Y
+	INX : INX
+	INY : INY
+	CPY.w #20
+	BCC -
+	LDA.w !ma_r+1                  ; the flash level
+	AND.w #$00FF
+	STA.w !ma_flash
+	LDA.w #$0001                   ; Goku: flag bit 0, record byte 2
+	STA.w !ma_tmp+6
+	LDA.w #2
+	STA.w !ma_tmp+4
+	LDX.w #!MA_GOKU
+	JSR mt_fighter_want
+	JSR mt_fighter
+	LDA.w #$0002                   ; Frieza: flag bit 1, record byte 3
+	STA.w !ma_tmp+6
+	LDA.w #3
+	STA.w !ma_tmp+4
+	LDX.w #!MA_FRIEZA
+	JSR mt_fighter_want
+	JSR mt_fighter
+	JSR mt_clouds
+	%mt_mark(2)
+	RTS
+
+; The cell fighter X16 wants in this frame's record (flag !ma_tmp+6, byte
+; !ma_tmp+4): A16 ($FFFF none). X kept.
+mt_fighter_want:
+	LDA.w !ma_r
+	AND.w !ma_tmp+6
+	BNE +
+	LDA.w #$FFFF
+	RTS
++	PHX
+	LDA.w !ma_tmp+4
+	TAX
+	LDA.w !ma_r,X
+	AND.w #$00FF
+	PLX
+	RTS
+
+; Fighter X16 (its flag !ma_tmp+6 and record byte !ma_tmp+4), A16 = the
+; cell wanted now ($FFFF none): shown from the slot holding it (the other
+; slot: shown from now); else the last one stays a frame and this one is
+; due in the other slot; else the next one within four frames goes there.
+mt_fighter:
+	STA.w !ma_tmp+8
+	JSR .slots
+	LDA.w !ma_tmp+8
+	CMP.w #$FFFF
+	BEQ .ahead
+	CMP.w !ma_tmp+10
+	BEQ .ahead
+	CMP.w !ma_tmp+12
+	BNE .due
+	LDA.w !MA_FS+4,X               ; (the other slot holds it)
+	EOR.w #$0001
+	STA.w !MA_FS+4,X
+	JSR .slots
+.ahead
+	LDA.w !ma_rec
+	STA.w !ma_tmp+14
+	LDY.w #4
+.look
+	LDA.w !ma_tmp+14
+	CLC : ADC.w #20
+	STA.w !ma_tmp+14
+	CMP.w #!XDATA_ORBIT_MTA_REC_SIZE
+	BCS .out                       ; (past the last record)
+	PHX
+	TAX
+	LDA.l !XDATA_ORBIT_MTA_REC,X   ; its flags
+	AND.w !ma_tmp+6
+	BEQ .none
+	TXA
+	CLC : ADC.w !ma_tmp+4
+	TAX
+	LDA.l !XDATA_ORBIT_MTA_REC,X
+	AND.w #$00FF
+	PLX
+	CMP.w !ma_tmp+10
+	BEQ .next
+	CMP.w !ma_tmp+12
+	BEQ .out                       ; (the other slot holds it already)
+	BRA .due
+.none
+	PLX
+.next
+	DEY
+	BNE .look
+.out
+	RTS
+.due
+	CMP.w !MA_FS+6,X
+	BEQ +
+	STA.w !MA_FS+6,X
+	STZ.w !MA_FS+8,X               ; (from its first row)
++	RTS
+; !ma_tmp+10 = the cell the shown slot holds, +12 the other's. X kept.
+.slots
+	LDA.w !MA_FS+4,X
+	BNE +
+	LDA.w !MA_FS+0,X
+	STA.w !ma_tmp+10
+	LDA.w !MA_FS+2,X
+	STA.w !ma_tmp+12
+	RTS
++	LDA.w !MA_FS+2,X
+	STA.w !ma_tmp+10
+	LDA.w !MA_FS+0,X
+	STA.w !ma_tmp+12
+	RTS
+
+; Fighter X16's due cell into the slot not shown, from the rows sent (Goku
+; 4 rows of 128 bytes at once, Frieza 6 of 192 bytes, 3 a vblank), while the
+; vblank has room (mt_fighter_now: in force blank, all of it). The slot
+; holds no cell while it fills.
+mt_fighter_send:
+	LDA.w !MA_FS+6,X
+	CMP.w #$FFFF
+	BNE +
+	RTS
++	PHX
+	LDA.w #6+!MT_NMI_SLACK         ; (a chunk: about 5 lines)
+	JSL orbit_nmi_room_far
+	PLX
+	BCC mt_fighter_chunk
+	RTS
+mt_fighter_now:
+	LDA.w !MA_FS+6,X
+	CMP.w #$FFFF
+	BNE +
+	RTS
++	JSR mt_fighter_chunk
+	LDX.w !ma_tmp
+	BRA mt_fighter_now
+mt_fighter_chunk:
+	STX.w !ma_tmp
+	LDA.w !MA_FS+4,X               ; the slot not shown, emptied
+	BNE .intoA
+	LDA.w #$FFFF
+	STA.w !MA_FS+2,X
+	LDA.w #!MA_GOKU_B
+	CPX.w #!MA_FRIEZA
+	BNE .slot
+	LDA.w #!MA_FRIEZA_B
+	BRA .slot
+.intoA
+	LDA.w #$FFFF
+	STA.w !MA_FS+0,X
+	LDA.w #!MA_GOKU_A
+	CPX.w #!MA_FRIEZA
+	BNE .slot
+	LDA.w #!MA_FRIEZA_A
+.slot
+	ASL : ASL : ASL : ASL          ; its VRAM words: $6000 + tile * 16
+	CLC : ADC.w #$6000
+	STA.w !ma_tmp+2
+	LDA.w !MA_FS+6,X               ; the cell's address (bank !OSP_BANK), rows
+	ASL
+	TAY
+	CPX.w #!MA_FRIEZA
+	BEQ .frieza
+	TYX
+	LDA.l orbit_mt_goku_cell,X
+	STA.w !ma_tmp+4
+	LDA.w #128                     ; bytes a row
+	STA.w !ma_tmp+6
+	LDA.w #4                       ; rows
+	STA.w !ma_tmp+8
+	STA.w !ma_tmp+10               ; rows this time
+	BRA .send
+.frieza
+	TYX
+	LDA.l orbit_mt_frieza_cell,X
+	STA.w !ma_tmp+4
+	LDA.w #192
+	STA.w !ma_tmp+6
+	LDA.w #6
+	STA.w !ma_tmp+8
+	LDA.w #3
+	STA.w !ma_tmp+10
+.send
+	LDA.w #!OSP_BANK
+	STA.w !mw_dbank
+	LDA.w #$1801
+	STA.w !mw_dmap
+	LDA.w #$0080
+	STA.w !mw_vmain
+	LDX.w !ma_tmp
+	LDA.w !MA_FS+8,X
+	STA.w !ma_tmp+12               ; row r
+.row
+	SEP #$20                       ; the source: cell + r * bytes
+	LDA.w !ma_tmp+12
+	STA.w $4202
+	LDA.w !ma_tmp+6
+	STA.w $4203
+	REP #$20
+	NOP : NOP : NOP : NOP
+	LDA.w $4216
+	CLC : ADC.w !ma_tmp+4
+	TAX
+	LDA.w !ma_tmp+12               ; the VRAM: slot + r * $100 words
+	XBA
+	CLC : ADC.w !ma_tmp+2
+	LDY.w !ma_tmp+6
+	JSR mt_vdma
+	INC.w !ma_tmp+12
+	LDA.w !ma_tmp+12
+	CMP.w !ma_tmp+8
+	BCS .complete
+	DEC.w !ma_tmp+10
+	BNE .row
+	LDX.w !ma_tmp                  ; (more next vblank)
+	LDA.w !ma_tmp+12
+	STA.w !MA_FS+8,X
+	RTS
+.complete
+	LDX.w !ma_tmp                  ; the slot holds the cell now
+	LDA.w !MA_FS+6,X
+	LDY.w !MA_FS+4,X
+	BNE +
+	STA.w !MA_FS+2,X               ; (B)
+	BRA ++
++	STA.w !MA_FS+0,X               ; (A)
+++	LDA.w #$FFFF
+	STA.w !MA_FS+6,X
+	STZ.w !MA_FS+8,X
+	RTS
+
+; ---------------------------------------------------------------------------
+; The clouds' scroll tables for the next picture (the set the vblank does
+; not show): per layer the six copies (aerial-melee.js: copy i at left ((i
+; 97 - scroll) mod 416) - 160, top ((i 47 + 23 layer + rise) mod 256) - 32;
+; the 2x layer's scroll the travel, its rise travel / 7, the 1x layer's
+; travel / 3 and travel / 16), in top order (the tops rise with i, wrapping
+; once), each line its copy's HOFS and VOFS (the strip's map row: 2x from
+; 0, 1x from 32); the 2x layer's copies 5 and 0 where they share lines
+; (copy 0's top 21 below copy 5's) as their pair (rows 48 or 64); lines
+; with none show empty rows (80 on).
+mt_clouds:
+	LDA.w !ma_tshow
+	EOR.w #$0001
+	STA.w !ma_tset
+	; the 2x layer on BG1
+	LDA.w !ma_r+18
+	STA.w !ma_tmp                  ; scroll: the travel
+	LDX.w #7
+	JSR mt_div
+	CLC : ADC.w #23
+	STA.w !ma_tmp+2                ; 23 + rise
+	JSR mt_copies
+	LDA.w #32
+	STA.w !ma_tall
+	LDA.w #$FFFF                   ; (its strip from map row 0: VOFS -top - 1)
+	STA.w !ma_row
+	LDX.w #!MA_T1A
+	LDA.w !ma_tset
+	BEQ +
+	LDX.w #!MA_T1B
++	JSR mt_ctable
+	; the 1x layer on BG2
+	LDA.w !ma_r+18
+	LDX.w #3
+	JSR mt_div
+	STA.w !ma_tmp
+	LDA.w !ma_r+18
+	LDX.w #16
+	JSR mt_div
+	STA.w !ma_tmp+2
+	JSR mt_copies
+	LDA.w #16
+	STA.w !ma_tall
+	LDA.w #31                      ; (map row 32: VOFS 31 - top)
+	STA.w !ma_row
+	LDX.w #!MA_T2A
+	LDA.w !ma_tset
+	BEQ +
+	LDX.w #!MA_T2B
++	STZ.w !ma_pairok               ; (no pair on BG2)
+	BRA mt_ctable_go
+; One layer's table at X16 (the copies, !ma_tall lines each, VOFS row - 1
+; - top in !ma_row): its copies' bands in top order, gaps on empty rows.
+mt_ctable:
+	LDA.w #$FFFF                   ; (the 2x layer: its pair)
+	STA.w !ma_pairok
+mt_ctable_go:
+	STZ.w !ma_cur
+	LDY.w #$0000
+.copy
+	STY.w !ma_tmp+4
+	LDA.w !ma_ord,Y
+	TAY                            ; the copy (x 2)
+	LDA.w !ma_top,Y                ; b = min(top + tall, 224)
+	CLC : ADC.w !ma_tall
+	CMP.w #224
+	BMI +
+	LDA.w #224
++	STA.w !ma_tmp+6
+	CMP.w !ma_cur
+	BMI .next
+	BEQ .next                      ; (above the lines so far)
+	LDA.w !ma_lay,Y                ; this copy's scroll
+	EOR.w #$FFFF
+	INC
+	STA.w !ma_h
+	LDA.w !ma_row
+	SEC : SBC.w !ma_top,Y
+	STA.w !ma_v
+	LDA.w !ma_top,Y                ; a = max(top, 0)
+	BPL +
+	LDA.w #$0000
++	JSR mt_gap
+	CPY.w #10                      ; the 2x layer's copy 5 with copy 0 21 below
+	BNE .band
+	LDA.w !ma_pairok
+	BEQ .band
+	LDA.w !ma_top
+	SEC : SBC.w !ma_top+10
+	CMP.w #21
+	BNE .band
+	LDA.w !ma_top                  ; copy 5 to copy 0's top
+	CMP.w #224
+	BMI +
+	LDA.w #224
++	JSR mt_lines
+	JSR mt_pair                    ; then the pair to copy 5's end
+.band
+	LDA.w !ma_tmp+6
+	JSR mt_lines
+.next
+	LDY.w !ma_tmp+4
+	INY : INY
+	CPY.w #12
+	BCC .copy
+	LDA.w #224
+	JSR mt_gap
+	SEP #$20                       ; the table's end
+	STZ.w $0000,X
+	REP #$20
+	RTS
+
+; Entries at X16 for the lines from cur up to A16 (exclusive) with the
+; scroll !ma_h / !ma_v (none if A16 <= cur); X16 moves on. Y kept.
+mt_lines:
+	SEC : SBC.w !ma_cur
+	BEQ .none
+	BMI .none
+	STA.w !ma_tmp+8
+	CLC : ADC.w !ma_cur
+	STA.w !ma_cur
+	SEP #$20                       ; (bands are at most 32 lines)
+	LDA.w !ma_tmp+8
+	STA.w $0000,X
+	REP #$20
+	LDA.w !ma_h
+	STA.w $0001,X
+	LDA.w !ma_v
+	STA.w $0003,X
+	TXA
+	CLC : ADC.w #5
+	TAX
+.none
+	RTS
+
+; Lines from cur up to A16 (exclusive) on the empty rows (80 on: VOFS 79 -
+; their first line), in entries of up to 127; X16 moves on. Y kept.
+mt_gap:
+	STA.w !ma_tmp+8
+.chunk
+	LDA.w !ma_tmp+8
+	SEC : SBC.w !ma_cur
+	BEQ .done
+	BMI .done
+	CMP.w #128
+	BCC +
+	LDA.w #127
++	SEP #$20
+	STA.w $0000,X
+	REP #$20
+	STZ.w $0001,X
+	PHA
+	LDA.w #79
+	SEC : SBC.w !ma_cur
+	STA.w $0003,X
+	PLA
+	CLC : ADC.w !ma_cur
+	STA.w !ma_cur
+	TXA
+	CLC : ADC.w #5
+	TAX
+	BRA .chunk
+.done
+	RTS
+
+; The 2x layer's copies 5 and 0 on their shared lines (from copy 0's top):
+; the pair whose places hold now (!ma_s = scroll mod 416): 0 or 70-415:
+; copy 5 69 right of copy 0, the pair at map row 48 (copy 0 at x 0) unless
+; copy 0 is right of 203 (copy 5 then off the screen: copy 0 alone); 1-69:
+; copy 0 347 right of copy 5, the pair at map row 64 (copy 5 at x 0).
+; !ma_h / !ma_v. X, Y kept.
+mt_pair:
+	LDA.w !ma_s
+	BEQ .d69
+	CMP.w #70
+	BCS .d69
+	LDA.w !ma_lay+10               ; copy 5 at x 0
+	EOR.w #$FFFF
+	INC
+	STA.w !ma_h
+	LDA.w #63
+	BRA .vofs
+.d69
+	LDA.w !ma_lay                  ; copy 0 at x 0
+	EOR.w #$FFFF
+	INC
+	STA.w !ma_h
+	LDA.w !ma_lay
+	CMP.w #204
+	BMI +
+	LDA.w #$FFFF                   ; (copy 0 alone: the 2x strip)
+	BRA .vofs
++	LDA.w #47
+.vofs
+	SEC : SBC.w !ma_top            ; row - 1 - copy 0's top
+	STA.w !ma_v
+	RTS
+
+; A layer's six copies from its scroll (!ma_tmp) and 23 layer + rise
+; (!ma_tmp+2): !ma_lay = left, !ma_top = top (words, by copy), !ma_ord the
+; copies in top order (the tops rise with i, wrapping once at most), !ma_s
+; = scroll mod 416.
+mt_copies:
+	LDA.w !ma_tmp                  ; scroll mod 416
+-	CMP.w #416
+	BCC +
+	SBC.w #416
+	BRA -
++	STA.w !ma_s
+	LDA.w !ma_tmp+2
+	AND.w #$00FF
+	STA.w !ma_tmp+2
+	LDA.w #$FFFF
+	STA.w !ma_tmp+10               ; the first copy past the wrap (none yet)
+	LDA.w #-160                    ; i 97 - 160 - s
+	SEC : SBC.w !ma_s
+	STA.w !ma_tmp+6
+	LDA.w !ma_tmp+2                ; i 47 + 23 layer + rise
+	STA.w !ma_tmp+8
+	LDX.w #$0000
+.copy
+	LDA.w !ma_tmp+6                ; left in [-160, 256)
+	CMP.w #-160
+	BPL +
+	CLC : ADC.w #416
++	CMP.w #256
+	BMI +
+	SEC : SBC.w #416
++	STA.w !ma_lay,X
+	LDA.w !ma_tmp+8
+	CMP.w #256
+	BCC +
+	AND.w #$00FF
+	LDY.w !ma_tmp+10
+	BPL +
+	STX.w !ma_tmp+10
++	SEC : SBC.w #32
+	STA.w !ma_top,X
+	LDA.w !ma_tmp+6
+	CLC : ADC.w #97
+	STA.w !ma_tmp+6
+	LDA.w !ma_tmp+8
+	CLC : ADC.w #47
+	STA.w !ma_tmp+8
+	INX : INX
+	CPX.w #12
+	BCC .copy
+	LDA.w !ma_tmp+10               ; the order: from the first past the wrap
+	BPL +
+	LDA.w #$0000
++	TAX
+	LDY.w #$0000
+-	TXA
+	STA.w !ma_ord,Y
+	INX : INX
+	CPX.w #12
+	BCC +
+	LDX.w #$0000
++	INY : INY
+	CPY.w #12
+	BCC -
+	RTS
+
+; ---------------------------------------------------------------------------
+; A cut's sprites, front to back (the browser paints back to front): the
+; sparks, Frieza, Goku, the second cut's four more bursts, the explosion.
+mt_aerial_oam:
+	%mt_mark(3)
+	LDA.w !ma_r+12                 ; the sparks (16x16)
+	AND.w #$00FF
+	BEQ +
+	LDX.w !ma_r+14
+	JSR mt_spark
++	LDA.w !ma_r+13
+	AND.w #$00FF
+	BEQ +
+	LDX.w !ma_r+16
+	JSR mt_spark
++	; Frieza (flag bit 1), from his shown slot when it holds a cell
+	LDA.w !ma_r
+	AND.w #$0002
+	BEQ .goku
+	LDX.w #!MA_FRIEZA
+	JSR mt_shown_slot
+	BCS .goku
+	LDA.w #!MA_FRIEZA_A
+	CPY.w #$0000
+	BEQ +
+	LDA.w #!MA_FRIEZA_B
++	STA.w !d_t2
+	LDA.w !ma_r+8
+	SEC : SBC.w #128
+	STA.w !d_t0
+	LDA.w !ma_r+10
+	SEC : SBC.w #128
+	STA.w !d_t1
+	LDA.w !o_slot
+	STA.w !mw_ostart
+	LDX.w #orbit_mt_l_fzb
+	JSR mt_list32
+	LDA.w !mw_ostart
+	LDY.w !o_slot
+	JSR mt_large
+	LDX.w #orbit_mt_l_fzs
+	JSR mt_list16
+.goku
+	LDA.w !ma_r                    ; Goku (flag bit 0)
+	AND.w #$0001
+	BEQ .bursts
+	LDX.w #!MA_GOKU
+	JSR mt_shown_slot
+	BCS .bursts
+	LDA.w #!MA_GOKU_A
+	CPY.w #$0000
+	BEQ +
+	LDA.w #!MA_GOKU_B
++	STA.w !d_t2
+	LDA.w !ma_r+4
+	SEC : SBC.w #128
+	STA.w !d_t0
+	LDA.w !ma_r+6
+	SEC : SBC.w #128
+	STA.w !d_t1
+	LDA.w !o_slot
+	STA.w !mw_ostart
+	LDX.w #orbit_mt_l_gk
+	JSR mt_list32
+	LDA.w !mw_ostart
+	LDY.w !o_slot
+	JSR mt_large
+.bursts
+	%mt_mark(4)
+	LDA.l !orbit_msage             ; the explosion's age
+	SEC : SBC.w !ma_imp
+	BPL +
+	RTS
++	STA.w !ma_tmp+12
+	LDA.w !ma_int                  ; the second cut: four more, the last first
+	BEQ .main
+	LDA.w #3
+	STA.w !ma_tmp+14
+.extra
+	LDA.w !ma_tmp+14               ; age - 10 - 5 j
+	ASL : ASL
+	CLC : ADC.w !ma_tmp+14
+	CLC : ADC.w #10
+	EOR.w #$FFFF
+	SEC : ADC.w !ma_tmp+12
+	BMI .nextExtra
+	PHA
+	LDA.w !ma_tmp+14
+	ASL : ASL
+	TAX
+	LDA.l orbit_mt_aextra,X
+	STA.w !ma_tmp
+	LDA.l orbit_mt_aextra+2,X
+	STA.w !ma_tmp+2
+	PLA
+	JSR mt_aburst
+.nextExtra
+	DEC.w !ma_tmp+14
+	BPL .extra
+.main
+	LDA.w #128
+	STA.w !ma_tmp
+	LDA.w #112
+	STA.w !ma_tmp+2
+	LDA.w !ma_tmp+12
+	JMP mt_aburst
+
+; A spark of kind A16 (1-10: orbit_mt_stamp) with its top left in X16
+; (x | y << 8), 16x16.
+mt_spark:
+	ASL
+	PHX
+	TAX
+	LDA.l orbit_mt_stamp,X
+	STA.w !d_t2
+	PLA
+	PHA
+	AND.w #$00FF
+	SEC : SBC.w #128
+	STA.w !d_t0
+	PLA
+	XBA
+	AND.w #$00FF
+	SEC : SBC.w #128
+	STA.w !d_t1
+	LDX.w #orbit_mt_l_one
+	JMP mt_list16
+
+; Fighter X16's shown slot: Y16 = 0 (A) / 1 (B); carry set when it holds
+; no cell (not drawn).
+mt_shown_slot:
+	LDY.w !MA_FS+4,X
+	BNE +
+	LDA.w !MA_FS+0,X
+	BRA ++
++	LDA.w !MA_FS+2,X
+++	CMP.w #$FFFF
+	BEQ +
+	CLC
+	RTS
++	SEC
+	RTS
+
+; fx.burst (large) at (!ma_tmp, !ma_tmp+2) of age A16: sub-burst i (8 down
+; to 0) at t = age - 4 i (0-41), its place and list (generated).
+mt_aburst:
+	STA.w !ma_tmp+4
+	LDA.w #8
+	STA.w !ma_tmp+6
+.sub
+	LDA.w !o_slot                  ; (the OAM full, or the frame's time spent:
+	CMP.w #$0200                   ; the rest not drawn; the PPU drops a
+	BCS .out                       ; line's back sprites past 34 tiles)
+	SEP #$20
+	LDA.l $002137
+	LDA.l $00213D
+	XBA
+	LDA.l $00213D
+	AND.b #$01
+	XBA
+	REP #$20
+	PHA
+	SEP #$20
+	LDA.l $00213F
+	REP #$20
+	PLA
+	CMP.w #!MA_BURST_END
+	BCC +
+.out
+	RTS
++	LDA.w !ma_tmp+6                ; t = age - 4 i
+	ASL : ASL
+	EOR.w #$FFFF
+	SEC : ADC.w !ma_tmp+4
+	BMI .next
+	CMP.w #42
+	BCS .next
+	ASL
+	STA.w !ma_tmp+8
+	LDA.w !ma_tmp+6
+	ASL
+	TAX
+	LDA.l orbit_mt_burst_row,X     ; i * 84
+	CLC : ADC.w !ma_tmp+8
+	TAX                            ; (i * 42 + t) * 2
+	LDA.l !MTT_ABURST_OFF,X        ; the place (x + 128, y + 128), less 256
+	AND.w #$00FF
+	CLC : ADC.w !ma_tmp
+	SEC : SBC.w #256
+	STA.w !d_t0
+	LDA.l !MTT_ABURST_OFF+1,X
+	AND.w #$00FF
+	CLC : ADC.w !ma_tmp+2
+	SEC : SBC.w #256
+	STA.w !d_t1
+	LDA.l orbit_mt_aburst_l,X
+	TAX
+	STZ.w !d_t2
+	JSR mt_list16
+.next
+	DEC.w !ma_tmp+6
+	BMI +
+	JMP .sub
++	RTS
+
+; ---------------------------------------------------------------------------
+; A cut's loads (force blank), three steps. 1: the clouds' tiles, BG3's
+; two tiles, OBJ $000-$03F (the orbit's resident cells); 2: the clouds' map
+; (rows 0-5, the rest empty), BG3's gradient map; 3: the fighters' first
+; cells; then the picture shows.
+mt_aload:
+	LDA.w #$1801
+	STA.w !mw_dmap
+	LDA.w #$0080
+	STA.w !mw_vmain
+	SEP #$20
+	LDA.l !orbit_mcut
+	CMP.b #2
+	REP #$20
+	BCC .tiles
+	BNE +
+	JMP .maps
++	JMP .cells
+.tiles
+	LDA.w #(!XDATA_ORBIT_MTA_TILES)>>16
+	STA.w !mw_dbank
+	LDA.w #$0000
+	LDX.w #(!XDATA_ORBIT_MTA_TILES)&$FFFF
+	LDY.w #!XDATA_ORBIT_MTA_TILES_SIZE
+	JSR mt_vdma
+	LDA.w #orbit_mt_bg3tiles>>16
+	STA.w !mw_dbank
+	LDA.w #$4000+($17E*8)
+	LDX.w #orbit_mt_bg3tiles
+	LDY.w #32
+	JSR mt_vdma
+	LDA.w #orbit_fx_vram_d>>16
+	STA.w !mw_dbank
+	LDA.w #$6000
+	LDX.w #orbit_fx_vram_d
+	LDY.w #$0800
+	JSR mt_vdma
+	SEP #$20
+	LDA.b #2
+	STA.l !orbit_mcut
+	REP #$20
+	RTS
+.maps
+	LDA.w #(!MTT)>>16              ; rows 0-9 of each screen, the rest zero
+	STA.w !mw_dbank
+	LDA.w #$2000
+	LDX.w #(!MTT_MAPA)&$FFFF
+	LDY.w #2*32*10
+	JSR mt_vdma
+	LDA.w #$2400
+	LDX.w #((!MTT_MAPA)&$FFFF)+(2*32*10)
+	LDY.w #2*32*10
+	JSR mt_vdma
+	LDA.w #orbit_mt_zero>>16       ; (fixed source)
+	STA.w !mw_dbank
+	LDA.w #$1809
+	STA.w !mw_dmap
+	LDA.w #$2000+(32*10)
+	LDX.w #orbit_mt_zero
+	LDY.w #2*($400-(32*10))
+	JSR mt_vdma
+	LDA.w #$2400+(32*10)
+	LDX.w #orbit_mt_zero
+	LDY.w #2*($400-(32*10))
+	JSR mt_vdma
+	LDA.w #$1801
+	STA.w !mw_dmap
+	LDA.w #(!MTT)>>16
+	STA.w !mw_dbank
+	LDA.w #$3000                   ; BG3: the gradient
+	LDX.w #(!MTT_AGRAD)&$FFFF
+	LDY.w #2048
+	JSR mt_vdma
+	SEP #$20
+	LDA.b #3
+	STA.l !orbit_mcut
+	REP #$20
+	RTS
+.cells
+	LDX.w #!MA_GOKU
+	JSR mt_fighter_now
+	LDX.w #!MA_FRIEZA
+	JSR mt_fighter_now
+	SEP #$20                       ; the picture: the field's brightness back
+	LDA.l !orbit_me6
+	STA.w $00E6
+	LDA.b #$00
+	STA.l !orbit_mcut
+	REP #$20
+	RTS
+
+; A cut shown (vblank): Mode 1 with BG3's priority (its tiles below), BG1
+; and BG2 on the clouds' map, BG3 the gradient, OBJ 16x16 / 32x32, TM again
+; at line 196 (after the field IRQ's HUD split), the clouds' scroll tables
+; (HDMA channels 3 and 4), the fighters' due cells (by vblank room).
+mt_aerial_nmi:
+	SEP #$20
+	LDA.b #$09
+	STA.w $2105
+	LDA.b #$21                     ; BG1 and BG2: the map at $2000, 64x32
+	STA.w $2107
+	STA.w $2108
+	LDA.b #$30                     ; BG3: $3000, 32x32
+	STA.w $2109
+	STZ.w $210B                    ; BG1 / BG2 tiles $0000
+	LDA.b #$04                     ; BG3 tiles $4000
+	STA.w $210C
+	STZ.w $2111                    ; BG3 scroll: 0, -1 (the scroll registers
+	STZ.w $2111                    ; share one latch: each one's two writes)
+	LDA.b #$FF
+	STA.w $2112
+	LDA.b #$03
+	STA.w $2112
+	LDA.b #$63                     ; OBJ 16x16 / 32x32, tiles $6000
+	STA.w $2101
+	LDA.b #!MA_TM
+	STA.w $212C
+	STZ.w $212D
+	STZ.w $212E
+	STZ.w $2123
+	STZ.w $2124
+	STZ.w $2125
+	STZ.w $2130
+	STZ.w $2131
+	STA.w !mw_tmtab+1
+	STA.w !mw_tmtab+3
+	STA.w !mw_tmtab+5
+	LDA.b #127
+	STA.w !mw_tmtab+0
+	LDA.b #196-127
+	STA.w !mw_tmtab+2
+	LDA.b #1
+	STA.w !mw_tmtab+4
+	STZ.w !mw_tmtab+6
+	; HDMA: channel 2 TM, 3 BG1's scroll, 4 BG2's (mode 3, the tables just made)
+	REP #$20
+	LDA.w !ma_tset
+	STA.w !ma_tshow
+	LDA.w #$2C00
+	STA.w $4320
+	LDA.w #!mw_tmtab
+	STA.w $4322
+	LDA.w #$0D03
+	STA.w $4330
+	LDA.w #!MA_T1A
+	LDX.w !ma_tshow
+	BEQ +
+	LDA.w #!MA_T1B
++	STA.w $4332
+	LDA.w #$0F03
+	STA.w $4340
+	LDA.w #!MA_T2A
+	LDX.w !ma_tshow
+	BEQ +
+	LDA.w #!MA_T2B
++	STA.w $4342
+	SEP #$20
+	LDA.b #$32
+	STA.w $4324
+	STA.w $4334
+	STA.w $4344
+	LDA.w !N_HDMA
+	AND.b #~!ORBIT_HDMA
+	ORA.b #$1C
+	STA.w !N_HDMA
+	REP #$20
+	; the fighters' due cells
+	LDX.w #!MA_GOKU
+	JSR mt_fighter_send
+	LDX.w #!MA_FRIEZA
+	JMP mt_fighter_send
+
+; An aerial cut's colours at its flash level (orbit-montage.mjs: CGRAM
+; 0-27, 32-47, 128-159, 192-207, 224-255 in a row, per level).
+mt_aerial_cgram:
+	LDA.w #(!MTT)>>16
+	STA.w !mw_dbank
+	LDA.w !ma_flash                ; level * 248
+	XBA
+	STA.w !mw_tmp
+	LDA.w !ma_flash
+	ASL : ASL : ASL
+	EOR.w #$FFFF
+	SEC : ADC.w !mw_tmp
+	CLC : ADC.w #(!MTT_APAL)&$FFFF
+	STA.w !mw_tmp
+	TAX
+	LDA.w #0
+	LDY.w #2*28
+	JSR mt_cgdma
+	LDA.w !mw_tmp
+	CLC : ADC.w #2*28
+	TAX
+	LDA.w #32
+	LDY.w #2*16
+	JSR mt_cgdma
+	LDA.w !mw_tmp
+	CLC : ADC.w #2*44
+	TAX
+	LDA.w #128
+	LDY.w #2*32
+	JSR mt_cgdma
+	LDA.w !mw_tmp
+	CLC : ADC.w #2*76
+	TAX
+	LDA.w #192
+	LDY.w #2*16
+	JSR mt_cgdma
+	LDA.w !mw_tmp
+	CLC : ADC.w #2*92
+	TAX
+	LDA.w #224
+	LDY.w #2*32
+	JMP mt_cgdma
+
+; ---------------------------------------------------------------------------
 ; The palette (orbit_cgram_upload while a montage picture is up, at the
 ; game's own transfer): the town's colours, the game's where it has none.
 ; JSL, DB = $32, M16/X16; returns carry set (sent).
@@ -1756,6 +2823,16 @@ montage_cgram:
 	REP #$30
 	LDA.w #$2200                   ; A->B, one register: CGDATA
 	STA.w !mw_dmap
+	SEP #$20
+	LDA.l !orbit_mpic
+	CMP.b #!MT_PIC_AERIAL
+	REP #$20
+	BNE .town
+	JSR mt_aerial_cgram
+	PLP
+	SEC
+	RTL
+.town
 	LDA.w #(!MTT)>>16              ; (the generated palettes' bank)
 	STA.w !mw_dbank
 	; 0: the backdrop (black, or under the tint), then the map's palettes

@@ -456,9 +456,9 @@ end
     // (no lag frame). ORBIT_MONTAGE_DUMP=1 also dumps VRAM, CGRAM, OAM, the
     // DMA registers and the shot's working block per screenshot.
     const h=await friezaHandoff();
-    const {cosmicDuration,cosmicBeat,cosmicShots,pullbackStart,collateralStart}=await import(resolve(repo,'engine/frieza-cinematic.js'));
+    const {cosmicDuration,cosmicBeat,cosmicShots,aerialCuts,pullbackStart,collateralStart}=await import(resolve(repo,'engine/frieza-cinematic.js'));
     const {montageRef,matchShare}=await import('./montage-ref.mjs');
-    const ages=(process.env.ORBIT_MONTAGE_AGES??'102,172,224,230,235,272,362,642,770,775,902,1064,1112,1272,1360,1365,1467').split(',').map(Number);
+    const ages=(process.env.ORBIT_MONTAGE_AGES??'102,172,224,230,235,272,362,382,422,472,553,572,602,642,770,775,902,1064,1112,1272,1360,1365,1467,1482,1622,1742,1792').split(',').map(Number);
     const dir=join(out,'montage');
     const test=`${h.prelude}
 AGES={${ages.map(a=>a+2).join(',')}}
@@ -473,7 +473,7 @@ function test()
     H.wait(1)
     local a = H.r16(MAGE)
     if H.r16(ORBIT_RAM + 0x34) == 0 then break end
-    trace[#trace + 1] = string.format('%d %d %d', a, H.r16(ORBIT_RAM + 0x0C), H.r16(ORBIT_RAM + 0x0A))
+    trace[#trace + 1] = string.format('%d %d %d %d %d %d %d', a, H.r16(ORBIT_RAM + 0x0C), H.r16(ORBIT_RAM + 0x0A), H.r16(ORBIT_RAM + 0x42), H.r16(ORBIT_RAM + 0x44), H.r16(ORBIT_RAM + 0x46), H.r16(ORBIT_RAM + 0x48))
     if want[a] and not seen[a] then
       seen[a] = true
       local name = string.format('m%04d', a - 2)
@@ -484,7 +484,7 @@ function test()
         H.dumpfile(name .. '.cgram', emu.memType.snesCgRam, 0, 0x200)
         H.dumpfile(name .. '.oam', emu.memType.snesSpriteRam, 0, 0x220)
         H.dumpfile(name .. '.dma', emu.memType.snesMemory, 0x4300, 0x80)
-        H.dumpfile(name .. '.mw', emu.memType.snesMemory, 0x326100, 0xC0)
+        H.dumpfile(name .. '.mw', emu.memType.snesMemory, 0x326100, 0x300)
       end
     end
   end
@@ -507,13 +507,19 @@ end
     // the clock: one step a frame (the first frames load the first shot);
     // at a cut (the picture black while the next one loads) it may catch up
     const cuts=[];let at=collateralStart;for(const c of cosmicShots){cuts.push(at);at+=c.duration;}cuts.push(pullbackStart);
-    let lagged=0,atCuts=0,maxLine=0;
+    // (a cut loads in three vblanks, the pullback's globe in sixteen)
+    const atCut=a=>cuts.some(c=>a>=c&&a<c+(c===pullbackStart?16:4));
+    let lagged=0,atCuts=0,maxLine=0,late=0,lateAtCuts=0,maxVblank=0;
     for(let i=8;i<trace.length;i++){
-      if(trace[i][0]-trace[i-1][0]!==1){if(cuts.some(c=>trace[i-1][0]>=c&&trace[i-1][0]<c+4))atCuts++;else lagged++;}
+      if(trace[i][0]-trace[i-1][0]!==1){if(atCut(trace[i-1][0]))atCuts++;else lagged++;}
       maxLine=Math.max(maxLine,trace[i][1]);
+      // the scene's vblank work ending in the next frame (past its HDMA start)
+      if(atCut(trace[i-1][0])){if(trace[i][2]<225)lateAtCuts++;}
+      else if(trace[i][2]<225)late++;else maxVblank=Math.max(maxVblank,trace[i][2]);
     }
     if(lagged)fails.push(`${lagged} frames without one clock step`);
     if(atCuts>4)fails.push(`${atCuts} frames without one clock step at cuts`);
+    if(late)fails.push(`${late} vblanks ending in the next frame`);
     if(!res.ended)fails.push(`the cinematic did not end (age ${res.end_age})`);
     if(res.state_after!==2||res.owner_after!==2)fails.push(`after it: orbit state ${res.state_after}, scene owner ${res.owner_after} (want the live orbit)`);
     // the pictures: the clock two frames before each screenshot
@@ -521,17 +527,22 @@ end
     for(const v of res.shots??[]){
       const[name,k]=v.split(' '),shown=trace[Number(k)-3]?.[0],want=Number(name.slice(1));
       if(shown!==want){fails.push(`${name}: shows age ${shown}`);continue;}
-      const beat=cosmicBeat(shown),town=ref.town(shown);
-      if(!town){lines.push(`${name}: ${beat?.shot.kind??'none'} (not compared)`);continue;}
-      writeFileSync(join(dir,`ref${name.slice(1)}.png`),town.png);
-      const share=matchShare(readPng(join(dir,name+'.png')),town),dt=beat.age-beat.shot.hit;
-      lines.push(`${name}: ${beat.shot.name} t ${beat.age}: ${(100*share).toFixed(1)}% of pixels as the browser`);
-      const need=dt>=0&&dt<70?0.95:0.995;
+      const beat=cosmicBeat(shown),aerial=beat?.shot.kind==='aerial',pic=aerial?ref.aerial(shown):ref.town(shown);
+      if(!pic){lines.push(`${name}: ${beat?.shot.kind??'none'} (not compared)`);continue;}
+      writeFileSync(join(dir,`ref${name.slice(1)}.png`),pic.png);
+      const share=matchShare(readPng(join(dir,name+'.png')),pic);
+      // (a town's explosions: its bursts' quarter turns, the shake's edge;
+      // an aerial cut's: the bursts; its charge: the auras, not yet drawn;
+      // Goku: the goku module's 15 colours of his sheet's 22)
+      let need,what;
+      if(aerial){const blast=beat.age-beat.shot.impact;what=`aerial ${aerialCuts.indexOf(beat.shot)+1}`;need=blast>=-30&&blast<(beat.shot.intensity?99:74)?0.9:0.99;}
+      else{const dt=beat.age-beat.shot.hit;what=beat.shot.name;need=dt>=0&&dt<70?0.95:0.995;}
+      lines.push(`${name}: ${what} t ${beat.age}: ${(100*share).toFixed(1)}% of pixels as the browser`);
       if(share<need)fails.push(`${name}: ${(100*share).toFixed(1)}% < ${100*need}%`);
     }
     if((res.shots??[]).length!==ages.length)fails.push(`${(res.shots??[]).length} of ${ages.length} screenshots`);
     const ok=fails.length===0;
-    console.log(`montage: ${ok?'pass':'FAIL'} ended at surge age ${res.end_age} (cosmicDuration ${cosmicDuration}), ${lagged} lagged (${atCuts} at cuts), frames end by line ${maxLine}`);
+    console.log(`montage: ${ok?'pass':'FAIL'} ended at surge age ${res.end_age} (cosmicDuration ${cosmicDuration}), ${lagged} lagged (${atCuts} at cuts), frames end by line ${maxLine}, vblanks by ${maxVblank} (${late} late, ${lateAtCuts} in loads)`);
     for(const l of lines)console.log('  '+l);
     for(const m of fails.slice(0,8))console.log('  '+m);
     return ok;

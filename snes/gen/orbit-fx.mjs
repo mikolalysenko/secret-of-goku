@@ -169,7 +169,7 @@ export async function generate({rom,repo,outDir,xdata}){
   // (orbit-sprites.mjs lays palettes 0-1 and 6-7 out in CGRAM order beside
   // its own Goku and Frieza palettes: one DMA each)
   const words16=p=>{const r=p.map(c=>c?c-1:0);while(r.length<16)r.push(0);return r;};
-  writeFileSync(join(outDir,'palettes.json'),JSON.stringify({fire:words16(pal.FIRE),gold:words16(pal.GOLD)}));
+  writeFileSync(join(outDir,'palettes.json'),JSON.stringify({fire:words16(pal.FIRE),gold:words16(pal.GOLD),blue:words16(pal.BLUE)}));
   // Beam band colours (beam-body rows 6 and 7 of frames 0 and 1): blue as
   // drawn, pink through pinkColor (Frieza's beams and lasers).
   const body=groups['beam-body'];
