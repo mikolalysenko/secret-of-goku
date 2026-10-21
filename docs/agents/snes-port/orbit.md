@@ -21,7 +21,7 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 | Space fight logic: Goku's steering, ki, charged wave, punch, Instant Transmission and the four-beat exchange; Frieza's patrol, side-steps, warnings, beams, lasers, discs, Death Balls, ricochets; damage both ways; camera | **Done** (`fight.asm`, `math.asm`): identical to the browser's own `frieza.js` tick on every frame of the `fight` test (658 frames, scripted pad) |
 | Space fight drawing: Goku, Frieza, ki, Death Balls (16/32), discs, finger glints, hand charges, Exploder bursts, impact sparks, ricochets | **Done** (`draw.asm`, resident and streamed OBJ cells) |
 | Beam bands: Goku's wave, Frieza's beam and finger laser (`beam.asm`) | **Done**: the band's pictures per heading class and radius come made from the generator through a vblank queue (the laser's are made at run time); cached OAM runs |
-| OBJ line limits (34 slivers a line) | **Open**: with a beam across the screen the stars on its lines push some lines to 40-46 slivers, and the PPU leaves out slivers of the sprites first in OAM (the beam's cells, the bursts): in the `fight` test 45 frames, in the `clash` 89 (reported by both, not yet failed). The finger laser across the screen with its hit's bursts, Frieza and Goku passes 34 without any star. Star limits per row under the beams, applied when a depth is rebuilt, did not keep up (the beam frames leave the rebuilds almost no spare time) and are not in |
+| OBJ line limits (34 slivers a line) | **Partly done**: the stars under a beam's cells are limited per row (below) and the finger laser's cells under a fresh hit are hidden, so most beam frames keep under 34. Left: the first frames of a beam (the depths are still being rebuilt with its limits) and lines where bursts add to a beam (36-41 slivers there): 43 frames in the `fight` test (2-28 lines each, was 45 frames of 40-46 slivers on up to 40 lines), 27 in the `clash` (was 89); reported by both, not yet failed |
 | Orbit intro (855 frames: Luka, Frieza, Goku), text panels | **Done** (`text.asm`, `orbit-text.mjs`): the browser's own `radioPixels` windows as BG3 tiles in a Mode 1 band |
 | Entry API for the frieza module, debug presets `orbit` and `space` | **Done** (`api.asm`): `orbit_api_enter` (intro or straight into the fight), `!DEBUG_PRESET_HOOK_ORBIT/_SPACE` |
 | Hand-off from the frieza module (second surge), scene work area | **Done** (`bind.asm`, `scene.asm`): `!FRIEZA_ORBIT_SURGE` enters the orbit at `collateralStart` (72) with Frieza's HP and clocks; the orbit takes `!SRAM_WORK_SCENE` from Frieza's claim (owner `!SCENE_ORBIT`) and gives it back at the end; test `handoff` |
@@ -210,13 +210,31 @@ published window block, so exactly the pixels the browser's planet paints
 over it) gets no OAM slot. Per depth the visible stars are kept as a ready
 OAM list, rebuilt when that depth's offsets, zoom, the globe or a twinkle
 change (one depth at a time, 24 stars per frame), and copied into OAM with
-MVN each frame. Known issue: the first stale depth goes first, and while
-the camera moves the globe's rows make every depth stale each frame, so
-depth 1 is rebuilt over and over and depths 2-3 lag (in the pullback, the
-stars the shrinking globe uncovers in them stay hidden). Taking the depths
-in turn fixes it but shows more stars there, whose OAM copy and the game's
-OAM pass make a pullback frame miss its vblank (the `montage` test): it
-waits for time saved elsewhere.
+MVN each frame. The stale depths are taken in turn (while the camera
+moves, the globe's rows make every depth stale each frame; depth 1 alone
+used to be rebuilt and depths 2-3 lagged), but in the second surge's
+pullback depth 1 still goes first: there the stars the shrinking globe
+uncovers in depths 2-3 stay hidden, as their OAM copy and the game's OAM
+pass would make a pullback frame miss its vblank (the `montage` test).
+
+Line limits: the PPU fetches at most 34 slivers (8 pixels of a sprite's
+width) a line and leaves out those of the sprites first in OAM: the
+bursts, the beams' cells. A star takes 2 slivers on each of its 16
+lines, and a beam across the screen 20-28. While beams show, the rows
+(8 lines) under their cells limit the stars of depths 1-2 that may cover
+them (`stars_limits`): per group the rows its cells cover from the origin
+to the screen's edge, and its slivers on each of those lines by heading
+class (class 0 the cells of a chain, class 1 two cells of every chain,
+classes 2-4 one of every chain), only made again when a group's inputs
+change; a row's limit is (34 - 2 - the beams' slivers) / 2, for both
+depths together. A depth's build leaves out a star past a limit, and a
+change of the limits rebuilds the depths ahead of the globe's window
+block (none in the pullback, where the rebuilds would cost its frames
+their vblank). Frieza's finger laser crosses the screen in 7 cells: with its
+hit's bursts, Frieza and Goku its lines pass 34 without any star, so the
+laser's cells whose middle lies within 16 pixels of the freshest hit
+(younger than 24 frames) are hidden, the bursts covering the laser there
+(the laser stops a few pixels short of them).
 
 Window blocks: when the camera's radius or centre column changes, the next
 block is built in the back buffer and published with the radius's ROM
@@ -676,8 +694,8 @@ are untouched).
 | `$6000-$60FF` | camera, globe and star state, the shown HDMA set and its band lines |
 | `$6100-$67E3` | two globe window blocks (868 bytes each); in the cosmic montage a shot's state and HDMA tables, in its pullback the Death Ball buffers' state |
 | `$6800-$686F` | two indirect HDMA table sets (M7A, M7D, windows), the first set's BGMODE table |
-| `$6870-$6A7F` | star lists |
-| `$6A80-$6CFF` | fight state and arrays, the second set's BGMODE table (`$6CC6`) |
+| `$6870-$6A7F` | star lists, the stars' row limits and counts, the depths' turn |
+| `$6A80-$6CFF` | fight state and arrays, the second set's BGMODE table (`$6CC6`), the beams the star limits were made for |
 | `$6D00-$6DFF` | drawing scratch, streamed-cell bookkeeping, beam groups and run builds |
 | `$6E00-$6FFF` | scratch, band window table A, band state |
 | `$7000-$71FF` | generated beam picture buffer |

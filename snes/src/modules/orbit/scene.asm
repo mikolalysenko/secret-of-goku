@@ -300,6 +300,7 @@ orbit_picture_init:
 	STA.w !s_lists
 	STA.w !s_lists+2
 	STA.w !s_lists+4
+	JSR stars_limits_reset         ; (no limits; the stale depths looked at from the first)
 	LDA.w #$FFFF
 	STA.w !s_twhave
 	LDX.w #$0006
@@ -359,7 +360,15 @@ orbit_background:
 	JSR orbit_vcount
 	CMP.w #!ORBIT_DEADLINE
 	BCS .done
-	LDA.w !g_bld
+	LDA.w !sc_hot                  ; (the stars' limits changed: their rebuilds first)
+	BEQ +
+	LDA.w #100
+	JSR stars_background
+	REP #$30
+	JSR orbit_vcount
+	CMP.w #!ORBIT_DEADLINE
+	BCS .done
++	LDA.w !g_bld
 	BEQ .stars
 	LDA.w #$00FF                   ; rows: as many as the deadline allows
 	STA.w !g_bld_n

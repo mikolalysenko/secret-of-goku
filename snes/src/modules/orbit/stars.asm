@@ -19,6 +19,14 @@
 ; exactly the pixels the browser's planet paints over it) is left out;
 ; every frame copies the lists into OAM. The second surge's pullback draws
 ; sky() with no camera (offsets and zoom 0) and the surge's own clock.
+;
+; The PPU fetches at most 34 slivers (8 pixels of a sprite's width) a line
+; and leaves out those of the sprites first in OAM: the bursts, the beams'
+; cells. A star takes 2 on each of its 16 lines. While beams show, the
+; rows (8 lines) under their cells limit the stars of lists 1-2 that may
+; cover them (stars_limits: (34 - !SC_SPARE - the beams' slivers a line)
+; / 2, both lists together); a build leaves out a star past a limit, and a
+; change of the limits rebuilds the lists (s_kgen).
 
 stars_frame:
 	REP #$30
@@ -134,16 +142,22 @@ stars_frame:
 .twDone
 	LDA.w !s_tmp+2
 	STA.w !s_tw
-	RTS
+	JMP stars_limits
 
 ; Spare time (orbit_background): continue the rebuild in progress, else
-; start the first stale depth; A16 = stars to process at most.
+; start the first stale depth, looking from the one after the last started
+; (while the camera moves, the globe's rows make every depth stale each
+; frame: each in turn); A16 = stars to process at most.
 stars_background:
 	STA.w !s_left
 	LDA.w !s_bd
 	BEQ +
 	JMP stars_build_step
-+	LDX.w #$0002
++	LDX.w !s_bnext
+	LDA.w !g_pull                  ; (the pullback: depth 1 first; its frames have
+	BEQ +                          ; no time for the stars the others would show)
+	LDX.w #$0002
++	LDY.w #3                       ; depths to look at
 .stale
 	LDA.w !sx_want,X
 	CMP.w !sx_have,X
@@ -164,9 +178,19 @@ stars_background:
 	BNE .rebuild
 +	INX : INX
 	CPX.w #$0008
-	BCC .stale
+	BCC +
+	LDX.w #$0002
++	DEY
+	BNE .stale
+	STZ.w !sc_hot                  ; (every depth follows the limits)
 	RTS
 .rebuild
+	TXA                            ; (the next look starts after this one)
+	CLC : ADC.w #2
+	CMP.w #$0008
+	BCC +
+	LDA.w #$0002
++	STA.w !s_bnext
 	LDA.w !s_left
 	PHA
 	JSR stars_build_start
@@ -259,6 +283,18 @@ stars_mul16:
 ; globe as published now.
 stars_build_start:
 	STX.w !s_bd
+	; lists 1-2: their stars on each row from nothing
+	CPX.w #$0006
+	BCS +
+	LDA.l stars_counts_at-2,X
+	TAX
+	LDY.w #13
+-	STZ.w $0000,X
+	INX : INX
+	DEY
+	BPL -
+	LDX.w !s_bd
++
 	LDA.w !sx_want,X : STA.w !sx_have,X
 	LDA.w !sy_want,X : STA.w !sy_have,X
 	LDA.w !sz_want,X : STA.w !sz_have,X
@@ -362,7 +398,7 @@ stars_build_step:
 	PLB
 	REP #$20
 	LDY.w !s_tmp+14
-	BRA .next
+	JMP .next
 .keep
 	PLB
 	REP #$20
@@ -373,6 +409,15 @@ stars_build_step:
 	LDA.w !fn_phase
 	BEQ +
 	JSR stars_band_hidden
+	BCC +
+	JMP .next
++	; past a row's limit under the beams (lists 1-2)
+	LDA.w !sc_on
+	BEQ +
+	LDA.w !s_bd
+	CMP.w #$0006
+	BCS +
+	JSR stars_limit_rule
 	BCC +
 	JMP .next
 +	LDA.l orbit_stars+2,X          ; flags | phase << 8
@@ -424,6 +469,8 @@ stars_build_step:
 	STZ.w !s_bd
 	RTS
 
+stars_counts_at:
+	dw !sc_cnt, !sc_cnt2
 stars_list_at:
 	dw !s_list1, !s_list2, !s_list3
 stars_first:
@@ -486,6 +533,398 @@ stars_oam:
 	INX : INX
 	CPX.w #$0008
 	BCC .list
+	RTS
+
+; The star at y = s_tmp+8 for list s_bd (2 / 4) with the rows' limits:
+; each of its rows y / 8 .. (y + 15) / 8 holding fewer stars of both
+; lists than its limit, it is counted for its list (carry clear); else
+; carry set (left out). Keeps X, Y.
+stars_limit_rule:
+	PHX
+	LDA.w !s_tmp+8
+	LSR : LSR : LSR
+	STA.w !s_tmp+10                ; first row
+	TAX
+	LDA.w !s_tmp+8
+	CLC : ADC.w #15
+	LSR : LSR : LSR
+	CMP.w #28
+	BCC +
+	LDA.w #27
++	STA.w !s_tmp+12                ; last row
+	SEP #$20
+-	LDA.w !sc_cnt,X
+	CLC : ADC.w !sc_cnt2,X
+	CMP.w !sc_k,X
+	BCS .out
+	CPX.w !s_tmp+12
+	INX
+	BCC -
+	REP #$20
+	; kept: counted on its rows, in its list's counts
+	LDX.w !s_tmp+10
+	LDA.w !s_bd
+	CMP.w #$0004
+	BNE +
+	TXA
+	CLC : ADC.w #28
+	TAX
+	LDA.w !s_tmp+12
+	CLC : ADC.w #28
+	STA.w !s_tmp+12
++	SEP #$20
+-	INC.w !sc_cnt,X
+	CPX.w !s_tmp+12
+	INX
+	BCC -
+	REP #$20
+	PLX
+	CLC
+	RTS
+.out
+	REP #$20
+	PLX
+	SEC
+	RTS
+
+; ---------------------------------------------------------------------------
+; The limits for this frame's beams (stars_frame's end). Per group: the
+; rows its cells cover, from the origin to the screen's edge along its
+; heading (cells i = 0 .. n - 1, chains j = -J .. J: top left A0 + i P +
+; j S, mirrored by its signs) and its slivers on each line of them by
+; heading class (32x32 cells: class 0 the cells of a chain, its chains one
+; above another; class 1 two cells of every chain; classes 2-4 one of
+; every chain). Only when a group's inputs change (sc_in); where its rows
+; or slivers change, the limits are made again and the lists rebuilt.
+stars_limits:
+	LDA.w !g_pull                  ; (none in the pullback: its frames have no time
+	BEQ +                          ; for the rebuilds)
+	LDA.w !sc_on
+	BEQ ++
+	JSR stars_limits_reset
+	INC.w !s_kgen
+++	RTS
++	STZ.w !s_left                  ; (nonzero: a group's rows changed)
+	LDX.w #$0002
+.group
+	JSR stars_group_inputs         ; changed? (and kept in sc_in)
+	BCC .next
+	JSR stars_group_rows           ; -> s_tmp+0 slivers, +2 top row, +4 bottom row
+	TXA
+	ASL
+	TAY                            ; sig offset (group * 4)
+	SEP #$20
+	LDA.w !s_tmp+0
+	CMP.w !sc_sig,Y
+	BNE .changed
+	LDA.w !s_tmp+2
+	CMP.w !sc_sig+1,Y
+	BNE .changed
+	LDA.w !s_tmp+4
+	CMP.w !sc_sig+2,Y
+	BEQ .same
+.changed
+	LDA.w !s_tmp+0 : STA.w !sc_sig,Y
+	LDA.w !s_tmp+2 : STA.w !sc_sig+1,Y
+	LDA.w !s_tmp+4 : STA.w !sc_sig+2,Y
+	LDA.b #1
+	STA.w !s_left
+.same
+	REP #$20
+.next
+	DEX : DEX
+	BPL .group
+	LDA.w !s_left
+	AND.w #$00FF
+	BNE +
+	RTS
++	JSR stars_limits_free
+	; slivers into the rows, then limits: (34 - spare - slivers) / 2
+	LDY.w #$0000
+.sum
+	SEP #$20
+	LDA.w !sc_sig,Y
+	BEQ .sumNext
+	STA.w !s_tmp+0
+	REP #$20
+	LDA.w !sc_sig+1,Y
+	AND.w #$00FF
+	TAX
+	SEP #$20
+-	LDA.w !sc_k,X
+	CMP.b #!SC_FREE
+	BNE +
+	LDA.b #0                       ; (the row's first slivers)
++	CLC : ADC.w !s_tmp+0
+	STA.w !sc_k,X
+	LDA.b #1
+	STA.w !sc_on
+	TXA
+	CMP.w !sc_sig+2,Y
+	INX
+	BCC -
+.sumNext
+	REP #$20
+	INY : INY : INY : INY
+	CPY.w #8
+	BCC .sum
+	LDX.w #27
+	SEP #$20
+-	LDA.w !sc_k,X
+	CMP.b #!SC_FREE
+	BEQ +
+	EOR.b #$FF
+	SEC : ADC.b #34-!SC_SPARE      ; 34 - spare - slivers
+	BPL ++
+	LDA.b #0
+++	LSR
+	STA.w !sc_k,X
++	DEX
+	BPL -
+	REP #$20
+	INC.w !s_kgen                  ; (every list rebuilt with them, first)
+	LDA.w #$0001
+	STA.w !sc_hot
+	RTS
+
+; Every row free of limits.
+stars_limits_free:
+	LDA.w #(!SC_FREE<<8)|!SC_FREE
+	LDX.w #26
+-	STA.w !sc_k,X
+	DEX : DEX
+	BPL -
+	STZ.w !sc_on
+	RTS
+
+; The scene's start: no limits, no beams seen, no stars counted; the
+; stale depths looked at from the first.
+stars_limits_reset:
+	LDA.w #$0002
+	STA.w !s_bnext
+	STZ.w !sc_hot
+	JSR stars_limits_free
+	LDA.w #$0000
+	LDX.w #22
+-	STA.w !sc_in,X
+	DEX : DEX
+	BPL -
+	LDX.w #54
+-	STA.w !sc_cnt,X
+	DEX : DEX
+	BPL -
+	STA.w !sc_sig
+	STA.w !sc_sig+2
+	STA.w !sc_sig+4
+	STA.w !sc_sig+6
+	RTS
+
+; Carry set when group X's beam differs from the one its limits were made
+; for (sc_in: class | $8000 when on, chains, x, y, signs, the band layers'
+; line), which then becomes the one kept. Keeps X.
+stars_group_inputs:
+	TXA
+	STA.w !s_tmp+12
+	ASL
+	CLC : ADC.w !s_tmp+12
+	ASL
+	TAY                            ; group * 12
+	LDA.w !bw_key,X
+	CMP.w #$FFFF
+	BNE +
+	LDA.w #$0000                   ; (off)
+	BRA ++
++	AND.w #$01C0                   ; class
+	ORA.w #$8000
+++	STA.w !s_tmp+6
+	LDA.w !bw_sx,X
+	AND.w #$0001
+	STA.w !s_tmp+8
+	LDA.w !bw_sy,X
+	AND.w #$0002
+	ORA.w !s_tmp+8
+	STA.w !s_tmp+8                 ; signs
+	STZ.w !s_tmp+12                ; (changed)
+	LDA.w !s_tmp+6
+	CMP.w !sc_in,Y
+	BEQ +
+	STA.w !sc_in,Y
+	INC.w !s_tmp+12
++	LDA.w !s_tmp+6
+	BEQ .done                      ; (off: the rest does not matter)
+	LDA.w !bw_j,X
+	CMP.w !sc_in+2,Y
+	BEQ +
+	STA.w !sc_in+2,Y
+	INC.w !s_tmp+12
++	LDA.w !bw_x,X
+	CMP.w !sc_in+4,Y
+	BEQ +
+	STA.w !sc_in+4,Y
+	INC.w !s_tmp+12
++	LDA.w !bw_y,X
+	CMP.w !sc_in+6,Y
+	BEQ +
+	STA.w !sc_in+6,Y
+	INC.w !s_tmp+12
++	LDA.w !s_tmp+8
+	CMP.w !sc_in+8,Y
+	BEQ +
+	STA.w !sc_in+8,Y
+	INC.w !s_tmp+12
++	LDA.w !bw_ymin,X
+	CMP.w !sc_in+10,Y
+	BEQ .done
+	STA.w !sc_in+10,Y
+	INC.w !s_tmp+12
+.done
+	LDA.w !s_tmp+12
+	CMP.w #1                       ; carry set: changed
+	RTS
+
+; Group X (0 / 2): s_tmp+0 = its slivers a line (0: none, on no row of
+; the screen), +2 its top row, +4 its bottom row (0-27). Keeps X.
+stars_group_rows:
+	STZ.w !s_tmp+0
+	LDA.w !bw_key,X
+	CMP.w #$FFFF
+	BNE +
+	JMP .off
++	LSR : LSR : LSR : LSR : LSR : LSR
+	AND.w #$0007
+	STA.w !s_tmp+6                 ; class
+	; n: cells to the screen's edge along the heading (at most 12)
+	CMP.w #4
+	BCS .vertical
+	LDY.w !bw_sx,X
+	LDA.w !bw_x,X
+	CPY.w #$0000
+	BNE +
+	EOR.w #$FFFF
+	CLC : ADC.w #256               ; 255 - x
++	CMP.w #$8000
+	BCC +
+	JMP .off                       ; (the origin past that edge)
++	LSR : LSR : LSR : LSR          ; / 16
+	LDY.w !s_tmp+6
+	CPY.w #3
+	BEQ .n                         ; (class 3: 16 a cell)
+	LSR                            ; / 32
+	BRA .n
+.vertical
+	LDY.w !bw_sy,X
+	LDA.w !bw_y,X
+	CPY.w #$0000
+	BNE +
+	EOR.w #$FFFF
+	CLC : ADC.w #224               ; 223 - y
++	CMP.w #$8000
+	BCC +
+	JMP .off
++	LSR : LSR : LSR : LSR : LSR
+.n
+	INC
+	CMP.w #12
+	BCC +
+	LDA.w #12
++	STA.w !s_tmp+8                 ; n
+	; slivers a line: class 0 4 min(n, 9); class 1 8 (2J + 1); else 4 (2J + 1)
+	LDA.w !bw_j,X
+	ASL
+	INC
+	ASL : ASL
+	LDY.w !s_tmp+6
+	CPY.w #1
+	BNE +
+	ASL
++	CPY.w #0
+	BNE +
+	LDA.w !s_tmp+8
+	CMP.w #9
+	BCC ++
+	LDA.w #9
+++	ASL : ASL
++	STA.w !s_tmp+0
+	; lines: T = A0y + j Sy + i Py over the chains and cells
+	PHX
+	LDA.w !s_tmp+6
+	JSR beam_class_offset
+	TAX
+	LDA.l orbit_fx_beam_class+18,X  ; Sy
+	STA.w !s_tmp+10
+	LDA.l orbit_fx_beam_class+14,X  ; Py
+	STA.w !s_tmp+12
+	LDA.l orbit_fx_beam_class+10,X  ; A0y
+	STA.w !s_tmp+14
+	PLX
+	LDA.w !bw_j,X                  ; J Sy (J <= 2)
+	TAY
+	LDA.w #0
+-	DEY
+	BMI +
+	CLC : ADC.w !s_tmp+10
+	BRA -
++	STA.w !s_tmp+10
+	LDA.w !s_tmp+8                 ; (n - 1) Py
+	DEC
+	TAY
+	LDA.w #0
+-	DEY
+	BMI +
+	CLC : ADC.w !s_tmp+12
+	BRA -
++	CLC : ADC.w !s_tmp+14
+	CLC : ADC.w !s_tmp+10
+	STA.w !s_tmp+12                ; Tmax
+	LDA.w !s_tmp+14
+	SEC : SBC.w !s_tmp+10
+	STA.w !s_tmp+10                ; Tmin
+	LDA.w !bw_sy,X
+	BNE .up
+	LDA.w !bw_y,X                  ; lines y + Tmin .. y + Tmax + 31
+	CLC : ADC.w !s_tmp+10
+	STA.w !s_tmp+2
+	LDA.w !bw_y,X
+	CLC : ADC.w !s_tmp+12
+	CLC : ADC.w #31
+	STA.w !s_tmp+4
+	BRA .rows
+.up
+	LDA.w !bw_y,X                  ; lines y - Tmax - 31 .. y - Tmin
+	SEC : SBC.w !s_tmp+12
+	SEC : SBC.w #31
+	STA.w !s_tmp+2
+	LDA.w !bw_y,X
+	SEC : SBC.w !s_tmp+10
+	STA.w !s_tmp+4
+.rows
+	; on the screen, below the band layers' lines (bw_ymin)
+	LDA.w !s_tmp+2
+	CMP.w !bw_ymin,X
+	BPL +
+	LDA.w !bw_ymin,X
++	BPL +
+	LDA.w #0
++	STA.w !s_tmp+2
+	LDA.w !s_tmp+4
+	BMI .off
+	CMP.w #224
+	BCC +
+	LDA.w #223
++	CMP.w !s_tmp+2
+	BMI .off
+	LSR : LSR : LSR
+	STA.w !s_tmp+4
+	LDA.w !s_tmp+2
+	CMP.w #224
+	BCS .off
+	LSR : LSR : LSR
+	STA.w !s_tmp+2
+	RTS
+.off
+	STZ.w !s_tmp+0
+	STZ.w !s_tmp+2
+	STZ.w !s_tmp+4
 	RTS
 
 ; Carry set when the star at (s_tmp+6, s_tmp+8) lies well inside one of

@@ -4,6 +4,22 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the stars and the laser under the PPU's line limit (2026-10-21)
+
+- While beams show, the stars under their cells are limited per row of 8
+  lines, from the beams' slivers there by heading class, so a beam across
+  dense stars keeps under the PPU's 34 slivers a line and its cells no
+  longer lose theirs; the depths rebuild with new limits ahead of the
+  globe's window block.
+- The starfield's stale depths are rebuilt in turn: while the camera moved,
+  depth 1 alone was rebuilt and depths 2-3 lagged (the second surge's
+  pullback keeps the old order for its frame time).
+- The finger laser's cells under a fresh hit are hidden: the hit's bursts
+  showed only in part (first in OAM, they lost their slivers to the laser,
+  Frieza and Goku on its lines).
+- Frames passing the line limit: `fight` 43 (2-28 lines each, from 45
+  frames of up to 40 lines), `clash` 27 (from 89).
+
 ## Orbit: the fight's colours, beam pictures, bursts and first panel frames (2026-10-21)
 
 - The globe and the beams no longer take the field's colours on alternate

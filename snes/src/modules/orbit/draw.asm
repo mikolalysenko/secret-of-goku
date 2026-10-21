@@ -542,8 +542,12 @@ fd_disc:
 ; the origin; the line itself with the beams), beams (pink orb at the
 ; origin; the band with the beams).
 fd_boss_shots:
+	LDA.w !o_slot
+	PHA
 	LDX.w #$0002                   ; Frieza's beam or laser band
 	JSR beam_draw
+	PLA
+	JSR fd_laser_hit
 	LDX.w #(!BS_N-1)*16
 .shot
 	STX.w !d_hit
@@ -609,6 +613,101 @@ fd_boss_shots:
 	JMP .shot
 +
 	RTS
+
+; The finger laser across the screen, its hit's bursts, Frieza and Goku
+; pass the PPU's 34 slivers a line on the laser's lines, and the bursts,
+; first in OAM, lost theirs. The laser's cells under the freshest hit
+; (younger than 24 frames, the bursts at their fullest), their middle
+; within 16 pixels of it, are hidden: the bursts cover the laser there.
+; A16 = o_slot before the laser's run (beam_copy_run aligns it to 16).
+fd_laser_hit:
+	CLC : ADC.w #15
+	AND.w #$FFF0
+	STA.w !d_t6                    ; the run's first entry
+	LDA.w !bw_key+2
+	CMP.w #$FFFF
+	BEQ .out
+	AND.w #!BK_LASER
+	BEQ .out
+	; the freshest hit
+	LDA.w #24
+	STA.w !d_t7
+	LDY.w #$FFFF
+	LDX.w #(!HIT_N-1)*6
+-	LDA.w !FS_HITS+4,X
+	CMP.w !d_t7
+	BCS +
+	STA.w !d_t7
+	TXY
++	TXA
+	SEC : SBC.w #6
+	TAX
+	BPL -
+	CPY.w #$FFFF
+	BEQ .out
+	LDA.w !FS_HITS+0,Y
+	STA.w !d_t0                    ; hit x
+	LDA.w !FS_HITS+2,Y
+	STA.w !d_t1                    ; hit y
+	LDX.w !d_t6
+.cell
+	CPX.w !o_slot
+	BCS .out
+	; the hit's line within the cell's 32
+	LDA.w $0801,X
+	AND.w #$00FF
+	CMP.w #224
+	BCS .next                      ; (hidden)
+	STA.w !d_t2
+	LDA.w !d_t1
+	SEC : SBC.w !d_t2
+	CMP.w #32
+	BCS .next
+	; the cell's middle within 16 of the hit: x + 16 - hit x in -16..16
+	JSR fd_oam_x
+	CLC : ADC.w #16+16
+	SEC : SBC.w !d_t0
+	CMP.w #33
+	BCS .next
+	SEP #$20
+	LDA.b #$E0
+	STA.w $0801,X
+	REP #$20
+.next
+	INX : INX : INX : INX
+	BRA .cell
+.out
+	RTS
+
+; A16 = the x of the OAM entry at X16 (8 bits and the high table's bit 8,
+; signed). Keeps X.
+fd_oam_x:
+	PHX
+	TXA
+	LSR : LSR
+	AND.w #$0003
+	ASL
+	STA.w !d_t3                    ; (entry within its high-table byte) * 2
+	TXA
+	LSR : LSR : LSR : LSR
+	TAY
+	LDA.w $0A00,Y
+	LDY.w !d_t3
+-	DEY
+	BMI +
+	LSR
+	BRA -
++	AND.w #$0001
+	XBA
+	STA.w !d_t3                    ; $0100 when bit 8
+	PLX
+	LDA.w $0800,X
+	AND.w #$00FF
+	ORA.w !d_t3
+	CMP.w #$0100
+	BCC +
+	ORA.w #$FE00                   ; (256-511: negative)
++	RTS
 
 ; Goku's ki blasts: charge-orb frame 1.
 fd_ki:

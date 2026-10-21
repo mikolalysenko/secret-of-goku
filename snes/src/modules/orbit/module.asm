@@ -289,6 +289,21 @@ assert !ma_pairok+2 <= !MA_T1A, "the aerial cut's working state runs into its ta
 !s_list1    = !SB_STARS+$008      ; depth 1 (44 x 4)
 !s_list2    = !SB_STARS+$0C0      ; depth 2 (53 x 4)
 !s_list3    = !SB_STARS+$1A0      ; depth 3 (3 x 4, bright)
+; The stars' limits under the beams (stars.asm stars_limits): per 8-line
+; row the stars of lists 1-2 that may cover it, and per list the stars
+; its last build kept on each row.
+!sc_k       = !SB+$A1C            ; 28 bytes: per row, stars allowed (!SC_FREE: no beam)
+!sc_cnt     = !SB+$A38            ; 28 bytes: per row, list 1's stars
+!sc_cnt2    = !SB+$A54            ; 28 bytes: per row, list 2's stars (sc_cnt + 28)
+!sc_sig     = !SB+$A70            ; 2 x 4 bytes: per group slivers, top row, bottom row (0: none)
+!sc_on      = !SB+$A78            ; nonzero while any row has a limit
+!s_bnext    = !SB+$A7A            ; the stale depths are looked at from this one (2, 4, 6)
+!sc_hot     = !SB+$A7C            ; nonzero: the limits changed, the depths' rebuilds go first
+assert !s_list3+12 <= !sc_k, "the star lists run into their limits"
+assert !sc_cnt2 == !sc_cnt+28, "the stars' row counts are one array per list"
+assert !sc_hot+2 <= !SB+$A80, "the stars' limits run into the fight's state"
+!SC_FREE    = 254                 ; no limit on the row
+!SC_SPARE   = 2                   ; slivers a line keeps for the sprites besides beams and stars
 !SB_END     = !SB+$A80            ; the fight's state follows
 assert !SB_END <= $8000, "orbit scene block overflow"
 
@@ -407,8 +422,11 @@ assert !FIGHT_END <= !SB+$D00, "orbit fight block overflow"
 ; and what each set's table holds: g_text | $100 in the pullback)
 !hb_mode1   = !SB+$CC6             ; 16 bytes (hb_mode: the first set's)
 !hb_have    = !SB+$CD6             ; 2 words ($FFFF: nothing yet)
+; (the beams the stars' limits were made for, per group class | on,
+; chains, x, y, signs, the band layers' line)
+!sc_in      = !SB+$CDA             ; 2 x 12 bytes
 assert !FIGHT_END+6 <= !hb_mode1, "the second BGMODE table runs into the fight's state"
-assert !hb_have+4 <= !SB+$D00, "the BGMODE tables' state runs into the drawing block"
+assert !sc_in+24 <= !SB+$D00, "the stars' beam inputs run into the drawing block"
 
 ; ---------------------------------------------------------------------------
 ; Drawing and dynamic VRAM (draw.asm, scene.asm).
