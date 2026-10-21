@@ -128,8 +128,8 @@ function H.load(path)
   onNextInstruction(function() emu.loadSavestate(data) end)
   H.residentEffects()
 end
--- Old checkpoints contain the retail effect table. Install only the unused
--- slots that the shipping ROM now fills at boot. A retail checkpoint also
+-- Old checkpoints contain the retail effect table. Restore the shipping
+-- effect block, including shared-track pointers. A retail checkpoint also
 -- needs the shipping extension: reproduce its boot upload, without touching
 -- music tracks, song samples or echo. Diagnostic PCM imports stay retail.
 function H.residentEffects()

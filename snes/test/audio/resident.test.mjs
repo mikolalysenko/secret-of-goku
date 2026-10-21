@@ -5,6 +5,7 @@ import {readFileSync} from 'node:fs';
 import {createApu,loadRom,driverChunks} from './apu.mjs';
 import {effectRam,trackBytes,residentLayout} from '../../gen/audio-resident-storage.mjs';
 import {NATIVE_IDS,RESIDENT} from '../../gen/audio-resident.mjs';
+import {songNoise} from './audit.mjs';
 
 const rom=readFileSync(process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc');
 test('resident effects preserve retail sequences and samples',()=>{
@@ -49,4 +50,29 @@ test('every mapped effect is audible, single-voice and self-terminating',()=>{
   assert.equal(new Set(NATIVE_IDS.slice(20,23)).size,3,'orb, disc and laser have distinct timbres');
   assert.notEqual(NATIVE_IDS[25],NATIVE_IDS[8],'Fortress break is a burst');
   const layout=residentLayout(loadRom(),RESIDENT);assert.ok(layout.used<=layout.capacity);
+});
+test('noise cues restore the song clock on completion and release ownership on interruption',()=>{
+  for(const source of [loadRom(),rom]){
+    const songs=songNoise(source);
+    assert.equal(songs.length,64);
+    for(const s of songs){assert.ok(s.commands>0);assert.deepEqual(s.noise,[],`song ${s.id} uses global noise`);}
+  }
+  for(const stop of ['end','replace','stop']){
+    const h=createApu({rom,extension:false});h.ms(60);
+    // A nonzero music noise clock proves restoration rather than reset to 0.
+    h.ram[0xC5]=13;
+    h.nativeCmd(2,0xEB,15,0x88);h.ms(50);
+    assert.equal(h.dspReg(0x6C)&31,28);assert.ok(h.dspReg(0x3D));
+    if(stop==='replace'){h.nativeCmd(2,0xEB,15,0x88);h.ms(50);}
+    if(stop==='stop')h.nativeCmd(0xF2);
+    h.ms(1200);
+    assert.equal(h.ram[0xAE],0,'voice returned');
+    assert.equal(h.dspReg(0x3D),0,'NON cleared');
+    if(stop!=='stop')assert.equal(h.dspReg(0x6C)&31,13,'music noise clock restored');
+    // The retail global-stop command leaves FLG's last clock but clears NON
+    // and the effect-priority bit. No shipping song uses noise; its next
+    // DD/DE would select C5 again. Do not patch the driver to change this.
+    else assert.equal(h.ram[0xB1]&16,0,'global stop released noise priority');
+    assert.equal(h.dspReg(0x2D),0,'PMON clear');
+  }
 });

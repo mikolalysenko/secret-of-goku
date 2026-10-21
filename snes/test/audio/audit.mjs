@@ -1,11 +1,11 @@
 // Storage proof, conservative call-site audit and optional Mesen command trace.
 // Absence from a finite trace is NOT proof that a retail effect is unused.
-// node snes/test/audio/audit.mjs [--trace]
+// node snes/test/audio/audit.mjs [--trace] [--before=baseline.sfc]
 import {readFileSync,writeFileSync,mkdirSync,readdirSync,existsSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 import {loadRom,driverChunks,romSong} from './apu.mjs';
 import {parseEvent} from '../../../engine/event-codec.js';
-import {SHARED_TRACKS,sharedPatches,residentLayout} from '../../gen/audio-resident-storage.mjs';
+import {SHARED_TRACKS,sharedPatches,residentLayout,EFFECT_ROM} from '../../gen/audio-resident-storage.mjs';
 import {RESIDENT} from '../../gen/audio-resident.mjs';
 import {runMesen} from '../mesen.mjs';
 import {checkpointDir,privateRom,cleanupRom} from '../checkpoints.mjs';
@@ -46,6 +46,24 @@ export function staticAudit(rom=loadRom()){
   return {events,calls,literals,songs:songNoise(rom),shared:SHARED_TRACKS,pointers:sharedPatches(rom),
     layout:residentLayout(rom,RESIDENT),retiredEffects:[],
     conclusion:'No retail id is retired. Only byte-identical tracks are shared; finite traces do not prove unreachability.'};
+}
+export function compareRuntime(beforePath,afterPath){
+  const before=readFileSync(beforePath),after=readFileSync(afterPath);
+  const symbols=readFileSync(afterPath.replace(/\.sfc$/,'.sym'),'utf8');
+  const address=name=>{
+    const m=symbols.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${name}$`,'mi'));
+    if(!m)throw Error(`missing symbol ${name}`);
+    return parseInt(m[1]+m[2],16)&0x3FFFFF;
+  };
+  if(before.length!==after.length)throw Error('runtime comparison needs matching ROM sizes');
+  const map=address('audio_native_ids'),end=address('audio_native_priority');
+  let changed=0;
+  for(let i=0;i<after.length;i++)if(before[i]!==after[i]){
+    const p=i&0x3FFFFF;changed++;
+    if((p>=EFFECT_ROM&&p<EFFECT_ROM+0x1C00)||(p>=map&&p<end)||(p>=0xFFDC&&p<0xFFE0))continue;
+    throw Error(`unexpected runtime change at ROM $${i.toString(16)}`);
+  }
+  return {changedBytes:changed,allowed:['resident effect block','cue-id lookup','checksums and ExHiROM mirrors'],changedInstructions:0};
 }
 async function trace(){
   const imports=join(root,'.local/snes-import');
@@ -92,6 +110,8 @@ if(process.argv[1]===import.meta.filename){
   mkdirSync(out,{recursive:true});const result=staticAudit();
   const built=readFileSync(process.env.SNES_ROM??join(root,'dist/snes/secret-of-goku.sfc'));
   result.shippingSongs=songNoise(built);
+  const before=process.argv.find(a=>a.startsWith('--before='))?.slice(9);
+  if(before)result.runtime=compareRuntime(before,process.env.SNES_ROM??join(root,'dist/snes/secret-of-goku.sfc'));
   writeFileSync(join(out,'static.json'),JSON.stringify(result,null,1));
   console.log(`${result.events.length} event commands, ${result.calls.length} native JSL callers, ${result.literals.length} conservative literals; no retail ids retired`);
   console.log(`Noise songs: retail ${result.songs.filter(s=>s.noise.length).length}/64; shipping ${result.shippingSongs.filter(s=>s.noise.length).length}/64`);

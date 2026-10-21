@@ -56,13 +56,27 @@ export function residentLayout(rom,resident){
   const placed=[];
   for(const t of tracks){
     const shared=placed.find(s=>s.bytes.length>=t.bytes.length&&t.bytes.every((v,i)=>v===s.bytes[s.bytes.length-t.bytes.length+i]));
-    if(shared)t.addr=shared.addr+shared.bytes.length-t.bytes.length;
-    else{
-      const span=spans.filter(s=>s.end-s.next>=t.bytes.length).sort((a,b)=>(a.end-a.next)-(b.end-b.next))[0];
-      if(!span)throw Error(`resident sequence storage exhausted (${t.bytes.length} bytes for ${t.id.toString(16)})`);
-      t.addr=span.next;span.next+=t.bytes.length;placed.push(t);
-    }
+    if(shared)t.shared=shared;else placed.push(t);
   }
+  // Exact packing matters in the 12/16/19-byte holes: greedy placement can
+  // strand enough bytes for a whole track. This runs at build time only.
+  const failed=new Set();
+  function place(i){
+    if(i===placed.length)return true;
+    const key=i+':'+spans.map(s=>s.end-s.next).sort((a,b)=>a-b).join(',');
+    if(failed.has(key))return false;
+    const t=placed[i],tried=new Set();
+    for(const s of [...spans].sort((a,b)=>(a.end-a.next)-(b.end-b.next))){
+      const room=s.end-s.next;
+      if(room<t.bytes.length||tried.has(room))continue;
+      tried.add(room);t.addr=s.next;s.next+=t.bytes.length;
+      if(place(i+1))return true;
+      s.next-=t.bytes.length;
+    }
+    failed.add(key);return false;
+  }
+  if(!place(0))throw Error('resident sequence storage exhausted');
+  for(const t of tracks)if(t.shared){t.addr=t.shared.addr+t.shared.bytes.length-t.bytes.length;delete t.shared;}
   const table=new Array(tableEnd-0x2F70).fill(0);
   for(const t of tracks){const p=(t.id-0xDC)*4+t.voice*2;table[p]=t.addr&255;table[p+1]=t.addr>>8;}
   patches.push({addr:0x2F70,bytes:table},...placed.map(t=>({addr:t.addr,bytes:t.bytes})));
