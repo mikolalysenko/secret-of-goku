@@ -4,6 +4,17 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES Sandship: a red flash for the wreck's fires (2026-10-21)
+
+- At the maintainer's request the cartridge draws no fires in the wrecked
+  Sandship. Each blast (every 150 frames, and every 10 frames of the crash
+  while Goku is aboard) is now its sound, its quake and a red flash: the
+  alarm's 24-frame pulse at 2.5 times its strength in the wreck's palette
+  tint.
+- The browser's alarm and firelight flicker are unchanged. With the look
+  on, 1,441 of 1,600 frames complete their logic, against 1,411 with the
+  fires.
+
 ## Orbit: the cosmic montage, town shots and aerial cuts (2026-10-20)
 
 - The second surge's hand-off now plays the cosmic montage before the
