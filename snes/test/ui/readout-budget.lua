@@ -1,6 +1,9 @@
--- Paired runs of the same live five-actor Rabite field. The native RNG
--- depends on idle CPU time, so the lag comparison uses perf/run.mjs's 3%
--- tolerance; separately forbid any vblank crossing during readout work.
+-- Paired runs of the same live five-actor Rabite field, without readings
+-- and with an Analyzer reading on every actor. The native RNG depends on
+-- idle CPU time, so the lag comparison uses perf/run.mjs's 3% tolerance;
+-- separately forbid any vblank crossing during readout work. Each reading
+-- comes from the game's spell landing (snes/test/lua/analyzer.lua), without
+-- the cast itself: the game's own Analyzer window is not part of the budget.
 local active,count,start,before,current,worked=false,0,0,0,0,false
 local costs,lines={},{}
 local visible,full,numbers,overruns,maxActors,maxSprites,maxSlivers=0,0,0,0,0,0,0
@@ -22,7 +25,7 @@ local function finalOam()
 end
 function test()
   enter(BUNDLE)
-  H.w8(0x7ECFAB,2);H.w8(0x316380,0x38)
+  H.w8(0x7ECFAB,2)
   H.wait(40)
   assert(H.saveStable('crowd',120),'no stable crowd state')
   local hooks={}
@@ -44,11 +47,14 @@ function test()
     local actors=0;for i=0,12 do if n&(1<<i)~=0 then actors=actors+1 end end
     numbers=numbers+actors;maxActors=math.max(maxActors,actors)
   end)
+  local hits=0
+  local h=emu.addMemoryCallback(function() hits=hits+1 end,emu.callbackType.exec,SYM.ui_sc_analyzer_hit,SYM.ui_sc_analyzer_hit)
   local result={}
   for _,charge in ipairs({false,true}) do for _,on in ipairs({false,true}) do
     H.load(H_OUT..'/crowd.mss');H.wait(3)
-    H.w8(0x316380,on and 0x78 or 0x38);setui(0,ui(0)&~0x10)
-    H.wait(40)
+    setui(0,ui(0)&~0x10)
+    if on then Analyzer.crowd() end
+    H.wait(30)
     count=0;costs={};lines={};visible=0;full=0;numbers=0;overruns=0;maxActors=0;maxSprites=0;maxSlivers=0;active=true
     if charge then H.hold('l y',200) else H.wait(200) end
     active=false
@@ -56,7 +62,9 @@ function test()
     table.sort(lines)
     result[(charge and 'charge_' or 'idle_')..(on and 'on' or 'off')]={frames=200,reached=count,lag=200-count,visible=visible,full=full,numbers=numbers,maxActors=maxActors,overruns=overruns,maxSprites=maxSprites,maxSlivers=maxSlivers,mean=sum/math.max(1,#costs),max=max,start=lines[math.max(1,#lines//2)]}
   end end
+  emu.removeMemoryCallback(h,emu.callbackType.exec,SYM.ui_sc_analyzer_hit,SYM.ui_sc_analyzer_hit)
   H.result('budget',result)
+  check('analyzer_hits',hits>=10,hits)
   for _,h in ipairs(hooks) do emu.removeMemoryCallback(h[1],emu.callbackType.exec,h[2],h[2]) end
   finish()
 end

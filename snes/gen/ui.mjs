@@ -1,7 +1,7 @@
 import {scouterData} from './ui-scouter.mjs';
 // UI module data: telepathy messages, the BG3 glyph atlas, radar strings and
-// scouter/status tables, generated from the browser engine's own sources so
-// the cartridge and the browser mod share one source of truth.
+// Analyzer readout/status tables, generated from the browser engine's own
+// sources so the cartridge and the browser mod share one source of truth.
 //
 // Outputs (dist/snes/gen/ui/):
 //   defines.asm   message/group/kind/barrier ids (!UI_*) for every module
@@ -16,8 +16,9 @@ import {scouterData} from './ui-scouter.mjs';
 //   catalog.json  every message with its id, source, kind and frames
 //
 // Message sources: exported constant tables (native-radio.js, power-intro.js,
-// frieza-crisis.js, world-ki.js) and every inline radio.say()/interrupt()/
-// scouter joke() literal in engine/*.js, parsed from the source text.
+// frieza-crisis.js, world-ki.js) and every inline radio.say()/interrupt()
+// literal in engine/*.js, parsed from the source text. The scouter's scan
+// jokes (scouter.js) are left out: the cartridge has no scouter.
 import {readFileSync,writeFileSync,readdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -158,7 +159,7 @@ export async function generate({rom,repo,outDir,xdata}){
     return {id,index,first:list[0].id,count:list.length};
   });
 
-  // Inline literals at every radio call site (and the scouter's jokes).
+  // Inline literals at every radio call site.
   const constants={...radio,...intro.powerIntroMessages,...crisis,...worldKi};
   const callRe=/radio\??\.(say|interrupt)(?:\?\.)?\(|\bjoke\(\s*'([\w-]+)'\s*,/g;
   const files=readdirSync(join(repo,'engine')).filter(f=>f.endsWith('.js')&&f!=='native-radio.js'&&f!=='power-intro.js').sort();
@@ -168,7 +169,7 @@ export async function generate({rom,repo,outDir,xdata}){
     let m;
     callRe.lastIndex=0;
     while((m=callRe.exec(src))){
-      if(file==='scouter.js'&&m[1]==='say')continue;   // the joke() helper itself
+      if(file==='scouter.js')continue;   // the cartridge has no scouter: no scan jokes
       const method=m[1]??'say',joke=m[2];
       let parsed;
       try{parsed=parseArgs(src,m.index+m[0].length);}
@@ -569,19 +570,13 @@ export async function generate({rom,repo,outDir,xdata}){
   rd.push('ui_sec128:   ; sqrt(1 + (k/128)^2) * 256: hypot = max * sec / 256');
   for(let i=0;i<129;i+=16)rd.push('\tdw '+secT.slice(i,i+16).join(','));
   // ---------------------------------------------------------------------------
-  // Scouter (scouter.js): the ring title that replaces Goku's Targeting item,
-  // the readout font (3x5 digits and comma) and colours, read from the
-  // browser's source so a change there fails the build.
+  // Analyzer readouts (scouter.js; the cartridge has no scouter switch, so
+  // Goku's Targeting stays native): the readout font (3x5 digits and comma)
+  // and colours, read from the browser's source so a change there fails
+  // the build.
   {
     const src=readFileSync(join(repo,'engine/scouter.js'),'utf8');
     const need=(cond,what)=>{if(!cond)throw Error(`ui gen: scouter.js changed (${what})`);};
-    need(src.includes("encodeText(`Scouter: ${on?'ON':'OFF'}`)"),'ring title template');
-    need(src.includes('pc>=0xaa174'),'Targeting title at PC 0xAA174');
-    need(src.includes('r[0x1808]===0&&r[0x1809]===2&&r[0x1876]===1'),'ring item test');
-    need(rom.slice(0xaa174,0xaa17e).every((b,i)=>b===[...encodeText('Targeting'),0][i]),'Targeting title bytes');
-    rd.push('ui_sc_titles: dw ui_sc_title_off, ui_sc_title_on');
-    rd.push(`ui_sc_title_off: db ${enc('Scouter: OFF')}`);
-    rd.push(`ui_sc_title_on: db ${enc('Scouter: ON')}`);
     const consts=src.match(/const lifetime=(\d+),green=([^,]+),shadow=([^;]+);/);
     need(consts,'lifetime/green/shadow constants');
     const val=e=>Function(`return (${e});`)();

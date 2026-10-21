@@ -69,6 +69,19 @@ export const RAM_VARS={0xcf0d:[8],0xcf0e:[8],0xcf28:[11],0xcf44:[2],0xcf11:[8],0
 
 export const BASE_ROM_SHA256='4c15013131351e694e05f22e38bb1b3e4031dedac77ec75abecebe8520d82d5f';
 
+// Cartridge-only text (engine/retail-dialogue.js keys). The cartridge has
+// no scouter ring item (cut for resources, docs/agents/snes-port/ui.md):
+// Sylphid's grant (event 583) explains the Analyzer readings instead of
+// handing over the glass. Applied before every cartridge story compile and
+// the story test's browser reference, so both build the same scripts.
+export const CARTRIDGE_DIALOGUE={
+  0xa6f71:"   Gained Sylphid's powers!\nSYLPHID:Star warrior, you\ncannot cast my Analyzer.\nBut when a friend casts it,\nyou will see its target's\npower, plain as day.\nGOKU:Like a scouter!\nHee hee, that's handy!",
+};
+export async function useCartridgeDialogue(repo){
+  const {retailDialogue}=await import(pathToFileURL(join(repo,'engine','retail-dialogue.js')).href);
+  Object.assign(retailDialogue,CARTRIDGE_DIALOGUE);
+}
+
 // The browser compiles from cart.data = gokuDialoguePatch(originalGamePatch(rom))
 // (engine/lab.js loadROM). Reproduce that preparation from the same scripts.
 export function browserCartData(repo,rom){
@@ -80,6 +93,7 @@ export function browserCartData(repo,rom){
 
 export async function loadStoryEnvironment(repo,rom){
   const engine=name=>import(pathToFileURL(join(repo,'engine',name)).href);
+  await useCartridgeDialogue(repo);
   const {createNativeStory}=await engine('native-story.js');
   const data=browserCartData(repo,rom);
   // ---- tracked mock state -------------------------------------------------

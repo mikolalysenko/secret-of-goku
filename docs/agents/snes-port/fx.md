@@ -274,8 +274,8 @@ native-only OAM upload (`$EC` bit 3 without a completed module frame)
 retires FX's palette ownership. On window/lag vblanks the previous OAM remains
 displayed: native BG colours are refreshed and OBJ colours are retained.
 If a scene handler replaced CGRAM, FX reapplies the displayed palette map.
-UI's scouter shares unused colours from this frame's `fx_clspal`, not the
-previous uploaded map. Its outstanding DMA leases still cannot be evicted;
+UI's Analyzer readouts share unused colours from this frame's `fx_clspal`,
+not the previous uploaded map. Its outstanding DMA leases still cannot be evicted;
 completed UI cells yield to FX and recently used FX cells stay protected.
 
 **OAM**: one 16×16 OBJ per cell (field OBJSEL `$63`). Most sprites go behind
@@ -536,7 +536,7 @@ miniature. Blue, gold and pink ramps use the existing palette allocator.
 The full flame's second pose rises one pixel; the miniature mirrors. Both
 reuse their cells. Both halves of the browser's 30 Hz strobe warm/protect
 the cells; a new flame waits until its own cells are resident. Unrelated
-pending orb, fire or scouter uploads no longer hide it. No backdrop,
+pending orb, fire or readout uploads no longer hide it. No backdrop,
 background palette, colour-math or HDMA registers are changed. This keeps
 the aura independent of cut grass and native background transparency.
 Power still controls whether the aura is present; the compact art uses a
@@ -585,6 +585,13 @@ Baseline `173cbe8`; counts are drawn / browser-eligible completed frames.
 | `sandship-wreck` | 88/89 | 89/89 |
 | `potos-ring` | 0/0 | 0/0 |
 
+The two scouter scenes (switch on: readings of everyone on screen) are now
+`rabite-analyzer` and `waterfall-analyzer`: the cartridge's scouter was cut,
+so each gets an Analyzer reading on every actor through the game's spell
+landing (`snes/test/lua/analyzer.lua`) before L is held, and must draw
+readings (`rabite-analyzer` 85/85 with readings on 9 of its 168 reading
+frames, `waterfall-analyzer` 89/89 with 176/179).
+
 Expected counts can differ when native lag changes which 60 Hz action
 clocks reach a completed field frame. Dialogue and ring controls correctly
 draw zero. No sampled aura frame has a wrong palette, unsafe FX DMA or
@@ -596,7 +603,7 @@ Gameplay CPU misses are unchanged, except charging improves from 19 to
 17 per 240 video frames; hardware errors remain zero.
 
 `focus-scenes` holds real L input for 180 video frames in 18 imported scene
-variants, including walking, base/SSJ, water/local flight, scouter readouts,
+variants, including walking, base/SSJ, water/local flight, Analyzer readouts,
 the Sandship tint, and dialogue/ring negative controls. Its oracle calls
 the browser's `canAttack` getter and `drawKiAura` with the recorded action
 and clock. It counts completed field frames where the browser draws pixels
@@ -739,7 +746,7 @@ same beam as OBJ strips. A frame over ~225 lines in total lags (the game
 then runs at 30 fps); heavy scenes (Mana Beast ~180 lines native) lag
 with a wave on screen.
 
-### UI scouter cache leases
+### UI readout cache leases
 
 `overlay.asm` adds a lower-priority field client without a new VRAM claim.
 After `fx_frame`, `fx_overlay_begin` ensures initialization/field claims;
@@ -756,7 +763,7 @@ only when `fx_cpend` is empty; its two row transfers and retirement belong to
 UI. `fx_overlay_spare` is generated from palette lengths and marks classes
 whose indices 14/15 are unused. Only a current `fx_tick` establishes shared
 palette ownership. UI may write just those two colours after FX
-NMI; the existing FX palette data is unchanged. See [UI's scouter section](ui.md#shared-fx-cells-uploads-and-hardware-limits)
+NMI; the existing FX palette data is unchanged. See [UI's Analyzer readouts](ui.md#shared-fx-cells-uploads-and-hardware-limits)
 for rendering, timing, limitations and tests.
 
 ### Native effect cells

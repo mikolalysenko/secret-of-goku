@@ -104,16 +104,8 @@ ui_sc_draw_frame:
 	JMP .next
 +	PHA
 	LDX !sd_actor
-	CPX.w #$1800
-	BEQ .virtual
 	LDA.w $E020,X : STA !sd_x
 	LDA.w $E022,X : STA !sd_y
-	BRA .position
-.virtual
-	JSR ui_sc_actor
-	LDA.w !ui_tmp0&$FFFF : STA !sd_x
-	LDA.w !ui_tmp1&$FFFF : STA !sd_y
-.position
 	PLA
 	AND.w #$7FFF
 	LDX.w #1
@@ -185,7 +177,7 @@ ui_sc_draw_frame:
 .next
 	LDA !sd_actor
 	CLC : ADC.w #$0200 : STA !sd_actor
-	CMP.w #$1A00
+	CMP.w #$1800
 	BCS +
 	JMP .actor
 +	LDA !sd_pass

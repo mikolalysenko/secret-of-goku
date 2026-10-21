@@ -28,9 +28,9 @@ const scenes=[
   ['potos','barrier-audit__potos-probe'],
   ['south-potos-walk','animation-audit__native__south-potos',0,1],
   ['rabite-ssj','animation-audit__native__rabite-field-a',1],
-  ['rabite-scouter','animation-audit__native__rabite-field-b',0,1,1],
+  ['rabite-analyzer','animation-audit__native__rabite-field-b',0,1,1],
   ['waterfall','danger-progress__waterfall'],
-  ['waterfall-scouter','danger-progress__waterfall',0,0,1],
+  ['waterfall-analyzer','danger-progress__waterfall',0,0,1],
   ['water-flight','danger-progress__waterfall',0,0,0,'a+right:30,none:10'],
   ['cave-room','readme-variety-probe__cave-room'],
   ['cave-wide-ssj','readme-variety-probe__cave-wide',1,1],
@@ -45,12 +45,12 @@ const scenes=[
   ['potos-ring','barrier-audit__potos-probe',0,0,0,'x:4,none:50'],
 ];
 const summary=[];
-for(const [name,bundle,form=0,walk=0,scouter=0,setup=''] of scenes){
+for(const [name,bundle,form=0,walk=0,analyzer=0,setup=''] of scenes){
   if(process.env.FOCUS_SCENES&&!process.env.FOCUS_SCENES.split(',').includes(name))continue;
   const copy=privateRom(rom,'focus-'+name);
-  const pre=`BUNDLE=${JSON.stringify(join(repo,'.local/snes-import',bundle))}\nFORM=${form}\nWALK=${walk}\nSCOUTER=${scouter}\nWRECK=${name==='sandship-wreck'}\nSETUP=${JSON.stringify(setup)}\nSYM={${Object.entries(symbols).filter(([n])=>['fx_frame','fx_finish','fx_k_aura_obj','fx_entry_tile','fx_class_palettes','ui_sc_draw_frame'].includes(n)).map(([n,a])=>`${n}=${a}`).join(',')}}\nAURA_CELLS={${[...cells].map(c=>`[${c}]=true`).join(',')}}\n`;
+  const pre=`BUNDLE=${JSON.stringify(join(repo,'.local/snes-import',bundle))}\nFORM=${form}\nWALK=${walk}\nANALYZER=${analyzer}\nWRECK=${name==='sandship-wreck'}\nSETUP=${JSON.stringify(setup)}\nSYM={${Object.entries(symbols).filter(([n])=>['fx_frame','fx_finish','fx_k_aura_obj','fx_entry_tile','fx_class_palettes','ui_sc_draw_frame'].includes(n)).map(([n,a])=>`${n}=${a}`).join(',')}}\nAURA_CELLS={${[...cells].map(c=>`[${c}]=true`).join(',')}}\n`;
   let result;
-  try{result=await runMesen({rom:copy,state:join(checkpointDir(),'waterfall.mss'),test:pre+readFileSync(join(import.meta.dirname,'focus-scenes.lua'),'utf8'),outDir:join(root,name),exactFrames:true});}
+  try{result=await runMesen({rom:copy,state:join(checkpointDir(),'waterfall.mss'),test:pre+readFileSync(join(import.meta.dirname,'../lua/analyzer.lua'),'utf8')+'\n'+readFileSync(join(import.meta.dirname,'focus-scenes.lua'),'utf8'),outDir:join(root,name),exactFrames:true});}
   finally{cleanupRom(copy);}
   if(result.code!==0||!result.results||result.results.error)throw Error(`${name}: ${result.results?.error??result.output}`);
   const rows=result.results.rows;
@@ -73,10 +73,9 @@ for(const [name,bundle,form=0,walk=0,scouter=0,setup=''] of scenes){
   const locked=name.endsWith('-dialogue')||name.endsWith('-ring');
   const pass=(locked?expected===0&&rows.every(r=>!r.request):expected>=20&&misses<=1&&maxRun<=1&&lateMisses===0)
     &&wrongPalette===0&&result.results.unsafe===0&&result.results.auraOverflowFrames===0
-    &&(!scouter||result.results.scouterFrames>0)
-    &&(name!=='waterfall-scouter'||result.results.readoutFrames>0)
+    &&(!analyzer||result.results.readingFrames>0&&result.results.readoutFrames>0)
     &&(name!=='water-flight'||result.results.flightFrames>0);
-  const row={name,pass,expected,drawn,requested,misses,maxRun,lateMisses,wrongPalette,...Object.fromEntries(['heldFrames','lag','unsafe','overflows','maxSprites','maxSlivers','auraOverflowFrames','fxMean','fxMax','flightFrames','scouterFrames','readoutFrames'].map(k=>[k,result.results[k]]))};
+  const row={name,pass,expected,drawn,requested,misses,maxRun,lateMisses,wrongPalette,...Object.fromEntries(['heldFrames','lag','unsafe','overflows','maxSprites','maxSlivers','auraOverflowFrames','fxMean','fxMax','flightFrames','readingFrames','readoutFrames'].map(k=>[k,result.results[k]]))};
   summary.push(row);console.log(`${name}: ${drawn}/${expected} drawn; ${requested} requested; ${wrongPalette} palette; ${row.lag} lag; ${pass?'pass':'FAIL'}`);
 }
 writeFileSync(join(root,'summary.json'),JSON.stringify(summary,null,2));

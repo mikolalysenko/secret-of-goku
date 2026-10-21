@@ -10,7 +10,9 @@
 //   roll      saved charge attempts and xorshift state from a GAME FILE
 //   radar     world flight: band panel and dial against dragon-radar.js
 //   place     dialogue window placement above the HUD (native-window.js)
-//   scouter   Goku's Targeting ring item as the scouter switch, scan joke
+//   targeting Goku's Targeting ring item stays native (the scouter was cut)
+//   readouts, readoutBudget, analyzerCharge, analyzerCast, scouterPower
+//             Analyzer readouts (analyzerCast: a real cast from Primm's ring)
 //   text      R batches native glyphs, release/L+R, deferred DMA, raster/CPU
 //   status    Goku's STATUS page: BG2 against native-status.js statusPixels
 //             (base form and Super Saiyan), menu frame rate, leaving it
@@ -41,6 +43,7 @@ const catalog=loadCatalog();
 const id=name=>{const m=catalog.messages.find(x=>x.name===name);if(!m)throw Error(`no message ${name}`);return m.id;};
 const group=name=>{const g=catalog.groups.find(x=>x.name===name);if(!g)throw Error(`no group ${name}`);return g;};
 const lib=readFileSync(join(here,'lib.lua'),'utf8');
+const analyzerLua=join(here,'../lua/analyzer.lua');
 const bundleMap=name=>{
   const cat=JSON.parse(readFileSync(join(importDir,'catalog.json'),'utf8'));
   return cat.find(x=>x.name===name)?.map??JSON.parse(readFileSync(join(importDir,name,'regs.json'),'utf8')).map;
@@ -48,10 +51,11 @@ const bundleMap=name=>{
 const lua=v=>typeof v==='string'?JSON.stringify(v):Array.isArray(v)?'{'+v.map(lua).join(',')+'}':typeof v==='object'&&v?'{'+Object.entries(v).map(([k,x])=>`${k}=${lua(x)}`).join(',')+'}':String(v);
 
 const summary=[];
-async function mesenCase(name,{bundle,prelude={},test}){
+async function mesenCase(name,{bundle,prelude={},test,extra=[],exactFrames=false}){
   const rom=privateRom(testRom,`ui-${name}`);
   const pre=Object.entries({BUNDLE:join(importDir,bundle),...prelude}).map(([k,v])=>`${k}=${lua(v)}`).join('\n');
-  const r=await runMesen({rom,test:pre+'\n'+lib+'\n'+readFileSync(join(here,`${test}.lua`),'utf8'),outDir:join(outRoot,name),timeoutMs:600000});
+  const more=extra.map(f=>readFileSync(f,'utf8')+'\n').join('');
+  const r=await runMesen({rom,test:pre+'\n'+lib+'\n'+more+readFileSync(join(here,`${test}.lua`),'utf8'),outDir:join(outRoot,name),timeoutMs:600000,exactFrames});
   cleanupRom(rom);
   return r;
 }
@@ -241,7 +245,7 @@ const cases={
     const sym=Object.fromEntries(readFileSync(testRom.replace(/\.sfc$/,'.sym'),'utf8').split('\n')
       .map(l=>l.match(/^([0-9A-F]{2}):([0-9A-F]{4}) (\S+)/)).filter(Boolean)
       .map(m=>[m[3],parseInt(m[1]+m[2],16)]));
-    const SYM={ui_sc_frame:sym.ui_sc_frame,ui_ff_text:sym.ui_ff_text,ui_ff_text_complete:sym.ui_ff_text_complete,ui_ff_text_complete_end:sym.ui_ff_text_complete_end,core_flush_auto:sym.core_flush_auto};
+    const SYM={ui_radio_tick:sym.ui_radio_tick,ui_ff_text:sym.ui_ff_text,ui_ff_text_complete:sym.ui_ff_text_complete,ui_ff_text_complete_end:sym.ui_ff_text_complete_end,core_flush_auto:sym.core_flush_auto};
     const fails=[],notes=[],runs=[];
     for(const [hold,defer,native] of [[null,false,false],['r',false,false],['l r',false,false],['mid',false,false],['r',true,false],['r',false,true]]){
       const name=`text-${hold?.replace(' ','-')??'normal'}${defer?'-deferred':''}${native?'-native':''}`, rom=privateRom(testRom,`ui-${name}`);
@@ -373,8 +377,8 @@ const cases={
   async readoutBudget(){
     const symbols=Object.fromEntries(readFileSync(testRom.replace(/\.sfc$/,'.sym'),'utf8').split('\n')
       .map(l=>l.match(/^([0-9A-F]{2}):([0-9A-F]{4}) (\S+)/)).filter(Boolean).map(m=>[m[3],parseInt(m[1]+m[2],16)]));
-    const SYM=Object.fromEntries(["ui_sc_draw_frame","destroy_late_frame","ui_sc_draw_frame_prepared"].map(k=>[k,symbols[k]]));
-    const r=await mesenCase('readout-budget',{bundle:'animation-audit__native__rabite-field-b',prelude:{SYM},test:'readout-budget'});
+    const SYM=Object.fromEntries(["ui_sc_draw_frame","destroy_late_frame","ui_sc_draw_frame_prepared","ui_sc_analyzer_hit"].map(k=>[k,symbols[k]]));
+    const r=await mesenCase('readout-budget',{bundle:'animation-audit__native__rabite-field-b',prelude:{SYM},test:'readout-budget',extra:[analyzerLua]});
     const fails=resultFails(r.results);if(r.code!==0||!r.results||r.results.error)fails.push(`mesen: ${r.results?.error??r.output.slice(-400)}`);
     const q=r.results?.budget??{};
     for(const mode of ['idle','charge']){
@@ -389,17 +393,30 @@ const cases={
   },
 
   async readouts(){
+    // Analyzer readouts (the cartridge has no scouter): PPU OAM/VRAM/CGRAM
+    // decoded against the browser's font and layout for the same inputs.
     const SYM=Object.fromEntries(readFileSync(testRom.replace(/\.sfc$/,'.sym'),'utf8').split('\n')
       .map(l=>l.match(/^([0-9A-F]{2}):([0-9A-F]{4}) (\S+)/)).filter(Boolean).map(m=>[m[3],parseInt(m[1]+m[2],16)]));
-    const r=await mesenCase('readouts',{bundle:'barrier-audit__potos-probe',prelude:{SYM:{ui_sc_draw_frame:SYM.ui_sc_draw_frame,core_field_nmi_done:SYM.core_field_nmi_done,ui_t_analyzer_return:SYM.ui_t_analyzer_return,destroy_late_frame:SYM.destroy_late_frame},MSG:id('KAI_WARNING_0')},test:'readouts'});
+    const r=await mesenCase('readouts',{bundle:'barrier-audit__potos-probe',prelude:{SYM:{ui_sc_draw_frame:SYM.ui_sc_draw_frame,core_field_nmi_done:SYM.core_field_nmi_done,destroy_late_frame:SYM.destroy_late_frame},MSG:id('KAI_WARNING_0')},test:'readouts',extra:[analyzerLua]});
     const fails=resultFails(r.results);
     if(r.code!==0||!r.results||r.results.error)fails.push(`mesen: ${r.results?.error??r.output.slice(-400)}`);
-    const tables=JSON.parse(readFileSync(join(repo,'dist/snes/gen/ui/scouter.json'))),notes=[];for(const [name,q] of Object.entries(r.results?.snapshots??{})){q.shownValue=tables.formats[q.shown/10]?.n;const c=compareReadouts(r.outDir,name,q,{shown:name.startsWith('charge_')});notes.push(`${name}: ${JSON.stringify(c)}`);if(c.mismatches>c.overlaps)fails.push(`${name}: ${c.mismatches-c.overlaps} unexplained pixels differ`);if(c.maxSprites>32||c.maxSlivers>34)fails.push(`${name}: OBJ overflow`);}
-    const shots=r.results?.snapshots??{},charges=['charge_early','charge_late','charge_full'].map(n=>shots[n]);
-    if(charges.some(q=>!q||!(q.sc&4)||(q.numbers&1)===0))fails.push('missing visible charge readings');
-    else {
-      if(!(charges[0].shownValue<charges[1].shownValue&&charges[1].shownValue<charges[2].shownValue))fails.push('charge readings did not advance');
-      for(const q of charges){const key=(q.superSaiyan?182:0)+(q.weighted?91:0);const first=tables.charge.slice(key,key+91).indexOf(q.shown/10);if(first<0||q.charge-first>8)fails.push(`charge ${q.charge}: displayed reading is over 8 ticks old`);}
+    const tables=JSON.parse(readFileSync(join(repo,'dist/snes/gen/ui/scouter.json'))),notes=[];
+    for(const [name,q] of Object.entries(r.results?.snapshots??{})){
+      q.shownValue=tables.formats[q.shown/10]?.n;
+      const c=compareReadouts(r.outDir,name,q,{shown:name.startsWith('charge_')});
+      notes.push(`${name}: ${JSON.stringify(c)}`);
+      if(c.mismatches>c.overlaps)fails.push(`${name}: ${c.mismatches-c.overlaps} unexplained pixels differ`);
+      if(c.maxSprites>32||c.maxSlivers>34)fails.push(`${name}: OBJ overflow`);
+    }
+    const shots=r.results?.snapshots??{};
+    if(shots.none&&(shots.none.sc&2))fails.push('an old save\'s scouter switch started readings');
+    if(!shots.analyzer||(shots.analyzer.numbers&7)!==7)fails.push('Analyzer readings missing on Goku and both companions');
+    // Goku's reading is his power at rest: a charge never moves it.
+    const charges=['charge_early','charge_late','charge_full'].map(n=>shots[n]);
+    if(charges.some(q=>!q||!(q.sc&4)||(q.numbers&1)===0))fails.push('missing Goku readings while charging');
+    else for(const q of charges){
+      const rest=tables.formats[tables.goku[(q.superSaiyan?2:0)+(q.weighted?1:0)]].n;
+      if(q.shownValue!==rest)fails.push(`charge ${q.charge}: reading ${q.shownValue}, power at rest ${rest}`);
     }
     if(!shots.radio?.radio)fails.push('radio mask was not exercised');
     const blink=['blink_0','blink_4','blink_8','blink_14'].map(n=>shots[n]).filter(Boolean);
@@ -407,30 +424,57 @@ const cases={
     report('readouts',!fails.length,[...fails,...notes,JSON.stringify(r.results?.cpu)]);
   },
 
-  async scouter(){
-    // scouter.js: Goku's Targeting ring item as the scouter switch.
-    const sym=new Map(readFileSync(testRom.replace(/\.sfc$/,'.sym'),'utf8').split('\n')
-      .map(l=>l.match(/^([0-9A-F]{2}):([0-9A-F]{4}) (\S+)/)).filter(Boolean).map(m=>[m[3],m[1]+':'+m[2]]));
-    const off=sym.get('ui_sc_title_off'),on=sym.get('ui_sc_title_on');
-    const r=await mesenCase('scouter',{bundle:'barrier-audit__potos-probe',prelude:{},test:'scouter'});
+  async analyzerCharge(){
+    // Analyzer readings while Goku charges and focuses among Rabites: every
+    // displayed FX, UI and native sprite shows its owner's pixels (the
+    // shared cells check; fx native-cells covers the game's side).
+    const symbols=Object.fromEntries(readFileSync(testRom.replace(/\.sfc$/,'.sym'),'utf8').split('\n')
+      .map(l=>l.match(/^([0-9A-F]{2}):([0-9A-F]{4}) (\S+)/)).filter(Boolean).map(m=>[m[3],parseInt(m[1]+m[2],16)]));
+    const SYM=Object.fromEntries(['core_field_frame','core_field_nmi_done','fx_k_aura_obj','fx_draw_current','fx_run_slots','fx_entry_tile','fx_entry_vram','fx_cell_dma','ui_sc_analyzer_hit'].map(k=>[k,symbols[k]]));
+    const r=await mesenCase('analyzer-charge',{bundle:'animation-audit__native__rabite-field-b',prelude:{SYM,SHOTS:4},test:'analyzer-charge',extra:[join(here,'../lua/cells-check.lua'),analyzerLua],exactFrames:true});
+    const fails=resultFails(r.results),q=r.results??{};
+    if(r.code!==0||q.error)fails.push(`mesen: ${q.error??r.output.slice(-400)}`);
+    for(const d of (q.details??[]).slice(0,6))fails.push(JSON.stringify(d));
+    report('analyzerCharge',!fails.length&&q.failures===0,[...fails,`hits ${q.hits}; aura ${q.auraFrames} frames, readings ${q.uiFrames}, both ${q.bothFrames}; wrong aura ${q.auraBad}, stale FX ${q.fxBad}, readout ${q.uiBad}, native ${q.nativeBad}; late FX uploads ${q.fxLate}, game sprites before their stream ${q.nativeLate}`]);
+  },
+
+  async analyzerCast(){
+    // A real Analyzer cast from Primm's ring on a Rabite: the game's spell
+    // landing starts the target's reading (snapshot decoded as in readouts),
+    // which expires 240 frames later.
+    const symbols=Object.fromEntries(readFileSync(testRom.replace(/\.sfc$/,'.sym'),'utf8').split('\n')
+      .map(l=>l.match(/^([0-9A-F]{2}):([0-9A-F]{4}) (\S+)/)).filter(Boolean).map(m=>[m[3],parseInt(m[1]+m[2],16)]));
+    const SYM=Object.fromEntries(['core_field_nmi_done','ui_sc_analyzer_hit','ui_sc_draw_frame','destroy_late_frame'].map(k=>[k,symbols[k]]));
+    const r=await mesenCase('analyzer-cast',{bundle:'animation-audit__native__rabite-field-b',prelude:{SYM},test:'analyzer-cast',exactFrames:true});
+    const fails=resultFails(r.results),q=r.results??{},notes=[];
+    if(r.code!==0||q.error)fails.push(`mesen: ${q.error??r.output.slice(-400)}`);
+    for(const [name,s] of Object.entries(q.snapshots??{})){
+      const c=compareReadouts(r.outDir,name,s);
+      notes.push(`${name}: ${JSON.stringify(c)}`);
+      if(c.mismatches>c.overlaps)fails.push(`${name}: ${c.mismatches-c.overlaps} unexplained pixels differ`);
+      if(!c.layers.some(l=>l.index===q.target>>9))fails.push(`${name}: no reading on the target`);
+      if(c.maxSprites>32||c.maxSlivers>34)fails.push(`${name}: OBJ overflow`);
+    }
+    if(!q.snapshots?.cast)fails.push('no snapshot of the reading');
+    report('analyzerCast',!fails.length,[...fails,`target ${q.target?.toString(16)}, hits ${q.hits}, shown ${q.shown_frames} frames, expired after ${q.expired_after} video / ${q.expired_after_ui} field frames; readout pass ${q.draw?.mean?.toFixed(2)} / ${q.draw?.max?.toFixed(2)} lines mean/max over ${q.draw?.n} frames; landings ${(q.landings??[]).join(' ')}`,...notes]);
+  },
+
+  async targeting(){
+    // The cartridge has no scouter switch: with Sylphid's powers and an old
+    // save's switch bit on, Goku's configuration ring keeps the native
+    // Targeting title and option, the saved flags stay, and no scan follows.
+    const r=await mesenCase('targeting',{bundle:'barrier-audit__potos-probe',prelude:{},test:'targeting'});
     const fails=resultFails(r.results),q=r.results??{};
     if(r.code!==0||q.error)fails.push(`mesen: ${q.error??r.output.slice(-400)}`);
     else{
       if(q.ring!=='00 02 01')fails.push(`ring not on Goku's Targeting item (1808 1809 1876 = ${q.ring})`);
-      if(q.title_off!==off)fails.push(`title before the switch: ${q.title_off} (expected ui_sc_title_off ${off})`);
-      if(!(q.flags_on&0x40))fails.push(`B did not switch the scouter on (flags ${q.flags_on})`);
-      if(!/^02 01 D0 00$/.test(q.ring_after))fails.push(`the ring did not stay open on the item (${q.ring_after})`);
-      if(q.title_on!==on)fails.push(`title after the switch: ${q.title_on} (expected ui_sc_title_on ${on})`);
-      // the joke for the form and gi at the scan
-      const [jname,jbit]=q.form?['SCOUTER_GOLD',0x08]:[q.weighted?'SCOUTER_GOKU_0':'SCOUTER_GOKU_1',0x20];
-      const joke=catalog.messages.find(m=>m.name===jname);
-      if(q.said!==joke.id+1)fails.push(`scan said message ${q.said-1} (expected ${joke.id} ${jname})`);
-      if(q.scans!==1)fails.push(`scans ${q.scans}`);
-      if(!(q.jokes&jbit))fails.push(`joke not saved (flags ${q.jokes})`);
-      if(q.flags_off&0x40)fails.push(`the second B did not switch it off (flags ${q.flags_off})`);
-      if(q.scans2!==2)fails.push(`switching on again: ${q.scans2} scans (expected 2, no second joke)`);
+      if(q.title!=='CA:A174')fails.push(`Targeting title read from ${q.title} (expected the game's string, CA:A174)`);
+      if(q.flags_after!==0x40)fails.push(`confirming Targeting changed the saved flags (${q.flags_after})`);
+      if(!(q.native_option>0))fails.push('confirming Targeting did not run the native option (C0:73F9)');
+      if(q.said)fails.push(`message ${q.said-1} said after the ring closed`);
+      if(q.sc&2)fails.push('a reading started without Analyzer');
     }
-    report('scouter',!fails.length,[...fails,`titles ${q.title_off} -> ${q.title_on}, joke ${q.said-1} (form ${q.form}, weighted ${q.weighted}), scans ${q.scans}/${q.scans2}`]);
+    report('targeting',!fails.length,[...fails,`title ${q.title}, flags ${q.flags_after}, native option ${q.native_option}, ring resumed ${q.ring_resumed}, item after B ${q.item_after}, menu frames ${q.menu_frames}`]);
   },
 
   async status(){
