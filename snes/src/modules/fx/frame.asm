@@ -54,6 +54,25 @@ fx_frame_body:
 	JSR fx_destroy_poll
 	JSR fx_begin
 	BCS .idle
+if not(defined("FX_AURA_POLY"))
+	; A lone aura emits nothing on the browser's odd-clock strobe. Keep
+	; its cells warm without scanning native palettes or reserving OAM.
+	LDA.l !fx_ndraw
+	CMP.w #16
+	BNE .visible
+	LDA.l !fx_nlive
+	BNE .visible
+	LDA.l !fx_draws+!D_KIND
+	AND.w #$00FF
+	CMP.w #!FX_AURA
+	BNE .visible
+	LDA.l !fx_draws+!D_T
+	LSR
+	BCC .visible
+	JSR fx_run_draws
+	JMP fx_finish
+.visible
+endif
 if defined("FX_TEST")
 	JSR fx_test_vline
 	STA.l !FXT_BOX+$B0          ; after fx_begin

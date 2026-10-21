@@ -130,6 +130,11 @@ The browser's odd-clock strobe is intentional, not a missed request.
 The [FX focus regression](fx.md#ki-aura-visibility-audit) records scene-by-scene
 coverage and the presentation fixes. `charge-draw.test.mjs` checks that a
 positive-power focus request survives a full eight-entry draw list.
+The full combat/browser comparison suite passes all 37 cases. Gameplay
+miss counts remain unchanged except charge improves from 19 to 17 per
+240 frames. Mode 7 focus logic already runs in `combat_world_frame`, but
+its separate world renderer still needs focus-aura artwork; the field FX
+renderer and its tile leases cannot be used in Mode 7 unchanged.
 
 **Charge presentation lookup (2026-10-20).** The aura power and orb frame
 are generated together from the existing, floored 0–256 strength. This

@@ -1,6 +1,9 @@
 local rows,measuring,request,start,current={},false,false,nil,nil
 local lag,unsafe,overflows,fxSum,fxN,fxMax,flightFrames,scouterFrames=0,0,0,0,0,0,0,0
 local readoutFrames=0
+local maxSprites,maxSlivers=0,0
+local crowded=nil
+local auraOverflowFrames=0
 local addresses={0xE4,0xE5,0xE000,0xE02C,0xEC,0xED,0xD0,0xE190,0xE191}
 emu.addMemoryCallback(function()
   if not measuring then return end
@@ -39,15 +42,56 @@ emu.addMemoryCallback(function()
     if AURA_CELLS[H.r16(0x317840+i*2)] then tiles[H.r16(SYM.fx_entry_tile+i*2)&511]=true end
   end
   local count,palette=0,true
+  local sprites,slivers,auraRows,entriesByLine={},{},{},{}
   for i=0,127 do
     local a,t=H.oam(i*4+3),H.oam(i*4+2)
-    if H.oam(i*4+1)<224 and tiles[t|((a&1)<<8)] then
+    local hi=(H.oam(512+(i>>2))>>((i&3)*2))&3
+    local x=H.oam(i*4)-((hi&1)~=0 and 256 or 0)
+    local y=H.oam(i*4+1);if y>=224 then y=y-256 end
+    local size=(hi&2)~=0 and 32 or 16 -- field OBJSEL $63
+    local isAura=H.oam(i*4+1)<224 and tiles[t|((a&1)<<8)]
+    local columns=0
+    for xx=x,x+size-1,8 do if xx+8>0 and xx<256 then columns=columns+1 end end
+    if columns>0 then for yy=math.max(0,y),math.min(223,y+size-1) do
+      sprites[yy]=(sprites[yy] or 0)+1;slivers[yy]=(slivers[yy] or 0)+columns
+      entriesByLine[yy]=entriesByLine[yy] or {}
+      entriesByLine[yy][#entriesByLine[yy]+1]={columns=columns,aura=isAura}
+    end end
+    if isAura then
       count=count+1
+      for yy=math.max(0,y),math.min(223,y+15) do auraRows[yy]=true end
       local p=(a>>1)&7
       local class=H.r8(0x7ED811)==0 and 0 or 2
       for c=2,31 do if H.cgram(256+p*32+c)~=H.r8(SYM.fx_class_palettes+class*32+c) then palette=false;break end end
     end
   end
+  -- Native HUD/boss rows away from the flame are not an aura overflow.
+  local overflow=false
+  for yy in pairs(auraRows) do
+    maxSprites=math.max(maxSprites,sprites[yy] or 0);maxSlivers=math.max(maxSlivers,slivers[yy] or 0)
+    -- Evaluation retains the first 32 objects; sliver fetch runs in the
+    -- opposite order and keeps 34. Count loss of the aura itself, not an
+    -- unrelated native sprite earlier in OAM on an already crowded row.
+    local entries=entriesByLine[yy] or {}
+    for i=33,#entries do if entries[i].aura then overflow=true end end
+    local left=34
+    for i=math.min(32,#entries),1,-1 do
+      if entries[i].aura and left<entries[i].columns then overflow=true end
+      left=math.max(0,left-entries[i].columns)
+    end
+    if not crowded and (slivers[yy] or 0)>34 then
+      local entries={}
+      for i=0,127 do
+        local hi=(H.oam(512+(i>>2))>>((i&3)*2))&3
+        local y=H.oam(i*4+1);if y>=224 then y=y-256 end
+        local size=(hi&2)~=0 and 32 or 16
+        if yy>=y and yy<y+size then entries[#entries+1]={i=i,x=H.oam(i*4),y=y,hi=hi,tile=H.oam(i*4+2),attr=H.oam(i*4+3)} end
+      end
+      crowded={clock=current.clock,y=yy,entries=entries}
+    end
+  end
+  current.auraOverflow=overflow
+  if overflow then auraOverflowFrames=auraOverflowFrames+1 end
   current.sprites=count;current.palette=palette;current.request=request
   current.pending=H.r16(0x317880)
   rows[#rows+1]=current;current=nil
@@ -81,5 +125,8 @@ function test()
   H.result('overflows',overflows);H.result('flightFrames',flightFrames)
   H.result('scouterFrames',scouterFrames)
   H.result('readoutFrames',readoutFrames)
+  H.result('maxSprites',maxSprites);H.result('maxSlivers',maxSlivers)
+  H.result('crowded',crowded)
+  H.result('auraOverflowFrames',auraOverflowFrames)
   H.result('fxMean',fxSum/math.max(1,fxN));H.result('fxMax',fxMax)
 end

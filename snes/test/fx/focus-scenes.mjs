@@ -54,7 +54,7 @@ for(const [name,bundle,form=0,walk=0,scouter=0,setup=''] of scenes){
   finally{cleanupRom(copy);}
   if(result.code!==0||!result.results||result.results.error)throw Error(`${name}: ${result.results?.error??result.output}`);
   const rows=result.results.rows;
-  let expected=0,drawn=0,requested=0,wrongPalette=0,misses=0,maxRun=0,run=0;
+  let expected=0,drawn=0,requested=0,wrongPalette=0,misses=0,maxRun=0,run=0,lateMisses=0;
   for(const r of rows){
     const ram=r.ram,read8=a=>ram[String(a)]??0;
     const can=canAttack.call({gokuActive:true,nativeField:true,menuActive:!!r.menu,nativeHurt:r.pose>=0x8c&&r.pose<=0x8f,read8});
@@ -66,15 +66,17 @@ for(const [name,bundle,form=0,walk=0,scouter=0,setup=''] of scenes){
     if(can&&(focusing||charging||powering))drawKiAura(effects,0,0,r.clock,()=>pixels++,{power,clock:r.clock});
     if(!pixels)continue;
     expected++;if(r.request)requested++;
-    if(r.sprites>=6&&r.palette){drawn++;run=0;}else{misses++;run++;maxRun=Math.max(maxRun,run);}
+    if(r.sprites>=6&&r.palette&&!r.auraOverflow){drawn++;run=0;}
+    else{misses++;run++;maxRun=Math.max(maxRun,run);if(expected>1)lateMisses++;}
     if(r.sprites&& !r.palette)wrongPalette++;
   }
   const locked=name.endsWith('-dialogue')||name.endsWith('-ring');
-  const pass=(locked?expected===0&&rows.every(r=>!r.request):expected>=20&&misses<=1&&maxRun<=1)
-    &&wrongPalette===0&&result.results.unsafe===0&&(!scouter||result.results.scouterFrames>0)
+  const pass=(locked?expected===0&&rows.every(r=>!r.request):expected>=20&&misses<=1&&maxRun<=1&&lateMisses===0)
+    &&wrongPalette===0&&result.results.unsafe===0&&result.results.auraOverflowFrames===0
+    &&(!scouter||result.results.scouterFrames>0)
     &&(name!=='waterfall-scouter'||result.results.readoutFrames>0)
     &&(name!=='water-flight'||result.results.flightFrames>0);
-  const row={name,pass,expected,drawn,requested,misses,maxRun,wrongPalette,...Object.fromEntries(['heldFrames','lag','unsafe','overflows','fxMean','fxMax','flightFrames','scouterFrames','readoutFrames'].map(k=>[k,result.results[k]]))};
+  const row={name,pass,expected,drawn,requested,misses,maxRun,lateMisses,wrongPalette,...Object.fromEntries(['heldFrames','lag','unsafe','overflows','maxSprites','maxSlivers','auraOverflowFrames','fxMean','fxMax','flightFrames','scouterFrames','readoutFrames'].map(k=>[k,result.results[k]]))};
   summary.push(row);console.log(`${name}: ${drawn}/${expected} drawn; ${requested} requested; ${wrongPalette} palette; ${row.lag} lag; ${pass?'pass':'FAIL'}`);
 }
 writeFileSync(join(root,'summary.json'),JSON.stringify(summary,null,2));

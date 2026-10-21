@@ -989,9 +989,16 @@ fx_aura_rows:
 		LDX !d_ks
 		LDA.l fx_aura_cells+2+(!row*2),X
 		JSR fx_resolve
+		STA !d_tiles+(!row*2)
+	endfor
+	LDA.l !fx_cpend
+	BEQ .resident
+	for row = 0..3
+		LDA !d_tiles+(!row*2)
 		JSR fx_aura_tile_ready
 		STA !d_tiles+(!row*2)
 	endfor
+.resident
 	LDA !d_tiles
 	ORA !d_tiles+2
 	ORA !d_tiles+4

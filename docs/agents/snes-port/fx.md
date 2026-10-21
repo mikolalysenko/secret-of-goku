@@ -509,7 +509,7 @@ and checks palette/upload readiness before writing any sprite. Miniatures,
 clipped positions and partial OAM use the general assembly renderer.
 `FX_AURA_SLOW` selects that general path for comparisons. The assembled
 tests compare 2,674 cases including subsequent effects; the full-flame
-example falls from 2,042 to 1,241 CPU cycles through the direct path.
+example falls from 2,042 to 1,160 CPU cycles through the direct path.
 The generator validates the mirrored layout and stores its cell records
 beside the stamp records in the FX data bank.
 
@@ -530,7 +530,7 @@ Baseline `173cbe8`; counts are drawn / browser-eligible completed frames.
 | `potos` | 88/89 | 88/89 |
 | `south-potos-walk` | 88/89 | 88/89 |
 | `rabite-ssj` | 86/89 | 88/89 |
-| `rabite-scouter` | 51/85 | 83/84 |
+| `rabite-scouter` | 51/85 | 84/84 |
 | `waterfall` | 88/89 | 88/89 |
 | `waterfall-scouter` | 88/89 | 88/89 |
 | `water-flight` | 88/89 | 88/89 |
@@ -539,7 +539,7 @@ Baseline `173cbe8`; counts are drawn / browser-eligible completed frames.
 | `cave-stairs` | 88/89 | 89/89 |
 | `boss-111-dialogue` | 0/0 | 0/0 |
 | `boss-60-dialogue` | 0/0 | 0/0 |
-| `boss-488` | 23/24 | 24/24 |
+| `boss-488` | 23/24 | 21/21 |
 | `buffy` | 88/89 | 89/89 |
 | `slime` | 78/79 | 83/83 |
 | `late-town` | 88/89 | 89/89 |
@@ -548,9 +548,11 @@ Baseline `173cbe8`; counts are drawn / browser-eligible completed frames.
 
 Expected counts can differ when native lag changes which 60 Hz action
 clocks reach a completed field frame. Dialogue and ring controls correctly
-draw zero. No sampled aura frame has a wrong palette, unsafe FX DMA or PPU
-overflow. Strict build, the assembled aura/palette/request comparisons,
-the full FX suite and all 13 gameplay cases pass at this checkpoint.
+draw zero. No sampled aura frame has a wrong palette, unsafe FX DMA or
+lost aura sliver. Every miss is the first eligible frame while cold cells
+are being uploaded; no later eligible frame is missed. Strict build, all
+30 assembled FX/charge comparisons, full FX (including this audit), combat
+(37 cases), gameplay (13), Goku (12), UI (15) and all six perf scenes pass.
 Gameplay CPU misses are unchanged, except charging improves from 19 to
 17 per 240 video frames; hardware errors remain zero.
 
@@ -560,7 +562,10 @@ the Sandship tint, and dialogue/ring negative controls. Its oracle calls
 the browser's `canAttack` getter and `drawKiAura` with the recorded action
 and clock. It counts completed field frames where the browser draws pixels
 and requires all six aura sprites with the right CGRAM colours, allowing
-at most one cold-cache miss. Intentional odd-clock blanks are excluded.
+at most one miss on the first eligible frame. It also models the PPU's
+32-object evaluation and reverse 34-sliver fetch to reject an aura that
+exists in OAM but loses pixels to a scanline limit. Intentional odd-clock
+blanks are excluded.
 `--record` on `snes/test/fx/focus-scenes.mjs` records a failing baseline;
 `FOCUS_OUT` selects a private output directory and `FOCUS_SCENES` filters
 cases. Traces and screenshots stay under `.local/snes-test/`.
@@ -572,11 +577,41 @@ The field anchor now subtracts Goku's extra pose lift as well as native
 lift. Priority 3 keeps the flame above BG1/BG2 and below BG3, behind Goku's
 body; the six-cell silhouette extends outside his body. There is no CPU
 budget yield in the shipping OBJ path. True OAM/palette/scanline exhaustion
-remains a hardware limit; the scene audit records PPU overflow flags.
+remains a hardware limit. South Potos reaches 19 sprites / 38 slivers on
+a crowded line in **both** the baseline and fixed cartridge. Fetching the
+later aura sprites first preserves the flame; native sprites earlier in
+OAM can lose slivers there. This pre-existing crowd limit is not an aura
+suppression, and this task does not change native sprite ownership.
 
 To pay for the early palette hook's idle check, destruction wakes FX when
 publishing a record, before initialization snapshots the sequence, instead
 of FX polling that sequence on every idle frame. No core files changed.
+
+A lone invisible-strobe aura skips the palette scan and OAM reservation,
+while still warming/protecting its cells. Resident visible flames check
+pending uploads once before the uncommon per-cell pending check. Potos's
+mean FX call falls **11.07 → 10.38 scanlines**, South Potos **11.14 → 10.43**,
+wide cave **11.96 → 10.70**, and the scouter field **11.90 → 10.94**. These
+include the complete FX frame callback, not only the six-sprite emitter.
+
+An idle matched-state probe over 300 frames measures FX frame **0.179 →
+0.110** lines and NMI **0.118 → 0.120**; the early palette hook adds **0.060**.
+Their combined idle contribution falls **0.298 → 0.290 lines/frame**.
+`modprof` reports about 0.13 frame / 0.12 NMI lines including occasional
+bookkeeping. The six shared perf p90/lag results are unchanged from the
+baseline: sword 63/4, Sandship 113/4, battle 54/4, beast 173/34, fortress
+95/4 and flight 112/4. Native live-scene lag varies by up to three of the
+180 frames (SSJ field 3→4, scouter field 12→15, slime 16→17, boss 488
+36→35); native RNG depends on idle CPU time. Those variations stay within
+the existing 3% perf allowance, while the gameplay suite has no additional
+misses. Private measurements are `aura-idle-profile.log`,
+`aura-modprof-final.log`, `aura-*-final.log` and the scene traces under
+`.local/snes-test/`.
+
+Scope: this fixes the **field** flame, including local flight. Mode 7
+world flight has a separate world-owned OBJ renderer; combat runs focus
+there but that renderer does not draw the field aura. Adding world-focus
+art remains a request for the world module, not a core change.
 
 The default transformation burst keeps eight outer arcs and four inner
 sparks (12 sprites at its peak, previously 32), fading to four sparks.
