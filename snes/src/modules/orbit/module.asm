@@ -481,7 +481,7 @@ assert !gb_winb+868 <= !sc_n, "the bodies' projection runs into the window block
 !sc_t  = !d_t4                     ; 8 bytes
 ; The strikes' (in the fight's tick, only outside the clash): the finale's
 ; drawing, mix and logic scratch, all idle until the clash begins; its
-; clocks and starting places (FN+$04-$17, written by finale_begin) hold
+; clocks and starting places (FN+$04-$1F, written by finale_begin) hold
 ; the last miss of Goku's ray and of Frieza's (sk_miss, after the finale's
 ; block).
 !sc_own   = !fn_d+0                ; owner (0 Goku, 1 Frieza, 2 countered), bit 15 a beam
@@ -515,13 +515,12 @@ assert !gb_winb+868 <= !sc_n, "the bodies' projection runs into the window block
 !sc_by0   = !d_t4                  ;   y from, height
 !sc_bys   = !d_t5
 !sc_m2    = !d_t6                  ;   twice its margin + 1
-; (the fast ray test's: the ray's |vx|, |vy|, their signs, the heading's
-; class h & 3; the centre's |ex|, |ey|; a product's sign. The fight's math
-; scratch, free across a strike)
+; (the fast ray test's: the ray's |vx|, |vy|, the heading's class h & 3;
+; the centre's |ex|, |ey|; a product's sign; and the bodies a strike leaves
+; out. The fight's math scratch, free across a strike)
 !sc_avx   = !m_t0
 !sc_avy   = !m_t1
-!sc_svx   = !m_t2
-!sc_svy   = !m_t3
+!sc_sk    = !m_t2                  ; bits 0-2: shattered, or known to be hidden (not struck)
 !sc_vcls  = !m_t4
 !sc_aex   = !m_t5
 !sc_aey   = !m_t6
@@ -728,8 +727,8 @@ assert !pb_shown+2 <= !SB+$1800, "orbit scene work past $32:77FF (the frieza mod
 !od_cam   = !FN+$96                ;   the camera at the fatal hit (x, y, r, longitude, latitude)
 !FN_END   = !FN+$A0
 assert !FN_END <= !SB+$15A0, "orbit finale block overflow"
-!sk_miss  = !FN+$04                ; the strikes' last misses (strike.asm): Goku's ray, Frieza's (5 words each: start x, y, length | heading << 12, width | shattered << 8 | owner << 12, sc_pgen)
-assert !sk_miss+20 <= !fn_cy0, "the strikes' misses run past the clash's starting places"
+!sk_miss  = !FN+$04                ; the strikes' last misses (strike.asm): Goku's ray, Frieza's (7 words each: sc_pgen, start x, y, length, heading, width, shattered)
+assert !sk_miss+28 <= !fn_ret, "the strikes' misses run past the clash's starting places"
 
 ; The band layers (bands.asm): two window tables (lines 0-105, 4 bytes a
 ; line: W1 left/right, W2 left/right), the BG1 scroll split, state.

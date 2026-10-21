@@ -149,9 +149,11 @@ export async function generate({repo,outDir,xdata}){
   const w32=(n,v)=>[`${n}_LO = $${((v>>>0)&0xffff).toString(16).padStart(4,'0')}`,`${n}_HI = $${(((v>>>0)>>>16)&0xffff).toString(16).padStart(4,'0')}`];
   orbitTargets.forEach((t,k)=>L.push(...w32(`!OSC_B${k}_AXRD`,(t.x-128)*128*t.depth),...w32(`!OSC_B${k}_AYRD`,(t.y-112)*128*t.depth),...w32(`!OSC_B${k}_C`,13312*t.depth)));
   // the strikes' rays (frieza-orbit.js: from p to p + v L / 256): per
-  // heading the far end of a 360 px ray, rounded (the box every ray's
-  // length lies in), and 65536 - |v|^2 (the exact test's |v|^2)
-  L.push(`!OSC_RAY_END = ${orbitVectors.flatMap(([vx,vy])=>[Math.round(vx*360/256),Math.round(vy*360/256)]).join(', ')}`);
+  // heading the ray's setup (strike.asm sc_strike_ray): vx, vy, |vx|, |vy|
+  // and the far end of a 360 px ray, rounded, as |x|, |y| (the box every
+  // ray's length lies in, its signs vx's and vy's); and 65536 - |v|^2 (the
+  // exact test's |v|^2)
+  L.push(`!OSC_RAY_SETUP = ${orbitVectors.flatMap(([vx,vy])=>[vx,vy,Math.abs(vx),Math.abs(vy),Math.abs(Math.round(vx*360/256)),Math.abs(Math.round(vy*360/256))]).join(', ')}`);
   L.push(`!OSC_RAY_DV = ${orbitVectors.map(([vx,vy])=>65536-vx*vx-vy*vy).join(', ')}`);
   if(orbitVectors.some(([vx,vy])=>65536-vx*vx-vy*vy<0||65536-vx*vx-vy*vy>255))throw Error('orbit-scenery: |v|^2 out of the exact test\'s range');
   // the fast ray test's reach across the line (strike.asm sc_ray_fast): per
