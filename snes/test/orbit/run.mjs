@@ -116,17 +116,22 @@ const badColours=watch=>(watch??[]).map((w,i)=>[i,w.split('|')[0]]).filter(([,c]
 // frames with lines whose sprites the PPU drops (over 32 sprites or 34
 // slivers): [frame, sprites, slivers, lines], and the frames whose CPU
 // wrote CGRAM or started a general DMA under HDMA on the visible lines:
-// [frame, CGRAM writes, DMA starts].
+// [frame, CGRAM writes, DMA starts]; the frames whose HDMA enable left out
+// one of the scene's channels, and the frames at and after a repeated
+// picture whose band lines show the rim's colour (the rays' layers drawn
+// with the rim's colour math): [frame, pixels].
 const watchFindings=watch=>{
-  const late=[],dropped=[],writes=[];
+  const late=[],dropped=[],writes=[],hdma=[],bandrim=[];
   (watch??[]).forEach((w,i)=>{
-    const[c,g,o,,v]=w.split('|');
-    const[cw,dw]=(v??'0,0').split(',').map(Number);if(cw||dw)writes.push([i,cw,dw]);
+    const[c,g,o,,v,b]=w.split('|');
+    const[cw,dw,hw]=(v??'0,0,0').split(',').map(Number);if(cw||dw)writes.push([i,cw,dw]);
+    if(hw>0)hdma.push(i);
+    if(Number(b)>0)bandrim.push([i,Number(b)]);
     if(c==='off')return;
     const vline=Number(g.split(',')[7]);if(vline>0&&vline<225)late.push(i);
     const[sp,sl,over]=o.split(',').map(Number);if(over>0)dropped.push([i,sp,sl,over]);
   });
-  return {late,dropped,writes};
+  return {late,dropped,writes,hdma,bandrim};
 };
 
 // ORBIT_SHOTS=a-b[,c-d...]: the fight and clash cases also screenshot every
@@ -454,12 +459,16 @@ const cases={
     const want=ref.filter(b=>b.native).map(b=>b.native.map(v=>v.toString(16)).join(' '));
     const returned=cart.find(c=>c.returned),refReturn=ref.find(b=>b.returned);
     // every frame the globe picture shows: the colours the orbit owns
-    const colours=badColours(res.watch),{late,dropped,writes}=watchFindings(res.watch);
+    const colours=badColours(res.watch),{late,dropped,writes,hdma,bandrim}=watchFindings(res.watch);
     const report={compared,mismatchFrames:mismatches.length,first:mismatches.slice(0,16),lagged:res.lagged,nativeWant:want,
-      returnedAt:returned?.wage,refReturnedAt:refReturn?refReturn.boss.age:null,colours,late,dropped,writes,watch:res.watch,end:cart.at(-1)};
+      returnedAt:returned?.wage,refReturnedAt:refReturn?refReturn.boss.age:null,colours,late,dropped,writes,hdma,bandrim,watch:res.watch,end:cart.at(-1)};
     writeFileSync(join(dir,'report.json'),JSON.stringify(report,null,1));
-    ok=ok&&compared>=frames-200&&mismatches.length===0&&!!returned&&returned.wage===refReturn?.boss.age&&colours.length===0&&late.length===0&&writes.length===0;
-    console.log(`clash: ${ok?'pass':'FAIL'} compared ${compared} frames, ${mismatches.length} differ, ${res.lagged} lagged, back at ${returned?.wage} / ${refReturn?.boss.age}, ${colours.length} frames with other colours, ${late.length} late vblanks, ${writes.length} frames writing CGRAM or DMA on visible lines, ${dropped.length} frames dropping sprites`);
+    // (and at and after every repeated picture the rays' band layers drawn
+    // as on any other frame: the scene's HDMA channels on, no band pixel in
+    // the rim's colour)
+    ok=ok&&compared>=frames-200&&mismatches.length===0&&!!returned&&returned.wage===refReturn?.boss.age&&colours.length===0&&late.length===0&&writes.length===0&&hdma.length===0&&bandrim.length===0;
+    console.log(`clash: ${ok?'pass':'FAIL'} compared ${compared} frames, ${mismatches.length} differ, ${res.lagged} lagged, back at ${returned?.wage} / ${refReturn?.boss.age}, ${colours.length} frames with other colours, ${late.length} late vblanks, ${writes.length} frames writing CGRAM or DMA on visible lines, ${hdma.length} frames without the scene's HDMA channels, ${bandrim.length} band pictures miscoloured after a repeat, ${dropped.length} frames dropping sprites`);
+    for(const[f,n]of bandrim.slice(0,8))console.log(`  frame ${f}: ${n} band-line pixels in the rim's colour`);
     for(const m of mismatches.slice(0,10))console.log('  '+m);
     // the repeated pictures by the finale's phase and age (the frame's own
     // state; a run of frames at one age is one stall)

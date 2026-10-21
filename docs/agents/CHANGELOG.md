@@ -4,6 +4,21 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the rays' band layers through repeated pictures (2026-10-21)
+
+- A repeated picture in the clash (a game frame that missed its vblank)
+  could show bright blue blocks over the rays' rows: the native NMI clears
+  HDMA channels 0-1 in `$2C` (the game's window channels, C0:C0DE) before
+  its palette transfer, and a vblank that skips the modules never set them
+  again, so that frame ran without the band lines' colour-math switch and
+  BG1's scroll split (the bands' windows took the rim's colour math).
+- The orbit's palette hook, which that transfer runs on every vblank, now
+  sets the two channels again; their registers and tables are still the
+  orbit's there.
+- The `clash` case checks every frame's HDMA enable for the scene's
+  channels, and scans the band lines at and after each repeated picture
+  for the rim's colour (any found fails the case).
+
 ## SNES integration: round-seven sounds (2026-10-21)
 
 - Codex audio, round seven (3bfac5c, dcc6430, bcd055f, 70cea99; merged in
