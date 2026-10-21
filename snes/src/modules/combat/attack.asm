@@ -326,6 +326,30 @@ cb_launch_start:
 	PLX
 	SEP #$20
 	STA.l !KB+!kb_dist,X
+	CMP.b #88                     ; its rows and length (cb_update_launches)
+	BEQ .tab88
+	CMP.b #56
+	BEQ .tab56
+	CMP.b #!COMBAT_SLIDE_BASE
+	BEQ .tabSlide
+	LDA.b #!COMBAT_TAB_SLIDE_SSJ
+	BRA .slideLen
+.tabSlide
+	LDA.b #!COMBAT_TAB_SLIDE
+.slideLen
+	STA.l !KB+!kb_tab,X
+	LDA.b #!COMBAT_SLIDE_FRAMES
+	BRA .len
+.tab88
+	LDA.b #!COMBAT_TAB_88
+	BRA .launchLen
+.tab56
+	LDA.b #!COMBAT_TAB_56
+.launchLen
+	STA.l !KB+!kb_tab,X
+	LDA.b #12
+.len
+	STA.l !KB+!kb_len,X
 	LDA.b #$01
 	STA.l !KB+!kb_on,X
 	LDA $E180,Y
@@ -397,14 +421,12 @@ cb_update_launches:
 +	LDA $E000,Y
 	AND.w #$0001
 	BEQ .drop
+	SEP #$20
 	LDA $E180,Y
-	AND.w #$00FF
-	STA !cb_t0
-	LDA.l !KB+!kb_sp,X
-	AND.w #$00FF
-	CMP !cb_t0
+	CMP.l !KB+!kb_sp,X
+	REP #$20
 	BEQ .same
-	LDA !cb_t0
+	AND.w #$00FF
 	CMP.w #$00F9
 	BNE .drop
 	LDA $E191,Y
@@ -427,18 +449,16 @@ cb_update_launches:
 	JSR cb_launch_end
 	JMP .next
 .move
-	JSR cb_kb_frames
-	STA !cb_t1                    ; its length (12, or a push-back's)
-	SEP #$20
+	LDA.l !KB+!kb_len,X           ; its length: 12 frames, or a push-back's
+	AND.w #$00FF                  ; (kept through cb_launch_offsets; the
+	STA !cb_t0                    ; record ends on reaching it, so the age
+	SEP #$20                      ; never runs past its rows)
 	LDA.l !KB+!kb_age,X
 	INC
 	STA.l !KB+!kb_age,X
 	REP #$20
 	AND.w #$00FF
-	CMP !cb_t1
-	BCC +
-	LDA !cb_t1
-+	ASL
+	ASL
 	STA !cb_t1                    ; age*2 (table index)
 	STX !cb_t2
 	STY !cb_t3
@@ -455,9 +475,7 @@ cb_update_launches:
 	ADC !cb_t5
 	JSR cb_clamp_map
 	STA $E004,Y
-	LDX !cb_t2
-	JSR cb_kb_frames
-	STA !cb_t0
+	LDA !cb_t0
 	CMP.w #12
 	BCC .slid                     ; a push-back slides along the ground
 	LDA !cb_t1
@@ -467,10 +485,10 @@ cb_update_launches:
 	SEP #$20
 	STA $E045,Y
 	REP #$20
-	LDX !cb_t2
 .slid
-	LDA.l !KB+!kb_age,X
-	AND.w #$00FF
+	LDX !cb_t2
+	LDA !cb_t1                    ; its age, its length reached: it ends
+	LSR
 	CMP !cb_t0
 	BCC .next
 	JSR cb_launch_end
@@ -487,18 +505,6 @@ cb_update_launches:
 	BEQ +
 	JMP .loop
 +	RTS
-
-; Frames of launch record X: 12, or a push-back's (its shorter distance).
-; Preserves X, Y.
-cb_kb_frames:
-	LDA.l !KB+!kb_dist,X
-	AND.w #$00FF
-	CMP.w #56
-	BCC +
-	LDA.w #12
-	RTS
-+	LDA.w #!COMBAT_SLIDE_FRAMES
-	RTS
 
 ; Launch record X ends (bit cleared). Preserves X, Y.
 cb_launch_end:
@@ -529,6 +535,10 @@ cb_clamp_map:
 
 ; Offsets of launch record X at table index cb_t1 (= age*2): axis launches
 ; use the exact tables, radial ones dx/dy * ease. Out: cb_t4 / cb_t5.
+assert combat_launch_88p == combat_launch_axis+!COMBAT_TAB_88, "combat: launch rows moved"
+assert combat_slide_basep == combat_launch_axis+!COMBAT_TAB_SLIDE, "combat: launch rows moved"
+assert combat_slide_ssjp == combat_launch_axis+!COMBAT_TAB_SLIDE_SSJ, "combat: launch rows moved"
+assert combat_launch_56n == combat_launch_axis+26, "combat: launch rows moved"
 cb_launch_offsets:
 	STZ !cb_t4
 	STZ !cb_t5
@@ -538,39 +548,14 @@ cb_launch_offsets:
 	BCC +
 	JMP .radial
 +	STA !cb_t6                    ; facing
-	LDA.l !KB+!kb_dist,X
+	LDA.l !KB+!kb_tab,X           ; its rows (kind * 52) + age * 2
 	AND.w #$00FF
-	CMP.w #88
-	BEQ .far
-	CMP.w #!COMBAT_SLIDE_BASE
-	BEQ .slide
-	CMP.w #!COMBAT_SLIDE_SSJ
-	BEQ .slideSsj
-	LDX !cb_t1
-	LDA.l combat_launch_56p,X
+	CLC
+	ADC !cb_t1
+	TAX
+	LDA.l combat_launch_axis,X
 	STA !cb_t7
-	LDA.l combat_launch_56n,X
-	STA !cb_t8
-	BRA .axis
-.slide
-	LDX !cb_t1
-	LDA.l combat_slide_basep,X
-	STA !cb_t7
-	LDA.l combat_slide_basen,X
-	STA !cb_t8
-	BRA .axis
-.slideSsj
-	LDX !cb_t1
-	LDA.l combat_slide_ssjp,X
-	STA !cb_t7
-	LDA.l combat_slide_ssjn,X
-	STA !cb_t8
-	BRA .axis
-.far
-	LDX !cb_t1
-	LDA.l combat_launch_88p,X
-	STA !cb_t7
-	LDA.l combat_launch_88n,X
+	LDA.l combat_launch_axis+26,X
 	STA !cb_t8
 .axis
 	LDA !cb_t6

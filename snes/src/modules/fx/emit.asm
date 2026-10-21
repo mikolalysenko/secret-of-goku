@@ -1043,12 +1043,13 @@ fx_cache_get:
 	BEQ .hit
 .resident
 	LDA !d_tmp
-	CMP.w #!FX_RBITS_SIZE*8
-	BCS .scan                    ; past the bitmap: search the entries
 	JSR fx_rbit                  ; X = byte, A = bit
 	AND.l !fx_rbits,X
 	AND.w #$00FF
 	BNE .scan
+	LDA !d_tmp                   ; past the bitmap (its "bit" is polygon data):
+	CMP.w #!FX_RBITS_SIZE*8      ; search the entries
+	BCS .scan
 	JMP .miss                    ; not resident: nothing to search
 .scan
 	LDA !d_tmp

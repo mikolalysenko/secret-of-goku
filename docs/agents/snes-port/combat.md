@@ -119,7 +119,11 @@ the blow found them, against their own recoil. `cb_hit_launch` 2 (jab,
 cross) starts a push-back instead of the 56 / 88 px launch when the hit
 does not kill: `COMBAT_SLIDE_BASE` / `_SSJ` px (10 / 14, `ManaMod.SLIDE`)
 over `COMBAT_SLIDE_FRAMES` (6) on the same ease, without lift
-(`combat_slide_*` tables, `cb_kb_frames`). At every contact `cb_strike`
+(`combat_slide_*` rows). A launch record keeps its rows' offset in
+`combat_launch_axis`, one block of 13-word rows for the 56 / 88 px launches
+and the two push-backs (`!kb_tab`, `COMBAT_TAB_*`), and its length
+(`!kb_len`, 12 or `COMBAT_SLIDE_FRAMES`), so a frame of a launch costs
+about what it did before push-backs existed. At every contact `cb_strike`
 puts the impact frame in the spark's effect record (`er_aux`,
 `!CB_IMP_*`: the starburst size + 1 by blow, the kick's shockwave at its
 first contact, on a cross's first contact `!CB_IMP_NEXT` (its spark readies
@@ -128,8 +132,9 @@ and writes the native timed shake (`$E00D` = hold << 4 | axis). One FX_HIT
 spawn per contact carries it all. After the contacts it calls `fx_kick`
 (facing | blow << 8);
 the kick also `fx_quake` (3 / 5) and `fx_flash` (3). A ki shot's impact
-carries the smallest starburst. `cb_fx_prep` (from `cb_effects_draw` while
-the punch's age is below 2) asks `fx_warm` for the coming contact's cells
+carries the smallest starburst. `cb_fx_prep` (from `cb_fx_continuous`'s
+action dispatch for punches, while the age is below 2) asks `fx_warm` for
+the coming contact's cells
 until fx reports them resident, then not again for that blow and form until
 fx's cache has lost a cell (`!fx_evict` against `!cb_warm`): their uploads
 land in the wind-up's quiet vblanks instead of the contact's busy one. A

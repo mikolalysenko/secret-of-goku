@@ -137,7 +137,11 @@ export async function generate({rom,repo,outDir}){
     for(let age=0;age<64;age++)list.push(Math.floor(80*Math.min(1,(age+1)/6,(64-age)/10)*256));
     lines.push('combat_mega_half88: ; floor(256 * halfWidth) of the full SSJ wave by age',...chunk(list,16).map(l=>`\tdw ${dw(l)}`));
   }
-  // --- launch arcs: offsets for 56/88 px, both directions; height
+  // --- launch arcs: offsets for 56/88 px, both directions; height. The
+  // axis tables (and the push-backs' below) form one block of 13-word rows,
+  // positive then negative per kind: a launch record keeps its kind's offset
+  // (!kb_tab = kind * 52, COMBAT_TAB_*).
+  lines.push('combat_launch_axis: ; per kind (56, 88, push-back base, Super Saiyan): +offsets, -offsets by age');
   for(const d of [56,88]){
     const pos=[0],neg=[0];
     for(let a=1;a<=12;a++){pos.push(Math.round(d*launchEase(a)));neg.push(Math.round(-d*launchEase(a)));}
@@ -155,13 +159,18 @@ export async function generate({rom,repo,outDir}){
     if(HIT_STOP.flat().some(v=>v<1||v>14))throw Error('combat gen: hit stop out of range');
     lines.push('combat_hit_stop: ; jab, cross, kick; base form, then Super Saiyan',`\tdb ${db(HIT_STOP.flat())}`);
     const ease=a=>{const t=Math.min(1,a/SLIDE_FRAMES);return 1-(1-t)**2;};
+    if(SLIDE_FRAMES>12)throw Error('combat gen: a push-back outlasts the launch rows');
+    const slides=[];
     for(const d of SLIDE){
       if(d===56||d===88||d>127)throw Error('combat gen: push-back distance clashes with a launch');
       const pos=[0],neg=[0];
-      for(let a=1;a<=SLIDE_FRAMES;a++){pos.push(Math.round(d*ease(a)));neg.push(Math.round(-d*ease(a)));}
-      lines.push(`combat_slide_${d===SLIDE[0]?'base':'ssj'}p:`,`\tdw ${dw(pos)}`,`combat_slide_${d===SLIDE[0]?'base':'ssj'}n:`,`\tdw ${dw(neg)}`);
+      for(let a=1;a<=12;a++){pos.push(Math.round(d*ease(a)));neg.push(Math.round(-d*ease(a)));}
+      slides.push(`combat_slide_${d===SLIDE[0]?'base':'ssj'}p:`,`\tdw ${dw(pos)}`,`combat_slide_${d===SLIDE[0]?'base':'ssj'}n:`,`\tdw ${dw(neg)}`);
     }
+    // (right after the launch rows: one block, see combat_launch_axis)
+    lines.splice(lines.indexOf('combat_launch_lift:'),0,...slides);
     defs.push(`!COMBAT_SLIDE_BASE = ${SLIDE[0]}`,`!COMBAT_SLIDE_SSJ = ${SLIDE[1]}`,`!COMBAT_SLIDE_FRAMES = ${SLIDE_FRAMES}`);
+    defs.push('!COMBAT_TAB_56 = 0','!COMBAT_TAB_88 = 52','!COMBAT_TAB_SLIDE = 104','!COMBAT_TAB_SLIDE_SSJ = 156');
   }
   // --- hand sockets (mana-mod.js handOrigin): dx = sx-16, dy = sy-31 per
   // form, technique (0 beam, 1 ki hand 0, 2 ki hand 1, 3 charge) and facing.

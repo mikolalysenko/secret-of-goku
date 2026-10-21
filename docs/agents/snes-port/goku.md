@@ -152,8 +152,9 @@ replacement), `modules_field_nmi` → `goku_nmi` (uploads), `modules_field_preup
   holds, and by half that, rounded up, in the follow-through; the wind-up
   and the recovery stay. The phase is the punch's own (`pk_punch`: base
   ages < 2 / 4 / 7, Super Saiyan < 1 / 2 / 4). Drawing only: the native
-  position, its collision and the shadow never move. Other poses skip it
-  after one kind check.
+  position, its collision and the shadow never move. `pk_punch` sets
+  `GOKU_PF_LUNGE` (`$40`) in `!p_flags`, so other poses skip it after one
+  `BIT` (V).
 - **Palette** (`palette.asm`): tracks the boy's slot per entry and rebuilds
   Goku's palette only when the game wrote something, the displayed cell's
   palette id or the petrify bit changed. Replacement ending restores the

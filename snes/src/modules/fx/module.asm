@@ -79,8 +79,9 @@ assert !FX_SRAM == !SRAM_WORK_FX, "fx request block must sit at !SRAM_WORK_FX"
 ; fx_ensure_init clears them with the rest.
 ;   !fx_evict ($31:7DDE, defs.asm): byte, FX cache evictions (fx_warm)
 !fx_wdue      = $317DDF        ; byte: bits 0-1 fx frames in which an FX_HIT may still draw its actor
-                               ;   white; FX_SEEN: something was drawn since the regions were claimed
-!FX_SEEN      = $80
+                               ;   white; FX_UNSEEN: nothing drawn since the regions were claimed. Read
+                               ;   as a word with !fx_kickd's low byte: zero, the usual frame
+!FX_UNSEEN    = $80
 !fx_kickd     = $317DE0        ; word: the camera kick in the coming vblank, offset << 1 | axis (0 none)
 assert !fx_evict == !SRAM_WORK_COMBAT+$1DE, "fx: the impact state moved in combat's block"
 assert !fx_wdue == !fx_evict+1 && !fx_kickd == !fx_evict+2, "fx: the impact state is four bytes"

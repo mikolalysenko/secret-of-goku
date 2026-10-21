@@ -240,12 +240,7 @@ cb_effects_draw:
 	JSR cb_goku_active
 	BNE +
 	RTS
-+	LDA !cb_act_age
-	CMP.w #2
-	BCS +
-	JSR cb_fx_prep                ; a punch's wind-up readies its contact's cells
-+
-	JSR cb_fx_continuous          ; focus gets cache/OAM priority over a retiring beam
++	JSR cb_fx_continuous          ; focus gets cache/OAM priority over a retiring beam
 	LDA.l !bd_on
 	BEQ +
 	JSR cb_fx_beam_draw
@@ -273,6 +268,8 @@ cb_fx_continuous:
 	BEQ .aura
 	CMP.b #!GOKU_K_REVERT
 	BEQ .aura
+	CMP.b #!GOKU_K_PUNCH
+	BEQ .punch
 	LDA !cb_charging
 	BEQ .noAura
 .aura
@@ -290,6 +287,11 @@ cb_fx_continuous:
 	JSR cb_fx_lightning
 .out
 	RTS
+.punch
+	REP #$20
+	JSR cb_fx_prep                ; a punch's wind-up readies its contact's cells
+	SEP #$20
+	BRA .noAura
 
 ; ---------------------------------------------------------------------------
 ; Placeholder sprites (until the fx renderers land): 16x16 cells in OBJ

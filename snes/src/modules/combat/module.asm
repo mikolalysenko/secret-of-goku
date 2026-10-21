@@ -311,6 +311,8 @@ assert !CBT == $317F00, "snes/test/combat/lib.lua reads the test block at $31:7F
 !kb_dist  = $09   ; byte: 56 / 88
 !kb_dx    = $0A   ; word: radial: x offset at full distance (8.8 signed)
 !kb_dy    = $0C   ; word
+!kb_tab   = $0E   ; byte: its rows in combat_launch_axis (COMBAT_TAB_*)
+!kb_len   = $0F   ; byte: frames (12, or a push-back's)
 ; sound mark fields
 !sm_on    = $00   ; byte
 !sm_sp    = $01   ; byte

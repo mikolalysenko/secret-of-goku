@@ -747,8 +747,8 @@ if defined("FX_HIT")
 	JSL fx_kick
 endif
 	RTS
-; A punch's first two frames (cb_effects_draw calls while the action's age
-; is below 2) have fx ready the cells of its coming contact (fx_warm), so
+; A punch's first two frames (cb_fx_continuous calls for punches; its age
+; below 2) have fx ready the cells of its coming contact (fx_warm), so
 ; their uploads land before the contact's busy vblank. A blow whose cells
 ; were found resident is not asked again until fx's cache has lost a cell
 ; since (!fx_evict): its record keeps that count + 1, so a record and a
@@ -756,7 +756,11 @@ endif
 ; never pass for resident.
 cb_fx_prep:
 if defined("FX_PREP")
-	SEP #$20
+	LDA !cb_act_age
+	CMP.w #2
+	BCC +
+	RTS
++	SEP #$20
 	LDA !cb_act
 	CMP.b #!GOKU_K_PUNCH
 	BNE .out8

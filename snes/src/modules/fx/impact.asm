@@ -7,21 +7,16 @@
 
 ; ---------------------------------------------------------------------------
 ; FX_HIT (C = FX_IMP_*): the impact spark (fx_k_impact) and the impact frame
-; of the blow, timed in frames since the spawn through the contact hold
-; (age + hold at the spawn - hold left): the starburst for 2 frames, in
-; front of the natives and over the spark, and the finishing kick's
-; shockwave for FX_SHOCK_FRAMES from FX_SHOCK_DELAY on, behind them. Both
-; draw in the spark's own class (gold for FX_F_GOLD) from the shared cells
-; of impact-art.js.
+; of the blow, timed in fx frames since the spawn through the contact hold
+; (!fx_frame - B, its first fx frame: fx_spawn_init): the starburst for 2
+; frames, in front of the natives and over the spark, and the finishing
+; kick's shockwave for FX_SHOCK_FRAMES from FX_SHOCK_DELAY on, behind them.
+; Both draw in the spark's own class (gold for FX_F_GOLD) from the shared
+; cells of impact-art.js.
 fx_k_hit:
-	LDA !d_cur+!C_C               ; life | hold left << 8
-	XBA
-	AND.w #$00FF
-	EOR.w #$FFFF
+	LDA.l !fx_frame
 	SEC
-	ADC !d_cur+!C_T               ; age - hold left
-	CLC
-	ADC !d_cur+!C_B               ; + hold at the spawn
+	SBC !d_cur+!C_B
 	STA !d_ks+12                  ; frames since the spawn
 	CMP.w #2
 	BCS .shock
@@ -90,9 +85,8 @@ fx_k_hit:
 	; wind-up cannot bring the shockwave in, and a cross's spark is the
 	; time a kick may follow. The record's last cell in, nothing more is
 	; done. The spark's own missed-upload mark stays as it drew.
-	LDA !d_cur+!C_C               ; hold left
-	AND.w #$FF00
-	BNE .done
+	LDA !d_cur+!C_T               ; its age moves once the hold is over
+	BEQ .done
 	LDA.l !fx_cbudget
 	BEQ .done
 	LDA !d_cur+!C_KIND            ; record ((gold * 3 + 2) * 4 + facing) * 16
@@ -378,15 +372,11 @@ fx_whiten_pass:
 	LDA.l !fx_slots+!S_A,X
 	AND.w #!FX_IMP_ACTOR
 	BEQ .next
-	LDA.l !fx_slots+!S_AGE,X
-	INC
-	BEQ .white                    ; spawned this frame
-	DEC
-	BNE .next
-	LDA.l !fx_slots+!S_LIFE,X     ; age 0 with its hold untouched: the
-	EOR.l !fx_slots+!S_B-1,X      ; frame after the spawn
-	AND.w #$FF00
-	BNE .next
+	LDA.l !fx_frame               ; the spawn's fx frame or the next
+	SEC
+	SBC.l !fx_slots+!S_B,X
+	CMP.w #2
+	BCS .next
 .white
 	PHX
 	LDA.l !fx_slots+!S_A,X
@@ -522,7 +512,8 @@ fx_wh_part:
 ; and BG2 move; BG3 (text, the HUD) and the sprites stay. The step of each
 ; fx frame is written in its vblank. Ignored in Mode 7 arenas.
 ; !fx_kick holds 1 + the index of the next step in fx_kick_steps and the
-; facing (bits 5-6); 0 none.
+; facing (bits 5-6); 0 none. !fx_kickd is nonzero while a kick runs (the
+; one test fx_finish makes): 1 (offset 0) until its first step.
 fx_kick:
 	JSR fx_ensure_init
 	PHA
@@ -547,19 +538,25 @@ fx_kick:
 	ASL
 	ORA.l !fx_s+12
 	STA.l !fx_kick
+	REP #$20
+	LDA.w #$0001                  ; nonzero until fx_finish writes its first step
+	STA.l !fx_kickd               ; (offset 0: the plain scroll)
+	PLA
+	RTL
 .skip
 	REP #$20
 	PLA
 	RTL
 
-; Once per fx frame (fx_finish): the kick's next step becomes its offset
-; for the coming vblank, !fx_kickd = offset << 1 | axis (0 x, 1 y; left
-; and up negative); a zero step ends it. Out: A16 nonzero (and positive)
-; while it runs.
+; Once per fx frame while !fx_kickd is nonzero (fx_finish): the kick's next
+; step becomes its offset for the coming vblank, !fx_kickd = offset << 1 |
+; axis (0 x, 1 y; left and up negative); a zero step ends it (both 0). Out:
+; A16 nonzero (and positive) while it runs.
 fx_kick_advance:
 	LDA.l !fx_kick
 	AND.w #$00FF
 	BNE +
+	STA.l !fx_kickd               ; (no kick: none in the vblank either)
 	RTS
 +	STA !d_tmp
 	AND.w #$001F

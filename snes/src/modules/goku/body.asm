@@ -127,13 +127,13 @@ goku_render_boy:
 	PHY
 	JSR goku_pose            ; p_cell, p_flags, p_lift
 	JSR goku_anchor          ; $04/$06 exactly as C0:E5F5 (incl. shake decay)
-	LDA !p_kind
-	AND.w #$00FF
-	CMP.w #!GOKU_K_PUNCH
-	BNE +
-	JSR goku_lunge           ; a strike's lunge moves the drawn body only
-+	SEP #$20
-	LDA !goku_ctl
+	SEP #$20
+	BIT !p_flags             ; a punch pose (GOKU_PF_LUNGE, V): the strike's
+	BVC +                    ; lunge moves the drawn body only
+	REP #$20
+	JSR goku_lunge
+	SEP #$20
++	LDA !goku_ctl
 	AND.b #!GOKU_CTL_HIDE|!GOKU_CTL_HIDESHADOW
 	STA !shadow_hidden
 	LDA !p_flags
@@ -220,7 +220,7 @@ goku_anchor:
 ; through the hit stop, is drawn 2 / 3 / 4 pixels (jab, cross, kick) along
 ; the facing, half that rounded up in the follow through; the wind-up and
 ; the recovery stay in place. Only the anchor $04/$06 moves: the native
-; position and the shadow never do. For a punch pose (!p_kind). M16 X16.
+; position and the shadow never do. For a punch pose (GOKU_PF_LUNGE). M16 X16.
 goku_lunge:
 	LDA !goku_act_age        ; phase as pk_punch: base <2 / <4 / <7,
 	LDX.w #0                 ; Super Saiyan <1 / <2 / <4

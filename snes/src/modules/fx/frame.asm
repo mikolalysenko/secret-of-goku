@@ -100,24 +100,11 @@ if defined("FX_TEST")
 	JSR fx_test_vline
 	STA.l !FXT_BOX+$B0          ; after fx_begin
 endif
-	LDA.l !fx_wdue               ; drawn before, no FX_HIT white frames: the
-	AND.w #$00FF                 ; plain palette scan
-	CMP.w #!FX_SEEN
-	BEQ .plain
-	BIT.w #!FX_SEEN
-	BNE +
-	JSR fx_note_seen
-+	LDA.l !fx_wdue
-	AND.w #$0003
-	BNE .white
-.plain
+	LDA.l !fx_wdue               ; no FX_HIT white frames, drawn before and
+	BNE .wdue                    ; no camera kick (the word's high byte): the
+.plain                           ; plain palette scan
 	JSR fx_palscan
 	JSR fx_oam_limit
-	BRA .scanned
-.white
-	JSR fx_palscan_counts
-	JSR fx_oam_limit
-	JSR fx_whiten_pass           ; struck actors first take the white palette
 .scanned
 if defined("FX_TEST")
 	LDA.w !core_oam_cursor&$FFFF
@@ -148,13 +135,26 @@ if defined("FX_TEST")
 	STA.l !fx_sprites
 endif
 	JMP fx_finish
+.wdue
+	AND.w #$00FF
+	BEQ .plain                   ; only a camera kick
+	BIT.w #!FX_UNSEEN
+	BEQ +
+	JSR fx_note_seen
++	LDA.l !fx_wdue
+	AND.w #$0003
+	BEQ .plain
+	JSR fx_palscan_counts
+	JSR fx_oam_limit
+	JSR fx_whiten_pass           ; struck actors first take the white palette
+	BRA .scanned
 .idle
 	JSR fx_finish                ; (nothing drawn: no spawned effect alive)
 	LDA.l !fx_wdue               ; drawn since the claim: idle frames as ever
-	AND.w #!FX_SEEN
-	BNE +
+	AND.w #!FX_UNSEEN
+	BEQ +
 	LDA.l !fx_nmiwork
-	ORA !d_tmp+2
+	ORA.l !fx_kickd
 	ORA.l !fx_flash
 	ORA.l !fx_quake
 	ORA.l !fx_cfail
@@ -183,7 +183,7 @@ fx_note_seen:
 .seen
 	SEP #$20
 	LDA.l !fx_wdue
-	ORA.b #!FX_SEEN
+	AND.b #!FX_UNSEEN^$FF
 	STA.l !fx_wdue
 	REP #$20
 	RTS
@@ -192,7 +192,7 @@ fx_note_seen:
 fx_unseen:
 	SEP #$20
 	LDA.l !fx_wdue
-	AND.b #!FX_SEEN^$FF
+	ORA.b #!FX_UNSEEN
 	STA.l !fx_wdue
 	REP #$20
 	RTS
@@ -919,8 +919,7 @@ fx_load_slot:
 	STA !d_cur+!C_A
 	LDA.l !fx_slots+!S_B,X
 	STA !d_cur+!C_B
-	LDA.l !fx_slots+!S_LIFE,X
-	STA !d_cur+!C_C
+	STZ !d_cur+!C_C
 	LDA.l !fx_slots+!S_AGE,X
 	STA !d_cur+!C_T
 	JMP fx_to_screen
@@ -1033,11 +1032,6 @@ fx_finish:
 	STA.w $0049
 	REP #$20
 .pal
-	LDA.l !fx_kick               ; the camera kick: A nonzero while it runs
-	AND.w #$00FF
-	BEQ +
-	JSR fx_kick_advance
-+	STA !d_tmp+2
 	; The palette hook latches clspal only when this frame completes.
 	; nmipal continues to describe the displayed OAM during a lag vblank.
 	LDA.l !fx_cpend             ; palettes already went through the early hook
@@ -1052,15 +1046,20 @@ fx_finish:
 	ORA.l !fx_cfail
 	ORA.l !fx_nlive
 	STA.l !fx_busy
-	LDA !d_tmp+2                 ; a camera kick alone: only its scroll
-	BEQ +
-	LDA.l !fx_nmiwork
-	BNE +
-	LDA.w #$8000
-	STA.l !fx_nmiwork
-+	LDA.w #$0000
+	LDA.l !fx_kickd              ; a camera kick runs (fx_kick starts it nonzero)
+	BNE .kick
+.done
+	LDA.w #$0000
 	STA.l !fx_ndraw
 	RTS
+.kick
+	JSR fx_kick_advance          ; its offset for the coming vblank; 0: over
+	BEQ .done
+	LDA.l !fx_nmiwork            ; a camera kick alone: only its scroll
+	BNE .done
+	LDA.w #$8000
+	STA.l !fx_nmiwork
+	BRA .done
 
 ; native-feedback.js: [0,1,2,4,6,9,13,17][flash]
 fx_flash_amounts:
