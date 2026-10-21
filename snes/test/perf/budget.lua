@@ -1,5 +1,5 @@
 -- CPU budget probe: the scanline at which each frame's game logic finishes
--- (00:B077 field / 00:8089 world, the instruction after the frame's work).
+-- (00/80:B077 field / 00/80:8089 world, after the frame's work).
 -- Scanlines wrap at 262; logic starts after the NMI handler (~line 240).
 -- `reached` < frames means lag (logic finished fewer times than frames ran).
 local BUNDLE = BUNDLE_PATH
@@ -30,14 +30,18 @@ function test()
     return
   end
   H.wait(2)
-  local id1 = emu.addMemoryCallback(onWait, emu.callbackType.exec, 0x00B077, 0x00B077)
-  local id2 = emu.addMemoryCallback(onWait, emu.callbackType.exec, 0x008089, 0x008089)
+  -- FastROM continuations can leave the native loop in bank $80. Watching
+  -- only $00 reports a running world scene as 100% lag. These are alternate
+  -- CPU addresses, so a completed frame triggers exactly one callback.
+  local hooks = {}
+  for _,at in ipairs({0x00B077,0x80B077,0x008089,0x808089}) do
+    hooks[#hooks+1] = {emu.addMemoryCallback(onWait,emu.callbackType.exec,at,at),at}
+  end
   local start = H.frame
   for i = 1, 300 do
     if i % 60 < 30 then H.hold('left', 1) else H.hold('right', 1) end
   end
-  emu.removeMemoryCallback(id1, emu.callbackType.exec, 0x00B077, 0x00B077)
-  emu.removeMemoryCallback(id2, emu.callbackType.exec, 0x008089, 0x008089)
+  for _,h in ipairs(hooks) do emu.removeMemoryCallback(h[1],emu.callbackType.exec,h[2],h[2]) end
   table.sort(lines)
   H.result('frames', H.frame - start)
   H.result('reached', #lines)
