@@ -114,8 +114,12 @@ export function romEcho(rom,preset){const a=0x30708+preset*4;return {edl:rom[a]&
 // increasing addresses from $4DF1, its DIR / tuning / ADSR at entry $20+k,
 // the sequence at $1A00; then run the SPC side of command 01 (echo
 // parameters, an empty transfer) so the driver starts the song.
-export function loadSong(h,rom,{blob,instruments,echo={edl:4,evol:0x40,efb:0x1e,fir:0},song=0x3b,p2=0x0f,p3=0xff}){
- let at=0x4DF1;
+export function loadSong(h,rom,{blob,instruments,echo={edl:4,evol:0x40,efb:0x1e,fir:0},song=0x3b,p2=0x0f,p3=0xff,sampleBase=0x4DF1}){
+ // The CPU loader disables echo writes before uploading/compacting samples.
+ // RAM installation here is instantaneous, but the following handshake is
+ // not: an old larger echo ring could otherwise erase the new sample tail.
+ h.dsp.write(0x6C,h.dspReg(0x6C)|0x20);
+ let at=sampleBase;
  instruments.forEach((id,k)=>{
   const ins=typeof id==='number'?romInstrument(rom,id):id;
   h.ram.set(ins.brr,at);
