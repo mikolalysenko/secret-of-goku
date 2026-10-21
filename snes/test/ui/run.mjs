@@ -430,12 +430,12 @@ const cases={
     // shared cells check; fx native-cells covers the game's side).
     const symbols=Object.fromEntries(readFileSync(testRom.replace(/\.sfc$/,'.sym'),'utf8').split('\n')
       .map(l=>l.match(/^([0-9A-F]{2}):([0-9A-F]{4}) (\S+)/)).filter(Boolean).map(m=>[m[3],parseInt(m[1]+m[2],16)]));
-    const SYM=Object.fromEntries(['core_field_frame','core_field_nmi_done','fx_k_aura_obj','fx_draw_current','fx_run_slots','fx_entry_tile','fx_entry_vram','fx_cell_dma','ui_sc_analyzer_hit'].map(k=>[k,symbols[k]]));
+    const SYM=Object.fromEntries(['core_field_frame','core_field_nmi_done','fx_k_aura_obj','fx_draw_current','fx_run_slots','fx_entry_tile','fx_entry_vram','fx_cell_dma','fx_aura_rows','fx_aura_asm_id','fx_asm_ptr','fx_asm_data','ui_sc_analyzer_hit'].map(k=>[k,symbols[k]]));
     const r=await mesenCase('analyzer-charge',{bundle:'animation-audit__native__rabite-field-b',prelude:{SYM,SHOTS:4},test:'analyzer-charge',extra:[join(here,'../lua/cells-check.lua'),analyzerLua],exactFrames:true});
     const fails=resultFails(r.results),q=r.results??{};
     if(r.code!==0||q.error)fails.push(`mesen: ${q.error??r.output.slice(-400)}`);
     for(const d of (q.details??[]).slice(0,6))fails.push(JSON.stringify(d));
-    report('analyzerCharge',!fails.length&&q.failures===0,[...fails,`hits ${q.hits}; aura ${q.auraFrames} frames, readings ${q.uiFrames}, both ${q.bothFrames}; wrong aura ${q.auraBad}, stale FX ${q.fxBad}, readout ${q.uiBad}, native ${q.nativeBad}; late FX uploads ${q.fxLate}, game sprites before their stream ${q.nativeLate}`]);
+    report('analyzerCharge',!fails.length&&q.failures===0,[...fails,`hits ${q.hits}; aura ${q.auraFrames} frames, readings ${q.uiFrames}, both ${q.bothFrames}; wrong aura ${q.auraBad}, partial flames ${q.auraPartial} of ${q.auraDrawn}, cut by line limits ${q.auraDropped}, stale FX ${q.fxBad}, readout ${q.uiBad}, native ${q.nativeBad}; late FX uploads ${q.fxLate}, game sprites before their stream ${q.nativeLate}`]);
   },
 
   async analyzerCast(){

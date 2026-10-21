@@ -34,6 +34,8 @@ function test()
   check('aura_shown', s.auraFrames >= 100, s.auraFrames)
   check('readings_with_aura', s.bothFrames >= 10, s.bothFrames)
   check('aura_pixels', s.auraBad == 0, s.auraBad)
+  check('aura_whole', s.auraDrawn > 0 and s.auraPartial == 0 and s.auraDropped == 0,
+    s.auraDrawn .. ' built, ' .. s.auraPartial .. ' partial, ' .. s.auraDropped .. ' cut')
   check('fx_resident_pixels', s.fxBad == 0, s.fxBad)
   check('readout_pixels', s.uiBad == 0, s.uiBad)
   check('native_pixels', s.nativeBad == 0, s.nativeBad)

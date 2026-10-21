@@ -16,8 +16,16 @@
 -- streams the piece only in the slot's round-robin phase, up to four
 -- frames later; tiles FX wrote before the game claimed them show until
 -- then: nativeLate, reported only.
+-- The aura must also be whole: every part of the frame's flame assembly
+-- that lies on the screen is written (auraPartial counts the frames that
+-- miss one, a cut-off top row included), and once displayed none of its
+-- sprites loses a line to the PPU's 32 sprites / 34 slivers per line
+-- (evaluation from the rotated first sprite, slivers fetched in reverse:
+-- auraDropped).
 -- Needs SYM: core_field_frame, core_field_nmi_done, fx_k_aura_obj,
--- fx_draw_current, fx_run_slots, fx_entry_tile, fx_entry_vram, fx_cell_dma.
+-- fx_draw_current, fx_run_slots, fx_entry_tile, fx_entry_vram, fx_cell_dma;
+-- for the whole-aura check also fx_aura_rows, fx_aura_asm_id, fx_asm_ptr,
+-- fx_asm_data.
 -- Use: Cells.init() once emulation runs, Cells.measuring = true/false,
 -- Cells.frame() after each H.wait(1) (screenshots), Cells.report().
 Cells = {measuring = false}
@@ -28,7 +36,9 @@ local lastWriter, lastWrite = {}, {}   -- 8x8 tile -> 'native'|'fx'|'ui', frame
 local busyFrom = {}                     -- cache entry -> first frame of its current claim
 local pending, displayed = nil, nil
 local auraStart, auraOpen, auraTiles = nil, false, {}
-local stats = {frames=0,checked=0,auraFrames=0,auraBad=0,fxBad=0,fxLate=0,uiBad=0,
+local auraAsm, auraId, auraDrawn = {}, nil, false
+local cellRow = {}                      -- aura cell -> its row in its flame (0 top)
+local stats = {frames=0,checked=0,auraFrames=0,auraBad=0,auraBadRows={0,0,0},auraDrawn=0,auraPartial=0,auraDropped=0,fxBad=0,fxLate=0,uiBad=0,
   uiFrames=0,bothFrames=0,nativeBad=0,nativeLate=0,freeRefs=0,nativeWrites=0,nativeWritesHeld=0,
   regionAWrites=0,lag=0,shots=0}
 local details = {}
@@ -113,14 +123,66 @@ end
 hook(SYM.fx_k_aura_obj, function()
   if Cells.measuring then auraStart = H.r16(0x7E6E90); auraOpen = true end
 end)
+-- The parts FX wrote for the frame's aura against its assembly's parts on
+-- the screen (positions from the first part found; a part is on the screen
+-- when any of its 16x16 pixels is).
+local function checkAura(written)
+  local parts = auraId and auraAsm[auraId]
+  if not parts or #written == 0 then return end
+  stats.auraDrawn = stats.auraDrawn + 1
+  local function find(w)
+    for _, p in ipairs(parts) do
+      if p.cell == w.cell and p.h == w.h and p.v == w.v then return p end
+    end
+  end
+  local first = find(written[1])
+  if not first then
+    stats.auraPartial = stats.auraPartial + 1
+    note('aura-part', {asm=auraId, unknown=written[1].cell})
+    return
+  end
+  local ax, ay = written[1].x - first.dx, written[1].y - first.dy
+  local missing = {}
+  for _, p in ipairs(parts) do
+    local x, y = ax + p.dx, ay + p.dy
+    if x + 15 >= 0 and x <= 255 and y + 15 >= 0 and y <= 223 then
+      local seen = false
+      for _, w in ipairs(written) do
+        if w.x == x and w.y == y and w.cell == p.cell and w.h == p.h and w.v == p.v then seen = true; break end
+      end
+      if not seen then missing[#missing + 1] = p.dy end
+    end
+  end
+  if #missing > 0 then
+    stats.auraPartial = stats.auraPartial + 1
+    note('aura-part', {asm=auraId, anchor={ax, ay}, written=#written, parts=#parts, missingRows=missing})
+  end
+end
 local function closeAura()
   if not auraOpen then return end
   auraOpen = false
-  for off = auraStart, H.r16(0x7E6E90) - 4, 4 do auraTiles[H.r16(0x7E0802 + off) & 0x1FF] = true end
+  local written = {}
+  for off = auraStart, H.r16(0x7E6E90) - 4, 4 do
+    local word = H.r16(0x7E0802 + off)
+    local t = word & 0x1FF
+    auraTiles[t] = true
+    local slot = off >> 2
+    local x, y = H.r8(0x7E0800 + off), H.r8(0x7E0801 + off)
+    if (H.r8(0x7E0A00 + (slot >> 2)) >> ((slot & 3) * 2)) & 1 ~= 0 then x = x - 256 end
+    if y >= 224 then y = y - 256 end
+    local e = tileEntry[t]
+    written[#written + 1] = {x=x, y=y, cell=e and H.r16(CCELL + e * 2) or -1, h=word & 0x4000 ~= 0, v=word & 0x8000 ~= 0}
+  end
+  if #written > 0 then auraDrawn = true end
+  checkAura(written)
+  auraId = nil
+end
+if SYM.fx_aura_rows then
+  hook(SYM.fx_aura_rows, function() if Cells.measuring then auraId = emu.getState()['cpu.a'] end end)
 end
 hook(SYM.fx_draw_current, function() if Cells.measuring then closeAura() end end)
 hook(SYM.fx_run_slots, function() if Cells.measuring then closeAura() end end)
-hook(SYM.core_field_frame, function() if Cells.measuring then auraTiles = {} end end)
+hook(SYM.core_field_frame, function() if Cells.measuring then auraTiles = {}; auraDrawn = false; auraId = nil end end)
 -- The frame is complete: who owns each cache entry, and where natives end.
 hook(0x00B077, function()
   if not Cells.measuring then return end
@@ -182,7 +244,11 @@ hook(SYM.core_field_nmi_done, function()
             if not vramMatches(e, cellBytes(c)) then
               local late = (displayed.cpend >> e) & 1 ~= 0
               local d = {slot=i, entry=e, cell=c, aura=isAura, writer=lastWriter[t], now=H.r16(CCELL + e * 2), late=late, line=emu.getState()['ppu.scanline']}
-              if isAura then stats.auraBad = stats.auraBad + 1; note('aura', d)
+              if isAura then
+                stats.auraBad = stats.auraBad + 1
+                local row = cellRow[c]
+                if row then d.row = row; stats.auraBadRows[row + 1] = (stats.auraBadRows[row + 1] or 0) + 1 end
+                note('aura', d)
               elseif late then stats.fxLate = stats.fxLate + 1
               else stats.fxBad = stats.fxBad + 1; note('fx', d) end
             end
@@ -197,7 +263,50 @@ hook(SYM.core_field_nmi_done, function()
       end
     end
   end
-  if aura then stats.auraFrames = stats.auraFrames + 1 end
+  if aura then
+    stats.auraFrames = stats.auraFrames + 1
+    -- The PPU per line: the first 32 sprites in evaluation order (from the
+    -- rotated first sprite), then 34 slivers fetched from the last of them.
+    local first = H.r8(0x317497)
+    first = (first & 0x80 ~= 0) and (first & 0x7F) or 0
+    local spr, lines = {}, {}
+    for k = 0, 127 do
+      local i = (first + k) & 127
+      local hi = (H.oam(512 + (i >> 2)) >> ((i & 3) * 2)) & 3
+      local x = H.oam(i * 4) - ((hi & 1) ~= 0 and 256 or 0)
+      local size = (hi & 2) ~= 0 and 32 or 16
+      local cols = 0
+      for xx = x, x + size - 1, 8 do if xx + 8 > 0 and xx < 256 then cols = cols + 1 end end
+      local attr = H.oam(i * 4 + 3)
+      local t = H.oam(i * 4 + 2) | ((attr & 1) << 8)
+      local isAura = i >= displayed.native and displayed.aura[t] and tileEntry[t] ~= nil
+      spr[#spr + 1] = {y=H.oam(i * 4 + 1), size=size, cols=cols, aura=isAura}
+      if isAura then
+        local y = H.oam(i * 4 + 1)
+        for d = 0, size - 1 do local yy = (y + d) & 255; if yy < 224 then lines[yy] = true end end
+      end
+    end
+    local dropped = nil
+    for yy in pairs(lines) do
+      local inRange = {}
+      for _, sp in ipairs(spr) do
+        if sp.cols > 0 and ((yy - sp.y) & 255) < sp.size then
+          if #inRange < 32 then inRange[#inRange + 1] = sp
+          elseif sp.aura then dropped = dropped or yy end
+        end
+      end
+      local left = 34
+      for k = #inRange, 1, -1 do
+        local sp = inRange[k]
+        if sp.aura and left < sp.cols then dropped = dropped or yy end
+        left = math.max(0, left - sp.cols)
+      end
+    end
+    if dropped then
+      stats.auraDropped = stats.auraDropped + 1
+      note('aura-drop', {line=dropped})
+    end
+  end
   if ui then stats.uiFrames = stats.uiFrames + 1 end
   if aura and ui then stats.bothFrames = stats.bothFrames + 1 end
 end)
@@ -206,6 +315,30 @@ function Cells.init()
     entryTile[e] = H.r16(SYM.fx_entry_tile + e * 2)
     entryVram[e] = H.r16(SYM.fx_entry_vram + e * 2)
     tileEntry[entryTile[e]] = e
+  end
+  -- The twelve flame assemblies (fx.mjs): parts (x+128, y+128,
+  -- cell*8 | v*4 | h*2) after the record header and its cell words.
+  if SYM.fx_aura_asm_id and SYM.fx_asm_ptr and SYM.fx_asm_data then
+    local base = H.r16(SYM.fx_aura_asm_id)
+    for id = base, base + 11 do
+      local p = SYM.fx_asm_data + H.r16(SYM.fx_asm_ptr + id * 2)
+      local np, nc = H.r8(p), H.r8(p + 1)
+      local q, parts = p + 6 + nc * 2, {}
+      for k = 0, np - 1 do
+        local f = H.r8(q + k * 3 + 2)
+        parts[#parts + 1] = {dx=H.r8(q + k * 3) - 128, dy=H.r8(q + k * 3 + 1) - 128,
+          cell=H.r16(p + 6 + (f >> 3) * 2) & 0x1FF, h=f & 2 ~= 0, v=f & 4 ~= 0}
+      end
+      auraAsm[id] = parts
+      local ys = {}
+      for _, p in ipairs(parts) do ys[p.dy] = true end
+      local order = {}
+      for y in pairs(ys) do order[#order + 1] = y end
+      table.sort(order)
+      for _, p in ipairs(parts) do
+        for r, y in ipairs(order) do if y == p.dy then cellRow[p.cell] = r - 1 end end
+      end
+    end
   end
 end
 -- After each H.wait(1) while measuring: the picture with bad VRAM is the

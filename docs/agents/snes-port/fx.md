@@ -799,6 +799,20 @@ the counts were the same with the scouter off. Region C's fifth piece is a
 party member's thrown weapon (Popoi's boomerang at tiles `$1AC/$1AE`):
 FX could also overwrite it while it was shown.
 
+The same overwrite is the maintainer's later report on 17b4631 that "the
+top of the aura is sometimes cut off". Every wrong aura sprite in those
+fights belongs to the flame's top row (`fight` 620/0/0 top/middle/bottom,
+`fight-ssj` 542/0/0): FX resolves the top row's cell first, so it takes
+region A's first free entry, the one slot 5's first piece covers, and a
+blank cell streamed over it leaves a flat-topped flame. Measured on 17b4631
+and on this branch with charge, focus and transform in Rabite fights,
+Potos, the slime and Buffy arenas and a sweep that draws the flame across
+the screen top, nothing else cuts a row: every flame FX builds has all of
+its on-screen parts (none left out when the module area fills, the
+miniature/full switch or edge clipping) and the PPU drops none of its
+lines (32 sprites / 34 slivers). The radio's box, like the browser's,
+covers whatever lies under lines 8-72.
+
 **The fix** (`native.asm`). The streamer runs one phase per vblank,
 `$56` (`C1:9530`). The field loop advances it only after a completed
 frame's vblank (`C0:B07D`), so every vblank of a frame's logic streams that
@@ -856,8 +870,15 @@ sprite at the end of every field NMI. FX sprites must show the ROM cell
 the cache said was resident. UI leases must show their own upload. Native
 sprites on cache tiles must not show FX or UI writes made while the game
 owned them. The test also requires the region A conflict to occur.
-Before the fix: `fight` 620 wrong aura sprites and 174 stale cells,
-`fight-ssj` 542, 191 and 100 native. After: none. The game's claims come
+Every drawn aura must be whole: the parts FX wrote for the frame's flame
+assembly (`fx_aura_rows`' assembly id, parts from `fx_asm_data`) against
+all of its parts on the screen, and the displayed OAM against the PPU's
+per-line limits from the rotated first sprite (`auraPartial`,
+`auraDropped`). `fight-top` sweeps the flame across line 0 (FX's frame
+sees Goku at screen lines -12 to 72), `transform` repeats L+A.
+Before the fix: `fight` 620 wrong aura sprites (all in the top row) and
+174 stale cells, `fight-ssj` 542, 191 and 100 native, `fight-top` 144.
+After: none, and no partial or cut flame in any scene. The game's claims come
 from its own fields, not FX's state. Late uploads and the
 game's pre-stream window are reported. `native.test.mjs` runs the
 assembled code. It checks the model against the original streamer's
