@@ -160,23 +160,20 @@ plane and tilemap attribute one word right: the leftmost `$2120` became
 glyph `$0020`, tile `$120` picked up blue dots, and the rightmost stale
 attribute produced the alternating bar.
 
-`ending_dialogue_upload` (`upload.asm`) wraps the native field-NMI call at
-`C0:C1F0`. While an ending owns the full screen it restores VMAIN `$80`
-immediately before the native uploader, preserving the call's registers
-and flags. It also runs for pending dialogue uploads during lag vblanks.
-No core files, window registers, colour math, or HDMA allocations change;
-the disc and ring retain both windows and channels 2/3/4/6. There is no
-new idle frame/NMI work: the wrapper is reached only when the native
-dialogue upload flag is set. Its measured cost through the native entry
-is at most **0.215 scanlines per upload** (0.160 outside the full-screen
-scenes), excluding the unchanged native upload itself.
+Core's `core_actor_cells` now runs the streamer's prologue
+(`C1:950D-C1:952D`) on a skipped frame: DMA channels 4-7 set for VRAM word
+writes and VMAIN `$80`, exactly as the streamer leaves them before its
+phase work. That covers every module that holds the streamer (the endings
+and the orbit's cinematics). No window registers, colour math or HDMA
+allocations change; the disc and ring keep both windows and channels
+2/3/4/6. The prologue costs a few dozen cycles on held vblanks only.
 
 The `dialogue` regression opens event `$134` over 13 scenarios: ordinary
 field, doomed globe, explosion disc/ring, escape, vista, flight, King Kai,
 native fatal view, fatal globe/disc/ring, and the departure globe. Every
 BG3 graphics/map DMA is checked byte-for-byte against its WRAM source,
 with the native palette HDMA and safe transfer timing checked too. With
-only the hook reverted in a private ROM, the ordinary/native-fatal
+only the fix reverted in a private ROM, the ordinary/native-fatal
 controls pass and every full-screen case detects the corrupt transfers.
 The 240-frame power-on hunts have no thin-line-opening transients:
 bad-ending retains only frames 12–14 and explosion 211–213, the same
@@ -642,7 +639,7 @@ WRAM block `!RAM_ORBIT+$80..$B5`:
 
 | Resource | Use |
 | --- | --- |
-| Code | `$A9:8000-FEB7` (328 bytes free); second area `$AA:C000-D9D1` (9,774 bytes of the quarter free) |
+| Code | `$A9:8000-FEB8` (327 bytes free); second area `$AA:C000-D9B6` (9,801 bytes of the quarter free) |
 | Fast data | `E9:0000` (32,678 bytes: crack events, fade sets, spark OAM, window lookups, flight tables), `EC:0000` (6,581 bytes: flight scale templates and widths); `ED`/`EE`/`EF` belong to core |
 | Extended data | ending: 68 blobs / 648,708 bytes (633.50 KiB), including the 188,387-byte orientation atlas. Whole build: 2,176.2 of 2,944 KiB, 767.8 KiB free |
 | WRAM | `!RAM_ORBIT+$80..$B5` |
@@ -650,7 +647,7 @@ WRAM block `!RAM_ORBIT+$80..$B5`:
 | VRAM | per scene above; core region `FIELD_OBJ_A` (owner `$09`) for the overlay |
 | HDMA | channels 2-6 in full-screen scenes (5 the TM cut, 2/3/4/6 windows or the flight's matrix, mode and gradient); fx keeps 2/3 only while its polygons run; none in the cutaway (world flight's 0-5 off) |
 | DMA | channel 7 (vblank transfers, palette commit, OAM copies) |
-| Hijack | `C1:E77E` (5 bytes, the finale death's event gate); `C0:C1F0` (4 bytes, native dialogue upload call) |
+| Hijack | `C1:E77E` (5 bytes, the finale death's event gate) |
 | Generated | `dist/snes/gen/ending/` (never committed) |
 
 ## Differences from the browser

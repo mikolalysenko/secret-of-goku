@@ -528,7 +528,13 @@ core_hdmaen_write:
 ; writes !core_frame to !core_actor_hold in its frame code, and that frame's
 ; vblank skips the streaming; the round robin resumes where it stopped. A
 ; stale value matches no later frame (one in 65,536 at worst). C1:950D sets
-; its own widths and A, and C0:C152 onwards relies on neither.
+; its own widths and A, and C0:C152 onwards relies on neither. A skipped
+; frame still runs the streamer's prologue (C1:950D-C1:952D, before its
+; phase work): DMA channels 4-7 set up for VRAM word writes and VMAIN $80.
+; The native dialogue upload later in this NMI (C0:C1F0) assumes VMAIN
+; $80, and the HUD updater (C0:C238) leaves it at $00: without the
+; prologue its tiles and map went up shifted by a byte (stray glyphs and
+; dots while a window opened over a full-screen scene).
 core_actor_cells:
 	REP #$20
 	LDA.l !core_actor_hold
@@ -540,6 +546,16 @@ else
 	JML $81950D                    ; its FastROM mirror; the RTL returns to C0:C152
 endif
 .skip
+	SEP #$10
+	PHD
+	LDA.w #$4300 : TCD
+	LDX.b #$00
+	STX.b $46 : STX.b $56 : STX.b $66 : STX.b $76
+	LDA.w #$1801
+	STA.b $40 : STA.b $50 : STA.b $60 : STA.b $70
+	LDX.b #$80
+	STX.w $2115                    ; DB as at the native call (its STX $2115)
+	PLD
 	RTL
 
 ; ---------------------------------------------------------------------------
