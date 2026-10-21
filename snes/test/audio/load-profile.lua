@@ -5,7 +5,7 @@ local rows, row, stage, stamp = {}, nil, nil, nil
 local function now() return emu.getState().masterClock end
 local function mark(nextStage)
   local t=now()
-  if row and stamp then row[stage]=(row[stage] or 0)+(t-stamp)/357366 end
+  if row and stamp then row[stage]=(row[stage] or 0)+((t-stamp)%0x100000000)/357366 end
   stage=nextStage;stamp=t
 end
 emu.addMemoryCallback(function()
