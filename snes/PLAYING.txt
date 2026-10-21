@@ -6,19 +6,23 @@ This is the standalone SNES cartridge port of Secret of Goku. Play with
 Goku's punches, ki blasts, Kamehameha, local flight, Instant Transmission
 and Super Saiyan transformation inside Secret of Mana's action RPG.
 
-This preview uses short native SNES combat sounds and compact effects.
-It includes the fixes for lingering transformation audio, cut-grass aura
-colours, flight palettes, the attack meter and deferred animation uploads.
-World takeoff, aerial charging, radar quest targets and returning from the
-globe/flat map are corrected. Predecoded terrain removes the measured
-world-flight stalls. Crowded local flight/combat can still slow down;
-this remains an in-progress preview.
+This preview brings much more of the browser edition to the cartridge.
+Its later story chapters, set pieces and boss battles now run natively.
+Punches and kicks land with a graded hit stop, impact flashes and a
+camera kick. The sounds were rebuilt around compact samples of the PC
+edition's Kamehameha, Instant Transmission, charging and aura, with
+crunchier hits, whooshing swings and natural variation. The original
+game's weapon-charge sounds no longer play for Goku. To make room for the
+samples, 17 songs use a slightly shorter echo. Ki shots and the charging
+aura no longer turn into damage numbers, and flight no longer gets stuck
+among flowers and trees. Crowded scenes and the largest battles can still
+slow down; this remains an in-progress preview.
 
 DOWNLOADS AND SOURCE
 
 Release: {{RELEASE_URL}}
 GitHub: https://github.com/mikolalysenko/secret-of-goku
-SNES source: https://github.com/mikolalysenko/secret-of-goku/tree/main/snes
+SNES source: https://github.com/mikolalysenko/secret-of-goku/tree/snes-v{{VERSION}}/snes
 Browser edition: https://mikolalysenko.github.io/secret-of-goku/
 Source commit: {{COMMIT}}
 
@@ -85,21 +89,20 @@ Do not assume save states from an older build work after updating.
 
 KNOWN LIMITATIONS
 
-Dense local scenes, especially repeated ki shots while flying with the party,
-still have CPU slowdowns. The reviewed gameplay scenarios have no observed
-palette mismatches, native weapon-meter leaks, sprite overflow or vblank
-overruns. Quiet punches, quiet ki and water flight passed 1,200-frame
-emulator runs without dropped gameplay frames. World flight passed 5,770
-measured frames of radar-visible turns, ki, charge/release and form changes
-with zero missed frames or palette, sprite and vblank errors. Map loading
-is excluded. These measurements do not cover every map, boss, scripted
-scene or physical device.
+Dense scenes still have CPU slowdowns, most noticeably while charging
+beams in crowded fields and in the largest battles. In the project's
+gameplay benchmarks the cartridge drops no more frames than the browser
+edition, and the reviewed scenarios have no observed palette mismatches,
+sprite overflow or vblank overruns. The automated suite also checks for
+video-memory writes outside vertical blank and other habits that real
+hardware does not forgive. These measurements do not cover every map,
+scripted scene or physical device.
 
 Analyzer power readings can briefly hide while crowded scenes or effects
-use the available sprite memory and frame time. Less common status/equipment
-interactions and some story, boss and ending paths still
-need further review. Detailed status and test results:
-https://github.com/mikolalysenko/secret-of-goku/blob/main/docs/agents/snes-port/gameplay-performance.md
+use the available sprite memory and frame time. Less common status and
+equipment interactions still need further review. Detailed status and
+test results:
+https://github.com/mikolalysenko/secret-of-goku/blob/snes-v{{VERSION}}/docs/agents/snes-port/gameplay-performance.md
 
 CREDITS
 

@@ -4,6 +4,46 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: hits that land, in both editions (2026-10-21)
+
+- Combat hit feel (af50a0e browser, 75cf28c and 9f455fb cartridge, add5eba,
+  60413d1 and 82ee2ee merges, 50e78c0 fixes; merged in 6d5c86c). The
+  maintainer asked for "a proper hit stop when a punch connects" and "all
+  the animation tricks". The browser and the cartridge share the same
+  values, and the cartridge matches the browser frame for frame:
+  - Hit stop: jab, cross and kick freeze 5 / 6 / 10 frames (4 / 5 / 9 as
+    Super Saiyan); it was 3 / 3 / 5.
+  - The struck actor alone flashes white for 2 frames. A shared palette
+    row is never changed.
+  - A 2-frame starburst on contact (12 / 14 / 16 px, 7 for a ki hit), gold
+    as Super Saiyan.
+  - The kick: a shockwave ring (11 → 27 px, 8 speed lines), a short
+    ground quake and a gentle three-step brightening.
+  - A camera kick of 2 / 3 / 4 px along the blow. Goku lunges into the
+    blow (sprite offset only), and a jab or cross that doesn't kill pushes
+    the target back 10 px (14 as Super Saiyan).
+  - A full combo is 21 frames longer, about 19%.
+  - The FX variables `!fx_evict`, `!fx_wdue` and `!fx_kickd` live in
+    combat's block (`$31:7DDE-7DE1`). The aura fix's `!fx_native_at` and
+    `!fx_native` keep FX `$BC-$BF`.
+  - The Vegeta pilot now sidesteps his volley: with the new rhythm the
+    scripted spar ended before the beam clash.
+  - The FX idle frame and kill-all cost what they did before, so the orbit
+    montage keeps 0 lags.
+  - Also fixed: leaving a scene mid-quake left the next one shaking.
+- FX late uploads (926068d, through the hit-feel merge): a cell the game
+  streamed over, or one a readout lease left, is drawn only once its
+  upload lands. A killed enemy's number object claims slot 5's cells from
+  its first frame. `native-cells` now requires `fxForeign = 0`: no FX sprite
+  over the game's pixels in any of its 10 scenes.
+- Orbit (91ed91c): the strike tests cost less.
+- Held back: the Analyzer lite readout pass (ac83439) adds an end-of-frame
+  call that took gameplay `charge` from 13 to 16 misses and the orbit
+  montage from 0 to 2 lags alongside the hit feel. It goes back for a
+  zero-cost idle path.
+- `snes/PLAYING.txt` (the release README) describes the second preview and
+  pins its source and status links to the release tag.
+
 ## Orbit: the strike tests cost less (2026-10-21)
 
 - A ray's vector, the sizes of its components and its box (a 360 px
