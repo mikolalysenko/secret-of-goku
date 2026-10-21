@@ -56,7 +56,7 @@ export async function runArrival({rom,out}){
   const main=mainCheckout(),importDir=join(main,'.local/snes-import/arrival-research__probe__before-pull');
   const probe=join(main,'.local/arrival-research/probe/before-pull.json');
   const sym=symbols(rom);
-  const fastBuild=readFileSync(rom)[0xFFD5]===0x31;   // HiROM header map mode: FastROM
+  const fastBuild=(readFileSync(rom)[0xFFD5]&0x10)!==0; // HiROM / ExHiROM FastROM bit
   check(sym.title_event_script,'symbols for the arrival script');
   const titleJson=resolve(repo,'dist/snes/gen/title/title.json');
   const labels=existsSync(titleJson)?JSON.parse(readFileSync(titleJson,'utf8')).event.labels:{};
@@ -66,7 +66,7 @@ export async function runArrival({rom,out}){
   if(existsSync(importDir)&&existsSync(probe)){
     const prelude=`IMPORT=${JSON.stringify(importDir)}\nSHOTS=${luaShots(SCENE_SHOTS)}\nFRAMES=1000\n`;
     const srom=privateRom(rom,'title-scene');   // fresh battery RAM: repeatable runs
-    const r=await runMesen({rom:srom,test:prelude+readFileSync(join(here,'scene.lua'),'utf8'),outDir:join(dir,'scene')});
+    const r=await runMesen({rom:srom,test:prelude+readFileSync(join(here,'scene.lua'),'utf8'),outDir:join(dir,'scene'),exactFrames:true});
     cleanupRom(srom);
     const res=r.results??{};
     check(r.code===0&&!res.error,`scene run finished (${res.error??'ok'})`);
@@ -155,7 +155,7 @@ export async function runArrival({rom,out}){
   // report their late frames without failing.
   const lateMsg=`${e.impact_late} of ${e.impact_frames} impact frames made late by the modules${(e.impact_late_rows??[]).length?' ('+e.impact_late_rows.join(', ')+')':''}; ${e.impact_late_native} late before the hook`;
   if(fastBuild){
-    check(e.impact_fastrom===e.impact_frames,`FastROM build: MEMSEL on in ${e.impact_fastrom} of ${e.impact_frames} impact frames`);
+    check(e.impact_frames>0&&e.impact_fastrom===e.impact_frames,`FastROM build: MEMSEL on in ${e.impact_fastrom} of ${e.impact_frames} impact frames`);
     check(e.impact_late===0,`FastROM: ${lateMsg}`);
   }else check(true,`SlowROM build: ${lateMsg} (informational)`);
   check(['page-1','page-2','page-3','page-4','page-5'].every(p=>(e.shots??[]).includes(p)),`five dialogue pages shown (${(e.shots??[]).filter(s=>s.startsWith('page')).join(' ')})`);

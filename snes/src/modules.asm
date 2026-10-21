@@ -176,6 +176,7 @@ modules_combat_damage:
 ; runs. M16/X16, DB = 0, D = 0.
 modules_field_preupload:
 	JSL ending_preupload       ; the wish flight's stars, Shenron, hidden slots
+	JSL goku_preupload         ; keep Goku's body colours through native flashes
 	RTL
 
 modules_cgram_upload:
