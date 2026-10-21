@@ -690,12 +690,9 @@ fz_tree_nmi:
 	STA $210F
 	STZ $2110
 	STZ $2110
-	STZ $2121                         ; the sky behind both planes
-	LDA.b #!FRIEZA_VISTA_SKY
-	STA $2122
-	LDA.b #!FRIEZA_VISTA_SKY>>8
-	STA $2122
 	REP #$20
+	; (the sky behind both planes, colour 0, goes up with the game's palette
+	; transfer: frieza_cgram_upload, !FZCG_SKY)
 	; Keep the field's priority at line 196. BG3 still sits above the cliff:
 	; channel 6 hides only its HUD rows, leaving dialogue through row 24.
 	LDA.w #$01FF

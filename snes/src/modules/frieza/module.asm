@@ -12,8 +12,10 @@
 ;   WRAM  $7E:DB00-DBBF (!RAM_FRIEZA)     SRAM  !PERSIST_FRIEZA ($31:6180, $80)
 ;         and !SRAM_WORK_SCENE ($32:6000) while a Frieza scene owns it
 ;   VRAM  OBJ tiles $0C0-$0FF (word $6C00-$6FFF) on Frieza's scene maps
-;   CGRAM one free OBJ palette (written in vblank after the game's upload)
-;   DMA   channel 7 inside the field NMI (after the game's uploads)
+;   CGRAM one free OBJ palette (two with afterimages or the Balls), sent
+;         inside the game's palette transfer (frieza_cgram_upload)
+;   DMA   channel 7 inside the field NMI (the game's palette transfer, then
+;         after the game's uploads)
 
 ; ---------------------------------------------------------------------------
 ; WRAM (!RAM_FRIEZA = $7E:DB00, $C0 bytes): bank-$7E absolute addresses.
@@ -404,6 +406,27 @@ endif
 !FZD_FLIP      = $0001     ; mirror (OAM h-flip)
 !FZD_BACK      = $0002     ; behind native sprites (default: in front)
 !FZD_GHOST     = $0004     ; afterimage palette (drawn every other frame)
+
+; The OBJ colours of a field frame's picture, for the game's palette transfer
+; (frieza_cgram_upload, sprite.asm): one word, published at the end of every
+; busy field frame (!fz_cgnext, stamped with !core_frame in !fz_cgframe);
+; the handler keeps the set whose OAM is on screen (!fz_cgshow, and the
+; frame it came from in !fz_cgshowf). !fz_cgany is nonzero from a nonzero
+; publication until a completed frame's vblank finds nothing to show: the
+; chain (modules.asm) reads only it while Frieza is away. Volatile SRAM
+; (core/shared.asm), long addressing; cleared at title entry, and battery
+; noise or a stale set (an older build's savestate) never matches the
+; frame stamps.
+!fz_cgnext     = !SRAM_WORK_FRIEZA_CG+0
+!fz_cgframe    = !SRAM_WORK_FRIEZA_CG+2
+!fz_cgshow     = !SRAM_WORK_FRIEZA_CG+4
+!fz_cgshowf    = !SRAM_WORK_FRIEZA_CG+6
+!fz_cgany      = !SRAM_WORK_FRIEZA_CG+8
+!FZCG_MAIN     = $0008     ; bits 0-2 Frieza's palette, bits 4-6 its row of frieza_palettes
+!FZCG_SECOND   = $0800     ; bits 8-10 the second palette, bits 12-13 its colours:
+!FZCG_SRC      = $3000     ;   0 the afterimages, 1 the seven Balls, 2 the eighth
+!FZCG_BLACK    = $4000     ; colour 0 black (the Emperor's hit)
+!FZCG_SKY      = $8000     ; colour 0 the Tree vista's sky
 
 ; sound cues (bind.asm maps them to the audio module's !AUDIO_SFX_*)
 !FZ_SFX_POWER_BURST = 1

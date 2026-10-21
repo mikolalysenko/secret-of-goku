@@ -376,15 +376,13 @@ fz_won_nmi:
 	REP #$20
 	RTS
 .black
-	; black (the Emperor's hit): sprites only, on a black backdrop, no math
+	; black (the Emperor's hit): sprites only, no math; the black backdrop
+	; goes up with the game's palette transfer (frieza_cgram_upload)
 	SEP #$20
 	LDA.b #$10
 	STA $212C
 	LDA.b #$00
 	STA $2131
-	STA $2121
-	STA $2122
-	STA $2122
 	REP #$20
 	RTS
 .white
