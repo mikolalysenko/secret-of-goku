@@ -4,6 +4,74 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: scouter readouts, round-two sounds, late-vblank HDMA, more extended data (2026-10-20)
+
+- Codex fidelity pass (merged in df2b4e0, narrowed in 8e769e1):
+  - Goku keeps his own colours during native flashes, only where the
+    browser's scene renderers draw him (an explicit cell, a latched
+    scripted pose, the arrival's phases 3-5).
+  - The Senzu Bean and DUST BAG icons now use the browser's pixels.
+  - The HUD is hidden under the Mana Tree vista (HDMA channel 6).
+- Codex audio, rounds one and two (7974473, b88fafb):
+  - Resident cues are chosen by an acoustic score against the browser clips.
+    Round two moves punch 43 -> 58, ki blast 50 -> 65 and teleport 57 -> 64,
+    and adds noise, sweeps and echo for the beam.
+  - Byte-identical retail tracks are shared to make room. Every cue is one
+    voice and costs no CPU time.
+  - Three rare voices (Frieza's laugh, Vegeta's "Final Flash!" and
+    "Kakarot!") stream at 6 kHz. Idle audio costs 0.40 lines (was 1.86).
+- Song changes cut the old song, as the browser switches cues. That is
+  about 30 frames less stall per change: the battle theme now holds the
+  loop 42 frames, Vegeta's 50, full power 12.
+- Codex flyby (8bce7d2): Frieza's Death Ball flyby is drawn over world
+  flight (Frieza, the layered ball, seven bursts, the white checker) with
+  HDMA channels 6/7 and no lag.
+- Codex scouter (c6348fd): scouter and Analyzer readouts are drawn as OBJ
+  cells shared with FX: outlined power numbers, reticles, charge updates,
+  blink, expiry and the radio's clipping. Idle cost is 0.25 lines. The
+  cells take 231 KiB of extended data.
+- Extended data continues into the upper halves of `$60-$7D`: 2944 KiB in
+  all, 2051 KiB used. A read probe over every suite found nothing that
+  reads the old copy there, only stray reads, now fixed (next two items).
+- Core: a field vblank that runs past line 261 keeps that frame's HDMA off.
+  - Cause: the game's NMI begins with `STZ $420C`, so no channel began the
+    frame from its table, and switching last frame's mask back on ran each
+    channel from stale pointers.
+  - Effect before the fix: the wish flight drew full-screen garbage one
+    frame in five; the Sandship breach wrote ROM bytes into CGRAM.
+  - The ending's full-screen scenes now skip the game's actor cell
+    streaming (up to 12 lines): `ending_frame` writes `!core_frame` to
+    `!core_actor_hold`, and `core_actor_cells` compares the two. Every flight
+    vblank ends by line 254, and the ending tests count any vblank that ends
+    in the next frame.
+  - The HDMA check reads the vblank flag first, and the idle ending NMI
+    leaves after one read. Together these keep the field NMI no more costly
+    than before: gameplay fly-punch's heaviest vblank (31.4 lines of the
+    game's own work) ends at 36.56 lines, where an intermediate version
+    reached 37.27.
+  - The Sandship breach checked the line before its set-up, which takes
+    about a line. Started at line 261, its `$420C` write landed after the
+    next frame's HDMA start. It now reads the vblank flag right before the
+    write and otherwise pauses for that frame.
+- The ending's palette walk no longer indexes its fade tables with another
+  module's bytes: the components are cleared when it takes the scene area.
+- Tests:
+  - Vegeta's pilot counts game frames and turns until he faces Vegeta, so
+    combat-final no longer depends on stall timing.
+  - ui text allows two frames of lag noise.
+  - The emulators bus probe reads the new space through both mirrors on
+    every core.
+- Docs: resolved gaps are removed from story.md and vegeta.md.
+- Validation on ed7088b: all 20 suites pass, under the read probe, which
+  saw only the emulators test's deliberate reads.
+  - Gameplay misses per 240 frames: charge 18, teleport 3, flying ki 2,
+    flight 1, flying punches 1, everything else 0, with no hardware errors.
+  - The charge count sits on the edge of the frame: replacing the
+    scouter's two idle calls (about 35 cycles, the scouter off in that
+    test) with empty ones moves it from 18 to 15, and removing them moves
+    it to 14. Its real cost is the game's actor construction (100-110 lines
+    in each missed frame).
+
 ## SNES integration: orbit on main, vblank palette hooks, faster charging (2026-10-20)
 
 - The orbit stream (Frieza's space finale, the entries below) is merged:
