@@ -16,6 +16,27 @@ teleport **15**, corridor flying ki **15**, flying punches **2**, and
 ground punches/ki **0/0**. Use these matched-build baselines below, rather
 than attributing differences from the old 26/15/10 results to this pass.
 
+### Quiet radio during base charging
+
+An idle radio has no messages, cooldowns, pending scouter scan or window
+work. Base charging and beams cannot start an SSJ warning, so retain that
+idle proof and perform only request, visibility and placement-age updates.
+Preserve foreign-state validation and the full path for fortress completion,
+events, R, SSJ, messages and cancellation before dispatch. World flight
+keeps its full callback. `UI_CHARGE_IDLE_SLOW` restores unconditional wakeup.
+
+The assembled charge API plus quiet callback falls **1,075 → 397 CPU
+cycles**. All **672** live RAM/SRAM/I/O comparisons and **12 UI cases** pass.
+All **13 short** and **six long** gameplay cases pass with zero hardware or
+rendering errors. Charge misses fall from the lookup checkpoint's **21 → 13**
+short and **31 → 18** long; other counts stay unchanged. Its longest update
+falls **277.90 → 266.43** lines, complete NMI peaks at **33.77**, and the
+short-run UI callback averages **0.98** lines (peak **1.84**) versus the
+baseline's **2.53 / 5.46**. Ordinary idle remains about **0.26** lines.
+The six perf scenes also pass. Artifacts: `quiet-radio-safe-short`,
+`quiet-radio-safe-long`, `quiet-radio-safe-ui.log`, `quiet-radio-unit.log`
+and `quiet-radio-perf.log` under `.local/snes-test/perf2/`.
+
 ### Charge presentation lookup
 
 Generate the charge aura power and orb frame from the existing quantized

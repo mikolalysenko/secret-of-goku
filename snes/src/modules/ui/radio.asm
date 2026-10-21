@@ -877,9 +877,19 @@ ui_charge_tick:
 	REP #$20
 	ORA.w #$8000
 	STA.l !ui_charge_in
+if not(defined("UI_CHARGE_IDLE_SLOW"))
+	; An empty field UI has no aside to pause and no warning/cooldown to
+	; advance for a base-form charge or beam. Keep its idle proof; the
+	; field callback still consumes this input and updates visibility.
+	BIT.w #!UIC_SUPER
+	BEQ .quiet
+endif
 	LDA.l !ui_state                   ; the next field frame is a full one
 	AND.w #!UIS_IDLE^$FFFF
 	STA.l !ui_state
+if not(defined("UI_CHARGE_IDLE_SLOW"))
+.quiet
+endif
 	PLP
 	RTL
 
@@ -887,6 +897,16 @@ ui_charge_tick:
 ui_charge_release:
 	PHP
 	REP #$20
+if not(defined("UI_CHARGE_IDLE_SLOW"))
+	; Cancelling a submitted request before dispatch still gets the full
+	; release pass that ui_charge_tick used to wake unconditionally.
+	LDA.l !ui_charge_in
+	BEQ +
+	LDA.l !ui_state
+	AND.w #!UIS_IDLE^$FFFF
+	STA.l !ui_state
++
+endif
 	LDA.w #$0000
 	STA.l !ui_charge_in
 	PLP
