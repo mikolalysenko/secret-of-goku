@@ -841,9 +841,11 @@ orbit_oam_frame:
 	BEQ +
 	JSL montage_oam                ; (a montage picture: its sprites)
 	JMP .close
-+	LDA.w #$FFFF                   ; (no aura unless the fight's drawing
-	STA.w !au_want                 ; wants one this frame)
++	LDA.w #$FFFF                   ; (no aura or burst unless the fight's
+	STA.w !au_want                 ; drawing wants one this frame)
 	STA.w !au_want+2
+	STA.w !vb_want
+	STA.w !vb_want+2
 	LDA.w !od_on
 	BEQ +
 	JSR death_draw
@@ -1542,6 +1544,7 @@ orbit_nmi_cells:
 	STA.w !n_len
 	JSR orbit_nmi_rows
 .beam
+	JSR vb_nmi                     ; (the boss bursts' pictures first: bursts.asm)
 	; a finished beam picture: 4 rows of 128 bytes to its slot
 	LDA.w !bg_ready
 	BEQ .out

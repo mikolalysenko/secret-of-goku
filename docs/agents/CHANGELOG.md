@@ -4,6 +4,15 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the boss bursts (2026-10-21)
+
+- The victory's twelve gold bursts with white hearts flare around Frieza
+  as `drawBossVictory` draws them (radius per frame, the ROM's colours),
+  over everything, through Frieza's two free beam slots. Their pictures
+  lead the vblank's queue, taking turns when two overlap. No frame lags
+  for them.
+- Extended data grows by 7 KiB (2,736.9 of 2,944 KiB).
+
 ## Orbit: Frieza's death flash and the victory's whiteout (2026-10-21)
 
 - After the fatal hit Frieza flashes red and white as `bossDeathColor`

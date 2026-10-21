@@ -232,9 +232,13 @@ beam_update:
 ; picture for this frame's key goes to the vblank's queue (bq, at most 4),
 ; chain 0 of both groups first, then 1, then 2 (the vblank sends what it
 ; has room for; the rest waits for the next frame's queue, made afresh).
+; The boss bursts' pictures go first (a burst lives 27 frames, its radius
+; changing each; a growing beam's outer chain shows its last picture
+; meanwhile), the auras' last.
 beam_queue:
 	STZ.w !bq_n
 	STZ.w !bq_i
+	JSR vb_queue
 	LDY.w #$0000                   ; chain
 .chain
 	LDX.w #$0000                   ; group
