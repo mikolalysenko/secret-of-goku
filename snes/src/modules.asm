@@ -72,12 +72,12 @@ modules_field_nmi:
 modules_world_frame:
 	JSL world_prepare_frame          ; enter/reset before combat consumes the pad
 	JSL combat_world_frame           ; shared charge/form state before world effects and drawing
+	JSL frieza_world_frame           ; advance flyby before world composes its OBJ
 	JSL ui_world_frame               ; first OAM producer; sees this frame's charge/shot/docking
 	JSL destroy_world_frame
 	JSL world_world_frame
 	JSL debug_world_frame
 	JSL flight_world_frame     ; a ceiling escape completes in world flight
-	JSL frieza_world_frame     ; the Death Ball flyby (1F04), the crisis's flight warning
 	JSL fx_world_frame         ; after the modules that draw effects
 	JSL ending_world_frame     ; after fx: the Fortress cutaway takes the whole OAM
 	JSL audio_frame
@@ -88,7 +88,8 @@ modules_world_nmi:
 	JSL ending_world_nmi       ; the Fortress cutaway's picture
 	JSL ui_world_nmi                  ; first: a few register and CGRAM writes
 	JSL world_world_nmi
-	JSL fx_world_nmi           ; keep last
+	JSL fx_world_nmi           ; field FX cleanup before the flyby takes channels 6/7
+	JSL frieza_world_nmi       ; flyby channels 6/7 after every world DMA user
 	RTL
 ; Full-screen menu frame (file select, name entry, status, equipment,
 ; save), in vblank right after the menu's own uploads (DB = $7E).

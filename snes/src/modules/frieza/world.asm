@@ -13,10 +13,13 @@
 !FZY_ANNOUNCE = 470
 !FZY_DONE     = 560
 
-; modules_world_frame: after the world logic. M16/X16, DB = $7E, D = 0.
-; Idle (no flyby armed, no outdoor intro to drop, no crisis notice pending):
-; two battery-RAM reads.
+; modules_world_frame: after combat, before UI and world drawing. M16/X16, DB = $7E, D = 0.
+; Cache idle world work in WRAM; every story mutation's fz_wake clears it.
+; The earlier draw dispatch otherwise puts two SRAM reads across HDMA.
 frieza_world_frame:
+	LDA !fz_wasidle
+	BIT.w #!FZI_WORLD_IDLE
+	BNE .idle
 	LDA.l !fzp_flags
 	AND.w #!FZFL_FLYBY|!FZFL_OUTDOOR
 	BNE .work
@@ -24,6 +27,11 @@ frieza_world_frame:
 	AND.w #!FZC_ACTIVE|!FZC_NOTIFIED
 	CMP.w #!FZC_ACTIVE
 	BEQ .work
+	SEP #$20
+	LDA.b #!FZI_WORLD_IDLE
+	TSB !fz_wasidle
+	REP #$20
+.idle
 	RTL
 .work
 	JSR fz_on                         ; Goku active (the block guarded)
@@ -35,6 +43,7 @@ frieza_world_frame:
 	LDA.w #!FZFL_OUTDOOR
 	JSR fz_clear
 +	JSR fz_flyby_tick
+	JSR fz_flyby_prepare
 	JSR fz_flight_notice
 .out
 	RTL

@@ -204,7 +204,15 @@ world_draw:
 	BCC +                            ; effect tiles still loading
 	JSR world_draw_front             ; drawn over Goku
 	JSR world_draw_back              ; also over Goku (layer.behindBody false)
-+	LDX.w !w_cursor
++
+if getfilestatus("frieza/flyby.asm") == 0
+	JSL frieza_world_draw             ; screen-space flyby before Goku; checker includes him
+	LDX.w !w_cursor
+	BCC +
+	JMP .finish
++
+endif
+	LDX.w !w_cursor
 	LDA.w !w_dock
 	BEQ .goku
 	JSR world_draw_dock
