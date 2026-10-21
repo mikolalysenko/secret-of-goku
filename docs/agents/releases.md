@@ -52,22 +52,25 @@ Update `package.json` and `package-lock.json` to the release version first. Disp
 
 ## Standalone SNES patch
 
-The [SNES preview release](https://github.com/mikolalysenko/secret-of-goku/releases/tag/snes-v0.1.0-preview.1)
-provides a verified IPS patch, a patch-only ZIP, ROM hashes, player
-instructions and native-resolution cartridge screenshots. It is separate
-from the browser and desktop packages. Crowded flight/combat still slows
-down; physical-console compatibility has not been certified.
+The current [SNES preview release](https://github.com/mikolalysenko/secret-of-goku/releases/tag/snes-v0.1.0-preview.2)
+(second preview, October 21, 2026) provides a verified IPS patch, a
+patch-only ZIP, ROM hashes, player instructions and native-resolution
+cartridge screenshots. It is separate from the browser and desktop
+packages. Crowded scenes and the largest battles still slow down;
+physical-console compatibility has not been certified. The first preview
+remains at [`snes-v0.1.0-preview.1`](https://github.com/mikolalysenko/secret-of-goku/releases/tag/snes-v0.1.0-preview.1).
 
 The cartridge source and packaging tools are included on `main` under
-[`snes/`](../../snes/). The published preview remains pinned to
-`snes-v0.1.0-preview.1`; its [packager](https://github.com/mikolalysenko/secret-of-goku/blob/snes-v0.1.0-preview.1/snes/release.mjs)
-and [performance notes](https://github.com/mikolalysenko/secret-of-goku/blob/snes-v0.1.0-preview.1/docs/agents/snes-port/gameplay-performance.md)
-describe that exact release. Cartridge releases use `snes-v<version>` tags,
+[`snes/`](../../snes/). Each published preview is pinned to its tag; the
+second preview's [packager](https://github.com/mikolalysenko/secret-of-goku/blob/snes-v0.1.0-preview.2/snes/release.mjs)
+and [performance notes](https://github.com/mikolalysenko/secret-of-goku/blob/snes-v0.1.0-preview.2/docs/agents/snes-port/gameplay-performance.md)
+describe that exact release. The release tag is pushed on its own:
+`origin/main` (which deploys Pages) is not moved by an SNES release. Cartridge releases use `snes-v<version>` tags,
 separate from the `v0.2.x` desktop packages. Build a patch-only package with:
 
 ```sh
 node --test snes/test/ips.test.mjs
-node snes/release.mjs --version=0.1.0-preview.1
+node snes/release.mjs --version=0.1.0-preview.2
 ```
 
 The packager performs a strict cartridge build, generates a standard IPS,

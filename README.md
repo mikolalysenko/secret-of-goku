@@ -8,7 +8,7 @@
 
 **[Play in your browser](https://mikolalysenko.github.io/secret-of-goku/)** · **[Native downloads](https://github.com/mikolalysenko/secret-of-goku/releases)** · **[Watch the teaser](https://www.youtube.com/watch?v=5lp2piNqMsg)**
 
-**[SNES IPS patch — preview](https://github.com/mikolalysenko/secret-of-goku/releases/tag/snes-v0.1.0-preview.1):** a standalone cartridge port for a headerless Secret of Mana (USA) ROM. Includes patching instructions and SNES controls; crowded combat still has slowdowns.
+**[SNES IPS patch — preview 2](https://github.com/mikolalysenko/secret-of-goku/releases/tag/snes-v0.1.0-preview.2):** a standalone cartridge port for a headerless Secret of Mana (USA) ROM. Includes patching instructions and SNES controls; crowded scenes still have slowdowns.
 
 <p align="center">
   <img src="assets/readme/instant-transmission.gif" width="256" alt="Instant Transmission: Goku teleports between enemies among desert dunes">
