@@ -18,7 +18,7 @@ end
 function test()
   local bundle = BUNDLE or 'emulator-probe__potos-state'
   E.import(bundle)
-  E.watchVblank(1)
+  E.watchVblank(0)
   H.wait(20)
   E.cue('village', 0x8000)
   H.wait(16)

@@ -6,7 +6,7 @@
 function test()
   local bundle = BUNDLE or 'ending-fix__end-20'
   E.import(bundle)
-  E.watchVblank(1)
+  E.watchVblank(0)
   H.wait(20)
   E.watchAudio()
   E.cue('scatter', 0x8000)

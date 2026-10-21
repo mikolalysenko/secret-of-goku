@@ -17,7 +17,7 @@ local function stillShot(name)
 end
 function test()
   E.import(BUNDLE or 'preset__bad-ending')
-  E.watchVblank(1)
+  E.watchVblank(0)
   local t0 = H.frame
   local core0 = H.r16(0x7ED700)
   E.cue('kai', 0x0005)          -- bad + permanent SSJ

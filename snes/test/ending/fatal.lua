@@ -5,7 +5,7 @@
 -- planet-view stills with planet-view.js's own fatal view.
 function test()
   E.import(BUNDLE or 'preset__bad-ending')
-  E.watchVblank(1)
+  E.watchVblank(0)
   E.watchAudio()
   E.cue('fatal', 0x8001)
   E.waitAge(200 + E.SHOT_LAG, 400)

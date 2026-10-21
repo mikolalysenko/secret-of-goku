@@ -317,12 +317,13 @@ clears `$2C` bits 0–1 every vblank (`C0:C0E1`); the NMI sets bit 1 again
 (`!UIW_FORCED`) so the scroll keeps the closing window down, and sets both
 bits when a window is open but the game skipped its setup because bit 1
 was ours. A channel switched on in HDMAEN after the frame's HDMA started
-would run from stale pointers; the core's field NMI checks the scanline
-before writing `$2C` to HDMAEN and, past the vblank, keeps only the
-channels already running (`ceed2d2`), so the UI sets its bits whatever the
-line. A closing window's scroll channel is already running, so in the test
+would run from stale pointers; the core's field NMI checks the vblank flag
+before writing `$2C` to HDMAEN and, past the vblank, keeps only channels
+switched on before the frame's HDMA start. The game's NMI begins with
+`STZ $420C`, so that is normally none: such a frame shows no HDMA rather
+than stale writes. The UI sets its bits whatever the line; in the test
 scene all 1,952 window frames show the window moved, the closing ones
-included.
+included (none of their vblanks ran late).
 
 ## Scouter (`scouter.asm`, `scouter-readouts.asm`, `scouter-obj.asm`)
 

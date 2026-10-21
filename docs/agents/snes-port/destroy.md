@@ -30,7 +30,7 @@ does draw: palettes, an HDMA breach and fires through the effects library.
 | SRAM `$31:6100-$31:6173` | `!PERSIST_DESTROY` (`$74` of `$80` bytes): broken doors, Mana Tree cloud barrier, the Sandship state (`+$10-$4B`), all saved with the GAME FILE by the core sidecar; a beam's unfinished hit work (`+$4C-$73`, cleared at load, new game and map changes) |
 | SRAM `$33:7000-$33:77FF` | `!SRAM_WORK_DESTROY`: edit queue, settled runs, smashed-object list, tile classes, breach records, planner job and suspended plan, scratch, barrier/orb state, debug mailbox, planner scratch, effect record (layout in `module.asm`) |
 | SRAM `$32:7600-$32:7FFF` | `!SSW`, the Sandship's volatile work: the tail of the set-piece scene area (`!SRAM_WORK_SCENE`, core request below), used only inside the arc's window (no scene runs on the ship) and claimed with a magic word: object-list copy, staged colours, the breach's HDMA tables and data, fire sites, clock |
-| CGRAM | The wreck's staged colours go up inside the game's own CGRAM upload (`C0:C0F0`); CGRAM 0 per scanline under the breach (HDMA), put back when the breach lets go |
+| CGRAM | The wreck's staged colours go up inside the game's own CGRAM upload (`C0:C0F0`); CGRAM 0 per scanline under the breach (HDMA, switched on in vblank by `ss_nmi_breach`, which records it in `!core_hdmaen`: those channels began the frame from their tables even if the rest of the vblank runs late), put back when the breach lets go |
 | HDMA | Channels 2 and 3 (indirect) while the breach is on screen, taken only while `$2C` bits 2/3 are clear and given back on fades, the ring menu or another owner |
 | VRAM, OAM | None: redraws go through the native row request; the fires are drawn by the effects library |
 
