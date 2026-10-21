@@ -10,6 +10,11 @@ against 277 ARAM/DSP snapshots of the browser mod (`.local/snes-import/`).
 
 ## Shipping sound policy (October 21, 2026)
 
+Round-five resident custom-sample exploration: [sample budgets, auditions and
+proposal](audio-samples.md). The prototype is test-only; the default cartridge
+remains byte-identical to round four. It measures all 64 retail slots plus the
+five arrangements, and supplies 32 kHz cue and storage-tradeoff listening pairs.
+
 The default cartridge uses resident effects and streams only three rare
 lines: Frieza's laugh, Vegeta's Final Flash and Vegeta's Kakarot. The
 stream extension uploads once at boot. Seventeen resident effects occupy
@@ -371,7 +376,10 @@ Tables after the chunk list: `C3:0020` points at the song table `C3:3D39`
 Free sample space is essentially zero in large songs: e.g. song `$2C` with
 echo preset `$F` (EDL 6) leaves 52 bytes, Danger (`$04`, EDL 4) 287 bytes,
 song `$0C` (EDL 2) 315 bytes. A resident bank of new samples is therefore
-impossible without degrading native music; only the small remaining holes shown above are guaranteed.
+impossible without changing native audio or retiring existing features; only
+the small remaining holes shown above are guaranteed. The
+[round-five investigation](audio-samples.md) quantifies echo reductions,
+retail-sample resampling, extension storage and a 1,800-byte custom BRR bank.
 
 ### CPU-side API
 

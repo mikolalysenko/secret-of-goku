@@ -15,14 +15,25 @@ const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..')
 export const BROWSER_GAIN=0.32;   // frieza-score.js output gain
 
 // Render a compiled song for `seconds` through the real driver + S-DSP.
-export function renderCartridge(rom,song,seconds){
- const h=createApu();h.ms(60);
- loadSong(h,rom,{blob:song.blob,instruments:song.ids,echo:song.echo,song:song.id});
+export function renderCartridge(rom,song,seconds,{tailSeconds=0,alignStart=false}={}){
+ const h=createApu({rom});h.ms(60);
+ loadSong(h,rom,{blob:song.blob,instruments:song.ids,echo:song.echo,song:song.id,
+  p2:song.p2??0x0F,p3:song.p3??0xFF});
+ if(alignStart)h.waitFor(()=>h.ram[0xAD]!==0,4e7);
  h.ms(20);h.take();
  const tracks=[];
  for(let i=0;i<seconds*10;i++){h.ms(100);tracks.push(h.ram[0xAD]);}
  const {l,r}=h.take();
- return {l:Float32Array.from(l,v=>v/32768),r:Float32Array.from(r,v=>v/32768),tracks};
+ let tail=null;
+ if(tailSeconds){
+  // Diagnostic cut: stop new notes and key off all voices, keeping the
+  // echo ring, EON, FIR and feedback alive. The first ~8 ms include release.
+  // A native stop/fade would change the experiment's input/envelope too.
+  h.ram[0xAD]=0;h.ram[0xAF]=0;h.ram[0xB0]=0xFF;h.dsp.write(0x5C,0xFF);
+  h.ms(tailSeconds*1000);const t=h.take();
+  tail={l:Float32Array.from(t.l,v=>v/32768),r:Float32Array.from(t.r,v=>v/32768)};
+ }
+ return {l:Float32Array.from(l,v=>v/32768),r:Float32Array.from(r,v=>v/32768),tracks,tail};
 }
 export function renderBrowser(rom,key){
  const bank=readManaInstruments(rom),out=renderSpcScoreSync(bank,arrangements[key]());
