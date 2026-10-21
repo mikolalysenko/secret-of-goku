@@ -96,14 +96,26 @@ orbit_enter_try:
 	LDA.l !orbit_in_mhits : STA.w !b_mhits
 	LDA.l !orbit_in_dodge : STA.w !b_dodgecd
 	LDA.l !orbit_in_stun : STA.w !b_stun
-	; the intro (frieza-cinematic.js orbitIntroFrames) unless straight in
+	; the intro (frieza-cinematic.js orbitIntroFrames) unless straight in;
+	; the second surge's cinematic first (montage.asm) for !OE_SURGE: the
+	; scene's load skips the globe's image (the pullback loads it)
 	PLA
 	STZ.w !f_intro
 	CMP.w #!OE_FIGHT
-	BEQ +
+	BEQ .fight
+	PHA
 	LDA.w #!ORBIT_INTRO_FRAMES
 	STA.w !f_intro
-+	JSR orbit_fight_on
+	PLA
+	CMP.w #!OE_SURGE
+	BNE .fight
+	JSL montage_start
+	SEP #$20
+	LDA.b #$08
+	STA.l !orbit_load
+	REP #$20
+.fight
+	JSR orbit_fight_on
 	REP #$30
 	RTS
 

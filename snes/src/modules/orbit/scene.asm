@@ -52,9 +52,27 @@ orbit_field_frame:
 	JSR orbit_live_frame
 	BRA .common
 .notLive
+	CMP.b #!OS_LOADING
+	REP #$30
+	BNE .common
+	LDA.l !orbit_mt                ; (the cinematic's clock runs through its loads)
+	BEQ .common
+	JSL montage_frame
 	REP #$30
 .common
-	JSR orbit_suppress_native
+	; while the scene loads (the picture black) or the second surge's
+	; cinematic shows, no native actor is drawn: this frame's vblank skips
+	; the game's actor cell streaming (core_actor_cells)
+	SEP #$20
+	LDA.l !orbit_state
+	CMP.b #!OS_LOADING
+	REP #$20
+	BEQ +
+	LDA.l !orbit_mt
+	BEQ ++
++	LDA.l !core_frame
+	STA.l !core_actor_hold
+++	JSR orbit_suppress_native
 	JSR orbit_oam_frame
 	%orbit_mark(6)
 	SEP #$20
@@ -195,6 +213,28 @@ orbit_fight_off:
 ; Fresh scene state (the camera fields are the caller's).
 orbit_scene_init:
 	REP #$30
+	LDA.w #$0000                   ; no return, no landing spot, no cinematic
+	STA.l !orbit_land
+	STA.l !orbit_lfound
+	STA.l !orbit_mt
+	STA.l !orbit_frame
+	SEP #$20
+	STA.l !orbit_rstep
+	STA.l !orbit_mpic
+	STA.l !orbit_mcut
+	REP #$20
+	LDA.w #$FFFF
+	STA.l !orbit_li
+	STZ.w !f_on
+	LDX.w #(!FN_END)-(!FN)-2       ; no struggle, no death
+-	STZ.w !FN,X
+	DEX : DEX
+	BPL -
+; The picture's state (the scene's start, the cinematic's pullback): the
+; globe's blocks and tables, the band layers, the beam pictures, the
+; dynamic cells, the starfield, no text band, the load from its first step.
+orbit_picture_init:
+	REP #$30
 	LDA.w #$FFFF
 	STA.w !g_cx
 	STA.w !g_lr
@@ -221,19 +261,6 @@ orbit_scene_init:
 	STA.w !g_itwbank
 	STA.w !g_itwbank+2
 	STA.w !s_cbank
-	LDA.w #$0000                   ; no return, no landing spot yet
-	STA.l !orbit_land
-	STA.l !orbit_lfound
-	SEP #$20
-	STA.l !orbit_rstep
-	REP #$20
-	LDA.w #$FFFF
-	STA.l !orbit_li
-	STZ.w !f_on
-	LDX.w #(!FN_END)-(!FN)-2       ; no struggle, no death
--	STZ.w !FN,X
-	DEX : DEX
-	BPL -
 	STZ.w !v_pband
 	STZ.w !v_pmode
 	STZ.w !t_want
@@ -253,7 +280,6 @@ orbit_scene_init:
 	STA.w !v_d16_h
 	; starfield: fresh accumulators, everything stale
 	LDA.w #$0000
-	STA.l !orbit_frame
 	STA.w !cam_tdx
 	STA.w !cam_tdy
 	STA.w !st_ax
@@ -306,7 +332,12 @@ orbit_suppress_native:
 ; the frame's end their usual lines). Measured costs: about one line per
 ; window row, two per star.
 orbit_background:
-	JSR orbit_vcount
+	SEP #$20
+	LDA.l !orbit_mpic
+	REP #$20
+	BEQ +
+	RTS                            ; (a montage picture: no globe, stars or beams)
++	JSR orbit_vcount
 	CMP.w #!ORBIT_DEADLINE
 	BCS .done
 	JSR beam_update                ; beam pictures first: the most visible
@@ -374,6 +405,19 @@ orbit_vcount:
 orbit_live_frame:
 	REP #$30
 	%orbit_mark(0)
+	LDA.l !orbit_mt
+	BEQ .fight
+	; the second surge's cinematic (montage.asm) before the orbit's intro
+	JSL montage_frame
+	REP #$30
+	LDA.l !orbit_mt
+	BEQ .fight                     ; (it ended: the fight from here)
+	LDA.l !orbit_mshot
+	CMP.w #!MT_SHOTS
+	BCC +
+	JMP .noFight                   ; the pullback: the globe (for now its fight camera)
++	RTS
+.fight
 	JSR death_check
 	BCC +
 	JMP death_live                 ; Goku fell in space
@@ -732,6 +776,16 @@ orbit_oam_frame:
 	ASL : ASL
 	STA.w !o_tmp                   ; native end (bytes)
 	LDX.w #$0000
+	LDA.l !orbit_mt                ; (the cinematic has no HUD: all hidden,
+	BEQ .native                    ; its sprites from the first slot)
+	LDA.w #$E0FF
+-	CPX.w !o_tmp
+	BCS +
+	STA.w $0800,X
+	INX : INX : INX : INX
+	BRA -
++	LDX.w #$0000
+	BRA .nativeDone
 .native
 	CPX.w !o_tmp
 	BCS .nativeDone
@@ -755,7 +809,13 @@ orbit_oam_frame:
 	CMP.b #!OS_LIVE
 	REP #$20
 	BNE .close
-	LDA.w !od_on
+	SEP #$20
+	LDA.l !orbit_mpic
+	REP #$20
+	BEQ +
+	JSL montage_oam                ; (a montage picture: its sprites)
+	JMP .close
++	LDA.w !od_on
 	BEQ +
 	JSR death_draw
 	BRA ++
@@ -872,14 +932,16 @@ orbit_nmi_load:
 	STA.w $2115
 	LDA.b #$80
 	STA.w $420B
-	BRA .next
+	JMP .next
 .effects
 	; Steps 9-11: the fight's resident effect cells (OBJ tiles $080-$0FF,
 	; $100-$13F, $180-$1BF); step 12: the text panel's BG3 tiles; step 13:
 	; OBJ tiles $000-$03F (the cells beside the dynamic ones); step 14: the
 	; finale's band layer tiles.
 	CMP.b #$0C
-	BEQ .text
+	BNE +
+	JMP .text
++
 	CMP.b #$0D
 	BNE +
 	JMP .fxd
@@ -917,6 +979,18 @@ orbit_nmi_load:
 	LDA.l !orbit_flags
 	ORA.b #!OF_LIVE
 	STA.l !orbit_flags
+	REP #$20                       ; the cinematic's pullback: its picture shows
+	LDA.l !orbit_mt
+	BEQ +
+	LDA.l !orbit_mshot
+	CMP.w #!MT_SHOTS
+	BCC +
+	CMP.w #$FFFF
+	BEQ +
+	SEP #$20
+	LDA.l !orbit_me6
+	STA.w $00E6
++	SEP #$20
 	RTS
 .next
 	LDA.l !orbit_load
@@ -987,6 +1061,13 @@ orbit_nmi_load:
 orbit_nmi_live:
 	PHB
 	PEA.w $3232 : PLB : PLB
+	SEP #$20
+	LDA.l !orbit_mpic
+	BEQ +
+	JSL montage_nmi                ; (a montage picture)
+	PLB
+	RTS
++
 	; The registers only the scene writes (the game's own vblank leaves
 	; them alone): once, and again each vblank that has the time. A late
 	; one (the game's own work ran long: its digits after a hit) keeps
@@ -1405,6 +1486,39 @@ orbit_nmi_room:
 .late
 	SEC
 	RTS
+
+; orbit_nmi_room and orbit_picture_init for the second code area (JSL;
+; M16, DB = $32).
+orbit_nmi_room_far:
+	JSR orbit_nmi_room
+	RTL
+orbit_picture_init_far:
+	JSR orbit_picture_init
+	RTL
+
+; modules_cgram_upload (core/cgram.asm, at the game's own palette transfer;
+; JSL, M16/X16, DB = 0): while a montage picture is up, its colours (carry
+; set: sent); else the game's own transfer.
+orbit_cgram_upload:
+	PHP
+	SEP #$20
+	LDA.l !orbit_state
+	CMP.b #!OS_LIVE
+	BNE .no
+	LDA.l !orbit_mpic
+	BEQ .no
+	REP #$30
+	PHB
+	PEA.w $3232 : PLB : PLB
+	JSL montage_cgram
+	PLB
+	PLP
+	SEC
+	RTL
+.no
+	PLP
+	CLC
+	RTL
 
 ; n_rows DMAs of n_len bytes from n_bank:n_src to n_vram, n_vram + $100,
 ; ... (OBJ rows are 16 tiles apart). M16/X16.

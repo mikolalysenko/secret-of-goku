@@ -78,10 +78,10 @@ if defined("FZFF_SPACE")
 ; Fortress's screen position), Frieza's ground state in the frieza
 ; module's block. Up to collateralStart the surge plays on the deck (the
 ; frieza module draws Frieza, his aura and lightning and breaks the floor
-; at 24 and 48; orbit_surge_deck the rest); the cosmic montage, aerial
-; melee and pullback after it are not ported yet: at collateralStart the
-; orbit and its intro start, as frieza.js enterOrbit does after them. C
-; set: the fight is in space.
+; at 24 and 48; orbit_surge_deck the rest); then the orbit takes it: the
+; cosmic montage and the pullback (montage.asm), then its intro, as
+; frieza.js enterOrbit does at cosmicDuration. C set: the fight is in
+; space.
 orbit_frieza_surge:
 	PHB
 	PHP
@@ -108,7 +108,7 @@ orbit_frieza_surge:
 	LDA.l !fzs_mhits : AND.w #$00FF : STA.l !orbit_in_mhits
 	LDA.l $7E0000|!fzf_stun : AND.w #$00FF : STA.l !orbit_in_stun
 	LDA.w #$0000 : STA.l !orbit_in_dodge
-	LDA.w #!OE_INTRO
+	LDA.w #!OE_SURGE
 	JSL orbit_api_enter
 	PLP
 	PLB

@@ -33,14 +33,15 @@ const dist=(a,b)=>{const[x,y,z]=W5(a),[p,q,r]=W5(b);return 3*(x-p)**2+4*(y-q)**2
 export const GOKU_POSES={idle:34,fly0:36,fly1:37,fly2:38,fly3:39,charge:18,focus:21,beam:20,punch:12,kick:16,recoil:33};
 export const POSE_IDS=Object.fromEntries(Object.keys(GOKU_POSES).map((k,i)=>[k,i]));
 
-function atlas(repo,name){
+// A sprite sheet as the browser's sprite layer loads it (sprite-layer.js load).
+export function atlas(repo,name){
   const img=readPng(join(repo,'assets/sprites',name+'.png'));
   const pixels=new Uint16Array(img.width*img.height);
   for(let i=0;i<pixels.length;i++)if(img.data[i*4+3])pixels[i]=1+((img.data[i*4]>>3)|((img.data[i*4+1]>>3)<<5)|((img.data[i*4+2]>>3)<<10));
   return {pixels,width:img.width,height:img.height};
 }
 // frieza.js loadAtlas: eight frames on a 4x2 grid, cropped to their pixels.
-function friezaSheet(repo,name){
+export function friezaSheet(repo,name){
   const img=readPng(join(repo,'assets/sprites',name+'.png'));
   const pixels=new Uint16Array(img.width*img.height),frames=[];
   for(let i=0;i<pixels.length;i++)if(img.data[i*4+3]>=128)pixels[i]=1+(img.data[i*4]>>3)+((img.data[i*4+1]>>3)<<5)+((img.data[i*4+2]>>3)<<10);
@@ -65,13 +66,24 @@ function scaled(a,column,row,size){
   return out;
 }
 
+// Frieza's full-power sheet as the browser prepares it (prepareFriezaSprite)
+// and the OBJ palette of its colours (orbit-montage.mjs reads it too).
+export async function friezaFull(repo){
+  const {prepareFriezaSprite}=await import(pathToFileURL(join(repo,'engine/frieza-sprite.js')).href);
+  const frieza=prepareFriezaSprite(friezaSheet(repo,'frieza-full-power'));
+  const friezaPalette=[0,...(()=>{const set=[];for(const cell of frieza.cells)for(const c of cell)if(c&&!set.includes(c-1))set.push(c-1);if(set.length>15)throw Error('Frieza needs more than 15 colours');while(set.length<15)set.push(0);return set;})()];
+  return {frieza,friezaPalette};
+}
+
+// The aerial melee's Goku cells (aerial-melee.js goku(): column, row of the
+// Super Saiyan sheet at native size), in the order orbit-montage.mjs numbers them.
+export const AERIAL_GOKU=[[34,1],[34,2],[12,1],[12,2],[16,1],[16,2],[36,3],[37,3],[38,3],[39,3]];
+
 export async function generate({rom,repo,outDir,genDir}){
   const gokuManifest=JSON.parse(readFileSync(join(genDir,'goku/manifest.json'),'utf8'));
   const [basePal,ssjPal]=gokuManifest.palettes;
   const ssj=atlas(repo,'ssj'),goku=atlas(repo,'goku');
-  const {prepareFriezaSprite}=await import(pathToFileURL(join(repo,'engine/frieza-sprite.js')).href);
-  const frieza=prepareFriezaSprite(friezaSheet(repo,'frieza-full-power'));
-  const friezaPalette=[0,...(()=>{const set=[];for(const cell of frieza.cells)for(const c of cell)if(c&&!set.includes(c-1))set.push(c-1);if(set.length>15)throw Error('Frieza needs more than 15 colours');while(set.length<15)set.push(0);return set;})()];
+  const {frieza,friezaPalette}=await friezaFull(repo);
 
   const bytes=[];const cells=[];
   // A w x h index image (w, h multiples of 8) as row-major 8x8 tiles.
@@ -92,7 +104,7 @@ export async function generate({rom,repo,outDir,genDir}){
   for(const column of[48,49,50,51])cell(`goku_fall_${column}`,quantize(scaled(goku,column,1,16),basePal),16,16,{pal:'base'});
   for(const size of[12,8,4]){const img=new Uint8Array(16*16),q=quantize(scaled(goku,51,1,size),basePal);for(let y=0;y<size;y++)for(let x=0;x<size;x++)img[y*16+x]=q[y*size+x];cell(`goku_fall_51_${size}`,img,16,16,{pal:'base'});}
   // Aerial melee, native size (aerial-melee.js goku()).
-  for(const[column,row]of[[34,2],[12,1],[12,2],[16,1],[16,2],[36,3],[37,3],[38,3],[39,3]]){
+  for(const[column,row]of AERIAL_GOKU){
     const px=new Uint16Array(1024);for(let y=0;y<32;y++)for(let x=0;x<32;x++)px[y*32+x]=ssj.pixels[(32+row*32+y)*ssj.width+column*32+x];
     cell(`goku_full_${column}_${row}`,quantize(px,ssjPal),32,32);
   }

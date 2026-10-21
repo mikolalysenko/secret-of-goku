@@ -1,5 +1,7 @@
 // Orbit text panels: the orbit intro's five lines, Luna's remark, the beam
-// struggle's prompts and Frieza's surges (frieza-orbit-view.js textPanel).
+// struggle's prompts and Frieza's surges (frieza-orbit-view.js textPanel),
+// the cosmic montage's town captions (frieza-collateral-view.js, drawn at
+// (8, 4): the same picture, shown four lines higher).
 //
 // Single source of truth: every message is rendered by the browser's own
 // engine/native-radio.js radioPixels (the retail window tiles and 8x12 font
@@ -25,7 +27,7 @@ const hex4=v=>'$'+(v&0xffff).toString(16).padStart(4,'0');
 export async function generate({rom,repo,outDir}){
   const eng=f=>import(pathToFileURL(join(repo,'engine',f)).href);
   const {radioPixels}=await eng('native-radio.js');
-  const {orbitIntroLines}=await eng('frieza-cinematic.js');
+  const {orbitIntroLines,collateralShots}=await eng('frieza-cinematic.js');
   const {clashLines,clashSurges}=await eng('frieza-finale.js');
   const {defaultNames}=await eng('native-names.js');
   const debris=readFileSync(join(repo,'engine/orbit-debris.js'),'utf8');
@@ -38,6 +40,7 @@ export async function generate({rom,repo,outDir}){
     ['LUNA',luna[1].replace(/\\n/g,'\n').replace(/\\'/g,"'")],
     ...Object.entries(clashLines).map(([k,t])=>[k.toUpperCase(),t]),
     ...clashSurges.map((s,i)=>[`SURGE${i+1}`,s.text]),
+    ...collateralShots.map((s,i)=>[`TOWN${i+1}`,s.text]),
   ];
   // Colours: frame (window tiles) and interior (dither, outline, text).
   const frame=[0x0000,0x5250,0x739c],inner=[0x2c00,0x0000,0x7fff];
