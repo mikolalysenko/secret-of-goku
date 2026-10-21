@@ -793,6 +793,8 @@ endif
 	SEC
 	SBC.w $E045
 	SEC
+	SBC.w !p_lift               ; the displayed pose's local-flight lift
+	SEC
 	SBC.w #15
 	CLC
 	ADC !d_cur+!C_Y
@@ -807,13 +809,8 @@ endif
 ; The gameplay flame is a small resident OBJ assembly behind Goku. Its
 ; palette is owned by the existing FX allocator; no BG palette, backdrop,
 ; colour math or HDMA state changes. Only complete assemblies are drawn,
-; on the same 30 Hz strobe as before; odd frames do no tile-cache work.
+; on the same 30 Hz strobe as before; cold odd frames preload its cells.
 fx_k_aura_obj:
-	LDA !d_cur+!C_T
-	LSR
-	BCC +
-	RTS
-+
 	LDA !d_cur+!C_A
 	BNE +
 	RTS
@@ -832,6 +829,8 @@ fx_k_aura_obj:
 	LDA.w $E022
 	SEC
 	SBC.w $E045
+	SEC
+	SBC.w !p_lift               ; local hover / the displayed pose's extra lift
 	SEC
 	SBC.w #15
 	CLC
@@ -859,14 +858,20 @@ fx_k_aura_obj:
 	ADC !d_ks
 	CLC
 	ADC.w #!FX_ASM_AURA
+	PHA
+	LDA !d_cur+!C_T
+	LSR
+	BCC .visible
+	PLA
+	JMP fx_aura_warm
+.visible
+	PLA
 if not(defined("FX_AURA_SLOW"))
 	JSR fx_aura_rows
 	BCS .done
 endif
 	JSR fx_emit_setup
 	BCS .done
-	LDA.l !fx_cpend             ; warm all cells before displaying any
-	BNE .done
 	LDX.w #0
 	LDA [!d_ptr]
 	XBA
@@ -874,6 +879,7 @@ endif
 	TAY
 .ready
 	LDA !d_tiles,X
+	JSR fx_aura_tile_ready
 	CMP.w #$FFFF
 	BEQ .done
 	TXA
@@ -885,6 +891,48 @@ endif
 	JMP fx_emit_place
 .done
 	RTS
+
+; Preload on the invisible strobe too, and protect the three resident cells
+; from eviction by later effects. A stale/colliding hint takes the resolver.
+fx_aura_warm:
+	PHA
+	ASL
+	TAX
+	LDA.l fx_asm_ptr,X
+	TAX
+	LDA.l fx_asm_data,X
+	XBA
+	AND.w #$00FF
+	STA !d_ks+6
+	TXA
+	CLC
+	ADC.w #6
+	STA !d_ks+4
+.cell
+	LDX !d_ks+4
+	LDA.l fx_asm_data,X
+	AND.w #$01FF
+	STA !d_ks+8
+	AND.w #!FX_HASH_SIZE-1
+	TAX
+	LDA.l !fx_hash,X
+	AND.w #$00FF
+	CMP.w #30
+	BCS .cold
+	TAX
+	LDA.l !fx_ccell,X
+	CMP !d_ks+8
+	BNE .cold
+	LDA.l !fx_frame
+	STA.l !fx_cused,X
+	INC !d_ks+4 : INC !d_ks+4
+	DEC !d_ks+6
+	BNE .cell
+	PLA
+	RTS
+.cold
+	PLA
+	JMP fx_emit_setup
 
 ; Full resident flame, entirely on screen with room for its six sprites.
 ; Resolve the same cells in the same order, keeping palette allocation,
@@ -943,8 +991,14 @@ fx_aura_rows:
 		JSR fx_resolve
 		STA !d_tiles+(!row*2)
 	endfor
-	LDA.l !fx_cpend              ; display only fully uploaded assemblies
-	BNE .done
+	LDA.l !fx_cpend
+	BEQ .resident
+	for row = 0..3
+		LDA !d_tiles+(!row*2)
+		JSR fx_aura_tile_ready
+		STA !d_tiles+(!row*2)
+	endfor
+.resident
 	LDA !d_tiles
 	ORA !d_tiles+2
 	ORA !d_tiles+4
@@ -970,6 +1024,35 @@ fx_aura_rows:
 	STA.w !core_oam_cursor&$FFFF
 .done
 	SEC
+	RTS
+
+; Only this flame's uploads matter. An unrelated orb, fire or UI cell may
+; remain pending without blanking a resident aura. Preserve generic X/Y.
+fx_aura_tile_ready:
+	PHA
+	LDA.l !fx_cpend
+	BEQ .ready
+	PHX
+	LDX.w #28
+.scan
+	LDA.l fx_entry_bit,X
+	AND.l !fx_cpend
+	BEQ .next
+	LDA $03,S
+	AND.w #$01FF
+	CMP.l fx_entry_tile,X
+	BEQ .pending
+.next
+	DEX : DEX
+	BPL .scan
+	PLX
+.ready
+	PLA
+	RTS
+.pending
+	PLX
+	PLA
+	LDA.w #$FFFF
 	RTS
 
 ; FX_LIGHTNING (charge-lightning.js arcs(), sprite-layer.js

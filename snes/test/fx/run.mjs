@@ -208,7 +208,7 @@ for(const r of [testRom,process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-
 // shipped renderer): its exact-restoration count also includes FX's own edge
 // sprites, whose OBJ palette now follows the crowded-palette fix, so it runs
 // only when named.
-const tests=['gallery','beams','aura','debris','cinematic','clash','battle','budget','clash-colour'].filter(t=>existsSync(join(here,`${t}.lua`))&&(only.length?only.includes(t):t!=='clash-colour'));
+const tests=['gallery','beams','aura','aura-lag','debris','cinematic','clash','battle','budget','clash-colour'].filter(t=>existsSync(join(here,`${t}.lua`))&&(only.length?only.includes(t):t!=='clash-colour'));
 let ok=true;
 for(const t of tests){
   const rom=privateRom(testRom,`fx-${t}`);
@@ -226,5 +226,9 @@ for(const t of tests){
   console.log(`fx ${t.padEnd(10)} ${pass?'pass':'FAIL'} (${((Date.now()-t0)/1000).toFixed(1)} s)${res.error?' error: '+res.error:''}`);
   for(const [k,v] of fails)console.log(`   ${k}: ${v}`);
   for(const c of shots)console.log(`   ${c.ok?'ok  ':'FAIL'} ${c.text}`);
+}
+if(!only.length||only.includes('focus-scenes')){
+  const r=spawnSync(process.execPath,[join(here,'focus-scenes.mjs')],{cwd:repo,stdio:'inherit'});
+  if(r.status!==0)ok=false;
 }
 process.exit(ok?0:1);

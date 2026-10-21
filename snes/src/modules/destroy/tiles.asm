@@ -670,6 +670,9 @@ dst_row_outputs:
 
 ; dst_fx_emit: A = kind; !d_t0/!d_t1 = map pixel x/y. Publishes the record.
 dst_fx_emit:
+if defined("FX_DRAWS")
+	JSL fx_destroy_wake          ; before publishing: initialization adopts the old sequence
+endif
 	STA.l !FX_KIND
 	LDA.w !d_t0 : STA.l !FX_X
 	LDA.w !d_t1 : STA.l !FX_Y

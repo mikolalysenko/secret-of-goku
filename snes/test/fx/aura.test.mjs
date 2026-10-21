@@ -125,3 +125,12 @@ test('resident full aura has six sprites at the requested coordinates',t=>{
   }
   t.diagnostic(`${comparisons} assembled comparisons`);
 });
+
+test('unrelated streaming never hides a resident flame; cold odd frames preload',()=>{
+  for(const pending of [1<<5,1<<14,(1<<5)|(1<<14)]){
+    assert.equal(fast({pending}).ram.readUInt16LE(0x6E90),24);
+  }
+  const cold=fast({clock:1,resident:0,budget:3});
+  assert.equal(cold.ram.readUInt16LE(0x6E90),0);
+  assert.equal(cold.sram.readUInt16LE(FX+0x80),7);
+});

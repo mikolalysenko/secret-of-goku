@@ -7,6 +7,10 @@
 !fx_nmi_bit = !fx_s+2            ; word: its MDMAEN bit
 
 fx_nmi:
+if defined("FX_TEST")
+	LDA.w #0
+	STA.l !fx_upl               ; zero even when a resident frame needs no NMI work
+endif
 	LDA.l !fx_nmiwork            ; idle frames cost one read here
 	BEQ .done
 	LDA.l !fx_magic
@@ -29,17 +33,12 @@ fx_nmi:
 .haveTime
 	STA.l !fx_vbl
 	JSR fx_nmi_learn
-if defined("FX_TEST")
-	LDA.w #$0000
-	STA.l !fx_upl
-endif
 	; When the game's own vblank work left no time (in Potos one streaming
 	; phase in five ends near line 259), FX leaves HDMA, colour math and
 	; cell uploads as they are: the field NMI writes $420C right after the
 	; modules and that write must land before the next frame's HDMA start,
-	; or the channels skip that frame. Its palettes are rewritten only while
-	; no HDMA channel runs (then a late $420C write is harmless); with HDMA
-	; running, fx_frame predicted this vblank and drew no sprites.
+	; or the channels skip that frame. Palettes already went through the
+	; early native CGRAM hook, so resident sprites remain drawable.
 	PLA
 	CMP.w #225
 	BCC .late
@@ -49,7 +48,6 @@ endif
 	JSR fx_nmi_channel
 	BCS +
 	JSR fx_nmi_cells
-	JSR fx_nmi_palettes
 +	LDA.l !fx_poly_req           ; up/down waves and Death Balls own the
 	BEQ +                        ; colour math; otherwise the flash may use it
 	CMP.w #$0002
@@ -57,12 +55,6 @@ endif
 +	JSR fx_nmi_math
 	BRA .end
 .late
-	LDA.l $7E002C
-	AND.w #$000F
-	BNE .end
-	JSR fx_nmi_channel
-	BCS .end
-	JSR fx_nmi_palettes
 .end
 	LDA.l !fx_cpend              ; uploads that did not fit are not drawn
 	STA.l !fx_cfail              ; until a later vblank sends them
@@ -144,7 +136,7 @@ fx_nmi_cells:
 	AND.l !fx_cpend
 	BNE +
 	JMP .next
-+	; Reserve the palette writes, math registers and core NMI return.
++	; Reserve the math registers and core NMI return.
 	; Starting a cell at 257-258 let an otherwise valid frame finish on
 	; visible line 0/1. Pending cells keep their previous resident age.
 	JSR fx_nmi_vline
@@ -220,8 +212,8 @@ fx_nmi_vline:
 
 ; Write the OBJ palettes FX used this frame (32 bytes each) after the
 ; game's own CGRAM upload; the game's buffer at $7E:0600 is never touched.
-; The classes are fixed: unroll their scan and source offsets so a
-; late native sprite upload still leaves room for palettes and the RTI.
+; The classes are fixed: unroll their scan and source offsets. This runs
+; from the early native CGRAM hook, before native actor streaming.
 macro fx_nmi_palette(class)
 	LDA.l !fx_nmipal+<class>
 	AND.w #$00FF
@@ -280,6 +272,69 @@ fx_nmi_palettes:
 	endfor
 	LDX.w #!FX_CLASS_COUNT
 	RTS
+
+; Tail of modules_cgram_upload, after every scene's range replacement.
+; C set: a scene already sent the palette. C clear: send the native one
+; before our overlay. This point precedes native actor streaming and has
+; HDMA disabled, including lag vblanks with a native window open.
+fx_cgram_upload:
+	LDA.l !fx_busy
+	BEQ .idle                    ; preserve the preceding handler's carry
+	PHP
+	LDA.l !fx_magic
+	CMP.w #!FX_MAGIC
+	BNE .unchanged
+	LDA.l !core_dma_ready
+	BEQ .lag
+	LDA.l !fx_palfree
+	AND.w #$0100
+	STA.l !fx_pal_live
+	BEQ .unchanged
+	LDA.l !fx_clspal
+	STA.l !fx_nmipal
+	LDA.l !fx_clspal+2
+	STA.l !fx_nmipal+2
+	LDA.l !fx_clspal+4
+	STA.l !fx_nmipal+4
+	SEP #$20
+	LDA.l !fx_clspal+6
+	STA.l !fx_nmipal+6
+	REP #$20
+	BRA .send
+.lag
+	LDA.l !fx_pal_live
+	BEQ .unchanged
+	PLP
+	BCS .sent
+	; No OAM update: keep its OBJ colours (including UI's shared tails).
+	; The native window still receives every BG colour as usual.
+	LDA.w #0
+	LDY.w #256
+	JSL core_cgram_native
+	SEC
+	RTL
+.unchanged
+	PLP
+.idle
+	RTL
+.send
+	PLP
+	BCS +
+	LDA.w #0
+	LDY.w #512
+	JSL core_cgram_native
++	; The old late-NMI uploader uses fx_s. Save those two words because
+	; this early hook also runs while the interrupted frame owns fx_s.
+.sent
+	LDA.l !fx_nmi_reg : PHA
+	LDA.l !fx_nmi_bit : PHA
+	LDA.w #$0070 : STA.l !fx_nmi_reg
+	LDA.w #$0080 : STA.l !fx_nmi_bit
+	JSR fx_nmi_palettes
+	PLA : STA.l !fx_nmi_bit
+	PLA : STA.l !fx_nmi_reg
+	SEC
+	RTL
 
 ; Flash (native-feedback.js burst): fixed-colour addition on BG1, BG2,
 ; OBJ palettes 4-7 and the backdrop; R and G +amount, B +amount/2. The

@@ -39,7 +39,7 @@ assert !FX_SRAM == !SRAM_WORK_FX, "fx request block must sit at !SRAM_WORK_FX"
 !fx_idle      = !FX_SRAM+$1E   ; word: consecutive frames without effects
 !fx_palfree   = !FX_SRAM+$20   ; low byte: free OBJ palettes; bit 8: a palette acquired
 !fx_clspal    = !FX_SRAM+$22   ; 7 bytes: OBJ palette per class this frame ($FF none)
-!fx_nmipal    = !FX_SRAM+$29   ; 7 bytes: copy handed to fx_nmi
+!fx_nmipal    = !FX_SRAM+$29   ; 7 bytes: palettes of the last uploaded OAM (lag-safe)
 !fx_regions   = !FX_SRAM+$30   ; word: claimed VRAM regions (bit0 A, bit1 B, bit2 C)
 !fx_flash     = !FX_SRAM+$32   ; word: flash frames left
 !fx_flashamt  = !FX_SRAM+$34   ; word: flash amount for the next vblank (0 none)
@@ -64,7 +64,7 @@ assert !FX_SRAM == !SRAM_WORK_FX, "fx request block must sit at !SRAM_WORK_FX"
 !fx_nlive     = !FX_SRAM+$98   ; word: spawned effects alive
 !fx_hiwater   = !FX_SRAM+$9A   ; word: 16 * (highest slot used + 1) since the slots were last empty
 !fx_busy      = !FX_SRAM+$9C   ; word: nonzero while FX holds anything (regions, flash, quake, polygon, uploads)
-!fx_tight     = !FX_SRAM+$9E   ; word: the coming vblank has no time and HDMA runs: no FX sprites
+!fx_pal_live  = !FX_SRAM+$9E   ; word: bit 8 when displayed OAM uses FX palettes
 !FX_MAGIC     = $F0C7
 !fx_s         = !FX_SRAM+$A0   ; 16 bytes scratch for the API entry points
 !fx_dual_cur  = !fx_s+$0C      ; draw-list offset while fx_run_draws runs

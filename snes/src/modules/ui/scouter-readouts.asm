@@ -503,7 +503,7 @@ ui_sc_palette:
 	LDA.l fx_overlay_spare,X
 	AND.w #$00FF
 	BEQ .next
-	LDA.l !fx_nmipal,X
+	LDA.l !fx_clspal,X          ; this frame; nmipal is the last uploaded OAM
 	AND.w #$00FF
 	CMP.w #8
 	BCC .got

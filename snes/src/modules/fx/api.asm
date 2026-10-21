@@ -29,6 +29,11 @@ fx_ensure_init:
 	LDA.w #$FFFF
 	STA.l !fx_map
 	STA.l !fx_mode
+	STA.l !fx_clspal : STA.l !fx_clspal+2 : STA.l !fx_clspal+4
+	STA.l !fx_nmipal : STA.l !fx_nmipal+2 : STA.l !fx_nmipal+4
+	SEP #$20
+	STA.l !fx_clspal+6 : STA.l !fx_nmipal+6
+	REP #$20
 	LDA.w #12                    ; vblank lines per phase until measured
 	STA.l !fx_vblp
 	STA.l !fx_vblp+2
@@ -63,6 +68,13 @@ fx_title_boot:
 	REP #$20
 +	LDA.w #$0000
 	STA.l !fx_magic
+	STA.l !fx_busy
+	RTL
+
+; The destruction record producer calls before changing FX_DREC_SEQ.
+; Preserve its A/X/Y and wake the frame driver without per-frame polling.
+fx_destroy_wake:
+	JSR fx_ensure_init
 	RTL
 
 ; fx_spawn: A = kind | flags<<8, X = x, Y = y, request block.
@@ -452,8 +464,29 @@ fx_draw:
 	PHX
 	PHY
 	JSR fx_ensure_init
+	LDA $05,S
+	AND.w #$00FF
+	CMP.w #!FX_AURA
+	BEQ .aura
 	JSR fx_draw_entry
-	BCS fx_draw_full
+	BCC +
+	JMP fx_draw_full
++
+	BRA .store
+.aura
+	; A focus flame has priority over the last optional continuous effect.
+	; Put it first so neither particles nor other draws consume its cells.
+	JSR fx_draw_entry
+	BCC +
+	LDX.w #(!FX_DRAWS-1)*16
++	CPX.w #0
+	BEQ .store
+	for word = 0..8
+		LDA.l !fx_draws+(!word*2)
+		STA.l !fx_draws+(!word*2),X
+	endfor
+	LDX.w #0
+.store
 	PLA
 	STA.l !fx_draws+!D_Y,X
 	PLA
