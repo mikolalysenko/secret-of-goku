@@ -13,14 +13,15 @@
 ; the browser's gradient (channel 6 writes colour 0); channel 4 puts Mode 7
 ; back after the field IRQ's HUD split at line 196.
 ;
-; Sprites in OBJ name table 1 (VRAM $5000, tiles 256-383; OBJSEL base
+; Sprites in OBJ name table 1 (VRAM $6000, tiles 256-479; OBJSEL base
 ; $4000, whose table 0 is BG3's font and never used): the vista's cell
-; rows 0-3 (Balls, Shenron, star tiles), then sparks and the smaller Balls
+; rows 0-3 (Balls, Shenron, star tiles), double-buffered scaled Shenron,
+; then sparks and the smaller Balls
 ; once Shenron has gone. Stars are 8x8 at priority 0 (behind the floor).
 ; CGRAM: colour 0 the sky; the floor's palettes 4-7 and 9-12 (the world's
 ; night colours); OBJ palettes 0/5 Shenron, 6 the Balls, 7 sparks + stars.
-!FL_OBJSEL  = $02             ; 8x8/16x16, name base $4000, table 1 at $5000
-!FL_OBJ     = $5000
+!FL_OBJSEL  = $0A             ; 8x8/16x16, name base $4000, table 1 at $6000
+!FL_OBJ     = $6000           ; actor streaming is held; BG3's maps stay intact
 !FL_ATTR_STAR  = $0F00        ; priority 0, palette 7, N = 1
 !FL_ATTR_BALL  = $3D00        ; priority 3, palette 6, N = 1
 !FL_ATTR_SPARK = $3F00        ; priority 3, palette 7, N = 1
@@ -69,6 +70,15 @@
 !fl_smallv  = !s_var+$44   ; word  small Ball size in row 3 (0-2), $FFFF none
 !fl_key     = !s_var+$46   ; word  what the last small-table set was built for
 !fl_stq     = !s_var+$48   ; word  frames to the stars' next copy (0: copy now)
+!fl_dshown = !SW+$150       ; width index: 0 = 72, 24 = 48
+!fl_dnext  = !SW+$152       ; index being uploaded (25 = finished)
+!fl_dbuf   = !SW+$154       ; displayed OBJ buffer, 0/1
+!fl_doff   = !SW+$156       ; bytes already uploaded to the back buffer
+!fl_dready = !SW+$158       ; whole back buffer ready
+!fl_dwant  = !SW+$15A       ; desired width index this frame
+!fl_doffset = !SW+$15C     ; displayed OAM cache offset (0/$80)
+!fl_drows   = !SW+$15E     ; cached row counts (five bytes)
+!fl_dptr    = !SW+$164     ; displayed OAM cache address
 
 ; ---------------------------------------------------------------------------
 ; The scatter starts with the vista: no flight stage yet.
@@ -161,6 +171,7 @@ flight_load:
 	STA.w !fl_key
 	STZ.w !fl_stq
 	JSR flight_dragon_image
+	JSR flight_stars_init
 	LDA.w #flight_script
 	JMP set_script
 
@@ -294,6 +305,11 @@ flight_pose:
 .to
 	SEC
 	SBC.w #60
+	TAX
+	LDA.l ending_flight_sizes,X
+	AND.w #$00FF
+	STA.w !fl_dwant
+	TXA
 	ASL : ASL
 	TAX
 	LDA.l ending_flight_pose,X
@@ -518,6 +534,7 @@ nmi_flight:
 	LDA.w !N_HDMA
 	ORA.b #$5C
 	STA.w !N_HDMA
+	JSL flight_scale_nmi
 	JSR nmi_flight_build
 .out
 	REP #$30
@@ -632,6 +649,22 @@ flight_camera:
 	ADC.w #$0002
 	LSR : LSR
 	STA.w !fl_tmp2            ; travel (0..360)
+	; Straight north until the turn: avoid two general products while
+	; the initial palette fade shares this frame's CPU budget.
+	LDA.w !fl_vx
+	BNE .turn
+	LDA.w !fl_vy
+	CMP.w #$FF00
+	BNE .turn
+	LDA.w #!ENDING_FLIGHT_OX
+	STA.w !fl_cx
+	LDA.w #!ENDING_FLIGHT_OY
+	SEC
+	SBC.w !fl_tmp2
+	STA.w !fl_cy
+	BRA .scroll
+.turn
+	LDA.w !fl_tmp2
 	LDY.w !fl_vx              ; 0..229
 	JSR mulu16_8_shr8
 	CLC
@@ -653,6 +686,7 @@ flight_camera:
 	STA.w !fl_cy
 	; Mode 7: centre = the camera in the 1024-pixel window, HOFS = X0 - 128,
 	; VOFS = Y0 + 6 - horizon
+.scroll
 	LDA.w !fl_cx
 	AND.w #$03FF
 	STA.w !s_m7x
@@ -1387,19 +1421,13 @@ flight_ring:
 ; one DMA.
 !FL_DRAGON = !FL_STARS+(86*4)
 flight_dragon_image:
-	LDX.w #$0000
-.cell
-	LDA.l ending_flight_dragon_oam,X
-	STA.w !FL_DRAGON,X
-	LDA.l ending_flight_dragon_oam+2,X
-	STA.w !FL_DRAGON+2,X
-	INX : INX : INX : INX
-	CPX.w #!ENDING_FLIGHT_DRAGON_CELLS*4
-	BCC .cell
+	JSL flight_scale_reset
 	RTS
 
 flight_dragon:
-	LDX.w #$0001
+	JSL flight_scale_frame
+	LDX.w !fl_doffset
+	INX
 	STZ.w !fl_tmp2
 .row
 	LDA.w !fl_tmp2
@@ -1417,7 +1445,7 @@ flight_dragon:
 	STA.w !fl_tmp
 	PHX
 	LDX.w !fl_tmp2
-	LDA.l ending_flight_dragon_rows,X
+	LDA.w !fl_drows,X
 	PLX
 	AND.w #$00FF
 	BEQ .nextRow
@@ -1439,7 +1467,7 @@ flight_dragon:
 	LDA.w #$0032
 	STA.w !s_wqarg
 	LDX.w #!N_OAM+(7*4)
-	LDY.w #!FL_DRAGON
+	LDY.w !fl_dptr
 	LDA.w #!ENDING_FLIGHT_DRAGON_CELLS*4
 	JSR wq_push
 	LDA.w #(7+!ENDING_FLIGHT_DRAGON_CELLS)*4
@@ -1491,7 +1519,26 @@ flight_stars:
 	STA.w !s_oamslot
 	RTS
 
-; x bytes of all stars for the drift fl_q12; their tiles and attributes.
+; The cached stars keep their tiles and attributes for the whole flight.
+; Initialize them once; horizontal drift changes only X. This saves the
+; flash at age 300 from rebuilding 86 unchanged tile/attribute pairs.
+flight_stars_init:
+	LDY.w #$0000
+	LDX.w #$0000
+	SEP #$20
+.star
+	LDA.l ending_flight_stars+2,X
+	STA.w !FL_STARS+2,Y
+	LDA.b #!FL_ATTR_STAR>>8
+	STA.w !FL_STARS+3,Y
+	INY : INY : INY : INY
+	INX : INX : INX
+	CPX.w #86*3
+	BCC .star
+	REP #$20
+	RTS
+
+; x bytes of all stars for the drift fl_q12.
 flight_stars_x:
 	LDY.w #$0000
 	LDX.w #$0000
@@ -1501,10 +1548,6 @@ flight_stars_x:
 	SEC
 	SBC.w !fl_q12
 	STA.w !FL_STARS,Y
-	LDA.l ending_flight_stars+2,X
-	STA.w !FL_STARS+2,Y
-	LDA.b #!FL_ATTR_STAR>>8
-	STA.w !FL_STARS+3,Y
 	INY : INY : INY : INY
 	INX : INX : INX
 	CPX.w #86*3

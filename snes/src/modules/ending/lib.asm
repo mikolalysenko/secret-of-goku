@@ -410,7 +410,7 @@ nmi_transfers:
 .have
 	LDA.w !s_cur+3
 	AND.w #$00FF
-	CMP.w #!LD_M7ROWS+1
+	CMP.w #!LD_SHARDS+1
 	BCS .skipBad
 	ASL
 	TAX
@@ -426,7 +426,11 @@ nmi_transfers:
 
 xfer_table:
 	dw xfer_vram, xfer_m7map, xfer_m7chr, xfer_cell32, xfer_cell16, xfer_cgram, xfer_fill, xfer_goku
-	dw xfer_m7tiles, xfer_m7rows
+	dw xfer_m7tiles, xfer_m7rows, xfer_shards
+
+xfer_shards:
+	JSL shards_load
+	RTS
 
 ; Time up for the converting loaders: the latched V counter has reached
 ; line 150 of the next frame (they run only while loading, under the field

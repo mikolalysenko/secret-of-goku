@@ -25,6 +25,12 @@ ending_preupload:
 	BCC .out
 	PHB
 	PEA $3232 : PLB : PLB
+	; ending_owns_scene leaves the phase in A. Keep the wish flight's
+	; tightly budgeted vblank out of the shard uploader entirely.
+	CMP.w #!EP_DOOMED
+	BCC .copies
+	JSR shards_preupload
+.copies
 	LDA.w !s_wqn
 	CMP.w #4*8+1
 	BCS .drop                    ; not a queue this module built
