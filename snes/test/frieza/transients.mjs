@@ -72,6 +72,21 @@ export function analyseTransients({repo,dir,meta,rows,first=4,limit=8,sheets=tru
   const oam=new Map(),oamOf=t=>{if(!oam.has(t))oam.set(t,state(t)?parseOam(state(t).oam):[]);return oam.get(t);};
   const totals={frames:0,pixels:0,screen:0,bg:0,other:0,motion:0,frieza:0,friezaFrames:0};
   const frames=[],failures=[];
+  // Death Orbs are continuous, including the warning-to-projectile handoff.
+  // The NMI recording latches the client's requests with the uploaded OAM.
+  // Allow the first two cold-cache frames (allocation and delayed upload),
+  // then require every request, including animation/size changes.
+  const orbMisses=[];
+  let orbRun=0;
+  for(const m of meta){
+    orbRun=m.orbs?.length?orbRun+1:0;
+    for(const o of m.orbs??[]){
+      if(orbRun<=2||o.x<0||o.x>=256||o.y<0||o.y>=224)continue;
+      const fx=s=>s.tile>=0x122&&s.tile<=0x13f||s.tile>=0x184&&s.tile<=0x19b||s.tile>=0x1a8&&s.tile<=0x1bf;
+      if(!parseOam(m.oam).some(s=>fx(s)&&covers(s,o.x,o.y)))orbMisses.push({picture:m.f+1,...o});
+    }
+  }
+  if(orbMisses.length)failures.push(`${orbMisses.length} missing Death Orb frame(s) (first: picture ${orbMisses[0].picture})`);
   // palette faults: every Frieza sprite of every recorded frame
   const rowKeys=new Set(rows.map(r=>r.join(',')));
   const faults=[];
@@ -151,5 +166,5 @@ export function analyseTransients({repo,dir,meta,rows,first=4,limit=8,sheets=tru
   }
   const bad=frames.filter(f=>f.frieza>limit);
   if(bad.length)failures.push(`${bad.length} picture(s) with unexplained one-frame transients on Frieza's sprites (first: picture ${bad[0].picture}, ${bad[0].frieza} px at ${bad[0].box.join(',')}${bad[0].lag?', a lag frame':''}${bad[0].window?', window open':''})`);
-  return {totals,frames,faults,failures};
+  return {totals,frames,faults,orbMisses,failures};
 }

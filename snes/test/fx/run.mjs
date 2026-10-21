@@ -208,7 +208,7 @@ for(const r of [testRom,process.env.SNES_ROM??resolve(repo,'dist/snes/secret-of-
 // shipped renderer): its exact-restoration count also includes FX's own edge
 // sprites, whose OBJ palette now follows the crowded-palette fix, so it runs
 // only when named.
-const tests=['gallery','beams','aura','aura-lag','debris','cinematic','clash','battle','budget','clash-colour'].filter(t=>existsSync(join(here,`${t}.lua`))&&(only.length?only.includes(t):t!=='clash-colour'));
+const tests=['gallery','beams','aura','aura-lag','deathball','palette-latch','debris','cinematic','clash','battle','budget','clash-colour'].filter(t=>existsSync(join(here,`${t}.lua`))&&(only.length?only.includes(t):t!=='clash-colour'));
 let ok=true;
 for(const t of tests){
   const rom=privateRom(testRom,`fx-${t}`);

@@ -119,6 +119,12 @@ discs, three orbs, an eruption every third attack (65-frame warning, radius
   technique): about 2 lines each instead of 15.5 through `fz_spr_draw`
   and `core_oam_meta`, which made every dash lag (12 lag frames in the
   battle preset's 900, 9 during dashes; now 4, none during dashes).
+- **Death Orbs**: FX retains a complete resident ball while the next
+  size/texture uploads, including the warning-to-projectile handoff. The
+  `transients` recording now checks those requests as well as Frieza's own
+  sprites; the former gaps at pictures 132 and 157 are covered. FX's
+  palette latch also uses native `$EC` bit 0 as well as `core_dma_ready`,
+  matching Frieza's completed-frame rule (see [fx.md](fx.md)).
 
 ### Broken floor
 
@@ -645,13 +651,9 @@ dialogue window does).
   This work changes no core files; the direct world/flyby timing checks pass.
 - **fx**: the cinematic red Death Ball is supplied (`FX_DBALL_CINEMATIC`).
   The cheaper polygon aura request remains (about 100 lines a frame during
-  the surge in the earlier measurement). The Death Orb's warning above
-  Frieza's hand vanishes for one frame when it grows from 16 to 32 px (its
-  new cells are uploaded first; `battle` preset, pictures 132 and 157 with
-  exact frames). `fx_cgram_upload` takes `!core_dma_ready` alone as a
-  completed frame; between core's frame hook and the loop's `TSB $EC`
-  (`00:B077`) a vblank uploads no OAM, so the palettes latched there belong
-  to the next OAM (`frieza_cgram_upload` also tests `$EC & 9`).
+  the surge in the earlier measurement). The Death Orb cell-swap gaps and
+  palette-latch race are fixed; the field flame now uses resident OBJ art
+  in the shipping build, as described in [fx.md](fx.md).
 - **core / world**: the world NMI sends its palette on lag vblanks too
   (`C0:8A79` while `$E3` bit 6), and `frieza_world_nmi` writes the flyby's
   palettes 5-7 only for completed world frames: the field's lag-palette

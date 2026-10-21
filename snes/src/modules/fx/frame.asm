@@ -224,6 +224,9 @@ endif
 fx_reset_scene:
 	JSR fx_clear_old_slots
 	JSR fx_clear_rbits
+	LDA.w #$FFFF
+	STA.l !fx_dball_last
+	STA.l !fx_dball_last+32
 	LDA.w #$0000
 	STA.l !fx_cpend
 	STA.l !fx_cfail

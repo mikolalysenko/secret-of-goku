@@ -1258,7 +1258,86 @@ fx_k_deathball:
 .emit
 	CLC
 	ADC !d_ks
-	JMP fx_emit_here
+	JMP fx_dball_obj
+
+; Keep a complete resident ball while its next size/texture uploads. The
+; last assembly for each style lives in the unused sixteenth cache words.
+; Warm it before allocating the replacement, so LRU cannot evict the very
+; cells we need as a fallback. No sprites are emitted until the choice is
+; complete; a four-cell ball must not show just its uploaded quadrants.
+fx_dball_obj:
+	STA !d_ks+4                       ; requested assembly
+	LDX.w #0 : LDY.w #0
+	JSR fx_at
+	LDA !fxd_style
+	ASL : ASL : ASL : ASL : ASL
+	STA !d_ks+12                      ; last-assembly stride
+	TAX
+	LDA.l !fx_dball_last,X
+	STA !d_ks+6
+	CMP !d_ks+4
+	BEQ .requested
+	CMP.w #!FX_ASM_DEATH16
+	BCC .noPrevious
+	CMP.w #!FX_ASM_COUNT
+	BCS .noPrevious
+	; A lookup-only pass: absent old art must not spend the new art's budget.
+	PHA
+	LDA.l !fx_cbudget : PHA
+	LDA.l !fx_bmiss : PHA
+	LDA.w #0 : STA.l !fx_cbudget
+	LDA $05,S
+	JSR fx_emit_setup
+	JSR fx_dball_ready
+	PLA : STA.l !fx_bmiss
+	PLA : STA.l !fx_cbudget
+	PLA
+	BCC .requested
+.noPrevious
+	LDA.w #$FFFF : STA !d_ks+6
+.requested
+	LDA !d_ks+4
+	JSR fx_emit_setup
+	JSR fx_dball_ready
+	BCS .waiting
+	LDX !d_ks+12
+	LDA !d_ks+4
+	STA.l !fx_dball_last,X
+	JMP fx_emit_place
+.waiting
+	LDA !d_ks+6
+	CMP.w #$FFFF
+	BEQ .cold
+	CMP !d_ks+4
+	BEQ .cold
+	JSR fx_emit_setup
+	JMP fx_emit_place
+.cold
+	; A first ball appears once its cells are resident. Speculative OAM can
+	; expose stale tiles, then blink when that upload misses its vblank.
+	RTS
+
+; The assembly just resolved is entirely resident, not a partial upload.
+; C clear = ready. Preserve the Death Ball's kind scratch and coordinates.
+fx_dball_ready:
+	LDA [!d_ptr]
+	XBA
+	AND.w #$00FF
+	TAY
+	LDX.w #0
+.cell
+	LDA !d_tiles,X
+	JSR fx_aura_tile_ready
+	CMP.w #$FFFF
+	BEQ .missing
+	TXA : CLC : ADC.w #8 : TAX
+	DEY
+	BNE .cell
+	CLC
+	RTS
+.missing
+	SEC
+	RTS
 
 ; FX_DISC: tilt [0,1,0,-1][(age>>3)&3].
 fx_k_disc:

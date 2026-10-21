@@ -103,10 +103,12 @@ end
 // drawn with (transients.mjs): OAM, the OBJ half of CGRAM, the screen
 // registers. lagMask: test builds force a lag vblank with the palette
 // requested on every frame whose core frame & mask is 0 (fz_test_lag).
-function transientsTest(preset,frames,{lagMask=0}={}){
+function transientsTest(preset,frames,{lagMask=0,source=romSrc}={}){
   const g=reference(preset);
   const writes=friezaWrites(g.frieza,g.challenge);
   const v=n=>'0x'+(n<0x10000?(0x7E0000|n):n).toString(16);
+  const symbols=readFileSync(source.replace(/\.sfc$/,'.sym'),'utf8');
+  const sym=n=>parseInt(symbols.match(new RegExp(`^([0-9A-F]{2}):([0-9A-F]{4}) ${n}$`,'mi')).slice(1).join(''),16);
   return `
 function test()
   local ok = H.importSnesJs(${JSON.stringify(join(importRoot,'preset__'+preset))})
@@ -115,6 +117,20 @@ function test()
   F.apply(${luaWrites(writes)})
   ${holdMusic(preset)}
   ${lagMask?`H.w16(${v(defs.fzp_test)}+12, ${0x5A00|lagMask}) H.w16(${v(defs.fzp_test)}+14, 0)`:''}
+  local orbs, requested = {}, {}
+  emu.addMemoryCallback(function() requested={} end,emu.callbackType.exec,${sym('frieza_field_frame')})
+  emu.addMemoryCallback(function()
+    requested[#requested+1]={
+      x=H.r16(${v(defs.fz_ax)})-(H.r16(0x7EE002)-H.r16(0x7EE020)),
+      y=H.r16(${v(defs.fz_ay)})-(H.r16(0x7EE004)-H.r16(0x7EE022))}
+  end,emu.callbackType.exec,${sym('fz_fx_deathball')})
+  local function uploaded()
+    local ec = H.r8(0x7E00EC)
+    if (ec & 9) == 0 then return end -- old OAM stays, including its orb
+    orbs = (ec & 1) ~= 0 and H.r16(0x7E6E4C) ~= 0 and requested or {}
+  end
+  emu.addMemoryCallback(uploaded,emu.callbackType.exec,0x00C118,0x00C118)
+  emu.addMemoryCallback(uploaded,emu.callbackType.exec,0x80C118,0x80C118)
   local meta = {}
   for frame = 1, ${frames} do
     H.wait(1)
@@ -138,7 +154,7 @@ function test()
     local cg = {}
     for i = 256, 511 do cg[#cg + 1] = string.format('%02x', H.cgram(i)) end
     meta[#meta + 1] = {f = frame, f4 = H.r8(0x7E00F4), w = H.r8(0x7E1D04), sig = sig, oam = table.concat(o, ','),
-      cg = table.concat(cg), sc = H.r8(${v(defs.fz_scene)}), dash = H.r8(${v(defs.fzf_dash)})}
+      cg = table.concat(cg), sc = H.r8(${v(defs.fz_scene)}), dash = H.r8(${v(defs.fzf_dash)}), orbs=orbs}
   end
   H.result('meta', meta)
   ${lagMask?`H.result('forced', H.r16(${v(defs.fzp_test)}+14)) H.w16(${v(defs.fzp_test)}+12, 0)`:''}
@@ -1292,7 +1308,7 @@ if(want('transients')){
     const source=run.rom??testRom;
     const rom=privateRom(source,`frieza-transients-${run.name}`);
     const out=join(outRoot,'transients',run.name);
-    const r=await runMesen({rom,test:lib+'\n'+transientsTest(run.preset,run.frames,{lagMask:run.lagMask}),outDir:out,state:join(cps,'waterfall.mss'),exactFrames:true,timeoutMs:1200000});
+    const r=await runMesen({rom,test:lib+'\n'+transientsTest(run.preset,run.frames,{lagMask:run.lagMask,source}),outDir:out,state:join(cps,'waterfall.mss'),exactFrames:true,timeoutMs:1200000});
     cleanupRom(rom);
     const res=r.results??{};
     const failures=[...(res.failures??[]),...(res.error?[res.error]:[])];
@@ -1300,10 +1316,10 @@ if(want('transients')){
     if(res.meta){
       writeFileSync(join(out,'meta.json'),JSON.stringify(res.meta));
       const a=analyseTransients({repo,dir:out,meta:res.meta,rows:friezaRows(source)});
-      writeFileSync(join(out,'transients.json'),JSON.stringify({totals:a.totals,faults:a.faults,frames:a.frames},null,1));
+      writeFileSync(join(out,'transients.json'),JSON.stringify({totals:a.totals,faults:a.faults,orbMisses:a.orbMisses,frames:a.frames},null,1));
       failures.push(...a.failures);
       const t=a.totals,lags=res.meta.filter((m,i)=>i&&m.f4===res.meta[i-1].f4).length;
-      notes.push(`${res.meta.length} frames, ${lags} lag${run.lagMask?` (${res.forced} forced)`:''}; ${t.frames} pictures with one-frame transients (${t.pixels} px: screen ${t.screen}, background ${t.bg}, other sprites ${t.other}, Frieza moving ${t.motion}, Frieza unexplained ${t.frieza}); palette faults ${a.faults.length}`);
+      notes.push(`${res.meta.length} frames, ${lags} lag${run.lagMask?` (${res.forced} forced)`:''}; ${t.frames} pictures with one-frame transients (${t.pixels} px: screen ${t.screen}, background ${t.bg}, other sprites ${t.other}, Frieza moving ${t.motion}, Frieza unexplained ${t.frieza}); palette faults ${a.faults.length}, missing warning orbs ${a.orbMisses.length}`);
       if(run.lagMask&&!(res.forced>=run.frames/16-2))failures.push(`only ${res.forced} forced lag vblanks`);
     }else failures.push('no recording');
     const ok=r.code===0&&res.pass===true&&failures.length===0;

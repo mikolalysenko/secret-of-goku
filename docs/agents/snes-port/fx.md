@@ -265,7 +265,11 @@ front group, hidden slot and obsolete tight-vblank flag with an independent
 palette-set model, including palettes first appearing after sprite 64.
 
 The palette hook latches `fx_clspal` into `fx_nmipal` only for a completed
-frame (`core_dma_ready`). On window/lag vblanks the previous OAM remains
+frame (`core_dma_ready` **and** native `$EC` bit 0), matching
+`frieza_cgram_upload`. Core publishes its ready word just before the native
+`TSB $EC`; an NMI in that gap must keep the displayed palette map. A
+native-only OAM upload (`$EC` bit 3 without a completed module frame)
+retires FX's palette ownership. On window/lag vblanks the previous OAM remains
 displayed: native BG colours are refreshed and OBJ colours are retained.
 If a scene handler replaced CGRAM, FX reapplies the displayed palette map.
 UI's scouter shares unused colours from this frame's `fx_clspal`, not the
@@ -490,6 +494,24 @@ to the art's rim violet. The outline matches the browser's exactly; the
 art's pink patches become tints of their rows, and the sparks outside the
 circle are not drawn. While the game's own colour math is on (`$23` not
 zero) the ball keeps it outside and shows no rim.
+
+**Death Ball OBJ transitions** (`fx_dball_obj`): each style remembers its
+last complete resident assembly in the unused sixteenth cache words
+(`$31:785E` / `$31:787E`). Before resolving a different size or texture,
+FX protects that assembly from eviction. Until every replacement cell has
+uploaded, it continues drawing the resident picture at the requested
+position. The new size/texture may appear one vblank later; it never shows
+a partial four-cell ball. A cold first ball waits for its cells, avoiding
+speculative OAM pointing at stale VRAM. Scene resets invalidate both hints.
+This also keeps the orb visible when the warning becomes a projectile.
+
+`deathball` forces zero/partial cell budgets and deferred NMIs for both
+styles. `palette-latch` forces the ready-before-`TSB $EC` gap with a changed
+pending palette allocation and checks the displayed map and colours. The
+palette uploader scans unused classes in byte mode to cover the extra
+handshake check's CPU cost. Frieza's `transients` case additionally records
+Death Ball requests at their client and checks every uploaded OAM after
+the two cold-cache frames, including the warning-to-projectile handoff.
 
 **Ki aura (shipping build)** (`fx_k_aura_obj`): a 32×48 flame made of six
 16×16 sprites sharing three mirrored cells, or two cells for a 16×32

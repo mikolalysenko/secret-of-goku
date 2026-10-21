@@ -215,10 +215,13 @@ fx_nmi_vline:
 ; The classes are fixed: unroll their scan and source offsets. This runs
 ; from the early native CGRAM hook, before native actor streaming.
 macro fx_nmi_palette(class)
+	; Byte mode between classes: most classes have no palette this frame.
+	; Only a live row needs word arithmetic and DMA setup.
 	LDA.l !fx_nmipal+<class>
-	AND.w #$00FF
-	CMP.w #$0008
+	CMP.b #$08
 	BCS ?next
+	REP #$20
+	AND.w #$00FF
 	ASL
 	ASL
 	ASL
@@ -243,7 +246,6 @@ if <class> != !FX_CLASS_DYN
 	SEP #$20
 	LDA.l !fx_nmi_bit
 	STA $420B
-	REP #$20
 else
 	SEP #$20
 	LDA.b #$00
@@ -261,15 +263,16 @@ else
 	STA $2122
 	LDA.l !fx_dyn+5
 	STA $2122
-	REP #$20
 endif
 ?next:
 endmacro
 
 fx_nmi_palettes:
+	SEP #$20
 	for class = 0..!FX_CLASS_COUNT
 		%fx_nmi_palette(!class)
 	endfor
+	REP #$20
 	LDX.w #!FX_CLASS_COUNT
 	RTS
 
@@ -284,8 +287,15 @@ fx_cgram_upload:
 	LDA.l !fx_magic
 	CMP.w #!FX_MAGIC
 	BNE .unchanged
-	LDA.l !core_dma_ready
+	; Match Frieza's rule: core publishes ready just before the native
+	; TSB $EC. A vblank in that gap keeps the old OAM and palette map.
+	LDA $EC
+	AND.w #$0009
 	BEQ .lag
+	LSR
+	BCC .noOam
+	LDA.l !core_dma_ready
+	BEQ .noOam
 	LDA.l !fx_palfree
 	AND.w #$0100
 	STA.l !fx_pal_live
@@ -301,6 +311,11 @@ fx_cgram_upload:
 	STA.l !fx_nmipal+6
 	REP #$20
 	BRA .send
+.noOam
+	; A native-only OAM upload (e.g. ring icons) no longer uses our map.
+	LDA.w #0
+	STA.l !fx_pal_live
+	BRA .unchanged
 .lag
 	LDA.l !fx_pal_live
 	BEQ .unchanged

@@ -49,8 +49,9 @@ assert !FX_SRAM == !SRAM_WORK_FX, "fx request block must sit at !SRAM_WORK_FX"
 !fx_bmiss     = !FX_SRAM+$3C   ; word: a cell missed this frame's upload budget (fx_cache_get)
 !fx_pbig      = !FX_SRAM+$3E   ; word: polygon tables in both buffers: bit 0 this frame's request,
                                ;   bit 1 on screen, bit 2 the ones the key describes
-!fx_ccell     = !FX_SRAM+$40   ; 16 words: VRAM cache entry -> cell ($FFFF free, $FFFE unusable)
-!fx_cused     = !FX_SRAM+$60   ; 16 words: fx frame of last use
+!fx_ccell     = !FX_SRAM+$40   ; 15 words: VRAM cache entry -> cell ($FFFF free, $FFFE unusable)
+!fx_dball_last = !FX_SRAM+$5E ; word per style, stride 32: last complete Death Ball assembly
+!fx_cused     = !FX_SRAM+$60   ; 15 words: fx frame of last use; +$7E is cinematic dball_last
 !fx_cpend     = !FX_SRAM+$80   ; word: entries to upload in the next vblank (bit per entry)
 !fx_cbudget   = !FX_SRAM+$82   ; word: new cells still allowed this frame
 !fx_frame     = !FX_SRAM+$84   ; word: fx frame counter
