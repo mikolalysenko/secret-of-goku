@@ -490,7 +490,7 @@ After each full field frame `ui_field_idle` sets `!UIS_IDLE` when nothing
 is shown, queued, cooling down, pending (scouter scan), moved (placement),
 left over from world flight or fast-forwarded. The next field frames then
 only count (`!ui_frame`) while no event runs (`$D0` = 0) and R is up; a
-public API call (`ui_api_enter`), `ui_charge_tick`, world, ring and menu
+public API call (`ui_api_enter`), Super Saiyan `ui_charge_tick`, world, ring and menu
 frames and loads clear the bit. The map history (`!ui_lastmap`) restarts
 at 0 when idle, which the radio reads as "no previous map" (a warning
 only follows a map change while it is up). The field NMI returns at once
@@ -505,6 +505,25 @@ frame costs 5.7 lines and the NMI 0.5: the visibility guards are unrolled
 (`ui_field_can_show`, `ui_can_attack`), the HDMA colour refresh too, and
 placement returns at once outside events; `ui_power_intro_flight` (called
 every hover frame) returns before the API entry once its lines were said.
+
+Base-form charging and beams retain an existing idle proof. They consume
+the charge request, refresh visibility and age an unclaimed placement
+session, without traversing empty radio, scouter and window work. Foreign
+RAM validation still runs; fortress completion, SSJ requests, events, R,
+messages and cancellation before dispatch retain the full path. World
+flight always uses its full callback. `UI_CHARGE_IDLE_SLOW` restores the
+previous unconditional wakeup. The assembled API plus quiet field callback
+falls **1,075 → 397 CPU cycles**. All **672** machine-code comparisons agree
+on live RAM, SRAM and I/O, including releases, visibility, foreign state and
+later message/SSJ wakeups; run `node --test snes/test/ui/charge-idle.test.mjs`
+after building the production ROM.
+
+October 20 validation: UI **12/12**, gameplay **13/13 short** and **6/6 long**
+pass. Charge's UI callback averages **0.98** lines (peak **1.84**), versus
+**2.53 / 5.46** on the integrated baseline. Ordinary idle remains about
+**0.26** lines. With the charge presentation lookup, missed charge frames
+fall **22 → 13** per 240 and **33 → 18** per 1,200; full results and remaining
+limits are in [gameplay-performance.md](gameplay-performance.md).
 
 ## Foreign savestates
 

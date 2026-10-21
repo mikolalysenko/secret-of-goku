@@ -2,8 +2,27 @@
 ; frame, !UIS_IDLE says nothing is shown, queued, cooling down, pending or
 ; moved; the next field frames then only count (main.asm ui_field_frame)
 ; until an event starts, R is held or a public API call clears the bit
-; (ui_api_enter, ui_charge_tick; world, ring and menu frames and loads clear
-; it too). !UIS_PLACE tells the field NMI that placement has channel work.
+; (ui_api_enter, Super Saiyan ui_charge_tick; world, ring and menu frames
+; and loads clear it too). !UIS_PLACE tells the NMI about placement work.
+; A base charge/beam can retain this proof: it cannot create a warning.
+; Keep the request/visibility bookkeeping, but skip empty queue, window,
+; scouter and placement passes. Events, R, SSJ and every other API wake up
+; the full path before this routine can run.
+ui_idle_charge:
+	LDA.w !ui_charge_in&$FFFF
+	STA.w !ui_charge_seen&$FFFF
+	STZ.w !ui_charge_in&$FFFF
+	STZ.w !ui_vis&$FFFF
+	JSR ui_field_can_show
+	BCC +
+	INC.w !ui_vis&$FFFF
++	; An unclaimed placement session may still be aging toward 31.
+	LDA.w !ui_wp_idle&$FFFF
+	CMP.w #31
+	BCS +
+	INC.w !ui_wp_idle&$FFFF
++	RTS
+
 ui_field_idle:
 	LDA.w !ui_wp&$FFFF                ; placement's vblank work
 	AND.w #!UIW_NOW|!UIW_TAKEN|!UIW_FORCED

@@ -1,4 +1,4 @@
-# Goku gameplay review — October 19, 2026
+# Goku gameplay review — October 20, 2026
 
 The cartridge already had Goku's movement, combat, local/world flight,
 teleport, story and boss modules. The main problems in this review were
@@ -7,6 +7,182 @@ SNES audio and compact effects. It is substantially smoother, but crowded
 combat is not yet guaranteed to run without missed video frames.
 
 ## Current checkpoint
+
+The new pass starts at integrated main `5f21b35`. Fresh 240-frame runs
+reproduce charge **22**, teleport **3**, flying ki **3**, flying punches
+**2**, ordinary flight **1**, and zero for the other eight cases. Fresh
+1,200-frame runs differ from the earlier October 19 image: charge **33**,
+teleport **15**, corridor flying ki **15**, flying punches **2**, and
+ground punches/ki **0/0**. Use these matched-build baselines below, rather
+than attributing differences from the old 26/15/10 results to this pass.
+
+The current selected image has these missed-video-frame counts. All 13
+short and six long cases pass their gameplay, palette, meter, OBJ,
+graphics-DMA, complete-NMI and duplicate scenery-work checks; timing remains
+open for the nonzero rows.
+
+| Scenario | Baseline / current, 240 frames | Baseline / current, 1,200 frames | Current long peak, lines |
+| --- | ---: | ---: | ---: |
+| Charge and release | 22 / **13** | 33 / **16** | 266.24 |
+| Teleports | 3 / **3** | 15 / **15** | 269.93 |
+| Flying ki, long run in corridor | 3 / **2** | 15 / **13** | 250.64 |
+| Flying punches | 2 / **1** | 2 / **1** | 280.67 |
+| Ordinary flight | 1 / **2** | — | — |
+| Ground punches | 0 / **0** | 0 / **0** | 237.52 |
+| Ground ki | 0 / **0** | 0 / **0** | 238.07 |
+
+The other six short cases (solo attacks, walk, water flight, focus and
+transformation over cut grass) remain at zero. Complete NMI peaks at about
+**35.57** lines across the selected runs. No audio or core source changes,
+and no relaxation of the all-HDMA-off requirement for mid-frame DMA.
+
+### Remaining critical path and core handoff
+
+The final charge profile still spends **80.98 mean / 144.80 peak** lines
+in native actor construction and **39.25 / 56.18** in movement/contact.
+FX averages **11.28**, peaks at **39.43** on release, and native work on
+missed charging/release updates commonly exceeds 100 actor lines plus
+30–50 movement lines. The native instruction sample records **2,778**
+visits to the descriptor emitter at `$80:E640` and **2,043** contact checks
+at `$81:CE72–CF19` in 240 video frames. These are concrete core follow-up
+targets for removing repeated work while retaining exact actor behavior;
+the earlier excluded body-predecode/two-piece trials still apply.
+
+Final long teleport averages **74.08** actor and **37.25** movement lines.
+The remaining 15 misses include two landing-search bursts (fixture frames
+445/449: flight **114.15 / 87.34** lines); most other misses combine native
+actors, movement and occasional row streaming. Cached landing results
+across teleports would need to observe moving targets, live map edits and
+hole providers, so no such reuse was introduced. Flying ki averages
+**49.32** actor, **30.67** movement, **18.22** flight, **17.88** combat and
+**16.82** FX lines; its miss frames still combine native AI/contact bursts
+with attacks. The vblank work list does not overrun in these cases.
+Spans can include interrupts and nested work; do not sum them as independent
+CPU totals. Profiles: `final-native-charge`, `final-teleport-profile` and
+`fly-ki-profile` under `.local/snes-test/perf2/`.
+
+Core may also compile out the unused enemy queue/drain when
+`CORE_ENEMY_DEFER` is absent. Its source and all DMA/HDMA guards remain
+untouched here. Final `modprof` frame/NMI means are FX **0.20 / 0.11**, UI
+**0.33 / 0.12–0.13**, flight **0.30**, and combat's frame callback **0.87**
+(including dispatch). UI's extra idle charge check adds about 0.04 lines
+outside charging. All six final perf scenes retain their baseline lag
+counts. The strict default build is byte-identical to the measured
+`charge-query.sfc` (SHA-256
+`93d4a09b0e3f578bcde6447266510acf8f39e707e556880414053ae66f67e401`).
+Building with `COMBAT_CHARGE_DRAW_SLOW`, `UI_CHARGE_IDLE_SLOW`,
+`FLIGHT_CHARGE_STATE_SLOW` and `CORE_ENEMY_DEFER` together restores **33**
+long charge misses, matching the fresh baseline (`restored-long`).
+
+### Read only the charging state flight needs
+
+The charge profile shows `fl_bind_charging` spending **0.82** lines on a
+full combat-state query during every charging frame. It uses just one bit.
+Read the same live charging byte, without constructing four unrelated
+flags or returning charge/action values that flight discards. The binding
+retains its register/flag result; combat's call-local scratch is not an
+output. `FLIGHT_CHARGE_STATE_SLOW` restores the full query.
+
+The query falls **158 → 22 CPU cycles**. All **12,288** assembled comparisons,
+**17 flight assembly tests**, nine live flight cases and **13 short / six
+long** gameplay cases pass. Long charge improves **18 → 16** misses; other
+counts and the **266.24-line** charge peak stay unchanged. Artifacts:
+`charge-flight-profile`, `charge-query-short`, `charge-query-final-long`,
+`charge-query-unit.log`, `charge-query-flight*` and `charge-query-modprof.log`
+under `.local/snes-test/perf2/`.
+
+### Restore native enemy decision phases
+
+The `ab393b9` experiment defers the second/third enemy's AI and animation
+by two field updates while both CPU companions are carried. Status/timers
+and per-frame movement continue, but decisions observe the world later.
+That trade-off does not help the priority flying-combat cases: with the
+quiet-radio checkpoint, native scheduling improves short flying ki
+**3 → 2**, flying punches **2 → 1**, and long corridor flying ki **15 → 13**,
+flying punches **2 → 1**. Charge and teleport counts stay **13/18** and
+**3/15** (short/long). Short ordinary flight regresses **1 → 2**; the long
+unsteered flight comparison leaves the map and is invalid, so do not use
+its count. The earlier integrated-baseline comparison independently gives
+the same flying-combat improvement.
+
+Make the flight gateway opt-in with `CORE_ENEMY_DEFER`; the existing
+`CORE_ENEMY_SYNC` override still disables it. No core source changes.
+All eight assembled scheduler tests pass, including immediate production
+decisions and the complete opt-in queue's guards/cadence. All **11 flight
+cases** pass: 289,324 classified tiles, 19,996 landing queries, 191,964
+sweeps and 79,988 footprint queries agree with the browser, plus live
+passengers, water, teleport, whip, ceilings, scenes, bosses and holes.
+All **13 short / six long** gameplay and **six perf scenes** pass with no
+hardware/rendering errors. Long flying-ki peak falls **291.55 → 250.64**
+lines; flying-punch peak rises **261.01 → 280.67** despite fewer misses.
+Teleport peak falls **299.78 → 269.93**, with its 15 misses unresolved.
+Artifacts: `native-enemy-*`, `enemy-sync-*`, `quiet-radio-sync-long` and
+`quiet-radio-fly-long` under `.local/snes-test/perf2/`.
+
+The redundant FX request-clear trial is excluded: it reduced charge
+submission pairs **824 → 738 CPU cycles** and beam submissions **419 → 364**,
+and passed 10,882 assembled comparisons, but left long charge at 18 misses.
+The private patch, ROM, unit log and run are `fx-request*` in the same
+artifact directory.
+
+### Quiet radio during base charging
+
+An idle radio has no messages, cooldowns, pending scouter scan or window
+work. Base charging and beams cannot start an SSJ warning, so retain that
+idle proof and perform only request, visibility and placement-age updates.
+Preserve foreign-state validation and the full path for fortress completion,
+events, R, SSJ, messages and cancellation before dispatch. World flight
+keeps its full callback. `UI_CHARGE_IDLE_SLOW` restores unconditional wakeup.
+
+The assembled charge API plus quiet callback falls **1,075 → 397 CPU
+cycles**. All **672** live RAM/SRAM/I/O comparisons and **12 UI cases** pass.
+All **13 short** and **six long** gameplay cases pass with zero hardware or
+rendering errors. Charge misses fall from the lookup checkpoint's **21 → 13**
+short and **31 → 18** long; other counts stay unchanged. Its longest update
+falls **277.90 → 266.43** lines, complete NMI peaks at **33.77**, and the
+short-run UI callback averages **0.98** lines (peak **1.84**) versus the
+baseline's **2.53 / 5.46**. Ordinary idle remains about **0.26** lines.
+The six perf scenes also pass. Artifacts: `quiet-radio-safe-short`,
+`quiet-radio-safe-long`, `quiet-radio-safe-ui.log`, `quiet-radio-unit.log`
+and `quiet-radio-perf.log` under `.local/snes-test/perf2/`.
+
+### Charge presentation lookup
+
+Generate the charge aura power and orb frame from the existing quantized
+strength. Full-charge strobing and every FX request remain unchanged;
+`COMBAT_CHARGE_DRAW_SLOW` restores the arithmetic path. Partial charge's
+combined submissions fall **1,127 → 824 CPU cycles**. All **9,981** assembled
+comparisons, **36 combat scenarios**, **13 short** and **six long** gameplay
+cases pass with zero palette, meter, OBJ, complete-NMI, graphics-DMA or
+duplicate scenery-work errors. Short charge misses improve **22 → 21**;
+long charge **33 → 31**. Other counts are unchanged. The long charge peak
+changes **276.58 → 277.90** scanlines as actor/input timing changes;
+crowded zero-drop timing remains open.
+
+Baseline profiling (`modprof.mjs`, all six perf scenes, and gameplay's
+module/FX/combat spans) precedes the change. During short charge/release,
+native actor construction averages **81.02** lines (peak **162.88**) and
+movement/contact work **39.18** (peak **56.60**). FX averages **11.02**
+(peak **39.32**); charging frames usually add 15–24 FX lines, release
+frames about 30–39. Combat logic averages **9.25** (peak **49.67**, including
+interruptions). Goku's frame callback averages **3.25**, radio/UI **2.53**,
+and Goku's NMI upload peaks at **6.10**. Complete NMI peaks at **34.00**
+lines with no overruns. This fixture uses base-form charging: SSJ lightning
+and warning decisions do not cause its misses. Native actors/contact and
+the combined charge/release workload are the critical path.
+
+The initial orb-only lookup trial measured 30 long charge misses, but
+removed less per-frame work than the combined lookup. It is retained only
+as a private comparison, not as evidence of zero-drop timing. Artifacts:
+`.local/snes-test/perf2/` (`baseline-*`, `charge-profile`, `orb-long`,
+`charge-table-short`, `charge-table-final-long`, and the unit/combat logs).
+
+Long commands use `punch ki fly-ki fly-punch teleport charge --repeat=5
+--flight-corridor`; the runner has no special `--long` preset. Perf's six
+shared scenes pass on the fresh baseline. Idle `modprof` FX remains about
+0.2 frame / 0.1 NMI lines; combat's frame callback is 0.87 including dispatch.
+
+## Previous checkpoint (October 19)
 
 The latest 1,200-video-frame runs use the resident aura build in
 `.local/snes-test/aura-rows/game.sfc`. All rendering and hardware

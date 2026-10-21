@@ -111,6 +111,23 @@ if defined("UI_TEST")
 	ORA.w !ui_test_charge&$FFFF
 	BNE .full
 endif
+if not(defined("UI_CHARGE_IDLE_SLOW"))
+	LDA.w !ui_charge_in&$FFFF
+	BEQ .idle
+	; A charge API call previously forced foreign-state validation. Keep
+	; that guarantee even when the old idle bit came from a savestate.
+	JSR ui_ram_check
+	LDA.w !ui_state&$FFFF
+	AND.w #!UIS_IDLE
+	BEQ .full
+	; Fortress completion also updates persistent first-flight advice.
+	; All other pending radio/window/scouter work already clears UIS_IDLE.
+	LDA.w !ui_in&$FFFF
+	AND.w #!UII_FORTRESS_GONE
+	BNE .full
+	JSR ui_idle_charge
+.idle
+endif
 	INC.w !ui_frame&$FFFF
 	RTL
 .full

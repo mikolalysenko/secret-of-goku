@@ -82,6 +82,19 @@ export async function generate({rom,repo,outDir}){
     for(let c=0;c<=cap;c++)list.push(Math.floor(c*256/cap));
     lines.push(`combat_strength_${ssj?'ssj':'base'}: ; floor(charge * 256 / ${cap})`,...chunk(list,16).map(l=>`\tdw ${dw(l)}`));
   }
+  // The charge's continuous pictures use the same quantized strength as
+  // above. Bake both consumers: low byte = aura power, high byte = orb
+  // frame (bit 7 asks for the live full-charge strobe). Index by the same
+  // low charge byte as cb_bind_strength, including its clamped tail.
+  for(const ssj of [false,true]){
+    const cap=ssj?45:90;
+    const list=Array.from({length:256},(_,c)=>{
+      const strength=Math.floor(Math.min(c,cap)*256/cap);
+      return (64+(strength>>1))|((strength===256?0x80:Math.floor(strength*5/256))<<8);
+    });
+    lines.push(`combat_charge_draw_${ssj?'ssj':'base'}: ; aura power | orb frame << 8`,
+      ...chunk(list,16).map(l=>`\tdw ${dw(l)}`));
+  }
   {
     const list=[];
     for(let p=0;p<=96;p++)list.push(Math.floor(p*256/96));

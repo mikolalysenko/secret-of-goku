@@ -84,6 +84,7 @@ endif
 ; Carry = combat is charging (combat_api_state bit 1).
 fl_bind_charging:
 if defined("CB")
+if defined("FLIGHT_CHARGE_STATE_SLOW")
 	PHX
 	PHY
 	JSL combat_api_state
@@ -91,6 +92,14 @@ if defined("CB")
 	PLX
 	AND.w #$0002
 	BEQ +
+else
+	; The full state API assembles four unrelated flags and two outputs.
+	; Read the same live byte; it needs no initialization in either path.
+	LDA.l $7E0000|!cb_charging
+	AND.w #$00FF
+	BEQ +
+	LDA.w #$0002
+endif
 	SEC
 	RTS
 +

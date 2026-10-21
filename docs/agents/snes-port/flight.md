@@ -82,6 +82,30 @@ single-cell landing takes 609 CPU cycles cold or warm, versus 1,109/653.
 - On foot the A button never reaches the game (it is the speed modifier, not
   the native dash).
 
+Enemy AI/animation retains its native phase during local flight. The
+`ab393b9` experiment delayed the second/third enemy's decisions by two
+field updates while both CPU companions were carried. It is now opt-in
+with `CORE_ENEMY_DEFER`; `CORE_ENEMY_SYNC` still overrides it. The flight
+gateway is the only production change; core's queue remains available.
+Restoring native phases improves corridor flying ki **15 → 13** misses
+and flying punches **2 → 1** per 1,200 video frames. Short ordinary flight
+regresses **1 → 2**; charge/teleport counts are unchanged. This small flight
+trade-off does not justify delaying enemy decisions in the default build.
+All eight assembled scheduler tests pass (native production cadence plus
+the opt-in queue), the full **11-case** flight suite and **13 short / six
+long** gameplay cases pass. See [gameplay-performance.md](gameplay-performance.md).
+
+`fl_bind_charging` reads combat's live `cb_charging` byte instead of
+assembling its unrelated can-attack, form, full-charge and beam flags and
+discarding its charge/action outputs. The binding keeps A, flags, X/Y,
+DB/D and live RAM identical; only combat's call-local scratch may differ.
+`FLIGHT_CHARGE_STATE_SLOW` restores the complete `combat_api_state` call.
+The query falls **158 → 22 CPU cycles**, with **12,288** assembled comparisons
+passing (`snes/test/flight/charge-state.test.mjs`). All **17** flight assembly
+tests and nine live flight cases pass. All 13 short/six long gameplay
+cases pass: long charge improves **18 → 16** misses, short charge stays
+**13**, and other counts stay unchanged.
+
 ### Whip pads (native-gap-flight.js)
 
 - While Goku flies, a whip pad (floor event 6D8) under any party member is
