@@ -281,7 +281,7 @@ async function cutawayCheck(r,out){
   expect(r.cpu_frame_live_mean<=5.5,`live world callback ${r.cpu_frame_live_mean} lines`);
   expect(r.landed,'deck landing after the cutaway');
   expect(r.restores===1&&r.field_vtime<225,`the field's HUD IRQ line is back (VTIME ${r.field_vtime}, ${r.restores} restore)`);
-  expect(r.load_lines_max<250,`black-frame load ${r.load_lines_max} lines (must finish before the next native NMI)`);
+  expect(r.load_lines_max<215,`black-frame load ${r.load_lines_max} lines (must finish before the next native NMI)`);
   expect(r.unsafe_ppu_dma===0,`unsafe PPU/DMA writes: ${r.unsafe_ppu_dma}`);
   const atlas=globeAtlas(baseRom),targets=globeTargets();
   const stats=JSON.parse(readFileSync(resolve(repo,'dist/snes/gen/ending/stats.json'))).stats.globes;

@@ -322,27 +322,29 @@ extra preset view recovers that composition without dropping other views.
 
 The new generator fits paired day/night RGB555 colours to six 15-colour
 palettes and flip-deduplicates **all** tiles across the views. Pixels remain
-full resolution. Storage is **185,905 bytes (181.55 KiB)**, 10,703 bytes
+full resolution. Storage is **188,387 bytes (183.97 KiB)**, 8,221 bytes
 below the 192 KiB limit, with a build-time budget assertion:
 
 | Orientation data | Bytes |
 | --- | ---: |
 | 5,060 shared 4bpp tiles, including transparent tile 0 | 161,920 |
 | Padding to five bank-aligned 32 KiB xdata blobs | 1,920 |
-| Shared 2 KiB map, 307 attribute bytes per view, consecutive tile-run descriptors | 22,065 |
-| **Total (six blobs)** | **185,905** |
+| Shared 2 KiB map, 20x19 attribute bytes per view, consecutive tile-run descriptors | 24,547 |
+| **Total (six blobs)** | **188,387** |
 
 The existing two 22-level fade-palette blobs remain 22 KiB total,
-independent of orientation count. Fast tables (763 bytes: cell addresses,
+independent of orientation count. Fast tables (187 bytes: row addresses,
 view offsets, extra targets and source banks) stay in `$AA:C000`.
 The load uses DMA to scatter consecutive dictionary runs into the same
-307 BG1 tile slots, then writes the map's palette/flip bytes under forced
-blank. There is no decompressor or temporary WRAM/SRAM buffer. At most
+307 BG1 tile slots, then uploads a 20x19 rectangle of palette/flip bytes
+with 19 DMAs to `$2119`, all under forced blank. Compared with individual
+CPU map writes, the rows cost 2,482 more ROM bytes and save 47 scanlines
+on the load. There is no decompressor or temporary WRAM/SRAM buffer. At most
 121 runs are needed; blank tile 0 plus 307 cells occupy `$3000-$433F`,
 clear of the map at `$4C00`.
 
-Loading remains one black frame: 237.76 lines for the default view,
-**248.30 lines maximum** across all 34, before the next native NMI.
+Loading remains one black frame: 190.76 lines for the default view,
+**201.30 lines maximum** across all 34, before the next native NMI.
 The cutaway runs 187 frames including loading, footprint DMA ends by line
 254, NMI work by 255, and the footprint trails by at most one age. A new
 hardware monitor also caught an existing footprint-budget issue when
@@ -474,9 +476,9 @@ WRAM block `!RAM_ORBIT+$80..$B5`:
 
 | Resource | Use |
 | --- | --- |
-| Code | `$A9:8000-FF74` (139 bytes free, unchanged); second area `$AA:C000-CC37` (12.95 KiB of the quarter free) |
+| Code | `$A9:8000-FF74` (139 bytes free, unchanged); second area `$AA:C000-CA11` (13.48 KiB of the quarter free) |
 | Fast data | `E9:0000` (31.3 KiB: fade sets, fragment and spark OAM, window lookups, the flight's tables), `EC:0000` (10.7 KiB: crack events); `ED`/`EE`/`EF` belong to core |
-| Extended data | ending: 46 blobs / 518,340 bytes (506.2 KiB), including the 185,905-byte orientation atlas. Whole build: 1,283,963 of 2,031,616 bytes, 730.1 KiB free |
+| Extended data | ending: 46 blobs / 520,822 bytes (508.6 KiB), including the 188,387-byte orientation atlas. Whole build: 1,286,445 of 2,031,616 bytes, 727.7 KiB free |
 | WRAM | `!RAM_ORBIT+$80..$B5` |
 | SRAM | `!SRAM_WORK_SCENE` (`$32:6000-7FFF`) while a scene runs: state, palette components and outputs, curves, queue, HDMA tables, the flight's matrix tables, row and star buffers |
 | VRAM | per scene above; core region `FIELD_OBJ_A` (owner `$09`) for the overlay |
@@ -561,7 +563,7 @@ overruns) are measured on a separate untouched run.
 | `vista` | `ending-fix__end-20` (map 180) | 12 stills 95.5-96.0%, done flags, Shenron's rise without lag, lag ≤ 12 |
 | `flight` | `ending-fix__end-20` (map 180) | 11 stills 90.6-99.0%, load ≤ 30 frames, muted/airborne/sound/done, lag ≤ 20, no overruns |
 | `loads` | `emulator-probe__potos-state` | doors through core's event mailbox: 2F under the doomed globe (reloaded, clock on, 99.9%), cue 176 after the flight holds black, door 3FF: the cliff 99.1% of a native load of it, Dyluck present |
-| `cutaway` | the world tests' waterfall checkpoint | actual shots at six sampled targets in both lights plus the default sequence (59 stills); saved-target selection, 192 KiB budget, all 34 VRAM images byte-exact, forced-blank load <250 lines, hardware-safe PPU/DMA, footprint ends by line 254 and trails at most 1, VTIME 196 after deck landing |
+| `cutaway` | the world tests' waterfall checkpoint | actual shots at six sampled targets in both lights plus the default sequence (59 stills); saved-target selection, 192 KiB budget, all 34 VRAM images byte-exact, forced-blank load <215 lines, hardware-safe PPU/DMA, footprint ends by line 254 and trails at most 1, VTIME 196 after deck landing |
 
 Sounds are checked on the calls into the audio module (`audio_sfx`,
 `audio_fade` watched in Mesen): silence at the scatter's and the death's

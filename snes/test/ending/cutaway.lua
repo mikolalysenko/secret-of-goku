@@ -24,7 +24,7 @@ local function watchLoad()
       if state['cpu.k'] ~= 0xAA or state['cpu.pc'] < 0xC000 or value & 0x80 == 0 then return end
       local visible = state['ppu.scanline'] >= 1 and state['ppu.scanline'] <= 224
       local ppu = H.r8(0x4371)
-      if visible and (hdma ~= 0 or (not state['ppu.forcedBlank'] and (ppu == 0x18 or ppu == 0x22))) then
+      if visible and (hdma ~= 0 or (not state['ppu.forcedBlank'] and (ppu == 0x18 or ppu == 0x19 or ppu == 0x22))) then
         bad = bad + 1
         if #unsafe < 32 then unsafe[#unsafe + 1] = string.format('DMA %02X:%04X line %d blank %s hdma %02X dest %02X', state['cpu.k'], state['cpu.pc'], state['ppu.scanline'], tostring(state['ppu.forcedBlank']), hdma, ppu) end
       end
@@ -228,5 +228,4 @@ function test()
     H.dumpfile('atlas-' .. i .. '-map.bin', emu.memType.snesVideoRam, 0x9800, 2048)
   end
   finishLoad()
-
 end

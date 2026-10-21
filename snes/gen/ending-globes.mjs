@@ -96,7 +96,7 @@ export function globeAtlas(rom,{targets=globeTargets()}={}){
       const key=Buffer.from(h||v?flip(px,h,v):px).toString('base64');
       if(dictionary.has(key)){const tile=dictionary.get(key);return {tile,flags:h<<14|v<<15};}
     }
-    const tile={id:all.length,px,uses:0};all.push(tile);dictionary.set(Buffer.from(px).toString('base64'),tile);return {tile,flags:0};
+    const tile={id:all.length,px};all.push(tile);dictionary.set(Buffer.from(px).toString('base64'),tile);return {tile,flags:0};
   };
   intern(new Uint8Array(64));                    // dictionary tile 0: transparent
   const cells=views[0].tiles.flatMap(({group},i)=>group<0?[]:[i]);
@@ -128,9 +128,18 @@ export function globeAssets(o,{rom,xblob}){
   // once, then change only its palette/flip high bytes at the occupied cells.
   const map=new Uint16Array(1024);
   atlas.cells.forEach((cell,i)=>{map[cell]=i+1;});
+  const left=Math.min(...atlas.cells.map(c=>c%32)),right=Math.max(...atlas.cells.map(c=>c%32));
+  const top=Math.min(...atlas.cells.map(c=>c>>5)),bottom=Math.max(...atlas.cells.map(c=>c>>5));
+  const width=right-left+1,height=bottom-top+1;
   const refs=[...u16bytes(map)],rows=[];
   for(const view of atlas.views){
-    view.map.forEach(({flags},i)=>refs.push((flags>>8)|((i+1)>>8)));
+    // The small rectangular high-byte image allows one $2119 DMA per row,
+    // avoiding 307 individual CPU/PPU writes during the black-frame load.
+    const attrs=new Uint8Array(width*height);
+    view.map.forEach(({flags},i)=>{
+      const cell=atlas.cells[i];attrs[((cell>>5)-top)*width+(cell%32)-left]=(flags>>8)|((i+1)>>8);
+    });
+    refs.push(...attrs);
     const start=refs.length;
     let runs=0;
     for(let i=0;i<view.map.length;){
@@ -153,16 +162,17 @@ export function globeAssets(o,{rom,xblob}){
   t.def('ENDING_CUT_GLOBE_COLS',GLOBE_COLS);t.def('ENDING_CUT_GLOBE_ROWS',GLOBE_ROWS);
   t.def('ENDING_CUT_GLOBE_DEFAULT',atlas.views.length-1);
   t.def('ENDING_CUT_GLOBE_CELLS',atlas.cells.length);
+  t.def('ENDING_CUT_GLOBE_WIDTH',width);t.def('ENDING_CUT_GLOBE_HEIGHT',height);
   t.def('ENDING_CUT_GLOBE_EXTRAS',GLOBE_EXTRAS.length);
   t.table('ending_cut_globe_extra_targets','dw',GLOBE_EXTRAS.flatMap(p=>[p.x,p.y]));
   t.table('ending_cut_globe_offsets','dw',rows.flatMap(r=>[r.start,r.end]));
-  t.table('ending_cut_globe_map_cells','dw',atlas.cells.map(c=>0x4c00+c));
+  t.table('ending_cut_globe_map_rows','dw',Array.from({length:height},(_,i)=>0x4c00+(top+i)*32+left));
   t.raw('ending_cut_globe_banks:');
   for(let i=0;i<chunks;i++)t.raw(`\tdb ending_cut_globe_tiles${i}>>16`);
   o.stats.globes={cols:GLOBE_COLS,rows:GLOBE_ROWS,orientations:atlas.views.length,
     dictionaryTiles:atlas.tiles.length/32,dictionaryBytes:atlas.tiles.length,
     paddedDictionaryBytes:chunks*0x8000,referenceBytes:refs.length,bytes,budget:GLOBE_BUDGET,
-    maxRuns:Math.max(...rows.map(r=>r.runs)),
+    maxRuns:Math.max(...rows.map(r=>r.runs)),attributeWidth:width,attributeHeight:height,
     maxTiles:atlas.cells.length+1,targets:atlas.views.map(v=>v.target)};
   return atlas.palettes;
 }

@@ -87,7 +87,7 @@ ending_world_frame:
 	RTL
 
 ; Once per cutaway. world-ki latches the target when firing, before the
-; Fortress moves again. planet-view rounds it to eight units first. A
+; Fortress moves again. planet-view rounds it to eight units first. An
 ; 8x4 nearest grid wraps at 4096, plus the two retained reference targets
 ; when their wrapped Manhattan distance is smaller. Zero is valid.
 cut_select_globe:
@@ -303,7 +303,7 @@ cut_load:
 	REP #$30
 	RTS
 ; Scatter consecutive runs from the shared dictionary, then set the map's
-; palette/flip bytes. All writes are under cut_load's forced blank, HDMA off.
+; palette/flip rows. All writes are under cut_load's forced blank, HDMA off.
 ; A run is a word dictionary tile number followed by a byte tile count;
 ; it never crosses a bank. The maps all use fixed sequential BG1 slots.
 ; No temporary tile/map buffer and no decoder in the live frame path.
@@ -330,7 +330,7 @@ cut_globe:
 	LDA.w ending_cut_globe_offsets+2,X
 	STA.l !ending_tmp2
 	LDA.w ending_cut_globe_offsets,X
-	SEC : SBC.w #!ENDING_CUT_GLOBE_CELLS
+	SEC : SBC.w #(!ENDING_CUT_GLOBE_WIDTH*!ENDING_CUT_GLOBE_HEIGHT)
 	STA.l !ending_tmp              ; attributes immediately precede the runs
 	LDA.w ending_cut_globe_offsets,X
 	TAX
@@ -360,18 +360,27 @@ cut_globe:
 	TXA : CMP.l !ending_tmp2
 	BNE .run
 	LDA.l !ending_tmp
-	TAX
-	LDY.w #$0000
-.map
-	LDA.w ending_cut_globe_map_cells,Y
-	STA.w $2116
+	CLC : ADC.w #ending_cut_globe_refs
+	STA.w $4372
 	SEP #$20
-	LDA.l ending_cut_globe_refs,X
-	STA.w $2119                    ; attributes, including local tile ID bit 8
+	LDA.b #ending_cut_globe_refs>>16
+	STA.w $4374
+	STZ.w $4370                    ; A -> B, one register (map high bytes only)
+	LDA.b #$19
+	STA.w $4371
 	REP #$20
-	INX
-	INY : INY
-	CPY.w #(!ENDING_CUT_GLOBE_CELLS*2)
+	LDX.w #$0000
+.map
+	LDA.w ending_cut_globe_map_rows,X
+	STA.w $2116
+	LDA.w #!ENDING_CUT_GLOBE_WIDTH
+	STA.w $4375
+	SEP #$20
+	LDA.b #$80
+	STA.w $420B                    ; $2119 increments the VRAM word address
+	REP #$20
+	INX : INX
+	CPX.w #(!ENDING_CUT_GLOBE_HEIGHT*2)
 	BNE .map
 	PLB
 	SEP #$20
