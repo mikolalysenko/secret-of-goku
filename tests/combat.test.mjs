@@ -295,25 +295,84 @@ test('both forms use separate lead-hand, rear-hand and kick strips in every dire
  }
 });
 
-test('connected strikes hold the contact pose and spark before launch; misses and puzzle orbs do not hit-stop',()=>{
- for(const superSaiyan of[false,true])for(const combo of[0,2]){
+test('connected strikes freeze 5 / 6 / 10 frames (one less as a Super Saiyan) with a two-frame white impact frame; misses and puzzle orbs do not hit-stop',()=>{
+ for(const superSaiyan of[false,true])for(const combo of[0,1,2]){
   const {mod,step,enemy}=setup({superSaiyan}),base=enemy(3,228,200);
   mod.combo=combo-1;mod.comboUntil=100;mod.punch();step(0,mod.action.impact);
   const pose=JSON.stringify(mod.motion.pose()),hp=mod.read16(base+0x1f1),hold=mod.action.hitPause;
-  assert.equal(hold,combo===2?5:3);assert.equal(mod.effects.find(e=>e.kind==='impact').life,10);
+  assert.equal(hold,[[5,6,10],[4,5,9]][superSaiyan?1:0][combo]);assert.equal(mod.effects.find(e=>e.kind==='impact').life,10);
+  assert.deepEqual([...mod.effects.filter(e=>e.kind==='star').map(e=>`${e.size}/${e.life}@${e.x},${e.y}`)],[`${combo+1}/2@228,188`],'impact frame sized by the blow at the contact');
+  assert.deepEqual([...mod.effects.filter(e=>e.kind==='flash').map(e=>`${e.base}/${e.life}`)],[`${base}/2`],'the struck actor flashes white');
+  assert.equal(mod.read8(base+0x0d),hold<<4|1,'the native shake jitters it along the blow through the hit stop');
+  assert.deepEqual([...mod.effects.filter(e=>e.kind==='shock').map(e=>e.life)],combo===2?[7]:[],'only the kick sends a shockwave, a frame after the burst');
   for(let i=0;i<hold;i++){
    step();const p=mod.motion.pose();assert.equal(p.phase,'contact');
    assert.equal(p.column,JSON.parse(pose).column);assert.equal(mod.action.age,mod.action.impact);
+   assert.equal(p.lunge,[2,3,4][combo],'the contact pose lunges further for heavier blows');
    assert.equal(mod.effects.find(e=>e.kind==='impact').life,10);assert.equal(mod.read16(base+2),228);
    assert.equal(mod.read16(base+0x1f1),hp,'contact hold never deals a second hit');
+   assert.equal(mod.effects.some(e=>e.kind==='star'||e.kind==='flash'),i===0,'impact frame and flash last two frames');
   }
   step();assert.ok(mod.read16(base+2)>228);assert.ok(mod.action.age>mod.action.impact);
+  const knock=mod.knockbacks.find(k=>k.base===base);
+  if(combo<2){
+   // A surviving target slides back along the ground and stays in reach.
+   assert.equal(knock.slide,true);assert.equal(knock.duration,6);assert.equal(knock.distance,superSaiyan?14:10);
+   step(0,5);assert.equal(mod.read16(base+2),228+(superSaiyan?14:10));assert.equal(mod.read8(base+0x45),0);
+  }else{assert.equal(knock.slide,undefined);assert.equal(knock.distance,superSaiyan?88:56);assert.ok(mod.read8(base+0x45)>0);}
  }
+ // A killing jab still launches the target.
+ {const {mod,step,enemy}=setup(),base=enemy(3,228,200,100);mod.punch();step(0,mod.action.impact);
+  const knock=mod.knockbacks.find(k=>k.base===base);assert.equal(knock.slide,undefined);assert.equal(knock.distance,56);}
  for(const orb of[false,true]){
   const {mod,step,enemy}=setup();if(orb)enemy(3,228,200,100,0x55);
   step(1);step(0,2);assert.equal(mod.action.hitPause,0);
-  assert.equal(mod.effects.some(e=>e.kind==='impact'),false);step();assert.equal(mod.action.age,3);
+  assert.equal(mod.effects.some(e=>['impact','star','flash','shock'].includes(e.kind)),false);step();assert.equal(mod.action.age,3);
  }
+});
+
+test('impact frames: a mirrored starburst per blow, then the kick shockwave a frame later, shared with the cartridge',async()=>{
+ const {impactArt,impactParts,drawImpact,IMPACT_STAR_LIFE,IMPACT_SHOCK_LIFE,IMPACT_SHOCK_DELAY}=await import('../engine/impact-art.js');
+ const art=impactArt(),radius=[];
+ for(let size=0;size<4;size++){
+  assert.equal(impactParts('star',size,0),art.stars[size]);assert.equal(impactParts('star',size,IMPACT_STAR_LIFE),null);
+  let lo=99,hi=-99;drawImpact(art.stars[size],0,0,(x)=>{lo=Math.min(lo,x);hi=Math.max(hi,x);});radius.push(hi);
+  if(size)assert.deepEqual(art.stars[size].map(p=>[p.ox,p.oy,p.h,p.v]),[[0,0,false,false],[-16,0,true,false],[0,-16,false,true],[-16,-16,true,true]],'one cell in four quadrants (fx_emit_quad)');
+ }
+ assert.ok(radius[0]<radius[1]&&radius[1]<radius[2]&&radius[2]<radius[3],'ki < jab < cross < kick');
+ assert.equal(impactParts('shock',0,0),null,'the contact frame carries only the burst');
+ for(let age=IMPACT_SHOCK_DELAY;age<IMPACT_SHOCK_DELAY+IMPACT_SHOCK_LIFE;age++)assert.equal(impactParts('shock',0,age),art.shock[age-IMPACT_SHOCK_DELAY]);
+ assert.equal(impactParts('shock',0,IMPACT_SHOCK_DELAY+IMPACT_SHOCK_LIFE),null);
+ assert.ok(new Set(art.shock.flat().map(p=>p.px)).size<=5,'the shockwave reuses five cells');
+});
+
+test('the strike lunges only the drawn body along the facing, never the native position',()=>{
+ for(const superSaiyan of[false,true])for(let combo=0;combo<3;combo++){
+  const {mod}=setup({superSaiyan}),reach=[2,3,4][combo],seen=[];
+  for(let age=0;age<(superSaiyan?7:14);age++){
+   mod.action={kind:'punch',combo,age,super:superSaiyan,facing:1,impact:superSaiyan?1:2};
+   seen.push(mod.motion.pose().lunge);
+  }
+  const contact=superSaiyan?[1]:[2,3],follow=superSaiyan?[2,3]:[4,5,6];
+  seen.forEach((lunge,age)=>assert.equal(lunge,contact.includes(age)?reach:follow.includes(age)?(reach+1)>>1:0,`age ${age}`));
+ }
+});
+
+test('a connected blow kicks the background camera along it and springs back; text and Mode 7 stay put',async()=>{
+ const {createNativeFeedback,KICK_PROFILES}=await import('../engine/native-feedback.js');
+ const ram=new Uint8Array(0x20000),cpu={r:[0,0],br:[0,0,0,0,0],cyclesLeft:0,cycle(){},registerBreakpoints(){}};
+ const ppu={bgHoff:[100,200,300,0,0],bgVoff:[50,60,70,0,0],mode:1,getColor(){return [0,0,0];}};
+ const snes={ram,ppu,cpu,write(){}},feedback=createNativeFeedback(snes,{options:{enabled:true},gokuActive:true,canAttack:true});
+ // The field NMI's scroll routine returns at C0:C1CE with fresh values.
+ const nmi=()=>{ppu.bgHoff[0]=100;ppu.bgHoff[1]=200;ppu.bgVoff[0]=50;ppu.bgVoff[1]=60;cpu.br[4]=0xc1ce;cpu.cycle();cpu.br[4]=0;};
+ const seen=[];
+ feedback.kick(1,2);seen.push([ppu.bgHoff[0],ppu.bgHoff[1],ppu.bgVoff[0],ppu.bgVoff[1],ppu.bgHoff[2]]);
+ for(let f=0;f<8;f++){nmi();feedback.tick();seen.push([ppu.bgHoff[0],ppu.bgHoff[1],ppu.bgVoff[0],ppu.bgVoff[1],ppu.bgHoff[2]]);}
+ assert.deepEqual(seen.map(s=>s[0]-100),[...KICK_PROFILES[2],0,0,0],'BG1 follows the kick profile, one value per picture');
+ assert.ok(seen.every(s=>s[1]-200===s[0]-100&&s[2]===50&&s[3]===60&&s[4]===300),'BG2 moves with BG1; vertical and BG3 stay');
+ feedback.kick(3,0);assert.deepEqual([ppu.bgVoff[0],ppu.bgVoff[1]],[48,58],'an upward blow pushes the camera up');
+ ppu.mode=7;nmi();feedback.tick();assert.deepEqual([ppu.bgHoff[0],ppu.bgVoff[0]],[100,50],'Mode 7 arenas keep their scroll');
+ feedback.kick(1,1);assert.equal(ppu.bgHoff[0],100);
 });
 
 test('teleport cycles the entire reachable roster and buffers one tap through the fully hidden camera wait',()=>{

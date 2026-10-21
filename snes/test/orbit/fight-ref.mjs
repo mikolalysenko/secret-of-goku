@@ -44,6 +44,7 @@ export async function runFightReference({rom=readFileSync(resolve(repo,'rom/secr
   const {newOrbit}=await import(resolve(repo,'engine/frieza-orbit.js'));
   const {newFriezaArena}=await import(resolve(repo,'engine/frieza-arena.js'));
   const {clashCamera}=await import(resolve(repo,'engine/frieza-finale.js'));
+  const {orbitTargets,orbitTarget}=await import(resolve(repo,'engine/orbit-debris.js'));
   const ram=new Uint8Array(0x20000);
   if(wram)ram.set(wram.subarray(0,0x20000));
   const w16=(a,v)=>{ram[a&0x1ffff]=v&255;ram[(a+1)&0x1ffff]=(v>>8)&255;};
@@ -107,7 +108,12 @@ export async function runFightReference({rom=readFileSync(resolve(repo,'rom/secr
       warning:b.warning?{kind:b.warning.kind,age:b.warning.age,wait:b.warning.wait}:null,
       shots:b.shots.filter(p=>p.age<330).map(p=>({kind:p.kind,x:p.x,y:p.y,age:p.age,heading:p.heading})),
       kis:o.shots.map(p=>({x:p.x,y:p.y,age:p.age})),ricochets:o.ricochets.map(r=>({x:r.x,y:r.y,age:r.age,owner:r.owner})),
-      hits:(o.hits??[]).map(h=>({x:h.x,y:h.y,age:h.age})),duel:o.duel?o.duel.age:0,gokuHp:mod.read16(0xe182),sounds:[...sounds]});
+      hits:(o.hits??[]).map(h=>({x:h.x,y:h.y,age:h.age})),duel:o.duel?o.duel.age:0,gokuHp:mod.read16(0xe182),sounds:[...sounds],
+      // the distant bodies (orbit-debris.js): shattered, Luna's remark, the
+      // bodies' places on the fight's camera, the impacts where they draw
+      scenery:{destroyed:[...o.destroyed],moonRemark:!!o.moonRemark,aside:o.aside?o.aside.age:null,
+        bodies:orbitTargets.map((_,i)=>{const t=orbitTarget(o,i,o.camera);return{x:t.x,y:t.y,r:t.r};}),
+        impacts:o.impacts.map(p=>{const t=orbitTarget(o,p.target,o.camera,p.copy);return{target:p.target,age:p.age,x:t.x,y:t.y};})}});
     if(trace)trace(out[out.length-1]);
   }
   return out;

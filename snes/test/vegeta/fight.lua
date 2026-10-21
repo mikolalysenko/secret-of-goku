@@ -92,6 +92,21 @@ function V.pilot()
   -- in 100 frames provoke counters, which keep his cycle from the beam)
   -- and wait about 80 px away for his wave
   if V_PILOT_HOLD_HP and H.r8(0x7EDBC4) == 0 and H.r16(0x7EDBC6) <= V_PILOT_HOLD_HP then
+    -- his volley flies along his row or column while Goku stands near it
+    -- (eight compass directions, aimed at release): step out of the line,
+    -- not so far that the shots bend towards him, then line up again for
+    -- his wave. The hit stop's slower combos leave Goku one counter lower
+    -- by now, too low to take the three shots.
+    if H.r8(0x7EDBE0) == 2 then
+      if adx >= ady then
+        if ady < 20 then return dy >= 0 and 'up' or 'down' end
+      elseif adx < 20 then return dx >= 0 and 'left' or 'right' end
+      return ''
+    end
+    if across > 4 then
+      if adx >= ady then return dy < 0 and 'up' or 'down' end
+      return dx < 0 and 'left' or 'right'
+    end
     if along < 80 then return towards(-dx, -dy) end
     return ''
   end

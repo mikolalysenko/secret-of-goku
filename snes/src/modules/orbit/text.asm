@@ -18,9 +18,16 @@ text_frame:
 	BRA .set
 .intro
 	; frieza-cinematic.js orbitIntroText: 60 quiet frames, five 150-frame
-	; lines, 45 quiet
+	; lines, 45 quiet; after the intro Luna's remark from its age 0
 	LDA.w !f_intro
-	BEQ .set
+	BNE +
+	LDA.w !sc_aside
+	CMP.w #91
+	BCC .set
+	LDA.w #!OTXT_LUNA
+	STA.w !t_want
+	BRA .set
++
 	EOR.w #$FFFF
 	SEC : ADC.w #!ORBIT_INTRO_FRAMES ; age = frames - remaining
 	SEC : SBC.w #60

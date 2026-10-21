@@ -348,6 +348,9 @@ class ManaSpriteLayer {
     const docking=flight&&m.flight?.docking;
     const anchor=parts.length?parts.reduce((a,b)=>a.index<b.index?a:b):docking?{index:0,x:112,y:68,size:32,palette:5,priority:3}:null;
     this.plan={frame:m.frame,oamRevision:m.ownership?.revision,anchor,hidden,parts,portraits};
+    // Actors struck this frame draw all white (their own OAM entries only).
+    const flashes=m.canAttack?m.effects.filter(e=>e.kind==='flash').map(e=>e.base):[];
+    this.plan.flash=flashes.length?new Set(flashes):null;
     if(!anchor){
       if(m.arrival?.animating){this.plan.anchor={index:0,x:0,y:0,size:8,palette:0,priority:3};m.arrival.drawScene(this);}
       else if(m.frieza?.ownsArena()||m.frieza?.treeScene||m.frieza?.introHero){this.plan.anchor={index:0,x:0,y:0,size:8,palette:0,priority:3};m.frieza.draw(this);}
@@ -377,9 +380,13 @@ class ManaSpriteLayer {
       return;
     }
     const small=ground&&!menuBody&&m.read8(0xe180)===0xf6,size=small?16:32;
-    const x=flight?112+(pose.bank||0)*2:(naming||menuBody)?Math.min(...parts.map(a=>a.x))-8:(display?.anchor.x??(m.read16(0xe020)<<16>>16))-size/2;
-    const y=flight?68+(pose.bob||0):(naming||menuBody)?Math.min(...parts.map(a=>a.y)):Math.round((display?.anchor.renderedFeetY??((m.read16(0xe022)<<16>>16)-pose.lift))-31*size/32)-(pose.extraLift||0);
-    this.plan.sprite={x,y,width:size,height:size,row,column,facing:m.facing,sheet:pose.sheet,kind:pose.kind,age:pose.age,legs:pose.legs,shuffle:pose.shuffle,nudge:pose.nudge,hidden:!!pose.hidden,phase:pose.phase};
+    let x=flight?112+(pose.bank||0)*2:(naming||menuBody)?Math.min(...parts.map(a=>a.x))-8:(display?.anchor.x??(m.read16(0xe020)<<16>>16))-size/2;
+    let y=flight?68+(pose.bob||0):(naming||menuBody)?Math.min(...parts.map(a=>a.y)):Math.round((display?.anchor.renderedFeetY??((m.read16(0xe022)<<16>>16)-pose.lift))-31*size/32)-(pose.extraLift||0);
+    // A strike's lunge moves only the drawn body, never the native position
+    // or its shadow (goku-animation.js punchLunge).
+    let lunge=[0,0];
+    if(pose.lunge&&m.action?.kind==='punch'&&!flight&&!menuBody&&!naming){const [dx,dy]=[[0,1],[1,0],[-1,0],[0,-1]][m.action.facing];lunge=[dx*pose.lunge,dy*pose.lunge];x+=lunge[0];y+=lunge[1];}
+    this.plan.sprite={x,y,width:size,height:size,row,column,facing:m.facing,sheet:pose.sheet,kind:pose.kind,age:pose.age,legs:pose.legs,shuffle:pose.shuffle,nudge:pose.nudge,hidden:!!pose.hidden,phase:pose.phase,lunge};
     // Every crop includes all 32 source rows, including the boots on row 31.
     // The game keeps its own ground shadow; no browser clipping is involved.
     const action=m.action,focus=action?.kind==='focus',powering=action?.kind==='transform'||action?.kind==='revert';
@@ -466,10 +473,19 @@ class ManaSpriteLayer {
         }
         this.behindBody=false;continue;
       }
-      if(effect.kind==='punch'){
+      if(effect.kind==='punch'||effect.kind==='flash'){
         // The punch sheets already contain their own white motion arcs. A
         // missed swing must not look like an impact against an invisible wall.
+        // Flashed actors are whitened where their OAM is evaluated.
         continue;
+      }
+      if(effect.kind==='star'||effect.kind==='shock'){
+        // White impact frames (impact-art.js): the star in front, the
+        // finishing kick's shockwave behind every sprite.
+        const art=this.impactArt;if(!art)continue;
+        const shock=effect.kind==='shock';this.behindBody=this.behindNative=shock;
+        art.drawImpact(art.impactParts(effect.kind,effect.size??0,age),Math.round(sx),Math.round(sy),(px,py,c)=>this.pixel(px,py,1+c,true),!!effect.super);
+        this.behindBody=this.behindNative=false;continue;
       }
       if(effect.kind==='impact'){
         const group=effect.super?'gold-spark':'impact-spark';
@@ -546,6 +562,7 @@ class ManaSpriteLayer {
     let index=p.objPriority?((p.oamAdr&0xfe)-2)&0xff:254;
     // Plan lookups are fixed for the line; hidden is only needed in range.
     const plan=this.plan,anchorIndex=plan.anchor?.index,portraits=plan.portraits.size?plan.portraits:null,hiddenSlots=plan.hidden;
+    const flash=plan.flash,owners=flash?this.mod.ownership?.ppuOwners:null;
     const oam=p.oam,highOam=p.highOam,rows=p.objInterlace?4:8,spans=p.spriteSpans?.();
     const entry=index=>{
       if(index===anchorIndex)this.inject(p,line);
@@ -557,6 +574,7 @@ class ManaSpriteLayer {
       let sprRow=line-y;if(sprRow<0||sprRow>=size*rows)sprRow=line+256-y;
       if(sprRow<0||sprRow>=size*rows||x<=-size*8)return false;
       const hidden=hiddenSlots.has(index);
+      const owner=owners?owners[index>>1]:null,white=owner?.kind==='body'&&flash.has(owner.base)?0x8000:0;
       if(spriteCount===32){p.rangeOver=true;return true;}
       sprRow=p.objInterlace?sprRow*2+(p.evenFrame?1:0):sprRow;
       const adr=p.sprAdr1+((ex&1)?p.sprAdr2:0);if(ex&0x80)sprRow=size*8-1-sprRow;
@@ -567,7 +585,7 @@ class ManaSpriteLayer {
         const lo=p.vram[(adr+tileNum*16+sprRow)&0x7fff],hi=p.vram[(adr+tileNum*16+sprRow+8)&0x7fff];
         for(let j=0;j<8;j++){
           const shift=(ex&0x40)?j:7-j,data=((lo>>shift)&1)|(((lo>>(8+shift))&1)<<1)|(((hi>>shift)&1)<<2)|(((hi>>(8+shift))&1)<<3),xx=x+k*8+j;
-          if(!hidden&&data&&xx>=0&&xx<256){p.spriteLineBuffer[xx]=0x80+data+16*((ex&14)>>1);p.spritePrioBuffer[xx]=(ex&0x30)>>4;this.customLine[xx]=0;}
+          if(!hidden&&data&&xx>=0&&xx<256){p.spriteLineBuffer[xx]=0x80+data+16*((ex&14)>>1);p.spritePrioBuffer[xx]=(ex&0x30)>>4;this.customLine[xx]=white;if(white)this.customAny=true;}
         }
         sliverCount++;
       }

@@ -19,7 +19,7 @@ ui (King Kai) and destroy (the map) through `bind.asm`.
 | Feature | State | Evidence (`snes/test/combat`, Mesen vs the browser engine) |
 | --- | --- | --- |
 | canAttack gate, input remap (B attack, Y ki, X ring/back → native Y or Start, A never the dash on foot, L focus, L+Y charge, L+A transform) | Done | every scenario's action clock |
-| Punch combo (jab, cross, kick ×1.5; 14/7-frame punches, strike after 2/1, buffered after 9/4, held B chains, contact hold 3/5), native B pulse on a miss | Done | `punch`, `combo`, `combo-held`, `ssj-punch` |
+| Punch combo (jab, cross, kick ×1.5; 14/7-frame punches, strike after 2/1, buffered after 9/4, held B chains), graded hit stop 5/6/10 (4/5/9 SSJ) pinning the struck targets, non-lethal jab/cross push-back (10/14 px over 6 frames, no lift), native B pulse on a miss | Done | `punch`, `combo`, `combo-held`, `ssj-punch` |
 | Ki (12/5-frame cooldown, 14 px/frame, 40% damage, first contact, held Y repeats) | Done | `ki`, `ki-held`, `ki-ssj` |
 | Kamehameha (charge 90/45, partial strength, pulses 8/6, full SSJ wave 64 frames, 80 px, 640 px, 48 px/frame, taper) | Done | `beam`, `beam-partial`, `wave` |
 | Focus (96 frames), transformation (72 first reveal, then 32), burst (56 px radial, 75% SSJ), revert (10) | Done | `transform` (radial arc against the browser formula), `revert` |
@@ -32,6 +32,7 @@ ui (King Kai) and destroy (the map) through `bind.asm`.
 | Senzu Bean (name, targets through the item ring) | Ported, not yet compared | — |
 | Status recovery (focus breaks sleep / petrify / Frosty / Balloon / Engulf; poison and sleep break SSJ) | Ported, not yet compared | — |
 | Effects | Gameplay records done; drawing through fx (`bind.asm`): spawns (impact, ki, burst, status) from the logic, continuous draws (beam picture, aura, orb, lightning) from `combat_field_frame`; placeholder sprites only without the fx library (`!COMBAT_FX_PLACEHOLDER`) | fx's `gallery` / `beams` pass with combat; on-screen look not reviewed yet (see Remaining work) |
+| Impact feel (`mana-mod.js` `strike()`): starburst by blow, the struck actor drawn white, the native shake through the hit stop, camera kick, the kick's shockwave, quake and brightening, a ki shot's starburst (see Runtime) | Done | Mesen captures against the browser's pictures; `snes/test/gameplay` misses the frames it missed before |
 | World flight: focus and transformation | Done (`combat_world_frame`) | — |
 | World flight: the aerial charge | Shared combat charge, action, input locks and native sound pulses (`!w_combat_owns` = 1) | world `controls`, `ki`, `fortress` |
 | Virtual targets (mana-mod.js `entities()` extras: frieza.js `entity()` / `hit()`), registered in `modules.asm`: punches, ki, beams and the burst include them; a hit calls the module's routine (no native queue, number, launch or damage hook) with the spark, cue, contact hold, ki first contact and beam pulses of an actor | Done | `frieza-punch`, `frieza-ki`, `frieza-ki-held`, `frieza-beam`, `frieza-wave`, `frieza-burst` against the browser's own frieza.js `hit()`: every call (damage, melee, HP taken) and its frame, Frieza's HP, sparks, shots |
@@ -51,7 +52,7 @@ ui (King Kai) and destroy (the map) through `bind.asm`.
 | Data `$E2:0000-$E2:0BCC` | `!DATA_COMBAT` (`snes/gen/combat.mjs`): damage, beam damage/width by charge, beam half width 8.8 by charge and wave age (`combat_api_beam`), wave envelope by age, strength and focus tables, launch arcs, lift, radial ease, hand sockets, item names, placeholder cells |
 | Core `$A0:F10E-$A0:F123` | The extension lists in `modules.asm` (`modules_combat_targets`, `_damage`, `_receive`), core's bank |
 | WRAM `$7E:D800-$7E:D8FF` | `!RAM_COMBAT` (map in `module.asm`); public fields below |
-| SRAM `$31:7C00-$31:7FFF` | `!SRAM_WORK_COMBAT`: 16 effect records, 9 launch records, 9 sound marks, the pad of the last four field vblanks (`!PADH`), destroy_hit arguments, the beam picture, 16 beam pulse timers (per target bit), the virtual target cache and the log of the last 8 virtual hits (`!VT`, `$31:7E34`), `combat_api_beam`'s record (`!cb_beam`), the hold owners (`!cb_inhold`); test builds `$31:7F00-7F23` (`!CBT`) |
+| SRAM `$31:7C00-$31:7FFF` | `!SRAM_WORK_COMBAT`: 16 effect records (an impact's `er_aux` holds its impact frame), 9 launch records, 9 sound marks, fx's eviction count per blow and form when the blow's contact cells were last resident (`!cb_warm`, 6 bytes at `$31:7DD8`), four bytes lent to fx for its impact state (`$31:7DDE-7DE1`: `!fx_evict`, `!fx_wdue`, `!fx_kickd`; fx's own block has none to spare), the pad of the last four field vblanks (`!PADH`), destroy_hit arguments, the beam picture, 16 beam pulse timers (per target bit), the virtual target cache and the log of the last 8 virtual hits (`!VT`, `$31:7E34`), `combat_api_beam`'s record (`!cb_beam`), the hold owners (`!cb_inhold`); test builds `$31:7F00-7F23` (`!CBT`) |
 | SRAM `$31:6200` | `!PERSIST_COMBAT` byte 0: `PCF_REVEALED` (the first transformation reveal was seen). Shared: `!persist_ssj_lock` (permanent form), `!persist_goku_active` (read). NEW GAME resets the form (combat's and `!goku_form`) to base; a load sets both from `!persist_ssj_lock`, whatever the title-time init saw |
 | OAM / VRAM | Placeholder effects only (`!COMBAT_FX_PLACEHOLDER`: 1 unless the real fx library is in the build, detected by its `!fx_busy`): OBJ region `!VRAM_FIELD_OBJ_B` (owner `$02`, tiles `$184+`) |
 | Other modules' RAM written | `!goku_form`, `!goku_act`, `!goku_act_facing/_age/_arg/_dur`, `!goku_mode/_facing/_age` (reactions); destroy's `!arg_*`; fx's request block; core `!core_pad_mask/_inject` |
@@ -108,6 +109,50 @@ Strict build, all combat cases (including `icons`), Goku `ring` / `menu`,
 and the full UI suite pass.
 
 ## Runtime
+
+**Impact feel (2026-10-21).** The browser's `strike()` gained a graded hit
+stop and impact frames; combat ports them frame for frame and fx draws them.
+`combat_hit_stop` (`snes/gen/combat.mjs`, read from `ManaMod.HIT_STOP`)
+gives the contact hold: 5 / 6 / 10 frames for jab / cross / kick, 4 / 5 / 9
+as a Super Saiyan; the launch records' hold pins the struck targets where
+the blow found them, against their own recoil. `cb_hit_launch` 2 (jab,
+cross) starts a push-back instead of the 56 / 88 px launch when the hit
+does not kill: `COMBAT_SLIDE_BASE` / `_SSJ` px (10 / 14, `ManaMod.SLIDE`)
+over `COMBAT_SLIDE_FRAMES` (6) on the same ease, without lift
+(`combat_slide_*` rows). A launch record keeps its rows' offset in
+`combat_launch_axis`, one block of 13-word rows for the 56 / 88 px launches
+and the two push-backs (`!kb_tab`, `COMBAT_TAB_*`), and its length
+(`!kb_len`, 12 or `COMBAT_SLIDE_FRAMES`), so a frame of a launch costs
+about what it did before push-backs existed. At every contact `cb_strike`
+puts the impact frame in the spark's effect record (`er_aux`,
+`!CB_IMP_*`: the starburst size + 1 by blow, the kick's shockwave at its
+first contact, on a cross's first contact `!CB_IMP_NEXT` (its spark readies
+the kick's cells after the hold), a native target's slot to draw white)
+and writes the native timed shake (`$E00D` = hold << 4 | axis). One FX_HIT
+spawn per contact carries it all. After the contacts it calls `fx_kick`
+(facing | blow << 8);
+the kick also `fx_quake` (3 / 5) and `fx_flash` (3). A ki shot's impact
+carries the smallest starburst. `cb_fx_prep` (from `cb_fx_continuous`'s
+action dispatch for punches, while the age is below 2) asks `fx_warm` for
+the coming contact's cells
+until fx reports them resident, then not again for that blow and form until
+fx's cache has lost a cell (`!fx_evict` against `!cb_warm`): their uploads
+land in the wind-up's quiet vblanks instead of the contact's busy one. A
+Super Saiyan kick's one-frame wind-up cannot bring its six cells in (the
+first kick of a scene showed only the shockwave's last three frames), so a
+cross's spark brings them in after its hold (fx `FX_IMP_NEXT`): the first
+kick after a connected cross shows the whole shockwave, base form too. The
+goku module draws the lunge ([goku](goku.md)). The cues are unchanged: HIT
+for the jab and cross, KICK for the kick.
+
+Cost (per-frame logic of `snes/test/gameplay`'s `punch`, the first
+contact in the scene): the first wind-up frame takes fx's VRAM claim and
+the cold cells (+23 lines, 40 lines to spare); the strike frame is 0.8
+lines dearer (233.1 against 232.3) and a frame of the hit stop that the
+game makes heavy 4 lines (237.7 against 233.7, with 1.4 lines to spare).
+A warm wind-up costs the age check and the cached eviction count. Every
+gameplay case misses exactly the frames it missed before (see fx.md for
+fx's share), and `snes/test/perf`'s p90 and lag frames are unchanged.
 
 **Focus aura visibility (2026-10-21).** L alone starts focus without a
 power threshold: browser power is `.25 + .45 * powerCharge / 96`, so the

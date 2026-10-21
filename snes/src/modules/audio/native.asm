@@ -202,20 +202,45 @@ endif
 	LDA.l audio_native_ids,X
 	AND.w #$00FF
 if !AUDIO_CUSTOM_SAMPLES
+	LDX.w #$880F               ; reuse this cue's voice, centred
 	CMP.w #$00EA
-	BNE +
+	BNE .kick_form
 	STZ.w !au_lvl             ; beam replaces stale charge/aura requests
 	LDA.w !cb_form
 	AND.w #$00FF
-	BEQ ++
+	BEQ .beam_normal
 	LDA.w #$00F0
-	BRA +
-++	LDA.w #$00EA
-+
+	BRA .id_ready
+.beam_normal
+	LDA.w #$00EA
+	BRA .id_ready
+.kick_form
+	CMP.w #$00E8
+	BNE .blast_form
+	LDA.w !cb_form
+	AND.w #$00FF
+	BEQ .kick_normal
+	LDA.w #$00F1             ; same KICK API; SSJ finisher is audio-owned
+	BRA .id_ready
+.kick_normal
+	LDA.w #$00E8
+	BRA .id_ready
+.blast_form
+	CMP.w #$00DE
+	BNE .id_ready
+	LDA.w !cb_form
+	AND.w #$00FF
+	BEQ .blast_normal
+	LDX.w #$880D              ; same DE ownership, +2 semitones on the SPC
+.blast_normal
+	LDA.w #$00DE
+.id_ready
 endif
 	XBA
 	ORA.w #$0002
-	LDX.w #$880F               ; reuse this cue's voice, centred
+if !AUDIO_CUSTOM_SAMPLES == 0
+	LDX.w #$880F
+endif
 	JSL core_sound_queue
 	SEP #$20
 .done

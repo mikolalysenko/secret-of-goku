@@ -1,6 +1,448 @@
 # Resident custom samples: cartridge option and storage audit
 
+## Textured ki shots (`ki7`, base `14958c8`)
+
+The latest listening tag is **`ki7`**. `$DE` is a ~38 ms falling zap followed
+by the beam's sampled texture on the same voice, fading out over **250 ms**
+instead of the old 670 ms tonal sweep. The dry peak is **2.38 dB higher**;
+the body is less periodic. Both stages retain the three-pitch cycle.
+SSJ raises both stages two semitones (1.12246×), selected by audio from
+the same public BLAST cue. `$38` contact stays unchanged; no alternate
+contact is proposed. Punches, kicks and every other sound retain their
+authored sequences and samples.
+
+There are **no new BRRs or echo changes**. Instrument `$1F` aliases the
+existing beam's start/loop pointers with unity tuning, preserving the
+relative E9 pitch rotation in the sampled body. Its eight metadata bytes
+occupy unused tails after the streaming extension: tuning `$183E-$183F`,
+ADSR `$18BE-$18BF`, DIR `$197C-$197F`. Build and runtime tests check these
+bounds and preservation. The rare voices keep all their code and buffers.
+
+The reservation now uses **2304/2304 bytes**: 1890 BRR, 126 sequences,
+288 code. Moving the unchanged eight-byte teleport-out sequence into
+existing shared holes, plus the two previously free bytes, pays for the
+ten-byte command-time SSJ helper. Shared storage is **272/283 bytes**.
+The variation helper is **64 bytes** at `$0180-$01BF`, leaving the same
+64-byte stack reservation. No new effect id, voice, command, streaming
+or 65816 idle work is needed: `02 DE 0F 88` is normal and `02 DE 0D 88`
+is SSJ; both nonzero reuse nibbles keep ownership under DE.
+
+The package adds **16 WAVs**: six cartridge pairs and four PC references.
+For these stems, `-pre-ki7.wav` is shipping `14958c8` (including finishing
+kicks), and `-ki7.wav` is the new cartridge:
+
+| Stem | Contents |
+| --- | --- |
+| `ki-solo-normal` | Three normal launches, 45 frames apart, exposing the pitch cycle |
+| `ki-solo-ssj` | The same cycle in SSJ form |
+| `ki-normal-volley` | Three 18-shot bursts over battle music, launches every five frames, contacts two frames later |
+| `ki-ssj-volley` | SSJ bursts over full-power music |
+| `ki-normal-beam-volley` | Normal volley/contact bursts layered over beams |
+| `ki-ssj-beam-volley` | SSJ version with full-power beams |
+
+New cartridge peaks are −13.08 / −13.09 dBFS alone, −6.53 / −7.21 in
+the normal/SSJ music volleys, and −1.78 / −2.01 with beams. **Zero clipped
+samples** in every take. The 36 SPC stress cases also remain unclipped
+(minimum 1.48 dB peak headroom), with at most **three effect voices** for
+launch+contacts, **four with a beam**, including rapid form changes.
+
+The PC files are **`pc-ki7-solo.wav`**, **`pc-ki7-volley.wav`**,
+**`pc-ki7-beam-volley.wav`**, **`pc-ki7-ssj-beam-volley.wav`**. They use
+`blast.wav` at .38 and `impact.wav` at .48 through master .55 and the
+browser compressor, rotating 1/1.035/.975, with caps 5/3 and 12 ms
+replacement fades. No music is included. The browser's sampled blast
+uses the same rates in both forms; 1.12 applies only to its synth
+fallback. The SSJ beam reference retains the specified .86 rate.
+
+Strict build, all audio/gameplay/perf/combat/emulator cases pass. Gameplay
+misses do not rise; charge remains the accepted 13/240. See
+[audio.md](audio.md#textured-ki-launch-and-ssj-variant-ki7-base-14958c8)
+for all per-case counts, CPU costs and the file map. The current index is
+[compare7/manifest.json](../../../.local/snes-test/audio/compare7/manifest.json),
+with **`ki-analysis7.json`** and **`ki-validation7.json`** alongside it.
+
+Shipping SHA-256:
+`5c5b86ced42530d0b355f75408a3ae035f4a8ae3ceb5cab401ce10a58e9f2df3`.
+Rollback (`-DAUDIO_CUSTOM_SAMPLES=0`) remains byte-identical to round four:
+`56ed7992b1f2abf06561a1d5553d1ab151e5fc7fd8d8ff0941a9a63508115388`.
+
+```sh
+node snes/test/audio/capture7.mjs --rom=path/to/14958c8.sfc --tag=pre-ki7 --only=ki
+node snes/test/audio/capture7.mjs --rom=dist/snes/secret-of-goku.sfc --tag=ki7 --only=ki
+node snes/test/audio/pc7.mjs --only=ki
+node snes/test/audio/ki.mjs --before=path/to/14958c8.sfc
+node snes/test/audio/manifest7.mjs
+```
+
+## Kick finisher follow-up (`finisher7`, base `feb7df6`)
+
+The finisher listening tag is **`finisher7`**. Normal KICK `$E8` has a deep
+175 ms falling thump; SSJ KICK `$F1` has a stronger 200 ms body. Both add
+HIT's sharp clock-31 crack. Audio selects the variant from `cb_form` when
+the existing KICK cue arrives; combat's API is unchanged. Measured audible
+body pitches stay about **77–63/65 Hz**. The two kick voices return within
+250 ms, retaining swing replacement and the existing overlap gain rule.
+HIT/swings/ki variation, the four BRRs, beds, beam, teleport, flight, music
+and echo caps are unchanged.
+
+No sample space was taken from round seven's priorities. The reservation
+uses **2,302/2,304 bytes** (1,890 BRR + 134 sequences + 278 code). Sharing
+the crack saves 13 old kick bytes; the SSJ body and pointer pair cost
+14+4, for **264/283 bytes** used in the existing shared sequence/table
+holes. The command-time helper grows 54→62 bytes at `$0180-$01BD`, still
+below the 64-byte stack allowance. Its relocated swell toggle frees the
+reservation space needed for F1 gain and swing cleanup. No new streaming,
+65816 frame work or sound command is introduced.
+
+Shipping SHA-256:
+`042403d9e7f6a13b30e437bd7a5ec69a22b125d611d337422ba7e85918a8184a`.
+Rollback (`-DAUDIO_CUSTOM_SAMPLES=0`) remains byte-identical to round four:
+`56ed7992b1f2abf06561a1d5553d1ab151e5fc7fd8d8ff0941a9a63508115388`.
+
+The package adds **12 raw stereo 32 kHz WAVs**, six pairs. For each stem
+below, suffix `-pre-finisher7.wav` is the shipping `feb7df6` cartridge;
+`-finisher7.wav` is the new cartridge:
+
+| Stem | Contents |
+| --- | --- |
+| `finisher-solo-normal` | Normal KICK alone |
+| `finisher-solo-ssj` | SSJ KICK alone |
+| `finisher-normal-combo` | Jab/cross/kick over battle music |
+| `finisher-ssj-combo` | SSJ jab/cross/kick over full-power music |
+| `finisher-normal-beam-stress` | Normal combos over beams, then 2/3/5/8-frame rapid contacts |
+| `finisher-ssj-beam-stress` | SSJ version of that stress mix |
+
+All six new files have **zero clipped samples**, with at least **0.97 dB**
+measured peak headroom. The PC kick reference is the existing verified
+**`pc-kick.wav`** (gain .70, rate 1, master .55 and browser compressor).
+`pc-motion-combo-1f.wav` supplies the matched one-frame contact sequence;
+there is no separate PC SSJ kick. The stress comparisons link individual
+PC kick/beam references rather than claiming a matched PC stress mix.
+
+The current manifest is
+[compare7/manifest.json](../../../.local/snes-test/audio/compare7/manifest.json).
+Its `finisher-*` comparisons lead the listening order. `finisher-analysis7.json`
+has dry metrics and 48 headroom cases; `finisher-validation7.json` records
+suite results, hashes, CPU cost and raw before/after peaks. Every capture's
+command trace proves E8/F1 selection through the actual audio selector.
+See [audio.md](audio.md#normal-and-super-saiyan-kick-finishers-base-feb7df6)
+for the file map and validation details. The separate combat animation
+branch has not been merged into these recordings.
+
+```sh
+node snes/test/audio/capture7.mjs --rom=path/to/feb7df6.sfc --tag=pre-finisher7 --only=finisher
+node snes/test/audio/capture7.mjs --rom=dist/snes/secret-of-goku.sfc --tag=finisher7 --only=finisher
+node snes/test/audio/manifest7.mjs
+```
+
+## Native weapon-charge filter follow-up
+
+The `ba03815` follow-up moves the 65816 actor filter to `C0:BB11`, covering
+the native stamina-ready `$26`, charging tick `$27`, and level/full-charge
+`$28` while preserving companions' sounds. The samples, six retail SPC
+upload blocks, extension, reservation, EDL caps and authored mix are
+byte-identical to `variety7`. There is no new sound take or compare7 entry.
+See [audio.md](audio.md#native-weapon-charge-filter-follow-up-base-ba03815)
+for the exact callers, input trace, regressions and CPU results.
+
+Shipping SHA-256:
+`002cdaa009dbdd0ccee930720104fdfb2cc7dd4ad8bcee196ff05e2d55f9c418`.
+Rollback (`-DAUDIO_CUSTOM_SAMPLES=0`) remains round four:
+`56ed7992b1f2abf06561a1d5553d1ab151e5fc7fd8d8ff0941a9a63508115388`.
+
+## Cross-emulator boot follow-up
+
+The `2413865` bsnes investigation found a name-screen capture-phase mismatch:
+the extra IPL block shifts the native menu input poll, while background
+scrolling advances independently. The suite now compares the measured
+scroll phase and checks cold-boot SPC integrity and audible variation on
+snes9x, bsnes and bsnes-accurate. See
+[audio.md](audio.md#cross-emulator-boot-investigation-2413865-follow-up).
+
+The cartridge, samples, reservation, echo caps and sounds are byte-identical
+to `variety7` (`bebfa7ac…cdc54d8f`). Its existing compare7 recordings and
+manifest remain current; there is no new sound take. Diagnostic PCM stays
+under `.local/snes-test/audio/bootfix7/`, outside the listening package.
+
+## Swing/HIT/ki variation (`variety7`)
+
+The current tag is **`variety7`**. Punch swings alternate a six-tick swell
+with a five-semitone fall and a three-tick swell with a nine-semitone fall.
+That two-envelope cycle combines with three pitches (1 / 1.03515625 /
+.9765625), giving six combinations before repeating. HIT's pop and the ki
+launch each rotate those pitches independently. Kick swing and kick retain
+their single authored versions. The shared DSP noise clock and full-gain
+contact replacement are unchanged.
+
+No sample was added, shortened or re-encoded; no EDL cap changes. The
+three free reservation bytes left by `fix7` hold one SPC CALL, filling the
+2,304-byte bank. The 54-byte helper uses previously unoccupied
+`$0180-$01B5`, below the 64-byte stack allowance. Two tuning commands use
+four bytes of existing shared sequence space (259/283 used). Boot upload
+grows by 58 bytes including its segment header. The runtime tests guard the
+new region across effects, all song loads, rare voices and imports. See
+[audio.md](audio.md#swing-hit-and-ki-variation-variety7-october-21-2026)
+for the stack evidence and CPU measurements.
+
+The manifest now contains **216 WAVs**, adding these **nine** files:
+
+| Context | Before | New | Browser reference |
+| --- | --- | --- | --- |
+| Two battle combos, six moves | `variation-battle-combos-fix7.wav` | `variation-battle-combos-variety7.wav` | `pc-variation-battle-combos.wav` |
+| Eight isolated whiffs | `variation-solo-whiffs-fix7.wav` | `variation-solo-whiffs-variety7.wav` | `pc-variation-solo-whiffs.wav` |
+| Ki volley with contacts | `variation-battle-volley-fix7.wav` | `variation-battle-volley-variety7.wav` | `pc-variation-battle-volley.wav` |
+
+Every new file has zero clipped samples and is unnormalized. New cartridge
+peaks are **−1.84 / −15.82 / −8.55 dBFS**, respectively. The PC files
+alternate swing clips, rotate hit clips, and keep independent three-rate
+counters for swing, hit and blast; kick swing/kick stay at rate 1. Browser
+gain, master and compression are applied; PC comparisons omit music.
+
+`capture-{fix7,variety7}-variation/results.json` records actual cartridge
+dispatch timing. `variation-validation7.json` records the storage, stack,
+loudness, hashes and validation; `variation-cpu7.json` records unchanged
+idle cost. All audio/gameplay/perf/combat checks pass, with every gameplay
+miss count unchanged. **Charge at 13 is accepted by the maintainer**;
+earlier notes below about an unresolved 12-frame target are historical.
+
+```sh
+node snes/test/audio/capture7.mjs --rom=path/to/before.sfc --tag=fix7 --only=variation
+node snes/test/audio/capture7.mjs --rom=path/to/current.sfc --tag=variety7 --only=variation
+node snes/test/audio/pc7.mjs --only=variation
+node snes/test/audio/manifest7.mjs
+```
+
+## Combo gain correction (`fix7`)
+
+The current cartridge tag is **`fix7`**. It replaces an active punch/kick
+swing with its contact through native F2 cleanup, preserving full contact
+gain in ordinary combos. Other effect overlaps retain the headroom rule.
+All samples, contact/swing/ki sequences, envelopes and EDL caps are unchanged.
+The 2,304-byte reservation uses **2,301 bytes**; the new helper occupies
+previously unused tuning/ADSR entries, increasing the existing metadata
+uploads by 44 bytes. No sample or music trade-off is required.
+
+The listening manifest now inventories **207 WAVs**, including **29 new
+cartridge takes ending in `-fix7.wav`**. Existing round-four, `punch7`,
+`motion7` and PC recordings remain available. The new tag is paired against
+`motion7` for the swing/combo/volley contexts and against round four for
+contact contexts. No take is normalized; every `fix7` take has zero clipped
+samples, with the highest peak **−1.98 dBFS**. Solo combo, battle combo and
+actual-input melee now peak at **−2.74, −1.98 and −3.00 dBFS**, respectively:
+**3.72, 3.47 and 2.00 dB louder than round four**.
+
+The new file stems are the fifteen existing `motion-*` names listed in the
+next section, plus these fourteen contact takes:
+
+- `contact-solo-hit`, `contact-solo-kick`;
+- `contact-battle-hit`, `contact-battle-kick`, `contact-full-power-hit`, `contact-full-power-kick`;
+- `contact-battle-rapid`, `contact-battle-beam`, `contact-battle-beds`;
+- `contact-full-power-rapid`, `contact-full-power-beam`, `contact-full-power-beds`;
+- `contact-input-battle`, `contact-input-full-power`.
+
+All names end in **`-fix7.wav`**. The captures include one/two-frame
+swing-to-contact spacing, real B-held melee, rapid alternating contacts,
+beam layers and maximum beds in both music mixes. Existing PC references
+retain the browser gains, master gain and compressor. Capture command
+traces are `capture-fix7-motion/results.json` and
+`capture-fix7-contacts/results.json`. `fix-validation7.json` includes the
+full loudness table, clipping counts, hashes and suite results.
+
+The charge timing target is **still open at 13/240**, despite reduced bed
+CPU overhead. [audio.md](audio.md#combo-contact-gain-and-charge-timing-follow-up-october-21-2026)
+contains the before/after miss frames and the baseline reproduction issue.
+The listening package does not present that partial optimization as a
+completed frame-budget fix.
+
+```sh
+node snes/test/audio/capture7.mjs --rom=path/to/cart.sfc --tag=fix7 --only=motion
+node snes/test/audio/capture7.mjs --rom=path/to/cart.sfc --tag=fix7 --only=contacts
+node snes/test/audio/manifest7.mjs
+```
+
+## Swing and ki follow-up
+
+The current cartridge tag is **`motion7`**, following `punch7` (`91c53d9`).
+Punch/kick swings reuse the aura BRR at higher rates with short swells,
+falling pitch and fast tails. E5 alternates two tuning values. Ki keeps
+its bright native instrument-9 carrier, with a stronger attack and shaped
+decay. The more bass-heavy beam-texture ki audition was not selected.
+The stronger contact tracks, `$38`, and all other cues stay as before.
+
+No BRR is added or re-encoded. The first **2,024 bank bytes** (1,890 BRR
+plus 134 sequence bytes) match the preceding cartridge exactly. SPC code
+grows from 261 to **278 bytes**, making **2,302/2,304 bytes used**, two free.
+The existing shared retail sequence/table holes use **255/283 bytes**,
+up 34. The one mutable E5 tuning operand lives there, outside the immutable
+sample/code bank. Outside-bank metadata/hooks/code remain 97 bytes, including
+the unchanged 48-byte pitch helper. All retail sequences and samples survive;
+there is no additional boot transfer, reservation growth or EDL change.
+
+### Cost of adding a separate sample
+
+These are full source-file BRR sizes, rounded to 16-sample blocks, before
+metadata or sequence overhead. The first swing file includes a little more
+padding than the second. Bandwidth loss is mean-square loss from the
+windowed-sinc resampler, not a perceptual score.
+
+| Source | 4 kHz bytes | 6 kHz bytes | 8 kHz bytes |
+| --- | ---: | ---: | ---: |
+| `swing.wav` | 522 | 774 | 1,035 |
+| `swing-2.wav` | 495 | 738 | 990 |
+| `kick-swing.wav` | 765 | 1,143 | 1,530 |
+| `blast.wav` | 1,485 | 2,223 | 2,961 |
+
+At 4 kHz, blast loses **5.54 dB** of source energy (6 kHz: 3.53 dB;
+8 kHz: 2.79 dB). Even that lowest-rate full clip would need at least
+**1,483 bytes trimmed** from existing content, about 78% of the prioritized
+BRRs. Growing the reservation instead costs another EDL step in
+`$00,$01,$02,$03,$04,$05,$08,$0B,$0C,$0E,$14,$25,$39,$3B,$3C,$3D`;
+`$05/$0C/$14` lose their last step, incompatible with the retained layout.
+
+A compact **32 ms attack + 128 ms loop at 4 kHz** still takes **360 BRR
+bytes**, requiring at least 358 bytes of cuts. Added as a reservation,
+it changes `$04:3→2`, `$0C:1→0`, `$25:4→3`, `$39:3→2`. Only another
+58 reservation bytes are possible before `$0C` loses its last echo step.
+An additional sample also needs metadata and relocation of the pitch helper
+currently occupying unused DIR entries. These are lower bounds, not a
+ready-to-ship alternate bank. `motion-analysis7.json` contains the full
+rate/byte/EDL matrix. Reusing the existing texture and native carrier avoids
+all these cuts and music changes, so no new echo pairs are needed.
+
+### Three-way listening additions
+
+**`.local/snes-test/audio/compare7/manifest.json` now inventories 178 WAVs.**
+This follow-up adds **45 cartridge WAVs** (15 per version) and **7 PC WAVs**.
+The versions are round four (`r4`), the immediately preceding contact build
+(`punch7`), and the new cartridge (`motion7`). Initial `r7` recordings stay
+archived. Every new WAV is raw/un-normalized, hash-verified and unclipped.
+The older round-four contact stress recordings retain their reported clipping.
+
+New cartridge names below each end in **`-{r4,punch7,motion7}.wav`**:
+
+| New name stem | Contents |
+| --- | --- |
+| `motion-solo-swing` | First isolated punch swing |
+| `motion-solo-swing-2` | Second request, exercising the other tuning |
+| `motion-solo-kick-swing` | Isolated kick swing |
+| `motion-solo-blast` | Isolated ki launch |
+| `motion-solo-combo` | Three hits, contact one frame after each swing |
+| `motion-battle-combo-1f`, `motion-battle-combo-2f` | Battle music, one/two-frame swing-to-contact delay |
+| `motion-full-power-combo-1f`, `motion-full-power-combo-2f` | Same combos over full-power music |
+| `motion-battle-volley-5f`, `motion-full-power-volley-5f` | 36 launches every five frames, `$38` contacts two frames later |
+| `motion-battle-beam-volley-5f`, `motion-full-power-beam-volley-5f` | Same volleys layered over full-power beams |
+| `motion-input-melee`, `motion-input-ki` | Actual approach/B-held melee and Super Saiyan Y volleys |
+
+New PC files: **`pc-swing.wav`, `pc-swing-2.wav`, `pc-kick-swing.wav`,
+`pc-motion-combo-1f.wav`, `pc-motion-combo-2f.wav`,
+`pc-motion-volley-5f.wav`, `pc-motion-beam-volley-5f.wav`**. The existing
+`pc-blast.wav` is also paired with the solo launch. Browser swing gains are
+.44/.46, hit/kick .64/.70, blast .38; master .55 and the browser compressor
+remain in the renderer. Swing/hit/blast rates rotate where the browser does;
+kick swing stays at rate 1. PC contexts share the cartridge event spacing
+without its music. Native contexts drive the real cartridge dispatcher,
+and the separate input takes verify actual gameplay requests.
+
+All fifteen new-cartridge recordings have zero clipped samples, including
+−2.44/−2.51 dBFS peaks in the battle/full-power beam-volley takes. Three-way
+command traces are `capture-{r4,punch7,motion7}-motion/results.json`.
+New analysis files are `motion-analysis7.json`, `motion-validation7.json`
+and `motion-cpu7.json`; `manifest.json` describes every file, including
+working captures and checkpoints. Runtime details, hashes, CPU comparison
+and the complete changed-file map are in
+[audio.md](audio.md#swing-and-ki-follow-up-october-21-2026).
+
+```sh
+node snes/test/audio/capture7.mjs --rom=path/to/r4.sfc --tag=r4 --only=motion
+node snes/test/audio/capture7.mjs --rom=path/to/before.sfc --tag=punch7 --only=motion
+node snes/test/audio/capture7.mjs --rom=path/to/current.sfc --tag=motion7 --only=motion
+node snes/test/audio/pc7.mjs
+SNES_ROM=path/to/current.sfc node snes/test/audio/motion.mjs --before=path/to/before.sfc
+node snes/test/audio/profile7.mjs --rom=path/to/current.sfc --before=path/to/before.sfc --out=motion7 --report=compare7/motion-cpu7.json
+node snes/test/audio/manifest7.mjs
+```
+
+## Punch contact follow-up
+
+The current default strengthens HIT/KICK with native two-voice tracks.
+`snes/gen/audio-resident7.mjs` exports `CONTACTS7`; the rollback palette in
+`audio-resident.mjs` stays unchanged. The design uses the PC's short broadband
+hit transients and low kick body as references, with louder noise crunch and
+a faster falling native pop. It does not claim sample identity with those
+clips. KICK has the longer body; no additional finisher API is introduced.
+
+Keeping the prioritized samples leaves no useful contact-sample budget.
+Round six's alt1 body alone takes **576 BRR bytes**, versus 19 bytes free
+after this change. Fitting that body would consume the whole 540-byte
+teleport sample and still require another cut. The native design preserves
+all four round-seven BRRs byte for byte, the 2,304-byte reservation and every
+EDL cap. No new echo pairs are needed for the follow-up.
+
+The reservation now holds **1,890 BRR + 134 sequence + 261 SPC code bytes =
+2,285**, leaving 19 bytes. Removing a redundant octave command saves two
+sequence bytes. The existing 48-byte variable-pitch helper moves to unused
+DIR entries `$34-$3F` (`$19D0-$19FF`), so the new contact gain logic fits
+without shortening a sample. Code, metadata and hooks outside the bank now
+use 97 bytes, including four mutable bed parameters. The boot upload gains
+one 48-byte segment plus its four-byte header. The native 16-entry metadata
+transfers and all 64-song/192-load integrity checks protect that code.
+
+The full-gain contact tracks peak at **−3.02 / −2.93 dBFS** in the fixed dry
+SPC audit, **4.12 / 3.39 dB** above round four. Early bass energy rises
+3.29 / 4.55 dB, and crunch energy 10.70 / 3.92 dB. The 100 / 140 ms audible
+tails end within the old voice budget. Contact-only overlap attenuation
+halves gain with 3–4 effect voices and quarters it with 5–8; music and the
+round-seven samples keep their existing levels. This is a voice-count rule
+in the existing SPC gain pass, not amplitude compression or 65816 polling.
+
+The raw Mesen measurements include the emulator's actual DSP phase, so
+sample peaks differ slightly from the fixed Node/SPC audit:
+
+| Cartridge recording | Round four peak | New peak |
+| --- | ---: | ---: |
+| Solo HIT | −7.04 dBFS | −2.75 dBFS |
+| Solo KICK | −6.58 dBFS | −3.02 dBFS |
+| Battle music + HIT | −6.70 dBFS | −2.56 dBFS |
+| Battle music + KICK | −5.59 dBFS | −2.68 dBFS |
+| Full-power music + HIT | −7.07 dBFS | −3.31 dBFS |
+| Full-power music + KICK | −6.65 dBFS | −2.88 dBFS |
+| Rapid contacts + battle/beam | clipped (27 samples) | −1.37 dBFS, no clipping |
+| Rapid contacts + full-power/beam | clipped (16 samples) | −1.73 dBFS, no clipping |
+
+The comparison preserves the original cartridge's overloads without
+normalization. All **14 new cartridge recordings** and **24 Node/SPC stress
+cases** have zero clipped samples. Stress intervals are 2/3/5/8 video frames,
+with both songs, full-power beams and maximum charge/aura beds. The fixture
+also records an approach followed by actual B-held melee in each music mix.
+
+`compare7/manifest.json` now contains **126 WAVs**: the original round-seven
+package, fourteen round-four/new contact pairs, and four additional browser
+references (`hit-1`, `hit-2`, `hit-3`, `kick`). HIT reference gain is .64,
+KICK .70; hit rates rotate 1 / 1.035 / .975, then master .55 and the browser
+compressor. The current cartridge tag is **`punch7`**; `r7` keeps the initial
+round-seven recordings. Every WAV has a description, hash and peak/RMS/
+clipping measurements. `contact-analysis7.json` contains the dry metrics and
+24 stress results. No ROM, fixture or recording is committed.
+
+Files: `capture7.mjs` / `capture7.lua` add the contact-only recording pass;
+`pc7.mjs` adds the four PC references; `manifest7.mjs` combines the current
+cartridge with the archived takes and explicitly labels baseline clipping.
+`contacts.mjs` / `contacts.test.mjs` provide the repeatable loudness and
+overlap checks. Runtime/import changes and validation are in
+[audio.md](audio.md#punch-contact-follow-up-october-21-2026).
+
+```sh
+node snes/test/audio/capture7.mjs --rom=path/to/r4.sfc --tag=r4 --only=contacts
+node snes/test/audio/capture7.mjs --rom=path/to/current.sfc --tag=punch7 --only=contacts
+node snes/test/audio/pc7.mjs
+SNES_ROM=path/to/current.sfc node snes/test/audio/contacts.mjs --before=path/to/r4.sfc
+node snes/test/audio/manifest7.mjs
+```
+
 ## Round-seven default bank
+
+This section records the initial round-seven allocation. The follow-up above
+retains its samples and echo caps, with revised contact tracks/code packing.
 
 Round seven ships by default; `-DAUDIO_CUSTOM_SAMPLES=0` restores round four
 byte for byte on `565c6a8`. The implementation is `snes/gen/audio-resident7.mjs`,

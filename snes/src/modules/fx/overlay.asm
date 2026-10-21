@@ -101,6 +101,15 @@ fx_overlay_cell:
 	PHX
 	LDA.l !fx_ccell,X
 	CMP.w #512
+	BCS +
+	PHA
+	SEP #$20
+	LDA.l !fx_evict                   ; an FX cell leaves (fx_warm's callers look again)
+	INC
+	STA.l !fx_evict
+	REP #$20
+	PLA
++	CMP.w #!FX_RBITS_SIZE*8           ; UI keys and cells past the bitmap have no bit
 	BCS .replace
 	PHA
 	AND.w #7

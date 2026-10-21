@@ -1,24 +1,42 @@
 // Browser-clip references with ki-sound.js gain/compressor/loop automation.
-import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
+import {readFileSync,writeFileSync,mkdirSync,existsSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 import {createHash} from 'node:crypto';
 import {chromium} from '@playwright/test';
 import {wav} from './apu.mjs';
 const root=resolve('.local/snes-test/audio/compare7');mkdirSync(root,{recursive:true});
-const clips=['beam','charge','aura','air','charged','transform','power-burst','revert','teleport','flight','landing','blast','impact'];
+const clips=['beam','charge','aura','air','charged','transform','power-burst','revert','teleport','flight','landing','blast','impact','hit-1','hit-2','hit-3','kick','swing','swing-2','kick-swing'];
 const source=Object.fromEntries(clips.map(n=>[n,readFileSync('assets/audio/dbz/'+n+'.wav').toString('base64')]));
 const shots={beam:['beam',.80], 'beam-full':['beam',.80,.86],charged:['charged',.42],transform:['transform',.78],'power-burst':['power-burst',.92],revert:['revert',.50],flight:['flight',.48],landing:['landing',.36],'teleport-out':['teleport',.74],'teleport-in':['teleport',.46],blast:['blast',.38],impact:['impact',.48]};
-const jobs=[...Object.keys(shots).map(name=>({name,mode:'shot'})),...['charge','aura','focus','charge-beam','focus-transform','flight-context','teleport-context','ki-volley'].map(name=>({name,mode:name}))];
+Object.assign(shots,{'hit-1':['hit-1',.64,1],'hit-2':['hit-2',.64,1.035],'hit-3':['hit-3',.64,.975],kick:['kick',.70]});
+Object.assign(shots,{swing:['swing',.44,1],'swing-2':['swing-2',.44,1.035],'kick-swing':['kick-swing',.46]});
+const only=process.argv.find(a=>a.startsWith('--only='))?.slice(7);
+if(only&&!['variation','ki'].includes(only))throw Error('unknown PC reference group');
+const jobs=[...Object.keys(shots).map(name=>({name,mode:'shot'})),...['charge','aura','focus','charge-beam','focus-transform','flight-context','teleport-context','ki-volley','motion-combo-1f','motion-combo-2f','motion-volley-5f','motion-beam-volley-5f','variation-battle-combos','variation-solo-whiffs','variation-battle-volley','ki7-solo','ki7-volley','ki7-beam-volley','ki7-ssj-beam-volley'].map(name=>({name,mode:name}))].filter(j=>!only||j.name.startsWith(only==='ki'?'ki7-':'variation-'));
 const browser=await chromium.launch({channel:'chrome',headless:true}).catch(()=>chromium.launch({headless:true}));
 const page=await browser.newPage(),files=[];
 try{for(const job of jobs){
  const result=await page.evaluate(async({job,source,shots})=>{
-  const duration=job.mode==='shot'?3.5:job.mode==='focus-transform'?9:job.mode==='focus'?6:6;
+  const duration=job.mode.startsWith('ki7-')?(job.mode==='ki7-solo'?4.5:9):job.mode==='shot'?3.5:job.mode==='focus-transform'?9:6;
   const ctx=new OfflineAudioContext(2,Math.ceil(duration*32000),32000),master=ctx.createGain(),comp=ctx.createDynamicsCompressor();
   master.gain.value=.55;comp.threshold.value=-10;comp.knee.value=12;comp.ratio.value=6;comp.attack.value=.003;comp.release.value=.16;
   master.connect(comp);comp.connect(ctx.destination);
   const buffers={};for(const [n,s] of Object.entries(source)){const b=Uint8Array.from(atob(s),c=>c.charCodeAt(0));buffers[n]=await ctx.decodeAudioData(b.buffer);}
-  function shot(name,time=0){const [clip,gain,rate=1]=shots[name],s=ctx.createBufferSource(),g=ctx.createGain();s.buffer=buffers[clip];s.playbackRate.value=rate;g.gain.value=gain;s.connect(g);g.connect(master);s.start(time);}
+  function shot(name,time=0,rateOverride){const [clip,gain,rate=1]=shots[name],s=ctx.createBufferSource(),g=ctx.createGain();s.buffer=buffers[clip];s.playbackRate.value=rateOverride??rate;g.gain.value=gain;s.connect(g);g.connect(master);s.start(time);}
+  // Offline scheduling needs explicit end times: source.onended cannot
+  // retire peers until rendering starts. Match voice() caps and 12 ms
+  // replacement fades for fast ki volleys (blast 5 / impact 3 / beam 1).
+  let active=[];
+  function cappedShot(name,time,rateOverride){
+   active=active.filter(v=>v.end>time);
+   const stop=v=>{v.g.gain.setValueAtTime(v.level,time);v.g.gain.linearRampToValueAtTime(0,time+.012);v.s.stop(time+.017);active=active.filter(p=>p!==v);};
+   const cap={blast:5,impact:3,beam:1,'beam-full':1}[name],peers=active.filter(v=>v.name===name);
+   while(peers.length>=cap)stop(peers.shift());
+   while(active.length>=12)stop(active[0]);
+   const [clip,level,baseRate=1]=shots[name],rate=rateOverride??baseRate,s=ctx.createBufferSource(),g=ctx.createGain();
+   s.buffer=buffers[clip];s.playbackRate.value=rate;g.gain.value=level;s.connect(g);g.connect(master);s.start(time);
+   active.push({name,s,g,level,end:time+s.buffer.duration/rate});
+  }
   function bed(name,from,to,fn){
    const base={charge:.55,aura:.30,air:.25}[name],s=ctx.createBufferSource(),g=ctx.createGain();s.buffer=buffers[name];s.loop=true;g.gain.value=0;s.connect(g);g.connect(master);s.start(from);
    let gain=0,rate=1,last=from;
@@ -28,6 +46,31 @@ try{for(const job of jobs){
   const charge=(superSaiyan=false)=>bed('charge',0,3,t=>{const f=Math.min(1,t/(superSaiyan?.75:1.5));return [.48+.52*f,.94+.12*f];});
   const focus=(to=4)=>{bed('charge',0,to,t=>{const f=Math.min(1,t/1.6);return [.22+.85*f,.72+.30*f];});bed('aura',.65,to,t=>{const f=Math.min(1,(t+.65)/1.6);return [f,.8+.2*f];});};
   switch(job.mode){
+   case 'ki7-solo':case 'ki7-volley':case 'ki7-beam-volley':case 'ki7-ssj-beam-volley':{
+    const f=1/60.0988,rates=[1,1.035,.975],beam=job.mode.includes('beam');let play=0;
+    if(job.mode==='ki7-solo')for(let i=0;i<3;i++)cappedShot('blast',i*45*f,rates[i%3]);
+    else for(let burst=0;burst<3;burst++){
+     const base=burst*(120+(beam?1:0));
+     if(beam)cappedShot(job.mode.includes('ssj')?'beam-full':'beam',base*f);
+     for(let i=0;i<18;i++){const t=(base+(beam?1:0)+i*5)*f;cappedShot('blast',t,rates[play++%3]);cappedShot('impact',t+2*f);}
+    }
+    break;
+   }
+   case 'variation-battle-combos':case 'variation-solo-whiffs':case 'variation-battle-volley':{
+    const f=1/60.0988,rates=[1,1.035,.975];let swing=0,hit=0,blast=0;
+    function rotating(name,t){
+     if(name==='swing'){const i=swing++;shot(i%2?'swing-2':'swing',t,rates[i%3]);}
+     else if(name==='hit'){const i=hit++;shot('hit-'+(i%3+1),t,rates[i%3]);}
+     else {const i=blast++;shot('blast',t,rates[i%3]);}
+    }
+    if(job.mode==='variation-battle-combos')for(let i=0;i<6;i++){
+     if(i%3===2){shot('kick-swing',i*14*f,1);shot('kick',(i*14+1)*f,1);}
+     else{rotating('swing',i*14*f);rotating('hit',(i*14+1)*f);}
+    }
+    else if(job.mode==='variation-solo-whiffs')for(let i=0;i<8;i++)rotating('swing',i*22*f);
+    else for(let i=0;i<18;i++){rotating('blast',i*5*f);shot('impact',(i*5+2)*f);}
+    break;
+   }
    case 'shot':shot(job.name);break;
    case 'charge':charge();break;
    case 'aura':bed('aura',0,3,t=>{const f=Math.min(1,t/1.6);return [f,.8+.2*f];});break;
@@ -37,13 +80,24 @@ try{for(const job of jobs){
    case 'flight-context':shot('flight');bed('air',0,3,()=>[1,1]);shot('landing',3);break;
    case 'teleport-context':shot('teleport-out');shot('teleport-in',.13);break;
    case 'ki-volley':for(let i=0;i<14;i++){shot('blast',i*.21);shot('impact',i*.21+.13);}break;
+   case 'motion-combo-1f':case 'motion-combo-2f':{
+    const gap=job.mode.includes('2f')?2:1,f=1/60.0988;
+    for(let i=0;i<3;i++){shot(i===2?'kick-swing':i?'swing-2':'swing',i*14*f);shot(i===2?'kick':i?'hit-2':'hit-1',(i*14+gap)*f);}break;
+   }
+   case 'motion-volley-5f':case 'motion-beam-volley-5f':{
+    const f=1/60.0988,beam=job.mode.includes('beam');
+    for(let b=0;b<3;b++){const base=b*(90+(beam?1:0));if(beam)shot('beam-full',base*f);
+     for(let i=0;i<12;i++){const t=(base+(beam?1:0)+i*5)*f;shot('blast',t,[1,1.035,.975][i%3]);shot('impact',t+2*f);}
+    }break;
+   }
   }
   const rendered=await ctx.startRendering();return [Array.from(rendered.getChannelData(0)),Array.from(rendered.getChannelData(1))];
  },{job,source,shots});
  let clipped=0,peak=0,sum=0;for(const a of result)for(const x of a){peak=Math.max(peak,Math.abs(x));sum+=x*x;if(Math.abs(x)>=1)clipped++;}
  const ints=result.map(a=>Int16Array.from(a,x=>Math.max(-32768,Math.min(32767,Math.round(x*32767))))),data=wav(...ints),file='pc-'+job.name+'.wav';writeFileSync(join(root,file),data);
- files.push({file,variant:'PC',description:job.mode==='shot'?'Original 16 kHz browser clip with cue gain and master/compressor.':'Browser loop gain/rate model, 60 Hz automation, 55/80 ms targets and 65 ms release. No music.',sampleRate:32000,channels:2,seconds:result[0].length/32000,sha256:createHash('sha256').update(data).digest('hex'),peakDbFS:20*Math.log10(peak),rmsDbFS:10*Math.log10(sum/(2*result[0].length)),clipped});
+ files.push({file,variant:'PC',description:job.mode.startsWith('ki7-')?'Browser blast/impact gains .38/.48, independent three-rate blast rotation, caps 5/3 and 12 ms replacement fades. Cartridge event spacing, no music. The sampled browser blast has no separate SSJ rate; only its synth fallback uses 1.12.':job.mode==='shot'?'Original 16 kHz browser clip with cue gain and master/compressor.':/^(motion|variation)-/.test(job.mode)?'Browser clips/gains, alternating swing/hit clips and independent three-rate cycles; kick and kick-swing stay at rate 1. Cartridge comparison timing, no music.':'Browser loop gain/rate model, 60 Hz automation, 55/80 ms targets and 65 ms release. No music.',sampleRate:32000,channels:2,seconds:result[0].length/32000,sha256:createHash('sha256').update(data).digest('hex'),peakDbFS:20*Math.log10(peak),rmsDbFS:10*Math.log10(sum/(2*result[0].length)),clipped});
  }
 }finally{await browser.close();}
+if(only&&existsSync(join(root,'manifest-pc.json'))){const replaced=new Set(files.map(f=>f.file));files.unshift(...JSON.parse(readFileSync(join(root,'manifest-pc.json'))).files.filter(f=>!replaced.has(f.file)));}
 writeFileSync(join(root,'manifest-pc.json'),JSON.stringify({renderer:'Chromium OfflineAudioContext; source assets/audio/dbz/*.wav; master .55, compressor -10 dB / knee 12 / ratio 6 / attack .003 / release .16; no normalization.',note:'Full-power beam rate .86 follows the maintainer reference. Browser sampled voice() currently defaults beam rate to 1; .86 is explicit here. Contexts isolate the sound model without browser music or game-state timing.',files},null,2));
 console.log(`PC: ${files.length} references, ${files.reduce((n,f)=>n+f.clipped,0)} clipped samples`);

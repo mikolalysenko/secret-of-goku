@@ -21,6 +21,9 @@ finale_begin:
 	STZ.w !fn_bage
 	STZ.w !fn_ret
 	STZ.w !fn_shout
+	STZ.w !sc_imp                  ; (o.impacts = []: the bodies' bursts end)
+	STZ.w !sc_imp+4
+	STZ.w !sc_imp+8
 	; from: the hero, Frieza, the camera
 	LDA.w !f_hx : STA.w !fn_hx0
 	LDA.w !f_hy : STA.w !fn_hy0

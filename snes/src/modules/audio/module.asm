@@ -406,7 +406,11 @@ audio_frame:
 if not(defined("AUDIO_PCM"))
 	; Dispatcher enters M16/X16. Quiet frames need no loop-age service.
 	LDA.w !au_test
+if !AUDIO_CUSTOM_SAMPLES
+	BNE .test_run
+else
 	BNE .run
+endif
 	SEP #$20
 	LDA.w !au_wake
 	ORA.w !au_pending
@@ -414,6 +418,20 @@ if !AUDIO_CUSTOM_SAMPLES
 	BEQ .quiet
 	CMP.b #$80
 	BEQ .steady
+	; A held bed's pending $81 acknowledgement needs only a poll, not a
+	; complete song/cue/rare-service pass. Other requests retain the full path.
+	CMP.b #$81
+	BNE .run8
+	LDA.w !au_wake
+	CMP.b #$80
+	BNE .run8
+	LDA.l $002140
+	CMP.b #$81
+	BNE .steady
+	LDA.b #0
+	STA.l $002140
+	STZ.w !au_pending
+	BRA .steady
 endif
 	BNE .run8
 if !AUDIO_CUSTOM_SAMPLES
@@ -434,6 +452,8 @@ endif
 	PLP
 	RTL
 if !AUDIO_CUSTOM_SAMPLES
+.test_run
+	BRL .run
 .steady
 	LDA.w $1E05
 	CMP.w !au_song
@@ -448,7 +468,7 @@ if defined("out_sfx")
 	BNE .run8
 endif
 	LDA.w !au_bed_wait
-	BEQ .run8
+	BEQ .update
 	REP #$20
 	LDA.w !au_age
 	BNE .run
@@ -457,6 +477,18 @@ endif
 	SEP #$20
 	DEC.w !au_bed_wait
 	INC.w !au_frame
+	PLP
+	RTL
+.update
+	; All cue/song/cancel gates already passed. A live hold needs only the
+	; two-bed selector, without repeating native/rare/test bookkeeping.
+	REP #$20
+	LDA.w !au_age
+	BNE .run
+	SEP #$20
+	INC.w !au_frame
+	JSR audio_beds_age
+	JSR audio_beds_service
 	PLP
 	RTL
 endif
@@ -1895,9 +1927,9 @@ pullpc
 ; ---------------------------------------------------------------- patches
 incsrc "resident.asm"
 if !AUDIO_CUSTOM_SAMPLES
-%orig2($C0B3ED, $A7A9)
-%orig3($C0B3EF, $BB2720)
-%hijack_jsl($C0B3ED, audio_weapon_charge, 5, audio)
+%orig2($C0BB11, $9585)
+%orig4($C0BB13, $7EE020BF)
+%hijack_jsl($C0BB11, audio_weapon_charge, 6, audio)
 endif
 ; Driver upload end (C3:0106 LDY #$0200 / STY $2142).
 ; The extension is resident from boot; shipping only feeds three rare lines.

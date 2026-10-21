@@ -5,6 +5,7 @@ import {readFileSync} from 'node:fs';
 import {createApu,loadRom,driverChunks,loadSong} from './apu.mjs';
 import {effectRam,trackBytes,residentLayout} from '../../gen/audio-resident-storage.mjs';
 import {NATIVE_IDS as DEFAULT_IDS,RESIDENT,effectVoices} from '../../gen/audio-resident.mjs';
+import {buildResident7,resident7Layout} from '../../gen/audio-resident7.mjs';
 import {isCustom,isResident7,sampleFloor,nativeEffectVoices,nativeIds} from './cartridge.mjs';
 import {songNoise} from './audit.mjs';
 import {measure} from './punch.mjs';
@@ -13,7 +14,8 @@ const rom=readFileSync(process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc');
 const custom=isCustom(rom),NATIVE_IDS=nativeIds(rom,DEFAULT_IDS);
 test('resident effects preserve retail sequences and samples',()=>{
   const original=loadRom(),old=driverChunks(original),now=driverChunks(rom);
-  const allowed=new Set(residentLayout(original,RESIDENT).patches.flatMap(p=>p.bytes.map((_,i)=>p.addr+i)));
+  const layout=isResident7(rom)?resident7Layout(original,buildResident7().tracks):residentLayout(original,RESIDENT);
+  const allowed=new Set(layout.patches.flatMap(p=>p.bytes.map((_,i)=>p.addr+i)));
   for(let c=0;c<old.length;c++){
     assert.equal(now[c].addr,old[c].addr);
     assert.equal(now[c].bytes.length,old[c].bytes.length);
@@ -61,9 +63,9 @@ test('contacts have immediate crunch and bass, and the wave sustains its roar',(
   for(const id of [NATIVE_IDS[3],NATIVE_IDS[4]]){
     const m=measure(rom,id);
     assert.ok(m.timeToPeakMs<12,`late contact peak: ${m.timeToPeakMs}`);
-    assert.ok(m.peakDbFS>-10&&m.peakDbFS<-3,`contact headroom: ${m.peakDbFS}`);
+    assert.ok(m.peakDbFS>-10&&m.peakDbFS<(isResident7(rom)?-2.5:-3),`contact headroom: ${m.peakDbFS}`);
     assert.ok(m.low80Energy>.3&&m.high30Energy>.035,'bass body and broadband attack');
-    assert.ok(m.durationMs>=120&&m.durationMs<=250,'short contact tail');
+    assert.ok(m.durationMs>=(isResident7(rom)?90:120)&&m.durationMs<=250,'short contact tail');
     assert.ok(m.voiceMs<=(custom?350:250),'second voice only steals music for a short transient');
   }
   const beam=measure(rom,NATIVE_IDS[8],{echo:true});

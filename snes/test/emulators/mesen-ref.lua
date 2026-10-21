@@ -43,9 +43,11 @@ local function scenario()
   end
   events.editor = H.frame
   local prefilled = waitFor(function() return H.r8(A.nameLen) == 3 end, 240, 2)
+  events.prefilled = H.frame
   H.result('name_prefilled', prefilled)
   H.wait(30)
   H.shot('name')
+  H.result('name_scroll', H.r8(0x7EA20B))
   events.name = H.frame
   H.wait(2) -- the cores shoot F-2..F+2 here
   if not editor then return end

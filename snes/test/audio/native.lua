@@ -64,6 +64,53 @@ function test()
   check('air_does_not_stream_or_spam',#commands==stopped,#commands-stopped)
   cmd(6)
   if ROUND7 then
+    -- Combat keeps the same KICK cue. Audio selects F1 only for SSJ and
+    -- must release either preceding swing before counting contact gain.
+    local form=H.r8(0x7ED811)
+    for _,f in ipairs({0,1,0}) do
+      H.w8(0x7ED811,f)
+      cmd(1,AUDIO_SFX_KICK_SWING);H.wait(1)
+      local first=#commands
+      cmd(1,AUDIO_SFX_KICK);H.wait(5)
+      local id=f==1 and 0xF1 or 0xE8
+      local owned,swing,audible=0,0,false
+      for v=0,7 do if aram(0xAE)&(1<<v)~=0 then
+        local cue=aram(0xFF80+v)
+        if cue==id then owned=owned+1;audible=audible or dsp(v*16+8)>0 end
+        if cue==0xE5 or cue==0xE6 then swing=swing+1 end
+      end end
+      check('kick_form_'..f,commands[first+1] and commands[first+1].id==id and owned>=1 and audible and swing==0,id)
+      H.wait(30)
+      local kicks=0
+      for v=0,7 do if aram(0xAE)&(1<<v)~=0 and (aram(0xFF80+v)==0xE8 or aram(0xFF80+v)==0xF1) then kicks=kicks+1 end end
+      check('kick_return_'..f,kicks==0,kicks) -- native ambient cues may still play
+    end
+    -- Ki keeps the same DE owner across forms. The existing reuse nibble
+    -- carries the +2-semitone variant; no second voice or extra command.
+    for i,f in ipairs({0,1,0,1,1,0}) do
+      H.w8(0x7ED811,f)
+      local first=#commands
+      cmd(1,AUDIO_SFX_BLAST)
+      local owned,audible=0,false
+      -- Observe the whole interval: the native note key-off/key-on gap
+      -- during the timbre handoff can fall on the fifth frame sample.
+      for tick=1,5 do
+        H.wait(1);local now=0
+        for v=0,7 do if aram(0xAE)&(1<<v)~=0 and aram(0xFF80+v)==0xDE then
+          now=now+1;audible=audible or dsp(v*16+8)>0
+        end end
+        owned=math.max(owned,now)
+      end
+      local p=aram(0x2F78)+256*aram(0x2F79)
+      local c=commands[first+1]
+      check('blast_form_'..i,c and c.id==0xDE and c.level==(f==1 and 0x0D or 0x0F) and aram(p+9)==2*f and owned==1 and audible,
+        string.format('form %d, p2 %s, transpose %d, voices %d, audible %s',f,tostring(c and c.level),aram(p+9),owned,tostring(audible)))
+    end
+    H.wait(30)
+    local launches=0
+    for v=0,7 do if aram(0xAE)&(1<<v)~=0 and aram(0xFF80+v)==0xDE then launches=launches+1 end end
+    check('blast_returns_music_voice',launches==0,launches)
+    H.w8(0x7ED811,form)
     H.wait(20)
     local first=#commands
     -- Public loop-request ABI, with changing levels/rates and no test-loop

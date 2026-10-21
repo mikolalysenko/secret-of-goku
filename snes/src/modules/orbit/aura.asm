@@ -20,7 +20,7 @@
 ; waits. DB = $32, M16/X16.
 
 !AURA_GOKU_SLOT   = 4              ; slot 2, times 2 (OBJ $048)
-!AURA_FRIEZA_SLOT = 10             ; slot 5, times 2 (OBJ $084)
+!AURA_FRIEZA_SLOT = 6              ; slot 3, times 2 (OBJ $04C: his beam's first, free while he warns)
 !AURA_PINK        = 96             ; the first pink picture
 
 ; Frame side, after the beams' wants (fight_draw): this frame's pictures,
@@ -148,13 +148,16 @@ aura_phase:
 	LDA.w $4216
 	RTS
 
-; Carry set when group X's third slot is free for an aura (the group off
-; or fewer than three chains). Keeps A.
+; Carry set when the aura's slot is free: Goku's (group 0's third) while
+; his group is off or has fewer than three chains, Frieza's (group 1's
+; first) while his group is off. Keeps A.
 aura_slot_free:
 	PHA
 	LDA.w !bw_key,X
 	CMP.w #$FFFF
 	BEQ .yes
+	CPX.w #2
+	BEQ .no
 	LDA.w !bw_j,X
 	CMP.w #2
 	BCS .no
@@ -206,7 +209,7 @@ aura_draw_frieza:
 	LDA.w !b_y
 	SEC : SBC.w #22
 	STA.w !d_y
-	LDA.w #$084|(!OFX_PAL_PINK<<9)|!OA_PRI
+	LDA.w #$04C|(!OFX_PAL_PINK<<9)|!OA_PRI
 	BRA aura_put
 .no
 	RTS

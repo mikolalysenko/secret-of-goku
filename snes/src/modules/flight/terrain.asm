@@ -2501,8 +2501,6 @@ fl_lowobs:
 	BEQ .code0
 	JSR fl_pred_bank
 	BCC .code0
-	LDA.w #fl_pred_banklily&$FFFF
-	STA.w !fl_t3
 	LDA.w !fl_ts
 	CMP.w #2
 	BNE .long
@@ -2514,6 +2512,28 @@ fl_lowobs:
 .long
 	LDA.w #16
 .span
+if not(defined("FLIGHT_BANK_WALK_SLOW"))
+	; Without a dungeon context, the ferry corridor or the cave filler
+	; (tileset 10) none of their checks can apply: the lean walker gives the
+	; same answer and leaves the fetched descriptor (fl_d_*) as it was.
+	PHA
+	LDA.w !fl_mflags
+	AND.w #!FLM_CONTEXT|!FLM_FERRY
+	BNE .shared
+	LDA.w !fl_ts
+	CMP.w #10
+	BEQ .shared
+	PLA
+	JSR fl_bank_shores
+	BCC .code0
+	JMP .yes
+.shared
+	PLA
+endif
+	PHA
+	LDA.w #fl_pred_banklily&$FFFF
+	STA.w !fl_t3
+	PLA
 	JSR fl_between_shores
 	BCC +
 	JMP .yes
@@ -3001,6 +3021,187 @@ fl_shore_dir:
 	PLA
 	SEC
 	RTS
+
+if not(defined("FLIGHT_BANK_WALK_SLOW"))
+; betweenShores(bank || lily, span) for the bank rule on maps without a
+; dungeon context or the ferry corridor, outside tileset 10 (fl_lowobs):
+; blocked(), ferryGap() and the cave filler are then always false, so this
+; is fl_between_shores with fl_pred_banklily, step for step. A = span,
+; X = idx (kept). Carry. fl_d_* is left alone; uses fl_t0-fl_t7.
+fl_bank_shores:
+	STA.w !fl_t2                 ; span
+	LDA.w #$00FF
+	JSR fl_bank_walk
+	BCC +
+	LDA.w #$0001
+	JSR fl_bank_walk
+	BCS ++
++	LDA.w #$FF00
+	JSR fl_bank_walk
+	BCC ++
+	LDA.w #$0100
+	JSR fl_bank_walk
+++	RTS
+
+; One side (fl_shore_dir): A = unit delta, X = idx, fl_t2 = span. Carry =
+; a real shore within the span with only bank or lily cells before it. A
+; step off the map ends it (tileAt() == null), so the walk is clipped to
+; the cells left on the map. Each step reads the tile and its two
+; descriptor words once and tests the bitsets in place. Preserves X.
+fl_bank_walk:
+	PHX
+	CMP.w #$0001
+	BEQ .right
+	CMP.w #$00FF
+	BEQ .left
+	CMP.w #$0100
+	BEQ .down
+	TXA                          ; up: ty cells above
+	ASL
+	XBA
+	AND.w #$007F
+	STA.w !fl_t1
+	LDA.w #$FF80                 ; -128
+	BRA .go
+.down
+	TXA
+	ASL
+	XBA
+	AND.w #$007F                 ; ty
+	EOR.w #$FFFF
+	SEC
+	ADC.w !fl_H                  ; H - ty
+	DEC
+	STA.w !fl_t1                 ; H - 1 - ty cells below
+	LDA.w #$0080
+	BRA .go
+.left
+	TXA
+	AND.w #$007F                 ; tx cells to the left
+	STA.w !fl_t1
+	LDA.w #$FFFF
+	BRA .go
+.right
+	TXA
+	AND.w #$007F
+	EOR.w #$FFFF
+	SEC
+	ADC.w !fl_W                  ; W - tx
+	DEC
+	STA.w !fl_t1                 ; W - 1 - tx cells to the right
+	LDA.w #$0001
+.go
+	STA.w !fl_t0                 ; index stride
+	LDA.w !fl_t2
+	CMP.w !fl_t1
+	BCS +
+	STA.w !fl_t1                 ; steps = min(span, cells on the map)
++	LDA.w !fl_t1
+	BNE +
+	PLX                          ; no cell on the map that way
+	CLC
+	RTS
++	; the layer's descriptor table ($7F:B800 / $7F:BC00) and metatile offset
+	STZ.w !fl_t3
+	LDA.w !fl_ofs0
+	CPX.w #$4000
+	BCC +
+	LDA.w #$0400
+	STA.w !fl_t3
+	LDA.w !fl_ofs1
++	STA.w !fl_t4
+.walk
+	TXA
+	CLC
+	ADC.w !fl_t0
+	TAX
+	STX.w !fl_t5                 ; this step's cell
+	LDA.l $7F0000,X
+	AND.w #$00FF
+	STA.w !fl_t6                 ; tile
+	ASL
+	ASL
+	ORA.w !fl_t3
+	TAX
+	LDA.l $7FB800,X              ; flags | behaviour << 8
+	BIT.w #$9008                 ; behaviour & $90 or flags & 8: no shore
+	BNE .no
+	AND.w #$0007
+	CMP.w #$0003
+	BEQ .accept                  ; height 3 is never clear
+	; clear(next, 0, true): code 0, a movement floor ($2x/$3x) or $C1
+	; with replacement 0
+	LDA.l $7FB802,X              ; code | replacement << 8
+	BIT.w #$00FF
+	BEQ .clear
+	CMP.w #$00C1
+	BEQ .clear
+	AND.w #$00F0
+	CMP.w #$0020
+	BEQ .clear
+	CMP.w #$0030
+	BNE .accept
+.clear
+	; realShore(): unless metatile 0 is no ground in this tileset
+	LDA.w !fl_tsf
+	AND.w #!TSF_BLANKGROUND
+	BEQ .shore
+	LDA.w !fl_t6
+	ORA.w !fl_t4                 ; metatile 0 = tile 0 without an offset
+	BNE .shore
+.accept
+	; bank(d) || lily(d): code $10-$17, or code 0 with the metatile in the
+	; bank or the lily set (flags & 8 and behaviour & $90 already failed)
+	LDA.l $7FB802,X
+	AND.w #$00FF
+	BEQ .meta
+	CMP.w #$0010
+	BCC .no
+	CMP.w #$0018
+	BCS .no
+.next
+	LDX.w !fl_t5
+	DEC.w !fl_t1
+	BNE .walk
+.no
+	PLX
+	CLC
+	RTS
+.shore
+	PLX
+	SEC
+	RTS
+.meta
+	LDA.w !fl_t6
+	CLC
+	ADC.w !fl_t4                 ; metatile
+	STA.w !fl_t6
+	AND.w #$0007
+	TAX
+	LDA.l fl_bitmask,X
+	AND.w #$00FF
+	STA.w !fl_t7                 ; its bit
+	LDA.w !fl_t6
+	LSR
+	LSR
+	LSR
+	STA.w !fl_t6                 ; its byte
+	CLC
+	ADC.w !fl_p_bank
+	TAX
+	LDA.l !DATA_FLIGHT&$FF0000,X
+	AND.w !fl_t7
+	BNE .next
+	LDA.w !fl_p_lily
+	BEQ .no
+	CLC
+	ADC.w !fl_t6
+	TAX
+	LDA.l !DATA_FLIGHT&$FF0000,X
+	AND.w !fl_t7
+	BNE .next
+	BRA .no
+endif
 
 ; Predicates on the fetched descriptor (X = idx). Carry = accepted.
 ; gap(d): castle chasm / Gaia lava (raw tile in the set, or cave code 10-17)

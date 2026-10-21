@@ -305,6 +305,37 @@ test('Fire Palace early flight enables its inner plate and orb; only a full gold
  expect(result.after.some(c=>c.tiles.every(t=>t===186)),JSON.stringify(result)).toBe(true);expect(result.error).toBe(null);expect(result.canAttack).toBe(true);
  await page.locator('#screen').screenshot({path:test.info().outputPath('fire-palace-braziers.png')});
 });
+test('flying over a Potos flower bed into the tree beside it never wedges Goku in the tree',async({page})=>{
+ await load(page);const base=await page.evaluate(()=>mana.snapshot());
+ // The pink bed east of the inn (tiles 35-37 x 24-27) ends at a tree's base
+ // (38,26). A blocked step over the bed used to reach the native collision
+ // test, which carried Goku into that base: over ground he can neither fly
+ // over nor land on, where every later step was blocked as well. The same
+ // approaches as snes/test/flight/flowers.lua: A+right along row 26, and
+ // A+down-right across the bed, then right into the tree.
+ for(const s of[{x:32,y:26,steps:[[[8,7],30],[[],20]]},{x:34,y:23,steps:[[[8,5,7],24],[[7],60],[[],10]]}]){
+  await page.evaluate(b=>mana.restore(b),base);await enter(page,131,s.x,s.y);
+  const r=await page.evaluate(s=>{
+   const m=mana.mod,h=m.localFlightHook;m.powerIntro.restore({flight:true,superSaiyan:true});m.radio.restore();
+   for(let i=1;i<12;i++)mana.write8(0xe000+i*512,0);mana.run(4);
+   const at=()=>({x:mana.read16(0xe002),y:mana.read16(0xe004),flight:m.localFlight,lift:m.localLift});
+   const start=at(),before=h.stopped,bad=[];
+   for(const[buttons,n]of s.steps)for(let i=0;i<n;i++){mana.run(1,buttons);const p=at();if((p.flight||p.lift)&&!h.canFly(p.x,p.y)&&!h.canLand(p.x,p.y))bad.push(`${p.x},${p.y}`);}
+   const end=at(),stopped=h.stopped-before,saved=mana.snapshot(),moves={};
+   for(const[name,b]of[['up',4],['down',5],['left',6],['right',7]]){mana.restore(saved);mana.run(16,[b]);mana.run(2);const p=at();moves[name]=Math.abs(p.x-end.x)+Math.abs(p.y-end.y);}
+   mana.restore(saved);mana.run(40,[6]);mana.run(30);const landed=at();
+   // Left there anyway (an older checkpoint), he returns to his last landing.
+   mana.restore(saved);const recovered=h.recovered;mana.write16(0xe002,604);mana.write16(0xe004,424);mana.run(3);
+   const embedded=at(),back=h.recovered-recovered;mana.run(30);const settled=at();
+   return{start,end,bad,stopped,moves,landed,embedded,back,settled};
+  },s);
+  const info=JSON.stringify({s,r});
+  expect(r.start.flight).toBe(false);expect(r.bad,info).toEqual([]);expect(r.stopped,info).toBeGreaterThan(0);
+  expect(r.end.flight,info).toBe(true);expect(Math.max(...Object.values(r.moves)),info).toBeGreaterThanOrEqual(4);
+  expect(r.landed.flight,info).toBe(false);expect(r.landed.lift).toBe(0);expect(Math.abs(r.landed.x-r.end.x)+Math.abs(r.landed.y-r.end.y)).toBeGreaterThanOrEqual(16);
+  expect(r.back,info).toBe(1);expect([r.embedded.x,r.embedded.y]).not.toEqual([604,424]);expect(r.settled.flight).toBe(false);expect(r.settled.lift).toBe(0);
+ }
+});
 test('fast flight is never stopped by the native companion tether; companions are dragged along',async({page})=>{
  await load(page);await enter(page,91,24,24);
  const r=await page.evaluate(()=>{

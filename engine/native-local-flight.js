@@ -257,7 +257,7 @@ export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,sp
   }
   return null;
  }
- let changed=0,phased=0,limited=0,recovered=0,npcPasses=0,tethers=0,dragged=0,anchor=null,crossing=null,motionFrame=-1,travel=[0,0];
+ let changed=0,phased=0,limited=0,stopped=0,recovered=0,npcPasses=0,tethers=0,dragged=0,anchor=null,crossing=null,motionFrame=-1,travel=[0,0];
  c.cycle=function(){
   const pc=this.br[4];
   // C0:D84C samples the accepted destination's metatile after collision.
@@ -322,7 +322,21 @@ export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,sp
     changed++;
    }else if(phasing()){
     const dx=signed(r[0x1e]),dy=signed(r[0x1f]);
-    if((dx||dy)&&sweep(x,y,dx,dy)&&(canFloat(x,y)||canFloat(x+dx,y+dy))){this.br[4]=0xd7f3;phased++;}
+    if(dx||dy){
+     if(sweep(x,y,dx,dy)){if(canFloat(x,y)||canFloat(x+dx,y+dy)){this.br[4]=0xd7f3;phased++;}}
+     // Over a low obstacle Goku already overlaps cells the native test
+     // treats as solid, and it checks only his leading edge. A blocked step
+     // could then carry him into scenery he can neither fly over nor land
+     // on (a tree base beside the Potos flower beds), where every later
+     // step is blocked as well. The native test sees only an axis whose
+     // step keeps him airworthy (x first); with none, the step stops as the
+     // native test stops it at a wall (D74F's RTS with carry set).
+     else if(canFloat(x,y)){
+      if(dx&&dy&&sweep(x,y,dx,0))r[0x1f]=0;
+      else if(dx&&dy&&sweep(x,y,0,dy))r[0x1e]=0;
+      else{this.c=true;this.br[4]=0xd7b0;stopped++;}
+     }
+    }
    }
   }
   return priorCycle.call(this);
@@ -372,7 +386,10 @@ export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,sp
   const {width,height}=bounds(),t=tileAt(x,y,l),outside=x<8||y<8||x>width-8||y>height-8;
   // Recover older checkpoints stranded in a wall/void, or an unexpected
   // native displacement. Prefer the most recent verified landing position.
-  const embedded=t&&t.code===0&&(t.flags&7)===3&&!lowObstacle(t)&&!openAir();
+  // Over a low obstacle (flowers are solid to the native test) he is
+  // embedded too once his footprint is no longer airworthy: no flight step
+  // or native step can then take him anywhere.
+  const embedded=t&&t.code===0&&(t.flags&7)===3&&(!lowObstacle(t)||!canFly(x,y,l))&&!openAir();
   if(!outside&&!embedded)return;
   let safe=anchor&&anchor.layer===l&&canLand(anchor.x,anchor.y,l)?anchor:null;
   if(!safe){
@@ -388,5 +405,5 @@ export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,sp
    if(!phasing()||!eligible()||!(beastArena()||ferryGap(t)||dungeon.air(t)))return [];
    return [0xe200,0xe400].filter(base=>(r[base]&1)&&!r[base+0x2c]&&!(r[base+0x0e]&0x80));
   },
-  snapshot:()=>({anchor,crossing,motionFrame,travel:[...travel]}),restore:s=>{anchor=s?.anchor??null;crossing=s?.crossing??null;motionFrame=s?.motionFrame??-1;travel=s?.travel?.slice()??[0,0];dungeon.invalidate();},get changed(){return changed},get phased(){return phased},get limited(){return limited},get recovered(){return recovered},get npcPasses(){return npcPasses},get tethers(){return tethers},get dragged(){return dragged},dispose(){c.cycle=priorCycle;}};
+  snapshot:()=>({anchor,crossing,motionFrame,travel:[...travel]}),restore:s=>{anchor=s?.anchor??null;crossing=s?.crossing??null;motionFrame=s?.motionFrame??-1;travel=s?.travel?.slice()??[0,0];dungeon.invalidate();},get changed(){return changed},get phased(){return phased},get limited(){return limited},get stopped(){return stopped},get recovered(){return recovered},get npcPasses(){return npcPasses},get tethers(){return tethers},get dragged(){return dragged},dispose(){c.cycle=priorCycle;}};
 }

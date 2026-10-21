@@ -285,9 +285,14 @@ async function emberCells({L,T,S,def,xdata,rom,repo}){
 async function burstLists({L,S,repo}){
   const {combustionFrames}=await import(pathToFileURL(join(repo,'engine/native-combustion-data.js')).href);
   const name=[];
-  combustionFrames.burst.forEach((parts,f)=>{for(let m=0;m<4;m++)name[f*4+m]=S.add(`b${f}_${m}`,parts.map(p=>{
-    const fx=(p.flipX?1:0)^(m&1),fy=(p.flipY?1:0)^(m>>1&1);
-    return {dx:m&1?-p.x-15:p.x,dy:m&2?-p.y-15:p.y,ta:`!OFX_COMB_${p.cell}|(!OFX_PAL_FIRE<<9)|$3000|${hex4((fx<<14)|(fy<<15))}`};}));});
+  // (a frame filling a 32x32 square is orbit-fx's composite: its quarters
+  // are 16x16 cells with the parts' flips drawn in)
+  const {burstSquare}=await import('./orbit-fx.mjs');
+  combustionFrames.burst.forEach((parts,f)=>{const sq=burstSquare(parts);for(let m=0;m<4;m++)name[f*4+m]=S.add(`b${f}_${m}`,parts.map(p=>{
+    const q=sq?((p.x|0)-sq.x)/16+((p.y|0)-sq.y)/8:0;
+    const fx=(sq?0:p.flipX?1:0)^(m&1),fy=(sq?0:p.flipY?1:0)^(m>>1&1);
+    const cell=sq?`!OFX_COMBC_${f}_${q}`:`!OFX_COMB_${p.cell}`;
+    return {dx:m&1?-p.x-15:p.x,dy:m&2?-p.y-15:p.y,ta:`${cell}|(!OFX_PAL_FIRE<<9)|$3000|${hex4((fx<<14)|(fy<<15))}`};}));});
   const list=(f,m)=>f<combustionFrames.burst.length?name[f*4+m]:'orbit_mt_l_none';
   L.push('orbit_mt_fire_l:');
   for(let age=0;age<53;age++)L.push(`\tdw ${list(Math.floor(age/7),0)},${list(Math.floor(age/7),1)}`);

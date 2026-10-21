@@ -293,7 +293,8 @@ beam_queue:
 	INY
 	CPY.w #3
 	BCC .chain
-	JMP aura_queue                 ; (then the auras' pictures)
+	JSR aura_queue                 ; (then the auras' pictures,
+	JMP sc_queue                   ; the distant bodies')
 
 ; Key A16: a band picture the generator made (orbit-fx.mjs: the class's
 ; radius 2-!OFX_BEAM_Cn_R1, even, chain 0-2; not the laser)? Carry set with

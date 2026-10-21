@@ -13,6 +13,7 @@ export const A={
   menuPage:0x7EA202,       // 3: name editor (game select reaches it)
   menuCursor:0x7EA211,
   nameLen:0x7EA1CC,
+  menuScroll:0x7EA20B,     // NMI background scroll; advances independently of menu input
   coreFrame:0x7ED700, coreFlags:0x7ED73A,
   titleFlags:0x7EDD9E,     // bit 1: title program patched by the title module
   // Borrowed for three idle field frames and restored: the CORE_TEST mailbox
@@ -94,7 +95,7 @@ const same=(a,b)=>a.length===b.length&&a.every((v,i)=>v===b[i]);
 
 // ---------------------------------------------------------------------------
 // The scenario on a RetroHost (snes/test/emulators/retro.mjs).
-export async function playScenario(h,{rom,xprobe,log=()=>{}}){
+export async function playScenario(h,{rom,xprobe,nameScroll=async()=>null,log=()=>{}}){
   const res={checks:[],values:{},events:{}};
   const check=(name,ok,detail='')=>{res.checks.push({name,pass:!!ok,detail:String(detail)});log(`  ${ok?'ok  ':'FAIL'} ${name} ${detail}`);return !!ok;};
   const tramp=async()=>h.bytes('wram',A.tramp,4);
@@ -134,9 +135,23 @@ export async function playScenario(h,{rom,xprobe,log=()=>{}}){
   let prefilled=await h.waitFor(async()=>(await h.r8(A.nameLen))===3,240,2);
   if(!prefilled){for(let i=0;i<6&&!(await h.r8(A.nameLen));i++)await h.tap('b',4,30);}
   check('name_prefilled',prefilled,`length ${await h.r8(A.nameLen)}`);
+  res.events.prefilled=h.frame;
   await h.wait(28);
-  await shotWindow(h,'name');
+  // Input is polled every four menu frames, but the background scrolls in
+  // NMI. A small boot-time change can move prefill by four frames without
+  // moving the background by the same amount. Compare the reference's
+  // actual scroll phase; keep the original two-frame picture tolerance.
+  const scroll=await nameScroll();
+  if(scroll!=null){
+    const matched=await h.waitFor(async()=>await h.r8(A.menuScroll)===scroll,16,2);
+    check('name_scroll_phase',matched,`scroll ${await h.r8(A.menuScroll)} (Mesen ${scroll}), frame ${h.frame}`);
+    res.values.name_scroll=await h.r8(A.menuScroll);
+    res.events.name_center=h.frame;
+    for(let k=-SHOT_WINDOW;k<=0;k++)await h.step({op:'shot',name:`name${k<0?'':'+'}${k}`,back:-k});
+    for(let k=1;k<=SHOT_WINDOW;k++){await h.wait(1);await h.shot(`name+${k}`);}
+  }else await shotWindow(h,'name');
   res.events.name=h.frame;
+  await h.step({op:'savestate',name:'audio-name'});
   if(!editor)return res;
 
   // 4. Opening: Start commits the name; text advanced with B when it waits.

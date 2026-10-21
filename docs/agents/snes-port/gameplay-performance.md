@@ -6,6 +6,48 @@ integration bugs and CPU/vblank cost. The default build now favors resident
 SNES audio and compact effects. It is substantially smoother, but crowded
 combat is not yet guaranteed to run without missed video frames.
 
+## water-flight no longer wedges — October 21, 2026
+
+Until the flower-bed flight fix
+([flight.md](flight.md#blocked-steps-over-low-obstacles-the-potos-flower-bed)),
+the `water-flight` case never flew its route, in either engine.
+- **What it measured.** Its first A+right carried Goku over the pool's edge
+  into a shaped bank cell at the waterfall (map 128, tile 40,27, code
+  `$15`). He stayed wedged there for the remaining 210 frames: at 639,442
+  on the cartridge, 638,442 in the browser. A+left+Y, A+up and A+down did
+  nothing, so the case's 0/240 measured a wedged Goku.
+- **The route it flies now.** Goku stops at 633,442, flies left with ki
+  and lands at 607,442 beside the waterfall's cliff. He then climbs 6 px
+  and flies 170 px down over the waterfall. The cartridge ends at 607,612
+  after 269 px of travel; the browser baseline ends at 609,612 after
+  271 px.
+
+With the fix alone, flying that route missed **1/240** frames: the A+up
+takeoff after Goku lands beside the cliff (harness frame 156, the
+script's frame 102). His 18 frames on foot ended in a tile-cache clear,
+because a walk of 8 frames or more starts the cache afresh. The takeoff's
+sweep then classified two cliff-foot bank cells (tiles 37,26 and 38,26)
+from scratch: six shore walks of up to five cells, at about 3.5 lines a
+cell, some 95 lines in all. Logic ended at line 252.9.
+
+The lean bank walker
+([flight.md](flight.md#how-it-is-built), `fl_bank_shores`) cuts those
+walks to about 24 lines. `water-flight` is back to **0/240**, and none of
+the twelve other counts change.
+
+| Build | Misses | Worst logic | Mean logic | Travel |
+| --- | --- | --- | --- | --- |
+| Before the fix (wedged) | 0/240 | 220.6 | 139.0 | 131 px |
+| Fix only | 1/240 | 252.9 | 129.0 | 269 px |
+| Fix and lean bank walker | 0/240 | 203.0 | 128.5 | 269 px |
+
+- The 1,200-frame run (`--repeat=5`) also has 0 misses. Its worst frame,
+  220.2 lines, climbs into two new bank cells further east (tiles 42,28
+  and 43,28).
+- The browser baseline counts 0/240 before and after.
+- The other twelve cases: charge 13, teleport 3, fly-ki 2, fly 1,
+  fly-punch 1, all others 0.
+
 ## Browser CPU baseline — October 21, 2026
 
 `browser-baseline.mjs` runs the actual browser player in isolated headless

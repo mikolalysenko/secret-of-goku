@@ -97,6 +97,8 @@ fx_native_forget:
 	BCS .kept                    ; free, or a region FX does not hold
 	CMP.w #$0200
 	BCS .forget                  ; a UI lease: only its key is dropped
+	CMP.w #!FX_RBITS_SIZE*8
+	BCS .counted                 ; past the bitmap (impact cells): no bit
 	PHA                          ; cell id: clear its residency bit
 	AND.w #7
 	PHX
@@ -117,6 +119,12 @@ fx_native_forget:
 	PLX
 	PLA
 	PLA
+.counted
+	SEP #$20
+	LDA.l !fx_evict              ; a cell leaves (fx_warm's callers look again)
+	INC
+	STA.l !fx_evict
+	REP #$20
 .forget
 	LDA.w #$FFFF
 	STA.l !fx_ccell,X
