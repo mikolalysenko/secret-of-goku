@@ -4,6 +4,38 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: the Death Orb, Tree vista fades, flyby palettes, the browser's own frame drops (2026-10-21)
+
+- Codex Frieza-scene follow-ups (c54280b, d390962, 6463090, 0ee3953,
+  c7f8835; merged in 3c6c174):
+  - The Death Orb no longer vanishes for a frame when it grows to 32 px.
+    FX keeps the last complete orb until its replacement cells arrive.
+  - `fx_cgram_upload` changes FX's palettes only when the game's frame is
+    complete and core's DMA is ready, so the colours never run a vblank
+    ahead of the OAM on screen.
+  - The Tree vista's fades show. They are applied at the game's final
+    INIDISP write, which used to overwrite them.
+  - Frieza's world-map flyby keeps its palettes on incomplete world
+    frames, through a new world-mode palette service in core
+    (`core/cgram.asm`). It costs 0.28 lines a frame when idle.
+  - Faster FX assembly setup keeps the new work within budget.
+- Codex browser baseline (7f38641, 23106f3; merged in 08fcf60):
+  - `snes/test/gameplay/browser-baseline.mjs` replays each gameplay case's
+    snapshot and inputs in the browser mod and counts its missed frames
+    with the cartridge's definition.
+  - The cartridge already drops no more frames than the browser in all 13
+    gameplay cases and 6 perf scenes. For charge, the browser drops 25 per
+    240 and 35 per 1,200, against the cartridge's 16 and 22 when measured.
+  - The snapshots run the browser with FastROM off. Forced on, the browser
+    drops 11 per 240.
+  - `perf/budget.lua` counts misses at NMI with the game's ready bit, as
+    gameplay does, and the two suites share their inputs (`cases.mjs`).
+- The orbit fight's ki auras (4979aa2, 830a602; entry below).
+- Validation on d6dd246: all 20 suites pass under the read probe. Gameplay
+  misses per 240 frames: charge 12 (was 16), teleport 3, flying ki 2,
+  flight 1, flying punches 1, the rest 0. Extended data: 2718.2 of 2944
+  KiB.
+
 ## Orbit: ki auras (2026-10-21)
 
 - Goku's gold aura while he charges the wave or focuses, Frieza's pink one
