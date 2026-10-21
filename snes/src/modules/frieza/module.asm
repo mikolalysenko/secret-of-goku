@@ -247,6 +247,7 @@ assert !FZX_END <= !FZ+$C0, "frieza WRAM overflow (beast)"
 !fzt_shake     = !FZHB+$692   ; byte: the impact's shake (signed)
 !fzt_bright    = !FZHB+$693   ; byte: brightness forced with !FZV_BRIGHT
 !fzt_hdma      = !FZHB+$694   ; 7 bytes: Tree vista's BG3 cutoff (channel 6 -> TM)
+!fzt_showbright = !FZHB+$69B  ; byte: displayed brightness ceiling (latched in completed NMI)
 ; !FZHB+$700: the large-burst table (effects.asm)
 !fzv_on        = !FZSB+$14A   ; byte: the victory beat runs
 !fzv_age       = !FZSB+$14C   ; word: frames since the fatal hit
@@ -461,7 +462,8 @@ endif
 !FZI_PERM      = $08       ; quiet frames keep the permanent form
 !FZI_HINT      = $10       ; quiet frames look for Dryad's hint
 !FZI_WORLD_IDLE = $20      ; no world flyby/intro/notice; fz_wake invalidates this cache
-!FZI_SRAM      = $80       ; the scene SRAM ($32:7000-7FFF) holds Frieza's state: an
+!FZI_BRIGHT    = $80       ; sign bit: displayed Tree brightness ceiling in !fzt_showbright
+!FZI_SRAM      = $40       ; the scene SRAM ($32:7000-7FFF) holds Frieza's state: an
                            ; ending scene uses all of $32:6000-7FFF, so the module
                            ; neither reads nor writes there until it reset it
 ; !fz_vista bits 4-5 (rebuilt every frame): the Ball set drawn this frame
@@ -587,6 +589,12 @@ pullpc
 
 ; ---------------------------------------------------------------------------
 ; Original code patched (asserted).
+; Final field INIDISP write: apply the displayed Tree ceiling without
+; changing the native fade shadow, which must still be able to rise.
+%orig2($C0C15F, $E6A5)
+%orig3($C0C161, $21008D)
+%hijack($C0C15F, frieza_field_brightness, 5, frieza)
+
 ; Door table read: door 3FC's entry while the Emperor is present
 ; (native-story.js storyRead of C8:3FF2). Destroy's door record at C1:E7DF
 ; (included before this file) calls frieza_door_record through

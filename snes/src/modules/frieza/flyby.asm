@@ -10,6 +10,7 @@
 !fzy_mode = !fz_spr_fl
 !fzy_prev = !fz_spr_pend
 !fzy_goku = !fz_spr_res0             ; checker Goku record index
+!fzy_cgshow = !fz_spr_res1           ; displayed colours: bit 0 OBJ, bit 1 backdrop
 !FZY_CACHE = !SRAM_WORK_SCENE+$1400  ; 64 asset tags; scene claim required
 !FZY_MISSES = !FZY_CACHE+$80         ; deferred uploads (test diagnostic)
 
@@ -49,6 +50,7 @@ endif
 	BPL -
 	STA.l !FZY_MISSES
 	STA !fzy_prev
+	STA !fzy_cgshow
 	LDA.w #!FZY_MAGIC
 	STA !fzy_magic
 .frame
@@ -244,6 +246,33 @@ frieza_world_body:
 	SEC
 	RTL
 
+; Inside the native world palette transfer, including incomplete frames.
+; Only a completed frame may replace the displayed flyby's colours. The
+; normal world/module uploads still handle completed frames in their
+; existing order; on lag keep OBJ colours and, near impact, colour zero.
+frieza_world_cgram_upload:
+	LDA.l $7E0000|!fzy_magic
+	CMP.w #!FZY_MAGIC
+	BNE .native
+	LDA $EC
+	LSR
+	BCC .lag
+	LDA.l !core_dma_ready
+	BNE .native
+.lag
+	LDY.w #256
+	LDA.l $7E0000|!fzy_cgshow
+	AND.w #2
+	BEQ +
+	DEY : DEY
++
+	JSL core_world_cgram_native
+	SEC
+	RTL
+.native
+	CLC
+	RTL
+
 ; World NMI after world/FX. HDMA tables are immutable ROM (no torn frame).
 frieza_world_nmi:
 	LDA.l $7E0000|!fzy_magic
@@ -400,6 +429,14 @@ frieza_world_nmi:
 	REP #$20
 .remember
 	LDA !fzy_mode : STA !fzy_prev
+	LDX.w #1
+	CMP.w #1
+	BNE +
+	LDA.l !fzp_flyby
+	CMP.w #380
+	BCC +
+	LDX.w #3
++	STX !fzy_cgshow
 .exit
 	TSC : CLC : ADC.w #32 : TCS
 	PLD : PLB
@@ -509,6 +546,7 @@ fzy_palette:
 	RTS
 
 fzy_restore:
+	STZ !fzy_cgshow
 	SEP #$20
 	LDA.b #0
 	STA.l $002123 : STA.l $002125 : STA.l $00212B : STA.l $00212E : STA.l $00212F

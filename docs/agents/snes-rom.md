@@ -231,8 +231,9 @@ of each hook in `snes/src/modules.asm`.
 | `modules_ring_frame` | Ring menus, once per frame in vblank (`C0:694F`); the field loop is paused |
 | `modules_title_boot` | Each entry to the title/intro WRAM program (power-on, soft reset, quit; `!core_title_entry` 0, or 1 for the alternate entry used by the ending), after module WRAM was cleared; patch the program at `7E:8000+` here |
 | `modules_save` / `modules_load` / `modules_new_game` | Before a GAME FILE is written; after one loaded (and core restored or cleared `!SRAM_LIVE`); after NEW GAME cleared `!SRAM_LIVE` |
-| `modules_field_preupload` | Field vblank at the game's palette transfer (`C0:C0F0`, `core/cgram.asm`), before its palette and OAM transfers, on every vblank that sends the palette (lag vblanks with a window open too; check `!core_dma_ready` for a completed frame): copies frame code queued into the game's WRAM buffers (its OAM image). No HDMA runs here. M16/X16, DB = 0, D = 0 |
+| `modules_field_preupload` | Field vblank at the game's palette transfer (`C0:C0F0`, `core/cgram.asm`), before its palette and OAM transfers, on every vblank that sends the palette (lag vblanks with a window open too; a completed frame requires both `$EC` bit 0 and `!core_dma_ready`): copies frame code queued into the game's WRAM buffers (its OAM image). No HDMA runs here. M16/X16, DB = 0, D = 0 |
 | `modules_cgram_upload` | Right after: handlers in order until one returns carry set, having sent the palette itself (the game's buffer through `core_cgram_native`, A16 = CGRAM byte offset, Y16 = bytes, plus its own ranges); carry clear for the game's transfer. Module colours sent here survive lag vblanks and need no frame-thread copy. M16/X16, DB = 0, D = 0 |
+| `modules_world_cgram_upload` | World counterpart at `C0:8A89`, after the native palette enable/parity gates (`$E3/$F4/$F5`), including lag vblanks. Same M16/X16, DB = 0, D = 0 and carry contract. `core_world_cgram_native` sends an even byte range (A16 offset, Y16 nonzero length), preserving A/X/Y, using DMA 7 in vblank. The world selects `$00:0600` when `$F4 & $22` is nonzero, otherwise `$7E:DE00`; it does not use the field's flash selector. Without a handler the hook resumes the original transfer. Frieza uses this to retain displayed flyby colours on incomplete frames |
 
 | Service | Contract |
 | --- | --- |
@@ -254,7 +255,7 @@ of each hook in `snes/src/modules.asm`.
 
 Real-hardware rule: no general-purpose DMA from frame code while any HDMA
 channel is enabled; revision-1 S-CPUs can hang when HDMA runs during a
-general DMA. Copy in vblank (module NMI work, the two hooks above), under
+general DMA. Copy in vblank (module NMI work or the upload hooks above), under
 forced blank, or with the CPU. Core's predecoded-sheet copies check
 `!core_hdmaen` and the `$2C` shadow. The ending tests fail on any watched
 DMA that starts on a visible line with HDMA enabled.

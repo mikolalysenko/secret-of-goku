@@ -71,3 +71,65 @@ core_cgram_native:
 	REP #$20
 	PLA
 	RTL
+
+; C0:8A89, the world palette transfer after the native $E3/$F4/$F5 gates.
+; M8/X8, DB = 0, D = 0. Handlers have the field hook's M16/X16/carry
+; contract. Without a taker, resume the native buffer-selection branch;
+; keeping that fast path avoids wrapping an ordinary 512-byte transfer.
+core_world_cgram_upload:
+	REP #$30
+	PHY
+	JSL modules_world_cgram_upload
+	BCS .sent
+	PLY
+	SEP #$30
+	LDA $F4
+	BIT.b #$22
+	BNE .base
+	JML $008A8D
+.base
+	JML $008A9C
+.sent
+	PLY
+	LDA.w #$0200                 ; native transfer's A/B, X and widths
+	SEP #$30
+	LDX.b #$80
+	JML $008AC1
+
+; World counterpart of core_cgram_native: A16 = even CGRAM byte offset,
+; Y16 = even nonzero byte count. Preserves A/X/Y, uses DMA 7 in vblank.
+; The world's $F4 & $22 selects $00:0600, otherwise $7E:DE00. It does not
+; use the field flash selector ($2A / $BE00).
+core_world_cgram_native:
+	PHA
+	LSR
+	SEP #$20
+	STA.w $2121
+	REP #$20
+	LDA.w #$2200
+	STA.w $4370
+	SEP #$20
+	LDA $F4
+	BIT.b #$22
+	BNE .base
+	LDA.b #$7E
+	STA.w $4374
+	REP #$20
+	LDA.w #$DE00
+	BRA .source
+.base
+	STZ.w $4374
+	REP #$20
+	LDA.w #$0600
+.source
+	CLC
+	ADC $01,S
+	STA.w $4372
+	TYA
+	STA.w $4375
+	SEP #$20
+	LDA.b #$80
+	STA.w $420B
+	REP #$20
+	PLA
+	RTL

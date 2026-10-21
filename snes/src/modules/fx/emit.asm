@@ -102,18 +102,35 @@ fx_stamp_id:
 	PLY
 	RTS
 
-; fx_emit: A = assembly id, drawn at !d_x/!d_y with !d_ef.
-fx_emit:
-	CMP !d_lasta                 ; cells of this assembly already resolved
-	BEQ fx_emit_place
-	JSR fx_emit_setup
-	BCC fx_emit_place
-	RTS
-
 ; Resolve assembly A's cells into four pre-flipped OAM words each
 ; (!d_tiles), remember where its parts are. C set when it has no parts.
 ; Record: parts, cells, bbox (min x, min y, max x, max y), cell words,
 ; parts of 3 bytes (x+128, y+128, cell*8 | v*4 | h*2).
+macro fx_assembly_cell(cell)
+	LDY.w #6+(<cell>*2)
+	LDA [!d_ptr],Y
+	JSR fx_resolve
+	STA !d_tiles+(<cell>*8)
+	CMP.w #$FFFF
+	BEQ ?missing
+	ORA.w #$4000
+	STA !d_tiles+(<cell>*8)+2
+	EOR.w #$C000
+	STA !d_tiles+(<cell>*8)+4
+	ORA.w #$4000
+	STA !d_tiles+(<cell>*8)+6
+	BRA ?next
+?missing:
+	STA !d_tiles+(<cell>*8)+2
+	STA !d_tiles+(<cell>*8)+4
+	STA !d_tiles+(<cell>*8)+6
+?next:
+	DEC !d_nc
+	BNE ?more
+	JMP .ready
+?more:
+endmacro
+
 fx_emit_setup:
 	STA !d_lasta
 	ASL
@@ -139,45 +156,28 @@ fx_emit_setup:
 	XBA
 	AND.w #$00FF
 	STA !d_nc
-	LDY.w #$0006
-	LDX.w #$0000
-.cell
-	LDA [!d_ptr],Y
-	PHY
-	PHX
-	JSR fx_resolve               ; A = OAM word, $FFFF when unavailable
-	PLX
-	PLY
-	STA !d_tiles,X
-	; PLX/PLY above replaced the resolver's N flag. Missing cells must
-	; stay $FFFF in every flip variant, not turn into $3FFF/$7FFF.
-	CMP.w #$FFFF
-	BEQ .missing
-	ORA.w #$4000
-	STA !d_tiles+2,X             ; h-flip
-	EOR.w #$C000
-	STA !d_tiles+4,X             ; v-flip
-	ORA.w #$4000
-	STA !d_tiles+6,X             ; both
-	BRA .next
-.missing
-	STA !d_tiles+2,X
-	STA !d_tiles+4,X
-	STA !d_tiles+6,X
-.next
-	INY
-	INY
-	TXA
+	ASL
 	CLC
-	ADC.w #8
-	TAX
-	DEC !d_nc
-	BNE .cell
-	TYA
+	ADC.w #6
 	CLC
 	ADC !d_pofs
-	STA !d_pofs                  ; first part
+	STA !d_pofs                  ; first part, after the cell words
+.cell
+	; Assemblies have at most six distinct cells (the d_tiles capacity).
+	; Fixed offsets avoid saving both index registers around every lookup.
+	for cell = 0..6
+		%fx_assembly_cell(!cell)
+	endfor
+.ready
 	CLC
+	RTS
+
+; fx_emit: A = assembly id, drawn at !d_x/!d_y with !d_ef.
+fx_emit:
+	CMP !d_lasta                 ; cells of this assembly already resolved
+	BEQ fx_emit_place
+	JSR fx_emit_setup
+	BCC fx_emit_place
 	RTS
 
 ; Place the set-up assembly at !d_x/!d_y. A fully visible assembly drawn
@@ -777,6 +777,32 @@ fx_resolve:
 ; cell is not resident and cannot be uploaded this frame. Missing cells
 ; take a free entry or the least recently drawn one (never one drawn this
 ; frame); at most !fx_cbudget new cells per frame.
+; Fixed candidates avoid an indexed loop for each cell in a cold assembly.
+; Preserve the first-free rule and the existing later-slot tie break.
+macro fx_cache_candidate(slot)
+	LDA.l !fx_ccell+(<slot>*2)
+	CMP.w #$FFFE
+	BEQ ?next
+	BCS ?take
+	BIT.w #$8000                  ; UI lease: outstanding DMA still owns it
+	BEQ ?age
+	LDA.l !core_dma_count
+	BNE ?next
+?take:
+	LDX.w #<slot>*2
+	JMP .take
+?age:
+	LDA !d_tmp+6                  ; this frame, loaded once for the scan
+	SEC
+	SBC.l !fx_cused+(<slot>*2)
+	BEQ ?next
+	CMP !d_tmp+2
+	BCC ?next
+	STA !d_tmp+2
+	LDY.w #<slot>*2
+?next:
+endmacro
+
 fx_cache_get:
 	STA !d_tmp+4                 ; cell word
 	AND.w #$01FF
@@ -861,34 +887,18 @@ fx_cache_get:
 +
 	; One pass: the first free entry wins, else the least recently drawn
 	; usable entry that was not drawn this frame.
+	LDA.l !fx_frame
+	STA !d_tmp+6
 	STZ !d_tmp+2                 ; oldest age seen
 	LDY.w #$FFFF
-	LDX.w #$0000
 .scanFree
-	LDA.l !fx_ccell,X
-	CMP.w #$FFFE
-	BEQ .nextFree                ; region not ours
-	BCS .take                    ; $FFFF: free
-	BIT.w #$8000                ; UI lease: never overwrite an outstanding DMA
-	BEQ +
-	LDA.l !core_dma_count
-	BNE .nextFree
-	BRA .take                    ; completed UI leases yield before native FX
-+	LDA.l !fx_frame
-	SEC
-	SBC.l !fx_cused,X
-	BEQ .nextFree                ; drawn this frame
-	CMP !d_tmp+2
-	BCC .nextFree
-	STA !d_tmp+2
-	TXY
-.nextFree
-	INX
-	INX
-	CPX.w #30
-	BCC .scanFree
+	for slot = 0..15
+		%fx_cache_candidate(!slot)
+	endfor
 	CPY.w #$FFFF
-	BEQ .fail
+	BNE +
+	JMP .fail
++
 	TYX
 .take
 	PHX

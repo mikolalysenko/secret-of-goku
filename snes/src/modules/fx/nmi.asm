@@ -215,10 +215,13 @@ fx_nmi_vline:
 ; The classes are fixed: unroll their scan and source offsets. This runs
 ; from the early native CGRAM hook, before native actor streaming.
 macro fx_nmi_palette(class)
+	; Byte mode between classes: most classes have no palette this frame.
+	; Only a live row needs word arithmetic and DMA setup.
 	LDA.l !fx_nmipal+<class>
-	AND.w #$00FF
-	CMP.w #$0008
+	CMP.b #$08
 	BCS ?next
+	REP #$20
+	AND.w #$00FF
 	ASL
 	ASL
 	ASL
@@ -228,22 +231,19 @@ macro fx_nmi_palette(class)
 	STA $2121
 	REP #$20
 if <class> != !FX_CLASS_DYN
-	LDA.l !fx_nmi_reg
-	TAY
 	LDA.w #$2200                 ; A->B, one register: $2122
-	STA $4300,Y
+	STA $4370
 	LDA.w #((fx_class_palettes+(<class>*32))&$FFFF)
-	STA $4302,Y
+	STA $4372
 	SEP #$20
 	LDA.b #fx_class_palettes>>16
-	STA $4304,Y
+	STA $4374
 	REP #$20
 	LDA.w #32
-	STA $4305,Y
+	STA $4375
 	SEP #$20
-	LDA.l !fx_nmi_bit
+	LDA.b #$80
 	STA $420B
-	REP #$20
 else
 	SEP #$20
 	LDA.b #$00
@@ -261,15 +261,16 @@ else
 	STA $2122
 	LDA.l !fx_dyn+5
 	STA $2122
-	REP #$20
 endif
 ?next:
 endmacro
 
 fx_nmi_palettes:
+	SEP #$20
 	for class = 0..!FX_CLASS_COUNT
 		%fx_nmi_palette(!class)
 	endfor
+	REP #$20
 	LDX.w #!FX_CLASS_COUNT
 	RTS
 
@@ -284,8 +285,17 @@ fx_cgram_upload:
 	LDA.l !fx_magic
 	CMP.w #!FX_MAGIC
 	BNE .unchanged
-	LDA.l !core_dma_ready
+	; Match Frieza's rule: core publishes ready just before the native
+	; TSB $EC. A vblank in that gap keeps the old OAM and palette map.
+	LDA $EC
+	LSR
+	BCS .completed
+	AND.w #$0004
 	BEQ .lag
+	BRA .noOam
+.completed
+	LDA.l !core_dma_ready
+	BEQ .noOam
 	LDA.l !fx_palfree
 	AND.w #$0100
 	STA.l !fx_pal_live
@@ -296,11 +306,15 @@ fx_cgram_upload:
 	STA.l !fx_nmipal+2
 	LDA.l !fx_clspal+4
 	STA.l !fx_nmipal+4
-	SEP #$20
-	LDA.l !fx_clspal+6
-	STA.l !fx_nmipal+6
-	REP #$20
+	; Overlap class 5 to copy the seventh byte without two width switches.
+	LDA.l !fx_clspal+5
+	STA.l !fx_nmipal+5
 	BRA .send
+.noOam
+	; A native-only OAM upload (e.g. ring icons) no longer uses our map.
+	LDA.w #0
+	STA.l !fx_pal_live
+	BRA .unchanged
 .lag
 	LDA.l !fx_pal_live
 	BEQ .unchanged
@@ -323,16 +337,11 @@ fx_cgram_upload:
 	LDA.w #0
 	LDY.w #512
 	JSL core_cgram_native
-+	; The old late-NMI uploader uses fx_s. Save those two words because
-	; this early hook also runs while the interrupted frame owns fx_s.
++
 .sent
-	LDA.l !fx_nmi_reg : PHA
-	LDA.l !fx_nmi_bit : PHA
-	LDA.w #$0070 : STA.l !fx_nmi_reg
-	LDA.w #$0080 : STA.l !fx_nmi_bit
+	; Palettes run only in the field's early hook, always on channel 7.
+	; No shared frame scratch or channel selection is needed here.
 	JSR fx_nmi_palettes
-	PLA : STA.l !fx_nmi_bit
-	PLA : STA.l !fx_nmi_reg
 	SEC
 	RTL
 

@@ -119,6 +119,12 @@ discs, three orbs, an eruption every third attack (65-frame warning, radius
   technique): about 2 lines each instead of 15.5 through `fz_spr_draw`
   and `core_oam_meta`, which made every dash lag (12 lag frames in the
   battle preset's 900, 9 during dashes; now 4, none during dashes).
+- **Death Orbs**: FX retains a complete resident ball while the next
+  size/texture uploads, including the warning-to-projectile handoff. The
+  `transients` recording now checks those requests as well as Frieza's own
+  sprites; the former gaps at pictures 132 and 157 are covered. FX's
+  palette latch also uses native `$EC` bit 0 as well as `core_dma_ready`,
+  matching Frieza's completed-frame rule (see [fx.md](fx.md)).
 
 ### Broken floor
 
@@ -243,6 +249,23 @@ normal palette is restored when the checker ends, and both world palettes
 552). Field sprite scratch holds only world-local pointers/flags; field
 initialization invalidates it.
 
+`frieza_world_cgram_upload` runs in core's world palette hook before the
+native transfer. `fzy_cgshow` (`fz_spr_res1`, world-only WRAM alias) latches
+the displayed OBJ/backdrop ownership after a completed flyby NMI. If
+either `$EC` bit 0 or `core_dma_ready` is missing, only the native BG half
+is uploaded; the flyby's OBJ colours stay in CGRAM. Near impact, colour
+zero stays too. Completed frames retain the existing native/world/Frieza
+upload order, and restoration clears the latch. No extra DMA is added to
+a completed frame, and no frame-thread palette copy is used.
+
+`flyby-lag` forces eleven incomplete NMIs in each form, covering the
+small orb, growing/thrown sphere, distant backdrop, checker and departure.
+It alternates both native palette buffers and exercises the ready-before-
+`$EC` gap. The original cartridge loses OBJ colours in all eleven transfers
+and the distant backdrop once; the fixed cartridge loses neither, and
+every native BG byte still matches its selected source. All transfers
+remain in vblank, without overflow or unforced lag.
+
 The `flyby` case captures raw PPU frames at arrival, growth, full size,
 throw, impact, every checker frame and departure. A private
 `FRIEZA_FLYBY_HIDE` build captures the identical native flight underneath;
@@ -255,9 +278,11 @@ background, no lag/OBJ overflow, vblank DMA and no deferred art uploads.
 
 Measured on Mesen (both forms, 549 visible-clock frames each): **zero lag,
 OBJ overflow, deferred uploads or active-display DMA**. Complete world NMI
-peaks at **34.89 of 37 vblank lines**. Frieza logic averages 2.96 lines
-(max 6.75), OAM drawing 8.31 (max 39.80, including interrupt time), and its
-NMI 6.16 (max 20.43). Idle world logic is 0.139 lines (max 0.24), using the
+peaks at **35.00 of 37 vblank lines** with the lag-palette hook. Frieza logic
+averages 2.96 lines (max 6.74), OAM drawing 8.31 (max 39.82, including
+interrupt time), and its NMI 6.23 (max 20.49). The idle world palette hook
+costs 0.279 lines when the native transfer is enabled. Idle world logic is
+0.154 lines (max 0.24), using the
 `FZI_WORLD_IDLE` WRAM cache cleared by every `fz_wake`; the idle draw and
 NMI entries are about 0.15 and 0.12 lines each. Field rendering and the
 field Death Ball renderer are unchanged.
@@ -442,6 +467,27 @@ path. The full Tree sequence reaches every scene at the same frame as the
 pre-change baseline, with no added lag. Strict build, Frieza, UI and the
 six-scene performance suite pass.
 
+### The Tree's brightness fades
+
+`fz_tree_nmi` latches the completed picture's brightness ceiling in
+`fzt_showbright` (`$32:769B`); WRAM `FZI_BRIGHT` marks it valid. The
+module-owned hook at `C0:C15F` applies that ceiling at the field NMI's final
+INIDISP write. Native forced blank and darker native fades win. `$E6`
+stays unchanged, so the wake ramp can rise and later door/menu fades keep
+their own state. Lag vblanks retain the displayed ceiling. The next
+completed frame without a ceiling, or release of scene SRAM, clears it.
+
+The `tree` case observes INIDISP after the final write and checks both
+browser ramps (48-frame return, 40-frame wake), intermediate levels,
+unchanged `$E6`, native blanking and restoration. Both ramps expose all
+15 levels below full brightness, with no wrong frames. The hook has a
+short WRAM-only idle path (0.105 scanlines including the native write),
+using the sign bit for `FZI_BRIGHT`; `FZI_SRAM` moves to bit 6. Smaller FX
+palette-map copies and fixed channel-7 uploads reduce NMI cost. Fixed
+offsets in FX's cache search and six-cell assembly setup also remove the
+extra transformation miss seen at the initial checkpoint: `transform-grass`
+is back to zero, and charge remains at its baseline 17.
+
 ## Resources
 
 | Resource | Use |
@@ -577,13 +623,47 @@ dialogue window does).
 | `beast` | preset `beast` (map 253, the fed Beast started, Super Saiyan) through combat's receive list: 600 frames untouched as in the browser (the eruption's 210 lands whole at frame 261, Goku's HP 789 at 600 as the reference), then damage queued at the native consumer: 600 takes 110 (140 in base form, the permanent form lifted), nothing during the grace, 50 and the eruption's pending 300 land whole. Skipped while the build has no `modules_combat_receive` |
 | `floor` | test build with flight and destroy (skipped without them): the chained `!FLIGHT_MISSING_FLOOR` through the test mailbox (`FZPB+$20`): the Sandship's breach centre is a hole (destroy's answer through Frieza's), 120 px off is floor; a broken deck cell after seven fractures is a hole at the deck's layer (Frieza's), floor at the other layer, an unbroken cell is floor |
 | `flyby` | preset `fortress` with the deck's Death Ball thrown (stage theft): event D8 arms the flyby and runs 1F04; the flyby starts with `$8C` in world flight, the impact (age 404) makes the Death Ball's crisis (`$13`), its end after 1F04 sets the eighth Ball and the Tree pursuit, the overhead view gets the rear-view request (`$F8` = `$90`), then Kai's warning (the crisis notified; the radio shows the aftermath); paired browser picture comparisons in both forms, all eight checker ages, lag, OAM overflow and vblank-upload checks |
-| `cost-world` | preset `flight` (nothing of Frieza's in flight): `frieza_world_frame` at most 0.25 lines on average, 0.5 at peak |
-| `cost` | Potos with Goku present: the module settles on the quiet path; field frame at most 0.36 lines on average and 2.5 at peak, vblank at most 0.13, the palette transfer's gate at most 0.06 (from the dispatcher's JSL to the next instruction, master clocks) |
+| `flyby-lag` | eleven incomplete world NMIs per form, both native palette sources and both core-ready states: displayed OBJ/backdrop colours preserved, native BG bytes current, restoration, no added unforced lag or unsafe DMA |
+| `cost-world` | preset `flight` (nothing of Frieza's in flight), native palette transfer enabled: `frieza_world_frame` at most 0.26 lines on average, 0.5 at peak; world palette hook at most 0.3 lines |
+| `cost` | Potos with Goku present: the module settles on the quiet path; field frame at most 0.36 lines on average and 2.5 at peak, vblank at most 0.13, the palette transfer's gate at most 0.06, final brightness hook at most 0.3 (master clocks, both native mirrors) |
 | `vram` | preset `frieza`: not drawn while another owner holds `!VRAM_SCENE_OBJ` or the scene SRAM (`!SCENE_VEGETA` planted), drawn and both claimed once free (owners 6 and `!SCENE_FRIEZA`), the VRAM given back when the scene ends |
 | `door` | door 3FC from the `intro` preset: tile y 18 beside the living Emperor, 30 (native) after his death |
-| `tree` | preset `tree`: event 5F8 end to end with B tapped every 12 frames: every Tree scene on maps 236 and 198 in order, the Tree complete after the native tail; shots at chosen ages, Frieza's sprite boxes and a trace of the vista's state; browser cliff pixel comparisons, BG3 cutoff, preserved HDMA/HUD data, restoration and vblank cost |
+| `tree` | preset `tree`: event 5F8 end to end with B tapped every 12 frames: every Tree scene on maps 236 and 198 in order, the Tree complete after the native tail; shots at chosen ages, Frieza's sprite boxes and a trace of the vista's state; browser cliff pixel comparisons, BG3 cutoff, preserved HDMA/HUD data, visible return/wake ramps after the final INIDISP write, native brightness restoration and vblank cost |
 | `effects` | scenes no preset reaches, set up by `scenarios.mjs` on a preset in the browser (`capture.mjs`: restore the snapshot with an edited `goku.frieza`, run, screenshot into `.local/snes-ref-frieza/`) and replayed on the cartridge: Popoi's end 95-99%, the steal without the altar 99.5%, the empower orbs 97-99.9%, the eruption 93-99%, the collapse 87-90% after its first alarm; the Death Ball, Fanha's beam and the auras show where fx's kinds differ |
 | `music` | Frieza's battle theme becomes the current song (`$1E05 = $3C`); reports the load's stall |
+
+### Remaining scene regression checks (2026-10-21)
+
+Compared with the pre-task cartridge at `c8295de`:
+
+| Regression | Before | Fixed |
+| --- | --- | --- |
+| Battle Death Orb coverage | Gaps at pictures 132, 157 and 172 | Zero missing requested orbs in all five transient captures |
+| FX ready-before-native-completion palette gap | Five injected vblanks change the displayed map/colours (10 failed observations) | Displayed map and colours retained; completed frames and release still work |
+| Tree return/wake brightness | 281 wrong final INIDISP observations, no intermediate fades | Zero wrong observations; both ramps show all 15 levels below full brightness, `$E6` untouched |
+| World flyby lag palettes, each form | 11/11 OBJ transfers wrong, one distant backdrop lost | Zero wrong OBJ/BG/backdrop transfers, both native buffers covered |
+
+`node snes/test/debug/hunt.mjs frieza thanatos battle flight --frames=480 --browser`
+reports these flagged-frame counts. This heuristic also counts intentional
+animation, flicker and quakes; the module's transient checks distinguish
+Frieza/FX faults from those changes.
+
+| Preset | Cartridge before → after | Browser before → after |
+| --- | --- | --- |
+| frieza | 0 → 0 | 3 → 3 |
+| thanatos | 0 → 0 | 3 → 3 |
+| battle | 103 → 100 | 146 → 146 |
+| flight | 478 → 478 | 478 → 478 |
+
+All 13 gameplay cases retain their baseline miss counts: charge 17,
+teleport 3, flight 2/2/1, and all others zero, including transformation.
+The six perf presets pass, including 300/304 completion samples for flight;
+the earlier missing-flight-samples report does not reproduce. All 36
+Frieza results, 15 world cases, 11 flight cases, 37 combat cases,
+9 shipping FX cases, 18 focus scenes and 29 assembled FX checks pass.
+Flight additionally matches 289,324 terrain tiles and 19,996 teleport
+queries against the browser. The optional `clash-colour` diagnostic has
+the identical baseline failure described in [fx.md](fx.md).
 
 ## Known differences
 
@@ -640,29 +720,11 @@ dialogue window does).
 
 ## Requests
 
-- **Perf harness / integrator**: investigate `perf/preset__flight`'s missing
-  completion samples (0/304 on both this cartridge and the pre-task ROM).
-  This work changes no core files; the direct world/flyby timing checks pass.
 - **fx**: the cinematic red Death Ball is supplied (`FX_DBALL_CINEMATIC`).
   The cheaper polygon aura request remains (about 100 lines a frame during
-  the surge in the earlier measurement). The Death Orb's warning above
-  Frieza's hand vanishes for one frame when it grows from 16 to 32 px (its
-  new cells are uploaded first; `battle` preset, pictures 132 and 157 with
-  exact frames). `fx_cgram_upload` takes `!core_dma_ready` alone as a
-  completed frame; between core's frame hook and the loop's `TSB $EC`
-  (`00:B077`) a vblank uploads no OAM, so the palettes latched there belong
-  to the next OAM (`frieza_cgram_upload` also tests `$EC & 9`).
-- **core / world**: the world NMI sends its palette on lag vblanks too
-  (`C0:8A79` while `$E3` bit 6), and `frieza_world_nmi` writes the flyby's
-  palettes 5-7 only for completed world frames: the field's lag-palette
-  pattern. The flyby measures no lag frames; a world counterpart of
-  `modules_cgram_upload` would close it.
-- **Tree vista brightness**: `fz_tree_nmi` forces INIDISP for tree-return's
-  dim to black and tree-wake's fade-in, but the field NMI writes `$E6` to
-  `$2100` right after the module callbacks (`C0:C15F`), so those fades never
-  show (the `tree` case's k18/k19 pictures are at full brightness). A
-  brightness ceiling on `$E6` in frame code (as `death.asm`) or a core hook
-  after `C15F` would restore them.
+  the surge in the earlier measurement). The Death Orb cell-swap gaps and
+  palette-latch race are fixed; the field flame now uses resident OBJ art
+  in the shipping build, as described in [fx.md](fx.md).
 - **flight**: none left; `bind.asm` binds `!FLIGHT_API_CAN_LAND`,
   `_CAN_LAND_T` and `!FLIGHT_API_CAMERA` when flight is built in.
 - **ending / orbit (scene SRAM)**: Frieza releases `!SRAM_WORK_SCENE` on the

@@ -224,6 +224,9 @@ endif
 fx_reset_scene:
 	JSR fx_clear_old_slots
 	JSR fx_clear_rbits
+	LDA.w #$FFFF
+	STA.l !fx_dball_last
+	STA.l !fx_dball_last+32
 	LDA.w #$0000
 	STA.l !fx_cpend
 	STA.l !fx_cfail
@@ -505,18 +508,17 @@ endif
 	REP #$20
 .done
 	STZ !d_tmp+2                 ; used: bit5..0 = palettes 7..2
-	LDX.w #14
-.collect
-	ASL !d_tmp+2
-	LDA !d_tiles,X
-	AND.w #$00FF
-	CMP.w #$0080
-	BCS +
-	INC !d_tmp+2
-+	DEX
-	DEX
-	CPX.w #4
-	BCS .collect
+	; Marks are bytes: $FF unused, 0..14 seen. Six fixed rows need
+	; neither a word mask/comparison nor an indexed loop.
+	SEP #$20
+	for palette = 0..6
+		ASL !d_tmp+2
+		LDA !d_tiles+14-(!palette*2)
+		BMI +
+		INC !d_tmp+2
++
+	endfor
+	REP #$20
 	LDA !d_tmp+2
 	ASL
 	ASL

@@ -265,7 +265,11 @@ front group, hidden slot and obsolete tight-vblank flag with an independent
 palette-set model, including palettes first appearing after sprite 64.
 
 The palette hook latches `fx_clspal` into `fx_nmipal` only for a completed
-frame (`core_dma_ready`). On window/lag vblanks the previous OAM remains
+frame (`core_dma_ready` **and** native `$EC` bit 0), matching
+`frieza_cgram_upload`. Core publishes its ready word just before the native
+`TSB $EC`; an NMI in that gap must keep the displayed palette map. A
+native-only OAM upload (`$EC` bit 3 without a completed module frame)
+retires FX's palette ownership. On window/lag vblanks the previous OAM remains
 displayed: native BG colours are refreshed and OBJ colours are retained.
 If a scene handler replaced CGRAM, FX reapplies the displayed palette map.
 UI's scouter shares unused colours from this frame's `fx_clspal`, not the
@@ -403,8 +407,12 @@ on the subscreen**: their own colours replace the fixed colour there, so
 the fighters, collision ball and HUD retain their priority. The normal
 field subscreen shadow (`$22`) and window registers are restored when the
 pair ends, including a transition to a single polygon or the ring menu.
-`clash-colour.lua` demonstrates why the mirror matters: clipping alone
-blackens 879 native sprite pixels; the subscreen restores all 879 exactly.
+`clash-colour.lua` is an optional hardware feasibility probe, excluded
+from the default suite. Its older exact-restoration expectation includes
+FX edge sprites as well as native pixels. With the current palette rules,
+both the pre-scene-fix cartridge (`c8295de`) and the fixed cartridge report
+879 of 1,098 pixels restored, zero remaining black pixels, and fail that
+one assertion identically. The shipping `clash` renderer's tests pass.
 
 The pair uses one middle-ramp colour per wave and eight-line outline
 steps. It gives the second wave its full breadth and correct purple/gold
@@ -490,6 +498,34 @@ to the art's rim violet. The outline matches the browser's exactly; the
 art's pink patches become tints of their rows, and the sparks outside the
 circle are not drawn. While the game's own colour math is on (`$23` not
 zero) the ball keeps it outside and shows no rim.
+
+**Death Ball OBJ transitions** (`fx_dball_obj`): each style remembers its
+last complete resident assembly in the unused sixteenth cache words
+(`$31:785E` / `$31:787E`). Before resolving a different size or texture,
+FX protects that assembly from eviction. Until every replacement cell has
+uploaded, it continues drawing the resident picture at the requested
+position. The new size/texture may appear one vblank later; it never shows
+a partial four-cell ball. A cold first ball waits for its cells, avoiding
+speculative OAM pointing at stale VRAM. Scene resets invalidate both hints.
+This also keeps the orb visible when the warning becomes a projectile.
+
+`deathball` forces zero/partial cell budgets and deferred NMIs for both
+styles. `palette-latch` forces the ready-before-`TSB $EC` gap with a changed
+pending palette allocation and checks the displayed map and colours. The
+palette uploader scans unused classes in byte mode and copies the seven
+latched palette bytes with overlapping words. Its only caller is the field
+hook, so palette DMA uses channel 7 directly without saving frame scratch.
+The native OAM palette scan collects its six byte marks without an indexed
+word loop. The cache's fifteen fixed candidates preserve first-free,
+current-frame protection, wraparound ages and later-slot tie breaking;
+the full replacement probe falls from 1,267 to 1,097 CPU cycles. Assembly
+setup uses its six fixed cell offsets without saving both index registers
+per lookup. All generated assemblies are checked with resident and missing
+cells, including every flip variant. These reductions keep the handshake
+and Tree brightness fixes within the gameplay frame budget.
+Frieza's `transients` case additionally records
+Death Ball requests at their client and checks every uploaded OAM after
+the two cold-cache frames, including the warning-to-projectile handoff.
 
 **Ki aura (shipping build)** (`fx_k_aura_obj`): a 32×48 flame made of six
 16×16 sprites sharing three mirrored cells, or two cells for a 16×32

@@ -87,6 +87,49 @@ test('hash collisions and stale evicted hints cannot select the wrong tile',()=>
   assert.equal(full.read(0x3C),1);
 });
 
+test('replacement protects this frame across every slot, age wrap and ties',t=>{
+  let cycles=0;
+  for(let victim=0;victim<15;victim++){
+    const c=cache();
+    for(let i=0;i<15;i++)c.resident(i,i,1);
+    c.word(FRAME,1);c.word(USED+victim*2,0xFFFE);c.word(BUDGET,1);
+    const r=c.get(200);
+    assert(!r.carry);assert.equal(r.a,0x3600|tile(victim));
+    for(let i=0;i<15;i++)assert.equal(c.read(CELL+i*2),i===victim?200:i);
+    cycles+=r.cycles;
+  }
+  const tied=cache();for(let i=0;i<15;i++)tied.resident(i,i,3);
+  tied.word(BUDGET,1);
+  assert.equal(tied.get(200).a,0x3600|tile(14),'equal ages retain the later-slot tie break');
+  const protectedCache=cache();for(let i=0;i<15;i++)protectedCache.resident(i,i,17);
+  protectedCache.word(BUDGET,1);
+  assert(protectedCache.get(200).carry,'a completely protected cache cannot evict');
+  assert.equal(protectedCache.read(BUDGET),1);assert.equal(protectedCache.read(PENDING),0);
+  t.diagnostic(`full replacement scan: ${Math.round(cycles/15)} CPU cycles including allocation`);
+});
+
+test('assembly setup resolves every generated cell and preserves missing flip variants',()=>{
+  const ptr=hiromToPc(at('fx_asm_ptr')),data=hiromToPc(at('fx_asm_data'));
+  for(let id=0;id<(data-ptr)/2;id++)for(const missing of [false,true]){
+    const c=cache(),offset=rom.readUInt16LE(ptr+id*2),record=data+offset;
+    const parts=rom[record],n=rom[record+1],expected=[];
+    assert(n<=6,'assembly exceeds its six-cell frame capacity');
+    for(let i=0;i<n;i++){
+      const word=rom.readUInt16LE(record+6+i*2);
+      if(!missing)c.resident(i,word&511);
+      expected.push(missing?0xFFFF:c.get(word).a);
+    }
+    c.ram.writeUInt16LE(0xFFFF,DP+0x40);
+    const result=c.call('fx_emit_setup',id);
+    assert.equal(result.carry,parts===0);
+    if(!parts)continue;
+    assert.equal(c.ram.readUInt16LE(DP+0x84),parts);
+    assert.equal(c.ram.readUInt16LE(DP+0x86),offset+6+n*2);
+    for(let i=0;i<n;i++)for(let flip=0;flip<4;flip++)
+      assert.equal(c.ram.readUInt16LE(DP+0x54+i*8+flip*2),missing?0xFFFF:expected[i]|[0,0x4000,0x8000,0xC000][flip],`assembly ${id}, cell ${i}, flip ${flip}`);
+  }
+});
+
 test('pending uploads and exhausted palettes never draw a cached cell',()=>{
   for(let slot=0;slot<15;slot++){
     const c=cache();c.resident(slot,slot);c.word(FAIL,1<<slot);

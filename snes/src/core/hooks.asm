@@ -16,6 +16,11 @@
 %orig4($C0C0F0, $218D00A9)
 %hijack($C0C0F0, core_cgram_upload, 4, core)
 
+; World palette transfer, after its native enable/parity gates. Preserve
+; module colours on lag vblanks too (core/cgram.asm).
+%orig4($C08A89, $0FD02289)
+%hijack($C08A89, core_world_cgram_upload, 4, core)
+
 ; Field loop frame end (00:B073 SEP #$20 / LDA #$01).
 %orig4($C0B073, $01A920E2)
 %hijack_jsl($C0B073, core_field_frame, 4, core)
