@@ -452,24 +452,89 @@ batch; edge/radio clipping uses individual pieces. A conservative eight-line
 histogram includes native and FX sprites and admits no UI piece that could
 exceed 34 slivers (also keeping these 16/32-pixel sprites below 32 per line).
 
-CPU work begins only before line 160, must finish preparation before 176,
-and starts no further number/reticle after line 192. A missed-frame check
-prevents a wrapped beam counter from being mistaken for spare time.
-Numbers get priority over corners. This is an intentional hardware limit:
-heavy charge FX in the crowded Rabite fixture can suppress all readouts;
-ordinary crowded frames may show only some actors/pieces, and a frame that
-finishes late shows no reading (after a real cast, with the native Analyzer
-window up, the reading showed on 158 of the 249 frames until it expired; the
-blink-in hides 12, the rest were frames whose readout pass started after
-line 160). Overlapping
-readouts also obey OBJ ordering, so a later sprite's outline can obscure
-another reading's green pixel (the browser merges those pixels). The pixel
-test permits only that proven green/outline overlap, with all other pixels
-required to match.
+The full pass (`ui_sc_draw_frame`, right after `fx_frame`) begins only
+before line 160, must finish preparation before 176, and starts no further
+number/reticle after line 192. A missed-frame check prevents a wrapped beam
+counter from being mistaken for spare time. Numbers get priority over
+corners.
 
-No core files or VRAM-region definitions changed. Constant full readout
-coverage during the heaviest FX remains a fidelity limitation of this shared
-cache/CPU design, not a claim made by the tests.
+**Lite pass** (`ui_sc_lite`). In a crowded field the frame's own work ends
+near line 180, so the full pass rarely ran: in the crowded focus scene (five
+Rabites and the party with readings, L held while walking) readings showed
+in 9 of 168 frames. A frame too late for the full pass, or one that already
+missed its vblank, now runs a lite pass after every other module,
+`audio_frame` included (the readouts request no sound). An on-time frame
+gets it only when the readouts' turn comes before line 204, so a number can
+still fit. `ui_sc_draw_frame` points
+`modules_field_frame`'s own return, just above its own on the stack, at
+`ui_sc_lite_tail`. The tail runs the pass and returns to the core. It does
+so only when `modules_field_frame` is the caller (checked by return
+address). There is no call site in `modules.asm`: frames without a late
+reading run no extra instruction. An earlier version called the pass at the
+end of `modules_field_frame` behind an 8-cycle flag test. Merged with the
+hit feel and the orbit, even that cost the gameplay `charge` case 13 → 16
+CPU misses and the orbit `montage` 0 → 2 lagged frames, all frames already
+at the edge. The lite pass repeats the last full pass's costly decisions
+instead of skipping them: its OBJ histogram (saved before its own pieces, with four
+sprites of headroom per eight-line bin for what moved since) and its
+palette. It skips aging, power and the OAM scan. It needs a full pass within
+the last 60 field frames that chose a palette on the same map and with the
+same radio clipping, the Analyzer's owner active and the field shown. Ages
+and blink follow the full pass's counters plus the frames since it aged. An
+actor that died or left is skipped. Only unclipped pieces repeat: first
+every whole number, in front slots, then every reticle as a rear batch.
+Cells resolve as in the full pass. A missing one is leased, one a pass,
+only when the frame is on time with lines to spare and a cache entry is
+free, so no FX cell is evicted. Each piece starts only if it and the core's
+frame end (up to 6 lines, plus half a line per front entry it appends) can
+finish by line 224: a number before line 209, a reticle before 212, each
+less half the front entries so far; a lease before 200 (with the cache's
+frame setup, the search and the upload, a number then takes up to 18
+lines). A frame that already missed its vblank has a whole frame before the
+next one, so there the pass runs to completion.
+
+The lite pass keeps the full pass's palette unless an FX class without a
+spare tail took it this frame. It then chooses again from the palettes free
+in the last scan and in this frame's FX classes, or a spare tail. Both
+passes now try free palettes in FX's order reversed: 4, 5, 6, 7, then 2 and
+3. FX maps its classes afresh each frame without seeing the readouts, so
+the readouts keep the palette FX takes last. OBJ colour math reaches 4-7
+only in FX's flash, which brightens the native sprites there too. The fx
+`focus-scenes` palette check skips a spare tail's two colours, which a
+reading may share.
+
+Results, against the build before the lite pass. Lag is before → after for
+the focus scenes, and without → with readings for the readout budget's
+runs:
+
+| Scene | Frames with readings | All readings | Lag |
+| --- | --- | --- | --- |
+| Crowded focus scene (169 frames) | 9 → 112 | 0 → 62 | 11 → 11 |
+| fx `focus-scenes` `rabite-analyzer` | 9 → 111 of 168 | | 11 → 11 |
+| `readoutBudget`, ordinary field (200) | 132 → 189 | 58 → 90 | 0 → 2 |
+| `readoutBudget`, charging (200) | 2 → 88 | 0 → 6 | 13 → 16 |
+| Real cast (`analyzerCast`) | 158 → 194 of 249 (the blink-in hides 12) | | |
+
+Charging, the frame is rarely early enough for either pass. Lag there moves
+by a few frames either way, because the native RNG depends on idle CPU time.
+With readings the charging fixture lagged 16 frames against 13 without, within
+the readout budget's allowance (the perf suite's 3%, 6 frames). None of its
+missed frames ran the lite pass on time: each was either late before the
+readouts or missed its vblank before the tail. The full pass stayed in its
+place after `fx_frame`. Moved last for every frame, it cost the gameplay
+`charge` case one more CPU miss (14 per 240): the time-dependent
+`destroy_late_frame` beam continuation would then run before it. Gameplay
+CPU misses, the orbit `montage` and the fx scenes' lag are unchanged. Full
+coverage of every reading in every frame is not reached. In a crowded frame
+each reading costs about 6 lines (its number 3.5, its reticle 2, the checks
+0.4), and a quarter of these frames leave fewer than 10 lines.
+
+Overlapping readouts also obey OBJ ordering, so a later sprite's outline can
+obscure another reading's green pixel (the browser merges those pixels). The
+pixel test permits only that proven green/outline overlap, with all other
+pixels required to match.
+
+No core file or VRAM-region definition changed.
 
 ## Goku's STATUS page (`status.asm`)
 
@@ -793,6 +858,13 @@ cache cells. In the paired fixture, with readings landed on all five actors:
 | --- | --- | --- | --- | --- |
 | Ordinary field | 37.91 / 75.69 | 132 / 58 | 0 → 2 | 14 / 28 |
 | Charging with FX | 2.03 / 50.02 | 2 / 0 | 14 → 14 | 14 / 28 |
+| Ordinary field, lite pass | 50.77 / 77.49 | 189 / 90 | 0 → 2 | 14 / 28 |
+| Charging, lite pass | 19.01 / 62.37 | 88 / 6 | 13 → 16 | 16 / 32 |
+
+With the lite pass, the readout CPU is the full pass (to `destroy_late_frame`)
+plus the lite pass (from `ui_sc_lite_tail` to the frame's end). It is spare
+time only: each piece starts only if the frame can still end before its
+vblank.
 
 ## Core requests
 
@@ -817,8 +889,10 @@ cache cells. In the paired fixture, with readings landed on all five actors:
   before Goku's cell DMA) is applied by `snes/tools/order-dispatch.mjs` on
   the integration merge.
 - **FastROM** (done on main): the UI code runs in bank `$AC` at 3.58 MHz.
-- **Analyzer readouts**: implemented without core changes through FX cache
-  leases and the existing front-OAM contract. Full coverage under heavy FX
-  would need more simultaneously resident OBJ cells and additional CPU
-  headroom; current behavior explicitly yields rather than claiming that
-  coverage. No unverified free VRAM region is assumed.
+- **Analyzer readouts**: implemented without core changes, through FX
+  cache leases and the existing front-OAM contract. The lite pass runs on
+  `modules_field_frame`'s own return (`ui_sc_lite_tail`), only in frames
+  that need it. Full coverage under heavy FX would need more
+  simultaneously resident OBJ cells and additional CPU headroom. The lite
+  pass yields rather than claiming that coverage. No unverified free VRAM
+  region is assumed.

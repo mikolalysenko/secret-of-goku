@@ -26,12 +26,20 @@
 !sd_pass = $34
 !sd_tile = $36
 !sd_hist = $38                   ; 32 bytes: conservative 8-line half-sliver counts
-!sd_size = $58
+!sd_fxready = $58                ; FX cache frame setup done (ui_sc_fx_ready)
+!sd_ageoff = $5A                 ; lite pass: frames since the readings last aged
+!sd_lite = $5C                   ; nonzero in the lite pass (ui_sc_cell leases on time)
+!sd_size = $5E
 macro sc_far(target)
 	PHD : PEA $0000 : PLD
 	JSL <target>
 	PLD
 endmacro
+
+; The lite pass is armed only before this line (on time): the modules after
+; the full pass, the lite pass's checks and one number with the core's frame
+; end need the rest (ui_sc_lite_time). Later frames run no extra instruction.
+!UI_SC_LITE_ARM = 204
 
 ui_sc_draw_frame:
 	LDA.w !ui_sc&$FFFF
@@ -50,10 +58,38 @@ ui_sc_draw_frame:
 	BNE .yield
 	LDA.w $00EC : AND.w #$40FE : BNE .yield
 	JSL modules_field_current
-	BCC .yield
+	BCC .late                       ; a missed vblank: the lite pass, until the next
 	JSR ui_sc_vline
 	CMP.w #160
 	BCC +
+	CMP.w #!UI_SC_LITE_ARM          ; too late for the full pass; the lite pass
+	BCC .late                       ; only while a number could still fit after
+	JMP .yield                      ; the modules that follow
+.late
+	; Too late for the full pass: the lite pass runs after every other
+	; module, on modules_field_frame's own return (just above ours on the
+	; stack), which goes through ui_sc_lite_tail. Frames without a late
+	; reading run no extra instruction. Only for modules_field_frame's call.
+	LDA $02,S                        ; our caller's bank
+	XBA : AND.w #$00FF
+	CMP.w #modules_field_frame>>16
+	BNE .yield
+	LDA $01,S
+	CMP.w #modules_field_frame&$FFFF
+	BCC .yield
+	CMP.w #modules_field_current&$FFFF
+	BCS .yield
+	LDA $04,S
+	STA.l !sc_ret
+	LDA $05,S
+	STA.l !sc_ret+1
+	LDA.w #(ui_sc_lite_tail-1)&$FFFF
+	STA $04,S
+	SEP #$20
+	LDA.b #ui_sc_lite_tail>>16
+	STA $06,S
+	REP #$20
+	RTL
 .yield
 	LDA.w #!UISC_DRAW
 	TRB.w !ui_sc&$FFFF
@@ -72,29 +108,28 @@ ui_sc_draw_frame:
 	TSC : SEC : SBC.w #!sd_size : TCS : INC : TCD
 	STZ !sd_uploads
 	STZ !sd_pass
+	STZ !sd_lite
 	STZ.w !ui_front_n&$FFFF
 	LDA.l !core_dma_count
 	BNE +
 	STZ.w !sc_pending&$FFFF
 +	LDA.w !sc_pending&$FFFF
 	STA !sd_wait
-	LDA.l !fx_frame
-	CMP.w !sc_lastfx&$FFFF
-	BNE +
-	INC
-	STA.l !fx_frame
-+	STA.w !sc_lastfx&$FFFF
-	%sc_far(fx_overlay_begin)        ; A = cache entries the game claims
-	AND.w !sc_pending&$FFFF          ; a deferred upload would land after its stream
-	BEQ +
-	JSR ui_sc_cancel_uploads
-+	LDA.w #!UISC_RESIDENT : TSB.w !ui_sc&$FFFF
+	JSR ui_sc_fx_ready
+	LDA.w #!UISC_RESIDENT : TSB.w !ui_sc&$FFFF
 	JSR ui_sc_limits
+	JSR ui_sc_lite_save              ; every other OBJ, for the lite pass
 	JSR ui_sc_palette
 	LDA.w !sc_pal&$FFFF
 	BNE +
+	LDA.w #$FFFF                     ; no palette: no lite pass either
+	STA.l !sc_lstamp
 	JMP .done
-+	STZ !sd_actor
++	LDA.w !ui_frame&$FFFF            ; the lite pass may repeat these limits
+	STA.l !sc_lstamp                 ; and this palette
+	LDA.w !ui_vis&$FFFF
+	STA.l !sc_lvis
+	STZ !sd_actor
 .actor
 	LDA !sd_actor : XBA : AND.w #$001E : TAY
 	STY !sd_record
@@ -190,6 +225,434 @@ ui_sc_draw_frame:
 	PLD
 	RTL
 
+; ---------------------------------------------------------------------------
+; Lite pass: a field frame too late for the full pass (it starts at line
+; 160 or later), or one past a missed vblank, still shows the readings. It
+; runs last (ui_sc_lite_tail), so it sees the time every module left.
+; In a crowded field the frame's own work ends near line 180 and the full
+; pass would not fit. The lite pass repeats the last full pass's costly
+; decisions instead: its histogram of every other OBJ (!sc_lhist, with
+; !UI_SC_LITE_ROOM sprites of headroom per bin for what moved since) and
+; its palette (chosen again when one of this frame's FX classes took it,
+; ui_sc_lite_palette). It skips aging and power recalculation. Cells resolve
+; as in the full pass (ui_sc_cell); a missing one is leased, one a pass, on
+; time with lines to spare and only into a free entry. Valid for
+; !UI_SC_LITE_FRAMES field frames after a full pass chose a palette, on the
+; same map with the same radio clipping, while the Analyzer's owner is
+; active and the field is shown. Ages and blink follow the full pass's
+; counters. Only readings that need no clipping are repeated (the full pass
+; draws screen edges and the radio's mask): first every number, then the
+; reticles behind the native sprites. A piece starts only while the frame
+; can still end before its vblank (ui_sc_lite_time), or in the vblank after
+; a missed one.
+!UI_SC_LITE_FRAMES = 60
+!UI_SC_LITE_ROOM = 4
+!UI_SC_LITE_NUMBER = 224-6-7-2   ; last start lines (ui_sc_lite_time)
+!UI_SC_LITE_RETICLE = 224-6-6
+!UI_SC_LITE_LEASE = 224-6-18      ; a lease: the cache's frame setup, search and upload
+
+; modules_field_frame returns here, after audio_frame (the readouts request
+; no sound), in a frame ui_sc_draw_frame found too late for the full pass:
+; the lite pass, then the core's own return. M16/X16, DB = $7E, D = 0.
+ui_sc_lite_tail:
+	JSL ui_sc_lite
+	SEP #$20
+	LDA.l !sc_ret+2
+	PHA
+	REP #$20
+	LDA.l !sc_ret
+	PHA
+	RTL
+
+ui_sc_lite:
+	LDA.w #!UI_SC_LITE_NUMBER
+	JSR ui_sc_lite_time
+	BCS .no
+	LDA.l !sc_lstamp
+	CMP.w #$FFFF
+	BEQ .no
+	LDA.w !ui_frame&$FFFF
+	SEC : SBC.l !sc_lstamp
+	CMP.w #!UI_SC_LITE_FRAMES
+	BCS .no
+	LDA.w !sc_pal&$FFFF
+	BEQ .no
+	LDA.w !ui_vis&$FFFF
+	CMP.l !sc_lvis
+	BNE .no
+	JSR ui_sc_owned
+	BCC .no
+	JSR ui_sc_shown
+	BCC .no
+	JSR ui_sc_lite_palette
+	BCC .go
+.no
+	RTL
+.go
+	PHD
+	TSC : SEC : SBC.w #!sd_size : TCS : INC : TCD
+	STZ !sd_fxready
+	STZ !sd_uploads
+	LDA.w #1
+	STA !sd_lite
+	STA !sd_allow
+	LDA.w #!UISC_RESIDENT            ; its leases, as the full pass's, go at a menu
+	TSB.w !ui_sc&$FFFF
+	STZ.w !ui_front_n&$FFFF
+	LDA.l !core_dma_count
+	BNE +
+	STZ.w !sc_pending&$FFFF
++	LDA.w !sc_pending&$FFFF
+	STA !sd_wait
+	BNE +                            ; a deferred upload: settle the game's claims
+	LDA.l !fx_frame
+	CMP.w !sc_lastfx&$FFFF
+	BNE ++                           ; FX ran: its frame setup dropped them already
++	JSR ui_sc_fx_ready
+++	LDX.w #30
+-	LDA.l !sc_lhist,X
+	CLC : ADC.w #(!UI_SC_LITE_ROOM<<8)|!UI_SC_LITE_ROOM
+	STA !sd_hist,X
+	DEX : DEX
+	BPL -
+	LDA.w !ui_frame&$FFFF
+	SEC : SBC.w !sc_last&$FFFF
+	STA !sd_ageoff
+	STZ !sd_visible                  ; readings whose reticle may follow
+	STZ !sd_actor
+.actor
+	JSR ui_sc_lite_reading
+	BCC .next
+	LDA.w #!UI_SC_LITE_NUMBER
+	JSR ui_sc_lite_time
+	BCS .reticles
+	LDX !sd_actor
+	CPX.w #0
+	BNE +
+	LDA.w !sc_shown&$FFFF            ; Goku: the number the full pass committed
+	STA !sd_fmt
++	LDA !sd_fmt
+	CMP.w #$FFFF
+	BEQ .next
+	JSR ui_sc_lite_number
+	LDX !sd_record
+	LDA.l ui_sc_actor_bits,X
+	TSB !sd_visible
+.next
+	LDA !sd_actor
+	CLC : ADC.w #$0200 : STA !sd_actor
+	CMP.w #$1800
+	BCC .actor
+.reticles
+	STZ !sd_actor
+.reticle
+	LDA !sd_actor : XBA : AND.w #$001E : TAX
+	STX !sd_record
+	LDA.l ui_sc_actor_bits,X
+	AND !sd_visible
+	BEQ +
+	LDA.w #!UI_SC_LITE_RETICLE
+	JSR ui_sc_lite_time
+	BCS .done
+	LDX !sd_actor
+	LDA.w $E020,X : STA !sd_x
+	LDA.w $E022,X : STA !sd_y
+	JSR ui_sc_lite_corners
++	LDA !sd_actor
+	CLC : ADC.w #$0200 : STA !sd_actor
+	CMP.w #$1800
+	BCC .reticle
+.done
+	LDA.w !sc_numbers&$FFFF
+	ORA.w !sc_corners&$FFFF
+	BEQ +
+	LDA.w #!UISC_DRAW
+	TSB.w !ui_sc&$FFFF
++	TSC : CLC : ADC.w #!sd_size : TCS
+	PLD
+	RTL
+
+; The record of actor sd_actor -> C set with sd_record, sd_x/sd_y, sd_fmt
+; and X = the actor while its reading shows: aged in, past the blink's
+; dark half, not expired, the actor alive and active. The number and the
+; reticle check the screen bounds themselves.
+ui_sc_lite_reading:
+	LDA !sd_actor : XBA : AND.w #$001E : TAY
+	STY !sd_record
+	LDA.w !sc_age&$FFFF,Y
+	CMP.w #$FFFF
+	BEQ .no
+	AND.w #$7FFF
+	CLC : ADC !sd_ageoff
+	CMP.w #!UI_SC_LIFETIME+1
+	BCS .no                          ; expired: the full pass retires it
+	CMP.w #24
+	BCS +
+	AND.w #4
+	BEQ .no                          ; the blink-in's dark half
++	LDX !sd_actor
+	LDA.w $E000,X
+	LSR
+	BCC .no
+	LDA.w $E182,X
+	BEQ .no
+	LDA.w $E180,X
+	AND.w #$00FF
+	CMP.w #$0055
+	BEQ .no
+	CPX.w #$0600
+	BCC +
+	CMP.w #$0080
+	BCS .no
++	LDA.w $E020,X : STA !sd_x
+	LDA.w $E022,X : STA !sd_y
+	LDA.w !sc_fmt&$FFFF,Y
+	STA !sd_fmt
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
+; C clear when a cache entry is free, neither streamed nor shown by the game
+; and without an FX upload pending: the lite pass leases only then, so it
+; never evicts a cell FX keeps warm (or another readout's).
+ui_sc_free_entry:
+	LDA.l !fx_native
+	ORA.l !fx_cpend
+	STA.w !ui_tmp0&$FFFF
+	LDX.w #0
+-	LDA.l !fx_ccell,X
+	CMP.w #$FFFF
+	BNE +
+	LDA.l fx_entry_bit,X
+	AND.w !ui_tmp0&$FFFF
+	BEQ .yes
++	INX : INX
+	CPX.w #30
+	BCC -
+	SEC
+	RTS
+.yes
+	CLC
+	RTS
+
+; The FX cache's frame setup for UI leases, once a pass (the full pass
+; first, the lite pass before its first lease or when FX idled): a fresh
+; !fx_frame stamp when FX did not advance it, the game's claims for the
+; coming vblank, and no deferred upload into an entry it streams.
+ui_sc_fx_ready:
+	LDA.w #1 : STA !sd_fxready
+	LDA.l !fx_frame
+	CMP.w !sc_lastfx&$FFFF
+	BNE +
+	INC
+	STA.l !fx_frame
++	STA.w !sc_lastfx&$FFFF
+	%sc_far(fx_overlay_begin)        ; A = cache entries the game claims
+	AND.w !sc_pending&$FFFF          ; a deferred upload would land after its stream
+	BEQ +
+	JSR ui_sc_cancel_uploads
++	RTS
+
+; A = the last line a piece may start on -> C clear while it may: the piece
+; (a number with resident cells, at most 7 lines, and up to 4 more front
+; entries; a reticle, 6; a number with a lease, 18 from the lease), then
+; the core's frame end (6 lines, and half a line per front entry it
+; appends) end by line 224. Or in the vblank after a missed one (lines
+; 225-261: the next is a frame away).
+ui_sc_lite_time:
+	STA.w !ui_tmp1&$FFFF
+	JSR ui_sc_vline
+	CMP.w #225
+	BCS .yes
+	STA.w !ui_tmp0&$FFFF
+	LDA.w !core_oam_front_n&$FFFF
+	LSR
+	CLC : ADC.w !ui_tmp0&$FFFF
+	CMP.w !ui_tmp1&$FFFF
+	BCC .yes
+	SEC
+	RTS
+.yes
+	CLC
+	RTS
+
+; The last full pass's palette, unless one of this frame's FX classes took
+; it (a class with a spare tail may share it, as in ui_sc_palette: the
+; readouts write only its two unused colours). Then another, free in that
+; pass's scan of every OBJ (!sc_lmask) and of this frame's FX classes, or a
+; spare tail. C set: none this frame (the palette stays for the next).
+ui_sc_lite_palette:
+	LDA.l !fx_tick
+	CMP.w !core_tick&$FFFF
+	BNE .ok                          ; FX allocated nothing this frame
+	LDA.w !sc_pal&$FFFF
+	XBA : LSR : AND.w #$0007
+	STA.w !ui_tmp1&$FFFF             ; its number
+	STZ.w !ui_tmp0&$FFFF             ; this frame's FX palettes
+	LDY.w #0                         ; 1: a class without a spare tail took it
+	LDX.w #0
+.class
+	LDA.l !fx_clspal,X
+	AND.w #$00FF
+	CMP.w #8
+	BCS .next                        ; a class not drawn this frame
+	PHX
+	TAX
+	LDA.l ui_sc_bit8,X
+	AND.w #$00FF
+	TSB.w !ui_tmp0&$FFFF
+	PLX
+	LDA.l !fx_clspal,X
+	AND.w #$00FF
+	CMP.w !ui_tmp1&$FFFF
+	BNE .next
+	LDA.l fx_overlay_spare,X
+	AND.w #$00FF
+	BNE .next
+	LDY.w #1
+.next
+	INX
+	CPX.w #!FX_CLASS_COUNT
+	BCC .class
+	CPY.w #0
+	BEQ .ok
+	LDA.w !sc_pal&$FFFF
+	PHA
+	LDA.l !sc_lmask
+	ORA.w !ui_tmp0&$FFFF
+	STA.w !ui_tmp0&$FFFF
+	JSR ui_sc_palette
+	PLA
+	LDY.w !sc_pal&$FFFF
+	BNE .ok
+	STA.w !sc_pal&$FFFF              ; none: it stays for the next frame
+	SEC
+	RTS
+.ok
+	CLC
+	RTS
+ui_sc_bit8: db $01,$02,$04,$08,$10,$20,$40,$80
+
+; The whole number of sd_fmt above sd_x/sd_y, when it is entirely on the
+; screen and below the radio, once every part is resident (a missing part
+; is leased). C set: none drawn.
+ui_sc_lite_number:
+	LDX !sd_fmt
+	LDA.l !XDATA_UI_SC_FORMATS,X
+	AND.w #$00FF
+	STA !sd_cut                      ; half the width
+	LDA !sd_x : SEC : SBC !sd_cut : DEC : STA !sd_sx
+	BMI .no
+	LDA !sd_y : SEC : SBC.w #41 : STA !sd_sy
+	BMI .no
+	CMP.w #224-15
+	BCS .no
+	LDA.w !ui_vis&$FFFF
+	BEQ +
+	LDA !sd_sy
+	CMP.w #72
+	BCC .no
++	LDA.l !XDATA_UI_SC_FORMATS+1,X
+	AND.w #$00FF
+	STA !sd_n
+	ASL : CLC : ADC !sd_n : ASL : ASL ; 12 per part
+	CLC : ADC !sd_sx
+	CMP.w #256-3
+	BCC +                            ; the last part ends past x = 255
+.no
+	SEC
+	RTS
++	STZ !sd_part
+.resolve
+	LDA !sd_part : ASL : CLC : ADC !sd_fmt : TAX
+	LDA.l !XDATA_UI_SC_FORMATS+2,X
+	JSR ui_sc_cell
+	BCS .no
+	LDA !sd_part : ASL : TAX
+	LDA !sd_tile
+	STA !sd_tiles,X
+	INC !sd_part
+	LDA !sd_part : CMP !sd_n
+	BCC .resolve
+	; One budget for the parts' shared lines (three 8-line bins).
+	LDA !sd_sy : LSR : LSR : LSR : TAX
+	LDA.w #17 : SEC : SBC !sd_n : STA !sd_cut
+	SEP #$20
+	LDA !sd_hist,X : CMP !sd_cut : BCS .full
+	LDA !sd_hist+1,X : CMP !sd_cut : BCS .full
+	LDA !sd_hist+2,X : CMP !sd_cut : BCS .full
+	LDA !sd_hist,X : CLC : ADC !sd_n : STA !sd_hist,X
+	LDA !sd_hist+1,X : CLC : ADC !sd_n : STA !sd_hist+1,X
+	LDA !sd_hist+2,X : CLC : ADC !sd_n : STA !sd_hist+2,X
+	REP #$20
+	LDX !sd_record
+	LDA.l ui_sc_actor_bits,X
+	TSB.w !sc_numbers&$FFFF
+	STZ !sd_part
+.draw
+	LDA !sd_part : ASL : TAX
+	LDA !sd_tiles,X
+	STA !sd_tile
+	JSR ui_sc_put
+	LDA !sd_sx : CLC : ADC.w #12 : STA !sd_sx
+	INC !sd_part
+	LDA !sd_part : CMP !sd_n
+	BCC .draw
+	CLC
+	RTS
+.full
+	REP #$20
+	SEC
+	RTS
+
+; The reticle as one batch, when it needs no clipping and its cell is
+; resident (leased if missing; !ui_front_n holds the tile).
+ui_sc_lite_corners:
+	LDA !sd_x : SEC : SBC.w #12 : CMP.w #228
+	BCS .no
+	LDA !sd_y : SEC : SBC.w #28 : CMP.w #211
+	BCS .no
+	LDA.w !ui_vis&$FFFF
+	BEQ +
+	LDA !sd_y : CMP.w #100
+	BCC .no
++	LDA.w !ui_front_n&$FFFF
+	BNE +
+	LDA.w #!UI_SC_CORNER
+	JSR ui_sc_cell
+	BCS .no
+	LDA !sd_tile
+	STA.w !ui_front_n&$FFFF
++	STA !sd_tile
+	LDA.w !core_oam_front_n&$FFFF    ; behind the natives: the batch takes
+	PHA                              ; the rear once 13 front entries are used
+	CMP.w #13
+	BCS +
+	LDA.w #13
+	STA.w !core_oam_front_n&$FFFF
++	JSR ui_sc_reticle_batch
+	PLA
+	STA.w !core_oam_front_n&$FFFF
+	LDX !sd_record
+	LDA.l ui_sc_actor_bits,X
+	TSB.w !sc_corners&$FFFF
+.no
+	RTS
+
+; The full pass's histogram of every other OBJ, before its own pieces, and
+; their palettes (ui_sc_limits' mask).
+ui_sc_lite_save:
+	LDX.w #30
+-	LDA !sd_hist,X
+	STA.l !sc_lhist,X
+	DEX : DEX
+	BPL -
+	LDA.w !ui_tmp0&$FFFF
+	STA.l !sc_lmask
+	RTS
+
 ; Resolve the whole number before emitting any of it. Cells are immutable
 ; and cached by glyph run, so unchanged readings require no rendering/DMA.
 ui_sc_number:
@@ -282,7 +745,20 @@ ui_sc_cell:
 	LDA.l fx_entry_tile,X
 	BRA .resident
 .lookup
-	LDX.w #0
+	LDA !sd_lite                     ; the lite pass: one lease, on time with
+	BEQ +                            ; lines to spare, into a free entry only;
+	LDA !sd_uploads                  ; no search without one
+	BNE ++
+	JSR ui_sc_vline
+	CMP.w #!UI_SC_LITE_LEASE
+	BCS ++
+	LDA !sd_fxready                  ; FX's frame setup before the first
+	BNE +++
+	JSR ui_sc_fx_ready
++++	JSR ui_sc_free_entry
+	BCC +
+++	JMP .fail
++	LDX.w #0
 	LDA !sd_allow
 	BEQ .get
 	LDA !sd_wait
@@ -540,7 +1016,12 @@ ui_sc_sprite:
 	LDA !sd_sy : CLC : ADC.w #15 : CMP.w #239
 	BCS .out
 	JSR ui_sc_room_on_lines
-	BCS .out
+	BCC ui_sc_put
+.out
+	RTS
+; sd_tile at sd_sx/sd_sy, its lines already budgeted: a front entry while
+; the 16 last, else behind the native sprites.
+ui_sc_put:
 	LDA.w !core_oam_front_n&$FFFF
 	CMP.w #16
 	BCS .back
