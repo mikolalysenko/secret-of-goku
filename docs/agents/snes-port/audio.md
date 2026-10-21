@@ -8,6 +8,96 @@ Everything below about the native driver was reverse-engineered from the US
 cartridge (`snes/gen/audio-spc700.mjs` disassembles it) and cross-checked
 against 277 ARAM/DSP snapshots of the browser mod (`.local/snes-import/`).
 
+## Cross-emulator boot investigation (`2413865` follow-up)
+
+The reported bsnes failure was a **capture-phase regression, not a failed
+SPC upload**. The shipping ROM is unchanged, byte for byte. The 54-byte
+helper at `$0180-$01B5` remains in place and all variation remains enabled.
+
+The emulators suite's `name` event is the end of its screenshot window,
+not the moment the cartridge finishes booting or enters the editor. Both
+builds report `editor=1080`. The extra IPL transfer changes the timing of
+the game-select menu enough to shift its native four-frame input poll
+(`$A201`, `C0:1E08-$1E19`). In a frame-by-frame bsnes trace, the same Start
+press selects NEW GAME at 1057 instead of 1060. BOY is prefilled at 1082
+instead of 1085; the runner's two-frame polling reports 1082 versus 1086.
+Meanwhile the scrolling background advances independently in NMI
+(`$A20B`, `C0:20BD`). Taking pictures relative to prefill therefore compares
+different scroll positions. At frame **1116**, the unmodified `2413865`
+bsnes picture already agrees **100%** with Mesen. Its old screenshot window
+ended at 1114 and missed that picture.
+
+Controlled private-ROM experiments isolate the extra upload: adding the
+same block to `d52ee8c`, without installing any hook that calls it, reproduces
+`prefilled=1082/name=1114` with music still active. Disabling the variation
+CALL alone does not restore the old timing. This rules out the helper's
+instruction execution as the cause of this particular failure.
+
+### Boot and sound evidence
+
+- The helper is sent through the **IPL**, after the six native chunks and
+  existing extension segments, before the jump to `$0200`. Its 54 bytes
+  make the final kick `$39` (previously `$33`). The IPL uses SP `$EF` and
+  does not call into the helper. Native startup then resets SP to `$FF`.
+- A new IPL test starts the actual IPL ROM with zero, `$FF` and seeded-noise
+  ARAM. It transfers the ROM's own six chunks and every extension segment,
+  with immediate and delayed port writes. Every transferred byte is checked
+  before native startup, then the helper and audible swing are checked
+  after startup. No savestate or direct ARAM installation is used there.
+- The libretro regression checks locate ARAM in each core's own cold-boot
+  name-screen state using the cartridge's complete native effect-sample
+  signature. Every immutable extension/sample/helper byte matches the ROM.
+  Music has active mask `$7F` and nonzero output on all three cores.
+- A separate session resumes that **core's own** name state, stops music,
+  and queues six interleaved plays each of E5/E7/DE through the existing
+  main-thread sound queue. It verifies the six swing tuples, independent
+  pitch cycles, actual nonzero audio, zero clipped samples, intact code/bank
+  and return of effect voices. It never injects an SPC driver or bank.
+
+### Fix and validation
+
+Mesen now records the background-scroll value at its name screenshot.
+The other cores wait, with a 16-frame failure bound, for that value and take
+the existing **±2-frame** window using frame history. Neither picture
+thresholds nor window tolerance were relaxed. The report preserves the raw
+`prefilled` event and separately records `name_center`, so the real input
+phase difference remains visible. No cartridge delay or emulator-specific
+runtime workaround was added.
+
+| Shipping cartridge | Old `name` / picture agreement | Corrected `name` / agreement | Scenario frames |
+| --- | --- | --- | ---: |
+| snes9x | 1118 / 100% | 1118 / 100% | 7789 |
+| bsnes | 1114 / 34.06% | 1118 / 100% | 7789 |
+| bsnes-accurate | 1114 / 34.03% | 1118 / 99.80% | 7789 |
+
+The passing `d52ee8c` baseline also passes the revised bsnes scenario and
+boot-audio checks. Validation passes: **41 audio unit/SPC tests**, the
+five-song reference render, **all 11 audio Mesen cases**, all three emulator
+variants (including **66** boot/music/effect integrity checks), **13 gameplay**
+and **6 perf** cases. The default strict build still hashes to
+`bebfa7acdbf25a47b25f7d8f6c67bf7bea86e5c1accbcd10ec2ffe71cdc54d8f`.
+There is **zero cartridge CPU-cost change**. Gameplay's 240-frame misses
+remain solo-punch 0, solo-ki 0, walk 0, punch 0, ki 0, fly 1, fly-ki 2,
+fly-punch 1, water-flight 0, teleport 3, charge 13, focus-grass 0 and
+transform-grass 0; charge 13 remains the accepted baseline.
+
+| File | Change |
+| --- | --- |
+| `snes/test/audio/ipl.test.mjs` (new), `run.mjs` | Real IPL boot regression and suite registration |
+| `snes/test/emulators/audio.mjs` (new) | Cold-boot ARAM integrity, music output and isolated variation checks |
+| `snes/test/emulators/scenario.mjs` | Match the measured scroll phase; retain raw timing; save the core's boot state |
+| `snes/test/emulators/mesen-ref.lua` | Record reference scroll and prefill timing |
+| `snes/test/emulators/run.mjs` | Share the reference phase and run/report each core's audio checks |
+| `snes/test/emulators/retro.mjs`, `snes/tools/retro-host/retro-host.c` | Read/reset audio callback sample counts, peak and energy |
+| `docs/agents/snes-port/audio.md`, `audio-samples.md` | Root cause, evidence and unchanged listening package |
+
+Private diagnostics, PCM, frame traces, original/revised reports and test
+logs are under `.local/snes-test/audio/bootfix7/`. The latest full emulator
+report is `.local/snes-test/emulators/summary.json`; its per-core `audio/`
+directories contain the boot snapshots and detailed cue measurements.
+The host binary for this worktree is built there via `SNES_RETRO_HOST`,
+leaving shared `.local/tools` unchanged. No core change is needed.
+
 ## Swing, HIT and ki variation (`variety7`, October 21, 2026)
 
 The current cartridge replaces the two-step swing tuning toggle with the

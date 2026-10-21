@@ -88,6 +88,7 @@ export class RetroHost{
   hold(buttons,frames=1){return this.step({op:'hold',buttons,frames});}
   tap(buttons,frames=3,gap=3){return this.step({op:'tap',buttons,frames,gap});}
   shot(name){return this.step({op:'shot',name});}
+  audio(reset=false){return this.step({op:'audio',reset});}
   async read(mem,addr,size=1){return (await this.step({op:'read',mem,addr,size})).value;}
   async bytes(mem,addr,len){return (await this.step({op:'read',mem,addr,len})).value;}
   r8(addr){return this.read('wram',addr,1);}

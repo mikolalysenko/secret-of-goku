@@ -1,5 +1,19 @@
 # Resident custom samples: cartridge option and storage audit
 
+## Cross-emulator boot follow-up
+
+The `2413865` bsnes investigation found a name-screen capture-phase mismatch:
+the extra IPL block shifts the native menu input poll, while background
+scrolling advances independently. The suite now compares the measured
+scroll phase and checks cold-boot SPC integrity and audible variation on
+snes9x, bsnes and bsnes-accurate. See
+[audio.md](audio.md#cross-emulator-boot-investigation-2413865-follow-up).
+
+The cartridge, samples, reservation, echo caps and sounds are byte-identical
+to `variety7` (`bebfa7ac…cdc54d8f`). Its existing compare7 recordings and
+manifest remain current; there is no new sound take. Diagnostic PCM stays
+under `.local/snes-test/audio/bootfix7/`, outside the listening package.
+
 ## Swing/HIT/ki variation (`variety7`)
 
 The current tag is **`variety7`**. Punch swings alternate a six-tick swell
