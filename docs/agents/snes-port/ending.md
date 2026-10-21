@@ -17,7 +17,7 @@ Browser sources ported: `engine/shenron-ending.js`, `wish-flight.js`,
 | --- | --- | --- | --- |
 | transition (1) | 48-frame fade to black (every pixel, dialogue too) | done: a ceiling on the game's brightness | no dedicated test |
 | summon (2), dragon (3), wish (4) | `treeVista`, Shenron, Balls, sparks, fallout | done | `vista`: 12 stills 95.5-96.0% (below the open dialogue box) |
-| scatter (5) | wish picture fading out, then `createWishFlight` | done (Mode 7 floor) | `flight`: 11 stills 90.6-99.0% |
+| scatter (5) | wish picture fading out, then `createWishFlight` | done (Mode 7 floor) | `flight`: 14 stills 94.6-99.0% |
 | reunion (6) | native cliff scene | done: black until the script's door 3FF reloads the cliff, Dyluck via the object-list hook | `loads`: the cliff 99.1% of a native load, Dyluck present |
 | village (7) | Goku beside the native Randi | done | `depart`: village 99.1% |
 | depart (8) | power-up, launch, whiteout, distant globe, fade | done | `depart`: 15 stills 99.1-100% |
@@ -205,16 +205,44 @@ stage loads under black (the clock waits; 25 frames), then
   written into colour 0 by HDMA channel 6 (through the current fade
   curves); TM shows BG1 from the line under the horizon; channel 4 puts
   `$2105 = 7` back after the HUD split.
-- **Sprites** (OBJ name table 1 at `$5000`, tiles 256-383: OBJSEL base
+- **Sprites** (OBJ name table 1 at `$6000`, tiles 256-479: OBJSEL base
   `$4000` whose table 0 is BG3's font and never used): the vista's cell rows
   0-3 copied whole (Balls, Shenron, star tiles), then at 240 sparks and the
   Balls at sizes 10 (and 8/6/4, one size at a time) take Shenron's cells.
+  The rise now uses every integer width 72 down to 48 from the original
+  `shenron.png`, with the browser blit's nearest sampling, rounded height
+  `w*140/128`, and x = `128 - (w >> 1)`. Whole cells already above the
+  screen at the first age of a width are omitted. Its two OBJ buffers
+  (`$6200`/`$6800`) swap only after all tiles and the matching OAM template
+  arrive: up to 1 KiB per vblank, usually three vblanks ahead. Template
+  copies run in vblank too. The native actor hold makes this OBJ space
+  available without touching BG3's font or maps.
   86 stars (8x8, priority 0, behind the floor) from the browser's hash, in
   OAM slots 42-127 by one DMA per frame (positions change every 12/18
   frames); Shenron (until 240) and the ring in fixed slots; after the
   scatter the big spark, each Ball before its three trailing sparks.
 - Flash at 300-303 (`brighten((304 - age)/8)`), sounds `FLIGHT` at 60 and
   `CHARGED` at 300, `ES_AIRBORNE` 60-420, `ES_MUTED` throughout, done at 479.
+
+#### Wish-flight scaling validation (2026-10-21)
+
+The new scale images use **48,128 bytes (47 KiB) of xdata**, plus 6,581
+bytes of fast template/width tables. The 72-pixel image reuses the vista;
+fully offscreen widths need no tile data. Full-screen agreement with
+`createWishFlight` at the new rise stills:
+
+| Age | Fixed-size baseline | Scaled |
+| --- | ---: | ---: |
+| 100 | 91.2% | 95.3% |
+| 150 | 92.6% | 97.0% |
+| 200 | 96.0% | 96.6% |
+
+On an untouched timeline, lag remains **2 frames** (ages 41 and 302),
+all requested widths are ready on time, and vblank ends by **line 259**
+with zero wraps, including line 0. The initial fade precedes size uploads;
+the straight-north camera avoids general multiplication until the turn.
+Measured ending frame cost is **37.99 lines mean** (baseline 38.26).
+Strict build and all eight ending cases pass at this checkpoint.
 
 ### Reunion (6)
 
@@ -411,7 +439,7 @@ Original/build lag counts: sword 4/4, Sandship 12/4, battle 4/4, Beast
 | King Kai | BG1 map `$3800`, card `$3C00`, tiles `$0000`; OBJ base `$4000`, cells `$5000` | BG 1-7, OBJ 0-2 | 3 actors (12) + lines | 5 |
 | Space (doomed, explode, escape, death) | OBJ `$0000-$1FFF`, BG tiles `$2000`, maps `$5000`/`$5400` | backdrop, BG 1-7, OBJ 0-1, 4-7 | ≤ 66 (fragments, sparks) | 5; 2, 3, 4, 6 for the disc and ring |
 | Vista | OBJ `$0000-$0BFF`, BG1 map `$1800`, tiles `$2000`, BG2 map `$5000` | backdrop, BG 1-7, OBJ 0-4 | ≤ 71 | 5 |
-| Flight | Mode 7 `$0000-$3FFF`, OBJ table 1 `$5000-$57FF` | backdrop, 64-127, 128-255 | ≤ 128 | 2, 3 (matrix), 4 (mode), 5 (TM), 6 (gradient) |
+| Flight | Mode 7 `$0000-$3FFF`, OBJ table 1 `$6000-$6DFF` | backdrop, 64-127, 128-255 | ≤ 128 | 2, 3 (matrix), 4 (mode), 5 (TM), 6 (gradient) |
 | Overlay (village, departure to 144) | `FIELD_OBJ_A` (`$7220`/`$7320`) | OBJ 6-7 (all 256 in the cloud) | 6 front | — |
 | Departure from 144 | the space stage, day globe only | as space | 1 | 5 |
 | Fortress cutaway (world flight) | BG1 tiles `$3000-$433F`, map `$4C00`; BG2 map `$6000`, tiles `$7000-$7B30`; OBJ tiles 64-93 (`$6400`) | all 256 (per fade level) | ≤ 64 | none (the world's off) |
@@ -510,8 +538,7 @@ WRAM block `!RAM_ORBIT+$80..$B5`:
   the overlay scenes. The overlay's Goku is in front of every sprite but
   below BG3's priority tiles (an open dialogue box covers him; the browser
   draws him over it in the departure).
-- Flight: Shenron keeps his full 72x79 size (the browser shrinks him to
-  ~53 px while he rises away; no ROM for scaled copies). The floor is the
+- Flight: The floor is the
   world inside a 128x128-tile window; beyond it (the last lines before the
   horizon) the window repeats. The turn updates the matrix tables about
   every 8 frames rather than every frame. The stage load adds 25 black
@@ -577,7 +604,7 @@ overruns) are measured on a separate untouched run.
 | `fatal` | `preset__bad-ending` | collapse light, fade, black, globe, explosion, GAME OVER; Start to the title |
 | `depart` | `emulator-probe__potos-state` (Potos) | village 99.1%, 15 departure stills 99.1-100%, Randi native, status/sound/done, lag 1, release |
 | `vista` | `ending-fix__end-20` (map 180) | 12 stills 95.5-96.0%, done flags, Shenron's rise without lag, lag ≤ 12 |
-| `flight` | `ending-fix__end-20` (map 180) | 11 stills 90.6-99.0%, load ≤ 30 frames, muted/airborne/sound/done, lag ≤ 20, no overruns |
+| `flight` | `ending-fix__end-20` (map 180) | 14 stills 94.6-99.0%, load ≤ 30 frames, muted/airborne/sound/done, lag ≤ 2, every integer size ready on time, both buffers used, rise OBJ limits, no overruns |
 | `loads` | `emulator-probe__potos-state` | doors through core's event mailbox: 2F under the doomed globe (reloaded, clock on, 99.9%), cue 176 after the flight holds black, door 3FF: the cliff 99.1% of a native load of it, Dyluck present |
 | `cutaway` | the world tests' waterfall checkpoint | actual shots at six sampled targets in both lights plus the default sequence (59 stills); saved-target selection, 192 KiB budget, all 34 VRAM images byte-exact, forced-blank load <215 lines, hardware-safe PPU/DMA, footprint ends by line 254 and trails at most 1, VTIME 196 after deck landing |
 

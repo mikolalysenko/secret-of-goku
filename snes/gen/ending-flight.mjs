@@ -14,13 +14,14 @@
 // samples; outside it Mode 7 repeats the window.
 import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
-import {gfx,imageToSurface,objCell,u16bytes} from './ending-art.mjs';
-import {kiFrames,kiCell,starCell} from './ending-vista.mjs';
+import {gfx,imageToSurface,objCell,u16bytes,nearestIn} from './ending-art.mjs';
+import {kiFrames,kiCell,starCell,dragonPicture} from './ending-vista.mjs';
 
 export const FLIGHT={kMin:13,kMax:160,poseFrom:60,poseTo:240,turnFrom:180,turnTo:420};
-// OBJ name table 1 (VRAM $5000, tiles 256-383): cells f (16x16, tile
+// OBJ name table 1 (VRAM $6000, tiles 256-479): cells f (16x16, tile
 // (f >> 3) * 32 + (f & 7) * 2), the vista's rows 0-3: Balls 0-7, Shenron
-// 8-30, the star tiles 31. Once Shenron has gone: sparks 8-11 (the vista's
+// 8-30, the star tiles 31; cells 32-54 buffer the next Shenron size.
+// Once Shenron has gone: sparks 8-11 (the vista's
 // cells 32-35), the Balls at size 10 in row 2 (16-22), at sizes 8, 6, 4
 // (one at a time) in row 3's top tiles, the star tiles still at 31.
 export const FCELL={ball:0,dragon:8,spark:8,ball10:16,small:24,stars:31};
@@ -121,13 +122,49 @@ export async function flightAssets(o,{rom,repo,engine}){
   });
   const cellsBlob=new Uint8Array(0x400+3*0x200);cellsBlob.set(row2,0);tops.forEach((t,k)=>cellsBlob.set(t,0x400+k*0x200));
   o.blob('flight_cells',cellsBlob);
-  // Shenron in name table 1 (cells 8-30): x, dy, OAM word (N = 1,
-  // palette 0 or 5, priority 2).
-  const oam=[];
-  dragonCells.forEach((d,i)=>{const f=FCELL.dragon+i,tile=(f>>3)*32+(f&7)*2;oam.push((92+d.cx*16)|((d.cy*16)<<8),(tile|0x100|((d.pal?5:0)<<9)|0x2000)&0xffff);});
-  if(dragonCells.length>23)throw Error('Shenron needs more flight cells');
-  o.table('ending_flight_dragon_oam','dw',oam);
-  o.def('ENDING_FLIGHT_DRAGON_CELLS',dragonCells.length);
+  // Every integer width, sampled from the same original image as the
+  // browser's blit. Rows wholly above the screen at the FIRST age of a
+  // width never come back, so omit their cells. Each image is a whole
+  // number of 1 KiB OBJ rows; it streams into the hidden buffer in vblank.
+  // The star cell at the end of buffer 0 is retained in every image.
+  const palettes=o.vistaDragonPalettes.map(p=>p.slice(1));
+  const templates=new Uint8Array(25*256),sizes=[],uploads=[];
+  const firstAge=w=>{for(let a=60;a<=240;a++)if(wishFlightPose(a).dragonSize===w)return a;};
+  for(let age=60;age<=240;age++)sizes.push(72-wishFlightPose(age).dragonSize);
+  let scaleBytes=0;
+  for(let w=72;w>=48;w--){
+    const h=Math.round(w*140/128),surface=dragonPicture(repo,w,h),dy=wishFlightPose(firstAge(w)).dragonY,cells=[];
+    for(let cy=0;cy<5;cy++)for(let cx=0;cx<5;cx++){
+      const s=new Uint16Array(256);
+      for(let y=0;y<16;y++)for(let x=0;x<16;x++)if(cx*16+x<w&&cy*16+y<h)s[y*16+x]=surface[(cy*16+y)*w+cx*16+x];
+      if(!s.some((c,i)=>c&&cy*16+(i>>4)+dy>=0))continue;
+      const error=pal=>s.reduce((sum,c)=>{if(!c)return sum;const v=c-1,p=pal[nearestIn(pal,v)];return sum+3*((v&31)-(p&31))**2+4*((v>>5&31)-(p>>5&31))**2+2*((v>>10&31)-(p>>10&31))**2;},0);
+      const pal=w===72?dragonCells.find(c=>c.cx===cx&&c.cy===cy).pal:Number(error(palettes[1])<error(palettes[0]));
+      cells.push({cx,cy,pal,ix:s.map(c=>c?1+nearestIn(palettes[pal],c-1):0)});
+    }
+    if(cells.length>23)throw Error(`flight Shenron width ${w}: too many cells`);
+    const bytes=new Uint8Array(Math.ceil(cells.length/8)*1024),base=(72-w)*256;
+    for(let i=0;i<23;i++)templates[base+i*4+1]=224;
+    cells.forEach((c,i)=>{
+      const b=objCell(c.ix,16,0,0,16),at=(i>>3)*1024+(i&7)*64;
+      bytes.set(b.subarray(0,64),at);bytes.set(b.subarray(64),at+512);
+      const tile=32+(i>>3)*32+(i&7)*2;
+      templates.set([128-(w>>1)+c.cx*16,c.cy*16,tile,0x21|(c.pal?10:0)],base+i*4);
+      templates[base+92+c.cy]++;
+    });
+    templates.set(templates.subarray(base,base+128),base+128);
+    for(let i=0;i<23;i++)templates[base+128+i*4+2]+=96;
+    if(bytes.length===3072){bytes.set(star.subarray(0,64),2048+448);bytes.set(star.subarray(64),2560+448);}
+    const name=`flight_dragon_${w}`;
+    if(w!==72&&bytes.length){o.blob(name,bytes);scaleBytes+=bytes.length;}
+    uploads.push({name:w===72?'vista_obj+$400':name,size:bytes.length});
+  }
+  o.blob('flight_dragon_oam',templates);
+  o.blob('flight_sizes',Uint8Array.from(sizes));
+  o.cut.raw('ending_flight_dragon_dma:');
+  for(const u of uploads)o.cut.raw(`\tdl ${u.size?'ending_'+u.name:0}\n\tdb 0\n\tdw ${u.size},0`);
+  o.def('ENDING_FLIGHT_DRAGON_CELLS',23);
+  o.stats.flightDragon={widths:25,xdata:scaleBytes,templates:templates.length,maxUpload:3072};
   // The Balls' directions (orbitVectors of headings 8, 10, 12, 14, 0, 3, 5)
   // and their trails: (d 7 j) >> 8 for j = 1..3.
   const dirs=[8,10,12,14,0,3,5].map(h=>orbitVectors[h]);
@@ -137,8 +174,6 @@ export async function flightAssets(o,{rom,repo,engine}){
   // The ring before the scatter (radius 12..28): each Ball's offset, bytes.
   const ring=[];for(let r=12;r<=28;r++)for(const [dx,dy] of dirs)ring.push(((dx*r)>>8)&255,((dy*r)>>8)&255);
   o.blob('flight_ring',Uint8Array.from(ring));
-  // Shenron's cells per row (rows 0-4 of his 16x16 grid).
-  o.table('ending_flight_dragon_rows','db',[0,1,2,3,4].map(r=>dragonCells.filter(d=>d.cy===r).length));
   // Night floor colours: palette p colour i at C6:483E + 30 p + 2 i (i >= 1),
   // colour 0 of every palette the base colour.
   o.stats.flight={window:best,share:best.n/total*4,runs,tilesUsed:[...used].reduce((a,b)=>a+b.toString(2).split('1').length-1,0)};

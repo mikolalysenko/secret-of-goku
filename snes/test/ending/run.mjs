@@ -34,8 +34,9 @@ function coreDefine(name){
 }
 const lib0=`EVENT_MAILBOX=0x${coreDefine('core_event_req').toString(16)}\n`;
 const lib=lib0+`AUDIO_SFX=${symAddr('audio_sfx')}\nAUDIO_FADE=${symAddr('audio_fade')}\nNMI_OUT=${symAddr('ending_world_nmi_out')}\nNMI_IN=${symAddr('ending_world_nmi')}\nNMI_RESTORE=${symAddr('ending_world_nmi_restore')}\nNMI_DMA=${symAddr('cut_footprint_ran')}\n`+
+  `FIELD_IN=${symAddr('ending_frame')}\nFIELD_OUT=${symAddr('ending_frame_out')}\nSCALE_OUT=${symAddr('flight_scale_frame_out')}\n`+
   `FRAME_IN=${symAddr('ending_world_frame')}\nFRAME_OUT=${symAddr('ending_world_frame_out')}\nLOAD_IN=${symAddr('cut_load')}\nGLOBE_COUNT=${globeTargets().length}\nGLOBE_TILES=308\n`+
-  `DMA_TRIGGERS={${['ending_preupload_trigger','nmi_lowcopy_trigger','cut_oam_trigger'].map(symAddr).join(',')}}\n`+readFileSync(resolve(here,'lib.lua'),'utf8');
+  `DMA_TRIGGERS={${['ending_preupload_trigger','nmi_lowcopy_trigger','cut_oam_trigger','flight_scale_nmi_trigger'].map(symAddr).join(',')}}\n`+readFileSync(resolve(here,'lib.lua'),'utf8');
 // 'sfx<id>@<age>' / 'fade<byte>@<age>' calls recorded by E.watchAudio.
 const audioCalls=r=>(r.audio??'').split(' ').filter(Boolean);
 const heard=(r,call)=>audioCalls(r).includes(call);
@@ -208,7 +209,7 @@ async function vistaCheck(r,out){
 
 // The wish flight against createWishFlight's own picture. The cartridge's
 // floor is the world map in a 128x128-tile Mode 7 window (repeated beyond
-// it near the horizon) and Shenron keeps his full size as he rises away.
+// it near the horizon); Shenron uses the browser's integer widths.
 async function flightCheck(r,out){
   expect(r.vista_loaded,'the vista before the flight');
   expect(r.flight_load_frames<=30,`flight stage load took ${r.flight_load_frames} frames`);
@@ -223,14 +224,17 @@ async function flightCheck(r,out){
   expect(audioCalls(r).at(-1)?.startsWith('fade0F'),`native music back at the release (${r.audio})`);
   // On the finale's own map (180); the scatter's 28 sprites (300-340) are
   // the heaviest frames.
-  expect(r.lag_frames<=20,`lag ${r.lag_frames} frames`);
+  expect(r.lag_frames<=2,`lag ${r.lag_frames} frames (baseline 2)`);
+  expect(r.scale_late===0&&r.scale_buffers===3,`every width ready on time in both OBJ buffers (${r.scale_late} late, buffers ${r.scale_buffers})`);
+  expect(r.rise_sprites_max<=32&&r.rise_slivers_max<=34,`rise OBJ limits (${r.rise_sprites_max} sprites, ${r.rise_slivers_max} slivers)`);
   expect(r.overruns===0,`vblank overran ${r.overruns} times (${r.overrun_at})`);
-  for(const a of [40,60,120,180,230,280,301,320,360,400,450]){
+  for(const a of [40,60,100,120,150,180,200,230,280,301,320,360,400,450]){
     const name=`flight-${a}`;if(r[name]===undefined){problems.push(`no still ${name}`);continue;}
     const ref=await flightReference({rom:baseRom,age:a});
     writeFileSync(join(out,`${name}-ref.png`),writeRef(null,ref));
     const m=compare(join(out,`${name}.png`),ref);r[`${name}_match`]=m;
     expect(m>=0.85,`${name} matches the browser at ${(m*100).toFixed(1)}%`);
+    if([100,150,200].includes(a))expect(m>=.95,`${name}: scaled Shenron matches at least 95%`);
   }
 }
 

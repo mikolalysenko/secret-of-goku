@@ -1339,6 +1339,7 @@ org !CODE_ENDING_X
 incsrc "sound.asm"
 incsrc "cutaway.asm"
 incsrc "upload.asm"
+incsrc "flight-scale.asm"
 ending_x_end:
 assert ending_x_end <= !CODE_ENDING_X+$4000, "ending second code area overflow"
 pullpc

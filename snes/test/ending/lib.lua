@@ -44,7 +44,7 @@ end
 -- if that happens in the next frame, the top lines are black and, worse,
 -- its HDMAEN write came after that frame's HDMA start, so the frame shows
 -- no HDMA (core_hdmaen_write). Counts frames that overran past line
--- `slack` while armed (0: any end in the next frame but on line 0).
+-- `slack` while armed (0: any end in the next frame, including line 0).
 E.overruns = 0
 E.overrunMax = 0
 E.overrunAt = {}
@@ -54,7 +54,9 @@ function E.watchVblank(slack)
   local function checkEnd()
     if not E.watchArmed then return end
     local line = emu.getState()['ppu.scanline']
-    if line < 200 and line > slack then
+    H.result('vblank_end_max', math.max(E.vblankEndMax or 0, line))
+    E.vblankEndMax = math.max(E.vblankEndMax or 0, line)
+    if line < 225 and line >= slack then
       E.overruns = E.overruns + 1
       if line > E.overrunMax then E.overrunMax = line end
       if #E.overrunAt < 16 then

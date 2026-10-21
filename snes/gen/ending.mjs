@@ -33,7 +33,7 @@ export const DATA_BANKS=[0xE9,0xEC,0xEE,0xEF];
 // Blobs the CPU reads in its loops (long,X or block moves into palettes):
 // these stay in fast ROM. All others are DMA/HDMA sources: extended data.
 const FAST_BLOBS=new Set(['fade_words','space_frag_oam','space_crack_events','space_spark_oam','space_win_ta',
-  'flight_pose','flight_t12','flight_turn','flight_stars','flight_ring']);
+  'flight_pose','flight_t12','flight_turn','flight_stars','flight_ring','flight_dragon_oam','flight_sizes']);
 
 const hex=(n,w=2)=>n.toString(16).toUpperCase().padStart(w,'0');
 
