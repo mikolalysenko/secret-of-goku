@@ -399,7 +399,12 @@ cells never flood fill.
   across movement steps; cells whose tile id changed lose their verdict.
   Footprints inside it are mask tests. When the grid moves one cell over
   (same layer and terrain), the cells both positions share keep their
-  verdicts, shifted, after the old grid's tiles are checked.
+  verdicts, shifted, after the old grid's tiles are checked. The grid keeps
+  its footprint origins with it (`!fl_g_px` = left + 6, `!fl_g_py` = top +
+  4, set in `fl_grid_reset`), so `fl_fp_cover` subtracts one word per axis
+  and indexes the masks through a row table times 8: 0.80 -> 0.63 lines a
+  call, flight_frame 18.10 -> 17.94 lines per fly-ki frame
+  (`FLIGHT_FP_COVER_SLOW=1`: the shifted origins as before).
 - Quiet frames: with flight reset (landed, no lift, charge, teleport,
   camera follow, whip crossing, ceiling escape, owned Goku requests, cues,
   latched buttons or passengers) and Goku out of play, off the native

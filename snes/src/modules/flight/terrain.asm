@@ -3413,7 +3413,31 @@ fl_fp_cover:
 	LDA.w !fl_q_t
 	CMP.l !fl_g_t
 	BNE .no
-+	LDA.l !fl_g_tx0
++
+if not(defined("FLIGHT_FP_COVER_SLOW"))
+	; the grid's footprint origins (grid left + 6, top + 4), set with it
+	LDA.w !fl_q_x
+	SEC
+	SBC.l !fl_g_px
+	CMP.w #36
+	BCS .no
+	TAX
+	LDA.l fl_grid_colpat,X
+	AND.w #$00FF
+	STA.w !fl_t4
+	LDA.w !fl_q_y
+	SEC
+	SBC.l !fl_g_py
+	CMP.w #40
+	BCS .no
+	TAX
+	LDA.l fl_grid_rowpat8,X      ; the row pattern, times 8
+	AND.w #$00FF
+	ORA.w !fl_t4
+	ASL
+	TAX
+else
+	LDA.l !fl_g_tx0
 	ASL : ASL : ASL : ASL
 	EOR.w #$FFFF
 	SEC
@@ -3442,6 +3466,7 @@ fl_fp_cover:
 	ORA.w !fl_t4
 	ASL
 	TAX
+endif
 	LDA.l fl_grid_masks,X
 	STA.w !fl_t4
 	SEC
@@ -3550,8 +3575,21 @@ fl_grid_reset:
 .origin
 	LDA.w !fl_t0
 	STA.l !fl_g_tx0
+if not(defined("FLIGHT_FP_COVER_SLOW"))
+	ASL : ASL : ASL : ASL
+	CLC
+	ADC.w #6
+	STA.l !fl_g_px               ; fl_fp_cover's column origin
 	LDA.w !fl_t1
 	STA.l !fl_g_ty0
+	ASL : ASL : ASL : ASL
+	CLC
+	ADC.w #4
+	STA.l !fl_g_py               ; and its row origin
+else
+	LDA.w !fl_t1
+	STA.l !fl_g_ty0
+endif
 	LDA.w !fl_t2
 	STA.l !fl_g_l
 	LDA.w !fl_t3
@@ -3881,6 +3919,13 @@ fl_grid_rowpat:
 	db $03, $03, $03, $03, $02, $02, $02, $02, $02, $02, $02, $02
 	db $06, $06, $06, $06, $06, $06, $06, $06, $04, $04, $04, $04
 	db $04, $04, $04, $04
+if not(defined("FLIGHT_FP_COVER_SLOW"))
+fl_grid_rowpat8:                     ; fl_grid_rowpat * 8
+	db $08, $08, $08, $08, $08, $08, $08, $08, $18, $18, $18, $18
+	db $18, $18, $18, $18, $10, $10, $10, $10, $10, $10, $10, $10
+	db $30, $30, $30, $30, $30, $30, $30, $30, $20, $20, $20, $20
+	db $20, $20, $20, $20
+endif
 ; 3-bit patterns of c0..c1 (index c0*3 + c1, c0 <= c1)
 fl_grid_sel:
 	db $01, $03, $07, $00, $02, $06, $00, $00, $04
