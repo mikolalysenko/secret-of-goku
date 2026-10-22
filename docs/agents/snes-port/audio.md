@@ -2,26 +2,196 @@
 
 ## Round eight performance follow-up
 
-Merged `cc52d1e`. Resident one-shots now dispatch directly from the audio
-selector, after checking the native mailbox and the core queue. This removes
-the SRAM enqueue/dequeue round trip at the end of the field update. The
-existing asynchronous dispatcher, priorities, SPC sequences, samples, gains
-and pitch variation are unchanged. A busy SPC still drops a stale one-shot
-without waiting or overwriting its parameters.
+Base: main `cd59395` (snes-int `cc52d1e` and its changelog), then
+`667245e` (cues skip the core's SRAM queue), `a508692` (dispatch),
+`4c91b9f` (bank prefetch) and `8d096d9` (song loads). The Rupture, Arc and
+Storm designs, samples, sequences, gains and mix are unchanged.
+`-DAUDIO_CUSTOM_SAMPLES=0` and `-DAUDIO_PCM=1` stay byte-identical to the
+base's builds.
 
-The first validated checkpoint passes `audio native` and all 130 gameplay
-runs (offsets 0–9). Summed CPU misses: fly-ki 12 → 10; charge 56, fly-punch
-10, teleport 23, punch 9, ki 3, fly 1 and the six other cases 0, unchanged.
-Total 114 → 112. The reported 5.9-line fly-punch tail includes the short NMI
-that interrupts an unfinished frame: its actual effect dispatch is 1.25
-lines, without an SPC wait. Further interrupt-exclusive profiles and the
-song-cache measurements are recorded with the completed follow-up below.
+### Where the hit frame's time went
+
+`dispatch-profile.lua` is a gameplay-runner prelude. It times each field
+update's audio_frame, the core's sound pump and every C3:0004 call with NMI
+time removed. It also records each direct send, each port-0 write and every
+polling loop: consecutive reads of `$2140-$2143` at one PC.
+`dispatch-report.mjs` sums the 130 runs (13 cases, offsets 0-9). On the
+base:
+
+- The 5.9-line end-of-frame step on fly-punch's hit frame (offset 0, the
+  update from frame 263 that misses at 264) is 2.2 lines of
+  `core_frame_end` plus a 3.7-line lag NMI inside the span. The pad latch takes 0.3 lines and the sound queue 1.9
+  (1.25 of it the C3:0004 dispatch); the event pump takes 0.04. The queue
+  is the cost.
+- The 7.7-8.9-line audio-service spikes after `667245e` (7.9, 8.1 and
+  11.4 here, on fly+7, fly-ki+1 and fly-ki+9) are 4.3-4.4 lines of
+  audio_frame plus a 3.6-7.0-line lag NMI.
+  No gameplay frame in any run polls the SPC in a loop, because every
+  gameplay command is an asynchronous 02 or 81.
+- A cue frame costs 4.90 lines on average (1,993 frames, maximum 5.76).
+  The selector takes 2.9, the SRAM queue round trip 0.9 and the driver
+  entry 1.4 (destroy's song hook 0.4, the native register save and restore
+  0.5, the send 0.5). A frame whose only work is a native effect's echo
+  from earlier in the frame runs the whole service, at 2.10 lines.
+
+### Dispatch (`a508692`)
+
+| Path | Change |
+| --- | --- |
+| Module cues and beds | `audio_native_send` writes ports 3-1, then 0, itself (A = command, p1; X = p2, p3). Same release and drop rule; no C3:0004, no `$1E00` |
+| Native callers' 02/81 | `audio_native_effect` at C3:0160 (Codex's): the asynchronous send without the native register save and restore; other commands replay the prologue |
+| Selector | A lone ordinary cue skips the contest. Two or more (a swing and its contact) use an inline priority loop |
+| Echo-only frames | No request: poll the echo and return. A held bed polls its own or a native effect's echo in the hold path |
+| Rare service | Returns at once with no line, channel record or flag |
+| Release, then send | After releasing an echo in the same call, wait for the SPC to clear port 0. The native driver waits the same way (C3:05B2): the SPC spins on port 0 and clears it about 20 us later. Bounded at 1.3 lines |
+
+The last row fixes dropped sound. Over the 130 runs, 117 of the 139
+native effects the base dropped were the second of two effects a few lines
+apart, sent while the SPC was still clearing the first one's echo. Now 23
+remain dropped, each because the driver was busy with a tick. The module's
+own drops stay at 3-4 per 130 runs. The wait occurs in 130 measured
+frames, never longer than 0.37 lines.
+
+| Lines a frame, 130 runs (NMI excluded) | Base | Now |
+| --- | ---: | ---: |
+| Cue (swing, contact, ki...): mean / max | 4.90 / 5.76 | 2.79 / 3.75 |
+| fly-punch's hit frame (kick + deflect): audio_frame + pump | 3.61 + 1.89 | 3.04 + 0.16 |
+| End-of-frame step (pad latch + pump) on that frame | 2.20 | 0.44 |
+| Only an earlier native effect: mean / max | 2.10 / 3.19 | 0.58 / 0.90 |
+| No command: mean / max | 0.59 / 3.19 | 0.51 / 2.44 |
+
+### Bank prefetch (`4c91b9f`)
+
+The performance pass found that the optional bank's fill added gameplay
+misses: `field_prefetch_no_added_misses` read 1 -> 2 on `c55d683`. The $8A
+handshake waited up to the frame's whole line budget (14.8 lines seen) for
+a driver busy with a tick. A failure set the exponential retry backoff, and
+each countdown frame after a cue then ran the full service (1.67 lines
+instead of 0.78).
+
+- The fill probes for about 1.7 lines and then withdraws (port 0 = 0 ends
+  $8A at once, `stream.s` `ext_cmd`). In the field fixture an idle driver
+  echoes within 0.3-1.6 lines, for 57% of attempts; a tick keeps it busy
+  for up to about 45. A failed probe sets no backoff and no wait budget.
+- A fill-only frame (au_wake `$40`) goes straight to its step. It polls an
+  outstanding echo itself instead of running the full service, and checks
+  held input and the scanline first.
+- A frame with only a countdown left (a song change's hold or a rare line's
+  retry, au_wake `$20`) takes its own cheap step.
+
+`prefetch.lua` sums ten start phases: the fill is held off 0-9 frames after
+the field savestate, then the same 1,800 frames run with it enabled or
+disabled. Misses summed over the ten phases:
+
+| Base | Audio | Disabled | Enabled |
+| --- | --- | ---: | ---: |
+| `cd59395` | round eight | 20 | 20 |
+| `c55d683` | round eight | 10 | 20 (fails) |
+| `cd59395` | this follow-up | 10 | 10 |
+| `c55d683` | this follow-up | 10 | 10 |
+
+The longest transfer frame drops from 44.6 to 34.8 lines. The disabled
+runs miss less now as well, because their frames take the cheaper idle step.
+
+### Song loads (`8d096d9`)
+
+Round eight's hole allocator kept the mean down, but it placed shared
+samples in whichever hole was cheapest. A later song's larger echo could
+then reach them, or a fragmented cache had to pack. On the worst
+transition this cost 12.2 frames more than round seven ($07 -> $08, 21.1
+frames; the power-on pass's $0B, +12.6). `cache.asm` now keeps the last
+four song changes:
+
+- A first visit (no return within that window) uses round seven's
+  allocator. It appends at the tail, and when the tail or the slots run out
+  it packs the required set from the floor once. Its fit test counts a
+  duplicated list entry twice, as the retail planner does ($18's two
+  strike entries), so the packs fall on the same loads; the sample is sent
+  once.
+- A return to a recent song opens a three-load window for the non-moving
+  hole allocator, which keeps a field, town or battle's warm working set.
+- The hole planner ends each overlap scan at the first slot past the
+  candidate, and packing walks the slots in order. Neither changes a
+  decision.
+
+| Stall frames | Round seven | Round eight | Now |
+| --- | ---: | ---: | ---: |
+| 64 consecutive loads: mean | 19.915 | 17.905 | 19.652 |
+| 64 consecutive loads: worst change vs round seven | | +12.15 ($08) | +0.19 ($09) |
+| Power-on, presets 11/14 (192): mean | 19.487 | 16.851 | 19.282 |
+| Power-on: worst change vs round seven | | +12.58 ($0B) | +0.16 ($32, preset 14) |
+| Field/town/boss route (15): mean | 16.151 | 13.547 | 13.530 |
+| Route: worst change vs round seven | | +0.44 | +0.36 |
+| Longest stall, 64 / 192 loads | 44.94 / 45.08 | 46.43 / 46.20 | 44.95 / 45.17 |
+
+The consecutive passes play every song once, so they measure first visits.
+Those load as in round seven again, and lose round eight's mean gain there.
+Returns, as in the route, keep it. The route's remaining +0.36 is the hole
+planner's CPU on the boss song (0.43 frames against round seven's 0.11,
+with identical transfers). The optional bank is present after 9 of 64 and
+23 of 192 loads (round eight: 5 and 6). The history uses the five
+dedupe/variant bytes that only `AUDIO_PCM` builds use (`$DD18-$DD1C`).
+
+`cache-model.mjs` replays a `load-profile.lua` pass exactly: the cache
+before each load, the uploads, moves and history (64/64, 196/196 and 15/15
+loads). With `--policy=retail|holes` it predicts another allocator's stalls
+from the measured ones and the fitted transfer costs (0.0011 frames an
+uploaded byte, 0.00083 a moved one).
+
+### Gameplay and validation
+
+CPU misses summed over offsets 0-9 (`gameplay/run.mjs --offsets=0,...,9
+--jobs=2` with the profiling prelude):
+
+| Case | Base | Now |
+| --- | ---: | ---: |
+| punch | 9 | 8 |
+| ki | 3 | 3 |
+| fly | 1 | 1 |
+| fly-ki | 12 | 10 |
+| fly-punch | 10 | 9 |
+| teleport | 23 | 22 |
+| charge | 56 | 53 |
+| all others | 0 | 0 |
+| total | 114 | 106 |
+
+At offset 0, fly-punch goes 1 -> 0 and the other counts are unchanged. In
+the missed updates, audio (audio_frame plus the sound pump, NMI excluded)
+falls from 208.4 of 27,976 lines (0.74%) to 119.6 of 26,008 (0.46%). The
+missed updates whose overrun is shorter than their own audio work fall from
+16 of 114 to 7 of 106. With identical miss patterns the SPC sees the same
+effect and bed commands, plus the native effects that are no longer dropped.
+
+Tests on the final build: all 15 audio cases (53 unit tests, weapon-charge
+34 phases, the summed prefetch check, 64/192-load and route bank checks,
+native with the new cue and bed frame bounds) and the gameplay cases at
+offset 0. Gameplay passes at every offset except fly-punch+4, whose
+37.26-line field NMI overruns on the base too (`c55d683` removes it). Also
+run on the final build: perf (p90 sword 58, Sandship 109, battle 51, Beast
+171, Fortress 91, flight 112; unchanged), combat (37 cases), story, title,
+and the emulators suite on snes9x, bsnes and bsnes-accurate, one core at a
+time (cold-boot SPC image, music, cue variation, ki forms and voice return
+all pass). The prefetch check also passes on `c55d683` with this
+follow-up's audio files on top. Shipping SHA-256:
+`b9f842785e6325972b291b1ce544ea60c0620c466d384123148794aad80bb71f`.
+
+| Files | Purpose |
+| --- | --- |
+| `audio/native.asm`, `beds.asm`, `rare.asm`, `module.asm` | Direct send, native fast path, contest, echo and countdown steps |
+| `audio/extended.asm` | Fill probe, fill-only step |
+| `audio/cache.asm` | History, retail-timed append, hole planner exits, slot-order packing |
+| `snes/test/audio/dispatch-profile.lua`, `.mjs`, `dispatch-report.mjs` | Per-update dispatch costs, waits, drops, command streams |
+| `snes/test/audio/cache-model.mjs`, `load-profile.lua` | Exact cache replay; profiles record echo length, bank state and history |
+| `native.lua`, `weapon-charge.*`, `capture7/8.*`, `run.mjs` | Observe direct sends at `audio_native_send` (`AUDIO_SEND`) |
+| `prefetch.lua` | The field check summed over ten phases |
 
 ## Round eight: impact, rumble and electrical arcs
 
-This supersedes the PC-matching sound descriptions below. The default design
-is **rupture**: noise cracks over aperiodic bass bodies, rushing ki bursts,
-and a distorted electrical wave. **Arc** and **storm** are reproducible
+The follow-up above changes this round's dispatch path, the prefetch's
+handshake and first-visit cache allocation; its sounds and bank are as
+described here. This supersedes the PC-matching sound descriptions below.
+The default design is **rupture**: noise cracks over aperiodic bass bodies,
+rushing ki bursts, and a distorted electrical wave. **Arc** and **storm** are reproducible
 alternate cartridge builds (`AUDIO_DESIGN=0/2`; default `1`). They vary the
 sampled body, discharge density and whine, not a post-render effect.
 
@@ -90,7 +260,8 @@ The 64-byte helper at `$0180` and native transfer acknowledgement order
 are unchanged. An early-ack experiment was rejected after a snes9x
 picture-phase regression; it is not in the final implementation.
 
-The cache uses holes before compaction, retains frequently shared samples
+Round eight's cache (now for returns only; first visits use the retail
+allocator, see the follow-up) uses holes before compaction, retains frequently shared samples
 with a previous-song bonus, and compacts only the required prefix. A ROM
 membership table and processed-list markers avoid repeated searches;
 insertion sorting avoids repeated full passes. All cache state remains
@@ -139,7 +310,8 @@ their own cold-boot music/effect/variation checks also pass.
 | focus-grass | 0 | 0 |
 | transform-grass | 0 | 0 |
 
-Ordinary effect dispatch remains at **1.348974 scanlines maximum**.
+Ordinary effect dispatch remains at **1.348974 scanlines maximum** (round
+eight; the follow-up's direct send replaces this path).
 `modprof` measures audio at 0.41 lines/call in the moving sword/battle
 scenes, versus 0.41 before; the maximum is 1.93 versus 1.88. Optional
 prefetch is separate budgeted work (up to 76.30 lines including command
