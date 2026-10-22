@@ -64,6 +64,14 @@ emu.addMemoryCallback(function(_,v)
     mail.origin={actor=native<3 and x%0x200==0 and x<=0x1600 and x or 'module',pc=p,goku=false}
   end
 end,emu.callbackType.write,0x1E01,0x1E01,emu.cpuType.snes,emu.memType.snesWorkRam)
+-- The module's own cues and beds bypass the driver entry: audio_native_send
+-- receives A = command | p1<<8, X = p2 | p3<<8 (AUDIO_SEND, 0 when absent).
+if (AUDIO_SEND or 0)~=0 then emu.addMemoryCallback(function()
+  local s=emu.getState();local a,x=s['cpu.a'],s['cpu.x']
+  commands[#commands+1]={phase=phase,frame=H.frame,cmd=a&255,id=(a>>8)&255,p2=x&255,p3=(x>>8)&255,
+    pc=pc(s),caller=(s['cpu.k']<<16)|((H.r16(s['cpu.sp']+1)-2)&65535),cpuX=x,
+    writer=pc(s),origin={actor='module',pc=pc(s),goku=false},state=snapshot()}
+end,emu.callbackType.exec,AUDIO_SEND,AUDIO_SEND) end
 for _,bank in ipairs({3,0x83,0xC3}) do
   local at=(bank<<16)|0x0160
   emu.addMemoryCallback(function()

@@ -430,30 +430,60 @@ else
 endif
 	SEP #$20
 	LDA.w !au_wake
+if !AUDIO_CUSTOM_SAMPLES
+	BNE .wake
+	; Nothing due but an outstanding echo (a native effect earlier in this
+	; frame, or the last frame's cue): release it as the full path's poll
+	; would. No request, bed, rare line, backoff or prefetch is waiting.
+	LDA.w !au_pending
+	BEQ .quiet
+	CMP.l $002140
+	BNE .quiet
+	LDA.b #0
+	STA.l $002140
+	STZ.w !au_pending
+	BRA .quiet
+.wake
+endif
 	ORA.w !au_pending
 if !AUDIO_CUSTOM_SAMPLES
-	BEQ .quiet
 	CMP.b #$80
 	BEQ .steady
-	; A held bed's pending $81 acknowledgement needs only a poll, not a
-	; complete song/cue/rare-service pass. Other requests retain the full path.
-	CMP.b #$81
-	BNE .run8
+	; A held bed's outstanding echo (its own $81, or a native effect sent
+	; earlier in this frame) needs only a poll, not a complete song/cue/
+	; rare-service pass. Other requests retain the full path.
 	LDA.w !au_wake
 	CMP.b #$80
-	BNE .run8
-	LDA.l $002140
-	CMP.b #$81
+	BNE .to_run8
+	LDA.w !au_pending
+	CMP.l $002140
 	BNE .steady
 	LDA.b #0
 	STA.l $002140
 	STZ.w !au_pending
 	BRA .steady
-endif
+else
 	BNE .run8
+endif
 if !AUDIO_CUSTOM_SAMPLES
 .quiet
+	LDA.w $1E05
+	CMP.w !au_song
+	BNE .to_run8
+if defined("title_sfx")
+	LDA.w !title_sfx&$FFFF
+	BNE .to_run8
 endif
+if defined("out_sfx")
+	LDA.w !out_sfx&$FFFF
+	CMP.w !au_dsfx
+	BNE .to_run8
+endif
+	PLP
+	RTL
+.to_run8
+	JMP .run8
+else
 	LDA.w $1E05
 	CMP.w !au_song
 	BNE .run8
@@ -468,21 +498,22 @@ if defined("out_sfx")
 endif
 	PLP
 	RTL
+endif
 if !AUDIO_CUSTOM_SAMPLES
 .test_run
 	BRL .run
 .steady
 	LDA.w $1E05
 	CMP.w !au_song
-	BNE .run8
+	BNE .to_run8
 if defined("title_sfx")
 	LDA.w !title_sfx&$FFFF
-	BNE .run8
+	BNE .to_run8
 endif
 if defined("out_sfx")
 	LDA.w !out_sfx&$FFFF
 	CMP.w !au_dsfx
-	BNE .run8
+	BNE .to_run8
 endif
 	LDA.w !au_bed_wait
 	BEQ .update
@@ -520,6 +551,36 @@ if !AUDIO_CUSTOM_SAMPLES
 .normal
 endif
 	REP #$10
+if !AUDIO_CUSTOM_SAMPLES
+	; audio_native_poll, inline. The selector's send comes more than a
+	; scanline later: the SPC clears its echo within ~22 us of a release.
+	LDA.w !au_pending
+	BEQ +
+	CMP.l $002140
+	BNE +
+	LDA.b #0
+	STA.l $002140
+	STZ.w !au_pending
++	JSR audio_track_native
+	LDA.w !au_testloop
+	ORA.w !au_test
+	BEQ +
+	JSR audio_test_poll
++
+if defined("title_sfx")
+	LDA.w !title_sfx&$FFFF
+	BEQ +
+	JSR audio_title_cues
++
+endif
+if defined("out_sfx")
+	LDA.w !out_sfx&$FFFF
+	CMP.w !au_dsfx
+	BEQ +
+	JSR audio_destroy_cues
++
+endif
+else
 	JSL audio_native_poll
 	JSR audio_track_native
 	JSR audio_test_poll
@@ -528,6 +589,7 @@ if defined("title_sfx")
 endif
 if defined("out_sfx")
 	JSR audio_destroy_cues
+endif
 endif
 	JSR audio_service
 if not(defined("AUDIO_PCM"))
@@ -1973,6 +2035,11 @@ if not(defined("AUDIO_PCM"))
 ; on a later frame instead of busy-waiting in the gameplay thread.
 %orig4($C30175, $00A520E2)
 %hijack($C30175, audio_native_command, 4, audio)
+if !AUDIO_CUSTOM_SAMPLES
+%orig4($C30160, $C2080B8B)
+%orig1($C30164, $20)
+%hijack($C30160, audio_native_effect, 5, audio)
+endif
 endif
 ; Echo parameter reads in C3:060A (LDA $C30708..B,X).
 %orig4($C30618, $C30708BF)

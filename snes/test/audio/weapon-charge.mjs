@@ -11,9 +11,11 @@ import {friezaWrites,luaWrites} from '../frieza/state.mjs';
 const root=resolve(import.meta.dirname,'../../..');
 export async function traceWeaponCharge(rom,outDir,{diagnose=false}={}){
   const g=JSON.parse(readFileSync(join(root,'.local/snes-ref/battle/state.json'),'utf8')).goku;
+  const send=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8').match(/^([\dA-F]{2}):([\dA-F]{4}) audio_native_send$/m);
   const pre=`IMPORT=${JSON.stringify(join(root,'.local/snes-import/'))}
 CHECKPOINT=${JSON.stringify(join(checkpointDir(),'waterfall.mss'))}
 FRIEZA_WRITES=${luaWrites(friezaWrites(g.frieza,g.challenge))}
+AUDIO_SEND=${send?parseInt(send[1]+send[2],16):0}
 `;
   const copy=privateRom(rom,'weapon-charge');
   let r;
