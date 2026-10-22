@@ -4,6 +4,16 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: a heavier beam culls no rows it already holds (2026-10-22)
+
+- A beam group that gets heavier while on hid the stars on all its rows
+  again. Its rows hold no stars whatever its slivers (since bee91ad), so
+  it now culls only the rows outside those it held, as a moved group
+  does (`sl_hot`). A group on anew still culls all its rows.
+- `fight` (default build, the tests' pads): 4 culls instead of 5 (the one
+  at its frame 212, 8 lines). Repeated pictures as before: the `fight`
+  over its 8 frame phases 76, the `clash` 25.
+
 ## Orbit: the heaviest remakes sum the beams' rows faster (2026-10-22)
 
 - When the beam groups' rows are 16 or more together, a remake puts the

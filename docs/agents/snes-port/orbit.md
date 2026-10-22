@@ -242,9 +242,11 @@ turns off, and those above the band lines go when its band layer comes to
 draw them (the clash: the launch's first frames, drawn with cells, left
 Goku's ray holding the rows from the top through the first struggle, and
 the stars above the globe stayed limited there: 3 of them instead of
-17-20). When a group turns on, gets heavier or moves onto new rows,
-the stars of every depth on those rows are hidden at once (`sl_cull`: y
-= $E0 in the lists), in the frame the limits are made, and the depths'
+17-20). When a group turns on or moves onto new rows, the stars of
+every depth on those rows are hidden at once (`sl_cull`: y = $E0 in the
+lists; a group that only gets heavier hides nothing more, its rows
+holding no stars whatever its slivers), in the frame the limits are
+made, and the depths'
 rebuilds leave them out until the group lets the rows go (before, a row
 kept (34 - 2 - the beams' slivers) / 2 stars, which came back over the
 next 15 frames: Goku's wave blinked 30 stars out and back in the `fight`

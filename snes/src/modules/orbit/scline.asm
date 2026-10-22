@@ -585,9 +585,10 @@ sl_rows:
 	RTS
 
 ; sl_t .. sl_b = the rows the beam groups newly hold since the last limits
-; (a group on anew or heavier: all its rows; one moved: its rows outside
-; the old ones; both groups' together); carry set when any. The groups'
-; rows become the last ones (sb_psig).
+; (a group on anew: all its rows; one still on: its rows outside the old
+; ones, heavier or not, as a beam's rows hold no stars whatever its
+; slivers; both groups' together); carry set when any. The groups' rows
+; become the last ones (sb_psig).
 sl_hot:
 	LDA.w #$00FF
 	STA.w !sl_t                    ; (no rows: top past bottom)
@@ -610,10 +611,9 @@ sl_hot:
 	SEP #$20
 	LDA.w !sc_sig,Y
 	BEQ .save                      ; (off: nothing newly held)
-	CMP.w !sb_psig,X
-	BEQ +
-	BCS .all                       ; (on anew, or heavier)
-+	LDA.w !sc_sig+1,Y              ; above its old top?
+	LDA.w !sb_psig,X
+	BEQ .all                       ; (on anew)
+	LDA.w !sc_sig+1,Y              ; above its old top?
 	CMP.w !sb_psig+1,X
 	BCS +
 	STA.w !sl_n                    ; rows top .. old top - 1
