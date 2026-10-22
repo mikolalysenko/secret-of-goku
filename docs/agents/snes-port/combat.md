@@ -278,6 +278,51 @@ higher). Gameplay misses over the twelve offsets, with the kick's deferred
 map strike below: punch 13, ki 10, fly 5, fly-ki 25, fly-punch 14,
 teleport 54, charge 124, none above the counts from before the forecast.
 
+**First frames in crowded vblanks (round 3, 2026-10-22).** No VRAM is free
+to keep a move's first cell resident. The field's OBJ VRAM is the actor
+streamer's: every slot's cells and effect pieces, `$6400-$7F40`. fx's
+three cache regions are effect pieces too, and only the HUD, ring, shadow
+and portrait tiles go unwritten. A first cell also shares no 4-tile row
+with any other of Goku's 465 cells, and at least 7 of its 16 tiles differ
+even from the closest one, so a partial upload saves little. The upload
+stays the full cell (512 bytes, 5.5 lines), and the forecast now needs
+less around it:
+- `goku_api_preempt_cell` sends the cell at once when 7 lines of the vblank
+  are left. Its four rows end by line 257 and the NMI's tail by 260.
+  Before, it left the cell to `goku_nmi`, which wants 10. `cb_forecast`
+  runs with 8 lines left (12 before).
+- A press that lets go of a direction is forecast too, with the facing from
+  the directions still held: walking, then punching. A newly pressed
+  direction can turn Goku, so it still waits.
+Press-to-picture over six input phases (frames from the press, or the
+release, until the move's own first cell shows, the cell its action
+requests at age 0; summed, cd0585d in brackets):
+
+| Move | Waterfall | Rabite field | Rabite field, Super Saiyan |
+| --- | --- | --- | --- |
+| Punch from rest | 0 (0) | 1 (2) | 1 (2) |
+| Ki throw from rest | 0 (0) | 1 (3) | 1 (1, a phase whose cell never showed) |
+| Next blow | 0 (2) | 18 (18) | 2 (5) |
+| The cross after walking | | | 4 (6) |
+| Kamehameha release | 0 (4) | 2 (4) | 4 (4, two phases never showed it) |
+
+The field's next blow is pressed during the jab's hold: its blow starts
+two or three steps later, when the buffer opens. Forecasting that start
+too (the vblank before the step, while `!cb_queued` is set) showed its
+cell a frame sooner in four phases of six. But the check it added to every
+field vblank shifted the charge case's timing enough to cost it 2 misses
+over ten offsets, so it was left out. The full Super Saiyan
+wave's release in the Rabite field meets a deflect reaction (`goku_mode`
+`DEFLECT`), whose pose wins: no forecast. What is left at 1 comes from
+crowded vblanks with no room for 512 bytes, whose module NMI starts at
+line 251 or later. The forecast fired 34 times in the probes (mashing,
+combos, both strings, charges), each time with the cell the next frame
+asked for.
+Gameplay CPU misses over offsets 0-9 (cd0585d in brackets): punch 6 (6),
+ki 0 (3), fly 1 (1), fly-ki 12 (12), fly-punch 3 (3), teleport 22 (22),
+charge 43 (43), 87 (90) in all. The strings lose no frame, and the perf
+scenes are unchanged.
+
 **The kick's lag frame (2026-10-22).** In a crowded field a three-hit
 string dropped a frame right after the kick's contact in five input
 phases of six. Per-frame profiles (the Rabite field, Super Saiyan):
