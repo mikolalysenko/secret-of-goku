@@ -13,7 +13,10 @@ stay traceable even when they are committed together.
   arrival, so they never saw his 11-line frames. On snes-int 317f637: 68
   with every rollback define (the case fails), 27 with the light frames
   and FX's kill return, 24 now (19 of them the fanfare's song load). The
-  quick-start numbers are unchanged: `fight` 3, `clash` 26.
+  quick-start path: the `fight` over its 8 frame phases 20 (3 2 3 3 2 2 2
+  3; snes-int alone 22), every phase passing, the bursts in 35-40 frames
+  (at the bound 40 in one phase; snes-int alone in three); the `clash`
+  26.
 - While the orbit holds the scene work area, `fz_find_boss` (the death
   watch's search for the Dark Lich over nine actor slots, every frame)
   compares each slot's species byte first and runs the other tests only on

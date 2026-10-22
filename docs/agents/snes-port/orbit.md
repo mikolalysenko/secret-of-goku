@@ -1259,9 +1259,11 @@ come from their sources. Results on the merged build:
   Frieza or a beam lose sliver-lines (8, 2), those where the bursts do
   (40, 4), each body's hides (moon, outer planet, planetoid: 0/0/1,
   0/0/2), and on any hide shown again within 30 frames (a blink). This
-  build: the `fight` 8, 6 (132 sliver-lines), 33 (579) and 0/0/1, and 7-8,
-  3-6, 28-39 and 0/0/1 over its 8 frame phases (`ORBIT_FIGHT_EXTRA=0..7`);
-  the `clash` 16, 0, 0 and 0/0/2; no blink. main 6a6c9a3 fails both: in
+  build: the `fight` 8, 6 (132 sliver-lines), 35 (598) and 0/0/1, and 7-9,
+  5-7, 35-40 and 0/0/1 over its 8 frame phases (`ORBIT_FIGHT_EXTRA=0..7`;
+  the bursts at the bound in phase 2; snes-int 317f637 alone, without the
+  orbit's light frames, reaches it in phases 3, 4 and 7); the `clash` 16,
+  0, 0 and 0/0/2; no blink. main 6a6c9a3 fails both: in
   the `fight` Goku's wave and Frieza's beam lose sliver-lines in 18 frames
   (234: the 30 Hz tear) and the outer planet hides and blinks; in the
   `clash` the moon and the outer planet hide 3 times each, 3 of those
