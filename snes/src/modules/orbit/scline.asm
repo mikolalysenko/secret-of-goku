@@ -4,12 +4,14 @@
 ; the beams, the bursts, Goku and Frieza. The bodies come last but for the
 ; stars, so a body on a full line would take its slivers from them; a body
 ; is drawn whole or not at all.
-; The stars' row limits (stars.asm stars_limits) count every body on its
-; rows: where a beam crosses them with the beams' slivers (the stars yield
-; its share), and on all of them with a margin (the stars there leave
-; !SL_MARGIN slivers a line for Goku, Frieza, the shots and the bursts, for
-; which no body hides). And when a beam takes new rows, the stars there
-; are hidden at once (sl_cull), before the lists' builds catch up.
+; The stars' row limits (stars.asm stars_limits) hold no star on a row a
+; beam's cells cover (the stars there go at once and none comes back while
+; the beam holds the row), and count every body on its rows: where a beam
+; crosses them its slivers go with the beams' (its room there), and on a
+; row of the bodies' alone the stars leave !SL_MARGIN slivers a line for
+; Goku, Frieza, the shots and the bursts, for which no body hides. And when
+; a beam takes new rows, the stars there are hidden at once (sl_cull),
+; before the lists' builds catch up.
 ; A body yields to a beam (not drawn) while its rows there have no room
 ; (the beams' and the bodies' slivers past 34 - !SC_SPARE), or while the
 ; stars have not yet made its room (star lists 1-2 not both rebuilt since
@@ -238,13 +240,12 @@ sl_stale:
 
 ; stars_limits, making the limits (sc_k: the beams' slivers on each row,
 ; !SC_FREE where none): the bodies' slivers on their rows, then the limits
-; (sl_limits), (34 - !SC_SPARE - slivers) / 2 stars a row, (34 -
-; !SL_MARGIN - slivers) / 2 on a row a body holds. A body is blocked
-; (sb_blk) when one of its rows a beam crosses has no room for it (34 -
-; spare), else its slivers go on all its rows (bit 7 marks those no beam
-; crosses: the beams' slivers stay below 128) and, on a beam's rows, it is
-; counted there (sb_cnt; those rows marked too once every body's room is
-; known). A body counted there anew or moved begins a new wait for the
+; (sl_limits): none on a beam's row, (34 - !SL_MARGIN - slivers) / 2 on a
+; row of the bodies' alone. A body is blocked (sb_blk) when one of its
+; rows a beam crosses has no room for it (34 - !SC_SPARE), else its
+; slivers go on all its rows (bit 7 marks those no beam crosses: the
+; beams' slivers stay below 128) and, on a beam's rows, it is counted
+; there (sb_cnt). A body counted there anew or moved begins a new wait for the
 ; star lists (sb_kg: the generation these limits get); and the stars on
 ; the rows a beam newly holds are hidden at once (sl_cull), unless they
 ; were hidden already and no list's build has begun since (sl_culled), or
@@ -305,35 +306,8 @@ sl_count:
 	INX : INX
 	CPX.w #!OSC_N*2
 	BCC .body
-	; a beam's rows a counted body holds keep the margin too (bit 7, once
-	; every body's room there is known)
-	LDA.w !sb_cnt
-	BEQ .margined
-	LDX.w #0
-.mbody
-	LDA.l sc_bodybits,X
-	AND.w !sb_cnt
-	BEQ .mnext
-	PHX
-	LDA.w !sb_lsig,X
-	JSR sl_rows
-	LDX.w !sl_t
-	SEP #$20
--	LDA.w !sc_k,X
-	ORA.b #$80
-	STA.w !sc_k,X
-	CPX.w !sl_b
-	INX
-	BCC -
-	REP #$20
-	PLX
-.mnext
-	INX : INX
-	CPX.w #!OSC_N*2
-	BCC .mbody
-.margined
-	; the limits (sl_limits: (34 - spare - slivers) / 2 stars a row; on a
-	; row of the bodies' alone, (34 - margin - slivers) / 2)
+	; the limits (sl_limits: none on a beam's row; on a row of the bodies'
+	; alone, (34 - margin - slivers) / 2)
 	SEP #$30
 	LDY.b #27
 -	LDX.w !sc_k,Y
@@ -459,7 +433,7 @@ sl_near:
 	RTS
 
 ; A row's stars allowed for its slivers (sc_k as made: !SC_FREE none;
-; bit 7 a row of the bodies' alone).
+; bit 7 a row of the bodies' alone; else a beam's row, which holds none).
 sl_limits:
 	!sl_v = 0
 	while !sl_v < 256
@@ -472,11 +446,7 @@ sl_limits:
 				db 0
 			endif
 		else
-			if 34-!SC_SPARE-!sl_v > 0
-				db (34-!SC_SPARE-!sl_v)/2
-			else
-				db 0
-			endif
+			db 0                       ; (a beam's row: no star while it holds it)
 		endif
 		!sl_v #= !sl_v+1
 	endwhile

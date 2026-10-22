@@ -227,9 +227,12 @@ them (`stars_limits`): per group the rows its cells cover from the origin
 to the screen's edge, and its slivers on each of those lines by heading
 class (class 0 the cells of a chain, class 1 two cells of every chain,
 classes 2-4 one of every chain), only made again when a group's inputs
-change; a row's limit is (34 - 2 - the beams' slivers) / 2, for both
-depths together (the distant bodies count in them too: their sprite
-lines, below). A depth's build leaves out a star past a limit, and a
+change. A row the cells cover holds no star of depths 1-2 while the group
+holds it: a stable, reduced starfield (the stars there go at once and none
+comes back mid-beam), the beam keeping the line's slivers for Goku, Frieza
+and the bursts (the browser keeps its stars behind the beams). The
+distant bodies count in the limits too (their sprite lines, below). A
+depth's build leaves out a star past a limit, and a
 change of the limits rebuilds the depths ahead of the globe's window
 block (none in the pullback, where the rebuilds would cost its frames
 their vblank). A group still on keeps the rows it holds while its own lie
@@ -237,9 +240,12 @@ within them (looser limits need no rebuild, and a ray's edge going back
 and forth over a row no longer makes them again); its rows go when it
 turns off. When a group turns on, gets heavier or moves onto new rows,
 the stars of every depth on those rows are hidden at once (`sl_cull`: y
-= $E0 in the lists), in the frame the limits are made, and come back
-with the depths' rebuilds within the new limits (a launch's rebuilds
-take up to 20 frames, 1-2 stars a frame); a cull is skipped when its
+= $E0 in the lists), in the frame the limits are made, and the depths'
+rebuilds leave them out until the group lets the rows go (before, a row
+kept (34 - 2 - the beams' slivers) / 2 stars, which came back over the
+next 15 frames: Goku's wave blinked 30 stars out and back in the `fight`
+test, and Frieza's aura, drawn every other frame, tore the wave's top
+lines at 30 Hz); a cull is skipped when its
 rows were culled already and no depth's build has begun since. The clash
 culls nothing: its depths leave out the stars well inside its rays, and
 with a group's limits only growing its rays lose no slivers without the

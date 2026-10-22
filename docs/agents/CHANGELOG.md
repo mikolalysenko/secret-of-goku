@@ -4,6 +4,31 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: no stars on a beam's rows while it holds them (2026-10-21)
+
+- The maintainer found the orbit "super glitchy ... lots of flickering and
+  sprites disappearing" on SNES 0.2.0. One cause: the stars' row limits
+  kept (34 - 2 - the beams' slivers) / 2 stars on a row a beam's cells
+  cover. The cull hid them all when a beam came, and the lists' rebuilds
+  brought most of them back over the next 15 frames. In the `fight` test,
+  Goku's wave blinked 30 stars out and back in. With Frieza's aura drawn
+  every other frame, those lines also passed 34 slivers at 30 Hz and the
+  wave's top lines tore.
+- A beam's row now holds no star of depths 1-2 while the group holds it.
+  The stars go at once and come back when the beam lets the row go, a
+  stable and reduced starfield. A counted body's beam rows need no
+  margin pass now.
+- `fight` (default build, the test's pads): the beams lose slivers in 4
+  frames (64 sliver-lines) instead of 18 (234), the bursts in 35 (390)
+  instead of 36 (690). The star count's jumps of 5 or more go from 9 to
+  7. The frames with 5 or more stars fewer than an unlimited sky go from
+  67 to 111, because the starfield stays reduced for the beam's whole
+  pass. The repeated pictures summed over the eight frame-cycle phases
+  (`ORBIT_FIGHT_EXTRA` 0-7) drop from 91 to 82 (per phase 9 9 12 9 13 9
+  11 10, before 9 12 14 11 13 11 11 10).
+- `clash`: unchanged. Its beam rows already held almost no stars (38
+  repeated pictures).
+
 ## Orbit: a body's hold made in its note (2026-10-21)
 
 - A distant body blocked on a beam's rows, or waiting there for the star
