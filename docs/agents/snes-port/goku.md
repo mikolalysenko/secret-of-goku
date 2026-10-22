@@ -165,6 +165,11 @@ replacement), `modules_field_nmi` → `goku_nmi` (uploads), `modules_field_preup
   edge, the OAM limit, all 256 bit-pair bytes and 20,000 random states; a
   ground three-part body falls 1,081 → 562 CPU cycles, an airborne one
   798 → 335.
+- **Per-frame tests**: the frame callback, the body hook and the
+  attachment hook (M8, DB = `$7E`, carry-only callers) use
+  `goku_check_on8`, `goku_check_on` without the P save and with absolute
+  addressing, and test `!goku_inited` before calling `goku_ensure_init`.
+  `GOKU_CHECK_SLOW=1` restores the former calls.
 - **Strike lunge** (`goku_lunge`, 2026-10-21; `goku-animation.js`
   `punchLunge`): in a punch pose the anchor moves along the action's facing
   by 2 / 3 / 4 px (jab, cross, kick) on the contact cell, which the hit stop

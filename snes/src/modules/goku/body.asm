@@ -34,7 +34,11 @@ goku_body_hook:
 goku_attach_hook:
 	CPX.w #$0000
 	BNE .native
+if not(defined("GOKU_CHECK_SLOW"))
+	JSR goku_check_on8
+else
 	JSR goku_check_on
+endif
 	BCC .native
 	LDA $E191
 	AND.b #$C5
@@ -107,11 +111,45 @@ goku_check_on:
 	CLC
 	RTS
 
+if not(defined("GOKU_CHECK_SLOW"))
+; goku_check_on for the frame code's M8, DB = $7E callers, which test only
+; its carry: no P save, absolute addressing. A and NZV change.
+goku_check_on8:
+	LDA.l !persist_goku_active
+	BEQ .no
+	LDA !goku_ctl
+	AND.b #!GOKU_CTL_SUPPRESS
+	BNE .no
+	LDA $E190
+	AND.b #$20
+	BNE .no
+	LDA $E191
+	AND.b #$10
+	BNE .no
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+; goku_ensure_init's own test first, for M8 callers.
+macro goku_ensure_init8()
+	LDA !goku_inited
+	BNE ?done
+	JSR goku_ensure_init
+?done:
+endmacro
+endif
+
 ; Render actor 0 as Goku. M8 X16 DB=$7E D=0. C set if handled (drawn or
 ; deliberately hidden), clear to let the native body draw.
 goku_render_boy:
+if not(defined("GOKU_CHECK_SLOW"))
+	%goku_ensure_init8()
+	JSR goku_check_on8
+else
 	JSR goku_ensure_init
 	JSR goku_check_on
+endif
 	BCS .on
 	RTS
 .on
