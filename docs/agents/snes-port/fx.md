@@ -1065,7 +1065,11 @@ scenes too. A killed enemy becomes a damage-number object at once (species
 `$F9`); its count rises to 3 five to ten frames later. When the enemy sits in
 slot 5, its digits stream into region A. `barrage-kill` holds Y: it kills
 two Rabites, walks to the third (slot 5) and kills it with a leftward
-barrage while more shots fly. On 17b4631, 98 shot sprites (Super Saiyan:
+barrage while more shots fly. Since combat's SNES-only feel (combat.md) it
+stops 20 px earlier (`left:40`). From the old stop, too few shots were in
+flight at the kill: `fxClaimed` was 17 on the merged build against the 20
+it needs, and it is 54 from the new stop (55 on main without the feel).
+On 17b4631, 98 shot sprites (Super Saiyan:
 231) showed its digits; after the fix, none. `ssj-charge` (L+A, then L+Y)
 and `revert-charge` (transform, revert, charge in base form) run with
 Rabites striking Goku and the transformation's kills. `ssj-kill-charge`
