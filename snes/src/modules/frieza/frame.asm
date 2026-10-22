@@ -26,6 +26,15 @@ endif
 	RTL
 +	JMP fz_quiet_slot
 .busy
+if defined("FRIEZA_ORBIT_FULL") == 0
+	LDA.l !core_scene_owner           ; the orbit holds the scene SRAM and
+	CMP.w #!SCENE_ORBIT               ; this frame would change nothing but
+	BNE +                             ; the story-level ticks
+	JSR fz_orbit_light_ok
+	BCC +
+	JMP fz_orbit_light
++
+endif
 	; an ending scene owns the picture and all of the scene SRAM
 	; ($32:6000-7FFF): Frieza's state there is gone
 	JSR fz_bind_ending_active
@@ -861,3 +870,108 @@ fz_music_cue:
 .orbit
 	LDA.w #!FZM_ORBIT
 	RTS
+
+; ---------------------------------------------------------------------------
+; The orbit's frames (orbit.md): the orbit holds the scene SRAM from the
+; second surge's hand-over to its stop, and every busy frame of Frieza's
+; takes the story-level path (.notEnding, fz_scene_sram clear). Of that
+; path only the ticks change anything there; fz_orbit_light runs them
+; alone. FRIEZA_ORBIT_FULL builds the full path for every frame.
+
+; C set when this busy frame's full path would change nothing but the
+; story-level ticks. The caller found the scene SRAM the orbit's
+; (fz_scene_sram finds it elsewhere); then Goku is on (fz_on), the session
+; goes on (fz_session: the same map, the picture lit; a break in the field
+; frames would only invalidate what is already gone), no ending runs, the
+; fight's danger stands (fz_danger_tick: stage battle or won), and
+; Frieza's last frame left nothing drawn, resident, published or for the
+; vblank (fz_spr_begin and fz_vram_settle: nothing to reset, release or
+; send). That last state is checked once, then !FZV_LIGHT stands for it:
+; only his drawing changes it, which runs on the full path, and
+; fz_spr_begin clears the bit there.
+fz_orbit_light_ok:
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BEQ .no
+	LDA $DC
+	CMP !fz_lastmap
+	BNE .no
+	LDA $E6                           ; lit: no forced blank, brightness 1-15
+	AND.w #$008F
+	DEC
+	CMP.w #$000F
+	BCS .no
+	LDA !fz_init                      ; settled, and the danger told (the lock either way)
+	AND.w #$00FF|((!FZT_FORCED|!FZT_PALSCAN|!FZT_HOLES|!FZT_WHITE|!FZT_WPREV|!FZT_DANGER)<<8)
+	CMP.w #$00A5|(!FZT_DANGER<<8)
+	BNE .no
+	JSR fz_bind_ending_active
+	BCS .no
+	LDA.l !fzp_stage
+	AND.w #$00FF
+	CMP.w #!FZST_BATTLE
+	BEQ +
+	CMP.w #!FZST_WON
+	BNE .no
++	LDA !fz_wasidle                   ; (high byte !fz_vista)
+	AND.w #$FF00|!FZI_IDLE|!FZI_SRAM|!FZI_BRIGHT
+	CMP.w #!FZV_LIGHT<<8
+	BEQ .yes
+	CMP.w #$0000
+	BNE .no
+	JMP fz_orbit_light_first
+.yes
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
+; Once (C set, !FZV_LIGHT set, when the light frames may start): what the
+; last frame left.
+fz_orbit_light_first:
+	LDA !fz_spr_pend                  ; no frame to upload, none resident
+	AND !fz_spr_res0
+	AND !fz_spr_res1
+	INC
+	BNE .no
+	LDA !fz_spr_var                   ; (and !fz_spr_cnt) nothing drawn
+	BNE .no
+	SEP #$20
+	LDA !fz_spr_pal                   ; no OBJ palette taken
+	AND !fz_spr_pal2
+	CMP.b #$FF
+	REP #$20
+	BNE .no
+	LDA.l !fz_cgnext                  ; no colours published
+	BNE .no
+	LDA.l !core_vram_owner+(2*!VRAM_SCENE_OBJ)
+	CMP.w #!FZ_VRAM_OWNER             ; none of core's scene VRAM held
+	BEQ .no
+	LDA.l !core_vram_owner+(2*!VRAM_SCENE_BG)
+	CMP.w #!FZ_VRAM_OWNER
+	BEQ .no
+	SEP #$20
+	LDA.b #!FZV_LIGHT
+	TSB !fz_vista
+	REP #$20
+	SEC
+	RTS
+.no
+	CLC
+	RTS
+
+; The light frame (JMP, ends in RTL): the story-level path less what would
+; change nothing (the checks above): fz_spr_begin, fz_session (but its
+; tick), fz_on, fz_danger_tick, the ending checks, fz_scene_sram and
+; fz_vram_settle.
+fz_orbit_light:
+	LDA.l !core_tick
+	STA !fz_lasttick
+	JSR fz_apply_pending
+	JSR fz_quake_tick
+	JSR fz_story_tick
+	JSR fz_death_tick
+	JSR fz_lock_tick
+	JSR fz_music_tick
+	JMP fz_try_quiet
