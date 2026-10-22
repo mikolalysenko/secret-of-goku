@@ -4,6 +4,116 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: louder hits, no flash, two soft locks closed, faster orbit and audio (2026-10-22)
+
+- Sound round nine (0014806, 76353fc, ec79c7d; merged in dccd864). The
+  maintainer's notes on round eight: punch and ki hits "too soft" and "so
+  quiet", ki shots "a bit sharper ... more like the pc", the Kamehameha's
+  "spring/high reverb effect when initially activates", and "a lot of the
+  new sounds are just too quiet in the mix".
+  - Punch, kick and SSJ kick contacts are a sustained noise crunch (230
+    ms on a hit, 380 ms on kicks) over a rumble that starts in an audible
+    range and falls. A new contact cuts off the one before. The swings
+    are unchanged.
+  - The ki shot is a bright "pew" near 3.3 kHz (3.7 kHz as a Super
+    Saiyan) that falls fast, then a crackle. A ki contact has its own
+    boom-then-crunch, in an unused retail effect slot (`$7E`).
+  - The Kamehameha opens with a springy activation in the song's echo,
+    modelled on the PC's charge sound, and a bright echoed shimmer plays
+    at full charge. The arc roar and the mains hum stay.
+    `AUDIO_ACTIVATION=charged` builds the spring at full charge instead.
+  - All music is 3 dB lower. The Kamehameha's release ducks it 5 dB more,
+    recovering over 2 s.
+  - How far each cue stands above the field music, in dB (before → now;
+    PC): punch hit 5.4 → 14.8 (14.7), kick 5.7 → 17.4 (16.7), ki shot 2.8
+    → 10.6 (9.7), ki contact 0.6 → 14.4 (10.9), Kamehameha start 4.8 →
+    13.4 (10.0). The tables, with a small-speaker check, are in
+    `audio.md`.
+  - The permanent bank has 31 bytes free (3 before). Gameplay timing is
+    unchanged.
+- Audio follow-up (667245e, a508692, 4c91b9f, 8d096d9, 27a187f; merged in
+  2ba1794).
+  - Cues go straight to the sound ports. A frame that sends one costs
+    2.79 lines on average (4.90 before).
+  - The optional bank's prefetch never blocks a frame. Summed over ten
+    start phases, it adds no gameplay misses; before, it added some.
+  - The game's own effects are no longer dropped when two come a few
+    lines apart. The second now waits, as the retail driver does, for at
+    most 1.3 lines (0.37 seen). Over 130 runs, 23 were dropped against
+    139.
+  - A song's first visit loads with round seven's allocator, and a return
+    within the last four songs with round eight's. The worst load against
+    round seven went from +12.6 frames to +0.36.
+- Performance pass 2 (5e890c6, 8655b7c, e393827, c55d683, dfbc1c9,
+  4875bf4; merged in 3666896).
+  - Frieza's maps go quiet before Goku arrives: his module costs 0.40
+    lines a frame in the battle scene (3.59 before).
+  - One shared brightness-ceiling byte, airborne vblank uploads from
+    FastROM, flight's footprint origins kept, and passenger checks in
+    place. Fly-punch's vblank overrun is gone.
+- Combat round three (6b7e8c6, 5226143, 853392e, 0fdeeeb; merged in
+  8ef7f9c).
+  - No full-screen flash. Kills, the finishing kick and the Kamehameha's
+    release no longer flash, per the maintainer: "get rid of the full
+    screen flash, it's too much". The hit stop, kill hold, shake, quake
+    and launches stay.
+  - The reported Kamehameha "palette glitching" was that flash. On the
+    Potos approach (map 128), the Rabite field (129) and south Potos (16),
+    the game blends layers with its own colour math. The flash replaced
+    the blend, so the water went cyan, then teal, for about 8 frames. No
+    flash now runs over the game's colour math, so the transformation's
+    warm flash is also skipped on those maps. The cut grass matched the
+    browser exactly.
+  - No frame is lost around the strings, in base form or as a Super
+    Saiyan. A late impact waits a frame.
+  - The first frame shows on the press in crowded vblanks and after a
+    direction is let go. Press-to-picture over the probe cases: 51 → 34
+    frames.
+- Orbit (4e52cba, a0c12e9, 5472bd3, d3c1650; merged in 10180ae). The
+  entries below give the details.
+  - Frieza's beam keeps to its core while Goku's wave is wide
+    (`-DORBIT_BEAMS_BOTH_WIDE` restores both).
+  - Beam runs are built in the third code area, at twice the speed. The
+    faster `orbit_mul88` and inlined signatures produce identical runs
+    (`-DBEAM_RUN_CHECK`).
+  - A beam's first run is built the frame before it shows.
+  - The fight's lag over its 8 frame phases went from 76 to 24, and the
+    flicker bounds pass at every phase.
+- Dwarf Village stalagmites (48a97f9, a5f8349; merged in bf2a64e), in
+  both editions. The maintainer: "you can't kamehameha or punch down the
+  stalagmites behind watts in the dwarf village?"
+  - The six behind Watts (map 294) are plain decoration that seals the
+    stairs to his shortcut. They now break to a punch or a Kamehameha into
+    piece 99's floor, the layout the original game opens after Watts
+    forges an orb.
+  - A latch keeps them open: `watts-shortcut` in the browser,
+    `P_DOORS` bit 3 on the cartridge.
+  - The plaza's eight free-standing stalagmites break like axe
+    obstacles and grow back on the next visit.
+  - No placed scenery is drawn identically to a breakable object. The
+    look-alike cave stalagmites left intact are listed in `destroy.md`.
+- Soft locks (bcbccd6, 797e32c, 9e428fc; merged in 555c009), in both
+  editions. The maintainer soft-locked in the Earth Palace arena: "the
+  earth palace boss fight doesn't show the enemy after you talk to gnome".
+  - Cause: flying over the orb room's gap skipped the orb's story stage
+    (`$CF18`). Gnome's scene then ended at 4, and the arena, which has no
+    exit, holds Fire Gigas only at 5. Entering Gnome's stage room now
+    raises `$CF18` to the orb's stage, 2. The 0.2.0 cartridge has this
+    bug.
+  - Tropicallo: the Dwarf Village quake now sets its stage, so an early
+    wall breach or Watts's axe no longer empties his arena.
+  - New regression cases cover every party combination and both routes.
+- Validation on dccd864 under both probes: all 20 suites pass.
+  - Gameplay misses per 240 frames at offset 0: charge 3, flying ki 3,
+    the rest 0.
+  - Orbit on the shipping build: the fight lags 3 frames (9 before), the
+    clash 27 (25) and the montage 0.
+  - Perf p90: sword 58, Sandship 109, battle 48 (51), Beast 169 (171),
+    Fortress 88 (91), flight 112.
+  - The hardware probe reports only the known cases.
+  - The browser specs for the Earth Palace (8) and the stalagmites (3)
+    pass on 555c009.
+
 ## Orbit: a beam's first run built the frame before it shows (2026-10-22)
 
 - A beam group with no picture in VRAM yet (a beam's first frame, where
