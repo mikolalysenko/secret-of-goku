@@ -244,6 +244,17 @@ rest unchanged. Computing the forecast at every frame's end instead (with
 a scanline gate so that it ran only in frames with time to spare) found
 the cell for more presses but cost charge 137 and fly 9: the gate itself
 ran in the frames at the edge.
+Every other field frame pays the compare back: `combat_field_frame` hands
+the core its mask without the injection's arithmetic when nothing was
+injected, calls King Kai's charge remarks (`cb_bind_charge_remark`) only
+while charging or beaming (its own test), and `cb_logic_frame` tests
+`!cb_init` before calling `cb_ensure_init`. That is about 0.2 lines a
+frame, and the perf scenes' p90 and lag frames are those from before the
+forecast again (sword 63, Sandship 112, battle 54, beast 174, Fortress 96,
+flight 112; with the compare alone Sandship and battle were a line
+higher). Gameplay misses over the twelve offsets, with the kick's deferred
+map strike below: punch 13, ki 10, fly 5, fly-ki 25, fly-punch 14,
+teleport 54, charge 124, none above the counts from before the forecast.
 
 **The kick's lag frame (2026-10-22).** In a crowded field a three-hit
 string dropped a frame right after the kick's contact in five input

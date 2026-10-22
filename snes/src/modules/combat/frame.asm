@@ -60,7 +60,13 @@ cb_hook_logic:
 ; (the browser's 60 Hz clock also while the game's logic lags; at most 4:
 ; menus and doors pause combat anyway).
 cb_logic_frame:
+	SEP #$20                      ; (cb_ensure_init's test, without its call)
+	LDA !cb_init
+	CMP.b #$A5
+	REP #$20
+	BEQ +
 	JSR cb_ensure_init
++
 if defined("COMBAT_TEST")
 	JSR cb_test_mailbox
 endif
@@ -303,13 +309,27 @@ combat_field_frame:
 	; never hide a button combat injects (X routed to native Y while Y is
 	; ki): the core applies a mask to two reads but an injection to one
 	LDA !cb_inj_all
+	BNE .inj
+	LDA !cb_mask                  ; (nothing injected: the mask as it is)
+	TSB.w !core_pad_mask&$FFFF
+	BRA .masked
+.inj
 	EOR.w #$FFFF
 	AND !cb_mask
 	TSB.w !core_pad_mask&$FFFF
 	LDA !cb_inj_all
 	TSB.w !core_pad_inject&$FFFF
+.masked
 	JSR cb_bind_loops
+	SEP #$20                      ; King Kai's charge remarks: a charge or a
+	LDA !cb_charging              ; beam only (cb_bind_charge_remark's own
+	BNE +                         ; test, without its call in other frames)
+	LDA !cb_act
+	CMP.b #!GOKU_K_BEAM
+	BNE ++
++	REP #$20
 	JSR cb_bind_charge_remark
+++	REP #$20
 	; effects: live records, a charge or an action (the aura and orb), or
 	; the beam picture of this frame's last step
 	LDA !cb_fx_mask
