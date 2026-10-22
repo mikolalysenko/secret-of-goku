@@ -6,6 +6,106 @@ integration bugs and CPU/vblank cost. The default build now favors resident
 SNES audio and compact effects. It is substantially smoother, but crowded
 combat is not yet guaranteed to run without missed video frames.
 
+## Performance pass: start-phase sums — October 21, 2026
+
+This pass profiled the cases that still missed frames (charge, teleport,
+fly-ki, fly, fly-punch), cut the CPU cost in core, Goku, flight, world,
+title, story, destroy and the ending's NMI step, and judged every change
+by stage and module costs plus the misses summed over start phases.
+
+**Method.** `gameplay/run.mjs --offsets=0,...,9 --jobs=8` idles 0-9 frames
+after each case's setup, so the native five-phase round robin meets the
+script at other points; one run's count is chaotic (crowded frames end
+within a line of the deadline), the sum over offsets is the measure. A
+change went in when its stage/module costs dropped and the summed misses
+did not rise. Per miss, `over` is the scanlines past the deadline and
+`logic` the update's length; `--native-profile=F` (the frame the update
+starts in) gives instruction histograms; `--<module>-profile` gives every
+JSR's span. Perf scenes: p90 against the original cartridge, the module
+tables (`snes/tools/modprof.mjs`) and the field loop's stages (C0:B08C …
+B0D0, B073) in both cartridges.
+
+**Where the time went (987d41a, before the pass).** Offset 0: charge 13,
+teleport 3, fly-ki 2, fly 1, fly-punch 1. Summed over offsets 0-9: punch
+17, ki 7, fly 4, fly-ki 16, fly-punch 20, teleport 43, charge 123 (230).
+- charge: overruns of 0.2-32 lines; native actors (B0CA) 93-158 (enemy AI
+  18-43, party 15), contacts B0B2 36-56, combat's hook B0AC 19-50, fx 16-39,
+  combat logic 10-40, Goku 17 (render 14.3: pose 7.0, OAM emit 5.3), flight 7.
+- teleport: the landing frame 15.4 over (flight 33.5); offsets 5-9 meet
+  native message-window frames: B08C 57-105 lines (the 1,792-byte buffer MVN
+  about 60, the border rows 42, the text paint 70-100 on a full page).
+- fly-ki: flight 19.3, fx 20-27, combat 24, one window-row frame (B08C 57.6).
+- fly: a companion update of 51 lines.
+- fly-punch: the hit/death frame 40.9 over: combat logic 58.5 (native damage
+  C0:4203-4BFF about 25), status 47.7, destroy's punch scans 22.7, flight 30.
+- every field frame: the multitap BIOS connect check (CF:FE70) 3.3-4.3
+  lines, the OAM high-table clear 1.7, idle module callbacks about 4.
+
+**Changes** (one per commit; `*_SLOW` defines rebuild the former code byte
+for byte; sums over offsets 0-9 after each):
+
+| Commit | Change | Cost before → after | Sum |
+| --- | --- | --- | --- |
+| 1958d7a | Goku: a full on-screen cell's four OAM entries directly (`GOKU_EMIT_SLOW`) | emit 1,081 → 562 CPU cycles on the ground, 798 → 335 in the air | 230 → 198 |
+| a9be7ef | World: idle field frame's tests inline | 0.70 → 0.28 lines | 191 |
+| a0f6e84 | Destroy: idle frame steps tested before their calls | 1.76 → 1.20 | 185 |
+| 6290533 | Flight: passenger hooks test mask and actor inline | B0CA/B0B2 −0.5 a frame | 177 |
+| 6092525 | Title: off map 128 an unchanged frame only records its tick | 0.83 → 0.28 | 170 |
+| bf5c708 | Core: OAM high-table clear unrolled from FastROM | B0A0 1.73 → 0.79 | 149 |
+| 1533650 | Goku: pose inputs with a hypotenuse row table | 1,157 → 1,126 cycles | 148 |
+| e843c0d | Goku: carry-only per-frame tests | goku_frame 3.18 → 3.00 | 145 |
+| 033aca0 | Story: persistent-state tests ahead of their calls | 0.71 → 0.57 | 145 |
+| c03e42e | Core: six per-frame native calls through FastROM | B0C7 9.86 → 9.54 (charge) | 133 |
+| ef8a573 | Core: a window's 1,792-byte buffer clear as word stores | 12,560 → 5,546 cycles | 130 |
+| 323ab07 | Core: a window's border rows in one pass each | 5,517 → 980 cycles; B08C max 57.6 → 23.3 (fly-ki) | 129 |
+| 0ced181 | Flight: passenger live checks as words | B0CA+B0B2 −0.23 (fly-ki) | 129 |
+| 2c51539 | Flight: eligible() as words, finale flag inline | flight_frame 18.39 → 18.19, B0B2 30.45 → 30.09 (fly-ki) | 128 |
+| 39c065f | Title: map 128 before the sword event skips the empty draw | 2.92 → 0.83 (sword scene); p90 60 → 58 | 128 |
+| e8c4fbf | Core: a member's contact pass over the enemy slots, unrolled | 1,098 → 895 cycles a recorded pass; B0B2 −2.5 to −3.5 in crowded cases | 116 |
+| 5f21542 | merge main 7d657ae (the ending's C0:C168 NMI step) | NMI tail 149 → 165 cycles | 115 |
+| 6299e7b | Ending: its ceiling at the final INIDISP write (C0:C15F) | NMI tail 165 → 154 cycles | 116 (charge over offsets 0-29: 194 → 192) |
+| 1e48992 | Core: window text paint as one 16-bit pass per row | 713 → 601 cycles a tile; B08C max 105.3 → 91.8 (teleport) | 114 |
+
+The harness commits 632e31d (offsets, jobs, module profiles) and 0142c00
+(per-miss overrun, frame-selected instruction profiles, an HDMA-aware aura
+check) carry the method.
+
+**Final (1e48992, main 7d657ae merged).** CPU misses per case:
+
+| Case | Offset 0 before → after | Sum, offsets 0-9, before → after |
+| --- | --- | --- |
+| punch | 0 → 0 | 17 → 9 |
+| ki | 0 → 0 | 7 → 3 |
+| fly | 1 → 0 | 4 → 1 |
+| fly-ki | 2 → 3 | 16 → 12 |
+| fly-punch | 1 → 1 | 20 → 10 |
+| teleport | 3 → 0 | 43 → 23 |
+| charge | 13 → 4 | 123 → 56 |
+| all others | 0 → 0 | 0 → 0 |
+| total | | 230 → 114 |
+
+Perf scenes (p90 finish line; original cartridge / before / after):
+sword 45 / 63 / 58, Sandship 103 / 112 / 109, battle 34 / 54 / 51, Beast
+173 / 174 / 171 (30 lag frames in all three), Fortress 90 / 96 / 91, flight
+123 / 112 / 112. Module tables: sword 9.50 → 6.67 lines a frame, battle
+10.75 → 9.33 (NMI tables 1.29 / 1.28 unchanged). Against the original in
+battle (means): the module table and core's frame work at B073 +11.7
+lines, combat's B0AC hook +3.0, the field NMI +4 lines before logic
+starts, scroll (B0B8) +0.6, while the actor stages are 1.0 lower and the
+OAM reset 0.9 lower. Frieza's field frame is not quiet in the battle
+scene (3.5 lines: `fz_vram_settle`, `fz_spr_begin`, VRAM releases).
+
+**What still misses.** fly-ki at offset 0: frames 103 and 139 (5.2 and 3.6
+over: native actors 94-97 with enemy AI 37-42, contacts 45, combat 25 + 16,
+fx 17-20, flight 21.6) and 293 (14.8 over, the hero grid moving into new
+cells: flight's tile classification and exit checks). fly-punch: frame 264,
+1.7 over (combat's hit logic 58.5, party 22, status 12.5). charge: crowded
+AI and fx frames. teleport's remaining sum is window-text frames (B08C 92
+lines on a full page). Left alone: the multitap BIOS connect check
+(CF:FE70, 2.4-3.4 lines every frame) reads both serial ports 16 times
+with ROL dp; a tighter read loop changes the serial read timing, so it
+needs testing on hardware with a multitap first.
+
 ## water-flight no longer wedges — October 21, 2026
 
 Until the flower-bed flight fix
