@@ -1,5 +1,162 @@
 # Audio module: native SNES effects and music
 
+## Native stop and fade waits; the victory fanfare's load
+
+Base: main `827a828`. At the orbit clash's win, one stop command held the
+CPU for 84-97 lines while it waited for the SPC. Stops and fades that
+modules queue now wait at most about 3 lines. The victory fanfare's slower
+load after the merge comes from the retail allocator's fit test (`8d096d9`).
+That fit test stays: counting the duplicated sample once speeds the
+fanfare, but later loads pay more. Sound designs, samples, sequences, gains
+and the mix are unchanged. `-DAUDIO_CUSTOM_SAMPLES=0` and `-DAUDIO_PCM=1`
+build byte-identical to the base. `-DAUDIO_NATIVE_SYNC=1` builds the base's
+shipping cartridge byte for byte.
+
+### Why the stop waited
+
+`finale_win` (orbit/finale.asm) queues `F2 00 00 00` (stop effects, keep
+music). The core's sound pump sends it at the end of the frame, at line 207,
+through C3:0004 to the native handler at C3:059F. That handler writes the
+four ports, then waits at C3:05D2 for the SPC's echo. The SPC reads the
+ports only between timer ticks, from its main loop (`$0279` -> `$0CAF`). In
+the clash a tick of music and effects takes 30.6 lines (median), up to 88.6.
+The stop arrived early in a long tick:
+
+| Build | F2 call (lines) | Echo wait | Scanlines |
+| --- | ---: | ---: | --- |
+| orbit branch `4bd5526` | 84.10 | 70.5 | 205 -> 27, past vblank |
+| main `827a828` | 97.46 | 83.6 | 207 -> 43, past vblank |
+| snes-int `013e01d` | 32.26 | | 205 -> 237 |
+| now | 4.60 | 3.1 | 207 -> 212 |
+
+The base's call ran past vblank, so the frame at win age 0 lagged. Now the
+clash lags 26 frames instead of 27: that frame no longer lags, and the
+fanfare's frames are unchanged.
+
+### Every synchronous command in the suites
+
+A survey prelude timed each C3:0004 call, from entry to its RTL at C3:0197,
+and read the caller from the stack. Only songs, stops and fades block.
+Effects (02) and beds (81) have been asynchronous since round seven.
+
+| Suite | Command | Caller | Calls | Longest, base -> now (lines) |
+| --- | --- | --- | ---: | --- |
+| orbit clash | F2 | pump (`finale_win`) | 1 | 97.46 -> 4.60 |
+| orbit clash | F0 | pump (Frieza's defeat) | 1 | 2.43 -> 4.79 |
+| orbit clash | 80 80 | pump (finale fade) | 1 | 2.18 -> 2.28 |
+| orbit return | F2, F0, 80 80 | pump | 3 | 28.15, 2.47, 2.35 -> 4.62, 4.80, 5.00 |
+| ending finale | 80 xx | pump (ending fades) | 19 | 36.63 -> 4.84 |
+| ending finale | 80 | retail fade helper C2:310A | 2 | 12.26 -> 36.90 (native path) |
+| ending finale | 80 | retail C0:0FDF, AF:8526 | 2 | 14.12, 2.54 -> 14.38, 2.61 (native path) |
+| ending finale-frieza | F0, 80 80 | pump (Frieza's victory) | 2 | 2.53, 15.98 -> 2.01, 2.06 |
+| vegeta combat-final | 80 80, 80 8F | event script (C1:F109) | 2 | 20.31 -> 20.85 (native path) |
+| combat mantis | 80 80 | event script | 1 | 2.08 -> 2.65 (native path) |
+| orbit fight, frieza battle, gameplay (13 cases) | none | | | |
+
+A native path's wait ends at the SPC's next poll: up to one tick, so the
+same call varies between runs. Songs (01) remain the loader's synchronous
+transfer, covered below.
+
+### The pump's stops and fades
+
+`audio_native_simple` (native.asm) takes over when the core's sound pump
+sends a stop, fade or UI sound: F0-FC, 80/86/89 or 10-1F. It recognizes the
+pump by the return address of its JSL on the stack
+(`core_sound_pump_none-3`). It writes the four ports as C3:059F does and
+keeps C3:05C2's F0/F1 bookkeeping (the current song to `$1E09-$1E0B`, then
+`$1E05 = $FF`). It then waits at most about 3 lines for the echo, and never
+past line 223, so the wait cannot push a late frame past its vblank. A
+driver between ticks answers within 0.3-1.6 lines. Past that it is
+inside a tick, which in the survey lasted 6.5 to 84 more lines. A later
+echo stays pending, as an effect's does, and the next dispatched frame's
+audio poll releases it, about 260 lines later. A cue or native effect that
+still finds the stop unacknowledged waits for its echo instead of being
+dropped, so the SPC receives the same commands in the same order. No suite
+reached that case. The command is never withdrawn.
+
+Retail callers keep the native handshake. An event script or the retail
+fade helper may fade and then start a map load before any audio poll runs.
+The SPC would then sit in its echo loop for the whole load, and the fade
+would freeze.
+
+### Where the SPC waits after an asynchronous command
+
+This predates this change: round seven made effects and beds asynchronous.
+After the driver echoes a command, it spins at `$0CC3` until the CPU
+changes port 0. The CPU releases the echo at its next poll, one frame later
+(release 260 lines after the send at the median, 515 at p90). The timer
+ticks every ~71 lines (9,216 of Mesen's 2.048 MHz SPC clocks), and the
+driver processes one tick per main-loop pass however many elapsed. Most of
+the parked time is therefore lost music time:
+
+| Run (tick probe) | Echoes | SPC time parked | Parked over 126 lines | Longest |
+| --- | ---: | ---: | ---: | ---: |
+| vegeta combat-final | 195 | 4.1% | 183 | 640 lines |
+| orbit fight | 29 | 3.7% | 26 | 266 lines |
+
+With the ticks that ran longer than a period, the driver processed about
+6% and 3% fewer ticks than its timer produced (assuming the 9,216-clock
+period throughout). A stop or fade from the pump adds at most one such
+wait per command. Releasing echoes in the field and world NMI, a few lines
+after a late frame's sends, would remove most of the parked time. That
+hook belongs in `modules.asm`, outside this module.
+
+### The victory fanfare's load
+
+Song `$18` lists 28, 12, 11, 11. At the clash's win the cache held 16, 12,
+9 and 18 (4,014 + 4,014 + 4,032 + 1,809 bytes, tail `$8D1E`), EDL 4, limit
+`$DA00`, with no recent song. `8d096d9`'s first-visit append uses the retail
+planner's fit test, which counts a duplicated entry twice. Counted that way,
+28 + 11 + 11 (21,636 bytes) does not fit, so the plan packs, moving 12, and
+the load takes 22.5 frames. Round eight's hole allocator appended without
+packing: 19 frames on the orbit branch. Counted once, 15,066 bytes fit.
+Measured with the fit test counting each sample once:
+
+| Load sequence | Retail fit (kept) | Counted once |
+| --- | ---: | ---: |
+| orbit clash: fanfare | 22.52 | 19.08 |
+| Frieza's defeat to the end card (ending finale-frieza): `$18`, `$37`, `$39`, `$2C` | 21.67, 24.08, 57.30, 21.49 (124.5) | 18.23, 19.61, 70.84, 21.49 (130.2) |
+| power-on preset 14: `$18`, `$1A` | 19.55, 5.57 | 8.87, 26.88 |
+| power-on, 192 loads, total | 3,701.98 | 3,713.53 |
+| boss victories (27 loads, a fanfare after each of six bosses), total | 568.56 | 568.92 |
+| 64 canonical loads, mean | 19.655 | 19.656 |
+
+Only `$18`, `$1B` and `$29` list a sample twice, and the decision differs
+only when the doubled sample tips the fit test. Skipping that pack defers
+it: the next large first visit packs more, including the samples just
+appended at the top (`$39` in Frieza's ending, +13.5 frames; `$1A` on the
+power-on pass, +21.3). Round eight's allocator, used for every first visit,
+was up to 12.6 frames slower than round seven elsewhere. The retail fit
+test therefore stays. The clash's fanfare remains a retail-equal 22.5
+frames, and its share of the orbit's lag is unchanged.
+
+### Validation and files
+
+On the final build (`f00565c`, shipping SHA-256
+`08bd87ea56b539a47126b6f9c02623b8a3cb89541eb6efeb91791aebd8ce8420`), all
+of these pass:
+
+- the audio suite: 59 unit tests, weapon-charge (34 phases), the renders and
+  all 12 Mesen cases. `native` adds the pump's fades, stops and F0
+  bookkeeping, a cue right after a stop, and the bounds: calls of 2.0-4.6
+  lines, never through the native dispatch;
+- the orbit clash, fight and return; combat (38 cases); vegeta clash-win and
+  combat-final; ending finale and finale-frieza; frieza battle.
+
+Gameplay CPU misses over offsets 0-9 (`gameplay/run.mjs --offsets=0,...,9`)
+are 81 on the base and 81 now, the same in every run (punch 6, fly 1,
+fly-ki 9, fly-punch 2, teleport 21, charge 42, the rest 0). Song loads
+match the base within 0.3 frames per load: 19.650 against 19.655 frames
+mean for 64 loads, 19.284 against 19.281 for 192, and 13.543 against
+13.534 for the route. The cache model replays the 64, 196 and 15-load
+passes exactly.
+
+| Files | Purpose |
+| --- | --- |
+| `audio/native.asm` | `audio_native_simple`; cues and native effects wait for a pending stop's echo |
+| `audio/module.asm` | test op 10: any native command through the core's queue |
+| `snes/test/audio/native.lua` | pump fades, stops, bookkeeping, cue after a stop, bounds |
+
 ## Round nine: louder hits, a sharper ki and the springy activation
 
 This supersedes round eight's contact, ki, ki-contact, charge-start and
@@ -2173,7 +2330,9 @@ retail-sample resampling, extension storage and a 1,800-byte custom BRR bank.
 
 Callers write a 4-byte command to `$7E:1E00` (`[cmd, p1, p2, p3]`) and
 `JSL $C30004` (`JMP $0160`; DP = `$1E00`, DB = 0 inside). Byte 0 is consumed
-(zeroed). Main-thread only; it busy-waits on the ports.
+(zeroed). Main-thread only; it busy-waits on the ports. (The shipping
+cartridge sends effects and beds without that wait, and the core pump's
+stops and fades with at most ~3 lines of it: see the first section.)
 
 | Command | Meaning |
 | --- | --- |

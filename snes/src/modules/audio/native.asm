@@ -351,7 +351,18 @@ audio_native_send:
 	LDA.w !au_pending
 	BEQ .ready
 	CMP.l $002140
+if not(defined("AUDIO_NATIVE_SYNC"))
+	BEQ .echoed
+	CMP.b #$02
+	BEQ .drop
+	CMP.b #$81
+	BEQ .drop
+-	CMP.l $002140             ; the pump's stop or fade (audio_native_simple)
+	BNE -                     ; precedes this cue, as when it waited itself
+.echoed
+else
 	BNE .drop
+endif
 	LDA.b #0
 	STA.l $002140
 	STA.w !au_pending
@@ -398,6 +409,95 @@ audio_native_send:
 	STA.w !au_bed_rate,X
 	RTS
 
+; Stops, fades and UI sounds a module queued (F0-FC, 80/86/89, 10-1F),
+; when the core's sound pump sends them (core_frame_end, after every
+; module's frame). The native driver (C3:059F) writes the same four ports,
+; then waits for the echo, but the SPC polls the ports only between its
+; timer ticks, and a busy scene's tick runs up to ~90 lines: the orbit
+; clash's F2 at the win waited 84-97 lines and crossed vblank. Here the
+; wait is bounded at ~3 lines and ends by line 223; a later echo is left
+; pending for the next frame's audio poll, as an effect's is (a dispatched
+; frame follows the pump). A cue or effect after it waits for that echo
+; instead of being dropped. Retail callers keep the native handshake: an
+; event script may warp before the next poll. Never withdrawn.
+; In: A8 = command, X/Y16, any DB/D. Carry set: sent; $1E00 is consumed
+; by the caller. Clear: the native path.
+if not(defined("AUDIO_NATIVE_SYNC"))
+audio_native_simple:
+	CMP.b #$F0 : BCC .low
+	CMP.b #$FD : BCC .pump
+.native
+	CLC
+	RTS
+.low
+	CMP.b #$80 : BEQ .pump
+	CMP.b #$86 : BEQ .pump
+	CMP.b #$89 : BEQ .pump
+	CMP.b #$10 : BCC .native
+	CMP.b #$20 : BCS .native
+.pump
+	; Only core_sound_pump's JSL $C30004 (S+8..10: this JSR, Y, A, P).
+	REP #$20
+	LDA $08,S : CMP.w #core_sound_pump_none-3
+	SEP #$20
+	BNE .native
+	LDA $0A,S : CMP.b #core_sound_pump_none>>16 : BNE .native
+	LDA.l $7E0000|!au_pending : BEQ .ready
+-	CMP.l $002140 : BNE -        ; an earlier command first (native order)
+	LDA.b #0 : STA.l $002140 : STA.l $7E0000|!au_pending
+	LDY.w #24
+-	LDA.l $002140 : BEQ .send
+	DEY : BNE -
+	BRA .native                 ; still clearing: the driver's own C3:05B2 wait
+.ready
+	LDA.l $002140 : BNE .native ; another handshake shows
+.send
+	LDA.l $7E1E03 : STA.l $002143
+	LDA.l $7E1E02 : STA.l $002142
+	LDA.l $7E1E01 : STA.l $002141
+	LDA.l $7E1E00 : STA.l $7E0000|!au_pending : STA.l $002140
+	; C3:05C2: F0/F1 keep the current song for a later resume, then none.
+	CMP.b #$F2 : BCS .budget
+	CMP.b #$F0 : BCC .budget
+	LDA.l $7E1E05 : BMI +
+	STA.l $7E1E09
+	REP #$20
+	LDA.l $7E1E06 : STA.l $7E1E0A
+	SEP #$20
++	LDA.b #$FF : STA.l $7E1E05
+.budget
+	; ~19 polls a line: 3 lines (an idle driver answers within 0.3-1.6),
+	; or up to line 223 when that is nearer.
+	LDY.w #57
+	LDA.l $00213F               ; reset the counter read flip-flops
+	LDA.l $002137               ; latch H/V
+	LDA.l $00213D : PHA         ; V low
+	LDA.l $00213D : LSR         ; V bit 8: lines 256-261 are vblank
+	PLA
+	BCS .wait
+	CMP.b #220 : BCC .wait
+	CMP.b #225 : BCS .wait      ; vblank of a late frame: no NMI to make
+	EOR.b #$FF : SEC : ADC.b #223 ; lines to 223 (none at 223-224)
+	BMI .late
+	BEQ .late
+	PHA
+	ASL : ASL : ASL : ASL
+	CLC : ADC $01,S : CLC : ADC $01,S : CLC : ADC $01,S ; x19, at most 57
+	REP #$20 : AND.w #$00FF : TAY : SEP #$20
+	PLA
+.wait
+	LDA.l $7E1E00
+-	CMP.l $002140 : BEQ .echo
+	DEY : BNE -
+.late
+	SEC
+	RTS
+.echo
+	LDA.b #0 : STA.l $002140 : STA.l $7E0000|!au_pending
+	SEC
+	RTS
+endif
+
 ; C3:0160. Ordinary effects do not use D or DB: avoid saving and rebuilding
 ; every register just to write four ports. Preserve A/B, Y and P explicitly
 ; (any caller widths); the fallback replays the native prologue for every
@@ -411,11 +511,26 @@ audio_native_effect:
 	PHY
 	LDA.l $7E1E00 : AND.w #$00FF : CMP.w #2 : BEQ .async
 	CMP.w #$81 : BEQ .async
+if not(defined("AUDIO_NATIVE_SYNC"))
+	SEP #$20
+	JSR audio_native_simple
+	BCC +
+	BRL .drop
++	REP #$30
+endif
 	JMP .native
 .async
 	SEP #$20
 	LDA.l $7E0000|!au_pending : BEQ .ready
+if not(defined("AUDIO_NATIVE_SYNC"))
+	CMP.l $002140 : BEQ .echoed
+	CMP.b #$02 : BEQ .busy
+	CMP.b #$81 : BEQ .busy
+-	CMP.l $002140 : BNE -        ; a stop or fade from the pump goes first
+.echoed
+else
 	CMP.l $002140 : BNE .busy
+endif
 	LDA.b #0 : STA.l $002140 : STA.l $7E0000|!au_pending
 	LDY.w #24
 -	LDA.l $002140 : BEQ .clear

@@ -1984,7 +1984,8 @@ audio_echo_x:
 ; ---------------------------------------------------------------- tests
 ; !au_test = op | arg<<8: 1 shot, 2 voice, 3 song, 4 stop all, 5 loop on
 ; (arg = loop id; kept on every frame), 6 loop off, 7 fade, 8 native effect
-; 02 arg 0F 88, 9 restore the native song. A8 X16.
+; 02 arg 0F 88, 9 restore the native song, 10 (shipping) native command
+; arg 00 00 00. 3 and 7-10 go out through the core's sound pump. A8 X16.
 audio_test_poll:
 	LDA.w !au_testloop
 	BEQ +
@@ -2056,6 +2057,17 @@ audio_test_poll:
 +	CMP.b #$09
 	BNE +
 	JSL audio_song_restore
+if !AUDIO_CUSTOM_SAMPLES && not(defined("AUDIO_NATIVE_SYNC"))
+	RTS
++	CMP.b #$0A
+	BNE +
+	REP #$30                  ; any native command through the core: cmd 00 00 00
+	LDA.w !au_tmp+$1F
+	AND.w #$00FF
+	LDX.w #$0000
+	JSL core_sound_queue
+	SEP #$20
+endif
 +	RTS
 
 if !AUDIO_CUSTOM_SAMPLES
