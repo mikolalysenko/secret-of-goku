@@ -100,6 +100,15 @@
 !core_vram_owner      = !CORE_SAFE+$040 ; 32 bytes: VRAM pool cell owners (core/vram.asm)
 !core_test            = !RAM_CORE_EXT+$100 ; 128 bytes: CORE_TEST mailbox (test builds only)
 !core_hdmaen          = !CORE_SAFE+$016 ; byte: HDMAEN written by the last field vblank
+; Owners of a displayed-brightness ceiling (!CORE_BRIGHT_* bits): the field
+; NMI's final INIDISP write (C0:C15F) looks for a ceiling only while this
+; byte is nonzero. An owner sets its bit before it publishes its ceiling and
+; clears it after the ceiling is withdrawn; frame code uses TSB/TRB (DB =
+; $7E, one instruction: never torn by an NMI owner's own update), vblank
+; code may read and write it. Bank $7E, outside the module blocks.
+!core_bright_any      = !RAM_CORE_BRIGHT
+!CORE_BRIGHT_TREE     = $01        ; Frieza's Tree vista (!FZI_BRIGHT, !fzt_showbright)
+!CORE_BRIGHT_ENDING   = $02        ; the ending's black holds (!ending_showbright)
 !core_actor_hold      = !SRAM_WORK_ACTOR_HOLD ; word: a module whose picture hides every native
                                     ; actor writes !core_frame here in its frame code: that
                                     ; frame's vblank skips the game's actor cells (core_actor_cells)
@@ -231,6 +240,11 @@ core_clear_wram:
 	STA.l !RAM_UI,X
 	DEX : DEX
 	BPL .spare
+if not(defined("CORE_BRIGHT_ANY_SLOW")) && not(defined("ENDING_NMI_HOOK_SLOW"))
+	SEP #$20
+	STA.l !core_bright_any
+	REP #$20
+endif
 	RTS
 
 ; Clear the battery-RAM core block (+$002-$09F) and mark it valid. M16/X16.

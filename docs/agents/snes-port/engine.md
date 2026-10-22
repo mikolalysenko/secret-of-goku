@@ -50,6 +50,13 @@ retain `$00`. Other code runs in `C0`–`DF` through `JSL`.
   mode or scroll writes for the whole frame). `core_hdmaen_write` keeps such a
   frame's HDMA off (only channels a module switched on directly before the
   frame start, recorded in `!core_hdmaen`, stay on).
+- `!core_bright_any` (7E:D6FF, below the module blocks, cleared with them):
+  owner bits of a displayed-brightness ceiling (`!CORE_BRIGHT_TREE`,
+  `!CORE_BRIGHT_ENDING`). The field NMI's final INIDISP write (`C0:C15F`)
+  looks for a ceiling only while it is nonzero. Owners set their bit before
+  publishing a ceiling and clear it after withdrawing one; frame code uses
+  TSB/TRB with DB = `$7E` (one instruction, never torn by a vblank owner's
+  update), vblank code may read and write it.
 - `$29`/`$21`: per-frame BG mode / main screen written by the field NMI when
   `$29 & 4` (Mode 7 arenas). The field IRQ switches lines 196+ to the HUD:
   `$2105=$09`, `$212C=$14` (BG3 + OBJ). The switch lands at x≈248 of line 195.

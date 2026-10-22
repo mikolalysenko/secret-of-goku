@@ -502,11 +502,14 @@ is back to zero, and charge remains at its baseline 17.
 
 The ending's black holds (the good ending's transition through door 2F,
 the reunion, the death fade) use the same rule, `$E6` untouched. Their
-ceiling (`!ending_showbright`) is applied by this hook too: the idle test
-`ORA`s the ending's byte into the Tree's flag (one long read more), and with
-both set the ending's applies over the Tree's, as its own hook after combat's
-vblank pad did (`ending_field_brightness`, `C0:C168`, kept with
-`ENDING_NMI_HOOK_SLOW=1`). The two ceilings never overlap.
+ceiling (`!ending_showbright`) is applied by this hook too, the ending's
+over the Tree's when both are set, as its own hook after combat's vblank pad
+did (`ending_field_brightness`, `C0:C168`, kept with
+`ENDING_NMI_HOOK_SLOW=1`). The idle test reads one byte: core's
+`!core_bright_any`, where the Tree's vblank latch (`fz_tree_nmi`) and the
+scene SRAM's release keep `!CORE_BRIGHT_TREE` with `!FZI_BRIGHT`, and the
+ending keeps its own bit (`CORE_BRIGHT_ANY_SLOW=1`: one long `ORA` of both
+owners' flags instead). The two ceilings never overlap.
 
 ## Resources
 

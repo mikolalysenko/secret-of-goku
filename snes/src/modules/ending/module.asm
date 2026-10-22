@@ -52,7 +52,14 @@
 ; The displayed brightness ceiling (brightness_publish): 0 none, $80 | level
 ; (0-15). Applied at the field NMI's final INIDISP write (C0:C15F,
 ; frieza_field_brightness); zero after module WRAM is cleared at title entry.
+; While it may be set, core's !core_bright_any holds !CORE_BRIGHT_ENDING
+; (set first, cleared after; CORE_BRIGHT_ANY_SLOW and ENDING_NMI_HOOK_SLOW
+; builds test this byte itself).
 !ending_showbright = !RAM_ORBIT+$B6 ; byte
+!ENDING_CEILING_ANY = 0
+if not(defined("ENDING_NMI_HOOK_SLOW")) && not(defined("CORE_BRIGHT_ANY_SLOW"))
+!ENDING_CEILING_ANY = 1
+endif
 
 ; Phases (match the browser's state.phase).
 !EP_TRANSITION = $01   ; good: whole-screen fade to black over 48 frames, then black
@@ -1123,6 +1130,9 @@ release_screen:
 	LDA.b #$00
 	STA.l !ending_phase
 	STA.l !ending_showbright      ; no ceiling on the next picture
+if !ENDING_CEILING_ANY
+	JSR brightness_any_off
+endif
 	REP #$30
 	RTS
 
@@ -1144,6 +1154,9 @@ release_common:
 	SEP #$20
 	LDA.b #$00
 	STA.l !ending_showbright      ; the released picture has no ceiling
+if !ENDING_CEILING_ANY
+	JSR brightness_any_off        ; (A = 0 again)
+endif
 	STA.w !s_loading
 	STA.w !s_ldvis
 	STA.w !s_palcount
