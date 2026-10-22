@@ -225,6 +225,20 @@ if not(defined("CORE_NATIVE_DISTANCE_SLOW"))
 %hijack($C10358, core_native_distance, 4, core)
 endif
 
+if not(defined("CORE_NATIVE_SCAN_SLOW"))
+%orig4($C10A46, $602B2868)
+%orig4($C10A11, $20C2080B)
+%hijack($C10A11, core_native_scan4, 4, core)
+%orig4($C10A5A, $20C2080B)
+%hijack($C10A5A, core_native_scan8, 4, core)
+%orig4($C10C08, $20C2080B)
+%hijack($C10C08, core_native_escan2, 4, core)
+%orig4($C10C51, $20C2080B)
+%hijack($C10C51, core_native_escan4, 4, core)
+%orig4($C10C9A, $20C2080B)
+%hijack($C10C9A, core_native_escan8, 4, core)
+endif
+
 if not(defined("CORE_NATIVE_DIRECTION_SLOW"))
 %orig4($C10404, $20C2080B)
 %hijack($C10404, core_native_direction, 4, core)

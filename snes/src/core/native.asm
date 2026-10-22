@@ -245,6 +245,163 @@ core_native_distance:
 	LDA.w #8
 	JML $C103F9
 
+if not(defined("CORE_NATIVE_SCAN_SLOW"))
+; The three-slot target scans: C1:0A11 / 0A5A over the party (E000, E200,
+; E400) and C1:0C08 / 0C51 / 0C9A over the enemies (E600, E800, EA00) find
+; the first actor that C1:054A accepts as a visible target (active, not the
+; asking actor, x below 256, y - height below 224, none of status $8460;
+; enemies also need $0180 below $80, C1:058B) within distance class 2 / 4 /
+; 8 (C1:0358): A = its slot with X at it, else A = $FF with X past the last
+; slot. Retail's loop calls both per actor. The result, the 16-bit
+; accumulator, X, the caller's P and D (N/Z from D) end as its loop leaves
+; them; only dead stack bytes differ. Decimal or 8-bit-index callers run the
+; retail loop.
+macro core_native_scan_entry(name, retail, scan, limit)
+<name>:
+	PHD
+	PHP
+	REP #$20
+	LDA $01,S
+	BIT.w #$0018
+	BEQ +
+	JML <retail>               ; retail PHB / TSC / TCD ...
++	LDA.w #<limit>
+	JMP <scan>
+endmacro
+%core_native_scan_entry(core_native_scan4, $C10A15, core_native_pscan, 4)
+%core_native_scan_entry(core_native_scan8, $C10A5E, core_native_pscan, 8)
+%core_native_scan_entry(core_native_escan2, $C10C0C, core_native_escan, 2)
+%core_native_scan_entry(core_native_escan4, $C10C55, core_native_escan, 4)
+%core_native_scan_entry(core_native_escan8, $C10C9E, core_native_escan, 8)
+
+; M16/X16, the caller's P and D pushed; A = class limit.
+macro core_native_scan_loop(name, first, end, enemy)
+<name>:
+	PHA
+	LDX.w #<first>
+.actor
+	SEP #$20
+	LDA.w $0000,X
+	CMP.b #$01
+	BNE .next
+	REP #$20
+	PHX
+	TYA
+	CMP $01,S
+	BEQ .self
+	PLX
+	LDA.w $0020,X
+	CMP.w #$0100
+	BCS .next
+	LDA.w $0045,X
+	AND.w #$00FF
+	EOR.w #$FFFF
+	INC
+	CLC
+	ADC.w $0022,X
+	CMP.w #224
+	BCS .next
+	LDA.w $0190,X
+	AND.w #$8460
+	BNE .next
+if <enemy>
+	LDA.w $0180,X
+	AND.w #$00FF
+	CMP.w #$0080
+	BCS .next
+endif
+	JSR core_distance_class
+	CMP $01,S
+	BEQ .found
+	BCC .found
+	BRA .next
+.self
+	PLX
+.next
+	REP #$20
+	TXA
+	CLC
+	ADC.w #$0200
+	TAX
+	CMP.w #<end>
+	BNE .actor
+	PLA                        ; (the limit)
+	TXA
+	SEP #$20
+	LDA.b #$FF                 ; B = X's high byte, as retail's last step leaves it
+	PLP
+	PLD
+	JML $C10A49                ; an RTS of the routines
+.found
+	PLA
+	TXA
+	SEP #$20
+	XBA
+	SEC
+	SBC.b #$E0
+	LSR                        ; A = slot, B = X's low byte (0)
+	PLP
+	PLD
+	JML $C10A49
+endmacro
+%core_native_scan_loop(core_native_pscan, $E000, $E600, 0)
+%core_native_scan_loop(core_native_escan, $E600, $EC00, 1)
+
+; The distance class of actors X/Y as core_native_distance's fast path finds
+; it (A16 = 0-8), without its stack frame: two words on the stack instead.
+; M16/X16; keeps X and Y; flags undefined.
+core_distance_class:
+	LDA.w $0020,X
+	SEC
+	SBC.w $0020,Y
+	BCS +
+	EOR.w #$FFFF
+	INC
++	BIT.w #$FF00
+	BNE .far
+	PHA                        ; [dx]
+	LDA.w $0045,Y
+	AND.w #$00FF
+	EOR.w #$FFFF
+	SEC
+	ADC.w $0022,Y
+	PHA                        ; [Y's y - height][dx]
+	LDA.w $0045,X
+	AND.w #$00FF
+	EOR.w #$FFFF
+	SEC
+	ADC.w $0022,X
+	SEC
+	SBC $01,S
+	BCS +
+	EOR.w #$FFFF
+	INC
++	BIT.w #$FF00
+	BNE .far2
+	XBA
+	ORA $03,S
+	PHX
+	TAX
+	BMI .high
+	LDA.l core_distance_low,X
+	BRA .found
+.high
+	LDA.l core_distance_high-$8000,X
+.found
+	PLX
+	AND.w #$00FF
+	STA $03,S
+	PLA
+	PLA
+	RTS
+.far2
+	PLA
+	PLA
+.far
+	LDA.w #8
+	RTS
+endif
+
 ; C1:0404: native actor pursuit direction and minor-axis distance. Keep
 ; retail's unsigned differences, height adjustment and unusual >255 wrap.
 ; The byte lookup combines major-axis/diagonal tests and the distance's

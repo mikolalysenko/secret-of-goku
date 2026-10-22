@@ -23,6 +23,11 @@ const AI_REWRITES=[
   [0x252F,0x2534], // CORE_NATIVE_DISPATCH_SLOW: the dispatcher's return...
   [0x257A,0x257D], // ...and the loop's call (CORE_NATIVE_LOOP_SLOW: its jump to C1:27CC)
   [0x27CC,0x2800], // CORE_NATIVE_LOOP_SLOW: the command loop in the bank's padding
+  [0x0A11,0x0A15], // CORE_NATIVE_SCAN_SLOW: the target scans' entries (party
+  [0x0A5A,0x0A5E], // class <= 4 and <= 8, enemies <= 2, 4 and 8)
+  [0x0C08,0x0C0C],
+  [0x0C51,0x0C55],
+  [0x0C9A,0x0C9E],
 ];
 const traceDir=resolve(root,process.env.AI_TRACE_DIR??'.local/snes-test/ai-trace');
 function recordings(){

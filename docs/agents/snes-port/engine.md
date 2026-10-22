@@ -445,6 +445,19 @@ outside dead stack locals across all 65,536 byte-magnitude pairs, large
 coordinates, heights and flag combinations. A representative call falls
 from 322 to 198 CPU cycles.
 
+The five three-slot target scans, `C1:0A11`/`0A5A` (party, distance class
+up to 4 / 8) and `C1:0C08`/`0C51`/`0C9A` (enemies, up to 2 / 4 / 8), run
+as one core loop per side. It makes `C1:054A`'s target checks inline
+(active, not the asking actor, x below 256, y − height below 224, none of
+status `$8460`; enemies also `$0180` below `$80`, `C1:058B`) and takes the
+distance class from `core_distance_class`, the lookup's fast path without
+its stack frame. The result, A, X, P and D (N/Z from D) are retail's;
+decimal and eight-bit-index callers keep the retail loop.
+`ai-scan.test.mjs` compares 80,000 random and edge actor states (each
+asking slot, statuses, `$0180`, heights, far targets) and the entry flags
+with retail. 513 → 379 CPU cycles a scan on average.
+`CORE_NATIVE_SCAN_SLOW=1` restores the retail loops.
+
 `C1:0404` uses another byte table for pursuit direction, split between
 `EE:0000-7FFF` and `EF:0000-7FFF`. Each entry contains the major axis,
 diagonal decision and minor-distance nibble. The routine retains the
