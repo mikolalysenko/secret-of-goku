@@ -408,6 +408,19 @@ branch helper retains its native X16 calling contract. Representative
 forward/branch calls fall 75 → 61 / 118 → 109 CPU cycles. Script decisions
 and update counts are unchanged.
 
+`C1:0245`, the relative jump (op `01` through `C1:0285`, and the
+conditional ops' taken path through their wrappers), runs in place without
+retail's D = S stack frame. It returns the same script pointer, A =
+`$FFFF`, X at the operand's last byte and the caller's P and D (N/Z from
+the restored D); the add keeps the caller's decimal flag. `ai-jump.test.mjs`
+compares it with retail over every operand pair, wrapped pointers, entry
+flags, D, DB, Y and the five wrappers. 98–104 → 74–77 CPU cycles a jump.
+`CORE_NATIVE_JUMP_SLOW=1` restores retail. `ai-trace.test.mjs` replays
+recorded enemy AI calls (private recordings made with the
+`snes/test/lua/ai-record.lua` prelude) through the cartridge and through
+it with the rewritten `C1` bytes put back to retail, and compares WRAM,
+SRAM, registers, flags and I/O writes.
+
 `C1:0358` now classifies AI distances through a 64 KiB lookup split between
 `E0:0000-7FFF` and `ED:0000-7FFF`. `snes/gen/core-math.mjs` preserves the
 native inclusive radius thresholds and 16-bit square-sum overflow. The

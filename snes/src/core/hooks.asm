@@ -108,6 +108,58 @@ endmacro
 %core_ai_advance_tail($C102B3, $0245)
 endif
 
+; C1:0245: the bytecode's relative jump (op 01 through C1:0285, and the
+; taken path of the conditional ops through their wrappers). X16 = operand
+; address. One byte with bit 7 set: a 7-bit signed offset (bit 6 the sign)
+; from the operand; otherwise two bytes, a 15-bit big-endian offset (bit 6
+; of the first the sign) from the second. The script pointer becomes
+; operand end + offset; A = $FFFF, X = the operand's last byte, P and D as
+; at entry (N/Z from the restored D). Retail built that in a D = S stack
+; frame; this adds X from the stack and keeps D. The add sees the caller's
+; decimal flag as before; only the dead bytes below S differ. (X8 callers
+; do not exist: retail's frame would unbalance its own stack.)
+if not(defined("CORE_NATIVE_JUMP_SLOW"))
+%orig4($C10245, $20C2080B)
+%orig4($C10281, $602B2868)
+%patch($C10245, $40, core)
+pushpc
+org $C10245
+core_native_jump:
+	PHD
+	PHP
+	REP #$20
+	LDA.l $D04F15,X
+	BIT.w #$0080
+	BEQ .long
+	BIT.w #$0040
+	BNE .back
+	AND.w #$007F
+	BRA .add
+.back
+	ORA.w #$FF00
+	BRA .add
+.long
+	INX
+	XBA
+	BIT.w #$4000
+	BEQ .add
+	ORA.w #$8000
+.add
+	INC
+	PHX
+	CLC
+	ADC $01,S
+	PLX
+	STA.w $0144,Y
+	LDA.w #$FFFF
+	PLP
+	PLD                        ; native return N/Z describe the restored D
+	RTS
+	padbyte $EA
+	pad $C10285
+pullpc
+endif
+
 ; The bytecode dispatcher has one caller, the loop at C1:257A. Branch
 ; directly between them; its P/D saves still surround every command.
 ; PLP selects the return width, so the preceding REP was redundant.
