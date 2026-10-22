@@ -1,5 +1,95 @@
 # Resident custom samples: cartridge option and storage audit
 
+## Round nine: louder in the mix, from the same samples
+
+Round nine adds no new BRR. Its louder contacts, ki contact, ki pew, spring
+and CHARGED shimmer are sequences over the round-eight rumble and arc, the
+boot oscillators 3 and 5 and the DSP noise generator. The only sample
+change is the charge hum, cut from a 128 ms loop (512 samples plus a guard
+block, 297 bytes) to 32 ms from its first block (128 samples, 72 bytes).
+Its 62.5/93.75/187.5 Hz mains tones still complete whole cycles. Its
+−14 dB noise grain, which repeated every 128 ms, now becomes further
+harmonics of the hum's 31.25 Hz period. The 225 freed bytes pay for:
+
+| Item | Bytes | Where |
+| --- | ---: | --- |
+| Ki contact track (boom, then crunch) | 19 | Bank; table row `$7E` (empty in retail) |
+| Spring track (two chirp loops, echo) | 37 | Bank; table row `$7D` (empty in retail) |
+| Wave thumps (round eight's finisher bodies, now the wave's own) | 28 | Bank; second pointers of `$EA/$F0` |
+| Kick swing `$E6` (byte-identical, moved out of the holes) | 20 | Bank |
+| CHARGED shimmer (replaces the 11-byte hum blip) | +4 | Bank |
+| SPC code (spring launch, gain classes, supersession, duck, drop) | +89 | Bank |
+| HIT and KICK crunches, a longer ki track (−E6, −the old crack) | −1 | Shared holes, 269/283 |
+
+The permanent reservation stays **2,304 bytes**, now **2,273 used, 31
+free**; the optional bank is unchanged (**7,884 transferred / 7,853
+used**). A sharper ki or a louder hit from the PC's own clips was weighed:
+blast.wav needs ~1,400 BRR bytes at 10 kHz even trimmed to 250 ms, hit-1
+~900 at 8 kHz for its loud 200 ms, against 3 free permanent bytes. The
+optional bank could only hold them by cutting the full Instant
+Transmission or the 12 kHz arc, and it loads for few songs. Synthesis from
+resident material keeps every cue in every song.
+
+The DSP noise does most of the work. One clock (29, 10.7 kHz) is shared by
+HIT, KICK, SSJ KICK and the ki contact; its spectrum falls 1 dB by 3 kHz
+and 4 dB by 5.3 kHz, like the PC hits' 1–5 kHz crunch (45 % of their
+energy in 2–5 kHz). The noise is uniform, so its peak is only 4.8 dB over
+its RMS: HIT's 230 ms crunch reaches −10.2 LUFS momentary at a −3.9 dBFS
+peak, where round eight's 30 ms crack reached −16.3 LUFS at −2.6 dBFS.
+Contacts now supersede one another, so the shared clock is never retuned
+mid-crunch.
+
+### Listening package
+
+The private index is
+[round9/manifest.json](../../../.local/snes-test/audio/round9/manifest.json):
+**107 WAVs**, with a cue-by-cue `guide`. Cartridge files are raw 32 kHz
+stereo Mesen DAC captures (pinned core, no gain, normalization or offline
+effects), **zero clipped samples** in all 78.
+
+| Variant | Files | Contents |
+| --- | ---: | --- |
+| `before` | 26 | main `9b91aba` (round eight) |
+| `round9` | 26 | this round's default |
+| `charged` | 26 | `AUDIO_ACTIVATION=charged`: the spring at full charge instead of at the start |
+| `pc` | 29 | the PC clips untouched, and the ki-sound chain alone and over the field song at its .4 native gain |
+
+Per variant: each cue (HIT, KICK, SSJ KICK, ki, SSJ ki, ki contact,
+Kamehameha start and SSJ start, release with sustain and SSJ release) over
+the Rabite-field song with 0.7 s of music first (`mix-*`) and alone with
+music and echo silenced (`dry-*`). Then six real Rabite-field takes over its
+song: a three-hit string (jab, cross, finishing kick), a two-second ki
+volley and a full Kamehameha (charge from rest, CHARGED, release, the wave
+striking, the duck recovering), each in base and Super Saiyan form.
+
+Goku's blows queue 999 damage, so a Rabite always dies to the first one
+(the PC alike). In the takes, the nearest Rabite is a training dummy held a
+fixed distance ahead with its HP restored and queued damage cleared at
+each frame's end. Input, combat logic and every sound command are the
+game's own. Contact commands per take (base / SSJ): strings 3 / 3,
+volleys 8 / 19, waves 2 / 44.
+
+In-capture ratios (cue max momentary over the take's first 0.62 s of
+music; noisier than the tables in audio.md): HIT +7.7 → +15.9 LU, KICK
++7.9 → +18.2, SSJ KICK +8.2 → +18.4, ki +5.7 → +11.4, SSJ ki +6.5 → +11.9,
+ki contact +5.0 → +15.4, Kamehameha start +7.0 → +14.2, SSJ start
++9.0 → +14.5, release +14.2 → +17.2 against the music before its duck
+(SSJ +13.8 → +16.9). The PC's matching renders: hit-1 +15.0, kick +17.0,
+ki +9.9, ki contact +11.2, start +10.3, SSJ start +12.8, release +18.2 LU.
+The `charged` candidate measures as round nine except its start (+9.1,
+SSJ +11.4: the hum alone).
+
+```sh
+node snes/build.mjs --strict                 # round9 default
+AUDIO_ACTIVATION=charged node snes/build.mjs --strict --out=charged.sfc
+node snes/test/audio/capture9.mjs --rom=main.sfc --tag=before
+node snes/test/audio/capture9.mjs --rom=dist/snes/secret-of-goku.sfc --tag=round9
+node snes/test/audio/capture9.mjs --rom=charged.sfc --tag=charged
+node snes/test/audio/capture9.mjs --pc --before=main.sfc
+node snes/test/audio/capture9.mjs --guide
+node snes/test/audio/report9.mjs --before=main.sfc
+```
+
 ## Round eight: power designs and optional resident bank
 
 The maintainer's direction is now **crack/whoosh, rumbling ki and a violent

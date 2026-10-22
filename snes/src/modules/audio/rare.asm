@@ -3,6 +3,18 @@
 ; Channel 1 stays idle; its last fields hold the resident handshake state.
 audio_rare_service:
 if not(defined("AUDIO_PCM"))
+if !AUDIO_CUSTOM_SAMPLES
+	; Every frame with a cue or bed calls this; nearly all have no line,
+	; no channel record and no song-load/disable flag to clear.
+	LDA.w !au_flags
+	AND.b #$48
+	ORA.w !au_rare
+	ORA.w !au_ch+!c_kind
+	ORA.w !au_ch+!c_ctl
+	BNE +
+	RTS
++
+endif
 	LDA.w !au_flags
 	BIT.b #$08                ; a song load already keyed the stream off
 	BEQ +

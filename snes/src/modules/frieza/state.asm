@@ -1334,6 +1334,10 @@ fz_scene_sram:
 	SEP #$20
 	LDA.b #!FZI_SRAM|!FZI_BRIGHT
 	TRB !fz_wasidle
+if !FZ_CEILING_ANY
+	LDA.b #!CORE_BRIGHT_TREE          ; after the flag: no ceiling either way
+	TRB.w !core_bright_any&$FFFF
+endif
 	REP #$20
 	CLC
 	RTS
@@ -1345,6 +1349,10 @@ fz_scene_free:
 	SEP #$20
 	LDA.b #!FZI_SRAM|!FZI_BRIGHT
 	TRB !fz_wasidle
+if !FZ_CEILING_ANY
+	LDA.b #!CORE_BRIGHT_TREE
+	TRB.w !core_bright_any&$FFFF
+endif
 	REP #$20
 	RTS
 

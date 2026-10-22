@@ -12,6 +12,13 @@ emu.addMemoryCallback(function()
   if c==2 or c==0x81 then commands[#commands+1]={file=recording,frame=H.frame,cmd=c,id=H.r8(0x7E1E01),level=H.r8(0x7E1E02),rate=H.r8(0x7E1E03)} end
  end
 end,emu.callbackType.exec,0xC30160,0xC30160)
+-- The module's own cues and beds bypass the driver entry (A = command |
+-- p1<<8, X = p2 | p3<<8 at audio_native_send; AUDIO_SEND 0 when absent).
+if (AUDIO_SEND or 0)~=0 then emu.addMemoryCallback(function()
+ if recording then local s=emu.getState();local a,x=s['cpu.a'],s['cpu.x']
+  commands[#commands+1]={file=recording,frame=H.frame,cmd=a&255,id=(a>>8)&255,level=x&255,rate=(x>>8)&255}
+ end
+end,emu.callbackType.exec,AUDIO_SEND,AUDIO_SEND) end
 local function cmd(op,arg) H.w8(0x7EDD17,arg or 0);H.w8(0x7EDD16,op) end
 local function song(id,preset)
  if H.r8(0x7E1E05)==id then

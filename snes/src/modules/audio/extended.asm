@@ -155,11 +155,13 @@ audio_extended_finish:
 	SEP #$20
 	RTS
 
-; Quiet frame only, A8/X16, DB=$7E, D=0. Never entered by held beds, queued
-; cues or rare lines. One/two 36 B records, admitted before line 136/120 with
-; space reserved for the bounded command wait AND the complete transfer.
-; Carry set: serviced a pending preload frame. Anything else uses the
-; ordinary selector. Inactive/complete banks add nothing to the idle path.
+; au_wake $40: only the fill is due. A8/X16, DB=$7E, D=0. Never entered by
+; held beds, queued cues or rare lines. One/two 36 B records, admitted
+; before line 136/120 with room for the short probe AND the complete
+; transfer. An outstanding echo (a native effect, the last cue) needs only
+; a poll; while it is unacknowledged the fill waits, without the full path.
+; Carry set: this frame is done. Clear: the ordinary selector (a request,
+; held loop, song change or cue flag). Inactive/complete banks add nothing.
 audio_extended_frame:
 	LDA.w !au_lvl : ORA.w !au_lvl+1 : ORA.w !au_reqn : BNE .other
 	LDA.w $1E05 : CMP.w !au_song : BNE .other
@@ -169,7 +171,11 @@ endif
 if defined("out_sfx")
 	LDA.w !out_sfx&$FFFF : CMP.w !au_dsfx : BNE .other
 endif
-	LDA.w !au_pending : ORA.w !au_test : ORA.w !au_test+1 : BNE .other
+	LDA.w !au_test : ORA.w !au_test+1 : BNE .other
+	LDA.w !au_pending : BEQ .idle
+	CMP.l $002140 : BNE .waiting
+	LDA.b #0 : STA.l $002140 : STZ.w !au_pending
+.idle
 	JSR audio_extended_idle
 	LDA.w !au_ext_state : BEQ .clear
 	CMP.b #$03 : BCC .done
@@ -177,22 +183,17 @@ endif
 	STZ.w !au_wake
 .done
 	SEC : RTS
+.waiting
+	LDA.w !au_backoff : BEQ .done
+	DEC.w !au_backoff
+	BRA .done
 .other
 	CLC : RTS
 
 audio_extended_idle:
-if defined("cb_vblanks")
-	REP #$20
-	LDA.w !cb_vblanks : CMP.w !cb_vb_last
-	SEP #$20
-	BEQ + : RTS
-+
-endif
-	LDA.w !au_flags : BIT.b #$40 : BEQ + : RTS
-+
+	; The most frequent exits first: a countdown, held input, a late frame.
 	LDA.w !au_backoff : BEQ +
 	DEC.w !au_backoff : RTS
-+	LDA.w $1E00 : BEQ + : RTS
 +
 if defined("cb_in")
 	REP #$20
@@ -203,7 +204,19 @@ if defined("cb_in")
 	BEQ + : RTS
 +
 endif
+	JSR au_lines_left
+	CMP.b #40 : BCS + : RTS
++
+if defined("cb_vblanks")
 	REP #$20
+	LDA.w !cb_vblanks : CMP.w !cb_vb_last
+	SEP #$20
+	BEQ + : RTS
++
+endif
+	LDA.w !au_flags : BIT.b #$40 : BEQ + : RTS
++	LDA.w $1E00 : BEQ + : RTS
++	REP #$20
 	LDA.l !core_snd_head : CMP.l !core_snd_tail
 	SEP #$20
 	BNE .no
@@ -237,9 +250,12 @@ endif
 .count2
 	LDA.b #26
 .begin
+	XBA
+	LDA.l $002140 : BNE .no     ; the SPC still shows another handshake
+	XBA
 	STA.l $002141
 	LDA.b #$8A : STA.l $002140
-	JSR au_wait_cmd : BCC .send
+	JSR audio_extended_probe : BCC .send
 .no
 	RTS
 .activate
@@ -288,6 +304,27 @@ endif
 	JSR au_end
 	LDA.b #$00 : STA.l $002140
 	JSR au_wait_a
+	RTS
+
+; Between ticks the driver's idle loop polls port 0 and echoes within
+; 0.3-1.6 lines (measured in the field: 57% of attempts); a tick keeps it
+; busy for up to about 45. Wait about 1.7 lines, then withdraw: port 0 = 0
+; makes the SPC return from $8A at once (stream.s ext_cmd). A later quiet
+; frame tries again. No retry backoff: a busy driver costs each attempt only
+; this short probe, and the frames after it keep the cheap idle step.
+; A8, A = $8A; carry set: withdrawn.
+audio_extended_probe:
+	LDY.w #32
+-	CMP.l $002140
+	BEQ .ok
+	DEY
+	BNE -
+	LDA.b #$00
+	STA.l $002140
+	SEC
+	RTS
+.ok
+	CLC
 	RTS
 
 ; One $60 record from tmp+$1A..1C to tmp+$11..12. Same complete-packet

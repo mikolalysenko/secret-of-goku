@@ -21,6 +21,9 @@ fx_ensure_init:
 	DEX
 	BPL -
 	STA.l !fx_kickd              ; the impact state combat lends
+	SEP #$20
+	STA.l !fx_hitnew             ; and the new-impact mark
+	REP #$20
 	LDA.w #!FX_UNSEEN<<8         ; !fx_evict 0, !fx_wdue: nothing drawn yet
 	STA.l !fx_evict
 	LDA.w #$FFFE                 ; cache entries unusable until a region is claimed
@@ -193,6 +196,10 @@ fx_spawn_init:
 	LDA.l !fx_frame              ; FX_HIT: b becomes its first fx frame (fx_k_hit
 	INC                          ; counts frames since the spawn from it)
 	STA.l !fx_slots+!S_B,X
+	SEP #$20                     ; (a late frame may hold its first frame back:
+	LDA.b #$01                   ; fx_hit_wait)
+	STA.l !fx_hitnew
+	REP #$20
 	LDA.l !fx_c                  ; and a the impact frame (FX_IMP_*)
 	STA.l !fx_slots+!S_A,X
 	AND.w #!FX_IMP_ACTOR
@@ -562,32 +569,19 @@ fx_draw_full:
 	SEC
 	RTL
 
-; fx_flash: A = frames (1-7) | curve << 8 (fx_flash_amounts: 0 the
-; transformation's warm ramp, 7 frames; 1 the finishing kick's, 2 a killing
-; blow's, 3 the Kamehameha's and 4 the full wave's white flash,
-; snes-feel.mjs). A flash with more frames left keeps going. !fx_flash
-; holds frames | curve << 8.
+; fx_flash: A = frames (1-7; the transformation uses 7): the warm ramp of
+; native-feedback.js's burst (fx_flash_amounts). A flash already running
+; longer keeps going. None while the game runs its own colour math ($23:
+; fx_finish drops it).
 fx_flash:
 	JSR fx_ensure_init
-	PHA
-	AND.w #$00FF
 	CMP.w #8
 	BCC +
 	LDA.w #7
-+	STA.l !fx_s+12                ; frames
-	LDA.l !fx_flash
-	AND.w #$00FF
-	CMP.l !fx_s+12
-	BEQ +
-	BCS .keep
-+	PLA
-	AND.w #$0700
-	ORA.l !fx_s+12
++	CMP.l !fx_flash
+	BCC +
 	STA.l !fx_flash
-	RTL
-.keep
-	PLA
-	RTL
++	RTL
 
 ; fx_quake: A = frames. The native BG quake byte $49 gets $E0 for that many
 ; frames unless an event already uses it; a native write takes it back.

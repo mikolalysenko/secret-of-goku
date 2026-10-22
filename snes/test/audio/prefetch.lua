@@ -56,20 +56,34 @@ function test()
  assert(H.importSnesJs(BANK_FIELD_IMPORT));H.w8(0x316001,1);H.wait(45)
  song(7,0);H.wait(20)
  assert(H.saveStable('field-prefetch-start'));H.wait(1)
- H.load(H_OUT..'/field-prefetch-start.mss');H.wait(2)
- misses=0;disable=true;measuring=true;H.wait(1800);measuring=false;disable=false
- local baseline=misses
- H.load(H_OUT..'/field-prefetch-start.mss');H.wait(2)
- misses=0;rows={};measuring=true;begin=H.frame
- H.wait(1800);ready=H.r8(0x7EDD55)==3
- measuring=false
- check('field_idle_bank_completes',ready,H.r8(0x7EDD55)..'/'..H.r16(0x7EDD50))
- check('field_prefetch_no_added_misses',misses<=baseline,baseline..' -> '..misses)
- H.result('field_baseline_misses',baseline)
- bounded=#rows>0;maxLines=0
- for _,r in ipairs(rows) do bounded=bounded and r.line<=136 and r.finish<176;maxLines=math.max(maxLines,r.lines) end
- check('field_prefetch_bounds',bounded,#rows)
- check('field_prefetch_integrity',extendedDamage()==nil,extendedDamage())
- H.result('field_prefetch_frames',H.frame-begin);H.result('field_prefetch_misses',misses);H.result('field_prefetch_max_lines',maxLines);H.result('field_prefetch_transfers',rows)
+ -- Ten start phases: the prefetch is held off (au_flags bit 6, as a
+ -- disabled extension) for 0-9 frames after the savestate, so its handshakes
+ -- meet the field's heavy frames at other points; then the same 1800 frames
+ -- run with it enabled or still disabled. One run's miss count is chaotic
+ -- (a crowded frame ends within a line of NMI), so compare the sums.
+ local without,with,transfers,completed,frames={},{},{},true,0
+ bounded=true;maxLines=0
+ for phase=0,9 do
+  H.load(H_OUT..'/field-prefetch-start.mss');H.wait(2)
+  disable=true;H.wait(phase)
+  misses=0;measuring=true;H.wait(1800);measuring=false;disable=false
+  without[#without+1]=misses
+  H.load(H_OUT..'/field-prefetch-start.mss');H.wait(2)
+  disable=true;H.wait(phase);disable=false;H.w8(0x7EDD09,H.r8(0x7EDD09)&0xBF)
+  misses=0;rows={};measuring=true;begin=H.frame
+  H.wait(1800);completed=completed and H.r8(0x7EDD55)==3
+  measuring=false;frames=frames+H.frame-begin
+  with[#with+1]=misses
+  bounded=bounded and #rows>0
+  for _,r in ipairs(rows) do bounded=bounded and r.line<=136 and r.finish<176;maxLines=math.max(maxLines,r.lines) end
+  transfers[#transfers+1]=#rows
+  check('field_prefetch_integrity_'..phase,extendedDamage()==nil,extendedDamage())
+ end
+ local sum=function(t) local n=0 for _,v in ipairs(t) do n=n+v end return n end
+ check('field_idle_bank_completes',completed,H.r8(0x7EDD55)..'/'..H.r16(0x7EDD50))
+ check('field_prefetch_no_added_misses',sum(with)<=sum(without),table.concat(without,' ')..' -> '..table.concat(with,' '))
+ check('field_prefetch_bounds',bounded,table.concat(transfers,' '))
+ H.result('field_baseline_misses',without);H.result('field_prefetch_misses',with)
+ H.result('field_prefetch_frames',frames);H.result('field_prefetch_max_lines',maxLines);H.result('field_prefetch_transfers',transfers)
  finish()
 end

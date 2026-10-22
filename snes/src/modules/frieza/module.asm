@@ -617,6 +617,18 @@ if not(defined("ES_DEFEATED"))
 %hijack($C1E77B, frieza_event_gate, 6, frieza)
 endif
 
+; The field NMI's final INIDISP write (frieza_field_brightness, vista.asm)
+; applies the ending's displayed ceiling too, and tests both through core's
+; !core_bright_any (CORE_BRIGHT_ANY_SLOW: both owners' flags, one ORA).
+!FZ_ENDING_CEILING = 0
+!FZ_CEILING_ANY = 0
+if defined("ending_showbright") && not(defined("ENDING_NMI_HOOK_SLOW"))
+!FZ_ENDING_CEILING = 1
+if not(defined("CORE_BRIGHT_ANY_SLOW"))
+!FZ_CEILING_ANY = 1
+endif
+endif
+
 pushpc
 org !CODE_FRIEZA
 frieza_code_start:

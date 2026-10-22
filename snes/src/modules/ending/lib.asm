@@ -2204,6 +2204,39 @@ brightness_publish:
 	CMP.w #$0010
 	BCS .none
 	ORA.w #$0080
+if !ENDING_CEILING_ANY
+	; core's owner bit before the ceiling (an NMI between them finds the
+	; bit and no ceiling yet); TSB in bank $7E is a single instruction, so
+	; Frieza's vblank updates of the same byte are never torn
+	SEP #$20
+	PHA
+	PHB
+	PEA $7E7E : PLB : PLB
+	LDA.b #!CORE_BRIGHT_ENDING
+	TSB.w !core_bright_any&$FFFF
+	PLB
+	PLA
+	STA.l !ending_showbright
+	REP #$30
+	RTS
+.none
+	SEP #$20
+	LDA.b #$00
+	STA.l !ending_showbright
+	JSR brightness_any_off
+	REP #$30
+	RTS
+; The ending's ceiling withdrawn (!ending_showbright = 0 already): its owner
+; bit after it. M8; returns A = 0, keeps X/Y, DB and D.
+brightness_any_off:
+	PHB
+	PEA $7E7E : PLB : PLB
+	LDA.b #!CORE_BRIGHT_ENDING
+	TRB.w !core_bright_any&$FFFF
+	PLB
+	LDA.b #$00
+	RTS
+else
 	BRA .store
 .none
 	LDA.w #$0000
@@ -2212,6 +2245,7 @@ brightness_publish:
 	STA.l !ending_showbright
 	REP #$30
 	RTS
+endif
 
 ; ---------------------------------------------------------------------------
 ; OAM for full-screen families: all 128 slots of the native buffer are ours

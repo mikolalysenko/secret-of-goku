@@ -80,8 +80,13 @@ function compare(input){
   return [full.cycles,fast.cycles];
 }
 test('attack and floor class queries agree across tiles, layers and map policies',t=>{
-  for(const map of [128,29,271,139,313,432])for(const layer of [0,1])for(let tile=0;tile<256;tile++)
+  for(const map of [128,29,271,139,313,432,294])for(const layer of [0,1])for(let tile=0;tile<256;tile++)
     compare({map,layer,tile,flags:(tile*31)&255,beh:(tile*71)&255,code:tile});
+  // Cave stalagmite maps: code-0 tiles reach the scenery tile table.
+  for(const map of [287,294])for(const layer of [0,1])for(let tile=0;tile<256;tile++)
+    compare({map,layer,tile,flags:(tile*31)&255,beh:(tile*71)&0x7F,code:0});
+  for(const tile of [0x69,0x6A,0x79,0x7A])assert.equal(run('dst_class_of',{map:294,tile,flags:0x13,code:0}).value&1,1,`stalagmite tile ${tile} is a scan candidate`);
+  assert.equal(run('dst_class_of',{map:294,tile:0x46,flags:0x12,code:0}).value&1,0,'the floor is not');
   for(const layer of [0,1])for(let byte=0;byte<256;byte++){
     compare({layer,flags:byte,code:0});
     compare({layer,beh:byte,code:0});

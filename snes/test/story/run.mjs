@@ -426,10 +426,100 @@ cases.push({name:'absent-skip',bundle:'emulator-probe__potos-state',writes:[...g
     }});
 }
 
+// ---- Earth Palace: Gnome's scene always leads to a live Fire Gigas ---------
+// The stage room (314) through its own door (ED) at the orb's stage (2), with
+// the orb room's gap flown over (1, the palace floor) or after an early
+// breach of the Dwarf Village wall (0, CF14 6, no Popoi): story-areas.js
+// raises the stage room to 2, Gnome's scene (23B -> 236) adds three stages
+// before its door, and the arena's only Fire Gigas record needs 5. Then the
+// fight, the defeat (237), Gnome's thanks (22E) and the Earth seed (592), each
+// as the party's compiled variant (snes/test/story/earth.lua).
+for(const [name,mask,stage,writes] of[
+  ['earth-gnome-orb-both',3,2,[]],
+  ['earth-gnome-flown-solo',0,1,[]],
+  ['earth-gnome-flown-girl',1,1,[]],
+  ['earth-gnome-flown-sprite',2,1,[]],
+  ['earth-gnome-breach-solo',0,0,[[0x7ecf14,6,1]]],
+]){
+  cases.push({name,lua:'earth.lua',bundle:'kamehameha-voice__gap-before',remove:[1,2].filter(m=>!(mask>>(m-1)&1)),
+    writes:[...goku,[P_MASK,0,1],[P_SEEDS,0,1],[0x7ecf18,stage,1],[0x7ecf91,0,1],[0x7ecfa8,0,1],...writes],
+    check(r){
+      const ran=id=>{const t=r.trace.find(x=>x[0]===id),want=js(id,mask);return[!!t&&t[1]===want,`native ${t?hex(t[1],6):'none'} browser ${hex(want,6)}`];};
+      return [
+        ['party after REMOVE_CHARACTER',r.party?.join()===[1,mask&1,mask>>1&1].join(),`${r.party}`],
+        [`from stage ${stage}, Gnome's scene starts at the orb's stage 2 with Gnome on stage 3`,r.scene_stage===2&&r.gnome_stage===3,`scene from ${r.scene_stage}, Gnome at ${r.gnome_stage}`],
+        ['Gnome\'s scene is the party\'s variant (236)',...ran(0x236)],
+        ['the arena loads at stage 5',r.arena===true&&r.cf18_arena===5,`arena ${r.arena} CF18 ${r.cf18_arena}`],
+        ['Fire Gigas is created at full HP',r.boss===true&&r.boss_hp?.[0]>0&&r.boss_hp[0]===r.boss_hp[1],`${r.boss_hp}`],
+        ['Fire Gigas is drawn on the lit screen',r.boss_cells>=4&&r.boss_lit===true,`${r.boss_cells} OAM entries, lit ${r.boss_lit}`],
+        ['Fire Gigas takes damage from punches',r.boss_hurt===true,`HP ${r.boss_hp_after}`],
+        ['its defeat (237) returns Goku to the stage room at stage 6, Gnome freed',r.defeated===true&&r.cf18_after===6&&r.cfa8_after===1&&ran(0x237)[0],`CF18 ${r.cf18_after} CFA8 ${r.cfa8_after} ${ran(0x237)[1]}`],
+        ['Gnome\'s thanks (22E): stage 7',r.thanked===true&&r.cf18_thanks===7&&r.flags?.[0xa8]===2&&ran(0x22e)[0],`CF18 ${r.cf18_thanks} CFA8 ${r.flags?.[0xa8]} ${ran(0x22e)[1]}`],
+        ['the Earth seed (592): stage 8, seed and Earth Ball collected',r.seeded===true&&r.flags?.[0x18]===8&&r.flags?.[0x91]===1&&(r.persist?.[1]&2)===2&&(r.persist?.[2]&2)===2&&ran(0x592)[0],
+          `CF18 ${r.flags?.[0x18]} CF91 ${r.flags?.[0x91]} ledger ${hex(r.persist?.[1]??0)}/${hex(r.persist?.[2]??0)} ${ran(0x592)[1]}`],
+      ];
+    }});
+}
+
+// ---- Dwarf Village quake: Tropicallo still fights after an early breach ----
+// Entering the village (door 149) at CF15 5 starts the quake (1BE) into
+// Tropicallo's arena (290): no exit, the boss only through CF14 stage 3. The
+// retail stage before it is 2; an early palace-wall breach sets 6 and buying
+// Watts's axe afterwards 7. The quake sets 3; the fight, Popoi's naming (41:
+// stage 6) and the Elder (CF18 + 1) follow (snes/test/story/tropicallo.lua).
+for(const [name,mask,stage,earth] of[
+  ['tropicallo-quake-girl',1,2,0],
+  ['tropicallo-breach-solo',0,6,0],
+  ['tropicallo-axe-girl',1,7,8],
+]){
+  cases.push({name,lua:'tropicallo.lua',bundle:'kamehameha-voice__orb-before',remove:[1,2].filter(m=>!(mask>>(m-1)&1)),
+    writes:[...goku,[0x7ecf14,stage,1],[0x7ecf15,5,1],[0x7ecf60,0,1],[0x7ecf18,earth,1]],
+    check(r){
+      const t=r.trace.find(x=>x[0]===0x1be),want=js(0x1be,mask);
+      return [
+        ['party after REMOVE_CHARACTER',r.party_before?.join()===[1,mask&1,0].join(),`${r.party_before}`],
+        [`from stage ${stage}, the quake (the party's 1BE) loads the arena at stage 3`,!!t&&t[1]===want&&r.arena_map===290&&r.arena_stage===3,`map ${r.arena_map} stage ${r.arena_stage}, native ${t?hex(t[1],6):'none'} browser ${hex(want,6)}`],
+        ['Tropicallo is created at full HP',r.boss===true&&r.boss_hp?.[0]>0&&r.boss_hp[0]===r.boss_hp[1],`${r.boss_hp}`],
+        ['Tropicallo takes damage from punches',r.boss_hurt===true,`HP ${r.boss_hp_after}`],
+        ['its defeat (1B9) leaves the sprite at stage 4',r.defeated===true&&r.stage_after===4,`stage ${r.stage_after}`],
+        ['the sprite is named and joins (stage 6)',r.named===true&&r.stage_named===6&&r.popoi===1,`stage ${r.stage_named} Popoi ${r.popoi}`],
+        ['the Elder sends the party to the village (CF18 + 1)',r.left===true&&r.map===287&&r.flags?.[0x18]===earth+1,`map ${r.map} CF18 ${r.flags?.[0x18]}`],
+      ];
+    }});
+}
+
+// ---- Elinee's throne room: Spikey Tiger from any earlier stage -------------
+// The throne room (309) through its own door (130) runs 1E7 into Spikey
+// Tiger's arena (310): no exit, the boss only at CF17 stage 5. Retail enters
+// at 3; 0, 1 and 2 are arrivals that skipped the gate, the jailed soldiers or
+// Elinee's first scene. 1E7 sets each retail stage, so all meet a live Spikey;
+// its defeat (1E2) and Elinee's surrender (1E3 -> 1ED) follow (spikey.lua).
+for(const [name,mask,stage] of[
+  ['spikey-retail-both',3,3],
+  ['spikey-gate-solo',0,0],
+  ['spikey-jail-girl',1,1],
+  ['spikey-elinee-sprite',2,2],
+]){
+  cases.push({name,lua:'spikey.lua',bundle:'power-flight-fixes__native-302',remove:[1,2].filter(m=>!(mask>>(m-1)&1)),
+    writes:[...goku,[0x7ecf17,stage,1],[0x7ecf18,0,1],[0x7ecfd8,0,1],[0x7ecfd9,0,1]],
+    check(r){
+      const t=r.trace.find(x=>x[0]===0x1e7),want=js(0x1e7,mask);
+      return [
+        ['party after REMOVE_CHARACTER',r.party_before?.join()===[1,mask&1,mask>>1&1].join(),`${r.party_before}`],
+        [`from stage ${stage}, the party's throne-room scene (1E7) shows Elinee and loads the arena at stage 5`,!!t&&t[1]===want&&r.scene_stage===stage&&r.elinee_stage>=3&&r.elinee_stage<=4&&r.arena===true&&r.arena_stage===5,
+          `scene from ${r.scene_stage}, Elinee at ${r.elinee_stage}, arena ${r.arena} at ${r.arena_stage}, native ${t?hex(t[1],6):'none'} browser ${hex(want,6)}`],
+        ['Spikey Tiger is created at full HP',r.boss===true&&r.boss_hp?.[0]>0&&r.boss_hp[0]===r.boss_hp[1],`${r.boss_hp}`],
+        ['Spikey Tiger is drawn on the lit screen',r.boss_cells>=4&&r.boss_lit===true,`${r.boss_cells} OAM entries, lit ${r.boss_lit}`],
+        ['Spikey Tiger takes damage',r.boss_hurt===true,`HP ${r.boss_hp_after}`],
+        ['its defeat (1E2) returns Goku to the throne room at stage 6',r.defeated===true&&r.stage_after===6,`stage ${r.stage_after}`],
+        ['Elinee yields (1ED): stage 7, her chests appear',r.yielded===true&&r.flags?.[0x17]===7&&r.flags?.[0xd8]===1&&r.flags?.[0xd9]===1,`CF17 ${r.flags?.[0x17]} CFD8 ${r.flags?.[0xd8]} CFD9 ${r.flags?.[0xd9]}`],
+      ];
+    }});
+}
+
 const only=process.argv.slice(2);
 mkdirSync(out,{recursive:true});
 let failures=0;
-const luaBody=readFileSync(join(here,'story.lua'),'utf8');
 const lua=v=>Array.isArray(v)?'{'+v.map(lua).join(',')+'}':typeof v==='string'?JSON.stringify(v):typeof v==='boolean'?String(v):v===null||v===undefined?'nil':String(v);
 for(const c of cases){
   if(only.length&&!only.includes(c.name))continue;
@@ -437,7 +527,8 @@ for(const c of cases){
   if(c.state&&!existsSync(c.state)){console.log(`skip ${c.name}: no checkpoint ${c.state}`);continue;}
   const info=c.rom==='test'?testInfo():prod,A=info.addr;
   const queries=c.rom==='test'?(c.queries??[]).map(([n,v])=>[queryId(n),v]):[];
-  const prelude=`CASE = {bundle=${c.bundle?lua(bundle(c.bundle)):'nil'}, writes=${lua(c.writes)}, before=${lua(c.before??[])}, request=${lua(c.request)}, frames=${c.frames}, mash=${c.mash??0}, shots=${lua(c.shots??[])}, resolve=${info.label('story_resolve_done')}, ram=${A.ram}, persist=${A.persist}, water=${A.water}, dump_water=${!!c.dump_water}, stop_idle=${!!c.stopIdle}, rom_writes=${lua(c.romWrites??[])}, timed=${lua(c.timed??[])}, dump=${lua(c.dump??[])}, hold=${c.hold?lua(c.hold):'nil'}, log=${c.rom==='test'?A.log:'nil'}, queries=${A.queries}, test_queries=${lua(queries)}, script=${lua(c.script??null)}}\n`;
+  const prelude=`CASE = {bundle=${c.bundle?lua(bundle(c.bundle)):'nil'}, writes=${lua(c.writes)}, before=${lua(c.before??[])}, request=${lua(c.request)}, frames=${c.frames}, mash=${c.mash??0}, shots=${lua(c.shots??[])}, resolve=${info.label('story_resolve_done')}, ram=${A.ram}, persist=${A.persist}, water=${A.water}, dump_water=${!!c.dump_water}, stop_idle=${!!c.stopIdle}, rom_writes=${lua(c.romWrites??[])}, timed=${lua(c.timed??[])}, dump=${lua(c.dump??[])}, hold=${c.hold?lua(c.hold):'nil'}, log=${c.rom==='test'?A.log:'nil'}, queries=${A.queries}, test_queries=${lua(queries)}, script=${lua(c.script??null)}, remove=${lua(c.remove??[])}, stream=${A.water+0x100}}\n`;
+  const luaBody=readFileSync(join(here,c.lua??'story.lua'),'utf8');
   const r=await runMesen({rom:info.path,test:prelude+luaBody,outDir:join(out,c.name),state:c.state??null});
   const res=r.results??{};
   if(res.error||!res.trace){console.log(`FAIL ${c.name}: ${res.error??'no results'}\n${r.output.slice(-1500)}`);failures++;continue;}

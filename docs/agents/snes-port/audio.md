@@ -1,10 +1,407 @@
 # Audio module: native SNES effects and music
 
+## Round nine: louder hits, a sharper ki and the springy activation
+
+This supersedes round eight's contact, ki, ki-contact, charge-start and
+mix descriptions below; the swings and the Kamehameha's wave keep their
+round-eight sound. The maintainer heard round eight's punch, kick and ki
+contacts as soft, wanted a sharper, more PC-like ki shot, the PC's springy,
+reverberant activation when the Kamehameha starts, and the new sounds
+louder in the mix overall. Round eight's contacts peaked near −2 dBFS but
+put most of their energy below 200 Hz, close to inaudible on laptop
+speakers; their crack lasted about 30 ms.
+
+**Target.** Each cue's loudness against the field song must match or exceed
+the PC edition's in the same situation. Loudness is BS.1770 (K-weighted)
+maximum momentary loudness of the cue against the field song's gated
+integrated loudness, plus a small-speaker check (both high-passed at
+200 Hz) and the 0.5–5 kHz band. The PC reference renders `engine/ki-sound.js`'s
+own chain (cue gain, .55 master, its DynamicsCompressor) in Chromium,
+against the field song through an echo-less DSP at the browser's .4
+native-music gain (`engine/audio-output.js`). The PC therefore puts its
+effects 9–18 LU over its music; round eight sat 1–14 LU over it.
+
+| Cue | Round nine |
+| --- | --- |
+| HIT `$E7` | A noise crunch on the shared clock 29 (10.7 kHz): 12 ticks full, then a 12-tick fade (~230 ms), over the sampled rumble at 8 kHz falling an octave; the three-pitch rotation is unchanged |
+| KICK `$E8` / SSJ `$F1` | One shared crunch, 24 ticks full and a 16-tick fade (~380 ms), over the rumble an octave lower falling an octave; the SSJ body is louder and longer |
+| Swings `$E5/$E6` | Unchanged (`$E6` moved to the bank, byte-identical) |
+| Ki `$DE` | A pew on boot instrument 5 (≈3.3 kHz normal, 3.7 kHz SSJ; the PC blast's tone is 4.3 kHz) falling seven semitones in 6 ticks, then the arc's crackle at octave 6 falling an octave; one voice, ~250 ms, no DSP noise; normal volume `$EF` (was `$DF`), SSJ `$FF` |
+| Ki contact (IMPACT) | New, in the empty retail row `$7E`: a falling rumble boom (4 ticks), then the shared crunch (8 ticks and a 24-tick fade), one voice. Retail `$38` is unchanged for any other caller |
+| Kamehameha start | The charge bed's first command also starts the spring (`$7D`): instrument 3 (≈1.04 kHz, its second partial 7 dB down) climbs 3 semitones every 87 ms and drops back on ties, so no key-off gaps, with the song echo. It is full for 0.67 s and fades over 0.43 s. PC charge.wav's opening is a band sawtoothing 1.02→1.18 kHz every 88 ms |
+| CHARGED `$DF` | A bright shimmer, after the PC's 0.28 s sparkle: the arc an octave above its wave rate rising seven semitones, with the song echo (was round eight's hum blip) |
+| Wave `$EA/$F0` | Round eight's arc and its own deep thump, byte-for-byte the round-eight sound; the release ducks the song |
+| Charge / aura beds | The hum loops 32 ms (same 62.5/93.75/187.5 Hz tones); bed scale 128 (was 140, −0.8 dB) |
+
+The spring's reverberation is the song's own echo (EON on its voice). In the
+field song (preset 10: EDL 3, EVOL 64, EFB 0) that is one 48 ms repeat at
+half level, +1.2 LU; songs with echo feedback ring longer. The fading
+chirps themselves supply most of the springy decay.
+
+"Activation" is read as charge.wav's opening, the PC's sound when the
+Kamehameha starts: the default plays the spring there. The candidate build
+`AUDIO_ACTIVATION=charged` instead plays the spring at full charge (CHARGED)
+and nothing new at the start; both are in the listening package.
+
+### Mix
+
+- **Music −3.0 dB.** The song start and fade commands scale volume nibbles by
+  `$0C` instead of `$11` (`$0DC3`/`$1018` operands; songs reach `$B4`).
+  Effects keep their own `$90` gain path, so every effect gains 3 dB on the
+  music. Arrangements are trimmed alike.
+- **Release duck.** The wave command multiplies the song volume by `$90/256`
+  (−5.0 dB) and calls the driver's own fade setup (`$1020`) to restore it
+  linearly over 64 steps of 31.5 ms (2.0 s). The fade's fraction byte is
+  seeded with `$FF`: the 8.8 step truncates, and repeated releases would
+  otherwise drift the music down a step each. It is skipped while any song
+  fade runs (a CPU or song-change fade wins); port 1 is never written.
+- **Under the duck** (any song fade), contacts, ki launches and ki contacts
+  take half gain, as the PC's compressor tames everything under its beam;
+  the wave's echo tail keeps its headroom. A ki contact still sounding then
+  drops the next request (as `p2` low nibble 0) instead of restarting at
+  60 Hz when the wave strikes every frame (the PC skips impacts within two
+  frames).
+- **Contacts supersede.** A contact releases the swings and any HIT, KICK or
+  SSJ-kick voices before allocation, so at most one contact (two voices)
+  sounds and a finisher's tail never halves the next blow. The occupancy
+  rule is unchanged (full up to two effect voices, half at three/four,
+  quarter above). With supersession and the one-voice ki contact, combos
+  and volleys stay at two voices and full gain.
+- **Spring gate.** Only a bed rising from rest (first level ≤ `$D0`: charge,
+  focus, transformation, departure, Frieza's charge) starts the spring; a
+  bed started at full level is not an activation and keeps its headroom.
+
+No EDL, EVOL, EFB or FIR changes; the echo buffer and ARAM layout outside
+the reservation are untouched.
+
+### Loudness against the field song
+
+`node snes/test/audio/report9.mjs --before=main.sfc` (APU renders on each
+ROM's own SPC image; PC chain in Chromium). LU = cue max momentary minus the
+song's integrated loudness (PC −30.54 LUFS, main −21.72, round nine
+−24.96). "Ducked" counts the song-volume trace of the release duck over the
+same windows. Release: loudest window starting 0–0.2 s into the wave;
+sustain: windows starting 0.4–0.8 s. The compact wave is the fallback;
+the extended one is the optional bank.
+
+| Cue | PC LU | Main LU | Round 9 LU | PC small | Main small | Round 9 small | PC band | Main band | Round 9 band |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Punch hit (PC hit-1 / mean of 3) | +14.7 / +11.8 | +5.4 | +14.8 | +15.7 / +12.6 | +6.0 | +15.9 | +17.0 / +13.9 | +2.0 | +15.6 |
+| Kick | +16.7 | +5.7 | +17.4 | +17.5 | +6.1 | +18.4 | +18.4 | +1.6 | +18.1 |
+| SSJ kick | +16.7 | +6.2 | +17.6 | +17.5 | +6.5 | +18.6 | +18.4 | +2.3 | +18.3 |
+| Ki fire | +9.7 | +2.8 | +10.6 | +10.8 | +2.5 | +11.6 | +11.9 | +3.7 | +11.4 |
+| SSJ ki fire | +9.7 | +4.2 | +11.3 | +10.8 | +4.1 | +12.3 | +11.9 | +5.5 | +11.9 |
+| Ki contact | +10.9 | +0.6 | +14.4 | +11.7 | +1.5 | +15.4 | +13.5 | +1.5 | +15.2 |
+| Kamehameha start | +10.0 | +4.8 | +13.4 | +11.2 | −5.3 | +14.0 | +14.0 | −10.7 | +17.4 |
+| SSJ Kamehameha start | +12.6 | +7.9 | +14.0 | +13.7 | +3.1 | +14.1 | +16.2 | +3.8 | +17.5 |
+| Charge full (CHARGED) | +4.8 | −10.2 | +6.4 | +5.9 | −20.2 | +7.4 | +5.7 | −25.3 | +6.8 |
+| Kamehameha release (compact) | +17.2 | +12.9 | +16.1 (+20.5 ducked) | +18.2 | +12.7 | +15.9 (+20.2 ducked) | +21.0 | +14.5 | +17.7 |
+| Kamehameha release (extended) | +17.2 | +13.6 | +16.8 (+21.2 ducked) | +18.2 | +13.6 | +16.9 (+21.2 ducked) | +21.0 | +15.2 | +18.4 |
+| Kamehameha sustain (compact) | +16.6 | +11.8 | +15.1 (+17.7 ducked) | +17.7 | +11.8 | +15.0 (+17.7 ducked) | — | — | — |
+| Kamehameha sustain (extended) | +16.6 | +12.7 | +15.9 (+18.5 ducked) | +17.7 | +12.8 | +16.1 (+18.7 ducked) | — | — | — |
+
+Every cue meets or exceeds the PC's loudness and small-speaker ratios; the
+wave does so with its duck. The PC's three punch clips differ by 6 LU
+(hit-1 +14.7, hit-2 +9.0, hit-3 +8.7); round nine's pitch variants measure
++14.8 / +15.4 / +15.5. Two band figures stay under the PC: HIT (+15.6
+against hit-1's +17.0, over the three-clip mean's +13.9) and the normal ki
+(+11.4 against +11.9). The cartridge's crunch keeps energy above 5 kHz that
+the PC's 16 kHz clips cannot carry, so less of it falls in the band.
+
+**Headroom.** Zero clipped samples in every test and capture. Worst peaks
+in the round-eight stress mixes (APU, battle/full-power songs): contacts
+with beams and beds 27,907 (round eight 29,079), volleys and combos 29,338
+(28,648), repeated impacts beside every arrangement 27,953 (26,835).
+
+### Bytes
+
+| Region | Main | Round nine | Change |
+| --- | ---: | ---: | --- |
+| Permanent bank BRR | 1,818 | 1,593 | Hum 297 → 72 (32 ms loop from block 0) |
+| Permanent bank sequences | 134 | 242 | +E6 20 (moved), ki contact 19, spring 37, wave thumps 14 + 14, CHARGED +4 |
+| Permanent bank code | 349 | 438 | Spring launch and `bed_launch` 21, gain classes 8, `gain_ki` 4, SSJ-kick release 14, duck 28, ki-contact drop 13, ki form volume 1 |
+| Permanent bank total | 2,301 / 2,304 | **2,273 / 2,304** | 31 free (was 3) |
+| Shared sequence holes | 270 / 283 | 269 / 283 | −E6 20, −crack 11, +HIT/KICK crunches 22, DE +8 |
+| Retail table rows `$7D/$7E` | 0 | 8 | Previously empty: no event, call literal or sequence uses them |
+| Metadata `$1868–$187B` | 16 | 20 | Release loop: re-checks a two-voice contact, jumps on to F1 |
+| Driver operands `$0DC4`, `$1019` | — | 2 | Music step `$11` → `$0C` |
+| Optional bank | 7,884 / 7,853 | 7,884 / 7,853 | Data identical; the activation table now points the wave at its own thumps |
+
+`-DAUDIO_CUSTOM_SAMPLES=0` builds a ROM byte-identical to main's same
+option (`a9eaca0d…`): no custom segment, map entry or music trim applies.
+The `AUDIO_DESIGN=0/2` alternates still build (their contacts keep the
+half-dB reserve); round nine's loudness tests apply to the default.
+
+### CPU
+
+All changes are SPC-side; the 65816 dispatch path is unchanged. The SPC
+spends more cycles starting a contact because it now supersedes the previous
+one (APU harness, SPC cycles from command release to the main loop): HIT
+1,579 → 2,273, HIT after a swing 1,601 → 2,517, KICK after HIT
+1,648 → 2,806 (≈2.7 ms), HIT after an SSJ kick 1,671 → 2,869, the ki launch
+829 → 837, the wave 1,534 → 1,658, a bed start with its spring
+1,109 → 1,961; the ki contact costs 768 against retail `$38`'s 1,064. The
+CPU's asynchronous effect write never waits for it (one effect per frame).
+The SPC stack low-water mark moves from `$1F6` to `$1F5`.
+
+`node snes/test/gameplay/run.mjs --offsets=0,1,2,3,4,5,6,7,8,9 --jobs=2`,
+CPU misses summed over the ten start-phase offsets, main and round nine run
+one after the other on the same machine:
+
+| Case | Main | Round nine |
+| --- | ---: | ---: |
+| solo-punch | 0 | 0 |
+| solo-ki | 0 | 0 |
+| walk | 0 | 0 |
+| punch | 6 | 6 |
+| ki | 3 | 3 |
+| fly | 1 | 1 |
+| fly-ki | 12 | 12 |
+| fly-punch | 3 | 3 |
+| water-flight | 0 | 0 |
+| teleport | 22 | 22 |
+| charge | 43 | 43 |
+| focus-grass | 0 | 0 |
+| transform-grass | 0 | 0 |
+| **All cases** | **90** | **90** |
+
+Every offset of every case matches main exactly. Both runs report one
+failure, `fly-punch+5`: a single vblank overrun with zero CPU misses, on
+main as well (not audio).
+
+### Listening package and validation
+
+The listening package is `.local/snes-test/audio/round9/`: 107 WAVs, with
+`manifest.json` holding every file's one-line description and a cue-by-cue
+`guide` (see [audio-samples.md](audio-samples.md#listening-package)). Main,
+round nine and the `charged` candidate each have every cue over the field
+song and alone, plus real Rabite-field takes. The PC files are its clips and
+its chain. All 78 cartridge captures have zero clipped samples.
+
+Validation on the strict shipping build
+(`d1c4f64461abe103dba973525ce68cbb802afd7f0bc38fef075e7b5b2652b1c9`):
+
+- 59 audio unit/SPC tests. Round nine's assert the PC loudness ratios, the
+  spring (gapless, echoed, rising chirps, gated), the duck (exact restore,
+  no drift, a running fade wins), supersession, voices and headroom.
+- All 15 cartridge suite sections: unit, weapon-charge (34 phases), render,
+  prefetch, loads, loads-boot, native, music, rare, rare-control, rare-boot,
+  stream, songs, arrival, imported.
+- `npm test`, 385 tests.
+- Effect dispatch at most **1.348974 scanlines** (`native`; round eight
+  1.348974).
+- `-DAUDIO_CUSTOM_SAMPLES=0` byte-identical to main's; `AUDIO_DESIGN=0/2`
+  and `AUDIO_ACTIVATION=charged` build.
+
+Logs are in `.local/snes-test/audio/round9/logs/`; the tables in
+`.local/snes-test/audio/round9/report/`.
+
+### File map
+
+| Files | Purpose |
+| --- | --- |
+| `snes/gen/audio-resident7.mjs` | Round-nine tracks, ids, mix constants, CHARGED/spring candidates |
+| `snes/gen/audio-design8.mjs` | Hum generator independent of loop length |
+| `snes/gen/audio-resident.mjs` | IMPACT → `$7E` in the custom native map |
+| `snes/src/modules/audio/spc/beds.s` | Music trim, spring launch, gain classes, supersession, duck, ki-contact drop |
+| `snes/test/audio/loudness.mjs` | BS.1770 momentary/short-term/integrated loudness, 200 Hz small-speaker check, 0.5–5 kHz band |
+| `snes/test/audio/pc9.mjs` | PC chain in Chromium (Playwright's build, else installed Chrome) |
+| `snes/test/audio/cues9.mjs`, `report9.mjs`, `round9.mjs` | Cartridge cue renders, the tables above, PC references for tests |
+| `snes/test/audio/capture9.mjs`, `capture9.lua` | Raw Mesen DAC listening package and its manifest |
+| `beds/contacts/finisher/ki/motion/resident/variation` tests | Round-nine loudness, spring, duck, supersession, voices and headroom |
+
+## Round eight performance follow-up
+
+Base: main `cd59395` (snes-int `cc52d1e` and its changelog), then
+`667245e` (cues skip the core's SRAM queue), `a508692` (dispatch),
+`4c91b9f` (bank prefetch) and `8d096d9` (song loads). The Rupture, Arc and
+Storm designs, samples, sequences, gains and mix are unchanged.
+`-DAUDIO_CUSTOM_SAMPLES=0` and `-DAUDIO_PCM=1` stay byte-identical to the
+base's builds.
+
+### Where the hit frame's time went
+
+`dispatch-profile.lua` is a gameplay-runner prelude. It times each field
+update's audio_frame, the core's sound pump and every C3:0004 call with NMI
+time removed. It also records each direct send, each port-0 write and every
+polling loop: consecutive reads of `$2140-$2143` at one PC.
+`dispatch-report.mjs` sums the 130 runs (13 cases, offsets 0-9). On the
+base:
+
+- The 5.9-line end-of-frame step on fly-punch's hit frame (offset 0, the
+  update from frame 263 that misses at 264) is 2.2 lines of
+  `core_frame_end` plus a 3.7-line lag NMI inside the span. The pad latch takes 0.3 lines and the sound queue 1.9
+  (1.25 of it the C3:0004 dispatch); the event pump takes 0.04. The queue
+  is the cost.
+- The 7.7-8.9-line audio-service spikes after `667245e` (7.9, 8.1 and
+  11.4 here, on fly+7, fly-ki+1 and fly-ki+9) are 4.3-4.4 lines of
+  audio_frame plus a 3.6-7.0-line lag NMI.
+  No gameplay frame in any run polls the SPC in a loop, because every
+  gameplay command is an asynchronous 02 or 81.
+- A cue frame costs 4.90 lines on average (1,993 frames, maximum 5.76).
+  The selector takes 2.9, the SRAM queue round trip 0.9 and the driver
+  entry 1.4 (destroy's song hook 0.4, the native register save and restore
+  0.5, the send 0.5). A frame whose only work is a native effect's echo
+  from earlier in the frame runs the whole service, at 2.10 lines.
+
+### Dispatch (`a508692`)
+
+| Path | Change |
+| --- | --- |
+| Module cues and beds | `audio_native_send` writes ports 3-1, then 0, itself (A = command, p1; X = p2, p3). Same release and drop rule; no C3:0004, no `$1E00` |
+| Native callers' 02/81 | `audio_native_effect` at C3:0160 (Codex's): the asynchronous send without the native register save and restore; other commands replay the prologue |
+| Selector | A lone ordinary cue skips the contest. Two or more (a swing and its contact) use an inline priority loop |
+| Echo-only frames | No request: poll the echo and return. A held bed polls its own or a native effect's echo in the hold path |
+| Rare service | Returns at once with no line, channel record or flag |
+| Release, then send | After releasing an echo in the same call, wait for the SPC to clear port 0. The native driver waits the same way (C3:05B2): the SPC spins on port 0 and clears it about 20 us later. Bounded at 1.3 lines |
+
+The last row fixes dropped sound. Over the 130 runs, 117 of the 139
+native effects the base dropped were the second of two effects a few lines
+apart, sent while the SPC was still clearing the first one's echo. Now 23
+remain dropped, each because the driver was busy with a tick. The module's
+own drops stay at 3-4 per 130 runs. The wait occurs in 130 measured
+frames, never longer than 0.37 lines.
+
+| Lines a frame, 130 runs (NMI excluded) | Base | Now |
+| --- | ---: | ---: |
+| Cue (swing, contact, ki...): mean / max | 4.90 / 5.76 | 2.79 / 3.75 |
+| fly-punch's hit frame (kick + deflect): audio_frame + pump | 3.61 + 1.89 | 3.04 + 0.16 |
+| End-of-frame step (pad latch + pump) on that frame | 2.20 | 0.44 |
+| Only an earlier native effect: mean / max | 2.10 / 3.19 | 0.58 / 0.90 |
+| No command: mean / max | 0.59 / 3.19 | 0.51 / 2.44 |
+
+### Bank prefetch (`4c91b9f`)
+
+The performance pass found that the optional bank's fill added gameplay
+misses: `field_prefetch_no_added_misses` read 1 -> 2 on `c55d683`. The $8A
+handshake waited up to the frame's whole line budget (14.8 lines seen) for
+a driver busy with a tick. A failure set the exponential retry backoff, and
+each countdown frame after a cue then ran the full service (1.67 lines
+instead of 0.78).
+
+- The fill probes for about 1.7 lines and then withdraws (port 0 = 0 ends
+  $8A at once, `stream.s` `ext_cmd`). In the field fixture an idle driver
+  echoes within 0.3-1.6 lines, for 57% of attempts; a tick keeps it busy
+  for up to about 45. A failed probe sets no backoff and no wait budget.
+- A fill-only frame (au_wake `$40`) goes straight to its step. It polls an
+  outstanding echo itself instead of running the full service, and checks
+  held input and the scanline first.
+- A frame with only a countdown left (a song change's hold or a rare line's
+  retry, au_wake `$20`) takes its own cheap step.
+
+`prefetch.lua` sums ten start phases: the fill is held off 0-9 frames after
+the field savestate, then the same 1,800 frames run with it enabled or
+disabled. Misses summed over the ten phases:
+
+| Base | Audio | Disabled | Enabled |
+| --- | --- | ---: | ---: |
+| `cd59395` | round eight | 20 | 20 |
+| `c55d683` | round eight | 10 | 20 (fails) |
+| `cd59395` | this follow-up | 10 | 10 |
+| `c55d683` | this follow-up | 10 | 10 |
+
+The longest transfer frame drops from 44.6 to 34.8 lines. The disabled
+runs miss less now as well, because their frames take the cheaper idle step.
+
+### Song loads (`8d096d9`)
+
+Round eight's hole allocator kept the mean down, but it placed shared
+samples in whichever hole was cheapest. A later song's larger echo could
+then reach them, or a fragmented cache had to pack. On the worst
+transition this cost 12.2 frames more than round seven ($07 -> $08, 21.1
+frames; the power-on pass's $0B, +12.6). `cache.asm` now keeps the last
+four song changes:
+
+- A first visit (no return within that window) uses round seven's
+  allocator. It appends at the tail, and when the tail or the slots run out
+  it packs the required set from the floor once. Its fit test counts a
+  duplicated list entry twice, as the retail planner does ($18's two
+  strike entries), so the packs fall on the same loads; the sample is sent
+  once.
+- A return to a recent song opens a three-load window for the non-moving
+  hole allocator, which keeps a field, town or battle's warm working set.
+- The hole planner ends each overlap scan at the first slot past the
+  candidate, and packing walks the slots in order. Neither changes a
+  decision.
+
+| Stall frames | Round seven | Round eight | Now |
+| --- | ---: | ---: | ---: |
+| 64 consecutive loads: mean | 19.915 | 17.905 | 19.652 |
+| 64 consecutive loads: worst change vs round seven | | +12.15 ($08) | +0.19 ($09) |
+| Power-on, presets 11/14 (192): mean | 19.487 | 16.851 | 19.282 |
+| Power-on: worst change vs round seven | | +12.58 ($0B) | +0.16 ($32, preset 14) |
+| Field/town/boss route (15): mean | 16.151 | 13.547 | 13.530 |
+| Route: worst change vs round seven | | +0.44 | +0.36 |
+| Longest stall, 64 / 192 loads | 44.94 / 45.08 | 46.43 / 46.20 | 44.95 / 45.17 |
+
+The consecutive passes play every song once, so they measure first visits.
+Those load as in round seven again, and lose round eight's mean gain there.
+Returns, as in the route, keep it. The route's remaining +0.36 is the hole
+planner's CPU on the boss song (0.43 frames against round seven's 0.11,
+with identical transfers). The optional bank is present after 9 of 64 and
+23 of 192 loads (round eight: 5 and 6). The history uses the five
+dedupe/variant bytes that only `AUDIO_PCM` builds use (`$DD18-$DD1C`).
+
+`cache-model.mjs` replays a `load-profile.lua` pass exactly: the cache
+before each load, the uploads, moves and history (64/64, 196/196 and 15/15
+loads). With `--policy=retail|holes` it predicts another allocator's stalls
+from the measured ones and the fitted transfer costs (0.0011 frames an
+uploaded byte, 0.00083 a moved one).
+
+### Gameplay and validation
+
+CPU misses summed over offsets 0-9 (`gameplay/run.mjs --offsets=0,...,9
+--jobs=2` with the profiling prelude):
+
+| Case | Base | Now |
+| --- | ---: | ---: |
+| punch | 9 | 8 |
+| ki | 3 | 3 |
+| fly | 1 | 1 |
+| fly-ki | 12 | 10 |
+| fly-punch | 10 | 9 |
+| teleport | 23 | 22 |
+| charge | 56 | 53 |
+| all others | 0 | 0 |
+| total | 114 | 106 |
+
+At offset 0, fly-punch goes 1 -> 0 and the other counts are unchanged. In
+the missed updates, audio (audio_frame plus the sound pump, NMI excluded)
+falls from 208.4 of 27,976 lines (0.74%) to 119.6 of 26,008 (0.46%). The
+missed updates whose overrun is shorter than their own audio work fall from
+16 of 114 to 7 of 106. With identical miss patterns the SPC sees the same
+effect and bed commands, plus the native effects that are no longer dropped.
+
+Tests on the final build: all 15 audio cases (53 unit tests, weapon-charge
+34 phases, the summed prefetch check, 64/192-load and route bank checks,
+native with the new cue and bed frame bounds) and the gameplay cases at
+offset 0. Gameplay passes at every offset except fly-punch+4, whose
+37.26-line field NMI overruns on the base too (`c55d683` removes it). Also
+run on the final build: perf (p90 sword 58, Sandship 109, battle 51, Beast
+171, Fortress 91, flight 112; unchanged), combat (37 cases), story, title,
+and the emulators suite on snes9x, bsnes and bsnes-accurate, one core at a
+time (cold-boot SPC image, music, cue variation, ki forms and voice return
+all pass). The prefetch check also passes on `c55d683` with this
+follow-up's audio files on top. Shipping SHA-256:
+`b9f842785e6325972b291b1ce544ea60c0620c466d384123148794aad80bb71f`.
+
+| Files | Purpose |
+| --- | --- |
+| `audio/native.asm`, `beds.asm`, `rare.asm`, `module.asm` | Direct send, native fast path, contest, echo and countdown steps |
+| `audio/extended.asm` | Fill probe, fill-only step |
+| `audio/cache.asm` | History, retail-timed append, hole planner exits, slot-order packing |
+| `snes/test/audio/dispatch-profile.lua`, `.mjs`, `dispatch-report.mjs` | Per-update dispatch costs, waits, drops, command streams |
+| `snes/test/audio/cache-model.mjs`, `load-profile.lua` | Exact cache replay; profiles record echo length, bank state and history |
+| `native.lua`, `weapon-charge.*`, `capture7/8.*`, `run.mjs` | Observe direct sends at `audio_native_send` (`AUDIO_SEND`) |
+| `prefetch.lua` | The field check summed over ten phases |
+
 ## Round eight: impact, rumble and electrical arcs
 
-This supersedes the PC-matching sound descriptions below. The default design
-is **rupture**: noise cracks over aperiodic bass bodies, rushing ki bursts,
-and a distorted electrical wave. **Arc** and **storm** are reproducible
+The follow-up above changes this round's dispatch path, the prefetch's
+handshake and first-visit cache allocation; its sounds and bank are as
+described here. This supersedes the PC-matching sound descriptions below.
+The default design is **rupture**: noise cracks over aperiodic bass bodies,
+rushing ki bursts, and a distorted electrical wave. **Arc** and **storm** are reproducible
 alternate cartridge builds (`AUDIO_DESIGN=0/2`; default `1`). They vary the
 sampled body, discharge density and whine, not a post-render effect.
 
@@ -73,7 +470,8 @@ The 64-byte helper at `$0180` and native transfer acknowledgement order
 are unchanged. An early-ack experiment was rejected after a snes9x
 picture-phase regression; it is not in the final implementation.
 
-The cache uses holes before compaction, retains frequently shared samples
+Round eight's cache (now for returns only; first visits use the retail
+allocator, see the follow-up) uses holes before compaction, retains frequently shared samples
 with a previous-song bonus, and compacts only the required prefix. A ROM
 membership table and processed-list markers avoid repeated searches;
 insertion sorting avoids repeated full passes. All cache state remains
@@ -122,7 +520,8 @@ their own cold-boot music/effect/variation checks also pass.
 | focus-grass | 0 | 0 |
 | transform-grass | 0 | 0 |
 
-Ordinary effect dispatch remains at **1.348974 scanlines maximum**.
+Ordinary effect dispatch remains at **1.348974 scanlines maximum** (round
+eight; the follow-up's direct send replaces this path).
 `modprof` measures audio at 0.41 lines/call in the moving sword/battle
 scenes, versus 0.41 before; the maximum is 1.93 versus 1.88. Optional
 prefetch is separate budgeted work (up to 76.30 lines including command

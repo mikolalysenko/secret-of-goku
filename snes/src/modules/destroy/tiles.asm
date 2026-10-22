@@ -143,7 +143,8 @@ dst_desc_rep:
 
 ; ---------------------------------------------------------------------------
 ; dst_scenery (native-local-flight.js breakScenery): Sandship deck rail,
-; carved heads and Haunted Forest vines/flowers. Carry set, A = replacement.
+; carved heads, Haunted Forest vines/flowers and the decorative cave
+; stalagmites (cave-stalagmites.js). Carry set, A = replacement.
 dst_scenery:
 	JSR dst_ship_rail : BCC +
 	LDA.w #!DESTROY_RAIL_REPLACEMENT
@@ -161,12 +162,50 @@ dst_scenery:
 	RTS
 .vine
 	LDA.w !d_ccode : BNE .no
-	LDA.w !m_ts : CMP.w #!DESTROY_VINE_TILESET : BNE .no
+	LDA.w !m_ts : CMP.w #!DESTROY_VINE_TILESET : BEQ .vines
+	CMP.w #!DESTROY_STALAG_TILESET : BNE .no
+	JSR dst_stalag_find : BCC .no
+	LDA.l destroy_stalagmites+2,X : AND.w #$00FF    ; the object's floor
+	SEC
+	RTS
+.vines
 	LDA.w !d_cmeta
 	JSR dst_bit_vine : BCC .no
 	LDA.w #!DESTROY_VINE_TILE
 	SEC
 	RTS
+.no
+	CLC
+	RTS
+
+; dst_stalag_find (cave-stalagmites.js stalagmiteAt): the current cell (code
+; 0, on a map of the stalagmite tileset) is a BG1 cell of one of this map's
+; decorative cave stalagmites and still holds its retail tile. Carry set,
+; X = the object's record in destroy_stalagmites (+2 floor, +3 latch mask,
+; +4 cells, +5 record size, +6 cells of x, y, tile). Uses A, X, Y, !d_t6.
+dst_stalag_find:
+	LDA.w !m_bits : AND.w #!MAP_INFO_SCENERY : BEQ .no
+	LDA.w !d_cl : BNE .no
+	LDX.w #0
+.object
+	LDA.l destroy_stalagmites,X : CMP.w #$FFFF : BEQ .no
+	CMP.w !d_map : BNE .next
+	STX.w !d_t6
+	LDA.l destroy_stalagmites+4,X : AND.w #$00FF : TAY
+.cell
+	LDA.l destroy_stalagmites+6,X : AND.w #$00FF : CMP.w !d_cx : BNE +
+	LDA.l destroy_stalagmites+7,X : AND.w #$00FF : CMP.w !d_cy : BNE +
+	LDA.l destroy_stalagmites+8,X : AND.w #$00FF : CMP.w !d_ctile : BNE +
+	LDX.w !d_t6
+	SEC
+	RTS
++	INX : INX : INX
+	DEY : BNE .cell
+	LDX.w !d_t6
+.next
+	LDA.l destroy_stalagmites+5,X : AND.w #$00FF : STA.w !d_t6
+	TXA : CLC : ADC.w !d_t6 : TAX
+	BRA .object
 .no
 	CLC
 	RTS
@@ -253,6 +292,7 @@ macro dst_bittest(name, table)
 endmacro
 %dst_bittest(dst_bit_vine, destroy_vine_bits)
 %dst_bittest(dst_bit_false_floor, destroy_false_floor)
+%dst_bittest(dst_bit_stalag, destroy_stalag_bits)
 
 ; dst_bit_air: carry = metatile A is dungeon air in tileset !m_ts.
 dst_bit_air:
@@ -536,14 +576,26 @@ dst_row_redraw:
 
 ; ---------------------------------------------------------------------------
 ; Smashed objects (native-plants.js cleared): after an edit, remember solid
-; objects, trigger-wall objects, braziers and demolished walls of this map
-; so a same-room native rebuild cannot regrow them. Current cell = the
-; pre-edit tile, !d_t4 = entry meta.
+; objects, trigger-wall objects, braziers, every cell of a cave stalagmite
+; and demolished walls of this map so a same-room native rebuild cannot
+; regrow them. A stalagmite that latches a passage (Watts's shortcut, lab.js
+; onCut) keeps it open from now on: its bit in !P_DOORS, saved with the GAME
+; FILE, shows the opened piece at every later load (destroy_piece_flag).
+; Current cell = the pre-edit tile, !d_t4 = entry meta.
 dst_cleared_note:
 	LDA.w !d_t4 : AND.w #$0003 : BNE +              ; plants: native respawn
 	RTS
 +
 	LDA.w !d_t4 : AND.w #!QM_DEMO : BNE .yes
+	LDA.w !d_ccode : BNE .solid
+	LDA.w !m_ts : CMP.w #!DESTROY_STALAG_TILESET : BNE .solid
+	JSR dst_stalag_find : BCC .solid
+	LDA.l destroy_stalagmites+3,X : AND.w #$00FF : BEQ .yes
+	SEP #$20
+	ORA.l !P_DOORS : STA.l !P_DOORS
+	REP #$20
+	BRA .yes
+.solid
 	LDA.w !d_cflags : AND.w #$0007 : CMP.w #3 : BEQ .yes
 	LDA.w !d_cflags : AND.w #$0008 : BNE .yes
 	LDA.w !d_t4 : AND.w #$0003 : STA.w !d_pol
@@ -755,7 +807,9 @@ dst_class_of:
 
 ; Carry set when tile !d_ctile (code !d_t3, metatile !d_cmeta) on layer
 ; !d_cl may be scenery (dst_scenery): the Sandship rail tile on its two deck
-; maps, or a vine metatile. Skull heads carry cut code C1 (candidates anyway).
+; maps, a vine metatile, or a tile some cave stalagmite uses (scenery maps
+; of that tileset; dst_stalag_find checks the cell). Skull heads carry cut
+; code C1 (candidates anyway).
 dst_class_scenery:
 	LDA.w !d_cl : BNE .no                         ; layer 0 only
 	LDA.w !d_t3 : BNE .no                         ; code 0
@@ -763,7 +817,11 @@ dst_class_scenery:
 	CMP.w #!DESTROY_RAIL_MAP_B : BNE .vine
 +	LDA.w !d_ctile : CMP.w #!DESTROY_RAIL_TILE : BEQ .yes
 .vine
-	LDA.w !m_ts : CMP.w #!DESTROY_VINE_TILESET : BNE .no
+	LDA.w !m_ts : CMP.w #!DESTROY_VINE_TILESET : BEQ .vines
+	CMP.w #!DESTROY_STALAG_TILESET : BNE .no
+	LDA.w !d_ctile : JSR dst_bit_stalag : BCC .no
+	BRA .yes
+.vines
 	LDA.w !d_cmeta : JSR dst_bit_vine : BCC .no
 .yes
 	SEC

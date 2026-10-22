@@ -29,8 +29,10 @@ export function rumble8(n=768,rate=6000,design=1){
 }
 export function hum8(n=512,rate=4000,design=1){
  const d=DESIGNS8[design],w=lowpass(noise(n,d.seed+7),rate,900);
- // Eight/twelve cycles in 128 ms: 62.5/93.75 Hz with harsh mains harmonics.
- return unit(Float32Array.from(w,(v,i)=>Math.tanh(1.6*(Math.sin(i/n*Math.PI*16)+.33*Math.sin(i/n*Math.PI*48)+.25*Math.sin(i/n*Math.PI*24)))+.20*v),.88);
+ // 62.5/93.75 Hz with harsh mains harmonics at 4 kHz, independent of the
+ // loop length: any multiple of 128 samples holds whole cycles of all three.
+ if(n%128)throw Error('hum loop must hold whole 93.75 Hz cycles');
+ return unit(Float32Array.from(w,(v,i)=>Math.tanh(1.6*(Math.sin(i*Math.PI/32)+.33*Math.sin(i*Math.PI*3/32)+.25*Math.sin(i*Math.PI*3/64)))+.20*v),.88);
 }
 export function arc8(n,rate,design=1,{attack=0}={}){
  const d=DESIGNS8[design],r=random(d.seed+11),w=noise(n,d.seed+13),low=lowpass(w,rate,160),roar=lowpass(w,rate,1600);

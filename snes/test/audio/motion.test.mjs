@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createApu} from './apu.mjs';
-import {isResident7} from './cartridge.mjs';
+import {isResident7,isRound9} from './cartridge.mjs';
 import {motionComparison,motionMixes} from './motion.mjs';
-const rom=readFileSync(process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc'),skip=!isResident7(rom);
+import {NOISE_CLOCK} from '../../gen/audio-resident7.mjs';
+const rom=readFileSync(process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc'),skip=!isRound9(rom);
 test('swings lose periodic buzz; ki retains punch and all three keep their single-voice budget',{skip},()=>{
  for(const r of motionComparison(rom)){
   assert.equal(r.after.ended,true);assert.equal(r.after.voices,1);
@@ -13,9 +14,12 @@ test('swings lose periodic buzz; ki retains punch and all three keep their singl
    assert.ok(r.after.periodicity<.4&&r.after.periodicity<r.before.periodicity/2,r.cue+' periodicity');
    assert.ok(r.after.timeToPeakMs>=20&&r.after.timeToPeakMs<90,r.cue+' quick swell');
   }else{
+   // Round nine: a sharper launch than round four's slow tonal sweep —
+   // a bright pew onset into a broadband crackle, no sustained carrier.
    assert.ok(r.after.peakDbFS>=r.before.peakDbFS+2,'stronger launch attack');
    assert.ok(r.after.features.levelDb>=r.before.features.levelDb,'no softer launch');
-   assert.ok(r.after.features.centroid<r.before.features.centroid,'rumbling body replaces the tonal zap');
+   assert.ok(r.after.high30Energy>.05&&r.after.timeToPeakMs<r.before.timeToPeakMs/2,'bright, early launch');
+   assert.ok(r.after.periodicity<.2&&r.after.voiceMs<=r.before.voiceMs,'crackle, not a held tone');
   }
  }
 });
@@ -30,7 +34,7 @@ test('both swings fall in pitch and neither retunes the contact crack',{skip},()
  // Observe the contact's whole tail at 1 ms resolution, at both delays.
  for(const swing of [0xE5,0xE6])for(const gap of [1,2]){
   const trace=withSwing=>{const h=createApu({rom});h.ms(60);if(withSwing)h.nativeCmd(2,swing,15,0x88);h.ms(gap*1000/60.0988);h.nativeCmd(2,0xE7,15,0x88);const clocks=[];for(let i=0;i<180;i++){h.ms(1);if(h.dspReg(0x3D)&h.ram[0xAE])clocks.push(h.dspReg(0x6C)&31);}return [...new Set(clocks)];};
-  assert.deepEqual(trace(true),trace(false));assert.deepEqual(trace(true),[31]);
+  assert.deepEqual(trace(true),trace(false));assert.deepEqual(trace(true),[NOISE_CLOCK]);
  }
 });
 test('1/2-frame contacts and 5-frame ki volleys preserve headroom, noise state and music ownership',{skip},()=>{
@@ -47,6 +51,8 @@ test('a contact returns either swing voice before counting overlap gain',{skip},
    const h=createApu({rom});h.ms(60);
    if(swing)h.nativeCmd(2,swing,15,0x88);
    h.ms(gap*1000/60.0988);h.nativeCmd(2,hit,15,0x88);
+   // The start path now also supersedes earlier contacts: allow 2 ms.
+   h.ms(2);
    let peakVolume=0;
    for(let t=0;t<50;t++){
     h.ms(1);const owned=[];

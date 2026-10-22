@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import {createApu,loadSong} from './apu.mjs';
 import {renderEffect,browserFeatures} from './effects.mjs';
 import {punchMetrics} from './punch.mjs';
-import {roundFourApuRom,isResident7,customSegments} from './cartridge.mjs';
+import {roundFourApuRom,isResident7,customSegments,impactId} from './cartridge.mjs';
 import {readWav,resample} from '../../gen/audio-brr.mjs';
 import {songInventory} from './sample-audit.mjs';
 import {buildResident7,resident7Layout,SAMPLE_BASE,RESERVE} from '../../gen/audio-resident7.mjs';
@@ -37,7 +37,7 @@ export function motionMix(rom,{song=0x3C,mode='combo',gap=1,beam=false,beds=fals
  const immutable=customSegments(rom).filter(s=>s.addr!==0x187C).map(s=>({addr:s.addr,bytes:h.ram.slice(s.addr,s.addr+s.bytes.length)}));
  let maxVoices=0,maxLaunchVoices=0,maxSwingVoices=0,noiseMismatch=0;
  const step=ms=>{for(let t=0;t<ms;t+=1){h.ms(Math.min(1,ms-t));const ids=[];for(let v=0;v<8;v++)if(h.ram[0xAE]&(1<<v))ids.push(h.ram[0xFF80+v]);maxVoices=Math.max(maxVoices,ids.length);maxLaunchVoices=Math.max(maxLaunchVoices,ids.filter(id=>id===0xDE).length);maxSwingVoices=Math.max(maxSwingVoices,ids.filter(id=>id===0xE5||id===0xE6).length);
-   if(isResident7(rom))for(let v=0;v<8;v++)if((h.dspReg(0x3D)&(1<<v))&&[0xE5,0xE6,0xDE,0xED,0xEE].includes(h.ram[0xFF80+v]))noiseMismatch++;
+   if(isResident7(rom))for(let v=0;v<8;v++)if((h.dspReg(0x3D)&(1<<v))&&[0xE5,0xE6,0xDE,0xED,0xEE,0x7D].includes(h.ram[0xFF80+v]))noiseMismatch++;
   }};
  if(beds&&isResident7(rom))for(const id of [0xED,0xEE]){h.nativeCmd(0x81,id,240,128);step(frame);}
  for(let cycle=0;cycle<4;cycle++){
@@ -48,7 +48,7 @@ export function motionMix(rom,{song=0x3C,mode='combo',gap=1,beam=false,beds=fals
   }
   else for(let i=0;i<24;i++){
    h.nativeCmd(2,0xDE,blastP2==='alternate'?(i%2?0x0D:0x0F):blastP2,0x88);step(2*frame);
-   h.nativeCmd(2,0x38,15,0x88);step((gap-2)*frame);
+   h.nativeCmd(2,impactId(rom),15,0x88);step((gap-2)*frame);
   }
   step((17+cycle*3)*frame);
  }

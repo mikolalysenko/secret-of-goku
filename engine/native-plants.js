@@ -3,6 +3,7 @@
 // No ROM patches, graphics bytes, direct VRAM writes or forced CPU calls.
 // Traced C1:D293..D429; C0:C7C3 consumes the redraw queue; C0:B565 drains SFX.
 import {palaceBraziers, brazierPart} from './palace-braziers.js';
+import {stalagmiteAt} from './cave-stalagmites.js';
 export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplacement=null,demolitionPlan=null,demolishes=policy=>policy==='super-beam'}={}){
  const cpu=snes.cpu,priorCycle=cpu.cycle,r=snes.ram;
  const read16=a=>r[a]|r[a+1]<<8;
@@ -26,6 +27,13 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
    if(cells.every((cell,i)=>cell&&cell.tile===pattern[i]&&cell.code===0))return cells.map(cell=>({...cell,brazier:{x,y}}));
   }
   return null;
+ }
+ // A decorative cave stalagmite spans several cells (cave-stalagmites.js):
+ // a hit on any of them takes the whole object, so no spire is left
+ // standing without its base. Each cell still needs its replacement.
+ function stalagmiteGroup(tile){
+  const object=stalagmiteAt(read16(0xdc),tile);
+  return object?object.cells.map(([tx,ty])=>({tx,ty,layer:0,stalagmite:object.latch??true})):null;
  }
  const metadata=(tx,ty,l=layer())=>{
   if(!Number.isInteger(tx)||!Number.isInteger(ty)||tx<0||tx>=128||ty<0||ty>=128||!(l===0||l===1))return null;
@@ -74,12 +82,12 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
   for(const t of tiles){
    const tile=metadata(t.tx,t.ty,t.layer??layer());
    if(brazierPolicy(policy)&&tile&&brazierReplacement(tile)!==null)expanded.push(...(brazierGroup(tile)??[]));
-   else expanded.push(t);
+   else expanded.push(...(objectPolicy(policy)&&stalagmiteGroup(tile)||[t]));
   }
   for(const t of expanded){const item=breakable(metadata(t.tx,t.ty,t.layer??layer()),policy);
    if(!item||queue.some(q=>q.map===map&&q.address===item.address))continue;
    if(queue.length>=128)break;
-   const queued={...item,...(t.brazier?{brazier:t.brazier}:{}),map,frame:snes.frames,policy};queue.push(queued);added.push(queued);
+   const queued={...item,...(t.brazier?{brazier:t.brazier}:{}),...(t.stalagmite?{stalagmite:t.stalagmite}:{}),map,frame:snes.frames,policy};queue.push(queued);added.push(queued);
   }
   if(demolitionPlan&&demolishes(policy)){
    const unused=tiles.filter(t=>!queue.some(q=>q.map===map&&q.tx===t.tx&&q.ty===t.ty&&q.layer===(t.layer??layer())));
@@ -93,7 +101,7 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
  }
  function queuedTile(item){
   const now=metadata(item.tx,item.ty,item.layer);
-  if(!item.demolition){const next=breakable(now,item.policy);return next&&{...next,...(item.brazier?{brazier:item.brazier}:{})};}
+  if(!item.demolition){const next=breakable(now,item.policy);return next&&{...next,...(item.brazier?{brazier:item.brazier}:{}),...(item.stalagmite?{stalagmite:item.stalagmite}:{})};}
   if(!now||now.tile!==item.tile||now.flags!==item.flags||now.behavior!==item.behavior||now.code!==0||item.code!==0||now.flags&8||now.behavior&0xd0||!Number.isInteger(item.replacement)||item.replacement<0||item.replacement>191)return null;
   // A scene may have rebuilt the room between impact and this DMA slot.
   // Its original two floors must still exist; never replay an obsolete hole.
@@ -142,7 +150,7 @@ export function createNativePlants(snes,{canCut=null,onCut=null,sceneryReplaceme
      const changed=[];
      for(const item of group){
       const cur=queuedTile(item);if(!cur||cur.tile!==item.tile)continue;r[cur.address]=cur.replacement;changed.push(cur);
-      if(objectPolicy(item.policy)&&(cur.demolition||(cur.flags&7)===3||cur.flags&8||brazierPolicy(item.policy)&&brazierReplacement(cur)!==null))cleared.set(cur.address,{...cur,map,policy:item.policy});
+      if(objectPolicy(item.policy)&&(cur.demolition||(cur.flags&7)===3||cur.flags&8||cur.stalagmite||brazierPolicy(item.policy)&&brazierReplacement(cur)!==null))cleared.set(cur.address,{...cur,map,policy:item.policy});
      }
      if(!changed.length)continue;
      const scrollY=read16(first.layer?0xae:0xaa),mapHeight=read16(0xc2),worldY=first.ty*16+8;

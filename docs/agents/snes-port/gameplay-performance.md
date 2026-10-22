@@ -6,6 +6,43 @@ integration bugs and CPU/vblank cost. The default build now favors resident
 SNES audio and compact effects. It is substantially smoother, but crowded
 combat is not yet guaranteed to run without missed video frames.
 
+## Audio dispatch follow-up: start-phase sums — October 22, 2026
+
+The audio module's part of the field update, measured with
+`snes/test/audio/dispatch-profile.lua` over the 130 runs (offsets 0-9) and
+changed in `a508692` and `4c91b9f` (details in
+[audio.md](audio.md#round-eight-performance-follow-up)). Base main
+`cd59395`, the sums of the pass below:
+
+| Case | Sum, offsets 0-9, before -> after |
+| --- | --- |
+| punch | 9 -> 8 |
+| ki | 3 -> 3 |
+| fly | 1 -> 1 |
+| fly-ki | 12 -> 10 |
+| fly-punch | 10 -> 9 (offset 0: 1 -> 0) |
+| teleport | 23 -> 22 |
+| charge | 56 -> 53 |
+| all others | 0 -> 0 |
+| total | 114 -> 106 |
+
+- A cue frame's audio work (audio_frame plus core's sound pump, NMI time
+  excluded) falls from 4.90 to 2.79 lines on average and from 5.76 to 3.75
+  at most. fly-punch's hit frame goes from 3.61 + 1.89 to 3.04 + 0.16, and
+  the end-of-frame step from 2.20 to 0.44 lines. A frame whose only audio
+  work is an earlier native effect's echo falls from 2.10 to 0.58.
+- In the missed updates, audio takes 0.74% of the lines before and 0.46%
+  after (208.4 of 27,976 -> 119.6 of 26,008). The misses whose overrun is
+  shorter than their audio work fall from 16 to 7.
+- The reported 5.9-line end-of-frame step and the 7.7-8.9-line audio
+  spikes contain a lag NMI (3.6-7.0 lines). No gameplay frame waits for
+  the SPC's tick. The new bounded wait after an echo's release takes at
+  most 0.37 lines, in 130 measured frames, and saves 117 native effects
+  that were previously dropped.
+- The optional bank's fill no longer adds misses: the audio suite's field
+  check, summed over ten phases, reads 10 -> 10 with and without the fill
+  on `cd59395` and `c55d683` (round eight: 20 -> 20 and 10 -> 20).
+
 ## Performance pass: start-phase sums — October 21, 2026
 
 This pass profiled the cases that still missed frames (charge, teleport,
@@ -105,6 +142,99 @@ lines on a full page). Left alone: the multitap BIOS connect check
 (CF:FE70, 2.4-3.4 lines every frame) reads both serial ports 16 times
 with ROL dp; a tighter read loop changes the serial read timing, so it
 needs testing on hardware with a multitap first.
+
+## Performance pass 2 — October 22, 2026
+
+Pass 1's method and acceptance rule, from its end (sum 114 over offsets
+0-9). This pass took Frieza's battle-scene frame, the ending/tree NMI
+ceiling test, flight's per-frame work and the airborne vblank.
+
+| Commit | Change | Cost before → after | Sum |
+| --- | --- | --- | --- |
+| 5e890c6 | Frieza: before Goku's arrival his own maps go quiet too (`FRIEZA_QUIET_AWAY_SLOW`) | battle scene (map 246, no Goku): Frieza 3.59 → 0.40 lines a frame, module table 9.33 → 6.15; p90 battle 51 → 48, Beast 171 → 170, Fortress 91 → 88 | 114 |
+| 8655b7c | Core: one displayed-brightness ceiling byte for the final INIDISP write (`CORE_BRIGHT_ANY_SLOW`) | NMI tail 154 → 149 CPU cycles; all 864 tree/ending/brightness combinations write the same INIDISP | 114 |
+| e393827 | Flight: the hero grid keeps its footprint origins (`FLIGHT_FP_COVER_SLOW`) | `fl_fp_cover` 0.80 → 0.63 lines a call; flight_frame 18.10 → 17.94 (fly-ki) | 114 |
+| c55d683 | Core: airborne field vblanks run the tilemap/HUD uploads from FastROM (`CORE_NATIVE_UPLOADS_AIR_SLOW`) | native NMI 21.22 → 20.51 (fly-ki), 20.53 → 19.81 (fly-punch); longest NMI 37.26 (an overrun at fly-punch+4) → 36.52 | 113 |
+| dfbc1c9 | Flight: the passenger hooks run the live tests in place (`FLIGHT_PASSENGER_INLINE_SLOW`) | fly-ki B0CA 50.27 → 50.11, B0B2 29.14 → 28.91, companion update 2.27 → 2.24 (0.42 lines a frame) | 113 |
+
+**Final (dfbc1c9, main cd59395 merged).** CPU misses per case:
+
+| Case | Offset 0 | Sum, offsets 0-9, pass 2 start → end |
+| --- | --- | --- |
+| punch | 0 | 9 → 9 |
+| ki | 0 | 3 → 3 |
+| fly | 0 | 1 → 1 |
+| fly-ki | 3 | 12 → 11 |
+| fly-punch | 1 | 10 → 10 |
+| teleport | 0 | 23 → 23 |
+| charge | 4 | 56 → 56 |
+| all others | 0 | 0 → 0 |
+| total | | 114 → 113 |
+
+The misses that remain are shorter: fly-ki at offset 0 frames 103, 139
+and 293 go from 5.2, 3.6 and 14.8 lines over to 3.5, 2.0 and 13.1, and
+fly-punch's frame 264 from 1.8 to 0.4. No field NMI overruns in any run
+(one before); the longest is 36.52 lines (transform-grass+4) and the native
+NMI mean over all runs 19.36 → 19.17. Perf scenes (p90; original / pass 2
+start / end): sword 45 / 58 / 58, Sandship 103 / 109 / 109, battle 34 / 51
+/ 48, Beast 173 / 171 / 169 (30 lag frames), Fortress 90 / 91 / 88, flight
+123 / 112 / 112. Module tables: sword 6.68, battle 6.15 lines a frame (NMI
+1.29 in both).
+
+**Where fly-ki's frames still go.** All three offset-0 misses are frames
+where an enemy's AI script runs (native_ai 35-42 lines, inside B0CA's
+89-97). A call runs about 14.5 interpreter ops: the dispatch loop at
+C1:251A (about 74 CPU cycles an op) takes about 5 lines and the op
+handlers about 21, spread over two dozen ops of 1-3 lines each (in fly-ki
+C1:1738, 19FE, 0A4A, 1200 and 11E9 the largest; the relative jump C1:0285
+is 0.6 lines an execution), with core's exact helpers (distance,
+direction, RNG, visibility) inside them. Frame 293 adds the hero grid moving
+into new cells: flight's movement hooks in B0B2 take about 35 lines
+instead of their usual 10 (four grid answers whose fills scan 14 cell
+bits, four tile-class cache misses, an eight-entry exit scan), with
+flight_frame 20.5, fx 20.5, combat logic 16.8 and combat's B0AC hook 25.7.
+
+**Opportunities not taken.**
+- The AI interpreter: no op dominates. Running the relative jump in place
+  (in the dispatch loop and at C1:0285) would save an estimated 1-2 lines
+  a call; more needs the dozen hottest handlers rewritten with exact stack
+  and register effects.
+- Flight's new cells: classify the cells ahead of the hero's heading in
+  earlier frames, so the frame that crosses into them finds their classes
+  cached.
+- The outer field loop still runs in bank $00 (00:B000-B6FF and BC00,
+  about 150 instructions a frame; FastROM would save about 0.7 lines).
+  Moving it means updating the harness (`checkpoints.lua` saves at
+  00:B079, the gameplay stage spans) and Vegeta's `JML $00B4FE`.
+- OAM: the full 544-byte table goes up every vblank (3.35 lines); a partial
+  upload needs every module's OAM writer accounted for.
+- The multitap BIOS check (CF:FE70, 3.4 lines a frame in fly-ki) stays as
+  it is until it can be tested on hardware.
+
+**The audio suite's field-prefetch check.** `field_prefetch_no_added_misses`
+compares one 1800-frame run of the rabite field with and without the idle
+bank prefetch. It reads 1 → 2 from c55d683 on (2 → 2 before): the shorter
+field NMI removed the run without prefetch's second miss (frame 1064, 0.45
+lines over), while the run with prefetch keeps its own (0.09 lines over,
+0.13 before). Over ten start offsets (idle 2-11 frames after the savestate)
+the runs with prefetch miss 20 times against 15 without, the same at the
+pass 2 base, before c55d683 and after it. The added miss is the same
+gameplay frame: a 241-line update that ends a line before NMI without
+prefetch. With prefetch, an attempt nine frames earlier waits 14.8 lines
+for an acknowledgement and sends nothing, which starts a 16-frame retry
+backoff (`au_backoff`); the idle step counts it down until a cue in the
+frame before the heavy one runs the full service, which leaves `au_wake`
+at the remaining count, so the heavy frame's audio_frame runs the full
+service too (1.67 lines instead of the idle step's 0.78) and its update
+ends past NMI. Both are the audio module's prefetch scheduling, not CPU
+cost elsewhere.
+
+**Tried and dropped.** `core_native_body` for two-piece bodies: 348 → 313
+cycles each, but B0CA +0.2 lines in solo and water-flight frames and the
+sums unchanged; one-piece bodies are slower on that path (193 → 213). A
+shadow-emitter fast path (C0:E765-E889, about 60 instructions a shadow,
+six shadows a frame) would save about 15% of it. The ending's 6-15.8 line
+maxima after the merge are lag NMIs inside the span on miss frames.
 
 ## water-flight no longer wedges — October 21, 2026
 

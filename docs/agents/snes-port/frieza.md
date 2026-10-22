@@ -423,7 +423,12 @@ lag/vblank probes pass. Logs and JSON are private under
   change wakes the module (`fz_wake`: hooks' deferred work `fz_defer`, cues,
   flag and stage setters, the guard's derivation). The vblank reads one bit
   (`!FZV_NMI`, set by `fz_vram_settle` when the frame left it work) and the
-  first quiet vblank clears the requests.
+  first quiet vblank clears the requests. Before Goku's arrival a Frieza
+  map does not keep the module busy either (nothing of his runs there
+  without Goku: only the danger bit and the VRAM settle), as long as no
+  transient flag is left for a busy frame to retire; the battle perf scene
+  (map 246 without Goku) drops from 3.59 to 0.40 lines a frame and its p90
+  from 51 to 48 (`FRIEZA_QUIET_AWAY_SLOW=1` keeps those maps busy).
 - **Scene SRAM ownership** (core's `core_scene_claim`, owner
   `!SCENE_FRIEZA`): the module holds `!SRAM_WORK_SCENE` while something of
   Frieza's needs it (a scene, the fight, one of his maps: `fz_scene_sram`)
@@ -497,11 +502,14 @@ is back to zero, and charge remains at its baseline 17.
 
 The ending's black holds (the good ending's transition through door 2F,
 the reunion, the death fade) use the same rule, `$E6` untouched. Their
-ceiling (`!ending_showbright`) is applied by this hook too: the idle test
-`ORA`s the ending's byte into the Tree's flag (one long read more), and with
-both set the ending's applies over the Tree's, as its own hook after combat's
-vblank pad did (`ending_field_brightness`, `C0:C168`, kept with
-`ENDING_NMI_HOOK_SLOW=1`). The two ceilings never overlap.
+ceiling (`!ending_showbright`) is applied by this hook too, the ending's
+over the Tree's when both are set, as its own hook after combat's vblank pad
+did (`ending_field_brightness`, `C0:C168`, kept with
+`ENDING_NMI_HOOK_SLOW=1`). The idle test reads one byte: core's
+`!core_bright_any`, where the Tree's vblank latch (`fz_tree_nmi`) and the
+scene SRAM's release keep `!CORE_BRIGHT_TREE` with `!FZI_BRIGHT`, and the
+ending keeps its own bit (`CORE_BRIGHT_ANY_SLOW=1`: one long `ORA` of both
+owners' flags instead). The two ceilings never overlap.
 
 ## Resources
 

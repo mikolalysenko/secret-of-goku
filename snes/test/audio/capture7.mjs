@@ -26,7 +26,8 @@ const rows=songInventory().filter(s=>s.id<0x3B||s.kind==='new');
 const affected=rows.filter(s=>s.echo.edl>Math.floor((0xFA00-1-0x4DF1-RESERVE-s.sampleBytes)/0x800));
 const echo=args.includes('--songs')?affected.map(s=>[s.id,(s.command?.p2??0)&15]):[];
 const host=join(import.meta.dirname,'capture-host.py');chmodSync(host,0o755);process.env.MESEN=host;
-const pre=`CP_STOP='waterfall'\nONLY=${JSON.stringify(only)}\nROUND7=${isResident7(bytes)}\nAUDIO_FRAME=${parseInt(m[1]+m[2],16)}\nIMPORT=${JSON.stringify(join(repo,'.local/snes-import/'))}\nECHO_PAIRS={${echo.map(s=>'{'+s+'}').join(',')}}\n`;
+const send=sym.match(/^([\dA-F]{2}):([\dA-F]{4}) audio_native_send$/m);
+const pre=`CP_STOP='waterfall'\nONLY=${JSON.stringify(only)}\nROUND7=${isResident7(bytes)}\nAUDIO_FRAME=${parseInt(m[1]+m[2],16)}\nAUDIO_SEND=${send?parseInt(send[1]+send[2],16):0}\nIMPORT=${JSON.stringify(join(repo,'.local/snes-import/'))}\nECHO_PAIRS={${echo.map(s=>'{'+s+'}').join(',')}}\n`;
 const test=pre+readFileSync(join(repo,'snes/test/checkpoints.lua'),'utf8')+'\n'+readFileSync(join(repo,'snes/test/world/lib.lua'),'utf8')+'\n'+readFileSync(join(import.meta.dirname,'capture7.lua'),'utf8');
 const copy=privateRom(rom,'capture7-'+tag);let run;
 try{run=await runMesen({rom:copy,test,outDir:out,timeoutMs:600000});}finally{cleanupRom(copy);}

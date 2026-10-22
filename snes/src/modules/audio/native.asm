@@ -110,6 +110,40 @@ endif
 	STA.w !au_flags
 	STZ.w !au_tmp              ; chosen cue
 	STZ.w !au_tmp+1            ; priority
+if !AUDIO_CUSTOM_SAMPLES
+	; A lone ordinary cue needs no priority contest or loop. Rare lines
+	; and batches still use the complete selector below.
+	LDA.w !au_reqn : CMP.b #1 : BNE .many
+	LDA.w !au_req : CMP.b #!AUDIO_SFX_FRIEZA_LAUGH : BCS .many
+	STA.w !au_tmp
+	BRA .bed
+.many
+	; A hit frame's swing and contact: the same contest, with ordinary cues
+	; inline (later requests win ties). B stays zero, so TAX indexes by id.
+	LDA.b #0
+	XBA
+	LDY.w #$0000
+.contest
+	TYA
+	CMP.w !au_reqn
+	BCS .bed
+	LDA.w !au_req,Y
+	INY
+	CMP.b #!AUDIO_SFX_FRIEZA_LAUGH
+	BCS .special
+	TAX
+	LDA.l audio_native_priority,X
+	BEQ .contest
+	CMP.w !au_tmp+1
+	BCC .contest
+	STA.w !au_tmp+1
+	TXA
+	STA.w !au_tmp
+	BRA .contest
+.special
+	JSR .choose
+	BRA .contest
+else
 	LDY.w #$0000
 .shots
 	TYA
@@ -119,6 +153,7 @@ endif
 	JSR .choose
 	INY
 	BRA .shots
+endif
 .bed
 	STZ.w !au_reqn
 	; No bed to age on a voice-only frame. Avoid four channel-age walks
@@ -190,6 +225,10 @@ endif
 +
 	LDA.w !au_tmp
 	BEQ .done
+if !AUDIO_CUSTOM_SAMPLES
+	LDA.w $1E00
+	BNE .done                 ; native requests retain ownership of the mailbox
+endif
 	REP #$20
 	LDA.l !core_snd_head
 	CMP.l !core_snd_tail
@@ -240,8 +279,14 @@ endif
 	ORA.w #$0002
 if !AUDIO_CUSTOM_SAMPLES == 0
 	LDX.w #$880F
-endif
 	JSL core_sound_queue
+else
+	; The selector has already checked the native mailbox and the core
+	; queue. Send once here: no SRAM ring round trip at the very end of a
+	; crowded frame, and no driver entry. A busy SPC drops a stale one-shot,
+	; never waits or overwrites its ports.
+	JSR audio_native_send
+endif
 	SEP #$20
 .done
 if !AUDIO_CUSTOM_SAMPLES
@@ -288,6 +333,134 @@ endif
 	RTS
 
 if !AUDIO_CUSTOM_SAMPLES
+; The module's own resident commands (02 one-shots, 81 beds) go straight to
+; the ports. A C3:0004 call would pass destroy's song hook and the driver's
+; register save/restore (about a scanline) for a command that needs none of
+; them. The handshake is audio_resident_command's: release an echoed
+; command; if the previous one is still unacknowledged, drop this one
+; (never wait for a busy driver, never overwrite latched ports). Ports 1-3
+; first, port 0 last. The mailbox $1E00 is not touched.
+; A release made here is followed by the driver's own wait (C3:05B2): the
+; SPC, spinning on port 0, clears its echo about 20 us later. Bounded at
+; about 1.3 lines; past that the command is dropped as before.
+; In: A16 = command | p1<<8, X16 = p2 | p3<<8, DB = $7E. Out: A8, X16.
+audio_native_send:
+	STA.w !au_tmp+$0C
+	STX.w !au_tmp+$0E
+	SEP #$20
+	LDA.w !au_pending
+	BEQ .ready
+	CMP.l $002140
+	BNE .drop
+	LDA.b #0
+	STA.l $002140
+	STA.w !au_pending
+	LDY.w #24
+-	LDA.l $002140
+	BEQ .clear
+	DEY
+	BNE -
+	RTS
+.ready
+	LDA.l $002140
+	BNE .drop
+.clear
+	REP #$20
+	TXA
+	STA.l $002142             ; ports 2 then 3
+	SEP #$20
+	LDA.w !au_tmp+$0D
+	STA.l $002141
+	LDA.w !au_tmp+$0C
+	STA.w !au_pending
+	STA.l $002140
+	CMP.b #$81
+	BEQ .bed
+	LDA.w !au_tmp+$0D
+	CMP.b #$EA
+	BEQ .release
+	CMP.b #$F0
+	BNE .drop
+.release
+	STZ.w !au_bed_level       ; the wave replaces both beds on the SPC
+	STZ.w !au_bed_level+1
+.drop
+	RTS
+.bed
+	LDX.w #0
+	LDA.w !au_tmp+$0D
+	CMP.b #$ED
+	BEQ +
+	INX
++	LDA.w !au_tmp+$0E
+	STA.w !au_bed_level,X
+	LDA.w !au_tmp+$0F
+	STA.w !au_bed_rate,X
+	RTS
+
+; C3:0160. Ordinary effects do not use D or DB: avoid saving and rebuilding
+; every register just to write four ports. Preserve A/B, Y and P explicitly
+; (any caller widths); the fallback replays the native prologue for every
+; other command. Same handshake and bounded release wait as the module's
+; direct send: two native effects a few lines apart no longer drop the
+; second while the SPC clears the first's echo.
+audio_native_effect:
+	PHP
+	REP #$30
+	PHA
+	PHY
+	LDA.l $7E1E00 : AND.w #$00FF : CMP.w #2 : BEQ .async
+	CMP.w #$81 : BEQ .async
+	JMP .native
+.async
+	SEP #$20
+	LDA.l $7E0000|!au_pending : BEQ .ready
+	CMP.l $002140 : BNE .busy
+	LDA.b #0 : STA.l $002140 : STA.l $7E0000|!au_pending
+	LDY.w #24
+-	LDA.l $002140 : BEQ .clear
+	DEY : BNE -
+.busy
+	BRL .drop
+.ready
+	LDA.l $002140 : BNE .busy
+.clear
+	LDA.l $7E1E03 : STA.l $002143
+	LDA.l $7E1E02 : STA.l $002142
+	LDA.l $7E1E01 : STA.l $002141
+	LDA.l $7E1E00 : STA.l $7E0000|!au_pending : STA.l $002140
+	CMP.b #$81 : BEQ .bed
+	LDA.l $7E1E01 : CMP.b #$EA : BEQ .release
+	CMP.b #$F0 : BNE .drop
+.release
+	LDA.b #0
+	STA.l $7E0000|!au_bed_level : STA.l $7E0000|!au_bed_level+1
+	BRA .drop
+.bed
+	LDA.l $7E1E01 : CMP.b #$ED : BEQ .charge
+	LDA.l $7E1E02 : STA.l $7E0000|!au_bed_level+1
+	LDA.l $7E1E03 : STA.l $7E0000|!au_bed_rate+1
+	BRA .drop
+.charge
+	LDA.l $7E1E02 : STA.l $7E0000|!au_bed_level
+	LDA.l $7E1E03 : STA.l $7E0000|!au_bed_rate
+.drop
+	LDA.b #0 : STA.l $7E1E00
+	REP #$30
+	PLY
+	PLA
+	PLP
+	JML $C30197                  ; shared RTL / command-completion trace point
+.native
+	PLY
+	PLA
+	PLP
+	PHB
+	PHD
+	PHP
+	REP #$20
+	JML $C30165
+
 ; Same native saved-register prologue as the legacy dispatcher. Inline its
 ; poll to make room for $81 bookkeeping within the original command budget.
 audio_native_command:

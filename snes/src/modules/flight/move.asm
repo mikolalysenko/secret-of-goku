@@ -821,9 +821,10 @@ fl_walk_holes:
 	BRA .ystep
 ; The native hooks below run for every actor, most often with nobody
 ; carried: fl_is_passenger's own tests of the mask and the actor (the girl
-; $0200 or the sprite $0400 with its bit set) inline, then only its live
-; checks (fl_is_passenger_live). Their native continuations use neither A
-; nor carry. M8/X16.
+; $0200 or the sprite $0400 with its bit set) inline, then its live checks
+; (fl_is_passenger_live), inline too unless FLIGHT_PASSENGER_INLINE_SLOW:
+; in flight with both companions aboard those run for each of them in all
+; four hooks. Their native continuations use neither A nor carry. M8/X16.
 macro fl_passenger_call(native)
 if not(defined("FLIGHT_PASSENGER_SLOW"))
 	LDA.w !fl_passengers
@@ -838,12 +839,54 @@ if not(defined("FLIGHT_PASSENGER_SLOW"))
 	AND.b #$01
 ?bit:
 	BEQ <native>
+if !FL_PASSENGER_INLINE
+	; fl_is_passenger_live's tests in place, its carry and registers on
+	; each way out (only the dead stack below S differs: no JSR/RTS)
+	LDA $E02C,X
+	BNE ?no
+	LDA.w !fl_state
+	AND.b #!FLS_FLY|!FLS_ON|!FLS_CAN
+	CMP.b #!FLS_FLY|!FLS_ON|!FLS_CAN
+	BNE ?no
+	LDA $D0
+	ORA $FF
+	ORA $52
+	BNE ?no
+	LDA $F1
+	BMI ?no
+	LDA $E8
+	AND.b #$04
+	BNE ?no
+	REP #$20
+	LDA $EC
+	AND.w #$40FE
+	BNE ?no16
+	LDA.w !fl_lock
+	BNE ?no16
+	LDA.w !fl_lastmap
+	CMP $DC
+	BEQ ?carried
+?no16:
+	SEP #$20
+?no:
+	CLC
+	BRA <native>
+?carried:
+	SEP #$20
+	SEC
+else
 	JSR fl_is_passenger_live
+	BCC <native>
+endif
 else
 	JSR fl_is_passenger
-endif
 	BCC <native>
+endif
 endmacro
+!FL_PASSENGER_INLINE = 0
+if not(defined("FLIGHT_PASSENGER_INLINE_SLOW")) && not(defined("FLIGHT_PASSENGER_LIVE_SLOW"))
+!FL_PASSENGER_INLINE = 1
+endif
 
 if not(defined("FLIGHT_PASSENGER_LIVE_SLOW"))
 fl_passenger_no:                     ; (ahead of the tests: every branch stays short)
@@ -1080,6 +1123,13 @@ endmacro
 fl_hook_passenger_contacts:
 	SEP #$20
 	%fl_passenger_call(.native)
+if !FL_PASSENGER_INLINE
+	BRA .carried                 ; .native within the inline tests' reach
+.native
+	LDA $E000,X
+	JML $81CDD2
+.carried
+endif
 	BIT $ED
 	BPL .done
 	CPX.w #$0200
@@ -1093,6 +1143,8 @@ fl_hook_passenger_contacts:
 	LDY.w #$0C00
 .done
 	JML $81CDD4
+if not(!FL_PASSENGER_INLINE)
 .native
 	LDA $E000,X
 	JML $81CDD2
+endif

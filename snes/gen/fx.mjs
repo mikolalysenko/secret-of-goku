@@ -504,12 +504,10 @@ export async function generate({rom,repo,outDir,xdata}){
   // zero ends the kick; six steps at most, so !fx_kick's index stays in its
   // five bits).
   const kickSteps=FEEL.kick.flatMap(p=>{if(p.length>6||p.some(v=>!v||v<-31||v>31))throw Error('fx: kick profile does not fit');return [...p,0,0,0,0,0,0,0,0].slice(0,8).map(v=>v&255);});
-  // Flash amounts by frames left (fx_flash: frames | curve << 8): curve 0 is
-  // the transformation's warm ramp (native-feedback.js burst), 1 the
-  // finishing kick's, 2 a killing blow's, 3 the Kamehameha's and 4 the full
-  // Super Saiyan wave's white flash (snes-feel.mjs FEEL.flash, bit 8 = white).
-  const flashCurve=list=>{if(list.length>7||list.some(v=>v<1||v>31))throw Error('fx: flash curve does not fit');const row=Array(8).fill(0);list.forEach((v,i)=>{row[list.length-i]=v|0x100;});return row;};
-  const flashAmounts=[[0,1,2,4,6,9,13,17],flashCurve(FEEL.flash.kick),flashCurve(FEEL.flash.kill),flashCurve(FEEL.flash.beam),flashCurve(FEEL.flash.wave)].flat();
+  // Flash amounts by frames left (fx_flash): native-feedback.js's warm ramp,
+  // the transformation's burst. (Round two's white impact and release
+  // flashes are gone: snes-feel.mjs.)
+  const flashAmounts=[0,1,2,4,6,9,13,17];
   // Cells a punch's contact needs (fx_warm, FX_PREP), per tone, blow (jab,
   // cross, kick) and facing: the starburst, the impact spark's first picture
   // at its turn (fx_k_impact: frame 0, fx_dir_turn) and, for the kick, the

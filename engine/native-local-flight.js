@@ -4,6 +4,7 @@
 import {createNativeWhipRoutes} from './native-whip-routes.js';
 import {smallScenery,terrainBanks,blankGroundZero,lilyPads} from './flight-terrain.js';
 import {createDungeonGeometry} from './dungeon-geometry.js';
+import {stalagmiteAt,stalagmiteTileset} from './cave-stalagmites.js';
 const scenery={0:new Set([...lilyPads[0],139,141]),1:lilyPads[1],2:lilyPads[2],
  // Haunted Forest flowers and creeping vines, verified against tileset 7.
  // Tall trees, cliff faces, switches and the scripted rose gate are separate.
@@ -204,6 +205,8 @@ export function createNativeLocalFlight(snes,{active=()=>false,enabled=active,sp
   const flags=snes.cart.data[at+2],id=t.tile+((flags&64)?192:0);
   if((flags&63)===1&&[171,172].includes(id)&&t.code===0xc1&&t.replacement===343-t.tile)return 161;
   if(t.code!==0)return null;
+  // Decorative cave stalagmites take the floor the map lays around them.
+  if((flags&63)===stalagmiteTileset){const object=stalagmiteAt(word(0xdc),t);if(object)return object.floor;}
   // The vines/flowers have no native cut code; clear them to this tileset's
   // original grass. Do not infer a replacement for buildings or cliff walls.
   return (flags&63)===7&&scenery[7].has(id)?122:null;

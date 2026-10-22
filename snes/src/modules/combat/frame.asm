@@ -425,13 +425,19 @@ cb_forecast:
 	STA !cb_t2                    ; this vblank's
 	EOR !cb_t0
 	STA !cb_t3                    ; what changed
-	; the key: B or Y pressed, nothing else changed; while charging, L
-	; and/or Y let go
+	; the key: B or Y pressed, no other button changed and no direction
+	; newly pressed (one let go with the press keeps the facing rule: the
+	; directions still held); while charging, L and/or Y let go
 	SEP #$20
 	LDA !cb_charging
 	REP #$20
 	BNE .letgo
 	LDA !cb_t3
+	AND !cb_t2
+	AND.w #!IN_DIRS
+	BNE .no
+	LDA !cb_t3
+	AND.w #$FFFF-!IN_DIRS
 	CMP.w #!IN_B
 	BEQ +
 	CMP.w #!IN_Y
@@ -451,9 +457,10 @@ cb_forecast:
 	AND !cb_t2
 	BNE .no
 .keyed
-	; room for this and the cell (goku_nmi sends one with 10 lines left)
+	; room for this and the cell (goku_api_preempt_cell sends it at once
+	; with 7 lines left)
 	JSL core_vblank_lines
-	CMP.w #12
+	CMP.w #8
 	BCC .no
 	SEP #$20
 	LDA !cb_init
@@ -483,9 +490,9 @@ cb_forecast:
 	LDA $DC
 	CMP !cb_map
 	BNE .no
-	; the facing the move takes: cb_aim with nothing newly pressed, else
-	; the native one (cb_facing_from_native)
-	LDA !cb_t0
+	; the facing the move takes: cb_aim with nothing newly pressed (the
+	; directions held now), else the native one (cb_facing_from_native)
+	LDA !cb_t2
 	AND.w #!IN_DIRS
 	XBA
 	TAX
@@ -537,6 +544,7 @@ cb_forecast:
 	AND.w #!IN_B|!IN_Y|!IN_A|!IN_X|!IN_L
 	BNE .mno
 	LDA !cb_t3
+	AND.w #$FFFF-!IN_DIRS
 	CMP.w #!IN_B
 	BNE .mno
 	LDA !cb_act_age
@@ -560,8 +568,11 @@ cb_forecast:
 	AND.w #$00FF
 	BNE .none
 	LDA !cb_t3
+	AND.w #$FFFF-!IN_DIRS
 	CMP.w #!IN_B
 	BEQ .punch
+	CMP.w #!IN_Y
+	BNE .none
 	; the ki throw: the cooldown over at the next step
 	SEP #$20
 	LDA !cb_ki_blk

@@ -8,6 +8,9 @@ import {commandLength} from '../engine/event-codec.js';
 import {parseEvent,encodeText,wrapText} from '../engine/event-codec.js';
 import {storyDialogue} from '../engine/story-dialogue.js';
 import {potosCommands,potosCommand} from '../engine/potos-story.js';
+import {readMapEvents,readDoor,parseBytes} from '../engine/scene-graph.js';
+import {buildStoryEvents} from '../engine/story-events.js';
+import {compileStoryEvent} from '../engine/story-compiler.js';
 import {existsSync,readFileSync} from 'node:fs';
 
 test('all Potos replacements target actual native text and the rescue edits preserve command boundaries',{
@@ -53,6 +56,103 @@ test('early area prerequisites are local, monotone and leave Tree and final boss
   prepareStoryArea(r,326);assert.equal(r[0xcf2b],0,'the ordinary entrance keeps its original first orb');
   prepareStoryArea(r,327);assert.equal(r[0xcf2b],1);prepareStoryArea(r,240);assert.equal(r[0xcf2b],2,'only the skipped prerequisite is supplied; the inner orb is not defeated');
   r[0xcf2b]=10;prepareStoryArea(r,240);assert.equal(r[0xcf2b],10,'completed puzzle is never reset');
+});
+
+// The stage room's Gnome scene counts CF18 up to the door of Fire Gigas's
+// arena, which has no exit and one boss record. Flying over the orb room's
+// gap (the palace floor, 1) or breaching the Dwarf Village wall before the
+// Elder's stage (0) must still lead to that record's stage.
+test('Gnome\'s scene reaches a live Fire Gigas however Goku reached the stage room',{
+  skip:!existsSync('.local/rom/secret-of-mana-us.sfc')
+},()=>{
+  const rom=readFileSync('.local/rom/secret-of-mana-us.sfc');
+  const room=readMapEvents(rom,314),arena=readMapEvents(rom,495);
+  assert.equal(room.triggers[0].event,0x23b,'the stage room runs 23B on entry');
+  const guard=parseEvent(rom,0x23b).ops[0].bytes,skip=[guard[2]>>4,guard[2]&15];
+  assert.deepEqual([guard[0],guard[1],guard[3],guard[4]],[0x42,0x18,0x10,0x00],'23B skips the scene from a later stage');
+  const scene=parseEvent(rom,0x236).ops,door=scene.findIndex(op=>op.op>=0x18&&op.op<=0x1b);
+  assert.equal(readDoor(rom,(scene[door].op-0x18)<<8|scene[door].bytes[1]).map,495);
+  assert.ok(arena.triggers.every(t=>t.door===undefined),'the arena has no exit');
+  const gnome=room.objects.find(o=>o.species===0x90).visibility,bosses=arena.objects.filter(o=>o.species>=87&&o.species<128);
+  assert.equal(bosses.length,1);const boss=bosses[0].visibility;
+  for(const entry of[0,1,2]){
+    const r=new Uint8Array(0x20000);r[0xcf18]=entry;
+    for(const map of[291,312,313,269,314])prepareStoryArea(r,map); // over the orb room's gap
+    let stage=r[0xcf18];const steps=[];
+    assert.ok(stage<skip[0]||stage>skip[1],`the scene runs from stage ${stage}`);
+    for(const op of scene.slice(0,door)){
+      if(op.op==='text'||op.bytes[1]!==0x18)continue;
+      if(op.op===0x29)stage++;else if(op.op===0x2a)stage--;else if(op.op===0x30)stage=op.bytes[2];else continue;
+      steps.push(stage);
+    }
+    assert.ok(steps[0]>=gnome.min&&steps[0]<=gnome.max,`from ${entry}, Gnome stands on stage ${steps[0]} as he speaks`);
+    r[0xcf18]=stage;prepareStoryArea(r,495);
+    assert.ok(r[0xcf18]>=boss.min&&r[0xcf18]<=boss.max,`from ${entry}, the arena loads at stage ${r[0xcf18]}; Fire Gigas needs ${boss.min}-${boss.max}`);
+  }
+  const r=new Uint8Array(0x20000);r[0xcf18]=1;prepareStoryArea(r,291);
+  assert.equal(r[0xcf18],1,'the orb room keeps its orb');
+  r[0xcf18]=6;prepareStoryArea(r,314);assert.equal(r[0xcf18],6,'a beaten Fire Gigas stays beaten');
+});
+
+// The village quake (1BE) is the only way into Tropicallo's arena, which has
+// no exit. Breaching the palace wall early (15B, CF14 6) or buying Watts's
+// axe afterwards (7) comes before the quake on that route.
+test('the village quake reaches a live Tropicallo after an early palace-wall breach',{
+  skip:!existsSync('.local/rom/secret-of-mana-us.sfc')
+},()=>{
+  const rom=readFileSync('.local/rom/secret-of-mana-us.sfc');
+  for(const mask of[0,1,2,3]){
+    const quake=parseBytes(buildStoryEvents(rom,mask).get(0x1be)),door=quake.findIndex(op=>op.op>=0x18&&op.op<=0x1b);
+    const arena=readMapEvents(rom,readDoor(rom,(quake[door].op-0x18)<<8|quake[door].bytes[1]).map);
+    assert.equal(arena.id,290);assert.ok(arena.triggers.every(t=>t.door===undefined),'the arena has no exit');
+    const boss=arena.objects.find(o=>o.species===0x59).visibility,[guard]=quake;
+    assert.deepEqual([guard.bytes[0],guard.bytes[1],guard.bytes[3],guard.bytes[4]],[0x42,0x14,0x10,0x00]);
+    for(const entry of[0,1,2,6,7,15]){
+      if(entry>=guard.bytes[2]>>4&&entry<=(guard.bytes[2]&15))continue; // no quake before the show
+      let stage=entry;
+      for(const op of quake.slice(0,door))if(op.op!=='text'&&op.bytes[1]===0x14){
+        if(op.op===0x29)stage++;else if(op.op===0x2a)stage--;else if(op.op===0x30)stage=op.bytes[2];
+      }
+      assert.ok(stage>=boss.min&&stage<=boss.max,`party ${mask}, quake at stage ${entry}: the arena loads at ${stage}; Tropicallo needs ${boss.min}-${boss.max}`);
+    }
+  }
+});
+
+// Elinee's throne room (1E7) is the only way into Spikey Tiger's arena,
+// which has no exit. Retail enters it at CF17 stage 3, after Elinee's first
+// scene; an arrival that skipped the gate (0), the jailed soldiers (1) or
+// that scene (2) must see the same stages.
+test('Elinee\'s throne room reaches a live Spikey Tiger from any earlier stage, with retail values unchanged',{
+  skip:!existsSync('.local/rom/secret-of-mana-us.sfc')
+},()=>{
+  const rom=readFileSync('.local/rom/secret-of-mana-us.sfc'),retail=parseEvent(rom,0x1e7).ops;
+  const doorOf=ops=>ops.findIndex(op=>op.op>=0x18&&op.op<=0x1b),door=retail[doorOf(retail)];
+  const arena=readMapEvents(rom,readDoor(rom,(door.op-0x18)<<8|door.bytes[1]).map);
+  assert.equal(arena.id,310);assert.ok(arena.triggers.every(t=>t.door===undefined),'the arena has no exit');
+  const boss=arena.objects.find(o=>o.species===0x5b).visibility;
+  // CF17 at every object refresh and at the door, or null when 1E7 ends at once.
+  const stages=(ops,entry)=>{
+    const guard=ops[0].bytes;
+    if(guard[0]===0x42&&guard[1]===0x17&&entry>=guard[2]>>4&&entry<=(guard[2]&15))return null;
+    let stage=entry;const seen=[];
+    for(const op of ops.slice(1,doorOf(ops)+1)){
+      if(op.op==='text')continue;
+      if(op.bytes[1]===0x17&&(op.op===0x29||op.op===0x2a||op.op===0x30))stage=op.op===0x30?op.bytes[2]:stage+(op.op===0x29?1:-1);
+      else if(op.op===0x09||op.op>=0x18&&op.op<=0x1b)seen.push(stage);
+    }
+    return seen;
+  };
+  const want=stages(retail,3);
+  assert.deepEqual(want,[4,3,4,3,4,5,5],'retail: Dyluck flickers out, then the arena at 5');
+  for(const mask of[0,1,2,3]){
+    const compiled=parseBytes(compileStoryEvent(parseEvent(rom,0x1e7),mask));
+    for(let entry=0;entry<16;entry++){
+      const got=stages(compiled,entry);
+      if(entry>=4){assert.equal(got,null,`party ${mask}: stage ${entry} has no scene, as in retail`);continue;}
+      assert.deepEqual(got,want,`party ${mask}, entered at stage ${entry}`);
+      assert.ok(got.at(-1)>=boss.min&&got.at(-1)<=boss.max);
+    }
+  }
 });
 
 test('aerial targeting uses native heading and wraps across world seams',()=>{

@@ -83,7 +83,7 @@ node scripts/prepare-dbz-audio.mjs /path/to/local/effect-sources
 ```
 
 
-Kamehameha remains blue in both forms. Its swept hitbox and punches queue native C-prefix replacements for plants, axe rocks, stalagmites and staged barriers in the active map layer. A single strike follows the complete replacement chain to its final tile. Replacement cycles are rejected so switch tiles are not treated as destructible objects. C0:C7C3 rebuilds original tilemap rows and DMA, so collision changes with the picture. If the same attack also operates a switch that rebuilds the room, already destroyed solid objects are reapplied quietly through that queue after the event finishes. Saved records require the same map, source tile, descriptor and final replacement; another layout cannot inherit an obsolete tile. Records survive checkpoints but clear on a map change, retaining native scenery respawn. `native-barriers.js` additionally dispatches original opening events for authored gates and native F-prefix hit switches, once per beam. Whip posts use their separate crossing handler. Punches can smash these gates at close range. Beams and punches briefly use the original BG quake; a native event write immediately takes ownership back.
+Kamehameha remains blue in both forms. Its swept hitbox and punches queue native C-prefix replacements for plants, axe rocks, stalagmites and staged barriers in the active map layer. A single strike follows the complete replacement chain to its final tile. Decorative cave stalagmites without a cut code (`cave-stalagmites.js`) break through `breakScenery` to the floor around them, a whole stalagmite per hit; breaking Watts's latches his shortcut open. Replacement cycles are rejected so switch tiles are not treated as destructible objects. C0:C7C3 rebuilds original tilemap rows and DMA, so collision changes with the picture. If the same attack also operates a switch that rebuilds the room, already destroyed solid objects are reapplied quietly through that queue after the event finishes. Saved records require the same map, source tile, descriptor and final replacement; another layout cannot inherit an obsolete tile. Records survive checkpoints but clear on a map change, retaining native scenery respawn. `native-barriers.js` additionally dispatches original opening events for authored gates and native F-prefix hit switches, once per beam. Whip posts use their separate crossing handler. Punches can smash these gates at close range. Beams and punches briefly use the original BG quake; a native event write immediately takes ownership back.
 
 Gate-opening floor plates are ranged targets too. Their live metatile index is resolved through `$4D` and the current map's native trigger table (C0:B642–B66F), including BG2 and special-event tiles. A bounded list allows local switch events in the Water, Earth, Ice, Fire, Shade and Grand Palaces, Witch Castle, Northtown Ruins, Gold Tower and Mana Fortress. Ice trap plates dispatch their gate-opening counterpart; attacks never remotely invoke trap drops, exits or boss-entry scenes. Native script conditions retain puzzle order and stop repeated hits from incrementing completed stages. The original event performs the layout rebuild after the impact. The controller regression checks all 41 floor-switch event families in 43 scenarios, verifying native progress, return of control and one barrier reaction. Enemy spawns are hidden only in its private fixture. Native hit switches and authored gates have separate controller tests.
 
@@ -102,6 +102,31 @@ base-form Kamehameha. Event15B advances only its opening stage (`$CF14` to 6),
 then rebuilds the original doorway and preserves its native transition. Punches
 do not open it. Popoi, Gnome and the Earth seed are not awarded by the breach;
 Goku can enter early and activate the native orb with his own attacks.
+He can also fly straight over the orb room's gap and never touch the orb.
+Gnome's scene in the stage room (map 314, events 23B → 236) counts `$CF18`
+up three stages before its door to Fire Gigas's arena (495), which holds
+the boss only at stage 5 and has no exit. Entering the stage room
+therefore raises `$CF18` to the orb's stage 2 (`story-areas.js`), so the
+scene always ends at a live Fire Gigas. Before this floor, a flown-over orb
+left stage 1 and the arena loaded empty at stage 4.
+
+The breach comes before the Dwarf Village quake on that route. The quake
+(event 1BE, on entering the village at `$CF15` 5) takes the party into
+Tropicallo's arena (290), which holds the boss only through `$CF14` stage 3
+and has no exit. Retail counts one stage up from 2; after the breach (6) or
+Watts's axe (7) the arena loaded empty. `story-events.js` now has the quake
+set stage 3. Popoi's naming still sets 6, so the doorway stays open; a
+stage 7 bought before the quake is lost, and Watts offers his axe again.
+
+Spikey Tiger's arena (310) is closed the same way, defensively. Elinee's
+throne-room scene (event 1E7, map 309) counts `$CF17` from retail stage 3
+(Dyluck flickers out at 4/3) to 5 at its door into the arena, which has no
+exit and holds the boss only at 5. An arrival that skipped the gate (0), the
+jailed soldiers (1) or Elinee's first scene (2) used to load it empty at 2-4.
+The compiled scene (`story-compiler.js`, every party) now sets each retail
+stage, so retail play sees the same values and every arrival meets the boss.
+The scene's other counter, `$CF53` (three steps by event 1F0), still counts
+up; in the throne room it only selects a foreground map piece.
 
 Pandora Ruins and Northtown Ruins script locks use checkpointed door latches. A hit unlocks the original door; walking through still invokes the native transition. Pandora’s plot flag is unchanged. An early Northtown breach stages the original Primm rescue and Vampire fight; returning afterward does not replay either or lower progress. Gaia’s hit switches select the native event for the targeted room instead of depending on the last floor marker walked over. The forest’s rotating carved heads (tileset 1, cells 171/172) can be flown over or destroyed to native grass; other cyclic descriptors keep their original behavior. Ruins balcony lips require clear floors at different native heights on opposite sides before flight may cross them.
 

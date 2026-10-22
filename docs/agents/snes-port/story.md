@@ -338,6 +338,29 @@ Palace walk; `16A`/`16B`/`55A`/`55B` broken doors; `558` Northtown captive.
 | `!RAM_STORY` | last event, counters, request queue, greeting state, scratch, name buffer, fast-forward, object list bounds (map in `module.asm`) |
 | `!SRAM_WORK_STORY` | `+$000` Water Palace walk script; test builds: `+$700` query table, `+$800` hook log (128 entries), `+$B10` dispatch sweep |
 
+### Story-area floors
+
+`story_area_table` (map, flag, minimum) is generated from `story-areas.js`;
+`story_prepare_area` raises each listed flag on map load, before the
+objects and pieces load, and never lowers one. A floor can also keep a
+retail scene's arithmetic valid after a shortcut. Gnome's scene in the
+Earth Palace stage room (314: walk-on 23B, then 236) runs below stage 3 of
+CF18 and adds three stages before its door to Fire Gigas's arena (495),
+whose only boss record needs stage 5 and which has no exit. Flying over the
+orb room's gap leaves the palace floor (1), so the arena used to load empty
+at stage 4. The stage room now raises CF18 to the orb's stage 2
+(`earth-gnome-*` cases; the 0.2.0 release has the soft lock).
+
+A floor cannot lower a stage. The Dwarf Village quake (1BE) counts CF14 up
+one stage into Tropicallo's arena (290), which also has no exit and holds
+the boss only through stage 3, but an early palace-wall breach has already
+set 6. Its compiled script (`story-events.js`, all four parties) sets stage
+3 instead (`tropicallo-*` cases). Elinee's throne room (1E7) counts CF17 up
+and down from 3 to 5 at its door into Spikey Tiger's arena (310, no exit,
+the boss only at 5); `compileStoryEvent` sets each of those retail stages,
+so an arrival past an earlier castle stage still meets the boss
+(`spikey-*` cases).
+
 The browser kept spell grants only in checkpoints; here they persist with the
 save sidecar, so a save made before recruiting a companion keeps the spells.
 The field-frame callback tests the version byte before calling
@@ -428,6 +451,9 @@ never from copied data. Test-ROM cases build `dist/snes/story-test.sfc` with
 | Grants | `grant-water`, `hooks-grant` | native CF90 write, grant marker, ledger, `QUEST_COLLECTED` (A = 0) |
 | Absent companions | `spell-grant`, `absent-skip` | spells kept and re-granted; 8 companion moves skipped, no WAIT stall |
 | Story areas | `story-area` | door 45 → map 40 raises CF20–22 to 3/2/1 |
+| Earth Palace | `earth-gnome-orb-both`, `-flown-solo`, `-flown-girl`, `-flown-sprite`, `-breach-solo` (`earth.lua`) | the stage room through its own door (ED) at CF18 2 (orb used), 1 (orb room's gap flown over) or 0 (early wall breach, CF14 6); absent companions leave through native `2C`. Gnome's scene (236) starts at stage 2 with Gnome on stage; the arena loads at 5; Fire Gigas is created at full HP, drawn (≥ 4 OAM entries in its box on a lit screen) and hurt by punches; its defeat (237) returns Goku to the stage room at 6; Gnome's thanks (22E) reach 7; the Earth seed (592) reaches 8 with CF91 and the Earth Ball in the ledger. Each scene is the party's compiled variant (`js(id, mask)`) |
+| Dwarf Village quake | `tropicallo-quake-girl`, `-breach-solo`, `-axe-girl` (`tropicallo.lua`) | the village through door 149 at CF15 5 with CF14 2 (retail), 6 (early palace-wall breach) or 7 (Watts's axe after it): the party's quake (1BE) loads Tropicallo's arena at stage 3; Tropicallo at full HP, hurt by Instant Transmission and punches; its defeat (1B9) leaves the sprite at 4; the native naming screen gets a letter and Start, Popoi joins at 6; the Elder sends the party to the village with CF18 + 1 |
+| Witch Castle | `spikey-retail-both`, `-gate-solo`, `-jail-girl`, `-elinee-sprite` (`spikey.lua`) | the throne room through its own door (130) at CF17 3 (retail), 0, 1 or 2 (arrivals past the gate, the jailed soldiers or Elinee's first scene): the party's 1E7 shows Elinee and loads Spikey Tiger's arena at stage 5; Spikey at full HP, drawn (≥ 4 OAM entries in enemy palettes around it on a lit screen), hurt by Instant Transmission and punches; its defeat (1E2) returns Goku to the throne room at 6; Elinee yields in the room before (1E3 → 1ED: stage 7, CFD8/CFD9 chests) |
 | Greeting | `crisis-greeting` | one greeting before an NPC's compiled script, then resume |
 | Fast-forward | `newgame-fast-forward` | test ROM with `story_fast_forward`: R held through Luka's spear gift reaches the menu and stops at the choice |
 | Potos gatekeeper | `potos-gatekeeper` | test ROM with `LOCAL_FLIGHT` answered 1: hovering just north of the gate guard starts his compiled banishment scene (9B), fires `FLIGHT_LAND`, latches once |
@@ -440,16 +466,15 @@ never from copied data. Test-ROM cases build `dist/snes/story-test.sfc` with
 | Browser differential | `diff-*` (9) | the browser's own `native-story.js` runs on the vendored SnesJs core (`snes/test/story/jsref.mjs`) from the same source state with the same request and mashing: all 256 story flags, the relocated events entered, the ledger and absent-actor skips equal the cartridge's, for the Moogle (solo, full party), Water seed, Luka's Advice, the solo 28A, a story-area door, a villager, the Elder (114) and the Potos arrival scene (10C, 2,400 frames) |
 | Every route | `sweep-0`…`sweep-7` | the cartridge evaluates all 324 dispatch programs (`story_test_sweep`) under 8 states (all party masks, ledger, RAM thresholds, every foreign query, 6 seeded at random); all 2,592 choices equal the browser's |
 
-Not covered natively: complete cutscenes that upload music or sound banks.
-After `H.importSnesJs` the driver's upload handshake (`C3:065C`, waiting for
-the SPC700 to echo `$2140`) never completes, so a test stops at the first
-song change; the scripts up to that point were verified. Owners' behaviour
-behind the hooks (Frieza, Sandship wreck, endings) is outside this module.
+Song changes no longer stop an imported state: `H.importSnesJs` now swaps
+the SPC700 state at an instruction boundary, and the `earth-gnome-*` and
+`tropicallo-*` cases run through boss music and back (`C3:065C` used to wait
+forever for the SPC700 to echo `$2140`). Owners' behaviour behind the hooks
+(Frieza, Sandship wreck, endings) is outside this module.
 
 ## Not ported here / core and owner requests
 
-- **Core / tools:** the import bundles' APU state does not answer sound-bank
-  uploads (above). The Water Palace walk script (at most 512 bytes) is built
+- **Core / tools:** the Water Palace walk script (at most 512 bytes) is built
   in `!SRAM_WORK_STORY` and executed by the original interpreter and text
   engine, which the WRAM/SRAM claim test (`snes/test/core/wram.lua`) would
   report as original code reading an added SRAM page; either whitelist

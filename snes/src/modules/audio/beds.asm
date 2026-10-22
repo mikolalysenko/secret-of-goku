@@ -172,23 +172,17 @@ audio_beds_service:
 	TXA
 	EOR.b #1
 	STA.w !au_bed_index
-	LDA.w !au_tmp+3
-	STA.w $1E03
-	LDA.w !au_tmp+2
-	STA.w $1E02
 	TXA
 	CLC
 	ADC.b #$ED
 	XBA
 	LDA.b #$81
 	REP #$20
-	STA.w $1E00
+	LDX.w !au_tmp+2           ; level | rate<<8
 	; The queue and native mailbox were both checked idle above. Dispatch
-	; the bed now, avoiding a round trip through the core's SRAM ring. Shots
-	; and songs still take precedence; this is the same bounded async driver.
-	JSL $C30004
-	SEP #$20
-	RTS
+	; the bed now, without the core's SRAM ring or the driver entry. Shots
+	; and songs still take precedence; this is the same bounded async send.
+	JMP audio_native_send
 
 ; Native actor sound queue at C0:BB11 (also called through 00/80 mirrors).
 ; $A6 = stamina ready (EC02), $A7 = charge tick (B3ED), $A8 = level/full

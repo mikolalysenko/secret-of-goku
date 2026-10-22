@@ -159,10 +159,13 @@ goku_api_first_cell:
 
 ; goku_api_preempt_cell: in the field vblank, before goku_nmi
 ; (modules_field_nmi): A16 = a cell from goku_api_first_cell that the next
-; frame is known to show; it replaces the pending upload, and goku_nmi sends
-; it in this vblank when there is room (as any pose: a change of palette or
-; size goes at once). Not while the boy's own tiles wait to go back.
+; frame is known to show; it replaces the pending upload. With
+; GOKU_QUICK_LINES of the vblank left it goes at once: its four rows (5.5
+; lines) and the rest of the NMI end before the vblank does. Otherwise
+; goku_nmi sends it when there is room (as any pose: a change of palette
+; or size goes at once). Not while the boy's own tiles wait to go back.
 ; M16 X16, any DB; keeps DB and D; no scratch (an NMI).
+!GOKU_QUICK_LINES = 7
 goku_api_preempt_cell:
 	PHB
 	PEA $7E7E
@@ -178,6 +181,22 @@ goku_api_preempt_cell:
 	STZ !up_small
 	REP #$20
 	STX !up_cell
+	JSL core_vblank_lines
+	CMP.w #!GOKU_QUICK_LINES
+	BCC .out
+	PHD
+	JSR goku_upload_cell         ; (as goku_nmi's .send)
+	PLD
+	LDA !up_cell
+	STA !vram_cell
+	SEP #$20
+	LDA !up_small
+	STA !vram_small
+	LDA.b #!GOKU_UP_WAITED
+	TRB !up_flags
+	REP #$20
+	LDA.w #!GOKU_NONE
+	STA !up_cell
 .out
 	REP #$30
 	PLB

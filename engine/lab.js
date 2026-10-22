@@ -83,6 +83,8 @@ mod.plants=createNativePlants(snes,{canCut:()=>mod.options.enabled&&mod.canAttac
   mod.localFlightHook?.dungeon.invalidate();
   demolitionEffects(mod,result);
   mod.sandship?.onDemolish(result);
+  // Watts's stalagmites keep his shortcut open from now on (native-story.js).
+  for(const tile of result.tiles)if(typeof tile.stalagmite==='string')mod.barriers?.latch(tile.stalagmite);
   for(const tile of result.tiles)if(!tile.brazier)mod.effects.push({kind:'impact',x:tile.tx*16+8,y:tile.ty*16+8,dx:1,dy:0,life:8,max:8,super:false});
   if(result.tiles.length)mod.playSound('impact');
 }});

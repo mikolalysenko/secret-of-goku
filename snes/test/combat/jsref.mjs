@@ -24,6 +24,8 @@ const adapters={
   equipment:(await import(resolve(repo,'engine/native-equipment.js'))).createNativeEquipment,
   senzu:(await import(resolve(repo,'engine/native-senzu.js'))).createNativeSenzu,
   powerIntro:(await import(resolve(repo,'engine/power-intro.js'))).createPowerIntro,
+  plants:(await import(resolve(repo,'engine/native-plants.js'))).createNativePlants,
+  localFlight:(await import(resolve(repo,'engine/native-local-flight.js'))).createNativeLocalFlight,
 };
 const {createFrieza}=await import(resolve(repo,'engine/frieza.js'));
 
@@ -89,7 +91,13 @@ function beamProbe(mod){
 
 // locks: [[frame, 'hold' | 'unlock']] as mana-mod.js trial.inputLocked (a
 // stand-in trial with nothing else), applied before the frame like pokes.
-export function runJsRef({state,steps,superSaiyan=false,gi=null,pokes=[],pokeBase=0,frieza=null,locks=null,romPath=resolve(repo,'rom/secret-of-mana-us.sfc')}){
+// plants: engine/lab.js's cut pipeline (engine/native-plants.js, scenery
+// and demolition plans from a local flight hook as
+// snes/test/destroy/reference.mjs builds it; the lab's onCut sparks and
+// sound are its own drawing and stay out of the trace). screen: the
+// picture's state after the last frame (VRAM, CGRAM, the two map layers,
+// the BG tilemap registers) and the CGRAM entries the game animated.
+export function runJsRef({state,steps,superSaiyan=false,gi=null,pokes=[],pokeBase=0,frieza=null,locks=null,plants=false,screen=false,romPath=resolve(repo,'rom/secret-of-mana-us.sfc')}){
   const s=loadCore(new Uint8Array(readFileSync(romPath)));
   restore(s,{...JSON.parse(readFileSync(state,'utf8')),romHash:hash(s.cart.data)});
   const context={window:{ManaSpriteLayer:class{load(){}destroy(){}}},Image:class{decode(){return Promise.resolve();}},Promise,Math,JSON,Array,Object,Number,Set,Map,Error};
@@ -106,7 +114,13 @@ export function runJsRef({state,steps,superSaiyan=false,gi=null,pokes=[],pokeBas
   mod.senzu=adapters.senzu(s,mod);mod.senzu.load();
   mod.equipment=adapters.equipment(s,mod);mod.equipment.load();
   mod.powerIntro=adapters.powerIntro(mod);
+  if(plants){
+    const flight=adapters.localFlight(s,{});
+    mod.plants=adapters.plants(s,{canCut:()=>mod.options.enabled&&mod.canAttack,sceneryReplacement:tile=>flight.breakScenery(tile),
+      demolitionPlan:(tiles,attack)=>flight.dungeon.demolish(tiles,attack)??[]});
+  }
   if(gi!==null)s.ram[0xe1e1]=gi?22:21;
+  const cgram0=screen?Array.from(s.ppu.cgram):null,animated=new Set();
   const read8=a=>s.ram[a&0x1ffff],read16=a=>read8(a)|read8(a+1)<<8;
   const frames=[];
   let n=0,fz=null,fzHits=0;
@@ -129,8 +143,11 @@ export function runJsRef({state,steps,superSaiyan=false,gi=null,pokes=[],pokeBas
       sparks:mod.effects.filter(e=>e.kind==='impact'&&e.life>0).map(e=>`${e.x},${e.y}`).sort().join(' '),
       ...(fz?{fzhp:fz.hp(),vt:fz.hits.slice(fzHits)}:{}),beam:beamProbe(mod),...probe(read8,read16)});
     if(fz)fzHits=fz.hits.length;
+    if(screen)s.ppu.cgram.forEach((v,k)=>{if(v!==cgram0[k])animated.add(k);});
   }
-  return {frames,logs};
+  const p=s.ppu;
+  return {frames,logs,screen:screen?{vram:Uint16Array.from(p.vram),cgram:Uint16Array.from(p.cgram),map:s.ram.slice(0x10000,0x18000),
+    animated:[...animated],tilemaps:[0,1].map(i=>({at:p.tilemapAdr[i],words:1024*(p.tilemapWider[i]?2:1)*(p.tilemapHigher[i]?2:1)}))}:null};
 }
 
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){

@@ -208,7 +208,8 @@ endif
 !fl_scam      = !FL_SRAM+$334     ; a scene's camera target (flight_api_camera):
 !fl_scam_x     = !fl_scam+$00      ;   word: camera x ($A8) to reach
 !fl_scam_y     = !fl_scam+$02      ;   word: camera y ($AA)
-!fl_scam_frame = !fl_scam+$04      ;   word: $F4 of the last step ($33A-$33B free)
+!fl_scam_frame = !fl_scam+$04      ;   word: $F4 of the last step
+!fl_g_py       = !FL_SRAM+$33A     ; word: ty0 * 16 + 4, fl_fp_cover's row origin (set with the grid)
 !fl_wk_t0      = !FL_SRAM+$33C     ; word: walk mode: core tick when it began
 !fl_owned      = !FL_SRAM+$33E     ; word: Goku requests flight wrote (!FLO_*); flight clears only
                                    ; these, once, so other writers' requests stay
@@ -284,6 +285,7 @@ assert !fl_wk_s2x == !fl_wk_s1x+6 && !fl_wk_s2t == !fl_wk_s1t+6, "flight: walk s
 !fl_g_need     = !fl_g+$10         ; word: scratch (cells to evaluate)
 !fl_step_f4    = !fl_g+$12         ; word: $F4 of the hero step whose eligibility is cached ($FFFF none)
 !fl_step_elig  = !fl_g+$14         ; word: cached eligible() for that step
+!fl_g_px       = !fl_g+$16         ; word: tx0 * 16 + 6, fl_fp_cover's column origin (set with the grid)
 !fl_g_tiles    = !fl_g+$18         ; 9 bytes: tile id of each grid cell when its verdict was made
 !fl_g_base     = !fl_g+$22         ; word: idx of grid cell 0
 !fl_g_stale    = !fl_g+$24         ; word: nonzero = re-anchor the grid at Goku before its next use

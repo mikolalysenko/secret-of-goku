@@ -15,6 +15,7 @@
 !fx_rgb    = !FX_SRAM+$0A   ; 3 words: caller colours (BGR555) for FX_DEBRIS: dark, mid, light
 ; Read-only state
 !fx_evict  = $317DDE        ; byte: counts FX cache evictions and residency resets (fx_warm); lent by combat
+!fx_hitnew = $317DE5        ; byte: an FX_HIT spawned since the last fx frame (fx_hit_wait); lent by combat
 
 ; Flags (high byte of A)
 !FX_F_SCREEN  = $01         ; X/Y are screen pixels (default: map pixels)

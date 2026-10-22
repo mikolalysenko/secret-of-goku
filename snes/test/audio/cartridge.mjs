@@ -28,7 +28,11 @@ export function customSegments(rom){
  const all=uploadSegments(rom),at=all.findIndex(s=>s.addr===0x4DF1);
  return isCustom(rom)&&at>=0?all.slice(at):[];
 }
-export function nativeIds(rom,ids){return ids.map((v,i)=>isResident7(rom)?(i===17?0xEF:v):(isCustom(rom)&&i===6?0xED:v));}
+// Round nine fills the empty retail row $7E with the ki contact (IMPACT).
+export const KI_CONTACT_ROW=0x7E,SPRING_ROW=0x7D;
+export const isRound9=rom=>isResident7(rom)&&!!(rom[0x32139+KI_CONTACT_ROW*4]|rom[0x3213A+KI_CONTACT_ROW*4]);
+export const impactId=rom=>isRound9(rom)?KI_CONTACT_ROW:0x38;
+export function nativeIds(rom,ids){return ids.map((v,i)=>isResident7(rom)?(i===17?0xEF:i===6?impactId(rom):v):(isCustom(rom)&&i===6?0xED:v));}
 
 // Historical RAM auditions start from the round-four APU image, never from
 // round-seven beds whose sample/code reservation the audition would overwrite.

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createApu} from './apu.mjs';
 import {customSegments,isResident7} from './cartridge.mjs';
+import {NOISE_CLOCK} from '../../gen/audio-resident7.mjs';
 const rom=readFileSync(process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc'),skip=!isResident7(rom);
 const tuple=(h,id)=>{
  const p=0x2C00+id*4+(id===0xE7?2:0),track=h.ram[p]|h.ram[p+1]<<8;
@@ -25,7 +26,7 @@ test('swings have six combinations; hit and blast have independent three-pitch c
   }
   const {l,r}=h.take();assert.ok(l.some(x=>x!==0));assert.ok([...l,...r].every(x=>Math.abs(x)<32767));
   assert.equal(h.ram[0xAE],0,'all effect voices returned');
-  assert.equal(noiseClock,id===0xE7?31:undefined,'pitch rotation must not retune shared noise');
+  assert.equal(noiseClock,id===0xE7?NOISE_CLOCK:undefined,'pitch rotation must not retune shared noise');
   rows.get(id).push({tuple:tuple(h,id),firstPitch,peakVolume});
  }
  const rates=[0,9,0xFA];

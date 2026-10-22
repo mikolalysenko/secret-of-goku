@@ -99,6 +99,9 @@ export function createNativeBarriers(mod){
   return{
     beam:hit,
     doorBroken:id=>doors.has(id),
+    // A passage that scenery destruction opened for good (Watts's shortcut,
+    // cave-stalagmites.js). Saved with the doors: checkpoints and GAME FILE.
+    latch(id){if(doors.has(id))return false;doors.add(id);return true;},
     punch(attack){return hit({...attack,length:28,width:9,strength:1,melee:true});},
     tick(){
       // Older checkpoints may already have the burner cleared to blank

@@ -1,9 +1,14 @@
-; Song-load-only, non-moving instrument cache. The retail allocator compacts
-; all retained instruments when its contiguous tail fills. Fill actual holes
-; first, retaining unrelated samples until a new allocation overlaps them.
-; Only fragmentation of the REQUIRED set invokes downward compaction.
+; Song-load-only instrument cache, two allocators chosen by song history.
+; A first visit (no return within the last four changes) uses the retail
+; allocator: append missing samples at the tail; when the tail is full,
+; pack the required set from the floor once, then append. That keeps the
+; most shared samples low, where a later song's larger echo cannot reach
+; them. A return to a recent song (field/town/battle) keeps its warm working
+; set with the non-moving cache: fill actual holes first, retaining unrelated
+; samples until a new allocation overlaps them; only fragmentation of the
+; REQUIRED set invokes downward compaction.
 ; Native cache ids/start/size and the final metadata sender remain the ABI.
-; D=$1E00, DB=0, X16. $8A flags: low byte: 0 disposable, 1 retained, 2 upload, 3 moved.
+; D=$1E00, DB=0, X16. $8A flags: low byte: 0 disposable, 1 retained, 2 upload.
 ; Bit 8 remembers the preceding song: prefer retaining its unused samples.
 if !AUDIO_CUSTOM_SAMPLES
 
@@ -45,6 +50,108 @@ audio_cache_plan:
 .next
 	INX : INX : CPX.w #$0020 : BNE .retain
 	JSR audio_cache_sort
+	JSR audio_cache_history
+	BEQ +
+	JMP audio_cache_allocate
++	JMP audio_cache_append
+
+; The last four song changes (id + 1; zero is empty, as in cleared WRAM) and
+; a three-load window after a return. Song loads only: no frame work.
+; A16 in and out; Z set when this load is a first visit (no recent return).
+audio_cache_history:
+	SEP #$20
+	LDA.l !au_cache_heat : BEQ +
+	DEC : STA.l !au_cache_heat
++	LDA $05 : INC
+	LDX.w #$0000
+.find
+	CMP.l !au_cache_history,X : BEQ .return
+	INX : CPX.w #$0004 : BNE .find
+	BRA .push
+.return
+	XBA : LDA.b #$03 : STA.l !au_cache_heat : XBA
+.push
+	XBA
+	LDA.l !au_cache_history+2 : STA.l !au_cache_history+3
+	LDA.l !au_cache_history+1 : STA.l !au_cache_history+2
+	LDA.l !au_cache_history : STA.l !au_cache_history+1
+	XBA : STA.l !au_cache_history
+	LDA.l !au_cache_heat
+	REP #$20
+	RTS
+
+; The retail allocator's plan. Its fit test counts every missing list
+; entry, a duplicated one twice (song $18's two strike entries), as the
+; retail planner does, so the cache packs at the same loads; the sample is
+; sent once.
+audio_cache_append:
+	STZ $17                     ; missing bytes (saturated)
+	STZ $21                     ; missing entries
+	LDY.w #$0000
+.sum
+	LDA.w $1EAA,Y : BEQ .counted
+	LDX.w #$0000
+.find
+	CMP $28,X : BEQ .cached
+	INX : INX : CPX.w #$0020 : BNE .find
+	ASL : TAX
+	LDA.l audio_cache_lengths,X : CLC : ADC $17 : BCC +
+	LDA.w #$FFFF
++	STA $17
+	INC $21
+.cached
+	INY : INY : CPY.w #$0020 : BNE .sum
+.counted
+	LDA $21 : BNE +
+	JMP audio_cache_uploads
++	JSR .tail                   ; $1B = tail, $1D = live slots
+	LDA $1D : CLC : ADC $21 : CMP.w #$0011 : BCS .pack
+	LDA $1B : CLC : ADC $17 : BCS .pack
+	CMP $F1 : BCC .append
+.pack
+	STZ $17                     ; pack the whole required set once
+	JSR audio_cache_compact
+	JSR audio_cache_sort
+	JSR .tail
+.append
+	; Each missing list entry once, in list order, at the tail. Empty slots
+	; follow the sorted live ones, so the slots stay address-ordered.
+	LDY.w #$0000
+.next
+	LDA.w $1EAA,Y : BEQ .done
+	STA $19
+	LDX.w #$0000
+.have
+	CMP $28,X : BEQ .skip
+	INX : INX : CPX.w #$0020 : BNE .have
+	LDX.w #$0000
+.empty
+	LDA $28,X : BEQ .place
+	INX : INX : BRA .empty
+.place
+	LDA $19 : STA $28,X
+	ASL : PHX : TAX
+	LDA.l audio_cache_lengths,X
+	PLX
+	STA $6A,X
+	LDA $1B : STA $48,X
+	CLC : ADC $6A,X : STA $1B
+	LDA.w #$0002 : STA $8A,X
+.skip
+	INY : INY : CPY.w #$0020 : BNE .next
+.done
+	JMP audio_cache_uploads
+.tail
+	LDA $F8 : STA $1B
+	STZ $1D
+	LDX.w #$0000
+.live
+	LDA $28,X : BEQ .end
+	LDA $48,X : CLC : ADC $6A,X : STA $1B
+	INC $1D
+	INX : INX : CPX.w #$0020 : BNE .live
+.end
+	RTS
 
 audio_cache_allocate:
 	; Follow the authored instrument order (arrangements put shared samples
@@ -98,8 +205,10 @@ audio_cache_allocate:
 	LDX $25 : INX : INX
 	CPX.w #$0020 : BEQ .scanned
 .extent
-	LDA $28,X : BEQ .extent_next
-	LDA $48,X : CMP $1D : BCS .extent_next
+	; Slots are address-sorted with empties last: the first slot at or
+	; above the candidate's end, or empty, ends the overlap scan.
+	LDA $28,X : BEQ .scanned
+	LDA $48,X : CMP $1D : BCS .scanned
 	CLC : ADC $6A,X : CMP $1B : BCC .extent_next : BEQ .extent_next
 	LDA $8A,X : AND.w #$00FF : BNE .candidate_next
 	PHX : LDA $28,X : ASL : TAX
@@ -193,6 +302,8 @@ audio_cache_compact:
 	; Pack only until the requested hole exists ($17=0 rescues the whole set
 	; below a newly enlarged echo buffer). Unuploaded allocations move for
 	; free. Every physical move is downward: native forward-copy semantics.
+	; Callers keep the slots address-sorted, so live entries are visited in
+	; address order by index (no minimum search per move).
 	LDX.w #$0000
 .clear
 	LDA $8A,X : AND.w #$00FF : BNE .next
@@ -200,21 +311,11 @@ audio_cache_compact:
 .next
 	INX : INX : CPX.w #$0020 : BNE .clear
 	LDA $F8 : STA $1B
-.select
-	LDA.w #$FFFF : STA $1D
-	LDY.w #$FFFF
 	LDX.w #$0000
-.scan
-	LDA $8A,X : AND.w #$00FF : BEQ .scan_next
-	CMP.w #$0003 : BCS .scan_next
-	LDA $48,X : CMP $1D : BCS .scan_next
-	STA $1D : TXY
-.scan_next
-	INX : INX : CPX.w #$0020 : BNE .scan
-	CPY.w #$FFFF : BEQ .done
-	TYX
+.walk
+	LDA $28,X : BEQ .skip
 	LDA $17 : BEQ .move
-	CLC : ADC $1B : CMP $1D : BCC .done : BEQ .done
+	CLC : ADC $1B : CMP $48,X : BCC .done : BEQ .done
 .move
 	LDA $48,X : CMP $1B : BEQ .same
 	LDA $8A,X : AND.w #$00FF : CMP.w #$0002 : BEQ .planned
@@ -235,16 +336,9 @@ audio_cache_compact:
 	LDA $1B : STA $48,X
 .same
 	CLC : ADC $6A,X : STA $1B
-	INC $8A,X : INC $8A,X
-	BRL .select
+.skip
+	INX : INX : CPX.w #$0020 : BNE .walk
 .done
-	LDX.w #$0000
-.reset
-	LDA $8A,X : AND.w #$00FF : BEQ .reset_next
-	CMP.w #$0003 : BCC .reset_next
-	DEC $8A,X : DEC $8A,X
-.reset_next
-	INX : INX : CPX.w #$0020 : BNE .reset
 	RTS
 
 audio_cache_uploads:
