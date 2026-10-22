@@ -4,6 +4,48 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: combat round two, harder hits and first frames on the press (2026-10-22)
+
+- Combat (52dfd5b, e4b02b5, 7b48cef, 56b8b8a, 1fa855d, 74ff86e, 33cbf65,
+  2194c27, 21d92fe; merged in cd0585d). The maintainer asked for combat
+  that is "intensely powerful ... responsive and impactful", even where it
+  departs from the PC edition. The feel values live in
+  `snes/gen/snes-feel.mjs`. Damage, HP, rewards and story state are
+  shared and unchanged. The browser references for the comparison tests
+  apply the cartridge's values (`snes/test/snes-feel.mjs`).
+  - Hit stop is 4/8/14 frames for the jab, cross and kick (3/7/12 as a
+    Super Saiyan). A kill holds Goku at least 12 frames (10) while the
+    target flies.
+  - The camera shakes along the blow, harder on a kill. The finishing
+    kick and kills flash the screen white and quake the background.
+  - Launches cover 96 px (136 as a Super Saiyan). The Kamehameha blows
+    its targets 148 px (196). Its release flashes and shakes the camera,
+    and ki contacts burst with the cross's starburst.
+  - A launched enemy that lands alive jolts the camera down 2 px.
+  - A press's first picture shows in the press's own vblank: a punch or
+    ki throw from rest, the next blow of a string, the Kamehameha's
+    release. The next frame's move is forecast from the last frame's
+    state. A wrong forecast would show one cell for one frame; 14 of 14
+    were right in the probes.
+  - Goku's hit pose shows one frame after contact (two before, three for
+    the Super Saiyan cross). The kick no longer drops the frame after its
+    contact.
+  - Lag frames around a three-hit string over six input timings: 13 → 1,
+    and 9 → 3 as a Super Saiyan.
+- Tests:
+  - fx `barrage-kill` walks `left:40`, not `left:60`. With the new feel,
+    its condition counted only 17 of the 20 frames it needs. The old walk
+    also killed a respawned Rabite a second time; no walk does that now.
+  - Audio `weapon-charge` (a5e7c00): its meter seeds hold B until the
+    native meter logic runs. With a kill's hold, that logic now runs
+    about 27 frames into the hold, past the old fixed 24.
+- Validation on cd0585d under both probes: all 20 suites pass except
+  audio `weapon-charge`'s seed timing; with a5e7c00 that test passes.
+  Gameplay misses per 240 frames at offset 0: charge 3 (4), flying ki 3,
+  flying punches 0 (1), the rest 0. Summed over offsets 0-9: 90 (114). The
+  perf scenes are unchanged, except flight's p90 at 113 (112). The orbit
+  is unchanged. The hardware probe reports only the known cases.
+
 ## SNES integration: round-eight sounds, a steady orbit picture, a faster field frame (2026-10-22)
 
 - Audio, round eight (c65c5f7, 37fa164, 984a721; merged in 72e4707). The

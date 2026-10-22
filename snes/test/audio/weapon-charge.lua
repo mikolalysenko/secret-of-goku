@@ -101,6 +101,16 @@ local function hold(name,n,buttons)
   mark(name);H.hold(buttons or 'b',n or 300);H.wait(12)
   phases[#phases].finish=snapshot()
 end
+-- Hold B at least 24 frames, and on until the seed lands (at most 120):
+-- the cartridge's hit stop and a kill's hold can put the real logic later.
+local function holdUntil(landed)
+  H.input={b=true}
+  for i=1,120 do
+    H.wait(1)
+    if i>=24 and landed() then break end
+  end
+  H.input=nil
+end
 -- Loaded/late native writes that the normal canAttack cleanup would hide.
 -- Seed just before the REAL meter/stamina logic, never jump the CPU or
 -- send a sound from the test. These hit both level and full-charge edges.
@@ -113,7 +123,7 @@ local function seedMeter(actor,level)
       done=true;H.w16(0x7EE01A+actor,(level<<8)|0x2C);H.w8(0x7EE01F+actor,0)
     end,emu.callbackType.exec,at,at)}
   end
-  H.hold('b',24)
+  holdUntil(function() return done end)
   for _,q in ipairs(ids) do emu.removeMemoryCallback(q[2],emu.callbackType.exec,q[1],q[1]) end
   H.wait(12);return done
 end
@@ -126,7 +136,7 @@ local function seedReady(actor)
       done=true;H.w8(0x7EE1ED+actor,1);H.w8(0x7EE063+actor,0xF0)
     end,emu.callbackType.exec,at,at)}
   end
-  H.hold('b',24)
+  holdUntil(function() return done end)
   for _,q in ipairs(ids) do emu.removeMemoryCallback(q[2],emu.callbackType.exec,q[1],q[1]) end
   H.wait(12);return done
 end
