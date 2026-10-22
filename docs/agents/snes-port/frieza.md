@@ -159,6 +159,13 @@ of the world's (the same within a cell, repeating per cell).
   and white (8-frame phases, 4 after 180) until he vanishes at 326, the
   whiteout 143-306, held to 631, cleared by 791, the boss fanfare at 375,
   the pouch chime once the fanfare ends (915), event C7 at 1035.
+- **On to the ending**: C7's script recovers the pouch (C8) and jumps to
+  429, the fed Beast (94, 96, 97 on map 253); the Beast's native death
+  runs 42F, where `BEAST_VICTORY` marks the challenge won before
+  `ENDING_BEGIN` asks `story_api_ending_result`. The ending suite plays
+  this chain through the story's events: `finale-frieza` from one real
+  punch at Frieza to Shenron's summon, `finale` and `finale-party` from
+  the Beast's death to the end card ([ending.md](ending.md#the-finale-through-the-storys-events)).
 
 ## Cutscene effects
 
@@ -488,6 +495,11 @@ offsets in FX's cache search and six-cell assembly setup also remove the
 extra transformation miss seen at the initial checkpoint: `transform-grass`
 is back to zero, and charge remains at its baseline 17.
 
+The ending's black holds (the good ending's transition through door 2F,
+the reunion, the death fade) use the same rule, `$E6` untouched, with
+their own ceiling applied after this write and combat's vblank hook
+(`ending_field_brightness`, `C0:C168`). The two ceilings never overlap.
+
 ## Resources
 
 | Resource | Use |
@@ -562,6 +574,7 @@ Dispatch: `modules_field_frame` -> `frieza_field_frame`,
 | `frieza_api_encounter` | JSL, M16/X16, D = 0, any DB. A16: low byte the dangerous fight now (`battle-retry.js` `encounter()`): 0 none, 1 Frieza's ground fight (stage battle on 246, no surge, not in space), 2 the empowered Thanatos (species 121 alive on 246), 3 the Mana Beast (127 on 253); high byte Frieza's tier with 1 (`frieza:<tier>`). X, Y, DB kept |
 | `!fzd_key` | WRAM byte: the key of the death in progress (or the last fight Goku could act in on 246/253); also passed to `ending_lose` in X |
 | `frieza_q_crisis` | `STORY_Q_FRIEZA_CRISIS` (`frieza.crisisActive`): 1 from the core's impact (event D7, `newCoreCrisis`) until the wish repairs the core (`FRIEZA_REPAIR_CORE`); a restored preset that is stolen or permanent gets it active unless the wish was made (`restore()`'s fix-up). The ending's bad presets read it for the night globe |
+| `frieza_q_eighth` | JSL, M16/X16, DB = `$7E`, D = 0 (the story query contract; not a route query): A16 = 1 while Dryad's eighth Ball is held (`frieza.eighth`: event AF until the revive, C9). The ending's vista asks it every picture |
 | `frieza_door_record` | `!DOOR_RECORD_HOOK` (destroy's door record): JSL, M16/X16, D = 0, X = door * 4, A = record bytes 0-1, Y = bytes 2-3; door 3FC's byte 2 becomes 36 while the Emperor is present. Returns A and Y, keeps X |
 | `frieza_combat_damage` | Combat's damage list (`modules_combat_damage`): A16 = Goku's damage, X16 = actor -> A16 (the Beast 1/2 or 1/8, the empowered Lich 1/4) |
 | `!fzx_pending` | WRAM word: the eruption damage the module queued on Goku (for a receive hook that must not cap it) |
