@@ -194,6 +194,17 @@ with FastROM. With combat, fx, audio and the other modules (main, October
 FastROM with `MEMSEL` actually on ends them by line 213. Ghost/dialogue
 frames cost about 27 lines in all; other maps under one line for title.
 During the dialogue the native text engine itself overruns some frames.
+Off map 128, before the sword (or after a load: the phase is not saved) or
+after the arrival, an uninterrupted frame on the same map returns after
+recording the tick: the event watch would do nothing and the map change
+already invalidated the cells and released the hero and VRAM pools. That
+frame costs 0.28 rather than 0.83 scanlines (`TITLE_IDLE_SLOW=1` runs the
+full state and draw passes every frame). On map 128 itself before the sword
+event (phase 0), with no hidden or hopping hero, no pool claims, no pending
+uploads and no crater, the draw pass would only release what is released
+and open and close an empty OAM run: such a frame runs the event watch and
+records the tick, 0.83 instead of 2.92 lines in the sword perf scene
+(`TITLE_SWORD_IDLE_SLOW=1` draws as before).
 
 ### API for other modules
 

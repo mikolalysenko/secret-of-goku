@@ -1472,7 +1472,16 @@ story_field_frame:
 	REP #$20
 	BNE +
 	RTL
-+	JSR story_init_persist
++
+if not(defined("STORY_IDLE_SLOW"))
+	SEP #$20
+	LDA.l !story_p_version           ; story_init_persist's own test
+	BNE +
+	JSR story_init_persist
++
+else
+	JSR story_init_persist
+endif
 	SEP #$20
 	STZ.w !story_can_act_valid&$FFFF  ; canAttack is evaluated on first use
 	; 1. greeting latch resets once the player has control again
@@ -1519,6 +1528,12 @@ story_field_frame:
 	BEQ .spells
 	JSR story_jema_tree_palace
 .spells
+if not(defined("STORY_IDLE_SLOW"))
+	; neither a kept spell grant nor the retired fast track: one word
+	assert !story_p_spell_any == !story_p_fast+1, "story_p_fast/story_p_spell_any must be adjacent"
+	LDA.l !story_p_fast
+	BEQ .queue
+endif
 	; spell grants retained for absent companions (only if any were kept)
 	LDA.l !story_p_spell_any
 	AND.w #$00FF

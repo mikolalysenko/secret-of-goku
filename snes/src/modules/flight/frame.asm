@@ -110,6 +110,38 @@ fl_ground:
 fl_eligible:
 	LDA.w !fl_lock
 	BNE .no
+if not(defined("FLIGHT_ELIGIBLE_SLOW"))
+	; the same tests: the finale's flag inline, the adjacent byte pairs as
+	; words ($E4/$E5 both 1, $E190 & $70 and $E191 & $D7, $EC & $FE and
+	; $ED & $40 clear), then the single bytes
+if defined("ending_flags")
+	LDA.l !ending_flags
+	AND.w #!EF_BEGUN
+	BNE .no
+endif
+	LDA $E4
+	CMP.w #$0101
+	BNE .no
+	LDA $E190
+	AND.w #$D770
+	BNE .no
+	LDA $EC
+	AND.w #$40FE
+	BNE .no
+	SEP #$20
+	LDA.w !fl_state
+	BIT.b #!FLS_ON
+	BEQ .no8
+	AND.b #!FLS_FLY|!FLS_CHARGE
+	BEQ .no8
+	LDA $E000
+	AND $E02C
+	LSR
+	BCC .no8
+	LDA $D0
+	ORA $FF
+	BNE .no8
+else
 	JSR fl_bind_ending           ; (canAttack's finale)
 	BCS .no
 	SEP #$20
@@ -142,6 +174,7 @@ fl_eligible:
 	LDA $E191
 	AND.b #$D7
 	BNE .no8
+endif
 	LDA $E011                    ; native hurt poses 8C-8F
 	CMP.b #$8C
 	BCC +

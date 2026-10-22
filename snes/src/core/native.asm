@@ -588,7 +588,8 @@ endif
 
 ; C0:1539 combines two halves of an outlined glyph with its window pattern.
 ; (~even & pattern) | even == pattern | even for the even plane; retain
-; the original mask for the odd plane. Unroll the two eight-row halves.
+; the original mask for the odd plane. Unroll the two eight-row halves,
+; each row one 16-bit pass (CORE_NATIVE_TEXT_PAINT16_SLOW: two 8-bit ones).
 ; Bounds keep the sources/destinations disjoint and pattern indexes from
 ; wrapping; other inputs retain the original loop. The native return has
 ; B = high(Y_entry+32), A = final odd byte, X = pattern+16, Y += 48, C/Z=1,
@@ -619,6 +620,24 @@ core_native_text_paint:
 	TAX
 	SEP #$20
 	PLP
+if not(defined("CORE_NATIVE_TEXT_PAINT16_SLOW"))
+	; Both planes of a row as one word: low byte even | pattern even, high
+	; byte odd | (pattern odd & ~even). The word ending at each even byte
+	; puts ~even into the high byte (the destination block lies below the
+	; source, so that byte is never one this pass writes).
+	REP #$20
+	for half = 0..2
+		for row = 0..8
+			!offset #= (!half*32)+(!row*2)
+			LDA.w $93FF+!offset,Y
+			ORA.w #$00FF
+			EOR.w #$FF00
+			AND.l $D2D480+(!row*2),X
+			ORA.w $9400+!offset,Y
+			STA.w $9000+!offset,Y
+		endfor
+	endfor
+else
 	for half = 0..2
 		for row = 0..8
 			!offset #= (!half*32)+(!row*2)
@@ -633,6 +652,7 @@ core_native_text_paint:
 		endfor
 	endfor
 	REP #$20
+endif
 	TXA : CLC : ADC.w #16 : TAX
 	TYA : CLC : ADC.w #32
 	PHA
@@ -1350,3 +1370,434 @@ core_native_high_bit:
 			db 0
 		endif
 	endfor
+
+; C0:BCCC (the field frame's OAM reset, from B0A0) clears the 32-byte high
+; table with STZ $0800,X for X = $0200-$021E, two bytes a pass, in the slow
+; bank $00. The same stores from FastROM, unrolled; the loop's exit state
+; stays: X = $0220, carry and zero set, negative clear, V and A untouched.
+; M16/X16 (BCCC's REP #$30); the caller's DB, as the absolute stores use.
+if not(defined("CORE_NATIVE_HICLEAR_SLOW"))
+core_native_hiclear:
+	for word = 0..16
+		STZ.w $0A00+(!word*2)
+	endfor
+	LDX.w #$0220
+	CPX.w #$0220
+	RTL
+endif
+
+if not(defined("CORE_NATIVE_TEXT_SLOW")) && not(defined("CORE_NATIVE_WINDOW_WIPE_SLOW"))
+; C0:091A-092A, opening a native window: STZ $9400 (M8, DB-relative), then
+; REP #$20 / LDA #$06FF / LDX #$9400 / LDY #$9401 / MVN $7E,$7E spreads that
+; byte over $7E:9401-$9B00: 1,792 bytes at 7 cycles each, about 60
+; scanlines. With DB = $7E the byte is zero: store the same zero words, 128
+; a pass, and leave MVN's exit state (A = $FFFF, X = $9B00, Y = $9B01,
+; DB = $7E, C/V as before, N set and Z clear). Another DB keeps the MVN.
+; JSL from C0:091D (M8/X16); BRA $092B follows.
+core_native_window_wipe:
+	REP #$20
+	PHP
+	PHB
+	SEP #$20
+	PLA
+	CMP.b #$7E
+	REP #$20
+	BEQ +
+	JMP core_window_wipe_retail
++	LDX.w #$0600
+core_window_wipe_page:
+	for word = 0..128
+		STZ.w $9400+(!word*2),X
+	endfor
+	TXA
+	SEC
+	SBC.w #$0100
+	TAX
+	BMI +
+	JMP core_window_wipe_page
++	SEP #$20
+	STZ.w $9B00
+	REP #$20
+	BRA core_window_wipe_done
+core_window_wipe_retail:
+	LDA.w #$06FF
+	LDX.w #$9400
+	LDY.w #$9401
+	MVN $7E,$7E
+core_window_wipe_done:
+	PLP
+	LDA.w #$FFFF                 ; (retail's last load, LDY #$9401, left
+	LDX.w #$9B00                 ; N set and Z clear, as these do)
+	LDY.w #$9B01
+	RTL
+endif
+
+if not(defined("CORE_NATIVE_TEXT_SLOW")) && not(defined("CORE_NATIVE_WINDOW_ROWS_SLOW"))
+; C0:07F9 draws a native window's two border rows: for each of $A164 cells
+; it calls the cell writer C0:1BC0 (core_native_window_cell) at row $A156,
+; column $A157, then advances the column (eight bits) and counts $A164 down
+; to zero. Every call makes the same requests ($1D12, and $1D04 as $1D05,
+; $A187 and $A162 decide; the row does not touch them) and returns the same
+; A high byte, carry and V; only its tile word differs. A row that stays in
+; the tile buffer $9C00-$9FFF without its column wrapping, with DB = $7E and
+; binary mode, is written in one pass, its requests made first.
+; core_window_fill: M8/X16, X = the row's cell. Filled: V clear, X = cell,
+; A's high byte and carry as the writer's last call, $A157 advanced,
+; $A164 = 0, Y and DB kept. Otherwise V set: the retail loop runs (it sets
+; A, X and carry itself).
+core_window_fill:
+	PHB
+	PHP
+	LDA $01,S
+	AND.b #$08                   ; decimal mode: the retail address math
+	BNE core_window_fill_retail
+	LDA $02,S
+	CMP.b #$7E
+	BNE core_window_fill_retail
+	LDA.w $A164
+	BEQ core_window_fill_retail  ; zero counts 256 passes
+	CLC
+	ADC.w $A157
+	BCC core_window_fill_go
+	BEQ core_window_fill_go      ; a row ending exactly at column $FF
+core_window_fill_retail:
+	PLP
+	PLB
+	SEP #$40
+	RTS
+core_window_fill_go:
+	PHA                          ; S: newcol P B
+	PHY                          ; S: Y newcol P B
+	PHX                          ; S: cell Y newcol P B
+	; the writer's address for the first cell (binary mode, DB = $7E)
+	LDA.b #0
+	XBA
+	LDA.w $A156
+	DEC
+	REP #$20
+	ASL : ASL : ASL : ASL : ASL
+	ADC.w $A157
+	ASL
+	CLC
+	ADC.w #$9C00
+	CMP.w #$9C00
+	BCC .retail_xya
+	TAY                          ; the first cell
+	LDA.w $A164
+	AND.w #$00FF
+	TAX                          ; cells
+	ASL
+	PHY
+	CLC
+	ADC $01,S                    ; the row's end
+	PLY
+	CMP.w #$A001
+	BCS .retail_xya
+	SEP #$20
+	LDA $05,S                    ; the column after the row
+	STA.w $A157
+	STZ.w $A164
+	; the writer's requests, A and carry, once
+	LDA.b #$44
+	TSB.w $1D12
+	LDA.w $1D05
+	CMP.b #7
+	BEQ .request
+	LDA.w $A187
+	BIT.b #1
+	BNE .request
+	LDA.w $A162
+	CMP.b #1
+	BEQ .defer
+.request
+	XBA
+	LDA.b #$44
+	TSB.w $1D04
+	BRA .fill
+.defer
+	XBA
+	LDA.b #$44
+	XBA
+.fill
+	REP #$20
+	PHA                          ; S: A cell Y newcol P B
+	LDA $03,S
+	EOR.w #$2000                 ; the writer's tile word
+-	STA.w $0000,Y
+	INY
+	INY
+	DEX
+	BNE -
+	PLA
+	SEP #$20
+	PLX
+	PLY
+	PLB                          ; (newcol)
+	PLB                          ; (P)
+	PLB
+	CLV
+	RTS
+.retail_xya
+	SEP #$20
+	PLX
+	PLY
+	PLA
+	JMP core_window_fill_retail
+
+; JSL from C0:0806 in place of LDA $A16C / STA $A164; the retail PHA and
+; BVC $081D follow. Returns A = $A16C for the PHA.
+core_native_window_row1:
+	LDA.w $A16C
+	STA.w $A164
+	LDX.w #$0120
+	JSR core_window_fill
+	LDA.w $A16C
+	RTL
+; JSL from C0:0822 in place of STA $A157 / INC $A156; BVC $0838 follows.
+core_native_window_row2:
+	STA.w $A157
+	INC.w $A156
+	LDX.w #$8120
+	JSR core_window_fill
+	RTL
+endif
+
+if not(defined("CORE_NATIVE_CONTACTS_SLOW"))
+; C1:CE20-CE58: a party member's contact pass over the enemy slots
+; $0600/$0800/$0A00 while $ED bit 7 is set (C1:CDCD for X = 0, $200, $400,
+; once per field frame). For each active enemy on the member's layer whose
+; terrain bits do not both differ, C1:CE62 writes the reach (E089 & 3) * 4
+; + 10 to $04/$05, the wrapped x/y distances to $0A-$0C, their distances
+; past the reach (x) or 8 (y), capped at $80, to $08/$09 and the slot's
+; $E050/$E053/$E056 word, the direction bits ($06/$07: $80 for one of
+; negative or wrapped, $E052/$E055/$E058: x $40, y $80); a pair out of
+; range ($80 either way, or 24 px after the attack-box test) clears the
+; member's two touch bits in $E04E and sets $00 to its bit. $50 starts at
+; $11 and shifts once a slot; the loop leaves A = Y = $0C00, V clear and
+; shifts $51 (C1:CE54). Unrolled per slot with each member's constants.
+; The attack-box test (C1:D14A) has no effect while neither box exists;
+; with a box, or within 24 px both ways, the retail rest of the pair runs
+; from C1:CF38 or CF4D and returns to the next slot. Another member, an
+; 8-bit index or decimal mode take the whole retail loop (C1:CE26). JML
+; from C1:CE20 in place of SEP #$20 / LDA #$11 / STA $50.
+macro core_contacts_qx()
+	CMP $04
+	BCC ?zero
+	SBC $04
+	CMP.w #$0080
+	BCC ?keep
+	LDA.w #$0080
+	BRA ?keep
+?zero:
+	LDA.w #$0000
+?keep:
+	STA $08                      ; ($09 = 0 until the y distance)
+endmacro
+macro core_contacts_qy(k)
+	CMP.w #$0008
+	BCC ?zero
+	SBC.w #$0008
+	CMP.w #$0080
+	BCC ?keep
+	LDA.w #$0080
+	BRA ?keep
+?zero:
+	LDA.w #$0000
+?keep:
+	XBA                          ; y << 8 (at most $80)
+	ORA $08
+	STA $08
+	STA.w $E050+<k>,Y
+endmacro
+; The pair at slot Y for member X (C1:CE62-CF37). JSR, M8; returns M8.
+macro core_contacts_pair(k, bit)
+	LDA.w $E089,Y
+	AND.b #$03
+	ASL
+	ASL
+	ADC.b #$0A                   ; (carry clear after the shifts)
+	STA $04
+	STZ $05
+	REP #$20
+	LDA.w $E002,X
+	SEC
+	SBC.w $E002,Y
+	BMI ?xn
+	CMP $18
+	BCC ?x0
+	EOR.w #$FFFF
+	SEC
+	ADC $C0
+	BRA ?x1
+?xn:
+	EOR.w #$FFFF
+	INC
+	CMP $18
+	BCC ?x1
+	EOR.w #$FFFF
+	SEC
+	ADC $C0
+?x0:
+	STA $0A
+	%core_contacts_qx()
+	STZ $06
+	BRA ?y
+?x1:
+	STA $0A
+	%core_contacts_qx()
+	LDA.w #$0080
+	STA $06
+?y:
+	LDA.w $E004,X
+	SEC
+	SBC.w $E004,Y
+	BMI ?yn
+	CMP $1A
+	BCC ?y0
+	EOR.w #$FFFF
+	SEC
+	ADC $C2
+	BRA ?y1
+?yn:
+	EOR.w #$FFFF
+	INC
+	CMP $1A
+	BCC ?y1
+	EOR.w #$FFFF
+	SEC
+	ADC $C2
+?y0:
+	STA $0B
+	%core_contacts_qy(<k>)
+	SEP #$20
+	LDA $06
+	LSR
+	BRA ?dir
+?y1:
+	STA $0B
+	%core_contacts_qy(<k>)
+	SEP #$20
+	LDA.b #$80
+	STA $07
+	LDA $06
+	LSR
+	ORA.b #$80
+?dir:
+	STA.w $E052+<k>,Y
+	LDA $08
+	ORA $09
+	BMI ?clear                   ; out of range either way
+	REP #$20
+	LDA.w $E0C2,X
+	ORA.w $E0C2,Y
+	BNE ?box                     ; an attack box: overlap tests
+	LDA $08
+	CLC
+	ADC.w #$6868                 ; bit 7 of a byte: that distance >= 24
+	AND.w #$8080
+	BEQ ?near                    ; within 24 px both ways: the near tests
+	SEP #$20
+?clear:
+	LDA.b #<bit>
+	STA $00
+	LDA.w $E04E,Y
+	AND.b #(<bit>|(<bit><<3))^$FF
+	STA.w $E04E,Y
+	RTS
+?box:
+	JMP core_contacts_box
+?near:
+	JMP core_contacts_near
+endmacro
+macro core_contacts_slot(slot, pair)
+	LDY.w #<slot>
+	LDA.w $E000,Y
+	BEQ ?next
+	BMI ?next
+	LDA.w $E00B,X
+	EOR.w $E00B,Y
+	BMI ?next
+	AND.b #$03
+	CMP.b #$03
+	BEQ ?next
+	JSR <pair>
+?next:
+	SEP #$20                     ; (a retail rest of the pair may return M16)
+	ASL $50
+endmacro
+macro core_contacts_member(pair)
+	%core_contacts_slot($0600, <pair>)
+	%core_contacts_slot($0800, <pair>)
+	%core_contacts_slot($0A00, <pair>)
+	JMP core_native_contacts_done
+endmacro
+core_native_contacts:
+	SEP #$20
+	LDA.b #$11
+	STA $50
+	PHP
+	PLA
+	BIT.b #$18                   ; 8-bit index or decimal mode
+	BNE .retail
+	CPX.w #$0000
+	BNE +
+	JMP core_contacts_m0
++	CPX.w #$0200
+	BNE +
+	JMP core_contacts_m2
++	CPX.w #$0400
+	BNE .retail
+	JMP core_contacts_m4
+.retail
+	JML $81CE26
+core_contacts_m0:
+	%core_contacts_member(core_contacts_pair0)
+core_contacts_m2:
+	%core_contacts_member(core_contacts_pair2)
+core_contacts_m4:
+	%core_contacts_member(core_contacts_pair4)
+core_native_contacts_done:
+	REP #$20
+	LDA.w #$0C00
+	TAY
+	SEP #$20
+	CLV
+	JML $81CE54
+; The retail rest of a pair: its RTS returns through the RTL at C1:CDCC to
+; the slot's JSR return, which moves into an RTL frame. A, B, C, V and N/Z
+; as the retail pair has them there: at CF38 (BIT $ED / JSR $D14A) A =
+; x | y distances, B = y, C set (CPX); at CF4D (both within 24 px, after an
+; empty D14A) B = $07, C clear, V = $ED bit 6.
+core_contacts_box:
+	REP #$20
+	PLA
+	PHK
+	PHA
+	PEA $CDCC-1
+	SEP #$20
+	LDA $09
+	XBA
+	LDA $08
+	ORA $09
+	SEC
+	JML $81CF38
+core_contacts_near:
+	REP #$20
+	PLA
+	PHK
+	PHA
+	PEA $CDCC-1
+	SEP #$20
+	LDA $07
+	XBA
+	LDA $09
+	BIT $ED
+	CLC
+	JML $81CF4D
+core_contacts_pair0:
+	%core_contacts_pair(0, $01)
+core_contacts_pair2:
+	%core_contacts_pair(3, $02)
+core_contacts_pair4:
+	%core_contacts_pair(6, $04)
+endif

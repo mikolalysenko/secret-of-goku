@@ -6,6 +6,32 @@ world_field_frame:
 if defined("GOKU_TRACE")
 	RTL                              ; goku's test trace overwrites $7E:7F00
 endif
+if not(defined("WORLD_FIELD_IDLE_SLOW"))
+	; world_ram_check, world_goku and the idle exits of wf_transition and
+	; wf_finale, inline (A/X/Y are free in a frame callback)
+	LDA.w !w_magic
+	CMP.w #!WORLD_MAGIC
+	BEQ +
+	JSR world_ram_clear
++	LDA.w #!CORE_MODE_FIELD
+	STA.w !w_mode_prev
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BNE +
+	RTL
++	LDA.w !w_trans_kind
+	BEQ +
+	JSR wf_transition
++
+if getfilestatus("flight/tables.asm") != 0
+	JSR wf_takeoff_chord
+endif
+	LDA.l !pw_flags
+	AND.w #!PWF_FINALE
+	BEQ +
+	JSR wf_finale
++	RTL
+else
 	JSR world_ram_check
 	LDA.w #!CORE_MODE_FIELD
 	STA.w !w_mode_prev
@@ -18,6 +44,7 @@ if getfilestatus("flight/tables.asm") != 0
 endif
 	JSR wf_finale
 	RTL
+endif
 
 ; Takeoff / landing pose for the goku module (mode $26 / $27 with its age).
 ; Takeoff ages every field frame; landing only while Goku is visible

@@ -103,6 +103,14 @@ dialogue, menus, the name editor and world steering all see it.
   Fortress boss 488 34/38; 63 in the busiest ending montage state.
 - Limits: 128 sprites; 32 sprites and 34 8-pixel slivers per scanline (a
   16×16 sprite is 2 slivers, 32×32 is 4); later slots drop out first.
+- `C0:BCCC`'s high-table clear (`LDX #$0200` / `STZ $0800,X` / `INX` /
+  `INX` / `CPX #$0220` / `BCC`) ran sixteen passes in the slow bank `$00`
+  every field frame. `core_native_hiclear` makes the same sixteen word
+  stores unrolled from FastROM and leaves the loop's exit state (X = `$0220`,
+  C and Z set, N clear); the call site `C0:BCD9` is `JSL` + `BRA $BCE6`.
+  The `B0A0` step falls 1.73 → 0.79 scanlines. `CORE_NATIVE_HICLEAR_SLOW`
+  restores the loop; `hiclear.test.mjs` compares retail and patched
+  `C0:BCCC` from random RAM, flags and data banks.
 
 **Slots modules can count on** (core OAM API): field: everything after the
 native sprites — at least 64 in every measured scene (worst native count 63),
@@ -117,6 +125,17 @@ also reuses its completed capacity check. `CORE_NATIVE_EMITTER_RELOAD_SLOW`
 restores these paths. `$81:D14A` skips two cancelling direction inversions
 when both attack boxes are empty; `CORE_NATIVE_CONTACT_EMPTY_SLOW` restores
 that helper. The distance metadata at `$81:CE72–CF19` remains unchanged.
+A party member's contact pass over the enemy slots `$0600–$0A00` with `$ED`
+bit 7 set (`$C1:CE20–CE58`, once per member and field frame) runs unrolled
+in `core_native_contacts`: per member and slot the same distances,
+direction bits and touch bits, with the touch masks and `$E050/$E053/$E056`
+offsets as constants and no repeated loop arithmetic; an attack box or a
+pair within 24 px both ways continues in the retail rest of that pair
+(`$C1:CF38`/`CF4D`), which returns through the RTL at `$C1:CDCC` to the
+next slot. Other members, an 8-bit index or decimal mode take the retail
+loop. 220 recorded gameplay passes: 1,098 → 895 CPU cycles; contact stage
+B0B2 about 3 lines lower per crowded frame (`CORE_NATIVE_CONTACTS_SLOW`
+restores the loop; `snes/test/core/contacts.test.mjs`).
 See [gameplay performance](gameplay-performance.md#native-actor-follow-up--october-21-2026)
 for assembled real/random input comparisons, per-routine cycles, rollback
 checks and the remaining crowded-frame misses. No DMA/HDMA rule changes.
@@ -277,6 +296,16 @@ the native loader and map-viewer return, with FastROM helper calls and
 predecoded terrain rows. Core frame, input, OAM,
 VRAM, save, world, lag, HDMA, WRAM and extended-ROM tests pass. The timing
 measurements above describe the older experiment, before those call changes.
+
+Six more per-frame native calls from FastROM code into the slow banks use
+their mirrors: `C0:B799` (`C2:B665`, the players' pad/command pass, every
+field frame), `C0:FBEA` (`C1:833A`, actors' special render modes),
+`C0:DDF4` (`C2:C757`), `C0:EB49` (`C2:C221`), `C0:E4BD` (`C2:C3C1`) and
+`C2:C416` (`C0:E324`, the attachment emitter). Each routine sets its own
+DB or uses the caller's, and returns with RTL to the caller's bank.
+`CORE_NATIVE_CALLS_SLOW` restores the six operands. The actor preparation
+step (`B0C7`) falls 9.86 → 9.54 scanlines in charge and 10.63 → 9.94 in
+flying ki.
 
 The field NMI's native actor graphics uploader also uses bank `$81`,
 including Goku's skip/refresh continuations. Ground tilemap uploads use a
@@ -444,7 +473,13 @@ while retaining the odd plane; the cell writer marks upload bits before
 restoring DB to avoid a second bank switch. Seven assembled text tests
 include buffer boundaries, styles, all row bytes, request branches and
 decimal/width/flag cases. Their representative CPU costs are 13,342 → 4,336,
-1,049 → 713 and 202 → 169 cycles, respectively.
+1,049 → 713 and 202 → 169 cycles, respectively. The painter now writes each
+row's two planes as one 16-bit pass (the word ending at the even byte gives
+`~even` in its high byte; the destination block lies below the source):
+1,049 → 601 cycles a call (`CORE_NATIVE_TEXT_PAINT16_SLOW` keeps the two
+8-bit passes). A full page of window text paints about 29 such tiles in
+one field frame: teleport's window frame drops from 105.3 to 91.8 lines in
+B08C.
 
 Window row shifts at `C0:0754`, `C0:077F`, `C0:0C68` and `C0:0CEE` batch
 the interior columns and execute the final retail iteration. Each source
@@ -455,6 +490,25 @@ loops. Odd border widths are handled by the retained last iteration. The
 eighth assembled text test compares full RAM and CPU state at each loop's
 continuation. Ten-column scrolls take 964 rather than 4,467 CPU cycles;
 twenty-column borders take 1,741 rather than 8,938.
+
+Opening a window clears its 1,792-byte buffer at `C0:091A`: `STZ $9400`,
+then `MVN $7E,$7E` spreads that byte over `$9401-$9B00` at 7 cycles a byte
+(about 60 scanlines, an outright missed frame). With DB = `$7E` the byte
+is zero, so `core_native_window_wipe` stores the same zero words, 128 a
+pass, and leaves MVN's exit state (A = `$FFFF`, X = `$9B00`, Y = `$9B01`,
+DB = `$7E`, C/V as before, N set, Z clear); another DB keeps the MVN
+(`CORE_NATIVE_WINDOW_WIPE_SLOW`). 12,560 → 5,546 CPU cycles.
+Its two border rows (`C0:07F9`) called the cell writer once per column.
+Every call makes the same upload requests and returns the same A high
+byte, carry and V; only the tile word differs. `core_window_fill` writes a
+row that stays inside `$9C00-$9FFF` without its eight-bit column wrapping
+(DB = `$7E`, binary mode) in one pass, its requests made first;
+`C0:0806` and `C0:0822` call it and branch on V past the retained retail
+loops, which run for every other row (`CORE_NATIVE_WINDOW_ROWS_SLOW`).
+Both rows of an ordinary window: 5,517 → 980 CPU cycles.
+`window.test.mjs` compares both routines with retail machine code over
+3,000 window states (columns, widths, rows, column high bytes, request
+flags, data banks, decimal mode) and 60 clears.
 
 The field foreground-sprite commit leaves native/rear entries in place and
 appends the staged effects. After the same 544-byte DMA, `$2102/$2103` selects

@@ -11,12 +11,32 @@
 destroy_field_frame:
 	REP #$30
 	JSR dst_vline : STA.w !d_vstart      ; the background work's budget
+if not(defined("DESTROY_IDLE_SLOW"))
+	; Each step's own idle test, ahead of its call: the same map and
+	; initialised state; no event now and none that just ended; no debug
+	; command, plan, job, barrier or orb pending.
+	LDA.w !m_init : CMP.w #$D5A1 : BNE +
+	LDA $DC : CMP.w !d_map : BEQ ++
++	JSR dst_sync_map
+++	LDA $D0 : AND.w #$00FF : ORA.l !dk_d0 : BEQ +
+	JSR dst_classes_watch
++	LDA.l !dbg_cmd : BEQ +
+	JSR dst_debug_frame
++	LDA.l !pl_stage : ORA.l !pj_state : BEQ +
+	JSR dst_walls_work
++	LDA.l !bp_state : BEQ +
+	JSR dst_barrier_tick
++	LDA.l !orb_base : BEQ +
+	JSR dst_orb_tick
++
+else
 	JSR dst_sync_map
 	JSR dst_classes_watch
 	JSR dst_debug_frame
 	JSR dst_walls_work
 	JSR dst_barrier_tick
 	JSR dst_orb_tick
+endif
 if defined("DESTROY_BEAMS_SYNC")
 	JSR dst_hit_continue
 endif
@@ -31,8 +51,11 @@ endif
 destroy_late_frame:
 if not(defined("DESTROY_BEAMS_SYNC"))
 	REP #$30
+if not(defined("DESTROY_IDLE_SLOW"))
+	LDA.l !hp_id : BEQ +                 ; no beam band or barrier box left
+endif
 	JSR dst_hit_continue
-	LDA.w #0 : STA.l !hp_worked
++	LDA.w #0 : STA.l !hp_worked
 endif
 	RTL
 
