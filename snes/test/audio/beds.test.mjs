@@ -10,7 +10,7 @@ import {isResident7} from './cartridge.mjs';
 const rom=readFileSync(process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc');
 const bank=buildResident7();
 test('round-seven samples, code and loop entries fit without changing retail BRRs',async()=>{
- assert.ok(bank.used<=RESERVE);assert.equal(bank.sampleBytes,1890);
+ assert.ok(bank.used<=RESERVE);assert.equal(bank.sampleBytes,1818);
  const songs=await buildSongs(new URL('../../../',import.meta.url).pathname,loadRom());
  for(const c of customEdlCaps(loadRom(),songs,RESERVE))assert.ok(c.end<0xFA00-c.maxEdl*0x800);
  for(const s of bank.samples){
@@ -59,7 +59,7 @@ test('beam dispatch fades both held beds without separate CPU stop commands',{sk
   for(const bed of [0xED,0xEE]){h.nativeCmd(0x81,bed,240,128);h.ms(100);}
   h.nativeCmd(2,id,15,0x88);h.ms(180);
   const owned=Array.from({length:8},(_,v)=>v).filter(v=>h.ram[0xAE]&(1<<v));
-  assert.equal(owned.length,1);assert.equal(h.ram[0xFF80+owned[0]],id);
+  assert.equal(owned.length,2);assert.equal(h.ram[0xFF80+owned[0]],id);
   assert.equal(h.ram[0x187C]|h.ram[0x187D],0);
   h.ms(1500);assert.equal(h.ram[0xAE],0);
  }

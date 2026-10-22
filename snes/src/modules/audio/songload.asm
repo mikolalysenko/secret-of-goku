@@ -4,6 +4,9 @@
 !au_load_fast #= $7E0000+!au_tmp+$16 ; song-load-only scratch, never a frame flag
 
 audio_songload_install:
+if !AUDIO_CUSTOM_SAMPLES
+	JSR audio_extended_prepare
+endif
 	JSR audio_songload_choose
 	LDA.l !au_load_fast
 	BNE .fast
@@ -101,7 +104,12 @@ audio_songload_choose:
 .song
 	LDA $05 : AND.w #$00FF
 	CMP.w #$003B
+if !AUDIO_CUSTOM_SAMPLES
+	BCC + : JMP .fast
++
+else
 	BCS .fast
+endif
 	STA $17
 	ASL : CLC : ADC $17 : TAX
 	LDA.l $C33D39,X : STA $14
@@ -121,10 +129,23 @@ audio_songload_choose:
 	LDY.w #$0000
 .cache
 	CMP.w $1E28,Y
+if !AUDIO_CUSTOM_SAMPLES
+	BEQ .cached
+else
 	BEQ .next
+endif
 	INY : INY
 	CPY.w #$0020
 	BNE .cache
+if !AUDIO_CUSTOM_SAMPLES
+	BRA .missing
+.cached
+	LDA.w $1E48,Y : CMP $F8 : BCC .invalid
+	CLC : ADC.w $1E6A,Y : CMP $F1 : BCC .next
+.invalid
+	LDA.l $C33F22,X
+.missing
+endif
 	PHX
 	DEC : STA $17
 	ASL : CLC : ADC $17 : TAX
@@ -326,6 +347,14 @@ audio_songload_send:
 
 audio_songload_finish:
 	SEP #$20
+if !AUDIO_CUSTOM_SAMPLES
+	PHD
+	REP #$20
+	LDA.w #$1E00 : TCD
+	SEP #$20
+	JSR audio_extended_finish
+	PLD
+endif
 	LDA.l !au_load_fast
 	BEQ .native
 	PHD

@@ -2,15 +2,40 @@
 -- SNES_LUA_PRELUDE=snes/test/audio/load-profile.lua node snes/test/audio/run.mjs songs loads
 -- All times are NTSC frames (357366 master clocks), including fractions.
 local rows, row, stage, stamp = {}, nil, nil, nil
+local cacheHooks=false
 local function now() return emu.getState().masterClock end
 local function mark(nextStage)
   local t=now()
   if row and stamp then row[stage]=(row[stage] or 0)+((t-stamp)%0x100000000)/357366 end
   stage=nextStage;stamp=t
 end
+function AUDIO_PROFILE_INIT()
+  if not cacheHooks and AUDIO_CACHE_COPY and AUDIO_CACHE_COPY~=0 then
+    cacheHooks=true
+    emu.addMemoryCallback(function()
+      if row then
+        mark('compact')
+        local x=emu.getState()['cpu.x']
+        row.moves[#row.moves+1]={id=H.r16(0x7E1E28+x),src=H.r16(0x7E1E48+x),dst=H.r16(0x7E1E1B),bytes=H.r16(0x7E1E6A+x)}
+      end
+    end,emu.callbackType.exec,AUDIO_CACHE_COPY,AUDIO_CACHE_COPY)
+    emu.addMemoryCallback(function()
+      if row then mark('instruments');row.uploads[#row.uploads+1]=emu.getState()['cpu.x'] end
+    end,emu.callbackType.exec,AUDIO_CACHE_SEND,AUDIO_CACHE_SEND)
+    if AUDIO_EXT_SEND and AUDIO_EXT_SEND~=0 then
+      emu.addMemoryCallback(function()
+        if row then mark('extended_samples');row.extended_bytes=emu.getState()['cpu.x'] end
+      end,emu.callbackType.exec,AUDIO_EXT_SEND,AUDIO_EXT_SEND)
+      emu.addMemoryCallback(function() if row then mark('extended_tables') end end,
+        emu.callbackType.exec,AUDIO_EXT_TABLES,AUDIO_EXT_TABLES)
+    end
+  end
+end
 emu.addMemoryCallback(function()
   if H.r8(0x7E1E01)==H.r8(0x7E1E05) then return end
   row={song=H.r8(0x7E1E01),moves={},uploads={}}
+  row.cache={}
+  for k=0,15 do row.cache[#row.cache+1]={id=H.r16(0x7E1E28+2*k),addr=H.r16(0x7E1E48+2*k),bytes=H.r16(0x7E1E6A+2*k)} end
   rows[#rows+1]=row;stage='fade';stamp=now()
 end,emu.callbackType.exec,0xC30198,0xC30198)
 for _,t in ipairs({{0xC30200,'echo_setup'},{0xC30203,'sequence'},

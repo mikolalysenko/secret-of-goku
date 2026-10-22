@@ -1,8 +1,9 @@
 // Audio module generator: SPC700 driver extension upload, DBZ effect /
 // voice stream bank and cue tables. Output in dist/snes/gen/audio/.
-// Cue gains, clips and rates come straight from the browser mod
-// (engine/ki-sound.js, engine/kamehameha-voice.js) and its WAV assets.
+// Music and rare lines follow the browser mod. Resident combat textures are
+// designed in audio-design8.mjs; Instant Transmission retains its WAV source.
 import {readFileSync,writeFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
 import {resolve} from 'node:path';
 import {assemble} from './audio-spc700.mjs';
 import {readWav,resample} from './audio-brr.mjs';
@@ -10,6 +11,7 @@ import {buildStreamClip,CHUNK_BYTES,CHUNK_SAMPLES} from './audio-stream.mjs';
 import {residentAsm,nativeMapAsm} from './audio-resident.mjs';
 import {customEdlCaps} from './audio-custom.mjs';
 import {buildResident7,resident7Asm,RESERVE} from './audio-resident7.mjs';
+import {buildExtended8,extended8Asm} from './audio-extended8.mjs';
 
 export const STREAM_RATE=12000;
 export const RARE_RATE=6000;
@@ -194,11 +196,34 @@ export async function generate({rom,repo,outDir}){
  const ext=buildExtension(repo,rom);
  writeFileSync(resolve(outDir,'upload.bin'),ext.upload);
  const songs=await buildSongs(repo,rom);
+ const counts=Array.from({length:64},(_,id)=>songs.find(s=>s.id===id)?.ids.length??Array.from({length:16},(_,k)=>rom[0x33F22+32*id+2*k]|rom[0x33F23+32*id+2*k]<<8).filter(Boolean).length);
+ // Prefer frequently shared instruments, with a modest size penalty. A
+ // previous-song bonus is applied at load time. Normalize the complete set
+ // below 30,000 so summing costs (even doubled) cannot overflow a word.
+ const sets=Array.from({length:64},(_,id)=>songs.find(s=>s.id===id)?.ids??Array.from({length:16},(_,k)=>rom[0x33F22+32*id+2*k]|rom[0x33F23+32*id+2*k]<<8));
+ assert.ok(sets.every(s=>s.every(id=>id>=0&&id<=33)));
+ writeFileSync(resolve(outDir,'cache-members.bin'),Buffer.from(sets.flatMap(s=>Array.from({length:34},(_,id)=>Number(s.includes(id))))));
+ const raw=[0,...Array.from({length:33},(_,i)=>Math.sqrt(romInstrumentInfo(rom,i+1).len)*(1+sets.filter(s=>s.includes(i+1)).length)**3)];
+ const scale=raw.reduce((a,b)=>a+b,0)/30000;
+ const costs=raw.map((n,i)=>i?Math.max(1,Math.floor(n/scale)):0);
+ assert.ok(costs.reduce((a,b)=>a+b,0)<32768);
+ writeFileSync(resolve(outDir,'cache.asm'),'audio_cache_lengths:\n dw '+[0,...Array.from({length:33},(_,i)=>romInstrumentInfo(rom,i+1).len)].join(',')+'\naudio_cache_counts:\n db '+counts.join(',')+'\naudio_cache_costs:\n dw '+costs.join(',')+'\naudio_cache_members:\n incbin "audio/cache-members.bin"\n');
  const custom=buildResident7(),caps=customEdlCaps(rom,songs,RESERVE);
+ const extended=buildExtended8(custom);
+ writeFileSync(resolve(outDir,'extended.bin'),extended.bytes);
+ writeFileSync(resolve(outDir,'extended.asm'),extended8Asm(extended,caps));
+ writeFileSync(resolve(outDir,'extended.json'),JSON.stringify({...extended,bytes:extended.bytes.length},null,1));
  const extra=[];
  for(const s of custom.segments)extra.push(s.addr&255,s.addr>>8,s.bytes.length&255,s.bytes.length>>8,...s.bytes);
  assertCustomDriver(rom);
- writeFileSync(resolve(outDir,'upload-custom.bin'),Buffer.from([...ext.upload.subarray(0,-4),...extra,0,0,0,0]));
+ // Merge overlays into the extension's original segments too: integrity checks
+ // compare the final uploaded image, not superseded instructions.
+ const merged=Buffer.from(ext.upload.subarray(0,-4));
+ for(let p=0;p<merged.length;){const a=merged.readUInt16LE(p),n=merged.readUInt16LE(p+2);
+  for(const patch of custom.segments)if(patch.addr>=a&&patch.addr+patch.bytes.length<=a+n)merged.set(patch.bytes,p+4+patch.addr-a);
+  p+=4+n;
+ }
+ writeFileSync(resolve(outDir,'upload-custom.bin'),Buffer.from([...merged,...extra,0,0,0,0]));
  writeFileSync(resolve(outDir,'resident-custom.asm'),resident7Asm(rom,custom));
  writeFileSync(resolve(outDir,'custom.asm'),'!AUDIO_CUSTOM_FLOOR = '+custom.floor+'\naudio_custom_edl_caps:\n db '+caps.map(s=>s.maxEdl).join(',')+'\n'+resident7Levels());
  writeFileSync(resolve(outDir,'custom.json'),JSON.stringify({settings:custom.settings,gains:custom.gains,caps,
