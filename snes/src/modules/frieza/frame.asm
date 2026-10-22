@@ -147,12 +147,33 @@ fz_try_quiet:
 	LDA !fz_wasidle                   ; the Balls' VRAM region to give back
 	AND.w #!FZI_BALLS
 	BNE .no
+if not(defined("FRIEZA_QUIET_AWAY_SLOW"))
+	; Before Goku's arrival nothing of Frieza's runs on his own maps either
+	; (fz_on off: the danger bit and the VRAM settle, both done this frame):
+	; quiet as elsewhere when no transient flag is left for a busy frame to
+	; retire (the danger bit, the input lock, a whiteout).
+	LDA.l !persist_goku_active
+	AND.w #$00FF
+	BNE .arrived
+	LDA !fz_mapflag
+	AND.w #$00FF
+	BEQ .away
+	LDA !fz_init
+	CMP.w #$00A5                      ; $A5 settled, every transient flag clear
+	BEQ .away
+	BRA .no
+.arrived
+	LDA !fz_mapflag
+	AND.w #$00FF
+	BNE .no
+else
 	LDA !fz_mapflag
 	AND.w #$00FF
 	BNE .no
 	LDA.l !persist_goku_active
 	AND.w #$00FF
 	BEQ .away
+endif
 	LDA.l !fzp_stage
 	AND.w #$00FF
 	BEQ +
