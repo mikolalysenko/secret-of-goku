@@ -4,6 +4,22 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the fight and the clash check that the picture holds steady (2026-10-21)
+
+- `watch.lua` `W.flicker`: on each frame's OAM under the PPU's line
+  limits, the stars drawn and the sliver-lines Goku, Frieza and the beams
+  lose, and the bursts'.
+- `fight` and `clash` (`snes/test/orbit/run.mjs`) fail past bounds on
+  the stars' jumps (5 or more in a frame), the frames where Goku, Frieza,
+  the beams or the bursts lose sliver-lines, each body's hides, and any
+  hide shown again within 30 frames (a blink). `fight`: 12 jumps, 8
+  frames, bursts 40, hides 0/0/1. `clash`: 24, 2, 4, 0/0/2.
+- This build: `fight` 6 jumps, 4 frames, bursts 32, hides 0/0/1 (within
+  the bounds over all 8 frame phases); `clash` 13, 0, 0, 0/0/2; no blink.
+  main 6a6c9a3 fails both cases: the `fight`'s 30 Hz tear (18 frames) and
+  the outer planet's blink, the `clash`'s moon and outer planet hiding 3
+  times each.
+
 ## Orbit: the clash culls again, and no body waits for the star lists (2026-10-21)
 
 - A distant body counted on a beam's rows waited for star lists 1-2 to

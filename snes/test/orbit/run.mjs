@@ -145,6 +145,37 @@ const bodyFindings=watch=>{
   });
   return {hides,shows,held,others,own};
 };
+// The flicker watch (W.flicker, with W.bodies' states): the frames where
+// the stars drawn change by 5 or more (past the scene's first 10 frames),
+// those where Goku, Frieza or a beam lose sliver-lines to the PPU's line
+// limits (and the lines), the bursts' likewise, and per body its hides that
+// show again within 30 frames (a blink).
+const flickerFindings=watch=>{
+  const out={jumps:[],prot:[],burst:[],short:[0,0,0]},hideAt=[null,null,null],last=[null,null,null];
+  let prev=null,first=null;
+  (watch??[]).forEach((w,i)=>{
+    const parts=w.split('|'),f=parts.find(x=>/^F\d+,\d+,\d+$/.test(x)),b=parts.find(x=>/^[-dh]{3},\d+,\d+$/.test(x));
+    if(f){
+      const[st,p,u]=f.slice(1).split(',').map(Number);
+      if(first===null)first=i;
+      if(prev!==null&&i>first+10&&Math.abs(st-prev)>=5)out.jumps.push([i,st-prev]);
+      prev=st;
+      if(p>0)out.prot.push([i,p]);
+      if(u>0)out.burst.push([i,u]);
+    }
+    if(b)for(let k=0;k<3;k++){
+      const s=b[k];
+      if(last[k]==='d'&&s==='h')hideAt[k]=i;
+      if(last[k]==='h'&&s==='d'&&hideAt[k]!==null&&i-hideAt[k]<30)out.short[k]++;
+      if(s!=='-')last[k]=s;
+    }
+  });
+  return out;
+};
+const flickerText=f=>`flicker: the stars jumped by 5+ in ${f.jumps.length} frames; Goku, Frieza and the beams lost sliver-lines in ${f.prot.length} frames (${f.prot.reduce((n,[,l])=>n+l,0)}), the bursts in ${f.burst.length} (${f.burst.reduce((n,[,l])=>n+l,0)}); short hides ${f.short.join('/')}`;
+// within its bounds: {jumps, prot and burst (frames), hides (per body, at
+// most), short (all)}
+const flickerOk=(f,hides,B)=>!B||(f.jumps.length<=B.jumps&&f.prot.length<=B.prot&&f.burst.length<=B.burst&&hides.every((h,k)=>h<=B.hides[k])&&f.short.reduce((n,x)=>n+x,0)<=B.short);
 const bodyText=b=>`the bodies held back ${b.held.join('/')} frames (hides ${b.hides.join('/')}, shows ${b.shows.join('/')}: moon/outer planet/planetoid), costing the others ${b.others.reduce((n,[,s])=>n+s,0)} slivers in ${b.others.length} frames and losing ${b.own.reduce((n,[,s])=>n+s,0)} of their own`;
 const watchFindings=watch=>{
   const late=[],dropped=[],writes=[],hdma=[],bandrim=[];
@@ -342,7 +373,7 @@ end
 // The fight's frame-by-frame comparison (cases fight, scenery): the
 // cartridge's state every frame against the browser's own battle under the
 // same pads.
-async function fightCase(rom,name,frames,pads,shotList,maxLag=3){
+async function fightCase(rom,name,frames,pads,shotList,maxLag=3,flickerBounds=null){
     const dir=join(out,name);
     const pre=`BUNDLE=${JSON.stringify(bundleDir('preset__space'))}\nPADS=${lua(pads)}\nSHOTS={${[...shotList,...extraShots()].join(',')}}\nDUMP=${process.env.ORBIT_DUMP?'true':'false'}\nEXTRA=${Number(process.env.ORBIT_FIGHT_EXTRA??0)}\n`;
     const r=await runMesen({rom,state,test:ADDR+pre+watchPrelude(rom)+readFileSync(join(here,'fight.lua'),'utf8'),outDir:dir,timeoutMs:TIMEOUT,exactFrames:!!process.env.ORBIT_SHOTS});
@@ -377,8 +408,8 @@ async function fightCase(rom,name,frames,pads,shotList,maxLag=3){
       if(d.length)mismatches.push(`age ${c.boss.age}: ${d.slice(0,4).join('; ')}`);
     }
     // every frame: the colours the orbit owns as the scene sends them
-    const colours=badColours(res.watch),{late,dropped,writes}=watchFindings(res.watch),bodies=bodyFindings(res.watch);
-    const report={compared,mismatchFrames:mismatches.length,first:mismatches.slice(0,12),lagged:res.lagged,hpTrail:trail,colours,late,dropped,writes,bodies,watch:res.watch,
+    const colours=badColours(res.watch),{late,dropped,writes}=watchFindings(res.watch),bodies=bodyFindings(res.watch),flicker=flickerFindings(res.watch);
+    const report={compared,mismatchFrames:mismatches.length,first:mismatches.slice(0,12),lagged:res.lagged,hpTrail:trail,colours,late,dropped,writes,bodies,flicker,watch:res.watch,
       end:{cart:cart.at(-1),browser:ref[cart.at(-1).boss.age-1]?refState(ref[cart.at(-1).boss.age-1]):null}};
     writeFileSync(join(dir,'report.json'),JSON.stringify(report,null,1));
     // The fight steps once per field vblank (catching up after a slow game
@@ -386,9 +417,12 @@ async function fightCase(rom,name,frames,pads,shotList,maxLag=3){
     // when the game's own frame runs long (its damage reaction).
     // (and a distant body drawn whole or not at all: it never loses
     // slivers on the sprite lines)
-    ok=ok&&compared>=frames-80&&mismatches.length===0&&res.lagged<=maxLag&&colours.length===0&&late.length===0&&writes.length===0&&bodies.own.length===0;
+    // (and the picture steady: the stars, Goku, Frieza, the beams and the
+    // bodies within the flicker bounds)
+    ok=ok&&compared>=frames-80&&mismatches.length===0&&res.lagged<=maxLag&&colours.length===0&&late.length===0&&writes.length===0&&bodies.own.length===0&&flickerOk(flicker,bodies.hides,flickerBounds);
     console.log(`${name}: ${ok?'pass':'FAIL'} compared ${compared} frames, ${mismatches.length} differ, ${res.lagged} lagged, HP trail ${trail}, ${colours.length} frames with other colours, ${late.length} late vblanks, ${writes.length} frames writing CGRAM or DMA on visible lines, ${dropped.length} frames dropping sprites`);
     console.log(`  ${bodyText(bodies)}`);
+    console.log(`  ${flickerText(flicker)}`);
     for(const[f,c]of colours.slice(0,8))console.log(`  frame ${f}: ${c} not the scene's`);
     for(const[f,cw,dw]of writes.slice(0,8))console.log(`  frame ${f}: ${cw} CGRAM writes, ${dw} DMA starts on visible lines`);
     for(const m of mismatches.slice(0,8))console.log('  '+m);
@@ -480,7 +514,7 @@ const cases={
   async fight(rom){
     const frames=Number(process.env.ORBIT_FIGHT_FRAMES??660);
     // lag 12 measured: the base's 2 (248, 524) plus the distant bodies' cascade 235-255 under the beam's zoom
-    return fightCase(rom,'fight',frames,fightPads(frames),[0,60,150,200,240,320,600],12);
+    return fightCase(rom,'fight',frames,fightPads(frames),[0,60,150,200,240,320,600],12,{jumps:12,prot:8,burst:40,hides:[0,0,1],short:0});
   },
   async scenery(rom){
     // (to 196: the shattered bodies' debris, not ported yet, first strikes
@@ -536,16 +570,20 @@ const cases={
     const want=ref.filter(b=>b.native).map(b=>b.native.map(v=>v.toString(16)).join(' '));
     const returned=cart.find(c=>c.returned),refReturn=ref.find(b=>b.returned);
     // every frame the globe picture shows: the colours the orbit owns
-    const colours=badColours(res.watch),{late,dropped,writes,hdma,bandrim}=watchFindings(res.watch),bodies=bodyFindings(res.watch);
+    const colours=badColours(res.watch),{late,dropped,writes,hdma,bandrim}=watchFindings(res.watch),bodies=bodyFindings(res.watch),flicker=flickerFindings(res.watch);
     const report={compared,mismatchFrames:mismatches.length,first:mismatches.slice(0,16),lagged:res.lagged,nativeWant:want,
-      returnedAt:returned?.wage,refReturnedAt:refReturn?refReturn.boss.age:null,colours,late,dropped,writes,hdma,bandrim,bodies,watch:res.watch,end:cart.at(-1)};
+      returnedAt:returned?.wage,refReturnedAt:refReturn?refReturn.boss.age:null,colours,late,dropped,writes,hdma,bandrim,bodies,flicker,watch:res.watch,end:cart.at(-1)};
     writeFileSync(join(dir,'report.json'),JSON.stringify(report,null,1));
     // (and at and after every repeated picture the rays' band layers drawn
     // as on any other frame: the scene's HDMA channels on, no band pixel in
     // the rim's colour)
-    ok=ok&&compared>=frames-200&&mismatches.length===0&&!!returned&&returned.wage===refReturn?.boss.age&&colours.length===0&&late.length===0&&writes.length===0&&hdma.length===0&&bandrim.length===0&&bodies.own.length===0;
+    // (and the picture steady: the moon and the outer planet never hide,
+    // no blink, the stars leaving and coming back in few steps, Goku,
+    // Frieza and the rays whole)
+    ok=ok&&compared>=frames-200&&mismatches.length===0&&!!returned&&returned.wage===refReturn?.boss.age&&colours.length===0&&late.length===0&&writes.length===0&&hdma.length===0&&bandrim.length===0&&bodies.own.length===0&&flickerOk(flicker,bodies.hides,{jumps:24,prot:2,burst:4,hides:[0,0,2],short:0});
     console.log(`clash: ${ok?'pass':'FAIL'} compared ${compared} frames, ${mismatches.length} differ, ${res.lagged} lagged, back at ${returned?.wage} / ${refReturn?.boss.age}, ${colours.length} frames with other colours, ${late.length} late vblanks, ${writes.length} frames writing CGRAM or DMA on visible lines, ${hdma.length} frames without the scene's HDMA channels, ${bandrim.length} band pictures miscoloured after a repeat, ${dropped.length} frames dropping sprites`);
     console.log(`  ${bodyText(bodies)}`);
+    console.log(`  ${flickerText(flicker)}`);
     for(const[f,n]of bandrim.slice(0,8))console.log(`  frame ${f}: ${n} band-line pixels in the rim's colour`);
     for(const m of mismatches.slice(0,10))console.log('  '+m);
     // the repeated pictures by the finale's phase and age (the frame's own

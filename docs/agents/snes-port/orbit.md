@@ -1139,6 +1139,24 @@ come from their sources. Results on the merged build:
   and shows, and the slivers the bodies' sprites cost the others (the
   OAM shown with and without their entries); a body that loses a sliver
   of its own fails the case.
+- `fight` and `clash` also hold the picture steady (`W.flicker`: the
+  maintainer found SNES 0.2.0's orbit "super glitchy ... lots of
+  flickering and sprites disappearing"). On each frame's OAM under the
+  PPU's line limits (per line the first 32 sprites in range, their
+  slivers fetched last sprite first, 34 at most) the watch counts the
+  stars drawn and the sliver-lines Goku, Frieza and the beams lose, and
+  the bursts'. A case fails past its bounds on the frames where the stars
+  drawn change by 5 or more (`fight` 12, `clash` 24), those where Goku,
+  Frieza or a beam lose sliver-lines (8, 2), those where the bursts do
+  (40, 4), each body's hides (moon, outer planet, planetoid: 0/0/1,
+  0/0/2), and on any hide shown again within 30 frames (a blink). This
+  build: the `fight` 6, 4 (64 sliver-lines), 32 (450) and 0/0/1, and 6-8,
+  4, 29-35 and 0/0/1 over its 8 frame phases (`ORBIT_FIGHT_EXTRA=0..7`);
+  the `clash` 13, 0, 0 and 0/0/2; no blink. main 6a6c9a3 fails both: in
+  the `fight` Goku's wave and Frieza's beam lose sliver-lines in 18 frames
+  (234: the 30 Hz tear) and the outer planet hides and blinks; in the
+  `clash` the moon and the outer planet hide 3 times each, 3 of those
+  blinks.
 - `montage`: from the hand-off, the whole cinematic to `cosmicDuration`
   (2042) and the orbit's intro after it; 40 screenshots compared with the
   browser drawing into a 256x224 surface (`montage-ref.mjs`):
