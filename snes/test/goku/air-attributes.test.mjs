@@ -17,7 +17,7 @@ const root=resolve(import.meta.dirname,'../../..');
 const path=resolve(root,process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc');
 let refPath=process.env.GOKU_AIR_REF_ROM&&resolve(root,process.env.GOKU_AIR_REF_ROM);
 if(!refPath){
-  refPath=resolve(root,'.local/snes-test/roms/goku-emit-slow.sfc');
+  refPath=resolve(root,'.local/snes-test/roms/goku-air-emit-slow.sfc');   // (not emit-fast's: node --test runs files at once)
   mkdirSync(resolve(refPath,'..'),{recursive:true});
   const b=spawnSync(process.execPath,[resolve(root,'snes/build.mjs'),'--quiet','--strict',`--out=${refPath}`,'-DGOKU_EMIT_SLOW=1'],{cwd:root,stdio:'inherit'});
   assert.equal(b.status,0,'reference build failed');
