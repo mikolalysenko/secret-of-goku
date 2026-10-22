@@ -27,6 +27,10 @@ const cpu=new context.Cpu({
   cpuWrite:(a,v)=>{assert(at(a)>=0,`unexpected write $${a.toString(16)}`);ram[at(a)]=v;},
 });
 const cursorAt=0x6E90,frontN=0x6E94,front=0x6EC0,hi=0x6F00,watermark=0x21494,first=0x21497;
+// With the partial field OAM upload the commit also publishes the next
+// upload's end: $8000 | max(cursor, a module's kept extent) (core.asm,
+// !RAM_CORE_OAM at 7E:D6F2).
+const partial=symbols.has('core_oam_foreign_ldx'),markAt=0xD6F2,keepAt=0xD6FA;
 function run(n,cursor,pattern=0,flight=0){
   seed.copy(ram);ram.writeUInt16LE(n,frontN);ram.writeUInt16LE(cursor,cursorAt);
   ram[0xD900]=flight;
@@ -58,6 +62,8 @@ function run(n,cursor,pattern=0,flight=0){
   }
   want.writeUInt16LE(0,frontN);want.writeUInt16LE(cursor+shift,cursorAt);
   want.writeUInt16LE(cursor+shift,0x120);want.writeUInt16LE(cursor+shift,watermark);
+  const keep=ram.readUInt16LE(keepAt),mark=(cursor+shift>=keep?cursor+shift:keep)|0x8000;
+  if(partial)want.writeUInt16LE(mark,markAt);
   cpu.reset();cpu.e=false;cpu.m=false;cpu.x=false;cpu.d=false;
   cpu.r[0]=0x7E;cpu.r[1]=entry>>>16;
   cpu.br.set([0xABCD,0x1234,0x5678,0x1FFD,entry&65535,0]);
@@ -67,7 +73,7 @@ function run(n,cursor,pattern=0,flight=0){
     assert(++instructions<10000,`commit did not return ${n}/${cursor}/${pattern}`);
     cpu.cyclesLeft=0;cpu.cycle();cycles+=cpu.cyclesLeft+1;
   }
-  assert.equal(cpu.br[0],cursor+shift,'cursor return');
+  assert.equal(cpu.br[0],partial?mark:cursor+shift,'cursor return');
   assert.equal(cpu.br[3],0x1FFF,'balanced stack');
   assert.equal(cpu.r[0],0x7E,'data bank');
   assert.equal(cpu.br[5],0,'direct page');

@@ -105,6 +105,28 @@ dialogue, menus, the name editor and world steering all see it.
   rest hidden by `C0:9DE9`), 64–83 Flammie, shadow and approach effects
   (`C1:FDE4`, `C2:B273`); 84–127 are never written. OBJSEL `$03` (8×8/16×16).
 - Menus: own buffer `$7E:9C00`, DMA only when it changes.
+- Partial field upload (`core_oam_upload`; `CORE_OAM_PARTIAL_SLOW=1` sends
+  all `$220` bytes every vblank): the low table only up to max(m, h), then
+  the 32-byte high table. m is the field commit's end (`core_oam_commit_field`
+  records it with `$0120`; every slot from there on is hidden in the buffer)
+  or `!core_oam_keep` if larger (sprites a module keeps past its cursor: the
+  ending sets `$200` while a scene runs, for the flight's stars in slots
+  42-127, which its vblank copies in; it lasts until title entry), h where
+  the last upload left the PPU's slots hidden. The whole table goes
+  when no field commit ran since the last upload (rings, `$EC` bit 3 frames),
+  when PPU slot 0 reads back (`$2138`) different from what the last upload
+  sent, or after another OAM writer: the menus' buffer (`C0:1F5B`),
+  `C0:9A95`, `C2:A82F`/`A8A5`/`AEA7` and `C6:46C5`'s channel-0 copy from
+  `$15E0` (hooked), the Goku menu's direct edits, a core mode change (world
+  flight's own upload `C0:882F` sits behind one) or title entry (core WRAM
+  cleared). OAMADD, DMA channel 7 and the CPU registers end as the retail
+  transfer leaves them. A module that writes the buffer must leave every
+  entry past its cursor hidden: fx's rollback (`fx_oam_rollback`, a frame
+  whose cells cannot be uploaded in time) hides the sprites it takes back.
+  The upload's state (`!RAM_CORE_OAM`, `7E:D6F2-D6FD`) sits outside the
+  block the map loads' tile decoder overwrites (`7E:6E40-6FFF`; in the
+  Sandship's cabin it made the keep `$3030`), with a magic word that resets
+  it in states saved by older builds.
 - Native counts (measure.mjs, p50/max): waterfall 4/5, Potos 11/14,
   Sandship 19/34, Thanatos arena 6/7, Mana Beast 33/34, Fortress 11/12,
   Fortress boss 488 34/38; 63 in the busiest ending montage state.
@@ -386,6 +408,30 @@ branch helper retains its native X16 calling contract. Representative
 forward/branch calls fall 75 → 61 / 118 → 109 CPU cycles. Script decisions
 and update counts are unchanged.
 
+`C1:0245`, the relative jump (op `01` through `C1:0285`, and the
+conditional ops' taken path through their wrappers), runs in place without
+retail's D = S stack frame. It returns the same script pointer, A =
+`$FFFF`, X at the operand's last byte and the caller's P and D (N/Z from
+the restored D); the add keeps the caller's decimal flag. `ai-jump.test.mjs`
+compares it with retail over every operand pair, wrapped pointers, entry
+flags, D, DB, Y and the five wrappers. 98–104 → 74–77 CPU cycles a jump.
+`CORE_NATIVE_JUMP_SLOW=1` restores retail. `ai-trace.test.mjs` replays
+recorded enemy AI calls (private recordings made with the
+`snes/test/lua/ai-record.lua` prelude) through the cartridge and through
+it with the rewritten `C1` bytes put back to retail, and compares WRAM,
+SRAM, registers, flags and I/O writes.
+
+The bytecode command loop runs from `C1:27CC-27FF`, 52 unused `$FF`
+bytes: dispatch, result test and the 256-command count in one place,
+without the two JMPs a command between the dispatcher at `C1:251A` and the
+loop at `C1:257D` (both kept; `C1:257A` jumps to the moved loop). Commands
+return to `C1:27E1`; the P/D saves around each one, the counter at D+1,
+the native limit (`JSR $0100`) and the exit at `C1:2588` stay. A further
+command costs 15 CPU cycles less than retail (9 with the direct branch
+alone). `ai-dispatch.test.mjs` runs all 256 opcodes and whole loops to the
+limit through the moved loop. `CORE_NATIVE_LOOP_SLOW=1` keeps the direct
+branch.
+
 `C1:0358` now classifies AI distances through a 64 KiB lookup split between
 `E0:0000-7FFF` and `ED:0000-7FFF`. `snes/gen/core-math.mjs` preserves the
 native inclusive radius thresholds and 16-bit square-sum overflow. The
@@ -398,6 +444,19 @@ scratch, rather than an output of this helper. The assembled
 outside dead stack locals across all 65,536 byte-magnitude pairs, large
 coordinates, heights and flag combinations. A representative call falls
 from 322 to 198 CPU cycles.
+
+The five three-slot target scans, `C1:0A11`/`0A5A` (party, distance class
+up to 4 / 8) and `C1:0C08`/`0C51`/`0C9A` (enemies, up to 2 / 4 / 8), run
+as one core loop per side. It makes `C1:054A`'s target checks inline
+(active, not the asking actor, x below 256, y − height below 224, none of
+status `$8460`; enemies also `$0180` below `$80`, `C1:058B`) and takes the
+distance class from `core_distance_class`, the lookup's fast path without
+its stack frame. The result, A, X, P and D (N/Z from D) are retail's;
+decimal and eight-bit-index callers keep the retail loop.
+`ai-scan.test.mjs` compares 80,000 random and edge actor states (each
+asking slot, statuses, `$0180`, heights, far targets) and the entry flags
+with retail. 513 → 379 CPU cycles a scan on average.
+`CORE_NATIVE_SCAN_SLOW=1` restores the retail loops.
 
 `C1:0404` uses another byte table for pursuit direction, split between
 `EE:0000-7FFF` and `EF:0000-7FFF`. Each entry contains the major axis,
@@ -420,6 +479,10 @@ assembled helpers' registers, flags and live RAM for every limit/index,
 131 seed states and CPU fallbacks. A 68-draw case falls 14,569 → 4,487 CPU
 cycles. This reduces overhead without imposing a new rejection limit.
 `-DCORE_NATIVE_AI_RANDOM_SLOW=1` restores the original entry.
+Each draw now keeps the state index in X and stores it once, without
+parking the byte in B; B = 15 is set at the end, as retail's last compare
+leaves it. The 68-draw case falls further, 4,487 → 3,807 CPU cycles
+(`CORE_NATIVE_AI_RANDOM_LOOP_SLOW=1` keeps the earlier loop).
 
 `C1:E05A` copies the native actor palette's fifteen words to `$0700,Y`
 and `$DF00,Y` using constant offsets. Its saved X/Y are restored by the

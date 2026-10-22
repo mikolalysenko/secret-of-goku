@@ -4,6 +4,10 @@
 ; with write watches from power-on through the opening.
 ; Large buffers and persistent mod state live in the added SRAM.
 ;
+; WRAM 7E:D6F2-D6FD (12 bytes, below the module blocks): the field vblank's
+; partial OAM upload state (core.asm !core_oam_mark). It must outlive map
+; loads, whose tile decoder can overwrite 7E:6E40-6FFF.
+!RAM_CORE_OAM = $7ED6F2
 ; WRAM 7E:D6FF (1 byte, below the module blocks): the displayed-brightness
 ; ceiling owners (core.asm !core_bright_any).
 !RAM_CORE_BRIGHT = $7ED6FF

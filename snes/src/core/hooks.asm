@@ -108,6 +108,58 @@ endmacro
 %core_ai_advance_tail($C102B3, $0245)
 endif
 
+; C1:0245: the bytecode's relative jump (op 01 through C1:0285, and the
+; taken path of the conditional ops through their wrappers). X16 = operand
+; address. One byte with bit 7 set: a 7-bit signed offset (bit 6 the sign)
+; from the operand; otherwise two bytes, a 15-bit big-endian offset (bit 6
+; of the first the sign) from the second. The script pointer becomes
+; operand end + offset; A = $FFFF, X = the operand's last byte, P and D as
+; at entry (N/Z from the restored D). Retail built that in a D = S stack
+; frame; this adds X from the stack and keeps D. The add sees the caller's
+; decimal flag as before; only the dead bytes below S differ. (X8 callers
+; do not exist: retail's frame would unbalance its own stack.)
+if not(defined("CORE_NATIVE_JUMP_SLOW"))
+%orig4($C10245, $20C2080B)
+%orig4($C10281, $602B2868)
+%patch($C10245, $40, core)
+pushpc
+org $C10245
+core_native_jump:
+	PHD
+	PHP
+	REP #$20
+	LDA.l $D04F15,X
+	BIT.w #$0080
+	BEQ .long
+	BIT.w #$0040
+	BNE .back
+	AND.w #$007F
+	BRA .add
+.back
+	ORA.w #$FF00
+	BRA .add
+.long
+	INX
+	XBA
+	BIT.w #$4000
+	BEQ .add
+	ORA.w #$8000
+.add
+	INC
+	PHX
+	CLC
+	ADC $01,S
+	PLX
+	STA.w $0144,Y
+	LDA.w #$FFFF
+	PLP
+	PLD                        ; native return N/Z describe the restored D
+	RTS
+	padbyte $EA
+	pad $C10285
+pullpc
+endif
+
 ; The bytecode dispatcher has one caller, the loop at C1:257A. Branch
 ; directly between them; its P/D saves still surround every command.
 ; PLP selects the return width, so the preceding REP was redundant.
@@ -116,8 +168,48 @@ if not(defined("CORE_NATIVE_DISPATCH_SLOW"))
 %patch($C1257A, 3, core)
 pushpc
 org $C1257A
+if not(defined("CORE_NATIVE_LOOP_SLOW"))
+	JMP $27CC
+else
 	JMP $251A
+endif
 pullpc
+if not(defined("CORE_NATIVE_LOOP_SLOW"))
+; The same command loop in the bank's unused padding at C1:27CC-27FF (52
+; $FF bytes no code or table reaches): the dispatch, the result test and
+; the 256-command count in one place, without the two JMPs between the
+; dispatcher at C1:251A and the loop at C1:257D (which stay as they were).
+; Commands return to C1:27E1; the P/D saves around each one, the counter
+; at D+1, the native limit (JSR $0100) and the exit at C1:2588 are kept.
+%orig4($C127CC, $FFFFFFFF)
+%orig4($C127FC, $FFFFFFFF)
+%patch($C127CC, $34, core)
+pushpc
+org $C127CC
+core_native_loop:
+	PHD
+	PHP
+	REP #$20
+	LDX.w $0144,Y
+	LDA.l $D04F15,X
+	AND.w #$00FF
+	ASL
+	TAX
+	SEP #$20
+	JSR ($2257,X)
+	PLP
+	PLD
+	CMP.b #$00
+	BEQ .end
+	DEC $01
+	BNE core_native_loop
+	JSR $0100
+.end
+	JMP $2588
+	padbyte $FF
+	pad $C12800
+pullpc
+endif
 %orig4($C1252F, $2B2820C2)
 %patch($C1252F, 5, core)
 pushpc
@@ -131,6 +223,20 @@ endif
 if not(defined("CORE_NATIVE_DISTANCE_SLOW"))
 %orig4($C10358, $20C2080B)
 %hijack($C10358, core_native_distance, 4, core)
+endif
+
+if not(defined("CORE_NATIVE_SCAN_SLOW"))
+%orig4($C10A46, $602B2868)
+%orig4($C10A11, $20C2080B)
+%hijack($C10A11, core_native_scan4, 4, core)
+%orig4($C10A5A, $20C2080B)
+%hijack($C10A5A, core_native_scan8, 4, core)
+%orig4($C10C08, $20C2080B)
+%hijack($C10C08, core_native_escan2, 4, core)
+%orig4($C10C51, $20C2080B)
+%hijack($C10C51, core_native_escan4, 4, core)
+%orig4($C10C9A, $20C2080B)
+%hijack($C10C9A, core_native_escan8, 4, core)
 endif
 
 if not(defined("CORE_NATIVE_DIRECTION_SLOW"))
@@ -414,6 +520,30 @@ if not(defined("CORE_OAM_ROTATION_SLOW")) && not(defined("CORE_OAM_COMMIT_SLOW")
 %orig4($C0C136, $A943758E)
 %orig4($C0C13A, $420B8D80)
 %hijack($C0C11E, core_oam_upload, 32, core)
+if !CORE_OAM_PARTIAL
+; The game's other OAM uploads leave the PPU's OAM tail unknown to the
+; field's partial upload (oam.asm core_oam_foreign_*). World flight's own
+; vblank upload (C0:882F, every world frame) needs no hook: entering and
+; leaving world flight changes core's mode, which marks the tail unknown.
+%orig4($C01F60, $8E0000A2)
+%orig2($C01F64, $2102)
+%hijack_jsl($C01F60, core_oam_foreign_ldx, 6, core)
+%orig4($C09A95, $8D0000A9)
+%orig2($C09A99, $2102)
+%hijack_jsl($C09A95, core_oam_foreign_lda, 6, core)
+%orig4($C2A82F, $8D0000A9)
+%orig2($C2A833, $2102)
+%hijack_jsl($C2A82F, core_oam_foreign_lda, 6, core)
+%orig4($C2A8A5, $8D0000A9)
+%orig2($C2A8A9, $2102)
+%hijack_jsl($C2A8A5, core_oam_foreign_lda, 6, core)
+%orig4($C2AEA7, $8D0000A9)
+%orig2($C2AEAB, $2102)
+%hijack_jsl($C2AEA7, core_oam_foreign_lda, 6, core)
+%orig4($C646C5, $9C21029C)
+%orig2($C646C9, $2103)
+%hijack_jsl($C646C5, core_oam_foreign_stz, 6, core)
+endif
 ; Ring/map OBJ rebuilds retire the previous field's priority state.
 %orig4($C0E355, $00A230C2)
 %orig1($C0E359, $00)

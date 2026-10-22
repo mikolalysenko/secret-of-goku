@@ -113,6 +113,26 @@
                                     ; actor writes !core_frame here in its frame code: that
                                     ; frame's vblank skips the game's actor cells (core_actor_cells)
 !core_oam_first       = !CORE_SAFE+$017 ; byte: $80 | first field OBJ, or 0 for normal order
+; The field vblank's partial OAM upload (oam.asm core_oam_upload): the
+; commit's end for the next upload, and where the PPU's entries are hidden.
+; In !RAM_CORE_OAM (7E:D6F2), which map loads leave alone; cleared with the
+; module blocks, and by the upload itself when its magic word is missing (a
+; state saved by an older build). CORE_OAM_PARTIAL_SLOW keeps the whole
+; transfer every vblank.
+!CORE_OAM_PARTIAL = 0
+if not(defined("CORE_OAM_PARTIAL_SLOW")) && not(defined("CORE_OAM_ROTATION_SLOW")) && not(defined("CORE_OAM_COMMIT_SLOW"))
+!CORE_OAM_PARTIAL = 1
+endif
+!core_oam_mark        = !RAM_CORE_OAM+$000 ; word: $8000 | byte end of the field commit (fresh)
+!core_oam_hidden      = !RAM_CORE_OAM+$002 ; word: $8000 | PPU OAM byte offset from which every
+                                    ; low-table entry is hidden; bit 15 clear = unknown
+!core_oam_print       = !RAM_CORE_OAM+$004 ; 4 bytes: PPU OAM slot 0 as the last upload sent it
+!core_oam_keep        = !RAM_CORE_OAM+$008 ; word: byte end (at most $200) of sprites a module
+                                    ; keeps in the buffer past its cursor (the ending's
+                                    ; stars): the field upload covers them too, until title
+                                    ; entry clears it
+!core_oam_magic       = !RAM_CORE_OAM+$00A ; word !CORE_OAM_MAGIC while the words above are this
+!CORE_OAM_MAGIC = $4F41             ; build's ('OA')
 ; !RAM_CORE_EXT+$181-$1BB reserved for core.
 ; This queue survives across field frames, so native map-tile decoding
 ; must not be able to overwrite it. It follows Goku's water palette.
@@ -244,6 +264,18 @@ if not(defined("CORE_BRIGHT_ANY_SLOW")) && not(defined("ENDING_NMI_HOOK_SLOW"))
 	SEP #$20
 	STA.l !core_bright_any
 	REP #$20
+endif
+if !CORE_OAM_PARTIAL
+	; The partial OAM upload's state (7E:D6F2-D6FD): no mark, no keep, the
+	; PPU's entries unknown; the next upload sends the whole table.
+	LDA.w #!CORE_OAM_MAGIC
+	STA.l !core_oam_magic
+	LDA.w #$0000
+	LDX.w #$0008
+.oam
+	STA.l !RAM_CORE_OAM,X
+	DEX : DEX
+	BPL .oam
 endif
 	RTS
 

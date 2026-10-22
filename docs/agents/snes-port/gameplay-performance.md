@@ -236,6 +236,152 @@ shadow-emitter fast path (C0:E765-E889, about 60 instructions a shadow,
 six shadows a frame) would save about 15% of it. The ending's 6-15.8 line
 maxima after the merge are lag NMIs inside the span on miss frames.
 
+## Performance pass 3 — October 22, 2026
+
+From snes-int cd0585d (combat round two: harder hits, a press's first frame
+in its own vblank) merged into pass 2's end (5f95d47), measured again: 88
+misses over offsets 0-9 (fly-ki 11, teleport 21, charge 43). This pass took
+the field vblank's OAM upload and the enemy AI interpreter's hottest work,
+with pass 1's method and acceptance rule.
+
+| Commit | Change (rollback define) | Cost before → after | Sum |
+| --- | --- | --- | --- |
+| f008c11 | Core: the field vblank sends only the used part of the OAM table (`CORE_OAM_PARTIAL_SLOW`) | native field NMI 19.07 → 17.51 lines a vblank; longest 36.57 → 35.77 | 88 → 90 |
+| b0d151d | Core: the AI's relative jump in place (`CORE_NATIVE_JUMP_SLOW`) | 98-104 → 74-77 CPU cycles a jump; recorded AI calls −2.7%; an AI call (fly-ki) 27.61 → 26.51 lines | 77 |
+| a1c7e09 | Core: the AI random draw loop keeps the index in X (`CORE_NATIVE_AI_RANDOM_LOOP_SLOW`) | a 68-draw choice 4,487 → 3,807 cycles; recorded calls −0.2%; fly-ki 26.51 → 26.37 | 74 |
+| 7bc9b67 | Core: the AI command loop runs from C1's padding (`CORE_NATIVE_LOOP_SLOW`) | 15 cycles less a further command; recorded calls −1.3%; fly-ki 26.37 → 25.67 | 65 |
+| 3c5e79e | Core: the AI's three-slot target scans in one loop (`CORE_NATIVE_SCAN_SLOW`) | 513 → 379 cycles a scan; recorded calls −4.6%; fly-ki 25.67 → 24.77 | 61 |
+
+Each define rebuilds the commit before it byte for byte; all five together
+rebuild the pass 3 base (bfbcd9eb).
+
+**Partial OAM upload.** The field NMI sent all 544 OAM bytes every vblank
+(3.35 lines). It now sends the low table only up to max(m, h), then the
+32-byte high table: m is the field commit's end (every slot from there on
+is hidden in the buffer) or a module's kept extent (`!core_oam_keep`), h
+where the previous upload left the PPU's slots hidden. Without a field
+commit since the last upload, with a PPU slot 0 that reads back different
+from what the last upload sent, or after another OAM writer (hooked: the
+menus' buffer C0:1F5B, C0:9A95, C2:A82F/A8A5/AEA7, C6:46C5's channel-0
+copy; the Goku menu's direct edits; a core mode change, which covers world
+flight's own upload; title entry), the whole table goes as before. OAMADD,
+DMA channel 7 and the CPU registers end as retail leaves them, so priority
+rotation and the vblank reload are unchanged.
+
+`snes/test/lua/oam-check.lua` (a `SNES_LUA_PRELUDE`) compares PPU OAM with
+the buffer after every field upload: any slot that shows on either side
+must match. The scene tests' picture scores did not notice any of what it
+found:
+- The ending's flight stars sit in slots 42-127, past the ending's module
+  area, and come in through its vblank copy: the partial upload left them
+  out (the flight scenes score 95-99% either way). A running ending now
+  sets `!core_oam_keep` to the whole table, until title entry.
+- fx's rollback (`fx_oam_rollback`: a frame whose new cells cannot be
+  uploaded in time draws the previous age instead) cleared only the
+  high-table bits of the sprites it took back. Those stayed visible past
+  the cursor; with the whole upload that was a frame of stale sprites, with
+  the partial one a ghost until a longer upload (destroy's brazier-water).
+  The rollback now hides them.
+- In the Sandship's cabin (destroy's ship-rescues) the map load's tile
+  decoder, which can write up to 7E:77FF, turned the keep in 7E:6E40-6FFF
+  into $3030, so the uploads stopped at slot 12. The state moved to
+  7E:D6F2-D6FD (`!RAM_CORE_OAM`, cleared with the module blocks and watched
+  by the core wram test), with a magic word that resets it in states saved
+  by older builds.
+
+With those, the checker finds no difference in 326,520 field uploads over
+18 suites on the final cartridge (boot, title, story, orbit, core, ending,
+Frieza, world, UI, Goku, Vegeta, combat, fx, destroy, debug, gameplay,
+perf, flight); all pass but fx's fight-ssj scene (below). Vblank lines
+saved (native field NMI, mean over offsets 0-9): solo-punch 16.32 → 14.45,
+punch 19.12 → 17.68, fly-ki 20.51 → 19.01, charge 20.43 → 19.08, teleport
+20.32 → 18.86, water-flight 16.97 → 15.10; no overruns. The CPU misses
+hardly move with it, since most miss frames end more than 1.6 lines late
+and the earlier start shifts which frames meet the deadline: 88 → 90 over
+offsets 0-9, 129 → 125 over offsets 10-19 (217 → 215 over both).
+
+**AI interpreter.** Real inputs first: `snes/test/lua/ai-record.lua`
+records the CPU and bank $7E at the enemy AI call (80:F8E9) over the
+gameplay cases, every call of fly-ki, fly-punch and charge, and the
+Fortress and Sandship presets. `snes/test/core/ai-trace.test.mjs` replays
+the 656 recorded calls through the cartridge and through it with the
+rewritten bytes put back to retail (or a build with the defines,
+`AI_TRACE_REFERENCE`): every call ends in the same WRAM, SRAM, registers,
+flags and I/O writes. Each rewrite also has a fixture over its input
+classes (`ai-jump`, `ai-random`, `ai-dispatch`, `ai-scan`):
+- C1:0245, the relative jump (op 01 and the conditional ops' taken path),
+  in place: the same pointer, A = $FFFF, X, P and D (N/Z from D) without
+  retail's D = S stack frame.
+- The rejection sampler's draws (`core_native_ai_random`): the index steps
+  in X, the sum is added in either order, B = 15 at the end as retail
+  leaves it.
+- The command loop in C1:27CC-27FF (52 unused $FF bytes): dispatch, result
+  test and the 256-command count together, without the two JMPs a command
+  between C1:251A and C1:257D.
+- C1:0A11/0A5A (party) and C1:0C08/0C51/0C9A (enemies): the first visible
+  target within distance class 2/4/8 in one loop, instead of a C1:054A or
+  C1:058B and a C1:0358 call per actor.
+
+Over the 656 recorded calls the AI takes 8.6% fewer CPU cycles than at the
+pass 3 base (5,011 → 4,580 a call; 10.3% fewer than with retail's
+interpreter bytes). In the gameplay runs (offsets 0-9) an AI call costs,
+base → final: fly-ki 27.64 → 24.77 lines (longest 42.26 → 37.77),
+fly-punch 27.57 → 24.86, charge 24.03 → 21.81 (49.14 → 43.01), teleport
+25.69 → 23.27, punch 16.42 → 15.18, ki 15.02 → 14.05.
+
+**Final (3c5e79e).** CPU misses per case:
+
+| Case | Offset 0, base → final | Sum, offsets 0-9, base → final |
+| --- | --- | --- |
+| punch | 0 → 0 | 6 → 4 |
+| ki | 0 → 0 | 3 → 2 |
+| fly | 0 → 0 | 1 → 1 |
+| fly-ki | 3 → 1 | 11 → 4 |
+| fly-punch | 0 → 0 | 3 → 3 |
+| teleport | 0 → 0 | 21 → 22 |
+| charge | 3 → 2 | 43 → 25 |
+| all others | 0 → 0 | 0 → 0 |
+| total | 6 → 3 | 88 → 61 |
+
+All 130 runs pass; no field NMI overruns, the longest NMI 36.57 → 35.77
+lines (transform-grass), the native field NMI mean 19.07 → 17.53. Perf
+scenes (p90; original / pass 3 base / final): sword 45 / 58 / 56, Sandship
+103 / 109 / 108, battle 34 / 48 / 46, Beast 173 / 169 / 168 (30 lag
+frames), Fortress 90 / 88 / 84, flight 123 / 112 / 112. Module tables:
+sword 6.53 → 6.51, battle 6.01 → 6.01 lines a frame (NMI 1.44 → 1.44 /
+1.43).
+
+**What still misses.** fly-ki keeps four misses over offsets 0-9. Frame
+103 at offsets 0 and 1 (4.2 and 8.7 lines over) has an AI call of
+33 lines inside B0CA's 90, B0B2 44, combat's B0AC 26 and flight 21.6;
+frames 294 and 311 at offsets 1 and 6 (7.7 and 4.4 over) are the hero grid
+moving into new cells, with B0B2 at 62 lines instead of 44. The base's
+offset-0 frames 139 and 293 no longer miss. charge's offset-0 misses are
+frames 165 and 167 (3.4 and 9.0 over): B0CA 85-97 with the AI 23, combat's
+B0AC 33-49, combat logic 24-39, fx 32-38. teleport's (offsets 2, 5-9) are
+the frames where the native message window draws (B08C 42-92 lines) beside
+the landing's flight work (up to 43), up to 38 lines over, as at the base.
+A fly-ki AI call is now about 24.7 lines: the op handlers 18.0, the
+dispatch 3.7, the rest 3.0. The largest ops (C1:19FE, 1738, 1CB0, 1200)
+take 1.1-1.4 lines a call each, and the distance helper C1:0358 2.3 over
+2.8 calls.
+
+**fx's fight-ssj.** From the command-loop commit on, the scene fails its
+whole-aura check once: at frame 354 a mirrored pair of fx sprites (tile
+$2A) joins the aura flames on line 105, 18 sprites and 36 slivers, and the
+PPU's 34-sliver limit takes the first-evaluated flames' slivers. It
+follows the frame timing, not the upload: the scene passes at the commits
+before, and at the final commit it fails with `CORE_OAM_PARTIAL_SLOW=1` as
+well, while `oam-check` finds the PPU OAM equal to the buffer throughout.
+ssj-kill-charge reports the same line limit without asserting it. fx
+needs a per-line budget for this (fx/combat).
+
+**Not taken.** The enemy scan C1:1CB0 (op 62, about 1.1 lines a call,
+two loops) and the dispatch frame (PHD/PHP around every command).
+Flight's new-cell classification, for the frames where the hero grid
+moves into new cells (fly-ki's B0B2 at 62 lines instead of 44). The
+bank-$00 outer loop.
+
 ## water-flight no longer wedges — October 21, 2026
 
 Until the flower-bed flight fix

@@ -1,6 +1,6 @@
 -- WRAM/SRAM claims: no original code may write the ranges the port took over
--- (core's ceiling byte 7E:D6FF, module blocks 7E:D700-DDFF, core 7E:6E40-6FFF,
--- UI/spare 7E:7E40-7FFF).
+-- (core's OAM upload state 7E:D6F2-D6FD and ceiling byte 7E:D6FF, module
+-- blocks 7E:D700-DDFF, core 7E:6E40-6FFF, UI/spare 7E:7E40-7FFF).
 -- Runs from power-on through the title, name entry and the whole opening to
 -- the waterfall, then imports busy scenes and walks around in each.
 local hits = {}
@@ -13,7 +13,7 @@ local function watch(lo, hi)
     hits[key] = (hits[key] or 0) + 1
   end, emu.callbackType.write, lo, hi)
 end
-local ranges = { { 0x7ED6FF, 0x7EDDFF }, { 0x7E6E40, 0x7E6FFF }, { 0x7E7E40, 0x7E7FFF } }
+local ranges = { { 0x7ED6F2, 0x7EDDFF }, { 0x7E6E40, 0x7E6FFF }, { 0x7E7E40, 0x7E7FFF } }
 -- Added SRAM pages: the game must never read or write them (no SRAM-size
 -- or mirroring checks); only $30:6000-7FFF is the game's.
 local sram = { { 0x316000, 0x317FFF }, { 0x326000, 0x327FFF }, { 0x336000, 0x337FFF },
