@@ -125,6 +125,17 @@ also reuses its completed capacity check. `CORE_NATIVE_EMITTER_RELOAD_SLOW`
 restores these paths. `$81:D14A` skips two cancelling direction inversions
 when both attack boxes are empty; `CORE_NATIVE_CONTACT_EMPTY_SLOW` restores
 that helper. The distance metadata at `$81:CE72–CF19` remains unchanged.
+A party member's contact pass over the enemy slots `$0600–$0A00` with `$ED`
+bit 7 set (`$C1:CE20–CE58`, once per member and field frame) runs unrolled
+in `core_native_contacts`: per member and slot the same distances,
+direction bits and touch bits, with the touch masks and `$E050/$E053/$E056`
+offsets as constants and no repeated loop arithmetic; an attack box or a
+pair within 24 px both ways continues in the retail rest of that pair
+(`$C1:CF38`/`CF4D`), which returns through the RTL at `$C1:CDCC` to the
+next slot. Other members, an 8-bit index or decimal mode take the retail
+loop. 220 recorded gameplay passes: 1,098 → 895 CPU cycles; contact stage
+B0B2 about 3 lines lower per crowded frame (`CORE_NATIVE_CONTACTS_SLOW`
+restores the loop; `snes/test/core/contacts.test.mjs`).
 See [gameplay performance](gameplay-performance.md#native-actor-follow-up--october-21-2026)
 for assembled real/random input comparisons, per-routine cycles, rollback
 checks and the remaining crowded-frame misses. No DMA/HDMA rule changes.

@@ -215,6 +215,17 @@ if not(defined("CORE_NATIVE_CONTACT_EMPTY_SLOW"))
 %hijack($C1D14A, core_native_contact_empty, 5, core)
 endif
 
+; A party member's contact pass over the enemy slots (C1:CE20-CE58) with
+; $ED bit 7 set, core/native.asm. Nothing branches into CE21-CE25; the
+; retail loop from CE26 remains for the cases the fast path declines, and
+; the retail rest of a pair (CF38, CF4D) returns through the RTL at CDCC.
+if not(defined("CORE_NATIVE_CONTACTS_SLOW"))
+%orig4($C1CE20, $11A920E2)
+%orig2($C1CE24, $5085)
+%orig1($C1CDCC, $6B)
+%hijack($C1CE20, core_native_contacts, 6, core)
+endif
+
 ; The field OAM reset's high-table clear (C0:BCD9-BCE5: LDX #$0200 /
 ; STZ $0800,X / INX / INX / CPX #$0220 / BCC) runs unrolled from FastROM.
 ; Nothing else branches into these bytes; BCE6 (SEP #$20) continues.
