@@ -13,7 +13,7 @@ if defined("FX_TEST")
 endif
 	LDA.l !fx_nmiwork            ; idle frames cost one read here
 	BEQ .done
-	BMI .kickOnly                ; $8000: a camera kick alone
+	BMI .light                   ; $8000: a camera kick and / or the flash
 	LDA.l !fx_magic
 	CMP.w #!FX_MAGIC
 	BNE .done
@@ -70,16 +70,24 @@ endif
 .done
 	RTL
 
-; Only the camera kick's scroll this vblank (no uploads, HDMA or colour
-; math): written while the vblank lasts.
-.kickOnly
+; Only the camera kick's scroll and the flash's colour math ($4000) this
+; vblank (no uploads or HDMA): written while the vblank lasts and leaves
+; time for the rest of the NMI (a late vblank skips them, as the full
+; path's: the busiest native vblanks end near line 258).
+.light
 	LDA.l !fx_magic
 	CMP.w #!FX_MAGIC
 	BNE .done
 	JSR fx_nmi_vline
 	CMP.w #225
 	BCC +
-	JSR fx_nmi_kick
+	CMP.w #256
+	BCS +
+	JSR fx_nmi_kick              ; (nothing without a kick)
+	LDA.l !fx_nmiwork
+	AND.w #$4000
+	BEQ +
+	JSR fx_nmi_math
 +	LDA.w #$0000
 	STA.l !fx_cfail
 	RTL
@@ -365,7 +373,8 @@ fx_cgram_upload:
 	RTL
 
 ; Flash (native-feedback.js burst): fixed-colour addition on BG1, BG2,
-; OBJ palettes 4-7 and the backdrop; R and G +amount, B +amount/2. The
+; OBJ palettes 4-7 and the backdrop; R and G +amount, B +amount/2, or B
+; +amount too for a white impact flash (fx_flash_amounts bit 8). The
 ; game's values come back from its shadows when the flash ends (CGWSEL is
 ; the constant 2 written at C2:AAD7; CGADSUB is $23).
 fx_nmi_math:
@@ -378,9 +387,13 @@ fx_nmi_math:
 	LDA.l !fx_flashamt
 	ORA.b #$60
 	STA $2132
+	LDA.l !fx_flashamt+1
+	BNE +
 	LDA.l !fx_flashamt
 	LSR
-	ORA.b #$80
+	BRA ++
++	LDA.l !fx_flashamt
+++	ORA.b #$80
 	STA $2132
 	REP #$20
 	LDA.w #$0001

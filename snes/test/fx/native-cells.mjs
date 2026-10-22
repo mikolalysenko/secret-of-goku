@@ -40,10 +40,14 @@ const need=['core_field_frame','core_field_nmi_done','fx_k_aura_obj','fx_draw_cu
 const SYM=Object.fromEntries(need.map(n=>{if(symbols[n]===undefined)throw Error('missing symbol '+n);return [n,symbols[n]];}));
 const fight=Array(6).fill('b:30,y:20,l+y:90,none:20,l:60,none:20').join(',');
 const B='animation-audit__native__rabite-field-b',A='animation-audit__native__rabite-field-a';
-// Held Y down kills slots 4 and 3, then Goku walks to the third Rabite
-// (slot 5) and leftward barrages kill it while more shots fly (and again
-// when a Rabite respawns there and cuts its number short).
-const barrage='down:2,y:180,none:40,left:12,y:180,none:40,down:32,left:60,y:240,none:20,y:240,none:60';
+// Held Y down kills slots 4 and 3, then Goku walks toward the third Rabite
+// (slot 5) and leftward barrages kill it while more shots fly, so its
+// number streams into region A among them. He stops at left:40. From
+// left:60, with the cartridge's SNES-only combat feel (combat.md), too few
+// shots were in flight at the kill: 17 sprite-frames in region A's claim
+// against 54 from here. Main without that feel has 60 from left:60, where a
+// respawned Rabite died there a second time, and 55 from here.
+const barrage='down:2,y:180,none:40,left:12,y:180,none:40,down:32,left:40,y:240,none:20,y:240,none:60';
 const ssjCharge='right:30,none:200,l:100,l+a:4,none:60,l+y:120,none:120,l+y:120,none:60';
 // The same walk, then L+A next to the third Rabite and two L+Y charges:
 // the second's wave kills it while the Super Saiyan aura, its lightning

@@ -2,6 +2,7 @@
 // from .local/snes-import/catalog.json), an input script (button[+button]:frames
 // per step) and optional set-up. Both the cartridge and the browser engine run
 // the same script from the same state; run.mjs compares the traces.
+import {FEEL} from '../../gen/snes-feel.mjs';   // the SNES-only launch (radial: the Super Saiyan burst's distance)
 const RABITES='animation-audit__native__rabite-field-a';   // Goku (288,602), Rabites 3-5
 const BATTLE='snes-ref__battle__state';                     // preset battle (map 246): Goku (280,426), Frieza's fight
 export const SCENARIOS=[
@@ -29,7 +30,7 @@ export const SCENARIOS=[
   // ends where the browser's does (x 324) on both sides: a lagging field
   // frame walks 2 px less, and a Rabite 4 px farther stays out of the
   // burst's reach (and ignores Goku).
-  {name:'transform',bundle:RABITES,radial:88,script:'right:20,l:100,l+a:4,l:2,none:90',pokes:[[22,0x7EE002,324,2]]},
+  {name:'transform',bundle:RABITES,radial:FEEL.launch[1],script:'right:20,l:100,l+a:4,l:2,none:90',pokes:[[22,0x7EE002,324,2]]},
   // Mantis Ant (boss species $57): one jab leaves 1 HP, the native lethal hit
   // starts its own death and the cave's defeat/rescue event; bosses never fly.
   {name:'mantis',bundle:'emulator-probe__map-260-state',script:'up:2,b:2,none:420',

@@ -597,9 +597,13 @@ endif
 ; Continuous draws.
 cb_fx_aura:
 if defined("FX_AURA")
-	JSR cb_fx_req_clear
-	; tone gold in Super Saiyan (and the transformation once gold)
+	; (entered M16) the request fields this draw does not set below: a
+	; continuous draw of every charging and focusing frame, so not the
+	; saving cb_fx_req_clear
 	LDA.w #$0000
+	STA.l !fx_dir                 ; dir and style
+	STA.l !fx_c
+	; tone gold in Super Saiyan (and the transformation once gold)
 	LDX !cb_form-1
 	CPX.w #$0100
 	BCC +
@@ -653,7 +657,13 @@ endif
 
 cb_fx_orb:
 if defined("FX_ORB")
-	JSR cb_fx_req_clear
+	; (entered M16) every request field but A, which is set below (as in
+	; cb_fx_aura, inline: a draw of every charging frame)
+	LDA.w #$0000
+	STA.l !fx_dir                 ; dir and style
+	STA.l !fx_b
+	STA.l !fx_c
+	STA.l !fx_t
 	; frame min(4, strength*5); full charge alternates 3/4 every 4 frames
 if defined("COMBAT_CHARGE_DRAW_SLOW")
 	JSR cb_bind_strength
@@ -747,6 +757,33 @@ if defined("FX_HIT")
 	JSL fx_kick
 endif
 	RTS
+; A launched actor's landing (Y = its offset; cb_update_launches, SNES-only):
+; the camera jolts down with COMBAT_LAND_KICK's blow when the actor stands
+; on screen (its screen position, $E020/$E022) and no kick shakes it
+; already. Preserves X, Y.
+cb_bind_land_kick:
+if defined("FX_HIT")
+	LDA $E020,Y                   ; 8 <= x < 248
+	SEC
+	SBC.w #8
+	CMP.w #240
+	BCS +
+	LDA $E022,Y                   ; 16 <= y < 224
+	SEC
+	SBC.w #16
+	CMP.w #208
+	BCS +
+	LDA.l !fx_kickd
+	BNE +
+	PHX
+	PHY
+	LDA.w #(!COMBAT_LAND_KICK-1)<<8 ; facing 0 (down) | blow
+	JSL fx_kick
+	PLY
+	PLX
++
+endif
+	RTS
 ; A punch's first two frames (cb_fx_continuous calls for punches; its age
 ; below 2) have fx ready the cells of its coming contact (fx_warm), so
 ; their uploads land before the contact's busy vblank. A blow whose cells
@@ -759,6 +796,26 @@ if defined("FX_PREP")
 	LDA !cb_act_age
 	CMP.w #2
 	BCC +
+	RTS
++	; Not in a frame the game already made late: an NMI came during this
+	; update, or its logic ran past line 170 (a cold record costs fx up to
+	; 13 lines). The wind-up's other frame, or the contact, brings them.
+	JSL modules_field_current
+	BCS +
+	RTS
++	SEP #$20
+	LDA.l $00213F                 ; the scanline (latched H/V counter)
+	LDA.l $002137
+	LDA.l $00213D
+	XBA
+	LDA.l $00213D
+	AND.b #$01
+	XBA
+	REP #$20
+	CMP.w #170
+	BCC +
+	CMP.w #225
+	BCS +
 	RTS
 +	SEP #$20
 	LDA !cb_act

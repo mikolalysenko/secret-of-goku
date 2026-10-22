@@ -74,6 +74,115 @@ goku_api_cell:
 	LDA.l goku_cell_index,X
 	RTL
 
+; ---------------------------------------------------------------------------
+; A move's first cell one frame sooner (SNES-only, the maintainer's request;
+; combat's forecast, docs/agents/snes-port/combat.md "First frames").
+;
+; goku_api_first_cell: A = a move (0-2 a punch's combo, 3 the ki throw, 4
+; the Kamehameha's release), Y = its facing: A16 = its first cell in the
+; current form (pk_punch, pk_blast, pk_beam at age 0; goku_first_cells),
+; when it can replace the last frame's cell under that frame's OAM: Goku drew
+; that frame himself as a full cell (not hidden, scripted, requested or a
+; miniature), and the new cell is another one with its palette and only
+; quadrants that OAM shows. $FFFF otherwise. In the field vblank (or after
+; goku_frame). Exit M16 X16; keeps DB; uses t_a, t_b.
+goku_api_first_cell:
+	PHB
+	PEA $7E7E
+	PLB
+	PLB
+	REP #$30
+	STA !t_b                 ; move
+	SEP #$20
+	LDA !replacing
+	BNE .on
+.none8
+	REP #$20
+.none
+	LDA.w #!GOKU_NONE
+	PLB
+	RTL
+.on
+	LDA.l !core_frame
+	CMP !rec_stamp           ; that frame's body records
+	BNE .none8
+	LDA !rec_body1
+	CMP !rec_body0
+	BEQ .none8               ; nothing drawn
+	LDA !p_flags
+	AND.b #!GOKU_PF_HIDDEN|!GOKU_PF_SMALL
+	BNE .none8
+	LDA.l !scr_latch
+	BNE .none8
+	REP #$20
+	LDA !goku_cell_req
+	BNE .none
+	; ((move * 2 + form) * 4 + facing) * 2
+	LDA !t_b
+	ASL
+	STA !t_b
+	LDA !goku_form
+	AND.w #$0001
+	ORA !t_b
+	ASL
+	ASL
+	STA !t_b
+	TYA
+	AND.w #$0003
+	ORA !t_b
+	ASL
+	TAX
+	LDA.l goku_first_cells,X
+	CMP.w #!GOKU_NONE
+	BEQ .none
+	CMP !p_cell
+	BEQ .none                ; already the last frame's
+	TAX
+	SEP #$20
+	LDA.l goku_cell_pal,X
+	CMP !cur_pal
+	BNE .none8
+	LDA.l goku_cell_mask,X
+	STA !t_a
+	REP #$20
+	PHX
+	LDX !p_cell
+	LDA.l goku_cell_mask,X
+	EOR.w #$FFFF
+	AND !t_a
+	PLX
+	AND.w #$000F
+	BNE .none                ; a quadrant that OAM does not draw
+	TXA
+	PLB
+	RTL
+
+; goku_api_preempt_cell: in the field vblank, before goku_nmi
+; (modules_field_nmi): A16 = a cell from goku_api_first_cell that the next
+; frame is known to show; it replaces the pending upload, and goku_nmi sends
+; it in this vblank when there is room (as any pose: a change of palette or
+; size goes at once). Not while the boy's own tiles wait to go back.
+; M16 X16, any DB; keeps DB and D; no scratch (an NMI).
+goku_api_preempt_cell:
+	PHB
+	PEA $7E7E
+	PLB
+	PLB
+	TAX
+	SEP #$20
+	LDA !up_flags
+	BIT.b #!GOKU_UP_NATIVE
+	BNE .out
+	AND.b #$FF-!GOKU_UP_COMPAT  ; goku_nmi compares palette and size itself
+	STA !up_flags
+	STZ !up_small
+	REP #$20
+	STX !up_cell
+.out
+	REP #$30
+	PLB
+	RTL
+
 ; Fetch a packed socket without a per-column search. The field's byte
 ; pose fields and the scripted API's word fields share the same table.
 macro goku_socket_lookup(column, row, sheet, byte_fields)

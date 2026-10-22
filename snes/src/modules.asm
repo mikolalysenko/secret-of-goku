@@ -62,6 +62,7 @@ modules_field_current:
 modules_field_nmi:
 	JSL ui_field_nmi                  ; channels 0/1 for a moved native window; re-arms channel 5 after the game's DMA on 4-7
 	JSL destroy_field_nmi            ; first: switches the breach's HDMA on while vblank lasts
+	JSL combat_field_nmi             ; before goku: a press's first cell (SNES-only)
 	JSL goku_nmi
 	JSL frieza_field_nmi
 	JSL orbit_field_nmi
