@@ -238,7 +238,11 @@ block (none in the pullback, where the rebuilds would cost its frames
 their vblank). A group still on keeps the rows it holds while its own lie
 within them (looser limits need no rebuild, and a ray's edge going back
 and forth over a row no longer makes them again); its rows go when it
-turns off. When a group turns on, gets heavier or moves onto new rows,
+turns off, and those above the band lines go when its band layer comes to
+draw them (the clash: the launch's first frames, drawn with cells, left
+Goku's ray holding the rows from the top through the first struggle, and
+the stars above the globe stayed limited there: 3 of them instead of
+17-20). When a group turns on, gets heavier or moves onto new rows,
 the stars of every depth on those rows are hidden at once (`sl_cull`: y
 = $E0 in the lists), in the frame the limits are made, and the depths'
 rebuilds leave them out until the group lets the rows go (before, a row

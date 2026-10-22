@@ -602,7 +602,8 @@ stars_limit_rule:
 ; again and the lists rebuilt: a group still on keeps the rows it holds
 ; while its own lie within them (looser limits need no rebuild, and the
 ; edge of a ray going back and forth over a row no longer remakes them;
-; the rows go when the group turns off).
+; the rows go when the group turns off, and those above its top go when
+; a band layer comes to draw them: the clash, bw_ymin).
 stars_limits:
 	LDA.w !g_pull                  ; (none in the pullback: its frames have no time
 	BEQ +                          ; for the rebuilds)
@@ -630,6 +631,10 @@ stars_limits:
 	LDA.w !s_tmp+2
 	CMP.w !sc_sig+1,Y
 	BCC .changed
+	BEQ .top
+	LDA.w !bw_ymin,X               ; (its top lower because a band layer draws
+	BNE .changed                   ; the rows above now: those rows go)
+.top
 	LDA.w !sc_sig+2,Y
 	CMP.w !s_tmp+4
 	BCS .same

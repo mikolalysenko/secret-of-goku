@@ -4,6 +4,24 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the clash's rays give up the rows their band layers draw (2026-10-21)
+
+- A beam group keeps the rows its limits hold while its own lie within
+  them. In the clash, the launch's first frames draw Goku's ray with cells
+  from the top of the screen, before its band layer's map is there. Its
+  limits then kept those rows through the whole first struggle, after the
+  band layer had taken over above the globe, and the stars above the
+  globe stayed limited: 3 of them in the first struggle.
+- A group whose rows' top moves down because its band layer now draws
+  the rows above gives those rows up (`stars_limits`: a band layer's line
+  `bw_ymin` nonzero).
+- `clash` (default build): the first struggle shows 17-20 stars instead
+  of 3. The star-frames hidden against an unlimited sky go from 48,893 to
+  44,003, and the star count's jumps of 5 or more from 16 to 13. The
+  bodies' held frames: moon 106 (185 before), outer planet 154 (233). 40
+  repeated pictures (38 before: the launches' rows made again). The
+  `fight` is unchanged (no band layers).
+
 ## Orbit: no stars on a beam's rows while it holds them (2026-10-21)
 
 - The maintainer found the orbit "super glitchy ... lots of flickering and
