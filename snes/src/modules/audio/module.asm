@@ -444,6 +444,13 @@ if !AUDIO_CUSTOM_SAMPLES
 	STZ.w !au_pending
 	BRA .quiet
 .wake
+	CMP.b #$40
+	BNE +
+	JMP .prefetch
++	CMP.b #$20
+	BNE +
+	JMP .countdown
++
 endif
 	ORA.w !au_pending
 if !AUDIO_CUSTOM_SAMPLES
@@ -539,6 +546,43 @@ endif
 	JSR audio_beds_service
 	PLP
 	RTL
+.countdown
+	; Only au_backoff is due (a song change's hold, or a rare line's
+	; retry): no request, bed, line or prefetch. audio_sfx, cancel and stop
+	; replace au_wake; held loops do not, so they are checked here.
+	LDA.w !au_lvl
+	ORA.w !au_lvl+1
+	BNE .run8
+	LDA.w !au_pending
+	BEQ +
+	CMP.l $002140
+	BNE +
+	LDA.b #0
+	STA.l $002140
+	STZ.w !au_pending
++	LDA.w $1E05
+	CMP.w !au_song
+	BNE .run8
+if defined("title_sfx")
+	LDA.w !title_sfx&$FFFF
+	BNE .run8
+endif
+if defined("out_sfx")
+	LDA.w !out_sfx&$FFFF
+	CMP.w !au_dsfx
+	BNE .run8
+endif
+	DEC.w !au_backoff
+	BNE +
+	STZ.w !au_wake
++	PLP
+	RTL
+.prefetch
+	; Only the optional bank's fill is due: the cheap idle step. Requests,
+	; held loops, songs and cue flags continue on the full path.
+	JSR audio_extended_frame
+	BCC .normal
+	JMP audio_frame_done
 endif
 .run
 endif
@@ -600,19 +644,24 @@ if !AUDIO_CUSTOM_SAMPLES == 0
 	ORA.w !au_bed
 endif
 	ORA.w !au_testloop
+if !AUDIO_CUSTOM_SAMPLES == 0
 	ORA.w !au_backoff
-if !AUDIO_CUSTOM_SAMPLES
+else
 	BNE +
 	LDA.w !au_bed
 	BEQ .prefetch_wake
+	LDA.w !au_backoff           ; held beds during a countdown: full path
+	BNE +
 	LDA.b #$80                  ; only held beds; shot/cancel APIs invalidate
 	BRA +
 .prefetch_wake
-	LDA.w !au_ext_state : BEQ +
-	CMP.b #$03 : BCC .prefetch_pending
-	LDA.b #$00 : BRA +
-.prefetch_pending
-	LDA.b #$40
+	LDA.w !au_ext_state : BEQ .countdown_wake
+	CMP.b #$03 : BCS .countdown_wake
+	LDA.b #$40                  ; its idle step also counts au_backoff down
+	BRA +
+.countdown_wake
+	LDA.w !au_backoff : BEQ +   ; nothing due: quiet
+	LDA.b #$20                  ; only the countdown: the cheap step
 +
 endif
 	STA.w !au_wake
