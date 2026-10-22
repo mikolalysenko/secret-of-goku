@@ -58,6 +58,40 @@ stay traceable even when they are committed together.
   struggle none; the launches' frames turn on the limits and the culls,
   which this leaves alone).
 
+## SNES ending: the good ending no longer stops on a black screen after the Mana Beast (2026-10-21)
+
+- Ending (74c88a2, 6b232f7; merged in b07ca36). The maintainer reported:
+  "after you kill the mana beast you get a black screen".
+  - Cause: the good ending held its 48-frame fade to black by writing a
+    ceiling into the game's brightness `$E6` every frame. The script then
+    takes door 2F to map 246. The game's fade engine (`C0:8B5E`) raises
+    `$E6` a step at a time and clears its running flag (`$E2` bit 0) only
+    on reaching the target, and the ending reset `$E6` to 0 after each
+    step. The script waits on that flag (`C1:E8D3`), so it never reached
+    `CALL 6B` (Shenron's summon).
+  - The black screen came about 50 frames after 42F, permanently. It
+    affected every route into the good ending; the bad endings and the
+    finale death were fine.
+  - The fix: the ceiling is published in `!ending_showbright` and applied
+    to INIDISP at the field NMI's register restore (`C0:C168`, after
+    frieza's `C0:C15F` and combat's `C0:C164`). `$E6` is never touched.
+    The reunion hold and the death fade use the same mechanism. The
+    reunion's door 3FF now fades at its natural pace (97 frames; the
+    browser takes 98).
+  - Also fixed: Dryad's eighth Ball now shows in the Shenron scene until
+    event C9, and the bad ending keeps the permanent Super Saiyan form in
+    the escape and on King Kai's planet.
+  - New end-to-end ending cases (`finale`, `finale-frieza`,
+    `finale-party`). They advance the story with B only, from the Beast's
+    kill or Frieza's defeat to "THE END": 4,170 frames after 42F, the
+    browser's exact count. They also check the phase and event order, that
+    no black stretch lasts over 300 frames, and the end-card pictures.
+    `loads` checks that `$E6` is left alone.
+- Validation on b07ca36 under both probes: all 20 suites pass. Gameplay
+  `charge` misses 16 per 240 (13 before). The new NMI step costs about 0.07
+  line a vblank, and that case's frames sit within a line of the deadline.
+  The performance pass is cutting that case. The others are unchanged.
+
 ## SNES integration: Analyzer readings in crowded frames, cheaper orbit beams (2026-10-21)
 
 - UI, the Analyzer lite pass (ac83439, 1389c70; merged in e908996):
