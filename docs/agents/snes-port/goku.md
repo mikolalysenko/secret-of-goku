@@ -119,6 +119,9 @@ replacement), `modules_field_nmi` → `goku_nmi` (uploads), `modules_field_preup
 - Animation tables from `goku-animation-data.js` (clips with ticks, sheet and
   row overrides) and `goku-native-actions.js` (51 entries: dispatch mode,
   clip, sequence pointers, fixed columns, phases by native frame).
+- `goku_first_cells`: the cell `pk_punch`, `pk_blast` and `pk_beam` show at
+  age 0 by move (a punch's combo 0-2, the ki throw, the Kamehameha's
+  release), form and facing (40 words), for combat's first frames.
 
 ## Runtime
 
@@ -197,6 +200,17 @@ replacement), `modules_field_nmi` → `goku_nmi` (uploads), `modules_field_preup
   not key poses (a held barrage would move the streaming on every shot).
   Gameplay misses summed over six input phases: 161 against 164 (no case
   higher); the crowded combo lags 4 vblanks instead of 5.
+- **First frames** (`goku_api_first_cell`, `goku_api_preempt_cell`,
+  2026-10-21, SNES-only by the maintainer's request): in the vblank of a
+  press, combat asks for the first cell of the move the next frame will
+  start (combat.md, Runtime) and makes it the pending upload, so
+  `goku_nmi` sends it in that vblank instead of the next one. The cell must
+  fit the last frame's OAM: Goku drew that frame himself as a full cell
+  (not hidden, scripted, requested or a miniature), the new cell has its
+  palette (`!cur_pal`, the colours that vblank sends) and no quadrant that
+  OAM does not draw (`goku_cell_mask`). The frame after finds it resident
+  (`goku_request_cell` cancels the upload), and the cell shows a frame
+  longer, before the move's own frames.
 - **Weapon cells** (`goku_attach_hook`): the attachment pass draws the
   boy's weapon cells (tiles 40-4E, palette 0/4) when a native weapon swing
   sets `$E02F`; with Goku standing in, actor 0 goes straight to the body
@@ -280,6 +294,8 @@ Routines (JSL, any DB; preserve M/X unless noted):
 | `goku_api_set_form` | A low byte = form. Equivalent to writing `!goku_form` |
 | `goku_api_active` | C set while Goku stands in for the boy this frame |
 | `goku_api_cell` | A = sheet (0 base, 1 ssj, 2 SSJ jab), X = column, Y = row → A16 = cell id or `$FFFF`. Exit M16/X16 |
+| `goku_api_first_cell` | A = a move (0-2 a punch's combo, 3 the ki throw, 4 the Kamehameha's release), Y = its facing: A16 = its first cell in the current form (`goku_first_cells`) when it can replace the last frame's under that frame's OAM, `$FFFF` otherwise. In the field vblank, or after `goku_frame`; uses `t_a`, `t_b`. Exit M16/X16 |
+| `goku_api_preempt_cell` | In the field vblank before `goku_nmi`: A16 = a cell from `goku_api_first_cell` becomes the pending upload (not while the boy's tiles wait to go back); `goku_nmi` sends it as any pose. M16/X16, any DB; no scratch |
 | `goku_api_hand` | C set and A16 = x, X16 = y (screen) of the hand socket of the pose Goku shows on the field this frame (charge, beam, blast cells of either form, at the native anchor); C clear otherwise. Exit M16/X16 |
 | `goku_api_socket` | A = sheet (0 base, 1 Super Saiyan), X = column, Y = row: C set and A16 = dx, X16 = dy (signed) of that pose's hand socket from its anchor (the cell's centre column, feet line); C clear when the pose has none. Stateless, for scenes that place a cell themselves. Exit M16/X16 |
 | `goku_api_scripted` | Show cell A16 (from `goku_api_cell`) with its anchor at screen X16, Y16 (signed: the cell's centre column and feet line; top-left at x − 16, y − 31) for this frame: front-most, OBJ priority 3, Goku's palette slot, as the browser's scene renderers (`frieza.js` introHero). Actor 0's own body and shadow sprites are hidden for the frame (the HUD portrait stays); its game state is never touched. C set when drawn (Goku stands in and the cell exists). Any M/X (A, X, Y read as 16 bits); exit M16/X16 |

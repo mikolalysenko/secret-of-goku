@@ -397,6 +397,19 @@ export async function generate({rom,repo,outDir,xdata}){
   a.label('goku_cell_mask');a.db(cells.map(c=>c.mask));
   a.label('goku_cell_pal');a.db(cells.map(c=>c.pal));
   a.label('goku_cell_index');a.dw(index);
+  // A move's first cell (pk_punch, pk_blast, pk_beam at age 0) by move (a
+  // punch's combo 0-2, the ki throw, the Kamehameha's release), form and
+  // facing (down, right, left, up): goku_api_first_cell, for combat's
+  // first frames (SNES-only).
+  const first=[];
+  for(let m=0;m<5;m++)for(let f=0;f<2;f++)for(let d=0;d<4;d++){
+    const row=[0,2,1,3][d];
+    let sheet=f,col;
+    if(m<3){if(f&&!m){sheet=SHEET_ID.ssjJab;col=0;}else col=f?6+4*m:10+4*m;}
+    else col=m===3?(f?24:28):(f?19:23);
+    first.push(index[SHEET_BASE[sheet]+col*4+row]);
+  }
+  a.label('goku_first_cells');a.dw(first);
   a.label('goku_shuffle_index');a.dw(shuffle);
   a.label('goku_legs_index');a.dw(legs);
   a.label('goku_push_cells');a.dw(pushCells);

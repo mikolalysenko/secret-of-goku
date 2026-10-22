@@ -47,9 +47,9 @@ ui (King Kai) and destroy (the map) through `bind.asm`.
 
 | Resource | Use |
 | --- | --- |
-| Code `$A2:8000-$A2:B72F` | `!CODE_COMBAT` (about 14 KiB; asserted below `$A2:F000`) |
-| Code `$A2:F000-$A2:F44A` | `bind.asm`: bindings to optional modules, assembled after every module include |
-| Data `$E2:0000-$E2:0BCC` | `!DATA_COMBAT` (`snes/gen/combat.mjs`): damage, beam damage/width by charge, beam half width 8.8 by charge and wave age (`combat_api_beam`), wave envelope by age, strength and focus tables, launch arcs, lift, radial ease, hand sockets, item names, placeholder cells |
+| Code `$A2:8000-$A2:BF34` | `!CODE_COMBAT` (about 16 KiB; asserted below `$A2:F000`) |
+| Code `$A2:F000-$A2:F557` | `bind.asm`: bindings to optional modules, assembled after every module include |
+| Data `$E2:0000-$E2:10B4` | `!DATA_COMBAT` (`snes/gen/combat.mjs`): damage, beam damage/width by charge, beam half width 8.8 by charge and wave age (`combat_api_beam`), wave envelope by age, strength and focus tables, launch arcs, lift, radial ease, hand sockets, item names, placeholder cells |
 | Core `$A0:F10E-$A0:F123` | The extension lists in `modules.asm` (`modules_combat_targets`, `_damage`, `_receive`), core's bank |
 | WRAM `$7E:D800-$7E:D8FF` | `!RAM_COMBAT` (map in `module.asm`); public fields below |
 | SRAM `$31:7C00-$31:7FFF` | `!SRAM_WORK_COMBAT`: 16 effect records (an impact's `er_aux` holds its impact frame), 9 launch records, 9 sound marks, fx's eviction count per blow and form when the blow's contact cells were last resident (`!cb_warm`, 6 bytes at `$31:7DD8`), four bytes lent to fx for its impact state (`$31:7DDE-7DE1`: `!fx_evict`, `!fx_wdue`, `!fx_kickd`; fx's own block has none to spare), the pad of the last four field vblanks (`!PADH`), destroy_hit arguments, the beam picture, 16 beam pulse timers (per target bit), the virtual target cache and the log of the last 8 virtual hits (`!VT`, `$31:7E34`), `combat_api_beam`'s record (`!cb_beam`), the hold owners (`!cb_inhold`); test builds `$31:7F00-7F23` (`!CBT`) |
@@ -166,6 +166,7 @@ unchanged.
 | The Kamehameha's release | a white flash (14, 9, 5, 2; the full Super Saiyan wave 24, 18, 12, 8, 4, 2) and the kill's camera shake along the beam, on top of the quake | the quake |
 | A ki shot's contact | the cross's starburst | the smallest |
 | A punch pressed after the combo buffer opens (age 9, 4) | starts at once | the next frame |
+| A move's first frame (a punch from rest or the next blow, a ki throw from rest, the Kamehameha's release) | in the vblank of the press when there is room for its cell (First frames, below); otherwise a frame later, as the game draws | the frame of the press |
 | The punch's map strike (`destroy_hit`) and a miss's native B pulse | the next step (`cb_punch_map`, the hit stop's first frame) | the strike's frame |
 
 The browser references apply these to the browser's own sources:
@@ -194,6 +195,55 @@ stays), a shockwave for a ki shot that kills (ki 23), a starburst on every
 Kamehameha contact pulse (charge +5 to +7; the pulse sparks stay), a
 one-frame base startup for the punch (punch +1 to +3 over six offsets) and
 for the ki throw (ki +5): the startups stay the browser's.
+
+**First frames (2026-10-21).** The game reads the pad in vblank and its
+next frame draws the answer, which the screen shows one frame later: a
+press reached the screen a frame after the browser's (measured with exact
+frames from the first picture after the press's latch: B to the first punch
+frame 1, to the contact 3 or 2 in Super Saiyan art; Y to the throw 1 and the
+shot 3 or 2; letting go of the charge to the release 1; the browser 0, 2
+or 1, 0). `combat_field_nmi`, in `modules_field_nmi` before `goku_nmi`,
+compares the pad against the last step's (`!cb_raw`): a vblank without a
+B, Y or L change leaves at once. On one, `cb_forecast` works out from the
+last frame's state, which is final in the module vblank, the move the next
+step will start: B a punch from rest (its combo as `cb_punch` will count
+it) or the next blow when the step reaches the open buffer or the blow's
+end with no contact hold; Y a ki throw from rest with the cooldown over by
+then; L and / or Y let go while charging the Kamehameha's release; nothing
+else changed in the pad, Goku able to act, no lock, recovery, camera
+follow, foreign action, mode, breakable status or map change, and the last
+field frame's steps after its vblank (so the next frame runs one step, on
+this pad). The facing is `cb_aim`'s with nothing newly pressed, else the
+native one. `goku_api_first_cell` gives that move's first cell when it can
+replace the last frame's under that frame's OAM, and `goku_api_preempt_cell`
+makes it goku's pending upload, which `goku_nmi` sends in the same vblank
+when it has its 10 lines. The next frame starts the move as ever and finds
+the cell resident; the gameplay logic is untouched, and a move the next
+frame did not start would show its cell for one frame (none in 15 fired
+forecasts over six probe scripts of 129-620 frames, mashed buttons and
+charges in the waterfall and a crowded Rabite field, base and Super
+Saiyan).
+The first picture now comes in the press's vblank (0) for the punch and
+the ki throw from rest in both scenes and forms, and for the next blow in
+the waterfall; contact and shot frames are unchanged. Room is the limit:
+the game's own vblank work leaves the module NMI 6-19 lines in the Rabite
+field (12 are needed, the forecast's work and the cell), so a part of the
+presses there, the next blow there and, in both scenes, most releases (a
+charging frame's vblank carries the aura's colours) still show a frame
+later, as before. A core hook holding the actor cell streaming in a
+press's vblank would make room in every one (Requests).
+Cost: a vblank without such a change compares the pad (0.11-0.13 lines);
+the aura and the orb requests of every charging and focusing frame clear
+only the request fields they leave unset, inline (`cb_fx_req_clear`'s
+saving and restoring for the others), and `cb_nmi_vblank` waits for the
+joypad read in 16 bits: together about 0.4 lines less in a charging frame.
+Gameplay misses summed over twelve offsets against step 3: punch 15 (15),
+ki 11 (10), fly 5 (5), fly-ki 26 (25), fly-punch 23 (23), teleport 52 (54),
+charge 124 (125), 256 against 257 in all; at phase 0 charge 11 (13), the
+rest unchanged. Computing the forecast at every frame's end instead (with
+a scanline gate so that it ran only in frames with time to spare) found
+the cell for more presses but cost charge 137 and fly 9: the gate itself
+ran in the frames at the edge.
 
 Cost (per-frame logic of `snes/test/gameplay`'s `punch`, the first
 contact in the scene): the first wind-up frame takes fx's VRAM claim and
@@ -544,6 +594,15 @@ another 2-3. With `CORE_FASTROM` (MEMSEL set) the same frames end at
   with fx keeps it).
 - **core**: a shared field-vblank counter and per-vblank pad history (what
   `C0:C164` provides here) would serve other 60 Hz clients.
+- **core**: first frames (Runtime) need room for Goku's cell in a press's
+  vblank, which the game's actor cell streaming (`C1:950D`, up to 12 lines
+  in its busy phases) often takes in a crowded field. `core_actor_cells`
+  could also hold the streaming when a button a module names changed in
+  this vblank's pad (`$4218` against `!core_pad`, the auto-joypad read is
+  done by then): a word such as `!core_actor_hold_pad` that combat sets in
+  its frame code to B | Y | L while a press could start a move. It costs a
+  pad compare per field vblank and, on a press, the streaming of that
+  vblank (the round robin resumes, as with `!core_actor_hold`).
 - **goku**: the `ring` / `menu` tests drive the ring with native X after a
   Select; with combat (as the browser mod) X opens the controlled
   character's ring through native Y, and Y is ki. Their browser reference

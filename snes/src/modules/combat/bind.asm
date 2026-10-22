@@ -597,9 +597,13 @@ endif
 ; Continuous draws.
 cb_fx_aura:
 if defined("FX_AURA")
-	JSR cb_fx_req_clear
-	; tone gold in Super Saiyan (and the transformation once gold)
+	; (entered M16) the request fields this draw does not set below: a
+	; continuous draw of every charging and focusing frame, so not the
+	; saving cb_fx_req_clear
 	LDA.w #$0000
+	STA.l !fx_dir                 ; dir and style
+	STA.l !fx_c
+	; tone gold in Super Saiyan (and the transformation once gold)
 	LDX !cb_form-1
 	CPX.w #$0100
 	BCC +
@@ -653,7 +657,13 @@ endif
 
 cb_fx_orb:
 if defined("FX_ORB")
-	JSR cb_fx_req_clear
+	; (entered M16) every request field but A, which is set below (as in
+	; cb_fx_aura, inline: a draw of every charging frame)
+	LDA.w #$0000
+	STA.l !fx_dir                 ; dir and style
+	STA.l !fx_b
+	STA.l !fx_c
+	STA.l !fx_t
 	; frame min(4, strength*5); full charge alternates 3/4 every 4 frames
 if defined("COMBAT_CHARGE_DRAW_SLOW")
 	JSR cb_bind_strength
