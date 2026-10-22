@@ -634,7 +634,15 @@ than 4 pixels wider than its band waits for its own (whole cells would show
 outside the band); chain 0 shows a wider core meanwhile. A rebuild of a
 group's cached OAM run that only adds chains waits for a frame with time
 (`beam_defer`: a cell costs about 1.2 lines, a whole five-chain run some 75;
-after 8 frames it may end by line 200). In the fight, Frieza's beam (group
+after 8 frames it may end by line 200). A group with no picture in VRAM
+yet (a beam's first frame: nothing drawn) builds the run its next frame
+will show, when chain 0's picture has come in the vblank (`beam_first`,
+when its drawing starts above line 160): that frame only copies it. The
+`fight`'s 30 Hz run of repeated pictures began on the frame Frieza's beam
+first showed, where its 22-line build met a limits remake with a cull, the
+camera's zoom step and his shots' drawing; a frame with two ticks then
+cost more than a frame holds, so every frame after it was late too until
+the beams ended. In the fight, Frieza's beam (group
 1) keeps to chain 0 while Goku's wave is on with chains each side
 (`beam_signature`): the two at full width, with the impacts' bursts, Goku
 and Frieza, reach 35-45 slivers on many lines, and the PPU took the
@@ -1075,7 +1083,7 @@ are untouched).
 
 | Resource | Use |
 | --- | --- |
-| Code `$A7:8000-FAB7` | `!CODE_ORBIT`: 30.7 KiB of 31 KiB (the pullback in `pull.asm`, the distant bodies' drawing in `scdraw.asm`; the `ORBIT_TIMING` build's marks end it at `$FB0F`); bindings at `$A7:FC00-FD6E` |
+| Code `$A7:8000-FAF7` | `!CODE_ORBIT`: 30.7 KiB of 31 KiB (the pullback in `pull.asm`, the distant bodies' drawing in `scdraw.asm`; the `ORBIT_TIMING` build's marks end it at `$FB4F`); bindings at `$A7:FC00-FD6E` |
 | Code `$A1:C000-FD99` | the second code area (`!CODE_QUARTER_GOKU`, noted in `core/layout.asm`): the cosmic montage and its tables, sprite lists, the pullback's preload, the distant bodies' projection (`scenery.asm`) (15.4 KiB of 16) |
 | Code `$AB:C000-D940` | the third code area (`!CODE_QUARTER_MISC`, noted in `core/layout.asm`): the distant bodies' strikes (`strike.asm`) and their share of the sprite lines, the stars' cull (`scline.asm`), the beam runs' kept chains and cells (`beamrun.asm`) (6.3 KiB of 16) |
 | Data `$E7:0000-76E1` | stars, asin rows, chord scales, rim tables, palettes (and the victory's: Frieza's death colours, the whiteout's backdrop and band colours), star tiles, heading/step tables, the auras' levels, text maps, finale and fall tables, the descent's indexes, the window blobs' addresses (29.7 KiB of 32 KiB) |

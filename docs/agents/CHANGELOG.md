@@ -4,6 +4,27 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: a beam's first run built the frame before it shows (2026-10-22)
+
+- A beam group with no picture in VRAM yet (a beam's first frame, where
+  nothing is drawn) builds the run its next frame will show, when chain
+  0's picture has come in the vblank (`beam_first`, when its drawing
+  starts above line 160). That frame only copies the run; the picture is
+  as before.
+- The `fight`'s 30 Hz run of repeated pictures began on the frame
+  Frieza's beam first showed, where its 22-line build met a limits remake
+  with a cull, the camera's zoom step and his shots' drawing. A frame
+  with two ticks then cost more than a frame holds, so every frame after
+  it was late too until the beams ended.
+- Repeated pictures: the `fight` summed over its 8 frame phases 24
+  instead of 70 (per phase 4 2 4 2 3 2 3 4; the default phase lags 4
+  times instead of 9, and every phase passes, flicker bounds included:
+  Goku, Frieza and the beams lose sliver-lines in 3-6 frames, the bursts
+  in 33-39). The `clash` 22 instead of 24 (no lag at the launches).
+- Frieza's beam keeps to chain 0 while Goku's wave is wide, as before
+  (a0c12e9): 778 sliver-lines a frame through the wave's last frames,
+  main's picture; the browser draws it whole (2,114).
+
 ## Orbit: the beams' frames cost less (2026-10-22)
 
 - A beam run's cells are made in the third code area (`beam_run`), about

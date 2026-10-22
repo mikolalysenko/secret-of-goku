@@ -33,6 +33,7 @@ beam_init:
 	LDA.w #$FFFF
 	STA.w !bw_key
 	STA.w !bw_key+2
+	STA.w !bp_first
 	LDX.w #10
 -	STA.w !bs_have,X
 	DEX : DEX
@@ -755,7 +756,10 @@ beam_draw:
 +	STX.w !bg_tmp+14
 	JSR beam_signature
 	BEQ .copy
-	JSR beam_defer
+	LDA.w !bc_sig+12               ; (no picture it can show yet: its first
+	BNE +                          ; frames)
+	JMP beam_first
++	JSR beam_defer
 	BCS .copy
 	JSR beam_build_run
 if defined("BEAM_PREP_CHECK")
@@ -871,12 +875,14 @@ beam_signature:
 	ASL
 	CLC : ADC.w !bc_sig+14
 	TAY                            ; chain 0's slot * 2: group * 2 * 3
+	CPY.w !bp_first                ; (beam_first's chain 0: there next frame)
+	BEQ ++
 	LDA.w !bs_have,Y
 	BMI +                          ; (none, or an aura's picture)
 	EOR.w !bw_key,X
 	AND.w #$01C0|!BK_LASER
 	BNE +
-	INC.w !bc_sig+12               ; (chain 0)
+++	INC.w !bc_sig+12               ; (chain 0)
 +	LDA.w !bs_have+2,Y             ; chains +-1
 	BMI +
 	EOR.w !bw_key,X
@@ -925,6 +931,7 @@ endif
 	ORA.w !bw_ymin,X
 +	STA.w !bc_sig+14
 	; compare (group * 8 words)
+beam_sig_cmp:                      ; (X16 = group: Z set when the cached run's)
 	TXA
 	ASL : ASL : ASL
 	TAX
@@ -1126,6 +1133,30 @@ beam_hi_store:
 	RTS
 endif
 
+; Group bg_tmp+14 has no picture in VRAM yet (its first frames): nothing is
+; drawn. Chain 0's picture comes first in the next vblank (beam_queue), so
+; the run for that frame (chain 0's picture there) is built now, while
+; this frame has time, and kept with that frame's signature: that frame
+; only copies it (the picture as before, its build a frame early).
+beam_first:
+	LDA.w #$0001
+	TSB.w !bc_sig+12               ; (chain 0's picture there)
+	LDX.w !bg_tmp+14
+	JSR beam_sig_cmp
+	BEQ .done                      ; (built already)
+	JSR orbit_vcount
+	CMP.w #!BEAM_FIRST_LATE
+	BCS .done                      ; (no time now: that frame builds it)
+	LDA.w !bg_tmp+14               ; chain 0's slot * 2: group * 2 * 3
+	ASL
+	CLC : ADC.w !bg_tmp+14
+	STA.w !bp_first
+	JSR beam_build_run
+	LDA.w #$FFFF
+	STA.w !bp_first
+.done
+	RTS
+
 ; Carry set when slot Y / 2 holds a picture group X can show: of its
 ; class (and laser or not) and, beside chain 0, its radius at most 4 over
 ; the wanted one. A smaller one only leaves the band thinner while it
@@ -1133,6 +1164,8 @@ endif
 ; still on their way) would paint whole cells outside it, so that chain
 ; waits; chain 0 shows a wider core meanwhile. Keeps X and Y.
 beam_usable:
+	CPY.w !bp_first                ; (beam_first's chain 0: there next frame)
+	BEQ .yes
 	LDA.w !bs_have,Y
 	BMI .no                        ; (none, or an aura's picture: aura.asm)
 	EOR.w !bw_key,X

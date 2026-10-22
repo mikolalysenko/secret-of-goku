@@ -641,6 +641,8 @@ assert !pb_shown+2 <= !SB+$1800, "orbit scene work past $32:77FF (the frieza mod
 !ORBIT_NMI_END = 257               ; the scene's vblank uploads end by this scanline
 !ORBIT_NMI_LATE = 244              ; a vblank of ours starting this late keeps the fixed registers
 !BEAM_LATE = 180                   ; a build that can wait ends by this scanline
+!bp_first  = !BB+$6E               ; beam_first's build: the slot (* 2) whose picture it takes as there ($FFFF none)
+!BEAM_FIRST_LATE = 160             ; beam_first builds only when its group's drawing starts above this scanline
 !BB_END    = !BB+$70
 !BEAM_BUF  = !SB+$1000             ; 512-byte picture buffer ($7000-$71FF)
 
