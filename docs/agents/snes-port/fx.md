@@ -730,6 +730,18 @@ found by a search of the 15 cache entries when their hint misses.
   late planner start its plant scan 55 frames earlier in `charge`, which
   then misses one more frame: left as it was.)
 
+While `!orbit_flags` bit 0 is set (the orbit owns the picture), combat's
+quiet cancel calls `fx_kill_all` every frame. With FX holding, requesting,
+spawning, drawing, flashing, quaking and kicking nothing (`!fx_busy`,
+`!fx_nlive`, `!fx_hiwater`, `!fx_ndraw`, `!fx_flash`, `!fx_quake`,
+`!fx_kickd` all 0, `!fx_magic` set) it now returns at once, so `fx_frame`
+stays on its idle path there (2.7-2.9 lines down to under half a line).
+The hunk was added by the orbit stream at the coordinator's request
+(`orbit.md`, "Other modules in the orbit's frames"); FX is assembled
+before the orbit module, so it reads the flags as `!RAM_ORBIT+$02`.
+`-DFX_KILL_ALL_ALWAYS` builds the old kill. Outside the orbit nothing
+changes, so destroy's late planner keeps its timing in `charge`.
+
 Measured with `snes/test/gameplay` (per-frame logic, `punch`, the first
 contact in the scene): the strike frame 233.1 lines against 232.3, the
 heaviest frame of the hit stop 237.7 against 233.7, the first wind-up

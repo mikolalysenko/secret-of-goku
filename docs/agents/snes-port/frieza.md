@@ -613,6 +613,28 @@ drawing stop, the encounter is no longer the ground one), calls
 `$32:7000-7FFF`; the orbit stream owns `$32:6000-6FFF` and
 `!PERSIST_FRIEZA+$40-$7F`.
 
+While the orbit holds the scene work area (`core_scene_owner` is
+`!SCENE_ORBIT`) two hunks, added by the orbit stream at the coordinator's
+request, lighten Frieza's frames (`orbit.md`, "Other modules in the
+orbit's frames"):
+
+- `frame.asm`, at the top of `.busy`: `fz_orbit_light_ok` /
+  `fz_orbit_light`. When Goku is on, the map and the lit picture stay, no
+  ending runs, the danger stands (stage battle or won) and his last frame
+  left nothing drawn, resident, published or for the vblank (checked once,
+  then `!FZV_LIGHT`, `!fz_vista` bit 6, which his full path's
+  `fz_spr_begin` clears), the frame runs only the story-level ticks
+  (`fz_apply_pending`, `fz_quake_tick`, `fz_story_tick`, `fz_death_tick`,
+  `fz_lock_tick`, `fz_music_tick`, then `fz_try_quiet`): what that path
+  changes there. `-DFRIEZA_ORBIT_FULL` builds the full path.
+- `beast.asm`, `fz_find_boss`: the same search with each slot's species
+  byte compared first (`fz_find_boss_orbit`; the death watch's Dark Lich
+  search every frame, 2.1 lines down to 1.3 of the watch). Same carry, X
+  and A. `-DFRIEZA_ORBIT_BOSS_LOOP` keeps the loop.
+
+In the hand-off path his frame costs about 6.3 lines there instead of
+11.0; outside the orbit each hunk costs one owner test.
+
 ## Tests
 
 `node snes/test/frieza/run.mjs [case …]` (Mesen; bundles from

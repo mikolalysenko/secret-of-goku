@@ -4,6 +4,25 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the real path measured, and Frieza's boss search lighter (2026-10-22)
+
+- The `return` case (from the hand-off, where the frieza module runs as in
+  the game) counts the live frames that repeat a picture from the struggle
+  to the stop and fails past 40 (`RETURN_LIVE_LAG`, `ORBIT_RETURN_LAG=n`).
+  The quick-start `fight` and `clash` run the module before Goku's
+  arrival, so they never saw his 11-line frames. On snes-int 317f637: 68
+  with every rollback define (the case fails), 27 with the light frames
+  and FX's kill return, 24 now (19 of them the fanfare's song load). The
+  quick-start numbers are unchanged: `fight` 3, `clash` 26.
+- While the orbit holds the scene work area, `fz_find_boss` (the death
+  watch's search for the Dark Lich over nine actor slots, every frame)
+  compares each slot's species byte first and runs the other tests only on
+  a match: same carry, X and A (`fz_find_boss_orbit`;
+  `-DFRIEZA_ORBIT_BOSS_LOOP` keeps the loop). The watch costs 1.3 lines
+  instead of 2.1, the light frame 6.3 instead of 7.0. A cached answer
+  would not be exact: the native actors can change any frame.
+- `frieza.md` and `fx.md` note the orbit's hunks in their modules.
+
 ## Orbit: Frieza and FX rest while the orbit holds the picture (2026-10-22)
 
 - Frieza's busy frames while the orbit holds the scene work area run only

@@ -1100,10 +1100,15 @@ path):
   frame runs those ticks alone. In the hand-off cases (`return`, orbit
   frames 240-245) his frame costs 7.3 lines instead of 11.0; from the
   hand-off's load to the stop all but the first 11-19 frames (the load's
-  forced blank and the frame after it) are light. Left: the death watch
-  (2.1 lines: `fz_encounter` searches nine actor slots for the Dark Lich
-  every frame), the input lock (1.6), the story ticks (1.4), the check
-  (0.75), the music (0.6). The quick-start cases (`fight`, `clash`) run
+  forced blank and the frame after it) are light. The death watch's search
+  for the Dark Lich over nine actor slots, every frame, compares each
+  slot's species byte first while the orbit holds the area
+  (`frieza/beast.asm` `fz_find_boss_orbit`, same carry, X and A;
+  `-DFRIEZA_ORBIT_BOSS_LOOP` keeps the loop): the watch costs 1.3 lines
+  instead of 2.1 and the light frame 6.3 (on snes-int 317f637; 7.0 with
+  the loop). Left: the input lock (1.6), the story ticks (1.4), the watch,
+  the check (0.6), the music (0.6). A cache of the search's answer would
+  not be exact: the native actors can change any frame. The quick-start cases (`fight`, `clash`) run
   his module with Goku not yet arrived (`!persist_goku_active` 0): his
   Goku-off path (3.8 lines), which the check leaves at its first test
   (0.2 lines more). Outside the orbit the owner test costs his busy frames
@@ -1121,7 +1126,11 @@ In the hand-off path, where his module runs as in the game, that was most
 of the orbit's lag: the `return` case's frames lagged 94 times while the
 scene was live (the struggle's runs of up to 23), now 29; 39 in the load
 and the fanfare's 19 (its song load) both times. The quick-start `clash`,
-on his Goku-off path, lags 22-23.
+on his Goku-off path, lags 22-23. The `return` case now counts its live
+frames that repeat a picture from the struggle to the stop and fails past
+40 (`RETURN_LIVE_LAG`, `ORBIT_RETURN_LAG=n`): on snes-int 317f637 with
+all three rollback defines 68 (the case fails), with the light frames
+and the kill's return 27, with the species-first search 24.
 
 State compared with the full paths (Mesen, `handoff` frames 20-90, by
 `!core_tick`): Frieza's WRAM block, his persistent block and FX's block
@@ -1300,6 +1309,11 @@ come from their sources. Results on the merged build:
   reloaded with Goku where he stood, the landing pose (32 frames), the
   landing clock seen at 84 the frame before it lands, `frieza_orbit_landed`
   (landed, out of space) and the victory event C7 requested the next frame.
+  The real path's lag: the frieza module runs here as in the game (the
+  quick-start cases run it before Goku's arrival), so the live frames from
+  the struggle to the stop that repeat a picture are counted and bounded
+  (40, `RETURN_LIVE_LAG`; `ORBIT_RETURN_LAG=n` overrides; this build 24,
+  19 of them the fanfare's song load).
 
 ## API
 
@@ -1338,12 +1352,10 @@ come from their sources. Results on the merged build:
   clear), and the orbit's search runs in space, so it does not avoid holes
   yet. Please answer for map 246 while `FZFF_SPACE` is set too (the arena
   is still his), or give the orbit a hole test. (4) The orbit's light
-  frames (`fz_orbit_light`, "Other modules in the orbit's frames", a hunk
-  added at the coordinator's request) still cost 7.3 lines, 2.1 of them
-  the death watch's search for the Dark Lich over nine actor slots; an
-  answer cached while the orbit holds the area (no native boss can join
-  the space fight) would save most of it. Please note the light path in
-  `frieza.md`.
+  frames and its boss search (`frame.asm`, `beast.asm`: "Other modules in
+  the orbit's frames", hunks added at the coordinator's request, noted in
+  `frieza.md`) still cost 6.3 lines a frame: the input lock (1.6) and the
+  story ticks (1.4) are the most of it.
 - **world**: an API to start the landing pose (`mana-mod.js`
   `flightTransition = {kind: 'landing', age: 0}`), e.g.
   `!WORLD_API_LANDING`; the orbit's binding calls it when defined and
@@ -1366,8 +1378,8 @@ come from their sources. Results on the merged build:
 - **fx**: no field effects while `!orbit_flags` bit 0 is set (`fx_nmi`
   programs channels 2/3, the orbit's BGMODE and M7A). `fx_kill_all` now
   returns at once there while FX holds nothing (a hunk added at the
-  coordinator's request; "Other modules in the orbit's frames"): please
-  note it in `fx.md`.
+  coordinator's request; "Other modules in the orbit's frames"; noted in
+  `fx.md`).
 - **goku**: while `!orbit_flags` bit 0 is set, stand down the hero's cell
   streaming and drawing (the orbit draws Goku itself and hides native
   sprites); keep the HUD portrait. The orbit writes OBJ palette 1 with the
