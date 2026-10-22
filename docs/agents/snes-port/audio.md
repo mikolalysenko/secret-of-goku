@@ -88,7 +88,7 @@ Baseline is merged `987d41a`; numbers include fractional NTSC frames.
 | --- | ---: | ---: | --- |
 | 64 consecutive canonical loads | 19.915 | 17.905 | `$07→$08`, +12.320 |
 | Power-on, canonical + presets 11/14 (192 loads) | 19.487 | 16.851 | canonical `$0A→$0B`, +12.559 |
-| Field/town/boss/arrangement route (15 loads) | see compare8 | mean change −2.572 | boss→field, +0.456 |
+| Field/town/boss/arrangement route (15 loads) | 16.151 | 13.579 | boss→field, +0.456 |
 
 The common route's sample reload penalty is gone, but **not every load is
 faster**: planner/pointer overhead and changed retention history remain
