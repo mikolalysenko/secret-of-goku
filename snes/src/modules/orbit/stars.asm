@@ -467,8 +467,6 @@ stars_build_step:
 	TYA
 	SEC : SBC.l stars_list_at-2,X
 	STA.w !s_lists-2,X
-	LDA.w !sk_have,X               ; (finished: the generation it was built with)
-	STA.w !sk_done,X
 	STZ.w !s_bd
 	RTS
 

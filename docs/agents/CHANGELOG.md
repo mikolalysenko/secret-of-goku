@@ -4,6 +4,27 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the clash culls again, and no body waits for the star lists (2026-10-21)
+
+- A distant body counted on a beam's rows waited for star lists 1-2 to
+  be rebuilt before it showed, so that the stars there had gone first.
+  The clash had no cull since 898cc07: there the stars on a launch's rows
+  went in two steps, 18 and 33 frames after it (the lists' rebuilds).
+- The clash culls again: the stars on the rows a beam newly holds go at
+  once, in the frame the limits take the rows. With the beam rows' stars
+  gone at once in both phases, no body waits for the lists. A body yields
+  only when blocked, and the wait's state and code go (`sb_stale`,
+  `sb_kg`, `sk_done`, `sl_stale`).
+- `fight` (default build): the outer planet no longer hides (38 frames
+  before) and the planetoid hides once, blocked where both beams cross
+  (twice before). Drawn through more of the beams' passes, the bodies
+  cost the bursts beside them more slivers: the others lose 106 in 19
+  frames to them (32 in 11 before). Lagged frames over the 8 frame
+  phases (`ORBIT_FIGHT_EXTRA=0..7`): 80 (82 before).
+- `clash`: the stars on the launches' rows go in their first frames; the
+  bodies as before (the moon and the outer planet never hide). 39
+  repeated pictures (38 before).
+
 ## Orbit: the clash's rays on their band layers from the launch (2026-10-21)
 
 - A clash ray is drawn on its band layer once the layer's map for its

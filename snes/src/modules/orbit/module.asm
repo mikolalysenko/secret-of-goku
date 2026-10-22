@@ -147,7 +147,6 @@ endmacro
 !sl_half    = !g_tmp+4
 !sl_n       = !g_tmp+6
 !sl_s       = !g_tmp+8
-!sl_was     = !g_tmp+10
 !sl_g       = !g_tmp+14
 !g_text     = !SB+$040            ; byte: lines 0..g_text-1 are Mode 1 (BG3 panel)
 !g_textset  = !SB+$041            ; byte: g_text the BGMODE table holds ($FF none)
@@ -301,16 +300,11 @@ assert !ma_pairok+2 <= !MA_T1A, "the aerial cut's working state runs into its ta
 !hb_mode    = !SB+$860            ; BGMODE ($2105) table of indirect set 0, 16 bytes (hb_mode1: set 1's)
 !SB_STARS   = !SB+$870            ; star lists: 3 count words, then the entries
 !s_lists    = !SB_STARS           ; bytes in list d at s_lists + d*2 - 2
-!sb_stale   = !SB_STARS+6         ; the distant bodies counted on a beam's rows still waiting for the star lists (scline.asm)
 !s_list1    = !SB_STARS+$008      ; depth 1 (44 x 4)
 !s_list2    = !SB_STARS+$0C0      ; depth 2 (53 x 4)
 !s_list3    = !SB_STARS+$1A0      ; depth 3 (3 x 4, bright)
-; (in the lists' spare room: the distant bodies' waits and holds, scline.asm)
-!sb_kg      = !s_list1+(4*!ORBIT_STARS_D1) ; 3 words: the limits' generation each body's wait for the star lists began at
-!sk_done    = !s_list2+(4*(!ORBIT_STARS_D2-!ORBIT_STARS_D1))-2 ; lists 1-3 at +2, +4, +6: the generation each one's last finished build had
-!sb_hold    = !sk_done+8          ; 3 words: a body that yields: $8000 | the beam groups << 8 | frames of room (0: drawn)
-assert !sb_kg+6 <= !s_list2, "the bodies' waits run into star list 2"
-assert !sb_stale+2 <= !s_list1, "the bodies' wait bits run into star list 1"
+; (in list 2's spare room: the distant bodies' holds, scline.asm)
+!sb_hold    = !s_list2+(4*(!ORBIT_STARS_D2-!ORBIT_STARS_D1))+6 ; 3 words: a body that yields: $8000 | $4000 | the beam groups << 8 | frames held, to !SL_HOLD (0: drawn)
 assert !sb_hold+6 <= !s_list3, "the bodies' holds run into star list 3"
 ; The stars' limits under the beams (stars.asm stars_limits): per 8-line
 ; row the stars of lists 1-2 that may cover it, and per list the stars

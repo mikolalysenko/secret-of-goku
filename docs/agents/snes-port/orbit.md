@@ -32,10 +32,10 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md),
 | Cosmic montage: the four town shots (72-1802) | **Done** (`montage.asm`, `orbit-montage.mjs`, below): the towns from the game's own map data, people, rabite, warning ring, laser, ruin, bursts, fragments, fires, red tint, captions, cues; test `montage` matches the browser's picture pixel for pixel outside the explosions (97-99% during them) |
 | Cosmic montage: the two aerial cuts (aerial melee) | **Done** but the auras of the 30 frames before each explosion (below): the clouds, the gradient, both fighters, the sparks, the explosions, the flashes, the cues; test `montage` matches the browser at 99.8-100% outside the explosions |
 | Pullback (1802-2042) | **Done** (`pull.asm`, `orbit-finale.mjs` `pullbackFrames`, below): the globe pulling back on generated tables down to line 223, the sky without a camera, the beam from the strike site, the Death Ball (64 and 48 px, double-buffered cells), the two fighters, the cue; then the orbit's intro as in the browser. Test `montage`: the globe's shape 99.65-100%, the sprites 75-94% of the browser's pixels. The cut holds the picture black for 5 frames (the browser cuts straight in) |
-| Debris / asteroid field: each shattered body's nine rocks and 18 grit, their ring around the globe, the rocks' hits on Goku (70) | Next (stage B; the `scenery` test stops at 196, before the first rock reaches Goku at 199) |
+| Debris / asteroid field: each shattered body's nine rocks and 18 grit, their ring around the globe, the rocks' hits on Goku (70) | **Out of scope**: the maintainer's decision (2026-10-21: "we can skip the orbit debris. the differences are fine"); the `scenery` test stops at 196, before the browser's first rock reaches Goku at 199 |
 | Beam struggle: gather, charge, launch, struggle (taps, surges, pressure), recoil (420 damage), win | **Done** (`finale.asm`): every phase, the pressure and the camera identical to `frieza-finale.js` on every frame of the `clash` test (2,889 frames) |
 | Struggle picture: the rays above the globe on BG1/BG2 band layers, below it as OBJ chains; Goku, Frieza, charges, sparks | **Done** (`bands.asm`, `fdraw.asm`) |
-| Victory clock: impact, beam fade, the native victory commands (death, bursts, fade, fanfare, acquire chime) in `boss-victory.js` order, the pouch, the return at 1,392 | **Done** (logic, sound, pouch; `wash.asm`, below: Frieza's red/white death flash and the native whiteout, colour for colour; `bursts.asm`: the boss bursts); the beam's detonation and the particle oval are not drawn yet |
+| Victory clock: impact, beam fade, the native victory commands (death, bursts, fade, fanfare, acquire chime) in `boss-victory.js` order, the pouch, the return at 1,392 | **Done** (logic, sound, pouch; `wash.asm`, below: Frieza's red/white death flash and the native whiteout, colour for colour; `bursts.asm`: the boss bursts); the beam's detonation and the particle oval are out of scope (the maintainer's decision, 2026-10-21) |
 | Descent (globe zoom 56-230), return to the deck, landing (84 frames), the native victory event | **Done** (`globe.asm` `globe_descent`, `scene.asm` `orbit_return`): the descent's globe from generated tables; the deck reloaded through its door with Goku's landing spot (`returnToFortress`'s search), the landing pose, the landing clock, `frieza_orbit_landed` and the frieza module's C7; test `return`. The browser's pale wash into the deck is a fade through black here, for now (below) |
 | Orbital death (revert, fall), hand-off to the ending's explosion | **Done** (`death.asm`): the fight or clash freezes, Frieza watches, Goku falls as `bossRushDeathPose`; the orbit stops two frames before black for the ending; test `death` |
 
@@ -251,11 +251,12 @@ next 15 frames: Goku's wave blinked 30 stars out and back in the `fight`
 test, and Frieza's aura, drawn every other frame, tore the wave's top
 lines at 30 Hz); a cull is skipped when its
 rows were culled already and no depth's build has begun since. The clash
-culls nothing: its depths leave out the stars well inside its rays, and
-with a group's limits only growing its rays lose no slivers without the
-cull (none either way in the `clash` test), while its two culls cost each
-launch's first two frames 12 lines each. In the `fight` the cull spares
-the beams some 300 slivers (530 without it). Frieza's finger laser crosses the screen in 7 cells: with its
+culls too: 898cc07 had dropped its cull (12 lines in each launch's first
+two frames; its rays lose no slivers without it), which left the stars on
+a launch's rows going in two steps 18 and 33 frames after it (the lists'
+rebuilds) and its distant bodies waiting for the lists. In the `fight`
+the cull spares the beams some 300 slivers (530 without it). Frieza's
+finger laser crosses the screen in 7 cells: with its
 hit's bursts, Frieza and Goku its lines pass 34 without any star, so the
 laser's cells whose middle lies within 16 pixels of the freshest hit
 (younger than 24 frames) are hidden, the bursts covering the laser there
@@ -399,7 +400,8 @@ in, the fortress-break cue and a shake of 7; the first time Goku (or a
 shot he countered) breaks the moon, Luna says "My moon! Goku! / You blew
 it up!" (the text panel 90 frames later, for 165). The finale clears the
 impacts. Each body's nine rocks and 18 grit (`orbitFragments`,
-`tickOrbitDebris`) are stage B.
+`tickOrbitDebris`) are out of scope: the maintainer's decision
+(2026-10-21) accepts that difference from the browser.
 
 On the cartridge:
 
@@ -502,19 +504,21 @@ fewer stars near a planet). The PPU fetches the sprites last in OAM
 first and drops those first in OAM (the beams, the bursts, the sparks),
 so a body, last but for the stars, would take its slivers from them.
 Instead a body yields, and is not drawn, while its rows a beam crosses
-have no room for it (the beams' and the bodies' slivers past 32), or
-while the star lists have not made that room (lists 1-2 not both
-rebuilt since the limits began counting it on a beam's rows or moved it
-there); it is drawn whole or not at all. Once
-it yields it stays hidden 16 frames at least, then until the beams on
+have no room for it (the beams' and the bodies' slivers past 32); the
+stars there are gone at once (the cull, in both phases), so it never
+waits for the star lists (before, a body counted on a beam's rows waited
+for lists 1-2 to be rebuilt: in the `fight` the outer planet hid for 38
+frames that way, and the planetoid once more). It is drawn whole or not
+at all. Once it yields it stays hidden 16 frames at least, then until
+the beams on
 when it yielded are gone, or until its rows have had room for 16 frames
 running (64 when some frame of the hold had none): one hide for a
 beam's pass, no flicker. The note (`scdraw.asm` `sc_note`) takes the
 common cases itself: a body at the rows the limits count with nothing
 to yield to; one blocked again whose hold is blocked, as long as its
-least and yielding to both groups (nothing changes); and one blocked or
-waiting for the lists, whose hold it makes as `scline.asm` `sl_yield`
-does. A body that moved or left the screen, or holds with room, goes
+least and yielding to both groups (nothing changes); and one blocked,
+whose hold it makes as `scline.asm` `sl_yield` does. A body that moved
+or left the screen, or holds with room, goes
 through `sl_note`. In the clash's launches, where all three yield with
 young holds, the drawing is 2-3 lines shorter a frame for some 20
 frames. The check build (`-DHELD_CHECK`) has `sl_note` make every such
@@ -526,19 +530,18 @@ entries (Mesen, the tests' pads, the default build):
 
 | Run | The bodies cost the others (Stage A) | Held back (hides) |
 | --- | --- | --- |
-| `fight` | 31 slivers on 31 lines of 10 frames, bursts beside a body (11 of those lines with a beam on them; 18-34 slivers as the frames' timing varies) (392) | the outer planet 27 frames (1), the planetoid 70 (2) |
-| `clash` | 6 gold slivers on 3 lines of one frame (1,062) | the planetoid 1,282 (2), the moon 186 (3), the outer planet 234 (3) |
-| `scenery` | 721 slivers on 234 lines of 30 frames, where two bodies shatter side by side: bursts 596, ki 97, Frieza 28 (715) | none |
+| `fight` | 106 slivers in 19 frames, mostly bursts beside a body (100-112 in 16-22 frames over the 8 frame phases; 32 in 11 while a body still waited for the star lists, hidden through more of the beams' passes) (392) | the planetoid 36 frames (1) |
+| `clash` | 14 slivers in 3 frames (1,062) | the planetoid 1,279 (2) |
+| `scenery` | 715 slivers in 29 frames, where two bodies shatter side by side: mostly bursts, then ki and Frieza (715) | none |
 
 In the clash the planetoid hides as each launch begins and comes back
-once the rays are gone (in the recoil, at the end of the win's ray);
-the moon and the outer planet come back 80 frames into the first
-struggle (the launch's first rows stay in the limits while the rays are
-on) and 20-70 frames into the second exchange, and hide again for 16
-frames when the win's ray reaches their rows. No body loses a sliver of
-its own. The beams lose none to stale stars in the clash (main 5) and
-180-240 in the fight (main 692), the stars on a beam's new rows hidden at
-once (above).
+once the rays are gone (in the recoil, at the end of the win's ray); the
+moon and the outer planet never hide (3 times each before 2e24353, at
+the launches and at the win's ray). No body loses a sliver of its own.
+Goku, Frieza and the beams lose no sliver-line in the clash and 64 in 4
+frames of the fight (234 in 18 before bee91ad, where Frieza's aura,
+drawn every other frame, tore the wave's top lines at 30 Hz), the stars
+on a beam's new rows hidden at once (above).
 
 ### The finale on hardware
 
@@ -1024,7 +1027,7 @@ are untouched).
 | `$6100-$67E3` | two globe window blocks (868 bytes each); in the cosmic montage a shot's state and HDMA tables, in its pullback the Death Ball buffers' state |
 | `$67E4-$67FF` | the distant bodies' projection: `N_x`, `N_y` per body (32 bits each), the camera's radius and x it has applied |
 | `$6800-$686F` | two indirect HDMA table sets (M7A, M7D, windows), the first set's BGMODE table |
-| `$6870-$6A7F` | star lists (in their spare room: the bodies still waiting for the lists, their waits, the lists' finished builds, the bodies' holds), the stars' row limits and counts, the depths' turn |
+| `$6870-$6A7F` | star lists (in their spare room: the bodies' holds), the stars' row limits and counts, the depths' turn |
 | `$6A80-$6CFF` | fight state and arrays (with the distant bodies': shattered, Luna's remark, the impacts, where each shows, the pending travel, the wanted pictures' key), the second set's BGMODE table (`$6CC6`), the beams the star limits were made for, the auras wanted, the victory's colours for the vblank (`$6CF8`) |
 | `$6D00-$6DFF` | drawing scratch (and a 32 px Death Ball drawn), streamed-cell bookkeeping, beam groups and run builds, the bodies' room counts and held bits, the rows the stars' last cull hid (`$6DFE`) |
 | `$6E00-$6FFF` | scratch, band window table A, band state |
@@ -1038,9 +1041,9 @@ are untouched).
 
 | Resource | Use |
 | --- | --- |
-| Code `$A7:8000-FBA4` | `!CODE_ORBIT`: 30.9 KiB of 31 KiB (the pullback in `pull.asm`, the distant bodies' drawing in `scdraw.asm`; the `ORBIT_TIMING` build's marks end it at `$FBFC`); bindings at `$A7:FC00-FD6E` |
+| Code `$A7:8000-FB8D` | `!CODE_ORBIT`: 30.9 KiB of 31 KiB (the pullback in `pull.asm`, the distant bodies' drawing in `scdraw.asm`; the `ORBIT_TIMING` build's marks end it at `$FBE5`); bindings at `$A7:FC00-FD6E` |
 | Code `$A1:C000-FD99` | the second code area (`!CODE_QUARTER_GOKU`, noted in `core/layout.asm`): the cosmic montage and its tables, sprite lists, the pullback's preload, the distant bodies' projection (`scenery.asm`) (15.4 KiB of 16) |
-| Code `$AB:C000-D572` | the third code area (`!CODE_QUARTER_MISC`, noted in `core/layout.asm`): the distant bodies' strikes (`strike.asm`) and their share of the sprite lines, the stars' cull (`scline.asm`), the beam runs' kept chains (`beamrun.asm`) (5.4 KiB of 16) |
+| Code `$AB:C000-D4DB` | the third code area (`!CODE_QUARTER_MISC`, noted in `core/layout.asm`): the distant bodies' strikes (`strike.asm`) and their share of the sprite lines, the stars' cull (`scline.asm`), the beam runs' kept chains (`beamrun.asm`) (5.2 KiB of 16) |
 | Data `$E7:0000-76E1` | stars, asin rows, chord scales, rim tables, palettes (and the victory's: Frieza's death colours, the whiteout's backdrop and band colours), star tiles, heading/step tables, the auras' levels, text maps, finale and fall tables, the descent's indexes, the window blobs' addresses (29.7 KiB of 32 KiB) |
 | ROM `$F6:0000-7FFF` | Mode 7 globe VRAM image (32 KiB) |
 | ROM `$F7:0000-F14E` | fight line tables (41 KiB), resident effect cells, Death Ball frames, text tiles, band tiles (60 KiB of 64) |
@@ -1101,8 +1104,8 @@ come from their sources. Results on the merged build:
 - `scenery`: the same comparison under pads that steer under the bodies
   and shatter them with ki (the planetoid at 58, the moon at 76, the outer
   planet at 170), with their ricochets, impacts and Luna's remark: 196
-  frames identical (the first rock of stage B's debris would reach Goku
-  at 199).
+  frames identical (the browser's first rock, its debris out of scope
+  here, would reach Goku at 199).
 - `fight`, `scenery` and `clash` also watch every frame (`watch.lua`): the colours the
   orbit owns in CGRAM against what the scene sends (the sky, the globe's
   81, OBJ palettes 0-1 and 6-7, 4-5 but for the band entries, the text

@@ -13,9 +13,8 @@
 ; a beam takes new rows, the stars there are hidden at once (sl_cull),
 ; before the lists' builds catch up.
 ; A body yields to a beam (not drawn) while its rows there have no room
-; (the beams' and the bodies' slivers past 34 - !SC_SPARE), or while the
-; stars have not yet made its room (star lists 1-2 not both rebuilt since
-; the limits began counting it there or moved it there).
+; (the beams' and the bodies' slivers past 34 - !SC_SPARE); the stars
+; there are gone at once (sl_cull), so no body waits for the star lists.
 ; Once it yields it stays hidden !SL_HOLD frames at least, then until the
 ; beams on when it yielded are gone or its rows have had room for !SL_ROOM
 ; frames running (!SL_ROOM_B after a frame without room): one hide for a
@@ -89,23 +88,15 @@ sl_note:
 	CLC
 	RTS
 
-; Carry set when body X16 (* 2) yields this frame: blocked, or counted on
-; a beam's rows before both star lists were rebuilt since its wait began
-; (sb_kg); and after that while it holds (sb_hold: $8000 | $4000 after a
-; frame without room | the beams it yields to << 8 | frames held, to
-; !SL_HOLD; sb_room: frames of room running). Keeps X.
+; Carry set when body X16 (* 2) yields this frame: blocked, and after that
+; while it holds (sb_hold: $8000 | $4000 after a frame without room | the
+; beams it yields to << 8 | frames held, to !SL_HOLD; sb_room: frames of
+; room running). Keeps X.
 sl_yield:
 	LDA.l sc_bodybits,X
 	AND.w !sb_blk
-	BEQ +
-	LDA.w #$4000                   ; (no room)
-	BRA .yield
-+	LDA.l sc_bodybits,X
-	AND.w !sb_stale
-	BEQ .room                      ; (no wait for the star lists)
-	LDA.w #$0000
-.yield
-	ORA.w #$8000
+	BEQ .room                      ; (room there)
+	LDA.w #$C000                   ; (held, no room)
 	STA.w !sl_g
 	JSR sl_on                      ; (the beams on now)
 	XBA
@@ -209,34 +200,10 @@ sl_bodies:
 	LDA.w #$0004
 	TSB.w !sb_mv
 +	LDA.w !sb_mv
-	BEQ sl_stale
-	LDA.w #1
-	STA.w !s_left
-	BRA sl_stale                   ; (made again after the limits: sl_count)
-
-; sb_stale = the bodies counted on a beam's rows whose wait is not over:
-; star lists 1-2 not both built since sb_kg (they change only in the
-; frames' spare time, after the drawing).
-sl_stale:
-	STZ.w !sb_stale
-	LDA.w !sb_cnt
-	BEQ .none
-	LDX.w #(!OSC_N-1)*2
--	LDA.l sc_bodybits,X
-	AND.w !sb_cnt
 	BEQ +
-	LDA.w !sk_done+2
-	SEC : SBC.w !sb_kg,X
-	BMI ++
-	LDA.w !sk_done+4
-	SEC : SBC.w !sb_kg,X
-	BPL +
-++	LDA.l sc_bodybits,X
-	TSB.w !sb_stale
-+	DEX : DEX
-	BPL -
-.none
-	RTS
+	LDA.w #1
+	STA.w !s_left                  ; (made again: sl_count)
++	RTS
 
 ; stars_limits, making the limits (sc_k: the beams' slivers on each row,
 ; !SC_FREE where none): the bodies' slivers on their rows, then the limits
@@ -245,14 +212,10 @@ sl_stale:
 ; rows a beam crosses has no room for it (34 - !SC_SPARE), else its
 ; slivers go on all its rows (bit 7 marks those no beam crosses: the
 ; beams' slivers stay below 128) and, on a beam's rows, it is counted
-; there (sb_cnt). A body counted there anew or moved begins a new wait for the
-; star lists (sb_kg: the generation these limits get); and the stars on
-; the rows a beam newly holds are hidden at once (sl_cull), unless they
-; were hidden already and no list's build has begun since (sl_culled), or
-; in the clash (its rays lose no slivers without it).
+; there (sb_cnt). And the stars on the rows a beam newly holds are
+; hidden at once (sl_cull), unless they were hidden already and no list's
+; build has begun since (sl_culled).
 sl_count:
-	LDA.w !sb_cnt
-	STA.w !sl_was
 	STZ.w !sb_cnt
 	STZ.w !sb_blk
 	LDX.w #0
@@ -316,44 +279,16 @@ sl_count:
 	DEY
 	BPL -
 	REP #$30
-	; the waits: a body counted on a beam's rows anew or moved there waits
-	; from these limits on
-	LDA.w !sb_cnt
-	BEQ .waited
-	LDA.w !s_kgen
-	INC
-	STA.w !sl_g                    ; (the generation these limits get)
-	LDX.w #0
-.wait
-	LDA.l sc_bodybits,X
-	AND.w !sb_cnt
-	BEQ .nw
-	LDA.l sc_bodybits,X
-	AND.w !sl_was
-	BEQ .new                       ; (counted there anew)
-	LDA.l sc_bodybits,X
-	AND.w !sb_mv
-	BEQ .nw                        ; (unmoved)
-.new
-	LDA.w !sl_g
-	STA.w !sb_kg,X
-.nw
-	INX : INX
-	CPX.w #!OSC_N*2
-	BCC .wait
-.waited
 	STZ.w !sb_mv
 	; the stars on the rows a beam newly holds, hidden now (the lists, built
 	; before these limits, would have the beam lose slivers there until
 	; their builds catch up: a growing ray's rows)
 	JSR sl_hot
 	BCC +
-	LDA.w !fn_phase                ; (none in the clash: the lists leave out
-	BNE +                          ; the stars well inside its rays and keep up)
 	JSR sl_culled
 	BCS +
 	JSR sl_cull
-+	JMP sl_stale
++	RTS
 
 ; Carry set when the rows sl_hot found (sl_t .. sl_b) were culled already
 ; and no star list's build has begun since (sk_have: their stars there are
@@ -643,7 +578,6 @@ sl_reset:
 	STZ.w !sb_blk
 	STZ.w !sb_mv
 	STZ.w !sb_held
-	STZ.w !sb_stale
 	LDX.w #(!OSC_N-1)*2
 -	STZ.w !sb_lsig,X
 	STZ.w !sb_dsig,X
@@ -664,8 +598,4 @@ endif
 	STA.w !sb_cull
 	LDA.w !s_kgen
 	STA.w !sb_cgen
-	LDA.w !s_kgen
-	STA.w !sk_done+2
-	STA.w !sk_done+4
-	STA.w !sk_done+6
 	RTS

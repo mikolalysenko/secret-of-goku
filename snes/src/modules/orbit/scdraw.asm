@@ -184,9 +184,9 @@ sc_draw_planetoid:
 ; pixels square, 16 with sc_note16): its rows noted for the star limits,
 ; then carry set when it yields to a beam (not drawn). Here the common
 ; cases (on the screen at the rows the limits count: nothing there to
-; yield to, or blocked or waiting for the star lists, its hold made as
-; scline.asm sl_yield makes it); the rest (moved, off the screen, held
-; with room) in scline.asm sl_note. Keeps X.
+; yield to, or blocked, its hold made as scline.asm sl_yield makes it);
+; the rest (moved, off the screen, held with room) in scline.asm sl_note.
+; Keeps X.
 sc_note16:
 	LDA.w #16
 	BRA +
@@ -208,7 +208,6 @@ sc_note32:
 	BEQ .far
 	STA.w !sb_dsig,X
 	LDA.w !sb_blk                  ; (nothing to yield to, nor held back)
-	ORA.w !sb_stale
 	ORA.w !sb_held
 	AND.l sc_bodybits,X
 	BNE .busy
@@ -219,30 +218,23 @@ sc_note32:
 	JSL sl_note_far
 	RTS
 .busy
-	; (blocked, or counted on a beam's rows and still waiting for the star
-	; lists: it yields, its hold made as scline.asm sl_yield makes it; held
-	; with room: sl_yield counts it)
+	; (blocked: it yields, its hold made as scline.asm sl_yield makes it;
+	; held with room: sl_yield counts it)
 	LDA.w !sb_blk
 	AND.l sc_bodybits,X
-	BEQ +
+	BEQ .far
 	LDA.w !sb_room,X               ; (blocked again, its hold blocked, as long
-	BNE ++                         ; as its least and yielding to both beam
+	BNE +                          ; as its least and yielding to both beam
 	LDA.w !sb_hold,X               ; groups: nothing changes)
 	CMP.w #$C300|!SL_HOLD
-	BNE ++
+	BNE +
 if defined("HELD_CHECK")
 	JMP sc_note_check              ; (A: the hold, as it stays)
 else
 	SEC
 	RTS
 endif
-++	LDA.w #$C000                   ; (held, no room)
-	BRA .yield
-+	LDA.w !sb_stale
-	AND.l sc_bodybits,X
-	BEQ .far
-	LDA.w #$8000                   ; (held)
-.yield
++	LDA.w #$C000                   ; (held, no room)
 	ORA.w !sb_hold,X               ; (with those it yielded to before)
 	STA.w !sl_g
 	LDA.w !sc_sig                  ; (and the beam groups on now: sl_on)
