@@ -131,6 +131,12 @@ replacement), `modules_field_nmi` → `goku_nmi` (uploads), `modules_field_preup
   distance bookkeeping (8.8 distance, steps of 6 and 16 px), clip tracking,
   native phases/fixed columns, the Super Saiyan knock-down fix-up and the
   shuffle/hover-leg variants.
+  `pose_inputs` clears the distance first, tests for a new frame once, takes
+  the hypotenuse row offset (`|dy|` × 26) from `goku_hypot_rows` and tests
+  the control gate's byte pairs (`$E4`/`$E5`, `$EC`/`$ED`, `$E190`/`$E191`)
+  as words; `GOKU_POSE_SLOW=1` restores the former code (byte for byte).
+  `pose-fast.test.mjs` compares both machine codes on 30,000 random actor,
+  request, history and gate states.
   The software divider returns directly below the divisor and uses eight
   iterations for byte dividends; larger inputs retain sixteen iterations.
   This avoids shared hardware math registers and preserves the original
