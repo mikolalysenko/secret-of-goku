@@ -10,6 +10,7 @@ import {storyDialogue} from '../engine/story-dialogue.js';
 import {potosCommands,potosCommand} from '../engine/potos-story.js';
 import {readMapEvents,readDoor,parseBytes} from '../engine/scene-graph.js';
 import {buildStoryEvents} from '../engine/story-events.js';
+import {compileStoryEvent} from '../engine/story-compiler.js';
 import {existsSync,readFileSync} from 'node:fs';
 
 test('all Potos replacements target actual native text and the rescue edits preserve command boundaries',{
@@ -113,6 +114,43 @@ test('the village quake reaches a live Tropicallo after an early palace-wall bre
         if(op.op===0x29)stage++;else if(op.op===0x2a)stage--;else if(op.op===0x30)stage=op.bytes[2];
       }
       assert.ok(stage>=boss.min&&stage<=boss.max,`party ${mask}, quake at stage ${entry}: the arena loads at ${stage}; Tropicallo needs ${boss.min}-${boss.max}`);
+    }
+  }
+});
+
+// Elinee's throne room (1E7) is the only way into Spikey Tiger's arena,
+// which has no exit. Retail enters it at CF17 stage 3, after Elinee's first
+// scene; an arrival that skipped the gate (0), the jailed soldiers (1) or
+// that scene (2) must see the same stages.
+test('Elinee\'s throne room reaches a live Spikey Tiger from any earlier stage, with retail values unchanged',{
+  skip:!existsSync('.local/rom/secret-of-mana-us.sfc')
+},()=>{
+  const rom=readFileSync('.local/rom/secret-of-mana-us.sfc'),retail=parseEvent(rom,0x1e7).ops;
+  const doorOf=ops=>ops.findIndex(op=>op.op>=0x18&&op.op<=0x1b),door=retail[doorOf(retail)];
+  const arena=readMapEvents(rom,readDoor(rom,(door.op-0x18)<<8|door.bytes[1]).map);
+  assert.equal(arena.id,310);assert.ok(arena.triggers.every(t=>t.door===undefined),'the arena has no exit');
+  const boss=arena.objects.find(o=>o.species===0x5b).visibility;
+  // CF17 at every object refresh and at the door, or null when 1E7 ends at once.
+  const stages=(ops,entry)=>{
+    const guard=ops[0].bytes;
+    if(guard[0]===0x42&&guard[1]===0x17&&entry>=guard[2]>>4&&entry<=(guard[2]&15))return null;
+    let stage=entry;const seen=[];
+    for(const op of ops.slice(1,doorOf(ops)+1)){
+      if(op.op==='text')continue;
+      if(op.bytes[1]===0x17&&(op.op===0x29||op.op===0x2a||op.op===0x30))stage=op.op===0x30?op.bytes[2]:stage+(op.op===0x29?1:-1);
+      else if(op.op===0x09||op.op>=0x18&&op.op<=0x1b)seen.push(stage);
+    }
+    return seen;
+  };
+  const want=stages(retail,3);
+  assert.deepEqual(want,[4,3,4,3,4,5,5],'retail: Dyluck flickers out, then the arena at 5');
+  for(const mask of[0,1,2,3]){
+    const compiled=parseBytes(compileStoryEvent(parseEvent(rom,0x1e7),mask));
+    for(let entry=0;entry<16;entry++){
+      const got=stages(compiled,entry);
+      if(entry>=4){assert.equal(got,null,`party ${mask}: stage ${entry} has no scene, as in retail`);continue;}
+      assert.deepEqual(got,want,`party ${mask}, entered at stage ${entry}`);
+      assert.ok(got.at(-1)>=boss.min&&got.at(-1)<=boss.max);
     }
   }
 });

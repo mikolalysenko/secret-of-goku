@@ -118,6 +118,16 @@ Watts's axe (7) the arena loaded empty. `story-events.js` now has the quake
 set stage 3. Popoi's naming still sets 6, so the doorway stays open; a
 stage 7 bought before the quake is lost, and Watts offers his axe again.
 
+Spikey Tiger's arena (310) is closed the same way, defensively. Elinee's
+throne-room scene (event 1E7, map 309) counts `$CF17` from retail stage 3
+(Dyluck flickers out at 4/3) to 5 at its door into the arena, which has no
+exit and holds the boss only at 5. An arrival that skipped the gate (0), the
+jailed soldiers (1) or Elinee's first scene (2) used to load it empty at 2-4.
+The compiled scene (`story-compiler.js`, every party) now sets each retail
+stage, so retail play sees the same values and every arrival meets the boss.
+The scene's other counter, `$CF53` (three steps by event 1F0), still counts
+up; in the throne room it only selects a foreground map piece.
+
 Pandora Ruins and Northtown Ruins script locks use checkpointed door latches. A hit unlocks the original door; walking through still invokes the native transition. Pandora’s plot flag is unchanged. An early Northtown breach stages the original Primm rescue and Vampire fight; returning afterward does not replay either or lower progress. Gaia’s hit switches select the native event for the targeted room instead of depending on the last floor marker walked over. The forest’s rotating carved heads (tileset 1, cells 171/172) can be flown over or destroyed to native grass; other cyclic descriptors keep their original behavior. Ruins balcony lips require clear floors at different native heights on opposite sides before flight may cross them.
 
 Super Saiyan charge lightning regenerates deterministic jagged paths every three emulated frames, including while holding full power. Bolts connect to nearby native solid-tile edges, low obstacles and actors, using Thunderbolt colors and original 16×16 cells. These arcs are decorative; attacks activate puzzles. Snapshot replay reproduces the same paths.
