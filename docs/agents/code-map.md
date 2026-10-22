@@ -36,6 +36,7 @@ Detailed implementation paths; this page includes story spoilers. Start with the
 | `engine/frieza-orbit.js`, `frieza-orbit-view.js` | Orbital combat, ricochets and the charged/mash beam struggle |
 | `engine/frieza-score.js`, `engine/spc-score.js`, `engine/mana-instruments.js` | Frieza/Vegeta score: entrance, battle and training cues rendered at runtime from the cartridge's own Mana instrument bank |
 | `engine/native-plants.js` | Original destructible map tiles and native redraw |
+| `engine/cave-stalagmites.js` | Decorative cave stalagmites without a cut code (Dwarf Village), their floors and Watts's shortcut latch |
 | `engine/dungeon-geometry.js` + `dungeon-demolition.js` | Live dungeon gap/wall validation, paired-layer breaches and room-colored debris |
 | `engine/native-flight.js` + `native-local-flight.js` | Direct world flight, local hover, collision and landing |
 | `engine/native-teleport.js` | Clear-ground teleport destinations, terrain handoff, companion gathering and native camera streaming |

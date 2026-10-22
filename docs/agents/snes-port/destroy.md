@@ -4,7 +4,7 @@ Spoilers. Part of the [SNES cartridge port](../snes-rom.md) ([plan](plan.md)).
 Source: `snes/src/modules/destroy/`, generator `snes/gen/destroy.mjs`, tests
 `snes/test/destroy/`. Browser references: `engine/native-plants.js`,
 `engine/native-local-flight.js` (`breakScenery`), `engine/palace-braziers.js`,
-`engine/dungeon-geometry.js`, `engine/dungeon-demolition.js`,
+`engine/cave-stalagmites.js`, `engine/dungeon-geometry.js`, `engine/dungeon-demolition.js`,
 `engine/native-barriers.js`, `engine/breakable-doors.js`,
 `engine/native-orbs.js`, and for the Sandship `engine/sandship.js` and
 `engine/sandship-wreck.js`.
@@ -23,11 +23,11 @@ does draw: palettes (the alarm and the blasts' red flashes) and an HDMA breach.
 
 | Resource | Use |
 | --- | --- |
-| Code `$A4:8000-$A4:DAAC` | `!CODE_DESTROY` (about 22.7 KiB of 32) |
-| Data `$E4:0000-$E4:62CB` | `!DATA_DESTROY` (about 24.7 KiB of 32, all generated) |
+| Code `$A4:8000-$A4:D676` | `!CODE_DESTROY` (about 21.6 KiB of 32) |
+| Data `$E4:0000-$E4:7595` | `!DATA_DESTROY` (about 29.4 KiB of 32, all generated) |
 | Extended data (xdata, placed by the build; `$7D:0000-$7D:40FF` today) | `destroy_white`: the Sandship white-out tables, 13 levels (9,984 bytes); `destroy_sand_quads`: the breach's desert for channel 3 at each white level (6,656 bytes) |
 | WRAM `$7E:D980-$7E:D9FF` | `!RAM_DESTROY`: state words `+$00-$0F`, API arguments `+$10-$23`, beam scan memory, map context, outputs `+$36-$3F`, call-local scratch `+$40-$7F` |
-| SRAM `$31:6100-$31:6173` | `!PERSIST_DESTROY` (`$74` of `$80` bytes): broken doors, Mana Tree cloud barrier, the Sandship state (`+$10-$4B`), all saved with the GAME FILE by the core sidecar; a beam's unfinished hit work (`+$4C-$73`, cleared at load, new game and map changes) |
+| SRAM `$31:6100-$31:6173` | `!PERSIST_DESTROY` (`$74` of `$80` bytes): broken doors and Watts's broken stalagmites, Mana Tree cloud barrier, the Sandship state (`+$10-$4B`), all saved with the GAME FILE by the core sidecar; a beam's unfinished hit work (`+$4C-$73`, cleared at load, new game and map changes) |
 | SRAM `$33:7000-$33:77FF` | `!SRAM_WORK_DESTROY`: edit queue, settled runs, smashed-object list, tile classes, breach records, planner job and suspended plan, scratch, barrier/orb state, debug mailbox, planner scratch, effect record (layout in `module.asm`) |
 | SRAM `$32:7600-$32:7FFF` | `!SSW`, the Sandship's volatile work: the tail of the set-piece scene area (`!SRAM_WORK_SCENE`, core request below), used only inside the arc's window (no scene runs on the ship) and claimed with a magic word: object-list copy, staged colours, the breach's HDMA tables and data, the blasts' flash, clock |
 | CGRAM | The wreck's staged colours go up inside the game's own CGRAM upload (`C0:C0F0`); CGRAM 0 per scanline under the breach (HDMA, switched on in vblank by `ss_nmi_breach`, which records it in `!core_hdmaen`: those channels began the frame from their tables even if the rest of the vblank runs late), put back when the breach lets go |
@@ -43,7 +43,7 @@ the C0:C7C3 redraw consumer). The Sandship adds a field vblank callback
 | Address | Bytes | Replaced | Purpose |
 | --- | --- | --- | --- |
 | `C0:C7C3` | 4 | `SEP #$30 / LDA $2E` | Start of the native row-redraw consumer: `destroy_redraw_hook` applies one queued row group and raises `$82/$83` (and `$95`) exactly where the browser mod applies its edits, then re-executes the replaced instructions |
-| `C0:CC2D` | 4 | `LDA $7ECF00,X` | Map piece loader, the story flag gating each piece (8-bit, DB = `$7F`, record at `[$20]`): `destroy_piece_flag` returns it unchanged except for Watts's shortcut entrance on map 73 (record `C8:5A8D`, `CF14` 6..15), which reads as if its range were 0..15 once the Gaia shortcut door broke (`native-story.js` `storyRead` of `C8:5A8E`); `CF14` itself is untouched |
+| `C0:CC2D` | 4 | `LDA $7ECF00,X` | Map piece loader, the story flag gating each piece (8-bit, DB = `$7F`, record at `[$20]`): `destroy_piece_flag` returns it unchanged except for both ends of Watts's shortcut, which read as if their range were 0..15: the entrance on map 73 (record `C8:5A8D`, `CF14` 6..15) once the Gaia shortcut door broke (`native-story.js` `storyRead` of `C8:5A8E`), and the cleared foot of the stairs on map 294 (piece 99, record `C8:79F9`, `CF14` 7..15) once Goku broke its stalagmites (`storyRead` of `C8:79FA`); `CF14` itself is untouched |
 | `C1:E7DF` | 25 | the door event's record loads from `C8:3000+4*door` (map, x, y/layer) | `destroy_door_record`: the Sandship's escape door (1A9) reloads the room Goku stands in during the breakout; then `!DOOR_RECORD_HOOK` (another module's JSL, below); then the original stores to `$DC/$DE/$DF`. `!DESTROY_DOOR_HOOK = 1` marks the patch |
 | (core) `C0:C0F0` | - | the field NMI's 512-byte CGRAM upload (`C0:C0F0-C117`), hooked by core (`core/cgram.asm`) | `destroy_cgram_upload`, a handler in `modules_cgram_upload`: while the Sandship's look is on, its staged colours replace their range of the upload and the rest comes from the game's buffer as before (only the BG half on a lag vblank, so fx's OBJ palettes stay); carry clear otherwise (the game's transfer) |
 | `C3:0004` | 4 | `JMP $0160` (the sound driver entry) | `destroy_song_hook`: while wrecked, the ship's song (25h) becomes the boss battle alarm (`01 04 04 FF`), so the change lands with the room's own fade |
@@ -90,10 +90,12 @@ Entries older than 90 frames, or all of them when the field stops being
 idle, are dropped.
 
 **Smashed objects** (`!DC`, 32 entries): solid objects, trigger walls,
-braziers and demolished walls of the current map are remembered with their
-original bytes; when a native rebuild (an event, a door, a room redraw)
-restores one, the edit is replayed silently. Plants (policy 0) respawn
-natively, as in the browser. The list is per map.
+braziers, every cell of a cave stalagmite (spires too) and demolished walls
+of the current map are remembered with their original bytes; when a native
+rebuild (an event, a door, a room redraw) restores one, the edit is replayed
+silently. Plants (policy 0) respawn natively, as in the browser. The list
+is per map: entering the same map again straight from it keeps it, so a
+native respawn needs a visit elsewhere first.
 
 ## Catalogue
 
@@ -108,6 +110,7 @@ asserted), or from the cartridge.
 | Haunted Forest vines | Tileset 7, layer 0, code 0, vine metatile → grass `7A` | `breakScenery` probe → `destroy_vine_bits`, `!DESTROY_VINE_*` |
 | Skull heads | Tileset 1 twin heads (`C1`, tile + replacement = 343) → `A1` | `breakScenery` probe → `!DESTROY_HEAD_*` |
 | Sandship deck rail | Maps 98/99, row 9, the rail tile with clear floor above and below → `0A` | probe → `!DESTROY_RAIL_*` |
+| Cave stalagmites | Tileset 10 decoration (spire `105`/`106` over base `121`/`122`, code 0), listed per object: Watts's forge (map 294, 6 cells → `46`, piece 99's own floor; latches the passage, below) and eight Dwarf Village plaza clusters (map 287 → `2B`). A punch or beam on any cell takes the whole object (each cell still holding its retail tile); the plants policy never does | `cave-stalagmites.js` (`breakScenery` probed per cell) → `destroy_stalagmites`, `destroy_stalag_bits`, `!DESTROY_STALAG_*`, map bit 7 |
 | Palace braziers | Tileset 23, layer 0: complete 2×3 patterns only, the whole object or nothing; full beam (and plain beams on the brazier-beam maps) | `palace-braziers.js` → `destroy_brazier_patterns`, `destroy_brazier_part`, map bit 0 |
 | Ki barriers (12) | Authored rectangles: Gaia shortcut, Underground Palace, Earth stair burner, Haunted Forest gate and bridge, Elinee's castle, Northtown castle, Gold Tower, Shade cave door, Pure Land gates 1-3; flag progress, `beamOnly`, `repeatUntilOpen`, door link, reaction | `native-barriers.js` `kiBarriers` → `destroy_barriers` (20 bytes each, map order) |
 | Native hit tiles (12 sources) | `Fx` codes: source = replacement×16 + `x`, event by source and map (hit switches, one per beam) | `barrierHitEvent` → `destroy_hit_events` |
@@ -118,6 +121,22 @@ asserted), or from the cartridge.
 | Crystal orbs (15 events) | Actor type `$55` in slots 3+: its own event with the spell byte its element test expects in `$E181,X` | `native-orbs.js` → `destroy_orb_events` |
 | Dungeon walls (22 families) | Full beam only: ordinary walls between two same-height floors, both layers, never boundaries, triggers, protected cells or transitions (below) | `dungeon-geometry.js` → `destroy_map_info`, `destroy_air_bits`, `destroy_blank_zero`, `destroy_false_floor`, protection constants |
 | Mana Tree cloud barrier | World flight: `destroy_tree_barrier_break` remembers it and opens the landing lock (`$E3` bit 6) | `world-ki.js` |
+
+**Decoration that looks breakable.** No metatile in any map is drawn
+identically (same tile words, or same pixels with the map's graphics) to one
+that breaks while lacking a cut code itself. The look-alikes are tileset
+10's stalagmites (spire over base), unlike its axe cluster `168`. Besides
+the objects above: the four plaza stalagmites leaning into the cliff (their
+spires sit in the cliff's dark band, no floor art) and two beside
+height-transition strips (map 287), Tropicallo's arena ring (290), the
+pairs beside Gaia's Navel's corridor (285 (13,18..19) and (15,18..19); one
+touches a transition strip) and its CF60 cluster (285 (21..22,44..45)), the
+Matango cave's CF24 cave-in (321, which joins two areas; piece 324 later
+turns it to rubble and axe rocks) and its lone spire (321 (22,11..12),
+beside a height-0 cell), the one-tile gaps between cliffs in 323
+((17,26..28), (21,27..28)), Jehk's lobby (18, CF3F pieces) and the Doppel
+arena (72) stay. The cone (metatile `130`) is a whip post (hit source
+`6F8`), not decoration. Details: `engine/cave-stalagmites.js`.
 
 Map context (`destroy_map_info`, 512 × 8 bytes): header flags, dungeon family
 + 1 when demolition applies, bits (brazier-beam map, Sandship, complex
@@ -133,7 +152,9 @@ order (along, then row, then column). A beam keeps its `arg_id`; each call
 only visits cells the beam did not cover before (`d_aid/d_alen/d_ahalf`), so
 a growing beam costs only its new cells. A tile class table (4 bits per
 metatile and layer, computed on first use and forgotten after each map load
-and event) rejects cells that cannot matter without decoding them.
+and event) rejects cells that cannot matter without decoding them. A cell of
+a palace brazier or a cave stalagmite queues its whole object
+(`dst_brazier_group`, `dst_stalag_group`), as `native-plants.js` expands it.
 
 **Barriers** (`barriers.asm`, `native-barriers.js` `hit()`): punches always,
 beams at ≥ 85% charge (`arg_str ≥ 218`); one barrier per beam. Authored
@@ -403,15 +424,18 @@ Palace." (`!SS_SAY_*`; `!SSW` is valid while `!ss_work` holds
 ## Persistence
 
 `!PERSIST_DESTROY+0` bit n: breakable door n broken (0 Gaia shortcut,
-1 Pandora ruins exit, 2 Northtown ruins seal); `+1` bit 0: Mana Tree cloud
-barrier broken. Both are saved with the GAME FILE (core sidecar) and cleared
-for NEW GAME. `+$10-$4B` (`!SS`): the Sandship's state as the browser's
+1 Pandora ruins exit, 2 Northtown ruins seal), bit 3 (`!DESTROY_STALAG_LATCH`,
+the bit after the doors): Watts's stalagmites broken, set when a row of
+theirs applies (the browser's barriers door `watts-shortcut`, from `lab.js`
+`onCut`); `+1` bit 0: Mana Tree cloud barrier broken. Both are saved with
+the GAME FILE (core sidecar) and cleared for NEW GAME. `+$10-$4B` (`!SS`): the Sandship's state as the browser's
 snapshot (flags, bulkheads broken, the white-out and its room, the breach,
 the stowed gear), saved with the GAME FILE; its volatile words (`!ss_vis`,
 `!ss_work`, `!ss_own`) are cleared at load, new game and the title.
 `+$4C-$73` (`!HP`): a beam's unfinished hit work, cleared at load, new
 game and map changes. A broken Gaia shortcut door also keeps Watts's entrance piece
-on map 73 (`C0:CC2D` above). Everything else is per map visit, as in the browser
+on map 73, and broken stalagmites keep piece 99 (the stairs' cleared foot)
+on map 294 (`C0:CC2D` above), on every later load. Everything else is per map visit, as in the browser
 (`native-plants.js` keeps `cleared` per map): the queue, smashed objects,
 breaches, the planner job and pending events are reset on every map change,
 load and new game. Gate and switch progress lives in the game's own flags.
@@ -465,6 +489,9 @@ event the reference selects; walking checks prove collision.
 | `switch-gaia` | Gaia's Navel switch from a ranged beam (`F` tile `1AF` → `1AC`) | pass |
 | `beam-earth-tile`, `beam-earth-timeline` | the full beam's native target in the Earth Palace (event `6F2`), as the browser picks it, for one call and frame by frame | pass |
 | `orb-earth` | Earth Palace orb: event `239` with spell byte `06` | pass |
+| `stalag-watts`, `stalag-watts-beam` | Watts's forge (map 294, entered by door `252` and walked to on foot): a punch / charged Kamehameha breaks the stalagmites behind Watts to piece 99's floor `46`, edits, redraws and cut sound as the reference; a native room refresh (event `6C`) keeps them down; Goku climbs to his stairs (map 288); `P_DOORS` bit 3 is set and re-entering the map shows the opened stairs; `CF14` unchanged | pass |
+| `stalag-watts-stairs` | the same from the top of the stairs (door `247`, the way in from the Gaia shortcut): a punch down, then Goku walks down into the forge | pass |
+| `stalag-plaza` | Dwarf Village plaza (map 287, door `82`): a punch takes a whole stalagmite to the plaza floor `2B` (as the reference), a native room refresh replays it, Goku walks through; no latch, and after a visit to the forge it grows back natively | pass |
 | `ship-wave-hold` | a full-power wave in the hold while captive: white-out, the hold reloads with the guards gone and monsters in, the boss alarm plays, Goku gets his Gi back | pass |
 | `ship-rescues` | the wreck's rescues: walking into the kitchen and the cabin, then the deck starts Geshtar and the Mech Rider (party 3). The cabin's tile load wrote the core's event request word while it lived at `$7E:6E8E` (core request below): the test keeps the word as it was and reports the writes | pass |
 | `ship-crash-breaks` | still sneaking: a punch opens a hold bulkhead (one strike), four more blow the ship up into the Mech Rider; after 2A1 everyone reunites on the dunes with their own gear | pass |
@@ -486,6 +513,16 @@ shields the word. Development tools: `breach-debug.mjs` (planner vs
 frames, both pipelines), `profile.mjs` (per-frame scanlines and cycles of
 each phase), `DESTROY_PROFILE` / `DESTROY_PCPROF` (per-call scanlines and
 per-PC instruction counts of `destroy_hit`, `run.mjs`).
+
+The `scenery` scenarios (`stalag-*`) enter their map through a native door
+and walk to the target so the camera follows (the redraw is only raised for
+rows on screen); `away` visits another map before re-entering. The
+assembled `class.test.mjs` also sweeps the stalagmite maps (287, 294). The
+browser side has `tests/cave-stalagmites.test.mjs` (every object checked
+against the cartridge: retail tiles, unconditional placement, floor height,
+plain neighbours, walkable regions, piece 99 for the latch) and
+`tests/browser/cave-stalagmites.spec.mjs` (punch and Kamehameha through the
+controller, collision, a room refresh, re-entering, checkpoints).
 
 ## Performance
 
