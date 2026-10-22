@@ -92,7 +92,12 @@ single-cell landing takes 609 CPU cycles cold or warm, versus 1,109/653.
   `fl_is_passenger_live` tests the adjacent pairs `$EC`/`$ED` and the flight
   lock as words (`FLIGHT_PASSENGER_LIVE_SLOW=1`: byte by byte): with two
   companions carried the actor and contact stages (B0CA, B0B2) take 0.23
-  lines less per frame (fly-ki 81.20 -> 80.96).
+  lines less per frame (fly-ki 81.20 -> 80.96). `eligible()`
+  (`fl_eligible`, asked by flight_frame and by the movement hooks several
+  times a frame) tests the finale flag inline and `$E4`/`$E5`,
+  `$E190`/`$E191`, `$EC`/`$ED` as words (`FLIGHT_ELIGIBLE_SLOW=1`: the
+  former order): per fly-ki frame flight_frame 18.39 -> 18.19 lines and the
+  B0B2 stage 30.45 -> 30.09.
 - The Mana Beast's Mode 7 arena allows flight only inside X 184-408,
   Y 292-432, and no step there scrolls the camera.
 - On foot the A button never reaches the game (it is the speed modifier, not
