@@ -1079,6 +1079,64 @@ are untouched).
 | `$75A0-$77FF` | band window table B, the bodies' rows cache, scroll and colour-math HDMA tables, the bodies' pending travel steps, picture queue, rebuild waits, OBJ palettes 4-5, vblank flags, the descent's and the pullback's globe state (the published rows' banks, each indirect set's banks, its frame, the stars' culling bank, the pullback's flag and last Mode 7 line), the pullback's Death Ball wanted and shown |
 | `$7800-$7FFF` | (the frieza module's fight block and the deck's hole bitmap: untouched) |
 
+### Other modules in the orbit's frames
+
+Two modules that run every field frame have nothing on screen while the
+orbit holds the picture, yet paid for full frames there. Each has an early
+return (a small hunk in its own module, with a define that builds the old
+path):
+
+- **Frieza** (`frieza/frame.asm`: a scene owner test and
+  `fz_orbit_light_ok` at the top of `.busy`, `fz_orbit_light`;
+  `-DFRIEZA_ORBIT_FULL` for the full path).
+  While the orbit holds the scene work area his busy frames take the
+  story-level path, and of that path only the ticks change anything:
+  hook work, the quake, the story cues, the death watch, the input lock
+  and the music. When the area is the orbit's, Goku is on, the map is the
+  same, the picture lit, no ending runs, the danger stands (stage battle
+  or won) and his last frame left nothing drawn, resident, published or
+  for the vblank (checked once; then `!FZV_LIGHT`, `!fz_vista` bit 6,
+  stands for it until his full path's `fz_spr_begin` clears it), his
+  frame runs those ticks alone. In the hand-off cases (`return`, orbit
+  frames 240-245) his frame costs 7.3 lines instead of 11.0; from the
+  hand-off's load to the stop all but the first 11-19 frames (the load's
+  forced blank and the frame after it) are light. Left: the death watch
+  (2.1 lines: `fz_encounter` searches nine actor slots for the Dark Lich
+  every frame), the input lock (1.6), the story ticks (1.4), the check
+  (0.75), the music (0.6). The quick-start cases (`fight`, `clash`) run
+  his module with Goku not yet arrived (`!persist_goku_active` 0): his
+  Goku-off path (3.8 lines), which the check leaves at its first test
+  (0.2 lines more). Outside the orbit the owner test costs his busy frames
+  three instructions.
+- **FX** (`fx/api.asm` `fx_kill_all`; `-DFX_KILL_ALL_ALWAYS` for the old
+  kill). Combat's quiet cancel calls `fx_kill_all` every frame of the
+  orbit, and every call requested a full `fx_frame` (2.7-2.9 lines). While
+  `!orbit_flags` bit 0 is set and FX holds, requests, spawns, draws,
+  flashes, quakes and kicks nothing, the kill returns at once and
+  `fx_frame` stays on its idle path (under half a line). `fx_kill_all` is
+  assembled before this module, so it reads the flags as
+  `!RAM_ORBIT+$02` (noted at `!orbit_flags`).
+
+In the hand-off path, where his module runs as in the game, that was most
+of the orbit's lag: the `return` case's frames lagged 94 times while the
+scene was live (the struggle's runs of up to 23), now 29; 39 in the load
+and the fanfare's 19 (its song load) both times. The quick-start `clash`,
+on his Goku-off path, lags 22-23.
+
+State compared with the full paths (Mesen, `handoff` frames 20-90, by
+`!core_tick`): Frieza's WRAM block, his persistent block and FX's block
+match but for `!FZV_LIGHT`, `!fz_cgframe` (the published colours' frame
+stamp, not read while `!fz_cgnext` is 0) and FX's idle-path bookkeeping
+(`!fx_tick`, `!fx_idle`, `!fx_frame`, `!fx_cbudget`, `!fx_phase`,
+`!fx_busy`, which its next full frame sets again); elsewhere only stack
+residue and the timing marks (`!orbit_fline`, `!orbit_marks`, destroy's
+`!d_vstart`) differ. Built with both defines, the ROM matches the previous
+one there byte for byte (and the `clash`'s lags). The `return` case taps
+B every 6th emulator frame, so with fewer lags its taps land on other game
+frames (the win at orbit frame 1253 instead of 1189, Frieza's stage with
+it); its milestones are the same frames (won at 1010, back at 1392, C7
++133).
+
 ## Resources
 
 | Resource | Use |
@@ -1192,9 +1250,9 @@ come from their sources. Results on the merged build:
   Frieza or a beam lose sliver-lines (8, 2), those where the bursts do
   (40, 4), each body's hides (moon, outer planet, planetoid: 0/0/1,
   0/0/2), and on any hide shown again within 30 frames (a blink). This
-  build: the `fight` 6, 4 (64 sliver-lines), 32 (450) and 0/0/1, and 6-8,
-  4, 29-35 and 0/0/1 over its 8 frame phases (`ORBIT_FIGHT_EXTRA=0..7`);
-  the `clash` 13, 0, 0 and 0/0/2; no blink. main 6a6c9a3 fails both: in
+  build: the `fight` 8, 6 (132 sliver-lines), 33 (579) and 0/0/1, and 7-8,
+  3-6, 28-39 and 0/0/1 over its 8 frame phases (`ORBIT_FIGHT_EXTRA=0..7`);
+  the `clash` 16, 0, 0 and 0/0/2; no blink. main 6a6c9a3 fails both: in
   the `fight` Goku's wave and Frieza's beam lose sliver-lines in 18 frames
   (234: the 30 Hz tear) and the outer planet hides and blinks; in the
   `clash` the moon and the outer planet hide 3 times each, 3 of those
@@ -1279,7 +1337,13 @@ come from their sources. Results on the merged build:
   while the fight is on the deck (`fz_arena_owned` needs `FZFF_SPACE`
   clear), and the orbit's search runs in space, so it does not avoid holes
   yet. Please answer for map 246 while `FZFF_SPACE` is set too (the arena
-  is still his), or give the orbit a hole test.
+  is still his), or give the orbit a hole test. (4) The orbit's light
+  frames (`fz_orbit_light`, "Other modules in the orbit's frames", a hunk
+  added at the coordinator's request) still cost 7.3 lines, 2.1 of them
+  the death watch's search for the Dark Lich over nine actor slots; an
+  answer cached while the orbit holds the area (no native boss can join
+  the space fight) would save most of it. Please note the light path in
+  `frieza.md`.
 - **world**: an API to start the landing pose (`mana-mod.js`
   `flightTransition = {kind: 'landing', age: 0}`), e.g.
   `!WORLD_API_LANDING`; the orbit's binding calls it when defined and
@@ -1300,7 +1364,10 @@ come from their sources. Results on the merged build:
   HDMA (`ui_field_nmi` uses channels 0/1 and re-arms 5, which the orbit
   programs every vblank).
 - **fx**: no field effects while `!orbit_flags` bit 0 is set (`fx_nmi`
-  programs channels 2/3, the orbit's BGMODE and M7A).
+  programs channels 2/3, the orbit's BGMODE and M7A). `fx_kill_all` now
+  returns at once there while FX holds nothing (a hunk added at the
+  coordinator's request; "Other modules in the orbit's frames"): please
+  note it in `fx.md`.
 - **goku**: while `!orbit_flags` bit 0 is set, stand down the hero's cell
   streaming and drawing (the orbit draws Goku itself and hides native
   sprites); keep the HUD portrait. The orbit writes OBJ palette 1 with the
