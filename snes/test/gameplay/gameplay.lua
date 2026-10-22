@@ -10,6 +10,10 @@ function test()
     H.wait(tonumber(n))
   end
   H.input=nil
+  -- START_OFFSET (run.mjs --offsets): idle frames after the setup input (so
+  -- it still cuts the same grass) move the native round robin and the
+  -- actors against the measured script.
+  if (START_OFFSET or 0)>0 then H.wait(START_OFFSET) end
   local grassCuts=0
   for i=0,0x3FFF do if grid[i]~=0 and H.r8(0x7F0000+i)==0 then grassCuts=grassCuts+1 end end
   local measuring = false

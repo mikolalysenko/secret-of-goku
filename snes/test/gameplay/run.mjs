@@ -10,6 +10,16 @@
 // --record-native also saves private CPU/WRAM inputs for actor-hot.test.mjs.
 // --flight-corridor steers aerial ki repeats between two nearby points
 // using real input, so missed reversal frames cannot drift into a map exit.
+// --offsets=0,1,2,3,4 runs every case once per start-phase offset: that many
+// idle frames after the import settles and the setup input ran, so the
+// native five-phase round robin and the actors meet the script at other
+// points. Many crowded frames end within a line of the deadline, so one
+// run's miss count is chaotic; judge CPU changes by the sum over offsets.
+// Offset 0 is the default run (output <case>/), others go to <case>+<k>/;
+// the zero-miss requirements apply to offset 0 only.
+// --jobs=N runs N Mesen instances at once (emulation stays deterministic).
+// --<module>-profile adds a span for every JSR to a label inside that
+// module's code bank (flight, goku, ui, audio, world, destroy, fx, ...).
 // Generated output stays in .local/snes-test/gameplay (or GAMEPLAY_OUT).
 import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';
 import {GAMEPLAY_CASES} from './cases.mjs';
@@ -25,6 +35,10 @@ const rom=resolve(process.env.SNES_ROM??join(repo,'dist/snes/secret-of-goku.sfc'
 const args=process.argv.slice(2), only=args.filter(x=>!x.startsWith('--'));
 const repeat=Number(args.find(x=>x.startsWith('--repeat='))?.slice(9)??1);
 if(!Number.isInteger(repeat)||repeat<1||repeat>100)throw Error('--repeat must be an integer from 1 to 100');
+const offsets=(args.find(x=>x.startsWith('--offsets='))?.slice(10)??'0').split(',').map(Number);
+if(!offsets.length||offsets.some(k=>!Number.isInteger(k)||k<0||k>600)||new Set(offsets).size!==offsets.length)throw Error('--offsets must list distinct integers from 0 to 600');
+const jobs=Number(args.find(x=>x.startsWith('--jobs='))?.slice(7)??1);
+if(!Number.isInteger(jobs)||jobs<1||jobs>16)throw Error('--jobs must be an integer from 1 to 16');
 const symbols=new Map([...readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8').matchAll(/^([\dA-F]{2}):([\dA-F]{4}) (\S+)$/gmi)].map(m=>[m[3],parseInt(m[1]+m[2],16)]));
 const romBytes=readFileSync(rom),auraCells=new Set();
 if(symbols.has('fx_aura_asm_id')){
@@ -62,12 +76,14 @@ if(symbols.has('core_party_actor')){
 }else{
   for(const [name,start,end] of [['party1',0x80F4BD,0x80F4C0],['party2',0x80F4C3,0x80F4C6]])spans.push(`{${JSON.stringify('native_'+name)},${start},${end}}`);
 }
-for(const [module,prefix] of [['flight','fl_'],['fx','fx_'],['combat','cb_'],['destroy','dst_']])if(args.includes(`--${module}-profile`)){
-  const bytes=readFileSync(rom),labels=new Map([...symbols].filter(([n])=>n.startsWith(prefix)).map(([n,p])=>[p,n]));
-  const base=symbols.get(`${module}_code_start`);
-  for(let p=base;p<symbols.get(`${module}_code_end`)-2;p++){
-    const off=hiromToPc(p,bytes.length),target=(p&0xFF0000)|bytes.readUInt16LE(off+1);
-    if(bytes[off]===0x20&&labels.has(target))spans.push(`{${JSON.stringify(module+'_'+labels.get(target)+'@'+p.toString(16))},${p},${p+3}}`);
+for(const module of args.filter(x=>/^--\w+-profile$/.test(x)).map(x=>x.slice(2,-8)).filter(m=>symbols.has(`${m}_code_start`))){
+  const base=symbols.get(`${module}_code_start`),end=symbols.get(`${module}_code_end`);
+  // Shortest local label per address in the module's code bank.
+  const labels=new Map();
+  for(const [n,p] of symbols)if(p>=base&&p<end&&/^[A-Za-z_]\w*$/.test(n)&&(!labels.has(p)||n.length<labels.get(p).length))labels.set(p,n);
+  for(let p=base;p<end-2;p++){
+    const off=hiromToPc(p,romBytes.length),target=(p&0xFF0000)|romBytes.readUInt16LE(off+1);
+    if(romBytes[off]===0x20&&labels.has(target))spans.push(`{${JSON.stringify(module+'_'+labels.get(target)+'@'+p.toString(16))},${p},${p+3}}`);
   }
 }
 const cases=GAMEPLAY_CASES;
@@ -75,16 +91,21 @@ for(const name of only)if(!cases.some(c=>c[0]===name))throw Error('unknown gamep
 const zeroFrameCases=new Set(['solo-punch','solo-ki','punch','ki','water-flight','focus-grass']);
 const root=resolve(repo,process.env.GAMEPLAY_OUT??'.local/snes-test/gameplay');
 mkdirSync(root,{recursive:true});
-const summary=[];
-for(const [name,bundle,script,setup=''] of cases){
-  if(only.length&&!only.includes(name))continue;
-  const copy=privateRom(rom,'gameplay-'+name);
-  const pre=`PCM=${args.includes('--pcm')}\nPROFILE_NATIVE=${args.includes('--native-profile')}\nBUNDLE=${JSON.stringify(join(repo,'.local/snes-import',bundle))}\nSETUP=${JSON.stringify(setup)}\nSCRIPT=${JSON.stringify(Array(repeat).fill(script).join(','))}\nSPANS={${spans.join(',')}}\nFX_TILES=${symbols.get('fx_entry_tile')}\nAURA_CELLS={${[...auraCells].map(c=>`[${c}]=true`).join(',')}}\nUPLOAD=${JSON.stringify(join(repo,'dist/snes/gen/audio/upload.bin'))}\n`;
+const runs=[];
+for(const c of cases)if(!only.length||only.includes(c[0]))for(const offset of offsets)runs.push({c,offset});
+async function runCase({c:[name,bundle,script,setup=''],offset}){
+  const tag=offset?`${name}+${offset}`:name;
+  const copy=privateRom(rom,'gameplay-'+tag);
+  const pre=`PCM=${args.includes('--pcm')}\nPROFILE_NATIVE=${args.includes('--native-profile')}\nBUNDLE=${JSON.stringify(join(repo,'.local/snes-import',bundle))}\nSTART_OFFSET=${offset}\nSETUP=${JSON.stringify(setup)}\nSCRIPT=${JSON.stringify(Array(repeat).fill(script).join(','))}\nSPANS={${spans.join(',')}}\nFX_TILES=${symbols.get('fx_entry_tile')}\nAURA_CELLS={${[...auraCells].map(c=>`[${c}]=true`).join(',')}}\nUPLOAD=${JSON.stringify(join(repo,'dist/snes/gen/audio/upload.bin'))}\n`;
   const corridor=args.includes('--flight-corridor')&&name==='fly-ki';
   const nativeProfile=args.includes('--routine-profile')||args.includes('--record-native');
   const test=pre+`FLIGHT_CORRIDOR=${corridor}\nCHECK_AURA=${name.endsWith('-grass')}\nGFX_DMA={${gfxDma.join(',')}}\nDESTROY_SCANS={${destroyScans.join(',')}}\nDESTROY_ATTACK_ID=${destroyAbi().arg_id}\nRECORD_NATIVE=${args.includes('--record-native')}\nNATIVE_BODY=${symbols.get('core_native_body')}\n`+readFileSync(join(repo,'snes/test/audio/lib.lua'),'utf8')+'\n'+(nativeProfile?readFileSync(join(import.meta.dirname,'native-routines.lua'),'utf8')+'\n':'')+readFileSync(join(import.meta.dirname,'gameplay.lua'),'utf8');
-  const r=await runMesen({rom:copy,state:join(checkpointDir(),'waterfall.mss'),test,outDir:join(root,name),exactFrames:true});
-  cleanupRom(copy);
+  let r;
+  try{r=await runMesen({rom:copy,state:join(checkpointDir(),'waterfall.mss'),test,outDir:join(root,tag),exactFrames:true});}
+  finally{cleanupRom(copy);}
+  return {name,tag,offset,corridor,r};
+}
+function report({name,tag,offset,corridor,r}){
   const v=r.results??{};
   const running=v.completed>=v.videoFrames/4&&v.nmiFrames>=v.videoFrames-1&&v.visibleFrames>0&&Object.keys(v.maps??{}).length===1;
   const action=name.includes('punch')?16:name.includes('ki')?19:name==='teleport'?20:name==='charge'?17:name==='focus-grass'?24:name==='transform-grass'?21:0;
@@ -94,14 +115,30 @@ for(const [name,bundle,script,setup=''] of cases){
   const gameplayPass=running&&powerPass&&transformPass&&corridorPass&&v.destroyRepeatFrames===0&&(!action||v.actions?.[action]>0)&&(!name.includes('fly')&&!name.includes('flight')||v.flightFrames>0)&&(!['walk','fly','water-flight'].includes(name)||v.maxTravel>2);
   const hardwarePass=r.code===0&&!v.error&&v.paletteErrors===0&&v.staminaFrames===0&&v.spriteOverflowFrames===0&&v.nmiOverruns===0&&v.gfxDmaOverruns===0;
   const timingPass=v.lag===0&&v.missedVblanks===0;
-  const requireTiming=zeroFrameCases.has(name)||args.includes('--strict-timing');
+  const requireTiming=offset===0&&(zeroFrameCases.has(name)||args.includes('--strict-timing'));
   const pass=gameplayPass&&hardwarePass&&(!requireTiming||timingPass);
-  summary.push({name,pass,gameplayPass,hardwarePass,timingPass,requireTiming,...v});
-  console.log(`${name}: ${pass?'pass':'FAIL'}; CPU misses ${v.missedVblanks}/${v.videoFrames}${timingPass?'':requireTiming?' (timing FAIL)':' (open timing issue)'}; palette ${v.paletteErrors}, stamina ${v.staminaFrames}, sprite overflow ${v.spriteOverflowFrames}, vblank overrun ${v.nmiOverruns}`);
+  console.log(`${tag}: ${pass?'pass':'FAIL'}; CPU misses ${v.missedVblanks}/${v.videoFrames}${timingPass?'':requireTiming?' (timing FAIL)':' (open timing issue)'}; palette ${v.paletteErrors}, stamina ${v.staminaFrames}, sprite overflow ${v.spriteOverflowFrames}, vblank overrun ${v.nmiOverruns}`);
   if(v.destroyRepeatFrames)console.log(`  scenery/barrier work repeated in ${v.destroyRepeatFrames} field updates`);
   if(args.includes('--profile'))console.log(v.profile);
   if(!gameplayPass)console.log('  gameplay did not exercise the expected state:',{completed:v.completed,nmi:v.nmiFrames,visible:v.visibleFrames,flight:v.flightFrames,actions:v.actions,travel:v.maxTravel});
   if(v.error)console.log(v.error);
+  return {name,offset,pass,gameplayPass,hardwarePass,timingPass,requireTiming,...v};
+}
+// Results print as runs finish; summary.json keeps case/offset order.
+const summary=new Array(runs.length);
+let nextRun=0;
+await Promise.all(Array.from({length:Math.min(jobs,runs.length)},async()=>{
+  while(nextRun<runs.length){const i=nextRun++;summary[i]=report(await runCase(runs[i]));}
+}));
+if(offsets.length>1){
+  console.log(`\nCPU misses per start-phase offset (${offsets.join(', ')}) and their sum:`);
+  let total=0;
+  for(const name of [...new Set(summary.map(s=>s.name))]){
+    const counts=offsets.map(k=>summary.find(s=>s.name===name&&s.offset===k)?.missedVblanks);
+    const sum=counts.reduce((a,b)=>a+(b??NaN),0);total+=sum;
+    console.log(`  ${name.padEnd(16)} ${counts.map(n=>String(n).padStart(3)).join(' ')}   sum ${sum}`);
+  }
+  console.log(`  ${'all cases'.padEnd(16)} ${''.padStart(4*offsets.length-1)}   sum ${total}`);
 }
 writeFileSync(join(root,'summary.json'),JSON.stringify(summary,null,2));
 process.exit(summary.every(r=>r.pass)?0:1);
