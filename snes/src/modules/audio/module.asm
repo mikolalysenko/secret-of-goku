@@ -133,6 +133,7 @@ audio_songload_vectors_data:
 	dw $1263,$1263,$1263,$1270
 if !AUDIO_CUSTOM_SAMPLES
 incsrc "audio/custom.asm"
+incsrc "audio/cache.asm"
 endif
 audio_data_end:
 assert audio_data_end <= !DATA_AUDIO+$8000, "audio data bank overflow"
@@ -1919,6 +1920,7 @@ incsrc "native.asm"
 incsrc "rare.asm"
 
 incsrc "songload.asm"
+incsrc "cache.asm"
 
 audio_code_end:
 assert audio_code_end <= !CODE_QUARTER_AUDIO, "audio code overflow (EA:C000-FFFF is a spare quarter, core/layout.asm)"

@@ -33,7 +33,15 @@ test('every song/preset cap is safe and only changes EDL when its required sampl
  // Long retail sequences + native word/triple padding cannot reach BRR.
  for(let id=0;id<64;id++)assert.ok(0x1A00+romSong(retail,id).blob.length+3<0x4800);
  if(!isCustom(rom))return;
- assert.equal(rom.readUInt16LE(0x3054A),32);assert.equal(rom.readUInt16LE(0x3056C),64);assert.equal(rom.readUInt16LE(0x3058E),32);
+ if(rom[0x3028D]===0x5C){
+  // Round eight sends exactly the current list length. The 64-song and
+  // noncanonical-preset cartridge passes validate every live metadata byte.
+  for(const [at,limit] of [[0x30549,0x1EEA],[0x3056B,0x1EEC],[0x3058D,0x1EEA]]){
+   assert.equal(rom[at],0xEC);assert.equal(rom.readUInt16LE(at+1),limit);
+  }
+ }else{
+  assert.equal(rom.readUInt16LE(0x3054A),32);assert.equal(rom.readUInt16LE(0x3056C),64);assert.equal(rom.readUInt16LE(0x3058E),32);
+ }
  if(isResident7(rom))return; // round-seven pointers/controls are checked in beds.test.mjs
  const segments=uploadSegments(rom),aram=new Uint8Array(65536);
  for(const s of driverChunks(rom))aram.set(s.bytes,s.addr);

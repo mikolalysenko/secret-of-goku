@@ -88,7 +88,20 @@ function test()
     check(tag..'_vectors',ar16(0x1420)==0x1263 and ar16(0x1426)==0x1270,'temporary vectors retained')
     check(tag..'_effect_samples',effectSampleDamage()==nil,effectSampleDamage())
     check(tag..'_custom_bank',customDamage()==nil,customDamage())
-    if CUSTOM then check(tag..'_cache_floor',H.r16(0x7E1EF8)==FLOOR and H.r16(0x7E1E48)==FLOOR) end
+    if CUSTOM then
+      local valid=H.r16(0x7E1EF8)==FLOOR
+      local cache={}
+      for k=0,15 do
+        if H.r16(0x7E1E28+2*k)~=0 then
+          local a=H.r16(0x7E1E48+2*k)
+          local b=a+H.r16(0x7E1E6A+2*k)
+          valid=valid and a>=FLOOR and b<H.r16(0x7E1EF1)
+          for _,old in ipairs(cache) do valid=valid and (b<=old.a or a>=old.b) end
+          cache[#cache+1]={a=a,b=b}
+        end
+      end
+      check(tag..'_cache_floor',valid)
+    end
     local peak=0
     -- $1A begins with more than a second of authored rests.
     for f=1,(id==0x1A and 180 or 60) do H.wait(1);for v=0,7 do peak=math.max(peak,dsp(v*16+8)) end end

@@ -194,6 +194,8 @@ export async function generate({rom,repo,outDir}){
  const ext=buildExtension(repo,rom);
  writeFileSync(resolve(outDir,'upload.bin'),ext.upload);
  const songs=await buildSongs(repo,rom);
+ const counts=Array.from({length:64},(_,id)=>songs.find(s=>s.id===id)?.ids.length??Array.from({length:16},(_,k)=>rom[0x33F22+32*id+2*k]|rom[0x33F23+32*id+2*k]<<8).filter(Boolean).length);
+ writeFileSync(resolve(outDir,'cache.asm'),'audio_cache_lengths:\n dw '+[0,...Array.from({length:33},(_,i)=>romInstrumentInfo(rom,i+1).len)].join(',')+'\naudio_cache_counts:\n db '+counts.join(',')+'\n');
  const custom=buildResident7(),caps=customEdlCaps(rom,songs,RESERVE);
  const extra=[];
  for(const s of custom.segments)extra.push(s.addr&255,s.addr>>8,s.bytes.length&255,s.bytes.length>>8,...s.bytes);

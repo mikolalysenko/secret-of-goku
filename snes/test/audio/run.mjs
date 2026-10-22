@@ -98,6 +98,7 @@ const upload=join(outRoot,'upload.bin'),segments=uploadSegments(cart),bytes=[];
 for(const s of segments)bytes.push(s.addr&255,s.addr>>8,s.bytes.length&255,s.bytes.length>>8,...s.bytes);
 writeFileSync(upload,Buffer.from([...bytes,0,0,0,0]));
 const lib=[`CUSTOM=${custom}\nROUND7=${isResident7(cart)}\nFLOOR=${sampleFloor(cart)}\nUPLOAD=${JSON.stringify(upload)}`,...ids,...consumers,songsLua,
+ `AUDIO_CACHE_COPY=${label('audio_cache_compact_copy')}\nAUDIO_CACHE_SEND=${label('audio_cache_uploads_send')}`,
  `AUDIO_FRAME=${label('audio_frame')}\nAUDIO_DONE=${label('audio_frame_done')}\nAUDIO_PAUSE=${label('audio_pause')}\nAUDIO_CANCEL=${label('audio_cancel')}`,
  `NATIVE_CUES={${nativeIds(cart,NATIVE_IDS).slice(1,28).map((v,i)=>`{${i+1},${v},${nativeEffectVoices(cart,v)}}`).join(',')}}`,readFileSync(join(here,'lib.lua'),'utf8')].join('\n');
 const tests=mesenTests;

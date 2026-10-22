@@ -1,5 +1,50 @@
 # Audio module: native SNES effects and music
 
+## Round-eight cache foundation (base `987d41a`)
+
+`cache.asm` replaces the song loader's contiguous-tail allocator with a
+non-moving cache: it chooses a legal hole that evicts the fewest cached
+bytes, and compacts only the prefix needed to open a sufficiently large
+hole. Cache entries remain address-sorted. Echo growth invalidates each
+overlapping extent individually; the native echo settings, BRRs, sequences,
+rare-line ring, transfer handshake and final instrument table format stay
+unchanged. No frame callback or gameplay command is added.
+
+`audio.mjs` emits instrument sizes and list counts. The three native metadata
+loops now send only the current song's entries, using limits `$1EEA/$1EEC`
+in otherwise dead song-load scratch. They never touch resident `$30-$3F`.
+`loads.lua` checks all live cache extents for bounds and mutual overlap;
+`load-profile.lua` records the new copy/upload sites and incoming cache.
+
+The strict merged baseline is
+`dd544f7c44b82458945a2b31f14f6f19b3b527a0e21114d4ed6f36583cb1d64c`.
+The initial cache-only checkpoint is
+`624c59f91afa5e2cbc9cc33340f34e99e96ac3035a898ff357b06583e4069719`.
+Private evidence is `.local/snes-test/audio/round8/{before,cache6}/`.
+
+| Consecutive-load CPU stall, frames | Before | Cache foundation |
+| --- | ---: | ---: |
+| 64-song mean | 19.915 | 17.594 |
+| `$22 → $23` | 19.679 | 9.418 |
+| `$3A → $3B` arrival | 23.503 | 23.179 |
+| `$3B → $3C` battle | 30.092 | 30.390 |
+| `$3C → $3D` orbit | 8.242 | 8.207 |
+| `$3D → $3E` Vegeta | 16.327 | 16.038 |
+| `$3E → $3F` full power | 25.459 | 10.626 |
+
+This is a foundation, not the completed round-eight performance result.
+The changed retention history still makes some transitions worse (largest
+`$24 → $25`, +14.984 frames), and battle's planner adds 0.298 frame.
+The extended bank and final policy must be measured against the baseline,
+including these cases. No new sound is selected in this checkpoint.
+
+Checks: strict build; all 49 audio unit/SPC tests; 64 consecutive canonical
+loads; power-on canonical plus both noncanonical preset sweeps (192 loads),
+with complete sample, metadata, reservation and stack checks; all 13 gameplay
+cases. Gameplay misses are unchanged: charge 13, teleport 3, fly-ki 2,
+fly 1, fly-punch 1, every other case 0. The final round-eight validation
+will also run the full audio, perf, combat and emulator suites.
+
 Spoilers follow the rest of `docs/agents/`. Module: `snes/src/modules/audio/`
 (65816 code bank `$AA`, tables `$EA`, BRR/sequence assets in `$FC-$FF`,
 WRAM `!RAM_AUDIO`), generators `snes/gen/audio*.mjs`, tests `snes/test/audio/`.
