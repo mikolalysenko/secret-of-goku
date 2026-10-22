@@ -99,6 +99,10 @@ const ADDR=`GOKU_FORM=${GOKU_FORM}\nSCENE_OWNER=${SCENE_OWNER}\nSCENE_ORBIT=${SC
 // Mesen runs share the machine with other agents' emulators: a generous
 // wall-clock limit (the emulation itself is deterministic).
 const TIMEOUT=Number(process.env.ORBIT_TIMEOUT_MS??2400000);
+// The return case's live frames that repeat a picture (the real path's lag:
+// the fanfare's song load holds the loop 19 of them; 94 before the frieza
+// module's light frames and FX's kill return, 29 after).
+const RETURN_LIVE_LAG=40;
 // watch.lua (the per-frame watches) with the test ROM's addresses of the
 // colours the scene sends.
 function watchPrelude(rom){
@@ -893,7 +897,11 @@ end
     // stopped and given back before the load, Goku's pad and combat back,
     // the world module's landing pose as the deck fades in, the landing
     // clock to victoryTiming.landed (frieza_orbit_landed: landed, out of
-    // space) and the frieza module's victory event C7.
+    // space) and the frieza module's victory event C7. The real path's lag:
+    // the frieza module runs as in the game here (Goku arrived; the quick-
+    // start cases run it without him), so the frames that repeat a picture
+    // while the scene is live, from the struggle to the stop, are bounded
+    // (RETURN_LIVE_LAG; ORBIT_RETURN_LAG=n overrides).
     const h=await friezaHandoff();
     const {victoryTiming:vt}=await import(resolve(repo,'engine/frieza-finale.js'));
     const {defs:fz}=await import('../frieza/state.mjs');
@@ -909,6 +917,16 @@ local GMODE, TRANS = ${wramOf('goku_mode')}, ${wramOf('w_trans_kind')}
 local INLOCK, OWNER_BIT = ${wramOf('cb_inlock')}, ${defMore('ORBIT_COMBAT_OWNER')}
 local FZF, LANDED, SPACE = ${fzw('fzf_flags')}, ${fz.FZFF_LANDED}, ${fz.FZFF_SPACE}
 local RETURN, LANDED_AGE = ${vt.return}, ${vt.landed}
+local liveLag, liveAt, lastOf = 0, {}, nil
+local function step()                     -- H.wait(1), counting live frames without an orbit frame
+  H.wait(1)
+  local of = H.r16(ORBIT_RAM + 4)
+  if H.r8(ORBIT_RAM) == 2 and lastOf == of then
+    liveLag = liveLag + 1
+    if #liveAt < 64 then liveAt[#liveAt + 1] = of end
+  end
+  lastOf = of
+end
 function test()
   if not enterOrbit() or not skipCinematic() then H.result('failures', fails) return end
   H.w16(FB + 0x02, 0)                      -- no intro
@@ -916,7 +934,7 @@ function test()
   local won = nil
   for f = 1, 2400 do
     if H.r16(FN) ~= 6 and f % 6 == 0 then H.input = {b = true} else H.input = nil end
-    H.wait(1)
+    step()
     if H.r16(FN) == 6 then won = f break end
   end
   H.input = nil
@@ -926,12 +944,14 @@ function test()
   local shots = {[1160]=true, [1280]=true, [1391]=true}
   local ret = nil
   for f = 1, 3000 do
-    H.wait(1)
+    step()
     local age = H.r16(FN + 2)
     if shots[age] and H.r8(ORBIT_RAM) == 2 then H.shot(string.format('descent%04d', age)) shots[age] = nil end
     if H.r16(FN + 0x20) ~= 0 then ret = age break end
   end
   H.result('return_age', ret)
+  H.result('live_lag', liveLag)
+  H.result('live_lag_at', liveAt)
   H.result('return_bage', H.r16(FN + 0x1E))
   check(ret == RETURN, 'the return at victoryTiming.return (' .. tostring(ret) .. ')')
   local hx, hy = H.r16(0x7EE002), H.r16(0x7EE004)
@@ -994,9 +1014,11 @@ end
     const lines=(res.lines??[]).map(l=>{const m=/rs (\d+) st (\d+) land (\d+)/.exec(l);return m?{rs:+m[1],land:+m[3]}:null;}).filter(Boolean);
     const peak=Math.max(0,...lines.map(l=>l.land));
     if(peak!==vt.landed-vt.return)fails.push(`the landing clock peaked at ${peak} (want ${vt.landed-vt.return})`);
+    const liveBound=Number(process.env.ORBIT_RETURN_LAG??RETURN_LIVE_LAG);
+    if(!(res.live_lag<=liveBound))fails.push(`${res.live_lag} live frames repeated a picture (bound ${liveBound}; at orbit frames ${(res.live_lag_at??[]).slice(0,24).join(' ')})`);
     writeFileSync(join(dir,'report.json'),JSON.stringify(res,null,1));
     const ok=fails.length===0;
-    console.log(`return: ${ok?'pass':'FAIL'} won at ${res.won}, back at ${res.return_age}, stopped +${res.stop_at}, loaded +${res.load_at} (map ${res.map_after}, Goku ${res.spot}), pose +${res.pose_at}-${res.pose_done}, landed +${res.landed_at}, C7 +${res.c7_at}`);
+    console.log(`return: ${ok?'pass':'FAIL'} won at ${res.won}, back at ${res.return_age}, ${res.live_lag} lagged live, stopped +${res.stop_at}, loaded +${res.load_at} (map ${res.map_after}, Goku ${res.spot}), pose +${res.pose_at}-${res.pose_done}, landed +${res.landed_at}, C7 +${res.c7_at}`);
     for(const m of fails.slice(0,10))console.log('  '+m);
     return ok;
   },
