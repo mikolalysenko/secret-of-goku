@@ -146,6 +146,19 @@ replacement), `modules_field_nmi` → `goku_nmi` (uploads), `modules_field_preup
   `air-attributes.test.mjs` checks all 465 cells and miniatures, mixed
   water/ledge rows, clipping and full OAM buffers. A representative body
   emitter falls 1,059 → 798 CPU cycles.
+  Both rows' attributes come from one pass over the native parts
+  (`goku_row_attrs`: with D = the bottom row's line − dy, D 0–15 covers the
+  bottom row and 16–31 the top row; the first covering part wins, part 0
+  otherwise). A full cell with both columns in 0–255, both rows in
+  −16..223 and room for four entries is written directly
+  (`goku_emit_four`): the same bytes, `$7C` and high-table bit pair as four
+  `goku_emit_at` calls, which every other case still uses.
+  `GOKU_EMIT_SLOW=1` restores the two scans and per-entry writes (it builds
+  the former image byte for byte). `emit-fast.test.mjs` runs both machine
+  codes on all 465 cells and miniatures, part counts 0–15, every clipping
+  edge, the OAM limit, all 256 bit-pair bytes and 20,000 random states; a
+  ground three-part body falls 1,081 → 562 CPU cycles, an airborne one
+  798 → 335.
 - **Strike lunge** (`goku_lunge`, 2026-10-21; `goku-animation.js`
   `punchLunge`): in a punch pose the anchor moves along the action's facing
   by 2 / 3 / 4 px (jab, cross, kick) on the contact cell, which the hit stop

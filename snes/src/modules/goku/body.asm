@@ -339,6 +339,31 @@ goku_emit:
 	SBC.w #31
 	STA !e_y                 ; top row
 	; one attribute per 16-line row, from the native part covering its centre
+if not(defined("GOKU_EMIT_SLOW"))
+	JSR goku_row_attrs       ; e_q = bottom row C4 | attr << 8, e_tile = top row C0
+	; Every quadrant drawn, both columns in 0-255 (X bit 8 clear), both rows
+	; in -16..223 and room for four entries: write the four entries that
+	; goku_emit_at would, without its per-entry tests.
+	LDA !e_mask
+	CMP.w #$000F
+	BNE .quads
+	LDY $7C
+	CPY.w #$01F1
+	BCS .quads
+	LDA $04
+	SEC
+	SBC.w #16
+	CMP.w #$00F0             ; x - 16 in 0..239: x in 16..255
+	BCS .quads
+	STA !e_x
+	LDA !e_y
+	CLC
+	ADC.w #16
+	CMP.w #$00E0             ; y + 16 in 0..223: y in -16..207
+	BCS .quads
+	JMP goku_emit_four
+.quads
+else
 	CLC
 	ADC.w #24
 	JSR goku_part_attr
@@ -352,6 +377,7 @@ goku_emit:
 	XBA
 	ORA.w #$00C0
 	STA !e_tile              ; top row: tile C0 | attr << 8
+endif
 	LDA !e_mask
 	LSR
 	BCC .q1
@@ -391,6 +417,142 @@ goku_emit:
 	JMP goku_emit_at
 .done
 	RTS
+
+if not(defined("GOKU_EMIT_SLOW"))
+; The four quadrants of a full cell (goku_emit's tests passed): Y = $7C,
+; e_x = x - 16, e_y = top row, e_tile/e_q = the rows' tile words. The same
+; bytes, cursor and high-table bit pair as four goku_emit_at calls; X bit 8
+; is clear for both columns, so no high-table byte changes. M16 X16 on exit.
+goku_emit_four:
+	SEP #$20
+	LDA !e_x
+	STA $0800,Y
+	STA $0808,Y
+	CLC
+	ADC.b #16
+	STA $0804,Y
+	STA $080C,Y
+	LDA !e_y
+	STA $0801,Y
+	STA $0805,Y
+	CLC
+	ADC.b #16
+	STA $0809,Y
+	STA $080D,Y
+	REP #$20
+	LDA !e_tile
+	STA $0802,Y              ; C0
+	INC
+	INC
+	STA $0806,Y              ; C2
+	LDA !e_q
+	STA $080A,Y              ; C4
+	INC
+	INC
+	STA $080E,Y              ; C6
+	TYA
+	CLC
+	ADC.w #16
+	STA $7C
+	; each entry steps the high-table bit pair as goku_emit_at does
+	SEP #$20
+	LDA $59
+	for entry = 0..4
+		ASL
+		ASL
+		BCC +
+		INC $5A
+		LDA.b #$01
++
+	endfor
+	STA $59
+	REP #$30
+	RTS
+
+; goku_part_attr for both rows of a full cell in one pass over the native
+; parts: the bottom row's line e_y + 24 and the top row's e_y + 8. With
+; D = line - dy for the bottom row, a part covers the bottom row when D is
+; 0-15 and the top row when D is 16-31; the first covering part wins and
+; descriptor 0 stands in for none. Out: e_q = bottom attribute << 8 | $C4,
+; e_tile = top attribute << 8 | $C0. M16 X16; clobbers t_b/t_c/t_d, X, Y.
+goku_row_attrs:
+	LDA !goku_ctl
+	BIT.w #!GOKU_CTL_AIRBORNE
+	BEQ .native
+	; flight's palette 1 and priority 3 (goku_part_attr)
+	LDA.w #$33C4
+	STA !e_q
+	LDA.w #$33C0
+	STA !e_tile
+	RTS
+.native
+	LDA !e_y
+	CLC
+	ADC.w #24
+	SEC
+	SBC $06
+	STA !t_b                 ; bottom row's line relative to the anchor
+	LDA $E083
+	AND.w #$000F
+	STA !t_c                 ; native part count
+	LDA.w #$FFFF
+	STA !t_d                 ; top row's part offset (none yet)
+	TAY                      ; Y = bottom row's part offset (none yet)
+	LDX.w #$0000
+.scan
+	DEC !t_c
+	BMI .end
+	LDA $E091,X              ; dy (signed byte)
+	AND.w #$00FF
+	EOR.w #$0080
+	SEC
+	SBC.w #$0080
+	EOR.w #$FFFF
+	SEC
+	ADC !t_b                 ; D = line - dy
+	CMP.w #32
+	BCS .next
+	CMP.w #16
+	BCS .top
+	TYA
+	BPL .next                ; the bottom row has its part
+	TXY
+	LDA !t_d
+	BPL .end                 ; both rows have theirs
+	BRA .next
+.top
+	LDA !t_d
+	BPL .next
+	STX !t_d
+	TYA
+	BPL .end
+.next
+	INX
+	INX
+	INX
+	INX
+	BRA .scan
+.end
+	TYA
+	BPL +
+	LDY.w #$0000
++	LDA $E093,Y
+	AND.w #$003E
+	ORA.w #$0001
+	XBA
+	ORA.w #$00C4
+	STA !e_q
+	LDX !t_d
+	BPL +
+	LDX.w #$0000
++	LDA $E093,X
+	AND.w #$003E
+	ORA.w #$0001
+	XBA
+	ORA.w #$00C0
+	STA !e_tile
+	RTS
+endif
 
 ; OAM attribute for a screen line (A16 in, A16 out = attribute byte):
 ; priority and palette of the boy's native body part covering that line
