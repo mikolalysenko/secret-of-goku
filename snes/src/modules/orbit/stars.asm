@@ -467,8 +467,6 @@ stars_build_step:
 	TYA
 	SEC : SBC.l stars_list_at-2,X
 	STA.w !s_lists-2,X
-	LDA.w !sk_have,X               ; (finished: the generation it was built with)
-	STA.w !sk_done,X
 	STZ.w !s_bd
 	RTS
 
@@ -602,7 +600,8 @@ stars_limit_rule:
 ; again and the lists rebuilt: a group still on keeps the rows it holds
 ; while its own lie within them (looser limits need no rebuild, and the
 ; edge of a ray going back and forth over a row no longer remakes them;
-; the rows go when the group turns off).
+; the rows go when the group turns off, and those above its top go when
+; a band layer comes to draw them: the clash, bw_ymin).
 stars_limits:
 	LDA.w !g_pull                  ; (none in the pullback: its frames have no time
 	BEQ +                          ; for the rebuilds)
@@ -630,6 +629,10 @@ stars_limits:
 	LDA.w !s_tmp+2
 	CMP.w !sc_sig+1,Y
 	BCC .changed
+	BEQ .top
+	LDA.w !bw_ymin,X               ; (its top lower because a band layer draws
+	BNE .changed                   ; the rows above now: those rows go)
+.top
 	LDA.w !sc_sig+2,Y
 	CMP.w !s_tmp+4
 	BCS .same
@@ -830,6 +833,19 @@ stars_group_rows:
 	BCC +
 	LDA.w #12
 +	STA.w !s_tmp+8                 ; n
+	LDA.w !fn_phase                ; (a clash ray off its band layer: the
+	BEQ +                          ; cells it draws, not those to the edge;
+	LDA.w !bw_ymin,X               ; none for one thinner than a band, the
+	BNE +                          ; win's wave as it fades)
+	LDA.w !fr_r,X
+	CMP.w #4
+	BCS ++
+	JMP .off
+++	LDA.w !bw_len,X
+	CMP.w !s_tmp+8
+	BCS +
+	STA.w !s_tmp+8
++
 	; slivers a line: class 0 4 min(n, 9); class 1 8 (2J + 1); else 4 (2J + 1)
 	LDA.w !bw_j,X
 	ASL

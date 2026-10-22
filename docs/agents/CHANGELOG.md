@@ -4,6 +4,110 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the fight and the clash check that the picture holds steady (2026-10-21)
+
+- `watch.lua` `W.flicker`: on each frame's OAM under the PPU's line
+  limits, the stars drawn and the sliver-lines Goku, Frieza and the beams
+  lose, and the bursts'.
+- `fight` and `clash` (`snes/test/orbit/run.mjs`) fail past bounds on
+  the stars' jumps (5 or more in a frame), the frames where Goku, Frieza,
+  the beams or the bursts lose sliver-lines, each body's hides, and any
+  hide shown again within 30 frames (a blink). `fight`: 12 jumps, 8
+  frames, bursts 40, hides 0/0/1. `clash`: 24, 2, 4, 0/0/2.
+- This build: `fight` 6 jumps, 4 frames, bursts 32, hides 0/0/1 (within
+  the bounds over all 8 frame phases); `clash` 13, 0, 0, 0/0/2; no blink.
+  main 6a6c9a3 fails both cases: the `fight`'s 30 Hz tear (18 frames) and
+  the outer planet's blink, the `clash`'s moon and outer planet hiding 3
+  times each.
+
+## Orbit: the clash culls again, and no body waits for the star lists (2026-10-21)
+
+- A distant body counted on a beam's rows waited for star lists 1-2 to
+  be rebuilt before it showed, so that the stars there had gone first.
+  The clash had no cull since 898cc07: there the stars on a launch's rows
+  went in two steps, 18 and 33 frames after it (the lists' rebuilds).
+- The clash culls again: the stars on the rows a beam newly holds go at
+  once, in the frame the limits take the rows. With the beam rows' stars
+  gone at once in both phases, no body waits for the lists. A body yields
+  only when blocked, and the wait's state and code go (`sb_stale`,
+  `sb_kg`, `sk_done`, `sl_stale`).
+- `fight` (default build): the outer planet no longer hides (38 frames
+  before) and the planetoid hides once, blocked where both beams cross
+  (twice before). Drawn through more of the beams' passes, the bodies
+  cost the bursts beside them more slivers: the others lose 106 in 19
+  frames to them (32 in 11 before). Lagged frames over the 8 frame
+  phases (`ORBIT_FIGHT_EXTRA=0..7`): 80 (82 before).
+- `clash`: the stars on the launches' rows go in their first frames; the
+  bodies as before (the moon and the outer planet never hide). 39
+  repeated pictures (38 before).
+
+## Orbit: the clash's rays on their band layers from the launch (2026-10-21)
+
+- A clash ray is drawn on its band layer once the layer's map for its
+  radius is in VRAM. Each map is one DMA when the radius changes. Until
+  then the ray's cells are drawn from the top of the screen.
+- The launch's first frames therefore drew Goku's ray with cells. The
+  stars' limits counted it on the rows to the screen's edge, and the moon
+  and the outer planet, on those rows, yielded and hid.
+- The charge now sends the launch's two maps, Goku's radius 28 and
+  Frieza's 30, one a vblank (`bands_preload`). The launch draws its rays
+  on the layers from their first frame with a length. Its first rays, a
+  few pixels long, go on the layers too: the heading the table rounds for
+  them is noise (`bands_clash_ray`).
+- A clash ray still drawn with cells above the band lines (the age-0
+  frame, the win's wave off the clash's geometry) counts only the rows of
+  the cells it draws, and none once it is thinner than a band (the win's
+  2-pixel wave as it fades).
+- `clash` (default build): the moon and the outer planet never hide
+  (before: 3 hides each, held 106 and 154 frames, 2 and 1 of them shown
+  again within 30 frames); the planetoid hides twice, through the
+  struggles, as before. 38 repeated pictures (40 before: the launches'
+  rows made again). The stars' count jumps by 5 or more in 15 frames (13
+  before); the `fight` is unchanged (no band layers).
+
+## Orbit: the clash's rays give up the rows their band layers draw (2026-10-21)
+
+- A beam group keeps the rows its limits hold while its own lie within
+  them. In the clash, the launch's first frames draw Goku's ray with cells
+  from the top of the screen, before its band layer's map is there. Its
+  limits then kept those rows through the whole first struggle, after the
+  band layer had taken over above the globe, and the stars above the
+  globe stayed limited: 3 of them in the first struggle.
+- A group whose rows' top moves down because its band layer now draws
+  the rows above gives those rows up (`stars_limits`: a band layer's line
+  `bw_ymin` nonzero).
+- `clash` (default build): the first struggle shows 17-20 stars instead
+  of 3. The star-frames hidden against an unlimited sky go from 48,893 to
+  44,003, and the star count's jumps of 5 or more from 16 to 13. The
+  bodies' held frames: moon 106 (185 before), outer planet 154 (233). 40
+  repeated pictures (38 before: the launches' rows made again). The
+  `fight` is unchanged (no band layers).
+
+## Orbit: no stars on a beam's rows while it holds them (2026-10-21)
+
+- The maintainer found the orbit "super glitchy ... lots of flickering and
+  sprites disappearing" on SNES 0.2.0. One cause: the stars' row limits
+  kept (34 - 2 - the beams' slivers) / 2 stars on a row a beam's cells
+  cover. The cull hid them all when a beam came, and the lists' rebuilds
+  brought most of them back over the next 15 frames. In the `fight` test,
+  Goku's wave blinked 30 stars out and back in. With Frieza's aura drawn
+  every other frame, those lines also passed 34 slivers at 30 Hz and the
+  wave's top lines tore.
+- A beam's row now holds no star of depths 1-2 while the group holds it.
+  The stars go at once and come back when the beam lets the row go, a
+  stable and reduced starfield. A counted body's beam rows need no
+  margin pass now.
+- `fight` (default build, the test's pads): the beams lose slivers in 4
+  frames (64 sliver-lines) instead of 18 (234), the bursts in 35 (390)
+  instead of 36 (690). The star count's jumps of 5 or more go from 9 to
+  7. The frames with 5 or more stars fewer than an unlimited sky go from
+  67 to 111, because the starfield stays reduced for the beam's whole
+  pass. The repeated pictures summed over the eight frame-cycle phases
+  (`ORBIT_FIGHT_EXTRA` 0-7) drop from 91 to 82 (per phase 9 9 12 9 13 9
+  11 10, before 9 12 14 11 13 11 11 10).
+- `clash`: unchanged. Its beam rows already held almost no stars (38
+  repeated pictures).
+
 ## Orbit: a body's hold made in its note (2026-10-21)
 
 - A distant body blocked on a beam's rows, or waiting there for the star

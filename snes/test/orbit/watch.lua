@@ -18,6 +18,9 @@
 --   W.oam()     the PPU's per-line limits on the OAM just shown
 --   W.bodies()  the distant bodies: drawn, held back or off the screen;
 --               the slivers their sprites cost the others and lose
+--   W.flicker() under the PPU's line limits, the stars drawn and the
+--               sliver-lines Goku, Frieza and the beams lose, and the
+--               bursts'
 --   W.marks()   the scanlines at the frame's stages
 --   W.install() (once, before the frames) and W.writes(): while the orbit
 --               is live, the frame's CPU writes to CGRAM ($2121/$2122)
@@ -180,6 +183,66 @@ function W.bodies()
     end
   end
   return table.concat(st) .. ',' .. others .. ',' .. own
+end
+-- The flicker watch (the maintainer found SNES 0.2.0's orbit "super glitchy
+-- ... lots of flickering and sprites disappearing"): on the OAM the frame
+-- just shown used, under the PPU's limits (per line the first 32 sprites in
+-- range in OAM order, their slivers fetched last sprite first, 34 at most),
+-- the stars drawn (an entry losing at most half its sliver-lines), and the
+-- sliver-lines lost by Goku, Frieza and the beams (OBJ palettes 1, 6, 4-5)
+-- and by the bursts and the fire (palette 0 but the bodies' cells):
+-- 'F<stars>,<protected lost>,<bursts lost>'.
+function W.flicker()
+  local S, lines = {}, {}
+  for i = 0, 127 do
+    local x = emu.read(i * 4, emu.memType.snesSpriteRam)
+    local y = emu.read(i * 4 + 1, emu.memType.snesSpriteRam)
+    local t = emu.read(i * 4 + 2, emu.memType.snesSpriteRam) | (emu.read(i * 4 + 3, emu.memType.snesSpriteRam) << 8)
+    local hi = emu.read(512 + (i >> 2), emu.memType.snesSpriteRam) >> ((i & 3) * 2)
+    if hi & 1 ~= 0 then x = x - 256 end
+    local size = (hi & 2 ~= 0) and 32 or 16
+    local tiles = 0
+    for c = 0, size // 8 - 1 do local tx = x + c * 8; if tx > -8 and tx < 256 then tiles = tiles + 1 end end
+    if tiles > 0 then
+      local pal, cell = (t >> 9) & 7, t & 0x1FF
+      local kind = 'o'
+      if pal == 7 and cell >= 0x160 and cell < 0x180 then kind = 's'
+      elseif pal == 1 or pal == 6 or pal == 4 or pal == 5 then kind = 'p'
+      elseif pal == 0 and not BODY_CELLS[cell] then kind = 'b' end
+      local s = {tiles = tiles, kind = kind, sl = 0, ll = 0}
+      S[#S + 1] = s
+      for dy = 0, size - 1 do
+        local line = (y + dy) & 255
+        if line < 224 then
+          local L = lines[line]
+          if not L then L = {}; lines[line] = L end
+          L[#L + 1] = s
+        end
+      end
+    end
+  end
+  for _, L in pairs(lines) do
+    local n = #L
+    for k = n, 33, -1 do local s = L[k]; s.sl = s.sl + s.tiles; s.ll = s.ll + s.tiles end
+    local fetched = 0
+    for k = (n < 32 and n or 32), 1, -1 do
+      local s = L[k]
+      fetched = fetched + s.tiles
+      s.sl = s.sl + s.tiles
+      if fetched > 34 then
+        local lost = fetched - 34
+        if lost > s.tiles then lost = s.tiles end
+        s.ll = s.ll + lost
+      end
+    end
+  end
+  local stars, prot, burst = 0, 0, 0
+  for _, s in ipairs(S) do
+    if s.kind == 's' and s.ll * 2 <= s.sl then stars = stars + 1
+    elseif s.kind == 'p' then prot = prot + s.ll
+    elseif s.kind == 'b' then burst = burst + s.ll end
+  end
+  return 'F' .. stars .. ',' .. prot .. ',' .. burst
 end
 -- Writes on the visible lines (0-224) while the orbit is live, through the
 -- banks the core ($00, $80) and the orbit ($32) write I/O from: CGRAM
