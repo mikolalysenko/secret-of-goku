@@ -20,6 +20,9 @@ const flags=['c','z','i','d','x','m','v','n'];
 // Retail byte ranges (bank $C1 offsets) of the rewritten handlers.
 const AI_REWRITES=[
   [0x0245,0x0285], // CORE_NATIVE_JUMP_SLOW: the relative jump
+  [0x252F,0x2534], // CORE_NATIVE_DISPATCH_SLOW: the dispatcher's return...
+  [0x257A,0x257D], // ...and the loop's call (CORE_NATIVE_LOOP_SLOW: its jump to C1:27CC)
+  [0x27CC,0x2800], // CORE_NATIVE_LOOP_SLOW: the command loop in the bank's padding
 ];
 const traceDir=resolve(root,process.env.AI_TRACE_DIR??'.local/snes-test/ai-trace');
 function recordings(){

@@ -13,8 +13,12 @@ vm.runInContext(fs.readFileSync(resolve(root,'vendor/snes/cpu.js'),'utf8'),ctx);
 const flags=['c','z','i','d','x','m','v','n'];
 const source=fs.readFileSync(resolve(root,process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc'));
 const reference=Buffer.from(source),retail=fs.readFileSync(resolve(root,'rom/secret-of-mana-us.sfc'));
-for(const [a,n] of [[0x1257a,3],[0x1252f,5]])retail.copy(reference,a,a,a+n);
+for(const [a,n] of [[0x1257a,3],[0x1252f,5],[0x127cc,0x34]])retail.copy(reference,a,a,a+n);
+// The command loop may run from C1:27CC (CORE_NATIVE_LOOP_SLOW keeps C1:251A/257D):
+// one command then ends where that loop tests its result.
+const loopEnd=rom=>rom[0x1257a]===0x4c&&rom.readUInt16LE(0x1257b)===0x27cc?0x27e3:0x257d;
 function runner(rom){
+ const single=loopEnd(rom);
  const ram=Buffer.alloc(0x28000),io=Buffer.alloc(0x10000);let writes=[];
  const at=a=>{
   const b=a>>>16,o=a&65535;
@@ -65,13 +69,15 @@ function runner(rom){
   Buffer.from(bytes).copy(rom,off);
   let n=0,cycles=0,commands=0;
   try{
-   while(cpu.br[4]!==(program?0x2588:0x257d)||cpu.r[1]!==0xc1){
+   while(cpu.br[4]!==(program?0x2588:single)||cpu.r[1]!==0xc1){
     assert(++n<50000,`timeout ${cpu.r[1].toString(16)}:${cpu.br[4].toString(16)}`);
-    if(cpu.br[4]===0x251a&&cpu.r[1]===0xc1)commands++;
+    if((cpu.br[4]===0x251a||cpu.br[4]===0x27cc)&&cpu.r[1]===0xc1)commands++;
     cpu.cyclesLeft=0;cpu.cycle();cycles+=cpu.cyclesLeft+1;
    }
    ram.fill(0,0x1800,s+1);
-   return {regs:[...cpu.r,...cpu.br],flags:flags.map(f=>cpu[f]),ram:Buffer.from(ram),io:Buffer.from(io),writes,cycles,commands};
+   const regs=[...cpu.r,...cpu.br];
+   if(!program)regs[6]=0x257d; // the same point of either loop: a command's result test
+   return {regs,flags:flags.map(f=>cpu[f]),ram:Buffer.from(ram),io:Buffer.from(io),writes,cycles,commands};
   }finally{old.copy(rom,off);}
  };
 }
@@ -80,7 +86,12 @@ function compare(input){
  const a=before(input),b=after(input),why=JSON.stringify(input);
  for(const key of ['regs','flags','ram','io','writes','commands'])
   assert.deepEqual(b[key],a[key],key+' '+why);
- assert.equal(a.cycles-b.cycles,9*a.commands,'dispatch cycles '+why);
+ // The direct branches save 9 cycles a command. The loop at C1:27CC also
+ // drops each further JSR: 12 for one command up to its result test, and
+ // 15 a command less its exit JMP back to C1:2588 for a whole program.
+ const relocated=loopEnd(source)===0x27e3;
+ const saved=!relocated?9*a.commands:input.program?15*a.commands-6:12;
+ assert.equal(a.cycles-b.cycles,saved,'dispatch cycles '+why);
  return a;
 }
 test('native dispatcher retains all 256 opcode results and operand variants',()=>{
@@ -107,6 +118,6 @@ test('native command loop preserves termination and its 256-command limit',t=>{
   const program=[...Array(length).fill(0x1A),0];
   const a=compare({program});
   assert.equal(a.commands,Math.min(length+1,256));
-  if(length===16)t.diagnostic(`17 command dispatches save ${9*a.commands} CPU cycles`);
+  if(length===16)t.diagnostic(`17 command dispatches: ${a.cycles} CPU cycles in the retail loop`);
  }
 });

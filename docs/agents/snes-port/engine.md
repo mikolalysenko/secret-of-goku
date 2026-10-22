@@ -421,6 +421,17 @@ recorded enemy AI calls (private recordings made with the
 it with the rewritten `C1` bytes put back to retail, and compares WRAM,
 SRAM, registers, flags and I/O writes.
 
+The bytecode command loop runs from `C1:27CC-27FF`, 52 unused `$FF`
+bytes: dispatch, result test and the 256-command count in one place,
+without the two JMPs a command between the dispatcher at `C1:251A` and the
+loop at `C1:257D` (both kept; `C1:257A` jumps to the moved loop). Commands
+return to `C1:27E1`; the P/D saves around each one, the counter at D+1,
+the native limit (`JSR $0100`) and the exit at `C1:2588` stay. A further
+command costs 15 CPU cycles less than retail (9 with the direct branch
+alone). `ai-dispatch.test.mjs` runs all 256 opcodes and whole loops to the
+limit through the moved loop. `CORE_NATIVE_LOOP_SLOW=1` keeps the direct
+branch.
+
 `C1:0358` now classifies AI distances through a 64 KiB lookup split between
 `E0:0000-7FFF` and `ED:0000-7FFF`. `snes/gen/core-math.mjs` preserves the
 native inclusive radius thresholds and 16-bit square-sum overflow. The

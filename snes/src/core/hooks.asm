@@ -168,8 +168,48 @@ if not(defined("CORE_NATIVE_DISPATCH_SLOW"))
 %patch($C1257A, 3, core)
 pushpc
 org $C1257A
+if not(defined("CORE_NATIVE_LOOP_SLOW"))
+	JMP $27CC
+else
 	JMP $251A
+endif
 pullpc
+if not(defined("CORE_NATIVE_LOOP_SLOW"))
+; The same command loop in the bank's unused padding at C1:27CC-27FF (52
+; $FF bytes no code or table reaches): the dispatch, the result test and
+; the 256-command count in one place, without the two JMPs between the
+; dispatcher at C1:251A and the loop at C1:257D (which stay as they were).
+; Commands return to C1:27E1; the P/D saves around each one, the counter
+; at D+1, the native limit (JSR $0100) and the exit at C1:2588 are kept.
+%orig4($C127CC, $FFFFFFFF)
+%orig4($C127FC, $FFFFFFFF)
+%patch($C127CC, $34, core)
+pushpc
+org $C127CC
+core_native_loop:
+	PHD
+	PHP
+	REP #$20
+	LDX.w $0144,Y
+	LDA.l $D04F15,X
+	AND.w #$00FF
+	ASL
+	TAX
+	SEP #$20
+	JSR ($2257,X)
+	PLP
+	PLD
+	CMP.b #$00
+	BEQ .end
+	DEC $01
+	BNE core_native_loop
+	JSR $0100
+.end
+	JMP $2588
+	padbyte $FF
+	pad $C12800
+pullpc
+endif
 %orig4($C1252F, $2B2820C2)
 %patch($C1252F, 5, core)
 pushpc
