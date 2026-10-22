@@ -25,6 +25,7 @@ export async function generate({rom,repo,outDir,xdata}){
   const {buildStoryEvents}=await engine('story-events.js');
   const {eventRange}=await engine('event-codec.js');
   const {shipMaps}=await engine('sandship-wreck.js');
+  const {caveStalagmites,stalagmiteTileset}=await engine('cave-stalagmites.js');
   const word=a=>rom[a]|rom[a+1]<<8;
   const out=[];
   const emit=s=>out.push(s);
@@ -199,6 +200,10 @@ export async function generate({rom,repo,outDir,xdata}){
     }
     if(found)railMaps.push(map);
   }
+  // Maps with decorative cave stalagmites (cave-stalagmites.js), all in the
+  // tileset the module's lookup keys on.
+  const stalagMaps=new Set(caveStalagmites.map(o=>o.map));
+  for(const map of stalagMaps)assert((headerFlags(map)&63)===stalagmiteTileset&&!(headerFlags(map)&64),`stalagmite map ${map}: BG1 tiles of tileset ${stalagmiteTileset}`);
 
   // -------------------------------------------------------------------------
   // Map info: 512 x 8 bytes.
@@ -227,8 +232,9 @@ export async function generate({rom,repo,outDir,xdata}){
     const first=barrierList.findIndex(b=>b.map===map);
     if(first>=0)bits|=32;
     if(doorMaps.has(map))bits|=64;
-    // Scenery replacements can apply (carved heads, vines, the deck rail).
-    if([1,7].includes(flags&63)||railMaps.includes(map))bits|=128;
+    // Scenery replacements can apply (carved heads, vines, the deck rail,
+    // cave stalagmites).
+    if([1,7].includes(flags&63)||railMaps.includes(map)||stalagMaps.has(map))bits|=128;
     if(complex&&contextGroup[map])complexDungeons.push(map);
     mapInfo.push(flags,contextGroup[map],bits,first>=0?first:255,ext[0][0],ext[0][1],ext[1][0],ext[1][1]);
   }
@@ -351,6 +357,43 @@ export async function generate({rom,repo,outDir,xdata}){
     emit(`!DESTROY_RAIL_X1 = ${x1}`);
     emit(`!DESTROY_RAIL_TILE = 122`);
     emit(`!DESTROY_RAIL_REPLACEMENT = ${rail[0].r}`);
+  }
+  // Decorative cave stalagmites (cave-stalagmites.js: breakScenery and
+  // native-plants.js stalagmiteGroup). Objects in map order, each a 6-byte
+  // header (map.w, floor, latch mask in !P_DOORS or 0, cells, record size)
+  // and its cells (x, y, retail BG1 tile); $FFFF ends the list.
+  // destroy_stalag_bits marks the tiles any object uses (the class table).
+  // breakScenery is probed on every cell: the object's floor for its retail
+  // tile only, and nothing on BG2 or with a cut code.
+  {
+    const latched=caveStalagmites.filter(o=>o.latch);
+    assert(latched.length===1,'one latched stalagmite object (destroy_piece_flag keys on its record)');
+    // The latch is the bit after the breakable doors in !P_DOORS.
+    const latchBit=breakableDoors.length;assert(latchBit<8,'P_DOORS latch bit');
+    const ram=new Uint8Array(0x20000),lf=createNativeLocalFlight(fake(ram),{});
+    const bits=new Uint8Array(32),out=[];
+    for(const o of [...caveStalagmites].sort((a,b)=>a.map-b.map)){
+      ram[0xdc]=o.map&255;ram[0xdd]=o.map>>8;
+      assert(o.cells.length>0&&o.cells.length<=16&&o.floor<192,'stalagmite object shape');
+      for(const[tx,ty,tile]of o.cells){
+        const cell={tx,ty,layer:0,tile,flags:0x13,behavior:6,code:0,replacement:0};
+        assert(lf.breakScenery(cell)===o.floor,`breakScenery: stalagmite ${o.map} ${tx},${ty}`);
+        assert(lf.breakScenery({...cell,tile:(tile+1)&255})===null&&lf.breakScenery({...cell,layer:1})===null&&lf.breakScenery({...cell,code:0xc2})===null,'stalagmite cells need their retail tile');
+        bits[tile>>3]|=1<<(tile&7);
+      }
+      out.push(o.map&255,o.map>>8,o.floor,o.latch?1<<latchBit:0,o.cells.length,6+3*o.cells.length,...o.cells.flat());
+    }
+    bytes('destroy_stalagmites',out.concat([0xff,0xff]));
+    bytes('destroy_stalag_bits',bits);
+    emit(`!DESTROY_STALAG_TILESET = ${stalagmiteTileset}`);
+    // Watts's shortcut: the piece loader shows its gated piece once broken
+    // (native-story.js storyRead returns $0F for the record's range byte).
+    const o=latched[0],at=0x80000+o.record,start=0x80000+word(0x85000+o.map*2),end=0x80000+word(0x85002+o.map*2);
+    const records=[];for(let p=start;p<end;){if(rom[p]>=254){p++;continue;}records.push(p);p+=5;}
+    assert(records.includes(at)&&rom[at]===0x14&&(rom[at+1]&15)===15,'the latched stalagmite record moved (native-story.js reads it)');
+    emit(`!DESTROY_STALAG_REC_LO = ${hex2(at&255)}`);
+    emit(`!DESTROY_STALAG_REC_HI = ${hex2(at>>8&255)}`);
+    emit(`!DESTROY_STALAG_LATCH = ${hex2(1<<latchBit)}`);
   }
 
   // -------------------------------------------------------------------------

@@ -763,9 +763,18 @@ dst_consider_cell:
 	RTS
 +	LDA.w !sc_pol : STA.w !d_pol
 	; Braziers expand to their complete 2x3 object (or nothing).
-	JSR dst_brazier_policy : BCC .single
-	JSR dst_brazier_rep : BCC .single
+	JSR dst_brazier_policy : BCC .stalag
+	JSR dst_brazier_rep : BCC .stalag
 	JMP dst_brazier_group
+.stalag
+	; A cave stalagmite expands to all of its cells (native-plants.js
+	; stalagmiteGroup). The plants policy never breaks one. (Cut-code
+	; candidates, the common case, leave at the first test.)
+	LDA.w !d_ccode : BNE .single
+	LDA.w !m_ts : CMP.w #!DESTROY_STALAG_TILESET : BNE .single
+	LDA.w !sc_pol : BEQ .single
+	JSR dst_stalag_find : BCC .single
+	JMP dst_stalag_group
 .single
 	LDA.w !sc_pol : JSR dst_breakable : BCC .done
 	LDA.w !d_coff : JSR dst_queue_find : BCS .done
@@ -822,6 +831,28 @@ dst_brazier_group:
 	CPX.w #6*!DESTROY_BRAZIER_PATTERNS : BCS +
 	JMP .pattern
 +	RTS
+
+; dst_stalag_group: the cell belongs to the cave stalagmite whose record is
+; X (dst_stalag_find): queue each of its cells that still holds its retail
+; tile, in table order, as native-plants.js expands the hit. The cell cursor
+; and count live in the brazier words (never both at once).
+dst_stalag_group:
+	TXA : CLC : ADC.w #6 : STA.l !BZ_OX              ; first cell
+	LDA.l destroy_stalagmites+4,X : AND.w #$00FF : STA.l !BZ_OY   ; cells left
+.cell
+	LDA.l !BZ_OX : TAX
+	LDA.l destroy_stalagmites,X : AND.w #$00FF : STA.w !d_cx
+	LDA.l destroy_stalagmites+1,X : AND.w #$00FF : STA.w !d_cy
+	STZ.w !d_cl
+	JSR dst_load_cell : BCS .next
+	LDA.w !d_coff : JSR dst_queue_find : BCS .next
+	LDA.w !sc_pol : JSR dst_breakable : BCC .next     ; its retail tile, still
+	LDA.w !sc_pol : JSR dst_queue_push : BCS .done    ; queue full
+.next
+	LDA.l !BZ_OX : CLC : ADC.w #3 : STA.l !BZ_OX
+	LDA.l !BZ_OY : DEC : STA.l !BZ_OY : BNE .cell
+.done
+	RTS
 
 ; Load brazier cell Y (0..5) relative to the origin in !DS+$16/$18.
 ; Carry set when outside the grid.
