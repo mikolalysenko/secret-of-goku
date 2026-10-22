@@ -6,7 +6,7 @@ import {createApu,loadRom,driverChunks,loadSong} from './apu.mjs';
 import {effectRam,trackBytes,residentLayout} from '../../gen/audio-resident-storage.mjs';
 import {NATIVE_IDS as DEFAULT_IDS,RESIDENT,effectVoices} from '../../gen/audio-resident.mjs';
 import {buildResident7,resident7Layout} from '../../gen/audio-resident7.mjs';
-import {isCustom,isResident7,sampleFloor,nativeEffectVoices,nativeIds} from './cartridge.mjs';
+import {isCustom,isResident7,isRound9,sampleFloor,nativeEffectVoices,nativeIds,KI_CONTACT_ROW,SPRING_ROW} from './cartridge.mjs';
 import {songNoise} from './audit.mjs';
 import {measure} from './punch.mjs';
 
@@ -14,8 +14,11 @@ const rom=readFileSync(process.env.SNES_ROM??'dist/snes/secret-of-goku.sfc');
 const custom=isCustom(rom),NATIVE_IDS=nativeIds(rom,DEFAULT_IDS);
 test('resident effects preserve retail sequences and samples',()=>{
   const original=loadRom(),old=driverChunks(original),now=driverChunks(rom);
-  const layout=isResident7(rom)?resident7Layout(original,buildResident7().tracks):residentLayout(original,RESIDENT);
-  const allowed=new Set(layout.patches.flatMap(p=>p.bytes.map((_,i)=>p.addr+i)));
+  const bank=isResident7(rom)?buildResident7():null;
+  const layout=bank?resident7Layout(original,bank.tracks):residentLayout(original,RESIDENT);
+  const allowed=new Set([...layout.patches,...(bank?.pointers??[])].flatMap(p=>Array.from(p.bytes,(_,i)=>p.addr+i)));
+  // Round nine fills two rows that are empty in the retail table.
+  const rows=isRound9(rom)?[KI_CONTACT_ROW,SPRING_ROW]:[];
   for(let c=0;c<old.length;c++){
     assert.equal(now[c].addr,old[c].addr);
     assert.equal(now[c].bytes.length,old[c].bytes.length);
@@ -27,6 +30,7 @@ test('resident effects preserve retail sequences and samples',()=>{
   const before=effectRam(original),after=effectRam(rom);
   for(let id=0;id<0xDC;id++)for(let v=0;v<2;v++){
     const a=0x2C00+id*4+v*2,p=before[a]|before[a+1]<<8,q=after[a]|after[a+1]<<8;
+    if(rows.includes(id)){assert.equal(p,0,`retail $${id.toString(16)} is empty`);continue;}
     assert.deepEqual(trackBytes(after,q),trackBytes(before,p),`retail $${id.toString(16)} voice ${v}`);
   }
 });
@@ -59,14 +63,17 @@ test('every mapped effect is audible, within its voice budget and self-terminati
   assert.notEqual(NATIVE_IDS[25],NATIVE_IDS[8],'Fortress break is a burst');
   const layout=residentLayout(loadRom(),RESIDENT);assert.ok(layout.used<=layout.capacity);
 });
-test('contacts have immediate crunch and bass, and the wave sustains its roar',()=>{
+test('contacts have immediate crunch and body, and the wave sustains its roar',()=>{
+  const round9=isRound9(rom);
   for(const id of [NATIVE_IDS[3],NATIVE_IDS[4]]){
     const m=measure(rom,id);
     assert.ok(m.timeToPeakMs<(isResident7(rom)?30:12),`late contact peak: ${m.timeToPeakMs}`);
     assert.ok(m.peakDbFS>-10&&m.peakDbFS<(isResident7(rom)?-1.5:-3),`contact headroom: ${m.peakDbFS}`);
-    assert.ok(m.low80Energy>.3&&m.high30Energy>.035,'bass body and broadband attack');
-    assert.ok(m.durationMs>=(isResident7(rom)?90:120)&&m.durationMs<=250,'short contact tail');
-    assert.ok(m.voiceMs<=(custom?350:250),'second voice only steals music for a short transient');
+    // Round nine trades round eight's sub-bass for a sustained crunch.
+    if(round9)assert.ok(m.low80Energy>.1&&m.high30Energy>.5,'body and broadband crunch');
+    else assert.ok(m.low80Energy>.3&&m.high30Energy>.035,'bass body and broadband attack');
+    assert.ok(m.durationMs>=(isResident7(rom)?90:120)&&m.durationMs<=(round9?400:250),'bounded contact tail');
+    assert.ok(m.voiceMs<=(round9?800:custom?350:250),'second voice only steals music for the contact');
   }
   const beam=measure(rom,NATIVE_IDS[8],{echo:true});
   assert.ok(beam.durationMs>=1050&&beam.durationMs<1400);
@@ -109,7 +116,7 @@ test('noise cues restore the song clock on completion and release ownership on i
     assert.equal(songs.length,64);
     for(const s of songs){assert.ok(s.commands>0);assert.deepEqual(s.noise,[],`song ${s.id} uses global noise`);}
   }
-  for(const id of [0xEB,0xE7,0xE8,0xEA,0x38])for(const stop of ['end','replace','stop']){
+  for(const id of [0xEB,0xE7,0xE8,0xEA,0x38,...(isRound9(rom)?[KI_CONTACT_ROW]:[])])for(const stop of ['end','replace','stop']){
     const h=createApu({rom,extension:false});h.ms(60);
     // A nonzero music noise clock proves restoration rather than reset to 0.
     h.ram[0xC5]=13;h.ram[0xBB]=(h.ram[0xBB]&0xE0)|13;

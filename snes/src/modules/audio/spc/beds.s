@@ -13,6 +13,13 @@ RATE = $187E
  NOP
  org $0E10
  CALL !resident_effect
+; Round nine: songs start and fade in steps of MUSIC_STEP ($0C) instead of
+; $11 per volume nibble, 3.0 dB below the retail level. Effects keep their
+; own gain path ($90), so every effect sits 3 dB higher against the music.
+ org $0DC3
+ MOV Y,#MUSIC_STEP
+ org $1018
+ MOV Y,#MUSIC_STEP
  org CODE_BASE
 bed_command:
  MOV A,$B5
@@ -40,9 +47,20 @@ bed_start:
  PUSH A
  MOV A,$B5
  PUSH A
- MOV $B6,#$0F
- MOV $B7,#$88
- CALL !$0E10
+ ; The charge bed's first command also starts the one-shot springy
+ ; activation on its own voice (round nine; SPRING_BED=0 disables it).
+ ; It marks a bed rising from rest: charge, focus, transformation and
+ ; departure all start at or below $D0; a bed started at full level is not
+ ; an activation and keeps that headroom.
+ CMP A,#SPRING_BED
+ BNE bed_launch_one
+ CMP $B6,#SPRING_LEVEL
+ BCS bed_launch_one
+ MOV $B5,#SPRING
+ CALL !bed_launch
+ MOV $B5,#$ED
+bed_launch_one:
+ CALL !bed_launch
  POP A
  MOV $B5,A
  POP A
@@ -57,7 +75,7 @@ bed_found:
  MOV A,$B6
  BEQ bed_stop
  MOV Y,A
- MOV A,#140
+ MOV A,#HUM_SCALE
  CMP $B5,#$ED
  BEQ bed_scale
  MOV A,#76
@@ -77,6 +95,11 @@ bed_stop:
  MOV $3C+X,A
 bed_return:
  RET
+; Start effect B5 centred, reusing its own voice (as command 02 ee 0F 88).
+bed_launch:
+ MOV $B6,#$0F
+ MOV $B7,#$88
+ JMP !$0E10
 ; Z clear if the native driver still owns this id. X=track, B2=voice bit.
 bed_find:
  MOV Y,#7
@@ -111,16 +134,20 @@ resident_gain:
  MOV Y,A
  MOV A,!$FF80+Y
  CMP A,#$DE
- BEQ gain_contact
+ BEQ gain_ki                ; ki launch
+ CMP A,#KI_CONTACT          ; round nine's IMPACT counts like a contact
+ BEQ gain_ki
+ CMP A,#SPRING              ; the charge spring has full gain
+ BEQ gain_full
  CMP A,#$E5
  BCC gain_old
  CMP A,#$E7
  BCC gain_full
  CMP A,#$E9
- BCC gain_contact
+ BCC gain_ki                ; HIT/KICK
  BEQ gain_old
  CMP A,#$F1
- BEQ gain_contact
+ BEQ gain_ki                ; SSJ KICK
  BCS gain_old
  CMP A,#$EA
  BEQ gain_contact
@@ -137,6 +164,12 @@ gain_done:
  MOV Y,A
  MOV A,$35
  RET
+; Under the Kamehameha (its duck's song fade runs, or any song fade) the
+; contacts, ki launches and ki contacts halve, as the PC's compressor tames
+; everything under its beam, and the wave and its echo tail keep headroom.
+gain_ki:
+ MOV A,$8B
+ BNE gain_old
 ; Contacts alone use full authored gain. Three/four effect voices halve
 ; them; five or more quarter them. Music is not counted in AE or attenuated.
 ; Only contact gain recalculations do this; there is no new timer callback.
@@ -158,6 +191,17 @@ gain_three:
  CMP Y,#3
  BCS gain_half
  BRA gain_done
+; Round nine: E5..E8 are released by the loop at $1868; the SSJ finisher
+; F1 (outside that range) follows, so no finisher tail halves the next hit.
+release_ssj_kick:
+ MOV $B5,#$F1
+release_ssj_loop:
+ CALL !bed_find
+ BEQ release_ssj_done
+ CALL !$09BE
+ BRA release_ssj_loop
+release_ssj_done:
+ RET
 resident_bank_tail:
 ; A/Y = native pitch, X = track. Only the two beds have a variable rate.
 ; Unused DIR entries $34-$3F: native songs only load entries $20-$2F.
@@ -205,6 +249,16 @@ resident_effect:
  CALL !vary_effect
  OR $C9,$AE                ; recalculate existing contacts before a new mix
  MOV A,$B5
+ ; Under the Kamehameha (its duck's fade) the wave's contacts arrive every
+ ; frame: a ki contact still sounding drops the next (as p2 low nibble 0)
+ ; instead of restarting at 60 Hz, like the PC's two-frame impact limit.
+ CMP A,#KI_CONTACT
+ BNE effect_wave
+ MOV A,$8B
+ BEQ effect_ready
+ MOV $B6,#0
+ BRA effect_ready
+effect_wave:
  CMP A,#$EA
  BEQ release_beds
  CMP A,#$F0
@@ -224,6 +278,23 @@ release_done:
  MOV A,#0
  MOV !LEVEL,A
  MOV !LEVEL+1,A
+ ; Round nine: the release ducks the song volume by DUCK/256 at once and
+ ; lets the driver's own fade ($1020: 31.5 ms steps) restore it under the
+ ; wave. Skipped while a song/CPU fade runs; port 1 is not touched.
+ MOV A,$8B
+ BNE duck_done
+ MOV A,$84
+ MOV $B6,A                  ; fade target: the volume before the duck
+ MOV Y,#DUCK
+ MUL YA
+ MOV $84,Y
+ OR $C9,$AD                 ; every music voice takes the duck now
+ MOV $B5,#DUCK_STEPS
+ CALL !$1020
+ MOV $83,#$FF               ; seed the fraction: the 8.8 step truncates, so
+                            ; the fade then lands exactly on its start volume
+ MOV $B6,#$0F               ; the wave's p2 (every caller sends 02 ee 0F 88)
+duck_done:
  POP A
  MOV $B5,A
 effect_ready:
@@ -241,11 +312,14 @@ blast_form:
  EOR A,#$0F
  MOV !BLAST_FORM,A
  XCN A
+ LSR A                      ; round nine: $EF normal, $FF SSJ
  CLRC
- ADC A,#$DF
+ ADC A,#$EF
  MOV !BLAST_VOLUME,A
  RET
-; A contact replaces its preceding whoosh before allocation/gain counting.
+; A contact replaces its preceding whoosh, and (round nine) any HIT/KICK
+; tail still sounding, before allocation/gain counting: the new crack
+; supersedes the old one instead of halving both.
 ; These unused instrument $34-$3D tuning / $34-$3F ADSR entries survive
 ; every song load (songs only install $20-$2F). No BRR or echo space changes.
  org $18E8
@@ -271,11 +345,12 @@ release_swing_loop:
  ; Native F2, after its sequencer-stack unwind: release effect ownership,
  ; noise/pitch-mod/echo state, then let the allocator return/reuse the voice.
  CALL !$09BE
+ BRA release_swing_loop     ; again: a contact owns two voices
 release_swing_next:
  INC $B5
- CMP $B5,#$E7
+ CMP $B5,#$E9
  BNE release_swing_loop
- RET
+ JMP !release_ssj_kick
 
 ; Per-track arrays stop at $017F. Keep $01C0-$01FF for the CPU stack;
 ; startup/song entry reset SP to $FF and the driver has no interrupts.
