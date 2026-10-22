@@ -286,6 +286,16 @@ predecoded terrain rows. Core frame, input, OAM,
 VRAM, save, world, lag, HDMA, WRAM and extended-ROM tests pass. The timing
 measurements above describe the older experiment, before those call changes.
 
+Six more per-frame native calls from FastROM code into the slow banks use
+their mirrors: `C0:B799` (`C2:B665`, the players' pad/command pass, every
+field frame), `C0:FBEA` (`C1:833A`, actors' special render modes),
+`C0:DDF4` (`C2:C757`), `C0:EB49` (`C2:C221`), `C0:E4BD` (`C2:C3C1`) and
+`C2:C416` (`C0:E324`, the attachment emitter). Each routine sets its own
+DB or uses the caller's, and returns with RTL to the caller's bank.
+`CORE_NATIVE_CALLS_SLOW` restores the six operands. The actor preparation
+step (`B0C7`) falls 9.86 → 9.54 scanlines in charge and 10.63 → 9.94 in
+flying ki.
+
 The field NMI's native actor graphics uploader also uses bank `$81`,
 including Goku's skip/refresh continuations. Ground tilemap uploads use a
 byte-identical copy of `C0:C692-C7C2` in the core bank, avoiding an RTS bank

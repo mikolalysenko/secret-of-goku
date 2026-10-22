@@ -316,6 +316,27 @@ pullpc
 %orig4($C0F9E5, $01D52A22)
 %hijack_jsl($C0F9E5, $81D52A, 4, core)
 
+if not(defined("CORE_NATIVE_CALLS_SLOW"))
+; Per-frame native calls into the slow banks $01/$02/$00 from FastROM code:
+; the players' pad/command pass (C2:B665, every field frame), actors' special
+; render modes (C1:833A), and the event-flag, actor-clear and attachment
+; helpers (C2:C757, C2:C221, C2:C3C1 and its C0:E324 emitter call). Their
+; FastROM mirrors map the same ROM, WRAM and I/O; each routine sets its own
+; DB or uses the caller's, and returns with RTL to the caller's bank.
+%orig4($C0B799, $02B66522)
+%hijack_jsl($C0B799, $82B665, 4, core)
+%orig4($C0FBEA, $01833A22)
+%hijack_jsl($C0FBEA, $81833A, 4, core)
+%orig4($C0DDF4, $02C75722)
+%hijack_jsl($C0DDF4, $82C757, 4, core)
+%orig4($C0EB49, $02C22122)
+%hijack_jsl($C0EB49, $82C221, 4, core)
+%orig4($C0E4BD, $02C3C122)
+%hijack_jsl($C0E4BD, $82C3C1, 4, core)
+%orig4($C2C416, $00E32422)
+%hijack_jsl($C2C416, $80E324, 4, core)
+endif
+
 if not(defined("CORE_NATIVE_WEAPON_SLOW"))
 ; Weapon setup and palettes during native actor/graphics refresh.
 ; These mirrors retain the same WRAM, I/O and ROM data mappings.
