@@ -234,8 +234,34 @@ core_native_hiclear_done:
 pullpc
 endif
 
-; Opening a native window: its 1,792-byte buffer clear (C0:091A-092A),
-; core/native.asm. The MVN at 0928 remains for the case the fast path declines.
+; Opening a native window: its two border rows (C0:07F9-0843) and its
+; 1,792-byte buffer clear (C0:091A-092A), core/native.asm. The row loops at
+; 080D/0828 and the MVN at 0928 remain for the cases the fast paths decline.
+if not(defined("CORE_NATIVE_TEXT_SLOW")) && not(defined("CORE_NATIVE_WINDOW_ROWS_SLOW"))
+%orig4($C00806, $8DA16CAD)
+%orig2($C0080A, $A164)
+%orig1($C0080C, $48)
+%orig3($C0080D, $0120A2)
+%patch($C00806, 7, core)
+%orig4($C00821, $A1578D68)
+%orig2($C00825, $56EE)
+%orig1($C00827, $A1)
+%orig3($C00828, $8120A2)
+%patch($C00822, 6, core)
+pushpc
+org $C00806
+	JSL core_native_window_row1
+	PHA
+	BVC core_native_window_row1_done
+org $C0081D
+core_native_window_row1_done:
+org $C00822
+	JSL core_native_window_row2
+	BVC core_native_window_row2_done
+org $C00838
+core_native_window_row2_done:
+pullpc
+endif
 if not(defined("CORE_NATIVE_TEXT_SLOW")) && not(defined("CORE_NATIVE_WINDOW_WIPE_SLOW"))
 %orig4($C0091D, $FFA920C2)
 %orig4($C00921, $9400A206)

@@ -1,8 +1,9 @@
-// Opening a native window: the 1,792-byte buffer clear at C0:091A
+// Opening a native window: the two border rows of C0:07F9 (one pass per row
+// in core_window_fill) and the 1,792-byte buffer clear at C0:091A
 // (core_native_window_wipe) against retail machine code: registers,
 // flags, every byte of WRAM and low RAM (dead callee stack aside), from
-// random RAM, data banks and processor flags, including the case the fast
-// path declines.
+// random window states, columns, widths, rows, request flags, data banks
+// and processor flags, including every case the fast paths decline.
 //   SNES_ROM (default dist/snes/secret-of-goku.sfc); NATIVE_BASELINE_ROM (retail)
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
@@ -50,9 +51,28 @@ function compare(input){
   }
   return [a.cycles,b.cycles];
 }
+function windowRam({row,col,width,colHi=0,a162=rand(4),a187=rand(4),d1d05=rand(9)}){
+  const ram=Buffer.alloc(0x20000);for(let i=0;i<ram.length;i++)ram[i]=rand(256);
+  ram[0xA165]=row;ram[0xA166]=col;ram[0xA16C]=width;ram[0xA158]=colHi;
+  ram[0xA162]=a162;ram[0xA187]=a187;ram[0x1D05]=d1d05;
+  return ram;
+}
 const pick=a=>a[rand(a.length)];
 // M8/X16 as both routines are entered; decimal mode now and then.
 const pflags=()=>(rand(256)&~0x38)|0x20|(rand(8)?0:0x08);
+test('window border rows keep the retail cells, requests and CPU state',t=>{
+  let cyc=[0,0],n=0;
+  for(let i=0;i<3000;i++){
+    const row=rand(5)?1+rand(12):rand(17),col=rand(5)?rand(32):rand(256),width=rand(6)?2+rand(31):rand(256);   // rows past 16 would overwrite the loop's own state
+    const colHi=rand(6)?0:rand(3),dbr=rand(10)?0x7E:0x7F,ps=pflags();   // (ROM banks would loop forever in retail; a larger column word wraps the writes onto the stack)
+    const input={ram:windowRam({row,col,width,colHi}),entry:0x07F9,stop:0x7000,stopBank:0xC0,
+      dbr,ps,a:rand(65536),x:rand(65536),y:rand(65536)};
+    const [a,b]=compare(input);
+    if(dbr===0x7E&&!(ps&8)&&row>=1&&row<=12&&width>0&&col+width<=32&&colHi===0){cyc[0]+=a;cyc[1]+=b;n++;}
+  }
+  t.diagnostic(`${n} ordinary windows: ${Math.round(cyc[0]/n)} -> ${Math.round(cyc[1]/n)} CPU cycles for both rows`);
+  assert(cyc[1]<cyc[0]*0.5,'not faster');
+});
 test('the window buffer clear keeps the retail bytes and MVN state',t=>{
   let cyc=[0,0],n=0;
   for(let i=0;i<60;i++){

@@ -481,8 +481,17 @@ is zero, so `core_native_window_wipe` stores the same zero words, 128 a
 pass, and leaves MVN's exit state (A = `$FFFF`, X = `$9B00`, Y = `$9B01`,
 DB = `$7E`, C/V as before, N set, Z clear); another DB keeps the MVN
 (`CORE_NATIVE_WINDOW_WIPE_SLOW`). 12,560 → 5,546 CPU cycles.
-`window.test.mjs` compares it with retail machine code over 60 clears
-from random RAM, data banks and flags.
+Its two border rows (`C0:07F9`) called the cell writer once per column.
+Every call makes the same upload requests and returns the same A high
+byte, carry and V; only the tile word differs. `core_window_fill` writes a
+row that stays inside `$9C00-$9FFF` without its eight-bit column wrapping
+(DB = `$7E`, binary mode) in one pass, its requests made first;
+`C0:0806` and `C0:0822` call it and branch on V past the retained retail
+loops, which run for every other row (`CORE_NATIVE_WINDOW_ROWS_SLOW`).
+Both rows of an ordinary window: 5,517 → 980 CPU cycles.
+`window.test.mjs` compares both routines with retail machine code over
+3,000 window states (columns, widths, rows, column high bytes, request
+flags, data banks, decimal mode) and 60 clears.
 
 The field foreground-sprite commit leaves native/rear entries in place and
 appends the staged effects. After the same 544-byte DMA, `$2102/$2103` selects

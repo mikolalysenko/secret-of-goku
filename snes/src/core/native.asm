@@ -1412,4 +1412,132 @@ core_window_wipe_done:
 	RTL
 endif
 
+if not(defined("CORE_NATIVE_TEXT_SLOW")) && not(defined("CORE_NATIVE_WINDOW_ROWS_SLOW"))
+; C0:07F9 draws a native window's two border rows: for each of $A164 cells
+; it calls the cell writer C0:1BC0 (core_native_window_cell) at row $A156,
+; column $A157, then advances the column (eight bits) and counts $A164 down
+; to zero. Every call makes the same requests ($1D12, and $1D04 as $1D05,
+; $A187 and $A162 decide; the row does not touch them) and returns the same
+; A high byte, carry and V; only its tile word differs. A row that stays in
+; the tile buffer $9C00-$9FFF without its column wrapping, with DB = $7E and
+; binary mode, is written in one pass, its requests made first.
+; core_window_fill: M8/X16, X = the row's cell. Filled: V clear, X = cell,
+; A's high byte and carry as the writer's last call, $A157 advanced,
+; $A164 = 0, Y and DB kept. Otherwise V set: the retail loop runs (it sets
+; A, X and carry itself).
+core_window_fill:
+	PHB
+	PHP
+	LDA $01,S
+	AND.b #$08                   ; decimal mode: the retail address math
+	BNE core_window_fill_retail
+	LDA $02,S
+	CMP.b #$7E
+	BNE core_window_fill_retail
+	LDA.w $A164
+	BEQ core_window_fill_retail  ; zero counts 256 passes
+	CLC
+	ADC.w $A157
+	BCC core_window_fill_go
+	BEQ core_window_fill_go      ; a row ending exactly at column $FF
+core_window_fill_retail:
+	PLP
+	PLB
+	SEP #$40
+	RTS
+core_window_fill_go:
+	PHA                          ; S: newcol P B
+	PHY                          ; S: Y newcol P B
+	PHX                          ; S: cell Y newcol P B
+	; the writer's address for the first cell (binary mode, DB = $7E)
+	LDA.b #0
+	XBA
+	LDA.w $A156
+	DEC
+	REP #$20
+	ASL : ASL : ASL : ASL : ASL
+	ADC.w $A157
+	ASL
+	CLC
+	ADC.w #$9C00
+	CMP.w #$9C00
+	BCC .retail_xya
+	TAY                          ; the first cell
+	LDA.w $A164
+	AND.w #$00FF
+	TAX                          ; cells
+	ASL
+	PHY
+	CLC
+	ADC $01,S                    ; the row's end
+	PLY
+	CMP.w #$A001
+	BCS .retail_xya
+	SEP #$20
+	LDA $05,S                    ; the column after the row
+	STA.w $A157
+	STZ.w $A164
+	; the writer's requests, A and carry, once
+	LDA.b #$44
+	TSB.w $1D12
+	LDA.w $1D05
+	CMP.b #7
+	BEQ .request
+	LDA.w $A187
+	BIT.b #1
+	BNE .request
+	LDA.w $A162
+	CMP.b #1
+	BEQ .defer
+.request
+	XBA
+	LDA.b #$44
+	TSB.w $1D04
+	BRA .fill
+.defer
+	XBA
+	LDA.b #$44
+	XBA
+.fill
+	REP #$20
+	PHA                          ; S: A cell Y newcol P B
+	LDA $03,S
+	EOR.w #$2000                 ; the writer's tile word
+-	STA.w $0000,Y
+	INY
+	INY
+	DEX
+	BNE -
+	PLA
+	SEP #$20
+	PLX
+	PLY
+	PLB                          ; (newcol)
+	PLB                          ; (P)
+	PLB
+	CLV
+	RTS
+.retail_xya
+	SEP #$20
+	PLX
+	PLY
+	PLA
+	JMP core_window_fill_retail
 
+; JSL from C0:0806 in place of LDA $A16C / STA $A164; the retail PHA and
+; BVC $081D follow. Returns A = $A16C for the PHA.
+core_native_window_row1:
+	LDA.w $A16C
+	STA.w $A164
+	LDX.w #$0120
+	JSR core_window_fill
+	LDA.w $A16C
+	RTL
+; JSL from C0:0822 in place of STA $A157 / INC $A156; BVC $0838 follows.
+core_native_window_row2:
+	STA.w $A157
+	INC.w $A156
+	LDX.w #$8120
+	JSR core_window_fill
+	RTL
+endif
