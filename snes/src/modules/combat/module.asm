@@ -16,6 +16,7 @@
 ; state at that point (asar does not track REP/SEP).
 
 incsrc "combat/defines.asm"
+assert 56*!COMBAT_LAUNCH_SSJ < 8192, "combat: cb_radial_component's product overflows"
 
 ; ---------------------------------------------------------------------------
 ; WRAM (!RAM_COMBAT = $7E:D800, $100 bytes): absolute addresses for DB = $7E.
@@ -201,7 +202,11 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
                            ; $1DE-$1E1 lent to fx (its block has no byte to spare): !fx_evict,
                            ;   !fx_wdue, !fx_kickd (fx/defs.asm, fx/module.asm); fx clears them
                            ;   at its own init, and cb_ensure_init's clear leaves them at rest
-                           ; $1E2-$1EF free (the beam pulses moved to !BP below)
+!cb_kill  = !CW+$1E2       ; byte: a contact of the current strike killed (cb_strike)
+!cb_stop  = !CW+$1E3       ; byte: the blow's own hit stop (the spark's hold, the pin)
+!cb_dpend = !CW+$1E4       ; byte: a punch's map strike waits for the next step (cb_punch_map):
+                           ;   1, | 2 when it missed every target (its native B pulse follows)
+                           ; $1E5-$1EF free (the beam pulses moved to !BP below)
 !PADH     = !CW+$1F0       ; pad 1 at each of the last 4 field vblanks (NMI tail)
 assert !cb_warm+6 <= !CW+$1DE && !CW+$1E2 <= !PADH, "combat: fx's lent bytes overlap"
 ; destroy_hit arguments (attack against the map; bind.asm), long addressing
@@ -308,10 +313,10 @@ assert !CBT == $317F00, "snes/test/combat/lib.lua reads the test block at $31:7F
 !kb_dir   = $06   ; byte: 0-3, or $80 radial
 !kb_hold  = $07   ; byte
 !kb_age   = $08   ; byte
-!kb_dist  = $09   ; byte: 56 / 88
+!kb_dist  = $09   ; byte: its distance (combat_launch_kinds)
 !kb_dx    = $0A   ; word: radial: x offset at full distance (8.8 signed)
 !kb_dy    = $0C   ; word
-!kb_tab   = $0E   ; byte: its rows in combat_launch_axis (COMBAT_TAB_*)
+!kb_tab   = $0E   ; byte: its rows in combat_launch_axis (kind * 26, doubled when read)
 !kb_len   = $0F   ; byte: frames (12, or a push-back's)
 ; sound mark fields
 !sm_on    = $00   ; byte

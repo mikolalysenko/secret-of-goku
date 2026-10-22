@@ -1004,13 +1004,25 @@ fx_draw_current:
 fx_finish:
 	LDA.l !fx_flash
 	BEQ .noflash
+	XBA                          ; (curve * 8 + frames) * 2
+	AND.w #$0003
+	ASL
+	ASL
+	ASL
+	STA !d_tmp
+	LDA.l !fx_flash
+	AND.w #$00FF
+	ORA !d_tmp
 	ASL
 	TAX
-	LDA.l fx_flash_amounts,X
+	LDA.l fx_flash_amounts,X     ; amount | white << 8
 	STA.l !fx_flashamt
 	LDA.l !fx_flash
 	DEC
-	STA.l !fx_flash
+	BIT.w #$00FF
+	BNE +
+	LDA.w #$0000                 ; its last frame: the curve goes too
++	STA.l !fx_flash
 	BRA .quake
 .noflash
 	STA.l !fx_flashamt
@@ -1037,17 +1049,23 @@ fx_finish:
 .pal
 	; The palette hook latches clspal only when this frame completes.
 	; nmipal continues to describe the displayed OAM during a lag vblank.
-	LDA.l !fx_cpend             ; palettes already went through the early hook
+	; The vblank's FX work: uploads and polygons take the full path; a
+	; flash (or its end) and a camera kick alone take the light one
+	; ($8000, | $4000 for the colour math: fx_nmi .light), which a kill's
+	; three flash frames would otherwise spend in the full path's set-up.
+	LDA.l !fx_cpend              ; palettes already went through the early hook
 	ORA.l !fx_flashamt
 	ORA.l !fx_mathon
 	ORA.l !fx_poly_req
 	ORA.l !fx_poly_on
-	STA.l !fx_nmiwork            ; (a camera kick needs no busy bit: its
-	ORA.l !fx_regions            ; contact's FX_HIT outlives it) anything held
-	ORA.l !fx_flash              ; keeps the full path running
-	ORA.l !fx_quake
-	ORA.l !fx_cfail
-	ORA.l !fx_nlive
+	STA.l !fx_nmiwork
+	BNE .work
+.busy
+	ORA.l !fx_regions            ; (a camera kick needs no busy bit: its
+	ORA.l !fx_flash              ; contact's FX_HIT outlives it) anything held
+	ORA.l !fx_quake              ; keeps the full path running (never bit 15,
+	ORA.l !fx_cfail              ; fx_frame's held-regions mark: the light
+	ORA.l !fx_nlive              ; path's $C000 is set after this)
 	STA.l !fx_busy
 	LDA.l !fx_kickd              ; a camera kick runs (fx_kick starts it nonzero)
 	BNE .kick
@@ -1063,10 +1081,20 @@ fx_finish:
 	LDA.w #$8000
 	STA.l !fx_nmiwork
 	BRA .done
+.work
+	; the vblank's work is the flash's colour math alone (no uploads or
+	; polygons): the light path ($C000), set after the busy word
+	PHA
+	LDA.l !fx_cpend
+	ORA.l !fx_poly_req
+	ORA.l !fx_poly_on
+	BNE +
+	LDA.w #$C000
+	STA.l !fx_nmiwork
++	PLA
+	BRA .busy
 
-; native-feedback.js: [0,1,2,4,6,9,13,17][flash]
-fx_flash_amounts:
-	dw 0, 1, 2, 4, 6, 9, 13, 17
+; (fx_flash_amounts: generated, snes/gen/fx.mjs)
 
 ; ---------------------------------------------------------------------------
 ; destroy's effect records (docs/agents/snes-port/destroy.md): a new record

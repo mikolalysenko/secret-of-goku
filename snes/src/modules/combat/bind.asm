@@ -760,6 +760,26 @@ if defined("FX_PREP")
 	CMP.w #2
 	BCC +
 	RTS
++	; Not in a frame the game already made late: an NMI came during this
+	; update, or its logic ran past line 170 (a cold record costs fx up to
+	; 13 lines). The wind-up's other frame, or the contact, brings them.
+	JSL modules_field_current
+	BCS +
+	RTS
++	SEP #$20
+	LDA.l $00213F                 ; the scanline (latched H/V counter)
+	LDA.l $002137
+	LDA.l $00213D
+	XBA
+	LDA.l $00213D
+	AND.b #$01
+	XBA
+	REP #$20
+	CMP.w #170
+	BCC +
+	CMP.w #225
+	BCS +
+	RTS
 +	SEP #$20
 	LDA !cb_act
 	CMP.b #!GOKU_K_PUNCH

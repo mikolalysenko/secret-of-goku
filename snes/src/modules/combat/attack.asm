@@ -294,11 +294,13 @@ cb_sound_mark:
 	RTS
 
 ; ---------------------------------------------------------------------------
-; Launch record for actor X: 12-frame eased arc of 56 px (88 in Super
-; Saiyan) along cb_hit_dir, or radially (cb_hit_dx/dy). A jab or cross
-; (cb_hit_launch 2) that does not kill pushes the target back instead:
-; COMBAT_SLIDE_BASE / _SSJ px over COMBAT_SLIDE_FRAMES, no lift (mana-mod.js
-; hit()). Replaces a running launch of the same actor. Preserves X.
+; Launch record for actor X: a 12-frame eased arc along cb_hit_dir, or
+; radially (cb_hit_dx/dy), of the launch distance (SNES-only, snes-feel.mjs:
+; 96 px, 136 as a Super Saiyan; the browser's 56 / 88). A jab or cross
+; (cb_hit_launch 2) that does not kill pushes the target back instead
+; (COMBAT_SLIDE_BASE / _SSJ px over COMBAT_SLIDE_FRAMES, no lift), and a
+; Kamehameha (cb_hit_launch 3) blows it farther (combat_launch_kinds).
+; Replaces a running launch of the same actor. Preserves X.
 cb_launch_start:
 	PHX
 	TXY                           ; Y = actor offset
@@ -309,47 +311,40 @@ cb_launch_start:
 	TAX
 	LDA !cb_hit_launch
 	AND.w #$00FF
+	CMP.w #$0003
+	BEQ .beam
 	CMP.w #$0002
 	BNE .launch
 	LDA !cb_hit_after
 	BEQ .launch
-	LDA.w #!COMBAT_SLIDE_BASE
-	PHX
-	LDX.w #!COMBAT_SLIDE_SSJ
-	BRA .distance
+	LDA.w #!COMBAT_KIND_SLIDE
+	BRA .kind
+.beam
+	LDA.w #!COMBAT_KIND_BEAM
+	BRA .kind
 .launch
-	LDA.w #56
+	LDA.w #!COMBAT_KIND_LAUNCH
+.kind
 	PHX
-	LDX.w #88
-.distance
-	JSR cb_by_form
+	STA !cb_t0
+	LDA !cb_form                  ; + form: the kind's Super Saiyan row
+	AND.w #$0001
+	CLC
+	ADC !cb_t0
+	STA !cb_t0
+	ASL
+	ADC !cb_t0                    ; * 3 bytes: rows, distance, frames
+	TAX
+	LDA.l combat_launch_kinds,X
+	STA !cb_t0                    ; rows | distance << 8
+	LDA.l combat_launch_kinds+2,X
 	PLX
 	SEP #$20
-	STA.l !KB+!kb_dist,X
-	CMP.b #88                     ; its rows and length (cb_update_launches)
-	BEQ .tab88
-	CMP.b #56
-	BEQ .tab56
-	CMP.b #!COMBAT_SLIDE_BASE
-	BEQ .tabSlide
-	LDA.b #!COMBAT_TAB_SLIDE_SSJ
-	BRA .slideLen
-.tabSlide
-	LDA.b #!COMBAT_TAB_SLIDE
-.slideLen
-	STA.l !KB+!kb_tab,X
-	LDA.b #!COMBAT_SLIDE_FRAMES
-	BRA .len
-.tab88
-	LDA.b #!COMBAT_TAB_88
-	BRA .launchLen
-.tab56
-	LDA.b #!COMBAT_TAB_56
-.launchLen
-	STA.l !KB+!kb_tab,X
-	LDA.b #12
-.len
 	STA.l !KB+!kb_len,X
+	LDA !cb_t0
+	STA.l !KB+!kb_tab,X
+	LDA !cb_t0+1
+	STA.l !KB+!kb_dist,X
 	LDA.b #$01
 	STA.l !KB+!kb_on,X
 	LDA $E180,Y
@@ -535,10 +530,10 @@ cb_clamp_map:
 
 ; Offsets of launch record X at table index cb_t1 (= age*2): axis launches
 ; use the exact tables, radial ones dx/dy * ease. Out: cb_t4 / cb_t5.
-assert combat_launch_88p == combat_launch_axis+!COMBAT_TAB_88, "combat: launch rows moved"
-assert combat_slide_basep == combat_launch_axis+!COMBAT_TAB_SLIDE, "combat: launch rows moved"
-assert combat_slide_ssjp == combat_launch_axis+!COMBAT_TAB_SLIDE_SSJ, "combat: launch rows moved"
-assert combat_launch_56n == combat_launch_axis+26, "combat: launch rows moved"
+assert combat_launch_ssjp == combat_launch_axis+52, "combat: launch rows moved"
+assert combat_slide_basep == combat_launch_axis+104, "combat: launch rows moved"
+assert combat_beam_ssjp == combat_launch_axis+260, "combat: launch rows moved"
+assert combat_launch_basen == combat_launch_axis+26, "combat: launch rows moved"
 cb_launch_offsets:
 	STZ !cb_t4
 	STZ !cb_t5
@@ -548,8 +543,9 @@ cb_launch_offsets:
 	BCC +
 	JMP .radial
 +	STA !cb_t6                    ; facing
-	LDA.l !KB+!kb_tab,X           ; its rows (kind * 52) + age * 2
+	LDA.l !KB+!kb_tab,X           ; its rows (kind * 26, doubled) + age * 2
 	AND.w #$00FF
+	ASL
 	CLC
 	ADC !cb_t1
 	TAX
@@ -737,6 +733,10 @@ cb_strike:
 	STA !cb_td                    ; remaining targets
 	STZ !cb_te                    ; contacts
 	STZ !cb_tf                    ; bit index
+	SEP #$20
+	LDA.b #$00
+	STA.l !cb_kill
+	REP #$20
 .each
 	LDA !cb_td
 	BEQ .done
@@ -758,7 +758,16 @@ cb_strike:
 	LDA !cb_hit_after
 	CMP !cb_hit_before
 	BCS .nextBit
-	LDA !cb_tf
+	LDA !cb_tf                    ; a native actor's contact that kills
+	CMP.w #!VT_BIT0               ; (SNES-only feel: a longer hold, the
+	BCS +                         ; kill's kick and flash; a virtual target
+	LDA !cb_hit_after             ; reports no HP left)
+	BNE +
+	SEP #$20
+	INC
+	STA.l !cb_kill
+	REP #$20
++	LDA !cb_tf
 	JSR cb_bit_of
 	TSB !cb_te
 .nextBit
@@ -782,40 +791,44 @@ cb_strike:
 +	CLC
 	ADC !cb_t0
 	TAX
-	LDA.l combat_hit_stop,X
+	LDA.l combat_hit_stop,X       ; (SNES-only values, snes-feel.mjs)
+	AND.w #$00FF
+	STA !cb_t0
+	SEP #$20
+	STA.l !cb_stop                ; the blow's own stop: the spark's hold, the pin
+	REP #$20
+	LDA.l !cb_kill                ; Goku holds a killing blow at least the
+	AND.w #$00FF                  ; kill's stop, while the target already flies
+	BEQ +
+	LDA.w #!COMBAT_KILL_STOP_BASE
+	LDX.w #!COMBAT_KILL_STOP_SSJ
+	JSR cb_by_super
+	CMP !cb_t0
+	BCC +
+	STA !cb_t0
++	LDA !cb_t0
 	SEP #$20
 	STA !cb_act_pause
-	INC
+	LDA.l !cb_stop                ; the struck targets are pinned for the
+	INC                           ; blow's own stop
 	STA !cb_t0
 	REP #$20
 	LDA !cb_te
 	JSR cb_launch_hold
 .noContact
-	; a miss pulses native B (talk, chests); a struck barrier does not
-	LDA !ag_list
+	; The punch's map strike (destroy_hit: plants, grass, barriers; about 20
+	; lines in a grassy field) runs in the next step, the hit stop's first
+	; frame, not on the strike's own frame, which the game's hit processing
+	; makes its heaviest (SNES-only, cb_punch_map). A miss's native B pulse
+	; (talk, chests) follows its answer: a struck barrier gets none.
+	SEP #$20
+	LDA.b #$01
+	LDX !ag_list
 	BNE +
-	SEP #$20
-	LDA.b #$02
-	STA !cb_tap
+	ORA.b #$02
++	STA.l !cb_dpend
 	REP #$20
-+	LDA.w #28                     ; punches break objects just ahead
-	STA.l !da_len
-	LDA.w #9
-	STA.l !da_half
-	LDA.w #$0000
-	STA.l !da_taper
-	LDA.w #256
-	STA.l !da_str
-	LDA.w #$0000
-	STA.l !da_id
-	LDA.w #$0000                  ; kind 0: punch / kick
-	JSR cb_destroy_attack
-	BIT.w #$0002
-	BEQ +
-	SEP #$20
-	STZ !cb_tap
-	REP #$20
-+	; at every contact the spark with its impact frame: the starburst sized
+	; at every contact the spark with its impact frame: the starburst sized
 	; by the blow, on a native actor the white flash and the native shake
 	; through the hit stop, the kick's shockwave at its first contact; then
 	; the camera kick, the kick's quake and brightening, and the impact cue
@@ -838,7 +851,7 @@ cb_strike:
 	SEC
 	SBC.w #12
 	STA !cb_t5
-	LDA !cb_act_pause
+	LDA.l !cb_stop                ; the blow's own stop
 	AND.w #$00FF
 	STA !cb_t6                    ; hold
 	LDA.w #10
@@ -880,7 +893,7 @@ cb_strike:
 	BCS .nextSpark
 	JSR cb_slot_offset
 	TAX
-	LDA !cb_act_pause             ; native shake ($E00D): frames << 4 | axis
+	LDA.l !cb_stop                ; native shake ($E00D): frames << 4 | axis
 	AND.w #$000F
 	ASL
 	ASL
@@ -901,26 +914,95 @@ cb_strike:
 	INC !cb_tf
 	JMP .spark
 .feedback
-	LDA !cb_act_arg               ; facing | blow << 8
+	; the camera kick of the blow (3: a kill; SNES-only profiles), and for
+	; a kill or the finishing kick the BG quake and a white impact flash
+	LDA.l !cb_kill
+	AND.w #$00FF
+	BEQ +
+	LDA.w #3
+	BRA ++
++	LDA !cb_act_arg               ; facing | blow << 8
 	AND.w #$0003
-	XBA
+++	XBA
 	ORA !ag_dir
 	JSR cb_bind_fx_kick
+	LDA.l !cb_kill
+	AND.w #$00FF
+	BEQ .noKill
+	LDA.w #!COMBAT_KILL_QUAKE_BASE
+	LDX.w #!COMBAT_KILL_QUAKE_SSJ
+	JSR cb_by_super
+	JSR cb_quake
+	LDA.w #!COMBAT_FLASH_KILL
+	JSR cb_bind_fx_flash
+	BRA .cue
+.noKill
 	LDA !cb_act_arg
 	AND.w #$0003
 	CMP.w #$0002
 	BNE .hit
-	LDA.w #3
-	LDX.w #5
+	LDA.w #!COMBAT_KICK_QUAKE_BASE
+	LDX.w #!COMBAT_KICK_QUAKE_SSJ
 	JSR cb_by_super
 	JSR cb_quake
-	LDA.w #3
+	LDA.w #!COMBAT_FLASH_KICK
 	JSR cb_bind_fx_flash
+.cue
+	LDA !cb_act_arg
+	AND.w #$0003
+	CMP.w #$0002
+	BNE .hit
 	LDA.w #!AUDIO_SFX_KICK_ID
 	JMP cb_sfx
 .hit
 	LDA.w #!AUDIO_SFX_HIT_ID
 	JMP cb_sfx
+
+; ---------------------------------------------------------------------------
+; A punch's map strike, one step after its contact (cb_strike): destroy_hit
+; over the 28 px ahead (half width 9) from where Goku stands planted, then a
+; miss's native B pulse (talk, chests) unless a barrier took the blow.
+cb_punch_map:
+	LDA.l !cb_dpend
+	AND.w #$00FF
+	PHA
+	SEP #$20
+	LDA.b #$00
+	STA.l !cb_dpend
+	REP #$20
+	LDA $E002
+	STA !ag_x
+	LDA $E004
+	STA !ag_y
+	LDA !cb_act_face
+	AND.w #$0003
+	STA !ag_dir
+	LDA.w #28
+	STA.l !da_len
+	LDA.w #9
+	STA.l !da_half
+	LDA.w #$0000
+	STA.l !da_taper
+	LDA.w #256
+	STA.l !da_str
+	LDA.w #$0000
+	STA.l !da_id
+	LDA.w #$0000                  ; kind 0: punch / kick
+	JSR cb_destroy_attack
+	BIT.w #$0002
+	BNE .barrier
+	PLA
+	BIT.w #$0002
+	BEQ .out
+	SEP #$20
+	LDA.b #$02
+	STA !cb_tap
+	REP #$20
+.out
+	RTS
+.barrier
+	PLA
+	RTS
 
 ; ---------------------------------------------------------------------------
 ; handOrigin(): palm of the pose. A16 = technique (0 beam, 1/2 ki hand 0/1,
@@ -1361,8 +1443,12 @@ cb_proj_hit:
 	AND.w #!ERF_SUPER
 	STA !cb_bslot                 ; super (spark tone)
 	SEP #$20
+	LDA.l !ER+!er_kind,X          ; a Kamehameha blows its targets away
+	CMP.b #!ERK_BEAM              ; (cb_hit_launch 3, snes-feel.mjs)
 	LDA.b #$01
-	STA !cb_hit_launch
+	BCC +
+	LDA.b #$03
++	STA !cb_hit_launch
 	REP #$20
 	LDA !cb_te
 	CMP.w #!VT_BIT0
@@ -1903,10 +1989,10 @@ cb_radial_component:
 	STA !cb_m8                    ; sign
 	JSR cb_abs
 	STA !cb_mq
-	LDA.w #56
-	LDX.w #88
+	LDA.w #!COMBAT_LAUNCH_BASE    ; the launch distance (snes-feel.mjs)
+	LDX.w #!COMBAT_LAUNCH_SSJ
 	JSR cb_by_form
-	JSR cb_mul16                  ; |c| * D (< 2^13)
+	JSR cb_mul16                  ; |c| * D (56 * 136 < 2^13)
 	; (|c| * D << 16) / d8 = |c| * D / d in 8.8
 	LDA !cb_mq1
 	STA !cb_m0                    ; dividend high

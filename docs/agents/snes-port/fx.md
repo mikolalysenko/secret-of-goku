@@ -603,6 +603,21 @@ found by a search of the 15 cache entries when their hint misses.
   no OAM entry changes. Otherwise its entries (found from its first part's
   tile and attribute) move to the white class's own palette, if one is
   free. Never a shared row: other actors of the species stay coloured.
+- **SNES-only feel (2026-10-21, combat.md).** `fx_kick_steps` holds signed
+  steps per blow, jab, cross, kick and a killing blow (A's blow 3), from
+  `snes/gen/snes-feel.mjs`: a shake that dies out (8, -6, 4, -3, 2, -1 for
+  the kick; six steps at most, so `!fx_kick`'s index stays in its five
+  bits). `fx_flash` takes frames | curve << 8 (`!fx_flash` keeps the curve
+  in its high byte): curve 0 is the transformation's warm ramp, 1 and 2 the
+  finishing kick's and a kill's white impact flash (12, 6, 2 and 18, 9, 4
+  of 31; `fx_flash_amounts` bit 8 makes `fx_nmi_math` add blue too). A
+  vblank whose only FX work is the colour math and / or a camera kick takes
+  the light path (`!fx_nmiwork` = `$C000`, set after `!fx_busy` so its bit
+  15 never reads as fx_frame's held-regions mark): the scroll and the four
+  colour-math writes while the line is below 256, without the full path's
+  timing, HDMA and upload set-up. (A first version put `$C000` into the busy
+  word: fx_frame then took its held-regions shortcut and never finished a
+  flash, which stayed on; in `fly-punch` its light vblanks also overran.)
 - **Camera kick.** `fx_kick` keeps the kick's next step (`!fx_kick`: 1 +
   index into `fx_kick_steps` | facing << 5) and makes `!fx_kickd` nonzero
   (1: offset 0) until the next `fx_finish`, which, from that word alone,

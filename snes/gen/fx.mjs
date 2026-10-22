@@ -18,6 +18,7 @@ import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {encodeTile,writePng,blank} from '../tools/gfx.mjs';
+import {FEEL} from './snes-feel.mjs';
 
 export const FX_BANK=0xFC;
 const CELL_BYTES=128;
@@ -498,10 +499,17 @@ export async function generate({rom,repo,outDir,xdata}){
   const shockBase=asms.length;
   for(const [tone,cls] of [['blue',0],['gold',GOLD]])for(let f=0;f<IMPACT_SHOCK_LIFE;f++)
     asms.push(impactAsm(impact.shock[f],cls,IMPACT_COLORS[tone],`shock-${tone}`));
-  // Camera kick steps (native-feedback.js KICK_PROFILES): eight per blow,
-  // the steps then zeros (a zero ends the kick).
-  const {KICK_PROFILES}=await eng('native-feedback.js');
-  const kickSteps=KICK_PROFILES.flatMap(p=>{if(p.length>7||p.some(v=>v<1||v>7))throw Error('fx: kick profile does not fit');return [...p,0,0,0,0,0,0,0,0].slice(0,8);});
+  // Camera kick steps (SNES-only, snes-feel.mjs FEEL.kick: jab, cross,
+  // kick, a killing blow): eight bytes per blow, signed steps then zeros (a
+  // zero ends the kick; six steps at most, so !fx_kick's index stays in its
+  // five bits).
+  const kickSteps=FEEL.kick.flatMap(p=>{if(p.length>6||p.some(v=>!v||v<-31||v>31))throw Error('fx: kick profile does not fit');return [...p,0,0,0,0,0,0,0,0].slice(0,8).map(v=>v&255);});
+  // Flash amounts by frames left (fx_flash: frames | curve << 8): curve 0 is
+  // the transformation's warm ramp (native-feedback.js burst), 1 the
+  // finishing kick's and 2 a killing blow's white impact flash (snes-feel.mjs
+  // FEEL.flash, bit 8 = white).
+  const flashCurve=list=>{if(list.length>7||list.some(v=>v<1||v>31))throw Error('fx: flash curve does not fit');const row=Array(8).fill(0);list.forEach((v,i)=>{row[list.length-i]=v|0x100;});return row;};
+  const flashAmounts=[[0,1,2,4,6,9,13,17],flashCurve(FEEL.flash.kick),flashCurve(FEEL.flash.kill)].flat();
   // Cells a punch's contact needs (fx_warm, FX_PREP), per tone, blow (jab,
   // cross, kick) and facing: the starburst, the impact spark's first picture
   // at its turn (fx_k_impact: frame 0, fx_dir_turn) and, for the kick, the
@@ -759,6 +767,7 @@ export async function generate({rom,repo,outDir,xdata}){
   a.def('FX_ASM_RING_COMPACT',compactRingBase);
   a.def('FX_ASM_STAR',starBase);a.def('FX_ASM_SHOCK',shockBase);a.def('FX_SHOCK_FRAMES',IMPACT_SHOCK_LIFE);a.def('FX_SHOCK_DELAY',IMPACT_SHOCK_DELAY);
   a.label('fx_kick_steps');a.db(kickSteps);
+  a.label('fx_flash_amounts');a.dw(flashAmounts);
   a.def('FX_WARM_KICK_LAST',[...kickLast][0]*2);
   a.label('fx_warm_list');a.dw(warmList);
   a.label('fx_class_palettes');for(const p of palettes){const row=[0,...p.map(c=>c-1)];while(row.length<16)row.push(0);a.dw(row);}

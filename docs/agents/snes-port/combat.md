@@ -111,19 +111,19 @@ and the full UI suite pass.
 ## Runtime
 
 **Impact feel (2026-10-21).** The browser's `strike()` gained a graded hit
-stop and impact frames; combat ports them frame for frame and fx draws them.
-`combat_hit_stop` (`snes/gen/combat.mjs`, read from `ManaMod.HIT_STOP`)
-gives the contact hold: 5 / 6 / 10 frames for jab / cross / kick, 4 / 5 / 9
-as a Super Saiyan; the launch records' hold pins the struck targets where
+stop and impact frames; combat ports them and fx draws them (the values of
+the hit stop, the camera kick, the flash and the launches are now the
+cartridge's own: SNES-only feel, below). `combat_hit_stop` gives the
+contact hold; the launch records' hold pins the struck targets where
 the blow found them, against their own recoil. `cb_hit_launch` 2 (jab,
-cross) starts a push-back instead of the 56 / 88 px launch when the hit
+cross) starts a push-back instead of the launch when the hit
 does not kill: `COMBAT_SLIDE_BASE` / `_SSJ` px (10 / 14, `ManaMod.SLIDE`)
-over `COMBAT_SLIDE_FRAMES` (6) on the same ease, without lift
-(`combat_slide_*` rows). A launch record keeps its rows' offset in
-`combat_launch_axis`, one block of 13-word rows for the 56 / 88 px launches
-and the two push-backs (`!kb_tab`, `COMBAT_TAB_*`), and its length
-(`!kb_len`, 12 or `COMBAT_SLIDE_FRAMES`), so a frame of a launch costs
-about what it did before push-backs existed. At every contact `cb_strike`
+over `COMBAT_SLIDE_FRAMES` (6) on the same ease, without lift. A launch
+record keeps its rows in `combat_launch_axis`, one block of 13-word rows
+per kind and form (the launch, the push-back, the Kamehameha's blow-away),
+as `!kb_tab` (kind * 26, doubled when read) with its length (`!kb_len`, 12
+or `COMBAT_SLIDE_FRAMES`) from `combat_launch_kinds`, so a frame of a
+launch costs about what it did before push-backs existed. At every contact `cb_strike`
 puts the impact frame in the spark's effect record (`er_aux`,
 `!CB_IMP_*`: the starburst size + 1 by blow, the kick's shockwave at its
 first contact, on a cross's first contact `!CB_IMP_NEXT` (its spark readies
@@ -133,7 +133,9 @@ spawn per contact carries it all. After the contacts it calls `fx_kick`
 (facing | blow << 8);
 the kick also `fx_quake` (3 / 5) and `fx_flash` (3). A ki shot's impact
 carries the smallest starburst. `cb_fx_prep` (from `cb_fx_continuous`'s
-action dispatch for punches, while the age is below 2) asks `fx_warm` for
+action dispatch for punches, while the age is below 2, not in a frame an
+NMI already interrupted or whose logic ran past line 170: a cold record
+costs fx up to 13 lines) asks `fx_warm` for
 the coming contact's cells
 until fx reports them resident, then not again for that blow and form until
 fx's cache has lost a cell (`!fx_evict` against `!cb_warm`): their uploads
@@ -144,6 +146,43 @@ cross's spark brings them in after its hold (fx `FX_IMP_NEXT`): the first
 kick after a connected cross shows the whole shockwave, base form too. The
 goku module draws the lunge ([goku](goku.md)). The cues are unchanged: HIT
 for the jab and cross, KICK for the kick.
+
+**SNES-only by the maintainer's request (2026-10-21).** "make goku's moves
+more powerful and more threatening ... make the combat intensely powerful
+... it should be responsive and impactful": the cartridge's combat feel no
+longer follows `engine/mana-mod.js`. The values live in
+`snes/gen/snes-feel.mjs` (`FEEL`), which `snes/gen/combat.mjs` and
+`snes/gen/fx.mjs` read; damage, HP, rewards and story state are shared and
+unchanged.
+
+| Aspect | Cartridge | Browser |
+| --- | --- | --- |
+| Hit stop, jab / cross / kick | 4 / 8 / 14 (Super Saiyan 3 / 7 / 12): the jab stays snappy | 5 / 6 / 10 (4 / 5 / 9) |
+| A blow that kills a native actor | Goku holds at least 12 (10) frames; the target, its spark and its shake keep the blow's own stop, so it flies while he holds the pose (`!cb_kill`, `!cb_stop`) | the blow's stop |
+| Camera kick (fx `fx_kick_steps`, signed) | a shake along the blow: jab 2, -1; cross 4, -3, 2, -1; kick 8, -6, 4, -3, 2, -1; a kill 11, -8, 6, -4, 2, -1 | 2 / 3 / 4 px springing back |
+| Full-screen flash (white, fx `fx_flash` curves 1-2) | the finishing kick 12, 6, 2; a kill 18, 9, 4 (of 31) | the kick's warm 4, 2, 1 |
+| BG quake | the kick 4 (6), a kill 3 (5) | the kick 3 (5) |
+| Launch over 12 frames | 96 px (136), peak 30 px; the Kamehameha blows targets 148 (196); the transformation's burst 96 (136) | 56 / 88, peak 20; beams as launches |
+| A punch pressed after the combo buffer opens (age 9, 4) | starts at once | the next frame |
+| The punch's map strike (`destroy_hit`) and a miss's native B pulse | the next step (`cb_punch_map`, the hit stop's first frame) | the strike's frame |
+
+The browser references apply these to the browser's own sources:
+`snes/test/snes-feel.mjs` patches `mana-mod.js` textually (each patch must
+match exactly once) for `snes/test/combat`'s `jsref.mjs`, and the
+`transform` scenario's radial check uses `FEEL.launch[1]`. Every other
+comparison stays exact; all 37 combat cases pass.
+
+Cost: the map strike left the strike's frame, which the game's hit
+processing makes its heaviest (about 20 lines in a grassy field); fx's
+flash takes the light vblank path, and the punch's cell warm-up waits when
+the frame is already late (fx.md). Gameplay misses summed over twelve
+input-phase offsets (the suite's start delayed 0-11 frames), against the
+same twelve on the step-1 build: punch 15 (19), ki 10 (10), fly 5 (5),
+fly-ki 25 (25), fly-punch 23 (22; vblank overruns 1, 3 before), teleport
+54 (54), charge 122 (146); phase 0 is unchanged (charge 13, teleport 3,
+fly-ki 2, fly 1, fly-punch 1, the rest 0). The grass cases fail their own
+grass/aura checks at most offsets on both builds; where they pass (0 and
+1) both are 0.
 
 Cost (per-frame logic of `snes/test/gameplay`'s `punch`, the first
 contact in the scene): the first wind-up frame takes fx's VRAM claim and

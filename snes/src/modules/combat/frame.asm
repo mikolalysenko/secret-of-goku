@@ -894,10 +894,18 @@ cb_emit_input:
 cb_goku_frame:
 	JSR cb_goku_active
 	BNE .active
+	SEP #$20                      ; (a pending map strike goes with it)
+	LDA.b #$00
+	STA.l !cb_dpend
+	REP #$20
 	JSR cb_cancel_combat_quiet
 	RTS
 .active
-	; an action another module put in !goku_act (teleport) blocks ours; our
+	LDA.l !cb_dpend               ; the last step's punch: its map strike
+	AND.w #$00FF
+	BEQ +
+	JSR cb_punch_map
++	; an action another module put in !goku_act (teleport) blocks ours; our
 	; own kind is still there when an action ended in an earlier catch-up
 	; step of this field frame (cb_publish runs after the last step)
 	SEP #$20
@@ -1213,6 +1221,19 @@ cb_attack_inputs:
 	LDA.b #$01
 	STA !cb_queued
 	REP #$20
+	; SNES-only (the maintainer's request): a press after the buffer opens
+	; (age 9, 4 as a Super Saiyan) starts the next blow at once, not on the
+	; next frame
+	LDA.w #9
+	LDX.w #4
+	JSR cb_by_super
+	CMP !cb_act_age
+	BEQ +
+	BCS .punched
++	SEP #$20
+	STZ !cb_queued
+	REP #$20
+	JSR cb_punch
 	BRA .punched
 .nopunch
 	STZ !cb_held

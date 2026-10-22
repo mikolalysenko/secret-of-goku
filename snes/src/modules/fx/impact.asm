@@ -507,10 +507,11 @@ fx_wh_part:
 
 ; ---------------------------------------------------------------------------
 ; fx_kick: A = facing (0 down, 1 right, 2 left, 3 up) | blow << 8 (0 jab,
-; 1 cross, 2 kick). The camera kicks along the blow and springs back over
-; the blow's steps (fx_kick_steps, native-feedback.js KICK_PROFILES): BG1
-; and BG2 move; BG3 (text, the HUD) and the sprites stay. The step of each
-; fx frame is written in its vblank. Ignored in Mode 7 arenas.
+; 1 cross, 2 kick, 3 a killing blow). The camera shakes along the blow over
+; the blow's signed steps (fx_kick_steps, SNES-only: snes-feel.mjs
+; FEEL.kick; the browser's native-feedback.js KICK_PROFILES spring back):
+; BG1 and BG2 move; BG3 (text, the HUD) and the sprites stay. The step of
+; each fx frame is written in its vblank. Ignored in Mode 7 arenas.
 ; !fx_kick holds 1 + the index of the next step in fx_kick_steps and the
 ; facing (bits 5-6); 0 none. !fx_kickd is nonzero while a kick runs (the
 ; one test fx_finish makes): 1 (offset 0) until its first step.
@@ -522,7 +523,7 @@ fx_kick:
 	AND.b #$04
 	BNE .skip
 	LDA $02,S                     ; blow
-	CMP.b #3
+	CMP.b #4
 	BCS .skip
 	ASL
 	ASL
@@ -564,7 +565,10 @@ fx_kick_advance:
 	LDA.l fx_kick_steps-1,X
 	AND.w #$00FF
 	BEQ .over
-	ASL
+	CMP.w #$0080                  ; a signed step
+	BCC +
+	ORA.w #$FF00
++	ASL
 	STA !d_tmp+4                  ; pixels << 1
 	SEP #$20
 	INC !d_tmp                    ; the next step (below bit 5)
