@@ -414,6 +414,30 @@ if not(defined("CORE_OAM_ROTATION_SLOW")) && not(defined("CORE_OAM_COMMIT_SLOW")
 %orig4($C0C136, $A943758E)
 %orig4($C0C13A, $420B8D80)
 %hijack($C0C11E, core_oam_upload, 32, core)
+if !CORE_OAM_PARTIAL
+; The game's other OAM uploads leave the PPU's OAM tail unknown to the
+; field's partial upload (oam.asm core_oam_foreign_*). World flight's own
+; vblank upload (C0:882F, every world frame) needs no hook: entering and
+; leaving world flight changes core's mode, which marks the tail unknown.
+%orig4($C01F60, $8E0000A2)
+%orig2($C01F64, $2102)
+%hijack_jsl($C01F60, core_oam_foreign_ldx, 6, core)
+%orig4($C09A95, $8D0000A9)
+%orig2($C09A99, $2102)
+%hijack_jsl($C09A95, core_oam_foreign_lda, 6, core)
+%orig4($C2A82F, $8D0000A9)
+%orig2($C2A833, $2102)
+%hijack_jsl($C2A82F, core_oam_foreign_lda, 6, core)
+%orig4($C2A8A5, $8D0000A9)
+%orig2($C2A8A9, $2102)
+%hijack_jsl($C2A8A5, core_oam_foreign_lda, 6, core)
+%orig4($C2AEA7, $8D0000A9)
+%orig2($C2AEAB, $2102)
+%hijack_jsl($C2AEA7, core_oam_foreign_lda, 6, core)
+%orig4($C646C5, $9C21029C)
+%orig2($C646C9, $2103)
+%hijack_jsl($C646C5, core_oam_foreign_stz, 6, core)
+endif
 ; Ring/map OBJ rebuilds retire the previous field's priority state.
 %orig4($C0E355, $00A230C2)
 %orig1($C0E359, $00)

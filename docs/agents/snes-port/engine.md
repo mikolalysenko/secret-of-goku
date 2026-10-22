@@ -105,6 +105,28 @@ dialogue, menus, the name editor and world steering all see it.
   rest hidden by `C0:9DE9`), 64–83 Flammie, shadow and approach effects
   (`C1:FDE4`, `C2:B273`); 84–127 are never written. OBJSEL `$03` (8×8/16×16).
 - Menus: own buffer `$7E:9C00`, DMA only when it changes.
+- Partial field upload (`core_oam_upload`; `CORE_OAM_PARTIAL_SLOW=1` sends
+  all `$220` bytes every vblank): the low table only up to max(m, h), then
+  the 32-byte high table. m is the field commit's end (`core_oam_commit_field`
+  records it with `$0120`; every slot from there on is hidden in the buffer)
+  or `!core_oam_keep` if larger (sprites a module keeps past its cursor: the
+  ending sets `$200` while a scene runs, for the flight's stars in slots
+  42-127, which its vblank copies in; it lasts until title entry), h where
+  the last upload left the PPU's slots hidden. The whole table goes
+  when no field commit ran since the last upload (rings, `$EC` bit 3 frames),
+  when PPU slot 0 reads back (`$2138`) different from what the last upload
+  sent, or after another OAM writer: the menus' buffer (`C0:1F5B`),
+  `C0:9A95`, `C2:A82F`/`A8A5`/`AEA7` and `C6:46C5`'s channel-0 copy from
+  `$15E0` (hooked), the Goku menu's direct edits, a core mode change (world
+  flight's own upload `C0:882F` sits behind one) or title entry (core WRAM
+  cleared). OAMADD, DMA channel 7 and the CPU registers end as the retail
+  transfer leaves them. A module that writes the buffer must leave every
+  entry past its cursor hidden: fx's rollback (`fx_oam_rollback`, a frame
+  whose cells cannot be uploaded in time) hides the sprites it takes back.
+  The upload's state (`!RAM_CORE_OAM`, `7E:D6F2-D6FD`) sits outside the
+  block the map loads' tile decoder overwrites (`7E:6E40-6FFF`; in the
+  Sandship's cabin it made the keep `$3030`), with a magic word that resets
+  it in states saved by older builds.
 - Native counts (measure.mjs, p50/max): waterfall 4/5, Potos 11/14,
   Sandship 19/34, Thanatos arena 6/7, Mana Beast 33/34, Fortress 11/12,
   Fortress boss 488 34/38; 63 in the busiest ending montage state.

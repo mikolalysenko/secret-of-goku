@@ -122,7 +122,10 @@ HDMA runs during a general DMA, and the flight's floor is HDMA-driven.
 - Its stars persist in OAM slots 42-127: the module area ends at slot 42,
   so the game's next OAM pass leaves them. They are copied by a
   low-priority vblank job (`nmi_lowcopy`, after the transfers, only with
-  budget left) when they drift, and every 64 frames.
+  budget left) when they drift, and every 64 frames. Because they sit past
+  the module area, every running ending frame sets `!core_oam_keep` to the
+  whole table, so core's partial field OAM upload still sends them (it
+  lasts until title entry: a later vblank copy can still bring them back).
 - The cutaway's dust image (`cut_oam`, world flight) still copies from the
   frame thread, but its vblank turns the world's HDMA off first.
 

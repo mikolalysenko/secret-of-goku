@@ -821,6 +821,12 @@ ending_frame:
 .run
 	INC.w !s_frame
 	STZ.w !s_wqn                  ; this frame's vblank copies (wq_push)
+if !CORE_OAM_PARTIAL
+	; Scenes keep sprites past the module area (the flight's stars in slots
+	; 42-127, copied in by the vblank): the field upload sends every slot.
+	LDA.w #$0200
+	STA.l !core_oam_keep
+endif
 	; A full-screen scene hides every native actor: this frame's vblank
 	; skips the game's actor cell streaming (core_actor_cells; up to 12
 	; lines in its busiest phase, which ran one wish-flight vblank in five

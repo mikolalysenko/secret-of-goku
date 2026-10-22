@@ -47,17 +47,54 @@ function call(label,a=0,{nmi=false,clear=false,b=0,c=false,v=false,d=false,i=tru
   }
   assert.equal(cpu.br[3],nmi||clear?0x1FFD:0x1FFF,'balanced stack');
 }
+// The partial upload (core_oam_upload) reads PPU slot 0 back first; the
+// fixture's PPU reads 0, so a recorded slot 0 of zeros counts as unchanged.
+// Its state is !RAM_CORE_OAM (7E:D6F2, core.asm), valid with the magic word.
+const partial=symbols.has('core_oam_foreign_ldx'),markAt=0xD6F2,hiddenAt=0xD6F4,printAt=0xD6F6,
+  keepAt=0xD6FA,magicAt=0xD6FC;
+const whole=[[0x2102,0],[0x2103,0],[0x4372,0],[0x4373,8],
+  [0x4370,0],[0x4371,4],[0x4374,0],[0x4375,0x20],[0x4376,2],[0x420B,0x80]];
+function upload(len){
+  // the low table [0, len) when len > 0, then the high table, OAMADD back to 0
+  return [[0x4370,0],[0x4371,4],[0x4372,0],[0x4373,8],[0x2102,0],[0x2103,0],[0x4374,0],
+    ...(len?[[0x4375,len&255],[0x4376,len>>8],[0x420B,0x80]]:[]),
+    [0x2102,0],[0x2103,1],[0x4372,0],[0x4373,0x0A],[0x4375,0x20],[0x4376,0],[0x420B,0x80],
+    [0x2102,0],[0x2103,0]];
+}
 test('field OAM DMA preserves native CPU state and sets priority after transfer',{skip:!rotated},()=>{
-  for(let f=0;f<256;f++)for(const b of [0,0xAB])for(const flags of [0,1,2,3,4,15]){
+  // case: [fresh commit mark, PPU hidden-from, recorded slot 0 matches, magic word present]
+  // -> bytes of the low table (no magic: words from an older build, so the whole table)
+  const cases=partial?[[null,null,true,512],[0x40,0x8080,true,0x80],[0xC0,0x8040,true,0xC0],
+    [0,0x8000,true,0],[0x40,0x0080,true,512],[0x40,0x8080,false,512],[0x200,0x8040,true,512],
+    [0x40,0x8080,true,512,false]]:[[null,null,true,512]];
+  for(const [mark,hidden,same,len,magic=true] of cases)
+  for(let f=0;f<256;f+=f<4?1:37)for(const b of [0,0xAB])for(const flags of [0,1,2,3,4,15]){
     seed();ram[first]=f;
+    if(partial){
+      ram.writeUInt16LE(mark===null?0x0200:mark|0x8000,markAt);
+      ram.writeUInt16LE(hidden===null?0:hidden,hiddenAt);
+      ram.writeUInt32LE(same?0:0x01020304,printAt);
+      ram.writeUInt16LE(0x0123,keepAt);
+      ram.writeUInt16LE(magic?0x4F41:0x4F40,magicAt);
+    }
     const state={nmi:true,b,c:!!(flags&1),v:!!(flags&2),d:!!(flags&4),i:!!(flags&8)};
     call(null,0,state);
-    assert.deepEqual(writes,[[0x2102,0],[0x2103,0],[0x4372,0],[0x4373,8],
-      [0x4370,0],[0x4371,4],[0x4374,0],[0x4375,0x20],[0x4376,2],
-      [0x420B,0x80],...(f?[[0x2102,(f<<1)&255],[0x2103,f&0x80]]:[])]);
+    const rotation=f?[[0x2102,(f<<1)&255],[0x2103,f&0x80]]:[];
+    assert.deepEqual(writes,[...(partial?[[0x2102,0],[0x2103,0]]:[]),...(len===512?whole:upload(len)),...rotation],
+      JSON.stringify({mark,hidden,same,f}));
     assert.deepEqual([...cpu.br,...cpu.r],[(b<<8)|0x80,0x220,0x5678,0x1FFD,0xC13E,0,0,symbols.has('core_oam_fast_tail')?0x80:0]);
     assert.deepEqual([cpu.c,cpu.v,cpu.d,cpu.i,cpu.m,cpu.x,cpu.n,cpu.z],
       [state.c,state.v,state.d,state.i,true,false,true,false]);
+    if(partial){
+      // the mark consumed; the PPU now hidden from this upload's mark on
+      // (without the magic word no mark counts and the keep is dropped)
+      const m=mark===null||!magic?0x200:mark;
+      assert.equal(ram.readUInt16LE(markAt),m,'mark consumed');
+      assert.equal(ram.readUInt16LE(hiddenAt),m|0x8000,'hidden from the mark');
+      if(len)assert.equal(ram.readUInt32LE(printAt),ram.readUInt32LE(0x800),'slot 0 recorded');
+      assert.equal(ram.readUInt16LE(keepAt),magic?0x0123:0,'keep');
+      assert.equal(ram.readUInt16LE(magicAt),0x4F41,'magic word');
+    }
   }
 });
 test('native OBJ clears retire field priority before ring/map rendering',{skip:!rotated},()=>{

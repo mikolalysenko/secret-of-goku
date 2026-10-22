@@ -34,6 +34,9 @@
 
 !CORE_WORLD_FIRST = 88             ; first world-mode module slot
 !CORE_WORLD_NATIVE_END = 84        ; world natives never use slots >= 84
+; The field vblank sends only the used part of the low table (core_oam_upload,
+; !CORE_OAM_PARTIAL in core.asm); CORE_OAM_PARTIAL_SLOW keeps the whole
+; 544-byte transfer every vblank.
 
 ; Prepare the module area for the frame (core_frame_begin).
 core_oam_begin:
@@ -111,6 +114,9 @@ if not(defined("CORE_OAM_ROTATION_SLOW")) && not(defined("CORE_OAM_COMMIT_SLOW")
 	SEP #$20
 	LDA.b #0
 	STA.l !core_oam_first
+if !CORE_OAM_PARTIAL
+	STA.l !core_oam_hidden+1          ; another mode's OAM: the next upload is whole
+endif
 	REP #$20
 endif
 	PLA
@@ -660,6 +666,13 @@ endif
 	LDA.w !core_oam_cursor&$FFFF
 	STA.w $0120                       ; next frame's C0:BCAB hides up to here
 	STA.l !core_oam_field_hw
+if !CORE_OAM_PARTIAL
+	CMP.l !core_oam_keep              ; a module's sprites kept past its cursor
+	BCS +
+	LDA.l !core_oam_keep
++	ORA.w #$8000
+	STA.l !core_oam_mark              ; the next field upload's end
+endif
 	RTS
 endmacro
 
@@ -721,6 +734,13 @@ endif
 	LDA.w !core_oam_cursor&$FFFF
 	STA.w $0120
 	STA.l !core_oam_field_hw
+if !CORE_OAM_PARTIAL
+	CMP.l !core_oam_keep              ; a module's sprites kept past its cursor
+	BCS +
+	LDA.l !core_oam_keep
++	ORA.w #$8000
+	STA.l !core_oam_mark              ; the next field upload's end
+endif
 	RTS
 
 ; Y = native/rear byte end. Copy at most 64 staged bytes, without moving
@@ -805,6 +825,107 @@ endmacro
 ; C0:C11E, M8/X16, DB=0, D=0. Keep the native DMA and CPU return state.
 ; OAMADD must be set after DMA: the transfer advances the PPU address.
 core_oam_upload:
+if !CORE_OAM_PARTIAL
+	; Send the low table only up to max(m, h) plus the whole high table: m is
+	; this frame's field commit end (every slot from it on is hidden in the
+	; buffer), h where the last upload left the PPU's entries hidden. With
+	; no commit since the last upload, an unknown PPU tail or a PPU slot 0
+	; that is not what the last upload sent (a foreign upload), the whole
+	; table goes as before. The DMA channel, OAMADD and CPU registers end as
+	; the retail transfer leaves them.
+	PHP
+	REP #$20
+	PHA
+	LDA.l !core_oam_magic
+	CMP.w #!CORE_OAM_MAGIC
+	BEQ .valid
+	LDA.w #!CORE_OAM_MAGIC         ; words from an older build's state: start over
+	STA.l !core_oam_magic
+	LDA.w #$0000
+	STA.l !core_oam_keep
+	STA.l !core_oam_mark            ; no commit counts: the whole table goes
+.valid
+	STZ.w $2102                    ; read back slot 0 from OAM address 0
+	SEP #$20
+	LDA.w $2138
+	CMP.l !core_oam_print
+	BNE .unknown
+	LDA.w $2138
+	CMP.l !core_oam_print+1
+	BNE .unknown
+	LDA.w $2138
+	CMP.l !core_oam_print+2
+	BNE .unknown
+	LDA.w $2138
+	CMP.l !core_oam_print+3
+	BNE .unknown
+	REP #$20
+	LDA.l !core_oam_hidden
+	BMI .known
+.unknown
+	REP #$20
+	LDA.w #$0200
+.known
+	AND.w #$03FF
+	TAX                            ; X = h
+	LDA.l !core_oam_mark
+	BMI .fresh
+	LDA.w #$0200                   ; no field commit since the last upload
+.fresh
+	AND.w #$03FF                   ; A = m
+	STA.l !core_oam_mark           ; consumed
+	ORA.w #$8000
+	STA.l !core_oam_hidden         ; after this upload: hidden from m on
+	EOR.w #$8000
+	PHX
+	CMP $01,S
+	BCS +
+	LDA $01,S                      ; max(m, h)
++	PLX
+	CMP.w #$0200
+	BCS .whole
+	TAX                            ; low-table bytes to send
+	BEQ .print                     ; none: slot 0 keeps what the PPU holds
+	LDA.w $0800                    ; (DB = 0: the WRAM mirror)
+	STA.l !core_oam_print
+	LDA.w $0802
+	STA.l !core_oam_print+2
+.print
+	LDA.w #$0400
+	STA.w $4370                    ; DMAP 0, B bus $2104
+	LDA.w #$0800
+	STA.w $4372
+	STZ.w $2102                    ; OAMADD 0
+	SEP #$20
+	STZ.w $4374
+	CPX.w #0
+	BEQ +                          ; (a zero DMA size means 64 KB)
+	STX.w $4375
+	LDA.b #$80
+	STA.w $420B                    ; low table [0, max(m, h))
++	LDX.w #$0100
+	STX.w $2102                    ; the high table
+	LDX.w #$0A00
+	STX.w $4372
+	LDX.w #$0020
+	STX.w $4375
+	LDA.b #$80
+	STA.w $420B
+	LDX.w #$0000
+	STX.w $2102                    ; OAMADD 0 again, as the retail transfer ends
+	LDX.w #$0220                   ; X as the retail transfer leaves it
+	REP #$20
+	PLA
+	PLP
+	BRA .sent
+.whole
+	LDA.w $0800
+	STA.l !core_oam_print
+	LDA.w $0802
+	STA.l !core_oam_print+2
+	PLA
+	PLP
+endif
 	LDX.w #0
 	STX.w $2102
 	LDX.w #$0800
@@ -816,6 +937,9 @@ core_oam_upload:
 	STX.w $4375
 	LDA.b #$80
 	STA.w $420B
+if !CORE_OAM_PARTIAL
+.sent
+endif
 	LDA.l !core_oam_first
 	BEQ .done                  ; native setup already disabled rotation
 	PHP
@@ -831,6 +955,36 @@ core_oam_upload:
 ; RTI restores the interrupted bank from the hardware frame on the stack.
 core_oam_fast_tail:
 	JML $80C13E
+
+if !CORE_OAM_PARTIAL
+; The game's other OAM uploads (the menus' buffer C0:1F5B, other scenes'
+; C0:9A95, C2:A82F/A8A5/AEA7, C6:46C5's channel 0 from $15E0):
+; afterwards the PPU's entries past the field's last upload are no longer
+; known to be hidden, so the next field upload sends the whole table. Each
+; replays the instructions its JSL replaced (same widths, DB and flags).
+core_oam_foreign_ldx:                  ; C0:1F60, M8/X16: LDX #0 / STX $2102
+	LDX.w #$0000
+	STX.w $2102
+	LDA.b #0                         ; (A is reloaded right after)
+	STA.l !core_oam_hidden+1
+	RTL
+core_oam_foreign_lda:                  ; M16: LDA #$0000 / STA $2102
+	LDA.w #$0000
+	STA.w $2102
+	STA.l !core_oam_hidden
+	RTL
+core_oam_foreign_stz:                  ; C6:46C5: STZ $2102 / STZ $2103
+	STZ.w $2102
+	STZ.w $2103
+	PHP
+	SEP #$20
+	PHA
+	LDA.b #0
+	STA.l !core_oam_hidden+1
+	PLA
+	PLP
+	RTL
+endif
 
 ; The native full OBJ clear also runs on ring/map entry, without a module
 ; frame in between. Retire the completed field's priority before those

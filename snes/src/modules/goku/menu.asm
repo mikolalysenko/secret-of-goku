@@ -766,6 +766,10 @@ goku_menu_oam:
 	BCC .edit
 	RTS                      ; last frame's edits stand (C set)
 .edit
+if !CORE_OAM_PARTIAL
+	LDA.b #0                 ; edits outside the field's upload: its next one
+	STA.l !core_oam_hidden+1 ; sends the whole table
+endif
 	; the native figure: give back entries hidden last frame when the
 	; figure is gone or moved, then hide this frame's
 	LDA !m_flags

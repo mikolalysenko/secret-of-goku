@@ -890,6 +890,12 @@ fx_oam_rollback:
 .clear
 	CPY.w !core_oam_cursor&$FFFF
 	BCS .done
+if !CORE_OAM_PARTIAL
+	; Hide the back sprite too: core's field upload sends the buffer only up
+	; to the commit's cursor, so every entry past it must be hidden.
+	LDA.w #$E0FF
+	STA.w $0800,Y
+endif
 	TYA
 	LSR
 	LSR
