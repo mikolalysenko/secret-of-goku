@@ -190,6 +190,10 @@ endif
 +
 	LDA.w !au_tmp
 	BEQ .done
+if !AUDIO_CUSTOM_SAMPLES
+	LDA.w $1E00
+	BNE .done                 ; native requests retain ownership of the mailbox
+endif
 	REP #$20
 	LDA.l !core_snd_head
 	CMP.l !core_snd_tail
@@ -240,8 +244,16 @@ endif
 	ORA.w #$0002
 if !AUDIO_CUSTOM_SAMPLES == 0
 	LDX.w #$880F
-endif
 	JSL core_sound_queue
+else
+	; The selector has already checked the native mailbox and the core
+	; queue. Send once here instead of paying for a SRAM ring enqueue and
+	; dequeue at the very end of a crowded frame. The dispatcher is async:
+	; a busy SPC drops a stale one-shot, never waits or overwrites its ports.
+	STA.w $1E00
+	STX.w $1E02
+	JSL $C30004
+endif
 	SEP #$20
 .done
 if !AUDIO_CUSTOM_SAMPLES

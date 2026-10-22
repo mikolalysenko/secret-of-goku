@@ -1,5 +1,22 @@
 # Audio module: native SNES effects and music
 
+## Round eight performance follow-up
+
+Merged `cc52d1e`. Resident one-shots now dispatch directly from the audio
+selector, after checking the native mailbox and the core queue. This removes
+the SRAM enqueue/dequeue round trip at the end of the field update. The
+existing asynchronous dispatcher, priorities, SPC sequences, samples, gains
+and pitch variation are unchanged. A busy SPC still drops a stale one-shot
+without waiting or overwriting its parameters.
+
+The first validated checkpoint passes `audio native` and all 130 gameplay
+runs (offsets 0–9). Summed CPU misses: fly-ki 12 → 10; charge 56, fly-punch
+10, teleport 23, punch 9, ki 3, fly 1 and the six other cases 0, unchanged.
+Total 114 → 112. The reported 5.9-line fly-punch tail includes the short NMI
+that interrupts an unfinished frame: its actual effect dispatch is 1.25
+lines, without an SPC wait. Further interrupt-exclusive profiles and the
+song-cache measurements are recorded with the completed follow-up below.
+
 ## Round eight: impact, rumble and electrical arcs
 
 This supersedes the PC-matching sound descriptions below. The default design
