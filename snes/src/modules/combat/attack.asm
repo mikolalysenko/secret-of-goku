@@ -486,6 +486,15 @@ cb_update_launches:
 	LSR
 	CMP !cb_t0
 	BCC .next
+if !COMBAT_LAND_KICK
+	LDA !cb_t0                    ; SNES-only (snes-feel.mjs FEEL.land): a
+	CMP.w #12                     ; launch (not a push-back) whose actor
+	BNE +                         ; lands alive on screen thuds
+	LDA $E182,Y
+	BEQ +
+	JSR cb_bind_land_kick
++
+endif
 	JSR cb_launch_end
 .next
 	TYA

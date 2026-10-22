@@ -34,6 +34,12 @@ export const FEEL={
   // BG quake frames of the finishing kick and of a killing blow (base,
   // Super Saiyan; browser: the kick's 3 / 5).
   quake:{kick:[4,6],kill:[3,5]},
+  // A launched native actor that lands alive on screen thuds: the camera
+  // jolts down with this blow's kick (0 jab, 1 cross, 2 kick, 3 kill; -1
+  // none), unless a kick already shakes it (browser: nothing). An echo of
+  // the blow, smaller than the kick's own; a killed actor's death effect
+  // is gone before its arc ends.
+  land:0,
   // Starburst size of a ki shot's contact (0 ki, 1 jab, 2 cross, 3 kick;
   // browser 0). (A muzzle burst at the palm, a shockwave for a ki kill and
   // a starburst on every Kamehameha pulse each cost gameplay misses in held

@@ -163,6 +163,7 @@ unchanged.
 | Full-screen flash (white, fx `fx_flash` curves 1-2) | the finishing kick 12, 6, 2; a kill 18, 9, 4 (of 31) | the kick's warm 4, 2, 1 |
 | BG quake | the kick 4 (6), a kill 3 (5) | the kick 3 (5) |
 | Launch over 12 frames | 96 px (136), peak 30 px; the Kamehameha blows targets 148 (196); the transformation's burst 96 (136) | 56 / 88, peak 20; beams as launches |
+| A launched actor landing alive on screen (`FEEL.land`) | a thud: the camera jolts down with the jab's kick (2, -1) unless a kick runs (`cb_bind_land_kick`, from `cb_update_launches` at the arc's end; a push-back never). A killed actor's death effect is gone before its arc ends, so a kill's landing has none | nothing |
 | The Kamehameha's release | a white flash (14, 9, 5, 2; the full Super Saiyan wave 24, 18, 12, 8, 4, 2) and the kill's camera shake along the beam, on top of the quake | the quake |
 | A ki shot's contact | the cross's starburst | the smallest |
 | A punch pressed after the combo buffer opens (age 9, 4) | starts at once | the next frame |

@@ -1076,7 +1076,11 @@ fx_finish:
 .kick
 	JSR fx_kick_advance          ; its offset for the coming vblank; 0: over
 	BEQ .done
-	LDA.l !fx_nmiwork            ; a camera kick alone: only its scroll
+	LDA.l !fx_busy               ; a kick with nothing else held (combat's
+	BNE +                        ; landing thud: no contact outlives it)
+	INC                          ; keeps the full path for its next steps
+	STA.l !fx_busy
++	LDA.l !fx_nmiwork            ; a camera kick alone: only its scroll
 	BNE .done
 	LDA.w #$8000
 	STA.l !fx_nmiwork

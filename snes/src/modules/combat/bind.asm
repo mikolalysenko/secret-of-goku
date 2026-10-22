@@ -757,6 +757,33 @@ if defined("FX_HIT")
 	JSL fx_kick
 endif
 	RTS
+; A launched actor's landing (Y = its offset; cb_update_launches, SNES-only):
+; the camera jolts down with COMBAT_LAND_KICK's blow when the actor stands
+; on screen (its screen position, $E020/$E022) and no kick shakes it
+; already. Preserves X, Y.
+cb_bind_land_kick:
+if defined("FX_HIT")
+	LDA $E020,Y                   ; 8 <= x < 248
+	SEC
+	SBC.w #8
+	CMP.w #240
+	BCS +
+	LDA $E022,Y                   ; 16 <= y < 224
+	SEC
+	SBC.w #16
+	CMP.w #208
+	BCS +
+	LDA.l !fx_kickd
+	BNE +
+	PHX
+	PHY
+	LDA.w #(!COMBAT_LAND_KICK-1)<<8 ; facing 0 (down) | blow
+	JSL fx_kick
+	PLY
+	PLX
++
+endif
+	RTS
 ; A punch's first two frames (cb_fx_continuous calls for punches; its age
 ; below 2) have fx ready the cells of its coming contact (fx_warm), so
 ; their uploads land before the contact's busy vblank. A blow whose cells

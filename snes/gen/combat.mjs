@@ -182,6 +182,9 @@ export async function generate({rom,repo,outDir}){
     // fx_flash_amounts, the kick's and a kill's white impact flash
     defs.push(`!COMBAT_FLASH_KICK = $${(FEEL.flash.kick.length|0x100).toString(16)}`,`!COMBAT_FLASH_KILL = $${(FEEL.flash.kill.length|0x200).toString(16)}`);
     defs.push(`!COMBAT_FLASH_BEAM = $${(FEEL.flash.beam.length|0x300).toString(16)}`,`!COMBAT_FLASH_WAVE = $${(FEEL.flash.wave.length|0x400).toString(16)}`);
+    // a launched actor's landing: the camera kick's blow (+1; 0 none)
+    if(FEEL.land<-1||FEEL.land>3)throw Error('combat gen: landing kick out of range');
+    defs.push(`!COMBAT_LAND_KICK = ${FEEL.land+1}`);
     // a ki shot's contact: its impact frame (er_aux: starburst size + 1)
     if(FEEL.kiStar<0||FEEL.kiStar>3)throw Error('combat gen: starburst size out of range');
     defs.push(`!COMBAT_STAR_KI = ${FEEL.kiStar+1}`);

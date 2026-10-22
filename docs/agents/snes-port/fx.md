@@ -110,7 +110,7 @@ field a kind uses.
 | `fx_beam` | A = style \| flags<<8, X/Y = palms, `!fx_dir`, `!fx_a` length, `!fx_b` width, `!fx_c` taper, `!fx_t` beam age | One frame of a beam. C set if dropped (shares the 8 draw entries) |
 | `fx_flash` | A = frames (7 for the transformation) | Gold-white screen flash, as `native-feedback.js` `burst()` |
 | `fx_quake` | A = frames | Native BG quake pulse (`$49 = $E0`), ignored in Mode 7 and when an event owns `$49` |
-| `fx_kick` | A = facing \| blow << 8 (0 jab, 1 cross, 2 kick) | Camera kick: BG1/BG2 move along the blow by `native-feedback.js` `KICK_PROFILES` (2 / 3 / 4 px, springing back over 4 / 5 / 6 frames) from the coming vblank; text, HUD and sprites stay; ignored in Mode 7 |
+| `fx_kick` | A = facing \| blow << 8 (0 jab, 1 cross, 2 kick, 3 a killing blow) | Camera kick: BG1/BG2 move along the blow by `fx_kick_steps` (SNES-only, `snes-feel.mjs` `FEEL.kick`: a shake that dies out over 2-6 frames; the browser's `native-feedback.js` `KICK_PROFILES` spring back 2 / 3 / 4 px) from the coming vblank; text, HUD and sprites stay; ignored in Mode 7 |
 | `fx_warm` | A = blow \| gold << 8, X = facing | Readies a coming punch contact's cells (Impact frames below). A = `!fx_evict` when all were resident, $FFFF when an `FX_PREP` draw brings them in |
 | `fx_kill` | A = handle | Ends a spawned effect (stale handles are ignored) |
 | `fx_kill_all` | – | Ends every spawned effect and the flash/quake (ring opened, map change, combat cancelled). FX also does this itself on a map or mode change |
@@ -631,7 +631,9 @@ found by a search of the 15 cache entries when their hint misses.
   `!fx_nmiwork` = `$8000`: the vblank then writes only the scroll (after a
   scanline check), not the uploads, HDMA and colour-math path; with other
   work it runs inside that path's time window. No kick is written in a
-  late vblank.
+  late vblank. A blow's kick runs while its `FX_HIT` keeps `!fx_busy` up;
+  a kick with nothing else held (combat's landing thud) sets the busy word
+  itself in `fx_finish` while it runs, so fx_frame keeps advancing it.
 - **Warm-up.** A cold contact used to upload its cells in the contact's
   vblank, which the game's own damage work fills: they slipped two or
   three frames, the starburst's two frames were gone before its cell
