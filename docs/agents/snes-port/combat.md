@@ -197,6 +197,22 @@ Kamehameha contact pulse (charge +5 to +7; the pulse sparks stay), a
 one-frame base startup for the punch (punch +1 to +3 over six offsets) and
 for the ki throw (ki +5): the startups stay the browser's.
 
+**The flash and the game's colour math (2026-10-22).** The maintainer
+reported palette glitches when a full Super Saiyan wave at max charge cut
+the grass on the way to Potos. The Potos approach (map 128) and the Rabite
+field (129) blend BG2, the water, with the subscreen through the game's own
+colour math (CGADSUB shadow `$23` = `$42`; south Potos, map 16, blends BG1:
+`$41`). The flash is fixed-colour addition, which replaced that blend for
+its frames: the water turned bright cyan, then deep teal, and snapped
+back. The release's white flash did it on every wave and beam there, a
+kill's and the finishing kick's in the fields, and the transformation's
+warm flash already did on every build before. fx now drops a flash while
+`$23` has a layer bit (`fx_finish`); the transformation still flashes
+where the game runs no colour math (Potos itself, `$23` = 0). The browser
+brightens before the game's blend, which one colour math unit cannot do.
+The cut cells were never wrong: after the wave the map, the BG1 / BG2
+tilemaps and the BG palettes equal the browser's (`wave-potos`, below).
+
 **On main's performance pass (cd59395, 2026-10-22).** The round merged
 onto the performance pass (direct Goku sprite writes, the unrolled contact
 pass) and measured against main without it (in brackets). Gameplay CPU
@@ -534,11 +550,24 @@ traces are compared by `compare.mjs`:
 Scenarios: `punch`, `combo`, `combo-held`, `ssj-punch`, `ki`, `ki-held`,
 `ki-ssj`, `beam`, `beam-partial`, `wave`, `transform`, `mantis`, `boss-hit`,
 `boss-hit-ssj`, `chip-hit`, `chip-hit-ssj`, `deflect`, `deflect-ssj`,
-`heavy-gi`, `heavy-gi-ssj`, `revert` (Rabite field, Mantis Ant arena, party
-state). `transform` places Goku where the browser's walk ends (x 324) on
-both sides: a lagging field frame walks 2 px less, and on the integration
-build the Rabite field lags enough that the Rabite stayed outside the
-burst. Traces: `.local/snes-test/combat/<scenario>/`.
+`heavy-gi`, `heavy-gi-ssj`, `revert`, `wave-potos` (Rabite field, Mantis
+Ant arena, party state, the Potos approach). `transform` places Goku where
+the browser's walk ends (x 324) on both sides: a lagging field frame walks
+2 px less, and on the integration build the Rabite field lags enough that
+the Rabite stayed outside the burst. Traces:
+`.local/snes-test/combat/<scenario>/`.
+
+**Colour math** (`gameMath`: `punch`, `combo`, `beam`, `wave`, `transform`,
+`wave-potos`): every write to CGWSEL, CGADSUB and COLDATA while the game's
+`$23` has a layer bit must keep the game's blend (CGADSUB `$23`, CGWSEL 2
+or a beam window's `$22`, COLDATA black; `lib.lua` `C.watchMath`). Round
+two's build fails five of them (the flash's `$33` addition). `wave-potos`
+(the maintainer's repro: the full wave at max charge across the Potos
+approach's bushes and grass) also attaches the browser's cut pipeline
+(`engine/native-plants.js`, as the lab does) and compares the picture after
+the wave (`screenCompare` in `run.mjs`): the two map layers (17 cut cells
+on both), the BG1 / BG2 tilemaps (4096 words, 64 of them redrawn) and the
+BG palettes (CGRAM 0-127 less the water's animated entries).
 
 **Virtual targets** (`frieza-punch`, `frieza-ki`, `frieza-ki-held`,
 `frieza-beam`, `frieza-wave`, `frieza-burst`): the battle reference

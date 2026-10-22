@@ -1004,6 +1004,14 @@ fx_draw_current:
 fx_finish:
 	LDA.l !fx_flash
 	BEQ .noflash
+	; The flash is fixed-colour addition: it would replace the game's own
+	; colour math (CGADSUB shadow $23; the Potos approach and the Rabite
+	; field blend BG2, the water, with the subscreen, and the addition
+	; turned it cyan). Where the game uses it, the flash is dropped.
+	LDA.l $7E0023
+	AND.w #$003F
+	BNE .gameMath
+	LDA.l !fx_flash
 	XBA                          ; (curve * 8 + frames) * 2
 	AND.w #$0007
 	ASL
@@ -1024,6 +1032,9 @@ fx_finish:
 	LDA.w #$0000                 ; its last frame: the curve goes too
 +	STA.l !fx_flash
 	BRA .quake
+.gameMath
+	LDA.w #$0000
+	STA.l !fx_flash
 .noflash
 	STA.l !fx_flashamt
 .quake

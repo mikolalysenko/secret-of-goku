@@ -376,7 +376,9 @@ fx_cgram_upload:
 ; OBJ palettes 4-7 and the backdrop; R and G +amount, B +amount/2, or B
 ; +amount too for a white impact flash (fx_flash_amounts bit 8). The
 ; game's values come back from its shadows when the flash ends (CGWSEL is
-; the constant 2 written at C2:AAD7; CGADSUB is $23).
+; the constant 2 written at C2:AAD7; CGADSUB is $23). Only where the game
+; runs no colour math of its own: fx_finish drops a flash while $23 has any
+; layer bit set.
 fx_nmi_math:
 	LDA.l !fx_flashamt
 	BEQ .off

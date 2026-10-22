@@ -108,7 +108,7 @@ field a kind uses.
 | `fx_spawn` | A = kind \| flags<<8, X = x, Y = y, request block | C clear: A = handle; C set: no free slot (nothing spawned) |
 | `fx_draw` | same | Draws one frame of a continuous kind. C set if dropped (`!FX_DRAWS` = 8 draws and beams per frame) |
 | `fx_beam` | A = style \| flags<<8, X/Y = palms, `!fx_dir`, `!fx_a` length, `!fx_b` width, `!fx_c` taper, `!fx_t` beam age | One frame of a beam. C set if dropped (shares the 8 draw entries) |
-| `fx_flash` | A = frames (7 for the transformation) | Gold-white screen flash, as `native-feedback.js` `burst()` |
+| `fx_flash` | A = frames (7 for the transformation) | Gold-white screen flash, as `native-feedback.js` `burst()`. Dropped while the game runs its own colour math (`$23` has a layer bit: the Potos approach, the Rabite field, south Potos), whose blend the addition would replace |
 | `fx_quake` | A = frames | Native BG quake pulse (`$49 = $E0`), ignored in Mode 7 and when an event owns `$49` |
 | `fx_kick` | A = facing \| blow << 8 (0 jab, 1 cross, 2 kick, 3 a killing blow) | Camera kick: BG1/BG2 move along the blow by `fx_kick_steps` (SNES-only, `snes-feel.mjs` `FEEL.kick`: a shake that dies out over 2-6 frames; the browser's `native-feedback.js` `KICK_PROFILES` spring back 2 / 3 / 4 px) from the coming vblank; text, HUD and sprites stay; ignored in Mode 7 |
 | `fx_warm` | A = blow \| gold << 8, X = facing | Readies a coming punch contact's cells (Impact frames below). A = `!fx_evict` when all were resident, $FFFF when an `FX_PREP` draw brings them in |
@@ -892,8 +892,13 @@ impact sparks).
 **Screen effects**: the flash is fixed-colour addition (R/G +amount, B
 +amount/2 with the browser's `[0,1,2,4,6,9,13,17]` ramp) on BG1/BG2/OBJ
 4-7/backdrop for 7 frames, skipped while an up/down wave owns the colour
-math; the quake writes the native quake byte `$49` exactly as
-`native-feedback.js` (a native write takes ownership back).
+math and dropped while the game runs its own (`$23` has a layer bit:
+`fx_finish`). The browser brightens each pixel before the game's blend; one
+colour math unit cannot add the fixed colour and keep a subscreen blend,
+and the addition there took the blend away (the Potos approach's water
+turned cyan, 2026-10-22; `snes/test/fx/flash.lua`). The quake writes the
+native quake byte `$49` exactly as `native-feedback.js` (a native write
+takes ownership back).
 
 **Cost** (Potos with four NPCs, scanlines of `fx_frame`; SlowROM): idle one
 SRAM read in `fx_frame` and one in `fx_nmi`; charge orb ~17; impact ~22;
@@ -1143,7 +1148,7 @@ one VRAM region changes.
 | `FX_DISC`, `FX_FINGER`, `FX_CELL` | Done (OBJ) | gallery |
 | `FX_BEAM_KAME`, `FX_BEAM_FRIEZA`, `FX_BEAM_FIRE` | Done: OBJ strips (four facings); the first left/right beam of a frame as a polygon | `snes/test/fx/beams.lua` (polygon against OBJ strips, pixel-exact, right and left) |
 | `FX_BEAM_WAVE`, `FINAL`, `GALICK` | Done (polygon + OBJ edges), four facings; paired horizontal clash windows | beams: core/bands/rims; clash: independent colours, table/cache/restore; clash-colour: native pixels |
-| `fx_flash`, `fx_quake` | Done | gallery |
+| `fx_flash`, `fx_quake` | Done | gallery, flash (shown in Potos, none on the Potos approach's game blend) |
 | `FX_HIT`, `fx_kick`, `fx_warm` / `FX_PREP` | Done | Mesen captures of combos (base and Super Saiyan), a ki contact and a killing jab against the browser's; `snes/test/gameplay` and `perf` unchanged; `cache.test.mjs`, `palette-scan.test.mjs` |
 | `FX_DEBRIS`, brazier burst | Done (OBJ); destroy's effect records are drawn by FX itself (below) | `snes/test/fx/debris.lua` |
 | `FX_BEAM_LASER` | Done: 16 headings (OBJ windows; headings 0 / 8 as a polygon when free) | beams: every heading against the browser's pixels |

@@ -151,3 +151,27 @@ function C.import(name)
   C.check(ok, 'import ' .. name)
   return ok
 end
+-- Colour math writes while the game runs its own ($23 with a layer bit:
+-- the Potos approach and the Rabite field blend BG2 with the subscreen):
+-- CGADSUB must stay $23, CGWSEL the field's 2 (or $22: a beam's window
+-- keeping the blend off its body), COLDATA black. A fixed-colour addition
+-- there takes the game's blend away (round two's white flash turned the
+-- water cyan, reported 2026-10-22). C.mathBad: the first offending writes.
+C.mathBad = {}
+function C.watchMath()
+  for _, reg in ipairs({0x2130, 0x2131, 0x2132}) do
+    for _, bank in ipairs({0x000000, 0x800000}) do
+      emu.addMemoryCallback(function(_, value)
+        local game = H.r8(0x7E0023)
+        if game & 0x3F == 0 then return end
+        local ok
+        if reg == 0x2131 then ok = value == game
+        elseif reg == 0x2130 then ok = value == 0x02 or value == 0x22
+        else ok = value == 0xE0 end
+        if not ok and #C.mathBad < 12 then
+          C.mathBad[#C.mathBad + 1] = string.format('%04X=%02X (frame %d)', reg, value, C.n or 0)
+        end
+      end, emu.callbackType.write, bank + reg, bank + reg)
+    end
+  end
+end

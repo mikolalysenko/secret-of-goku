@@ -566,7 +566,8 @@ fx_draw_full:
 ; transformation's warm ramp, 7 frames; 1 the finishing kick's, 2 a killing
 ; blow's, 3 the Kamehameha's and 4 the full wave's white flash,
 ; snes-feel.mjs). A flash with more frames left keeps going. !fx_flash
-; holds frames | curve << 8.
+; holds frames | curve << 8. None while the game runs its own colour math
+; ($23: fx_finish drops it).
 fx_flash:
 	JSR fx_ensure_init
 	PHA
