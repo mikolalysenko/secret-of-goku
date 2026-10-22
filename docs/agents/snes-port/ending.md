@@ -70,8 +70,8 @@ long addressing. Every immediate carries an explicit width.
 Families (`s_family`):
 
 - **black** (transition, the reunion's hold, the death fade): a ceiling on
-  the displayed brightness (`brightness_publish`, applied after the field
-  NMI's last INIDISP write by `ending_field_brightness` at `C0:C168`). The
+  the displayed brightness (`brightness_publish`, applied at the field
+  NMI's last INIDISP write by Frieza's hook at `C0:C15F`). The
   native picture and the game's brightness shadow `$E6` are untouched, so
   native door and menu fades still finish underneath.
 - **overlay** (village, the departure until 144): the native picture
@@ -248,7 +248,14 @@ native fades win, otherwise INIDISP gets the ceiling. `$E6` stays the
 game's, so door 2F's fade-in completes under the black picture and the
 script goes on. The reunion's hold and the death fade (300-360) use the
 same ceiling. Cost: the NMI's tail goes from 86 to 184 master clocks idle
-(+0.07 lines a vblank), 291 with a ceiling. The ending's ceiling and
+(+0.07 lines a vblank), 291 with a ceiling. Since the October 21
+performance pass the hook at `C0:C15F` (`frieza_field_brightness`, the
+final INIDISP write) applies it: one long `ORA` of the ending's byte into
+the Tree's flag tests both ceilings, the ending's over the Tree's when both
+are set, as before. The NMI's tail from `C0:C15F` to its RTI is 154 CPU
+cycles idle instead of 165 (149 before the ending's ceiling); every
+combination of the two ceilings and `$E6` leaves the same INIDISP, RAM and
+registers. `ENDING_NMI_HOOK_SLOW=1` keeps the separate `C0:C168` hook. The ending's ceiling and
 Frieza's Tree ceiling never overlap (the Tree vista ends long before 42F);
 a core "displayed brightness" service could merge the two hooks.
 
@@ -723,7 +730,7 @@ WRAM block `!RAM_ORBIT+$80..$B6`:
 | +$A2 | `!ending_mute`: frames the native music has been silenced (0 = not) |
 | +$A3-$B3 | the cutaway: on, load, age, shown age, night, end, runs, run pointer, DMA bank, fade level, DMA budget |
 | +$B4-$B5 | `!ending_cut_globe`: latched orientation (0-31 grid, 32 native flight preset, 33 default) |
-| +$B6 | `!ending_showbright` (byte): the displayed brightness ceiling, `$80` \| level, 0 none (`brightness_publish`, applied at `C0:C168`) |
+| +$B6 | `!ending_showbright` (byte): the displayed brightness ceiling, `$80` \| level, 0 none (`brightness_publish`, applied at `C0:C15F`) |
 
 ## Resources
 
@@ -737,7 +744,7 @@ WRAM block `!RAM_ORBIT+$80..$B6`:
 | VRAM | per scene above; core region `FIELD_OBJ_A` (owner `$09`) for the overlay |
 | HDMA | channels 2-6 in full-screen scenes (5 the TM cut, 2/3/4/6 windows or the flight's matrix, mode and gradient); fx keeps 2/3 only while its polygons run; none in the cutaway (world flight's 0-5 off) |
 | DMA | channel 7 (vblank transfers, palette commit, OAM copies) |
-| Hijack | `C1:E77E` (5 bytes, the finale death's event gate); `C0:C168` (4 bytes, the field NMI's register restore: the displayed brightness ceiling) |
+| Hijack | `C1:E77E` (5 bytes, the finale death's event gate); with `ENDING_NMI_HOOK_SLOW` `C0:C168` (4 bytes, the field NMI's register restore: the displayed brightness ceiling; otherwise Frieza's `C0:C15F` hook applies it) |
 | Generated | `dist/snes/gen/ending/` (never committed) |
 
 ## Differences from the browser
@@ -796,11 +803,11 @@ WRAM block `!RAM_ORBIT+$80..$B6`:
   reloads or releases its picture on those loads. The good ending's
   transition holds its black across door 2F; the script's next command
   (the summon, 6B) only runs once that door's native fade-in has finished.
-- **core** / **frieza**: three hooks share the field NMI's tail: Frieza's
-  Tree ceiling at the final INIDISP write (`C0:C15F`), combat's vblank pad
-  (`C0:C164`), the ending's ceiling in the register restore (`C0:C168`). A
-  core "displayed brightness ceiling" service (one value per owner, the
-  lowest wins, latched by completed vblanks) would replace both ceilings.
+- **core** / **frieza**: two hooks share the field NMI's tail: the final
+  INIDISP write (`C0:C15F`, Frieza's, which applies Frieza's Tree ceiling
+  and the ending's) and combat's vblank pad (`C0:C164`). A core "displayed
+  brightness ceiling" service (one value per owner, the lowest wins,
+  latched by completed vblanks) would make the idle test a single read.
 - **goku**: with `GOKU_CTL_SUPPRESS` in the village the HUD portrait stays
   Goku's; the browser shows the native boy there too.
 

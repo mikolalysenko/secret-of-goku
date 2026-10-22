@@ -50,8 +50,8 @@
 !ending_cut_budget = !RAM_ORBIT+$B2 ; word DMA bytes left in this vblank
 !ending_cut_globe = !RAM_ORBIT+$B4 ; word orientation latched from the shot's target
 ; The displayed brightness ceiling (brightness_publish): 0 none, $80 | level
-; (0-15). Applied by ending_field_brightness (C0:C168) after the field NMI's
-; final INIDISP write; zero after module WRAM is cleared at title entry.
+; (0-15). Applied at the field NMI's final INIDISP write (C0:C15F,
+; frieza_field_brightness); zero after module WRAM is cleared at title entry.
 !ending_showbright = !RAM_ORBIT+$B6 ; byte
 
 ; Phases (match the browser's state.phase).

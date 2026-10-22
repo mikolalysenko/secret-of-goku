@@ -2190,8 +2190,8 @@ suppress_native:
 
 ; Whole-screen ceiling on the displayed brightness (transition, death fade,
 ; the reunion's black hold): s_ebright 0-15 ($FF: none; 0 is brightness 0
-; with the display on), published for the field NMI, which applies it after
-; its final INIDISP write (ending_field_brightness, C0:C168) from this
+; with the display on), published for the field NMI, which applies it at
+; its final INIDISP write (frieza_field_brightness, C0:C15F) from this
 ; frame's vblank on. The game's brightness shadow $E6 is never written: the
 ; native fade engine (C0:8B5E) reads it back as its fade position and clears
 ; $E2 bit 0, which the event interpreter waits on (C1:E8D3), only when $E6
