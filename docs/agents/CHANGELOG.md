@@ -4,6 +4,39 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: Spikey Tiger's arena guarded, a lighter Frieza in the real orbit hand-off (2026-10-22)
+
+- Spikey Tiger (bf2dcfe; merged in 317f637), in both editions.
+  - Elinee's throne-room scene (event 1E7) counted `$CF17` up and down
+    from stage 3. Spikey Tiger's arena has no exit and holds him only at
+    stage 5, so arriving at stage 0, 1 or 2 loaded it empty.
+  - The scene's six steps now set 4, 3, 4, 3, 4, 5 directly. Those are
+    retail's values from stage 3, so normal play is unchanged.
+  - The story suite has four new cases, and there is a new browser spec,
+    `witch-castle.spec.mjs`.
+- Orbit (c26533d, 4bd5526, a860871, 75da821, eb4be3a, 874118b, 4ca4a78;
+  merged in 013e01d and 314f4e9). The quick-start `fight` and `clash`
+  cases run Frieza's module as if Goku hadn't arrived. In the real
+  hand-off, his frame cost 11.0 lines.
+  - `fx_kill_all` returns at once while the orbit holds the picture and
+    fx has nothing active (`-DFX_KILL_ALL_ALWAYS` restores the full
+    call). fx's frame there costs under 0.5 lines (2.7-2.9 before).
+  - While the orbit holds the area, Frieza's frame runs only his
+    story-level ticks (`-DFRIEZA_ORBIT_FULL` restores the full frame).
+    His boss search compares the species first
+    (`-DFRIEZA_ORBIT_BOSS_LOOP` restores the loop). His frame in the
+    hand-off now costs 6.3 lines.
+  - The `return` case comes through the real hand-off. It counts live
+    lag frames and fails past 40: 94 before these changes, 24 now. Of
+    those 24, 19 are the win fanfare's song load.
+  - The fight's lag over its 8 frame phases went from 24 to 20.
+- Validation on 314f4e9 under both probes: all 20 suites pass.
+  - Gameplay misses per 240 frames at offset 0: charge 3, flying ki 3,
+    the rest 0.
+  - Orbit: the fight lags 3 frames, the clash 26, `return` 24 live, and
+    the montage 0. The perf scenes are unchanged.
+  - The hardware probe reports only the known cases.
+
 ## Orbit: the real path measured, and Frieza's boss search lighter (2026-10-22)
 
 - The `return` case (from the hand-off, where the frieza module runs as in
