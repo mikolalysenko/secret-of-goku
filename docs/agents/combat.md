@@ -102,6 +102,13 @@ base-form Kamehameha. Event15B advances only its opening stage (`$CF14` to 6),
 then rebuilds the original doorway and preserves its native transition. Punches
 do not open it. Popoi, Gnome and the Earth seed are not awarded by the breach;
 Goku can enter early and activate the native orb with his own attacks.
+He can also fly straight over the orb room's gap and never touch the orb.
+Gnome's scene in the stage room (map 314, events 23B → 236) counts `$CF18`
+up three stages before its door to Fire Gigas's arena (495), which holds
+the boss only at stage 5 and has no exit. Entering the stage room
+therefore raises `$CF18` to the orb's stage 2 (`story-areas.js`), so the
+scene always ends at a live Fire Gigas. Before this floor, a flown-over orb
+left stage 1 and the arena loaded empty at stage 4.
 
 Pandora Ruins and Northtown Ruins script locks use checkpointed door latches. A hit unlocks the original door; walking through still invokes the native transition. Pandora’s plot flag is unchanged. An early Northtown breach stages the original Primm rescue and Vampire fight; returning afterward does not replay either or lower progress. Gaia’s hit switches select the native event for the targeted room instead of depending on the last floor marker walked over. The forest’s rotating carved heads (tileset 1, cells 171/172) can be flown over or destroyed to native grass; other cyclic descriptors keep their original behavior. Ruins balcony lips require clear floors at different native heights on opposite sides before flight may cross them.
 

@@ -3,6 +3,10 @@
 // Map/flag facts: the local US cartridge and the reference listed in CREDITS.
 export const storyAreas=[
   {name:'Earth Palace',maps:[269,291,312,313,314,495],floors:[[0x18,1]],reason:'The elemental orb works before recruiting Popoi.'},
+  // Gnome's scene (23B -> 236) runs below stage 3 and adds three stages
+  // before its door to arena 495, whose only Fire Gigas record needs CF18=5.
+  // The arena has no exit. The orb (2) is the scene's real prerequisite.
+  {name:'Earth Palace stage room',maps:[314],floors:[[0x18,2]],reason:'Flight over the orb room gap skips the orb; Gnome\'s scene still leads to a live Fire Gigas.'},
   {name:'Upper Land',maps:[39,40,41,47,49,52,53,54,55,56,57,58,59,60,158,273],floors:[[0x20,3],[0x21,2],[0x22,1]],reason:'Flying finds the seasonal path without a sprite guide; the orb and Spring Beak remain.'},
   {name:'Matango',maps:[134,222,223,224,274,282,307,320,321,322,323,325,336,337,338],floors:[[0x24,3]],reason:'The cave orb and Great Viper exist on an early arrival.'},
   {name:'Paradise Town',maps:[79,194,197,335],floors:[[0x27,3]],reason:'The trapped fire spirit is available before the desert itinerary.'},
