@@ -474,6 +474,16 @@ eighth assembled text test compares full RAM and CPU state at each loop's
 continuation. Ten-column scrolls take 964 rather than 4,467 CPU cycles;
 twenty-column borders take 1,741 rather than 8,938.
 
+Opening a window clears its 1,792-byte buffer at `C0:091A`: `STZ $9400`,
+then `MVN $7E,$7E` spreads that byte over `$9401-$9B00` at 7 cycles a byte
+(about 60 scanlines, an outright missed frame). With DB = `$7E` the byte
+is zero, so `core_native_window_wipe` stores the same zero words, 128 a
+pass, and leaves MVN's exit state (A = `$FFFF`, X = `$9B00`, Y = `$9B01`,
+DB = `$7E`, C/V as before, N set, Z clear); another DB keeps the MVN
+(`CORE_NATIVE_WINDOW_WIPE_SLOW`). 12,560 → 5,546 CPU cycles.
+`window.test.mjs` compares it with retail machine code over 60 clears
+from random RAM, data banks and flags.
+
 The field foreground-sprite commit leaves native/rear entries in place and
 appends the staged effects. After the same 544-byte DMA, `$2102/$2103` selects
 the appended group as the first OBJ; evaluation wraps through hidden slots

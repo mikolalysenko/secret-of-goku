@@ -1365,3 +1365,51 @@ core_native_hiclear:
 	CPX.w #$0220
 	RTL
 endif
+
+if not(defined("CORE_NATIVE_TEXT_SLOW")) && not(defined("CORE_NATIVE_WINDOW_WIPE_SLOW"))
+; C0:091A-092A, opening a native window: STZ $9400 (M8, DB-relative), then
+; REP #$20 / LDA #$06FF / LDX #$9400 / LDY #$9401 / MVN $7E,$7E spreads that
+; byte over $7E:9401-$9B00: 1,792 bytes at 7 cycles each, about 60
+; scanlines. With DB = $7E the byte is zero: store the same zero words, 128
+; a pass, and leave MVN's exit state (A = $FFFF, X = $9B00, Y = $9B01,
+; DB = $7E, C/V as before, N set and Z clear). Another DB keeps the MVN.
+; JSL from C0:091D (M8/X16); BRA $092B follows.
+core_native_window_wipe:
+	REP #$20
+	PHP
+	PHB
+	SEP #$20
+	PLA
+	CMP.b #$7E
+	REP #$20
+	BEQ +
+	JMP core_window_wipe_retail
++	LDX.w #$0600
+core_window_wipe_page:
+	for word = 0..128
+		STZ.w $9400+(!word*2),X
+	endfor
+	TXA
+	SEC
+	SBC.w #$0100
+	TAX
+	BMI +
+	JMP core_window_wipe_page
++	SEP #$20
+	STZ.w $9B00
+	REP #$20
+	BRA core_window_wipe_done
+core_window_wipe_retail:
+	LDA.w #$06FF
+	LDX.w #$9400
+	LDY.w #$9401
+	MVN $7E,$7E
+core_window_wipe_done:
+	PLP
+	LDA.w #$FFFF                 ; (retail's last load, LDY #$9401, left
+	LDX.w #$9B00                 ; N set and Z clear, as these do)
+	LDY.w #$9B01
+	RTL
+endif
+
+

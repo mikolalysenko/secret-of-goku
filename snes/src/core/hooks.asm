@@ -234,6 +234,24 @@ core_native_hiclear_done:
 pullpc
 endif
 
+; Opening a native window: its 1,792-byte buffer clear (C0:091A-092A),
+; core/native.asm. The MVN at 0928 remains for the case the fast path declines.
+if not(defined("CORE_NATIVE_TEXT_SLOW")) && not(defined("CORE_NATIVE_WINDOW_WIPE_SLOW"))
+%orig4($C0091D, $FFA920C2)
+%orig4($C00921, $9400A206)
+%orig4($C00925, $549401A0)
+%orig2($C00929, $7E7E)
+%orig2($C0092B, $20E2)
+%patch($C0091D, 6, core)
+pushpc
+org $C0091D
+	JSL core_native_window_wipe
+	BRA core_native_window_wipe_done
+org $C0092B
+core_native_window_wipe_done:
+pullpc
+endif
+
 ; Field HP-number refreshes must not wait for vblank inside status/AI.
 %orig4($C1E326, $A98B20E2)
 %orig1($C1E32A, $00)
