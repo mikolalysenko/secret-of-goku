@@ -92,7 +92,13 @@ single-cell landing takes 609 CPU cycles cold or warm, versus 1,109/653.
   `fl_is_passenger_live` tests the adjacent pairs `$EC`/`$ED` and the flight
   lock as words (`FLIGHT_PASSENGER_LIVE_SLOW=1`: byte by byte): with two
   companions carried the actor and contact stages (B0CA, B0B2) take 0.23
-  lines less per frame (fly-ki 81.20 -> 80.96). `eligible()`
+  lines less per frame (fly-ki 81.20 -> 80.96). The hooks run those live
+  tests in place, with the same registers and carry on each way out
+  (`FLIGHT_PASSENGER_INLINE_SLOW=1`: a JSR to `fl_is_passenger_live`); the
+  contact hook keeps its native exit next to them, inside branch reach. Per
+  fly-ki frame that is 0.42 lines: B0CA 50.27 -> 50.11, B0B2 29.14 -> 28.91,
+  the companion update 2.27 -> 2.24 (fly-punch the same, fly 0.08).
+  `eligible()`
   (`fl_eligible`, asked by flight_frame and by the movement hooks several
   times a frame) tests the finale flag inline and `$E4`/`$E5`,
   `$E190`/`$E191`, `$EC`/`$ED` as words (`FLIGHT_ELIGIBLE_SLOW=1`: the
@@ -399,7 +405,12 @@ cells never flood fill.
   across movement steps; cells whose tile id changed lose their verdict.
   Footprints inside it are mask tests. When the grid moves one cell over
   (same layer and terrain), the cells both positions share keep their
-  verdicts, shifted, after the old grid's tiles are checked.
+  verdicts, shifted, after the old grid's tiles are checked. The grid keeps
+  its footprint origins with it (`!fl_g_px` = left + 6, `!fl_g_py` = top +
+  4, set in `fl_grid_reset`), so `fl_fp_cover` subtracts one word per axis
+  and indexes the masks through a row table times 8: 0.80 -> 0.63 lines a
+  call, flight_frame 18.10 -> 17.94 lines per fly-ki frame
+  (`FLIGHT_FP_COVER_SLOW=1`: the shifted origins as before).
 - Quiet frames: with flight reset (landed, no lift, charge, teleport,
   camera follow, whip crossing, ceiling escape, owned Goku requests, cues,
   latched buttons or passengers) and Goku out of play, off the native

@@ -50,6 +50,13 @@ retain `$00`. Other code runs in `C0`–`DF` through `JSL`.
   mode or scroll writes for the whole frame). `core_hdmaen_write` keeps such a
   frame's HDMA off (only channels a module switched on directly before the
   frame start, recorded in `!core_hdmaen`, stay on).
+- `!core_bright_any` (7E:D6FF, below the module blocks, cleared with them):
+  owner bits of a displayed-brightness ceiling (`!CORE_BRIGHT_TREE`,
+  `!CORE_BRIGHT_ENDING`). The field NMI's final INIDISP write (`C0:C15F`)
+  looks for a ceiling only while it is nonzero. Owners set their bit before
+  publishing a ceiling and clear it after withdrawing one; frame code uses
+  TSB/TRB with DB = `$7E` (one instruction, never torn by a vblank owner's
+  update), vblank code may read and write it.
 - `$29`/`$21`: per-frame BG mode / main screen written by the field NMI when
   `$29 & 4` (Mode 7 arenas). The field IRQ switches lines 196+ to the HUD:
   `$2105=$09`, `$212C=$14` (BG3 + OBJ). The switch lands at x≈248 of line 195.
@@ -310,10 +317,14 @@ flying ki.
 The field NMI's native actor graphics uploader also uses bank `$81`,
 including Goku's skip/refresh continuations. Ground tilemap uploads use a
 byte-identical copy of `C0:C692-C7C2` in the core bank, avoiding an RTS bank
-bridge; the following HUD upload uses `$80`. Airborne tilemap/HUD uploads
-retain the original bank timing because the unrestricted trial worsened
-the sustained flying-ki scenario. `CORE_NATIVE_NMI_SLOW` restores all three
-original upload paths. The assembled comparison checks ordered hardware
+bridge; the following HUD upload uses `$80`. Airborne frames now take the
+same path: the original bank timing they kept had been chosen from one long
+flying-ki run's chaotic count; summed over start phases the faster vblank
+gives 114 -> 113 misses (fly-ki 12 -> 11), the native NMI 21.22 -> 20.51
+lines per fly-ki frame (fly-punch 20.53 -> 19.81), and the longest field
+NMI 37.24 -> 36.52 lines with no overrun left (fly-punch offset 4 had one)
+(`CORE_NATIVE_UPLOADS_AIR_SLOW=1` keeps the bank-`$00` airborne path).
+`CORE_NATIVE_NMI_SLOW` restores all three original upload paths. The assembled comparison checks ordered hardware
 writes, RAM, registers and flags across all five phases, actor sizes,
 Goku replacement/refresh states, scrolling layers and both flight states.
 No transfer is omitted or deferred by this change.

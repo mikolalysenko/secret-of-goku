@@ -4,6 +4,9 @@
 ; with write watches from power-on through the opening.
 ; Large buffers and persistent mod state live in the added SRAM.
 ;
+; WRAM 7E:D6FF (1 byte, below the module blocks): the displayed-brightness
+; ceiling owners (core.asm !core_bright_any).
+!RAM_CORE_BRIGHT = $7ED6FF
 ; WRAM 7E:D700-DDFF (1792 bytes): hot runtime state, per module:
 !WRAM_BASE    = $7ED700
 !RAM_CORE     = $7ED700   ; 0x40  core flags, frame counters, input edges

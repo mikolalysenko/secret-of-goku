@@ -256,8 +256,15 @@ are set, as before. The NMI's tail from `C0:C15F` to its RTI is 154 CPU
 cycles idle instead of 165 (149 before the ending's ceiling); every
 combination of the two ceilings and `$E6` leaves the same INIDISP, RAM and
 registers. `ENDING_NMI_HOOK_SLOW=1` keeps the separate `C0:C168` hook. The ending's ceiling and
-Frieza's Tree ceiling never overlap (the Tree vista ends long before 42F);
-a core "displayed brightness" service could merge the two hooks.
+Frieza's Tree ceiling never overlap (the Tree vista ends long before 42F).
+Core's `!core_bright_any` (7E:D6FF) now holds an owner bit for each:
+`brightness_publish` sets `!CORE_BRIGHT_ENDING` before it writes a ceiling
+and clears it after withdrawing one (TSB/TRB in bank `$7E`, so Frieza's
+vblank updates of the same byte are never torn), and the hook reads only
+that byte on a frame without a ceiling: 149 CPU cycles idle, as before the
+ending's ceiling existed; 864 combinations of the owner bits (owner bits
+around a publish included), the ceilings and `$E6` match the `ORA` hook
+(`CORE_BRIGHT_ANY_SLOW=1` keeps it).
 
 **Presentation from the live state (2026-10-21).** Playing the chain
 through also showed two bits the module documented as "set by other

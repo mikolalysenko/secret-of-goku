@@ -597,6 +597,11 @@ fz_tree_nmi:
 	LDA.l $7E0000|!fz_wasidle
 	AND.b #~!FZI_BRIGHT
 	STA.l $7E0000|!fz_wasidle
+if !FZ_CEILING_ANY
+	LDA.l !core_bright_any            ; (vblank: no frame code runs between)
+	AND.b #~!CORE_BRIGHT_TREE
+	STA.l !core_bright_any
+endif
 	REP #$20
 	LDA.l $7E0000|!fz_vista
 	AND.w #!FZV_UP
@@ -727,6 +732,11 @@ fz_tree_nmi:
 	LDA.l $7E0000|!fz_wasidle
 	ORA.b #!FZI_BRIGHT
 	STA.l $7E0000|!fz_wasidle
+if !FZ_CEILING_ANY
+	LDA.l !core_bright_any
+	ORA.b #!CORE_BRIGHT_TREE
+	STA.l !core_bright_any
+endif
 	REP #$20
 .out
 	RTS
@@ -738,19 +748,22 @@ fz_tree_nmi:
 ; from rising and could interfere with the next native door/menu fade.
 ; The ending's displayed ceiling (!ending_showbright, brightness_publish)
 ; is applied here too, over the Tree's when both are set, as its own hook
-; at C0:C168 did after combat's vblank hook (which leaves INIDISP alone).
-; One long ORA tests both ceilings, instead of the second hook's bank round
-; trip on every field NMI (ENDING_NMI_HOOK_SLOW=1 keeps that hook).
-!FZ_ENDING_CEILING = 0
-if defined("ending_showbright") && not(defined("ENDING_NMI_HOOK_SLOW"))
-!FZ_ENDING_CEILING = 1
-endif
+; at C0:C168 did after combat's vblank hook (which leaves INIDISP alone)
+; (ENDING_NMI_HOOK_SLOW=1 keeps that hook). Both owners keep a bit in core's
+; !core_bright_any while they may hold a ceiling, so a frame without one
+; reads a single byte, as before the ending's ceiling existed
+; (CORE_BRIGHT_ANY_SLOW=1: one long ORA of both owners' flags instead;
+; !FZ_ENDING_CEILING and !FZ_CEILING_ANY are set in module.asm).
 frieza_field_brightness:
+if !FZ_CEILING_ANY
+	LDA.l !core_bright_any
+	BNE .ceilings
+elseif !FZ_ENDING_CEILING
 	LDA.l $7E0000|!fz_wasidle
-if !FZ_ENDING_CEILING
 	ORA.l !ending_showbright      ; $80 | level, 0 none
 	BMI .ceilings
 else
+	LDA.l $7E0000|!fz_wasidle
 	BMI .ceiling
 endif
 .normal
@@ -763,6 +776,9 @@ if !FZ_ENDING_CEILING
 	LDA.l $7E0000|!fz_wasidle
 	BMI .ceiling
 	LDA.l !ending_showbright      ; the ending's alone
+if !FZ_CEILING_ANY
+	BPL .normal                   ; an owner's bit around its publish: no ceiling yet
+endif
 	AND.b #$0F
 	BIT $E6
 	BMI .normal                   ; native forced blank
