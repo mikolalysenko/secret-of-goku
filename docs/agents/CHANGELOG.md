@@ -58,6 +58,36 @@ stay traceable even when they are committed together.
   struggle none; the launches' frames turn on the limits and the culls,
   which this leaves alone).
 
+## SNES integration: Analyzer readings in crowded frames, cheaper orbit beams (2026-10-21)
+
+- UI, the Analyzer lite pass (ac83439, 1389c70; merged in e908996):
+  - When a frame is too late for the full readout pass, a lite pass draws
+    the readings later in the frame. It reuses the last full pass's
+    sprite-line counts and palette.
+  - Coverage: 9 → 112 of 169 frames in the crowded focus scene, and
+    158 → 194 of 249 after a real cast.
+  - The pass runs through a return-address redirect from the full pass
+    (`ui_sc_lite_tail`), so frames without a late reading run no extra
+    instruction. As first written, the end-of-frame call tipped gameplay
+    `charge` to 16 and the orbit montage to 2 lags.
+- Orbit (80f56a1, 898cc07, 65f58d3; merged in 19553b5):
+  - Rebuilt beam runs keep their prepared chains (-DBEAM_PREP_CHECK
+    proves them equal).
+  - The clash no longer culls stars.
+  - A blocked body makes its hold in its note.
+  - Clash: 41 → 38 lags on the default build. The fight stays at 9.
+- Direction from the maintainer after 0.2.0:
+  - The orbit debris (stage B) is cancelled, and the remaining accepted
+    differences stay.
+  - Priorities are performance, SNES combat feel and audio. The combat
+    sound and feel may now diverge from the PC edition ("make the combat
+    intensely powerful").
+  - The maintainer reports flicker and vanishing sprites in the orbit on
+    0.2.0; the orbit agent is on it first.
+- Validation on 19553b5 under both probes: all 20 suites pass. Gameplay
+  misses unchanged (charge 13, teleport 3, flying ki 2, flight 1, flying
+  punches 1, the rest 0).
+
 ## SNES release: 0.2.0 (2026-10-21)
 
 - Published as a GitHub release, not a pre-release:
