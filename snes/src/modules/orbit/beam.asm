@@ -876,7 +876,26 @@ beam_signature:
 	JSR beam_usable
 	BCC +
 	LDA.w #4 : TSB.w !bc_sig+12
-+	; below a band layer (bw_ymin): only the run's own length is built,
++
+if defined("ORBIT_BEAMS_BOTH_WIDE") == 0
+	; the fight: Frieza's beam (group 1) keeps to chain 0 while Goku's wave
+	; wants its outer chains (both at full width, with the impacts' bursts,
+	; Goku and Frieza, pass the PPU's 34 slivers on many lines)
+	CPX.w #$0002
+	BNE +
+	LDA.w !fn_phase
+	BNE +
+	LDA.w !bw_key                  ; (the wave on, its chains each side)
+	CMP.w #$FFFF
+	BEQ +
+	LDA.w !bw_j
+	BEQ +
+	LDA.w !bc_sig+12
+	AND.w #$0001
+	STA.w !bc_sig+12
++
+endif
+	; below a band layer (bw_ymin): only the run's own length is built,
 	; so the length joins the signature
 	LDA.w !bw_ymin,X
 	BEQ +

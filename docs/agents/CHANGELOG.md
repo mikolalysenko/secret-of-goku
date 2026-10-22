@@ -4,6 +4,23 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: Frieza's beam keeps to its core while Goku's wave is wide (2026-10-22)
+
+- In the fight, Frieza's beam (beam group 1) shows only chain 0 while
+  Goku's wave is on with chains each side (`beam_signature`). Both beams
+  at full width, with the impacts' bursts, Goku and Frieza, reach 35-45
+  slivers on many lines, and the PPU drops the beams' slivers: once the
+  fight's frames keep their time, Goku, Frieza and the beams lose 855
+  sliver-lines in 12 frames.
+- Main's 30 Hz run hid this: its late frames kept Frieza's outer chains
+  waiting until the wave was gone. The rule makes that the design, so the
+  coming frame-time fixes do not bring the overflow back.
+- His beam widens as soon as the wave narrows to its core. In the `fight`
+  test it shows chain 0 (778 sliver-lines a frame) through the wave's
+  last frames, as main shows it; the browser draws it whole (2,114).
+- Repeated pictures unchanged: the `fight` over its 8 frame phases 75,
+  the `clash` 25. `-DORBIT_BEAMS_BOTH_WIDE` builds without the rule.
+
 ## Orbit: a heavier beam culls no rows it already holds (2026-10-22)
 
 - A beam group that gets heavier while on hid the stars on all its rows

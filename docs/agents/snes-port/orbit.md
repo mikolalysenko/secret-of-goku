@@ -626,7 +626,17 @@ than 4 pixels wider than its band waits for its own (whole cells would show
 outside the band); chain 0 shows a wider core meanwhile. A rebuild of a
 group's cached OAM run that only adds chains waits for a frame with time
 (`beam_defer`: a cell costs about 1.2 lines, a whole five-chain run some 75;
-after 8 frames it may end by line 200).
+after 8 frames it may end by line 200). In the fight, Frieza's beam (group
+1) keeps to chain 0 while Goku's wave is on with chains each side
+(`beam_signature`): the two at full width, with the impacts' bursts, Goku
+and Frieza, reach 35-45 slivers on many lines, and the PPU took the
+beams' (Goku, Frieza and the beams lost 855 sliver-lines in 12 frames of
+the `fight` once its frames kept their time). Main's 30 Hz run had hidden
+this: its late frames left Frieza's outer chains waiting until the wave
+was gone. His beam widens as soon as the wave narrows to its core; in the
+`fight` test it shows chain 0 (778 sliver-lines a frame) for the wave's
+last frames, as main showed it, where the browser draws it whole (2,114).
+`-DORBIT_BEAMS_BOTH_WIDE` builds without the rule.
 
 **Victory.** The native commands go through `core_sound_queue` in
 `boss-victory.js` order: `F2`/`F0` stop (and `frieza_orbit_won`: stage won,
