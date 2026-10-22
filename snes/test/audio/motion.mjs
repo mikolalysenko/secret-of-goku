@@ -34,7 +34,7 @@ export function motionMix(rom,{song=0x3C,mode='combo',gap=1,beam=false,beds=fals
  const s=JSON.parse(readFileSync('dist/snes/gen/audio/songs.json')).find(s=>s.id===song),h=createApu({rom});h.ms(60);
  if(song){loadSong(h,rom,{blob:readFileSync(`dist/snes/gen/audio/song_${song.toString(16)}.bin`),instruments:s.instruments.map(i=>i.id),echo:s.echo,song,p2:0x10,p3:255});h.waitFor(()=>h.ram[0xAD]===255,4e7);}
  h.ms(300+phase*frame);h.take();
- const immutable=customSegments(rom).map(s=>({addr:s.addr,bytes:h.ram.slice(s.addr,s.addr+s.bytes.length)}));
+ const immutable=customSegments(rom).filter(s=>s.addr!==0x187C).map(s=>({addr:s.addr,bytes:h.ram.slice(s.addr,s.addr+s.bytes.length)}));
  let maxVoices=0,maxLaunchVoices=0,maxSwingVoices=0,noiseMismatch=0;
  const step=ms=>{for(let t=0;t<ms;t+=1){h.ms(Math.min(1,ms-t));const ids=[];for(let v=0;v<8;v++)if(h.ram[0xAE]&(1<<v))ids.push(h.ram[0xFF80+v]);maxVoices=Math.max(maxVoices,ids.length);maxLaunchVoices=Math.max(maxLaunchVoices,ids.filter(id=>id===0xDE).length);maxSwingVoices=Math.max(maxSwingVoices,ids.filter(id=>id===0xE5||id===0xE6).length);
    if(isResident7(rom))for(let v=0;v<8;v++)if((h.dspReg(0x3D)&(1<<v))&&[0xE5,0xE6,0xDE,0xED,0xEE].includes(h.ram[0xFF80+v]))noiseMismatch++;

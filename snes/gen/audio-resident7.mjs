@@ -1,4 +1,4 @@
-// Round seven: PC-derived resident beds/attacks; no common-sound streaming.
+// Round eight: resident rumble/arc textures; no common-sound streaming.
 // Historical round-six synthesis stays in audio-custom.mjs for auditions.
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -8,36 +8,40 @@ import {readWav,resample,brrEncode} from './audio-brr.mjs';
 import {assemble} from './audio-spc700.mjs';
 import {RESIDENT,NATIVE_IDS} from './audio-resident.mjs';
 import {residentLayout,effectOffset} from './audio-resident-storage.mjs';
+import {DESIGNS8,hum8,rumble8,arc8} from './audio-design8.mjs';
+export const DESIGN8=Number(process.env.AUDIO_DESIGN??1);
+assert.ok(Number.isInteger(DESIGN8)&&DESIGN8>=0&&DESIGN8<DESIGNS8.length,'AUDIO_DESIGN must be 0, 1 or 2');
 export const SAMPLE_BASE=0x4DF1,RESERVE=0x900,FLOOR=SAMPLE_BASE+RESERVE;
 export const BED_IDS=[0xED,0xEE];
 export const IDS=NATIVE_IDS.map((v,i)=>i===17?0xEF:v);
 // Contacts share a short 32 kHz crack, so overlapping attacks cannot retune
-// one another's noise. Finishing kicks use a roughly 77 -> 64 Hz bass fall instead
-// of HIT's quick two-octave pop. F1 is the slightly longer/louder SSJ kick.
-const crack=[0xD2,0xB8,0xDD,31,0xDE,0x0E,0xD3,3,0,0xC2,0xF2];
-const thump=(volume,ticks)=>[0xD2,volume,0xEA,3,0xE4,3,0xD6,ticks,0xFC,0xD3,ticks,0,0x35,0xF2];
+// one another's noise. Finishing kicks use a deeper, longer aperiodic fall
+// than HIT. F1 is the slightly longer/louder SSJ kick. Alternate textures
+// reserve another half dB for constructive peaks in rapid contact mixtures.
+const contactGain=v=>Math.round(v*(DESIGN8===1?1:.94));
+const crack=[0xD2,contactGain(0xD8),0xDD,31,0xDE,0x0E,0xD3,3,0,0xC2,0xF2];
+const thump=(volume,ticks)=>[0xD2,contactGain(volume),0xEA,0x31,0xE4,1,0xD6,ticks,0xFC,0xD3,ticks,0,0x8F,0xF2];
 export const CONTACTS7=[
  {id:0xE7,page:0x3A,tracks:[
   crack,
-  [0xD2,0xD8,0xEA,3,0xE4,4,0xE9,0xFA,0xD6,8,0xE8,0xD3,12,0,0x0A,0xF2]]},
- {id:0xE8,tracks:[crack,thump(0xC0,20)]},
- {id:0xF1,tracks:[crack,thump(0xD0,22)]},
+  [0xD2,contactGain(0xD8),0xEA,0x31,0xE4,2,0xE9,0xFA,0xE7,0xFB,0xD6,8,0xF8,0xD3,16,0,0x90,0xF2]]},
+ {id:0xE8,tracks:[crack,thump(0xE0,20)]},
+ {id:0xF1,tracks:[crack,thump(0xF8,22)]},
 ];
 // Motion follow-up. The aura BRR provides broadband swings without touching
 // the DSP's shared noise clock. E5 alternates swell/sweep and independently
 // rotates three tunings; E7's pop and DE rotate the same three tunings.
 // Their E9 operands are also their counters, reset by native sequence loads.
-// DE switches from a 4-tick falling zap to the beam's broadband texture on
-// the same voice. Instrument $1F aliases that BRR at unity tuning: E9 then
-// gives the same 1 / 1.035 / .977 cycle in both stages. Its E7 operand is
-// set at command time: p2=$0F normal, $0D SSJ (+2 semitones, 1.12246x).
+// DE uses one falling rumble voice; no tonal zap. E9 gives the same
+// 1 / 1.035 / .977 texture-rate cycle. Its E7 operand is set at command
+// time: p2=$0F normal, $0D SSJ (two semitones brighter, higher rumble level).
 export const MOTION7=[
  {id:0xE5,page:0x3A,tracks:[[0xD2,0,0xEA,0x31,0xE4,4,0xE9,0xFA,0xD6,22,0xF7,0xD3,3,0xD0,0x93,0xD3,16,0,0xBD,0xF2]]},
  {id:0xE6,tracks:[[0xD2,0,0xEA,0x31,0xE4,4,0xE9,0xC0,0xD6,36,0xF9,0xD3,4,0xE0,0x94,0xD3,32,0,0xBA,0xF2]]},
- {id:0xDE,page:0x3A,tracks:[[0xD2,0xFF,0xEA,9,0xE4,4,0xE9,0xFA,0xE7,0,0xD6,4,0xE8,0x76,0xEA,0x1F,0xE4,6,0xD6,18,0xE8,0xD3,24,0,0x17,0xF2]]},
+ {id:0xDE,page:0x3A,tracks:[[0xD2,0xF0,0xEA,0x31,0xE4,2,0xE9,0xFA,0xE7,0,0xD6,22,0xF4,0xD3,24,0,0x8F,0xF2]]},
 ];
-// Unchanged teleport track, moved to shared holes to pay for blast_form.
-const teleportOut={id:0xEB,tracks:[[0xD2,0xB8,0xEA,0x33,0xE4,4,0x91,0xF2]]};
+// Compact teleport attack and faded tail, placed in shared sequence holes.
+const teleportOut={id:0xEB,tracks:[[0xD2,0xB8,0xEA,0x33,0xE4,4,0x8E,0xD3,48,0,0xB9,0xF2]]};
 export function resident7Layout(rom,tracks){
  const retained=RESIDENT.filter(r=>!tracks.has(r.id)).map(r=>[...CONTACTS7,...MOTION7,teleportOut].find(c=>c.id===r.id)??r);
  retained.push({id:0xF0,tracks:[]},CONTACTS7.find(r=>r.id===0xF1));return residentLayout(rom,retained);
@@ -57,18 +61,22 @@ function loop(pcm,start,n,cross,flat=5){
 }
 export function buildResident7(){
  const defs=[
-  {name:'charge',rate:4000,frames:640,start:720,cross:128,tune:0x80,octave:3,gain:1.7},
-  {name:'aura',rate:6000,frames:768,start:8400,cross:160,tune:0xC0,octave:3,gain:2.5,flatten:16},
+  {name:'charge',rate:4000,frames:512,start:720,cross:128,tune:0x80,octave:3,gain:1.7},
+  {name:'aura',rate:6000,frames:768,start:8400,cross:160,tune:0,octave:3,gain:2.5,flatten:16},
   {name:'beam',rate:6000,frames:768,start:1200,cross:160,tune:0xC0,octave:3,gain:2.6,attack:192,attackStart:360},
-  {name:'teleport',rate:10000,frames:960,tune:0xA0,octave:4,gain:1.65,oneShot:true},
+  {name:'teleport',rate:10000,frames:800,start:400,cross:80,attack:160,tune:0xA0,octave:4,gain:1.65},
  ];
  let at=SAMPLE_BASE;
  const samples=defs.map((d,i)=>{
   const src=source(d.name,d.rate);let pcm,offset;
   if(d.oneShot){pcm=src.slice(0,d.frames);offset=-1;for(let j=0;j<64;j++)pcm[pcm.length-1-j]*=j/64;}
   else {const attack=d.attack??16;pcm=new Float32Array(attack+d.frames);if(d.attack)pcm.set(src.slice(d.attackStart??0,(d.attackStart??0)+attack));pcm.set(loop(src,d.start,d.frames,d.cross,d.flatten),attack);offset=attack/16*9;}
-  // Soft peak limiting is in the encoded source; output recordings are raw.
-  pcm=pcm.map(v=>Math.tanh(v*d.gain)*.94);
+  if(d.name==='charge'){pcm.fill(0);pcm.set(hum8(d.frames,d.rate,DESIGN8),16);}
+  else if(d.name==='aura'){pcm.fill(0);pcm.set(rumble8(d.frames,d.rate,DESIGN8),16);}
+  else if(d.name==='beam'){
+   pcm.set(arc8(d.attack,d.rate,DESIGN8,{attack:d.attack}));
+   pcm.set(arc8(d.frames,d.rate,DESIGN8),d.attack);
+  }else pcm=pcm.map(v=>Math.tanh(v*d.gain)*.94);
   const b=brrEncode(pcm,{resetAt:new Set(offset<0?[0]:[0,offset/9])});b.bytes[b.bytes.length-9]|=offset<0?1:3;
   const result={...d,pcm,bytes:b.bytes,snr:b.snr,addr:at,loop:offset,instrument:0x30+i,adsr:0xE0FF,sha256:hash(b.bytes)};at+=b.bytes.length;return result;
  });
@@ -88,27 +96,30 @@ export function buildResident7(){
  for(const a of alias)for(const s of extension.segments)assert.ok(a.addr+a.bytes.length<=s.addr||s.addr+s.bytes.length<=a.addr,'blast alias overlaps rare-line extension');
  metadata.push(...alias);
  const ins=(i,vol,octave=samples[i].octave)=>[...(vol===undefined?[]:[0xD2,vol]),0xEA,0x30+i,0xE4,octave];
- const beam=full=>[0xE2,...ins(2,0xE8),...(full?[0xE9,0xE5]:[]),0xD3,12,0xFF,0x89,0xD3,12,0,0xBE,0xF2];
+ const beam=full=>[0xE2,...ins(2,DESIGN8===1?0xE0:0xD0),...(full?[0xE9,0xE5]:[]),0xD6,96,3,0x89,0xD3,12,0,0xBE,0xF2];
  const tracks=new Map([
   [0xEA,beam(false)],[0xF0,beam(true)],
-  [0xEF,[...ins(3,0x72),0x91,0xF2]],
+  [0xEF,[...ins(3,0x72),0x8E,0xD3,48,0,0xB9,0xF2]],
   [0xED,[...ins(0),0x87,0xF0,0,0xB4,0xF1]],
   [0xEE,[...ins(1),0x87,0xF0,0,0xB4,0xF1]],
   [0xEC,[...ins(1,0),0xE9,0xC0,0xD3,6,0xA0,0x8F,0xD3,12,0,0xBE,0xF2]], // low sampled shuffle; no shared DSP-noise clock
-  [0xE3,[...ins(2,0xC0,2),0xD3,24,0,0x8F,0xF2]],
+  [0xE3,[0xD2,0xC0,0xEA,0x1F,0xE4,2,0xE9,0xC0,0xD3,24,0,0x8F,0xF2]],
   [0xDF,[...ins(0,0x80),0xD3,16,0,0x90,0xF2]],
   [0xE0,[0xE2,...ins(1,0xC0),0xD3,48,0x80,0x89,0xD3,24,0,0xBC,0xF2]],
-  [0xE1,[...ins(2,0xC0),0xD3,48,0,0x8C,0xF2]],
+  [0xE1,[0xD2,0xC0,0xEA,0x1F,0xE4,3,0xE9,0xC0,0xD3,48,0,0x8C,0xF2]],
  ]);
  const pointers=[],sequences=[];
  for(const [id,seq] of tracks){const pair=new Uint8Array(4);word(pair,0,at);pointers.push({addr:0x2C00+id*4,bytes:pair});sequences.push({id,addr:at,bytes:seq});bank.set(seq,at-SAMPLE_BASE);at+=seq.length;}
  const layout=resident7Layout(readFileSync(join(root,'rom/secret-of-mana-us.sfc')),tracks);
+ // A short, deep body under the arc shares the finisher's sampled track.
+ // Both wave voices use the same effect id and return through native F2.
+ for(const id of [0xEA,0xF0]){const body=layout.tracks.find(t=>t.id===(id===0xF0?0xF1:0xE8)&&t.voice===1).addr;word(pointers.find(p=>p.addr===0x2C00+id*4).bytes,2,body);}
  const swing=layout.tracks.find(t=>t.id===0xE5);
  const hit=layout.tracks.find(t=>t.id===0xE7&&t.voice===1),blast=layout.tracks.find(t=>t.id===0xDE);
  for(const t of [swing,hit,blast]){assert.equal(t.addr>>8,0x3A,'variation operands share one page');assert.equal(t.bytes[6],0xE9);}
  assert.equal(swing.bytes[8],0xD6);assert.equal(swing.bytes[11],0xD3);
  assert.equal(blast.bytes[8],0xE7);
- const code=assemble(readFileSync(join(root,'snes/src/modules/audio/spc/beds.s'),'utf8'),{name:'beds.s',symbols:{CODE_BASE:at,TUNE_PAGE:0x3A00,SWING_TUNE:swing.addr+7,HIT_TUNE:hit.addr+7,BLAST_TUNE:blast.addr+7,BLAST_FORM:blast.addr+9,SWING_SWEEP:swing.addr+10,SWING_SWELL:swing.addr+12}});
+ const code=assemble(readFileSync(join(root,'snes/src/modules/audio/spc/beds.s'),'utf8'),{name:'beds.s',symbols:{CODE_BASE:at,TUNE_PAGE:0x3A00,SWING_TUNE:swing.addr+7,HIT_TUNE:hit.addr+7,BLAST_TUNE:blast.addr+7,BLAST_FORM:blast.addr+9,BLAST_VOLUME:blast.addr+1,SWING_SWEEP:swing.addr+10,SWING_SWELL:swing.addr+12}});
  const patches=[];let end=at;
  for(const seg of code.segments)if(seg.addr>=SAMPLE_BASE&&seg.addr<FLOOR){assert.ok(seg.addr+seg.bytes.length<=FLOOR,`resident7 needs ${seg.addr+seg.bytes.length-SAMPLE_BASE} bytes`);bank.set(seg.bytes,seg.addr-SAMPLE_BASE);end=Math.max(end,seg.addr+seg.bytes.length);}else{
   if([0x1868,0x18E8].includes(seg.addr)){
@@ -120,7 +131,12 @@ export function buildResident7(){
   if(seg.addr===0x0180)assert.ok(seg.addr+seg.bytes.length<=0x01C0,'variation helper must leave at least 64 stack bytes');
   patches.push(seg);
  }
- return {samples,sampleBytes,sequences,pointers,tracks,reserve:RESERVE,floor:FLOOR,used:end-SAMPLE_BASE,codeBytes:end-at,segments:[{addr:SAMPLE_BASE,bytes:bank},...metadata,{addr:0x187C,bytes:new Uint8Array(4)},...patches],symbols:Object.fromEntries(code.symbols)};
+ const prefetch=assemble(readFileSync(join(root,'snes/src/modules/audio/spc/prefetch.s'),'utf8'),{name:'prefetch.s',symbols:{...Object.fromEntries(extension.symbols),BANK_CODE:end}});
+ for(const seg of prefetch.segments)if(seg.addr>=SAMPLE_BASE&&seg.addr<FLOOR){
+  assert.ok(seg.addr+seg.bytes.length<=FLOOR,'prefetch exceeds permanent reservation');
+  bank.set(seg.bytes,seg.addr-SAMPLE_BASE);end=Math.max(end,seg.addr+seg.bytes.length);
+ }else patches.push(seg);
+ return {design:DESIGNS8[DESIGN8].name,samples,sampleBytes,sequences,pointers,tracks,layout,reserve:RESERVE,floor:FLOOR,used:end-SAMPLE_BASE,codeBytes:end-at,segments:[{addr:SAMPLE_BASE,bytes:bank},...metadata,{addr:0x187C,bytes:new Uint8Array(4)},...patches],symbols:Object.fromEntries(code.symbols)};
 }
 export function resident7Asm(rom,c){
  const layout=resident7Layout(rom,c.tracks),map=new Map();

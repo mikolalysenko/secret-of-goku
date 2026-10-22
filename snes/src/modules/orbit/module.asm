@@ -147,7 +147,6 @@ endmacro
 !sl_half    = !g_tmp+4
 !sl_n       = !g_tmp+6
 !sl_s       = !g_tmp+8
-!sl_was     = !g_tmp+10
 !sl_g       = !g_tmp+14
 !g_text     = !SB+$040            ; byte: lines 0..g_text-1 are Mode 1 (BG3 panel)
 !g_textset  = !SB+$041            ; byte: g_text the BGMODE table holds ($FF none)
@@ -301,16 +300,11 @@ assert !ma_pairok+2 <= !MA_T1A, "the aerial cut's working state runs into its ta
 !hb_mode    = !SB+$860            ; BGMODE ($2105) table of indirect set 0, 16 bytes (hb_mode1: set 1's)
 !SB_STARS   = !SB+$870            ; star lists: 3 count words, then the entries
 !s_lists    = !SB_STARS           ; bytes in list d at s_lists + d*2 - 2
-!sb_stale   = !SB_STARS+6         ; the distant bodies counted on a beam's rows still waiting for the star lists (scline.asm)
 !s_list1    = !SB_STARS+$008      ; depth 1 (44 x 4)
 !s_list2    = !SB_STARS+$0C0      ; depth 2 (53 x 4)
 !s_list3    = !SB_STARS+$1A0      ; depth 3 (3 x 4, bright)
-; (in the lists' spare room: the distant bodies' waits and holds, scline.asm)
-!sb_kg      = !s_list1+(4*!ORBIT_STARS_D1) ; 3 words: the limits' generation each body's wait for the star lists began at
-!sk_done    = !s_list2+(4*(!ORBIT_STARS_D2-!ORBIT_STARS_D1))-2 ; lists 1-3 at +2, +4, +6: the generation each one's last finished build had
-!sb_hold    = !sk_done+8          ; 3 words: a body that yields: $8000 | the beam groups << 8 | frames of room (0: drawn)
-assert !sb_kg+6 <= !s_list2, "the bodies' waits run into star list 2"
-assert !sb_stale+2 <= !s_list1, "the bodies' wait bits run into star list 1"
+; (in list 2's spare room: the distant bodies' holds, scline.asm)
+!sb_hold    = !s_list2+(4*(!ORBIT_STARS_D2-!ORBIT_STARS_D1))+6 ; 3 words: a body that yields: $8000 | $4000 | the beam groups << 8 | frames held, to !SL_HOLD (0: drawn)
 assert !sb_hold+6 <= !s_list3, "the bodies' holds run into star list 3"
 ; The stars' limits under the beams (stars.asm stars_limits): per 8-line
 ; row the stars of lists 1-2 that may cover it, and per list the stars
@@ -669,7 +663,21 @@ assert !pb_shown+2 <= !SB+$1800, "orbit scene work past $32:77FF (the frieza mod
 !BC_BYTES = !SB+$1220              ; 2 words: OAM bytes in each cached run (0: none)
 !BC_BND   = !SB+$1224              ; 2 x 12 words: run bytes after each cell index
 !BC_HI    = !SB+$1260              ; 2 x 16 bytes: the high-table bytes
+!hc_checks = !SB+$1256             ; (-DHELD_CHECK, scdraw.asm: the yields sc_note makes checked against
+!hc_diff   = !SB+$1258             ;   sl_note's, those that differ, the hold predicted)
+!hc_hold   = !SB+$125A
+assert !hc_checks >= !BC_BND+48 && !hc_hold+2 <= !BC_HI, "the yields' check overlaps the beam runs' bounds or high bytes"
+!BC_PREP  = !SB+$1280              ; 2 x 64 bytes: each group's chains as last prepared (beamrun.asm): kept, chains * 2, the step, 5 tile words, 5 x and 5 y less the origin
+!bk_reused = !BC_PREP+40           ; (-DBEAM_PREP_CHECK: the run took the kept chains,
+!bk_force  = !BC_PREP+42           ;   the next build prepares afresh, the first run's sums,
+!bk_sum    = !BC_PREP+44           ;   the runs compared and those that differ, scratch;
+!bk_xor    = !BC_PREP+46           ;   group 0's block has 26 bytes spare after its 38)
+!bk_checks = !BC_PREP+48
+!bk_diff   = !BC_PREP+50
+!bk_s      = !BC_PREP+52
+!bk_x      = !BC_PREP+54
 !BC_OAM   = !SB+$1300              ; 2 x 256 bytes: the entries (60 at most)
+assert !BC_PREP+128 <= !BC_OAM, "the beam runs' kept chains run into their entries"
 !t_want = !SB+$DB0                 ; text panel wanted (0: none, !OTXT_*)
 !t_have = !SB+$DB2                 ; text panel in BG3 now
 
@@ -679,6 +687,8 @@ assert !pb_shown+2 <= !SB+$1800, "orbit scene work past $32:77FF (the frieza mod
 !FN = !SB+$1500
 !FN_GATHER   = 1                   ; clash phases (frieza-finale.js)
 !FN_CHARGE   = 2
+!FN_LAUNCH_R0 = 28                 ; the launch's rays: Goku's band radius (fdraw.asm fc_rays; bands.asm preloads
+!FN_LAUNCH_R1 = 30                 ;   both maps during the charge), Frieza's
 !FN_LAUNCH   = 3
 !FN_STRUGGLE = 4
 !FN_RECOIL   = 5
@@ -898,6 +908,7 @@ org !CODE_ORBIT3
 orbit_code3_start:
 incsrc "strike.asm"
 incsrc "scline.asm"
+incsrc "beamrun.asm"
 orbit_code3_end:
 assert orbit_code3_end <= !CODE_ORBIT3+$4000, "orbit third code area overflow"
 pullpc

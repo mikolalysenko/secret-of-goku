@@ -117,7 +117,68 @@ endif
 ; ---------------------------------------------------------------------------
 ; Frame inputs: new-frame flag, distance moved, facing/row, validated native
 ; action, field control gate.
+if not(defined("GOKU_POSE_SLOW"))
+goku_hypot_rows:             ; |dy| * 13 entries * 2 bytes: goku_hypot's row offsets
+	for row = 0..13
+		dw !row*26
+	endfor
+endif
 pose_inputs:
+if not(defined("GOKU_POSE_SLOW"))
+	; The same results with fewer width changes: p_dist cleared first, the
+	; new-frame test once, the hypotenuse row from a table.
+	REP #$30
+	STZ !p_dist
+	LDA.l !core_frame
+	CMP !st_frame
+	SEP #$20
+	BEQ .same
+	LDA.b #$01
+	STA !p_newframe
+	REP #$20
+	LDA $DC
+	CMP !st_map
+	BNE .still
+	LDA $E002
+	SEC
+	SBC !st_x
+	BPL .dxpos
+	EOR.w #$FFFF
+	INC
+.dxpos
+	CMP.w #13
+	BCS .still
+	ASL
+	STA !t_a                 ; 2|dx|
+	LDA $E004
+	SEC
+	SBC !st_y
+	BPL .dypos
+	EOR.w #$FFFF
+	INC
+.dypos
+	CMP.w #13
+	BCS .still
+	ASL
+	TAX
+	LDA.l goku_hypot_rows,X  ; carry is clear (|dy| < 13)
+	ADC !t_a
+	TAX
+	LDA.l goku_hypot,X
+	STA !p_dist
+	BEQ .still
+	STZ !st_stat
+	BRA .facing
+.still
+	; a new frame without distance: stationary frames (saturating)
+	LDA !st_stat
+	CMP.w #$7FFF
+	BCS .facing
+	INC !st_stat
+	BRA .facing
+.same
+	STZ !p_newframe
+else
 	SEP #$20
 	STZ !p_newframe
 	REP #$30
@@ -186,6 +247,7 @@ pose_inputs:
 	CMP.w #$7FFF
 	BCS .facing
 	INC !st_stat
+endif
 .facing
 	SEP #$20
 	LDA !goku_act
@@ -249,6 +311,29 @@ pose_inputs:
 	; Field control gate (mana-mod.js canAttack, native part).
 	SEP #$20
 	STZ !p_can_attack
+if not(defined("GOKU_POSE_SLOW"))
+	; the same byte tests, pairs at a time: $E4/$E5 both 1, $EC & $FE and
+	; $ED & $40 clear, $E190 & $70 and $E191 & $D5 clear
+	REP #$20
+	LDA $E4
+	CMP.w #$0101
+	BNE .done
+	LDA $EC
+	AND.w #$40FE
+	BNE .done
+	LDA $E190
+	AND.w #$D570
+	BNE .done
+	SEP #$20
+	LDA $E000
+	AND $E02C
+	LSR
+	BCC .done
+	LDA $D0
+	BNE .done
+	INC !p_can_attack
+	BRA .done
+endif
 	LDA $E4
 	CMP.b #$01
 	BNE .done

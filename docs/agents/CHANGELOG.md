@@ -4,6 +4,290 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: round-eight sounds, a steady orbit picture, a faster field frame (2026-10-22)
+
+- Audio, round eight (c65c5f7, 37fa164, 984a721; merged in 72e4707). The
+  maintainer asked for hits that crack and whoosh, shots that rumble, a
+  Kamehameha "like a high voltage arc fault", and an Instant Transmission
+  that does not cut off early.
+  - The default design is **Rupture**. Hits and kicks are a noise crack
+    over a falling, sampled low rumble. The kick's rumble lasts 175 ms, or
+    200 ms in SSJ. Swings are short air and rumble sweeps. A ki shot is
+    one rumble voice that falls over about 215 ms, with no instrument-9
+    zap. The wave is irregular arc discharges with a distorted roar and a
+    subdued rising whine. The charge and aura are a mains hum with roar.
+  - Two alternate builds are kept for listening: Arc (`AUDIO_DESIGN=0`,
+    lighter bass, more whine) and Storm (`AUDIO_DESIGN=2`, more roar and
+    grit). `-DAUDIO_CUSTOM_SAMPLES=0` still restores the original sounds.
+  - An optional 7,936-byte bank holds the whole 830 ms Instant
+    Transmission at 10 kHz and a 12 kHz arc. It fills in on quiet frames,
+    and only when the song's cached samples still fit below it. Otherwise
+    the compact sounds play; the compact Instant Transmission is its
+    attack with a sustained, faded tail.
+  - Song loads reuse cache holes before compacting and keep the shared
+    samples. The mean stall over 64 consecutive loads fell from 19.9 to
+    17.9 frames, but not every load is faster: `$07→$08` takes 12.3
+    frames more, and `$22→$23` went from 19.7 to 22.9.
+- Orbit flicker (bee91ad, 46c712e, 2e24353, d2186bc, 2f76b60, f552eed;
+  merged in 18ab57a). The maintainer reported flicker and vanishing
+  sprites in the orbit on 0.2.0.
+  - Stars leave a beam's rows once, while the beam holds them.
+  - The clash's rays are on their band layers from the launch. The charge
+    preloads both maps, so the moon and the outer planet no longer hide.
+  - The clash culls stars again, and no body waits for the star lists.
+  - The fight's 30 Hz tear is gone.
+  - `fight` and `clash` now fail when the flicker passes set bounds.
+- Performance pass (19 changes, 1958d7a … 1e48992, method in 6c39c07;
+  merged in cc52d1e). Gameplay misses summed over start-phase offsets 0-9
+  fell from 230 to 114. Charge went from 123 to 56 and teleport from 43 to
+  23.
+  - Goku writes a full on-screen cell's four OAM entries directly.
+  - The message window's buffer clear, border rows and text paint are
+    cheaper. These were most of teleport's misses.
+  - The idle field frame's module tests run inline.
+  - A party member's contact pass over the enemy slots is unrolled.
+  - Six per-frame native calls into slow banks go through FastROM.
+  - The ending's NMI ceiling joined Frieza's `C0:C15F` hook.
+  - Each change has a `*_SLOW` define that rebuilds the former code byte
+    for byte.
+  - The perf scenes' p90 against the cartridge before the pass: sword 63
+    → 58, Sandship 112 → 109, battle 54 → 51, Fortress 96 → 91. Flight
+    stays at 112 and the Beast at 171.
+  - Left alone: the multitap BIOS check (`CF:FE70`, 2.4-3.4 lines every
+    frame). A tighter read loop changes the serial timing, so it needs
+    testing on hardware with a multitap first.
+- Validation on cc52d1e under both probes: all 20 suites pass. Gameplay
+  misses per 240 frames at offset 0: charge 4 (16 before), flying ki 3
+  (2), flying punches 1 (1), teleport 0 (3), flight 0 (1), the rest 0.
+  Flying ki's offset-0 count rose while its sum over offsets 0-9 fell
+  from 16 to 12. Orbit on
+  the shipping build: the fight lags 9 frames, the clash 25 and the
+  montage 0. The hardware probe reports only the known cases: the retail
+  boot's VRAM DMA at `C0:25F6` (line 153, and 155 after the name editor)
+  and core's `hdmaen` test, which overruns its vblanks on purpose.
+
+## Orbit: the fight and the clash check that the picture holds steady (2026-10-21)
+
+- `watch.lua` `W.flicker`: on each frame's OAM under the PPU's line
+  limits, the stars drawn and the sliver-lines Goku, Frieza and the beams
+  lose, and the bursts'.
+- `fight` and `clash` (`snes/test/orbit/run.mjs`) fail past bounds on
+  the stars' jumps (5 or more in a frame), the frames where Goku, Frieza,
+  the beams or the bursts lose sliver-lines, each body's hides, and any
+  hide shown again within 30 frames (a blink). `fight`: 12 jumps, 8
+  frames, bursts 40, hides 0/0/1. `clash`: 24, 2, 4, 0/0/2.
+- This build: `fight` 6 jumps, 4 frames, bursts 32, hides 0/0/1 (within
+  the bounds over all 8 frame phases); `clash` 13, 0, 0, 0/0/2; no blink.
+  main 6a6c9a3 fails both cases: the `fight`'s 30 Hz tear (18 frames) and
+  the outer planet's blink, the `clash`'s moon and outer planet hiding 3
+  times each.
+
+## Orbit: the clash culls again, and no body waits for the star lists (2026-10-21)
+
+- A distant body counted on a beam's rows waited for star lists 1-2 to
+  be rebuilt before it showed, so that the stars there had gone first.
+  The clash had no cull since 898cc07: there the stars on a launch's rows
+  went in two steps, 18 and 33 frames after it (the lists' rebuilds).
+- The clash culls again: the stars on the rows a beam newly holds go at
+  once, in the frame the limits take the rows. With the beam rows' stars
+  gone at once in both phases, no body waits for the lists. A body yields
+  only when blocked, and the wait's state and code go (`sb_stale`,
+  `sb_kg`, `sk_done`, `sl_stale`).
+- `fight` (default build): the outer planet no longer hides (38 frames
+  before) and the planetoid hides once, blocked where both beams cross
+  (twice before). Drawn through more of the beams' passes, the bodies
+  cost the bursts beside them more slivers: the others lose 106 in 19
+  frames to them (32 in 11 before). Lagged frames over the 8 frame
+  phases (`ORBIT_FIGHT_EXTRA=0..7`): 80 (82 before).
+- `clash`: the stars on the launches' rows go in their first frames; the
+  bodies as before (the moon and the outer planet never hide). 39
+  repeated pictures (38 before).
+
+## Orbit: the clash's rays on their band layers from the launch (2026-10-21)
+
+- A clash ray is drawn on its band layer once the layer's map for its
+  radius is in VRAM. Each map is one DMA when the radius changes. Until
+  then the ray's cells are drawn from the top of the screen.
+- The launch's first frames therefore drew Goku's ray with cells. The
+  stars' limits counted it on the rows to the screen's edge, and the moon
+  and the outer planet, on those rows, yielded and hid.
+- The charge now sends the launch's two maps, Goku's radius 28 and
+  Frieza's 30, one a vblank (`bands_preload`). The launch draws its rays
+  on the layers from their first frame with a length. Its first rays, a
+  few pixels long, go on the layers too: the heading the table rounds for
+  them is noise (`bands_clash_ray`).
+- A clash ray still drawn with cells above the band lines (the age-0
+  frame, the win's wave off the clash's geometry) counts only the rows of
+  the cells it draws, and none once it is thinner than a band (the win's
+  2-pixel wave as it fades).
+- `clash` (default build): the moon and the outer planet never hide
+  (before: 3 hides each, held 106 and 154 frames, 2 and 1 of them shown
+  again within 30 frames); the planetoid hides twice, through the
+  struggles, as before. 38 repeated pictures (40 before: the launches'
+  rows made again). The stars' count jumps by 5 or more in 15 frames (13
+  before); the `fight` is unchanged (no band layers).
+
+## Orbit: the clash's rays give up the rows their band layers draw (2026-10-21)
+
+- A beam group keeps the rows its limits hold while its own lie within
+  them. In the clash, the launch's first frames draw Goku's ray with cells
+  from the top of the screen, before its band layer's map is there. Its
+  limits then kept those rows through the whole first struggle, after the
+  band layer had taken over above the globe, and the stars above the
+  globe stayed limited: 3 of them in the first struggle.
+- A group whose rows' top moves down because its band layer now draws
+  the rows above gives those rows up (`stars_limits`: a band layer's line
+  `bw_ymin` nonzero).
+- `clash` (default build): the first struggle shows 17-20 stars instead
+  of 3. The star-frames hidden against an unlimited sky go from 48,893 to
+  44,003, and the star count's jumps of 5 or more from 16 to 13. The
+  bodies' held frames: moon 106 (185 before), outer planet 154 (233). 40
+  repeated pictures (38 before: the launches' rows made again). The
+  `fight` is unchanged (no band layers).
+
+## Orbit: no stars on a beam's rows while it holds them (2026-10-21)
+
+- The maintainer found the orbit "super glitchy ... lots of flickering and
+  sprites disappearing" on SNES 0.2.0. One cause: the stars' row limits
+  kept (34 - 2 - the beams' slivers) / 2 stars on a row a beam's cells
+  cover. The cull hid them all when a beam came, and the lists' rebuilds
+  brought most of them back over the next 15 frames. In the `fight` test,
+  Goku's wave blinked 30 stars out and back in. With Frieza's aura drawn
+  every other frame, those lines also passed 34 slivers at 30 Hz and the
+  wave's top lines tore.
+- A beam's row now holds no star of depths 1-2 while the group holds it.
+  The stars go at once and come back when the beam lets the row go, a
+  stable and reduced starfield. A counted body's beam rows need no
+  margin pass now.
+- `fight` (default build, the test's pads): the beams lose slivers in 4
+  frames (64 sliver-lines) instead of 18 (234), the bursts in 35 (390)
+  instead of 36 (690). The star count's jumps of 5 or more go from 9 to
+  7. The frames with 5 or more stars fewer than an unlimited sky go from
+  67 to 111, because the starfield stays reduced for the beam's whole
+  pass. The repeated pictures summed over the eight frame-cycle phases
+  (`ORBIT_FIGHT_EXTRA` 0-7) drop from 91 to 82 (per phase 9 9 12 9 13 9
+  11 10, before 9 12 14 11 13 11 11 10).
+- `clash`: unchanged. Its beam rows already held almost no stars (38
+  repeated pictures).
+
+## Orbit: a body's hold made in its note (2026-10-21)
+
+- A distant body blocked on a beam's rows, or waiting there for the star
+  lists, had its hold made through a far call (`sl_note`, then
+  `sl_yield`) every frame it yielded, about 1.3 lines a body; only a
+  blocked body's aged hold had a shortcut.
+- `scdraw.asm` `sc_note` now makes that hold itself with `sl_yield`'s
+  formula, and its shortcut for a blocked body is exact: it applies
+  while the hold already yields to both groups (the old one could miss
+  a group that came on during the block).
+- In the clash's launches, where all three bodies yield with young
+  holds, the drawing is 2-3 lines shorter a frame for some 20 frames;
+  elsewhere the same.
+- The check build (`-DHELD_CHECK`, counters at `$32:7256`) has
+  `sl_note` make every such hold as well and compares the two: 1,446
+  yields in the `clash`, 45 in the `fight`, all equal.
+- Repeated pictures: `clash` 38 (39 before, main 34: the launches 4,
+  the recoil 1, the win 33); `fight` 9.
+
+## Orbit: no stars' cull in the clash (2026-10-21)
+
+- The stars on the rows a beam newly holds are no longer hidden at once
+  in the clash. There the depths leave out the stars well inside the
+  rays, and with a group's limits only growing the lists keep up: the
+  `clash` test's rays lose no slivers without the cull either.
+- The two culls cost each launch's first two frames 12 lines each (the
+  limits' remake and the cull: 41 and 54 lines of stars there, main 19
+  and 28).
+- The `fight` keeps its cull: without it the beams lose 530 slivers
+  instead of 234.
+- Repeated pictures: `clash` 39 (41 before, main 34: the launches 5, the
+  struggle 1, the recoil 1, the win 32); `fight` 9.
+
+## Orbit: a beam run built again keeps its chains (2026-10-21)
+
+- A beam group's cached OAM run is rebuilt whenever its origin moves. In
+  the clash Frieza's ray moves 2 px every step of the launch and the
+  struggle, and each rebuild prepared every chain afresh (its slot's
+  picture, its tile word, cell 0's place: about 1.7 lines a chain) before
+  placing the cells.
+- A rebuild whose key, chains, flips, palette and slots with a picture
+  are the cached run's now takes its chains as last prepared
+  (`beamrun.asm`, kept in `BC_PREP` at `$32:7280`): their tile words and
+  cell 0's place less the origin, and the step.
+- `clash` test: 336 of its 426 builds take them, 2.5 lines instead of
+  10.2; a build costs 13.0 lines on average instead of 17.5.
+- The check build (`-DBEAM_PREP_CHECK`) builds every such run a second
+  time from chains prepared afresh and compares the two runs (bytes,
+  lengths per cell index, entries, high-table bytes): all 310 equal in the
+  `clash`; the `fight` takes none (its rebuilds add slots or chains).
+- Repeated pictures unchanged: `fight` 9, `clash` 41 (the launches 8, the
+  struggle none; the launches' frames turn on the limits and the culls,
+  which this leaves alone).
+
+## SNES ending: the good ending no longer stops on a black screen after the Mana Beast (2026-10-21)
+
+- Ending (74c88a2, 6b232f7; merged in b07ca36). The maintainer reported:
+  "after you kill the mana beast you get a black screen".
+  - Cause: the good ending held its 48-frame fade to black by writing a
+    ceiling into the game's brightness `$E6` every frame. The script then
+    takes door 2F to map 246. The game's fade engine (`C0:8B5E`) raises
+    `$E6` a step at a time and clears its running flag (`$E2` bit 0) only
+    on reaching the target, and the ending reset `$E6` to 0 after each
+    step. The script waits on that flag (`C1:E8D3`), so it never reached
+    `CALL 6B` (Shenron's summon).
+  - The black screen came about 50 frames after 42F, permanently. It
+    affected every route into the good ending; the bad endings and the
+    finale death were fine.
+  - The fix: the ceiling is published in `!ending_showbright` and applied
+    to INIDISP at the field NMI's register restore (`C0:C168`, after
+    frieza's `C0:C15F` and combat's `C0:C164`). `$E6` is never touched.
+    The reunion hold and the death fade use the same mechanism. The
+    reunion's door 3FF now fades at its natural pace (97 frames; the
+    browser takes 98).
+  - Also fixed: Dryad's eighth Ball now shows in the Shenron scene until
+    event C9, and the bad ending keeps the permanent Super Saiyan form in
+    the escape and on King Kai's planet.
+  - New end-to-end ending cases (`finale`, `finale-frieza`,
+    `finale-party`). They advance the story with B only, from the Beast's
+    kill or Frieza's defeat to "THE END": 4,170 frames after 42F, the
+    browser's exact count. They also check the phase and event order, that
+    no black stretch lasts over 300 frames, and the end-card pictures.
+    `loads` checks that `$E6` is left alone.
+- Validation on b07ca36 under both probes: all 20 suites pass. Gameplay
+  `charge` misses 16 per 240 (13 before). The new NMI step costs about 0.07
+  line a vblank, and that case's frames sit within a line of the deadline.
+  The performance pass is cutting that case. The others are unchanged.
+
+## SNES integration: Analyzer readings in crowded frames, cheaper orbit beams (2026-10-21)
+
+- UI, the Analyzer lite pass (ac83439, 1389c70; merged in e908996):
+  - When a frame is too late for the full readout pass, a lite pass draws
+    the readings later in the frame. It reuses the last full pass's
+    sprite-line counts and palette.
+  - Coverage: 9 → 112 of 169 frames in the crowded focus scene, and
+    158 → 194 of 249 after a real cast.
+  - The pass runs through a return-address redirect from the full pass
+    (`ui_sc_lite_tail`), so frames without a late reading run no extra
+    instruction. As first written, the end-of-frame call tipped gameplay
+    `charge` to 16 and the orbit montage to 2 lags.
+- Orbit (80f56a1, 898cc07, 65f58d3; merged in 19553b5):
+  - Rebuilt beam runs keep their prepared chains (-DBEAM_PREP_CHECK
+    proves them equal).
+  - The clash no longer culls stars.
+  - A blocked body makes its hold in its note.
+  - Clash: 41 → 38 lags on the default build. The fight stays at 9.
+- Direction from the maintainer after 0.2.0:
+  - The orbit debris (stage B) is cancelled, and the remaining accepted
+    differences stay.
+  - Priorities are performance, SNES combat feel and audio. The combat
+    sound and feel may now diverge from the PC edition ("make the combat
+    intensely powerful").
+  - The maintainer reports flicker and vanishing sprites in the orbit on
+    0.2.0; the orbit agent is on it first.
+- Validation on 19553b5 under both probes: all 20 suites pass. Gameplay
+  misses unchanged (charge 13, teleport 3, flying ki 2, flight 1, flying
+  punches 1, the rest 0).
+
 ## SNES release: 0.2.0 (2026-10-21)
 
 - Published as a GitHub release, not a pre-release:

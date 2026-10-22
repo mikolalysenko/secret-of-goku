@@ -20,11 +20,19 @@ goku_frame:
 if defined("GOKU_TRACE")
 	JSR goku_test_scripted
 endif
+if not(defined("GOKU_CHECK_SLOW"))
+	REP #$30
+	SEP #$20
+	%goku_ensure_init8()
+	STZ !shadow_hidden
+	JSR goku_check_on8
+else
 	JSR goku_ensure_init
 	REP #$30
 	SEP #$20
 	STZ !shadow_hidden
 	JSR goku_check_on
+endif
 	LDA.b #$00
 	ROL
 	STA !replacing

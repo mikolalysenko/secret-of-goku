@@ -5,6 +5,7 @@
 -- comes from the game's spell landing (snes/test/lua/analyzer.lua), without
 -- the cast itself: the game's own Analyzer window is not part of the budget.
 local active,count,start,before,current,worked=false,0,0,0,0,false
+local fullCost,liteStart,liteWorked=0,nil,false
 local costs,lines={},{}
 local visible,full,numbers,overruns,maxActors,maxSprites,maxSlivers=0,0,0,0,0,0,0
 local function finalOam()
@@ -35,13 +36,25 @@ function test()
   hook(0x00B077,finalOam)
   hook(SYM.ui_sc_draw_frame,function()
     start=emu.getState().masterClock;before=H.r16(0x7ED8C4);current=H.r16(0x7ED8C6);worked=false
+    fullCost=0;liteStart=nil;liteWorked=false
     if active then lines[#lines+1]=emu.getState()['ppu.scanline'] end
   end)
   hook(SYM.ui_sc_draw_frame_prepared,function() worked=true end)
+  -- The full pass ends before destroy_late_frame. A frame too late for it
+  -- runs the lite pass last (ui_sc_lite_tail, to the frame's end): work
+  -- when it starts on time (in a frame that already missed its vblank it
+  -- has until the next one).
   hook(SYM.destroy_late_frame,function()
     if not active then return end
-    costs[#costs+1]=(emu.getState().masterClock-start)/1364
+    fullCost=(emu.getState().masterClock-start)/1364
     if worked and before==current and H.r16(0x7ED8C4)~=before then overruns=overruns+1 end
+  end)
+  hook(SYM.ui_sc_lite_tail,function() liteStart=emu.getState().masterClock end)
+  hook(SYM.ui_sc_lite_go,function() if H.r16(0x7ED8C4)==before then liteWorked=true end end)
+  hook(0x00B077,function()
+    if not active then return end
+    costs[#costs+1]=fullCost+(liteStart and (emu.getState().masterClock-liteStart)/1364 or 0)
+    if liteWorked and before==current and H.r16(0x7ED8C4)~=before then overruns=overruns+1 end
     local n=ui(0x50);if n~=0 then visible=visible+1 end
     if n&0x1F==0x1F then full=full+1 end
     local actors=0;for i=0,12 do if n&(1<<i)~=0 then actors=actors+1 end end

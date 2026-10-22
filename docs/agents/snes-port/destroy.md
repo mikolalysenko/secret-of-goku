@@ -55,7 +55,11 @@ Dispatch (`snes/src/modules.asm`): `modules_field_frame` →
 HDMA on while vblank lasts), `modules_ring_frame` → `destroy_ring_frame`
 (lets go of the HDMA), `modules_title_boot` → `destroy_title_boot`,
 `modules_world_frame` → `destroy_world_frame`, `modules_load` and
-`modules_new_game` → `destroy_reset`. Events start through the field
+`modules_new_game` → `destroy_reset`. Both frame callbacks make each
+step's own idle test before calling it (the same map, no event that just
+ended, no debug command, plan, job, barrier, orb or pending beam work), and
+`ss_frame` tests the Sandship window inline: an idle field frame costs 1.2
+rather than 1.95 scanlines (`DESTROY_IDLE_SLOW=1` restores the calls). Events start through the field
 dispatcher `C1:E76D` under the same idle conditions as
 `core_event_request` (and only while no core request is pending).
 

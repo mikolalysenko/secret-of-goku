@@ -49,6 +49,13 @@ beam_init:
 	BPL -
 	STZ.w !BC_BYTES
 	STZ.w !BC_BYTES+2
+	STZ.w !BC_PREP                 ; (no chains kept)
+	STZ.w !BC_PREP+64
+if defined("BEAM_PREP_CHECK")
+	STZ.w !bk_force
+	STZ.w !bk_checks
+	STZ.w !bk_diff
+endif
 	STZ.w !bc_wait
 	STZ.w !bc_wait+2
 	LDA.w #$0000
@@ -747,6 +754,12 @@ beam_draw:
 	JSR beam_defer
 	BCS .copy
 	JSR beam_build_run
+if defined("BEAM_PREP_CHECK")
+	JSL beam_check_mid_far         ; (from the kept chains: again afresh, compared)
+	BCC .copy
+	JSR beam_build_run
+	JSL beam_check_end_far
+endif
 .copy
 	JMP beam_copy_run
 
@@ -893,7 +906,10 @@ beam_signature:
 ; the signature.
 beam_build_run:
 	LDX.w !bg_tmp+14
-	LDA.w !bw_key,X
+	JSL beam_prep_again_far        ; (its chains as last prepared serve: beamrun.asm)
+	BCC +
+	JMP .stepped
++	LDA.w !bw_key,X
 	LSR : LSR : LSR : LSR : LSR : LSR
 	AND.w #$0007
 	JSR beam_class_offset
@@ -931,7 +947,9 @@ beam_build_run:
 	LDA.w !bp_dy
 	EOR.w #$FFFF : INC
 	STA.w !bp_dy
-+	; write pointer: the group's cache
++	JSL beam_prep_keep_far         ; (kept for its next build)
+.stepped
+	; write pointer: the group's cache
 	TXA
 	XBA : LSR                      ; group * 128 = 256 bytes per group
 	CLC : ADC.w #!BC_OAM

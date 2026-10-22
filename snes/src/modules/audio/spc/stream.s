@@ -426,6 +426,7 @@ rd_cnt:
  SETC
  SBC A,#12
  MOV groups,A
+rd_ready:
  MOV Y,$35              ; slot ready (and final)
  MOV A,$36
  AND A,#1

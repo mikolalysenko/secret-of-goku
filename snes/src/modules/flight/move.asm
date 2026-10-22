@@ -819,16 +819,47 @@ fl_walk_holes:
 	LDA $1F
 	AND.w #$00FF
 	BRA .ystep
+; The native hooks below run for every actor, most often with nobody
+; carried: fl_is_passenger's own tests of the mask and the actor (the girl
+; $0200 or the sprite $0400 with its bit set) inline, then only its live
+; checks (fl_is_passenger_live). Their native continuations use neither A
+; nor carry. M8/X16.
+macro fl_passenger_call(native)
+if not(defined("FLIGHT_PASSENGER_SLOW"))
+	LDA.w !fl_passengers
+	BEQ <native>
+	CPX.w #$0200
+	BEQ ?girl
+	CPX.w #$0400
+	BNE <native>
+	AND.b #$02
+	BRA ?bit
+?girl:
+	AND.b #$01
+?bit:
+	BEQ <native>
+	JSR fl_is_passenger_live
+else
+	JSR fl_is_passenger
+endif
+	BCC <native>
+endmacro
+
+if not(defined("FLIGHT_PASSENGER_LIVE_SLOW"))
+fl_passenger_no:                     ; (ahead of the tests: every branch stays short)
+	CLC
+	RTS
+endif
 ; C set for a CPU companion carried by the current local flight. M8/X16,
 ; DB=$7E, D=0; preserves X/Y. Check live ownership, event/load state and map
 ; as well as the published mask: none can wait for flight's next frame.
 fl_is_passenger:
 	LDA.w !fl_passengers
-	BEQ .no
+	BEQ fl_passenger_no
 	CPX.w #$0200
 	BEQ .girl
 	CPX.w #$0400
-	BNE .no
+	BNE fl_passenger_no
 	LDA.w !fl_passengers
 	AND.b #$02
 	BRA .check
@@ -836,47 +867,73 @@ fl_is_passenger:
 	LDA.w !fl_passengers
 	AND.b #$01
 .check
-	BEQ .no
+	BEQ fl_passenger_no
+fl_is_passenger_live:
 	LDA $E02C,X
-	BNE .no
+	BNE fl_passenger_no
 	LDA.w !fl_state
 	AND.b #!FLS_FLY|!FLS_ON|!FLS_CAN
 	CMP.b #!FLS_FLY|!FLS_ON|!FLS_CAN
-	BNE .no
+	BNE fl_passenger_no
 	LDA $D0
 	ORA $FF
 	ORA $52
-	BNE .no
-	LDA $EC
-	AND.b #$FE
-	BNE .no
-	LDA $ED
-	AND.b #$40
-	BNE .no
-	LDA.w !fl_lock
-	ORA.w !fl_lock+1
-	BNE .no
+	BNE fl_passenger_no
+if not(defined("FLIGHT_PASSENGER_LIVE_SLOW"))
+	; the same tests, the adjacent pairs as words: no menu or ring
+	; request ($EC & $FE, $ED & $40), no flight lock, the flight's map
 	LDA $F1
-	BMI .no
+	BMI fl_passenger_no
 	LDA $E8
 	AND.b #$04
-	BNE .no
+	BNE fl_passenger_no
+	REP #$20
+	LDA $EC
+	AND.w #$40FE
+	BNE .no16
+	LDA.w !fl_lock
+	BNE .no16
+	LDA.w !fl_lastmap
+	CMP $DC
+	BNE .no16
+	SEP #$20
+	SEC
+	RTS
+.no16
+	SEP #$20
+	CLC
+	RTS
+else
+	LDA $EC
+	AND.b #$FE
+	BNE fl_passenger_no
+	LDA $ED
+	AND.b #$40
+	BNE fl_passenger_no
+	LDA.w !fl_lock
+	ORA.w !fl_lock+1
+	BNE fl_passenger_no
+	LDA $F1
+	BMI fl_passenger_no
+	LDA $E8
+	AND.b #$04
+	BNE fl_passenger_no
 	REP #$20
 	LDA.w !fl_lastmap
 	CMP $DC
 	SEP #$20
-	BNE .no
+	BNE fl_passenger_no
 	SEC
 	RTS
-.no
+fl_passenger_no:
 	CLC
 	RTS
+endif
 
 ; Native OBJ entry: no body, attachment or shadow for carried companions.
 fl_hook_passenger:
 	SEP #$20
-	JSR fl_is_passenger
-	BCC .native
+	%fl_passenger_call(.native)
 	; E40E normally refreshes screen coordinates. Skipping it otherwise
 	; leaves the last ground position visible to native AI target tests
 	; (C1:0526/054A), even though this actor is riding Goku. Retire those
@@ -908,8 +965,7 @@ if defined("CORE_ENEMY_DEFER") && not(defined("CORE_ENEMY_SYNC"))
 	JML core_enemy_queue
 .passenger
 endif
-	JSR fl_is_passenger
-	BCC .native
+	%fl_passenger_call(.native)
 	JML $80F4E2
 .native
 	; Move regular CPU companion work away from ki/charge attacks and Instant
@@ -999,8 +1055,7 @@ fl_hook_passenger_move:
 	SEP #$20
 	REP #$10
 	STX $10
-	JSR fl_is_passenger
-	BCC .native
+	%fl_passenger_call(.native)
 	JML $80D5FA
 .native
 	JML $80D5F3
@@ -1024,8 +1079,7 @@ endmacro
 
 fl_hook_passenger_contacts:
 	SEP #$20
-	JSR fl_is_passenger
-	BCC .native
+	%fl_passenger_call(.native)
 	BIT $ED
 	BPL .done
 	CPX.w #$0200

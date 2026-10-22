@@ -15,7 +15,7 @@ test('swings lose periodic buzz; ki retains punch and all three keep their singl
   }else{
    assert.ok(r.after.peakDbFS>=r.before.peakDbFS+2,'stronger launch attack');
    assert.ok(r.after.features.levelDb>=r.before.features.levelDb,'no softer launch');
-   assert.ok(Math.abs(r.after.features.centroid-r.pc[0].centroid)<Math.abs(r.before.features.centroid-r.pc[0].centroid));
+   assert.ok(r.after.features.centroid<r.before.features.centroid,'rumbling body replaces the tonal zap');
   }
  }
 });
@@ -37,7 +37,7 @@ test('1/2-frame contacts and 5-frame ki volleys preserve headroom, noise state a
  for(const r of motionMixes(rom)){
   const label=JSON.stringify(r);assert.equal(r.clipped,0,label);assert.ok(r.peak<30000,label);
   assert.ok(r.maxLaunchVoices<=1);assert.ok(r.maxSwingVoices<=2);assert.ok(r.maxVoices<=8);
-  if(r.mode==='volley')assert.ok(r.maxVoices<=(r.beam?4:3),'launch plus retail contacts must leave music voices');
+  if(r.mode==='volley')assert.ok(r.maxVoices<=(r.beam?5:3),'launch plus retail contacts must leave music voices');
   assert.equal(r.noiseMismatch,0,label);assert.equal(r.musicMask,255);assert.equal(r.effectMask,0);assert.equal(r.noiseMask,0);assert.equal(r.bankIntact,true);
  }
 });

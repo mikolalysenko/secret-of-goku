@@ -425,8 +425,8 @@ fc_rays:
 	LDA.l orbit_fn_launch+2,X : STA.w !fr_head
 	LDA.l orbit_fn_launch+4,X : STA.w !fr_len+2
 	LDA.l orbit_fn_launch+6,X : STA.w !fr_head+2
-	LDA.w #28 : STA.w !fr_r
-	LDA.w #30 : STA.w !fr_r+2
+	LDA.w #!FN_LAUNCH_R0 : STA.w !fr_r
+	LDA.w #!FN_LAUNCH_R1 : STA.w !fr_r+2
 	JMP fc_ray_end
 .recoil
 	LDA.w !fn_age

@@ -168,7 +168,22 @@ ss_window:
 ; is told to let go.
 ss_frame:
 	LDA.l !persist_goku_active : AND.w #$00FF : BEQ .out
+if not(defined("DESTROY_IDLE_SLOW"))
+	; ss_window, inline: only its carry is used, so the ship-map test
+	; (ss_ship_map) need not keep A and X
+	LDA.l $7ECF28 : AND.w #$00FF : BEQ +
+	CMP.w #14 : BCC .open
++	LDA.l !ss_cut : BNE .open
+	LDA.l !ss_flags : AND.w #!SSF_WRECK|!SSF_CRASH|!SSF_BOSS|!SSF_ESCAPED : BNE .open
+	LDA.l !ss_gbits : AND.w #$0007 : BNE .open
+	LDA.w $00DC : CMP.w #!SS_DUNES : BEQ .open
+	CMP.w #512 : BCS .out
+	TAX
+	LDA.l ss_map_sets,X : LSR : BCC .out
+.open
+else
 	JSR ss_window : BCC .out
+endif
 	JSR ss_work_ensure
 	JSR ss_tick
 	JMP ss_visuals
