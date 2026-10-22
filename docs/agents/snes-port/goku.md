@@ -164,7 +164,12 @@ replacement), `modules_field_nmi` → `goku_nmi` (uploads), `modules_field_preup
   codes on all 465 cells and miniatures, part counts 0–15, every clipping
   edge, the OAM limit, all 256 bit-pair bytes and 20,000 random states; a
   ground three-part body falls 1,081 → 562 CPU cycles, an airborne one
-  798 → 335.
+  798 → 335. `goku_row_attrs` has the same airborne shortcut as
+  `goku_part_attr`; with `GOKU_AIR_ATTR_SLOW=1` it also scans and remaps
+  (palette 5 → 1, priority 3) like the former per-row scan.
+  `air-attributes.test.mjs` therefore compares against the per-entry
+  emitter (`GOKU_EMIT_SLOW=1`) with `goku_part_attr`'s shortcut jumped
+  over: 1,059 → 335 CPU cycles for an airborne body.
 - **Per-frame tests**: the frame callback, the body hook and the
   attachment hook (M8, DB = `$7E`, carry-only callers) use
   `goku_check_on8`, `goku_check_on` without the P save and with absolute

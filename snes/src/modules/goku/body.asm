@@ -514,6 +514,7 @@ goku_emit_four:
 ; descriptor 0 stands in for none. Out: e_q = bottom attribute << 8 | $C4,
 ; e_tile = top attribute << 8 | $C0. M16 X16; clobbers t_b/t_c/t_d, X, Y.
 goku_row_attrs:
+if not(defined("GOKU_AIR_ATTR_SLOW"))
 	LDA !goku_ctl
 	BIT.w #!GOKU_CTL_AIRBORNE
 	BEQ .native
@@ -524,6 +525,7 @@ goku_row_attrs:
 	STA !e_tile
 	RTS
 .native
+endif
 	LDA !e_y
 	CLC
 	ADC.w #24
@@ -577,6 +579,9 @@ goku_row_attrs:
 +	LDA $E093,Y
 	AND.w #$003E
 	ORA.w #$0001
+if defined("GOKU_AIR_ATTR_SLOW")
+	JSR goku_row_air
+endif
 	XBA
 	ORA.w #$00C4
 	STA !e_q
@@ -586,10 +591,28 @@ goku_row_attrs:
 +	LDA $E093,X
 	AND.w #$003E
 	ORA.w #$0001
+if defined("GOKU_AIR_ATTR_SLOW")
+	JSR goku_row_air
+endif
 	XBA
 	ORA.w #$00C0
 	STA !e_tile
 	RTS
+if defined("GOKU_AIR_ATTR_SLOW")
+; The former airborne remap of a row's attribute (goku_part_attr's scan):
+; palette 5 -> 1, priority 3. M16; A = attribute in the low byte.
+goku_row_air:
+	PHA
+	LDA !goku_ctl
+	BIT.w #!GOKU_CTL_AIRBORNE
+	BEQ +
+	PLA
+	AND.w #$FFF7
+	ORA.w #$0030
+	RTS
++	PLA
+	RTS
+endif
 endif
 
 ; OAM attribute for a screen line (A16 in, A16 out = attribute byte):
