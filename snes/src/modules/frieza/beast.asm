@@ -67,6 +67,11 @@ fz_lich_reset:
 ; First living native actor (slots 3+) of species A16: C set, X = offset.
 fz_find_boss:
 	STA !fz_t6
+if defined("FRIEZA_ORBIT_BOSS_LOOP") == 0
+	LDA.l !core_scene_owner           ; the orbit's frames: fz_find_boss_orbit
+	CMP.w #!SCENE_ORBIT
+	BEQ fz_find_boss_orbit
+endif
 	LDX.w #$0600
 .loop
 	LDA $E000,X
@@ -92,6 +97,56 @@ fz_find_boss:
 	BCC .loop
 	CLC
 	RTS
+
+if defined("FRIEZA_ORBIT_BOSS_LOOP") == 0
+; While the orbit holds the scene SRAM (orbit.md: the death watch searches
+; every light frame for the Dark Lich, and no native boss joins the space
+; fight): the same search with each slot's species byte compared first, in
+; slot order, and the other tests only on a match. Same carry, X and A as
+; the loop. FRIEZA_ORBIT_BOSS_LOOP keeps the loop.
+fz_find_boss_orbit:
+	SEP #$20
+	LDA !fz_t6
+for k = 3..12
+	CMP $E180+(!k*$0200)
+	BNE +
+	LDX.w #!k*$0200
+	JSR fz_find_boss_rest             ; (A8 the species again when not)
+	BCC +
+	JMP .found
++
+endfor
+	REP #$20
+	LDX.w #$1800
+	TXA
+	CLC
+	RTS
+.found
+	REP #$20
+	LDA.w #$0000
+	SEC
+	RTS
+
+; Slot X's species matched: C set when it is active, alive and not dying.
+; A8 in and out (the species again on C clear).
+fz_find_boss_rest:
+	REP #$20
+	LDA $E000,X
+	AND.w #$0001
+	BEQ .no
+	LDA $E182,X
+	BEQ .no
+	LDA $E191,X
+	AND.w #$0080
+	BNE .no
+	SEP #$21
+	RTS
+.no
+	SEP #$20
+	LDA !fz_t6
+	CLC
+	RTS
+endif
 
 ; Per field frame (beast-challenge.js tick()).
 fz_beast_tick:
