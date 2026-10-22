@@ -89,6 +89,10 @@ single-cell landing takes 609 CPU cycles cold or warm, versus 1,109/653.
   `fl_is_passenger_live`, the live ownership/event/map checks, for a
   carried member (`FLIGHT_PASSENGER_SLOW=1` calls `fl_is_passenger` each
   time). With nobody carried that saves about a scanline per field frame.
+  `fl_is_passenger_live` tests the adjacent pairs `$EC`/`$ED` and the flight
+  lock as words (`FLIGHT_PASSENGER_LIVE_SLOW=1`: byte by byte): with two
+  companions carried the actor and contact stages (B0CA, B0B2) take 0.23
+  lines less per frame (fly-ki 81.20 -> 80.96).
 - The Mana Beast's Mode 7 arena allows flight only inside X 184-408,
   Y 292-432, and no step there scrolls the camera.
 - On foot the A button never reaches the game (it is the speed modifier, not

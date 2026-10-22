@@ -845,6 +845,11 @@ endif
 	BCC <native>
 endmacro
 
+if not(defined("FLIGHT_PASSENGER_LIVE_SLOW"))
+fl_passenger_no:                     ; (ahead of the tests: every branch stays short)
+	CLC
+	RTS
+endif
 ; C set for a CPU companion carried by the current local flight. M8/X16,
 ; DB=$7E, D=0; preserves X/Y. Check live ownership, event/load state and map
 ; as well as the published mask: none can wait for flight's next frame.
@@ -874,6 +879,31 @@ fl_is_passenger_live:
 	ORA $FF
 	ORA $52
 	BNE fl_passenger_no
+if not(defined("FLIGHT_PASSENGER_LIVE_SLOW"))
+	; the same tests, the adjacent pairs as words: no menu or ring
+	; request ($EC & $FE, $ED & $40), no flight lock, the flight's map
+	LDA $F1
+	BMI fl_passenger_no
+	LDA $E8
+	AND.b #$04
+	BNE fl_passenger_no
+	REP #$20
+	LDA $EC
+	AND.w #$40FE
+	BNE .no16
+	LDA.w !fl_lock
+	BNE .no16
+	LDA.w !fl_lastmap
+	CMP $DC
+	BNE .no16
+	SEP #$20
+	SEC
+	RTS
+.no16
+	SEP #$20
+	CLC
+	RTS
+else
 	LDA $EC
 	AND.b #$FE
 	BNE fl_passenger_no
@@ -898,6 +928,7 @@ fl_is_passenger_live:
 fl_passenger_no:
 	CLC
 	RTS
+endif
 
 ; Native OBJ entry: no body, attachment or shadow for carried companions.
 fl_hook_passenger:
