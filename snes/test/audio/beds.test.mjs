@@ -104,8 +104,8 @@ test('a charge from rest starts a gapless, echoed spring of rising chirps',{skip
   assert.ok(h.ram[0xFF80+[...Array(8).keys()].find(v=>h.ram[0xFF80+v]===0xED)]===0xED,'the hum bed continues');
  }
 });
-test('the activation and SSJ activation sit at least as far over the field song as the PC charge',{skip:!isRound9(rom)},()=>{
- for(const [name,ref] of [['chargeStart',PC.chargeStart],['chargeStartSsj',PC.chargeStartSsj]]){
+test('the activation, SSJ activation and CHARGED sit at least as far over the field song as the PC',{skip:!isRound9(rom)},()=>{
+ for(const [name,ref] of [['chargeStart',PC.chargeStart],['chargeStartSsj',PC.chargeStartSsj],['charged',PC.charged]]){
   const r=cueRatios(rom,name);
   assert.ok(r.lu>=ref.lu,`${name} ${r.lu.toFixed(2)} LU vs PC ${ref.lu}`);
   assert.ok(r.small>=ref.small,`${name} small-speaker ${r.small.toFixed(2)} vs PC ${ref.small}`);

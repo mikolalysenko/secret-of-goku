@@ -10,6 +10,7 @@ export const PC={
  kick:{lu:16.7,small:17.5,band:18.4},blast:{lu:9.7,small:10.8,band:11.9},
  impact:{lu:10.9,small:11.7,band:13.5},
  chargeStart:{lu:10.0,small:11.2,band:14.0},chargeStartSsj:{lu:12.6,small:13.7,band:16.2},
+ charged:{lu:4.8,small:5.9,band:5.7},
  beamRelease:{lu:17.2,small:18.2},beamSustain:{lu:16.6,small:17.7},
 };
 const cache=new WeakMap();

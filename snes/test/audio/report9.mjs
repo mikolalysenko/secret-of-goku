@@ -78,7 +78,7 @@ async function pcRows(before){
 export const TABLE=[
  ['Punch hit (PC hit-1 / mean of 3)','hit','hit'],['Kick','kick','kick'],['SSJ kick','kick','kickSsj'],
  ['Ki fire','blast','ki'],['SSJ ki fire','blast','kiSsj'],['Ki contact','impact','kiContact'],
- ['Kamehameha start','chargeStart','chargeStart'],['SSJ Kamehameha start','chargeStartSsj','chargeStartSsj'],
+ ['Kamehameha start','chargeStart','chargeStart'],['SSJ Kamehameha start','chargeStartSsj','chargeStartSsj'],['Charge full (CHARGED)','charged','charged'],
  ['Kamehameha release (compact)','beam','release'],['Kamehameha release (extended)','beam','releaseExt'],
  ['Kamehameha sustain (compact)','beam','release','sustain'],['Kamehameha sustain (extended)','beam','releaseExt','sustain'],
 ];

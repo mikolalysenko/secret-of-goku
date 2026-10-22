@@ -22,6 +22,27 @@ const manifest=existsSync(manifestPath)?JSON.parse(readFileSync(manifestPath)):{
 const save=()=>writeFileSync(manifestPath,JSON.stringify(manifest,null,2)+'\n');
 const f2=v=>Number.isFinite(v)?+v.toFixed(2):v;
 const stereo=(l,r)=>[Float64Array.from(l,v=>v/32768),Float64Array.from(r,v=>v/32768)];
+if(args.includes('--guide')){
+ // Cue-by-cue index for the listening page: each cue's main, round-nine
+ // and PC files, the in-game takes and the activation candidate.
+ const have=f=>manifest.files.some(x=>x.file===f),pick=(...f)=>f.filter(have);
+ const cues=[
+  ['hit','Punch hit (HIT)',['pc-mix-hit.wav','pc-mix-hit-2.wav','pc-mix-hit-3.wav'],['pc-clip-hit-1.wav','pc-clip-hit-2.wav','pc-clip-hit-3.wav']],
+  ['kick','Kick (KICK)',['pc-mix-kick.wav'],['pc-clip-kick.wav']],['kick-ssj','Super Saiyan kick (KICK in SSJ; the PC uses its one kick clip)',['pc-mix-kick.wav'],['pc-clip-kick.wav']],
+  ['ki','Ki fire (BLAST)',['pc-mix-ki.wav'],['pc-clip-blast.wav']],['ki-ssj','Super Saiyan ki fire',['pc-mix-ki.wav'],['pc-clip-blast.wav']],
+  ['ki-contact','Ki contact (IMPACT)',['pc-mix-ki-contact.wav'],['pc-clip-impact.wav']],
+  ['kamehameha-start','Kamehameha start (the charge from rest)',['pc-mix-kamehameha-start.wav'],['pc-clip-charge.wav']],
+  ['kamehameha-start-ssj','Super Saiyan Kamehameha start',['pc-mix-kamehameha-start-ssj.wav'],['pc-clip-charge.wav']],
+  ['kamehameha-release','Kamehameha release and sustain (BEAM)',['pc-mix-kamehameha-release.wav'],['pc-clip-beam.wav']],
+  ['kamehameha-release-ssj','Super Saiyan Kamehameha release and sustain',['pc-mix-kamehameha-release.wav'],['pc-clip-beam.wav']],
+ ].map(([id,title,pcMix,pcClip])=>({id,title,
+  overMusic:{before:pick(`mix-${id}-before.wav`)[0],round9:pick(`mix-${id}-round9.wav`)[0],charged:pick(`mix-${id}-charged.wav`)[0],pc:pick(...pcMix)},
+  alone:{before:pick(`dry-${id}-before.wav`)[0],round9:pick(`dry-${id}-round9.wav`)[0],charged:pick(`dry-${id}-charged.wav`)[0],pc:pick(...pcMix.map(f=>f.replace('pc-mix-','pc-'))),pcClip:pick(...pcClip)}}));
+ const takes=['punch-string','ki-volley','kamehameha'].flatMap(t=>['base','ssj'].map(f=>({id:`game-${t}-${f}`,before:pick(`game-${t}-${f}-before.wav`)[0],round9:pick(`game-${t}-${f}-round9.wav`)[0],charged:pick(`game-${t}-${f}-charged.wav`)[0]})));
+ manifest.guide={versions:{before:'main 9b91aba (round eight)',round9:'this round, default: the spring opens the Kamehameha\'s charge',charged:'candidate AUDIO_ACTIVATION=charged: the spring plays at full charge (CHARGED) instead of at the start',pc:'the PC edition: original clips and the ki-sound chain renders'},
+  cues,takes,charged:{note:'PC CHARGED reference (bright 0.28 s shimmer); the in-game Kamehameha takes reach full charge',pc:pick('pc-mix-charged.wav','pc-charged.wav','pc-clip-charged.wav')}};
+ save();console.log(`guide: ${cues.length} cues, ${takes.length} takes`);process.exit(0);
+}
 if(args.includes('--pc')){
  // PC references: the untouched clips, then the ki-sound chain (cue gain,
  // .55 master, compressor) alone and over the field song at the browser's

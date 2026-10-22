@@ -73,6 +73,7 @@ export const CART_CUES={
  kiContact:{script:cmd(0x38),seconds:1.2},
  chargeStart:{script:chargeScript(false),seconds:1.2},
  chargeStartSsj:{script:chargeScript(true),seconds:1.2},
+ charged:{script:cmd(0xDF),seconds:1.2},
  release:{script:cmd(0xEA),seconds:1.6},
  releaseSsj:{script:cmd(0xF0),seconds:1.6},
 };
