@@ -49,6 +49,11 @@ endif
 !au_test     #= !aw+$16   ; word: test mailbox (op | arg<<8), audio_test_poll
 !au_last     #= !aw+$18   ; frame of the last hit, impact
 !au_var      #= !aw+$1A   ; variant counters: hit, swing, blast
+; The shipping cartridge's variations live on the SPC and its rare lines
+; never use the hit dedupe or variant bytes ($18-$1C, AUDIO_PCM only):
+; song loads keep their history there (cache.asm).
+!au_cache_history #= $7E0000+!aw+$18 ; four recent song ids + 1 (0 empty)
+!au_cache_heat    #= $7E0000+!aw+$1C ; loads left in a return's window
 !au_frame    #= !aw+$1D
 !au_testloop #= !aw+$1E   ; test: loop id + 1 kept on every frame (0 none)
 !au_backoff  #= !aw+$1F   ; frames to wait before the next transfer
