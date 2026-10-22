@@ -675,6 +675,30 @@ found by a search of the 15 cache entries when their hint misses.
   a base three-hit combo are pixel for pixel the generic path's; a Super
   Saiyan one differs only where a frame the generic path made late shows
   its camera kick a frame later. A shockwave frame's fx: 30 lines -> 25.
+- **A late impact waits a frame (round 3, 2026-10-22).** An `FX_HIT`
+  spawned in a frame whose fx work starts at lines 192-224
+  (`FX_HIT_LATE`) waits one fx frame (`fx_hit_wait`, first in
+  `fx_frame_body`; only after a spawn, `!fx_hitnew`, a byte lent by
+  combat, so other frames pay one byte test: reading the scanline in every
+  frame with live effects cost flying punches 2 misses over ten offsets).
+  Its first fx frame (`!S_B`) moves on and `!d_wait` counts it.
+  `fx_begin` sees nothing to show when only waiting hits are live, the
+  white pass skips that frame and `fx_run_slots` leaves the slot as
+  spawned. The impact's first frame costs 15-25 lines (the
+  starburst, the white actor, the spark and the full path's palette
+  scan), and a contact frame whose fx started there ended past its
+  vblank (the Rabite field: lines 195-209). The struck frame now keeps
+  its vblank and its contact pose shows on time. The starburst, the white
+  actor and the spark show from the next frame, which is when the late
+  frame's whole picture used to show. The camera kick, flash and quake
+  are requests of their own and start as before.
+- **The kick's cells come in with room (round 3).** `FX_IMP_NEXT` brings
+  the kick's record in after a cross's hold at two cold cells a frame
+  (a cache scan and an upload each, about 7 lines). It now reads the
+  scanline first: two cells before line 190, one before 198, none after
+  (the spark's next frames bring the rest). The frames that brought two
+  cells late lost their vblank in one input phase of six in either
+  string.
 - **Held regions.** The first warm-up claims fx's VRAM regions before
   anything is drawn. Until something is (`FX_UNSEEN` in `!fx_wdue`, set at
   init and at every release, cleared by `fx_note_seen`), an idle frame with only

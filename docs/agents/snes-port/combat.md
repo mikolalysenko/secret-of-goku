@@ -308,6 +308,30 @@ summed over twelve offsets against step 4: fly-punch 14 (23), punch 14
 (15), ki 11 (11), fly 5 (5), fly-ki 26 (26), teleport 52 (52), charge 124
 (124); phase 0 unchanged.
 
+**The cross's lost frame (round 3, 2026-10-22).** On the performance pass
+(cd0585d) the strings still dropped a frame at the cross's contact: the
+Super Saiyan string in three input phases of six, the base string in one.
+In those phases the contact frame's logic (the game's damage and
+reactions, combat's strike) left fx's work to start at lines 195-209, and
+the impact's first frame then ran past the vblank. Without impact effects
+at all, neither string loses a frame. fx now lets such an impact wait one
+frame (`fx_hit_wait`, fx.md, Impact frames): the contact pose shows on
+time and the starburst follows a frame later, as it did when the whole
+late frame showed a frame later. Over six input phases of each string,
+6 of 36 contacts waited, all with fx starting at lines 192-209. The
+kick's cells that a cross's spark brings in after its hold now come in
+only while the frame has room. Lag frames over six input phases: Super
+Saiyan string 0 (3), base string 0 (1). Staging the next blow's cells in
+idle frames as well (an `fx_warm` of the blow a press would start while
+the combo chain ran) took only 1-2 lines off the cross's contact and
+re-warmed after every eviction (15-18 calls of about 3.5 lines in a
+flying-punch run): left out.
+Gameplay CPU misses over offsets 0-9 (cd0585d in brackets):
+punch 4 (6), ki 0 (3), fly 1 (1), fly-ki 12 (12), fly-punch 3 (3), teleport
+22 (22), charge 43 (43), 85 (90) in all; the one vblank overrun is the
+game's own, at fly-punch's last frame and offset 5 on both builds. The
+perf scenes' p90 and lag frames are unchanged.
+
 Cost (per-frame logic of `snes/test/gameplay`'s `punch`, the first
 contact in the scene): the first wind-up frame takes fx's VRAM claim and
 the cold cells (+23 lines, 40 lines to spare); the strike frame is 0.8

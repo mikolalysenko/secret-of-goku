@@ -21,6 +21,9 @@ fx_ensure_init:
 	DEX
 	BPL -
 	STA.l !fx_kickd              ; the impact state combat lends
+	SEP #$20
+	STA.l !fx_hitnew             ; and the new-impact mark
+	REP #$20
 	LDA.w #!FX_UNSEEN<<8         ; !fx_evict 0, !fx_wdue: nothing drawn yet
 	STA.l !fx_evict
 	LDA.w #$FFFE                 ; cache entries unusable until a region is claimed
@@ -193,6 +196,10 @@ fx_spawn_init:
 	LDA.l !fx_frame              ; FX_HIT: b becomes its first fx frame (fx_k_hit
 	INC                          ; counts frames since the spawn from it)
 	STA.l !fx_slots+!S_B,X
+	SEP #$20                     ; (a late frame may hold its first frame back:
+	LDA.b #$01                   ; fx_hit_wait)
+	STA.l !fx_hitnew
+	REP #$20
 	LDA.l !fx_c                  ; and a the impact frame (FX_IMP_*)
 	STA.l !fx_slots+!S_A,X
 	AND.w #!FX_IMP_ACTOR

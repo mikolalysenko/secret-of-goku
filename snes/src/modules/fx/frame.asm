@@ -63,6 +63,7 @@ endif
 	RTL
 
 fx_frame_body:
+	JSR fx_hit_wait
 	LDA.w #$0000
 	STA !d_white
 	STA !d_ef
@@ -144,6 +145,8 @@ endif
 +	LDA.l !fx_wdue
 	AND.w #$0003
 	BEQ .plain
+	LDX !d_wait                  ; (an FX_HIT waiting: its white frames too)
+	BNE .plain
 	JSR fx_palscan_counts
 	JSR fx_oam_limit
 	JSR fx_whiten_pass           ; struck actors first take the white palette
@@ -295,9 +298,11 @@ endif
 .native12
 	JSR fx_native_drop12
 .native
-	; Anything to show?
-	LDA.l !fx_ndraw
-	ORA.l !fx_nlive
+	; Anything to show? (FX_HIT spawns waiting a frame show nothing yet)
+	LDA.l !fx_nlive
+	SEC
+	SBC !d_wait
+	ORA.l !fx_ndraw
 	BNE .active
 	LDA.l !fx_idle
 	INC
@@ -808,6 +813,71 @@ fx_attr_palbit:
 fx_palbit:                       ; indexed by palette * 2
 	db $01,$00,$02,$00,$04,$00,$08,$00,$10,$00,$20,$00,$40,$00,$80,$00
 
+;---------------------------------------------------------------------------
+; SNES-only (combat round 3): an FX_HIT spawned in a frame whose fx work
+; starts late (fx_frame at lines FX_HIT_LATE-224: the first impact frame's
+; starburst, white actor and spark cost 15-25 lines and would carry the
+; frame past its vblank) waits one fx frame. Its first fx frame (!S_B) moves
+; on, and nothing of it is drawn or whitened in this one (!d_wait counts the
+; waiting spawns; fx_begin, the white pass and fx_run_slots leave them). The
+; struck frame keeps its vblank and the contact pose shows on time. The
+; impact follows a frame later, which is when the whole late frame used to
+; show. Its camera kick, flash and quake are requests of their own and
+; start as before.
+!FX_HIT_LATE = 192
+fx_hit_wait:
+	STZ !d_wait
+	LDA.l !fx_hitnew             ; no impact spawned since the last fx frame
+	AND.w #$00FF
+	BEQ .out
+	SEP #$20
+	LDA.b #$00
+	STA.l !fx_hitnew
+	REP #$20
+	JSR fx_vline
+	CMP.w #!FX_HIT_LATE
+	BCC .out
+	CMP.w #225
+	BCS .out
+	LDX.w #$0000
+.loop
+	TXA
+	CMP.l !fx_hiwater
+	BCS .out
+	LDA.l !fx_slots+!S_KIND,X
+	AND.w #$00FF
+	CMP.w #!FX_HIT
+	BNE .next
+	LDA.l !fx_slots+!S_AGE,X
+	CMP.w #$FFFF                  ; spawned this frame
+	BNE .next
+	LDA.l !fx_slots+!S_B,X
+	INC
+	STA.l !fx_slots+!S_B,X
+	INC !d_wait
+.next
+	TXA
+	CLC
+	ADC.w #16
+	TAX
+	BRA .loop
+.out
+	RTS
+
+; The current scanline in A16 (latched H/V counter), from the frame's code
+; (any DB). M16; A only.
+fx_vline:
+	SEP #$20
+	LDA.l $00213F
+	LDA.l $002137
+	LDA.l $00213D
+	XBA
+	LDA.l $00213D
+	AND.b #$01
+	XBA
+	REP #$20
+	RTS
+
 ; Advance and draw every spawned effect.
 fx_run_slots:
 	LDA.l !fx_nlive
@@ -822,7 +892,19 @@ fx_run_slots:
 +	LDA.l !fx_slots+!S_AGE,X
 	CMP.w #$FFFF
 	BNE .old
-	LDA.w #$0000                 ; spawned this frame: age 0
+	LDA !d_wait                  ; an FX_HIT whose first fx frame waits
+	BEQ +                        ; (fx_hit_wait): nothing of it yet
+	LDA.l !fx_slots+!S_B,X
+	SEC
+	SBC.l !fx_frame
+	BEQ +
+	BMI +
+	LDA.l !fx_slots+!S_KIND,X
+	AND.w #$00FF
+	CMP.w #!FX_HIT
+	BNE +
+	JMP .next
++	LDA.w #$0000                 ; spawned this frame: age 0
 	BRA .store
 .old
 	SEP #$20
