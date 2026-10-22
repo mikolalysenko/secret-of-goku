@@ -279,6 +279,12 @@ On the October 21 builds the probe reports two things:
   to the retail ROM);
 - core's `hdmaen` test, which overruns its vblanks on purpose.
 
+`snes/test/lua/oam-check.lua`, another `SNES_LUA_PRELUDE`, compares PPU OAM
+with the field buffer after every field vblank upload: any slot that shows
+on either side must match, which the partial upload (engine.md, OAM)
+depends on. Each test's folder gets `oam-check.txt` (uploads, mismatching
+uploads, the first 50 with their slots).
+
 Limits: 128 sprites, 32 per line, 34 eight-pixel slivers per line. Modules
 can count on at least 64 OAM slots in the field and 40 in world flight. The
 core costs about 4–5 scanlines per field frame (`snes/test/perf`).
