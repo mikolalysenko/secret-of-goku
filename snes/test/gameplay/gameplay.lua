@@ -61,27 +61,51 @@ function test()
   local actions, maps = {}, {}
   local forms,sounds={},{}
   local maxPower,auraFrames,maxAuraSprites,auraBgWrites=0,0,0,0
+  local auraBgWriters={}
   local x0,y0=H.r16(0x7EE002),H.r16(0x7EE004)
   local maxTravel=0
   local flightDirection,flightCorridorTurns=1,0
+  -- Mesen reports HDMA writes at whatever instruction the CPU is on: the
+  -- radio window's channel-5 CGADD/CGDATA rows (lines 133 and 200) look like
+  -- FX writes whenever FX code happens to run there. Those are not the aura.
+  local function hdmaCgram(s)
+    if s['ppu.scanline']>=225 or s['ppu.forcedBlank'] then return false end
+    local enabled=s['dmaController.hdmaChannels'] or 0
+    for c=0,7 do
+      local d=s['dmaController.channel['..c..'].destAddress']
+      if enabled&(1<<c)~=0 and (d==0x21 or d==0x22) then return true end
+    end
+    return false
+  end
   if CHECK_AURA then emu.addMemoryCallback(function()
     if not measuring then return end
     local act=H.r8(0x7ED814)
     local s=emu.getState()
-    if (act==24 or act==21) and s['cpu.k']==0xAE and s['ppu.cgramAddress']<128 then auraBgWrites=auraBgWrites+1 end
+    if (act==24 or act==21) and s['cpu.k']==0xAE and s['ppu.cgramAddress']<128 and not hdmaCgram(s) then
+      auraBgWrites=auraBgWrites+1
+      if #auraBgWriters<8 then
+        auraBgWriters[#auraBgWriters+1]={frame=H.frame,pc=string.format('%02X:%04X',s['cpu.k'],s['cpu.pc']),
+          cgram=s['ppu.cgramAddress'],line=s['ppu.scanline'],act=act}
+      end
+    end
   end,emu.callbackType.write,0x002122,0x002122) end
+  -- A missed update's overrun: the lines of field work still left when the
+  -- NMI found it unfinished (its end at B077, less the NMI that ran inside).
+  local overrun=nil
   emu.addMemoryCallback(function()
     if measuring then nmiStart=emu.getState()['masterClock']; nmiParts={}; nmiFrames=nmiFrames+1 end
     if measuring and H.r8(0x7E00EC)&1==0 then
       local s=emu.getState(); local sp=s['cpu.sp'] or s['cpu.s']
       misses[#misses+1]={frame=H.frame, ec=H.r8(0x7E00EC), phase=H.r8(0x7E0056), sp=sp, parts=parts,
         pc=sp and H.r16(sp+2) or 0, bank=sp and H.r8(sp+4) or 0}
+      if not overrun then overrun={miss=misses[#misses],clock=s['masterClock']} end
     end
   end,emu.callbackType.exec,0x00C0A8,0x00C0A8)
   local function nmiDone()
     if not measuring or not nmiStart then return end
     local s=emu.getState()
     local lines=(s['masterClock']-nmiStart)/1364
+    if overrun and not overrun.nmi then overrun.nmi=lines end
     maxNmi=math.max(maxNmi,lines)
     if s['ppu.scanline']<225 or lines>=37 then
       nmiOverruns=nmiOverruns+1
@@ -93,7 +117,9 @@ function test()
   emu.addMemoryCallback(nmiDone,emu.callbackType.exec,0x00C16F,0x00C16F)
   emu.addMemoryCallback(nmiDone,emu.callbackType.exec,0x80C16F,0x80C16F)
   if PROFILE_NATIVE then
-    emu.addMemoryCallback(function() inside=measuring end,emu.callbackType.exec,0x00B08C,0x00B08C)
+    -- --native-profile=F,...: only the field updates that start in those frames.
+    local some=next(PROFILE_FRAMES or {})~=nil
+    emu.addMemoryCallback(function() inside=measuring and (not some or PROFILE_FRAMES[H.frame]==true) end,emu.callbackType.exec,0x00B08C,0x00B08C)
     emu.addMemoryCallback(function() inside=false end,emu.callbackType.exec,0x00B077,0x00B077)
     emu.addMemoryCallback(function(addr)
       if inside then local k=string.format('%06X',addr); hot[k]=(hot[k] or 0)+1 end
@@ -126,6 +152,12 @@ function test()
   emu.addMemoryCallback(function()
     if not measuring then return end
     done = done + 1
+    if overrun and overrun.nmi then
+      local now=emu.getState()['masterClock']
+      overrun.miss.over=(now-overrun.clock)/1364-overrun.nmi
+      if started then overrun.miss.logic=(now-started)/1364-overrun.nmi end
+      overrun=nil
+    end
     if started then
       local lines=(emu.getState()['masterClock']-started)/1364
       maxLogic=math.max(maxLogic,lines)
@@ -230,7 +262,7 @@ function test()
   H.result('flightCorridorTurns',flightCorridorTurns)
   H.result('forms',forms);H.result('sounds',sounds);H.result('maxPower',maxPower)
   H.result('grassCuts',grassCuts);H.result('auraFrames',auraFrames);H.result('maxAuraSprites',maxAuraSprites)
-  H.result('auraBgWrites',auraBgWrites);H.result('chargeTailVoices',chargeTailVoices)
+  H.result('auraBgWrites',auraBgWrites);H.result('auraBgWriters',auraBgWriters);H.result('chargeTailVoices',chargeTailVoices)
   H.result('bank',emu.getState()['cpu.k'])
   H.shot('end')
 end
