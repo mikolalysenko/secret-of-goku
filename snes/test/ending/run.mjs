@@ -2,14 +2,16 @@
 // Ending module tests: each scene is cued from a browser-mod field state
 // through the module's WRAM request byte (the story module calls the same
 // API), screenshots are compared with references composed by the browser
-// engine's own formulas, and timing/lag is checked.
+// engine's own formulas, and timing/lag is checked. The finale cases cue
+// nothing: they kill the Mana Beast (or defeat Frieza) and follow the
+// story's own events to the end card (finale.lua).
 // Outputs under .local/snes-test/ending/<test>/.
 //   node snes/test/ending/run.mjs [test ...]
 import {readFileSync,writeFileSync} from 'node:fs';
 import {resolve,dirname,join} from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath,pathToFileURL} from 'node:url';
 import {runMesen} from '../mesen.mjs';
-import {privateRom,cleanupRom,checkpointDir} from '../checkpoints.mjs';
+import {privateRom,cleanupRom,checkpointDir,mainCheckout} from '../checkpoints.mjs';
 import {spawnSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
 const gfx=await import(new URL('../../tools/gfx.mjs',import.meta.url).href);
@@ -259,7 +261,10 @@ async function loadsCheck(r,out){
     r['doomed-load_match']=best.score;
     expect(best.score>=.97,`globe after the load matches planet-view at ${(best.score*100).toFixed(1)}%`);
   }else problems.push('no still doomed-load');
-  expect(r.hold_phase===6&&r.hold_bright===0,`reunion holds black over the flight's VRAM (phase ${r.hold_phase}, brightness ${r.hold_bright})`);
+  expect(r.hold_phase===6&&r.hold_bright===0,`reunion holds black over the flight's VRAM (phase ${r.hold_phase}, displayed brightness ${r.hold_bright})`);
+  // The hold is a ceiling on the displayed brightness: the game's fade
+  // shadow stays its own (a clamped $E6 kept native fade-ins from ending).
+  expect(r.hold_native===0x0F,`reunion hold leaves the game's brightness shadow alone ($E6 ${r.hold_native})`);
   expect(r.reunion_released,'the reunion load gives the field the screen');
   expect(r.reunion_map===180,`reunion door loaded map ${r.reunion_map}`);
   expect(r.reunion_actors===r.control_actors+1,`Dyluck joins the cliff (${r.reunion_actors} actors, control ${r.control_actors})`);
@@ -341,6 +346,119 @@ async function cutawayCheck(r,out){
   }
 }
 
+// The finale through the story's own events (finale.lua). Expected cue
+// order: the CALLs of the script 42F routes to (frieza-events.js
+// buildFriezaEnding for the solo party of the beast preset, ending-events.js
+// buildBadEnding('beast')), mapped to phases as native-story.js and
+// shenron-ending.js cue() do (the bad outcome plays explode, escape and kai
+// for A3-A5).
+const browser=name=>import(pathToFileURL(resolve(repo,'engine',name)).href);
+const {commandLength}=await browser('event-codec.js');
+const {buildFriezaEnding,friezaEvents}=await browser('frieza-events.js');
+const {buildBadEnding}=await browser('ending-events.js');
+const {endingEvents}=await browser('ending-rules.js');
+const PHASE={transition:1,summon:2,dragon:3,wish:4,scatter:5,reunion:6,village:7,depart:8,kai:9,complete:10,doomed:11,explode:12,escape:13};
+const CUE_OF={0xa3:'dragon',0xa4:'wish',0xa5:'village',0xa6:'complete',[endingEvents.depart]:'depart',[endingEvents.kai]:'kai',
+  [endingEvents.scatter]:'scatter',[endingEvents.reunion]:'reunion',[endingEvents.clearing]:'summon'};
+const BAD_CUE={dragon:'explode',wish:'escape',village:'kai'};
+function endingPlan(script,outcome){
+  const cues=[];
+  for(let i=0;i<script.length;i+=commandLength(script,i)){
+    const op=script[i],id=((op&7)<<8)|script[i+1];
+    if(op>=0x20&&op<=0x27&&id in CUE_OF)cues.push(id);
+  }
+  const names=[outcome==='good'?'transition':'doomed',...cues.map(id=>outcome==='bad'?BAD_CUE[CUE_OF[id]]??CUE_OF[id]:CUE_OF[id])];
+  return{cues:cues.map(id=>id.toString(16).toUpperCase().padStart(3,'0')),phases:names.map(n=>PHASE[n]),names};
+}
+const hex3=n=>n.toString(16).toUpperCase().padStart(3,'0');
+// `want` in order within `got` (other entries may come between).
+const inOrder=(got,want)=>{let i=0;for(const g of got??[])if(g===want[i])i++;return i===want.length;};
+function endingRun(r,tag,plan,{reason,frames,black}){
+  expect(r[`${tag}_began`],`${tag}: event 42F began the ending`);
+  expect(r[`${tag}_reason`]===reason,`${tag}: endingResult ${r[`${tag}_reason`]}, wanted ${reason}`);
+  expect(JSON.stringify(r[`${tag}_phases`])===JSON.stringify(plan.phases),`${tag}: phases ${JSON.stringify(r[`${tag}_phases`])}, the browser's script cues ${JSON.stringify(plan.phases)} (${plan.names.join(', ')})`);
+  const cues=(r[`${tag}_events`]??[]).filter(e=>plan.cues.includes(e));
+  expect(inOrder(r[`${tag}_events`],['42F',...plan.cues])&&cues.length===plan.cues.length,`${tag}: entered ${(r[`${tag}_events`]??[]).join(' ')}, wanted 42F then ${plan.cues.join(' ')}`);
+  expect((r[`${tag}_status`]&0x20)!==0&&r[`${tag}_phase`]===PHASE.complete,`${tag}: the end card (status ${r[`${tag}_status`]}, phase ${r[`${tag}_phase`]}, stopped on ${r[`${tag}_stop`]})`);
+  expect(r[`${tag}_complete_frames`]<=frames,`${tag}: the end card ${r[`${tag}_complete_frames`]} frames after 42F (at most ${frames})`);
+  expect(r[`${tag}_black_max`]<=black,`${tag}: black for ${r[`${tag}_black_max`]} frames in a row (${r[`${tag}_black_at`]}), at most ${black}`);
+}
+// The good ending's 48-frame fade holds the picture black through door 2F
+// to map 246 until Shenron's summon, as the browser's shader does, while
+// the game's own fade (its shadow $E6) runs underneath: the door's fade-in
+// must reach full brightness, or the script never gets past it to 6B.
+function transitionHold(r,tag){
+  expect(r[`${tag}_hold_frames`]>100,`${tag}: the transition held black (${r[`${tag}_hold_frames`]} frames)`);
+  expect(r[`${tag}_hold_lit`]===0,`${tag}: the picture showed through the transition's black (${r[`${tag}_hold_lit`]} frames)`);
+  expect(r[`${tag}_hold_native`]===0x0F,`${tag}: the game's fade-in under the hold reached ${r[`${tag}_hold_native`]} (15 wanted)`);
+  expect(r[`${tag}_summon_map`]===246&&r[`${tag}_summon_e6`]===0x0F,`${tag}: summoned on map 246 after the native fade-in (map ${r[`${tag}_summon_map`]}, $E6 ${r[`${tag}_summon_e6`]})`);
+}
+async function finaleCheck(r,out){
+  expect(r.preset_status===2,`the beast preset finished (status ${r.preset_status})`);
+  expect(r.beast_state===3,`the fed Beast's challenge started (${r.beast_state})`);
+  expect(r.killed,'the Beast died through the native damage consumer');
+  expect(r.checkpoint,'checkpoint while the Beast dies');
+  endingRun(r,'good',endingPlan(buildFriezaEnding(0,false),'good'),{reason:0,frames:6000,black:300});
+  transitionHold(r,'good');
+  endingRun(r,'bad',endingPlan(buildBadEnding('beast'),'bad'),{reason:4,frames:3000,black:120});
+  await endCard(r,out,'good-complete','goku',GOOD_CARD);
+}
+// An end card on King Kai's planet against planet-view's own (Bubbles where
+// the cartridge's walk put him, as the kai test).
+const GOOD_CARD='        SECRET OF GOKU\n          THE END';
+async function endCard(r,out,shot,goku,card){
+  if(!r[shot]){problems.push(`no still ${shot}`);return;}
+  const [x,y,dir]=r[shot].split(',').map(Number);
+  const ref=await kaiReference({rom:baseRom,kaiFrame:3,bubbles:{x,y,frame:[4,8,12,12][dir]+1,flip:dir===2},goku,card});
+  writeFileSync(join(out,`${shot}-ref.png`),writeRef(null,ref));
+  const m=compare(join(out,`${shot}.png`),ref);r[`${shot}_match`]=m;
+  expect(m>=0.9,`${shot} matches the reference at ${(m*100).toFixed(1)}%`);
+}
+// The full party (Primm and Popoi recruited): Popoi's revival, the reunion
+// on the cliff (176, door 3FF), Potos, the end card.
+async function finalePartyCheck(r,out){
+  expect(r.party===3,`Primm and Popoi in the party (${r.party})`);
+  expect(r.killed&&r.beast_state===3,`the fed Beast's challenge started and the Beast died (${r.beast_state})`);
+  endingRun(r,'party',endingPlan(buildFriezaEnding(3,true),'good'),{reason:0,frames:6500,black:300});
+  transitionHold(r,'party');
+  await endCard(r,out,'party-complete','goku',GOOD_CARD);
+}
+// Frieza's defeat into the ending: the victory beat, C7 (the pouch back),
+// 429 to the Beast, the fed challenge (96, 97), the kill, 42F's good ending
+// up to Shenron's summon.
+function finaleFriezaCheck(r){
+  expect(r.stage_after_punch===FZDEFS.FZST_WON,`a real punch ended the fight (stage ${r.stage_after_punch}, ${r.punches} punches)`);
+  const path=[friezaEvents.victory,friezaEvents.defeated,0x429,0x96,0x97,0x42f,endingEvents.clearing].map(hex3);
+  expect(inOrder(r.frieza_events,path),`entered ${(r.frieza_events??[]).join(' ')}, wanted ${path.join(' ')} in order`);
+  expect(r.killed&&(r.beast_state&3)===3,`the fed Beast's challenge started and the Beast died (${r.beast_state})`);
+  expect(r.frieza_began&&r.frieza_reason===0,`42F began the good ending (reason ${r.frieza_reason})`);
+  expect(r.frieza_stop==='stop'&&JSON.stringify(r.frieza_phases)===JSON.stringify([PHASE.transition,PHASE.summon]),`Shenron summoned after the transition (phases ${JSON.stringify(r.frieza_phases)}, stopped on ${r.frieza_stop})`);
+  expect(r.frieza_black_max<=300,`black for ${r.frieza_black_max} frames in a row (${r.frieza_black_at}), at most 300`);
+  transitionHold(r,'frieza');
+}
+// Their prelude: the scene select's work area and preset, Frieza's fields
+// (snes/test/frieza/state.mjs maps the browser's battle state onto them).
+const {defs:FZDEFS,friezaWrites,luaWrites}=await import('../frieza/state.mjs');
+const fzAddr=n=>{const v=FZDEFS[n];if(v===undefined)throw Error(`frieza define ${n} missing`);return '0x'+(v<0x10000?0x7E0000|v:v).toString(16);};
+function finalePrelude(mode){
+  const m=sym.match(/^([0-9A-F]{2}):([0-9A-F]{4}) debug_addresses$/m);
+  const catalog=JSON.parse(readFileSync(resolve(repo,'dist/snes/gen/debug/catalog.json'),'utf8'));
+  let p=`FINALE='${mode}'\nDBG_WORK=${m?'0x'+m[1]+m[2]:'0x317600'}\nPRESET_BEAST=${catalog.presets.findIndex(x=>x.kind==='beast')}\n`+
+    `FZP_BEAST=${fzAddr('fzp_beast')}\nFZP_STAGE=${fzAddr('fzp_stage')}\n`;
+  if(mode==='frieza'){
+    const g=JSON.parse(readFileSync(join(mainCheckout(),'.local/snes-ref/battle/state.json'),'utf8')).goku;
+    const f=JSON.parse(JSON.stringify(g.frieza));
+    Object.assign(f.boss,{x:310,y:414,nodes:[{x:310,y:414}],node:0,clock:9999,tier:2,hp:1});
+    p+=`BATTLE_WRITES=${luaWrites(friezaWrites(f,g.challenge))}\nFZF_X=${fzAddr('fzf_x')}\nFZF_Y=${fzAddr('fzf_y')}\nFZF_CLOCK=${fzAddr('fzf_clock')}\n`+
+      `FZ_MUSIC=${fzAddr('fz_music')}\nFZM_BATTLE=${FZDEFS.FZM_BATTLE}\nFZST_BATTLE=${FZDEFS.FZST_BATTLE}\n`;
+  }
+  if(mode==='party'){
+    const g=JSON.parse(readFileSync(join(mainCheckout(),'.local/snes-ref/beast/state.json'),'utf8')).goku;
+    p+=`PARTY_BUNDLE='danger-progress__beast-fed2'\nPARTY_WRITES=${luaWrites(friezaWrites({...g.frieza,popoiMember:true,primmMember:true},g.challenge))}\n`;
+  }
+  return p;
+}
+
 function dialogueCheck(r){
   expect(r.dialogue_cases?.length===13,'every dialogue family exercised');
   for(const c of r.dialogue_cases??[]){
@@ -363,6 +481,9 @@ const tests=[
   {name:'loads',check:loadsCheck},
   {name:'dialogue',check:dialogueCheck},
   {name:'cutaway',check:cutawayCheck,checkpoint:'waterfall.mss'},
+  {name:'finale',lua:'finale',prelude:()=>finalePrelude('beast'),check:finaleCheck},
+  {name:'finale-frieza',lua:'finale',prelude:()=>finalePrelude('frieza'),check:finaleFriezaCheck},
+  {name:'finale-party',lua:'finale',prelude:()=>finalePrelude('party'),check:finalePartyCheck},
 ];
 let ok=true;
 for(const t of tests){
@@ -379,7 +500,7 @@ for(const t of tests){
   }
   // Every frame rendered: unthrottled Mesen otherwise drops frames by wall
   // clock, and a still can catch an older frame (a load's) on a busy host.
-  const r=await runMesen({rom:copy,test:lib+readFileSync(resolve(here,`${t.name}.lua`),'utf8'),outDir:out,state,exactFrames:true});
+  const r=await runMesen({rom:copy,test:(t.prelude?.()??'')+lib+readFileSync(resolve(here,`${t.lua??t.name}.lua`),'utf8'),outDir:out,state,exactFrames:true,timeoutMs:1200000});
   cleanupRom(copy);
   if(r.code!==0||!r.results||r.results.error)problems.push(`mesen: ${r.results?.error??r.code}`);
   else{

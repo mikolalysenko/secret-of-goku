@@ -1,7 +1,10 @@
 ; Good ending: everything fades to black over 48 frames (shenron-ending
 ; 'transition'), then stays black until the vista is cued, also through
-; the door to map 246. Only a brightness ceiling: the native picture,
-; dialogue and map loader keep running.
+; the door to map 246. Only a ceiling on the displayed brightness
+; (brightness_publish): the native picture, dialogue, map loader and the
+; game's own fades keep running underneath, as under the browser's shader.
+; The door's fade-in must finish there: the script waits for it before the
+; summon (6B).
 start_transition:
 	SEP #$20
 	LDA.b #$00

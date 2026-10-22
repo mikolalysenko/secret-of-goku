@@ -49,6 +49,10 @@
 !ending_cut_level = !RAM_ORBIT+$B1 ; byte  fade level in CGRAM ($FF none)
 !ending_cut_budget = !RAM_ORBIT+$B2 ; word DMA bytes left in this vblank
 !ending_cut_globe = !RAM_ORBIT+$B4 ; word orientation latched from the shot's target
+; The displayed brightness ceiling (brightness_publish): 0 none, $80 | level
+; (0-15). Applied by ending_field_brightness (C0:C168) after the field NMI's
+; final INIDISP write; zero after module WRAM is cleared at title entry.
+!ending_showbright = !RAM_ORBIT+$B6 ; byte
 
 ; Phases (match the browser's state.phase).
 !EP_TRANSITION = $01   ; good: whole-screen fade to black over 48 frames, then black
@@ -848,7 +852,7 @@ ending_frame:
 	JSR cut_build
 	JSR palette_build
 	JSR pal_commit
-	JSR brightness_apply
+	JSR brightness_publish
 	JSR suppress_native
 	JSR oam_finish
 	JSR goku_quiet
@@ -1109,6 +1113,7 @@ release_screen:
 	SEP #$20
 	LDA.b #$00
 	STA.l !ending_phase
+	STA.l !ending_showbright      ; no ceiling on the next picture
 	REP #$30
 	RTS
 
@@ -1129,6 +1134,7 @@ release_common:
 	JSR end_overlay
 	SEP #$20
 	LDA.b #$00
+	STA.l !ending_showbright      ; the released picture has no ceiling
 	STA.w !s_loading
 	STA.w !s_ldvis
 	STA.w !s_palcount

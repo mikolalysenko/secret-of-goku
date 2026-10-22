@@ -61,7 +61,11 @@ function test()
   E.cue('reunion')
   H.wait(12)
   H.result('hold_phase', H.r8(E.phase))
-  H.result('hold_bright', bright())
+  -- the hold darkens the displayed picture (INIDISP after the field NMI's
+  -- last write); the game's own fade shadow $E6 stays the game's
+  local st = emu.getState()
+  H.result('hold_bright', st['ppu.forcedBlank'] and 0 or st['ppu.screenBrightness'])
+  H.result('hold_native', bright())
   H.shot('reunion-hold')
   door(0x3FF)
   H.result('reunion_released', H.waitFor(function() return H.r8(E.phase) == 0 end, 400))

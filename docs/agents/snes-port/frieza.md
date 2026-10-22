@@ -159,6 +159,13 @@ of the world's (the same within a cell, repeating per cell).
   and white (8-frame phases, 4 after 180) until he vanishes at 326, the
   whiteout 143-306, held to 631, cleared by 791, the boss fanfare at 375,
   the pouch chime once the fanfare ends (915), event C7 at 1035.
+- **On to the ending**: C7's script recovers the pouch (C8) and jumps to
+  429, the fed Beast (94, 96, 97 on map 253); the Beast's native death
+  runs 42F, where `BEAST_VICTORY` marks the challenge won before
+  `ENDING_BEGIN` asks `story_api_ending_result`. The ending suite plays
+  this chain through the story's events: `finale-frieza` from one real
+  punch at Frieza to Shenron's summon, `finale` and `finale-party` from
+  the Beast's death to the end card ([ending.md](ending.md#the-finale-through-the-storys-events)).
 
 ## Cutscene effects
 
@@ -487,6 +494,11 @@ palette-map copies and fixed channel-7 uploads reduce NMI cost. Fixed
 offsets in FX's cache search and six-cell assembly setup also remove the
 extra transformation miss seen at the initial checkpoint: `transform-grass`
 is back to zero, and charge remains at its baseline 17.
+
+The ending's black holds (the good ending's transition through door 2F,
+the reunion, the death fade) use the same rule, `$E6` untouched, with
+their own ceiling applied after this write and combat's vblank hook
+(`ending_field_brightness`, `C0:C168`). The two ceilings never overlap.
 
 ## Resources
 
