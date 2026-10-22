@@ -675,6 +675,10 @@ assert !hc_checks >= !BC_BND+48 && !hc_hold+2 <= !BC_HI, "the yields' check over
 !bk_diff   = !BC_PREP+50
 !bk_s      = !BC_PREP+52
 !bk_x      = !BC_PREP+54
+!rb_checks = !BC_PREP+102          ; (-DBEAM_RUN_CHECK: the runs made both ways and compared, those that
+!rb_diff   = !BC_PREP+104          ;   differ, the first way's sums; group 1's block has 26 bytes spare)
+!rb_sum    = !BC_PREP+106
+!rb_xor    = !BC_PREP+108
 !BC_OAM   = !SB+$1300              ; 2 x 256 bytes: the entries (60 at most)
 assert !BC_PREP+128 <= !BC_OAM, "the beam runs' kept chains run into their entries"
 !t_want = !SB+$DB0                 ; text panel wanted (0: none, !OTXT_*)

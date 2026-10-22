@@ -327,7 +327,15 @@ lines instead of 10.2 for the chains, 336 of the `clash` test's 426
 builds, a build 13.0 lines on average instead of 17.5. The check build
 (`-DBEAM_PREP_CHECK`) builds every such run again from chains prepared
 afresh and compares the two (their bytes, lengths per cell index, entries
-and high-table bytes): all 310 equal in the `clash`. Colours: OBJ palette 4 entries 2-3 (blue: Goku), palette 5
+and high-table bytes): all 310 equal in the `clash`. The run's cells are
+made in the third code area too (`beamrun.asm` `beam_run`), about twice as
+fast as the old loop: each chain's cell from its cell 0's place plus the
+index's offset (no per-cell step of the chains' places), the high-table
+bits shifted in from the top four entries a byte (no table, no count), the
+write pointer kept in X; a twelve-cell build of chain 0 takes some 11
+lines instead of 22. The check build (`-DBEAM_RUN_CHECK`) makes every run
+both ways and compares them: equal in the `fight` (14 runs), the `clash`
+(402), the `montage` (79) and the `death` (82). Colours: OBJ palette 4 entries 2-3 (blue: Goku), palette 5
 entries 1-3 (pink: Frieza's beam, or the laser's two sides and white core),
 rewritten every vblank with the band's colour frame (`(age >> 2) & 1`).
 Differences: no flare over the first 24 px (the origin's charge orb covers
@@ -1067,9 +1075,9 @@ are untouched).
 
 | Resource | Use |
 | --- | --- |
-| Code `$A7:8000-FB51` | `!CODE_ORBIT`: 30.8 KiB of 31 KiB (the pullback in `pull.asm`, the distant bodies' drawing in `scdraw.asm`; the `ORBIT_TIMING` build's marks end it at `$FBA9`); bindings at `$A7:FC00-FD6E` |
+| Code `$A7:8000-FAB7` | `!CODE_ORBIT`: 30.7 KiB of 31 KiB (the pullback in `pull.asm`, the distant bodies' drawing in `scdraw.asm`; the `ORBIT_TIMING` build's marks end it at `$FB0F`); bindings at `$A7:FC00-FD6E` |
 | Code `$A1:C000-FD99` | the second code area (`!CODE_QUARTER_GOKU`, noted in `core/layout.asm`): the cosmic montage and its tables, sprite lists, the pullback's preload, the distant bodies' projection (`scenery.asm`) (15.4 KiB of 16) |
-| Code `$AB:C000-D800` | the third code area (`!CODE_QUARTER_MISC`, noted in `core/layout.asm`): the distant bodies' strikes (`strike.asm`) and their share of the sprite lines, the stars' cull (`scline.asm`), the beam runs' kept chains (`beamrun.asm`) (6.0 KiB of 16) |
+| Code `$AB:C000-D940` | the third code area (`!CODE_QUARTER_MISC`, noted in `core/layout.asm`): the distant bodies' strikes (`strike.asm`) and their share of the sprite lines, the stars' cull (`scline.asm`), the beam runs' kept chains and cells (`beamrun.asm`) (6.3 KiB of 16) |
 | Data `$E7:0000-76E1` | stars, asin rows, chord scales, rim tables, palettes (and the victory's: Frieza's death colours, the whiteout's backdrop and band colours), star tiles, heading/step tables, the auras' levels, text maps, finale and fall tables, the descent's indexes, the window blobs' addresses (29.7 KiB of 32 KiB) |
 | ROM `$F6:0000-7FFF` | Mode 7 globe VRAM image (32 KiB) |
 | ROM `$F7:0000-F14E` | fight line tables (41 KiB), resident effect cells, Death Ball frames, text tiles, band tiles (60 KiB of 64) |

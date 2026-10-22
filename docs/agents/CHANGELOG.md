@@ -4,6 +4,26 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the beams' frames cost less (2026-10-22)
+
+- A beam run's cells are made in the third code area (`beam_run`), about
+  twice as fast as before: each chain's cell from its cell 0's place plus
+  the index's offset, the high-table bits shifted in from the top (no
+  table, no count), the write pointer in X. A twelve-cell build of chain
+  0 takes some 11 lines instead of 22, and 300 bytes leave the orbit's
+  first code bank.
+- `orbit_mul88` (the fight's 8.8 products: the wave's lane, the rays'
+  hits, the dodges' room) in two thirds of the time, with the same
+  products.
+- `beam_signature`'s slot tests inline and its compare unrolled, and
+  `beam_defer`'s compare unrolled: about a line a frame with both
+  beams on.
+- Every run comes out the same: the check build (`-DBEAM_RUN_CHECK`)
+  makes each one both ways and compares them, all equal in the `fight`
+  (14 runs), the `clash` (402), the `montage` (79) and the `death` (82).
+- Repeated pictures: the `fight` over its 8 frame phases 70 instead of 75
+  (per phase 9 9 5 9 10 9 9 10), the `clash` 24 instead of 25.
+
 ## Orbit: Frieza's beam keeps to its core while Goku's wave is wide (2026-10-22)
 
 - In the fight, Frieza's beam (beam group 1) shows only chain 0 while
