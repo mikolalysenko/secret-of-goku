@@ -455,6 +455,10 @@ assembled helpers' registers, flags and live RAM for every limit/index,
 131 seed states and CPU fallbacks. A 68-draw case falls 14,569 → 4,487 CPU
 cycles. This reduces overhead without imposing a new rejection limit.
 `-DCORE_NATIVE_AI_RANDOM_SLOW=1` restores the original entry.
+Each draw now keeps the state index in X and stores it once, without
+parking the byte in B; B = 15 is set at the end, as retail's last compare
+leaves it. The 68-draw case falls further, 4,487 → 3,807 CPU cycles
+(`CORE_NATIVE_AI_RANDOM_LOOP_SLOW=1` keeps the earlier loop).
 
 `C1:E05A` copies the native actor palette's fifteen words to `$0700,Y`
 and `$DF00,Y` using constant offsets. Its saved X/Y are restored by the

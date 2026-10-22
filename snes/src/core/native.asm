@@ -134,6 +134,20 @@ core_native_ai_random:
 	DEX
 	BPL +
 	LDX.b #14
+if not(defined("CORE_NATIVE_AI_RANDOM_LOOP_SLOW"))
+	; s[j] += s[i] (the sum in either order); then the index steps in X,
+	; stored once a draw as INC/CMP/STZ leave it (wrapping 15 to 0, other
+	; values plus one), without parking the byte in B
++	CLC
+	ADC.w $03F1,X
+	STA.w $03F1,X
+	LDX.w $03F0
+	INX
+	CPX.b #15
+	BNE +
+	LDX.b #0
++	STX.w $03F0
+else
 +	LDA.w $03F1,X
 	CLC
 	ADC.w $03CC
@@ -145,11 +159,17 @@ core_native_ai_random:
 	BNE +
 	STZ.w $03F0
 +	XBA
+endif
 	AND.b #$0F
 	CMP $01
 	BEQ .accepted
 	BCS .roll
 .accepted
+if not(defined("CORE_NATIVE_AI_RANDOM_LOOP_SLOW"))
+	XBA                        ; B = 15, as the retail draw's compare leaves it
+	LDA.b #15
+	XBA
+endif
 	REP #$10
 	PLB
 	PLX
