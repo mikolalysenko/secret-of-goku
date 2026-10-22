@@ -17,6 +17,7 @@ Jema meeting Goku, are genuine scene NPCs and can still appear before joining.
 | Potos and Luka | Villagers blame Goku for Randi and the Sword; Luka explains the Dragon Ball restoration plan. |
 | Goblin pot, event 4E8 | Goku plays along with the threats, avoids breaking the pot and lets Primm rescue him. The native capture/escape choreography is retained. |
 | Pandora, witch and recruitment | Goku learns who Dyluck is from the people involved; he does not assume Primm's relationships. |
+| Dwarf Village quake, event 1BE | After an early breach of the palace wall, the quake still brings out Tropicallo: it sets the fight's stage instead of counting up from the retail one. Popoi's naming and the Elder follow as before (see [combat](combat.md)). |
 | Gnome, Earth and Wind | Solo/partial-party alternatives replace Popoi's servant joke, missing memories and absent Grandpa conversations. Seed rewards and later spell grants remain intact. Every variant keeps the scene's commands. Gnome's scene leads to a live Fire Gigas even when Goku flew over the orb room's gap or breached the palace wall early: the stage room supplies the orb's stage (see [combat](combat.md)). |
 | Flammie | Goku rescues the young dragon while acknowledging he can already fly; the native rescue progresses normally. |
 | Sandship | Goku plays along for food and a worthy sparring partner. Confiscating his Heavy Gi removes its training penalty. Captured companions retain their dialogue, the kitchen progresses without Popoi, and flying straight to the cabin reunites only actual captives before Mech Rider. The KAMEHAMEHA breakout wrecks the ship instead: the boss battle theme plays, guards flee, monsters board, bulkheads break under his punches, and Goku fetches each captive himself before Geshtar. Bored of sneaking? Punch through enough bulkheads and the ship blows up into the Mech Rider fight. Every way off the ship the story didn't plan (the roof takeoff, flying out past the hull) blows it up the same way. Afterwards the dunes reunite everyone in the normal post-Sandship state. |
@@ -67,7 +68,9 @@ rescue, Northtown, the Tree, Thanatos and the new ending. Northtown checks all
 four parties and an older checkpoint with Primm actually captive. The Earth
 Palace check enters the stage room after the orb, over the flown-over orb
 (alone and with each companion) and after an early wall breach, then fights
-Fire Gigas and continues through Gnome's thanks and the Earth seed. The ending checks all
+Fire Gigas and continues through Gnome's thanks and the Earth seed. It also
+runs the Dwarf Village quake before and after an early breach, fights
+Tropicallo, names Popoi and hears the Elder. The ending checks all
 four party combinations, Potos's living Randi, wish prerequisites, the farewell on Kai’s planet and checkpoint replay. Bad-route checks cover planet destruction and the absence of a wish.
 
 This is a complete dialogue inventory review with targeted native runtime

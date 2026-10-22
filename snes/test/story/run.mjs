@@ -461,6 +461,33 @@ for(const [name,mask,stage,writes] of[
     }});
 }
 
+// ---- Dwarf Village quake: Tropicallo still fights after an early breach ----
+// Entering the village (door 149) at CF15 5 starts the quake (1BE) into
+// Tropicallo's arena (290): no exit, the boss only through CF14 stage 3. The
+// retail stage before it is 2; an early palace-wall breach sets 6 and buying
+// Watts's axe afterwards 7. The quake sets 3; the fight, Popoi's naming (41:
+// stage 6) and the Elder (CF18 + 1) follow (snes/test/story/tropicallo.lua).
+for(const [name,mask,stage,earth] of[
+  ['tropicallo-quake-girl',1,2,0],
+  ['tropicallo-breach-solo',0,6,0],
+  ['tropicallo-axe-girl',1,7,8],
+]){
+  cases.push({name,lua:'tropicallo.lua',bundle:'kamehameha-voice__orb-before',remove:[1,2].filter(m=>!(mask>>(m-1)&1)),
+    writes:[...goku,[0x7ecf14,stage,1],[0x7ecf15,5,1],[0x7ecf60,0,1],[0x7ecf18,earth,1]],
+    check(r){
+      const t=r.trace.find(x=>x[0]===0x1be),want=js(0x1be,mask);
+      return [
+        ['party after REMOVE_CHARACTER',r.party_before?.join()===[1,mask&1,0].join(),`${r.party_before}`],
+        [`from stage ${stage}, the quake (the party's 1BE) loads the arena at stage 3`,!!t&&t[1]===want&&r.arena_map===290&&r.arena_stage===3,`map ${r.arena_map} stage ${r.arena_stage}, native ${t?hex(t[1],6):'none'} browser ${hex(want,6)}`],
+        ['Tropicallo is created at full HP',r.boss===true&&r.boss_hp?.[0]>0&&r.boss_hp[0]===r.boss_hp[1],`${r.boss_hp}`],
+        ['Tropicallo takes damage from punches',r.boss_hurt===true,`HP ${r.boss_hp_after}`],
+        ['its defeat (1B9) leaves the sprite at stage 4',r.defeated===true&&r.stage_after===4,`stage ${r.stage_after}`],
+        ['the sprite is named and joins (stage 6)',r.named===true&&r.stage_named===6&&r.popoi===1,`stage ${r.stage_named} Popoi ${r.popoi}`],
+        ['the Elder sends the party to the village (CF18 + 1)',r.left===true&&r.map===287&&r.flags?.[0x18]===earth+1,`map ${r.map} CF18 ${r.flags?.[0x18]}`],
+      ];
+    }});
+}
+
 const only=process.argv.slice(2);
 mkdirSync(out,{recursive:true});
 let failures=0;

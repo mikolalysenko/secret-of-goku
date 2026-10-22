@@ -1,4 +1,4 @@
-import {dialoguePages,encodeText,eventRange} from './event-codec.js';
+import {dialoguePages,encodeText,eventRange,parseEvent} from './event-codec.js';
 import {endingEvents} from './ending-rules.js';
 import {heroFarewell} from './ending-events.js';
 export const jump=id=>[0x10+(id>>8),id&255];
@@ -118,6 +118,12 @@ export function buildStoryEvents(rom,mask=0,{crisis=false}={}){
   events.set(0x8e,[0x30,0x37,1,...box('GOKU:There. Unlocked.\nI can put the lock back\nafterwards. Probably.'),0]);
   events.set(0x9b,[...box('HEY! Get lost!\nStop flying around Potos!\nBanished includes the AIR!'),...box('GOKU:Oh. Sorry!\nI thought you meant\nthe ground.'),...jump(0x11c),0]);
   events.set(0x1bd,[...jump(0x6f4),0]); // Primm no longer refuses Gaia's Navel.
+  // The village quake (1BE) takes the party to Tropicallo's arena (290),
+  // which has no exit and holds the boss only through stage 3 of CF14. The
+  // retail script counts one stage up from 2, but an early breach of the
+  // palace wall (15B) has already set 6, or Watts's axe 7. Set the fight's
+  // stage instead; Popoi joining (41/42) still sets 6 afterwards.
+  events.set(0x1be,parseEvent(rom,0x1be).ops.flatMap(op=>op.op===0x29&&op.bytes[1]===0x14?[0x30,0x14,3]:op.bytes));
   events.set(0x231,original(0x231).slice(5)); // Undine can be rescued before Elinee.
   events.set(0x368,original(0x368).slice(5)); // A flying Saiyan does not need a Magic Rope to enter the Dwarf Village pit.
   events.set(0x62b,original(0x62b).slice(5)); // Goku can enter the Fortress early.

@@ -110,6 +110,14 @@ therefore raises `$CF18` to the orb's stage 2 (`story-areas.js`), so the
 scene always ends at a live Fire Gigas. Before this floor, a flown-over orb
 left stage 1 and the arena loaded empty at stage 4.
 
+The breach comes before the Dwarf Village quake on that route. The quake
+(event 1BE, on entering the village at `$CF15` 5) takes the party into
+Tropicallo's arena (290), which holds the boss only through `$CF14` stage 3
+and has no exit. Retail counts one stage up from 2; after the breach (6) or
+Watts's axe (7) the arena loaded empty. `story-events.js` now has the quake
+set stage 3. Popoi's naming still sets 6, so the doorway stays open; a
+stage 7 bought before the quake is lost, and Watts offers his axe again.
+
 Pandora Ruins and Northtown Ruins script locks use checkpointed door latches. A hit unlocks the original door; walking through still invokes the native transition. Pandora’s plot flag is unchanged. An early Northtown breach stages the original Primm rescue and Vampire fight; returning afterward does not replay either or lower progress. Gaia’s hit switches select the native event for the targeted room instead of depending on the last floor marker walked over. The forest’s rotating carved heads (tileset 1, cells 171/172) can be flown over or destroyed to native grass; other cyclic descriptors keep their original behavior. Ruins balcony lips require clear floors at different native heights on opposite sides before flight may cross them.
 
 Super Saiyan charge lightning regenerates deterministic jagged paths every three emulated frames, including while holding full power. Bolts connect to nearby native solid-tile edges, low obstacles and actors, using Thunderbolt colors and original 16×16 cells. These arcs are decorative; attacks activate puzzles. Snapshot replay reproduces the same paths.
