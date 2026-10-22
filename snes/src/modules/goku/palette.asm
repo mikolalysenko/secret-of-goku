@@ -49,9 +49,29 @@ endif
 	AND.b #$01
 	INC
 	CMP !hud_form
-	BEQ .end
+	BEQ +
 	LDA.b #!GOKU_UP_HUD
 	TSB !up_flags
++	; A strike's key pose goes up with this frame's OAM, never a vblank or
+	; two after its impact. goku_nmi sends a cell with 10 lines left; the
+	; game's actor cell streaming (C1:950D's round robin, phase in $56)
+	; leaves fewer only in its phase 3 (8-13 lines: 4-11 left, a contact's
+	; vblank had 4) and sometimes its phase 0 (9-16 left). In those, this
+	; frame's vblank skips the streaming (core_actor_cells; the round robin
+	; resumes where it stopped).
+	REP #$20
+	LDA !up_cell
+	CMP.w #!GOKU_NONE
+	BEQ .end
+	SEP #$20
+	LDA $56
+	BEQ +
+	CMP.b #3
+	BNE .end
++	JSR goku_key_pose
+	BCC .end
+	LDA.l !core_frame
+	STA.l !core_actor_hold
 	BRA .end
 .off
 	LDA !was_replacing
@@ -79,6 +99,43 @@ endif
 	STA !was_replacing
 	PLP
 	RTL
+
+; C set when this frame's pose is a key one: a punch's first frame and its
+; contact (age 2, or 1 in Super Saiyan art), the Kamehameha's release. (Not
+; a ki throw's: a held barrage would move the streaming on every shot.)
+; M8 or M16 in, X16; M16 out.
+goku_key_pose:
+	SEP #$20
+	LDA !goku_act
+	CMP.b #!GOKU_K_PUNCH
+	BEQ .strike
+	CMP.b #!GOKU_K_BEAM
+	REP #$20
+	BNE .no
+	LDA !goku_act_age
+	BEQ .yes                 ; the release
+.no
+	CLC
+	RTS
+.strike
+	REP #$20
+	LDA !goku_act_arg-1      ; high byte: the arg (bit 15: Super Saiyan art)
+	ASL
+	LDA !goku_act_age
+	BEQ .yes                 ; the first frame
+	BCS .ssj
+	CMP.w #2
+	BEQ .yes
+	CLC
+	RTS
+.ssj
+	CMP.w #1
+	BEQ .yes
+	CLC
+	RTS
+.yes
+	SEC
+	RTS
 
 ; ---------------------------------------------------------------------------
 ; Track the boy's palette slot and substitute Goku's colours there.

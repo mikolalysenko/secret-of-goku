@@ -180,6 +180,23 @@ replacement), `modules_field_nmi` → `goku_nmi` (uploads), `modules_field_preup
 - **Uploads** (`upload.asm`): see Resources. When replacement ends (snowman,
   moogle, `GOKU_CTL_SUPPRESS`, flag cleared) the boy's own tiles are
   re-uploaded from the game's `$0C00` table that very vblank.
+- **Key poses** (`goku_key_pose`, 2026-10-21, SNES-only by the
+  maintainer's request): a punch's first frame, its contact (age 2, or 1
+  in Super Saiyan art) and the Kamehameha's release go up in the vblank of
+  the frame that draws them. The contact frame's vblank is the game's
+  busiest (its damage, the struck actor's cells): when the game's actor
+  cell streaming (`C1:950D`, phase in `$56`) ran its heavy phase there
+  (phase 3, 8-13 lines, 4-11 left for `goku_nmi`; phase 0 sometimes left 9),
+  a same-palette cell waited, and the starburst and the white flash showed
+  one or two frames before the fist (a crowded field's cross: the impact at
+  video frames 39-40, the contact pose at 41). `goku_frame` now writes
+  `!core_frame` to `!core_actor_hold` when a key cell is pending and the
+  coming phase is 3 or 0: that vblank skips the streaming (the round robin
+  resumes where it stopped, so the actors of that phase take their new cells
+  a vblank later), and the cell uploads with the frame's OAM. Ki throws are
+  not key poses (a held barrage would move the streaming on every shot).
+  Gameplay misses summed over six input phases: 161 against 164 (no case
+  higher); the crowded combo lags 4 vblanks instead of 5.
 - **Weapon cells** (`goku_attach_hook`): the attachment pass draws the
   boy's weapon cells (tiles 40-4E, palette 0/4) when a native weapon swing
   sets `$E02F`; with Goku standing in, actor 0 goes straight to the body
