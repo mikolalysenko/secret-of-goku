@@ -83,6 +83,12 @@ single-cell landing takes 609 CPU cycles cold or warm, versus 1,109/653.
   flight-door event 07A (flight answers its `SANDSHIP_DOOR` query); a Goku
   left standing where he cannot land for eight frames (a breached wall)
   lifts into a hover. Carried CPU companions are listed in `!fl_passengers`.
+  The four native hooks that ask about them (OBJ entry, AI, movement,
+  contacts) run for every actor in every field frame; they test the mask
+  and the actor (girl `$0200`, sprite `$0400`, its bit) inline and call only
+  `fl_is_passenger_live`, the live ownership/event/map checks, for a
+  carried member (`FLIGHT_PASSENGER_SLOW=1` calls `fl_is_passenger` each
+  time). With nobody carried that saves about a scanline per field frame.
 - The Mana Beast's Mode 7 arena allows flight only inside X 184-408,
   Y 292-432, and no step there scrolls the camera.
 - On foot the A button never reaches the game (it is the speed modifier, not
