@@ -414,18 +414,26 @@ destroy_tree_barrier_break:
 ; C0:CC2D (map piece loader: LDA $7ECF00,X reads the story flag that gates
 ; the piece at [$20]; 8-bit A/X, DB = $7F). Watts's shortcut entrance on
 ; map 73 shows once its door broke, as if its range were 0..15 instead of
-; 6..15 (native-story.js storyRead returns $0F for its range byte), and
-; CF14 itself is left alone (it also drives Gnome and palace progress).
+; 6..15 (native-story.js storyRead returns $0F for its range byte), and so
+; does the cleared foot of the same stairs on map 294 (piece 99, 7..15) once
+; Goku broke its stalagmites (cave-stalagmites.js). CF14 itself is left
+; alone (it also drives Gnome and palace progress).
 destroy_piece_flag:
 	LDA.l $7ECF00,X
 	PHA
 	LDA $22 : CMP.b #$C8 : BNE .keep
-	LDA $21 : CMP.b #!DESTROY_SHORTCUT_HI : BNE .keep
-	LDA $20 : CMP.b #!DESTROY_SHORTCUT_LO : BNE .keep
+	LDA $21 : CMP.b #!DESTROY_SHORTCUT_HI : BNE .stalag
+	LDA $20 : CMP.b #!DESTROY_SHORTCUT_LO : BNE .stalag
 	LDA.l !P_DOORS : AND.b #1<<!DESTROY_DOOR_GAIA_SHORTCUT : BEQ .keep
+	BRA .open
+.stalag
+	LDA $21 : CMP.b #!DESTROY_STALAG_REC_HI : BNE .keep
+	LDA $20 : CMP.b #!DESTROY_STALAG_REC_LO : BNE .keep
+	LDA.l !P_DOORS : AND.b #!DESTROY_STALAG_LATCH : BEQ .keep
+.open
 	PLA
 	CMP.b #16 : BCS +                  ; above 15: outside 0..15 as well
-	LDA.b #15                          ; inside the record's own 6..15
+	LDA.b #15                          ; inside the record's own 6..15 / 7..15
 +	RTL
 .keep
 	PLA

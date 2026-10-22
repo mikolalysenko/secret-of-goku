@@ -13,6 +13,7 @@ import {runMesen} from '../mesen.mjs';
 import {privateRom,cleanupRom} from '../checkpoints.mjs';
 import {destroyAbi} from './abi.mjs';
 import {createReference,attackProfile,facing,loadRom,beamTimeline,simulateTimeline} from './reference.mjs';
+import {breakableDoors} from '../../../engine/breakable-doors.js';
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
 // Each case runs on its own copy of the ROM, so Mesen starts it with fresh
 // battery RAM (it keeps SRAM per ROM file name).
@@ -65,6 +66,8 @@ function profileSpec(){
   return spec;
 }
 
+// From door 252 (map 294's entrance) around Watts's lava to the stalagmites.
+const wattsWalk=[['up',40],['right',40],['up',25],['right',48],['up',20]];
 // Scenarios. The attack origin defaults to Goku's position in the bundle.
 export const scenarios=[
   {name:'bush-control',bundle:'emulator-probe__main-before-grass',control:true,walk:'right',walkFrames:48,
@@ -131,6 +134,21 @@ export const scenarios=[
     note:'the same target from the frame-by-frame full beam (incremental, widening search)'},
   {name:'orb-earth',type:'event',bundle:'kamehameha-voice__orb-before',orb:0x600,flagsChange:true,
     note:'Earth Palace crystal orb: its own event 239 with spell byte 06 in $E181'},
+  // Decorative cave stalagmites (cave-stalagmites.js): entered through a
+  // door, approached on foot so the camera follows, struck, compared with
+  // the reference, walked through, then the map is entered again.
+  {name:'stalag-watts',type:'scenery',bundle:'tree-presentation__gaia-open',door:252,map:294,steps:wattsWalk,attack:{dir:3,kind:'punch'},
+    rebuild:0x6c,walk:'up',walkFrames:60,expect:{map:288},reload:true,latched:true,
+    note:"Watts's forge (map 294): one punch breaks the stalagmites behind Watts to the retail opened floor 46 (piece 99), a native room refresh keeps them down, Goku climbs to his stairs (288), re-entering keeps the stairs open (P_DOORS latch, CF14 untouched)"},
+  {name:'stalag-watts-beam',type:'scenery',bundle:'tree-presentation__gaia-open',door:252,map:294,steps:wattsWalk,attack:{dir:3,kind:'beam',str:256,id:21},
+    walk:'up',walkFrames:60,expect:{map:288},reload:true,latched:true,
+    note:'the same with a charged Kamehameha (growth steps after FX)'},
+  {name:'stalag-watts-stairs',type:'scenery',bundle:'tree-presentation__gaia-open',door:247,map:294,steps:[['down',16]],attack:{dir:0,kind:'punch'},
+    walk:'down',walkFrames:40,expect:{passY:12*16+8},latched:true,
+    note:"the same from the top of Watts's stairs (door 247, the way in from the Gaia shortcut): a punch down opens the way into the forge"},
+  {name:'stalag-plaza',type:'scenery',bundle:'tree-presentation__gaia-open',door:82,map:287,attack:{dir:1,kind:'punch'},
+    rebuild:0x6c,walk:'right',walkFrames:40,expect:{passX:26*16+8},away:[252,294],reload:true,latched:false,
+    note:'Dwarf Village plaza (map 287): a punch breaks a whole stalagmite to the plaza floor 2B, a native room refresh replays it, Goku walks through; after a visit to the forge it respawns natively'},
 ];
 
 function lua(s){
@@ -231,6 +249,56 @@ function test()
 end
 `;
 
+// Scenery struck after entering a map by door: walk to the target (the camera
+// follows), strike from there, walk through, then enter the map again.
+const bodyScenery=`
+function test()
+  D.watch()
+  D.garbage()
+  H.w8(ABI.P_DOORS, 0); H.w8(ABI.P_TREE, 0)
+  assert(H.importSnesJs(SCN.bundlePath), 'import failed')
+  H.wait(2)
+  H.result('door', D.door(SCN.door, SCN.map))
+  for _, st in ipairs(SCN.steps or {}) do H.hold(st[1], st[2]) end
+  H.wait(20)
+  local p = D.pos()
+  H.result('arrived', p)
+  SCN.attack.x = p.x; SCN.attack.y = p.y
+  H.dumpfile('wram.bin', emu.memType.snesWorkRam, 0, 0x20000)
+  D.grid('before.bin')
+  H.shot('before')
+  H.result('hit', D.hit(SCN.attack))
+  H.wait(SCN.frames or 40)
+  D.grid('after.bin')
+  H.shot('after')
+  H.result('writes', D.writes)
+  H.result('doors', H.r8(ABI.P_DOORS))
+  if SCN.rebuild then
+    -- a same-room native rebuild (refresh-map) must not regrow them
+    H.result('rebuild', D.event(SCN.rebuild))
+    D.settle(240)
+    H.wait(60)
+    D.grid('rebuilt.bin')
+  end
+  if SCN.walk then
+    H.hold(SCN.walk, SCN.walkFrames or 60)
+    H.wait(10)
+    H.waitFor(function() return D.ground() end, 600)   -- a door may take him on
+    H.wait(10)
+    H.result('walked', D.pos())
+    H.shot('walked')
+  end
+  if SCN.away then H.result('away', D.door(SCN.away[1], SCN.away[2])) end
+  if SCN.reload then
+    H.result('reload', D.door(SCN.door, SCN.map))
+    D.grid('reloaded.bin')
+    H.shot('reloaded')
+    H.result('reloadDoors', H.r8(ABI.P_DOORS))
+  end
+  H.result('cf14', H.r8(0x7ECF14))
+end
+`;
+
 // Walking checks: passX/passY (beyond, increasing), passXlt/passYlt (beyond,
 // decreasing), blockedX (did not pass).
 function checkWalk(s,res,problems){
@@ -314,8 +382,67 @@ async function runEvent(s){
   return summary;
 }
 
+// The breakable-door bits come first in !P_DOORS; the stalagmite latch is
+// the next bit (snes/gen/destroy.mjs).
+const stalagLatch=1<<breakableDoors.length;
+async function runScenery(s){
+  const bundlePath=join(imports,s.bundle);
+  if(!existsSync(bundlePath))return{name:s.name,ok:false,skipped:true,reason:'missing bundle '+s.bundle};
+  const attack=attackProfile({...s.attack});attack.code=KIND[attack.kind];
+  const outDir=join(outRoot,s.name);
+  const test=`ABI=${lua(abi)}\nSCN=${lua({...s,bundlePath,attack})}\n`+readFileSync(join(here,'destroy.lua'),'utf8')+bodyScenery;
+  const m=await runPrivate(rom,s.name,{test,outDir});
+  const res=m.results??{},problems=[];
+  if(m.code!==0||res.error)problems.push('mesen: '+(res.error??m.code));
+  if(res.door!==true)problems.push('door load failed');
+  const file=f=>existsSync(join(outDir,f))?new Uint8Array(readFileSync(join(outDir,f))):null;
+  const wram=file('wram.bin'),before=file('before.bin'),after=file('after.bin'),reloaded=file('reloaded.bin');
+  let grid=[],ref=null;
+  if(wram&&before&&after){
+    const w16=a=>wram[a]|wram[a+1]<<8,size=[w16(0xc0)>>4,w16(0xc2)>>4];
+    grid=diffGrids(before,after,size);
+    // The browser pipeline on the same memory, the attack from the same spot.
+    const r=createReference(wram.slice(),cartridge),[dx,dy]=facing[attack.dir];
+    r.plants.beam({x:res.arrived.x,y:res.arrived.y,dx,dy,length:attack.length,halfWidth:attack.halfWidth,taper:attack.taper,policy:attack.policy});
+    const rows=r.drain();
+    ref={rows,grid:rows.flatMap(row=>row.tiles.map(t=>({off:t.layer*0x4000+t.ty*128+t.tx,to:t.replacement})))};
+    const key=c=>`${c.off}:${c.to}`,want=new Set(ref.grid.map(key)),got=new Set(grid.map(key));
+    if(!ref.grid.length)problems.push('the reference breaks nothing here');
+    if(ref.grid.some(c=>!got.has(key(c)))||grid.some(c=>!want.has(key(c))))problems.push(`edits ${JSON.stringify(grid.map(key))} want ${JSON.stringify([...want])}`);
+    // Row redraws as a multiset (a beam grows over several calls), the cut sound.
+    const w=res.writes??[],count=a=>a.reduce((m,x)=>m.set(x,(m.get(x)??0)+1),new Map());
+    const r83=count(w.filter(x=>x.k==='r83').map(x=>x.v)),want83=rows.filter(row=>row.redraw[0]).map(row=>row.redraw[1]);
+    for(const[v,n]of count(want83))if((r83.get(v)??0)<n)problems.push(`redraw $83 ${v} missing`);
+    const sounds=w.filter(x=>x.k==='r95'&&x.v>=0xd8&&x.v<0xe8).map(x=>x.v),wantSound=rows.find(row=>row.sound)?.sound;
+    if(wantSound&&!sounds.includes(wantSound))problems.push(`cut sound ${JSON.stringify(sounds)} want ${wantSound}`);
+    if(res.cf14!==wram[0xcf14])problems.push(`CF14 ${wram[0xcf14]} -> ${res.cf14}`);
+  }else problems.push('no grids');
+  if(s.rebuild){
+    const rebuilt=file('rebuilt.bin');
+    if(res.rebuild!==1||!rebuilt)problems.push(`rebuild event ${res.rebuild}`);
+    else for(const c of grid)if(rebuilt[c.off]!==c.to){problems.push(`a native rebuild regrew ${c.tx},${c.ty} (${rebuilt[c.off]})`);break;}
+  }
+  checkWalk(s,res,problems);
+  if(s.expect?.map!==undefined&&res.walked?.map!==s.expect.map)problems.push(`walked to map ${res.walked?.map} want ${s.expect.map}`);
+  if(!!(res.doors&stalagLatch)!==!!s.latched)problems.push(`P_DOORS ${res.doors}: latch ${s.latched?'missing':'unexpected'}`);
+  if(s.away&&res.away!==true)problems.push('leaving the map failed');
+  if(s.reload){
+    // Entering again: a latched passage keeps its opened floor (the piece
+    // loader places the retail piece), other scenery respawns natively
+    // once Goku has been elsewhere (smashed objects are kept per visit).
+    if(res.reload!==true)problems.push('reload failed');
+    else if(!reloaded)problems.push('no reloaded grid');
+    else for(const c of grid){const want=s.latched?c.to:before[c.off];if(reloaded[c.off]!==want){problems.push(`after re-entering ${c.tx},${c.ty} is ${reloaded[c.off]} want ${want}`);break;}}
+    if(!!(res.reloadDoors&stalagLatch)!==!!s.latched)problems.push('latch lost on re-entering');
+  }
+  const summary={name:s.name,ok:!problems.length,problems,edits:grid.length,refEdits:ref?.grid.length,arrived:res.arrived,walked:res.walked,doors:res.doors,ms:m.ms,note:s.note};
+  writeFileSync(join(outDir,'summary.json'),JSON.stringify({...summary,ref,results:res},null,1));
+  return summary;
+}
+
 async function run(s){
   if(s.type==='event')return runEvent(s);
+  if(s.type==='scenery')return runScenery(s);
   const bundlePath=join(imports,s.bundle);
   if(!existsSync(bundlePath))return{name:s.name,ok:false,skipped:true,reason:'missing bundle '+s.bundle};
   const wram=new Uint8Array(readFileSync(join(bundlePath,'wram.bin')));

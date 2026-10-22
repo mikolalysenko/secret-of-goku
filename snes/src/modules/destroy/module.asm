@@ -1,7 +1,8 @@
 ; Destroy module: destructible scenery, gates, switches, orbs and dungeon
 ; demolition through the cartridge's own cut-map pipeline.
 ; Port of engine/native-plants.js, dungeon-geometry.js / dungeon-demolition.js,
-; native-barriers.js, breakable-doors.js, native-orbs.js and palace-braziers.js.
+; native-barriers.js, breakable-doors.js, native-orbs.js, palace-braziers.js
+; and cave-stalagmites.js.
 ; See docs/agents/snes-port/destroy.md for structures, catalogue and API.
 ;
 ; Native pipeline (C1:D293..D429 is the retail sword cut):
@@ -247,7 +248,7 @@ assert !d_s+$40 <= !DST+$80, "destroy WRAM overflow"
 
 ; ---------------------------------------------------------------------------
 ; Persistent state (!PERSIST_DESTROY, $80 bytes of SRAM, saved per slot).
-!P_DOORS     = !PERSIST_DESTROY+$00      ; bit n: breakable door n broken
+!P_DOORS     = !PERSIST_DESTROY+$00      ; bit n < !DESTROY_DOORS: breakable door n broken; !DESTROY_STALAG_LATCH: Watts's stalagmites broken
 !P_TREE      = !PERSIST_DESTROY+$01      ; bit0: Mana Tree cloud barrier broken
 
 ; Sandship runtime (sandship.asm, engine/sandship.js createSandship). Saved
@@ -575,8 +576,9 @@ pullpc
 %hijack_jsl($C0C7C3, destroy_redraw_hook, 4, destroy)
 
 ; C0:CC2D: LDA $7ECF00,X in the map piece loader (the gating story flag of
-; each piece). The hook returns it unchanged except for Watts's shortcut
-; entrance after its door broke.
+; each piece). The hook returns it unchanged except for both ends of Watts's
+; shortcut: the entrance after its door broke, the stairs' foot after its
+; stalagmites broke.
 %orig4($C0CC2D, $7ECF00BF)
 %hijack_jsl($C0CC2D, destroy_piece_flag, 4, destroy)
 

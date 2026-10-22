@@ -5,6 +5,7 @@ import {buildStoryEvents,box,choice,call,jump} from './story-events.js';
 import {prepareStoryArea} from './story-areas.js';
 import {buildFriezaEvents,buildFriezaEnding,friezaEvents as F} from './frieza-events.js';
 import {breakableDoors} from './breakable-doors.js';
+import {stalagmiteLatches} from './cave-stalagmites.js';
 import {crisisDialogue,crisisGreeting,crisisGreetings} from './frieza-crisis.js';
 import {endingResult,endingEvents} from './ending-rules.js';
 import {buildBadEnding} from './ending-events.js';
@@ -67,6 +68,9 @@ export function createNativeStory(snes,mod){
       // Map 73, piece 81: show Watts's native entrance after a beam breach.
       // Do not raise CF14, which also controls Gnome and palace progression.
       if(address===0x5a8e&&mod.barriers?.doorBroken('gaia-shortcut'))return 0x0f;
+      // Map 294, piece 99: the same stairs' foot, cleared of the stalagmites
+      // Goku broke (cave-stalagmites.js), as the retail game shows at CF14 7.
+      for(const o of stalagmiteLatches)if(address===o.record+1&&mod.barriers?.doorBroken(o.latch))return 0x0f;
       const emperor=0x80000+(cart.data[0x8735e]|cart.data[0x8735f]<<8)+8+3*8;
       if(0x80000+address===emperor+1){
         if(mod.frieza?.emperorPresent)return 0x0f;
