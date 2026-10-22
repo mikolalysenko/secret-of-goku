@@ -21,7 +21,8 @@ incsrc "audio/ids.asm"
 ; WRAM (bank $7E, long addressing).
 !orbit_state   = !RAM_ORBIT+$00   ; byte: !OS_* scene state
 !orbit_cmd     = !RAM_ORBIT+$01   ; byte: request (!OC_*), consumed next field frame
-!orbit_flags   = !RAM_ORBIT+$02   ; byte: !OF_* status other modules may read
+!orbit_flags   = !RAM_ORBIT+$02   ; byte: !OF_* status other modules may read (fx_kill_all,
+                                  ; assembled before this module, reads bit 0 at this address)
 !orbit_load    = !RAM_ORBIT+$03   ; byte: load step (NMI side)
 !orbit_frame   = !RAM_ORBIT+$04   ; word: frames since the scene started
 !orbit_nmi_buf = !RAM_ORBIT+$06   ; word: HDMA buffer offset the NMI programs (0 / !OB_SIZE)

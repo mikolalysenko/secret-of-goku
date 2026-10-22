@@ -4,6 +4,41 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: Frieza and FX rest while the orbit holds the picture (2026-10-22)
+
+- Frieza's busy frames while the orbit holds the scene work area run only
+  his story-level ticks (hook work, the quake, the story cues, the death
+  watch, the input lock, the music) once his last frame left nothing
+  drawn, resident, published or for the vblank (`fz_orbit_light`;
+  `-DFRIEZA_ORBIT_FULL` builds the full path). In the hand-off cases his
+  frame costs 7.3 lines instead of 11.0, light from the frame after the
+  load's forced blank to the stop.
+- `fx_kill_all` returns at once while the orbit owns the picture and FX
+  holds nothing (`-DFX_KILL_ALL_ALWAYS` for the old kill). Combat's quiet
+  cancel calls it every frame there, and each call made `fx_frame` run in
+  full: 2.7-2.9 lines, now under half a line.
+- Repeated pictures: the `fight` summed over its 8 frame phases 19
+  instead of 24 (per phase 3 2 3 2 2 2 2 3), every phase passing with its
+  flicker bounds (Goku, Frieza and the beams lose sliver-lines in 3-6
+  frames as before; the bursts in 33 34 34 38 28 35 38 39 frames per
+  phase, before 33 34 39 35 36 37 38 34, bound 40). The `clash` 23
+  instead of 22: the win's first frame now waits 84 lines instead of 9 in
+  the native sound interface (`C3:0000-07FF`, the stop command's
+  synchronous handshake, whose length depends on where the SPC is); the
+  FX change alone and the Frieza change alone (which costs the quick-start
+  frames 0.2 lines) both meet it.
+- The quick-start cases run Frieza's module with Goku not yet arrived
+  (`!persist_goku_active` 0), so they measure his Goku-off path (3.8
+  lines), not the 11 lines his frame took in the real fight's orbit. In
+  the hand-off path the `return` case's frames lagged 94 times while the
+  scene was live (the struggle's runs of up to 23), now 29 (the load's 39
+  and the fanfare's song load's 19 both times).
+- Compared with the full paths by `!core_tick` in the `handoff` case,
+  Frieza's and FX's blocks match but for the light bit, the published
+  colours' frame stamp and FX's idle-path counters; the rollback build
+  (both defines) matches the previous build byte for byte there and in
+  the `clash`'s lags.
+
 ## SNES integration: louder hits, no flash, two soft locks closed, faster orbit and audio (2026-10-22)
 
 - Sound round nine (0014806, 76353fc, ec79c7d; merged in dccd864). The

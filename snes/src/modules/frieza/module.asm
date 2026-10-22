@@ -469,6 +469,7 @@ endif
 ; !fz_vista bits 4-5 (rebuilt every frame): the Ball set drawn this frame
 !FZV_BALLS     = $30       ; (1 the seven, 2 the eighth) << 4
 !FZV_NMI       = $80       ; the vblank has work this frame (its early-out)
+!FZV_LIGHT     = $40       ; the orbit's light frames (frame.asm, fz_orbit_light_ok)
 assert !fz_vista == !fz_wasidle+1, "the vblank reads !FZV_NMI as bit 15 of !fz_wasidle"
 
 !FZ_VRAM_OWNER = $0006     ; core_vram_claim owner id (core's pool: !VRAM_SCENE_OBJ, !VRAM_SCENE_BG, !VRAM_FIELD_OBJ_A)
