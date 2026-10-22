@@ -154,7 +154,7 @@ assert !fx_rbits+!FX_RBITS_SIZE <= !fx_poly, "fx SRAM layout overlap"
 ; the frame, so the renderers' locals are fast direct-page variables. Only
 ; code running inside fx_frame may use these; the game's own direct-page
 ; variables are then reached with explicit absolute addressing ($7E:00xx).
-!FXF_SIZE = $94
+!FXF_SIZE = $96
 !d_ax    = $00    ; word: anchor x - 128 + 15 (assembly part placement)
 !d_ay    = $02
 !d_n     = $04    ; word: parts left in the assembly
@@ -185,6 +185,7 @@ assert !fx_rbits+!FX_RBITS_SIZE <= !fx_poly, "fx SRAM layout overlap"
 !d_r0    = $88    ; 8 bytes: fx_emit_run state
 !d_lasta = $90    ; word: assembly whose cells !d_tiles holds ($FFFF none)
 !d_rstep = $92    ; word: fx_emit_run spacing in pixels
+!d_wait  = $94    ; word: FX_HIT spawns whose first fx frame waits (fx_hit_wait)
 ; Current effect fields (offsets into !d_cur)
 !C_KIND = $0   ; byte (beams: $80 | style)
 !C_FLAGS = $1  ; byte

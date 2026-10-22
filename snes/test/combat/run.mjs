@@ -119,6 +119,12 @@ function luaFor(sc,rom){
   if(sc.gi!==undefined)setup.push(`H.w8(0x7EE1E1, ${sc.gi?22:21})`);
   for(const [a,v] of sc.poke??[])setup.push(`H.w8(${a}, ${v})`);
   if(sc.frieza)setup.push(...friezaLua(sc));
+  if(sc.gameMath)setup.push('C.watchMath()');
+  const after=[];
+  if(sc.gameMath)after.push(`if #C.mathBad > 0 then C.fail('colour math over the game\\'s own ($23): ' .. table.concat(C.mathBad, ', ')) end`);
+  // the picture's state for the browser comparison (run.mjs screenCompare)
+  if(sc.screen)after.push(`H.dumpfile('vram.bin', emu.memType.snesVideoRam, 0, 0x10000)`,
+    `H.dumpfile('cgram.bin', emu.memType.snesCgRam, 0, 0x200)`,`H.dumpfile('map.bin', emu.memType.snesWorkRam, 0x10000, 0x8000)`);
   return `IMPORT_ROOT=${JSON.stringify(importRoot)}\n${lib}
 function test()
   H.wait(5)
@@ -134,11 +140,56 @@ function test()
   ${setup.join('\n  ')}
   local trace = {}
   C.run(${JSON.stringify(sc.script)}, trace, {${cartPokes(sc).map(p=>`{${p.join(',')}}`).join(',')}})
+  ${after.join('\n  ')}
   H.result('trace', trace)
   ${sc.shots?`H.shot('end')`:''}
   H.result('failures', C.failures)
 end
 `;
+}
+
+// The picture after a scenario (sc.screen) against the browser's, with the
+// browser's cut pipeline attached (sc.plants): the two native map layers
+// (WRAM $7F:0000, the cells destroy cut), the BG1 / BG2 tilemaps (every
+// cell's tile, palette and flips, the cut ones included) and the BG
+// palettes (CGRAM 0-127, less the entries the game animates: the water's).
+function screenCompare(js,dir,bundleDir){
+  const names=['vram.bin','cgram.bin','map.bin'];
+  if(!js||!names.every(n=>existsSync(join(dir,n))))return {failures:['no screen dump'],note:''};
+  const [vram,cgram,map]=names.map(n=>new Uint8Array(readFileSync(join(dir,n))));
+  const wram0=new Uint8Array(readFileSync(join(bundleDir,'wram.bin'))),map0=wram0.subarray(0x10000,0x18000);
+  const vram0=new Uint8Array(readFileSync(join(bundleDir,'vram.bin')));
+  const failures=[],hex=v=>v.toString(16);
+  const cell=i=>`layer ${i>>14} (${(i&0x3fff)&127}, ${(i&0x3fff)>>7})`;
+  const cuts=m=>{let n=0;for(let i=0;i<m.length;i++)if(m[i]!==map0[i])n++;return n;};
+  const mapDiff=[];
+  for(let i=0;i<map.length;i++)if(map[i]!==js.map[i])mapDiff.push(`${cell(i)} ${hex(js.map[i])}/${hex(map[i])}`);
+  const cutJs=cuts(js.map),cutCart=cuts(map);
+  if(!cutJs)failures.push('screen: the browser cut nothing');
+  if(mapDiff.length)failures.push(`screen: ${mapDiff.length} map cells differ (browser/cartridge tile): ${mapDiff.slice(0,6).join(', ')}`);
+  let words=0,redrawn=0;
+  js.tilemaps.forEach((t,k)=>{
+    const diff=[];
+    for(let w=0;w<t.words;w++){
+      const a=(t.at+w)&0x7fff,c=vram[a*2]|vram[a*2+1]<<8;
+      if(c!==(vram0[a*2]|vram0[a*2+1]<<8))redrawn++;
+      if(c!==js.vram[a])diff.push(`${w}: ${hex(js.vram[a])}/${hex(c)}`);
+    }
+    words+=t.words;
+    if(diff.length)failures.push(`screen: BG${k+1} tilemap, ${diff.length} words differ (browser/cartridge): ${diff.slice(0,6).join(', ')}`);
+  });
+  if(cutCart&&!redrawn)failures.push('screen: cells were cut but no tilemap word changed');
+  const animated=new Set(js.animated),pal=[];
+  let colours=0;
+  for(let c=0;c<128;c++){
+    if(animated.has(c))continue;
+    colours++;
+    // (15-bit colours: the browser core keeps a written bit 15)
+    const v=(cgram[c*2]|cgram[c*2+1]<<8)&0x7fff,w=js.cgram[c]&0x7fff;
+    if(v!==w)pal.push(`${c}: ${hex(w)}/${hex(v)}`);
+  }
+  if(pal.length)failures.push(`screen: ${pal.length} BG colours differ (browser/cartridge): ${pal.slice(0,6).join(', ')}`);
+  return {failures,note:`screen: ${cutCart} cut cells (browser ${cutJs}), ${words} tilemap words (${redrawn} redrawn), ${colours} BG colours`};
 }
 
 // Cases checked on the cartridge alone (the browser behaviour they follow
@@ -225,14 +276,20 @@ for(const sc of SCENARIOS){
     const steps=[{mask:0,frames:2+(sc.jsLead??0)},...parseScript(sc.script)];
     // pokes land one frame later on the cartridge's clock (input latency
     // alignment in compare.mjs), so the browser gets them one frame later too
-    const js=runJsRef({state,steps,superSaiyan:!!sc.ssj,gi:sc.gi??null,pokes:sc.pokes??[],pokeBase:2+(sc.jsLead??0),
-      frieza:sc.frieza?friezaSnapshot(sc).frieza:null,locks:sc.locks??null}).frames.slice(2+(sc.jsLead??0));
+    const ref=runJsRef({state,steps,superSaiyan:!!sc.ssj,gi:sc.gi??null,pokes:sc.pokes??[],pokeBase:2+(sc.jsLead??0),
+      frieza:sc.frieza?friezaSnapshot(sc).frieza:null,locks:sc.locks??null,plants:!!sc.plants,screen:!!sc.screen});
+    const js=ref.frames.slice(2+(sc.jsLead??0));
     const cart=r.results.trace;
     writeFileSync(join(outRoot,sc.name,'js.json'),JSON.stringify(js));
     writeFileSync(join(outRoot,sc.name,'cart.json'),JSON.stringify(cart));
     const c=compare(js,cart,sc);
     note=c.summary+(profiling?`; ${profileNote(cart)}`:'');
     failures.push(...c.failures);
+    if(sc.screen){
+      const s=screenCompare(ref.screen,join(outRoot,sc.name),join(importRoot,sc.bundle));
+      note+=`, ${s.note}`;
+      failures.push(...s.failures);
+    }
   }else failures.push('no trace');
   const ok=r.code===0&&!failures.length;
   results.push({scenario:sc.name,ok,ms:r.ms,failures,note});

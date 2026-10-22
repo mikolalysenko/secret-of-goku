@@ -930,7 +930,7 @@ cb_strike:
 	JMP .spark
 .feedback
 	; the camera kick of the blow (3: a kill; SNES-only profiles), and for
-	; a kill or the finishing kick the BG quake and a white impact flash
+	; a kill or the finishing kick the BG quake (no flash: snes-feel.mjs)
 	LDA.l !cb_kill
 	AND.w #$00FF
 	BEQ +
@@ -948,8 +948,6 @@ cb_strike:
 	LDX.w #!COMBAT_KILL_QUAKE_SSJ
 	JSR cb_by_super
 	JSR cb_quake
-	LDA.w #!COMBAT_FLASH_KILL
-	JSR cb_bind_fx_flash
 	BRA .cue
 .noKill
 	LDA !cb_act_arg
@@ -960,8 +958,6 @@ cb_strike:
 	LDX.w #!COMBAT_KICK_QUAKE_SSJ
 	JSR cb_by_super
 	JSR cb_quake
-	LDA.w #!COMBAT_FLASH_KICK
-	JSR cb_bind_fx_flash
 .cue
 	LDA !cb_act_arg
 	AND.w #$0003
@@ -1321,15 +1317,8 @@ cb_fire_beam:
 	LDX.w #36
 +	TXA
 	JSR cb_quake
-	; SNES-only (snes-feel.mjs): the release flashes the screen white (the
-	; full wave longest) and the camera recoils along the beam with a
-	; kill's shake
-	LDA.w #!COMBAT_FLASH_BEAM
-	LDX !bm_mega-1                ; high byte = bm_mega
-	CPX.w #$0100
-	BCC +
-	LDA.w #!COMBAT_FLASH_WAVE
-+	JSR cb_bind_fx_flash
+	; SNES-only (snes-feel.mjs): the camera recoils along the beam with a
+	; kill's shake (no flash)
 	LDA !cb_t8
 	AND.w #$0003
 	ORA.w #3<<8

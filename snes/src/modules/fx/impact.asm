@@ -116,6 +116,17 @@ fx_k_hit:
 	BEQ .done
 	LDA.l !fx_cbudget
 	BEQ .done
+	; (SNES-only, round 3) a cold cell costs a cache scan and its upload,
+	; about 7 lines: two only while the frame has room, one from line 190,
+	; none from 198 (the spark's next frames bring the rest)
+	JSR fx_vline
+	CMP.w #198
+	BCS .done
+	LDX.w #2
+	CMP.w #190
+	BCC +
+	DEX
++	STX !d_ks+10                  ; new cells this frame at most
 	LDA !d_cur+!C_KIND            ; record ((gold * 3 + 2) * 4 + facing) * 16
 	AND.w #!FX_F_GOLD<<8
 	BEQ +
@@ -153,10 +164,10 @@ fx_k_hit:
 	PHA
 	LDA.l !fx_cbudget
 	SEC
-	SBC.w #2
+	SBC !d_ks+10
 	BPL +
 	LDA.w #$0000
-+	STA !d_ks+14                  ; two new cells at most
++	STA !d_ks+14                  ; two new cells at most (one, late)
 .cell
 	LDA.l !fx_cbudget
 	CMP !d_ks+14

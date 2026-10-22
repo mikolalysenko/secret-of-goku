@@ -131,8 +131,9 @@ the kick's cells after the hold), a native target's slot to draw white)
 and writes the native timed shake (`$E00D` = hold << 4 | axis). One FX_HIT
 spawn per contact carries it all. After the contacts it calls `fx_kick`
 (facing | blow << 8);
-the kick also `fx_quake` (3 / 5) and `fx_flash` (3). A ki shot's impact
-carries the smallest starburst. `cb_fx_prep` (from `cb_fx_continuous`'s
+the kick also `fx_quake` (3 / 5), and no flash since 2026-10-22 (below).
+A ki shot's impact carries the smallest starburst. `cb_fx_prep` (from
+`cb_fx_continuous`'s
 action dispatch for punches, while the age is below 2, not in a frame an
 NMI already interrupted or whose logic ran past line 170: a cold record
 costs fx up to 13 lines) asks `fx_warm` for
@@ -160,11 +161,11 @@ unchanged.
 | Hit stop, jab / cross / kick | 4 / 8 / 14 (Super Saiyan 3 / 7 / 12): the jab stays snappy | 5 / 6 / 10 (4 / 5 / 9) |
 | A blow that kills a native actor | Goku holds at least 12 (10) frames; the target, its spark and its shake keep the blow's own stop, so it flies while he holds the pose (`!cb_kill`, `!cb_stop`) | the blow's stop |
 | Camera kick (fx `fx_kick_steps`, signed) | a shake along the blow: jab 2, -1; cross 4, -3, 2, -1; kick 8, -6, 4, -3, 2, -1; a kill 11, -8, 6, -4, 2, -1 | 2 / 3 / 4 px springing back |
-| Full-screen flash (white, fx `fx_flash` curves 1-2) | the finishing kick 12, 6, 2; a kill 18, 9, 4 (of 31) | the kick's warm 4, 2, 1 |
+| Full-screen flash | none on a blow (round two's white flash on the finishing kick and a kill is gone: below) | the kick's warm 4, 2, 1 |
 | BG quake | the kick 4 (6), a kill 3 (5) | the kick 3 (5) |
 | Launch over 12 frames | 96 px (136), peak 30 px; the Kamehameha blows targets 148 (196); the transformation's burst 96 (136) | 56 / 88, peak 20; beams as launches |
 | A launched actor landing alive on screen (`FEEL.land`) | a thud: the camera jolts down with the jab's kick (2, -1) unless a kick runs (`cb_bind_land_kick`, from `cb_update_launches` at the arc's end; a push-back never). A killed actor's death effect is gone before its arc ends, so a kill's landing has none | nothing |
-| The Kamehameha's release | a white flash (14, 9, 5, 2; the full Super Saiyan wave 24, 18, 12, 8, 4, 2) and the kill's camera shake along the beam, on top of the quake | the quake |
+| The Kamehameha's release | the kill's camera shake along the beam, on top of the quake; no flash | the quake |
 | A ki shot's contact | the cross's starburst | the smallest |
 | A punch pressed after the combo buffer opens (age 9, 4) | starts at once | the next frame |
 | A move's first frame (a punch from rest or the next blow, a ki throw from rest, the Kamehameha's release) | in the vblank of the press when there is room for its cell (First frames, below); otherwise a frame later, as the game draws | the frame of the press |
@@ -196,6 +197,36 @@ stays), a shockwave for a ki shot that kills (ki 23), a starburst on every
 Kamehameha contact pulse (charge +5 to +7; the pulse sparks stay), a
 one-frame base startup for the punch (punch +1 to +3 over six offsets) and
 for the ki throw (ki +5): the startups stay the browser's.
+
+**No full-screen flash (2026-10-22).** The maintainer: "actually get rid
+of the full screen flash, it's too much". Round two's white flashes are
+gone: the finishing kick's (12, 6, 2 of 31), a kill's (18, 9, 4), the
+Kamehameha's release (14, 9, 5, 2) and the full wave's (24, 18, 12, 8, 4,
+2), with fx's curves 1-4 and the white bit of `fx_nmi_math`. `FEEL.flash`
+and the `COMBAT_FLASH_*` defines went with them. The hit stop, a kill's
+hold, the camera shake along the blow, the BG quake, the launches and the
+ki shot's starburst stay, as does the transformation's warm flash (the
+browser's; none where the game runs its own colour math, below). The
+browser keeps its warm 4, 2, 1 on the kick; the cartridge has none.
+Gameplay CPU misses over offsets 0-9 are unchanged (punch 6, ki 3, fly 1,
+fly-ki 12, fly-punch 3, teleport 22, charge 43: 90 in all, as on
+cd0585d), and so are the perf scenes.
+
+**The flash and the game's colour math (2026-10-22).** The maintainer
+reported palette glitches when a full Super Saiyan wave at max charge cut
+the grass on the way to Potos. The Potos approach (map 128) and the Rabite
+field (129) blend BG2, the water, with the subscreen through the game's own
+colour math (CGADSUB shadow `$23` = `$42`; south Potos, map 16, blends BG1:
+`$41`). The flash is fixed-colour addition, which replaced that blend for
+its frames: the water turned bright cyan, then deep teal, and snapped
+back. The release's white flash did it on every wave and beam there, a
+kill's and the finishing kick's in the fields, and the transformation's
+warm flash already did on every build before. fx now drops a flash while
+`$23` has a layer bit (`fx_finish`); the transformation still flashes
+where the game runs no colour math (Potos itself, `$23` = 0). The browser
+brightens before the game's blend, which one colour math unit cannot do.
+The cut cells were never wrong: after the wave the map, the BG1 / BG2
+tilemaps and the BG palettes equal the browser's (`wave-potos`, below).
 
 **On main's performance pass (cd59395, 2026-10-22).** The round merged
 onto the performance pass (direct Goku sprite writes, the unrolled contact
@@ -278,6 +309,51 @@ higher). Gameplay misses over the twelve offsets, with the kick's deferred
 map strike below: punch 13, ki 10, fly 5, fly-ki 25, fly-punch 14,
 teleport 54, charge 124, none above the counts from before the forecast.
 
+**First frames in crowded vblanks (round 3, 2026-10-22).** No VRAM is free
+to keep a move's first cell resident. The field's OBJ VRAM is the actor
+streamer's: every slot's cells and effect pieces, `$6400-$7F40`. fx's
+three cache regions are effect pieces too, and only the HUD, ring, shadow
+and portrait tiles go unwritten. A first cell also shares no 4-tile row
+with any other of Goku's 465 cells, and at least 7 of its 16 tiles differ
+even from the closest one, so a partial upload saves little. The upload
+stays the full cell (512 bytes, 5.5 lines), and the forecast now needs
+less around it:
+- `goku_api_preempt_cell` sends the cell at once when 7 lines of the vblank
+  are left. Its four rows end by line 257 and the NMI's tail by 260.
+  Before, it left the cell to `goku_nmi`, which wants 10. `cb_forecast`
+  runs with 8 lines left (12 before).
+- A press that lets go of a direction is forecast too, with the facing from
+  the directions still held: walking, then punching. A newly pressed
+  direction can turn Goku, so it still waits.
+Press-to-picture over six input phases (frames from the press, or the
+release, until the move's own first cell shows, the cell its action
+requests at age 0; summed, cd0585d in brackets):
+
+| Move | Waterfall | Rabite field | Rabite field, Super Saiyan |
+| --- | --- | --- | --- |
+| Punch from rest | 0 (0) | 1 (2) | 1 (2) |
+| Ki throw from rest | 0 (0) | 1 (3) | 1 (1, a phase whose cell never showed) |
+| Next blow | 0 (2) | 18 (18) | 2 (5) |
+| The cross after walking | | | 4 (6) |
+| Kamehameha release | 0 (4) | 2 (4) | 4 (4, two phases never showed it) |
+
+The field's next blow is pressed during the jab's hold: its blow starts
+two or three steps later, when the buffer opens. Forecasting that start
+too (the vblank before the step, while `!cb_queued` is set) showed its
+cell a frame sooner in four phases of six. But the check it added to every
+field vblank shifted the charge case's timing enough to cost it 2 misses
+over ten offsets, so it was left out. The full Super Saiyan
+wave's release in the Rabite field meets a deflect reaction (`goku_mode`
+`DEFLECT`), whose pose wins: no forecast. What is left at 1 comes from
+crowded vblanks with no room for 512 bytes, whose module NMI starts at
+line 251 or later. The forecast fired 34 times in the probes (mashing,
+combos, both strings, charges), each time with the cell the next frame
+asked for.
+Gameplay CPU misses over offsets 0-9 (cd0585d in brackets): punch 6 (6),
+ki 0 (3), fly 1 (1), fly-ki 12 (12), fly-punch 3 (3), teleport 22 (22),
+charge 43 (43), 87 (90) in all. The strings lose no frame, and the perf
+scenes are unchanged.
+
 **The kick's lag frame (2026-10-22).** In a crowded field a three-hit
 string dropped a frame right after the kick's contact in five input
 phases of six. Per-frame profiles (the Rabite field, Super Saiyan):
@@ -307,6 +383,30 @@ Gameplay misses
 summed over twelve offsets against step 4: fly-punch 14 (23), punch 14
 (15), ki 11 (11), fly 5 (5), fly-ki 26 (26), teleport 52 (52), charge 124
 (124); phase 0 unchanged.
+
+**The cross's lost frame (round 3, 2026-10-22).** On the performance pass
+(cd0585d) the strings still dropped a frame at the cross's contact: the
+Super Saiyan string in three input phases of six, the base string in one.
+In those phases the contact frame's logic (the game's damage and
+reactions, combat's strike) left fx's work to start at lines 195-209, and
+the impact's first frame then ran past the vblank. Without impact effects
+at all, neither string loses a frame. fx now lets such an impact wait one
+frame (`fx_hit_wait`, fx.md, Impact frames): the contact pose shows on
+time and the starburst follows a frame later, as it did when the whole
+late frame showed a frame later. Over six input phases of each string,
+6 of 36 contacts waited, all with fx starting at lines 192-209. The
+kick's cells that a cross's spark brings in after its hold now come in
+only while the frame has room. Lag frames over six input phases: Super
+Saiyan string 0 (3), base string 0 (1). Staging the next blow's cells in
+idle frames as well (an `fx_warm` of the blow a press would start while
+the combo chain ran) took only 1-2 lines off the cross's contact and
+re-warmed after every eviction (15-18 calls of about 3.5 lines in a
+flying-punch run): left out.
+Gameplay CPU misses over offsets 0-9 (cd0585d in brackets):
+punch 4 (6), ki 0 (3), fly 1 (1), fly-ki 12 (12), fly-punch 3 (3), teleport
+22 (22), charge 43 (43), 85 (90) in all; the one vblank overrun is the
+game's own, at fly-punch's last frame and offset 5 on both builds. The
+perf scenes' p90 and lag frames are unchanged.
 
 Cost (per-frame logic of `snes/test/gameplay`'s `punch`, the first
 contact in the scene): the first wind-up frame takes fx's VRAM claim and
@@ -534,11 +634,24 @@ traces are compared by `compare.mjs`:
 Scenarios: `punch`, `combo`, `combo-held`, `ssj-punch`, `ki`, `ki-held`,
 `ki-ssj`, `beam`, `beam-partial`, `wave`, `transform`, `mantis`, `boss-hit`,
 `boss-hit-ssj`, `chip-hit`, `chip-hit-ssj`, `deflect`, `deflect-ssj`,
-`heavy-gi`, `heavy-gi-ssj`, `revert` (Rabite field, Mantis Ant arena, party
-state). `transform` places Goku where the browser's walk ends (x 324) on
-both sides: a lagging field frame walks 2 px less, and on the integration
-build the Rabite field lags enough that the Rabite stayed outside the
-burst. Traces: `.local/snes-test/combat/<scenario>/`.
+`heavy-gi`, `heavy-gi-ssj`, `revert`, `wave-potos` (Rabite field, Mantis
+Ant arena, party state, the Potos approach). `transform` places Goku where
+the browser's walk ends (x 324) on both sides: a lagging field frame walks
+2 px less, and on the integration build the Rabite field lags enough that
+the Rabite stayed outside the burst. Traces:
+`.local/snes-test/combat/<scenario>/`.
+
+**Colour math** (`gameMath`: `punch`, `combo`, `beam`, `wave`, `transform`,
+`wave-potos`): every write to CGWSEL, CGADSUB and COLDATA while the game's
+`$23` has a layer bit must keep the game's blend (CGADSUB `$23`, CGWSEL 2
+or a beam window's `$22`, COLDATA black; `lib.lua` `C.watchMath`). Round
+two's build fails five of them (the flash's `$33` addition). `wave-potos`
+(the maintainer's repro: the full wave at max charge across the Potos
+approach's bushes and grass) also attaches the browser's cut pipeline
+(`engine/native-plants.js`, as the lab does) and compares the picture after
+the wave (`screenCompare` in `run.mjs`): the two map layers (17 cut cells
+on both), the BG1 / BG2 tilemaps (4096 words, 64 of them redrawn) and the
+BG palettes (CGRAM 0-127 less the water's animated entries).
 
 **Virtual targets** (`frieza-punch`, `frieza-ki`, `frieza-ki-held`,
 `frieza-beam`, `frieza-wave`, `frieza-burst`): the battle reference
