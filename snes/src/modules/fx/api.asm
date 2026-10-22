@@ -563,9 +563,10 @@ fx_draw_full:
 	RTL
 
 ; fx_flash: A = frames (1-7) | curve << 8 (fx_flash_amounts: 0 the
-; transformation's warm ramp, 7 frames; 1 the finishing kick's and 2 a
-; killing blow's white impact flash, snes-feel.mjs). A flash with more
-; frames left keeps going. !fx_flash holds frames | curve << 8.
+; transformation's warm ramp, 7 frames; 1 the finishing kick's, 2 a killing
+; blow's, 3 the Kamehameha's and 4 the full wave's white flash,
+; snes-feel.mjs). A flash with more frames left keeps going. !fx_flash
+; holds frames | curve << 8.
 fx_flash:
 	JSR fx_ensure_init
 	PHA
@@ -580,7 +581,7 @@ fx_flash:
 	BEQ +
 	BCS .keep
 +	PLA
-	AND.w #$0300
+	AND.w #$0700
 	ORA.l !fx_s+12
 	STA.l !fx_flash
 	RTL

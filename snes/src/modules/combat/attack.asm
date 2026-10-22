@@ -1272,6 +1272,19 @@ cb_fire_beam:
 	LDX.w #36
 +	TXA
 	JSR cb_quake
+	; SNES-only (snes-feel.mjs): the release flashes the screen white (the
+	; full wave longest) and the camera recoils along the beam with a
+	; kill's shake
+	LDA.w #!COMBAT_FLASH_BEAM
+	LDX !bm_mega-1                ; high byte = bm_mega
+	CPX.w #$0100
+	BCC +
+	LDA.w #!COMBAT_FLASH_WAVE
++	JSR cb_bind_fx_flash
+	LDA !cb_t8
+	AND.w #$0003
+	ORA.w #3<<8
+	JSR cb_bind_fx_kick
 	LDA.w #!AUDIO_SFX_BEAM_ID
 	JSR cb_sfx
 	JSR cb_bind_voice_release
@@ -1481,14 +1494,16 @@ cb_proj_hit:
 	STA !cb_t8
 	LDA !cb_bslot
 	STA !cb_t9
-	; a ki shot also pops with the smallest starburst
+	; a ki shot explodes with a starburst (SNES-only, snes-feel.mjs: the
+	; cross's size, the browser's smallest)
 	STZ !cb_ta
 	LDX !cb_tf
 	LDA.l !ER+!er_kind,X
 	AND.w #$00FF
 	CMP.w #!ERK_KI
 	BNE +
-	INC !cb_ta
+	LDA.w #!COMBAT_STAR_KI
+	STA !cb_ta
 +	JMP cb_effect_hit
 
 ; One ki frame (record cb_tf).

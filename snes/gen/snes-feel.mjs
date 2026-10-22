@@ -27,10 +27,16 @@ export const FEEL={
   // springing back, native-feedback.js KICK_PROFILES). Six steps at most.
   kick:[[2,-1],[4,-3,2,-1],[8,-6,4,-3,2,-1],[11,-8,6,-4,2,-1]],
   // A full-screen white flash (fixed-colour addition, of 31) frame by frame
-  // on the finishing kick and on a killing blow (browser: the kick's warm
-  // 4, 2, 1 brightening).
-  flash:{kick:[12,6,2],kill:[18,9,4]},
+  // on the finishing kick, a killing blow and the Kamehameha's release
+  // (the full Super Saiyan wave's longest; browser: the kick's warm 4, 2, 1
+  // brightening, none for the beam).
+  flash:{kick:[12,6,2],kill:[18,9,4],beam:[14,9,5,2],wave:[24,18,12,8,4,2]},
   // BG quake frames of the finishing kick and of a killing blow (base,
   // Super Saiyan; browser: the kick's 3 / 5).
   quake:{kick:[4,6],kill:[3,5]},
+  // Starburst size of a ki shot's contact (0 ki, 1 jab, 2 cross, 3 kick;
+  // browser 0). (A muzzle burst at the palm, a shockwave for a ki kill and
+  // a starburst on every Kamehameha pulse each cost gameplay misses in held
+  // barrages and beams: the game's palm flash and pulse sparks stay.)
+  kiStar:2,
 };

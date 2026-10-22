@@ -610,7 +610,9 @@ found by a search of the 15 cache entries when their hint misses.
   bits). `fx_flash` takes frames | curve << 8 (`!fx_flash` keeps the curve
   in its high byte): curve 0 is the transformation's warm ramp, 1 and 2 the
   finishing kick's and a kill's white impact flash (12, 6, 2 and 18, 9, 4
-  of 31; `fx_flash_amounts` bit 8 makes `fx_nmi_math` add blue too). A
+  of 31), 3 and 4 the Kamehameha's release and the full Super Saiyan
+  wave's (14, 9, 5, 2 and 24, 18, 12, 8, 4, 2; `fx_flash_amounts` bit 8
+  makes `fx_nmi_math` add blue too). A
   vblank whose only FX work is the colour math and / or a camera kick takes
   the light path (`!fx_nmiwork` = `$C000`, set after `!fx_busy` so its bit
   15 never reads as fx_frame's held-regions mark): the scroll and the four

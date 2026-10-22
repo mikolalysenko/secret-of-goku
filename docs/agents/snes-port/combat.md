@@ -163,6 +163,8 @@ unchanged.
 | Full-screen flash (white, fx `fx_flash` curves 1-2) | the finishing kick 12, 6, 2; a kill 18, 9, 4 (of 31) | the kick's warm 4, 2, 1 |
 | BG quake | the kick 4 (6), a kill 3 (5) | the kick 3 (5) |
 | Launch over 12 frames | 96 px (136), peak 30 px; the Kamehameha blows targets 148 (196); the transformation's burst 96 (136) | 56 / 88, peak 20; beams as launches |
+| The Kamehameha's release | a white flash (14, 9, 5, 2; the full Super Saiyan wave 24, 18, 12, 8, 4, 2) and the kill's camera shake along the beam, on top of the quake | the quake |
+| A ki shot's contact | the cross's starburst | the smallest |
 | A punch pressed after the combo buffer opens (age 9, 4) | starts at once | the next frame |
 | The punch's map strike (`destroy_hit`) and a miss's native B pulse | the next step (`cb_punch_map`, the hit stop's first frame) | the strike's frame |
 
@@ -179,10 +181,19 @@ the frame is already late (fx.md). Gameplay misses summed over twelve
 input-phase offsets (the suite's start delayed 0-11 frames), against the
 same twelve on the step-1 build: punch 15 (19), ki 10 (10), fly 5 (5),
 fly-ki 25 (25), fly-punch 23 (22; vblank overruns 1, 3 before), teleport
-54 (54), charge 122 (146); phase 0 is unchanged (charge 13, teleport 3,
+54 (54), charge 125 (146; 122 before the release's flash and shake);
+phase 0 is unchanged (charge 13, teleport 3,
 fly-ki 2, fly 1, fly-punch 1, the rest 0). The grass cases fail their own
 grass/aura checks at most offsets on both builds; where they pass (0 and
 1) both are 0.
+
+Tried and left out, by the same sums: a muzzle burst at the palm for every
+ki shot (ki 37 and fly-ki 42 against 10 and 25: each shot's starburst
+churned fx's cache in a held barrage; the game's two-frame palm flash
+stays), a shockwave for a ki shot that kills (ki 23), a starburst on every
+Kamehameha contact pulse (charge +5 to +7; the pulse sparks stay), a
+one-frame base startup for the punch (punch +1 to +3 over six offsets) and
+for the ki throw (ki +5): the startups stay the browser's.
 
 Cost (per-frame logic of `snes/test/gameplay`'s `punch`, the first
 contact in the scene): the first wind-up frame takes fx's VRAM claim and

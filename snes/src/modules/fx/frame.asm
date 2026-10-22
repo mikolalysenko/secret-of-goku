@@ -1005,7 +1005,7 @@ fx_finish:
 	LDA.l !fx_flash
 	BEQ .noflash
 	XBA                          ; (curve * 8 + frames) * 2
-	AND.w #$0003
+	AND.w #$0007
 	ASL
 	ASL
 	ASL
