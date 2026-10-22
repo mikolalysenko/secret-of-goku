@@ -211,3 +211,30 @@ ending_cgram_upload:
 	PLB
 	SEC
 	RTL
+
+; C0:C168, the field NMI's register restore, after its final INIDISP write
+; (C0:C15F: the game's $E6, or Frieza's Tree ceiling,
+; frieza_field_brightness) and combat's vblank hook (C0:C164): the
+; displayed brightness ceiling the last field frame published
+; (brightness_publish; lag vblanks keep it with the picture on screen).
+; Native forced blank and darker native fades win. The game's fade shadow
+; $E6 is left alone, so its fade engine still finishes door and menu fades
+; under a black finale picture. Every field NMI ends through here.
+; M8, D = 0 (the NMI's own), DB = 0 or $80; replaced REP #$30 / PLB / PLD.
+%orig4($C0C168, $2BAB30C2)
+%orig4($C0C16C, $4068FA7A)            ; PLY / PLX / PLA / RTI
+%hijack($C0C168, ending_field_brightness, 4, ending)
+ending_field_brightness:
+	LDA.l !ending_showbright
+	BPL .native                  ; 0: no ceiling
+	AND.b #$0F
+	BIT $E6
+	BMI .native                  ; native forced blank
+	CMP $E6
+	BCS .native                  ; the native fade is at least as dark
+	STA.l $002100
+.native
+	REP #$30
+	PLB
+	PLD
+	JML $80C16C

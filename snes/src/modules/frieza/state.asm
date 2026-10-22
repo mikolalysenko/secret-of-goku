@@ -949,6 +949,11 @@ frieza_q_trial_won:
 frieza_q_popoi_member:
 	LDA.w #!FZFL_POPOI
 	BRA fz_q_flag
+; Dryad's eighth Ball (frieza.js eighth: event AF until the revive, C9).
+; Not a route query: the ending's vista calls it directly (vista_eighth).
+frieza_q_eighth:
+	LDA.w #!FZFL_EIGHTH
+	BRA fz_q_flag
 frieza_q_primm_member:
 	LDA.w #!FZFL_PRIMM
 fz_q_flag:

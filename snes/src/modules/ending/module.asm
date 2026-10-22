@@ -49,6 +49,10 @@
 !ending_cut_level = !RAM_ORBIT+$B1 ; byte  fade level in CGRAM ($FF none)
 !ending_cut_budget = !RAM_ORBIT+$B2 ; word DMA bytes left in this vblank
 !ending_cut_globe = !RAM_ORBIT+$B4 ; word orientation latched from the shot's target
+; The displayed brightness ceiling (brightness_publish): 0 none, $80 | level
+; (0-15). Applied by ending_field_brightness (C0:C168) after the field NMI's
+; final INIDISP write; zero after module WRAM is cleared at title entry.
+!ending_showbright = !RAM_ORBIT+$B6 ; byte
 
 ; Phases (match the browser's state.phase).
 !EP_TRANSITION = $01   ; good: whole-screen fade to black over 48 frames, then black
@@ -68,8 +72,8 @@
 !EP_MAX        = $0E
 
 !EF_BAD     = $0001    ; bad outcome (doomed planet)
-!EF_EIGHTH  = $0002    ; Dryad's eighth Ball beside the seven
-!EF_SSJ     = $0004    ; Goku stays Super Saiyan (bad ending: permanent form)
+!EF_EIGHTH  = $0002    ; Dryad's eighth Ball beside the seven (forced; else Frieza's live flag)
+!EF_SSJ     = $0004    ; Goku stays Super Saiyan (bad ending: permanent form, set at 42F)
 !EF_GOLD    = $0008    ; death started in Super Saiyan (revert cue at 18)
 !EF_ORBIT   = $0010    ; death in orbit: the orbit module draws until black
 !EF_NIGHT   = $0020    ; Frieza's crisis was active: the doomed globe shows its night side
@@ -601,7 +605,10 @@ ending_debug_explode:
 
 ; Entering 42F: endingResult() picks the outcome; Frieza's five-minute
 ; crisis puts the doomed globe on its night side (planet-view crisisActive).
-; Presentation bits other modules set beforehand (!EF_SSJ, !EF_EIGHTH) stay.
+; A bad outcome keeps the permanent Super Saiyan form in the escape and on
+; King Kai's planet (planet-view.js mod.frieza.permanent; core's
+; !persist_ssj_lock follows Frieza's flag, and no bad script changes it).
+; Bits set beforehand (!EF_SSJ, !EF_EIGHTH: the tests' cues) stay.
 ending_hook_begin:
 	REP #$30
 	LDA.l !ending_flags
@@ -618,7 +625,13 @@ ending_hook_begin:
 	LDA.l !ending_tmp
 	ORA.w #!EF_BAD
 	STA.l !ending_tmp
-	LDA.w #!STORY_Q_FRIEZA_CRISIS
+	LDA.l !persist_ssj_lock
+	AND.w #$00FF
+	BEQ +
+	LDA.l !ending_tmp
+	ORA.w #!EF_SSJ
+	STA.l !ending_tmp
++	LDA.w #!STORY_Q_FRIEZA_CRISIS
 	JSR story_query_call
 	BEQ .begin
 	LDA.l !ending_tmp
@@ -848,7 +861,7 @@ ending_frame:
 	JSR cut_build
 	JSR palette_build
 	JSR pal_commit
-	JSR brightness_apply
+	JSR brightness_publish
 	JSR suppress_native
 	JSR oam_finish
 	JSR goku_quiet
@@ -1109,6 +1122,7 @@ release_screen:
 	SEP #$20
 	LDA.b #$00
 	STA.l !ending_phase
+	STA.l !ending_showbright      ; no ceiling on the next picture
 	REP #$30
 	RTS
 
@@ -1129,6 +1143,7 @@ release_common:
 	JSR end_overlay
 	SEP #$20
 	LDA.b #$00
+	STA.l !ending_showbright      ; the released picture has no ceiling
 	STA.w !s_loading
 	STA.w !s_ldvis
 	STA.w !s_palcount

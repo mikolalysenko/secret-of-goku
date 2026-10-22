@@ -377,7 +377,7 @@ const cases={
   async readoutBudget(){
     const symbols=Object.fromEntries(readFileSync(testRom.replace(/\.sfc$/,'.sym'),'utf8').split('\n')
       .map(l=>l.match(/^([0-9A-F]{2}):([0-9A-F]{4}) (\S+)/)).filter(Boolean).map(m=>[m[3],parseInt(m[1]+m[2],16)]));
-    const SYM=Object.fromEntries(["ui_sc_draw_frame","destroy_late_frame","ui_sc_draw_frame_prepared","ui_sc_analyzer_hit"].map(k=>[k,symbols[k]]));
+    const SYM=Object.fromEntries(["ui_sc_draw_frame","destroy_late_frame","ui_sc_draw_frame_prepared","ui_sc_lite_tail","ui_sc_lite_go","ui_sc_analyzer_hit"].map(k=>[k,symbols[k]]));
     const r=await mesenCase('readout-budget',{bundle:'animation-audit__native__rabite-field-b',prelude:{SYM},test:'readout-budget',extra:[analyzerLua]});
     const fails=resultFails(r.results);if(r.code!==0||!r.results||r.results.error)fails.push(`mesen: ${r.results?.error??r.output.slice(-400)}`);
     const q=r.results?.budget??{};
@@ -388,7 +388,10 @@ const cases={
       if(on.overruns)fails.push(`${mode}: readout work crossed vblank`);
       if(on.maxSprites>32||on.maxSlivers>34)fails.push(`${mode}: OBJ overflow`);
     }
-    if(!(q.idle_on?.maxActors>=5&&q.idle_on?.visible>=60))fails.push('crowd readouts did not achieve useful coverage');
+    // The lite pass keeps the crowd's readings up when the full pass has no
+    // time (before it: 132 and 2 frames of 200 showed any, 57 all five).
+    if(!(q.idle_on?.maxActors>=5&&q.idle_on?.visible>=170&&q.idle_on?.full>=60))fails.push('crowd readouts did not achieve useful coverage');
+    if(!(q.charge_on?.visible>=40))fails.push('crowd readouts vanished while charging');
     report('readoutBudget',!fails.length,[...fails,JSON.stringify(q)]);
   },
 

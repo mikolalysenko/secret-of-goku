@@ -62,7 +62,10 @@ emu.addMemoryCallback(function()
       for yy=math.max(0,y),math.min(223,y+15) do auraRows[yy]=true end
       local p=(a>>1)&7
       local class=H.r8(0x7ED811)==0 and 0 or 2
-      for c=2,31 do if H.cgram(256+p*32+c)~=H.r8(SYM.fx_class_palettes+class*32+c) then palette=false;break end end
+      -- A class with a spare tail (colours 14-15 unused by its cells) may
+      -- share it with the Analyzer readouts (ui_sc_palette).
+      local last=(SYM.fx_overlay_spare and H.r8(SYM.fx_overlay_spare+class)~=0) and 27 or 31
+      for c=2,last do if H.cgram(256+p*32+c)~=H.r8(SYM.fx_class_palettes+class*32+c) then palette=false;break end end
     end
   end
   -- Native HUD/boss rows away from the flame are not an aura overflow.

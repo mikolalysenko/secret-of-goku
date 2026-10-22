@@ -4,6 +4,124 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: a body's hold made in its note (2026-10-21)
+
+- A distant body blocked on a beam's rows, or waiting there for the star
+  lists, had its hold made through a far call (`sl_note`, then
+  `sl_yield`) every frame it yielded, about 1.3 lines a body; only a
+  blocked body's aged hold had a shortcut.
+- `scdraw.asm` `sc_note` now makes that hold itself with `sl_yield`'s
+  formula, and its shortcut for a blocked body is exact: it applies
+  while the hold already yields to both groups (the old one could miss
+  a group that came on during the block).
+- In the clash's launches, where all three bodies yield with young
+  holds, the drawing is 2-3 lines shorter a frame for some 20 frames;
+  elsewhere the same.
+- The check build (`-DHELD_CHECK`, counters at `$32:7256`) has
+  `sl_note` make every such hold as well and compares the two: 1,446
+  yields in the `clash`, 45 in the `fight`, all equal.
+- Repeated pictures: `clash` 38 (39 before, main 34: the launches 4,
+  the recoil 1, the win 33); `fight` 9.
+
+## Orbit: no stars' cull in the clash (2026-10-21)
+
+- The stars on the rows a beam newly holds are no longer hidden at once
+  in the clash. There the depths leave out the stars well inside the
+  rays, and with a group's limits only growing the lists keep up: the
+  `clash` test's rays lose no slivers without the cull either.
+- The two culls cost each launch's first two frames 12 lines each (the
+  limits' remake and the cull: 41 and 54 lines of stars there, main 19
+  and 28).
+- The `fight` keeps its cull: without it the beams lose 530 slivers
+  instead of 234.
+- Repeated pictures: `clash` 39 (41 before, main 34: the launches 5, the
+  struggle 1, the recoil 1, the win 32); `fight` 9.
+
+## Orbit: a beam run built again keeps its chains (2026-10-21)
+
+- A beam group's cached OAM run is rebuilt whenever its origin moves. In
+  the clash Frieza's ray moves 2 px every step of the launch and the
+  struggle, and each rebuild prepared every chain afresh (its slot's
+  picture, its tile word, cell 0's place: about 1.7 lines a chain) before
+  placing the cells.
+- A rebuild whose key, chains, flips, palette and slots with a picture
+  are the cached run's now takes its chains as last prepared
+  (`beamrun.asm`, kept in `BC_PREP` at `$32:7280`): their tile words and
+  cell 0's place less the origin, and the step.
+- `clash` test: 336 of its 426 builds take them, 2.5 lines instead of
+  10.2; a build costs 13.0 lines on average instead of 17.5.
+- The check build (`-DBEAM_PREP_CHECK`) builds every such run a second
+  time from chains prepared afresh and compares the two runs (bytes,
+  lengths per cell index, entries, high-table bytes): all 310 equal in the
+  `clash`; the `fight` takes none (its rebuilds add slots or chains).
+- Repeated pictures unchanged: `fight` 9, `clash` 41 (the launches 8, the
+  struggle none; the launches' frames turn on the limits and the culls,
+  which this leaves alone).
+
+## SNES ending: the good ending no longer stops on a black screen after the Mana Beast (2026-10-21)
+
+- Ending (74c88a2, 6b232f7; merged in b07ca36). The maintainer reported:
+  "after you kill the mana beast you get a black screen".
+  - Cause: the good ending held its 48-frame fade to black by writing a
+    ceiling into the game's brightness `$E6` every frame. The script then
+    takes door 2F to map 246. The game's fade engine (`C0:8B5E`) raises
+    `$E6` a step at a time and clears its running flag (`$E2` bit 0) only
+    on reaching the target, and the ending reset `$E6` to 0 after each
+    step. The script waits on that flag (`C1:E8D3`), so it never reached
+    `CALL 6B` (Shenron's summon).
+  - The black screen came about 50 frames after 42F, permanently. It
+    affected every route into the good ending; the bad endings and the
+    finale death were fine.
+  - The fix: the ceiling is published in `!ending_showbright` and applied
+    to INIDISP at the field NMI's register restore (`C0:C168`, after
+    frieza's `C0:C15F` and combat's `C0:C164`). `$E6` is never touched.
+    The reunion hold and the death fade use the same mechanism. The
+    reunion's door 3FF now fades at its natural pace (97 frames; the
+    browser takes 98).
+  - Also fixed: Dryad's eighth Ball now shows in the Shenron scene until
+    event C9, and the bad ending keeps the permanent Super Saiyan form in
+    the escape and on King Kai's planet.
+  - New end-to-end ending cases (`finale`, `finale-frieza`,
+    `finale-party`). They advance the story with B only, from the Beast's
+    kill or Frieza's defeat to "THE END": 4,170 frames after 42F, the
+    browser's exact count. They also check the phase and event order, that
+    no black stretch lasts over 300 frames, and the end-card pictures.
+    `loads` checks that `$E6` is left alone.
+- Validation on b07ca36 under both probes: all 20 suites pass. Gameplay
+  `charge` misses 16 per 240 (13 before). The new NMI step costs about 0.07
+  line a vblank, and that case's frames sit within a line of the deadline.
+  The performance pass is cutting that case. The others are unchanged.
+
+## SNES integration: Analyzer readings in crowded frames, cheaper orbit beams (2026-10-21)
+
+- UI, the Analyzer lite pass (ac83439, 1389c70; merged in e908996):
+  - When a frame is too late for the full readout pass, a lite pass draws
+    the readings later in the frame. It reuses the last full pass's
+    sprite-line counts and palette.
+  - Coverage: 9 → 112 of 169 frames in the crowded focus scene, and
+    158 → 194 of 249 after a real cast.
+  - The pass runs through a return-address redirect from the full pass
+    (`ui_sc_lite_tail`), so frames without a late reading run no extra
+    instruction. As first written, the end-of-frame call tipped gameplay
+    `charge` to 16 and the orbit montage to 2 lags.
+- Orbit (80f56a1, 898cc07, 65f58d3; merged in 19553b5):
+  - Rebuilt beam runs keep their prepared chains (-DBEAM_PREP_CHECK
+    proves them equal).
+  - The clash no longer culls stars.
+  - A blocked body makes its hold in its note.
+  - Clash: 41 → 38 lags on the default build. The fight stays at 9.
+- Direction from the maintainer after 0.2.0:
+  - The orbit debris (stage B) is cancelled, and the remaining accepted
+    differences stay.
+  - Priorities are performance, SNES combat feel and audio. The combat
+    sound and feel may now diverge from the PC edition ("make the combat
+    intensely powerful").
+  - The maintainer reports flicker and vanishing sprites in the orbit on
+    0.2.0; the orbit agent is on it first.
+- Validation on 19553b5 under both probes: all 20 suites pass. Gameplay
+  misses unchanged (charge 13, teleport 3, flying ki 2, flight 1, flying
+  punches 1, the rest 0).
+
 ## SNES release: 0.2.0 (2026-10-21)
 
 - Published as a GitHub release, not a pre-release:
