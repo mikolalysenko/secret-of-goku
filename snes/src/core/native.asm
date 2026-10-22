@@ -1350,3 +1350,18 @@ core_native_high_bit:
 			db 0
 		endif
 	endfor
+
+; C0:BCCC (the field frame's OAM reset, from B0A0) clears the 32-byte high
+; table with STZ $0800,X for X = $0200-$021E, two bytes a pass, in the slow
+; bank $00. The same stores from FastROM, unrolled; the loop's exit state
+; stays: X = $0220, carry and zero set, negative clear, V and A untouched.
+; M16/X16 (BCCC's REP #$30); the caller's DB, as the absolute stores use.
+if not(defined("CORE_NATIVE_HICLEAR_SLOW"))
+core_native_hiclear:
+	for word = 0..16
+		STZ.w $0A00+(!word*2)
+	endfor
+	LDX.w #$0220
+	CPX.w #$0220
+	RTL
+endif

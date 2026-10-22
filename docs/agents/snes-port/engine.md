@@ -103,6 +103,14 @@ dialogue, menus, the name editor and world steering all see it.
   Fortress boss 488 34/38; 63 in the busiest ending montage state.
 - Limits: 128 sprites; 32 sprites and 34 8-pixel slivers per scanline (a
   16×16 sprite is 2 slivers, 32×32 is 4); later slots drop out first.
+- `C0:BCCC`'s high-table clear (`LDX #$0200` / `STZ $0800,X` / `INX` /
+  `INX` / `CPX #$0220` / `BCC`) ran sixteen passes in the slow bank `$00`
+  every field frame. `core_native_hiclear` makes the same sixteen word
+  stores unrolled from FastROM and leaves the loop's exit state (X = `$0220`,
+  C and Z set, N clear); the call site `C0:BCD9` is `JSL` + `BRA $BCE6`.
+  The `B0A0` step falls 1.73 → 0.79 scanlines. `CORE_NATIVE_HICLEAR_SLOW`
+  restores the loop; `hiclear.test.mjs` compares retail and patched
+  `C0:BCCC` from random RAM, flags and data banks.
 
 **Slots modules can count on** (core OAM API): field: everything after the
 native sprites — at least 64 in every measured scene (worst native count 63),

@@ -215,6 +215,25 @@ if not(defined("CORE_NATIVE_CONTACT_EMPTY_SLOW"))
 %hijack($C1D14A, core_native_contact_empty, 5, core)
 endif
 
+; The field OAM reset's high-table clear (C0:BCD9-BCE5: LDX #$0200 /
+; STZ $0800,X / INX / INX / CPX #$0220 / BCC) runs unrolled from FastROM.
+; Nothing else branches into these bytes; BCE6 (SEP #$20) continues.
+if not(defined("CORE_NATIVE_HICLEAR_SLOW"))
+%orig4($C0BCD9, $9E0200A2)
+%orig4($C0BCDD, $E8E80800)
+%orig4($C0BCE1, $900220E0)
+%orig1($C0BCE5, $F6)
+%orig2($C0BCE6, $20E2)
+%patch($C0BCD9, 6, core)
+pushpc
+org $C0BCD9
+	JSL core_native_hiclear
+	BRA core_native_hiclear_done
+org $C0BCE6
+core_native_hiclear_done:
+pullpc
+endif
+
 ; Field HP-number refreshes must not wait for vblank inside status/AI.
 %orig4($C1E326, $A98B20E2)
 %orig1($C1E32A, $00)
