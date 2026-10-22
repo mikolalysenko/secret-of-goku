@@ -32,6 +32,33 @@
 ; ---------------------------------------------------------------------------
 ; modules_field_frame. M16/X16, DB=$7E, D=0.
 title_field_frame:
+if not(defined("TITLE_IDLE_SLOW"))
+	; Before the sword (or after a load: the phase is not saved) or after
+	; the arrival, another uninterrupted frame on the same map, not map
+	; 128: title_arrival_state does nothing, and title_arrival_draw has
+	; already invalidated our cells and released the hero and the VRAM pools
+	; on this map (nothing sets them off map 128). Only the tick it compares
+	; next frame is left to record.
+	SEP #$20
+	LDA.w !title_phase&$FFFF
+	BEQ +                        ; !TITLE_PH_PROLOGUE
+	CMP.b #!TITLE_PH_COMPLETE
++	REP #$20
+	BNE .full
+	LDA $DC
+	CMP.w #!TITLE_MAP
+	BEQ .full
+	CMP.w !title_last_map&$FFFF
+	BNE .full
+	LDA.w !core_tick&$FFFF
+	DEC
+	CMP.w !title_last_tick&$FFFF
+	BNE .full
+	INC
+	STA.w !title_last_tick&$FFFF
+	RTL
+.full
+endif
 	JSR title_arrival_state
 	JSR title_arrival_draw
 	REP #$30
