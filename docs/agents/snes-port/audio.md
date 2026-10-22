@@ -1,5 +1,215 @@
 # Audio module: native SNES effects and music
 
+## Round nine: louder hits, a sharper ki and the springy activation
+
+This supersedes round eight's contact, ki, ki-contact, charge-start and
+mix descriptions below; the swings and the Kamehameha's wave keep their
+round-eight sound. The maintainer heard round eight's punch, kick and ki
+contacts as soft, wanted a sharper, more PC-like ki shot, the PC's springy,
+reverberant activation when the Kamehameha starts, and the new sounds
+louder in the mix overall. Round eight's contacts peaked near −2 dBFS but
+put most of their energy below 200 Hz, close to inaudible on laptop
+speakers; their crack lasted about 30 ms.
+
+**Target.** Each cue's loudness against the field song must match or exceed
+the PC edition's in the same situation. Loudness is BS.1770 (K-weighted)
+maximum momentary loudness of the cue against the field song's gated
+integrated loudness, plus a small-speaker check (both high-passed at
+200 Hz) and the 0.5–5 kHz band. The PC reference renders `engine/ki-sound.js`'s
+own chain (cue gain, .55 master, its DynamicsCompressor) in Chromium,
+against the field song through an echo-less DSP at the browser's .4
+native-music gain (`engine/audio-output.js`). The PC therefore puts its
+effects 9–18 LU over its music; round eight sat 1–14 LU over it.
+
+| Cue | Round nine |
+| --- | --- |
+| HIT `$E7` | A noise crunch on the shared clock 29 (10.7 kHz): 12 ticks full, then a 12-tick fade (~230 ms), over the sampled rumble at 8 kHz falling an octave; the three-pitch rotation is unchanged |
+| KICK `$E8` / SSJ `$F1` | One shared crunch, 24 ticks full and a 16-tick fade (~380 ms), over the rumble an octave lower falling an octave; the SSJ body is louder and longer |
+| Swings `$E5/$E6` | Unchanged (`$E6` moved to the bank, byte-identical) |
+| Ki `$DE` | A pew on boot instrument 5 (≈3.3 kHz normal, 3.7 kHz SSJ; the PC blast's tone is 4.3 kHz) falling seven semitones in 6 ticks, then the arc's crackle at octave 6 falling an octave; one voice, ~250 ms, no DSP noise; normal volume `$EF` (was `$DF`), SSJ `$FF` |
+| Ki contact (IMPACT) | New, in the empty retail row `$7E`: a falling rumble boom (4 ticks), then the shared crunch (8 ticks and a 24-tick fade), one voice. Retail `$38` is unchanged for any other caller |
+| Kamehameha start | The charge bed's first command also starts the spring (`$7D`): instrument 3 (≈1.04 kHz, its second partial 7 dB down) climbs 3 semitones every 87 ms and drops back on ties, so no key-off gaps, with the song echo. It is full for 0.67 s and fades over 0.43 s. PC charge.wav's opening is a band sawtoothing 1.02→1.18 kHz every 88 ms |
+| CHARGED `$DF` | A bright shimmer, after the PC's 0.28 s sparkle: the arc an octave above its wave rate rising seven semitones, with the song echo (was round eight's hum blip) |
+| Wave `$EA/$F0` | Round eight's arc and its own deep thump, byte-for-byte the round-eight sound; the release ducks the song |
+| Charge / aura beds | The hum loops 32 ms (same 62.5/93.75/187.5 Hz tones); bed scale 128 (was 140, −0.8 dB) |
+
+The spring's reverberation is the song's own echo (EON on its voice). In the
+field song (preset 10: EDL 3, EVOL 64, EFB 0) that is one 48 ms repeat at
+half level, +1.2 LU; songs with echo feedback ring longer. The fading
+chirps themselves supply most of the springy decay.
+
+"Activation" is read as charge.wav's opening, the PC's sound when the
+Kamehameha starts: the default plays the spring there. The candidate build
+`AUDIO_ACTIVATION=charged` instead plays the spring at full charge (CHARGED)
+and nothing new at the start; both are in the listening package.
+
+### Mix
+
+- **Music −3.0 dB.** The song start and fade commands scale volume nibbles by
+  `$0C` instead of `$11` (`$0DC3`/`$1018` operands; songs reach `$B4`).
+  Effects keep their own `$90` gain path, so every effect gains 3 dB on the
+  music. Arrangements are trimmed alike.
+- **Release duck.** The wave command multiplies the song volume by `$90/256`
+  (−5.0 dB) and calls the driver's own fade setup (`$1020`) to restore it
+  linearly over 64 steps of 31.5 ms (2.0 s). The fade's fraction byte is
+  seeded with `$FF`: the 8.8 step truncates, and repeated releases would
+  otherwise drift the music down a step each. It is skipped while any song
+  fade runs (a CPU or song-change fade wins); port 1 is never written.
+- **Under the duck** (any song fade), contacts, ki launches and ki contacts
+  take half gain, as the PC's compressor tames everything under its beam;
+  the wave's echo tail keeps its headroom. A ki contact still sounding then
+  drops the next request (as `p2` low nibble 0) instead of restarting at
+  60 Hz when the wave strikes every frame (the PC skips impacts within two
+  frames).
+- **Contacts supersede.** A contact releases the swings and any HIT, KICK or
+  SSJ-kick voices before allocation, so at most one contact (two voices)
+  sounds and a finisher's tail never halves the next blow. The occupancy
+  rule is unchanged (full up to two effect voices, half at three/four,
+  quarter above). With supersession and the one-voice ki contact, combos
+  and volleys stay at two voices and full gain.
+- **Spring gate.** Only a bed rising from rest (first level ≤ `$D0`: charge,
+  focus, transformation, departure, Frieza's charge) starts the spring; a
+  bed started at full level is not an activation and keeps its headroom.
+
+No EDL, EVOL, EFB or FIR changes; the echo buffer and ARAM layout outside
+the reservation are untouched.
+
+### Loudness against the field song
+
+`node snes/test/audio/report9.mjs --before=main.sfc` (APU renders on each
+ROM's own SPC image; PC chain in Chromium). LU = cue max momentary minus the
+song's integrated loudness (PC −30.54 LUFS, main −21.72, round nine
+−24.96). "Ducked" counts the song-volume trace of the release duck over the
+same windows. Release: loudest window starting 0–0.2 s into the wave;
+sustain: windows starting 0.4–0.8 s. The compact wave is the fallback;
+the extended one is the optional bank.
+
+| Cue | PC LU | Main LU | Round 9 LU | PC small | Main small | Round 9 small | PC band | Main band | Round 9 band |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Punch hit (PC hit-1 / mean of 3) | +14.7 / +11.8 | +5.4 | +14.8 | +15.7 / +12.6 | +6.0 | +15.9 | +17.0 / +13.9 | +2.0 | +15.6 |
+| Kick | +16.7 | +5.7 | +17.4 | +17.5 | +6.1 | +18.4 | +18.4 | +1.6 | +18.1 |
+| SSJ kick | +16.7 | +6.2 | +17.6 | +17.5 | +6.5 | +18.6 | +18.4 | +2.3 | +18.3 |
+| Ki fire | +9.7 | +2.8 | +10.6 | +10.8 | +2.5 | +11.6 | +11.9 | +3.7 | +11.4 |
+| SSJ ki fire | +9.7 | +4.2 | +11.3 | +10.8 | +4.1 | +12.3 | +11.9 | +5.5 | +11.9 |
+| Ki contact | +10.9 | +0.6 | +14.4 | +11.7 | +1.5 | +15.4 | +13.5 | +1.5 | +15.2 |
+| Kamehameha start | +10.0 | +4.8 | +13.4 | +11.2 | −5.3 | +14.0 | +14.0 | −10.7 | +17.4 |
+| SSJ Kamehameha start | +12.6 | +7.9 | +14.0 | +13.7 | +3.1 | +14.1 | +16.2 | +3.8 | +17.5 |
+| Charge full (CHARGED) | +4.8 | −10.2 | +6.4 | +5.9 | −20.2 | +7.4 | +5.7 | −25.3 | +6.8 |
+| Kamehameha release (compact) | +17.2 | +12.9 | +16.1 (+20.5 ducked) | +18.2 | +12.7 | +15.9 (+20.2 ducked) | +21.0 | +14.5 | +17.7 |
+| Kamehameha release (extended) | +17.2 | +13.6 | +16.8 (+21.2 ducked) | +18.2 | +13.6 | +16.9 (+21.2 ducked) | +21.0 | +15.2 | +18.4 |
+| Kamehameha sustain (compact) | +16.6 | +11.8 | +15.1 (+17.7 ducked) | +17.7 | +11.8 | +15.0 (+17.7 ducked) | — | — | — |
+| Kamehameha sustain (extended) | +16.6 | +12.7 | +15.9 (+18.5 ducked) | +17.7 | +12.8 | +16.1 (+18.7 ducked) | — | — | — |
+
+Every cue meets or exceeds the PC's loudness and small-speaker ratios; the
+wave does so with its duck. The PC's three punch clips differ by 6 LU
+(hit-1 +14.7, hit-2 +9.0, hit-3 +8.7); round nine's pitch variants measure
++14.8 / +15.4 / +15.5. Two band figures stay under the PC: HIT (+15.6
+against hit-1's +17.0, over the three-clip mean's +13.9) and the normal ki
+(+11.4 against +11.9). The cartridge's crunch keeps energy above 5 kHz that
+the PC's 16 kHz clips cannot carry, so less of it falls in the band.
+
+**Headroom.** Zero clipped samples in every test and capture. Worst peaks
+in the round-eight stress mixes (APU, battle/full-power songs): contacts
+with beams and beds 27,907 (round eight 29,079), volleys and combos 29,338
+(28,648), repeated impacts beside every arrangement 27,953 (26,835).
+
+### Bytes
+
+| Region | Main | Round nine | Change |
+| --- | ---: | ---: | --- |
+| Permanent bank BRR | 1,818 | 1,593 | Hum 297 → 72 (32 ms loop from block 0) |
+| Permanent bank sequences | 134 | 242 | +E6 20 (moved), ki contact 19, spring 37, wave thumps 14 + 14, CHARGED +4 |
+| Permanent bank code | 349 | 438 | Spring launch and `bed_launch` 21, gain classes 8, `gain_ki` 4, SSJ-kick release 14, duck 28, ki-contact drop 13, ki form volume 1 |
+| Permanent bank total | 2,301 / 2,304 | **2,273 / 2,304** | 31 free (was 3) |
+| Shared sequence holes | 270 / 283 | 269 / 283 | −E6 20, −crack 11, +HIT/KICK crunches 22, DE +8 |
+| Retail table rows `$7D/$7E` | 0 | 8 | Previously empty: no event, call literal or sequence uses them |
+| Metadata `$1868–$187B` | 16 | 20 | Release loop: re-checks a two-voice contact, jumps on to F1 |
+| Driver operands `$0DC4`, `$1019` | — | 2 | Music step `$11` → `$0C` |
+| Optional bank | 7,884 / 7,853 | 7,884 / 7,853 | Data identical; the activation table now points the wave at its own thumps |
+
+`-DAUDIO_CUSTOM_SAMPLES=0` builds a ROM byte-identical to main's same
+option (`a9eaca0d…`): no custom segment, map entry or music trim applies.
+The `AUDIO_DESIGN=0/2` alternates still build (their contacts keep the
+half-dB reserve); round nine's loudness tests apply to the default.
+
+### CPU
+
+All changes are SPC-side; the 65816 dispatch path is unchanged. The SPC
+spends more cycles starting a contact because it now supersedes the previous
+one (APU harness, SPC cycles from command release to the main loop): HIT
+1,579 → 2,273, HIT after a swing 1,601 → 2,517, KICK after HIT
+1,648 → 2,806 (≈2.7 ms), HIT after an SSJ kick 1,671 → 2,869, the ki launch
+829 → 837, the wave 1,534 → 1,658, a bed start with its spring
+1,109 → 1,961; the ki contact costs 768 against retail `$38`'s 1,064. The
+CPU's asynchronous effect write never waits for it (one effect per frame).
+The SPC stack low-water mark moves from `$1F6` to `$1F5`.
+
+`node snes/test/gameplay/run.mjs --offsets=0,1,2,3,4,5,6,7,8,9 --jobs=2`,
+CPU misses summed over the ten start-phase offsets, main and round nine run
+one after the other on the same machine:
+
+| Case | Main | Round nine |
+| --- | ---: | ---: |
+| solo-punch | 0 | 0 |
+| solo-ki | 0 | 0 |
+| walk | 0 | 0 |
+| punch | 6 | 6 |
+| ki | 3 | 3 |
+| fly | 1 | 1 |
+| fly-ki | 12 | 12 |
+| fly-punch | 3 | 3 |
+| water-flight | 0 | 0 |
+| teleport | 22 | 22 |
+| charge | 43 | 43 |
+| focus-grass | 0 | 0 |
+| transform-grass | 0 | 0 |
+| **All cases** | **90** | **90** |
+
+Every offset of every case matches main exactly. Both runs report one
+failure, `fly-punch+5`: a single vblank overrun with zero CPU misses, on
+main as well (not audio).
+
+### Listening package and validation
+
+The listening package is `.local/snes-test/audio/round9/`: 107 WAVs, with
+`manifest.json` holding every file's one-line description and a cue-by-cue
+`guide` (see [audio-samples.md](audio-samples.md#listening-package)). Main,
+round nine and the `charged` candidate each have every cue over the field
+song and alone, plus real Rabite-field takes. The PC files are its clips and
+its chain. All 78 cartridge captures have zero clipped samples.
+
+Validation on the strict shipping build
+(`d1c4f64461abe103dba973525ce68cbb802afd7f0bc38fef075e7b5b2652b1c9`):
+
+- 59 audio unit/SPC tests. Round nine's assert the PC loudness ratios, the
+  spring (gapless, echoed, rising chirps, gated), the duck (exact restore,
+  no drift, a running fade wins), supersession, voices and headroom.
+- All 15 cartridge suite sections: unit, weapon-charge (34 phases), render,
+  prefetch, loads, loads-boot, native, music, rare, rare-control, rare-boot,
+  stream, songs, arrival, imported.
+- `npm test`, 385 tests.
+- Effect dispatch at most **1.348974 scanlines** (`native`; round eight
+  1.348974).
+- `-DAUDIO_CUSTOM_SAMPLES=0` byte-identical to main's; `AUDIO_DESIGN=0/2`
+  and `AUDIO_ACTIVATION=charged` build.
+
+Logs are in `.local/snes-test/audio/round9/logs/`; the tables in
+`.local/snes-test/audio/round9/report/`.
+
+### File map
+
+| Files | Purpose |
+| --- | --- |
+| `snes/gen/audio-resident7.mjs` | Round-nine tracks, ids, mix constants, CHARGED/spring candidates |
+| `snes/gen/audio-design8.mjs` | Hum generator independent of loop length |
+| `snes/gen/audio-resident.mjs` | IMPACT → `$7E` in the custom native map |
+| `snes/src/modules/audio/spc/beds.s` | Music trim, spring launch, gain classes, supersession, duck, ki-contact drop |
+| `snes/test/audio/loudness.mjs` | BS.1770 momentary/short-term/integrated loudness, 200 Hz small-speaker check, 0.5–5 kHz band |
+| `snes/test/audio/pc9.mjs` | PC chain in Chromium (Playwright's build, else installed Chrome) |
+| `snes/test/audio/cues9.mjs`, `report9.mjs`, `round9.mjs` | Cartridge cue renders, the tables above, PC references for tests |
+| `snes/test/audio/capture9.mjs`, `capture9.lua` | Raw Mesen DAC listening package and its manifest |
+| `beds/contacts/finisher/ki/motion/resident/variation` tests | Round-nine loudness, spring, duck, supersession, voices and headroom |
+
 ## Round eight performance follow-up
 
 Base: main `cd59395` (snes-int `cc52d1e` and its changelog), then

@@ -46,7 +46,12 @@ export const NATIVE_PRIORITY=[0,1,1,5,5,3,5,2,7,4,8,8,8,5,5,5,
 export const NATIVE_CHARGE_CUE=33;
 export const NATIVE_BEDS={charge:0xDD,aura:0xDF,friezaCharge:0xDD};
 export function residentAsm(rom){return storageAsm(rom,RESIDENT);}
+// Custom-sample cartridges: TELEPORT_IN plays the resident $EF, and round
+// nine's IMPACT (ki/beam contacts) plays the resident ki contact in the
+// empty retail row $7E instead of retail $38 (unchanged for any other user).
+export const KI_CONTACT_ID=0x7E,SPRING_ID=0x7D;
+export const customNativeIds=()=>NATIVE_IDS.map((v,i)=>i===17?0xEF:i===6?KI_CONTACT_ID:v);
 export function nativeMapAsm(){
- const custom=NATIVE_IDS.map((v,i)=>i===17?0xEF:v);
+ const custom=customNativeIds();
  return `!AUDIO_NATIVE_CHARGE = ${NATIVE_CHARGE_CUE}\naudio_native_ids:\nif !AUDIO_CUSTOM_SAMPLES\ndb ${[...custom,NATIVE_BEDS.charge].join(',')}\nelse\ndb ${[...NATIVE_IDS,NATIVE_BEDS.charge].join(',')}\nendif\naudio_native_priority:\ndb ${[...NATIVE_PRIORITY,4].join(',')}\n`;
 }
