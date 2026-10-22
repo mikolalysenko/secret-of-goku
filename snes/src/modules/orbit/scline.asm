@@ -216,8 +216,29 @@ sl_bodies:
 ; unless they were hidden already and no list's build has begun since
 ; (sl_culled).
 sl_count:
-	; the rows: $80 (no beam, no body: free once made, sl_limits), then
-	; the beams' slivers
+	; the beams' slivers on the rows: as differences when the groups' rows
+	; are many (sl_beams), else group by group
+	SEP #$20
+	LDA.w !sc_sig
+	BEQ +
+	LDA.w !sc_sig+2
+	SEC : SBC.w !sc_sig+1
+	INC
++	STA.w !s_tmp+0                 ; (group 0's rows)
+	LDA.w !sc_sig+4
+	BEQ +
+	LDA.w !sc_sig+6
+	SEC : SBC.w !sc_sig+5
+	INC
++	CLC : ADC.w !s_tmp+0
+	CMP.b #16
+	REP #$20
+	BCC .loops
+	JSR sl_beams
+	BRA .bodies
+.loops
+	; (the rows: $80, no beam, no body: free once made, sl_limits; then
+	; each group's slivers on its rows)
 	LDA.w #$8080
 	LDX.w #26
 -	STA.w !sc_k,X
@@ -253,6 +274,7 @@ sl_count:
 	INY : INY : INY : INY
 	CPY.w #8
 	BCC .sum
+.bodies
 	; the bodies'
 	STZ.w !sb_blk
 	LDX.w #0
@@ -339,6 +361,111 @@ sl_count:
 	JSR sl_culled
 	BCS +
 	JSR sl_cull
++	RTS
+
+; sc_k = the beams' slivers on each row (sc_on nonzero when a group is on):
+; $80 on a row no group's rows reach (free once made, sl_limits), else
+; the slivers of the groups there. Made as differences down the rows (a
+; group's slivers from its top row, less them past its bottom; bit 7
+; toggled where the rows any group holds begin and past where they end:
+; + $80 is - $80 here), then summed row by row. M16/X16 in and out.
+sl_beams:
+	!sl_w = 0
+	while !sl_w < 28
+		STZ.w !sc_k+!sl_w
+		!sl_w #= !sl_w+2
+	endwhile
+	STZ.w !sc_on
+	SEP #$30
+	LDA.b #$80
+	STA.w !sc_k                    ; (from row 0: no group)
+	LDA.w !sc_sig                  ; group 0: its slivers from its top row
+	BEQ .g1
+	STA.w !sc_on
+	LDX.w !sc_sig+1
+	CLC : ADC.w !sc_k,X
+	STA.w !sc_k,X
+	LDX.w !sc_sig+2                ; (less them past its bottom row)
+	CPX.b #27
+	BCS .g1
+	LDA.w !sc_k+1,X
+	SEC : SBC.w !sc_sig
+	STA.w !sc_k+1,X
+.g1
+	LDA.w !sc_sig+4                ; group 1 likewise
+	BEQ .span
+	STA.w !sc_on
+	LDX.w !sc_sig+5
+	CLC : ADC.w !sc_k,X
+	STA.w !sc_k,X
+	LDX.w !sc_sig+6
+	CPX.b #27
+	BCS .span
+	LDA.w !sc_k+1,X
+	SEC : SBC.w !sc_sig+4
+	STA.w !sc_k+1,X
+.span
+	; the rows any group holds (one span where the groups' rows meet)
+	LDA.w !sc_sig
+	BEQ .only1
+	LDA.w !sc_sig+4
+	BEQ .only0
+	LDA.w !sc_sig+2                ; (apart: group 0's bottom above group
+	CMP.w !sc_sig+5                ; 1's top, or group 1's bottom above
+	BCC .apart                     ; group 0's top)
+	LDA.w !sc_sig+6
+	CMP.w !sc_sig+1
+	BCC .apart
+	LDX.w !sc_sig+1                ; one span: the higher top ..
+	CPX.w !sc_sig+5
+	BCC +
+	LDX.w !sc_sig+5
++	JSR .top
+	LDX.w !sc_sig+2                ; .. to the lower bottom
+	CPX.w !sc_sig+6
+	BCS +
+	LDX.w !sc_sig+6
++	JSR .bottom
+	BRA .sum
+.apart
+	LDX.w !sc_sig+5
+	JSR .top
+	LDX.w !sc_sig+6
+	JSR .bottom
+.only0
+	LDX.w !sc_sig+1
+	JSR .top
+	LDX.w !sc_sig+2
+	JSR .bottom
+	BRA .sum
+.only1
+	LDA.w !sc_sig+4
+	BEQ .sum                       ; (no group on)
+	LDX.w !sc_sig+5
+	JSR .top
+	LDX.w !sc_sig+6
+	JSR .bottom
+.sum
+	LDA.w !sc_k
+	!sl_w = 1
+	while !sl_w < 28
+		CLC : ADC.w !sc_k+!sl_w
+		STA.w !sc_k+!sl_w
+		!sl_w #= !sl_w+1
+	endwhile
+	REP #$30
+	RTS
+.top                               ; (X8: bit 7 toggled from row X ..
+	LDA.w !sc_k,X
+	EOR.b #$80
+	STA.w !sc_k,X
+	RTS
+.bottom                            ; .. and back past row X)
+	CPX.b #27
+	BCS +
+	LDA.w !sc_k+1,X
+	EOR.b #$80
+	STA.w !sc_k+1,X
 +	RTS
 
 ; Carry set when the rows sl_hot found (sl_t .. sl_b) were culled already

@@ -4,6 +4,22 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the heaviest remakes sum the beams' rows faster (2026-10-22)
+
+- When the beam groups' rows are 16 or more together, a remake puts the
+  beams' slivers on the rows as differences (a group's slivers from its
+  top row, less them past its bottom; bit 7 toggled where the rows any
+  group holds begin and past where they end), then sums them down the 28
+  rows unrolled (`sl_beams`): some 440 cycles, where the group-by-group
+  loop costs 29 a row. Fewer rows are still summed group by group.
+- The limits come out the same at every remake of the `fight` and the
+  `clash` (each frame and each row).
+- The heaviest remakes (both beams over the whole screen, where the
+  `fight`'s 30 Hz run of repeated pictures begins) have a stars stage
+  3-4 lines shorter; the light ones 0.1-0.2 lines longer (the choice).
+- Repeated pictures: the `fight` over its 8 frame phases 75, as before;
+  the `clash` 37 (38 before).
+
 ## Orbit: the limits' remake costs less (2026-10-21)
 
 - A remake of the stars' row limits starts its rows at $80 (no beam, no
