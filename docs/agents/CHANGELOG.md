@@ -4,6 +4,68 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## SNES integration: round-eight sounds, a steady orbit picture, a faster field frame (2026-10-22)
+
+- Audio, round eight (c65c5f7, 37fa164, 984a721; merged in 72e4707). The
+  maintainer asked for hits that crack and whoosh, shots that rumble, a
+  Kamehameha "like a high voltage arc fault", and an Instant Transmission
+  that does not cut off early.
+  - The default design is **Rupture**. Hits and kicks are a noise crack
+    over a falling, sampled low rumble. The kick's rumble lasts 175 ms, or
+    200 ms in SSJ. Swings are short air and rumble sweeps. A ki shot is
+    one rumble voice that falls over about 215 ms, with no instrument-9
+    zap. The wave is irregular arc discharges with a distorted roar and a
+    subdued rising whine. The charge and aura are a mains hum with roar.
+  - Two alternate builds are kept for listening: Arc (`AUDIO_DESIGN=0`,
+    lighter bass, more whine) and Storm (`AUDIO_DESIGN=2`, more roar and
+    grit). `-DAUDIO_CUSTOM_SAMPLES=0` still restores the original sounds.
+  - An optional 7,936-byte bank holds the whole 830 ms Instant
+    Transmission at 10 kHz and a 12 kHz arc. It fills in on quiet frames,
+    and only when the song's cached samples still fit below it. Otherwise
+    the compact sounds play; the compact Instant Transmission is its
+    attack with a sustained, faded tail.
+  - Song loads reuse cache holes before compacting and keep the shared
+    samples. The mean stall over 64 consecutive loads fell from 19.9 to
+    17.9 frames, but not every load is faster: `$07→$08` takes 12.3
+    frames more, and `$22→$23` went from 19.7 to 22.9.
+- Orbit flicker (bee91ad, 46c712e, 2e24353, d2186bc, 2f76b60, f552eed;
+  merged in 18ab57a). The maintainer reported flicker and vanishing
+  sprites in the orbit on 0.2.0.
+  - Stars leave a beam's rows once, while the beam holds them.
+  - The clash's rays are on their band layers from the launch. The charge
+    preloads both maps, so the moon and the outer planet no longer hide.
+  - The clash culls stars again, and no body waits for the star lists.
+  - The fight's 30 Hz tear is gone.
+  - `fight` and `clash` now fail when the flicker passes set bounds.
+- Performance pass (19 changes, 1958d7a … 1e48992, method in 6c39c07;
+  merged in cc52d1e). Gameplay misses summed over start-phase offsets 0-9
+  fell from 230 to 114. Charge went from 123 to 56 and teleport from 43 to
+  23.
+  - Goku writes a full on-screen cell's four OAM entries directly.
+  - The message window's buffer clear, border rows and text paint are
+    cheaper. These were most of teleport's misses.
+  - The idle field frame's module tests run inline.
+  - A party member's contact pass over the enemy slots is unrolled.
+  - Six per-frame native calls into slow banks go through FastROM.
+  - The ending's NMI ceiling joined Frieza's `C0:C15F` hook.
+  - Each change has a `*_SLOW` define that rebuilds the former code byte
+    for byte.
+  - The perf scenes' p90 against the cartridge before the pass: sword 63
+    → 58, Sandship 112 → 109, battle 54 → 51, Fortress 96 → 91. Flight
+    stays at 112 and the Beast at 171.
+  - Left alone: the multitap BIOS check (`CF:FE70`, 2.4-3.4 lines every
+    frame). A tighter read loop changes the serial timing, so it needs
+    testing on hardware with a multitap first.
+- Validation on cc52d1e under both probes: all 20 suites pass. Gameplay
+  misses per 240 frames at offset 0: charge 4 (16 before), flying ki 3
+  (2), flying punches 1 (1), teleport 0 (3), flight 0 (1), the rest 0.
+  Flying ki's offset-0 count rose while its sum over offsets 0-9 fell
+  from 16 to 12. Orbit on
+  the shipping build: the fight lags 9 frames, the clash 25 and the
+  montage 0. The hardware probe reports only the known cases: the retail
+  boot's VRAM DMA at `C0:25F6` (line 153, and 155 after the name editor)
+  and core's `hdmaen` test, which overruns its vblanks on purpose.
+
 ## Orbit: the fight and the clash check that the picture holds steady (2026-10-21)
 
 - `watch.lua` `W.flicker`: on each frame's OAM under the PPU's line
