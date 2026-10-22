@@ -473,7 +473,13 @@ while retaining the odd plane; the cell writer marks upload bits before
 restoring DB to avoid a second bank switch. Seven assembled text tests
 include buffer boundaries, styles, all row bytes, request branches and
 decimal/width/flag cases. Their representative CPU costs are 13,342 → 4,336,
-1,049 → 713 and 202 → 169 cycles, respectively.
+1,049 → 713 and 202 → 169 cycles, respectively. The painter now writes each
+row's two planes as one 16-bit pass (the word ending at the even byte gives
+`~even` in its high byte; the destination block lies below the source):
+1,049 → 601 cycles a call (`CORE_NATIVE_TEXT_PAINT16_SLOW` keeps the two
+8-bit passes). A full page of window text paints about 29 such tiles in
+one field frame: teleport's window frame drops from 105.3 to 91.8 lines in
+B08C.
 
 Window row shifts at `C0:0754`, `C0:077F`, `C0:0C68` and `C0:0CEE` batch
 the interior columns and execute the final retail iteration. Each source

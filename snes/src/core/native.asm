@@ -588,7 +588,8 @@ endif
 
 ; C0:1539 combines two halves of an outlined glyph with its window pattern.
 ; (~even & pattern) | even == pattern | even for the even plane; retain
-; the original mask for the odd plane. Unroll the two eight-row halves.
+; the original mask for the odd plane. Unroll the two eight-row halves,
+; each row one 16-bit pass (CORE_NATIVE_TEXT_PAINT16_SLOW: two 8-bit ones).
 ; Bounds keep the sources/destinations disjoint and pattern indexes from
 ; wrapping; other inputs retain the original loop. The native return has
 ; B = high(Y_entry+32), A = final odd byte, X = pattern+16, Y += 48, C/Z=1,
@@ -619,6 +620,24 @@ core_native_text_paint:
 	TAX
 	SEP #$20
 	PLP
+if not(defined("CORE_NATIVE_TEXT_PAINT16_SLOW"))
+	; Both planes of a row as one word: low byte even | pattern even, high
+	; byte odd | (pattern odd & ~even). The word ending at each even byte
+	; puts ~even into the high byte (the destination block lies below the
+	; source, so that byte is never one this pass writes).
+	REP #$20
+	for half = 0..2
+		for row = 0..8
+			!offset #= (!half*32)+(!row*2)
+			LDA.w $93FF+!offset,Y
+			ORA.w #$00FF
+			EOR.w #$FF00
+			AND.l $D2D480+(!row*2),X
+			ORA.w $9400+!offset,Y
+			STA.w $9000+!offset,Y
+		endfor
+	endfor
+else
 	for half = 0..2
 		for row = 0..8
 			!offset #= (!half*32)+(!row*2)
@@ -633,6 +652,7 @@ core_native_text_paint:
 		endfor
 	endfor
 	REP #$20
+endif
 	TXA : CLC : ADC.w #16 : TAX
 	TYA : CLC : ADC.w #32
 	PHA
