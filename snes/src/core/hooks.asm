@@ -215,6 +215,80 @@ if not(defined("CORE_NATIVE_CONTACT_EMPTY_SLOW"))
 %hijack($C1D14A, core_native_contact_empty, 5, core)
 endif
 
+; A party member's contact pass over the enemy slots (C1:CE20-CE58) with
+; $ED bit 7 set, core/native.asm. Nothing branches into CE21-CE25; the
+; retail loop from CE26 remains for the cases the fast path declines, and
+; the retail rest of a pair (CF38, CF4D) returns through the RTL at CDCC.
+if not(defined("CORE_NATIVE_CONTACTS_SLOW"))
+%orig4($C1CE20, $11A920E2)
+%orig2($C1CE24, $5085)
+%orig1($C1CDCC, $6B)
+%hijack($C1CE20, core_native_contacts, 6, core)
+endif
+
+; The field OAM reset's high-table clear (C0:BCD9-BCE5: LDX #$0200 /
+; STZ $0800,X / INX / INX / CPX #$0220 / BCC) runs unrolled from FastROM.
+; Nothing else branches into these bytes; BCE6 (SEP #$20) continues.
+if not(defined("CORE_NATIVE_HICLEAR_SLOW"))
+%orig4($C0BCD9, $9E0200A2)
+%orig4($C0BCDD, $E8E80800)
+%orig4($C0BCE1, $900220E0)
+%orig1($C0BCE5, $F6)
+%orig2($C0BCE6, $20E2)
+%patch($C0BCD9, 6, core)
+pushpc
+org $C0BCD9
+	JSL core_native_hiclear
+	BRA core_native_hiclear_done
+org $C0BCE6
+core_native_hiclear_done:
+pullpc
+endif
+
+; Opening a native window: its two border rows (C0:07F9-0843) and its
+; 1,792-byte buffer clear (C0:091A-092A), core/native.asm. The row loops at
+; 080D/0828 and the MVN at 0928 remain for the cases the fast paths decline.
+if not(defined("CORE_NATIVE_TEXT_SLOW")) && not(defined("CORE_NATIVE_WINDOW_ROWS_SLOW"))
+%orig4($C00806, $8DA16CAD)
+%orig2($C0080A, $A164)
+%orig1($C0080C, $48)
+%orig3($C0080D, $0120A2)
+%patch($C00806, 7, core)
+%orig4($C00821, $A1578D68)
+%orig2($C00825, $56EE)
+%orig1($C00827, $A1)
+%orig3($C00828, $8120A2)
+%patch($C00822, 6, core)
+pushpc
+org $C00806
+	JSL core_native_window_row1
+	PHA
+	BVC core_native_window_row1_done
+org $C0081D
+core_native_window_row1_done:
+org $C00822
+	JSL core_native_window_row2
+	BVC core_native_window_row2_done
+org $C00838
+core_native_window_row2_done:
+pullpc
+endif
+if not(defined("CORE_NATIVE_TEXT_SLOW")) && not(defined("CORE_NATIVE_WINDOW_WIPE_SLOW"))
+%orig4($C0091D, $FFA920C2)
+%orig4($C00921, $9400A206)
+%orig4($C00925, $549401A0)
+%orig2($C00929, $7E7E)
+%orig2($C0092B, $20E2)
+%patch($C0091D, 6, core)
+pushpc
+org $C0091D
+	JSL core_native_window_wipe
+	BRA core_native_window_wipe_done
+org $C0092B
+core_native_window_wipe_done:
+pullpc
+endif
+
 ; Field HP-number refreshes must not wait for vblank inside status/AI.
 %orig4($C1E326, $A98B20E2)
 %orig1($C1E32A, $00)
@@ -296,6 +370,27 @@ pullpc
 %hijack_jsl($C0F1EC, $81818F, 4, core)
 %orig4($C0F9E5, $01D52A22)
 %hijack_jsl($C0F9E5, $81D52A, 4, core)
+
+if not(defined("CORE_NATIVE_CALLS_SLOW"))
+; Per-frame native calls into the slow banks $01/$02/$00 from FastROM code:
+; the players' pad/command pass (C2:B665, every field frame), actors' special
+; render modes (C1:833A), and the event-flag, actor-clear and attachment
+; helpers (C2:C757, C2:C221, C2:C3C1 and its C0:E324 emitter call). Their
+; FastROM mirrors map the same ROM, WRAM and I/O; each routine sets its own
+; DB or uses the caller's, and returns with RTL to the caller's bank.
+%orig4($C0B799, $02B66522)
+%hijack_jsl($C0B799, $82B665, 4, core)
+%orig4($C0FBEA, $01833A22)
+%hijack_jsl($C0FBEA, $81833A, 4, core)
+%orig4($C0DDF4, $02C75722)
+%hijack_jsl($C0DDF4, $82C757, 4, core)
+%orig4($C0EB49, $02C22122)
+%hijack_jsl($C0EB49, $82C221, 4, core)
+%orig4($C0E4BD, $02C3C122)
+%hijack_jsl($C0E4BD, $82C3C1, 4, core)
+%orig4($C2C416, $00E32422)
+%hijack_jsl($C2C416, $80E324, 4, core)
+endif
 
 if not(defined("CORE_NATIVE_WEAPON_SLOW"))
 ; Weapon setup and palettes during native actor/graphics refresh.

@@ -1,5 +1,123 @@
 # Resident custom samples: cartridge option and storage audit
 
+## Round eight: power designs and optional resident bank
+
+The maintainer's direction is now **crack/whoosh, rumbling ki and a violent
+electrical wave**, rather than a close PC-clip match. `audio-design8.mjs`
+generates deterministic source textures before BRR encoding. Playback uses
+the cartridge DSP and sequencer; no WAV processing is applied to captures.
+
+| Design | Punch body / wave character | Selection |
+| --- | --- | --- |
+| **Rupture** | Most low-body weight; hard irregular discharges, least whine | Shipping default, `AUDIO_DESIGN=1` |
+| Arc | Lighter bass, more exposed electrical whine | `AUDIO_DESIGN=0` |
+| Storm | More broadband roar and grit, less isolated discharge emphasis | `AUDIO_DESIGN=2` |
+
+These are candidate designs for maintainer listening, not a claimed
+perceptual ranking from the automated checks. All retain the sharp DSP
+noise crack, falling aperiodic hit/kick bodies, swing replacement and pitch
+variation. The finishing kick's rumble lasts 175 ms, or 200 ms in SSJ.
+Ki removes the instrument-9 zap entirely. The wave uses two effect voices
+for its attack and one after the bass body ends; a ki/contact volley can
+therefore occupy five effect voices during that attack, three otherwise.
+The occupancy gain hook bounds dense mixtures and returns all voices.
+
+| Sample | Compact | Extended |
+| --- | --- | --- |
+| Charge mains hum | 512 samples + guard at 4 kHz, 297 BRR bytes | Same |
+| Aura / rumble / swing / body | 768 samples + guard at 6 kHz, 441 bytes | Same |
+| Electrical wave | 32 ms attack + 128 ms loop at 6 kHz, 540 bytes | 32 ms attack + 432 ms loop at 12 kHz, 3,132 bytes |
+| Instant Transmission | 16 ms attack + 80 ms loop at 10 kHz, 540 bytes; sustained/faded tail | Whole 830 ms at 10 kHz, 4,671 bytes; final 8 ms endpoint fade |
+
+The permanent bank remains 2,304 bytes (2,301 used). The optional slab is
+7,936 bytes (7,853 used, 7,884 transferred in complete records). Full IT's
+audible tail is explicitly tested at 760–880 ms; its last portion carries
+signal. It is not a 96 ms one-shot stretched by lowering playback rate.
+The extended wave's measured BRR SNR is 25.3 dB; full IT is 21.2 dB.
+
+The full-clip rate comparison uses the whole 16 kHz source's Fourier energy
+above the resampler cutoff (0.47 × rate), not an audibility threshold:
+
+| IT rate | BRR bytes | Whole optional slab | Eligible canonical songs | Source energy above cutoff |
+| --- | ---: | ---: | ---: | ---: |
+| 8 kHz | 3,735 | 7,168 | 30 | 37.91% |
+| **10 kHz** | **4,671** | **7,936** | **27** | **10.61%** |
+| 12 kHz | 5,607 | 8,960 | 25 | 3.67% |
+| 16 kHz | 7,470 | 10,752 | 23 | 0.14% |
+
+Ten kHz preserves substantially more attack bandwidth than 8 kHz, while
+using the compact sample's existing tuning and keeping more cache space
+than the higher-rate options. The full tail survives at every listed rate;
+the table does not include codec error or claim the lost band is inaudible.
+
+No additional echo reduction pays for the optional bank. It occupies space
+below the current echo buffer only when doing so preserves the native
+instrument cache. Thus theoretical song eligibility and actual residency
+are different: 27 canonical songs have room, but cache history can retain
+the compact sounds. All five arrangements use compact samples. Cold/quiet
+fixtures, field transitions, retention, eviction, long song `$32`, rare
+voices and all 256 load cases check bank/metadata integrity. See
+[audio.md](audio.md#round-eight-impact-rumble-and-electrical-arcs) for the
+runtime policy, byte accounting, CPU cost and measured stall exceptions.
+
+The private listening index is
+[compare8/manifest.json](../../../.local/snes-test/audio/compare8/manifest.json).
+The [clickable auditions](../../../.local/snes-test/audio/compare8/listen.md)
+contain **111 WAVs: 110 cartridge captures plus the IT source**. All 110
+cartridge takes have **zero clipped samples**. The default's worst captured
+peak is **−1.34 dBFS**, arc −1.30, storm −1.85. Each alternate also passes
+15 SPC/headroom/ownership/bank tests. Their contacts reserve another half
+dB and their wave level is lower than rupture's to contain constructive
+overlap peaks. The shipping default's full validation is in audio.md.
+
+Selected before → default measurements, in dBFS (RMS is over the whole
+matched take, including silence/music; it is not isolated contact energy):
+
+| Take | Peak before → after | RMS before → after |
+| --- | --- | --- |
+| HIT alone | −3.00 → −2.29 | −25.95 → −24.23 |
+| KICK alone | −2.78 → −2.33 | −25.17 → −23.58 |
+| SSJ KICK alone | −2.37 → −1.89 | −24.50 → −22.75 |
+| Compact wave alone | −7.32 → −3.20 | −21.10 → −16.77 |
+| Extended wave alone | −7.32 → −3.75 | −21.10 → −16.71 |
+| Ki alone | −13.08 → −9.05 | −35.49 → −27.14 |
+| Two combos / battle | −2.07 → −1.88 | −22.21 → −21.00 |
+| Real melee / battle | −8.10 → −2.54 | −25.88 → −16.19 |
+| Real wave fight / battle | −3.02 → −6.45 | −21.32 → −18.23 |
+| Dense contacts + waves / battle | −2.27 → −1.58 | −16.64 → −18.90 |
+
+The new wave's sustained body is stronger even where a previous brief
+peak was higher. Dense overlaps receive more attenuation to stay inside
+headroom; those stress takes are quieter in RMS. Real melee includes the
+new charge bed, so its whole-take gain must not be presented as a contact-only
+gain. The controlled solo contact checks retain at least +2.5 dB peak,
++3 dB low-body and +1.5 dB early-crunch energy against round four.
+
+`before` is merged `987d41a`; `rupture` is the new default. `arc` and `storm`
+contain the punch/kick and wave candidates alone, in public-cue combos,
+in real B-held melee and charged wave releases, and under overlapping
+contact stress. The full pair also covers swings, ki volleys, charge/aura,
+power-up transitions, flight, compact/full IT and field/orbit mixes.
+`pc-teleport-full.wav` preserves the unprocessed source for the tail check.
+
+`song-presence.json`, `load-timing.json`, `bank-budget.json`,
+`mix-measurements.json`, `teleport-rates.json` and `tables.md` describe every
+song, load history, sample allocation and paired take. Timings include regressions as well as
+wins. Peaks and whole-take RMS are measurements, not loudness normalization.
+Candidate wave gains are set independently for headroom; no offline limiter
+or compression makes the recordings louder.
+
+```sh
+node snes/test/audio/capture8.mjs --rom=before.sfc --tag=before
+node snes/test/audio/capture8.mjs --rom=dist/snes/secret-of-goku.sfc --tag=rupture
+AUDIO_DESIGN=0 node snes/build.mjs --strict --out=.local/snes-test/audio/round8/arc/rom.sfc
+node snes/test/audio/capture8.mjs --rom=.local/snes-test/audio/round8/arc/rom.sfc --tag=arc --candidates
+AUDIO_DESIGN=2 node snes/build.mjs --strict --out=.local/snes-test/audio/round8/storm/rom.sfc
+node snes/test/audio/capture8.mjs --rom=.local/snes-test/audio/round8/storm/rom.sfc --tag=storm --candidates
+node snes/build.mjs --strict
+node snes/test/audio/report8.mjs
+```
+
 ## Textured ki shots (`ki7`, base `14958c8`)
 
 The latest listening tag is **`ki7`**. `$DE` is a ~38 ms falling zap followed

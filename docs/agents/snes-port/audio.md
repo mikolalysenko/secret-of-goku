@@ -1,5 +1,210 @@
 # Audio module: native SNES effects and music
 
+## Round eight: impact, rumble and electrical arcs
+
+This supersedes the PC-matching sound descriptions below. The default design
+is **rupture**: noise cracks over aperiodic bass bodies, rushing ki bursts,
+and a distorted electrical wave. **Arc** and **storm** are reproducible
+alternate cartridge builds (`AUDIO_DESIGN=0/2`; default `1`). They vary the
+sampled body, discharge density and whine, not a post-render effect.
+
+| Cue | Current design |
+| --- | --- |
+| HIT `$E7` | Clock-31 crack plus falling, sampled low rumble; three rates |
+| KICK `$E8` / SSJ `$F1` | Same crack, deeper 175/200 ms rumble; SSJ has more body |
+| Swings `$E5/$E6` | Short sampled air/rumble sweeps; punch retains two envelopes × three rates |
+| Ki `$DE` | One rumble voice from the attack, falling over about 215 ms; no instrument-9 zap; SSJ is louder and two semitones higher |
+| Wave `$EA/$F0` | Irregular sampled arc discharges, distorted roar and a subdued rising whine; a second bass voice for the first ~200 ms, then one voice; SSJ retains .8594 rate and the heavier bass |
+| Charge / aura | Continuous 62.5/93.75 Hz mains harmonics with noise, plus an aperiodic roar; existing envelope, release and update cadence |
+| IT `$EB/$EF` | Whole 830 ms clip at 10 kHz when the optional bank is active; compact attack with a sustained/faded tail otherwise; in/out relative gains retained |
+
+The rumble BRR also changes flight, charged, transform, power-burst and
+revert timbres. The listening package pairs those cues too. Retail ki
+contact `$38`, all retail BRRs, rare lines and music arrangements remain.
+The contact still releases its own swing before gain counting. Contacts,
+ki and waves use the existing occupancy gain rule: full at up to two
+occupied effect voices, half at three/four, quarter above that. This is
+voice-count attenuation, not a look-ahead compressor or a music duck.
+Swings, beds and waves are BRR, so the crack cannot retune them through
+the shared noise clock. All effect voices return to the music.
+
+### Optional bank and cache policy
+
+The permanent reservation stays **2,304 bytes**, `$4DF1–$56F0`:
+1,818 BRR + 349 code + 134 sequences = **2,301 used, 3 free**.
+Shared holes use **270/283 bytes**. Shortening the hum's source loop
+recovers 72 BRR bytes; removal of redundant wave volume commands and
+reuse of the existing rumble/arc samples pay for the prefetch/status code
+and stronger SSJ volume. No retail sample or rare-line storage is removed.
+
+The optional slab is **7,936 bytes**, with **7,884 transferred / 7,853
+used**: a 12 kHz arc (32 ms attack + 432 ms loop, 3,132 BRR bytes), the
+full 10 kHz teleport (4,671 BRR bytes), and four sequences. It sits just
+below the actual echo ceiling and retains its address across compatible
+loads. No EDL, EVOL, EFB or FIR change is made from round seven.
+
+**Music cache retention wins over optional SFX.** A song alone may leave
+room, but the bank is admitted only when all still-valid cached samples
+plus missing current instruments fit below it. This avoids the measured
+town-to-field reload penalty from the initial bank-first design. It is
+deliberately conservative about fragmented free space. Twenty-seven
+canonical songs are eligible; only `$28/$2E/$2F/$30/$35` admit it in the
+consecutive `$00..$3F` history. This is not a whitelist: field `$1C` admits
+it after `$07` in the route test, and clean-cache auditions test the full
+bank. Town `$12` and dungeon `$26` are eligible but may keep the compact
+bank because of cache history. Retail boss `$04` and all five arrangements
+are too tight. The complete per-song table is in compare8.
+
+Song changes send **zero optional sample bytes synchronously**. They may
+send up to 24 metadata bytes to restore compact/extended pointers. While
+inactive, the slab fills in one/two 36-byte records on quiet frames. The
+existing wake selector, input/action checks, pending-command checks and
+scanline budget defer this work; an NMI-interrupted combat frame is never
+admitted. There is no playback streaming. Activation sends two atomic
+records only when no effect voice is active. Until then, compact cues are
+immediately usable. Idle fill has no deadline: 136 frames in the quiet
+fixture; busy play can delay it for seconds or indefinitely.
+
+The `$8A/$60` record only writes inactive ARAM. Shipping patches at
+`$1741/$17B1/$18B5` route it around stream-slot accounting and publish
+effect occupancy in P3 bit 7. Rare streaming remains on channel zero;
+the diagnostic PCM build retains its original two-channel behavior.
+The 64-byte helper at `$0180` and native transfer acknowledgement order
+are unchanged. An early-ack experiment was rejected after a snes9x
+picture-phase regression; it is not in the final implementation.
+
+The cache uses holes before compaction, retains frequently shared samples
+with a previous-song bonus, and compacts only the required prefix. A ROM
+membership table and processed-list markers avoid repeated searches;
+insertion sorting avoids repeated full passes. All cache state remains
+inside the native audio ABI. The optional bank reuses unused shipping
+stream-channel-one fields `$DD46–$DD57`; no core layout edit is needed.
+
+### Measured song stalls
+
+Baseline is merged `987d41a`; numbers include fractional NTSC frames.
+
+| Pass | Before mean | After mean | Worst increase |
+| --- | ---: | ---: | --- |
+| 64 consecutive canonical loads | 19.915 | 17.905 | `$07→$08`, +12.320 |
+| Power-on, canonical + presets 11/14 (192 loads) | 19.487 | 16.851 | canonical `$0A→$0B`, +12.559 |
+| Field/town/boss/arrangement route (15 loads) | 16.151 | 13.579 | boss→field, +0.456 |
+
+The common route's sample reload penalty is gone, but **not every load is
+faster**: planner/pointer overhead and changed retention history remain
+visible. The full-power `$3E→$3F` stall falls 25.459→10.611 frames;
+`$22→$23` rises 19.679→22.873. Do not describe the mean improvement as a
+guarantee of zero added stall on every transition. Tables retain every row.
+
+### Validation
+
+Validation on the strict shipping build: **53 audio unit/SPC tests, all
+12 audio cartridge cases, 34 native-charge trace phases, five arrangement
+renders, 13 gameplay cases, six perf scenes, 37 combat cases, and snes9x /
+bsnes / bsnes-accurate pass**. The 64 consecutive and 192 power-on/preset
+loads pass complete bank, instrument, pointer, echo and stack checks.
+The name-screen comparison is 100% equal on all three secondary cores;
+their own cold-boot music/effect/variation checks also pass.
+
+| Gameplay case | Baseline misses / 240 | Round eight |
+| --- | ---: | ---: |
+| solo-punch | 0 | 0 |
+| solo-ki | 0 | 0 |
+| walk | 0 | 0 |
+| punch | 0 | 0 |
+| ki | 0 | 0 |
+| fly | 1 | 1 |
+| fly-ki | 2 | 2 |
+| fly-punch | 1 | 1 |
+| water-flight | 0 | 0 |
+| teleport | 3 | 3 |
+| charge | 13 | 13 |
+| focus-grass | 0 | 0 |
+| transform-grass | 0 | 0 |
+
+Ordinary effect dispatch remains at **1.348974 scanlines maximum**.
+`modprof` measures audio at 0.41 lines/call in the moving sword/battle
+scenes, versus 0.41 before; the maximum is 1.93 versus 1.88. Optional
+prefetch is separate budgeted work (up to 76.30 lines including command
+admission in the quiet test). It adds zero quiet-fixture misses, and the
+paired 1,800-frame busy-field run has **4 misses disabled / 4 enabled**;
+all transfers finish before the admission deadline. Inactive/completed
+banks add no new per-frame idle service.
+
+Shipping SHA-256:
+`4f25254d74251d0b5d6f5bc2d8ced4dd92969568bd60452202a96324b98dde1d`.
+`-DAUDIO_CUSTOM_SAMPLES=0` is byte-identical to that same option built
+from merged `987d41a` in a private source export:
+`b30e18213488105b3c0fd83c02b72306a4cd12ef66e8886ec4f9430f54e7c207`.
+This differs from the historic round-four whole-ROM hash because main's
+non-audio 0.2.0 changes are included. Logs live in
+`.local/snes-test/audio/round8/{final,shipping-*}`.
+
+### File map
+
+| Files | Purpose |
+| --- | --- |
+| `snes/gen/audio-design8.mjs` | Deterministic rumble/hum/arc source design and full-tail teleport |
+| `snes/gen/audio-resident7.mjs`, `audio-extended8.mjs`, `audio.mjs` | Compact/extended BRRs, sequences, metadata, cache tables and integrity assertions |
+| `audio/module.asm`, `extended.asm`, `songload.asm`, `cache.asm` | Optional-bank lifecycle, bounded prefetch and music-cache allocation |
+| `audio/spc/beds.s`, `prefetch.s`, `stream.s` | Gain/form selection, inactive-bank records/status, existing receiver label |
+| `snes/test/audio/extended.test.mjs`, `prefetch.lua` | Exact-record bounds, full IT tail, voice release, idle admission and paired busy-field timing |
+| `cartridge.mjs`, `lib.lua`, `loads.lua`, `load-profile.lua`, `run.mjs` | Descriptor parsing, complete bank/metadata checks and load histories |
+| `beds/contacts/finisher/ki/motion/resident` tests, `motion.mjs`, `native.lua` | Updated acoustic shape, headroom, voice-budget and SSJ assertions |
+| `capture8.mjs`, `capture8.lua`, `report8.mjs` | Raw cartridge auditions, before/after metrics and private report tables |
+
+No cue API or combat/core file change is required. An old-snapshot importer
+limitation remains outside this module: `H.residentEffects()` has a fixed
+extension-patch whitelist. The new capture fixture explicitly invalidates
+optional-bank state after imports; cold boots and retail-state imports are
+covered. A proposed shared-harness patch is held for maintainer approval,
+not silently included in this audio-only change.
+
+## Round-eight cache foundation (base `987d41a`)
+
+`cache.asm` replaces the song loader's contiguous-tail allocator with a
+non-moving cache: it chooses a legal hole that evicts the fewest cached
+bytes, and compacts only the prefix needed to open a sufficiently large
+hole. Cache entries remain address-sorted. Echo growth invalidates each
+overlapping extent individually; the native echo settings, BRRs, sequences,
+rare-line ring, transfer handshake and final instrument table format stay
+unchanged. No frame callback or gameplay command is added.
+
+`audio.mjs` emits instrument sizes and list counts. The three native metadata
+loops now send only the current song's entries, using limits `$1EEA/$1EEC`
+in otherwise dead song-load scratch. They never touch resident `$30-$3F`.
+`loads.lua` checks all live cache extents for bounds and mutual overlap;
+`load-profile.lua` records the new copy/upload sites and incoming cache.
+
+The strict merged baseline is
+`dd544f7c44b82458945a2b31f14f6f19b3b527a0e21114d4ed6f36583cb1d64c`.
+The initial cache-only checkpoint is
+`624c59f91afa5e2cbc9cc33340f34e99e96ac3035a898ff357b06583e4069719`.
+Private evidence is `.local/snes-test/audio/round8/{before,cache6}/`.
+
+| Consecutive-load CPU stall, frames | Before | Cache foundation |
+| --- | ---: | ---: |
+| 64-song mean | 19.915 | 17.594 |
+| `$22 → $23` | 19.679 | 9.418 |
+| `$3A → $3B` arrival | 23.503 | 23.179 |
+| `$3B → $3C` battle | 30.092 | 30.390 |
+| `$3C → $3D` orbit | 8.242 | 8.207 |
+| `$3D → $3E` Vegeta | 16.327 | 16.038 |
+| `$3E → $3F` full power | 25.459 | 10.626 |
+
+This is a foundation, not the completed round-eight performance result.
+The changed retention history still makes some transitions worse (largest
+`$24 → $25`, +14.984 frames), and battle's planner adds 0.298 frame.
+The extended bank and final policy must be measured against the baseline,
+including these cases. No new sound is selected in this checkpoint.
+
+Checks: strict build; all 49 audio unit/SPC tests; 64 consecutive canonical
+loads; power-on canonical plus both noncanonical preset sweeps (192 loads),
+with complete sample, metadata, reservation and stack checks; all 13 gameplay
+cases. Gameplay misses are unchanged: charge 13, teleport 3, fly-ki 2,
+fly 1, fly-punch 1, every other case 0. The final round-eight validation
+will also run the full audio, perf, combat and emulator suites.
+
 Spoilers follow the rest of `docs/agents/`. Module: `snes/src/modules/audio/`
 (65816 code bank `$AA`, tables `$EA`, BRR/sequence assets in `$FC-$FF`,
 WRAM `!RAM_AUDIO`), generators `snes/gen/audio*.mjs`, tests `snes/test/audio/`.

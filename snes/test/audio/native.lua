@@ -86,7 +86,7 @@ function test()
       check('kick_return_'..f,kicks==0,kicks) -- native ambient cues may still play
     end
     -- Ki keeps the same DE owner across forms. The existing reuse nibble
-    -- carries the +2-semitone variant; no second voice or extra command.
+    -- carries the brighter, louder SSJ variant; no second voice or extra command.
     for i,f in ipairs({0,1,0,1,1,0}) do
       H.w8(0x7ED811,f)
       local first=#commands

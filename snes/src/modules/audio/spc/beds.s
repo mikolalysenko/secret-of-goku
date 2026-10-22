@@ -110,6 +110,8 @@ resident_gain:
  LSR A
  MOV Y,A
  MOV A,!$FF80+Y
+ CMP A,#$DE
+ BEQ gain_contact
  CMP A,#$E5
  BCC gain_old
  CMP A,#$E7
@@ -120,6 +122,10 @@ resident_gain:
  CMP A,#$F1
  BEQ gain_contact
  BCS gain_old
+ CMP A,#$EA
+ BEQ gain_contact
+ CMP A,#$F0
+ BEQ gain_contact
 gain_full:
  POP A
  BRA gain_done
@@ -233,8 +239,11 @@ effect_normal:
 blast_form:
  MOV A,$B6
  EOR A,#$0F
- AND A,#2
  MOV !BLAST_FORM,A
+ XCN A
+ CLRC
+ ADC A,#$DF
+ MOV !BLAST_VOLUME,A
  RET
 ; A contact replaces its preceding whoosh before allocation/gain counting.
 ; These unused instrument $34-$3D tuning / $34-$3F ADSR entries survive

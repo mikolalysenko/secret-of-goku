@@ -66,7 +66,10 @@ Landing: `C0:BC0B` (start of the ground loader) clears request bit 0 of
 so the ordinary loader places the party. Fortress landing record 10 stages
 the party 64 tiles east for the fly-by; the hook takes that back.
 `field.asm` runs the browser's `flightTransition` on the goku module's pose
-API (`!goku_mode` `$26` takeoff, `$27` landing).
+API (`!goku_mode` `$26` takeoff, `$27` landing). Its field-frame callback
+makes the RAM-magic, Goku, transition and finale tests inline before any
+call, so an idle field frame costs 0.28 rather than 0.70 scanlines
+(`WORLD_FIELD_IDLE_SLOW=1` restores the four calls).
 
 Start opens the native map viewer; R changes the globe to the flat map,
 L changes it back, and B closes it once loading is complete. Closing either

@@ -2188,21 +2188,28 @@ suppress_native:
 	REP #$30
 	RTS
 
-; Whole-screen ceiling on the native brightness (transition, death fade).
-; s_ebright = $FF: no ceiling. 0 writes brightness 0 with the display on.
-brightness_apply:
+; Whole-screen ceiling on the displayed brightness (transition, death fade,
+; the reunion's black hold): s_ebright 0-15 ($FF: none; 0 is brightness 0
+; with the display on), published for the field NMI, which applies it at
+; its final INIDISP write (frieza_field_brightness, C0:C15F) from this
+; frame's vblank on. The game's brightness shadow $E6 is never written: the
+; native fade engine (C0:8B5E) reads it back as its fade position and clears
+; $E2 bit 0, which the event interpreter waits on (C1:E8D3), only when $E6
+; reaches the target $E7. A clamped $E6 kept door 2F's fade-in under the
+; good ending's black from ending, and its script never reached the summon
+; (6B).
+brightness_publish:
 	REP #$30
 	LDA.w !s_ebright
-	CMP.w #$00FF
-	BEQ .done
+	CMP.w #$0010
+	BCS .none
+	ORA.w #$0080
+	BRA .store
+.none
+	LDA.w #$0000
+.store
 	SEP #$20
-	LDA.w !N_BRIGHT
-	BMI .done                      ; native forced blank
-	CMP.w !s_ebright
-	BCC .done
-	LDA.w !s_ebright
-	STA.w !N_BRIGHT
-.done
+	STA.l !ending_showbright
 	REP #$30
 	RTS
 

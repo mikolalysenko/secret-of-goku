@@ -736,14 +736,40 @@ fz_tree_nmi:
 ; Only the NMI-latched ceiling is read, so lag NMIs keep the displayed
 ; picture's fade. Never alter $E6: clamping it would prevent the fade-in
 ; from rising and could interfere with the next native door/menu fade.
+; The ending's displayed ceiling (!ending_showbright, brightness_publish)
+; is applied here too, over the Tree's when both are set, as its own hook
+; at C0:C168 did after combat's vblank hook (which leaves INIDISP alone).
+; One long ORA tests both ceilings, instead of the second hook's bank round
+; trip on every field NMI (ENDING_NMI_HOOK_SLOW=1 keeps that hook).
+!FZ_ENDING_CEILING = 0
+if defined("ending_showbright") && not(defined("ENDING_NMI_HOOK_SLOW"))
+!FZ_ENDING_CEILING = 1
+endif
 frieza_field_brightness:
 	LDA.l $7E0000|!fz_wasidle
+if !FZ_ENDING_CEILING
+	ORA.l !ending_showbright      ; $80 | level, 0 none
+	BMI .ceilings
+else
 	BMI .ceiling
+endif
 .normal
 	LDA $E6
 .native
 	STA $2100
 	JML $00C164
+if !FZ_ENDING_CEILING
+.ceilings
+	LDA.l $7E0000|!fz_wasidle
+	BMI .ceiling
+	LDA.l !ending_showbright      ; the ending's alone
+	AND.b #$0F
+	BIT $E6
+	BMI .normal                   ; native forced blank
+	CMP $E6
+	BCS .normal                   ; the native fade is at least as dark
+	BRA .native
+endif
 .ceiling
 	LDA $E6
 	BMI .native
@@ -753,10 +779,29 @@ frieza_field_brightness:
 	BCS .uncapped
 	STA $2100
 	PLA
+if !FZ_ENDING_CEILING
+	BRA .both
+else
 	JML $00C164
+endif
 .uncapped
 	PLA
+if !FZ_ENDING_CEILING
+	STA $2100
+.both
+	LDA.l !ending_showbright      ; the ending's over the Tree's
+	BPL .out
+	AND.b #$0F
+	BIT $E6
+	BMI .out
+	CMP $E6
+	BCS .out
+	STA $2100
+.out
+	JML $00C164
+else
 	BRA .native
+endif
 
 ; Vblank only, M16/X16, DB = $80. The Tree field uses the native window
 ; channels 0/1 and UI's palette channel 5; channel 6 is free here (the

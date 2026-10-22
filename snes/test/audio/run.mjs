@@ -12,7 +12,7 @@ import {checkpointDir,privateRom,cleanupRom,mainCheckout} from '../checkpoints.m
 import {createApu,loadRom,loadSong} from './apu.mjs';
 import {compareSongs} from './songs.mjs';
 import {NATIVE_IDS,effectVoices} from '../../gen/audio-resident.mjs';
-import {isCustom,isResident7,sampleFloor,nativeEffectVoices,nativeIds,uploadSegments} from './cartridge.mjs';
+import {isCustom,isResident7,sampleFloor,nativeEffectVoices,nativeIds,uploadSegments,extendedInfo} from './cartridge.mjs';
 import {traceWeaponCharge} from './weapon-charge.mjs';
 
 const here=dirname(fileURLToPath(import.meta.url)),repo=resolve(here,'../../..');
@@ -24,7 +24,7 @@ mkdirSync(outRoot,{recursive:true});
 let ok=true;
 
 if(!only.length||only.includes('unit')){
- const u=spawnSync(process.execPath,['--test',...['unit','resident','songload','samples','custom-cartridge','beds','contacts','motion','variation','finisher','ki','ipl','weapon-charge'].map(n=>join(here,n+'.test.mjs'))],{cwd:repo,encoding:'utf8'});
+ const u=spawnSync(process.execPath,['--test',...['unit','resident','songload','samples','custom-cartridge','beds','contacts','motion','variation','finisher','ki','ipl','weapon-charge','extended'].map(n=>join(here,n+'.test.mjs'))],{cwd:repo,encoding:'utf8'});
  const summary=(u.stdout||'').split('\n').filter(l=>/^ℹ (pass|fail)|^✖/.test(l)).join(' ');
  console.log(`audio unit        ${u.status===0?'pass':'FAIL'} ${summary}`);
  if(u.status!==0){ok=false;console.log((u.stdout||'').slice(-3000));}
@@ -59,10 +59,10 @@ if(!only.length||only.includes('render')){
 }
 // [name, checkpoint (null: power-on)]; arrival and imported import the
 // browser state before the sword pull (skipped when the bundle is missing).
-const shipping=n=>['native','music','rare','rare-control','rare-boot','loads','loads-boot'].includes(n);
-const fromCheckpoint=n=>['stream','songs','native','music','rare','rare-control','loads'].includes(n);
+const shipping=n=>['native','music','rare','rare-control','rare-boot','loads','loads-boot','prefetch'].includes(n);
+const fromCheckpoint=n=>['stream','songs','native','music','rare','rare-control','loads','prefetch'].includes(n);
 const arrivalBundle=join(mainCheckout(),'.local/snes-import/arrival-research__probe__before-pull');
-const mesenTests=[['loads','waterfall'],['loads-boot',null],['native','waterfall'],['music','waterfall'],['rare','waterfall'],['rare-control','waterfall'],['rare-boot',null],['stream','waterfall'],['songs','waterfall'],['arrival',null],['imported',null]]
+const mesenTests=[['prefetch','waterfall'],['loads','waterfall'],['loads-boot',null],['native','waterfall'],['music','waterfall'],['rare','waterfall'],['rare-control','waterfall'],['rare-boot',null],['stream','waterfall'],['songs','waterfall'],['arrival',null],['imported',null]]
  .filter(([n])=>!only.length||only.includes(n)).filter(([n])=>n==='rare-boot'||n==='loads-boot'||fromCheckpoint(n)||existsSync(arrivalBundle));
 if(!mesenTests.length)process.exit(ok?0:1);
 
@@ -97,7 +97,13 @@ const consumers=[`DESTROY=${/ audio_destroy_cues$/m.test(sym)}`];
 const upload=join(outRoot,'upload.bin'),segments=uploadSegments(cart),bytes=[];
 for(const s of segments)bytes.push(s.addr&255,s.addr>>8,s.bytes.length&255,s.bytes.length>>8,...s.bytes);
 writeFileSync(upload,Buffer.from([...bytes,0,0,0,0]));
-const lib=[`CUSTOM=${custom}\nROUND7=${isResident7(cart)}\nFLOOR=${sampleFloor(cart)}\nUPLOAD=${JSON.stringify(upload)}`,...ids,...consumers,songsLua,
+const extended=extendedInfo(cart);
+const loadOrder=process.env.AUDIO_LOAD_ORDER?.split(',').map(n=>Number(n));
+if(loadOrder&&!loadOrder.every(n=>Number.isInteger(n)&&n>=0&&n<64))throw Error('invalid AUDIO_LOAD_ORDER');
+const extendedLua=extended?`{reserve=${extended.reserve},bytes=${extended.length},rom=${extended.address},tables=${extended.tables},mask=${extended.relocation}}`:'nil';
+const lib=[`LOAD_ORDER=${loadOrder?'{'+loadOrder.join(',')+'}':'nil'}\nBANK_FIELD_IMPORT=${JSON.stringify(join(repo,'.local/snes-import/animation-audit__native__rabite-field-a'))}\nCUSTOM=${custom}\nROUND7=${isResident7(cart)}\nFLOOR=${sampleFloor(cart)}\nUPLOAD=${JSON.stringify(upload)}\nEXTENDED8=${extendedLua}`,...ids,...consumers,songsLua,
+ `AUDIO_CACHE_COPY=${label('audio_cache_compact_copy')}\nAUDIO_CACHE_SEND=${label('audio_cache_uploads_send')}`,
+ `AUDIO_EXT_SEND=${label('audio_extended_finish_send')}\nAUDIO_EXT_TABLES=${label('audio_extended_finish_tables')}\nif AUDIO_PROFILE_INIT then AUDIO_PROFILE_INIT() end`,
  `AUDIO_FRAME=${label('audio_frame')}\nAUDIO_DONE=${label('audio_frame_done')}\nAUDIO_PAUSE=${label('audio_pause')}\nAUDIO_CANCEL=${label('audio_cancel')}`,
  `NATIVE_CUES={${nativeIds(cart,NATIVE_IDS).slice(1,28).map((v,i)=>`{${i+1},${v},${nativeEffectVoices(cart,v)}}`).join(',')}}`,readFileSync(join(here,'lib.lua'),'utf8')].join('\n');
 const tests=mesenTests;
@@ -114,7 +120,7 @@ for(const [name,cp] of tests){
  const copy=privateRom(shipping(name)?rom:pcmRom,`audio-${name}`);
  const t0=Date.now();
  const pre=fromCheckpoint(name)?'':`IMPORT=${JSON.stringify(arrivalBundle)}\n`;
- const testLib=shipping(name)?lib:lib.replace(`CUSTOM=${custom}`, 'CUSTOM=false').replace(JSON.stringify(upload),JSON.stringify(join(gen,'upload.bin'))).replace(songsLua,pcmSongsLua);
+ const testLib=shipping(name)?lib:lib.replace(`CUSTOM=${custom}`, 'CUSTOM=false').replace(`EXTENDED8=${extendedLua}`,'EXTENDED8=nil').replace(JSON.stringify(upload),JSON.stringify(join(gen,'upload.bin'))).replace(songsLua,pcmSongsLua);
  const body=name==='loads-boot'?`CP_STOP='waterfall'\nLOAD_NONCANONICAL=${custom}\n`+readFileSync(join(here,'../checkpoints.lua'),'utf8')+'\nlocal boot=test\n'+readFileSync(join(here,'loads.lua'),'utf8')+'\nlocal loads=test\nfunction test() boot();loads() end\n':readFileSync(join(here,`${name}.lua`),'utf8');
  const r=await runMesen({rom:copy,test:pre+testLib+'\n'+body,outDir:join(outRoot,name),state:cp?join(cps,`${cp}.mss`):null,timeoutMs:600000});
  cleanupRom(copy);
