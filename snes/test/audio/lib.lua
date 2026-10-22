@@ -53,7 +53,7 @@ function extensionDamage()
     if len == 0 then return nil end
     if addr ~= 0x1818 and addr ~= 0x1930 and addr ~= 0x00E3 then
       for k = 0, len - 1 do
-        if aram(addr + k) ~= data:byte(i + 4 + k) then return addr + k end
+        if not (EXTENDED8 and addr==0x19C0 and k>=8) and aram(addr + k) ~= data:byte(i + 4 + k) then return addr + k end
       end
     end
     i = i + 4 + len
@@ -73,13 +73,37 @@ function customDamage()
   if not CUSTOM then return nil end
   local f=assert(io.open(UPLOAD,'rb'));local data=f:read('*a');f:close()
   local i=1
+  local customSegment=false
   while i+3<=#data do
     local a=data:byte(i)|(data:byte(i+1)<<8);local n=data:byte(i+2)|(data:byte(i+3)<<8)
     if n==0 then break end
-    if a==0x4DF1 or a==0x0180 or a==0x183E or a==0x18BE or a==0x197C or a==0x1860 or a==0x18E0 or a==0x19C0 or a==0x19D0 or a==0x0BED or a==0x0E10 or a==0x0C48 or a==0x14B4 or a==0xFFFB then
-      for j=0,n-1 do if aram(a+j)~=data:byte(i+4+j) then return string.format('%04X',a+j) end end
+    if a==0x4DF1 then customSegment=true end
+    if customSegment and a~=0x187C then
+      for j=0,n-1 do if not (EXTENDED8 and a==0x19C0 and j>=8) and aram(a+j)~=data:byte(i+4+j) then return string.format('%04X',a+j) end end
     end
     i=i+4+n
+  end
+  return nil
+end
+
+function extendedDamage()
+  if not EXTENDED8 then return nil end
+  local base=H.r16(0x7EDD46)
+  if H.r16(0x7EDD48)~=0xA8DB then base=0 end
+  if base~=0 then
+    local ceiling=0xFA00-math.max(1,dsp(0x7D))*0x800
+    if base<FLOOR or base+EXTENDED8.reserve>ceiling then return 'extended bounds' end
+    for i=0,EXTENDED8.bytes-H.r16(0x7EDD50)-1 do
+      if aram(base+i)~=H.r8(EXTENDED8.rom+i) then return string.format('extended %04X',base+i) end
+    end
+  end
+  if H.r8(0x7EDD55)~=3 then base=0 end
+  local starts={0x19C8,0x2FA8,0x2FBC}
+  for i=0,(H.r8(0x7E1EF3)~=0 and 3 or 11) do
+    local want=H.r16(EXTENDED8.tables+2*(i+(base==0 and 12 or 0)))
+    if base~=0 and EXTENDED8.mask&(1<<i)~=0 then want=want+base end
+    local a=starts[1+math.floor(i/4)]+2*(i%4)
+    if aram(a)|(aram(a+1)<<8)~=want then return string.format('extended table %04X',a) end
   end
   return nil
 end

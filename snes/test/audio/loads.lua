@@ -25,6 +25,7 @@ function test()
   if CUSTOM then
     for _,range in ipairs({{0x4DF1,FLOOR-1},{0x0180,0x01BF},{0x1860,0x187B},{0x18E0,0x18FF},{0x19C0,ROUND7 and 0x19FF or 0x19CF}}) do
       emu.addMemoryCallback(function(a,v)
+        if EXTENDED8 and a>=0x19C8 and a<=0x19EB then return end
         if #bankWrites<20 then bankWrites[#bankWrites+1]={a=a,v=v,pc=emu.getState()['spc.pc']} end
       end,emu.callbackType.write,range[1],range[2],emu.cpuType.spc,emu.memType.spcRam)
     end
@@ -37,13 +38,14 @@ function test()
     end
   end
   local order={}
-  for id=0,63 do order[#order+1]={id=id} end
+  if LOAD_ORDER then for i,id in ipairs(LOAD_ORDER) do order[#order+1]={id=id,index=i} end
+  else for id=0,63 do order[#order+1]={id=id} end end
   if LOAD_NONCANONICAL then
     for _,preset in ipairs({11,14}) do for id=0,63 do order[#order+1]={id=id,preset=preset} end end
   end
   for _,row in ipairs(order) do
     local id=row.id
-    local tag=string.format('load_%02X',id)..(row.preset and '_preset_'..row.preset or '')
+    local tag=string.format('load_%02X',id)..(row.preset and '_preset_'..row.preset or '')..(row.index and string.format('_step_%02d',row.index) or '')
     wanted=row.preset and {p2=row.preset,p3=0xFF} or presets[id] or {p2=0,p3=0xFF}
     started=false;returned=nil;loadClock=nil
     cmd(3,id)
@@ -88,6 +90,13 @@ function test()
     check(tag..'_vectors',ar16(0x1420)==0x1263 and ar16(0x1426)==0x1270,'temporary vectors retained')
     check(tag..'_effect_samples',effectSampleDamage()==nil,effectSampleDamage())
     check(tag..'_custom_bank',customDamage()==nil,customDamage())
+    check(tag..'_extended_bank',extendedDamage()==nil,extendedDamage())
+    if EXTENDED8 then
+      local base=H.r16(0x7EDD46)
+      local room=0xFA00-math.max(1,dsp(0x7D))*0x800-FLOOR-required
+      check(tag..'_extended_presence',base==0 or room>EXTENDED8.reserve)
+      H.result(tag..'_extended',{base=base,upload=H.r8(0x7EDD4E),bytes=0,prefetch=H.r16(0x7EDD50),state=H.r8(0x7EDD55),free=room,eligible=room>EXTENDED8.reserve})
+    end
     if CUSTOM then
       local valid=H.r16(0x7E1EF8)==FLOOR
       local cache={}
@@ -96,6 +105,7 @@ function test()
           local a=H.r16(0x7E1E48+2*k)
           local b=a+H.r16(0x7E1E6A+2*k)
           valid=valid and a>=FLOOR and b<H.r16(0x7E1EF1)
+          if EXTENDED8 and H.r16(0x7EDD46)~=0 then valid=valid and b<H.r16(0x7EDD46) end
           for _,old in ipairs(cache) do valid=valid and (b<=old.a or a>=old.b) end
           cache[#cache+1]={a=a,b=b}
         end
@@ -103,10 +113,19 @@ function test()
       check(tag..'_cache_floor',valid)
     end
     local peak=0
+    if EXTENDED8 and H.r16(0x7EDD46)~=0 then
+      local ready=H.waitFor(function()
+        for v=0,7 do peak=math.max(peak,dsp(v*16+8)) end
+        return H.r8(0x7EDD55)==3
+      end,900)
+      check(tag..'_extended_ready',ready,H.r8(0x7EDD55)..'/'..H.r16(0x7EDD50))
+      check(tag..'_extended_complete',extendedDamage()==nil,extendedDamage())
+    end
     -- $1A begins with more than a second of authored rests.
     for f=1,(id==0x1A and 180 or 60) do H.wait(1);for v=0,7 do peak=math.max(peak,dsp(v*16+8)) end end
     check(tag..'_audible',peak>0,peak)
     check(tag..'_custom_after_playback',customDamage()==nil,customDamage())
+    check(tag..'_extended_after_playback',extendedDamage()==nil,extendedDamage())
   end
   check('no_postboot_bank_writes',#bankWrites==0,#bankWrites)
   H.result('bank_writes',bankWrites)

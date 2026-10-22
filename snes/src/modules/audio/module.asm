@@ -66,6 +66,17 @@ endif
 !au_bed_level #= !aw+$40
 !au_bed_rate  #= !aw+$42
 !au_bed_index #= !aw+$44
+!au_ext_start   #= $7E0000+!aw+$46
+!au_ext_valid   #= $7E0000+!aw+$48
+!au_ext_next    #= $7E0000+!aw+$4A
+!au_ext_ceiling #= $7E0000+!aw+$4C
+!au_ext_upload  #= $7E0000+!aw+$4E
+!au_ext_tables  #= $7E0000+!aw+$4F
+!au_ext_left    #= !aw+$50 ; bytes of inactive bank left to prefetch
+!au_ext_source  #= !aw+$52 ; next ROM byte (24 bits)
+!au_ext_state   #= !aw+$55 ; 0 absent, 1 loading, 2 complete, 3 active
+!au_ext_cursor  #= !aw+$56 ; next ARAM byte
+
 !au_pending  #= !aw+$5B   ; resident command awaiting SPC echo
 !au_rare     #= !aw+$5A   ; pending rare line (28-30), 0 none
 !au_rare_age #= !aw+$59   ; frames left to start it, then drop
@@ -134,6 +145,7 @@ audio_songload_vectors_data:
 if !AUDIO_CUSTOM_SAMPLES
 incsrc "audio/custom.asm"
 incsrc "audio/cache.asm"
+incsrc "audio/extended.asm"
 endif
 audio_data_end:
 assert audio_data_end <= !DATA_AUDIO+$8000, "audio data bank overflow"
@@ -185,6 +197,10 @@ audio_boot_upload:
 	INC
 	BRA .block
 .finish
+if !AUDIO_CUSTOM_SAMPLES
+	STA.l !au_ext_start : STA.l !au_ext_valid ; A16=zero segment length
+	STA.l $7E0000+!au_ext_state
+endif
 	SEP #$20
 	PLA
 	PLB
@@ -497,6 +513,12 @@ endif
 endif
 	SEP #$20
 .run8
+if !AUDIO_CUSTOM_SAMPLES
+	LDA.w !au_wake : CMP.b #$40 : BNE .normal
+	JSR audio_extended_frame
+	BCS audio_frame_done
+.normal
+endif
 	REP #$10
 	JSL audio_native_poll
 	JSR audio_track_native
@@ -520,8 +542,15 @@ endif
 if !AUDIO_CUSTOM_SAMPLES
 	BNE +
 	LDA.w !au_bed
-	BEQ +
+	BEQ .prefetch_wake
 	LDA.b #$80                  ; only held beds; shot/cancel APIs invalidate
+	BRA +
+.prefetch_wake
+	LDA.w !au_ext_state : BEQ +
+	CMP.b #$03 : BCC .prefetch_pending
+	LDA.b #$00 : BRA +
+.prefetch_pending
+	LDA.b #$40
 +
 endif
 	STA.w !au_wake
@@ -1921,6 +1950,7 @@ incsrc "rare.asm"
 
 incsrc "songload.asm"
 incsrc "cache.asm"
+incsrc "extended.asm"
 
 audio_code_end:
 assert audio_code_end <= !CODE_QUARTER_AUDIO, "audio code overflow (EA:C000-FFFF is a spare quarter, core/layout.asm)"

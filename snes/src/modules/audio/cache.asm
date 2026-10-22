@@ -3,7 +3,8 @@
 ; first, retaining unrelated samples until a new allocation overlaps them.
 ; Only fragmentation of the REQUIRED set invokes downward compaction.
 ; Native cache ids/start/size and the final metadata sender remain the ABI.
-; D=$1E00, DB=0, X16. $8A flags: 0 disposable, 1 retained, 2 upload, 3 moved.
+; D=$1E00, DB=0, X16. $8A flags: low byte: 0 disposable, 1 retained, 2 upload, 3 moved.
+; Bit 8 remembers the preceding song: prefer retaining its unused samples.
 if !AUDIO_CUSTOM_SAMPLES
 
 audio_cache_echo:
@@ -16,12 +17,16 @@ audio_cache_plan:
 	LDA $05 : AND.w #$00FF
 	TAX : LDA.l audio_cache_counts,X : AND.w #$00FF
 	ASL : STA $EA : ASL : STA $EC
+	LDA $05 : AND.w #$00FF : ASL : STA $CC
+	ASL : ASL : ASL : ASL : CLC : ADC $CC : STA $CA
 	LDA $05 : AND.w #$00FF
 	ASL : ASL : ASL : ASL : ASL : TAX
 	LDY.w #$0000
 .list
 	LDA.l $C33F22,X : STA.w $1EAA,Y
-	LDA.w #$0000 : STA.w $1E8A,Y
+	LDA.w $1E8A,Y : AND.w #$00FF : BEQ +
+	LDA.w #$0100
++	STA.w $1E8A,Y
 	INX : INX : INY : INY
 	CPY.w #$0020 : BNE .list
 	LDX.w #$0000
@@ -29,14 +34,11 @@ audio_cache_plan:
 	LDA $28,X : BEQ .next
 	LDA $48,X : CMP $F8 : BCC .discard
 	CLC : ADC $6A,X : CMP $F1 : BCS .discard
-	LDA $28,X
-	LDY.w #$0000
-.required
-	CMP.w $1EAA,Y : BEQ .keep
-	INY : INY : CPY.w #$0020 : BNE .required
-	BRA .next
+	; One ROM membership lookup replaces a 16-entry linear search.
+	TXY : LDA $28,X : CLC : ADC $CA : TAX
+	LDA.l audio_cache_members,X : LSR : TYX : BCC .next
 .keep
-	LDA.w #$0001 : STA $8A,X
+	LDA $8A,X : ORA.w #$0001 : STA $8A,X
 	BRA .next
 .discard
 	STZ $28,X
@@ -46,22 +48,45 @@ audio_cache_plan:
 
 audio_cache_allocate:
 	; Follow the authored instrument order (arrangements put shared samples
-	; first). Among legal holes, minimize evicted bytes, then address.
+	; first). Among legal holes, minimize shared-instrument loss, then address.
 	LDY.w #$0000
 .missing
 	LDA.w $1EAA,Y : BEQ .ready
+	BMI .next
 	LDX.w #$0000
 .find
-	CMP $28,X : BEQ .next
+	CMP $28,X : BEQ .have
 	INX : INX : CPX.w #$0020 : BNE .find
 	STA $19 : ASL : TAX
 	LDA.l audio_cache_lengths,X : STA $17
 	BRA .gap
+.have
+	; Required entries cannot be evicted. Skip repeated 16-slot lookups for
+	; entries already resolved by an earlier allocation pass.
+	LDA.w $1EAA,Y : ORA.w #$8000 : STA.w $1EAA,Y
 .next
 	INY : INY : CPY.w #$0020 : BNE .missing
 .ready
+	LDY.w #$0000
+.unmark
+	LDA.w $1EAA,Y : AND.w #$7FFF : STA.w $1EAA,Y
+	INY : INY : CPY.w #$0020 : BNE .unmark
 	JMP audio_cache_uploads
 .gap
+	; A completely free gap has zero eviction cost. Find the earliest one in
+	; one linear scan before doing the weighted overlapping-extent search.
+	LDA $F8 : STA $1B : LDX.w #$0000
+.free
+	LDA $28,X : BEQ .free_tail
+	LDA $48,X : SEC : SBC $1B : CMP $17 : BCS .free_found
+	LDA $48,X : CLC : ADC $6A,X : STA $1B
+	INX : INX : CPX.w #$0020 : BNE .free
+.free_tail
+	LDA $1B : CLC : ADC $17 : BCS .weighted
+	CMP $F1 : BCS .weighted
+.free_found
+	LDA $1B : STA $21 : STZ $1F : JMP .found
+.weighted
 	LDA.w #$FFFF : STA $1F
 	LDA.w #$FFFE : STA $25
 	LDA $F8
@@ -76,8 +101,13 @@ audio_cache_allocate:
 	LDA $28,X : BEQ .extent_next
 	LDA $48,X : CMP $1D : BCS .extent_next
 	CLC : ADC $6A,X : CMP $1B : BCC .extent_next : BEQ .extent_next
-	LDA $8A,X : BNE .candidate_next
-	LDA $23 : CLC : ADC $6A,X : STA $23
+	LDA $8A,X : AND.w #$00FF : BNE .candidate_next
+	PHX : LDA $28,X : ASL : TAX
+	LDA.l audio_cache_costs,X : PLX : TAY
+	LDA $8A,X : BIT.w #$0100 : BEQ .unrecent
+	TYA : ASL : TAY
+.unrecent
+	TYA : CLC : ADC $23 : STA $23
 	CMP $1F : BCC .extent_next : BNE .candidate_next
 	LDA $1B : CMP $21 : BCS .candidate_next
 .extent_next
@@ -88,14 +118,16 @@ audio_cache_allocate:
 .best
 	LDA $23 : STA $1F
 	LDA $1B : STA $21
+	LDA $1F : BEQ .chosen
 .candidate_next
 	INC $25 : INC $25
 	LDX $25 : CPX.w #$0020 : BEQ .chosen
 	LDA $28,X : BEQ .candidate_next
 	LDA $48,X : CLC : ADC $6A,X
-	LDY $1F : BNE .candidate
+	LDY $1F : BEQ + : JMP .candidate
++
 	CMP $21 : BCS .candidate_next
-	BRA .candidate
+	BRL .candidate
 .chosen
 	LDA $1F : CMP.w #$FFFF : BNE .found
 	JSR audio_cache_compact
@@ -105,6 +137,7 @@ audio_cache_allocate:
 	LDA $21 : STA $1B : CLC : ADC $17 : STA $1D
 	; Evict only disposable entries overlapping the chosen extent.
 	LDX.w #$0000
+	LDA $1F : BEQ .slot
 .evict
 	LDA $28,X : BEQ .evict_next
 	LDA $48,X : CMP $1D : BCS .evict_next
@@ -119,7 +152,11 @@ audio_cache_allocate:
 	LDX.w #$0000
 .disposable
 	LDA $8A,X : BEQ .place
-	INX : INX : BRA .disposable
+	INX : INX : CPX.w #$0020 : BNE .disposable
+	LDX.w #$0000
+.recent
+	LDA $8A,X : AND.w #$00FF : BEQ .place
+	INX : INX : BRA .recent
 .place
 	LDA $19 : STA $28,X
 	LDA $17 : STA $6A,X
@@ -131,11 +168,14 @@ audio_cache_allocate:
 ; Address ordering makes each candidate test start AFTER its left neighbour,
 ; avoiding repeated scans of extents that provably cannot overlap it.
 audio_cache_sort:
-.again
-	STZ $23
-	LDX.w #$0000
-.pair
-	LDA $2A,X : BEQ .next
+	; Only one new allocation (or zeroed entries) normally changed. Insertion
+	; sorting shifts it once instead of making fifteen full bubble passes.
+	LDX.w #$0002
+.outer
+	STX $23
+	LDA $28,X : BEQ .next
+	DEX : DEX
+.compare
 	LDA $28,X : BEQ .swap
 	LDA $48,X : CMP $4A,X : BCC .next : BEQ .next
 .swap
@@ -143,10 +183,10 @@ audio_cache_sort:
 	LDY $48,X : LDA $4A,X : STA $48,X : TYA : STA $4A,X
 	LDY $6A,X : LDA $6C,X : STA $6A,X : TYA : STA $6C,X
 	LDY $8A,X : LDA $8C,X : STA $8A,X : TYA : STA $8C,X
-	INC $23
+	CPX.w #$0000 : BEQ .next
+	DEX : DEX : BRA .compare
 .next
-	INX : INX : CPX.w #$001E : BNE .pair
-	LDA $23 : BNE .again
+	LDX $23 : INX : INX : CPX.w #$0020 : BNE .outer
 	RTS
 
 audio_cache_compact:
@@ -155,7 +195,7 @@ audio_cache_compact:
 	; free. Every physical move is downward: native forward-copy semantics.
 	LDX.w #$0000
 .clear
-	LDA $8A,X : BNE .next
+	LDA $8A,X : AND.w #$00FF : BNE .next
 	STZ $28,X : STZ $8A,X
 .next
 	INX : INX : CPX.w #$0020 : BNE .clear
@@ -165,7 +205,7 @@ audio_cache_compact:
 	LDY.w #$FFFF
 	LDX.w #$0000
 .scan
-	LDA $8A,X : BEQ .scan_next
+	LDA $8A,X : AND.w #$00FF : BEQ .scan_next
 	CMP.w #$0003 : BCS .scan_next
 	LDA $48,X : CMP $1D : BCS .scan_next
 	STA $1D : TXY
@@ -177,7 +217,7 @@ audio_cache_compact:
 	CLC : ADC $1B : CMP $1D : BCC .done : BEQ .done
 .move
 	LDA $48,X : CMP $1B : BEQ .same
-	LDA $8A,X : CMP.w #$0002 : BEQ .planned
+	LDA $8A,X : AND.w #$00FF : CMP.w #$0002 : BEQ .planned
 	PHX
 .copy
 	; Profiler entry: X=cache slot, $1B=destination, $6A,X=length.
@@ -196,11 +236,11 @@ audio_cache_compact:
 .same
 	CLC : ADC $6A,X : STA $1B
 	INC $8A,X : INC $8A,X
-	BRA .select
+	BRL .select
 .done
 	LDX.w #$0000
 .reset
-	LDA $8A,X : BEQ .reset_next
+	LDA $8A,X : AND.w #$00FF : BEQ .reset_next
 	CMP.w #$0003 : BCC .reset_next
 	DEC $8A,X : DEC $8A,X
 .reset_next
@@ -210,7 +250,7 @@ audio_cache_compact:
 audio_cache_uploads:
 	LDX.w #$0000
 .slot
-	LDA $8A,X : CMP.w #$0002 : BNE .next
+	LDA $8A,X : AND.w #$00FF : CMP.w #$0002 : BNE .next
 	PHX
 	LDY $48,X : STY.w $2142
 	SEP #$20
