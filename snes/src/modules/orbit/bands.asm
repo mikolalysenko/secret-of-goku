@@ -49,6 +49,7 @@ bands_frame:
 	STZ.w !bd_on+2
 	LDA.w !fn_phase
 	BEQ .none
+	JSR bands_preload
 	JSR bands_bounds
 	; the band lines end above the globe's first row
 	LDA.w !cam_y
@@ -78,6 +79,29 @@ bands_frame:
 	LDA.w #$0001
 	STA.w !g_ichg                  ; the globe's tables without band lines
 +	RTS
+
+; The charge: the launch's maps (!FN_LAUNCH_R0 for Goku's layer, _R1 for
+; Frieza's) on their way, one a vblank, so that the launch's first frame
+; draws its rays on the layers (no cells above the band lines then).
+bands_preload:
+	LDA.w !fn_phase
+	CMP.w #!FN_CHARGE
+	BNE .done
+	LDA.w !bd_up
+	BNE .done                      ; (a map on its way)
+	LDX.w #$0002                   ; (group 0: group * 2 + 2)
+	LDA.w #!FN_LAUNCH_R0
+	CMP.w !bd_mr
+	BNE .up
+	LDX.w #$0004
+	LDA.w #!FN_LAUNCH_R1
+	CMP.w !bd_mr+2
+	BEQ .done
+.up
+	STA.w !bd_upr
+	STX.w !bd_up
+.done
+	RTS
 
 ; X = group: its ray qualifies (the clash's origin and heading, an even
 ; radius 2-48, a length) and its layer has a map; a map for another radius
@@ -121,8 +145,11 @@ bands_clash_ray:
 	BCS .no
 	LDA.w !fr_head,X
 	CMP.l .head,X
-	BNE .no
-	LDA.w !fr_x,X
+	BEQ +
+	LDA.w !fn_phase                ; (the launch's first rays, a few pixels
+	CMP.w #!FN_LAUNCH              ; long: the heading the table rounds for
+	BNE .no                        ; them is noise, they run the clash's)
++	LDA.w !fr_x,X
 	CMP.l .ox,X
 	BNE .no
 	LDA.w !fr_y,X

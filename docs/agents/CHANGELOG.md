@@ -4,6 +4,30 @@ Several Claude Code sessions work on this repository in parallel. Each entry
 lists what landed, grouped by the work stream that produced it, so changes
 stay traceable even when they are committed together.
 
+## Orbit: the clash's rays on their band layers from the launch (2026-10-21)
+
+- A clash ray is drawn on its band layer once the layer's map for its
+  radius is in VRAM. Each map is one DMA when the radius changes. Until
+  then the ray's cells are drawn from the top of the screen.
+- The launch's first frames therefore drew Goku's ray with cells. The
+  stars' limits counted it on the rows to the screen's edge, and the moon
+  and the outer planet, on those rows, yielded and hid.
+- The charge now sends the launch's two maps, Goku's radius 28 and
+  Frieza's 30, one a vblank (`bands_preload`). The launch draws its rays
+  on the layers from their first frame with a length. Its first rays, a
+  few pixels long, go on the layers too: the heading the table rounds for
+  them is noise (`bands_clash_ray`).
+- A clash ray still drawn with cells above the band lines (the age-0
+  frame, the win's wave off the clash's geometry) counts only the rows of
+  the cells it draws, and none once it is thinner than a band (the win's
+  2-pixel wave as it fades).
+- `clash` (default build): the moon and the outer planet never hide
+  (before: 3 hides each, held 106 and 154 frames, 2 and 1 of them shown
+  again within 30 frames); the planetoid hides twice, through the
+  struggles, as before. 38 repeated pictures (40 before: the launches'
+  rows made again). The stars' count jumps by 5 or more in 15 frames (13
+  before); the `fight` is unchanged (no band layers).
+
 ## Orbit: the clash's rays give up the rows their band layers draw (2026-10-21)
 
 - A beam group keeps the rows its limits hold while its own lie within

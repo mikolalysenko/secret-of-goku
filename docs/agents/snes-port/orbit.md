@@ -563,9 +563,16 @@ inner half, outer quarter, clear: thresholds fitted per radius to
 `orbit-effects.js`'s own pixels; the true edges have slope -114/229, within
 half a pixel of -1/2 across the screen); per band and radius (2-48, even)
 the generator stores the 14-row map (896 bytes) in extended data, one DMA
-when the radius changes. A window per layer (W1 for BG1, W2 for BG2) cuts
-only the band's two ends: the origin's cut and the far end's, a ramp per
-reach precomputed in extended data and copied with an unrolled loop. Two
+when the radius changes. The charge sends the launch's two maps (Goku's
+radius 28, Frieza's 30: `bands_preload`), one a vblank, so the launch draws
+its rays on the layers from their first frame with a length; its first
+rays, a few pixels long, go on the layers too, along the clash's heading
+(the one the table rounds for them, 0, 6, 8 and 14 at ages 2-4, is noise).
+Before, the first frames drew Goku's ray with cells from the top of the
+screen, and the stars' limits and the distant bodies answered those rows.
+A window per layer (W1 for BG1, W2 for BG2) cuts only the band's two ends:
+the origin's cut and the far end's, a ramp per reach precomputed in
+extended data and copied with an unrolled loop. Two
 window tables alternate; each set of indirect HDMA tables points at the
 table it was built with, and the vblank takes the band lines of the set it
 shows, so the frame never rewrites what the HDMA reads. HDMA channel 0
@@ -583,8 +590,13 @@ without them: the bands' windows took the rim's colour math (bright blue
 blocks over the rays' rows) and BG1's band the globe's scroll. Below the
 band lines the rays keep their OBJ chains (`bw_ymin`:
 cells wholly inside the layers' lines are skipped and the run is built for
-the ray's own length). Stars well inside a ray, and in the strip where the
-beam's cells straddle the layers' last line, get no sprite.
+the ray's own length). A clash ray drawn with cells above the band lines
+(its age-0 frame, or the win's wave, off the clash's geometry) counts in
+the stars' limits only the rows of the cells it draws, not those to the
+screen's edge, and none once it is thinner than a band (the win's 2-pixel
+wave as it fades: its last frames take no stars away). Stars well inside
+a ray, and in the strip where the beam's cells straddle the layers' last
+line, get no sprite.
 
 **Beam pictures.** Class 1 (headings 1, 7, 9, 15: the clash's rays) for
 radii 2-48 (even) and chains 0-2 come from the generator (two extended data
@@ -1026,9 +1038,9 @@ are untouched).
 
 | Resource | Use |
 | --- | --- |
-| Code `$A7:8000-FB48` | `!CODE_ORBIT`: 30.8 KiB of 31 KiB (the pullback in `pull.asm`, the distant bodies' drawing in `scdraw.asm`; the `ORBIT_TIMING` build's marks end it at `$FBA0`); bindings at `$A7:FC00-FD6E` |
+| Code `$A7:8000-FBA4` | `!CODE_ORBIT`: 30.9 KiB of 31 KiB (the pullback in `pull.asm`, the distant bodies' drawing in `scdraw.asm`; the `ORBIT_TIMING` build's marks end it at `$FBFC`); bindings at `$A7:FC00-FD6E` |
 | Code `$A1:C000-FD99` | the second code area (`!CODE_QUARTER_GOKU`, noted in `core/layout.asm`): the cosmic montage and its tables, sprite lists, the pullback's preload, the distant bodies' projection (`scenery.asm`) (15.4 KiB of 16) |
-| Code `$AB:C000-D5A7` | the third code area (`!CODE_QUARTER_MISC`, noted in `core/layout.asm`): the distant bodies' strikes (`strike.asm`) and their share of the sprite lines, the stars' cull (`scline.asm`), the beam runs' kept chains (`beamrun.asm`) (5.4 KiB of 16) |
+| Code `$AB:C000-D572` | the third code area (`!CODE_QUARTER_MISC`, noted in `core/layout.asm`): the distant bodies' strikes (`strike.asm`) and their share of the sprite lines, the stars' cull (`scline.asm`), the beam runs' kept chains (`beamrun.asm`) (5.4 KiB of 16) |
 | Data `$E7:0000-76E1` | stars, asin rows, chord scales, rim tables, palettes (and the victory's: Frieza's death colours, the whiteout's backdrop and band colours), star tiles, heading/step tables, the auras' levels, text maps, finale and fall tables, the descent's indexes, the window blobs' addresses (29.7 KiB of 32 KiB) |
 | ROM `$F6:0000-7FFF` | Mode 7 globe VRAM image (32 KiB) |
 | ROM `$F7:0000-F14E` | fight line tables (41 KiB), resident effect cells, Death Ball frames, text tiles, band tiles (60 KiB of 64) |

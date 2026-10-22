@@ -835,6 +835,19 @@ stars_group_rows:
 	BCC +
 	LDA.w #12
 +	STA.w !s_tmp+8                 ; n
+	LDA.w !fn_phase                ; (a clash ray off its band layer: the
+	BEQ +                          ; cells it draws, not those to the edge;
+	LDA.w !bw_ymin,X               ; none for one thinner than a band, the
+	BNE +                          ; win's wave as it fades)
+	LDA.w !fr_r,X
+	CMP.w #4
+	BCS ++
+	JMP .off
+++	LDA.w !bw_len,X
+	CMP.w !s_tmp+8
+	BCS +
+	STA.w !s_tmp+8
++
 	; slivers a line: class 0 4 min(n, 9); class 1 8 (2J + 1); else 4 (2J + 1)
 	LDA.w !bw_j,X
 	ASL
