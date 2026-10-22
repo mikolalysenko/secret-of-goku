@@ -197,6 +197,27 @@ Kamehameha contact pulse (charge +5 to +7; the pulse sparks stay), a
 one-frame base startup for the punch (punch +1 to +3 over six offsets) and
 for the ki throw (ki +5): the startups stay the browser's.
 
+**On main's performance pass (cd59395, 2026-10-22).** The round merged
+onto the performance pass (direct Goku sprite writes, the unrolled contact
+pass) and measured against main without it (in brackets). Gameplay CPU
+misses over offsets 0-9 (`snes/test/gameplay/run.mjs --offsets=...`):
+punch 6 (9), ki 3 (3), fly 1 (1), fly-ki 12 (12), fly-punch 3 (10),
+teleport 22 (23), charge 43 (56), 90 (114) in all. The one vblank overrun
+is the game's own 33-line vblank at fly-punch's last frame on both builds,
+and it moves from offset 4 to 5. Lag frames around a three-hit string in
+the Rabite field over six input phases: base 1 (13), Super Saiyan 3 (9).
+Goku's contact pose comes one frame after the contact's step, with its
+starburst (main: two, or three for a Super Saiyan cross). The first
+picture of a punch or a ki throw from rest comes in the press's vblank (a
+frame later on main), in the waterfall and the Rabite field, base and
+Super Saiyan. The next blow's comes 0 frames after its press in the
+waterfall and 1 in the field (2 and 2 on main). The Kamehameha's
+release shows 0 frames after it in the field (1 on main); in the waterfall
+and for the Super Saiyan wave it is 1, as on main. The forecast probes
+fire 14 times with 14 hits. The perf scenes' p90 and lag frames equal
+main's (sword 58, Sandship 109, battle 51, beast 171/30, Fortress 91,
+flight 112).
+
 **First frames (2026-10-21).** The game reads the pad in vblank and its
 next frame draws the answer, which the screen shows one frame later: a
 press reached the screen a frame after the browser's (measured with exact
