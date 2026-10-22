@@ -661,6 +661,18 @@ found by a search of the 15 cache entries when their hint misses.
   (four 22.5° lines, then four 67.5°), so `fx_resolve`'s last-cell memo
   resolves each of the five cells once per picture (11 lookups before);
   the lines touch no other part, so the pixels are unchanged.
+- **One-pass shockwave (2026-10-22).** The ring's sixteen parts cost the
+  generic placement about 7 lines a picture, six pictures a kick, in the
+  frames the struck actor's reaction already fills. `snes/gen/fx.mjs`
+  writes `fx/shock.asm`: per picture (`FX_ASM_SHOCK` + k) a routine that
+  checks every part's corner on screen and the OAM's room for all sixteen,
+  then writes the entries with immediate offsets and tile slots (2.8
+  lines). `fx_k_hit` uses it for the field size, behind the natives, with
+  the five cells resident (the record's set-up as before, 7.7 lines; the
+  first picture's 10.8), and the generic placement otherwise. Captures of
+  a base three-hit combo are pixel for pixel the generic path's; a Super
+  Saiyan one differs only where a frame the generic path made late shows
+  its camera kick a frame later. A shockwave frame's fx: 30 lines -> 25.
 - **Held regions.** The first warm-up claims fx's VRAM regions before
   anything is drawn. Until something is (`FX_UNSEEN` in `!fx_wdue`, set at
   init and at every release, cleared by `fx_note_seen`), an idle frame with only

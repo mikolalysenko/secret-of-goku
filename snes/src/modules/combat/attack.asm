@@ -816,13 +816,19 @@ cb_strike:
 	LDA !cb_te
 	JSR cb_launch_hold
 .noContact
-	; The punch's map strike (destroy_hit: plants, grass, barriers; about 20
-	; lines in a grassy field) runs in the next step, the hit stop's first
-	; frame, not on the strike's own frame, which the game's hit processing
-	; makes its heaviest (SNES-only, cb_punch_map). A miss's native B pulse
-	; (talk, chests) follows its answer: a struck barrier gets none.
+	; The punch's map strike (destroy_hit: plants, grass, barriers; 20-36
+	; lines in a grassy field) is not run on the strike's own frame, which
+	; the game's hit processing makes its heaviest, nor on the next, where
+	; the struck actor's reaction falls (SNES-only, cb_punch_map): a miss's
+	; runs in the next step, and its native B pulse (talk, chests) follows
+	; the answer (a struck barrier gets none); a connected blow's (bit 2)
+	; runs at the end of a frame of Goku's hold with room for it
+	; (cb_map_late), or in the step after the hold.
 	SEP #$20
-	LDA.b #$01
+	LDA !cb_act_pause
+	BEQ +
+	LDA.b #$04
++	ORA.b #$01
 	LDX !ag_list
 	BNE +
 	ORA.b #$02
@@ -1002,6 +1008,40 @@ cb_punch_map:
 	RTS
 .barrier
 	PLA
+	RTS
+
+; A connected blow's map strike in Goku's hold (SNES-only): at the end of a
+; frame of the hold's last COMBAT_MAP_HOLD (past the impact frames, whose fx
+; draws up to 36 lines) whose logic, with the modules before fx, ended
+; before COMBAT_MAP_LINE and that no NMI interrupted (the strike costs up to
+; about 36 lines in grass, fx and the rest about 25 there), else in the
+; step after the hold (cb_goku_frame). From cb_fx_continuous, during a
+; punch. M16 X16.
+!COMBAT_MAP_LINE = 150
+!COMBAT_MAP_HOLD = 6
+cb_map_late:
+	LDA.l !cb_dpend
+	AND.w #$0004
+	BEQ .out
+	LDA !cb_act_pause
+	AND.w #$00FF
+	CMP.w #!COMBAT_MAP_HOLD+1
+	BCS .out
+	JSL modules_field_current
+	BCC .out
+	SEP #$20
+	LDA.l $00213F                 ; the scanline (latched H/V counter)
+	LDA.l $002137
+	LDA.l $00213D
+	XBA
+	LDA.l $00213D
+	AND.b #$01
+	XBA
+	REP #$20
+	CMP.w #!COMBAT_MAP_LINE
+	BCS .out
+	JMP cb_punch_map
+.out
 	RTS
 
 ; ---------------------------------------------------------------------------

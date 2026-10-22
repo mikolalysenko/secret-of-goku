@@ -68,10 +68,37 @@ fx_k_hit:
 	STA !d_ks+10
 +	LDA.w #$0000
 	JSR fx_depth
+	LDX.w #$0000
+	LDY.w #$0000
+	JSR fx_at
 	LDA.w #!FX_ASM_SHOCK
 	CLC
 	ADC !d_ks+10
-	JSR fx_emit_here
+	CMP !d_lasta                  ; (fx_emit)
+	BEQ +
+	JSR fx_emit_setup
+	BCS .spark
++	; field size, behind the natives, every cell resident: its one-pass
+	; placement (fx/shock.asm), which declines when a part is off screen or
+	; the OAM is short; else the generic placement
+	LDA !d_size
+	BNE .place
+	LDA !d_ef
+	LSR
+	BCS .place
+	LDA !d_tiles
+	ORA !d_tiles+8
+	ORA !d_tiles+16
+	ORA !d_tiles+24
+	ORA !d_tiles+32
+	BMI .place                    ; a cell missing ($FFFF)
+	LDA !d_ks+10
+	ASL
+	TAX
+	JSR (fx_shock_emitters,X)
+	BCC .spark
+.place
+	JSR fx_emit_place
 .spark
 	LDA !d_cur+!C_A
 	AND.w #!FX_IMP_NEXT

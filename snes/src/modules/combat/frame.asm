@@ -1137,9 +1137,19 @@ cb_goku_frame:
 	JSR cb_cancel_combat_quiet
 	RTS
 .active
-	LDA.l !cb_dpend               ; the last step's punch: its map strike
+	LDA.l !cb_dpend               ; a punch's map strike: the step after a
+	AND.w #$00FF                  ; miss, after Goku's hold for a connected
+	BEQ +                         ; blow (cb_strike)
+	BIT.w #$0004
+	BEQ .map
+	LDA !cb_act_pause
 	AND.w #$00FF
+	BEQ .map
+	LDA !cb_act
+	AND.w #$00FF
+	CMP.w #!GOKU_K_PUNCH
 	BEQ +
+.map
 	JSR cb_punch_map
 +	; an action another module put in !goku_act (teleport) blocks ours; our
 	; own kind is still there when an action ended in an earlier catch-up

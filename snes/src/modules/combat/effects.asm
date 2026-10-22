@@ -290,6 +290,7 @@ cb_fx_continuous:
 .punch
 	REP #$20
 	JSR cb_fx_prep                ; a punch's wind-up readies its contact's cells
+	JSR cb_map_late               ; its map strike in a frame of the hold with room
 	SEP #$20
 	BRA .noAura
 

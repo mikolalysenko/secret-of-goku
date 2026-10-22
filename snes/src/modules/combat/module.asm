@@ -204,8 +204,9 @@ assert !RAM_COMBAT == $7E0000|!CB, "!CB must match !RAM_COMBAT"
                            ;   at its own init, and cb_ensure_init's clear leaves them at rest
 !cb_kill  = !CW+$1E2       ; byte: a contact of the current strike killed (cb_strike)
 !cb_stop  = !CW+$1E3       ; byte: the blow's own hit stop (the spark's hold, the pin)
-!cb_dpend = !CW+$1E4       ; byte: a punch's map strike waits for the next step (cb_punch_map):
-                           ;   1, | 2 when it missed every target (its native B pulse follows)
+!cb_dpend = !CW+$1E4       ; byte: a punch's map strike waits (cb_punch_map): 1 for the next
+                           ;   step, | 2 when it missed every target (its native B pulse
+                           ;   follows), | 4 a connected blow's, until Goku's hold is over
                            ; $1E5-$1EF free (the beam pulses moved to !BP below)
 !PADH     = !CW+$1F0       ; pad 1 at each of the last 4 field vblanks (NMI tail)
 assert !cb_warm+6 <= !CW+$1DE && !CW+$1E2 <= !PADH, "combat: fx's lent bytes overlap"

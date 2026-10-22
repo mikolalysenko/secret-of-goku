@@ -167,7 +167,7 @@ unchanged.
 | A ki shot's contact | the cross's starburst | the smallest |
 | A punch pressed after the combo buffer opens (age 9, 4) | starts at once | the next frame |
 | A move's first frame (a punch from rest or the next blow, a ki throw from rest, the Kamehameha's release) | in the vblank of the press when there is room for its cell (First frames, below); otherwise a frame later, as the game draws | the frame of the press |
-| The punch's map strike (`destroy_hit`) and a miss's native B pulse | the next step (`cb_punch_map`, the hit stop's first frame) | the strike's frame |
+| The punch's map strike (`destroy_hit`) | a miss's the next step (its native B pulse follows its answer); a connected blow's at the end of a frame of the hold's last six with room for it (`cb_map_late`), else the step after the hold | the strike's frame |
 
 The browser references apply these to the browser's own sources:
 `snes/test/snes-feel.mjs` patches `mana-mod.js` textually (each patch must
@@ -244,6 +244,36 @@ rest unchanged. Computing the forecast at every frame's end instead (with
 a scanline gate so that it ran only in frames with time to spare) found
 the cell for more presses but cost charge 137 and fly 9: the gate itself
 ran in the frames at the edge.
+
+**The kick's lag frame (2026-10-22).** In a crowded field a three-hit
+string dropped a frame right after the kick's contact in five input
+phases of six. Per-frame profiles (the Rabite field, Super Saiyan):
+that frame carried the struck actor's reaction (the game's logic about
+160-210 lines), the punch's map strike (`destroy_hit`, 36 lines in grass,
+moved there off the strike frame earlier this round) and fx's impact
+frames (the starburst, the struck actor's white palette, the spark and
+the ring's first picture: 20-36 lines). A connected blow's map strike now
+waits for Goku's hold: it runs at the end of a frame in the hold's last
+six (past the ring) whose logic and modules before fx ended by line 150
+and that no NMI interrupted (`cb_map_late`, from the punch's continuous
+draws: no cost in other frames), else in the step after the hold. During
+the hold Goku and his facing stay put, so the strike covers the same
+ground; the grass and barriers react a few frames later, a miss's strike
+and B pulse keep the next step. fx's ring takes a one-pass placement
+(fx.md, Impact frames). Lag frames over six input phases: the Super
+Saiyan string (video frames 30-100) 20 -> 12, the frames around its kick
+7 -> 1; the base string (frames 10-120) 27 -> 10, around its kick 12 ->
+0. What is left falls around the cross's contact and after its hold,
+when its spark brings in the kick's cells (fx's `FX_IMP_NEXT`, up to 20
+lines a frame while two cold cells a frame come in; two full cache scans
+a frame, one of which may find nothing to take). Touching the cells
+already in instead of resolving them, and skipping a frame's further
+scans once one found nothing, gained nothing measurable there (the cells'
+hints mostly name other cells, so the touch searched as well): left out.
+Gameplay misses
+summed over twelve offsets against step 4: fly-punch 14 (23), punch 14
+(15), ki 11 (11), fly 5 (5), fly-ki 26 (26), teleport 52 (52), charge 124
+(124); phase 0 unchanged.
 
 Cost (per-frame logic of `snes/test/gameplay`'s `punch`, the first
 contact in the scene): the first wind-up frame takes fx's VRAM claim and
