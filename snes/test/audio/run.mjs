@@ -104,7 +104,7 @@ const extendedLua=extended?`{reserve=${extended.reserve},bytes=${extended.length
 const lib=[`LOAD_ORDER=${loadOrder?'{'+loadOrder.join(',')+'}':'nil'}\nBANK_FIELD_IMPORT=${JSON.stringify(join(repo,'.local/snes-import/animation-audit__native__rabite-field-a'))}\nCUSTOM=${custom}\nROUND7=${isResident7(cart)}\nFLOOR=${sampleFloor(cart)}\nUPLOAD=${JSON.stringify(upload)}\nEXTENDED8=${extendedLua}`,...ids,...consumers,songsLua,
  `AUDIO_CACHE_COPY=${label('audio_cache_compact_copy')}\nAUDIO_CACHE_SEND=${label('audio_cache_uploads_send')}`,
  `AUDIO_EXT_SEND=${label('audio_extended_finish_send')}\nAUDIO_EXT_TABLES=${label('audio_extended_finish_tables')}\nif AUDIO_PROFILE_INIT then AUDIO_PROFILE_INIT() end`,
- `AUDIO_FRAME=${label('audio_frame')}\nAUDIO_DONE=${label('audio_frame_done')}\nAUDIO_PAUSE=${label('audio_pause')}\nAUDIO_CANCEL=${label('audio_cancel')}`,
+ `AUDIO_FRAME=${label('audio_frame')}\nAUDIO_DONE=${label('audio_frame_done')}\nAUDIO_PAUSE=${label('audio_pause')}\nAUDIO_CANCEL=${label('audio_cancel')}\nAUDIO_SEND=${label('audio_native_send')}`,
  `NATIVE_CUES={${nativeIds(cart,NATIVE_IDS).slice(1,28).map((v,i)=>`{${i+1},${v},${nativeEffectVoices(cart,v)}}`).join(',')}}`,readFileSync(join(here,'lib.lua'),'utf8')].join('\n');
 const tests=mesenTests;
 const summary=[];

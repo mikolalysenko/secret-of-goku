@@ -33,7 +33,8 @@ function AUDIO_PROFILE_INIT()
 end
 emu.addMemoryCallback(function()
   if H.r8(0x7E1E01)==H.r8(0x7E1E05) then return end
-  row={song=H.r8(0x7E1E01),moves={},uploads={}}
+  row={song=H.r8(0x7E1E01),p2=H.r8(0x7E1E02),p3=H.r8(0x7E1E03),moves={},uploads={},
+    history={H.r8(0x7EDD18),H.r8(0x7EDD19),H.r8(0x7EDD1A),H.r8(0x7EDD1B),H.r8(0x7EDD1C)}}
   row.cache={}
   for k=0,15 do row.cache[#row.cache+1]={id=H.r16(0x7E1E28+2*k),addr=H.r16(0x7E1E48+2*k),bytes=H.r16(0x7E1E6A+2*k)} end
   rows[#rows+1]=row;stage='fade';stamp=now()
@@ -58,6 +59,10 @@ emu.addMemoryCallback(function()
 end,emu.callbackType.exec,0xC303AA,0xC303AA)
 emu.addMemoryCallback(function()
   if row and stage=='driver_start' then
+    -- The echo length the load configured ($1EF0, capped) and the optional
+    -- bank's start/state; with the history bytes at the load's start, a
+    -- cache model can replay the pass exactly (cache-model.mjs).
+    row.edl=H.r8(0x7E1EF0);row.ext={start=H.r16(0x7EDD46),state=H.r8(0x7EDD55)}
     mark('playing');H.result('song_load_profile',rows);row=nil
   end
 end,emu.callbackType.exec,0x0DDD,0x0DDD,emu.cpuType.spc,emu.memType.spcMemory)

@@ -15,7 +15,8 @@ mkdirSync(root,{recursive:true});
 const bytes=readFileSync(rom),sym=readFileSync(rom.replace(/\.sfc$/,'.sym'),'utf8');
 const label=n=>{const m=sym.match(new RegExp(`^([\\dA-F]{2}):([\\dA-F]{4}) ${n}$`,'mi'));if(!m)throw Error(n);return parseInt(m[1]+m[2],16);};
 const host=join(import.meta.dirname,'capture-host.py');chmodSync(host,0o755);process.env.MESEN=host;
-const pre=`CP_STOP='waterfall'\nEXTENDED=${!!extendedInfo(bytes)}\nCANDIDATES_ONLY=${args.includes('--candidates')}\nAUDIO_FRAME=${label('audio_frame')}\nIMPORT=${JSON.stringify(join(repo,'.local/snes-import/'))}\n`;
+const send=sym.match(/^([\dA-F]{2}):([\dA-F]{4}) audio_native_send$/m);
+const pre=`CP_STOP='waterfall'\nEXTENDED=${!!extendedInfo(bytes)}\nCANDIDATES_ONLY=${args.includes('--candidates')}\nAUDIO_FRAME=${label('audio_frame')}\nAUDIO_SEND=${send?parseInt(send[1]+send[2],16):0}\nIMPORT=${JSON.stringify(join(repo,'.local/snes-import/'))}\n`;
 const test=pre+readFileSync(join(repo,'snes/test/checkpoints.lua'),'utf8')+'\n'+readFileSync(join(repo,'snes/test/world/lib.lua'),'utf8')+'\n'+readFileSync(join(import.meta.dirname,'capture8.lua'),'utf8');
 const copy=privateRom(rom,'capture8-'+tag);let run;
 try{run=await runMesen({rom:copy,test,outDir:out,timeoutMs:600000});}finally{cleanupRom(copy);}

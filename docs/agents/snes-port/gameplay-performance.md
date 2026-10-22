@@ -6,6 +6,43 @@ integration bugs and CPU/vblank cost. The default build now favors resident
 SNES audio and compact effects. It is substantially smoother, but crowded
 combat is not yet guaranteed to run without missed video frames.
 
+## Audio dispatch follow-up: start-phase sums — October 22, 2026
+
+The audio module's part of the field update, measured with
+`snes/test/audio/dispatch-profile.lua` over the 130 runs (offsets 0-9) and
+changed in `a508692` and `4c91b9f` (details in
+[audio.md](audio.md#round-eight-performance-follow-up)). Base main
+`cd59395`, the sums of the pass below:
+
+| Case | Sum, offsets 0-9, before -> after |
+| --- | --- |
+| punch | 9 -> 8 |
+| ki | 3 -> 3 |
+| fly | 1 -> 1 |
+| fly-ki | 12 -> 10 |
+| fly-punch | 10 -> 9 (offset 0: 1 -> 0) |
+| teleport | 23 -> 22 |
+| charge | 56 -> 53 |
+| all others | 0 -> 0 |
+| total | 114 -> 106 |
+
+- A cue frame's audio work (audio_frame plus core's sound pump, NMI time
+  excluded) falls from 4.90 to 2.79 lines on average and from 5.76 to 3.75
+  at most. fly-punch's hit frame goes from 3.61 + 1.89 to 3.04 + 0.16, and
+  the end-of-frame step from 2.20 to 0.44 lines. A frame whose only audio
+  work is an earlier native effect's echo falls from 2.10 to 0.58.
+- In the missed updates, audio takes 0.74% of the lines before and 0.46%
+  after (208.4 of 27,976 -> 119.6 of 26,008). The misses whose overrun is
+  shorter than their audio work fall from 16 to 7.
+- The reported 5.9-line end-of-frame step and the 7.7-8.9-line audio
+  spikes contain a lag NMI (3.6-7.0 lines). No gameplay frame waits for
+  the SPC's tick. The new bounded wait after an echo's release takes at
+  most 0.37 lines, in 130 measured frames, and saves 117 native effects
+  that were previously dropped.
+- The optional bank's fill no longer adds misses: the audio suite's field
+  check, summed over ten phases, reads 10 -> 10 with and without the fill
+  on `cd59395` and `c55d683` (round eight: 20 -> 20 and 10 -> 20).
+
 ## Performance pass: start-phase sums — October 21, 2026
 
 This pass profiled the cases that still missed frames (charge, teleport,

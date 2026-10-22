@@ -6,15 +6,38 @@ function test()
   H.wait(40)
   local streams, commands = 0, {}
   local effectStart, maxEffectLines, clobbers = nil, 0, 0
+  -- Native callers enter the driver at C3:0004. The module sends its own
+  -- cues and beds straight to the ports (audio_native_send: A = command |
+  -- p1<<8, X = p2 | p3<<8). Both are recorded as attempted commands, as the
+  -- driver entry was; 'selector' marks the module's. A cue frame's whole
+  -- audio_frame (selector and send) is timed from entry to audio_frame_done.
+  -- Mailbox frames (the test's cmd()) add test_poll and an API call: time
+  -- only cue frames requested as gameplay requests them (au_test clear).
+  local frameStart, sent, maxCueLines, maxBedLines = nil, nil, 0, 0
+  emu.addMemoryCallback(function()
+    frameStart=H.r16(AU_TEST)==0 and emu.getState()['masterClock'] or nil;sent=nil
+  end,emu.callbackType.exec,AUDIO_FRAME,AUDIO_FRAME)
+  emu.addMemoryCallback(function()
+    if sent and frameStart then
+      local l=(emu.getState()['masterClock']-frameStart)/1364
+      if sent==2 then maxCueLines=math.max(maxCueLines,l) else maxBedLines=math.max(maxBedLines,l) end
+    end
+    frameStart=nil
+  end,emu.callbackType.exec,AUDIO_DONE,AUDIO_DONE)
   local streamWatch=emu.addMemoryCallback(function(_, v)
     if v == 0x8A then streams = streams + 1 end
   end, emu.callbackType.write, 0x002140, 0x002140)
   emu.addMemoryCallback(function()
     if (H.r8(0x7E1E00) == 2 or H.r8(0x7E1E00)==0x81) then
-      commands[#commands+1] = {frame=H.frame, id=H.r8(0x7E1E01),cmd=H.r8(0x7E1E00),level=H.r8(0x7E1E02),rate=H.r8(0x7E1E03)}
+      commands[#commands+1] = {frame=H.frame, id=H.r8(0x7E1E01),cmd=H.r8(0x7E1E00),level=H.r8(0x7E1E02),rate=H.r8(0x7E1E03),selector=false}
       effectStart = emu.getState()['masterClock']
     end
   end, emu.callbackType.exec, 0xC30004, 0xC30004)
+  if AUDIO_SEND~=0 then emu.addMemoryCallback(function()
+    local s=emu.getState();local a,x=s['cpu.a'],s['cpu.x']
+    commands[#commands+1] = {frame=H.frame, id=(a>>8)&255,cmd=a&255,level=x&255,rate=(x>>8)&255,selector=true}
+    sent=a&255
+  end, emu.callbackType.exec, AUDIO_SEND, AUDIO_SEND) end
   emu.addMemoryCallback(function()
     if effectStart then
       maxEffectLines=math.max(maxEffectLines,(emu.getState()['masterClock']-effectStart)/1364)
@@ -64,6 +87,16 @@ function test()
   check('air_does_not_stream_or_spam',#commands==stopped,#commands-stopped)
   cmd(6)
   if ROUND7 then
+    -- A simultaneous swing/contact resolves to the contact and dispatches
+    -- inside audio_frame, without a second end-of-frame ring/port visit
+    -- and without the driver entry.
+    H.wait(1) -- the loop-off mailbox op first: time this as a gameplay frame
+    local first=#commands
+    H.w8(AU+1,AUDIO_SFX_SWING);H.w8(AU+2,AUDIO_SFX_HIT)
+    H.w8(AU,2);H.w8(AU+0x58,2);H.wait(5)
+    check('contact_dispatches_in_selector',commands[first+1] and commands[first+1].id==0xE7 and commands[first+1].selector and #commands==first+1,
+      commands[first+1] and string.format('%02X selector %s, %d commands',commands[first+1].id,tostring(commands[first+1].selector),#commands-first))
+    H.wait(30)
     -- Combat keeps the same KICK cue. Audio selects F1 only for SSJ and
     -- must release either preceding swing before counting contact gain.
     local form=H.r8(0x7ED811)
@@ -147,6 +180,13 @@ function test()
   for i=1,30 do cmd(8,i%2==0 and 0x50 or 3); H.wait(1) end
   H.wait(4)
   check('effect_cpu_bounded',maxEffectLines<=(ROUND7 and 1.35 or 2),maxEffectLines)
+  -- Round eight's cue frame: audio_frame 3.3-3.7 lines plus 1.8-1.9 in the
+  -- core queue and driver entry (bed updates 3.6-4.9 in all). The direct
+  -- send keeps the swing/contact frame below 3 lines and a bed update below 4.
+  if AUDIO_SEND~=0 then
+    check('cue_frame_bounded',maxCueLines>0 and maxCueLines<=3,maxCueLines)
+    check('bed_frame_bounded',maxBedLines>0 and maxBedLines<=4,maxBedLines)
+  end
   check('pending_effect_finished',H.r8(AU+0x5B)==0,H.r8(AU+0x5B))
   check('no_brr_commands',streams==0,streams)
   -- A native song upload uses incrementing handshake counters (including
@@ -167,5 +207,6 @@ function test()
   check('music_alive',aram(0xAD)~=0,aram(0xAD))
   H.result('commands',commands)
   H.result('maxEffectLines',maxEffectLines)
+  H.result('maxCueLines',maxCueLines);H.result('maxBedLines',maxBedLines)
   finish()
 end

@@ -49,6 +49,11 @@ endif
 !au_test     #= !aw+$16   ; word: test mailbox (op | arg<<8), audio_test_poll
 !au_last     #= !aw+$18   ; frame of the last hit, impact
 !au_var      #= !aw+$1A   ; variant counters: hit, swing, blast
+; The shipping cartridge's variations live on the SPC and its rare lines
+; never use the hit dedupe or variant bytes ($18-$1C, AUDIO_PCM only):
+; song loads keep their history there (cache.asm).
+!au_cache_history #= $7E0000+!aw+$18 ; four recent song ids + 1 (0 empty)
+!au_cache_heat    #= $7E0000+!aw+$1C ; loads left in a return's window
 !au_frame    #= !aw+$1D
 !au_testloop #= !aw+$1E   ; test: loop id + 1 kept on every frame (0 none)
 !au_backoff  #= !aw+$1F   ; frames to wait before the next transfer
@@ -430,30 +435,67 @@ else
 endif
 	SEP #$20
 	LDA.w !au_wake
+if !AUDIO_CUSTOM_SAMPLES
+	BNE .wake
+	; Nothing due but an outstanding echo (a native effect earlier in this
+	; frame, or the last frame's cue): release it as the full path's poll
+	; would. No request, bed, rare line, backoff or prefetch is waiting.
+	LDA.w !au_pending
+	BEQ .quiet
+	CMP.l $002140
+	BNE .quiet
+	LDA.b #0
+	STA.l $002140
+	STZ.w !au_pending
+	BRA .quiet
+.wake
+	CMP.b #$40
+	BNE +
+	JMP .prefetch
++	CMP.b #$20
+	BNE +
+	JMP .countdown
++
+endif
 	ORA.w !au_pending
 if !AUDIO_CUSTOM_SAMPLES
-	BEQ .quiet
 	CMP.b #$80
 	BEQ .steady
-	; A held bed's pending $81 acknowledgement needs only a poll, not a
-	; complete song/cue/rare-service pass. Other requests retain the full path.
-	CMP.b #$81
-	BNE .run8
+	; A held bed's outstanding echo (its own $81, or a native effect sent
+	; earlier in this frame) needs only a poll, not a complete song/cue/
+	; rare-service pass. Other requests retain the full path.
 	LDA.w !au_wake
 	CMP.b #$80
-	BNE .run8
-	LDA.l $002140
-	CMP.b #$81
+	BNE .to_run8
+	LDA.w !au_pending
+	CMP.l $002140
 	BNE .steady
 	LDA.b #0
 	STA.l $002140
 	STZ.w !au_pending
 	BRA .steady
-endif
+else
 	BNE .run8
+endif
 if !AUDIO_CUSTOM_SAMPLES
 .quiet
+	LDA.w $1E05
+	CMP.w !au_song
+	BNE .to_run8
+if defined("title_sfx")
+	LDA.w !title_sfx&$FFFF
+	BNE .to_run8
 endif
+if defined("out_sfx")
+	LDA.w !out_sfx&$FFFF
+	CMP.w !au_dsfx
+	BNE .to_run8
+endif
+	PLP
+	RTL
+.to_run8
+	JMP .run8
+else
 	LDA.w $1E05
 	CMP.w !au_song
 	BNE .run8
@@ -468,21 +510,22 @@ if defined("out_sfx")
 endif
 	PLP
 	RTL
+endif
 if !AUDIO_CUSTOM_SAMPLES
 .test_run
 	BRL .run
 .steady
 	LDA.w $1E05
 	CMP.w !au_song
-	BNE .run8
+	BNE .to_run8
 if defined("title_sfx")
 	LDA.w !title_sfx&$FFFF
-	BNE .run8
+	BNE .to_run8
 endif
 if defined("out_sfx")
 	LDA.w !out_sfx&$FFFF
 	CMP.w !au_dsfx
-	BNE .run8
+	BNE .to_run8
 endif
 	LDA.w !au_bed_wait
 	BEQ .update
@@ -508,6 +551,43 @@ endif
 	JSR audio_beds_service
 	PLP
 	RTL
+.countdown
+	; Only au_backoff is due (a song change's hold, or a rare line's
+	; retry): no request, bed, line or prefetch. audio_sfx, cancel and stop
+	; replace au_wake; held loops do not, so they are checked here.
+	LDA.w !au_lvl
+	ORA.w !au_lvl+1
+	BNE .run8
+	LDA.w !au_pending
+	BEQ +
+	CMP.l $002140
+	BNE +
+	LDA.b #0
+	STA.l $002140
+	STZ.w !au_pending
++	LDA.w $1E05
+	CMP.w !au_song
+	BNE .run8
+if defined("title_sfx")
+	LDA.w !title_sfx&$FFFF
+	BNE .run8
+endif
+if defined("out_sfx")
+	LDA.w !out_sfx&$FFFF
+	CMP.w !au_dsfx
+	BNE .run8
+endif
+	DEC.w !au_backoff
+	BNE +
+	STZ.w !au_wake
++	PLP
+	RTL
+.prefetch
+	; Only the optional bank's fill is due: the cheap idle step. Requests,
+	; held loops, songs and cue flags continue on the full path.
+	JSR audio_extended_frame
+	BCC .normal
+	JMP audio_frame_done
 endif
 .run
 endif
@@ -520,6 +600,36 @@ if !AUDIO_CUSTOM_SAMPLES
 .normal
 endif
 	REP #$10
+if !AUDIO_CUSTOM_SAMPLES
+	; audio_native_poll, inline. The selector's send comes more than a
+	; scanline later: the SPC clears its echo within ~22 us of a release.
+	LDA.w !au_pending
+	BEQ +
+	CMP.l $002140
+	BNE +
+	LDA.b #0
+	STA.l $002140
+	STZ.w !au_pending
++	JSR audio_track_native
+	LDA.w !au_testloop
+	ORA.w !au_test
+	BEQ +
+	JSR audio_test_poll
++
+if defined("title_sfx")
+	LDA.w !title_sfx&$FFFF
+	BEQ +
+	JSR audio_title_cues
++
+endif
+if defined("out_sfx")
+	LDA.w !out_sfx&$FFFF
+	CMP.w !au_dsfx
+	BEQ +
+	JSR audio_destroy_cues
++
+endif
+else
 	JSL audio_native_poll
 	JSR audio_track_native
 	JSR audio_test_poll
@@ -528,6 +638,7 @@ if defined("title_sfx")
 endif
 if defined("out_sfx")
 	JSR audio_destroy_cues
+endif
 endif
 	JSR audio_service
 if not(defined("AUDIO_PCM"))
@@ -538,19 +649,24 @@ if !AUDIO_CUSTOM_SAMPLES == 0
 	ORA.w !au_bed
 endif
 	ORA.w !au_testloop
+if !AUDIO_CUSTOM_SAMPLES == 0
 	ORA.w !au_backoff
-if !AUDIO_CUSTOM_SAMPLES
+else
 	BNE +
 	LDA.w !au_bed
 	BEQ .prefetch_wake
+	LDA.w !au_backoff           ; held beds during a countdown: full path
+	BNE +
 	LDA.b #$80                  ; only held beds; shot/cancel APIs invalidate
 	BRA +
 .prefetch_wake
-	LDA.w !au_ext_state : BEQ +
-	CMP.b #$03 : BCC .prefetch_pending
-	LDA.b #$00 : BRA +
-.prefetch_pending
-	LDA.b #$40
+	LDA.w !au_ext_state : BEQ .countdown_wake
+	CMP.b #$03 : BCS .countdown_wake
+	LDA.b #$40                  ; its idle step also counts au_backoff down
+	BRA +
+.countdown_wake
+	LDA.w !au_backoff : BEQ +   ; nothing due: quiet
+	LDA.b #$20                  ; only the countdown: the cheap step
 +
 endif
 	STA.w !au_wake
@@ -1973,6 +2089,11 @@ if not(defined("AUDIO_PCM"))
 ; on a later frame instead of busy-waiting in the gameplay thread.
 %orig4($C30175, $00A520E2)
 %hijack($C30175, audio_native_command, 4, audio)
+if !AUDIO_CUSTOM_SAMPLES
+%orig4($C30160, $C2080B8B)
+%orig1($C30164, $20)
+%hijack($C30160, audio_native_effect, 5, audio)
+endif
 endif
 ; Echo parameter reads in C3:060A (LDA $C30708..B,X).
 %orig4($C30618, $C30708BF)
